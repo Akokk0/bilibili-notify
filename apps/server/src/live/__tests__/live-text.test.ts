@@ -4,7 +4,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { applyTemplate, renderLiveText } from "../live-text";
+import {
+	applyTemplate,
+	renderLiveText,
+	renderSpecialDanmaku,
+	renderSpecialUserEnter,
+} from "../live-text";
 
 /**
  * 回归守护 — P2:applyTemplate 单遍替换 + 裸键双语法。
@@ -129,5 +134,38 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 				follower: 1,
 			}),
 		).toBe("+5|{follower}");
+	});
+});
+
+describe("renderSpecialDanmaku / renderSpecialUserEnter — 占位符 mastername / uname / msg", () => {
+	it("特别弹幕:三个占位符,-key 与 {key} 两种写法", () => {
+		expect(
+			renderSpecialDanmaku({
+				template: "-mastername|{uname}|-msg|{msg}",
+				viewerName: "小明",
+				creatorName: "主播A",
+				text: "你好",
+			}),
+		).toBe("主播A|小明|你好|你好");
+	});
+
+	it("特别进场:mastername / uname;msg 不是它的变量,原样留着", () => {
+		expect(
+			renderSpecialUserEnter({
+				template: "{uname} 进了 -mastername {msg}",
+				viewerName: "小明",
+				creatorName: "主播A",
+			}),
+		).toBe("小明 进了 主播A {msg}");
+	});
+
+	it("观众名里带 token 不被二次替换", () => {
+		expect(
+			renderSpecialUserEnter({
+				template: "{uname}|-mastername",
+				viewerName: "{mastername}",
+				creatorName: "主播A",
+			}),
+		).toBe("{mastername}|主播A");
 	});
 });

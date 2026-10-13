@@ -149,7 +149,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		isSubscribed: () => false,
 		hasTargets: () => false,
 		config: {},
-		templateRenderer: { renderSpecialDanmaku: () => "", renderLiveEnd: () => "下播啦" },
+		templateRenderer: { renderLiveEnd: () => "下播啦" },
 		// 放弃监听时若该房间还在播,现在会正经走完下播流水线(而不是干翻状态),
 		// 于是这几个取数接口在退避耗尽路径上也会被用到 —— 见「退避耗尽彻底放弃」用例。
 		getLiveRoomInfo: async () => ({ uid: 1, live_status: 0, live_time: "2026-01-01 10:00:00" }),

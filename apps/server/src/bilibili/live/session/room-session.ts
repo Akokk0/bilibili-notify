@@ -7,6 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { LivePushType } from "../../../live/live-types";
+import { pushSpecialDanmaku, pushSpecialUserEnter } from "../../../live/special-users";
 import { fetchAvatar } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { membershipEventFromLiveEvent } from "../membership-event";
@@ -521,23 +522,27 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.name);
 		}
 		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
-		if (
-			this.sub.customSpecialDanmakuUsers.enable &&
-			this.sub.customSpecialDanmakuUsers.specialDanmakuUsers?.includes(body.user.uid.toString())
-		) {
-			const text = this.ctx.templateRenderer.renderSpecialDanmaku({
-				template: this.sub.customSpecialDanmakuUsers.msgTemplate,
-				uname: body.user.name,
-				master: this.masterInfo,
-				content: body.content,
-			});
+		pushSpecialDanmaku(
+			{
+				viewer: { id: String(body.user.uid), name: body.user.name },
+				text: body.content,
+				settings: this.sub.customSpecialDanmakuUsers,
+				creatorName: this.masterInfo?.username ?? "",
+			},
+			{ send: this.specialTextSender(LivePushType.UserDanmakuMsg) },
+		);
+	}
+
+	/** 把「推一句文字」绑到这条订阅上;引擎拆了就不再往外推。 */
+	private specialTextSender(type: LivePushType): (text: string) => void {
+		return (text) => {
 			if (this.ctx.isDisposed()) return;
 			this.ctx.safeBroadcast(
 				this.sub.uid,
 				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-				LivePushType.UserDanmakuMsg,
+				type,
 			);
-		}
+		};
 	}
 
 	/**
@@ -906,17 +911,13 @@ export class RoomSession extends RoomSessionBase {
 		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
 		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
 		if (ev.action !== "enter") return;
-		const uid = String(ev.user.uid);
-		if (!this.sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)) return;
-		const text = this.ctx.templateRenderer.renderSpecialUserEnter({
-			template: this.sub.customSpecialUsersEnterTheRoom.msgTemplate,
-			uname: ev.user.name,
-			master: this.masterInfo,
-		});
-		this.ctx.safeBroadcast(
-			this.sub.uid,
-			this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-			LivePushType.UserActions,
+		pushSpecialUserEnter(
+			{
+				viewer: { id: String(ev.user.uid), name: ev.user.name },
+				settings: this.sub.customSpecialUsersEnterTheRoom,
+				creatorName: this.masterInfo?.username ?? "",
+			},
+			{ send: this.specialTextSender(LivePushType.UserActions) },
 		);
 	}
 }

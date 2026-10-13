@@ -183,7 +183,7 @@ function makeMockCtx(): {
 		},
 		isSubscribed: () => false,
 		hasTargets: () => false,
-		templateRenderer: { renderSpecialDanmaku: () => "" },
+		templateRenderer: {},
 	} as unknown as RoomContext;
 	return { ctx, m };
 }

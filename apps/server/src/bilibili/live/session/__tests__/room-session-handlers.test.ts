@@ -114,7 +114,6 @@ interface CtxMocks {
 	renderLiveStart: ReturnType<typeof vi.fn>;
 	renderLiveStreaming: ReturnType<typeof vi.fn>;
 	renderLiveEnd: ReturnType<typeof vi.fn>;
-	renderSpecialUserEnter: ReturnType<typeof vi.fn>;
 	sendLiveNotifyCard: ReturnType<typeof vi.fn>;
 	stopMonitoring: ReturnType<typeof vi.fn>;
 	problems: ReturnType<typeof makeLiveProblems>;
@@ -165,7 +164,6 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		renderLiveStart: vi.fn(() => "开播啦"),
 		renderLiveStreaming: vi.fn(() => "直播中"),
 		renderLiveEnd: vi.fn(() => "下播了"),
-		renderSpecialUserEnter: vi.fn(() => "进房文案"),
 		sendLiveNotifyCard: vi.fn(async () => {}),
 		stopMonitoring: vi.fn(),
 		problems: makeLiveProblems(),
@@ -206,8 +204,6 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 			renderLiveStart: m.renderLiveStart,
 			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: m.renderLiveEnd,
-			renderSpecialDanmaku: () => "",
-			renderSpecialUserEnter: m.renderSpecialUserEnter,
 		},
 		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), registerRoom: vi.fn() },
 		isSubscribed: m.isSubscribed,
@@ -1590,10 +1586,20 @@ describe("RoomSession.onUserAction", () => {
 
 		await s.onUserAction(enterEvent(42));
 
-		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
-		expect(m.renderSpecialUserEnter.mock.calls[0]?.[0]?.uname).toBe("特别用户");
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
+		// 文案由核心渲染(模板「进房模板」没有占位符,原样出来);观众名的替换由 live/ 的用例钉着。
+		expect(m.safeBroadcast.mock.calls[0]?.[1]).toEqual([{ kind: "text", text: "进房模板" }]);
 		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserActions);
+	});
+
+	it("引擎已拆除 → 进房不再往外推", async () => {
+		const { ctx, m } = makeCtx();
+		(ctx as unknown as { isDisposed: () => boolean }).isDisposed = () => true;
+		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
+
+		await s.onUserAction(enterEvent(42));
+
+		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
 
 	it("uid 是数字 → 与字符串白名单比对时不因类型不符而漏推", async () => {
@@ -1633,7 +1639,6 @@ describe("RoomSession.onUserAction", () => {
 
 		await s.onUserAction(enterEvent(42));
 
-		expect(m.renderSpecialUserEnter).toHaveBeenCalledTimes(1);
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
 	});
 });

@@ -88,32 +88,6 @@ export class LiveTemplateRenderer {
 		});
 	}
 
-	/** Compose the "特别关注弹幕" notification text. */
-	renderSpecialDanmaku(params: {
-		template: string;
-		uname: string;
-		master: MasterInfo | undefined;
-		content: string;
-	}): string {
-		return applyTemplate(params.template, {
-			mastername: params.master?.username ?? "",
-			uname: params.uname,
-			msg: params.content,
-		});
-	}
-
-	/** Compose the "特别关注进入直播间" notification text. */
-	renderSpecialUserEnter(params: {
-		template: string;
-		uname: string;
-		master: MasterInfo | undefined;
-	}): string {
-		return applyTemplate(params.template, {
-			mastername: params.master?.username ?? "",
-			uname: params.uname,
-		});
-	}
-
 	/**
 	 * Compose the templated "弹幕总结" text used as the fallback when AI
 	 * summarisation is unavailable. Variables: `-dmc` (sender count), `-mdn`

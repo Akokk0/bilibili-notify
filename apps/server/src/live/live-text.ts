@@ -57,6 +57,35 @@ export function applyTemplate(template: string, vars: Record<string, string>): s
 		.replaceAll("\\n", "\n");
 }
 
+/**
+ * 「特别弹幕」那一句:模板套上中立的值。占位符沿用 `mastername`(主播名)/ `uname`(发弹幕的人)/
+ * `msg`(弹幕正文),与存档里的模板同一套写法。
+ */
+export function renderSpecialDanmaku(params: {
+	template: string;
+	viewerName: string;
+	creatorName: string;
+	text: string;
+}): string {
+	return applyTemplate(params.template, {
+		mastername: params.creatorName,
+		uname: params.viewerName,
+		msg: params.text,
+	});
+}
+
+/** 「特别进场」那一句:占位符 `mastername` / `uname`。 */
+export function renderSpecialUserEnter(params: {
+	template: string;
+	viewerName: string;
+	creatorName: string;
+}): string {
+	return applyTemplate(params.template, {
+		mastername: params.creatorName,
+		uname: params.viewerName,
+	});
+}
+
 /** 三句直播文案:开播 / 正在直播(周期推送、重启补报)/ 下播。键与 `DEFAULT_LIVE_TEMPLATES` 同名。 */
 export type LiveTextKind = "liveStart" | "liveStreaming" | "liveEnd";
 
