@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-13 排出，主人当天认了，同日开工 |
-| 已完成 | 12 / 50（10-13 落 3b-01、3b-02、3b-03、3b-05、3b-06、3b-07、3b-13、3b-14、3b-15、3b-17、3b-20、3b-27）；另有五片落了一部分：3b-18（抽装配已落，风控那一半等题）、3b-19 第一步、3b-28（重写本体已落，门还没改名）、3b-32（只差面板读标签）、3b-36 第一步 |
+| 已完成 | 13 / 50（10-13 落 3b-01、3b-02、3b-03、3b-05、3b-06、3b-07、3b-13、3b-14、3b-15、3b-17、3b-19、3b-20、3b-27）；另有四片落了一部分：3b-18（抽装配已落，风控那一半等题）、3b-28（重写本体已落，门还没改名）、3b-32（只差面板读标签）、3b-36 第一步 |
 | 13 行转对拍 | 2 / 13（N17 → P21、N07 → P22） |
 | 迁移修订号 / 备份版本 | 44 / 17（3b 开工前） |
 
@@ -51,7 +51,7 @@
 | 3b-16 | 特别关注名单改成 data-model 定的公共形状 `{ id, note? }`（今天是 `{ uid, kinds, template? }`）；对拍 N10 里「按 `viewer.id`」那一项；事件载荷棘轮的最后一格卡在它上 | 3b-15；题：`kinds` 与 `template` 两格的去处 | 是 | 中 |
 | 3b-17 ✅ | 醒目留言的装配抽进 `live/`。落成（10-13）：两条门槛函数搬进 `live/interaction-gates.ts`；`live/superchat.ts` 的 `pushSuperchat`（过门槛 → 确定要出卡才取观众头像 → 出卡 → 出不了卡发一句兜底文字），B 站会话只剩翻事件、拼兜底那句字、绑取头像与发送。一处有意的行为差：从前发图那一次抛了会被当成出卡失败、再补发一句文字（等于可能重发），现在发送抛了原样往外抛、不补发 | 3b-15 | 否 | 中 |
 | 3b-18 | 会员的装配抽进 `live/`；上舰观众头像撞风控的处置；直播这一侧的风控码按定下的口径统一。🔗 10-13：抽装配那一半已落 —— `live/membership.ts` 的 `pushMembership`（过门槛 → 自定义文案 / 出卡 / 兜底三支），B 站会话只剩翻事件、查档位表、挑生效的文案包、拼兜底那句字、绑「取徽章」「取观众头像」与发送；会员的推送照旧不过串行闸（原先说它也过闸的那句注释改对了）。一处有意的行为差：发卡那一次抛了不再补发兜底。风控那一半等「哪些码算风控」 | 3b-17；题：哪些码算风控 | 否 | 中 |
-| 3b-19 | 词云与直播总结的装配抽进 `live/`。🔗 10-13：第一步已落 —— 弹幕收集器、停用词、词云生成器、总结请求器连同测试搬进 `live/recap/`，收集器改按订阅 id 记账（查过：房号还是空的时候不会登记也不会喂入，换键不改行为），总结的模板渲染搬进 `live/live-text.ts`、收粉丝团名字的值。第二步（下播时出附加项锚点）在做 | 3b-18 | 否 | 中 |
+| 3b-19 ✅ | 词云与直播总结的装配抽进 `live/`。🔗 10-13：第一步已落 —— 弹幕收集器、停用词、词云生成器、总结请求器连同测试搬进 `live/recap/`，收集器改按订阅 id 记账（查过：房号还是空的时候不会登记也不会喂入，换键不改行为），总结的模板渲染搬进 `live/live-text.ts`、收粉丝团名字的值。第二步也已落 —— 「下播时出附加项锚点」进了 `live/recap/recap-anchors.ts` 的 `recapAnchors`（取快照、按订阅额外的停用词再滤、词云与总结各起各的、各交一个锚点），锚点的类型搬到 `live/live-types.ts`；B 站会话只剩取值、调它、给锚点包上「引擎拆了就不发」。推出去的词云图与总结文字不变 | 3b-18 | 否 | 中 |
 | 3b-20 ✅ | 替拓展跑的那套场次引擎升格成核心的 `live/`（只搬家改名，行为不变）。🔗 10-13：勘察查实它与 3b-17 至 3b-19 的文件面不交，提前开工。第一步已落 —— 那套引擎唯一回头依赖 `engines.ts` 的是 `LiveWorkSettings` 这个类型，而它原是从 B 站的订阅视图里挑出来的；现在改成在 `live/live-settings.ts` 里显式写字段，B 站的视图反过来继承它，核心不再经它牵着 `bilibili/`。原先打算先搬出 `engines.ts` 的 `boundLivePush` 等几个小件不搬了（它们牵着 `engines.ts` 的私有函数，搬了反而要回头引）。第二步也已落 —— 在播表、场次引擎、直播推送的绑定、上报翻成卡输入四个文件连测试搬进 `live/`（`live-table.ts`、`live-sessions.ts`、`live-push.ts`、`live-card-input-from-report.ts`），去掉 `Extension` 前缀（名字见下「新开的缝」那张表），场次变化联合的判别键 `type` 改成 `kind`；总线事件名、契约类型、`extensionId` 等字段与日志前缀都没动，字段对齐留给 3b-22 / 3b-23 | 3b-19 | 否 | 中 |
 | 3b-21 | 其余 6 条直播文案的占位符改名、`-key` 老写法改写、`{mdn}` → `{fanclub}`、资料加 `fanClubName`，删 `applyTemplate`；模板变量表与「模板变量可满足性」守卫同片开；对拍 N08 | 3b-19 | 是 | 中 |
 | 3b-22 | 来源接口加 `reportLive`、`fetchLiveStatus`、`liveInteractions`，B 站直播翻成中立信号并进来源，B 站那套里的场次状态删掉；周期计时归核心；直播拿上报器的过渡接线拆掉；会员档 key 的命名空间与「来源声明的图」；对拍 N03、N04、N10、N11。**独占** | 3b-20；题：周期拿不到房间信息改不改成跳过并记问题、漏收兜底覆盖到哪些订阅、`liveInteractions` 走回调还是总线 | 否 | 大 |
@@ -143,7 +143,7 @@
 | 3b-15 的两个入口 | 文件 `live/special-users.ts`；`pushSpecialDanmaku(options, deps)`、`pushSpecialUserEnter(options, deps)`；参数包 `SpecialDanmakuOptions`、`SpecialUserEnterOptions`（`viewer { id, name }`、弹幕多一格 `text`、`settings` 用已有的两个设置形状、`creatorName`）；协作者 `SpecialUserDeps { send(text) }` | 同目录 `pushLiveNotify(…, deps)` 的先例；后缀 `Options`、`Deps`；词 `viewer`、`creator`、`name` |
 | 3b-17 的入口 | 文件 `live/superchat.ts`；`pushSuperchat(options, deps)`；`SuperchatOptions`（`event`、`minAmount`、`creator { name, avatar? }`、卡样式与皮肤三格、`fallbackText`）；`SuperchatDeps`（`renderer`、`fetchViewerAvatar`、`send(段)`、`logger`） | 同上一行的路数；发送收的是核心包现成的消息段类型 |
 | 3b-18 的入口 | 文件 `live/membership.ts`；`pushMembership(options, deps)`；`MembershipOptions`（`event`、这一档的展示信息 `tier`、`minRank`、生效的文案包 `template`、`creator`、卡样式与皮肤三格、`fallbackText`）；`MembershipDeps`（`renderer`、`fetchTierIcon`、`fetchViewerAvatar`、内容构造口 `content`、`send(消息)`、`logger`） | 同 3b-15、3b-17 的路数；有两支要发「按网址取的图加一句文字」拼成的一条消息，现成的消息段类型装不下，所以这一个用核心 `live/` 里本来就有的内容构造口 |
-| 3b-19 的家与入口 | 目录 `live/recap/`；`recapAnchors(options, deps)`、`RecapOptions`、`RecapDeps`（在做） | 词表：下播后的回顾叫 `recap` |
+| 3b-19 的家与入口 | 目录 `live/recap/`；`recapAnchors(options, deps)`、`RecapOptions`、`RecapDeps` | 词表：下播后的回顾叫 `recap` |
 | 3b-28 的通用网址挑选 | 文件 `link-preview/url-candidates.ts` 的 `extractUrlCandidates(text)` | 从今天 B 站那条正则的写法推广；只管形状，认不认归解析器 |
 | 3b-20 的名字 | `ExtensionLiveSessions` → `LiveSessionEngine`（文档管它叫「场次引擎」）；`ExtensionLiveRow` → `LiveTableEntry`（`Row` 不再用）；`ExtensionLiveTable` → `LiveTable`；`LiveCardFacts` → `LiveCardFields`；常量 → `LIVE_CHANGED_COALESCE_MS`；场次变化联合的判别键 `type` → `kind`；运行时上的 `extensionLive` → `liveTable`、`extensionLiveSession()` → `liveSession()`。线上名字（总线事件、契约类型、字段 `extensionId`）与日志前缀、端到端测试文件名都不动 | 后缀表；data-model 的改名表；仓里同类常量的写法 |
 | 3b-32 工具上的标签三格 | `AiTool`（原 `ExtraTool`）加 `label`、`labelArgs`（小条上补哪一格入参）、`formatLabelArg`（那一格的值怎么翻成给人看的样子）；痕迹的开始事件带 `label` 与 `argText` 并落盘 | 定案只写了「`label` 与参数标签」；面板那张表里有的三样都得由工具这边给，后两格的名字是暂起的 |
