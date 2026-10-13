@@ -14,7 +14,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
+import type { AiTool, AiToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import {
 	CARD_KINDS,
@@ -96,7 +96,7 @@ async function installForeign(): Promise<string> {
 }
 
 interface Harness {
-	run: (name: string, args?: Record<string, unknown>) => Promise<Result<ExtraToolResult>>;
+	run: (name: string, args?: Record<string, unknown>) => Promise<Result<AiToolResult>>;
 	text: (name: string, args?: Record<string, unknown>) => Promise<string>;
 	record: ReturnType<typeof vi.fn<CardWorkshopDeps["record"]>>;
 	ledger: { owned: string[]; forks: Record<string, string> };
@@ -126,7 +126,7 @@ function harness(
 		activeId: () => DEFAULT_CARD_SKIN_ID,
 		...over,
 	});
-	const byName = new Map<string, ExtraTool>(made.tools.map((t) => [t.definition.function.name, t]));
+	const byName = new Map<string, AiTool>(made.tools.map((t) => [t.definition.function.name, t]));
 	const run = async (name: string, args: Record<string, unknown> = {}) => {
 		const tool = byName.get(name);
 		if (!tool) throw new Error(`没有工具 ${name}`);

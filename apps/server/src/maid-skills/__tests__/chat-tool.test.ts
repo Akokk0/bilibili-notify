@@ -1,7 +1,7 @@
 /**
  * 聊天里的 `load_skill` —— 女仆自己挑一条技能来用的那条路(ADR-0001 决策 7)。
  *
- * 它与 `create_skin` 同一条注入路(dashboard 的 ExtraTool),**绝不进
+ * 它与 `create_skin` 同一条注入路(dashboard 的 AiTool),**绝不进
  * `TOOL_DEFINITIONS`** —— 那张表三端共享,而 koishi 的 `bili.chat` 没有权限门。
  *
  * 这一层要钉的三件事:

@@ -183,5 +183,8 @@ describe("主人打斜杠", () => {
 		expect(assistant.tools).toEqual([
 			expect.objectContaining({ name: "load_skill", args: { name: "my-skill" }, ok: true }),
 		]);
+		// 手工补的这一枚与模型自选那条路一样自带标签(SSE 与落盘都有)
+		expect(assistant.tools[0]).toMatchObject({ label: "使用技能", argText: "my-skill" });
+		expect(text).toContain("使用技能");
 	});
 });

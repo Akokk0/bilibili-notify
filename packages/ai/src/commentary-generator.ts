@@ -23,9 +23,11 @@ import {
 	toResponsesTools,
 } from "./responses-api";
 import {
+	type AiTool,
 	type BiliReader,
+	coreToolLabelOf,
 	DESCRIBE_IMAGE_TOOL,
-	type ExtraTool,
+	describeToolCall,
 	executeTool,
 	type Subscriptions,
 	TOOL_DEFINITIONS,
@@ -104,7 +106,7 @@ const MAX_RETRY_AFTER_S = 20;
 const MAX_TOOL_ROUNDS = 8;
 
 /**
- * 按 {@link ExtraToolResult.restrictTools} 的语义收窄工具表:**交集,只减不加**。
+ * 按 {@link AiToolResult.restrictTools} 的语义收窄工具表:**交集,只减不加**。
  *
  * `allowed` 不给就原样返回;写了个不在表上的名字 = 当没写 —— 这一行是「用户可写
  * 的数据永远不能扩大能力面」这条铁律的落点,别改成并集。
@@ -200,11 +202,16 @@ interface CallToolOptions {
 	 * 而界面要拿它画「来源」。
 	 */
 	webSearch?: WebSearchExecutor;
+	/**
+	 * 调用方注入的工具的标签(名字 → `label` 等三格)。工具环发 start 事件时据此带上
+	 * 痕迹自带的 `label` / `argText`;查不到再查核心工具的标签表,都没有就不带。
+	 */
+	labelOf?: (name: string) => Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined;
 }
 
 /**
  * 一次工具调用的产出:回给模型的文字,外加要在这一轮之后**补给模型看**的图。
- * 图走哪条路见 {@link ExtraToolResult.images}。
+ * 图走哪条路见 {@link AiToolResult.images}。
  */
 interface ToolCallOutput {
 	text: string;
@@ -371,6 +378,13 @@ export type ToolTraceEvent =
 			name: string;
 			/** 已按 `onToolCall` 那份规则归一成字符串,与真正交给工具的完全一致。 */
 			args: Record<string, string>;
+			/**
+			 * 给人看的名字,取自工具自己的标签。认不出的工具(模型编的名字)不带 ——
+			 * 界面回落显示工具原名。存下来的字不跟着以后改名或换语言变,所以随痕迹落盘。
+			 */
+			label?: string;
+			/** 小条上补的那一格入参,翻好、空白规整过的**完整**文字;没有就不带,截短是界面的事。 */
+			argText?: string;
 	  }
 	| {
 			/**
@@ -451,12 +465,12 @@ export interface ChatStatelessOptions {
 	/** 这一次允不允许联网搜索。聊天页那颗胶囊是会话级的,按消息传进来。 */
 	webSearch?: boolean;
 	/**
-	 * 调用方注入的额外工具(见 {@link ExtraTool})。**只有流式那条路**开这个口:
+	 * 调用方注入的额外工具(见 {@link AiTool})。**只有流式那条路**开这个口:
 	 * 它的收件人是 dashboard 的聊天,坐在 cookie session 后面,只有主人本人
 	 * 能说话;推送那两条路(试推送的 chat、点评的 comment)的回复是发到群里的,
 	 * 点评的上下文更是外部可控的动态正文,写能力挂上去等于把口子开给任何人。
 	 */
-	extraTools?: readonly ExtraTool[];
+	extraTools?: readonly AiTool[];
 	/**
 	 * 顶掉女仆人格,直接用这段当 system。**专职模式**用(一个窗口只干一件事,
 	 * 比如皮肤工坊):人格不进上下文,模型就不会一边扮女仆一边干活。
@@ -473,7 +487,7 @@ export interface ChatStatelessOptions {
 	systemSuffix?: string;
 	/**
 	 * 开局就把工具表收窄到这些名字(**交集,只减不加**,同
-	 * {@link ExtraToolResult.restrictTools})。
+	 * {@link AiToolResult.restrictTools})。
 	 *
 	 * 给斜杠命令那条路用:主人已经点名了要哪条技能,再让模型自己调一次
 	 * 「读取技能」是白烧一轮。
@@ -488,7 +502,7 @@ export interface ChatStatelessOptions {
 	maxToolRounds?: number;
 	/**
 	 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
-	 * {@link ExtraTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
+	 * {@link AiTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
 	 */
 	builtinTools?: boolean;
 	/**
@@ -942,7 +956,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const extra = new Map((opts?.extraTools ?? []).map((t) => [t.definition.function.name, t]));
 		/**
 		 * 工具表**随这次请求现造**,而且是可变的 —— 注入的工具能在执行完之后把它
-		 * 收窄(见 {@link ExtraToolResult.restrictTools});取轮时每轮现读,所以下一轮
+		 * 收窄(见 {@link AiToolResult.restrictTools});取轮时每轮现读,所以下一轮
 		 * 即刻生效、零额外往返。工具调用之后本来就要再发一次请求把结果喂回去,那一次
 		 * 顺路带上窄化的工具表。
 		 *
@@ -973,6 +987,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 					? this.toolImagesFor(out.text, out.images)
 					: ok({ text: out.text });
 			},
+			labelOf: (name) => extra.get(name),
 			onToolEvent: opts?.onToolEvent,
 			...(opts?.maxToolRounds ? { maxRounds: opts.maxToolRounds } : {}),
 			...(searchExec ? { webSearch: searchExec } : {}),
@@ -2054,7 +2069,18 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 		// 执行**之前**报一声。查订阅要走一趟 B 站,慢起来好几秒,而那正是最
 		// 需要反馈的一刻;等查完再说等于什么都没说。
-		toolOptions.onToolEvent?.({ phase: "start", id: traceId, name, args });
+		const { label, argText } = describeToolCall(
+			toolOptions.labelOf?.(name) ?? coreToolLabelOf(name),
+			args,
+		);
+		toolOptions.onToolEvent?.({
+			phase: "start",
+			id: traceId,
+			name,
+			args,
+			...(label !== undefined ? { label } : {}),
+			...(argText !== undefined ? { argText } : {}),
+		});
 
 		let result: string;
 		let images: readonly string[] | undefined;

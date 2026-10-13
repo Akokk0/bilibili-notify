@@ -1,5 +1,7 @@
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
+import { CORE_TOOL_LABEL_TEXTS } from "./tool-label-texts";
+import { WEB_SEARCH_TOOL } from "./web-search";
 
 /**
  * P2:回灌进 LLM 上下文的 B 站文本(用户简介 / 动态正文)完全攻击者可控且
@@ -247,7 +249,7 @@ function extractDynamicText(item: Record<string, any>): string {
  *
  * 直接返回字符串等价于 `{ text }`,绝大多数工具用不上这个形状。
  */
-export interface ExtraToolResult {
+export interface AiToolResult {
 	/** 回灌给模型的文本,与直接返回字符串等价。 */
 	text: string;
 	/**
@@ -274,8 +276,14 @@ export interface ExtraToolResult {
 	images?: readonly string[];
 }
 
-export interface ExtraTool {
+export interface AiTool {
 	definition: OpenAI.ChatCompletionFunctionTool;
+	/** 给人看的名字 —— 聊天里那条「她正在查什么」小条上的字(必填:漏配就是界面上一个英文标识符)。 */
+	label: string;
+	/** 小条上补哪一格入参,按顺序取第一个有值的。不给 = 不补。 */
+	labelArgs?: readonly string[];
+	/** 那一格入参的值翻成给人看的样子(卡种 `live` → 「直播卡」)。 */
+	formatLabelArg?: (value: string) => string;
 	/**
 	 * `onProgress` 是**给慢工具的活口**:工具轮不产生正文,一趟几分钟的活儿在界面上
 	 * 跟卡死长得一模一样。报的是「已经吐了多少字符」这种粗粒度进度 —— 别把工具的
@@ -284,7 +292,46 @@ export interface ExtraTool {
 	execute: (
 		args: Record<string, string>,
 		onProgress?: (chars: number) => void,
-	) => Promise<Result<ExtraToolResult>>;
+	) => Promise<Result<AiToolResult>>;
+}
+
+/**
+ * 核心自带工具(含联网搜索、看图)的标签;表外的名字查不到。
+ *
+ * 小条上补哪一格入参 = 文案表里单独写的格(有的话)**接上**这把工具参数定义里 `required` 的格
+ * (从工具自己的定义现取,不另抄一遍参数名)。只用在核心这一侧;注入的工具只认自己写的 `labelArgs`。
+ */
+export function coreToolLabelOf(
+	name: string,
+): Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined {
+	if (!Object.hasOwn(CORE_TOOL_LABEL_TEXTS, name)) return undefined;
+	const texts = CORE_TOOL_LABEL_TEXTS[name];
+	if (!texts) return undefined;
+	const definition = [...TOOL_DEFINITIONS, DESCRIBE_IMAGE_TOOL, WEB_SEARCH_TOOL].find(
+		(t) => t.function.name === name,
+	);
+	const required = (definition?.function.parameters as { required?: string[] } | undefined)
+		?.required;
+	const labelArgs = [...new Set([...(texts.labelArgs ?? []), ...(required ?? [])])];
+	return { ...texts, ...(labelArgs.length > 0 ? { labelArgs } : {}) };
+}
+
+/**
+ * 一次工具调用 → 痕迹里自带的两格:`label`(名字)与 `argText`(小条上补的那一格入参,
+ * 翻好、空白规整过的**完整**文字,截短是面板的事)。
+ *
+ * 认不出的工具(`fields` 缺席)什么都不带 —— 面板到时回落显示原名;挑不出入参值就只有
+ * `label`。空白规整:`trim`,连续空白压成一个空格(做皮肤的 brief 是几百字带换行的一段)。
+ */
+export function describeToolCall(
+	fields: Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined,
+	args: Record<string, string>,
+): { label?: string; argText?: string } {
+	if (!fields) return {};
+	const raw = fields.labelArgs?.map((k) => args[k]?.trim()).find(Boolean);
+	if (!raw) return { label: fields.label };
+	const shown = fields.formatLabelArg ? fields.formatLabelArg(raw) : raw;
+	return { label: fields.label, argText: shown.replace(/\s+/g, " ") };
 }
 
 /**

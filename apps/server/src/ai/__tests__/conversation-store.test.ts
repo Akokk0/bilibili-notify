@@ -128,6 +128,93 @@ describe("ConversationStore — 往返", () => {
 		expect(got?.messages[1]?.tools).toEqual([{ name: "list_subscriptions", args: {}, ok: true }]);
 	});
 
+	it("痕迹自带的标签(label / argText)随痕迹落盘、原样读回 —— 存下来的字不跟着以后改名", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [
+			{ role: "user", content: "查一下" },
+			{
+				role: "assistant",
+				content: "查到了",
+				tools: [
+					{
+						name: "get_user_info",
+						args: { uid: "1", name: "咩栗" },
+						ok: true,
+						label: "查看 UP 主资料",
+						argText: "咩栗",
+					},
+				],
+			},
+		]);
+		expect((await store.get(c.id))?.messages[1]?.tools).toEqual([
+			{
+				name: "get_user_info",
+				args: { uid: "1", name: "咩栗" },
+				ok: true,
+				label: "查看 UP 主资料",
+				argText: "咩栗",
+			},
+		]);
+	});
+
+	it("失败那一次的原因(message)随痕迹落盘、原样读回", async () => {
+		const c = await store.create();
+		await store.appendMessages(c.id, [
+			{ role: "user", content: "查一下" },
+			{
+				role: "assistant",
+				content: "没查到",
+				tools: [
+					{
+						name: "get_user_info",
+						args: { uid: "1" },
+						ok: false,
+						message: "获取用户信息失败: 请求被拦截",
+					},
+				],
+			},
+		]);
+		expect((await store.get(c.id))?.messages[1]?.tools).toEqual([
+			{
+				name: "get_user_info",
+				args: { uid: "1" },
+				ok: false,
+				message: "获取用户信息失败: 请求被拦截",
+			},
+		]);
+	});
+
+	it("老形状的会话(痕迹里没有 label / argText)照旧读得回,字段保持缺席", async () => {
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "old-shape.json"),
+			JSON.stringify({
+				id: "old-shape",
+				title: "老会话",
+				createdAt: "2026-08-17T00:00:00.000Z",
+				updatedAt: "2026-08-17T00:00:00.000Z",
+				mode: "chat",
+				persona: true,
+				skinTarget: "dashboard",
+				messages: [
+					{
+						id: "a",
+						role: "assistant",
+						content: "好",
+						ts: "2026-08-17T00:00:01.000Z",
+						tools: [{ name: "get_user_info", args: { uid: "1" }, ok: true }],
+					},
+				],
+			}),
+			"utf8",
+		);
+		const got = await store.get("old-shape");
+		expect(got?.messages[0]?.tools).toEqual([
+			{ name: "get_user_info", args: { uid: "1" }, ok: true },
+		]);
+	});
+
 	it("没调工具的消息不留空数组 —— 磁盘上不写没意义的字段", async () => {
 		const c = await store.create();
 		await store.appendMessages(c.id, [{ role: "assistant", content: "在的" }]);

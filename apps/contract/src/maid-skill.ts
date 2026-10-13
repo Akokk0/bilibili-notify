@@ -111,6 +111,8 @@ export interface MaidSkillsListResponse {
 	 * —— 收窄是交集,那一勾会静默地什么都不做。
 	 */
 	tools: string[];
+	/** `tools` 里每个名字给人看的标签(名字 → 标签),编辑器的勾选框显示它。 */
+	toolLabels: Record<string, string>;
 }
 
 /** 新建 / 修改的请求体。`builtin` 不收 —— 那是服务端的判定,不是主人能声明的。 */
@@ -120,7 +122,7 @@ export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin">;
  * 「读取一条技能」那把工具的名字 —— 服务端建工具、web 端画调用痕迹胶囊,
  * 两处共用这一个标识。各写一份字面量的话,改名会**静默**让胶囊不再出现。
  *
- * 与 `create_skin` 同一条注入路(dashboard 聊天的 ExtraTool),**绝不进
+ * 与 `create_skin` 同一条注入路(dashboard 聊天的 AiTool),**绝不进
  * `TOOL_DEFINITIONS`** —— 那张表是群聊路径也共享的,而群里没有权限门。
  */
 export const AI_TOOL_LOAD_SKILL = "load_skill";

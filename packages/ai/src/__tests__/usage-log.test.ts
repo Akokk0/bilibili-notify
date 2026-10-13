@@ -36,6 +36,9 @@ const oai = vi.hoisted(() => {
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 
 vi.mock("../tools", () => ({
+	// 标签这两样不是这条测试要验的,替身里让它们什么都不带(真实现见 tool-labels.test.ts)
+	coreToolLabelOf: () => undefined,
+	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
 	DESCRIBE_IMAGE_TOOL: {
 		type: "function",
@@ -744,6 +747,7 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			onDelta() {},
 			extraTools: [
 				{
+					label: "截图",
 					definition: { type: "function", function: { name: "shoot", parameters: {} } },
 					execute: async () =>
 						ok({

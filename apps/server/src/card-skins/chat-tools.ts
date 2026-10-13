@@ -16,7 +16,7 @@
  * - 清洗器削掉的照说,校验不过的原因原样带回给模型(决策 26)。
  */
 
-import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
+import type { AiTool, AiToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import {
 	CARD_DATA_VERSION,
@@ -37,6 +37,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
+import { CARD_WORKSHOP_LABELS } from "../ai/tool-label-texts.js";
 import { blockLabel, cardCssRules, fenced, hookLines, knobLines } from "./ai-css.js";
 import { CARD_HTML_ALLOWED_TAGS } from "./html-sanitizer.js";
 import { KNOB_VAR_RE } from "./package.js";
@@ -97,7 +98,7 @@ type Card = CardSkinCard;
  * 一次聊天请求配一套工具 —— 「一轮两套」的预算活在这个闭包里,建在装配处会跨请求串味。
  */
 export function createCardWorkshopTools(deps: CardWorkshopDeps): {
-	tools: ExtraTool[];
+	tools: AiTool[];
 	touched: () => CardWorkshopTouch[];
 } {
 	const { store } = deps;
@@ -204,7 +205,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		return ok({ card });
 	}
 
-	const listSkins: ExtraTool = {
+	const listSkins: AiTool = {
+		...CARD_WORKSHOP_LABELS.listSkins,
 		definition: fn(
 			T.listSkins,
 			"列出皮肤库里所有卡片皮肤:id、名字、写了哪几种卡、正在用哪套、哪些是这场对话做的。要改已有的皮肤时先调它找 id。",
@@ -239,7 +241,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const readCard: ExtraTool = {
+	const readCard: AiTool = {
+		...CARD_WORKSHOP_LABELS.readCard,
 		definition: fn(
 			T.readCard,
 			"读一张卡的摘要:卡宽、间距、列宽、外框 CSS、每块一行(位置、显示条件、CSS / HTML 多大),外加这套皮肤的旋钮。不含块的 CSS / HTML 正文 —— 要看正文用 read_block。skin 填 default 可以读默认皮肤当参考。",
@@ -270,7 +273,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const readBlock: ExtraTool = {
+	const readBlock: AiTool = {
+		...CARD_WORKSHOP_LABELS.readBlock,
 		definition: fn(
 			T.readBlock,
 			"读一块的正文:它能用的挂点、CSS,自定义块还有 HTML。",
@@ -313,14 +317,15 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const lookCard: ExtraTool = {
+	const lookCard: AiTool = {
+		...CARD_WORKSHOP_LABELS.lookCard,
 		definition: fn(
 			T.lookCard,
 			"用示例数据把一张卡真渲染成图交给你看,用来自查效果;不改任何东西。服务端没装 Chrome 时截不了图,只返回一句说明;当前模型看不了图时,返回的是看图副模型给的文字描述,或一句「看不见」。",
 			{ skin: SKIN_PARAM, kind: KIND_PARAM },
 			["skin", "kind"],
 		),
-		async execute(args): Promise<Result<ExtraToolResult>> {
+		async execute(args): Promise<Result<AiToolResult>> {
 			await store.ensureReady();
 			const kindGot = kindOf(args.kind);
 			if (!kindGot.ok) return kindGot;
@@ -341,7 +346,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const writeCard: ExtraTool = {
+	const writeCard: AiTool = {
+		...CARD_WORKSHOP_LABELS.writeCard,
 		definition: fn(
 			T.writeCard,
 			"整张写一种卡:卡宽、列宽、间距、出血、外框 CSS 和全部块。blocks 会整份替换这张卡原来的块;其余参数不传就保留原值。改一两块请用 set_block,别为此重写整张。",
@@ -423,7 +429,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const setBlock: ExtraTool = {
+	const setBlock: AiTool = {
+		...CARD_WORKSHOP_LABELS.setBlock,
 		definition: fn(
 			T.setBlock,
 			"改一块:位置、CSS、HTML、显示条件,只传要改的。块不存在时可以新加一块 —— 给 grid,再给 builtin(内置块)或 html(自定义块)。",
@@ -501,7 +508,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const removeBlock: ExtraTool = {
+	const removeBlock: AiTool = {
+		...CARD_WORKSHOP_LABELS.removeBlock,
 		definition: fn(
 			T.removeBlock,
 			"从一张卡里按块 id 删掉一块。不是这场对话做的皮肤会先复制一份再删,原件不动;这套还没写这种卡、或卡里没有这一块时报错,什么都不删。",
@@ -541,7 +549,8 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		},
 	};
 
-	const setSkinMeta: ExtraTool = {
+	const setSkinMeta: AiTool = {
+		...CARD_WORKSHOP_LABELS.setSkinMeta,
 		definition: fn(
 			T.setSkinMeta,
 			"改一套皮肤的名字、作者、简介。不传 skin 就是新建一套(必须给 name),会返回新皮肤的 id,之后写卡都用它。",
@@ -734,7 +743,7 @@ function fn(
 	description: string,
 	properties: Record<string, unknown>,
 	required: string[] = [],
-): ExtraTool["definition"] {
+): AiTool["definition"] {
 	return {
 		type: "function",
 		function: {

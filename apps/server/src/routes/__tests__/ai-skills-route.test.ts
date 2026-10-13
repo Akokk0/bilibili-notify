@@ -74,6 +74,19 @@ async function handPlace(): Promise<string> {
 	return file;
 }
 
+describe("GET / —— 工具名单带给人看的标签", () => {
+	it("tools 里的每一个名字在 toolLabels 里都有非空的标签(编辑器勾选框以后显示它)", async () => {
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.tools.length).toBeGreaterThan(0);
+		for (const name of body.tools as string[]) {
+			expect(body.toolLabels[name], name).toEqual(expect.any(String));
+			expect(body.toolLabels[name].trim(), name).not.toBe("");
+		}
+		expect(body.toolLabels.get_user_info).toBe("查看 UP 主资料");
+		expect(body.toolLabels.web_search).toBe("联网搜索");
+	});
+});
+
 describe("GET /", () => {
 	it("列出内置那几条,problems 是空的", async () => {
 		const res = await app.request("/");

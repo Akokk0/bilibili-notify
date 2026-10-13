@@ -11,13 +11,13 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtraTool } from "@bilibili-notify/ai";
+import type { AiTool } from "@bilibili-notify/ai";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ChatSkinImage, createSkinChatTools, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
 import { SkinStore } from "../store.js";
 
 /** 工具结果里给模型看的那句话:成功取 `text`,失败取 `message`。 */
-const said = (r: Awaited<ReturnType<ExtraTool["execute"]>>): string => (r.ok ? r.text : r.message);
+const said = (r: Awaited<ReturnType<AiTool["execute"]>>): string => (r.ok ? r.text : r.message);
 
 const DARK_SKIN = {
 	schemaVersion: 1,
@@ -39,7 +39,7 @@ beforeEach(async () => {
 });
 
 /** 数组里的第一把永远是 create_skin;取不到就是装配错了,当场炸给写测试的人看。 */
-function firstOf(tools: readonly ExtraTool[]): ExtraTool {
+function firstOf(tools: readonly AiTool[]): AiTool {
 	const [tool] = tools;
 	if (!tool) throw new Error("一把工具都没挂上");
 	return tool;

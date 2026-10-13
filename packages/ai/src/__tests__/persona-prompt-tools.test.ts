@@ -28,6 +28,9 @@ const oai = vi.hoisted(() => {
 });
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 vi.mock("../tools", () => ({
+	// 标签这两样不是这条测试要验的,替身里让它们什么都不带(真实现见 tool-labels.test.ts)
+	coreToolLabelOf: () => undefined,
+	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
 	executeTool: vi.fn(async () => ({ ok: true, text: "tool-result" })),
 }));

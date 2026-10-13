@@ -17,7 +17,7 @@
 
 import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { ExtraTool } from "../tools";
+import type { AiTool } from "../tools";
 import { makeGen, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
@@ -34,8 +34,9 @@ const oai = vi.hoisted(() => {
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 
 /** 「读一条技能」那把工具的替身。给了 restrictTools 就在返回值里捎上收窄意图。 */
-function makeLoader(restrictTools?: readonly string[]): ExtraTool {
+function makeLoader(restrictTools?: readonly string[]): AiTool {
 	return {
+		label: "读技能",
 		definition: {
 			type: "function",
 			function: {

@@ -13,7 +13,7 @@
 import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator } from "../commentary-generator";
-import type { BiliReader, ExtraTool } from "../tools";
+import type { AiTool, BiliReader } from "../tools";
 import { aiConfig, fakeServiceCtx, makeGen, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
@@ -25,10 +25,9 @@ const oai = vi.hoisted(() => {
 });
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 
-function makeTool(
-	over: Partial<ExtraTool> = {},
-): ExtraTool & { execute: ReturnType<typeof vi.fn> } {
+function makeTool(over: Partial<AiTool> = {}): AiTool & { execute: ReturnType<typeof vi.fn> } {
 	return {
+		label: "造个东西",
 		definition: {
 			type: "function",
 			function: {
@@ -43,7 +42,7 @@ function makeTool(
 		},
 		execute: vi.fn(async () => ok({ text: "造好了:一个东西" })),
 		...over,
-	} as ExtraTool & { execute: ReturnType<typeof vi.fn> };
+	} as AiTool & { execute: ReturnType<typeof vi.fn> };
 }
 
 const callChunk = (args: object, id = "call_1", name = "make_thing") => ({

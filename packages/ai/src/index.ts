@@ -19,9 +19,11 @@ export * from "./persona-presets";
 export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
+	type AiTool,
+	type AiToolResult,
+	coreToolLabelOf,
+	describeToolCall,
 	type ExtensionLiveNow,
-	type ExtraTool,
-	type ExtraToolResult,
 	executeTool,
 	type SubItemView,
 	type Subscriptions,

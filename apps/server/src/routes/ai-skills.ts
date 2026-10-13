@@ -7,7 +7,7 @@
  * readdir + 几份小文件,量级可以忽略。
  */
 
-import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
+import { coreToolLabelOf, TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
 import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
 import { fail, issuesFromZod, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -41,6 +41,14 @@ const NOT_A_SKILL_MESSAGE = "请求体不是一条技能的形状";
  */
 const AVAILABLE_TOOLS = [...TOOL_DEFINITIONS.map((t) => t.function.name), WEB_SEARCH_TOOL_NAME];
 
+/** 上面那份名单每个名字给人看的标签 —— 漏配的工具在这儿就是 `undefined`,有测试盯着。 */
+const TOOL_LABELS: Record<string, string> = Object.fromEntries(
+	AVAILABLE_TOOLS.flatMap((name) => {
+		const label = coreToolLabelOf(name)?.label;
+		return label === undefined ? [] : [[name, label]];
+	}),
+);
+
 export function createAiSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono {
 	const { skillStore } = deps;
 	const app = new Hono();
@@ -51,6 +59,7 @@ export function createAiSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono 
 			list: skillStore.list(),
 			problems: skillStore.problems(),
 			tools: AVAILABLE_TOOLS,
+			toolLabels: TOOL_LABELS,
 		};
 		return c.json(body);
 	});

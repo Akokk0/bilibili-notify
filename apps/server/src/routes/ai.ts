@@ -29,6 +29,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
 import {
 	buildCardWorkshopSystem,
 	CARD_WORKSHOP_MAX_TOOL_ROUNDS,
@@ -531,7 +532,10 @@ export function createAiRoute(
 				const slots: Array<{
 					name: string;
 					args: Record<string, string>;
+					label?: string;
+					argText?: string;
 					ok?: boolean;
+					message?: string;
 					sources?: Array<{ title: string; url: string; siteName?: string }>;
 				}> = [];
 				const byId = new Map<string, (typeof slots)[number]>();
@@ -546,7 +550,13 @@ export function createAiRoute(
 				 */
 				if (pickedSkill) {
 					const args = { name: pickedSkill.name };
-					const ev = { name: AI_TOOL_LOAD_SKILL, args };
+					// 与模型自选那条路的 start 事件一样自带标签(技能名没有空白,不必再规整)。
+					const ev = {
+						name: AI_TOOL_LOAD_SKILL,
+						args,
+						label: LOAD_SKILL_LABEL.label,
+						argText: pickedSkill.name,
+					};
 					slots.push({ ...ev, ok: true });
 					await sse.writeSSE({
 						event: "tool",
@@ -614,7 +624,12 @@ export function createAiRoute(
 							// 先转发再记账:实时那一份才是这个事件存在的理由,落盘是顺带。
 							void sse.writeSSE({ event: "tool", data: JSON.stringify(ev) });
 							if (ev.phase === "start") {
-								const slot = { name: ev.name, args: ev.args };
+								const slot = {
+									name: ev.name,
+									args: ev.args,
+									...(ev.label !== undefined ? { label: ev.label } : {}),
+									...(ev.argText !== undefined ? { argText: ev.argText } : {}),
+								};
 								slots.push(slot);
 								byId.set(ev.id, slot);
 								return;
@@ -625,6 +640,8 @@ export function createAiRoute(
 							const slot = byId.get(ev.id);
 							if (slot) {
 								slot.ok = ev.ok;
+								// 失败的那句话:落盘后重开会话还看得到「为什么没查到」。
+								if (ev.message !== undefined) slot.message = ev.message;
 								// web_search 的来源列表:落盘后重开会话还能点开「来源」。
 								if (ev.sources) slot.sources = ev.sources;
 							}

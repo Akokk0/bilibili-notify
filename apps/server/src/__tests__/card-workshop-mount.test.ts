@@ -10,7 +10,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
+import type { AiTool, AiToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN_ID, type Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -62,12 +62,9 @@ describe("卡片皮肤工坊的装配接线", () => {
 			puppeteer: fakePuppeteer(),
 		});
 
-		const seen: { look?: Result<ExtraToolResult>; made?: string } = {};
+		const seen: { look?: Result<AiToolResult>; made?: string } = {};
 		const chatStatelessStream = vi.fn(
-			async (
-				_messages: unknown,
-				opts: { extraTools?: ExtraTool[]; onDelta: (t: string) => void },
-			) => {
+			async (_messages: unknown, opts: { extraTools?: AiTool[]; onDelta: (t: string) => void }) => {
 				const tool = (name: string) =>
 					opts.extraTools?.find((t) => t.definition.function.name === name);
 				seen.look = await tool(T.lookCard)?.execute({ skin: DEFAULT_CARD_SKIN_ID, kind: "live" });

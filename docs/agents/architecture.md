@@ -245,7 +245,7 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
   经 `problems` 显示给他看,不静默消失。
 - **内置那几条写在 `maid-skills/builtin.ts`**,只读、跟版本走,同名一律拒。
   `builtin.test.ts` 钉住它们声明与提到的工具名真的存在。
-- **两条触发路**:模型读目录自选(`load_skill`,经 ExtraTool 注入,**绝不进
+- **两条触发路**:模型读目录自选(`load_skill`,经 AiTool 注入,**绝不进
   `TOOL_DEFINITIONS`**),或主人打斜杠(请求带 `skill`,服务端取正文追加进 system
   并当场收窄工具面)。两条路都在消息流里留一枚 `load_skill` 痕迹胶囊。
 - **`allowed-tools` 只减不加。** 收窄是对现有工具表做交集(`narrowTools`),写一个

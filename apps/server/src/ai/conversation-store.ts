@@ -39,6 +39,12 @@ export interface StoredToolTrace {
 	name: string;
 	args: Record<string, string>;
 	ok: boolean;
+	/** 给人看的名字,调用那一刻存下;老会话与认不出的工具没有。 */
+	label?: string;
+	/** 小条上补的那一格入参(翻好、规整过的完整文字);没有就缺席。 */
+	argText?: string;
+	/** 失败时的那句话(`ok` 为假才有);成功的调用与老会话没有。 */
+	message?: string;
 }
 
 /** 一条聊天消息。`id` 供前端当 React key,`ts` 是落盘时刻(ISO)。 */

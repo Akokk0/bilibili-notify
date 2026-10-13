@@ -1,7 +1,7 @@
 /**
  * 聊天里的 `load_skill` —— 女仆自己挑一条技能来用的那条路(ADR-0001 决策 7)。
  *
- * 与 `create_skin` 同一条注入路(dashboard 聊天的 ExtraTool),**绝不进
+ * 与 `create_skin` 同一条注入路(dashboard 聊天的 AiTool),**绝不进
  * `TOOL_DEFINITIONS`** —— 那张表是群聊路径也共享的,而群里没有权限门,任何人都能
  * 触发主人写的技能正文。
  *
@@ -9,9 +9,10 @@
  * 真被读取那一轮才进上下文 —— 这正是「技能」比「一句预置提问」省的地方。
  */
 
-import type { ExtraTool } from "@bilibili-notify/ai";
+import type { AiTool } from "@bilibili-notify/ai";
 import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import { fail, ok } from "@bilibili-notify/internal";
+import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
 import type { MaidSkillEntry } from "./store.js";
 
 /**
@@ -35,7 +36,7 @@ export function skillInstruction(skill: Pick<MaidSkillEntry, "name" | "body">): 
 	return `以下是技能「${skill.name}」的做法,照着做:\n\n${skill.body}`;
 }
 
-export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraTool | null {
+export function createSkillChatTool(skills: readonly MaidSkillEntry[]): AiTool | null {
 	// `disable-model-invocation` 的退出自选 —— 那是「只许主人打斜杠」的意思。
 	const pickable = skills.filter((s) => !s.disableModelInvocation);
 	if (pickable.length === 0) return null;
@@ -44,6 +45,7 @@ export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraToo
 	const byName = new Map(pickable.map((s) => [s.name, s]));
 
 	return {
+		...LOAD_SKILL_LABEL,
 		definition: {
 			type: "function",
 			function: {

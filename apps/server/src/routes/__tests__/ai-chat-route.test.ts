@@ -47,12 +47,20 @@ const H = vi.hoisted(() => ({
 
 /** {@link ToolTraceEvent} 的测试侧影本 —— 这个包在测试里是 mock 掉的。 */
 type ToolEv =
-	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| {
+			phase: "start";
+			id: string;
+			name: string;
+			args: Record<string, string>;
+			label?: string;
+			argText?: string;
+	  }
 	| { phase: "progress"; id: string; chars: number }
 	| {
 			phase: "end";
 			id: string;
 			ok: boolean;
+			message?: string;
 			sources?: Array<{ title: string; url: string; siteName?: string }>;
 	  };
 
@@ -583,6 +591,68 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		]);
 		// 主人那条不该沾上工具 —— 工具是女仆调的。
 		expect(conv.messages[0].tools).toBeUndefined();
+	});
+
+	it("start 事件自带的标签原样过线、随痕迹落盘、done 里也有 —— 面板不再靠自己那张表", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [
+			{
+				phase: "start",
+				id: "0-0",
+				name: "get_user_info",
+				args: { uid: "12345", name: "咩栗" },
+				label: "查看 UP 主资料",
+				argText: "咩栗",
+			},
+			{ phase: "end", id: "0-0", ok: true },
+		];
+
+		const events = await chatDrained(app, id, { message: "查一下" });
+		const start = events.filter((e) => e.event === "tool")[0]?.data;
+		expect(start).toMatchObject({ label: "查看 UP 主资料", argText: "咩栗" });
+		const stored = [
+			{
+				name: "get_user_info",
+				args: { uid: "12345", name: "咩栗" },
+				ok: true,
+				label: "查看 UP 主资料",
+				argText: "咩栗",
+			},
+		];
+		expect(events.find((e) => e.event === "done")?.data.reply.tools).toEqual(stored);
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual(stored);
+	});
+
+	it("失败的那句话随结束事件过线、随痕迹落盘、done 里也有;成功的调用不带这一格", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "get_user_info", args: { uid: "1" } },
+			{ phase: "end", id: "0-0", ok: false, message: "获取用户信息失败: 请求被拦截" },
+			{ phase: "start", id: "0-1", name: "list_subscriptions", args: {} },
+			{ phase: "end", id: "0-1", ok: true },
+		];
+
+		const events = await chatDrained(app, id, { message: "查一下" });
+		const ends = events.filter((e) => e.event === "tool" && e.data.phase === "end");
+		expect(ends[0]?.data).toMatchObject({ ok: false, message: "获取用户信息失败: 请求被拦截" });
+		expect(ends[1]?.data).not.toHaveProperty("message");
+		const stored = [
+			{
+				name: "get_user_info",
+				args: { uid: "1" },
+				ok: false,
+				message: "获取用户信息失败: 请求被拦截",
+			},
+			{ name: "list_subscriptions", args: {}, ok: true },
+		];
+		expect(events.find((e) => e.event === "done")?.data.reply.tools).toEqual(stored);
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual(stored);
 	});
 
 	it("done 里的回复也带着痕迹 —— 前端交接那一帧要拿它顶上", async () => {

@@ -1,7 +1,7 @@
 /**
  * 聊天里的 `create_skin` —— 女仆手上唯一一个**会写东西**的工具。
  *
- * 它只挂在 dashboard 的聊天上(见 `packages/ai` 的 ExtraTool 文档):那条路坐在
+ * 它只挂在 dashboard 的聊天上(见 `packages/ai` 的 AiTool 文档):那条路坐在
  * cookie session 后面,说话的只有主人本人。群聊那条路拿不到它。
  *
  * 工具本身不认识皮肤规格 —— 它把一句话交给 `runSkinAiCreate` 嵌套跑一次专职的
@@ -9,9 +9,10 @@
  * 皮肤 schema 都不必带。
  */
 
-import type { ExtraTool } from "@bilibili-notify/ai";
+import type { AiTool } from "@bilibili-notify/ai";
 import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
 import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { CREATE_SKIN_LABEL } from "../ai/tool-label-texts.js";
 import { runSkinAiCreate } from "./ai-create.js";
 import type { SkinAiGenerator } from "./ai-edit.js";
 import { referencedImages } from "./package.js";
@@ -107,7 +108,7 @@ export interface SkinChatToolDeps {
  * 皮肤工坊这一轮的工具们。**一次聊天请求配一套** —— 「一轮最多两套」的预算活在
  * 这个闭包里,建在装配处就会跨请求串味。
  */
-export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
+export function createSkinChatTools(deps: SkinChatToolDeps): AiTool[] {
 	/** 真做成的套数。 */
 	let made = 0;
 	/** 开跑过的次数(含没做成的)。 */
@@ -137,7 +138,8 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 		return ok({ image });
 	}
 
-	const createSkin: ExtraTool = {
+	const createSkin: AiTool = {
+		...CREATE_SKIN_LABEL,
 		definition: {
 			type: "function",
 			function: {
@@ -235,7 +237,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 					? ` ${NO_IMAGE_NOTE}`
 					: "";
 
-			// 入参过执行层时被逐值 String 归一(见 ExtraTool 文档),布尔到手是字符串。
+			// 入参过执行层时被逐值 String 归一(见 AiTool 文档),布尔到手是字符串。
 			if (args.activate === "true") {
 				await deps.skinStore.activate(id);
 				return ok({

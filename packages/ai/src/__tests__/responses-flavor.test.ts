@@ -50,6 +50,9 @@ const toolsMock = vi.hoisted(() => ({
 	),
 }));
 vi.mock("../tools", () => ({
+	// 标签这两样不是这条测试要验的,替身里让它们什么都不带(真实现见 tool-labels.test.ts)
+	coreToolLabelOf: () => undefined,
+	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [
 		{ type: "function", function: { name: "fake_tool", description: "假工具", parameters: {} } },
 	],
@@ -369,6 +372,7 @@ describe("responses 风味:失败语义", () => {
 describe("responses 风味:卡片工坊的管道", () => {
 	const SHOT = "data:image/jpeg;base64,U0hPVA==";
 	const look = {
+		label: "看一眼",
 		definition: {
 			type: "function" as const,
 			function: { name: "look_card", description: "看一眼", parameters: { type: "object" } },
