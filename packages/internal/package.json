@@ -21,6 +21,7 @@
 		"./bilibili-guard": "./lib/bilibili-guard.mjs",
 		"./constants": "./lib/constants.mjs",
 		"./format": "./lib/format.mjs",
+		"./live-monitor": "./lib/live-monitor.mjs",
 		"./patch": "./lib/patch.mjs",
 		"./template-defaults": "./lib/template-defaults.mjs",
 		"./package.json": "./package.json"

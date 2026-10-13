@@ -16,7 +16,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 /** 零依赖子路径的源文件。新开一个这样的子路径,就在这里加一行。 */
 // `bilibili-guard.ts` 经 `/bilibili-guard` 子路径供面板读 B 站的档位表(㉓e),同一条纪律。
-const ZERO_DEP_SOURCES = ["constants.ts", "format.ts", "bilibili-guard.ts"];
+// `live-monitor.ts` 经 `/live-monitor` 子路径供面板与服务端共用「要不要监听直播」的判定(3b-14),同一条纪律。
+const ZERO_DEP_SOURCES = ["constants.ts", "format.ts", "bilibili-guard.ts", "live-monitor.ts"];
 
 function sourceOf(file: string): string {
 	return readFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), "utf8");

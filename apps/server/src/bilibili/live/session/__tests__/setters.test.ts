@@ -250,7 +250,7 @@ describe("LiveEngine.applyOps — 周期「正在直播」的重排", () => {
 		const listener = (engine as any).listener;
 		const sub = baseSub();
 		listener.subRecord.set("u1", sub);
-		vi.spyOn(listener, "needsLiveMonitor").mockReturnValue(true);
+		vi.spyOn(listener, "needsListener").mockReturnValue(true);
 		const rearm = vi.spyOn(listener, "rearmPeriodicTimerForUid").mockImplementation(() => {});
 		return { engine, rearm, sub };
 	}

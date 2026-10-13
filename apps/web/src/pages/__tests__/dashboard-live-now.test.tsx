@@ -248,7 +248,6 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
 	});
 
-	// 「监听开不开」手抄的清单之一(另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与服务端的 getModuleState):
 	// ⑬d 起周期「正在直播」有自己的特性,只开了它的订阅也会被监听,不该被算进「不会被监听」。
 	it("只开了周期「正在直播」(liveStreaming)的 B 站订阅也不数", () => {
 		const sub = liveOff(biliSub("s-1", "u1", "甲"));
@@ -259,6 +258,17 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		renderEmpty([sub]);
 		expect(screen.queryByText(/没开直播推送/)).toBeNull();
 	});
+
+	// 与服务端 `needsLiveMonitor` 同一个判定:主开关全关、只配了特别关注的订阅,引擎照样监听。
+	it.each(["danmaku", "enter"] as const)(
+		"主开关全关、只配了 %s 种类特别关注用户的订阅不数",
+		(kind) => {
+			const sub = liveOff(biliSub("s-1", "u1", "甲"));
+			sub.specialUsers = [{ uid: "2", kinds: [kind] }];
+			renderEmpty([sub]);
+			expect(screen.queryByText(/没开直播推送/)).toBeNull();
+		},
+	);
 
 	it("全局把直播开关都关了:没覆盖的订阅数,自己开了的不数", () => {
 		const off = { ...DEFAULT_FEATURE_FLAGS, liveStart: false, liveEnd: false };

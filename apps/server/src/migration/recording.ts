@@ -21,13 +21,17 @@
 
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { BILIBILI_SOURCE_KEY, DEFAULT_FEATURE_FLAGS } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	DEFAULT_FEATURE_FLAGS,
+	specialUserFlagsOf,
+} from "@bilibili-notify/internal";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { compareRecordingEntries } from "../stats/recording-compress.js";
-import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
+import { recordingSwitches } from "../stats/recording-switches.js";
 import {
 	type RecordingEntry,
 	type RecordingKind,

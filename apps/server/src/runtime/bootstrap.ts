@@ -1,5 +1,11 @@
 import { buildFontFace } from "@bilibili-notify/image";
-import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
+import {
+	fail,
+	type ImageRef,
+	type MessageBus,
+	resolve,
+	specialUserFlagsOf,
+} from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
@@ -31,7 +37,7 @@ import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsEnabled } from "../stats/enabled.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
-import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
+import { recordingSwitches } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import { createSourceRegistry, type SourceRegistry } from "../subscriptions/registry.js";
 import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";

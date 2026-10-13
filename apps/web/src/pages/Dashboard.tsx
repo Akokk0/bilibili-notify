@@ -6,6 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { upColor } from "@bilibili-notify/internal/constants";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
+import { needsLiveMonitor, specialUserFlagsOf } from "@bilibili-notify/internal/live-monitor";
 import {
 	Avatar,
 	Btn,
@@ -61,7 +62,6 @@ import {
 import {
 	BILIBILI_SOURCE_KEY,
 	type FeatureFlagValues,
-	type FeatureKey,
 	type PushTarget,
 	type Subscription,
 	subscriptionIdentityOf,
@@ -129,20 +129,19 @@ function liveRowFace(
 	};
 }
 
-// 跟后端 `LIVE_ROOM_CREATOR_KEYS` 同集合 —— 只要任意一把折好的开关开着(订阅覆盖压过全局默认,
-// 不看有没有推送目标:ADR-0027 决策 1),LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
-// 也不会出现在「正在直播」面板里(needsLiveMonitor 返回 false)。
-const LIVE_SWITCH_KEYS = [
-	"liveStart",
-	"liveStreaming",
-	"liveEnd",
-	"membership",
-	"superchat",
-] as const;
-
-function hasAnyLiveSwitch(sub: Subscription, globalFeatures?: FeatureFlagValues): boolean {
-	const on = new Set<FeatureKey>(subscribedFeatures(sub, globalFeatures));
-	return LIVE_SWITCH_KEYS.some((k) => on.has(k));
+// 与服务端同一个判定(internal 的 `needsLiveMonitor`,ADR-0027 决策 1):折好的直播类开关(订阅覆盖压过全局默认)
+// 任一开着,或配了特别弹幕 / 特别进场用户,LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
+// 也不会出现在「正在直播」面板里。不看有没有推送目标。
+function isLiveMonitored(sub: Subscription, globalFeatures?: FeatureFlagValues): boolean {
+	const on = new Set(subscribedFeatures(sub, globalFeatures));
+	return needsLiveMonitor({
+		liveStart: on.has("liveStart"),
+		liveStreaming: on.has("liveStreaming"),
+		liveEnd: on.has("liveEnd"),
+		membership: on.has("membership"),
+		superchat: on.has("superchat"),
+		...specialUserFlagsOf(sub),
+	});
 }
 
 export function LiveNowPanel({
@@ -169,7 +168,7 @@ export function LiveNowPanel({
 				(s) =>
 					subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY &&
 					s.enabled &&
-					!hasAnyLiveSwitch(s, globalFeatures),
+					!isLiveMonitored(s, globalFeatures),
 			).length,
 		[subs, globalFeatures],
 	);

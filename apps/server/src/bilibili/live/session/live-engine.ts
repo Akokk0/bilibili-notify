@@ -213,7 +213,7 @@ export class LiveEngine {
 		for (const op of ops) {
 			switch (op.kind) {
 				case "add": {
-					if (!this.listener.needsLiveMonitor(op.sub)) break;
+					if (!this.listener.needsListener(op.sub)) break;
 					this.listener.startForUid(op.sub);
 					break;
 				}
@@ -239,7 +239,7 @@ export class LiveEngine {
 						for (const change of targetChanges) {
 							existing.target = change.target;
 						}
-						if (!this.listener.needsLiveMonitor(existing)) {
+						if (!this.listener.needsListener(existing)) {
 							this.listener.stopForUid(op.uid);
 						} else if (
 							existing.liveStreaming !== wasStreaming ||
@@ -249,7 +249,7 @@ export class LiveEngine {
 						}
 					} else {
 						const fullSub = lookupFullSub(op.uid);
-						if (fullSub && this.listener.needsLiveMonitor(fullSub)) {
+						if (fullSub && this.listener.needsListener(fullSub)) {
 							this.listener.startForUid(fullSub);
 						}
 					}

@@ -1663,29 +1663,70 @@ describe("createEngines — 拓展直播的图走图库", () => {
 	});
 });
 
-// 「直播就绪」:至少一个启用的 B 站订阅给任一直播类特性配了目标。「监听开不开」手抄的三份清单之一
-// (另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
+// 「直播就绪」:至少一个启用的 B 站订阅 `needsLiveMonitor` 为真(ADR-0027 决策 1:只看折好的开关与特别关注,
+// 不看有没有推送目标)。判定本身只此一份,住 internal;这里钉的是 getModuleState 用的是它。
 describe("createEngines — getModuleState.live", () => {
 	const TARGET = "10000000-0000-4000-8000-000000000001";
-	function subRouting(routing: Partial<Subscription["routing"]>): Subscription {
+	const LIVE_OFF = {
+		liveStart: false,
+		liveStreaming: false,
+		liveEnd: false,
+		membership: false,
+		superchat: false,
+	};
+	function liveSub(opts: {
+		features?: Partial<Subscription["overrides"]["features"] & object>;
+		routing?: Partial<Subscription["routing"]>;
+		specialUsers?: Subscription["specialUsers"];
+		enabled?: boolean;
+	}): Subscription {
 		const s = makeEmptySubscription({
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
-		s.routing = { ...s.routing, ...routing };
+		s.routing = { ...s.routing, ...opts.routing };
+		s.overrides = { features: opts.features };
+		s.specialUsers = opts.specialUsers ?? [];
+		s.enabled = opts.enabled ?? true;
 		return s;
 	}
 
-	it("没给任何直播类特性配目标 → 不就绪", () => {
-		const c = setup({ subs: [subRouting({})] });
+	it("直播类开关开着(出厂就开)、一个推送目标都没配 → 就绪", () => {
+		const c = setup({ subs: [liveSub({})] });
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(true);
+	});
+
+	it("直播类开关全关、哪怕路由里留着目标 → 不就绪", () => {
+		const c = setup({ subs: [liveSub({ features: LIVE_OFF, routing: { liveStart: [TARGET] } })] });
 		active = c;
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
 
-	it.each(["liveStart", "liveStreaming", "liveEnd"] as const)("只给 %s 配了目标 → 就绪", (key) => {
-		const c = setup({ subs: [subRouting({ [key]: [TARGET] })] });
+	it.each(["danmaku", "enter"] as const)(
+		"主开关全关、只配了一位 %s 种类的特别关注用户(没有目标)→ 就绪",
+		(kind) => {
+			const c = setup({
+				subs: [liveSub({ features: LIVE_OFF, specialUsers: [{ uid: "2", kinds: [kind] }] })],
+			});
+			active = c;
+			expect(c.runtime.getModuleState().live).toBe(true);
+		},
+	);
+
+	it.each(["liveStart", "liveStreaming", "liveEnd", "membership", "superchat"] as const)(
+		"只开 %s 一把 → 就绪",
+		(key) => {
+			const c = setup({ subs: [liveSub({ features: { ...LIVE_OFF, [key]: true } })] });
+			active = c;
+			expect(c.runtime.getModuleState().live).toBe(true);
+		},
+	);
+
+	it("停用的订阅不数", () => {
+		const c = setup({ subs: [liveSub({ enabled: false })] });
 		active = c;
-		expect(c.runtime.getModuleState().live).toBe(true);
+		expect(c.runtime.getModuleState().live).toBe(false);
 	});
 });
 

@@ -32,6 +32,11 @@ export const HOMES = {
 	formatAxisTick: "apps/web/src/pages/stats/chart-utils.ts",
 	postText: "apps/server/src/posts/post-text.ts",
 	normalizePost: "packages/internal/src/post.ts",
+	// 「这条订阅要不要监听直播」的判定与它的键表、入参(3b-14;ADR-0027 决策 1):服务端与面板共用这一份。
+	needsLiveMonitor: "packages/internal/src/live-monitor.ts",
+	LIVE_ROOM_CREATOR_KEYS: "packages/internal/src/live-monitor.ts",
+	specialUserFlagsOf: "packages/internal/src/live-monitor.ts",
+	liveMonitorInputOf: "packages/internal/src/live-monitor.ts",
 };
 
 /** 一个节点若是一处定义,回它定义的名字。 */

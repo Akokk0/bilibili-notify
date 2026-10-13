@@ -58,10 +58,13 @@ import {
 	GUARD_PROGRAM_ID,
 	isLoggedIn,
 	isReachabilityEvidence,
+	liveMonitorInputOf,
+	needsLiveMonitor,
 	resolve,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
 	type SourceAuth,
+	specialUserFlagsOf,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
@@ -1286,28 +1289,19 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}),
 		getModuleState: (): ModuleState => {
 			const g = globals();
-			// "live ready" = at least one enabled subscription has any live-related
-			// feature routed to a target. Mirrors the LIVE_ROOM_CREATOR_KEYS set
-			// inside live/'s `needsLiveMonitor` plus the two
-			// special-user features.
+			// "live ready" = 至少一条启用的 B 站订阅会被 LiveEngine 开监听器:问的是 internal 里那份唯一判定
+			// (只看折好的开关与特别关注,不看有没有推送目标;ADR-0027 决策 1)。
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore
 				.list()
 				.filter(fromBilibili)
-				.some((sub) => {
-					if (!sub.enabled) return false;
-					const eff = resolve(sub, g.defaults);
-					const keys: FeatureKey[] = [
-						"liveStart",
-						"liveStreaming",
-						"liveEnd",
-						"membership",
-						"superchat",
-						"specialDanmaku",
-						"specialUserEnter",
-					];
-					return keys.some((k) => (eff.routing[k]?.length ?? 0) > 0);
-				});
+				.some(
+					(sub) =>
+						sub.enabled &&
+						needsLiveMonitor(
+							liveMonitorInputOf(resolve(sub, g.defaults).features, specialUserFlagsOf(sub)),
+						),
+				);
 			return {
 				dynamic: true,
 				live: liveReady,

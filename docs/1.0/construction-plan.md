@@ -343,7 +343,7 @@
     - 作品行 `{ id, hasVideo, publishedAt }` 外加可选的 `url` / `title` / `summary` / `topic` / `videoDurationSec`（今天只有拓展作品在填，取五格的函数在 `stats/post-entry-extras.ts`，3a 的 B 站适配直接复用）；直播帧 `{ kind, occurredAt, peakTotalViewers }`；目录 `stats/posts`。
     - 「在记」的账 `stats/recording/<订阅 id>.jsonl`，行 `RecordingEntry = { kind: "posts" | "live" | "followers", startedAt, endedAt }`，现场写的每行正好一个 UTC 整点小时，迁移写合好的区间，读的一方吃任意长度。B 站认登录有效（每 5 分钟现读一次）、拓展认收到上报、粉丝认拉到资料。`seen/` 与水位线 `since` 删了。
     - 统计行：`followers`、`videoPosts`、`posts`（全部作品）、`identity`、`recording`（三份逐天的在记，面板第 4 期才读）。面板的「动态」只在 `services/stats.ts` 的 `plainPostCount` 相减。
-    - 「直播类开关开着」的判定抽成 `packages/live` 的纯函数 `needsLiveMonitor`，房间上下文与统计共用；`engines.ts` 的 `getModuleState` 那份手抄（读 `routing`）留给 3b 的唯一判定。
+    - 「直播类开关开着」的判定抽成 `packages/live` 的纯函数 `needsLiveMonitor`，房间上下文与统计共用（3b-14 起住 internal，不在 `packages/live`）；`engines.ts` 的 `getModuleState` 那份手抄（读 `routing`）3b-14 已换成同一个判定。
     - 统计总览的取数是一个函数 `createStatsOverview`，面板、手动锐评、定时锐评共用同一份 30 秒缓存。
     - B 站替身棘轮：`routes/stats.ts` 11 → 5；`stats/roast-subject.ts` 4 → 6、`stats/bili-source.ts` 8 → 15、`stats/recorder.ts` 2 → 5、`index.ts` 3 → 5（主人批的，3b 搬进 `bilibili/` 后不计）。
   - 行为变化：开播公告不记；作品开关关着的订阅不记作品、那些天显示「没记录」；直播类开关关着的订阅直播那几格（含最高与平均观看）显示「没记录」；拓展订阅没在记的日子即使盘上有作品也显示「没记录」；一条从没有粉丝样本的 B 站订阅，在窗口里没有任何记录时从整行「没记录」变成显示 0（老规则随窗口长短变，账表达不了）。
@@ -428,7 +428,7 @@
 | 桥迁 v3 时必须抬 `extensions/bridge/extension.json` 的 `version`（现在 `0.0.1`，同号发出去市场永远不提示更新）；具体号发 alpha 时定 | 3b 抬号，6 定号 |
 | 渲染器运行时从 `s1.hdslb.com` 拉舰长图标（`packages/image/src/image-renderer.ts` 的 `GUARD_LEVEL_IMG`），改成本地资产：B 站在 `bilibili/` 声明 `guard` 体系时用 `ctx.storeImage` 把三档图标存成 `tier.icon`，出图器只内联引用。守卫 11 的 `hdslb` 会在这里变红 | 3a（10-02 从 3b 挪进第 2 期 ㉓，理由是不挪的话出图器零联网过不了、会员卡只能画占位；10-03 出图器零联网随抓图服务挪进 3a，它跟着回去，和 `ctx.storeImage` 一起落；三档图标的字节从哪来到时定） |
 | 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b |
-| 直播监听的唯一判定（internal）：「开着」只看开关、不看有没有目标（ADR-0027 决策 1）；首页的「不会被监听」与直播就绪判断都改用它。已知 bug 就落在这条上（见「施工中顺手修」），别拖到最后。🔗 3a-31 已把首页那句的**判定**改成只看（折好的）开关、不再数推送目标（文案改成「没开直播推送」），但判定仍是面板自己的一份键表、没进 internal，也还没算服务端 `needsLiveMonitor` 里的「特别弹幕 / 特别进场」两项；唯一判定本身（住 internal、面板与服务端共用）仍未做 | 3b；首页在 4 |
+| 直播监听的唯一判定（internal）：「开着」只看开关、不看有没有目标（ADR-0027 决策 1）；首页的「不会被监听」与直播就绪判断都改用它。已知 bug 就落在这条上（见「施工中顺手修」），别拖到最后。🔗 3a-31 已把首页那句的**判定**改成只看（折好的）开关、不再数推送目标（文案改成「没开直播推送」）。✅ 3b-14 已落（10-13）：判定住 `packages/internal/src/live-monitor.ts`（零依赖子路径 `@bilibili-notify/internal/live-monitor`，主入口也转出），入参是五把开关加 `specialDanmaku` / `specialUserEnter` 两个布尔；服务端三处（直播引擎、统计、`getModuleState` 的 `liveReady`）与面板首页「没开直播推送」那句都读它，手抄的键表全删；首页「直播」那一格改成只看开关与特别关注、不再数推送目标，面板那句也算上了特别弹幕 / 特别进场 | 3b；首页在 4 |
 | 密钥打码：schema 标 `secret: true`、服务端按 `MaskedSecret` 下发；面板那一半（统一密钥输入框） | 3a；面板在 4 |
 | 重启能力的预检 `RestartAbility` 不能重启时还是 `{ can: false, reason }`（`source-run` / `unsupervised`）：按 ADR-0026 决策 2 改成 `code` + `message`，系统页与拓展页读它的地方同期跟上（10-03 ⑱a 施工中发现，主人定归期） | 第 4 期 |
 | 原生分享：解析器交中立描述，由 OneBot 适配器去签。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表（ADR-0029 决策 2）；重推原件里小程序卡那一种的迁移随之（10-03 从 ⑱ 挪来） | 3b |
@@ -491,7 +491,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | AI 工具失败在面板上显示成功：工具失败时返回一段字符串，只有抛错才记失败 | 3b | AI 工具随 ADR-0030 改写时按结果形状返回 |
 | 指令出错不回话：处理函数抛错只打 warn | 3b | `CommandDef.run` 返回结果形状；失败回「『{指令名}』没办成：{message}」，抛错回「出错了，详情在日志里」并记错误日志（ADR-0031 决策 1） |
 | 开机关注同步改了 `followed` 却不发事件，面板不跟着变 | 3b | 关注同步搬进 `bilibili/`、`followed` 进 B 站的 `ctx.state`；补关注失败按 `follow_failed` 报进问题表，问题表变了发 `problems-changed` |
-| 首页「不会被监听」只看有没有配直播推送目标，和服务端的判定对不上 | 3b 判定；首页在 4 | 见「零碎施工项」的直播监听唯一判定。🔗 3a-31 已先把首页这句改成只看折好的开关（不再数目标）；与服务端 `needsLiveMonitor` 仍差「特别弹幕 / 特别进场」两项（面板不算，只在主开关全关、只配了特别关注时才多算），唯一判定住 internal 仍随 3b |
+| 首页「不会被监听」只看有没有配直播推送目标，和服务端的判定对不上 | 3b 判定；首页在 4 | 见「零碎施工项」的直播监听唯一判定。🔗 3a-31 已先把首页这句改成只看折好的开关（不再数目标）。✅ 3b-14 已落（10-13）：判定并成 internal 的 `needsLiveMonitor`，面板这句与它同一份，「特别弹幕 / 特别进场」两项也算上了（首页这一片已改用它，Dashboard 的画法留到第 4 期） |
 | 没实现列 bot 方法的推送拓展建不了连接：列 bot 的接口回 404，面板说拓展没跑起来 | 4 | `listConnectionCandidates` 在 3a 改成必备；面板新建连接只走「挑一个候选 → 填字段」一条路 |
 | 会员文案自定义开着、图片是空串时 `??` 不兜底官方图，推出 href 为空的图 | 2 | `templates.membership` 重做时修（`default` 的回退正好在这条路上） |
 

@@ -59,7 +59,7 @@ describe("describeLiveRoomDanmakuAccessDenied", () => {
  * 「要不要为这位 UP 开直播间监听」:任一直播类开关开着就要(只看开关、不看有没有目标)。
  * ⑬d 之后周期「正在直播」有了自己的开关,**只开它**也得监听 —— 清单漏了它,这位 UP 的计时器永远没人挂。
  */
-describe("RoomContext.needsLiveMonitor", () => {
+describe("RoomContext.needsListener", () => {
 	function makeRoomCtx(): RoomContext {
 		const serviceCtx: ServiceContext = {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -98,13 +98,13 @@ describe("RoomContext.needsLiveMonitor", () => {
 		}) as SubItemView;
 
 	it("全关 → 不监听", () => {
-		expect(makeRoomCtx().needsLiveMonitor(allOff())).toBe(false);
+		expect(makeRoomCtx().needsListener(allOff())).toBe(false);
 	});
 
 	it.each(["liveStart", "liveStreaming", "liveEnd", "membership", "superchat"] as const)(
 		"只开 %s → 要监听",
 		(key) => {
-			expect(makeRoomCtx().needsLiveMonitor(allOff({ [key]: true }))).toBe(true);
+			expect(makeRoomCtx().needsListener(allOff({ [key]: true }))).toBe(true);
 		},
 	);
 });

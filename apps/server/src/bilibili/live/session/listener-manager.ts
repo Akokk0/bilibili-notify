@@ -75,8 +75,8 @@ export class ListenerManager {
 	}
 
 	/** Whether any feature on this sub requires the live-room WS connection. */
-	needsLiveMonitor(sub: SubItemView): boolean {
-		return this.ctx.needsLiveMonitor(sub);
+	needsListener(sub: SubItemView): boolean {
+		return this.ctx.needsListener(sub);
 	}
 
 	/** Start listeners for everything in `subs` that needs one. */
@@ -96,13 +96,13 @@ export class ListenerManager {
 		this.sessionRecord.clear();
 
 		const liveSubUids = Object.values(subs)
-			.filter((s) => this.ctx.needsLiveMonitor(s))
+			.filter((s) => this.ctx.needsListener(s))
 			.map((s) => s.uid);
 		this.ctx.logger.debug(
 			`[start] 启动直播监听，共 ${liveSubUids.length} 个 UID：${liveSubUids.join(", ")}`,
 		);
 		for (const sub of Object.values(subs)) {
-			if (this.ctx.needsLiveMonitor(sub)) this.startForUid(sub, "[start]");
+			if (this.ctx.needsListener(sub)) this.startForUid(sub, "[start]");
 		}
 	}
 

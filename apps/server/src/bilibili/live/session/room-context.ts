@@ -1,12 +1,12 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type {
-	ImageRef,
-	Logger,
-	MembershipTemplateBundle,
-	ServiceContext,
+import {
+	type ImageRef,
+	type Logger,
+	type MembershipTemplateBundle,
+	needsLiveMonitor,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
-import { needsLiveMonitor } from "../../../live/live-monitor";
 import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
@@ -243,8 +243,17 @@ export class RoomContextBase {
 		return wantsLiveEndExtras(sub);
 	}
 
-	needsLiveMonitor(sub: SubItemView): boolean {
-		return needsLiveMonitor(sub);
+	needsListener(sub: SubItemView): boolean {
+		// 特别关注两格:引擎视图里的 `enable` 就是「订阅配了这一种特别关注用户」(buildLiveSubViewSingle 由 specialUsers 折出)。
+		return needsLiveMonitor({
+			liveStart: sub.liveStart,
+			liveStreaming: sub.liveStreaming,
+			liveEnd: sub.liveEnd,
+			membership: sub.membership,
+			superchat: sub.superchat,
+			specialDanmaku: sub.customSpecialDanmakuUsers.enable,
+			specialUserEnter: sub.customSpecialUsersEnterTheRoom.enable,
+		});
 	}
 
 	closeListener(roomId: string): void {
