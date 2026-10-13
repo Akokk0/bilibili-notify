@@ -121,7 +121,13 @@ function useChatMarkdown(): MarkdownComp {
 export interface ToolChipData {
 	name: string;
 	args: Record<string, string>;
+	/** 给人看的名字,服务端随痕迹下发;没带就显示 `name`。 */
+	label?: string;
+	/** 小条上补的那一格入参的完整文字,服务端随痕迹下发;截短在这一层。 */
+	argText?: string;
 	ok?: boolean;
+	/** 失败的那句话。这一步只接住数据,界面还不显示它。 */
+	message?: string;
 	/**
 	 * 还在跑时的进度:已经产出多少字符。只有肯报进度的慢工具才有(做皮肤那种一趟
 	 * 几分钟的);收了尾就不再显示 —— 那时该说的是成败,不是「已写 860 字」。
@@ -564,7 +570,7 @@ function ToolChips({
 				const state = t.ok === undefined ? "running" : t.ok ? "ok" : "failed";
 				// 只有真被截短的才给展开钮 —— 「搜索 UP 主「咩栗」」点开也没有别的可看,
 				// 那个 ▾ 只会是个骗人的暗示。
-				const { label, argText, clipped } = describeTool(t.name, t.args);
+				const { label, argText, clipped } = describeTool(t);
 				// 成了就留着总数 —— 「这趟写了多少」是结果的一部分。没写成才不报:
 				// 半截的字数说明不了什么,只会让人以为它写完了却失败。
 				const progress =

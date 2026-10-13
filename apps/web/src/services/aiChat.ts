@@ -115,7 +115,15 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
  * 就是把那段空白讲出来。`progress` / `end` 都靠 `id` 认回自己的 `start`。
  */
 export type ChatToolEvent =
-	| { phase: "start"; id: string; name: string; args: Record<string, string> }
+	| {
+			phase: "start";
+			id: string;
+			name: string;
+			args: Record<string, string>;
+			/** 给人看的名字与入参文字,工具自己带的;认不出的工具没有。 */
+			label?: string;
+			argText?: string;
+	  }
 	| {
 			/** 慢工具的活口:start 与 end 之间可以来任意多拍,也可以一拍都没有。 */
 			phase: "progress";
@@ -127,6 +135,8 @@ export type ChatToolEvent =
 			phase: "end";
 			id: string;
 			ok: boolean;
+			/** 失败的那句话(成功没有)。 */
+			message?: string;
 			/** `web_search` 专属:搜到的来源(标题 + 链接),给「来源」折叠列表。 */
 			sources?: Array<{ title: string; url: string; siteName?: string }>;
 	  };

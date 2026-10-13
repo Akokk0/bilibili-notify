@@ -97,7 +97,9 @@ const summarizeTitle = vi.fn(async (exchange: Array<{ role: string; content: str
 	return H.title;
 });
 
-vi.mock("@bilibili-notify/ai", () => ({
+// 读会话的回应里要给老痕迹现补标签,用的是 ai 包里真的那两个函数 —— 只把生成器换成替身。
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@bilibili-notify/ai")>()),
 	CommentaryGenerator: class {
 		chat = vi.fn();
 		chatStateless = vi.fn();
@@ -586,8 +588,15 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 
 		await chatDrained(app, id, { message: "查一下" });
 		const conv = (await readJson(await getConv(app, id))).conversation;
+		// 这些事件没带标签(像老会话):读回应里由服务端现补,盘上的不动。
 		expect(conv.messages[1].tools).toEqual([
-			{ name: "get_user_info", args: { uid: "12345" }, ok: true },
+			{
+				name: "get_user_info",
+				args: { uid: "12345" },
+				ok: true,
+				label: "查看 UP 主资料",
+				argText: "12345",
+			},
 		]);
 		// 主人那条不该沾上工具 —— 工具是女仆调的。
 		expect(conv.messages[0].tools).toBeUndefined();
@@ -652,7 +661,11 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		];
 		expect(events.find((e) => e.event === "done")?.data.reply.tools).toEqual(stored);
 		const conv = (await readJson(await getConv(app, id))).conversation;
-		expect(conv.messages[1].tools).toEqual(stored);
+		// 读回应时缺标签的会被现补:这里只核对失败那句话原样在,成功的那条仍没有 message。
+		expect(conv.messages[1].tools).toEqual([
+			{ ...stored[0], label: "查看 UP 主资料", argText: "1" },
+			{ ...stored[1], label: "查看订阅列表" },
+		]);
 	});
 
 	it("done 里的回复也带着痕迹 —— 前端交接那一帧要拿它顶上", async () => {
@@ -978,7 +991,13 @@ describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
 
 		const conv = (await readJson(await getConv(app, id))).conversation;
 		expect(conv.messages[1].tools).toEqual([
-			{ name: "create_skin", args: { brief: "赛博" }, ok: true },
+			{
+				name: "create_skin",
+				args: { brief: "赛博" },
+				ok: true,
+				label: "制作皮肤",
+				argText: "赛博",
+			},
 		]);
 	});
 
@@ -1002,7 +1021,14 @@ describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
 		// 落盘的痕迹也带来源 —— 重开会话还能点开「来源」。
 		const conv = (await readJson(await getConv(app, id))).conversation;
 		expect(conv.messages[1].tools).toEqual([
-			{ name: "web_search", args: { query: "b站 新闻" }, ok: true, sources: SOURCES },
+			{
+				name: "web_search",
+				args: { query: "b站 新闻" },
+				ok: true,
+				sources: SOURCES,
+				label: "联网搜索",
+				argText: "b站 新闻",
+			},
 		]);
 	});
 });

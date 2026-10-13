@@ -478,7 +478,19 @@ export function ChatPage() {
 						setPending((p) => {
 							if (!p) return p; // 已经切走 / 撤掉了,这一拍没人要
 							if (ev.phase === "start") {
-								return { ...p, tools: [...p.tools, { id: ev.id, name: ev.name, args: ev.args }] };
+								return {
+									...p,
+									tools: [
+										...p.tools,
+										{
+											id: ev.id,
+											name: ev.name,
+											args: ev.args,
+											...(ev.label !== undefined ? { label: ev.label } : {}),
+											...(ev.argText !== undefined ? { argText: ev.argText } : {}),
+										},
+									],
+								};
 							}
 							// 慢工具的进度。只更新数字,状态仍是「在跑」—— 报进度不是收尾。
 							if (ev.phase === "progress") {
@@ -491,7 +503,12 @@ export function ChatPage() {
 								...p,
 								tools: p.tools.map((t) =>
 									t.id === ev.id
-										? { ...t, ok: ev.ok, ...(ev.sources ? { sources: ev.sources } : {}) }
+										? {
+												...t,
+												ok: ev.ok,
+												...(ev.message !== undefined ? { message: ev.message } : {}),
+												...(ev.sources ? { sources: ev.sources } : {}),
+											}
 										: t,
 								),
 							};

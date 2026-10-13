@@ -1,99 +1,81 @@
 /**
- * 单元测试 —— 工具名 → 界面上那一行中文。
+ * 单元测试 —— 工具痕迹 → 小条上那一行字。
  *
- * 后端把工具名原样发上来(`list_subscriptions`),直接显示等于给主人看代码。
- * 这一层的两条底线:① 认识的工具翻成人话并带上关键入参,② **不认识**的工具
- * 也得显示点什么 —— 后端加了新工具而这儿还没配的时候,一片空白比一个英文
- * 标识符难查得多。
+ * 标签与入参文字由服务端随痕迹下发(`label` / `argText`,工具自己带的),面板不再有一张
+ * 「工具名 → 中文」的表。这一层只管**怎么拼**:「标签「入参」」、入参超长时截短(`…`)、
+ * 以及两条底线 ——
+ *   ① 没带标签的痕迹(认不出的工具)显示**原名**而不是空白;
+ *   ② 没有入参时只有标签,不留一对空括号。
+ *
+ * 下面几行字面量期望,是改写之前面板那张写死的表对同样入参显示的字(逐字),用来钉「这一步
+ * 界面上看到的字没有变」。
  */
 
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { toolLabel } from "../tools";
+import { describeTool } from "../tools";
 
-describe("toolLabel", () => {
-	it("认识的工具翻成中文", () => {
-		expect(toolLabel("list_subscriptions", {})).toBe("查看订阅列表");
-	});
-
-	it("带上关键入参 —— 「搜了什么」比「搜过」有用得多", () => {
-		expect(toolLabel("search_user", { keyword: "咩栗" })).toBe("搜索 UP 主「咩栗」");
-	});
-
-	it("该带的入参缺席时只显示动作,不留一对空括号", () => {
-		expect(toolLabel("search_user", {})).toBe("搜索 UP 主");
-		expect(toolLabel("search_user", { keyword: "   " })).toBe("搜索 UP 主");
-	});
-
-	it("有备选入参时按顺序挑第一个有值的 —— 订阅时昵称比 UID 好认", () => {
-		expect(toolLabel("subscribe_user", { uid: "123", name: "咩栗" })).toBe("添加订阅「咩栗」");
-		expect(toolLabel("subscribe_user", { uid: "123" })).toBe("添加订阅「123」");
-	});
-
-	it("做皮肤那几十秒里写清「在做什么样的」—— 光转圈跟卡住没区别", () => {
-		expect(toolLabel("create_skin", { brief: "赛博朋克暗色" })).toBe("制作皮肤「赛博朋克暗色」");
-	});
-
-	it("不认识的工具显示原名,不是空白", () => {
-		expect(toolLabel("brand_new_tool", {})).toBe("brand_new_tool");
-	});
-
-	it("入参太长时截断 —— 一条小条不能被一段话撑爆", () => {
-		const label = toolLabel("search_user", { keyword: "啊".repeat(80) });
-		expect(label.length).toBeLessThan(40);
-		expect(label).toContain("…");
-	});
-});
-
-/**
- * 后端每加一个工具,这儿都得跟着配一句中文,否则界面上冒出来的是
- * `get_something_new` 这样的英文标识符 —— 构建全绿,只有主人看得到。
- */
-describe("工具名覆盖", () => {
-	it("packages/ai 里定义的每个工具都配了中文名", async () => {
-		const here = dirname(fileURLToPath(import.meta.url));
-		const src = await readFile(join(here, "../../../../../../packages/ai/src/tools.ts"), "utf8");
-		// TOOL_DEFINITIONS 里每个 `function: { name: "…" }`。缩进正好三层 tab,
-		// 这是嵌套参数里那些 name 字段(第五层)之外的唯一一批。
-		const defined = [...src.matchAll(/^\t{3}name: "([a-z_]+)",$/gm)].map((m) => m[1]);
-		expect(defined.length).toBeGreaterThan(5); // 正则没匹配上时别假绿
-
-		const missing = defined.filter((n) => toolLabel(n, {}) === n);
-		expect(missing).toEqual([]);
-	});
-
-	it("注入工具也都配了中文名 —— 上面那条扫不到它们", async () => {
-		/**
-		 * `create_skin` / `load_skill` 这类**不在** TOOL_DEFINITIONS 里:写能力只有
-		 * 带权限门的那一端配拥有,所以它们由服务端在装配处注入(ExtraTool)。于是
-		 * 上面那条守卫压根扫不到 —— 而界面这头照样要配一句中文。
-		 *
-		 * 名字本身是 contract 里的 `AI_TOOL_*` 常量(两端共用同一个常量,所以名字
-		 * 不会漂);漏的是**中文名**,而漏了只有主人在界面上看得到一串英文标识符。
-		 * 按前缀取全,加第三把注入工具时这条自动跟着管。
-		 */
-		const contract = await import("@bilibili-notify/contract");
-		const injected = Object.entries(contract)
-			.filter(([key]) => key.startsWith("AI_TOOL_"))
-			.map(([, value]) => value as string);
-		expect(injected.length).toBeGreaterThan(1); // 前缀取空时别假绿
-
-		const missing = injected.filter((n) => toolLabel(n, {}) === n);
-		expect(missing).toEqual([]);
-	});
-
-	it("卡片工坊的八把工具都配了中文名 —— 它们住在一张表里,上面那条按前缀扫不到", async () => {
-		const { AI_CARD_WORKSHOP_TOOLS } = await import("@bilibili-notify/contract");
-		const missing = Object.values(AI_CARD_WORKSHOP_TOOLS).filter((n) => toolLabel(n, {}) === n);
-		expect(missing).toEqual([]);
-	});
-
-	it("卡片工坊的小条写清动的是哪张卡", () => {
-		expect(toolLabel("write_card", { skin: "abc", kind: "live" })).toBe("写卡片「直播卡」");
-		expect(toolLabel("set_block", { skin: "abc", kind: "superchat", block: "amount" })).toBe(
-			"改卡片的块「amount」",
+describe("describeTool", () => {
+	it("给了标签就照显示;入参补在后面", () => {
+		expect(
+			describeTool({ name: "get_user_info", label: "查看 UP 主资料", argText: "咩栗" }),
+		).toEqual({
+			label: "查看 UP 主资料「咩栗」",
+			argText: "咩栗",
+			clipped: false,
+		});
+		expect(
+			describeTool({ name: "get_user_stats", label: "查看数据概览", argText: "12345" }).label,
+		).toBe("查看数据概览「12345」");
+		expect(describeTool({ name: "web_search", label: "联网搜索", argText: "b站 新闻" }).label).toBe(
+			"联网搜索「b站 新闻」",
 		);
+		expect(describeTool({ name: "write_card", label: "写卡片", argText: "直播卡" }).label).toBe(
+			"写卡片「直播卡」",
+		);
+		expect(
+			describeTool({ name: "load_skill", label: "使用技能", argText: "weekly-report" }).label,
+		).toBe("使用技能「weekly-report」");
+	});
+
+	it("做皮肤的长 brief:完整入参原样留着,小条上截短并标明被截了", () => {
+		const argText = "赛博朋克 暗色 霓虹，要有很长很长很长很长很长很长很长的一段描述";
+		expect(describeTool({ name: "create_skin", label: "制作皮肤", argText })).toEqual({
+			label: "制作皮肤「赛博朋克 暗色 霓虹，要有很…」",
+			argText,
+			clipped: true,
+		});
+	});
+
+	it("截短的边界:恰好 14 个字不截,15 个字截到 14 个加「…」", () => {
+		const at14 = describeTool({
+			name: "search_user",
+			label: "搜索 UP 主",
+			argText: "啊".repeat(14),
+		});
+		expect(at14.label).toBe(`搜索 UP 主「${"啊".repeat(14)}」`);
+		expect(at14.clipped).toBe(false);
+		const at15 = describeTool({
+			name: "search_user",
+			label: "搜索 UP 主",
+			argText: "啊".repeat(15),
+		});
+		expect(at15.label).toBe(`搜索 UP 主「${"啊".repeat(14)}…」`);
+		expect(at15.clipped).toBe(true);
+	});
+
+	it("没有入参只有标签,不留一对空括号", () => {
+		expect(describeTool({ name: "list_subscriptions", label: "查看订阅列表" })).toEqual({
+			label: "查看订阅列表",
+			argText: null,
+			clipped: false,
+		});
+	});
+
+	it("没带标签(认不出的工具 / 老痕迹)显示原名,不是空白", () => {
+		expect(describeTool({ name: "brand_new_tool" })).toEqual({
+			label: "brand_new_tool",
+			argText: null,
+			clipped: false,
+		});
 	});
 });

@@ -615,17 +615,29 @@ describe("AiChatDock — 工具调用小条", () => {
 		});
 	}
 
-	const start = (id: string, name: string, args: Record<string, string> = {}) => ({
+	/**
+	 * 开始事件。标签与入参文字是服务端随痕迹下发的(工具自己带的),面板不再自己查表,
+	 * 所以要看到中文的用例得在夹具里带上 `label` / `argText`。
+	 */
+	const start = (
+		id: string,
+		name: string,
+		args: Record<string, string> = {},
+		shown: { label: string; argText?: string } = { label: name },
+	) => ({
 		phase: "start",
 		id,
 		name,
 		args,
+		...shown,
 	});
+	const LONG_BRIEF =
+		"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。";
 	const end = (id: string, ok: boolean) => ({ phase: "end", id, ok });
 	const progress = (id: string, chars: number) => ({ phase: "progress", id, chars });
 
 	it("工具一开跑就冒出一条小条,正文一个字都还没到", async () => {
-		H.toolEvents = [start("0-0", "list_subscriptions")];
+		H.toolEvents = [start("0-0", "list_subscriptions", {}, { label: "查看订阅列表" })];
 		await typeAndSend("我订了谁");
 		await release();
 
@@ -645,7 +657,10 @@ describe("AiChatDock — 工具调用小条", () => {
 	});
 
 	it("失败的那次留在原地并标成失败 —— 「查了没查到」和「压根没查」不一样", async () => {
-		H.toolEvents = [start("0-0", "get_live_status"), end("0-0", false)];
+		H.toolEvents = [
+			start("0-0", "get_live_status", {}, { label: "查看直播状态" }),
+			end("0-0", false),
+		];
 		await typeAndSend("谁在播");
 		await release();
 		await release();
@@ -657,10 +672,12 @@ describe("AiChatDock — 工具调用小条", () => {
 		// brief 是主人唯一能核对「女仆理解对了没」的东西,几百字压成十几个字之后
 		// 界面上原本再没有别的地方看得到它 —— 连悬停提示用的都是截断后的那份。
 		H.toolEvents = [
-			start("0-0", "create_skin", {
-				brief:
-					"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
-			}),
+			start(
+				"0-0",
+				"create_skin",
+				{ brief: LONG_BRIEF },
+				{ label: "制作皮肤", argText: LONG_BRIEF },
+			),
 		];
 		await typeAndSend("做套皮肤");
 		await release();
@@ -678,7 +695,9 @@ describe("AiChatDock — 工具调用小条", () => {
 	});
 
 	it("入参本来就短 → 不给展开钮,点了也没有别的东西可看", async () => {
-		H.toolEvents = [start("0-0", "search_user", { keyword: "咩栗" })];
+		H.toolEvents = [
+			start("0-0", "search_user", { keyword: "咩栗" }, { label: "搜索 UP 主", argText: "咩栗" }),
+		];
 		await typeAndSend("找找咩栗");
 		await release();
 		await waitFor(() => expect(chips()).toHaveLength(1));
@@ -728,7 +747,9 @@ describe("AiChatDock — 工具调用小条", () => {
 	});
 
 	it("入参带进小条 —— 「搜了什么」比「搜过」有用得多", async () => {
-		H.toolEvents = [start("0-0", "search_user", { keyword: "咩栗" })];
+		H.toolEvents = [
+			start("0-0", "search_user", { keyword: "咩栗" }, { label: "搜索 UP 主", argText: "咩栗" }),
+		];
 		await typeAndSend("帮我找找咩栗");
 		await release();
 		await waitFor(() => expect(chips()[0]?.textContent).toContain("咩栗"));
@@ -736,8 +757,8 @@ describe("AiChatDock — 工具调用小条", () => {
 
 	it("几个工具各占一条,按开始顺序排", async () => {
 		H.toolEvents = [
-			start("0-0", "search_user", { keyword: "咩栗" }),
-			start("0-1", "get_user_info", { uid: "123" }),
+			start("0-0", "search_user", { keyword: "咩栗" }, { label: "搜索 UP 主", argText: "咩栗" }),
+			start("0-1", "get_user_info", { uid: "123" }, { label: "查看 UP 主资料", argText: "123" }),
 		];
 		await typeAndSend("查一下");
 		await release();
@@ -767,20 +788,21 @@ describe("AiChatDock — 工具调用小条", () => {
 		// 随实例一起没掉:主人正读着几百字的需求,女仆一说完就啪地合上。思考块那条
 		// 「不能在最后一刻塌下去」是同一类事故。
 		H.toolEvents = [
-			start("0-0", "create_skin", {
-				brief:
-					"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
-			}),
+			start(
+				"0-0",
+				"create_skin",
+				{ brief: LONG_BRIEF },
+				{ label: "制作皮肤", argText: LONG_BRIEF },
+			),
 			end("0-0", false),
 		];
 		H.replyTools = [
 			{
 				name: "create_skin",
-				args: {
-					brief:
-						"以《主播女孩重度依赖》超天酱为主题的暗色霓虹风格皮肤。整体氛围是赛博网络主播舞台的绚烂与危险感，暗色底上叠加糖果粉与薄荷青作为霓虹高光。",
-				},
+				args: { brief: LONG_BRIEF },
 				ok: false,
+				label: "制作皮肤",
+				argText: LONG_BRIEF,
 			},
 		];
 		await typeAndSend("做套皮肤");
@@ -803,7 +825,7 @@ describe("AiChatDock — 工具调用小条", () => {
 				role: "assistant",
 				content: "一共 3 位",
 				ts: "2026-07-24T00:00:01.000Z",
-				tools: [{ name: "list_subscriptions", args: {}, ok: true }],
+				tools: [{ name: "list_subscriptions", args: {}, ok: true, label: "查看订阅列表" }],
 			},
 		];
 		useAiChatStore.setState({ activeId: "c1" });

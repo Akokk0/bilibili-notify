@@ -2,7 +2,7 @@
 /**
  * `web_search` 痕迹的呈现 —— 「搜索中」状态与来源折叠列表。
  *
- * 搜索那几秒复用工具小条的三态(转圈 / 勾 / 叉),文案走 toolLabel:
+ * 搜索那几秒复用工具小条的三态(转圈 / 勾 / 叉),文案走 describeTool:
  * 「联网搜索『关键词』」—— 搜了什么比搜过更有用。搜完的**来源**(标题 + 链接)
  * 单独一块折叠列表:主人要能点开核对女仆的说法,但不点开时不占地方。
  * 落盘与在途两条路都要有 —— 重开会话时来源不该消失。
@@ -12,7 +12,7 @@ import type { AiChatMessageDTO } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { MessageList } from "../messages";
-import { toolLabel } from "../tools";
+import { describeTool } from "../tools";
 
 // Markdown chunk 是懒加载的,这里不测它 —— 换成同步纯文本渲染器。
 // (useChatMarkdown 是 messages.tsx 自己的 hook,mock 的是它 import 的懒 chunk。)
@@ -41,9 +41,11 @@ function mountList(props: Partial<Parameters<typeof MessageList>[0]> = {}) {
 	return render(<MessageList messages={[]} pending={null} busy={false} aiSelf="小绫" {...props} />);
 }
 
-describe("toolLabel × web_search", () => {
-	it("翻成「联网搜索」并带上搜索词", () => {
-		expect(toolLabel("web_search", { query: "b站 新闻" })).toBe("联网搜索「b站 新闻」");
+describe("describeTool × web_search", () => {
+	it("服务端下发的「联网搜索」标签带上搜索词", () => {
+		expect(describeTool({ name: "web_search", label: "联网搜索", argText: "b站 新闻" }).label).toBe(
+			"联网搜索「b站 新闻」",
+		);
 	});
 });
 
