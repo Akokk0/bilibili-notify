@@ -322,7 +322,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			return { input: m.generateSuperchatCard.mock.calls[0]?.[0], m };
 		}
 
-		// 验红:把 room-session.ts 里交给 `generateSuperchatCard` 的 `tier: event.tier` 删掉(或硬编成固定一档),这两条红;
+		// 验红:把 live/superchat.ts 里交给 `generateSuperchatCard` 的 `tier: event.tier` 删掉(或硬编成固定一档),这两条红;
 		// 把 `amount: event.amount` 换成别的,第一条红。
 		it("出卡输入是翻译出的事件:观众名、留言、金额、币种、按价格算出的档与消息自带的留言时长", async () => {
 			const { input } = await entryInputOf({ ...scBody, price: 120, durationSec: 300 });
@@ -439,7 +439,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 
 	describe("minSuperchatAmount 门槛:等于放行、低于拦", () => {
 		// 验红:把 interaction-gates.ts 里 `event.amount >= minAmount` 改成 `>`,「等于门槛」那条红;
-		// 把 room-session.ts 里调门槛的那一句整句删掉,「低于门槛」几条红。
+		// 把 live/superchat.ts 里调门槛的那一句整句删掉,「低于门槛」几条红。
 		it.each([
 			// [门槛, 这条 SC 的价格(元), 放行?]
 			[50, 49, false],
@@ -464,7 +464,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		});
 
 		// 会话接的是门槛函数(币种也看):B 站的翻译今天只产出 CNY,所以这里让翻译回一条美元的,钉住「门槛只在人民币时比」。
-		// 验红:把 room-session.ts 里的 `passesSuperchatMinAmount(event, …)` 换成直接拿 `ev.price` 与门槛比,这条红。
+		// 验红:把 live/superchat.ts 里的 `passesSuperchatMinAmount(event, …)` 换成直接拿 `ev.price` 与门槛比,这条红。
 		it("门槛按人民币算:事件的币种不是 CNY 时不比,放行(5 美元 < 门槛 30 也推)", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
@@ -633,7 +633,7 @@ describe("RoomSession.onGuardBuy", () => {
 
 		// 会话接的是 rank 门槛函数:事件没带 rank(档位由主播自定的体系)就没有可比的,放行。B 站的翻译一定带 rank,
 		// 这里让翻译回一条没带的,钉住会话比的是事件档位的 rank、而不是自己拿 `guard_level` 另算。
-		// 验红:把 room-session.ts 里的 `passesMembershipMinRank(event, …)` 换成拿 `ev.guardLevel` 与门槛比,这条红。
+		// 验红:把 live/membership.ts 里的 `passesMembershipMinRank(event, …)` 换成拿 `ev.guardLevel` 与门槛比,这条红。
 		it("事件档位没带 rank:门槛不比,放行", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
@@ -828,7 +828,7 @@ describe("RoomSession.onGuardBuy", () => {
 			]);
 		});
 
-		// 验红:把 room-session.ts 里交给 `interpolate` 的 `tier: event.tier.name` 换成空串,这条红。
+		// 验红:把 live/membership.ts 里交给 `interpolate` 的 `tier: event.tier.name` 换成空串,这条红。
 		// ㉓d 起 `{tier}` 是事件的档名(档位表里的名字),不再是 B 站消息自带的礼物名(`giftName`)—— 真数据里两者都是
 		// 「舰长 / 提督 / 总督」,这里故意让礼物名不一样来分开它们。
 		it("文案里的 {tier} 是事件的档名(舰长),不是消息带来的礼物名", async () => {
@@ -901,7 +901,7 @@ describe("RoomSession.onGuardBuy", () => {
 
 		// 回归:开了自定义文案、那一档的图片没填 → 推官方图。默认值里每档 `imageUrl` 就是空串,所以
 		// 「开了自定义文案但没填图」的人都会中;空串不是「缺」,`?? ` 兜不住,推出去的是一张地址为空的图。
-		// 验红:把 room-session.ts 里的 `custom.imageUrl || guardImg` 改回 `custom.imageUrl ?? guardImg`,
+		// 验红:把 live/membership.ts 里的 `custom.imageUrl || badgeUrl` 改回 `custom.imageUrl ?? badgeUrl`,
 		// 「空串」那一组红,「缺键」那一组仍绿(它本来就对)。
 		describe.each([
 			["空串", ""],
@@ -977,7 +977,7 @@ describe("RoomSession.onGuardBuy", () => {
 			return m.generateMembershipCard.mock.calls[0]?.[0];
 		}
 
-		// 验红:把 room-session.ts 里交给出卡入口的 `tier` 硬编码成固定一档(或漏掉 `announcement` / `color` / `icon` 任一项),
+		// 验红:把 live/membership.ts 里交给出卡入口的 `tier` 硬编码成固定一档(或漏掉 `announcement` / `color` / `icon` 任一项),
 		// 这两条红;把 `viewer: { name: event.viewer.name }` 换成别的名字,两条都红。
 		it("舰长:出卡输入的档来自档位表(档名、rank、档色、徽章、宣告语),观众与主播的名字来自事件与房间资料", async () => {
 			expect(await entryInputOf(guardBody)).toStrictEqual({
@@ -1007,7 +1007,7 @@ describe("RoomSession.onGuardBuy", () => {
 			});
 		});
 
-		// 验红:把 room-session.ts 里 `icon` 那一格改成 `icon: tier.icon`(回到档位表的地址),这条红。
+		// 验红:把 live/membership.ts 里 `icon` 那一格改成 `icon: tier.icon`(回到档位表的地址),这条红。
 		it("没抓到图标:出卡输入里没有 icon 这一格(徽章块自己收起),卡照出", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");

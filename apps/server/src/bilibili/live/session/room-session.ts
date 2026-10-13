@@ -1,13 +1,7 @@
-import {
-	type Disposable,
-	formatCount,
-	guardTierOf,
-	interpolate,
-	membershipTemplateOf,
-} from "@bilibili-notify/internal";
+import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import { passesMembershipMinRank } from "../../../live/interaction-gates";
 import { LivePushType } from "../../../live/live-types";
+import { pushMembership } from "../../../live/membership";
 import { pushSpecialDanmaku, pushSpecialUserEnter } from "../../../live/special-users";
 import { pushSuperchat } from "../../../live/superchat";
 import { fetchAvatar } from "../../images";
@@ -615,10 +609,9 @@ export class RoomSession extends RoomSessionBase {
 	 * 上舰:先翻成中立的 {@link MembershipEvent},认不出档位(`guard_level` 不是 1 / 2 / 3)就**丢弃并记一条警告**
 	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自档位表(`guardTierOf`)。
 	 *
-	 * 门槛(㉓d)按事件的档位 `tier.rank` 比:低于 `minGuardRank` 才拦,没配不拦 —— 这里不再有任何地方拿原始 `guard_level` 比大小。
-	 * 自定义文案那一支按事件的档位(`tier.key`)取那一档的文案与图片({@link membershipTemplateOf}:没填的格用体系默认),
-	 * 文字由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`,图片没填就用档位表里该档的徽章。出卡那一支名字用事件里的、不查用户;
-	 * 头像帧里没有,出卡前为它查一次接口再抓进图库(失败只是没有观众头像,卡照出)。出不了卡照旧退到「官方图 + 一句文字」。
+	 * 门槛(㉓d)、自定义文案、出卡、兜底这几支都在核心的 `live/membership.ts`(`pushMembership`);这里只管翻事件、查档位表、
+	 * 挑生效的文案包,并把徽章 / 观众头像的取法与发送(不过串行闸)绑进去。头像帧里没有,出卡前为它查一次接口再抓进图库
+	 * (失败只是没有观众头像,卡照出)。
 	 */
 	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
@@ -630,107 +623,54 @@ export class RoomSession extends RoomSessionBase {
 			);
 			return;
 		}
-		// minGuardRank 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
-		if (!passesMembershipMinRank(event, this.sub.minGuardRank)) return;
 		const masterName = this.masterInfo?.username ?? "";
-		const guardImg = tier.icon?.url ?? "";
-		// 订阅自己开了自定义文案就用订阅的整份,否则用全局的。
-		const effectiveGuardTemplate = this.sub.guardTemplate.enabled
-			? this.sub.guardTemplate
-			: this.ctx.config.guardTemplate;
-		if (effectiveGuardTemplate.enabled) {
-			// 文案和图片取同一档:哪一档上舰,就用哪一档的;那一档没填的格用体系默认。
-			const custom = membershipTemplateOf(effectiveGuardTemplate, event.tier.key);
-			// 占位符走 `interpolate`;盘上文案里字面的 `\n`(反斜杠加 n)展开成真换行,照今天的行为。
-			const text = interpolate(custom.template, {
-				viewer: event.viewer.name,
-				name: masterName,
-				tier: event.tier.name,
-			}).replaceAll("\\n", "\n");
-			if (this.ctx.isDisposed()) return;
-			// 图片没填就回落该档的官方徽章。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
-			await this.ctx.push.push({
-				uid: this.sub.uid,
-				type: LivePushType.LiveGuardBuy,
-				anchors: [
-					{
-						role: "main",
-						messages: [
-							this.ctx.contentBuilder.message([
-								this.ctx.contentBuilder.image(custom.imageUrl || guardImg),
-								this.ctx.contentBuilder.text(text),
-							]),
-						],
-					},
-				],
-			});
-			return;
-		}
-		if (this.ctx.imageRenderer?.generateMembershipCard) {
-			try {
-				const guardStyle = this.resolvedCardStyle("membership");
+		const renderer = this.ctx.imageRenderer;
+		const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
+		await pushMembership(
+			{
+				event,
+				tier,
+				// minGuardRank 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
+				minRank: this.sub.minGuardRank,
+				// 订阅自己开了自定义文案就用订阅的整份,否则用全局的。
+				template: this.sub.guardTemplate.enabled
+					? this.sub.guardTemplate
+					: this.ctx.config.guardTemplate,
+				creator: {
+					name: masterName,
+					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
+				},
+				cardStyle: this.resolvedCardStyle("membership"),
+				...this.skinChoice(),
+				fallbackText: `【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
+			},
+			{
+				renderer: renderer?.generateMembershipCard ? renderer : null,
 				// 徽章图标在图库里,开机那一轮没抓到的这时补一次(两次尝试之间有最小间隔,不会每条上舰都打一次网络);
 				// 还是没有就不带 `icon`,卡上的徽章块自己收起。
-				await this.ctx.guardIcons.ensure();
-				const icon = this.ctx.guardIcons.iconOf(tier.key);
-				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出);主播的读订阅资料。
-				const viewerAvatar = await fetchGuardViewerAvatar(
-					event.viewer.id,
-					this.sub.uid,
-					this.ctx.api,
-					{ images: this.ctx.imageFetcher, logger: this.ctx.logger },
-				);
-				const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
-				const buf = await this.ctx.imageRenderer.generateMembershipCard(
-					{
-						viewer: {
-							name: event.viewer.name,
-							...(viewerAvatar === undefined ? {} : { avatar: viewerAvatar }),
-						},
-						creator: {
-							name: masterName,
-							...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
-						},
-						tier: {
-							name: tier.name,
-							rank: tier.rank,
-							...(icon ? { icon } : {}),
-							color: tier.color,
-							colorEnd: tier.colorEnd,
-							announcement: tier.announcement,
-						},
-					},
-					{ ...(guardStyle.enable ? guardStyle : undefined), ...this.skinChoice() },
-				);
-				if (this.ctx.isDisposed()) return;
-				await this.ctx.push.push({
-					uid: this.sub.uid,
-					type: LivePushType.LiveGuardBuy,
-					anchors: [{ role: "main", messages: [this.ctx.contentBuilder.image(buf, "image/jpeg")] }],
-				});
-				return;
-			} catch (e) {
-				this.ctx.logger.error(`[guard] 生成上舰图片失败：${(e as Error).message}`);
-			}
-		}
-		if (this.ctx.isDisposed()) return;
-		await this.ctx.push.push({
-			uid: this.sub.uid,
-			type: LivePushType.LiveGuardBuy,
-			anchors: [
-				{
-					role: "main",
-					messages: [
-						this.ctx.contentBuilder.message([
-							this.ctx.contentBuilder.image(guardImg),
-							this.ctx.contentBuilder.text(
-								`【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
-							),
-						]),
-					],
+				fetchTierIcon: async () => {
+					await this.ctx.guardIcons.ensure();
+					return this.ctx.guardIcons.iconOf(tier.key);
 				},
-			],
-		});
+				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出)。
+				fetchViewerAvatar: () =>
+					fetchGuardViewerAvatar(event.viewer.id, this.sub.uid, this.ctx.api, {
+						images: this.ctx.imageFetcher,
+						logger: this.ctx.logger,
+					}),
+				content: this.ctx.contentBuilder,
+				// 不过串行闸(三处从来都是直接推)。
+				send: async (message) => {
+					if (this.ctx.isDisposed()) return;
+					await this.ctx.push.push({
+						uid: this.sub.uid,
+						type: LivePushType.LiveGuardBuy,
+						anchors: [{ role: "main", messages: [message] }],
+					});
+				},
+				logger: this.ctx.logger,
+			},
+		);
 	}
 
 	private async onLiveStart(): Promise<void> {
