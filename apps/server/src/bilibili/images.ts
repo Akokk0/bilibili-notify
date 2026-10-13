@@ -181,13 +181,16 @@ async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undef
 	return undefined;
 }
 
-/** 一批活同时最多跑 {@link FETCH_CONCURRENCY} 个(每个活自己吞掉失败,不抛)。 */
-async function runLimited(jobs: Array<() => Promise<void>>): Promise<void> {
+/** 一批活同时最多跑 `limit` 个(默认 {@link FETCH_CONCURRENCY};每个活自己吞掉失败,不抛)。 */
+export async function runLimited(
+	jobs: Array<() => Promise<void>>,
+	limit: number = FETCH_CONCURRENCY,
+): Promise<void> {
 	const queue = [...jobs];
 	const worker = async (): Promise<void> => {
 		for (let job = queue.shift(); job !== undefined; job = queue.shift()) await job();
 	};
-	await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, queue.length) }, worker));
+	await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, worker));
 }
 
 /**

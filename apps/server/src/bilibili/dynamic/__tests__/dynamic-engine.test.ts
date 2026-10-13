@@ -1179,6 +1179,121 @@ describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好�
 	});
 });
 
+// 一轮里按创作者分组:同一位的几条照旧一条接一条交,不同创作者的链同时跑(同时最多 4 条),
+// 一位的图抓得慢不再堵住别人;一轮仍是所有链都跑完才算结束。
+describe("DynamicEngine.detectDynamics — 按创作者分组并行生产", () => {
+	const picUrl = (uid: number, n = 1) => `https://i0.hdslb.com/bfs/new_dyn/u${uid}-${n}.jpg`;
+	const picOf = (uid: number, pubTs: number, n = 1) =>
+		makeItem({ uid, pubTs, drawPics: [picUrl(uid, n)] });
+	/** 让已经能往前走的微任务 / 定时器都跑完(手动放行的 promise 之外不真等时间)。 */
+	const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+	/** 给指定地址的抓图挂一道手动放行的闸;没挂闸的地址立刻回。 */
+	function holdFetches(b: EngineBag, urls: string[]) {
+		const gates = new Map<string, () => void>();
+		const waits = new Map(
+			urls.map((url) => [url, new Promise<void>((r) => gates.set(url, r))] as const),
+		);
+		// 抓图服务拿到的地址会带缩放后缀(`@…w_…webp`),按前缀认挂的是哪一张。
+		const heldBy = (url: string) => urls.find((held) => url.startsWith(held));
+		b.fetchImage.mockImplementation(async (url: string) => {
+			const held = heldBy(url);
+			if (held !== undefined) await waits.get(held);
+			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
+		});
+		return (url: string) => gates.get(url)?.();
+	}
+	const deliveredUids = (b: EngineBag): string[] => b.reportPost.mock.calls.map(([uid]) => uid);
+	const deliveredUrls = (b: EngineBag): Array<string | undefined> =>
+		b.reportPost.mock.calls.map(([, report]) => report.post.images?.[0]?.url);
+
+	// 验红:把分组并行改回逐条串行(`for` + `await produce`),这条红(乙要等甲)。
+	it("甲的图抓得慢:乙的作品不等甲的抓图放行就交出;放行后甲也交,两位锚点各推到自己的发布时间", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([picOf(1, 100), picOf(2, 200)]));
+		seed(b.engine, "1", 0);
+		seed(b.engine, "2", 0);
+		const release = holdFetches(b, [picUrl(1)]);
+
+		const round = detect(b.engine);
+		await settle();
+		expect(deliveredUids(b)).toEqual(["2"]); // 乙先交,甲还卡在抓图里
+
+		release(picUrl(1));
+		await round;
+		expect(deliveredUids(b)).toEqual(["2", "1"]);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(100);
+		expect(priv(b.engine).postAnchors.get("2")).toBe(200);
+	});
+
+	// 验红:把组内串行改成全并行,第二条抢在第一条前面交,这条红。
+	it("同一位创作者两条、第一条的抓图挂着:第二条不抢先,放行后按动态流的次序交", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([picOf(1, 200, 1), picOf(1, 100, 2)]));
+		seed(b.engine, "1", 0);
+		const release = holdFetches(b, [picUrl(1, 1)]);
+
+		const round = detect(b.engine);
+		await settle();
+		expect(b.reportPost).not.toHaveBeenCalled();
+		expect(b.fetchImage).toHaveBeenCalledTimes(1); // 第二条连抓图都没开始
+
+		release(picUrl(1, 1));
+		await round;
+		expect(deliveredUrls(b)).toEqual([picUrl(1, 1), picUrl(1, 2)]);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(200);
+	});
+
+	it("并行有上限:同时在抓图的创作者不超过 4 位;放行一位,下一位才开始", async () => {
+		const b = makeEngine();
+		const uids = [1, 2, 3, 4, 5, 6];
+		b.fetchAllDynamic.mockResolvedValue(resp(uids.map((uid) => picOf(uid, 100 + uid))));
+		for (const uid of uids) seed(b.engine, String(uid), 0);
+		const release = holdFetches(
+			b,
+			uids.map((uid) => picUrl(uid)),
+		);
+
+		const round = detect(b.engine);
+		await settle();
+		expect(b.fetchImage).toHaveBeenCalledTimes(4);
+
+		release(picUrl(1));
+		await settle();
+		expect(b.fetchImage).toHaveBeenCalledTimes(5);
+		expect(deliveredUids(b)).toEqual(["1"]);
+
+		for (const uid of uids) release(picUrl(uid));
+		await round;
+		expect(b.reportPost).toHaveBeenCalledTimes(6);
+		expect(b.fetchImage).toHaveBeenCalledTimes(6);
+	});
+
+	it("一条链里 produce 之外意外抛错:别的创作者的链照常交,整轮正常结束,锚点照常回写(出错那条也前移)", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([picOf(1, 100), picOf(1, 90, 2), picOf(2, 200), picOf(3, 300)]),
+		);
+		for (const uid of ["1", "2", "3"]) seed(b.engine, uid, 0);
+		// produce 自己吞错;这里直接让它在甲那条上拒绝,验的是并发那一层不把一个拒绝变成整轮失败。
+		const engine = b.engine as unknown as {
+			produce: (item: Dynamic, uid: string, postTime: number) => Promise<void>;
+		};
+		const realProduce = engine.produce.bind(engine);
+		engine.produce = async (item, uid, postTime) => {
+			if (uid === "1" && postTime === 100) throw new Error("意外炸了");
+			return realProduce(item, uid, postTime);
+		};
+
+		await expect(detect(b.engine)).resolves.toBeUndefined();
+
+		expect(deliveredUids(b).sort()).toEqual(["1", "2", "3"]); // 甲的第二条也照交
+		expect(priv(b.engine).postAnchors.get("1")).toBe(100);
+		expect(priv(b.engine).postAnchors.get("2")).toBe(200);
+		expect(priv(b.engine).postAnchors.get("3")).toBe(300);
+		expect(b.logs.some((l) => l.level === "error" && l.msg.includes("意外炸了"))).toBe(true);
+	});
+});
+
 describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 	const liveRcmd = () => makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_LIVE_RCMD" });
 

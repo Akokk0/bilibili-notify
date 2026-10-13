@@ -11,7 +11,7 @@ import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
-import { fetchPostImages, type ImagesDeps } from "../images";
+import { fetchPostImages, type ImagesDeps, runLimited } from "../images";
 import type { ProblemLayers } from "../problem-layers";
 import { PROBLEM_TEXTS } from "../problem-texts";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
@@ -29,6 +29,12 @@ const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
 const RISK_PATH = "dynamic";
 /** 拉动态撞上风控以外的错误码时报给问题表的 code。 */
 const FETCH_FAILED_CODE = "dynamic_fetch_failed";
+
+/**
+ * 一轮里同时在生产的创作者链不超过这么多条。要有上限:每条作品内部已经最多同时抓 3 张图
+ * (`FETCH_CONCURRENCY`),链数不设限的话叠起来会把对图床的并发无限放大。
+ */
+const POST_PRODUCE_CONCURRENCY = 4;
 
 /** B 站的开播伪动态:开播由直播引擎推,动态这边不交作品。 */
 const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
@@ -522,6 +528,9 @@ export class DynamicEngine {
 			advanced.set(u, Math.max(advanced.get(u) ?? 0, ts));
 		};
 
+		// 过了闸、等着生产的动态,按创作者分组(Map 保持各位第一次出现的次序,组内保持动态流的次序)。
+		const pending = new Map<string, Array<{ item: Dynamic; postTime: number }>>();
+
 		for (const item of content.data.items) {
 			if (!item) continue;
 
@@ -558,9 +567,29 @@ export class DynamicEngine {
 				continue;
 			}
 
-			await this.produce(item, uid, postTime);
-			markAdvance(uid, postTime);
+			const group = pending.get(uid);
+			if (group) group.push({ item, postTime });
+			else pending.set(uid, [{ item, postTime }]);
 		}
+
+		// 一位创作者的图抓得慢,不该堵住别人:组内照旧一条接一条(交出的先后与动态流一致),组与组之间同时跑(有上限)。
+		// 一轮仍是所有链都跑完才算结束、锚点在这之后才回写。`produce` 自己不抛;这里再兜一层,
+		// 免得意外的拒绝把整轮拖垮 —— 出错那条照样前移(恰好一次)。
+		await runLimited(
+			[...pending].map(([uid, entries]) => async () => {
+				for (const { item, postTime } of entries) {
+					try {
+						await this.produce(item, uid, postTime);
+					} catch (e) {
+						this.logger.error(
+							`[detector] 生产动态时意外出错 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
+						);
+					}
+					markAdvance(uid, postTime);
+				}
+			}),
+			POST_PRODUCE_CONCURRENCY,
+		);
 
 		// per-uid 锚点单调推进:取 max(现值, 本轮记下的最大 pub_ts),绝不回退。
 		for (const [uid, latest] of advanced) {
