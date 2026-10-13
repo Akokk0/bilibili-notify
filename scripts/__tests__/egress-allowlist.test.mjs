@@ -51,20 +51,20 @@ export const ALLOWLIST = {
 	// BN 自己的出口:应用内更新、拓展市场、签名清单。
 	"apps/server/src/update/fetch-through-mirrors.ts": "BN 自己的出口:更新、拓展市场、签名清单",
 	"packages/ai/src/web-search.ts": "BN 自己的出口:联网搜索",
+	// 设置页的 AI 连通测试(3b-02 从路由挪来:路由不出网,拿一份服务商配置去探活是 AI 包的事)。
+	"packages/ai/src/provider-probe.ts": "BN 自己的出口:AI 服务商的连通探活",
 	"apps/server/src/devtools/fake-bridge.ts": "开发版专属的假桥",
 };
 
 /**
  * 棘轮表:文件 → 出站原语的上限(勘察时的实数)。只许往下调,到 3b 末清零。
- * 平台适配器的出口随连接与适配器搬走;出图器拉图也有去处;
- * `routes/settings.ts` 是设置页的 AI 连通测试写在了路由里。
+ * 平台适配器的出口随连接与适配器搬走;出图器拉图也有去处。
  */
 export const RATCHET = {
 	"apps/server/src/platforms/qq-official.ts": 8,
 	"apps/server/src/platforms/onebot.ts": 2,
 	"apps/server/src/platforms/qq-bind.ts": 1,
 	"apps/server/src/platforms/webhook.ts": 1,
-	"apps/server/src/routes/settings.ts": 1,
 };
 
 /**
