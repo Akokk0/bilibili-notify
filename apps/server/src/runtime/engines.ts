@@ -89,7 +89,7 @@ import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkParsingPolicies } from "../link-preview/link-scope.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
-import { rotateLiveCover } from "../live/live-settings.js";
+import { type LiveWorkSettings, rotateLiveCover } from "../live/live-settings.js";
 import { resolveDynamicColorOptions } from "../posts/card-style.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
@@ -1718,27 +1718,6 @@ function buildLiveSubsView(
 	}
 	return view;
 }
-
-/**
- * 一条订阅折好的**直播设置** —— 开播 / 正在直播 / 下播三张卡共用的那几格(ADR-0019 决策 65 / 67):
- * 两个特性开关、卡片样式(订阅的直播封面)、皮肤、消息版式、三句文案模板,以及推送频率 / 重启补推 /
- * 断流接续这几格按 UP 折好的值。
- */
-export type LiveWorkSettings = Pick<
-	LiveSubView,
-	| "liveStart"
-	| "liveStreaming"
-	| "liveEnd"
-	| "customCardStyle"
-	| "cardSkin"
-	| "cardSkinKnobs"
-	| "messageLayout"
-	| "customLiveMsg"
-	| "streamingIntervalHours"
-	| "catchUpOnBoot"
-	| "liveEndGrace"
-	| "liveEndGraceMinutes"
->;
 
 /**
  * 一条订阅(B 站或拓展)→ 直播设置(ADR-0019 决策 65 / 67)。B 站直播引擎的视图(`buildLiveSubViewSingle`)

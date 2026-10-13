@@ -18,7 +18,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import type { LiveWorkSettings } from "../engines.js";
+import type { LiveWorkSettings } from "../../live/live-settings.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
 import {
 	createExtensionLiveSessions,

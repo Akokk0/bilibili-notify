@@ -1,5 +1,6 @@
 import { applyTemplate, DEFAULT_LIVE_TEMPLATES, renderLiveText } from "../../live/live-text";
-import type { CustomLiveMsgLike, SubItemView } from "./push-like";
+import type { CustomLiveMsgLike } from "../../live/live-types";
+import type { SubItemView } from "./push-like";
 import type { MasterInfo } from "./types";
 
 /** Build the canonical room link from `LiveRoomResponse.data` style fields. */

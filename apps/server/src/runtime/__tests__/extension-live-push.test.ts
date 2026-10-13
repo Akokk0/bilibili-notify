@@ -32,8 +32,8 @@ import {
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
 import type { LiveNotifySend } from "../../live/live-notify.js";
+import type { LiveWorkSettings } from "../../live/live-settings.js";
 import { LivePushType } from "../../live/live-types.js";
-import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";
 import {

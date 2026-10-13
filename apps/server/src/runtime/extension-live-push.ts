@@ -23,9 +23,9 @@ import {
 	type LiveNotifySend,
 	pushLiveNotify,
 } from "../live/live-notify.js";
+import type { LiveWorkSettings } from "../live/live-settings.js";
 import { type LiveTextKind, renderLiveText } from "../live/live-text.js";
 import { type CustomCardStyleLike, LivePushType } from "../live/live-types.js";
-import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
 import type {
 	ExtensionLiveSession,

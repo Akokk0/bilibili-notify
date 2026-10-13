@@ -83,6 +83,13 @@ export interface CustomCardStyleLike {
  */
 export type PickLiveCover = (scopeKey: string, images: string[]) => string | undefined;
 
+export interface CustomLiveMsgLike {
+	enable: boolean;
+	customLiveStart?: string;
+	customLiveStreaming?: string;
+	customLiveEnd?: string;
+}
+
 export interface CustomSpecialDanmakuUsersLike {
 	enable: boolean;
 	specialDanmakuUsers?: string[];

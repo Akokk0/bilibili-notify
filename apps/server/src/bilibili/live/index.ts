@@ -1,10 +1,11 @@
 // B 站房间数据 → 中立的直播卡输入(ADR-0019 决策 65 / 68)。直播引擎的推送与面板的真实拉取预览共用这一份,
 // 别再各翻一遍。
+
+export type { CustomLiveMsgLike } from "../../live/live-types";
 export { type LiveRoomFields, liveCardInputFromRoomInfo } from "./live-card-input";
 // B 站上舰 / 醒目留言事件 → 中立的会员事件与醒目留言事件(㉓b)。
 export { membershipEventFromLiveEvent } from "./membership-event";
 export {
-	type CustomLiveMsgLike,
 	type CustomLiveSummaryLike,
 	type DynamicScopedChange,
 	type LivePush,
