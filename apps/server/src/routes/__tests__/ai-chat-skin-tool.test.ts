@@ -274,7 +274,10 @@ describe("皮肤工坊模式", () => {
 		const first = lastTools()?.[0];
 		await first.execute({ brief: "一套" });
 		await first.execute({ brief: "两套" });
-		await expect(first.execute({ brief: "三套" })).rejects.toThrow();
+		await expect(first.execute({ brief: "三套" })).resolves.toMatchObject({
+			ok: false,
+			code: "rate_limited",
+		});
 
 		await inSkinMode(app);
 		expect(await lastTools()?.[0].execute({ brief: "新一轮" })).toMatchObject({

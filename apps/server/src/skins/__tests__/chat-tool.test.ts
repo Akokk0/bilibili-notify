@@ -172,7 +172,11 @@ describe("create_skin × 主人贴的图", () => {
 		const g = genOf(JSON.stringify(WALLPAPER_SKIN));
 		await expect(
 			toolWithImage(g, []).execute({ brief: "暗色", wallpaper: "true" }),
-		).rejects.toThrow(/贴|发|图/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: expect.stringMatching(/贴|发|图/),
+		});
 		expect(g).not.toHaveBeenCalled();
 	});
 
@@ -250,15 +254,22 @@ describe("create_skin 执行", () => {
 		expect(store.getActive()).toEqual({ light: null, dark: null });
 	});
 
-	it("生成两次都不过 → 抛错,错误里带原因,库里不留半个皮肤", async () => {
+	it("生成两次都不过 → 按失败返回,话里带原因,库里不留半个皮肤", async () => {
 		const tool = toolWith(genOf("这不是 JSON", "还是不是"));
-		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/JSON|校验|失败/);
+		await expect(tool.execute({ brief: "暗色" })).resolves.toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: expect.stringMatching(/JSON|校验|失败/),
+		});
 		expect(await store.list()).toHaveLength(0);
 	});
 
 	it("brief 是空白 → 当场拒,不白烧一次生成", async () => {
 		const g = genOf(JSON.stringify(DARK_SKIN));
-		await expect(toolWith(g).execute({ brief: "   " })).rejects.toThrow();
+		await expect(toolWith(g).execute({ brief: "   " })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		expect(g).not.toHaveBeenCalled();
 	});
 
@@ -267,7 +278,11 @@ describe("create_skin 执行", () => {
 		const tool = toolWith(g);
 		await tool.execute({ brief: "一套" });
 		await tool.execute({ brief: "两套" });
-		await expect(tool.execute({ brief: "三套" })).rejects.toThrow(/两套|上限|够/);
+		await expect(tool.execute({ brief: "三套" })).resolves.toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			message: expect.stringMatching(/两套|上限|够/),
+		});
 
 		expect(g).toHaveBeenCalledTimes(2);
 		expect(await store.list()).toHaveLength(2);
@@ -281,7 +296,10 @@ describe("create_skin 执行", () => {
 		const tool = firstOf(
 			createSkinChatTools({ skinStore: store, generator: () => ({ generateRaw: g }) }),
 		);
-		await expect(tool.execute({ brief: "先砸一次" })).rejects.toThrow();
+		await expect(tool.execute({ brief: "先砸一次" })).resolves.toMatchObject({
+			ok: false,
+			code: "unavailable",
+		});
 		await tool.execute({ brief: "一套" });
 		await tool.execute({ brief: "两套" });
 		expect(await store.list()).toHaveLength(2);
@@ -293,16 +311,27 @@ describe("create_skin 执行", () => {
 		const g = genOf("这不是 JSON");
 		const tool = toolWith(g);
 		for (const n of ["一", "二", "三"]) {
-			await expect(tool.execute({ brief: `第${n}次` })).rejects.toThrow();
+			await expect(tool.execute({ brief: `第${n}次` })).resolves.toMatchObject({
+				ok: false,
+				code: "unavailable",
+			});
 		}
 		const burned = g.mock.calls.length;
-		await expect(tool.execute({ brief: "第四次" })).rejects.toThrow(/太多次|别再重试/);
+		await expect(tool.execute({ brief: "第四次" })).resolves.toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			message: expect.stringMatching(/太多次|别再重试/),
+		});
 		// 第四次连生成都没开跑。
 		expect(g.mock.calls.length).toBe(burned);
 	});
 
-	it("AI 未就绪(热读口回 null)→ 抛错指路 AI 设置页", async () => {
+	it("AI 未就绪(热读口回 null)→ 失败(not_configured)指路 AI 设置页", async () => {
 		const tool = firstOf(createSkinChatTools({ skinStore: store, generator: () => null }));
-		await expect(tool.execute({ brief: "暗色" })).rejects.toThrow(/智能女仆|AI/);
+		await expect(tool.execute({ brief: "暗色" })).resolves.toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: expect.stringMatching(/智能女仆|AI/),
+		});
 	});
 });

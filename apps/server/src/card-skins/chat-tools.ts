@@ -33,6 +33,7 @@ import {
 	type CardSkinManifest,
 	cardSkinBytes,
 	DEFAULT_CARD_SKIN,
+	fail,
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
@@ -110,85 +111,97 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		touched.set(id, kinds);
 	}
 
-	/** 要碰一套还没碰过的 → 先过「一轮两套」这道闸。 */
-	function assertBudget(id?: string): void {
-		if (id !== undefined && touched.has(id)) return;
+	/** 要碰一套还没碰过的 → 先过「一轮两套」这道闸(我们自己给这一轮设的限额)。 */
+	function checkBudget(id?: string): Result {
+		if (id !== undefined && touched.has(id)) return ok();
 		if (touched.size >= MAX_SKINS_PER_TURN) {
-			throw new Error(
+			return fail(
+				"rate_limited",
 				`这一轮已经碰了 ${MAX_SKINS_PER_TURN} 套皮肤,够多了 —— 先请主人看看效果,想再动别的等下一句话。`,
 			);
 		}
+		return ok();
 	}
 
 	/** 读的目标:跟着改道走(读到的是这场对话改过的那份),但不复制。 */
-	function readable(raw: string | undefined): { id: string; manifest: CardSkinManifest } {
+	function readable(raw: string | undefined): Result<{ id: string; manifest: CardSkinManifest }> {
 		const asked = text(raw, "skin");
-		const copy = forks.get(asked);
-		const id = copy !== undefined && store.has(copy) ? copy : asked;
+		if (!asked.ok) return asked;
+		const copy = forks.get(asked.value);
+		const id = copy !== undefined && store.has(copy) ? copy : asked.value;
 		const manifest = store.get(id);
 		if (!manifest) {
-			throw new Error(`没有 id 为「${asked}」的皮肤 —— 先用 ${T.listSkins} 看看有哪些`);
+			return fail(
+				"not_found",
+				`没有 id 为「${asked.value}」的皮肤 —— 先用 ${T.listSkins} 看看有哪些`,
+			);
 		}
-		return { id, manifest };
+		return ok({ id, manifest });
 	}
 
 	/** 写的目标:别人的先复制一份(决策 18),账本当场落盘。 */
 	async function writable(
 		raw: string | undefined,
-	): Promise<{ id: string; manifest: CardSkinManifest; note: string }> {
-		const asked = text(raw, "skin");
+	): Promise<Result<{ id: string; manifest: CardSkinManifest; note: string }>> {
+		const askedText = text(raw, "skin");
+		if (!askedText.ok) return askedText;
+		const asked = askedText.value;
 		const copy = forks.get(asked);
 		if (copy !== undefined) {
 			const manifest = store.get(copy);
 			if (manifest) {
-				assertBudget(copy);
-				return { id: copy, manifest, note: "" };
+				const budget = checkBudget(copy);
+				if (!budget.ok) return budget;
+				return ok({ id: copy, manifest, note: "" });
 			}
 			// 副本被主人删了:当原件没复制过,下面重新复制一份。
 		}
 		const source = store.get(asked);
 		if (!source) {
-			throw new Error(`没有 id 为「${asked}」的皮肤 —— 先用 ${T.listSkins} 看看有哪些`);
+			return fail("not_found", `没有 id 为「${asked}」的皮肤 —— 先用 ${T.listSkins} 看看有哪些`);
 		}
 		if (owned.has(asked)) {
-			assertBudget(asked);
-			return { id: asked, manifest: source, note: "" };
+			const budget = checkBudget(asked);
+			if (!budget.ok) return budget;
+			return ok({ id: asked, manifest: source, note: "" });
 		}
-		assertBudget();
+		const budget = checkBudget();
+		if (!budget.ok) return budget;
 		const { id } = await store.duplicate(asked);
 		forks.set(asked, id);
 		owned.add(id);
 		await deps.record({ fork: { from: asked, to: id } });
 		const manifest = store.get(id);
-		if (!manifest) throw new Error(`复制出来的皮肤 ${id} 读不到了`);
-		return {
+		if (!manifest) return fail("unavailable", `复制出来的皮肤 ${id} 读不到了`);
+		return ok({
 			id,
 			manifest,
 			note: `「${source.name}」原件一个字节没动,改的是复制出来的「${manifest.name}」(id: ${id});这场对话里之后照旧用原来的 id,会自动落到这份上。\n`,
-		};
+		});
 	}
 
 	/** 存盘。校验不过的原因逐条带回给模型,它才知道改哪。 */
-	async function save(id: string, manifest: unknown): Promise<string[]> {
+	async function save(id: string, manifest: unknown): Promise<Result<{ warnings: string[] }>> {
 		try {
-			return (await store.save(id, manifest)).warnings;
+			return ok({ warnings: (await store.save(id, manifest)).warnings });
 		} catch (e) {
 			if (e instanceof CardSkinPackageError) {
-				throw new Error(`没存上,校验没过:${e.errors.join(";")}`);
+				return fail("invalid", `没存上,校验没过:${e.errors.join(";")}`);
 			}
 			throw e;
 		}
 	}
 
 	/** 这种卡已经写过才能改块;没写过就指路 write_card。 */
-	function cardOf(manifest: CardSkinManifest, kind: CardKind): Card {
+	function cardOf(manifest: CardSkinManifest, kind: CardKind): Result<{ card: Card }> {
 		const card = manifest.cards[kind];
 		if (!card) {
-			throw new Error(
+			return fail(
+				"not_found",
 				`这套还没写${KIND_NAMES[kind]} —— 先用 ${T.writeCard} 写整张(不知道怎么排就 ${T.readCard} 默认皮肤照着改)`,
 			);
 		}
-		return card;
+		return ok({ card });
 	}
 
 	const listSkins: ExtraTool = {
@@ -235,8 +248,12 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args) {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const { id, manifest } = readable(args.skin);
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const got = readable(args.skin);
+			if (!got.ok) return got;
+			const { id, manifest } = got;
 			const head = `「${manifest.name}」(id: ${id})的${KIND_NAMES[kind]}`;
 			const knobs = `旋钮(只读,CSS 里可以引用):\n${knobLines(manifest.knobs ?? [])}`;
 			const card = manifest.cards[kind];
@@ -262,13 +279,20 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args) {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const blockId = text(args.block, "block");
-			const { id, manifest } = readable(args.skin);
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const blockGot = text(args.block, "block");
+			if (!blockGot.ok) return blockGot;
+			const blockId = blockGot.value;
+			const got = readable(args.skin);
+			if (!got.ok) return got;
+			const { id, manifest } = got;
 			const card = manifest.cards[kind];
 			const block = (card ?? DEFAULT_CARD_SKIN.cards[kind])?.blocks.find((b) => b.id === blockId);
 			if (!block) {
-				throw new Error(
+				return fail(
+					"not_found",
 					`${KIND_NAMES[kind]}里没有 id 为「${blockId}」的块 —— 先用 ${T.readCard} 看有哪些`,
 				);
 			}
@@ -298,8 +322,12 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args): Promise<Result<ExtraToolResult>> {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const { id, manifest } = readable(args.skin);
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const got = readable(args.skin);
+			if (!got.ok) return got;
+			const { id, manifest } = got;
 			const shot = deps.shoot ? await deps.shoot(id, kind) : null;
 			if (!shot) {
 				return ok({
@@ -349,33 +377,48 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args) {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const raw = json(args.blocks, "blocks");
-			if (!Array.isArray(raw)) throw new Error("blocks 必须是块的数组");
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const rawGot = json(args.blocks, "blocks");
+			if (!rawGot.ok) return rawGot;
+			const raw = rawGot.value;
+			if (!Array.isArray(raw)) return fail("invalid", "blocks 必须是块的数组");
 			const target = await writable(args.skin);
+			if (!target.ok) return target;
 			const old = target.manifest.cards[kind];
 			const oldAssets = new Map((old?.blocks ?? []).map((b) => [b.id, b.assets]));
-			const blocks = raw.map((b, i) => {
-				const block = fromModel(b, `blocks[${i}]`);
+			const blocks: Array<Record<string, unknown>> = [];
+			for (const [i, b] of raw.entries()) {
+				const got = fromModel(b, `blocks[${i}]`);
+				if (!got.ok) return got;
+				const block = got.value;
 				const kept = typeof block.id === "string" ? oldAssets.get(block.id) : undefined;
-				return kept ? { ...block, assets: kept } : block;
-			});
+				blocks.push(kept ? { ...block, assets: kept } : block);
+			}
+			const widthGot =
+				args.width !== undefined ? num(args.width, "width") : ok({ value: undefined });
+			if (!widthGot.ok) return widthGot;
+			const columns = args.columns !== undefined ? nullable(args.columns, "columns") : undefined;
+			if (columns && !columns.ok) return columns;
+			const gap = args.gap !== undefined ? nullable(args.gap, "gap") : undefined;
+			if (gap && !gap.ok) return gap;
+			const bleed = args.bleed !== undefined ? nullable(args.bleed, "bleed") : undefined;
+			if (bleed && !bleed.ok) return bleed;
 			const card = compact({
-				width:
-					args.width !== undefined
-						? num(args.width, "width")
-						: (old?.width ?? DEFAULT_CARD_SKIN.cards[kind]?.width),
-				columns: args.columns !== undefined ? nullable(args.columns, "columns") : old?.columns,
-				gap: args.gap !== undefined ? nullable(args.gap, "gap") : old?.gap,
-				bleed: args.bleed !== undefined ? nullable(args.bleed, "bleed") : old?.bleed,
+				width: widthGot.value ?? old?.width ?? DEFAULT_CARD_SKIN.cards[kind]?.width,
+				columns: columns ? columns.value : old?.columns,
+				gap: gap ? gap.value : old?.gap,
+				bleed: bleed ? bleed.value : old?.bleed,
 				css: args.css !== undefined ? args.css || undefined : old?.css,
 				assets: old?.assets,
 				blocks,
 			});
-			const warnings = await save(target.id, withCard(target.manifest, kind, card));
+			const saved = await save(target.id, withCard(target.manifest, kind, card));
+			if (!saved.ok) return saved;
 			touch(target.id, kind);
 			return ok({
-				text: `${target.note}已写好「${target.manifest.name}」(id: ${target.id})的${KIND_NAMES[kind]},共 ${blocks.length} 块。${warned(warnings)}`,
+				text: `${target.note}已写好「${target.manifest.name}」(id: ${target.id})的${KIND_NAMES[kind]},共 ${blocks.length} 块。${warned(saved.warnings)}`,
 			});
 		},
 	};
@@ -401,33 +444,46 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args) {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const blockId = text(args.block, "block");
-			const peek = cardOf(readable(args.skin).manifest, kind);
-			const found = peek.blocks.find((b) => b.id === blockId);
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const blockGot = text(args.block, "block");
+			if (!blockGot.ok) return blockGot;
+			const blockId = blockGot.value;
+			const seen = readable(args.skin);
+			if (!seen.ok) return seen;
+			const peek = cardOf(seen.manifest, kind);
+			if (!peek.ok) return peek;
+			const found = peek.card.blocks.find((b) => b.id === blockId);
 			if (
 				!found &&
 				(args.grid === undefined || (args.builtin === undefined && args.html === undefined))
 			) {
-				throw new Error(
+				return fail(
+					"not_found",
 					`${KIND_NAMES[kind]}里没有 id 为「${blockId}」的块 —— 要新加一块,得给 grid,再给 builtin(内置块)或 html(自定义块)`,
 				);
 			}
 			if (found?.kind === "builtin" && args.html !== undefined) {
-				throw new Error(`「${blockId}」是内置块,没有 HTML 可写`);
+				return fail("unsupported", `「${blockId}」是内置块,没有 HTML 可写`);
 			}
 			if (found && [args.grid, args.css, args.html, args.showIf].every((v) => v === undefined)) {
-				throw new Error("没说要改这块的什么 —— grid、css、html、showIf 至少给一样");
+				return fail("invalid", "没说要改这块的什么 —— grid、css、html、showIf 至少给一样");
 			}
 
 			const target = await writable(args.skin);
-			const card = cardOf(target.manifest, kind);
+			if (!target.ok) return target;
+			const cardGot = cardOf(target.manifest, kind);
+			if (!cardGot.ok) return cardGot;
+			const card = cardGot.card;
+			const gridGot = args.grid !== undefined ? json(args.grid, "grid") : undefined;
+			if (gridGot && !gridGot.ok) return gridGot;
 			const base: Record<string, unknown> = found
 				? { ...(card.blocks.find((b) => b.id === blockId) ?? found) }
 				: args.builtin !== undefined
 					? { id: blockId, kind: "builtin", builtin: args.builtin.trim() }
 					: { id: blockId, kind: "custom", html: "" };
-			if (args.grid !== undefined) base.grid = json(args.grid, "grid");
+			if (gridGot) base.grid = gridGot.value;
 			if (args.css !== undefined) base.css = args.css || undefined;
 			if (args.html !== undefined) base.html = args.html;
 			if (args.showIf !== undefined) base.showIf = args.showIf.trim() || undefined;
@@ -435,11 +491,12 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			const blocks = found
 				? card.blocks.map((b) => (b.id === blockId ? next : b))
 				: [...card.blocks, next];
-			const warnings = await save(target.id, withCard(target.manifest, kind, { ...card, blocks }));
+			const saved = await save(target.id, withCard(target.manifest, kind, { ...card, blocks }));
+			if (!saved.ok) return saved;
 			touch(target.id, kind);
 			const verb = found ? "改好了" : "加好了";
 			return ok({
-				text: `${target.note}${verb}「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`,
+				text: `${target.note}${verb}「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(saved.warnings)}`,
 			});
 		},
 	};
@@ -453,22 +510,33 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 		),
 		async execute(args) {
 			await store.ensureReady();
-			const kind = kindOf(args.kind);
-			const blockId = text(args.block, "block");
-			const peek = cardOf(readable(args.skin).manifest, kind);
-			if (!peek.blocks.some((b) => b.id === blockId)) {
-				throw new Error(`${KIND_NAMES[kind]}里没有 id 为「${blockId}」的块`);
+			const kindGot = kindOf(args.kind);
+			if (!kindGot.ok) return kindGot;
+			const kind = kindGot.value;
+			const blockGot = text(args.block, "block");
+			if (!blockGot.ok) return blockGot;
+			const blockId = blockGot.value;
+			const seen = readable(args.skin);
+			if (!seen.ok) return seen;
+			const peek = cardOf(seen.manifest, kind);
+			if (!peek.ok) return peek;
+			if (!peek.card.blocks.some((b) => b.id === blockId)) {
+				return fail("not_found", `${KIND_NAMES[kind]}里没有 id 为「${blockId}」的块`);
 			}
 			const target = await writable(args.skin);
-			const card = cardOf(target.manifest, kind);
+			if (!target.ok) return target;
+			const cardGot = cardOf(target.manifest, kind);
+			if (!cardGot.ok) return cardGot;
+			const card = cardGot.card;
 			const blocks = card.blocks.filter((b) => b.id !== blockId);
-			const warnings = await save(
+			const saved = await save(
 				target.id,
 				withCard(target.manifest, kind, compact({ ...card, blocks })),
 			);
+			if (!saved.ok) return saved;
 			touch(target.id, kind);
 			return ok({
-				text: `${target.note}删掉了「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`,
+				text: `${target.note}删掉了「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(saved.warnings)}`,
 			});
 		},
 	};
@@ -497,8 +565,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			await store.ensureReady();
 			if (!args.skin?.trim()) {
 				const name = args.name?.trim();
-				if (!name) throw new Error("新建一套得先起个名字(name)");
-				assertBudget();
+				if (!name) return fail("invalid", "新建一套得先起个名字(name)");
+				const budget = checkBudget();
+				if (!budget.ok) return budget;
 				let id: string;
 				try {
 					({ id } = await store.create(
@@ -513,7 +582,7 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 					));
 				} catch (e) {
 					if (e instanceof CardSkinPackageError) {
-						throw new Error(`没建成,校验没过:${e.errors.join(";")}`);
+						return fail("invalid", `没建成,校验没过:${e.errors.join(";")}`);
 					}
 					throw e;
 				}
@@ -524,8 +593,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 					text: `已新建一套卡片皮肤「${name}」(id: ${id})。现在它一张卡都没写,出图全用默认皮肤的;接着用 ${T.writeCard} 按卡种写。`,
 				});
 			}
-			if (args.name !== undefined && !args.name.trim()) throw new Error("名字不能是空的");
+			if (args.name !== undefined && !args.name.trim()) return fail("invalid", "名字不能是空的");
 			const target = await writable(args.skin);
+			if (!target.ok) return target;
 			const next = compact({
 				...target.manifest,
 				name: args.name?.trim() || target.manifest.name,
@@ -536,10 +606,11 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 						? args.description.trim() || undefined
 						: target.manifest.description,
 			});
-			const warnings = await save(target.id, next);
+			const saved = await save(target.id, next);
+			if (!saved.ok) return saved;
 			touch(target.id);
 			return ok({
-				text: `${target.note}已更新「${next.name}」(id: ${target.id})的名字与简介。${warned(warnings)}`,
+				text: `${target.note}已更新「${next.name}」(id: ${target.id})的名字与简介。${warned(saved.warnings)}`,
 			});
 		},
 	};
@@ -674,45 +745,52 @@ function fn(
 	};
 }
 
-function text(v: string | undefined, name: string): string {
+// 下面几个取参数的小函数回结果形状(成功的值放 `value`):模型给的参数不对是预期内的失败,
+// 不抛 —— 调用处逐个 `if (!x.ok) return x;`。
+
+function text(v: string | undefined, name: string): Result<{ value: string }> {
 	const t = v?.trim();
-	if (!t) throw new Error(`缺少参数 ${name}`);
-	return t;
+	if (!t) return fail("invalid", `缺少参数 ${name}`);
+	return ok({ value: t });
 }
 
-function kindOf(v: string | undefined): CardKind {
+function kindOf(v: string | undefined): Result<{ value: CardKind }> {
 	const k = text(v, "kind");
-	if (!(CARD_KINDS as readonly string[]).includes(k)) {
-		throw new Error(`没有「${k}」这种卡,只能是 ${CARD_KINDS.join(" / ")}`);
+	if (!k.ok) return k;
+	if (!(CARD_KINDS as readonly string[]).includes(k.value)) {
+		return fail("invalid", `没有「${k.value}」这种卡,只能是 ${CARD_KINDS.join(" / ")}`);
 	}
-	return k as CardKind;
+	return ok({ value: k.value as CardKind });
 }
 
-function json(v: string | undefined, name: string): unknown {
-	if (v === undefined) throw new Error(`缺少参数 ${name}`);
+function json(v: string | undefined, name: string): Result<{ value: unknown }> {
+	if (v === undefined) return fail("invalid", `缺少参数 ${name}`);
 	try {
-		return JSON.parse(v);
+		return ok({ value: JSON.parse(v) });
 	} catch {
-		throw new Error(`${name} 不是合法的 JSON`);
+		return fail("invalid", `${name} 不是合法的 JSON`);
 	}
 }
 
 /** JSON 参数,`null` 表示「去掉这一项」。 */
-function nullable(v: string, name: string): unknown {
-	return json(v, name) ?? undefined;
+function nullable(v: string, name: string): Result<{ value: unknown }> {
+	const got = json(v, name);
+	return got.ok ? ok({ value: got.value ?? undefined }) : got;
 }
 
-function num(v: string, name: string): number {
+function num(v: string, name: string): Result<{ value: number }> {
 	const n = Number(v);
-	if (!Number.isFinite(n)) throw new Error(`${name} 得是数字`);
-	return n;
+	if (!Number.isFinite(n)) return fail("invalid", `${name} 得是数字`);
+	return ok({ value: n });
 }
 
 /** 模型给的一块:必须是对象,`assets` 一律丢掉(决策 17)。 */
-function fromModel(raw: unknown, at: string): Record<string, unknown> {
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${at} 不是一个对象`);
+function fromModel(raw: unknown, at: string): Result<{ value: Record<string, unknown> }> {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+		return fail("invalid", `${at} 不是一个对象`);
+	}
 	const { assets: _dropped, ...rest } = raw as Record<string, unknown>;
-	return rest;
+	return ok({ value: rest });
 }
 
 /** 去掉值为 undefined 的键 —— 清单是 strict 的,留着空键只会让人读着糊涂。 */

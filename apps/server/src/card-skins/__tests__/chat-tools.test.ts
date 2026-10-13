@@ -185,7 +185,11 @@ describe("新建与写卡", () => {
 	});
 
 	it("新建不给名字 → 失败并说清", async () => {
-		await expect(harness().run(T.setSkinMeta, {})).rejects.toThrow(/名字/);
+		await expect(harness().run(T.setSkinMeta, {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/名字/),
+		});
 	});
 
 	it("write_card 写进自己做的那套:整张卡落盘,碰过的卡种记下", async () => {
@@ -244,7 +248,11 @@ describe("新建与写卡", () => {
 				width: 600,
 				blocks: [{ ...COVER, builtin: "nope" }],
 			}),
-		).rejects.toThrow(/nope/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/nope/),
+		});
 		expect(store.get(id)?.cards.live).toBeUndefined();
 	});
 
@@ -253,18 +261,30 @@ describe("新建与写卡", () => {
 		const id = idIn(await h.text(T.setSkinMeta, { name: "樱花粉" }));
 		await expect(
 			h.run(T.writeCard, { skin: id, kind: "live", width: 600, blocks: "cover" }),
-		).rejects.toThrow(/blocks/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/blocks/),
+		});
 	});
 
 	it("不认识的卡种 / 皮肤 → 失败并说清", async () => {
 		const h = harness();
 		await expect(
 			h.run(T.writeCard, { skin: "ghost", kind: "live", width: 600, blocks: [] }),
-		).rejects.toThrow(/ghost/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: expect.stringMatching(/ghost/),
+		});
 		const id = idIn(await h.text(T.setSkinMeta, { name: "樱花粉" }));
 		await expect(
 			h.run(T.writeCard, { skin: id, kind: "poster", width: 600, blocks: [] }),
-		).rejects.toThrow(/poster/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/poster/),
+		});
 	});
 });
 
@@ -351,11 +371,19 @@ describe("一轮最多碰两套", () => {
 		const h = harness();
 		const a = idIn(await h.text(T.setSkinMeta, { name: "一" }));
 		const b = idIn(await h.text(T.setSkinMeta, { name: "二" }));
-		await expect(h.run(T.setSkinMeta, { name: "三" })).rejects.toThrow(/两套|2 套/);
+		await expect(h.run(T.setSkinMeta, { name: "三" })).resolves.toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			message: expect.stringMatching(/两套|2 套/),
+		});
 		const foreign = await installForeign();
 		await expect(
 			h.run(T.removeBlock, { skin: foreign, kind: "live", block: "note" }),
-		).rejects.toThrow(/两套|2 套/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			message: expect.stringMatching(/两套|2 套/),
+		});
 		// 被拒的那次没有复制。
 		expect(h.ledger.forks[foreign]).toBeUndefined();
 		await h.text(T.writeCard, { skin: a, kind: "live", width: 600, blocks: [COVER] });
@@ -370,6 +398,24 @@ describe("改块与删块", () => {
 		await h.text(T.writeCard, { skin: id, kind: "live", width: 600, blocks: [COVER] });
 		return id;
 	}
+
+	it("给内置块写 HTML → 失败(unsupported),话是「没有 HTML 可写」", async () => {
+		const h = harness();
+		const id = await ownLive(h);
+		expect(
+			await h.run(T.setBlock, { skin: id, kind: "live", block: "cover", html: "<b>x</b>" }),
+		).toEqual({ ok: false, code: "unsupported", message: "「cover」是内置块,没有 HTML 可写" });
+	});
+
+	it("改块什么都没说 → 失败(invalid),话是「grid、css、html、showIf 至少给一样」", async () => {
+		const h = harness();
+		const id = await ownLive(h);
+		expect(await h.run(T.setBlock, { skin: id, kind: "live", block: "cover" })).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "没说要改这块的什么 —— grid、css、html、showIf 至少给一样",
+		});
+	});
 
 	it("set_block 能加一个新的自定义块", async () => {
 		const h = harness();
@@ -408,7 +454,11 @@ describe("改块与删块", () => {
 		const id = await ownLive(h);
 		await expect(
 			h.run(T.setBlock, { skin: id, kind: "live", block: "ghost", css: "x{}" }),
-		).rejects.toThrow(/ghost/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: expect.stringMatching(/ghost/),
+		});
 	});
 
 	it("这种卡还没写 → set_block 失败并指路 write_card", async () => {
@@ -416,7 +466,11 @@ describe("改块与删块", () => {
 		const id = await ownLive(h);
 		await expect(
 			h.run(T.setBlock, { skin: id, kind: "superchat", block: "amount", css: "x{}" }),
-		).rejects.toThrow(/write_card/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: expect.stringMatching(/write_card/),
+		});
 	});
 
 	it("remove_block 删掉那一块", async () => {

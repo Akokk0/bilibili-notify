@@ -11,7 +11,7 @@
 
 import type { ExtraTool } from "@bilibili-notify/ai";
 import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
-import { ok } from "@bilibili-notify/internal";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { runSkinAiCreate } from "./ai-create.js";
 import type { SkinAiGenerator } from "./ai-edit.js";
 import { referencedImages } from "./package.js";
@@ -122,18 +122,19 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 	 * 空手时会捎上最近一次的图(见 routes/ai.ts)。两边取的是同一批,否则会出现她
 	 * 描述得出那张图、一动手却说没有图。
 	 */
-	async function resolveWallpaper(raw: string): Promise<ChatSkinImage | null> {
+	async function resolveWallpaper(raw: string): Promise<Result<{ image: ChatSkinImage | null }>> {
 		// 空串、`false`、`none` 都落在这一句里 —— 不在白名单就是没要。
 		const w = raw.trim().toLowerCase();
-		if (w !== "attached" && w !== "true") return null;
+		if (w !== "attached" && w !== "true") return ok({ image: null });
 
 		const image = (await deps.attachedImage?.()) ?? null;
 		if (!image) {
-			throw new Error(
+			return fail(
+				"not_found",
 				"这场对话里没有图 —— 请主人把想当背景的图贴进聊天再说一次。你没有找图的能力,别去找。",
 			);
 		}
-		return image;
+		return ok({ image });
 	}
 
 	const createSkin: ExtraTool = {
@@ -172,20 +173,25 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			// activate() 会拿一份空的 active 覆盖掉重启前启用着的槽。
 			await deps.skinStore.ensureReady();
 			const brief = (args.brief ?? "").trim();
-			if (!brief) throw new Error("没说要什么样的皮肤,先问清主人想要的风格再来。");
+			if (!brief) return fail("invalid", "没说要什么样的皮肤,先问清主人想要的风格再来。");
 			if (made >= MAX_CREATES_PER_TURN) {
-				throw new Error(
+				return fail(
+					"rate_limited",
 					`这一轮已经做了 ${MAX_CREATES_PER_TURN} 套,够多了 —— 先请主人看看效果,想再做等下一句话。`,
 				);
 			}
 			if (tried >= MAX_ATTEMPTS_PER_TURN) {
-				throw new Error(
+				return fail(
+					"rate_limited",
 					"这一轮试了太多次都没做成 —— 别再重试了,把没做成这件事如实告诉主人,等下一句话再来。",
 				);
 			}
 			const generator = deps.generator();
 			if (!generator) {
-				throw new Error("智能女仆还没接好模型,先去 AI 设置页把 baseUrl / apiKey 填齐。");
+				return fail(
+					"not_configured",
+					"智能女仆还没接好模型,先去 AI 设置页把 baseUrl / apiKey 填齐。",
+				);
 			}
 
 			/**
@@ -193,7 +199,9 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			 * 拒,省下的是一整趟几分钟的调用。
 			 */
 			const assets = new Map<string, Uint8Array>();
-			const image = await resolveWallpaper(args.wallpaper ?? "");
+			const picked = await resolveWallpaper(args.wallpaper ?? "");
+			if (!picked.ok) return picked;
+			const image = picked.image;
 			const wallpaper = image ? `assets/${WALLPAPER_BASENAME}.${image.ext}` : undefined;
 			if (image && wallpaper) assets.set(wallpaper, image.bytes);
 
@@ -210,7 +218,7 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			if (!result.ok) {
 				// 原因原样带回给模型 —— 它才能跟主人说清是哪儿没做成,而不是干瞪眼。
 				// 这条路上 made 不动:没做成的不占主人那两套额度(尝试次数已经记过了)。
-				throw new Error(`皮肤生成失败:${result.errors.join(";")}`);
+				return fail("unavailable", `皮肤生成失败:${result.errors.join(";")}`);
 			}
 			made++;
 

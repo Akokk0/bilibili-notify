@@ -53,13 +53,13 @@ const chatStatelessStream = vi.fn(async (_messages: unknown, opts: any) => {
 		const tool: any = byName.get(call.name);
 		const args = flat(call.args);
 		opts.onToolEvent?.({ phase: "start", id: `0-${i}`, name: call.name, args });
-		let ok = true;
-		try {
-			await tool.execute(args);
-		} catch {
-			ok = false;
-		}
-		opts.onToolEvent?.({ phase: "end", id: `0-${i}`, ok });
+		const out = await tool.execute(args);
+		opts.onToolEvent?.({
+			phase: "end",
+			id: `0-${i}`,
+			ok: out.ok,
+			...(out.ok ? {} : { message: out.message }),
+		});
 	}
 	if (H.failAfterTools) throw new Error("上游断了");
 	opts.onDelta("好的");

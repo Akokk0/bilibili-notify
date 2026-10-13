@@ -2103,6 +2103,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 					ok = false;
 				}
 			} catch (e) {
+				// 预期内的失败都按结果形状返回了,走到这里的只剩 bug:话照旧喂回给模型,
+				// 同时记一条错误日志(失败规矩第 2 条:边界接住抛出来的错要记)。
+				this.logger.error(`[tool] ${name} 抛了错: ${this.sanitizeErr(e)}`);
 				result = `工具执行失败: ${(e as Error).message}`;
 				ok = false;
 			}

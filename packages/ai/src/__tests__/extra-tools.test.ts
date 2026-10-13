@@ -12,8 +12,9 @@
 
 import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { ExtraTool } from "../tools";
-import { makeGen, streamOf, textChunk } from "./harness";
+import { CommentaryGenerator } from "../commentary-generator";
+import type { BiliReader, ExtraTool } from "../tools";
+import { aiConfig, fakeServiceCtx, makeGen, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -195,6 +196,40 @@ describe("chatStatelessStream × 注入工具", () => {
 		const toolMsg = createParams(1).messages.find((m) => m.role === "tool");
 		expect(toolMsg?.content).toBe(
 			"没有叫「nope」的技能。现在有这些:\n- weekly-report:评选本周鸽王",
+		);
+	});
+
+	it("执行器抛错(只剩 bug 会走到这)→ 记恰好一条 error 日志、带工具名;痕迹与喂回模型的话照旧", async () => {
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "x" })]))
+			.mockResolvedValueOnce(streamOf([textChunk("没做成")]));
+		const tool = makeTool();
+		tool.execute.mockRejectedValueOnce(new Error("炸了"));
+		const errors: string[] = [];
+		const gen = new CommentaryGenerator({
+			serviceCtx: {
+				...fakeServiceCtx(),
+				logger: { info() {}, warn() {}, debug() {}, error: (m: string) => errors.push(m) },
+			},
+			api: {} as BiliReader,
+			config: aiConfig(),
+		});
+		const events: Array<{ phase: string; ok?: boolean; message?: string }> = [];
+		await gen.chatStatelessStream(HIST, {
+			onDelta: () => {},
+			onToolEvent: (ev) => events.push(ev),
+			extraTools: [tool],
+		});
+
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toContain("make_thing");
+		expect(errors[0]).toContain("炸了");
+		expect(events.find((e) => e.phase === "end")).toMatchObject({
+			ok: false,
+			message: "工具执行失败: 炸了",
+		});
+		expect(createParams(1).messages.find((m) => m.role === "tool")?.content).toBe(
+			"工具执行失败: 炸了",
 		);
 	});
 
