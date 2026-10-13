@@ -1,8 +1,10 @@
 import {
 	type AIProviderId,
 	type APIFlavorId,
+	type Failure,
 	type Logger,
 	providerMeta,
+	type Result,
 	type ServiceContext,
 	type ThinkingLevel,
 } from "@bilibili-notify/internal";
@@ -188,7 +190,7 @@ interface CallToolOptions {
 		args: Record<string, string>,
 		/** 慢工具报进度的口子 —— 转发者不必接,接了就会变成 progress 事件。 */
 		onProgress?: (chars: number) => void,
-	) => Promise<string | ToolCallOutput>;
+	) => Promise<string | ToolCallOutput | Failure>;
 	onToolEvent?: (ev: ToolTraceEvent) => void;
 	/** 这次调用的工具轮数上限;不给 = {@link MAX_TOOL_ROUNDS}。 */
 	maxRounds?: number;
@@ -207,6 +209,14 @@ interface CallToolOptions {
 interface ToolCallOutput {
 	text: string;
 	images?: readonly string[];
+}
+
+/**
+ * 核心工具的结果形状 → 工具环认得的返回:成功取给模型看的文字,失败原样交出去
+ * (工具环按它记失败、并把 `message` 喂回给模型)。
+ */
+function toolReplyOf(result: Result<{ text: string }>): string | Failure {
+	return result.ok ? result.text : result;
 }
 
 /** 工具结果之后补的那条带图消息的开头。说清图从哪来,模型才不会当成主人新贴的。 */
@@ -384,6 +394,11 @@ export type ToolTraceEvent =
 			phase: "end";
 			id: string;
 			ok: boolean;
+			/**
+			 * 失败时的那句话(`ok` 为假才有)—— 与喂回给模型的工具输出是同一句,让界面也能
+			 * 把「为什么没查到」亮给主人,而不是只画一个叉。
+			 */
+			message?: string;
 			/**
 			 * `web_search` 专属:这次搜到的来源(标题 + 链接)。给界面画「来源列表」
 			 * 用的结构化出口 —— 回灌给模型的那份是排好版的字符串,界面没法再拆。
@@ -856,8 +871,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			withVisionNote([{ role: "user", content }], vision),
 			{
 				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
-				onToolCall: (name, args) =>
-					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
+				onToolCall: async (name, args) =>
+					toolReplyOf(await executeTool(name, args, this.api, () => this.getSubs(), vision.ctx)),
 				...(searchExec ? { webSearch: searchExec } : {}),
 			},
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
@@ -954,7 +969,11 @@ export class CommentaryGenerator implements CommentaryProvider {
 			),
 			onToolCall: async (name, args, onProgress) => {
 				const injected = extra.get(name);
-				if (!injected) return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
+				if (!injected) {
+					return toolReplyOf(
+						await executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
+					);
+				}
 				const out = await injected.execute(args, onProgress);
 				if (typeof out === "string") return out;
 				if (out.restrictTools) {
@@ -2079,12 +2098,18 @@ export class CommentaryGenerator implements CommentaryProvider {
 				const out = await toolOptions.onToolCall(name, args, (chars) =>
 					toolOptions.onToolEvent?.({ phase: "progress", id: traceId, chars }),
 				);
-				if (typeof out === "string") result = out;
-				else {
+				if (typeof out === "string") {
+					result = out;
+					ok = true;
+				} else if ("ok" in out) {
+					// 工具按结果形状报了失败:话照旧喂回给模型,痕迹里记成失败。
+					result = out.message;
+					ok = false;
+				} else {
 					result = out.text;
 					images = out.images?.length ? out.images : undefined;
+					ok = true;
 				}
-				ok = true;
 			} catch (e) {
 				result = `工具执行失败: ${(e as Error).message}`;
 				ok = false;
@@ -2099,6 +2124,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			phase: "end",
 			id: traceId,
 			ok,
+			// 失败的话与喂回给模型的是同一句(`result`),界面据此亮出原因。
+			...(ok ? {} : { message: result }),
 			...(sources ? { sources } : {}),
 		});
 		this.logger.debug(`[tool] ${name} 结果长度=${result.length}`);

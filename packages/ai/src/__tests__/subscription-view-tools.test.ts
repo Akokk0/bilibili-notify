@@ -12,6 +12,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { BiliReader } from "../tools";
 import { type ExtensionSubItemView, executeTool, type Subscriptions } from "../tools";
+import { sayOf } from "./harness";
 
 const VIEW: Subscriptions = {
 	"sub-bili": { uid: "1", uname: "晨风", post: true, live: true },
@@ -45,7 +46,8 @@ function run(name: string, args: Record<string, string>, api = apiStub()) {
 describe("list_subscriptions", () => {
 	it("B 站那行照旧;拓展那行写平台名与外部 id,说明不是 B 站 UID", async () => {
 		const out = await run("list_subscriptions", {});
-		const [bili, ext] = out.split("\n");
+		expect(out.ok).toBe(true);
+		const [bili, ext] = sayOf(out).split("\n");
 		expect(bili).toBe("晨风（UID: 1）动态:✓ 直播:✓");
 		expect(ext).toContain("抖音甲");
 		expect(ext).toContain("抖音 · 外部 id 20001");
@@ -72,8 +74,11 @@ describe("get_live_status", () => {
 		});
 		const out = await executeTool("get_live_status", {}, api as unknown as BiliReader, () => view);
 		expect(api.fetchLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
-		expect(out).toContain("晨风：直播中「晚间杂谈」");
-		const line = out.split("\n").find((l) => l.startsWith("抖音甲"));
+		expect(out.ok).toBe(true);
+		expect(sayOf(out)).toContain("晨风：直播中「晚间杂谈」");
+		const line = sayOf(out)
+			.split("\n")
+			.find((l) => l.startsWith("抖音甲"));
 		expect(line).toMatch(/^抖音甲：直播中「晚饭直播」/);
 		expect(line).toContain(
 			`开播于 ${new Date(STARTED).toLocaleString("zh-CN", { hour12: false })}`,
@@ -85,12 +90,12 @@ describe("get_live_status", () => {
 		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
 			ext({ state: "idle" }),
 		);
-		expect(out).toContain("抖音甲：未开播");
+		expect(sayOf(out)).toContain("抖音甲：未开播");
 		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
 			ext({ state: "live" }),
 		);
-		expect(live).toContain("抖音甲：直播中");
-		expect(live).not.toMatch(/抖音甲：直播中.*(开播于|累计观看|「)/);
+		expect(sayOf(live)).toContain("抖音甲：直播中");
+		expect(sayOf(live)).not.toMatch(/抖音甲：直播中.*(开播于|累计观看|「)/);
 	});
 
 	it("拓展没在跑(BN 手里没有它的在播状态)→ 说查不到,不冒充一个状态", async () => {
@@ -98,9 +103,11 @@ describe("get_live_status", () => {
 			const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
 				ext(liveNow),
 			);
-			expect(out).toContain("抖音甲：查不到");
-			expect(out).toContain("抖音");
-			expect(out).not.toMatch(/抖音甲：(未开播|直播中|轮播中|未知)/);
+			// 「查不到」是拓展没在跑时的如实回答,不是工具失败
+			expect(out.ok).toBe(true);
+			expect(sayOf(out)).toContain("抖音甲：查不到");
+			expect(sayOf(out)).toContain("抖音");
+			expect(sayOf(out)).not.toMatch(/抖音甲：(未开播|直播中|轮播中|未知)/);
 		}
 	});
 
@@ -111,7 +118,7 @@ describe("get_live_status", () => {
 		};
 		const out = await executeTool("get_live_status", {}, api as unknown as BiliReader, () => view);
 		expect(api.fetchLiveRoomInfoByUids).not.toHaveBeenCalled();
-		expect(out).toContain("抖音甲：未开播");
+		expect(sayOf(out)).toContain("抖音甲：未开播");
 	});
 });
 
@@ -129,8 +136,10 @@ describe("按 UID 查的工具", () => {
 			const api = apiStub();
 			const out = await run(tool, { uid: "20001" }, api);
 			expect(api[method]).not.toHaveBeenCalled();
-			expect(out).toContain("抖音");
-			expect(out).toContain("不是 B 站 UID");
+			// 对不上人 → 失败(痕迹里叉),话照旧喂回给模型
+			expect(out).toMatchObject({ ok: false, code: "invalid" });
+			expect(sayOf(out)).toContain("抖音");
+			expect(sayOf(out)).toContain("不是 B 站 UID");
 		},
 	);
 

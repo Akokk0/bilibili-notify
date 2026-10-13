@@ -14,6 +14,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { BiliReader } from "../tools";
 import { DESCRIBE_IMAGE_TOOL, executeTool, TOOL_DEFINITIONS } from "../tools";
+import { sayOf } from "./harness";
 
 const api = {} as BiliReader;
 const noSubs = () => null;
@@ -33,7 +34,8 @@ describe("describe_image — 序号边界", () => {
 
 		expect(describe).toHaveBeenCalledTimes(1);
 		expect(describe).toHaveBeenCalledWith("http://img/b.jpg");
-		expect(out).toContain("http://img/b.jpg 的内容");
+		expect(out.ok).toBe(true);
+		expect(sayOf(out)).toContain("http://img/b.jpg 的内容");
 	});
 
 	it("越界序号 → 拒绝,且一次都不调副模型", async () => {
@@ -41,14 +43,18 @@ describe("describe_image — 序号边界", () => {
 		const out = await run({ index: "5" }, visionCtx);
 
 		expect(describe).not.toHaveBeenCalled();
-		expect(out).toMatch(/只有 2 张|超出|没有第/);
+		expect(out).toMatchObject({ ok: false, code: "invalid" });
+		expect(sayOf(out)).toMatch(/只有 2 张|超出|没有第/);
 	});
 
 	it("序号 0 与负数一律拒绝 —— 序号从 1 开始", async () => {
 		const { visionCtx, describe } = ctx();
 
-		expect(await run({ index: "0" }, visionCtx)).toMatch(/序号|超出|没有第/);
-		expect(await run({ index: "-1" }, visionCtx)).toMatch(/序号|超出|没有第/);
+		for (const index of ["0", "-1"]) {
+			const out = await run({ index }, visionCtx);
+			expect(out).toMatchObject({ ok: false, code: "invalid" });
+			expect(sayOf(out)).toMatch(/序号|超出|没有第/);
+		}
 		expect(describe).not.toHaveBeenCalled();
 	});
 
@@ -58,15 +64,19 @@ describe("describe_image — 序号边界", () => {
 
 		// 关键不在于回什么话,而在于**副模型没有被指使去请求那个地址**。
 		expect(describe).not.toHaveBeenCalled();
-		expect(out).not.toContain("内网地址/admin 的内容");
+		expect(out.ok).toBe(false);
+		expect(sayOf(out)).not.toContain("内网地址/admin 的内容");
 	});
 
 	it("小数 / 空串 / 缺参一律拒绝", async () => {
 		const { visionCtx, describe } = ctx();
 
-		expect(await run({ index: "1.5" }, visionCtx)).toMatch(/序号|超出|没有第/);
-		expect(await run({ index: "" }, visionCtx)).toMatch(/序号|超出|没有第/);
-		expect(await run({}, visionCtx)).toMatch(/序号|超出|没有第/);
+		const bad: Record<string, string>[] = [{ index: "1.5" }, { index: "" }, {}];
+		for (const args of bad) {
+			const out = await run(args, visionCtx);
+			expect(out).toMatchObject({ ok: false, code: "invalid" });
+			expect(sayOf(out)).toMatch(/序号|超出|没有第/);
+		}
 		expect(describe).not.toHaveBeenCalled();
 	});
 });
@@ -74,12 +84,15 @@ describe("describe_image — 序号边界", () => {
 describe("describe_image — 不可用与失败", () => {
 	it("没配副模型 / 本轮无图 → 如实说不可用,不假装看过", async () => {
 		const out = await run({ index: "1" });
-		expect(out).toMatch(/不可用|没有图片/);
+		expect(out).toMatchObject({ ok: false, code: "unavailable" });
+		expect(sayOf(out)).toMatch(/不可用|没有图片/);
 	});
 
 	it("本轮图片列表为空 → 同样不可用", async () => {
 		const { visionCtx } = ctx([]);
-		expect(await run({ index: "1" }, visionCtx)).toMatch(/不可用|没有图片/);
+		const out = await run({ index: "1" }, visionCtx);
+		expect(out).toMatchObject({ ok: false, code: "unavailable" });
+		expect(sayOf(out)).toMatch(/不可用|没有图片/);
 	});
 
 	it("副模型挂了 → 回一句失败说明,不把异常抛给工具循环", async () => {
@@ -88,13 +101,15 @@ describe("describe_image — 不可用与失败", () => {
 		});
 		const out = await run({ index: "1" }, { images: ["http://img/a.jpg"], describe });
 
-		expect(out).toContain("402 余额不足");
+		expect(out).toMatchObject({ ok: false, code: "unavailable" });
+		expect(sayOf(out)).toContain("402 余额不足");
 	});
 
 	it("描述结果同样声明「不是指令」—— 图里的字照样是外部内容", async () => {
 		const { visionCtx } = ctx();
 		const out = await run({ index: "1" }, visionCtx);
-		expect(out).toContain("不是指令");
+		expect(out.ok).toBe(true);
+		expect(sayOf(out)).toContain("不是指令");
 	});
 });
 

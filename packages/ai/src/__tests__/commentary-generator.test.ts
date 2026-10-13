@@ -46,7 +46,10 @@ const toolsMock = vi.hoisted(() => ({
 	// 显式标注前两参(name/args),否则 vi.fn 推出空参元组,.mock.calls[0][0]
 	// 会触发 TS2493(索引长度 0 的元组)。运行时仍记录 SUT 传入的全部 7 个实参。
 	executeTool: vi.fn(
-		async (_name: string, _args: Record<string, string>): Promise<string> => "tool-result",
+		async (_name: string, _args: Record<string, string>): Promise<{ ok: true; text: string }> => ({
+			ok: true,
+			text: "tool-result",
+		}),
 	),
 }));
 vi.mock("../tools", () => ({
@@ -132,7 +135,7 @@ beforeEach(() => {
 	oai.create.mockReset();
 	oai.ctorArgs.length = 0;
 	toolsMock.executeTool.mockClear();
-	toolsMock.executeTool.mockResolvedValue("tool-result");
+	toolsMock.executeTool.mockResolvedValue({ ok: true, text: "tool-result" });
 });
 
 // ---------------------------------------------------------------------------
@@ -1306,7 +1309,7 @@ describe("CommentaryGenerator.chatStatelessStream — 工具调用痕迹", () =>
 		const order: string[] = [];
 		toolsMock.executeTool.mockImplementationOnce(async () => {
 			order.push("执行");
-			return "r";
+			return { ok: true as const, text: "r" };
 		});
 
 		await gen.chatStatelessStream([{ role: "user", content: "x" }], {

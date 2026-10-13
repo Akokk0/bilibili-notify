@@ -42,7 +42,10 @@ vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 
 const toolsMock = vi.hoisted(() => ({
 	executeTool: vi.fn(
-		async (_name: string, _args: Record<string, string>): Promise<string> => "tool-result",
+		async (_name: string, _args: Record<string, string>): Promise<{ ok: true; text: string }> => ({
+			ok: true,
+			text: "tool-result",
+		}),
 	),
 }));
 vi.mock("../tools", () => ({
@@ -320,6 +323,35 @@ describe("responses 风味:工具环", () => {
 		expect(ends[0]).toMatchObject({
 			ok: true,
 			sources: [{ title: "T", url: "https://x.example", siteName: "X 站" }],
+		});
+	});
+
+	it("工具按结果形状报失败 → 痕迹 end 为失败并带那句话,同一句话作为 function_call_output 喂回,对话继续", async () => {
+		oai.responsesCreate
+			.mockResolvedValueOnce(streamOf([completed([fnCallItem("fake_tool", { uid: 1 }, "fc_20")])]))
+			.mockResolvedValueOnce(streamOf([textDelta("没查到哦"), completed([msgItem("没查到哦")])]));
+		toolsMock.executeTool.mockResolvedValueOnce({
+			ok: false,
+			code: "unavailable",
+			message: "获取用户信息失败: 请求被拦截",
+		} as never);
+
+		const events: ToolTraceEvent[] = [];
+		const out = await makeGen().chatStatelessStream([{ role: "user", content: "查一下" }], {
+			onDelta: () => {},
+			onToolEvent: (ev) => events.push(ev),
+		});
+
+		expect(out).toBe("没查到哦");
+		expect(events.find((e) => e.phase === "end")).toMatchObject({
+			ok: false,
+			message: "获取用户信息失败: 请求被拦截",
+		});
+		const input2 = params(1).input as Array<Record<string, unknown>>;
+		expect(input2.find((it) => it.type === "function_call_output")).toEqual({
+			type: "function_call_output",
+			call_id: "fc_20",
+			output: "获取用户信息失败: 请求被拦截",
 		});
 	});
 });

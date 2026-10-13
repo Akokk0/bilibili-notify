@@ -29,7 +29,7 @@ const oai = vi.hoisted(() => {
 vi.mock("openai", () => ({ default: oai.FakeOpenAI }));
 vi.mock("../tools", () => ({
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
-	executeTool: vi.fn(async () => "tool-result"),
+	executeTool: vi.fn(async () => ({ ok: true, text: "tool-result" })),
 }));
 
 /** 工具铁律的特征串。改文案时这里跟着改,别放宽成「工具」两个字。 */

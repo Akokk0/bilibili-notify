@@ -13,9 +13,15 @@
  * 对的,别硬收。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import type { Result, ServiceContext } from "@bilibili-notify/internal";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 import type { BiliReader } from "../tools";
+
+/**
+ * 工具结果里「给模型看的那句话」:成功取 `text`,失败取 `message`。
+ * 只给要对文字做子串断言的用例用 —— 成败本身要另外断言,别靠它。
+ */
+export const sayOf = (r: Result<{ text: string }>): string => (r.ok ? r.text : r.message);
 
 /**
  * 什么都不做的 ServiceContext。

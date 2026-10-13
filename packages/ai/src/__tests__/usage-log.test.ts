@@ -52,8 +52,10 @@ vi.mock("../tools", () => ({
 			visionCtx?: { images: string[]; describe: (url: string) => Promise<string> },
 		) =>
 			name === "describe_image" && visionCtx
-				? visionCtx.describe(visionCtx.images[Number(args.index) - 1])
-				: "tool-result",
+				? visionCtx
+						.describe(visionCtx.images[Number(args.index) - 1])
+						.then((text) => ({ ok: true as const, text }))
+				: { ok: true as const, text: "tool-result" },
 	),
 }));
 

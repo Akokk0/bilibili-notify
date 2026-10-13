@@ -29,7 +29,7 @@ vi.mock("../tools", () => ({
 		type: "function",
 		function: { name: "describe_image", parameters: {} },
 	},
-	executeTool: vi.fn(async () => "tool-result"),
+	executeTool: vi.fn(async () => ({ ok: true, text: "tool-result" })),
 }));
 
 interface ChatMsg {
