@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
+import { AiWritingSettingsSchema } from "./ai-writing";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { markBackupOnly, markSecret } from "./secret";
 
@@ -419,6 +420,14 @@ const AISettingsObjectSchema = z.object({
 			keys: { bocha: "", tavily: "" },
 			engines: { dynamic: false, live: false, roast: false },
 		})),
+	/**
+	 * 正文用 AI 写还是用模板写,按推送目标选(ADR-0032):动态与直播总结各一份「默认 + 按目标例外」。
+	 * 默认两份都开、无例外 = 与今天一样;老设置与老备份里没有这一格,由默认值补。
+	 */
+	writing: AiWritingSettingsSchema.default(() => ({
+		post: { enabled: true, byTarget: {} },
+		liveSummary: { enabled: true, byTarget: {} },
+	})),
 	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
 	 * 填了就用 `presets` 里那一份。

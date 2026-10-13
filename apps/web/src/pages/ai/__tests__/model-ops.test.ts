@@ -58,6 +58,10 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 			keys: { bocha: "", tavily: "" },
 			engines: { dynamic: false, live: false, roast: false },
 		},
+		writing: {
+			post: { enabled: true, byTarget: {} },
+			liveSummary: { enabled: true, byTarget: {} },
+		},
 		presets: [],
 		...over,
 	};
