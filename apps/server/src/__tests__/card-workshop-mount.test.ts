@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
-import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
+import { DEFAULT_CARD_SKIN_ID, type Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
@@ -62,7 +62,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 			puppeteer: fakePuppeteer(),
 		});
 
-		const seen: { look?: string | ExtraToolResult; made?: string } = {};
+		const seen: { look?: Result<ExtraToolResult>; made?: string } = {};
 		const chatStatelessStream = vi.fn(
 			async (
 				_messages: unknown,
@@ -72,7 +72,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 					opts.extraTools?.find((t) => t.definition.function.name === name);
 				seen.look = await tool(T.lookCard)?.execute({ skin: DEFAULT_CARD_SKIN_ID, kind: "live" });
 				const made = await tool(T.setSkinMeta)?.execute({ name: "接线测试" });
-				seen.made = typeof made === "string" ? made : made?.text;
+				seen.made = made?.ok ? made.text : undefined;
 				opts.onDelta("好");
 				return "好";
 			},
@@ -94,8 +94,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 		await res.text();
 
 		expect(chatStatelessStream).toHaveBeenCalledOnce();
-		expect(typeof seen.look).toBe("object");
-		expect((seen.look as ExtraToolResult).images?.[0]).toMatch(/^data:image\/jpeg;base64,/);
+		expect(seen.look?.ok && seen.look.images?.[0]).toMatch(/^data:image\/jpeg;base64,/);
 
 		const list = (await (await app.request("/api/cards/skins")).json()) as {
 			skins: Array<{ name: string }>;

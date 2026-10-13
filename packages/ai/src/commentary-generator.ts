@@ -1,8 +1,8 @@
 import {
 	type AIProviderId,
 	type APIFlavorId,
-	type Failure,
 	type Logger,
+	ok,
 	providerMeta,
 	type Result,
 	type ServiceContext,
@@ -190,7 +190,7 @@ interface CallToolOptions {
 		args: Record<string, string>,
 		/** 慢工具报进度的口子 —— 转发者不必接,接了就会变成 progress 事件。 */
 		onProgress?: (chars: number) => void,
-	) => Promise<string | ToolCallOutput | Failure>;
+	) => Promise<Result<ToolCallOutput>>;
 	onToolEvent?: (ev: ToolTraceEvent) => void;
 	/** 这次调用的工具轮数上限;不给 = {@link MAX_TOOL_ROUNDS}。 */
 	maxRounds?: number;
@@ -209,14 +209,6 @@ interface CallToolOptions {
 interface ToolCallOutput {
 	text: string;
 	images?: readonly string[];
-}
-
-/**
- * 核心工具的结果形状 → 工具环认得的返回:成功取给模型看的文字,失败原样交出去
- * (工具环按它记失败、并把 `message` 喂回给模型)。
- */
-function toolReplyOf(result: Result<{ text: string }>): string | Failure {
-	return result.ok ? result.text : result;
 }
 
 /** 工具结果之后补的那条带图消息的开头。说清图从哪来,模型才不会当成主人新贴的。 */
@@ -871,8 +863,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 			withVisionNote([{ role: "user", content }], vision),
 			{
 				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
-				onToolCall: async (name, args) =>
-					toolReplyOf(await executeTool(name, args, this.api, () => this.getSubs(), vision.ctx)),
+				onToolCall: (name, args) =>
+					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
 				...(searchExec ? { webSearch: searchExec } : {}),
 			},
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
@@ -969,18 +961,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 			),
 			onToolCall: async (name, args, onProgress) => {
 				const injected = extra.get(name);
-				if (!injected) {
-					return toolReplyOf(
-						await executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
-					);
-				}
+				if (!injected) return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
 				const out = await injected.execute(args, onProgress);
-				if (typeof out === "string") return out;
+				// 失败原样交给工具环:它记失败,并把 `message` 喂回给模型。
+				if (!out.ok) return out;
 				if (out.restrictTools) {
 					toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
 					this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
 				}
-				return out.images?.length ? this.toolImagesFor(out.text, out.images) : out.text;
+				return out.images?.length
+					? this.toolImagesFor(out.text, out.images)
+					: ok({ text: out.text });
 			},
 			onToolEvent: opts?.onToolEvent,
 			...(opts?.maxToolRounds ? { maxRounds: opts.maxToolRounds } : {}),
@@ -1012,17 +1003,21 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private async toolImagesFor(
 		text: string,
 		images: readonly string[],
-	): Promise<string | ToolCallOutput> {
-		if (this.mainModelCanSeeImages()) return { text, images };
+	): Promise<Result<ToolCallOutput>> {
+		if (this.mainModelCanSeeImages()) return ok({ text, images });
 		const model = this.visionModel();
 		if (!model) {
-			return `${text}\n\n(这张图你看不见:当前模型不支持看图,也没配看图副模型。照实告诉主人,请主人自己看预览。)`;
+			return ok({
+				text: `${text}\n\n(这张图你看不见:当前模型不支持看图,也没配看图副模型。照实告诉主人,请主人自己看预览。)`,
+			});
 		}
 		const descriptions = await this.describeImagesLogged(images, model, text);
 		const block = renderImageDescriptions(descriptions);
-		return block
-			? `${text}\n\n${block}`
-			: `${text}\n\n(看图副模型这次没看成,图的样子不清楚。照实告诉主人,请主人自己看预览。)`;
+		return ok({
+			text: block
+				? `${text}\n\n${block}`
+				: `${text}\n\n(看图副模型这次没看成,图的样子不清楚。照实告诉主人,请主人自己看预览。)`,
+		});
 	}
 
 	/** :384 错误脱敏:抹掉 apiKey 明文与 `Bearer <token>`,再进日志 / 外抛。 */
@@ -2098,17 +2093,14 @@ export class CommentaryGenerator implements CommentaryProvider {
 				const out = await toolOptions.onToolCall(name, args, (chars) =>
 					toolOptions.onToolEvent?.({ phase: "progress", id: traceId, chars }),
 				);
-				if (typeof out === "string") {
-					result = out;
-					ok = true;
-				} else if ("ok" in out) {
-					// 工具按结果形状报了失败:话照旧喂回给模型,痕迹里记成失败。
-					result = out.message;
-					ok = false;
-				} else {
+				if (out.ok) {
 					result = out.text;
 					images = out.images?.length ? out.images : undefined;
 					ok = true;
+				} else {
+					// 工具按结果形状报了失败:话照旧喂回给模型,痕迹里记成失败。
+					result = out.message;
+					ok = false;
 				}
 			} catch (e) {
 				result = `工具执行失败: ${(e as Error).message}`;

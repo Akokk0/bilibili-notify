@@ -24,6 +24,7 @@ import {
 	CARD_SKIN_RANK_GUIDE,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
+	type Result,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -95,7 +96,7 @@ async function installForeign(): Promise<string> {
 }
 
 interface Harness {
-	run: (name: string, args?: Record<string, unknown>) => Promise<string | ExtraToolResult>;
+	run: (name: string, args?: Record<string, unknown>) => Promise<Result<ExtraToolResult>>;
 	text: (name: string, args?: Record<string, unknown>) => Promise<string>;
 	record: ReturnType<typeof vi.fn<CardWorkshopDeps["record"]>>;
 	ledger: { owned: string[]; forks: Record<string, string> };
@@ -139,7 +140,8 @@ function harness(
 	};
 	const text = async (name: string, args: Record<string, unknown> = {}) => {
 		const out = await run(name, args);
-		return typeof out === "string" ? out : out.text;
+		if (!out.ok) throw new Error(out.message);
+		return out.text;
 	};
 	return { run, text, record, ledger, touched: made.touched };
 }
@@ -557,8 +559,8 @@ describe("look_card", () => {
 			kind: "live",
 		});
 		expect(shoot).toHaveBeenCalledWith(foreign, "live");
-		expect(typeof out).toBe("object");
-		const res = out as ExtraToolResult;
+		if (!out.ok) throw new Error("该截得到的");
+		const res = out;
 		expect(res.images).toEqual(["data:image/jpeg;base64,U0hPVA=="]);
 		expect(res.text).toMatch(/不要自己|别自己/);
 	});
@@ -569,10 +571,12 @@ describe("look_card", () => {
 			skin: foreign,
 			kind: "live",
 		});
-		expect(typeof none).toBe("string");
-		expect(none).toMatch(/看不见|截不了/);
+		// 看不见不算失败:工具该做的事做完了,只是少了一张图
+		expect(none.ok).toBe(true);
+		expect(none.ok && none.text).toMatch(/看不见|截不了/);
 		const absent = await harness().run(T.lookCard, { skin: foreign, kind: "live" });
-		expect(absent).toMatch(/看不见|截不了/);
+		expect(absent.ok).toBe(true);
+		expect(absent.ok && absent.text).toMatch(/看不见|截不了/);
 	});
 });
 

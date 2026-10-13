@@ -14,7 +14,7 @@
  * `openai` 整体 mock,不碰任何真实接口。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
 import type { BiliReader } from "../tools";
@@ -745,10 +745,11 @@ describe("用量日志 —— 不走 callAPI 的两条副路", () => {
 			extraTools: [
 				{
 					definition: { type: "function", function: { name: "shoot", parameters: {} } },
-					execute: async () => ({
-						text: "截好了",
-						images: ["https://img/a.png", "https://img/b.png"],
-					}),
+					execute: async () =>
+						ok({
+							text: "截好了",
+							images: ["https://img/a.png", "https://img/b.png"],
+						}),
 				},
 			],
 		});

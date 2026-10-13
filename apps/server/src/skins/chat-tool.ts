@@ -11,6 +11,7 @@
 
 import type { ExtraTool } from "@bilibili-notify/ai";
 import { AI_TOOL_CREATE_SKIN } from "@bilibili-notify/contract";
+import { ok } from "@bilibili-notify/internal";
 import { runSkinAiCreate } from "./ai-create.js";
 import type { SkinAiGenerator } from "./ai-edit.js";
 import { referencedImages } from "./package.js";
@@ -229,11 +230,15 @@ export function createSkinChatTools(deps: SkinChatToolDeps): ExtraTool[] {
 			// 入参过执行层时被逐值 String 归一(见 ExtraTool 文档),布尔到手是字符串。
 			if (args.activate === "true") {
 				await deps.skinStore.activate(id);
-				return `已生成皮肤「${manifest.name}」(${modeText})并替主人换上了,${modeText}模式下即时生效。${note}`;
+				return ok({
+					text: `已生成皮肤「${manifest.name}」(${modeText})并替主人换上了,${modeText}模式下即时生效。${note}`,
+				});
 			}
 			// 别在这儿写「叫我换上」之类:女仆手上并没有换装工具,她能做的只有再做
 			// 一套(activate=true)。承诺一个不存在的能力,主人一说「那你换上」就卡住。
-			return `已生成皮肤「${manifest.name}」(${modeText})并存进皮肤库,还没换上 —— 主人到「皮肤」页就能试穿。${note}`;
+			return ok({
+				text: `已生成皮肤「${manifest.name}」(${modeText})并存进皮肤库,还没换上 —— 主人到「皮肤」页就能试穿。${note}`,
+			});
 		},
 	};
 

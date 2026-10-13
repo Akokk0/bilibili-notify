@@ -11,6 +11,7 @@
 
 import type { ExtraTool } from "@bilibili-notify/ai";
 import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
+import { fail, ok } from "@bilibili-notify/internal";
 import type { MaidSkillEntry } from "./store.js";
 
 /**
@@ -69,19 +70,19 @@ export function createSkillChatTool(skills: readonly MaidSkillEntry[]): ExtraToo
 		execute: async (args) => {
 			const skill = byName.get(args.name ?? "");
 			if (!skill) {
-				// 说清读不到,而不是抛:抛出去只是界面上一个叉,女仆不知道该改口读哪条。
-				return `没有叫「${args.name ?? ""}」的技能。现在有这些:\n${catalog}`;
+				// 按失败返回而不是抛:痕迹里是叉,而这句话原样喂回给模型,女仆才知道该改口读哪条。
+				return fail("not_found", `没有叫「${args.name ?? ""}」的技能。现在有这些:\n${catalog}`);
 			}
 			const text = skillInstruction(skill);
-			if (!skill.allowedTools) return text;
-			return {
+			if (!skill.allowedTools) return ok({ text });
+			return ok({
 				text,
 				/**
 				 * 把自己一并带上。收窄永远只会更窄(交集),所以留着这把工具扩大不了
 				 * 任何东西 —— 但挑错技能时,女仆还有一次改口的机会。
 				 */
 				restrictTools: [...skill.allowedTools, AI_TOOL_LOAD_SKILL],
-			};
+			});
 		},
 	};
 }

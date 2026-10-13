@@ -33,6 +33,8 @@ import {
 	type CardSkinManifest,
 	cardSkinBytes,
 	DEFAULT_CARD_SKIN,
+	ok,
+	type Result,
 } from "@bilibili-notify/internal";
 import { blockLabel, cardCssRules, fenced, hookLines, knobLines } from "./ai-css.js";
 import { CARD_HTML_ALLOWED_TAGS } from "./html-sanitizer.js";
@@ -218,7 +220,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				const wrote = kinds.length > 0 ? kinds.map((k) => KIND_NAMES[k]).join("、") : "一张都没写";
 				return `- ${s.name}(id: ${s.id})${tags.length > 0 ? `[${tags.join(",")}]` : ""}:${wrote}${s.description ? `。${s.description}` : ""}`;
 			});
-			return `不是这场对话做的皮肤,写入时会先复制一份再改,原件不动。\n${lines.join("\n")}`;
+			return ok({
+				text: `不是这场对话做的皮肤,写入时会先复制一份再改,原件不动。\n${lines.join("\n")}`,
+			});
 		},
 	};
 
@@ -241,9 +245,11 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				const borrowed = fallback
 					? undeclaredKnobs([fallback.css, ...fallback.blocks.map((b) => b.css)], manifest)
 					: [];
-				return `${head}:这套没写这张卡,出图时用默认皮肤的。下面是默认皮肤这张卡的摘要,可以照着写:\n\n${fallback ? summarize(kind, fallback) : "(默认皮肤也没有这张)"}${knobCopyNote(borrowed)}\n\n${knobs}`;
+				return ok({
+					text: `${head}:这套没写这张卡,出图时用默认皮肤的。下面是默认皮肤这张卡的摘要,可以照着写:\n\n${fallback ? summarize(kind, fallback) : "(默认皮肤也没有这张)"}${knobCopyNote(borrowed)}\n\n${knobs}`,
+				});
 			}
-			return `${head}:\n\n${summarize(kind, card)}\n\n${knobs}`;
+			return ok({ text: `${head}:\n\n${summarize(kind, card)}\n\n${knobs}` });
 		},
 	};
 
@@ -279,7 +285,7 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				`CSS:\n${fenced("css", block.css)}`,
 			];
 			if (block.kind === "custom") parts.push(`HTML:\n${fenced("html", block.html)}`);
-			return parts.join("\n\n");
+			return ok({ text: parts.join("\n\n") });
 		},
 	};
 
@@ -290,18 +296,20 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			{ skin: SKIN_PARAM, kind: KIND_PARAM },
 			["skin", "kind"],
 		),
-		async execute(args): Promise<string | ExtraToolResult> {
+		async execute(args): Promise<Result<ExtraToolResult>> {
 			await store.ensureReady();
 			const kind = kindOf(args.kind);
 			const { id, manifest } = readable(args.skin);
 			const shot = deps.shoot ? await deps.shoot(id, kind) : null;
 			if (!shot) {
-				return `现在截不了图(服务端没装 Chrome),你看不见「${manifest.name}」的${KIND_NAMES[kind]}。照实告诉主人,请主人看回复下面的预览。`;
+				return ok({
+					text: `现在截不了图(服务端没装 Chrome),你看不见「${manifest.name}」的${KIND_NAMES[kind]}。照实告诉主人,请主人看回复下面的预览。`,
+				});
 			}
-			return {
+			return ok({
 				text: `这是「${manifest.name}」(id: ${id})的${KIND_NAMES[kind]}现在的样子(示例数据)。看完只把看到的问题告诉主人,不要自己接着改;主人说改再改。`,
 				images: [shot],
-			};
+			});
 		},
 	};
 
@@ -366,7 +374,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			});
 			const warnings = await save(target.id, withCard(target.manifest, kind, card));
 			touch(target.id, kind);
-			return `${target.note}已写好「${target.manifest.name}」(id: ${target.id})的${KIND_NAMES[kind]},共 ${blocks.length} 块。${warned(warnings)}`;
+			return ok({
+				text: `${target.note}已写好「${target.manifest.name}」(id: ${target.id})的${KIND_NAMES[kind]},共 ${blocks.length} 块。${warned(warnings)}`,
+			});
 		},
 	};
 
@@ -428,7 +438,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			const warnings = await save(target.id, withCard(target.manifest, kind, { ...card, blocks }));
 			touch(target.id, kind);
 			const verb = found ? "改好了" : "加好了";
-			return `${target.note}${verb}「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`;
+			return ok({
+				text: `${target.note}${verb}「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`,
+			});
 		},
 	};
 
@@ -455,7 +467,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				withCard(target.manifest, kind, compact({ ...card, blocks })),
 			);
 			touch(target.id, kind);
-			return `${target.note}删掉了「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`;
+			return ok({
+				text: `${target.note}删掉了「${target.manifest.name}」(id: ${target.id})${KIND_NAMES[kind]}里的「${blockId}」块。${warned(warnings)}`,
+			});
 		},
 	};
 
@@ -506,7 +520,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 				owned.add(id);
 				await deps.record({ owned: id });
 				touch(id);
-				return `已新建一套卡片皮肤「${name}」(id: ${id})。现在它一张卡都没写,出图全用默认皮肤的;接着用 ${T.writeCard} 按卡种写。`;
+				return ok({
+					text: `已新建一套卡片皮肤「${name}」(id: ${id})。现在它一张卡都没写,出图全用默认皮肤的;接着用 ${T.writeCard} 按卡种写。`,
+				});
 			}
 			if (args.name !== undefined && !args.name.trim()) throw new Error("名字不能是空的");
 			const target = await writable(args.skin);
@@ -522,7 +538,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 			});
 			const warnings = await save(target.id, next);
 			touch(target.id);
-			return `${target.note}已更新「${next.name}」(id: ${target.id})的名字与简介。${warned(warnings)}`;
+			return ok({
+				text: `${target.note}已更新「${next.name}」(id: ${target.id})的名字与简介。${warned(warnings)}`,
+			});
 		},
 	};
 

@@ -284,7 +284,7 @@ export interface ExtraTool {
 	execute: (
 		args: Record<string, string>,
 		onProgress?: (chars: number) => void,
-	) => Promise<string | ExtraToolResult>;
+	) => Promise<Result<ExtraToolResult>>;
 }
 
 /**

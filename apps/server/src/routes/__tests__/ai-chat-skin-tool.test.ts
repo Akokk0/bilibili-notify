@@ -277,7 +277,10 @@ describe("皮肤工坊模式", () => {
 		await expect(first.execute({ brief: "三套" })).rejects.toThrow();
 
 		await inSkinMode(app);
-		await expect(lastTools()?.[0].execute({ brief: "新一轮" })).resolves.toContain("夜航灯");
+		expect(await lastTools()?.[0].execute({ brief: "新一轮" })).toMatchObject({
+			ok: true,
+			text: expect.stringContaining("夜航灯"),
+		});
 	});
 });
 

@@ -15,6 +15,7 @@
  * 收窄**只活一轮对话**:`toolOptions` 每次请求现造,下一条用户消息拿回完整工具面。
  */
 
+import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ExtraTool } from "../tools";
 import { makeGen, streamOf, textChunk } from "./harness";
@@ -47,7 +48,8 @@ function makeLoader(restrictTools?: readonly string[]): ExtraTool {
 				},
 			},
 		},
-		execute: async () => (restrictTools ? { text: "技能正文", restrictTools } : "技能正文"),
+		execute: async () =>
+			ok(restrictTools ? { text: "技能正文", restrictTools } : { text: "技能正文" }),
 	};
 }
 

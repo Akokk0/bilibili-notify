@@ -13,6 +13,7 @@
  *     换协议只会把「没配对」演成「有时灵有时不灵」。
  */
 
+import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
 	CommentaryGenerator,
@@ -372,7 +373,7 @@ describe("responses 风味:卡片工坊的管道", () => {
 			type: "function" as const,
 			function: { name: "look_card", description: "看一眼", parameters: { type: "object" } },
 		},
-		execute: async () => ({ text: "直播卡的截图", images: [SHOT] }),
+		execute: async () => ok({ text: "直播卡的截图", images: [SHOT] }),
 	};
 
 	it("工具交回图 + 主模型看得见 → function_call_output 之后补一条带 input_image 的 user 项", async () => {

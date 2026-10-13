@@ -72,9 +72,9 @@ describe("读取", () => {
 		const tool = createSkillChatTool([entry()]);
 		if (!tool) throw new Error("工具没建出来");
 		const out = await tool.execute({ name: "weekly-report" });
-		const text = typeof out === "string" ? out : out.text;
-		expect(text).toContain("先列订阅,再逐个查数据。");
-		expect(text).toContain("weekly-report");
+		if (!out.ok) throw new Error("该读得到的");
+		expect(out.text).toContain("先列订阅,再逐个查数据。");
+		expect(out.text).toContain("weekly-report");
 	});
 
 	it("声明了 allowed-tools → 收窄意图带上它自己", async () => {
@@ -85,22 +85,21 @@ describe("读取", () => {
 		]);
 		if (!tool) throw new Error("工具没建出来");
 		const out = await tool.execute({ name: "weekly-report" });
-		if (typeof out === "string") throw new Error("该带收窄意图的");
+		if (!out.ok) throw new Error("该带收窄意图的");
 		expect(out.restrictTools).toEqual(["list_subscriptions", "get_user_stats", AI_TOOL_LOAD_SKILL]);
 	});
 
 	it("没声明 allowed-tools → 不收窄", async () => {
-		// 「不收窄」有两种等价的表达:回一个纯字符串,或回富形状但不带
-		// restrictTools。断言的是**语义**,别把实现挑的那一种写死。
 		const tool = createSkillChatTool([entry()]);
 		if (!tool) throw new Error("工具没建出来");
 		const out = await tool.execute({ name: "weekly-report" });
-		expect(typeof out === "string" || out.restrictTools === undefined).toBe(true);
+		if (!out.ok) throw new Error("该读得到的");
+		expect(out.restrictTools).toBeUndefined();
 	});
 
-	it("读一条不存在的 / 不许自选的 → 说清读不到,而不是抛", async () => {
-		// 抛出去会被 execToolCall 记成一次工具失败,界面上是一个叉,但女仆不知道
-		// 该改口读哪一条。把话说在返回值里,她才能自己纠正。
+	it("读一条不存在的 / 不许自选的 → 按失败返回(痕迹里是叉),话说在返回值里而不是抛", async () => {
+		// 抛出去的话,模型拿到的只是「工具执行失败: …」这种概括;把话说在失败的 message 里,
+		// 它照旧原样喂回给模型 —— 女仆才知道该改口读哪一条。
 		const tool = createSkillChatTool([
 			entry(),
 			entry({ name: "manual-only", disableModelInvocation: true }),
@@ -108,7 +107,8 @@ describe("读取", () => {
 		if (!tool) throw new Error("工具没建出来");
 		for (const name of ["nope", "manual-only", ""]) {
 			const out = await tool.execute({ name });
-			const text = typeof out === "string" ? out : out.text;
+			expect(out).toMatchObject({ ok: false, code: "not_found" });
+			const text = out.ok ? out.text : out.message;
 			expect(text).toContain("没有");
 			// 顺带把还有哪些可用告诉她。
 			expect(text).toContain("weekly-report");

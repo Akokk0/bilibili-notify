@@ -10,6 +10,7 @@
  * dashboard 的 `chatStatelessStream`(cookie session 后面,只有主人本人)。
  */
 
+import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ExtraTool } from "../tools";
 import { makeGen, streamOf, textChunk } from "./harness";
@@ -39,7 +40,7 @@ function makeTool(
 				},
 			},
 		},
-		execute: vi.fn(async () => "造好了:一个东西"),
+		execute: vi.fn(async () => ok({ text: "造好了:一个东西" })),
 		...over,
 	} as ExtraTool & { execute: ReturnType<typeof vi.fn> };
 }
@@ -136,7 +137,7 @@ describe("chatStatelessStream × 注入工具", () => {
 			execute: vi.fn(async (_args: Record<string, string>, onProgress?: (n: number) => void) => {
 				onProgress?.(120);
 				onProgress?.(860);
-				return "造好了:一个东西";
+				return ok({ text: "造好了:一个东西" });
 			}),
 		});
 		const events: Array<{ phase: string; id: string; chars?: number }> = [];
@@ -169,6 +170,32 @@ describe("chatStatelessStream × 注入工具", () => {
 		expect(events[1]).toMatchObject({ phase: "end", ok: false });
 		const toolMsg = createParams(1).messages.find((m) => m.role === "tool");
 		expect(String(toolMsg?.content)).toContain("模型把 JSON 写坏了");
+	});
+
+	it("执行器按结果形状报失败(如读一条不存在的技能)→ end 是失败并带那句话,同一句话喂回模型,对话继续", async () => {
+		oai.create
+			.mockResolvedValueOnce(streamOf([callChunk({ brief: "nope" })]))
+			.mockResolvedValueOnce(streamOf([textChunk("换一条读")]));
+		const tool = makeTool();
+		tool.execute.mockResolvedValueOnce(
+			fail("not_found", "没有叫「nope」的技能。现在有这些:\n- weekly-report:评选本周鸽王"),
+		);
+		const events: Array<{ phase: string; ok?: boolean; message?: string }> = [];
+		const reply = await makeGen().chatStatelessStream(HIST, {
+			onDelta: () => {},
+			onToolEvent: (ev) => events.push(ev),
+			extraTools: [tool],
+		});
+
+		expect(reply).toBe("换一条读");
+		expect(events.find((e) => e.phase === "end")).toMatchObject({
+			ok: false,
+			message: "没有叫「nope」的技能。现在有这些:\n- weekly-report:评选本周鸽王",
+		});
+		const toolMsg = createParams(1).messages.find((m) => m.role === "tool");
+		expect(toolMsg?.content).toBe(
+			"没有叫「nope」的技能。现在有这些:\n- weekly-report:评选本周鸽王",
+		);
 	});
 
 	it("注入工具与只读工具共存:模型调只读的那个照旧走内置执行器", async () => {
@@ -286,7 +313,7 @@ describe("chatStatelessStream × 卡片工坊的管道", () => {
 
 	const SHOT = "data:image/jpeg;base64,U0hPVA==";
 	const lookTool = () =>
-		makeTool({ execute: vi.fn(async () => ({ text: "这是直播卡的截图", images: [SHOT] })) });
+		makeTool({ execute: vi.fn(async () => ok({ text: "这是直播卡的截图", images: [SHOT] })) });
 
 	/** 主模型那几次请求里,带着这张截图的 user 消息(副模型那趟本来就带图,不算)。 */
 	function imageMessages(): Array<{ role: string; content: unknown }> {

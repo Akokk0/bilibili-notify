@@ -16,6 +16,9 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ChatSkinImage, createSkinChatTools, SKIN_MODE_SYSTEM_PROMPT } from "../chat-tool.js";
 import { SkinStore } from "../store.js";
 
+/** 工具结果里给模型看的那句话:成功取 `text`,失败取 `message`。 */
+const said = (r: Awaited<ReturnType<ExtraTool["execute"]>>): string => (r.ok ? r.text : r.message);
+
 const DARK_SKIN = {
 	schemaVersion: 1,
 	name: "夜航灯",
@@ -68,7 +71,7 @@ describe("create_skin 的进度", () => {
 
 	it("没人听进度也照做 —— onProgress 是可选的", async () => {
 		const tool = toolWith(genOf(JSON.stringify(DARK_SKIN)));
-		await expect(tool.execute({ brief: "暗色霓虹" })).resolves.toContain("夜航灯");
+		expect(said(await tool.execute({ brief: "暗色霓虹" }))).toContain("夜航灯");
 	});
 });
 
@@ -162,7 +165,7 @@ describe("create_skin × 主人贴的图", () => {
 		expect(await store.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
 		// 包里有图这件事必须进 system —— 不说,设计师按「零资产」那条规矩绕开壁纸。
 		expect(g.mock.calls[0]?.[0] ?? "").toContain("assets/wallpaper.png");
-		expect(out).toMatch(/壁纸/);
+		expect(said(out)).toMatch(/壁纸/);
 	});
 
 	it("没贴图却要壁纸 → 当场拒,别白烧一趟生成", async () => {
@@ -186,7 +189,7 @@ describe("create_skin × 主人贴的图", () => {
 			{ bytes: PNG, ext: "png" },
 		]).execute({ brief: "暗色,用这张壁纸", wallpaper: "true" });
 
-		expect(out).not.toMatch(/没有做进去|没做进去/);
+		expect(said(out)).not.toMatch(/没有做进去|没做进去/);
 	});
 });
 
@@ -198,7 +201,7 @@ describe("create_skin 执行", () => {
 		const list = await store.list();
 		expect(list).toHaveLength(1);
 		expect(list[0]?.name).toBe("夜航灯");
-		expect(out).toContain("夜航灯");
+		expect(said(out)).toContain("夜航灯");
 	});
 
 	it("brief 里点了壁纸 → 回话里当场说清「图没做进去」", async () => {
@@ -208,8 +211,8 @@ describe("create_skin 执行", () => {
 			brief: "暗色,叠一张雷姆的壁纸做背景",
 		});
 
-		expect(out).toMatch(/壁纸|图片/);
-		expect(out).toMatch(/没有|做不了|不带/);
+		expect(said(out)).toMatch(/壁纸|图片/);
+		expect(said(out)).toMatch(/没有|做不了|不带/);
 	});
 
 	it("brief 没提图片 → 回话不念叨壁纸这回事", async () => {
@@ -217,15 +220,15 @@ describe("create_skin 执行", () => {
 			brief: "赛博朋克,暗色",
 		});
 
-		expect(out).not.toMatch(/壁纸/);
+		expect(said(out)).not.toMatch(/壁纸/);
 	});
 
 	it("默认**不**替主人换上,回话指路皮肤页", async () => {
 		const out = await toolWith(genOf(JSON.stringify(DARK_SKIN))).execute({ brief: "暗色" });
 
 		expect(store.getActive()).toEqual({ light: null, dark: null });
-		expect(out).toContain("皮肤");
-		expect(out).toMatch(/还没换上|没有换上/);
+		expect(said(out)).toContain("皮肤");
+		expect(said(out)).toMatch(/还没换上|没有换上/);
 	});
 
 	it("activate=true → 落进它具备的那个槽,并说清哪个模式下生效", async () => {
@@ -239,7 +242,7 @@ describe("create_skin 执行", () => {
 		expect(active.dark).not.toBeNull();
 		// 只有暗色一套 —— 浅色槽绝不能被顺手占掉。
 		expect(active.light).toBeNull();
-		expect(out).toContain("暗色");
+		expect(said(out)).toContain("暗色");
 	});
 
 	it("activate=false → 不换", async () => {
