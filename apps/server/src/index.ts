@@ -8,7 +8,6 @@ import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
 	type Disposable,
-	fail,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -103,13 +102,14 @@ import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { dataPath, hostPath } from "./runtime/roots.js";
-import { createStatusCommand, readSourceHealth } from "./runtime/status-command.js";
+import { createStatusCommand, readLogins, readSourceHealth } from "./runtime/status-command.js";
 import { createStorageUsage } from "./runtime/storage-usage.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
 import { startStatsCompaction } from "./stats/compaction.js";
 import { bindStatsLoginState } from "./stats/login-binding.js";
+import { listLoginSources } from "./subscriptions/registry.js";
 import { readFailedVersions } from "./update/select-version-for-boot.js";
 import { createUpdateService } from "./update/service.js";
 import {
@@ -1028,8 +1028,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createStatusCommand({
 				probe: () => ({
-					// 登录态交中立的 `AuthState`,一行人话由 `status` 指令按状态拼(`renderStatus`)。
-					login: authSystem?.auth.state(),
+					// 带登录口的来源各一行,现读登记表;状态交中立的 `AuthState`,一行人话由 `status` 指令按状态拼(`renderStatus`)。
+					logins: readLogins(listLoginSources(runtime.sourceRegistry.list()), log),
 					sources: readSourceHealth(runtime.sourceRegistry.list(), log),
 					// 没装 Chrome 就没有渲染队列。
 					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
@@ -1053,8 +1053,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createLoginCommand({
 				logger: log,
-				begin: async () => authSystem?.auth.beginLogin() ?? fail("unavailable", "登录系统还没起来"),
-				state: () => authSystem?.auth.state() ?? { status: "logged-out" },
+				// 带登录口的来源现读登记表(来源可以来去),不再直读 B 站登录系统。
+				sources: () => listLoginSources(runtime.sourceRegistry.list()),
 			}),
 		);
 

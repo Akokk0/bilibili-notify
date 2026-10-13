@@ -18,6 +18,7 @@
     - 返回失败时框架回「『{指令名}』没办成：{message}」；抛错回「出错了，详情在日志里」，并记错误日志。
         - 🔗 10-13（3b-05）已落：`run(values, ctx: { reply }): Promise<Result>`，`signal` 仍没加（没有使用者）；`{指令名}` 填的是主人这次敲的那个词（别名就是别名），不是内部的本名；抛错记 error 级日志。五条内置指令办不成的地方改成返回 `fail()`，话集中在 `runtime/command-texts.ts`。
     - `login` 改成核心的通用指令 `login [来源]`：只装了一个带登录的来源就直接扫它，装了多个就列出来让主人挑；二维码取自 `AuthState`，经 `reply` 发图。
+        - 🔗 10-13（3b-06）已落：「带登录的来源」是登记表里带 `auth` 的来源，每次现读（`listLoginSources`，视图为此多带了 `sourceKey`）。一个都没有回 `not_found`；不带词恰好一个直接扫；不带词不止一个回一条清单（名字加键）并说怎么挑，是正常回答、返回 `ok()`；带词认来源的键、也认给人看的名字，不分大小写、键先于名字，名字撞名回 `invalid` 让改用键，对不上回 `not_found` 并把能挑的列出来。发起之后的逻辑照旧，只是对象换成挑中那个来源的 `auth`，回话里的来源名字取描述符的 `label`。`status` 的「登录」行同时改成每个带登录的来源各一行（「<label>登录：<状态>」；某个来源的 `auth.state()` 抛了，那一行写「状态读不到」、记一行 error，别的行照出），入口不再为这两条指令直读 B 站登录系统；对拍 N17 转进对拍的 P21。文案在 `runtime/command-texts.ts`。
     - 于是 1.0 没有来源自带的指令，`CommandProvider` 登记表先不造（修订 ADR-0021 决策 8）。
 2. **devtools 场景**：
     - `DevtoolsProvider { scenarios: DevScenarioDef[] }`；过线给面板的纯声明叫 `DevScenarioDescriptor`。

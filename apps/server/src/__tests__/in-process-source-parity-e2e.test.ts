@@ -123,7 +123,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P20)与「这版不开」的行(`checked: false`,N01–N18,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P21)与「这版不开」的行(`checked: false`,N01–N16 加 N18,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -150,6 +150,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P18", title: "关停次序", checked: true },
 	{ id: "P19", title: "会员体系读口", checked: true },
 	{ id: "P20", title: "日志等级与没碰 B 站", checked: true },
+	{ id: "P21", title: "status 的「登录」行、login [来源]", checked: true },
 	{
 		id: "N01",
 		title: "searchCreators、经接口新建订阅",
@@ -263,13 +264,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason:
 			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
 	},
-	{
-		id: "N17",
-		title: "status 的「登录」行、login [来源]",
-		checked: false,
-		waitsFor: "3b 通用的 login [来源] 指令",
-		reason: "status 的「登录」行直读 B 站登录系统",
-	},
+	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;编号不回填,N18 照旧。
 	{
 		id: "N18",
 		title: "女仆订阅视图里的平台名",
@@ -1231,6 +1226,67 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P16");
 	});
 
+	/** 经真的入站口敲一条私聊指令,等回话到齐(至少 `n` 条),回会话里收到的全部。 */
+	async function sendCommand(text: string, n: number): Promise<DevCapturedDelivery[]> {
+		await clearCaptures();
+		await okRes(await api("/api/dev/run/inbound.command", json({ params: { text } })));
+		return settledCaptures(n);
+	}
+
+	// 验红:`index.ts` 里 `login` / `status` 递的名单换成只有 B 站(或改回直读 `authSystem`),这条红
+	// (假来源没有自己的「登录」行,敲它的键扫的是 B 站、假来源的 `beginLogin` 没被叫);
+	// 把 `login` 里「多个不带参数 → 列出来」改成直接扫第一个,第二段红。
+	it("P21 login 与 status 的登录行:假来源与 B 站并排在册,status 里各有一行「<名字>登录：…」;login 不带词列出两个,带假来源的键扫的是它", async () => {
+		const probe = currentProbe();
+		probe.auth.set({ status: "logged-in", loggedInAt: "2026-10-01T00:00:00.000Z" });
+		const lines = await statusLines();
+		expect(lines).toContain(`${IN_PROCESS_LABEL}登录：已登录`);
+		expect(lines.some((line) => line.startsWith("B 站登录："))).toBe(true);
+		// 登录行排在来源自己的行之前。
+		expect(lines.indexOf(`${IN_PROCESS_LABEL}登录：已登录`)).toBeLessThan(
+			lines.findIndex((line) => line.startsWith("推送通道：")),
+		);
+
+		// 两个带登录的来源、不带词:回清单,谁也不扫(真 B 站的 beginLogin 会出网,联网守卫会拦)。
+		probe.auth.set({ status: "logged-out" });
+		const [list, ...rest] = await sendCommand("/login", 1);
+		expect(rest).toEqual([]);
+		expect(list).toMatchObject({ private: true, kind: "text" });
+		expect(list?.text).toBe(
+			`有好几个来源可以登录：\n- B 站（bilibili）\n- ${IN_PROCESS_LABEL}（${IN_PROCESS_KEY}）\n想扫哪一个，就在 login 后面跟上它的名字或键，比如「login bilibili」～`,
+		);
+		expect(probe.auth.state()).toEqual({ status: "logged-out" });
+
+		// 带假来源的键:发回来一张图(假来源的二维码)加一句点它名字的话;它的登录口进了 awaiting-scan。
+		const scanned = await sendCommand(`/login ${IN_PROCESS_KEY}`, 2);
+		expect(scanned.map((d) => [d.private, d.kind, d.images])).toEqual([
+			[true, "image", 1],
+			[true, "text", 0],
+		]);
+		expect(scanned[1]?.text).toBe(
+			`扫这张码登录「${IN_PROCESS_LABEL}」就行，180 秒内有效，过期了再敲一次～`,
+		);
+		expect(probe.auth.state()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:image/png;base64,AAAA" },
+		});
+		// B 站那一边没被动。
+		const bili = (await (await okRes(await api("/api/sources/bilibili/auth"))).json()) as {
+			state: { status: string };
+		};
+		expect(bili.state.status).not.toBe("awaiting-scan");
+
+		// 名字也认,大小写不论;对不上的词是失败话,带分发器的前缀。
+		const byName = await sendCommand(`/login ${IN_PROCESS_LABEL}`, 2);
+		expect(byName[1]?.text).toContain(`登录「${IN_PROCESS_LABEL}」`);
+		const unknown = await sendCommand("/login douyin", 1);
+		expect(unknown[0]?.text).toBe(
+			`『login』没办成：没有叫「douyin」的来源～能登录的有：B 站（bilibili）、${IN_PROCESS_LABEL}（${IN_PROCESS_KEY}）`,
+		);
+		probe.auth.set({ status: "logged-out" });
+		drove("P21");
+	});
+
 	// 验红:`membership-tiers.ts` 只读第一个在册来源(B 站),假来源的档 key 就认不出,第一段红。
 	it("P19 会员体系读口:假来源声明的档 key 过得了请求校验;乱写的 key 回 400、issues 点名 content.tierKey", async () => {
 		/** 预览请求故意带一个无关的错(fallback 不是布尔):校验一定会跑,不碰渲染(也就不碰任何网)。 */
@@ -1481,16 +1537,19 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 20 行、不开 18 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 21 行、不开 17 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(38);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 20 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 21 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
+		// N17 转进了对拍(P21),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
-			Array.from({ length: 18 }, (_, i) => `N${String(i + 1).padStart(2, "0")}`),
+			[...Array.from({ length: 16 }, (_, i) => i + 1), 18].map(
+				(n) => `N${String(n).padStart(2, "0")}`,
+			),
 		);
 		for (const row of closed) {
 			if (row.checked) continue;

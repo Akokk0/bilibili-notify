@@ -1,9 +1,12 @@
 /**
- * `/login` —— 在手机上重新扫码登录 B 站。
+ * `/login [来源]` —— 在手机上重新扫码登录某个来源。
+ *
+ * 「带登录的来源」是登记表里带 `auth` 的来源,现读:只有一个就直接扫它,有好几个就列出来让主人
+ * 挑(跟上来源的键或名字);二维码取自那个来源的 `auth.state()`,经 `reply` 发图。
  *
  * ## 为什么这条必须是**手动**的
  *
- * B 站二维码 180 秒过期。所以绝不能做成「检测到登录失效就自动推一个码」—— 主人两
+ * 二维码 180 秒过期(B 站如此,别的来源也按这个口径叮嘱)。所以绝不能做成「检测到登录失效就自动推一个码」—— 主人两
  * 小时后看手机,拿到的是一张废码,反而以为系统坏了。必须他敲下这条指令的那一刻才生成。
  *
  * > 对照:备份该**自动**(怕你忘),扫码必须**手动**(码会过期)。
@@ -20,15 +23,17 @@
  */
 
 import { Buffer } from "node:buffer";
-import { type AuthState, fail, type Logger, ok, type Result } from "@bilibili-notify/internal";
+import { fail, type Logger, ok, type Result } from "@bilibili-notify/internal";
+import type { SourceLoginView } from "../subscriptions/registry.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
 import { COMMAND_TEXTS } from "./command-texts.js";
 
 export interface LoginCommandOptions {
-	/** 现生成一张二维码并开始轮询。 */
-	begin: () => Promise<Result>;
-	/** 读当前登录状态 —— 发起成功后码就在 `awaiting-scan` 的 `qr.dataUrl` 里。 */
-	state: () => AuthState;
+	/**
+	 * 带登录口的来源,**现读**(来源可以来去,不快照)。发起成功后码就在那个来源 `auth.state()` 的
+	 * `awaiting-scan` 的 `qr.dataUrl` 里。
+	 */
+	sources: () => readonly SourceLoginView[];
 	logger: Logger;
 }
 
@@ -51,20 +56,66 @@ function decodeDataUrl(data: unknown): Buffer | undefined {
 	}
 }
 
+/** 「名字（键）」的清单写法:主人既能认名字也能抄键。 */
+function describeSource(source: SourceLoginView): string {
+	return `${source.label}（${source.sourceKey}）`;
+}
+
+/**
+ * 主人敲的词对到哪个来源。键先于名字认(一个来源的名字恰是另一个的键时,敲出来的字指的是那个键),
+ * 都不分大小写、不计前后空白。名字同名的几个来源没法从词里分出来,让主人改用键。
+ */
+function pickSource(
+	sources: readonly SourceLoginView[],
+	word: string,
+): Result<{ source: SourceLoginView }> {
+	const typed = word.trim();
+	const wanted = typed.toLowerCase();
+	const byKey = sources.find((s) => s.sourceKey.toLowerCase() === wanted);
+	if (byKey) return ok({ source: byKey });
+	const byLabel = sources.filter((s) => s.label.toLowerCase() === wanted);
+	const [first] = byLabel;
+	if (byLabel.length === 1 && first) return ok({ source: first });
+	if (byLabel.length > 1) {
+		const options = byLabel.map(describeSource).join("、");
+		return fail("invalid", COMMAND_TEXTS.login.ambiguousSource(typed, options));
+	}
+	const options = sources.map(describeSource).join("、");
+	return fail("not_found", COMMAND_TEXTS.login.unknownSource(typed, options));
+}
+
 export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 	return command({
 		name: "login",
 		aliases: ["扫码", "登录"],
-		description: "重新扫码登录 B 站",
+		signature: "[source:text|来源]",
+		description: "重新扫码登录（有好几个来源时跟上来源的名字或键）",
 		details: `二维码只发这条私聊，${QR_TTL_SECONDS} 秒内有效，过期就再敲一次。`,
-		run: async (_values, { reply }) => {
-			const begun = await opts.begin();
+		run: async (values, { reply }) => {
+			const sources = opts.sources();
+			const [first, ...others] = sources;
+			if (!first) return fail("not_found", COMMAND_TEXTS.login.noSources);
+			let source = first;
+			if (values.source !== undefined) {
+				const picked = pickSource(sources, values.source);
+				if (!picked.ok) return picked;
+				source = picked.source;
+			} else if (others.length > 0) {
+				// 不止一个来源又没说挑哪个:列出来让主人挑,是正常的回答、不是办不成。
+				const lines = sources.map((s) => `- ${describeSource(s)}`).join("\n");
+				await reply(COMMAND_TEXTS.loginReplies.pickOne(lines, first.sourceKey));
+				return ok();
+			}
+			const { auth, label } = source;
+			const begun = await auth.beginLogin();
 			if (!begun.ok) {
 				// 发起就失败了:快照可能还是上一次的内容(比如「已登录」),读它回话会骗人,以结果里的话为准。
-				opts.logger.warn(`[command] 扫码发起失败: ${begun.code} ${begun.message}`);
+				opts.logger.warn(
+					`[command] 扫码发起失败(${source.sourceKey}): ${begun.code} ${begun.message}`,
+				);
 				return fail(begun.code, begun.message);
 			}
-			const state = opts.state();
+			const state = auth.state();
 			const png = state.status === "awaiting-scan" ? decodeDataUrl(state.qr.dataUrl) : undefined;
 			if (!png) {
 				opts.logger.warn(`[command] 扫码没拿到二维码: status=${state.status}`);
@@ -84,7 +135,7 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 			// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
 			const sent = await reply({ kind: "image", image: { buffer: png, mime: "image/png" } });
 			if (!sent.ok) return fail("unavailable", COMMAND_TEXTS.login.qrNotSent);
-			await reply(`扫这张码就行，${QR_TTL_SECONDS} 秒内有效，过期了再敲一次～`);
+			await reply(COMMAND_TEXTS.loginReplies.scanned(label, QR_TTL_SECONDS));
 			return ok();
 		},
 	});

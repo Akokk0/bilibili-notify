@@ -179,7 +179,7 @@ type AuthState =                   // 状态值用 kebab
 - **头部**显示排第一的账号；有多个账号时加小三角下拉。AI 对话里主人的头像同头部。
 - **新手引导**的登录步由声明了 `auth` 的来源生成。
 - 🔗 **10-11 以上四条（列一行、排序、多账号下拉、按来源生成引导步）3a-29 没做，推到第 4 期**（主人选范围甲档）：今天只有 B 站一个有登录的来源，读者都在第 4 期，现在造 `accounts/` 与排序键是没有读者的东西。3a-29 B 站半做的是「不退化」：头部、AI 对话、引导、概览、系统页账号卡都改读 B 站那一个来源的登录口。已记进 construction-plan 的「以后再说」。
-- 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。（3a-29 B 站半：今天的 `login` 仍是现有那条 B 站私聊指令，只是改成读 `AuthState`——从 `awaiting-scan` 的 `qr.dataUrl` 解出图发回；发起失败回结果里的话；`status` 指令的「登录：」一行也由核心按 `AuthState` 拼。改成通用的 `login [来源]` 随 3b。）
+- 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。（3a-29 B 站半：`login` 读 `AuthState`——从 `awaiting-scan` 的 `qr.dataUrl` 解出图发回；发起失败回结果里的话；`status` 指令的登录行也由核心按 `AuthState` 拼。3b-06 已改成通用的 `login [来源]`：带登录的来源现读来源登记表，只有一个直接扫、有好几个列出来让主人挑；`status` 的登录行每个带登录的来源各一行，不再直读 B 站登录系统。）
 - 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。（落成：面板的数据面是 react-query 的查询缓存，键 `["source-auth", 来源键]`（`hooks/use-source-auth.ts`），读的地方各自点名要哪个来源；WS `auth` 频道的帧按帧里的 `sourceKey` 写那一条缓存并让它失效重取，重连后 `hydrate` 让整个前缀失效。原来的 zustand 登录仓库删了。）
 - 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。
 - 拓展积木 `qrLogin` 退役（从没实现过）。

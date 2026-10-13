@@ -6,8 +6,15 @@
  * 办成了的回话不在这儿测,各指令自己的测试钉着。
  */
 
-import { fail, type NotificationPayload, ok, type Result } from "@bilibili-notify/internal";
+import {
+	type AuthState,
+	fail,
+	type NotificationPayload,
+	ok,
+	type Result,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import type { SourceLoginView } from "../../subscriptions/registry.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
 import { createLoginCommand } from "../login-command.js";
 import { createMuteCommand } from "../mute-command.js";
@@ -44,10 +51,35 @@ function harness(commands: Parameters<typeof createCommandDispatcher>[0]["comman
 
 const QR_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
 
+/** 一个带登录口的来源:`beginLogin` 回 `begin`,`state()` 回 `state`。 */
+function loginSource(
+	sourceKey: string,
+	label: string,
+	opts: { begin?: Result; state?: () => AuthState } = {},
+): SourceLoginView {
+	return {
+		sourceKey,
+		label,
+		auth: {
+			beginLogin: async () => opts.begin ?? ok(),
+			logout: async () => ok(),
+			state:
+				opts.state ??
+				(() => ({
+					status: "awaiting-scan",
+					qr: { dataUrl: QR_DATA_URL, expiresAt: "2026-10-13T00:03:00.000Z" },
+				})),
+			onChange: () => ({ dispose() {} }),
+		},
+	};
+}
+
 function loginHarness(opts: {
 	begin?: Result;
-	state?: Parameters<typeof createLoginCommand>[0]["state"];
+	state?: () => AuthState;
 	imageSent?: boolean;
+	/** 不给 = 只有 B 站一个带登录的来源。 */
+	sources?: SourceLoginView[];
 }) {
 	const texts: string[] = [];
 	const dispatcher = createCommandDispatcher({
@@ -63,13 +95,7 @@ function loginHarness(opts: {
 		config: () => ({ enabled: true, prefix: "/", aliases: {} }),
 		commands: [
 			createLoginCommand({
-				begin: async () => opts.begin ?? ok(),
-				state:
-					opts.state ??
-					(() => ({
-						status: "awaiting-scan",
-						qr: { dataUrl: QR_DATA_URL, expiresAt: "2026-10-13T00:03:00.000Z" },
-					})),
+				sources: () => opts.sources ?? [loginSource("bilibili", "B 站", opts)],
 				logger: quietLogger,
 			}),
 		],
@@ -114,6 +140,39 @@ describe("login 办不成", () => {
 			state: () => ({ status: "confirming", message: "已扫码，请在手机上确认" }),
 		});
 		expect(await send("/login")).toEqual(["已扫码，请在手机上确认"]);
+	});
+
+	it("没有带登录的来源:说「现在没有能登录的来源」,敲别名就填别名", async () => {
+		const send = loginHarness({ sources: [] });
+		expect(await send("/login")).toEqual(["『login』没办成：现在没有能登录的来源～"]);
+		expect(await send("/扫码")).toEqual(["『扫码』没办成：现在没有能登录的来源～"]);
+	});
+
+	it("带的词对不上任何来源:把能挑的列出来", async () => {
+		const send = loginHarness({
+			sources: [loginSource("bilibili", "B 站"), loginSource("acme.inprocess", "对拍源")],
+		});
+		expect(await send("/login douyin")).toEqual([
+			"『login』没办成：没有叫「douyin」的来源～能登录的有：B 站（bilibili）、对拍源（acme.inprocess）",
+		]);
+	});
+
+	it("不止一个来源又没说挑哪个:是正常回答,不加「没办成」", async () => {
+		const send = loginHarness({
+			sources: [loginSource("bilibili", "B 站"), loginSource("acme.inprocess", "对拍源")],
+		});
+		expect(await send("/登录")).toEqual([
+			"有好几个来源可以登录：\n- B 站（bilibili）\n- 对拍源（acme.inprocess）\n想扫哪一个，就在 login 后面跟上它的名字或键，比如「login bilibili」～",
+		]);
+	});
+
+	it("带参数敲「login 对拍源」:名字里有空格的来源也认(参数吞掉剩余全部)", async () => {
+		const send = loginHarness({
+			sources: [loginSource("bilibili", "B 站"), loginSource("acme.inprocess", "对拍源")],
+		});
+		expect(await send("/login B 站")).toEqual([
+			"扫这张码登录「B 站」就行，180 秒内有效，过期了再敲一次～",
+		]);
 	});
 });
 
@@ -210,7 +269,7 @@ describe("mute / status 没有失败分支", () => {
 		const { send } = harness([
 			createStatusCommand({
 				probe: () => ({
-					login: { status: "logged-out" },
+					logins: [],
 					sources: [],
 					renderQueue: 0,
 					connections: [],

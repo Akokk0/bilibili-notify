@@ -1,10 +1,31 @@
-import type { Disposable, Source, SourceContext } from "@bilibili-notify/internal";
+import type { Disposable, Source, SourceAuth, SourceContext } from "@bilibili-notify/internal";
 import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
 import { errorMessageOf } from "../util/error-message.js";
 
-/** 登记表对外给的来源视图:不含 start / stop(启停只归登记表)。今天是 `{ descriptor, auth?, health? }`。 */
-export type SourceView = Omit<Source, "start" | "stop">;
+/**
+ * 登记表对外给的来源视图:不含 start / stop(启停只归登记表)。今天是 `{ sourceKey, descriptor, auth?, health? }`;
+ * `sourceKey` 是登记时认领的那个键(`login <来源>` 要认键,所以视图得带着它)。
+ */
+export type SourceView = Omit<Source, "start" | "stop"> & { sourceKey: string };
+
+/** 带登录口的来源:`login` 指令挑它、`status` 给它出「登录」行。 */
+export interface SourceLoginView {
+	sourceKey: string;
+	/** 描述符的 `label`,给人看的名字。 */
+	label: string;
+	auth: SourceAuth;
+}
+
+/** 在册来源里带登录口的那几个,按登记先后。现读(来源可以来去),别缓存。 */
+export function listLoginSources(views: readonly SourceView[]): SourceLoginView[] {
+	const found: SourceLoginView[] = [];
+	for (const view of views) {
+		if (view.auth)
+			found.push({ sourceKey: view.sourceKey, label: view.descriptor.label, auth: view.auth });
+	}
+	return found;
+}
 
 /**
  * 订阅来源的登记表:一个来源键一个主人。
@@ -32,6 +53,7 @@ export function createSourceRegistry(): SourceRegistry {
 		async register(sourceKey, source, ctx) {
 			const { health } = source;
 			const claim = table.claim(sourceKey, {
+				sourceKey,
 				descriptor: source.descriptor,
 				auth: source.auth,
 				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。

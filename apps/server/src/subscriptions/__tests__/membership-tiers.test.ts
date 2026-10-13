@@ -12,6 +12,7 @@ import { makeIntegration, makeSource } from "./fixtures.js";
 const tier = (key: string, rank: number): MembershipTier => ({ key, name: `档-${key}`, rank });
 
 const viewOf = (...programs: MembershipProgram[]): SourceView => ({
+	sourceKey: "test",
 	descriptor: { label: "测试", membershipPrograms: programs },
 });
 
@@ -39,7 +40,7 @@ describe("createMembershipTierReader", () => {
 	});
 
 	it("没有任何来源声明体系:byKey 与 lowest 都是 undefined", () => {
-		const reader = readerOf({ descriptor: { label: "测试" } }, viewOf());
+		const reader = readerOf({ sourceKey: "test.bare", descriptor: { label: "测试" } }, viewOf());
 		expect(reader.byKey("captain")).toBeUndefined();
 		expect(reader.lowest()).toBeUndefined();
 		expect(readerOf().lowest()).toBeUndefined();

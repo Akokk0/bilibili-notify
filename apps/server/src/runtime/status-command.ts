@@ -10,14 +10,19 @@
  */
 
 import { type AuthState, type Logger, ok } from "@bilibili-notify/internal";
-import type { SourceView } from "../subscriptions/registry.js";
+import type { SourceLoginView, SourceView } from "../subscriptions/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
+import { COMMAND_TEXTS } from "./command-texts.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
 export interface StatusReport {
-	/** 登录态(中立的 `AuthState`);登录系统还没起来是 `undefined`。一行人话由 {@link renderLogin} 按状态拼。 */
-	login: AuthState | undefined;
+	/**
+	 * 带登录口的来源各一行,次序是登记先后:`label` 是来源给人看的名字,`state` 是中立的 `AuthState`,
+	 * 一行人话由 {@link renderLogin} 按状态拼。`state` 为 `undefined` = 这个来源的 `auth.state()` 抛了(算 bug)。
+	 * 没有带登录的来源就是空数组、没有这一行。取数见 {@link readLogins}。
+	 */
+	logins: { label: string; state: AuthState | undefined }[];
 	/**
 	 * 在册来源各一行,次序就是登记先后:`label` 是平台名(描述符的 `label`),`summary` 是来源自己说的那句话
 	 * (如「上次抓取 2 分钟前」)。取数见 {@link readSourceHealth}。
@@ -45,9 +50,12 @@ function renderConnections(connections: StatusReport["connections"]): string {
 	return `${down.map((a) => a.name).join("、")} 断了（共 ${connections.length} 个）`;
 }
 
-/** 登录态的一行人话。`confirming` 没带 `message` 时写「正在确认」。 */
+/** 来源自己的读口抛了时那一行写的话(`health()` 与 `auth.state()` 共用)。 */
+const UNREADABLE = "状态读不到";
+
+/** 登录态的一行人话。`confirming` 没带 `message` 时写「正在确认」;`undefined`(读口抛了)写「状态读不到」。 */
 export function renderLogin(state: AuthState | undefined): string {
-	if (state === undefined) return "还没起来";
+	if (state === undefined) return UNREADABLE;
 	switch (state.status) {
 		case "logged-in":
 			return "已登录";
@@ -83,15 +91,36 @@ export function readSourceHealth(
 			rows.push({ label, summary: view.health().summary });
 		} catch (err) {
 			logger.error(`[status] 来源「${label}」的 health() 抛错: ${errorMessageOf(err)}`);
-			rows.push({ label, summary: "状态读不到" });
+			rows.push({ label, summary: UNREADABLE });
 		}
 	}
 	return rows;
 }
 
+/**
+ * 带登录口的来源各交的一行:每个来源现读一次 `auth.state()`(同步、不出网)。和 {@link readSourceHealth} 同一个待遇:
+ * `auth.state()` 抛了算 bug,记一行 error、那一行的 `state` 记 `undefined`(渲染成「状态读不到」),别的行照出。
+ */
+export function readLogins(
+	sources: readonly SourceLoginView[],
+	logger: Pick<Logger, "error">,
+): StatusReport["logins"] {
+	return sources.map(({ label, auth }) => {
+		try {
+			return { label, state: auth.state() };
+		} catch (err) {
+			logger.error(`[status] 来源「${label}」的 auth.state() 抛错: ${errorMessageOf(err)}`);
+			return { label, state: undefined };
+		}
+	});
+}
+
 export function renderStatus(report: StatusReport, now: number): string {
 	const lines = [
-		`登录：${renderLogin(report.login)}`,
+		// 登录排在来源自己的行之前:掉线是「怎么没动静」的头号嫌疑。
+		...report.logins.map(
+			(l) => `${COMMAND_TEXTS.status.loginLabel(l.label)}：${renderLogin(l.state)}`,
+		),
 		// 「多久以前」由来源自己拼(手机上「14:32」还得自己减一次,「2 分钟前」不用)。
 		...report.sources.map((s) => `${s.label}：${s.summary}`),
 		`推送通道：${renderConnections(report.connections)}`,

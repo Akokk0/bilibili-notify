@@ -1,6 +1,6 @@
-import type { Source } from "@bilibili-notify/internal";
+import { ok, type Source, type SourceAuth } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createSourceRegistry } from "../registry.js";
+import { createSourceRegistry, listLoginSources } from "../registry.js";
 import { makeIntegration, makeLogger, makeSource, SOURCE_KEY } from "./fixtures.js";
 
 // 登记表只认 `SourceContext` 的形状;这里的上下文只用到 logger,其余不碰。
@@ -61,6 +61,27 @@ describe("createSourceRegistry", () => {
 		expect(registry.get("with")?.health?.()).toEqual({ summary: "我" });
 		expect(registry.get("without")?.health).toBeUndefined();
 		expect(registry.list().map((view) => view.health?.().summary)).toEqual(["我", undefined]);
+	});
+
+	// 验红:`register` 里认领视图时漏掉 `sourceKey`,这条红(`login <键>` 就认不出来源)。
+	it("视图带着登记时认领的键;listLoginSources 只挑带登录口的,键、名字、登录口原样、按登记先后", async () => {
+		const registry = createSourceRegistry();
+		const auth: SourceAuth = {
+			beginLogin: async () => ok(),
+			logout: async () => ok(),
+			state: () => ({ status: "logged-out" }),
+			onChange: () => ({ dispose() {} }),
+		};
+		const withAuth: Source = {
+			descriptor: { label: "甲" },
+			start: async () => {},
+			stop: async () => {},
+			auth,
+		};
+		await registry.register("a.one", withAuth, ctxOf().ctx);
+		await registry.register("b.two", makeSource(), ctxOf().ctx);
+		expect(registry.get("a.one")?.sourceKey).toBe("a.one");
+		expect(listLoginSources(registry.list())).toEqual([{ sourceKey: "a.one", label: "甲", auth }]);
 	});
 
 	it("键被占了就抛,原主人不动、新来源没被 start", async () => {
