@@ -103,7 +103,7 @@
 | `PlatformAdapterDef` / `PlatformAdapterHandle` / `registerPlatformAdapter` | 拓展契约的 `PushExtensionDef` / `PushSourceHandle` / `registerPushSource` | 交进登记表的一整包（适配器 + 描述 + `settingsSchema`）、登记后拿回的把手、登记口；内置与拓展同一个 |
 | `PlatformAdapterRegistry` | `AdapterRegistry` | 适配器登记表，和分发一起在 `push/` |
 | `PlatformAdapterContext` | — | 适配器拿到的环境：`IntegrationContext`（ADR-0025）加推送侧特有的（入站 `ctx.inbound` 是其一，其余施工时定） |
-| `PlatformAdapterDescriptor` | 拓展契约的 `ExtensionPushView` | 描述**一个适配器**：`{ label, shortLabel, color, icon, settingsFields }` |
+| `PlatformAdapterDescriptor` | 拓展契约的 `ExtensionPushView` | 描述**一个适配器**：`{ label, shortLabel, color, icon, settingsFields }`。第 3 版契约的适配器不带这一格（适配器自己的「脸」这一期不造）：拓展的描述以清单为准、由宿主填，内置的随第 4 期 |
 | `PlatformDescriptor` | 不变（`tint` 改叫 `color`） | 描述**一个聊天平台**：`{ platform, label, shortLabel, color, icon?, targetKind: "session" \| "endpoint", scopes, addressNouns }`；`inbound`、`atAll` 从这里挪成适配器的运行期能力 |
 | `ConnectionCandidate` | 拓展的 `ExtensionBotView`（`listBots` 的元素） | 新建连接时供挑的候选 |
 
@@ -117,7 +117,7 @@
 | --- | --- | --- |
 | 描述 | `descriptor`、`settingsSchema` | `descriptor` 就是 `PlatformAdapterDescriptor`；`settingsSchema` 校验连接的 `settings`，面板照 `settingsFields` 画表单 |
 | 必备 | `start(ctx)` / `stop()` | 取代 `reconcile` / `dispose`。登记即 `start`：晚登记的拓展也一样起来，不用等下一次连接变更才补 |
-| 必备 | `send`、`isAvailable`、`probe` | 真发、此刻发不发得出、探一次通断；`send` 与 `probe` 回结果形状（见「结果与失败」） |
+| 必备 | `send`、`isAvailable`、`probe` | 真发、此刻发不发得出、探一次通断；`send` 与 `probe` 回结果形状（见「结果与失败」）。通断由宿主「拉」：每分钟调一次 `probe`（原来 5 分钟），见「连接通不通」 |
 | 必备 | `listConnectionCandidates(signal)` | 列新建连接的候选（见「新建连接」） |
 | 可选 | `capabilities` / `probeCapabilities` | 运行期能力，新增 `atAll`、`inbound`；原先按平台名判断的（@全体 分流、审批能不能收回复）一律改问能力。能力是三态，不算失败结果 |
 | 可选 | `listAddressCandidates(connection, scope, signal)` | 列可挑的地址，只查 `scope` 那一种（如 QQ 官方机器人的会话与频道，频道带 `parentAddress` 与 `parentName`）；读口 `GET /api/connections/:id/addresses?scope=` |
@@ -129,7 +129,9 @@
 
 - 只有一条路：挑一个候选，再填字段。`ConnectionCandidate = { name, platform: PlatformDescriptor, settings, selfId?, via?, boundConnectionId? }`。
 - 平台固定的适配器返回写死的**模板候选**：OneBot 一个、QQ 官方机器人一个、webhook 四个。模板的 `settings` 是默认值、不带 `boundConnectionId`，可以反复用。
-- 桥返回在线的 bot。
+- 桥返回在线的 bot。候选里的完整平台描述由契约的门给一个造中性描述的函数（住零依赖的子路径），桥用它填、再盖上自己知道的图标。
+- 候选的读口挂在现成的 `/api/adapters/:adapterKey/` 前缀下，内置与拓展同一个口；面板读的旧口 `/api/ext/:id/bots` 在同一个提交里删掉。
+- 适配器登记（`registerAdapters`）一次性：失败不复位、再调直接拒。
 - 连接的 `platform` 只来自挑中的候选。
 - 后果：新建连接要适配器在跑；清单里的静态数据拿不到平台列表（推送侧的平台列表改由运行期的候选给）。已有连接的脸读连接上的 `platformSnapshot`，不等适配器。
 
@@ -177,7 +179,7 @@ type PushTarget =
 #### 连接设置的校验
 
 - 保存时：适配器在场就按它的 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。
-- 读盘时：逐条校验，不过的只隔离那一条——不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动。BN 照常开机。
+- 读盘时：逐条校验，不过的只隔离那一条——不交给适配器、不投递；面板显示「设置不合法」与原因；盘上原文不动。BN 照常开机。这是宿主替连接报的问题：进问题表、不私聊，记在那条连接所属适配器的名下。
 - 只有外壳（`id` / `name` / `adapterKey` / `platform`）坏了才挡开机。
 - 撤下的旧形状写成明确的名单：适配器没登记不等于存量（拓展是晚加载的）。
 - 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。现行「坏的内置连接开机就抛错」翻掉。
@@ -188,7 +190,7 @@ type PushTarget =
 
 #### 入站
 
-内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报（现行内置的入站在装配处直通分发，不核归属）。回调包叫 `InboundHandlers`（原 `InboundSinks`）。
+内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报（现行内置的入站在装配处直通分发，不核归属）。回调包叫 `InboundHandlers`（原 `InboundSinks`）。私聊的号叫 `address`（原 `userId`）；群消息的群号叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对；不用 `author`，那是作品作者）。桥协议帧不改名，由桥的适配器映射。
 
 #### 结果与失败
 
@@ -201,14 +203,27 @@ type PushTarget =
 - 连接上的探测状态叫 `probeState`（原 `testStatus`），是对象，三态取值在它的 `status` 里；只有宿主写。不迁移，开机重探。路由 `/api/connections/:id/probe`（原 `/test`）。
 - 目标的可达性记在 `reachability.changedAt`（原 `testStatus.lastCheckedAt`，只在通断翻转时写）。
 
+#### 连接通不通
+
+通断由宿主「拉」，契约不加成员，适配器自己不报通断：
+
+- 宿主每分钟调一次现成的 `probe`（原来 5 分钟），连续两次探不通算断。探测结果改成**状态变了才写盘**（今天每轮都写连接文件并广播）。🔗 现状：今天每 5 分钟探一次，每轮都写。原先拟的「OneBot 补 WS 看门狗」撤掉。
+- 私聊与清的规矩全在宿主：运行中断了（连上过又断）才私聊；启动后一直没连上的、主人改设置造成的只进表；主人的私聊目标走的就是这条断了的连接，就不发、不再试、恢复后不补；探通了清掉，并只对真私聊过的补「已恢复」。
+- 宿主替连接报的几条（连接设置不合法、探测连续两次不通）记在那条连接所属适配器的名下（一条桥接入带倒的几条连接，60 秒窗口会并成一句）；code 施工时照规范起。
+- 每分钟探 QQ 官方那个接口有没有频率限制，施工时先核。
+- 适配器特有、探测看不出来的事（如 QQ 网关收不到消息）仍走 `reportProblem({ connectionId })`。
+- **OneBot 小程序卡能力的重探**也收到宿主：节奏（今天适配器自己 60 秒节流）与「探不出来不推翻已探实的答案」那条规矩由宿主管，契约不加成员；与连接通断同一片做。
+
 #### 原生分享与链接入站
 
 链接预览（ADR-0029）落在适配器这一侧的部分：
 
-- 解析器交中立描述 `{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`（`LinkPreview.nativeShare`），由 OneBot 适配器去签，签不了就回图片。现行签卡写死的 `type: "bili"` 删掉。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表。
+- 解析器交中立描述 `{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`（`LinkPreview.nativeShare`），由 OneBot 适配器去签，签不了就回图片。现行签卡写死的 `type: "bili"` 删掉。`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核）；OneBot 签名接口不收通用参数，就在适配器里放一张 appid → 预设的对照表；旧重推原件迁移补同一个 appid。
+- 载荷种类 `"miniapp-card"` 改 `"native-share"`，类型随 `NativeShare…`；能力格 `miniAppCard` 改 `nativeShare`。桥帧里的能力名（`miniAppCard`）与载荷种类（`miniapp-card`）照旧不改，进 alpha 后两步改名。
 - OneBot 入站的 B 站域名预筛删掉：该不该回预览由解析器的 `matches` 说了算，适配器不认识任何一家来源。64KB / 8 层的上限保留。
-- 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格照旧，进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。
-- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。
+- 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格（`miniAppCardLinks`）照旧，进 alpha 之后两步改名的清单，由桥的适配器映射；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。不用 `linkPreviews` 做名字：它与 BN 回出去的 `LinkPreview` 同词两义。
+- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发的是：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。
+- 链接预览回卡不走推送链，全局静音与免扰都管不到，所以 `linkPreview` 留一个总开关（默认关）与冷却 `cooldownSec`，见 [data-model.md](./data-model.md)。
 
 #### 线上格式
 
@@ -225,7 +240,7 @@ type PushTarget =
 | 身份 | 行上带 `identity: { sourceKey, externalId }`，不再分「B 站行 / 拓展行」两套格 |
 | 快照 | `nameSnapshot`；`avatarSnapshot` 是图库引用（所有来源都有头像快照了） |
 | 时刻 | `createdAt`（ISO） |
-| 推送种类 | 那一格叫 `feature`（原 `kind`），值直接用特性键名：`post` / `liveStart` / `liveStreaming` / `liveEnd` / `membership` / `superchat` / `specialDanmaku` / `specialUserEnter`；`featureToPushKind` 删掉；`/api/history?feature=`、按天计数的键同一套 |
+| 推送种类 | 那一格叫 `feature`（原 `kind`），值直接用特性键名：`post` / `liveStart` / `liveStreaming` / `liveEnd` / `membership` / `superchat` / `viewerChat` / `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`）；`featureToPushKind` 删掉；`/api/history?feature=`、按天计数的键同一套 |
 | 投递结果 | 每条消息的结果是结果形状：失败带 `code` + `message`（与 `upstreamCode?`），原来那格 `err` 原话删掉。旧历史里的失败迁成 `{ code: "unknown", message: 原话 }`，统计与重推按 `unknown` 处理 |
 | 重推关系 | `repushOf` / `HistoryRepushMessage`（原 `retryOf` / `HistoryRetryMessage`；retry 只指传输层自动重试 `maxRetries`） |
 
@@ -268,11 +283,13 @@ type PushTarget =
 | --- | --- | --- |
 | 主人通知 `notifyMaster`（出错告诉主人、审批预览卡） | 否 | 发到主人目标 |
 | 指令回复（`CommandDef.run` 的 `reply`） | 否 | 经 `sendToAddress` 回到发指令的那个会话，不再发到主人目标那条连接；挡掉的话主人只会看到指令毫无反应 |
-| `ctx.reportProblem({ …, notify: true })` | 否 | 来源定严重度与文案；核心按「同一报的人（`reporter`）、同一 code 60 秒一次」节流；同时进面板问题框。🔗 3a-30 已落（只在内置来源的 `SourceContext` 上，由 `problems/problem-notifier.ts` 发；真送到才算、没送到限次再送、清掉时补「已恢复」） |
+| `ctx.reportProblem({ …, notify: true })` | 否 | 集成定严重度、写事实句（平实，不称呼主人、不写面板与指令；口吻与引子由宿主按口吻加工，见 extension-contract.md「问题上报」）；核心按「同一报的人（`reporter`）、同一 code 60 秒一次」节流；同时进面板问题框。🔗 3a-30 已落（只在内置来源的 `SourceContext` 上，由 `problems/problem-notifier.ts` 发；真送到才算、没送到限次再送、清掉时补「已恢复」） |
 | `ctx.reportProblem({ … })`（不带 notify） | — | 只进面板问题框，不私聊。🔗 3a-30 已落（B 站的「没登录过 / 主动退出」与「拉动态失败」就是这一种） |
 | `engine-error` | 否 | 只剩流水线错误（如出卡失败）；`source` 改成中立模块名（施工时定）；出图连续失败只提醒一次。🔗 3a-30 之后今天的发射者只剩作品投递出图失败（`post-delivery`）与直播「重连流程内部异常」（`live-engine`），经 `MasterNotifier` 私聊、面板红条看得到 |
 
-来源级问题（登录失效、关注同步失败）一律走 `reportProblem`，不再走 `engine-error`；拿不到直播状态不归来源报，由核心调 `fetchLiveStatus` 拿到失败时自己记。平台适配器也经 `ctx.reportProblem` 报问题，带 `connectionId`，宿主核这条连接是不是这个适配器的；连接卡看关于自己的，问题框看全部（ADR-0025 决策 11）。
+来源级问题（关注同步失败等）一律走 `reportProblem`，不再走 `engine-error`；拿不到直播状态不归来源报，由核心调 `fetchLiveStatus` 拿到失败时自己记。**登录问题不由来源报**：有登录口的来源，宿主订它的 `auth.onChange`、按 `AuthState` 自己报与清（`expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清并对私聊过的补「已恢复」），记在来源名下，宿主写整句并带指路；B 站不再报 `auth_lost`。平台适配器也经 `ctx.reportProblem` 报适配器特有的问题，带 `connectionId`，宿主核这条连接是不是这个适配器的，不是就拒收；连接通断不归适配器报，由宿主探（见 ⑤「连接通不通」）；连接卡看关于自己的，问题框看全部（ADR-0025 决策 11）。问题进表于是有三条路：集成自己报、宿主看登录状态报、宿主探连接报，外加宿主自己的事。
+
+私聊时宿主按口吻把话说完整：女仆层「主人，刚刚 <名字> 报告：<message>」、平实版「<名字> 报告：<message>」，名字取来源描述符的 `label`、拓展清单的 `name`；恢复句用「主人，好消息，<名字> 报告：<恢复句>」，没给 `recoveryMessage` 用一句带名字的通用说法。宿主自己写的整句（核心设置读不懂、宿主替拓展或连接报的几条、登录那一条）不加「X 报告」。
 
 今天进面板右上「组件告警」（`engine-error`）的几种，1.0 的去向（10-03 对着代码列的，按上表与 ADR-0025 决策 11 下 10-03 的 🔗 推出来，3a 照它落）：
 
@@ -382,7 +399,7 @@ type PushTarget =
 | @全体、能不能收回复按平台名判 | 问适配器的能力 `atAll` / `inbound` |
 | `DeliveryResult { ok, latencyMs, err? }`、`ProbeResult.ok: boolean \| null`；历史存 `err` 原话 | 结果形状带 `code`，平台码进 `upstreamCode`；旧历史失败迁成 `unknown` |
 | 链接回复现造临时目标、直调适配器的 `send`，不查 `isAvailable` | `TargetDispatcher.sendToAddress`；只有 `TargetDispatcher` 能发送 |
-| 链接解析 `createLinkParser`；OneBot 入站按 B 站域名预筛，签卡写死 `type: "bili"`；入站 `miniAppCardLinks` | `link-preview/` + `LinkResolver`，设置 `linkPreview { enabled, replyForm, byTarget }`；删预筛，按中立描述签；入站链接带来源标记 |
+| 链接解析 `createLinkParser`；OneBot 入站按 B 站域名预筛，签卡写死 `type: "bili"`；入站 `miniAppCardLinks` | `link-preview/` + `LinkResolver`（门叫 `LinkPreviewer`，`createLinkPreviewer`），设置 `linkPreview`（总开关、默认、回复形式、按目标的例外、`cooldownSec` 五格）；删预筛，按中立描述签；入站链接 `sharedLinks` 带来源标记 |
 | 出错告诉主人经 `engine-error` 按来源 60 秒节流 | 来源级问题走 `reportProblem`，按来源 + code 60 秒节流 |
 | 主人私聊走 `sendPrivateMsg` 等三个方法 + 适配器的强制私聊；指令回复发到主人目标那条连接 | 一个 `notifyMaster(payload)`，返回结果形状、发送时复检私聊；强制私聊删掉；指令回复经 `reply` → `sendToAddress` 回到发指令的会话 |
 | 连接 `testStatus`、`/api/connections/:id/test`、`/api/push/test`；目标 `testStatus.lastCheckedAt` | `probeState`（对象，三态在 `status`）、`/probe`、`/api/targets/:id/test`；`reachability.changedAt` |

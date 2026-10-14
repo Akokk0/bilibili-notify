@@ -81,8 +81,14 @@ interface Subscription {
   routing: Record<FeatureKey, string[]>;              // 每把特性推到哪些目标（PushTarget id），⑬ 跟着特性键改键
   // 开没开在按订阅覆盖那一层的 features（Partial<Record<FeatureKey, boolean>>）；来源「支持哪些」是 descriptor.supportedFeatures
   // 按目标的附加项三态表叫 extraTargets（原顶层 extras）
-  specialUsers?: { id: string; note?: string }[];     // 公共形状；露不露看 descriptor.supportedFeatures
+  specialViewers?: SpecialViewer[];                   // 公共形状（原 specialUsers）；露不露看 descriptor.supportedFeatures
   // 按订阅覆盖：形状同全局 defaults，对所有订阅开放
+}
+
+interface SpecialViewer {              // 特别关注名单的一条；名单仍是一张，条目说「哪个人触发哪种推送」
+  id: string;                          // 平台由所挂的订阅决定
+  note?: string;
+  features: FeatureKey[];              // 装特性键（viewerChat / viewerEnter），必填至少一个；死格 template 退役
 }
 
 interface SubscriptionTag {           // 标签登记表的一条；顺序就是登记表里的顺序（ADR-0034）
@@ -121,7 +127,8 @@ interface CreatorProfile {
 - **身份挂在所有行上**：推送历史、统计、在播三种行都带 `identity`，盘上直接是新形状，不留读时映射。
 - 现在判「是不是拓展行」有四种写法：只看 `extensionId`（面板 `Dashboard.tsx`、服务端 `stats/roast-subject.ts`）；两格都要有（面板 `utils/up-display.ts`、internal `constants.ts` 的 `upColor`）；只看 `externalId`（`packages/ai/src/tools.ts`）；只有一格就判无效（`runtime/target-scope.ts`、`pages/up/subscription-lookup.ts`）。行带 `identity` 以后四种一律删掉，按 `identity.sourceKey` 判。
 - **标签是一份单独的登记表，订阅只记 `tagIds`**（ADR-0034，issue 53）：改名只改登记表，没人挂的标签照样留着，删标签时所有订阅上的这个 id 一起去掉；面板上挑标签一律是同一个勾选组件（勾已有的 + 就地新建），没有自由文本框。标签只管面板上的整理（筛选、卡片角标），不参与推送与路由。标签表与订阅住同一个文件 `config/subscriptions.json`（`{ tags, subscriptions }`），读写口是 `GET` / `PUT /api/subscriptions/tags`（整张换；原 `/api/subs/tags`，㉚ 改路径）；订阅只许挂表里有的标签，写盘那一层核。恢复备份时标签先按 id、再按名字并（ADR-0034 决策 3 与后果下 10-02 的 🔗）。
-- **特别关注名单只存 `{ id, note? }`**，平台由所挂的订阅决定。来源在 `descriptor.supportedFeatures` 里声明了 `specialDanmaku` 或 `specialUserEnter` 才露出这项设置。
+- **特别关注名单**叫 `specialViewers`（条目 `SpecialViewer`，比对文件 `live/special-viewers.ts`；原键 `specialUsers`），条目是 `{ id, note?, features }`，平台由所挂的订阅决定；`features` 装特性键、必填至少一个，死格 `template` 退役。来源在 `descriptor.supportedFeatures` 里声明了 `viewerChat` 或 `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`，推翻 N3 记的「名不变」）才露出这项设置。迁移要有专门的测试钉住老键 `specialUsers` 上的名单一个不少地到新键。
+- **要不要监听直播间**：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）。看得见的变化：五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再连直播间、首页说它「不会被监听」、统计不再记它的直播。迁移记账本那里留一份冻住的旧读法（0.x 那时是「名单有人就监听」）。
 - internal 里没人写的旧 `SubscriptionStateSchema`（`schema/subscriptions.ts`，连同它导出的同名旧类型 `SubscriptionState` 与测试里钉它「仍 export」的那条）在数据模型期删掉：它和上面的新 `SubscriptionState` 同名，不先删会撞守卫 4，也容易有人把新形状写进这份老 schema。
   - 🔗 10-02 ⑫ 已删：连同测试里钉它「仍 export」的那条、contract 里恒为「未知」的死字段 `SubscriptionDTO.state`、面板上读它的那颗永远不亮的「播」；`FansBaselineSchema` 还有人用，留着。
 
@@ -132,7 +139,7 @@ interface CreatorProfile {
 ```ts
 interface Problem {                    // 全在内存，不存盘
   reporter: IntegrationKey | "core";
-  about?: { subscriptionId: string } | { connectionId: string };   // 不带就是报的人自己的问题（如登录失效）
+  about?: { subscriptionId: string } | { connectionId: string };   // 不带就是报的人自己的问题（如拓展设置读不懂）
   code: string;                        // snake；不受标准码表约束
   message: string;
   since: string;                       // 第一次出现的时刻
@@ -141,9 +148,10 @@ interface Problem {                    // 全在内存，不存盘
 
 - **一种形状、全在内存**：订阅运行态不再存问题。开机时关注同步与第一轮资料刷新几秒内就会重报，所以重启后的头几秒订阅卡上的红字会先消失，等报的人重报。
 - **一条生死规矩**：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象（订阅、连接）删了，关于它的全清。
-- **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
+- **`about` 加连接这一支**（主人定）：问题表的键与 `apps/contract` 的问题类型跟着改；连接删了，关于它的全清；适配器停下，它名下的全清。
+- **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的，不是就拒收；宿主替连接报的几条（连接设置不合法、探测连续两次不通）记在那条连接所属适配器的名下；有登录口的来源，登录问题由宿主看登录状态报、记在来源名下；拓展设置读不懂由宿主替它报（`settings_invalid`，记在拓展 id 名下、不私聊）；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
 - 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。🔗 3a-30 已落并核过：键是 报的人 + 对象 + code，再报只换 `message`（与 `notify`、恢复说法），`since` 不动。
-- 🔗 **落成的形状（3a-30，10-11）**：`packages/internal/src/problem.ts` 的 `Problem { reporter: string; about?: { subscriptionId: string }; code: string; message: string; since: string }`。与上面的草稿相比：`reporter` 是字符串（来源键；`IntegrationKey` 类型全仓没有，`"core"` 这个值还没有人用）；**`about` 只有订阅一支**，`{ connectionId }` 那一支没造（等第一个会报连接问题的适配器）；**报的人给的 `recoveryMessage`（清掉时怎么说）与 `notify` 不在这个对外的类型上**，它们只存在问题表内部与问题通知器之间，`GET /api/problems` 的回包不带。`since` 是问题进表那一刻；B 站的分层上报器是来源 `start(ctx)` 之后才接上核心，接上时整份补报，所以重启后 `since` 是接上那一刻。表全在内存，不存盘，迁移修订号与备份版本没动。
+- 🔗 **落成的形状（3a-30，10-11）**：`packages/internal/src/problem.ts` 的 `Problem { reporter: string; about?: { subscriptionId: string }; code: string; message: string; since: string }`。与上面的草稿相比：`reporter` 是字符串（来源键；`IntegrationKey` 类型全仓没有，`"core"` 这个值还没有人用）；**`about` 只有订阅一支**，`{ connectionId }` 那一支随 3b-38 造；**报的人给的 `recoveryMessage`（清掉时怎么说）与 `notify` 不在这个对外的类型上**，它们只存在问题表内部与问题通知器之间，`GET /api/problems` 的回包不带。`since` 是问题进表那一刻；B 站的分层上报器是来源 `start(ctx)` 之后才接上核心，接上时整份补报，所以重启后 `since` 是接上那一刻。表全在内存，不存盘，迁移修订号与备份版本没动。
 - 🔗 **设置读不懂的三个码（3a-39，10-11）**，都不带 `notify`（只进表、不私聊，主人定：「面板提示可以吗？私聊尽量少用」）：
   - `settings_invalid`，报的人是 `"core"`（这个值第一次有人用；写死在 `config/settings-problems.ts`，理论上会与一个 id 叫 `core` 的来源撞键）：核心设置有格读不懂退了默认，**几格坏了合成一条**（文案里最多摊三格，用代码路径与 zod 的原话，格数变了只换文案、`since` 不动），不带盘上原文；所有格都好了就清，不补「已恢复」。由配置仓的 `onInvalidSettingsChanged` 经 `runtime/bootstrap.ts` 接到问题表（`config/settings-problems.ts`）。
   - `dynamic_settings_invalid`、`login_check_settings_invalid`，报的人是 `bilibili`：B 站动态那格 / 登录检查那格（或整个文件）读不懂，一样一条，文案点名停的是哪一样、因为哪一格（面板上的叫法加键名）、到哪改（`bilibili/problem-texts.ts`）；由来源经 `ctx.reportProblem` 直接报，不走分层上报器，所以不被「未登录」压着。
@@ -256,9 +264,11 @@ interface LinkPreview {                 // LinkResolver.resolve 成功时交的
 ```
 
 - `LinkResolver`（链接解析器）补 `label`，`resolve` 返回结果形状。
-- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。
-- 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。标记那一格的名字施工时定。
-- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-parser.ts`，文件名暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。本节其余（`replyForm`、入站来源标记取代 `miniAppCardLinks`、设置改叫 `core.linkPreview`）还没动。
+- 门叫 `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`，文件 `link-preview/link-previewer.ts`）；解析器仍是 `LinkResolver`。
+- **设置 `core.linkPreview` 五格**：总开关（默认关）、默认回不回、回复形式 `replyForm`、按目标的例外 `byTarget`、`cooldownSec`。总开关与「默认」两格的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范定。链接预览回卡不走推送链，全局静音与免扰管不到，所以留一个一键全停的总开关。
+- 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发作者名 + 作品文字（经作品取段的那个函数，限长），不带链接。
+- 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。
+- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-parser.ts`，文件名暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。本节其余（`replyForm`、入站来源标记 `sharedLinks` 取代 `miniAppCardLinks`、设置改叫 `core.linkPreview` 并加回总开关与冷却、门改名 `LinkPreviewer`）还没动。
 
 ## 直播
 
@@ -282,7 +292,7 @@ type LiveSignal = LiveSignalReport & { subscriptionId: string; identity: Identit
 // ② 拉取式：核心定时问 fetchLiveStatus；返回结果形状（ADR-0026 决策 4）
 type LiveStatusResult =
   | { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
-  | { ok: true; kind: "offline" }                              // 此刻没在播，核心当成漏收的下播
+  | { ok: true; kind: "offline" }                              // 此刻没在播，核心当成漏收的下播；时长算到「发现已下播的那一刻」，重连后核对发现已下播也走同一条下播的路
   | { ok: false; code: string; message: string };              // 跳过这一轮、记一条问题，不停止监听
 
 // ③ 核心自己记的一场
@@ -385,7 +395,7 @@ interface SuperchatEvent {
 
 ```ts
 const FEATURE_KEYS = ["post", "liveStart", "liveStreaming", "liveEnd", "membership",
-  "superchat", "specialDanmaku", "specialUserEnter"] as const;
+  "superchat", "viewerChat", "viewerEnter"] as const;   // 后两把原名 specialDanmaku / specialUserEnter
 type FeatureKey = typeof FEATURE_KEYS[number];
 
 // 附加项另一张表（ADR-0016）：词云、直播总结挂在下播底下，不是特性键（10-02 按 ADR-0027 决策 6 更正，原先误列进特性键表）
@@ -403,7 +413,7 @@ type PostPushPart = "post" | "post-images";
 | `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
 | `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关（⑬d 已落后半：拓展声明了开播与下播两种事件，`featuresForEvents`，面板与服务端同一份；`has.liveStatus` 那半随 3a） |
 | `liveEnd` | 下播 |
-| `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` | 核心中立特性 |
+| `membership` / `superchat` / `viewerChat` / `viewerEnter` | 核心中立特性；`viewerChat` / `viewerEnter` 是「特别关注名单上的人发言 / 进场」（原 `specialDanmaku` / `specialUserEnter`），触发看名单条目的 `features` |
 | `wordcloud` / `liveSummary` | 下播的附加项（`EXTRA_KEYS`，来源用 `supportedExtras` 声明），不单独成历史行 |
 
 ⛔ 命名：`liveNow`（仓里 4 处表示「此刻在播」）、`onAir`（6 处表示状态）、`liveStatus`（95 处，拓展事件名）都撞，所以叫 `liveStreaming`。
@@ -414,7 +424,7 @@ type PostPushPart = "post" | "post-images";
 
 统计仓按订阅记作品、直播场次与粉丝时序（文件布局见 [data-and-migration.md](./data-and-migration.md)）。
 
-- **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。（3b-14 已落：全仓唯一的判定是 internal 的 `needsLiveMonitor`，服务端与面板共用。）
+- **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。直播这一侧的判定：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）；五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再监听（0.x 那时是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。核心里直播一侧的 `danmaku` 换成 `viewerChat` 一族（`ViewerChatCollector`、`recordViewerChat`、`viewerChatCount`）；视频上的弹幕数 `video.danmaku` 不动。（3b-14 已落：全仓唯一的判定是 internal 的 `needsLiveMonitor`，服务端与面板共用。）
 - **「在记」按特性分**（ADR-0027 决策 2），核心自己算：作品（那天作品开关开着且来源在跑）、直播（直播类任一开关开着且来源在跑）、粉丝（那天拉资料成功）。每张图（热力图也是）读自己的「在记」，关着的日子显示「没在记」、不画成 0；锐评与榜单跳过没在记的日子。seen（「那天有没有联系上来源」）不再单独当判据。记成每个订阅一份按小时的小账（ADR-0027 决策 13）：某个小时某一项第一次满足条件时追加一行，读时按请求的时区切天，满 8 天的随粉丝样本那趟压缩合成区间，原来的 `seen/` 并进去。
 - **开播公告不再记**（决策 3）：B 站来源直接丢掉、不上报；旧数据照原定不搬。旧日子的「在记」按旧规则推：作品看旧数据那天有没有记录，直播用现在的直播开关近似。
 - 统计记录全部作品，另外记其中带视频的那些：`posts` 是全部作品，`videoPosts` 是其中带视频的（面板与 CSV 仍叫「投稿」「动态」，见改名对照）。
@@ -556,7 +566,7 @@ interface Connection {
   platform: string;                    // 开放字符串，只来自新建时挑中的候选
   settings: unknown;                   // 归适配器的 settingsSchema 校验；OneBot 的 transport 是它私有的一格
   platformSnapshot: Omit<PlatformDescriptor, "platform">;   // 只有宿主写，见下
-  probeState?: { status: …; … };       // 连接探测，只有宿主写；三态取值在 status 里，取值名与其余格施工时定
+  probeState?: { status: …; … };       // 连接探测，只有宿主写；每分钟探一次，状态变了才写盘；三态取值在 status 里，取值名与其余格施工时定
 }
 
 type PushTarget =
@@ -658,7 +668,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `templates.guardBuy`；`GuardBundle` / `GuardEntry` / `GuardTierKey`；`minGuardLevel` | `templates.membership.guard`；并进会员体系模型；`defaults.membership.minRank` |
 | 模板变量 `{guard}`、`{mdn}` | `{tier}`、`{fanclub}`（资料加 `fanClubName?`）；迁移改写主人的文案，出来的字不变 |
 | AI 配置 `dynamicPrompt`、`presets[].dynamicPrompt`、`search.engines.dynamic`、AiScene 的 `dynamic` | `postPrompt`、`presets[].postPrompt`、`search.scenes.post`、`post` |
-| `linkParsing`、`LinkParsingConfig`、`LinkParser`、`runtime/link-parser.ts` | `linkPreview`、`LinkPreviewSettings`、`LinkResolver`、`link-preview/` |
+| `linkParsing`、`LinkParsingConfig`、`LinkParser`（`createLinkParser`）、`runtime/link-parser.ts`；带 `linkParsing` / `LinkParsing` 的名字；`ResolveLinkParsingPoliciesInput` | `linkPreview`、`LinkPreviewSettings`、`LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`，文件 `link-preview/link-previewer.ts`；`LinkResolver` 已是解析器接口，不能再给门用）、`link-preview/`；带这个词的名字把 `linkParsing` / `LinkParsing` 换成 `linkPreview` / `LinkPreview`；`ResolveLinkPreviewPoliciesOptions` |
 | `CommandConfig` | `CommandSettings` |
 | `templates.wordcloudStopWords` | `defaults.wordcloud.stopWords` |
 | `fansCron` | `core.profileRefreshCron`（原值迁来；✅ 3a-38 已落） |
@@ -697,7 +707,9 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `CommandSpec`；B 站自带的 `login` 指令 | `CommandDef`（字段不变）；核心的通用指令 `login [来源]`；1.0 不造 `CommandProvider` |
 | contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`） |
 | AI 工具参数 `uid`；内置技能 `find-up` / `up-pk` | `creator`（「来源键:外部 id」）；`find-creator` / `creator-pk`，旧名留别名 |
-| 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef`；被会话引用的逐张复制进去，孤儿不搬 |
+| 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef`；被会话引用的逐张复制进去，孤儿不搬。🔗 修订：0.x 的女仆对话与聊天附件不迁（见 [data-and-migration.md](./data-and-migration.md)），这一行只管 1.0 新产生的附件 |
+| 特别关注名单 `specialUsers`（`{ id, note? }`）、特性键 `specialDanmaku` / `specialUserEnter`；条目上的死格 `template` | `specialViewers`（条目 `SpecialViewer { id, note?, features }`，比对文件 `live/special-viewers.ts`）、`viewerChat` / `viewerEnter`；`template` 退役。迁移专门有测试钉老键上的名单一个不少 |
+| 核心里直播一侧叫 `danmaku` 的名字（观众在直播间里说的话）：收集器、记录函数、计数字段 | `ViewerChatCollector`（`viewer-chat-collector.ts`）、`recordViewerChat`、`viewerChatCount`；视频上的弹幕数 `video.danmaku` 不动；B 站目录里仍叫 `danmaku` |
 
 **订阅与来源（09-27 字段名专项审查）。**
 
@@ -740,8 +752,8 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`；出口 `sendPrivate` 与 `{ private: true }` | `notifyMaster(payload: string \| NotificationPayload)`，返回结果形状；删掉 |
 | 链接回复现造的临时目标 | 删掉：回复经 `TargetDispatcher.sendToAddress(connectionId, address, payload)` 发回原会话 |
 | `/api/history?uid=` | 删掉（没有调用方）；以后要按人查再加 `?identity=` |
-| 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，在适配器里映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；address；`address` |
-| OneBot 入站的 `miniAppCardLinks`；B 站域名预筛 `CARD_HOST_HINT` | 入站链接的来源标记（正文 / 普通卡 / 原生分享卡，格名施工时定）；删掉 |
+| 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，在适配器里映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；私聊 `userId` → `address`、群消息 `groupId` → `address` 且发言者 `userId` → `senderId`（与 `selfId` 成对；不用 `author`，那是作品作者；桥协议帧不改名，由桥的适配器映射）；`address` |
+| OneBot 入站的 `miniAppCardLinks`；B 站域名预筛 `CARD_HOST_HINT` | 适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" \| "nativeShare" }[]`（不用 `linkPreviews`：与 BN 回出去的 `LinkPreview` 同词两义），正文里的链接由核心从 `text` 挑、内部记成 `"text"`；删掉 |
 | WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`（重推预检的 `reason` 也在内，判别键 `can` 保留）；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | `post` / `superchat` / `membership`（㉔e，与卡种键同一套词表）；特性键；`code` + `message`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
 
 **配置（09-27 字段名专项审查）。**
@@ -753,8 +765,8 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |
-| `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkPreview`（摊平，没有默认行那一层）/ `enabled` / `replyForm` / `byTarget` |
-| 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；类型 `NativeShare…`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧能力名 `miniapp-card` alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
+| `linkParsing.enabled` / `.defaults.parse` / `.defaults.form` / `.groups`（条目里 `parse` / `form`）、`cooldownSeconds` | `linkPreview` 五格：总开关（旧 `enabled`，默认关）、默认（旧 `defaults.parse`）、`replyForm`（旧 `defaults.form`）、`byTarget`（旧 `groups`，条目里 `parse` → 开关、`form` → 回复形式）、`cooldownSec`。总开关与「默认」的名字避开 AI 写正文那边 `enabled` 的撞义，施工时定。一一对应、行为不变、名单不丢 |
+| 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、载荷种类 `"miniapp-card"`、能力格 `miniAppCard`、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；载荷种类 `"native-share"`，类型 `NativeShare…`，能力格 `nativeShare`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧里的载荷种类（`miniapp-card`）与能力名（`miniAppCard`）alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen`。已落（3a-38）的只有位置：`defaults.ai` 整段成了顶层 `ai`、`defaults.templateDefaultsSeen` 成了顶层 `templatesSeen`，键名一个没改；`defaults.ai.presetId` 这一格没造（`activePreset` 随整段留在顶层 `ai` 里），随 AI 子键改名那一片 |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
@@ -804,7 +816,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 服务端 `ExtensionRuntime`（宿主这边握着的拓展把手） | `ExtensionHandle` |
 | ai 的 `VisionToolContext`（`{ images, describe }`：一份数据加一个协作函数） | `VisionToolDeps` |
 | 统计聚合的 `LiveSummary`（窗口里的直播场次与时长，撞了 AI 直播总结 `liveSummary`） | `LiveStatsView` |
-| internal 设置段 `ExtensionState`（`{ enabled, settings? }`）；拓展契约的读取把手 `ExtensionSettings<T>` | `ExtensionSection`（和 `core` / `bilibili` 同一层的「段」）；`SettingsReader<T>` |
+| internal 设置段 `ExtensionState`（`{ enabled, settings? }`）；拓展契约的读取把手 `ExtensionSettings<T>` | `ExtensionSection`（和 `core` / `bilibili` 同一层的「段」）；`ExtensionSettings<T>` 删掉，与内置集成并成一个 `SettingsReader<T>`（`get()` 回 `Result<{ settings: T }>`） |
 | `HistoryRecordInput`（要追加进历史的那一行）；备份的 `FullBackupInput`（要打包的各节数据）、`BuildBackupInput`（参数包） | `NewHistoryEntry`；`FullBackupPayload`、`BuildBackupOptions` |
 | 三态取值：ui 的 `TriState`、桥的 `BridgeCapabilityState`、`MiniAppCardSupport` 的判别字段 `state` | `TriStatus`、`BridgeCapabilityStatus`、`status`（类型名随原生分享改成 `NativeShare…`）；拓展视图的 `tristate` 列名是契约 v3 的字面量，不动 |
 | ui 的 `PlatformMeta`（怎么画一个平台：`tint`、`label`、`icon`、`svg`） | `PlatformBadgeSpec`；面板的注入口 `platform-meta` 跟着改 |

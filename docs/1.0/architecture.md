@@ -56,7 +56,7 @@ B 站（信号 · 接口 · 扫码）──Source 等接口──┐
 | 包 | 层 | 放什么 | 相对现在的变化 |
 | --- | --- | --- | --- |
 | `internal` | 一等 | 域模型（订阅、身份、作品 / 直播模型、特性键表）、schema、失败标准码表（ADR-0026 决策 3）、零依赖工具（显示名、计数与时间格式、身份索引、串行队列、重试等）。零依赖工具走子路径——根入口带 zod，面板拿不到 | 工具收成一份，面板与服务端共用；`CONNECTION_PLATFORMS`、平台信息表与各平台的连接 / 目标设置 schema 搬出，归各平台适配器（ADR-0024 决策 1） |
-| `http` | 一等 | 请求客户端、cookie 罐、浏览器身份；`websocket(url, opts?)` 只管用集成的身份建连、集成停下时自动关 | **新包**（第 2 期）：从 B 站的实现里抽出、去掉 B 站前缀；每个集成一个客户端，经 `ctx.http` 拿；BN 自己的请求不用它（ADR-0025 决策 6） |
+| `http` | 一等 | 请求客户端、cookie 罐、浏览器身份；`websocket(url, opts?)` 只管用集成的身份建连、集成停下时自动关 | **新包**（第 2 期）：从 B 站的实现里抽出、去掉 B 站前缀；每个集成一个客户端，经 `ctx.http` 拿；BN 自己的请求不用它（ADR-0025 决策 6）。为避免包之间成环，请求客户端对外的接口类型住核心包，实现留在 `packages/http`；websocket 能发文本帧、能读连接状态，请求体收 `FormData`，单次请求可选「不带浏览器身份、不碰 cookie 罐」那一档（内置三个适配器全用）；cookie 罐按公共后缀表（引 `tldts`，`packages/http` 加运行时依赖）拒 `Domain=com` 这类 |
 | `push` | 一等 | `PushRouter`：按订阅 id 路由、闸、附加项 | 类名改掉；按平台名判断的（如 @全体）改成问适配器能力 |
 | `image` | 一等 | 作品卡、直播卡、榜单等中立卡种 + 皮肤；附加块按 card / video / goods 直接渲染；醒目留言按档取色、金额按币种；不联网，只内联图库引用 | 解析 B 站 JSON 的代码、B 站域名白名单、大航海等级表搬走 |
 | `ai` | 一等 | 生成器、人格、核心中立只读工具；看图（`describe_image`）与联网搜索照留核心 | 删掉对 B 站包的 import；来源专有工具经 `AiToolProvider` 登记；中立工具参数统一叫 `creator`；看图只收 `ImageRef`、字节由宿主注入的读图函数读，`packages/ai` 不碰磁盘（ADR-0030） |
@@ -88,7 +88,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 - 🔴 卡种中文名 5 张表、两套键（dyn / dynamic）→ internal
 - ✅ 3b-14 已落：「要不要开直播监听」原来的 3 套判据（首页「直播」那一格读未合并的 routing，服务端读合并后的开关，面板的「不会被监听」自留一份键表）并成 internal 的零依赖子路径 `@bilibili-notify/internal/live-monitor` 里的 `needsLiveMonitor`（连同 `LIVE_ROOM_CREATOR_KEYS`、`specialUserFlagsOf`），全仓唯一判定；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。直播引擎（`RoomContext`）、统计（`recordingSwitches`）、首页「直播」那一格（`getModuleState`）、面板「没开直播推送」那句都读它；服务端「订阅 → 入参」的折法只有 `stats/recording-switches.ts` 的 `liveMonitorInputOf` 一处
 - 🔴 「N 分钟前」4 份 → `formatAgo`（⛔ 首页「正在直播」不写「N 分钟前开播」：面板只列在播的，「开播」多余，`dashboard-live-now.test.tsx` 钉着，收的时候别顺手加上）；带正负号的增量 4 份（负号两种、零两种写法）→ 并进 `formatCount`
-- 🔴 B 站动态转纯文字两个同名函数（AI 工具那份丢掉转发）、B 站风控码集合（-412 各处不一，见 subscription-sources「风控码」）与响应解包（手写约 5 处）→ `bilibili/`
+- 🔴 B 站动态转纯文字两个同名函数（AI 工具那份丢掉转发）、B 站风控码集合（-412 各处不一，已定：一张共用的「数字码 → 标准码」翻译表，见 subscription-sources「B 站怎么实现」）与响应解包（手写约 5 处）→ `bilibili/`
 - 🔴 过滤、AI、出图各拼各的作品文字 → `posts/` 里唯一一个取段函数（ADR-0028 决策 1）：`text` 只放正文，标题、视频标题、转发的原作品各有位置
 - 串行队列至少 11 处手写 → `createSerialQueue`（含按键分队）；两个同名不同义的 `createSerialGate`（internal、live 各一）拆成 `createSerialQueue` 与 `createRenderGate`（3a-27 先落了一半：两把合成 `packages/internal` 里的一把 `createSerialGate`，加了 `run`，live 那把删了；改名拆分仍没做）
 - `isPlainObject` 15 份、两种判据，internal 正本没导出 → internal 零依赖子路径
@@ -182,12 +182,12 @@ interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已�
 
 | 项 | 规矩 |
 | --- | --- |
-| ctx | 每个集成一个 `IntegrationContext { logger, state, secrets, redact, settings(schema), http, fetchImage, storeImage, reportProblem, resolveProblem, signal, onDispose }`；`SourceContext`、`PlatformAdapterContext` 在它上面加各自特有的；拓展的 `activate(ctx)` 拿到它加各登记方法。🔗 现状（3a-30，10-11）：`reportProblem` / `resolveProblem` 今天**只造在 `SourceContext` 上**（`packages/internal/src/source.ts`；带 `externalId?`，`reportProblem` 多可选的 `notify` 与 `recoveryMessage`，`resolveProblem` 多可选的 `notify`），`IntegrationContext` 与 `PlatformAdapterContext` 上还没有，3a-39 是下一个要报的。🔗 现状（3a-39，10-11）：3a-39 报了问题、**没有造这一格**：核心设置的那条（`settings_invalid`，报的人 `"core"`）由 `runtime/bootstrap.ts` 把配置仓的通知接到问题表直接写，B 站设置那两条走 `SourceContext`；`IntegrationContext` 上的 `reportProblem` 仍留着，等第一个在 `start(ctx)` 之外要报的集成（没有点名）。`settings(schema)` 同理**今天只造在 `SourceContext` 上**，`get()` 回结果形状 `Result<{ settings: T }>`、不抛（见 ADR-0025 决策 2 下的 🔗） |
+| ctx | 每个集成一个 `IntegrationContext { logger, state, secrets, redact, settings(schema), http, fetchImage, storeImage, reportProblem, resolveProblem, signal, onDispose }`；`SourceContext`、`PlatformAdapterContext` 在它上面加各自特有的；拓展的 `activate(ctx)` 拿到它加各登记方法。🔗 现状（3a-30，10-11）：`reportProblem` / `resolveProblem` 今天**只造在 `SourceContext` 上**（`packages/internal/src/source.ts`；带 `externalId?`，`reportProblem` 多可选的 `notify` 与 `recoveryMessage`，`resolveProblem` 多可选的 `notify`），`IntegrationContext` 与 `PlatformAdapterContext` 上还没有（三层同一个签名、`Problem.about` 加连接那一支随 3b-38 造，见 extension-contract.md「问题上报」），3a-39 是下一个要报的。🔗 现状（3a-39，10-11）：3a-39 报了问题、**没有造这一格**：核心设置的那条（`settings_invalid`，报的人 `"core"`）由 `runtime/bootstrap.ts` 把配置仓的通知接到问题表直接写，B 站设置那两条走 `SourceContext`；`IntegrationContext` 上的 `reportProblem` 仍留着，等第一个在 `start(ctx)` 之外要报的集成（没有点名）。`settings(schema)` 同理**今天只造在 `SourceContext` 上**，`get()` 回结果形状 `Result<{ settings: T }>`、不抛（见 ADR-0025 决策 2 下的 🔗） |
 | 生命周期 | 内置集成与拓展同一套：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾。收尾的先后：宿主先调来源或适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾（ADR-0025 决策 5）。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`；系统页、健康卡、`status` 指令都读它。🔗 现状（3a-39）：内置来源的运行状态读口没造（今天没有读者），`bilibili` 设置读不懂时来源仍是在册的，停着的那一样在问题表里；`settings-invalid` 只有拓展装载器在产生，再看的时机是 3a-40 的 `health()`。🔗 现状（3a-40，10-12）：`Source.health()` 造出来了，但它是同步、可选、只交一句话（`status` 指令读它，见 [commands.md](../agents/commands.md)），**不是**运行状态读口：`running` / `failed` / `settings-invalid` 的读口仍没造，`SourceStatusReader.running` 的判据仍是「在册就算在跑」，再看的时机待定（等第一个要读运行状态的人，如第 4 期的健康卡） |
 | 设置 | 只有一个词 `settings`：`connection.config` → `settings`、`configSchema` → `settingsSchema`、`configFields` → `settingsFields`；`config` 只指存储（`config/`、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG`）。`ctx.settings(schema)` 给 `get` 与 `onChange` |
 | 设置坏了 | 只停那一处，不挡开机（ADR-0025 决策 4）：拓展段、`bilibili` 段校验不过只停那个集成（`settings-invalid`，面板显示原值与原因、进问题框，改对当场起）；`core` 段逐格校验，坏的那格在内存里用默认值、盘上原文不动、问题表记一条；只有信封坏了才挡开机。只有 `start` / `activate` 期间读设置失败可以抛错中止启动，运行中的 `get()` 不抛。🔗 现状（3a-39，10-11）：挡开机的是核心那一份设置文件整份解析不了、连接外壳坏、订阅文件与推送目标文件读坏（数据不是设置）；`bilibili` 段逐格，哪格坏停读那一格的那一样（动态 / 定时的登录检查），整个文件读不懂两样都停，来源照常在册，各有一条问题；拓展设置文件不是合法 JSON 只停那一个拓展；内置来源读设置拿到的是结果、不抛，「`start` 期间可以抛、宿主接住转成 `settings-invalid`」对内置来源没造 |
 | `state` / `secrets` | 同一个 `KeyValueStore { get, set, delete, batch }`（`batch(ops)` 一批里可以有写有删，整批一起成或一起不成）：`get` 同步（宿主在 `start` 前读进内存），写由宿主原子落盘。`state` 明文、不进备份、不脱敏，单键 64KB、每个集成 1MB，`http.` 开头的键归宿主（浏览器身份）；`secrets` 主密钥加密、一个集成一个文件、只进完整备份、值里每段字符串按原文脱敏（很短的不遮），每个集成 256KB，`http.` 开头的键归宿主（cookie 罐） |
-| `http` | `packages/http` 的客户端，每个集成一个：cookie 由宿主自动存进该集成的 `secrets`；浏览器身份生成一次存进 `state`、重启照用，只在发版把版本区间前挪、存的低于下限时升级（只升不降）；重试、退避、限流归集成；整体不拦内网（局域网里的 RSSHub 要连得上）；1.0 对拓展整套开放 |
+| `http` | `packages/http` 的客户端，每个集成一个：cookie 由宿主自动存进该集成的 `secrets`；浏览器身份生成一次存进 `state`、重启照用，只在发版把版本区间前挪、存的低于下限时升级（只升不降）；重试、退避、限流归集成；整体不拦内网（局域网里的 RSSHub 要连得上）；1.0 对拓展整套开放（cookie 罐那组口除外，第 3 版不对拓展开；不开「默认请求头」的口） |
 | `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头）；拦内网、8MB、嗅探、超时这一层只在这条路上，每一跳重定向都查 |
 | 调用被拒或失败 | 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportDiscrepancies` 表并打 warn 日志（内置集成被拒就是 BN 的 bug，只打错误日志）；请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状、不抛错 |
 
@@ -234,7 +234,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 | 直播 | 唯一的场次引擎、定时调 `fetchLiveStatus`、在播表、「会不会被监听」的唯一判定（只看开关） | 直播信号 + `fetchLiveStatus` + `liveInteractions` | 直播信号，可选 `fetchLiveStatus` |
 | 出卡 | 中立卡种、皮肤、卡种注册表；图只认图库引用；醒目留言按 `tier.rank` 取色、金额按币种；会员卡宣告语取 `MembershipTier.announcement`（ADR-0028 决策 4） | 动态翻成 `Post`（UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡）、附加块翻成三种中立数据、用 `ctx.fetchImage` 抓图；醒目留言按 B 站规矩算 `tier` | 宿主把作品翻成作品卡 |
 | 文案模板 | 全仓唯一的模板引擎；`{tier}`（原 `{guard}`）、`{fanclub}`（原 `{mdn}`）；迁移改写主人的文案，出来的字不变（ADR-0028 决策 3） | 资料里填 `fanClubName`（粉丝牌名） | 有就填，没有就空 |
-| 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板） | `searchCreators`（UID、主页链接、名字都认；返回结果形状） | `searchCreators`（契约的 `lookup` 改名） |
+| 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板）。🔗 `searchCreators` 来源方法 3b 造（B 站实现，只给 AI 的搜人工具用），路由与面板第 4 期 | `searchCreators`（UID、主页链接、名字都认；返回结果形状） | `searchCreators`（契约的 `lookup` 改名） |
 | 链接预览 | 闸门（开关、群表、冷却键「群 + 解析器 + canonicalId」、上限）；先用通用网址正则挑候选再问各解析器 `matches`；回复经 `sendToAddress` 发回原会话；原生分享卡里的链接不回预览 | `LinkResolver`；原生分享交中立描述，由 OneBot 适配器去签，签不了回图片 | 1.0 暂不开 |
 | 指令 | 框架与 `help` / `mute` / `report` / `status` / `login [来源]`；`run` 返回结果形状，`reply` 经 `sendToAddress` 回到发指令的会话；失败回「『{指令名}』没办成：{message}」，抛错回「出错了，详情在日志里」（ADR-0031 决策 1）。🔗 现状（3a-40）：`status` 里「上次抓取」换成在册来源各一行「<label>：<该来源 `health()` 说的话>」，见 [commands.md](../agents/commands.md) | 没有自带指令；`login` 从它的 `AuthState` 取二维码；`health()` 交一行 | 没有自带指令；`health()` 交一行 |
 | AI | 生成器、人格；六把中立只读工具，参数统一叫 `creator`（「来源键:外部 id」）；六个内置技能跨来源、只用中立工具；看图读图库、聊天附件存进图库；提示词里的平台叫法用 `{creatorNoun}` / `{postNoun}` / `{sources}`（ADR-0030）。🔗 现状（3a-42，10-12）：核心里读来源上报的作品叫法 `postNoun` 的，今天是拼 AI 提示词那一处（作品模板还只传 `{name}`，见 21b 不开名单 N08），来源没给时缺省叫「作品」（原先代码缺省是「动态」，与定案写的缺省「作品」不一致，3a-42 改了），B 站来源自己声明「动态」 | `AiToolProvider`（专有只读工具与 B 站版周报技能） | 1.0 暂不开 |
@@ -244,7 +244,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 | 设置 | 按集成放；`core` 段逐格校验、坏格退默认；集成段坏了只停那一个 | `bilibili` 段经 `ctx.settings(schema)` 读，系统页一个 tab；自定义 UA 设置删掉（老配置里这格由迁移丢掉、新 schema 不留），改成「换一个身份」按钮（ADR-0025 决策 7） | `extensions.<id>` 段，设置只在拓展页 |
 | 请求 | `packages/http`：每个集成一个客户端 | `ctx.http`（请求与弹幕通道的 `websocket`） | `ctx.http` 整套开放 |
 | 预览 | 卡片页预览、按订阅覆盖 | `fetchPreview` | 可选 `fetchPreview` |
-| 健康与问题 | 见下「问题表与健康」 | `health()` 交一行字；`reportProblem` / `resolveProblem` | 同左；平台适配器也能报，带 `connectionId` |
+| 健康与问题 | 见下「问题表与健康」 | `health()` 交一行字；`reportProblem` / `resolveProblem`（有登录口的来源不报登录问题，宿主看 `auth.onChange` 报） | 同左；平台适配器也能报，带 `connectionId`；连接通断由宿主每分钟 `probe` 探、不由适配器报 |
 | 备份与日志脱敏 | 备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `secrets`，只进完整备份），恢复回 `restoredIntegrations`，备份里有但没带回来的（集成现在没在运行、或换失败）回 `unrestoredIntegrations`；日志按真实密钥值脱敏 | `ctx.secrets` + `ctx.redact` | `ctx.secrets`、`ctx.redact` 与 secret 字段自动覆盖 |
 | 历史与重推 | 全部；每个目标一行，失败带 code，可以手动补发 | — | — |
 
@@ -283,7 +283,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - 来源与平台适配器的问题走 `reportProblem`，核心模块自己的问题直接写问题表；`engine-error` 只留流水线错误（如某一次出卡失败），`source` 改成中立的模块名（名字施工时定）。
   - 🔗 现状（3a-30，10-11）：B 站来源的问题已走 `reportProblem`（动态与直播的几处 `engine-error` 都删了）；`engine-error` 今天还有两个发射者：作品投递出图失败（`source` 是 `post-delivery`，文案带降级提示）与直播「重连流程内部异常」（`source` 是 `live-engine`），另有开发场景 `engine.error`；`source` 的中立命名仍没动。核心自己直接写问题表的路没有人走。
 - 施工时补一张「现有 22 个事件 → 1.0 去向」的全量表（含 `subscription-reported` 这类宿主内部事件），写进 events.md。
-- 直播互动（弹幕、SC、会员、进场）走能力回调还是走总线施工时定；弹幕是高频流，要在 events.md 写清。
+- 直播互动（弹幕、SC、会员、进场）走回调、不走总线（3b 定）；弹幕是高频流，要在 events.md 写清。
 - 被否的备选：另开一条 B 站私有总线（违反「MessageBus 是唯一事件通道」）。
 
 ## wire 契约
@@ -405,7 +405,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - `bilibili/` 内部名实相符的名字（如 `biliLiveCardInput`）。原先还列了 `BiliSubscription`、`isBiliSubscription`、`BiliStatsSourceOptions`，已被 09-27 的身份摊平与改名取代：订阅不再分 B 站支，`isBiliSubscription` 删掉、按 `sourceKey` 判，统计适配器合成 `bindStatsRecorder`。
 - **日志行格式**（`msg`、`ts` 等）：logs 跨代共享、冻住的桌面壳写死了目录。
 - **通用 webhook 发出的 JSON**（`forward`、`ts` 等）：读它的是用户自己的接收端，永远不改；`private` 那一格写死 `false`。
-- **桥协议的线上帧**（`forward`、`desc`、`picUrl`、能力名 `forward`、`miniapp-card`、入站的 `miniAppCardLinks` 等）：alpha 期间不改，1.0.0 之前按两步改完（09-27 拍板，09-28 补上入站那一格）。已发布的插件在读，握手只比主版本，所以在那之前内部改名只改到桥的适配器。两步按方向分：BN 发出去的格，先发一版插件同时认新旧字段，等大家升上去 BN 再切；插件发进来的格（入站的 `miniAppCardLinks`）反过来，BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。改完之后适配器里的新旧映射整个删掉；改成什么名字见 [construction-plan.md](./construction-plan.md)。
+- **桥协议的线上帧**（`forward`、`desc`、`picUrl`、能力名 `forward`、`miniAppCard`，载荷种类 `miniapp-card`，入站的 `miniAppCardLinks` 等）：alpha 期间不改，1.0.0 之前按两步改完（09-27 拍板，09-28 补上入站那一格）。已发布的插件在读，握手只比主版本，所以在那之前内部改名只改到桥的适配器。两步按方向分：BN 发出去的格，先发一版插件同时认新旧字段，等大家升上去 BN 再切；插件发进来的格（入站的 `miniAppCardLinks`）反过来，BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。改完之后适配器里的新旧映射整个删掉；改成什么名字见 [construction-plan.md](./construction-plan.md)。
 - 拓展契约里的毫秒时刻、签名清单的 `issuedAt`（秒）：已发出的格式，进门换 ISO。
 - 已经拍板不动的：import 后缀两套并存；`FRAMES.live` 与 `FRAMES.wordcloud` 不合并；`skin.json` 与 `default.json` 双文件；锐评分数由模型打；`apps/contract` 放在 `apps/` 下。
 - 全仓包版本统一 `0.0.0-dev` 是施工项、不是「不动」：现在只有 ui 与 `apps/*` 是 `0.0.0-dev`，其余包排在第 5 期统一（见 [construction-plan.md](./construction-plan.md)）。

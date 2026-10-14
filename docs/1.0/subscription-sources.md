@@ -40,11 +40,11 @@ interface SourceHealth { summary: string }
 | `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉 |
 | `auth` | 否 | 系统 → 账号、`login` 指令 | 见「登录与账号」 |
 | `fetchLiveStatus` | 否 | 核心按场次定时调 | 返回结果形状，成功分 `live` / `offline`，见「直播」 |
-| `liveInteractions` | 否 | 直播中 | 走能力回调还是总线施工时定 |
+| `liveInteractions` | 否 | 直播中 | 直播互动（弹幕、醒目留言、会员、进场）走回调、不走总线；观众头像与档位图标在确定要出卡时再取 |
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
 | `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
 
-`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3a-42，10-12）：代码里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`），`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
+`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3a-42，10-12）：代码里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`），`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地（`searchCreators` 这一期造、B 站实现、只给 AI 的搜人工具用，`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期）；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
 
 新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
@@ -79,7 +79,8 @@ interface MembershipTier {
 - `icon` 的取值怎么解释（面板图标库里的名字还是一张图；拓展加不了图标库的名字），施工时定。
 - **外部 id**：身份标签写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」，由一个函数生成（显示名链 `displayNameOf` 的最后一环）；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
 - `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。🔗 现状（3a-42，10-12）：模板变量 `{postNoun}` 3a 还没做（`posts/deliver-post.ts` 里套作品文案只传 `{name}`）；核心里读来源上报的 `postNoun` 的是拼 AI 提示词那一处（同一个文件），它的缺省原先在代码里还是「动态」，3a-42 对拍查出后改成「作品」，与这里一致（没声明 `postNoun` 的拓展的提示词因此变了，B 站来源自己声明「动态」不变）。面板自己的特性标签另走拓展清单的 `display.postNoun`，这一片没动。
-- 特别关注这项设置只在 `supportedFeatures` 含 `specialDanmaku` 或 `specialUserEnter` 时露出。
+- 特别关注这项设置只在 `supportedFeatures` 含 `viewerChat` 或 `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`）时露出。
+- `creatorNoun` 与 contract 里的叫法函数这一期（3b）造，提示词里的 `{creatorNoun}` / `{postNoun}` / `{sources}` 按 ADR-0030 决策 3 全做；面板上的叫法仍第 4 期。
 - `liveStreaming` 开关只在 `has.liveStatus` 为真（来源提供了 `fetchLiveStatus`，宿主推算、随 `/api/sources` 下发），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd` 时显示。
 
 ## 面板怎么读描述符
@@ -184,7 +185,8 @@ type AuthState =                   // 状态值用 kebab
 - 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
-- 日志落盘前按当前全部密钥的真实值脱敏：`secrets` 值里的每一段字符串都按原文遮（很短的不遮）；还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记。写死的 cookie 名正则删掉。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉。
+- 日志落盘前按值脱敏：各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记；**少于 8 个字符的值不遮**。核心里写死 B 站 cookie 名的五条正则删掉，`sk-`、`Bearer` 两条（AI 服务商密钥）留着。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉，不豁免。
+- **登录问题由宿主看登录状态报，来源不报**：宿主订每个有登录口的来源的 `auth.onChange`，按 `AuthState` 自己报与清 —— `expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清（私聊过的补「已恢复」）、`awaiting-scan` / `confirming` / `error` 保持上一次的结论；记在来源名下；宿主写整句并带指路（面板账号页、`login <来源>` 指令）。契约不为此加成员。B 站不再报 `auth_lost`；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。🔗 现状：未登录层今天在 `bilibili/problem-layers.ts` 里由 B 站自己报，随 3b-38 搬到宿主。
 
 ## SourceContext
 
@@ -196,14 +198,14 @@ interface IntegrationContext {
   state: KeyValueStore;             // 游标、分页令牌、小索引；明文
   secrets: KeyValueStore;           // cookie、token；主密钥加密
   redact(value: string): void;      // 还没进 secrets 的临时凭据先登记，日志按值遮掉
-  settings<T>(schema: ZodType<T>): { get(): T | undefined; onChange(fn: () => void): Disposable };
+  settings<T>(schema: ZodType<T>): SettingsReader<T>;   // get(): Result<{ settings: T }>，不抛；内置集成与拓展同一个
   http: HttpClient;                 // packages/http 的客户端（原 BiliHttpClient 去掉前缀），一个集成一个
   fetchImage(url: string, opts?: { headers?: Record<string, string>; signal?: AbortSignal })
     : Promise<{ ok: true; ref: ImageRef } | { ok: false; code: string; message: string }>;
   storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })   // 手里已是字节的
     : Promise<{ ok: true; ref: ImageRef } | { ok: false; code: string; message: string }>;
-  reportProblem(p: { code: string; message: string; notify?: boolean }): void;
-  resolveProblem(p: { code: string }): void;
+  reportProblem(p: { code: string; message: string; notify?: boolean; recoveryMessage?: string }): void;
+  resolveProblem(p: { code: string; notify?: boolean }): void;
   signal: AbortSignal;              // 集成停下时中止
   onDispose(fn: () => void): void;  // 集成停下时收尾
 }
@@ -221,12 +223,10 @@ interface SourceContext extends IntegrationContext {
   reportPost(externalId: string, report: PostReport): void;
   reportLive(externalId: string, signal: LiveSignalReport): void;
   reportProfile(externalId: string, profile: CreatorProfileReport): void;   // 推送式平台主动报
-  reportProblem(p: { externalId?: string; code: string; message: string; notify?: boolean }): void;
-  resolveProblem(p: { externalId?: string; code: string }): void;
-  // 🔗 3a-30 落成的签名（packages/internal/src/source.ts）：
-  //   reportProblem(p: { externalId?; code; message; notify?; recoveryMessage? }): void
-  //   resolveProblem(p: { externalId?; code; notify? }): void
-  // 只造在 SourceContext 上，上面 IntegrationContext 里的两行还没造（见「问题上报」的现状）
+  reportProblem(p: { externalId?: string; code: string; message: string; notify?: boolean; recoveryMessage?: string }): void;
+  resolveProblem(p: { externalId?: string; code: string; notify?: boolean }): void;
+  // 🔗 现状（3a-30）：这两个只造在 SourceContext 上（packages/internal/src/source.ts），
+  // 上面 IntegrationContext 里的两行还没造（见「问题上报」的现状）
 }
 
 interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscription{ id, externalId, enabled }
@@ -243,13 +243,13 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
 | 上报被拒 | 上报类（`report*`、`reportProblem`、`resolveProblem`）一律 `void`：被拒（种类没声明、id 不合法、形状坏）或被丢格，记进该集成的 `reportDiscrepancies` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；拓展契约从 v2 的 reject 改成这样。内置集成（B 站与内置适配器）的上报被拒就是 BN 的 bug，只打错误日志、靠对拍守卫兜，不进 `reportDiscrepancies` 的展示面 |
-| `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败：404 回 `not_found`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`。默认头怎么设，施工时定。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
+| `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算；B 站徽章的保活施工时另设计。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
 | `storeImage` | 手里已是字节的图走它（B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储，明文、不脱敏。单键 64KB、每个集成 1MB。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清。`http.` 开头的键归宿主（`ctx.http` 的浏览器身份） |
 | `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
 | `state` / `secrets` 的写、删与 `batch` | 返回结果形状、不抛：超上限或写了 `http.` 前缀回 `invalid`，磁盘写失败回 `unavailable` |
-| `redact` | 临时凭据按值登记脱敏；存进 `secrets` 的值自动覆盖，不用再登记 |
-| `settings(schema)` | 和拓展同一个用法（`get` 与 `onChange`）：B 站拿 `bilibili` 段，拓展拿 `extensions.<id>` 段；校验就发生在这一步，见「设置」。交回的读取把手叫 `SettingsReader<T>`（原拓展契约的 `ExtensionSettings<T>`）。🔗 现状（3a-39，10-11）：今天**只造在 `SourceContext` 上**（`packages/internal/src/source.ts`），`SettingsReader<T>` 是 `{ get(): Result<{ settings: T }>; onChange(fn): Disposable }`：`get()` 每次现读现判、**永不抛**，读得懂回过了那份 zod 的值，读不懂回 `invalid` 并带逐条原因（整个设置文件读不懂时只有一条、不带 `path`）；`onChange` 在值变了、或读得懂与读不懂之间翻了时叫，别的集成的设置动了不叫。**可以交多份 zod**，各读各的格（zod 的对象默认剥掉不认识的键），B 站来源交了三份：动态那格（`dynamicCron`，比读盘 schema 多一道「能解析」）、登录检查那格（`healthCheckMinutes`），外加一份只为分辨「面板此刻显示的是默认值还是盘上原文」的动态那格（没有「能解析」那一道）。把手随来源上下文收掉自动摘，来源不必在 `stop()` 里记得收。拓展契约里的 `ExtensionSettings<T>.get(): T | undefined` 没动，两个形状并不并留到 3b 改名时再定 |
+| `redact` | 临时凭据按值登记脱敏；存进 `secrets` 的值、cookie 罐里的每条 cookie 一到自动登记，不用再登记；少于 8 个字符的不遮 |
+| `settings(schema)` | 和拓展同一个用法（`get` 与 `onChange`）：B 站拿 `bilibili` 段，拓展拿 `extensions.<id>` 段；校验就发生在这一步，见「设置」。交回的读取把手叫 `SettingsReader<T>`（原拓展契约的 `ExtensionSettings<T>`）。🔗 现状（3a-39，10-11）：今天**只造在 `SourceContext` 上**（`packages/internal/src/source.ts`），`SettingsReader<T>` 是 `{ get(): Result<{ settings: T }>; onChange(fn): Disposable }`：`get()` 每次现读现判、**永不抛**，读得懂回过了那份 zod 的值，读不懂回 `invalid` 并带逐条原因（整个设置文件读不懂时只有一条、不带 `path`）；`onChange` 在值变了、或读得懂与读不懂之间翻了时叫，别的集成的设置动了不叫。**可以交多份 zod**，各读各的格（zod 的对象默认剥掉不认识的键），B 站来源交了三份：动态那格（`dynamicCron`，比读盘 schema 多一道「能解析」）、登录检查那格（`healthCheckMinutes`），外加一份只为分辨「面板此刻显示的是默认值还是盘上原文」的动态那格（没有「能解析」那一道）。把手随来源上下文收掉自动摘，来源不必在 `stop()` 里记得收。拓展契约里的 `ExtensionSettings<T>.get(): T | undefined` 今天没动；3b 并成这一个：拓展的 `ctx.settings(规则)` 也交回 `SettingsReader<T>`，`ExtensionSettings<T>` 删掉。从没设过的，拿空对象过规则：过得了是成功拿默认值，过不了回 `not_configured`、拓展照跑；每个拿到上下文的集成都在配置仓登记一段（内置适配器也登记），没设过的照这条读；配置仓对根本没登记的键照旧抛（组装漏了是 bug） |
 | `http` | 见下「请求客户端」 |
 | `signal` / `onDispose` | 集成停下时 `signal` 中止在途调用、`onDispose` 的回调收尾；先后是宿主先调实现自己的 `stop()`，再中止 `signal`、跑 `onDispose` 登记的收尾（ADR-0025 决策 5）；内置集成与拓展走同一套生命周期 |
 | `logger` | 来源名写进日志行已有的 `name` 字段（`bilibili` 或拓展 id），不拼进正文；面板日志页可按来源筛 |
@@ -264,12 +264,14 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 - 新中立包 `packages/http`：从 B 站的实现里抽出请求客户端、cookie 罐与浏览器身份。宿主给每个集成建一个客户端，经 `ctx.http` 拿（`bilibili/` 整块共用一个，一个拓展一个）。BN 自己的请求不用它：客户端带着集成的身份与 cookie，BN 自己的请求不该冒用。
 - cookie 由宿主自动存进该集成的 `secrets`（`http.` 前缀）。
-- `websocket(url, opts?)` 只负责用集成的身份建连、集成停下时自动关；帧、心跳、重连归集成。
+- `websocket(url, opts?)` 只负责用集成的身份建连、集成停下时自动关；能发文本帧、能读连接状态；帧、心跳、重连归集成。给错地址（地址不合法、协议不收）回结果形状 `invalid`，不再同步抛。
+- 请求体收 `FormData`（遇到要重发的重定向时怎么办，施工时核）；单次请求可选「不带浏览器身份、不碰 cookie 罐」那一档，内置三个适配器全用这一档，拓展的适配器调官方接口也用它。
+- 请求客户端对外的接口类型住核心包，实现留在 `packages/http`（避免包之间成环）。cookie 罐按公共后缀表（引 `tldts`）拒 `Domain=com`、`com.cn`、`co.uk` 这类；`packages/http` 加运行时依赖，加完走装配自检。cookie 罐那组口第 3 版不对拓展开，B 站照旧由宿主单独递它那份把手。
 - 不加别的协议：SSE 需要时给请求加「原样交出响应流」的选项；出站代理以后挂在这里。
 - 重试、退避、限流归集成，BN 侧不替它限流。
 - 整体不拦内网（局域网里的 RSSHub 要连得上）；拦内网只在 `fetchImage` 那条路上。
 - 浏览器身份生成一次、存进该集成的 `state`（`http.` 前缀），重启照用；只在发版把版本区间前挪、存的低于下限时升级，只升不降。UA 与 `sec-ch-ua` 永远配套，没有自定义 UA。
-- 1.0 对拓展整套开放（请求、websocket、默认头、cookie 自动存、身份自管）；第 6 期的抖音拓展是第一个拓展用户。
+- 1.0 对拓展整套开放（请求、websocket、cookie 自动存、身份自管；不开「默认请求头」的口，拓展每次请求自己带头）；第 6 期的抖音拓展是第一个拓展用户。
 
 ### 设置
 
@@ -284,22 +286,24 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 ### 问题上报
 
-- 问题一律进面板问题框；`notify: true` 再私聊主人。严重度与文案由来源定。
+- 问题一律进面板问题框；`notify: true` 再私聊主人。严重度由来源定；问题句只说事、平实（不称呼主人、不写宿主的界面与操作），平台的数字错误码写进 `message`、不占 `code`；私聊时宿主按口吻加工，见 [extension-contract.md](./extension-contract.md)「问题上报」。
+- 问题进表有三条路：集成自己报、宿主看登录状态报（有登录口的来源，见「登录与账号」）、宿主探连接报（见 [push.md](./push.md)「连接通不通」），外加宿主自己的事。
 - 核心只守一条底线：同一报的人（`reporter`）、同一 code 的私聊 60 秒内只发一次。
 - 核心收到每条问题自动记一行日志。问题上报不设「只记日志」档，只想记日志就用 `ctx.logger`，两者不合并。
-- **问题表只有一种形状，全在内存**：`Problem { reporter: IntegrationKey | "core", about?: { subscriptionId } | { connectionId }, code, message, since }`。来源不填 `externalId` 就是来源本身的问题（如登录失效）；填了由宿主换成订阅 id。`since` 记第一次出现，重复报只更新文案。平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心自己直接写，code 表明是哪个模块（如 `renderer_unavailable`）。
+- **问题表只有一种形状，全在内存**：`Problem { reporter: IntegrationKey | "core", about?: { subscriptionId } | { connectionId }, code, message, since }`。来源不填 `externalId` 就是来源本身的问题（如请求被风控）；填了由宿主换成订阅 id。`since` 记第一次出现，重复报只更新文案。平台适配器带 `connectionId`，宿主核它是不是这个适配器的，不是就拒收；核心自己直接写，code 表明是哪个模块（如 `renderer_unavailable`）。
 - **一条生死规矩**：报的人 `resolveProblem` 按 code 清；报的人停下，它报的全清；对象删了，关于它的全清。订阅运行态不再存问题。
 - **谁看**：订阅卡、连接卡看关于自己的，问题框看全部；来源本身的问题只在问题框与健康卡，不在每张订阅卡重复。`GET /api/problems` 一次给全；变了发总线事件 `problems-changed`（只带键），经 `state` 频道、250ms 合并。
 - 代价：重启后的头几秒，订阅卡上的问题红字会先消失，等来源重报（开机时关注同步与第一轮资料刷新几秒内就会重报）。
-- code 用 snake：`follow_failed`、`login_expired`、`creator_not_found`。
-- B 站也走它：比如「登录失效」以 `notify` 上报、文案自己写。B 站内部按因果分层，只报最上面那一条开着的根问题：未登录 → 风控 → 各项请求失败，下面的只记日志；根问题按状态报（开机就没登录也报），清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。关注同步失败照旧报 `follow_failed`，文案沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`），补关注成功就 `resolveProblem` 清掉；订阅卡上的红色警告文字不变。它和别的问题一样只在内存、不再存盘，重启后由下一轮关注同步重报。
+- code 用 snake：`follow_failed`、`creator_not_found`、`risk_controlled`。
+- B 站也走它。B 站内部按因果分层，只报最上面那一条开着的根问题：未登录 → 风控 → 各项请求失败，下面的只记日志；根问题按状态报（开机就没登录也报），清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。**登录失效不再由 B 站报**，改由宿主看登录状态报；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。
+- **关注搬进 B 站之后**（3b-25）：补关注在 `onSubscriptionsChanged` 的回调里异步做，失败报 `follow_failed`（带 `externalId`、挂在那个人的订阅上、只进表），补关注成功就 `resolveProblem` 清掉；新建订阅的回应不再带关注结果；订阅列表的回应由宿主把挂在这条订阅上的问题一并带上，面板订阅卡通用地显示它们（去掉「是不是 B 站」的判断），问题变了面板刷新 —— 这是提前到 3b 的一小块面板活。订阅卡上的红色警告文字沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`）。它和别的问题一样只在内存、不再存盘，重启后由下一轮关注同步重报。
 - 来源级问题不再走 `engine-error`。
 - 🔗 **现状（3a-30，10-11）**：
   - **只造在 `SourceContext` 上**：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })` 与 `resolveProblem({ externalId?, code, notify? })`；`IntegrationContext` 与 `PlatformAdapterContext` 上的两个还没造（3a-39 是下一个要报的）。两个都是 `void`。🔗 3a-39 报了设置读不懂的三条问题（见 data-model.md「问题表」），**仍没造这两个成员**：核心设置那条由 `runtime/bootstrap.ts` 直接写问题表，B 站那两条走 `SourceContext`；等第一个在 `start(ctx)` 之外要报的集成再造。
-  - **`recoveryMessage`**（上面没有这一格）：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法接当初真发出去的那句原文。**`resolveProblem` 的 `notify`**（上面没有）：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
+  - **`recoveryMessage`**：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法（3b-38 改成一句带名字的通用说法，不再接原文）。**`resolveProblem` 的 `notify`**：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
   - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
   - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊与「已恢复」各一张 60 秒的节流表，键都是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个。
-  - **code 例子**：B 站落成的名字是 `auth_lost`（不是上面例子里的 `login_expired`；ADR-0025 决策 11 下 10-03 的 🔗 用的就是 `auth_lost`，以 ADR 的名字为准）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b）。
+  - **code 例子**：B 站落成的名字有 `auth_lost`（3b-38 起改由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。
   - **B 站的分层**落在 `bilibili/problem-layers.ts`：未登录层只看 `AuthState.status`（`expired` 开并私聊、`logged-out` 开不私聊、`logged-in` 清、`awaiting-scan` / `confirming` / `error` 保持上一次的结论）；风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；第三层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。给主人看的话在 `bilibili/problem-texts.ts`。
 
 ### 健康与运行状态
@@ -340,7 +344,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 🔗 10-13（3b-20）已落的是拓展那一半：场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine`（`live/live-sessions.ts`）、在播表 `ExtensionLiveTable` → `LiveTable`（`live/live-table.ts`）、推送 `bindExtensionLivePush` → `bindLivePush`（`live/live-push.ts`），出卡输入翻译 `live-card-input-from-report.ts` 一并搬进 `live/`；总线事件 `extension-live-changed` / `extension-live-session` 与契约里的 `ExtensionLiveSnapshot` 没改名。B 站的 `room-session-base` 还在，两套场次合成一套留给后面。
 
-删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。🔗 10-13 四块都已抽完：特别弹幕与特别进场 3b-15（`live/special-users.ts`）、醒目留言 3b-17（`live/superchat.ts`）、会员 3b-18（`live/membership.ts`，B 站会话的 `onGuardBuy` 只剩翻事件、查档位表、挑文案包、拼兜底句、绑取徽章 / 取头像与发送）。
+删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。🔗 10-13 四块都已抽完：特别弹幕与特别进场 3b-15（`live/special-users.ts`，随名单改叫 `specialViewers` 改名 `live/special-viewers.ts`）、醒目留言 3b-17（`live/superchat.ts`）、会员 3b-18（`live/membership.ts`，B 站会话的 `onGuardBuy` 只剩翻事件、查档位表、挑文案包、拼兜底句、绑取徽章 / 取头像与发送）。
 
 来源只有两种输入：
 
@@ -354,8 +358,10 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | 结果 | 核心怎么做 |
 | --- | --- |
 | `ok: true, kind: "live"` | 推「正在直播」卡 |
-| `ok: true, kind: "offline"` | 此刻没在播：当成漏收的下播，走 `end` 同一条路（含断流宽限与私聊主人） |
-| `ok: false`（带 `code` + `message`） | 跳过这一轮、记一条问题；**不再停止监听** |
+| `ok: true, kind: "offline"` | 此刻没在播：当成漏收的下播，走 `end` 同一条路（含断流宽限与私聊主人）；时长算到「发现已下播的那一刻」 |
+| `ok: false`（带 `code` + `message`） | 跳过这一轮、记一条问题；**不再停止监听**（ADR-0021 决策 27 原文） |
+
+- **漏收下播的兜底与周期推送拆开**：凡在一场直播里的订阅都按间隔核一次还在不在播；周期推送（`liveStreaming`）开着照推「正在直播」卡，关着只核不推、间隔用默认 1 小时。重连后核对发现已下播也走同一条下播的路；合进核心那套之后，开播看 `liveStart` 开关。
 
 - 计时按每一场的开播时刻各自起算（`LiveSession.nextTickAt`），不全局同时拉。间隔是 `liveStreaming.streamingIntervalHours`。
 - 同一来源串行调用；超时与中止复用 `searchCreators` 那套外壳；拓展停用时用 signal 取消在途调用。
@@ -363,7 +369,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 断流：收到 `end` 先进 `pendingEnd` 等宽限，宽限里又开播就 `resume` 接着同一场；等满了才 `end`。
 - 场次的每次变化是一条 `LiveSessionChange`，推送、统计、总线（`live-session-changed`）吃同一份。
 - ⛔ 场次身份按开播时刻认、排在闩之前；统计 `current` 与 `isLive` 的语义不动。
-- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：单个订阅开了直播类开关就监听，只看开关、不看有没有目标。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标，但仍是面板自己的一份键表，也没算服务端那两个特殊用户条件，进 internal 的唯一判定仍待做）。
+- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）就监听，只看开关与名单、不看有没有目标。看得见的变化：五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再连直播间、首页说它「不会被监听」、统计不再记它的直播（0.x 是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标，但仍是面板自己的一份键表，也没算服务端那两个特殊用户条件，进 internal 的唯一判定仍待做）。
 - **醒目留言**：`SuperchatEvent` 带可选的 `tier { rank, durationSec? }`，由来源按平台规矩算；卡按档取色（默认配色照今天六档，皮肤可按档换色），有留言时长就显示。
 - **验收**：先在旧引擎上用端到端测试钉住开播、下播、断流接续、漏收下播兜底四种行为，再换新引擎跑同一组。
 - 被否的备选：拓展自己计时上报（每个拓展都得重写一遍计时）；BN 发事件要数据、拓展再另报（对不上是哪一轮要的，拓展还能自己触发推送）。
@@ -412,14 +418,16 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 
 群里贴链接，回一张预览。
 
-- 统一叫「链接预览」（原「链接解析」「链接卡片」「小程序卡」）：目录 `link-preview/`；设置 `linkPreview { enabled, replyForm, byTarget }`，由 `linkParsing` 迁移（原定的 `linkCards` 作废）；解析器仍叫 `LinkResolver`（链接解析器）。
+- 统一叫「链接预览」（原「链接解析」「链接卡片」「小程序卡」）：目录 `link-preview/`；设置 `linkPreview`，由 `linkParsing` 迁移（原定的 `linkCards` 作废）；解析器仍叫 `LinkResolver`（链接解析器），门叫 `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`，文件 `link-preview/link-previewer.ts`）。
+- **设置五格**：总开关（默认关）、默认回不回、回复形式、按目标的例外 `byTarget`、`cooldownSec`。链接预览回卡不走推送链、全局静音与免扰管不到，所以留一个一键全停的总开关（当初摊平时顺手带掉的）。迁移一一对应、行为不变、名单不丢：总开关 ← 旧 `enabled`，默认 ← `defaults.parse`，回复形式 ← `defaults.form`（`miniapp` → `nativeShare`），例外 ← `groups`（条目里 `parse` → 开关、`form` → 回复形式），`cooldownSeconds` → `cooldownSec`。总开关与「默认」的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范定。
 - **闸门在核心**：开关、按目标的表、冷却、硬上限、失败不出声、一条最多三个、从分享卡取链接。冷却键是「群 + 解析器 + `canonicalId`」。
 - **挑链接**：核心先用通用网址正则挑出候选，再问各解析器的 `matches`。出口不按平台域名预筛：OneBot 入站的 B 站域名预筛删掉，64KB / 8 层的上限保留。
-- **入站链接带来源标记**（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的。
-- **回复形式** `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。原生分享由 OneBot 适配器拿中立描述去签，签不了就回图片（签不了原生分享的出口会一直回图片）。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表。
+- **入站链接的来源标记**：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的。
+- **回复形式** `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。原生分享由 OneBot 适配器拿中立描述去签，签不了就回图片（签不了原生分享的出口会一直回图片）。`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核）；OneBot 签名接口不收通用参数，就在适配器里放 appid → 预设的对照表。载荷种类 `"miniapp-card"` 改 `"native-share"`、能力格 `miniAppCard` 改 `nativeShare`。
+- **「回文字」发什么**：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。
 - **回复**经 `TargetDispatcher.sendToAddress` 发回原会话：不进路由、不过闸、不落历史，但要查 `isAvailable`、结果带 code、由截流统一记，不重试。原先现造的临时目标删掉。
 
-🔗 10-13（3b-27 链接半、3b-28）已落：核心的 `LinkResolver` / `LinkPreview` 类型（`packages/internal/src/link-preview.ts`）；登记表 `link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记（键取来源的键，停下时自动撤）；门（`link-preview/link-parser.ts`，名字暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选、按登记先后问解析器认不认、取前三个被认领的，冷却分两把键（联网前按链接原文、解析成功后按 `canonicalId`），同一条消息里指着同一个东西的几种写法只出一张；B 站的解析器是 `bilibili/link-resolver.ts`（视频链接的认法 `bilibili/video-links.ts`、视频翻成作品 `bilibili/video-card.ts`，都是从别处搬来的），封面在解析器里抓，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷；对拍 N07 因此转成了 P22。「入站链接带来源标记」「回复形式 `replyForm`」「设置改叫 `linkPreview`」三条还没动。
+🔗 10-13（3b-27 链接半、3b-28）已落：核心的 `LinkResolver` / `LinkPreview` 类型（`packages/internal/src/link-preview.ts`）；登记表 `link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记（键取来源的键，停下时自动撤）；门（`link-preview/link-parser.ts`，名字暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选、按登记先后问解析器认不认、取前三个被认领的，冷却分两把键（联网前按链接原文、解析成功后按 `canonicalId`），同一条消息里指着同一个东西的几种写法只出一张；B 站的解析器是 `bilibili/link-resolver.ts`（视频链接的认法 `bilibili/video-links.ts`、视频翻成作品 `bilibili/video-card.ts`，都是从别处搬来的），封面在解析器里抓，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷；对拍 N07 因此转成了 P22。「入站链接来源标记 `sharedLinks`」「回复形式 `replyForm`」「设置改叫 `linkPreview` 并加回总开关与冷却」「门改名 `LinkPreviewer`」几条还没动。
 
 ### 指令
 
@@ -435,6 +443,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **六把中立只读工具**：`list_subscriptions`、`get_creator_profile`（读资料缓存）、`get_creator_posts`（读统计仓最近几条）、`get_live_status`（读在播表）、`search_creators(source, query)`（转给该来源的 `searchCreators`）、`get_creator_stats(creator, days?)`（读统计仓：作品数、视频作品数、直播场次与时长、涨粉、最后活动）。
 - 中立工具的参数统一叫 `creator`，值是「来源键:外部 id」（按第一个冒号切）；核心工具参数里不许出现 `uid`（进 AI 约束守卫）。`list_subscriptions` 与 `search_creators` 的返回带着它。没订阅的人，读缓存类工具答查不到。
 - **六个内置技能**全部跨来源、只用中立工具；`find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名。技能的 `allowedTools` 在迁移时按新工具名变换。
+- 统计总开关关着时，`get_creator_posts` / `get_creator_stats` 回 `not_configured`（照锐评的先例）；注入的工具失败也按结果形状返回；B 站工具的失败码走上面「B 站返回码的翻译表」。`searchCreators` 这一期造、B 站实现，`search_creators` 工具读它。
 - **来源独有的数据**经来源的 `AiToolProvider` 登记只读工具：B 站的总播放、获赞、视频列表；B 站版的周报由 B 站自己以技能提供。
 - `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。缺工具的女仆技能面板自动隐藏；面板里找不到工具的 3 条死标签（`subscribe_user`、`unsubscribe_user`、`update_subscription`）删掉。
 - 工具返回的图也是 `ImageRef`；看图时由宿主注入的读图函数读图库，`packages/ai` 不碰磁盘。
@@ -460,7 +469,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 | `LinkResolver` | B 站视频链接识别与解析；给原生分享的中立描述 |
 | `AiToolProvider` | B 站独有数据的只读工具（总播放、获赞、视频列表）与 B 站版周报技能 |
 | `devtools/` | `DevtoolsProvider`，只在开发版登记；场景只经 B 站自己的 ctx 做事 |
-| 翻译表 | 大航海等级表与等级名（`guard_level` 反向换算）、档色（原面板的 `guard-levels.ts`，进 B 站的描述符）、醒目留言的档位规矩、风控码集合、响应解包、CDN 缩放后缀与 Referer、「大航海舰队」文案 |
+| 翻译表 | 大航海等级表与等级名（`guard_level` 反向换算）、档色（原面板的 `guard-levels.ts`，进 B 站的描述符）、醒目留言的档位规矩、返回码翻译表（数字码 → 标准码，见下）、响应解包、CDN 缩放后缀与 Referer、「大航海舰队」文案 |
 
 - **只经中立接口进核心**，在 `compose.ts` 登记（见 [architecture.md](./architecture.md)）。
 - **只报 uid**：B 站按 uid（即 `externalId`）上报，由核心展开成订阅 id；B 站不知道订阅 id，只用 `ctx.subscriptions()` 的名单决定拉谁。
@@ -469,14 +478,14 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **进门换 ISO**：`live_time` 是不带时区的北京时间，在这里转。
 - **作品映射**：`text` 只放正文（动态正文、图文摘要）；图文标题进 `article.title`，视频标题进 `video.title`，转发的原作品进 `repost`。UP 自己的视频进 `post.video`；番剧、合集、课程进附件的视频卡。附加块翻成 card / video / goods。过滤、AI、出图都经核心 `posts/` 里同一个取段函数读这份字。
 - **开播公告直接丢**：开播时生成的那条伪动态不上报，统计也不再记（旧数据照原定不搬）。
-- **资料**：`fanClubName` 填粉丝牌名。
+- **资料**：`fanClubName` 填粉丝牌名，照文档由 `fetchProfile` 交；B 站不为它多发请求 —— 直播时取主播信息本来就带粉丝牌名，记进 B 站自己的 `ctx.state`，交资料时带上。`{postNoun}` 进默认作品文案归 3b-21（ADR-0028 决策 3 的目标）；对拍 N08 随 3b-22 收尾。
 - **醒目留言**：`tier` 由 B 站按平台规矩算，卡按档取色。
 - **禁 fs**：B 站的状态（`roomId`、`followed`、`followError` 等）只走 `ctx.state`，cookie 只走 `ctx.secrets`；动态游标仍只在内存。
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。系统页为 B 站单开一个 tab，名取它的 `label`（见「设置」）。`bilibili` 段校验不过只停 B 站这一个集成：来源、链接解析器、AI 工具都不登记，订阅卡显示「{label} 没在跑」，B 站 tab 显示原值、「设置不合法」与原因并进问题框，改对了当场起；BN 照常开机。
 - **删掉自定义 UA**：身份一律由 `packages/http` 生成，UA 与 `sec-ch-ua` 永远配套；B 站设置页加「换一个身份」按钮，重新生成一套。老配置里的 `userAgent` 这一格由迁移丢掉，新 schema 不留。理由：填了自定义 UA，`sec-ch-ua` 仍是生成的 Chrome 身份，拼出一个自相矛盾的指纹；风控 -352 的第一嫌疑本来就是 TLS 指纹，不是 UA。
 - **补关注**（BN → B 站单向）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次。整份名单先批量查关系、只补缺的（稳态写请求为零）；失败按「问题上报」报 `follow_failed`。登录态失效时跳过；批量查询回 -101 按「没登录」整批跳过，订阅卡上的关注状态不动，等登录恢复再跑；其他失败码仍走降级。停用的订阅不在名单里，自然不补；从停用改回启用时名单变化，那一轮就补上。
-  - 🔗 **10-11 3a-31（主人定）**：关注只为从关注流里拉到动态，所以**只对启用中、且作品开关开着的订阅做**，只开直播的订阅不查也不补；开关从关到开（订阅被启用、订阅自己的作品开关打开、全局作品开关打开）时补一次；BN 只补关注、从不取关，从开到关、停用什么都不做；订阅卡上只开直播的订阅不再显示「未关注」。**这是今天的现状，不是上面那句设计的落成**：关注同步还没搬进 `bilibili/`，今天住 `runtime/follow-sync.ts` 与引擎装配（`runtime/engines.ts`：开机、登录恢复、开关翻开三处触发，不挂在 `onSubscriptionsChanged` 上），整个搬进 B 站来源、用来源上下文的名单自己算差集，没有单独的片认领（construction-plan 里「补关注 -101 整批跳过」「开机关注同步不发事件」两行顺带记着 3b），细节见 `docs/agents/subscriptions.md`「关注同步」一条。
+  - 🔗 **10-11 3a-31（主人定）**：关注只为从关注流里拉到动态，所以**只对启用中、且作品开关开着的订阅做**，只开直播的订阅不查也不补；开关从关到开（订阅被启用、订阅自己的作品开关打开、全局作品开关打开）时补一次；BN 只补关注、从不取关，从开到关、停用什么都不做；订阅卡上只开直播的订阅不再显示「未关注」。**这是今天的现状，不是上面那句设计的落成**：关注同步还没搬进 `bilibili/`，今天住 `runtime/follow-sync.ts` 与引擎装配（`runtime/engines.ts`：开机、登录恢复、开关翻开三处触发，不挂在 `onSubscriptionsChanged` 上），整个搬进 B 站来源、用来源上下文的名单自己算差集，没有单独的片认领（construction-plan 里「补关注 -101 整批跳过」「开机关注同步不发事件」两行顺带记着 3b），细节见 `docs/agents/subscriptions.md`「关注同步」一条。搬进 B 站之后（3b-25）：补关注在「订阅名单变了」的回调里异步做，失败报 `follow_failed`（见「问题上报」）。
 - **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来；分期见 [construction-plan.md](./construction-plan.md)）。ticket 请求和别的请求用同一个身份：原先固定用默认 UA 的特例删掉（建仓时从老插件原样搬来，没有留下理由）。
-- **风控码**：-412 在拉粉丝时算风控、刷 cookie 时算登出，各处不一，先验证再定。
+- **B 站返回码的翻译表**：B 站在 `bilibili/` 里有一张共用的「数字码 → 标准码」表，请求层在接口回来时查一次，翻成 `fail(标准码, 原话, { upstreamCode })`：`-352`、`-412`、`-799`、`-509` → `rate_limited`；`-101` → `unauthorized`；`-403` 不进共用表，由用到它的接口自己判（也可能是真没权限，如受限直播间）；没对照的码 → `unknown`，原码进 `upstreamCode`，每个进程第一次撞上记一条 warn。各轮询把 `unknown` 当一时失败、下一轮照拉、只进表不私聊。cookie 续期只在 `unauthorized` 时登出，`unknown` 下一轮再试（死会话由普通请求撞 `-101` 时登出）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表不私聊。
 - **失败码**：B 站接口的数字错误码放在 `upstreamCode`，不占错误体的 `code`；`code` 取标准码表（风控 `rate_limited`、没登录 `unauthorized`……）。
 - 验收检查点：「接口先行」那一期（3a，见 [construction-plan.md](./construction-plan.md)）完成时，B 站全经中立接口运行、行为不变。
