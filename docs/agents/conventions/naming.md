@@ -56,7 +56,7 @@
 - **核心里的 `Source` 只指订阅来源**：读数据的口子，类型一律叫 `…Reader`（一包几个读法的也是，不加复数）；`lookup` 是「查一下」这个动作，只用在函数名上，不当类型名的后缀（`…Lookup` / `…Lookups` 都不用，主人 10-10 定）。「市场源」是主人在界面上看得到的叫法，算例外。
 - **「内置的那一组」交回的对象用复数名词、不带后缀**（主人 2026-10-11 定）：`BuiltinAdapters`、`BuiltinIntegrations`。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。
-- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。**例外只有 `Op`**：「一步操作」就叫 `Op`（`SubscriptionOp`、`KeyValueOp`、`WsOp`），不写 `Operation`（10-10 主人定：全仓用法一致、没有歧义）。
+- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。**例外只有 `Op`**：「一步操作」就叫 `Op`（`SubscriptionOp`、`KeyValueOp`、`WsOp`），不写 `Operation`（10-10 主人定：全仓用法一致、没有歧义）。**时长单位也是缩写例外**（ADR-0023 决策 9）：`Ms`、`Sec` 缩写（`cooldownSec`、`timeoutMs`），`Minutes`、`Hours`、`Days` 写全，不用 `Min`。
 - **不用 TS `enum`**：一组取值写成 `as const` 的常量对象，类型取它的值的联合（`type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel]`）。`enum` 的值面板引用不了，两头就得各写一份再钉住（10-07 主人定）。
 - **外部接口的回应**：外壳叫 `…Envelope<T>`（B 站的 `{ code, message, data }` 叫 `BiliEnvelope<T>`）；某个接口回的内容叫 `…Response`（`UserCardResponse`）；回应里嵌套的结构用名词、不加后缀（`DynamicItem`、`ModuleAuthor`）。`Data`、`Info` 在这里也不用；`Result` 只指我们自己操作的结果。
 - **外部协议的原字段名只留在回应上**：`mid`、`face`、`uname` 这类只准出现在描述那份数据的类型上，以及直接读它的代码里；我们自己定义的形状（事件、状态、函数参数、返回值）用下面词表里的词。
@@ -70,7 +70,12 @@
 | 任意一个 JSON 值的类型（集成往 `state` / `secrets` 里存的值） | `Json`（10-10 主人定，`packages/internal` 的 `key-value-store.ts`） | — |
 | 平台前缀 | 集成目录里默认不加（已经限定在那个目录下了：B 站的接口客户端就叫 `Api`，10-07 主人定）；和别处的名字撞了才加，B 站写 `Bili`（`BiliEnvelope`、`BiliLoginState`、`BiliSettings`） | `Bilibili…`、`BA…`、`BL…` |
 | 创作者 | 核心里 `creator`；B 站里 `up`（`upUid`、`upName`，开播的也是它） | `master`（只指主人）、`anchor`、`author`（只指皮肤或拓展的作者） |
-| 弹幕 | `danmaku` | `danmu`、`dm` |
+| 直播间里观众说的话 | 核心里 `viewerChat`（`ViewerChatCollector`、`recordViewerChat`、`viewerChatCount`）；B 站目录里 `danmaku` | `danmu`、`dm`；核心里直播一侧的 `danmaku` |
+| 视频上的弹幕数 | `video.danmaku`（作品的视频字段，与直播间里观众说的话是两回事） | `danmu`、`dm` |
+| 特别关注名单 | `specialViewers`（条目 `SpecialViewer`，条目上装特性键的那格叫 `features`） | `specialUsers` |
+| 群消息里说话人的号 | `senderId`，与 `selfId` 成对 | `author`（只指作品作者或皮肤、拓展的作者）、`userId` |
+| 入站消息里分享卡片带的链接 | `sharedLinks`（条目 `{ url, kind }`，判别键 `kind`） | `cardLinks`、`miniAppCardLinks`、`linkPreviews`（与 BN 回出去的 `LinkPreview` 同词两义） |
+| 链接预览的门（群里的链接自动出卡片） | `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`；解析器接口仍是 `LinkResolver`；带 `linkParsing` 的名字把这个词换成 `linkPreview`） | `LinkParser`、`linkParsing` |
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
 | 直播间 id | `roomId` | `roomid` |
 | 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |

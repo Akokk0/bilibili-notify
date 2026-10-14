@@ -6,7 +6,7 @@
 
 | | 官方源 | 第三方源 |
 |---|---|---|
-| 地址 | 内置:`https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json` | 主人在拓展页「源」里加的任意 `https://` 地址 |
+| 地址 | 内置:`https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json`(3b 起改读新的滚动 release `extensions` 上的 `…/releases/download/extensions/marketplace.json`,见下「3b 要改的发布与地址」) | 主人在拓展页「源」里加的任意 `https://` 地址 |
 | 文件 | 签名信封 `{ "manifest": "<索引原文>", "signature": "<base64>" }`,与升级清单同一对 Ed25519 密钥 | 裸的索引 JSON |
 | 走镜像 | 走(`update.mirrors`,同本体) | 不走 |
 | 新鲜度 | `issuedAt` 只增不减,记在 `<数据根>/extensions/.marketplace.json` | 不查 |
@@ -40,6 +40,17 @@
 ```
 
 不认识的字段丢掉不拒(老客户端要读得了带新字段的索引)。
+
+**给人看的字不分语言**(3b,主人定):索引里的 `name` / `description` / `notes` 只放清单里的默认文字,装上之后才按当前语言显示。第一个带译文的拓展上架时,给条目加一格可选的按语言文字(索引规则不严格,加一格是加宽)。
+
+## 3b 要改的发布与地址
+
+下面「官方的怎么发」和上面的地址写的是今天的做法。3b-04 这一期**只换官方索引**:
+
+- 新版 BN 改读新的滚动 release **`extensions`** 上的 `marketplace.json`(地址 `https://github.com/Akokk0/bilibili-notify/releases/download/extensions/marketplace.json`),用 1.0 的新规矩:每个契约版本各留一条、只挑装得了的(取代上面「同一个 id 最多两条」的写法)。
+- 旧 release `extension-marketplace` 上那份留给 0.12,从此不动,它的说明里写「0.12 专用,已冻结」。
+- 格式不顺手改:`issuedAt` 仍是秒(进门换 ISO 照 data-model 那条),`apiVersion` / `apiRevision` 不改名。
+- 发版脚本与地址要等这一期落地才换,在那之前以上面的写法为准。
 
 **同一个 id 最多两条:一条正式 + 一条预发布**(同 id 同档两条 → 整份索引拒)。两档分开是因为打一个 alpha tag 不该让稳定渠道的人**看不见这个拓展** —— 整条被 alpha 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会被标成「从别处装的」。面板上**仍然只出一张卡**:稳定渠道拿正式那条(没有正式档就一张都不出),预发布渠道在两档里取**版本更高**的那条(第三方源可能留着一条比正式版还旧的预发布)。挑出来的那一条是这张卡的全部依据 —— 版本、状态、「有新版」、按下去装哪个包。
 

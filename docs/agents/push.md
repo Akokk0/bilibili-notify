@@ -71,7 +71,7 @@
 
 ### ③ 路由与闸
 
-一次推送整个交给 `PushRouter.push(push)`：`Push = { subscriptionId, feature, allowAtAll?, anchors }`，`anchors` 是按顺序排好的锚点（`PushAnchor = { role, extra?, messages }`：本体至多一个且排第一个，其余是附加项；`messages` 是现成的一串载荷或一个约定）。它全仓只有 **3 个调用点**，全在 `engines.ts`：`boundPostPush`（B 站动态、拓展作品）、`boundLivePush`（拓展直播）、`makeLivePushLike`（B 站直播）。
+一次推送整个交给 `PushRouter.push(push)`：`Push = { subscriptionId, feature, allowAtAll?, anchors }`，`anchors` 是按顺序排好的锚点（`PushAnchor = { role, extra?, messages }`：本体至多一个且排第一个，其余是附加项；`messages` 是现成的一串载荷或一个约定）。3b 起（ADR-0032 决策 2）锚点上多一格可选的 AI 版 `aiMessages`（`PushAnchor` 与 `PostPushAnchor` 各一格），推送层用 `PushRouterOptions.aiWriting: () => AiWritingSettings` 自己现取 `ai.writing`，推导某个目标用哪一份正文。它全仓只有 **3 个调用点**，全在 `engines.ts`：`boundPostPush`（B 站动态、拓展作品）、`boundLivePush`（拓展直播）、`makeLivePushLike`（B 站直播）。
 
 **交进来那一刻判一次**（订阅在不在、总开关、全局静音、免扰时段），裁决管整次推送，之后的锚点不再看这四样。**锚点按先后发**：内容各做各的，前一个锚点对它该发的目标都有了结果才发后一个，空的跳过，约定被拒绝记一条警告并跳过；`push()` 在本体发完时返回，其后的锚点在后台接着发（经 `serviceCtx.track` 登记，关停等它们）。每个锚点发出时现查订阅的路由与附加项表（`sendAnchor`）。routing 查找只有 2 处（每个锚点一次、重试前复检一次），**都按订阅 id**（`store.findById`）：同一个 UP 的两条订阅各推各的路由，拓展订阅（没有 uid）也找得到。推送层不分订阅是哪一支 —— 只有日志里那一截 `subscriptionLabel`（B 站 `uid=…`、拓展 `<拓展 id>:<外部 id>`）按支写。
 
@@ -160,10 +160,10 @@
 | 旁路 | 入口 | 差在哪 |
 |---|---|---|
 | 主人私聊 | `PushRouter.notifyMaster`（文字或消息体，回结果形状） | 主人目标只许是私聊目标（保存时拒收、发送时复检），走普通的 `send`；**不受全局静音管**（指令回复 3a-19 起不走这条，见下面「指令回复」一行）—— 挡掉的话主人只会看到指令毫无反应 |
-| 谁在调主人私聊（上一行的来路，3a-30 之后只有两家） | `problems/problem-notifier.ts`、`runtime/master-notifier.ts` | 问题通知器：问题表里 `notify` 为真的问题（B 站的登录失效、风控、直播间停止监听、直播间受限），节流键 报的人 + code、60 秒，`notifyMaster` 回 ok 才算真私聊过，稍后可重试的失败按 10 秒 / 30 秒 / 60 秒 / 5 分钟 / 15 分钟再送五次，清掉时对真私聊过的补一句恢复说法；组件告警通知器 `runtime/master-notifier.ts`：只听 `engine-error`，按 `source` 节流 60 秒，每条先落一行 warn（现在的发射者是作品投递出图失败、直播「重连流程内部异常」与开发场景）。**引擎里不再有任何自己的私聊口**：`masterTellers`、动态与直播的 `PushLike.sendPrivateMsg`、作品投递的 `sendErrorMsg` 都已删，`PushForEngines` 只剩 `push`。两家各有各的节流表，B 站的这几类报错只走问题表、不再同时发组件告警 |
+| 谁在调主人私聊（上一行的来路，3a-30 之后只有两家） | `problems/problem-notifier.ts`、`runtime/master-notifier.ts` | 问题通知器：问题表里 `notify` 为真的问题（B 站的登录失效、风控、直播间停止监听、直播间受限），节流键 报的人 + code、60 秒，`notifyMaster` 回 ok 才算真私聊过，稍后可重试的失败按 10 秒 / 30 秒 / 60 秒 / 5 分钟 / 15 分钟再送五次，清掉时对真私聊过的补一句恢复说法；组件告警通知器 `runtime/master-notifier.ts`：只听 `engine-error`，按 `source` 节流 60 秒，每条先落一行 warn（现在的发射者是作品投递出图失败、直播「重连流程内部异常」与开发场景）。**引擎里不再有任何自己的私聊口**：`masterTellers`、动态与直播的 `PushLike.sendPrivateMsg`、作品投递的 `sendErrorMsg` 都已删，`PushForEngines` 只剩 `push`。两家各有各的节流表，B 站的这几类报错只走问题表、不再同时发组件告警。<br>**3b 要改的几处**（契约第 3 版，ADR-0025 决策 11、ADR-0037 决策 15；今天的代码还是上面写的）：① 问题进表从此三条路外加宿主自己的事 —— 集成自己报（拓展也有同一个签名的 `reportProblem` / `resolveProblem`）、宿主看登录状态报（订每个有登录口的来源的 `auth.onChange`：`expired` 进表并私聊，`logged-out` 只进表，`logged-in` 清，B 站不再报 `auth_lost`）、宿主探连接报；② `Problem.about` 在 `{ subscriptionId }` 之外多 `{ connectionId }` 一支，连接删了关于它的全清、适配器停下它名下的全清，宿主核 `connectionId` 是不是这个适配器的连接，不是就拒收；③ 集成写的 `message` / `recoveryMessage` 一律平实、只说事，宿主私聊时按口吻补完整（女仆层「主人，刚刚 <名字> 报告：<message>」，平实版「<名字> 报告：<message>」，名字取来源描述符的 `label` 或拓展清单的 `name`；恢复句同理）；宿主自己写的整句不加「X 报告」；④ 连接通断改成宿主每分钟调适配器的 `probe`，连续两次探不通算断，探测结果状态变了才写盘；运行中断了才私聊，启动后一直没连上的、主人改设置造成的只进表；主人的私聊目标走的就是这条断了的连接就不发、不再试、恢复后不补；⑤ 连接设置不合法由宿主报：只隔离那一条、进问题表、不私聊，记在那条连接所属适配器名下 |
 | 手动发一条 | `push.sendToTarget` —— 连接自测、卡片预览发送、AI 试一句、锐评投递 | 走同一套重试与 dispatcher，但**不查 routing、不落历史**，也不过静音 / 免扰（人工补发同样走它，见 ⑥） |
 | 指令回复 | `CommandDef.run` 收到的 `ctx.reply`（分发器按消息现造） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到发指令的那条连接上的私聊；不过闸、不落历史、不重试；登录二维码也经它发图 |
-| 链接解析回卡 | `createLinkParser` 的 `send`（`link-preview/link-reply.ts`） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到收到那一帧的连接上的源群；不过闸、不落历史、不重试，连接停用或不可达就不回 |
+| 链接解析回卡 | `createLinkParser` 的 `send`（`link-preview/link-reply.ts`） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到收到那一帧的连接上的源群；不过闸、不落历史、不重试，连接停用或不可达就不回。3b 起（ADR-0029）这扇门叫 `LinkPreviewer`（`createLinkPreviewer`，文件 `link-preview/link-previewer.ts`），回复形式「回文字」发作者名加作品文字（经作品取段的函数、限长），不带链接；`linkPreview` 设置加回总开关并留 `cooldownSec` |
 
 devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md](./devtools.md)。
 
