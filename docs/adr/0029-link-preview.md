@@ -16,10 +16,15 @@
     - 核心先用通用网址正则挑出候选，再问各解析器 `matches`。
     - 冷却键是「群 + 解析器 + canonicalId」。
     - 回复经 `TargetDispatcher.sendToAddress` 发回原会话（ADR-0024 决策 13）。
+    - 🔗 2026-10-14（3b-28，门的名字主人定；其余带 `linkParsing` 的名字跟着换是主会话照规矩定）：**门叫 `LinkPreviewer`**：`createLinkPreviewer`、`LinkPreviewerOptions`、文件 `link-preview/link-previewer.ts`。带 `linkParsing` / `LinkParsing` 的名字把这个词换成 `linkPreview` / `LinkPreview`；`ResolveLinkParsingPoliciesInput` 照改名表改 `…Options`。（改名表里 `LinkParser` 那一格原写「改 `LinkResolver`」，那个名字已是解析器接口，改成 `LinkPreviewer`。）
+    - 🔗 2026-10-14（3b-29，主人定，**修订本条的设置形状**）：**`linkPreview` 加回总开关、留冷却，由三格改五格**：总开关（默认关）、默认回不回、回复形式、按目标的例外、`cooldownSec`。总开关当初是摊平时顺手带掉的，没讨论过；链接预览回卡不走推送链，全局静音与免扰都管不到，所以要留一个一键全停。迁移一一对应、行为不变、名单不丢：总开关 ← 旧 `enabled`，默认 ← `defaults.parse`，回复形式 ← `defaults.form`（`miniapp` → `nativeShare`），例外 ← `groups`（条目里 `parse` → 开关、`form` → 回复形式），`cooldownSeconds` → `cooldownSec`。总开关与「默认」那一格的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范起（文档里先写「总开关」「默认」两格，名字施工时定）。
+    - 🔗 2026-10-14（3b-31，主人定）：**回复形式「回文字」发什么**：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。
 2. **原生分享与入站**：
     - 解析器交中立描述 `{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`，由 OneBot 适配器去签，签不了就回图片。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表。
     - OneBot 入站的 B 站域名预筛删掉；64KB / 8 层的上限保留。
     - 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。
+    - 🔗 2026-10-14（3b-30，主人定）：**入站链接的来源标记落成**：`miniAppCardLinks` 删掉，适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`；正文里的链接仍由核心从 `text` 里挑，核心内部记成 `"text"`；规矩「原生分享卡里的链接不回预览」不变。`cardLinks` 改名 `sharedLinks` 是主人要求；不用 `linkPreviews`：它与 BN 回出去的 `LinkPreview` 同词两义。入站的另两格同批改名：私聊 `userId` → `address`，群消息 `groupId` → `address`、发言者 `userId` → `senderId`（与 `selfId` 成对；不用 `author`，那是作品作者），`InboundSinks` → `InboundHandlers`；桥协议帧不改名，由桥的适配器映射。
+    - 🔗 2026-10-14（3b-31，主会话照规矩定）：**原生分享的命名与 appId**：载荷种类 `"miniapp-card"` → `"native-share"`，类型随 `NativeShare…`；能力格 `miniAppCard` → `nativeShare`；`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核），OneBot 签名接口不收通用参数就在适配器里放 appid → 预设的对照表；旧重推原件迁移补同一个 appid；桥帧里的能力名（`miniAppCard`）与载荷种类照旧不改，进 alpha 后两步改名。
     - 桥帧里那一格进 alpha 之后两步改名的清单。它是插件发给 BN 的入站字段，两步要反过来走：BN 先同时认新旧两种写法，插件再改发新的。
 
 ## 取代与修订的旧条款

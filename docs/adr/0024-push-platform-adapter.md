@@ -30,14 +30,19 @@
     - 🔗 10-11（3a-29，主人定）：修订上一条 🔗 里「`/api/adapters`……3a 里不建」的前半：只有各适配器描述的列表归第 4 期；`/api/adapters` 这个前缀由 `connectionAuth` 的三个口在 3a-29 先建（路径与方法见 ADR-0036 决策 5 下的 🔗）。新建连接候选的读口仍归 3b。
     - 🔗 10-11（3a-29 QQ 半，主人定）：「结果是一份连接草稿」落成 `connectionAuth` 的三个方法 —— `begin(signal)`（发起，回任务号、此刻的状态、建议的问询间隔秒数）、`state(taskId, signal)`（读状态）、`takeDraft(taskId)`（取走草稿）。回包是「状态 + 草稿」两格，分开给：`AuthState` 的 `logged-in` 不加结果格，密钥不混进会被反复读的状态里；草稿只在取的那一下出现，取走即清（成功取走一次，之后这个任务号找不到）。草稿是适配器这次认证拿到的、归它自己 `settingsSchema` 管的那几格 `settings`（QQ 是 `appId` 与 `appSecret`），面板并进表单后由主人点保存，走现有的 `POST /api/connections`。任务表归适配器、任务号由适配器自己发，路由不持有状态。读状态的 GET 被读时由适配器去问一次上游（QQ：问到成功就把草稿收进任务表、之后不再问）；「无副作用」指对调用方反复读结果一样、不清草稿、回包不带草稿，没人开着弹窗就没有发往上游的请求。二维码在状态里直接带图片数据（`qr: { dataUrl, expiresAt }`），不走图库引用（见 `docs/1.0/subscription-sources.md`）。草稿不单起类型名，形状直接写在 `takeDraft` 的返回值与回应类型里。被否：两个都 POST；查结果用会清草稿的 GET；服务端自己定时去问上游；给 `AuthState` 的 `logged-in` 加可选的结果格。
     - 🔗 10-11（3a-29，主人定）：`connectionAuth` 不发 `expired`，二维码过期报 `error` 并带一句话（QQ：「二维码已过期，请重新生成」）。起因：`AuthState` 的 `expired` 改成只指「已经登着的登录失效了、要重新登录」（见 ADR-0021 决策 45 下的 🔗），而建连接没有「已经登着的登录」，码过期只是这一次没办成。`AuthState` 的 `scanned` 同时换成 `confirming`，QQ 没有「已扫、等确认」，也不发它，所以 QQ 实际只发 `awaiting-scan` / `logged-in` / `error` 三种。被否：两边各说各的；两件事都报 `expired` 靠 `message` 分。
+    - 🔗 2026-10-14（契约第 3 版，主人定）：**适配器自己的「脸」这一期不造**。第 3 版契约里适配器不带 `descriptor` 那一格：拓展的描述以清单为准、由宿主填；内置的随第 4 期（面板改成按适配器的描述画）。
+    - 🔗 2026-10-14（3b-52，主会话照规矩定）：**OneBot 小程序卡能力的重探收到宿主**。重探的节奏（今天适配器自己 60 秒节流）与「探不出来不推翻已探实的答案」那条规矩由宿主管，契约不加成员；与连接通断同一片做。
 4. **新建连接只有一条路：挑一个候选，再填字段**。`ConnectionCandidate = { name, platform: PlatformDescriptor, settings, selfId?, via?, boundConnectionId? }`。平台固定的适配器返回写死的模板候选（OneBot 一个、QQ 官方机器人一个、webhook 四个），模板可以反复用；桥返回在线的 bot。
     - 理由：一条路的面板与对拍都只写一遍。
+    - 🔗 2026-10-14（契约第 3 版，主人定）：**候选里的完整平台描述由契约的门给一个造中性描述的函数**。函数住零依赖的子路径，桥用它填、再盖上自己知道的图标；候选的形状与核心同一份。
+    - 🔗 2026-10-14（契约第 3 版，主会话照规矩定）：**连接候选的读口**挂在现成的 `/api/adapters/:adapterKey/` 前缀下，内置与拓展同一个口（兑现上面 3a-29 那条「新建连接候选的读口仍归 3b」）；面板读的旧口 `/api/ext/:id/bots` 在同一个提交里删掉。
 5. **webhook 是一个适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选**。冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
     - 理由：webhook 是「怎么连」，不是一个平台；拆成四个会占掉 `feishu` 等平台键，而拓展的一个适配器本来也要能对多个平台。
 6. **`PlatformDescriptor = { platform, label, shortLabel, color, icon?, targetKind: "session" | "endpoint", scopes, addressNouns }`**：`tint` 统一改叫 `color`；`inbound`、`atAll` 从这里挪成运行期能力。
     - 🔗 10-09（3a-22-1）：`atAll`、`inbound` 已成每条连接的运行期能力（三态，适配器回答）。「还不知道」时三处各按原来的做法（主人定）：单发 @全体照发、锐评审批不让开、链接解析设置照列；判断只有一份（`shouldSendAtAll` / `canReceiveReply` / `listsForLinkParsing`），服务端与面板共用。`GET /api/connections/capabilities` 收成一级并含拓展连接。
 7. **连接的形状 `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot, probeState? }`**：`platform` 是开放字符串，只来自挑中的候选；`kind`、`connector`、`extensionId` 删掉（`extensionId` 并进 `adapterKey`）；`transport` 留作 OneBot 适配器私有的设置。`probeState` 是对象，三态取值在它的 `status` 里。
     - 🔗 10-10（3a-22-2）已落：形状照此；迁移修订号 40、备份版本 13。迁移自带冻结的 0.x 平台表，直连连接照它填 `adapterKey` 与快照，拓展连接的 `adapterKey` 取原 `extensionId`、快照填认不出的平台用的中性占位（等 22-3 桥列候选时刷新）。
+    - 🔗 2026-10-14（3b-52，主人定）：**探测与连接状态改成宿主「拉」**。宿主每分钟调现成的 `probe`（原来 5 分钟），连续两次探不通算断，契约不加成员；`probeState` **只在状态变了才写盘**（今天每轮都写连接文件并广播）。私聊与清的规矩全在宿主，适配器不报通断（见 ADR-0025 决策 11 下的 🔗）。10-13 晚定的「OneBot 补 WS 看门狗」撤掉。
 8. **连接上存 `platformSnapshot`（`PlatformDescriptor` 去掉 `platform` 那一格）**：
     - 只有宿主写：新建时照候选抄、列候选时按平台名刷新、迁移时填、备份里带回；POST / PATCH 带来的一律忽略。
     - 谁读：面板上连接的脸与目标编辑器、托管目标同步（看 `targetKind`）、目标的 scope 校验。推送层与适配器不读它。
@@ -53,6 +58,7 @@
 10. **连接设置的校验**：保存时适配器在场就按 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。读盘时逐条校验，不过的只隔离那一条（不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动），BN 照常开机。只有外壳（id / name / adapterKey / platform）坏了才挡开机。撤下的旧形状写成明确的名单。
     - 🔗 10-10（3a-22-2）已落，施工时定的几处：「不过的只隔离那一条」不存标记、每次用时按在场的适配器现算；PATCH 只在补丁带了 `settings` 时才验（被隔离的连接照样能改名、能停用）；恢复备份不验 `settings`，进来后不合法的照读盘隔离；新建连接要适配器在场；`platformSnapshot` / `probeState` 是宿主独写，客户端带来的一律忽略、盘上坏了不挡开机。
     - 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。
+    - 🔗 2026-10-14（3b-52，主人定）：**连接设置不合法由宿主报**，进问题表、不私聊，记在那条连接所属适配器的名下；只隔离那一条（本条原文，规范 `settings-validation.md` 第 5 条本来就这么写）。
 11. **这一版不对拓展开放**：`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
     - 🔗 10-11（3a-29，主人定）：这一版仍不对拓展开放，**运行时也照这个来**：宿主登记拓展适配器时把 `listAddressCandidates` 与 `connectionAuth` 摘掉再登记，带了也不认（有测试钉着）；此前只在类型上排除，用 JS 写的、或绕过类型的拓展带了这两个成员就是活的。主人认为这两个成员对桥有用（挑群、扫码建连接）；开放要连同拓展契约、桥协议与仓外两个桥插件一起设计，留到 alpha 之后改桥协议时一次做。被否：现在就开放（单独成片）；运行时不管、只在类型上排除。
 12. **内置适配器的入站也经 `ctx.inbound`**：宿主核归属、平台取自连接，不再由适配器自报。
