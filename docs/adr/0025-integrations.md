@@ -102,6 +102,7 @@
     - 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。拓展契约从 v2 的 reject 改成这样。
     - 请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状，不抛错（码见 ADR-0026）：超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`；取图 404 回 `not_found`，超 8MB、不是图、内网地址回 `invalid`，超时回 `timeout`，网络或上游 5xx 回 `unavailable`。
     - 理由：被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；B 站的上报被拒就是 BN 的 bug，靠对拍守卫兜。
+    - 🔗 **2026-10-15**（3b-38，主人定）：拓展的 `reportProblem` / `resolveProblem` 被拒，3b-38 起**先只打 warn 日志**，不进出入表：出入表今天的一行按订阅上报造（必带订阅事件的种类与外部 id），问题上报两样都没有。表随 3b-42 把种类收成三种时一起加宽、接上问题上报，在那之前拓展报坏的问题只在日志里看得见。
     🔗 **2026-10-09 表名 `reportRejections` 改成 `reportDiscrepancies`**：主人指出「被拒」只说得上三种结果里的一种（整条拒），丢了几格与这一轮没推都不是；`Discrepancy`（出入）指「报上来的和 BN 实际处理的不一样」，三种都盖得住。下面取代表里 ADR-0019 决策 60 那一行同样照此读（3a-09 已落，见 [phase-3a-plan.md](../1.0/phase-3a-plan.md)）。
     🔗 **2026-10-11（3a-30）问题上报的落成与这一条的出入**：`reportProblem` / `resolveProblem` 在 `SourceContext` 上保持 `void`，被拒的（来源已停下、`code` 不是 snake、`message` / `recoveryMessage` 是空白、`externalId` 是空串）丢弃并记一行 error，来源不知道；报的人不在名单里（带的 `externalId` 查不到订阅）静默忽略、只记 debug。与上面不同的一处：被拒的没有记进 `reportDiscrepancies` 表，因为这一片的上报方只有内置的 B 站来源（内置集成被拒就是 BN 的 bug，只打错误日志，见 data-model 的「问题表」），`reportDiscrepancies` 是拓展那一支的展示面，随拓展契约第 3 版（3b）。
 11. **问题表只有一种形状，全在内存**（修订 ADR-0021 决策 16、47）：`Problem { reporter: IntegrationKey | "core", about?: { subscriptionId } | { connectionId }, code, message, since }`。
