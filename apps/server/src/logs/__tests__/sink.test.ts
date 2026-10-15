@@ -1,61 +1,35 @@
 /**
- * 安全守护 — `createLogSink` 单一 fan-out 点:scrub 一次,两路(WS ring +
- * 磁盘 store)拿到的都是脱敏后的同一条。
+ * `createLogSink` 单一 fan-out 点:同一条 entry 原样 tee 给两路(WS ring + 磁盘 store)。
  *
- * 不变量:secret 进 → ring.push 与 store.ingest 收到的都不含明文。
- * 复发点:把 redact 移进某一路 / 漏掉某一路 / 两路各 redact 导致不一致。
+ * 打码不在这里:entry 在日志调用入口已经打过码,「secret 进 → 三处出口都打码」的守卫
+ * 在 runtime/__tests__/service-context-redaction.test.ts。
+ * 复发点:漏掉某一路 / 两路拿到的不是同一条。
  */
 
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import type { LogChannel } from "../../ws/log-channel.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createLogSink } from "../sink.js";
 import type { LogStore } from "../store.js";
 
-describe("createLogSink — 脱敏后再 tee", () => {
-	it("secret 进:ring 与 store 都拿到脱敏后的同一条", () => {
+describe("createLogSink — 原样 tee 两路", () => {
+	it("ring 与 store 各收到一次、内容一致", () => {
 		const pushed: LogEntry[] = [];
 		const ingested: LogEntry[] = [];
 		const ring = { push: (e: LogEntry) => pushed.push(e) } as unknown as LogChannel;
 		const store = { ingest: (e: LogEntry) => ingested.push(e) } as unknown as LogStore;
 
 		const sink = createLogSink({ ring, store });
-		sink({
+		const entry: LogEntry = {
 			level: "info",
-			msg: "cookie SESSDATA=TOPSECRET refresh_token=rt_LEAK",
-			args: ["sk-DEADBEEF12345678"],
+			msg: "已打过码 SESSDATA=***",
+			args: [{ k: 1 }],
 			ts: "2026-05-17T00:00:00.000Z",
 			name: "dynamic",
-		});
+		};
+		sink(entry);
 
-		expect(pushed).toHaveLength(1);
-		expect(ingested).toHaveLength(1);
-		const p = pushed[0];
-		const g = ingested[0];
-		if (!p || !g) throw new Error("expected both sinks to receive exactly one entry");
-		for (const e of [p, g]) {
-			expect(e.msg).not.toContain("TOPSECRET");
-			expect(e.msg).not.toContain("rt_LEAK");
-			expect(JSON.stringify(e.args)).not.toContain("sk-DEADBEEF12345678");
-			expect(e.msg).toContain("SESSDATA=***");
-			expect(e.name).toBe("dynamic"); // name 透传不丢
-		}
-		// 两路拿到的是等价内容(同一脱敏结果)。
-		expect(p.msg).toBe(g.msg);
-	});
-
-	it("注入的 redact 被调用且其结果同时进两路", () => {
-		const redact = vi.fn((e: LogEntry) => ({ ...e, msg: "[REDACTED]" }));
-		const pushed: LogEntry[] = [];
-		const ingested: LogEntry[] = [];
-		const sink = createLogSink({
-			ring: { push: (e: LogEntry) => pushed.push(e) } as unknown as LogChannel,
-			store: { ingest: (e: LogEntry) => ingested.push(e) } as unknown as LogStore,
-			redact,
-		});
-		sink({ level: "warn", msg: "x", args: [], ts: "t" });
-		expect(redact).toHaveBeenCalledTimes(1);
-		expect(pushed[0]?.msg).toBe("[REDACTED]");
-		expect(ingested[0]?.msg).toBe("[REDACTED]");
+		expect(pushed).toEqual([entry]);
+		expect(ingested).toEqual([entry]);
 	});
 });

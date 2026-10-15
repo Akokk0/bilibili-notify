@@ -1,6 +1,7 @@
 import type { Disposable, DisposePhase, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { type DestinationStream, type Logger as PinoLogger, pino } from "pino";
 import prettyFactory from "pino-pretty";
+import { redactLogCall } from "../logs/redact.js";
 import type { LogEntry, LogLevel } from "../ws/types.js";
 
 export interface NodeServiceContextOptions {
@@ -101,18 +102,7 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	const callPino = (fn: (...a: unknown[]) => void, msg: string, args: readonly unknown[]): void => {
 		fn(msg, ...args);
 	};
-	const fanOut = (
-		target: PinoLogger,
-		name: string,
-		level: LogLevel,
-		msg: string,
-		args: readonly unknown[],
-	): void => {
-		// Gate the side-channel by the SAME live pino level that gates stdout, so
-		// the Logs Tab + on-disk archive mirror the console exactly, per module.
-		// `isLevelEnabled` re-reads the instance's `.level`, so config-changed
-		// `applyLogLevels()` hot-reloads take effect with no restart.
-		if (!target.isLevelEnabled(level)) return;
+	const fanOut = (name: string, level: LogLevel, msg: string, args: readonly unknown[]): void => {
 		const hook = logHook;
 		if (!hook) return;
 		try {
@@ -122,23 +112,28 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 			// without recursing through ourselves, so swallow.
 		}
 	};
+	// 打码只在这一个入口做一次:打过码的 { msg, args } 同时交给 pino(stdout / docker logs /
+	// 桌面 sidecar 输出)与钩子(环形缓冲 / 归档),三处出口看到的是同一份。
+	// 打码函数自己兜住了异常(见 redactLogCall),这里不会因它弄断日志。
+	const emit = (
+		target: PinoLogger,
+		name: string,
+		level: LogLevel,
+		msg: string,
+		args: readonly unknown[],
+	): void => {
+		// 旁路与 stdout 用同一个 live pino level 守门,面板日志页 / 归档逐模块与控制台一致。
+		// `isLevelEnabled` 每次重读实例的 `.level`,config-changed 的 `applyLogLevels()` 热改免重启。
+		if (!target.isLevelEnabled(level)) return;
+		const safe = redactLogCall(msg, args);
+		callPino(target[level].bind(target) as never, safe.msg, safe.args);
+		fanOut(name, level, safe.msg, safe.args);
+	};
 	const wrapLogger = (target: PinoLogger, name: string): Logger => ({
-		info: (msg, ...args) => {
-			callPino(target.info.bind(target) as never, msg, args);
-			fanOut(target, name, "info", msg, args);
-		},
-		warn: (msg, ...args) => {
-			callPino(target.warn.bind(target) as never, msg, args);
-			fanOut(target, name, "warn", msg, args);
-		},
-		error: (msg, ...args) => {
-			callPino(target.error.bind(target) as never, msg, args);
-			fanOut(target, name, "error", msg, args);
-		},
-		debug: (msg, ...args) => {
-			callPino(target.debug.bind(target) as never, msg, args);
-			fanOut(target, name, "debug", msg, args);
-		},
+		info: (msg, ...args) => emit(target, name, "info", msg, args),
+		warn: (msg, ...args) => emit(target, name, "warn", msg, args),
+		error: (msg, ...args) => emit(target, name, "error", msg, args),
+		debug: (msg, ...args) => emit(target, name, "debug", msg, args),
 	});
 	const logger = wrapLogger(baseLogger, opts.name);
 

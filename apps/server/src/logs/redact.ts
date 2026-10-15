@@ -1,9 +1,8 @@
-import type { LogEntry } from "../ws/types.js";
-
 /**
- * Credential scrub applied at the single log fan-out point, BEFORE the entry
- * is teed to either the WS ring (browser) or the on-disk archive. After this
- * pass the cleartext secret is gone from both sinks — irreversible.
+ * Credential scrub applied once at the log call entry (`wrapLogger` in
+ * runtime/service-context.ts), BEFORE the call reaches pino (stdout), the WS
+ * ring (browser) or the on-disk archive. After this pass the cleartext secret
+ * is gone from all three exits — irreversible.
  *
  * Scope (grilled spec): the five shapes we actually emit / could leak —
  *   - `SESSDATA=<v>`            (B 站会话 cookie)
@@ -60,6 +59,14 @@ function scrubValue(value: unknown, seen: WeakSet<object>, depth: number): unkno
 		return value.map((v) => scrubValue(v, seen, depth + 1));
 	}
 	const out: Record<string, unknown> = {};
+	// Error 的 name / message / stack 不可枚举,Object.entries 看不见:不单独交出来,
+	// 作为日志参数传进来的错误就只剩 `{}`,原文丢了。cause 同理(也递归打码)。
+	if (value instanceof Error) {
+		out.name = value.name;
+		out.message = scrubSecrets(value.message);
+		if (typeof value.stack === "string") out.stack = scrubSecrets(value.stack);
+		if (value.cause !== undefined) out.cause = scrubValue(value.cause, seen, depth + 1);
+	}
 	for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
 		out[k] = scrubValue(v, seen, depth + 1);
 	}
@@ -67,14 +74,20 @@ function scrubValue(value: unknown, seen: WeakSet<object>, depth: number): unkno
 }
 
 /**
- * Return a copy of the entry with `msg` + every `args` element scrubbed. The
- * level / ts / name carry no secrets and pass through untouched.
+ * 日志调用的打码口:`wrapLogger` 在调用入口调一次,打过码的 `{ msg, args }` 同时交给 pino(stdout)
+ * 与日志钩子(环形缓冲 / 归档),三处出口看到的是同一份。
+ *
+ * 打码过程自己抛错(参数里有会抛的 getter 之类)时不许弄断日志,也不许漏明文:
+ * msg 照样过正则,参数整体换成占位。
  */
-export function redactLogEntry(entry: LogEntry): LogEntry {
-	const seen = new WeakSet<object>();
-	return {
-		...entry,
-		msg: scrubSecrets(entry.msg),
-		args: entry.args.map((a) => scrubValue(a, seen, 0)),
-	};
+export function redactLogCall(
+	msg: string,
+	args: readonly unknown[],
+): { msg: string; args: unknown[] } {
+	try {
+		const seen = new WeakSet<object>();
+		return { msg: scrubSecrets(msg), args: args.map((a) => scrubValue(a, seen, 0)) };
+	} catch {
+		return { msg: scrubSecrets(msg), args: args.map(() => "[redaction-failed]") };
+	}
 }
