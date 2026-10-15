@@ -99,8 +99,18 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 	// pino's per-method overloads collide with our `(msg: string, ...args: unknown[])`
 	// shape because pino expects either `(msg, ...string[])` or `(obj, msg?, ...args)`.
 	// We funnel through a tiny adapter that forwards verbatim, then fans out to the hook.
+	// pino 对字符串 msg 只拿后续参数做 `%s` 插值,没有占位符时整个丢掉 —— 路由里
+	// `log.error("… failed", err)` 在 docker logs / 桌面后台输出里就只剩半句。所以有后续参数时
+	// 以「第一个参数是对象就并进这一行」的写法把它们作为 `args` 字段带上(字段名与面板日志
+	// 条目的 `LogEntry.args` 同名);同时仍把它们当插值参数交给 pino,`%s` 占位照常展开
+	// (被吃掉的参数在 `args` 里也还在,宁可重复也不丢)。交进来的永远是打过码的那份,
+	// 不让 pino 的 err 序列化器去碰原始 Error。没有后续参数时调用形状与改前一致。
 	const callPino = (fn: (...a: unknown[]) => void, msg: string, args: readonly unknown[]): void => {
-		fn(msg, ...args);
+		if (args.length === 0) {
+			fn(msg);
+			return;
+		}
+		fn({ args }, msg, ...args);
 	};
 	const fanOut = (name: string, level: LogLevel, msg: string, args: readonly unknown[]): void => {
 		const hook = logHook;

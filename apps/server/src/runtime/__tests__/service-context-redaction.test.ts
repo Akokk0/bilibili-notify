@@ -91,6 +91,57 @@ describe("createNodeServiceContext — 入口打码", () => {
 		expect(arg.cause.message).toBe("inner bili_jct=***");
 	});
 
+	it("后续参数进 stdout:Error 的 message 在那一行里(args 字段),不再只剩一句 failed", () => {
+		const { ctx, lines } = harness();
+		ctx.logger.error("POST /api/targets failed", new Error("boom"));
+
+		const row = JSON.parse(lines.join("")) as {
+			msg: string;
+			args: Array<{ name: string; message: string }>;
+		};
+		expect(row.msg).toBe("POST /api/targets failed");
+		expect(row.args[0]?.name).toBe("Error");
+		expect(row.args[0]?.message).toBe("boom");
+	});
+
+	it("后续参数写进 stdout 时也是打过码的(Error 与对象)", () => {
+		const { ctx, lines } = harness();
+		ctx.logger.error("x failed", new Error("x SESSDATA=zzzzzzzz9"), {
+			cookie: "SESSDATA=abcdefgh1",
+		});
+
+		const stdout = lines.join("");
+		expect(stdout).toContain("SESSDATA=***");
+		expect(stdout).not.toContain("zzzzzzzz9");
+		expect(stdout).not.toContain("abcdefgh1");
+	});
+
+	it("pretty 模式(开发彩色输出)也看得到后续参数,且是打过码的", () => {
+		const lines: string[] = [];
+		const destination = new Writable({
+			write(chunk, _enc, cb) {
+				lines.push(String(chunk));
+				cb();
+			},
+		});
+		const ctx = createNodeServiceContext({ name: "svc", pretty: true, destination });
+		ctx.logger.error("POST /api/targets failed", new Error("boom SESSDATA=zzzzzzzz9"));
+
+		const out = lines.join("");
+		expect(out).toContain("POST /api/targets failed");
+		expect(out).toContain("boom SESSDATA=***");
+		expect(out).not.toContain("zzzzzzzz9");
+	});
+
+	it("没有后续参数时,stdout 那一行不多出 args 字段", () => {
+		const { ctx, lines } = harness();
+		ctx.logger.info("plain");
+
+		const row = JSON.parse(lines.join("")) as Record<string, unknown>;
+		expect(Object.keys(row).sort()).toEqual(["hostname", "level", "msg", "name", "pid", "time"]);
+		expect(row.msg).toBe("plain");
+	});
+
 	it("打码本身抛错(参数带会抛的 getter)不弄断日志:钩子与 stdout 照样收到这一条", () => {
 		const { ctx, lines, seen } = harness();
 		const hostile = {
