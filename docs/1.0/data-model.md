@@ -162,6 +162,7 @@ interface Problem {                    // 全在内存，不存盘
 `SourceDescriptor` 的全形状、面板怎么读它、叫法规矩与「来源没装」的兜底，见 [subscription-sources.md](./subscription-sources.md)「SourceDescriptor」与「面板怎么读描述符」。与本文件的数据相关的几格：
 
 - `externalIdNoun?`：外部 id 叫什么（B 站「UID」），决定上面的身份标签。
+- `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，正则源码、整串匹配。核心照它核新建订阅的 `identity.externalId` 与特别关注名单每一条的 `id`；没声明只做中立校验（非空、限长）。B 站声明纯数字，核心里不再写「B 站 uid 是数字」。
 - `icon?`：平台图标，对齐推送侧 `PlatformDescriptor.icon`。
 - `featureHints?: Partial<Record<FeatureKey, string>>`：特性开关下的小字，描述符里唯一的自由文字格。
 - `membershipPrograms[].tiers[]` 的全形状见下「会员」。

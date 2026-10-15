@@ -59,6 +59,7 @@ interface SourceDescriptor {
   postNoun?: string;               // 这个平台管作品叫什么；缺省「作品」，B 站「动态」
   creatorNoun?: string;            // 这个平台管创作者叫什么；缺省「创作者」，B 站「UP主」
   externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」
+  externalIdRegex?: string;        // 外部 id 长什么样（正则源码，整串匹配）；核心核订阅身份与特别关注名单的 id；B 站纯数字；不声明只做中立校验
   searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」
   supportedFeatures: FeatureKey[]; // 支持哪些特性（开关、规则节按它铺）；订阅上「开没开」才叫 features
   supportedExtras?: ExtraKey[];    // 支持哪些附加项
@@ -100,7 +101,7 @@ interface MembershipTier {
 | 平台名与徽章：新建弹窗的「B 站」按钮、订阅卡与在播徽章、统计 / CSV / 锐评的平台列 | `label` `shortLabel` `color` `icon` | 只显示 `label` |
 | 创作者叫法：导航「订阅 UP 主」、「添加 UP 主」、「全部 UP 主」、空态、历史搜索框、模板变量说明「UP 主名字」 | `creatorNoun` | 「创作者」 |
 | 作品叫法：特性分组「动态」、规则节「动态过滤 / 图集 / 消息」、推送种类、统计列、雷达「动态量」、皮肤分类 | `postNoun` | 「作品」 |
-| 外部 id：卡上「UID 123」、「复制 UID」、「该 UID 已在订阅中」、单人页身份、特别关注「纯数字 UID」 | `externalIdNoun` | 「{label} · 123」、「复制 ID」 |
+| 外部 id：卡上「UID 123」、「复制 UID」、「该 UID 已在订阅中」、单人页身份、特别关注「纯数字 UID」 | `externalIdNoun`；格式校验 `externalIdRegex`（10-15，3b-58） | 「{label} · 123」、「复制 ID」 |
 | 搜人输入框提示 | `searchAccepts`（只声明收哪几种输入，句子由叫法函数拼） | 「搜索{creatorNoun}」 |
 | 露出哪些特性开关、规则节、特别关注节 | `supportedFeatures` | — |
 | 露出哪些附加项（词云、总结）；「词云与总结只有 B 站有」这类小贴士也改看它（`BILI_ONLY_EXTRAS` 删掉） | `supportedExtras` | 不露 |

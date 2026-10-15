@@ -183,6 +183,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 - `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
 - `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。
+- `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，写正则的源码字符串，宿主按整串匹配，核新建订阅的外部 id 与特别关注名单的 id。可以不写（只做中立校验）。编译不过的正则让清单校验不过、拓展装不上；正则源码与被核的值都有长度上限（数施工时定）。
 - `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。
 - `searchCreators` 3b 造、B 站实现、只给 AI 的搜人工具用；`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期。
 - `featureHints?`：唯一允许写自由文字的一格，覆盖特性开关下的小字。其余格只填词；描述符不装界面句子，句子由核心拼。
