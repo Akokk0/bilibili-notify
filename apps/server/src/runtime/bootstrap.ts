@@ -254,7 +254,14 @@ export function createAppRuntime(
 		name: "core",
 		level: bootstrap.logLevel,
 	});
-	const bus = createNodeMessageBus();
+	// 监听者异步 reject 经 logger 报:过入口打码、进面板日志页与归档(总线本身不持 logger)。
+	const bus = createNodeMessageBus({
+		onHandlerError: (event, error) =>
+			serviceCtx.logger.error(
+				`[message-bus] async handler for "${String(event)}" rejected:`,
+				error,
+			),
+	});
 	const hostRoot = bootstrap.dataDir;
 	const { dataRoot } = roots;
 

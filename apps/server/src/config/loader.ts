@@ -4,6 +4,7 @@ import { resolve as resolvePath } from "node:path";
 import { atomicWriteFileSync, atomicWriteJsonSync } from "@bilibili-notify/storage";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
+import { stderrLineRedacted } from "../logs/console-fallback.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 import { dropLegacyWebDistDir } from "./web-dist.js";
 
@@ -52,7 +53,7 @@ export function loadBootstrapConfig(opts: LoadBootstrapConfigOptions = {}): Boot
 	const argv = opts.argv ?? process.argv.slice(2);
 	const env = opts.env ?? process.env;
 	const cwd = opts.cwd ?? process.cwd();
-	const log = opts.log ?? ((msg) => process.stderr.write(`${msg}\n`));
+	const log = opts.log ?? stderrLineRedacted;
 
 	const fromCli = readCli(argv);
 

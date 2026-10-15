@@ -21,6 +21,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { consoleErrorRedacted, stderrLineRedacted } from "./logs/console-fallback.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { findNearestPackageJson } from "./runtime/nearest-package-json.js";
 import { markBootSucceeded, selectVersionForBoot } from "./update/select-version-for-boot.js";
@@ -164,9 +165,9 @@ if (isEntrypoint(import.meta.url)) {
 		}),
 		maxBootFailures: 3,
 		loadPayload: importPayload,
-		log: (msg) => process.stderr.write(`${msg}\n`),
+		log: stderrLineRedacted,
 	}).catch((err) => {
-		console.error("fatal startup error", err);
+		consoleErrorRedacted("fatal startup error", err);
 		process.exit(1);
 	});
 }

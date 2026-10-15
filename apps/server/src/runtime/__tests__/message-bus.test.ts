@@ -53,8 +53,42 @@ describe("createNodeMessageBus", () => {
 
 		expect(errSpy).toHaveBeenCalledWith(
 			expect.stringContaining('async handler for "ready" rejected'),
-			expect.any(Error),
+			expect.objectContaining({ name: "Error", message: "boom" }),
 		);
+	});
+
+	it("没给 onHandlerError 退回 console.error 时,写出去的是打过码的", async () => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const bus = createNodeMessageBus();
+		bus.on("ready", (async () => {
+			throw new Error("boom SESSDATA=zzzzzzzz9");
+		}) as unknown as ReadyHandler);
+
+		bus.emit("ready");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const written = JSON.stringify(errSpy.mock.calls);
+		expect(written).toContain("boom SESSDATA=***");
+		expect(written).not.toContain("zzzzzzzz9");
+	});
+
+	it("给了 onHandlerError:reject 交给它(事件名 + 原错误),不再走 console.error", async () => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const onHandlerError = vi.fn();
+		const bus = createNodeMessageBus({ onHandlerError });
+		const err = new Error("boom");
+		bus.on("ready", (async () => {
+			throw err;
+		}) as unknown as ReadyHandler);
+
+		bus.emit("ready");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(onHandlerError).toHaveBeenCalledTimes(1);
+		expect(onHandlerError).toHaveBeenCalledWith("ready", err);
+		expect(errSpy).not.toHaveBeenCalled();
 	});
 
 	it("同步 handler 抛出语义不变(仍向 emit 调用方传播,未被 try/catch 吞)", () => {

@@ -50,6 +50,7 @@ import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
 import { createLinkParser } from "./link-preview/link-parser.js";
 import { createLinkReplySender } from "./link-preview/link-reply.js";
+import { consoleErrorRedacted } from "./logs/console-fallback.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import {
@@ -1593,7 +1594,7 @@ function installProcessHandlers(
 
 if (isEntrypoint(import.meta.url)) {
 	startServer({ installProcessHandlers: true }).catch((err) => {
-		console.error("fatal startup error", err);
+		consoleErrorRedacted("fatal startup error", err);
 		process.exit(1);
 	});
 }
