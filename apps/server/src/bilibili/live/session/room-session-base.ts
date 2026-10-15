@@ -207,11 +207,10 @@ export abstract class RoomSessionBase {
 	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
 	 * 再据 enable 门控)。
 	 *
-	 * 直播封面「每次推送轮换」:优先用该样式自带的 `liveCoverImages`;若该 UP / kind 没有
-	 * 任何覆盖(样式自带列表为空)→ 落回引擎级 `defaultLiveCoverImages`(全局默认封面廊)。
-	 * 列表 >1 张时经注入的 `pickBackground`(游标键 `uid:live-cover`)选下一张并强制
-	 * `enable:true`,其余字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。
-	 * 选择器返回 undefined / 列表 ≤1 张 → 原样返回(单张由 adapter 预填)。
+	 * 直播封面:该 UP 自己设了 `liveCoverImages`(含空列表 = 不用自定义封面)就只用它;没设
+	 * 才用引擎级 `defaultLiveCoverImages`(全局默认封面廊)。一张固定;>1 张经注入的
+	 * `pickBackground`(游标键 `uid:live-cover`)每次推送轮换一张。都强制 `enable:true`,其余
+	 * 字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。取法见 `rotateLiveCover`。
 	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
 	 *
 	 * 从前这里还有一份同构的**卡片背景图**轮换(`backgroundImages` + `uid:kind` 游标)。

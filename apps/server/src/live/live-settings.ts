@@ -61,12 +61,12 @@ export function liveEndGraceMinutes(configured: number | undefined): number {
 }
 
 /**
- * 直播卡的样式,**每推一次轮一张自定义封面**:样式自带的封面列表优先;这条订阅 / 这类卡没有任何覆盖
- * (列表为空)就落回全局那一套默认封面。列表多于一张时经 `pick`(游标键 `scopeKey`)选下一张、强制
- * `enable: true`,其余字段留空,由渲染器逐字段回退全局配置。选不出 / 只有一张 → 原样返回(单张已由
- * 宿主预填进 `liveCoverImage`)。
+ * 直播卡的样式,**每推一次轮一张自定义封面**:订阅自己设了封面列表(含空列表 = 不用自定义封面)就只
+ * 用它;没设(`liveCoverImages` 为 `undefined`)才用全局那一套默认封面。一张 = 固定用它,多张经
+ * `pick`(游标键 `scopeKey`)选下一张;都强制 `enable: true`,其余字段留空,由渲染器逐字段回退全局
+ * 配置。没有封面 / 选不出 → 原样返回。
  *
- * 每调一次就推进一次游标 —— 只在真要推一张卡时调。
+ * 每调一次就推进一次游标(多张时)—— 只在真要推一张卡时调。
  */
 export function rotateLiveCover(
 	style: CustomCardStyleLike,
@@ -74,11 +74,12 @@ export function rotateLiveCover(
 	pick: PickLiveCover,
 	scopeKey: string,
 ): CustomCardStyleLike {
-	const covers =
-		style.liveCoverImages && style.liveCoverImages.length > 0
-			? style.liveCoverImages
-			: defaultCovers;
-	if (!covers || covers.length <= 1) return style;
-	const picked = pick(scopeKey, covers);
+	// 订阅自己设了列表(含空列表)就只用它:空列表是「不用自定义封面」,不落回全局 ——
+	// 面板上「没覆盖」与「覆盖成空」是两件事。没设(`undefined`)才跟全局。
+	const covers = style.liveCoverImages ?? defaultCovers;
+	if (!covers || covers.length === 0) return style;
+	// 只有一张 = 固定用它。订阅没设时递进来的样式是 `{ enable: false }`,渲染器自己的配置里
+	// 没有全局封面,所以这里得把它补上、并打开 `enable`。
+	const picked = covers.length === 1 ? covers[0] : pick(scopeKey, covers);
 	return picked === undefined ? style : { ...style, enable: true, liveCoverImage: picked };
 }
