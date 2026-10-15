@@ -442,8 +442,8 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 ### AI 工具
 
 - **六把中立只读工具**：`list_subscriptions`、`get_creator_profile`（读资料缓存）、`get_creator_posts`（读统计仓最近几条）、`get_live_status`（读在播表）、`search_creators(source, query)`（转给该来源的 `searchCreators`）、`get_creator_stats(creator, days?)`（读统计仓：作品数、视频作品数、直播场次与时长、涨粉、最后活动）。
-- 中立工具的参数统一叫 `creator`，值是「来源键:外部 id」（按第一个冒号切）；核心工具参数里不许出现 `uid`（进 AI 约束守卫）。`list_subscriptions` 与 `search_creators` 的返回带着它。没订阅的人，读缓存类工具答查不到。
-- **六个内置技能**全部跨来源、只用中立工具；`find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名。技能的 `allowedTools` 在迁移时按新工具名变换。
+- 中立工具的参数统一叫 `creator`，值是「来源键:外部 id」（按第一个冒号切）；核心工具参数里不许出现 `uid`（进 AI 约束守卫）。`list_subscriptions` 与 `search_creators` 的返回带着它。没订阅的人，读缓存类工具答查不到 —— 只有 `get_creator_profile` 例外（10-15 主人定）：资料缓存里没有这个人时，回落调一次来源的 `fetchProfile`（3b-24 造，在那之前先答查不到），交名字、粉丝数、简介；等级、视频数这类 B 站独有的不带。内置技能「找创作者」「创作者 PK」本来就冲着没订阅的人去，靠这一条不废一半。
+- **六个内置技能**全部跨来源、只用中立工具；`find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名。技能改名没有迁移改写（0.x 的女仆技能不迁，见 ADR-0030 决策 1 下 10-14 的 🔗）。
 - 统计总开关关着时，`get_creator_posts` / `get_creator_stats` 回 `not_configured`（照锐评的先例）；注入的工具失败也按结果形状返回；B 站工具的失败码走上面「B 站返回码的翻译表」。`searchCreators` 这一期造、B 站实现，`search_creators` 工具读它。
 - **来源独有的数据**经来源的 `AiToolProvider` 登记只读工具：B 站的总播放、获赞、视频列表；B 站版的周报由 B 站自己以技能提供。
 - `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。缺工具的女仆技能面板自动隐藏；面板里找不到工具的 3 条死标签（`subscribe_user`、`unsubscribe_user`、`update_subscription`）删掉。
