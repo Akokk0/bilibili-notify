@@ -9,31 +9,27 @@
 
 import type {
 	InboundGroupMessage,
-	InboundHandlers,
 	InboundMeta,
 	InboundPrivateMessage,
+	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 
 /**
- * 一帧 → 至多一路。没接的那路连解析都不做(官机开着「全部消息」时群里每句话都进这儿)。
+ * 一帧 → 至多一路。
  * 解析抛错由通道那层兜(它还担着推送,不能因为一帧怪东西断连)。
  */
 export function routeInboundFrame(
 	frame: Record<string, unknown>,
-	meta: InboundMeta,
-	handlers: InboundHandlers,
+	meta: Pick<InboundMeta, "connectionId">,
+	inbound: PlatformAdapterContext["inbound"],
 ): void {
-	if (handlers.private) {
-		const msg = extractPrivateMessage(frame);
-		if (msg) {
-			handlers.private(msg, meta);
-			return;
-		}
+	const msg = extractPrivateMessage(frame);
+	if (msg) {
+		inbound.private(msg, meta);
+		return;
 	}
-	if (handlers.group) {
-		const msg = extractGroupMessage(frame);
-		if (msg) handlers.group(msg, meta);
-	}
+	const group = extractGroupMessage(frame);
+	if (group) inbound.group(group, meta);
 }
 
 /**

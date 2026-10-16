@@ -183,7 +183,8 @@ describe("extractPrivateMessage", () => {
 });
 
 describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析都不做", () => {
-	const meta = { connectionId: "a1", platform: "onebot" };
+	// 适配器只报是哪条连接收到的,平台由宿主按连接补。
+	const meta = { connectionId: "a1" };
 	const priv = { post_type: "message", message_type: "private", user_id: 7, raw_message: "y" };
 	const group = { ...BASE, self_id: 1, message: [{ type: "text", data: { text: "hi" } }] };
 
@@ -208,13 +209,18 @@ describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析�
 		expect(onInboundGroup).toHaveBeenCalledTimes(1);
 	});
 
-	it("只接了一路 → 另一种消息静默丢掉;心跳谁都不进", () => {
+	it("群帧不进私聊那一路;心跳谁都不进", () => {
 		const onInboundPrivate = vi.fn();
-		routeInboundFrame(group, meta, { private: onInboundPrivate });
+		const onInboundGroup = vi.fn();
+		routeInboundFrame(group, meta, { private: onInboundPrivate, group: onInboundGroup });
+		expect(onInboundPrivate).not.toHaveBeenCalled();
+		expect(onInboundGroup).toHaveBeenCalledTimes(1);
+		onInboundGroup.mockClear();
 		routeInboundFrame({ post_type: "meta_event", meta_event_type: "heartbeat" }, meta, {
 			private: onInboundPrivate,
-			group: vi.fn(),
+			group: onInboundGroup,
 		});
 		expect(onInboundPrivate).not.toHaveBeenCalled();
+		expect(onInboundGroup).not.toHaveBeenCalled();
 	});
 });

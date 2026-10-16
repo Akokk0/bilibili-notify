@@ -24,15 +24,11 @@ export function builtinAdapterStubs(): PlatformAdapter[] {
 		createOnebotAdapter({
 			logger: quiet,
 			serviceCtx: quietServiceCtx,
-			onInboundPrivate: () => {},
-			onInboundGroup: () => {},
 		}),
 		createQQOfficialAdapter({
 			logger: quiet,
 			serviceCtx: quietServiceCtx,
 			registry: createQQSessionRegistry(),
-			onInboundPrivate: () => {},
-			onInboundGroup: () => {},
 		}),
 		createWebhookAdapter({ logger: quiet }),
 	];

@@ -186,6 +186,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			reportProblem: noop,
 			resolveProblem: noop,
 			connections: () => [],
+			inbound: { private: noop, group: noop },
 			onConnectionsChanged(fn) {
 				listeners.add(fn);
 				return { dispose: () => listeners.delete(fn) };

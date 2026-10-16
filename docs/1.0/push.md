@@ -102,7 +102,7 @@
 | `PlatformAdapter` | 不变 | 一种连接怎么真发出去；内置的在 `platforms/` |
 | `PlatformAdapterDef` / `PlatformAdapterHandle` / `registerPlatformAdapter` | 拓展契约的 `PushExtensionDef` / `PushSourceHandle` / `registerPushSource` | 交进登记表的一整包（适配器 + 描述 + `settingsSchema`）、登记后拿回的把手、登记口；内置与拓展同一个 |
 | `PlatformAdapterRegistry` | `AdapterRegistry` | 适配器登记表，和分发一起在 `push/` |
-| `PlatformAdapterContext` | — | 适配器拿到的环境：`IntegrationContext`（ADR-0025）加推送侧特有的（入站 `ctx.inbound` 是其一，其余施工时定） |
+| `PlatformAdapterContext` | — | 适配器拿到的环境：`IntegrationContext`（ADR-0025）加推送侧特有的：自己的连接（`connections()`、`onConnectionsChanged`）、关于连接的问题上报（`reportProblem` / `resolveProblem` 多一格 `connectionId`）、入站 `inbound`（`private` / `group` 两个成员都在，适配器只报 `connectionId`，平台由宿主按连接补） |
 | `PlatformAdapterDescriptor` | 拓展契约的 `ExtensionPushView` | 描述**一个适配器**：`{ label, shortLabel, color, icon, settingsFields }`。第 3 版契约的适配器不带这一格（适配器自己的「脸」这一期不造）：拓展的描述以清单为准、由宿主填，内置的随第 4 期 |
 | `PlatformDescriptor` | 不变（`tint` 改叫 `color`） | 描述**一个聊天平台**：`{ platform, label, shortLabel, color, icon?, targetKind: "session" \| "endpoint", scopes, addressNouns }`；`inbound`、`atAll` 从这里挪成适配器的运行期能力 |
 | `ConnectionCandidate` | 拓展的 `ExtensionBotView`（`listBots` 的元素） | 新建连接时供挑的候选 |
@@ -190,7 +190,7 @@ type PushTarget =
 
 #### 入站
 
-内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报（现行内置的入站在装配处直通分发，不核归属）。回调包叫 `InboundHandlers`（原 `InboundSinks`）。私聊的号叫 `address`（原 `userId`）；群消息的群号叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对；不用 `author`，那是作品作者）。桥协议帧不改名，由桥的适配器映射。
+内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报。回调包叫 `InboundHandlers`（原 `InboundSinks`）。私聊的号叫 `address`（原 `userId`）；群消息的群号叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对；不用 `author`，那是作品作者）。桥协议帧不改名，由桥的适配器映射。
 
 #### 结果与失败
 

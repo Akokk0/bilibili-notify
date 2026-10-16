@@ -121,6 +121,7 @@ describe("内置适配器", () => {
 			stores: store,
 			problems: ignoredProblems,
 			connections: (): readonly Connection[] => [],
+			inbound: {},
 			onConnectionsChanged: (): Disposable => ({ dispose() {} }),
 		});
 	}

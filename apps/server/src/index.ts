@@ -730,12 +730,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 三个内置适配器在 `compose.ts` 里造(核心只有它能 import `platforms/`)。入站出口是上面留好的
 			// 可后填引用,现转。
 			serviceCtx: runtime.serviceCtx,
-			onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-			onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
+			inbound: {
+				private: (msg, meta) => onInboundPrivate?.(msg, meta),
+				group: (msg, meta) => onInboundGroup?.(msg, meta),
+			},
 			adapterRegistry,
 			integrationStore: runtime.integrationStore,
 			problems: runtime.problems,
 			connections: () => runtime.configStore.getConnections(),
+			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			onConnectionsChanged,
 		});
 		const devtools = createDevtools({

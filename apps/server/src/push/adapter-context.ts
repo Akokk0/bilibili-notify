@@ -1,6 +1,8 @@
 import type {
 	Connection,
 	Disposable,
+	InboundHandlers,
+	InboundMeta,
 	IntegrationContext,
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
@@ -17,6 +19,16 @@ export interface CreatePlatformAdapterContextOptions {
 	settingsSchema: ZodType;
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
+	/**
+	 * 按 id 取一条连接(原始的,不筛不解)。给了就走它:入站是每条消息一趟的热路径,全表那口每问一次
+	 * 就深拷整张连接表,而校验归属只要那一条。不给就退回从全表里找。
+	 */
+	connection?: (connectionId: string) => Connection | undefined;
+	/**
+	 * 入站的下一层(指令分发、链接解析):适配器经 `ctx.inbound` 交来的消息,宿主核过归属、补上平台后
+	 * 交给它。没接的那一路静默丢。
+	 */
+	inbound: InboundHandlers;
 	/** 连接配置变了的订阅;交回的把手由调用方负责在集成停下时撤掉。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/**
@@ -44,8 +56,18 @@ export function createPlatformAdapterContext(
 	const warned = new Map<string, string>();
 
 	/**
+	 * 这条连接是不是这个适配器的 —— 是的话把原始连接交出来。**归属的唯一判法**,关于连接的上报与入站
+	 * 共用:按**原始连接表**看 `adapterKey`,设置过不了规则、被隔离不交给适配器的连接仍算自己的。
+	 */
+	function ownedConnection(connectionId: string): Connection | undefined {
+		const hit = opts.connection
+			? opts.connection(connectionId)
+			: opts.connections().find((c) => c.id === connectionId);
+		return hit && hit.adapterKey === adapterKey ? hit : undefined;
+	}
+
+	/**
 	 * 关于连接的上报的公共一步:已停下、形状不对、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
-	 * 归属按**原始连接表**看 `adapterKey`:设置过不了规则、被隔离不交给适配器的连接仍算自己的。
 	 */
 	function acceptConnectionProblem(
 		what: string,
@@ -55,9 +77,7 @@ export function createPlatformAdapterContext(
 		const issue = integration.signal.aborted
 			? "适配器已停下"
 			: (problemReportIssue(problem) ??
-				(opts
-					.connections()
-					.some((c) => c.id === problem.connectionId && c.adapterKey === adapterKey)
+				(ownedConnection(problem.connectionId) !== undefined
 					? undefined
 					: `连接 ${problem.connectionId} 不是适配器 ${adapterKey} 的`));
 		if (issue !== undefined) {
@@ -67,6 +87,26 @@ export function createPlatformAdapterContext(
 			return;
 		}
 		apply();
+	}
+
+	/**
+	 * 入站的公共一步:归属不对的(冒充别人的连接、不存在的)丢掉并记一行 —— 放过去的话,一个适配器能替
+	 * 别人的连接说话,而主人身份比对走的正是 `平台 + 地址 + bot` 三坐标。过了关,**平台取连接上那一格**
+	 * (适配器自报的没有任何办法核,所以不收),补成完整的 `InboundMeta` 再交下一层。
+	 */
+	function feed(
+		route: "private" | "group",
+		meta: Pick<InboundMeta, "connectionId">,
+		deliver: (meta: InboundMeta) => void,
+	): void {
+		const connection = ownedConnection(meta.connectionId);
+		if (!connection) {
+			integration.logger.warn(
+				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
+			);
+			return;
+		}
+		deliver({ connectionId: connection.id, platform: connection.platform });
 	}
 
 	return {
@@ -130,5 +170,10 @@ export function createPlatformAdapterContext(
 			return mine;
 		},
 		onConnectionsChanged: opts.onConnectionsChanged,
+		inbound: {
+			private: (msg, meta) =>
+				feed("private", meta, (checked) => opts.inbound.private?.(msg, checked)),
+			group: (msg, meta) => feed("group", meta, (checked) => opts.inbound.group?.(msg, checked)),
+		},
 	};
 }

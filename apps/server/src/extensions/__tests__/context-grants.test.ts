@@ -17,6 +17,7 @@ import type {
 	ExtensionManifest,
 	Logger,
 	PlatformAdapter,
+	PlatformAdapterContext,
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
@@ -933,27 +934,46 @@ describe("读到属于自己的连接", () => {
 	});
 });
 
-describe("喂入站", () => {
-	const meta = (connectionId: string) => ({ connectionId, platform: "telegram" });
+/**
+ * 入站走适配器上下文:拓展的适配器在 `start(ctx)` 里拿到 `ctx.inbound`(与内置适配器同一个函数造的)。
+ * 归属与「平台取连接」的细节在 `push/__tests__/adapter-context.test.ts`;这里只证拓展这条路接上了。
+ */
+describe("喂入站(经适配器上下文)", () => {
+	function connected() {
+		const h = harness();
+		let adapterCtx: PlatformAdapterContext | undefined;
+		h.ctx.registerPushSource({
+			...def(),
+			adapter: {
+				...fakeAdapter(),
+				start: (c: PlatformAdapterContext) => {
+					adapterCtx = c;
+				},
+			} as unknown as PlatformAdapter,
+		});
+		if (!adapterCtx) throw new Error("适配器没 start");
+		return { h, inbound: adapterCtx.inbound };
+	}
 
 	/**
 	 * 🔴 入站是每条消息一趟的热路径。宿主的「全表」那口每问一次就 deepClone 整张连接表,
 	 * 而校验归属只要那一条 —— 所以给了单条访问口就得走它,全表一次都不许问。
 	 */
 	it("校验归属走单条访问口,不问全表", () => {
-		const h = harness();
-		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
+		const { h, inbound } = connected();
+		const before = h.connectionsReads();
+		inbound.private({ address: "u", text: "hi" }, { connectionId: "c1" });
 		expect(h.inboundSeen).toHaveLength(1);
 		expect(h.connectionReads()).toBe(1);
-		expect(h.connectionsReads()).toBe(0);
+		expect(h.connectionsReads()).toBe(before);
 	});
 
-	it("私聊与群消息都送得到下一层", () => {
-		const h = harness();
-		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
-		h.ctx.inbound.group(
+	it("🔴 平台取连接上那一格:适配器只报连接,交到下一层的平台是连接的(onebot)", () => {
+		const { h, inbound } = connected();
+		inbound.private({ address: "u", text: "hi" }, { connectionId: "c1" });
+		inbound.group(
 			{ address: "g", senderId: "u", text: "hi", cardLinks: [], miniAppCardLinks: [] },
-			meta("c1"),
+			{ connectionId: "c1" },
 		);
 		expect(h.inboundSeen).toEqual([
 			{ route: "private", connectionId: "c1", platform: "onebot" },
@@ -961,28 +981,9 @@ describe("喂入站", () => {
 		]);
 	});
 
-	/**
-	 * 🔴 **平台以连接上那一格为准,拓展报的说了不算。**
-	 *
-	 * `meta.platform` 是主人身份比对的一半(`inboundIdentity` → `sameChatIdentity`,那条
-	 * 「绝不能跨平台比对」的纪律就靠它)。归属只校验了 `connectionId`,平台却照抄拓展报的 ——
-	 * 于是桥那边报错一格(或者作恶)就能让一条 telegram 私聊顶着 onebot 的平台进来,和主人
-	 * 的 QQ 号比对上。连接现在**有** platform(决策 45),宿主自己答得出来,不必信它。
-	 */
-	it("🔴 拓展报的平台与连接对不上 → 以连接为准,并且每条连接只记一行", () => {
-		const h = harness();
-		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
-		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
-		expect(h.inboundSeen).toEqual([
-			{ route: "private", connectionId: "c1", platform: "onebot" },
-			{ route: "private", connectionId: "c1", platform: "onebot" },
-		]);
-		expect(h.lines.filter((l) => l.includes("平台"))).toHaveLength(1);
-	});
-
 	it("🔴 冒充别人的连接 → 丢掉并留一行", () => {
-		const h = harness();
-		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("别人家的连接"));
+		const { h, inbound } = connected();
+		inbound.private({ address: "u", text: "hi" }, { connectionId: "别人家的连接" });
 		expect(h.inboundSeen).toEqual([]);
 		expect(h.lines.some((l) => l.startsWith("warn"))).toBe(true);
 	});

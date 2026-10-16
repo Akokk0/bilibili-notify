@@ -1428,8 +1428,11 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 	it("换 token 之后,凭旧 token 连着的那一头再发来的消息不收", async () => {
 		const port = await freePort();
 		const onInboundPrivate = vi.fn();
-		const ad = createOnebotAdapter({ ...obOpts(), onInboundPrivate });
-		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "old" })]);
+		const ad = createOnebotAdapter(obOpts());
+		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "old" })], {
+			private: onInboundPrivate,
+			group() {},
+		});
 		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer old" });
 		await waitFor(async () => (await ad.probe(obRevConnection(port))).ok === true);
 		const frame = JSON.stringify({
@@ -2161,13 +2164,13 @@ describe("webhook — isAvailable / probe", () => {
 // ---------------------------------------------------------------------------
 
 describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId", () => {
-	it("正向 WS:群消息帧 → onInboundGroup(平台中立形状 + {connectionId})", async () => {
+	it("正向 WS:群消息帧 → ctx.inbound.group(平台中立形状 + 只带 {connectionId},平台由宿主补)", async () => {
 		const bot = await startFakeBotServer();
 		const onInboundGroup = vi.fn();
 		const onInboundPrivate = vi.fn();
-		const ad = createOnebotAdapter({ ...obOpts(), onInboundGroup, onInboundPrivate });
+		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port);
-		reconcileAdapter(ad, [connection]);
+		reconcileAdapter(ad, [connection], { private: onInboundPrivate, group: onInboundGroup });
 		await waitFor(() => bot.connections.length > 0);
 		const frame = {
 			post_type: "message",
@@ -2189,7 +2192,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 				cardLinks: [],
 				miniAppCardLinks: [],
 			},
-			{ connectionId: "a1", platform: "onebot" },
+			{ connectionId: "a1" },
 		);
 		expect(onInboundPrivate).not.toHaveBeenCalled();
 		ad.stop();
@@ -2199,9 +2202,9 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		const onInboundPrivate = vi.fn((_msg: unknown, _meta: unknown) => {
 			throw new Error("指令处理炸了");
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), onInboundPrivate });
+		const ad = createOnebotAdapter(obOpts());
 		const port = await freePort();
-		reconcileAdapter(ad, [obRevConnection(port)]);
+		reconcileAdapter(ad, [obRevConnection(port)], { private: onInboundPrivate, group() {} });
 		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`);
 		bot.send(JSON.stringify({ post_type: "meta_event", meta_event_type: "heartbeat", self_id: 1 }));
 		bot.send(
@@ -2215,7 +2218,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
 		expect(onInboundPrivate).toHaveBeenCalledWith(
 			{ address: "456", text: "y" },
-			{ connectionId: "a1", platform: "onebot" },
+			{ connectionId: "a1" },
 		);
 		// 还活着的直接证据:上一条让消费者抛了,再来一条照样送到。
 		bot.send(

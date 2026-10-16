@@ -101,9 +101,13 @@ export interface BuiltinIntegrationsDeps {
 	 * 关停钩子的登记时刻因此与从前入口里造它们那一刻一致;登记即启动的那一步仍在 `registerAdapters`。
 	 */
 	serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem">;
-	/** 入站两路出口。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。 */
-	onInboundPrivate: NonNullable<InboundHandlers["private"]>;
-	onInboundGroup: NonNullable<InboundHandlers["group"]>;
+	/**
+	 * 入站两路出口(下一层)。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。
+	 * 各适配器经自己的 `ctx.inbound` 交来,宿主核过归属、补上平台后才到这里。
+	 */
+	inbound: Required<InboundHandlers>;
+	/** 按 id 取一条连接 —— 入站校验归属的热路径用(全表那口每问一次深拷一遍)。 */
+	connection?: (connectionId: string) => Connection | undefined;
 	/** 活的适配器登记表(拓展与内置共用的那一张)。 */
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 各适配器的 state / secrets 存储。 */
@@ -171,14 +175,10 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		createOnebotAdapter({
 			logger: loggerOf("onebot"),
 			serviceCtx: deps.serviceCtx,
-			onInboundPrivate: deps.onInboundPrivate,
-			onInboundGroup: deps.onInboundGroup,
 		}),
 		createQQOfficialAdapter({
 			logger: loggerOf("qq-official"),
 			serviceCtx: deps.serviceCtx,
-			onInboundPrivate: deps.onInboundPrivate,
-			onInboundGroup: deps.onInboundGroup,
 		}),
 		createWebhookAdapter({ logger: loggerOf("webhook") }),
 	];
@@ -258,6 +258,8 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				stores: deps.integrationStore,
 				problems: deps.problems,
 				connections: deps.connections,
+				...(deps.connection ? { connection: deps.connection } : {}),
+				inbound: deps.inbound,
 				onConnectionsChanged: deps.onConnectionsChanged,
 			});
 		},

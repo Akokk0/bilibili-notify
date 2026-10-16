@@ -108,9 +108,6 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type {
 	Disposable,
-	InboundGroupMessage,
-	InboundMeta,
-	InboundPrivateMessage,
 	IntegrationContext,
 	Logger,
 	PlatformAdapter,
@@ -487,20 +484,6 @@ export interface ExtensionContext extends IntegrationContext {
 	 * 订阅记在哪个拓展名下由宿主按 id 认,拓展不自报(同推送源的分发键)。
 	 */
 	registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle;
-	/**
-	 * 把一条入站消息喂回核心 —— 归一化在拓展这一侧做完(决策 31)。
-	 *
-	 * 🔴 `meta.connectionId` **宿主校验归属**:不是自己的连接就丢掉并记一行。放过去的话,
-	 * 甲拓展能冒充乙拓展的连接投消息,而主人身份比对走的正是 `平台 + 地址 + bot` 三坐标。
-	 *
-	 * 🔴 `meta.platform` **以那条连接上那一格为准** —— 报的和连接对不上时,宿主按连接算并
-	 * 记一行(每条连接一次)。它是身份比对的另一半,而拓展自报的那一格没有任何办法核;
-	 * 一条连接就是一个 bot、bot 就在一个平台上(决策 45),所以这件事宿主自己答得出来。
-	 */
-	readonly inbound: {
-		private(msg: InboundPrivateMessage, meta: InboundMeta): void;
-		group(msg: InboundGroupMessage, meta: InboundMeta): void;
-	};
 	/**
 	 * 认领 `/ext/<id>` 底下的 WS upgrade。
 	 *

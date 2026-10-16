@@ -126,7 +126,7 @@ function hostFor(
 	let statusOf: (() => unknown) | undefined;
 	let statusChanges = 0;
 	/** 喂回核心的入站消息 —— 「该不该收」那道闸只在这儿看得出来。 */
-	const inboundCalls: { route: "private" | "group"; msg: unknown }[] = [];
+	const inboundCalls: { route: "private" | "group"; msg: unknown; meta: unknown }[] = [];
 
 	function track(timer: NodeJS.Timeout): Disposable {
 		timers.push(timer);
@@ -173,6 +173,24 @@ function hostFor(
 			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。
 			adapter = { ...def.adapter, adapterKey: EXTENSION_ID, settingsSchema: def.configSchema };
 			pushSource = def as PushExtensionDef<unknown>;
+			// 登记即 `start`:适配器上下文里的 `inbound` 是桥交入站的唯一出口。替身不核归属、不补平台,
+			// 原样记下桥交来的东西(含 meta —— 桥只该报 `connectionId`)。
+			adapter.start({
+				logger: SILENT,
+				signal: ctx.signal,
+				onDispose: (fn) => ctx.onDispose(fn),
+				state: ctx.state,
+				secrets: ctx.secrets,
+				redact() {},
+				reportProblem() {},
+				resolveProblem() {},
+				connections: () => connections(),
+				onConnectionsChanged: () => ({ dispose() {} }),
+				inbound: {
+					private: (msg, meta) => inboundCalls.push({ route: "private", msg, meta }),
+					group: (msg, meta) => inboundCalls.push({ route: "group", msg, meta }),
+				},
+			});
 			return {
 				// 宿主拿**拓展自己那份 zod** 解 config,解不出的那条根本不交给它(决策 30)。
 				connections: (): readonly ExtensionConnectionView<TConfig>[] =>
@@ -188,10 +206,6 @@ function hostFor(
 		// 桥的清单只开推送那一口;真宿主对没开订阅口的清单当场抛 —— 桥哪天误叫了,这里就当场红。
 		registerSubscriptionSource() {
 			throw new Error("桥的清单没开 contributes.subscription,不该注册订阅源");
-		},
-		inbound: {
-			private: (msg) => inboundCalls.push({ route: "private", msg }),
-			group: (msg) => inboundCalls.push({ route: "group", msg }),
 		},
 		onUpgrade(handler) {
 			upgradeHandler = handler;
@@ -495,7 +509,13 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 			message: { scope: "private", userId: "u1", text: "/status" },
 		});
 		await expectEventually(() => expect(host.inbound()).toHaveLength(1));
-		expect(host.inbound()[0]).toMatchObject({ route: "private", msg: { address: "u1" } });
+		// 桥只报是哪条连接收到的 —— 平台不由桥自报,宿主按连接补。
+		expect(host.inbound()[0]).toMatchObject({
+			route: "private",
+			msg: { address: "u1" },
+			meta: { connectionId: CONNECTION_ID },
+		});
+		expect(host.inbound()[0]?.meta).toEqual({ connectionId: CONNECTION_ID });
 	});
 
 	/**

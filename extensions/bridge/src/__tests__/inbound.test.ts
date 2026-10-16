@@ -68,12 +68,12 @@ function groupFrame(
 const source = { connectionId: CONNECTION_ID, bots: [bot()] };
 
 describe("routeBridgeInbound", () => {
-	it("私聊走指令那一路,两坐标齐全 —— 平台在 meta 里,连接是绑成的那条", () => {
+	it("私聊走指令那一路,meta 只带连接(绑成的那条)—— 平台由宿主按连接补", () => {
 		const s = sinks();
 		routeBridgeInbound(privateFrame(), source, s);
 		expect(s.private).toHaveBeenCalledWith(
 			{ address: "u1", text: "/status" },
-			{ connectionId: CONNECTION_ID, platform: "telegram" },
+			{ connectionId: CONNECTION_ID },
 		);
 		expect(s.group).not.toHaveBeenCalled();
 	});
@@ -90,7 +90,7 @@ describe("routeBridgeInbound", () => {
 				cardLinks: [],
 				miniAppCardLinks: [],
 			},
-			{ connectionId: CONNECTION_ID, platform: "telegram" },
+			{ connectionId: CONNECTION_ID },
 		);
 		expect(s.private).not.toHaveBeenCalled();
 	});
@@ -161,52 +161,16 @@ describe("routeBridgeInbound", () => {
 	});
 
 	/**
-	 * 🔴 **platform 认名单,不认帧里自报的那一格**。它是主人身份比对(平台 + 地址 + bot
-	 * 三坐标)与逐群策略的键 —— 一条 `inbound` 帧自己说自己是什么平台,就等于让对面挑
-	 * 拿哪把钥匙开门。名单那份是握手 / bots 快照报上来的,与连接、与能力表同源。
+	 * 🔴 **平台不是桥报的**:适配器交入站时只带 `connectionId`,平台由宿主按连接那一格补(ADR-0024
+	 * 决策 12)。帧里自报的 platform、名单里 bot 的 platform 都不进 meta —— 从前这里认名单、对不上还要叫一声,
+	 * 现在没有「对不上」这回事。
 	 */
-	it("**platform 取名单里那个 bot 的**,不是帧里自报的", () => {
+	it("meta 里没有平台:帧自报什么、名单里是什么都不进去", () => {
 		const s = sinks();
 		routeBridgeInbound(privateFrame({ platform: "onebot" }), source, s);
-		expect(s.private.mock.calls[0]?.[1]).toEqual({
-			connectionId: CONNECTION_ID,
-			platform: "telegram",
-		});
-	});
-
-	it("群那一路同样认名单", () => {
-		const s = sinks();
 		routeBridgeInbound(groupFrame({ platform: "onebot" }), source, s);
-		expect(s.group.mock.calls[0]?.[1]).toMatchObject({ platform: "telegram" });
-	});
-
-	it("名单里还没有这个 bot → 退回帧里自报的(名单是快照,可能比消息晚到)", () => {
-		const s = sinks();
-		routeBridgeInbound(privateFrame({ botId: "b9", platform: "onebot" }), source, s);
-		expect(s.private.mock.calls[0]?.[1]).toMatchObject({ platform: "onebot" });
-	});
-
-	it("两边对不上 → 叫一声,别让它悄悄发生", () => {
-		const s = sinks();
-		const mismatch = vi.fn();
-		routeBridgeInbound(
-			privateFrame({ platform: "onebot" }),
-			{ ...source, onPlatformMismatch: mismatch },
-			s,
-		);
-		expect(mismatch).toHaveBeenCalledWith("onebot", "telegram");
-	});
-
-	it("对得上就别叫 —— 每一条消息都会经这儿", () => {
-		const s = sinks();
-		const mismatch = vi.fn();
-		routeBridgeInbound(privateFrame(), { ...source, onPlatformMismatch: mismatch }, s);
-		routeBridgeInbound(
-			privateFrame({ botId: "b9" }),
-			{ ...source, onPlatformMismatch: mismatch },
-			s,
-		);
-		expect(mismatch).not.toHaveBeenCalled();
+		expect(s.private.mock.calls[0]?.[1]).toEqual({ connectionId: CONNECTION_ID });
+		expect(s.group.mock.calls[0]?.[1]).toEqual({ connectionId: CONNECTION_ID });
 	});
 
 	/**

@@ -10,7 +10,7 @@
  * - **WS 端点**(`ctx.onUpgrade`)—— 桥主动连过来的那条,地址 `ws://<BN>/ext/bridge`
  * - **HTTP 取图口**(`ctx.mount`)—— `send` 帧里那条一次性图片 URL 背后的东西
  * - **推送源**(`ctx.registerPushSource`)—— 矩阵里那个按分发键认领的 adapter
- * - **入站**(`ctx.inbound`)—— 桥驮上来的私聊 / 群消息,归一化在这一侧做完
+ * - **入站**(适配器上下文的 `ctx.inbound`,`start(ctx)` 时存在适配器里)—— 桥驮上来的私聊 / 群消息,归一化在这一侧做完
  *
  * 两份配置(ADR-0012 决策 45):**接入**(koishi / AstrBot 实例 + token)住拓展自己的设置,
  * 面板在拓展页建;**连接**是从接入驮着的 bot 里挑出来的一个 bot,面板在推送目标页建。
@@ -27,7 +27,6 @@ import { createBridgeAdapter } from "./adapter.js";
 import { createBridgeBlobStore } from "./blob.js";
 import { createBridgeFetchHandler } from "./blob-route.js";
 import { type BridgeConnectionConfig, BridgeConnectionConfigSchema } from "./config.js";
-import { routeBridgeInbound } from "./inbound.js";
 import { createBridgeServer } from "./server.js";
 import { type BridgeLink, BridgeSettingsSchema } from "./settings.js";
 import { resolveBridgeToken } from "./tokens.js";
@@ -63,18 +62,6 @@ export function activate(ctx: ExtensionContext): void {
 	): ExtensionConnectionView<BridgeConnectionConfig> | undefined =>
 		connections().find((c) => c.config.link === linkId && c.config.botId === botId);
 
-	/**
-	 * 「这个 bot 自报的平台跟名单里的对不上」只说一次。每条入站消息都会走一遍那道比对,
-	 * 记一行的话一个嘴碎的群能把日志刷穿;而这是**桥的 bug**,说一次就够查了。
-	 */
-	const platformMismatches = new Set<string>();
-	function warnPlatformMismatch(botId: string, declared: string, actual: string): void {
-		const key = `${botId}:${declared}→${actual}`;
-		if (platformMismatches.has(key)) return;
-		platformMismatches.add(key);
-		ctx.logger.warn(`${botId} 的入站帧自报 ${declared},但名单里它是 ${actual} —— 按名单算`);
-	}
-
 	const server = createBridgeServer({
 		logger: ctx.logger,
 		// 心跳与看门狗那两只定时器从 ctx 走 —— 裸 `setInterval` 是禁止的(决策 11)。
@@ -102,16 +89,8 @@ export function activate(ctx: ExtensionContext): void {
 				ctx.logger.debug(`连接「${bound.name}」已停用,${frame.botId} 这条消息不收`);
 				return;
 			}
-			routeBridgeInbound(
-				frame,
-				{
-					connectionId: bound.id,
-					bots: session.bots,
-					onPlatformMismatch: (declared, actual) =>
-						warnPlatformMismatch(frame.botId, declared, actual),
-				},
-				ctx.inbound,
-			);
+			// 入站口只在适配器的 `start(ctx)` 里拿得到:经适配器交进去,宿主核归属、按连接补平台。
+			adapter.deliverInbound(frame, { connectionId: bound.id, bots: session.bots });
 		},
 		onBots: (linkId, bots) => {
 			// 名单是**会再变的**:插件探完能力会重发一份带答案的快照,bot 上下线也会。不喊

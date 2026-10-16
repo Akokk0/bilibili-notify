@@ -5,7 +5,14 @@
  * 免得写两遍。递出去的连接 `settings` 都按适配器的规则解过;过不了规则的被隔离,原因记一行 warn。
  */
 
-import type { Connection, Disposable } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	Disposable,
+	InboundGroupMessage,
+	InboundHandlers,
+	InboundMeta,
+	InboundPrivateMessage,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
@@ -49,6 +56,10 @@ function build(
 	on = () => ({ dispose() {} }),
 	settingsSchema: z.ZodType = z.unknown(),
 	logger = silentLogger,
+	extra: {
+		inbound?: InboundHandlers;
+		connection?: (connectionId: string) => Connection | undefined;
+	} = {},
 ) {
 	const problems = createProblemTable({ logger: silentLogger });
 	const handle = createIntegrationContext({
@@ -65,6 +76,8 @@ function build(
 		adapterKey: key,
 		settingsSchema,
 		connections: list,
+		...(extra.connection ? { connection: extra.connection } : {}),
+		inbound: extra.inbound ?? {},
 		onConnectionsChanged: on,
 		problems,
 		rejectedProblemLevel: "error",
@@ -278,5 +291,119 @@ describe("createPlatformAdapterContext · reportProblem / resolveProblem", () =>
 		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "停后又报" });
 		expect(problems.list()).toEqual([]);
 		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 适配器交入站消息:`ctx.inbound`(ADR-0024 决策 12)。宿主核这条连接是不是适配器自己的(按原始连接表看
+ * `adapterKey`,与上报问题同一个判法),平台**取自连接**、不由适配器自报,再把完整的 `InboundMeta` 交下一层。
+ */
+describe("createPlatformAdapterContext · inbound", () => {
+	const MSG: InboundPrivateMessage = { address: "u", text: "hi" };
+	const GROUP_MSG: InboundGroupMessage = {
+		address: "g",
+		senderId: "u",
+		text: "hi",
+		cardLinks: [],
+		miniAppCardLinks: [],
+	};
+	const list = [
+		connectionOf("b1", "bridge", "telegram"),
+		connectionOf("o1", "onebot", "onebot"),
+		connectionOf("bad", "bridge", "discord", { url: 5 }),
+	];
+
+	function setup(over: { connection?: (id: string) => Connection | undefined } = {}) {
+		const seen: Array<{ route: string; meta: InboundMeta }> = [];
+		const warn = vi.fn();
+		const built = build(
+			"bridge",
+			() => list,
+			undefined,
+			// 三条里 `bad` 与 `b1` 的 settings 都过不了这份规则 —— 归属不能看 `connections()`(隔离后不在里面)。
+			z.object({ url: z.string() }),
+			{ ...silentLogger, warn },
+			{
+				inbound: {
+					private: (_msg, meta) => seen.push({ route: "private", meta }),
+					group: (_msg, meta) => seen.push({ route: "group", meta }),
+				},
+				...over,
+			},
+		);
+		return { ...built, seen, warn };
+	}
+
+	// 验红:平台改回取适配器报的(这里没得报)或者写死一个,这条红。
+	it("自己的连接 → 交给下一层,平台取连接上的", () => {
+		const { ctx, seen } = setup();
+		ctx.inbound.private(MSG, { connectionId: "b1" });
+		ctx.inbound.group(GROUP_MSG, { connectionId: "b1" });
+		expect(seen).toEqual([
+			{ route: "private", meta: { connectionId: "b1", platform: "telegram" } },
+			{ route: "group", meta: { connectionId: "b1", platform: "telegram" } },
+		]);
+	});
+
+	// 验红:归属改成「只看连接在不在、不看 adapterKey」,这条红。
+	it("别的适配器的连接 → 丢掉并记一行 warn", () => {
+		const { ctx, seen, warn } = setup();
+		ctx.inbound.private(MSG, { connectionId: "o1" });
+		ctx.inbound.group(GROUP_MSG, { connectionId: "o1" });
+		expect(seen).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(String(warn.mock.calls[0]?.[0])).toContain("o1");
+	});
+
+	it("不存在的连接 → 丢掉并记一行 warn", () => {
+		const { ctx, seen, warn } = setup();
+		ctx.inbound.private(MSG, { connectionId: "nope" });
+		expect(seen).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("被隔离的连接(设置过不了规则)仍算自己的:归属只看 adapterKey", () => {
+		const { ctx, seen } = setup();
+		ctx.inbound.private(MSG, { connectionId: "bad" });
+		expect(seen).toEqual([
+			{ route: "private", meta: { connectionId: "bad", platform: "discord" } },
+		]);
+	});
+
+	// 入站是每条消息一趟的热路径:宿主的「全表」那口每问一次就深拷整张连接表,校验归属只要那一条。
+	it("给了单条访问口就走它,全表一次都不问", () => {
+		const connection = vi.fn((id: string) => list.find((c) => c.id === id));
+		const connections = vi.fn(() => list);
+		const seen: unknown[] = [];
+		const problems = createProblemTable({ logger: silentLogger });
+		const handle = createIntegrationContext({
+			logger: silentLogger,
+			stopReason: "测试",
+			...memoryStores(),
+			problems,
+			reporter: "bridge",
+			rejectedProblemLevel: "error",
+			redactValues: () => {},
+		});
+		const ctx = createPlatformAdapterContext({
+			integration: handle.ctx,
+			adapterKey: "bridge",
+			settingsSchema: z.unknown(),
+			connections,
+			connection,
+			inbound: { private: (_m, meta) => seen.push(meta) },
+			onConnectionsChanged: () => ({ dispose() {} }),
+			problems,
+			rejectedProblemLevel: "error",
+		});
+		ctx.inbound.private(MSG, { connectionId: "b1" });
+		expect(seen).toEqual([{ connectionId: "b1", platform: "telegram" }]);
+		expect(connection).toHaveBeenCalledTimes(1);
+		expect(connections).not.toHaveBeenCalled();
+	});
+
+	it("下一层没接的那一路 → 静默丢掉,不抛", () => {
+		const { ctx } = build("bridge", () => list, undefined, undefined, undefined, { inbound: {} });
+		expect(() => ctx.inbound.private(MSG, { connectionId: "b1" })).not.toThrow();
 	});
 });

@@ -32,9 +32,11 @@ import {
 	BRIDGE_CLOSE_CODES,
 	type BridgeBot,
 	type BridgeCapabilityState,
+	type BridgeInboundFrame,
 	type BridgeMessage,
 	type BridgeSegment,
 } from "./contract.js";
+import { type BridgeInboundSource, routeBridgeInbound } from "./inbound.js";
 import { stripMarkdown } from "./markdown.js";
 import { platformIcon } from "./platform-icons.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
@@ -165,10 +167,15 @@ function toBridgeMessage(
 }
 
 /**
- * 桥的 adapter:契约上的 {@link PlatformAdapter},外加一个桥自己用的 `reconcile()` ——
- * 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
+ * 桥的 adapter:契约上的 {@link PlatformAdapter},外加桥自己用的两个口:
+ * - `reconcile()` —— 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
+ * - `deliverInbound()` —— 端点收到入站帧、`index.ts` 查出它归哪条连接之后,经适配器存下的 `ctx.inbound` 交给宿主
+ *   (入站口只在 `start(ctx)` 里拿得到;映射仍是 `routeBridgeInbound` 那个纯函数)。
  */
-export type BridgeAdapter = Omit<PlatformAdapter, "settingsSchema"> & { reconcile(): void };
+export type BridgeAdapter = Omit<PlatformAdapter, "settingsSchema"> & {
+	reconcile(): void;
+	deliverInbound(frame: BridgeInboundFrame, source: BridgeInboundSource): void;
+};
 
 export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	const { server, blobs } = opts;
@@ -284,8 +291,16 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		for (const [id, link] of links) lastTokens.set(id, link.token);
 	}
 
+	/** `start(ctx)` 时存下的入站口;桥是自己连过来的,登记(= `start`)早于第一帧。 */
+	let inbound: PlatformAdapterContext["inbound"] | undefined;
+
 	return {
 		reconcile,
+
+		deliverInbound(frame, source) {
+			if (!inbound) return;
+			routeBridgeInbound(frame, source, inbound);
+		},
 
 		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
 		adapterKey: "",
@@ -335,6 +350,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		 * 登记那一刻还没有会话可踢;`lastTokens` 在建 adapter 时已用当前名单打底。
 		 */
 		start(ctx: PlatformAdapterContext): void {
+			inbound = ctx.inbound;
 			ctx.onConnectionsChanged(() => reconcile());
 		},
 

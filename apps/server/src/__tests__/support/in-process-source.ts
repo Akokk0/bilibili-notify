@@ -279,7 +279,7 @@ export const inProcessWorld: {
 	 * 群消息的入站出口(同样从 `compose` 的入参上取):适配器停了、HTTP 开发场景用不了的关停途中,
 	 * 测试仍能直接往门里喂一条群消息。
 	 */
-	inboundGroup: Compose.BuiltinIntegrationsDeps["onInboundGroup"] | undefined;
+	inboundGroup: Compose.BuiltinIntegrationsDeps["inbound"]["group"] | undefined;
 	/** 总线上看到的 `subscription-auth-changed`。 */
 	authChanges: Array<{ sourceKey: string; state: AuthState }>;
 	/** 总线上看到的 `post-detected`(核心作品入口对每条订阅发的那一份)。 */
@@ -339,7 +339,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 		composeBuiltinIntegrations(deps) {
 			const builtins = real.composeBuiltinIntegrations(deps);
 			inProcessWorld.serviceCtx = deps.serviceCtx;
-			inProcessWorld.inboundGroup = deps.onInboundGroup;
+			inProcessWorld.inboundGroup = deps.inbound.group;
 			deps.bus.on("subscription-auth-changed", (changed) => {
 				inProcessWorld.authChanges.push(changed);
 			});

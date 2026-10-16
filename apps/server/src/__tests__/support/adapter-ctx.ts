@@ -41,6 +41,8 @@ function silentLogger(): Logger {
 export function fakeAdapterContext(
 	initial: readonly Connection[] = [],
 	logger: Logger = silentLogger(),
+	/** 适配器经 `ctx.inbound` 交来的消息原样落到这里(假上下文不核归属、不补平台);不给就丢掉。 */
+	inbound: PlatformAdapterContext["inbound"] = { private() {}, group() {} },
 ): FakeAdapterContext {
 	let connections = initial;
 	const listeners = new Set<() => void>();
@@ -59,6 +61,7 @@ export function fakeAdapterContext(
 		reportProblem() {},
 		resolveProblem() {},
 		connections: () => connections,
+		inbound,
 		onConnectionsChanged(fn): Disposable {
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
@@ -89,6 +92,8 @@ const driven = new WeakMap<object, FakeAdapterContext>();
 export function reconcileAdapter(
 	adapter: { start(ctx: PlatformAdapterContext): void },
 	connections: readonly Connection[],
+	/** 只在第一次(`start`)生效:适配器经 `ctx.inbound` 交的入站消息原样落到这里。 */
+	inbound?: PlatformAdapterContext["inbound"],
 ): void {
 	const existing = driven.get(adapter);
 	if (existing) {
@@ -96,7 +101,7 @@ export function reconcileAdapter(
 		existing.fireChanged();
 		return;
 	}
-	const fake = fakeAdapterContext(connections);
+	const fake = fakeAdapterContext(connections, undefined, inbound);
 	driven.set(adapter, fake);
 	adapter.start(fake.ctx);
 }

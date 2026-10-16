@@ -84,19 +84,36 @@ async function setup() {
 	const onebot = fakeAdapter("onebot");
 	const qq = fakeAdapter("qq-official");
 	const webhook = fakeAdapter("webhook");
+	const inboundSeen: Array<{ route: string; meta: unknown }> = [];
 	const builtin = await registerBuiltinAdapters({
 		registry,
 		adapters: [onebot, qq, webhook],
 		loggerOf: () => logger,
+		inbound: {
+			private: (_msg, meta) => inboundSeen.push({ route: "private", meta }),
+			group: (_msg, meta) => inboundSeen.push({ route: "group", meta }),
+		},
 		stores,
 		problems,
 		connections: () => list,
 		onConnectionsChanged,
 	});
-	return { registry, onebot, qq, webhook, builtin, emit, listeners, stores, problems };
+	return { registry, onebot, qq, webhook, builtin, emit, listeners, stores, problems, inboundSeen };
 }
 
 describe("registerBuiltinAdapters", () => {
+	// 验红:`registerBuiltinAdapters` 不把 `inbound` 递给 `createPlatformAdapterContext`(换成空表),这条红。
+	it("适配器 start 拿到的 ctx 带 inbound:交一条消息,宿主的下一层收到,平台是连接上的;别家的连接被丢", async () => {
+		const { onebot, builtin, inboundSeen } = await setup();
+		const msg = { address: "u", text: "hi" };
+		onebot.ctx?.inbound.private(msg, { connectionId: "ob1" });
+		onebot.ctx?.inbound.private(msg, { connectionId: "qq1" });
+		expect(inboundSeen).toEqual([
+			{ route: "private", meta: { connectionId: "ob1", platform: "onebot" } },
+		]);
+		await builtin.dispose();
+	});
+
 	// 验红:建集成上下文时把 `opts.loggerOf(adapter.adapterKey)` 改成 `opts.loggerOf("onebot")`(或别的写死的键),这条红。
 	it("每个适配器的集成上下文拿的是按它自己的适配器键要来的日志器", async () => {
 		const loggers = new Map<string, typeof logger>();
@@ -112,6 +129,7 @@ describe("registerBuiltinAdapters", () => {
 			registry: createPlatformAdapterRegistry(),
 			adapters: [onebot, qq, webhook],
 			loggerOf,
+			inbound: {},
 			stores: memoryIntegrationStore(),
 			problems: ignoredProblems,
 			connections: () => [],
@@ -157,6 +175,7 @@ describe("registerBuiltinAdapters", () => {
 			registry: createPlatformAdapterRegistry(),
 			adapters: [onebot, qq],
 			loggerOf: () => logger,
+			inbound: {},
 			// 与真存储宿主同形状:把手的 `redact` 归属是它开的那个键,同一种整批换。
 			stores: {
 				open: async (key) =>
@@ -222,6 +241,7 @@ describe("registerBuiltinAdapters", () => {
 				registry,
 				adapters: [first, dup, third],
 				loggerOf: () => logger,
+				inbound: {},
 				stores: { open: (key) => memoryIntegrationStore().open(key) },
 				problems: ignoredProblems,
 				connections: () => [],
@@ -247,6 +267,7 @@ describe("registerBuiltinAdapters", () => {
 				adapters: [first, second],
 				problems: ignoredProblems,
 				loggerOf: () => logger,
+				inbound: {},
 				stores: {
 					open: async (key) => {
 						if (key === "qq-official") throw new Error("打不开");

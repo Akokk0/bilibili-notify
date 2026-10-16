@@ -8,7 +8,6 @@ import type {
 	Disposable,
 	Failure,
 	InboundGroupMessage,
-	InboundMeta,
 	InboundPrivateMessage,
 	Logger,
 	NotificationPayload,
@@ -1051,13 +1050,6 @@ export interface QQOfficialAdapterOptions {
 	 * (表只归适配器用,宿主不持有);只在测试里想预先塞几条记录时传。
 	 */
 	registry?: QQSessionRegistry;
-	/**
-	 * 入站消息的两路出口(私聊 → 指令分发,群 → 链接解析),与 onebot adapter 的同名选项是
-	 * 同一个角色、同一个形状。附上收到这条消息的 adapter id —— 回到来源群要知道该用哪个
-	 * adapter 的凭据发。不接 = 那一路不解析。
-	 */
-	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
-	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
 }
 
 interface QQLive {
@@ -1120,7 +1112,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 
-	function makeLive(connection: QQOfficialConnection): QQLive {
+	function makeLive(
+		connection: QQOfficialConnection,
+		inbound: PlatformAdapterContext["inbound"],
+	): QQLive {
 		const cfg = connection.settings;
 		const tm = makeTokenManager(cfg);
 		const base = qqApiBase(cfg.sandbox);
@@ -1136,18 +1131,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			},
 			getToken: () => tm.getToken(),
 			onDiscovered: (s) => registry.record(connection.id, s, Date.now()),
-			...(opts.onInboundPrivate
-				? {
-						onInboundPrivate: (m: InboundPrivateMessage) =>
-							opts.onInboundPrivate?.(m, { connectionId: connection.id, platform: "qq-official" }),
-					}
-				: {}),
-			...(opts.onInboundGroup
-				? {
-						onInboundGroup: (m: InboundGroupMessage) =>
-							opts.onInboundGroup?.(m, { connectionId: connection.id, platform: "qq-official" }),
-					}
-				: {}),
+			// 平台不在这儿报:宿主按连接补(`ctx.inbound` 只收 `connectionId`)。
+			onInboundPrivate: (m: InboundPrivateMessage) =>
+				inbound.private(m, { connectionId: connection.id }),
+			onInboundGroup: (m: InboundGroupMessage) => inbound.group(m, { connectionId: connection.id }),
 			serviceCtx,
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,
@@ -1218,7 +1205,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
 	}
 
-	function reconcile(connections: readonly Connection[]): void {
+	function reconcile(
+		connections: readonly Connection[],
+		inbound: PlatformAdapterContext["inbound"],
+	): void {
 		if (disposed) return;
 		const desired = new Map<string, QQOfficialConnection>();
 		for (const a of connections) {
@@ -1242,7 +1232,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		// 新建:期望但无 live(或刚被指纹变更删掉)。
 		for (const [id, a] of desired) {
 			if (live.has(id)) continue;
-			live.set(id, makeLive(a));
+			live.set(id, makeLive(a, inbound));
 		}
 		// logReconnects 不参与 fingerprint(纯日志偏好,不该触发断连重建)—— 每轮把
 		// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
@@ -1334,8 +1324,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		start(ctx: PlatformAdapterContext): void {
 			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
-			reconcile(ctx.connections());
-			ctx.onConnectionsChanged(() => reconcile(ctx.connections()));
+			reconcile(ctx.connections(), ctx.inbound);
+			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx.inbound));
 		},
 
 		stop(): void {

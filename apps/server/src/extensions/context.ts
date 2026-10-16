@@ -19,7 +19,6 @@ import {
 	fail,
 	formatZodIssues,
 	type InboundHandlers,
-	type InboundMeta,
 	type Logger,
 	manifestProvides,
 	ok,
@@ -533,14 +532,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		};
 	}
 
-	/** 这条连接是不是它自己的 —— 是的话把连接交出来,入站那两道校验都要用。 */
-	function own(connectionId: string): Connection | undefined {
-		const hit = opts.connection
-			? opts.connection(connectionId)
-			: opts.connections().find((connection) => connection.id === connectionId);
-		return hit && hit.adapterKey === id ? hit : undefined;
-	}
-
 	// ---- 自己的设置(ADR-0019 决策 36)----------------------------------------------------
 
 	/** 清单声明的设置项 —— 点名「哪一格」时拿它念名字。 */
@@ -622,40 +613,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				.catch((err) => logger.error(`设置变更的订阅者抛了:${(err as Error).message}`));
 		}),
 	);
-
-	/** 报错 / 作恶各记一行就够 —— 每条连接一次,不然一条帧刷一行。 */
-	const platformMismatchLogged = new Set<string>();
-
-	function feed(
-		route: "private" | "group",
-		meta: InboundMeta,
-		deliver: (meta: InboundMeta) => void,
-	): void {
-		const connection = own(meta.connectionId);
-		if (!connection) {
-			// 冒充别人的连接 —— 丢掉。主人身份比对走「平台 + 地址 + bot」三坐标,放过去
-			// 就等于让一个拓展替别人说话。
-			logger.warn(
-				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是它的`,
-			);
-			return;
-		}
-		// 🔴 **平台以连接上那一格为准。** 它是主人身份比对的另一半(`inboundIdentity` →
-		// `sameChatIdentity`,「绝不能跨平台比对」那条纪律就靠它),而拓展自报的那一格我们
-		// 没有任何办法核。连接现在**有** platform(决策 45,面板建目标时也从这儿抄),宿主
-		// 自己答得出来 —— 于是桥那边报错一格(或者作恶)也顶不成别的平台。
-		if (meta.platform !== connection.platform) {
-			if (!platformMismatchLogged.has(connection.id)) {
-				platformMismatchLogged.add(connection.id);
-				logger.warn(
-					`连接 ${connection.id} 报的平台是 ${meta.platform},与它自己那一格 ${connection.platform} 对不上;按连接算`,
-				);
-			}
-			deliver({ ...meta, platform: connection.platform });
-			return;
-		}
-		deliver(meta);
-	}
 
 	/**
 	 * 推送源那一口给面板的东西从哪来 —— 先核对清单开没开这一口,再取:只认清单。
@@ -800,6 +757,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 						adapterKey: id,
 						settingsSchema: def.configSchema,
 						connections: opts.connections,
+						...(opts.connection ? { connection: opts.connection } : {}),
+						inbound: opts.inbound,
 						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
 						problems: opts.problems,
 						rejectedProblemLevel: "warn",
@@ -844,11 +803,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				reportLiveStatus: reporter("liveStatus"),
 				reportProfile: reporter("profile"),
 			};
-		},
-		inbound: {
-			private: (msg, meta) =>
-				feed("private", meta, (checked) => opts.inbound.private?.(msg, checked)),
-			group: (msg, meta) => feed("group", meta, (checked) => opts.inbound.group?.(msg, checked)),
 		},
 		onUpgrade(handler) {
 			if (integration.disposed) {

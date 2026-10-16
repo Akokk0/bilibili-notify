@@ -200,6 +200,15 @@ export interface PlatformAdapterContext extends IntegrationContext {
 	}): void;
 	/** 清掉一个问题(同 `reportProblem` 的对象规矩);语义同集成层的 `resolveProblem`。 */
 	resolveProblem(problem: { connectionId?: string; code: string; notify?: boolean }): void;
+	/**
+	 * 把收到的私聊 / 群消息交给宿主(ADR-0024 决策 12)。适配器只报**是哪条连接**收到的(`connectionId`),
+	 * 平台不由适配器自报:宿主核这条连接是不是这个适配器的(按 `adapterKey`,不是、或不存在的丢掉并记一行),
+	 * 平台取连接上那一格,补成完整的 {@link InboundMeta} 再交下一层。两个成员都在 —— 没人接的那一路宿主静默丢。
+	 */
+	inbound: {
+		private(msg: InboundPrivateMessage, meta: Pick<InboundMeta, "connectionId">): void;
+		group(msg: InboundGroupMessage, meta: Pick<InboundMeta, "connectionId">): void;
+	};
 }
 
 /**
@@ -212,7 +221,7 @@ export interface PlatformAdapterContext extends IntegrationContext {
 export interface InboundMeta {
 	connectionId: string;
 	/**
-	 * 收到这条消息的平台。
+	 * 收到这条消息的平台 —— **宿主按连接补上的**,适配器不自报(适配器交入站时只带 `connectionId`)。
 	 *
 	 * 主人身份的比对要按平台走:OneBot 的 QQ 号与官机的 C2C openid 是两个命名空间,
 	 * 光比字符串就是在赌两边永远不撞。这一格让那句「绝不能跨平台比对」第一次真的可校验。

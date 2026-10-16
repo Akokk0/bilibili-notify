@@ -14,10 +14,12 @@ import { CookieJar, HttpClient } from "@bilibili-notify/http";
 import {
 	BILIBILI_GUARD_PROGRAM,
 	BILIBILI_SOURCE_KEY,
+	type Connection,
 	fail,
 	type IntegrationContext,
 	type Logger,
 	ok as okResult,
+	type PlatformAdapterContext,
 	type PostReport,
 	type SourceAuth,
 	type SourceContext,
@@ -31,7 +33,11 @@ import { createBiliDevtools } from "../bilibili/devtools/index.js";
 import { GUARD_ICON_REQUEST_HEADERS, type GuardIcons } from "../bilibili/live/guard-icons.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { settingsSegment } from "../bilibili/settings.js";
-import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "../compose.js";
+import {
+	BUILTIN_INTEGRATION_SETTINGS,
+	type BuiltinIntegrationsDeps,
+	composeBuiltinIntegrations,
+} from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import { createImageStore, IMAGE_GRACE_MS, type ImageStore } from "../images/image-store.js";
@@ -49,6 +55,22 @@ vi.mock("@bilibili-notify/http", async (importOriginal) => {
 		...actual,
 		// 用子类而不是箭头函数:箭头函数不能 `new`(biome 会把写成 function 的包装自动改成箭头)。
 		HttpClient: vi.fn(class extends actual.HttpClient {}),
+	};
+});
+
+// OneBot 适配器换成「照真的造、但 start 只把拿到的 ctx 存下来」:真 start 会按连接名单开 WS,而这里要看的只是
+// compose 有没有把入站的下一层递进适配器上下文(`registerAdapters` → `registerBuiltinAdapters` → ctx.inbound)。
+const startedCtx = vi.hoisted(() => ({ onebot: undefined as unknown }));
+vi.mock("../platforms/onebot.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../platforms/onebot.js")>();
+	return {
+		...actual,
+		createOnebotAdapter: vi.fn((opts: Parameters<typeof actual.createOnebotAdapter>[0]) => ({
+			...actual.createOnebotAdapter(opts),
+			start(ctx: unknown) {
+				startedCtx.onebot = ctx;
+			},
+		})),
 	};
 });
 
@@ -140,6 +162,10 @@ function compose(
 		imageStore?: Pick<ImageStore, "register">;
 		/** 抓徽章图的请求客户端:不给就是个连不上的假的(不联网);显式传 `undefined` = 真的不给(走自建那一支)。 */
 		guardIconHttp?: Pick<HttpClient, "fetch">;
+		/** 入站的下一层:不给就是两个空函数。 */
+		inbound?: BuiltinIntegrationsDeps["inbound"];
+		/** 全部连接:不给就是空名单。 */
+		connections?: () => readonly Connection[];
 	} = {},
 ) {
 	const subs = opts.subs ?? [];
@@ -193,12 +219,11 @@ function compose(
 		fans: () => undefined,
 		healthCheck: () => undefined,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
-		onInboundPrivate: () => {},
-		onInboundGroup: () => {},
+		inbound: opts.inbound ?? { private: () => {}, group: () => {} },
 		adapterRegistry,
 		integrationStore,
 		problems: ignoredProblems,
-		connections: () => [],
+		connections: opts.connections ?? (() => []),
 		onConnectionsChanged: () => ({ dispose() {} }),
 	};
 	return {
@@ -640,6 +665,37 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 		squatter.dispose();
 		await expect(builtins.registerAdapters()).rejects.toThrow("already registered");
 		expect(keysOf(adapterRegistry)).toEqual([]);
+	});
+
+	// 验红:把 `compose.ts` 递给 `registerBuiltinAdapters` 的 `inbound` 换成空函数,这条红
+	// (入站的下一层没接上:适配器交来的消息核过归属也到不了指令分发 / 链接解析)。
+	it("入站的下一层接上了适配器上下文:适配器经 ctx.inbound 交一条自己连接的群消息,到了 compose 交出去的下一层,平台取连接上的", async () => {
+		const group = vi.fn();
+		const connection = {
+			id: "ob-1",
+			name: "napcat",
+			enabled: true,
+			adapterKey: "onebot",
+			platform: "onebot",
+			settings: {},
+			platformSnapshot: {},
+		} as unknown as Connection;
+		const { builtins } = compose({
+			inbound: { private: vi.fn(), group },
+			connections: () => [connection],
+		});
+		const adapters = await builtins.registerAdapters();
+		const ctx = startedCtx.onebot as PlatformAdapterContext;
+		const msg = {
+			address: "g1",
+			senderId: "u1",
+			text: "hi",
+			cardLinks: [],
+			miniAppCardLinks: [],
+		};
+		ctx.inbound.group(msg, { connectionId: "ob-1" });
+		expect(group).toHaveBeenCalledWith(msg, { connectionId: "ob-1", platform: "onebot" });
+		await adapters.dispose();
 	});
 
 	// 验红:把 `compose.ts` 里某个工厂的 `loggerOf("onebot")` 写成 `loggerOf("webhook")`(任何一个换成别的键),这条红

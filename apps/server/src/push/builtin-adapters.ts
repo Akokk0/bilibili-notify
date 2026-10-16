@@ -1,4 +1,10 @@
-import type { Connection, Disposable, Logger, PlatformAdapter } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	Disposable,
+	InboundHandlers,
+	Logger,
+	PlatformAdapter,
+} from "@bilibili-notify/internal";
 import {
 	disposeThenClose,
 	type IntegrationStore,
@@ -24,6 +30,10 @@ export interface RegisterBuiltinAdaptersOptions {
 	problems: CreateIntegrationContextOptions["problems"];
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
+	/** 按 id 取一条连接(入站校验归属的热路径用;不给就从全表里找)。 */
+	connection?: (connectionId: string) => Connection | undefined;
+	/** 入站的下一层(指令分发、链接解析);各适配器经 `ctx.inbound` 交来的消息核过归属、补上平台后交给它。 */
+	inbound: InboundHandlers;
 	/** 连接配置变了的订阅。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 }
@@ -65,6 +75,8 @@ export async function registerBuiltinAdapters(
 				adapterKey: adapter.adapterKey,
 				settingsSchema: adapter.settingsSchema,
 				connections: opts.connections,
+				...(opts.connection ? { connection: opts.connection } : {}),
+				inbound: opts.inbound,
 				// 订阅交回的把手记进这份集成上下文:适配器停下时订阅自动摘掉。
 				onConnectionsChanged: (fn) => context.track(opts.onConnectionsChanged(fn)),
 				problems: opts.problems,
