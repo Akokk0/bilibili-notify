@@ -168,6 +168,12 @@ function harness(
 
 const run = (h: Harness): Promise<void> => deliverPost(h.event, h.deps);
 const segsOf = (h: Harness, call = 0): Seg[] => h.pushedMessage.mock.calls[call]?.[0] as Seg[];
+/** 交给推送口的本体锚点(第一次推送的第一个锚点)。 */
+const mainAnchorOf = (h: Harness): PostPushAnchor =>
+	(h.push.mock.calls[0]?.[1] as PostPushAnchor[] | undefined)?.[0] as PostPushAnchor;
+/** 本体锚点的 AI 版里第一条消息的段;没有 AI 版就是 `undefined`。 */
+const aiSegsOf = (h: Harness): Seg[] =>
+	(mainAnchorOf(h).aiMessages as Array<Seg[]> | undefined)?.[0] as Seg[];
 /** 第 n 次出卡时交给出卡器的那份作品。 */
 const cardPostOf = (h: Harness, call: number): Post =>
 	h.generatePostCard.mock.calls[call]?.[0] as Post;
@@ -479,7 +485,9 @@ describe("deliverPost — AI 点评", () => {
 			[],
 			aiOverride,
 		);
-		expect(segsOf(custom)[0]?.text).toBe(`点评\n${LINK}`);
+		// 模板版照发,点评是另一份:交给推送层按目标挑。
+		expect(segsOf(custom)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
+		expect(aiSegsOf(custom)[0]?.text).toBe(`点评\n${LINK}`);
 
 		const dflt = harness({ withImage: false, withAi: true, post: { text: "正文" } });
 		await run(dflt);
@@ -545,7 +553,61 @@ describe("deliverPost — AI 点评", () => {
 		h.comment.mockRejectedValueOnce(new Error("额度用完"));
 		await run(h);
 		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
+		// 没有 AI 版:键缺失,不是 undefined 值。
+		expect("aiMessages" in mainAnchorOf(h)).toBe(false);
 		expect(h.logs.some((l) => l.level === "error" && l.msg.includes("额度用完"))).toBe(true);
+	});
+
+	it("生成了点评:本体锚点带两份,messages 是模板那一串、aiMessages 是点评那一串,卡片两份都在;只调一次 AI", async () => {
+		const h = harness({ withAi: true, post: { text: "正文" } });
+		await run(h);
+		expect(h.comment).toHaveBeenCalledTimes(1);
+		expect(mainAnchorOf(h).role).toBe("main");
+		expect(segsOf(h)).toEqual([
+			{ kind: "image", buffer: CARD, mime: "image/jpeg" },
+			{ kind: "text", text: `阿绫发布了一条动态\n${LINK}` },
+		]);
+		expect(aiSegsOf(h)).toEqual([
+			{ kind: "image", buffer: CARD, mime: "image/jpeg" },
+			{ kind: "text", text: `点评\n${LINK}` },
+		]);
+	});
+
+	it("生成门折出来是关(没人用得上点评)→ 不调 AI,锚点上没有 aiMessages 这一格", async () => {
+		const h = harness({ withAi: true, post: { text: "正文" }, settings: { aiEnabled: false } });
+		await run(h);
+		expect(h.comment).not.toHaveBeenCalled();
+		expect("aiMessages" in mainAnchorOf(h)).toBe(false);
+	});
+
+	it("文字块藏起来 → 不调 AI、也没有 aiMessages", async () => {
+		const h = harness({
+			withAi: true,
+			post: { text: "正文" },
+			settings: { messageLayout: layoutOf([{ type: "card" }, { type: "text", visible: false }]) },
+		});
+		await run(h);
+		expect(h.comment).not.toHaveBeenCalled();
+		expect("aiMessages" in mainAnchorOf(h)).toBe(false);
+	});
+
+	it("视频作品:messages 用视频模板,aiMessages 是点评", async () => {
+		const h = harness({
+			withImage: false,
+			withAi: true,
+			post: { text: "正文", video: { cover: {}, title: "新歌", description: "" } },
+		});
+		await run(h);
+		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了新视频\n${LINK}`);
+		expect(aiSegsOf(h)[0]?.text).toBe(`点评\n${LINK}`);
+	});
+
+	it("点评是空串:同今天,当正文用(aiMessages 照出),模板那份不受影响", async () => {
+		const h = harness({ withImage: false, withAi: true, post: { text: "正文" } });
+		h.comment.mockResolvedValueOnce("");
+		await run(h);
+		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
+		expect(aiSegsOf(h)).toBeDefined();
 	});
 });
 

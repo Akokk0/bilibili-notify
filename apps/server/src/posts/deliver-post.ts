@@ -58,7 +58,11 @@ export interface PostSettings {
 	 * 里的全局那份逐枚合并,所以快照不会把全局冻住。
 	 */
 	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
-	/** 是否做 AI 点评。`false` 时不调 `CommentaryProvider.comment()`,推送只用模板文字。 */
+	/**
+	 * 要不要生成 AI 点评。`false` 时不调 `CommentaryProvider.comment()`,推送只用模板文字。
+	 * 折好的结果:AI 总开关开着,且「写正文」(`ai.writing.post`)默认开、或某个现存目标的例外开
+	 * (ADR-0032:没有任何目标会用到点评就不花这次调用)。
+	 */
 	aiEnabled: boolean;
 	/** 点评时允不允许联网搜索:搜索按次付费,自动路径必须主人亲手点亮;装配只把它翻成 override.webSearch。 */
 	aiWebSearch: boolean;
@@ -320,18 +324,23 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 		return;
 	}
 
-	// 文字在「有卡」「没卡」两种情况下完全一致:有 AI 点评用点评,否则按模板渲染。
-	// 链接独立成部件,顺序 / 显隐 / 分条全由版式决定。
+	// 文字在「有卡」「没卡」两种情况下完全一致。模板那一份恒做;有 AI 点评时再按同一套版式多做一份 AI 版,
+	// 两份一起交给推送层,由它按目标挑(ADR-0032 决策 2)。链接独立成部件,顺序 / 显隐 / 分条全由版式决定。
 	const template = post.video !== undefined ? settings.videoTemplate : settings.template;
-	const text = wantPart("text") ? (aiComment ?? renderText(template, post.creator.name)) : "";
+	const text = wantPart("text") ? renderText(template, post.creator.name) : "";
 	const messages: PushSegment[][] = assembleMessageGroups(layout, { card, text, link: event.url });
+	// 点评只在文字块可见时才生成(见上),所以有点评就一定要出 AI 版。
+	const aiMessages: PushSegment[][] | undefined =
+		aiComment === undefined
+			? undefined
+			: assembleMessageGroups(layout, { card, text: aiComment, link: event.url });
 	// 这一条作品 = 一次推送:主卡(可能分条)是本体,图集是排在它后面的附加项锚点,一起交出去 ——
 	// 宿主的历史落同一行。开关、静音与免扰就在交出去的这一刻判一次。
 	const anchors: PostPushAnchor[] = [];
 	if (messages.length === 0) {
 		logger.debug(`[push] ${tag} 消息版式所有部件隐藏/缺失,本条不推送`);
 	} else {
-		anchors.push({ role: "main", messages });
+		anchors.push({ role: "main", messages, ...(aiMessages ? { aiMessages } : {}) });
 	}
 
 	// 图集:从外层 `post.images` 推出来,只有带公网网址的图进(只有图库引用的,适配器没有链接可给)。

@@ -64,7 +64,7 @@ describe("订阅视图 / 设置带上这位 UP 那一层旋钮覆盖", () => {
 		const sub = biliSub({ cardSkinKnobs: PER_UP });
 		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
 		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toEqual(PER_UP);
-		expect(postSettingsOf(sub, g).cardSkinKnobs).toEqual(PER_UP);
+		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toEqual(PER_UP);
 	});
 
 	/**
@@ -76,14 +76,14 @@ describe("订阅视图 / 设置带上这位 UP 那一层旋钮覆盖", () => {
 		const sub = biliSub();
 		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
 		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toBeUndefined();
-		expect(postSettingsOf(sub, g).cardSkinKnobs).toBeUndefined();
+		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toBeUndefined();
 	});
 
 	it("拓展订阅:直播设置与作品设置都带着", () => {
 		const sub = makeExtensionSubscription({ overrides: { cardSkinKnobs: PER_UP } });
 		const g = globalsWith();
 		expect(liveWorkSettings(sub, g).cardSkinKnobs).toEqual(PER_UP);
-		expect(postSettingsOf(sub, g).cardSkinKnobs).toEqual(PER_UP);
+		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toEqual(PER_UP);
 	});
 });
 

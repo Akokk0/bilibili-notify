@@ -40,7 +40,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 		g.ai.enabled = false;
 		g.ai.search.engines.dynamic = true;
 		for (const sub of [biliSub(), makeExtensionSubscription()]) {
-			const s = postSettingsOf(sub, g);
+			const s = postSettingsOf(sub, g, true);
 			expect(s.filter).toEqual({ ...DEFAULT_CONTENT_FILTERS, ...g.defaults.filters });
 			expect(s.filter.blockVideos).toBe(true);
 			expect(s.template).toBe("全局动态 {name}");
@@ -69,7 +69,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 			cardSkin: "skin-x",
 			filters: { blockVideos: false, blockImages: true },
 		});
-		const s = postSettingsOf(sub, g);
+		const s = postSettingsOf(sub, g, true);
 		expect(s.template).toBe("这位 {name}");
 		expect(s.videoTemplate).toBe("这位视频 {name}");
 		expect(s.imageGroup).toEqual({ enabled: true, mergeForward: true });
@@ -86,17 +86,17 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 	it("只覆盖图集的一个键(开关):另一个键(合并转发)沿用全局", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.imageGroup = { enabled: false, mergeForward: true };
-		const s = postSettingsOf(biliSub({ imageGroup: { enabled: true } }), g);
+		const s = postSettingsOf(biliSub({ imageGroup: { enabled: true } }), g, true);
 		expect(s.imageGroup).toEqual({ enabled: true, mergeForward: true });
 	});
 
 	it("每次现折:全局改了,下一次折出来就是新的(不是攥着旧的)", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = biliSub();
-		const before = postSettingsOf(sub, g);
+		const before = postSettingsOf(sub, g, true);
 		g.defaults.templates.post = "改过的 {name}";
 		g.defaults.cards.enabled = !g.defaults.cards.enabled;
-		const after = postSettingsOf(sub, g);
+		const after = postSettingsOf(sub, g, true);
 		expect(after.template).toBe("改过的 {name}");
 		expect(after.template).not.toBe(before.template);
 		expect(after.cardEnabled).toBe(!before.cardEnabled);
@@ -104,22 +104,25 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 
 	it("aiOverride 只在这位 UP 真有 AI 覆盖时才有(留 undefined 才跟着全局人格热更,折进来就冻住了)", () => {
 		const g = makeDefaultGlobalConfig();
-		expect(postSettingsOf(biliSub(), g).aiOverride).toBeUndefined();
-		expect(postSettingsOf(biliSub({ ai: { preset: "inherit" } }), g).aiOverride).toBeDefined();
+		expect(postSettingsOf(biliSub(), g, true).aiOverride).toBeUndefined();
+		expect(
+			postSettingsOf(biliSub({ ai: { preset: "inherit" } }), g, true).aiOverride,
+		).toBeDefined();
 	});
 
 	it("订阅的旋钮覆盖原样给、不折全局(渲染器出图时与全局那份逐枚合并)", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.cardSkinKnobs = { default: { "gradient-end": "#222222" } };
 		const knobs = { default: { "gradient-start": "#aaaaaa" } };
-		expect(postSettingsOf(biliSub({ cardSkinKnobs: knobs }), g).cardSkinKnobs).toEqual(knobs);
-		expect(postSettingsOf(biliSub(), g).cardSkinKnobs).toBeUndefined();
+		expect(postSettingsOf(biliSub({ cardSkinKnobs: knobs }), g, true).cardSkinKnobs).toEqual(knobs);
+		expect(postSettingsOf(biliSub(), g, true).cardSkinKnobs).toBeUndefined();
 	});
 
 	it("订阅设了直播封面 → 作品设置不读它:没有任何卡片样式覆盖这一格", () => {
 		const s = postSettingsOf(
 			biliSub({ cards: { liveCoverImageIds: ["up-cover.png"] } }),
 			makeDefaultGlobalConfig(),
+			true,
 		);
 		expect(s).not.toHaveProperty("customCardStyle");
 		expect(JSON.stringify(s)).not.toContain("up-cover.png");
@@ -140,7 +143,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 				},
 			},
 		});
-		const { filter } = postSettingsOf(sub, makeDefaultGlobalConfig());
+		const { filter } = postSettingsOf(sub, makeDefaultGlobalConfig(), true);
 		expect(filter).toMatchObject({
 			blockReposts: true,
 			blockArticles: true,
@@ -159,11 +162,14 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 
 describe("makePostSettingsReader — 不该推就回 undefined", () => {
 	/** 一条订阅 + 一份全局 + 来源在不在跑,做成可以被测试随时改的读口。 */
-	function setup(initial: { sub?: Subscription; g?: GlobalConfig; running?: boolean } = {}) {
+	function setup(
+		initial: { sub?: Subscription; g?: GlobalConfig; running?: boolean; targetIds?: string[] } = {},
+	) {
 		const state = {
 			sub: "sub" in initial ? initial.sub : biliSub(),
 			g: initial.g ?? makeDefaultGlobalConfig(),
 			running: initial.running ?? true,
+			targetIds: initial.targetIds ?? [],
 		};
 		const subscription = vi.fn((id: string) => (id === state.sub?.id ? state.sub : undefined));
 		const sourceRunning = vi.fn((_sub: Subscription) => state.running);
@@ -171,6 +177,7 @@ describe("makePostSettingsReader — 不该推就回 undefined", () => {
 			subscription,
 			globals: () => state.g,
 			sourceRunning,
+			targetIds: () => state.targetIds,
 		});
 		return { state, read, subscription, sourceRunning };
 	}
@@ -178,7 +185,7 @@ describe("makePostSettingsReader — 不该推就回 undefined", () => {
 
 	it("订阅在、启用着、作品开关开着、来源在跑 → 折好的设置(与 postSettingsOf 同一份)", () => {
 		const t = setup();
-		expect(t.read(ID)).toEqual(postSettingsOf(t.state.sub as Subscription, t.state.g));
+		expect(t.read(ID)).toEqual(postSettingsOf(t.state.sub as Subscription, t.state.g, true));
 		expect(t.subscription).toHaveBeenCalledWith(ID);
 		expect(t.sourceRunning).toHaveBeenCalledWith(t.state.sub);
 	});
@@ -225,5 +232,67 @@ describe("makePostSettingsReader — 不该推就回 undefined", () => {
 		expect(first?.template).not.toBe("改过的 {name}");
 		t.state.sub = { ...(t.state.sub as Subscription), enabled: false };
 		expect(t.read(ID)).toBeUndefined();
+	});
+});
+
+describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,ADR-0032)", () => {
+	const ID = biliSub().id;
+	const T1 = "22222222-2222-4222-8222-222222222222";
+	const GONE = "33333333-3333-4333-8333-333333333333";
+
+	function aiOf(opts: {
+		enabled: boolean;
+		byTarget?: Record<string, boolean>;
+		master?: boolean;
+		targetIds?: string[];
+	}): boolean | undefined {
+		const g = makeDefaultGlobalConfig();
+		g.ai.enabled = opts.master ?? true;
+		g.ai.writing.post = { enabled: opts.enabled, byTarget: opts.byTarget ?? {} };
+		const sub = biliSub();
+		const read = makePostSettingsReader({
+			subscription: () => sub,
+			globals: () => g,
+			sourceRunning: () => true,
+			targetIds: () => opts.targetIds ?? [T1],
+		});
+		return read(ID)?.aiEnabled;
+	}
+
+	it("默认开 → 要生成", () => {
+		expect(aiOf({ enabled: true })).toBe(true);
+	});
+
+	it("默认关、没有例外 → 不生成", () => {
+		expect(aiOf({ enabled: false })).toBe(false);
+	});
+
+	it("默认关、一个现存目标的例外开 → 要生成", () => {
+		expect(aiOf({ enabled: false, byTarget: { [T1]: true } })).toBe(true);
+	});
+
+	it("默认关、只有悬空目标(已删)的例外开 → 不生成", () => {
+		expect(aiOf({ enabled: false, byTarget: { [GONE]: true } })).toBe(false);
+	});
+
+	it("AI 总开关关着 → 恒不生成,不管写的是什么", () => {
+		expect(aiOf({ enabled: true, master: false })).toBe(false);
+		expect(aiOf({ enabled: false, byTarget: { [T1]: true }, master: false })).toBe(false);
+	});
+
+	it("目标表是现读的:例外指着的目标后来删了,下一次就不生成", () => {
+		const g = makeDefaultGlobalConfig();
+		g.ai.enabled = true;
+		g.ai.writing.post = { enabled: false, byTarget: { [T1]: true } };
+		let ids = [T1];
+		const read = makePostSettingsReader({
+			subscription: () => biliSub(),
+			globals: () => g,
+			sourceRunning: () => true,
+			targetIds: () => ids,
+		});
+		expect(read(ID)?.aiEnabled).toBe(true);
+		ids = [];
+		expect(read(ID)?.aiEnabled).toBe(false);
 	});
 });

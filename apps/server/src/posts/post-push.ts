@@ -62,4 +62,9 @@ export interface PostPushAnchor {
 	 * 中止该目标这个锚点里的后续条)。也可以是一个「等会儿给」的约定;最后为空就跳过。
 	 */
 	messages: PushSegment[][] | Promise<PushSegment[][] | undefined>;
+	/**
+	 * 同一个锚点的 AI 写的那一份(ADR-0032 决策 2),形状同 `messages`。只有本体会带:`messages` 是模板版,
+	 * 推送层按目标在两份里挑。没有就是没做 AI 版,所有目标用 `messages`。
+	 */
+	aiMessages?: PushSegment[][] | Promise<PushSegment[][] | undefined>;
 }

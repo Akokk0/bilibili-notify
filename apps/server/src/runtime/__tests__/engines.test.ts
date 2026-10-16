@@ -640,11 +640,18 @@ async function settleTracked(c: Ctx): Promise<void> {
 		await tracking.settled();
 	} while (tracking.tracked.length !== seen);
 }
-/** 推送层收到的每一次作品推送里,本体那个锚点的每条消息的文字。 */
+/** 推送层收到的每一次作品推送里,本体那个锚点的每条消息的文字(模板那一份)。 */
 async function mainTexts(): Promise<string[]> {
+	return anchorTexts("messages");
+}
+/** 同上,AI 写的那一份(只有生成了点评的推送才有)。 */
+async function aiTexts(): Promise<string[]> {
+	return anchorTexts("aiMessages");
+}
+async function anchorTexts(field: "messages" | "aiMessages"): Promise<string[]> {
 	const out: string[] = [];
 	for (const [sent] of H.push[0].push.mock.calls) {
-		const messages = (await sent.anchors[0]?.messages) ?? [];
+		const messages = (await sent.anchors[0]?.[field]) ?? [];
 		for (const m of messages) {
 			out.push(
 				m.kind === "text"
@@ -2760,7 +2767,9 @@ describe("createEngines — AI 热重载三态", () => {
 		reportBili("1", bilibiliPost("正文"), "d2");
 		await settleTracked(c);
 		expect(H.ai[0].comment).toHaveBeenCalledTimes(1);
-		expect((await mainTexts()).at(-1)).toBe("点评\nhttps://t.bilibili.com/d2");
+		// 模板版照交,点评是另一份(推送层按目标挑)。
+		expect((await mainTexts()).at(-1)).toBe("模板 阿绫\nhttps://t.bilibili.com/d2");
+		expect(await aiTexts()).toEqual(["点评\nhttps://t.bilibili.com/d2"]);
 
 		patchGlobals(c, (g) => {
 			g.ai.providers = {};
@@ -2770,6 +2779,7 @@ describe("createEngines — AI 热重载三态", () => {
 		await settleTracked(c);
 		expect(H.ai[0].comment).toHaveBeenCalledTimes(1); // 撤掉之后没再调
 		expect((await mainTexts()).at(-1)).toBe("模板 阿绫\nhttps://t.bilibili.com/d3");
+		expect(await aiTexts()).toHaveLength(1); // 撤掉之后这一条没有 AI 版
 	});
 
 	it("仍启用但改配置:增量 updateConfig,不重建实例", () => {
@@ -3179,7 +3189,7 @@ describe("createEngines — 消息版式", () => {
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
-		expect(postSettingsOf(sub, g).messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
+		expect(postSettingsOf(sub, g, true).messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
 	});
 
 	it("per-UP messageLayout 覆盖折叠进作品设置与直播视图(整份覆盖 + normalize)", () => {
@@ -3198,7 +3208,7 @@ describe("createEngines — 消息版式", () => {
 				separator: " | ",
 			},
 		};
-		const post = postSettingsOf(sub, g);
+		const post = postSettingsOf(sub, g, true);
 		expect(post.messageLayout.blocks.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([
 			"text",
 			"card",
@@ -3601,6 +3611,33 @@ describe("createEngines — 连接所在平台的能力", () => {
 		const c = setup();
 		active = c;
 		expect(c.runtime.connectionCapabilities("nope")).toBeUndefined();
+	});
+});
+
+/**
+ * 「AI 写正文」的读口(ADR-0032):推送层逐目标挑哪份正文,看的是宿主此刻的 `ai.writing`。构造时快照的话,
+ * 面板里改了例外要重启才认 —— 而所有推送层的测试都用自己的假读口,这根线只有在这里钉得住。
+ */
+describe("createEngines — 推送层的 aiWriting 读口接的是活的全局设置", () => {
+	it("读口回当前的 ai.writing;全局换了新的一份,下一次读到的就是新的", () => {
+		const first = makeDefaultGlobalConfig();
+		first.ai.writing.post = { enabled: false, byTarget: { "t-1": true } };
+		const c = setup({ globals: first });
+		active = c;
+		const read = (H.push[0] as { opts: { aiWriting: () => unknown } }).opts.aiWriting;
+		expect(read()).toEqual({
+			post: { enabled: false, byTarget: { "t-1": true } },
+			liveSummary: { enabled: true, byTarget: {} },
+		});
+
+		const next = structuredClone(first);
+		next.ai.writing.post = { enabled: true, byTarget: {} };
+		next.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		c.configStore._set(next);
+		expect(read()).toEqual({
+			post: { enabled: true, byTarget: {} },
+			liveSummary: { enabled: false, byTarget: {} },
+		});
 	});
 });
 

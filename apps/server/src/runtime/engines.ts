@@ -53,6 +53,7 @@ import type {
 	TemplateBundle,
 } from "@bilibili-notify/internal";
 import {
+	aiWritingNeeded,
 	BILIBILI_SOURCE_KEY,
 	DEFAULT_TEMPLATES,
 	GUARD_PROGRAM_ID,
@@ -648,6 +649,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 「来源还在跑吗」:登记表里有它(内置来源),或拓展订阅的拓展在跑(决策 61:拓展停了,等着的作品不补);
 				// 没接拓展订阅(`extensionSources` 没给)的拓展键就一律不推。
 				sourceRunning: (sub) => sourceStatus.running(subscriptionIdentityOf(sub).sourceKey),
+				targetIds: () => opts.configStore.getTargets().map((t) => t.id),
 			}),
 			// 渲染器与 AI 会被热换:**必须是读外层 let 的闭包**,按值传就是「开机时没有浏览器,之后一直没有卡片」而门禁全绿。
 			image: () => imageRenderer ?? undefined,
@@ -1407,15 +1409,20 @@ function toPushAnchors<T>(
 		role: PushAnchor["role"];
 		extra?: PushAnchor["extra"];
 		messages: T[] | Promise<T[] | undefined>;
+		/** AI 写的那一份(只有作品本体有);没有就不带这一格,不是 `undefined` 值。 */
+		aiMessages?: T[] | Promise<T[] | undefined>;
 	}>,
 	toPayload: (message: T) => NotificationPayload,
 ): PushAnchor[] {
-	return anchors.map(({ role, extra, messages }) => ({
+	const toPayloads = (messages: T[] | Promise<T[] | undefined>) =>
+		Array.isArray(messages)
+			? messages.map(toPayload)
+			: messages.then((made) => made?.map(toPayload));
+	return anchors.map(({ role, extra, messages, aiMessages }) => ({
 		role,
 		extra,
-		messages: Array.isArray(messages)
-			? messages.map(toPayload)
-			: messages.then((made) => made?.map(toPayload)),
+		messages: toPayloads(messages),
+		...(aiMessages ? { aiMessages: toPayloads(aiMessages) } : {}),
 	}));
 }
 
@@ -1423,8 +1430,11 @@ function toPushAnchors<T>(
  * 不往下交的那条路(uid 查不到订阅):锚点里的约定没人等了,先接住,免得做不出来的内容
  * 变成没人处理的拒绝。
  */
-function dropAnchors(anchors: ReadonlyArray<{ messages: unknown }>): void {
-	for (const { messages } of anchors) void Promise.resolve(messages).catch(() => {});
+function dropAnchors(anchors: ReadonlyArray<{ messages: unknown; aiMessages?: unknown }>): void {
+	for (const { messages, aiMessages } of anchors) {
+		void Promise.resolve(messages).catch(() => {});
+		void Promise.resolve(aiMessages).catch(() => {});
+	}
 }
 
 /**
@@ -1645,11 +1655,14 @@ function fromBilibili(sub: Subscription): boolean {
  * 刻意只在**真有 per-UP 覆盖**时才生成的两格:`aiOverride`(没配就 undefined,生成器走全局配置)与
  * `cardSkinKnobs`(订阅自己那层原样给、不折全局,渲染器出图时与全局那份逐枚合并)。
  *
+ * `aiWriting`:作品的 AI 正文有没有人用得上(`aiWritingNeeded` 对现存目标算好的布尔,由读口递进来 ——
+ * 这里不碰目标表,仍是纯函数);`aiEnabled` 是它与 AI 总开关的与。
  * `eff` 给了就不再折一遍。
  */
 export function postSettingsOf(
 	sub: Subscription,
 	globals: GlobalConfig,
+	aiWriting: boolean,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): PostSettings {
 	const d = globals.defaults;
@@ -1661,7 +1674,7 @@ export function postSettingsOf(
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
-		aiEnabled: globals.ai.enabled,
+		aiEnabled: globals.ai.enabled && aiWriting,
 		aiWebSearch: globals.ai.search.engines.dynamic,
 		aiOverride: resolveAiOverride(sub, globals.ai),
 		template: eff.templates.post,
@@ -1680,6 +1693,8 @@ export function makePostSettingsReader(deps: {
 	globals: () => GlobalConfig;
 	/** 这条订阅的来源还在跑吗(问来源登记表:内置来源登着就在;拓展看它自己在不在跑)。 */
 	sourceRunning: (sub: Subscription) => boolean;
+	/** 现存目标的 id:AI 正文的例外只数还在的目标,指向已删目标的例外不算开着。 */
+	targetIds: () => Iterable<string>;
 }): (subscriptionId: string) => PostSettings | undefined {
 	return (subscriptionId) => {
 		const sub = deps.subscription(subscriptionId);
@@ -1688,7 +1703,7 @@ export function makePostSettingsReader(deps: {
 		const eff = resolve(sub, g.defaults);
 		if (!eff.features.post) return undefined;
 		if (!deps.sourceRunning(sub)) return undefined;
-		return postSettingsOf(sub, g, eff);
+		return postSettingsOf(sub, g, aiWritingNeeded(g.ai.writing.post, deps.targetIds()), eff);
 	};
 }
 

@@ -172,6 +172,41 @@ describe("作品那一路(boundPostPush)真的把锚点翻过去了", () => {
 		expect((await messagesOf(sent as Push, 1))?.[0]?.kind).toBe("image-group");
 	});
 
+	it("本体带 AI 版:aiMessages 逐条翻成载荷(现成的与约定都翻),模板版不受影响", async () => {
+		const { push, pushes } = makePushSpy();
+		await boundPostPush(
+			push,
+			"sub-100",
+		)([
+			{
+				role: "main",
+				messages: [[{ kind: "text", text: "模板" }]],
+				aiMessages: [[{ kind: "text", text: "点评一" }], [{ kind: "text", text: "点评二" }]],
+			},
+			{
+				role: "main",
+				messages: [[{ kind: "text", text: "模板乙" }]],
+				aiMessages: Promise.resolve([[{ kind: "text", text: "约定点评" }]]),
+			},
+		]);
+		const anchors = (pushes[0] as Push).anchors;
+		expect(anchors[0]?.messages).toEqual([{ kind: "text", text: "模板" }]);
+		expect(anchors[0]?.aiMessages).toEqual([
+			{ kind: "text", text: "点评一" },
+			{ kind: "text", text: "点评二" },
+		]);
+		expect(await anchors[1]?.aiMessages).toEqual([{ kind: "text", text: "约定点评" }]);
+	});
+
+	it("没有 aiMessages:交出去的锚点也没有这一格(键缺失,不是 undefined 值)", async () => {
+		const { push, pushes } = makePushSpy();
+		await boundPostPush(
+			push,
+			"sub-100",
+		)([{ role: "main", messages: [[{ kind: "text", text: "动态" }]] }]);
+		expect("aiMessages" in ((pushes[0] as Push).anchors[0] as object)).toBe(false);
+	});
+
 	it("绑到另一条订阅 id 上(拓展作品):同一跳,订阅 id 随绑", async () => {
 		const { push, pushes } = makePushSpy();
 		await boundPostPush(
