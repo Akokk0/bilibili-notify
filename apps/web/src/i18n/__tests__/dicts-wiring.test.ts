@@ -1,0 +1,24 @@
+import type { LocaleDicts } from "@bilibili-notify/internal/i18n";
+import { describe, expect, it } from "vite-plus/test";
+import { DICTS } from "../index";
+
+/**
+ * `locales/` 里的每个文件都得接进 `DICTS`(平实层与女仆层都算),说明见服务端同名测试。
+ * 单独一个文件,不受 `use-t.test.tsx` 里 `vi.mock` 的影响。
+ */
+const files = import.meta.glob("../locales/*.json", { eager: true, import: "default" });
+
+describe("面板译文文件都接进了 DICTS", () => {
+	it("目录里至少有文件(扫空了比没有还糟)", () => {
+		expect(Object.keys(files).length).toBeGreaterThan(0);
+	});
+
+	it.each(Object.entries(files))("%s", (path, content) => {
+		const match = /\/([^/]+?)(\.maid)?\.json$/.exec(path);
+		if (match === null) throw new Error(`认不出的文件名: ${path}`);
+		const [, locale, maid] = match;
+		const dicts = (DICTS as Record<string, LocaleDicts | undefined>)[locale as string];
+		expect(dicts, `${locale} 没接进 DICTS`).toBeDefined();
+		expect(maid === undefined ? dicts?.plain : dicts?.maid).toBe(content);
+	});
+});

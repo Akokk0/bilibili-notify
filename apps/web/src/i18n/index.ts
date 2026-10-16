@@ -17,7 +17,7 @@ import zhCNMaid from "./locales/zh-CN.maid.json";
 export type WebTextKey = DictKey<typeof zhCN>;
 
 // 英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;中文的女仆层第 4 期才写。
-const DICTS = {
+export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
 	en: { plain: en },
 	ja: { plain: ja },
