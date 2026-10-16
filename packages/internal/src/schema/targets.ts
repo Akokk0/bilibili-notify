@@ -8,6 +8,7 @@ import {
 	platformOfTarget,
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
+import { neutralPlatformDescriptor } from "../platform-descriptor";
 import { markBackupOnly, markSecret } from "./secret";
 
 // 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
@@ -199,14 +200,9 @@ export type PlatformDescriptor = PlatformSnapshot & { platform: string };
  * 用的是同一份(迁移里另有冻结副本,由测试钉相等)。
  */
 export function neutralPlatformSnapshot(platform: string): PlatformSnapshot {
-	return {
-		label: platform,
-		shortLabel: platform,
-		color: "#94a3b8",
-		targetKind: "session",
-		scopes: ["group", "private", "channel"],
-		addressNouns: {},
-	};
+	// 取值只有一个家:`platform-descriptor.ts`(零依赖子路径,门转出的也是它)。
+	const { platform: _platform, ...snapshot } = neutralPlatformDescriptor(platform);
+	return snapshot;
 }
 
 export const CONNECTION_PROBE_STATUSES = ["reachable", "unreachable", "unsupported"] as const;

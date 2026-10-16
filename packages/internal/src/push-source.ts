@@ -103,8 +103,9 @@ export interface PlatformAdapter {
 	 */
 	readonly settingsSchema: ZodType;
 	/**
-	 * 列新建连接时供挑的候选(ADR-0024 决策 4)。内置三个都实现(从平台注册表现取自己那几行);
-	 * 拓展的由 3b / 22-3 接,所以先是可选 —— 没有这一格的适配器,宿主新建连接时填中性快照。
+	 * 列新建连接时供挑的候选(ADR-0024 决策 4)。内置三个都实现(平台描述从平台注册表现取、
+	 * 设置是默认值);拓展的由 40-5 改成必备,在那之前先是可选 —— 没有这一格的适配器,宿主
+	 * 新建连接时填中性快照。
 	 */
 	listConnectionCandidates?(signal: AbortSignal): Promise<readonly ConnectionCandidate[]>;
 	/**
@@ -157,12 +158,23 @@ export interface AddressCandidate {
 }
 
 /**
- * 新建连接时供挑的一个候选。这一片只有 `platform` 一格(名字、默认设置、selfId 等要到
- * 候选路由 22-3 才有读者)。
+ * 新建连接时供挑的一个候选(ADR-0024 决策 3、4)。平台固定的适配器交写死的模板候选(OneBot 一个、
+ * QQ 官方一个、webhook 四个):`settings` 是默认值、不带 `boundConnectionId`、可以反复用;
+ * 桥交在线的 bot。挑中之后宿主把 `platform` 去掉 `platform` 那格存成连接的 `platformSnapshot`,
+ * `settings` 原样落进连接。
  */
 export interface ConnectionCandidate {
+	/** 给人认的名字。 */
+	name: string;
 	/** 候选连接所在平台的描述;宿主新建连接时把它去掉 `platform` 的部分存成 `platformSnapshot`。 */
 	platform: PlatformDescriptor;
+	/** 落进连接的 `settings`;宿主看不懂它,按适配器自己的 `settingsSchema` 校验后原样存。 */
+	settings: unknown;
+	selfId?: string;
+	/** 经由谁借来的(桥:那条接入的名字)—— 两条桥各驮一个同名 bot 时分得开。 */
+	via?: string;
+	/** 已被哪条连接用上 —— 面板标「已加过」。模板候选没有这一格。 */
+	boundConnectionId?: string;
 }
 
 /**

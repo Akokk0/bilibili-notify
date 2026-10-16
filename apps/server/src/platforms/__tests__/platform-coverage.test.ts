@@ -128,6 +128,54 @@ describe("内置适配器的连接候选", () => {
 		});
 	});
 
+	// 验红:去掉 `builtin-candidates.ts` 里某一档的 `settings`,或者给模板候选塞一个 `boundConnectionId`,这条红。
+	it("每个模板候选带 name(平台表的 label)与 settings 默认值,不带 boundConnectionId / selfId / via", async () => {
+		const byPlatform = new Map<string, Awaited<ReturnType<typeof candidatesOf>>[number]>();
+		for (const key of ["onebot", "qq-official", "webhook"]) {
+			for (const c of await candidatesOf(key)) byPlatform.set(c.platform.platform, c);
+		}
+		expect([...byPlatform.keys()].sort()).toEqual(
+			["dingtalk", "feishu", "generic", "onebot", "qq-official", "wecom"].sort(),
+		);
+		expect(Object.fromEntries([...byPlatform].map(([k, c]) => [k, c.name]))).toEqual({
+			onebot: "OneBot v11",
+			"qq-official": "QQ 官方机器人",
+			feishu: "飞书机器人",
+			dingtalk: "钉钉机器人",
+			wecom: "企业微信机器人",
+			generic: "未指明的 HTTP 端点",
+		});
+		expect(byPlatform.get("onebot")?.settings).toEqual({
+			transport: "http",
+			baseUrl: "http://127.0.0.1:3000",
+			protocolVersion: "v11",
+			headers: {},
+			timeoutMs: 15000,
+			imageMinTimeoutMs: 30000,
+			mergeForwardMinTimeoutMs: 60000,
+			maxRetries: 0,
+			retryIntervalMs: 1000,
+		});
+		expect(byPlatform.get("qq-official")?.settings).toEqual({
+			appId: "",
+			appSecret: "",
+			sandbox: false,
+			botType: "public",
+			logReconnects: false,
+		});
+		for (const p of ["feishu", "dingtalk", "wecom", "generic"]) {
+			expect(byPlatform.get(p)?.settings, p).toEqual({
+				url: "https://example.com/hook",
+				headers: {},
+			});
+		}
+		for (const [platform, c] of byPlatform) {
+			for (const absent of ["boundConnectionId", "selfId", "via"]) {
+				expect(absent in c, `${platform}.${absent}`).toBe(false);
+			}
+		}
+	});
+
 	it("三个适配器合起来的候选平台名两两不重,且恰好覆盖闭集", async () => {
 		const all = (
 			await Promise.all(["onebot", "qq-official", "webhook"].map((key) => candidatesOf(key)))

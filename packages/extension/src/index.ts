@@ -16,7 +16,8 @@
  *
  * ⚠️ **只放类型,不放实现。** 拓展会被打成自包含的 `index.mjs`,从这里 import 一个运行时
  * 值等于把一份宿主代码的拷贝塞进拓展包里。真有非放不可的值,先想清楚再破例。
- * 破的唯一一例:造结果的 `ok()` / `fail()`(ADR-0026 决策 6)—— 两个不带状态的纯函数,
+ * 破的两例:造结果的 `ok()` / `fail()`(ADR-0026 决策 6)与造中性平台描述的
+ * `neutralPlatformDescriptor()`(ADR-0024 决策 4)—— 都是不带状态的纯函数,
  * 拷一份进拓展包不会与宿主那份打架。
  *
  * ⛔ 一格都别多给:`ExtensionRuntime`(谁来收摊)、`ExtensionMounts` / `ExtensionUpgrades`
@@ -33,6 +34,7 @@
 export type {
 	CapabilitySupport,
 	Connection,
+	ConnectionCandidate,
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
@@ -59,6 +61,7 @@ export type {
 	 */
 	PlatformAdapter,
 	PlatformAdapterContext,
+	PlatformDescriptor,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
@@ -69,6 +72,11 @@ export type {
  * 就是 `Result`,一律拿它们造,不手写 `{ ok: false, … }`。
  */
 export { fail, ok } from "@bilibili-notify/internal/constants";
+/**
+ * 造「认不出的平台」用的中性平台描述(3b-40,ADR-0024 决策 4):连接候选里的 `platform` 拓展自己造,
+ * 不必抄一份取值。第二处运行时值,理由同 `ok` / `fail`。
+ */
+export { neutralPlatformDescriptor } from "@bilibili-notify/internal/platform-descriptor";
 
 /**
  * 面板也要认的那几个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**

@@ -90,6 +90,7 @@ export * from "./link-preview";
 export * from "./live-monitor";
 export * from "./membership";
 export * from "./platform";
+export * from "./platform-descriptor";
 export * from "./post";
 export * from "./problem";
 /**

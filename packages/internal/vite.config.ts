@@ -10,6 +10,7 @@ export default defineConfig({
 			"src/i18n.ts",
 			"src/live-monitor.ts",
 			"src/patch.ts",
+			"src/platform-descriptor.ts",
 			"src/template-defaults.ts",
 		],
 		// 只出 ESM:消费方(server bundle / tsx dev / web 的 `vp dev`)全是 ESM。web 在

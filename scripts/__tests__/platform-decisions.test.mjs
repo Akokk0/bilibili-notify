@@ -134,6 +134,7 @@ export const PLATFORM_VALUE_CALLS = new Set(["platformOfTarget"]);
 /** 去处表:平台值喂给它们不算决定。名字 → 属于构造身份 / 显示 / 日志哪一类、理由。 */
 export const PLATFORM_SINKS = {
 	neutralPlatformSnapshot: "显示:造一份中性的平台快照给展示用",
+	neutralPlatformDescriptor: "显示:造一份中性的平台描述给展示用(中性快照由它去掉 platform 得来)",
 };
 
 /** 宿主对象:`process.platform` 一类是操作系统,不是连接的平台。 */
