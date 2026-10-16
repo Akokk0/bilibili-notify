@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
@@ -72,7 +73,7 @@ function fakeHost() {
 /** 这个文件钉的是**生命周期**,与核心打交道那几格由 `context-grants.test.ts` 管。 */
 function coreStubs() {
 	return {
-		stores: memoryStores(),
+		stores: { ...memoryStores(), redact() {} },
 		manifest: {
 			id: "bridge",
 			name: "机器人框架桥接",
@@ -292,6 +293,31 @@ describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
 		await runtime.dispose();
 		expect(ctx.signal.aborted).toBe(true);
 		expect((ctx.signal.reason as DOMException).name).toBe("AbortError");
+	});
+
+	it("ctx.redact 经存储把手登记在这个拓展名下,连续登记不互相冲掉;停用后撤掉", async () => {
+		const host = fakeHost();
+		const mounts = createExtensionMounts({ logger: silentLogger });
+		const redactor = createValueRedactor();
+		const runtime = createExtensionContext({
+			id: "bridge",
+			host: host.ctx,
+			loggerOf: host.loggerOf,
+			mounts,
+			...coreStubs(),
+			stores: {
+				...memoryStores(),
+				// 与真把手同形状:归属是把手的集成,同一种整批换。
+				redact: (kind, values) => redactor.replace("bridge", kind, values),
+			},
+		});
+		runtime.ctx.redact("FAKE-EXT-TOKEN-0001");
+		runtime.ctx.redact("FAKE-EXT-TOKEN-0002");
+		expect(redactor.scrub("FAKE-EXT-TOKEN-0001 FAKE-EXT-TOKEN-0002")).toBe("*** ***");
+		await runtime.dispose();
+		expect(redactor.scrub("FAKE-EXT-TOKEN-0001 FAKE-EXT-TOKEN-0002")).toBe(
+			"FAKE-EXT-TOKEN-0001 FAKE-EXT-TOKEN-0002",
+		);
 	});
 
 	it("报坏 code:不进表,只记一行 warn(不是 error)", () => {

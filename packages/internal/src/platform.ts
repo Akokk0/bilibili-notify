@@ -52,7 +52,8 @@ export interface ServiceContext {
 }
 
 /**
- * 每个集成(拓展、内置集成)拿到的那一面。成员后面各片还会往上加。
+ * 每个集成(拓展、内置集成)拿到的那一面:日志、停下信号、收尾钩子、两份小存储、日志打码登记、问题上报。
+ * 成员后面各片还会往上加。
  * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
  */
 export interface IntegrationContext {
@@ -65,6 +66,13 @@ export interface IntegrationContext {
 	readonly state: KeyValueStore;
 	/** 凭据:主密钥加密,只进完整备份。整份 256KB;`http.` 开头的键归宿主。 */
 	readonly secrets: KeyValueStore;
+	/**
+	 * 登记一个**还没存进 `secrets`** 的临时凭据(比如扫码刚拿到的令牌),日志按值把它遮成 `***`。
+	 * 一次登记一个,只增不减,直到集成停下(宿主那时撤掉);连续登记不会互相冲掉。存进 `secrets` 的值、
+	 * cookie 罐里的每条 cookie 一到就自动登记,不用再登记。少于 8 个字符的值不遮;空串、不是字符串的忽略;
+	 * 停下之后再登记不生效。
+	 */
+	redact(value: string): void;
 	/**
 	 * 报一个这个集成自己的问题(登录失效了、对面连不上……)。`code` 是 snake 风格,同一个集成下同一个
 	 * code 只有一条,再报只换文案(与 `notify`、`recoveryMessage`)。`notify: true` 请核心私聊主人一次。

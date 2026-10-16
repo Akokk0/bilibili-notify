@@ -362,6 +362,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 						problems: deps.problems,
 						reporter: IN_PROCESS_KEY,
 						rejectedProblemLevel: "error",
+						redactValues: (values) => store.redact("redact", values),
 					});
 					opened = { integration, store };
 					const made = createInProcessSource(inProcessWorld.options);

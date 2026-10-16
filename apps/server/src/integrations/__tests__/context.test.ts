@@ -8,6 +8,7 @@ import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createIntegrationContext } from "../context.js";
 
@@ -25,6 +26,7 @@ function recordingLogger() {
 function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {}) {
 	const { logger, lines } = recordingLogger();
 	const problems = createProblemTable({ logger: silentLogger });
+	const redactor = createValueRedactor();
 	const handle = createIntegrationContext({
 		logger,
 		stopReason: "它停用了",
@@ -32,9 +34,11 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 		problems,
 		reporter: "demo",
 		rejectedProblemLevel: "error",
+		// 与真装配同形状:每次交来的是这个集成登记过的全部值,按种类整批换。
+		redactValues: (values) => redactor.replace("demo", "redact", values),
 		...extra,
 	});
-	return { handle, lines, problems };
+	return { handle, lines, problems, redactor };
 }
 
 describe("createIntegrationContext", () => {
@@ -337,5 +341,65 @@ describe("createIntegrationContext · reportProblem / resolveProblem", () => {
 		await handle.dispose();
 		expect(seenInHook).toBe(0);
 		expect(problems.list()).toEqual([]);
+	});
+});
+
+/**
+ * `ctx.redact(value)`:还没存进 `secrets` 的临时凭据先登记,日志按值遮掉。一次登记一个、只增不减,直到收摊;
+ * 底下的登记口是整批换的,所以工厂攒住登记过的全部、每次整批交,连续登记不会互相冲掉。值都是假值。
+ */
+describe("createIntegrationContext · redact", () => {
+	it("登记之后,值被遮;没登记的不遮", () => {
+		const { handle, redactor } = make();
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		expect(redactor.scrub("t=FAKE-TEMP-TOKEN-1 u=FAKE-OTHER-TOKEN")).toBe(
+			"t=*** u=FAKE-OTHER-TOKEN",
+		);
+	});
+
+	it("连续登记几个:都遮,后一个不会把前一个冲掉;同一个登记两次也只是一个", () => {
+		const { handle, redactor } = make();
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		handle.ctx.redact("FAKE-TEMP-TOKEN-2");
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		handle.ctx.redact("FAKE-TEMP-TOKEN-3");
+		expect(redactor.scrub("FAKE-TEMP-TOKEN-1 FAKE-TEMP-TOKEN-2 FAKE-TEMP-TOKEN-3")).toBe(
+			"*** *** ***",
+		);
+	});
+
+	it("少于 8 个字符的不遮;空串与不是字符串的忽略,不抛", () => {
+		const { handle, redactor } = make();
+		handle.ctx.redact("short");
+		handle.ctx.redact("");
+		expect(() => handle.ctx.redact(undefined as unknown as string)).not.toThrow();
+		expect(() => handle.ctx.redact(12345678 as unknown as string)).not.toThrow();
+		expect(redactor.scrub("short 12345678")).toBe("short 12345678");
+	});
+
+	it("收摊之后:登记过的值撤掉,不再遮", async () => {
+		const { handle, redactor } = make();
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		await handle.dispose();
+		expect(redactor.scrub("FAKE-TEMP-TOKEN-1")).toBe("FAKE-TEMP-TOKEN-1");
+	});
+
+	it("收摊钩子跑的时候登记的还遮着(撤在收摊的最后)", async () => {
+		const { handle, redactor } = make();
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		let inHook: string | undefined;
+		handle.ctx.onDispose(() => {
+			inHook = redactor.scrub("FAKE-TEMP-TOKEN-1");
+		});
+		await handle.dispose();
+		expect(inHook).toBe("***");
+	});
+
+	it("收摊之后再登记:不收,记一行 warn", async () => {
+		const { handle, redactor, lines } = make();
+		await handle.dispose();
+		handle.ctx.redact("FAKE-LATE-TOKEN-1");
+		expect(redactor.scrub("FAKE-LATE-TOKEN-1")).toBe("FAKE-LATE-TOKEN-1");
+		expect(lines.filter((l) => l.startsWith("warn "))).toHaveLength(1);
 	});
 });

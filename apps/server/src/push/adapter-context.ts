@@ -75,6 +75,7 @@ export function createPlatformAdapterContext(
 		onDispose: integration.onDispose,
 		state: integration.state,
 		secrets: integration.secrets,
+		redact: integration.redact,
 		reportProblem({ connectionId, ...problem }) {
 			if (connectionId === undefined) {
 				integration.reportProblem(problem);

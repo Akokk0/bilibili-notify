@@ -125,7 +125,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P23、P25)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P25)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -155,6 +155,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P21", title: "status 的「登录」行、login [来源]", checked: true },
 	{ id: "P22", title: "链接解析器的登记、认领与来源停下时自动撤", checked: true },
 	{ id: "P23", title: "外部 id 的格式", checked: true },
+	{ id: "P24", title: "日志按值打码:ctx.redact 与 secrets 里的值", checked: true },
 	{ id: "P25", title: "女仆订阅视图里的平台名与 creator", checked: true },
 	{
 		id: "N01",
@@ -286,6 +287,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	onDispose: ["P18"],
 	state: ["P17"],
 	secrets: ["P17"],
+	redact: ["P24"],
 	settings: ["P13", "P14"],
 	subscriptions: ["P02"],
 	onSubscriptionsChanged: ["P03"],
@@ -1485,6 +1487,32 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P23");
 	});
 
+	// 验红:`createIntegrationContext` 的 `redact` 改成空函数,`ctx.redact` 登记的那个值在归档里原样出现,红;
+	// `bootstrap.ts` 不把登记册交给日志出口,两个值都原样出现,红。
+	// 放在 P22 之前:P22 末尾把服务端关了。
+	it("P24 日志按值打码:来源 ctx.redact 登记的临时值与 ctx.secrets 存下的值,打进日志之后,归档(GET /api/system/logs)里都是 ***", async () => {
+		const ctx = currentProbe().ctx;
+		if (!ctx) throw new Error("假来源还没拿到 ctx");
+		ctx.redact("FAKE-PARITY-TEMP-0001");
+		const stored = await ctx.secrets.set("p24", "FAKE-PARITY-STORED-0002");
+		expect(stored.ok).toBe(true);
+
+		ctx.logger.warn("p24-log FAKE-PARITY-TEMP-0001 FAKE-PARITY-STORED-0002", {
+			nested: "FAKE-PARITY-TEMP-0001",
+		});
+
+		const res = await okRes(await api("/api/system/logs?limit=500"));
+		const text = await res.text();
+		expect(text).not.toContain("FAKE-PARITY-TEMP-0001");
+		expect(text).not.toContain("FAKE-PARITY-STORED-0002");
+		const entries = (JSON.parse(text) as { entries: Array<{ msg: string; args?: unknown[] }> })
+			.entries;
+		const mine = entries.filter((entry) => entry.msg.startsWith("p24-log"));
+		expect(mine.map((entry) => entry.msg)).toEqual(["p24-log *** ***"]);
+		expect(mine[0]?.args).toEqual([{ nested: "***" }]);
+		drove("P24");
+	});
+
 	// 验红:`link-previewer.ts` 退回直接用 B 站正则认链接(不问登记表),这条整条红(假解析器从没被问过)。
 	it("P22 链接解析器:来源在 start 里登的解析器认领自己的链接 —— 关着不回、开了回一张图、冷却里不回第二张、逐目标关掉不回、能力支持时回原生分享;来源停下后没人再认", async () => {
 		const probe = currentProbe();
@@ -1751,16 +1779,14 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 24 行、不开 15 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(39);
+	it("PARITY_ROWS:对拍 25 行、不开 15 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(40);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
-		// P24 留给 3b-38,这里先空着。
-		expect(checked.map((row) => row.id)).toEqual([
-			...Array.from({ length: 23 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
-			"P25",
-		]);
+		expect(checked.map((row) => row.id)).toEqual(
+			Array.from({ length: 25 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)

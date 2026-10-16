@@ -59,7 +59,7 @@ function boot() {
 			onDispose() {},
 		} as unknown as ServiceContext,
 		loggerOf: () => SILENT,
-		stores: memoryStores(),
+		stores: { ...memoryStores(), redact() {} },
 		problems: ignoredProblems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

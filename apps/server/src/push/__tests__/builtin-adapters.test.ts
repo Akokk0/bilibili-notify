@@ -16,7 +16,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
-import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
+import {
+	memoryIntegrationStore,
+	memoryStoreHandle,
+} from "../../__tests__/support/memory-key-value-store.js";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
@@ -143,6 +147,35 @@ describe("registerBuiltinAdapters", () => {
 		]);
 		await builtin.dispose();
 		expect(problems.list()).toEqual([]);
+	});
+
+	it("适配器的 ctx.redact 经它自己那份存储把手登记(归属是适配器键);撤掉登记之后撤干净", async () => {
+		const redactor = createValueRedactor();
+		const onebot = fakeAdapter("onebot");
+		const qq = fakeAdapter("qq-official");
+		const builtin = await registerBuiltinAdapters({
+			registry: createPlatformAdapterRegistry(),
+			adapters: [onebot, qq],
+			loggerOf: () => logger,
+			// 与真存储宿主同形状:把手的 `redact` 归属是它开的那个键,同一种整批换。
+			stores: {
+				open: async (key) =>
+					memoryStoreHandle({}, (kind, values) => redactor.replace(key, kind, values)).handle,
+			},
+			problems: ignoredProblems,
+			connections: () => [],
+			onConnectionsChanged: () => ({ dispose() {} }),
+		});
+		onebot.ctx?.redact("FAKE-ONEBOT-TOKEN-1");
+		onebot.ctx?.redact("FAKE-ONEBOT-TOKEN-2");
+		qq.ctx?.redact("FAKE-QQ-SECRET-0001");
+		expect(redactor.scrub("FAKE-ONEBOT-TOKEN-1 FAKE-ONEBOT-TOKEN-2 FAKE-QQ-SECRET-0001")).toBe(
+			"*** *** ***",
+		);
+		await builtin.dispose();
+		expect(redactor.scrub("FAKE-ONEBOT-TOKEN-1 FAKE-QQ-SECRET-0001")).toBe(
+			"FAKE-ONEBOT-TOKEN-1 FAKE-QQ-SECRET-0001",
+		);
 	});
 
 	it("订阅发一声,每个适配器登记的回调都被叫到", async () => {

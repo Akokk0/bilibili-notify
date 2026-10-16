@@ -182,6 +182,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			onDispose: noop,
 			state: memoryKeyValueStore(),
 			secrets: memoryKeyValueStore(),
+			redact: noop,
 			reportProblem: noop,
 			resolveProblem: noop,
 			connections: () => [],

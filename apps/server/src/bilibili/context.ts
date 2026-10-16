@@ -70,6 +70,7 @@ export async function createBiliContext(
 		problems: opts.problems,
 		reporter: BILIBILI_SOURCE_KEY,
 		rejectedProblemLevel: "error",
+		redactValues: (values) => store.redact("redact", values),
 	});
 	let built: IntegrationHttpHandle;
 	try {

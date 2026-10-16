@@ -117,7 +117,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		}),
 	];
 
-	// 🔴 逐格列出公共那五个成员,不许展开 `integration`:B 站交进来的对象运行时带着 `http` 与 `cookies`,
+	// 🔴 逐格列出公共那几个成员(不含问题上报,那一对下面按来源的规矩自己造),不许展开 `integration`:B 站交进来的对象运行时带着 `http` 与 `cookies`,
 	// 类型收窄挡不住展开把它们原样抄进来。
 	const ctx: SourceContext = {
 		logger,
@@ -125,6 +125,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		onDispose: integration.onDispose,
 		state: integration.state,
 		secrets: integration.secrets,
+		redact: integration.redact,
 		settings(schema) {
 			const { reader, dispose } = createSettingsReader({
 				schema,

@@ -67,6 +67,9 @@ export interface IntegrationStore {
 	close(): Promise<void>;
 }
 
+/** 经把手 `redact` 登记的值的种类(闭集;宿主自己的 `secrets` 那一种不经这个口)。 */
+export type RedactKind = "cookies" | "redact";
+
 export interface IntegrationStoreHandle {
 	/** 集成那一面:`http.` 开头的键拒。 */
 	readonly state: KeyValueStore;
@@ -84,12 +87,13 @@ export interface IntegrationStoreHandle {
 		integrationOps: readonly KeyValueOp[],
 	): Promise<Result>;
 	/**
-	 * 登记要在日志里按值遮的值(罐子里的 cookie 之类宿主替集成管着的、不在 `secrets` 里单独出现的值)。
-	 * 归属就是这个把手的集成,不另传;`kind` 是这批值的种类,同一种**整批换**(旧的不再遮,给空就是撤掉这一种);
-	 * 少于 8 个字符的值不遮。把手 `close()` 时这个集成名下所有种类一起撤,关了之后再登记的不收。
-	 * `secrets` 袋里的字符串宿主自己登记(种类 `secrets`),不用经这里。
+	 * 登记要在日志里按值遮的值。归属就是这个把手的集成,不另传;`kind` 是这批值的种类,同一种**整批换**
+	 * (旧的不再遮,给空就是撤掉这一种);少于 8 个字符的值不遮。把手 `close()` 时这个集成名下所有种类一起撤,
+	 * 关了之后再登记的不收。种类是闭集:`cookies` 是罐子里的 cookie 值(`integrations/http.ts`),`redact` 是
+	 * 集成经 `ctx.redact` 登记的临时凭据(`integrations/context.ts` 攒住全部、每次整批交)。
+	 * `secrets` 袋里的字符串宿主自己登记(种类 `secrets`),不经这个口。
 	 */
-	redact(kind: string, values: Iterable<string>): void;
+	redact(kind: RedactKind, values: Iterable<string>): void;
 	/** 密钥被 `restoreSecrets` 整袋换了之后叫;按登记的先后逐个等。 */
 	onSecretsReplaced(fn: () => void | Promise<void>): Disposable;
 	/** 集成停下时关:此后四个存储的写一律回 `unavailable`;文件留着。幂等。 */

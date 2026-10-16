@@ -19,14 +19,14 @@ const report = (postId = "p1"): PostReport => ({
 	post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "hi" },
 });
 
-const setup = (subs = [makeSub("a", "1")]) => {
+const setup = (subs = [makeSub("a", "1")], integration = makeIntegration()) => {
 	const world = makeWorld(subs);
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const problems = makeProblems();
 	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
-		integration: makeIntegration(),
+		integration,
 		sourceKey: SOURCE_KEY,
 		descriptor: { label: "测试", postNoun: "动态" },
 		linkResolvers: createLinkResolverRegistry(),
@@ -48,6 +48,7 @@ describe("createSourceContext", () => {
 			"logger",
 			"onDispose",
 			"onSubscriptionsChanged",
+			"redact",
 			"registerLinkResolver",
 			"reportPost",
 			"reportProblem",
@@ -60,6 +61,13 @@ describe("createSourceContext", () => {
 		]);
 		expect("http" in handle.ctx).toBe(false);
 		expect("cookies" in handle.ctx).toBe(false);
+	});
+
+	it("ctx.redact 就是集成上下文上的那一个:来源登记的临时凭据走集成的登记口", () => {
+		const redact = vi.fn();
+		const { handle } = setup([makeSub("a", "1")], { ...makeIntegration(), redact });
+		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
+		expect(redact).toHaveBeenCalledWith("FAKE-TEMP-TOKEN-1");
 	});
 
 	it("ctx.logger 是宿主入参给的那个,不是集成上下文自带的", () => {

@@ -112,14 +112,16 @@ describe("createBiliContext", () => {
 			{ key: "SESSDATA", value: "FAKE-JAR-COOKIE-1", domain: "bilibili.com", path: "/" },
 		]);
 		await ctx.secrets.set("refreshToken", "FAKE-REFRESH-TOKEN");
-		expect(redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN")).toBe(
-			"jar=*** token=***",
-		);
+		// 还没存进 secrets 的临时凭据:ctx.redact 经同一个把手登记。
+		ctx.redact("FAKE-TEMP-TOKEN-1");
+		expect(
+			redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN temp=FAKE-TEMP-TOKEN-1"),
+		).toBe("jar=*** token=*** temp=***");
 
 		await dispose();
-		expect(redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN")).toBe(
-			"jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN",
-		);
+		expect(
+			redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN temp=FAKE-TEMP-TOKEN-1"),
+		).toBe("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN temp=FAKE-TEMP-TOKEN-1");
 		await store.close();
 	});
 

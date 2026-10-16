@@ -58,6 +58,7 @@ function build(
 		problems,
 		reporter: key,
 		rejectedProblemLevel: "error",
+		redactValues: () => {},
 	});
 	const ctx = createPlatformAdapterContext({
 		integration: handle.ctx,
@@ -108,8 +109,10 @@ describe("createPlatformAdapterContext", () => {
 		expect(ctx.connections()).toEqual([]);
 	});
 
-	it("logger / signal / onDispose / state / secrets 就是 integration 上的那五个", () => {
+	it("logger / signal / onDispose / state / secrets / redact 就是 integration 上的那六个", () => {
 		const { handle, ctx } = build("onebot", () => all);
+		expect(ctx.redact).toBeTypeOf("function");
+		expect(ctx.redact).toBe(handle.ctx.redact);
 		expect(ctx.logger).toBe(handle.ctx.logger);
 		expect(ctx.signal).toBe(handle.ctx.signal);
 		expect(ctx.onDispose).toBe(handle.ctx.onDispose);

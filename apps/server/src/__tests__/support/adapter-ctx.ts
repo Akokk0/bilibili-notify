@@ -55,6 +55,7 @@ export function fakeAdapterContext(
 		},
 		state,
 		secrets,
+		redact() {},
 		reportProblem() {},
 		resolveProblem() {},
 		connections: () => connections,

@@ -50,6 +50,12 @@ export interface CreateIntegrationContextOptions {
 	 * 拓展被拒是拓展自己的 bug、BN 改不了,记 `warn`(ADR-0025 决策 10)。
 	 */
 	rejectedProblemLevel: "warn" | "error";
+	/**
+	 * 日志按值打码的登记口(接到存储把手的 `redact("redact", values)`):每次交来的是这个集成经 `ctx.redact`
+	 * 登记过的**全部**值 —— 底下的登记是整批换的,所以这里攒住、每次整批交,连续登记不会互相冲掉。
+	 * 收摊的最后交一个空批,撤干净。
+	 */
+	redactValues: (values: readonly string[]) => void;
 	/** 收尾钩子一共最多等多久;不给就是 `DISPOSE_TIMEOUT_MS`。 */
 	disposeTimeoutMs?: number;
 	/** 开始收尾的那一刻、`signal` 中止之前叫一次;抛了记一行 error,不打断收尾。 */
@@ -73,6 +79,8 @@ export function createIntegrationContext(
 	const hooks: Array<() => void | Promise<void>> = [];
 	const controller = new AbortController();
 	let disposed = false;
+	/** 经 `ctx.redact` 登记过的全部值(只增,收摊时清空)。 */
+	const redacted = new Set<string>();
 
 	/** 卸载之后还来注册 —— 不生效,但要留一行:那是调用方没收干净自己的异步尾巴。 */
 	function refuse(what: string): Disposable {
@@ -125,6 +133,16 @@ export function createIntegrationContext(
 		},
 		state: opts.state,
 		secrets: opts.secrets,
+		redact(value) {
+			if (disposed) {
+				refuse("redact");
+				return;
+			}
+			// 第三方 JS 不受类型约束:不是字符串或是空串的忽略;已经登记过的不用重交。
+			if (typeof value !== "string" || value === "" || redacted.has(value)) return;
+			redacted.add(value);
+			opts.redactValues([...redacted]);
+		},
 		reportProblem(problem) {
 			acceptProblem("报", problem, () =>
 				opts.problems.report({
@@ -211,6 +229,9 @@ export function createIntegrationContext(
 				}
 			}
 			registered.clear();
+			// 登记的临时凭据撤在最后:收摊钩子里打的日志(比如收尾失败的原因)里还可能带着它们。
+			redacted.clear();
+			opts.redactValues([]);
 		},
 	};
 }

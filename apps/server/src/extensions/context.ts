@@ -252,7 +252,7 @@ export interface CreateExtensionContextOptions {
 	 * 这个拓展的两份小存储(装载器按 id 开、收摊后关)。`activate(ctx)` 与它的推送源 `start(ctx)` 拿到的是
 	 * 同一对对象。
 	 */
-	stores: Pick<IntegrationStoreHandle, "state" | "secrets">;
+	stores: Pick<IntegrationStoreHandle, "state" | "secrets" | "redact">;
 	/**
 	 * 问题表的写口:拓展的 `reportProblem` 记在它的 id 名下,收摊时它名下的全清。被拒的(已停下、形状不对)
 	 * 只记 warn —— 拓展自己的 bug,不进出入表(ADR-0025 决策 10 下 2026-10-15 那条)。
@@ -338,6 +338,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		problems: opts.problems,
 		reporter: id,
 		rejectedProblemLevel: "warn",
+		redactValues: (values) => opts.stores.redact("redact", values),
 		disposeTimeoutMs: opts.disposeTimeoutMs,
 		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
@@ -724,6 +725,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		state: integration.ctx.state,
 		secrets: integration.ctx.secrets,
 		signal: integration.ctx.signal,
+		redact: integration.ctx.redact,
 		reportProblem: integration.ctx.reportProblem,
 		resolveProblem: integration.ctx.resolveProblem,
 		setTimeout: (fn, ms) => {

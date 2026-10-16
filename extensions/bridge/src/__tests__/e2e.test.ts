@@ -160,6 +160,7 @@ function hostFor(
 		state: memoryKeyValueStore(),
 		secrets: memoryKeyValueStore(),
 		signal: new AbortController().signal,
+		redact() {},
 		reportProblem() {},
 		resolveProblem() {},
 		setTimeout: (fn, ms) => track(setTimeout(fn, ms)),

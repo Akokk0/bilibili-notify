@@ -57,6 +57,7 @@ export async function registerBuiltinAdapters(
 				problems: opts.problems,
 				reporter: adapter.adapterKey,
 				rejectedProblemLevel: "error",
+				redactValues: (values) => stores.redact("redact", values),
 			});
 			integration = context;
 			const ctx = createPlatformAdapterContext({

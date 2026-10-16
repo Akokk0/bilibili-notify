@@ -125,7 +125,7 @@ describe("集成存储宿主 · 登记要打码的值", () => {
 		const handle = await store.open("douyin");
 		await handle.secrets.set("token", "FAKE-SECRETS-AAAA");
 		handle.redact("cookies", ["FAKE-COOKIE-AAAA", "FAKE-COOKIE-BBBB"]);
-		handle.redact("other", ["FAKE-OTHER-AAAAA"]);
+		handle.redact("redact", ["FAKE-OTHER-AAAAA"]);
 		expect(
 			redactor.scrub("FAKE-SECRETS-AAAA FAKE-COOKIE-AAAA FAKE-COOKIE-BBBB FAKE-OTHER-AAAAA"),
 		).toBe("*** *** *** ***");
@@ -142,7 +142,7 @@ describe("集成存储宿主 · 登记要打码的值", () => {
 		const a = await store.open("douyin");
 		const b = await store.open("kuaishou");
 		a.redact("cookies", ["FAKE-A-COOKIE-1111"]);
-		a.redact("other", ["FAKE-A-OTHER-22222"]);
+		a.redact("redact", ["FAKE-A-OTHER-22222"]);
 		b.redact("cookies", ["FAKE-B-COOKIE-3333"]);
 		a.close();
 		expect(redactor.scrub("FAKE-A-COOKIE-1111 FAKE-A-OTHER-22222 FAKE-B-COOKIE-3333")).toBe(

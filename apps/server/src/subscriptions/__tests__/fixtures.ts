@@ -41,6 +41,9 @@ export const makeIntegration = (logger: Logger = makeLogger()): IntegrationConte
 		onDispose: vi.fn(),
 		state: kv,
 		secrets: kv,
+		redact: vi.fn(),
+		reportProblem: vi.fn(),
+		resolveProblem: vi.fn(),
 		http: { get: vi.fn() },
 		cookies: { header: vi.fn() },
 	} as unknown as IntegrationContext;
