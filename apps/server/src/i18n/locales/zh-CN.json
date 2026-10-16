@@ -1,0 +1,15 @@
+{
+	"command.framework.failed": "『{word}』没办成：{message}",
+	"command.framework.crashed": "出错了，详情在日志里",
+	"command.login.noSources": "现在没有能登录的来源～",
+	"command.login.unknownSource": "没有叫「{word}」的来源～能登录的有：{options}",
+	"command.login.ambiguousSource": "有好几个来源都叫「{word}」，请改用键：{options}",
+	"command.login.noQr": "没拿到二维码，稍后再试试～",
+	"command.login.qrNotSent": "二维码发不出去，去控制台扫吧～",
+	"command.login.pickOne": "有好几个来源可以登录：\n{lines}\n想扫哪一个，就在 login 后面跟上它的名字或键，比如「login {exampleKey}」～",
+	"command.login.scanned": "扫这张码登录「{label}」就行，{ttlSeconds} 秒内有效，过期了再敲一次～",
+	"command.status.loginLabel": "{label}登录",
+	"command.report.daysOutOfRange": "天数要在 {min} 到 {max} 之间哦～",
+	"command.report.busy": "还在跑呢，稍等一下下～",
+	"command.report.noTargets": "还没配推送目标呢，周报没地方发～"
+}

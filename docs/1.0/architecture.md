@@ -87,6 +87,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 
 - 🔴 卡种中文名 5 张表、两套键（dyn / dynamic）→ internal
 - ✅ 3b-14 已落：「要不要开直播监听」原来的 3 套判据（首页「直播」那一格读未合并的 routing，服务端读合并后的开关，面板的「不会被监听」自留一份键表）并成 internal 的零依赖子路径 `@bilibili-notify/internal/live-monitor` 里的 `needsLiveMonitor`（连同 `LIVE_ROOM_CREATOR_KEYS`、`specialUserFlagsOf`），全仓唯一判定；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。直播引擎（`RoomContext`）、统计（`recordingSwitches`）、首页「直播」那一格（`getModuleState`）、面板「没开直播推送」那句都读它；服务端「订阅 → 入参」的折法只有 `stats/recording-switches.ts` 的 `liveMonitorInputOf` 一处
+- 🟡 3b-09 进行中：多语言的核心（`mergeDict` / `translate` / `createI18n`，连同 `LOCALES`）在 internal 的零依赖子路径 `@bilibili-notify/internal/i18n`；服务端的字典 store 在 `apps/server/src/i18n/`（`i18n` 与 `t`，译文放 `locales/`，指令回话原 `runtime/command-texts.ts` 的字是第一批键）。面板的 store 随后落地
 - 🔴 「N 分钟前」4 份 → `formatAgo`（⛔ 首页「正在直播」不写「N 分钟前开播」：面板只列在播的，「开播」多余，`dashboard-live-now.test.tsx` 钉着，收的时候别顺手加上）；带正负号的增量 4 份（负号两种、零两种写法）→ 并进 `formatCount`
 - 🔴 B 站动态转纯文字两个同名函数（AI 工具那份丢掉转发）、B 站风控码集合（-412 各处不一，已定：一张共用的「数字码 → 标准码」翻译表，见 subscription-sources「B 站怎么实现」）与响应解包（手写约 5 处）→ `bilibili/`
 - 🔴 过滤、AI、出图各拼各的作品文字 → `posts/` 里唯一一个取段函数（ADR-0028 决策 1）：`text` 只放正文，标题、视频标题、转发的原作品各有位置

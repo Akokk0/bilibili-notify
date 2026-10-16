@@ -24,9 +24,9 @@
 
 import { Buffer } from "node:buffer";
 import { fail, type Logger, ok, type Result } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import type { SourceLoginView } from "../subscriptions/registry.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
-import { COMMAND_TEXTS } from "./command-texts.js";
 
 export interface LoginCommandOptions {
 	/**
@@ -78,10 +78,10 @@ function pickSource(
 	if (byLabel.length === 1 && first) return ok({ source: first });
 	if (byLabel.length > 1) {
 		const options = byLabel.map(describeSource).join("、");
-		return fail("invalid", COMMAND_TEXTS.login.ambiguousSource(typed, options));
+		return fail("invalid", t("command.login.ambiguousSource", { word: typed, options }));
 	}
 	const options = sources.map(describeSource).join("、");
-	return fail("not_found", COMMAND_TEXTS.login.unknownSource(typed, options));
+	return fail("not_found", t("command.login.unknownSource", { word: typed, options }));
 }
 
 export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
@@ -94,7 +94,7 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 		run: async (values, { reply }) => {
 			const sources = opts.sources();
 			const [first, ...others] = sources;
-			if (!first) return fail("not_found", COMMAND_TEXTS.login.noSources);
+			if (!first) return fail("not_found", t("command.login.noSources"));
 			let source = first;
 			if (values.source !== undefined) {
 				const picked = pickSource(sources, values.source);
@@ -103,7 +103,7 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 			} else if (others.length > 0) {
 				// 不止一个来源又没说挑哪个:列出来让主人挑,是正常的回答、不是办不成。
 				const lines = sources.map((s) => `- ${describeSource(s)}`).join("\n");
-				await reply(COMMAND_TEXTS.loginReplies.pickOne(lines, first.sourceKey));
+				await reply(t("command.login.pickOne", { lines, exampleKey: first.sourceKey }));
 				return ok();
 			}
 			const { auth, label } = source;
@@ -130,12 +130,12 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 					await reply(hint);
 					return ok();
 				}
-				return fail("unavailable", hint || COMMAND_TEXTS.login.noQr);
+				return fail("unavailable", hint || t("command.login.noQr"));
 			}
 			// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
 			const sent = await reply({ kind: "image", image: { buffer: png, mime: "image/png" } });
-			if (!sent.ok) return fail("unavailable", COMMAND_TEXTS.login.qrNotSent);
-			await reply(COMMAND_TEXTS.loginReplies.scanned(label, QR_TTL_SECONDS));
+			if (!sent.ok) return fail("unavailable", t("command.login.qrNotSent"));
+			await reply(t("command.login.scanned", { label, ttlSeconds: QR_TTL_SECONDS }));
 			return ok();
 		},
 	});

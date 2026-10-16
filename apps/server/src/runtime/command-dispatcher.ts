@@ -30,10 +30,10 @@ import {
 	type SessionRef,
 	sameChatIdentity,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
-import { COMMAND_TEXTS } from "./command-texts.js";
 
 /**
  * 回给「发这条指令的那个会话」的口子。字符串当纯文字。
@@ -211,15 +211,15 @@ function compile(commands: readonly CommandDef[], aliases: Record<string, string
 		for (const raw of triggers) {
 			// 查重也要按小写来 —— 匹配是大小写不敏感的,`Mute` 和 `mute` 在运行时就是
 			// 同一个词,查重放过它们等于放进一对必然静默失灵的触发词。
-			const t = raw.toLowerCase();
-			const owner = seen.get(t);
+			const lowered = raw.toLowerCase();
+			const owner = seen.get(lowered);
 			if (owner !== undefined) {
 				// 报错里用主人**写的那个**大小写,不是折算过的 —— 他要在配置里找的是原样。
 				throw new Error(
 					`指令「${spec.name}」的触发词「${raw}」和「${owner}」撞了,一个词只能归一条指令`,
 				);
 			}
-			seen.set(t, spec.name);
+			seen.set(lowered, spec.name);
 		}
 	}
 	return compiled;
@@ -338,13 +338,14 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		try {
 			const result = await hit.spec.run(parsed.values, { reply });
 			// 办不成统一在这儿说;回话没送到由 reply 自己记 warn,不再套一层。
-			if (!result.ok) await reply(COMMAND_TEXTS.framework.failed(hit.word, result.message));
+			if (!result.ok)
+				await reply(t("command.framework.failed", { word: hit.word, message: result.message }));
 		} catch (err) {
 			// 一条指令炸了不该带塌这条入站链路 —— 它还担着审批的 y/n。抛错是 bug:原因只进日志,
 			// 主人只被告知「出错了」,不然他对着一个没回音的指令干等。
 			opts.logger.error(`[command] 「${hit.spec.name}」抛错了: ${errorMessageOf(err)}`);
 			// reply 正常不拒绝(没送到它自己记 warn、回结果);真拒绝了也不能带塌入站链路,但要留一行。
-			await reply(COMMAND_TEXTS.framework.crashed).catch((replyErr: unknown) => {
+			await reply(t("command.framework.crashed")).catch((replyErr: unknown) => {
 				opts.logger.warn(`[command] 「出错了」那句也没回出去: ${errorMessageOf(replyErr)}`);
 			});
 		}

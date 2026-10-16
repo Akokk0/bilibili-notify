@@ -239,7 +239,7 @@ interface ConfirmationWindow {
 
 ### `run` 返回结果形状
 
-`run(values, ctx: { reply })` 返回 `Result`:办成了自己 `reply` 内容再回 `ok()`;**办不成回 `fail(码, 话)`,指令自己不 `reply` 失败**,由分发器统一说上面表里那句。「话」只写实质(为什么没办成、该怎么办),不带「XX 没办成：」前缀。「已扫码,请在手机上确认」「帮助里查不到的指令名」「周报部分目标失败」这类是正常的回答,不算失败,照旧自己回话、回 `ok()`。抛错只留给 bug。没有 `ctx.signal`(今天没有使用者)。给人看的失败话集中在 `runtime/command-texts.ts`(`COMMAND_TEXTS`,分发器的两句在 `framework` 下)。回话本身没送到,照旧由 `reply` 记 warn,不再套一层。
+`run(values, ctx: { reply })` 返回 `Result`:办成了自己 `reply` 内容再回 `ok()`;**办不成回 `fail(码, 话)`,指令自己不 `reply` 失败**,由分发器统一说上面表里那句。「话」只写实质(为什么没办成、该怎么办),不带「XX 没办成：」前缀。「已扫码,请在手机上确认」「帮助里查不到的指令名」「周报部分目标失败」这类是正常的回答,不算失败,照旧自己回话、回 `ok()`。抛错只留给 bug。没有 `ctx.signal`(今天没有使用者)。给人看的失败话住服务端字典 `i18n/locales/zh-CN.json`(键 `command.*`,经 `t(键, 参数)` 取字,分发器的两句是 `command.framework.*`)。回话本身没送到,照旧由 `reply` 记 warn,不再套一层。
 
 ### 近似建议
 

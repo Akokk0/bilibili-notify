@@ -21,9 +21,9 @@ import {
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
-import { COMMAND_TEXTS } from "./command-texts.js";
 
 /** 与 `RoastRunOutcome` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
 export type ReportOutcome =
@@ -79,9 +79,12 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 			const days = values.days;
 			if (days !== undefined && (days < ROAST_MIN_DAYS || days > ROAST_MAX_DAYS)) {
 				// 光说「不行」等于让主人自己去猜,把区间说出来。
-				return fail("invalid", COMMAND_TEXTS.report.daysOutOfRange(ROAST_MIN_DAYS, ROAST_MAX_DAYS));
+				return fail(
+					"invalid",
+					t("command.report.daysOutOfRange", { min: ROAST_MIN_DAYS, max: ROAST_MAX_DAYS }),
+				);
 			}
-			if (running) return fail("conflict", COMMAND_TEXTS.report.busy);
+			if (running) return fail("conflict", t("command.report.busy"));
 			running = true;
 			try {
 				// ack 在跑生成之前发出去:主人先看到「收到了」,再等结果。它必须在
@@ -90,7 +93,7 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 				await reply("好的，在生成了，稍等～");
 				const outcome = await opts.run(days);
 				if (outcome.kind === "no-targets") {
-					return fail("not_configured", COMMAND_TEXTS.report.noTargets);
+					return fail("not_configured", t("command.report.noTargets"));
 				}
 				if (outcome.kind === "gen-failed") return fail(outcome.code, outcome.message);
 				const text = describeSent(outcome);

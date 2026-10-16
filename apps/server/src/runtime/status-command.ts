@@ -10,10 +10,10 @@
  */
 
 import { type AuthState, type Logger, ok } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import type { SourceLoginView, SourceView } from "../subscriptions/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
-import { COMMAND_TEXTS } from "./command-texts.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
 export interface StatusReport {
@@ -119,7 +119,7 @@ export function renderStatus(report: StatusReport, now: number): string {
 	const lines = [
 		// 登录排在来源自己的行之前:掉线是「怎么没动静」的头号嫌疑。
 		...report.logins.map(
-			(l) => `${COMMAND_TEXTS.status.loginLabel(l.label)}：${renderLogin(l.state)}`,
+			(l) => `${t("command.status.loginLabel", { label: l.label })}：${renderLogin(l.state)}`,
 		),
 		// 「多久以前」由来源自己拼(手机上「14:32」还得自己减一次,「2 分钟前」不用)。
 		...report.sources.map((s) => `${s.label}：${s.summary}`),
