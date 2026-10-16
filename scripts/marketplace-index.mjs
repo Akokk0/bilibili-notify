@@ -81,13 +81,14 @@ export function assertIndexShape(index) {
 	if (!Number.isInteger(index.issuedAt) || index.issuedAt <= 0)
 		fail("issuedAt 必须是正整数(epoch 秒)");
 	if (!Array.isArray(index.extensions)) fail("extensions 必须是数组");
-	// 同一个 id 每档只许一条(正式 / 预发布),合计最多两条 —— 同档两条的话「那一档的最新版」
-	// 就没法唯一,挑哪条给用户只能靠数组顺序。客户端的 checkMarketplaceIndex 是同一条规矩。
+	// 同一个 id 每档、每个契约版本只许一条(正式 / 预发布各算)—— 同一格两条的话「那一格的
+	// 最新版」就没法唯一,挑哪条给用户只能靠数组顺序。客户端的 checkMarketplaceIndex 是同一条
+	// 规矩(契约升档的过渡期里,旧契约与新契约各留一条,所以键里带 apiVersion)。
 	const seen = new Set();
 	for (const e of index.extensions) {
 		assertEntryShape(e);
-		const key = `${tierName(e)} ${e.id}`;
-		if (seen.has(key)) fail(`${e.id} 的${tierName(e)}版列了两遍`);
+		const key = `${tierName(e)} ${e.id} 契约${e.apiVersion}`;
+		if (seen.has(key)) fail(`${e.id} 的${tierName(e)}版(契约 v${e.apiVersion})列了两遍`);
 		seen.add(key);
 	}
 	if (index.revoked !== undefined) {
@@ -183,12 +184,15 @@ function cleanEntry(e) {
 }
 
 /**
- * 把一条新发的拓展并进当前索引:**同 id 同档**换掉、别的照留、按 id 排(同 id 正式在前);
- * `revoked` 照抄再并上新撤的。
+ * 把一条新发的拓展并进当前索引:**同 id 同档同契约版本**换掉、别的照留、按 id 排(同 id 先
+ * 按契约版本,再正式在前);`revoked` 照抄再并上新撤的。
  *
- * 每个 id 留两条:一条正式、一条预发布。两档分开是因为**打一个 alpha tag 不该让稳定渠道的
- * 人看不见这个拓展** —— 整条被 alpha 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会
- * 被标成「从别处装的」。每档内部仍然只留最新那一版,老版本靠发布页还能手动下。
+ * 每个 id 每个契约版本留两条:一条正式、一条预发布(契约只有一个版本时就是每个 id 两条)。
+ * 契约升档的过渡期里,旧 BN 只装得了旧契约的版本、新 BN 只装得了新契约的,所以不同契约版本
+ * 的条目互不挤占,下面三条「只许往前走」也都只在同一个契约版本里比。
+ * 两档分开是因为**打一个 alpha tag 不该让稳定渠道的人看不见这个拓展** —— 整条被 alpha
+ * 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会被标成「从别处装的」。每档内部仍然
+ * 只留最新那一版,老版本靠发布页还能手动下。
  *
  * 三条「只许往前走」:
  * - 同档降版本 → 拒(重跑一个旧 tag 是最常见的来路);**等于**放行,那是重发同一版
@@ -204,10 +208,12 @@ function cleanEntry(e) {
  */
 export function mergeMarketplaceEntry(current, entry, opts = {}) {
 	const fresh = cleanEntry(assertEntryShape(entry));
-	const sameId = (current?.extensions ?? []).filter((e) => e.id === fresh.id);
-	// 每档至多一条,所以同 id 顶多两条:同档那条被换掉,另一档那条看情况留。
-	const previous = sameId.find((e) => isPre(e) === isPre(fresh));
-	const other = sameId.find((e) => isPre(e) !== isPre(fresh));
+	// 同 id 同契约版本才互相比:别的契约版本的条目是另一批 BN 在用的,一概不碰。
+	const sameSlot = (e) => e.id === fresh.id && e.apiVersion === fresh.apiVersion;
+	const inSlot = (current?.extensions ?? []).filter(sameSlot);
+	// 每档至多一条,所以同格顶多两条:同档那条被换掉,另一档那条看情况留。
+	const previous = inSlot.find((e) => isPre(e) === isPre(fresh));
+	const other = inSlot.find((e) => isPre(e) !== isPre(fresh));
 	if (previous && compareEntryVersions(fresh.version, previous.version) < 0)
 		fail(
 			`${fresh.id}:要并进去的 ${fresh.version} 比索引里已经有的${tierName(fresh)}版 ${previous.version} 旧 —— 是不是重跑了一个旧 tag`,
@@ -219,10 +225,15 @@ export function mergeMarketplaceEntry(current, entry, opts = {}) {
 	// 正式版发出去了,比它旧的预发布档就没有意义了;并进预发布则不碰正式档。
 	const keepOther =
 		other !== undefined && (isPre(fresh) || compareEntryVersions(other.version, fresh.version) > 0);
-	const rest = (current?.extensions ?? []).filter((e) => e.id !== fresh.id);
+	const rest = (current?.extensions ?? []).filter((e) => !sameSlot(e));
 	const extensions = [...rest, ...(keepOther ? [other] : []), fresh]
 		.map(cleanEntry)
-		.sort((a, b) => a.id.localeCompare(b.id) || Number(isPre(a)) - Number(isPre(b)));
+		.sort(
+			(a, b) =>
+				a.id.localeCompare(b.id) ||
+				a.apiVersion - b.apiVersion ||
+				Number(isPre(a)) - Number(isPre(b)),
+		);
 	const revoked = [...new Set([...(current?.revoked ?? []), ...(opts.revoke ?? [])])];
 	const index = {
 		name: current?.name ?? OFFICIAL_INDEX_NAME,

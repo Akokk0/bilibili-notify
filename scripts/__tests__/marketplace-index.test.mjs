@@ -11,6 +11,7 @@ import {
 	MarketplaceIndexSchema,
 } from "../../packages/internal/src/schema/extension-marketplace.ts";
 import {
+	assertIndexShape,
 	compareEntryVersions,
 	ID_SEGMENT,
 	mergeMarketplaceEntry,
@@ -223,6 +224,82 @@ describe("issuedAt 与版本只许往前走", () => {
 		).toEqual(["0.1.0", "0.1.1-alpha.1"]);
 	});
 
+	it("不同契约版本各留一条:v3 的新版并进去不挤掉 v2 的最新那条", () => {
+		const next = merged(
+			entry({ apiVersion: 2, version: "0.0.1" }),
+			entry({ apiVersion: 3, version: "0.1.0" }),
+		);
+		expect(next.extensions.map((e) => [e.apiVersion, e.version])).toEqual([
+			[2, "0.0.1"],
+			[3, "0.1.0"],
+		]);
+		// 同一个契约版本再发,才换掉那一格自己的。
+		const patched = mergeMarketplaceEntry(next, entry({ apiVersion: 2, version: "0.0.2" }), {
+			issuedAt: 3,
+		});
+		expect(patched.extensions.map((e) => [e.apiVersion, e.version])).toEqual([
+			[2, "0.0.2"],
+			[3, "0.1.0"],
+		]);
+	});
+
+	it("版本只许往前走是按契约版本各算的:v3 的 0.1.0 之后仍可发 v2 的 0.0.2", () => {
+		const current = merged(
+			entry({ apiVersion: 3, version: "0.1.0" }),
+			entry({ apiVersion: 2, version: "0.0.1" }),
+		);
+		expect(() =>
+			mergeMarketplaceEntry(current, entry({ apiVersion: 3, version: "0.0.9" }), { issuedAt: 3 }),
+		).toThrow(/0\.0\.9/);
+		expect(
+			mergeMarketplaceEntry(current, entry({ apiVersion: 2, version: "0.0.2" }), { issuedAt: 3 })
+				.extensions.length,
+		).toBe(2);
+	});
+
+	it("正式版顶掉旧预发布、预发布比正式版旧就拒,都只在同一个契约版本里算", () => {
+		const current = merged(
+			entry({ apiVersion: 2, version: "0.0.1" }),
+			entry({ apiVersion: 3, version: "0.1.0-alpha.1", prerelease: true }),
+		);
+		// v2 的正式 0.0.2 比 v3 的预发布号小,但它们不同契约版本,v3 的预发布不能被删。
+		const next = mergeMarketplaceEntry(current, entry({ apiVersion: 2, version: "0.0.2" }), {
+			issuedAt: 3,
+		});
+		expect(next.extensions.map((e) => [e.apiVersion, e.version])).toEqual([
+			[2, "0.0.2"],
+			[3, "0.1.0-alpha.1"],
+		]);
+		// v3 的预发布不必和 v2 的正式档比新旧。
+		const lowPre = merged(
+			entry({ apiVersion: 2, version: "0.5.0" }),
+			entry({ apiVersion: 3, version: "0.1.0-alpha.1", prerelease: true }),
+		);
+		expect(lowPre.extensions).toHaveLength(2);
+	});
+
+	it("索引形状:同 id 同档同契约版本两条 → 拒;不同契约版本放行;旧形状放行", () => {
+		const base = { name: "BN 官方拓展", issuedAt: 1 };
+		expect(() =>
+			assertIndexShape({
+				...base,
+				extensions: [entry({ apiVersion: 2 }), entry({ apiVersion: 2, version: "0.0.3" })],
+			}),
+		).toThrow(/列了两遍/);
+		expect(() =>
+			assertIndexShape({
+				...base,
+				extensions: [entry({ apiVersion: 2 }), entry({ apiVersion: 3, version: "0.0.3" })],
+			}),
+		).not.toThrow();
+		expect(() =>
+			assertIndexShape({
+				...base,
+				extensions: [entry(), entry({ version: "0.1.0-alpha.1", prerelease: true })],
+			}),
+		).not.toThrow();
+	});
+
 	it("prerelease 旗标与版本号对不上 → 拒(手跑脚本传错档,不该悄悄落进正式档)", () => {
 		expect(() => merged(entry({ version: "0.1.0-alpha.1" }))).toThrow(/对不上/);
 		expect(() => merged(entry({ version: "0.1.0", prerelease: true }))).toThrow(/对不上/);
@@ -280,6 +357,27 @@ describe("签出来的索引,客户端验得过、读得出、过得了官方源
 		const parsed = MarketplaceIndexSchema.parse(both);
 		expect(checkMarketplaceIndex(parsed, { official: true })).toEqual({ ok: true });
 		expect(parsed.extensions).toHaveLength(2);
+	});
+
+	it("同 id 不同契约版本各一条的索引,客户端那两条规矩照样过(两边是同一个判断)", () => {
+		const v2 = mergeMarketplaceEntry(undefined, entry({ apiVersion: 2, version: "0.0.1" }), {
+			issuedAt: 1,
+		});
+		const both = mergeMarketplaceEntry(v2, entry({ apiVersion: 3, version: "0.1.0" }), {
+			issuedAt: 2,
+		});
+		const parsed = MarketplaceIndexSchema.parse(both);
+		expect(checkMarketplaceIndex(parsed, { official: true })).toEqual({ ok: true });
+		expect(parsed.extensions).toHaveLength(2);
+		// 同契约版本两条:脚本拒、客户端也拒。
+		const dup = {
+			...both,
+			extensions: [both.extensions[0], { ...both.extensions[0], version: "0.0.2" }],
+		};
+		expect(() => assertIndexShape(dup)).toThrow(/列了两遍/);
+		expect(
+			checkMarketplaceIndex(MarketplaceIndexSchema.parse(dup), { official: true }),
+		).toMatchObject({ ok: false });
 	});
 });
 

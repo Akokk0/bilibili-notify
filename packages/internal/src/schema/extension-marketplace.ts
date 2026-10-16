@@ -15,11 +15,14 @@ import {
  * 添加第三方源时要提示的风险。两种源**同一个 schema**,差别只在 {@link checkMarketplaceIndex}
  * 那两条规矩。
  *
- * 每个 id **每档只列最新那一版**:一条正式(`prerelease` 缺省 / false)+ 一条预发布
- * (`prerelease: true`),最多两条。「有没有新版」于是仍然是一次版本比较,索引永远很小;
- * 老版本靠发布页还能手动下。两档并存是因为**打了一个 alpha tag 不该让稳定渠道的人看不见
- * 这个拓展** —— 整条被预发布那版顶掉的话,市场上那张卡会消失,已经装着的还会被标成
- * 「从别处装的」。挑哪一条给谁看是宿主那头的事(`apps/server/src/extensions/marketplace.ts`)。
+ * 每个 id **每档、每个契约版本(`apiVersion`)只列最新那一版**:一条正式(`prerelease` 缺省 /
+ * false)+ 一条预发布(`prerelease: true`),再各按契约版本分。契约只有一个版本时就是每档
+ * 一条、最多两条。契约升档的过渡期里,旧 BN 只装得了旧契约的版本、新 BN 只装得了新契约的,
+ * 所以两个契约版本的最新版要同时留着,每台 BN 在自己装得了的里头取最高(`pickPerId`)。
+ * 「有没有新版」于是仍然是一次版本比较,索引仍然很小;老版本靠发布页还能手动下。
+ * 两档并存是因为**打了一个 alpha tag 不该让稳定渠道的人看不见这个拓展** —— 整条被预发布
+ * 那版顶掉的话,市场上那张卡会消失,已经装着的还会被标成「从别处装的」。挑哪一条给谁看
+ * 是宿主那头的事(`apps/server/src/extensions/marketplace.ts`)。
  */
 const HttpsUrl = z.string().url().startsWith("https://");
 
@@ -88,8 +91,9 @@ export function isPrereleaseEntry(entry: { prerelease?: boolean }): boolean {
  * - `prerelease` 旗标必须与版本号对得上(带 `-` 的才是预发布):官方流水线里旗标就是从
  *   版本号算出来的,恒等;第三方源写 `1.0.0-alpha.1` 却不标旗标的话,稳定渠道的人会在
  *   市场卡上看见一个 alpha。
- * - 两种都不许同一个 id 在**同一档**里列两遍(正式一条、预发布一条,合计最多两条):
- *   同一档两条的话「那一档的最新版」就没法唯一,挑哪条给用户只能靠数组顺序。
+ * - 两种都不许同一个 id 在**同一档同一个契约版本**里列两遍(正式一条、预发布一条,每个契约
+ *   版本各算):同一格两条的话「那一格的最新版」就没法唯一,挑哪条给用户只能靠数组顺序。
+ *   发版侧 `scripts/marketplace-index.mjs` 的 `assertIndexShape` 是这条规矩的手抄。
  */
 export function checkMarketplaceIndex(
 	index: MarketplaceIndex,
@@ -104,8 +108,12 @@ export function checkMarketplaceIndex(
 				err: `索引里 ${entry.id} ${entry.version} 标成了${tier}版,与版本号对不上`,
 			};
 		// 键别写成 `id@x`,那是 revoked 里 `id@version` 的样子。
-		const key = `${tier} ${entry.id}`;
-		if (seen.has(key)) return { ok: false, err: `索引里 ${entry.id} 的${tier}版列了两遍` };
+		const key = `${tier} ${entry.id} 契约${entry.apiVersion}`;
+		if (seen.has(key))
+			return {
+				ok: false,
+				err: `索引里 ${entry.id} 的${tier}版(契约 v${entry.apiVersion})列了两遍`,
+			};
 		seen.add(key);
 	}
 	if (opts.official) {

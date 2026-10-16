@@ -158,6 +158,41 @@ describe("checkMarketplaceIndex —— 官方源与第三方源各自的规矩",
 		).toMatchObject(twice);
 	});
 
+	it("同一个 id 同一档、契约版本不同 → 放行(每个契约版本各留最新一条)", () => {
+		expect(
+			check([
+				entry({ apiVersion: 2, version: "0.0.1" }),
+				entry({ apiVersion: 3, version: "0.1.0" }),
+			]),
+		).toEqual({ ok: true });
+		// 预发布档同理,且和正式档互不挤占。
+		expect(
+			check([
+				entry({ apiVersion: 2, version: "0.0.1" }),
+				entry({ apiVersion: 3, version: "0.1.0" }),
+				entry({ apiVersion: 2, version: "0.0.2-alpha.1", prerelease: true }),
+				entry({ apiVersion: 3, version: "0.1.1-alpha.1", prerelease: true }),
+			]),
+		).toEqual({ ok: true });
+	});
+
+	it("同一个 id 同一档同一个契约版本列两遍 → 拒,哪怕别的契约版本夹在中间", () => {
+		const twice = { ok: false, err: expect.stringContaining("列了两遍") };
+		expect(
+			check([
+				entry({ apiVersion: 2, version: "0.0.1" }),
+				entry({ apiVersion: 3, version: "0.1.0" }),
+				entry({ apiVersion: 2, version: "0.0.2" }),
+			]),
+		).toMatchObject(twice);
+	});
+
+	it("旧形状的索引(每个 id 每档一条)仍然合法", () => {
+		expect(
+			check([entry({ version: "0.0.1" }), entry({ version: "0.1.0-alpha.1", prerelease: true })]),
+		).toEqual({ ok: true });
+	});
+
 	it("prerelease 旗标与版本号对不上 → 拒(第三方源写 alpha 却不标,稳定渠道会看见它)", () => {
 		const mismatch = { ok: false, err: expect.stringContaining("对不上") };
 		expect(check([entry({ version: "0.1.0-alpha.1" })])).toMatchObject(mismatch);
