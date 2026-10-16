@@ -98,6 +98,7 @@
     - **备份与恢复**：完整备份按集成分格带各集成的 `secrets` 整袋（盘上有内容的每一个集成，停用着的拓展也带；读不了的那一份跳过并记 warn）；恢复是整袋换（内存与盘一起），换完再叫这个集成登记的「密钥被换了」，B 站靠它在不重启的情况下重读罐子、重起续期；备份里没有的集成不碰；现在没开着的集成与换失败的，不抛，列进 `unrestoredIntegrations`。
     - **卸载**拓展时连它的 `state` 与 `secrets` 两个目录一起清（清不掉会报出来）；内置集成没有卸载，`remove` 对它的保留键直接拒。
     - 🔗 2026-10-14（3b 契约第 3 版，主人定）：**日志按值打码**。删掉核心里写死 B 站 cookie 名的五条正则；各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，还没存的临时值经 `ctx.redact` 登记，日志落盘前按值遮；少于 8 个字符的值不遮（与上面「很短的不遮」同一条线，定为 8）；登录账号自己的 uid 照遮、不豁免；`sk-`、`Bearer` 两条（AI 服务商密钥）留着。
+    - 🔗 2026-10-16（3b，主人定）：**设置里标了机密的值也登记**。核心设置里 `markSecret` 标过的格（连接的 `accessToken`、`appSecret`、webhook 的 `url` 与 `secret`，面板密码，AI 与搜索的 key）、内置集成的设置、拓展清单里标了 `"secret": true` 的设置格，值都交给同一份登记册，设置一变整批换。这个标记今天已经在管备份脱敏，打码复用同一个；第三方拓展不用自己调 `ctx.redact`（桥的 token 就住在设置里）。
 10. **ctx 上的调用被拒或失败**：
     - 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。拓展契约从 v2 的 reject 改成这样。
     - 请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状，不抛错（码见 ADR-0026）：超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`；取图 404 回 `not_found`，超 8MB、不是图、内网地址回 `invalid`，超时回 `timeout`，网络或上游 5xx 回 `unavailable`。
