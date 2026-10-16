@@ -5,6 +5,7 @@ import {
 	LIST_ITEM_ID_KEY,
 	RESERVED_EXTENSION_IDS,
 } from "../constants";
+import { checkUserRegex } from "../util/regex-safety";
 
 // 本体住零依赖的 constants(面板经 /constants 拿值),这里给根入口补一条路 —— 两路一值。
 export {
@@ -506,6 +507,19 @@ const SubscriptionDisplaySchema = z.strictObject({
 	 * 链接」。不给就用通用说法。
 	 */
 	lookupPlaceholder: z.string().min(1).max(40).optional(),
+	/**
+	 * 外部 id 长什么样(3b-58):正则的源码字符串,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立
+	 * 校验。编译不过 / 超长 / 疑似灾难性回溯的在这里就拒 —— 清单读不了、拓展装不上,不留到每次
+	 * 新建订阅时才炸(长度上限与疑似回溯的判法同内容过滤的 blockRegex,同一道 `checkUserRegex`)。
+	 */
+	externalIdRegex: z
+		.string()
+		.min(1)
+		.superRefine((src, ctx) => {
+			const r = checkUserRegex(src);
+			if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
+		})
+		.optional(),
 });
 
 /**

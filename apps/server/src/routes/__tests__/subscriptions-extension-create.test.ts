@@ -32,6 +32,7 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import { settingsSegment } from "../../bilibili/settings.js";
+import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { CONFIG_DIR } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
@@ -45,7 +46,11 @@ import { bindSubscriptionStore } from "../../runtime/subscription-store.js";
 const SUB_ID = "e1000000-0000-4000-8000-000000000001";
 const OTHER_ID = "e1000000-0000-4000-8000-000000000002";
 
-function sourceEntry(id: string, state: ExtensionEntry["state"] = "running"): ExtensionEntry {
+function sourceEntry(
+	id: string,
+	state: ExtensionEntry["state"] = "running",
+	display: { externalIdRegex?: string } = {},
+): ExtensionEntry {
 	return {
 		id,
 		dir: `/data/extensions/${id}`,
@@ -58,7 +63,7 @@ function sourceEntry(id: string, state: ExtensionEntry["state"] = "running"): Ex
 			apiVersion: 2,
 			contributes: {
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55", ...display },
 					events: ["post"],
 				},
 			},
@@ -100,6 +105,12 @@ beforeEach(async () => {
 	);
 	await runtime.configStore.load();
 	await runtime.subRuntimeStore.load();
+	// B 站来源照真实开机那一步登记进来源登记表(外部 id 的格式取自它的描述符,路由不自己认 B 站)。
+	await runtime.sourceRegistry.register(
+		"bilibili",
+		{ descriptor: BILI_SOURCE_DESCRIPTOR, start: async () => {}, stop: async () => {} },
+		{ logger: silentLogger } as never,
+	);
 	// index.ts 同一步:订阅仓镜像配置、改动转成 subscription-changed。
 	const binding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 	unbind = () => binding.dispose();
@@ -405,7 +416,8 @@ describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () 
 				issues: Array<{ path: string[]; message: string }>;
 			};
 			expect(body.code).toBe("invalid");
-			expect(body.message).toContain("UID");
+			// 话里点的是描述符的名字,核心里没有「UID」这类平台专有的字。
+			expect(body.message).toContain("B 站");
 			expect(body.issues).toEqual([
 				{ path: ["identity", "externalId"], message: expect.any(String) },
 			]);
@@ -450,6 +462,58 @@ describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () 
 		expect(body.message).toContain("bilibili");
 		expect(body.message).toContain("12345");
 		expect((await listed()).map((s) => s.id)).toEqual([OTHER_ID]);
+	});
+});
+
+describe("新建拓展订阅:外部 id 的格式由清单声明(externalIdRegex)", () => {
+	beforeEach(() => {
+		entries = [sourceEntry("typed", "running", { externalIdRegex: "^\\d+$" }), sourceEntry("free")];
+	});
+
+	it.each([
+		["字母", "abc"],
+		["数字夹字母", "12a"],
+		["空串", ""],
+	])(
+		"声明了 ^\\d+$:外部 id 是%s → 400 invalid,点名 identity.externalId,一样都不落",
+		async (_l, id) => {
+			const res = await post(extSub({ extensionId: "typed", externalId: id }));
+			expect(res.status, await res.clone().text()).toBe(400);
+			const body = (await res.json()) as {
+				code: string;
+				message: string;
+				issues: Array<{ path: string[] }>;
+			};
+			expect(body.code).toBe("invalid");
+			expect(body.message).toContain("抖音");
+			expect(body.issues).toEqual([
+				{ path: ["identity", "externalId"], message: expect.any(String) },
+			]);
+			expect(await listed()).toEqual([]);
+		},
+	);
+
+	it("声明了 ^\\d+$:合格式的 123 照常建成", async () => {
+		const res = await post(extSub({ extensionId: "typed", externalId: "123" }));
+		expect(res.status, await res.clone().text()).toBe(200);
+		expect((await listed()).map((s) => s.identity)).toEqual([
+			{ sourceKey: "typed", externalId: "123" },
+		]);
+	});
+
+	it("没声明格式的拓展:abc 照常建成", async () => {
+		const res = await post(extSub({ extensionId: "free", externalId: "abc" }));
+		expect(res.status, await res.clone().text()).toBe(200);
+	});
+
+	it("只核新建:已有的订阅整份 POST 回来(身份不变)不再核", async () => {
+		// 清单后来才加了格式声明:盘上早就有的、不合格式的那一条不是「新建」。
+		entries = [sourceEntry("free")];
+		expect((await post(extSub({ extensionId: "free", externalId: "abc" }))).status).toBe(200);
+		entries = [sourceEntry("free", "running", { externalIdRegex: "^\\d+$" })];
+		const res = await post(extSub({ extensionId: "free", externalId: "abc", enabled: false }));
+		expect(res.status, await res.clone().text()).toBe(200);
+		expect((await listed()).find((s) => s.id === SUB_ID)?.enabled).toBe(false);
 	});
 });
 

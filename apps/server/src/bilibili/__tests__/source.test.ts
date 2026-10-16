@@ -254,6 +254,10 @@ describe("createBiliSource", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.postNoun).toBe("动态");
 	});
 
+	it("描述符声明外部 id 是纯数字(UID),整串匹配", () => {
+		expect(createBiliSource(makeDeps().deps).descriptor.externalIdRegex).toBe("^\\d+$");
+	});
+
 	it("描述符交出大航海这一套会员体系", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toEqual([
 			BILIBILI_GUARD_PROGRAM,

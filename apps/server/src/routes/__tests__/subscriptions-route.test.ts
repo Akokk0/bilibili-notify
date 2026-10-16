@@ -12,6 +12,7 @@ import { fail, type ImageRef, makeDefaultGlobalConfig, ok } from "@bilibili-noti
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { png } from "../../__tests__/support/report-images.js";
+import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
 import { ConfigValidationError } from "../../config/store.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
@@ -131,6 +132,11 @@ function makeHarness(opts?: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subRuntimeStore: { get: rtGet, patch: rtPatch },
 			profileImages: { put: putImage },
+			// 新建订阅按来源描述符核外部 id:B 站的描述符从登记表来。
+			sourceRegistry: {
+				get: (key: string) =>
+					key === SUB.identity.sourceKey ? { descriptor: BILI_SOURCE_DESCRIPTOR } : undefined,
+			},
 			engines,
 		},
 	} as unknown as RouteDeps;
@@ -609,6 +615,7 @@ describe("/api/subscriptions × 拓展订阅", () => {
 				runtime: {
 					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 					subRuntimeStore: { get: () => undefined, patch: vi.fn() },
+					sourceRegistry: { get: () => undefined },
 					engines: null,
 				},
 			} as unknown as RouteDeps,

@@ -77,6 +77,17 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
 		: PROBLEM_TEXTS.settingsCause.cell(cell.label, cell.key, reason);
 }
 
+/**
+ * B 站来源的自我介绍。`externalIdRegex`:订阅的外部 id 就是 UID,只能是数字 —— 这条规矩住在这里,
+ * 核心(新建订阅处)只照描述符核,不再自己写「B 站 uid 是数字」。
+ */
+export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
+	label: "B 站",
+	postNoun: "动态",
+	externalIdRegex: "^\\d+$",
+	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
+};
+
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicEngine | undefined;
 	let handles: Disposable[] = [];
@@ -85,11 +96,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let dynamicStopped = false;
 	const now = deps.now ?? Date.now;
 
-	const descriptor: SourceDescriptor = {
-		label: "B 站",
-		postNoun: "动态",
-		membershipPrograms: [BILIBILI_GUARD_PROGRAM],
-	};
+	const descriptor = BILI_SOURCE_DESCRIPTOR;
 
 	return {
 		descriptor,

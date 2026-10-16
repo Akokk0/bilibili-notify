@@ -418,6 +418,34 @@ describe("v2 的外观(display)", () => {
 			v2({ contributes: { push: { display: { ...DISPLAY, lookupPlaceholder: "粘链接" } } } }),
 		);
 	});
+
+	/**
+	 * 外部 id 长什么样由来源声明(3b-58):写正则的源码字符串,宿主按整串匹配。编译不过 / 超长 /
+	 * 疑似灾难性回溯的让清单读不了(拓展装不上),不留到新建订阅时才炸。
+	 */
+	it("externalIdRegex:订阅源那段可选一条正则源码;合法的过", () => {
+		const m = ok(sub({ display: { ...DISPLAY, externalIdRegex: "^MS4w[\\w-]+$" } }));
+		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		expect(m.contributes.subscription?.display.externalIdRegex).toBe("^MS4w[\\w-]+$");
+		expect(() => ok(sub({ display: { ...DISPLAY, externalIdRegex: "\\d+" } }))).not.toThrow();
+	});
+
+	it("externalIdRegex:编译不过的被拒", () => {
+		unreadable(sub({ display: { ...DISPLAY, externalIdRegex: "(" } }));
+	});
+
+	it("externalIdRegex:源码超过 200 字被拒,恰 200 字过", () => {
+		expect(() =>
+			ok(sub({ display: { ...DISPLAY, externalIdRegex: "a".repeat(200) } })),
+		).not.toThrow();
+		unreadable(sub({ display: { ...DISPLAY, externalIdRegex: "a".repeat(201) } }));
+	});
+
+	it("externalIdRegex 只有订阅源那段有 —— 推送源没有外部 id", () => {
+		unreadable(
+			v2({ contributes: { push: { display: { ...DISPLAY, externalIdRegex: "^\\d+$" } } } }),
+		);
+	});
 });
 
 describe("v2 的订阅源段", () => {

@@ -68,7 +68,7 @@ export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
-	"apps/server/src/routes/subscriptions.ts": 8,
+	"apps/server/src/routes/subscriptions.ts": 6,
 	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的。
 	// 3a-28 有了来源登记表里中立的「来源在跑」读口,这一处已消失(同片 20 → 17:另两处是动态那一半的订阅视图与操作翻译)。
 	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。

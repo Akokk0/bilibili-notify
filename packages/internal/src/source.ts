@@ -12,6 +12,11 @@ export interface SourceDescriptor {
 	label: string;
 	/** 这个平台管作品叫什么(进 `PostEvent.postNoun`)。 */
 	postNoun?: string;
+	/**
+	 * 外部 id 长什么样:正则的源码字符串,宿主按整串匹配(自带 `^` 与 `$` 也照常能用)。核心用它核新建订阅的
+	 * 外部 id,不在核心里写哪个平台的 id 是什么样。不写 = 只做中立校验(非空、限长)。
+	 */
+	externalIdRegex?: string;
 	/** 会员体系:卡片预览按它找档、示例卡取最低一档。没有会员体系的来源不写。 */
 	membershipPrograms?: MembershipProgram[];
 }

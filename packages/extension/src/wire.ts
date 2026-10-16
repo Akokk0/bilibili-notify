@@ -124,6 +124,8 @@ export interface ExtensionSubscriptionDisplay extends ExtensionDisplay {
 	postNoun?: string;
 	/** 新建订阅时输入框里那句提示(抖音:粘主页链接)。不给就用通用说法(ADR-0019 决策 51)。 */
 	lookupPlaceholder?: string;
+	/** 外部 id 长什么样:正则源码,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立校验。编译不过的让清单读不了。 */
+	externalIdRegex?: string;
 }
 
 /**

@@ -36,6 +36,30 @@ describe("createSourceRegistry", () => {
 		expect(registry.list().map((view) => view.descriptor)).toEqual([first.descriptor]);
 	});
 
+	// 验红:`registry.ts` 的 register 不体检描述符的 externalIdRegex,坏正则的来源就登记进去了。
+	it("描述符声明的 externalIdRegex 编译不过 / 过长 / 疑似灾难性回溯:拒收这个来源,不 start、不占键", async () => {
+		const registry = createSourceRegistry();
+		for (const externalIdRegex of ["(", "a".repeat(201), "(a+)+$"]) {
+			const bad = makeSource();
+			bad.descriptor.externalIdRegex = externalIdRegex;
+			await expect(registry.register("bad", bad, ctxOf().ctx)).rejects.toThrow(
+				`source "bad" 的 externalIdRegex 不合规`,
+			);
+			expect(bad.started).toEqual([]);
+			expect(registry.get("bad")).toBeUndefined();
+		}
+		// 键没被占:好的来源接着能登。
+		await registry.register("bad", makeSource(), ctxOf().ctx);
+	});
+
+	it("externalIdRegex 合规(或没声明)的来源照常登记", async () => {
+		const registry = createSourceRegistry();
+		const good = makeSource();
+		good.descriptor.externalIdRegex = "^\\d+$";
+		await registry.register("good", good, ctxOf().ctx);
+		expect(registry.get("good")?.descriptor.externalIdRegex).toBe("^\\d+$");
+	});
+
 	it("视图里没有 start / stop", async () => {
 		const registry = createSourceRegistry();
 		await registry.register(SOURCE_KEY, makeSource(), ctxOf().ctx);

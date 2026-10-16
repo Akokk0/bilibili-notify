@@ -20,6 +20,7 @@ import type { ExtensionEntry } from "../extensions/loader.js";
 import { createImageFetcher } from "../images/image-fetcher.js";
 import { followTargetSubscriptions } from "../runtime/follow-sync.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
+import { type ExternalIdSpec, externalIdRefusal } from "../subscriptions/external-id.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
@@ -78,7 +79,8 @@ const CreateProfileBodySchema = z.object({
  * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建拓展的订阅**(`identity.sourceKey`
  * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v2 订阅源(不要求在跑,
  * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
- * 头像存进图库(决策 49)。**新建 B 站的订阅**核外部 id 是不是数字 uid。已经存在的订阅可以整份 POST 回来改
+ * 头像存进图库(决策 49)。**新建订阅**(两种来源都是)先按来源描述符声明的格式核外部 id(`externalIdRegex`,
+ * 见 `subscriptions/external-id.ts`);B 站声明的是纯数字 uid。已经存在的订阅可以整份 POST 回来改
  * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
@@ -88,6 +90,18 @@ const CreateProfileBodySchema = z.object({
 export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
+
+	/**
+	 * 这个来源声明的外部 id 格式从哪儿来:在来源登记表里的(B 站、进程内的来源)取它的描述符;拓展来源不进
+	 * 登记表,取清单里订阅源那一段的外观(同样有 `label` 与 `externalIdRegex`)。认不出的来源返回
+	 * `undefined`,不替它核 —— 装没装、是不是订阅源由 {@link createExtensionSubscription} 的闸回话。
+	 */
+	function externalIdSpecOf(sourceKey: string): ExternalIdSpec | undefined {
+		const registered = deps.runtime.sourceRegistry.get(sourceKey);
+		if (registered) return registered.descriptor;
+		const entry = opts.extensions?.().find((one) => one.id === sourceKey);
+		return entry?.manifest?.contributes.subscription?.display;
+	}
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
 	function toDTO(sub: Subscription, needFollow: ReadonlySet<string>): SubscriptionDTO {
@@ -393,9 +407,11 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const exists =
 			isPlainObject(body) && deps.store.getSubscriptions().some((s) => s.id === body.id);
 		if (isPlainObject(body) && !exists && typeof sourceKey === "string") {
-			if (sourceKey !== BILIBILI_SOURCE_KEY) return createExtensionSubscription(c, body);
-			const refusal = biliExternalIdRefusal(body.identity);
+			// 外部 id 的格式由来源在描述符里声明,两种来源同一道,核在分岔之前。
+			const externalId = isPlainObject(body.identity) ? body.identity.externalId : undefined;
+			const refusal = externalIdRefusal(externalIdSpecOf(sourceKey), externalId);
 			if (refusal) return respondFailure(c, refusal);
+			if (sourceKey !== BILIBILI_SOURCE_KEY) return createExtensionSubscription(c, body);
 		}
 		try {
 			// upsertSubscription validates via Zod internally
@@ -492,18 +508,6 @@ function subscriptionSourceRefusal(
 }
 
 /** B-station search wraps matched keywords with `<em class="keyword">…</em>`. */
-/**
- * B 站订阅的外部 id 就是 uid,只能是数字。核在新建这一处:身份建好以后改不动(store 拒),中立的订阅 schema
- * 不认得哪个来源的 id 长什么样(ADR-0021 决策 14)。
- */
-function biliExternalIdRefusal(identity: unknown): Failure | undefined {
-	const externalId = isPlainObject(identity) ? identity.externalId : undefined;
-	if (typeof externalId === "string" && /^\d+$/.test(externalId)) return undefined;
-	return fail("invalid", "B 站订阅的外部 id 就是 UID,只能是数字", {
-		issues: [{ path: ["identity", "externalId"], message: "B 站的 UID 只能是数字" }],
-	});
-}
-
 function stripHtmlTags(s: string): string {
 	return s.replace(/<[^>]+>/g, "");
 }

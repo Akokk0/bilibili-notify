@@ -1,4 +1,10 @@
-import type { Disposable, Source, SourceAuth, SourceContext } from "@bilibili-notify/internal";
+import {
+	checkUserRegex,
+	type Disposable,
+	type Source,
+	type SourceAuth,
+	type SourceContext,
+} from "@bilibili-notify/internal";
 import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -51,6 +57,15 @@ export function createSourceRegistry(): SourceRegistry {
 		get: (sourceKey) => table.get(sourceKey),
 		list: () => Array.from(table.entries(), ([, view]) => view),
 		async register(sourceKey, source, ctx) {
+			// 描述符声明的外部 id 格式先体检(同清单那一半,同一道 `checkUserRegex`):坏正则拖不住新建订阅,
+			// 所以不让这个来源进来。抛法同键被占 —— 在认领、`start` 之前,不留半个。
+			const { externalIdRegex } = source.descriptor;
+			if (externalIdRegex !== undefined) {
+				const checked = checkUserRegex(externalIdRegex);
+				if (!checked.ok) {
+					throw new Error(`source "${sourceKey}" 的 externalIdRegex 不合规: ${checked.reason}`);
+				}
+			}
 			const { health } = source;
 			const claim = table.claim(sourceKey, {
 				sourceKey,

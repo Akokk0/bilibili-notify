@@ -125,7 +125,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P22)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07 加 N18,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P23)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07 加 N18,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -154,6 +154,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P20", title: "日志等级与没碰 B 站", checked: true },
 	{ id: "P21", title: "status 的「登录」行、login [来源]", checked: true },
 	{ id: "P22", title: "链接解析器的登记、认领与来源停下时自动撤", checked: true },
+	{ id: "P23", title: "外部 id 的格式", checked: true },
 	{
 		id: "N01",
 		title: "searchCreators、经接口新建订阅",
@@ -302,6 +303,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 const SOURCE_DESCRIPTOR_MEMBERS = {
 	label: ["P15"],
 	postNoun: ["P10"],
+	externalIdRegex: ["P23"],
 	membershipPrograms: ["P19"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
@@ -1363,6 +1365,54 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P20");
 	});
 
+	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
+	// 放在 P22 之前:P22 末尾把服务端关了。
+	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
+		const probe = currentProbe();
+		const create = async (externalId: string) =>
+			api(
+				"/api/subscriptions",
+				json(
+					makeExtensionSubscription({
+						id: "e2300000-0000-4000-8000-000000000023",
+						extensionId: IN_PROCESS_KEY,
+						externalId,
+					}),
+				),
+			);
+		const failureOf = async (res: Response) =>
+			(await res.json()) as {
+				code: string;
+				message: string;
+				issues?: Array<{ path: string[] }>;
+			};
+		try {
+			probe.descriptor.externalIdRegex = "[a-z]+[0-9]";
+			const bad = await create("abc");
+			expect(bad.status).toBe(400);
+			const refusal = await failureOf(bad);
+			expect(refusal.code).toBe("invalid");
+			expect(refusal.message).toContain(IN_PROCESS_LABEL);
+			expect(refusal.issues).toEqual([
+				{ path: ["identity", "externalId"], message: expect.any(String) },
+			]);
+			// 整串匹配:前缀合格式、后面多一截也拒。
+			expect((await create("abc1x")).status).toBe(400);
+
+			// 合格式的过了这一道。建成由 subscriptions-extension-create.test.ts 用真的拓展清单钉着;进程内来源
+			// 过不了「装着的拓展」那道闸(新建订阅的下一道),回的是「没装」而不是格式不对,那是 N01 的事。
+			const passed = await failureOf(await create("abc1"));
+			expect(passed.code).toBe("not_found");
+
+			// 没声明:核心不替来源做主,同一个 "abc" 不再被格式拦(停在同一道下一闸)。
+			probe.descriptor.externalIdRegex = undefined;
+			expect((await failureOf(await create("abc"))).code).toBe("not_found");
+		} finally {
+			probe.descriptor.externalIdRegex = undefined;
+		}
+		drove("P23");
+	});
+
 	// 验红:`link-previewer.ts` 退回直接用 B 站正则认链接(不问登记表),这条整条红(假解析器从没被问过)。
 	it("P22 链接解析器:来源在 start 里登的解析器认领自己的链接 —— 关着不回、开了回一张图、冷却里不回第二张、逐目标关掉不回、能力支持时回原生分享;来源停下后没人再认", async () => {
 		const probe = currentProbe();
@@ -1629,13 +1679,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 22 行、不开 16 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(38);
+	it("PARITY_ROWS:对拍 23 行、不开 16 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(39);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 22 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 23 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
