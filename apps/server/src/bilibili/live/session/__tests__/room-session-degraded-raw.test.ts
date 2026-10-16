@@ -32,6 +32,8 @@ function makeSub(): SubItemView {
 		liveEnd: true,
 		membership: false,
 		superchat: false,
+		viewerChat: false,
+		viewerEnter: false,
 		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
 		target: {},
 		customCardStyle: { enable: false },

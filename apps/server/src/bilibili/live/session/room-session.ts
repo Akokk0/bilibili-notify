@@ -1,9 +1,4 @@
-import {
-	type Disposable,
-	formatCount,
-	guardTierOf,
-	specialUserFlagsOf,
-} from "@bilibili-notify/internal";
+import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { LivePushType } from "../../../live/live-types";
 import { pushMembership } from "../../../live/membership";
@@ -244,7 +239,7 @@ export class RoomSession extends RoomSessionBase {
 					this.markLiveWsActivity("live-end");
 					return this.onLiveEnd();
 				case "user-action":
-					if (!specialUserFlagsOf(this.sub.customSpecialUsersEnterTheRoom).viewerEnter) return;
+					if (!this.hasViewerEnterListed()) return;
 					this.markLiveWsActivity("interact");
 					return this.onUserAction(ev);
 				case "raw":
@@ -844,9 +839,16 @@ export class RoomSession extends RoomSessionBase {
 	 *
 	 * `user.uid` 是 number,而白名单存的是 string,比对前必须转。
 	 */
+	/** 名单上有没有人带 `viewerEnter`:没有就不必处理进场帧(开关归推送层判,不在这里挡)。 */
+	private hasViewerEnterListed(): boolean {
+		return this.sub.customSpecialUsersEnterTheRoom.specialViewers.some((v) =>
+			v.features.includes("viewerEnter"),
+		);
+	}
+
 	private async onUserAction(ev: { action: UserActionKind; user: LiveUser }): Promise<void> {
 		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
-		if (!specialUserFlagsOf(this.sub.customSpecialUsersEnterTheRoom).viewerEnter) return;
+		if (!this.hasViewerEnterListed()) return;
 		if (ev.action !== "enter") return;
 		pushViewerEnter(
 			{

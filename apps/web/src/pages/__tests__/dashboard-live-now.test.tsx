@@ -259,11 +259,22 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		expect(screen.queryByText(/没开直播推送/)).toBeNull();
 	});
 
-	// 与服务端 `needsLiveMonitor` 同一个判定:主开关全关、只配了特别关注的订阅,引擎照样监听。
+	// 与服务端 `needsLiveMonitor` 同一个判定:特别关注是「开关 ∧ 名单上有人带它」(3b-16)。
 	it.each(["viewerChat", "viewerEnter"] as const)(
-		"主开关全关、只配了带 %s 的特别关注用户的订阅不数",
+		"主开关全关、名单上有人带 %s、但这把特别开关关着的订阅照数",
 		(kind) => {
 			const sub = liveOff(biliSub("s-1", "u1", "甲"));
+			sub.specialViewers = [{ id: "2", features: [kind] }];
+			renderEmpty([sub]);
+			expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
+		},
+	);
+
+	it.each(["viewerChat", "viewerEnter"] as const)(
+		"主开关全关、%s 开着且名单上有人带它的订阅不数",
+		(kind) => {
+			const sub = liveOff(biliSub("s-1", "u1", "甲"));
+			sub.overrides = { ...sub.overrides, features: { ...sub.overrides.features, [kind]: true } };
 			sub.specialViewers = [{ id: "2", features: [kind] }];
 			renderEmpty([sub]);
 			expect(screen.queryByText(/没开直播推送/)).toBeNull();

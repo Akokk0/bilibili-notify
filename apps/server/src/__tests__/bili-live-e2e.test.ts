@@ -937,12 +937,56 @@ describe("特别关注的弹幕", () => {
 		expect(w.sent).toEqual(["测试主播 的关注用户 观众甲 发送弹幕：来了来了"]);
 	});
 
-	// 今天的行为:要不要监听只看名单里有没有人,不看这把特性开关;开关由推送层判。
-	it("名单里有人、特性开关关着:直播间照样监听,但不推", async () => {
+	// 要不要监听是「开关 ∧ 名单上有人带它」(3b-16):名单里有人、特别开关关着、别的直播开关也关着 → 不连直播间、不推。
+	// 验红(`room-context.ts` 的 `needsListener`):特别开关那一格写死 `true` → 这两条红。
+	it("名单里有人、特性开关关着、别的直播开关也关着:不监听,不推", async () => {
 		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
-		expect(w.connections()).toEqual({ opened: 1, open: 1 });
-		await w.frame(danmaku(777, "观众甲", "来了来了"));
+		expect(w.connections()).toEqual({ opened: 0, open: 0 });
 		expect(w.sent).toEqual([]);
+	});
+
+	it("viewerChat 开着、名单上的人只带 viewerEnter、别的直播开关全关:不监听", async () => {
+		const w = await boot({
+			features: ["viewerChat"],
+			specialViewers: [{ id: "777", features: ["viewerEnter"] }],
+		});
+		expect(w.connections()).toEqual({ opened: 0, open: 0 });
+		expect(w.sent).toEqual([]);
+	});
+
+	// 新判据看开关,所以开关变了监听要跟着变:全局默认改 → `config-changed` 给所有订阅重发 update op;订阅自己改 →
+	// `subscription-changed`。两条路共用 update op,里面带着 `viewerChat` / `viewerEnter` 两格开关。
+	// 验红(`engines.ts` 的 update op):去掉 `viewerChat: view.viewerChat` 那一格 → 开关翻了监听不动,这两条红。
+	it("全局默认把 viewerChat 从关改开:名单上有人带它的订阅补开监听;改回关则拆掉", async () => {
+		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
+		expect(w.connections()).toEqual({ opened: 0, open: 0 });
+		await w.setGlobalFeature("viewerChat", true);
+		expect(w.connections()).toEqual({ opened: 1, open: 1 });
+		await w.setGlobalFeature("viewerChat", false);
+		expect(w.connections()).toEqual({ opened: 1, open: 0 });
+	});
+
+	it("订阅自己把 viewerChat 从关改开:同样补开监听;改回关则拆掉", async () => {
+		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
+		expect(w.connections()).toEqual({ opened: 0, open: 0 });
+		await w.setSubscriptionFeature("viewerChat", true);
+		expect(w.connections()).toEqual({ opened: 1, open: 1 });
+		await w.setSubscriptionFeature("viewerChat", false);
+		expect(w.connections()).toEqual({ opened: 1, open: 0 });
+	});
+
+	it("全局开了 viewerEnter、名单上的人只带 viewerChat:仍不监听", async () => {
+		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
+		await w.setGlobalFeature("viewerEnter", true);
+		expect(w.connections()).toEqual({ opened: 0, open: 0 });
+	});
+
+	it("viewerChat 开着、名单上有人带它、别的直播开关全关:监听", async () => {
+		const w = await boot({
+			features: ["viewerChat"],
+			specialViewers: [{ id: "777", features: ["viewerChat"] }],
+		});
+		expect(w.connections()).toEqual({ opened: 1, open: 1 });
 	});
 
 	it("名单外的人发弹幕、名单里的人只关注进场:不推", async () => {

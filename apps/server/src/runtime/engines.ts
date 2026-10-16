@@ -59,13 +59,11 @@ import {
 	GUARD_PROGRAM_ID,
 	isLoggedIn,
 	isReachabilityEvidence,
-	liveMonitorInputOf,
 	needsLiveMonitor,
 	resolve,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
 	type SourceAuth,
-	specialUserFlagsOf,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
@@ -1326,7 +1324,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		getModuleState: (): ModuleState => {
 			const g = globals();
 			// "live ready" = 至少一条启用的 B 站订阅会被 LiveEngine 开监听器:问的是 internal 里那份唯一判定
-			// (只看折好的开关与特别关注,不看有没有推送目标;ADR-0027 决策 1)。
+			// (只看折好的开关与特别关注名单,不看有没有推送目标;特别关注要「开关 ∧ 名单上有人带它」;ADR-0027 决策 1)。
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore
 				.list()
@@ -1334,9 +1332,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				.some(
 					(sub) =>
 						sub.enabled &&
-						needsLiveMonitor(
-							liveMonitorInputOf(resolve(sub, g.defaults).features, specialUserFlagsOf(sub)),
-						),
+						needsLiveMonitor({
+							features: resolve(sub, g.defaults).features,
+							specialViewers: sub.specialViewers,
+						}),
 				);
 			return {
 				dynamic: true,
@@ -1838,6 +1837,8 @@ export function buildLiveSubViewSingle(
 		post: feat("post"),
 		membership: feat("membership"),
 		superchat: feat("superchat"),
+		viewerChat: feat("viewerChat"),
+		viewerEnter: feat("viewerEnter"),
 		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
 		extras: eff.features.extras,
 		target: eff.routing,
@@ -1914,6 +1915,8 @@ function subscriptionOpsToLive(
 						liveEnd: view.liveEnd,
 						membership: view.membership,
 						superchat: view.superchat,
+						viewerChat: view.viewerChat,
+						viewerEnter: view.viewerEnter,
 						extras: view.extras,
 						// 键恒在(值可能是 undefined):没配 = 不设门槛,门槛被清掉的订阅得靠这个 undefined 把引擎里旧的那份盖掉。
 						minSuperchatAmount: view.minSuperchatAmount,

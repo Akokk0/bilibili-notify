@@ -1718,16 +1718,46 @@ describe("createEngines — getModuleState.live", () => {
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
 
+	// 特别关注那两支是「开关 ∧ 名单上有人带它」(3b-16):只有名单、特别开关关着 → 不就绪。
 	it.each(["viewerChat", "viewerEnter"] as const)(
-		"主开关全关、只配了一位带 %s 的特别关注用户(没有目标)→ 就绪",
+		"主开关全关、名单上有人带 %s、但这把特别开关关着 → 不就绪",
 		(kind) => {
 			const c = setup({
 				subs: [liveSub({ features: LIVE_OFF, specialViewers: [{ id: "2", features: [kind] }] })],
 			});
 			active = c;
+			expect(c.runtime.getModuleState().live).toBe(false);
+		},
+	);
+
+	it.each(["viewerChat", "viewerEnter"] as const)(
+		"主开关全关、%s 开着、名单上有人带它(没有目标)→ 就绪",
+		(kind) => {
+			const c = setup({
+				subs: [
+					liveSub({
+						features: { ...LIVE_OFF, [kind]: true },
+						specialViewers: [{ id: "2", features: [kind] }],
+					}),
+				],
+			});
+			active = c;
 			expect(c.runtime.getModuleState().live).toBe(true);
 		},
 	);
+
+	it("viewerChat 开着、名单上的人只带 viewerEnter → 不就绪", () => {
+		const c = setup({
+			subs: [
+				liveSub({
+					features: { ...LIVE_OFF, viewerChat: true },
+					specialViewers: [{ id: "2", features: ["viewerEnter"] }],
+				}),
+			],
+		});
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(false);
+	});
 
 	it.each(["liveStart", "liveStreaming", "liveEnd", "membership", "superchat"] as const)(
 		"只开 %s 一把 → 就绪",

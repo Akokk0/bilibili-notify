@@ -57,6 +57,12 @@ export interface SubItemView extends LiveWorkSettings {
 	post: boolean;
 	membership: boolean;
 	superchat: boolean;
+	/**
+	 * 特别弹幕 / 特别进场的开关(`eff.features.viewerChat` / `viewerEnter`)。要不要监听直播间是「开关 ∧ 名单上有人带它」
+	 * (internal 的 `needsLiveMonitor`),名单在 {@link customSpecialDanmakuUsers} / {@link customSpecialUsersEnterTheRoom}。
+	 */
+	viewerChat: boolean;
+	viewerEnter: boolean;
 	/** 见 {@link PushExtrasLike}。宿主折叠 `eff.features.extras` 后整份填入。 */
 	extras: PushExtrasLike;
 	target: SubItemTargetLike;
@@ -102,6 +108,8 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "liveEnd"
 		| "membership"
 		| "superchat"
+		| "viewerChat"
+		| "viewerEnter"
 		| "extras"
 		| "uname"
 		| "roomId"

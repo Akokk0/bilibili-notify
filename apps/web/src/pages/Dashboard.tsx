@@ -6,7 +6,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { upColor } from "@bilibili-notify/internal/constants";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
-import { needsLiveMonitor, specialUserFlagsOf } from "@bilibili-notify/internal/live-monitor";
+import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
 import {
 	Avatar,
 	Btn,
@@ -130,17 +130,21 @@ function liveRowFace(
 }
 
 // 与服务端同一个判定(internal 的 `needsLiveMonitor`,ADR-0027 决策 1):折好的直播类开关(订阅覆盖压过全局默认)
-// 任一开着,或配了特别弹幕 / 特别进场用户,LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
+// 任一开着,或某把特别开关开着且名单上有人带它,LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
 // 也不会出现在「正在直播」面板里。不看有没有推送目标。
 function isLiveMonitored(sub: Subscription, globalFeatures?: FeatureFlagValues): boolean {
 	const on = new Set(subscribedFeatures(sub, globalFeatures));
 	return needsLiveMonitor({
-		liveStart: on.has("liveStart"),
-		liveStreaming: on.has("liveStreaming"),
-		liveEnd: on.has("liveEnd"),
-		membership: on.has("membership"),
-		superchat: on.has("superchat"),
-		...specialUserFlagsOf(sub),
+		features: {
+			liveStart: on.has("liveStart"),
+			liveStreaming: on.has("liveStreaming"),
+			liveEnd: on.has("liveEnd"),
+			membership: on.has("membership"),
+			superchat: on.has("superchat"),
+			viewerChat: on.has("viewerChat"),
+			viewerEnter: on.has("viewerEnter"),
+		},
+		specialViewers: sub.specialViewers,
 	});
 }
 

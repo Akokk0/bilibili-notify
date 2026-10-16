@@ -92,6 +92,8 @@ describe("RoomContext.needsListener", () => {
 			liveEnd: false,
 			membership: false,
 			superchat: false,
+			viewerChat: false,
+			viewerEnter: false,
 			customSpecialDanmakuUsers: { specialViewers: [], template: "" },
 			customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
 			...over,
@@ -107,4 +109,27 @@ describe("RoomContext.needsListener", () => {
 			expect(makeRoomCtx().needsListener(allOff({ [key]: true }))).toBe(true);
 		},
 	);
+
+	// 特别关注:开关 ∧ 名单上有人带它(3b-16)。两块设置带同一份名单。
+	const listed = (feature: "viewerChat" | "viewerEnter") => ({
+		customSpecialDanmakuUsers: { specialViewers: [{ id: "1", features: [feature] }], template: "" },
+		customSpecialUsersEnterTheRoom: {
+			specialViewers: [{ id: "1", features: [feature] }],
+			template: "",
+		},
+	});
+
+	it.each(["viewerChat", "viewerEnter"] as const)("%s:开关开着、名单上有人带它 → 监听", (key) => {
+		expect(makeRoomCtx().needsListener(allOff({ [key]: true, ...listed(key) }))).toBe(true);
+	});
+
+	it.each(["viewerChat", "viewerEnter"] as const)("%s:名单上有人带它、开关关着 → 不监听", (key) => {
+		expect(makeRoomCtx().needsListener(allOff({ ...listed(key) }))).toBe(false);
+	});
+
+	it("viewerChat 开着、名单上的人只带 viewerEnter → 不监听", () => {
+		expect(
+			makeRoomCtx().needsListener(allOff({ viewerChat: true, ...listed("viewerEnter") })),
+		).toBe(false);
+	});
 });

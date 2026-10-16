@@ -351,7 +351,8 @@ export async function bootBiliLiveWorld(
 		// 未登录:开机那一轮关注同步不跑(与直播无关,省得假接口再长一个口)。
 		auth: { state: () => ({ status: "logged-out" }) },
 		configStore: {
-			getGlobals: () => globals,
+			// 真的配置仓每次给一份深拷贝;引擎靠「上一份 vs 这一份」diff 出改了哪段,同一个引用的话改设置就看不出变化。
+			getGlobals: () => structuredClone(globals),
 			patchGlobals: async () => {},
 			onChange: () => ({ dispose() {} }),
 			getTargets: () => targets,
@@ -439,6 +440,21 @@ export async function bootBiliLiveWorld(
 		/** 服务器发来一帧业务消息(`{ cmd: … }`),用真的编解码器编好,喂给最新那条连接。 */
 		async frame(command: object): Promise<void> {
 			sockets.at(-1)?.fire("message", encodePacket(WsOp.Message, command));
+			await settle();
+		},
+		/** 改全局默认里的一把特性开关,并像配置仓那样发 `config-changed`(globals)。 */
+		async setGlobalFeature(key: FeatureKey, on: boolean): Promise<void> {
+			globals.defaults.features[key] = on;
+			bus.emit("config-changed", { scope: "globals" });
+			await settle();
+		},
+		/** 改这条订阅自己覆盖的一把特性开关,并像订阅仓那样发 `subscription-changed`(update)。 */
+		async setSubscriptionFeature(key: FeatureKey, on: boolean): Promise<void> {
+			subscription.overrides = {
+				...subscription.overrides,
+				features: { ...subscription.overrides.features, [key]: on },
+			};
+			bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subscription }] });
 			await settle();
 		},
 		/** 时间往前走。 */

@@ -50,6 +50,8 @@ function makeSub(
 		liveEnd: true,
 		membership: false,
 		superchat: false,
+		viewerChat: false,
+		viewerEnter: false,
 		extras: { atAllPost: false, atAllLiveStart: true, ...extras },
 		target: {},
 		customCardStyle: { enable: false },

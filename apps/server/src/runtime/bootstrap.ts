@@ -1,11 +1,5 @@
 import { buildFontFace } from "@bilibili-notify/image";
-import {
-	fail,
-	type ImageRef,
-	type MessageBus,
-	resolve,
-	specialUserFlagsOf,
-} from "@bilibili-notify/internal";
+import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
@@ -415,10 +409,7 @@ export function createAppRuntime(
 		subscriptions: () => {
 			const { defaults } = configStore.getGlobals();
 			return configStore.getSubscriptions().map((sub) => {
-				const switches = recordingSwitches(
-					resolve(sub, defaults).features,
-					specialUserFlagsOf(sub),
-				);
+				const switches = recordingSwitches(resolve(sub, defaults).features, sub.specialViewers);
 				return {
 					id: sub.id,
 					identity: sub.identity,

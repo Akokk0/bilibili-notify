@@ -1,9 +1,4 @@
-import {
-	type FeatureFlags,
-	liveMonitorInputOf,
-	needsLiveMonitor,
-	type SpecialUserFlags,
-} from "@bilibili-notify/internal";
+import { type FeatureFlags, needsLiveMonitor, type SpecialViewer } from "@bilibili-notify/internal";
 
 /**
  * 统计「这一项在不在记」要看的开关(ADR-0027 决策 1 / 2):作品开关开着,与直播类开关任一开着
@@ -13,19 +8,26 @@ import {
 export interface RecordingSwitches {
 	/** 作品开关开着。 */
 	posts: boolean;
-	/** 直播类开关任一开着(含特别弹幕 / 特别关注进场)。 */
+	/** 直播类开关任一开着,或某把特别开关开着且名单上有人带它。 */
 	live: boolean;
 }
 
 export function recordingSwitches(
 	features: Pick<
 		FeatureFlags,
-		"post" | "liveStart" | "liveStreaming" | "liveEnd" | "membership" | "superchat"
+		| "post"
+		| "liveStart"
+		| "liveStreaming"
+		| "liveEnd"
+		| "membership"
+		| "superchat"
+		| "viewerChat"
+		| "viewerEnter"
 	>,
-	special: SpecialUserFlags,
+	specialViewers: readonly Pick<SpecialViewer, "features">[],
 ): RecordingSwitches {
 	return {
 		posts: features.post,
-		live: needsLiveMonitor(liveMonitorInputOf(features, special)),
+		live: needsLiveMonitor({ features, specialViewers }),
 	};
 }

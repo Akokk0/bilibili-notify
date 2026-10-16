@@ -5,7 +5,6 @@ import {
 	type MembershipTemplateBundle,
 	needsLiveMonitor,
 	type ServiceContext,
-	specialUserFlagsOf,
 } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types";
@@ -245,15 +244,19 @@ export class RoomContextBase {
 	}
 
 	needsListener(sub: SubItemView): boolean {
-		// 特别关注两格:名单上有人带这一把特性键(buildLiveSubViewSingle 把订阅的 specialViewers 摆进两块设置)。
+		// 开关与名单一并交给唯一的判定(internal 的 `needsLiveMonitor`):特别关注那两支是「开关 ∧ 名单上有人带它」。
+		// 两块设置带的是同一份名单(buildLiveSubViewSingle 摆的),取哪一块都一样。
 		return needsLiveMonitor({
-			liveStart: sub.liveStart,
-			liveStreaming: sub.liveStreaming,
-			liveEnd: sub.liveEnd,
-			membership: sub.membership,
-			superchat: sub.superchat,
-			viewerChat: specialUserFlagsOf(sub.customSpecialDanmakuUsers).viewerChat,
-			viewerEnter: specialUserFlagsOf(sub.customSpecialUsersEnterTheRoom).viewerEnter,
+			features: {
+				liveStart: sub.liveStart,
+				liveStreaming: sub.liveStreaming,
+				liveEnd: sub.liveEnd,
+				membership: sub.membership,
+				superchat: sub.superchat,
+				viewerChat: sub.viewerChat,
+				viewerEnter: sub.viewerEnter,
+			},
+			specialViewers: sub.customSpecialDanmakuUsers.specialViewers,
 		});
 	}
 

@@ -38,6 +38,8 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		liveEnd: true,
 		membership: false,
 		superchat: false,
+		viewerChat: false,
+		viewerEnter: false,
 		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: true },
 		target: {},
 		customCardStyle: { enable: false },
