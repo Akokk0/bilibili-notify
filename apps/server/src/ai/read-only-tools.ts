@@ -1,4 +1,5 @@
 import {
+	type AiCandidateView,
 	type AiSubscriptionView,
 	type CreatorReader,
 	creatorOf,
@@ -6,6 +7,9 @@ import {
 } from "@bilibili-notify/ai";
 import {
 	BILIBILI_SOURCE_KEY,
+	type CreatorCandidate,
+	ok,
+	type Result,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -73,6 +77,11 @@ export function attachReadOnlyTools(
 		/** 订阅所属平台的叫法(问来源登记表,见 `subscriptions/platform-label.ts`)。 */
 		platformLabel: (sourceKey: string) => string;
 		sources: SourceDescriptorSource;
+		/** 在某个来源里搜人(宿主外壳 `searchSourceCreators`,已绑好登记表与日志)。 */
+		searchCreators: (
+			sourceKey: string,
+			query: string,
+		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
 		extensionLive?: ExtensionLiveSource;
 		biliLiveRooms?: BiliLiveRoomsReader;
 	},
@@ -90,6 +99,21 @@ export function attachReadOnlyTools(
 			),
 		externalIdFits: (sourceKey, externalId) =>
 			externalIdRefusal(stores.sources.get(sourceKey)?.descriptor, externalId) === undefined,
+		async searchCreators(sourceKey, query) {
+			const found = await stores.searchCreators(sourceKey, query);
+			if (!found.ok) return found;
+			// 头像等工具用不上的格不带;`creator` 就是下一步中立工具认的值。
+			return ok({
+				candidates: found.candidates.map(
+					(c): AiCandidateView => ({
+						creator: creatorOf(sourceKey, c.externalId),
+						name: c.name,
+						...(c.followers === undefined ? {} : { followers: c.followers }),
+						...(c.bio === undefined ? {} : { bio: c.bio }),
+					}),
+				),
+			});
+		},
 	});
 }
 

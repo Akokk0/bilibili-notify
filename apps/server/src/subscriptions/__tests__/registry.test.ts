@@ -1,5 +1,6 @@
 import { ok, type Source, type SourceAuth } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import { createSourceRegistry, listLoginSources } from "../registry.js";
 import { makeIntegration, makeLogger, makeSource, SOURCE_KEY } from "./fixtures.js";
 
@@ -74,6 +75,7 @@ describe("createSourceRegistry", () => {
 		const registry = createSourceRegistry();
 		const withHealth: Source = {
 			descriptor: { label: "甲" },
+			searchCreators: noCandidates,
 			start: async () => {},
 			stop: async () => {},
 			health() {
@@ -87,6 +89,28 @@ describe("createSourceRegistry", () => {
 		expect(registry.list().map((view) => view.health?.().summary)).toEqual(["我", undefined]);
 	});
 
+	// 验红:`registry.ts` 手抄视图时漏掉 `searchCreators`,这条红(搜人的宿主外壳就找不到它)。
+	it("视图带着来源的 searchCreators(调用时 this 仍是来源自己)", async () => {
+		const registry = createSourceRegistry();
+		const searcher: Source = {
+			descriptor: { label: "甲" },
+			start: async () => {},
+			stop: async () => {},
+			async searchCreators(query) {
+				return {
+					ok: true,
+					candidates: [{ externalId: query, name: this === searcher ? "我" : "this 丢了" }],
+				};
+			},
+		};
+		await registry.register("s", searcher, ctxOf().ctx);
+		const signal = new AbortController().signal;
+		expect(await registry.get("s")?.searchCreators("q", signal)).toEqual({
+			ok: true,
+			candidates: [{ externalId: "q", name: "我" }],
+		});
+	});
+
 	// 验红:`register` 里认领视图时漏掉 `sourceKey`,这条红(`login <键>` 就认不出来源)。
 	it("视图带着登记时认领的键;listLoginSources 只挑带登录口的,键、名字、登录口原样、按登记先后", async () => {
 		const registry = createSourceRegistry();
@@ -98,6 +122,7 @@ describe("createSourceRegistry", () => {
 		};
 		const withAuth: Source = {
 			descriptor: { label: "甲" },
+			searchCreators: noCandidates,
 			start: async () => {},
 			stop: async () => {},
 			auth,
@@ -124,6 +149,7 @@ describe("createSourceRegistry", () => {
 		const registry = createSourceRegistry();
 		const broken: Source = {
 			descriptor: { label: "测试" },
+			searchCreators: noCandidates,
 			start: () => Promise.reject(new Error("start-boom")),
 			stop: async () => {},
 		};
@@ -163,7 +189,12 @@ describe("createSourceRegistry", () => {
 			() => Promise.reject(new Error("async-boom")),
 		]) {
 			const { ctx, logger } = ctxOf();
-			const source: Source = { descriptor: { label: "测试" }, start: async () => {}, stop };
+			const source: Source = {
+				descriptor: { label: "测试" },
+				searchCreators: noCandidates,
+				start: async () => {},
+				stop,
+			};
 			const handle = await registry.register(SOURCE_KEY, source, ctx);
 			expect(() => handle.dispose()).not.toThrow();
 			await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledTimes(1));

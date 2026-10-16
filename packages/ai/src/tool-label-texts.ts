@@ -18,7 +18,7 @@ export const CORE_TOOL_LABEL_TEXTS: Readonly<
 	get_user_info: { label: "查看 UP 主资料", labelArg: { keys: ["name"] } },
 	get_user_stats: { label: "查看数据概览", labelArg: { keys: ["name"] } },
 	get_user_videos: { label: "查看最近视频", labelArg: { keys: ["name"] } },
-	search_user: { label: "搜索 UP 主" },
+	search_creators: { label: "搜索 UP 主", labelArg: { keys: ["query"] } },
 	// 联网搜索。转圈态就是「联网搜索「关键词」」—— 搜了什么比搜过有用。
 	web_search: { label: "联网搜索" },
 	describe_image: { label: "查看图片" },

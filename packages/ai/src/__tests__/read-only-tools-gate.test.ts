@@ -50,6 +50,7 @@ describe("AI 工具表 — 只读约束", () => {
 					{ creator: "bilibili:123", name: "谁", platform: "B 站", post: true, live: true },
 				],
 				externalIdFits: () => true,
+				searchCreators: async () => ({ ok: true, candidates: [] }),
 			});
 			expect(out).toMatchObject({ ok: false, code: "not_found" });
 			expect(sayOf(out)).toContain("未知工具");

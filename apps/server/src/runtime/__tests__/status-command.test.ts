@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { type AuthState, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import type { SourceLoginView, SourceView } from "../../subscriptions/registry.js";
 import {
 	createStatusCommand,
@@ -188,6 +189,7 @@ describe("status 指令", () => {
 const viewOf = (label: string, health?: SourceView["health"]): SourceView => ({
 	sourceKey: `test.${label}`,
 	descriptor: { label },
+	searchCreators: noCandidates,
 	...(health ? { health } : {}),
 });
 
@@ -233,6 +235,7 @@ describe("readSourceHealth —— 取在册来源各自交的一行", () => {
 			tag: "我",
 			sourceKey: "test.甲",
 			descriptor: { label: "甲" },
+			searchCreators: noCandidates,
 			health() {
 				return { summary: (this as { tag: string }).tag };
 			},

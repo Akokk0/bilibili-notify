@@ -12,6 +12,7 @@
 
 import {
 	type AuthState,
+	type CreatorCandidate,
 	fail,
 	type Json,
 	ok,
@@ -93,6 +94,10 @@ export interface InProcessProbe {
 	healthThrows: boolean;
 	/** 假解析器被问过的链接(`resolve` 的入参),按先后。 */
 	linkResolves: string[];
+	/** `searchCreators` 收到的 query,按先后。 */
+	searches: string[];
+	/** 下一次 `searchCreators` 回什么;不摆 = 回两个固定候选。回完不清,测试自己摆回去。 */
+	searchOutcome: Result<{ candidates: CreatorCandidate[] }> | undefined;
 	readonly auth: InProcessAuth;
 }
 
@@ -169,6 +174,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		healthSummary: "一切正常",
 		healthThrows: false,
 		linkResolves: [],
+		searches: [],
+		searchOutcome: undefined,
 		auth: createAuth(),
 	};
 	const source: Source = {
@@ -178,6 +185,18 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 			return { summary: probe.healthSummary };
 		},
 		auth: probe.auth,
+		async searchCreators(query) {
+			probe.searches.push(query);
+			return (
+				probe.searchOutcome ??
+				ok({
+					candidates: [
+						{ externalId: "cand-1", name: "候选甲", followers: 11, bio: "候选甲的简介" },
+						{ externalId: "cand-2", name: "候选乙" },
+					],
+				})
+			);
+		},
 		async start(ctx) {
 			probe.starts += 1;
 			probe.ctx = ctx;

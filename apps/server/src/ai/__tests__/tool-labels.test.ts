@@ -26,7 +26,7 @@ const EXPECTED_LABELS: Record<string, string> = {
 	get_user_info: "查看 UP 主资料",
 	get_user_stats: "查看数据概览",
 	get_user_videos: "查看最近视频",
-	search_user: "搜索 UP 主",
+	search_creators: "搜索 UP 主",
 	web_search: "联网搜索",
 	describe_image: "查看图片",
 	// 注入的三家

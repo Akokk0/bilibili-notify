@@ -131,7 +131,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "find-up",
 		description: "按主人给的关键词或领域搜 B 站 UP 主,逐个查粉丝与简介,挑几位值得订阅的推荐给他",
-		allowedTools: ["search_user", "get_user_info", "get_user_videos", "list_subscriptions"],
+		allowedTools: ["search_creators", "get_user_info", "get_user_videos", "list_subscriptions"],
 		disableModelInvocation: false,
 		body: [
 			"## 找 UP",
@@ -139,7 +139,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. 主人没说想找什么方向时,**先问一句**再动手 —— 搜是一整趟调用,方向猜错就是白搜。",
-			"2. `search_user` 搜关键词。一个词搜出来不理想就**换个说法再搜一次**(比如「做饭」换成「美食教程」),别拿第一次的结果硬凑。",
+			"2. `search_creators` 搜关键词(`source` 填 `bilibili`)。一个词搜出来不理想就**换个说法再搜一次**(比如「做饭」换成「美食教程」),别拿第一次的结果硬凑。",
 			"3. 从结果里挑 5 位左右,逐个 `get_user_info` 看粉丝量与简介,`get_user_videos` 看最近真的还在更新吗。",
 			"4. `list_subscriptions` 对一遍,**已经订过的直接标出来**,别把主人已有的推荐第二遍。",
 			"",
@@ -157,7 +157,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 		description:
 			"把两位 UP 主拉到一块儿逐项对比数据与更新节奏,出一张对比表再给一句结论。用法:/up-pk 甲 vs 乙",
 		allowedTools: [
-			"search_user",
+			"search_creators",
 			"get_user_info",
 			"get_user_stats",
 			"get_user_videos",
@@ -169,7 +169,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"",
 			"### 步骤",
 			"",
-			"1. 从主人这句话里认出**要比的两位是谁**。只给了名字没给 UID 时,先 `list_subscriptions` 在订阅里找;订阅里没有就 `search_user` 搜,搜到多个同名的**问一句是哪个**,别自己挑一个就开比。",
+			"1. 从主人这句话里认出**要比的两位是谁**。只给了名字没给 UID 时,先 `list_subscriptions` 在订阅里找;订阅里没有就 `search_creators` 搜(`source` 填 `bilibili`),搜到多个同名的**问一句是哪个**,别自己挑一个就开比。",
 			"2. 只说了一位时,问主人要跟谁比 —— 不要自作主张找个对手。",
 			"3. 两位都各调一遍 `get_user_info`(粉丝 / 等级)、`get_user_stats`(总播放 / 获赞 / 作品数)、`get_user_videos`(最近在更什么、多久更一次)。",
 			"",

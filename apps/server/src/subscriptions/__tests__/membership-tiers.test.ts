@@ -5,6 +5,7 @@ import {
 	type Source,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import { createMembershipTierReader } from "../membership-tiers.js";
 import { createSourceRegistry, type SourceView } from "../registry.js";
 import { makeIntegration, makeSource } from "./fixtures.js";
@@ -14,6 +15,7 @@ const tier = (key: string, rank: number): MembershipTier => ({ key, name: `档-$
 const viewOf = (...programs: MembershipProgram[]): SourceView => ({
 	sourceKey: "test",
 	descriptor: { label: "测试", membershipPrograms: programs },
+	searchCreators: noCandidates,
 });
 
 const readerOf = (...views: SourceView[]) => createMembershipTierReader({ list: () => views });
@@ -40,7 +42,10 @@ describe("createMembershipTierReader", () => {
 	});
 
 	it("没有任何来源声明体系:byKey 与 lowest 都是 undefined", () => {
-		const reader = readerOf({ sourceKey: "test.bare", descriptor: { label: "测试" } }, viewOf());
+		const reader = readerOf(
+			{ sourceKey: "test.bare", descriptor: { label: "测试" }, searchCreators: noCandidates },
+			viewOf(),
+		);
 		expect(reader.byKey("captain")).toBeUndefined();
 		expect(reader.lowest()).toBeUndefined();
 		expect(readerOf().lowest()).toBeUndefined();

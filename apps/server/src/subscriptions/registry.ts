@@ -71,6 +71,8 @@ export function createSourceRegistry(): SourceRegistry {
 				sourceKey,
 				descriptor: source.descriptor,
 				auth: source.auth,
+				// 同 `health`:直接放 `source.searchCreators` 会丢掉 `this`。
+				searchCreators: (query, signal) => source.searchCreators(query, signal),
 				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。
 				...(health ? { health: () => health.call(source) } : {}),
 			});

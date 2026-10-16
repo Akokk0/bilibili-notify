@@ -9,6 +9,7 @@
  *   别家的外部 id 恰好是一串数字时,B 站那边会查出另一个人来(ADR-0021 决策 14 的 10-15 🔗)。
  */
 
+import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiSubscriptionView, BiliReader, CreatorReader, LiveNowView } from "../tools";
 import { executeTool } from "../tools";
@@ -35,6 +36,7 @@ function readerOf(items: AiSubscriptionView[]): CreatorReader {
 		subscriptions: () => items,
 		externalIdFits: (sourceKey, externalId) =>
 			sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
+		searchCreators: async () => ok({ candidates: [] }),
 	};
 }
 

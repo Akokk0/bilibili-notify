@@ -18,7 +18,7 @@ interface Source {
   // 必备
   start(ctx: SourceContext): Promise<void>;
   stop(): Promise<void>;
-  searchCreators(query: string, signal: AbortSignal): Promise<Result<CreatorCandidate[]>>;   // 解析门：链接 / id / 名字原样交进来
+  searchCreators(query: string, signal: AbortSignal): Promise<Result<{ candidates: CreatorCandidate[] }>>;   // 解析门：链接 / id / 名字原样交进来
   fetchProfile(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;   // 也就是「按 id 取人」
   // 可选
   auth?: SourceAuth;

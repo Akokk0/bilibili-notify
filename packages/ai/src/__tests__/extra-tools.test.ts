@@ -241,6 +241,7 @@ describe("chatStatelessStream × 注入工具", () => {
 		gen.setCreatorReader({
 			subscriptions: () => [{ creator: "bilibili:1", name: "咩栗", platform: "B 站", post: true }],
 			externalIdFits: () => true,
+			searchCreators: async () => ({ ok: true, candidates: [] }),
 		});
 		await gen.chatStatelessStream(HIST, { onDelta: () => {}, extraTools: [tool] });
 

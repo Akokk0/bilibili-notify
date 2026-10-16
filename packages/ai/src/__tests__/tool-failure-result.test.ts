@@ -11,6 +11,7 @@
  * 这里**不** mock `../tools` —— 要的就是真 `executeTool` 与真生成器连在一起的行为;模型是假的。
  */
 
+import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
 import { type BiliReader, type CreatorReader, executeTool } from "../tools";
@@ -36,6 +37,7 @@ const SUBS: CreatorReader = {
 	],
 	externalIdFits: (sourceKey, externalId) =>
 		sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
+	searchCreators: async () => ok({ candidates: [] }),
 };
 
 /** 只给被测那把工具要用的方法;别的方法没人该碰,碰了就炸。 */
@@ -50,7 +52,6 @@ function apiOf(over: Partial<Record<keyof BiliReader, unknown>>): BiliReader {
 		fetchUserUpstat: stub("fetchUserUpstat"),
 		fetchUserNavnum: stub("fetchUserNavnum"),
 		fetchUserVideos: stub("fetchUserVideos"),
-		searchByType: stub("searchByType"),
 		...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, vi.fn(async () => v)] as const)),
 	} as unknown as BiliReader;
 }
@@ -129,20 +130,6 @@ describe("executeTool —— 接口回了错 → 失败(码 unavailable,B 站的
 			code: "unavailable",
 			message: "获取视频失败: 服务异常",
 			upstreamCode: -500,
-		});
-	});
-
-	it("search_user", async () => {
-		const out = await run(
-			"search_user",
-			{ keyword: "小绫" },
-			apiOf({ searchByType: { code: -412, message: "请求被拦截" } }),
-		);
-		expect(out).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "搜索失败: 请求被拦截",
-			upstreamCode: -412,
 		});
 	});
 });
@@ -261,11 +248,10 @@ describe("executeTool —— 成功与「查了、没有」仍是成功,给模�
 			),
 		).toEqual({ ok: true, text: "暂无投稿视频" });
 		expect(
-			await run(
-				"search_user",
-				{ keyword: "没这个人" },
-				apiOf({ searchByType: { code: 0, data: { result: [] } } }),
-			),
+			await run("search_creators", { source: "bilibili", query: "没这个人" }, apiOf({}), {
+				...SUBS,
+				searchCreators: async () => ok({ candidates: [] }),
+			}),
 		).toEqual({ ok: true, text: "没有找到相关用户" });
 	});
 });

@@ -29,6 +29,7 @@ import {
 	WEBP_BYTES,
 } from "../../__tests__/support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import { settingsSegment } from "../../bilibili/settings.js";
@@ -108,7 +109,12 @@ beforeEach(async () => {
 	// B 站来源照真实开机那一步登记进来源登记表(外部 id 的格式取自它的描述符,路由不自己认 B 站)。
 	await runtime.sourceRegistry.register(
 		"bilibili",
-		{ descriptor: BILI_SOURCE_DESCRIPTOR, start: async () => {}, stop: async () => {} },
+		{
+			descriptor: BILI_SOURCE_DESCRIPTOR,
+			searchCreators: noCandidates,
+			start: async () => {},
+			stop: async () => {},
+		},
 		{ logger: silentLogger } as never,
 	);
 	// index.ts 同一步:订阅仓镜像配置、改动转成 subscription-changed。

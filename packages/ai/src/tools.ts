@@ -74,6 +74,22 @@ export interface CreatorReader {
 	 * 按 UID 查的过渡工具靠它挡掉别家的外部 id —— 它恰好是一串数字时,B 站会查出另一个人来。
 	 */
 	externalIdFits(sourceKey: string, externalId: string): boolean;
+	/**
+	 * 在某个来源里搜人(转给该来源的 `searchCreators`)。键不在册、来源风控、没登录这些都是失败,
+	 * 话原样给模型(它得知道,才能换个办法或如实告诉主人)。
+	 */
+	searchCreators(
+		sourceKey: string,
+		query: string,
+	): Promise<Result<{ candidates: AiCandidateView[] }>>;
+}
+
+/** 搜人结果里工具要排版的那几格:`creator` 就是下一步中立工具认的值。 */
+export interface AiCandidateView {
+	creator: string;
+	name: string;
+	followers?: number;
+	bio?: string;
 }
 
 /** 订阅那一行:从 BN 手里的在播状态答(不问平台)。 */
@@ -194,15 +210,19 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 	{
 		type: "function",
 		function: {
-			name: "search_user",
+			name: "search_creators",
 			description:
-				"按关键词搜索 B 站用户，返回最多 5 位：名称、UID、粉丝数、视频数、简介（简介截到 80 字）。返回的 UID 可以直接用于按 UID 查询的工具。",
+				"在某个订阅来源里搜 UP 主，返回最多 5 位：名称、creator（来源键:外部 id）、粉丝数、简介（简介截到 80 字）。输入可以是名字、关键词、主页链接或 id，由该来源自己认。B 站的 creator 冒号后面就是 UID，可以直接用于按 UID 查询的工具。",
 			parameters: {
 				type: "object",
 				properties: {
-					keyword: { type: "string", description: "搜索关键词，如 UP 主名字或领域" },
+					source: {
+						type: "string",
+						description: "来源键，与订阅列表里 creator 冒号前那段是同一个值",
+					},
+					query: { type: "string", description: "搜索内容，如 UP 主名字、领域、主页链接或 id" },
 				},
-				required: ["keyword"],
+				required: ["source", "query"],
 			},
 		},
 	},
@@ -365,7 +385,7 @@ export interface VisionToolContext {
 }
 
 /**
- * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这六个方法,形状取自服务端的 B 站
+ * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这五个方法,形状取自服务端的 B 站
  * 客户端,服务端把真客户端递进来、结构上直接满足。
  * 返回值一律 `unknown`:B 站响应没有声明类型,调用处自己断言。
  *
@@ -378,11 +398,6 @@ export interface BiliReader {
 	fetchUserUpstat(uid: string): Promise<unknown>;
 	fetchUserNavnum(uid: string): Promise<unknown>;
 	fetchUserVideos(uid: string, ps?: number): Promise<unknown>;
-	searchByType(
-		searchType: string,
-		keyword: string,
-		opts?: { page?: number; pageSize?: number },
-	): Promise<unknown>;
 }
 
 /**
@@ -527,18 +542,23 @@ export async function executeTool(
 				.join("\n");
 			return ok({ text });
 		}
-		case "search_user": {
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.searchByType("bili_user", args.keyword)) as any;
-			if (res.code !== 0)
-				return fail("unavailable", `搜索失败: ${res.message}`, { upstreamCode: res.code });
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const results: any[] = (res.data?.result ?? []).slice(0, 5);
-			if (!results.length) return ok({ text: "没有找到相关用户" });
-			const text = results
+		case "search_creators": {
+			const source = args.source?.trim();
+			const query = args.query?.trim();
+			if (!source || !query) return fail("invalid", "source 和 query 都要给，且不能是空的");
+			if (!reader) return fail("unavailable", "搜人功能当前不可用（没有接上订阅来源）");
+			const found = await reader.searchCreators(source, query);
+			if (!found.ok) {
+				return fail(found.code, found.message, {
+					...(found.upstreamCode === undefined ? {} : { upstreamCode: found.upstreamCode }),
+				});
+			}
+			const shown = found.candidates.slice(0, 5);
+			if (!shown.length) return ok({ text: "没有找到相关用户" });
+			const text = shown
 				.map(
-					(u, i) =>
-						`${i + 1}. ${u.uname}（UID: ${u.mid}）粉丝: ${u.fans}, 视频数: ${u.videos}${u.usign ? `，简介: ${clip(String(u.usign), 80)}` : ""}`,
+					(c, i) =>
+						`${i + 1}. ${c.name}（creator: ${c.creator}）粉丝: ${c.followers ?? "?"}${c.bio ? `，简介: ${clip(c.bio, 80)}` : ""}`,
 				)
 				.join("\n");
 			return ok({ text });

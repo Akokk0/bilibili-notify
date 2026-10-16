@@ -109,8 +109,34 @@ export interface SourceHealth {
 	summary: string;
 }
 
+/**
+ * `searchCreators` 交的一个候选(最多 10 个)。`externalId` 就是选中后新建订阅用的外部 id;
+ * 头像此刻不带(候选头像抓进图库的事等第一个要显示它的读者,第 4 期面板)。
+ *
+ * 字段照 `docs/1.0/data-model.md`:将来资料上报也要这几格,到时它们收成 `CreatorProfileReport`、
+ * 本类型 `extends` 它;现在没有第二个读者,先不造那个类型。
+ */
+export interface CreatorCandidate {
+	externalId: string;
+	name: string;
+	avatar?: ImageRef;
+	bio?: string;
+	followers?: number;
+	/** 粉丝团名;平台没有就缺键。 */
+	fanClubName?: string;
+}
+
 export interface Source {
 	readonly descriptor: SourceDescriptor;
+	/**
+	 * 搜人(「解析门」):输入框里是链接、id 还是名字都原样交进来,来源自己认;最多回 10 个候选。
+	 * 查无此人是成功的空数组;失败回结果形状、不抛:风控 `rate_limited`、没登录 `unauthorized`,
+	 * 原话进 `message`。`signal` 中止(宿主不等了)后来源应尽快收手。同一来源串行调用。
+	 */
+	searchCreators(
+		query: string,
+		signal: AbortSignal,
+	): Promise<Result<{ candidates: CreatorCandidate[] }>>;
 	/** 此刻的健康状况,同步、不出网(与 `auth.state()` 同一种读口)。不交 = 这个来源在 `status` 里不占行。 */
 	health?(): SourceHealth;
 	start(ctx: SourceContext): Promise<void>;

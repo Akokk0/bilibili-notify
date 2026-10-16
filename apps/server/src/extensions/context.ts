@@ -38,6 +38,7 @@ import {
 	type CreateIntegrationContextOptions,
 	createIntegrationContext,
 } from "../integrations/context.js";
+import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
@@ -98,12 +99,6 @@ export type LookupOutcome = Result<{ candidates: readonly ExtensionSubscriptionC
 
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
-
-/**
- * 解析门最多等多久(ADR-0019 决策 52)。主人粘完链接等着挑人;平台那头慢(风控、重定向)的
- * 十几秒还算正常,再久就是卡住了。
- */
-export const LOOKUP_TIMEOUT_MS = 15_000;
 
 /**
  * 宿主递给 ctx 的一行**拓展订阅**:归属(`extensionId`)加拓展要的那三格。

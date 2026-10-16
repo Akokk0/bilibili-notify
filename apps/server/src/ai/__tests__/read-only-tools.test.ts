@@ -14,7 +14,11 @@
  */
 
 import {
+	type CreatorCandidate,
 	FEATURE_KEYS,
+	fail,
+	ok,
+	type Result,
 	type Subscription,
 	type SubscriptionRouting,
 } from "@bilibili-notify/internal";
@@ -63,6 +67,8 @@ function makeStores(
 			get: (id: string) => (names[id] ? { cachedProfile: { name: names[id] } } : undefined),
 		},
 		platformLabel: (sourceKey: string) => platformLabels[sourceKey] ?? sourceKey,
+		searchCreators: async (): Promise<Result<{ candidates: CreatorCandidate[] }>> =>
+			ok({ candidates: [] }),
 		sources: {
 			get: (sourceKey: string) =>
 				descriptors[sourceKey] === undefined ? undefined : { descriptor: descriptors[sourceKey] },
@@ -171,6 +177,57 @@ describe("attachReadOnlyTools — 外部 id 的格式", () => {
 	it("没声明格式 / 认不出这个来源 → 不替它做主,算合格", () => {
 		expect(fits({ bilibili: { label: "B 站" } }, "bilibili", "abc")).toBe(true);
 		expect(fits({}, "bilibili", "abc")).toBe(true);
+	});
+});
+
+describe("attachReadOnlyTools — 搜人", () => {
+	const readerWith = (
+		searchCreators: (
+			sourceKey: string,
+			query: string,
+		) => Promise<Result<{ candidates: CreatorCandidate[] }>>,
+	) => {
+		const setCreatorReader = vi.fn();
+		attachReadOnlyTools({ setCreatorReader }, { ...makeStores([]), searchCreators });
+		return setCreatorReader.mock.calls[0]?.[0] as {
+			searchCreators(
+				sourceKey: string,
+				query: string,
+			): Promise<Result<{ candidates: Array<Record<string, unknown>> }>>;
+		};
+	};
+
+	// 验红:把 creator 拼成只有外部 id,这条红。
+	it("来源的候选翻成工具要的视图:creator = 来源键:外部 id,名字、粉丝、简介原样,头像等不带", async () => {
+		const search = vi.fn(async () =>
+			ok({
+				candidates: [
+					{
+						externalId: "alice-ext",
+						name: "爱丽丝",
+						followers: 12,
+						bio: "简介",
+						fanClubName: "粉丝团",
+					},
+				],
+			}),
+		);
+		const out = await readerWith(search).searchCreators("acme.inprocess", "爱");
+		expect(search).toHaveBeenCalledWith("acme.inprocess", "爱");
+		expect(out).toEqual({
+			ok: true,
+			candidates: [
+				{ creator: "acme.inprocess:alice-ext", name: "爱丽丝", followers: 12, bio: "简介" },
+			],
+		});
+	});
+
+	it("来源回的失败原样回", async () => {
+		const out = await readerWith(async () => fail("not_found", "没有这个来源")).searchCreators(
+			"x",
+			"y",
+		);
+		expect(out).toEqual({ ok: false, code: "not_found", message: "没有这个来源" });
 	});
 });
 

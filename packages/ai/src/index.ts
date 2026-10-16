@@ -20,6 +20,7 @@ export * from "./persona-presets";
 export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
+	type AiCandidateView,
 	type AiSubscriptionView,
 	type AiTool,
 	type AiToolLabelFields,

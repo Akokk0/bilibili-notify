@@ -7,6 +7,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { registerBuiltinSource } from "../builtin-sources.js";
 import { createSourceRegistry } from "../registry.js";
@@ -147,6 +148,7 @@ describe("registerBuiltinSource", () => {
 		const seen: Array<() => void> = [];
 		const broken: Source = {
 			descriptor: { label: "测试" },
+			searchCreators: noCandidates,
 			async start(ctx) {
 				ctx.onSubscriptionsChanged(() => seen.push(() => {}));
 				throw new Error("start-boom");
@@ -183,6 +185,7 @@ describe("registerBuiltinSource", () => {
 	it("登记失败(start 抛):start 途中报过的也清掉", async () => {
 		const broken: Source = {
 			descriptor: { label: "测试" },
+			searchCreators: noCandidates,
 			async start(ctx) {
 				ctx.reportProblem({ code: "half_started", message: "还没起完" });
 				throw new Error("start-boom");

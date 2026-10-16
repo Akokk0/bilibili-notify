@@ -25,6 +25,7 @@ import {
 	externalIdRefusal,
 	specialViewerIdRefusal,
 } from "../subscriptions/external-id.js";
+import { stripHtmlTags } from "../util/strip-html-tags.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
@@ -534,11 +535,6 @@ function subscriptionSourceRefusal(
 		);
 	}
 	return undefined;
-}
-
-/** B-station search wraps matched keywords with `<em class="keyword">…</em>`. */
-function stripHtmlTags(s: string): string {
-	return s.replace(/<[^>]+>/g, "");
 }
 
 /** B-station avatar urls come back protocol-relative (`//…`); coerce to https. */

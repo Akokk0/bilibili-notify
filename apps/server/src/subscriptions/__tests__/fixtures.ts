@@ -15,6 +15,7 @@ import {
 } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
+import { noCandidates } from "../../__tests__/support/no-candidates.js";
 import type { ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createSourceRegistry, type SourceRegistry } from "../registry.js";
@@ -106,7 +107,12 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 	descriptors.forEach((descriptor, index) => {
 		void registry.register(
 			`probe-${index}`,
-			{ descriptor: { label: "测试", ...descriptor }, start: async () => {}, stop: async () => {} },
+			{
+				descriptor: { label: "测试", ...descriptor },
+				searchCreators: noCandidates,
+				start: async () => {},
+				stop: async () => {},
+			},
 			{} as SourceContext,
 		);
 	});
@@ -131,6 +137,7 @@ export interface FakeSource extends Source {
 export const makeSource = (): FakeSource => {
 	const source: FakeSource = {
 		descriptor: { label: "测试", postNoun: "动态" },
+		searchCreators: noCandidates,
 		started: [],
 		stops: 0,
 		start: vi.fn(async (ctx: SourceContext) => {

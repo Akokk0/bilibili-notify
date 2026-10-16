@@ -114,6 +114,7 @@ import {
 } from "../subscriptions/builtin-sources.js";
 import { platformLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
+import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { toGeneratorConfig } from "./ai-config.js";
@@ -545,6 +546,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						extensionPlatformLabel: opts.extensionPlatformLabel,
 					}),
 				sources: opts.sources,
+				// 女仆的搜人走宿主外壳(超时、中止、抛错收成 unavailable),不直接碰来源。
+				searchCreators: (sourceKey, query) =>
+					searchSourceCreators({ sources: opts.sources, logger: log }, sourceKey, query),
 				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
 				extensionLive: liveSource(),
 				// B 站订阅的在播读直播引擎的在播房间(与面板「正在直播」同一份),不现去问 B 站。

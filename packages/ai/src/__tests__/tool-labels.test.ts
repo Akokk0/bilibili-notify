@@ -88,7 +88,8 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 
 	it("只有必填格时显示它(没给昵称 → UID)", () => {
 		expect(argTextOf("get_user_stats", { uid: "12345" })).toBe("12345");
-		expect(argTextOf("search_user", { keyword: "咩栗" })).toBe("咩栗");
+		expect(argTextOf("search_creators", { source: "bilibili", query: "咩栗" })).toBe("咩栗");
+		expect(argTextOf("search_creators", { source: "bilibili" })).toBe("bilibili");
 		expect(argTextOf("web_search", { query: "b站 新闻" })).toBe("b站 新闻");
 		expect(argTextOf("describe_image", { index: "2" })).toBe("2");
 	});
