@@ -181,7 +181,7 @@ describe("锐评的 AI 调用方式", () => {
 });
 
 /**
- * per-UP 人格。动态点评(`dynamic-engine.ts`)与下播总结(`live-summary-requester.ts`)
+ * per-UP 人格。动态点评(`dynamic-poller.ts`)与下播总结(`live-summary-requester.ts`)
  * 早就把 `comment()` 的第四个参数接上了,锐评这条路径一直只传前两个 —— 主人给某位
  * UP 单配的人格,在评他自己的时候反而不算数。
  */

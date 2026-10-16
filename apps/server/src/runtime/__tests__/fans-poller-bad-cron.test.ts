@@ -1,11 +1,11 @@
 /**
  * 回归测试 — FansPoller 遇到无法解析的 `profileRefreshCron` 不炸穿启动。
  *
- * 这条 cron 是 dashboard 的自由文本框,没有格式校验(当年还与 dynamic-engine 共用一条,
+ * 这条 cron 是 dashboard 的自由文本框,没有格式校验(当年还与 dynamic-poller 共用一条,
  * 后来粉丝轮询改读自己的 `profileRefreshCron`),各自 `new CronJob(...)` 一次。`cron` 包对无法解析的
  * 表达式(如漏填 minute 字段)同步抛错,此前 fans-poller.startJob() 没有
  * try/catch,未捕获的抛出会让整个独立端进程在启动期崩溃退出 —— 与
- * dynamic-engine.ts 的同款 bug 同源(见 `.bugs/sidecar.stderr.log` 复现的
+ * dynamic-poller.ts 的同款 bug 同源(见 `.bugs/sidecar.stderr.log` 复现的
  * 桌面端"升级后端起不来,清空数据才恢复"报告)。
  */
 
@@ -13,7 +13,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
-// cron mock — 镜像真实 `cron` 包对无法解析表达式的同步抛错(同 dynamic-engine.test 套路)。
+// cron mock — 镜像真实 `cron` 包对无法解析表达式的同步抛错(同 dynamic-poller.test 套路)。
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
 	class FakeCronJob {

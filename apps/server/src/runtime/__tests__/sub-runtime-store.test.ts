@@ -4,7 +4,7 @@
  * SubRuntimeStore 把高频写入的 cachedProfile / fansBaseline 从持久化 Subscription
  * 里外置出来,自带独立写路径且**不发任何事件**(无 MessageBus)——这正是切断
  * `config-changed:subscriptions → SubscriptionStore.replaceAll → subscription-changed
- * → DynamicEngine 重订阅 + [ops] 日志刷屏` 链条的关键。
+ * → DynamicPoller 重订阅 + [ops] 日志刷屏` 链条的关键。
  *
  * 覆盖:
  *  - 构造 API 不接收 MessageBus(结构性证明:patch 不可能 fan-out)

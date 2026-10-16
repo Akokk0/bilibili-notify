@@ -3,7 +3,7 @@ import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevtoolsProvider } from "../../devtools/providers.js";
 import type { Api } from "../api/index.js";
 import { observeLiveConnections } from "../live/protocol/client.js";
-import { type DynamicEngineLike, dynamicScenarios } from "./dynamic.js";
+import { type DynamicPollerLike, dynamicScenarios } from "./dynamic.js";
 import { liveScenarios, type SubPick } from "./live.js";
 import { liveEventScenarios } from "./live-events.js";
 import { createLiveRooms } from "./live-rooms.js";
@@ -34,7 +34,7 @@ export interface BiliDevtoolsDeps {
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
 	/** 下面几样都是引擎建好之后才有的,现取(动态引擎的句柄来自 `compose.ts` 造的 B 站来源)。 */
-	dynamic: () => DynamicEngineLike | undefined;
+	dynamic: () => DynamicPollerLike | undefined;
 	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;
 	/** 登录心跳「现在就跑」的把手(`AuthSystem.healthCheckNow`),现取。 */

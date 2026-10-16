@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `DynamicEngine`:**只管生产**。拉 feed → 判新 → 翻成作品 → 抓图 → 经 `reportPost` 交给核心的作品入口,
+ * 单元测试 — `DynamicPoller`:**只管生产**。拉 feed → 判新 → 翻成作品 → 抓图 → 经 `reportPost` 交给核心的作品入口,
  * 加错误处理 / 故障恢复 / 生命周期。
  *
  * 过滤、出卡、AI 点评、套模板、装配、推送、图集都是核心的事(`posts/deliver-post.ts`,测试在
@@ -29,7 +29,7 @@ import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/index.js";
 import { createProblemLayers, type ProblemLayers } from "../../problem-layers";
 import { PROBLEM_TEXTS } from "../../problem-texts";
-import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
+import { DynamicPoller, type DynamicPoller as DynamicPollerType } from "../dynamic-poller";
 import { postFromDynamic } from "../post-from-dynamic";
 import type { AllDynamicResponse, Dynamic } from "../types";
 
@@ -88,7 +88,7 @@ interface Priv {
 	postAnchors: Map<string, number>;
 	detectDynamics(): Promise<void>;
 }
-const priv = (e: DynamicEngineType): Priv => e as unknown as Priv;
+const priv = (e: DynamicPollerType): Priv => e as unknown as Priv;
 
 type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };
 
@@ -271,7 +271,7 @@ const rosterOf = (subs: Roster | null | undefined): SourceSubscriptionView[] =>
 	}));
 
 interface EngineBag {
-	engine: DynamicEngineType;
+	engine: DynamicPollerType;
 	fetchAllDynamic: ReturnType<typeof vi.fn>;
 	/** 假的分层上报器(四个方法都是 spy);要真件的用例经 `makeEngine({ problems })` 换。 */
 	problems: ReturnType<typeof makeFakeProblems>;
@@ -288,7 +288,7 @@ interface EngineBag {
 
 function makeEngine(
 	over: {
-		config?: Partial<import("../dynamic-engine").DynamicEngineConfig>;
+		config?: Partial<import("../dynamic-poller").DynamicPollerConfig>;
 		subs?: Roster | null;
 		/** 引擎交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
 		reportPost?: (externalId: string, report: PostReport) => void;
@@ -309,7 +309,7 @@ function makeEngine(
 	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>(
 		over.reportPost ?? (() => {}),
 	);
-	const engine = new DynamicEngine({
+	const engine = new DynamicPoller({
 		logger: ctx.logger,
 		setTimeout: ctx.setTimeout,
 		bus,
@@ -340,11 +340,11 @@ function makeEngine(
 }
 
 /** 播种一个订阅视图(推送名单里有它),并给它一个时间线锚点。 */
-function seed(engine: DynamicEngineType, uid: string, timeline: number): void {
+function seed(engine: DynamicPollerType, uid: string, timeline: number): void {
 	priv(engine).postAnchors.set(uid, timeline);
 }
 
-const detect = (engine: DynamicEngineType): Promise<void> => priv(engine).detectDynamics();
+const detect = (engine: DynamicPollerType): Promise<void> => priv(engine).detectDynamics();
 
 beforeEach(() => {
 	cronMock.instances.length = 0;
@@ -355,7 +355,7 @@ beforeEach(() => {
 // A. detectDynamics 编排
 // ---------------------------------------------------------------------------
 
-describe("DynamicEngine.detectDynamics — API 错误处理", () => {
+describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 	it("fetchAllDynamic 抛错 → 不交作品,静默返回", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockRejectedValue(new Error("network down"));
@@ -512,7 +512,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
  * 清的时机是**下一次真正拉取成功**,不是「重启了检测任务」:重启只是把 cron 挂回去,故障还在的话
  * 下一轮照样失败,那时候说"好了"就是骗人。引擎不再有任何私聊口。
  */
-describe("DynamicEngine — 故障恢复", () => {
+describe("DynamicPoller — 故障恢复", () => {
 	it("拉成功:清这一路的风控与请求失败(请求失败是普通的清,会补「已恢复」)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
@@ -656,7 +656,7 @@ describe("DynamicEngine — 故障恢复", () => {
  * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等 `auth-restored`。
  * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 engine-error。
  */
-describe("DynamicEngine — 登录失效时的 cron", () => {
+describe("DynamicPoller — 登录失效时的 cron", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
 
 	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
@@ -710,7 +710,7 @@ describe("DynamicEngine — 登录失效时的 cron", () => {
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
+describe("DynamicPoller.detectDynamics — 时间线 / 订阅过滤", () => {
 	it("timeline >= pub_ts → 已处理过,跳过不交", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
@@ -879,7 +879,7 @@ const reported = (b: EngineBag, n = 0): [string, PostReport] => {
 	return call;
 };
 
-describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
+describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 	it("每条越过时间线闸的动态交一次:(uid, { postId, url, post }),post 是翻译出来的中立作品、没有原始字段", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
@@ -961,7 +961,7 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 
 	// 引擎的发布时间有一整套兜底(`pub_ts` 的秒 / 毫秒 / 数字字符串,缺了再读 `pub_time` 的文字),翻译里只有
 	// `author.pub_ts`,缺了落在纪元。统计与卡上的时间都吃交出去的那份,所以引擎交出之前要覆写。
-	// 验红:把 dynamic-engine.ts 里覆写 `publishedAt` 那一行去掉,这条红(交出去的是 1970 年)。
+	// 验红:把 dynamic-poller.ts 里覆写 `publishedAt` 那一行去掉,这条红(交出去的是 1970 年)。
 	it("publishedAt 用引擎自己算的发布时间:pub_ts 缺失、靠 pub_time 兜底时,翻译落在 1970,交出去的不是", async () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1, name: "阿绫", text: "兜底" });
@@ -1014,8 +1014,8 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 交出之前先把图抓好(决策 3)", () => {
-	// 验红:把 dynamic-engine.ts 里 `fetchPostImages` 挪到 `reportPost` 之后(或不调),这条红。
+describe("DynamicPoller.detectDynamics — 交出之前先把图抓好(决策 3)", () => {
+	// 验红:把 dynamic-poller.ts 里 `fetchPostImages` 挪到 `reportPost` 之后(或不调),这条红。
 	it("只有地址的图先抓进图库再交:交出去的作品里图已带 ref(原地址仍在),抓图发生在交出之前", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
@@ -1102,7 +1102,7 @@ describe("DynamicEngine.detectDynamics — 交出之前先把图抓好(决策 3)
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(决策 6)", () => {
+describe("DynamicPoller.detectDynamics — 只为推送名单里的订阅生产(决策 6)", () => {
 	/** 建表走 `start()`(名单现读):表里只收 `post` 开着的人,关着的没有锚点。 */
 	const startWith = (b: EngineBag): void => {
 		b.setRoster({
@@ -1139,7 +1139,7 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好前移一次", () => {
+describe("DynamicPoller.detectDynamics — 每条越过时间线的动态恰好前移一次", () => {
 	it("reportPost 抛了:记 warn、这一条仍前移(不重试),别的订阅 / 别的动态照常交", async () => {
 		const b = makeEngine({
 			reportPost: (uid) => {
@@ -1181,7 +1181,7 @@ describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好�
 
 // 一轮里按创作者分组:同一位的几条照旧一条接一条交,不同创作者的链同时跑(同时最多 4 条),
 // 一位的图抓得慢不再堵住别人;一轮仍是所有链都跑完才算结束。
-describe("DynamicEngine.detectDynamics — 按创作者分组并行生产", () => {
+describe("DynamicPoller.detectDynamics — 按创作者分组并行生产", () => {
 	const picUrl = (uid: number, n = 1) => `https://i0.hdslb.com/bfs/new_dyn/u${uid}-${n}.jpg`;
 	const picOf = (uid: number, pubTs: number, n = 1) =>
 		makeItem({ uid, pubTs, drawPics: [picUrl(uid, n)] });
@@ -1294,7 +1294,7 @@ describe("DynamicEngine.detectDynamics — 按创作者分组并行生产", () =
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
+describe("DynamicPoller.detectDynamics — 开播伪动态", () => {
 	const liveRcmd = () => makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_LIVE_RCMD" });
 
 	it("不翻译、不抓图、不交;锚点照常前移,下一轮不再重判", async () => {
@@ -1309,7 +1309,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 	});
 });
 
-describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变了(A7)", () => {
+describe("DynamicPoller — 名单在 detectDynamics 抓图的 await 期间变了(A7)", () => {
 	const picItem = () =>
 		makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
 
@@ -1335,7 +1335,7 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 	// 引擎只交 uid,接线按身份**现查**订阅:抓图那几秒里同一个 uid 被「删了再加」的话,现查会找到新加的那条订阅,
 	// 核心的回问也过得去(新订阅好端端在),于是一条旧动态被推给新订阅。「删了」与「删了又加回来」时间线锚点都会变
 	// (没了 / 重置成现在),所以抓完图把进门时过的两道闸再过一遍:名单里还有这个 uid、锚点还在且仍早于这条动态。
-	// 验红:把 dynamic-engine.ts 抓图之后那句 `this.stillDue(...)` 的判断去掉,这条与上一条红。
+	// 验红:把 dynamic-poller.ts 抓图之后那句 `this.stillDue(...)` 的判断去掉,这条与上一条红。
 	it("抓图期间同一 uid 被「删了再加」→ 旧动态不交给新订阅;对照:订阅没变就交", async () => {
 		const swapped = makeEngine();
 		swapped.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
@@ -1415,7 +1415,7 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 // C. 生命周期(cron mock)
 // ---------------------------------------------------------------------------
 
-describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
+describe("DynamicPoller — reconcileJob 尊重风控退避", () => {
 	it("-352 退避窗口内 syncSubscriptions → 不提前重启 cron(退避不被击穿)", async () => {
 		const before = cronMock.instances.length;
 		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
@@ -1438,7 +1438,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 	});
 });
 
-describe("DynamicEngine — 生命周期 / cron 重启", () => {
+describe("DynamicPoller — 生命周期 / cron 重启", () => {
 	it("start() 有订阅快照 → 建并启动 cron;stop() → 停止", () => {
 		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
@@ -1486,7 +1486,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	it("退避到点按最新名单重启检测", () => {
 		const timers: Array<() => void> = [];
 		// 能触发的定时器:本用例只关心「到点会重启」。
-		const engine = new DynamicEngine({
+		const engine = new DynamicPoller({
 			logger: { info() {}, warn() {}, error() {}, debug() {} },
 			setTimeout: (fn) => {
 				timers.push(fn);
@@ -1679,7 +1679,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 // H. 作品只交一次、不交的就不交 —— 统计不在引擎这头记:统计听核心入口发的 `post-detected`
 // ---------------------------------------------------------------------------
 
-describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统计事件", () => {
+describe("DynamicPoller.detectDynamics — 过闸的才交,引擎自己不发统计事件", () => {
 	const reportedCount = (b: EngineBag) => b.reportPost.mock.calls.length;
 	const postEvents = (b: EngineBag) => b.emits.filter((e) => e.event === "post-detected");
 
@@ -1767,7 +1767,7 @@ describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统
 // 敲 status 的场合。
 // ---------------------------------------------------------------------------
 
-describe("DynamicEngine.lastFetchAt", () => {
+describe("DynamicPoller.lastFetchAt", () => {
 	it("还没跑过 → undefined,而不是 0", () => {
 		const b = makeEngine();
 		expect(b.engine.lastFetchAt()).toBeUndefined();
@@ -1895,7 +1895,7 @@ describe("K. detectNow", () => {
  * 不清的话风控条目永远挂在表里,还把之后所有直播间的停监压成无声。
  * 清的是「不再适用」,不是风控解除:主人不会听到「风控已解除」。真引擎 + 真上报器 + 真问题表 + 真问题通知器。
  */
-describe("DynamicEngine — 这一路不再跑了,它报的要清", () => {
+describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 	const IN = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } as const;
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
 

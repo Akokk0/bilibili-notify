@@ -14,6 +14,7 @@
  *   (`index.has` + 白名单正则),门口这一道让「id 写错了」与「没这套皮肤」分得开。
  */
 
+import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import {
 	CARD_SKIN_AI_INSTRUCTION_MAX,
 	type CardSkinAiCssEvent,
@@ -75,19 +76,6 @@ const AiCssBodySchema = z.object({
 	manifest: z.unknown(),
 });
 
-/**
- * 编辑器那口 AI 要的最小面;engines.commentary 的 `generateRaw` 即是。
- * 第三个参数(字数进度)这条路用不着 —— 字本身就流到框里了。
- */
-export interface CardCssAiEngine {
-	generateRaw(
-		system: string,
-		user: string,
-		onProgress: undefined,
-		stream: { onText: (text: string) => void; signal?: AbortSignal },
-	): Promise<string>;
-}
-
 /** 「这个 id 没有皮肤」。失败只有一种形状(ADR-0026):`{ code: "not_found", message }`。 */
 function notFound(c: Context) {
 	return respondFailure(c, fail("not_found", "卡片皮肤不存在"));
@@ -110,7 +98,7 @@ export function createCardsSkinsRoute(deps: {
 	/** 面板上那句「知道了」:账本是一次性痕迹,看过就该翻篇(见 `card-skins/fallbacks.ts`)。 */
 	clearFallbacks?: () => void;
 	/** AI 引擎,**热读**:engines 是后挂的,每次现取。`null` = 没配模型。 */
-	commentary?: () => CardCssAiEngine | null;
+	commentary?: () => Pick<CommentaryGenerator, "generateRaw"> | null;
 	/** 会员卡示例用的那一档(最低一档),**热读**:来源登记表是后挂的,每次现取。 */
 	membershipTier: () => MembershipTier | undefined;
 }): Hono {

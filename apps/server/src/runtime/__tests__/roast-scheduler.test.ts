@@ -5,7 +5,7 @@
  * 理,全都得自己有个交代。所以这里测的重点不是「顺利时发没发」,而是每条不顺的路
  * 上主人到底知不知情。
  *
- * cron 走 FakeCronJob 捕获 onTick(同 fans-poller / dynamic-engine 的套路),不真排程。
+ * cron 走 FakeCronJob 捕获 onTick(同 fans-poller / dynamic-poller 的套路),不真排程。
  */
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";

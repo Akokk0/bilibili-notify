@@ -92,7 +92,7 @@ export interface IntegrationContext {
 /**
  * 订阅变更操作。CRUD 产生的 diff 列表，随 subscription-changed 事件携带。
  *
- * `remove` 带着**被删掉的那一整条**。下游引擎（DynamicEngine / LiveEngine）按 B 站 UID
+ * `remove` 带着**被删掉的那一整条**。下游引擎（DynamicPoller / LiveEngine）按 B 站 UID
  * 索引 listener / poll target，得拿到 uid 才清得掉资源 —— 但拓展订阅没有 uid(ADR-0019
  * 决策 9),所以这里不再单拎一个 `uid: string`:那样拓展订阅只能填个空串,下游照样拿它
  * 去清,编译器一声不吭。带整条订阅,消费方按 `kind` 收窄之后才读得到 uid。
@@ -120,7 +120,7 @@ export interface BusEvents {
 	"subscription-auth-changed": { sourceKey: string; state: AuthState };
 	/**
 	 * Surface a runtime error from a business engine / subsystem.
-	 * `source` 是逻辑发射源标识(e.g. "dynamic-engine" / "live-engine" / "image" / "ai")
+	 * `source` 是逻辑发射源标识(e.g. "post-delivery" / "live-engine" / "image" / "ai")
 	 * 用于消费方（master-notifier / AlertShell）做按域节流与展示。
 	 */
 	"engine-error": { source: string; message: string };

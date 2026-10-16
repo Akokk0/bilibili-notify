@@ -15,7 +15,7 @@ export interface BusEventDeps {
 
 const SOURCES = [
 	{ value: "live-engine", label: "live-engine · 直播" },
-	{ value: "dynamic-engine", label: "dynamic-engine · 动态" },
+	{ value: "post-delivery", label: "post-delivery · 作品投递" },
 	{ value: "push", label: "push · 推送" },
 	{ value: "image", label: "image · 渲染" },
 	{ value: "ai", label: "ai · AI" },

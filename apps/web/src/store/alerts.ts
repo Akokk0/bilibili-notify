@@ -14,7 +14,7 @@ import { create } from "zustand";
 export interface AlertItem {
 	/** uuid - in-app generated（事件本身没有 id）；用于 dismiss key */
 	id: string;
-	/** 逻辑发射源：dynamic-engine / live-engine / image / ai 等 */
+	/** 逻辑发射源：post-delivery / live-engine / image / ai 等 */
 	source: string;
 	/** 错误正文 */
 	message: string;

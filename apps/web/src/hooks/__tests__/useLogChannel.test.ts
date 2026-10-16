@@ -56,13 +56,13 @@ describe("parseLogEnvelope", () => {
 			env({
 				type: "log",
 				event: "engine-error",
-				data: { source: "dynamic-engine", message: "boom" },
+				data: { source: "post-delivery", message: "boom" },
 			}),
 		);
 		expect(line).toEqual({
 			ts: "2026-05-17T00:00:00.000Z",
 			level: "error",
-			name: "dynamic-engine",
+			name: "post-delivery",
 			msg: "boom",
 		});
 	});

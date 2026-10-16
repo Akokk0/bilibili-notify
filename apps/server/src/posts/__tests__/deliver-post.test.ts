@@ -2,7 +2,7 @@
  * 单元测试 — **作品装配** `deliverPost`(ADR-0019 决策 66):B 站动态与拓展作品共用的那一段。
  *
  * 只经公开接口:给一份 `PostEvent` + 假的 `DeliverPostDeps`(设置读口 / 渲染器 / AI / 推送 / 留痕),
- * 看发出去了什么。B 站原始数据怎么翻成作品由 `dynamic-engine.test.ts` 与 `post-from-dynamic.test.ts` 钉。
+ * 看发出去了什么。B 站原始数据怎么翻成作品由 `dynamic-poller.test.ts` 与 `post-from-dynamic.test.ts` 钉。
  *
  * 夹具里的 `settings` 读口按调用次数回值(`settingsSeq`):装配里「现折」「回问」是两次调用,
  * 恒回同一份的话,这两步删掉也不红。

@@ -1,7 +1,7 @@
 /**
  * B 站来源:`start(ctx)` 里造并启动动态引擎,`stop()` 里停它。
  *
- * 引擎用真的 `DynamicEngine`(假 `Api`,全程不外连);cron 换成惰性的假件,好数启停与新节奏。
+ * 引擎用真的 `DynamicPoller`(假 `Api`,全程不外连);cron 换成惰性的假件,好数启停与新节奏。
  * 最后一组是「不用假名单」的端到端:真订阅仓 + 真来源上下文 + 真引擎,停用 / 启用 / 改全局作品开关逐个走一遍。
  */
 
@@ -765,7 +765,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		await source.stop();
 	});
 
-	// 验红:删掉 `DynamicEngine.stop()` 里清表的那句(`this.postAnchors = new Map()`),这条红。
+	// 验红:删掉 `DynamicPoller.stop()` 里清表的那句(`this.postAnchors = new Map()`),这条红。
 	it("撤销登记时有一轮正卡在抓图:放行之后这条不交,来源上下文也没看到「停下还在上报」", async () => {
 		const { source, registration, enqueue, feed, fetchImage, logger } = await boot();
 		const gate = deferred<{ ok: false; code: string; message: string }>();

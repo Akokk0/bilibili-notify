@@ -6,7 +6,7 @@ import type { SubPick } from "../live.js";
 import { biliRegistry } from "./support/registry.js";
 
 /**
- * 让拉动态返回指定错误码(状态类场景):盖的是传给 DynamicEngine 的 `api.fetchAllDynamic()` 那一个请求,
+ * 让拉动态返回指定错误码(状态类场景):盖的是传给 DynamicPoller 的 `api.fetchAllDynamic()` 那一个请求,
  * 「下一轮」(可选之后 N 轮)返回 `{ code, message }`,用完自己摘;收摊随时能摘。
  * 它不经请求客户端的拦截,所以回 `-101` 也**不会**把登录状态变成失效 —— 说明文字要如实写明。
  */

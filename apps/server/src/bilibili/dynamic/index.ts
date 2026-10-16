@@ -1,8 +1,8 @@
 export {
-	DynamicEngine,
-	type DynamicEngineConfig,
-	type DynamicEngineOptions,
-} from "./dynamic-engine";
+	DynamicPoller,
+	type DynamicPollerConfig,
+	type DynamicPollerOptions,
+} from "./dynamic-poller";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {
 	AllDynamicResponse,

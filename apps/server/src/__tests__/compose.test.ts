@@ -4,7 +4,7 @@
  * 零件(开发场景、登记表、B 站来源)各自的测试全绿,证明不了 `compose.ts` 真用对了认领键、真只挑 B 站订阅、
  * 真没在门没开时提前调工厂、真把同一个壳递给了来源和场景 —— 这些剪断了,别的测试一条都不会红。
  * 这里用真的 `createBiliDevtools`(测试进程里解析到的是真入口,换桩只挂在打包配置上)外面包一层 spy,
- * 来源用真的 B 站来源 + 真的 `DynamicEngine`(假 `Api`,全程不外连),逐条钉。
+ * 来源用真的 B 站来源 + 真的 `DynamicPoller`(假 `Api`,全程不外连),逐条钉。
  */
 
 import { mkdtemp, readdir, rm } from "node:fs/promises";

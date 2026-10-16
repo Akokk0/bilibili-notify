@@ -13,7 +13,7 @@ import {
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
-import { DynamicEngine } from "./dynamic/index.js";
+import { DynamicPoller } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import type { ImagesDeps } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
@@ -53,7 +53,7 @@ export interface BiliSourceDeps {
 
 export interface BiliSource extends Source {
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
-	dynamic(): DynamicEngine | undefined;
+	dynamic(): DynamicPoller | undefined;
 }
 
 /** 从 B 站设置算动态引擎的配置(启动与热更共用)。 */
@@ -89,7 +89,7 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 };
 
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
-	let engine: DynamicEngine | undefined;
+	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
 	let started = false;
 	// 动态那一格设置读不懂、动态停着(`applyDynamic` 记;`health()` 读)。
@@ -130,7 +130,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						engine.updateConfig(dynamicConfigOf(read.settings));
 						return;
 					}
-					const made = new DynamicEngine({
+					const made = new DynamicPoller({
 						logger: ctx.logger,
 						setTimeout: deps.setTimeout,
 						bus: deps.bus,

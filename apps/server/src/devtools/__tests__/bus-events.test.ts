@@ -22,9 +22,9 @@ function setup() {
 describe("总线事件场景", () => {
 	it("engine.error:来源枚举 + 正文,原样发射", async () => {
 		const { reg, seen } = setup();
-		const res = await reg.run("engine.error", { source: "dynamic-engine", message: "假的炸了" });
-		expect(seen).toEqual([["engine-error", ["dynamic-engine", "假的炸了"]]]);
-		expect(res.summary).toContain("dynamic-engine");
+		const res = await reg.run("engine.error", { source: "post-delivery", message: "假的炸了" });
+		expect(seen).toEqual([["engine-error", ["post-delivery", "假的炸了"]]]);
+		expect(res.summary).toContain("post-delivery");
 	});
 
 	it("engine.error 默认值:live-engine + 一句看得出是假的话", async () => {

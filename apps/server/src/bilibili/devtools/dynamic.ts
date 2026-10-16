@@ -20,7 +20,7 @@ import type { SubPick } from "./live.js";
 /** 动态类型的四选 + 转发。 */
 type Kind = "word" | "draw" | "av" | "article" | "forward";
 
-export interface DynamicEngineLike {
+export interface DynamicPollerLike {
 	detectNow(): Promise<void>;
 }
 
@@ -28,7 +28,7 @@ export interface DynamicScenarioDeps {
 	subs: () => SubPick[];
 	api: OverridableApi<Pick<Api, "fetchAllDynamic">>;
 	/** 引擎是后建的,现取;还没起来就 undefined。 */
-	dynamic: () => DynamicEngineLike | undefined;
+	dynamic: () => DynamicPollerLike | undefined;
 }
 
 type Feed = Awaited<ReturnType<Api["fetchAllDynamic"]>>;

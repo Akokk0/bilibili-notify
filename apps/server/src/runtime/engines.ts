@@ -558,7 +558,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Constructed when puppeteer is wired — at boot if chromePath was set, or at
 	// runtime via enableImageRendering() when the operator auto-detects Chrome in
 	// the dashboard (no restart). `cardStyle.enabled` is enforced inside
-	// DynamicEngine / LiveEngine via the `imageEnabled` config field; when false
+	// DynamicPoller / LiveEngine via the `imageEnabled` config field; when false
 	// the engines bypass the renderer and emit text-only payloads, so we keep the
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
@@ -592,7 +592,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
 	// 游标按 `uid:kind` 独立,落盘 `<dataRoot>/runtime/card-bg-cursors.json`,重启续接不归零。
-	// pick 在推送点(room-session / DynamicEngine)同步推进;脏标记驱动定时 flush,避免每
+	// pick 在推送点(room-session / DynamicPoller)同步推进;脏标记驱动定时 flush,避免每
 	// 推送写盘。注入给两个引擎。
 	const cursorFile = dataPath(opts.dataRoot, ...CARD_BG_CURSORS_FILE);
 	const loadCursors = (): Record<string, number> => {
@@ -1816,7 +1816,7 @@ export function buildLiveSubViewSingle(
 		extras: eff.features.extras,
 		target: eff.routing,
 		// 开播 / 正在直播 / 下播三张卡共用的那几格(与拓展订阅的直播同一份)。dynamic 卡不经 LiveEngine
-		// (走 DynamicEngine),所以按种类的样式只折 live / sc / guard。
+		// (走 DynamicPoller),所以按种类的样式只折 live / sc / guard。
 		...liveWorkSettings(sub, globals, eff),
 		// Per-UP 门槛 / AI;adapter 在 add 路径上灌入(门槛是折好的生效值,没配 = 不设门槛),room-session 在 SC / guard /
 		// liveSummary 调用点先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →

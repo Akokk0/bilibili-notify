@@ -18,7 +18,7 @@ import { dataPath } from "./roots.js";
  * `FansPoller` every dynamicCron tick (~2min). When that lived inside
  * `Subscription` and went through `ConfigStore.patchSubscription`, every tick
  * emitted `config-changed:subscriptions` → SubscriptionStore reseed → whole-
- * array diff → spurious `subscription-changed{update}` → DynamicEngine re-
+ * array diff → spurious `subscription-changed{update}` → DynamicPoller re-
  * subscribe + `[ops]` info-log spam (the Logs-Tab flooding bug). Moving the
  * high-churn display cache + fans anchor here — a pure apps/server artifact
  * with its own write path that emits **no** config/subscription events —

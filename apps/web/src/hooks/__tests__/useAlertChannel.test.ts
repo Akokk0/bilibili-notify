@@ -48,12 +48,12 @@ describe("handleLogEnvelope — log 频道 engine-error", () => {
 			env({
 				type: "log",
 				event: "engine-error",
-				data: { source: "dynamic-engine", message: "boom" },
+				data: { source: "post-delivery", message: "boom" },
 			}),
 		);
 		const items = useAlertStore.getState().items;
 		expect(items).toHaveLength(1);
-		expect(items[0].source).toBe("dynamic-engine");
+		expect(items[0].source).toBe("post-delivery");
 		expect(items[0].message).toBe("boom");
 	});
 

@@ -6,7 +6,7 @@ import type { SubPick } from "../live.js";
 import { biliRegistry } from "./support/registry.js";
 
 /**
- * A3:四类动态 —— 往传给 DynamicEngine 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
+ * A3:四类动态 —— 往传给 DynamicPoller 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
  * (真 feed 照拉,假的排在最前),然后立刻让引擎跑一轮检测。守的是形状:渲染器按 `type`
  * 分发,缺 `module_stat` / `vip` / `major.archive.badge` 这类字段就是一次渲染期 undefined。
  */

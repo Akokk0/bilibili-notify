@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { resolveDynamicColorOptions } from "../card-style";
 
 /**
- * 动态卡 colorOptions 的解析规则从 DynamicEngine 里提出来了 —— 独立端的链接卡也要
- * 按同一条规则出图。这里只钉纯函数;引擎那侧的行为仍由 dynamic-engine.test 钉着。
+ * 动态卡 colorOptions 的解析规则从 DynamicPoller 里提出来了 —— 独立端的链接卡也要
+ * 按同一条规则出图。这里只钉纯函数;引擎那侧的行为仍由 dynamic-poller.test 钉着。
  *
  * 从前这份还钉着「背景图每次推送轮换」的三条。整条 `cardStyle.backgroundImages` 链
  * 2026-09-20 删掉(背景图归皮肤的 `image` 旋钮),剩下的就是一道 enable 闸。

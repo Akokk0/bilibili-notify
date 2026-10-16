@@ -4,10 +4,10 @@
  * Bug 1 链:FansPoller 每 tick 经 configStore.patchSubscription 写
  * cachedProfile.fans → ConfigStore emit config-changed:subscriptions →
  * SubscriptionStore.replaceAll 整数组 diff → 伪 subscription-changed{update} →
- * DynamicEngine 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
+ * DynamicPoller 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
  *
  * 修复后 FansPoller 每 tick 改写 subRuntimeStore.patch(独立文件、**无事件**),
- * configStore 仅被读 getGlobals().profileRefreshCron。本测试用 dynamic-engine.test
+ * configStore 仅被读 getGlobals().profileRefreshCron。本测试用 dynamic-poller.test
  * 同款 `vi.mock("cron")` FakeCronJob 捕获 onTick,手动驱动**恰好一次** tick,
  * 断言:
  *   1. configStore.patchSubscription 一次都没被调(Bug 1 链入口被切断);
@@ -20,7 +20,7 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages, PROFILE_IMAGE_REF } from "../../__tests__/support/profile-images.js";
 
-// cron mock — FakeCronJob 捕获 onTick,不真正排程(同 dynamic-engine.test 套路)。
+// cron mock — FakeCronJob 捕获 onTick,不真正排程(同 dynamic-poller.test 套路)。
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
 	class FakeCronJob {

@@ -105,21 +105,21 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
 }
 
 /**
- * Runtime configuration for {@link DynamicEngine}. The standalone runtime fills it
+ * Runtime configuration for {@link DynamicPoller}. The standalone runtime fills it
  * from its config store. The `logLevel` field is intentionally dropped — the host
  * sets logger level externally via {@link ServiceContext}.
  *
  * 引擎只管生产:轮询节奏与视频链接怎么写是它自己的两样;模板 / 图集 / 出图 / AI / 过滤那些都是核心装配的事
  * (`posts/deliver-post.ts` 的 `PostSettings`,每条作品现折),不再经引擎。
  */
-export interface DynamicEngineConfig {
+export interface DynamicPollerConfig {
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
 }
 
-export interface DynamicEngineOptions {
+export interface DynamicPollerOptions {
 	logger: Logger;
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
@@ -141,7 +141,7 @@ export interface DynamicEngineOptions {
 	 * 订阅由宿主按身份查。必给。
 	 */
 	reportPost: (externalId: string, report: PostReport) => void;
-	config: DynamicEngineConfig;
+	config: DynamicPollerConfig;
 	/** 名单,现读(签名就是来源上下文的 `ctx.subscriptions`)。 */
 	subscriptions: () => readonly SourceSubscriptionView[];
 }
@@ -165,17 +165,17 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
  *   reportPost / 名单(`subscriptions`)。名单是引擎唯一的订阅输入:启停与「名单可能变了」都由来源调进来。
  * - 只管生产:拉 feed、判新、翻成中立作品、抓图、交给核心入口。怎么消费(过滤、出卡、点评、推送、图集)不归它。
  */
-export class DynamicEngine {
+export class DynamicPoller {
 	private readonly setTimeout: ServiceContext["setTimeout"];
 	private readonly bus: MessageBus;
 	private readonly api: Api;
-	private readonly problems: DynamicEngineOptions["problems"];
+	private readonly problems: DynamicPollerOptions["problems"];
 	private readonly imageFetcher: ImagesDeps["images"];
 	private readonly reportPost: (externalId: string, report: PostReport) => void;
 	private readonly logger: Logger;
 	private readonly subscriptions: () => readonly SourceSubscriptionView[];
 
-	private config: DynamicEngineConfig;
+	private config: DynamicPollerConfig;
 	private dynamicJob?: CronJob;
 	/** 风控/瞬时错误后的一次性退避重启句柄;非 undefined 表示已排程,不叠加。 */
 	private detectorRestartTimer?: Disposable;
@@ -215,7 +215,7 @@ export class DynamicEngine {
 	private lastSuccessfulFetchAt?: number;
 	private readonly busHandles: Disposable[] = [];
 
-	constructor(opts: DynamicEngineOptions) {
+	constructor(opts: DynamicPollerOptions) {
 		this.logger = opts.logger;
 		this.setTimeout = opts.setTimeout;
 		this.bus = opts.bus;
@@ -292,7 +292,7 @@ export class DynamicEngine {
 	 * 配置已经写进 this.config,但 node-cron 句柄还在跑旧节奏,纯粹的字段更新
 	 * 是看不见的 bug。
 	 */
-	updateConfig(config: DynamicEngineConfig): void {
+	updateConfig(config: DynamicPollerConfig): void {
 		const cronChanged = this.config.dynamicCron !== config.dynamicCron;
 		this.config = config;
 		if (cronChanged && this.dynamicJob) {

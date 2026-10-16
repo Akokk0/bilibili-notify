@@ -2,14 +2,14 @@
 /**
  * 单元测试 — `createEngines` 的「无重启热重载」契约(独立端配置流向核心)。
  *
- * engines.ts 自身构造真实 DynamicEngine / LiveEngine / PushRouter / CommentaryGenerator /
+ * engines.ts 自身构造真实 DynamicPoller / LiveEngine / PushRouter / CommentaryGenerator /
  * ImageRenderer,代价太大且与本测试无关 —— 这里把这 5 个引擎包 `vi.mock` 成 spy class,
  * 用真实 NodeMessageBus 驱动事件,聚焦验证 engines.ts 的 wiring 与热重载分支:
  *
  *   boot:           push.start / dynamic.start 拉起;默认 globals 下 AI / image 不构造
  *   config-changed globals:  dynamic+live.updateConfig、push.setMaster 一并热推
  *   config-changed integration-settings: B 站自己的设置(cron / 健康检查间隔)按格各开各的门 ——
- *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicEngineConfig)、
+ *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicPollerConfig)、
  *                            (健康检查间隔归登录系统,见 `bilibili/auth/__tests__/auth-system-lifecycle.test.ts`);没变的格不动
  *   config-changed targets:  仅 push.setMaster 后早退(不触发 dynamic.updateConfig)
  *   config-changed 其它 scope:no-op
@@ -2966,7 +2966,7 @@ describe("createEngines — 背景轮换游标落盘", () => {
 // live:true 的 update op,LiveEngine(常驻 WS、事件驱动)listener 一直挂着照推。
 // 修复:op 翻译层显式 gate enabled。动态那一半:名单只列启用中的订阅
 // (`subscriptions/__tests__/source-subscriptions.test.ts`)与引擎的 `syncSubscriptions`
-// (`bilibili/dynamic/__tests__/dynamic-engine.test.ts`)。
+// (`bilibili/dynamic/__tests__/dynamic-poller.test.ts`)。
 describe("createEngines — 订阅禁用/启用转译", () => {
 	function makeSub(uid: string, enabled: boolean): Subscription {
 		const s = makeEmptySubscription({

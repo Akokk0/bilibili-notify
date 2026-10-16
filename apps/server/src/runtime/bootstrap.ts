@@ -199,7 +199,7 @@ export interface AppRuntime {
 	 */
 	liveTable: LiveTable;
 	/**
-	 * Engine layer: PushRouter + DynamicEngine + LiveEngine + Dispatcher.
+	 * Engine layer: PushRouter + DynamicPoller + LiveEngine + Dispatcher.
 	 *
 	 * `null` until {@link attachEngines} is called. The auth system has to come
 	 * up first (engines need a started Api), so the bootstrap split is:
