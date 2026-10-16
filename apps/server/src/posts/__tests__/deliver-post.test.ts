@@ -602,12 +602,15 @@ describe("deliverPost — AI 点评", () => {
 		expect(aiSegsOf(h)[0]?.text).toBe(`点评\n${LINK}`);
 	});
 
-	it("点评是空串:同今天,当正文用(aiMessages 照出),模板那份不受影响", async () => {
-		const h = harness({ withImage: false, withAi: true, post: { text: "正文" } });
-		h.comment.mockResolvedValueOnce("");
-		await run(h);
-		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
-		expect(aiSegsOf(h)).toBeDefined();
+	it("点评回来是空串或只有空白:当作没有 AI 版,不挂 aiMessages,所有目标收模板", async () => {
+		for (const empty of ["", "  \n\t "]) {
+			const h = harness({ withImage: false, withAi: true, post: { text: "正文" } });
+			h.comment.mockResolvedValueOnce(empty);
+			await run(h);
+			expect(h.comment).toHaveBeenCalledTimes(1);
+			expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
+			expect("aiMessages" in mainAnchorOf(h)).toBe(false);
+		}
 	});
 });
 

@@ -309,6 +309,11 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 					settings.aiWebSearch ? { ...settings.aiOverride, webSearch: true } : settings.aiOverride,
 				);
 				logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
+				// 点评回来是空串 / 只有空白等于 AI 没写出来:当没有 AI 版,所有目标用模板(不推一条空文字)。
+				if (aiComment !== undefined && aiComment.trim() === "") {
+					logger.warn("[ai] 动态点评回来是空的，回退到普通文字");
+					aiComment = undefined;
+				}
 			} catch (e) {
 				logger.error(`[ai] AI 点评生成失败：${errorMessageOf(e)}，回退到普通文字`);
 			}
