@@ -34,19 +34,19 @@ function harness() {
 describe("createNodeServiceContext — 入口打码", () => {
 	it("msg 与字符串 / 对象参数里的凭证:stdout 与钩子拿到的都是打过码的", () => {
 		const { ctx, lines, seen } = harness();
-		ctx.logger.info("cookie SESSDATA=abcdefgh123", "bili_jct=jjjjjjjj77", {
+		ctx.logger.info("cookie Bearer abcdefgh123", "Bearer jjjjjjjj77", {
 			h: "Bearer tttttttt.8888",
 		});
 
 		const stdout = lines.join("");
-		expect(stdout).toContain("SESSDATA=***");
+		expect(stdout).toContain("Bearer ***");
 		expect(stdout).not.toContain("abcdefgh123");
 		expect(stdout).not.toContain("jjjjjjjj77");
 		expect(stdout).not.toContain("tttttttt.8888");
 
 		expect(seen).toHaveLength(1);
 		const hooked = JSON.stringify(seen[0]);
-		expect(hooked).toContain("SESSDATA=***");
+		expect(hooked).toContain("Bearer ***");
 		expect(hooked).not.toContain("abcdefgh123");
 		expect(hooked).not.toContain("jjjjjjjj77");
 		expect(hooked).not.toContain("tttttttt.8888");
@@ -54,28 +54,28 @@ describe("createNodeServiceContext — 入口打码", () => {
 
 	it("msg 里带 %s 占位时,pino 会把参数拼进 stdout 那一行:拼进去的也是打过码的", () => {
 		const { ctx, lines } = harness();
-		ctx.logger.info("dump %s", "SESSDATA=interp1234");
+		ctx.logger.info("dump %s", "Bearer interp1234");
 
 		const stdout = lines.join("");
-		expect(stdout).toContain("dump SESSDATA=***");
+		expect(stdout).toContain("dump Bearer ***");
 		expect(stdout).not.toContain("interp1234");
 	});
 
 	it("Error 参数:钩子收到带 message 的普通对象(已打码),不是 {}", () => {
 		const { ctx, seen } = harness();
-		ctx.logger.error("拉动态失败", new Error("boom SESSDATA=zzzzzzzz9"));
+		ctx.logger.error("拉动态失败", new Error("boom Bearer zzzzzzzz9"));
 
 		const arg = seen[0]?.args[0] as { name: string; message: string; stack: string };
 		expect(arg.name).toBe("Error");
-		expect(arg.message).toBe("boom SESSDATA=***");
-		expect(arg.stack).toContain("SESSDATA=***");
+		expect(arg.message).toBe("boom Bearer ***");
+		expect(arg.stack).toContain("Bearer ***");
 		expect(arg.stack).not.toContain("zzzzzzzz9");
 	});
 
 	it("Error 的 cause 与自带的可枚举属性也保留并打码", () => {
 		const { ctx, seen } = harness();
 		const err = Object.assign(
-			new TypeError("outer", { cause: new Error("inner bili_jct=cccccccc1") }),
+			new TypeError("outer", { cause: new Error("inner Bearer cccccccc1") }),
 			{
 				code: "E_X",
 			},
@@ -89,7 +89,7 @@ describe("createNodeServiceContext — 入口打码", () => {
 		};
 		expect(arg.name).toBe("TypeError");
 		expect(arg.code).toBe("E_X");
-		expect(arg.cause.message).toBe("inner bili_jct=***");
+		expect(arg.cause.message).toBe("inner Bearer ***");
 	});
 
 	it("后续参数进 stdout:Error 的 message 在那一行里(args 字段),不再只剩一句 failed", () => {
@@ -107,12 +107,12 @@ describe("createNodeServiceContext — 入口打码", () => {
 
 	it("后续参数写进 stdout 时也是打过码的(Error 与对象)", () => {
 		const { ctx, lines } = harness();
-		ctx.logger.error("x failed", new Error("x SESSDATA=zzzzzzzz9"), {
-			cookie: "SESSDATA=abcdefgh1",
+		ctx.logger.error("x failed", new Error("x Bearer zzzzzzzz9"), {
+			cookie: "Bearer abcdefgh1",
 		});
 
 		const stdout = lines.join("");
-		expect(stdout).toContain("SESSDATA=***");
+		expect(stdout).toContain("Bearer ***");
 		expect(stdout).not.toContain("zzzzzzzz9");
 		expect(stdout).not.toContain("abcdefgh1");
 	});
@@ -126,11 +126,11 @@ describe("createNodeServiceContext — 入口打码", () => {
 			},
 		});
 		const ctx = createNodeServiceContext({ name: "svc", pretty: true, destination });
-		ctx.logger.error("POST /api/targets failed", new Error("boom SESSDATA=zzzzzzzz9"));
+		ctx.logger.error("POST /api/targets failed", new Error("boom Bearer zzzzzzzz9"));
 
 		const out = lines.join("");
 		expect(out).toContain("POST /api/targets failed");
-		expect(out).toContain("boom SESSDATA=***");
+		expect(out).toContain("boom Bearer ***");
 		expect(out).not.toContain("zzzzzzzz9");
 	});
 
@@ -200,7 +200,7 @@ describe("createNodeServiceContext — 按值打码", () => {
 		}
 	});
 
-	it("值遮完,固定正则照跑:SESSDATA=<登记值> 变成 SESSDATA=***", () => {
+	it("带着 cookie 名字打出来的登记值:靠值遮(核心里没有按名字的正则),名字原样留着好诊断", () => {
 		const { ctx, seen } = valueHarness();
 		ctx.logger.info("SESSDATA=FAKE-SECRET-VALUE-1; other=FAKE-NOT-REGISTERED");
 		expect(seen[0]?.msg).toBe("SESSDATA=***; other=FAKE-NOT-REGISTERED");

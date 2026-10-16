@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	migrateZeroGeneration,
 	readZeroGenerationKey,
@@ -206,5 +206,70 @@ describe("0.x 的 B 站登录转成集成的密钥文件", () => {
 			await readNewEntries(sandbox.target, masterKey),
 		);
 		expect(await readFile(join(sandbox.zero, "secrets", "cookies.json"), "utf8")).toBe(before);
+	});
+
+	/**
+	 * ⑦ 解开的旧 cookie 与令牌**从不进日志**。迁移跑在运行时(和日志打码登记册)建起来之前,这一步解开的值没法登记,
+	 * 日志里按名字遮 `SESSDATA=` 的正则删掉以后,能保住它们的只有「这条路根本不打它们」:迁移函数不收 logger、
+	 * 不碰 console,汇报(`report`)里只有固定的话和路径。这里钉住的是行为:成功与每种读不了的情形,
+	 * 解开的值既不在汇报里,也没有出现在任何一次 console / stdout / stderr 的输出里。
+	 * 迁完之后的第一次开机,B 站的存储宿主打开新文件时就把这些值登记进打码登记册(见 `store-redaction.test.ts`)。
+	 */
+	it("⑦ 解开的 cookie 与令牌值:汇报里没有,console / stdout / stderr 里也没有(成功与读不了的各种情形)", async () => {
+		const fakeCookies = JSON.stringify([
+			{ name: "SESSDATA", value: "FAKE-MIGRATED-SESSDATA-0001", domain: "bilibili.com" },
+			{ name: "bili_jct", value: "FAKE-MIGRATED-CSRF-0002", domain: "bilibili.com" },
+		]);
+		const fakeToken = "FAKE-MIGRATED-REFRESH-0003";
+		const secretsOnly = ["FAKE-MIGRATED-SESSDATA-0001", "FAKE-MIGRATED-CSRF-0002", fakeToken];
+
+		const printed: string[] = [];
+		const spies = [
+			vi.spyOn(console, "log"),
+			vi.spyOn(console, "info"),
+			vi.spyOn(console, "warn"),
+			vi.spyOn(console, "error"),
+			vi.spyOn(console, "debug"),
+		].map((spy) => spy.mockImplementation((...args: unknown[]) => void printed.push(String(args))));
+		const stdout = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+			printed.push(String(chunk));
+			return true;
+		});
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+			printed.push(String(chunk));
+			return true;
+		});
+		try {
+			await placeKeyMaterial();
+			await placeLogin(masterKey, fakeCookies, fakeToken);
+			const converted = await sandbox.migrate();
+			expectConverted(converted);
+
+			// 读不了的各种情形:密文被改过(解不开)、解开的不是数组、令牌那一格不是 GCM 块。
+			const tampered = gcmEncrypt(masterKey, fakeCookies);
+			const data = Buffer.from(tampered.data, "base64");
+			data[0] = (data[0] ?? 0) ^ 0xff;
+			await sandbox.placeZero(COOKIES_FILE, {
+				cookiesJson: { ...tampered, data: data.toString("base64") },
+				refreshToken: gcmEncrypt(masterKey, fakeToken),
+			});
+			const second = join(dirname(sandbox.target), "generation-tampered");
+			const reports = [
+				converted,
+				await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: second }),
+			];
+			await sandbox.placeZero(COOKIES_FILE, {
+				cookiesJson: gcmEncrypt(masterKey, `{"leak":"${fakeToken}"}`),
+			});
+			const third = join(dirname(sandbox.target), "generation-not-array");
+			reports.push(await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: third }));
+
+			for (const value of secretsOnly) {
+				expect(JSON.stringify(reports), value).not.toContain(value);
+				expect(printed.join("\n"), value).not.toContain(value);
+			}
+		} finally {
+			for (const spy of [...spies, stdout, stderr]) spy.mockRestore();
+		}
 	});
 });

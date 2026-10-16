@@ -300,6 +300,9 @@ export class Api {
 	 * 它只管写盘,**不代表一段登录成立**(续期是同一段、登出是结束):登录代、续期定时器、`-101` 的去抖都不在这里动。
 	 */
 	async commitLogin(refreshToken: string | undefined): Promise<Result> {
+		// 令牌到手、还没存进 `secrets`(落盘成功后宿主才按 `secrets` 登记)的这段空档,日志不能露出它:
+		// 同步登记,在第一个 await 之前。扫码登录与续期两条路都经这里。
+		if (refreshToken) this.ctx.redact(refreshToken);
 		const result = await this.ctx.cookies.commit([
 			refreshToken
 				? { kind: "set", key: REFRESH_TOKEN_KEY, value: refreshToken }
@@ -577,6 +580,10 @@ export class Api {
 				source: "main_web",
 				refresh_token: refreshToken,
 			})) as { code: number; message: string; data: { refresh_token: string } };
+			// 新令牌一到手就登记要在日志里遮掉:从这里到提交(`commitLogin`)之间隔着确认 POST 和几处 await,
+			// 这段里的日志与错误不能带着它的明文。
+			const newRefreshToken: unknown = refreshData?.data?.refresh_token;
+			if (typeof newRefreshToken === "string" && newRefreshToken) this.ctx.redact(newRefreshToken);
 
 			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
 			// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。

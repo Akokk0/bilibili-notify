@@ -79,6 +79,8 @@ export interface MakeApiOptions {
 	identity?: BrowserIdentity;
 	/** 存储里已经有的 `secrets`(`http.cookies` 是整段 JSON 字符串,`refreshToken` 是字符串)。 */
 	secrets?: Record<string, Json>;
+	/** 存储把手的按值打码登记口;不给就不登记。 */
+	redact?: (kind: string, values: Iterable<string>) => void;
 }
 
 /**
@@ -94,10 +96,13 @@ export interface MakeApiOptions {
 export async function makeApi(options: MakeApiOptions = {}) {
 	const host = options.serviceCtx ? undefined : makeServiceContext();
 	const serviceCtx = options.serviceCtx ?? (host as { serviceCtx: ServiceContext }).serviceCtx;
-	const { handle, secrets, state, isClosed } = memoryStoreHandle({
-		secrets: options.secrets,
-		state: options.identity ? { [HTTP_IDENTITY_KEY]: { ...options.identity } } : undefined,
-	});
+	const { handle, secrets, state, isClosed } = memoryStoreHandle(
+		{
+			secrets: options.secrets,
+			state: options.identity ? { [HTTP_IDENTITY_KEY]: { ...options.identity } } : undefined,
+		},
+		options.redact,
+	);
 	const context = await createBiliContext({
 		stores: { open: async () => handle },
 		serviceCtx,

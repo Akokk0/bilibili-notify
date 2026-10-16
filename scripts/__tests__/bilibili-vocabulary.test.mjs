@@ -55,9 +55,10 @@ import {
  *   直接读、或写在对象字面量里的原始字段不在词表里,核心用到它们时这道看不见:`module_stat`、`is_only_fans`、`head_text`、
  *   `desc_second`、`qrcode_key`、`refresh_csrf`、`grisk_id`、`jump_style`、`icon_badge`、`comment_id_str`、
  *   `pub_action_text`、`room_admin_entrance` 等(审查稿列了二十来个)。核心里今天真在用的 `live_room` / `roomid`
- *   (`routes/cards.ts`)与 `SESSDATA` / `bili_jct`(`logs/redact.ts`)已手补进 `WHOLE_WORDS`;别的靠审查,或再手补。
+ *   (`routes/cards.ts`)已手补进 `WHOLE_WORDS`;别的靠审查,或再手补。`SESSDATA` / `bili_jct` 原先因日志脱敏的正则手补过,
+ *   3b-38 改成按值遮、核心里不再有人用,已撤。
  *   **「现生成 = 快照」那条只证明两边一致,不证明没漏**:生成函数少认一种写法时快照跟着少,照样绿。
- *   生成函数不改(主人定:只手补核心里今天真在用的)。手补的词按整名认、**大小写敏感**:`SESSDATA` 只认这一种写法,`sessdata` 认不出。
+ *   生成函数不改(主人定:只手补核心里今天真在用的)。手补的词按整名认、**大小写敏感**:`live_room` 只认这一种写法,`Live_Room` 认不出。
  * - **正则里的词只认到「标点转义」为止**:正则字面量把 `\.` 等标点转义的反斜杠去掉(`bilibili\.com` → `bilibili.com`)、字母转义
  *   (`\b` `\d`)换成空格;字符串与模板里写的正则(`new RegExp("bilibili\\.com")`)只还原标点转义、不动字母转义
  *   (`new RegExp("\\bbvid=(\\w+)")` 里的 `\b` 没换成分隔,`bbvid` 不是词边界,认不出)。认不出的还有:
@@ -113,11 +114,6 @@ export const WHOLE_WORDS = [
 	// 而这两个是核心里手写类型直接读的;`roomid` 不带下划线(自动词表认不出)、全小写是一整段(不与按段组的 `roomId` 归一)。
 	"live_room",
 	"roomid",
-	// 核心的日志脱敏器按 B 站登录凭据的 cookie 名遮值(`logs/redact.ts`),与上面同一条规矩:核心里今天真在用、自动词表认不出的才手补。
-	// 整名、大小写敏感:只认写成 `SESSDATA` / `bili_jct` 的(脱敏正则里就是这么写的,带 `i` 标志但词在源文里是这个写法);
-	// 小写的 `sessdata` 认不出。
-	"SESSDATA",
-	"bili_jct",
 ];
 
 /** 按段组:标识符切段后含这串段;字符串里按词边界出现。 */
@@ -229,7 +225,6 @@ export const RATCHET = {
 	"apps/server/src/compose.ts": 2, // 开发场景的订阅视图里带上 `roomId`
 	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
-	"apps/server/src/logs/redact.ts": 5, // 日志脱敏的五条正则:`SESSDATA`、`bili_jct`(手补进词表)与 `refresh_token`×3(自动词表里的通用词)。核心的脱敏器按 B 站登录凭据的字段名遮值。认正则后才数到的
 	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
 	"apps/server/src/runtime/engines.ts": 9, // `roomId`×9(含 `onRoomIdResolved`)
@@ -455,12 +450,12 @@ describe("守卫 11 的判据:算", () => {
 		expect(unescapePunctuation("a\\.b\\/c\\bd")).toBe("a.b/c\\bd");
 	});
 
-	it("手补进整名组的 `SESSDATA` / `bili_jct`:整名、大小写敏感,正则里也认", () => {
-		expect(wordsIn("const k = SESSDATA; const j = bili_jct;")).toEqual(["SESSDATA", "bili_jct"]);
-		expect(wordsIn("const re = /\\b(SESSDATA)=[^;]+/gi;")).toEqual(["SESSDATA"]);
-		expect(wordsIn('const s = "bili_jct=abc";')).toEqual(["bili_jct"]);
-		// 大小写敏感(钉住现状):小写的认不出
-		expect(wordsIn("const k = sessdata;")).toEqual([]);
+	it("手补进整名组的词:整名、大小写敏感,正则与字符串里也认", () => {
+		expect(wordsIn("const k = live_room; const j = roomid;")).toEqual(["live_room", "roomid"]);
+		expect(wordsIn("const re = /\\b(live_room)=[^;]+/gi;")).toEqual(["live_room"]);
+		expect(wordsIn('const s = "roomid=abc";')).toEqual(["roomid"]);
+		// 大小写敏感(钉住现状):换了大小写的认不出
+		expect(wordsIn("const k = Live_Room;")).toEqual([]);
 	});
 
 	it("手补进整名组的 `live_room` / `roomid`:标识符、属性、类型成员、字符串", () => {

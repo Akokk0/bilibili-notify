@@ -61,7 +61,7 @@ describe("createNodeMessageBus", () => {
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const bus = createNodeMessageBus();
 		bus.on("ready", (async () => {
-			throw new Error("boom SESSDATA=zzzzzzzz9");
+			throw new Error("boom Bearer zzzzzzzz9");
 		}) as unknown as ReadyHandler);
 
 		bus.emit("ready");
@@ -69,7 +69,7 @@ describe("createNodeMessageBus", () => {
 		await Promise.resolve();
 
 		const written = JSON.stringify(errSpy.mock.calls);
-		expect(written).toContain("boom SESSDATA=***");
+		expect(written).toContain("boom Bearer ***");
 		expect(written).not.toContain("zzzzzzzz9");
 	});
 

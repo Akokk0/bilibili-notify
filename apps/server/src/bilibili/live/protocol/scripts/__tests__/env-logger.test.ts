@@ -14,16 +14,16 @@ afterEach(() => {
 describe("真机脚本的 consoleLogger", () => {
 	it("msg 与参数里的凭证形状被遮,其余原样", () => {
 		const log = vi.spyOn(console, "log").mockImplementation(() => {});
-		consoleLogger.info("login SESSDATA=fakefake1234", { cookie: "bili_jct=fakefake5678", n: 7 });
-		expect(log).toHaveBeenCalledWith("login SESSDATA=***", { cookie: "bili_jct=***", n: 7 });
+		consoleLogger.info("login Bearer fakefake1234", { cookie: "Bearer fakefake5678", n: 7 });
+		expect(log).toHaveBeenCalledWith("login Bearer ***", { cookie: "Bearer ***", n: 7 });
 	});
 
 	it("warn / error 也走 console 对应的口,同样遮", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const error = vi.spyOn(console, "error").mockImplementation(() => {});
-		consoleLogger.warn("w SESSDATA=fakefake1234");
+		consoleLogger.warn("w Bearer fakefake1234");
 		consoleLogger.error("e Bearer fakefake1234567");
-		expect(warn).toHaveBeenCalledWith("w SESSDATA=***");
+		expect(warn).toHaveBeenCalledWith("w Bearer ***");
 		expect(error).toHaveBeenCalledWith("e Bearer ***");
 	});
 });

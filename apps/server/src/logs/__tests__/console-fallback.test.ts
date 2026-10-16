@@ -15,11 +15,11 @@ afterEach(() => {
 describe("兜底输出打码", () => {
 	it("consoleErrorRedacted:msg 与 Error 参数里的凭证都被遮,message 仍在", () => {
 		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-		consoleErrorRedacted("fatal SESSDATA=msgmsgmsg1", new Error("boom bili_jct=jjjjjjjj77"));
+		consoleErrorRedacted("fatal Bearer msgmsgmsg1", new Error("boom Bearer jjjjjjjj77"));
 
 		const written = JSON.stringify(spy.mock.calls);
-		expect(written).toContain("SESSDATA=***");
-		expect(written).toContain("boom bili_jct=***");
+		expect(written).toContain("fatal Bearer ***");
+		expect(written).toContain("boom Bearer ***");
 		expect(written).not.toContain("msgmsgmsg1");
 		expect(written).not.toContain("jjjjjjjj77");
 	});

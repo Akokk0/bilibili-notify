@@ -12,12 +12,13 @@
  *   2. by shape — the fixed patterns below, for secrets nobody registered.
  * If a pass itself fails the affected part is replaced by a placeholder (fail closed).
  *
- * Scope of the by-shape pass (grilled spec): the five shapes we actually emit / could leak —
- *   - `SESSDATA=<v>`            (B 站会话 cookie)
- *   - `bili_jct=<v>`            (CSRF token cookie)
- *   - `refresh_token` 值        (cookie 形 / JSON 形)
+ * Scope of the by-shape pass: only the two shapes of AI-provider keys, which live in
+ * `config-secrets.enc` rather than in an integration's `secrets` —
  *   - `sk-xxxx`                 (OpenAI 兼容 apiKey)
  *   - `Bearer <token>`          (Authorization header echo)
+ * The core no longer knows any platform's cookie names: B 站 cookies and renewal tokens
+ * are masked by value (cookie jar and `secrets` register on arrival, `ctx.redact` covers
+ * the gap before a fresh token is stored).
  *
  * Defense-in-depth — most paths already redact upstream (sanitizeErr in
  * @bilibili-notify/ai; the login bus event carries only `{ sourceKey, state }`
@@ -32,13 +33,6 @@ type Replacer = readonly [RegExp, string];
 // leaked where") while the value itself is masked. `g` flag — a single string
 // may carry several pairs (e.g. a full Cookie header).
 const REPLACERS: readonly Replacer[] = [
-	// cookie-pair form: KEY=value (value = until ; , whitespace, ", or end)
-	[/\b(SESSDATA)=[^;,\s"']+/gi, "$1=***"],
-	[/\b(bili_jct)=[^;,\s"']+/gi, "$1=***"],
-	[/\b(refresh_token)=[^;,\s"']+/gi, "$1=***"],
-	// JSON / kv form: "refresh_token":"value"  |  refresh_token: value
-	[/("?refresh_token"?\s*[:=]\s*")[^"]+(")/gi, "$1***$2"],
-	[/\b(refresh_token)\b(\s*[:=]\s*)(?!\*\*\*)[^\s",;}]+/gi, "$1$2***"],
 	// OpenAI-compatible API keys: sk- followed by ≥10 token chars
 	[/\bsk-[A-Za-z0-9_-]{10,}/g, "sk-***"],
 	// Authorization: Bearer <token>

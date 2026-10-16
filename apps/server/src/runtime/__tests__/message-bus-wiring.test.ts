@@ -36,7 +36,7 @@ describe("createAppRuntime 里的总线", () => {
 		const seen: LogEntry[] = [];
 		runtime.serviceCtx.setLogHook((e) => seen.push(e));
 		runtime.bus.on("ready", (async () => {
-			throw new Error("boom SESSDATA=zzzzzzzz9");
+			throw new Error("boom Bearer zzzzzzzz9");
 		}) as unknown as () => void);
 
 		runtime.bus.emit("ready");
@@ -45,7 +45,7 @@ describe("createAppRuntime 里的总线", () => {
 		const entry = seen.find((e) => e.msg.includes("async handler"));
 		expect(entry?.level).toBe("error");
 		const text = JSON.stringify(entry);
-		expect(text).toContain("boom SESSDATA=***");
+		expect(text).toContain("boom Bearer ***");
 		expect(text).not.toContain("zzzzzzzz9");
 	});
 });

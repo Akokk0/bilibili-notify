@@ -1,34 +1,22 @@
 /**
  * 安全守护 — `scrubSecrets` / `redactLogCall`(日志调用入口的凭证脱敏)。
  *
- * 不变量:stdout + 落盘归档 + WS 帧都经此单一 scrub,以下五类明文绝不出现在输出里:
- *   SESSDATA / bili_jct / refresh_token / sk-xxx / Bearer xxx。
+ * 不变量:stdout + 落盘归档 + WS 帧都经此单一 scrub。两遍:先按登记的值(`value-redactor.ts`,B 站的 cookie
+ * 与续期令牌靠它),再按固定形状 —— 固定形状只剩 AI 服务商密钥两类:sk-xxx / Bearer xxx。
+ * 核心不再认识任何一家平台的 cookie 名字(SESSDATA / bili_jct / refresh_token 不再按名字遮)。
  * 非密文不动;嵌套 args 也要 scrub;循环引用不抛。
- * 复发点:去掉某条 REPLACER 或 scrub 只作用 msg 不作用 args。
+ * 复发点:去掉某条 REPLACER 或 scrub 只作用 msg 不作用 args;把按名字的正则加回来。
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import { redactLogCall, scrubSecrets } from "../redact.js";
 import { createValueRedactor } from "../value-redactor.js";
 
-describe("scrubSecrets — 五类凭证形态", () => {
-	it("SESSDATA / bili_jct / refresh_token cookie 对被打码", () => {
-		const s = scrubSecrets(
-			"Cookie: SESSDATA=abc%2Cdef; bili_jct=9f8e7d; refresh_token=tok_123; foo=bar",
-		);
-		expect(s).not.toContain("abc%2Cdef");
-		expect(s).not.toContain("9f8e7d");
-		expect(s).not.toContain("tok_123");
-		expect(s).toContain("SESSDATA=***");
-		expect(s).toContain("bili_jct=***");
-		expect(s).toContain("refresh_token=***");
-		expect(s).toContain("foo=bar"); // 非密文保留
-	});
-
-	it("refresh_token 的 JSON 形也打码", () => {
-		const s = scrubSecrets('{"refresh_token":"eyJ-secret-payload","other":1}');
-		expect(s).not.toContain("eyJ-secret-payload");
-		expect(s).toContain('"other":1');
+describe("scrubSecrets — 固定形状(AI 服务商密钥)", () => {
+	it("核心里不再写死 B 站 cookie 的名字:没登记的 SESSDATA= / bili_jct= / refresh_token= 原样,靠按值登记来遮", () => {
+		const text =
+			'Cookie: SESSDATA=abc%2Cdef; bili_jct=9f8e7d; refresh_token=tok_123; {"refresh_token":"eyJ-payload"}';
+		expect(scrubSecrets(text)).toBe(text);
 	});
 
 	it("sk- apiKey 与 Bearer token 打码,前缀保留可诊断", () => {
@@ -46,11 +34,11 @@ describe("scrubSecrets — 五类凭证形态", () => {
 
 describe("redactLogCall — msg + 嵌套 args 都 scrub", () => {
 	it("msg 与 args(含嵌套对象)里的密文都被打码", () => {
-		const red = redactLogCall("登录 SESSDATA=leak_in_msg", [
+		const red = redactLogCall("登录 Bearer leak_in_msg_01", [
 			"sk-LEAKLEAKLEAK01",
-			{ cookie: "bili_jct=leak_in_arg", n: 7 },
+			{ header: "Bearer leak_in_arg_01", n: 7 },
 		]);
-		expect(red.msg).toContain("SESSDATA=***");
+		expect(red.msg).toContain("Bearer ***");
 		expect(red.msg).not.toContain("leak_in_msg");
 		expect(JSON.stringify(red.args)).not.toContain("sk-LEAKLEAKLEAK01");
 		expect(JSON.stringify(red.args)).not.toContain("leak_in_arg");
@@ -66,7 +54,7 @@ describe("redactLogCall — msg + 嵌套 args 都 scrub", () => {
 
 	it("Error 交出普通对象:name / message / stack 打码,cause 递归,自带属性保留", () => {
 		const err = Object.assign(
-			new TypeError("outer", { cause: new Error("in SESSDATA=cause_leak") }),
+			new TypeError("outer", { cause: new Error("in Bearer cause_leak_01") }),
 			{
 				code: "E_X",
 			},
@@ -76,7 +64,7 @@ describe("redactLogCall — msg + 嵌套 args 都 scrub", () => {
 		expect(arg.message).toBe("outer");
 		expect(String(arg.stack)).toContain("TypeError: outer");
 		expect(arg.code).toBe("E_X");
-		expect(JSON.stringify(arg.cause)).toContain("SESSDATA=***");
+		expect(JSON.stringify(arg.cause)).toContain("Bearer ***");
 		expect(JSON.stringify(arg)).not.toContain("cause_leak");
 	});
 
@@ -98,8 +86,8 @@ describe("redactLogCall — msg + 嵌套 args 都 scrub", () => {
 				throw new Error("x");
 			},
 		};
-		const red = redactLogCall("SESSDATA=leak_in_msg", [hostile, "a"]);
-		expect(red.msg).toBe("SESSDATA=***");
+		const red = redactLogCall("Bearer leak_in_msg_01", [hostile, "a"]);
+		expect(red.msg).toBe("Bearer ***");
 		expect(red.args).toEqual(["[redaction-failed]", "[redaction-failed]"]);
 	});
 });
