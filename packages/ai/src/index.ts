@@ -21,6 +21,9 @@ export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
 	type AiCandidateView,
+	type AiPostView,
+	type AiProfileView,
+	type AiStatsView,
 	type AiSubscriptionView,
 	type AiTool,
 	type AiToolLabelFields,

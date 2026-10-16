@@ -80,27 +80,6 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 		expect(sayOf(out)).toContain("新曲");
 	});
 
-	it("get_user_dynamics:一天之内的按小时报", async () => {
-		const api = {
-			fetchUserSpaceDynamic: vi.fn(async () => ({
-				code: 0,
-				data: {
-					items: [
-						{
-							modules: {
-								module_author: { pub_ts: nowS() - 5 * 3_600 },
-								module_dynamic: { desc: { text: "今晚八点开播" } },
-							},
-						},
-					],
-				},
-			})),
-		} as unknown as BiliReader;
-		const out = await executeTool("get_user_dynamics", { uid: "123" }, api, null);
-		expect(sayOf(out)).toContain("5 小时前");
-		expect(sayOf(out)).toContain("今晚八点开播");
-	});
-
 	it("时间戳缺失 → 「未知时间」,不拼出 Invalid Date / NaN", async () => {
 		const api = {
 			fetchUserVideos: vi.fn(async () => ({

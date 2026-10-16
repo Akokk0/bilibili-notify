@@ -83,7 +83,13 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 		describeToolCall(coreToolLabelOf(name), args).argText;
 
 	it("单独写的格(昵称)优先于必填格(UID)", () => {
-		expect(argTextOf("get_user_info", { name: "咩栗", uid: "12345" })).toBe("咩栗");
+		expect(argTextOf("get_user_stats", { name: "咩栗", uid: "12345" })).toBe("咩栗");
+	});
+
+	it("creator 在小条上只显示冒号后面的外部 id;切不出来就原样", () => {
+		expect(argTextOf("get_creator_profile", { creator: "bilibili:12345" })).toBe("12345");
+		expect(argTextOf("get_creator_posts", { creator: "acme.inprocess:alice:x" })).toBe("alice:x");
+		expect(argTextOf("get_creator_stats", { creator: "没有冒号" })).toBe("没有冒号");
 	});
 
 	it("只有必填格时显示它(没给昵称 → UID)", () => {
@@ -98,7 +104,7 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 		expect(describeToolCall(coreToolLabelOf("list_subscriptions"), { x: "1" })).toEqual({
 			label: "查看订阅列表",
 		});
-		expect(describeToolCall(coreToolLabelOf("get_user_info"), {})).toEqual({
+		expect(describeToolCall(coreToolLabelOf("get_creator_profile"), {})).toEqual({
 			label: "查看 UP 主资料",
 		});
 	});
@@ -106,7 +112,8 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 
 describe("coreToolLabelOf", () => {
 	it("核心自带的几把查得到,表外的名字查不到", () => {
-		expect(coreToolLabelOf("get_user_info")).toMatchObject({ label: "查看 UP 主资料" });
+		expect(coreToolLabelOf("get_creator_profile")).toMatchObject({ label: "查看 UP 主资料" });
+		expect(coreToolLabelOf("get_user_info")).toBeUndefined();
 		expect(coreToolLabelOf("no_such_tool")).toBeUndefined();
 	});
 });
@@ -125,9 +132,7 @@ describe("工具环发 start 时带着标签", () => {
 	function makeGen(): CommentaryGenerator {
 		return new CommentaryGenerator({
 			serviceCtx: fakeServiceCtx(),
-			api: {
-				fetchUserCard: async () => ({ code: 0, data: { card: { name: "咩栗", fans: 1 } } }),
-			} as never,
+			api: {} as never,
 			config: aiConfig(),
 		});
 	}
@@ -146,11 +151,11 @@ describe("工具环发 start 时带着标签", () => {
 	}
 
 	it("核心的一把:label 取自核心标签表,argText 是翻好的入参", async () => {
-		const start = await drive([], "get_user_info", { uid: "12345", name: "咩栗" });
+		const start = await drive([], "get_creator_profile", { creator: "bilibili:12345" });
 		expect(start).toMatchObject({
-			name: "get_user_info",
+			name: "get_creator_profile",
 			label: "查看 UP 主资料",
-			argText: "咩栗",
+			argText: "12345",
 		});
 	});
 

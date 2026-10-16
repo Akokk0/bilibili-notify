@@ -406,6 +406,8 @@ function setup(opts?: {
 	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
 	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
 	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
+	/** 女仆读统计的口(接线层给的);不给 = 女仆的作品 / 统计工具答「没接上」。 */
+	creatorStats?: Parameters<typeof createEngines>[0]["creatorStats"];
 	/** 拓展订阅推送现取的那几样(接线层给的);不给 = 不接拓展订阅的推送。 */
 	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
 	/** 拓展作品往图库存图的口(接线层给的 `runtime.postImages`);给了 `extensionSources` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
@@ -519,6 +521,7 @@ function setup(opts?: {
 		...(opts?.extensionPlatformLabel
 			? { extensionPlatformLabel: opts.extensionPlatformLabel }
 			: {}),
+		...(opts?.creatorStats ? { creatorStats: opts.creatorStats } : {}),
 		...(opts?.extensionSources ? { extensionSources: opts.extensionSources } : {}),
 		...(opts?.extensionSources && opts.postImages !== null
 			? {
@@ -2060,6 +2063,29 @@ describe("createEngines — boot wiring", () => {
 			startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
 		});
 		expect(second?.liveNow).toEqual({ state: "idle" });
+	});
+
+	it("只读工具的读口:作品与统计接的是接线层给的统计读口(creatorStats),订阅 id 原样递下去", async () => {
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const recentPosts = vi.fn(async () => [
+			{ publishedAt: "2026-10-01T00:00:00.000Z", title: "t" },
+		]);
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [sub],
+			creatorStats: { isEnabled: () => true, recentPosts, statsRow: async () => undefined },
+		});
+		active = c;
+		const reader = H.ai[0].setCreatorReader.mock.calls[0][0];
+		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `stats: opts.creatorStats` 那一行删掉,这条红(回 unavailable)。
+		expect(await reader.recentPosts("bilibili:1", 5)).toEqual({
+			ok: true,
+			posts: [{ publishedAt: "2026-10-01T00:00:00.000Z", title: "t" }],
+		});
+		expect(recentPosts).toHaveBeenCalledWith("s1", 5);
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer", () => {

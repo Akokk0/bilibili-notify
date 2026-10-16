@@ -14,7 +14,7 @@ import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator } from "../commentary-generator";
 import type { AiTool, BiliReader } from "../tools";
-import { aiConfig, fakeServiceCtx, makeGen, streamOf, textChunk } from "./harness";
+import { aiConfig, fakeServiceCtx, makeGen, readerStubs, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -241,7 +241,7 @@ describe("chatStatelessStream × 注入工具", () => {
 		gen.setCreatorReader({
 			subscriptions: () => [{ creator: "bilibili:1", name: "咩栗", platform: "B 站", post: true }],
 			externalIdFits: () => true,
-			searchCreators: async () => ({ ok: true, candidates: [] }),
+			...readerStubs,
 		});
 		await gen.chatStatelessStream(HIST, { onDelta: () => {}, extraTools: [tool] });
 

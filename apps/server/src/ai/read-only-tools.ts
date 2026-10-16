@@ -8,6 +8,8 @@ import {
 import {
 	BILIBILI_SOURCE_KEY,
 	type CreatorCandidate,
+	type Failure,
+	fail,
 	ok,
 	type Result,
 	type Subscription,
@@ -15,6 +17,8 @@ import {
 } from "@bilibili-notify/internal";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import { type ExternalIdSpec, externalIdRefusal } from "../subscriptions/external-id.js";
+import { CREATOR_READER_TEXTS } from "./creator-reader-texts.js";
+import type { CreatorStatsReader } from "./creator-stats.js";
 
 /**
  * 只按**真正读到的那点东西**声明依赖,而不是整个 `SubscriptionStore` /
@@ -26,7 +30,7 @@ interface SubscriptionReader {
 	list(): Subscription[];
 }
 interface ProfileSource {
-	get(id: string): { cachedProfile?: { name?: string } } | undefined;
+	get(id: string): { cachedProfile?: { name?: string; fans?: number; sign?: string } } | undefined;
 }
 /** 来源登记表里读得到的那一点:描述符的 `label` 与外部 id 的格式(给 {@link CreatorReader.externalIdFits})。 */
 interface SourceDescriptorSource {
@@ -82,10 +86,29 @@ export function attachReadOnlyTools(
 			sourceKey: string,
 			query: string,
 		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
+		/** 作品与统计的读口(装配处给);不给 = 这两样答「当前不可用」。 */
+		stats?: CreatorStatsReader;
 		extensionLive?: ExtensionLiveSource;
 		biliLiveRooms?: BiliLiveRoomsReader;
 	},
 ): void {
+	/** 按 `creator` 找**启用着**的订阅:停用的、没订阅的都当不在(关掉的人不该再出现在女仆的回答里)。 */
+	const subscribedBy = (creator: string): Subscription | undefined =>
+		stores.subscriptionStore.list().find((sub) => {
+			if (!sub.enabled) return false;
+			const identity = subscriptionIdentityOf(sub);
+			return creatorOf(identity.sourceKey, identity.externalId) === creator;
+		});
+	/** 作品与统计共用的前置:订阅着、统计读口接着、总开关开着。过了回订阅与读口,没过回失败。 */
+	const statsGate = (
+		creator: string,
+	): { sub: Subscription; stats: CreatorStatsReader } | Failure => {
+		const sub = subscribedBy(creator);
+		if (!sub) return fail("not_found", CREATOR_READER_TEXTS.notSubscribed(creator));
+		if (!stores.stats) return fail("unavailable", CREATOR_READER_TEXTS.statsUnwired);
+		if (!stores.stats.isEnabled()) return fail("not_configured", CREATOR_READER_TEXTS.statsOff);
+		return { sub, stats: stores.stats };
+	};
 	// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
 	// 运行期随时增删的。
 	engine.setCreatorReader({
@@ -113,6 +136,32 @@ export function attachReadOnlyTools(
 					}),
 				),
 			});
+		},
+		async profile(creator) {
+			const sub = subscribedBy(creator);
+			if (!sub) return fail("not_found", CREATOR_READER_TEXTS.notSubscribed(creator));
+			// 只读资料缓存(不出网);没订阅的人回落调来源的 `fetchProfile` 随 3b-24 接上,这一片先答查不到。
+			const cached = stores.subRuntimeStore.get(sub.id)?.cachedProfile;
+			if (!cached?.name) return fail("not_found", CREATOR_READER_TEXTS.profileNotCached(creator));
+			return ok({
+				profile: {
+					name: cached.name,
+					...(cached.fans === undefined ? {} : { followers: cached.fans }),
+					...(cached.sign ? { bio: cached.sign } : {}),
+				},
+			});
+		},
+		async recentPosts(creator, limit) {
+			const gate = statsGate(creator);
+			if ("code" in gate) return gate;
+			return ok({ posts: await gate.stats.recentPosts(gate.sub.id, limit) });
+		},
+		async stats(creator, days) {
+			const gate = statsGate(creator);
+			if ("code" in gate) return gate;
+			const row = await gate.stats.statsRow(gate.sub.id, days);
+			if (!row) return fail("not_found", CREATOR_READER_TEXTS.noStatsRow(creator));
+			return ok({ stats: { days, ...row } });
 		},
 	});
 }

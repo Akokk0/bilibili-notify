@@ -7,7 +7,7 @@ import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiCandidateView, BiliReader, CreatorReader } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
-import { sayOf } from "./harness";
+import { readerStubs, sayOf } from "./harness";
 
 const candidates = (n: number): AiCandidateView[] =>
 	Array.from({ length: n }, (_, i) => ({
@@ -18,7 +18,7 @@ const candidates = (n: number): AiCandidateView[] =>
 	}));
 
 function readerWith(searchCreators: CreatorReader["searchCreators"]): CreatorReader {
-	return { subscriptions: () => [], externalIdFits: () => true, searchCreators };
+	return { subscriptions: () => [], externalIdFits: () => true, ...readerStubs, searchCreators };
 }
 
 const run = (args: Record<string, string>, reader: CreatorReader | null) =>

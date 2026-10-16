@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { BiliReader } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
-import { sayOf } from "./harness";
+import { readerStubs, sayOf } from "./harness";
 
 /** 曾经存在、现已下架的三个写工具。名字写死,不从源码反推。 */
 const WRITE_TOOLS = ["subscribe_user", "unsubscribe_user", "update_subscription"];
@@ -50,7 +50,7 @@ describe("AI 工具表 — 只读约束", () => {
 					{ creator: "bilibili:123", name: "谁", platform: "B 站", post: true, live: true },
 				],
 				externalIdFits: () => true,
-				searchCreators: async () => ({ ok: true, candidates: [] }),
+				...readerStubs,
 			});
 			expect(out).toMatchObject({ ok: false, code: "not_found" });
 			expect(sayOf(out)).toContain("未知工具");

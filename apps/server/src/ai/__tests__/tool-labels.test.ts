@@ -22,8 +22,9 @@ const EXPECTED_LABELS: Record<string, string> = {
 	// 核心自带
 	list_subscriptions: "查看订阅列表",
 	get_live_status: "查看直播状态",
-	get_user_dynamics: "查看最近动态",
-	get_user_info: "查看 UP 主资料",
+	get_creator_posts: "查看最近动态",
+	get_creator_profile: "查看 UP 主资料",
+	get_creator_stats: "查看统计数据",
 	get_user_stats: "查看数据概览",
 	get_user_videos: "查看最近视频",
 	search_creators: "搜索 UP 主",
@@ -70,7 +71,7 @@ describe("聊天里挂得出的全部工具都有标签", () => {
 			WEB_SEARCH_TOOL_NAME,
 			"describe_image",
 		];
-		expect(names.length).toBe(9);
+		expect(names.length).toBe(10);
 		for (const name of names) {
 			expect(coreToolLabelOf(name)?.label, name).toBe(EXPECTED_LABELS[name]);
 		}

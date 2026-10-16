@@ -582,7 +582,12 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		H.toolEvents = [
-			{ phase: "start", id: "0-0", name: "get_user_info", args: { uid: "12345" } },
+			{
+				phase: "start",
+				id: "0-0",
+				name: "get_creator_profile",
+				args: { creator: "bilibili:12345" },
+			},
 			{ phase: "end", id: "0-0", ok: true },
 		];
 
@@ -591,8 +596,8 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		// 这些事件没带标签(像老会话):读回应里由服务端现补,盘上的不动。
 		expect(conv.messages[1].tools).toEqual([
 			{
-				name: "get_user_info",
-				args: { uid: "12345" },
+				name: "get_creator_profile",
+				args: { creator: "bilibili:12345" },
 				ok: true,
 				label: "查看 UP 主资料",
 				argText: "12345",
@@ -640,22 +645,22 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		H.toolEvents = [
-			{ phase: "start", id: "0-0", name: "get_user_info", args: { uid: "1" } },
-			{ phase: "end", id: "0-0", ok: false, message: "获取用户信息失败: 请求被拦截" },
+			{ phase: "start", id: "0-0", name: "get_creator_profile", args: { creator: "bilibili:1" } },
+			{ phase: "end", id: "0-0", ok: false, message: "BN 手里还没有资料缓存" },
 			{ phase: "start", id: "0-1", name: "list_subscriptions", args: {} },
 			{ phase: "end", id: "0-1", ok: true },
 		];
 
 		const events = await chatDrained(app, id, { message: "查一下" });
 		const ends = events.filter((e) => e.event === "tool" && e.data.phase === "end");
-		expect(ends[0]?.data).toMatchObject({ ok: false, message: "获取用户信息失败: 请求被拦截" });
+		expect(ends[0]?.data).toMatchObject({ ok: false, message: "BN 手里还没有资料缓存" });
 		expect(ends[1]?.data).not.toHaveProperty("message");
 		const stored = [
 			{
-				name: "get_user_info",
-				args: { uid: "1" },
+				name: "get_creator_profile",
+				args: { creator: "bilibili:1" },
 				ok: false,
-				message: "获取用户信息失败: 请求被拦截",
+				message: "BN 手里还没有资料缓存",
 			},
 			{ name: "list_subscriptions", args: {}, ok: true },
 		];

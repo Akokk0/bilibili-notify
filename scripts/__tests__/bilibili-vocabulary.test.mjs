@@ -230,7 +230,6 @@ export const RATCHET = {
 	"apps/server/src/runtime/engines.ts": 9, // `roomId`×9(含 `onRoomIdResolved`)
 	"apps/server/src/runtime/fans-poller.ts": 3, // 风控码 `-352`、`-412`、`-799`
 	"apps/server/src/runtime/sub-runtime-store.ts": 1, // 订阅运行时里存的 B 站直播间号 `roomId`
-	"packages/ai/src/tools.ts": 5, // 工具说明里教模型读的 B 站原始字段
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
 };
 

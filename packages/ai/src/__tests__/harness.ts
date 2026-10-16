@@ -13,9 +13,20 @@
  * 对的,别硬收。
  */
 
-import type { Result, ServiceContext } from "@bilibili-notify/internal";
+import { fail, ok, type Result, type ServiceContext } from "@bilibili-notify/internal";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import type { BiliReader } from "../tools";
+import type { BiliReader, CreatorReader } from "../tools";
+
+/** 读口里本用例用不到的那几个方法的桩:搜不到人、谁都没订阅。凑 `CreatorReader` 字面量时 `...readerStubs`。 */
+export const readerStubs: Pick<
+	CreatorReader,
+	"searchCreators" | "profile" | "recentPosts" | "stats"
+> = {
+	searchCreators: async () => ok({ candidates: [] }),
+	profile: async () => fail("not_found", "没订阅"),
+	recentPosts: async () => fail("not_found", "没订阅"),
+	stats: async () => fail("not_found", "没订阅"),
+};
 
 /**
  * 工具结果里「给模型看的那句话」:成功取 `text`,失败取 `message`。

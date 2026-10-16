@@ -1,3 +1,5 @@
+import { parseCreator } from "./creator";
+
 /**
  * 核心自带工具(含联网搜索、看图)给人看的标签 —— 聊天里那条「她正在查什么」小条上的字。
  *
@@ -7,15 +9,32 @@
  *
  * `labelArg`:这里**单独写**的格,优先于工具定义里 `required` 的格(`coreToolLabelOf` 把必填格
  * 接在后面)—— UP 主相关的几个都优先显示昵称,模型手里常常两个都有,而「咩栗」比一串数字
- * 好认得多;没给昵称时由必填的那一格兜底。必填格不必在这里重抄一遍。
+ * 好认得多;没给昵称时由必填的那一格兜底。必填格不必在这里重抄一遍。`format` 只翻那一格的值。
  */
+
+/** `creator`(来源键:外部 id)在小条上只显示外部 id —— 切冒号不认任何平台;切不出就原样。 */
+const externalIdOf = (creator: string): string => parseCreator(creator)?.externalId ?? creator;
+
 export const CORE_TOOL_LABEL_TEXTS: Readonly<
-	Record<string, { label: string; labelArg?: { keys: readonly string[] } }>
+	Record<
+		string,
+		{ label: string; labelArg?: { keys: readonly string[]; format?: (value: string) => string } }
+	>
 > = {
 	list_subscriptions: { label: "查看订阅列表" },
 	get_live_status: { label: "查看直播状态" },
-	get_user_dynamics: { label: "查看最近动态", labelArg: { keys: ["name"] } },
-	get_user_info: { label: "查看 UP 主资料", labelArg: { keys: ["name"] } },
+	get_creator_posts: {
+		label: "查看最近动态",
+		labelArg: { keys: ["creator"], format: externalIdOf },
+	},
+	get_creator_profile: {
+		label: "查看 UP 主资料",
+		labelArg: { keys: ["creator"], format: externalIdOf },
+	},
+	get_creator_stats: {
+		label: "查看统计数据",
+		labelArg: { keys: ["creator"], format: externalIdOf },
+	},
 	get_user_stats: { label: "查看数据概览", labelArg: { keys: ["name"] } },
 	get_user_videos: { label: "查看最近视频", labelArg: { keys: ["name"] } },
 	search_creators: { label: "搜索 UP 主", labelArg: { keys: ["query"] } },

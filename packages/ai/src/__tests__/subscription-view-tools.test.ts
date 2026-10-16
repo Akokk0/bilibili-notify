@@ -9,11 +9,10 @@
  *   别家的外部 id 恰好是一串数字时,B 站那边会查出另一个人来(ADR-0021 决策 14 的 10-15 🔗)。
  */
 
-import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiSubscriptionView, BiliReader, CreatorReader, LiveNowView } from "../tools";
 import { executeTool } from "../tools";
-import { sayOf } from "./harness";
+import { readerStubs, sayOf } from "./harness";
 
 const BILI: AiSubscriptionView = {
 	creator: "bilibili:1",
@@ -36,14 +35,12 @@ function readerOf(items: AiSubscriptionView[]): CreatorReader {
 		subscriptions: () => items,
 		externalIdFits: (sourceKey, externalId) =>
 			sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
-		searchCreators: async () => ok({ candidates: [] }),
+		...readerStubs,
 	};
 }
 
 function apiStub() {
 	return {
-		fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { name: "别人", fans: 1 } } })),
-		fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [] } })),
 		fetchUserUpstat: vi.fn(async () => ({ code: 0, data: {} })),
 		fetchUserNavnum: vi.fn(async () => ({ code: 0, data: {} })),
 		fetchUserVideos: vi.fn(async () => ({ code: 0, data: { list: { vlist: [] } } })),
@@ -150,8 +147,6 @@ describe("get_live_status", () => {
 
 describe("按 UID 查的工具(过渡)", () => {
 	const UID_TOOLS: [string, keyof ReturnType<typeof apiStub>][] = [
-		["get_user_info", "fetchUserCard"],
-		["get_user_dynamics", "fetchUserSpaceDynamic"],
 		["get_user_stats", "fetchUserUpstat"],
 		["get_user_videos", "fetchUserVideos"],
 	];
@@ -180,7 +175,7 @@ describe("按 UID 查的工具(过渡)", () => {
 
 	it("没接读口(核不了格式)→ 照旧去查,不替来源做主", async () => {
 		const api = apiStub();
-		await executeTool("get_user_info", { uid: "abc" }, api as unknown as BiliReader, null);
-		expect(api.fetchUserCard).toHaveBeenCalledWith("abc");
+		await executeTool("get_user_stats", { uid: "abc" }, api as unknown as BiliReader, null);
+		expect(api.fetchUserUpstat).toHaveBeenCalledWith("abc");
 	});
 });

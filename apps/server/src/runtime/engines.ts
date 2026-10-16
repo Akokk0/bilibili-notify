@@ -71,6 +71,7 @@ import {
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { Api } from "../bilibili/api/index.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
@@ -295,6 +296,11 @@ export interface CreateEnginesOptions {
 	 * 晚建起来,装卸也随时发生。取不到(没接 / 没装 / 开机途中)交 `undefined`,视图退拓展 id。
 	 */
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
+	/**
+	 * 女仆读作品与统计的口(`ai/creator-stats.ts`,接线层造):统计仓、数据统计总开关、统计总览读口。
+	 * 不给 = 女仆的作品 / 统计工具答「当前不可用」。
+	 */
+	creatorStats?: CreatorStatsReader;
 	/**
 	 * 拓展订阅推送要从外面现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、平台对作品的叫法、
 	 * 清单里声明的事件。装载器比引擎晚建起来,装卸也随时发生,都现取。
@@ -553,6 +559,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					searchSourceCreators({ sources: opts.sources, logger: log }, sourceKey, query),
 				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
 				extensionLive: liveSource(),
+				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
+				...(opts.creatorStats ? { stats: opts.creatorStats } : {}),
 				// B 站订阅的在播读直播引擎的在播房间(与面板「正在直播」同一份),不现去问 B 站。
 				// 每次工具调用现取,`live` 在这段之后才声明,调用时早已就绪。
 				biliLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),

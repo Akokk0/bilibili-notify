@@ -24,8 +24,8 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"list_subscriptions",
 			"get_user_stats",
 			"get_user_videos",
-			"get_user_dynamics",
-			"get_user_info",
+			"get_creator_posts",
+			"get_creator_profile",
 		],
 		disableModelInvocation: false,
 		body: [
@@ -34,7 +34,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到全部订阅。**一个都不要漏**,也不要只挑几个有名的看。",
-			"2. 对每一位 UP 调 `get_user_stats`(总播放 / 总获赞 / 视频数 / 动态数),再调 `get_user_videos` 看最近发了什么、什么时候发的;订了动态、没订直播的那几位,再调 `get_user_dynamics` 看最近一条动态是什么时候(下面判鸽王要用)。",
+			"2. 对每一位 UP 调 `get_user_stats`(总播放 / 总获赞 / 视频数 / 动态数),再调 `get_user_videos` 看最近发了什么、什么时候发的;订了动态、没订直播的那几位,再调 `get_creator_posts` 看最近一条动态是什么时候(下面判鸽王要用)。",
 			"3. 订阅超过 12 位时,先用 `get_user_stats` 过一遍,只对**数据最活跃的前 8 位**和**最沉寂的 3 位**再拉 `get_user_videos` —— 中间那段既不上榜也不进鸽王名单,拉了也用不上。这一步省下的是主人的等待时间。",
 			"",
 			"### 判定",
@@ -52,7 +52,12 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "unsub-cleanup",
 		description: "把长期不更新的订阅挑出来,给主人一份可以直接照着取关的名单,并说清每一条为什么上榜",
-		allowedTools: ["list_subscriptions", "get_user_videos", "get_user_dynamics", "get_user_info"],
+		allowedTools: [
+			"list_subscriptions",
+			"get_user_videos",
+			"get_creator_posts",
+			"get_creator_profile",
+		],
 		disableModelInvocation: false,
 		body: [
 			"## 停更清理",
@@ -60,7 +65,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到全部订阅,记下每一位是订了动态、直播,还是两样都订。",
-			"2. 逐个 `get_user_videos` 看最近一条视频的发布时间;**订了动态的那些**再调一次 `get_user_dynamics` —— 只发动态不发视频的 UP 很常见,只看视频会把他们全判成停更。",
+			"2. 逐个 `get_user_videos` 看最近一条视频的发布时间;**订了动态的那些**再调一次 `get_creator_posts` —— 只发动态不发视频的 UP 很常见,只看视频会把他们全判成停更。",
 			"",
 			"### 判定",
 			"",
@@ -80,7 +85,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "live-copy",
 		description: "看谁正在直播,按不同长度写三条开播推送文案,长中短各一条供主人挑",
-		allowedTools: ["get_live_status", "get_user_info", "get_user_dynamics"],
+		allowedTools: ["get_live_status", "get_creator_profile", "get_creator_posts"],
 		disableModelInvocation: false,
 		body: [
 			"## 开播文案",
@@ -90,7 +95,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"1. `get_live_status` 看现在谁在播、播的什么标题。",
 			"2. 一个人都没在播时,**直接说没人在播**,问主人是想给某位提前备一条,还是算了 —— 不要给一个空气人编文案。",
 			"3. 主人没指名的话,挑正在播的那一位;有好几位在播就问他要给谁写。",
-			"4. 需要更多素材时用 `get_user_info` 补人设、`get_user_dynamics` 看他开播前说了什么。",
+			"4. 需要更多素材时用 `get_creator_profile` 补人设、`get_creator_posts` 看他开播前说了什么。",
 			"",
 			"### 输出",
 			"",
@@ -107,7 +112,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "today-digest",
 		description: "把订阅的 UP 今天发了什么动态过一遍,按时间排好,用一段话讲清今天圈子里发生了什么",
-		allowedTools: ["list_subscriptions", "get_user_dynamics", "get_live_status"],
+		allowedTools: ["list_subscriptions", "get_creator_posts", "get_live_status"],
 		disableModelInvocation: false,
 		body: [
 			"## 今日速览",
@@ -115,7 +120,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到订了**动态**的那些人(只订直播的跳过,他们本来就不发动态)。",
-			"2. 逐个 `get_user_dynamics`,只留**最近一天**的;一天之内什么都没有的人直接略过,不要为了凑数把三天前的翻出来。",
+			"2. 逐个 `get_creator_posts`,只留**最近一天**的;一天之内什么都没有的人直接略过,不要为了凑数把三天前的翻出来。",
 			"3. `get_live_status` 补一句今天谁在播。",
 			"",
 			"### 输出",
@@ -131,7 +136,12 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 	{
 		name: "find-up",
 		description: "按主人给的关键词或领域搜 B 站 UP 主,逐个查粉丝与简介,挑几位值得订阅的推荐给他",
-		allowedTools: ["search_creators", "get_user_info", "get_user_videos", "list_subscriptions"],
+		allowedTools: [
+			"search_creators",
+			"get_creator_profile",
+			"get_user_videos",
+			"list_subscriptions",
+		],
 		disableModelInvocation: false,
 		body: [
 			"## 找 UP",
@@ -140,7 +150,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"",
 			"1. 主人没说想找什么方向时,**先问一句**再动手 —— 搜是一整趟调用,方向猜错就是白搜。",
 			"2. `search_creators` 搜关键词(`source` 填 `bilibili`)。一个词搜出来不理想就**换个说法再搜一次**(比如「做饭」换成「美食教程」),别拿第一次的结果硬凑。",
-			"3. 从结果里挑 5 位左右,逐个 `get_user_info` 看粉丝量与简介,`get_user_videos` 看最近真的还在更新吗。",
+			"3. 从结果里挑 5 位左右,逐个 `get_creator_profile` 看粉丝量与简介,`get_user_videos` 看最近真的还在更新吗。",
 			"4. `list_subscriptions` 对一遍,**已经订过的直接标出来**,别把主人已有的推荐第二遍。",
 			"",
 			"### 输出",
@@ -158,7 +168,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"把两位 UP 主拉到一块儿逐项对比数据与更新节奏,出一张对比表再给一句结论。用法:/up-pk 甲 vs 乙",
 		allowedTools: [
 			"search_creators",
-			"get_user_info",
+			"get_creator_profile",
 			"get_user_stats",
 			"get_user_videos",
 			"list_subscriptions",
@@ -171,7 +181,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"",
 			"1. 从主人这句话里认出**要比的两位是谁**。只给了名字没给 UID 时,先 `list_subscriptions` 在订阅里找;订阅里没有就 `search_creators` 搜(`source` 填 `bilibili`),搜到多个同名的**问一句是哪个**,别自己挑一个就开比。",
 			"2. 只说了一位时,问主人要跟谁比 —— 不要自作主张找个对手。",
-			"3. 两位都各调一遍 `get_user_info`(粉丝 / 等级)、`get_user_stats`(总播放 / 获赞 / 作品数)、`get_user_videos`(最近在更什么、多久更一次)。",
+			"3. 两位都各调一遍 `get_creator_profile`(粉丝 / 简介)、`get_user_stats`(总播放 / 获赞 / 作品数)、`get_user_videos`(最近在更什么、多久更一次)。",
 			"",
 			"### 输出",
 			"",

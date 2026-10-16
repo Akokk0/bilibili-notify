@@ -19,6 +19,7 @@ import {
 } from "@bilibili-notify/internal";
 import { createKeyProvider, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
+import { createCreatorStatsReader } from "./ai/creator-stats.js";
 import { createApp, createCardSkinStore, createStartupApp } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { createSessionCodec } from "./auth/session.js";
@@ -816,6 +817,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			loadFontFace: runtime.loadFontFace,
 			api: devApi.api,
 			quietHoursNow: devtools?.quietHoursNow,
+			// 女仆读作品与统计的口:统计仓、总开关(缓存读口)、统计总览读口(同面板、锐评的那一个,下面才建,所以现取)。
+			creatorStats: createCreatorStatsReader({
+				store: runtime.statsStore,
+				isEnabled: runtime.isStatsEnabled,
+				overview: (days, tzOffsetMin) => statsOverview(days, tzOffsetMin),
+			}),
 			// 女仆查订阅时拓展订阅的平台名(ADR-0019 决策 64):清单里订阅源的叫法 → 拓展名。装载器比
 			// 引擎晚一步建起来,所以现取;取不到就交 undefined,视图退拓展 id(同面板,决策 10)。
 			extensionPlatformLabel: (id) => {

@@ -1,6 +1,16 @@
-import { BILIBILI_SOURCE_KEY, fail, ok, type Result } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Failure,
+	fail,
+	ok,
+	type Result,
+	ROAST_MAX_DAYS,
+	ROAST_MIN_DAYS,
+} from "@bilibili-notify/internal";
 import type OpenAI from "openai";
+import { parseCreator } from "./creator";
 import { CORE_TOOL_LABEL_TEXTS } from "./tool-label-texts";
+import { TOOL_TEXTS } from "./tool-texts";
 import { WEB_SEARCH_TOOL } from "./web-search";
 
 /**
@@ -82,6 +92,47 @@ export interface CreatorReader {
 		sourceKey: string,
 		query: string,
 	): Promise<Result<{ candidates: AiCandidateView[] }>>;
+	/**
+	 * 一位**已订阅(启用着)**的人的资料(读缓存,不出网)。`creator` 原样是「来源键:外部 id」。
+	 * 没订阅 / 停用 / 缓存里还没有 = `not_found`。
+	 */
+	profile(creator: string): Promise<Result<{ profile: AiProfileView }>>;
+	/**
+	 * 一位已订阅的人 BN 记下来的最近 `limit` 条作品,新的在前。没记到是成功的空数组;
+	 * 统计总开关关着 = `not_configured`;没订阅 / 停用 = `not_found`。
+	 */
+	recentPosts(creator: string, limit: number): Promise<Result<{ posts: AiPostView[] }>>;
+	/** 一位已订阅的人最近 `days` 天的统计;失败同 {@link CreatorReader.recentPosts}。 */
+	stats(creator: string, days: number): Promise<Result<{ stats: AiStatsView }>>;
+}
+
+/** `get_creator_profile` 要排版的几格:只有名字、粉丝数、简介(别的平台没有的等级、视频数不带)。 */
+export interface AiProfileView {
+	name: string;
+	followers?: number;
+	bio?: string;
+}
+
+/** `get_creator_posts` 的一条:发布时刻(ISO)、标题、摘要。 */
+export interface AiPostView {
+	publishedAt: string;
+	title?: string;
+	summary?: string;
+}
+
+/**
+ * `get_creator_stats` 的各项,口径同统计页(ADR-0020):`null` = 那段时间 BN 没在记,不是 0。
+ * `netWindow` 是整个窗口的粉丝净增,`lastActivityAt` 是 ISO。
+ */
+export interface AiStatsView {
+	days: number;
+	followers: number | null;
+	netWindow: number | null;
+	posts: number | null;
+	videoPosts: number | null;
+	liveSessions: number | null;
+	liveHours: number | null;
+	lastActivityAt: string | null;
 }
 
 /** 搜人结果里工具要排版的那几格:`creator` 就是下一步中立工具认的值。 */
@@ -122,11 +173,49 @@ function uidRefusal(uid: string | undefined, reader: CreatorReader | null): stri
 		: `「${value}」不是 B 站 UID 的格式 —— 这把工具只查 B 站用户，uid 只传订阅列表里 B 站 creator 冒号后面的那一段`;
 }
 
-/** 按 UID 查的四把工具共用的参数。B 站的 creator 冒号后面就是 UID,别家的外部 id 是最容易被错塞进来的那个。 */
+/**
+ * 按订阅人查的中立工具共用的入参核对:`creator` 要切得出「来源键:外部 id」,读口要接着。
+ * 过了就交回读口与原样的 `creator`(读口自己按它认订阅);没过交回失败,话原样喂给模型。
+ */
+function creatorGate(
+	args: Record<string, string>,
+	reader: CreatorReader | null,
+): { creator: string; reader: CreatorReader } | Failure {
+	const creator = args.creator?.trim() ?? "";
+	if (parseCreator(creator) === undefined) return fail("invalid", TOOL_TEXTS.creatorMalformed);
+	if (!reader) return fail("unavailable", TOOL_TEXTS.readerMissing);
+	return { creator, reader };
+}
+
+/**
+ * 读口回的失败变成工具的失败:码、话、平台码原样,只剥掉 `issues`(逐条原因是给面板标红用的,
+ * 喂给模型的只有那一句话)。
+ */
+function passThrough(failure: Failure): Failure {
+	return fail(failure.code, failure.message, {
+		...(failure.upstreamCode === undefined ? {} : { upstreamCode: failure.upstreamCode }),
+	});
+}
+
+/** 统计的天数:缺省 30,取整,钳到统计页与锐评共用的范围(`ROAST_MIN_DAYS`..`ROAST_MAX_DAYS`)。 */
+function clampDays(raw: string | undefined): number {
+	const text = raw?.trim() ?? "";
+	const n = text === "" ? Number.NaN : Number(text);
+	if (!Number.isFinite(n)) return 30;
+	return Math.min(ROAST_MAX_DAYS, Math.max(ROAST_MIN_DAYS, Math.trunc(n)));
+}
+
+/** 按 UID 查的两把工具(`get_user_stats`、`get_user_videos`)共用的参数。B 站的 creator 冒号后面就是 UID,别家的外部 id 是最容易被错塞进来的那个。 */
 const BILI_UID_PARAM = {
 	type: "string",
 	description:
 		"B 站 UID（纯数字）。B 站的 creator 冒号后面就是 UID，只传这一段；搜索结果里的 UID 同理。其他平台订阅的外部 id 不是 B 站 UID，传进来会被拒",
+};
+
+/** 按订阅人查的中立工具共用的参数:值就是订阅列表 / 搜人结果里的 creator,原样传。 */
+const CREATOR_PARAM = {
+	type: "string",
+	description: "来源键:外部 id，从订阅列表或搜人结果里的 creator 原样拿",
 };
 
 export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
@@ -142,29 +231,42 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 	{
 		type: "function",
 		function: {
-			name: "get_user_dynamics",
+			name: "get_creator_posts",
 			description:
-				"获取一位 B 站 UP 主最近发布的动态（最多 5 条），每条带发布时间与正文（正文超过 200 字截断）。",
+				"获取一位已订阅的 UP 主最近发布的动态（最多 5 条，新的在前），每条带发布时间、标题与摘要（摘要超过 200 字截断）。只能答 BN 自己记下来的：没开动态记录或还没记到时会明说「BN 没记到」，这不等于他没发过。统计总开关关着时不可用。",
 			parameters: {
 				type: "object",
-				properties: {
-					uid: BILI_UID_PARAM,
-				},
-				required: ["uid"],
+				properties: { creator: CREATOR_PARAM },
+				required: ["creator"],
 			},
 		},
 	},
 	{
 		type: "function",
 		function: {
-			name: "get_user_info",
-			description: "获取一位 B 站 UP 主的名称、粉丝数、等级。",
+			name: "get_creator_profile",
+			description:
+				"获取一位已订阅的 UP 主的名称、粉丝数、简介（读 BN 缓存的资料，不现去平台上查）。没订阅的人查不到。",
+			parameters: {
+				type: "object",
+				properties: { creator: CREATOR_PARAM },
+				required: ["creator"],
+			},
+		},
+	},
+	{
+		type: "function",
+		function: {
+			name: "get_creator_stats",
+			description:
+				"获取一位已订阅的 UP 主最近一段时间的统计：当前粉丝、涨粉、作品数、视频作品数、直播场次与时长、最后活动时间。“没记录”表示 BN 那段时间没在记，不等于 0。统计总开关关着时不可用。",
 			parameters: {
 				type: "object",
 				properties: {
-					uid: BILI_UID_PARAM,
+					creator: CREATOR_PARAM,
+					days: { type: "string", description: "统计最近多少天，1 到 90，缺省 30" },
 				},
-				required: ["uid"],
+				required: ["creator"],
 			},
 		},
 	},
@@ -227,20 +329,6 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		},
 	},
 ];
-
-// biome-ignore lint/suspicious/noExplicitAny: bilibili API response shape varies
-function extractDynamicText(item: Record<string, any>): string {
-	const mod = item?.modules?.module_dynamic;
-	if (!mod) return "";
-	const parts: string[] = [];
-	if (mod.desc?.text) parts.push(mod.desc.text);
-	if (mod.major?.opus?.summary?.text) {
-		if (mod.major.opus.title) parts.push(`标题：${mod.major.opus.title}`);
-		parts.push(mod.major.opus.summary.text);
-	}
-	if (mod.major?.archive?.title) parts.push(`视频标题：${mod.major.archive.title}`);
-	return parts.join(" ").trim();
-}
 
 /**
  * 调用方**注入**的额外工具 —— 挂在调用点上,不进 {@link TOOL_DEFINITIONS}。
@@ -385,7 +473,7 @@ export interface VisionToolContext {
 }
 
 /**
- * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这五个方法,形状取自服务端的 B 站
+ * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这三个方法,形状取自服务端的 B 站
  * 客户端,服务端把真客户端递进来、结构上直接满足。
  * 返回值一律 `unknown`:B 站响应没有声明类型,调用处自己断言。
  *
@@ -393,8 +481,6 @@ export interface VisionToolContext {
  * 是因为 B 站接口包要搬进 `apps/server`,包不能反向依赖应用。
  */
 export interface BiliReader {
-	fetchUserSpaceDynamic(uid: string): Promise<unknown>;
-	fetchUserCard(uid: string, withPhoto?: boolean): Promise<unknown>;
 	fetchUserUpstat(uid: string): Promise<unknown>;
 	fetchUserNavnum(uid: string): Promise<unknown>;
 	fetchUserVideos(uid: string, ps?: number): Promise<unknown>;
@@ -462,37 +548,54 @@ export async function executeTool(
 				.join("\n");
 			return ok({ text });
 		}
-		case "get_user_dynamics": {
-			const note = uidRefusal(args.uid, reader);
-			if (note) return fail("invalid", note);
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.fetchUserSpaceDynamic(args.uid)) as any;
-			if (res.code !== 0)
-				return fail("unavailable", `获取动态失败: ${res.message}`, { upstreamCode: res.code });
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const items: any[] = (res.data?.items ?? []).slice(0, 5);
-			if (!items.length) return ok({ text: "暂无动态" });
-			const text = items
-				.map((item, i) => {
-					const text = extractDynamicText(item);
-					const when = stamp(item.modules?.module_author?.pub_ts);
-					return `${i + 1}. [${when}] ${text ? clip(text, 200) : "（无文字内容）"}`;
+		case "get_creator_profile": {
+			const gate = creatorGate(args, reader);
+			if ("code" in gate) return gate;
+			const res = await gate.reader.profile(gate.creator);
+			if (!res.ok) return passThrough(res);
+			const { name, followers, bio } = res.profile;
+			const parts = [
+				`名称: ${name}`,
+				followers === undefined ? undefined : `粉丝数: ${followers}`,
+				bio ? `简介: ${clip(bio, 200)}` : undefined,
+			].filter((part): part is string => part !== undefined);
+			return ok({ text: parts.join(", ") });
+		}
+		case "get_creator_posts": {
+			const gate = creatorGate(args, reader);
+			if ("code" in gate) return gate;
+			const res = await gate.reader.recentPosts(gate.creator, 5);
+			if (!res.ok) return passThrough(res);
+			// 空不是「他没发过」:BN 只答得出自己记下来的(没开作品记录、或还没记到),话里说清,免得模型当事实讲。
+			if (res.posts.length === 0) return ok({ text: TOOL_TEXTS.postsNotRecorded });
+			const text = res.posts
+				.map((p, i) => {
+					const body = [p.title, p.summary ? clip(p.summary, 200) : undefined]
+						.filter(Boolean)
+						.join(" ");
+					return `${i + 1}. [${stamp(Date.parse(p.publishedAt) / 1000)}] ${body || "（无文字内容）"}`;
 				})
 				.join("\n");
 			return ok({ text });
 		}
-		case "get_user_info": {
-			const note = uidRefusal(args.uid, reader);
-			if (note) return fail("invalid", note);
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.fetchUserCard(args.uid)) as any;
-			if (res.code !== 0)
-				return fail("unavailable", `获取用户信息失败: ${res.message}`, { upstreamCode: res.code });
-			const card = res.data?.card;
-			if (!card) return fail("not_found", "未找到用户");
-			return ok({
-				text: `名称: ${card.name}, 粉丝数: ${card.fans ?? 0}, 等级: ${card.level_info?.current_level ?? "?"}`,
-			});
+		case "get_creator_stats": {
+			const gate = creatorGate(args, reader);
+			if ("code" in gate) return gate;
+			const res = await gate.reader.stats(gate.creator, clampDays(args.days));
+			if (!res.ok) return passThrough(res);
+			const s = res.stats;
+			const none = "没记录";
+			const lines = [
+				`近 ${s.days} 天：`,
+				`当前粉丝: ${s.followers ?? none}`,
+				`涨粉: ${s.netWindow === null ? none : s.netWindow > 0 ? `+${s.netWindow}` : s.netWindow}`,
+				`作品: ${s.posts ?? none}`,
+				`视频作品: ${s.videoPosts ?? none}`,
+				`直播场次: ${s.liveSessions ?? none}`,
+				`直播时长: ${s.liveHours === null ? none : `${s.liveHours} 小时`}`,
+				`最后活动: ${s.lastActivityAt === null ? none : new Date(s.lastActivityAt).toLocaleDateString("zh-CN")}`,
+			];
+			return ok({ text: lines.join("\n") });
 		}
 		case "get_live_status": {
 			const subscriptions = reader?.subscriptions() ?? [];

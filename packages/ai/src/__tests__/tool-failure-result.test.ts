@@ -15,7 +15,7 @@ import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
 import { type BiliReader, type CreatorReader, executeTool } from "../tools";
-import { aiConfig, fakeServiceCtx, streamOf, textChunk } from "./harness";
+import { aiConfig, fakeServiceCtx, readerStubs, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -37,7 +37,7 @@ const SUBS: CreatorReader = {
 	],
 	externalIdFits: (sourceKey, externalId) =>
 		sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
-	searchCreators: async () => ok({ candidates: [] }),
+	...readerStubs,
 };
 
 /** 只给被测那把工具要用的方法;别的方法没人该碰,碰了就炸。 */
@@ -47,8 +47,6 @@ function apiOf(over: Partial<Record<keyof BiliReader, unknown>>): BiliReader {
 			throw new Error(`不该调用 ${name}`);
 		});
 	return {
-		fetchUserSpaceDynamic: stub("fetchUserSpaceDynamic"),
-		fetchUserCard: stub("fetchUserCard"),
 		fetchUserUpstat: stub("fetchUserUpstat"),
 		fetchUserNavnum: stub("fetchUserNavnum"),
 		fetchUserVideos: stub("fetchUserVideos"),
@@ -60,34 +58,6 @@ const run = (name: string, args: Record<string, string>, api: BiliReader, reader
 	executeTool(name, args, api, reader);
 
 describe("executeTool —— 接口回了错 → 失败(码 unavailable,B 站的码放 upstreamCode)", () => {
-	it("get_user_dynamics", async () => {
-		const out = await run(
-			"get_user_dynamics",
-			{ uid: "111" },
-			apiOf({ fetchUserSpaceDynamic: { code: -352, message: "风控" } }),
-		);
-		expect(out).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "获取动态失败: 风控",
-			upstreamCode: -352,
-		});
-	});
-
-	it("get_user_info", async () => {
-		const out = await run(
-			"get_user_info",
-			{ uid: "111" },
-			apiOf({ fetchUserCard: { code: -412, message: "请求被拦截" } }),
-		);
-		expect(out).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "获取用户信息失败: 请求被拦截",
-			upstreamCode: -412,
-		});
-	});
-
 	it("get_user_stats(两个接口各错一次,upstreamCode 取出错的那个)", async () => {
 		const upstatBad = await run(
 			"get_user_stats",
@@ -143,25 +113,16 @@ describe("executeTool —— 不是接口的错,但调用本身就不成立 → 
 		});
 	});
 
-	it("get_user_info 查到的卡片是空的(uid 指向不存在的人) → not_found", async () => {
-		const out = await run(
-			"get_user_info",
-			{ uid: "999" },
-			apiOf({ fetchUserCard: { code: 0, data: {} } }),
-		);
-		expect(out).toEqual({ ok: false, code: "not_found", message: "未找到用户" });
-	});
-
 	it("按 UID 查的工具收到的 uid 不合 B 站声明的外部 id 格式 → invalid,不去问 B 站", async () => {
 		const api = apiOf({});
-		const out = await run("get_user_info", { uid: "sec-uid-1" }, api);
+		const out = await run("get_user_videos", { uid: "sec-uid-1" }, api);
 		expect(out).toEqual({
 			ok: false,
 			code: "invalid",
 			message:
 				"「sec-uid-1」不是 B 站 UID 的格式 —— 这把工具只查 B 站用户，uid 只传订阅列表里 B 站 creator 冒号后面的那一段",
 		});
-		expect(api.fetchUserCard).not.toHaveBeenCalled();
+		expect(api.fetchUserVideos).not.toHaveBeenCalled();
 	});
 
 	it("describe_image:没有图 → unavailable;序号不对 → invalid;副模型抛错 → unavailable", async () => {
@@ -192,20 +153,6 @@ describe("executeTool —— 不是接口的错,但调用本身就不成立 → 
 });
 
 describe("executeTool —— 成功与「查了、没有」仍是成功,给模型看的文字逐字不变", () => {
-	it("get_user_info 成功", async () => {
-		const out = await run(
-			"get_user_info",
-			{ uid: "111" },
-			apiOf({
-				fetchUserCard: {
-					code: 0,
-					data: { card: { name: "小绫", fans: 1234, level_info: { current_level: 6 } } },
-				},
-			}),
-		);
-		expect(out).toEqual({ ok: true, text: "名称: 小绫, 粉丝数: 1234, 等级: 6" });
-	});
-
 	it("get_user_stats 成功", async () => {
 		const out = await run(
 			"get_user_stats",
@@ -232,14 +179,7 @@ describe("executeTool —— 成功与「查了、没有」仍是成功,给模�
 		});
 	});
 
-	it("查了、没有:暂无动态 / 暂无投稿视频 / 没有找到相关用户 → 成功", async () => {
-		expect(
-			await run(
-				"get_user_dynamics",
-				{ uid: "111" },
-				apiOf({ fetchUserSpaceDynamic: { code: 0, data: { items: [] } } }),
-			),
-		).toEqual({ ok: true, text: "暂无动态" });
+	it("查了、没有:暂无投稿视频 / 没有找到相关用户 → 成功", async () => {
 		expect(
 			await run(
 				"get_user_videos",
@@ -298,15 +238,15 @@ describe("CommentaryGenerator.chatStatelessStream —— 工具失败在痕迹�
 	}
 
 	it("接口回错 → end 是失败并带那句话;同一句话喂回给模型;对话继续到有回答", async () => {
-		const gen = makeGen(apiOf({ fetchUserCard: { code: -412, message: "请求被拦截" } }));
+		const gen = makeGen(apiOf({ fetchUserVideos: { code: -412, message: "请求被拦截" } }));
 
-		const { seen, answer } = await drive(gen, "get_user_info", { uid: "111" });
+		const { seen, answer } = await drive(gen, "get_user_videos", { uid: "111" });
 
 		expect(seen.find((e) => e.phase === "end")).toMatchObject({
 			ok: false,
-			message: "获取用户信息失败: 请求被拦截",
+			message: "获取视频失败: 请求被拦截",
 		});
-		expect(toolMessageFedBack()).toBe("获取用户信息失败: 请求被拦截");
+		expect(toolMessageFedBack()).toBe("获取视频失败: 请求被拦截");
 		expect(answer).toBe("好的主人");
 	});
 
@@ -321,16 +261,16 @@ describe("CommentaryGenerator.chatStatelessStream —— 工具失败在痕迹�
 
 	it("工具抛错仍记失败(原有路径保留),话是「工具执行失败: …」", async () => {
 		const gen = makeGen(
-			// 这台 api 的 fetchUserCard 直接抛 —— 抛错只留给 bug,宿主在边界接住。
+			// 这台 api 的 fetchUserVideos 直接抛 —— 抛错只留给 bug,宿主在边界接住。
 			{
 				...apiOf({}),
-				fetchUserCard: async () => {
+				fetchUserVideos: async () => {
 					throw new Error("连不上");
 				},
 			} as BiliReader,
 		);
 
-		const { seen, answer } = await drive(gen, "get_user_info", { uid: "111" });
+		const { seen, answer } = await drive(gen, "get_user_videos", { uid: "111" });
 
 		expect(seen.find((e) => e.phase === "end")).toMatchObject({
 			ok: false,

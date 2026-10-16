@@ -36,7 +36,7 @@ describe("GET /conversations/:id —— 老痕迹现补标签", () => {
 				role: "assistant",
 				content: "好",
 				tools: [
-					{ name: "get_user_info", args: { uid: "12345", name: "咩栗" }, ok: true },
+					{ name: "get_creator_profile", args: { creator: "bilibili:12345" }, ok: true },
 					{ name: "get_user_stats", args: { uid: "12345" }, ok: true },
 					{ name: "write_card", args: { skin: "abc", kind: "live" }, ok: true },
 					{ name: "load_skill", args: { name: "weekly-report" }, ok: true },
@@ -62,11 +62,11 @@ describe("GET /conversations/:id —— 老痕迹现补标签", () => {
 
 		expect(body.conversation.messages[1]?.tools).toEqual([
 			{
-				name: "get_user_info",
-				args: { uid: "12345", name: "咩栗" },
+				name: "get_creator_profile",
+				args: { creator: "bilibili:12345" },
 				ok: true,
 				label: "查看 UP 主资料",
-				argText: "咩栗",
+				argText: "12345",
 			},
 			{
 				name: "get_user_stats",
