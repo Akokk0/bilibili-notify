@@ -558,9 +558,37 @@ describe("createLinkPreviewer", () => {
 			});
 			expect(h.sent).toHaveLength(1);
 		});
+
+		it("同一条消息里普通卡与原生分享卡都在:只回普通卡里的那条", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			await h.parser.handleMessage({
+				connectionId: ADAPTER,
+				address: String(GROUP),
+				senderId: String(SOMEONE),
+				text: "",
+				cardLinks: [link("c1")],
+				miniAppCardLinks: [link("n1")],
+			});
+			expect(h.resolve.mock.calls.map(([url]) => url)).toEqual([link("c1")]);
+			expect(h.sent).toHaveLength(1);
+		});
 	});
 
 	describe("多链接", () => {
+		it("正文与分享卡里是同一条链接:只问一次解析器", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			await h.parser.handleMessage({
+				connectionId: ADAPTER,
+				address: String(GROUP),
+				senderId: String(SOMEONE),
+				text: LINK,
+				cardLinks: [LINK],
+				miniAppCardLinks: [],
+			});
+			expect(h.resolve).toHaveBeenCalledTimes(1);
+			expect(h.sent).toHaveLength(1);
+		});
+
 		it("一条消息里最多解析三个被认领的链接", async () => {
 			const h = makeParser({ cooldownSeconds: 0 });
 			const text = ["a1", "a2", "a3", "a4"].map(link).join(" ");

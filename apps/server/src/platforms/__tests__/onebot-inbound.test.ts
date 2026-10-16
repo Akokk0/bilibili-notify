@@ -102,6 +102,29 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 		expect(got).toBeNull();
 	});
 
+	it("超过 64KB 的卡不往里翻 —— 链接带着 B 站域名也一样,是上限挡的不是别的", () => {
+		const card = JSON.stringify({
+			app: "com.tencent.structmsg",
+			meta: { news: { jumpUrl: "https://b23.tv/x", pad: "a".repeat(64 * 1024) } },
+		});
+		expect(card.length).toBeGreaterThan(64 * 1024);
+		const got = extractGroupMessage({
+			...BASE,
+			message: [{ type: "json", data: { data: card } }],
+		});
+		expect(got).toBeNull();
+	});
+
+	it("嵌套超过 8 层的字符串不找 —— 链接带着 B 站域名也一样", () => {
+		let nested: unknown = "https://b23.tv/x";
+		for (let i = 0; i < 10; i++) nested = { k: nested };
+		const got = extractGroupMessage({
+			...BASE,
+			message: [{ type: "json", data: { data: JSON.stringify(nested) } }],
+		});
+		expect(got).toBeNull();
+	});
+
 	it("字符串格式的 message(老客户端)与 raw_message 一样要还原 CQ 转义", () => {
 		const got = extractGroupMessage({
 			...BASE,
