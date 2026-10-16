@@ -117,7 +117,9 @@ describe("两份合成一个文件", () => {
 			} = row;
 			return {
 				...Object.fromEntries(
-					Object.entries(rest).map(([k, v]) => (k === "groups" ? ["tagIds", []] : [k, v])),
+					Object.entries(rest).map(([k, v]) =>
+						k === "groups" ? ["tagIds", []] : k === "specialUsers" ? ["specialViewers", v] : [k, v],
+					),
 				),
 				routing: {
 					post: [],
@@ -126,8 +128,8 @@ describe("两份合成一个文件", () => {
 					liveEnd: [],
 					membership: [],
 					superchat: [],
-					specialDanmaku: [],
-					specialUserEnter: [],
+					viewerChat: [],
+					viewerEnter: [],
 				},
 				extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 			};

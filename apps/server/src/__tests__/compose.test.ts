@@ -60,13 +60,13 @@ vi.mock("../bilibili/devtools/index.js", async (importOriginal) => {
 function makeSub(
 	sourceKey: string,
 	externalId: string,
-	over: { enabled?: boolean; specialUsers?: { uid: string }[] } = {},
+	over: { enabled?: boolean; specialViewers?: { id: string }[] } = {},
 ): Subscription {
 	return {
 		id: `${sourceKey}-${externalId}`,
 		identity: { sourceKey, externalId },
 		enabled: over.enabled ?? true,
-		specialUsers: over.specialUsers ?? [],
+		specialViewers: over.specialViewers ?? [],
 	} as unknown as Subscription;
 }
 
@@ -248,7 +248,7 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 		const providers = createDevtoolsProviderRegistry();
 		compose({
 			subs: [
-				makeSub("bilibili", "100", { specialUsers: [{ uid: "777" }] }),
+				makeSub("bilibili", "100", { specialViewers: [{ id: "777" }] }),
 				makeSub("e0000000-0000-4000-8000-000000000001", "x1"),
 				makeSub("bilibili", "200", { enabled: false }),
 			],
@@ -261,7 +261,7 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 				name: "甲",
 				enabled: true,
 				roomId: "5050",
-				specialUsers: ["777"],
+				specialViewers: ["777"],
 				avatar: "https://a/1.png",
 			},
 			{
@@ -270,7 +270,7 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 				name: "200",
 				enabled: false,
 				roomId: undefined,
-				specialUsers: [],
+				specialViewers: [],
 				avatar: undefined,
 			},
 		]);

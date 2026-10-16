@@ -92,8 +92,8 @@ describe("RoomContext.needsListener", () => {
 			liveEnd: false,
 			membership: false,
 			superchat: false,
-			customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
-			customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+			customSpecialDanmakuUsers: { specialViewers: [], template: "" },
+			customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
 			...over,
 		}) as SubItemView;
 

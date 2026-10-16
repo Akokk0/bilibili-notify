@@ -25,7 +25,7 @@ const SUB = {
 	routing: {},
 	extras: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 	overrides: {},
-	specialUsers: [],
+	specialViewers: [],
 };
 
 const PROFILE = {
@@ -680,5 +680,62 @@ describe("/api/subscriptions × 拓展订阅", () => {
 		});
 		expect(posted.status).toBe(400);
 		expect(await posted.json()).toMatchObject({ code: "invalid" });
+	});
+});
+
+describe("/api/subscriptions × 特别关注名单的观众 id(按来源描述符的格式核新加的)", () => {
+	beforeEach(() => vi.restoreAllMocks());
+
+	const json = { "content-type": "application/json" };
+	const patch = (h: Harness, body: unknown) =>
+		h.app.request(`/${SUB.id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
+	const post = (h: Harness, body: unknown) =>
+		h.app.request("/", { method: "POST", headers: json, body: JSON.stringify(body) });
+
+	it("PATCH 加一个不合来源格式的观众 id → 400 invalid,issues 指到那一条,不进 store", async () => {
+		const h = makeHarness();
+		const res = await patch(h, {
+			specialViewers: [
+				{ id: "777", features: ["viewerChat"] },
+				{ id: "not-a-uid", features: ["viewerEnter"] },
+			],
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			issues: [{ path: ["specialViewers", 1, "id"] }],
+		});
+		expect(h.patchSubscription).not.toHaveBeenCalled();
+	});
+
+	it("PATCH 加合格式的观众 id → 放行", async () => {
+		const h = makeHarness();
+		const res = await patch(h, { specialViewers: [{ id: "777", features: ["viewerChat"] }] });
+		expect(res.status).toBe(200);
+		expect(h.patchSubscription).toHaveBeenCalledTimes(1);
+	});
+
+	it("名单上本来就有的老条目不回头核:迁移带来的不合格条目不挡着改别的格", async () => {
+		const legacy = { id: "not-a-uid", features: ["viewerChat"] };
+		const h = makeHarness({ subs: [{ ...SUB, specialViewers: [legacy] }] });
+		const res = await patch(h, {
+			specialViewers: [legacy, { id: "9", features: ["viewerEnter"] }],
+		});
+		expect(res.status).toBe(200);
+		expect(h.patchSubscription).toHaveBeenCalledTimes(1);
+	});
+
+	it("POST 新建时名单里有不合格式的 id → 400,不 upsert", async () => {
+		const h = makeHarness({ fresh: true });
+		const res = await post(h, {
+			...SUB,
+			specialViewers: [{ id: "abc", features: ["viewerChat"] }],
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			issues: [{ path: ["specialViewers", 0, "id"] }],
+		});
+		expect(h.upsertSubscription).not.toHaveBeenCalled();
 	});
 });

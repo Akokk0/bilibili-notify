@@ -1,5 +1,5 @@
 /**
- * Per-UP overrides editor — Subscription.overrides + Subscription.specialUsers
+ * Per-UP overrides editor — Subscription.overrides + Subscription.specialViewers
  * bound to /api/subscriptions PATCH.
  *
  * Each override family is gated by a "覆盖全局" toggle. Off → undefined
@@ -33,7 +33,7 @@ import {
 	type MessageLayoutOverride,
 	type OverridesShape,
 	type ScheduleOverride,
-	type SpecialUser,
+	type SpecialViewer,
 	type Subscription,
 	type SuperchatOverride,
 	subscriptionIdentityOf,
@@ -44,7 +44,6 @@ import type {
 	GlobalDefaults,
 	ImageGroupSettings,
 	MembershipTemplateBundle,
-	TemplateBundle,
 } from "../../types/globals";
 import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
 import type { SubscriptionPlatform } from "../up/subscription-source";
@@ -96,7 +95,7 @@ export type PerUpOverrideKey = (typeof perUpOverrideKeys)[number];
 interface SubPatch {
 	// overrides 走清除哨兵线格式:被关闭的 slice 显式 null(见 buildOverridesPatch / store SY1)。
 	overrides?: OverridesPatch;
-	specialUsers?: SpecialUser[];
+	specialViewers?: SpecialViewer[];
 }
 
 function patchSub(id: string, body: SubPatch) {
@@ -121,14 +120,14 @@ export interface PerUpEditorProps {
 
 interface PerUpDraft {
 	overrides: Subscription["overrides"];
-	specialUsers: SpecialUser[];
+	specialViewers: SpecialViewer[];
 }
 
 export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUpEditorProps) {
 	const qc = useQueryClient();
 	const identity = subscriptionIdentityOf(sub);
 	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	const specialUsers = sub.specialUsers;
+	const specialViewers = sub.specialViewers;
 	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
 	const features = platform?.features;
 	const reports = (k: FeatureKey): boolean => isBili || !features || features.includes(k);
@@ -142,12 +141,12 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 	};
 	const [draft, setDraft] = useState<PerUpDraft>({
 		overrides: sub.overrides,
-		specialUsers,
+		specialViewers,
 	});
 
 	useEffect(() => {
-		setDraft({ overrides: sub.overrides, specialUsers });
-	}, [sub.overrides, specialUsers]);
+		setDraft({ overrides: sub.overrides, specialViewers });
+	}, [sub.overrides, specialViewers]);
 
 	const save = useMutation({
 		mutationFn: () => {
@@ -156,14 +155,14 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 			// 特别关注今天只有 B 站这个来源支持,别的来源不发这一格。
 			return patchSub(
 				sub.id,
-				isBili ? { overrides, specialUsers: draft.specialUsers } : { overrides },
+				isBili ? { overrides, specialViewers: draft.specialViewers } : { overrides },
 			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
 
 	function discard(): void {
-		setDraft({ overrides: sub.overrides, specialUsers });
+		setDraft({ overrides: sub.overrides, specialViewers });
 	}
 
 	// per-UP 草稿接入灵动岛:draft / sub 同款投影成扁平 code 结构,walkTreeDiff 出的
@@ -171,12 +170,12 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 	// 丢弃统一由灵动岛触发,不再走页内按钮;保存失败时 mutateAsync reject →
 	// useDirtyDraft 捕获并切 error 态展示在灵动岛。
 	const islandDraft = useMemo(
-		() => projectPerUpIsland(draft.overrides, draft.specialUsers),
+		() => projectPerUpIsland(draft.overrides, draft.specialViewers),
 		[draft],
 	);
 	const islandBaseline = useMemo(
-		() => projectPerUpIsland(sub.overrides, specialUsers),
-		[sub.overrides, specialUsers],
+		() => projectPerUpIsland(sub.overrides, specialViewers),
+		[sub.overrides, specialViewers],
 	);
 	useDirtyDraft({
 		pageKey: "rules-perup",
@@ -199,8 +198,8 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 		});
 	}
 
-	function setSpecialUsers(next: SpecialUser[]): void {
-		setDraft((d) => ({ ...d, specialUsers: next }));
+	function setSpecialViewers(next: SpecialViewer[]): void {
+		setDraft((d) => ({ ...d, specialViewers: next }));
 	}
 
 	const color = subscriptionColor(sub);
@@ -310,33 +309,31 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 				/>
 			) : null}
 			{section === "specialDanmaku" ? (
-				<SpecialUserBox
-					kind="danmaku"
+				<SpecialViewerBox
+					feature="viewerChat"
 					title="特别关注弹幕"
-					subtitle="UID 进入直播间时弹幕高亮 · specialUsers + overrides.templates.specialDanmaku"
+					subtitle="UID 进入直播间时弹幕高亮 · specialViewers + overrides.templates.viewerChat"
 					accent={SECTION_ACCENT.persona}
 					icon={<Icon.star size={14} />}
-					users={draft.specialUsers}
-					onUsersChange={setSpecialUsers}
+					viewers={draft.specialViewers}
+					onViewersChange={setSpecialViewers}
 					template={draft.overrides.templates}
 					onTemplateChange={(v) => setSlice("templates", v)}
-					baselineTemplate={defaults.templates.specialDanmaku}
-					templateField="specialDanmaku"
+					baselineTemplate={defaults.templates.viewerChat}
 				/>
 			) : null}
 			{section === "specialEnter" ? (
-				<SpecialUserBox
-					kind="enter"
+				<SpecialViewerBox
+					feature="viewerEnter"
 					title="特别关注进房"
-					subtitle="特定 UID 进入直播间时单独提醒 · specialUsers + overrides.templates.specialUserEnter"
+					subtitle="特定 UID 进入直播间时单独提醒 · specialViewers + overrides.templates.viewerEnter"
 					accent="var(--color-bn-blue)"
 					icon={<Icon.user size={14} />}
-					users={draft.specialUsers}
-					onUsersChange={setSpecialUsers}
+					viewers={draft.specialViewers}
+					onViewersChange={setSpecialViewers}
 					template={draft.overrides.templates}
 					onTemplateChange={(v) => setSlice("templates", v)}
-					baselineTemplate={defaults.templates.specialUserEnter}
-					templateField="specialUserEnter"
+					baselineTemplate={defaults.templates.viewerEnter}
 				/>
 			) : null}
 			{section === "ai" ? (
@@ -1043,61 +1040,61 @@ function GuardOverrideBox({
 	);
 }
 
-/* -------- Special user (UID list + template) ----------------------------- */
+/* -------- Special viewer (UID list + template) --------------------------- */
 
-function SpecialUserBox({
-	kind,
+function SpecialViewerBox({
+	feature,
 	title,
 	subtitle,
 	accent,
 	icon,
-	users,
-	onUsersChange,
+	viewers,
+	onViewersChange,
 	template,
 	onTemplateChange,
 	baselineTemplate,
-	templateField,
 }: {
-	kind: "danmaku" | "enter";
+	/** 这一节管的特性键;同名的也是文案键。 */
+	feature: SpecialViewer["features"][number];
 	title: string;
 	subtitle: string;
 	accent: string;
 	icon: React.ReactNode;
-	users: SpecialUser[];
-	onUsersChange: (next: SpecialUser[]) => void;
+	viewers: SpecialViewer[];
+	onViewersChange: (next: SpecialViewer[]) => void;
 	template: TemplateOverride | undefined;
 	onTemplateChange: (next: TemplateOverride | undefined) => void;
 	baselineTemplate: string;
-	templateField: keyof Pick<TemplateBundle, "specialDanmaku" | "specialUserEnter">;
 }) {
-	// 把 specialUsers 投影成"该 kind 的 UID 列表",编辑时再写回完整 specialUsers。
+	const templateField = feature;
+	// 把 specialViewers 投影成"带这一把特性键的 UID 列表",编辑时再写回完整 specialViewers。
 	const uids = useMemo(
-		() => users.filter((u) => u.kinds.includes(kind)).map((u) => u.uid),
-		[users, kind],
+		() => viewers.filter((v) => v.features.includes(feature)).map((v) => v.id),
+		[viewers, feature],
 	);
 
 	function setUids(nextUids: string[]): void {
-		// 同步:删去本 kind 不在 nextUids 里的;加上 nextUids 里没出现过的。
+		// 同步:删去本特性不在 nextUids 里的;加上 nextUids 里没出现过的。
 		const set = new Set(nextUids.filter((u) => u.trim() !== ""));
-		const next: SpecialUser[] = [];
+		const next: SpecialViewer[] = [];
 		const seen = new Set<string>();
-		for (const u of users) {
-			if (set.has(u.uid)) {
-				const kinds = u.kinds.includes(kind) ? u.kinds : [...u.kinds, kind];
-				next.push({ ...u, kinds });
-				seen.add(u.uid);
-			} else if (u.kinds.includes(kind)) {
-				const kinds = u.kinds.filter((k) => k !== kind);
-				if (kinds.length > 0) next.push({ ...u, kinds });
-				// kinds 为空 → 整个用户从 specialUsers 里去掉
+		for (const v of viewers) {
+			if (set.has(v.id)) {
+				const features = v.features.includes(feature) ? v.features : [...v.features, feature];
+				next.push({ ...v, features });
+				seen.add(v.id);
+			} else if (v.features.includes(feature)) {
+				const features = v.features.filter((k) => k !== feature);
+				if (features.length > 0) next.push({ ...v, features });
+				// features 为空 → 整个条目从 specialViewers 里去掉
 			} else {
-				next.push(u);
+				next.push(v);
 			}
 		}
-		for (const uid of set) {
-			if (!seen.has(uid)) next.push({ uid, kinds: [kind] });
+		for (const id of set) {
+			if (!seen.has(id)) next.push({ id, features: [feature] });
 		}
-		onUsersChange(next);
+		onViewersChange(next);
 	}
 
 	const curTemplate = template ?? {};
@@ -1129,7 +1126,7 @@ function SpecialUserBox({
 		}
 	}
 
-	const inheritLabel = kind === "danmaku" ? "特别关注弹幕规则" : "特别关注进房规则";
+	const inheritLabel = feature === "viewerChat" ? "特别关注弹幕规则" : "特别关注进房规则";
 
 	return (
 		<GlassBox
@@ -1143,15 +1140,21 @@ function SpecialUserBox({
 			{enabled ? (
 				<>
 					<Field
-						code="specialUsers"
+						code="specialViewers"
 						hint={
-							kind === "danmaku" ? "命中后该 UID 的弹幕会单独提醒" : "命中后该 UID 进房会单独提醒"
+							feature === "viewerChat"
+								? "命中后该 UID 的弹幕会单独提醒"
+								: "命中后该 UID 进房会单独提醒"
 						}
 						full
 					>
 						<ArrayEditor value={uids} onChange={setUids} placeholder="纯数字 UID" />
 					</Field>
-					{kind === "danmaku" ? <SpecialDanmakuVariableHints /> : <SpecialEnterVariableHints />}
+					{feature === "viewerChat" ? (
+						<SpecialDanmakuVariableHints />
+					) : (
+						<SpecialEnterVariableHints />
+					)}
 					<Field
 						code={`templates.${templateField}`}
 						hint={tplOverridden ? "已覆盖全局" : "继承全局模板"}

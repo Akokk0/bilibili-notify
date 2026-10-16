@@ -244,8 +244,8 @@ describe("直播拆键 · 迁移器接缝", () => {
 			liveEnd: [T2],
 			membership: [],
 			superchat: [],
-			specialDanmaku: [],
-			specialUserEnter: [],
+			viewerChat: [],
+			viewerEnter: [],
 		});
 		expect(Object.keys(routing).slice(0, 4)).toEqual([
 			"post",
@@ -653,8 +653,8 @@ describe("直播拆键 · 函数级", () => {
 				liveEnd: [],
 				membership: [],
 				superchat: [],
-				specialDanmaku: [],
-				specialUserEnter: [],
+				viewerChat: [],
+				viewerEnter: [],
 			},
 			...(overrides ? { overrides } : {}),
 		};

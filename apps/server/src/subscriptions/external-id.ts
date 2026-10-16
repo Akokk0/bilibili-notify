@@ -40,3 +40,32 @@ export function externalIdRefusal(
 		],
 	});
 }
+
+/**
+ * 特别关注名单上**新加**的观众 id,合不合这条订阅所属来源声明的格式(3b-16;与 {@link externalIdRefusal} 同一把尺子:
+ * 观众 id 是来源那头的 id,核心不认平台)。`known` 是这条订阅盘上已有的名单 id:已在名单上的不回头核 —— 迁移从 0.x
+ * 带过来的老条目可能不合格式,不能因此让这条订阅改不了别的格。名单不是数组、条目不是对象这里不管,留给 schema 报。
+ * 第一个不合格的回 `invalid`,issues 指到名单里那一条的 `id`;全合格回 `undefined`。
+ */
+export function specialViewerIdRefusal(
+	spec: ExternalIdSpec | undefined,
+	listed: unknown,
+	known: readonly string[],
+): Failure | undefined {
+	if (spec === undefined || !Array.isArray(listed)) return undefined;
+	for (const [index, entry] of listed.entries()) {
+		if (typeof entry !== "object" || entry === null || !("id" in entry)) continue;
+		const id: unknown = entry.id;
+		if (typeof id === "string" && known.includes(id)) continue;
+		if (externalIdRefusal(spec, id) === undefined) continue;
+		return fail("invalid", EXTERNAL_ID_TEXTS.viewerMismatch(spec.label), {
+			issues: [
+				{
+					path: ["specialViewers", index, "id"],
+					message: EXTERNAL_ID_TEXTS.viewerMismatchIssue(spec.label),
+				},
+			],
+		});
+	}
+	return undefined;
+}

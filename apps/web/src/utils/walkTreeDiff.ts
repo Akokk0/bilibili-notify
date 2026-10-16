@@ -3,7 +3,7 @@
  *
  * 设计契约:
  * - 数组当叶子整体比较,不递归 index。理由:dashboard 的 PATCH body 语义就是
- *   整数组替换(blockKeywords / quietHours / specialUsers 等),逐元素 diff 与
+ *   整数组替换(blockKeywords / quietHours / specialViewers 等),逐元素 diff 与
  *   后端语义不匹配,灵动岛 diff 行展示整个新旧数组更直观。
  * - plain object 才递归:`Object.getPrototypeOf(x) === Object.prototype`。Date /
  *   Map / 自定义类等当叶子比较(dashboard 配置树没有这些)。

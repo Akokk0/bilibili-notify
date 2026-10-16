@@ -147,8 +147,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			liveEnd: [T2],
 			membership: [T2],
 			superchat: [T1],
-			specialDanmaku: [],
-			specialUserEnter: [],
+			viewerChat: [],
+			viewerEnter: [],
 		});
 		expect(Object.keys(routing)).toEqual([
 			"post",
@@ -157,8 +157,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"liveEnd",
 			"membership",
 			"superchat",
-			"specialDanmaku",
-			"specialUserEnter",
+			"viewerChat",
+			"viewerEnter",
 		]);
 
 		const store = await sandbox.load();
@@ -191,8 +191,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			liveEnd: false,
 			membership: true,
 			superchat: true,
-			specialDanmaku: false,
-			specialUserEnter: true,
+			viewerChat: false,
+			viewerEnter: true,
 			extras: { atAllPost: true, atAllLiveStart: false, wordcloud: false, liveSummary: true },
 		});
 		expect(Object.keys(onDisk.defaults.features)).toEqual([
@@ -202,8 +202,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"liveEnd",
 			"membership",
 			"superchat",
-			"specialDanmaku",
-			"specialUserEnter",
+			"viewerChat",
+			"viewerEnter",
 			"extras",
 		]);
 		expect(Object.keys(onDisk.defaults.features.extras as Obj)).toEqual([
@@ -349,8 +349,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"post",
 			"postVideo",
 			"wordcloudStopWords",
-			"specialDanmaku",
-			"specialUserEnter",
+			"viewerChat",
+			"viewerEnter",
 			// 上舰文案搬成 `membership.guard`(㉓d),占的还是原来的位置。
 			"membership",
 		]);
@@ -388,8 +388,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			post: "7uw5nq",
 			postVideo: "1omlggn",
 			wordcloudStopWords: "ztntfp",
-			specialDanmaku: "t4zkxd",
-			specialUserEnter: "1qh1423",
+			viewerChat: "t4zkxd",
+			viewerEnter: "1qh1423",
 			// 上舰文案搬成体系默认一条(㉓d):账本记的是新默认「{viewer} 成为了 {name} 的{tier}！」与空图的指纹。
 			"membership.guard.default.template": "8q6guf",
 			"membership.guard.default.imageUrl": "ztntfp",
@@ -905,8 +905,8 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 				liveEnd: [],
 				membership: [T2],
 				superchat: [],
-				specialDanmaku: [],
-				specialUserEnter: [],
+				viewerChat: [],
+				viewerEnter: [],
 			},
 			extraTargets: {
 				atAllPost: { [T1]: true },
@@ -1088,8 +1088,8 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 			"liveEnd",
 			"membership",
 			"superchat",
-			"specialDanmaku",
-			"specialUserEnter",
+			"viewerChat",
+			"viewerEnter",
 			"extras",
 		]);
 		expect(out.defaults.features.extras).toEqual({

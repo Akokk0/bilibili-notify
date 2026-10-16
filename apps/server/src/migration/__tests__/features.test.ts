@@ -85,13 +85,13 @@ const SUB_BASE_1_0 = {
 		liveEnd: [],
 		membership: [],
 		superchat: [],
-		specialDanmaku: [],
-		specialUserEnter: [],
+		viewerChat: [],
+		viewerEnter: [],
 	},
 	extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 	overrides: {},
 	roastSchedule: SUB_BASE.roastSchedule,
-	specialUsers: [],
+	specialViewers: [],
 };
 
 /** 0.12 的七把特性键(迁完 routing / features 里的就是这几把)。 */

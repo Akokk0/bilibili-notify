@@ -709,7 +709,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`） |
 | AI 工具参数 `uid`；内置技能 `find-up` / `up-pk` | `creator`（「来源键:外部 id」）；`find-creator` / `creator-pk`，旧名留别名 |
 | 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef`；被会话引用的逐张复制进去，孤儿不搬。🔗 修订：0.x 的女仆对话与聊天附件不迁（见 [data-and-migration.md](./data-and-migration.md)），这一行只管 1.0 新产生的附件 |
-| 特别关注名单 `specialUsers`（`{ id, note? }`）、特性键 `specialDanmaku` / `specialUserEnter`；条目上的死格 `template` | `specialViewers`（条目 `SpecialViewer { id, note?, features }`，比对文件 `live/special-viewers.ts`）、`viewerChat` / `viewerEnter`；`template` 退役。迁移专门有测试钉老键上的名单一个不少 |
+| 特别关注名单 `specialUsers`（盘上的 0.x 形状 `{ uid, kinds, template? }`）、特性键 `specialDanmaku` / `specialUserEnter`；条目上的死格 `template` | `specialViewers`（条目 `SpecialViewer { id, note?, features }`，比对文件 `live/special-viewers.ts`）、`viewerChat` / `viewerEnter`；`template` 退役。迁移专门有测试钉老键上的名单一个不少 |
 | 核心里直播一侧叫 `danmaku` 的名字（观众在直播间里说的话）：收集器、记录函数、计数字段 | `ViewerChatCollector`（`viewer-chat-collector.ts`）、`recordViewerChat`、`viewerChatCount`；视频上的弹幕数 `video.danmaku` 不动；B 站目录里仍叫 `danmaku` |
 
 **订阅与来源（09-27 字段名专项审查）。**

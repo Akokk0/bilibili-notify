@@ -65,8 +65,8 @@ const FEATURE_KEY_RENAMES = {
 	liveEnd: "liveEnd",
 	liveGuardBuy: "membership",
 	superchat: "superchat",
-	specialDanmaku: "specialDanmaku",
-	specialUserEnter: "specialUserEnter",
+	specialDanmaku: "viewerChat",
+	specialUserEnter: "viewerEnter",
 } as const satisfies Record<ZeroFeatureKey, FeatureKey>;
 
 /** 附加项键:`features.extras` 与订阅顶层的逐目标表共用。 */
@@ -86,8 +86,8 @@ const TEMPLATE_KEY_RENAMES = {
 	dynamic: "post",
 	dynamicVideo: "postVideo",
 	wordcloudStopWords: "wordcloudStopWords",
-	specialDanmaku: "specialDanmaku",
-	specialUserEnter: "specialUserEnter",
+	specialDanmaku: "viewerChat",
+	specialUserEnter: "viewerEnter",
 } as const satisfies Record<Exclude<ZeroTemplateKey, ZeroMovedTemplateKey>, keyof TemplateBundle>;
 
 /** 版式的两组(`version` 不在表里,原样过):作品改名,直播不改。 */

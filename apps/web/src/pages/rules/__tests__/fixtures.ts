@@ -78,8 +78,8 @@ export function makeDefaults(): GlobalDefaults {
 			post: "",
 			postVideo: "",
 			wordcloudStopWords: "",
-			specialDanmaku: "",
-			specialUserEnter: "",
+			viewerChat: "",
+			viewerEnter: "",
 			// 上舰文案(㉓d):B 站的体系 `guard` 关着自定义,体系默认空,没有任何档的覆盖。
 			membership: {
 				guard: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },

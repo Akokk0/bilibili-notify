@@ -1547,9 +1547,9 @@ export function liveTypeToFeature(type: number): FeatureKey {
 		case 6:
 			return "superchat";
 		case 7:
-			return "specialDanmaku";
+			return "viewerChat";
 		case 8:
-			return "specialUserEnter";
+			return "viewerEnter";
 		default:
 			return "liveStart";
 	}
@@ -1808,8 +1808,6 @@ export function buildLiveSubViewSingle(
 	const eff = resolve(sub, globals.defaults);
 	// B 站引擎以 uid 为键,调用方只给 B 站订阅。
 	const uid = subscriptionIdentityOf(sub).externalId;
-	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
-	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
 	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate),同 liveWorkSettings。
 	const feat = (k: keyof typeof eff.routing) => eff.features[k];
 	return {
@@ -1842,22 +1840,15 @@ export function buildLiveSubViewSingle(
 		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
 		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
 		wordcloudStopWords: eff.templates.wordcloudStopWords,
-		customSpecialDanmakuUsers:
-			danmakuUsers.length > 0
-				? {
-						enable: true,
-						specialDanmakuUsers: danmakuUsers.map((u) => u.uid),
-						msgTemplate: eff.templates.specialDanmaku,
-					}
-				: { enable: false, msgTemplate: "" },
-		customSpecialUsersEnterTheRoom:
-			enterUsers.length > 0
-				? {
-						enable: true,
-						specialUsersEnterTheRoom: enterUsers.map((u) => u.uid),
-						msgTemplate: eff.templates.specialUserEnter,
-					}
-				: { enable: false, msgTemplate: "" },
+		// 两块设置同带一份名单(条目自己说带哪把特性键),各配各的文案。
+		customSpecialDanmakuUsers: {
+			specialViewers: sub.specialViewers,
+			template: eff.templates.viewerChat,
+		},
+		customSpecialUsersEnterTheRoom: {
+			specialViewers: sub.specialViewers,
+			template: eff.templates.viewerEnter,
+		},
 	};
 }
 

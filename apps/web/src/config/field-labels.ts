@@ -36,7 +36,7 @@ export type FieldSection =
 	| "templates"
 	| "schedule"
 	| "interaction"
-	| "specialUsers"
+	| "specialViewers"
 	| "imageGroup"
 	| "target"
 	| "connection"
@@ -526,8 +526,8 @@ export const FIELD_LABELS = {
 	"templates.liveEnd": { label: "下播", section: "templates" },
 	"templates.post": { label: "动态文案", section: "templates" },
 	"templates.postVideo": { label: "视频文案", section: "templates" },
-	"templates.specialDanmaku": { label: "弹幕模板", section: "templates" },
-	"templates.specialUserEnter": { label: "进房模板", section: "templates" },
+	"templates.viewerChat": { label: "弹幕模板", section: "templates" },
+	"templates.viewerEnter": { label: "进房模板", section: "templates" },
 	// 以下几条仅 diff-path entry 用(GuardSection 的 Toggle 直接挂在 GlassBox.right
 	// 槽,Guard 模板嵌在小卡 JSX 里没单独 <Field> 包裹,diff 会输出整段嵌套 path)。
 	// ㉓d:上舰文案是 B 站的会员体系 `guard` 的那一份 —— 体系默认 + 按档存的覆盖。
@@ -542,7 +542,7 @@ export const FIELD_LABELS = {
 	...GUARD_TIER_LABELS,
 
 	// ── 特别关注 / Special UID ────────────────────────────────────────────
-	specialUsers: { label: "UID 列表", section: "specialUsers" },
+	specialViewers: { label: "UID 列表", section: "specialViewers" },
 
 	// ── 动态图集 ──────────────────────────────────────────────────────────
 	"imageGroup.enabled": {

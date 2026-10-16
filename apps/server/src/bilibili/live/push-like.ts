@@ -14,11 +14,10 @@ import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { ExtraKey, MembershipTemplateBundle } from "@bilibili-notify/internal";
 import type { LiveWorkSettings } from "../../live/live-settings";
 import type {
-	CustomSpecialDanmakuUsersLike,
-	CustomSpecialUsersEnterTheRoomLike,
 	LivePushAnchor,
 	LivePushFeature,
 	LivePushType,
+	SpecialViewerSettings,
 } from "../../live/live-types";
 
 /**
@@ -68,8 +67,8 @@ export interface SubItemView extends LiveWorkSettings {
 	 */
 	guardTemplate: MembershipTemplateBundle;
 	customLiveSummary: CustomLiveSummaryLike;
-	customSpecialDanmakuUsers: CustomSpecialDanmakuUsersLike;
-	customSpecialUsersEnterTheRoom: CustomSpecialUsersEnterTheRoomLike;
+	customSpecialDanmakuUsers: SpecialViewerSettings;
+	customSpecialUsersEnterTheRoom: SpecialViewerSettings;
 	/**
 	 * Per-UP 阈值 / 调度。adapter build SubItemView 时已一次性折算好
 	 * (`sub.overrides.X ?? 全局 config.X`),引擎 / 监听层直接消费,无二次回退。

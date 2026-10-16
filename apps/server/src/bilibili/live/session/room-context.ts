@@ -5,6 +5,7 @@ import {
 	type MembershipTemplateBundle,
 	needsLiveMonitor,
 	type ServiceContext,
+	specialUserFlagsOf,
 } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types";
@@ -244,15 +245,15 @@ export class RoomContextBase {
 	}
 
 	needsListener(sub: SubItemView): boolean {
-		// 特别关注两格:引擎视图里的 `enable` 就是「订阅配了这一种特别关注用户」(buildLiveSubViewSingle 由 specialUsers 折出)。
+		// 特别关注两格:名单上有人带这一把特性键(buildLiveSubViewSingle 把订阅的 specialViewers 摆进两块设置)。
 		return needsLiveMonitor({
 			liveStart: sub.liveStart,
 			liveStreaming: sub.liveStreaming,
 			liveEnd: sub.liveEnd,
 			membership: sub.membership,
 			superchat: sub.superchat,
-			specialDanmaku: sub.customSpecialDanmakuUsers.enable,
-			specialUserEnter: sub.customSpecialUsersEnterTheRoom.enable,
+			viewerChat: specialUserFlagsOf(sub.customSpecialDanmakuUsers).viewerChat,
+			viewerEnter: specialUserFlagsOf(sub.customSpecialUsersEnterTheRoom).viewerEnter,
 		});
 	}
 

@@ -5,8 +5,8 @@ import { formatCount } from "@bilibili-notify/internal";
  * text. Mirrors the per-occurrence templates of the live push:
  *
  * - `customLiveStart` / `customLiveStreaming` / `customLiveEnd`
- * - `customSpecialDanmakuUsers.msgTemplate`
- * - `customSpecialUsersEnterTheRoom.msgTemplate`
+ * - `customSpecialDanmakuUsers.template`
+ * - `customSpecialUsersEnterTheRoom.template`
  *
  * 占位符统一 `{name}` / `{time}` / `{watched}` 语法(与 `@bilibili-notify/internal`
  * 的 `interpolate` 同源)。`applyTemplate` 同时接受旧存档里的 legacy

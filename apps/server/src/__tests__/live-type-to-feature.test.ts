@@ -17,8 +17,8 @@ describe("liveTypeToFeature", () => {
 		expect(liveTypeToFeature(3)).toBe("liveStart");
 		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(6)).toBe("superchat");
-		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
-		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
+		expect(liveTypeToFeature(7)).toBe("viewerChat");
+		expect(liveTypeToFeature(8)).toBe("viewerEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
 		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报:走开播的路由
 	});

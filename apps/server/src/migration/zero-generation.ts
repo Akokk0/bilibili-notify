@@ -85,8 +85,11 @@ import { migrateUptime } from "./uptime.js";
  * `profileRefreshCron`(`config/settings/core.json` 因此没有 `app`,摘要变)。
  * 43 = 默认文案账本从 `defaults.templateDefaultsSeen` 上提成核心设置顶层的 `templatesSeen`(`core.json` 里账本换了位置,摘要变)。
  * 44 = AI 设置整段从 `defaults.ai` 上提成核心设置顶层的 `ai`(里面的键一个不动;`core.json` 里 AI 换了位置,摘要变)。
+ * 45 = 特别关注名单 `specialUsers` → `specialViewers`(条目 `{ uid, kinds, template? }` → `{ id, features }`,`template` 丢掉),
+ * 两把特性键 `specialDanmaku` / `specialUserEnter` → `viewerChat` / `viewerEnter`(设置的开关与文案、订阅的路由与覆盖、
+ * 默认文案账本、历史行的 `feature`;统计「在记」账里直播那一格改用冻住的 0.x 旧读法)。
  */
-export const MIGRATION_REVISION = 44;
+export const MIGRATION_REVISION = 45;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

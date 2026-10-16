@@ -72,6 +72,14 @@ export const ZERO_GUARD_LEVEL_RANKS: ReadonlyMap<number, number> = new Map([
 	[3, 1],
 ]);
 
+/**
+ * 0.x 特别关注名单条目 `kinds` 的取值(0.12 `SpecialUserSchema`:`z.enum(["enter", "danmaku"])`),按它的顺序。
+ * 1.0 的名单条目装特性键(`features`),`special-viewers.ts` 用 `satisfies Record<ZeroSpecialUserKind, …>` 钉着去向。
+ */
+export const ZERO_SPECIAL_USER_KINDS = ["enter", "danmaku"] as const;
+
+export type ZeroSpecialUserKind = (typeof ZERO_SPECIAL_USER_KINDS)[number];
+
 /** 0.x 的文案键(0.12 `TemplateBundleSchema`),按它的顺序;`templateDefaultsSeen` 账本点路径的第一段也是它们。 */
 export const ZERO_TEMPLATE_KEYS = [
 	"liveStart",

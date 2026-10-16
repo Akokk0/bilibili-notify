@@ -17,27 +17,27 @@ export const LIVE_ROOM_CREATOR_KEYS = [
 
 export type LiveRoomCreatorKey = (typeof LIVE_ROOM_CREATOR_KEYS)[number];
 
-/** 订阅配了哪几种特别关注用户(特性键表里的 `specialDanmaku` / `specialUserEnter` 两种)。 */
+/** 订阅的特别关注名单上,有人带哪几把特性键(`viewerChat` / `viewerEnter`)。 */
 export interface SpecialUserFlags {
-	/** 配了特别弹幕用户。 */
-	specialDanmaku: boolean;
-	/** 配了特别进场用户。 */
-	specialUserEnter: boolean;
+	/** 名单上有人带 `viewerChat`。 */
+	viewerChat: boolean;
+	/** 名单上有人带 `viewerEnter`。 */
+	viewerEnter: boolean;
 }
 
 /** {@link needsLiveMonitor} 要看的那几格:折好的直播类开关,加上那两个特别关注条件。 */
 export type LiveMonitorInput = Record<LiveRoomCreatorKey, boolean> & SpecialUserFlags;
 
 /**
- * 一条订阅的特别关注条件:看它的 `specialUsers` 里有没有对应种类。拓展订阅没有设置特别关注的入口,
+ * 一条订阅的特别关注条件:看它的 `specialViewers` 里有没有人带对应的特性键。拓展订阅没有设置特别关注的入口,
  * 这两格天然是空(与「传关」同一个结果)。
  */
 export function specialUserFlagsOf(sub: {
-	specialUsers: readonly { kinds: readonly string[] }[];
+	specialViewers: readonly { features: readonly string[] }[];
 }): SpecialUserFlags {
 	return {
-		specialDanmaku: sub.specialUsers.some((u) => u.kinds.includes("danmaku")),
-		specialUserEnter: sub.specialUsers.some((u) => u.kinds.includes("enter")),
+		viewerChat: sub.specialViewers.some((v) => v.features.includes("viewerChat")),
+		viewerEnter: sub.specialViewers.some((v) => v.features.includes("viewerEnter")),
 	};
 }
 
@@ -64,5 +64,5 @@ export function liveMonitorInputOf(
  * 只看折好的生效值,不看有没有推送目标、不依赖房间上下文。
  */
 export function needsLiveMonitor(sub: LiveMonitorInput): boolean {
-	return LIVE_ROOM_CREATOR_KEYS.some((k) => sub[k]) || sub.specialDanmaku || sub.specialUserEnter;
+	return LIVE_ROOM_CREATOR_KEYS.some((k) => sub[k]) || sub.viewerChat || sub.viewerEnter;
 }

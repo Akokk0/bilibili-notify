@@ -74,8 +74,8 @@ const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
 	{
 		label: "特别关注",
 		keys: [
-			{ key: "specialDanmaku", sub: "特别关注用户的弹幕" },
-			{ key: "specialUserEnter", sub: "特别关注用户进直播间" },
+			{ key: "viewerChat", sub: "特别关注用户的弹幕" },
+			{ key: "viewerEnter", sub: "特别关注用户进直播间" },
 		],
 	},
 ];

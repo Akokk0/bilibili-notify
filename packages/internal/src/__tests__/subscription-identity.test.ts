@@ -90,11 +90,11 @@ describe("特别关注是公共形状", () => {
 			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
 			identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "1" },
 		});
-		const { specialUsers: _special, identity: _identity, ...common } = bili;
+		const { specialViewers: _special, identity: _identity, ...common } = bili;
 		const parsed = SubscriptionSchema.parse({
 			...common,
 			identity: { sourceKey: "douyin", externalId: "MS4w" },
 		});
-		expect(parsed.specialUsers).toEqual([]);
+		expect(parsed.specialViewers).toEqual([]);
 	});
 });

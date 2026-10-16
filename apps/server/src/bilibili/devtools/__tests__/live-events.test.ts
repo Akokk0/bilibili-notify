@@ -14,7 +14,7 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, roomId: "5050", specialUsers: ["777"] },
+	{ id: "s1", uid: "100", name: "甲", enabled: true, roomId: "5050", specialViewers: ["777"] },
 	{ id: "s3", uid: "300", name: "丙", enabled: true },
 ];
 

@@ -73,8 +73,8 @@ const zeroCounts = (): DailyHistoryCountView["counts"] => ({
 	liveEnd: 0,
 	superchat: 0,
 	membership: 0,
-	specialDanmaku: 0,
-	specialUserEnter: 0,
+	viewerChat: 0,
+	viewerEnter: 0,
 });
 
 describe("handlePushEnvelope — push-events 子事件分发", () => {

@@ -43,7 +43,7 @@ function makeSubscription(
 		routing: routing(),
 		extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
-		specialUsers: [],
+		specialViewers: [],
 		...rest,
 	} as Subscription;
 }

@@ -47,8 +47,8 @@ function makeSub(): SubItemView {
 		customLiveMsg: { enable: false },
 		guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 		customLiveSummary: { enable: false },
-		customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
-		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
+		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
 		liveStreaming: false,
 	} as unknown as SubItemView;
 }

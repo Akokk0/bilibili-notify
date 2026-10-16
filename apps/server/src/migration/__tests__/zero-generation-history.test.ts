@@ -150,8 +150,8 @@ describe("老格式行(source / result / payload)→ 现在的行", () => {
 		["live-summary", "liveEnd", true, "delivered"],
 		["sc", "superchat", false, "failed"],
 		["guard", "membership", true, "delivered"],
-		["special-danmaku", "specialDanmaku", true, "delivered"],
-		["special-enter", "specialUserEnter", true, "delivered"],
+		["special-danmaku", "viewerChat", true, "delivered"],
+		["special-enter", "viewerEnter", true, "delivered"],
 	])("老 source %s → feature %s", async (source, feature, ok, status) => {
 		await writeDay("2026-05-10", [
 			legacy({
@@ -353,8 +353,8 @@ describe("迁移器自己的钉", () => {
 			"liveStart",
 			"superchat",
 			"membership",
-			"specialDanmaku",
-			"specialUserEnter",
+			"viewerChat",
+			"viewerEnter",
 			"liveEnd",
 		]);
 		// 0.x 后期形状的行:`kind` 换成 `feature`、别的格也换成现在的名字,键都留在原来的位置。
@@ -723,8 +723,8 @@ describe("迁移器自己的钉", () => {
 		["live-end", "liveEnd"],
 		["guard", "membership"],
 		["sc", "superchat"],
-		["special-danmaku", "specialDanmaku"],
-		["special-enter", "specialUserEnter"],
+		["special-danmaku", "viewerChat"],
+		["special-enter", "viewerEnter"],
 	])("0.x 的推送种类 %s → feature %s,`kind` 不留", async (kind, feature) => {
 		await writeDay(DAY, [JSON.stringify({ ...ZERO_ROW_OBJECT, kind })]);
 		await sandbox.migrate();
@@ -761,8 +761,8 @@ describe("迁移器自己的钉", () => {
 				"liveStreaming",
 				"membership",
 				"post",
-				"specialDanmaku",
-				"specialUserEnter",
+				"viewerChat",
+				"viewerEnter",
 				"superchat",
 			].sort(),
 		);

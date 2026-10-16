@@ -36,7 +36,7 @@ function sharedPaths(a: unknown, b: unknown): string[] {
 
 const emptyRouting = () => Object.fromEntries(FEATURE_KEYS.map((k) => [k, [] as string[]]));
 
-/** 盘上一条订阅的最小形状:带默认值的键(tagIds / extras / roastSchedule / specialUsers)都缺着。 */
+/** 盘上一条订阅的最小形状:带默认值的键(tagIds / extras / roastSchedule / specialViewers)都缺着。 */
 const diskRow = (identity: { sourceKey: string; externalId: string }) => ({
 	id: "11111111-1111-4111-8111-111111111111",
 	identity,

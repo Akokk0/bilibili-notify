@@ -221,8 +221,8 @@ export const TemplateBundleSchema = z.object({
 	 * 的词云生成时额外过滤(详见 apps/server/src/bilibili/live room-session dispatch)。
 	 */
 	wordcloudStopWords: z.string().default(""),
-	specialDanmaku: z.string(),
-	specialUserEnter: z.string(),
+	viewerChat: z.string(),
+	viewerEnter: z.string(),
 	/** 会员文案,按体系 id 存(B 站的体系叫 `guard`)。形状见 {@link MembershipTemplateBundleSchema}。 */
 	membership: z.record(z.string(), MembershipTemplateBundleSchema),
 });

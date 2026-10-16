@@ -215,8 +215,8 @@ describe("推送历史 · 按家族筛选", () => {
 		["liveStart", "开播了"],
 		["liveStreaming", "还在播"],
 		["liveEnd", "下播了"],
-		["specialUserEnter", "进房了"],
-		["specialDanmaku", "弹幕来了"],
+		["viewerEnter", "进房了"],
+		["viewerChat", "弹幕来了"],
 		["post", "新作品"],
 		["superchat", "醒目留言"],
 		["membership", "上舰了"],
@@ -244,7 +244,7 @@ describe("推送历史 · 按家族筛选", () => {
 	});
 
 	it.each<[chip: string, expected: string[]]>([
-		["直播", ["liveStart", "liveStreaming", "liveEnd", "specialUserEnter", "specialDanmaku"]],
+		["直播", ["liveStart", "liveStreaming", "liveEnd", "viewerEnter", "viewerChat"]],
 		["动态", ["post"]],
 		["SC", ["superchat"]],
 		["舰长", ["membership"]],

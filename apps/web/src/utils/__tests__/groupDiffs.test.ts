@@ -84,7 +84,7 @@ describe("groupDiffsBySection", () => {
 			D("templates.liveStart"),
 			D("liveStreaming.streamingIntervalHours"),
 			D("superchat.minAmount"),
-			D("specialUsers"),
+			D("specialViewers"),
 			D("imageGroup.enabled"),
 			D("targetId"),
 			D("connection.platform"),

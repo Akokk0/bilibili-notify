@@ -1,4 +1,9 @@
-import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
+import {
+	type Disposable,
+	formatCount,
+	guardTierOf,
+	specialUserFlagsOf,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { LivePushType } from "../../../live/live-types";
 import { pushMembership } from "../../../live/membership";
@@ -239,7 +244,7 @@ export class RoomSession extends RoomSessionBase {
 					this.markLiveWsActivity("live-end");
 					return this.onLiveEnd();
 				case "user-action":
-					if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
+					if (!specialUserFlagsOf(this.sub.customSpecialUsersEnterTheRoom).viewerEnter) return;
 					this.markLiveWsActivity("interact");
 					return this.onUserAction(ev);
 				case "raw":
@@ -841,7 +846,7 @@ export class RoomSession extends RoomSessionBase {
 	 */
 	private async onUserAction(ev: { action: UserActionKind; user: LiveUser }): Promise<void> {
 		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
-		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
+		if (!specialUserFlagsOf(this.sub.customSpecialUsersEnterTheRoom).viewerEnter) return;
 		if (ev.action !== "enter") return;
 		pushViewerEnter(
 			{

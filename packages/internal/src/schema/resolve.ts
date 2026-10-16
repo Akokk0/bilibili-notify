@@ -18,7 +18,7 @@ import type { GlobalDefaults } from "./globals";
 import { type MessageLayout, normalizeMessageLayout } from "./message-layout";
 import type {
 	AIOverride,
-	SpecialUser,
+	SpecialViewer,
 	Subscription,
 	SubscriptionExtraTargets,
 	SubscriptionRouting,
@@ -38,7 +38,7 @@ export interface EffectiveSubscription {
 	/** 附加项的 per-目标 三态表(原样带过来,没有可合并的上一层)。 */
 	extraTargets: SubscriptionExtraTargets;
 	/** 特别关注;来源不支持的(今天:拓展)一直是空的。 */
-	specialUsers: SpecialUser[];
+	specialViewers: SpecialViewer[];
 
 	features: FeatureFlags;
 	filters: ContentFilters;
@@ -139,7 +139,7 @@ export function resolveSubscriptionPersona(
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
 export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveSubscription {
 	// P2:merge() 在 override 缺失时直接返回 base 引用,且 {...base} 仅浅拷贝 ——
-	// routing/extraTargets/specialUsers 又是 sub 的直接引用,filters.blockKeywords
+	// routing/extraTargets/specialViewers 又是 sub 的直接引用,filters.blockKeywords
 	// 等嵌套数组与 defaults 共享。任一消费方就地改 EffectiveSubscription 即污染
 	// 全局默认 / 原始 sub。structuredClone 整体深隔离(schema 全为纯数据,无函数)。
 	return structuredClone<EffectiveSubscription>({ id: sub.id, ...resolveCommon(sub, defaults) });
@@ -157,7 +157,7 @@ function resolveCommon(
 		notes: sub.notes,
 		routing: sub.routing,
 		extraTargets: sub.extraTargets,
-		specialUsers: sub.specialUsers,
+		specialViewers: sub.specialViewers,
 
 		features: mergeFeatures(defaults.features, ov.features),
 		filters: merge(defaults.filters, ov.filters),

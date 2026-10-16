@@ -64,8 +64,8 @@ describe("SubscriptionRouting — 重复 UUID 去重 (P1)", () => {
 			liveEnd: [],
 			membership: [],
 			superchat: [],
-			specialDanmaku: [],
-			specialUserEnter: [],
+			viewerChat: [],
+			viewerEnter: [],
 		});
 		expect(parsed.post).toEqual([dup]);
 		expect(parsed.liveStart).toEqual([dup]);

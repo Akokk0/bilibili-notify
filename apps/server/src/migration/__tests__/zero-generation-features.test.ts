@@ -213,8 +213,8 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			liveEnd: true,
 			membership: false,
 			superchat: false,
-			specialDanmaku: false,
-			specialUserEnter: false,
+			viewerChat: false,
+			viewerEnter: false,
 			extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: false },
 		});
 		const subFile = await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>(
@@ -278,9 +278,9 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			"liveStreaming",
 			"membership",
 			"post",
-			"specialDanmaku",
-			"specialUserEnter",
 			"superchat",
+			"viewerChat",
+			"viewerEnter",
 		]);
 		expect(subs.find((s) => s.id === EXT_SUB_ID)).toMatchObject({
 			identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
@@ -306,8 +306,8 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			liveEnd: false,
 			membership: false,
 			superchat: false,
-			specialDanmaku: false,
-			specialUserEnter: false,
+			viewerChat: false,
+			viewerEnter: false,
 			extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: true },
 		});
 		expect(await readFile(join(sandbox.zero, "state", "globals.json"), "utf8")).toBe(original);
@@ -367,8 +367,8 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			liveEnd: [T1],
 			membership: [],
 			superchat: [],
-			specialDanmaku: [],
-			specialUserEnter: [],
+			viewerChat: [],
+			viewerEnter: [],
 		};
 		expect(
 			await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>("subscriptions.json"),
@@ -388,7 +388,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 						liveSummary: {},
 					},
 					overrides: { features: { extras: { wordcloud: false } } },
-					specialUsers: [],
+					specialViewers: [],
 				},
 				{
 					id: EXT_SUB_ID,

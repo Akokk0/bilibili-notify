@@ -750,12 +750,12 @@ const danmaku = (uid: number, name: string, content: string) => ({
 });
 
 // 验红(`room-session.ts` 的 `onIncomeDanmaku`):`content: body.content` 改成 `content: ""` → 第一条红;
-// 名单判断的 `…specialDanmakuUsers?.includes(body.user.uid.toString())` 改成 `true` → 「名单外」那条红。
+// 名单判断的 `v.id === viewer.id && v.features.includes(…)` 改成 `true` → 「名单外」那条红。
 describe("特别关注的弹幕", () => {
 	it("名单里的人发弹幕:推一句文字(主播名、观众名、正文)", async () => {
 		const w = await boot({
-			features: ["specialDanmaku"],
-			specialUsers: [{ uid: "777", kinds: ["danmaku"] }],
+			features: ["viewerChat"],
+			specialViewers: [{ id: "777", features: ["viewerChat"] }],
 		});
 		await w.frame(danmaku(777, "观众甲", "来了来了"));
 		expect(w.sent).toEqual(["测试主播 的关注用户 观众甲 发送弹幕：来了来了"]);
@@ -763,7 +763,7 @@ describe("特别关注的弹幕", () => {
 
 	// 今天的行为:要不要监听只看名单里有没有人,不看这把特性开关;开关由推送层判。
 	it("名单里有人、特性开关关着:直播间照样监听,但不推", async () => {
-		const w = await boot({ specialUsers: [{ uid: "777", kinds: ["danmaku"] }] });
+		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
 		expect(w.connections()).toEqual({ opened: 1, open: 1 });
 		await w.frame(danmaku(777, "观众甲", "来了来了"));
 		expect(w.sent).toEqual([]);
@@ -771,10 +771,10 @@ describe("特别关注的弹幕", () => {
 
 	it("名单外的人发弹幕、名单里的人只关注进场:不推", async () => {
 		const w = await boot({
-			features: ["specialDanmaku", "specialUserEnter"],
-			specialUsers: [
-				{ uid: "777", kinds: ["danmaku"] },
-				{ uid: "666", kinds: ["enter"] },
+			features: ["viewerChat", "viewerEnter"],
+			specialViewers: [
+				{ id: "777", features: ["viewerChat"] },
+				{ id: "666", features: ["viewerEnter"] },
 			],
 		});
 		await w.frame(danmaku(555, "路人", "路过"));
@@ -785,12 +785,12 @@ describe("特别关注的弹幕", () => {
 
 // 录制的真帧(protobuf):进场的人 uid 33088372、名字「_无言I」。
 // 验红(`room-session.ts` 的 `onUserAction`):`uname: ev.user.name` 改成 `uname: ""` → 第一条红;
-// 名单判断那一行(`if (!…specialUsersEnterTheRoom?.includes(uid)) return;`)删掉 → 第二条红。
+// 名单判断那一行(`if (!listed(settings.specialViewers, viewer.id, "viewerEnter")) return;`)删掉 → 第二条红。
 describe("特别关注的用户进场", () => {
 	it("名单里的人进场:推一句文字(观众名、主播名)", async () => {
 		const w = await boot({
-			features: ["specialUserEnter"],
-			specialUsers: [{ uid: "33088372", kinds: ["enter"] }],
+			features: ["viewerEnter"],
+			specialViewers: [{ id: "33088372", features: ["viewerEnter"] }],
 		});
 		await w.frame(payloads.interactV2);
 		expect(w.sent).toEqual(["_无言I 进入了 测试主播 的直播间"]);
@@ -798,10 +798,10 @@ describe("特别关注的用户进场", () => {
 
 	it("名单外的人进场、名单里的人只关注弹幕:不推", async () => {
 		const w = await boot({
-			features: ["specialDanmaku", "specialUserEnter"],
-			specialUsers: [
-				{ uid: "33088372", kinds: ["danmaku"] },
-				{ uid: "666", kinds: ["enter"] },
+			features: ["viewerChat", "viewerEnter"],
+			specialViewers: [
+				{ id: "33088372", features: ["viewerChat"] },
+				{ id: "666", features: ["viewerEnter"] },
 			],
 		});
 		await w.frame(payloads.interactV2);

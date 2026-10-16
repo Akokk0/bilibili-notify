@@ -36,8 +36,8 @@ const NEW_KEYS = [
 	"liveEnd",
 	"membership",
 	"superchat",
-	"specialDanmaku",
-	"specialUserEnter",
+	"viewerChat",
+	"viewerEnter",
 ] as const;
 
 /**
@@ -53,8 +53,8 @@ const LEGACY_FLAGS = {
 	superchat: false,
 	wordcloud: false,
 	liveSummary: false,
-	specialDanmaku: false,
-	specialUserEnter: false,
+	viewerChat: false,
+	viewerEnter: false,
 };
 
 describe("推送类型缩到 8 个", () => {
@@ -93,8 +93,8 @@ describe("推送类型缩到 8 个", () => {
 			liveEnd: true,
 			membership: false,
 			superchat: false,
-			specialDanmaku: false,
-			specialUserEnter: false,
+			viewerChat: false,
+			viewerEnter: false,
 			extras: {
 				atAllPost: false,
 				atAllLiveStart: true,
@@ -157,8 +157,8 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 			superchat: [],
 			wordcloud: [T2],
 			liveSummary: [T3],
-			specialDanmaku: [],
-			specialUserEnter: [],
+			viewerChat: [],
+			viewerEnter: [],
 		});
 		expect(parsed.liveEnd).toEqual([T1]);
 		expect(Object.keys(parsed).sort()).toEqual([...NEW_KEYS].sort());

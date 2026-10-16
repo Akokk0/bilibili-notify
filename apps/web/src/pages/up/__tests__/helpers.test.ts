@@ -64,12 +64,7 @@ describe("subscribedFeatures", () => {
  */
 describe("routingAlignedToFeatures", () => {
 	const DEFAULT_ON: FeatureKey[] = ["post", "liveStart", "liveEnd"];
-	const DEFAULT_OFF: FeatureKey[] = [
-		"membership",
-		"superchat",
-		"specialDanmaku",
-		"specialUserEnter",
-	];
+	const DEFAULT_OFF: FeatureKey[] = ["membership", "superchat", "viewerChat", "viewerEnter"];
 
 	it("follow 模式灌满全 7 项 → 对齐后只留生效特性", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });

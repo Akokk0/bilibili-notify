@@ -83,8 +83,8 @@ const AFTER_LIVE_STREAMING = [
 	"liveEnd",
 	"membership",
 	"superchat",
-	"specialDanmaku",
-	"specialUserEnter",
+	"viewerChat",
+	"viewerEnter",
 	"extras",
 ] as const;
 

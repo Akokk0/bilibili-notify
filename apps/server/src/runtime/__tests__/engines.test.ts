@@ -193,8 +193,8 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 		expect(liveTypeToFeature(3)).toBe("liveStart");
 		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(6)).toBe("superchat");
-		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
-		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
+		expect(liveTypeToFeature(7)).toBe("viewerChat");
+		expect(liveTypeToFeature(8)).toBe("viewerEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
 		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
 		expect(liveTypeToFeature(999)).toBe("liveStart");
@@ -1688,7 +1688,7 @@ describe("createEngines — getModuleState.live", () => {
 	function liveSub(opts: {
 		features?: Partial<Subscription["overrides"]["features"] & object>;
 		routing?: Partial<Subscription["routing"]>;
-		specialUsers?: Subscription["specialUsers"];
+		specialViewers?: Subscription["specialViewers"];
 		enabled?: boolean;
 	}): Subscription {
 		const s = makeEmptySubscription({
@@ -1697,7 +1697,7 @@ describe("createEngines — getModuleState.live", () => {
 		});
 		s.routing = { ...s.routing, ...opts.routing };
 		s.overrides = { features: opts.features };
-		s.specialUsers = opts.specialUsers ?? [];
+		s.specialViewers = opts.specialViewers ?? [];
 		s.enabled = opts.enabled ?? true;
 		return s;
 	}
@@ -1714,11 +1714,11 @@ describe("createEngines — getModuleState.live", () => {
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
 
-	it.each(["danmaku", "enter"] as const)(
-		"主开关全关、只配了一位 %s 种类的特别关注用户(没有目标)→ 就绪",
+	it.each(["viewerChat", "viewerEnter"] as const)(
+		"主开关全关、只配了一位带 %s 的特别关注用户(没有目标)→ 就绪",
 		(kind) => {
 			const c = setup({
-				subs: [liveSub({ features: LIVE_OFF, specialUsers: [{ uid: "2", kinds: [kind] }] })],
+				subs: [liveSub({ features: LIVE_OFF, specialViewers: [{ id: "2", features: [kind] }] })],
 			});
 			active = c;
 			expect(c.runtime.getModuleState().live).toBe(true);

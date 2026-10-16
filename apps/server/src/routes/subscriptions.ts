@@ -20,7 +20,11 @@ import type { ExtensionEntry } from "../extensions/loader.js";
 import { createImageFetcher } from "../images/image-fetcher.js";
 import { followTargetSubscriptions } from "../runtime/follow-sync.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
-import { type ExternalIdSpec, externalIdRefusal } from "../subscriptions/external-id.js";
+import {
+	type ExternalIdSpec,
+	externalIdRefusal,
+	specialViewerIdRefusal,
+} from "../subscriptions/external-id.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
@@ -101,6 +105,12 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (registered) return registered.descriptor;
 		const entry = opts.extensions?.().find((one) => one.id === sourceKey);
 		return entry?.manifest?.contributes.subscription?.display;
+	}
+
+	/** 这条订阅盘上已有的特别关注名单 id(没有这条订阅就是空)。 */
+	function knownSpecialViewerIds(subscriptionId: unknown): string[] {
+		const stored = deps.store.getSubscriptions().find((s) => s.id === subscriptionId);
+		return (stored?.specialViewers ?? []).map((v) => v.id);
 	}
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
@@ -406,6 +416,15 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			isPlainObject(body) && isPlainObject(body.identity) ? body.identity.sourceKey : undefined;
 		const exists =
 			isPlainObject(body) && deps.store.getSubscriptions().some((s) => s.id === body.id);
+		// 特别关注名单上新加的观众 id,同样按来源声明的格式核(盘上已有的条目不回头核)。
+		if (isPlainObject(body) && typeof sourceKey === "string") {
+			const listRefusal = specialViewerIdRefusal(
+				externalIdSpecOf(sourceKey),
+				body.specialViewers,
+				knownSpecialViewerIds(body.id),
+			);
+			if (listRefusal) return respondFailure(c, listRefusal);
+		}
 		if (isPlainObject(body) && !exists && typeof sourceKey === "string") {
 			// 外部 id 的格式由来源在描述符里声明,两种来源同一道,核在分岔之前。
 			const externalId = isPlainObject(body.identity) ? body.identity.externalId : undefined;
@@ -459,6 +478,16 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 					deps.runtime.engines?.connectionCapabilities(connectionId),
 			});
 			if (!gate.ok) return respondFailure(c, gate);
+		}
+		// 名单上新加的观众 id 按这条订阅所属来源的格式核;订阅不存在的留给 store 报 not_found。
+		const current = deps.store.getSubscriptions().find((s) => s.id === id);
+		if (current && Array.isArray(read.body.specialViewers)) {
+			const listRefusal = specialViewerIdRefusal(
+				externalIdSpecOf(subscriptionIdentityOf(current).sourceKey),
+				read.body.specialViewers,
+				knownSpecialViewerIds(id),
+			);
+			if (listRefusal) return respondFailure(c, listRefusal);
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, read.body);

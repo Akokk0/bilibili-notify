@@ -137,8 +137,8 @@ describe("推送 toast —— 标题按特性键说「刚发生了什么」", ()
 		["liveEnd", "下播"],
 		["membership", "上舰"],
 		["superchat", "SC"],
-		["specialDanmaku", "特别弹幕"],
-		["specialUserEnter", "特别进房"],
+		["viewerChat", "特别弹幕"],
+		["viewerEnter", "特别进房"],
 	])("%s → %s", (feature, label) => {
 		renderShell();
 		act(() =>

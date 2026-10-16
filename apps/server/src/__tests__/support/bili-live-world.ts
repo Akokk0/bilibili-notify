@@ -27,7 +27,7 @@ import {
 	type PayloadSegment,
 	type PlatformAdapter,
 	type PushTarget,
-	type SpecialUser,
+	type SpecialViewer,
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -121,7 +121,7 @@ export async function bootBiliLiveWorld(
 		/** 上舰用自定义文案(全局那份开着)。 */
 		guardTemplate?: boolean;
 		/** 特别关注名单。 */
-		specialUsers?: SpecialUser[];
+		specialViewers?: SpecialViewer[];
 		/** 有没有出图器;不给 = 有。 */
 		renderer?: boolean;
 	} = {},
@@ -147,8 +147,8 @@ export async function bootBiliLiveWorld(
 		liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 		liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 		liveSummary: "共 {dmc} 位{mdn}发了 {dca} 条弹幕，第一名 {un1}（{dc1} 条）",
-		specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
-		specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
+		viewerChat: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
+		viewerEnter: "{uname} 进入了 {mastername} 的直播间",
 	});
 	globals.defaults.templates.membership.guard = {
 		enabled: opts.guardTemplate === true,
@@ -161,7 +161,7 @@ export async function bootBiliLiveWorld(
 		identity: { sourceKey: "bilibili", externalId: BILI_LIVE_UID },
 	});
 	for (const key of FEATURE_KEYS) subscription.routing[key] = [TARGET_ID];
-	subscription.specialUsers = opts.specialUsers ?? [];
+	subscription.specialViewers = opts.specialViewers ?? [];
 	const subscriptions = [subscription];
 
 	// ---- 假的 B 站:房间与主播此刻的样子由用例拨 ----

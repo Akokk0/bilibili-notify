@@ -8,4 +8,8 @@ export const EXTERNAL_ID_TEXTS = {
 	mismatch: (label: string): string => `${label}的外部 id 格式不对，没法新建订阅`,
 	/** 指到 `identity.externalId` 的那一条细节。 */
 	mismatchIssue: (label: string): string => `这个 id 不是${label}认的写法`,
+	/** 特别关注名单上新加的观众 id 格式不对:整条失败的话。 */
+	viewerMismatch: (label: string): string => `特别关注的观众 id 格式不对，要${label}认的写法`,
+	/** 指到名单里那一条 `id` 的细节。 */
+	viewerMismatchIssue: (label: string): string => `这个观众 id 不是${label}认的写法`,
 };

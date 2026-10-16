@@ -25,8 +25,8 @@ const FEATURES = [
 	"liveEnd",
 	"membership",
 	"superchat",
-	"specialDanmaku",
-	"specialUserEnter",
+	"viewerChat",
+	"viewerEnter",
 ] as const;
 
 const SRC_DIR = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -55,8 +55,8 @@ describe("FEATURE_DESCRIPTORS", () => {
 			"liveStart",
 			"liveStreaming",
 			"liveEnd",
-			"specialUserEnter",
-			"specialDanmaku",
+			"viewerEnter",
+			"viewerChat",
 		] as const) {
 			expect(`${s} → ${familyTone(s)}`).toBe(`${s} → ${PUSH_TONE.live}`);
 		}
@@ -85,8 +85,8 @@ describe("FEATURE_DESCRIPTORS", () => {
 			liveEnd: ["下播", "下播"],
 			membership: ["舰长", "上舰"],
 			superchat: ["SC", "SC"],
-			specialDanmaku: ["弹幕", "特别弹幕"],
-			specialUserEnter: ["进房", "特别进房"],
+			viewerChat: ["弹幕", "特别弹幕"],
+			viewerEnter: ["进房", "特别进房"],
 		});
 	});
 

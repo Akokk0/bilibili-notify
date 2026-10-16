@@ -146,13 +146,13 @@ export function isSectionCustomized(
 		// 特别关注是订阅的公共格;来源不支持的这一格恒空,自然判成没自定义。
 		case "specialDanmaku":
 			return (
-				sub.specialUsers.some((u) => u.kinds.includes("danmaku")) ||
-				Boolean(sub.overrides.templates?.specialDanmaku)
+				sub.specialViewers.some((v) => v.features.includes("viewerChat")) ||
+				Boolean(sub.overrides.templates?.viewerChat)
 			);
 		case "specialEnter":
 			return (
-				sub.specialUsers.some((u) => u.kinds.includes("enter")) ||
-				Boolean(sub.overrides.templates?.specialUserEnter)
+				sub.specialViewers.some((v) => v.features.includes("viewerEnter")) ||
+				Boolean(sub.overrides.templates?.viewerEnter)
 			);
 		case "ai":
 			return hasAiPersonaOverride(sub.overrides.ai, presets);

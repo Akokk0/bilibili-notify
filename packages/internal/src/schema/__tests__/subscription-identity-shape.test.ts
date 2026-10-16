@@ -44,7 +44,7 @@ function diskRow(identity: Record<string, unknown> = BILI): Record<string, unkno
 	};
 }
 
-/** 只写必填几格的一行:带默认值的键(tagIds / extraTargets / roastSchedule / specialUsers)都缺着。 */
+/** 只写必填几格的一行:带默认值的键(tagIds / extraTargets / roastSchedule / specialViewers)都缺着。 */
 function minimalRow(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "22222222-2222-4222-8222-222222222222",
@@ -199,7 +199,7 @@ describe("两格各自的尺子", () => {
 describe("订阅其余各格不因来源而异", () => {
 	it("没写特别关注 → 空表,B 站与拓展一样", () => {
 		for (const identity of [BILI, DOUYIN]) {
-			expect(SubscriptionSchema.parse(minimalRow({ identity })).specialUsers).toEqual([]);
+			expect(SubscriptionSchema.parse(minimalRow({ identity })).specialViewers).toEqual([]);
 		}
 	});
 
@@ -239,7 +239,7 @@ describe("resolve() 折叠", () => {
 			);
 			expect(eff.identity).toEqual(identity);
 			expect(eff.routing.liveStart).toEqual([T1]);
-			expect(eff.specialUsers).toEqual([]);
+			expect(eff.specialViewers).toEqual([]);
 			for (const key of ["kind", "uid", "extensionId", "externalId"]) {
 				expect(key in eff, key).toBe(false);
 			}

@@ -64,8 +64,8 @@ const ZERO_PUSH_KIND_TO_FEATURE = {
 	"live-end": "liveEnd",
 	guard: "membership",
 	sc: "superchat",
-	"special-danmaku": "specialDanmaku",
-	"special-enter": "specialUserEnter",
+	"special-danmaku": "viewerChat",
+	"special-enter": "viewerEnter",
 } satisfies Record<ZeroPushKind, FeatureKey>;
 
 /** 一行老历史 → 新形状(推送种类那一格还叫 `kind`);不是老行的原样回(同一个对象)。 */

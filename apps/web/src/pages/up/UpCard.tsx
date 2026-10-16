@@ -31,8 +31,8 @@ const FEATURE_TONE: Record<string, string> = {
 	liveEnd: PUSH_TONE.live,
 	membership: PUSH_TONE.membership,
 	superchat: PUSH_TONE.superchat,
-	specialDanmaku: PUSH_TONE.derived,
-	specialUserEnter: PUSH_TONE.derived,
+	viewerChat: PUSH_TONE.derived,
+	viewerEnter: PUSH_TONE.derived,
 };
 
 export interface UpCardProps {

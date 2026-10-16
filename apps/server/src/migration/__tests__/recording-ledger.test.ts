@@ -29,12 +29,17 @@ async function put(path: string, text: string) {
 	await writeFile(full, text);
 }
 
-function sub(id: string, sourceKey: string, features?: Record<string, boolean>) {
+function sub(
+	id: string,
+	sourceKey: string,
+	features?: Record<string, boolean>,
+	specialViewers: unknown[] = [],
+) {
 	return {
 		id,
 		identity: { sourceKey, externalId: id.slice(-1) },
 		overrides: features ? { features } : {},
-		specialUsers: [],
+		specialViewers,
 	};
 }
 
@@ -137,6 +142,56 @@ describe("B 站订阅:那个小时任何一条 B 站订阅有粉丝样本 = BN �
 		const rows = (await ledger(BILI)) ?? [];
 		expect(rows.filter((r) => r.kind === "posts")).toEqual([
 			{ kind: "posts", startedAt: hour(3), endedAt: hour(6) },
+		]);
+	});
+});
+
+/**
+ * 老日子的「直播在记」用**冻住的 0.x 旧读法**:五把直播开关任一开着,或特别关注名单上有人(0.x 是名单有人就监听,
+ * 不看特别开关)。活的 `needsLiveMonitor` 以后要多看特别开关,这条挡着不让老日子的账跟着漂。
+ *
+ * 验红:把 `recording.ts` 里的 `hasSpecialViewers` 去掉 → 第一条红;改成 `false` 以外随便什么常量 true → 第二条红。
+ */
+describe("直播在记:冻住的 0.x 旧读法", () => {
+	const ALL_OFF = {
+		liveStart: false,
+		liveStreaming: false,
+		liveEnd: false,
+		membership: false,
+		superchat: false,
+		viewerChat: false,
+		viewerEnter: false,
+	};
+
+	it("五把直播开关全关、两把特别开关也关,名单上有人 → live 照记;名单空 → 不记", async () => {
+		await putSubs(
+			[
+				sub(BILI, "bilibili", undefined, [{ id: "7", features: ["viewerChat"] }]),
+				sub(BILI2, "bilibili"),
+			],
+			{ defaults: { features: ALL_OFF } },
+		);
+		for (const id of [BILI, BILI2]) {
+			await put(
+				join("stats", "followers", `${id}.jsonl`),
+				jsonl([1, 2].map((h) => ({ ts: at(h), value: h }))),
+			);
+		}
+		await run();
+		expect((await ledger(BILI))?.filter((r) => r.kind === "live")).toEqual([
+			{ kind: "live", startedAt: hour(1), endedAt: hour(3) },
+		]);
+		expect((await ledger(BILI2))?.filter((r) => r.kind === "live")).toEqual([]);
+	});
+
+	it("名单上的人只带进场 → 同样照记(旧读法不分种类)", async () => {
+		await putSubs([sub(BILI, "bilibili", undefined, [{ id: "7", features: ["viewerEnter"] }])], {
+			defaults: { features: ALL_OFF },
+		});
+		await put(join("stats", "followers", `${BILI}.jsonl`), jsonl([{ ts: at(1), value: 1 }]));
+		await run();
+		expect((await ledger(BILI))?.filter((r) => r.kind === "live")).toEqual([
+			{ kind: "live", startedAt: hour(1), endedAt: hour(2) },
 		]);
 	});
 });

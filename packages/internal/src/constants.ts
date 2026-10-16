@@ -27,8 +27,8 @@ export const FEATURE_KEYS = [
 	"liveEnd",
 	"membership",
 	"superchat",
-	"specialDanmaku",
-	"specialUserEnter",
+	"viewerChat",
+	"viewerEnter",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -106,8 +106,8 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	liveEnd: true,
 	membership: false,
 	superchat: false,
-	specialDanmaku: false,
-	specialUserEnter: false,
+	viewerChat: false,
+	viewerEnter: false,
 	// 出厂值只写在注册表里 —— 两处各抄一份迟早漂。
 	extras: extrasRecord((k) => PUSH_EXTRAS[k].default),
 };
@@ -906,8 +906,8 @@ export const DEFAULT_TEMPLATES = {
 	post: "{name}发布了一条动态",
 	postVideo: "{name}发布了新视频",
 	wordcloudStopWords: "",
-	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
-	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
+	viewerChat: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
+	viewerEnter: "{uname} 进入了 {mastername} 的直播间",
 	// 会员文案,按体系 id 存(㉓d,原先 B 站专属的 `guardBuy`)。B 站的体系是 `guard`;别的体系由来源声明、事件到了才有。
 	membership: {
 		guard: {

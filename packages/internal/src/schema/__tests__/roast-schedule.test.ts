@@ -7,7 +7,7 @@
  *
  * 所以它们都挂在顶层,不进 `defaults` / `overrides`:那两处的语义是「per-UP 缺
  * 字段就回退全局」,而榜单和单人压根是两样东西,回退过去只会拿到一份内容不对的
- * 配置。`specialUsers` 是同类先例(per-UP 独有、不参与折叠)。
+ * 配置。`specialViewers` 是同类先例(per-UP 独有、不参与折叠)。
  *
  * 守三条不变量:
  * ① 老配置缺这个字段照样能读 —— `GlobalConfigSchema.parse` 在独立端启动路径上,

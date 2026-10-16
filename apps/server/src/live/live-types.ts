@@ -3,7 +3,7 @@
  * B 站的直播间与拓展订阅的直播共用(ADR-0019 决策 65 / 67),不认 uid、不认房间数据。
  */
 
-import type { ExtraKey, PushMessageRole } from "@bilibili-notify/internal";
+import type { ExtraKey, PushMessageRole, SpecialViewer } from "@bilibili-notify/internal";
 
 /**
  * 一次直播推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(开播 / 下播卡、
@@ -62,15 +62,15 @@ export type LivePushFeature =
 	| "liveEnd"
 	| "membership"
 	| "superchat"
-	| "specialDanmaku"
-	| "specialUserEnter";
+	| "viewerChat"
+	| "viewerEnter";
 
 /**
  * Master-level feature keys — the boolean toggles set per-UP. Subset of
- * `LivePushFeature` which omits `specialDanmaku` / `specialUserEnter`
- * (those are gated by `customSpecial*.enable` instead).
+ * `LivePushFeature` which omits `viewerChat` / `viewerEnter`
+ * (those are gated by the special viewer list instead).
  */
-export type LiveCreatorFeature = Exclude<LivePushFeature, "specialDanmaku" | "specialUserEnter">;
+export type LiveCreatorFeature = Exclude<LivePushFeature, "viewerChat" | "viewerEnter">;
 
 /** Sub-level customisation blocks copied from `@bilibili-notify/push`. */
 export interface CustomCardStyleLike {
@@ -111,14 +111,11 @@ export interface CustomLiveMsgLike {
 	customLiveEnd?: string;
 }
 
-export interface CustomSpecialDanmakuUsersLike {
-	enable: boolean;
-	specialDanmakuUsers?: string[];
-	msgTemplate: string;
-}
-
-export interface CustomSpecialUsersEnterTheRoomLike {
-	enable: boolean;
-	specialUsersEnterTheRoom?: string[];
-	msgTemplate: string;
+/**
+ * 特别关注的一块设置:订阅的名单加这一种互动的文案。「特别弹幕」「特别进场」两块同形;名单上谁带哪把特性键
+ * 由条目的 `features` 说了算,没有单独的 `enable`(开关归推送层判)。
+ */
+export interface SpecialViewerSettings {
+	specialViewers: readonly SpecialViewer[];
+	template: string;
 }

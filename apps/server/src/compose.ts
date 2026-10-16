@@ -207,7 +207,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 									name: runtime?.cachedProfile?.name ?? uid,
 									enabled: sub.enabled,
 									roomId: runtime?.roomId,
-									specialUsers: sub.specialUsers.map((u) => u.uid),
+									specialViewers: sub.specialViewers.map((v) => v.id),
 									avatar: runtime?.cachedProfile?.avatarUrl,
 								};
 							}),

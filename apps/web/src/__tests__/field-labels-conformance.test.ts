@@ -8,7 +8,7 @@
  *
  * 跳过:动态 code(`code={...}` 模板字符串 / 表达式)。本仓库仅 PerUpEditor
  * `code={`templates.${templateField}`}` 一处,templateField 限定在
- * specialDanmaku / specialUserEnter,两个 key 都在字典里;再加字段时 PR review
+ * viewerChat / viewerEnter,两个 key 都在字典里;再加字段时 PR review
  * 兜底。
  */
 

@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("AI 设置上提以后导出的备份是版本 17", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(17);
+	it("特别关注名单与两把特性键改形状以后导出的备份是版本 18", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(18);
+	});
+
+	it("版本 17 的备份(名单还叫 specialUsers、特性键还叫 specialDanmaku)→ unsupported:整份拒收,不悄悄丢掉名单", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 17 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 16 的备份(AI 设置还在 defaults.ai 里)→ unsupported:整份拒收,不悄悄丢掉 AI 的实例与密钥", () => {

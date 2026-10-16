@@ -371,8 +371,8 @@ describe("aggregateDaily — 新口径", () => {
 				"liveEnd",
 				"membership",
 				"superchat",
-				"specialDanmaku",
-				"specialUserEnter",
+				"viewerChat",
+				"viewerEnter",
 			].sort(),
 		);
 	});

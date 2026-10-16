@@ -69,7 +69,7 @@ export {
  * join 回来的 cachedProfile / state / followed),沿用旧名 Subscription。
  *
  * 订阅只有一种形状(ADR-0021 决策 14、15):「这条订阅订的是谁」一律读
- * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`);`specialUsers` 是公共的,
+ * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`);`specialViewers` 是公共的,
  * `followed` / `followError` 是可选格(只有能关注的来源才有)。
  */
 export type Subscription = SubscriptionDTO;
@@ -96,7 +96,7 @@ export type {
 	QQOfficialBotType,
 	QQOfficialConnectionSettings,
 	ScheduleConfigPartial as ScheduleOverride,
-	SpecialUser,
+	SpecialViewer,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
 	SuperchatSettingsPartial as SuperchatOverride,
@@ -114,8 +114,8 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	liveEnd: "下播",
 	membership: "上舰",
 	superchat: "SC",
-	specialDanmaku: "特别弹幕",
-	specialUserEnter: "特别用户进房",
+	viewerChat: "特别弹幕",
+	viewerEnter: "特别用户进房",
 };
 
 export function webhookUrlPlaceholder(platform: WebhookPlatform): string {
@@ -283,7 +283,7 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		// 与服务端的 makeEmptySubscription 保持一致。
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
-		specialUsers: [],
+		specialViewers: [],
 	};
 }
 

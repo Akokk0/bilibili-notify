@@ -76,8 +76,8 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		customLiveMsg: { enable: false },
 		guardTemplate: GUARD_TEMPLATE_OFF,
 		customLiveSummary: { enable: false },
-		customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
-		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
+		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
+		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
 		liveStreaming: false,
 		streamingIntervalHours: 1,
 		catchUpOnBoot: false,
@@ -1567,11 +1567,10 @@ describe("文案里的 {time}:按 live_time(北京时间)与当下的钟现算",
 function makeSpecialUserSub() {
 	return makeSub({
 		customSpecialUsersEnterTheRoom: {
-			enable: true,
-			specialUsersEnterTheRoom: ["42"],
-			msgTemplate: "进房模板",
+			specialViewers: [{ id: "42", features: ["viewerEnter"] }],
+			template: "进房模板",
 		},
-		target: { specialUserEnter: ["target-1"] },
+		target: { viewerEnter: ["target-1"] },
 	});
 }
 
@@ -1631,7 +1630,7 @@ describe("RoomSession.onUserAction", () => {
 		expect(m.safeBroadcast).not.toHaveBeenCalled();
 	});
 
-	it("没配 specialUserEnter 的推送目标 → 照样渲染并广播,「无目标」由推送层记账", async () => {
+	it("没配 viewerEnter 的推送目标 → 照样渲染并广播,「无目标」由推送层记账", async () => {
 		const { ctx, m } = makeCtx();
 		const sub = makeSpecialUserSub();
 		sub.target = {};
@@ -1644,13 +1643,12 @@ describe("RoomSession.onUserAction", () => {
 });
 
 describe("RoomSession.onIncomeDanmaku — 特别关注用户的弹幕", () => {
-	it("没配 specialDanmaku 的推送目标 → 照样广播(ViewerChat),不在引擎里按目标挡", () => {
+	it("没配 viewerChat 的推送目标 → 照样广播(ViewerChat),不在引擎里按目标挡", () => {
 		const { ctx, m } = makeCtx();
 		const sub = makeSub({
 			customSpecialDanmakuUsers: {
-				enable: true,
-				specialDanmakuUsers: ["42"],
-				msgTemplate: "弹幕模板",
+				specialViewers: [{ id: "42", features: ["viewerChat"] }],
+				template: "弹幕模板",
 			},
 			target: {},
 		});

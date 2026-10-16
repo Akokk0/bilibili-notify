@@ -243,7 +243,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		run(params) {
 			const { sub, roomId, handle } = pickRoom(deps, params);
 			const given = str(params.uid, "");
-			const uid = given !== "" ? given : (sub.specialUsers?.[0] ?? "");
+			const uid = given !== "" ? given : (sub.specialViewers?.[0] ?? "");
 			if (uid === "") {
 				throw new DevParamError(`${sub.name} 没配特别关注,得给一个 uid`);
 			}

@@ -76,18 +76,6 @@ export const CachedProfileSchema = z.object({
 export type CachedProfile = z.infer<typeof CachedProfileSchema>;
 
 /**
- * 特别关注用户：进房 / 弹幕 触发自定义模板推送。
- */
-export const SpecialUserSchema = z.object({
-	// P2:与 Subscription.uid 同约束 —— 此前裸 z.string() 放任非数字脏值,
-	// 进入 includes(uid.toString()) 比对永不命中,特别关注静默失效无报错。
-	uid: z.string().regex(/^\d+$/, "uid must be a numeric Bilibili UID string"),
-	kinds: z.array(z.enum(["enter", "danmaku"])).min(1),
-	template: z.string().optional(),
-});
-export type SpecialUser = z.infer<typeof SpecialUserSchema>;
-
-/**
  * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.ai.presets` 里挑一份**。
  *
  * `preset` 是**指针**:指向 presets 里的一份。指不着就完整继承全局 —— 老值 `'inherit'`
@@ -220,6 +208,31 @@ export const SourceKeySchema = z
  */
 export const EXTERNAL_ID_MAX = 256;
 
+/**
+ * 特别关注名单里一个条目能带的特性键(`viewerChat` / `viewerEnter`)。用 `satisfies` 钉在 {@link FEATURE_KEYS} 上:
+ * 特性键改名,这里编译不过。
+ */
+const SPECIAL_VIEWER_FEATURES = [
+	"viewerChat",
+	"viewerEnter",
+] as const satisfies readonly FeatureKey[];
+
+/**
+ * 特别关注名单的一个条目(ADR-0021 决策 17:公共形状;条目属于哪个平台由所挂的订阅决定):
+ * 名单上的人在这条订阅的直播间里说话 / 进场,带着对应特性的就触发特别关注的推送。
+ *
+ * - `id`:观众在来源那头的 id,中立 —— 只限非空、限长,合不合来源声明的格式(比如 B 站的 uid 是数字)
+ *   由写名单的那条路按来源描述符核(同 {@link IdentitySchema} 的 `externalId`),盘上已有的不回头核;
+ * - `note`:主人自己记的备注,没人读;
+ * - `features`:这个人触发哪几种,至少一种。
+ */
+export const SpecialViewerSchema = z.object({
+	id: z.string().min(1).max(EXTERNAL_ID_MAX),
+	note: z.string().optional(),
+	features: z.array(z.enum(SPECIAL_VIEWER_FEATURES)).min(1),
+});
+export type SpecialViewer = z.infer<typeof SpecialViewerSchema>;
+
 /** 订阅订的是谁(ADR-0021 决策 14):来源 + 来源那头的 id。判重看这两格是否都相等。 */
 export const IdentitySchema = z
 	.object({
@@ -281,7 +294,7 @@ export const SubscriptionSchema = z
 		/**
 		 * 这位的单人锐评定时推送。
 		 *
-		 * 与 `specialUsers` 同类:per-UP 独有、**不参与 `resolve()` 折叠**,所以放顶层而不是 `overrides`。塞进
+		 * 与 `specialViewers` 同类:per-UP 独有、**不参与 `resolve()` 折叠**,所以放顶层而不是 `overrides`。塞进
 		 * overrides 的话它会去继承全局那条,而全局那条是**榜单**周报 —— 继承过来的 cron / targets 跟界面上显示的
 		 * 对不上(ADR-0020 决策 14:两种来源都有)。
 		 *
@@ -289,7 +302,7 @@ export const SubscriptionSchema = z
 		 */
 		roastSchedule: RoastScheduleSchema.default(() => structuredClone(DEFAULT_ROAST_SCHEDULE)),
 		/** 特别关注(ADR-0021 决策 17:公共形状);来源不支持的,这一格一直是空的。 */
-		specialUsers: z.array(SpecialUserSchema).default([]),
+		specialViewers: z.array(SpecialViewerSchema).default([]),
 	})
 	.superRefine(refineExtraTargetsWithinRouting);
 export type Subscription = z.infer<typeof SubscriptionSchema>;
@@ -313,6 +326,6 @@ export function makeEmptySubscription(opts: {
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
-		specialUsers: [],
+		specialViewers: [],
 	};
 }

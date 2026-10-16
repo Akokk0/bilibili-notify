@@ -35,7 +35,7 @@ export const SECTION_ACCENT = {
 	 * 设计上都取了「这一档偏个性化」的暖调。要拆就两族各配一色,别只改一处。
 	 *
 	 * **和 `PUSH_TONE.superchat` 恰好同值,但不是同一件事,不许改成引用它。** 特别关注弹幕
-	 * 自己的推送色是绿的(`push-features.ts` 里 `specialDanmaku` = `#10B981`),人格更
+	 * 自己的推送色是绿的(`push-features.ts` 里 `viewerChat` = `#10B981`),人格更
 	 * 和 SC 毫无关系。哪天 SC 那抹黄要调,这里**不**跟着动。
 	 */
 	persona: "#fdcb6e",

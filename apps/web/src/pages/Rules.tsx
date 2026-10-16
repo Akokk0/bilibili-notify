@@ -64,12 +64,12 @@ function overrideKeysOf(sub: Subscription): Set<PerUpOverrideKey> {
 }
 
 /** 特别关注是订阅的公共格;来源不支持的(今天只有 B 站支持)这一格恒空,所以恒 false。 */
-function hasSpecialUsers(sub: Subscription): boolean {
-	return sub.specialUsers.length > 0;
+function hasSpecialViewers(sub: Subscription): boolean {
+	return sub.specialViewers.length > 0;
 }
 
 function hasAnyCustomization(sub: Subscription): boolean {
-	return overrideKeysOf(sub).size > 0 || hasSpecialUsers(sub);
+	return overrideKeysOf(sub).size > 0 || hasSpecialViewers(sub);
 }
 
 // isSectionCustomized 已抽到 ./rules/section-scope(与 PerUpEditor 的 toggle 判定共用
@@ -307,7 +307,7 @@ export default function Rules() {
 			const isBili = subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 			return api.patch<Subscription>(
 				`/api/subscriptions/${sub.id}`,
-				isBili ? { overrides, specialUsers: [] } : { overrides },
+				isBili ? { overrides, specialViewers: [] } : { overrides },
 			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
@@ -390,7 +390,7 @@ export default function Rules() {
 	const sectionsOf = (s: Subscription): SectionMeta[] =>
 		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)));
 
-	// Tab 栏只显示:已经在 backend 有 overrides / specialUsers 的 sub + 客户端本轮添加的 sub。
+	// Tab 栏只显示:已经在 backend 有 overrides / specialViewers 的 sub + 客户端本轮添加的 sub。
 	const tabSubs = useMemo(() => {
 		const result: Subscription[] = [];
 		for (const s of allSubs) {
@@ -425,7 +425,7 @@ export default function Rules() {
 
 	function handleRemoveSub(id: string): void {
 		const sub = allSubs.find((s) => s.id === id);
-		// 已有 backend 覆盖项 → 销毁性操作(清空 overrides + specialUsers),先弹确认再执行。
+		// 已有 backend 覆盖项 → 销毁性操作(清空 overrides + specialViewers),先弹确认再执行。
 		if (sub && hasAnyCustomization(sub)) {
 			setPendingRemoval(sub);
 			return;
@@ -434,7 +434,7 @@ export default function Rules() {
 		detachSub(id);
 	}
 
-	// 确认后真正清空该 UP 的 per-UP 配置(PATCH overrides:{} + specialUsers:[])。
+	// 确认后真正清空该 UP 的 per-UP 配置(PATCH overrides:{} + specialViewers:[])。
 	function confirmRemoveSub(): void {
 		if (!pendingRemoval) return;
 		removeSubCustomization.mutate(pendingRemoval);
@@ -507,7 +507,7 @@ export default function Rules() {
 				availableSubs={availableSubs}
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
-				overridesCountFor={(s) => overrideKeysOf(s).size + (hasSpecialUsers(s) ? 1 : 0)}
+				overridesCountFor={(s) => overrideKeysOf(s).size + (hasSpecialViewers(s) ? 1 : 0)}
 				platformLabelOf={(extensionId) => subscriptionPlatformOf({ extensionId }, extensions).label}
 			/>
 

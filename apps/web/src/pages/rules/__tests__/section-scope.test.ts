@@ -91,30 +91,30 @@ describe("isSectionCustomized filter / live 分域", () => {
 });
 
 /**
- * 特别关注是订阅的公共格(不分来源),侧栏小点直接读 `specialUsers`:哪一类事件配了人,
+ * 特别关注是订阅的公共格(不分来源),侧栏小点直接读 `specialViewers`:哪一类事件配了人,
  * 对应那一节的小点就亮,与 overrides 里有没有模板无关;来源不支持的订阅这一格恒空。
  */
 describe("isSectionCustomized — 特别关注", () => {
-	const withSpecialUsers = (
+	const withSpecialViewers = (
 		identity: Subscription["identity"],
-		specialUsers: Subscription["specialUsers"],
-	): Subscription => ({ ...makeEmptySubscription(identity), specialUsers });
+		specialViewers: Subscription["specialViewers"],
+	): Subscription => ({ ...makeEmptySubscription(identity), specialViewers });
 	const BILI = { sourceKey: "bilibili", externalId: "123456" };
 
 	it("配了特别弹幕的人 → 特别弹幕小点亮、特别进场小点不亮", () => {
-		const sub = withSpecialUsers(BILI, [{ uid: "7", kinds: ["danmaku"] }]);
+		const sub = withSpecialViewers(BILI, [{ id: "7", features: ["viewerChat"] }]);
 		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(true);
 		expect(isSectionCustomized(sub, "specialEnter")).toBe(false);
 	});
 
 	it("配了特别进场的人 → 特别进场小点亮、特别弹幕小点不亮", () => {
-		const sub = withSpecialUsers(BILI, [{ uid: "7", kinds: ["enter"] }]);
+		const sub = withSpecialViewers(BILI, [{ id: "7", features: ["viewerEnter"] }]);
 		expect(isSectionCustomized(sub, "specialEnter")).toBe(true);
 		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(false);
 	});
 
 	it("别的来源的订阅这一格是空的 → 两个小点都不亮", () => {
-		const sub = withSpecialUsers({ sourceKey: "douyin", externalId: "sec-1" }, []);
+		const sub = withSpecialViewers({ sourceKey: "douyin", externalId: "sec-1" }, []);
 		expect(isSectionCustomized(sub, "specialDanmaku")).toBe(false);
 		expect(isSectionCustomized(sub, "specialEnter")).toBe(false);
 	});

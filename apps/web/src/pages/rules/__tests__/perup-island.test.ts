@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 import { getFieldLabel } from "../../../config/field-labels";
-import type { OverridesShape, SpecialUser } from "../../../types/domain";
+import type { OverridesShape, SpecialViewer } from "../../../types/domain";
 import { groupDiffsBySection, sectionOf } from "../../../utils/groupDiffs";
 import { walkTreeDiff } from "../../../utils/walkTreeDiff";
 import { projectPerUpIsland } from "../perup-island";
 
-const NO_USERS: SpecialUser[] = [];
+const NO_USERS: SpecialViewer[] = [];
 
 /** 投影两份 overrides 再 diff,返回 code 列表(灵动岛实际消费路径)。 */
 function diffCodes(
 	before: OverridesShape,
 	after: OverridesShape,
-	beforeUsers: SpecialUser[] = NO_USERS,
-	afterUsers: SpecialUser[] = NO_USERS,
+	beforeUsers: SpecialViewer[] = NO_USERS,
+	afterUsers: SpecialViewer[] = NO_USERS,
 ): string[] {
 	const diff = walkTreeDiff(
 		projectPerUpIsland(before, beforeUsers),
@@ -77,7 +77,7 @@ describe("projectPerUpIsland — schedule/liveStart/liveStreaming/templates/ai �
 	});
 });
 
-describe("projectPerUpIsland — imageGroup 保 nested + specialUsers 叶子", () => {
+describe("projectPerUpIsland — imageGroup 保 nested + specialViewers 叶子", () => {
 	it("cards 不投影 —— 卡片覆盖在 /cards,改它不进 Rules per-UP 灵动岛", () => {
 		const codes = diffCodes(
 			{ cards: { liveCoverImageIds: ["one"] } },
@@ -124,10 +124,10 @@ describe("projectPerUpIsland — imageGroup 保 nested + specialUsers 叶子", (
 		expect(diffCodes({}, {})).toEqual([]);
 	});
 
-	it("改 specialUsers(整数组叶子)→ 'specialUsers',section=specialUsers", () => {
-		const codes = diffCodes({}, {}, [], [{ uid: "1", kinds: ["danmaku"] }]);
-		expect(codes).toContain("specialUsers");
-		expect(sectionOf("specialUsers")).toBe("specialUsers");
+	it("改 specialViewers(整数组叶子)→ 'specialViewers',section=specialViewers", () => {
+		const codes = diffCodes({}, {}, [], [{ id: "1", features: ["viewerChat"] }]);
+		expect(codes).toContain("specialViewers");
+		expect(sectionOf("specialViewers")).toBe("specialViewers");
 	});
 });
 

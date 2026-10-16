@@ -90,14 +90,14 @@ export const FEATURE_DESCRIPTORS: Record<FeatureKey, FeatureDescriptor> = {
 		eventLabel: "上舰",
 		icon: "guard",
 	},
-	specialDanmaku: {
+	viewerChat: {
 		tone: "#10B981",
 		family: "live",
 		label: "弹幕",
 		eventLabel: "特别弹幕",
 		icon: "mic",
 	},
-	specialUserEnter: {
+	viewerEnter: {
 		tone: "#06B6D4",
 		family: "live",
 		label: "进房",

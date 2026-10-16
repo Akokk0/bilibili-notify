@@ -2,7 +2,7 @@
 
 /**
  * 高级规则页 tab 关闭确认。点 per-UP tab 的 x 关闭一个「已有覆盖项」的 UP 属于
- * 销毁性操作(清空 overrides + specialUsers),回归前会直接 PATCH 清空、静默回到
+ * 销毁性操作(清空 overrides + specialViewers),回归前会直接 PATCH 清空、静默回到
  * 全局;现在必须先弹 ConfirmDialog,取消则不动 backend,确认才真正清空。
  */
 
@@ -80,7 +80,7 @@ describe("高级规则 tab 关闭确认", () => {
 	it("只配了特别关注、没有任何覆盖项的 UP 也算已定制:有 tab 可关", async () => {
 		const onlySpecial: Subscription = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "654321" }),
-			specialUsers: [{ uid: "7", kinds: ["enter"] }],
+			specialViewers: [{ id: "7", features: ["viewerEnter"] }],
 		};
 		vi.mocked(api.get).mockImplementation((url: string) =>
 			Promise.resolve(url.includes("/api/subscriptions") ? [onlySpecial] : GLOBALS),
@@ -108,7 +108,7 @@ describe("高级规则 tab 关闭确认", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 	});
 
-	it("确认 dialog 点『移除』→ PATCH 清空 overrides + specialUsers", async () => {
+	it("确认 dialog 点『移除』→ PATCH 清空 overrides + specialViewers", async () => {
 		renderRules();
 		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));
 		await screen.findByText("移除该 UP 的个性化配置?");
@@ -118,7 +118,7 @@ describe("高级规则 tab 关闭确认", () => {
 		await waitFor(() =>
 			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${CUSTOMIZED.id}`, {
 				overrides: { imageGroup: null },
-				specialUsers: [],
+				specialViewers: [],
 			}),
 		);
 	});

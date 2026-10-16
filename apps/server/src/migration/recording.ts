@@ -17,21 +17,19 @@
  * - **粉丝**:这条订阅自己的粉丝样本所在的小时(两支一样)。
  *
  * 读粉丝样本只为取时刻(满量约 231 万行),不整行解析;相邻的小时合成一段区间再写。读不懂订阅文件 / 核心设置就整步跳过。
+ *
+ * 「直播类开关开着」用的是**冻住的 0.x 旧读法**(五把直播开关任一开着,或特别关注名单上有人),不取活的
+ * `needsLiveMonitor`:活的判定以后要多看特别开关,而老日子的账照 0.x 的规矩推,不随活判定漂。
  */
 
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	BILIBILI_SOURCE_KEY,
-	DEFAULT_FEATURE_FLAGS,
-	specialUserFlagsOf,
-} from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY, DEFAULT_FEATURE_FLAGS } from "@bilibili-notify/internal";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { compareRecordingEntries } from "../stats/recording-compress.js";
-import { recordingSwitches } from "../stats/recording-switches.js";
 import {
 	type RecordingEntry,
 	type RecordingKind,
@@ -160,6 +158,20 @@ const FEATURE_KEYS = [
 	"superchat",
 ] as const;
 
+/**
+ * 冻住的 0.x 旧读法里「直播类开关」的五把:任一开着就算要监听直播。**不取** internal 的 `needsLiveMonitor`:
+ * 活的判定会随产品改(3b-16 起要「特别开关开着且名单上有人带它」才算),而这里推的是**老日子**的账,
+ * 老日子照 0.x 的规矩 —— 名单上有人就监听,不看特别开关(`git show v0.12.0:apps/server/src/runtime/engines.ts`
+ * 第 1459–1460 行:按 `kinds` 把名单拆成两张,有人就开那一块)。
+ */
+const ZERO_LIVE_FEATURE_KEYS = [
+	"liveStart",
+	"liveStreaming",
+	"liveEnd",
+	"membership",
+	"superchat",
+] as const;
+
 type Features = Record<(typeof FEATURE_KEYS)[number], boolean>;
 
 /** 把一份(可能只写了一部分的)特性开关摊在底下那份上,只认布尔。 */
@@ -238,22 +250,15 @@ export async function migrateRecordingLedger(
 			defaults,
 			isPlainObject(row.overrides) ? row.overrides.features : undefined,
 		);
-		const special = specialUserFlagsOf({
-			specialUsers: Array.isArray(row.specialUsers)
-				? row.specialUsers.flatMap((u) =>
-						isPlainObject(u) && Array.isArray(u.kinds)
-							? [{ kinds: u.kinds.filter((k): k is string => typeof k === "string") }]
-							: [],
-					)
-				: [],
-		});
+		// 新代里订阅文件已经迁好:名单在 `specialViewers`(0.x 的 `kinds` 至少一个,所以「非空」就是「有人带某一种」)。
+		const hasSpecialViewers = Array.isArray(row.specialViewers) && row.specialViewers.length > 0;
 		const file = `${row.id}.jsonl`;
 		const builtIn = row.identity.sourceKey === BILIBILI_SOURCE_KEY;
 		const live = await liveHoursOf(join(liveDir, file));
 		const one: Facts = {
 			id: row.id,
 			builtIn,
-			live: recordingSwitches(features, special).live,
+			live: ZERO_LIVE_FEATURE_KEYS.some((key) => features[key]) || hasSpecialViewers,
 			samples: hourSetOf(await readFollowerSampleTimes(join(followersDir, file))),
 			posts: await hoursOf(join(postsDir, file), "publishedAt"),
 			liveSpans: live.spans,
