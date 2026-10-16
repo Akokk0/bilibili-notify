@@ -15,6 +15,7 @@ import type {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
@@ -82,6 +83,7 @@ async function setup() {
 		adapters: [onebot, qq, webhook],
 		loggerOf: () => logger,
 		stores,
+		problems: ignoredProblems,
 		connections: () => list,
 		onConnectionsChanged,
 	});
@@ -105,6 +107,7 @@ describe("registerBuiltinAdapters", () => {
 			adapters: [onebot, qq, webhook],
 			loggerOf,
 			stores: memoryIntegrationStore(),
+			problems: ignoredProblems,
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
 		});
@@ -171,6 +174,7 @@ describe("registerBuiltinAdapters", () => {
 				adapters: [first, dup, third],
 				loggerOf: () => logger,
 				stores: { open: (key) => memoryIntegrationStore().open(key) },
+				problems: ignoredProblems,
 				connections: () => [],
 				onConnectionsChanged: () => ({ dispose() {} }),
 			}),
@@ -192,6 +196,7 @@ describe("registerBuiltinAdapters", () => {
 			registerBuiltinAdapters({
 				registry,
 				adapters: [first, second],
+				problems: ignoredProblems,
 				loggerOf: () => logger,
 				stores: {
 					open: async (key) => {

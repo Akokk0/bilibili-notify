@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import type { Json, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import { type KeyProvider, readKeyMaterial } from "@bilibili-notify/storage";
+import { ignoredProblems } from "../../../../../__tests__/support/ignored-problems.js";
 import { memoryStoreHandle } from "../../../../../__tests__/support/memory-key-value-store.js";
 import {
 	integrationStateFile,
@@ -114,7 +115,11 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		state:
 			identity === undefined ? undefined : ({ "http.identity": identity } as Record<string, Json>),
 	});
-	const context = await createBiliContext({ stores: { open: async () => handle }, serviceCtx });
+	const context = await createBiliContext({
+		stores: { open: async () => handle },
+		serviceCtx,
+		problems: ignoredProblems,
+	});
 	const api = new Api({ serviceCtx, ctx: context.ctx });
 	await api.start();
 	await api.resumeStoredLogin();

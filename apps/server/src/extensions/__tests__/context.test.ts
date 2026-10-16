@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
@@ -89,6 +90,7 @@ function coreStubs() {
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},
 		upgrades: createExtensionUpgrades(),
+		problems: createProblemTable({ logger: silentLogger }),
 	};
 }
 
@@ -97,14 +99,15 @@ function makeRuntime(id = "bridge") {
 	const mounts = createExtensionMounts({ logger: silentLogger });
 	const app = new Hono();
 	app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+	const stubs = coreStubs();
 	const runtime = createExtensionContext({
 		id,
 		host: host.ctx,
 		loggerOf: host.loggerOf,
 		mounts,
-		...coreStubs(),
+		...stubs,
 	});
-	return { host, mounts, app, runtime, ctx: runtime.ctx };
+	return { host, mounts, app, runtime, ctx: runtime.ctx, problems: stubs.problems };
 }
 
 describe("拓展 ctx", () => {
@@ -259,5 +262,43 @@ describe("拓展 ctx", () => {
 		expect(await (await app.request("/ext/b")).text()).toBe("b");
 		host.tick();
 		expect(bTicks).toBe(1);
+	});
+});
+
+/** 问题上报与 `signal`:拓展的上下文继承集成的上下文,报的人是拓展 id,停用时清,被拒的只记 warn。 */
+describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
+	it("activate 拿到的 reportProblem 进问题表,报的人是拓展 id;停用后清掉", async () => {
+		const { ctx, runtime, problems } = makeRuntime("fake-source");
+		ctx.reportProblem({ code: "upstream_down", message: "对面连不上" });
+		expect(problems.list()).toEqual([
+			{
+				reporter: "fake-source",
+				code: "upstream_down",
+				message: "对面连不上",
+				since: expect.any(String),
+			},
+		]);
+		ctx.resolveProblem({ code: "upstream_down" });
+		expect(problems.list()).toEqual([]);
+
+		ctx.reportProblem({ code: "upstream_down", message: "又连不上了" });
+		await runtime.dispose();
+		expect(problems.list()).toEqual([]);
+	});
+
+	it("ctx.signal 在停用时中止,原因是 AbortError", async () => {
+		const { ctx, runtime } = makeRuntime();
+		expect(ctx.signal.aborted).toBe(false);
+		await runtime.dispose();
+		expect(ctx.signal.aborted).toBe(true);
+		expect((ctx.signal.reason as DOMException).name).toBe("AbortError");
+	});
+
+	it("报坏 code:不进表,只记一行 warn(不是 error)", () => {
+		const { host, ctx, problems } = makeRuntime();
+		ctx.reportProblem({ code: "Bad Code", message: "x" });
+		expect(problems.list()).toEqual([]);
+		expect(host.lines.filter((l) => l.startsWith("warn bridge:"))).toHaveLength(1);
+		expect(host.lines.filter((l) => l.startsWith("error "))).toEqual([]);
 	});
 });

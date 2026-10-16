@@ -13,7 +13,7 @@ import type { IntegrationStore } from "../../integration-store/store.js";
 import type { NodeServiceContext } from "../../runtime/service-context.js";
 import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
-import { createBiliContext } from "../context.js";
+import { type CreateBiliContextOptions, createBiliContext } from "../context.js";
 import { fetchAvatar } from "../images.js";
 import { LoginFlow } from "./login-flow.js";
 
@@ -65,6 +65,8 @@ export interface CreateAuthSystemOptions {
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
 	accountImages: ImageWriter;
+	/** 问题表的写口(`AppRuntime.problems`):B 站集成上下文的 `reportProblem` 记到这里。 */
+	problems: CreateBiliContextOptions["problems"];
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
@@ -76,6 +78,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	const context = await createBiliContext({
 		stores: opts.integrationStore,
 		serviceCtx,
+		problems: opts.problems,
 	});
 	const { ctx } = context;
 

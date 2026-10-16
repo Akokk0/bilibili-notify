@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { readIntegrationStateFile } from "../../integration-store/files.js";
 import { createIntegrationStore } from "../../integration-store/store.js";
 import { createIntegrationHttp } from "../../integrations/http.js";
@@ -58,7 +59,11 @@ function makeStore() {
 describe("createBiliContext", () => {
 	it("重启后身份稳定:两次建上下文线上的 UA 相同,且就是 state.json 里 http.identity 写的那一份", async () => {
 		const { host, store } = makeStore();
-		const first = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const first = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+		});
 		await first.ctx.http.fetch(`${baseURL}/x`);
 		const firstUa = lastHeaders["user-agent"];
 		await first.dispose();
@@ -69,6 +74,7 @@ describe("createBiliContext", () => {
 		const second = await createBiliContext({
 			stores: again.store,
 			serviceCtx: again.host.serviceCtx,
+			problems: ignoredProblems,
 		});
 		await second.ctx.http.fetch(`${baseURL}/x`);
 		const secondUa = lastHeaders["user-agent"];
@@ -93,6 +99,7 @@ describe("createBiliContext", () => {
 		const { ctx, dispose } = await createBiliContext({
 			stores: store,
 			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
 		});
 
 		expect(ctx.http).toBeDefined();
@@ -112,12 +119,16 @@ describe("createBiliContext", () => {
 		const { host, store } = makeStore();
 		vi.mocked(createIntegrationHttp).mockRejectedValueOnce(new Error("boom"));
 
-		await expect(createBiliContext({ stores: store, serviceCtx: host.serviceCtx })).rejects.toThrow(
-			"boom",
-		);
+		await expect(
+			createBiliContext({ stores: store, serviceCtx: host.serviceCtx, problems: ignoredProblems }),
+		).rejects.toThrow("boom");
 
 		expect(store.isOpen("bilibili")).toBe(false);
-		const reopened = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const reopened = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+		});
 		expect(store.isOpen("bilibili")).toBe(true);
 		await reopened.dispose();
 		await store.close();
@@ -125,7 +136,11 @@ describe("createBiliContext", () => {
 
 	it("收尾:先跑 ctx.onDispose 的钩子(后登记的先跑),再关把手;幂等", async () => {
 		const { host, store } = makeStore();
-		const handle = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const handle = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+		});
 		const order: string[] = [];
 		handle.ctx.onDispose(() => {
 			order.push(`first(open=${store.isOpen("bilibili")})`);
@@ -144,7 +159,11 @@ describe("createBiliContext", () => {
 
 	it("连接池放在 drain 段收,不在上下文的收尾里:dispose() 不动客户端,跑 drain 钩子才收", async () => {
 		const { host, store } = makeStore();
-		const handle = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const handle = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+		});
 		const drain = host.disposers.filter((d) => d.phase === "drain");
 		expect(drain).toHaveLength(1);
 		const clientDispose = vi.spyOn(handle.ctx.http, "dispose");

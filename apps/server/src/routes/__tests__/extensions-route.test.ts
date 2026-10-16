@@ -23,6 +23,7 @@ import {
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
@@ -164,6 +165,7 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,
 		integrationStore: memoryIntegrationStore(),
+		problems: ignoredProblems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],

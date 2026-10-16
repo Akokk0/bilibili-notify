@@ -5,6 +5,7 @@ import {
 	type IntegrationStoreHandle,
 } from "../integration-store/store.js";
 import {
+	type CreateIntegrationContextOptions,
 	createIntegrationContext,
 	type IntegrationContextHandle,
 } from "../integrations/context.js";
@@ -19,6 +20,8 @@ export interface RegisterBuiltinAdaptersOptions {
 	loggerOf: (adapterKey: string) => Logger;
 	/** 各适配器的 state / secrets 存储:登记前按 `adapterKey` 各开一份,停下后各关各的。 */
 	stores: Pick<IntegrationStore, "open">;
+	/** 问题表的写口:各适配器的集成上下文把 `reportProblem` 记到这里,报的人是各自的适配器键。 */
+	problems: CreateIntegrationContextOptions["problems"];
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
 	/** 连接配置变了的订阅。 */
@@ -51,6 +54,9 @@ export async function registerBuiltinAdapters(
 				stopReason: "BN 关停",
 				state: stores.state,
 				secrets: stores.secrets,
+				problems: opts.problems,
+				reporter: adapter.adapterKey,
+				rejectedProblemLevel: "error",
 			});
 			integration = context;
 			const ctx = createPlatformAdapterContext({

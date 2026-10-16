@@ -24,6 +24,7 @@ import type {
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
@@ -205,6 +206,7 @@ async function boot(opts: {
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,
 		integrationStore: memoryIntegrationStore(),
+		problems: ignoredProblems,
 		mounts,
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],

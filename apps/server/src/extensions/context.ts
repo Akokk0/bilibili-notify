@@ -35,7 +35,10 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
-import { createIntegrationContext } from "../integrations/context.js";
+import {
+	type CreateIntegrationContextOptions,
+	createIntegrationContext,
+} from "../integrations/context.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
@@ -249,6 +252,11 @@ export interface CreateExtensionContextOptions {
 	 * 同一对对象。
 	 */
 	stores: Pick<IntegrationStoreHandle, "state" | "secrets">;
+	/**
+	 * 问题表的写口:拓展的 `reportProblem` 记在它的 id 名下,收摊时它名下的全清。被拒的(已停下、形状不对)
+	 * 只记 warn —— 拓展自己的 bug,不进出入表(ADR-0025 决策 10 下 2026-10-15 那条)。
+	 */
+	problems: CreateIntegrationContextOptions["problems"];
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
 	adapters: PlatformAdapterRegistry;
@@ -326,6 +334,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		stopReason: `拓展 ${id} 停用了`,
 		state: opts.stores.state,
 		secrets: opts.stores.secrets,
+		problems: opts.problems,
+		reporter: id,
+		rejectedProblemLevel: "warn",
 		disposeTimeoutMs: opts.disposeTimeoutMs,
 		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
@@ -711,6 +722,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		logger,
 		state: integration.ctx.state,
 		secrets: integration.ctx.secrets,
+		signal: integration.ctx.signal,
+		reportProblem: integration.ctx.reportProblem,
+		resolveProblem: integration.ctx.resolveProblem,
 		setTimeout: (fn, ms) => {
 			if (integration.disposed) return integration.refuse("setTimeout");
 			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。

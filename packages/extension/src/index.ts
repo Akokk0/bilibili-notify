@@ -42,6 +42,11 @@ export type {
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
+	/**
+	 * 每个集成(内置的、拓展的)拿到的公共那一面。`ExtensionContext` 继承它:新成员加在它身上,
+	 * 拓展当场就有,类型逼着宿主那头一并接上。
+	 */
+	IntegrationContext,
 	Json,
 	KeyValueOp,
 	KeyValueStore,
@@ -99,7 +104,7 @@ import type {
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
-	KeyValueStore,
+	IntegrationContext,
 	Logger,
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
@@ -440,7 +445,7 @@ export interface SubscriptionSourceHandle {
  * 「卸载得干净」的唯一承重条件 —— 留一条旁路,卸载就不干净,而不干净的卸载比要求重启
  * 更难 debug(面板写着「已停用」,定时器还在跑)。
  */
-export interface ExtensionContext {
+export interface ExtensionContext extends IntegrationContext {
 	/** 它自己的 id —— 同时是挂载点、装载目录与记账键那一段。 */
 	readonly id: string;
 	/** 宿主**当前**的契约档位(它认的区间的上沿)。拓展自己也可能要按它分叉。 */
@@ -455,13 +460,9 @@ export interface ExtensionContext {
 	 * (`logging.levels.<id>`),没写就跟总等级。
 	 */
 	readonly logger: Logger;
-	/**
-	 * 程序自己记的小状态:明文,不进备份。单键 64KB、整份 1MB;`http.` 开头的键归宿主。
-	 * 与推送源 `start(ctx)` 里拿到的是同一对象。
-	 */
-	readonly state: KeyValueStore;
-	/** 凭据:主密钥加密,只进完整备份。整份 256KB;`http.` 开头的键归宿主。与 `state` 同一个接口。 */
-	readonly secrets: KeyValueStore;
+	// 继承自 IntegrationContext、这里不重写的:`signal`(拓展停用时中止)、`state` / `secrets`(与推送源
+	// `start(ctx)` 里拿到的是同一对)、`onDispose`(卸载时要跑的收摊钩子,后注册的先跑)、
+	// `reportProblem` / `resolveProblem`(报的人是自己的 id,停用时宿主替它清)。
 	/** 可回收定时器。卸载时宿主统一清,拓展自己漏了也不会留下幽灵。 */
 	setTimeout(fn: () => void, ms: number): Disposable;
 	setInterval(fn: () => void, ms: number): Disposable;
@@ -561,6 +562,4 @@ export interface ExtensionContext {
 	 * 真的回来为止:超时叫停了却不停的,照样挡着下一发。不同的动作互不相干。
 	 */
 	onAction(name: string, handler: (signal: AbortSignal) => void | Promise<void>): void;
-	/** 卸载时要跑的收摊钩子。后注册的先跑。 */
-	onDispose(fn: () => void | Promise<void>): void;
 }

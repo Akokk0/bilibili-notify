@@ -13,6 +13,7 @@ import type {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { createSettingsReader } from "../integrations/settings-reader.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
+import { problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
@@ -42,9 +43,6 @@ export interface CreateSourceContextOptions {
 		onChanged(fn: () => void): Disposable;
 	};
 }
-
-/** 问题的 code:snake 风格,小写字母开头。 */
-const PROBLEM_CODE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 export interface SourceContextHandle {
 	readonly ctx: SourceContext;
@@ -90,14 +88,10 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			);
 			return;
 		}
-		if (
-			!PROBLEM_CODE.test(problem.code) ||
-			problem.externalId === "" ||
-			(problem.message !== undefined && problem.message.trim() === "") ||
-			(problem.recoveryMessage !== undefined && problem.recoveryMessage.trim() === "")
-		) {
+		const issue = problemReportIssue(problem);
+		if (issue !== undefined) {
 			logger.error(
-				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;内置来源的 bug): ${problem.code}`,
+				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;内置来源的 bug): ${problem.code}(${issue})`,
 			);
 			return;
 		}

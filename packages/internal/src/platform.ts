@@ -52,7 +52,7 @@ export interface ServiceContext {
 }
 
 /**
- * 每个集成(拓展、内置适配器)拿到的那一面。目前五个成员,后面各片往上加。
+ * 每个集成(拓展、内置集成)拿到的那一面。成员后面各片还会往上加。
  * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
  */
 export interface IntegrationContext {
@@ -65,6 +65,28 @@ export interface IntegrationContext {
 	readonly state: KeyValueStore;
 	/** 凭据:主密钥加密,只进完整备份。整份 256KB;`http.` 开头的键归宿主。 */
 	readonly secrets: KeyValueStore;
+	/**
+	 * 报一个这个集成自己的问题(登录失效了、对面连不上……)。`code` 是 snake 风格,同一个集成下同一个
+	 * code 只有一条,再报只换文案(与 `notify`、`recoveryMessage`)。`notify: true` 请核心私聊主人一次。
+	 * 没有返回值;形状不对(含空白的 `message` / `recoveryMessage`)、集成已停下的上报被丢弃。
+	 * 平台的数字码写进 `message`,不占 `code`。
+	 *
+	 * `recoveryMessage`:这件事清掉、且当初真私聊过时核心发的那一句;不给就用核心的通用说法。
+	 * 集成停下时它报的全清(核心清的,不补「已恢复」)。
+	 *
+	 * ⚠️ 方法写法(不是属性函数):子层(来源、适配器)同名方法多带一格对象,靠的是方法参数的双变。
+	 */
+	reportProblem(problem: {
+		code: string;
+		message: string;
+		notify?: boolean;
+		recoveryMessage?: string;
+	}): void;
+	/**
+	 * 清掉自己报的一个问题。清掉时核心对当初私聊过的补一句「已恢复」;`notify: false` = 这次不是修好了、
+	 * 只是不再适用,不补。表里没有这一条什么都不做。
+	 */
+	resolveProblem(problem: { code: string; notify?: boolean }): void;
 }
 
 /**

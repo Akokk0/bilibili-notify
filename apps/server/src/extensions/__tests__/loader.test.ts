@@ -17,6 +17,7 @@ import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -95,6 +96,7 @@ const HEALTHY = `export function activate(ctx) {
 function coreStubs() {
 	return {
 		integrationStore: memoryIntegrationStore(),
+		problems: ignoredProblems,
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),

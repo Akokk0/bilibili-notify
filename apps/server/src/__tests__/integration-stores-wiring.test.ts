@@ -34,6 +34,7 @@ import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createExtensionsRoute } from "../routes/extensions.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import { dataPath } from "../runtime/roots.js";
+import { ignoredProblems } from "./support/ignored-problems.js";
 import { silentLogger } from "./support/silent-logger.js";
 
 const EXT_ID = "wiring-ext";
@@ -112,6 +113,7 @@ describe("内置适配器", () => {
 			adapters,
 			loggerOf: () => logger(),
 			stores: store,
+			problems: ignoredProblems,
 			connections: (): readonly Connection[] => [],
 			onConnectionsChanged: (): Disposable => ({ dispose() {} }),
 		});
@@ -261,6 +263,7 @@ describe("拓展", () => {
 			host: quietHost(),
 			loggerOf: () => logger(),
 			integrationStore: store,
+			problems: ignoredProblems,
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			adapters: createPlatformAdapterRegistry(),
 			connections: () => [],

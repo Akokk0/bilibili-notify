@@ -549,6 +549,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				integrationStore: runtime.integrationStore,
 				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
 				accountImages: runtime.accountImages,
+				problems: runtime.problems,
 			});
 		} catch (err) {
 			// Fatal: without the integration stores / Api the dashboard can't function.
@@ -732,6 +733,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			adapterRegistry,
 			integrationStore: runtime.integrationStore,
+			problems: runtime.problems,
 			connections: () => runtime.configStore.getConnections(),
 			onConnectionsChanged,
 		});
@@ -1186,6 +1188,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			loggerOf: (id) => runtime.serviceCtx.forSubsystem(id, id).logger,
 			// 每个拓展装载前按 id 开自己的 state / secrets 存储,收摊后关。
 			integrationStore: runtime.integrationStore,
+			// 拓展报的问题记在它的 id 名下(收摊时清)。
+			problems: runtime.problems,
 			mounts: extensionMounts,
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
 			isEnabled: (id) => isExtensionEnabled(runtime.configStore.getGlobals(), id),

@@ -38,6 +38,7 @@ import { createImageStore, IMAGE_GRACE_MS, type ImageStore } from "../images/ima
 import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { putImage } from "./support/chat-images.js";
+import { ignoredProblems } from "./support/ignored-problems.js";
 import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
 import { png } from "./support/report-images.js";
 
@@ -196,6 +197,7 @@ function compose(
 		onInboundGroup: () => {},
 		adapterRegistry,
 		integrationStore,
+		problems: ignoredProblems,
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 	};

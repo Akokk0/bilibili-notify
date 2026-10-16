@@ -25,8 +25,9 @@ import {
 import { testAuthDeps } from "./support/auth-deps.js";
 
 /** 测试里不关心配置仓与图库:统一补上替身。 */
-const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages">) =>
-	createAuthSystemWith({ ...testAuthDeps(), ...o });
+const createAuthSystem = (
+	o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages" | "problems">,
+) => createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 // 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
 vi.mock("../login-flow.js", () => ({

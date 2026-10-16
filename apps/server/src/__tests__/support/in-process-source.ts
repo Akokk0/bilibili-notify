@@ -359,6 +359,9 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 						stopReason: "BN 关停",
 						state: store.state,
 						secrets: store.secrets,
+						problems: deps.problems,
+						reporter: IN_PROCESS_KEY,
+						rejectedProblemLevel: "error",
 					});
 					opened = { integration, store };
 					const made = createInProcessSource(inProcessWorld.options);

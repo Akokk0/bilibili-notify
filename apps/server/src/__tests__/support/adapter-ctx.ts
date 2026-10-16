@@ -55,6 +55,8 @@ export function fakeAdapterContext(
 		},
 		state,
 		secrets,
+		reportProblem() {},
+		resolveProblem() {},
 		connections: () => connections,
 		onConnectionsChanged(fn): Disposable {
 			listeners.add(fn);

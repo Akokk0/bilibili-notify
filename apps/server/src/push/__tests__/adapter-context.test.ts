@@ -9,6 +9,7 @@ import type { Connection, Disposable } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
 import { createPlatformAdapterContext } from "../adapter-context.js";
@@ -49,7 +50,14 @@ function build(
 	settingsSchema: z.ZodType = z.unknown(),
 	logger = silentLogger,
 ) {
-	const handle = createIntegrationContext({ logger, stopReason: "测试", ...memoryStores() });
+	const handle = createIntegrationContext({
+		logger,
+		stopReason: "测试",
+		...memoryStores(),
+		problems: ignoredProblems,
+		reporter: key,
+		rejectedProblemLevel: "error",
+	});
 	const ctx = createPlatformAdapterContext({
 		integration: handle.ctx,
 		adapterKey: key,

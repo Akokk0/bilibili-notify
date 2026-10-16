@@ -4,6 +4,8 @@ import type {
 	KeyValueStore,
 	Logger,
 } from "@bilibili-notify/internal";
+import { type ProblemReport, problemReportIssue } from "../problems/problem-report.js";
+import type { ProblemTable } from "../problems/problem-table.js";
 
 /**
  * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
@@ -39,6 +41,15 @@ export interface CreateIntegrationContextOptions {
 	 */
 	state: KeyValueStore;
 	secrets: KeyValueStore;
+	/** 问题表的写口:这个集成报的问题记在 `reporter` 名下,收摊时它名下的全清(不补「已恢复」)。 */
+	problems: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
+	/** 报的人:这个集成的键(内置的是集成键,拓展是拓展 id)。 */
+	reporter: string;
+	/**
+	 * 上报被拒(已停下、形状不对)记成什么等级:内置集成被拒就是 BN 的 bug,记 `error`;
+	 * 拓展被拒是拓展自己的 bug、BN 改不了,记 `warn`(ADR-0025 决策 10)。
+	 */
+	rejectedProblemLevel: "warn" | "error";
 	/** 收尾钩子一共最多等多久;不给就是 `DISPOSE_TIMEOUT_MS`。 */
 	disposeTimeoutMs?: number;
 	/** 开始收尾的那一刻、`signal` 中止之前叫一次;抛了记一行 error,不打断收尾。 */
@@ -89,6 +100,19 @@ export function createIntegrationContext(
 		};
 	}
 
+	/**
+	 * 问题上报的公共一步:已停下、形状不对的丢弃并按选项记一行;过了关就叫 `apply`。
+	 * 校验规矩与来源层共用一份(`problems/problem-report.ts`)。
+	 */
+	function acceptProblem(what: string, problem: ProblemReport, apply: () => void): void {
+		const issue = disposed ? "集成已停下" : problemReportIssue(problem);
+		if (issue !== undefined) {
+			logger[opts.rejectedProblemLevel](`${what}问题 ${problem.code} 被拒(丢弃):${issue}`);
+			return;
+		}
+		apply();
+	}
+
 	const ctx: IntegrationContext = {
 		logger,
 		signal: controller.signal,
@@ -101,6 +125,27 @@ export function createIntegrationContext(
 		},
 		state: opts.state,
 		secrets: opts.secrets,
+		reportProblem(problem) {
+			acceptProblem("报", problem, () =>
+				opts.problems.report({
+					reporter: opts.reporter,
+					code: problem.code,
+					message: problem.message,
+					...(problem.notify === undefined ? {} : { notify: problem.notify }),
+					...(problem.recoveryMessage === undefined
+						? {}
+						: { recoveryMessage: problem.recoveryMessage }),
+				}),
+			);
+		},
+		resolveProblem(problem) {
+			acceptProblem("清", problem, () =>
+				opts.problems.resolve(
+					{ reporter: opts.reporter, code: problem.code },
+					problem.notify === undefined ? undefined : { notify: problem.notify },
+				),
+			);
+		},
 	};
 
 	return {
@@ -113,6 +158,10 @@ export function createIntegrationContext(
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			// 它名下的问题随停下清掉(宿主清,不补「已恢复」)。放在 `disposed = true` 之后紧接着做:
+			// 之后的上报一律被拒,清了就是清了 —— 调用方(装载器)要在收摊之后再记这个报的人名下的新问题,
+			// 必须排在 `dispose()` 回来之后,否则刚记的会被这一下清走。
+			opts.problems.clearReporter(opts.reporter);
 			// 宿主那头抛了不许打断收摊。
 			try {
 				opts.onStopping?.();

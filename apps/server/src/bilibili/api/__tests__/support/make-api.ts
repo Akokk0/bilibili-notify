@@ -1,5 +1,6 @@
 import type { BrowserIdentity } from "@bilibili-notify/http";
 import type { Disposable, Json, Logger, ServiceContext } from "@bilibili-notify/internal";
+import { ignoredProblems } from "../../../../__tests__/support/ignored-problems";
 import { memoryStoreHandle } from "../../../../__tests__/support/memory-key-value-store";
 import { HTTP_IDENTITY_KEY } from "../../../../integrations/http";
 import type { NodeServiceContext } from "../../../../runtime/service-context";
@@ -97,7 +98,11 @@ export async function makeApi(options: MakeApiOptions = {}) {
 		secrets: options.secrets,
 		state: options.identity ? { [HTTP_IDENTITY_KEY]: { ...options.identity } } : undefined,
 	});
-	const context = await createBiliContext({ stores: { open: async () => handle }, serviceCtx });
+	const context = await createBiliContext({
+		stores: { open: async () => handle },
+		serviceCtx,
+		problems: ignoredProblems,
+	});
 	const { ctx } = context;
 	const api = new Api({ serviceCtx, ctx, callbacks: options.callbacks ?? {} });
 	const client = new ApiClient({ http: ctx.http });

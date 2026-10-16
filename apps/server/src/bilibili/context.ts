@@ -5,7 +5,10 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { disposeThenClose, type IntegrationStore } from "../integration-store/store.js";
-import { createIntegrationContext } from "../integrations/context.js";
+import {
+	type CreateIntegrationContextOptions,
+	createIntegrationContext,
+} from "../integrations/context.js";
 import {
 	type CookieJarHandle,
 	createIntegrationHttp,
@@ -44,6 +47,8 @@ export interface CreateBiliContextOptions {
 	stores: Pick<IntegrationStore, "open">;
 	/** 宿主的那一面:日志、可回收定时器、按段登记的关停钩子。 */
 	serviceCtx: ServiceContext;
+	/** 问题表的写口:B 站集成的上报记在 B 站这个键名下(与 B 站来源同一个报的人)。 */
+	problems: CreateIntegrationContextOptions["problems"];
 }
 
 /**
@@ -62,6 +67,9 @@ export async function createBiliContext(
 		stopReason: "BN 关停",
 		state: store.state,
 		secrets: store.secrets,
+		problems: opts.problems,
+		reporter: BILIBILI_SOURCE_KEY,
+		rejectedProblemLevel: "error",
 	});
 	let built: IntegrationHttpHandle;
 	try {

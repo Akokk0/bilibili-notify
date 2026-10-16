@@ -47,7 +47,11 @@ import type { IntegrationStore } from "./integration-store/store.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
-import { type BuiltinAdapters, registerBuiltinAdapters } from "./push/builtin-adapters.js";
+import {
+	type BuiltinAdapters,
+	type RegisterBuiltinAdaptersOptions,
+	registerBuiltinAdapters,
+} from "./push/builtin-adapters.js";
 import type { PlatformAdapterRegistry } from "./push/registry.js";
 import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { EnginesRuntime } from "./runtime/engines.js";
@@ -104,6 +108,8 @@ export interface BuiltinIntegrationsDeps {
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 各适配器的 state / secrets 存储。 */
 	integrationStore: Pick<IntegrationStore, "open">;
+	/** 问题表的写口(`AppRuntime.problems`):各适配器集成上下文的 `reportProblem` 记到这里。 */
+	problems: RegisterBuiltinAdaptersOptions["problems"];
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
 	/** 「连接配置动过了」的订阅(内置适配器与拓展装载器共用)。 */
@@ -249,6 +255,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					adapters,
 					loggerOf,
 					stores: deps.integrationStore,
+					problems: deps.problems,
 					connections: deps.connections,
 					onConnectionsChanged: deps.onConnectionsChanged,
 				});

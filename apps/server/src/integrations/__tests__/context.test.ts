@@ -7,6 +7,8 @@
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
+import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createIntegrationContext } from "../context.js";
 
 function recordingLogger() {
@@ -22,13 +24,17 @@ function recordingLogger() {
 
 function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {}) {
 	const { logger, lines } = recordingLogger();
+	const problems = createProblemTable({ logger: silentLogger });
 	const handle = createIntegrationContext({
 		logger,
 		stopReason: "它停用了",
 		...memoryStores(),
+		problems,
+		reporter: "demo",
+		rejectedProblemLevel: "error",
 		...extra,
 	});
-	return { handle, lines };
+	return { handle, lines, problems };
 }
 
 describe("createIntegrationContext", () => {
@@ -219,5 +225,117 @@ describe("createIntegrationContext", () => {
 		expect(stopping).toBe(1);
 		expect(hookRuns).toBe(1);
 		expect(disposedInside).toBe(true);
+	});
+});
+
+/**
+ * 问题上报(集成层):报的人是集成键、不带对象;同一个 code 只有一条;收摊时它名下的全清、不补「已恢复」。
+ * 校验的规矩与来源层共用一份(`problems/problem-report.ts`),被拒的按选项记 error 或 warn。
+ */
+describe("createIntegrationContext · reportProblem / resolveProblem", () => {
+	it("报一条:问题表里报的人是集成键、不带 about,notify 不进表", () => {
+		const { handle, problems } = make();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效了", notify: true });
+		expect(problems.list()).toEqual([
+			{
+				reporter: "demo",
+				code: "auth_lost",
+				message: "登录失效了",
+				since: expect.any(String),
+			},
+		]);
+	});
+
+	it("再报同一个 code 只换文案:还是一条", () => {
+		const { handle, problems } = make();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "第一句" });
+		handle.ctx.reportProblem({ code: "auth_lost", message: "第二句" });
+		expect(problems.list().map((p) => p.message)).toEqual(["第二句"]);
+	});
+
+	it("notify 与 recoveryMessage 原样交给问题表:清掉时补的那句就是给的这句", () => {
+		const { handle, problems } = make();
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		handle.ctx.reportProblem({
+			code: "auth_lost",
+			message: "登录失效了",
+			notify: true,
+			recoveryMessage: "登录好了",
+		});
+		handle.ctx.resolveProblem({ code: "auth_lost" });
+		expect(changes.map((c) => [c.kind, c.notify, c.recoveryMessage])).toEqual([
+			["opened", true, "登录好了"],
+			["closed", true, "登录好了"],
+		]);
+	});
+
+	it("resolveProblem 带 notify: false:清掉但不补已恢复", () => {
+		const { handle, problems } = make();
+		const changes: ProblemChange[] = [];
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效了", notify: true });
+		problems.subscribe((c) => changes.push(c));
+		handle.ctx.resolveProblem({ code: "auth_lost", notify: false });
+		expect(problems.list()).toEqual([]);
+		expect(changes.map((c) => [c.kind, c.notify])).toEqual([["closed", false]]);
+	});
+
+	it.each([
+		["code 不是 snake", { code: "Auth-Lost", message: "x" }],
+		["message 是空白", { code: "auth_lost", message: "   " }],
+		["recoveryMessage 是空白", { code: "auth_lost", message: "x", recoveryMessage: " " }],
+	])("形状不对(%s):不进表,按选项记一行", (_name, input) => {
+		const { handle, lines, problems } = make();
+		handle.ctx.reportProblem(input);
+		expect(problems.list()).toEqual([]);
+		expect(lines.filter((l) => l.startsWith("error "))).toHaveLength(1);
+	});
+
+	it("resolveProblem 形状不对:不清,记一行", () => {
+		const { handle, lines, problems } = make();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		handle.ctx.resolveProblem({ code: "Bad Code" });
+		expect(problems.list()).toHaveLength(1);
+		expect(lines.filter((l) => l.startsWith("error "))).toHaveLength(1);
+	});
+
+	it("被拒的记成什么等级跟选项走:拓展传 warn 就是 warn,不是 error", () => {
+		const { handle, lines } = make({ rejectedProblemLevel: "warn" });
+		handle.ctx.reportProblem({ code: "Bad", message: "x" });
+		expect(lines.filter((l) => l.startsWith("warn "))).toHaveLength(1);
+		expect(lines.filter((l) => l.startsWith("error "))).toEqual([]);
+	});
+
+	it("收摊时它名下的全清、不补已恢复;别的报的人的不动", async () => {
+		const { handle, problems } = make();
+		problems.report({ reporter: "other", code: "x_y", message: "别人的" });
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效了", notify: true });
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		await handle.dispose();
+		expect(problems.list().map((p) => p.reporter)).toEqual(["other"]);
+		expect(changes.map((c) => [c.kind, c.notify])).toEqual([["closed", false]]);
+	});
+
+	it("收摊之后再报、再清:都丢弃,各记一行,表里不会再冒出来", async () => {
+		const { handle, lines, problems } = make();
+		await handle.dispose();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		handle.ctx.resolveProblem({ code: "auth_lost" });
+		expect(problems.list()).toEqual([]);
+		expect(lines.filter((l) => l.startsWith("error "))).toHaveLength(2);
+	});
+
+	it("收摊钩子跑的时候名下的问题已经清了:钩子里再报也不进表", async () => {
+		const { handle, problems } = make();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		let seenInHook: number | undefined;
+		handle.ctx.onDispose(() => {
+			handle.ctx.reportProblem({ code: "late_one", message: "收摊时才报" });
+			seenInHook = problems.list().length;
+		});
+		await handle.dispose();
+		expect(seenInHook).toBe(0);
+		expect(problems.list()).toEqual([]);
 	});
 });

@@ -28,6 +28,7 @@ import { errorMessageOf } from "../util/error-message.js";
 import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	type ActionOutcome,
+	type CreateExtensionContextOptions,
 	createExtensionContext,
 	type ExtensionContext,
 	type ExtensionRuntime,
@@ -220,6 +221,8 @@ export interface LoadExtensionsOptions {
 	loggerOf: (id: string) => Logger;
 	/** 每个拓展装载前按 id 开它的 state / secrets 存储,收摊之后关把手。 */
 	integrationStore: Pick<IntegrationStore, "open">;
+	/** 问题表的写口(`AppRuntime.problems`):递给每个拓展的 ctx,报的人是拓展 id。 */
+	problems: CreateExtensionContextOptions["problems"];
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
 	adapters: PlatformAdapterRegistry;
@@ -643,6 +646,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			host,
 			loggerOf: opts.loggerOf,
 			stores,
+			problems: opts.problems,
 			mounts,
 			adapters: opts.adapters,
 			connections: opts.connections,

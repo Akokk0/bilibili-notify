@@ -159,6 +159,9 @@ function hostFor(
 		logger: SILENT,
 		state: memoryKeyValueStore(),
 		secrets: memoryKeyValueStore(),
+		signal: new AbortController().signal,
+		reportProblem() {},
+		resolveProblem() {},
 		setTimeout: (fn, ms) => track(setTimeout(fn, ms)),
 		setInterval: (fn, ms) => track(setInterval(fn, ms)),
 		mount(handler) {

@@ -22,6 +22,7 @@ import type {
 import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
@@ -115,6 +116,7 @@ function harness(
 		host,
 		loggerOf: () => logger,
 		stores: memoryStores(),
+		problems: ignoredProblems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters,
 		connections: () => {
@@ -1089,6 +1091,7 @@ describe("认领 WS upgrade", () => {
 			} as unknown as ServiceContext,
 			loggerOf: () => logger,
 			stores: memoryStores(),
+			problems: ignoredProblems,
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			adapters: createPlatformAdapterRegistry(),
 			connections: () => [],
