@@ -8,7 +8,7 @@
  * 面板回落显示原名。
  */
 
-import { type AiTool, coreToolLabelOf, describeToolCall } from "@bilibili-notify/ai";
+import { type AiToolLabelFields, coreToolLabelOf, describeToolCall } from "@bilibili-notify/ai";
 import {
 	AI_CARD_WORKSHOP_TOOLS,
 	AI_TOOL_CREATE_SKIN,
@@ -17,15 +17,13 @@ import {
 import type { StoredToolTrace } from "./conversation-store.js";
 import { CARD_WORKSHOP_LABELS, CREATE_SKIN_LABEL, LOAD_SKILL_LABEL } from "./tool-label-texts.js";
 
-type LabelFields = Pick<AiTool, "label" | "labelArgs" | "formatLabelArg">;
-
 /** 服务端注入给聊天的那十把工具:工具名 → 标签。 */
-const INJECTED_LABELS: ReadonlyMap<string, LabelFields> = new Map<string, LabelFields>([
+const INJECTED_LABELS: ReadonlyMap<string, AiToolLabelFields> = new Map<string, AiToolLabelFields>([
 	[AI_TOOL_LOAD_SKILL, LOAD_SKILL_LABEL],
 	[AI_TOOL_CREATE_SKIN, CREATE_SKIN_LABEL],
 	...(
 		Object.entries(AI_CARD_WORKSHOP_TOOLS) as Array<[keyof typeof AI_CARD_WORKSHOP_TOOLS, string]>
-	).map(([key, name]): [string, LabelFields] => [name, CARD_WORKSHOP_LABELS[key]]),
+	).map(([key, name]): [string, AiToolLabelFields] => [name, CARD_WORKSHOP_LABELS[key]]),
 ]);
 
 /** 缺 `label` 的痕迹补上 `label` 与 `argText`(新数组、新对象,不碰传进来的)。 */

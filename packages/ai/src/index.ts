@@ -20,6 +20,7 @@ export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
 	type AiTool,
+	type AiToolLabelFields,
 	type AiToolResult,
 	coreToolLabelOf,
 	describeToolCall,

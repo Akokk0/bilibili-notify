@@ -30,8 +30,8 @@ beforeEach(() => {
 });
 
 describe("describeToolCall", () => {
-	it("按 labelArgs 的顺序取第一个有值的入参(昵称优先,只有 UID 时退回 UID)", () => {
-		const spec = { label: "查看 UP 主资料", labelArgs: ["name", "uid"] };
+	it("按 labelArg.keys 的顺序取第一个有值的入参(昵称优先,只有 UID 时退回 UID)", () => {
+		const spec = { label: "查看 UP 主资料", labelArg: { keys: ["name", "uid"] } };
 		expect(describeToolCall(spec, { name: "咩栗", uid: "1" })).toEqual({
 			label: "查看 UP 主资料",
 			argText: "咩栗",
@@ -42,11 +42,13 @@ describe("describeToolCall", () => {
 		});
 	});
 
-	it("值经 formatLabelArg 翻成给人看的样子(卡种 live → 直播卡)", () => {
+	it("值经 labelArg.format 翻成给人看的样子(卡种 live → 直播卡)", () => {
 		const spec = {
 			label: "看卡片",
-			labelArgs: ["kind"],
-			formatLabelArg: (v: string) => (v === "live" ? "直播卡" : v),
+			labelArg: {
+				keys: ["kind"],
+				format: (v: string) => (v === "live" ? "直播卡" : v),
+			},
 		};
 		expect(describeToolCall(spec, { kind: "live" })).toEqual({
 			label: "看卡片",
@@ -56,17 +58,17 @@ describe("describeToolCall", () => {
 
 	it("空白规整:trim,连续空白(含换行)压成一个空格,不截短", () => {
 		const out = describeToolCall(
-			{ label: "制作皮肤", labelArgs: ["brief"] },
+			{ label: "制作皮肤", labelArg: { keys: ["brief"] } },
 			{ brief: " 赛博朋克\n\n  暗色   霓虹，要有很长很长很长很长很长很长很长的一段描述 " },
 		);
 		expect(out.argText).toBe("赛博朋克 暗色 霓虹，要有很长很长很长很长很长很长很长的一段描述");
 	});
 
-	it("入参里挑不出值 / 没有 labelArgs → 只有 label,不带 argText 这一格", () => {
+	it("入参里挑不出值 / 没有 labelArg → 只有 label,不带 argText 这一格", () => {
 		expect(describeToolCall({ label: "查看订阅列表" }, { x: "1" })).toEqual({
 			label: "查看订阅列表",
 		});
-		expect(describeToolCall({ label: "搜索 UP 主", labelArgs: ["keyword"] }, {})).toEqual({
+		expect(describeToolCall({ label: "搜索 UP 主", labelArg: { keys: ["keyword"] } }, {})).toEqual({
 			label: "搜索 UP 主",
 		});
 	});
@@ -151,14 +153,14 @@ describe("工具环发 start 时带着标签", () => {
 		});
 	});
 
-	it("注入的一把:label / argText 取自它自己的 label、labelArgs", async () => {
+	it("注入的一把:label / argText 取自它自己的 label、labelArg", async () => {
 		const tool: AiTool = {
 			definition: {
 				type: "function",
 				function: { name: "make_thing", description: "造", parameters: { type: "object" } },
 			},
 			label: "造个东西",
-			labelArgs: ["brief"],
+			labelArg: { keys: ["brief"] },
 			execute: async () => ok({ text: "造好了" }),
 		};
 		const start = await drive([tool], "make_thing", { brief: "暗色  赛博" });

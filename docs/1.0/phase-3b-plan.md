@@ -158,7 +158,7 @@
 | 3b-19 的家与入口 | 目录 `live/recap/`；`recapAnchors(options, deps)`、`RecapOptions`、`RecapDeps` | 词表：下播后的回顾叫 `recap` |
 | 3b-28 的通用网址挑选 | 文件 `link-preview/url-candidates.ts` 的 `extractUrlCandidates(text)` | 从今天 B 站那条正则的写法推广；只管形状，认不认归解析器 |
 | 3b-20 的名字 | `ExtensionLiveSessions` → `LiveSessionEngine`（文档管它叫「场次引擎」）；`ExtensionLiveRow` → `LiveTableEntry`（`Row` 不再用）；`ExtensionLiveTable` → `LiveTable`；`LiveCardFacts` → `LiveCardFields`；常量 → `LIVE_CHANGED_COALESCE_MS`；场次变化联合的判别键 `type` → `kind`；运行时上的 `extensionLive` → `liveTable`、`extensionLiveSession()` → `liveSession()`。线上名字（总线事件、契约类型、字段 `extensionId`）与日志前缀、端到端测试文件名都不动 | 后缀表；data-model 的改名表；仓里同类常量的写法 |
-| 3b-32 工具上的标签三格 | `AiTool`（原 `ExtraTool`）加 `label`、`labelArgs`（小条上补哪一格入参）、`formatLabelArg`（那一格的值怎么翻成给人看的样子）；痕迹的开始事件带 `label` 与 `argText` 并落盘 | 定案只写了「`label` 与参数标签」；面板那张表里有的三样都得由工具这边给，后两格的名字是暂起的 |
+| 3b-32 工具上的标签格 | `AiTool`（原 `ExtraTool`）加 `label`、`labelArg`（小条上补哪一格入参：`keys` 是候选参数名，`format` 把那一格的值翻成给人看的样子；3b-54 由原来的两格合成一格）；痕迹的开始事件带 `label` 与 `argText` 并落盘 | 定案只写了「`label` 与参数标签」；面板那张表里有的三样都得由工具这边给，后两格的名字原是暂起的，3b-54 已改定 |
 | 3b-27 链接半 | 类型 `LinkResolver`、`LinkPreview`（文档原文）；`createLinkResolverRegistry()` 与 `LinkResolverRegistry { register, entries }`（读口带键）；来源上下文上的 `registerLinkResolver(resolver): Disposable`；运行时上挂 `linkResolvers` | 类型逐字照 data-model 与 subscription-sources；登记表照来源登记表的写法；登记口照契约里 `register…` 一族 |
 
 10-14 晚主人逐处定的：

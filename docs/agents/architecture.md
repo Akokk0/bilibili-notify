@@ -253,7 +253,7 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 ### 聊天里的工具与痕迹(3b-32 起)
 
-- **工具类型叫 `AiTool`**(`packages/ai/src/tools.ts`):`definition`、必填的 `label`(给人看的名字)、可选的 `labelArgs`(小条上补哪一格入参,按顺序取第一个有值的)与 `formatLabelArg`(入参值翻成给人看的样子,如卡种 `live` → 「直播卡」)、`execute`。`execute` 与核心自带那几把的 `executeTool` 都**按结果形状返回**(`Result`):预期内的失败(参数不对、接口回错、未知工具)是失败结果带一句话,不再是一句夹在正文里的字符串。生成器把这句话原样喂回给模型,痕迹里记成失败;`execute` 抛出来的只剩 bug,记一条错误日志,话照旧喂回模型。
+- **工具类型叫 `AiTool`**(`packages/ai/src/tools.ts`):`definition`、必填的 `label`(给人看的名字)、可选的 `labelArg`(小条上补哪一格入参:`keys` 是候选参数名、按顺序取第一个有值的,`format` 把那一格的值翻成给人看的样子,如卡种 `live` → 「直播卡」)、`execute`。`execute` 与核心自带那几把的 `executeTool` 都**按结果形状返回**(`Result`):预期内的失败(参数不对、接口回错、未知工具)是失败结果带一句话,不再是一句夹在正文里的字符串。生成器把这句话原样喂回给模型,痕迹里记成失败;`execute` 抛出来的只剩 bug,记一条错误日志,话照旧喂回模型。
 - **标签的字**集中放:核心自带工具(含联网搜索、看图)在 `packages/ai/src/tool-label-texts.ts`(`coreToolLabelOf` 取,小条上补的入参 = 文案表里单独写的格接上工具定义里 `required` 的格),服务端注入的几把(读技能、做皮肤、卡片工坊)在 `apps/server/src/ai/tool-label-texts.ts`;认不出的工具(模型编的名字)不带标签。
 - **痕迹事件**(生成器的 `onToolEvent`):开始事件带 `label` 与 `argText`(完整文字,截短是界面的事);结束事件带 `ok`,失败时带 `message`(与喂回模型的是同一句);慢工具中途的进度事件不落盘。`label`、`argText`、`message` 都随消息落盘(`ai/conversation-store.ts` 的 `StoredToolTrace`,存下来的字不跟着以后改名),也都经聊天 SSE 的 `tool` 事件过线;主人打斜杠点名技能时服务端手工补的那枚 `load_skill` 痕迹同样带 `label` 与 `argText`。
 - **`GET /api/ai/skills`** 在 `tools` 之外多一格 `toolLabels`(工具名 → 标签,`routes/ai-skills.ts`)。技能编辑器的勾选框今天还显示工具名,没用上这一格。

@@ -24,6 +24,7 @@ import {
 } from "./responses-api";
 import {
 	type AiTool,
+	type AiToolLabelFields,
 	type BiliReader,
 	coreToolLabelOf,
 	DESCRIBE_IMAGE_TOOL,
@@ -203,10 +204,10 @@ interface CallToolOptions {
 	 */
 	webSearch?: WebSearchExecutor;
 	/**
-	 * 调用方注入的工具的标签(名字 → `label` 等三格)。工具环发 start 事件时据此带上
+	 * 调用方注入的工具的标签(名字 → `label` 等两格)。工具环发 start 事件时据此带上
 	 * 痕迹自带的 `label` / `argText`;查不到再查核心工具的标签表,都没有就不带。
 	 */
-	labelOf?: (name: string) => Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined;
+	labelOf?: (name: string) => AiToolLabelFields | undefined;
 }
 
 /**

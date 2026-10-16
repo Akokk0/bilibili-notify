@@ -280,10 +280,11 @@ export interface AiTool {
 	definition: OpenAI.ChatCompletionFunctionTool;
 	/** 给人看的名字 —— 聊天里那条「她正在查什么」小条上的字(必填:漏配就是界面上一个英文标识符)。 */
 	label: string;
-	/** 小条上补哪一格入参,按顺序取第一个有值的。不给 = 不补。 */
-	labelArgs?: readonly string[];
-	/** 那一格入参的值翻成给人看的样子(卡种 `live` → 「直播卡」)。 */
-	formatLabelArg?: (value: string) => string;
+	/**
+	 * 小条上补哪一格入参。`keys` 是候选参数名,按顺序取第一个有值的;`format` 只翻那一格的值
+	 * (卡种 `live` → 「直播卡」),不给就原样显示。不给 `labelArg` = 不补。
+	 */
+	labelArg?: { keys: readonly string[]; format?: (value: string) => string };
 	/**
 	 * `onProgress` 是**给慢工具的活口**:工具轮不产生正文,一趟几分钟的活儿在界面上
 	 * 跟卡死长得一模一样。报的是「已经吐了多少字符」这种粗粒度进度 —— 别把工具的
@@ -295,15 +296,16 @@ export interface AiTool {
 	) => Promise<Result<AiToolResult>>;
 }
 
+/** 标签用到的那几格 —— 从 {@link AiTool} 里挑出来读的(小条只认这几样,不碰 `execute` 等)。 */
+export type AiToolLabelFields = Pick<AiTool, "label" | "labelArg">;
+
 /**
  * 核心自带工具(含联网搜索、看图)的标签;表外的名字查不到。
  *
  * 小条上补哪一格入参 = 文案表里单独写的格(有的话)**接上**这把工具参数定义里 `required` 的格
- * (从工具自己的定义现取,不另抄一遍参数名)。只用在核心这一侧;注入的工具只认自己写的 `labelArgs`。
+ * (从工具自己的定义现取,不另抄一遍参数名)。只用在核心这一侧;注入的工具只认自己写的 `labelArg`。
  */
-export function coreToolLabelOf(
-	name: string,
-): Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined {
+export function coreToolLabelOf(name: string): AiToolLabelFields | undefined {
 	if (!Object.hasOwn(CORE_TOOL_LABEL_TEXTS, name)) return undefined;
 	const texts = CORE_TOOL_LABEL_TEXTS[name];
 	if (!texts) return undefined;
@@ -312,8 +314,8 @@ export function coreToolLabelOf(
 	);
 	const required = (definition?.function.parameters as { required?: string[] } | undefined)
 		?.required;
-	const labelArgs = [...new Set([...(texts.labelArgs ?? []), ...(required ?? [])])];
-	return { ...texts, ...(labelArgs.length > 0 ? { labelArgs } : {}) };
+	const keys = [...new Set([...(texts.labelArg?.keys ?? []), ...(required ?? [])])];
+	return keys.length > 0 ? { ...texts, labelArg: { ...texts.labelArg, keys } } : texts;
 }
 
 /**
@@ -324,13 +326,13 @@ export function coreToolLabelOf(
  * `label`。空白规整:`trim`,连续空白压成一个空格(做皮肤的 brief 是几百字带换行的一段)。
  */
 export function describeToolCall(
-	fields: Pick<AiTool, "label" | "labelArgs" | "formatLabelArg"> | undefined,
+	fields: AiToolLabelFields | undefined,
 	args: Record<string, string>,
 ): { label?: string; argText?: string } {
 	if (!fields) return {};
-	const raw = fields.labelArgs?.map((k) => args[k]?.trim()).find(Boolean);
+	const raw = fields.labelArg?.keys.map((k) => args[k]?.trim()).find(Boolean);
 	if (!raw) return { label: fields.label };
-	const shown = fields.formatLabelArg ? fields.formatLabelArg(raw) : raw;
+	const shown = fields.labelArg?.format ? fields.labelArg.format(raw) : raw;
 	return { label: fields.label, argText: shown.replace(/\s+/g, " ") };
 }
 
