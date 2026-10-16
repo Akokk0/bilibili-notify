@@ -1,4 +1,4 @@
-import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY, fail, ok, type Result } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
 import { CORE_TOOL_LABEL_TEXTS } from "./tool-label-texts";
 import { WEB_SEARCH_TOOL } from "./web-search";
@@ -31,82 +31,59 @@ function stamp(tsSeconds: unknown, now = Date.now()): string {
 }
 
 /**
- * 女仆查订阅用的订阅条目最小视图,按订阅自己的 `id` 为键(ADR-0019 决策 64)。
- * 仅包含工具实际访问的字段。
+ * 女仆查订阅用的订阅条目最小视图(ADR-0030 决策 1)。仅包含工具实际访问的字段。
+ * 每条订阅是同一种形状,B 站和别的来源不分叉。
  *
+ * - `creator`:「来源键:外部 id」,中立工具的参数就认这个值(见 `creator.ts`)。
+ * - `name`:订阅资料里的名字,没有就是外部 id。
+ * - `platform`:平台名(宿主问来源登记表取的叫法)。
  * - `post` / `live`:该特性下有没有推送目标(`live` = 直播类推送:开播或周期「正在直播」任一有目标)。
- * - 两种条目:B 站订阅带 `uid`;别的平台的订阅(拓展订阅)没有 `uid`,带平台名与外部 id ——
- *   外部 id 是那个平台自己的 id,**不是** B 站 UID,拿去按 UID 查会查到另一个人或查不到。
+ * - `liveNow`:BN 手里这条订阅此刻在不在播 —— `get_live_status` 照它答,不去问平台。
+ *   没给 = 没接上,按「查不到」答。
  */
-interface SubItemCommon {
-	uname: string;
+export interface AiSubscriptionView {
+	creator: string;
+	name: string;
+	platform: string;
 	post?: boolean;
 	live?: boolean;
-}
-
-export interface BiliSubItemView extends SubItemCommon {
-	uid: string;
-	platform?: undefined;
-	externalId?: undefined;
-}
-
-export interface ExtensionSubItemView extends SubItemCommon {
-	uid?: undefined;
-	/** 平台名(那个订阅源清单里的叫法;拓展卸载了拿不到时是拓展 id)。 */
-	platform: string;
-	externalId: string;
-	/**
-	 * BN 手里这条订阅此刻在不在播(拓展报的开播 / 直播状态,ADR-0019 决策 57 / 64)—— `get_live_status`
-	 * 照它答,不去问 B 站(外部 id 不是 B 站 UID)。没给 = 没接上,按「查不到」答。
-	 */
-	liveNow?: ExtensionLiveNow;
+	liveNow?: LiveNowView;
 }
 
 /**
- * 拓展订阅此刻的在播:
+ * 订阅此刻的在播(拓展报的开播 / 直播状态,ADR-0019 决策 57 / 64;B 站的取自直播引擎在播的房间):
  * - `unknown`:它的拓展没在跑 —— BN 手里没有它的在播状态(拓展停了,那份状态就作废了,决策 61);
- * - `idle`:拓展在跑,没报它在播;
+ * - `idle`:没报它在播;
  * - `live`:在播,报了哪几格就有哪几格(开播时刻毫秒、本场累计观看)。
  */
-export type ExtensionLiveNow =
+export type LiveNowView =
 	| { state: "unknown" }
 	| { state: "idle" }
 	| { state: "live"; title?: string; startedAt?: number; totalViewers?: number };
 
-export type SubItemView = BiliSubItemView | ExtensionSubItemView;
-
-export type Subscriptions = Record<string, SubItemView>;
-
-function isExtensionItem(s: SubItemView): s is ExtensionSubItemView {
-	return s.externalId !== undefined;
-}
-
 /**
- * 按 UID 查的工具收到的是不是某条别的平台订阅的外部 id —— 是就交回一句说明,不去 B 站查:外部 id
- * 恰好是一串数字时,B 站会查出另一个人来,女仆会把他当成这位主播讲。它同时就是某位 B 站订阅的
- * UID 时照查(两边撞号,B 站那位才是按 UID 能问到的)。
+ * 核心工具读数据的口子 —— 宿主造、注入给生成器,每次工具调用现取(订阅是运行期随时增删的)。
+ *
+ * 这是一个读口:`packages/ai` 不认订阅仓、来源登记表,也不认任何平台。
  */
-function notBiliUidNote(
-	uid: string | undefined,
-	getSubs: () => Subscriptions | null,
-): string | null {
-	const items = Object.values(getSubs() ?? {});
-	if (uid === undefined || items.some((s) => !isExtensionItem(s) && s.uid === uid)) return null;
-	const ext = items.find(
-		(s): s is ExtensionSubItemView => isExtensionItem(s) && s.externalId === uid,
-	);
-	return ext
-		? `「${uid}」是${ext.platform}那边「${ext.uname}」的外部 id，不是 B 站 UID —— 这把工具只查得了 B 站用户`
-		: null;
+export interface CreatorReader {
+	/** 当前启用的订阅(停用的不列:关掉的人不该再出现在女仆的回答里)。 */
+	subscriptions(): AiSubscriptionView[];
+	/**
+	 * 这个外部 id 合不合那个来源在描述符里声明的格式。没声明、或认不出这个来源 = 合(核心不替来源做主)。
+	 * 按 UID 查的过渡工具靠它挡掉别家的外部 id —— 它恰好是一串数字时,B 站会查出另一个人来。
+	 */
+	externalIdFits(sourceKey: string, externalId: string): boolean;
 }
 
-/** 拓展订阅那一行:从 BN 手里的在播状态答(不问 B 站)。 */
-function extensionLiveLine(s: ExtensionSubItemView): string {
+/** 订阅那一行:从 BN 手里的在播状态答(不问平台)。 */
+function liveLine(s: AiSubscriptionView): string {
 	const now = s.liveNow;
-	if (!now || now.state === "unknown") {
-		return `${s.uname}：查不到（${s.platform}的拓展没在跑，BN 手里没有它的在播状态）`;
+	if (!now) return `${s.name}：查不到（BN 手里没有它的在播状态）`;
+	if (now.state === "unknown") {
+		return `${s.name}：查不到（${s.platform}的拓展没在跑，BN 手里没有它的在播状态）`;
 	}
-	if (now.state === "idle") return `${s.uname}：未开播`;
+	if (now.state === "idle") return `${s.name}：未开播`;
 	const details = [
 		now.startedAt === undefined
 			? undefined
@@ -114,14 +91,26 @@ function extensionLiveLine(s: ExtensionSubItemView): string {
 		now.totalViewers === undefined ? undefined : `累计观看 ${now.totalViewers}`,
 	].filter((part): part is string => part !== undefined);
 	const title = now.title ? `「${clip(now.title, 80)}」` : "";
-	return `${s.uname}：直播中${title}${details.length > 0 ? `，${details.join("，")}` : ""}`;
+	return `${s.name}：直播中${title}${details.length > 0 ? `，${details.join("，")}` : ""}`;
 }
 
-/** 按 UID 查的四把工具共用的参数。拓展订阅进来以后,外部 id 是最容易被错塞进来的那个。 */
+/**
+ * 按 UID 查的工具(过渡)收到的 uid 合不合 B 站声明的外部 id 格式 —— 不合就交回一句说明,不去 B 站查:
+ * 别家的外部 id 恰好是一串数字时,B 站会查出另一个人来,女仆会把他当成这位主播讲。格式由 B 站的
+ * 来源描述符声明、经读口核,核心不写死「纯数字」;没接读口(核不了)照查。
+ */
+function uidRefusal(uid: string | undefined, reader: CreatorReader | null): string | null {
+	const value = uid ?? "";
+	return !reader || reader.externalIdFits(BILIBILI_SOURCE_KEY, value)
+		? null
+		: `「${value}」不是 B 站 UID 的格式 —— 这把工具只查 B 站用户，uid 只传订阅列表里 B 站 creator 冒号后面的那一段`;
+}
+
+/** 按 UID 查的四把工具共用的参数。B 站的 creator 冒号后面就是 UID,别家的外部 id 是最容易被错塞进来的那个。 */
 const BILI_UID_PARAM = {
 	type: "string",
 	description:
-		"B 站 UID（纯数字），从订阅列表或搜索结果里拿。其他平台订阅的外部 id 不是 B 站 UID，传进来只会拿回一句说明",
+		"B 站 UID（纯数字）。B 站的 creator 冒号后面就是 UID，只传这一段；搜索结果里的 UID 同理。其他平台订阅的外部 id 不是 B 站 UID，传进来会被拒",
 };
 
 export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
@@ -130,7 +119,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "list_subscriptions",
 			description:
-				"查询当前订阅的所有 UP 主，返回名称、UID（其他平台的订阅给平台名与外部 id，不是 B 站 UID）及订阅类型（动态/直播）",
+				"查询当前订阅的所有 UP 主，返回名称、平台、creator（来源键:外部 id，B 站的 creator 冒号后面就是 UID）及订阅类型（动态/直播）",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -168,7 +157,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "get_live_status",
 			description:
-				"查订阅里开着直播推送的那些 UP 主此刻的直播状态（未开播 / 直播中 / 轮播中）与直播标题。只覆盖这些订阅：没开直播推送的订阅不在结果里，不能据此说他没在播；订阅以外的人也查不了。其他平台的订阅按本服务收到的在播状态回答，该平台的拓展没在跑时答「查不到」。",
+				"查订阅里开着直播推送的那些 UP 主此刻的直播状态（未开播 / 直播中）与直播标题、开播时刻。只覆盖这些订阅：没开直播推送的订阅不在结果里，不能据此说他没在播；订阅以外的人也查不了。一律按本服务手里的在播状态回答，不现去平台上查；其他平台的订阅，该平台的拓展没在跑时答「查不到」。",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -376,7 +365,7 @@ export interface VisionToolContext {
 }
 
 /**
- * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这七个方法,形状取自服务端的 B 站
+ * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这六个方法,形状取自服务端的 B 站
  * 客户端,服务端把真客户端递进来、结构上直接满足。
  * 返回值一律 `unknown`:B 站响应没有声明类型,调用处自己断言。
  *
@@ -386,7 +375,6 @@ export interface VisionToolContext {
 export interface BiliReader {
 	fetchUserSpaceDynamic(uid: string): Promise<unknown>;
 	fetchUserCard(uid: string, withPhoto?: boolean): Promise<unknown>;
-	fetchLiveRoomInfoByUids(uids: string[]): Promise<unknown>;
 	fetchUserUpstat(uid: string): Promise<unknown>;
 	fetchUserNavnum(uid: string): Promise<unknown>;
 	fetchUserVideos(uid: string, ps?: number): Promise<unknown>;
@@ -418,7 +406,7 @@ export async function executeTool(
 	name: string,
 	args: Record<string, string>,
 	api: BiliReader,
-	getSubs: () => Subscriptions | null,
+	reader: CreatorReader | null,
 	visionCtx?: VisionToolContext,
 ): Promise<Result<{ text: string }>> {
 	switch (name) {
@@ -449,20 +437,18 @@ export async function executeTool(
 			}
 		}
 		case "list_subscriptions": {
-			const subs = getSubs();
-			if (!subs || Object.keys(subs).length === 0) return ok({ text: "当前没有订阅" });
-			const text = Object.values(subs)
-				.map((s) => {
-					const who = isExtensionItem(s)
-						? `${s.platform} · 外部 id ${s.externalId}，不是 B 站 UID，按 UID 查的工具查不了`
-						: `UID: ${s.uid}`;
-					return `${s.uname}（${who}）动态:${s.post ? "✓" : "✗"} 直播:${s.live ? "✓" : "✗"}`;
-				})
+			const subscriptions = reader?.subscriptions() ?? [];
+			if (subscriptions.length === 0) return ok({ text: "当前没有订阅" });
+			const text = subscriptions
+				.map(
+					(s) =>
+						`${s.name}（${s.platform} · creator: ${s.creator}）动态:${s.post ? "✓" : "✗"} 直播:${s.live ? "✓" : "✗"}`,
+				)
 				.join("\n");
 			return ok({ text });
 		}
 		case "get_user_dynamics": {
-			const note = notBiliUidNote(args.uid, getSubs);
+			const note = uidRefusal(args.uid, reader);
 			if (note) return fail("invalid", note);
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
 			const res = (await api.fetchUserSpaceDynamic(args.uid)) as any;
@@ -481,7 +467,7 @@ export async function executeTool(
 			return ok({ text });
 		}
 		case "get_user_info": {
-			const note = notBiliUidNote(args.uid, getSubs);
+			const note = uidRefusal(args.uid, reader);
 			if (note) return fail("invalid", note);
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
 			const res = (await api.fetchUserCard(args.uid)) as any;
@@ -494,36 +480,14 @@ export async function executeTool(
 			});
 		}
 		case "get_live_status": {
-			const subs = getSubs();
-			if (!subs || Object.keys(subs).length === 0) return ok({ text: "当前没有订阅" });
-			const liveItems = Object.values(subs).filter((s) => s.live);
+			const subscriptions = reader?.subscriptions() ?? [];
+			if (subscriptions.length === 0) return ok({ text: "当前没有订阅" });
+			const liveItems = subscriptions.filter((s) => s.live);
 			if (!liveItems.length) return ok({ text: "当前订阅中没有开启直播监控的 UP 主" });
-			// 只拿 B 站订阅的 UID 去问 B 站 —— 别的平台的外部 id 问 B 站只会问到另一个人。
-			const uids = liveItems.flatMap((s) => (isExtensionItem(s) ? [] : [s.uid]));
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			let rooms: Record<string, any> = {};
-			if (uids.length > 0) {
-				// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-				const res = (await api.fetchLiveRoomInfoByUids(uids)) as any;
-				if (res.code !== 0)
-					return fail("unavailable", `获取直播状态失败: ${res.message}`, {
-						upstreamCode: res.code,
-					});
-				rooms = res.data ?? {};
-			}
-			const lines = liveItems.map((s) => {
-				if (isExtensionItem(s)) return extensionLiveLine(s);
-				const room = rooms[s.uid];
-				// B 站 live_status 仅 0/1/2;此前数组多一个虚构 `3=下播`,
-				// 任何越界(含 undefined)统一落 "未知"。
-				const statusText = ["未开播", "直播中", "轮播中"][room?.live_status] ?? "未知";
-				const title = room?.title ? `「${room.title}」` : "";
-				return `${s.uname}：${statusText}${title}`;
-			});
-			return ok({ text: lines.join("\n") });
+			return ok({ text: liveItems.map(liveLine).join("\n") });
 		}
 		case "get_user_stats": {
-			const note = notBiliUidNote(args.uid, getSubs);
+			const note = uidRefusal(args.uid, reader);
 			if (note) return fail("invalid", note);
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API responses have no declared types
 			const [upstat, navnum]: [any, any] = await Promise.all([
@@ -549,7 +513,7 @@ export async function executeTool(
 			});
 		}
 		case "get_user_videos": {
-			const note = notBiliUidNote(args.uid, getSubs);
+			const note = uidRefusal(args.uid, reader);
 			if (note) return fail("invalid", note);
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
 			const res = (await api.fetchUserVideos(args.uid)) as any;

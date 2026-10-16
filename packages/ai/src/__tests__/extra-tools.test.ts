@@ -238,7 +238,10 @@ describe("chatStatelessStream × 注入工具", () => {
 			.mockResolvedValueOnce(streamOf([textChunk("查完了")]));
 		const tool = makeTool();
 		const gen = makeGen();
-		gen.setSubscriptionsSource(() => ({ "1": { uid: "1", uname: "咩栗", post: true } }));
+		gen.setCreatorReader({
+			subscriptions: () => [{ creator: "bilibili:1", name: "咩栗", platform: "B 站", post: true }],
+			externalIdFits: () => true,
+		});
 		await gen.chatStatelessStream(HIST, { onDelta: () => {}, extraTools: [tool] });
 
 		expect(tool.execute).not.toHaveBeenCalled();

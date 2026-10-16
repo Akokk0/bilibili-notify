@@ -125,7 +125,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P23)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07 加 N18,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P23、P25)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -155,6 +155,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P21", title: "status 的「登录」行、login [来源]", checked: true },
 	{ id: "P22", title: "链接解析器的登记、认领与来源停下时自动撤", checked: true },
 	{ id: "P23", title: "外部 id 的格式", checked: true },
+	{ id: "P25", title: "女仆订阅视图里的平台名与 creator", checked: true },
 	{
 		id: "N01",
 		title: "searchCreators、经接口新建订阅",
@@ -262,14 +263,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
 	},
 	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;N07(LinkResolver)在 3b-28 落成了,转进 P22;
-	// 编号不回填,N18 照旧。
-	{
-		id: "N18",
-		title: "女仆订阅视图里的平台名",
-		checked: false,
-		waitsFor: "3b AI 工具",
-		reason: "B 站给 uid、别的来源的平台名问拓展装载器而不问登记表",
-	},
+	// 编号不回填;N18(女仆订阅视图里的平台名)在 3b-33 落成了,转进对拍的 P25(P24 留给 3b-38)。
 ];
 
 /**
@@ -398,6 +392,12 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	let aiBaseUrl: string;
 	/** 假模型服务收到的每一问(用户那句)。 */
 	const aiAsked: string[] = [];
+	/**
+	 * 要假模型先调一把工具(只在带着工具表、末条是用户话的那一问上调,调一次就清);
+	 * 调完工具之后喂回来的 `tool` 消息正文记进 {@link aiToolSeen}。
+	 */
+	let aiToolScript: { name: string; args: object } | null = null;
+	const aiToolSeen: string[] = [];
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
 	const json = (body: unknown, method = "POST"): RequestInit => ({
@@ -484,9 +484,52 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				body += chunk;
 			});
 			req.on("end", () => {
-				const messages = (JSON.parse(body || "{}") as { messages?: { content?: unknown }[] })
-					.messages;
+				const parsed = JSON.parse(body || "{}") as {
+					messages?: { role?: string; content?: unknown }[];
+					tools?: unknown[];
+					stream?: boolean;
+				};
+				const messages = parsed.messages;
 				aiAsked.push(JSON.stringify(messages?.at(-1)?.content ?? ""));
+				const last = messages?.at(-1);
+				const callsTool = aiToolScript !== null && last?.role === "user" && !!parsed.tools?.length;
+				if (last?.role === "tool") aiToolSeen.push(String(last.content));
+				// 聊天口先发流式一问:流式要回 SSE,不然 SDK 读不出东西。
+				if (parsed.stream) {
+					const chunk = (delta: object, finish: string | null) =>
+						`data: ${JSON.stringify({
+							id: "chatcmpl-fake",
+							object: "chat.completion.chunk",
+							created: 0,
+							model: "fake-model",
+							choices: [{ index: 0, delta, finish_reason: finish }],
+						})}\n\n`;
+					const script = callsTool ? aiToolScript : null;
+					if (script) aiToolScript = null;
+					const frames = script
+						? [
+								chunk(
+									{
+										role: "assistant",
+										tool_calls: [
+											{
+												index: 0,
+												id: "call_1",
+												type: "function",
+												function: { name: script.name, arguments: JSON.stringify(script.args) },
+											},
+										],
+									},
+									null,
+								),
+								chunk({}, "tool_calls"),
+							]
+						: [chunk({ role: "assistant", content: AI_REPLY }, null), chunk({}, "stop")];
+					res
+						.writeHead(200, { "content-type": "text/event-stream" })
+						.end(`${frames.join("")}data: [DONE]\n\n`);
+					return;
+				}
 				res.writeHead(200, { "content-type": "application/json" }).end(
 					JSON.stringify({
 						id: "chatcmpl-fake",
@@ -1367,6 +1410,33 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P20");
 	});
 
+	// 验红:`engines.ts` 里 attachReadOnlyTools 的 `platformLabel` 改回只问拓展装载器(假源不是拓展,装载器回 undefined),
+	// 视图里的平台名退成键名 `acme.inprocess`,这条红。
+	it("P25 女仆订阅视图:订阅带着 creator(来源键:外部 id),平台名取登记表里描述符的叫法", async () => {
+		await patchSettings({ ai: { enabled: true } });
+		try {
+			const created = await okRes(await api("/api/ai/conversations", json({})));
+			const { conversation } = (await created.json()) as { conversation: { id: string } };
+			aiToolSeen.length = 0;
+			aiToolScript = { name: "list_subscriptions", args: {} };
+			// 回的是 SSE,读到底就是整轮(调工具 → 喂回 → 正文)走完了。
+			await (
+				await okRes(
+					await api(`/api/ai/conversations/${conversation.id}/chat`, json({ message: "我订了谁" })),
+				)
+			).text();
+			const seen = aiToolSeen.join("\n");
+			expect(seen).toContain(IN_PROCESS_LABEL);
+			expect(seen).toContain(`${IN_PROCESS_KEY}:${EXT.alice}`);
+			// 没有按 B 站分叉的写法:不再有「UID:」。
+			expect(seen).not.toContain("UID:");
+		} finally {
+			aiToolScript = null;
+			await patchSettings({ ai: { enabled: false } });
+		}
+		drove("P25");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -1681,19 +1751,21 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 23 行、不开 16 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 24 行、不开 15 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(39);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
-		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 23 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
-		);
-		// N17 转进了对拍(P21)、N07 转进了对拍(P22),编号不回填。
+		// P24 留给 3b-38,这里先空着。
+		expect(checked.map((row) => row.id)).toEqual([
+			...Array.from({ length: 23 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			"P25",
+		]);
+		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
-			[...Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => n !== 7), 18].map(
-				(n) => `N${String(n).padStart(2, "0")}`,
-			),
+			Array.from({ length: 16 }, (_, i) => i + 1)
+				.filter((n) => n !== 7)
+				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {
 			if (row.checked) continue;

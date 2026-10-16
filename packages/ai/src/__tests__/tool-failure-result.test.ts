@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
-import { type BiliReader, executeTool, type Subscriptions } from "../tools";
+import { type BiliReader, type CreatorReader, executeTool } from "../tools";
 import { aiConfig, fakeServiceCtx, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
@@ -29,8 +29,13 @@ beforeEach(() => {
 	oai.create.mockReset();
 });
 
-const SUBS: Subscriptions = {
-	"1": { uid: "111", uname: "小绫", post: true, live: true },
+/** 读口替身:B 站只收纯数字的外部 id(照描述符声明的格式)。 */
+const SUBS: CreatorReader = {
+	subscriptions: () => [
+		{ creator: "bilibili:111", name: "小绫", platform: "B 站", post: true, live: true },
+	],
+	externalIdFits: (sourceKey, externalId) =>
+		sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
 };
 
 /** 只给被测那把工具要用的方法;别的方法没人该碰,碰了就炸。 */
@@ -42,7 +47,6 @@ function apiOf(over: Partial<Record<keyof BiliReader, unknown>>): BiliReader {
 	return {
 		fetchUserSpaceDynamic: stub("fetchUserSpaceDynamic"),
 		fetchUserCard: stub("fetchUserCard"),
-		fetchLiveRoomInfoByUids: stub("fetchLiveRoomInfoByUids"),
 		fetchUserUpstat: stub("fetchUserUpstat"),
 		fetchUserNavnum: stub("fetchUserNavnum"),
 		fetchUserVideos: stub("fetchUserVideos"),
@@ -51,8 +55,8 @@ function apiOf(over: Partial<Record<keyof BiliReader, unknown>>): BiliReader {
 	} as unknown as BiliReader;
 }
 
-const run = (name: string, args: Record<string, string>, api: BiliReader, subs = SUBS) =>
-	executeTool(name, args, api, () => subs);
+const run = (name: string, args: Record<string, string>, api: BiliReader, reader = SUBS) =>
+	executeTool(name, args, api, reader);
 
 describe("executeTool —— 接口回了错 → 失败(码 unavailable,B 站的码放 upstreamCode)", () => {
 	it("get_user_dynamics", async () => {
@@ -80,20 +84,6 @@ describe("executeTool —— 接口回了错 → 失败(码 unavailable,B 站的
 			code: "unavailable",
 			message: "获取用户信息失败: 请求被拦截",
 			upstreamCode: -412,
-		});
-	});
-
-	it("get_live_status", async () => {
-		const out = await run(
-			"get_live_status",
-			{},
-			apiOf({ fetchLiveRoomInfoByUids: { code: -799, message: "太快了" } }),
-		);
-		expect(out).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "获取直播状态失败: 太快了",
-			upstreamCode: -799,
 		});
 	});
 
@@ -175,17 +165,14 @@ describe("executeTool —— 不是接口的错,但调用本身就不成立 → 
 		expect(out).toEqual({ ok: false, code: "not_found", message: "未找到用户" });
 	});
 
-	it("按 UID 查的工具收到别的平台的外部 id → invalid,不去问 B 站", async () => {
-		const subs: Subscriptions = {
-			x: { platform: "对拍源", externalId: "8001", uname: "对拍君", post: true, live: false },
-		};
+	it("按 UID 查的工具收到的 uid 不合 B 站声明的外部 id 格式 → invalid,不去问 B 站", async () => {
 		const api = apiOf({});
-		const out = await run("get_user_info", { uid: "8001" }, api, subs);
+		const out = await run("get_user_info", { uid: "sec-uid-1" }, api);
 		expect(out).toEqual({
 			ok: false,
 			code: "invalid",
 			message:
-				"「8001」是对拍源那边「对拍君」的外部 id，不是 B 站 UID —— 这把工具只查得了 B 站用户",
+				"「sec-uid-1」不是 B 站 UID 的格式 —— 这把工具只查 B 站用户，uid 只传订阅列表里 B 站 creator 冒号后面的那一段",
 		});
 		expect(api.fetchUserCard).not.toHaveBeenCalled();
 	});
@@ -198,7 +185,7 @@ describe("executeTool —— 不是接口的错,但调用本身就不成立 → 
 			message: "看图功能当前不可用（没有配置视觉模型，或本条消息没有图片）",
 		});
 		const ctx = { images: ["data:image/png;base64,AA"], describe: vi.fn(async () => "一只猫") };
-		expect(await executeTool("describe_image", { index: "2" }, api, () => null, ctx)).toEqual({
+		expect(await executeTool("describe_image", { index: "2" }, api, null, ctx)).toEqual({
 			ok: false,
 			code: "invalid",
 			message: "图片序号不对：本条消息只有 1 张图，请给 1 到 1 之间的整数序号（不是图片地址）",
@@ -209,7 +196,7 @@ describe("executeTool —— 不是接口的错,但调用本身就不成立 → 
 				throw new Error("副模型挂了");
 			}),
 		};
-		expect(await executeTool("describe_image", { index: "1" }, api, () => null, broken)).toEqual({
+		expect(await executeTool("describe_image", { index: "1" }, api, null, broken)).toEqual({
 			ok: false,
 			code: "unavailable",
 			message: "看图失败: 副模型挂了",
@@ -250,9 +237,9 @@ describe("executeTool —— 成功与「查了、没有」仍是成功,给模�
 	it("list_subscriptions:有订阅、没订阅都是成功", async () => {
 		expect(await run("list_subscriptions", {}, apiOf({}))).toEqual({
 			ok: true,
-			text: "小绫（UID: 111）动态:✓ 直播:✓",
+			text: "小绫（B 站 · creator: bilibili:111）动态:✓ 直播:✓",
 		});
-		expect(await executeTool("list_subscriptions", {}, apiOf({}), () => null)).toEqual({
+		expect(await executeTool("list_subscriptions", {}, apiOf({}), null)).toEqual({
 			ok: true,
 			text: "当前没有订阅",
 		});

@@ -17,7 +17,7 @@ import { DESCRIBE_IMAGE_TOOL, executeTool, TOOL_DEFINITIONS } from "../tools";
 import { sayOf } from "./harness";
 
 const api = {} as BiliReader;
-const noSubs = () => null;
+const noSubs = null;
 
 function ctx(images: string[] = ["http://img/a.jpg", "http://img/b.jpg"]) {
 	const describe = vi.fn(async (url: string) => `这是 ${url} 的内容`);

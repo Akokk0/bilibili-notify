@@ -56,7 +56,10 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
-	"apps/server/src/ai/read-only-tools.ts": 2,
+	// 3b-33(主人 10-16 点头,2 → 15):B 站直播并进来源之前,B 站订阅的在播只能读直播引擎的在播房间
+	// (`BiliLiveRoomsReader` / `biliLiveRooms` / `biliLiveNow` 一族),女仆的订阅视图按来源键分这一支;
+	// 3b-22 并成一张在播表后随它一起消失。
+	"apps/server/src/ai/read-only-tools.ts": 15,
 	// 3a-28 建 `compose.ts`(8 → 5):3a-32 为开发场景多出的 3 处(引入工厂、用来源键认领、调工厂)与按来源筛订阅那 1 处搬走;
 	// 多 1 处是 `status` 指令读「上次抓取」。3a-29 B 站半:统计的登录读口改读
 	// 中立的 `auth.state()`(5 → 3),剩下的是来源键的两处与 `builtins.bilibili`。
@@ -78,7 +81,8 @@ export const RATCHET = {
 	// (名字如实带 `bili`,不起中立名字躲)。关注同步搬进 B 站来源那一天,这几处一起消失。
 	// 3a-30(主人 10-11 点头,18 → 20):同 `index.ts` —— 直播引擎要的 B 站分层上报器经入口递进 `createEngines`,
 	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 17(上面直播引擎的子上下文那一处同时消失,再减一)。
-	"apps/server/src/runtime/engines.ts": 19,
+	// 3b-33(主人 10-16 点头,19 → 20):接线处给女仆的读口递直播引擎的在播房间(`biliLiveRooms:`),3b-22 后随它消失。
+	"apps/server/src/runtime/engines.ts": 20,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
@@ -112,7 +116,7 @@ export const RATCHET = {
 	"apps/web/src/types/domain.ts": 2,
 	"apps/web/src/utils/up-display.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 3,
-	"packages/ai/src/tools.ts": 14,
+	"packages/ai/src/tools.ts": 9,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
 	"packages/internal/src/bilibili-guard.ts": 1,
 	"packages/internal/src/constants.ts": 4,

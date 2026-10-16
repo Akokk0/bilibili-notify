@@ -4,13 +4,13 @@
  * 「只读」如今是**结构性**的 —— 工具表里根本没有会改订阅的工具了(见
  * `packages/ai/src/__tests__/read-only-tools-gate.test.ts` 那道闸)。所以这里
  * 不再需要盯着「有没有多传一个 subMgmt」,只钉两件事:接线接上了,而且
- * `getSubs` 是每次现取的。
+ * 订阅视图是每次现取的。
  *
  * 顺带钉住投影本身:AI 看到的订阅列表得是**人看得懂的名字**和**真实的**
  * 动态/直播开关,不然它答出来的每句话都在描述另一个后台。
  *
- * 视图按订阅自己的 `id` 为键(ADR-0019 决策 64):拓展订阅也进来,带平台名与外部 id、没有 uid;
- * B 站那几格的含义不变。
+ * 视图每条订阅是同一种形状 `{ creator, name, platform, post, live, liveNow? }`(ADR-0030 决策 1):
+ * `creator` 是「来源键:外部 id」,平台名由宿主递进来的函数取(它问来源登记表),B 站和别的来源不分叉。
  */
 
 import {
@@ -20,7 +20,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { attachReadOnlyTools, buildAiSubsView } from "../read-only-tools.js";
+import { aiSubscriptionViews, attachReadOnlyTools } from "../read-only-tools.js";
 
 /** 全特性键都填空数组的 routing,再叠上本例关心的那几条。 */
 function routing(over: Partial<SubscriptionRouting> = {}): SubscriptionRouting {
@@ -31,7 +31,9 @@ function routing(over: Partial<SubscriptionRouting> = {}): SubscriptionRouting {
 }
 
 /** B 站来源的订阅:夹具里写 `uid` 图省事,落成订阅的 `identity`。 */
-function makeSub(over: Partial<Omit<Subscription, "identity">> & { uid: string }): Subscription {
+function makeSubscription(
+	over: Partial<Omit<Subscription, "identity">> & { uid: string },
+): Subscription {
 	const { uid, ...rest } = over;
 	return {
 		id: `id-${uid}`,
@@ -46,52 +48,62 @@ function makeSub(over: Partial<Omit<Subscription, "identity">> & { uid: string }
 	} as Subscription;
 }
 
+/** 来源登记表里各键的描述符(给外部 id 的格式核)。 */
+type Descriptors = Record<string, { label: string; externalIdRegex?: string }>;
+
 function makeStores(
-	subs: Subscription[],
+	subscriptions: Subscription[],
 	names: Record<string, string> = {},
-	platformLabels: Record<string, string> = { douyin: "抖音" },
+	platformLabels: Record<string, string> = { bilibili: "B 站", douyin: "抖音" },
+	descriptors: Descriptors = {},
 ) {
 	return {
-		subscriptionStore: { list: () => subs },
+		subscriptionStore: { list: () => subscriptions },
 		subRuntimeStore: {
 			get: (id: string) => (names[id] ? { cachedProfile: { name: names[id] } } : undefined),
 		},
-		platforms: { label: (extensionId: string) => platformLabels[extensionId] },
+		platformLabel: (sourceKey: string) => platformLabels[sourceKey] ?? sourceKey,
+		sources: {
+			get: (sourceKey: string) =>
+				descriptors[sourceKey] === undefined ? undefined : { descriptor: descriptors[sourceKey] },
+		},
 	};
 }
 
 function view(s: ReturnType<typeof makeStores>) {
-	return buildAiSubsView(s.subscriptionStore, s.subRuntimeStore, s.platforms);
+	return aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel);
 }
 
 const EXT_ID = "e0000000-0000-4000-8000-000000000001";
 
 describe("attachReadOnlyTools — 查询接线", () => {
 	it("接上了 —— 不接的话女仆会一口咬定「当前没有订阅」", () => {
-		const setSubscriptionsSource = vi.fn();
-		attachReadOnlyTools({ setSubscriptionsSource }, makeStores([]));
-		expect(setSubscriptionsSource).toHaveBeenCalledTimes(1);
-		expect(typeof setSubscriptionsSource.mock.calls[0]?.[0]).toBe("function");
+		const setCreatorReader = vi.fn();
+		attachReadOnlyTools({ setCreatorReader }, makeStores([]));
+		expect(setCreatorReader).toHaveBeenCalledTimes(1);
+		expect(typeof setCreatorReader.mock.calls[0]?.[0].subscriptions).toBe("function");
 	});
 
-	it("getSubs 是每次现取的,不是接线那一刻的快照", () => {
-		const setSubscriptionsSource = vi.fn();
-		const subs: Subscription[] = [];
-		attachReadOnlyTools({ setSubscriptionsSource }, makeStores(subs));
-		const getSubs = setSubscriptionsSource.mock.calls[0]?.[0] as () => unknown;
+	it("订阅视图是每次现取的,不是接线那一刻的快照", () => {
+		const setCreatorReader = vi.fn();
+		const subscriptions: Subscription[] = [];
+		attachReadOnlyTools({ setCreatorReader }, makeStores(subscriptions));
+		const reader = setCreatorReader.mock.calls[0]?.[0] as { subscriptions(): unknown[] };
 
-		expect(getSubs()).toEqual({});
-		subs.push(makeSub({ uid: "1" }));
+		expect(reader.subscriptions()).toEqual([]);
+		subscriptions.push(makeSubscription({ uid: "1" }));
 		// 接线发生在启动时,而订阅是运行期随时增删的。取快照的话,主人加完订阅
 		// 立刻去问女仆,她会一口咬定「当前没有订阅」。
-		expect(Object.keys(getSubs() as object)).toEqual(["id-1"]);
+		expect(reader.subscriptions()).toHaveLength(1);
 	});
 });
 
-describe("buildAiSubsView — 投影", () => {
+describe("aiSubscriptionViews — 投影", () => {
 	it("有 target 才算订了该特性 —— 路由是空的就等于没订", () => {
-		const s = makeStores([makeSub({ uid: "1", routing: routing({ post: ["t1"] }) })]);
-		expect(view(s)["id-1"]).toEqual({ uid: "1", uname: "UID 1", post: true, live: false });
+		const s = makeStores([makeSubscription({ uid: "1", routing: routing({ post: ["t1"] }) })]);
+		expect(view(s)).toEqual([
+			{ creator: "bilibili:1", name: "1", platform: "B 站", post: true, live: false },
+		]);
 	});
 
 	// 「直播 ✓」是直播类推送有没有目标:开播(liveStart)与周期「正在直播」(liveStreaming)任一有就算 ——
@@ -102,55 +114,63 @@ describe("buildAiSubsView — 投影", () => {
 		["两把都配了", { liveStart: ["t1"], liveStreaming: ["t2"] }, true],
 		["都没配(下播不算)", { liveEnd: ["t1"] }, false],
 	])("直播 ✓:%s → %s", (_name, targets, expected) => {
-		const s = makeStores([makeSub({ uid: "1", routing: routing(targets) })]);
-		expect(view(s)["id-1"]?.live).toBe(expected);
+		const s = makeStores([makeSubscription({ uid: "1", routing: routing(targets) })]);
+		expect(view(s)[0]?.live).toBe(expected);
 	});
 
-	it("名字优先用平台资料缓存,没有就回落 UID —— 不让 AI 报一串数字", () => {
-		const s = makeStores([makeSub({ uid: "1" }), makeSub({ uid: "2" })], { "id-1": "晨风UP主" });
-		expect(view(s)["id-1"]?.uname).toBe("晨风UP主");
-		expect(view(s)["id-2"]?.uname).toBe("UID 2");
+	it("名字优先用平台资料缓存,没有就回落外部 id(B 站和别的来源同一条,不再写「UID xxx」)", () => {
+		const s = makeStores(
+			[makeSubscription({ uid: "1" }), makeSubscription({ uid: "2" }), makeExtensionSubscription()],
+			{
+				"id-1": "晨风UP主",
+			},
+		);
+		expect(view(s).map((v) => v.name)).toEqual(["晨风UP主", "2", "sec-uid-1"]);
 	});
 
 	it("停用的订阅不进视图 —— 关掉的 UP 不该出现在女仆的答案里", () => {
-		const s = makeStores([makeSub({ uid: "1", enabled: false }), makeSub({ uid: "2" })]);
-		expect(Object.keys(view(s))).toEqual(["id-2"]);
+		const s = makeStores([
+			makeSubscription({ uid: "1", enabled: false }),
+			makeSubscription({ uid: "2" }),
+		]);
+		expect(view(s).map((v) => v.creator)).toEqual(["bilibili:2"]);
+	});
+
+	it("每条带 creator(来源键:外部 id);平台名问宿主递进来的函数,不按 B 站分叉", () => {
+		const ext = makeExtensionSubscription({ routing: routing({ liveStart: ["t1"] }) });
+		const s = makeStores([makeSubscription({ uid: "1" }), ext], { [EXT_ID]: "抖音甲" });
+		expect(view(s)).toEqual([
+			{ creator: "bilibili:1", name: "1", platform: "B 站", post: false, live: false },
+			{ creator: "douyin:sec-uid-1", name: "抖音甲", platform: "抖音", post: false, live: true },
+		]);
+	});
+
+	it("平台名函数给不出名字就是它自己的退路(键名)—— 视图原样用,不再自己兜", () => {
+		const s = makeStores([makeExtensionSubscription()], {}, {});
+		expect(view(s)[0]).toMatchObject({ platform: "douyin", creator: "douyin:sec-uid-1" });
 	});
 });
 
-describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
-	it("进视图:按订阅 id 为键,带平台名与外部 id,没有 uid", () => {
-		const ext = makeExtensionSubscription({ routing: routing({ liveStart: ["t1"] }) });
-		const s = makeStores([makeSub({ uid: "1" }), ext], { [EXT_ID]: "抖音甲" });
-		const v = view(s);
-		expect(Object.keys(v)).toEqual(["id-1", EXT_ID]);
-		expect(v[EXT_ID]).toEqual({
-			platform: "抖音",
-			externalId: "sec-uid-1",
-			uname: "抖音甲",
-			post: false,
-			live: true,
-		});
+describe("attachReadOnlyTools — 外部 id 的格式", () => {
+	const fits = (descriptors: Descriptors, sourceKey: string, externalId: string) => {
+		const setCreatorReader = vi.fn();
+		attachReadOnlyTools({ setCreatorReader }, makeStores([], {}, {}, descriptors));
+		const reader = setCreatorReader.mock.calls[0]?.[0] as {
+			externalIdFits(sourceKey: string, externalId: string): boolean;
+		};
+		return reader.externalIdFits(sourceKey, externalId);
+	};
+
+	it("来源在描述符里声明了外部 id 的格式 → 整串匹配才算合格", () => {
+		const d = { bilibili: { label: "B 站", externalIdRegex: "[0-9]+" } };
+		expect(fits(d, "bilibili", "123")).toBe(true);
+		expect(fits(d, "bilibili", "abc")).toBe(false);
+		expect(fits(d, "bilibili", "12a")).toBe(false);
 	});
 
-	it("名字:平台资料缓存 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
-		const sub = makeExtensionSubscription();
-		expect(view(makeStores([sub], { [EXT_ID]: "资料里的名" }))[EXT_ID]?.uname).toBe("资料里的名");
-		expect(view(makeStores([sub]))[EXT_ID]?.uname).toBe("sec-uid-1");
-	});
-
-	it("平台名取不到(拓展卸载了 / 装载器还没起来)→ 写拓展 id", () => {
-		const s = makeStores([makeExtensionSubscription()], {}, {});
-		expect(view(s)[EXT_ID]).toMatchObject({ platform: "douyin", externalId: "sec-uid-1" });
-		// 连平台名的来源都没接(老调用点)也一样。
-		expect(buildAiSubsView(s.subscriptionStore, s.subRuntimeStore)[EXT_ID]).toMatchObject({
-			platform: "douyin",
-		});
-	});
-
-	it("停用的拓展订阅照旧不进", () => {
-		const s = makeStores([makeExtensionSubscription({ enabled: false })]);
-		expect(view(s)).toEqual({});
+	it("没声明格式 / 认不出这个来源 → 不替它做主,算合格", () => {
+		expect(fits({ bilibili: { label: "B 站" } }, "bilibili", "abc")).toBe(true);
+		expect(fits({}, "bilibili", "abc")).toBe(true);
 	});
 });
 
@@ -158,17 +178,17 @@ describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
  * 女仆查直播状态对拓展订阅接上在播表(ADR-0019 决策 64 的 09-24 🔗):视图里带上 BN 手里这条订阅此刻在不在播,
  * `get_live_status` 照它答。拓展没在跑时 BN 手里没有它的在播状态(决策 61)—— 说「不知道」,不说「未开播」。
  */
-describe("buildAiSubsView — 拓展订阅的在播", () => {
+describe("aiSubscriptionViews — 拓展订阅的在播", () => {
 	const STARTED = Date.UTC(2026, 8, 24, 4, 0, 0);
 	const withLive = (
 		row: { title?: string; startedAt?: number; totalViewers?: number } | undefined,
 		running: boolean,
 	) => {
 		const s = makeStores([makeExtensionSubscription()]);
-		return buildAiSubsView(s.subscriptionStore, s.subRuntimeStore, s.platforms, {
+		return aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
 			row: (id) => (id === EXT_ID ? row : undefined),
 			running: (extensionId) => running && extensionId === "douyin",
-		})[EXT_ID];
+		})[0];
 	};
 
 	it("在播表里有它 → 在播,带标题、开播时刻、累计观看", () => {
@@ -187,13 +207,54 @@ describe("buildAiSubsView — 拓展订阅的在播", () => {
 		expect(withLive(undefined, false)).toMatchObject({ liveNow: { state: "unknown" } });
 	});
 
-	it("接上了在播来源才有这一格;B 站条目从来没有", () => {
-		const s = makeStores([makeSub({ uid: "1" }), makeExtensionSubscription()]);
-		expect(view(s)[EXT_ID]).not.toHaveProperty("liveNow");
-		const v = buildAiSubsView(s.subscriptionStore, s.subRuntimeStore, s.platforms, {
+	it("接上了在播来源才有这一格;没接 B 站的在播来源时 B 站条目没有", () => {
+		const s = makeStores([makeSubscription({ uid: "1" }), makeExtensionSubscription()]);
+		expect(view(s)[1]).not.toHaveProperty("liveNow");
+		const v = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
 			row: () => undefined,
 			running: () => true,
 		});
-		expect(v["id-1"]).not.toHaveProperty("liveNow");
+		expect(v[0]).not.toHaveProperty("liveNow");
+	});
+});
+
+/**
+ * B 站订阅的在播也从 BN 手里的状态答(`get_live_status` 不再问 B 站):读直播引擎列出来的在播房间
+ * (只列在播的),按订阅 id 对。房间快照里的 `uid` / `roomId` 视图不要。
+ */
+describe("aiSubscriptionViews — B 站订阅的在播", () => {
+	const withRooms = (
+		rooms: Array<{ subscriptionId: string; title?: string; startedAt?: string }>,
+	) => {
+		const s = makeStores([makeSubscription({ uid: "1" }), makeSubscription({ uid: "2" })]);
+		return aiSubscriptionViews(
+			s.subscriptionStore,
+			s.subRuntimeStore,
+			s.platformLabel,
+			undefined,
+			() => rooms.map((r) => ({ ...r, uid: "9", roomId: "88" })),
+		);
+	};
+
+	it("在播房间里有它 → 在播,带标题与开播时刻(毫秒);不在 → 未开播", () => {
+		const v = withRooms([
+			{ subscriptionId: "id-1", title: "晚间杂谈", startedAt: "2026-09-24T04:00:00.000Z" },
+		]);
+		expect(v[0]?.liveNow).toEqual({
+			state: "live",
+			title: "晚间杂谈",
+			startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
+		});
+		expect(v[1]?.liveNow).toEqual({ state: "idle" });
+	});
+
+	it("开播时刻解析不出来 → 不带这一格,不写成 NaN", () => {
+		const v = withRooms([{ subscriptionId: "id-1", startedAt: "不是时间" }]);
+		expect(v[0]?.liveNow).toEqual({ state: "live", title: undefined, startedAt: undefined });
+	});
+
+	it("没接 B 站的在播来源 → 没有这一格(工具按「查不到」答)", () => {
+		const s = makeStores([makeSubscription({ uid: "1" })]);
+		expect(view(s)[0]).not.toHaveProperty("liveNow");
 	});
 });

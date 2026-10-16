@@ -65,7 +65,6 @@ export const ADVICE =
  */
 export const RATCHET = {
 	"apps/contract/src/rest.ts": 2, // `LiveListenerSnapshot.uid` 与拓展行的 `uid?: undefined`
-	"apps/server/src/ai/read-only-tools.ts": 1,
 	"apps/server/src/compose.ts": 4, // 开发场景的订阅视图里把 `externalId` 叫成 `uid`
 	"apps/server/src/routes/cards.ts": 33,
 	"apps/server/src/routes/stats.ts": 3,
@@ -74,7 +73,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/fans-poller.ts": 20,
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"apps/server/src/stats/bili-source.ts": 16,
-	"packages/ai/src/tools.ts": 49,
+	"packages/ai/src/tools.ts": 34,
 	"packages/internal/src/constants.ts": 4, // `upColor` 入参 `UpColorIdentity` 上的 `uid` 键(声明、解构、取用、调用处各一)
 	"packages/internal/src/platform.ts": 3, // 事件载荷里的 `uid` 键(与事件载荷表是同一批东西的两种记法)
 	"packages/internal/src/schema/subscriptions.ts": 1, // 特别关注表的 `uid` 键

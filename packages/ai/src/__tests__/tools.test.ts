@@ -22,7 +22,7 @@ function fakeApi(
 	} as unknown as BiliReader;
 }
 
-const run = (api: BiliReader) => executeTool("get_user_stats", { uid: "123" }, api, () => null);
+const run = (api: BiliReader) => executeTool("get_user_stats", { uid: "123" }, api, null);
 
 describe("executeTool get_user_stats — navnum.code 校验 (P2-G)", () => {
 	it("navnum.code !== 0(接口错误)→ 显式失败,不伪装成数据空", async () => {
@@ -75,7 +75,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 				data: { list: { vlist: [{ title: "新曲", play: 10, created: nowS() - 3 * 86_400 }] } },
 			})),
 		} as unknown as BiliReader;
-		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
+		const out = await executeTool("get_user_videos", { uid: "123" }, api, null);
 		expect(sayOf(out)).toContain("3 天前");
 		expect(sayOf(out)).toContain("新曲");
 	});
@@ -96,7 +96,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 				},
 			})),
 		} as unknown as BiliReader;
-		const out = await executeTool("get_user_dynamics", { uid: "123" }, api, () => null);
+		const out = await executeTool("get_user_dynamics", { uid: "123" }, api, null);
 		expect(sayOf(out)).toContain("5 小时前");
 		expect(sayOf(out)).toContain("今晚八点开播");
 	});
@@ -108,7 +108,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 				data: { list: { vlist: [{ title: "旧作", play: 1 }] } },
 			})),
 		} as unknown as BiliReader;
-		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
+		const out = await executeTool("get_user_videos", { uid: "123" }, api, null);
 		expect(sayOf(out)).toContain("未知时间");
 		expect(sayOf(out)).not.toMatch(/Invalid Date|NaN/);
 	});

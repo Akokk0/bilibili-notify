@@ -18,6 +18,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
+import { platformLabelOf } from "../subscriptions/platform-label.js";
 
 export type RoastSubjectDeps = Pick<RouteDeps, "runtime">;
 
@@ -37,11 +38,10 @@ export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): str
  * 同面板(ADR-0019 决策 10)。
  */
 export function roastPlatformLabel(deps: RoastSubjectDeps, identity: Identity): string {
-	return (
-		deps.runtime.sourceRegistry.get(identity.sourceKey)?.descriptor.label ??
-		deps.runtime.engines?.extensionPlatformLabel(identity.sourceKey) ??
-		identity.sourceKey
-	);
+	return platformLabelOf(identity.sourceKey, {
+		sources: deps.runtime.sourceRegistry,
+		extensionPlatformLabel: (id) => deps.runtime.engines?.extensionPlatformLabel(id),
+	});
 }
 
 /**

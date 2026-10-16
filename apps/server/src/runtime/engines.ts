@@ -112,6 +112,7 @@ import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
 } from "../subscriptions/builtin-sources.js";
+import { platformLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -537,9 +538,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			attachReadOnlyTools(c, {
 				subscriptionStore: opts.subscriptionStore,
 				subRuntimeStore: opts.subRuntimeStore,
-				platforms: { label: (id) => opts.extensionPlatformLabel?.(id) },
+				// 平台名问来源登记表,登记表里没有的(拓展)才问装载器 —— 与锐评同一条链。
+				platformLabel: (sourceKey) =>
+					platformLabelOf(sourceKey, {
+						sources: opts.sources,
+						extensionPlatformLabel: opts.extensionPlatformLabel,
+					}),
+				sources: opts.sources,
 				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
 				extensionLive: liveSource(),
+				// B 站订阅的在播读直播引擎的在播房间(与面板「正在直播」同一份),不现去问 B 站。
+				// 每次工具调用现取,`live` 在这段之后才声明,调用时早已就绪。
+				biliLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,

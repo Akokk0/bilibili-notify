@@ -24,8 +24,6 @@ export const RELATION_MODIFY_URL = "https://api.bilibili.com/x/relation/modify";
 export const RELATIONS_URL = "https://api.bilibili.com/x/relation/relations";
 export const LIVE_ROOM_INFO_STREAM_KEY_URL =
 	"https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
-export const LIVE_ROOMS_INFO_URL =
-	"https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids";
 export const TICKET_URL =
 	"https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket";
 export const COOKIE_REFRESH_CORRESPOND_PATH = "https://www.bilibili.com/correspond/1";

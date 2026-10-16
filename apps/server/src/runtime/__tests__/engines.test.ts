@@ -127,7 +127,9 @@ vi.mock("@bilibili-notify/storage", async (importOriginal) => {
 	return gateStorageWrites(await importOriginal<typeof import("@bilibili-notify/storage")>());
 });
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	// 订阅视图拼 creator 用的纯函数,走真的。
+	creatorOf: (await importOriginal<typeof import("@bilibili-notify/ai")>()).creatorOf,
 	CommentaryGenerator: class {
 		opts: any;
 		start = vi.fn();
@@ -137,7 +139,7 @@ vi.mock("@bilibili-notify/ai", () => ({
 		 * 这个方法会当场抛,而 buildCommentary 的 try/catch 会把它吞成「AI 初始化
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
-		setSubscriptionsSource = vi.fn();
+		setCreatorReader = vi.fn();
 		/** 作品装配的 AI 点评(经 `deps.ai()` 每条现取)。 */
 		comment = vi.fn(async (..._args: unknown[]) => "点评");
 		/** 同上:engines.ts 构造后还会接联网搜索的执行器热读口。 */
@@ -1967,10 +1969,31 @@ describe("createEngines — boot wiring", () => {
 	it("构造后立刻接上只读工具 —— 不接的话女仆连订阅列表都查不到", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
-		expect(H.ai[0].setSubscriptionsSource).toHaveBeenCalledTimes(1);
+		expect(H.ai[0].setCreatorReader).toHaveBeenCalledTimes(1);
 		// 只读如今是结构性的(工具表里就没有写工具),由 packages/ai 那道闸盯着;
 		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
-		expect(typeof H.ai[0].setSubscriptionsSource.mock.calls[0][0]).toBe("function");
+		expect(typeof H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions).toBe("function");
+	});
+
+	it("只读工具那份视图里,订阅的平台名问来源登记表(先于拓展装载器),creator 是来源键:外部 id", () => {
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "acme.inprocess", externalId: "alice-ext" },
+		});
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [sub],
+			extensionPlatformLabel: () => "装载器说的",
+		});
+		active = c;
+		const realGet = c.sources.get;
+		c.sources.get = (key) =>
+			key === "acme.inprocess"
+				? ({ sourceKey: key, descriptor: { label: "对拍源" } } as never)
+				: realGet(key);
+		const [item] = H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions();
+		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platformLabel: …` 改成只问 extensionPlatformLabel,这条红。
+		expect(item).toMatchObject({ creator: "acme.inprocess:alice-ext", platform: "对拍源" });
 	});
 
 	it("只读工具那份视图里,拓展订阅的平台名接的是 extensionPlatformLabel(ADR-0019 决策 64)", () => {
@@ -1981,12 +2004,8 @@ describe("createEngines — boot wiring", () => {
 			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
 		});
 		active = c;
-		const getSubs = H.ai[0].setSubscriptionsSource.mock.calls[0][0] as () => Record<
-			string,
-			{ platform?: string }
-		>;
-		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platforms: …` 那一行删掉,平台名退成拓展 id。
-		expect(getSubs()[ext.id]?.platform).toBe("抖音");
+		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platformLabel: …` 里的拓展装载器那一支去掉,平台名退成拓展 id。
+		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.platform).toBe("抖音");
 	});
 
 	it("只读工具那份视图里,拓展订阅的在播接的是在播表(ADR-0019 决策 64 的 🔗)", () => {
@@ -2007,11 +2026,40 @@ describe("createEngines — boot wiring", () => {
 			},
 		});
 		active = c;
-		const getSubs = H.ai[0].setSubscriptionsSource.mock.calls[0][0] as () => Record<
-			string,
-			{ liveNow?: unknown }
-		>;
-		expect(getSubs()[ext.id]?.liveNow).toEqual({ state: "live", title: "在播" });
+		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.liveNow).toEqual({
+			state: "live",
+			title: "在播",
+		});
+	});
+
+	it("只读工具那份视图里,B 站订阅的在播接的是直播引擎的在播房间(不再问 B 站接口)", () => {
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+				makeEmptySubscription({ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" } }),
+			],
+		});
+		active = c;
+		const reader = H.ai[0].setCreatorReader.mock.calls[0][0];
+		H.live[0].listLiveSnapshots.mockReturnValue([
+			{
+				uid: "1",
+				roomId: "r1",
+				isLive: true,
+				title: "在播",
+				startedAt: "2026-09-24T04:00:00.000Z",
+			},
+			{ uid: "2", roomId: "r2", isLive: false },
+		]);
+		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `biliLiveRooms: …` 那一行删掉,这条红。
+		const [first, second] = reader.subscriptions();
+		expect(first?.liveNow).toEqual({
+			state: "live",
+			title: "在播",
+			startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
+		});
+		expect(second?.liveNow).toEqual({ state: "idle" });
 	});
 
 	it("puppeteer 在位:构造 ImageRenderer", () => {

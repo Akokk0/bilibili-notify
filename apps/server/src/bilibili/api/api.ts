@@ -924,12 +924,6 @@ export class Api {
 		);
 	}
 
-	async fetchLiveRoomInfoByUids(uids: string[]) {
-		if (!uids.length) return { code: 0, data: {} };
-		const params = uids.map((uid) => `uids[]=${encodeURIComponent(uid)}`).join("&");
-		return this.getJson(`${EP.LIVE_ROOMS_INFO_URL}?${params}`, "fetchLiveRoomInfoByUids");
-	}
-
 	async fetchUserInfoInLive(uid: string, upUid: string) {
 		return this.getJson(
 			`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,

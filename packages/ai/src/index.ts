@@ -10,6 +10,7 @@ export {
 	type PersonaConfig,
 	type ToolTraceEvent,
 } from "./commentary-generator";
+export { creatorOf, parseCreator } from "./creator";
 export {
 	mergeExtraParams,
 	type ParsedExtraParams,
@@ -19,15 +20,15 @@ export * from "./persona-presets";
 export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {
+	type AiSubscriptionView,
 	type AiTool,
 	type AiToolLabelFields,
 	type AiToolResult,
+	type CreatorReader,
 	coreToolLabelOf,
 	describeToolCall,
-	type ExtensionLiveNow,
 	executeTool,
-	type SubItemView,
-	type Subscriptions,
+	type LiveNowView,
 	TOOL_DEFINITIONS,
 } from "./tools";
 export {

@@ -26,11 +26,11 @@ import {
 	type AiTool,
 	type AiToolLabelFields,
 	type BiliReader,
+	type CreatorReader,
 	coreToolLabelOf,
 	DESCRIBE_IMAGE_TOOL,
 	describeToolCall,
 	executeTool,
-	type Subscriptions,
 	TOOL_DEFINITIONS,
 	type VisionToolContext,
 } from "./tools";
@@ -524,8 +524,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private readonly api: BiliReader;
 	private config: CommentaryGeneratorConfig;
 
-	private subsAccessor: (() => Subscriptions | null) | null = null;
-	/** 联网搜索执行器的热读口,同 {@link subsAccessor} 的纪律。 */
+	private creatorReader: CreatorReader | null = null;
+	/** 联网搜索执行器的热读口,同 {@link creatorReader} 的纪律。 */
 	private webSearchAccessor: (() => WebSearchExecutor | null) | null = null;
 	/** 已报过的告警键;去重用,见 {@link warnOnce}。 */
 	private readonly warned = new Set<string>();
@@ -543,8 +543,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 *
 	 * 只有查询,没有写入:工具表是只读的(见 tools.ts 的 `executeTool` 文档)。
 	 */
-	setSubscriptionsSource(getSubs: () => Subscriptions | null): void {
-		this.subsAccessor = getSubs;
+	setCreatorReader(reader: CreatorReader): void {
+		this.creatorReader = reader;
 	}
 
 	/**
@@ -584,10 +584,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 		const { preset } = this.config.persona;
 		this.logger.info(`[start] 人格预设：${preset}，模型：${this.config.model}`);
 		this.logger.debug(`[start] 系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
-	}
-
-	private getSubs(): Subscriptions | null {
-		return this.subsAccessor ? this.subsAccessor() : null;
 	}
 
 	/**
@@ -879,7 +875,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			{
 				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
 				onToolCall: (name, args) =>
-					executeTool(name, args, this.api, () => this.getSubs(), vision.ctx),
+					executeTool(name, args, this.api, this.creatorReader, vision.ctx),
 				...(searchExec ? { webSearch: searchExec } : {}),
 			},
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
@@ -976,7 +972,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			),
 			onToolCall: async (name, args, onProgress) => {
 				const injected = extra.get(name);
-				if (!injected) return executeTool(name, args, this.api, () => this.getSubs(), vision.ctx);
+				if (!injected) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
 				const out = await injected.execute(args, onProgress);
 				// 失败原样交给工具环:它记失败,并把 `message` 喂回给模型。
 				if (!out.ok) return out;

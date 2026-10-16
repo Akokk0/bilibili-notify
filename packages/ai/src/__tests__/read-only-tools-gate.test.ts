@@ -45,9 +45,12 @@ describe("AI 工具表 — 只读约束", () => {
 		// 执行层也必须没有对应实现,而不是靠上游少传一个依赖来兜。
 		const api = {} as BiliReader;
 		for (const w of WRITE_TOOLS) {
-			const out = await executeTool(w, { uid: "123", name: "谁" }, api, () => ({
-				"123": { uid: "123", uname: "谁", post: true, live: true },
-			}));
+			const out = await executeTool(w, { uid: "123", name: "谁" }, api, {
+				subscriptions: () => [
+					{ creator: "bilibili:123", name: "谁", platform: "B 站", post: true, live: true },
+				],
+				externalIdFits: () => true,
+			});
 			expect(out).toMatchObject({ ok: false, code: "not_found" });
 			expect(sayOf(out)).toContain("未知工具");
 		}
