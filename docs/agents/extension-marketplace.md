@@ -6,7 +6,7 @@
 
 | | 官方源 | 第三方源 |
 |---|---|---|
-| 地址 | 内置:`https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json`(3b 起改读新的滚动 release `extensions` 上的 `…/releases/download/extensions/marketplace.json`,见下「3b 要改的发布与地址」) | 主人在拓展页「源」里加的任意 `https://` 地址 |
+| 地址 | 内置:`https://github.com/Akokk0/bilibili-notify/releases/download/extensions/marketplace.json`(滚动 release `extensions`;旧的 `extension-marketplace` 是 0.12 读的,已冻结,见下「发布与地址」) | 主人在拓展页「源」里加的任意 `https://` 地址 |
 | 文件 | 签名信封 `{ "manifest": "<索引原文>", "signature": "<base64>" }`,与升级清单同一对 Ed25519 密钥 | 裸的索引 JSON |
 | 走镜像 | 走(`update.mirrors`,同本体) | 不走 |
 | 新鲜度 | `issuedAt` 只增不减,记在 `<数据根>/extensions/.marketplace.json` | 不查 |
@@ -27,7 +27,7 @@
       "id": "alice.douyin",
       "name": "抖音订阅",
       "description": "一句话",
-      "version": "1.0.0",          // semver(不收 `+build` 元数据);每个 id 每档只列最新那一版
+      "version": "1.0.0",          // semver(不收 `+build` 元数据);每个 id 每档、每个契约版本只列最新那一版
       "apiVersion": 2,             // 落在 BN 的 EXTENSION_API_RANGE 区间里才能装
       "apiRevision": 0,            // 可选,缺省 0:要的契约小号(抄清单里那格),比 BN 的高也装不了(ADR-0019 决策 59)
       "prerelease": false,         // 可选:true 的那条是预发布档,只有预发布渠道挑得到;必须与版本号对得上(带 - 的才标 true)
@@ -43,24 +43,24 @@
 
 **给人看的字不分语言**(3b,主人定):索引里的 `name` / `description` / `notes` 只放清单里的默认文字,装上之后才按当前语言显示。第一个带译文的拓展上架时,给条目加一格可选的按语言文字(索引规则不严格,加一格是加宽)。
 
-## 3b 要改的发布与地址
+## 发布与地址
 
-下面「官方的怎么发」和上面的地址写的是今天的做法。3b-04 这一期**只换官方索引**:
+官方索引换过一次地址(3b-04),只换了索引,格式没动:
 
-- 新版 BN 改读新的滚动 release **`extensions`** 上的 `marketplace.json`(地址 `https://github.com/Akokk0/bilibili-notify/releases/download/extensions/marketplace.json`),用 1.0 的新规矩:每个契约版本各留一条、只挑装得了的(取代上面「同一个 id 最多两条」的写法)。
-- 旧 release `extension-marketplace` 上那份留给 0.12,从此不动,它的说明里写「0.12 专用,已冻结」。
+- 新版 BN 读滚动 release **`extensions`** 上的 `marketplace.json`,用 1.0 的新规矩:每个契约版本各留一条,BN 只在自己装得了的里头挑最高的。客户端的地址常量是 `apps/server/src/update/trusted-keys.ts` 的 `EXTENSION_MARKETPLACE_URL`,发版两个脚本里的 release 名由 `scripts/__tests__/extension-marketplace-release.test.mjs` 钉着和它一致。
+- 旧 release `extension-marketplace` 上那份是 0.12 读的,从此不动:0.12 的校验遇到同 id 同档两条会整份拒收,它的选版也不看装不装得了,所以放宽后的索引只能放在新地址上,旧文件保持旧形状。
+- **新 release 不播种**:旧索引里全是契约第 1 版的条目,新版 BN 不收,拷过去没有用。`extensions` 第一次出现是在下一个真正的 `extension/<id>@<ver>` tag 发版的时候;在那之前新版 BN 的官方源显示「拿不到」。
 - 格式不顺手改:`issuedAt` 仍是秒(进门换 ISO 照 data-model 那条),`apiVersion` / `apiRevision` 不改名。
-- 发版脚本与地址要等这一期落地才换,在那之前以上面的写法为准。
 
-**同一个 id 最多两条:一条正式 + 一条预发布**(同 id 同档两条 → 整份索引拒)。两档分开是因为打一个 alpha tag 不该让稳定渠道的人**看不见这个拓展** —— 整条被 alpha 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会被标成「从别处装的」。面板上**仍然只出一张卡**:稳定渠道拿正式那条(没有正式档就一张都不出),预发布渠道在两档里取**版本更高**的那条(第三方源可能留着一条比正式版还旧的预发布)。挑出来的那一条是这张卡的全部依据 —— 版本、状态、「有新版」、按下去装哪个包。
+**同一个 id 每个契约版本最多两条:一条正式 + 一条预发布**(同 id 同档同契约版本两条 → 整份索引拒;契约只有一个版本时就是最多两条)。契约升档的过渡期里,旧 BN 只装得了旧契约的版本、新 BN 只装得了新契约的,所以两个契约版本的最新版同时留着。两档分开是因为打一个 alpha tag 不该让稳定渠道的人**看不见这个拓展** —— 整条被 alpha 顶掉的话,市场上那张卡对他们就消失了,已经装着的还会被标成「从别处装的」。面板上**仍然只出一张卡**:先在这台 BN 装得了的条目里挑(一条都装不了才退回全部里最高的那条,画一张「先升级 BN」的灰卡),稳定渠道拿正式那条(没有正式档就一张都不出),预发布渠道在两档里取**版本更高**的那条(第三方源可能留着一条比正式版还旧的预发布)。挑出来的那一条是这张卡的全部依据 —— 版本、状态、「有新版」、按下去装哪个包。
 
 ## 官方的怎么发
 
 1. 改 `extensions/<id>/extension.json` 的 `version`,在 `extensions/<id>/CHANGELOG.md` 加 `## [x.y.z] — 日期` 一段,标题下第一段是概述(≤ 120 字,会进索引的 `notes`)。
 2. 提交、push 到 dev。
-3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/extension-release/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extension-marketplace` release 的 `marketplace.json`。
+3. 打 tag `extension/<id>@x.y.z` 并 push。`extension-release.yml` 会:门禁 → 核对 tag 与清单版本 → `vp run -F @bilibili-notify/extension-<id> build` → `scripts/pack-extension.mjs` 打包(必装 `extension.json` + `index.mjs`,另收可选的 `README.md` / `CHANGELOG.md`,固定时间戳,sha256 可复现)→ 建同名 release、挂 zip → 拉当前索引(`.github/scripts/extension-release/fetch-marketplace-index.sh`)、并进这一条(`scripts/marketplace-index.mjs`)→ 用 `BN_UPDATE_SIGNING_KEY` 签 → 覆盖到 `extensions` release 的 `marketplace.json`。
 
-   并索引这一步上钉着三条「只许往前走」,踩了当场红而不是发出一份坏索引:**只有滚动 release 还不存在**才算第一次发(5xx / 限流 / token 权限掉了一律红 —— 当成「还没有索引」会把整份索引连 `revoked` 名单一起覆盖成只含这一条);`issuedAt` 必须比当前那份大(不传就取 `max(现在, 当前 + 1)`,手传的不够大就红),误传毫秒(≥ `1e11`)拒 —— 发出去会把客户端永久钉死在这一份上;**同 id 同档**的版本不许降回去(重跑旧 tag),**等于**放行(重发同一版),预发布比同 id 的正式档还旧也拒(发进去也没人看得见)。并进一个正式版时,比它旧的预发布档会**一并删掉**;比它新的(下一轮的 alpha)留着。
+   并索引这一步上钉着三条「只许往前走」,踩了当场红而不是发出一份坏索引:**只有滚动 release 还不存在**才算第一次发(5xx / 限流 / token 权限掉了一律红 —— 当成「还没有索引」会把整份索引连 `revoked` 名单一起覆盖成只含这一条);`issuedAt` 必须比当前那份大(不传就取 `max(现在, 当前 + 1)`,手传的不够大就红),误传毫秒(≥ `1e11`)拒 —— 发出去会把客户端永久钉死在这一份上;**同 id 同档同契约版本**的版本不许降回去(重跑旧 tag),**等于**放行(重发同一版),预发布比同 id 同契约版本的正式档还旧也拒(发进去也没人看得见)。并进一个正式版时,同契约版本里比它旧的预发布档会**一并删掉**;比它新的(下一轮的 alpha)留着;别的契约版本的条目一概不碰。
 4. 手动 dry-run:Actions 里跑 `extension release`,填 id 与 version,`dry_run` 勾着 —— 构建、打包、签索引都跑,只不上传。
 
 撤回一版:暂时手动 —— 拿当前索引本体跑 `node scripts/marketplace-index.mjs --entry <最新那条> --current current.json --revoke <id>@<版本>`,再用 `publish-extension-marketplace.sh` 发。（撤回 workflow 是后话。）

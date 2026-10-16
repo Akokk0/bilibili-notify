@@ -376,9 +376,9 @@ interface ConnectionCandidate {
 
 | 项 | 做法 |
 | --- | --- |
-| 市场挑版 `pickPerId` | 改成「在当前 BN 装得了的版本里取最高」 |
-| 索引规则 | 从「每个 id 一条正式 + 一条预发布」放宽为「每个契约版本各留最新一条」，这样 0.12 仍拿得到 v2 的桥 |
-| 官方索引地址 | 新版 BN 改读新的滚动 release `extensions` 上的 `marketplace.json`，用 1.0 的新规矩；旧 release `extension-marketplace` 上那份留给 0.12、从此不动。格式不顺手改：`issuedAt` 仍是秒（进门换 ISO）、`apiVersion` / `apiRevision` 不改名。索引里给人看的字这一期不分语言 |
+| 市场挑版 `pickPerId` | ✅ 3b-04：改成「在当前 BN 装得了的版本里取最高」 |
+| 索引规则 | ✅ 3b-04：从「每个 id 一条正式 + 一条预发布」放宽为「每个 id 每个契约版本各留最新一条正式 + 一条预发布」，过渡期里旧契约与新契约的 BN 各挑自己装得了的 |
+| 官方索引地址 | ✅ 3b-04：新版 BN 读新的滚动 release `extensions` 上的 `marketplace.json`，用 1.0 的新规矩；旧 release `extension-marketplace` 上那份留给 0.12、从此不动。新 release 不播种，第一次真发拓展时才出现。格式不顺手改：`issuedAt` 仍是秒（进门换 ISO）、`apiVersion` / `apiRevision` 不改名。索引里给人看的字这一期不分语言 |
 | 桥 | 与 1.0 同批迁到 v3；1.0 alpha 期间 v3 的桥只进预发布档 |
 | 已装的 v2 拓展 | 迁移时拷进新数据代；升级后第一次打开面板的询问页列出「因契约版本不收」的拓展，给一键更新；**不在开机时静默替换** |
 | 桥协议线上帧 | alpha 期间不改，1.0.0 之前按两步改完；在那之前内部改名只改到桥的适配器，有快照守卫钉着。要改的见下面的两步改名清单 |
