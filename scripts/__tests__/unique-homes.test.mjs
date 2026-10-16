@@ -37,6 +37,13 @@ export const HOMES = {
 	LIVE_ROOM_CREATOR_KEYS: "packages/internal/src/live-monitor.ts",
 	specialUserFlagsOf: "packages/internal/src/live-monitor.ts",
 	liveMonitorInputOf: "packages/internal/src/live-monitor.ts",
+	// 多语言字典的核心(3b-09;ADR-0037 决策 6):合字典、语言 store,与两道字典守卫要用的拆键、取占位符;
+	// 面板、服务端与拓展共用这一份。取字的 `translate` 不登记:B 站把动态翻成作品的私有函数也叫这个名,是另一件事。
+	mergeDict: "packages/internal/src/i18n.ts",
+	createI18n: "packages/internal/src/i18n.ts",
+	stemOf: "packages/internal/src/i18n.ts",
+	placeholdersOf: "packages/internal/src/i18n.ts",
+	LOCALES: "packages/internal/src/i18n.ts",
 };
 
 /** 一个节点若是一处定义,回它定义的名字。 */

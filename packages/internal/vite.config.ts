@@ -7,6 +7,7 @@ export default defineConfig({
 			"src/bilibili-guard.ts",
 			"src/constants.ts",
 			"src/format.ts",
+			"src/i18n.ts",
 			"src/live-monitor.ts",
 			"src/patch.ts",
 			"src/template-defaults.ts",
