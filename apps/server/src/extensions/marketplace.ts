@@ -57,7 +57,7 @@ const DEFAULT_DOWNLOAD_TIMEOUT_MS = 60_000;
 const DEFAULT_CACHE_MS = 5 * 60_000;
 
 export interface MarketplaceOfficialSource {
-	/** 官方索引的固定地址(`extension-marketplace` 那个滚动 release 上的 `marketplace.json`)。 */
+	/** 官方索引的固定地址(`extensions` 那个滚动 release 上的 `marketplace.json`)。 */
 	url: string;
 	/** 内置信任列表 —— 与自主升级同一对公钥。 */
 	trustedKeys: readonly string[];

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 拉**当前**的官方索引:滚动 release `extension-marketplace` 上那份签名信封,取出本体写成
+# 拉**当前**的官方索引:滚动 release `extensions` 上那份签名信封,取出本体写成
 # <DIR>/current.json,给 `scripts/marketplace-index.mjs --current` 用。
 #
 # ⚠️ 只有「这个 release 还不存在」才算第一次发。别的失败(5xx、限流、token 权限掉了、
@@ -11,7 +11,7 @@
 # 必需 env:
 #   GH_TOKEN  gh 的 token
 # 可选 env:
-#   TAG       索引住的那个滚动 release,默认 extension-marketplace
+#   TAG       索引住的那个滚动 release,默认 extensions
 #   DIR       工作目录,默认 dist
 #
 # 产出:<DIR>/current.json —— **第一次发时不生成**,调用方按「这个文件在不在」决定要不要
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN env 必填}"
-tag="${TAG:-extension-marketplace}"
+tag="${TAG:-extensions}"
 dir="${DIR:-dist}"
 
 mkdir -p "$dir"

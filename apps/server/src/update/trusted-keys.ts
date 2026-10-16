@@ -45,11 +45,15 @@ export const UPDATE_MANIFEST_URLS = {
 } as const;
 
 /**
- * 拓展市场官方索引的固定地址(ADR-0013)。**单独一个滚动 release**(`extension-marketplace`),
+ * 拓展市场官方索引的固定地址(ADR-0013)。**单独一个滚动 release**(`extensions`),
  * 与本体清单分开:任何一方发坏了都不牵连另一方,两条发布流水线也不用排同一把锁。同域
  * 同路径前缀,所以主人填的那条加速前缀照样管得住它。
+ *
+ * 旧的 `extension-marketplace` release 留给 0.12 读、从此不动:放宽后的索引(同 id 同档
+ * 按契约版本各留一条)0.12 的校验会整份拒收,所以新规矩只能放在新地址上。发版侧两个脚本里
+ * 的 release 名要和这里一致(`scripts/__tests__/extension-marketplace-release.test.mjs` 钉着)。
  */
-export const EXTENSION_MARKETPLACE_URL = `${RELEASE_DOWNLOAD_BASE}/download/extension-marketplace/marketplace.json`;
+export const EXTENSION_MARKETPLACE_URL = `${RELEASE_DOWNLOAD_BASE}/download/extensions/marketplace.json`;
 
 /**
  * 连清单都拿不到时,唯一还能给用户的落脚点。

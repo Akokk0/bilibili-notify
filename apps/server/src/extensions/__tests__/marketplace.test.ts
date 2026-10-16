@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { createMarketplace, MARKETPLACE_PROVENANCE_FILE } from "../marketplace.js";
 
 const OFFICIAL_URL =
-	"https://github.com/Akokk0/bilibili-notify/releases/download/extension-marketplace/marketplace.json";
+	"https://github.com/Akokk0/bilibili-notify/releases/download/extensions/marketplace.json";
 const ZIP_URL = "https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-0.0.2.zip";
 const ALPHA_ZIP_URL =
 	"https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-alpha.zip";
