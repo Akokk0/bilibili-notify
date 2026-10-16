@@ -43,7 +43,7 @@ function harness(commands: Parameters<typeof createCommandDispatcher>[0]["comman
 		texts,
 		send: async (text: string) => {
 			texts.length = 0;
-			await dispatcher.handleMessage({ userId: MASTER, text }, META);
+			await dispatcher.handleMessage({ address: MASTER, text }, META);
 			return [...texts];
 		},
 	};
@@ -102,7 +102,7 @@ function loginHarness(opts: {
 	});
 	return async (text: string) => {
 		texts.length = 0;
-		await dispatcher.handleMessage({ userId: MASTER, text }, META);
+		await dispatcher.handleMessage({ address: MASTER, text }, META);
 		return [...texts];
 	};
 }

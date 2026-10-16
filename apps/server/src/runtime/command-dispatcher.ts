@@ -278,7 +278,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		return async (payload) => {
 			const result = await opts.sendToAddress(
 				meta.connectionId,
-				{ scope: "private", address: msg.userId },
+				{ scope: "private", address: msg.address },
 				typeof payload === "string" ? { kind: "text", text: payload } : payload,
 			);
 			if (!result.ok) opts.logger.warn(`[command] 回复没送到: ${result.message}`);

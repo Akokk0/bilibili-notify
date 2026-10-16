@@ -42,12 +42,12 @@ const BUDGET_WINDOW_MS = 60_000;
  * 回复往哪儿发。**用哪个 adapter 由 `connectionId` 决定,不是消息里报的平台名** ——
  * 桥后面挂着 telegram 时平台报的是 `telegram`,而认领它的 adapter 声明的是 `bridge`。
  *
- * `groupId` 在 OneBot 是群号、在官机是群 openid、在桥那边是桥自己报的那套编号 ——
+ * `address` 在 OneBot 是群号、在官机是群 openid、在桥那边是桥自己报的那套编号 ——
  * 三者都只要求「与用户在面板上填的是同一套」。
  */
 export interface LinkReplyDestination {
 	connectionId: string;
-	groupId: string;
+	address: string;
 }
 
 /** adapter 归一化好的一条群消息,再带上它从哪条连接来。 */
@@ -189,7 +189,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	}
 
 	/** 日志里「在哪个群」那一段,各处共用。 */
-	const whereOf = (dest: LinkReplyDestination): string => `group=${dest.groupId}`;
+	const whereOf = (dest: LinkReplyDestination): string => `group=${dest.address}`;
 
 	/**
 	 * 发什么:小程序卡(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
@@ -245,7 +245,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 先用一个正则把没链接的放走,再读配置(整份深拷贝)、再看有没有渲染器;网络与
 			// 冷却留到每个链接自己那一轮。
 			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
-			if (msg.selfId !== undefined && msg.userId === msg.selfId) return;
+			if (msg.selfId !== undefined && msg.senderId === msg.selfId) return;
 			// 正文里的与分享卡里的一起找;卡片链接排在正文之后,与消息里的先后一致。
 			// `miniAppCardLinks` 刻意不读:进来的本身就是一张能点开播放的原生分享卡,再回一张
 			// (图片卡也算)都是重复 —— 主人 2026-09-07 拍板一律不回,而且不留痕(不记冷却),
@@ -262,12 +262,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			if (!config.enabled) return;
 			// 逐群答案在渲染器之前、记账之前:不解析的群什么都不该留下 —— 冷却也不记,
 			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
-			const scope = linkScopeKey(msg.connectionId, msg.groupId);
+			const scope = linkScopeKey(msg.connectionId, msg.address);
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
 			const dest: LinkReplyDestination = {
 				connectionId: msg.connectionId,
-				groupId: msg.groupId,
+				address: msg.address,
 			};
 			const where = whereOf(dest);
 			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这条连接签得了,签不了就

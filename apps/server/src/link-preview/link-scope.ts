@@ -25,8 +25,8 @@ import {
  * 一个群在链接解析里的身份:来自哪条连接、群地址(OneBot 群号 / 官机群 openid)。
  * 键里没有平台 —— 连接 id 已经说全了是哪个 bot(ADR-0024 决策 9)。只活在内存里,不落盘。
  */
-export function linkScopeKey(connectionId: string, groupId: string): string {
-	return `${connectionId}:${groupId}`;
+export function linkScopeKey(connectionId: string, address: string): string {
+	return `${connectionId}:${address}`;
 }
 
 export interface LinkPolicyTable {
@@ -48,9 +48,9 @@ export function resolveLinkParsingPolicies({
 	const byKey = new Map<string, LinkParsingPolicy>();
 	for (const target of targets) {
 		if (target.kind !== "session" || target.scope !== "group") continue;
-		const groupId = groupAddressOf(target);
-		if (!groupId) continue;
-		const key = linkScopeKey(target.connectionId, groupId);
+		const address = groupAddressOf(target);
+		if (!address) continue;
+		const key = linkScopeKey(target.connectionId, address);
 		if (byKey.has(key)) continue;
 		const policy = linkParsingFor(config, target.id);
 		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, connections) });

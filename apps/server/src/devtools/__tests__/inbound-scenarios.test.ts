@@ -112,21 +112,21 @@ describe("inbound.command", () => {
 		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: ".help" });
 	});
 
-	it("当作主人发一句私聊:userId 省略取配置里的主人", async () => {
+	it("当作主人发一句私聊:address 省略取配置里的主人", async () => {
 		const { reg, priv } = setup();
 		const res = await reg.run("inbound.command", { text: "/status" });
 		expect(priv).toHaveBeenCalledWith(
-			{ userId: "10001", text: "/status" },
+			{ address: "10001", text: "/status" },
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);
 		expect(res.summary).toContain("/status");
 	});
 
-	it("指定 userId 就用给的 —— 拿来验「不是主人就不理」", async () => {
+	it("指定 address 就用给的 —— 拿来验「不是主人就不理」", async () => {
 		const { reg, priv } = setup();
-		await reg.run("inbound.command", { userId: "20002", text: "/help" });
+		await reg.run("inbound.command", { address: "20002", text: "/help" });
 		expect(priv).toHaveBeenCalledWith(
-			{ userId: "20002", text: "/help" },
+			{ address: "20002", text: "/help" },
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);
 	});
@@ -158,7 +158,7 @@ describe("inbound.command", () => {
 		});
 		await reg.run("inbound.command", { text: "/status" });
 		expect(priv).toHaveBeenCalledWith(
-			{ userId: "10001", text: "/status" },
+			{ address: "10001", text: "/status" },
 			{ connectionId: "ad-ob2", platform: "onebot" },
 		);
 	});
@@ -169,13 +169,13 @@ describe("inbound.command", () => {
 		await expect(noTarget.reg.run("inbound.command", {})).rejects.toThrow("没有主人目标");
 		expect(noTarget.priv).not.toHaveBeenCalled();
 		const noMaster = setup({ master: undefined });
-		await expect(noMaster.reg.run("inbound.command", { userId: "20002" })).rejects.toThrow(
+		await expect(noMaster.reg.run("inbound.command", { address: "20002" })).rejects.toThrow(
 			"没有主人目标",
 		);
 		expect(noMaster.priv).not.toHaveBeenCalled();
 	});
 
-	it("没配主人又没给 userId → 拒;入站口还没接上 → 拒", async () => {
+	it("没配主人又没给 address → 拒;入站口还没接上 → 拒", async () => {
 		const { reg } = setup({ master: undefined });
 		await expect(reg.run("inbound.command", {})).rejects.toBeInstanceOf(DevParamError);
 		const off = setup({ inbound: false });
@@ -189,7 +189,7 @@ describe("inbound.link", () => {
 		const res = await reg.run("inbound.link", {});
 		expect(group).toHaveBeenCalledWith(
 			expect.objectContaining({
-				groupId: "88888",
+				address: "88888",
 				text: expect.stringContaining("bilibili.com"),
 				cardLinks: [],
 				miniAppCardLinks: [],
@@ -201,9 +201,9 @@ describe("inbound.link", () => {
 
 	it("指定连接与群号、正文", async () => {
 		const { reg, group } = setup();
-		await reg.run("inbound.link", { connection: "ad-qq", groupId: "OPENID-9", text: "BV1xx" });
+		await reg.run("inbound.link", { connection: "ad-qq", address: "OPENID-9", text: "BV1xx" });
 		expect(group).toHaveBeenCalledWith(
-			expect.objectContaining({ groupId: "OPENID-9", text: "BV1xx" }),
+			expect.objectContaining({ address: "OPENID-9", text: "BV1xx" }),
 			{ connectionId: "ad-qq", platform: "qq-official" },
 		);
 	});

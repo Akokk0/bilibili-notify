@@ -205,7 +205,7 @@ describe("createLinkPreviewer", () => {
 
 		expect(h.sent).toEqual([
 			{
-				dest: { connectionId: ADAPTER, groupId: String(GROUP) },
+				dest: { connectionId: ADAPTER, address: String(GROUP) },
 				payload: {
 					kind: "image",
 					image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
@@ -313,7 +313,7 @@ describe("createLinkPreviewer", () => {
 
 			await feed(h.parser, groupFrame(LINK, { group_id: 999 }));
 			expect(h.sent).toHaveLength(2);
-			expect(h.sent[1]?.dest.groupId).toBe("999");
+			expect(h.sent[1]?.dest.address).toBe("999");
 
 			h.advance(61_000);
 			await feed(h.parser, groupFrame(LINK));
@@ -482,8 +482,8 @@ describe("createLinkPreviewer", () => {
 			const h = makeParser();
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: "G_OPENID",
-				userId: "M_OPENID",
+				address: "G_OPENID",
+				senderId: "M_OPENID",
 				text: ` ${LINK}/`,
 				cardLinks: [],
 				miniAppCardLinks: [],
@@ -492,7 +492,7 @@ describe("createLinkPreviewer", () => {
 			expect(h.sent).toHaveLength(1);
 			expect(h.sent[0]?.dest).toEqual({
 				connectionId: ADAPTER,
-				groupId: "G_OPENID",
+				address: "G_OPENID",
 			});
 		});
 
@@ -501,8 +501,8 @@ describe("createLinkPreviewer", () => {
 			await feed(h.parser, groupFrame(LINK));
 			await h.parser.handleMessage({
 				connectionId: "22222222-2222-4222-8222-222222222222",
-				groupId: "G_OPENID",
-				userId: "M",
+				address: "G_OPENID",
+				senderId: "M",
 				text: LINK,
 				cardLinks: [],
 				miniAppCardLinks: [],
@@ -516,8 +516,8 @@ describe("createLinkPreviewer", () => {
 		const feedNativeCard = (h: ReturnType<typeof makeParser>) =>
 			h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: String(GROUP),
-				userId: String(SOMEONE),
+				address: String(GROUP),
+				senderId: String(SOMEONE),
 				text: "",
 				cardLinks: [],
 				miniAppCardLinks: [LINK],
@@ -550,8 +550,8 @@ describe("createLinkPreviewer", () => {
 			const h = makeParser();
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: String(GROUP),
-				userId: String(SOMEONE),
+				address: String(GROUP),
+				senderId: String(SOMEONE),
 				text: "",
 				cardLinks: [LINK],
 				miniAppCardLinks: [],
@@ -643,8 +643,8 @@ describe("createLinkPreviewer", () => {
 			});
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: "G_OPENID",
-				userId: "M_OPENID",
+				address: "G_OPENID",
+				senderId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
 				miniAppCardLinks: [],
@@ -652,8 +652,8 @@ describe("createLinkPreviewer", () => {
 			expect(h.sent).toHaveLength(1);
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: "G_OTHER",
-				userId: "M_OPENID",
+				address: "G_OTHER",
+				senderId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
 				miniAppCardLinks: [],
@@ -727,7 +727,7 @@ describe("createLinkPreviewer", () => {
 			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
 			expect(h.probeCapabilities).toHaveBeenCalledWith({
 				connectionId: ADAPTER,
-				groupId: String(GROUP),
+				address: String(GROUP),
 			});
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
 		});
@@ -762,8 +762,8 @@ describe("createLinkPreviewer", () => {
 			const h = makeParser({}, undefined, { policyFor: miniapp, capabilities: () => undefined });
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
-				groupId: "G_OPENID",
-				userId: "M_OPENID",
+				address: "G_OPENID",
+				senderId: "M_OPENID",
 				text: LINK,
 				cardLinks: [],
 				miniAppCardLinks: [],

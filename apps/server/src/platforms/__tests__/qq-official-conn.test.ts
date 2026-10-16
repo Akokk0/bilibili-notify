@@ -174,7 +174,7 @@ describe("createQQGatewayConn — openid 捞取", () => {
 });
 
 describe("createQQGatewayConn — C2C 私聊正文(审批指令的入口)", () => {
-	it("C2C_MESSAGE_CREATE → onInboundPrivate(openid 当 userId + 正文)", async () => {
+	it("C2C_MESSAGE_CREATE → onInboundPrivate(openid 当 address + 正文)", async () => {
 		const gw = await startFakeGateway();
 		const onInboundPrivate = vi.fn();
 		const conn = createQQGatewayConn(connOpts(gw, { onInboundPrivate }));
@@ -186,7 +186,7 @@ describe("createQQGatewayConn — C2C 私聊正文(审批指令的入口)", () =
 			id: "M1",
 		});
 		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
-		expect(onInboundPrivate).toHaveBeenCalledWith({ userId: "U_OPENID", text: "y" });
+		expect(onInboundPrivate).toHaveBeenCalledWith({ address: "U_OPENID", text: "y" });
 	});
 
 	it("群消息不进 onInboundPrivate —— 群里打个 y 不该发出待审的周报", async () => {
@@ -215,7 +215,7 @@ describe("createQQGatewayConn — C2C 私聊正文(审批指令的入口)", () =
 		// 还活着的直接证据:再来一帧照样派发到。
 		gw.dispatch("C2C_MESSAGE_CREATE", { author: { user_openid: "U1" }, content: "n" });
 		await waitFor(() => onInboundPrivate.mock.calls.length > 1);
-		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ userId: "U1", text: "n" });
+		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ address: "U1", text: "n" });
 	});
 });
 
@@ -238,8 +238,8 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 		});
 		await waitFor(() => onInboundGroup.mock.calls.length > 0);
 		expect(onInboundGroup).toHaveBeenCalledWith({
-			groupId: "G1",
-			userId: "M1",
+			address: "G1",
+			senderId: "M1",
 			text: "看这个 https://www.bilibili.com/video/BV1zMtU6uEEb/",
 			cardLinks: [],
 			miniAppCardLinks: [],
@@ -260,8 +260,8 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 		});
 		await waitFor(() => onInboundGroup.mock.calls.length > 0);
 		expect(onInboundGroup).toHaveBeenCalledWith({
-			groupId: "G1",
-			userId: "M1",
+			address: "G1",
+			senderId: "M1",
 			text: " https://b23.tv/abc",
 			cardLinks: [],
 			miniAppCardLinks: [],
@@ -318,8 +318,8 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 		});
 		await waitFor(() => onInboundGroup.mock.calls.length > 1);
 		expect(onInboundGroup.mock.calls[1]?.[0]).toEqual({
-			groupId: "G1",
-			userId: "M",
+			address: "G1",
+			senderId: "M",
 			text: "b",
 			cardLinks: [],
 			miniAppCardLinks: [],

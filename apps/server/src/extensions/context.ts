@@ -19,8 +19,8 @@ import {
 	type ExtensionManifest,
 	fail,
 	formatZodIssues,
+	type InboundHandlers,
 	type InboundMeta,
-	type InboundSinks,
 	type Logger,
 	manifestProvides,
 	ok,
@@ -302,7 +302,7 @@ export interface CreateExtensionContextOptions {
 	 */
 	onDisposed?: () => void;
 	/** 入站的两路收口。 */
-	inbound: InboundSinks;
+	inbound: InboundHandlers;
 	/** WS upgrade 的分发表。 */
 	upgrades: ExtensionUpgrades;
 	hostApiVersion?: number;
@@ -855,9 +855,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		inbound: {
 			private: (msg, meta) =>
-				feed("private", meta, (checked) => opts.inbound.onInboundPrivate?.(msg, checked)),
-			group: (msg, meta) =>
-				feed("group", meta, (checked) => opts.inbound.onInboundGroup?.(msg, checked)),
+				feed("private", meta, (checked) => opts.inbound.private?.(msg, checked)),
+			group: (msg, meta) => feed("group", meta, (checked) => opts.inbound.group?.(msg, checked)),
 		},
 		onUpgrade(handler) {
 			if (integration.disposed) {

@@ -43,8 +43,8 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 			raw_message: "[CQ:json,data=…]",
 		});
 		expect(got).toEqual({
-			groupId: "123456",
-			userId: "20002",
+			address: "123456",
+			senderId: "20002",
 			selfId: undefined,
 			text: "",
 			cardLinks: [],
@@ -151,7 +151,7 @@ describe("extractPrivateMessage", () => {
 				{ type: "text", data: { text: "y a3" } },
 			],
 		});
-		expect(got).toEqual({ userId: "10001", text: "y a3" });
+		expect(got).toEqual({ address: "10001", text: "y a3" });
 	});
 
 	// 真实客户端**两个字段都发**:raw_message 是裹着 CQ 码的字符串。它曾经
@@ -168,7 +168,7 @@ describe("extractPrivateMessage", () => {
 				{ type: "text", data: { text: "y" } },
 			],
 		});
-		expect(got).toEqual({ userId: "10001", text: "y" });
+		expect(got).toEqual({ address: "10001", text: "y" });
 	});
 
 	it("只有 raw_message(无段数组的老客户端)→ 仍可用,且 CQ 转义要还原", () => {
@@ -178,7 +178,7 @@ describe("extractPrivateMessage", () => {
 			user_id: 10001,
 			raw_message: "&#91;测试&#93; a &amp; b",
 		});
-		expect(got).toEqual({ userId: "10001", text: "[测试] a & b" });
+		expect(got).toEqual({ address: "10001", text: "[测试] a & b" });
 	});
 });
 
@@ -190,13 +190,13 @@ describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析�
 	it("私聊进 onInboundPrivate,群进 onInboundGroup,都带 meta", () => {
 		const onInboundPrivate = vi.fn();
 		const onInboundGroup = vi.fn();
-		routeInboundFrame(priv, meta, { onInboundPrivate, onInboundGroup });
-		routeInboundFrame(group, meta, { onInboundPrivate, onInboundGroup });
-		expect(onInboundPrivate).toHaveBeenCalledWith({ userId: "7", text: "y" }, meta);
+		routeInboundFrame(priv, meta, { private: onInboundPrivate, group: onInboundGroup });
+		routeInboundFrame(group, meta, { private: onInboundPrivate, group: onInboundGroup });
+		expect(onInboundPrivate).toHaveBeenCalledWith({ address: "7", text: "y" }, meta);
 		expect(onInboundGroup).toHaveBeenCalledWith(
 			{
-				groupId: "123456",
-				userId: "20002",
+				address: "123456",
+				senderId: "20002",
 				selfId: "1",
 				text: "hi",
 				cardLinks: [],
@@ -210,10 +210,10 @@ describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析�
 
 	it("只接了一路 → 另一种消息静默丢掉;心跳谁都不进", () => {
 		const onInboundPrivate = vi.fn();
-		routeInboundFrame(group, meta, { onInboundPrivate });
+		routeInboundFrame(group, meta, { private: onInboundPrivate });
 		routeInboundFrame({ post_type: "meta_event", meta_event_type: "heartbeat" }, meta, {
-			onInboundPrivate,
-			onInboundGroup: vi.fn(),
+			private: onInboundPrivate,
+			group: vi.fn(),
 		});
 		expect(onInboundPrivate).not.toHaveBeenCalled();
 	});

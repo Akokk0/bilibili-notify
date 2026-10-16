@@ -20,7 +20,7 @@
  * 拷一份进拓展包不会与宿主那份打架。
  *
  * ⛔ 一格都别多给:`ExtensionRuntime`(谁来收摊)、`ExtensionMounts` / `ExtensionUpgrades`
- * (两张宿主的分发表)、`InboundSinks`(绕过归属校验的那条管子)刻意都不在这儿 ——
+ * (两张宿主的分发表)、`InboundHandlers`(绕过归属校验的那条管子)刻意都不在这儿 ——
  * **契约的宽度是不可逆的**(决策 13),窄面加宽容易,反过来不行。
  */
 

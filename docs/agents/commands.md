@@ -18,7 +18,7 @@
 
 | 文件 | 角色 |
 |---|---|
-| `packages/internal/src/push-source.ts` / `platforms/onebot-inbound.ts` | 入站消息的平台中立形状 `InboundPrivateMessage{userId,text}` / `InboundGroupMessage{groupId,userId,selfId?,text,cardLinks}` 住在 **internal 的推送源契约**里(核心与拓展都要认得它,所以在公共包);**归一化在各自那一侧做**:OneBot 帧由 `onebot-inbound.ts` 的 `extractPrivateMessage` / `extractGroupMessage` 解析(`routeInboundFrame` 一帧至多进一路),官机由 `qq-official.ts` 的 `extractQQPrivateMessage` / `extractQQGroupMessage` 解析,桥由 `extensions/bridge/src/inbound.ts` 解析后经 `ctx.inbound` 喂回来;三条路交出同一个形状,消费者不碰原始帧 |
+| `packages/internal/src/push-source.ts` / `platforms/onebot-inbound.ts` | 入站消息的平台中立形状 `InboundPrivateMessage{address,text}` / `InboundGroupMessage{address,senderId,selfId?,text,cardLinks}` 住在 **internal 的推送源契约**里(核心与拓展都要认得它,所以在公共包);**归一化在各自那一侧做**:OneBot 帧由 `onebot-inbound.ts` 的 `extractPrivateMessage` / `extractGroupMessage` 解析(`routeInboundFrame` 一帧至多进一路),官机由 `qq-official.ts` 的 `extractQQPrivateMessage` / `extractQQGroupMessage` 解析,桥由 `extensions/bridge/src/inbound.ts` 解析后经 `ctx.inbound` 喂回来;三条路交出同一个形状,消费者不碰原始帧 |
 | `command-dispatcher.ts` | 鉴权、四道门、路由、触发词查重(`effectiveAliases` / `command()` 注册助手) |
 | `command-params.ts` | 签名解析 `parseSignature` + 入参解析 `parseArgs` + 从签名推 handler 入参类型的 `Values<S>` |
 | `command-help.ts` | `renderUsage` / `renderHelp` —— 纯函数,私聊帮助与面板卡片共用 |
@@ -38,7 +38,7 @@
 平台事件帧 / 桥的 inbound 帧
     ↓  归一化(直连: onebot-inbound.ts / qq-official.ts;桥: extensions/bridge/src/inbound.ts
     ↓            → ctx.inbound,宿主校验「这条连接是不是它的」)—— 平台差异到此为止
-InboundPrivateMessage {userId, text}
+InboundPrivateMessage {address, text}
     ↓
 ┌─────────────────────────────────────────────────┐
 │ ① 鉴权门 —— 必须在解析之前                        │

@@ -209,9 +209,9 @@ export interface InboundMeta {
 	platform: string;
 }
 
-/** 一条私聊。指令分发器只认这个;`userId` 在 OneBot 是 QQ 号,在官机是 C2C 用户 openid。 */
+/** 一条私聊。指令分发器只认这个;`address` 在 OneBot 是 QQ 号,在官机是 C2C 用户 openid。 */
 export interface InboundPrivateMessage {
-	userId: string;
+	address: string;
 	text: string;
 }
 
@@ -222,24 +222,24 @@ export interface InboundPrivateMessage {
  * 迟早有一边少拼一格,而少一格就是把「跨平台不许比」又变回一句注释。
  */
 export function inboundIdentity(msg: InboundPrivateMessage, meta: InboundMeta): ChatIdentity {
-	return { platform: meta.platform, address: msg.userId };
+	return { platform: meta.platform, address: msg.address };
 }
 
 /**
  * 入站的两路收口。三个直连 adapter 与桥交出来的是同一对回调,所以形状只声明这一份 ——
  * 各写一份的话,哪天加一格(N-3 给 meta 加平台那次)就会有人漏掉。
  */
-export interface InboundSinks {
-	onInboundPrivate?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
-	onInboundGroup?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
+export interface InboundHandlers {
+	private?: (msg: InboundPrivateMessage, meta: InboundMeta) => void;
+	group?: (msg: InboundGroupMessage, meta: InboundMeta) => void;
 }
 
-/** 一条群消息。链接解析只认这个;`groupId` 在 OneBot 是群号,在官机是群 openid。 */
+/** 一条群消息。链接解析只认这个;`address` 在 OneBot 是群号,在官机是群 openid。 */
 export interface InboundGroupMessage {
-	groupId: string;
+	address: string;
 	/** 发言者。官机给的是群成员域的 openid,与 C2C 用户 openid 不是一个命名空间,别拿去比对主人。 */
-	userId: string;
-	/** 收到这条消息的 bot 自己的号(OneBot 有);与 userId 相同就是自己发的。 */
+	senderId: string;
+	/** 收到这条消息的 bot 自己的号(OneBot 有);与 senderId 相同就是自己发的。 */
 	selfId?: string;
 	/** 用户敲的正文 —— 就是正文,不掺别的。 */
 	text: string;

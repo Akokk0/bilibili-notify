@@ -294,7 +294,7 @@ export function extractQQDiscoveredSession(
  * `member_openid` 同样绝不回退,理由见 {@link extractQQDiscoveredSession}:那是群成员
  * 域的身份,与 C2C 用户 openid 是两个命名空间,拿它去比对主人身份会认错人。
  *
- * 交出去的 `userId` 就是 C2C 用户 openid,与 PushTarget 里存的 `session.userOpenid`
+ * 交出去的 `address` 就是 C2C 用户 openid,与 PushTarget 里存的 `session.userOpenid`
  * 同一命名空间 —— 形状与 OneBot 那边一样,消费者不分平台。
  */
 export function extractQQPrivateMessage(
@@ -307,7 +307,7 @@ export function extractQQPrivateMessage(
 	if (typeof userOpenid !== "string" || !userOpenid) return null;
 	const content = data.content;
 	if (typeof content !== "string" || !content.trim()) return null;
-	return { userId: userOpenid, text: content };
+	return { address: userOpenid, text: content };
 }
 
 /**
@@ -332,11 +332,11 @@ export function extractQQGroupMessage(
 	if (typeof content !== "string" || !content.trim()) return null;
 	const author = data.author as { member_openid?: string } | undefined;
 	const memberOpenid = author?.member_openid;
-	// groupId = 群 openid(与 PushTarget 的 `session.groupOpenid` 同一命名空间);userId =
+	// address = 群 openid(与 PushTarget 的 `session.groupOpenid` 同一命名空间);senderId =
 	// 发言者在群成员域的 openid,只当身份用。官机的群消息没有分享卡这一说。
 	return {
-		groupId: groupOpenid,
-		userId: typeof memberOpenid === "string" ? memberOpenid : "",
+		address: groupOpenid,
+		senderId: typeof memberOpenid === "string" ? memberOpenid : "",
 		text: content,
 		cardLinks: [],
 		miniAppCardLinks: [],

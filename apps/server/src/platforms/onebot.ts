@@ -8,7 +8,7 @@ import type {
 	DestinationRef,
 	Disposable,
 	Failure,
-	InboundSinks,
+	InboundHandlers,
 	Logger,
 	NotificationPayload,
 	OnebotConnectionSettings,
@@ -56,8 +56,8 @@ export interface OnebotPlatformAdapterOptions {
 	 * 网关交出来的一模一样;附上收到这一帧的 adapter id —— 帧里只有 self_id(bot 的号),
 	 * 对不上配置里的 adapter,而「回到消息来的那个群」得知道该用哪条连接。
 	 */
-	onInboundPrivate?: InboundSinks["onInboundPrivate"];
-	onInboundGroup?: InboundSinks["onInboundGroup"];
+	onInboundPrivate?: InboundHandlers["private"];
+	onInboundGroup?: InboundHandlers["group"];
 	/** Fallback timeout (ms) when settings.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
@@ -630,11 +630,11 @@ class WsChannel {
  * 就悄悄少了那个字段。
  */
 function inboundSink(
-	sinks: InboundSinks,
+	handlers: InboundHandlers,
 	connectionId: string,
 ): ((frame: Record<string, unknown>) => void) | undefined {
-	if (!sinks.onInboundPrivate && !sinks.onInboundGroup) return undefined;
-	return (frame) => routeInboundFrame(frame, { connectionId, platform: "onebot" }, sinks);
+	if (!handlers.private && !handlers.group) return undefined;
+	return (frame) => routeInboundFrame(frame, { connectionId, platform: "onebot" }, handlers);
 }
 
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
@@ -653,7 +653,7 @@ class ForwardConn {
 		private readonly headers: Record<string, string>,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly sinks: InboundSinks,
+		private readonly handlers: InboundHandlers,
 		/** 通道就绪(连上 / bot 连入)时叫一声 —— 能力探测挂在这里,连上就探。 */
 		private readonly onChannelReady?: () => void,
 	) {
@@ -679,7 +679,7 @@ class ForwardConn {
 				ws,
 				`fwd:${this.connectionId}`,
 				this.serviceCtx,
-				inboundSink(this.sinks, this.connectionId),
+				inboundSink(this.handlers, this.connectionId),
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.connectionId} url=${this.url}`);
 			this.onChannelReady?.();
@@ -736,7 +736,7 @@ class ReverseListener {
 		private accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
-		private readonly sinks: InboundSinks,
+		private readonly handlers: InboundHandlers,
 		/** 同 ForwardConn:bot 连入就探一次能力。 */
 		private readonly onChannelReady?: () => void,
 	) {
@@ -776,7 +776,7 @@ class ReverseListener {
 			ws,
 			`rev:${this.connectionId}`,
 			this.serviceCtx,
-			inboundSink(this.sinks, this.connectionId),
+			inboundSink(this.handlers, this.connectionId),
 		);
 		const entry = { ws, channel };
 		this.bots.add(entry);
@@ -883,6 +883,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const log = opts.logger;
 	const serviceCtx = opts.serviceCtx;
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const inboundHandlers: InboundHandlers = {
+		private: opts.onInboundPrivate,
+		group: opts.onInboundGroup,
+	};
 	// 「adapter 配置里没写」时才用得上的兜底;真正生效的值见 minTimeoutLimits()。
 	const minTimeoutFallbacks = {
 		forward: opts.mergeForwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
@@ -1327,8 +1331,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			existing?.close();
 			forwardConns.set(
 				id,
-				new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts, () =>
-					probeOnReady(id),
+				new ForwardConn(
+					id,
+					fp,
+					cfg.url,
+					forwardHeaders(cfg),
+					serviceCtx,
+					log,
+					inboundHandlers,
+					() => probeOnReady(id),
 				),
 			);
 		}
@@ -1357,7 +1368,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// error 事件落到 bindError,经 probe 暴露给 dashboard。
 			reverseListeners.set(
 				id,
-				new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts, () =>
+				new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, inboundHandlers, () =>
 					probeOnReady(id),
 				),
 			);

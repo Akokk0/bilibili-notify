@@ -52,7 +52,7 @@ describe("createLinkReplySender", () => {
 	it("回到来源群:适配器收到群会话去向,地址是群号,连接取自那条连接", async () => {
 		const { send, sender } = setup();
 
-		const result = await sender({ connectionId: "conn-1", groupId: "98765" }, PAYLOAD);
+		const result = await sender({ connectionId: "conn-1", address: "98765" }, PAYLOAD);
 
 		expect(result).toEqual({ ok: true, latencyMs: 5 });
 		expect(send).toHaveBeenCalledTimes(1);
@@ -65,14 +65,14 @@ describe("createLinkReplySender", () => {
 
 	it("连接不在了 → not_found 结果,不抛、不发", async () => {
 		const { send, sender } = setup();
-		const result = await sender({ connectionId: "ghost", groupId: "1" }, PAYLOAD);
+		const result = await sender({ connectionId: "ghost", address: "1" }, PAYLOAD);
 		expect(result).toMatchObject({ ok: false, code: "not_found" });
 		expect(send).not.toHaveBeenCalled();
 	});
 
 	it("连接被停用 → not_configured(从前不看启停,现在与出口咽喉一致)", async () => {
 		const { send, sender } = setup(connection({ enabled: false }));
-		const result = await sender({ connectionId: "conn-1", groupId: "1" }, PAYLOAD);
+		const result = await sender({ connectionId: "conn-1", address: "1" }, PAYLOAD);
 		expect(result).toMatchObject({ ok: false, code: "not_configured" });
 		expect(send).not.toHaveBeenCalled();
 	});

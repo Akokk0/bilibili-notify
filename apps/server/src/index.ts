@@ -1241,8 +1241,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// (ADR-0019 决策 61),在播表从那里接。
 			onStopped: (id) => runtime.bus.emit("extension-stopped", { extensionId: id }),
 			inbound: {
-				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
+				private: (msg, meta) => onInboundPrivate?.(msg, meta),
+				group: (msg, meta) => onInboundGroup?.(msg, meta),
 			},
 			upgrades: extensionUpgrades,
 		});

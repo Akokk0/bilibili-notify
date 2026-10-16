@@ -72,7 +72,7 @@ describe("routeBridgeInbound", () => {
 		const s = sinks();
 		routeBridgeInbound(privateFrame(), source, s);
 		expect(s.private).toHaveBeenCalledWith(
-			{ userId: "u1", text: "/status" },
+			{ address: "u1", text: "/status" },
 			{ connectionId: CONNECTION_ID, platform: "telegram" },
 		);
 		expect(s.group).not.toHaveBeenCalled();
@@ -83,8 +83,8 @@ describe("routeBridgeInbound", () => {
 		routeBridgeInbound(groupFrame(), source, s);
 		expect(s.group).toHaveBeenCalledWith(
 			{
-				groupId: "-100",
-				userId: "u1",
+				address: "-100",
+				senderId: "u1",
 				text: "看看 https://www.bilibili.com/video/BV1xx",
 				selfId: "77770000",
 				cardLinks: [],

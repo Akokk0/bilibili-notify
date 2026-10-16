@@ -150,13 +150,13 @@ function harness(
 		},
 		upgrades: createExtensionUpgrades(),
 		inbound: {
-			onInboundPrivate: (_msg, meta) =>
+			private: (_msg, meta) =>
 				inboundSeen.push({
 					route: "private",
 					connectionId: meta.connectionId,
 					platform: meta.platform,
 				}),
-			onInboundGroup: (_msg, meta) =>
+			group: (_msg, meta) =>
 				inboundSeen.push({
 					route: "group",
 					connectionId: meta.connectionId,
@@ -892,7 +892,7 @@ describe("喂入站", () => {
 	 */
 	it("校验归属走单条访问口,不问全表", () => {
 		const h = harness();
-		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
 		expect(h.inboundSeen).toHaveLength(1);
 		expect(h.connectionReads()).toBe(1);
 		expect(h.connectionsReads()).toBe(0);
@@ -900,9 +900,9 @@ describe("喂入站", () => {
 
 	it("私聊与群消息都送得到下一层", () => {
 		const h = harness();
-		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
 		h.ctx.inbound.group(
-			{ groupId: "g", userId: "u", text: "hi", cardLinks: [], miniAppCardLinks: [] },
+			{ address: "g", senderId: "u", text: "hi", cardLinks: [], miniAppCardLinks: [] },
 			meta("c1"),
 		);
 		expect(h.inboundSeen).toEqual([
@@ -921,8 +921,8 @@ describe("喂入站", () => {
 	 */
 	it("🔴 拓展报的平台与连接对不上 → 以连接为准,并且每条连接只记一行", () => {
 		const h = harness();
-		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
-		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("c1"));
+		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
+		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("c1"));
 		expect(h.inboundSeen).toEqual([
 			{ route: "private", connectionId: "c1", platform: "onebot" },
 			{ route: "private", connectionId: "c1", platform: "onebot" },
@@ -932,7 +932,7 @@ describe("喂入站", () => {
 
 	it("🔴 冒充别人的连接 → 丢掉并留一行", () => {
 		const h = harness();
-		h.ctx.inbound.private({ userId: "u", text: "hi" }, meta("别人家的连接"));
+		h.ctx.inbound.private({ address: "u", text: "hi" }, meta("别人家的连接"));
 		expect(h.inboundSeen).toEqual([]);
 		expect(h.lines.some((l) => l.startsWith("warn"))).toBe(true);
 	});

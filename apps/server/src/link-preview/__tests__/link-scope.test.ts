@@ -146,7 +146,7 @@ describe("resolveLinkParsingPolicies", () => {
 		expect(missingConnection.policyFor(K_GROUP).parse).toBe(false);
 	});
 
-	it("官机群的地址是 groupOpenid,与入站帧里的 groupId 同一个值", () => {
+	it("官机群的地址是 groupOpenid,与入站帧里的 address 同一个值", () => {
 		const table = resolveLinkParsingPolicies({
 			config: { ...NONE_ON, groups: { [T_QQ_GROUP]: { parse: true } } },
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],

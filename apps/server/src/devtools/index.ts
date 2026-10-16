@@ -1,5 +1,11 @@
 import { getHeapStatistics } from "node:v8";
-import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
+import type {
+	ChatIdentity,
+	Connection,
+	InboundHandlers,
+	MessageBus,
+	PushTarget,
+} from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
@@ -25,7 +31,7 @@ import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
 import { extensionScenarios } from "./scenarios/extensions.js";
 import { heapPressureScenario } from "./scenarios/heap.js";
-import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
+import { inboundScenarios } from "./scenarios/inbound.js";
 import { marketplaceUpdateScenario } from "./scenarios/marketplace.js";
 import { timerScenarios } from "./scenarios/timers.js";
 import { updateStateScenario } from "./scenarios/update.js";

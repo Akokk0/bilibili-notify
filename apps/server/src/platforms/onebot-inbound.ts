@@ -9,9 +9,9 @@
 
 import type {
 	InboundGroupMessage,
+	InboundHandlers,
 	InboundMeta,
 	InboundPrivateMessage,
-	InboundSinks,
 } from "@bilibili-notify/internal";
 
 /**
@@ -21,18 +21,18 @@ import type {
 export function routeInboundFrame(
 	frame: Record<string, unknown>,
 	meta: InboundMeta,
-	sinks: InboundSinks,
+	handlers: InboundHandlers,
 ): void {
-	if (sinks.onInboundPrivate) {
+	if (handlers.private) {
 		const msg = extractPrivateMessage(frame);
 		if (msg) {
-			sinks.onInboundPrivate(msg, meta);
+			handlers.private(msg, meta);
 			return;
 		}
 	}
-	if (sinks.onInboundGroup) {
+	if (handlers.group) {
 		const msg = extractGroupMessage(frame);
-		if (msg) sinks.onInboundGroup(msg, meta);
+		if (msg) handlers.group(msg, meta);
 	}
 }
 
@@ -47,11 +47,11 @@ export function extractPrivateMessage(
 ): InboundPrivateMessage | null {
 	if (frame.post_type !== "message") return null;
 	if (frame.message_type !== "private") return null;
-	const userId = toId(frame.user_id);
-	if (!userId) return null;
+	const address = toId(frame.user_id);
+	if (!address) return null;
 	const text = extractText(frame);
 	if (!text.trim()) return null;
-	return { userId, text };
+	return { address, text };
 }
 
 /**
@@ -76,13 +76,13 @@ function toId(v: unknown): string | undefined {
 export function extractGroupMessage(frame: Record<string, unknown>): InboundGroupMessage | null {
 	if (frame.post_type !== "message") return null;
 	if (frame.message_type !== "group") return null;
-	const groupId = toId(frame.group_id);
-	const userId = toId(frame.user_id);
-	if (!groupId || !userId) return null;
+	const address = toId(frame.group_id);
+	const senderId = toId(frame.user_id);
+	if (!address || !senderId) return null;
 	const text = extractText(frame).trim();
 	const { cardLinks, miniAppCardLinks } = extractCardLinks(frame);
 	if (!text && cardLinks.length === 0 && miniAppCardLinks.length === 0) return null;
-	return { groupId, userId, selfId: toId(frame.self_id), text, cardLinks, miniAppCardLinks };
+	return { address, senderId, selfId: toId(frame.self_id), text, cardLinks, miniAppCardLinks };
 }
 
 /**

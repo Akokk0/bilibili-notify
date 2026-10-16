@@ -2182,8 +2182,8 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		await waitFor(() => onInboundGroup.mock.calls.length > 0);
 		expect(onInboundGroup).toHaveBeenCalledWith(
 			{
-				groupId: "123",
-				userId: "456",
+				address: "123",
+				senderId: "456",
 				selfId: "10000",
 				text: "hi",
 				cardLinks: [],
@@ -2214,7 +2214,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		);
 		await waitFor(() => onInboundPrivate.mock.calls.length > 0);
 		expect(onInboundPrivate).toHaveBeenCalledWith(
-			{ userId: "456", text: "y" },
+			{ address: "456", text: "y" },
 			{ connectionId: "a1", platform: "onebot" },
 		);
 		// 还活着的直接证据:上一条让消费者抛了,再来一条照样送到。
@@ -2227,7 +2227,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 			}),
 		);
 		await waitFor(() => onInboundPrivate.mock.calls.length > 1);
-		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ userId: "456", text: "n" });
+		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ address: "456", text: "n" });
 		ad.stop();
 	});
 });

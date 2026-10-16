@@ -28,9 +28,9 @@ const META = { connectionId: "a1", platform: PLATFORM };
 async function feed(
 	h: ReturnType<typeof createRoastCommandHandler>,
 	text: string,
-	userId = MASTER,
+	address = MASTER,
 ): Promise<boolean> {
-	return h.confirmation.tryHandle({ userId, text }, META, { reply: reply as Any });
+	return h.confirmation.tryHandle({ address, text }, META, { reply: reply as Any });
 }
 
 let dir: string;
@@ -162,13 +162,13 @@ describe("审批指令处理", () => {
 		expect(deliver).toHaveBeenCalledTimes(1);
 	});
 
-	it("平台中立入口:qq-official 那边送来的 {userId,text} 同样认", async () => {
+	it("平台中立入口:qq-official 那边送来的 {address,text} 同样认", async () => {
 		// onebot 送的是一整帧 OneBot 事件,qq-official 送的是网关那边解析好的
 		// {userOpenid, text}。两条路在这里汇合成同一个身份判定与同一套指令语义 ——
 		// 各写一份鉴权迟早有一边把「不是主人也放行」写漏。
 		const d = await seedDraft();
 		const h = makeHandler();
-		await h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META, { reply: reply as Any });
+		await h.confirmation.tryHandle({ address: MASTER, text: "y" }, META, { reply: reply as Any });
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0].id).toBe(d.id);
 	});
@@ -176,7 +176,7 @@ describe("审批指令处理", () => {
 	it("平台中立入口同样只认主人 —— 别人的 y 当没看见", async () => {
 		await seedDraft();
 		const h = makeHandler();
-		await h.confirmation.tryHandle({ userId: "99999", text: "y" }, META, { reply: reply as Any });
+		await h.confirmation.tryHandle({ address: "99999", text: "y" }, META, { reply: reply as Any });
 		expect(deliver).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -225,7 +225,7 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		const h = makeHandler();
 
 		await expect(
-			h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META, { reply: reply as Any }),
+			h.confirmation.tryHandle({ address: MASTER, text: "y" }, META, { reply: reply as Any }),
 		).resolves.toBe(true);
 
 		expect(deliver).toHaveBeenCalledOnce();
@@ -238,7 +238,7 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		const h = makeHandler();
 
 		await expect(
-			h.confirmation.tryHandle({ userId: MASTER, text: "/状态" }, META, { reply: reply as Any }),
+			h.confirmation.tryHandle({ address: MASTER, text: "/状态" }, META, { reply: reply as Any }),
 		).resolves.toBe(false);
 	});
 
@@ -249,7 +249,7 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		const h = makeHandler();
 
 		await expect(
-			h.confirmation.tryHandle({ userId: "99999", text: "y" }, META, { reply: reply as Any }),
+			h.confirmation.tryHandle({ address: "99999", text: "y" }, META, { reply: reply as Any }),
 		).resolves.toBe(false);
 
 		expect(deliver).not.toHaveBeenCalled();

@@ -10,7 +10,7 @@ import {
 	type ExtensionManifest,
 	type ExtensionManifestField,
 	type ExtensionRunState,
-	type InboundSinks,
+	type InboundHandlers,
 	type Issue,
 	type Logger,
 	manifestSecretKeys,
@@ -263,7 +263,7 @@ export interface LoadExtensionsOptions {
 	 */
 	onStopped?: (id: string) => void;
 	/** 入站的两路收口。 */
-	inbound: InboundSinks;
+	inbound: InboundHandlers;
 	/** WS upgrade 的分发表。 */
 	upgrades: ExtensionUpgrades;
 	isEnabled(id: string): boolean;

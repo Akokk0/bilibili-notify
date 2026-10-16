@@ -12,6 +12,6 @@ import type { LinkReplyDestination } from "./link-previewer.js";
 export function createLinkReplySender(
 	engines: Pick<EnginesRuntime, "sendToAddress">,
 ): (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult> {
-	return ({ connectionId, groupId }, payload) =>
-		engines.sendToAddress(connectionId, { scope: "group", address: groupId }, payload);
+	return ({ connectionId, address }, payload) =>
+		engines.sendToAddress(connectionId, { scope: "group", address }, payload);
 }

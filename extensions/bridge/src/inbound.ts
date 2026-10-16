@@ -51,13 +51,13 @@ export function routeBridgeInbound(
 		platform: bot?.platform ?? frame.platform,
 	};
 	if (frame.message.scope === "private") {
-		inbound.private({ userId: frame.message.userId, text: frame.message.text }, meta);
+		inbound.private({ address: frame.message.userId, text: frame.message.text }, meta);
 		return;
 	}
 	inbound.group(
 		{
-			groupId: frame.message.groupId,
-			userId: frame.message.userId,
+			address: frame.message.groupId,
+			senderId: frame.message.userId,
 			text: frame.message.text,
 			selfId: bot?.selfId,
 			// 协议 1.4 起桥把分享卡里的链接单独放两格(§5.3),这里原样转交 —— 尤其是

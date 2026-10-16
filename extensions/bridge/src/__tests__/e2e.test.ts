@@ -483,7 +483,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 			message: { scope: "private", userId: "u1", text: "/status" },
 		});
 		await expectEventually(() => expect(host.inbound()).toHaveLength(1));
-		expect(host.inbound()[0]).toMatchObject({ route: "private", msg: { userId: "u1" } });
+		expect(host.inbound()[0]).toMatchObject({ route: "private", msg: { address: "u1" } });
 	});
 
 	/**

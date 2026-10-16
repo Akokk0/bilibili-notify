@@ -21,7 +21,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type Connection,
 	type Disposable,
-	type InboundSinks,
+	type InboundHandlers,
 	type IntegrationContext,
 	type Logger,
 	type MessageBus,
@@ -102,8 +102,8 @@ export interface BuiltinIntegrationsDeps {
 	 */
 	serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem">;
 	/** 入站两路出口。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。 */
-	onInboundPrivate: NonNullable<InboundSinks["onInboundPrivate"]>;
-	onInboundGroup: NonNullable<InboundSinks["onInboundGroup"]>;
+	onInboundPrivate: NonNullable<InboundHandlers["private"]>;
+	onInboundGroup: NonNullable<InboundHandlers["group"]>;
 	/** 活的适配器登记表(拓展与内置共用的那一张)。 */
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 各适配器的 state / secrets 存储。 */
