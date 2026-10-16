@@ -47,16 +47,24 @@ export function placeholdersOf(text: string): string[] {
  * 否则会出现上层的 `#one` 配下层的 `#other`。
  */
 export function mergeDict(...layers: readonly (Dict | undefined)[]): Dict {
-	const merged: Record<string, string> = {};
+	// 用 Map 攒、最后 fromEntries:`Object.assign` 会触发 `__proto__` 的 setter,
+	// 译文文件(JSON.parse 出来)里一个自有的 "__proto__" 键就能改掉合成结果的原型
+	const merged = new Map<string, string>();
 	for (const layer of layers) {
 		if (layer === undefined) continue;
-		const stems = new Set(Object.keys(layer).map(stemOf));
-		for (const key of Object.keys(merged)) {
-			if (stems.has(stemOf(key))) delete merged[key];
+		const entries = Object.entries(layer);
+		const stems = new Set(entries.map(([key]) => stemOf(key)));
+		for (const key of [...merged.keys()]) {
+			if (stems.has(stemOf(key))) merged.delete(key);
 		}
-		Object.assign(merged, layer);
+		for (const [key, text] of entries) merged.set(key, text);
 	}
-	return merged;
+	return Object.fromEntries(merged);
+}
+
+/** 只认字典自己的键:顺着原型链会把缺键 `constructor` 取成函数。 */
+function ownText(dict: Dict, key: string): string | undefined {
+	return Object.hasOwn(dict, key) ? dict[key] : undefined;
 }
 
 const pluralRulesByLocale = new Map<string, Intl.PluralRules | null>();
@@ -85,12 +93,12 @@ export function translate(
 	key: string,
 	values: TextValues = {},
 ): string {
-	let text = dict[key];
+	let text = ownText(dict, key);
 	if (typeof values.count === "number") {
 		const category = pluralCategory(locale, values.count);
 		text =
-			dict[`${key}${PLURAL_SEPARATOR}${category}`] ??
-			dict[`${key}${PLURAL_SEPARATOR}other`] ??
+			ownText(dict, `${key}${PLURAL_SEPARATOR}${category}`) ??
+			ownText(dict, `${key}${PLURAL_SEPARATOR}other`) ??
 			text;
 	}
 	if (text === undefined) return key;

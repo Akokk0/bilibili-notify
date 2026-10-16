@@ -29,6 +29,14 @@ describe("mergeDict", () => {
 		expect(merged).toEqual({ n: "上" });
 	});
 
+	it("层里有 JSON.parse 出来的自有键 __proto__ 时,不改合成结果的原型", () => {
+		const layer = JSON.parse('{"__proto__":{"polluted":"y"},"a":"1"}') as Dict;
+		const merged = mergeDict({ b: "2" }, layer);
+		expect((merged as Record<string, unknown>).polluted).toBeUndefined();
+		expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+		expect(Object.keys(merged).sort()).toEqual(["__proto__", "a", "b"]);
+	});
+
 	it("层可以是 undefined,不改入参", () => {
 		const base: Dict = { a: "1" };
 		expect(mergeDict(base, undefined, { b: "2" })).toEqual({ a: "1", b: "2" });
@@ -76,6 +84,15 @@ describe("translate", () => {
 
 	it("没有 count 时按不带后缀的键取", () => {
 		expect(translate({ plain: "平的" }, "en", "plain", { other: 1 })).toBe("平的");
+	});
+
+	it("只认字典自己的键 —— 缺键 constructor、toString、__proto__ 回键本身,不顺着原型链取到函数", () => {
+		expect(translate({}, "en", "constructor")).toBe("constructor");
+		expect(translate({}, "en", "toString", { name: "x" })).toBe("toString");
+		expect(translate({}, "en", "__proto__")).toBe("__proto__");
+		// 带数量时 `键#类别` 也只认自己的键
+		expect(translate({ "constructor#one": "一" }, "en", "constructor", { count: 1 })).toBe("一");
+		expect(translate({}, "en", "constructor", { count: 1 })).toBe("constructor");
 	});
 
 	it("语言码不合法时不炸,落 #other", () => {
