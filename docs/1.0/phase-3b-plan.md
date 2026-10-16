@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-13 排出，主人当天认了，同日开工；10-14 照 10-13 晚到 10-14 的定案重排：各片的题都答完了，新加 3b-51 至 3b-53；同日晚主人逐处过完没先问的八处缝，定下的改动新开 3b-54 至 3b-56；10-15 主人定开 3b-57（拆装配文件并改掉「引擎」旧叫法）、3b-58（外部 id 的格式由来源声明） |
-| 已完成 | 14 / 58（10-13 落 3b-01、3b-02、3b-03、3b-05、3b-06、3b-07、3b-13、3b-14、3b-15、3b-17、3b-19、3b-20、3b-27、3b-32）；另有三片落了一部分：3b-18（抽装配已落，风控那一半的码表 10-14 定了、还没做）、3b-28（重写本体已落，门还没改名）、3b-36 第一步 |
+| 已完成 | 15 / 58（10-13 落 3b-01、3b-02、3b-03、3b-05、3b-06、3b-07、3b-13、3b-14、3b-15、3b-17、3b-19、3b-20、3b-27、3b-32；10-16 落 3b-28）；另有几片落了一部分：3b-18（抽装配已落，风控那一半的码表 10-14 定了、还没做）、3b-36 第一步、3b-04（索引按契约版本分格）、3b-09（多语言核心）、3b-54（标签合成一格） |
 | 13 行转对拍 | 2 / 13（N17 → P21、N07 → P22） |
 | 迁移修订号 / 备份版本 | 44 / 17（3b 开工前） |
 
@@ -63,7 +63,7 @@
 | 3b-26 | 统计「这个小时在记」改成核心自己算；统计里 B 站那几处搬进 `bilibili/`；入口里两行接线的测试；对拍 N16 | 3b-24 | 否 | 中 |
 | **戊 链接预览、原生分享、AI** | | | | |
 | 3b-27 ✅ | 两张登记表：链接解析器、AI 工具提供方；`compose.ts` 与来源上下文各加登记口。链接那一半随 3b-28 的重写本体一起落了，AI 那一半并进 3b-34。🔗 10-13：链接那一半（核心包的 `LinkResolver` / `LinkPreview`、`link-preview/registry.ts`、来源上下文的 `registerLinkResolver`）做完了，但单独提交不了 —— 对拍的成员棘轮要求来源上下文的新成员先有对拍行管着，而那一行就是 N07，所以并进 3b-28 的重写本体一起落；AI 工具提供方那张表在 3b-34 之前没有登记的人也没有读的人，随 3b-34 造 | 无 | 否 | 小 |
-| 3b-28 | 链接预览重写（ADR-0029）：先补一条走假解析器的端到端钉子，再改成「核心的门加登记表」，B 站解析器搬进 `bilibili/`，目录改 `link-preview/`，冷却键换新；视频封面；对拍 N07。🔗 10-13：第一步已落 —— `link-parser`、`link-reply`、`link-scope` 三个文件连同测试从 `runtime/` 搬进 `link-preview/`，名字与行为都没动，四张按文件记账的棘轮表跟着换了路径。重写本体同日已落 —— 门不再认识 B 站：用通用网址正则挑候选，按登记先后问在册的解析器认不认，取前三个被认领的；冷却每条链接记两把键（联网之前按链接原文，解析成功后按解析器交的规范 id），同一条消息里指着同一个东西的几种写法只出一张（冷却关着也一样）；B 站的解析器、视频链接的认法、视频翻成作品都搬进 `bilibili/`，由 B 站来源在 `start(ctx)` 里登记；原生分享由解析器交中立描述、门先翻成今天的小程序卡载荷（不动盘）；对拍 N07 转成 P22；四道棘轮随之下调。看得见的变化：同一个视频的 av 链接与 BV 链接现在共用冷却；回原生分享时也会抓一次封面。还没做：门改名 `LinkPreviewer`（主人 10-13 定；`createLinkPreviewer`、`LinkPreviewerOptions`、文件 `link-previewer.ts`），单做一个机械改名提交；解析器交的 `appId` 先用来源键占位，3b-31 定对照表时再定 | 3b-27 | 否 | 大 |
+| 3b-28 ✅ | 链接预览重写（ADR-0029）：先补一条走假解析器的端到端钉子，再改成「核心的门加登记表」，B 站解析器搬进 `bilibili/`，目录改 `link-preview/`，冷却键换新；视频封面；对拍 N07。🔗 10-13：第一步已落 —— `link-parser`、`link-reply`、`link-scope` 三个文件连同测试从 `runtime/` 搬进 `link-preview/`，名字与行为都没动，四张按文件记账的棘轮表跟着换了路径。重写本体同日已落 —— 门不再认识 B 站：用通用网址正则挑候选，按登记先后问在册的解析器认不认，取前三个被认领的；冷却每条链接记两把键（联网之前按链接原文，解析成功后按解析器交的规范 id），同一条消息里指着同一个东西的几种写法只出一张（冷却关着也一样）；B 站的解析器、视频链接的认法、视频翻成作品都搬进 `bilibili/`，由 B 站来源在 `start(ctx)` 里登记；原生分享由解析器交中立描述、门先翻成今天的小程序卡载荷（不动盘）；对拍 N07 转成 P22；四道棘轮随之下调。看得见的变化：同一个视频的 av 链接与 BV 链接现在共用冷却；回原生分享时也会抓一次封面。门改名 `LinkPreviewer`（主人 10-13 定）已作为一个机械改名提交落地（`createLinkPreviewer`、`LinkPreviewerOptions`、文件 `link-previewer.ts`，`extractUrlCandidates` 同时改为 `extractUrls`、文件 `extract-urls.ts`，行为不变）。还没做：解析器交的 `appId` 先用来源键占位，3b-31 定对照表时再定 | 3b-27 | 否 | 大 |
 | 3b-29 | 设置 `linkParsing` → `linkPreview`，五格：总开关（默认关）、默认回不回、回复形式、按目标的例外、`cooldownSec`（主人 10-14 定加回总开关、留冷却；总开关与「默认」两格的名字施工时照规范起、列给主人）；迁移一一对应、行为不变；带 `linkParsing` 的名字机械换成 `linkPreview`；面板最小跟改 | 3b-28 | 是 | 中 |
 | 3b-30 | 入站链接的来源标记：`miniAppCardLinks` 删掉，适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" \| "nativeShare" }[]`，正文链接仍由核心从 `text` 里挑（内部记 `"text"`）；删 B 站域名预筛。只动 BN 内部；桥帧不改名，由桥的适配器映射 | 3b-28、3b-40 的第一个提交（入站改名） | 否 | 中 |
 | 3b-31 | 原生分享：解析器交中立描述，OneBot 适配器去签；载荷改名；重推原件迁移与守卫 13；webhook 的线上帧。载荷种类 `"miniapp-card"` → `"native-share"`、能力格 `miniAppCard` → `nativeShare`；`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里核），OneBot 签名接口不收通用参数就在适配器里放对照表；旧原件迁移补同一个值；回复形式「回文字」发作者名加作品文字（限长）、不带链接 | 3b-28 | 是 | 中 |
@@ -156,7 +156,7 @@
 | 3b-17 的入口 | 文件 `live/superchat.ts`；`pushSuperchat(options, deps)`；`SuperchatOptions`（`event`、`minAmount`、`creator { name, avatar? }`、卡样式与皮肤三格、`fallbackText`）；`SuperchatDeps`（`renderer`、`fetchViewerAvatar`、`send(段)`、`logger`） | 同上一行的路数；发送收的是核心包现成的消息段类型 |
 | 3b-18 的入口 | 文件 `live/membership.ts`；`pushMembership(options, deps)`；`MembershipOptions`（`event`、这一档的展示信息 `tier`、`minRank`、生效的文案包 `template`、`creator`、卡样式与皮肤三格、`fallbackText`）；`MembershipDeps`（`renderer`、`fetchTierIcon`、`fetchViewerAvatar`、内容构造口 `content`、`send(消息)`、`logger`） | 同 3b-15、3b-17 的路数；有两支要发「按网址取的图加一句文字」拼成的一条消息，现成的消息段类型装不下，所以这一个用核心 `live/` 里本来就有的内容构造口 |
 | 3b-19 的家与入口 | 目录 `live/recap/`；`recapAnchors(options, deps)`、`RecapOptions`、`RecapDeps` | 词表：下播后的回顾叫 `recap` |
-| 3b-28 的通用网址挑选 | 文件 `link-preview/url-candidates.ts` 的 `extractUrlCandidates(text)` | 从今天 B 站那条正则的写法推广；只管形状，认不认归解析器 |
+| 3b-28 的通用网址挑选 | 文件 `link-preview/extract-urls.ts` 的 `extractUrls(text)` | 从今天 B 站那条正则的写法推广；只管形状，认不认归解析器 |
 | 3b-20 的名字 | `ExtensionLiveSessions` → `LiveSessionEngine`（文档管它叫「场次引擎」）；`ExtensionLiveRow` → `LiveTableEntry`（`Row` 不再用）；`ExtensionLiveTable` → `LiveTable`；`LiveCardFacts` → `LiveCardFields`；常量 → `LIVE_CHANGED_COALESCE_MS`；场次变化联合的判别键 `type` → `kind`；运行时上的 `extensionLive` → `liveTable`、`extensionLiveSession()` → `liveSession()`。线上名字（总线事件、契约类型、字段 `extensionId`）与日志前缀、端到端测试文件名都不动 | 后缀表；data-model 的改名表；仓里同类常量的写法 |
 | 3b-32 工具上的标签格 | `AiTool`（原 `ExtraTool`）加 `label`、`labelArg`（小条上补哪一格入参：`keys` 是候选参数名，`format` 把那一格的值翻成给人看的样子；3b-54 由原来的两格合成一格）；痕迹的开始事件带 `label` 与 `argText` 并落盘 | 定案只写了「`label` 与参数标签」；面板那张表里有的三样都得由工具这边给，后两格的名字原是暂起的，3b-54 已改定 |
 | 3b-27 链接半 | 类型 `LinkResolver`、`LinkPreview`（文档原文）；`createLinkResolverRegistry()` 与 `LinkResolverRegistry { register, entries }`（读口带键）；来源上下文上的 `registerLinkResolver(resolver): Disposable`；运行时上挂 `linkResolvers` | 类型逐字照 data-model 与 subscription-sources；登记表照来源登记表的写法；登记口照契约里 `register…` 一族 |

@@ -48,7 +48,7 @@ import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
-import { createLinkParser } from "./link-preview/link-parser.js";
+import { createLinkPreviewer } from "./link-preview/link-previewer.js";
 import { createLinkReplySender } from "./link-preview/link-reply.js";
 import { consoleErrorRedacted } from "./logs/console-fallback.js";
 import { startLogRetention } from "./logs/retention.js";
@@ -1076,7 +1076,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那条连接
 		// 经派发器的 `sendToAddress` 直接发(群不必配成推送目标,主人定的:机器人在的所有群都算)。
-		const linkParser = createLinkParser({
+		const linkPreviewer = createLinkPreviewer({
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
 			config: () => runtimeEngines.linkParsing(),
@@ -1111,7 +1111,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		};
 		onInboundGroup = (msg, meta) => {
 			runtime.serviceCtx.track(
-				linkParser
+				linkPreviewer
 					.handleMessage({
 						...msg,
 						connectionId: meta.connectionId,

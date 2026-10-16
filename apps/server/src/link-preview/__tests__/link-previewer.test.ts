@@ -22,7 +22,11 @@ import type {
 import { fail, LINK_LIMITS, type LinkLimits, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
-import { createLinkParser, type LinkParser, type LinkReplyDestination } from "../link-parser.js";
+import {
+	createLinkPreviewer,
+	type LinkPreviewer,
+	type LinkReplyDestination,
+} from "../link-previewer.js";
 import { createLinkResolverRegistry } from "../registry.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
@@ -56,7 +60,7 @@ function groupFrame(text: string, over: Record<string, unknown> = {}) {
 }
 
 /** 接线层在 index.ts 里做的事:OneBot 帧经 adapter 归一化,再补上平台与连接进 handleMessage。 */
-async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise<void> {
+async function feed(parser: LinkPreviewer, frame: Record<string, unknown>): Promise<void> {
 	const msg = extractGroupMessage(frame);
 	if (!msg) return;
 	await parser.handleMessage({ connectionId: ADAPTER, ...msg });
@@ -145,7 +149,7 @@ function makeParser(
 	}));
 	const signal = new AbortController().signal;
 	const build = (rendererOverride?: () => ReturnType<typeof renderer>) =>
-		createLinkParser({
+		createLinkPreviewer({
 			logger,
 			config: readConfig,
 			linkResolvers,
@@ -181,7 +185,7 @@ function makeParser(
 	};
 }
 
-describe("createLinkParser", () => {
+describe("createLinkPreviewer", () => {
 	it("群里一条被认领的链接:问解析器,把它交的作品渲染成图片卡,发回来源群", async () => {
 		const h = makeParser();
 		await feed(h.parser, groupFrame(`看这个 ${LINK} 好看`));
@@ -249,7 +253,7 @@ describe("createLinkParser", () => {
 
 		it("登记表是空的(没有集成登记解析器):什么都不做", async () => {
 			const h = makeParser();
-			const parser = createLinkParser({
+			const parser = createLinkPreviewer({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: h.readConfig,
 				linkResolvers: createLinkResolverRegistry(),
@@ -270,7 +274,7 @@ describe("createLinkParser", () => {
 			// 门每条消息现读登记表:解析器的把手一撤(来源停下时宿主就是这么撤的),下一条就没人认。
 			const other = createLinkResolverRegistry();
 			const handle = other.register(RESOLVER_KEY, h.resolver);
-			const parser = createLinkParser({
+			const parser = createLinkPreviewer({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: h.readConfig,
 				linkResolvers: other,

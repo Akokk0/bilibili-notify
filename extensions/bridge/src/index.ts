@@ -86,7 +86,7 @@ export function activate(ctx: ExtensionContext): void {
 		accepts: (linkId) => links().some((link) => link.id === linkId && link.enabled),
 		// 群消息**恒要含链接的那些**,不跟着链接解析的开关走:订阅只在握手时下发一次,
 		// 跟着开关走的话主人开完链接解析,已经连着的那条桥仍然一条群消息都不发,而且
-		// 要等它自己重连才恢复。要不要解析在本地判(link-parser 自己会看开关)。
+		// 要等它自己重连才恢复。要不要解析在本地判(link-previewer 自己会看开关)。
 		inbound: () => ({ private: true, group: "with-links" }),
 		onInbound: (session, frame) => {
 			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到

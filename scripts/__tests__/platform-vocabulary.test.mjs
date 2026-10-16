@@ -455,7 +455,7 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/inbound.ts": 18, // 入站场景的参数名与变量 `userId` / `groupId`×15、提示文字里的「群 openid」「OneBot / 官机」、`miniAppCardLinks`
 	"apps/server/src/history/repush-store.ts": 3, // 重推原件的载荷种类 `"miniapp-card"`
 	"apps/server/src/history/store.ts": 1, // 同上
-	"apps/server/src/link-preview/link-parser.ts": 19, // 小程序卡 13(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……)、群入站的 `groupId` / `userId` 6(3b-28 日志里「在哪个群」只拼一次,12 → 6)
+	"apps/server/src/link-preview/link-previewer.ts": 19, // 小程序卡 13(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……)、群入站的 `groupId` / `userId` 6(3b-28 日志里「在哪个群」只拼一次,12 → 6)
 	"apps/server/src/link-preview/link-reply.ts": 2, // 回复目的地的 `groupId`
 	"apps/server/src/link-preview/link-scope.ts": 5, // 链接作用域键的 `groupId`
 	"apps/server/src/runtime/command-dispatcher.ts": 1, // 私聊入站的 `msg.userId`

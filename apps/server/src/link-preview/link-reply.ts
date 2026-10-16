@@ -1,6 +1,6 @@
 import type { DeliveryResult, NotificationPayload } from "@bilibili-notify/internal";
 import type { EnginesRuntime } from "../runtime/engines.js";
-import type { LinkReplyDestination } from "./link-parser.js";
+import type { LinkReplyDestination } from "./link-previewer.js";
 
 /**
  * 链接解析回到来源群的发送口。

@@ -9,7 +9,7 @@
  *
  * 回到来源群不走推送目标表:用收到这一帧的那条连接直接发,群不必配成推送目标。
  *
- * **只有一个入口** {@link LinkParser.handleMessage}:进来的已经是 adapter 归一化好的群
+ * **只有一个入口** {@link LinkPreviewer.handleMessage}:进来的已经是 adapter 归一化好的群
  * 消息,平台的原始帧长什么样到这里已经不可见了 —— 桥后面那些平台我们连帧都没见过。
  */
 
@@ -29,9 +29,9 @@ import {
 	type Post,
 } from "@bilibili-notify/internal";
 import { RecencyTable } from "../util/recency-table.js";
+import { extractUrls } from "./extract-urls.js";
 import { linkScopeKey } from "./link-scope.js";
 import type { LinkResolverRegistry } from "./registry.js";
-import { extractUrlCandidates } from "./url-candidates.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
@@ -62,7 +62,7 @@ export interface LinkCardPresentation {
 	cardSkin?: string;
 }
 
-export interface LinkParserOptions {
+export interface LinkPreviewerOptions {
 	logger: Logger;
 	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
 	config: () => LinkParsingConfig;
@@ -107,12 +107,12 @@ export interface LinkParserOptions {
 	limits?: Partial<LinkLimits>;
 }
 
-export interface LinkParser {
+export interface LinkPreviewer {
 	/** 喂一条 adapter 归一化好的群消息。功能关着、没有链接、自己发的,都静默返回;**永不抛**。 */
 	handleMessage(msg: InboundLinkMessage): Promise<void>;
 }
 
-export function createLinkParser(opts: LinkParserOptions): LinkParser {
+export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	const now = opts.now ?? (() => Date.now());
 	const limits: LinkLimits = { ...LINK_LIMITS, ...opts.limits };
 	/**
@@ -252,7 +252,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			// 随后有人把同一条链接以文字贴出来照常出卡。
 			// 先用通用网址正则挑候选,再问在册的解析器认不认,取前几个被认领的;没人认就在读配置之前返回。
 			const claimed: { url: string; key: string; resolver: LinkResolver }[] = [];
-			for (const url of extractUrlCandidates([msg.text, ...msg.cardLinks].join(" "))) {
+			for (const url of extractUrls([msg.text, ...msg.cardLinks].join(" "))) {
 				const owner = claimedBy(url);
 				if (owner) claimed.push({ url, ...owner });
 				if (claimed.length >= MAX_LINKS_PER_MESSAGE) break;

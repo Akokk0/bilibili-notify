@@ -16,7 +16,7 @@ const URL_CANDIDATE_RE =
 const TRAILING_PUNCT_RE = /[.,;:!?)\]'"]+$/;
 
 /** 文本里的网址候选,按出现顺序,同一条原文只交一次。 */
-export function extractUrlCandidates(text: string): string[] {
+export function extractUrls(text: string): string[] {
 	if (!text) return [];
 	const seen = new Set<string>();
 	const found: string[] = [];

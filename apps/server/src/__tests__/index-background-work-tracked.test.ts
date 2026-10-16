@@ -34,8 +34,8 @@ describe("index.ts 里的后台活登记进 track", () => {
 	});
 
 	it("入站群消息 → 链接解析", () => {
-		expect(code).not.toMatch(/void\s+linkParser\s*\.handleMessage/);
-		expect(trackedBeforeDots(/linkParser\s*\.handleMessage\(/)).toBe(true);
+		expect(code).not.toMatch(/void\s+linkPreviewer\s*\.handleMessage/);
+		expect(trackedBeforeDots(/linkPreviewer\s*\.handleMessage\(/)).toBe(true);
 	});
 
 	it("每小时的草稿过期清扫", () => {

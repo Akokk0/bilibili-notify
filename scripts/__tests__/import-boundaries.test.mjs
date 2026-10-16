@@ -56,7 +56,7 @@ export const BOUNDARIES = [
 		// 3a-40 的实数(10 个文件 19 条;设置登记已进 `compose.ts`,`bootstrap.ts` 2 → 1)。中立小件(直播装配 / 文案 / 监听判定 /
 		// 内容构造口 / 链接卡配色 / 抓图类型)已搬进核心的 `live/`、`posts/`;剩下的都在等新接口:入口登录装配(index)、
 		// 舰长图标的类型(bootstrap 的 `import type`:建造已进 `compose.ts`,类型要等 3b 中立的会员档位图标口)、直播引擎宿主(engines 的 `Api` / `GuardIcons` / `LiveEngine` 三条,3b)、关注同步与粉丝轮询
-		// (3b,随来源 `fetchProfile`)、链接解析(link-parser、video-card,3b `LinkResolver`)、卡片真实预览与
+		// (3b,随来源 `fetchProfile`)、卡片真实预览与
 		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨,3b 末清零。
 		ratchet: {
 			"apps/server/src/app.ts": 1,

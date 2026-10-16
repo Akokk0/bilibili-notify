@@ -19,7 +19,7 @@ const SOURCES = [
 	{ value: "push", label: "push · 推送" },
 	{ value: "image", label: "image · 渲染" },
 	{ value: "ai", label: "ai · AI" },
-	{ value: "link-parser", label: "link-parser · 链接解析" },
+	{ value: "link-previewer", label: "link-previewer · 链接预览" },
 ];
 
 const DEFAULT_MESSAGE = "devtools 造的一条引擎错误 —— 看主人私聊与右上角告警。";

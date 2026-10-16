@@ -17,10 +17,10 @@ import type {
 import { BILIBILI_SOURCE_KEY, fail, type ImageRef, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
-	createLinkParser,
-	type LinkParser,
+	createLinkPreviewer,
+	type LinkPreviewer,
 	type LinkReplyDestination,
-} from "../../link-preview/link-parser.js";
+} from "../../link-preview/link-previewer.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import type { VideoRef, VideoResponse } from "../api/index.js";
@@ -237,7 +237,7 @@ function groupFrame(text: string, over: Record<string, unknown> = {}) {
 }
 
 /** 接线层在 index.ts 里做的事:OneBot 帧经 adapter 归一化,再补上连接进 handleMessage。 */
-async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise<void> {
+async function feed(parser: LinkPreviewer, frame: Record<string, unknown>): Promise<void> {
 	const msg = extractGroupMessage(frame);
 	if (!msg) return;
 	await parser.handleMessage({ connectionId: ADAPTER, ...msg });
@@ -264,7 +264,7 @@ function makeGate(over: Partial<LinkParsingConfig> = {}, capable = false) {
 		inbound: { state: "unknown" },
 		miniAppCard: { state: "supported", checkedAt: 1 },
 	};
-	const parser = createLinkParser({
+	const parser = createLinkPreviewer({
 		logger: { info() {}, warn() {}, error() {}, debug() {} },
 		config: () => config,
 		linkResolvers,
