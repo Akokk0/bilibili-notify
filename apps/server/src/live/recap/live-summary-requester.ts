@@ -10,15 +10,12 @@ import { renderLiveSummary } from "../live-text";
 export const LIVE_SUMMARY_MIN_SENDERS = 5;
 
 /**
- * Builds the AI prompt + dispatches it through {@link CommentaryProvider},
- * falling back to the template-based summary when AI is unavailable or fails.
- *
- * Two-tier strategy (kept identical to live-service):
- * 1. If `commentary` is non-null, build a prompt summarising sender count,
- *    medal name, total danmaku, top-10 words and top-5 senders, then call
- *    `commentary.comment(prompt, "liveSummary")`.
- * 2. On failure (AI not configured / API error), fall back to the user-supplied
- *    template (`customLiveSummary` per-sub or the global default).
+ * Hands back two bodies (ADR-0032): the template summary is always rendered
+ * (`customLiveSummary` per-sub or the global default); the AI one is only made
+ * when `commentary` is non-null and the gate is open — a prompt summarising
+ * sender count, medal name, total danmaku, top-10 words and top-5 senders,
+ * sent through `commentary.comment(prompt, "liveSummary")`. Which body a target
+ * gets is the push layer's call, not ours.
  *
  * Returns `undefined` when sender count is below the threshold (signals the
  * caller to skip the summary push entirely).
@@ -32,7 +29,7 @@ export class LiveSummaryRequester {
 	constructor(opts: {
 		commentary: CommentaryProvider | null;
 		/**
-		 * AI 总开关查询。返回 false 时跳过 commentary 调用,直接走模板回退,
+		 * AI 那份要不要做的查询。返回 false 时跳过 commentary 调用,只交模板那份,
 		 * 与 commentary === null 行为等价。Adapter 用 `() => globals.ai.enabled` 填充,
 		 * 缺省 () => true。
 		 */
@@ -57,7 +54,12 @@ export class LiveSummaryRequester {
 		this.commentary = commentary;
 	}
 
-	async generate(params: {
+	/**
+	 * 同步交两份正文:`template` 恒在(此刻就渲染好);`ai` 只在门开着且有 commentary 时才有,是不会拒绝的
+	 * 约定 —— 失败记 error、回空串都兑现成 `undefined`,由推送层回落模板(ADR-0032 决策 2)。
+	 * 没有 AI 版就不带 `ai` 这个键。人数不足回 `undefined`,两份都没有、不问 AI。
+	 */
+	generate(params: {
 		senderRecord: Record<string, number>;
 		sortedWords: Array<[string, number]>;
 		/** 粉丝团的名字;拿不到给空串。 */
@@ -69,7 +71,7 @@ export class LiveSummaryRequester {
 		 * 缺失字段不影响其它字段生效。
 		 */
 		aiOverride?: CommentaryCallOverride;
-	}): Promise<string | undefined> {
+	}): { template: string; ai?: Promise<string | undefined> } | undefined {
 		const { senderRecord, sortedWords, fanClubName, customLiveSummary, aiOverride } = params;
 		const senderCount = Object.keys(senderRecord).length;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
@@ -82,35 +84,38 @@ export class LiveSummaryRequester {
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 5);
 
-		if (this.commentary && this.isAiEnabled()) {
-			try {
-				const top10Words = sortedWords.slice(0, 10).map(([word, count]) => `${word}(${count})`);
-				const prompt = [
-					"请生成直播总结",
-					`弹幕发言人数：${senderCount}`,
-					`粉丝牌名：${fanClubName}`,
-					`弹幕总数：${viewerChatCount}`,
-					`热词TOP10：${top10Words.join("、")}`,
-					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
-				].join("，");
-				// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
-				const override = this.isWebSearchEnabled()
-					? { ...aiOverride, webSearch: true }
-					: aiOverride;
-				const aiResult = await this.commentary.comment(prompt, "liveSummary", undefined, override);
-				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
-				return aiResult;
-			} catch (e) {
-				this.logger.error(`[summary] AI 直播总结生成失败：${errorMessageOf(e)}，回退到模板`);
-			}
-		}
-
-		return renderLiveSummary({
+		const template = renderLiveSummary({
 			template: customLiveSummary,
 			senderCount,
 			fanClubName,
 			viewerChatCount,
 			topSenders: top5Senders,
 		});
+		const commentary = this.commentary;
+		if (!commentary || !this.isAiEnabled()) return { template };
+
+		const top10Words = sortedWords.slice(0, 10).map(([word, count]) => `${word}(${count})`);
+		const prompt = [
+			"请生成直播总结",
+			`弹幕发言人数：${senderCount}`,
+			`粉丝牌名：${fanClubName}`,
+			`弹幕总数：${viewerChatCount}`,
+			`热词TOP10：${top10Words.join("、")}`,
+			`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
+		].join("，");
+		// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
+		const override = this.isWebSearchEnabled() ? { ...aiOverride, webSearch: true } : aiOverride;
+		const ai = (async (): Promise<string | undefined> => {
+			try {
+				const aiResult = await commentary.comment(prompt, "liveSummary", undefined, override);
+				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
+				// 空串不是一份正文:当没有 AI 版,让推送层用模板。
+				return aiResult || undefined;
+			} catch (e) {
+				this.logger.error(`[summary] AI 直播总结生成失败：${errorMessageOf(e)}，所有目标用模板`);
+				return undefined;
+			}
+		})();
+		return { template, ai };
 	}
 }

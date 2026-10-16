@@ -335,7 +335,10 @@ export class RoomContext extends RoomContextBase {
 		const extras = params.extras ?? [];
 		// 附加项的约定先接住一次:下面出卡要好几个 await,万一没走到交给推送层那一步,
 		// 做不出来的内容也不会变成没人处理的拒绝。推送层照样看得见它被拒绝(那边记警告)。
-		for (const anchor of extras) void Promise.resolve(anchor.messages).catch(() => {});
+		for (const anchor of extras) {
+			void Promise.resolve(anchor.messages).catch(() => {});
+			void Promise.resolve(anchor.aiMessages).catch(() => {});
+		}
 		const pushType = params.pushType ?? livePushTypeOf(liveType);
 		let input = liveCardInputFromRoomInfo(
 			liveRoomInfo,

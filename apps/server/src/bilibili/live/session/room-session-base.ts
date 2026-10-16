@@ -880,11 +880,13 @@ export abstract class RoomSessionBase {
 			},
 		);
 		// 做好之后发现引擎已经被拆了:给 undefined,那个锚点就跳过。
+		const unlessDisposed = (made: LivePushAnchor["messages"]) =>
+			Promise.resolve(made).then((messages) => (this.ctx.isDisposed() ? undefined : messages));
 		return anchors.map((anchor) => ({
 			...anchor,
-			messages: Promise.resolve(anchor.messages).then((messages) =>
-				this.ctx.isDisposed() ? undefined : messages,
-			),
+			messages: unlessDisposed(anchor.messages),
+			// AI 那份有才包,没有不添键。
+			...(anchor.aiMessages ? { aiMessages: unlessDisposed(anchor.aiMessages) } : {}),
 		}));
 	}
 }

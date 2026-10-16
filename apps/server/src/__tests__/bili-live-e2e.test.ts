@@ -18,7 +18,9 @@ import payloads from "../bilibili/live/protocol/__tests__/fixtures/payloads.json
 };
 import {
 	BILI_LIVE_EPOCH,
+	BILI_LIVE_SECOND_TARGET_ID,
 	BILI_LIVE_SUBSCRIPTION_ID,
+	BILI_LIVE_TARGET_ID,
 	BILI_LIVE_UID,
 	bootBiliLiveWorld,
 } from "./support/bili-live-world.js";
@@ -261,6 +263,100 @@ describe("下播", () => {
 			linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 0"),
 			"共 5 位测试牌发了 6 条弹幕，第一名 观众一（2 条）",
 		]);
+	});
+});
+
+/** 下播之前弹幕里有 5 位发言人(观众一发了两条);下播的总结才发得出来。 */
+async function chatThenEnd(w: World): Promise<void> {
+	await startLive(w);
+	for (const [uid, name] of [
+		[1, "观众一"],
+		[2, "观众二"],
+		[3, "观众三"],
+		[4, "观众四"],
+		[5, "观众五"],
+		[1, "观众一"],
+	] as const) {
+		await w.frame({
+			cmd: "DANMU_MSG",
+			info: [[0, 1, 25], "今天的直播真好看", [uid, name, 0], []],
+		});
+	}
+	await w.advance(HOUR);
+	await endLive(w);
+}
+
+const TEMPLATE_SUMMARY = "共 5 位测试牌发了 6 条弹幕，第一名 观众一（2 条）";
+/** 各目标收到的总结(下播卡那条除外)。 */
+const summariesBy = (w: World, targetId: string): Array<string | string[]> =>
+	w.sentTo
+		.filter((s) => s.targetId === targetId && !String(s.payload).includes("下播啦"))
+		.map((s) => s.payload);
+
+// 验红:
+// - `live/recap/recap-anchors.ts` 里总结锚点不带 `aiMessages`(只交模板)→ 「默认设置两边都收 AI」那条红;
+// - `live/recap/live-summary-requester.ts` 里退回「AI 成功就不渲染模板」(交 AI 那串当 messages)→ 「乙写了关」那条红
+//   (乙收到 AI 那句);
+// - `runtime/engines.ts` 的 `toPushAnchors` 里删掉 `aiMessages` 那一支 → 「默认设置两边都收 AI」红。
+describe("直播总结按目标挑 AI 版或模板(ADR-0032)", () => {
+	it("默认开、乙写了关:甲收 AI 写的总结,乙收模板那句;AI 只问了一次", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await boot({
+			features: ["liveEnd"],
+			extras: ["liveSummary"],
+			renderer: false,
+			secondTarget: true,
+			commentary: comment,
+		});
+		w.globals.ai.writing.liveSummary = {
+			enabled: true,
+			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: false },
+		};
+		await chatThenEnd(w);
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual(["AI 写的总结"]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+		expect(comment).toHaveBeenCalledTimes(1);
+	});
+
+	it("默认设置:两边都收 AI 那句(与没有这张表时一样)", async () => {
+		const w = await boot({
+			features: ["liveEnd"],
+			extras: ["liveSummary"],
+			renderer: false,
+			secondTarget: true,
+			commentary: async () => "AI 写的总结",
+		});
+		await chatThenEnd(w);
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual(["AI 写的总结"]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual(["AI 写的总结"]);
+	});
+
+	it("AI 抛错:两边都收模板那句", async () => {
+		const w = await boot({
+			features: ["liveEnd"],
+			extras: ["liveSummary"],
+			renderer: false,
+			secondTarget: true,
+			commentary: async () => {
+				throw new Error("服务商挂了");
+			},
+		});
+		await chatThenEnd(w);
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+	});
+
+	it("AI 回空串:两边都收模板那句", async () => {
+		const w = await boot({
+			features: ["liveEnd"],
+			extras: ["liveSummary"],
+			renderer: false,
+			secondTarget: true,
+			commentary: async () => "",
+		});
+		await chatThenEnd(w);
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
 	});
 });
 

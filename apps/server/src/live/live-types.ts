@@ -22,6 +22,12 @@ export interface LivePushAnchor {
 	 * 最后为空就跳过,做的时候出错由推送层记一条警告并跳过。
 	 */
 	messages: unknown[] | Promise<unknown[] | undefined>;
+	/**
+	 * AI 写的那一份(只有下播的总结有):形状同 `messages`,由推送层按目标挑用这份还是 `messages`
+	 * (ADR-0032)。没有 AI 版就**不带这一格**(键缺失),不是 `undefined` 值;约定兑现成 `undefined`
+	 * 或被拒绝 = 这次没做出来,所有目标用 `messages`。
+	 */
+	aiMessages?: unknown[] | Promise<unknown[] | undefined>;
 }
 
 /**

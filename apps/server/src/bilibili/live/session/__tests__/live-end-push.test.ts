@@ -71,7 +71,9 @@ function makeCtx() {
 	const snapshot = vi.fn(() => ({ sortedWords: [["精彩", 5]], senderRecord: {} }));
 	const wordcloud = vi.fn(async (..._args: unknown[]) => Buffer.from("wc"));
 	const avatarOf = vi.fn((_subscriptionId: string): string | undefined => undefined);
-	const summary = vi.fn(async () => "总结文本");
+	const summary = vi.fn((): { template: string; ai?: Promise<string | undefined> } => ({
+		template: "总结文本",
+	}));
 	const ctx = {
 		serviceCtx,
 		logger: serviceCtx.logger,
@@ -152,18 +154,23 @@ describe("handleLiveEnd — 下播卡 + 附加项是同一次推送", () => {
 	it("附加项还没做好,下播那一步已经走完(不占着串行闸)", async () => {
 		const { ctx, sendLiveNotifyCard, summary } = makeCtx();
 		let finish: (text: string) => void = () => {};
-		summary.mockImplementation(() => new Promise<string>((r) => (finish = r)));
+		summary.mockImplementation(() => ({
+			template: "总结文本",
+			ai: new Promise<string | undefined>((r) => (finish = r)),
+		}));
 		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
 
 		const card = sendLiveNotifyCard.mock.calls[0]?.[0];
 		let done = false;
-		void Promise.resolve(card?.extras?.[1]?.messages).then(() => {
+		void Promise.resolve(card?.extras?.[1]?.aiMessages).then(() => {
 			done = true;
 		});
 		await new Promise((r) => setTimeout(r, 0));
 		expect(done).toBe(false);
+		// 模板那份不等 AI。
+		expect(await card?.extras?.[1]?.messages).toEqual([{ kind: "text", text: "总结文本" }]);
 		finish("迟到的总结");
-		expect(await card?.extras?.[1]?.messages).toEqual([{ kind: "text", text: "迟到的总结" }]);
+		expect(await card?.extras?.[1]?.aiMessages).toEqual([{ kind: "text", text: "迟到的总结" }]);
 	});
 
 	// 清空收集器在 `finally` 里:快照要是取晚了,词云与总结就是空的。

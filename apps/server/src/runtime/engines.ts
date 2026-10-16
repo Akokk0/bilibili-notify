@@ -1423,7 +1423,7 @@ function toPushAnchors<T>(
 		role: PushAnchor["role"];
 		extra?: PushAnchor["extra"];
 		messages: T[] | Promise<T[] | undefined>;
-		/** AI 写的那一份(只有作品本体有);没有就不带这一格,不是 `undefined` 值。 */
+		/** AI 写的那一份(只有作品本体与直播总结有);没有就不带这一格,不是 `undefined` 值。 */
 		aiMessages?: T[] | Promise<T[] | undefined>;
 	}>,
 	toPayload: (message: T) => NotificationPayload,

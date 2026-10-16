@@ -71,6 +71,8 @@ interface CtxOpts {
 	wantSummary: boolean;
 	wcImage?: Buffer;
 	summaryText?: string;
+	/** AI 那份;不给 = 请求器没带 ai 这个键。 */
+	summaryAi?: string;
 	sortedWords?: Array<[string, number]>;
 }
 
@@ -99,7 +101,16 @@ function makeCtx(opts: CtxOpts): {
 		wordcloudGenerator: { generate: vi.fn(async () => opts.wcImage) },
 		// 词云的主播头像出卡那一刻按订阅 id 现读(3a-35);这组用例不关心头像。
 		avatarOf: () => undefined,
-		liveSummaryRequester: { generate: vi.fn(async () => opts.summaryText) },
+		liveSummaryRequester: {
+			generate: vi.fn(() =>
+				opts.summaryText === undefined
+					? undefined
+					: {
+							template: opts.summaryText,
+							...(opts.summaryAi === undefined ? {} : { ai: Promise.resolve(opts.summaryAi) }),
+						},
+			),
+		},
 		contentBuilder: {
 			image: (buf: Buffer, mime: string) => ({ kind: "image", buffer: buf, mime }),
 			text: (t: string) => ({ kind: "text", text: t }),
@@ -186,6 +197,27 @@ describe("recapAnchors — 两个附加项各自门控、各一个锚点", () =>
 		const anchors = new TestSession(ctx, sub).recap();
 		disposed.value = true;
 		expect((await settled(anchors)).map((a) => a[2])).toEqual([undefined, undefined]);
+	});
+
+	it("总结的 AI 那份:没拆时原样交出;拆了之后也给 undefined(同 messages)", async () => {
+		const { ctx, sub, disposed } = makeCtx({
+			wantWordcloud: false,
+			wantSummary: true,
+			summaryText: "模板总结",
+			summaryAi: "AI 总结",
+		});
+		const [alive] = new TestSession(ctx, sub).recap();
+		expect(await alive?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
+		const [late] = new TestSession(ctx, sub).recap();
+		disposed.value = true;
+		expect(await late?.messages).toBeUndefined();
+		expect(await late?.aiMessages).toBeUndefined();
+	});
+
+	it("总结没有 AI 那份:锚点上没有 aiMessages 这个键", () => {
+		const { ctx, sub } = makeCtx({ wantWordcloud: false, wantSummary: true, summaryText: "总结" });
+		const [summary] = new TestSession(ctx, sub).recap();
+		expect(summary && "aiMessages" in summary).toBe(false);
 	});
 
 	it("做的时候出错 → 那个锚点的约定被拒绝(由推送层记警告并跳过),另一个不受牵连", async () => {

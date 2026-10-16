@@ -50,7 +50,11 @@ import { snapshotFor } from "./connection-snapshot.js";
 export const BILI_LIVE_UID = "10001";
 const BILI_LIVE_ROOM_ID = "5001";
 export const BILI_LIVE_SUBSCRIPTION_ID = "sub-live";
-const TARGET_ID = "target-group";
+export const BILI_LIVE_TARGET_ID = "target-group";
+/** 开了 `secondTarget` 才有的第二个推送目标(另一个群)。 */
+export const BILI_LIVE_SECOND_TARGET_ID = "target-group-b";
+const TARGET_ID = BILI_LIVE_TARGET_ID;
+const SECOND_TARGET_ID = BILI_LIVE_SECOND_TARGET_ID;
 const CONNECTION_ID = "connection-bot";
 
 /** 世界开始的那一刻:2026-03-01 12:00:00(北京时间)。B 站的 `live_time` 恒为北京时间。 */
@@ -124,6 +128,10 @@ export async function bootBiliLiveWorld(
 		specialViewers?: SpecialViewer[];
 		/** 有没有出图器;不给 = 有。 */
 		renderer?: boolean;
+		/** 第二个推送目标(另一个群):每个特性都路由到两个目标;不给 = 只有一个。 */
+		secondTarget?: boolean;
+		/** AI 总开关开着、挂一个假的 AI 点评(`comment` 按提示词回字);不给 = AI 没开、没有服务商。 */
+		commentary?: (prompt: string) => Promise<string>;
 	} = {},
 ) {
 	const globals = makeDefaultGlobalConfig();
@@ -141,6 +149,8 @@ export async function bootBiliLiveWorld(
 		...(opts.minSuperchatAmount === undefined ? {} : { minAmount: opts.minSuperchatAmount }),
 	};
 	globals.defaults.cards.enabled = true;
+	// 在建世界之前开:直播引擎的配置快照在构造时取。
+	if (opts.commentary) globals.ai.enabled = true;
 	// 今天的出厂文案,照抄在这里钉死(3b-21 改占位符写法时这几句跟着改)。
 	Object.assign(globals.defaults.templates, {
 		liveStart: "{name} 开播啦，当前粉丝数：{follower}",
@@ -160,7 +170,9 @@ export async function bootBiliLiveWorld(
 		id: BILI_LIVE_SUBSCRIPTION_ID,
 		identity: { sourceKey: "bilibili", externalId: BILI_LIVE_UID },
 	});
-	for (const key of FEATURE_KEYS) subscription.routing[key] = [TARGET_ID];
+	for (const key of FEATURE_KEYS) {
+		subscription.routing[key] = opts.secondTarget ? [TARGET_ID, SECOND_TARGET_ID] : [TARGET_ID];
+	}
 	subscription.specialViewers = opts.specialViewers ?? [];
 	const subscriptions = [subscription];
 
@@ -276,12 +288,20 @@ export async function bootBiliLiveWorld(
 
 	// ---- 假的平台:交出去的载荷按序记下来 ----
 	const sent: Array<string | string[]> = [];
+	/** 同 `sent`,多记一格送给了哪个目标(按目的地的 `address` 认)。 */
+	const sentTo: Array<{ targetId: string; payload: string | string[] }> = [];
 	const adapter: PlatformAdapter = {
 		adapterKey: "onebot",
 		settingsSchema: z.unknown(),
 		isAvailable: () => true,
-		send: async (_connection, _destination, payload) => {
-			sent.push(describePayload(payload));
+		send: async (_connection, destination, payload) => {
+			const described = describePayload(payload);
+			sent.push(described);
+			const address = (destination as { address?: string }).address;
+			sentTo.push({
+				targetId: address === SECOND_TARGET_ID ? SECOND_TARGET_ID : TARGET_ID,
+				payload: described,
+			});
 			return { ok: true, latencyMs: 1 };
 		},
 		probe: async () => ({ ok: true, latencyMs: 1 }),
@@ -303,9 +323,16 @@ export async function bootBiliLiveWorld(
 		name: "群",
 		scope: "group",
 		enabled: true,
-		session: {},
+		address: TARGET_ID,
 		connectionId: CONNECTION_ID,
 	} as unknown as PushTarget;
+	const secondTarget = {
+		...target,
+		id: SECOND_TARGET_ID,
+		name: "群乙",
+		address: SECOND_TARGET_ID,
+	} as unknown as PushTarget;
+	const targets = opts.secondTarget ? [target, secondTarget] : [target];
 
 	const bus = createNodeMessageBus();
 	const events: Array<[string, unknown]> = [];
@@ -327,7 +354,7 @@ export async function bootBiliLiveWorld(
 			getGlobals: () => globals,
 			patchGlobals: async () => {},
 			onChange: () => ({ dispose() {} }),
-			getTargets: () => [target],
+			getTargets: () => targets,
 			getConnections: () => [connection],
 			recordTargetReachability: async () => {},
 			recordConnectionProbeState: async () => {},
@@ -366,6 +393,12 @@ export async function bootBiliLiveWorld(
 		puppeteer: null,
 	});
 	if (opts.renderer !== false) runtime.live.setImageRenderer(renderer);
+	// 世界里没有服务商,`createEngines` 自己建出的是 null:假的 AI 点评手动挂上。
+	if (opts.commentary) {
+		runtime.live.setCommentary({
+			comment: opts.commentary,
+		} as unknown as Parameters<typeof runtime.live.setCommentary>[0]);
+	}
 
 	/** 让在途的异步都落定(不推时间)。 */
 	const settle = async (): Promise<void> => {
@@ -378,6 +411,10 @@ export async function bootBiliLiveWorld(
 		bili,
 		/** 推出去的载荷,按送达次序。 */
 		sent,
+		/** 同 `sent`,多记一格送给了哪个目标。 */
+		sentTo,
+		/** 世界的全局设置(可变;读口现取,建好之后改也生效)。 */
+		globals,
 		/** 交给出图器的入参,按出卡次序。 */
 		cards,
 		/** 总线上的直播事件(`live-state-changed` / `live-viewers-changed` / `engine-error`),按发出次序。 */

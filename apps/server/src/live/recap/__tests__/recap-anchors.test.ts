@@ -35,7 +35,10 @@ function setup(
 		sortedWords?: Array<[string, number]>;
 		senderRecord?: Record<string, number>;
 		image?: Buffer;
+		/** 模板那份;不给 = 请求器回 undefined(人数不够)。 */
 		summary?: string;
+		/** AI 那份;不给 = 请求器没带 ai 这个键。 */
+		ai?: Promise<string | undefined>;
 	} = {},
 ) {
 	const snapshot = vi.fn((_subscriptionId: string) => ({
@@ -53,7 +56,11 @@ function setup(
 			_knobs?: unknown,
 		) => opts.image,
 	);
-	const summaryGenerate = vi.fn(async (_params: Record<string, unknown>) => opts.summary);
+	const summaryGenerate = vi.fn((_params: Record<string, unknown>) =>
+		opts.summary === undefined
+			? undefined
+			: { template: opts.summary, ...(opts.ai === undefined ? {} : { ai: opts.ai }) },
+	);
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 	const d = {
 		collector: { snapshot },
@@ -159,6 +166,45 @@ describe("recapAnchors", () => {
 		const [wordcloud, summary] = recapAnchors(options(), t.d);
 		await expect(wordcloud?.messages).rejects.toThrow("词云画不出来");
 		expect(await summary?.messages).toEqual([{ kind: "text", text: "总结" }]);
+	});
+
+	it("总结有 AI 那份:messages 是模板那串,aiMessages 是 AI 那串;词云锚点永远没有这一格", async () => {
+		const t = setup({
+			image: Buffer.from("img"),
+			summary: "模板总结",
+			ai: Promise.resolve("AI 总结"),
+		});
+		const [wordcloud, summary] = recapAnchors(options(), t.d);
+		expect(wordcloud && "aiMessages" in wordcloud).toBe(false);
+		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+		expect(await summary?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
+	});
+
+	it("总结没有 AI 那份:锚点上没有 aiMessages 这个键", async () => {
+		const t = setup({ summary: "模板总结" });
+		const [, summary] = recapAnchors(options(), t.d);
+		expect(summary && "aiMessages" in summary).toBe(false);
+		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+	});
+
+	it("AI 那份兑现成 undefined:aiMessages 兑现成 undefined,模板那串不受影响", async () => {
+		const t = setup({ summary: "模板总结", ai: Promise.resolve(undefined) });
+		const [, summary] = recapAnchors(options(), t.d);
+		expect(await summary?.aiMessages).toBeUndefined();
+		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+	});
+
+	it("请求器同步抛错:总结的 messages 被拒绝,没有 aiMessages,词云不受牵连", async () => {
+		const t = setup({ image: Buffer.from("img") });
+		t.summaryGenerate.mockImplementation(() => {
+			throw new Error("模板渲染炸了");
+		});
+		const [wordcloud, summary] = recapAnchors(options(), t.d);
+		await expect(summary?.messages).rejects.toThrow("模板渲染炸了");
+		expect(summary && "aiMessages" in summary).toBe(false);
+		expect(await wordcloud?.messages).toEqual([
+			{ kind: "image", source: Buffer.from("img"), mime: "image/jpeg" },
+		]);
 	});
 
 	it("交给总结生成器的入参:发言记录、热词、粉丝团名字、模板与 AI 覆盖", async () => {

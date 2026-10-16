@@ -81,20 +81,34 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 		});
 	}
 	if (extras.liveSummary) {
+		// 请求器同步交两份:模板那份是 `messages`(总备好),AI 那份有才带 `aiMessages`(没有就不带这一格)。
+		// 同步抛错也要变成「这个锚点的约定被拒绝」,不能把异常抛给调用方、连累词云。
+		let made: ReturnType<typeof deps.summary.generate>;
+		try {
+			made = deps.summary.generate({
+				senderRecord: snapshot.senderRecord,
+				sortedWords,
+				fanClubName: options.fanClubName,
+				customLiveSummary: options.summaryTemplate,
+				aiOverride: options.aiOverride,
+			});
+		} catch (e) {
+			anchors.push({
+				role: "extra",
+				extra: "liveSummary",
+				messages: Promise.reject(e),
+			});
+			return anchors;
+		}
 		anchors.push({
 			role: "extra",
 			extra: "liveSummary",
-			messages: (async () => {
-				const summary = await deps.summary.generate({
-					senderRecord: snapshot.senderRecord,
-					sortedWords,
-					fanClubName: options.fanClubName,
-					customLiveSummary: options.summaryTemplate,
-					aiOverride: options.aiOverride,
-				});
-				if (!summary) return undefined;
-				return [content.text(summary)];
-			})(),
+			messages: Promise.resolve(made ? [content.text(made.template)] : undefined),
+			...(made?.ai
+				? {
+						aiMessages: made.ai.then((text) => (text ? [content.text(text)] : undefined)),
+					}
+				: {}),
 		});
 	}
 	return anchors;

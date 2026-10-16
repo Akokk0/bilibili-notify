@@ -85,6 +85,28 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 		expect(await messagesOf(sent as Push, 2)).toEqual([{ kind: "text", text: "总结" }]);
 	});
 
+	it("下播总结带 AI 版:aiMessages 兑现后翻成载荷、与 messages 各是各的;没有 AI 版的锚点不带这一格", async () => {
+		const { push, pushes } = makePushSpy();
+		await makeLivePushLike(push, subscriptionIdOf).push({
+			uid: "100",
+			type: 9,
+			anchors: [
+				{
+					role: "extra",
+					extra: "liveSummary",
+					messages: Promise.resolve([liveText("模板总结")]),
+					aiMessages: Promise.resolve([liveText("AI 总结")]),
+				},
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve([liveText("词云")]) },
+			],
+		});
+		const sent = pushes[0] as Push;
+		expect(await messagesOf(sent, 0)).toEqual([{ kind: "text", text: "模板总结" }]);
+		expect(await sent.anchors[0]?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
+		expect(sent.anchors[0]?.extra).toBe("liveSummary");
+		expect(sent.anchors[1] && "aiMessages" in sent.anchors[1]).toBe(false);
+	});
+
 	it("约定最后什么都没给(undefined)→ 原样是 undefined,由推送层跳过那个锚点", async () => {
 		const { push, pushes } = makePushSpy();
 		await makeLivePushLike(push, subscriptionIdOf).push({
