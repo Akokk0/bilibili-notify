@@ -336,7 +336,7 @@ interface ConnectionCandidate {
 ### 发送与入站
 
 - **只有 `TargetDispatcher` 能发送**。适配器的 `send` 返回结果形状、失败带标准码（ADR-0026）；投递失败归核心：按目标逐个、只重试失败的那个，`rate_limited` / `unavailable` / `timeout` 退避重试，`indeterminate` 与其他码不重试。BN 不替适配器限流、去重。
-- **入站经 `ctx.inbound`**：宿主核连接归属，平台取自连接，不由适配器自报（内置适配器同样）。回调包叫 `InboundHandlers`（原 `InboundSinks`）；私聊的号叫 `address`（原 `userId`），群消息的群号也叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对）。桥协议帧不改名，由桥的适配器映射。
+- **入站经 `ctx.inbound`**：宿主核连接归属，平台取自连接，不由适配器自报（内置适配器同样）；适配器停下之后再交来的丢掉并记一行。回调包叫 `InboundHandlers`（原 `InboundSinks`）；私聊的号叫 `address`（原 `userId`），群消息的群号也叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对）。桥协议帧不改名，由桥的适配器映射。
 - **入站链接的来源标记**：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`（取代 `miniAppCardLinks`），正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩「原生分享卡里的链接不回预览」不变。
 - **原生分享**：载荷种类 `"miniapp-card"` 改 `"native-share"`、类型随 `NativeShare…`，能力格 `miniAppCard` 改 `nativeShare`；`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核）。桥帧里的能力名（`miniAppCard`）与载荷种类（`miniapp-card`）照旧，进 alpha 后两步改名。
 - **OneBot 小程序卡能力的重探**节奏与「探不出来不推翻已探实的答案」由宿主管，契约不加成员。

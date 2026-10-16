@@ -402,6 +402,20 @@ describe("createPlatformAdapterContext · inbound", () => {
 		expect(connections).not.toHaveBeenCalled();
 	});
 
+	// 验红:去掉入站 `feed` 里「适配器已停下」那道判断,这条红(停下之后的消息照样送到下一层)。
+	it("适配器停下之后再交来的消息 → 丢掉,下一层不被调用,并记一行 warn(哪个适配器、私聊还是群、已停下)", async () => {
+		const { handle, ctx, seen, warn } = setup();
+		await handle.dispose();
+		ctx.inbound.private(MSG, { connectionId: "b1" });
+		ctx.inbound.group(GROUP_MSG, { connectionId: "b1" });
+		expect(seen).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(String(warn.mock.calls[0]?.[0])).toContain("bridge");
+		expect(String(warn.mock.calls[0]?.[0])).toContain("私聊");
+		expect(String(warn.mock.calls[0]?.[0])).toContain("已停下");
+		expect(String(warn.mock.calls[1]?.[0])).toContain("群");
+	});
+
 	it("下一层没接的那一路 → 静默丢掉,不抛", () => {
 		const { ctx } = build("bridge", () => list, undefined, undefined, undefined, { inbound: {} });
 		expect(() => ctx.inbound.private(MSG, { connectionId: "b1" })).not.toThrow();

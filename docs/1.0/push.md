@@ -190,7 +190,7 @@ type PushTarget =
 
 #### 入站
 
-内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报。回调包叫 `InboundHandlers`（原 `InboundSinks`）。私聊的号叫 `address`（原 `userId`）；群消息的群号叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对；不用 `author`，那是作品作者）。桥协议帧不改名，由桥的适配器映射。
+内置适配器的入站也经 `ctx.inbound`：宿主核归属、平台取自连接，不再由适配器自报；适配器停下之后再交来的丢掉并记一行。回调包叫 `InboundHandlers`（原 `InboundSinks`）。私聊的号叫 `address`（原 `userId`）；群消息的群号叫 `address`（原 `groupId`）、发言者叫 `senderId`（原 `userId`，与 `selfId` 成对；不用 `author`，那是作品作者）。桥协议帧不改名，由桥的适配器映射。
 
 #### 结果与失败
 

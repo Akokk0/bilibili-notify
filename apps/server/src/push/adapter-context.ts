@@ -66,6 +66,11 @@ export function createPlatformAdapterContext(
 		return hit && hit.adapterKey === adapterKey ? hit : undefined;
 	}
 
+	/** 这个适配器停下了没有 —— 关于连接的上报与入站共用这一个判法:停下之后再来的一律丢。 */
+	function stopped(): boolean {
+		return integration.signal.aborted;
+	}
+
 	/**
 	 * 关于连接的上报的公共一步:已停下、形状不对、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
 	 */
@@ -74,7 +79,7 @@ export function createPlatformAdapterContext(
 		problem: { connectionId: string; code: string; message?: string; recoveryMessage?: string },
 		apply: () => void,
 	): void {
-		const issue = integration.signal.aborted
+		const issue = stopped()
 			? "适配器已停下"
 			: (problemReportIssue(problem) ??
 				(ownedConnection(problem.connectionId) !== undefined
@@ -90,7 +95,8 @@ export function createPlatformAdapterContext(
 	}
 
 	/**
-	 * 入站的公共一步:归属不对的(冒充别人的连接、不存在的)丢掉并记一行 —— 放过去的话,一个适配器能替
+	 * 入站的公共一步:适配器已停下的丢掉并记一行(停下之后就该安静,不能再把消息递给指令分发);
+	 * 归属不对的(冒充别人的连接、不存在的)同样丢掉并记一行 —— 放过去的话,一个适配器能替
 	 * 别人的连接说话,而主人身份比对走的正是 `平台 + 地址 + bot` 三坐标。过了关,**平台取连接上那一格**
 	 * (适配器自报的没有任何办法核,所以不收),补成完整的 `InboundMeta` 再交下一层。
 	 */
@@ -99,10 +105,15 @@ export function createPlatformAdapterContext(
 		meta: Pick<InboundMeta, "connectionId">,
 		deliver: (meta: InboundMeta) => void,
 	): void {
+		const what = route === "private" ? "私聊" : "群";
+		if (stopped()) {
+			integration.logger.warn(`丢掉一条${what}消息:适配器 ${adapterKey} 已停下`);
+			return;
+		}
 		const connection = ownedConnection(meta.connectionId);
 		if (!connection) {
 			integration.logger.warn(
-				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
+				`丢掉一条${what}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
 			);
 			return;
 		}
