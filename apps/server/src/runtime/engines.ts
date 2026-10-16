@@ -459,6 +459,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		serviceCtx: opts.serviceCtx,
 		defaults: () => globals().defaults,
 		muted: () => muteState.isMuted(),
+		// 锚点带 AI 版时逐目标挑哪一份,现取:面板里改了例外,下一次推送就按新的。
+		aiWriting: () => globals().ai.writing,
 		quietHoursNow: opts.quietHoursNow,
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。

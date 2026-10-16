@@ -1,4 +1,5 @@
 import {
+	AiWritingSettingsSchema,
 	type DeliveryResult,
 	type ExtraKey,
 	FEATURE_KEYS,
@@ -44,7 +45,7 @@ function realTimerCtx(): ServiceContext {
 }
 
 /**
- * 宿主必注入的三样(serviceCtx / defaults / muted)的单测基座。用例把它 spread 在前,
+ * 宿主必注入的四样(serviceCtx / defaults / muted / aiWriting)的单测基座。用例把它 spread 在前,
  * 需要的再覆盖(假时钟、特定 defaults、静音)。
  *
  * defaults 一次算好、每次都交同一个对象:每次推送都要调它,别每次重跑一遍整棵 zod parse;
@@ -52,10 +53,17 @@ function realTimerCtx(): ServiceContext {
  */
 export function pushBase(): Pick<
 	import("../push-router").PushRouterOptions,
-	"serviceCtx" | "defaults" | "muted"
+	"serviceCtx" | "defaults" | "muted" | "aiWriting"
 > {
 	const defaults = loopbackDefaults();
-	return { serviceCtx: realTimerCtx(), defaults: () => defaults, muted: () => false };
+	// 「AI 写正文」缺省全开、无例外:没有锚点带 AI 版时它不起作用,带了就全体目标挑 AI 版。
+	const aiWriting = AiWritingSettingsSchema.parse({});
+	return {
+		serviceCtx: realTimerCtx(),
+		defaults: () => defaults,
+		muted: () => false,
+		aiWriting: () => aiWriting,
+	};
 }
 
 /**

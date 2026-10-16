@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+	AiWritingSettings,
 	DeliveryResult,
 	Disposable,
 	ExtraKey,
@@ -15,6 +16,7 @@ import type {
 	TargetDispatcher,
 } from "@bilibili-notify/internal";
 import {
+	aiWritingFor,
 	BILIBILI_SOURCE_KEY,
 	fail,
 	inQuietHours,
@@ -47,6 +49,25 @@ function subscriptionLabel(sub: Subscription): string {
 	return identity.sourceKey === BILIBILI_SOURCE_KEY
 		? `uid=${identity.externalId}`
 		: `${identity.sourceKey}:${identity.externalId}`;
+}
+
+/**
+ * 这个锚点的消息归 `ai.writing` 的哪一份管:本体且特性是 `post` → `writing.post`,总结附加项 →
+ * `writing.liveSummary`,别的锚点没有 AI 版这回事(`undefined`)。和 @全体 的键推导一样,键只在这里认。
+ */
+function aiWritingEntryOf(
+	writing: AiWritingSettings,
+	role: PushMessageRole,
+	feature: FeatureKey,
+	extra: ExtraKey | undefined,
+): AiWritingSettings["post"] | undefined {
+	if (role === "main") return feature === "post" ? writing.post : undefined;
+	return extra === "liveSummary" ? writing.liveSummary : undefined;
+}
+
+/** 约定被拒绝的原因,给日志用。 */
+function rejectionReason(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;
@@ -136,6 +157,13 @@ export interface PushAnchor {
 	 * 约定被拒绝 = 内容没做出来,记一条警告并跳过 —— 没做出来不是没送到,不回调、不记失败。
 	 */
 	messages: NotificationPayload[] | Promise<NotificationPayload[] | undefined>;
+	/**
+	 * 同一个锚点的 **AI 写的那一份**(ADR-0032 决策 2),形状同 `messages`。给了,推送层在收窄出该收的目标之后
+	 * 逐目标挑:本体(特性 `post`)按 `writing.post`,带 `liveSummary` 键的附加项按 `writing.liveSummary`,
+	 * 别的锚点不看它。没给、约定被拒绝、结果为空 = 这个锚点没有 AI 版,所有目标收 `messages`;
+	 * `messages` 自己为空或被拒绝仍跳过整个锚点。
+	 */
+	aiMessages?: NotificationPayload[] | Promise<NotificationPayload[] | undefined>;
 }
 
 /**
@@ -161,6 +189,8 @@ interface AnchorRound {
 	extra?: ExtraKey;
 	allowAtAll: boolean;
 	isSilenced: boolean;
+	/** 这个锚点的 AI 版;没有(没给、做不出来、为空)就是 `undefined`。 */
+	aiPayloads?: NotificationPayload[];
 }
 
 /** Options for constructing a PushRouter instance. */
@@ -204,6 +234,11 @@ export interface PushRouterOptions {
 	 * 只影响这一处判定,不是假时钟,延迟 / 超时 / 历史时间戳都还是真的。
 	 */
 	quietHoursNow?: () => Date;
+	/**
+	 * 「AI 写正文」的设置(`ai.writing`,ADR-0032):锚点带了 AI 版时,逐目标按它挑用哪一份。
+	 * **每个锚点发出时现取**,不在构造时快照 —— 面板里改了例外,下一次推送就按新的挑。
+	 */
+	aiWriting: () => AiWritingSettings;
 }
 
 /**
@@ -228,6 +263,7 @@ export class PushRouter {
 	private readonly defaults: () => GlobalDefaults;
 	private readonly muted: () => boolean;
 	private readonly quietHoursNow: () => Date;
+	private readonly aiWriting: () => AiWritingSettings;
 	private readonly onSend?: (info: PushSendResult) => void;
 	private readonly serviceCtx: ServiceContext;
 	private disposed = false;
@@ -252,6 +288,7 @@ export class PushRouter {
 		this.defaults = opts.defaults;
 		this.muted = opts.muted;
 		this.quietHoursNow = opts.quietHoursNow ?? (() => new Date());
+		this.aiWriting = opts.aiWriting;
 		this.onSend = opts.onSend;
 		this.serviceCtx = opts.serviceCtx;
 	}
@@ -341,6 +378,20 @@ export class PushRouter {
 				(error: unknown) => ({ error }),
 			),
 		);
+		// AI 版同样先接住。它是锦上添花:做不出来或为空就当没有,所有目标用模板,不影响锚点本身。
+		const aiContents = anchors.map((anchor) =>
+			anchor.aiMessages === undefined
+				? Promise.resolve(undefined)
+				: Promise.resolve(anchor.aiMessages).then(
+						(payloads) => (payloads && payloads.length > 0 ? payloads : undefined),
+						(error: unknown) => {
+							this.logger.warn(
+								`[push] ${this.labelOf(subscriptionId)} feature=${feature} AI 版正文没做出来，改用模板：${rejectionReason(error)}`,
+							);
+							return undefined;
+						},
+					),
+		);
 		if (anchors.some((anchor, i) => anchor.role === "main" && i > 0)) {
 			throw new Error("[push] 一次推送的本体至多一个,而且必须排在第一个锚点");
 		}
@@ -356,20 +407,20 @@ export class PushRouter {
 			const content = await (contents[i] as (typeof contents)[number]);
 			if (this.disposed || this.generation !== myGen) return [];
 			if ("error" in content) {
-				const reason = content.error instanceof Error ? content.error.message : content.error;
 				this.logger.warn(
-					`[push] ${this.labelOf(subscriptionId)} feature=${feature} 有一个锚点的内容没做出来，跳过：${reason}`,
+					`[push] ${this.labelOf(subscriptionId)} feature=${feature} 有一个锚点的内容没做出来，跳过：${rejectionReason(content.error)}`,
 				);
 				return [];
 			}
 			if (content.payloads.length === 0) return [];
 			const isMain = anchor.role === "main";
+			const aiPayloads = await (aiContents[i] as (typeof aiContents)[number]);
 			return this.sendAnchor(
 				{ subscriptionId, feature, pushId, role: anchor.role },
 				content.payloads,
 				isMain
-					? { allowAtAll: push.allowAtAll !== false, isSilenced }
-					: { extra: anchor.extra, allowAtAll: false, isSilenced },
+					? { allowAtAll: push.allowAtAll !== false, isSilenced, aiPayloads }
+					: { extra: anchor.extra, allowAtAll: false, isSilenced, aiPayloads },
 			);
 		};
 
@@ -460,6 +511,15 @@ export class PushRouter {
 		const who = subscriptionLabel(sub);
 		const eff = resolve(sub, this.defaults());
 
+		// 这个锚点有 AI 版时,每个目标收哪一份由 `ai.writing` 决定(现取);没有 AI 版、或这类锚点不归它管,
+		// 恒为 `payloads`。挑的是「用哪份字」,谁收仍由下面的路由与三态表定。
+		const { aiPayloads } = round;
+		const writingEntry = aiPayloads
+			? aiWritingEntryOf(this.aiWriting(), ctx.role, feature, round.extra)
+			: undefined;
+		const payloadsFor = (targetId: string): NotificationPayload[] =>
+			aiPayloads && writingEntry && aiWritingFor(writingEntry, targetId) ? aiPayloads : payloads;
+
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
 		const routed = (sub.routing[feature] ?? []).filter((id) => this.dispatcher.isEnabled(id));
 		if (routed.length === 0) {
@@ -467,7 +527,11 @@ export class PushRouter {
 			this.onSend?.({
 				...ctx,
 				target: null,
-				messages: payloads.map((p) => ({ payload: p, role: ctx.role })),
+				// 没有目标可问,记「默认那一份」:默认行开着就是 AI 版(例外只属于具体的目标)。
+				messages: (aiPayloads && writingEntry?.enabled ? aiPayloads : payloads).map((p) => ({
+					payload: p,
+					role: ctx.role,
+				})),
 			});
 			return [];
 		}
@@ -494,7 +558,7 @@ export class PushRouter {
 				this.emit(
 					ctx,
 					id,
-					payloads.map((payload) => ({ payload, role: ctx.role, isSilenced: true })),
+					payloadsFor(id).map((payload) => ({ payload, role: ctx.role, isSilenced: true })),
 				);
 			}
 			return [];
@@ -510,7 +574,7 @@ export class PushRouter {
 
 		this.logger.info(`[push] ${who} feature=${feature} → ${targetIds.length} 个目标`);
 		if (!atAllKey) {
-			return this.sendBatch(targetIds, payloads, ctx);
+			return this.sendBatch(targetIds, payloadsFor, ctx);
 		}
 
 		// 默认取**折叠后**那一份(全局 + per-UP 覆盖已合并);per-target 三态表挂在订阅上。
@@ -526,7 +590,7 @@ export class PushRouter {
 			(shouldAtAll ? atAllTargets : plainTargets).push(id);
 		}
 		if (atAllTargets.length === 0) {
-			return this.sendBatch(plainTargets, payloads, ctx);
+			return this.sendBatch(plainTargets, payloadsFor, ctx);
 		}
 
 		// 「@全体单独一条 → 原 payload」两条独立消息:@ 提醒在前、卡片正文在后。
@@ -536,9 +600,9 @@ export class PushRouter {
 		// 标失败)。现在卡片不再被 @全体 的重试拖住,@全体 失败也只异步落历史。
 		const results: DeliveryResult[] = [];
 		if (plainTargets.length > 0) {
-			results.push(...(await this.sendBatch(plainTargets, payloads, ctx)));
+			results.push(...(await this.sendBatch(plainTargets, payloadsFor, ctx)));
 		}
-		results.push(...(await this.sendAtAllThenCard(atAllTargets, payloads, ctx)));
+		results.push(...(await this.sendAtAllThenCard(atAllTargets, payloadsFor, ctx)));
 		return results;
 	}
 
@@ -558,7 +622,7 @@ export class PushRouter {
 	 */
 	private async sendAtAllThenCard(
 		atAllTargets: string[],
-		payloads: NotificationPayload[],
+		payloadsFor: (targetId: string) => NotificationPayload[],
 		ctx: SendMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
@@ -570,7 +634,7 @@ export class PushRouter {
 			// @全体 best-effort:同步发起(先于序列首条入 dispatcher),不 await。
 			const atAllPayload = makeAtAllPayload();
 			const atAllJob = this.sendToTarget(id, atAllPayload, { routing });
-			const outcomes = await this.sendSequence(id, payloads, ctx, myGen);
+			const outcomes = await this.sendSequence(id, payloadsFor(id), ctx, myGen);
 			if (outcomes === null) break;
 			// 被中止的那几条没有结果可报(从没出过网),不进这个数组。
 			results.push(...outcomes.flatMap((o) => (o.result ? [o.result] : [])));
@@ -588,7 +652,8 @@ export class PushRouter {
 	}
 
 	/**
-	 * 把同一段消息序列发给一批目标。失败逐目标捕获,不抛。
+	 * 把消息序列发给一批目标。失败逐目标捕获,不抛。给函数时每个目标现取它自己那一段(同一锚点的
+	 * 模板版 / AI 版按目标挑,见 {@link PushAnchor.aiMessages});给定值则所有目标同一段。
 	 *
 	 * 每个目标收完整段序列后回调一次 onSend(见 {@link PushSendResult});生命周期翻转
 	 * (stop→start)时放弃剩余目标,最后那条已 in-flight 的结果是生命周期 artifact,
@@ -596,16 +661,20 @@ export class PushRouter {
 	 */
 	async sendBatch(
 		targetIds: string[],
-		payload: NotificationPayload | NotificationPayload[],
+		payload:
+			| NotificationPayload
+			| NotificationPayload[]
+			| ((targetId: string) => NotificationPayload | NotificationPayload[]),
 		ctx: SendMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
-		const payloads = Array.isArray(payload) ? payload : [payload];
-		if (payloads.length === 0) return [];
 		const myGen = this.generation;
 		const results: DeliveryResult[] = [];
 		for (const id of targetIds) {
 			if (this.disposed || this.generation !== myGen) break;
+			const picked = typeof payload === "function" ? payload(id) : payload;
+			const payloads = Array.isArray(picked) ? picked : [picked];
+			if (payloads.length === 0) continue;
 			const outcomes = await this.sendSequence(id, payloads, ctx, myGen);
 			if (outcomes === null) break;
 			// 被中止的那几条没有结果可报(从没出过网),不进这个数组。

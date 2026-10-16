@@ -12,6 +12,7 @@
  */
 
 import {
+	AiWritingSettingsSchema,
 	type Connection,
 	FEATURE_KEYS,
 	type GlobalDefaults,
@@ -178,6 +179,7 @@ describe("@全体:真派发器 + 真推送路由", () => {
 			serviceCtx,
 			defaults: () => defaults,
 			muted: () => false,
+			aiWriting: () => AiWritingSettingsSchema.parse({}),
 		});
 		push.start();
 
