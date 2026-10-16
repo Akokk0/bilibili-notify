@@ -172,6 +172,18 @@
 - **3b-32**：两格合成一格 `labelArg?: { keys, format? }`（3b-54）。
 - **3b-27**：收下。
 
+10-16 第一批施工里又有七处新开的缝没有先问（方案里标了「只标、不定」，名字照命名规范的后缀表推出来就派了），10-16 主人逐处过完、全部收下：
+
+| 片 | 缝 |
+| --- | --- |
+| 3b-58 | `subscriptions/external-id.ts` 的 `externalIdRefusal`：外部 id 照来源描述符声明的 `externalIdRegex` 核，只在这一处 |
+| 3b-38 | `problems/problem-report.ts` 的 `ProblemReport` / `problemReportIssue`：集成、来源、适配器三层上报共用的形状检查 |
+| 3b-38 | `logs/value-redactor.ts` 的 `createValueRedactor`：按值打码的登记册，运行时只建一个，日志出口、集成存储、B 站 cookie 罐共用 |
+| 3b-33 | 读口 `CreatorReader`（女仆工具读订阅的中立口子），生成器上 `setCreatorReader` 取代 `setSubscriptionsSource` |
+| 3b-33 | `packages/ai/src/creator.ts` 的 `creatorOf` / `parseCreator`：`creator`（「来源键:外部 id」）的拼与拆，按第一个冒号切 |
+| 3b-33 | `subscriptions/platform-label.ts` 的 `platformLabelOf` / `PlatformLabelDeps`：平台名的唯一取法，锐评与女仆的订阅视图共用 |
+| 3b-40 | `push/adapter-members.ts` 的 `pickAdapterMembers`：成员表 `satisfies` 适配器接口，视图、派生表、拓展包装、能力注入四处都按它取成员，方法 `bind` 回原实例 |
+
 另有三件**超出了已有的定案**（把第 4 期的东西提前，或要在定案下补一句），10-13 先这么排了，**10-14 主人逐件过目都选了照这样做**：
 
 | 件 | 先这么排的 | 为什么不照原样 |
