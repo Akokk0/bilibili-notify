@@ -1252,7 +1252,8 @@ export interface SourceAuthResponse {
 
 /**
  * `GET /api/problems` 响应 —— 问题表此刻的全部,按 `since` 先后。全在内存,重启清空;
- * 变了服务端发 `problems-changed`(按报的人合并过),面板据此重取。
+ * 变了服务端发 `problems-changed`(按报的人合并过),面板据此重取。每条的 `about` 可能是一条订阅
+ * (`{ subscriptionId }`)、一条连接(`{ connectionId }`),或没有(报的人自己的问题)。
  */
 export interface ProblemsResponse {
 	problems: Problem[];

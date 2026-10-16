@@ -9,9 +9,9 @@ import type { Connection, Disposable } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
-import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
+import { createProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterContext } from "../adapter-context.js";
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -50,11 +50,12 @@ function build(
 	settingsSchema: z.ZodType = z.unknown(),
 	logger = silentLogger,
 ) {
+	const problems = createProblemTable({ logger: silentLogger });
 	const handle = createIntegrationContext({
 		logger,
 		stopReason: "测试",
 		...memoryStores(),
-		problems: ignoredProblems,
+		problems,
 		reporter: key,
 		rejectedProblemLevel: "error",
 	});
@@ -64,8 +65,10 @@ function build(
 		settingsSchema,
 		connections: list,
 		onConnectionsChanged: on,
+		problems,
+		rejectedProblemLevel: "error",
 	});
-	return { handle, ctx };
+	return { handle, ctx, problems };
 }
 
 describe("createPlatformAdapterContext", () => {
@@ -188,5 +191,89 @@ describe("createPlatformAdapterContext — settings 先按适配器的规则解"
 		);
 		expect(ctx.connections()).toEqual([]);
 		expect(logger.warn).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 适配器层的问题上报:多一格 `connectionId`。带了,宿主核它是不是这个适配器的连接再记在那条连接名下;
+ * 不带就是适配器自己的问题(同集成层)。
+ */
+describe("createPlatformAdapterContext · reportProblem / resolveProblem", () => {
+	const mine = [direct("ob1", "onebot"), direct("qq1", "qq-official")];
+
+	it("带自己的 connectionId:进表、about 是那条连接,报的人是适配器键", () => {
+		const { ctx, problems } = build("onebot", () => mine);
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "网关连不上" });
+		expect(problems.list()).toEqual([
+			{
+				reporter: "onebot",
+				about: { connectionId: "ob1" },
+				code: "gateway_down",
+				message: "网关连不上",
+				since: expect.any(String),
+			},
+		]);
+	});
+
+	it("不带 connectionId:适配器自己的问题,不带 about", () => {
+		const { ctx, problems } = build("onebot", () => mine);
+		ctx.reportProblem({ code: "adapter_broken", message: "坏了" });
+		expect(problems.list().map((p) => p.about)).toEqual([undefined]);
+	});
+
+	it("别人的连接、不存在的连接:不进表,记一行 error", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const { ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger);
+		ctx.reportProblem({ connectionId: "qq1", code: "gateway_down", message: "别人的" });
+		ctx.reportProblem({ connectionId: "nope", code: "gateway_down", message: "没有的" });
+		expect(problems.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledTimes(2);
+	});
+
+	it("被隔离的连接(设置过不了规则)仍算自己的:归属只看 adapterKey", () => {
+		const bad = connectionOf("bad", "webhook", "dingtalk", { url: 5 });
+		const { ctx, problems } = build(
+			"webhook",
+			() => [bad],
+			undefined,
+			z.object({ url: z.string() }),
+		);
+		expect(ctx.connections()).toEqual([]);
+		ctx.reportProblem({ connectionId: "bad", code: "x_y", message: "m" });
+		expect(problems.list()).toHaveLength(1);
+	});
+
+	it("形状不对:不进表、记一行", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const { ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger);
+		ctx.reportProblem({ connectionId: "ob1", code: "Bad Code", message: "x" });
+		expect(problems.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("resolveProblem 带 connectionId 清那一条;notify: false 不补已恢复", () => {
+		const { ctx, problems } = build("onebot", () => mine);
+		const seen: Array<[string, boolean]> = [];
+		problems.subscribe((c) => seen.push([c.kind, c.notify]));
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "x", notify: true });
+		ctx.reportProblem({ code: "gateway_down", message: "适配器自己的" });
+		ctx.resolveProblem({ connectionId: "ob1", code: "gateway_down", notify: false });
+		expect(problems.list().map((p) => p.about)).toEqual([undefined]);
+		expect(seen).toEqual([
+			["opened", true],
+			["opened", false],
+			["closed", false],
+		]);
+	});
+
+	it("适配器停下之后:带连接的上报被丢,名下的(含连接支)已清", async () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const { handle, ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger);
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "x" });
+		await handle.dispose();
+		expect(problems.list()).toEqual([]);
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "停后又报" });
+		expect(problems.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledTimes(1);
 	});
 });

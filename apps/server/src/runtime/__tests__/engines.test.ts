@@ -1861,10 +1861,11 @@ describe("createEngines — boot wiring", () => {
 
 		c.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: gone }] });
 
-		expect(c.problems.list().map((p) => p.about?.subscriptionId ?? "(来源级)")).toEqual([
-			"sub-stay",
-			"(来源级)",
-		]);
+		expect(
+			c.problems
+				.list()
+				.map((p) => (p.about && "subscriptionId" in p.about ? p.about.subscriptionId : "(来源级)")),
+		).toEqual(["sub-stay", "(来源级)"]);
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
 	});
 

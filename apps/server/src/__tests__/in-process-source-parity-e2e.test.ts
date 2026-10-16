@@ -1044,9 +1044,11 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(own?.about).toBeUndefined();
 		// 同一个人遗留的两条订阅,各一条。
 		const perSub = opened.filter((p) => p.code === "person_trouble");
-		expect(perSub.map((p) => p.about?.subscriptionId).sort()).toEqual(
-			[SUB.erin1, SUB.erin2].sort(),
-		);
+		expect(
+			perSub
+				.map((p) => (p.about && "subscriptionId" in p.about ? p.about.subscriptionId : undefined))
+				.sort(),
+		).toEqual([SUB.erin1, SUB.erin2].sort());
 		for (const p of perSub) expect(p.message).toBe("这个人有点状况");
 
 		// 再报同一个 code:只换文案,开始时刻不动。

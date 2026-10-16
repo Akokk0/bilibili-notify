@@ -17,6 +17,7 @@ import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
+import { createProblemTable } from "../../problems/problem-table.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
 
@@ -75,6 +76,7 @@ async function setup() {
 		for (const fn of [...listeners]) fn();
 	};
 	const registry = createPlatformAdapterRegistry();
+	const problems = createProblemTable({ logger });
 	const onebot = fakeAdapter("onebot");
 	const qq = fakeAdapter("qq-official");
 	const webhook = fakeAdapter("webhook");
@@ -83,11 +85,11 @@ async function setup() {
 		adapters: [onebot, qq, webhook],
 		loggerOf: () => logger,
 		stores,
-		problems: ignoredProblems,
+		problems,
 		connections: () => list,
 		onConnectionsChanged,
 	});
-	return { registry, onebot, qq, webhook, builtin, emit, listeners, stores };
+	return { registry, onebot, qq, webhook, builtin, emit, listeners, stores, problems };
 }
 
 describe("registerBuiltinAdapters", () => {
@@ -127,6 +129,20 @@ describe("registerBuiltinAdapters", () => {
 		expect(qq.seen).toEqual([["qq1"]]);
 		expect(webhook.seen).toEqual([["wh1"]]);
 		expect(registry.list().map((a) => a.adapterKey)).toEqual(["onebot", "qq-official", "webhook"]);
+	});
+
+	it("适配器在 start 之后报一条连接问题进表(报的人是适配器键);撤掉登记之后它名下的全清", async () => {
+		const { onebot, qq, builtin, problems } = await setup();
+		onebot.ctx?.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "连不上" });
+		// 别人的连接:被宿主拒收。
+		onebot.ctx?.reportProblem({ connectionId: "qq1", code: "gateway_down", message: "越界" });
+		qq.ctx?.reportProblem({ connectionId: "qq1", code: "gateway_down", message: "官机的" });
+		expect(problems.list().map((p) => [p.reporter, p.about])).toEqual([
+			["onebot", { connectionId: "ob1" }],
+			["qq-official", { connectionId: "qq1" }],
+		]);
+		await builtin.dispose();
+		expect(problems.list()).toEqual([]);
 	});
 
 	it("订阅发一声,每个适配器登记的回调都被叫到", async () => {

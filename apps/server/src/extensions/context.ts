@@ -809,6 +809,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 						settingsSchema: def.configSchema,
 						connections: opts.connections,
 						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
+						problems: opts.problems,
+						rejectedProblemLevel: "warn",
 					}),
 				),
 			);

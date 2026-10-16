@@ -368,3 +368,70 @@ describe("createProblemTable 的 onChanged 合并", () => {
 		expect(() => vi.advanceTimersByTime(W)).not.toThrow();
 	});
 });
+
+/** `about` 的连接支:与订阅支并列,键里带着是哪一支。 */
+describe("问题表 · 关于连接", () => {
+	it("同报的人、同连接、同 code 一条;再报只换文案,since 不动", () => {
+		const { table, advance } = makeTable();
+		table.report({
+			reporter: "onebot",
+			about: { connectionId: "c1" },
+			code: "gateway_down",
+			message: "1",
+		});
+		const since = table.list()[0]?.since;
+		advance(60_000);
+		table.report({
+			reporter: "onebot",
+			about: { connectionId: "c1" },
+			code: "gateway_down",
+			message: "2",
+		});
+		expect(table.list()).toEqual([
+			{
+				reporter: "onebot",
+				about: { connectionId: "c1" },
+				code: "gateway_down",
+				message: "2",
+				since,
+			},
+		]);
+	});
+
+	it("与同一个 id 的订阅支不相撞:两条各算各的", () => {
+		const { table } = makeTable();
+		table.report({ reporter: "r", about: { connectionId: "x1" }, code: "c", message: "连接" });
+		table.report({ reporter: "r", about: { subscriptionId: "x1" }, code: "c", message: "订阅" });
+		expect(table.list().map((p) => p.message)).toEqual(["连接", "订阅"]);
+		table.resolve({ reporter: "r", about: { connectionId: "x1" }, code: "c" });
+		expect(table.list().map((p) => p.message)).toEqual(["订阅"]);
+	});
+
+	it("clearConnection 只清关于那条连接的(不看报的人),不补已恢复;订阅支与别的连接不动", () => {
+		const { table, changes } = makeTable();
+		table.report({
+			reporter: "a",
+			about: { connectionId: "c1" },
+			code: "x",
+			message: "1",
+			notify: true,
+		});
+		table.report({ reporter: "b", about: { connectionId: "c1" }, code: "y", message: "2" });
+		table.report({ reporter: "a", about: { connectionId: "c2" }, code: "x", message: "3" });
+		table.report({ reporter: "a", about: { subscriptionId: "c1" }, code: "x", message: "4" });
+		changes.length = 0;
+		table.clearConnection("c1");
+		expect(table.list().map((p) => p.message)).toEqual(["3", "4"]);
+		expect(changes.map((c) => [c.kind, c.notify])).toEqual([
+			["closed", false],
+			["closed", false],
+		]);
+	});
+
+	it("clearSubscription 不碰连接支", () => {
+		const { table } = makeTable();
+		table.report({ reporter: "a", about: { connectionId: "s1" }, code: "x", message: "连接" });
+		table.clearSubscription("s1");
+		expect(table.list()).toHaveLength(1);
+	});
+});

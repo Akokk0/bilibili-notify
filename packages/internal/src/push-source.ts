@@ -176,6 +176,19 @@ export interface PlatformAdapterContext extends IntegrationContext {
 	connections(): readonly Connection[];
 	/** 连接配置动过了(增删改都算),叫一声。适配器停下时自动摘掉。 */
 	onConnectionsChanged(fn: () => void): Disposable;
+	/**
+	 * 在集成层的上报上多一格 `connectionId`:带了就是关于这条连接的问题(宿主核它是不是这个适配器的连接,
+	 * 不是、或不存在的被拒);不带就是适配器自己的问题。连接删了,关于它的问题宿主跟着清。
+	 */
+	reportProblem(problem: {
+		connectionId?: string;
+		code: string;
+		message: string;
+		notify?: boolean;
+		recoveryMessage?: string;
+	}): void;
+	/** 清掉一个问题(同 `reportProblem` 的对象规矩);语义同集成层的 `resolveProblem`。 */
+	resolveProblem(problem: { connectionId?: string; code: string; notify?: boolean }): void;
 }
 
 /**

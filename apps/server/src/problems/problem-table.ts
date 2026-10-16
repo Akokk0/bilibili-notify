@@ -9,7 +9,8 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
  * - 每次变化当场叫订阅方(给问题通知器,它要看每一次);「面板该重取了」那一声 {@link CreateProblemTableOptions.onChanged}
  *   按报的人在尾沿合并,自己一个窗口。
  * - 报的人自己清({@link ProblemTable.resolve})可以让核心补一句「已恢复」;宿主在清
- *   ({@link ProblemTable.clearReporter}、{@link ProblemTable.clearSubscription})一律不补 —— 不是修好了,
+ *   ({@link ProblemTable.clearReporter}、{@link ProblemTable.clearSubscription}、
+ *   {@link ProblemTable.clearConnection})一律不补 —— 不是修好了,
  *   只是这件事不再适用。
  * - 表不校验形状:校验在各自的入口(来源上下文之类),核心直写的人不经那一层。
  */
@@ -46,6 +47,8 @@ export interface ProblemTable {
 	clearReporter(reporter: string): void;
 	/** 订阅删了:关于它的全清(不看报的人),不补「已恢复」。 */
 	clearSubscription(subscriptionId: string): void;
+	/** 连接删了:关于它的全清(不看报的人),不补「已恢复」。 */
+	clearConnection(connectionId: string): void;
 	/** 全部,按 `since` 先后。交出去的是拷贝。 */
 	list(): readonly Problem[];
 	/** 每次变化当场叫(不合并)。订阅方抛错只记一行,不影响表与别的订阅方。 */
@@ -80,7 +83,20 @@ function recoveryOf(entry: Entry): { recoveryMessage?: string } {
 
 /** 一条问题在表里的键;问题通知器按同一个键记账。 */
 export function problemKeyOf(key: ProblemKey): string {
-	return JSON.stringify([key.reporter, key.about?.subscriptionId ?? null, key.code]);
+	// 订阅 id 与连接 id 是两个命名空间:键里带上是哪一支,撞了同一串也是两条。
+	const about = !key.about
+		? null
+		: "subscriptionId" in key.about
+			? ["subscription", key.about.subscriptionId]
+			: ["connection", key.about.connectionId];
+	return JSON.stringify([key.reporter, about, key.code]);
+}
+
+/** 复制一份 `about`(按联合原样拷,表里的与外面的不共用对象)。 */
+function copyAbout(about: NonNullable<Problem["about"]>): NonNullable<Problem["about"]> {
+	return "subscriptionId" in about
+		? { subscriptionId: about.subscriptionId }
+		: { connectionId: about.connectionId };
 }
 
 export function createProblemTable(options: CreateProblemTableOptions): ProblemTable {
@@ -109,7 +125,11 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 	}
 
 	function describe(problem: Problem): string {
-		const about = problem.about ? ` subscription=${problem.about.subscriptionId}` : "";
+		const about = !problem.about
+			? ""
+			: "subscriptionId" in problem.about
+				? ` subscription=${problem.about.subscriptionId}`
+				: ` connection=${problem.about.connectionId}`;
 		return `reporter=${problem.reporter}${about} code=${problem.code}`;
 	}
 
@@ -146,7 +166,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			}
 			const problem: Problem = {
 				reporter: input.reporter,
-				...(input.about ? { about: { subscriptionId: input.about.subscriptionId } } : {}),
+				...(input.about ? { about: copyAbout(input.about) } : {}),
 				code: input.code,
 				message: input.message,
 				since: now().toISOString(),
@@ -177,12 +197,25 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			clearWhere((problem) => problem.reporter === reporter);
 		},
 		clearSubscription(subscriptionId) {
-			clearWhere((problem) => problem.about?.subscriptionId === subscriptionId);
+			clearWhere(
+				(problem) =>
+					problem.about !== undefined &&
+					"subscriptionId" in problem.about &&
+					problem.about.subscriptionId === subscriptionId,
+			);
+		},
+		clearConnection(connectionId) {
+			clearWhere(
+				(problem) =>
+					problem.about !== undefined &&
+					"connectionId" in problem.about &&
+					problem.about.connectionId === connectionId,
+			);
 		},
 		list() {
 			return [...entries.values()].map(({ problem }) => ({
 				...problem,
-				...(problem.about ? { about: { ...problem.about } } : {}),
+				...(problem.about ? { about: copyAbout(problem.about) } : {}),
 			}));
 		},
 		subscribe(fn) {

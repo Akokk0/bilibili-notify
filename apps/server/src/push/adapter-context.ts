@@ -5,6 +5,8 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import { problemReportIssue } from "../problems/problem-report.js";
+import type { ProblemTable } from "../problems/problem-table.js";
 import { resolveSettings, settingsIssueMessage } from "./connection-settings.js";
 
 export interface CreatePlatformAdapterContextOptions {
@@ -17,6 +19,13 @@ export interface CreatePlatformAdapterContextOptions {
 	connections: () => readonly Connection[];
 	/** 连接配置变了的订阅;交回的把手由调用方负责在集成停下时撤掉。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 问题表的写口:关于连接的上报记在报的人(适配器键)名下、`about` 是那条连接。不带 `connectionId` 的上报
+	 * 走集成层(`integration`),报的人是同一个键。
+	 */
+	problems: Pick<ProblemTable, "report" | "resolve">;
+	/** 被拒的上报(连接不归我、形状不对、已停下)记成什么等级:内置 `error`,拓展 `warn`;同集成层那一格。 */
+	rejectedProblemLevel: "warn" | "error";
 }
 
 /**
@@ -33,14 +42,69 @@ export function createPlatformAdapterContext(
 	const { integration, adapterKey, settingsSchema } = opts;
 	/** 连接 id → 最近一次记过的隔离原因。 */
 	const warned = new Map<string, string>();
+
+	/**
+	 * 关于连接的上报的公共一步:已停下、形状不对、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
+	 * 归属按**原始连接表**看 `adapterKey`:设置过不了规则、被隔离不交给适配器的连接仍算自己的。
+	 */
+	function acceptConnectionProblem(
+		what: string,
+		problem: { connectionId: string; code: string; message?: string; recoveryMessage?: string },
+		apply: () => void,
+	): void {
+		const issue = integration.signal.aborted
+			? "适配器已停下"
+			: (problemReportIssue(problem) ??
+				(opts
+					.connections()
+					.some((c) => c.id === problem.connectionId && c.adapterKey === adapterKey)
+					? undefined
+					: `连接 ${problem.connectionId} 不是适配器 ${adapterKey} 的`));
+		if (issue !== undefined) {
+			integration.logger[opts.rejectedProblemLevel](
+				`${what}问题 ${problem.code} 被拒(丢弃):${issue}`,
+			);
+			return;
+		}
+		apply();
+	}
+
 	return {
 		logger: integration.logger,
 		signal: integration.signal,
 		onDispose: integration.onDispose,
 		state: integration.state,
 		secrets: integration.secrets,
-		reportProblem: integration.reportProblem,
-		resolveProblem: integration.resolveProblem,
+		reportProblem({ connectionId, ...problem }) {
+			if (connectionId === undefined) {
+				integration.reportProblem(problem);
+				return;
+			}
+			acceptConnectionProblem("报", { connectionId, ...problem }, () =>
+				opts.problems.report({
+					reporter: adapterKey,
+					about: { connectionId },
+					code: problem.code,
+					message: problem.message,
+					...(problem.notify === undefined ? {} : { notify: problem.notify }),
+					...(problem.recoveryMessage === undefined
+						? {}
+						: { recoveryMessage: problem.recoveryMessage }),
+				}),
+			);
+		},
+		resolveProblem({ connectionId, ...problem }) {
+			if (connectionId === undefined) {
+				integration.resolveProblem(problem);
+				return;
+			}
+			acceptConnectionProblem("清", { connectionId, ...problem }, () =>
+				opts.problems.resolve(
+					{ reporter: adapterKey, about: { connectionId }, code: problem.code },
+					problem.notify === undefined ? undefined : { notify: problem.notify },
+				),
+			);
+		},
 		connections: () => {
 			const mine: Connection[] = [];
 			const stillBroken = new Set<string>();

@@ -234,7 +234,11 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 	it("带 externalId:按身份展开,遗留的两条重复订阅各记一条,别人的订阅不碰", () => {
 		const { handle, problems } = setup([makeSub("a", "1"), makeSub("b", "1"), makeSub("c", "2")]);
 		handle.ctx.reportProblem({ externalId: "1", code: "monitor_stopped", message: "停了" });
-		expect(problems.report.mock.calls.map(([p]) => p.about?.subscriptionId)).toEqual(["a", "b"]);
+		expect(
+			problems.report.mock.calls.map(([p]) =>
+				p.about && "subscriptionId" in p.about ? p.about.subscriptionId : undefined,
+			),
+		).toEqual(["a", "b"]);
 		expect(problems.report.mock.calls[0]?.[0]).toEqual({
 			reporter: SOURCE_KEY,
 			about: { subscriptionId: "a" },

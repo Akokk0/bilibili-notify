@@ -8,8 +8,11 @@
 export interface Problem {
 	/** 报的人:集成键(来源键、适配器键、拓展 id),或 `"core"`。 */
 	reporter: string;
-	/** 关于谁;不带就是报的人自己的问题。目前只有订阅这一支。 */
-	about?: { subscriptionId: string };
+	/**
+	 * 关于谁;不带就是报的人自己的问题。两支:关于一条订阅(来源报的)、关于一条连接(平台适配器报的)。
+	 * 对象删了,关于它的全清。
+	 */
+	about?: { subscriptionId: string } | { connectionId: string };
 	/** snake 风格;不受标准失败码表约束。同一个报的人、同一个对象下,同一个 code 只有一条。 */
 	code: string;
 	message: string;

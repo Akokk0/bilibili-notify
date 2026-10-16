@@ -326,6 +326,21 @@ export function createAppRuntime(
 		onInvalidSettingsChanged: (entries) =>
 			syncSettingsProblem(problems, entries, serviceCtx.logger),
 	});
+	// 连接没了,关于它的问题跟着清(不补「已恢复」)。路由删除与恢复备份整表换都发 `config-changed { connections }`,
+	// 事件不带改动内容,所以拿此刻的连接 id 集合比一遍;先看表里有没有连接支,没有就不拷整张连接表。
+	// 放在这里而不在 `engines.ts`:那里是引擎的装配,问题表与配置仓都在这一层。
+	const connectionSweep = bus.on("config-changed", ({ scope }) => {
+		if (scope !== "connections") return;
+		const reported = new Set<string>();
+		for (const problem of problems.list()) {
+			if (problem.about && "connectionId" in problem.about)
+				reported.add(problem.about.connectionId);
+		}
+		if (reported.size === 0) return;
+		const alive = new Set(configStore.getConnections().map((c) => c.id));
+		for (const id of reported) if (!alive.has(id)) problems.clearConnection(id);
+	});
+	serviceCtx.onDispose(() => connectionSweep.dispose(), "stop");
 	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
 	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。
 	serviceCtx.onDispose(() => configStore.close(), "flush");
