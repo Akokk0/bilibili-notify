@@ -1,4 +1,5 @@
 import type { ConnectionCapabilities } from "@bilibili-notify/internal";
+import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterView } from "../push/registry.js";
 
 /**
@@ -27,12 +28,12 @@ export function createCapabilityInjector(): CapabilityInjector {
 		},
 		entries: () => [...fakes.entries()],
 		wrap(inner) {
-			const { capabilities, probeCapabilities } = inner;
 			// 没有能力概念的平台(webhook)原样交回:替它补上等于替它声明了能力。
-			if (!capabilities && !probeCapabilities) return inner;
-			// 展开而不是逐个转发:别的方法有就有、没有就没有,接口多一个方法这里也不用跟。
-			// 前提是 adapter 的方法不吃 `this`,那条写在 PlatformAdapter 的文档上。
-			const wrapped: PlatformAdapterView = { ...inner };
+			if (!inner.capabilities && !inner.probeCapabilities) return inner;
+			// 按成员表取、方法 bind 回 `inner`:别的方法有就有、没有就没有,接口多一个方法这里也不用跟,
+			// class 写的适配器也不会因为脱离实例而丢状态。下面读出来的两个已经是 bind 好的。
+			const wrapped: PlatformAdapterView = pickAdapterMembers(inner, []);
+			const { capabilities, probeCapabilities } = wrapped;
 			if (capabilities) {
 				wrapped.capabilities = (connection) => fakes.get(connection.id) ?? capabilities(connection);
 			}

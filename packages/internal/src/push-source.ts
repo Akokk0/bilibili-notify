@@ -46,9 +46,9 @@ export type ProbeResult = Result<{ latencyMs: number }>;
  * 实现**不许抛**:失败回 `fail(code, message)`(码取标准码表,平台自己的码放 `upstreamCode`),
  * 重试由路由层决定。真抛了算 bug,派发器在边界接住按 `unavailable` 记。
  *
- * 方法**不依赖 `this`**:三个实现都是工厂里返回的闭包字面量,状态全在闭包里。这条是承重的 ——
- * 登记表的视图(摘掉 `send`)与 devtools 的能力注入装饰器拿展开语法叠在外面(`{ ...inner }`),被复制过去的
- * 方法会以装饰器对象为 `this` 被调;要是哪天有实现按 `this` 写,叠上去就悄悄丢状态。
+ * 方法可以吃 `this`(class 写的、方法在原型上都行):宿主造视图、派生表、拓展包装、能力注入时
+ * 按成员表取成员、并把方法 `bind` 回原实例,不用对象展开。接口里多一个成员,宿主那张成员表
+ * (`apps/server/src/push/adapter-members.ts`)编译不过,逼着一起加。
  */
 export interface PlatformAdapter {
 	/**

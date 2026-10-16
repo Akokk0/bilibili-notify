@@ -255,7 +255,7 @@ describe("按清单注册推送源", () => {
 	// 契约的类型把这两个成员排除了,但第三方 JS 不受类型约束:带了也不认,否则「没开放」的口子先被人用上,
 	// 以后就改不动它的形状(ADR-0024 决策 11)。
 	// 验红:把 context.ts 里摘这两个成员的那一句去掉(原样展开),这条红。
-	it("这一版不对拓展开放的成员(列地址候选、连接认证)带了也不认,别的成员照收", () => {
+	it("这一版不对拓展开放的成员(列地址候选、连接认证)带了也不认,别的成员照收", async () => {
 		const h = harness();
 		const probe = vi.fn();
 		const smuggled = {
@@ -268,9 +268,39 @@ describe("按清单注册推送源", () => {
 		const [registered] = h.adapters.list();
 		expect(registered?.adapterKey).toBe("bridge");
 		// 正对照:没被排除的可选成员原样在。
-		expect(registered?.probe).toBe(probe);
+		await registered?.probe(connection());
+		expect(probe).toHaveBeenCalledTimes(1);
 		expect(registered && "listAddressCandidates" in registered).toBe(false);
 		expect(registered && "connectionAuth" in registered).toBe(false);
+	});
+
+	// 验红:把 context.ts 里拓展适配器的组装换回 `...offered` 展开,这条红(原型上的 start / stop 没带过去)。
+	it("推送源的适配器是 class 实例:start / stop / probe 都调得到,读得到实例状态", async () => {
+		const h = harness();
+		class Classy {
+			readonly adapterKey = "谁都不是";
+			started = 0;
+			stopped = 0;
+			isAvailable() {
+				return true;
+			}
+			start() {
+				this.started += 1;
+			}
+			stop() {
+				this.stopped += 1;
+			}
+			async probe() {
+				return { ok: true as const, latencyMs: this.started };
+			}
+		}
+		const inst = new Classy();
+		h.ctx.registerPushSource({ ...def(), adapter: inst as unknown as PlatformAdapter });
+		expect(inst.started).toBe(1);
+		const [registered] = h.adapters.list();
+		expect(await registered?.probe(connection())).toEqual({ ok: true, latencyMs: 1 });
+		await h.runtime.dispose();
+		expect(inst.stopped).toBe(1);
 	});
 
 	it("拓展上下文 dispose 之后:stop 被调一次,宿主再发「连接变了」start 里订的回调不被叫", async () => {

@@ -151,7 +151,7 @@ describe("adapter 注册表 · 出口咽喉", () => {
 			tag: "wrapped",
 		});
 
-		it("后注册的适配器,派生表上看得见,派发器取的完整适配器里也有(带原 send、带包装)", () => {
+		it("后注册的适配器,派生表上看得见,派发器取的完整适配器里也有(带原 send、带包装)", async () => {
 			const base = createPlatformAdapterRegistry();
 			const derived = deriveAdapterRegistry(base, tagged);
 			expect(derived.list()).toEqual([]);
@@ -163,7 +163,10 @@ describe("adapter 注册表 · 出口咽喉", () => {
 			expect(derived.list()).toHaveLength(1);
 			expect((derived.list()[0] as unknown as { tag: string }).tag).toBe("wrapped");
 			const [full] = sendableAdapters(derived);
-			expect(full?.send).toBe(late.send);
+			expect(await full?.send(extensionConnection("bridge"), {} as never, {} as never)).toEqual({
+				ok: true,
+				latencyMs: 1,
+			});
 			expect((full as unknown as { tag: string }).tag).toBe("wrapped");
 		});
 
@@ -286,5 +289,62 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		const { ctx } = fakeAdapterContext();
 		derived.register(adapter, ctx);
 		expect(adapter.start).toHaveBeenCalledWith(ctx);
+	});
+});
+
+/** 拿 class 写的适配器:方法在原型上、读实例状态 —— 第三方拓展最常见的写法。 */
+class ClassAdapter {
+	readonly adapterKey = "classy";
+	readonly settingsSchema = {} as never;
+	private readonly latencyMs = 42;
+	private checks = 0;
+	start() {}
+	stop() {}
+	async probe() {
+		return { ok: true as const, latencyMs: this.latencyMs };
+	}
+	isAvailable() {
+		this.checks += 1;
+		return this.checks > 0;
+	}
+	async send() {
+		return { ok: true as const, latencyMs: this.latencyMs };
+	}
+	capabilities() {
+		return {
+			atAll: { state: "supported" as const, checkedAt: this.latencyMs },
+			inbound: { state: "unknown" as const },
+			miniAppCard: { state: "unknown" as const },
+		};
+	}
+}
+
+describe("adapter 注册表 · class 写的适配器(方法在原型上)", () => {
+	// 验红:把 `viewOf` 换回对象展开,这条红(原型上的方法没被带过去,视图上 probe 是 undefined)。
+	it("登记后经视图调 probe / capabilities、经完整适配器调 send,都读得到实例状态", async () => {
+		const registry = registryWith(new ClassAdapter() as unknown as PlatformAdapter);
+		const [view] = registry.list();
+		expect(await view?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
+		expect(view?.capabilities?.(extensionConnection("classy"))?.atAll).toEqual({
+			state: "supported",
+			checkedAt: 42,
+		});
+		expect(view?.isAvailable(extensionConnection("classy"), {} as never)).toBe(true);
+		const [full] = sendableAdapters(registry);
+		expect(await full?.send(extensionConnection("classy"), {} as never, {} as never)).toEqual({
+			ok: true,
+			latencyMs: 42,
+		});
+	});
+
+	it("派生表上 class 适配器的 send 仍以原实例为 this,包装过的视图也读得到实例状态", async () => {
+		const base = registryWith(new ClassAdapter() as unknown as PlatformAdapter);
+		const derived = deriveAdapterRegistry(base, (view) => view);
+		const [full] = sendableAdapters(derived);
+		expect(await full?.send(extensionConnection("classy"), {} as never, {} as never)).toEqual({
+			ok: true,
+			latencyMs: 42,
+		});
+		expect(await full?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
 	});
 });

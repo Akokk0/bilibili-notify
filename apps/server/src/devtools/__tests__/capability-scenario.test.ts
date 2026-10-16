@@ -79,6 +79,40 @@ function setup() {
 }
 
 describe("connection.capability", () => {
+	// 验红:把 `wrap` 换回 `{ ...inner }` 展开,这条红(原型上的方法没带过去)。
+	it("包 class 适配器(方法在原型上、读实例状态),没注入的连接原样问到实例", async () => {
+		class Classy {
+			readonly adapterKey = "onebot";
+			readonly settingsSchema = z.unknown();
+			private readonly caps = REAL;
+			isAvailable() {
+				return true;
+			}
+			async send() {
+				return { ok: true as const, latencyMs: 1 };
+			}
+			async probe() {
+				return { ok: true as const, latencyMs: 1 };
+			}
+			capabilities() {
+				return this.caps;
+			}
+			async probeCapabilities() {
+				return this.caps;
+			}
+			start() {}
+			stop() {}
+		}
+		const injector = createCapabilityInjector();
+		const wrapped = injector.wrap(new Classy() as unknown as PlatformAdapter);
+		expect(wrapped.capabilities?.(OB)).toBe(REAL);
+		expect(await wrapped.probeCapabilities?.(OB)).toBe(REAL);
+		expect(await wrapped.probe(OB)).toEqual({ ok: true, latencyMs: 1 });
+		injector.set("ad-ob", { ...REAL, miniAppCard: { state: "supported", checkedAt: 2 } });
+		expect(wrapped.capabilities?.(OB)?.miniAppCard.state).toBe("supported");
+		expect(wrapped.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
+	});
+
 	it("没注入:原样透传;webhook 照样没有 capabilities 方法", async () => {
 		const { ob, wh } = setup();
 		expect(ob.capabilities?.(OB)).toBe(REAL);
@@ -165,12 +199,12 @@ describe("connection.capability", () => {
 		await wrapped.probeCapabilities?.(OB);
 		expect(probe).not.toHaveBeenCalled();
 	});
-	it("包装器不认识的成员也原样带过去 —— 接口日后多一个方法,这里不用跟、也不会悄悄丢", () => {
-		// 旧写法逐个转发,接口每加一个可选方法都得回来补一行;漏了不会有类型错,只会在开着
-		// devtools 的时候让那个平台看起来「不支持」某件事。
+	it("包装器没碰的可选成员原样带过去 —— 开着 devtools 也不会让那个平台看起来「不支持」某件事", async () => {
+		// 带哪些成员由 push/adapter-members.ts 的成员表定;接口多一个成员那张表编译不过,不会悄悄丢。
 		const injector = createCapabilityInjector();
-		const extra = () => "extra";
-		const wrapped = injector.wrap({ ...onebot(), extra } as ReturnType<typeof onebot>);
-		expect((wrapped as unknown as { extra: () => string }).extra).toBe(extra);
+		const listConnectionCandidates = vi.fn(async () => []);
+		const wrapped = injector.wrap({ ...onebot(), listConnectionCandidates });
+		await wrapped.listConnectionCandidates?.(new AbortController().signal);
+		expect(listConnectionCandidates).toHaveBeenCalledTimes(1);
 	});
 });

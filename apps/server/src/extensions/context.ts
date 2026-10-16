@@ -40,6 +40,7 @@ import {
 	createIntegrationContext,
 } from "../integrations/context.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
+import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
@@ -786,17 +787,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
 			// 🔴 这一版不对拓展开放的成员(ADR-0024 决策 11)带了也不认:契约的类型已经排除它们,但第三方 JS 不受
 			// 类型约束,原样展开的话带了就是活的 —— 没开放的口子先被人用上,以后就改不动它的形状。
-			const {
-				listAddressCandidates: _listAddressCandidates,
-				connectionAuth: _connectionAuth,
-				...offered
-			} = def.adapter as typeof def.adapter &
-				Partial<Pick<PlatformAdapter, "listAddressCandidates" | "connectionAuth">>;
+			// 按成员表取、方法 bind 回拓展交上来的那个实例:拓展拿 class 写适配器(方法在原型上)是最常见的写法,
+			// 展开会把原型上的方法整个丢掉。
 			const adapter: PlatformAdapter = {
-				...offered,
+				...pickAdapterMembers(def.adapter, ["listAddressCandidates", "connectionAuth"]),
 				adapterKey: id,
 				settingsSchema: def.configSchema,
-			};
+			} as PlatformAdapter;
 			// 登记即 `start`。适配器拿到的上下文与交回给拓展的把手**不同形**:这里的 `ctx.connections()` 按
 			// `adapterKey` 筛、`settings` 按 `configSchema` 解过、解不过的隔离;把手的 `connections()`
 			// 回的是 `{ id, name, enabled, config }` 的视图(契约的字段名不在这一片改)。

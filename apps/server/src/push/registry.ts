@@ -5,6 +5,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { stopQuietly } from "../integrations/stop-quietly.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { pickAdapterMembers } from "./adapter-members.js";
 
 /**
  * 推送出口的**活注册表** —— adapter 矩阵的家(ADR-0012 决策 29)。
@@ -58,10 +59,9 @@ export function sendableAdapters(registry: PlatformAdapterRegistry): readonly Se
 	return full();
 }
 
-/** 摘掉 `send` / `start` / `stop`。展开而不是逐个转发:可选方法有就有、没有就没有(同 devtools 的装饰器)。 */
+/** 摘掉 `send` / `start` / `stop`。按成员表取、方法 bind 回原实例:class 写的适配器照样读得到自己的状态。 */
 function viewOf(adapter: PlatformAdapter): PlatformAdapterView {
-	const { send: _send, start: _start, stop: _stop, ...view } = adapter;
-	return view;
+	return pickAdapterMembers(adapter, ["send", "start", "stop"]);
 }
 
 export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
@@ -156,7 +156,9 @@ export function deriveAdapterRegistry(
 			if (!made) {
 				const view = views[i];
 				if (!view) throw new Error("adapter registry views out of step with full adapters");
-				made = { ...decoratedOf(view), send: full.send };
+				// `decorate` 交回的是按成员表取出来的普通对象,展开安全;`send` 绑回原实例:
+				// 脱离实例调,class 写的适配器就读不到自己的状态。
+				made = { ...decoratedOf(view), send: full.send.bind(full) };
 				sendable.set(full, made);
 			}
 			return made;
