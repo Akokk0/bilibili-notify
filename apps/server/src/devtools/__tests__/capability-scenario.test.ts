@@ -48,6 +48,7 @@ function onebot(): PlatformAdapter {
 		probe: async () => ({ ok: true, latencyMs: 1 }),
 		capabilities: () => REAL,
 		probeCapabilities: async () => REAL,
+		listConnectionCandidates: async () => [],
 		start() {},
 		stop() {},
 	};
@@ -60,6 +61,7 @@ function webhook(): PlatformAdapter {
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => fail("unsupported", "no probe"),
+		listConnectionCandidates: async () => [],
 		start() {},
 		stop() {},
 	};

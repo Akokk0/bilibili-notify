@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type { CardSkinFallback, ExtensionBotView, RestartAbility } from "@bilibili-notify/contract";
+import type { CardSkinFallback, RestartAbility } from "@bilibili-notify/contract";
 import { type CardKind, fail, type Logger } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -106,8 +106,6 @@ export interface CreateAppOptions {
 		 * 没交过 / 没跑就是 undefined。
 		 */
 		status: (id: string) => unknown;
-		/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 undefined。 */
-		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
 		runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
 		/**
@@ -373,7 +371,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				store: deps.store,
 				extensions: () => options.extensions?.loaded() ?? [],
 				status: (id) => options.extensions?.status(id),
-				bots: (id) => options.extensions?.bots(id),
 				runAction: async (id, name) => options.extensions?.runAction?.(id, name),
 				lookup: async (id, query) => options.extensions?.lookup?.(id, query),
 				settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),

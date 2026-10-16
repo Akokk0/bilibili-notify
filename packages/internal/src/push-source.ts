@@ -103,11 +103,10 @@ export interface PlatformAdapter {
 	 */
 	readonly settingsSchema: ZodType;
 	/**
-	 * 列新建连接时供挑的候选(ADR-0024 决策 4)。内置三个都实现(平台描述从平台注册表现取、
-	 * 设置是默认值);拓展的由 40-5 改成必备,在那之前先是可选 —— 没有这一格的适配器,宿主
-	 * 新建连接时填中性快照。
+	 * 列新建连接时供挑的候选(ADR-0024 决策 4),必备。内置三个交写死的模板候选(平台描述从平台
+	 * 注册表现取、设置是默认值),拓展(桥)交在线的 bot;新建连接时宿主只认这里列出来的平台。
 	 */
-	listConnectionCandidates?(signal: AbortSignal): Promise<readonly ConnectionCandidate[]>;
+	listConnectionCandidates(signal: AbortSignal): Promise<readonly ConnectionCandidate[]>;
 	/**
 	 * 列这条连接上可挑的地址。只查 `scope` 那一种 —— 有的种类是内存里现成的,有的要现去平台拉,
 	 * 调用方要哪种就只付哪种的代价。不实现 = 这种连接没有可列的地址,面板让主人手填。

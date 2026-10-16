@@ -12,7 +12,11 @@
  * (messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type { ExtensionBotView, SubscriptionDTO, SubscriptionTag } from "@bilibili-notify/contract";
+import type {
+	ConnectionCandidatesResponse,
+	SubscriptionDTO,
+	SubscriptionTag,
+} from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
@@ -158,21 +162,21 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
 
 /**
  * 一条挂在某个拓展名下的连接 —— **就是主人挑中的那个 bot**(ADR-0012 决策 45)。拓展在
- * `listBots` 里交出来的 config 原样存进连接,平台从 bot 上抄;这里不认得任何具体拓展。
- * 显示名默认用 bot 的名字,主人没填的话。
+ * 候选(`listConnectionCandidates`)里交出来的 settings 原样存进连接,平台从候选上抄;这里不认得
+ * 任何具体拓展。显示名默认用候选的名字,主人没填的话。
  */
 export function makeEmptyExtensionConnection(
 	extensionId: string,
-	bot: ExtensionBotView,
+	candidate: ConnectionCandidatesResponse["candidates"][number],
 	name: string,
 ): NewConnection {
 	return {
 		id: newId(),
-		name: name || bot.name || "",
+		name: name || candidate.name,
 		enabled: true,
 		adapterKey: extensionId,
-		platform: bot.platform,
-		settings: bot.config,
+		platform: candidate.platform.platform,
+		settings: candidate.settings,
 	};
 }
 

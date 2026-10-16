@@ -1,5 +1,4 @@
 import type {
-	ExtensionBotView,
 	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionOwnSubscription,
@@ -198,11 +197,6 @@ export interface ExtensionRuntime {
 	 */
 	status(): unknown;
 	/**
-	 * 现在能借来当连接的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
-	 * 前者是「这种推送源没有 bot 这回事」,后者是「现在一个都没连着」)。
-	 */
-	bots(): readonly ExtensionBotView[] | undefined;
-	/**
 	 * 它经 `ctx.settings(schema)` 交过的 zod(可能不止一份,按交的次序)—— 写设置时再过一道
 	 * (ADR-0019 决策 35):清单造出来的校验表达不了整数、正则、跨字段规则,放行的值拓展一读就整份
 	 * 失败。没交过就是空表,收摊之后也是。
@@ -372,7 +366,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 收摊时逐个叫停。
 	 */
 	const runningActions = new Map<string, AbortController>();
-	let listBots: (() => readonly ExtensionBotView[]) | undefined;
 	let subscriptionSourceRegistered = false;
 	/** 注册上来的订阅源(解析门在它身上);收摊时摘掉。 */
 	let subscriptionSource: SubscriptionSourceDef | undefined;
@@ -777,14 +770,19 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					`extension ${id}: 推送源的适配器要有 start(ctx) 与 stop() —— 这个拓展是按旧的契约打的,要换成配这一版 BN 的包`,
 				);
 			}
+			// 候选口是必备成员(ADR-0024 决策 4):新建连接只能从候选里挑。旧的拓展拿 `listBots` 交 bot,
+			// 现在要换成适配器的 `listConnectionCandidates`。
+			if (typeof def.adapter.listConnectionCandidates !== "function") {
+				throw new Error(
+					`extension ${id}: 推送源的适配器要有 listConnectionCandidates(signal) —— 新建连接从它列出的候选里挑(旧契约的 listBots 换成它)`,
+				);
+			}
 			const view = pushViewOf(def);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
-			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, {
-				picked: def.listBots !== undefined,
-			});
+			// 连接一律是从候选里挑出来的(settings 由拓展交),所以按「挑出来的」对表。
+			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, { picked: true });
 			pushSourceRegistered = true;
-			listBots = def.listBots;
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
 			// 🔴 这一版不对拓展开放的成员(ADR-0024 决策 11)带了也不认:契约的类型已经排除它们,但第三方 JS 不受
@@ -982,7 +980,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	return {
 		ctx,
 		status: viewNow,
-		bots: () => listBots?.(),
 		settingsSchemas: () => [...handedSchemas],
 		settingsProblem: () => settingsProblem,
 		async verifySettings() {

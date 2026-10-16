@@ -18,8 +18,8 @@ import { api } from "../services/api";
 export const EXTENSIONS_QUERY_KEY = ["extensions"] as const;
 
 /**
- * 这个拓展此刻在不在场 —— 要它本人在的事只给在场的:新建它的连接、挑 bot(`/api/ext/:id/bots`
- * 停着回 404)、订阅页的平台选择与解析门(`/api/ext/:id/lookup` 同理)。
+ * 这个拓展此刻在不在场 —— 要它本人在的事只给在场的:新建它的连接、挑 bot(`/api/adapters/:adapterKey/candidates`
+ * 停着回 503)、订阅页的平台选择与解析门(`/api/ext/:id/lookup` 同理)。
  *
  * ⚠️ 清单里的外观(`push` / `subscription` 那一格)**不看这个**:它照清单给、停着也有(ADR-0019
  * 决策 41)。两件事别混 —— 「有外观」当「在场」的话,点进去就是一个问不到的拓展。
@@ -40,7 +40,7 @@ export function extensionStatusKey(extensionId: string) {
 	return [...EXTENSION_STATUS_QUERY_PREFIX, extensionId] as const;
 }
 
-/** 一个拓展眼下借得到的 bot(`/api/ext/:id/bots`)。与 WS 那条失效同一个键,理由同上。 */
+/** 一个拓展眼下借得到的 bot(`/api/adapters/:adapterKey/candidates`)。与 WS 那条失效同一个键,理由同上。 */
 export const EXTENSION_BOTS_QUERY_PREFIX = ["extension-bots"] as const;
 export function extensionBotsKey(extensionId: string) {
 	return [...EXTENSION_BOTS_QUERY_PREFIX, extensionId] as const;

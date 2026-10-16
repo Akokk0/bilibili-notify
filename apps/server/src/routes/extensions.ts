@@ -1,6 +1,4 @@
 import type {
-	ExtensionBotsResponse,
-	ExtensionBotView,
 	ExtensionDTO,
 	ExtensionInstallResponse,
 	ExtensionLookupResponse,
@@ -92,8 +90,6 @@ export interface ExtensionsRouteOptions {
 	 * 它那一段。不给就是没接上:哪一行都不带这一格。
 	 */
 	reportDiscrepancies?: Pick<ReportDiscrepancyTable, "list" | "clear">;
-	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ `not_found`,与空名单分开)。 */
-	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
 	 * 没在跑是 `undefined`。不给这一格 = 只有清单那一道。
@@ -380,22 +376,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			restart: install.restartAbility,
 		};
 		return c.json(answer);
-	});
-
-	/**
-	 * 现在能借来当连接的 bot —— 推送目标页「新建连接」挑的那一排。404 与空名单分开:
-	 * 前者是「问不到」(没跑 / 这种推送源没有 bot 这回事),后者是「一个都没连着」。
-	 */
-	app.get("/:id/bots", (c) => {
-		const bots = opts.bots(c.req.param("id"));
-		if (bots === undefined) {
-			return respondFailure(
-				c,
-				fail("not_found", `问不到拓展 ${c.req.param("id")} 的 bot:它没在跑,或者它没有 bot 这回事`),
-			);
-		}
-		const body: ExtensionBotsResponse = { bots };
-		return c.json(body);
 	});
 
 	/**

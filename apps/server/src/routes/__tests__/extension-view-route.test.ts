@@ -79,7 +79,6 @@ function boot() {
 		} as unknown as ConfigStore,
 		extensions: () => [],
 		status: (id) => (id === "douyin" ? runtime.status() : undefined),
-		bots: () => undefined,
 	});
 	return { ctx: runtime.ctx, app };
 }

@@ -1306,7 +1306,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],
 				status: (id) => loadedExtensions?.status(id),
-				bots: (id) => loadedExtensions?.bots(id),
 				runAction: async (id, name) => loadedExtensions?.runAction(id, name),
 				// 新建订阅时的解析门(ADR-0019 决策 52):没在跑 / 不是订阅源时装载器回 undefined → 404。
 				lookup: async (id, query) => loadedExtensions?.lookup(id, query),

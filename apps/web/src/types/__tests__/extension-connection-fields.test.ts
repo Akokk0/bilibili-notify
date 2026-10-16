@@ -2,11 +2,11 @@
  * 拓展连接:挑中的 bot → 一条连接(ADR-0012 决策 45),以及拓展交上来的**连接配置项**
  * (决策 33)→ 推送目标页画得出来的那几栏。
  *
- * 连接就是一个 bot:settings 是拓展在 `listBots` 里交出来的那份,原样存;平台从 bot 上抄;
+ * 连接就是一个 bot:settings 是拓展在候选(`listConnectionCandidates`)里交出来的那份,原样存;平台从候选上抄;
  * 名字没填就用 bot 的。字段表那一半只对「要人填」的拓展有意义(桥的是空表)。
  */
 
-import type { ExtensionBotView, ExtensionScalarField } from "@bilibili-notify/contract";
+import type { ConnectionCandidatesResponse, ExtensionScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { extensionConnectionFields } from "../connection-fields";
 import {
@@ -15,10 +15,18 @@ import {
 	type NewConnection,
 } from "../domain";
 
-const BOT: ExtensionBotView = {
-	config: { link: "link-home", botId: "telegram:7777" },
-	platform: "telegram",
+const BOT: ConnectionCandidatesResponse["candidates"][number] = {
 	name: "小电视",
+	platform: {
+		platform: "telegram",
+		label: "telegram",
+		shortLabel: "telegram",
+		color: "#94a3b8",
+		targetKind: "session",
+		scopes: ["group", "private", "channel"],
+		addressNouns: {},
+	},
+	settings: { link: "link-home", botId: "telegram:7777" },
 	selfId: "7777",
 	via: "家里那台",
 };

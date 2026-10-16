@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fail } from "@bilibili-notify/internal";
+import { fail, neutralPlatformDescriptor } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { settingsSegment } from "../bilibili/settings.js";
@@ -251,7 +251,9 @@ describe("connections route — 写入的失败(真 store)", () => {
 		expect(runtime.configStore.getConnections()).toEqual([]);
 	});
 
-	it("POST 适配器没有候选口(拓展提供的)→ 填中性快照,平台名取体里的", async () => {
+	// 验红:把 `routes/connections.ts` 里抄快照的那句换回中性快照,图标那一格就红。
+	it("POST 挑拓展(桥)的一个候选 → 快照来自候选(带拓展给的图标),不是中性快照", async () => {
+		const icon = `data:image/png;base64,${"A".repeat(32)}`;
 		runtime.adapterRegistry.register(
 			{
 				adapterKey: "fake-ext",
@@ -259,6 +261,13 @@ describe("connections route — 写入的失败(真 store)", () => {
 				isAvailable: () => true,
 				send: async () => ({ ok: true, latencyMs: 1 }),
 				probe: async () => ({ ok: true, latencyMs: 1 }),
+				listConnectionCandidates: async () => [
+					{
+						name: "小电视",
+						platform: { ...neutralPlatformDescriptor("telegram"), icon },
+						settings: { token: "t" },
+					},
+				],
 				start() {},
 				stop() {},
 			},
@@ -274,9 +283,10 @@ describe("connections route — 写入的失败(真 store)", () => {
 		};
 		const res = await app.request("/", jsonInit("POST", body));
 		expect(res.status).toBe(200);
-		expect(runtime.configStore.getConnection(body.id)?.platformSnapshot).toEqual(
-			snapshotFor("telegram"),
-		);
+		expect(runtime.configStore.getConnection(body.id)?.platformSnapshot).toEqual({
+			...snapshotFor("telegram"),
+			icon,
+		});
 	});
 
 	it("POST 设置过不了适配器的规则 → 400 invalid,issues 的路径以 settings 打头", async () => {

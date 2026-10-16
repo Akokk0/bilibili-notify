@@ -96,6 +96,7 @@ describe("被隔离的连接(settings 过不了适配器的规则)", () => {
 			isAvailable,
 			send,
 			probe,
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		};
@@ -155,6 +156,7 @@ describe("停用排在设置不合法之前", () => {
 			isAvailable: () => true,
 			send,
 			probe: async () => ({ ok: true as const, latencyMs: 1 }),
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		};

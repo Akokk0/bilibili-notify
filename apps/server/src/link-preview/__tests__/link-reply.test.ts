@@ -37,6 +37,7 @@ function setup(conn: Connection = connection()) {
 		isAvailable: () => true,
 		send,
 		probe: async () => ok({ latencyMs: 1 }),
+		listConnectionCandidates: async () => [],
 		start() {},
 		stop() {},
 	};

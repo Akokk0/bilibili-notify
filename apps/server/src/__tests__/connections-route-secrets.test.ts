@@ -135,6 +135,7 @@ describe("connections route — 凭据下发打码(真 store)", () => {
 				isAvailable: () => true,
 				send: async () => ({ ok: true, latencyMs: 1 }),
 				probe: async () => ({ ok: true, latencyMs: 1 }),
+				listConnectionCandidates: async () => [],
 				start() {},
 				stop() {},
 			},

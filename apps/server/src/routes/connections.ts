@@ -4,13 +4,7 @@ import type {
 	ConnectionTestResponse,
 	ConnectionView,
 } from "@bilibili-notify/contract";
-import {
-	fail,
-	NewConnectionSchema,
-	neutralPlatformSnapshot,
-	type PlatformSnapshot,
-	PushTargetScopeSchema,
-} from "@bilibili-notify/internal";
+import { fail, NewConnectionSchema, PushTargetScopeSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
 import { maskedCellsFailure } from "./masked-cells.js";
@@ -111,30 +105,24 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (!adapter) {
 			return respondFailure(c, fail("unavailable", "这种连接的适配器没在跑，没法新建"));
 		}
-		// 平台快照:适配器列得出候选的,从挑中平台的那个候选抄;没有候选口的(拓展提供的)填中性快照。
-		let snapshot: PlatformSnapshot;
-		if (adapter.listConnectionCandidates) {
-			let candidates: Awaited<ReturnType<NonNullable<typeof adapter.listConnectionCandidates>>>;
-			try {
-				candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
-			} catch (err) {
-				log.warn(`POST /api/connections: ${draft.data.adapterKey} 的候选列不出来: ${String(err)}`);
-				return respondFailure(c, fail("unavailable", "这个适配器现在列不出可选的平台，请稍后再试"));
-			}
-			const hit = candidates.find((cand) => cand.platform.platform === draft.data.platform);
-			if (!hit) {
-				return respondFailure(
-					c,
-					fail("invalid", `这个适配器没有 ${draft.data.platform} 这种候选`, {
-						issues: [{ path: ["platform"], message: "不在这个适配器的候选里" }],
-					}),
-				);
-			}
-			const { platform: _platform, ...rest } = hit.platform;
-			snapshot = rest;
-		} else {
-			snapshot = neutralPlatformSnapshot(draft.data.platform);
+		// 平台快照:从挑中平台的那个候选抄(候选口是适配器的必备成员,内置与拓展同一条路)。
+		let candidates: Awaited<ReturnType<typeof adapter.listConnectionCandidates>>;
+		try {
+			candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
+		} catch (err) {
+			log.warn(`POST /api/connections: ${draft.data.adapterKey} 的候选列不出来: ${String(err)}`);
+			return respondFailure(c, fail("unavailable", "这个适配器现在列不出可选的平台，请稍后再试"));
 		}
+		const hit = candidates.find((cand) => cand.platform.platform === draft.data.platform);
+		if (!hit) {
+			return respondFailure(
+				c,
+				fail("invalid", `这个适配器没有 ${draft.data.platform} 这种候选`, {
+					issues: [{ path: ["platform"], message: "不在这个适配器的候选里" }],
+				}),
+			);
+		}
+		const { platform: _platform, ...snapshot } = hit.platform;
 		try {
 			// 只管新建 —— 整条覆盖里「没带这一格」与「清空这一格」分不开,编辑一律走 PATCH。
 			await deps.store.createConnection(draft.data, snapshot);

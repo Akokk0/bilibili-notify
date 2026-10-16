@@ -3499,6 +3499,7 @@ describe("createEngines — 目标可达性不翻转就不写", () => {
 			isAvailable: () => true,
 			send: async () => (sendOk ? { ok: true, latencyMs: 7 } : fail("unavailable", "发不出去")),
 			probe: async () => ok({ latencyMs: 1 }),
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		};
@@ -3590,6 +3591,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
 			capabilities: () => caps(),
 			probeCapabilities,
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		};
@@ -3900,6 +3902,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe,
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		});

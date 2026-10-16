@@ -64,7 +64,6 @@ describe("拓展挂载点接线", () => {
 				mounts,
 				loaded: () => [],
 				status: () => undefined,
-				bots: () => undefined,
 			},
 		});
 
@@ -85,7 +84,6 @@ describe("拓展挂载点接线", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				status: () => undefined,
-				bots: () => undefined,
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [
 					{
@@ -140,7 +138,6 @@ describe("拓展动作的接线", () => {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
-				bots: () => undefined,
 				runAction,
 			},
 		});
@@ -184,7 +181,6 @@ describe("解析门的接线", () => {
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => [],
 			status: () => undefined,
-			bots: () => undefined,
 			lookup,
 		};
 	}
@@ -274,7 +270,6 @@ describe("只重载的接线", () => {
 					},
 				],
 				status: () => undefined,
-				bots: () => undefined,
 				swap,
 			},
 		});
@@ -309,7 +304,6 @@ describe("面板上传装拓展的接线", () => {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
-				bots: () => undefined,
 				install: {
 					root,
 					integrationStore: runtime.integrationStore,

@@ -84,7 +84,6 @@ export { neutralPlatformDescriptor } from "@bilibili-notify/internal/platform-de
  */
 export type {
 	ExtensionBlock,
-	ExtensionBotView,
 	ExtensionButton,
 	ExtensionDisplay,
 	ExtensionField,
@@ -117,7 +116,7 @@ import type {
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { ExtensionBotView, ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
+import type { ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -163,15 +162,6 @@ export interface PushExtensionDef<TConfig> {
 	 * 连接配置项逐格对表(键、类型、默认值),对不上直接抛(ADR-0019 决策 17)。
 	 */
 	configSchema: ZodType<TConfig>;
-	/**
-	 * **现在能借来当连接的 bot**,现读。可选:endpoint 形态的推送源没有 bot 这回事。
-	 *
-	 * 🔴 **一条连接就是一个 bot**(ADR-0012 决策 45)—— 与直连同一套操作逻辑:新建连接时
-	 * 挑一个 bot,底下的推送目标只填地址。哪些 bot 能挑只有拓展知道(桥后面挂什么是握手时
-	 * 才知道的),所以宿主拿这一格列给主人挑,而不是让主人手敲一个 id。给了它,连接配置项
-	 * 就可以是空表(config 整份由拓展交,见 {@link ExtensionBotView.config})。
-	 */
-	listBots?: () => readonly ExtensionBotView<TConfig>[];
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */

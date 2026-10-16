@@ -244,7 +244,6 @@ async function boot(opts: {
 			mounts,
 			loaded: () => loader.list(),
 			status: (id) => loader.status(id),
-			bots: (id) => loader.bots(id),
 			settingsSchemas: (id) => loader.settingsSchemas(id),
 		},
 	});

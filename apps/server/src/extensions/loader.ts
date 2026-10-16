@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ExtensionBotView } from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
@@ -108,8 +107,6 @@ export interface LoadedExtensions {
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
 	 */
 	status(id: string): unknown;
-	/** 某个拓展某条连接上能绑目标的 bot。没跑 / 它没给 `listBots` 就是 `undefined`。 */
-	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
 	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
 	/**
@@ -958,7 +955,6 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			return codes;
 		},
 		status: (id) => slots.get(id)?.running?.runtime.status(),
-		bots: (id) => slots.get(id)?.running?.runtime.bots(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
 		lookup: async (id, query, lookupOpts) =>
 			slots.get(id)?.running?.runtime.lookup(query, lookupOpts),

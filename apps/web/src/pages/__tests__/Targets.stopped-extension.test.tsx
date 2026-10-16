@@ -68,7 +68,7 @@ function renderPage(
 		}
 		if (url === "/api/connections") return opts.connections ?? [CONNECTION];
 		if (url === "/api/targets") return [];
-		if (url.startsWith("/api/ext/bridge/bots")) throw new Error("not found");
+		if (url.startsWith("/api/adapters/bridge/candidates")) throw new Error("not found");
 		return [];
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -134,7 +134,9 @@ describe("停着时改一条它的连接", () => {
 	it("挑 bot 那一节说它没跑起来,也不去问 bot 名单", async () => {
 		const dialog = await openEditor();
 		expect(await within(dialog).findByText(/没跑起来/)).toBeTruthy();
-		const asked = vi.mocked(api.get).mock.calls.some(([url]) => String(url).includes("/bots"));
+		const asked = vi
+			.mocked(api.get)
+			.mock.calls.some(([url]) => String(url).includes("/candidates"));
 		expect(asked).toBe(false);
 	});
 

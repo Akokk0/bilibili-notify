@@ -5,7 +5,7 @@
  * 主人 2026-09-10:「我希望的是我自己去新建里添加出来」,又说「选择了 koishi / astrbot 就要
  * 决定哪个 bot,而不是在创建推送目标时才选择」—— 与直连同一套操作逻辑:一条连接就是一个
  * bot。跑着的推送源拓展是平台那一排的一档,选了它,底下列出它现在借得到的 bot
- * (`/api/ext/:id/bots`),挑中的那个:config 原样落进连接、平台从它身上抄、名字补进显示名。
+ * (`/api/adapters/:id/candidates`),挑中的那个:settings 原样落进连接、平台取 candidate.platform.platform、名字补进显示名。
  */
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
@@ -47,25 +47,24 @@ const ICON = "data:image/png;base64,QUJD";
 
 const BOTS = [
 	{
-		config: { link: "link-home", botId: "onebot:2854196310" },
-		platform: "onebot",
 		name: "阿库娅",
+		platform: { platform: "onebot", ...snapshotFor("onebot") },
+		settings: { link: "link-home", botId: "onebot:2854196310" },
 		selfId: "2854196310",
 		via: "家里那台",
 	},
 	{
-		config: { link: "link-home", botId: "telegram:7777" },
-		platform: "telegram",
 		name: "小电视",
+		platform: { platform: "telegram", ...snapshotFor("telegram"), icon: ICON },
+		settings: { link: "link-home", botId: "telegram:7777" },
 		selfId: "7777",
-		icon: ICON,
 		via: "家里那台",
 	},
 ];
 
 const EXISTING_ID = "11111111-1111-4111-8111-111111111111";
 
-/** 已经绑成连接的那个 bot(名单里带 `boundTo`)。 */
+/** 已经绑成连接的那个 bot(候选里带 `boundConnectionId`)。 */
 const EXISTING = {
 	id: EXISTING_ID,
 	name: "小电视",
@@ -78,11 +77,11 @@ const EXISTING = {
 
 /** `bots` 传 `null` = 拓展没跑起来,那一口 404。 */
 function renderPage(opts: { bots?: unknown; connections?: unknown[] } = {}) {
-	const bots = "bots" in opts ? opts.bots : { bots: BOTS };
+	const bots = "bots" in opts ? opts.bots : { candidates: BOTS };
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return { extensions: [BRIDGE] };
 		if (url === "/api/connections") return opts.connections ?? [];
-		if (url === "/api/ext/bridge/bots") {
+		if (url === "/api/adapters/bridge/candidates") {
 			if (bots === null) throw new Error("not found");
 			return bots;
 		}
@@ -194,9 +193,9 @@ describe("新建连接里的拓展那一档", () => {
 		const HUGE = `data:image/png;base64,${"A".repeat(40 * 1024)}`;
 		const dialog = await openNewConnection({
 			bots: {
-				bots: [
-					{ ...BOTS[0], icon: REMOTE },
-					{ ...BOTS[1], icon: HUGE },
+				candidates: [
+					{ ...BOTS[0], platform: { ...BOTS[0].platform, icon: REMOTE } },
+					{ ...BOTS[1], platform: { ...BOTS[1].platform, icon: HUGE } },
 				],
 			},
 		});
@@ -244,7 +243,7 @@ describe("新建连接里的拓展那一档", () => {
 	/** 同一个 bot 建两条连接只会让目标各推一遍 —— 已经绑成连接的标出来、不给点。 */
 	it("已经绑成别的连接的 bot 标「已加过」,点不了", async () => {
 		const dialog = await openNewConnection({
-			bots: { bots: [BOTS[0], { ...BOTS[1], boundTo: EXISTING_ID }] },
+			bots: { candidates: [BOTS[0], { ...BOTS[1], boundConnectionId: EXISTING_ID }] },
 			connections: [EXISTING],
 		});
 		const tv = (await within(dialog).findByRole("button", { name: /小电视/ })) as HTMLButtonElement;
@@ -256,7 +255,7 @@ describe("新建连接里的拓展那一档", () => {
 	});
 
 	it("桥没连上(一个 bot 都没有)要说出来,不是一片空白", async () => {
-		const dialog = await openNewConnection({ bots: { bots: [] } });
+		const dialog = await openNewConnection({ bots: { candidates: [] } });
 		expect(await within(dialog).findByText(/一个 bot 都没有/)).toBeTruthy();
 	});
 
@@ -268,7 +267,7 @@ describe("新建连接里的拓展那一档", () => {
 	/** 改一条已有的:它现在绑的那个高亮;桥没连着、名单里没它时也要画出来,别像没绑过。 */
 	it("改一条已有的拓展连接:绑着的那个是选中态;名单里没它时照画一行", async () => {
 		renderPage({
-			bots: { bots: [BOTS[0], { ...BOTS[1], boundTo: EXISTING_ID }] },
+			bots: { candidates: [BOTS[0], { ...BOTS[1], boundConnectionId: EXISTING_ID }] },
 			connections: [EXISTING],
 		});
 		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
@@ -279,7 +278,7 @@ describe("新建连接里的拓展那一档", () => {
 		expect(tv.textContent).toMatch(/已选/);
 		cleanup();
 
-		renderPage({ bots: { bots: [] }, connections: [EXISTING] });
+		renderPage({ bots: { candidates: [] }, connections: [EXISTING] });
 		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
 		const dialog2 = await screen.findByRole("dialog");
 		expect(await within(dialog2).findByText(/现在绑着的那个/)).toBeTruthy();
@@ -293,7 +292,7 @@ describe("新建连接里的拓展那一档", () => {
 	 */
 	it("改连接时别的平台的 bot 挑不动,并说清换平台要重建连接", async () => {
 		renderPage({
-			bots: { bots: [BOTS[0], { ...BOTS[1], boundTo: EXISTING_ID }] },
+			bots: { candidates: [BOTS[0], { ...BOTS[1], boundConnectionId: EXISTING_ID }] },
 			connections: [EXISTING],
 		});
 		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
@@ -333,7 +332,8 @@ describe("新建连接里的拓展那一档", () => {
 		fireEvent.click(await within(dialog).findByRole("button", { name: /机器人框架桥接/ }));
 		await within(dialog).findByRole("button", { name: /小电视/ });
 		const asked = () =>
-			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ext/bridge/bots").length;
+			vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/adapters/bridge/candidates")
+				.length;
 		const before = asked();
 
 		act(() =>
@@ -353,7 +353,7 @@ describe("新建连接里的拓展那一档", () => {
 });
 
 /**
- * 🔴 bot 名单有 5 秒 `staleTime`。存 / 删一条拓展连接之后名单里的 `boundTo` 就变了,不失效
+ * 🔴 bot 名单有 5 秒 `staleTime`。存 / 删一条拓展连接之后候选里的 `boundConnectionId` 就变了,不失效
  * 那条键的话,5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
  * bot 建出两条连接,每条推一遍。
  */

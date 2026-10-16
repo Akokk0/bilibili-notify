@@ -285,6 +285,7 @@ export async function bootBiliLiveWorld(
 			return { ok: true, latencyMs: 1 };
 		},
 		probe: async () => ({ ok: true, latencyMs: 1 }),
+		listConnectionCandidates: async () => [],
 		start() {},
 		stop() {},
 	};

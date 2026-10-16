@@ -5,7 +5,6 @@
  */
 
 import type {
-	ExtensionBotView,
 	ExtensionField,
 	ExtensionPushView,
 	ExtensionSubscriptionCandidate,
@@ -19,6 +18,7 @@ import type {
 	CachedProfile,
 	CardKind,
 	Connection,
+	ConnectionCandidate,
 	ConnectionCapabilities,
 	ExtensionProvides,
 	ExtensionRunState,
@@ -95,6 +95,14 @@ export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;
  */
 export interface AddressCandidatesResponse {
 	candidates: AddressCandidate[];
+}
+
+/**
+ * `GET /api/adapters/:adapterKey/candidates` 响应 —— 这个适配器此刻供挑的连接候选(ADR-0024 决策 4)。
+ * 内置与拓展同一个口:平台固定的适配器是写死的模板候选,桥是在线的 bot。
+ */
+export interface ConnectionCandidatesResponse {
+	candidates: ConnectionCandidate[];
 }
 
 // ---- /api/extensions ------------------------------------------------------
@@ -208,11 +216,6 @@ export interface ReportDiscrepancyView {
 	outcome: "rejected" | "dropped" | "skipped";
 	/** 拒的原因(一句),或丢掉的每一格(每格一句),或跳过的原因(一句)。 */
 	reasons: string[];
-}
-
-/** `GET /api/ext/:id/bots` —— 这个拓展现在能借来当连接的 bot(ADR-0012 决策 45)。 */
-export interface ExtensionBotsResponse {
-	bots: readonly ExtensionBotView[];
 }
 
 /**

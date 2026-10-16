@@ -121,7 +121,6 @@ beforeEach(async () => {
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => entries,
 			status: () => undefined,
-			bots: () => undefined,
 		},
 	});
 });

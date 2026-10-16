@@ -68,7 +68,6 @@ function boot(
 		connections?: unknown[];
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
-		bots?: Record<string, unknown[]>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
 		marketplace?: { list: ReturnType<typeof vi.fn>; install: ReturnType<typeof vi.fn> };
@@ -108,7 +107,6 @@ function boot(
 		extensions: () =>
 			loader ? loader.list() : typeof entries === "function" ? entries() : entries,
 		status: (id) => over.status?.[id],
-		bots: (id) => over.bots?.[id] as never,
 		settle: over.settle,
 		install: {
 			root: installRoot,
@@ -624,30 +622,12 @@ describe("GET /api/ext:上报出入(ADR-0019 决策 60)", () => {
 	});
 });
 
-describe("GET /api/ext/:id/bots", () => {
-	it("列现在能借来当连接的 bot —— 拓展交什么(含它自己那份 config)就原样下发", async () => {
-		const bots = [
-			{
-				config: { link: "l1", botId: "onebot:1" },
-				platform: "onebot",
-				name: "阿库娅",
-				via: "家里那台",
-			},
-		];
-		const res = await boot({
-			entries: [running("bridge")],
-			bots: { bridge: bots },
-		}).request("/bridge/bots");
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ bots });
-	});
-
-	it("没跑 / 没这个口 → 404 not_found,不是空名单 —— 面板要分得开「没 bot」与「问不到」", async () => {
+describe("GET /api/ext/:id/bots 已删(候选读口挂在 /api/adapters/:adapterKey/candidates)", () => {
+	// 验红:把 `GET /:id/bots` 那一路加回 routes/extensions.ts,这条红。
+	it("跑着的拓展问 /bots 也是 404 —— 路由没了,话不是「问不到 bot」", async () => {
 		const res = await boot({ entries: [running("bridge")] }).request("/bridge/bots");
 		expect(res.status).toBe(404);
-		const body = await failureOf(res);
-		expect(body.code).toBe("not_found");
-		expect(body.message).toContain("bridge");
+		expect((await res.text()).includes("问不到拓展")).toBe(false);
 	});
 });
 
@@ -685,7 +665,6 @@ describe("GET /api/ext/:id/status", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => ({ n: ++n }),
-			bots: () => undefined,
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 2 });
@@ -929,7 +908,6 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => undefined,
-			bots: () => undefined,
 		});
 		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
 		expect(body.restart).toEqual({ can: false, reason: "unsupervised" });
@@ -1627,7 +1605,6 @@ describe("拓展自己的文档", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => undefined,
-			bots: () => undefined,
 		});
 
 		const res = await app.request("/bridge/docs");

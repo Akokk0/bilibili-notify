@@ -13,6 +13,7 @@
 import type {
 	CapabilitySupport,
 	Connection,
+	ConnectionCandidate,
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
@@ -24,7 +25,7 @@ import type {
 	ProbeResult,
 	Result,
 } from "@bilibili-notify/extension";
-import { fail, ok } from "@bilibili-notify/extension";
+import { fail, neutralPlatformDescriptor, ok } from "@bilibili-notify/extension";
 import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
 import type { BridgeConnectionConfig } from "./config.js";
 import {
@@ -35,6 +36,7 @@ import {
 	type BridgeSegment,
 } from "./contract.js";
 import { stripMarkdown } from "./markdown.js";
+import { platformIcon } from "./platform-icons.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
 import type { BridgeLink } from "./settings.js";
 
@@ -354,6 +356,36 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			const located = locate(connection);
 			if (!located.ok) return unreachableCapabilities(located.message);
 			return capabilitiesOf(located);
+		},
+
+		/**
+		 * 新建连接时供挑的候选:每条**连着**的接入驮着的每个 bot(没连上的接入在会话表里根本没有,
+		 * 也就列不出)。一条连接就是一个 bot(决策 45),所以 `settings` 就是那条连接要存的
+		 * `{ link, botId }`,`boundConnectionId` 让面板标出「已加过」。
+		 */
+		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
+			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
+			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
+			// 拿冒号拼会和 `telegram:12345` 这种撞上。
+			const boundTo = new Map(
+				opts.connections().map((c) => [`${c.config.link}\0${c.config.botId}`, c.id]),
+			);
+			return opts.links().flatMap((link) => {
+				const session = server.getSession(link.id);
+				if (!session) return [];
+				return session.bots.map((bot) => {
+					// 平台是对端报的开放词表:中性描述打底,图标由桥给(插件报了用插件的,没报查桥自己的小表)。
+					const icon = bot.icon ?? platformIcon(bot.platform);
+					return {
+						name: bot.name ?? bot.selfId ?? bot.platform,
+						platform: { ...neutralPlatformDescriptor(bot.platform), ...(icon ? { icon } : {}) },
+						settings: { link: link.id, botId: bot.botId },
+						selfId: bot.selfId,
+						via: link.name,
+						boundConnectionId: boundTo.get(`${link.id}\0${bot.botId}`),
+					};
+				});
+			});
 		},
 	};
 }

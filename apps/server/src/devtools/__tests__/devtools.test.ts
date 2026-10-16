@@ -152,6 +152,7 @@ describe("createDevtools · 截流接线", () => {
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),
+			listConnectionCandidates: async () => [],
 			start() {},
 			stop() {},
 		};

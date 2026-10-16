@@ -54,7 +54,7 @@ export function activate(ctx: ExtensionContext): void {
 	 * 这条接入上的这个 bot 绑成了哪条连接。**停用的也算绑过** —— 「绑没绑过」与「收不收它的
 	 * 消息」是两问,后者在 `onInbound` 里按 `enabled` 再判一次。
 	 *
-	 * 这是**逐帧**那一路(每条入站消息一次);面板那一排(`listBots`)一次要问一整份名单,
+	 * 这是**逐帧**那一路(每条入站消息一次);候选那一排(适配器的 `listConnectionCandidates`)一次要问一整份名单,
 	 * 所以它自己建一张查表,别改成叫这个。
 	 */
 	const boundConnection = (
@@ -134,29 +134,6 @@ export function activate(ctx: ExtensionContext): void {
 	source = ctx.registerPushSource({
 		adapter,
 		configSchema: BridgeConnectionConfigSchema,
-		// 推送目标页「新建连接」挑的那一排:每条**连着**的接入驮着的每个 bot。config 就是
-		// 那条连接要存的东西;`boundTo` 让面板标出「已加过」。
-		listBots: () => {
-			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
-			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
-			// 拿冒号拼会和 `telegram:12345` 这种撞上。
-			const boundTo = new Map(
-				connections().map((c) => [`${c.config.link}\0${c.config.botId}`, c.id]),
-			);
-			return links().flatMap((link) => {
-				const session = server.getSession(link.id);
-				if (!session) return [];
-				return session.bots.map((bot) => ({
-					config: { link: link.id, botId: bot.botId },
-					platform: bot.platform,
-					name: bot.name,
-					selfId: bot.selfId,
-					icon: bot.icon,
-					via: link.name,
-					boundTo: boundTo.get(`${link.id}\0${bot.botId}`),
-				}));
-			});
-		},
 	});
 	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时才经 `ctx` 叫它对账,
 	// 而桥的对账看的是接入名单(设置,现读),所以设置动了这里直接叫。

@@ -191,6 +191,7 @@ function fakeAdapter(): PlatformAdapter {
 	return {
 		adapterKey: "谁都不是",
 		isAvailable: () => true,
+		listConnectionCandidates: async () => [],
 		start() {},
 		stop() {},
 	} as unknown as PlatformAdapter;
@@ -293,6 +294,9 @@ describe("按清单注册推送源", () => {
 			async probe() {
 				return { ok: true as const, latencyMs: this.started };
 			}
+			async listConnectionCandidates() {
+				return [];
+			}
 		}
 		const inst = new Classy();
 		h.ctx.registerPushSource({ ...def(), adapter: inst as unknown as PlatformAdapter });
@@ -336,7 +340,7 @@ describe("按清单注册推送源", () => {
 	it("v2 的清单没写 connection:连接是挑出来的那种,连接配置项就是空表", () => {
 		const manifest = v2({ contributes: { push: { display: DISPLAY } } });
 		const h = harness({ manifest });
-		h.ctx.registerPushSource({ ...v2Def(), listBots: () => [] });
+		h.ctx.registerPushSource(v2Def());
 		expect(h.adapters.list()).toHaveLength(1);
 		expect(manifestPushView(manifest)?.connectionFields).toEqual([]);
 	});
@@ -795,10 +799,27 @@ describe("注册推送源", () => {
 		const h = harness({
 			manifest: {
 				...PUSH_MANIFEST,
+				contributes: {
+					push: {
+						display: DISPLAY,
+						connection: { fields: [{ type: "string", key: "nope", label: "?" }] },
+					},
+				},
+			},
+		});
+		expect(() => h.ctx.registerPushSource(def())).toThrow(/"nope"/);
+	});
+
+	// 连接一律是从候选里挑出来的,settings 由拓展交(R4):zod 的必填键不在字段表里是常态,不再在加载时拦;
+	// 写错了要到保存时才被 settingsSchema 拦(400 带原因)。
+	it("字段表是空表、zod 有必填键 → 放行(连接是挑出来的)", () => {
+		const h = harness({
+			manifest: {
+				...PUSH_MANIFEST,
 				contributes: { push: { display: DISPLAY, connection: { fields: [] } } },
 			},
 		});
-		expect(() => h.ctx.registerPushSource(def())).toThrow(/必填键 "token"/);
+		expect(() => h.ctx.registerPushSource(def())).not.toThrow();
 	});
 
 	/**
@@ -831,21 +852,20 @@ describe("注册推送源", () => {
 	});
 
 	/**
-	 * 哪些 bot 能借来当连接,只有拓展知道(桥后面挂着什么是握手时才知道的)。`listBots`
-	 * 是可选的:endpoint 形态的推送源压根没有 bot 这回事。
+	 * 候选口是适配器的必备成员(ADR-0024 决策 4):哪些平台、哪些 bot 能借来当连接,只有适配器知道。
+	 * 第三方 JS 不受类型约束,没给的当场拒,话里说清缺的是什么。
 	 */
-	it("给了 listBots 就查得到 bot(连它交的那份 config);没给的查不到,不是空数组", () => {
+	// 验红:去掉 `registerPushSource` 里对 `listConnectionCandidates` 的那道检查,这条红。
+	it("推送源的适配器没有 listConnectionCandidates → 注册当场抛,话里说清,不留半截状态", () => {
 		const h = harness();
-		const bot = {
-			config: { token: "t0ken", bridgeKind: "koishi" as const },
-			platform: "onebot",
-			name: "阿库娅",
-		};
-		h.ctx.registerPushSource({ ...def(), listBots: () => [bot] });
-		expect(h.runtime.bots()).toEqual([bot]);
-		const bare = harness();
-		bare.ctx.registerPushSource(def());
-		expect(bare.runtime.bots()).toBeUndefined();
+		const { listConnectionCandidates: _omitted, ...bare } = fakeAdapter();
+		expect(() =>
+			h.ctx.registerPushSource({ ...def(), adapter: bare as unknown as PlatformAdapter }),
+		).toThrow(/listConnectionCandidates/);
+		expect(h.adapters.list()).toEqual([]);
+		// 没留半截状态:同一个上下文还能再登记合规的。
+		h.ctx.registerPushSource(def());
+		expect(h.adapters.list()).toHaveLength(1);
 	});
 
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {

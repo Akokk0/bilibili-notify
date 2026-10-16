@@ -165,26 +165,6 @@ export interface ExtensionSubscriptionCandidate {
 }
 
 /**
- * 一个能借来当连接的 bot。
- *
- * 面板新建连接时列给主人挑,挑中的那个**整个 `config` 原样落进连接**、`platform` 落进
- * 连接的 `platform` —— 宿主看不懂 config(那归拓展自己那份 zod),只负责原样存回。
- * `platform` 是开放词表;`icon` 是 data URL(与桥协议 §5.2 同一种)。
- */
-export interface ExtensionBotView<TConfig = unknown> {
-	/** 绑上这个 bot 的连接该存的 config。拓展自己认得就行。 */
-	config: TConfig;
-	platform: string;
-	name?: string;
-	selfId?: string;
-	icon?: string;
-	/** 经由谁借来的(桥:那条接入的名字)—— 两条桥各驮一个同名 bot 时分得开。 */
-	via?: string;
-	/** 已经被哪条连接绑着 —— 面板标「已加过」,同一个 bot 别建两条连接。 */
-	boundTo?: string;
-}
-
-/**
  * 拓展交给面板的「视图」—— v2 的 `ctx.publishView` 交的就是它(ADR-0019 决策 20 / 26–28,09-23
  * 决策 39 改过一轮)。
  *

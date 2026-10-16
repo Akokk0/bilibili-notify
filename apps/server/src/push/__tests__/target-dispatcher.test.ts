@@ -94,6 +94,7 @@ function makePlatformAdapter(
 		isAvailable: vi.fn(() => true),
 		send: vi.fn(async () => sendResult),
 		probe: vi.fn(async () => probeResult),
+		listConnectionCandidates: async () => [],
 		start: vi.fn(),
 		stop: vi.fn(),
 		...over,

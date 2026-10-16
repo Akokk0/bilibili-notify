@@ -421,17 +421,28 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	 * 推送目标页「新建连接」从这里挑 bot —— 只报连着的接入驮着的;每个 bot 带着那条连接
 	 * 该存的 config、经由哪条接入、已经绑成了哪条连接。
 	 */
-	it("listBots:列得出连着的接入上的 bot,带 config / via / boundTo;没连上就是空的", async () => {
-		expect(host.pushSource().listBots?.()).toEqual([]);
+	// 验红:候选里不盖桥的图标(平台描述只用中性函数的),图标那一格就红。
+	it("listConnectionCandidates:列连着的接入上的 bot;平台描述是中性的加桥的图标;settings 是 { link, botId };已绑的带 boundConnectionId;没连上是空的", async () => {
+		const signal = new AbortController().signal;
+		expect(await host.adapter().listConnectionCandidates?.(signal)).toEqual([]);
 		await handshake();
-		expect(host.pushSource().listBots?.()).toEqual([
-			expect.objectContaining({
-				config: { link: LINK_ID, botId: BOT_ID },
-				platform: "telegram",
-				icon: BOT_ICON,
+		expect(await host.adapter().listConnectionCandidates?.(signal)).toEqual([
+			{
+				name: "小电视",
+				platform: {
+					platform: "telegram",
+					label: "telegram",
+					shortLabel: "telegram",
+					color: "#94a3b8",
+					icon: BOT_ICON,
+					targetKind: "session",
+					scopes: ["group", "private", "channel"],
+					addressNouns: {},
+				},
+				settings: { link: LINK_ID, botId: BOT_ID },
 				via: "家里那台 koishi",
-				boundTo: CONNECTION_ID,
-			}),
+				boundConnectionId: CONNECTION_ID,
+			},
 		]);
 	});
 

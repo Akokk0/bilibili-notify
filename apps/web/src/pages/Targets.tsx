@@ -1,8 +1,7 @@
 import type {
+	ConnectionCandidatesResponse,
 	ConnectionTestResponse,
 	ConnectionView,
-	ExtensionBotsResponse,
-	ExtensionBotView,
 	ExtensionDTO,
 	TestResponse,
 } from "@bilibili-notify/contract";
@@ -631,9 +630,9 @@ function TintOptionRow({
 /**
  * 「挑哪个 bot」那一节 —— 拓展连接就是一个 bot(ADR-0012 决策 45)。
  *
- * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经 `/api/ext/:id/bots` 交上来;
- * 这里**不认得任何具体拓展**,列什么就画什么。挑中的那个:它的 `config` 原样落进连接、
- * `platform` 落进连接的平台、名字补进空着的显示名。
+ * bot 只有拓展知道(桥后面挂着什么是握手时才知道的),经适配器的候选口
+ * `/api/adapters/:adapterKey/candidates` 交上来;这里**不认得任何具体拓展**,列什么就画什么。
+ * 挑中的那个:它的 `settings` 原样落进连接、`platform.platform` 落进连接的平台、名字补进空着的显示名。
  *
  * 三种「没得挑」要分开说:问不到(拓展没跑起来)、名单空(桥没连上)、都被加过了。
  * 已经绑成别的连接的 bot 标出来、不给点 —— 同一个 bot 建两条连接只会让目标各推一遍。
@@ -653,12 +652,14 @@ function ExtensionBotPicker({
 	const platformTint = usePlatformTint();
 	const bots = useQuery({
 		queryKey: extensionBotsKey(extension.id),
-		queryFn: () => api.get<ExtensionBotsResponse>(`/api/ext/${extension.id}/bots`),
+		queryFn: () =>
+			api.get<ConnectionCandidatesResponse>(`/api/adapters/${extension.id}/candidates`),
 		retry: false,
 	});
-	const list = bots.data?.bots ?? [];
+	const list = bots.data?.candidates ?? [];
 	const chosen = JSON.stringify(value.settings ?? null);
-	const isChosen = (bot: ExtensionBotView) => JSON.stringify(bot.config) === chosen;
+	const isChosen = (bot: ConnectionCandidatesResponse["candidates"][number]) =>
+		JSON.stringify(bot.settings) === chosen;
 	const currentListed = list.some(isChosen);
 
 	if (bots.isPending) return <LoadingBlock variant="inset" label="正在问它有哪些 bot" />;
@@ -686,25 +687,26 @@ function ExtensionBotPicker({
 			) : null}
 			{list.map((bot) => {
 				const active = isChosen(bot);
-				const taken = bot.boundTo !== undefined && bot.boundTo !== value.id;
+				const taken = bot.boundConnectionId !== undefined && bot.boundConnectionId !== value.id;
 				/*
 				 * 🔴 **改连接时不许换平台。** 连接的平台就是底下那些推送目标的平台,而目标
 				 * 不会跟着改 —— 换过去之后它们原地变成「telegram 的地址挂在 onebot 连接上」。
 				 * 服务端那头会拒,面板这头却一路绿灯(类型、渲染、保存全绿),主人只看到
 				 * 一句莫名其妙的失败。要换到别的平台去,那是**另一条连接**。
 				 */
-				const wrongPlatform = editing && value.platform !== "" && bot.platform !== value.platform;
-				const botTint = platformTint(bot.platform);
+				const wrongPlatform =
+					editing && value.platform !== "" && bot.platform.platform !== value.platform;
+				const botTint = platformTint(bot.platform.platform);
 				/*
 				 * 图标是拓展交来的(桥那头是插件报的),画之前过面板出口那道闸 —— 与声明式积木同一份判据
 				 * (ADR-0019 决策 31):只收图片 data URL。一个 `https://` 地址当 `<img src>` 画,面板一开
 				 * 就去对家点名;不合格的当它没有,退回平台图标。
 				 */
-				const botIcon = safeImage(bot.icon);
+				const botIcon = safeImage(bot.platform.icon);
 				return (
 					<TintOptionRow
-						// config 才是它的身份(拓展自己定的),名单里没有别的稳定键。
-						key={JSON.stringify(bot.config)}
+						// settings 才是它的身份(拓展自己定的),名单里没有别的稳定键。
+						key={JSON.stringify(bot.settings)}
 						tint={botTint}
 						active={active}
 						disabled={taken || wrongPlatform}
@@ -720,11 +722,11 @@ function ExtensionBotPicker({
 							botIcon ? (
 								<img src={botIcon} alt="" draggable={false} className="size-4 shrink-0" />
 							) : (
-								<PlatformIcon platform={bot.platform} size={16} />
+								<PlatformIcon platform={bot.platform.platform} size={16} />
 							)
 						}
-						title={bot.name ?? bot.selfId ?? bot.platform}
-						subtitle={[bot.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
+						title={bot.name}
+						subtitle={[bot.platform.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
 							.filter(Boolean)
 							.join(" · ")}
 						trailing={

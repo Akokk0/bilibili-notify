@@ -249,6 +249,7 @@ describe("拓展", () => {
 					isAvailable: () => true,
 					send: async () => ({ ok: true, latencyMs: 1 }),
 					probe: async () => ({ ok: true, latencyMs: 1 }),
+					listConnectionCandidates: async () => [],
 					start(adapterCtx) {
 						seen.sameObjects.push(
 							adapterCtx.state === activateCtx?.state &&
@@ -337,7 +338,6 @@ describe("拓展", () => {
 			store: configStore,
 			extensions: () => loaded.list(),
 			status: () => undefined,
-			bots: () => undefined,
 			install: {
 				root: extRoot(),
 				integrationStore: store,

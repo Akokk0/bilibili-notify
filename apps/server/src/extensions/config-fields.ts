@@ -24,7 +24,7 @@ export function assertConfigFieldsMatchSchema(
 	fields: readonly ExtensionField[],
 	opts: {
 		/**
-		 * 连接是从 `listBots` 里**挑**出来的(ADR-0012 决策 45)—— config 由拓展自己交,没有
+		 * 连接是从候选(`listConnectionCandidates`)里**挑**出来的(ADR-0012 决策 45)—— settings 由拓展自己交,没有
 		 * 一栏是人填的,所以「必填键没人填」那一半不查:那正是它的常态,不是漂了。
 		 */
 		picked?: boolean;

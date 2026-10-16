@@ -2,6 +2,7 @@ import type {
 	ConnectionAuthBeginResponse,
 	ConnectionAuthDraftResponse,
 	ConnectionAuthStateResponse,
+	ConnectionCandidatesResponse,
 } from "@bilibili-notify/contract";
 import { type ConnectionAuth, type Failure, fail, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
@@ -12,6 +13,7 @@ import type { RouteDeps } from "./types.js";
 /**
  * `/api/adapters` — 适配器自带的扫码建连接(`connectionAuth`,ADR-0024 决策 3)。
  *
+ * - `GET /:adapterKey/candidates` 新建连接时供挑的候选(内置的模板候选、桥在线的 bot),ADR-0024 决策 4。
  * - `POST /:adapterKey/auth` 发起;`GET /:adapterKey/auth/:taskId` 读状态(不带草稿、不清草稿);
  *   `POST /:adapterKey/auth/:taskId/draft` 取走草稿(取走即清,响应头 `no-store`)。
  *
@@ -48,6 +50,22 @@ export function createAdaptersRoute(deps: RouteDeps): Hono {
 			return fail("unavailable", errorMessageOf(err));
 		}
 	}
+
+	// 候选只问登记表的视图(不带 `send`):发送只许经派发器(出口咽喉)。内置与拓展同一个口。
+	app.get("/:adapterKey/candidates", async (c) => {
+		const adapterKey = c.req.param("adapterKey");
+		const adapter = deps.runtime.adapterRegistry.list().find((a) => a.adapterKey === adapterKey);
+		if (!adapter) return respondFailure(c, fail("unavailable", "这种连接的适配器没在跑"));
+		try {
+			const candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
+			const body: ConnectionCandidatesResponse = { candidates: [...candidates] };
+			return c.json(body);
+		} catch (err) {
+			// 适配器「不许抛」;真抛了算 bug,记 error、回 `unavailable`。
+			log.error(`GET /api/adapters/:adapterKey/candidates threw: ${errorMessageOf(err)}`);
+			return respondFailure(c, fail("unavailable", errorMessageOf(err)));
+		}
+	});
 
 	app.post("/:adapterKey/auth", async (c) => {
 		const found = authOf(c.req.param("adapterKey"));
