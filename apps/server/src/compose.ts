@@ -124,7 +124,7 @@ export interface BuiltinIntegrations {
 	/**
 	 * `createEngines` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
 	 * 交回的 `dispose` 由调用方挂到关停钩子上(逐个撤登记再关存储;幂等)。登记途中任一个抛了,已登记的先收回,
-	 * 错原样抛出去。调第二次就抛。
+	 * 错原样抛出去。一次性:调第二次就抛,登记途中抛了也不复位(不给重来)。
 	 */
 	registerAdapters(): Promise<BuiltinAdapters>;
 	/** B 站来源上给入口读的那一面:`problems` 是动态与直播共用的分层上报器(来源登记时接上核心)。 */
@@ -248,22 +248,18 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		},
 		async registerAdapters() {
 			if (registeringAdapters) throw new Error("builtin adapters are already registered");
+			// 一次性:失败也不复位。登记途中抛了,已登记的由 `registerBuiltinAdapters` 自己收回,
+			// 但三个适配器实例在 `composeBuiltinIntegrations` 里只造一次,收回过的实例不保证能再启动。
 			registeringAdapters = true;
-			try {
-				return await registerBuiltinAdapters({
-					registry: deps.adapterRegistry,
-					adapters,
-					loggerOf,
-					stores: deps.integrationStore,
-					problems: deps.problems,
-					connections: deps.connections,
-					onConnectionsChanged: deps.onConnectionsChanged,
-				});
-			} catch (err) {
-				// 已登记的由 `registerBuiltinAdapters` 自己收回;这里只复位标志,与 `registerSources` 一样能重来。
-				registeringAdapters = false;
-				throw err;
-			}
+			return await registerBuiltinAdapters({
+				registry: deps.adapterRegistry,
+				adapters,
+				loggerOf,
+				stores: deps.integrationStore,
+				problems: deps.problems,
+				connections: deps.connections,
+				onConnectionsChanged: deps.onConnectionsChanged,
+			});
 		},
 		bilibili: { problems },
 	};

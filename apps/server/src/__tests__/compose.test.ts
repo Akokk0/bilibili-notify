@@ -621,8 +621,8 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 		await adapters.dispose();
 	});
 
-	// 验红:去掉 `registerAdapters` catch 里的 `registeringAdapters = false`,这条红(重来被「已登记」拦下)。
-	it("登记途中抛了:错原样抛出去、已登记的收回、存储关掉,占用解除后能重来", async () => {
+	// 验红:给 `registerAdapters` 加回「失败就复位 `registeringAdapters = false`」的 catch,这条红(再调没被拒)。
+	it("登记途中抛了:错原样抛出去、已登记的收回、存储关掉,再调直接拒", async () => {
 		const { builtins, adapterRegistry, integrationStore } = compose();
 		// 先让别人占了 webhook 的键:前两个登记上了,第三个登记抛。
 		const squatter = adapterRegistry.register(
@@ -636,10 +636,10 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 		await expect(builtins.registerAdapters()).rejects.toThrow();
 		expect(keysOf(adapterRegistry)).toEqual(["webhook"]);
 		await vi.waitFor(() => expect(integrationStore.openKeys()).toEqual([]));
+		// 占用解除了也不给重来:一次性,失败不复位。
 		squatter.dispose();
-		const adapters = await builtins.registerAdapters();
-		expect(keysOf(adapterRegistry)).toEqual(["onebot", "qq-official", "webhook"]);
-		await adapters.dispose();
+		await expect(builtins.registerAdapters()).rejects.toThrow("already registered");
+		expect(keysOf(adapterRegistry)).toEqual([]);
 	});
 
 	// 验红:把 `compose.ts` 里某个工厂的 `loggerOf("onebot")` 写成 `loggerOf("webhook")`(任何一个换成别的键),这条红
