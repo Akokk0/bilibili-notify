@@ -38,8 +38,8 @@ import {
  * 拓展市场(ADR-0013)。
  *
  * 一个内置的**官方源**(签名索引、走加速镜像、不能删)+ 主人自己加的**第三方源**(裸 JSON、
- * 不签、不走镜像)。每个源一份 `marketplace.json`,列它能装的拓展 —— 每个 id 每档最新那一版
- * (一条正式 + 一条预发布),面板上仍然只出一张卡({@link pickPerId})。
+ * 不签、不走镜像)。每个源一份 `marketplace.json`,列它能装的拓展 —— 每个 id 每档、每个契约版本
+ * 最新那一版(一条正式 + 一条预发布),面板上仍然只出一张卡({@link pickPerId})。
  * 装 = 下载 → 对索引里的 sha256(防的是下载途中被换包,不是防作者)→ 走面板上传装包那
  * **同一段**落地逻辑 → 记下「从哪个源装的哪一版」→ 让装载器重扫。
  *
@@ -179,7 +179,7 @@ function sha256Hex(bytes: Uint8Array): string {
 }
 
 /**
- * 同一个 id 索引里最多两条(正式 + 预发布),**面板上只画一张卡** —— 挑哪一条看 BN 自己
+ * 同一个 id 索引里每个契约版本最多两条(正式 + 预发布),**面板上只画一张卡** —— 挑哪一条看 BN 自己
  * 在哪个渠道:
  *
  * - 稳定渠道只认正式那条(没有正式档就一张卡都不出:那个拓展现在只发了预发布);
@@ -189,18 +189,28 @@ function sha256Hex(bytes: Uint8Array): string {
  *
  * 挑出来的这一条是这张卡的全部依据:版本、状态、「有新版」、装的时候下哪个包。分两处挑会
  * 画出一张写着 A 而按下去装 B 的卡。
+ *
+ * 契约升档的过渡期里,同一个 id 同一档还可以按契约版本各留一条(旧 BN 只装得了旧契约那条、
+ * 新 BN 只装得了新契约那条)。所以**先在这台 BN 装得了的(`fits`)里头**按上面的渠道规矩取
+ * 版本最高的;一条都装不了才退回在全部候选里取最高,画一张「先升级 BN」的灰卡 —— 这与只有
+ * 一个契约版本时的行为一样,卡上写的是索引里最新的那一版。
  */
 function pickPerId(
 	entries: readonly MarketplaceEntry[],
 	prerelease: boolean,
+	fits: (entry: MarketplaceEntry) => boolean,
 ): Map<string, MarketplaceEntry> {
+	const higher = (a: MarketplaceEntry, b: MarketplaceEntry | undefined) =>
+		!b || compareVersions(a.version, b.version) > 0;
 	const best = new Map<string, MarketplaceEntry>();
+	const bestFit = new Map<string, MarketplaceEntry>();
 	for (const entry of entries) {
 		if (isPrereleaseEntry(entry) && !prerelease) continue;
-		const prev = best.get(entry.id);
-		if (!prev || compareVersions(entry.version, prev.version) > 0) best.set(entry.id, entry);
+		if (higher(entry, best.get(entry.id))) best.set(entry.id, entry);
+		if (fits(entry) && higher(entry, bestFit.get(entry.id))) bestFit.set(entry.id, entry);
 	}
-	return best;
+	// 装得了的覆盖全部里最高的;没有装得了的 id 就保留 best 里那条。
+	return new Map([...best, ...bestFit]);
 }
 
 /** 字节数说成人话(一位小数的 MB)。 */
@@ -453,7 +463,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		const extensions: MarketplaceEntryDTO[] = [];
 		for (const source of loaded) {
 			if (!source.index) continue;
-			for (const entry of pickPerId(source.index.extensions, prerelease).values()) {
+			for (const entry of pickPerId(source.index.extensions, prerelease, fitsHost).values()) {
 				const { state, installed } = stateOf(
 					entry,
 					source.view.id,
@@ -499,7 +509,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 		}
 		// 🔴 挑条目必须与 list() 用**同一把尺子**:索引里同一个 id 有两档,拿 find() 取第一条
 		// 的话,面板上那张卡写着 A、按下去装的是 B —— 而两边都全绿。
-		const entry = pickPerId(source.index.extensions, deps.prerelease()).get(id);
+		const entry = pickPerId(source.index.extensions, deps.prerelease(), fitsHost).get(id);
 		if (!entry) return fail("not_found", `源「${source.view.name}」里没有 ${id}`);
 		if (!fitsHost(entry)) {
 			return fail("unsupported", `${entry.name}:${apiVersionMismatch(entry, hostApiRange)}`);

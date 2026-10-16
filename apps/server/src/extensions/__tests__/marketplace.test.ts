@@ -571,6 +571,74 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 	});
 });
 
+/**
+ * 契约版本升档的过渡期:同一个 id 同一档可以留多条,每个契约版本一条。每台 BN 在
+ * 「自己装得了」的里头取版本最高的那条,画一张卡。
+ */
+describe("list():同一个 id 多个契约版本", () => {
+	const V3_ZIP_URL =
+		"https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-0.1.0.zip";
+	const v3Zip = pack("bridge", "0.1.0");
+	const v2Entry = () => entry("bridge", "0.0.1", oldBridgeZip, { apiVersion: 2 });
+	const v3Entry = () => entry("bridge", "0.1.0", v3Zip, { apiVersion: 3 }, V3_ZIP_URL);
+	const body = () => envelope(key.privateKey, official({ extensions: [v2Entry(), v3Entry()] }));
+	const only = (range: ExtensionApiRange) => harness({ hostApiRange: range });
+
+	it("只收第 2 版契约的 BN 挑到 0.0.1(可装),只收第 3 版的挑到 0.1.0(可装)", async () => {
+		serve({ [OFFICIAL_URL]: body() });
+		expect((await only({ min: 2, current: 2, revision: 0 }).marketplace.list()).extensions).toEqual(
+			[expect.objectContaining({ version: "0.0.1", state: "installable" })],
+		);
+		expect((await only({ min: 3, current: 3, revision: 0 }).marketplace.list()).extensions).toEqual(
+			[expect.objectContaining({ version: "0.1.0", state: "installable" })],
+		);
+	});
+
+	it("两版都收的 BN 取版本最高的那条", async () => {
+		serve({ [OFFICIAL_URL]: body() });
+		expect((await only({ min: 2, current: 3, revision: 0 }).marketplace.list()).extensions).toEqual(
+			[expect.objectContaining({ version: "0.1.0" })],
+		);
+	});
+
+	it("一条都装不了:仍画一张灰卡,是版本最高的那条", async () => {
+		serve({ [OFFICIAL_URL]: body() });
+		expect((await only({ min: 1, current: 1, revision: 0 }).marketplace.list()).extensions).toEqual(
+			[expect.objectContaining({ version: "0.1.0", state: "incompatible" })],
+		);
+	});
+
+	it("install() 装的是这台 BN 装得了的那条", async () => {
+		serve({ [OFFICIAL_URL]: body(), [ZIP_URL]: oldBridgeZip, [V3_ZIP_URL]: v3Zip });
+		expect(
+			await only({ min: 2, current: 2, revision: 0 }).marketplace.install("official", "bridge"),
+		).toMatchObject({ ok: true, version: "0.0.1" });
+		expect(
+			await only({ min: 3, current: 3, revision: 0 }).marketplace.install("official", "bridge"),
+		).toMatchObject({ ok: true, version: "0.1.0" });
+	});
+
+	it("预发布渠道也只在装得了的里头挑:v3 的 alpha 不顶掉 v2 BN 的正式版", async () => {
+		const alphaV3 = entry(
+			"bridge",
+			"0.2.0-alpha.1",
+			alphaZip,
+			{ prerelease: true, apiVersion: 3 },
+			ALPHA_ZIP_URL,
+		);
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ extensions: [v2Entry(), v3Entry(), alphaV3] }),
+			),
+		});
+		const h = harness({ prerelease: true, hostApiRange: { min: 2, current: 2, revision: 0 } });
+		expect((await h.marketplace.list()).extensions).toEqual([
+			expect.objectContaining({ version: "0.0.1", state: "installable" }),
+		]);
+	});
+});
+
 describe("list():已装的怎么标", () => {
 	/** 从官方源装上 bridge 0.0.2、装载器也报着它 —— 之后各条用例换一份索引看它怎么标。 */
 	async function installedFromOfficial() {
