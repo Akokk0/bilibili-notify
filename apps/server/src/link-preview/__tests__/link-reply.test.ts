@@ -42,7 +42,11 @@ function setup(conn: Connection = connection()) {
 		stop() {},
 	};
 	const dispatcher = createTargetDispatcher({
-		store: { getConnections: () => [conn], getTargets: () => [] } as unknown as ConfigStore,
+		store: {
+			getConnections: () => [conn],
+			getConnection: (id: string) => [conn].find((c) => c.id === id),
+			getTargets: () => [],
+		} as unknown as ConfigStore,
 		adapters: registryOf([adapter]),
 		logger: LOGGER,
 	});

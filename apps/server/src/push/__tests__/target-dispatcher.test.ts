@@ -67,6 +67,7 @@ function makeTarget(
 function makeStore(connections: Connection[], targets: PushTarget[]): ConfigStore {
 	return {
 		getConnections: () => connections,
+		getConnection: (id: string) => connections.find((c) => c.id === id),
 		getTargets: () => targets,
 	} as unknown as ConfigStore;
 }
@@ -910,5 +911,56 @@ describe("createTargetDispatcher — supportsAtAll(问适配器)", () => {
 	it("连接不存在 → false", () => {
 		const d = dispatcherOf([], [makeTarget({ id: "t1", connectionId: "ghost" })], []);
 		expect(d.supportsAtAll("t1")).toBe(false);
+	});
+});
+
+/**
+ * 连接表的读法:一次推送对一个目标要问好几处(`isAvailable` / `supportsAtAll` / `send`),
+ * 每处都只要**目标所挂的那一条**。配置仓的「全表」那口每问一次就深拷整张连接表,所以只许按 id 取单条。
+ */
+describe("createTargetDispatcher — 连接按 id 取单条,不读全表", () => {
+	// 验红:把 `findConnection` 或 `refusal` / `isEnabled` 里的检查改回读 `getConnections()`,这条红。
+	it("一次推送走完 isAvailable / supportsAtAll / send:全表那口一次都不调", async () => {
+		const connection = makeConnection({ id: "a1", platform: "onebot" });
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
+		const getConnections = vi.fn(() => [connection]);
+		const getConnection = vi.fn((id: string) => (id === "a1" ? connection : undefined));
+		const dispatcher = createTargetDispatcher({
+			store: {
+				getConnections,
+				getConnection,
+				getTargets: () => [target],
+			} as unknown as ConfigStore,
+			adapters: registryOf([makePlatformAdapter("onebot")]),
+			logger: makeLogger(),
+		});
+		expect(dispatcher.isEnabled("t1")).toBe(true);
+		expect(dispatcher.isAvailable("t1")).toBe(true);
+		dispatcher.supportsAtAll("t1");
+		expect(await dispatcher.send("t1", { kind: "text", text: "hi" } as never)).toMatchObject({
+			ok: true,
+		});
+		expect(getConnection).toHaveBeenCalled();
+		expect(getConnections).not.toHaveBeenCalled();
+	});
+
+	it("连接停用的目标照样拒(开关的判断复用已经取到的那一条)", async () => {
+		const connection = makeConnection({ id: "a1", platform: "onebot", enabled: false });
+		const getConnections = vi.fn(() => [connection]);
+		const dispatcher = createTargetDispatcher({
+			store: {
+				getConnections,
+				getConnection: (id: string) => (id === "a1" ? connection : undefined),
+				getTargets: () => [makeTarget({ id: "t1", connectionId: "a1" })],
+			} as unknown as ConfigStore,
+			adapters: registryOf([makePlatformAdapter("onebot")]),
+			logger: makeLogger(),
+		});
+		expect(dispatcher.isEnabled("t1")).toBe(false);
+		expect(await dispatcher.send("t1", { kind: "text", text: "hi" } as never)).toMatchObject({
+			ok: false,
+			code: "not_configured",
+		});
+		expect(getConnections).not.toHaveBeenCalled();
 	});
 });

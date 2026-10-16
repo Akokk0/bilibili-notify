@@ -356,6 +356,7 @@ export async function bootBiliLiveWorld(
 			onChange: () => ({ dispose() {} }),
 			getTargets: () => targets,
 			getConnections: () => [connection],
+			getConnection: (id: string) => [connection].find((c) => c.id === id),
 			recordTargetReachability: async () => {},
 			recordConnectionProbeState: async () => {},
 		} as unknown as ConfigStore,

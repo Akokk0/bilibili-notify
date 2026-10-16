@@ -169,7 +169,11 @@ describe("createDevtools · 截流接线", () => {
 		});
 		if (dev === null) throw new Error("unreachable");
 		const dispatcher = createTargetDispatcher({
-			store: { getConnections: () => [CONNECTION], getTargets: () => [TARGET] } as never,
+			store: {
+				getConnections: () => [CONNECTION],
+				getConnection: (id: string) => (id === "ad" ? CONNECTION : undefined),
+				getTargets: () => [TARGET],
+			} as never,
 			adapters: dev.adapters,
 			interceptSend: dev.interceptSend,
 			logger: LOGGER,

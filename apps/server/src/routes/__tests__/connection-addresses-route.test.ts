@@ -87,7 +87,11 @@ describe("GET /api/connections/:id/addresses — 真派发器 + 内置适配器"
 
 	function appOver(connections: Connection[]) {
 		const dispatcher = createTargetDispatcher({
-			store: { getConnections: () => connections, getTargets: () => [] } as unknown as ConfigStore,
+			store: {
+				getConnections: () => connections,
+				getConnection: (id: string) => connections.find((c) => c.id === id),
+				getTargets: () => [],
+			} as unknown as ConfigStore,
 			adapters: registryOf(builtinAdapterStubs()),
 			logger,
 		});

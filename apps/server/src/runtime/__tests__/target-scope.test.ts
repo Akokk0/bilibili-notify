@@ -249,6 +249,7 @@ describe("targetEnabled ≡ dispatcher.isEnabled", () => {
 		const store = {
 			getTargets: () => TARGETS,
 			getConnections: () => CONNECTIONS,
+			getConnection: (id: string) => CONNECTIONS.find((c) => c.id === id),
 		} as unknown as ConfigStore;
 		const dispatcher = createTargetDispatcher({
 			store,

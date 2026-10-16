@@ -61,13 +61,20 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return opts.store.getTargets().find((t) => t.id === targetId);
 	}
 
+	/**
+	 * 按 id 取**一条**连接。一次推送要问好几处(`isAvailable` / `supportsAtAll` / `send`),全表那口每问一次
+	 * 就深拷整张连接表,而每处要的只是目标所挂的那一条 —— 所以一律走单条口。
+	 */
 	function findConnection(connectionId: string): Connection | undefined {
-		return opts.store.getConnections().find((a) => a.id === connectionId);
+		return opts.store.getConnection(connectionId);
 	}
 
-	/** 开关的检查,**全仓只有这一份**(适配器不再各查一遍)。过了回 `undefined`,没过回失败结果。 */
+	/**
+	 * 开关的检查,**全仓只有这一份**(适配器不再各查一遍)。过了回 `undefined`,没过回失败结果。
+	 * 复用已经找到的那一条连接,不再回头读全表。
+	 */
 	function refusal(target: PushTarget, connection: Connection): Failure | undefined {
-		if (isTargetPaused(target, opts.store.getConnections())) {
+		if (isTargetPaused(target, [connection])) {
 			return target.enabled
 				? fail("not_configured", `connection disabled: connectionId=${connection.id}`)
 				: fail("not_configured", `target disabled: targetId=${target.id}`);
@@ -110,7 +117,9 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		isEnabled(targetId: string): boolean {
 			const target = findTarget(targetId);
 			if (!target) return false;
-			return !isTargetPaused(target, opts.store.getConnections());
+			// 连接不在 = 暂停(`isTargetPaused` 对找不到连接的目标也回 true)。
+			const connection = findConnection(target.connectionId);
+			return !isTargetPaused(target, connection ? [connection] : []);
 		},
 
 		isAvailable(targetId: string): boolean {

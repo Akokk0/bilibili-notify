@@ -146,6 +146,7 @@ describe("@全体:真派发器 + 真推送路由", () => {
 		const dispatcher = createTargetDispatcher({
 			store: {
 				getConnections: () => connections,
+				getConnection: (id: string) => connections.find((c) => c.id === id),
 				getTargets: () => targets,
 			} as unknown as ConfigStore,
 			adapters: registryOf([onebot.adapter, qq.adapter]),

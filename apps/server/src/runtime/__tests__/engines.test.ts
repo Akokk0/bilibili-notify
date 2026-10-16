@@ -350,6 +350,7 @@ function makeConfigStore(
 			bus.on("config-changed", ({ scope }) => handler(scope)),
 		getTargets: () => targets,
 		getConnections: () => connections,
+		getConnection: (id: string) => connections.find((c) => c.id === id),
 		patchTarget: vi.fn(async () => {}),
 		patchConnection: vi.fn(async () => {}),
 		recordConnectionProbeState: vi.fn(async () => {}),

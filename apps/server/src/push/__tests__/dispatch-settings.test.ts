@@ -79,6 +79,7 @@ function targetFor(kind: "session" | "endpoint"): PushTarget {
 function storeOf(connection: Connection, target: PushTarget): ConfigStore {
 	return {
 		getConnections: () => [connection],
+		getConnection: (id: string) => [connection].find((c) => c.id === id),
 		getTargets: () => [target],
 	} as unknown as ConfigStore;
 }
