@@ -360,6 +360,86 @@ describe("直播总结按目标挑 AI 版或模板(ADR-0032)", () => {
 	});
 });
 
+// 验红:`runtime/engines.ts` 里直播引擎的 `isAiEnabled` 读口
+// - 接成常量 true / 只看 `g.ai.enabled` → 「默认关」「悬空例外」「读口现取」「目标删了」几条红;
+// - `aiWritingNeeded` 的第二参改成 `Object.keys(byTarget)`(不核现存)→ 「悬空例外」红;
+// - 在构造时算一次缓存起来 → 「读口现取」「目标删了」红。
+describe("直播总结的 AI 那份要不要做(生成门看「写正文」设置,ADR-0032)", () => {
+	const GONE = "target-long-gone";
+	async function bootAi(comment: (prompt: string) => Promise<string>): Promise<World> {
+		return boot({
+			features: ["liveEnd"],
+			extras: ["liveSummary"],
+			renderer: false,
+			secondTarget: true,
+			commentary: comment,
+		});
+	}
+
+	it("默认关、没有例外:不问 AI,两边收模板", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		await chatThenEnd(w);
+		expect(comment).not.toHaveBeenCalled();
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+	});
+
+	it("默认关、只有一条悬空的例外(目标表里没有这个 id)是开:不问 AI", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: { [GONE]: true } };
+		await chatThenEnd(w);
+		expect(comment).not.toHaveBeenCalled();
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+	});
+
+	it("默认关、乙的例外开:问一次 AI,甲收模板、乙收 AI", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		w.globals.ai.writing.liveSummary = {
+			enabled: false,
+			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: true },
+		};
+		await chatThenEnd(w);
+		expect(comment).toHaveBeenCalledTimes(1);
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+		expect(summariesBy(w, BILI_LIVE_SECOND_TARGET_ID)).toEqual(["AI 写的总结"]);
+	});
+
+	it("AI 总开关关着、默认开:不问 AI", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		w.globals.ai.enabled = false;
+		await chatThenEnd(w);
+		expect(comment).not.toHaveBeenCalled();
+		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
+	});
+
+	it("读口现取:世界建好之后把默认从开改关,下一场下播就不再问 AI", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		await chatThenEnd(w);
+		expect(comment).toHaveBeenCalledTimes(1);
+		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		await chatThenEnd(w);
+		expect(comment).toHaveBeenCalledTimes(1);
+	});
+
+	it("目标删了,它的例外立刻不算开着:下一场下播不问 AI", async () => {
+		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
+		const w = await bootAi(comment);
+		w.globals.ai.writing.liveSummary = {
+			enabled: false,
+			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: true },
+		};
+		w.removeTarget(BILI_LIVE_SECOND_TARGET_ID);
+		await chatThenEnd(w);
+		expect(comment).not.toHaveBeenCalled();
+	});
+});
+
 // 验红:
 // - `room-session.ts` 的 `onLiveStart` 开头 `if (this.pendingEndTimer) {` 改成 `if (false) {` → 只有「接续之后再下播」那条红
 //   (第一条**不红**:没有这一支,窗口里的开播帧被「已在播」去重挡掉,到期核对时 B 站说在播,对外的结果一样;

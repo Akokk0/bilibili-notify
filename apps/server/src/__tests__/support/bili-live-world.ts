@@ -415,6 +415,11 @@ export async function bootBiliLiveWorld(
 		sentTo,
 		/** 世界的全局设置(可变;读口现取,建好之后改也生效)。 */
 		globals,
+		/** 把一个推送目标从目标表里删掉(订阅的路由不动,就像面板删目标后的样子)。 */
+		removeTarget(id: string): void {
+			const at = targets.findIndex((t) => t.id === id);
+			if (at >= 0) targets.splice(at, 1);
+		},
 		/** 交给出图器的入参,按出卡次序。 */
 		cards,
 		/** 总线上的直播事件(`live-state-changed` / `live-viewers-changed` / `engine-error`),按发出次序。 */

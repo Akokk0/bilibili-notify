@@ -39,11 +39,6 @@ export interface LiveEngineConfig {
 	 */
 	imageEnabled?: boolean;
 	/**
-	 * 是否启用 AI 直播总结。`false` 时跳过 commentary 调用,直接走模板回退。
-	 * 缺省视为 true。Adapter 通常用 `globals.ai.enabled` 填充。
-	 */
-	aiEnabled?: boolean;
-	/**
 	 * 总结时允不允许联网搜索。缺省 false(搜索按次付费,自动路径必须主人亲手
 	 * 点亮)。Adapter 用 `globals.ai.search.engines.live` 填充。
 	 */
@@ -70,6 +65,11 @@ export interface LiveEngineOptions {
 	/** Optional — if absent, live summaries fall back to the configured template. */
 	commentary?: CommentaryProvider | null;
 	config: LiveEngineConfig;
+	/**
+	 * 下播总结的 AI 那份要不要做:宿主算好的布尔(AI 总开关且「写正文」设置里默认开或有现存目标的例外开),
+	 * 每次下播现取、不缓存。引擎不看目标(ADR-0032 决策 2),原样递给请求器。必给 —— 漏给编译不过。
+	 */
+	isAiEnabled: () => boolean;
 	/** Called by the engine to surface an `engine-error`; the host forwards it to its MessageBus. */
 	emitEngineError: (message: string) => void;
 	/** Per-UID live-state transitions; the host forwards to `bus.emit("live-state-changed", …)`. */
@@ -143,7 +143,7 @@ export class LiveEngine {
 		});
 		this.liveSummaryRequester = new LiveSummaryRequester({
 			commentary: opts.commentary ?? null,
-			isAiEnabled: () => this.config.aiEnabled !== false,
+			isAiEnabled: opts.isAiEnabled,
 			isWebSearchEnabled: () => this.config.aiWebSearch === true,
 			logger: this.logger,
 		});

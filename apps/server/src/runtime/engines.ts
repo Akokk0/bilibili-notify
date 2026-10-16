@@ -369,6 +369,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
 	const imageCtx = opts.serviceCtx.forSubsystem("image", "image");
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
+	/** 现存推送目标的 id(含停用的),每次现取:作品与直播总结的 AI 生成门共用,悬空的例外 id 不算数。 */
+	const targetIds = (): string[] => opts.configStore.getTargets().map((t) => t.id);
 
 	// ---------- Dispatcher + push ----------
 	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
@@ -663,7 +665,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 「来源还在跑吗」:登记表里有它(内置来源),或拓展订阅的拓展在跑(决策 61:拓展停了,等着的作品不补);
 				// 没接拓展订阅(`extensionSources` 没给)的拓展键就一律不推。
 				sourceRunning: (sub) => sourceStatus.running(subscriptionIdentityOf(sub).sourceKey),
-				targetIds: () => opts.configStore.getTargets().map((t) => t.id),
+				targetIds,
 			}),
 			// 渲染器与 AI 会被热换:**必须是读外层 let 的闭包**,按值传就是「开机时没有浏览器,之后一直没有卡片」而门禁全绿。
 			image: () => imageRenderer ?? undefined,
@@ -757,7 +759,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// dispatch 时过滤。
 			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
 			imageEnabled: g.defaults.cards.enabled,
-			aiEnabled: g.ai.enabled,
 			aiWebSearch: g.ai.search.engines.live,
 			guardTemplate: guardTemplateOf(g.defaults.templates),
 			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
@@ -785,6 +786,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		avatarOf: profileAvatarOf,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
+		// 下播总结的 AI 那份要不要做:每次现算(目标增删、写正文设置、AI 总开关改了,下一场下播就生效)。
+		isAiEnabled: () => {
+			const g = globals();
+			return g.ai.enabled && aiWritingNeeded(g.ai.writing.liveSummary, targetIds());
+		},
 		config: liveConfig(),
 		emitEngineError: (message) => opts.bus.emit("engine-error", { source: "live-engine", message }),
 		emitLiveState: (uid, status, startedAt) =>
