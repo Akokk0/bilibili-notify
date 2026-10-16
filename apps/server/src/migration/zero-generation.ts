@@ -7,12 +7,12 @@
  * 旧格式的知识只住在这个模块里,各个 store 开机只认最新的形状。改写写的是新文件(原子换名),不原地写。
  *
  * 怎么搬:**一律复制,不硬链接**(决策 7 下 2026-10-06 的 🔗)。硬链接是两代共用一个文件,哪边原地写都会
- * 改到另一边;1.0 自己全是换名写,但回退到 0.x 以后 0.x 原地写的那几类(会话、字体清单、封面游标、cookie、
+ * 改到另一边;1.0 自己全是换名写,但回退到 0.x 以后 0.x 原地写的那几类(字体清单、封面游标、cookie、
  * 皮肤素材、重推原件)会改到新代里 —— 能不能链取决于新旧两边的写法,旧版本的写法我们管不了。
- * 软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、不拷内容。聊天附件、拓展订阅的头像、历史图(与重推原件自存的图)不整目录搬:被会话 / 资料缓存 / 保留期内的
- * 历史行与重推原件引用的逐张复制进图库 `images/`(见 `chat-attachments.ts`、`profile-avatars.ts`、
- * `history-images.ts`)。上个进程的残留、0.x 的备份与迁移中间件、
- * 卡片皮肤(不迁,决策 12)不带过来,都记进报告。
+ * 软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、不拷内容。拓展订阅的头像、历史图(与重推原件自存的图)不整目录搬:被资料缓存 / 保留期内的
+ * 历史行与重推原件引用的逐张复制进图库 `images/`(见 `profile-avatars.ts`、`history-images.ts`)。
+ * 上个进程的残留、0.x 的备份与迁移中间件、卡片皮肤(不迁,决策 12)、女仆技能与女仆对话(连同聊天附件,
+ * 不迁,决策 4)不带过来,都记进报告。
  */
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
@@ -24,7 +24,6 @@ import {
 	readKeyMaterial,
 	syncDirectory,
 } from "@bilibili-notify/storage";
-import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
 import {
 	CONFIG_DIR,
 	CORE_SETTINGS_FILE,
@@ -39,9 +38,7 @@ import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.j
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { BILI_LOGIN_TARGET, migrateBiliLogin } from "./bili-login.js";
-import { createChatAttachmentMigrator } from "./chat-attachments.js";
 import { migrateConnectionFiles } from "./connections.js";
-import { migrateConversationFiles } from "./conversations.js";
 import { leftoverReason } from "./files.js";
 import { migrateFollowerCompression } from "./followers.js";
 import {
@@ -88,8 +85,10 @@ import { migrateUptime } from "./uptime.js";
  * 45 = 特别关注名单 `specialUsers` → `specialViewers`(条目 `{ uid, kinds, template? }` → `{ id, features }`,`template` 丢掉),
  * 两把特性键 `specialDanmaku` / `specialUserEnter` → `viewerChat` / `viewerEnter`(设置的开关与文案、订阅的路由与覆盖、
  * 默认文案账本、历史行的 `feature`;统计「在记」账里直播那一格改用冻住的 0.x 旧读法)。
+ * 46 = 0.x 的女仆技能 `maid-skills/`、女仆对话 `ai/chat/` 与聊天附件 `assets/chat/` 不再带进新代,留在第 0 代(各记一条没带过来的);
+ * 会话改写与附件进图库那一步撤掉(新代没有 `maid-skills/`、`ai/`,图库里没有 0.x 的附件)。
  */
-export const MIGRATION_REVISION = 45;
+export const MIGRATION_REVISION = 46;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";
@@ -133,7 +132,7 @@ type ZeroMove =
 	| { kind: "move"; to: Destination; label: string; inputs?: (path: string) => string | undefined }
 	/**
 	 * 一级项底下的东西各去各处(`state/` 里的文件分进 config / runtime)。`inputs` 是只作迁移输入、
-	 * 不进新代的那几个(名字 → 为什么)。
+	 * 不进新代的那几个(名字 → 为什么):只作迁移输入的,或不迁的。
 	 */
 	| {
 			kind: "split";
@@ -186,13 +185,13 @@ const ZERO_GENERATION_MOVES = {
 	fans: { kind: "move", to: FOLLOWERS_DIR, label: "粉丝时序" },
 	assets: {
 		kind: "split",
-		label: "素材与聊天附件",
+		label: "素材",
 		children: {
 			"card-bg": CARD_BG_DIR,
 			font: FONT_DIR,
 		},
 		inputs: {
-			chat: "聊天附件:迁移读一次,被会话引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代",
+			chat: "聊天附件随女仆对话不迁(ADR-0022 决策 4),留在第 0 代",
 		},
 	},
 	avatars: {
@@ -202,8 +201,14 @@ const ZERO_GENERATION_MOVES = {
 	},
 	skins: { kind: "move", to: DASHBOARD_SKINS_DIR, label: "界面皮肤" },
 	"card-skins": { kind: "drop", reason: "卡片皮肤不迁(ADR-0022 决策 12)" },
-	"maid-skills": { kind: "move", to: ["maid-skills"], label: "女仆技能" },
-	ai: { kind: "split", label: "女仆对话", children: { chat: CONVERSATIONS_DIR } },
+	"maid-skills": {
+		kind: "drop",
+		reason: "女仆技能不迁(ADR-0022 决策 4),自己写的技能留在第 0 代;内置技能跟版本走,不受影响",
+	},
+	ai: {
+		kind: "drop",
+		reason: "女仆对话不迁(ADR-0022 决策 4),留在第 0 代;新的一代从空的对话开始",
+	},
 	extensions: { kind: "move", to: ["extensions"], label: "拓展" },
 	"card-bg-cursors.json": { kind: "move", to: CARD_BG_CURSORS_FILE, label: "直播封面的轮换游标" },
 } as const satisfies Record<ZeroGenerationKey, ZeroMove>;
@@ -340,7 +345,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 主人目标(要两边都迁好)→ 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥、B 站登录(不依赖别的,放最后)。
+ * 开机时做)→ 设置 → 主人目标(要两边都迁好)→ 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、密钥、B 站登录(不依赖别的,放最后)。
  * 每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
@@ -536,39 +541,6 @@ const REWRITES: readonly {
 		},
 	},
 	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },
-	{
-		label: "女仆对话",
-		run: async (opts, report) => {
-			const zeroChat = zeroPath(opts.zeroRoot, "assets", "chat");
-			const attachments = createChatAttachmentMigrator({
-				zeroDir: zeroChat,
-				imagesDir: dataPath(opts.targetDir, "images"),
-			});
-			const rewritten = await migrateConversationFiles(opts.targetDir, attachments);
-			// 附件的账:搬进图库的各记一条(旧路径 → 图库里的引用),没搬的按数量各记一句,不逐个列。
-			const done = await attachments.result();
-			for (const { id, ref } of done.copied) {
-				report.transfers.push({
-					from: portable(relative(opts.zeroRoot, join(zeroChat, id))),
-					to: portable(relative(opts.targetDir, dataPath(opts.targetDir, "images", ref))),
-					method: "copy",
-				});
-			}
-			if (done.dropped > 0) {
-				report.skipped.push({
-					path: "assets/chat",
-					reason: `${done.dropped} 张聊天附件对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),已从引用它的消息里拿掉`,
-				});
-			}
-			if (done.orphans > 0) {
-				report.skipped.push({
-					path: "assets/chat",
-					reason: `${done.orphans} 张聊天附件没有任何会话引用,没带过来`,
-				});
-			}
-			return rewritten;
-		},
-	},
 	{
 		label: "密钥",
 		run: async (opts) =>

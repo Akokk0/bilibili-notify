@@ -106,7 +106,7 @@ export interface Conversation {
 	messages: StoredMessage[];
 	/**
 	 * 这场对话的面孔,开局定下、整场锁定(见 {@link AiChatMode})。0.x 早期的会话文件里没有
-	 * 这三格,由迁移器按工具痕迹补齐(`migration/conversations.ts`);盘上缺了的文件会话库当坏文件跳过。
+	 * 这三格,但 0.x 的会话不迁进新代;盘上缺了的文件会话库当坏文件跳过。
 	 */
 	mode: AiChatMode;
 	/** 带不带女仆人格。 */

@@ -526,8 +526,8 @@ describe("ConversationStore — 上限裁剪", () => {
  * **锁定**:开局选定,整个会话不再改,侧栏那一行还要标出来。于是它们成了会话
  * 自己的属性,得跟着 JSON 一起活。
  *
- * 功能上线前就存在的会话文件里没有这两个字段:那是 0.x 的老形状,由迁移器按工具痕迹补齐
- * (`migration/conversations.ts`,用例在 `migration/__tests__/zero-generation-conversations.test.ts`)。
+ * 功能上线前就存在的会话文件里没有这两个字段:那是 0.x 的老形状,0.x 的会话不迁进新代
+ * (3b-53)。
  * 会话库自己不推断 —— 盘上缺了面孔的文件当坏文件跳过。
  */
 describe("会话的模式与人格", () => {

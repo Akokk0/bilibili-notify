@@ -114,9 +114,13 @@ const ZERO_FILES: Record<string, string> = {
 		},
 	]),
 	"history/2026-09-30.jsonl": '{"id":"row-1"}\n',
-	"maid-skills/weekly/SKILL.md": "# 周报",
+	// 「这一代是从第 0 代迁出来的」的记号:原样复制、开机不会再碰的一份(女仆技能 3b-53 起不迁,不能再拿它当记号)。
+	"card-bg-cursors.json": "{}",
 	"stats/since": "2026-09-01",
 };
+
+/** 上面那份记号在代里的位置(相对代根)。 */
+const MIGRATED_MARKER = join("runtime", "card-bg-cursors.json");
 
 /** 宿主根上第 0 代那部分的摘要:路径 + 内容(不含宿主件与各代)。 */
 async function zeroDigest(dataDir: string): Promise<string> {
@@ -207,9 +211,9 @@ describe("数据代接在开机路径上 e2e", () => {
 			migrationRevision: MIGRATION_REVISION,
 			source: { kind: "zero" },
 		});
-		expect(await readFile(join(generation, "maid-skills", "weekly", "SKILL.md"), "utf8")).toBe(
-			"# 周报",
-		);
+		expect(await readFile(join(generation, MIGRATED_MARKER), "utf8")).toBe("{}");
+		// 女仆技能不迁(3b-53):第 0 代摆着,新的一代里没有。
+		expect(existsSync(join(generation, "maid-skills"))).toBe(false);
 
 		const patched = await fetch(url("/api/settings"), {
 			method: "PATCH",
@@ -275,9 +279,7 @@ describe("数据代接在开机路径上 e2e", () => {
 		await handle.close("test");
 		handle = undefined;
 		expect((await readdir(generationsDir())).sort()).toEqual(["1", "2"]);
-		expect(
-			await readFile(join(generationsDir(), "2", "maid-skills", "weekly", "SKILL.md"), "utf8"),
-		).toBe("# 周报");
+		expect(await readFile(join(generationsDir(), "2", MIGRATED_MARKER), "utf8")).toBe("{}");
 	});
 
 	it("再开机用到已有的一代 → 它的 lastActiveAt 往前走,别的格原样,以后的版本加的格也留着", async () => {
@@ -353,8 +355,8 @@ describe("数据代接在开机路径上 e2e", () => {
 		expect(await readFile(join(generationsDir(), "2", "secrets", "master.key"))).toEqual(
 			await readFile(join(generationsDir(), "1", "secrets", "master.key")),
 		);
-		expect(existsSync(join(generationsDir(), "2", "maid-skills"))).toBe(false);
-		expect(existsSync(join(generationsDir(), "1", "maid-skills", "weekly", "SKILL.md"))).toBe(true);
+		expect(existsSync(join(generationsDir(), "2", MIGRATED_MARKER))).toBe(false);
+		expect(existsSync(join(generationsDir(), "1", MIGRATED_MARKER))).toBe(true);
 		expect(await noticesOf(2)).toEqual([]);
 	});
 
@@ -372,9 +374,7 @@ describe("数据代接在开机路径上 e2e", () => {
 
 		expect((await readdir(generationsDir())).sort()).toEqual(["1", "2", "3"]);
 		expect((await fileOf(3)).source).toEqual({ kind: "zero" });
-		expect(
-			await readFile(join(generationsDir(), "3", "maid-skills", "weekly", "SKILL.md"), "utf8"),
-		).toBe("# 周报");
+		expect(await readFile(join(generationsDir(), "3", MIGRATED_MARKER), "utf8")).toBe("{}");
 		expect(await noticesOf(3)).toMatchObject([{ kind: "migrated", cardSkinsDropped: true }]);
 	});
 

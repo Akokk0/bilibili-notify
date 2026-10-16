@@ -394,8 +394,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"assets/font/f1.woff2": "library/fonts/f1.woff2",
 	"skins/skin-1/skin.json": "skins/dashboard/skin-1/skin.json",
 	"skins/active.json": "skins/dashboard/active.json",
-	"maid-skills/weekly/SKILL.md": "maid-skills/weekly/SKILL.md",
-	"ai/chat/conv-1.json": "ai/conversations/conv-1.json",
 	"extensions/probe/extension.json": "extensions/probe/extension.json",
 	"extensions/probe/index.mjs": "extensions/probe/index.mjs",
 	"extensions/load-state.json": "extensions/load-state.json",
@@ -405,7 +403,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 
 /** 第二遍改写成最新形状的(相对新代根):不再和第 0 代共用一个文件。 */
 const REWRITTEN = [
-	"ai/conversations/conv-1.json",
 	"config/connections.json",
 	"config/settings/bilibili.json",
 	"config/settings/core.json",
@@ -501,9 +498,8 @@ describe("migrateZeroGeneration", () => {
 			"config/settings/bilibili.json",
 			"config/settings/extensions/dev-bridge.json",
 		];
-		// 迁移里那次历史清扫新写的水位线(⑲c):不是搬来的,也不是改写的。聊天附件不整目录搬:被会话引用的那张
-		// 复制进图库(⑳b),孤儿与不是图的不带过来。
-		// 拓展订阅的头像同理(⑳c):资料缓存引用着的复制进图库,孤儿不带过来。
+		// 迁移里那次历史清扫新写的水位线(⑲c):不是搬来的,也不是改写的。聊天附件、女仆对话与女仆技能不带过来(3b-53)。
+		// 拓展订阅的头像不整目录搬(⑳c):资料缓存引用着的复制进图库,孤儿不带过来。
 		// 历史图同理(⑳d):保留期内的行引用着的复制进图库,`history/img/` 不进新代。
 		const written = [
 			"history/retention.json",
@@ -513,7 +509,6 @@ describe("migrateZeroGeneration", () => {
 			"uptime/hours.jsonl",
 			// B 站登录由 `secrets/cookies.json` 转成(3a-26)。
 			"secrets/bilibili/secrets.enc",
-			`images/${CHAT_REF}`,
 			`images/${AVATAR_REF}`,
 			`images/${HISTORY_REF}`,
 		];
@@ -583,7 +578,7 @@ describe("migrateZeroGeneration", () => {
 		]);
 	});
 
-	it("界面皮肤与女仆对话改写成最新的形状", async () => {
+	it("界面皮肤改写成最新的形状", async () => {
 		await placeZeroGeneration();
 
 		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
@@ -595,16 +590,11 @@ describe("migrateZeroGeneration", () => {
 		expect(css).toContain("content");
 		expect(css).not.toContain("pointer-events");
 		expect(css).not.toContain("z-index");
-		expect(await read("ai", "conversations", "conv-1.json")).toMatchObject({
-			mode: "skin",
-			persona: true,
-			skinTarget: "dashboard",
-		});
 	});
 
 	it("搬过去的每个文件都是复制出来的另一个文件,没有一个和第 0 代共用", async () => {
 		// 共用一个文件(硬链接)的话,哪边原地写都会改到另一边。1.0 自己全是换名写,可回退到 0.x 以后
-		// 0.x 原地写的那几类(会话、字体清单、封面游标、cookie、皮肤素材、重推原件)会改到新代里。
+		// 0.x 原地写的那几类(字体清单、封面游标、cookie、皮肤素材、重推原件)会改到新代里。
 		await placeZeroGeneration();
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
@@ -617,10 +607,7 @@ describe("migrateZeroGeneration", () => {
 		expect(new Set(report.transfers.map((t) => t.method))).toEqual(
 			new Set(["copy", "symlink", "convert"]),
 		);
-		// 聊天附件、拓展订阅头像进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
-		expect((await stat(join(target, "images", CHAT_REF))).ino).not.toBe(
-			(await stat(join(zero, "assets", "chat", CHAT_ATTACHMENT))).ino,
-		);
+		// 拓展订阅头像进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
 		expect((await stat(join(target, "images", AVATAR_REF))).ino).not.toBe(
 			(await stat(join(zero, "avatars", "sub-2.jpeg"))).ino,
 		);
@@ -629,26 +616,27 @@ describe("migrateZeroGeneration", () => {
 		);
 	});
 
-	it("聊天附件:被会话引用的逐张复制进图库(记在搬过去的里),会话里的旧 id 换成引用、不是图的拿掉;孤儿不搬,按数量记一句", async () => {
+	it("女仆技能、女仆对话与聊天附件不带过来:新代里没有 maid-skills/ 与 ai/,图库里没有附件;报告里各记一句", async () => {
 		await placeZeroGeneration();
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
-		expect(report.transfers.filter((t) => t.from.startsWith("assets/chat/"))).toEqual([
-			{ from: `assets/chat/${CHAT_ATTACHMENT}`, to: `images/${CHAT_REF}`, method: "copy" },
-		]);
-		expect(new Uint8Array(await readFile(join(target, "images", CHAT_REF)))).toEqual(
-			new Uint8Array(PNG_BYTES),
-		);
-		const conv = JSON.parse(
-			await readFile(join(target, "ai", "conversations", "conv-1.json"), "utf8"),
-		) as { messages: Array<{ images?: string[] }> };
-		expect(conv.messages[1]?.images).toEqual([CHAT_REF]);
-		expect(report.skipped.filter((s) => s.path === "assets/chat").map((s) => s.reason)).toEqual([
-			expect.stringContaining("不整目录进新代"),
-			expect.stringContaining("1 张聊天附件对不上"),
-			expect.stringContaining("1 张聊天附件没有任何会话引用"),
-		]);
+		expect(existsSync(join(target, "maid-skills"))).toBe(false);
+		expect(existsSync(join(target, "ai"))).toBe(false);
+		expect(existsSync(join(target, "images", CHAT_REF))).toBe(false);
+		for (const prefix of ["maid-skills/", "ai/", "assets/chat/"]) {
+			expect(
+				report.transfers.filter((t) => t.from.startsWith(prefix)),
+				prefix,
+			).toEqual([]);
+		}
+		expect(report.rewritten.filter((path) => path.startsWith("ai/"))).toEqual([]);
+		for (const path of ["maid-skills", "ai", "assets/chat"]) {
+			expect(
+				report.skipped.filter((s) => s.path === path).map((s) => s.reason),
+				path,
+			).toEqual([expect.stringContaining("不迁")]);
+		}
 	});
 
 	it("拓展订阅头像:资料缓存引用着的复制进图库(记在搬过去的里),资料里换成引用、B 站的网址挪到 avatarUrl;孤儿不搬,按数量记一句", async () => {
@@ -722,8 +710,7 @@ describe("migrateZeroGeneration", () => {
 
 		expect(report.skipped.map((s) => s.path).sort()).toEqual(
 			[
-				"assets/chat",
-				"assets/chat",
+				"ai",
 				"assets/chat",
 				"avatars",
 				"avatars",
@@ -731,6 +718,7 @@ describe("migrateZeroGeneration", () => {
 				"card-skins",
 				"history/2026-09-29.jsonl.tmp.99",
 				"history/img",
+				"maid-skills",
 				"notes.txt",
 				"state/adapters.json",
 				"state/extension-subscriptions.json",
@@ -803,8 +791,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 45,
-			output: "f2802278b3f95fa660b9f2dd39c6e6268c28819b00d3ae65f3f3780cfd0ad0f7",
+			revision: 46,
+			output: "2ce40855c24258440281ddd02897464bbb8be3761485258f9891c6067044124a",
 		});
 	});
 });

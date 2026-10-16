@@ -20,9 +20,9 @@
  *   在历史里出现的行数。统计与粉丝的天数不缩,两档都是一整年(365 天,每订阅 52,560 个粉丝点)。
  * - **每天一份的东西靠缩天数**:推送历史的日文件、行、图、重推原件。满量 365 天,四分之一量 `round(365 × 0.25) = 91` 天;
  *   每天的量不缩(每天 120 行、每行一张图,每天 5 份重推原件)。
- * - 会话与聊天附件不挂订阅也不挂日期,按 `scale` 取整(50 → 12、100 → 25)。每张附件内容各不相同(图库按摘要
- *   并同样的图,内容一样就量不到)、各被一场会话的一条用户消息引用着(没人引用的附件迁移时不搬,不引用就没活儿):
- *   第 k 张挂在第 `k mod 会话数` 场的第 `2 × ⌊k ÷ 会话数⌋` 条消息上,两档都是每场 2 张上下,仍近似线性。
+ * - 会话与聊天附件不挂订阅也不挂日期,按 `scale` 取整(50 → 12、100 → 25)。它们是 0.x 盘上真有的东西,迁移时整个不带
+ *   (3b-53,留在第 0 代),摆着是为了钉「不进新代」,也让第 0 代的体量照旧。每张附件内容各不相同、各被一场会话的一条用户
+ *   消息引用着:第 k 张挂在第 `k mod 会话数` 场的第 `2 × ⌊k ÷ 会话数⌋` 条消息上。
  * - 拓展订阅的头像随拓展订阅数缩(4 → 1):每个拓展订阅一份头像文件、内容各不相同(图库按摘要并同样的图),资料缓存里
  *   带着 0.x 的同源相对地址(`?v=` 是内容摘要)引用它,迁移时逐个复制进图库。B 站订阅的资料带远端网址的头像。
  * - 皮肤、女仆技能、拓展、素材这些零碎是固定的几份,几乎不占活儿。
@@ -167,7 +167,6 @@ export interface SyntheticZeroCounts {
 	/** 「在记」行:只有拓展订阅有。 */
 	seenRows: number;
 	conversations: number;
-	conversationMessages: number;
 	chatAttachments: number;
 	skins: number;
 	maidSkills: number;
@@ -713,11 +712,11 @@ async function placeFollowers(
 
 const MESSAGES_PER_CONVERSATION = 40;
 
-/** 女仆对话(0.x 早期的会话:没有面孔那三格)和聊天附件。 */
+/** 女仆对话(0.x 早期的会话:没有面孔那三格)和聊天附件。0.x 盘上真有,迁移时整个不带(3b-53),摆着是钉「不进新代」。 */
 async function placeConversations(
 	tree: Tree,
 	plan: SyntheticZeroPlan,
-): Promise<{ conversations: number; conversationMessages: number }> {
+): Promise<{ conversations: number }> {
 	for (let i = 0; i < plan.conversations; i += 1) {
 		const id = `conv-${String(i + 1).padStart(3, "0")}`;
 		const started = dayMs((i * 7) % Math.max(1, plan.days - 1));
@@ -754,10 +753,7 @@ async function placeConversations(
 	await pool(range(plan.attachments), 32, (i) =>
 		tree.put(`assets/chat/${attachmentId(i)}`, fakeBinary(24_576, PNG_SIGNATURE, i + 1)),
 	);
-	return {
-		conversations: plan.conversations,
-		conversationMessages: plan.conversations * MESSAGES_PER_CONVERSATION,
-	};
+	return { conversations: plan.conversations };
 }
 
 /** 皮肤、女仆技能、拓展、素材、头像、游标:固定的几份,不随 `scale` 变。 */

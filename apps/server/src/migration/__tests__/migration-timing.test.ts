@@ -17,7 +17,7 @@
  *
  * 计时包的是开机真的调的那几步:`selectGeneration` → `createGeneration`(`fill` 里是 `migrateZeroGeneration`),
  * 摆树不计时。迁完还要过几条轻量的正确性检查 —— 又快又错的迁移不能算过:每天一个的历史日文件,老行都改写成了
- * 现在的形状、图与重推原件一个没少、每个订阅一个粉丝文件(按订阅 id 命名)、会话补齐了面孔、第 0 代没动。
+ * 现在的形状、图与重推原件一个没少、每个订阅一个粉丝文件(按订阅 id 命名)、女仆对话与技能没带过来、第 0 代没动。
  */
 
 import { existsSync } from "node:fs";
@@ -52,6 +52,7 @@ import { placeSyntheticZero, type SyntheticZeroCounts } from "./synthetic-zero.j
  * 只拿掉图格、不读图文件。复制是迁移里最重的一步,所以两档的保留天数也按 1/4 缩(满量 60 天、四分之一量 15 天,
  * 留下 61 与 16 个日子 × 120 张);两档都用默认 30 天的话复制的张数一样多,比值掉到 1 点几、量不出越积越慢。
  * 这样摆之后实测满量约 50 秒、四分之一量约 13 秒、比值约 3.75(10-05),其中复制历史图那一步占满量的 40 秒上下。
+ * 3b-53 起会话、聊天附件、女仆技能不迁(摆在盘上、迁移不碰):实测满量约 41 秒、四分之一量约 10 秒、比值约 4.09(10-16)。
  */
 const MAX_RATIO = 5.5;
 /** 满量迁移的天花板(秒)。 */
@@ -124,9 +125,9 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "generation.json"))).toBe(true);
 	expect(existsSync(join(hostRoot, "generations", "1.partial"))).toBe(false);
 
-	// 报告:「拓展订阅」那份只作输入、没进新代;历史图、聊天附件目录与拓展订阅的头像目录也是输入(每张附件被会话引用着、
-	// 每个头像被资料引用着、每张历史图被一行引用着,没有孤儿、没有对不上的,所以各只有一条);过了保留期的原件与图不带过来,
-	// 各记一句(⑲c、⑳d)。
+	// 报告:「拓展订阅」那份只作输入、没进新代;历史图与拓展订阅的头像目录也是输入(每个头像被资料引用着、每张历史图被一行
+	// 引用着,没有孤儿、没有对不上的,所以各只有一条);聊天附件、女仆技能、女仆对话不迁(3b-53),各记一条;过了保留期的
+	// 原件与图不带过来,各记一句(⑲c、⑳d)。
 	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
 	// 「N 天」那一档按 UTC 日界算,留下的是 N + 1 个日子。
 	const keptDays = Math.min(counts.historyDays, counts.plan.historyRetentionDays + 1);
@@ -139,14 +140,29 @@ async function expectMigrated(
 					"history/img",
 					"assets/chat",
 					"avatars",
+					"maid-skills",
+					"ai",
 					"history/repush",
 					"history/img",
 				]
-			: ["state/extension-subscriptions.json", "history/img", "assets/chat", "avatars"],
+			: [
+					"state/extension-subscriptions.json",
+					"history/img",
+					"assets/chat",
+					"avatars",
+					"maid-skills",
+					"ai",
+				],
 	);
-	// 搬过去的:除了不进新代的(拓展订阅那份、全部历史图文件),加上过了保留期的原件;反过来,保留期内的历史图各记一条复制。
+	// 搬过去的:除了不进新代的(拓展订阅那份、全部历史图文件、会话、聊天附件、女仆技能),加上过了保留期的原件;反过来,
+	// 保留期内的历史图各记一条复制。
 	expect(report.transfers).toHaveLength(
-		counts.files - 1 - counts.historyImages - expiredDays * counts.plan.repushPerDay + keptImages,
+		counts.files -
+			1 -
+			counts.historyImages -
+			expiredDays * counts.plan.repushPerDay +
+			keptImages -
+			(counts.conversations + counts.chatAttachments + counts.maidSkills),
 	);
 
 	// 推送历史:每天一个日文件,老行一行不少地改写成现在的行;图与重推原件只留保留期以内的那几天。
@@ -335,37 +351,18 @@ async function expectMigrated(
 	expect(subscriptions.map((s) => s.id)).toEqual(subscriptionIds);
 	expect(subscriptions.every((s) => s.identity !== undefined)).toBe(true);
 
-	// 女仆对话补齐了面孔,技能、界面皮肤、聊天附件都过来了。
-	const conversations = await readdir(join(generation, "ai", "conversations"));
-	expect(conversations).toHaveLength(counts.conversations);
-	for (const name of conversations) {
-		const conversation = JSON.parse(
-			await readFile(join(generation, "ai", "conversations", name), "utf8"),
-		) as Record<string, unknown>;
-		expect(conversation).toMatchObject({ persona: true });
-		expect(["chat", "skin"]).toContain(conversation.mode);
-		expect(conversation.messages).toHaveLength(counts.conversationMessages / counts.conversations);
-	}
-	expect(await readdir(join(generation, "maid-skills"))).toHaveLength(counts.maidSkills);
-	// 聊天附件与拓展订阅的头像不整目录搬:每张都被引用着(附件被会话、头像被资料缓存)、内容各不相同,所以图库里正好
-	// 一张不少,会话 / 资料里全是图库引用。
+	// 女仆对话、女仆技能、聊天附件不迁(3b-53):新代里没有它们,图库里也没有 0.x 的附件;界面皮肤过来了。
+	expect(existsSync(join(generation, "ai"))).toBe(false);
+	expect(existsSync(join(generation, "maid-skills"))).toBe(false);
+	// 聊天附件与拓展订阅的头像都不整目录搬:头像每个都被资料缓存引用着、内容各不相同,所以图库里正好一张不少,
+	// 资料里全是图库引用;附件一张都不进图库。
 	expect(existsSync(join(generation, "assets", "chat"))).toBe(false);
 	expect(existsSync(join(generation, "avatars"))).toBe(false);
 	const libraryImages = (await readdir(join(generation, "images"))).sort();
-	expect(libraryImages).toHaveLength(
-		counts.chatAttachments + counts.extensionSubscriptionIds.length + keptImages,
-	);
+	expect(libraryImages).toHaveLength(counts.extensionSubscriptionIds.length + keptImages);
 	expect(libraryImages.every(isValidImageRef)).toBe(true);
-	// 引用图库的有三家:会话、资料缓存,和保留期内的历史行(原件指的是这些行的同一批图)。
+	// 引用图库的有两家:资料缓存,和保留期内的历史行(原件指的是这些行的同一批图)。
 	const referenced = new Set<string>(historyRefs);
-	for (const name of conversations) {
-		const conversation = JSON.parse(
-			await readFile(join(generation, "ai", "conversations", name), "utf8"),
-		) as { messages: { images?: string[] }[] };
-		for (const message of conversation.messages) {
-			for (const ref of message.images ?? []) referenced.add(ref);
-		}
-	}
 	// 资料缓存:拓展订阅的头像是图库引用(旧的相对地址一个不剩),B 站订阅的头像挪到了 avatarUrl。
 	const profiles = JSON.parse(
 		await readFile(join(generation, "runtime", "sub-runtime.json"), "utf8"),

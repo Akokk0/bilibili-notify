@@ -1,6 +1,6 @@
 /**
- * 迁移往新代图库落图、从 0.x 散落的图文件里读图的共用几件(聊天附件 `chat-attachments.ts`、拓展订阅头像
- * `profile-avatars.ts`)。
+ * 迁移往新代图库落图、从 0.x 散落的图文件里读图的共用几件(拓展订阅头像 `profile-avatars.ts`、历史图
+ * `history-images.ts`)。
  *
  * 不走 `ImageWriter`:新代的图库此刻没在跑,迁移直接往 `images/` 落文件 —— 文件名只认 `imageRefOf` 一份规矩。
  * 读的文件来自第 0 代,是不可信输入:只认干净的文件名、不跟软链、不读超过图库上限的。
@@ -14,7 +14,7 @@ import { atomicWriteFile } from "@bilibili-notify/storage";
 import { IMAGE_MAX_BYTES, imageRefOf } from "../images/image-store.js";
 
 /**
- * 这个名字是不是一个干净的文件名:从旧数据里读出来、要拼进路径的名字(会话里的附件 id、资料缓存的键)先过这一道,
+ * 这个名字是不是一个干净的文件名:从旧数据里读出来、要拼进路径的名字(历史行里的图名、资料缓存的键)先过这一道,
  * 绝不让它带着路径跑出那个目录。
  */
 export function isCleanFileName(name: string): boolean {
