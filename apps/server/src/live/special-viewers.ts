@@ -6,65 +6,62 @@
  * 渲染好的文字。B 站那边只负责把帧翻成这些值、绑好发送。
  */
 
-import { renderSpecialDanmaku, renderSpecialUserEnter } from "./live-text";
+import { renderViewerChat, renderViewerEnter } from "./live-text";
 import type {
 	CustomSpecialDanmakuUsersLike,
 	CustomSpecialUsersEnterTheRoomLike,
 } from "./live-types";
 
-export interface SpecialDanmakuOptions {
+export interface ViewerChatOptions {
 	/** 发弹幕的观众。`id` 是字符串(名单里存的就是字符串),比对时整串相等。 */
 	viewer: { id: string; name: string };
 	/** 弹幕正文。 */
 	text: string;
 	/** 这条订阅折好的「特别弹幕」那一格。 */
 	settings: CustomSpecialDanmakuUsersLike;
-	/** 主播名;拿不到给空串。 */
-	creatorName: string;
+	/** 主播;名字拿不到给空串。 */
+	creator: { name: string };
 }
 
-export interface SpecialUserEnterOptions {
+export interface ViewerEnterOptions {
 	/** 进场的观众。 */
 	viewer: { id: string; name: string };
 	/** 这条订阅折好的「特别进场」那一格。 */
 	settings: CustomSpecialUsersEnterTheRoomLike;
-	/** 主播名;拿不到给空串。 */
-	creatorName: string;
+	/** 主播;名字拿不到给空串。 */
+	creator: { name: string };
 }
 
-export interface SpecialUserDeps {
+export interface SpecialViewerDeps {
 	/** 绑到这条订阅上的发送:收一句渲染好的文字。 */
 	send: (text: string) => void;
 }
 
 /** 特别弹幕:开关开着、观众在名单里,才交出一句。不按推送目标挡(没配目标由推送层记成「无目标」)。 */
-export function pushSpecialDanmaku(options: SpecialDanmakuOptions, deps: SpecialUserDeps): void {
-	const { viewer, text, settings, creatorName } = options;
+export function pushViewerChat(options: ViewerChatOptions, deps: SpecialViewerDeps): void {
+	const { viewer, text, settings, creator } = options;
 	if (!settings.enable) return;
 	if (!settings.specialDanmakuUsers?.includes(viewer.id)) return;
 	deps.send(
-		renderSpecialDanmaku({
+		renderViewerChat({
 			template: settings.msgTemplate,
 			viewerName: viewer.name,
-			creatorName,
+			creatorName: creator.name,
 			text,
 		}),
 	);
 }
 
 /** 特别进场:同上。 */
-export function pushSpecialUserEnter(
-	options: SpecialUserEnterOptions,
-	deps: SpecialUserDeps,
-): void {
-	const { viewer, settings, creatorName } = options;
+export function pushViewerEnter(options: ViewerEnterOptions, deps: SpecialViewerDeps): void {
+	const { viewer, settings, creator } = options;
 	if (!settings.enable) return;
 	if (!settings.specialUsersEnterTheRoom?.includes(viewer.id)) return;
 	deps.send(
-		renderSpecialUserEnter({
+		renderViewerEnter({
 			template: settings.msgTemplate,
 			viewerName: viewer.name,
-			creatorName,
+			creatorName: creator.name,
 		}),
 	);
 }

@@ -61,7 +61,7 @@ export function applyTemplate(template: string, vars: Record<string, string>): s
  * 「特别弹幕」那一句:模板套上中立的值。占位符沿用 `mastername`(主播名)/ `uname`(发弹幕的人)/
  * `msg`(弹幕正文),与存档里的模板同一套写法。
  */
-export function renderSpecialDanmaku(params: {
+export function renderViewerChat(params: {
 	template: string;
 	viewerName: string;
 	creatorName: string;
@@ -75,7 +75,7 @@ export function renderSpecialDanmaku(params: {
 }
 
 /** 「特别进场」那一句:占位符 `mastername` / `uname`。 */
-export function renderSpecialUserEnter(params: {
+export function renderViewerEnter(params: {
 	template: string;
 	viewerName: string;
 	creatorName: string;

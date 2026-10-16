@@ -1580,7 +1580,7 @@ function enterEvent(uid: number, uname = "特别用户") {
 }
 
 describe("RoomSession.onUserAction", () => {
-	it("特别关注用户进房 → 渲染并推送(UserActions)", async () => {
+	it("特别关注用户进房 → 渲染并推送(ViewerEnter)", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSpecialUserSub()) as AnySession;
 
@@ -1589,7 +1589,7 @@ describe("RoomSession.onUserAction", () => {
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
 		// 文案由核心渲染(模板「进房模板」没有占位符,原样出来);观众名的替换由 live/ 的用例钉着。
 		expect(m.safeBroadcast.mock.calls[0]?.[1]).toEqual([{ kind: "text", text: "进房模板" }]);
-		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserActions);
+		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.ViewerEnter);
 	});
 
 	it("引擎已拆除 → 进房不再往外推", async () => {
@@ -1644,7 +1644,7 @@ describe("RoomSession.onUserAction", () => {
 });
 
 describe("RoomSession.onIncomeDanmaku — 特别关注用户的弹幕", () => {
-	it("没配 specialDanmaku 的推送目标 → 照样广播(UserDanmakuMsg),不在引擎里按目标挡", () => {
+	it("没配 specialDanmaku 的推送目标 → 照样广播(ViewerChat),不在引擎里按目标挡", () => {
 		const { ctx, m } = makeCtx();
 		const sub = makeSub({
 			customSpecialDanmakuUsers: {
@@ -1659,7 +1659,7 @@ describe("RoomSession.onIncomeDanmaku — 特别关注用户的弹幕", () => {
 		s.onIncomeDanmaku({ content: "你好", user: { name: "特别用户", uid: 42 } });
 
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
-		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserDanmakuMsg);
+		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.ViewerChat);
 	});
 });
 

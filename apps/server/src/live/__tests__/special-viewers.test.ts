@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import { pushSpecialDanmaku, pushSpecialUserEnter } from "../special-users";
+import { pushViewerChat, pushViewerEnter } from "../special-viewers";
 
 function danmaku(over: {
 	enable?: boolean;
@@ -15,7 +15,7 @@ function danmaku(over: {
 	creatorName?: string;
 }) {
 	const send = vi.fn<(text: string) => void>();
-	pushSpecialDanmaku(
+	pushViewerChat(
 		{
 			viewer: { id: over.viewerId ?? "123", name: "小明" },
 			text: over.text ?? "你好呀",
@@ -24,7 +24,7 @@ function danmaku(over: {
 				specialDanmakuUsers: "users" in over ? over.users : ["123"],
 				msgTemplate: over.msgTemplate ?? "-mastername 的直播间里 {uname} 说:-msg",
 			},
-			creatorName: over.creatorName ?? "主播A",
+			creator: { name: over.creatorName ?? "主播A" },
 		},
 		{ send },
 	);
@@ -39,7 +39,7 @@ function enter(over: {
 	creatorName?: string;
 }) {
 	const send = vi.fn<(text: string) => void>();
-	pushSpecialUserEnter(
+	pushViewerEnter(
 		{
 			viewer: { id: over.viewerId ?? "123", name: "小明" },
 			settings: {
@@ -47,14 +47,14 @@ function enter(over: {
 				specialUsersEnterTheRoom: "users" in over ? over.users : ["123"],
 				msgTemplate: over.msgTemplate ?? "{uname} 进入了 -mastername 的直播间",
 			},
-			creatorName: over.creatorName ?? "主播A",
+			creator: { name: over.creatorName ?? "主播A" },
 		},
 		{ send },
 	);
 	return send;
 }
 
-describe("pushSpecialDanmaku", () => {
+describe("pushViewerChat", () => {
 	it("名单命中 → 交出套好文案的一句话(-key 与 {key} 两种写法)", () => {
 		const send = danmaku({});
 		expect(send).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe("pushSpecialDanmaku", () => {
 	});
 });
 
-describe("pushSpecialUserEnter", () => {
+describe("pushViewerEnter", () => {
 	it("名单命中 → 交出套好文案的一句话(-key 与 {key} 两种写法)", () => {
 		const send = enter({});
 		expect(send).toHaveBeenCalledTimes(1);

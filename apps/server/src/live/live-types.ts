@@ -39,8 +39,8 @@ export enum LivePushType {
 	StartBroadcasting = 3,
 	LiveGuardBuy = 4,
 	Superchat = 6,
-	UserDanmakuMsg = 7,
-	UserActions = 8,
+	ViewerChat = 7,
+	ViewerEnter = 8,
 	LiveEnd = 9,
 	/**
 	 * 重启补报(`liveStart.catchUpOnBoot`):启动时发现正在播,补一张开播。卡与文字是「正在直播」那一套,

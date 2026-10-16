@@ -2,7 +2,7 @@ import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/inte
 import { DateTime } from "luxon";
 import { LivePushType } from "../../../live/live-types";
 import { pushMembership } from "../../../live/membership";
-import { pushSpecialDanmaku, pushSpecialUserEnter } from "../../../live/special-users";
+import { pushViewerChat, pushViewerEnter } from "../../../live/special-viewers";
 import { pushSuperchat } from "../../../live/superchat";
 import { fetchAvatar } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
@@ -521,14 +521,14 @@ export class RoomSession extends RoomSessionBase {
 			);
 		}
 		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
-		pushSpecialDanmaku(
+		pushViewerChat(
 			{
 				viewer: { id: String(body.user.uid), name: body.user.name },
 				text: body.content,
 				settings: this.sub.customSpecialDanmakuUsers,
-				creatorName: this.masterInfo?.username ?? "",
+				creator: { name: this.masterInfo?.username ?? "" },
 			},
-			{ send: this.specialTextSender(LivePushType.UserDanmakuMsg) },
+			{ send: this.specialTextSender(LivePushType.ViewerChat) },
 		);
 	}
 
@@ -843,13 +843,13 @@ export class RoomSession extends RoomSessionBase {
 		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
 		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
 		if (ev.action !== "enter") return;
-		pushSpecialUserEnter(
+		pushViewerEnter(
 			{
 				viewer: { id: String(ev.user.uid), name: ev.user.name },
 				settings: this.sub.customSpecialUsersEnterTheRoom,
-				creatorName: this.masterInfo?.username ?? "",
+				creator: { name: this.masterInfo?.username ?? "" },
 			},
-			{ send: this.specialTextSender(LivePushType.UserActions) },
+			{ send: this.specialTextSender(LivePushType.ViewerEnter) },
 		);
 	}
 }
