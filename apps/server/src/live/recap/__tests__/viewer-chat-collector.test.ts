@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DanmakuCollector } from "../danmaku-collector.js";
+import { ViewerChatCollector } from "../viewer-chat-collector.js";
 
 /**
  * 收集器的**内存规模**面。
@@ -9,12 +9,12 @@ import { DanmakuCollector } from "../danmaku-collector.js";
  * 内存自检日志(`apps/server/src/runtime/memory-probe.ts`)能把这条曲线
  * 和堆用量画在同一行上,回答「堆在涨的时候是不是它在涨」。
  */
-describe("DanmakuCollector.stats", () => {
+describe("ViewerChatCollector.stats", () => {
 	it("报出房间数,以及所有房间累计的词 / 发送者 key 数", () => {
-		const c = new DanmakuCollector([]);
-		c.recordDanmaku("100", "今天天气不错", "alice");
-		c.recordDanmaku("100", "今天天气不错", "bob");
-		c.recordDanmaku("200", "主播好厉害", "alice");
+		const c = new ViewerChatCollector([]);
+		c.recordViewerChat("100", "今天天气不错", "alice");
+		c.recordViewerChat("100", "今天天气不错", "bob");
+		c.recordViewerChat("200", "主播好厉害", "alice");
 
 		const s = c.stats();
 		expect(s.rooms).toBe(2);
@@ -25,9 +25,9 @@ describe("DanmakuCollector.stats", () => {
 	});
 
 	it("clear 掉的房间不再计入", () => {
-		const c = new DanmakuCollector([]);
-		c.recordDanmaku("100", "今天天气不错", "alice");
-		c.recordDanmaku("200", "主播好厉害", "bob");
+		const c = new ViewerChatCollector([]);
+		c.recordViewerChat("100", "今天天气不错", "alice");
+		c.recordViewerChat("200", "主播好厉害", "bob");
 
 		c.clear("100");
 

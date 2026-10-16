@@ -185,7 +185,7 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 			template: SUMMARY_TPL,
 			senderCount: 2,
 			fanClubName: "",
-			danmakuCount: 15,
+			viewerChatCount: 15,
 			topSenders: [
 				["alice", 10],
 				["bob", 5],
@@ -204,7 +204,7 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 				template: SUMMARY_TPL,
 				senderCount: 0,
 				fanClubName: "",
-				danmakuCount: 0,
+				viewerChatCount: 0,
 				topSenders: [],
 			}),
 		).not.toThrow();
@@ -215,7 +215,7 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 			template: SUMMARY_TPL,
 			senderCount: 5,
 			fanClubName: "",
-			danmakuCount: 99,
+			viewerChatCount: 99,
 			topSenders: [
 				["u1", 9],
 				["u2", 8],
@@ -234,7 +234,7 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 				template: "牌:-mdn",
 				senderCount: 1,
 				fanClubName: "小晨",
-				danmakuCount: 1,
+				viewerChatCount: 1,
 				topSenders: [],
 			}),
 		).toBe("牌:小晨");

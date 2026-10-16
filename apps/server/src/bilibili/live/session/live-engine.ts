@@ -3,9 +3,9 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import type { ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { PickLiveCover } from "../../../live/live-types";
-import { DanmakuCollector } from "../../../live/recap/danmaku-collector";
 import { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
 import definedStopWords, { parseStopWords } from "../../../live/recap/stop-words";
+import { ViewerChatCollector } from "../../../live/recap/viewer-chat-collector";
 import { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
@@ -100,7 +100,7 @@ export interface LiveEngineOptions {
 
 /**
  * Platform-neutral live-monitoring engine. Wires the five helpers
- * (listener-manager / danmaku-collector / wordcloud-generator /
+ * (listener-manager / viewer-chat-collector / wordcloud-generator /
  * template-renderer / live-summary-requester) together and exposes the public
  * surface the host runtime drives.
  *
@@ -116,7 +116,7 @@ export interface LiveEngineOptions {
 export class LiveEngine {
 	private readonly logger: Logger;
 	private readonly listener: ListenerManager;
-	private readonly danmakuCollector: DanmakuCollector;
+	private readonly danmakuCollector: ViewerChatCollector;
 	private readonly liveSummaryRequester: LiveSummaryRequester;
 	private config: LiveEngineConfig;
 	/**
@@ -134,7 +134,7 @@ export class LiveEngine {
 		const getImageRenderer = (): ImageRenderer | null => this.currentImageRenderer;
 
 		const stopwords = mergeStopWords(opts.config.wordcloudStopWords);
-		this.danmakuCollector = new DanmakuCollector(stopwords);
+		this.danmakuCollector = new ViewerChatCollector(stopwords);
 		const templateRenderer = new LiveTemplateRenderer();
 		const wordcloudGenerator = new WordcloudGenerator({
 			getImageRenderer,
@@ -259,7 +259,7 @@ export class LiveEngine {
 	}
 
 	/**
-	 * 弹幕收集器当前占着的 key 规模,给内存自检日志用(见 `DanmakuCollector.stats`)。
+	 * 弹幕收集器当前占着的 key 规模,给内存自检日志用(见 `ViewerChatCollector.stats`)。
 	 *
 	 * 这是引擎里唯一一处会随「弹幕量 × 在播时长」无界增长的结构,所以单独开一个
 	 * 口子报出来 —— 堆在涨的时候,得能一眼看出是不是它。

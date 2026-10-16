@@ -95,7 +95,7 @@ export function renderLiveSummary(params: {
 	senderCount: number;
 	/** 粉丝团的名字;拿不到给空串。 */
 	fanClubName: string;
-	danmakuCount: number;
+	viewerChatCount: number;
 	topSenders: Array<[string, number]>;
 }): string {
 	const top = params.topSenders;
@@ -106,7 +106,7 @@ export function renderLiveSummary(params: {
 	return applyTemplate(params.template, {
 		dmc: `${params.senderCount}`,
 		mdn: params.fanClubName,
-		dca: `${params.danmakuCount}`,
+		dca: `${params.viewerChatCount}`,
 		un1: at(0)[0],
 		dc1: `${at(0)[1]}`,
 		un2: at(1)[0],

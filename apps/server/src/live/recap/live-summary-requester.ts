@@ -77,7 +77,7 @@ export class LiveSummaryRequester {
 			return undefined;
 		}
 
-		const danmakuCount = Object.values(senderRecord).reduce((sum, val) => sum + val, 0);
+		const viewerChatCount = Object.values(senderRecord).reduce((sum, val) => sum + val, 0);
 		const top5Senders = Object.entries(senderRecord)
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 5);
@@ -89,7 +89,7 @@ export class LiveSummaryRequester {
 					"请生成直播总结",
 					`弹幕发言人数：${senderCount}`,
 					`粉丝牌名：${fanClubName}`,
-					`弹幕总数：${danmakuCount}`,
+					`弹幕总数：${viewerChatCount}`,
 					`热词TOP10：${top10Words.join("、")}`,
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 				].join("，");
@@ -109,7 +109,7 @@ export class LiveSummaryRequester {
 			template: customLiveSummary,
 			senderCount,
 			fanClubName,
-			danmakuCount,
+			viewerChatCount,
 			topSenders: top5Senders,
 		});
 	}

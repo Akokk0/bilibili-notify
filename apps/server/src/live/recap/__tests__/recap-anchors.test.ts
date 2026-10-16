@@ -42,7 +42,7 @@ function setup(
 		sortedWords: opts.sortedWords ?? [],
 		senderRecord: opts.senderRecord ?? {},
 		senderCount: 0,
-		danmakuCount: 0,
+		viewerChatCount: 0,
 	}));
 	const wordcloudGenerate = vi.fn(
 		async (

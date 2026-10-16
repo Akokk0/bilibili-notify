@@ -12,9 +12,9 @@ import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { ImageRef, Logger } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../content-builder";
 import type { LivePushAnchor } from "../live-types";
-import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import { parseStopWords } from "./stop-words";
+import type { ViewerChatCollector } from "./viewer-chat-collector";
 import type { WordcloudGenerator } from "./wordcloud-generator";
 
 export interface RecapOptions {
@@ -37,7 +37,7 @@ export interface RecapOptions {
 }
 
 export interface RecapDeps {
-	collector: Pick<DanmakuCollector, "snapshot">;
+	collector: Pick<ViewerChatCollector, "snapshot">;
 	wordcloud: Pick<WordcloudGenerator, "generate">;
 	summary: Pick<LiveSummaryRequester, "generate">;
 	content: LiveContentBuilder;

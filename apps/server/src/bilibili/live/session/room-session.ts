@@ -514,7 +514,7 @@ export class RoomSession extends RoomSessionBase {
 
 	private onIncomeDanmaku(body: { content: string; user: { name: string; uid: number } }): void {
 		if (this.ctx.collectsDanmaku(this.sub)) {
-			this.ctx.danmakuCollector.recordDanmaku(
+			this.ctx.danmakuCollector.recordViewerChat(
 				this.sub.subscriptionId,
 				body.content,
 				body.user.name,
@@ -556,7 +556,7 @@ export class RoomSession extends RoomSessionBase {
 		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
 		if (!collectsDanmaku && !pushesSC) return;
 		if (collectsDanmaku) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.subscriptionId, ev.content, ev.user.name);
+			this.ctx.danmakuCollector.recordViewerChat(this.sub.subscriptionId, ev.content, ev.user.name);
 		}
 		if (!pushesSC) return;
 		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);

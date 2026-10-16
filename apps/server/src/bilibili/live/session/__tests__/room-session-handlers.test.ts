@@ -99,7 +99,7 @@ function recordMain(spy: ReturnType<typeof vi.fn>) {
 }
 
 interface CtxMocks {
-	recordDanmaku: ReturnType<typeof vi.fn>;
+	recordViewerChat: ReturnType<typeof vi.fn>;
 	/** 交出去的每一次推送,由 {@link recordMain} 摊成 `(uid, 内容, 推送类型)`。 */
 	pushedMain: ReturnType<typeof vi.fn>;
 	fetchUserInfoInLive: ReturnType<typeof vi.fn>;
@@ -148,7 +148,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		track: () => {},
 	};
 	const m: CtxMocks = {
-		recordDanmaku: vi.fn(),
+		recordViewerChat: vi.fn(),
 		pushedMain: vi.fn(async () => {}),
 		// 默认不给头像地址:只有专门测头像的用例才覆写,其余用例的出卡输入里观众就没有 avatar。
 		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人" } })),
@@ -205,7 +205,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: m.renderLiveEnd,
 		},
-		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), register: vi.fn() },
+		danmakuCollector: { recordViewerChat: m.recordViewerChat, clear: vi.fn(), register: vi.fn() },
 		isSubscribed: m.isSubscribed,
 		collectsDanmaku: m.collectsDanmaku,
 		safeBroadcast: m.safeBroadcast,
@@ -241,12 +241,12 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.recordDanmaku).not.toHaveBeenCalled();
+		expect(m.recordViewerChat).not.toHaveBeenCalled();
 		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
-	it("仅收集弹幕(下播开着、词云开着)不推 SC → recordDanmaku 调用但不广播", async () => {
+	it("仅收集弹幕(下播开着、词云开着)不推 SC → recordViewerChat 调用但不广播", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(
 			ctx,
@@ -256,7 +256,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.recordDanmaku).toHaveBeenCalledTimes(1);
+		expect(m.recordViewerChat).toHaveBeenCalledTimes(1);
 		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
@@ -485,7 +485,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		});
 
 		// 现状:醒目留言的正文在判门槛**之前**就记进弹幕收集,被门槛挡掉的也算进词云。
-		// 验红:把门槛那一句 `if (!passesSuperchatMinAmount(…)) return;` 挪到 `recordDanmaku` 之前,这条红。
+		// 验红:把门槛那一句 `if (!passesSuperchatMinAmount(…)) return;` 挪到 `recordViewerChat` 之前,这条红。
 		it("现状:被门槛挡掉的 SC,正文照样先记进弹幕收集", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
@@ -495,7 +495,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				makeSub({ superchat: true, minSuperchatAmount: 100 }),
 			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price: 50 });
-			expect(m.recordDanmaku).toHaveBeenCalledWith("sub-1", "加油", "粉丝");
+			expect(m.recordViewerChat).toHaveBeenCalledWith("sub-1", "加油", "粉丝");
 			expect(m.pushedMain).not.toHaveBeenCalled();
 		});
 	});

@@ -2,12 +2,12 @@
 // 别再各翻一遍。
 
 export type { CustomLiveMsgLike } from "../../live/live-types";
-export { DanmakuCollector } from "../../live/recap/danmaku-collector";
 export {
 	LIVE_SUMMARY_MIN_SENDERS,
 	LiveSummaryRequester,
 } from "../../live/recap/live-summary-requester";
 export { default as defaultStopWords } from "../../live/recap/stop-words";
+export { ViewerChatCollector } from "../../live/recap/viewer-chat-collector";
 export {
 	WORDCLOUD_MIN_WORDS,
 	WORDCLOUD_TOP_WORDS,

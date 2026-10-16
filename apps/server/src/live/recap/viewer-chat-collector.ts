@@ -5,7 +5,7 @@ import { cut as jiebaCut } from "jieba-wasm";
  *
  * 弹幕记在**订阅 id** 名下(不认房号、uid:收集器是中立的,哪个平台的订阅都能用)。
  *
- * - `recordDanmaku(subscriptionId, content, username)` segments the danmaku via jieba
+ * - `recordViewerChat(subscriptionId, content, username)` segments the danmaku via jieba
  *   and updates both word-frequency and per-user count maps for that subscription.
  * - `snapshot(subscriptionId)` returns the sorted word list + raw sender map for
  *   passing to {@link WordcloudGenerator} / {@link LiveSummaryRequester}.
@@ -14,9 +14,9 @@ import { cut as jiebaCut } from "jieba-wasm";
  *
  * The collector intentionally does NOT decide whether collection is enabled —
  * the listener-manager checks the wordcloud / liveSummary master+target gates
- * before calling `recordDanmaku`. This keeps the collector zero-config.
+ * before calling `recordViewerChat`. This keeps the collector zero-config.
  */
-export class DanmakuCollector {
+export class ViewerChatCollector {
 	/** subscriptionId → { word: count } */
 	private readonly weightBySubscription = new Map<string, Record<string, number>>();
 	/** subscriptionId → { username: count } */
@@ -48,7 +48,7 @@ export class DanmakuCollector {
 	 * Tokenise an incoming danmaku and update word-frequency + per-user count.
 	 * Words shorter than 2 characters or in the stop-word set are dropped.
 	 */
-	recordDanmaku(subscriptionId: string, content: string, username: string): void {
+	recordViewerChat(subscriptionId: string, content: string, username: string): void {
 		this.register(subscriptionId);
 		const wordRecord = this.weightBySubscription.get(subscriptionId);
 		const senderRecord = this.senderBySubscription.get(subscriptionId);
@@ -68,24 +68,24 @@ export class DanmakuCollector {
 	 * - `sortedWords`: descending by frequency.
 	 * - `senderRecord`: raw username → count map (consumer decides ordering).
 	 * - `senderCount`: number of distinct usernames.
-	 * - `danmakuCount`: total danmaku recorded.
+	 * - `viewerChatCount`: total danmaku recorded.
 	 */
 	snapshot(subscriptionId: string): {
 		sortedWords: Array<[string, number]>;
 		senderRecord: Record<string, number>;
 		senderCount: number;
-		danmakuCount: number;
+		viewerChatCount: number;
 	} {
 		const weights = this.weightBySubscription.get(subscriptionId) ?? {};
 		const senders = this.senderBySubscription.get(subscriptionId) ?? {};
 		const sortedWords = Object.entries(weights).sort((a, b) => b[1] - a[1]);
 		const senderCount = Object.keys(senders).length;
-		const danmakuCount = Object.values(senders).reduce((sum, val) => sum + val, 0);
+		const viewerChatCount = Object.values(senders).reduce((sum, val) => sum + val, 0);
 		return {
 			sortedWords,
 			senderRecord: { ...senders },
 			senderCount,
-			danmakuCount,
+			viewerChatCount,
 		};
 	}
 

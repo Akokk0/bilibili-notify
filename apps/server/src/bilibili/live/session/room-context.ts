@@ -8,8 +8,8 @@ import {
 } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types";
-import type { DanmakuCollector } from "../../../live/recap/danmaku-collector";
 import type { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
+import type { ViewerChatCollector } from "../../../live/recap/viewer-chat-collector";
 import type { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
@@ -83,7 +83,7 @@ export interface RoomContextOptions {
 	templateRenderer: LiveTemplateRenderer;
 	wordcloudGenerator: WordcloudGenerator;
 	liveSummaryRequester: LiveSummaryRequester;
-	danmakuCollector: DanmakuCollector;
+	danmakuCollector: ViewerChatCollector;
 	/**
 	 * 渲染器 provider —— LiveEngine 在 image 服务上下线时通过 setImageRenderer
 	 * 替换内部状态;getter `imageRenderer` 每次现取,所有 RoomContext 自动同步。
@@ -142,7 +142,7 @@ export class RoomContextBase {
 	readonly templateRenderer: LiveTemplateRenderer;
 	readonly wordcloudGenerator: WordcloudGenerator;
 	readonly liveSummaryRequester: LiveSummaryRequester;
-	readonly danmakuCollector: DanmakuCollector;
+	readonly danmakuCollector: ViewerChatCollector;
 	/**
 	 * 渲染器 provider —— private 是因为外部应通过 `imageRenderer` getter 访问 ——
 	 * 后者会在 `config.imageEnabled === false` 时返回 null,让所有
