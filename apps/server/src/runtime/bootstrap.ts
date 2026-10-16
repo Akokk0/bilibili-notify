@@ -34,6 +34,7 @@ import { createIntegrationStore, type IntegrationStore } from "../integration-st
 import { createLinkResolverRegistry, type LinkResolverRegistry } from "../link-preview/registry.js";
 import { createLiveTable, type LiveTable } from "../live/live-table.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
+import { createValueRedactor } from "../logs/value-redactor.js";
 import { createProblemTable, type ProblemTable } from "../problems/problem-table.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
@@ -250,9 +251,13 @@ export function createAppRuntime(
 	roots: AppRuntimeRoots,
 	deps: AppRuntimeDeps,
 ): AppRuntime {
+	// 日志按值打码的登记册,**整个运行时只建这一个**:先于日志上下文建,日志出口从第一行就按它遮;
+	// 只交给集成存储宿主(下面),各集成的值经存储把手登记,不再往别处转手。
+	const valueRedactor = createValueRedactor();
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
 		level: bootstrap.logLevel,
+		valueRedactor,
 	});
 	// 监听者异步 reject 经 logger 报:过入口打码、进面板日志页与归档(总线本身不持 logger)。
 	const bus = createNodeMessageBus({
@@ -299,6 +304,7 @@ export function createAppRuntime(
 		dataRoot,
 		keyProvider,
 		logger: serviceCtx.logger,
+		redactor: valueRedactor,
 	});
 	serviceCtx.onDispose(() => integrationStore.close(), "flush");
 	// 推送出口的活登记表:没有任何依赖,先建,配置仓才能按在场适配器的规则验连接设置。

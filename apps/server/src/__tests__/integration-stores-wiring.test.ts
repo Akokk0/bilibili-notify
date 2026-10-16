@@ -29,6 +29,7 @@ import { loadExtensions } from "../extensions/loader.js";
 import { createExtensionMounts } from "../extensions/mount.js";
 import { createExtensionUpgrades } from "../extensions/upgrade.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
+import { createValueRedactor } from "../logs/value-redactor.js";
 import { registerBuiltinAdapters } from "../push/builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createExtensionsRoute } from "../routes/extensions.js";
@@ -82,7 +83,12 @@ beforeEach(async () => {
 		saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
 		logger: logger(),
 	});
-	store = createIntegrationStore({ dataRoot, keyProvider, logger: logger() });
+	store = createIntegrationStore({
+		dataRoot,
+		keyProvider,
+		logger: logger(),
+		redactor: createValueRedactor(),
+	});
 });
 
 afterEach(async () => {

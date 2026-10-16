@@ -54,6 +54,12 @@ export interface CreateKeyValueStoresOptions {
 	 * 关之前已经排上的写照常落完。读不了的袋子 `initial` 是空的,所以 `get` 也一律空。
 	 */
 	blocked?: () => string | undefined;
+	/**
+	 * 这一袋的内容有了新的「落实了的」样子就叫:建好时叫一次(起始那袋),之后每次**落盘成功**换了内存、
+	 * 或整袋换掉之后叫一次,带的是新的整袋。写失败、没变化(逐字节相同不写)的不叫。
+	 * 给日志打码登记用:登记的永远是**存下来了**的值。
+	 */
+	onChange?: (entries: ReadonlyMap<string, Json>) => void;
 }
 
 /** 建好之后拿回的把手:同一袋的两个存储,加整袋的控制口。 */
@@ -196,6 +202,7 @@ function makeLane(): <T>(task: () => Promise<T>) => Promise<T> {
 export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValueStoreHandle {
 	let current = new Map<string, Json>(opts.initial);
 	const lane = opts.lane ?? makeLane();
+	opts.onChange?.(current);
 
 	/** 限额:对「应用完之后的整袋」算。 */
 	function overLimit(
@@ -228,7 +235,10 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 		} catch (err) {
 			result = fail("unavailable", `存盘失败:${errorMessageOf(err)}`);
 		}
-		if (result.ok) current = next;
+		if (result.ok) {
+			current = next;
+			opts.onChange?.(current);
+		}
 		return result;
 	}
 

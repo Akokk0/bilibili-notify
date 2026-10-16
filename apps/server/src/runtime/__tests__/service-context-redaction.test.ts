@@ -8,6 +8,7 @@
 
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vite-plus/test";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import type { LogEntry } from "../../ws/types.js";
 import { createNodeServiceContext } from "../service-context.js";
 
@@ -153,5 +154,62 @@ describe("createNodeServiceContext — 入口打码", () => {
 		expect(lines.join("")).toContain("still logs");
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.msg).toBe("still logs");
+	});
+});
+
+/**
+ * 按值打码(登记册):登记过的值在 msg、字符串参数、对象参数、`Error` 里都被遮,stdout 与钩子(环形缓冲 / 归档)
+ * 同一份;值遮完,固定正则那一遍照跑。值都是一眼看得出的假值。
+ */
+describe("createNodeServiceContext — 按值打码", () => {
+	function valueHarness() {
+		const valueRedactor = createValueRedactor();
+		valueRedactor.replace("demo", "secrets", ["FAKE-SECRET-VALUE-1"]);
+		const lines: string[] = [];
+		const destination = new Writable({
+			write(chunk, _enc, cb) {
+				lines.push(String(chunk));
+				cb();
+			},
+		});
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "svc",
+			level: "debug",
+			pretty: false,
+			destination,
+			onLog: (e) => seen.push(e),
+			valueRedactor,
+		});
+		return { ctx, lines, seen, valueRedactor };
+	}
+
+	it("msg、字符串参数、对象参数、Error 里的登记值:stdout 与钩子都遮", () => {
+		const { ctx, lines, seen } = valueHarness();
+		ctx.logger.info("拿到 FAKE-SECRET-VALUE-1", "x=FAKE-SECRET-VALUE-1", {
+			nested: { token: "FAKE-SECRET-VALUE-1" },
+		});
+		ctx.logger.error("failed", new Error("boom FAKE-SECRET-VALUE-1"));
+
+		const stdout = lines.join("");
+		const hooked = JSON.stringify(seen);
+		for (const out of [stdout, hooked]) {
+			expect(out).not.toContain("FAKE-SECRET-VALUE-1");
+			expect(out).toContain("拿到 ***");
+			expect(out).toContain("boom ***");
+		}
+	});
+
+	it("值遮完,固定正则照跑:SESSDATA=<登记值> 变成 SESSDATA=***", () => {
+		const { ctx, seen } = valueHarness();
+		ctx.logger.info("SESSDATA=FAKE-SECRET-VALUE-1; other=FAKE-NOT-REGISTERED");
+		expect(seen[0]?.msg).toBe("SESSDATA=***; other=FAKE-NOT-REGISTERED");
+	});
+
+	it("值换掉之后,旧值不再遮(登记册现读,不在建上下文时拍快照)", () => {
+		const { ctx, seen, valueRedactor } = valueHarness();
+		valueRedactor.replace("demo", "secrets", ["FAKE-SECRET-VALUE-2"]);
+		ctx.logger.info("a FAKE-SECRET-VALUE-1 b FAKE-SECRET-VALUE-2");
+		expect(seen[0]?.msg).toBe("a FAKE-SECRET-VALUE-1 b ***");
 	});
 });

@@ -98,7 +98,7 @@ type KeyValueOp =                  // batch 的一步；判别键叫 kind，取�
 
 | | `state` | `secrets` |
 | --- | --- | --- |
-| 放什么 | 游标、分页令牌、小索引 | cookie、token |
+| 放什么 | 游标、分页令牌、小索引 | cookie、token。**只放凭据**：`secrets` 里的每一段字符串（不分是不是真机密）都会在整个进程的日志里被遮成 `***`，核心和别的集成的日志也一样；存了普通词（比如平台名、主机名），日志里的同名字样就都被抹掉 |
 | 落盘 | 明文，`runtime/extensions/<id>/state.json` | 主密钥加密，一个集成一个文件 `secrets/extensions/<id>/secrets.enc` |
 | 限额 | 单键 64KB、每个集成 1MB | 每个集成 256KB |
 | 备份 | 不进 | 只进完整备份（普通备份抹掉） |

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { integrationSecretsFile } from "../integration-store/files.js";
 import { createIntegrationStore } from "../integration-store/store.js";
+import { createValueRedactor } from "../logs/value-redactor.js";
 import { dataPath } from "../runtime/roots.js";
 import { silentLogger } from "./support/silent-logger.js";
 
@@ -38,7 +39,12 @@ async function world() {
 		saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
 		logger: silentLogger,
 	});
-	const store = createIntegrationStore({ dataRoot, keyProvider, logger: silentLogger });
+	const store = createIntegrationStore({
+		dataRoot,
+		keyProvider,
+		logger: silentLogger,
+		redactor: createValueRedactor(),
+	});
 	return { dataRoot, keyProvider, store };
 }
 

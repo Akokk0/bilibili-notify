@@ -47,6 +47,23 @@ export interface CreateIntegrationHttpOptions {
 	setTimeout: (fn: () => void, ms: number) => Disposable;
 }
 
+/**
+ * 罐子里每条 cookie 的值(与百分号解码后的写法)一到罐子里就经存储把手的 `redact` 登记成 `cookies` 这一种,
+ * 整批换;集成停下时撤掉。登记不等存盘 —— 罐子要攒一阵才存,拿着闸更久,这段窗口里日志不能露出明文。
+ * 归属就是把手的集成,这里不传、也不可能对不上。
+ */
+const COOKIES_KIND = "cookies";
+
+/** 百分号编码的值解码后的写法(日志里两种写法都可能出现);解不开或没变化回 `undefined`。 */
+function decodedForm(value: string): string | undefined {
+	try {
+		const decoded = decodeURIComponent(value);
+		return decoded === value ? undefined : decoded;
+	} catch {
+		return undefined;
+	}
+}
+
 /** 宿主替集成管着的 cookie 罐:罐子本体,加它存盘的闸。 */
 export interface CookieJarHandle {
 	readonly jar: CookieJar;
@@ -124,6 +141,17 @@ export async function createIntegrationHttp(
 	let disposing: Promise<void> | undefined;
 	const restoredHooks: Array<() => void | Promise<void>> = [];
 
+	/** 罐子此刻每条 cookie 的值整桶登记进打码登记册。不能挂在 `loading` / 闸后面:装罐和攒着没存的都要遮。 */
+	function registerJarValues(): void {
+		const values: string[] = [];
+		for (const cookie of jar.serialize()) {
+			values.push(cookie.value);
+			const decoded = decodedForm(cookie.value);
+			if (decoded !== undefined) values.push(decoded);
+		}
+		stores.redact(COOKIES_KIND, values);
+	}
+
 	/** 把存着的 `http.cookies` 装进罐子(没有就清空),包在 `loading` 里。 */
 	function loadJarFromStore(): void {
 		loading = true;
@@ -144,6 +172,7 @@ export async function createIntegrationHttp(
 			}
 		} finally {
 			loading = false;
+			registerJarValues();
 		}
 	}
 
@@ -188,6 +217,8 @@ export async function createIntegrationHttp(
 
 	// 先订阅再装罐,故意:开机这一次装罐不回写靠的是 `loading` 标志,不靠订阅的时机。
 	const unsubscribe = jar.onChange(() => {
+		// 先登记再看闸:登记不受 `loading` 管,装罐的值也要遮。
+		registerJarValues();
 		if (loading) return;
 		dirty = true;
 		startTimer();
@@ -247,6 +278,7 @@ export async function createIntegrationHttp(
 		disposing ??= (async () => {
 			disposed = true;
 			unsubscribe();
+			stores.redact(COOKIES_KIND, []);
 			replacedSubscription.dispose();
 			clearTimer();
 			// 有闸说明有一串还没提交的登录态:不存中间状态。

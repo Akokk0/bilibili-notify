@@ -19,6 +19,7 @@ import { join } from "node:path";
 import type { Json, Logger } from "@bilibili-notify/internal";
 import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { dataPath } from "../../runtime/roots.js";
 import { integrationSecretsFile, integrationStateFile } from "../files.js";
 import { createIntegrationStore, disposeThenClose } from "../store.js";
@@ -39,7 +40,15 @@ function setup() {
 		saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
 		logger,
 	});
-	return { store: createIntegrationStore({ dataRoot, keyProvider, logger }), keyProvider };
+	return {
+		store: createIntegrationStore({
+			dataRoot,
+			keyProvider,
+			logger,
+			redactor: createValueRedactor(),
+		}),
+		keyProvider,
+	};
 }
 
 async function exists(path: string): Promise<boolean> {

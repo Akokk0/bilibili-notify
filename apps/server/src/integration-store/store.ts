@@ -13,6 +13,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import { type KeyProvider, removeDirectory } from "@bilibili-notify/storage";
+import { stringLeaves, type ValueRedactor } from "../logs/value-redactor.js";
 import { dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
 import {
@@ -41,6 +42,12 @@ export interface CreateIntegrationStoreOptions {
 	/** runtime 那一个,与 `config-secrets.enc` 同一把主密钥。 */
 	keyProvider: KeyProvider;
 	logger: Logger;
+	/**
+	 * 日志按值打码的登记册(运行时只建一个,日志出口按它遮):每个集成 `secrets` 里的每一段字符串(含宿主那一面的
+	 * `http.` 键)在开把手时、每次落盘成功后、恢复备份整袋换之后登记;其它值经把手的 `redact` 登记;
+	 * 把手关了全撤。`state` 不登记(明文、不是凭据)。
+	 */
+	redactor: Pick<ValueRedactor, "replace" | "clear">;
 }
 
 export interface IntegrationStore {
@@ -76,6 +83,13 @@ export interface IntegrationStoreHandle {
 		hostOps: () => readonly KeyValueOp[],
 		integrationOps: readonly KeyValueOp[],
 	): Promise<Result>;
+	/**
+	 * 登记要在日志里按值遮的值(罐子里的 cookie 之类宿主替集成管着的、不在 `secrets` 里单独出现的值)。
+	 * 归属就是这个把手的集成,不另传;`kind` 是这批值的种类,同一种**整批换**(旧的不再遮,给空就是撤掉这一种);
+	 * 少于 8 个字符的值不遮。把手 `close()` 时这个集成名下所有种类一起撤,关了之后再登记的不收。
+	 * `secrets` 袋里的字符串宿主自己登记(种类 `secrets`),不用经这里。
+	 */
+	redact(kind: string, values: Iterable<string>): void;
 	/** 密钥被 `restoreSecrets` 整袋换了之后叫;按登记的先后逐个等。 */
 	onSecretsReplaced(fn: () => void | Promise<void>): Disposable;
 	/** 集成停下时关:此后四个存储的写一律回 `unavailable`;文件留着。幂等。 */
@@ -99,12 +113,18 @@ export async function disposeThenClose(
 	}
 }
 
+/**
+ * 登记册里 `secrets` 这一种的名字,归存储宿主自己(`secrets` 袋有变就整批换)。别的种类(罐子的 `cookies` 之类)
+ * 经把手的 `redact` 登记,不要再用这个名字。
+ */
+const SECRETS_KIND = "secrets";
+
 function isKnownKey(key: string): boolean {
 	return RESERVED_INTEGRATION_KEYS.includes(key) || ExtensionIdSchema.safeParse(key).success;
 }
 
 export function createIntegrationStore(opts: CreateIntegrationStoreOptions): IntegrationStore {
-	const { dataRoot, keyProvider, logger } = opts;
+	const { dataRoot, keyProvider, logger, redactor } = opts;
 	/** 整个宿主一条写道:键是 `<集成键>:state` / `<集成键>:secrets`。 */
 	const queue = createSerialQueue();
 	const opened = new Map<string, OpenEntry>();
@@ -163,6 +183,11 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				persist: (entries) => writeIntegrationSecretsFile({ dataRoot, key, keyProvider }, entries),
 				lane: (task) => queue.run(secretsLane(key), task),
 				blocked: () => closedNote() ?? secretsUnreadable,
+				// 把手关了之后才落完的写(关之前已经排上的)不再登记:关的那一刻已经撤干净了。
+				onChange: (entries) => {
+					if (closed) return;
+					redactor.replace(key, SECRETS_KIND, [...entries.values()].flatMap(stringLeaves));
+				},
 			});
 			const entry: OpenEntry = { secrets, replacedHooks: [] };
 			opened.set(key, entry);
@@ -172,6 +197,11 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				hostState: state.host,
 				hostSecrets: secrets.host,
 				commitSecrets: secrets.commit,
+				redact(kind, values) {
+					// 关了之后不再收:关的那一刻已经撤干净了,晚来的登记会变成永远撤不掉的残留。
+					if (closed) return;
+					redactor.replace(key, kind, values);
+				},
 				onSecretsReplaced(fn) {
 					entry.replacedHooks.push(fn);
 					return {
@@ -184,6 +214,8 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				close() {
 					if (closed) return;
 					closed = true;
+					// 这个集成名下所有种类的值一起撤(`secrets` 的、罐子的、以后 `ctx.redact` 的)。
+					redactor.clear(key);
 					if (opened.get(key) === entry) opened.delete(key);
 				},
 			};

@@ -16,6 +16,7 @@ import { FileKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
+import { createValueRedactor } from "../../../logs/value-redactor.js";
 import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
 import { ApiClient } from "../../api/api-client.js";
 import { Api } from "../../api/index.js";
@@ -71,7 +72,12 @@ function world(logger?: Logger) {
 		},
 	};
 	const keyFetchCount = () => keyFetches;
-	const store = createIntegrationStore({ dataRoot: dataDir, keyProvider, logger: host.logger });
+	const store = createIntegrationStore({
+		dataRoot: dataDir,
+		keyProvider,
+		logger: host.logger,
+		redactor: createValueRedactor(),
+	});
 	/** 上一次关停之后盘上这个集成的 `secrets` 整袋。 */
 	const disk = async (): Promise<Map<string, Json>> => {
 		const read = await readIntegrationSecretsFile({

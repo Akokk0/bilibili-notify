@@ -2,6 +2,7 @@ import type { Disposable, DisposePhase, Logger, ServiceContext } from "@bilibili
 import { type DestinationStream, type Logger as PinoLogger, pino } from "pino";
 import prettyFactory from "pino-pretty";
 import { redactLogCall } from "../logs/redact.js";
+import type { ValueRedactor } from "../logs/value-redactor.js";
 import type { LogEntry, LogLevel } from "../ws/types.js";
 
 export interface NodeServiceContextOptions {
@@ -23,6 +24,11 @@ export interface NodeServiceContextOptions {
 	 * 非 pretty 直接作为 pino 的目标 stream。测试用它捕获输出;生产不传。
 	 */
 	destination?: DestinationStream;
+	/**
+	 * 按值打码的登记册(`logs/value-redactor.ts`):各集成登记的密钥值,在固定正则之前先按值遮。
+	 * 现读、不拍快照 —— 登记在运行中随时变。不给就只跑固定正则(测试里不关心时)。
+	 */
+	valueRedactor?: Pick<ValueRedactor, "scrub" | "has">;
 }
 
 /** 设置里日志等级的那两格:总等级,与按键(核心的格或集成键)单独写的等级。 */
@@ -135,7 +141,7 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 		// 旁路与 stdout 用同一个 live pino level 守门,面板日志页 / 归档逐模块与控制台一致。
 		// `isLevelEnabled` 每次重读实例的 `.level`,config-changed 的 `applyLogLevels()` 热改免重启。
 		if (!target.isLevelEnabled(level)) return;
-		const safe = redactLogCall(msg, args);
+		const safe = redactLogCall(msg, args, opts.valueRedactor);
 		callPino(target[level].bind(target) as never, safe.msg, safe.args);
 		fanOut(name, level, safe.msg, safe.args);
 	};

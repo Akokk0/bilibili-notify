@@ -17,6 +17,7 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { readIntegrationStateFile } from "../../integration-store/files.js";
 import { createIntegrationStore } from "../../integration-store/store.js";
 import { createIntegrationHttp } from "../../integrations/http.js";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { makeServiceContext } from "../api/__tests__/support/make-api.js";
 import { createBiliContext } from "../context.js";
 
@@ -52,8 +53,14 @@ afterEach(async () => {
 function makeStore() {
 	const host = makeServiceContext();
 	const keyProvider = new FileKeyProvider(join(dataDir, "secrets", "master.key"), host.logger);
-	const store = createIntegrationStore({ dataRoot: dataDir, keyProvider, logger: host.logger });
-	return { host, store };
+	const redactor = createValueRedactor();
+	const store = createIntegrationStore({
+		dataRoot: dataDir,
+		keyProvider,
+		logger: host.logger,
+		redactor,
+	});
+	return { host, store, redactor };
 }
 
 describe("createBiliContext", () => {
@@ -94,6 +101,28 @@ describe("createBiliContext", () => {
 		expect(identity.userAgent).toBe(firstUa);
 	});
 
+	it("罐子的 cookie 值与 secrets 的值经存储把手登记进打码登记册(B 站上下文不另收登记册),收摊后撤掉", async () => {
+		const { host, store, redactor } = makeStore();
+		const { ctx, dispose } = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+		});
+		ctx.cookies.jar.load([
+			{ key: "SESSDATA", value: "FAKE-JAR-COOKIE-1", domain: "bilibili.com", path: "/" },
+		]);
+		await ctx.secrets.set("refreshToken", "FAKE-REFRESH-TOKEN");
+		expect(redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN")).toBe(
+			"jar=*** token=***",
+		);
+
+		await dispose();
+		expect(redactor.scrub("jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN")).toBe(
+			"jar=FAKE-JAR-COOKIE-1 token=FAKE-REFRESH-TOKEN",
+		);
+		await store.close();
+	});
+
 	it("ctx 带着公共那一面、请求客户端与罐子的把手;`http.` 开头的键 B 站自己写不进去", async () => {
 		const { host, store } = makeStore();
 		const { ctx, dispose } = await createBiliContext({
@@ -120,7 +149,11 @@ describe("createBiliContext", () => {
 		vi.mocked(createIntegrationHttp).mockRejectedValueOnce(new Error("boom"));
 
 		await expect(
-			createBiliContext({ stores: store, serviceCtx: host.serviceCtx, problems: ignoredProblems }),
+			createBiliContext({
+				stores: store,
+				serviceCtx: host.serviceCtx,
+				problems: ignoredProblems,
+			}),
 		).rejects.toThrow("boom");
 
 		expect(store.isOpen("bilibili")).toBe(false);

@@ -18,6 +18,7 @@ import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
+import { createValueRedactor } from "../../../logs/value-redactor.js";
 import type { BiliContext } from "../../context.js";
 import {
 	type CreateAuthSystemOptions,
@@ -99,6 +100,7 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 			dataRoot: dataDir,
 			keyProvider,
 			logger: ctx.logger,
+			redactor: createValueRedactor(),
 		});
 		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
 		expect(captured.callbacks?.onCookiesRefreshed).toBeTypeOf("function");

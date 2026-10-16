@@ -86,6 +86,8 @@ export function memoryStores(): { state: KeyValueStore; secrets: KeyValueStore }
  */
 export function memoryStoreHandle(
 	initial: { state?: Record<string, Json>; secrets?: Record<string, Json> } = {},
+	/** 按值打码的登记口;不给就是不登记(大多数测试不关心打码)。 */
+	redact: (kind: string, values: Iterable<string>) => void = () => {},
 ) {
 	const state = memoryKeyValueStores("state", initial.state);
 	const secrets = memoryKeyValueStores("secrets", initial.secrets);
@@ -96,6 +98,7 @@ export function memoryStoreHandle(
 		hostState: state.stores.host,
 		hostSecrets: secrets.stores.host,
 		commitSecrets: secrets.stores.commit,
+		redact,
 		onSecretsReplaced: (): Disposable => ({ dispose() {} }),
 		close() {
 			closed = true;

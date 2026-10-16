@@ -20,6 +20,7 @@ import {
 	createIntegrationStore,
 	type IntegrationStoreHandle,
 } from "../../integration-store/store.js";
+import { createValueRedactor } from "../../logs/value-redactor.js";
 import { dataPath } from "../../runtime/roots.js";
 import {
 	COOKIE_SAVE_DELAY_MS,
@@ -124,17 +125,30 @@ const C0 = JSON.stringify([
 function world(opts: { secrets?: Record<string, Json>; state?: Record<string, Json> } = {}) {
 	const secrets = memoryKeyValueStores("secrets", opts.secrets);
 	const state = memoryKeyValueStores("state", opts.state);
+	const replacedHooks: Array<() => void | Promise<void>> = [];
+	/** 假把手的 `redact` 登记到这一份册子里,归属 `bilibili`(与真把手"归属就是把手的集成"同一个形状)。 */
+	const redactor = createValueRedactor();
 	const handle: IntegrationStoreHandle = {
 		state: state.store,
 		secrets: secrets.store,
 		hostState: state.stores.host,
 		hostSecrets: secrets.stores.host,
 		commitSecrets: secrets.stores.commit,
-		onSecretsReplaced: (): Disposable => ({ dispose() {} }),
+		redact: (kind, values) => redactor.replace("bilibili", kind, values),
+		onSecretsReplaced(fn): Disposable {
+			replacedHooks.push(fn);
+			return { dispose() {} };
+		},
 		close() {},
 	};
 	return {
 		handle,
+		redactor,
+		/** 模拟恢复备份:先把袋子里的 `http.cookies` 换成这段,再叫登记过的「密钥被换了」。 */
+		async restoreCookies(cookiesJson: string) {
+			await secrets.stores.host.set(HTTP_COOKIES_KEY, cookiesJson);
+			for (const fn of [...replacedHooks]) await fn();
+		},
 		secrets,
 		state,
 		/** 盘上 `secrets` 此刻的整袋:最后一笔落盘,没有就是起始的。 */
@@ -152,7 +166,7 @@ async function build(w: ReturnType<typeof world>, extra: { saveDelayMs?: number 
 		setTimeout: (fn, ms) => clock.setTimeout(fn, ms),
 		...extra,
 	});
-	return { http, clock, ...log };
+	return { http, clock, redactor: w.redactor, ...log };
 }
 
 const PAIR0: Record<string, Json> = { [HTTP_COOKIES_KEY]: C0, refreshToken: "T0" };
@@ -504,7 +518,8 @@ describe("8. 恢复备份整袋换掉之后(真宿主)", () => {
 			saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
 			logger: log.logger,
 		});
-		const store = createIntegrationStore({ dataRoot, keyProvider, logger: log.logger });
+		const redactor = createValueRedactor();
+		const store = createIntegrationStore({ dataRoot, keyProvider, logger: log.logger, redactor });
 		const handle = await store.open("bilibili");
 		const clock = makeClock();
 		const http = await createIntegrationHttp({
@@ -730,6 +745,81 @@ describe("9. 身份", () => {
 			setTimeout: (fn, ms) => makeClock().setTimeout(fn, ms),
 		});
 		expect(seen).toEqual([inRange.userAgent]);
+	});
+});
+
+/**
+ * 罐子里的每条 cookie 值,一到罐子里就登记进打码登记册(不等存盘):罐子要攒 2 秒才存,拿着闸更久,
+ * 这段窗口里日志不能露出明文。值都是假值。
+ */
+describe("罐子的值登记要打码", () => {
+	const jarOf = (value: string, key = "SESSDATA") =>
+		JSON.stringify([{ key, value, expires: "Infinity", domain: "bilibili.com", path: "/" }]);
+
+	it("开机装罐:存着的值当场登记(不触发存盘)", async () => {
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: jarOf("FAKE-BOOT-COOKIE-1") } });
+		const { redactor, clock } = await build(w);
+		expect(redactor.scrub("v=FAKE-BOOT-COOKIE-1")).toBe("v=***");
+		expect(clock.scheduled).toBe(0);
+	});
+
+	it("收到一条 Set-Cookie:存盘之前(假时钟没到点)值已经被遮", async () => {
+		const w = world();
+		const { http, redactor, clock } = await build(w);
+		setCookie(http.cookies.jar, "SESSDATA", "FAKE-FRESH-COOKIE-1");
+		expect(w.secrets.persists).toHaveLength(0);
+		expect(redactor.scrub("v=FAKE-FRESH-COOKIE-1")).toBe("v=***");
+		clock.advance(COOKIE_SAVE_DELAY_MS - 1);
+		expect(w.secrets.persists).toHaveLength(0);
+	});
+
+	it("拿着闸的时候收到的也遮", async () => {
+		const w = world();
+		const { http, redactor } = await build(w);
+		const gate = http.cookies.hold();
+		setCookie(http.cookies.jar, "SESSDATA", "FAKE-HELD-COOKIE-1");
+		expect(redactor.scrub("FAKE-HELD-COOKIE-1")).toBe("***");
+		gate.dispose();
+	});
+
+	it("值换了:新的遮,旧的不再遮;少于 8 个字符的不遮", async () => {
+		const w = world();
+		const { http, redactor } = await build(w);
+		setCookie(http.cookies.jar, "SESSDATA", "FAKE-OLD-COOKIE-1");
+		setCookie(http.cookies.jar, "SESSDATA", "FAKE-NEW-COOKIE-2");
+		setCookie(http.cookies.jar, "short", "abc1234");
+		expect(redactor.scrub("FAKE-OLD-COOKIE-1 FAKE-NEW-COOKIE-2 abc1234")).toBe(
+			"FAKE-OLD-COOKIE-1 *** abc1234",
+		);
+	});
+
+	it("登出(整罐清空):值不再遮", async () => {
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: jarOf("FAKE-LOGOUT-COOKIE") } });
+		const { http, redactor } = await build(w);
+		http.cookies.jar.clear();
+		expect(redactor.scrub("FAKE-LOGOUT-COOKIE")).toBe("FAKE-LOGOUT-COOKIE");
+	});
+
+	it("恢复备份整罐换:换进来的值登记,换走的不再遮", async () => {
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: jarOf("FAKE-BEFORE-RESTORE") } });
+		const { redactor } = await build(w);
+		await w.restoreCookies(jarOf("FAKE-AFTER-RESTORE"));
+		expect(redactor.scrub("FAKE-BEFORE-RESTORE FAKE-AFTER-RESTORE")).toBe(
+			"FAKE-BEFORE-RESTORE ***",
+		);
+	});
+
+	it("值是百分号编码的:原样与解码后的两种写法都遮", async () => {
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: jarOf("FAKE%2CCOMMA%2CVALUE", "enc") } });
+		const { redactor } = await build(w);
+		expect(redactor.scrub("a FAKE%2CCOMMA%2CVALUE b FAKE,COMMA,VALUE c")).toBe("a *** b *** c");
+	});
+
+	it("集成停下(dispose):罐子的值撤掉", async () => {
+		const w = world({ secrets: { [HTTP_COOKIES_KEY]: jarOf("FAKE-DISPOSE-COOKIE") } });
+		const { http, redactor } = await build(w);
+		await http.dispose();
+		expect(redactor.scrub("FAKE-DISPOSE-COOKIE")).toBe("FAKE-DISPOSE-COOKIE");
 	});
 });
 

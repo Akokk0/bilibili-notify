@@ -22,6 +22,8 @@ import {
 	readIntegrationSecretsFile,
 } from "../../../../../integration-store/files.js";
 import { parseStoredEntries } from "../../../../../integration-store/key-value-store.js";
+import { redactLogCall } from "../../../../../logs/redact.js";
+import { createValueRedactor } from "../../../../../logs/value-redactor.js";
 import { listGenerationEntries } from "../../../../../runtime/generations.js";
 import { dataPath } from "../../../../../runtime/roots.js";
 import { Api } from "../../../../api/index.js";
@@ -31,12 +33,23 @@ const repoRoot = fileURLToPath(new URL("../../../../../../../..", import.meta.ur
 /** 服务端的数据目录(宿主根);跑别的实例用 BN_DATA_DIR 指过去。 */
 export const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
 
-export const consoleLogger: Logger = {
-	info: console.log,
-	warn: console.warn,
-	error: console.error,
-	debug: () => {},
-};
+/**
+ * 这几个脚本自己的打码登记册:读真登录态的脚本,日志也要过与服务端同一个遮法 —— 先按登记的值(罐子里的
+ * cookie 经下面内存把手的 `redact` 登记进来)、再按固定形状。不然脚本一打 cookie 就是明文落在终端里。
+ */
+const scriptRedactor = createValueRedactor();
+
+/** 与服务端日志出口同一个遮法(`redactLogCall`)的 console 日志器。 */
+export const consoleLogger: Logger = (() => {
+	// 打的时候才取 console 上的口(不在模块加载时拍快照),换了 console 的实现也跟着走。
+	const write =
+		(method: "log" | "warn" | "error") =>
+		(msg: string, ...args: unknown[]): void => {
+			const safe = redactLogCall(msg, args, scriptRedactor);
+			console[method](safe.msg, ...safe.args);
+		};
+	return { info: write("log"), warn: write("warn"), error: write("error"), debug: () => {} };
+})();
 
 /** 真时钟的 ServiceContext。 */
 export function makeServiceCtx(logger: Logger = consoleLogger): ServiceContext {
@@ -109,12 +122,18 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 	// 浏览器身份也读存着的那一份(同一个 cookie 会话在不同 UA 间跳变是机器人特征);读不到就让宿主现生成。
 	// 不能用 `readIntegrationStateFile`:文件坏了它会把线上文件隔离改名。这里只读文本、只解析,读不出就当没有。
 	const identity = await readStoredIdentity(dataRoot);
-	const { handle } = memoryStoreHandle({
-		// 只放罐子,不放令牌。
-		secrets: { "http.cookies": cookies },
-		state:
-			identity === undefined ? undefined : ({ "http.identity": identity } as Record<string, Json>),
-	});
+	const { handle } = memoryStoreHandle(
+		{
+			// 只放罐子,不放令牌。
+			secrets: { "http.cookies": cookies },
+			state:
+				identity === undefined
+					? undefined
+					: ({ "http.identity": identity } as Record<string, Json>),
+		},
+		// 罐子里的 cookie 值登记进脚本自己的登记册,`consoleLogger` 按它遮。
+		(kind, values) => scriptRedactor.replace(BILIBILI_SOURCE_KEY, kind, values),
+	);
 	const context = await createBiliContext({
 		stores: { open: async () => handle },
 		serviceCtx,

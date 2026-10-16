@@ -18,6 +18,7 @@ import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSecretStore } from "../../../config/secret-store.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
+import { createValueRedactor } from "../../../logs/value-redactor.js";
 import {
 	type CreateAuthSystemOptions,
 	createAuthSystem as createAuthSystemWith,
@@ -94,6 +95,7 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 			dataRoot: dataDir,
 			keyProvider,
 			logger: ctx.logger,
+			redactor: createValueRedactor(),
 		});
 		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
 		await auth.auth.logout();
