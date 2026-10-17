@@ -8,7 +8,7 @@
  * 「一整页全红」—— 面板一次拿 200 行,就是 600 份订阅 / 目标 / 连接副本,而订阅里
  * 还装着 per-UP 的 templates / cardStyle / extras。闸越往后加条件,每行付的钱越多。
  *
- * 形状照着 `link-preview/link-scope.ts` 的 `resolveLinkParsingPolicies` 来:把配置折成一张
+ * 形状照着 `link-preview/link-scope.ts` 的 `resolveLinkPreviewPolicies` 来:把配置折成一张
  * 查表,只在配置真的变了时重建。
  *
  * 🔴 **惰性建、不预建**。`createAppRuntime` 跑在 `configStore.load()` **之前**,而

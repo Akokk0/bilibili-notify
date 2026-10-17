@@ -37,8 +37,8 @@ import type {
 	GlobalConfig,
 	Identity,
 	ImageRef,
-	LinkParsingConfig,
-	LinkParsingPolicy,
+	LinkPreviewPolicy,
+	LinkPreviewSettings,
 	MembershipTemplateBundle,
 	NotificationPayload,
 	PayloadSegment,
@@ -87,7 +87,7 @@ import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
-import { resolveLinkParsingPolicies } from "../link-preview/link-scope.js";
+import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { bindLivePush } from "../live/live-push.js";
@@ -179,13 +179,13 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	extensionPlatformLabel(extensionId: string): string | undefined;
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
-	linkParsing(): LinkParsingConfig;
+	linkPreview(): LinkPreviewSettings;
 	/**
 	 * 链接解析里某个群的答案:解不解析、回什么(键与表见 `link-preview/link-scope.ts`)。表随 globals /
 	 * targets / connections 三种 config-changed 重算 —— 例外引用的是目标,目标或连接停用、
 	 * 删掉都会改变答案,只盯 globals 的话面板上开着、实际却还在按旧目标表解析。
 	 */
-	linkPolicyFor(key: string): LinkParsingPolicy;
+	linkPolicyFor(key: string): LinkPreviewPolicy;
 	/**
 	 * 链接卡的呈现 = 推送的动态卡在没有 per-UP 覆盖时的呈现:全局「动态」样式(含图廊
 	 * 轮换,**每调一次推进一次游标**)+ 全局那套皮肤。每张卡调一次,别攥着。
@@ -990,7 +990,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	let linkCard = linkCardViewOf(initialGlobals);
 	// 逐群答案从默认行 + 例外 + 目标表 + 连接表算出来,三者任一变了都重算(见接口上的说明)。
 	const linkPoliciesOf = () =>
-		resolveLinkParsingPolicies({
+		resolveLinkPreviewPolicies({
 			config: linkCard.config,
 			targets: opts.configStore.getTargets(),
 			connections: opts.configStore.getConnections(),
@@ -1243,7 +1243,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dispatcher.listAddressCandidates(connectionId, scope, signal),
 		sendToAddress: (connectionId, session, payload) =>
 			dispatcher.sendToAddress(connectionId, session, payload),
-		linkParsing: () => linkCard.config,
+		linkPreview: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
 			// 链接卡就是「全局那张动态卡」:吃全局那份动态样式(主人定的:它跟着全局走)。

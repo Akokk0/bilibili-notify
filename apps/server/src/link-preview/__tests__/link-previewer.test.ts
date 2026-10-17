@@ -12,9 +12,9 @@ import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type {
 	ConnectionCapabilities,
 	DeliveryResult,
-	LinkParsingConfig,
-	LinkParsingPolicy,
 	LinkPreview,
+	LinkPreviewPolicy,
+	LinkPreviewSettings,
 	LinkResolver,
 	NotificationPayload,
 	Post,
@@ -96,10 +96,10 @@ function previewOf(id: string, withNativeShare = true): LinkPreview {
 }
 
 function makeParser(
-	over: Partial<LinkParsingConfig> = {},
+	over: Partial<LinkPreviewSettings> = {},
 	limits?: Partial<LinkLimits>,
 	extra: {
-		policyFor?: (key: string) => LinkParsingPolicy;
+		policyFor?: (key: string) => LinkPreviewPolicy;
 		capabilities?: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
 		probeCapabilities?: (dest: LinkReplyDestination) => Promise<ConnectionCapabilities | undefined>;
 		/** 每条 payload 的投递结果;缺省全部成功。 */
@@ -108,7 +108,7 @@ function makeParser(
 		resolve?: LinkResolver["resolve"];
 	} = {},
 ) {
-	const config: LinkParsingConfig = {
+	const config: LinkPreviewSettings = {
 		enabled: true,
 		cooldownSeconds: 60,
 		defaults: { parse: true, form: "image" },

@@ -36,7 +36,7 @@ const SECTION_LABELS: Record<GroupSectionKey, string> = {
 	connection: "连接",
 	transport: "传输",
 	commands: "私聊指令",
-	linkParsing: "链接解析",
+	linkPreview: "链接解析",
 	logging: "日志",
 	other: "其他",
 };
@@ -62,7 +62,7 @@ const SECTION_ORDER: GroupSectionKey[] = [
 	"connection",
 	"transport",
 	"commands",
-	"linkParsing",
+	"linkPreview",
 	"logging",
 	"other",
 ];

@@ -20,9 +20,9 @@ import {
 	type DeliveryResult,
 	LINK_LIMITS,
 	type LinkLimits,
-	type LinkParsingConfig,
-	type LinkParsingPolicy,
 	type LinkPreview,
+	type LinkPreviewPolicy,
+	type LinkPreviewSettings,
 	type LinkResolver,
 	type Logger,
 	type NotificationPayload,
@@ -77,13 +77,13 @@ export interface LinkCardPresentation {
 export interface LinkPreviewerOptions {
 	logger: Logger;
 	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
-	config: () => LinkParsingConfig;
+	config: () => LinkPreviewSettings;
 	/**
 	 * 这个群的答案:解不解析、回什么,键见 {@link linkScopeKey}。默认行与逐群例外怎么对上
 	 * 入站帧里的群(引用目标、停用、悬空、陌生群)全在 `link-preview/link-scope.ts`,这里只查表。
 	 * 与 `config` 一样每条消息现读 —— 主人改一格立刻生效。
 	 */
-	policyFor: (key: string) => LinkParsingPolicy;
+	policyFor: (key: string) => LinkPreviewPolicy;
 	/**
 	 * 在册的链接解析器(各集成在自己的 `start(ctx)` 里登的)。**每条消息现读**:集成可以来去。
 	 * 认哪些网址、怎么查、怎么翻成作品都归解析器,这里只问「认不认」。两个解析器都认同一条链接时,先登记的答。

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { LINK_REPLY_FORMS } from "../../constants";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
-import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema, linkParsingFor } from "../link-parsing";
+import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema, linkPreviewFor } from "../link-preview";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -35,18 +35,18 @@ describe("linkParsing 配置段", () => {
 
 	it("全新安装默认关、默认回图片卡;形式只有图片卡 / 小程序卡两档", () => {
 		expect(makeDefaultGlobalConfig().linkParsing.enabled).toBe(false);
-		expect(DEFAULT_LINK_PARSING).toEqual(FRESH);
+		expect(DEFAULT_LINK_PREVIEW).toEqual(FRESH);
 		expect(LINK_REPLY_FORMS).toEqual(["image", "miniapp"]);
 	});
 
 	it("只给 enabled 也行,其余补默认", () => {
-		expect(LinkParsingConfigSchema.parse({ enabled: true })).toEqual({ ...FRESH, enabled: true });
+		expect(LinkPreviewSettingsSchema.parse({ enabled: true })).toEqual({ ...FRESH, enabled: true });
 	});
 
 	// 白名单进来之前发出去的版本只有 enabled / cooldownSeconds。升上来的实例必须落在
 	// 「所有群都解析」—— 行为一字不变,主人开过的功能不能因为升级悄悄缩到零个群。
 	it("白名单之前的版本(只有 enabled / cooldownSeconds)→ 所有群解析", () => {
-		expect(LinkParsingConfigSchema.parse({ enabled: true, cooldownSeconds: 30 })).toEqual({
+		expect(LinkPreviewSettingsSchema.parse({ enabled: true, cooldownSeconds: 30 })).toEqual({
 			...FRESH,
 			enabled: true,
 			cooldownSeconds: 30,
@@ -57,7 +57,7 @@ describe("linkParsing 配置段", () => {
 describe("新形状", () => {
 	it("例外只存显式值:空对象条目被剥掉,写了的原样留", () => {
 		expect(
-			LinkParsingConfigSchema.parse({
+			LinkPreviewSettingsSchema.parse({
 				groups: { [A]: {}, [B]: { parse: false, form: "miniapp" } },
 			}).groups,
 		).toEqual({ [B]: { parse: false, form: "miniapp" } });
@@ -65,49 +65,49 @@ describe("新形状", () => {
 
 	it("targetId 不是 uuid、形式不在两档之内 → 拒", () => {
 		expect(
-			LinkParsingConfigSchema.safeParse({ groups: { "group-123": { parse: true } } }).success,
+			LinkPreviewSettingsSchema.safeParse({ groups: { "group-123": { parse: true } } }).success,
 		).toBe(false);
-		expect(LinkParsingConfigSchema.safeParse({ defaults: { form: "both" } }).success).toBe(false);
-		expect(LinkParsingConfigSchema.safeParse({ groups: { [A]: { form: "text" } } }).success).toBe(
+		expect(LinkPreviewSettingsSchema.safeParse({ defaults: { form: "both" } }).success).toBe(false);
+		expect(LinkPreviewSettingsSchema.safeParse({ groups: { [A]: { form: "text" } } }).success).toBe(
 			false,
 		);
 	});
 
 	it("冷却秒数是 0–3600 的整数,越界与小数都拒", () => {
-		expect(LinkParsingConfigSchema.safeParse({ cooldownSeconds: 0 }).success).toBe(true);
-		expect(LinkParsingConfigSchema.safeParse({ cooldownSeconds: 3600 }).success).toBe(true);
-		expect(LinkParsingConfigSchema.safeParse({ cooldownSeconds: 3601 }).success).toBe(false);
-		expect(LinkParsingConfigSchema.safeParse({ cooldownSeconds: -1 }).success).toBe(false);
-		expect(LinkParsingConfigSchema.safeParse({ cooldownSeconds: 1.5 }).success).toBe(false);
+		expect(LinkPreviewSettingsSchema.safeParse({ cooldownSeconds: 0 }).success).toBe(true);
+		expect(LinkPreviewSettingsSchema.safeParse({ cooldownSeconds: 3600 }).success).toBe(true);
+		expect(LinkPreviewSettingsSchema.safeParse({ cooldownSeconds: 3601 }).success).toBe(false);
+		expect(LinkPreviewSettingsSchema.safeParse({ cooldownSeconds: -1 }).success).toBe(false);
+		expect(LinkPreviewSettingsSchema.safeParse({ cooldownSeconds: 1.5 }).success).toBe(false);
 	});
 });
 
-describe("linkParsingFor —— 折叠出这个群解不解析、回什么", () => {
-	const cfg = LinkParsingConfigSchema.parse({
+describe("linkPreviewFor —— 折叠出这个群解不解析、回什么", () => {
+	const cfg = LinkPreviewSettingsSchema.parse({
 		defaults: { parse: true, form: "image" },
 		groups: { [A]: { form: "miniapp" }, [B]: { parse: false } },
 	});
 
 	it("没写例外的群跟默认行;不是推送目标的群(没有 id)也跟默认行", () => {
-		expect(linkParsingFor(cfg, "33333333-3333-4333-8333-333333333333")).toEqual({
+		expect(linkPreviewFor(cfg, "33333333-3333-4333-8333-333333333333")).toEqual({
 			parse: true,
 			form: "image",
 		});
-		expect(linkParsingFor(cfg, undefined)).toEqual({ parse: true, form: "image" });
+		expect(linkPreviewFor(cfg, undefined)).toEqual({ parse: true, form: "image" });
 	});
 
 	it("例外逐字段覆盖:只写 form 的群 parse 仍跟默认,只写 parse 的群 form 仍跟默认", () => {
-		expect(linkParsingFor(cfg, A)).toEqual({ parse: true, form: "miniapp" });
-		expect(linkParsingFor(cfg, B)).toEqual({ parse: false, form: "image" });
+		expect(linkPreviewFor(cfg, A)).toEqual({ parse: true, form: "miniapp" });
+		expect(linkPreviewFor(cfg, B)).toEqual({ parse: false, form: "image" });
 	});
 
 	it("默认关、群显式开 = 原来的白名单", () => {
-		const wl = LinkParsingConfigSchema.parse({
+		const wl = LinkPreviewSettingsSchema.parse({
 			defaults: { parse: false },
 			groups: { [A]: { parse: true } },
 		});
-		expect(linkParsingFor(wl, A).parse).toBe(true);
-		expect(linkParsingFor(wl, B).parse).toBe(false);
+		expect(linkPreviewFor(wl, A).parse).toBe(true);
+		expect(linkPreviewFor(wl, B).parse).toBe(false);
 	});
 });
 
@@ -116,7 +116,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 	// 这正是老形状绕过迁移的后果 —— 白名单悄悄变成「所有群都解析」。0.x 的老形状只在开新代时由迁移器改写一次;
 	// 谁把老数据的兜底加回 schema,这一条就红(那会让同一份迁移逻辑在 schema 和迁移器里各住一份)。
 	it("scope=selected + targets → scope / targets 被剥掉,defaults.parse 取默认 true、groups 留空", () => {
-		const parsed = LinkParsingConfigSchema.parse({
+		const parsed = LinkPreviewSettingsSchema.parse({
 			enabled: true,
 			scope: "selected",
 			targets: [{ targetId: A }],

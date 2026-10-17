@@ -30,7 +30,7 @@ import {
 	TNum,
 	TSelect,
 } from "../components/forms";
-import { LinkParsingSettings } from "../components/link-parsing-settings";
+import { LinkPreviewSettings } from "../components/link-preview-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
@@ -590,7 +590,7 @@ export default function System() {
 						{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
 
 						{draft ? (
-							<LinkParsingSettings
+							<LinkPreviewSettings
 								draft={draft}
 								onPatch={patchDraft}
 								targets={targetsQuery.data ?? []}

@@ -10,7 +10,7 @@ import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type {
 	ConnectionCapabilities,
 	DeliveryResult,
-	LinkParsingConfig,
+	LinkPreviewSettings,
 	NotificationPayload,
 	Post,
 } from "@bilibili-notify/internal";
@@ -243,11 +243,11 @@ async function feed(parser: LinkPreviewer, frame: Record<string, unknown>): Prom
 	await parser.handleMessage({ connectionId: ADAPTER, ...msg });
 }
 
-function makeGate(over: Partial<LinkParsingConfig> = {}, capable = false) {
+function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 	const h = makeResolver();
 	const linkResolvers = createLinkResolverRegistry();
 	linkResolvers.register(BILIBILI_SOURCE_KEY, h.resolver);
-	const config: LinkParsingConfig = {
+	const config: LinkPreviewSettings = {
 		enabled: true,
 		cooldownSeconds: 60,
 		defaults: { parse: true, form: "image" },

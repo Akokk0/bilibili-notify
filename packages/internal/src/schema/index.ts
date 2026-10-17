@@ -8,7 +8,7 @@ export * from "./extension-subscription";
 export * from "./extension-view";
 export * from "./globals";
 export * from "./history";
-export * from "./link-parsing";
+export * from "./link-preview";
 export * from "./message-layout";
 export * from "./resolve";
 export * from "./roast-schedule";

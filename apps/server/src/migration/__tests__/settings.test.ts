@@ -34,7 +34,7 @@ import {
 	AISettingsSchema,
 	DEFAULT_AI,
 	GlobalConfigSchema,
-	LinkParsingConfigSchema,
+	LinkPreviewSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
@@ -108,7 +108,7 @@ function parseLink(old: unknown) {
 	expect(migrated).toHaveProperty("defaults");
 	expect(migrated).toHaveProperty("groups");
 	expect(migrateLegacyLinkParsing(migrated)).toEqual(migrated);
-	return LinkParsingConfigSchema.parse(migrated);
+	return LinkPreviewSettingsSchema.parse(migrated);
 }
 
 // ── AI · 服务商实例桶(原 ai-provider-migration.test.ts)──────────────────────────────
@@ -486,7 +486,7 @@ describe("链接解析迁移 · linkParsing 配置段", () => {
 	it("白名单之前的版本(只有 enabled / cooldownSeconds)→ 所有群解析", () => {
 		const old = { enabled: true, cooldownSeconds: 30 };
 		expect(migrateLegacyLinkParsing(old)).toEqual(old);
-		expect(LinkParsingConfigSchema.parse(migrateLegacyLinkParsing(old))).toEqual({
+		expect(LinkPreviewSettingsSchema.parse(migrateLegacyLinkParsing(old))).toEqual({
 			...FRESH_LINK,
 			enabled: true,
 			cooldownSeconds: 30,

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { canReceiveReply, listsForLinkParsing, shouldSendAtAll } from "../constants";
+import { canReceiveReply, listsForLinkPreview, shouldSendAtAll } from "../constants";
 
 type Support = { state: "supported" | "unsupported" | "unknown" } | undefined;
 
@@ -39,13 +39,13 @@ describe("canReceiveReply —— 只有「支持」才算", () => {
 	});
 });
 
-describe("listsForLinkParsing —— 不是「不支持」就列", () => {
+describe("listsForLinkPreview —— 不是「不支持」就列", () => {
 	it.each([
 		["支持 → 列", SUPPORTED, true],
 		["不支持 → 不列", UNSUPPORTED, false],
 		["还不知道 → 列", UNKNOWN, true],
 		["undefined(按还不知道) → 列", undefined, true],
 	] as const)("%s", (_what, support, expected) => {
-		expect(listsForLinkParsing(support)).toBe(expected);
+		expect(listsForLinkPreview(support)).toBe(expected);
 	});
 });

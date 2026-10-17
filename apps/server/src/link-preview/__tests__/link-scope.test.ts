@@ -1,14 +1,14 @@
 /**
  * 链接解析的逐群答案 —— 把「默认行 + 逐群例外」(例外引用推送目标 id)对上入站帧里的群。
  *
- * 缝在 `resolveLinkParsingPolicies`:配置 + 目标表 + 连接表进,一张「群键 → 解不解析、
+ * 缝在 `resolveLinkPreviewPolicies`:配置 + 目标表 + 连接表进,一张「群键 → 解不解析、
  * 回什么」的表出。它是纯函数,所有决定都在这儿:哪些目标算群、停用算不算、悬空 id
  * 怎么办、不是目标的群跟谁。解析器(link-preview/link-previewer)只拿结果做一次查表,不再各自判一遍。
  */
 
 import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { linkScopeKey, resolveLinkParsingPolicies } from "../link-scope.js";
+import { linkScopeKey, resolveLinkPreviewPolicies } from "../link-scope.js";
 
 const ONEBOT_ADAPTER = "11111111-1111-4111-8111-111111111111";
 const QQ_ADAPTER = "22222222-2222-4222-8222-222222222222";
@@ -70,9 +70,9 @@ const K_STRANGER = linkScopeKey(ONEBOT_ADAPTER, "789");
 const ALL_ON = { defaults: { parse: true, form: "image" as const }, groups: {} };
 const NONE_ON = { defaults: { parse: false, form: "image" as const }, groups: {} };
 
-describe("resolveLinkParsingPolicies", () => {
+describe("resolveLinkPreviewPolicies", () => {
 	it("默认行解析开、没有例外 → 是目标的群和不是目标的群都解析,回默认形式", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
@@ -82,7 +82,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("默认行解析关 + 群显式开 = 原来的白名单:只有那群解析,没勾的目标群与陌生群都不", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
@@ -93,7 +93,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("默认行解析开 + 群显式关 → 那一个群不解析,其余照常", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: false } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
@@ -103,7 +103,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("形式逐群覆盖:例外写了小程序卡的群回小程序卡,其余跟默认行;默认行改小程序卡则陌生群也跟", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { form: "miniapp" } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
@@ -111,7 +111,7 @@ describe("resolveLinkParsingPolicies", () => {
 		expect(table.policyFor(K_GROUP).form).toBe("miniapp");
 		expect(table.policyFor(K_GROUP_2).form).toBe("image");
 
-		const flipped = resolveLinkParsingPolicies({
+		const flipped = resolveLinkPreviewPolicies({
 			config: { defaults: { parse: true, form: "miniapp" }, groups: {} },
 			targets: [],
 			connections: ADAPTERS,
@@ -122,7 +122,7 @@ describe("resolveLinkParsingPolicies", () => {
 	// 「停用」在链接解析与周报里是同一个意思:目标暂停就不响应,默认行开着、例外显式开着都
 	// 压不过它(主人定的,两处要一致)。
 	it("目标已停用 → 不解析,哪怕默认行开、例外显式开;形式照算", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: true, form: "miniapp" } } },
 			targets: [onebotGroup(T_GROUP, "123", { enabled: false })],
 			connections: ADAPTERS,
@@ -131,14 +131,14 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("目标所属的连接已停用、或连接已不存在 → 不解析", () => {
-		const disabledConnection = resolveLinkParsingPolicies({
+		const disabledConnection = resolveLinkPreviewPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [connection(ONEBOT_ADAPTER, "onebot", false)],
 		});
 		expect(disabledConnection.policyFor(K_GROUP).parse).toBe(false);
 
-		const missingConnection = resolveLinkParsingPolicies({
+		const missingConnection = resolveLinkPreviewPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [],
@@ -147,7 +147,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("官机群的地址是 groupOpenid,与入站帧里的 address 同一个值", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...NONE_ON, groups: { [T_QQ_GROUP]: { parse: true } } },
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
 			connections: ADAPTERS,
@@ -156,7 +156,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("私聊目标不进表(链接解析只在群里响应),例外里写了它也没用", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...NONE_ON, groups: { [T_PRIVATE]: { parse: true } } },
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
 			connections: ADAPTERS,
@@ -165,7 +165,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("例外里引用的目标已经删掉 → 静默忽略,其余照常", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...NONE_ON, groups: { [T_GONE]: { parse: true }, [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
@@ -174,7 +174,7 @@ describe("resolveLinkParsingPolicies", () => {
 	});
 
 	it("同一个群配成了两个目标 → 先出现的那个说了算,不来回翻", () => {
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: {
 				...ALL_ON,
 				groups: { [T_GROUP]: { form: "miniapp" }, [T_GROUP_2]: { parse: false } },
@@ -193,7 +193,7 @@ describe("linkScopeKey —— 键里没有平台,只有连接与群", () => {
 
 	it("两条连接上同名的群各是各的键", () => {
 		expect(linkScopeKey(ONEBOT_ADAPTER, "123")).not.toBe(linkScopeKey(QQ_ADAPTER, "123"));
-		const table = resolveLinkParsingPolicies({
+		const table = resolveLinkPreviewPolicies({
 			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,

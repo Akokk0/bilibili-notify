@@ -37,8 +37,8 @@ vi.mock("../../components/commands-settings", () => ({
 		</div>
 	),
 }));
-vi.mock("../../components/link-parsing-settings", () => ({
-	LinkParsingSettings: () => <div data-testid="sec-link-parsing" />,
+vi.mock("../../components/link-preview-settings", () => ({
+	LinkPreviewSettings: () => <div data-testid="sec-link-preview" />,
 }));
 vi.mock("../../components/browser-source-settings", () => ({
 	BrowserSourceSettings: () => <div data-testid="sec-browser-source" />,
@@ -152,7 +152,7 @@ describe("系统页的分区导航", () => {
 	it.each([
 		["账号", ["账号 · auth", "主人账号 · master", "原始登录快照"], []],
 		["运行", [], ["sec-browser-source"]],
-		["消息", [], ["sec-commands", "sec-link-parsing"]],
+		["消息", [], ["sec-commands", "sec-link-preview"]],
 		["外观", [], ["sec-skin"]],
 		["维护", [], ["sec-backup", "sec-update", "sec-onboarding"]],
 	])("「%s」格装着说好的那几节", async (label, texts, testIds) => {

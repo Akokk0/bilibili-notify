@@ -983,7 +983,7 @@ export function canReceiveReply(
  * 不是「不支持」就列:「还不知道」(以及 `undefined`)照列。今天对拓展连接就是一律列出,
  * 少列了主人就没处设;多列了只是一个收不到消息的群摆在那儿,无害。
  */
-export function listsForLinkParsing(
+export function listsForLinkPreview(
 	support: { state: "supported" | "unsupported" | "unknown" } | undefined,
 ): boolean {
 	return support?.state !== "unsupported";

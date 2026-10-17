@@ -53,7 +53,7 @@ export {
 	LINK_REPLY_FORMS,
 	type LinkLimits,
 	type LinkReplyForm,
-	listsForLinkParsing,
+	listsForLinkPreview,
 	MIRROR_PREFIX_RE,
 	ok,
 	PLATFORM_REGISTRY,

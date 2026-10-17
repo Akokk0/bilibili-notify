@@ -1119,7 +1119,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const linkPreviewer = createLinkPreviewer({
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
-			config: () => runtimeEngines.linkParsing(),
+			config: () => runtimeEngines.linkPreview(),
 			policyFor: (key) => runtimeEngines.linkPolicyFor(key),
 			// 认哪些链接、怎么查都归各集成登记的解析器(B 站的在它的来源里);封面也由解析器抓进图库。
 			linkResolvers: runtime.linkResolvers,

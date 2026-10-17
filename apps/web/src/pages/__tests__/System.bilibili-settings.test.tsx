@@ -25,8 +25,8 @@ import System from "../System";
 vi.mock("../../components/commands-settings", () => ({
 	CommandsSettings: () => <div data-testid="sec-commands" />,
 }));
-vi.mock("../../components/link-parsing-settings", () => ({
-	LinkParsingSettings: () => <div data-testid="sec-link-parsing" />,
+vi.mock("../../components/link-preview-settings", () => ({
+	LinkPreviewSettings: () => <div data-testid="sec-link-preview" />,
 }));
 vi.mock("../../components/browser-source-settings", () => ({
 	BrowserSourceSettings: () => <div data-testid="sec-browser-source" />,

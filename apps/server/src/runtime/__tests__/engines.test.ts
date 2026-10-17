@@ -3425,7 +3425,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 	it("开关与版式随 config-changed 刷新,不用每条消息整份深拷贝 globals", () => {
 		const c = setup();
 		active = c;
-		expect(c.runtime.linkParsing()).toEqual({
+		expect(c.runtime.linkPreview()).toEqual({
 			enabled: false,
 			cooldownSeconds: 60,
 			defaults: { parse: true, form: "image" },
@@ -3446,7 +3446,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
-		expect(c.runtime.linkParsing()).toEqual({
+		expect(c.runtime.linkPreview()).toEqual({
 			enabled: true,
 			cooldownSeconds: 5,
 			defaults: { parse: true, form: "image" },

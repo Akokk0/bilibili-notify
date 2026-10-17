@@ -39,7 +39,7 @@ import {
 	TemplateBundleSchema,
 } from "./common";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
-import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
+import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema } from "./link-preview";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
 
@@ -366,7 +366,7 @@ export const GlobalConfigSchema = z.object({
 	 * 链接解析(群里贴视频链接自动出卡片)。独立端专有,放顶层同 `commands`。
 	 * `.default(...)` 是老配置兜底:少了它,存量实例升上来第一件事就是开不了机。
 	 */
-	linkParsing: LinkParsingConfigSchema.default(() => structuredClone(DEFAULT_LINK_PARSING)),
+	linkParsing: LinkPreviewSettingsSchema.default(() => structuredClone(DEFAULT_LINK_PREVIEW)),
 	/**
 	 * 新手指引的持久状态。
 	 *

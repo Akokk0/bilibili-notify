@@ -20,26 +20,26 @@ import { LINK_REPLY_FORMS, type LinkReplyForm } from "../constants";
  */
 export const LinkReplyFormSchema = z.enum(LINK_REPLY_FORMS);
 
-export const LinkParsingDefaultsSchema = z.object({
+export const LinkPreviewDefaultsSchema = z.object({
 	parse: z.boolean().default(true),
 	form: LinkReplyFormSchema.default("image"),
 });
-export type LinkParsingDefaults = z.infer<typeof LinkParsingDefaultsSchema>;
+export type LinkPreviewDefaults = z.infer<typeof LinkPreviewDefaultsSchema>;
 
-export const LinkParsingGroupOverrideSchema = z.object({
+export const LinkPreviewGroupOverrideSchema = z.object({
 	parse: z.boolean().optional(),
 	form: LinkReplyFormSchema.optional(),
 });
-export type LinkParsingGroupOverride = z.infer<typeof LinkParsingGroupOverrideSchema>;
+export type LinkPreviewGroupOverride = z.infer<typeof LinkPreviewGroupOverrideSchema>;
 
-const LinkParsingConfigObjectSchema = z.object({
+const LinkPreviewSettingsObjectSchema = z.object({
 	enabled: z.boolean().default(false),
 	cooldownSeconds: z.number().int().min(0).max(3600).default(60),
-	defaults: LinkParsingDefaultsSchema.default({ parse: true, form: "image" }),
+	defaults: LinkPreviewDefaultsSchema.default({ parse: true, form: "image" }),
 	// 例外只存显式值:一个字段都没写的条目等于没写,剥掉。幂等 transform 而不是 refine:
 	// 归一化数据,不让既有配置在 parse 时直接被拒(与订阅路由那份去重同一条理由)。
 	groups: z
-		.record(z.uuid(), LinkParsingGroupOverrideSchema)
+		.record(z.uuid(), LinkPreviewGroupOverrideSchema)
 		.default({})
 		.transform((groups) =>
 			Object.fromEntries(
@@ -47,12 +47,12 @@ const LinkParsingConfigObjectSchema = z.object({
 			),
 		),
 });
-export type LinkParsingConfig = z.infer<typeof LinkParsingConfigObjectSchema>;
+export type LinkPreviewSettings = z.infer<typeof LinkPreviewSettingsObjectSchema>;
 
 /** 0.9.1 的「范围 + 白名单」老形状由迁移器改写(`apps/server/src/migration/link-parsing.ts`),这里只认新形状。 */
-export const LinkParsingConfigSchema = LinkParsingConfigObjectSchema;
+export const LinkPreviewSettingsSchema = LinkPreviewSettingsObjectSchema;
 
-export const DEFAULT_LINK_PARSING: LinkParsingConfig = {
+export const DEFAULT_LINK_PREVIEW: LinkPreviewSettings = {
 	enabled: false,
 	cooldownSeconds: 60,
 	defaults: { parse: true, form: "image" },
@@ -60,7 +60,7 @@ export const DEFAULT_LINK_PARSING: LinkParsingConfig = {
 };
 
 /** 一个群折叠后的答案:解不解析、回什么。 */
-export interface LinkParsingPolicy {
+export interface LinkPreviewPolicy {
 	parse: boolean;
 	form: LinkReplyForm;
 }
@@ -69,10 +69,10 @@ export interface LinkParsingPolicy {
  * 折叠出某个群的答案:例外里写了的字段覆盖默认行,没写的跟默认行。`targetId` 为空
  * (这个群不是推送目标)就是默认行本身。
  */
-export function linkParsingFor(
-	config: Pick<LinkParsingConfig, "defaults" | "groups">,
+export function linkPreviewFor(
+	config: Pick<LinkPreviewSettings, "defaults" | "groups">,
 	targetId: string | undefined,
-): LinkParsingPolicy {
+): LinkPreviewPolicy {
 	const o = targetId === undefined ? undefined : config.groups[targetId];
 	return { parse: o?.parse ?? config.defaults.parse, form: o?.form ?? config.defaults.form };
 }

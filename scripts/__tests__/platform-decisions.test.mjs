@@ -68,7 +68,7 @@ import {
  * - 把整个连接传进去、在 `platforms/` 以外的别的白名单目录里判的。
  * - 按 `adapterKey` 比字面量(`adapterKey === "webhook"`,今天核心 1 处,就在 `constants.ts` 的 `isWebhookPlatform` 里,
  *   与平台表同归宿;**面板今天另有 5 处**,不在上面那张 23 处的表里:`Targets.tsx:147`(`a.adapterKey === "onebot"`)、
- *   `:153`(`"qq-official"`)、`link-parsing-settings.tsx:250`(`a.adapterKey === "onebot"`)、`types/connection-credentials.ts:46` 与
+ *   `:153`(`"qq-official"`)、`link-preview-settings.tsx:250`(`a.adapterKey === "onebot"`)、`types/connection-credentials.ts:46` 与
  *   `types/connection-fields.ts:479`(两个 `switch (connection.adapterKey)`)。同一种越界的另一个写法,定案没点它,本片不加;
  *   要不要收进判据是主人的题)。
  * - 类型层面的分叉(`Extract<…, { platform: "onebot" }>`)。
@@ -165,7 +165,7 @@ export const RATCHET = {
  * 语法上认不出是平台对平台),如实记在 `Targets.tsx` 那一格里。
  */
 export const RATCHET_PANEL = {
-	"apps/web/src/components/link-parsing-settings.tsx": 1, // `platform === "qq-official"`
+	"apps/web/src/components/link-preview-settings.tsx": 1, // `platform === "qq-official"`
 	// `table[platform]` 查表、`lookup(connection.platform)` 喂函数:都是平台徽章的显示。
 	"apps/web/src/components/platform-meta.tsx": 2,
 	// 原 12 处:`platform === "onebot"` / `"qq-official"` 比字面量 6 处(`platform` 与 `value.platform` 各 3)、`platformDescriptor(platform)`、

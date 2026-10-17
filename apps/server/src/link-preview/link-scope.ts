@@ -15,9 +15,9 @@ import {
 	type Connection,
 	groupAddressOf,
 	isTargetPaused,
-	type LinkParsingConfig,
-	type LinkParsingPolicy,
-	linkParsingFor,
+	type LinkPreviewPolicy,
+	type LinkPreviewSettings,
+	linkPreviewFor,
 	type PushTarget,
 } from "@bilibili-notify/internal";
 
@@ -31,30 +31,30 @@ export function linkScopeKey(connectionId: string, address: string): string {
 
 export interface LinkPolicyTable {
 	/** 一个群折叠后的答案。陌生群(不是推送目标)拿默认行。 */
-	policyFor(key: string): LinkParsingPolicy;
+	policyFor(key: string): LinkPreviewPolicy;
 }
 
-export interface ResolveLinkParsingPoliciesInput {
-	config: Pick<LinkParsingConfig, "defaults" | "groups">;
+export interface ResolveLinkPreviewPoliciesOptions {
+	config: Pick<LinkPreviewSettings, "defaults" | "groups">;
 	targets: readonly PushTarget[];
 	connections: readonly Connection[];
 }
 
-export function resolveLinkParsingPolicies({
+export function resolveLinkPreviewPolicies({
 	config,
 	targets,
 	connections,
-}: ResolveLinkParsingPoliciesInput): LinkPolicyTable {
-	const byKey = new Map<string, LinkParsingPolicy>();
+}: ResolveLinkPreviewPoliciesOptions): LinkPolicyTable {
+	const byKey = new Map<string, LinkPreviewPolicy>();
 	for (const target of targets) {
 		if (target.kind !== "session" || target.scope !== "group") continue;
 		const address = groupAddressOf(target);
 		if (!address) continue;
 		const key = linkScopeKey(target.connectionId, address);
 		if (byKey.has(key)) continue;
-		const policy = linkParsingFor(config, target.id);
+		const policy = linkPreviewFor(config, target.id);
 		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, connections) });
 	}
-	const stranger: LinkParsingPolicy = linkParsingFor(config, undefined);
+	const stranger: LinkPreviewPolicy = linkPreviewFor(config, undefined);
 	return { policyFor: (key) => byKey.get(key) ?? stranger };
 }

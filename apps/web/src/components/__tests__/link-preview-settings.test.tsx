@@ -14,17 +14,17 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { adapterKeyFor, snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { LinkParsingSettings } from "../link-parsing-settings";
+import { LinkPreviewSettings } from "../link-preview-settings";
 
-type LinkParsing = GlobalConfig["linkParsing"];
+type LinkPreviewValue = GlobalConfig["linkParsing"];
 
 const T_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const T_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const T_PRIVATE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const T_WEBHOOK = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
-function draftWith(over: Partial<LinkParsing> = {}): GlobalConfig {
-	const linkParsing: LinkParsing = {
+function draftWith(over: Partial<LinkPreviewValue> = {}): GlobalConfig {
+	const linkParsing: LinkPreviewValue = {
 		enabled: true,
 		cooldownSeconds: 60,
 		defaults: { parse: true, form: "image" },
@@ -119,7 +119,7 @@ function renderCard(
 ) {
 	render(
 		<MemoryRouter>
-			<LinkParsingSettings
+			<LinkPreviewSettings
 				draft={draft}
 				onPatch={onPatch}
 				targets={targets}
@@ -137,7 +137,7 @@ const openGroups = () => fireEvent.click(screen.getByRole("button", { name: "展
 
 afterEach(cleanup);
 
-describe("LinkParsingSettings", () => {
+describe("LinkPreviewSettings", () => {
 	it("拨开总开关 → 草稿收到 linkParsing.enabled=true", () => {
 		const onPatch = renderCard(draftWith({ enabled: false }));
 		fireEvent.click(screen.getByRole("button", { name: "链接解析总开关" }));
@@ -153,7 +153,7 @@ describe("LinkParsingSettings", () => {
 	it("徽标:关着写「已关闭」;开着写冷却;默认不解析加「仅例外群」;有例外加个数", () => {
 		const { rerender } = render(
 			<MemoryRouter>
-				<LinkParsingSettings
+				<LinkPreviewSettings
 					draft={draftWith({ enabled: false })}
 					onPatch={() => {}}
 					targets={TARGETS}
@@ -165,7 +165,7 @@ describe("LinkParsingSettings", () => {
 		expect(screen.getByText("已关闭")).toBeTruthy();
 		rerender(
 			<MemoryRouter>
-				<LinkParsingSettings
+				<LinkPreviewSettings
 					draft={draftWith({ enabled: true, cooldownSeconds: 90 })}
 					onPatch={() => {}}
 					targets={TARGETS}
@@ -177,7 +177,7 @@ describe("LinkParsingSettings", () => {
 		expect(screen.getByText("冷却 90 秒")).toBeTruthy();
 		rerender(
 			<MemoryRouter>
-				<LinkParsingSettings
+				<LinkPreviewSettings
 					draft={draftWith({
 						defaults: { parse: false, form: "image" },
 						groups: { [T_A]: { parse: true }, [T_B]: { form: "miniapp" } },

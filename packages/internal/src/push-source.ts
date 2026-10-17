@@ -91,7 +91,7 @@ export interface PlatformAdapter {
 	/**
 	 * 这条连接的能力(三态;探测结果读缓存,同步读、不打网络)。内置适配器都实现;没实现的
 	 * (老的拓展适配器)各项按「还不知道」算,怎么对待「还不知道」见 internal 的
-	 * `shouldSendAtAll` / `canReceiveReply` / `listsForLinkParsing`。
+	 * `shouldSendAtAll` / `canReceiveReply` / `listsForLinkPreview`。
 	 */
 	capabilities?(connection: Connection): ConnectionCapabilities;
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */

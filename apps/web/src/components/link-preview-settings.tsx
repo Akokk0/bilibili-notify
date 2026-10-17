@@ -16,7 +16,7 @@ import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-not
 import {
 	LINK_REPLY_FORMS,
 	type LinkReplyForm,
-	listsForLinkParsing,
+	listsForLinkPreview,
 } from "@bilibili-notify/internal/constants";
 import {
 	DisclosurePill,
@@ -45,8 +45,6 @@ import {
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
 
-type LinkParsing = GlobalConfig["linkParsing"];
-
 export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
 	image: "图片卡",
 	miniapp: "小程序卡",
@@ -59,7 +57,7 @@ const INHERIT = "inherit" as const;
  * 能列进例外表的目标:群类,且这条连接收得到入站消息(webhook 只出不进,配了也没用)。
  *
  * 问的是这条连接的 `inbound` 能力(适配器的回答),直连与拓展借来的连接同一套,判断住
- * `listsForLinkParsing`(只有「不支持」才不列;「还不知道」与能力表还没回来都照列 ——
+ * `listsForLinkPreview`(只有「不支持」才不列;「还不知道」与能力表还没回来都照列 ——
  * 今天对拓展连接就是一律列出,少列了主人就没处设)。目标挂的连接不在了就不知道它是谁,不列。
  */
 function isGroupCandidate(
@@ -69,7 +67,7 @@ function isGroupCandidate(
 ): boolean {
 	if (t.kind !== "session" || t.scope !== "group") return false;
 	if (!connections.some((c) => c.id === t.connectionId)) return false;
-	return listsForLinkParsing(capabilities[t.connectionId]?.inbound);
+	return listsForLinkPreview(capabilities[t.connectionId]?.inbound);
 }
 
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
@@ -83,7 +81,7 @@ function miniAppSupport(
 	return capabilities[connectionId]?.miniAppCard;
 }
 
-export function LinkParsingSettings({
+export function LinkPreviewSettings({
 	draft,
 	onPatch,
 	targets,
@@ -307,7 +305,7 @@ function GroupRow({
 	target: PushTarget;
 	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`。 */
 	platform: string | undefined;
-	cfg: LinkParsing;
+	cfg: GlobalConfig["linkParsing"];
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 这群所在连接能不能签小程序卡;表里没这条是 undefined。 */
 	support: CapabilitySupport | undefined;
