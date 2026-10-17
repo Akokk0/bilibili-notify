@@ -26,6 +26,8 @@
 	"externalId.mismatchIssue": "这个 id 不是{label}认的写法",
 	"externalId.viewerMismatch": "特别关注的观众 id 格式不对，要{label}认的写法",
 	"externalId.viewerMismatchIssue": "这个观众 id 不是{label}认的写法",
+	"problem.connection.recovered": "连接「{name}」又连上啦～",
+	"problem.connection.unreachable": "连接「{name}」连不上了：{reason}",
 	"searchCreators.noSuchSource": "没有叫「{sourceKey}」的订阅来源。在册的来源有：{listing}",
 	"searchCreators.noSourcesListed": "（一个都没有）",
 	"searchCreators.timeout": "{label}的搜人超过 {seconds} 秒没回",

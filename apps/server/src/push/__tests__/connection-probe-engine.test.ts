@@ -41,8 +41,14 @@ function setup(
 	opts: {
 		capabilities?: ConnectionCapabilities;
 		probeCapabilities?: () => Promise<ConnectionCapabilities | undefined>;
+		/** 主人私聊目标挂在哪条连接上。 */
+		master?: string;
+		/** 哪些适配器键在场;缺省都在场。 */
+		present?: (adapterKey: string) => boolean;
 	} = {},
 ) {
+	const report = vi.fn();
+	const resolve = vi.fn();
 	const probeConnection = vi.fn(async (id: string) => {
 		const probe = probes[id];
 		return probe ? probe() : ok({ latencyMs: 1 });
@@ -65,10 +71,15 @@ function setup(
 			probeConnectionCapabilities,
 		},
 		recordProbeState,
+		problems: { report, resolve },
+		masterConnectionId: () => opts.master,
+		hasAdapter: opts.present ?? (() => true),
 		serviceCtx: { signal: abort.signal, track: (task) => void tracked.push(task) },
 		logger: log,
 	});
 	return {
+		report,
+		resolve,
 		engine,
 		probeConnection,
 		recordProbeState,
@@ -292,5 +303,237 @@ describe("ConnectionProbeEngine", () => {
 		c.engine.dispose();
 		await oneRound();
 		expect(c.probeConnection).toHaveBeenCalledTimes(1);
+	});
+
+	describe("报「连接连不上」", () => {
+		const DOWN = fail("unavailable", "拒绝连接");
+		const UP = ok({ latencyMs: 3 });
+		/** 探测结果由测试随时换。 */
+		function scripted(initial: ProbeResult) {
+			const state = { current: initial };
+			return { state, probes: { [A]: async () => state.current } };
+		}
+		const reportKey = {
+			reporter: "onebot",
+			about: { connectionId: A },
+			code: "connection_unreachable",
+		};
+		const unreachableText = t("problem.connection.unreachable", {
+			name: "bot",
+			reason: "拒绝连接",
+		});
+
+		it("开机后从没通过,连续两次不通:报一条,只进表不私聊", async () => {
+			const { probes } = scripted(DOWN);
+			const c = setup([connectionOf(A)], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			expect(c.report).not.toHaveBeenCalled();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.report).toHaveBeenCalledWith({
+				...reportKey,
+				message: unreachableText,
+				notify: false,
+				recoveryMessage: t("problem.connection.recovered", { name: "bot" }),
+			});
+		});
+
+		it("通过之后连续两次不通:报一条并私聊", async () => {
+			const { state, probes } = scripted(UP);
+			const c = setup([connectionOf(A)], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: true }));
+		});
+
+		it("断着不重复报:一直断多轮只报第一次;原因变了才再报,私聊与否冻在这次中断开始时", async () => {
+			const { state, probes } = scripted(UP);
+			const c = setup([connectionOf(A)], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			state.current = fail("unauthorized", "token 不对");
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(2);
+			expect(c.report).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					notify: true,
+					message: t("problem.connection.unreachable", { name: "bot", reason: "token 不对" }),
+				}),
+			);
+		});
+
+		it("主人的私聊目标走的就是这条连接:不私聊;中断中途主人换了目标也不翻", async () => {
+			const { state, probes } = scripted(UP);
+			const opts = { master: A as string | undefined };
+			const c = setup([connectionOf(A)], probes, opts);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: false }));
+			opts.master = undefined;
+			state.current = fail("unauthorized", "token 不对");
+			await oneRound();
+			expect(c.report).toHaveBeenLastCalledWith(expect.objectContaining({ notify: false }));
+		});
+
+		it("探不通的码是 not_configured / not_found(要主人去动手才会好):通过之后也不私聊", async () => {
+			for (const code of ["not_configured", "not_found"] as const) {
+				const { state, probes } = scripted(UP);
+				const c = setup([connectionOf(A)], probes);
+				await vi.advanceTimersByTimeAsync(0);
+				state.current = fail(code, "接入没了");
+				await oneRound();
+				await oneRound();
+				expect(c.report).toHaveBeenCalledTimes(1);
+				expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: false }));
+				c.engine.dispose();
+			}
+		});
+
+		it("主人改了设置之后再断:不私聊", async () => {
+			const connection = connectionOf(A);
+			const { state, probes } = scripted(UP);
+			const c = setup([connection], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			connection.settings = { token: "new" };
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: false }));
+		});
+
+		it("断着探通了:清掉这一条(缺省通知,通知器只对真私聊过的补「已恢复」)", async () => {
+			const { state, probes } = scripted(UP);
+			const c = setup([connectionOf(A)], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			state.current = UP;
+			await oneRound();
+			expect(c.resolve).toHaveBeenCalledTimes(1);
+			expect(c.resolve).toHaveBeenCalledWith(reportKey);
+			await oneRound();
+			expect(c.resolve).toHaveBeenCalledTimes(1);
+		});
+
+		it("停用了:清掉这一条且不补「已恢复」,此后不再探", async () => {
+			const connection = connectionOf(A);
+			const { probes } = scripted(DOWN);
+			const c = setup([connection], probes);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			connection.enabled = false;
+			await oneRound();
+			expect(c.resolve).toHaveBeenCalledWith(reportKey, { notify: false });
+			expect(c.probeConnection).toHaveBeenCalledTimes(2);
+		});
+
+		it("适配器不在场:不探、不报,失败的计数清零", async () => {
+			const { probes } = scripted(DOWN);
+			const gate = { present: false };
+			const c = setup([connectionOf(A)], probes, { present: () => gate.present });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.probeConnection).not.toHaveBeenCalled();
+			gate.present = true;
+			await oneRound();
+			expect(c.probeConnection).toHaveBeenCalledTimes(1);
+			expect(c.report).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("手动「测试」:只算恢复,不算失败", () => {
+		const DOWN = fail("unavailable", "拒绝连接");
+
+		it("手动两次不通:不报,不加失败次数;每次都写盘(引导靠 lastCheckedAt 变)", async () => {
+			const state = { current: ok({ latencyMs: 1 }) as ProbeResult };
+			const c = setup([connectionOf(A)], { [A]: async () => state.current });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			c.written.length = 0;
+			state.current = DOWN;
+			const first = await c.engine.probe(A, { manual: true });
+			await c.engine.probe(A, { manual: true });
+			expect(first).toEqual(DOWN);
+			expect(c.report).not.toHaveBeenCalled();
+			expect(c.written.map((w) => w.state.status)).toEqual(["unreachable", "unreachable"]);
+			expect(c.written[0]?.state.message).toBe("拒绝连接");
+			// 手动的两次不算数:后台再来一次不通也只是第 1 次。
+			await oneRound();
+			expect(c.report).not.toHaveBeenCalled();
+		});
+
+		it("手动探通了:当场清掉问题并写 reachable,哪怕下一轮还没到", async () => {
+			const state = { current: DOWN as ProbeResult };
+			const c = setup([connectionOf(A)], { [A]: async () => state.current });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			state.current = ok({ latencyMs: 4 });
+			await c.engine.probe(A, { manual: true });
+			expect(c.resolve).toHaveBeenCalledWith({
+				reporter: "onebot",
+				about: { connectionId: A },
+				code: "connection_unreachable",
+			});
+			expect(c.written.at(-1)?.state).toEqual({
+				status: "reachable",
+				lastCheckedAt: expect.any(String),
+				latencyMs: 4,
+			});
+		});
+
+		it("手动探通过的算「连上过」:此后后台连续两次不通会私聊", async () => {
+			const state = { current: DOWN as ProbeResult };
+			const c = setup([connectionOf(A)], { [A]: async () => state.current });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			state.current = ok({ latencyMs: 4 });
+			await c.engine.probe(A, { manual: true });
+			state.current = DOWN;
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: true }));
+		});
+
+		it("没有探测协议(unsupported):写 unsupported", async () => {
+			const c = setup([connectionOf(A)], { [A]: async () => fail("unsupported", "no probe") });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			c.written.length = 0;
+			await c.engine.probe(A, { manual: true });
+			expect(c.written.map((w) => w.state.status)).toEqual(["unsupported"]);
+		});
+
+		it("写盘失败只记一行 warn,探测结果照回", async () => {
+			const c = setup([connectionOf(A)], {});
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			c.recordProbeState.mockRejectedValueOnce(new Error("disk"));
+			const result = await c.engine.probe(A, { manual: true });
+			expect(result.ok).toBe(true);
+			expect(c.log.warn).toHaveBeenCalledTimes(1);
+		});
 	});
 });

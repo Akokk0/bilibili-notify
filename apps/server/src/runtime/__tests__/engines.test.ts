@@ -3987,6 +3987,58 @@ describe("createEngines — 后台写登记进 track", () => {
 			write.resolve(undefined);
 			await Promise.all(tracked);
 		});
+
+		// 接线的守卫:模块对了、没接上(问题表 / 主人连接 / 适配器在场没递进去)单元测试看不出来。
+		// 验红:删掉 engines.ts 里递给 createConnectionProbeEngine 的 `problems` / `masterConnectionId`,这两条红。
+		describe("连接断了经问题表私聊主人", () => {
+			const MASTER_TARGET = "55555555-5555-4555-8555-555555555555";
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+			/** 先通、再连续两次不通;返回引擎环境。 */
+			async function downAfterUp(opts: { masterOnThisConnection: boolean }) {
+				vi.useFakeTimers({
+					toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+				});
+				let up = true;
+				const globals = makeDefaultGlobalConfig();
+				if (opts.masterOnThisConnection) globals.master.targetId = MASTER_TARGET;
+				const c = setup({
+					globals,
+					connections: [onebot(CONNECTION_ID)],
+					platformAdapters: [
+						okPlatform(async () => (up ? ok({ latencyMs: 1 }) : fail("unavailable", "拒绝连接"))),
+					],
+					overrides: {
+						configStore: {
+							getTargets: () => [
+								{ id: MASTER_TARGET, connectionId: CONNECTION_ID, kind: "session", enabled: true },
+							],
+						},
+					},
+				});
+				active = c;
+				await vi.advanceTimersByTimeAsync(0);
+				up = false;
+				await vi.advanceTimersByTimeAsync(60_000);
+				await vi.advanceTimersByTimeAsync(60_000);
+				return c;
+			}
+
+			it("通过之后连续两次不通:进表,私聊主人一次", async () => {
+				const c = await downAfterUp({ masterOnThisConnection: false });
+				expect(c.problems.list().map((p) => [p.reporter, p.code])).toEqual([
+					["onebot", "connection_unreachable"],
+				]);
+				expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+			});
+
+			it("主人的私聊目标走的就是这条连接:进表,不私聊", async () => {
+				const c = await downAfterUp({ masterOnThisConnection: true });
+				expect(c.problems.list().map((p) => p.code)).toEqual(["connection_unreachable"]);
+				expect(H.push[0].notifyMaster).not.toHaveBeenCalled();
+			});
+		});
 	});
 
 	describe("补关注", () => {

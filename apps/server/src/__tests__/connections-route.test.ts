@@ -343,7 +343,8 @@ describe("connections route — 写入的失败(真 store)", () => {
 
 /**
  * `POST /:id/probe` —— 探一次连接通不通、回报结果:探到了什么都回 200,体是 `Result<{ latencyMs }>`;
- * 请求本身不成(没这条连接、引擎没起)才是非 2xx。结果写进连接的 `probeState`(`unsupported` 也记)。
+ * 请求本身不成(没这条连接、引擎没起)才是非 2xx。结果写进连接的 `probeState` 由引擎的手动探测做
+ * (`connection-probe-engine.test.ts`),路由只翻形状。
  */
 describe("connections route — POST /:id/probe", () => {
 	function testApp(probe: unknown, opts: { engines?: boolean; known?: boolean } = {}) {
@@ -380,22 +381,16 @@ describe("connections route — POST /:id/probe", () => {
 		});
 	});
 
-	it("通 → 200 { ok: true, latencyMs },并把结果写进 probeState", async () => {
+	it("通 → 200 { ok: true, latencyMs };写 probeState 是引擎手动探测的事,路由自己不写", async () => {
 		const { app, recordConnectionProbeState } = testApp({ ok: true, latencyMs: 12 });
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true, latencyMs: 12 });
-		expect(recordConnectionProbeState).toHaveBeenCalledWith("c1", {
-			status: "reachable",
-			lastCheckedAt: expect.any(String),
-			latencyMs: 12,
-		});
+		expect(recordConnectionProbeState).not.toHaveBeenCalled();
 	});
 
-	it("不通 → 200 { ok: false, code, message },没有假的 latencyMs;probeState 记原话", async () => {
-		const { app, recordConnectionProbeState } = testApp(
-			fail("unauthorized", "拒绝连接", { upstreamCode: "http:401" }),
-		);
+	it("不通 → 200 { ok: false, code, message },没有假的 latencyMs", async () => {
+		const { app } = testApp(fail("unauthorized", "拒绝连接", { upstreamCode: "http:401" }));
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		const body = await res.json();
@@ -407,26 +402,16 @@ describe("connections route — POST /:id/probe", () => {
 			upstreamCode: "http:401",
 		});
 		expect(body).not.toHaveProperty("latencyMs");
-		// 失败的原话填进 message,码不落盘。
-		expect(recordConnectionProbeState).toHaveBeenCalledWith("c1", {
-			status: "unreachable",
-			lastCheckedAt: expect.any(String),
-			message: "拒绝连接",
-		});
 	});
 
-	it("平台没有探测协议(unsupported)→ 200 unsupported,probeState 也记成 unsupported", async () => {
-		const { app, recordConnectionProbeState } = testApp(fail("unsupported", "no probe"));
+	it("平台没有探测协议(unsupported)→ 200 unsupported", async () => {
+		const { app } = testApp(fail("unsupported", "no probe"));
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
 			ok: false,
 			code: "unsupported",
 			message: "该平台不支持连接探测",
-		});
-		expect(recordConnectionProbeState).toHaveBeenCalledWith("c1", {
-			status: "unsupported",
-			lastCheckedAt: expect.any(String),
 		});
 	});
 });

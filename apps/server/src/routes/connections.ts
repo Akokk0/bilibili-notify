@@ -156,25 +156,9 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (!connection) return respondFailure(c, fail("not_found", "没有这条连接"));
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		// 探测结果写进连接的 probeState、问题表的清理,都由引擎的手动探测一并做了
+		// (面板的状态圆点不必等一分钟一轮的周期探测)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
 		const result = await engines.probeConnection(id);
-		// 探测结果写进连接的 probeState,面板的状态圆点不必等一分钟一轮的周期探测。
-		// `unsupported`(没有探测协议)也记 —— 它既不是通也不是断,面板据此知道「探不了」。
-		// 失败的原话填进 `message`,码不落盘。回给面板的形状在 {@link testResultOfProbe} 里另翻。
-		try {
-			const checkedAt = new Date().toISOString();
-			await deps.store.recordConnectionProbeState(
-				id,
-				result.ok
-					? { status: "reachable", lastCheckedAt: checkedAt, latencyMs: result.latencyMs }
-					: result.code === "unsupported"
-						? { status: "unsupported", lastCheckedAt: checkedAt }
-						: { status: "unreachable", lastCheckedAt: checkedAt, message: result.message },
-			);
-		} catch (err) {
-			log.warn(
-				`POST /api/connections/${id}/probe recordConnectionProbeState failed: ${String(err)}`,
-			);
-		}
 		return c.json<ConnectionTestResponse>(testResultOfProbe(result));
 	});
 

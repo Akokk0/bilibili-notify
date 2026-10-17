@@ -192,8 +192,8 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	linkCardPresentation(): { colors: CardColorOptions | undefined; cardSkin: string };
 	/**
-	 * Out-of-band reachability probe for `/api/connections/:id/probe`. 顺路把还没探出来的平台
-	 * 能力再探一次(与定时健康探测同一条路)。
+	 * 主人点「测试」(`/api/connections/:id/probe`):顺路把还没探出来的平台能力再探一次(与定时
+	 * 健康探测同一条路),结果每次都写进连接的 `probeState`;通了当场清「连不上」,不通不算进失败次数。
 	 */
 	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/** 这条连接所在平台的能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
@@ -969,6 +969,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		getConnections: () => opts.configStore.getConnections(),
 		dispatcher,
 		recordProbeState: (id, state) => opts.configStore.recordConnectionProbeState(id, state),
+		problems: opts.problems,
+		masterConnectionId: () => masterTarget()?.connectionId,
+		hasAdapter: (adapterKey) => opts.adapters.list().some((a) => a.adapterKey === adapterKey),
 		serviceCtx: opts.serviceCtx,
 		logger: log,
 	});
@@ -1235,7 +1238,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
 		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
-		probeConnection: (connectionId: string) => connectionProbe.probe(connectionId),
+		probeConnection: (connectionId: string) =>
+			connectionProbe.probe(connectionId, { manual: true }),
 		connectionCapabilities: (connectionId: string) =>
 			dispatcher.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
