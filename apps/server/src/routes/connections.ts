@@ -157,7 +157,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const result = await engines.probeConnection(id);
-		// 探测结果写进连接的 probeState,面板的状态圆点不必等五分钟一轮的周期探测。
+		// 探测结果写进连接的 probeState,面板的状态圆点不必等一分钟一轮的周期探测。
 		// `unsupported`(没有探测协议)也记 —— 它既不是通也不是断,面板据此知道「探不了」。
 		// 失败的原话填进 `message`,码不落盘。回给面板的形状在 {@link testResultOfProbe} 里另翻。
 		try {

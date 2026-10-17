@@ -17,6 +17,7 @@
 	"command.report.daysOutOfRange": "天数要在 {min} 到 {max} 之间哦～",
 	"command.report.busy": "还在跑呢，稍等一下下～",
 	"command.report.noTargets": "还没配推送目标呢，周报没地方发～",
+	"connection.probe.timeout": "探测超时",
 	"extension.settings.notConfigured": "还没设置过，而且空设置过不了这个拓展自己的规则：{detail}",
 	"extension.settings.unavailable": "设置还没校验完，这份规则带异步校验，等一拍再读～",
 	"externalId.mismatch": "{label}的外部 id 格式不对，没法新建订阅",
