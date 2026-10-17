@@ -5,6 +5,7 @@ import {
 	type WebSocketLike,
 	type WebSocketOptions,
 } from "@bilibili-notify/http";
+import type { Result } from "@bilibili-notify/internal/constants";
 
 /**
  * B 站请求客户端 —— `@bilibili-notify/http` 的 `HttpClient` 之上的一层薄包。
@@ -74,7 +75,7 @@ export class ApiClient {
 	 * 经同一个 `HttpClient`(同一份身份与 cookie 罐)建 WebSocket。握手头由客户端自己装配,
 	 * 和 `get` / `postForm` 的头(默认头、这次请求的头)无关 —— 那些是 fetch 的头。
 	 */
-	websocket(url: string, options?: WebSocketOptions): WebSocketLike {
+	websocket(url: string, options?: WebSocketOptions): Result<{ socket: WebSocketLike }> {
 		return this.httpClient.websocket(url, options);
 	}
 

@@ -87,7 +87,9 @@ function makeClient(jar = new CookieJar(), headers?: Record<string, string>) {
 
 /** 建连并登记收尾。`error` 挂个空处理:中止发生在握手期时 ws 会报一次 error,没人接会炸进程。 */
 function open(client: HttpClient, url: string, options?: Parameters<HttpClient["websocket"]>[1]) {
-	const socket = client.websocket(url, options);
+	const result = client.websocket(url, options);
+	if (!result.ok) throw new Error(`建连被拒: ${result.message}`);
+	const { socket } = result;
 	socket.on("error", () => {});
 	clientSockets.push(socket);
 	return socket;
@@ -185,6 +187,63 @@ describe("HttpClient.websocket — cookie 是这个地址该带的那些", () =>
 
 		expect(lookup).toHaveBeenCalledTimes(1);
 		expect(lookup.mock.results[0]?.value).toBe("SESSDATA=s");
+	});
+});
+
+describe("HttpClient.websocket — 文本帧与连接状态", () => {
+	it("send 收字符串:对端收到的是文本帧,内容逐字", async () => {
+		const socket = open(makeClient(), `ws://${origin}/sub`);
+		await opened(socket);
+		const received = new Promise<{ data: string; isBinary: boolean }>((resolve) =>
+			serverSockets[0]?.once("message", (data, isBinary) =>
+				resolve({ data: data.toString(), isBinary }),
+			),
+		);
+
+		socket.send('{"op":"ping"}');
+
+		expect(await received).toEqual({ data: '{"op":"ping"}', isBinary: false });
+	});
+
+	it("send 收字节:对端收到的仍是二进制帧", async () => {
+		const socket = open(makeClient(), `ws://${origin}/sub`);
+		await opened(socket);
+		const received = new Promise<boolean>((resolve) =>
+			serverSockets[0]?.once("message", (_data, isBinary) => resolve(isBinary)),
+		);
+
+		socket.send(new Uint8Array([1, 2, 3]));
+
+		expect(await received).toBe(true);
+	});
+
+	it("连接状态:建连中、连上、关掉三个时刻各读一次(0 / 1 / 3)", async () => {
+		const socket = open(makeClient(), `ws://${origin}/sub`);
+		expect(socket.readyState).toBe(0);
+
+		await opened(socket);
+		expect(socket.readyState).toBe(1);
+
+		const done = closed(socket);
+		socket.close();
+		await done;
+		expect(socket.readyState).toBe(3);
+	});
+});
+
+describe("HttpClient.websocket — 给错地址回 invalid", () => {
+	it.each([
+		["不合法的地址", "not a url"],
+		["ws 不收的协议", "ftp://127.0.0.1/sub"],
+	])("%s:不抛、回 invalid,话里不带 query,对端一次握手都没收到", async (_label, url) => {
+		const result = makeClient().websocket(`${url}?token=secret`);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.code).toBe("invalid");
+		expect(result.message).not.toContain("secret");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(handshakes).toHaveLength(0);
 	});
 });
 

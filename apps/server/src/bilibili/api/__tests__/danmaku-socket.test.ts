@@ -102,4 +102,13 @@ describe("Api.openDanmakuSocket", () => {
 			expect(namesOf(req).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
 		}
 	});
+
+	it("地址 ws 不收:仍同步抛错(blive 的 createSocket 靠抛错走重连),话里不带 query", async () => {
+		const { api } = await makeApi();
+
+		expect(() => api.openDanmakuSocket("ftp://127.0.0.1/sub?token=secret")).toThrow(
+			/不支持的 WebSocket 地址/,
+		);
+		expect(() => api.openDanmakuSocket("ftp://127.0.0.1/sub?token=secret")).not.toThrow(/secret/);
+	});
 });

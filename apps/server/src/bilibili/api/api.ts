@@ -203,7 +203,10 @@ export class Api {
 	 * `sec-ch-ua` / `Origin`。这里不再另给头:握手的 UA 与同进程的 HTTP 请求是同一份身份。
 	 */
 	openDanmakuSocket(url: string): WebSocketLike {
-		return this.client.websocket(url);
+		const opened = this.client.websocket(url);
+		// 客户端把错地址当失败回;blive 的 `createSocket` 今天就是同步抛,这里翻回去,blive 那一层不动。
+		if (!opened.ok) throw new Error(opened.message);
+		return opened.socket;
 	}
 
 	// ---- Initialization ----

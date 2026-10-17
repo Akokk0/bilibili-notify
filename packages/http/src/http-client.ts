@@ -515,10 +515,15 @@ export class HttpClient {
 	 * 不带 `sec-ch-ua*` / `Origin`,也不带构造客户端时交进来的默认头 —— 那些是 fetch 的头。
 	 * 头序与切过来之前裸 `ws` 建连时一致(头序也是指纹)。
 	 *
-	 * 地址不合法、协议 `ws` 不收(如 `ftp:`)时同步抛错,和 `new WebSocket` 一样(给错地址是 bug)。
+	 * 地址不合法、协议 `ws` 不收(如 `ftp:`)时回 `invalid`,不抛(地址是输入,不是 bug)。
 	 */
-	websocket(url: string | URL, options: WebSocketOptions = {}): WebSocketLike {
-		const target = new URL(url);
+	websocket(url: string | URL, options: WebSocketOptions = {}): Result<{ socket: WebSocketLike }> {
+		let target: URL;
+		try {
+			target = new URL(url);
+		} catch {
+			return fail("invalid", `不是合法的地址: ${urlWithoutQuery(String(url))}`);
+		}
 		const handshake: [string, string][] = [];
 		const cookie = this.jar.cookieHeaderFor(cookieLookupUrl(target));
 		if (cookie) handshake.push(["Cookie", cookie]);

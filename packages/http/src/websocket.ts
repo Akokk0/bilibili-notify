@@ -1,3 +1,4 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal/constants";
 import WebSocket from "ws";
 
 /**
@@ -19,8 +20,11 @@ import WebSocket from "ws";
 export interface WebSocketLike {
 	/** 二进制帧交给 `message` 监听器的形态;常用 `"nodebuffer"`。 */
 	binaryType: string;
+	/** 连接状态,取值照 WHATWG:0 建连中 / 1 已连上 / 2 关闭中 / 3 已关。 */
+	readonly readyState: number;
 	on(event: string, listener: (...args: unknown[]) => void): void;
-	send(data: Uint8Array): void;
+	/** 字符串发文本帧,字节发二进制帧(`ws` 本来就这么分)。 */
+	send(data: string | Uint8Array): void;
 	close(): void;
 }
 
@@ -37,13 +41,21 @@ export interface WebSocketOptions {
 	signal?: AbortSignal;
 }
 
-/** 建一条连接。地址不合法、协议 `ws` 不收(如 `ftp:`)时同步抛错(调用方给错了地址是 bug,不当失败回)。 */
+/**
+ * 建一条连接。协议 `ws` 不收(如 `ftp:`)时回 `invalid`,不抛 —— 地址常来自主人填的设置或
+ * 拓展,是输入而不是 bug。话里的地址不带 query(可能含令牌)。
+ */
 export function connectWebSocket(
 	url: URL,
 	headers: Record<string, string>,
 	signal?: AbortSignal,
-): WebSocketLike {
-	const socket = new WebSocket(url, { headers });
+): Result<{ socket: WebSocketLike }> {
+	let socket: WebSocket;
+	try {
+		socket = new WebSocket(url, { headers });
+	} catch {
+		return fail("invalid", `不支持的 WebSocket 地址: ${url.origin}${url.pathname}`);
+	}
 	if (signal) {
 		const abort = () => socket.close();
 		if (signal.aborted) {
@@ -54,7 +66,7 @@ export function connectWebSocket(
 			socket.once("close", () => signal.removeEventListener("abort", abort));
 		}
 	}
-	return socket;
+	return ok({ socket });
 }
 
 /**
