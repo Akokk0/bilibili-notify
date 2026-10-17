@@ -33,6 +33,8 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_REDIRECTS = 5;
+/** 跨源重定向时调用方给的这三个头不再带(与 fetch 规范一致):凭据只该给调用方点名的那个源。 */
+const CROSS_ORIGIN_STRIPPED_HEADERS = ["authorization", "proxy-authorization", "cookie"];
 
 export interface HttpClientOptions {
 	/** 这个客户端的 cookie 罐:每个请求从里面取 Cookie,每跳响应的 Set-Cookie 摄进去。 */
@@ -410,6 +412,8 @@ export class HttpClient {
 		let currentMethod = method;
 		let currentBody = options.body;
 		let bodyless = false;
+		// 重定向跳出过起点的源(协议、主机、端口任一不同)之后置位,不再复位:与 fetch 规范一致,绕回来也不补。
+		let crossedOrigin = false;
 		let from: Hop["from"];
 
 		for (let index = 0; ; index++) {
@@ -431,6 +435,7 @@ export class HttpClient {
 					target,
 					bodyless,
 					bare,
+					crossedOrigin,
 				);
 			} catch (err) {
 				return fail("invalid", `请求头不合法: ${describeError(err)}`);
@@ -520,6 +525,7 @@ export class HttpClient {
 				bodyless = true;
 			}
 			from = { url: target, status: leg.status };
+			if (next.origin !== target.origin) crossedOrigin = true;
 			target = next;
 		}
 	}
@@ -561,6 +567,8 @@ export class HttpClient {
 	 * 一跳的请求头:身份 < 客户端默认头 < 这次请求的头;最后才是罐子的 Cookie。
 	 * 线上头序:默认头、这次请求的头(同名的留在先出现的位置),然后是身份里调用方没写的,最后 Cookie。
 	 * `bare` 一档只剩「这次请求的头」:没有默认头、身份与 Cookie。
+	 * 重定向跳出过起点的源之后(`crossedOrigin`),调用方给的 `authorization` / `proxy-authorization` / `cookie`
+	 * (默认头里的也算)不再带;罐子按目标现取的 `Cookie` 不受影响。
 	 */
 	private requestHeaders<H extends Pick<Headers, "set" | "has" | "delete">>(
 		headers: H,
@@ -568,11 +576,15 @@ export class HttpClient {
 		target: URL,
 		bodyless: boolean,
 		bare: boolean,
+		crossedOrigin: boolean,
 	): H {
 		if (!bare) {
 			for (const [name, value] of Object.entries(this.defaultHeaders)) headers.set(name, value);
 		}
 		for (const [name, value] of entriesOf(extra)) headers.set(name, value);
+		if (crossedOrigin) {
+			for (const name of CROSS_ORIGIN_STRIPPED_HEADERS) headers.delete(name);
+		}
 		if (bare) {
 			if (bodyless) headers.delete("content-type");
 			return headers;

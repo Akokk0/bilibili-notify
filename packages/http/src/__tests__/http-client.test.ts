@@ -740,6 +740,110 @@ describe("HttpClient.fetch — FormData 请求体", () => {
 	});
 });
 
+describe("HttpClient.fetch — 跨源重定向剥凭据头", () => {
+	const CREDENTIAL_HEADERS = {
+		Authorization: "Bearer secret-token",
+		"Proxy-Authorization": "Basic proxy-secret",
+		Cookie: "caller=own-cookie",
+		"X-Keep": "kept",
+	};
+	let origin: Server;
+	let other: Server;
+	let originURL: string;
+	let otherURL: string;
+	let seenByOrigin: IncomingMessage["headers"][];
+	let seenByOther: IncomingMessage["headers"][];
+
+	beforeEach(async () => {
+		seenByOrigin = [];
+		seenByOther = [];
+		other = createServer((req, res) => {
+			seenByOther.push(req.headers);
+			if (req.url === "/back") {
+				res.statusCode = 302;
+				res.setHeader("Location", `${originURL}/landing`);
+				res.end();
+			} else {
+				res.end("other");
+			}
+		});
+		await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
+		otherURL = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
+		origin = createServer((req, res) => {
+			seenByOrigin.push(req.headers);
+			if (req.url === "/to-other") {
+				res.statusCode = 302;
+				res.setHeader("Location", `${otherURL}/landing`);
+				res.end();
+			} else if (req.url === "/to-other-and-back") {
+				res.statusCode = 302;
+				res.setHeader("Location", `${otherURL}/back`);
+				res.end();
+			} else if (req.url === "/same-origin") {
+				res.statusCode = 302;
+				res.setHeader("Location", "/landing");
+				res.end();
+			} else {
+				res.end("origin");
+			}
+		});
+		await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+		originURL = `http://127.0.0.1:${(origin.address() as AddressInfo).port}`;
+	});
+
+	afterEach(async () => {
+		origin.closeAllConnections();
+		other.closeAllConnections();
+		await Promise.all([
+			new Promise<void>((resolve) => origin.close(() => resolve())),
+			new Promise<void>((resolve) => other.close(() => resolve())),
+		]);
+	});
+
+	it("端口不同就是跨源:调用方给的 authorization / proxy-authorization / cookie 不带过去,别的头照发", async () => {
+		const res = await makeClient().fetch(`${originURL}/to-other`, { headers: CREDENTIAL_HEADERS });
+
+		expect(res.ok).toBe(true);
+		expect(seenByOrigin[0]?.authorization).toBe("Bearer secret-token");
+		expect(seenByOrigin[0]?.["proxy-authorization"]).toBe("Basic proxy-secret");
+		expect(seenByOrigin[0]?.cookie).toBe("caller=own-cookie");
+		const landed = seenByOther[0];
+		expect(landed?.authorization).toBeUndefined();
+		expect(landed?.["proxy-authorization"]).toBeUndefined();
+		expect(landed?.cookie).toBeUndefined();
+		expect(landed?.["x-keep"]).toBe("kept");
+	});
+
+	it("同源的重定向:凭据头照带", async () => {
+		await makeClient().fetch(`${originURL}/same-origin`, { headers: CREDENTIAL_HEADERS });
+
+		expect(seenByOrigin).toHaveLength(2);
+		expect(seenByOrigin[1]?.authorization).toBe("Bearer secret-token");
+		expect(seenByOrigin[1]?.cookie).toBe("caller=own-cookie");
+	});
+
+	it("出过源就不再带:绕一圈回到原来的源,凭据头也不补回来", async () => {
+		await makeClient().fetch(`${originURL}/to-other-and-back`, { headers: CREDENTIAL_HEADERS });
+
+		expect(seenByOrigin).toHaveLength(2);
+		expect(seenByOrigin[1]?.authorization).toBeUndefined();
+		expect(seenByOrigin[1]?.cookie).toBeUndefined();
+		expect(seenByOrigin[1]?.["x-keep"]).toBe("kept");
+	});
+
+	it("客户端默认头里的凭据头同样不跨源;罐子按目标现取的 Cookie 不受影响", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("jar_cookie=for-other; Path=/", `${otherURL}/`);
+		await makeClient(jar, { headers: { Authorization: "Bearer from-defaults" } }).fetch(
+			`${originURL}/to-other`,
+		);
+
+		expect(seenByOrigin[0]?.authorization).toBe("Bearer from-defaults");
+		expect(seenByOther[0]?.authorization).toBeUndefined();
+		expect(seenByOther[0]?.cookie).toBe("jar_cookie=for-other");
+	});
+});
+
 /** 轮询等一个条件成立(不用 waitFor,不依赖假定时器)。 */
 async function waitUntil(cond: () => boolean, timeoutMs = 2_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
