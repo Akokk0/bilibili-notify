@@ -72,7 +72,7 @@ export interface ConnectionProbeEngineOptions {
 export interface ConnectionProbeEngine {
 	/**
 	 * 探一条连接并顺路补探能力。`manual`(主人点「测试」):结果每次都写盘,
-	 * 通了当场清问题,不通不算进失败次数。不带 `manual` 只回结果、不写任何东西。
+	 * 通了当场清问题,不通不算进失败次数,被限流(`rate_limited`)什么都不动。不带 `manual` 只回结果、不写任何东西。
 	 */
 	probe(connectionId: string, options?: { manual?: boolean }): Promise<ProbeResult>;
 	/** 停掉定时器。 */
@@ -212,7 +212,7 @@ export function createConnectionProbeEngine(
 			}
 			// 被限流 = 对端活着:不算失败也不算通,状态与计数都不动。
 			if (!result.ok && result.code === "rate_limited") {
-				log.warn(`[probe] connection ${connectionId} rate limited: ${result.message}`);
+				warnRateLimited(connectionId, result.message);
 				return;
 			}
 			if (result.ok) {
@@ -245,8 +245,16 @@ export function createConnectionProbeEngine(
 		}
 	}
 
-	/** 主人点「测试」:每次都写盘;通了当场清问题,不通不加失败次数。 */
+	const warnRateLimited = (connectionId: string, message: string): void =>
+		log.warn(`[probe] connection ${connectionId} rate limited: ${message}`);
+
+	/** 主人点「测试」:每次都写盘;通了当场清问题,不通不加失败次数;被限流则什么都不动。 */
 	async function settleManual(connectionId: string, result: ProbeResult): Promise<void> {
+		// 被限流 = 对端活着:与后台一样,状态、计数、问题都不动,只把结果回给面板。
+		if (!result.ok && result.code === "rate_limited") {
+			warnRateLimited(connectionId, result.message);
+			return;
+		}
 		const checkedAt = new Date().toISOString();
 		try {
 			if (result.ok) {

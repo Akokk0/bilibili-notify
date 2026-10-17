@@ -517,6 +517,23 @@ describe("ConnectionProbeEngine", () => {
 			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: true }));
 		});
 
+		it("手动被限流(rate_limited):状态不动、不写盘、不清问题、不加失败次数,结果照回", async () => {
+			const state = { current: DOWN as ProbeResult };
+			const c = setup([connectionOf(A)], { [A]: async () => state.current });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			c.written.length = 0;
+			const limited = fail("rate_limited", "限流");
+			state.current = limited;
+			const result = await c.engine.probe(A, { manual: true });
+			expect(result).toEqual(limited);
+			expect(c.written).toEqual([]);
+			expect(c.resolve).not.toHaveBeenCalled();
+			expect(c.log.warn).toHaveBeenCalledTimes(1);
+		});
+
 		it("没有探测协议(unsupported):写 unsupported", async () => {
 			const c = setup([connectionOf(A)], { [A]: async () => fail("unsupported", "no probe") });
 			engine = c.engine;
