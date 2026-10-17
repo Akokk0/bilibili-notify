@@ -623,7 +623,10 @@ describe("续期链:闸与提交", () => {
 			return { code: -352, message: "risk" };
 		});
 		w.host.advance(3_600_000);
-		await settle();
+		// 等第二轮刷新链走完,而不是等一段时间:链里有真的 RSA(`crypto.subtle` 的 importKey / encrypt,在线程池里算),
+		// 耗时随机器负载变,固定睡几毫秒会偶发赶不上。定时器到点那一刻 `triggerRefreshCheck` 已把这一轮登记进 track,
+		// 等 `tracked` 里的 promise 全落定就是等确定的事件(第一轮的早已落定)。
+		await Promise.all(w.host.tracked);
 
 		expect(w.refreshBodies.map((b) => b.refresh_token)).toEqual(["T0", "T1"]);
 	});
