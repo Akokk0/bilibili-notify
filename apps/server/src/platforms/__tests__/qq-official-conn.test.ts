@@ -464,7 +464,15 @@ describe("createQQGatewayConn — 网关连不上的上报", () => {
 		const onOffline = vi.fn();
 		const onOnline = vi.fn();
 		const conn = createQQGatewayConn(
-			connOpts(gw, { reconnectBaseMs: 10, offlineReportMs: WINDOW, onOffline, onOnline }),
+			// 退避上限压小:每 10 毫秒掐一次,握手常常赶不及 open、退避的次数会一直涨,
+			// 缺省的 30 秒上限会让「放它连上」之后好几秒等不到重连。
+			connOpts(gw, {
+				reconnectBaseMs: 10,
+				reconnectMaxMs: 50,
+				offlineReportMs: WINDOW,
+				onOffline,
+				onOnline,
+			}),
 		);
 		cleanups.push(() => conn.close());
 		// 网关接得上 WS、却从不 READY,握手一次次被掐断(每次 close 都是一次「再计时」的机会)。
@@ -480,8 +488,9 @@ describe("createQQGatewayConn — 网关连不上的上报", () => {
 
 		// 放它连上:READY 之后清一次。
 		killing = false;
-		const before = gw.received.length;
-		await waitFor(() => gw.received.length > before, 5000);
+		// 等最近一条连接是开着的就行:不能等「又收到一帧」—— 停掐的那一刻若正好有条连接已经发过
+		// IDENTIFY,之后再没有新帧,会一直等到超时。READY 客户端收到就认,不看它发没发过 IDENTIFY。
+		await waitFor(() => gw.conns.at(-1)?.readyState === 1, 5000);
 		gw.dispatch("READY", { session_id: "SID" });
 		await waitFor(() => onOnline.mock.calls.length > 0);
 		expect(onOnline).toHaveBeenCalledTimes(1);

@@ -428,6 +428,8 @@ export interface QQGatewayConnOptions {
 	intents?: number;
 	/** 指数退避基数(ms),默认 1000。测试注入小值加速。 */
 	reconnectBaseMs?: number;
+	/** 指数退避上限(ms),默认 30000。测试注入小值,免得反复失败后退避涨到好几秒。 */
+	reconnectMaxMs?: number;
 	/** 是否记录 RECONNECT/RESUMED 事件日志。QQ 官方网关约每 30 分钟主动要求重连一次,
 	 * 属正常协议行为;缺省/false 时静默,避免刷屏。取活值(而非创建时定值)—— 每次
 	 * 事件发生才读,配置热更新(见 reconcile 的 logReconnectsBox 同步)无需重建连接。 */
@@ -465,6 +467,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 	const { connectionId, serviceCtx, logger } = opts;
 	const intents = opts.intents ?? QQ_PUSH_INTENTS;
 	const reconnectBase = opts.reconnectBaseMs ?? QQ_RECONNECT_BASE_MS;
+	const reconnectMax = opts.reconnectMaxMs ?? QQ_RECONNECT_MAX_MS;
 
 	let ws: WebSocket | null = null;
 	let heartbeatTimer: Disposable | null = null;
@@ -639,7 +642,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 
 	function scheduleReconnect(): void {
 		if (closed || reconnectTimer) return;
-		const base = Math.min(reconnectBase * 2 ** attempt, QQ_RECONNECT_MAX_MS);
+		const base = Math.min(reconnectBase * 2 ** attempt, reconnectMax);
 		const jitter = Math.round(base * (0.8 + Math.random() * 0.4)); // ±20% 抖动
 		attempt += 1;
 		reconnectTimer = serviceCtx.setTimeout(() => {
