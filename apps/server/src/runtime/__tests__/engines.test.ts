@@ -3635,9 +3635,11 @@ describe("createEngines — 连接所在平台的能力", () => {
 			state = answer === "supported" ? "supported" : "unknown";
 			return caps();
 		});
+		// 内置平台的 atAll / inbound 是静态的「支持」,只有小程序卡要探;假实现照此,
+		// 「还不知道」才只剩小程序卡这一格(宿主补探看的是任一格还不知道)。
 		const caps = (): ConnectionCapabilities => ({
-			atAll: { state: "unknown" },
-			inbound: { state: "unknown" },
+			atAll: { state: "supported", checkedAt: 1 },
+			inbound: { state: "supported", checkedAt: 1 },
 			miniAppCard: state === "supported" ? { state, checkedAt: 1 } : { state },
 		});
 		const pa: PlatformAdapter = {
