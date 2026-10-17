@@ -49,6 +49,22 @@ export interface GenerationCreateRequest {
 	source: GenerationSourceKind;
 }
 
+/**
+ * 一个版本的更新说明（从 `apps/CHANGELOG.md` 打包进载荷）。
+ *
+ * ⚠️ `summary` 与 `caution` 都是 **markdown 原文**，面板用受限的文档渲染画；更新清单里「有新版」通知卡的
+ * `notes` 才是剥掉 markdown 的纯文字，两者别混。`caution` 是 CHANGELOG 里以 ⚠️ 开头、要主人动手的那一段。
+ */
+export interface ReleaseNoteEntry {
+	version: string;
+	/** 发布日期（`YYYY-MM-DD`），CHANGELOG 标题没写就缺。 */
+	date?: string;
+	summary: string;
+	caution?: string;
+	/** 这一版的 GitHub Release 页，完整更新说明在那里。 */
+	releaseUrl: string;
+}
+
 interface SystemNoticeBase {
 	id: string;
 	createdAt: string;
@@ -63,13 +79,21 @@ interface SystemNoticeBase {
  *   迁移替主人清空了,要到系统页重新选一个(ADR-0021 决策 57)。
  * - `generation-failed` —— 主人要求开的新代没开成,还在用原来那一代;`message` 是失败原因原话。
  * - `rolled-back` —— `version` 起不来,被启动器判死、退回了现在这一版。只报比正在跑的版本新的。
+ * - `updated` —— 升级之后的「本次更新」:正在跑的版本 `version` 比这一代跑过的最高版本新。`releases` 是跨过的各版
+ *   说明,新的在前,同号的正式版盖掉它自己的预发布段。没看过又升了一版时合成一条,范围从旧那条没看过的起点算起。
+ *   开发版不记。
+ * - `migrated` 另带 `version`(开出这一代的版本)与 `releases`(1.0 起到它为止的各版说明),首访页顶上的更新总结用。
+ *   说明是服务端在读清单那一刻从载荷里的数据文件现补的,盘上不存。
  */
 export type SystemNotice =
 	| (SystemNoticeBase & {
 			kind: "migrated";
 			cardSkinsDropped: boolean;
 			masterTargetCleared: boolean;
+			version: string;
+			releases: ReleaseNoteEntry[];
 	  })
+	| (SystemNoticeBase & { kind: "updated"; version: string; releases: ReleaseNoteEntry[] })
 	| (SystemNoticeBase & {
 			kind: "generation-failed";
 			source: GenerationSourceKind;

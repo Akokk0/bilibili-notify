@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import { dropLegacyWebDistDir, resolveWebDistDir } from "../web-dist.js";
+import { dropLegacyWebDistDir, payloadDirOf, resolveWebDistDir } from "../web-dist.js";
+
+describe("payloadDirOf", () => {
+	it("载荷入口所在的目录;web-dist 与数据文件都按它就近解析", () => {
+		expect(payloadDirOf("file:///data/versions/0.9.0/index.mjs")).toBe("/data/versions/0.9.0");
+	});
+});
 
 /**
  * dashboard 静态资源在哪。

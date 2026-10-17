@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
-import { RELEASES_PAGE_URL, TRUSTED_UPDATE_KEYS, UPDATE_MANIFEST_URLS } from "../trusted-keys.js";
+import {
+	RELEASES_PAGE_URL,
+	releaseUrlOf,
+	TRUSTED_UPDATE_KEYS,
+	UPDATE_MANIFEST_URLS,
+} from "../trusted-keys.js";
+
+describe("releaseUrlOf", () => {
+	it("某一版的发布页:v<版本> tag", () => {
+		expect(releaseUrlOf("1.2.3-alpha.1")).toBe(
+			"https://github.com/Akokk0/bilibili-notify/releases/tag/v1.2.3-alpha.1",
+		);
+		expect(releaseUrlOf("1.0.0").startsWith(`${RELEASES_PAGE_URL}/tag/`)).toBe(true);
+	});
+});
 
 /**
  * 信任根与渠道地址。这两样写死在代码里、不给配置入口 —— 能被配置改掉的信任根不是

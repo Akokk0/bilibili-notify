@@ -56,7 +56,16 @@ export function resolveWebDistDir({
 }: ResolveWebDistDirInput): ResolvedWebDistDir {
 	const explicit = pickExplicit(configured) ?? pickExplicit(envValue);
 	if (explicit) return { dir: explicit, source: "explicit" };
-	return { dir: join(dirname(fileURLToPath(bundleUrl)), "web-dist"), source: "payload" };
+	return { dir: join(payloadDirOf(bundleUrl), "web-dist"), source: "payload" };
+}
+
+/**
+ * 当前这份载荷所在的目录(入口 `index.mjs` 的同级)。属于载荷的东西都相对它解析:web-dist、
+ * 升级之后「本次更新」的数据文件 `release-notes.json`。注意不能借 {@link resolveWebDistDir} 的结果当
+ * 载荷目录 —— 管理员可以把前端钉到别处,数据文件仍要跟着载荷走。
+ */
+export function payloadDirOf(bundleUrl: string): string {
+	return dirname(fileURLToPath(bundleUrl));
 }
 
 function pickExplicit(value: string | undefined): string | undefined {

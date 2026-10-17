@@ -62,3 +62,8 @@ export const EXTENSION_MARKETPLACE_URL = `${RELEASE_DOWNLOAD_BASE}/download/exte
  * 情况下都给得出来,包括我们对远端一无所知的时候。
  */
 export const RELEASES_PAGE_URL = RELEASE_DOWNLOAD_BASE;
+
+/** 某一版的发布页(完整更新说明在那里)。devtools 的更新场景与「本次更新」共用。 */
+export function releaseUrlOf(version: string): string {
+	return `${RELEASES_PAGE_URL}/tag/v${version}`;
+}

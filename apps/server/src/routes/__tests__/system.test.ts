@@ -122,6 +122,8 @@ const migrated: SystemNotice = {
 	kind: "migrated",
 	cardSkinsDropped: true,
 	masterTargetCleared: false,
+	version: "1.0.0",
+	releases: [],
 };
 const rolledBack: SystemNotice = {
 	id: "n2",

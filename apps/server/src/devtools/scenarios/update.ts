@@ -1,5 +1,5 @@
 import type { UpdateErrorReason, UpdateState } from "@bilibili-notify/contract";
-import { RELEASES_PAGE_URL } from "../../update/trusted-keys.js";
+import { RELEASES_PAGE_URL, releaseUrlOf } from "../../update/trusted-keys.js";
 import type { DevScenarioDef } from "../registry.js";
 import type { InjectableUpdateService } from "../update-injection.js";
 
@@ -33,10 +33,6 @@ const REASONS: ReadonlyArray<{ value: UpdateErrorReason; label: string }> = [
 	{ value: "install-failed", label: "install-failed · 写盘失败" },
 	{ value: "nothing-to-roll-back", label: "nothing-to-roll-back · 没得退" },
 ];
-
-function releaseUrlOf(target: string): string {
-	return `${RELEASES_PAGE_URL}/tag/v${target}`;
-}
 
 /** `notes` 是可选字段:空串不带 —— 带了面板会渲染一行空白的说明。 */
 function withNotes<T extends object>(base: T, notes: string): T & { notes?: string } {
