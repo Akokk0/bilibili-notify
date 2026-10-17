@@ -17,6 +17,15 @@ import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createStorageUsage } from "../storage-usage.js";
 
+// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// 不归 serviceCtx 管:用例恰好跨过整点时,清完之后那一轮会把当时的粉丝数写成新起点,「起点没了」就偶发红。
+vi.mock("cron", () => ({
+	CronJob: class {
+		start(): void {}
+		stop(): void {}
+	},
+}));
+
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -73,7 +82,7 @@ async function start() {
 			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower } })),
 			fetchUserCard: vi.fn(),
 		} as never,
-		// 不放行启动那次延时 tick:只看各用例自己触发的那一轮。
+		// 不放行启动那次延时 tick(cron 也不到点,见文件顶上的 mock):只看各用例自己触发的那一轮。
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
 			setInterval: vi.fn(() => undefined),
