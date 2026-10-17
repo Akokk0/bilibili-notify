@@ -1,5 +1,6 @@
 import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { segmentsToContent } from "../../../live/content-builder";
 import { LivePushType } from "../../../live/live-types";
 import { pushMembership } from "../../../live/membership";
 import { pushViewerChat, pushViewerEnter } from "../../../live/special-viewers";
@@ -598,12 +599,7 @@ export class RoomSession extends RoomSessionBase {
 								logger: this.ctx.logger,
 							})
 						: undefined,
-				send: (segment) =>
-					pushMain(
-						segment.kind === "image"
-							? this.ctx.contentBuilder.image(segment.buffer, segment.mime)
-							: this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(segment.text)]),
-					),
+				send: (segment) => pushMain(segmentsToContent(this.ctx.contentBuilder, [segment])),
 				logger: this.ctx.logger,
 			},
 		);

@@ -1,8 +1,5 @@
-import {
-	isBlockVisible,
-	type MessageKindLayout,
-	type MessageLayoutSegment,
-} from "@bilibili-notify/internal";
+import { isBlockVisible, type MessageKindLayout } from "@bilibili-notify/internal";
+import { segmentsToContent } from "../../../live/content-builder";
 import {
 	type LiveNotifyPushType,
 	type LiveNotifySend,
@@ -387,18 +384,16 @@ export class RoomContext extends RoomContextBase {
 		return async (groups, type) => {
 			// 出卡要好几秒:这期间引擎被拆了,就不再往外推。
 			if (this.isDisposed()) return;
-			const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
-				this.contentBuilder.message(
-					segs.map((s) =>
-						s.kind === "image"
-							? this.contentBuilder.image(s.buffer, s.mime)
-							: this.contentBuilder.text(s.text),
-					),
-				);
 			await this.push.push({
 				uid,
 				type,
-				anchors: [{ role: "main", messages: groups.map(buildContent) }, ...extras],
+				anchors: [
+					{
+						role: "main",
+						messages: groups.map((segs) => segmentsToContent(this.contentBuilder, segs)),
+					},
+					...extras,
+				],
 			});
 		};
 	}

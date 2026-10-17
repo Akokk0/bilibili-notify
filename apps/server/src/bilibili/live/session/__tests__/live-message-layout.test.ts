@@ -193,12 +193,13 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		);
 		expect(pushedMessage).not.toHaveBeenCalled();
 		expect(pushedSequence).toHaveBeenCalledTimes(1);
-		const [uid, contents, type] = pushedSequence.mock.calls[0] as [string, Msg[], number];
+		const [uid, contents, type] = pushedSequence.mock.calls[0] as [string, (Msg | Seg)[], number];
 		expect(uid).toBe("u1");
 		expect(type).toBe(LivePushType.StartBroadcasting);
 		expect(contents).toHaveLength(2);
-		expect(contents[0]?.segs.map((s) => s.kind)).toEqual(["image"]);
-		expect(contents[1]?.segs[0]?.text).toBe(`开播文案\n${LINK}`);
+		// 单图的一条直接是图(与醒目留言同形,载荷里本来就会收成图)。
+		expect(contents[0]).toEqual({ kind: "image" });
+		expect((contents[1] as Msg).segs[0]?.text).toBe(`开播文案\n${LINK}`);
 	});
 
 	it("隐藏 card 块 → 跳过图片渲染", async () => {
