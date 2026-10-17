@@ -44,6 +44,7 @@
     - `searchCreators` 改成返回结果形状，失败不再靠抛。
     - 按决策 2 同样管到的：`fetchLiveStatus`（`LiveStatusResult` 改成 `{ ok: true, kind: "live" | "offline", … } | { ok: false, code, message }`）、`fetchPreview`、`SourceAuth.beginLogin` / `logout`。
     🔗 **2026-10-14**（3b，B 站的落法，主人定；资料刷新那条主会话照规矩定）：**B 站返回码的翻译表**。B 站在 `bilibili/` 里有一张共用的「数字码 → 标准码」表，请求层在接口回来时查一次，翻成 `fail(标准码, 原话, { upstreamCode })`：`-352`、`-412`、`-799`、`-509` → `rate_limited`；`-101` → `unauthorized`；`-403` 不进共用表，由用到它的接口自己判（也可能是真没权限，如受限直播间）；没对照的码 → `unknown`，原码进 `upstreamCode`，每个进程第一次撞上记一条 warn。各轮询把 `unknown` 当一时失败、下一轮照拉、只进表不私聊。cookie 续期只在 `unauthorized` 时登出，`unknown` 下一轮再试（死会话由普通请求撞 `-101` 时登出）。资料刷新搬进 B 站来源后，撞风控也进同一个风控层（路名 `profile`），只进表不私聊。B 站的 AI 工具失败码走这张表；统计总开关关着时 `get_creator_posts` / `get_creator_stats` 回 `not_configured`（照锐评的先例），注入的工具失败也按结果形状返回。
+    🔗 **2026-10-17**（3b-18 落成，主人定）：翻译表接进请求层的实情 —— 拉动态、直播预检、上舰观众头像、cookie 续期读标准码；回应不是对象或没有数字 `code` 回 `unavailable`；cookie 续期只有 `unauthorized` 登出；直播预检里 `rate_limited` 走长尾重试、`-403` 与表外码仍当受限房；上舰观众头像撞限流后 5 分钟冷却、不进问题表。细节见 subscription-sources「B 站返回码的翻译表」。
 5. **旧数据**：历史里存的旧失败转成 `{ code: "unknown", message: 原话 }`；连接的探测状态不迁移，开机重探。
 6. **错误体与造结果的统一写法**（09-29，切片 ④ 勘察之后）：
     - HTTP 非 2xx 的错误体 `{ code, message }` 之外只许两格附加：`issues`（`{ path?, message }[]`，拓展设置那处多一个 `op?`）与 `upstreamCode`；要加别的先问主人。勘察时的 `scope`、`id`、`revision`、`usedBy`、`detail` 面板不读或只拿来拼句子，删掉；`referencedBy` 并进 `message`；只装一句话的 `errors: string[]` 改成 `message`，真正的原因清单改成 `issues`。
