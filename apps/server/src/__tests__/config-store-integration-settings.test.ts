@@ -24,6 +24,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { BUILTIN_INTEGRATION_SETTINGS } from "../compose.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import {
 	CONFIG_DIR,
@@ -827,6 +828,16 @@ describe("集成设置 — 登记", () => {
 		expect(coreKeys).toContain("logging");
 		for (const key of coreKeys) {
 			expect(() => build([{ ...otherSegment, key }]), key).toThrow(/撞名/);
+		}
+	});
+
+	// 真的内置段清单(compose.ts)登记进来:不撞名,三个适配器的段开机各建一份空文件、读口里各是空对象。
+	it("内置设置段清单整份登记进配置仓:不撞名,三个适配器的段各建一份 {}", async () => {
+		const store = await open(BUILTIN_INTEGRATION_SETTINGS);
+		for (const key of ["onebot", "qq-official", "webhook"]) {
+			const file = join(dataDir, ...integrationSettingsFile(key));
+			expect(JSON.parse(await readFile(file, "utf8")), key).toEqual({});
+			expect(store.getAllIntegrationSettings()[key], key).toEqual({});
 		}
 	});
 });

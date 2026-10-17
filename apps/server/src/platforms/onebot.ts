@@ -24,6 +24,8 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { z } from "zod";
+import type { IntegrationSettingsSegment } from "../config/store.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
@@ -169,7 +171,20 @@ function minTimeoutLimits(
  */
 type OnebotConnection = Connection & { settings: OnebotConnectionSettings };
 
-const isMine = (c: Connection): c is OnebotConnection => c.adapterKey === "onebot";
+/** 适配器键。适配器的 `adapterKey`、下面的设置段与 `isMine` 引同一个,免得两处写漂。 */
+const ADAPTER_KEY = "onebot";
+
+/**
+ * 登记进配置仓的那一段(ADR-0025 决策 2:每个拿到集成上下文的集成都有一段)。今天它没有任何格 ——
+ * 连接的设置住连接自己身上,不在集成级;登记是为了集成上下文上的 `settings(规则)` 读这个键时有段可读
+ * (配置仓对根本没登记的键会抛)。
+ */
+export const onebotSettingsSegment: IntegrationSettingsSegment = {
+	key: ADAPTER_KEY,
+	schema: z.object({}),
+};
+
+const isMine = (c: Connection): c is OnebotConnection => c.adapterKey === ADAPTER_KEY;
 
 type OnebotHttpConfig = Extract<OnebotConnectionSettings, { transport: "http" }>;
 type OnebotWsConfig = Extract<OnebotConnectionSettings, { transport: "ws" }>;
@@ -1366,7 +1381,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	return {
-		adapterKey: "onebot",
+		adapterKey: ADAPTER_KEY,
 		settingsSchema: OnebotConnectionSettingsSchema,
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {

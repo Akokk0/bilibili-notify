@@ -277,7 +277,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
     - 不带对象是拓展自己的问题（`about` 空着）；订阅源填了 `externalId`，由宿主换成那个人的订阅 id，订阅卡上说明为什么收不到。
     - 平台适配器报某条连接的问题带 `connectionId`，宿主核它是不是这个适配器的连接，不是就拒收。同时提供订阅源与适配器的拓展，两边各从自己那份 ctx 报，`externalId` 与 `connectionId` 不会出现在同一个签名上。`apps/contract` 的问题类型跟着 `about` 加连接这一支改。
     - 一条生死规矩：报的人 `resolveProblem` 按 code 清；报的人停下，它报的全清（适配器停下，它名下的全清）；对象（订阅、连接）删了，关于它的全清。
-    - 宿主替拓展报的一条：拓展设置读不懂，code `settings_invalid`、记在拓展 id 名下、不私聊；改好起来、主人停用、卸载时清。这条是装载器替没起来的拓展报的，「拓展停下就清它名下的问题」不能在启动失败那条路上触发。
+    - 宿主替拓展报的一条：拓展设置读不懂，code `settings_invalid`、记在拓展 id 名下、不私聊；改好起来、主人停用、卸载时清。这条是装载器替没起来的拓展报的，「拓展停下就清它名下的问题」不能在启动失败那条路上触发。🔗 现状（3b-41 C2，10-17）：已落，装载器在收摊之后才报、起之前 / 停用 / 卸载 / 盘上换版本时清；话在服务端字典（`extension.settings.problem`，设置文件读不懂是 `extension.settings.fileBroken`）。
     - 不存盘：重启或停用再启用之后，还在的问题要拓展重报一遍（重启后的头几秒，订阅卡上的红字会先消失）。
 - code 用 snake（`login_expired`）。
 - 🔗 **现状（3a-30，10-11）**：问题表、`GET /api/problems`、`problems-changed` 与核心那头的通知器 3a-30 已落，但 `reportProblem` / `resolveProblem` 只造在内置来源的 `SourceContext` 上；上面第一层（`IntegrationContext`，不带对象）和 `connectionId` 那一支都没造，拓展的 `activate(ctx)` 今天没有这两个成员；`Problem.about` 今天只有 `{ subscriptionId }` 一支。三层签名与 `about` 加连接那一支随 3b-38 落成。多语言（ADR-0037）下问题句的口吻与加工见上。
@@ -345,10 +345,10 @@ interface ConnectionCandidate {
 ## 设置
 
 - 清单里声明 `settings.fields`，`activate` 里交一份 zod，两份对不上当场抛。凭据字段标 `secret: true`（与核心 schema 同一写法），面板打码、备份脱敏、日志脱敏都读这个标记。
-- 读取：`ctx.settings(schema)` 交回 `SettingsReader<T>`（与内置集成同一个），`get()` 现读、回 `Result<{ settings: T }>`、不抛，`onChange(fn)` 在内容真的变了时叫。从没设过的，拿空对象过规则：过得了是成功拿默认值，过不了回 `not_configured`、拓展照跑。每个拿到上下文的集成都在配置仓登记一段（内置适配器也登记），没设过的照这条读；配置仓对根本没登记的键照旧抛（组装漏了是 bug）。
+- 读取：`ctx.settings(schema)` 交回 `SettingsReader<T>`（与内置集成同一个），`get()` 现读、回 `Result<{ settings: T }>`、不抛，`onChange(fn)` 在内容真的变了时叫。从没设过的，拿空对象过规则：过得了是成功拿默认值，过不了回 `not_configured`、拓展照跑。每个拿到上下文的集成都在配置仓登记一段（内置适配器也登记），没设过的照这条读；配置仓对根本没登记的键照旧抛（组装漏了是 bug）。🔗 现状（3b-41，10-17）：C1 已落——拓展的 `ctx.settings(规则)` 交回 `SettingsReader<T>`，`ExtensionSettings<T>` 已删；没设过拿 `{}` 过规则，过得了是成功并带默认值、过不了回 `not_configured`；带异步规则、交进来那一刻判不完回 `unavailable`；跑着时被旁路写坏，`get()` 回 `invalid`（带 `issues`）并叫一次 `onChange`，桥在 `links()` 里记着上一份好的名单。C3 已落——三个内置适配器各登记了一段空段；集成上下文自己的 `settings(规则)` 还没上提（C4）。
 - 值存在 `config/settings/extensions/<id>.json`，一个拓展一个文件；开关 `extensions.<id>.enabled` 归宿主，在 `config/settings/core.json` 里。
 - **坏了只停这一个拓展，不挡开机**：拓展段校验不过，宿主只停这一个拓展，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`。面板、健康卡与 `status` 指令都读它。
-- **只有 `activate` 期间读设置失败可以抛错中止启动**，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。读不懂的拓展不起，宿主同时替它报一条 `settings_invalid` 进问题表（见「问题上报」）。
+- **只有 `activate` 期间读设置失败可以抛错中止启动**，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。读不懂的拓展不起，宿主同时替它报一条 `settings_invalid` 进问题表（见「问题上报」；3b-41 C2 已落）。
 - **「读设置的写法简化」不改第 3 版契约的形状**：「规则只写一份、清单字段由打包脚本从规则导出」那一半排到第 4 期，与面板「按描述画」一起做；「规则写在定义里、一行读到」不做。
 - 版本号是内容哈希，对不上回 409。
 - 卸载删掉这一段。

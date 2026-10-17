@@ -21,6 +21,7 @@ import {
 	ok as okResult,
 	type PlatformAdapterContext,
 	type PostReport,
+	RESERVED_INTEGRATION_KEYS,
 	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
@@ -250,11 +251,20 @@ afterEach(() => {
 });
 
 describe("BUILTIN_INTEGRATION_SETTINGS · 设置登记", () => {
-	it("设置段清单里有 B 站那一段,而且只有它", () => {
-		expect(BUILTIN_INTEGRATION_SETTINGS.map((segment) => segment.key)).toEqual([
-			BILIBILI_SOURCE_KEY,
-		]);
+	// 每个拿到集成上下文的集成都在配置仓登记一段(ADR-0025 决策 2):内置的就是保留 id 那四个。
+	it("设置段清单的键正好是保留的内置集成键(集合相等),B 站那一段在里面", () => {
+		const keys = BUILTIN_INTEGRATION_SETTINGS.map((segment) => segment.key);
+		expect(new Set(keys).size).toBe(keys.length);
+		expect([...keys].sort()).toEqual([...RESERVED_INTEGRATION_KEYS].sort());
 		expect(BUILTIN_INTEGRATION_SETTINGS).toContain(settingsSegment);
+	});
+
+	it("三个内置适配器的段是空段:没有任何格,空对象过得了", () => {
+		for (const key of ["onebot", "qq-official", "webhook"]) {
+			const segment = BUILTIN_INTEGRATION_SETTINGS.find((candidate) => candidate.key === key);
+			expect(segment?.schema.shape).toEqual({});
+			expect(segment?.schema.safeParse({}).success).toBe(true);
+		}
 	});
 });
 

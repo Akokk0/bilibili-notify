@@ -69,6 +69,9 @@ if (!read.ok) throw new Error("settings broken");
 - 集成段设置逐格、整个文件读不懂、比值、按字节回滚、恢复备份：`__tests__/config-store-integration-settings.test.ts`，纯函数在 `config/__tests__/integration-settings.test.ts`。
 - 读设置的把手不抛、变了才叫、一个订阅者抛了不影响别的：`integrations/__tests__/settings-reader.test.ts`；挂在来源上下文上、随上下文收掉：`subscriptions/__tests__/source-context.test.ts`。
 - B 站哪格坏停哪样、改好当场起：`bilibili/__tests__/source-settings.test.ts`；从真入口坏着开机、经真的设置路由存对、那一样起来（也钉着全量图里 `bilibili` 键一直在）：`__tests__/builtin-source-settings-boot-e2e.test.ts`。
+- 拓展的 `ctx.settings(规则)` 回 `SettingsReader`（没设过拿 `{}` 过规则、`not_configured`、`unavailable`、跑着被写坏回 `invalid` 带 `issues` 并叫 `onChange`）：`extensions/__tests__/context-grants.test.ts`「读自己的设置」，桥握手不因读坏而 401：`extensions/bridge/src/__tests__/e2e.test.ts`。
+- 拓展设置读不了进问题表（`settings_invalid`，不带 `about`、不私聊，改好 / 停用 / 卸载时清）：`extensions/__tests__/settings-invalid.test.ts`「设置读不了记进问题表」，从真入口坏着开机：`__tests__/extension-broken-settings-boot-e2e.test.ts`。
+- 内置设置段清单的键正好是保留的内置集成键（三个适配器各一段空段）：`__tests__/compose.test.ts`、`__tests__/config-store-integration-settings.test.ts`。
 - 拓展设置文件不是合法 JSON 只停那一个拓展：`__tests__/config-store-extension-settings.test.ts`、`extensions/__tests__/settings-invalid.test.ts`、`__tests__/extension-broken-settings-boot-e2e.test.ts`、`routes/__tests__/extension-settings-route.test.ts`。
 
 **仍靠审查的**，逐条看：

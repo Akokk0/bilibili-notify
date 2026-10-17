@@ -44,9 +44,9 @@ import { createImageFetcher, type ImageFetcher } from "./images/image-fetcher.js
 import { IMAGE_REFERRERS } from "./images/image-referrers.js";
 import type { ImageStore } from "./images/image-store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
-import { createOnebotAdapter } from "./platforms/onebot.js";
-import { createQQOfficialAdapter } from "./platforms/qq-official.js";
-import { createWebhookAdapter } from "./platforms/webhook.js";
+import { createOnebotAdapter, onebotSettingsSegment } from "./platforms/onebot.js";
+import { createQQOfficialAdapter, qqOfficialSettingsSegment } from "./platforms/qq-official.js";
+import { createWebhookAdapter, webhookSettingsSegment } from "./platforms/webhook.js";
 import {
 	type BuiltinAdapters,
 	type RegisterBuiltinAdaptersOptions,
@@ -60,10 +60,13 @@ import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
 
 /**
  * 各内置集成的设置段:建运行时(配置仓)时交进去,段在配置仓构造期定死,所以是模块级常量、不在
- * `composeBuiltinIntegrations` 里。今天只有 B 站那一段。
+ * `composeBuiltinIntegrations` 里。每个拿到集成上下文的内置集成一段:B 站,加三个内置适配器(后三段没有任何格)。
  */
 export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[] = [
 	settingsSegment,
+	onebotSettingsSegment,
+	qqOfficialSettingsSegment,
+	webhookSettingsSegment,
 ];
 
 export interface BuiltinIntegrationsDeps {

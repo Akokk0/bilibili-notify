@@ -21,6 +21,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { fail, ok, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
+import { z } from "zod";
+import type { IntegrationSettingsSegment } from "../config/store.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
@@ -1082,7 +1084,19 @@ function isConnectable(cfg: QQOfficialConnectionSettings): boolean {
  */
 type QQOfficialConnection = Connection & { settings: QQOfficialConnectionSettings };
 
-const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === "qq-official";
+/** 适配器键。适配器的 `adapterKey`、下面的设置段与 `isMine` 引同一个,免得两处写漂。 */
+const ADAPTER_KEY = "qq-official";
+
+/**
+ * 登记进配置仓的那一段(ADR-0025 决策 2:每个拿到集成上下文的集成都有一段)。今天它没有任何格 ——
+ * 连接的设置住连接自己身上,不在集成级。
+ */
+export const qqOfficialSettingsSegment: IntegrationSettingsSegment = {
+	key: ADAPTER_KEY,
+	schema: z.object({}),
+};
+
+const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === ADAPTER_KEY;
 
 /**
  * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
@@ -1248,7 +1262,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 
 	return {
-		adapterKey: "qq-official",
+		adapterKey: ADAPTER_KEY,
 		settingsSchema: QQOfficialConnectionSettingsSchema,
 		connectionAuth: bindAuth.auth,
 

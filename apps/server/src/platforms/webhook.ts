@@ -16,6 +16,8 @@ import {
 	WebhookConnectionSettingsSchema,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
+import { z } from "zod";
+import type { IntegrationSettingsSegment } from "../config/store.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
 
@@ -41,7 +43,19 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  */
 type WebhookConnection = Connection & { settings: WebhookConnectionSettings };
 
-const isMine = (c: Connection): c is WebhookConnection => c.adapterKey === "webhook";
+/** 适配器键。适配器的 `adapterKey`、下面的设置段与 `isMine` 引同一个,免得两处写漂。 */
+const ADAPTER_KEY = "webhook";
+
+/**
+ * 登记进配置仓的那一段(ADR-0025 决策 2:每个拿到集成上下文的集成都有一段)。今天它没有任何格 ——
+ * 连接的设置住连接自己身上,不在集成级。
+ */
+export const webhookSettingsSegment: IntegrationSettingsSegment = {
+	key: ADAPTER_KEY,
+	schema: z.object({}),
+};
+
+const isMine = (c: Connection): c is WebhookConnection => c.adapterKey === ADAPTER_KEY;
 
 /** webhook 只收端点那一支;收窄在 `send` 里做过之后往下传的就是这个形状。 */
 type EndpointDestination = Extract<DestinationRef, { kind: "endpoint" }>;
@@ -59,7 +73,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	const adapterStartedAt = Date.now();
 
 	return {
-		adapterKey: "webhook",
+		adapterKey: ADAPTER_KEY,
 		settingsSchema: WebhookConnectionSettingsSchema,
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {

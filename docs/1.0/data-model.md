@@ -155,6 +155,7 @@ interface Problem {                    // 全在内存，不存盘
 - 🔗 **设置读不懂的三个码（3a-39，10-11）**，都不带 `notify`（只进表、不私聊，主人定：「面板提示可以吗？私聊尽量少用」）：
   - `settings_invalid`，报的人是 `"core"`（这个值第一次有人用；写死在 `config/settings-problems.ts`，理论上会与一个 id 叫 `core` 的来源撞键）：核心设置有格读不懂退了默认，**几格坏了合成一条**（文案里最多摊三格，用代码路径与 zod 的原话，格数变了只换文案、`since` 不动），不带盘上原文；所有格都好了就清，不补「已恢复」。由配置仓的 `onInvalidSettingsChanged` 经 `runtime/bootstrap.ts` 接到问题表（`config/settings-problems.ts`）。
   - `dynamic_settings_invalid`、`login_check_settings_invalid`，报的人是 `bilibili`：B 站动态那格 / 登录检查那格（或整个文件）读不懂，一样一条，文案点名停的是哪一样、因为哪一格（面板上的叫法加键名）、到哪改（`bilibili/problem-texts.ts`）；由来源经 `ctx.reportProblem` 直接报，不走分层上报器，所以不被「未登录」压着。
+  - `settings_invalid`，报的人是拓展 id：这个拓展存着的设置读不了（设置文件不是合法 JSON、过不了它自己的 zod、跑着时被旁路写坏），没起来或被收掉。**不带 `about`、不私聊**；话是宿主自己写的整句，点名拓展，不加「X 报告」引子；改好起来、主人停用、卸载、盘上换了一版时由装载器清，不补「已恢复」。报的次序要紧：必须在拓展的上下文收摊（`clearReporter`）之后，不然刚记的这一条被一起清掉。🔗 现状（3b-41 C2，10-17）：已落（`extensions/loader.ts`，话在服务端字典 `extension.settings.problem` / `extension.settings.fileBroken`）。
 - 与 `reportDiscrepancies` 分开：上报被拒或被丢格记进该集成的 `reportDiscrepancies` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
 
 ## 来源描述符
@@ -485,7 +486,7 @@ AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sou
 
 ## 配置
 
-主人填的设置按集成分文件，都在 `config/settings/` 下：`core.json`、`bilibili.json`、`extensions/<拓展 id>.json`，一个文件就是一段（ADR-0021 决策 42 下 10-01 的 🔗）。每段的 schema 由那个集成定义。拓展的开关归宿主，在 `core.json` 里；拓展的文件只装它自己的设置。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
+主人填的设置按集成分文件，都在 `config/settings/` 下：`core.json`、`bilibili.json`、`extensions/<拓展 id>.json`，一个文件就是一段（ADR-0021 决策 42 下 10-01 的 🔗）。每段的 schema 由那个集成定义。🔗 现状（3b-41 C3，10-17）：三个内置适配器也各登记了一段（`onebot.json`、`qq-official.json`、`webhook.json`），段里没有任何格，开机时配置仓当场建一份 `{}`；它们让 `GET /api/settings` 顶层多三个空对象、备份的 `integrations` 多三个空键。备份版本没有抬：旧备份缺这三个键，恢复时缺的不动，照常能恢复；只有"新版做的备份回到没有这三段的开发版"会被拒，原因是「没有叫「onebot」的集成设置」。拓展的开关归宿主，在 `core.json` 里；拓展的文件只装它自己的设置。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
 
 ```ts
 interface Settings {
