@@ -271,7 +271,7 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 
 	it("默认关、乙写了例外开:只生成一次,乙收到点评、甲收到模板;历史各存各的;重推甲那一行发的是模板", async () => {
 		await patchSettings({
-			ai: { writing: { post: { enabled: false, byTarget: { [target.b]: true } } } },
+			ai: { writing: { post: { isOnByDefault: false, byTarget: { [target.b]: true } } } },
 		});
 		// 甲先"收不下"(回 500):它那一行落成失败,稍后好拿来人工重推。
 		failA = true;

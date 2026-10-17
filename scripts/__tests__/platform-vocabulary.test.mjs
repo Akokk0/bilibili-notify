@@ -455,8 +455,8 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/inbound.ts": 2, // 提示文字里的「群 openid」「OneBot / 官机」(参数名与变量里的 `userId` / `groupId` 15 处随 3b-40 入站改名清掉)
 	"apps/server/src/history/repush-store.ts": 3, // 重推原件的载荷种类 `"miniapp-card"`
 	"apps/server/src/history/store.ts": 1, // 同上
-	"apps/server/src/link-preview/link-previewer.ts": 13, // 小程序卡 13(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……);群入站的 `groupId` / `userId` 6 处随 3b-40 入站改名清掉
-	"packages/internal/src/constants.ts": 29, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2、保留 id `"onebot"` / `"qq-official"` 2、链接回复形式 `"miniapp"` 1
+	"apps/server/src/link-preview/link-previewer.ts": 12, // 小程序卡 12(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……);群入站的 `groupId` / `userId` 6 处随 3b-40 入站改名清掉
+	"packages/internal/src/constants.ts": 28, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2、保留 id `"onebot"` / `"qq-official"` 2
 	"packages/internal/src/platform.ts": 2, // 载荷种类 `"miniapp-card"` 与能力格 `miniAppCard`
 	"packages/internal/src/post.ts": 1, // 同名不同物:作品正文「@某人」片段的 `userId`,是来源那边的用户,不是推送平台的入站地址
 	"packages/internal/src/schema/targets.ts": 32, // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)

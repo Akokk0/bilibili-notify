@@ -276,7 +276,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
 			const scope = linkScopeKey(msg.connectionId, msg.address);
 			const policy = opts.policyFor(scope);
-			if (!policy.parse) return;
+			if (!policy.isOn) return;
 			const dest: LinkReplyDestination = {
 				connectionId: msg.connectionId,
 				address: msg.address,
@@ -286,9 +286,9 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
 			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
 			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
-			const useMiniApp = policy.form === "miniapp" && (await canSendMiniAppCard(dest));
+			const useMiniApp = policy.replyForm === "nativeShare" && (await canSendMiniAppCard(dest));
 			if (!useMiniApp && !opts.renderer()) return;
-			const cooldownMs = config.cooldownSeconds * 1000;
+			const cooldownMs = config.cooldownSec * 1000;
 			// 这条消息里已经回过的「解析器键 + 规范 id」:同一个东西的几种写法在一条消息里只出一张,
 			// 冷却关着(0)时也一样。只活在这次处理里,与冷却表无关、不占它的格子。
 			const repliedHere = new Set<string>();

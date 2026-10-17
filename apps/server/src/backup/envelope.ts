@@ -27,6 +27,9 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 19 = 链接设置改成五格以后导出的备份(设置里 `linkParsing` 成了 `linkPreview`:`enabled`、`isOnByDefault`、`replyForm`、
+ * `byTarget`、`cooldownSec`,回复形式 `miniapp` 叫 `nativeShare`;AI 写正文 `ai.writing.post` / `liveSummary` 的默认行
+ * `enabled` 叫 `isOnByDefault`)。
  * 18 = 特别关注名单与两把特性键改形状以后导出的备份(订阅的 `specialUsers { uid, kinds, template? }` 成了
  * `specialViewers { id, note?, features }`;特性键 `specialDanmaku` / `specialUserEnter` 叫 `viewerChat` / `viewerEnter`:
  * 设置与订阅里的开关、路由、文案键,默认文案账本,历史行的 `feature`)。
@@ -71,7 +74,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 18 as const;
+export const BACKUP_SCHEMA_VERSION = 19 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

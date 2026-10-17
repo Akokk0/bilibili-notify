@@ -87,8 +87,11 @@ import { migrateUptime } from "./uptime.js";
  * 默认文案账本、历史行的 `feature`;统计「在记」账里直播那一格改用冻住的 0.x 旧读法)。
  * 46 = 0.x 的女仆技能 `maid-skills/`、女仆对话 `ai/chat/` 与聊天附件 `assets/chat/` 不再带进新代,留在第 0 代(各记一条没带过来的);
  * 会话改写与附件进图库那一步撤掉(新代没有 `maid-skills/`、`ai/`,图库里没有 0.x 的附件)。
+ * 47 = 链接设置 `linkParsing` 成了 `linkPreview` 五格(`enabled`、`isOnByDefault`、`replyForm`、`byTarget`、`cooldownSec`;
+ * 0.x 的 `defaults.parse` / `defaults.form` / `groups` / `cooldownSeconds` 各归其位,回复形式 `miniapp` 叫 `nativeShare`;
+ * `config/settings/core.json` 因此没有 `linkParsing`,摘要变)。
  */
-export const MIGRATION_REVISION = 46;
+export const MIGRATION_REVISION = 47;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

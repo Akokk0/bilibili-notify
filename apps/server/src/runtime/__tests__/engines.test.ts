@@ -3427,20 +3427,22 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		active = c;
 		expect(c.runtime.linkPreview()).toEqual({
 			enabled: false,
-			cooldownSeconds: 60,
-			defaults: { parse: true, form: "image" },
-			groups: {},
+			isOnByDefault: true,
+			replyForm: "image",
+			byTarget: {},
+			cooldownSec: 60,
 		});
 		expect(c.runtime.linkCardPresentation().cardSkin).toBe(
 			c.configStore.getGlobals().defaults.cardSkin,
 		);
 
 		patchGlobals(c, (g) => {
-			g.linkParsing = {
+			g.linkPreview = {
 				enabled: true,
-				cooldownSeconds: 5,
-				defaults: { parse: true, form: "image" },
-				groups: {},
+				isOnByDefault: true,
+				replyForm: "image",
+				byTarget: {},
+				cooldownSec: 5,
 			};
 			g.defaults.cardSkin = "skin-link";
 		});
@@ -3448,9 +3450,10 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 
 		expect(c.runtime.linkPreview()).toEqual({
 			enabled: true,
-			cooldownSeconds: 5,
-			defaults: { parse: true, form: "image" },
-			groups: {},
+			isOnByDefault: true,
+			replyForm: "image",
+			byTarget: {},
+			cooldownSec: 5,
 		});
 		expect(c.runtime.linkCardPresentation().cardSkin).toBe("skin-link");
 	});
@@ -3487,35 +3490,36 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		const KEY = `${ADAPTER}:123`;
 		const STRANGER = `${ADAPTER}:999`;
 		// 出厂默认行解析开:目标群与陌生群都解析。
-		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
-		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(true);
+		expect(c.runtime.linkPolicyFor(KEY).isOn).toBe(true);
+		expect(c.runtime.linkPolicyFor(STRANGER).isOn).toBe(true);
 
 		patchGlobals(c, (g) => {
-			g.linkParsing = {
+			g.linkPreview = {
 				enabled: true,
-				cooldownSeconds: 60,
-				defaults: { parse: false, form: "image" },
-				groups: { [TARGET]: { parse: true } },
+				isOnByDefault: false,
+				replyForm: "image",
+				byTarget: { [TARGET]: { isOn: true } },
+				cooldownSec: 60,
 			};
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(c.runtime.linkPolicyFor(KEY)).toEqual({ parse: true, form: "image" });
-		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(false);
+		expect(c.runtime.linkPolicyFor(KEY)).toEqual({ isOn: true, replyForm: "image" });
+		expect(c.runtime.linkPolicyFor(STRANGER).isOn).toBe(false);
 
 		// 目标停用 → 那群不再解析;只发 targets 的变更,不发 globals。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: false } as PushTarget]);
 		c.bus.emit("config-changed", { scope: "targets" });
-		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
+		expect(c.runtime.linkPolicyFor(KEY).isOn).toBe(false);
 
 		// 目标恢复、但连接停用 → 同样不算;只发 connections 的变更。
 		c.configStore._setTargets([{ ...c.configStore.getTargets()[0], enabled: true } as PushTarget]);
 		c.bus.emit("config-changed", { scope: "targets" });
-		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
+		expect(c.runtime.linkPolicyFor(KEY).isOn).toBe(true);
 		c.configStore._setConnections([
 			{ ...c.configStore.getConnections()[0], enabled: false } as any,
 		]);
 		c.bus.emit("config-changed", { scope: "connections" });
-		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
+		expect(c.runtime.linkPolicyFor(KEY).isOn).toBe(false);
 	});
 
 	it("链接卡没有样式覆盖可言:配色恒为 undefined(渲染器逐字段回退全局),改全局封面也不带进来", () => {
@@ -3731,22 +3735,22 @@ describe("createEngines — 连接所在平台的能力", () => {
 describe("createEngines — 推送层的 aiWriting 读口接的是活的全局设置", () => {
 	it("读口回当前的 ai.writing;全局换了新的一份,下一次读到的就是新的", () => {
 		const first = makeDefaultGlobalConfig();
-		first.ai.writing.post = { enabled: false, byTarget: { "t-1": true } };
+		first.ai.writing.post = { isOnByDefault: false, byTarget: { "t-1": true } };
 		const c = setup({ globals: first });
 		active = c;
 		const read = (H.push[0] as { opts: { aiWriting: () => unknown } }).opts.aiWriting;
 		expect(read()).toEqual({
-			post: { enabled: false, byTarget: { "t-1": true } },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: false, byTarget: { "t-1": true } },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
 
 		const next = structuredClone(first);
-		next.ai.writing.post = { enabled: true, byTarget: {} };
-		next.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		next.ai.writing.post = { isOnByDefault: true, byTarget: {} };
+		next.ai.writing.liveSummary = { isOnByDefault: false, byTarget: {} };
 		c.configStore._set(next);
 		expect(read()).toEqual({
-			post: { enabled: true, byTarget: {} },
-			liveSummary: { enabled: false, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: {} },
+			liveSummary: { isOnByDefault: false, byTarget: {} },
 		});
 	});
 });

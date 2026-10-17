@@ -248,7 +248,7 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 	}): boolean | undefined {
 		const g = makeDefaultGlobalConfig();
 		g.ai.enabled = opts.master ?? true;
-		g.ai.writing.post = { enabled: opts.enabled, byTarget: opts.byTarget ?? {} };
+		g.ai.writing.post = { isOnByDefault: opts.enabled, byTarget: opts.byTarget ?? {} };
 		const sub = biliSub();
 		const read = makePostSettingsReader({
 			subscription: () => sub,
@@ -283,7 +283,7 @@ describe("makePostSettingsReader — 要不要生成点评(aiEnabled 的折法,A
 	it("目标表是现读的:例外指着的目标后来删了,下一次就不生成", () => {
 		const g = makeDefaultGlobalConfig();
 		g.ai.enabled = true;
-		g.ai.writing.post = { enabled: false, byTarget: { [T1]: true } };
+		g.ai.writing.post = { isOnByDefault: false, byTarget: { [T1]: true } };
 		let ids = [T1];
 		const read = makePostSettingsReader({
 			subscription: () => biliSub(),

@@ -1050,11 +1050,11 @@ export function countsAsFailure(status: (typeof PUSH_STATUSES)[number]): boolean
 }
 
 /**
- * 链接解析回什么:图片卡,或 QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。
- * 小程序卡要目标所在的 OneBot 实现能向腾讯签 ark(`get_mini_app_ark`,今天已知只有 NapCat),
- * 签不了的一律回落图片卡。只有这两档,没有「两个都发」。
+ * 链接预览回什么:图片卡,或原生分享卡(平台自己的分享卡,点开直接播放)。
+ * 原生分享卡要目标所在的连接能发出去(由适配器的能力说了算),发不了的一律回落图片卡。
+ * 只有这两档,没有「两个都发」。
  */
-export const LINK_REPLY_FORMS = ["image", "miniapp"] as const;
+export const LINK_REPLY_FORMS = ["image", "nativeShare"] as const;
 
 export type LinkReplyForm = (typeof LINK_REPLY_FORMS)[number];
 

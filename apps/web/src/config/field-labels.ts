@@ -160,22 +160,28 @@ export const FIELD_LABELS = {
 		section: "commands",
 	},
 	// ── 链接解析 ──────────────────────────────────────────────────────────
-	"linkParsing.enabled": {
+	"linkPreview.enabled": {
 		label: "链接解析",
 		hint: "群里有人贴 B 站视频链接就回一张卡,谁贴都算;在哪些群响应、回什么由下面的默认行与按群例外定。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
 		section: "linkPreview",
 	},
-	"linkParsing.cooldownSeconds": {
+	"linkPreview.cooldownSec": {
 		label: "冷却时间",
 		hint: `同一个群里同一个视频多久内只出一次图;0 = 不节流。另有不可调的底线:每个群每分钟最多 ${LINK_LIMITS.groupPerMinute} 张、全局同时最多处理 ${LINK_LIMITS.maxInflight} 张,防换着视频刷`,
 		section: "linkPreview",
 	},
-	"linkParsing.defaults": {
+	"linkPreview.isOnByDefault": {
 		label: "默认(所有群)",
 		hint: "机器人在的所有群默认解不解析、回图片卡还是小程序卡;下面没写例外的群都跟这一行。小程序卡要目标所在的 OneBot 实现支持 get_mini_app_ark(目前已知 NapCat),不支持的会回落图片卡",
 		section: "linkPreview",
 	},
-	"linkParsing.groups": {
+	// 默认行里「回什么」那一格:和「解析」同在一行控件里,字典里分开记,保存时才不落进「其他」。
+	"linkPreview.replyForm": {
+		label: "默认回复形式",
+		hint: "没写例外的群回图片卡还是小程序卡",
+		section: "linkPreview",
+	},
+	"linkPreview.byTarget": {
 		label: "按群例外",
 		hint: "从推送目标里列出的群,每格「跟默认」就是不例外;想只在某几群解析,把默认解析关掉、给那几群显式开。已停用的目标不解析,恢复启用后自动生效;目标删掉了这里就不再显示",
 		section: "linkPreview",

@@ -425,8 +425,8 @@ const AISettingsObjectSchema = z.object({
 	 * 默认两份都开、无例外 = 与今天一样;老设置与老备份里没有这一格,由默认值补。
 	 */
 	writing: AiWritingSettingsSchema.default(() => ({
-		post: { enabled: true, byTarget: {} },
-		liveSummary: { enabled: true, byTarget: {} },
+		post: { isOnByDefault: true, byTarget: {} },
+		liveSummary: { isOnByDefault: true, byTarget: {} },
 	})),
 	/**
 	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);

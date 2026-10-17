@@ -38,8 +38,8 @@ export function makeAi(): GlobalConfig["ai"] {
 			engines: { dynamic: false, live: false, roast: false },
 		},
 		writing: {
-			post: { enabled: true, byTarget: {} },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: {} },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		},
 		presets: [],
 	};

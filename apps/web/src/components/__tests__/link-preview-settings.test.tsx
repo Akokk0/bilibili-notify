@@ -16,7 +16,7 @@ import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { LinkPreviewSettings } from "../link-preview-settings";
 
-type LinkPreviewValue = GlobalConfig["linkParsing"];
+type LinkPreviewValue = GlobalConfig["linkPreview"];
 
 const T_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const T_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -24,14 +24,15 @@ const T_PRIVATE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const T_WEBHOOK = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 function draftWith(over: Partial<LinkPreviewValue> = {}): GlobalConfig {
-	const linkParsing: LinkPreviewValue = {
+	const linkPreview: LinkPreviewValue = {
 		enabled: true,
-		cooldownSeconds: 60,
-		defaults: { parse: true, form: "image" },
-		groups: {},
+		cooldownSec: 60,
+		isOnByDefault: true,
+		replyForm: "image",
+		byTarget: {},
 		...over,
 	};
-	return { linkParsing } as unknown as GlobalConfig;
+	return { linkPreview } as unknown as GlobalConfig;
 }
 
 function target(id: string, name: string, over: Partial<PushTarget> = {}): PushTarget {
@@ -138,16 +139,16 @@ const openGroups = () => fireEvent.click(screen.getByRole("button", { name: "展
 afterEach(cleanup);
 
 describe("LinkPreviewSettings", () => {
-	it("拨开总开关 → 草稿收到 linkParsing.enabled=true", () => {
+	it("拨开总开关 → 草稿收到 linkPreview.enabled=true", () => {
 		const onPatch = renderCard(draftWith({ enabled: false }));
 		fireEvent.click(screen.getByRole("button", { name: "链接解析总开关" }));
-		expect(onPatch).toHaveBeenCalledWith({ linkParsing: { enabled: true } });
+		expect(onPatch).toHaveBeenCalledWith({ linkPreview: { enabled: true } });
 	});
 
-	it("改冷却秒数 → 草稿收到 linkParsing.cooldownSeconds", () => {
+	it("改冷却秒数 → 草稿收到 linkPreview.cooldownSec", () => {
 		const onPatch = renderCard(draftWith());
 		fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "120" } });
-		expect(onPatch).toHaveBeenCalledWith({ linkParsing: { cooldownSeconds: 120 } });
+		expect(onPatch).toHaveBeenCalledWith({ linkPreview: { cooldownSec: 120 } });
 	});
 
 	it("徽标:关着写「已关闭」;开着写冷却;默认不解析加「仅例外群」;有例外加个数", () => {
@@ -166,7 +167,7 @@ describe("LinkPreviewSettings", () => {
 		rerender(
 			<MemoryRouter>
 				<LinkPreviewSettings
-					draft={draftWith({ enabled: true, cooldownSeconds: 90 })}
+					draft={draftWith({ enabled: true, cooldownSec: 90 })}
 					onPatch={() => {}}
 					targets={TARGETS}
 					connections={ADAPTERS}
@@ -179,8 +180,9 @@ describe("LinkPreviewSettings", () => {
 			<MemoryRouter>
 				<LinkPreviewSettings
 					draft={draftWith({
-						defaults: { parse: false, form: "image" },
-						groups: { [T_A]: { parse: true }, [T_B]: { form: "miniapp" } },
+						isOnByDefault: false,
+						replyForm: "image",
+						byTarget: { [T_A]: { isOn: true }, [T_B]: { replyForm: "nativeShare" } },
 					})}
 					onPatch={() => {}}
 					targets={TARGETS}
@@ -193,28 +195,28 @@ describe("LinkPreviewSettings", () => {
 	});
 
 	describe("默认行(所有群)", () => {
-		it("解析切到「关」→ 草稿收到 defaults.parse=false", () => {
+		it("解析切到「关」→ 草稿收到 isOnByDefault=false", () => {
 			const onPatch = renderCard(draftWith());
 			fireEvent.click(row("默认(所有群)").getByRole("button", { name: "关" }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { defaults: { parse: false } } });
+			expect(onPatch).toHaveBeenCalledWith({ linkPreview: { isOnByDefault: false } });
 		});
 
-		it("形式切到「小程序卡」→ 草稿收到 defaults.form=miniapp", () => {
+		it("形式切到「小程序卡」→ 草稿收到 replyForm=nativeShare", () => {
 			const onPatch = renderCard(draftWith());
 			fireEvent.click(row("默认(所有群)").getByRole("button", { name: "小程序卡" }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { defaults: { form: "miniapp" } } });
+			expect(onPatch).toHaveBeenCalledWith({ linkPreview: { replyForm: "nativeShare" } });
 		});
 	});
 
 	describe("按群例外", () => {
 		it("两格都调回「跟默认」→ 这一格不再算例外(草稿里那个空对象不算)", () => {
-			renderCard(draftWith({ groups: { [T_A]: {}, [T_B]: { form: "miniapp" } } }));
+			renderCard(draftWith({ byTarget: { [T_A]: {}, [T_B]: { replyForm: "nativeShare" } } }));
 			expect(screen.getByText("2 个群 · 1 个例外")).toBeTruthy();
 			expect(screen.getByText("冷却 60 秒 · 1 个例外")).toBeTruthy();
 		});
 
 		it("默认收起,只有一行摘要;点「展开」才列群,再点「收起」", () => {
-			renderCard(draftWith({ groups: { [T_A]: { form: "miniapp" } } }));
+			renderCard(draftWith({ byTarget: { [T_A]: { replyForm: "nativeShare" } } }));
 			expect(screen.getByText("2 个群 · 1 个例外")).toBeTruthy();
 			expect(screen.queryByRole("group", { name: "群 A" })).toBeNull();
 			openGroups();
@@ -293,7 +295,7 @@ describe("LinkPreviewSettings", () => {
 		});
 
 		it("没写例外的群两格都按在「跟默认」上,并把继承来的值写在旁边", () => {
-			renderCard(draftWith({ defaults: { parse: false, form: "miniapp" } }));
+			renderCard(draftWith({ isOnByDefault: false, replyForm: "nativeShare" }));
 			openGroups();
 			const a = row("群 A");
 			expect(a.getByRole("button", { name: "跟默认 · 关" }).getAttribute("aria-pressed")).toBe(
@@ -304,35 +306,39 @@ describe("LinkPreviewSettings", () => {
 			).toBe("true");
 		});
 
-		it("解析格点「关」→ 草稿只收到这个群的 parse=false", () => {
+		it("解析格点「关」→ 草稿只收到这个群的 isOn=false", () => {
 			const onPatch = renderCard(draftWith());
 			openGroups();
 			fireEvent.click(row("群 A").getByRole("button", { name: "关" }));
 			expect(onPatch).toHaveBeenCalledWith({
-				linkParsing: { groups: { [T_A]: { parse: false } } },
+				linkPreview: { byTarget: { [T_A]: { isOn: false } } },
 			});
 		});
 
-		it("形式格点「小程序卡」→ 草稿只收到这个群的 form=miniapp", () => {
+		it("形式格点「小程序卡」→ 草稿只收到这个群的 replyForm=nativeShare", () => {
 			const onPatch = renderCard(draftWith());
 			openGroups();
 			fireEvent.click(row("群 A").getByRole("button", { name: "小程序卡" }));
 			expect(onPatch).toHaveBeenCalledWith({
-				linkParsing: { groups: { [T_A]: { form: "miniapp" } } },
+				linkPreview: { byTarget: { [T_A]: { replyForm: "nativeShare" } } },
 			});
 		});
 
 		it("有例外的格点「跟默认」→ 发删除哨兵,不是把默认值抄进例外", () => {
 			const onPatch = renderCard(
-				draftWith({ groups: { [T_A]: { parse: false, form: "miniapp" } } }),
+				draftWith({ byTarget: { [T_A]: { isOn: false, replyForm: "nativeShare" } } }),
 			);
 			openGroups();
 			const a = row("群 A");
 			expect(a.getByRole("button", { name: "关" }).getAttribute("aria-pressed")).toBe("true");
 			fireEvent.click(a.getByRole("button", { name: "跟默认 · 开" }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { parse: null } } } });
+			expect(onPatch).toHaveBeenCalledWith({
+				linkPreview: { byTarget: { [T_A]: { isOn: null } } },
+			});
 			fireEvent.click(a.getByRole("button", { name: "跟默认 · 图片卡" }));
-			expect(onPatch).toHaveBeenCalledWith({ linkParsing: { groups: { [T_A]: { form: null } } } });
+			expect(onPatch).toHaveBeenCalledWith({
+				linkPreview: { byTarget: { [T_A]: { replyForm: null } } },
+			});
 		});
 
 		it("停用的目标照列,标「已停用」;连接停用的也算(运行时一样不解析)", () => {

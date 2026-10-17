@@ -47,7 +47,7 @@ import { Field } from "./forms";
 
 export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
 	image: "图片卡",
-	miniapp: "小程序卡",
+	nativeShare: "小程序卡",
 };
 
 /** 三态格的取值:跟默认,或一个显式值。 */
@@ -97,12 +97,12 @@ export function LinkPreviewSettings({
 	/** `GET /api/connections/capabilities`:各连接的能力(小程序卡、收不收得到回复)。 */
 	capabilities: ConnectionCapabilitiesMap;
 }) {
-	const cfg = draft.linkParsing;
+	const cfg = draft.linkPreview;
 	const candidates = targets.filter((t) => isGroupCandidate(t, connections, capabilities));
 	// 两格都调回「跟默认」时草稿里留下的是个空对象(删除哨兵把字段删掉,不删这一格),
 	// 它已经不是例外了 —— 数键会让卡上多出一条根本不存在的例外,直到存盘重拉才消失。
-	const overrides = Object.values(cfg.groups).filter(
-		(g) => g?.parse !== undefined || g?.form !== undefined,
+	const overrides = Object.values(cfg.byTarget).filter(
+		(g) => g?.isOn !== undefined || g?.replyForm !== undefined,
 	).length;
 	// 逐群表默认收起:群一多整张表直接把卡撑爆,先给一行摘要,要改再展开。
 	const [groupsOpen, setGroupsOpen] = useState(false);
@@ -110,8 +110,8 @@ export function LinkPreviewSettings({
 	const badge = !cfg.enabled
 		? "已关闭"
 		: [
-				`冷却 ${cfg.cooldownSeconds} 秒`,
-				cfg.defaults.parse ? null : "仅例外群",
+				`冷却 ${cfg.cooldownSec} 秒`,
+				cfg.isOnByDefault ? null : "仅例外群",
 				overrides > 0 ? `${overrides} 个例外` : null,
 			]
 				.filter(Boolean)
@@ -120,38 +120,38 @@ export function LinkPreviewSettings({
 	return (
 		<GlassBox
 			title="Core · 链接解析"
-			subtitle="群里贴 B 站视频链接,自动回一张视频卡 · globals.linkParsing"
+			subtitle="群里贴 B 站视频链接,自动回一张视频卡 · globals.linkPreview"
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.link size={14} />}
 			badge={badge}
 		>
-			<Field code="linkParsing.enabled">
+			<Field code="linkPreview.enabled">
 				<Toggle
 					value={cfg.enabled}
-					onChange={(v) => onPatch({ linkParsing: { enabled: v } })}
+					onChange={(v) => onPatch({ linkPreview: { enabled: v } })}
 					ariaLabel="链接解析总开关"
 				/>
 			</Field>
 
-			<Field code="linkParsing.cooldownSeconds">
+			<Field code="linkPreview.cooldownSec">
 				<TNum
-					value={cfg.cooldownSeconds}
-					onChange={(v) => onPatch({ linkParsing: { cooldownSeconds: v } })}
+					value={cfg.cooldownSec}
+					onChange={(v) => onPatch({ linkPreview: { cooldownSec: v } })}
 					min={0}
 					max={3600}
 					suffix="秒"
 				/>
 			</Field>
 
-			<Field code="linkParsing.defaults" full>
+			<Field code="linkPreview.isOnByDefault" full>
 				<fieldset
 					aria-label="默认(所有群)"
 					className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 p-0"
 				>
 					<Cell label="解析">
 						<Picker
-							value={cfg.defaults.parse}
-							onChange={(parse) => onPatch({ linkParsing: { defaults: { parse } } })}
+							value={cfg.isOnByDefault}
+							onChange={(isOnByDefault) => onPatch({ linkPreview: { isOnByDefault } })}
 							options={[
 								{ value: true, label: "开", color: SECTION_ACCENT.system },
 								{ value: false, label: "关", color: SECTION_ACCENT.system },
@@ -160,8 +160,8 @@ export function LinkPreviewSettings({
 					</Cell>
 					<Cell label="形式">
 						<Picker
-							value={cfg.defaults.form}
-							onChange={(form) => onPatch({ linkParsing: { defaults: { form } } })}
+							value={cfg.replyForm}
+							onChange={(replyForm) => onPatch({ linkPreview: { replyForm } })}
 							options={LINK_REPLY_FORMS.map((f) => ({
 								value: f,
 								label: LINK_REPLY_FORM_LABELS[f],
@@ -172,7 +172,7 @@ export function LinkPreviewSettings({
 				</fieldset>
 			</Field>
 
-			<Field code="linkParsing.groups" full>
+			<Field code="linkPreview.byTarget" full>
 				{candidates.length === 0 ? (
 					<EmptyNote size="sm" className="w-full">
 						还没有群类推送目标,先去
@@ -305,21 +305,23 @@ function GroupRow({
 	target: PushTarget;
 	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`。 */
 	platform: string | undefined;
-	cfg: GlobalConfig["linkParsing"];
+	cfg: GlobalConfig["linkPreview"];
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 这群所在连接能不能签小程序卡;表里没这条是 undefined。 */
 	support: CapabilitySupport | undefined;
 	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
 	paused: boolean;
 }) {
-	const o = cfg.groups[target.id];
+	const o = cfg.byTarget[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
-	const parse = o?.parse ?? undefined;
-	const form = o?.form ?? undefined;
-	const setParse = (v: boolean | typeof INHERIT) =>
-		onPatch({ linkParsing: { groups: { [target.id]: { parse: v === INHERIT ? null : v } } } });
-	const setForm = (v: LinkReplyForm | typeof INHERIT) =>
-		onPatch({ linkParsing: { groups: { [target.id]: { form: v === INHERIT ? null : v } } } });
+	const isOn = o?.isOn ?? undefined;
+	const replyForm = o?.replyForm ?? undefined;
+	const setIsOn = (v: boolean | typeof INHERIT) =>
+		onPatch({ linkPreview: { byTarget: { [target.id]: { isOn: v === INHERIT ? null : v } } } });
+	const setReplyForm = (v: LinkReplyForm | typeof INHERIT) =>
+		onPatch({
+			linkPreview: { byTarget: { [target.id]: { replyForm: v === INHERIT ? null : v } } },
+		});
 	return (
 		<fieldset
 			aria-label={target.name}
@@ -336,10 +338,10 @@ function GroupRow({
 			</div>
 			<Cell label="解析">
 				<Picker<boolean | typeof INHERIT>
-					value={parse ?? INHERIT}
-					onChange={setParse}
+					value={isOn ?? INHERIT}
+					onChange={setIsOn}
 					options={[
-						{ value: INHERIT, label: `跟默认 · ${cfg.defaults.parse ? "开" : "关"}` },
+						{ value: INHERIT, label: `跟默认 · ${cfg.isOnByDefault ? "开" : "关"}` },
 						{ value: true, label: "开", color: SECTION_ACCENT.system },
 						{ value: false, label: "关", color: SECTION_ACCENT.system },
 					]}
@@ -347,10 +349,10 @@ function GroupRow({
 			</Cell>
 			<Cell label="形式">
 				<Picker<LinkReplyForm | typeof INHERIT>
-					value={form ?? INHERIT}
-					onChange={setForm}
+					value={replyForm ?? INHERIT}
+					onChange={setReplyForm}
 					options={[
-						{ value: INHERIT, label: `跟默认 · ${LINK_REPLY_FORM_LABELS[cfg.defaults.form]}` },
+						{ value: INHERIT, label: `跟默认 · ${LINK_REPLY_FORM_LABELS[cfg.replyForm]}` },
 						...LINK_REPLY_FORMS.map((f) => ({
 							value: f,
 							label: LINK_REPLY_FORM_LABELS[f],

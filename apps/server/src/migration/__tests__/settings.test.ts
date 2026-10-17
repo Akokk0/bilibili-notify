@@ -38,7 +38,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
-import { migrateLegacyLinkParsing } from "../link-parsing.js";
+import { migrateLegacyLinkParsing, renameLinkParsing } from "../link-parsing.js";
 import { migrateGlobals, migrateGlobalsToCurrent, moveHistoryRetention } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
@@ -99,7 +99,21 @@ function parseAi(old: unknown) {
 	return AISettingsSchema.parse(migrateAi(old));
 }
 
-/** 链接解析(只喂带老键的输入):迁出来的不许留 `scope` / `targets`、`defaults` 与 `groups` 都在;幂等;再过 schema。 */
+/** 链接设置整条迁移:0.x 的 `linkParsing` 先到 0.x 最新形状,再改成 `linkPreview` 五格(盘上的 core.json 经过的就是这两步)。 */
+function linkPreviewOf(old: unknown): unknown {
+	const renamed = renameLinkParsing({ linkParsing: migrateLegacyLinkParsing(old) }) as Record<
+		string,
+		unknown
+	>;
+	expect(renamed, "迁完不该还留着 linkParsing").not.toHaveProperty("linkParsing");
+	expect(renameLinkParsing(renamed)).toEqual(renamed);
+	return renamed.linkPreview;
+}
+
+/**
+ * 链接设置(只喂带老键的输入):0.9.1 的 `scope` / `targets` 迁出来不许留;整条迁完没有 `defaults` / `groups` /
+ * `cooldownSeconds` 这些 0.x 的键;幂等;再过 schema。
+ */
 function parseLink(old: unknown) {
 	const migrated = migrateLegacyLinkParsing(old);
 	for (const key of ["scope", "targets"]) {
@@ -108,7 +122,11 @@ function parseLink(old: unknown) {
 	expect(migrated).toHaveProperty("defaults");
 	expect(migrated).toHaveProperty("groups");
 	expect(migrateLegacyLinkParsing(migrated)).toEqual(migrated);
-	return LinkPreviewSettingsSchema.parse(migrated);
+	const preview = linkPreviewOf(old);
+	for (const key of ["defaults", "groups", "cooldownSeconds"]) {
+		expect(preview, `linkPreview 还留着 0.x 的键 ${key}`).not.toHaveProperty(key);
+	}
+	return LinkPreviewSettingsSchema.parse(preview);
 }
 
 // ── AI · 服务商实例桶(原 ai-provider-migration.test.ts)──────────────────────────────
@@ -471,26 +489,131 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 
 // ── 链接解析(原 link-parsing.test.ts)──────────────────────────────────────────────
 
-/** 全新安装的那一份:关、冷却 60 秒、所有群解析、回图片卡、没有例外。 */
+/** 全新安装的那一份:总开关关、默认回、回图片、没有例外、冷却 60 秒。 */
 const FRESH_LINK = {
 	enabled: false,
-	cooldownSeconds: 60,
-	defaults: { parse: true, form: "image" },
-	groups: {},
+	isOnByDefault: true,
+	replyForm: "image",
+	byTarget: {},
+	cooldownSec: 60,
 };
 
-describe("链接解析迁移 · linkParsing 配置段", () => {
+describe("链接预览迁移 · 0.x 的 linkParsing 配置段", () => {
 	// 白名单进来之前发出去的版本只有 enabled / cooldownSeconds。升上来的实例必须落在
-	// 「所有群都解析」—— 行为一字不变,主人开过的功能不能因为升级悄悄缩到零个群。
-	// 这一代没有老键可迁:迁移函数原样放过,默认行由 schema 补。
-	it("白名单之前的版本(只有 enabled / cooldownSeconds)→ 所有群解析", () => {
+	// 「所有群都回」—— 行为一字不变,主人开过的功能不能因为升级悄悄缩到零个群。
+	// 这一代没有老键可迁到 0.x 最新形状:`migrateLegacyLinkParsing` 原样放过;改成五格那一步只搬
+	// 总开关与冷却两格,默认行由 schema 补。
+	it("白名单之前的版本(只有 enabled / cooldownSeconds)→ 所有群回", () => {
 		const old = { enabled: true, cooldownSeconds: 30 };
 		expect(migrateLegacyLinkParsing(old)).toEqual(old);
-		expect(LinkPreviewSettingsSchema.parse(migrateLegacyLinkParsing(old))).toEqual({
+		expect(linkPreviewOf(old)).toEqual({ enabled: true, cooldownSec: 30 });
+		expect(LinkPreviewSettingsSchema.parse(linkPreviewOf(old))).toEqual({
 			...FRESH_LINK,
 			enabled: true,
-			cooldownSeconds: 30,
+			cooldownSec: 30,
 		});
+	});
+});
+
+describe("链接预览迁移 · linkParsing → linkPreview 五格", () => {
+	it("全格对应:enabled 原样;defaults.parse → isOnByDefault;defaults.form → replyForm(miniapp 叫 nativeShare);groups → byTarget(parse → isOn、form → replyForm);cooldownSeconds → cooldownSec", () => {
+		expect(
+			renameLinkParsing({
+				linkParsing: {
+					enabled: true,
+					cooldownSeconds: 120,
+					defaults: { parse: false, form: "miniapp" },
+					groups: { [A]: { parse: true, form: "image" }, [B]: { form: "miniapp" } },
+				},
+			}),
+		).toEqual({
+			linkPreview: {
+				enabled: true,
+				cooldownSec: 120,
+				isOnByDefault: false,
+				replyForm: "nativeShare",
+				byTarget: { [A]: { isOn: true, replyForm: "image" }, [B]: { replyForm: "nativeShare" } },
+			},
+		});
+	});
+
+	// 0.x 的门先看总开关、再看逐群答案(0.9.0–0.12.0 的 link-parser.ts 一致),所以总开关关着时例外再怎么写也一张不回;
+	// 面板在总开关关着时例外表照样能改,0.9.1 迁出来的白名单也是这个形状。迁过来总开关必须仍是总开关,
+	// 不能折进默认行 —— 折进去的话显式开的例外会从「不回」变成「回」。
+	it("总开关关着、例外里有群显式开 → enabled 仍关、那条例外原样带过来;默认回不回只看 defaults.parse", () => {
+		const preview = linkPreviewOf({
+			enabled: false,
+			cooldownSeconds: 60,
+			defaults: { parse: false, form: "image" },
+			groups: { [A]: { parse: true } },
+		});
+		expect(preview).toEqual({
+			enabled: false,
+			cooldownSec: 60,
+			isOnByDefault: false,
+			replyForm: "image",
+			byTarget: { [A]: { isOn: true } },
+		});
+	});
+
+	it("总开关开着、默认行关 → 两格各自独立,不互相带", () => {
+		const preview = linkPreviewOf({
+			enabled: true,
+			cooldownSeconds: 60,
+			defaults: { parse: false, form: "image" },
+			groups: {},
+		}) as { enabled: boolean; isOnByDefault: boolean };
+		expect(preview.enabled).toBe(true);
+		expect(preview.isOnByDefault).toBe(false);
+	});
+
+	it("新旧两把键都在 → linkPreview 说了算,linkParsing 丢掉", () => {
+		expect(
+			renameLinkParsing({
+				other: 1,
+				linkParsing: { enabled: true },
+				linkPreview: { enabled: false, cooldownSec: 5 },
+			}),
+		).toEqual({ other: 1, linkPreview: { enabled: false, cooldownSec: 5 } });
+	});
+
+	it("没有 linkParsing(只有 linkPreview、或两者都没有)原样放过;其余键一个不动", () => {
+		const fresh = { linkPreview: { enabled: true }, x: 1 };
+		expect(renameLinkParsing(fresh)).toBe(fresh);
+		const none = { x: 1 };
+		expect(renameLinkParsing(none)).toBe(none);
+	});
+
+	it("旧键里缺的格照缺:只有 defaults.parse 就只出 isOnByDefault,其余由 schema 补", () => {
+		const preview = linkPreviewOf({ defaults: { parse: false } });
+		expect(preview).toEqual({ isOnByDefault: false });
+		expect(LinkPreviewSettingsSchema.parse(preview)).toEqual({
+			...FRESH_LINK,
+			isOnByDefault: false,
+		});
+	});
+
+	it("认不得的值原样搬,由配置仓开机报:form 不是两档之一、条目不是对象", () => {
+		const preview = linkPreviewOf({
+			defaults: { parse: true, form: "both" },
+			groups: { [A]: 3 },
+		});
+		expect(preview).toEqual({ isOnByDefault: true, replyForm: "both", byTarget: { [A]: 3 } });
+		expect(LinkPreviewSettingsSchema.safeParse(preview).success).toBe(false);
+	});
+
+	it("linkParsing 不是对象(3 / 数组 / null)→ 原样搬到 linkPreview,由配置仓开机报", () => {
+		for (const bad of [3, [1], null]) {
+			const out = renameLinkParsing({ linkParsing: bad }) as Record<string, unknown>;
+			expect(out).toEqual({ linkPreview: bad });
+		}
+	});
+
+	it("整份核心设置不是对象 → 原样放过", () => {
+		expect(renameLinkParsing(null)).toBe(null);
+		expect(renameLinkParsing(7)).toBe(7);
+		const arr: unknown[] = [];
+		expect(renameLinkParsing(arr)).toBe(arr);
 	});
 });
 
@@ -508,7 +631,7 @@ describe("链接解析迁移 · 0.9.1 的范围 + 白名单按形迁移", () => 
 				scope: "all",
 				targets: [{ targetId: A }],
 			}),
-		).toEqual({ ...FRESH_LINK, enabled: true, cooldownSeconds: 30 });
+		).toEqual({ ...FRESH_LINK, enabled: true, cooldownSec: 30 });
 	});
 
 	it("scope=selected + 两个群(其中一个写了两遍)→ 默认行解析关、两群显式开", () => {
@@ -521,15 +644,15 @@ describe("链接解析迁移 · 0.9.1 的范围 + 白名单按形迁移", () => 
 		).toEqual({
 			...FRESH_LINK,
 			enabled: true,
-			defaults: { parse: false, form: "image" },
-			groups: { [A]: { parse: true }, [B]: { parse: true } },
+			isOnByDefault: false,
+			byTarget: { [A]: { isOn: true }, [B]: { isOn: true } },
 		});
 	});
 
 	it("scope=selected 且列表为空 → 默认关、没有例外 = 一个群都不解析", () => {
 		expect(parseLink({ scope: "selected", targets: [] })).toEqual({
 			...FRESH_LINK,
-			defaults: { parse: false, form: "image" },
+			isOnByDefault: false,
 		});
 	});
 
@@ -543,8 +666,8 @@ describe("链接解析迁移 · 0.9.1 的范围 + 白名单按形迁移", () => 
 			}),
 		).toEqual({
 			...FRESH_LINK,
-			defaults: { parse: true, form: "miniapp" },
-			groups: { [B]: { form: "image" } },
+			replyForm: "nativeShare",
+			byTarget: { [B]: { replyForm: "image" } },
 		});
 	});
 });
@@ -678,6 +801,23 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 		expect(GlobalConfigSchema.safeParse(migrateGlobalsToCurrent(migrated)).success).toBe(true);
+	});
+
+	it("0.9.1 的范围 + 白名单经整条流水线到五格:enabled 开、isOnByDefault 关、A 显式开;迁完没有 linkParsing,过 schema", () => {
+		const out = migrateGlobalsToCurrent(legacyGlobals()) as Record<string, unknown>;
+		expect(out).not.toHaveProperty("linkParsing");
+		expect(out.linkPreview).toEqual({
+			enabled: true,
+			isOnByDefault: false,
+			replyForm: "image",
+			byTarget: { [A]: { isOn: true } },
+		});
+		expect(GlobalConfigSchema.parse(out).linkPreview).toEqual({
+			...FRESH_LINK,
+			enabled: true,
+			isOnByDefault: false,
+			byTarget: { [A]: { isOn: true } },
+		});
 	});
 
 	it.each([

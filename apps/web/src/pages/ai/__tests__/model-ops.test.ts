@@ -59,8 +59,8 @@ function settings(over: Partial<AISettings> = {}): AISettings {
 			engines: { dynamic: false, live: false, roast: false },
 		},
 		writing: {
-			post: { enabled: true, byTarget: {} },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: {} },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		},
 		presets: [],
 		...over,

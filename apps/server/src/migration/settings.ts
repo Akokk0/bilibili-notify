@@ -5,7 +5,8 @@
  * - `defaults.features`:附加项的两代老数据({@link migrateLegacyFeatureFlags});
  * - 0.x 的 `defaults.ai`:扁平连接字段、「一家一桶」、手改的人格({@link migrateAiSettings});
  * - `defaults.templates`:历代旧默认原文({@link migrateOldTemplateDefaults});
- * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing})。
+ * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing});它之后的 1.0 改名另有一步
+ *   ({@link renameLinkParsing}:成 `linkPreview` 五格)。
  *
  * 这几项产出的是 **0.x 最新**的形状(特性键、文案键、版式键仍是 0.x 的名字);1.0 的改名是它们之后的另一步
  * ({@link renameGlobalSettingsKeys},在 {@link migrateSettingsFiles} 里串着跑),直播拆键({@link splitGlobalLiveSettings},
@@ -37,7 +38,7 @@ import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "./core-secti
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
-import { migrateLegacyLinkParsing } from "./link-parsing.js";
+import { migrateLegacyLinkParsing, renameLinkParsing } from "./link-parsing.js";
 import { type GlobalLiveFacts, liveFactsOf, splitGlobalLiveSettings } from "./live-split.js";
 import { moveGlobalMembership } from "./membership-moves.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
@@ -64,7 +65,8 @@ export function migrateGlobals(raw: unknown): unknown {
 }
 
 /**
- * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 会员与醒目留言的搬家(两个直播阈值、
+ * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 链接设置 `linkParsing` 成 `linkPreview`
+ * 五格({@link renameLinkParsing},`link-parsing.ts`) → 会员与醒目留言的搬家(两个直播阈值、
  * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 历史保留天数换键
  * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)→ 默认文案账本
  * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ AI 设置上提到顶层 `ai`(同文件;排在最后,
@@ -80,7 +82,11 @@ export function migrateGlobalsToCurrent(raw: unknown): unknown {
 			splitAppSettings(
 				moveHistoryRetention(
 					splitGlobalLiveSettings(
-						moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+						moveGlobalCards(
+							moveGlobalMembership(
+								renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+							),
+						),
 					),
 				),
 			),

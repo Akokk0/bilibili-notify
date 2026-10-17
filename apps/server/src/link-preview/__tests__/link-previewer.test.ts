@@ -110,9 +110,10 @@ function makeParser(
 ) {
 	const config: LinkPreviewSettings = {
 		enabled: true,
-		cooldownSeconds: 60,
-		defaults: { parse: true, form: "image" },
-		groups: {},
+		cooldownSec: 60,
+		isOnByDefault: true,
+		replyForm: "image",
+		byTarget: {},
 		...over,
 	};
 	const resolve = vi.fn<LinkResolver["resolve"]>(
@@ -158,7 +159,7 @@ function makeParser(
 			presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
 			send,
 			now: () => now,
-			policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
+			policyFor: extra.policyFor ?? (() => ({ isOn: true, replyForm: "image" })),
 			capabilities: extra.capabilities ?? (() => undefined),
 			probeCapabilities,
 			...(limits ? { limits } : {}),
@@ -222,6 +223,18 @@ describe("createLinkPreviewer", () => {
 			expect(h.sent).toHaveLength(0);
 		});
 
+		// 总开关在逐群答案之前看(0.x 就是这个次序):总开关关着,这个群的答案再是「回」也一张不回。
+		// 默认配置里默认行是开的,上面那条只证明了「关着不回」,没把「压得过群的答案」钉死。
+		it("总开关关着、这个群的答案显式是开:不问解析器、不碰渲染器、不发", async () => {
+			const h = makeParser({ enabled: false, isOnByDefault: true }, undefined, {
+				policyFor: () => ({ isOn: true, replyForm: "image" }),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.resolve).not.toHaveBeenCalled();
+			expect(h.renderer).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
 		it("私聊里贴链接不算(这版只做群)", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK, { message_type: "private", group_id: undefined }));
@@ -261,7 +274,7 @@ describe("createLinkPreviewer", () => {
 				renderer: h.renderer,
 				presentation: () => ({}),
 				send: h.send,
-				policyFor: () => ({ parse: true, form: "image" }),
+				policyFor: () => ({ isOn: true, replyForm: "image" }),
 				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
@@ -282,7 +295,7 @@ describe("createLinkPreviewer", () => {
 				renderer: h.renderer,
 				presentation: () => ({}),
 				send: h.send,
-				policyFor: () => ({ parse: true, form: "image" }),
+				policyFor: () => ({ isOn: true, replyForm: "image" }),
 				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
@@ -321,7 +334,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("冷却设 0 = 不节流", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			await feed(h.parser, groupFrame(LINK));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(2);
@@ -353,7 +366,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("冷却设 0 时,同一条消息里指着同一个东西的两种写法也只出一张;不同的东西各出一张", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			await feed(h.parser, groupFrame(`${link("a1")} ${link("a1")}?from=share`));
 			expect(h.sent).toHaveLength(1);
 			await feed(h.parser, groupFrame(`${link("a2")} ${link("a3")}`));
@@ -379,7 +392,7 @@ describe("createLinkPreviewer", () => {
 			Array.from({ length: n }, (_, i) => `x${String(i).padStart(4, "0")}`);
 
 		it("同一个群一分钟内换着链接刷,最多出 groupPerMinute 张;别的群不受影响;过一分钟再放行", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			for (const id of ids(LINK_LIMITS.groupPerMinute + 2)) {
 				await feed(h.parser, groupFrame(link(id)));
 			}
@@ -394,7 +407,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("全局同时在处理的链接卡有上限:渲染卡着时,再来的链接不排队 —— 渲染队列是串行的,推送卡排在后面", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			const release: (() => void)[] = [];
 			h.generatePostCard.mockImplementation(
 				() =>
@@ -448,7 +461,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("解析器自己抛了(它的 bug):同样不发、不抛,并且不影响同一条消息里的下一个", async () => {
-			const h = makeParser({ cooldownSeconds: 0 }, undefined, {
+			const h = makeParser({ cooldownSec: 0 }, undefined, {
 				resolve: async (url) => {
 					if (url.endsWith("bad")) throw new Error("解析器炸了");
 					return ok(previewOf("good"));
@@ -521,9 +534,9 @@ describe("createLinkPreviewer", () => {
 			});
 
 		it("群里已经有那张卡了 → 一律不回,不管这个群选的是哪种形式;也不问解析器", async () => {
-			for (const form of ["image", "miniapp"] as const) {
+			for (const form of ["image", "nativeShare"] as const) {
 				const h = makeParser({}, undefined, {
-					policyFor: () => ({ parse: true, form }),
+					policyFor: () => ({ isOn: true, replyForm: form }),
 					capabilities: () => ({
 						atAll: { state: "unknown" },
 						inbound: { state: "unknown" },
@@ -556,7 +569,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("同一条消息里普通卡与原生分享卡都在:只回普通卡里的那条", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
 				address: String(GROUP),
@@ -584,7 +597,7 @@ describe("createLinkPreviewer", () => {
 
 	describe("多链接", () => {
 		it("正文与分享卡里是同一条链接:只问一次解析器", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			await h.parser.handleMessage({
 				connectionId: ADAPTER,
 				address: String(GROUP),
@@ -597,7 +610,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("一条消息里最多解析三个被认领的链接", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			const text = ["a1", "a2", "a3", "a4"].map(link).join(" ");
 			await feed(h.parser, groupFrame(text));
 			expect(h.resolve).toHaveBeenCalledTimes(3);
@@ -609,7 +622,7 @@ describe("createLinkPreviewer", () => {
 		});
 
 		it("没人认的链接不占那三个名额", async () => {
-			const h = makeParser({ cooldownSeconds: 0 });
+			const h = makeParser({ cooldownSec: 0 });
 			const text = [
 				"https://example.com/1",
 				"https://example.com/2",
@@ -645,7 +658,7 @@ describe("createLinkPreviewer", () => {
 	// 拿着答案做没做对:说解析才出卡,说不解析什么都不碰。
 	describe("逐群答案(解不解析)", () => {
 		const THIS_GROUP = `${ADAPTER}:${GROUP}`;
-		const only = (key: string) => (k: string) => ({ parse: k === key, form: "image" as const });
+		const only = (key: string) => (k: string) => ({ isOn: k === key, replyForm: "image" as const });
 
 		it("这个群的答案是解析 → 照常出卡", async () => {
 			const h = makeParser({}, undefined, { policyFor: only(THIS_GROUP) });
@@ -663,7 +676,9 @@ describe("createLinkPreviewer", () => {
 
 		it("被拦下的链接不记冷却:主人随后把群打开,同一条链接立刻能出卡", async () => {
 			let parse = false;
-			const h = makeParser({}, undefined, { policyFor: () => ({ parse, form: "image" }) });
+			const h = makeParser({}, undefined, {
+				policyFor: () => ({ isOn: parse, replyForm: "image" }),
+			});
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(0);
 
@@ -698,7 +713,7 @@ describe("createLinkPreviewer", () => {
 	// 形式(图片卡 / 小程序卡)× 连接能力 → 发什么、失败怎么回落。能力本身怎么探在
 	// onebot 适配器那边守,这里只看解析器拿着答案做没做对。
 	describe("回复形式(图片卡 / 原生分享)", () => {
-		const miniapp = () => ({ parse: true, form: "miniapp" as const });
+		const miniapp = () => ({ isOn: true, replyForm: "nativeShare" as const });
 		const caps = (state: "supported" | "unsupported" | "unknown"): ConnectionCapabilities => ({
 			atAll: { state: "unknown" },
 			inbound: { state: "unknown" },

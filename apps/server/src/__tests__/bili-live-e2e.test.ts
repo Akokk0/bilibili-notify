@@ -310,7 +310,7 @@ describe("直播总结按目标挑 AI 版或模板(ADR-0032)", () => {
 			commentary: comment,
 		});
 		w.globals.ai.writing.liveSummary = {
-			enabled: true,
+			isOnByDefault: true,
 			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: false },
 		};
 		await chatThenEnd(w);
@@ -380,7 +380,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 	it("默认关、没有例外:不问 AI,两边收模板", async () => {
 		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
 		const w = await bootAi(comment);
-		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		w.globals.ai.writing.liveSummary = { isOnByDefault: false, byTarget: {} };
 		await chatThenEnd(w);
 		expect(comment).not.toHaveBeenCalled();
 		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
@@ -390,7 +390,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 	it("默认关、只有一条悬空的例外(目标表里没有这个 id)是开:不问 AI", async () => {
 		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
 		const w = await bootAi(comment);
-		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: { [GONE]: true } };
+		w.globals.ai.writing.liveSummary = { isOnByDefault: false, byTarget: { [GONE]: true } };
 		await chatThenEnd(w);
 		expect(comment).not.toHaveBeenCalled();
 		expect(summariesBy(w, BILI_LIVE_TARGET_ID)).toEqual([TEMPLATE_SUMMARY]);
@@ -400,7 +400,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
 		const w = await bootAi(comment);
 		w.globals.ai.writing.liveSummary = {
-			enabled: false,
+			isOnByDefault: false,
 			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: true },
 		};
 		await chatThenEnd(w);
@@ -423,7 +423,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 		const w = await bootAi(comment);
 		await chatThenEnd(w);
 		expect(comment).toHaveBeenCalledTimes(1);
-		w.globals.ai.writing.liveSummary = { enabled: false, byTarget: {} };
+		w.globals.ai.writing.liveSummary = { isOnByDefault: false, byTarget: {} };
 		await chatThenEnd(w);
 		expect(comment).toHaveBeenCalledTimes(1);
 	});
@@ -432,7 +432,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
 		const w = await bootAi(comment);
 		w.globals.ai.writing.liveSummary = {
-			enabled: false,
+			isOnByDefault: false,
 			byTarget: { [BILI_LIVE_SECOND_TARGET_ID]: true },
 		};
 		w.removeTarget(BILI_LIVE_SECOND_TARGET_ID);

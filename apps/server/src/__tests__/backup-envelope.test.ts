@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("特别关注名单与两把特性键改形状以后导出的备份是版本 18", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(18);
+	it("链接设置改成五格以后导出的备份是版本 19", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(19);
+	});
+
+	it("版本 18 的备份(设置里还是 linkParsing)→ unsupported:整份拒收,不悄悄丢掉链接设置", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 18 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 17 的备份(名单还叫 specialUsers、特性键还叫 specialDanmaku)→ unsupported:整份拒收,不悄悄丢掉名单", () => {

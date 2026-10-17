@@ -35,7 +35,7 @@ export interface LinkPolicyTable {
 }
 
 export interface ResolveLinkPreviewPoliciesOptions {
-	config: Pick<LinkPreviewSettings, "defaults" | "groups">;
+	config: Pick<LinkPreviewSettings, "isOnByDefault" | "replyForm" | "byTarget">;
 	targets: readonly PushTarget[];
 	connections: readonly Connection[];
 }
@@ -53,7 +53,7 @@ export function resolveLinkPreviewPolicies({
 		const key = linkScopeKey(target.connectionId, address);
 		if (byKey.has(key)) continue;
 		const policy = linkPreviewFor(config, target.id);
-		byKey.set(key, { ...policy, parse: policy.parse && !isTargetPaused(target, connections) });
+		byKey.set(key, { ...policy, isOn: policy.isOn && !isTargetPaused(target, connections) });
 	}
 	const stranger: LinkPreviewPolicy = linkPreviewFor(config, undefined);
 	return { policyFor: (key) => byKey.get(key) ?? stranger };

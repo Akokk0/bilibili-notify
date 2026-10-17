@@ -363,10 +363,11 @@ export const GlobalConfigSchema = z.object({
 	 */
 	commands: CommandConfigSchema.default(() => structuredClone(DEFAULT_COMMAND_CONFIG)),
 	/**
-	 * 链接解析(群里贴视频链接自动出卡片)。独立端专有,放顶层同 `commands`。
+	 * 链接预览(群里贴视频链接自动出卡片),五格:总开关、默认回不回、回复形式、逐目标例外、冷却。
+	 * 独立端专有,放顶层同 `commands`。
 	 * `.default(...)` 是老配置兜底:少了它,存量实例升上来第一件事就是开不了机。
 	 */
-	linkParsing: LinkPreviewSettingsSchema.default(() => structuredClone(DEFAULT_LINK_PREVIEW)),
+	linkPreview: LinkPreviewSettingsSchema.default(() => structuredClone(DEFAULT_LINK_PREVIEW)),
 	/**
 	 * 新手指引的持久状态。
 	 *

@@ -24,7 +24,7 @@ function globals(over: Record<string, unknown> = {}): GlobalsResponse {
 		bilibili: { dynamicCron: "*/5 * * * *", healthCheckMinutes: 30 },
 		master: { targetId: "t1" },
 		commands: { enabled: true, prefix: "/", aliases: {} },
-		linkParsing: { enabled: false, cooldownSeconds: 60 },
+		linkPreview: { enabled: false, cooldownSec: 60 },
 		defaults: { cardStyle: { enabled: true } },
 		...over,
 	} as unknown as GlobalsResponse;
@@ -41,10 +41,10 @@ describe("buildSystemPatch", () => {
 
 	it("链接解析的开关进补丁,没动的块(defaults 等)不发 —— 后端收到 defaults 会跑卡片 / AI 探测", () => {
 		const base = globals();
-		const next = globals({ linkParsing: { enabled: true, cooldownSeconds: 60 } });
+		const next = globals({ linkPreview: { enabled: true, cooldownSec: 60 } });
 		const patch = buildSystemPatch(next, base);
-		expect(patch).toMatchObject({ linkParsing: { enabled: true } });
-		expect(Object.keys(patch)).toEqual(["linkParsing"]);
+		expect(patch).toMatchObject({ linkPreview: { enabled: true } });
+		expect(Object.keys(patch)).toEqual(["linkPreview"]);
 	});
 
 	it("清空的可选字段以 null 送出(删除哨兵),不是悄悄不提", () => {

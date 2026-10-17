@@ -128,18 +128,18 @@ describe("parseCoreSettings", () => {
 	// ADR-0032:ai.writing 写坏只隔离这一格,内存里是默认(两份开、无例外),ai 别的子格照盘上的值。
 	it("ai.writing 写坏:只隔离 [ai, writing] 这一格退默认,ai 别的子格照盘上的值", () => {
 		const disk = goodDisk();
-		disk.ai.writing = { post: { enabled: "不是布尔" } };
+		disk.ai.writing = { post: { isOnByDefault: "不是布尔" } };
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(settings.ai.writing).toEqual({
-			post: { enabled: true, byTarget: {} },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: {} },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
 		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
 		expect(settings.ai.activeProfile).toBe("p1");
 		expect(settings.ai.providers).toEqual(disk.ai.providers);
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["ai", "writing"]);
-		expect(invalid[0]?.raw).toEqual({ post: { enabled: "不是布尔" } });
+		expect(invalid[0]?.raw).toEqual({ post: { isOnByDefault: "不是布尔" } });
 		expect(GlobalConfigSchema.safeParse(settings).success).toBe(true);
 	});
 

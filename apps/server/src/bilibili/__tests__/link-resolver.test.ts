@@ -249,9 +249,10 @@ function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 	linkResolvers.register(BILIBILI_SOURCE_KEY, h.resolver);
 	const config: LinkPreviewSettings = {
 		enabled: true,
-		cooldownSeconds: 60,
-		defaults: { parse: true, form: "image" },
-		groups: {},
+		cooldownSec: 60,
+		isOnByDefault: true,
+		replyForm: "image",
+		byTarget: {},
 		...over,
 	};
 	const generatePostCard = vi.fn(
@@ -275,7 +276,7 @@ function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 			sent.push({ dest, payload });
 			return { ok: true, latencyMs: 1 };
 		},
-		policyFor: () => ({ parse: true, form: capable ? "miniapp" : "image" }),
+		policyFor: () => ({ isOn: true, replyForm: capable ? "nativeShare" : "image" }),
 		capabilities: () => (capable ? caps : undefined),
 	});
 	return { ...h, parser, generatePostCard, sent };
@@ -344,7 +345,7 @@ describe("B 站链接贴进群里(真解析器 + 真的门)", () => {
 	});
 
 	it("一条消息里最多解析三个链接", async () => {
-		const h = makeGate({ cooldownSeconds: 0 });
+		const h = makeGate({ cooldownSec: 0 });
 		const text = ["BV1aaaaaaaaa", "BV1bbbbbbbbb", "BV1ccccccccc", "BV1ddddddddd"]
 			.map((id) => `https://www.bilibili.com/video/${id}`)
 			.join(" ");

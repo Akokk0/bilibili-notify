@@ -49,7 +49,7 @@ interface DiskGlobals {
 	defaults: { templates: DiskTemplates };
 	/** AI 设置在核心设置的顶层(3a-38 ④);`defaults` 里不再有。 */
 	ai: Record<string, unknown>;
-	linkParsing: Record<string, unknown>;
+	linkPreview: Record<string, unknown>;
 }
 
 /** 两个路径的内容是不是逐字节一样 —— 没被改写过的文件,新代里是从第 0 代原样复制过来的那一份。 */
@@ -553,11 +553,13 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 		expect(onDisk.defaults.templates.liveEnd).toBe(
 			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 		);
-		expect(onDisk.linkParsing).toEqual({
+		expect(onDisk).not.toHaveProperty("linkParsing");
+		expect(onDisk.linkPreview).toEqual({
 			enabled: true,
-			cooldownSeconds: 30,
-			defaults: { parse: false, form: "image" },
-			groups: { [GROUP_ID]: { parse: true } },
+			cooldownSec: 30,
+			isOnByDefault: false,
+			replyForm: "image",
+			byTarget: { [GROUP_ID]: { isOn: true } },
 		});
 
 		// 配置仓开机读出来的也是最新的形状。
@@ -570,12 +572,45 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 		expect(globals.defaults.templates.liveEnd).toBe(
 			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 		);
-		expect(globals.linkParsing).toEqual({
+		expect(globals.linkPreview).toEqual({
 			enabled: true,
-			cooldownSeconds: 30,
-			defaults: { parse: false, form: "image" },
-			groups: { [GROUP_ID]: { parse: true } },
+			cooldownSec: 30,
+			isOnByDefault: false,
+			replyForm: "image",
+			byTarget: { [GROUP_ID]: { isOn: true } },
 		});
+	});
+
+	// 0.10–0.12 的面板在总开关关着时默认行与例外表照样能改(开关不锁下面的表),所以「总开关关、默认行开」
+	// 不只是 0.9.1 迁出来的那批。0.x 的门先看总开关、再看逐群答案:关着一张不回。迁过来总开关必须仍是单独
+	// 的一格(`enabled`),没被折进默认行(也没跟默认行接反),否则关着的功能会被迁成开着。
+	// 两格故意取不同的值(总开关关、默认行开):取一样的值,接反了也看不出来。
+	it("总开关关、默认回、群显式关、形式原生分享:新代里是 linkPreview 五格,enabled 仍关,没有 linkParsing", async () => {
+		const g = makeZeroGlobals() as unknown as Record<string, unknown>;
+		const old = {
+			...g,
+			linkParsing: {
+				enabled: false,
+				cooldownSeconds: 45,
+				defaults: { parse: true, form: "miniapp" },
+				groups: { [GROUP_ID]: { parse: false, form: "image" } },
+			},
+		};
+		await sandbox.placeZeroText("state/globals.json", JSON.stringify(old));
+
+		await sandbox.migrate();
+
+		const expected = {
+			enabled: false,
+			cooldownSec: 45,
+			isOnByDefault: true,
+			replyForm: "nativeShare",
+			byTarget: { [GROUP_ID]: { isOn: false, replyForm: "image" } },
+		};
+		const onDisk = await sandbox.readConfig<DiskGlobals>("settings/core.json");
+		expect(onDisk).not.toHaveProperty("linkParsing");
+		expect(onDisk.linkPreview).toEqual(expected);
+		expect((await sandbox.load()).getGlobals().linkPreview).toEqual(expected);
 	});
 });
 

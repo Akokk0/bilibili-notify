@@ -528,7 +528,7 @@ export class PushRouter {
 				...ctx,
 				target: null,
 				// 没有目标可问,记「默认那一份」:默认行开着就是 AI 版(例外只属于具体的目标)。
-				messages: (aiPayloads && writingEntry?.enabled ? aiPayloads : payloads).map((p) => ({
+				messages: (aiPayloads && writingEntry?.isOnByDefault ? aiPayloads : payloads).map((p) => ({
 					payload: p,
 					role: ctx.role,
 				})),

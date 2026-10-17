@@ -56,8 +56,8 @@ describe("ai.writing 经设置路由读写", () => {
 	it("出厂就是两份默认开、没有例外", async () => {
 		const { runtime, get } = await boot();
 		expect((await get()).ai.writing).toEqual({
-			post: { enabled: true, byTarget: {} },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: {} },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
 		await runtime.dispose();
 	});
@@ -66,13 +66,13 @@ describe("ai.writing 经设置路由读写", () => {
 		const { runtime, patch, get } = await boot();
 		const before = await get();
 		const res = await patch({
-			ai: { writing: { post: { enabled: false, byTarget: { [A]: true } } } },
+			ai: { writing: { post: { isOnByDefault: false, byTarget: { [A]: true } } } },
 		});
 		expect(res.status).toBe(200);
 		const after = await get();
 		expect(after.ai.writing).toEqual({
-			post: { enabled: false, byTarget: { [A]: true } },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: false, byTarget: { [A]: true } },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
 		const { writing: _b, ...beforeRest } = before.ai;
 		const { writing: _a, ...afterRest } = after.ai;
@@ -86,8 +86,8 @@ describe("ai.writing 经设置路由读写", () => {
 		const res = await patch({ ai: { writing: { post: { byTarget: { [A]: null } } } } });
 		expect(res.status).toBe(200);
 		expect((await get()).ai.writing).toEqual({
-			post: { enabled: true, byTarget: { [B]: false } },
-			liveSummary: { enabled: true, byTarget: {} },
+			post: { isOnByDefault: true, byTarget: { [B]: false } },
+			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
 		await runtime.dispose();
 	});

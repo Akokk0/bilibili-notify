@@ -81,8 +81,8 @@ function writing(
 	liveSummary: Partial<AiWritingSettings["liveSummary"]> = {},
 ): AiWritingSettings {
 	return {
-		post: { enabled: true, byTarget: {}, ...post },
-		liveSummary: { enabled: true, byTarget: {}, ...liveSummary },
+		post: { isOnByDefault: true, byTarget: {}, ...post },
+		liveSummary: { isOnByDefault: true, byTarget: {}, ...liveSummary },
 	};
 }
 
@@ -161,7 +161,7 @@ function recordedByTarget(sent: PushSendResult[]): Record<string, string[]> {
 describe("按目标挑正文:本体(writing.post)", () => {
 	it("默认开、乙写了关:甲收到 AI 版,乙收到模板版,onSend 各带各的", async () => {
 		const { push, calls, sent } = makePush(postSub(["t1", "t2"]), {
-			writing: writing({ enabled: true, byTarget: { t2: false } }),
+			writing: writing({ isOnByDefault: true, byTarget: { t2: false } }),
 		});
 		await postPush(push, [TEMPLATE], [AI]);
 		expect(textsByTarget(calls)).toEqual({ t1: ["点评"], t2: ["模板"] });
@@ -170,7 +170,7 @@ describe("按目标挑正文:本体(writing.post)", () => {
 
 	it("默认关、甲写了开:反过来", async () => {
 		const { push, calls, sent } = makePush(postSub(["t1", "t2"]), {
-			writing: writing({ enabled: false, byTarget: { t1: true } }),
+			writing: writing({ isOnByDefault: false, byTarget: { t1: true } }),
 		});
 		await postPush(push, [TEMPLATE], [AI]);
 		expect(textsByTarget(calls)).toEqual({ t1: ["点评"], t2: ["模板"] });
@@ -179,7 +179,7 @@ describe("按目标挑正文:本体(writing.post)", () => {
 
 	it("锚点没有 aiMessages:不管设置怎么写,全部收到 messages", async () => {
 		const { push, calls } = makePush(postSub(["t1", "t2"]), {
-			writing: writing({ enabled: true, byTarget: { t1: true } }),
+			writing: writing({ isOnByDefault: true, byTarget: { t1: true } }),
 		});
 		await postPush(push, [TEMPLATE]);
 		expect(textsByTarget(calls)).toEqual({ t1: ["模板"], t2: ["模板"] });
@@ -209,7 +209,7 @@ describe("按目标挑正文:本体(writing.post)", () => {
 	it("多条序列整段挑同一份:AI 版两条、模板一条,各按各的条数发", async () => {
 		const ai2: NotificationPayload = { kind: "text", text: "点评二" };
 		const { push, calls } = makePush(postSub(["t1", "t2"]), {
-			writing: writing({ enabled: true, byTarget: { t2: false } }),
+			writing: writing({ isOnByDefault: true, byTarget: { t2: false } }),
 		});
 		await postPush(push, [TEMPLATE], [AI, ai2]);
 		expect(textsByTarget(calls)).toEqual({ t1: ["点评", "点评二"], t2: ["模板"] });
@@ -218,7 +218,7 @@ describe("按目标挑正文:本体(writing.post)", () => {
 	it("byTarget 里路由之外的 id、停用目标的 id:无影响", async () => {
 		const { push, calls } = makePush(
 			postSub(["t1", "t3"]),
-			{ writing: writing({ enabled: false, byTarget: { t9: true, t3: true } }) },
+			{ writing: writing({ isOnByDefault: false, byTarget: { t9: true, t3: true } }) },
 			{ disabled: ["t3"] },
 		);
 		await postPush(push, [TEMPLATE], [AI]);
@@ -227,26 +227,26 @@ describe("按目标挑正文:本体(writing.post)", () => {
 	});
 
 	it("无目标(没有可用路由):记「默认那一份」,只听默认行、不听例外", async () => {
-		const on = makePush(postSub([]), { writing: writing({ enabled: true }) });
+		const on = makePush(postSub([]), { writing: writing({ isOnByDefault: true }) });
 		await postPush(on.push, [TEMPLATE], [AI]);
 		expect(on.sent).toHaveLength(1);
 		expect(on.sent[0]?.target).toBeNull();
 		expect(on.sent[0]?.messages.map((m) => m.payload)).toEqual([AI]);
 
 		const off = makePush(postSub([]), {
-			writing: writing({ enabled: false, byTarget: { t1: true } }),
+			writing: writing({ isOnByDefault: false, byTarget: { t1: true } }),
 		});
 		await postPush(off.push, [TEMPLATE], [AI]);
 		expect(off.sent[0]?.messages.map((m) => m.payload)).toEqual([TEMPLATE]);
 
-		const noAi = makePush(postSub([]), { writing: writing({ enabled: true }) });
+		const noAi = makePush(postSub([]), { writing: writing({ isOnByDefault: true }) });
 		await postPush(noAi.push, [TEMPLATE]);
 		expect(noAi.sent[0]?.messages.map((m) => m.payload)).toEqual([TEMPLATE]);
 	});
 
 	it("被静音挡下:每个目标记下的是它自己那份,带 isSilenced,一条都没发", async () => {
 		const { push, calls, sent } = makePush(postSub(["t1", "t2"]), {
-			writing: writing({ enabled: true, byTarget: { t2: false } }),
+			writing: writing({ isOnByDefault: true, byTarget: { t2: false } }),
 			muted: true,
 		});
 		await postPush(push, [TEMPLATE], [AI]);
@@ -258,10 +258,10 @@ describe("按目标挑正文:本体(writing.post)", () => {
 	});
 
 	it("读口是现取的:构造之后改了设置,下一次推送按新的挑", async () => {
-		const state = { writing: writing({ enabled: true }) };
+		const state = { writing: writing({ isOnByDefault: true }) };
 		const { push, calls } = makePush(postSub(["t1"]), state);
 		await postPush(push, [TEMPLATE], [AI]);
-		state.writing = writing({ enabled: false });
+		state.writing = writing({ isOnByDefault: false });
 		await postPush(push, [TEMPLATE], [AI]);
 		expect(textsByTarget(calls)).toEqual({ t1: ["点评", "模板"] });
 	});
@@ -273,7 +273,7 @@ describe("按目标挑正文:与 @全体 叠", () => {
 		// t1、t2 要 @全体;t3、t4 不要。t2、t4 不用 AI。
 		sub.extraTargets.atAllPost = { t1: true, t2: true };
 		const { push, calls } = makePush(sub, {
-			writing: writing({ enabled: true, byTarget: { t2: false, t4: false } }),
+			writing: writing({ isOnByDefault: true, byTarget: { t2: false, t4: false } }),
 		});
 		await postPush(push, [TEMPLATE], [AI]);
 		const trace = calls.map(
@@ -346,7 +346,10 @@ describe("按目标挑正文:附加项(writing.liveSummary)", () => {
 		sub.extraTargets.liveSummary = { t3: false };
 		const { push, calls, settled } = makePush(sub, {
 			// 本体那份(writing.post)故意反着写,证明总结不看它。
-			writing: writing({ enabled: false }, { enabled: false, byTarget: { t1: true, t3: true } }),
+			writing: writing(
+				{ isOnByDefault: false },
+				{ isOnByDefault: false, byTarget: { t1: true, t3: true } },
+			),
 		});
 		await pushSummary(push);
 		await settled();
@@ -357,7 +360,7 @@ describe("按目标挑正文:附加项(writing.liveSummary)", () => {
 		const sub = summarySub();
 		setExtraDefault(sub, "liveSummary", true);
 		const { push, calls, settled } = makePush(sub, {
-			writing: writing({ enabled: true }, { enabled: false }),
+			writing: writing({ isOnByDefault: true }, { isOnByDefault: false }),
 		});
 		await pushSummary(push);
 		await settled();

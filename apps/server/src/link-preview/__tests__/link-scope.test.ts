@@ -67,8 +67,8 @@ const K_GROUP_2 = linkScopeKey(ONEBOT_ADAPTER, "456");
 /** 机器人在、但没配成推送目标的群 —— 没有 id,只能跟默认行。 */
 const K_STRANGER = linkScopeKey(ONEBOT_ADAPTER, "789");
 
-const ALL_ON = { defaults: { parse: true, form: "image" as const }, groups: {} };
-const NONE_ON = { defaults: { parse: false, form: "image" as const }, groups: {} };
+const ALL_ON = { isOnByDefault: true, replyForm: "image" as const, byTarget: {} };
+const NONE_ON = { isOnByDefault: false, replyForm: "image" as const, byTarget: {} };
 
 describe("resolveLinkPreviewPolicies", () => {
 	it("默认行解析开、没有例外 → 是目标的群和不是目标的群都解析,回默认形式", () => {
@@ -77,57 +77,57 @@ describe("resolveLinkPreviewPolicies", () => {
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "image" });
-		expect(table.policyFor(K_STRANGER)).toEqual({ parse: true, form: "image" });
+		expect(table.policyFor(K_GROUP)).toEqual({ isOn: true, replyForm: "image" });
+		expect(table.policyFor(K_STRANGER)).toEqual({ isOn: true, replyForm: "image" });
 	});
 
 	it("默认行解析关 + 群显式开 = 原来的白名单:只有那群解析,没勾的目标群与陌生群都不", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
+			config: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP).parse).toBe(true);
-		expect(table.policyFor(K_GROUP_2).parse).toBe(false);
-		expect(table.policyFor(K_STRANGER).parse).toBe(false);
+		expect(table.policyFor(K_GROUP).isOn).toBe(true);
+		expect(table.policyFor(K_GROUP_2).isOn).toBe(false);
+		expect(table.policyFor(K_STRANGER).isOn).toBe(false);
 	});
 
 	it("默认行解析开 + 群显式关 → 那一个群不解析,其余照常", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: false } } },
+			config: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: false } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP).parse).toBe(false);
-		expect(table.policyFor(K_GROUP_2).parse).toBe(true);
+		expect(table.policyFor(K_GROUP).isOn).toBe(false);
+		expect(table.policyFor(K_GROUP_2).isOn).toBe(true);
 	});
 
 	it("形式逐群覆盖:例外写了小程序卡的群回小程序卡,其余跟默认行;默认行改小程序卡则陌生群也跟", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, groups: { [T_GROUP]: { form: "miniapp" } } },
+			config: { ...ALL_ON, byTarget: { [T_GROUP]: { replyForm: "nativeShare" } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP).form).toBe("miniapp");
-		expect(table.policyFor(K_GROUP_2).form).toBe("image");
+		expect(table.policyFor(K_GROUP).replyForm).toBe("nativeShare");
+		expect(table.policyFor(K_GROUP_2).replyForm).toBe("image");
 
 		const flipped = resolveLinkPreviewPolicies({
-			config: { defaults: { parse: true, form: "miniapp" }, groups: {} },
+			config: { isOnByDefault: true, replyForm: "nativeShare", byTarget: {} },
 			targets: [],
 			connections: ADAPTERS,
 		});
-		expect(flipped.policyFor(K_STRANGER)).toEqual({ parse: true, form: "miniapp" });
+		expect(flipped.policyFor(K_STRANGER)).toEqual({ isOn: true, replyForm: "nativeShare" });
 	});
 
 	// 「停用」在链接解析与周报里是同一个意思:目标暂停就不响应,默认行开着、例外显式开着都
 	// 压不过它(主人定的,两处要一致)。
 	it("目标已停用 → 不解析,哪怕默认行开、例外显式开;形式照算", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, groups: { [T_GROUP]: { parse: true, form: "miniapp" } } },
+			config: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: true, replyForm: "nativeShare" } } },
 			targets: [onebotGroup(T_GROUP, "123", { enabled: false })],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP)).toEqual({ parse: false, form: "miniapp" });
+		expect(table.policyFor(K_GROUP)).toEqual({ isOn: false, replyForm: "nativeShare" });
 	});
 
 	it("目标所属的连接已停用、或连接已不存在 → 不解析", () => {
@@ -136,53 +136,53 @@ describe("resolveLinkPreviewPolicies", () => {
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [connection(ONEBOT_ADAPTER, "onebot", false)],
 		});
-		expect(disabledConnection.policyFor(K_GROUP).parse).toBe(false);
+		expect(disabledConnection.policyFor(K_GROUP).isOn).toBe(false);
 
 		const missingConnection = resolveLinkPreviewPolicies({
 			config: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [],
 		});
-		expect(missingConnection.policyFor(K_GROUP).parse).toBe(false);
+		expect(missingConnection.policyFor(K_GROUP).isOn).toBe(false);
 	});
 
 	it("官机群的地址是 groupOpenid,与入站帧里的 address 同一个值", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, groups: { [T_QQ_GROUP]: { parse: true } } },
+			config: { ...NONE_ON, byTarget: { [T_QQ_GROUP]: { isOn: true } } },
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(`${QQ_ADAPTER}:openid-xyz`).parse).toBe(true);
+		expect(table.policyFor(`${QQ_ADAPTER}:openid-xyz`).isOn).toBe(true);
 	});
 
 	it("私聊目标不进表(链接解析只在群里响应),例外里写了它也没用", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, groups: { [T_PRIVATE]: { parse: true } } },
+			config: { ...NONE_ON, byTarget: { [T_PRIVATE]: { isOn: true } } },
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "10001")).parse).toBe(false);
+		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "10001")).isOn).toBe(false);
 	});
 
 	it("例外里引用的目标已经删掉 → 静默忽略,其余照常", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, groups: { [T_GONE]: { parse: true }, [T_GROUP]: { parse: true } } },
+			config: { ...NONE_ON, byTarget: { [T_GONE]: { isOn: true }, [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP).parse).toBe(true);
+		expect(table.policyFor(K_GROUP).isOn).toBe(true);
 	});
 
 	it("同一个群配成了两个目标 → 先出现的那个说了算,不来回翻", () => {
 		const table = resolveLinkPreviewPolicies({
 			config: {
 				...ALL_ON,
-				groups: { [T_GROUP]: { form: "miniapp" }, [T_GROUP_2]: { parse: false } },
+				byTarget: { [T_GROUP]: { replyForm: "nativeShare" }, [T_GROUP_2]: { isOn: false } },
 			},
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "123")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "miniapp" });
+		expect(table.policyFor(K_GROUP)).toEqual({ isOn: true, replyForm: "nativeShare" });
 	});
 });
 
@@ -194,11 +194,11 @@ describe("linkScopeKey —— 键里没有平台,只有连接与群", () => {
 	it("两条连接上同名的群各是各的键", () => {
 		expect(linkScopeKey(ONEBOT_ADAPTER, "123")).not.toBe(linkScopeKey(QQ_ADAPTER, "123"));
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
+			config: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "123")).parse).toBe(true);
-		expect(table.policyFor(linkScopeKey(QQ_ADAPTER, "123")).parse).toBe(false);
+		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "123")).isOn).toBe(true);
+		expect(table.policyFor(linkScopeKey(QQ_ADAPTER, "123")).isOn).toBe(false);
 	});
 });

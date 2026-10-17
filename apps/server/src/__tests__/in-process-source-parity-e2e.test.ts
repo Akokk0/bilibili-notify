@@ -1586,7 +1586,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 		// 开了:回一张图,送去出图的 HTML 里是假解析器交的正文。
 		await patchSettings({
-			linkParsing: { enabled: true, cooldownSeconds: 60, defaults: { parse: true, form: "image" } },
+			linkPreview: { enabled: true, cooldownSec: 60, isOnByDefault: true, replyForm: "image" },
 		});
 		await say("看 https://acme.invalid/link/a1");
 		const first = await settledCaptures(1);
@@ -1608,12 +1608,12 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(await captures()).toHaveLength(1);
 
 		// 逐目标关掉:不问、不回;随后放开,冷却没被吃掉,新链接照回。
-		await patchSettings({ linkParsing: { groups: { [ID.group]: { parse: false } } } });
+		await patchSettings({ linkPreview: { byTarget: { [ID.group]: { isOn: false } } } });
 		await say("https://acme.invalid/link/a2");
 		await quiet();
 		expect(probe.linkResolves).toHaveLength(2);
 		expect(await captures()).toHaveLength(1);
-		await patchSettings({ linkParsing: { groups: { [ID.group]: null } } });
+		await patchSettings({ linkPreview: { byTarget: { [ID.group]: null } } });
 
 		// 形式选原生分享、连接能力注成支持:回原生分享,截流里是标题,不出图。
 		await okRes(
@@ -1622,7 +1622,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				json({ params: { connection: ID.connection, state: "supported" } }),
 			),
 		);
-		await patchSettings({ linkParsing: { defaults: { parse: true, form: "miniapp" } } });
+		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "nativeShare" } });
 		const htmlBefore = renderedHtml.length;
 		await clearCaptures();
 		await say("https://acme.invalid/link/a3");
@@ -1646,7 +1646,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			);
 			await quiet();
 		};
-		await patchSettings({ linkParsing: { defaults: { parse: true, form: "image" } } });
+		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "image" } });
 		await feedDirect("控制组 https://acme.invalid/link/a4");
 		const resolvedBeforeStop = probe.linkResolves.length;
 		expect(probe.linkResolves.at(-1)).toBe("https://acme.invalid/link/a4");

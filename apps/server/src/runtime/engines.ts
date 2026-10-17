@@ -982,7 +982,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 「动态」样式 + 全局默认图廊轮换 + 全局版式。做成随 config-changed 刷新的快照 ——
 	// 群里每句带链接的话都要读开关,而 `globals()` 是整份深拷贝,不该按条付这个钱。
 	const linkCardViewOf = (g: GlobalConfig) => ({
-		config: g.linkParsing,
+		config: g.linkPreview,
 		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
 		cardSkin: g.defaults.cardSkin,
 		// 动态卡没有按订阅的封面可言:链接卡就是「没有样式覆盖」(渲染器逐字段回退自己的全局配置)。
