@@ -2,7 +2,12 @@ import { copyFile, cp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { missingServerBundleFilesIn, writeServerBundleManifest } from "./server-bundle-assets.mjs";
+import { assertChangelogHasVersion, releaseNotesOf } from "./changelog-section.mjs";
+import {
+	missingServerBundleFilesIn,
+	RELEASE_NOTES_FILE,
+	writeServerBundleManifest,
+} from "./server-bundle-assets.mjs";
 
 // 把独立端 server 自包含 bundle(apps/server/dist,由 `build:bundle` 产出;入口 + hash 分块)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
@@ -19,6 +24,10 @@ import { missingServerBundleFilesIn, writeServerBundleManifest } from "./server-
 // - bn.config.example.yaml:first-boot 配置样例,镜像内与 bundle 平级。
 // ⛔ **拓展不进载荷**(主人 2026-09-09 拍板推翻 ADR-0012 决策 34 的「随载荷预装」):
 //   本体一个拓展都不带,拓展只有两条来路 —— 下载,或者主人自己放进 <dataDir>/extensions/。
+// - release-notes.json:升级之后「本次更新」的数据,装配时从 apps/CHANGELOG.md 抽 1.0 起各版的
+//   概述与 ⚠️ 段(scripts/changelog-section.mjs)。服务端开机按载荷入口就近读它。
+//   不是开发版而 CHANGELOG 里没有当前版本 → 这里直接抛:三条发版链路都经过装配,缺段在构建那步就红,
+//   不等镜像发出去才发现。
 // - package.json:resolveAppVersion 从 index.mjs 往上找最近的这一份展示独立端版本
 //   (发布 workflow 按 tag 临时同步 version 后再构建)。必须与 bundle 平级 —— 它读的
 //   是**载荷自己**的版本,不是进程 cwd 的。
@@ -48,6 +57,12 @@ await copyFile(
 // catalog: 占位一起带走(npm 不可解析,对自包含产物也是误导)。
 const serverPkg = JSON.parse(await readFile(resolve(repoRoot, "apps/server/package.json"), "utf8"));
 const { name, version, type, engines } = serverPkg;
+const changelog = await readFile(resolve(repoRoot, "apps/CHANGELOG.md"), "utf8");
+assertChangelogHasVersion(changelog, version);
+await writeFile(
+	resolve(distDir, RELEASE_NOTES_FILE),
+	`${JSON.stringify({ releases: releaseNotesOf(changelog) }, null, "\t")}\n`,
+);
 await writeFile(
 	resolve(distDir, "package.json"),
 	`${JSON.stringify({ name, version, type, engines, private: true }, null, "\t")}\n`,

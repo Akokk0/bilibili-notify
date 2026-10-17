@@ -59,6 +59,9 @@ describe("assemble-server-bundle", () => {
 		);
 		expect(await readFile(join(distDir, "static", "render.js"), "utf8")).toContain("词云渲染函数");
 		expect(await readFile(join(distDir, "bn.config.example.yaml"), "utf8")).toContain("server");
+		// 开机时服务端按路径读它(「本次更新」弹窗的数据);今天 CHANGELOG 里还没有 1.x 段,所以是空数组。
+		const notes = JSON.parse(await readFile(join(distDir, "release-notes.json"), "utf8"));
+		expect(Array.isArray(notes.releases)).toBe(true);
 		// 镜像的 CMD 指着它。少了这个文件,整个镜像连启动都做不到。
 		const boot = await readFile(join(distDir, "boot.mjs"), "utf8");
 		expect(boot).toContain("startServer");

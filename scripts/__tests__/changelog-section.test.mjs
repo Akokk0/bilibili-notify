@@ -3,7 +3,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { SUMMARY_MAX_CHARS, sectionOf, summaryOf } from "../changelog-section.mjs";
+import {
+	assertChangelogHasVersion,
+	cautionOf,
+	isDevBuild,
+	releaseNotesOf,
+	SUMMARY_MAX_CHARS,
+	sectionOf,
+	summaryOf,
+} from "../changelog-section.mjs";
 import { repoRoot } from "../desktop-layout.mjs";
 
 /**
@@ -114,6 +122,156 @@ describe("summaryOf:标题下第一段,去 markdown", () => {
 
 	it("找不到该版本 → 抛", () => {
 		expect(() => summaryOf(MD, "0.7.0")).toThrow("0.7.0");
+	});
+});
+
+// 1.0 起的各版本段:新的在前。1.1.0 照 0.9.0 的版式(⚠️ 段后直接跟要点、没有 ###),
+// 1.1.0-alpha.1 的 ⚠️ 段后面才是 ###,1.0.0 没有 ⚠️ 段,0.9.1 那段概述超 120 字。
+const MD1 = `# Changelog · 独立端
+
+---
+
+## [Unreleased]
+
+还没发的,版本号不成形。
+
+---
+
+## [1.1.0] — 2026-11-01
+
+这一版把**推送历史**做成了可搜索的 [列表](https://example.com),\`/history\` 里能用。
+
+⚠️ **从 1.0.0 直接升上来的请先看这段。**
+
+- 先停掉旧的定时任务
+- 再升级
+
+---
+
+## [1.1.0-alpha.1]
+
+alpha 的概述。
+
+⚠️ alpha 里要动手的事。
+
+### Added
+
+- 某一条
+
+---
+
+## [1.0.0] — 2026-10-20
+
+第一个 1.0 正式版。
+
+### Added
+
+- 某一条
+
+---
+
+## [0.9.1] — 2026-09-04
+
+${"字".repeat(130)}
+
+---
+
+## [0.9.0] — 2026-09-03
+
+从 alpha 系列毕业的正式版。
+`;
+
+describe("cautionOf:标题后到第一个 ### 之间的 ⚠️ 段", () => {
+	it("⚠️ 段原样交出,连后面跟着的要点列表(没有 ### 的版式)", () => {
+		expect(cautionOf(MD1, "1.1.0")).toBe(
+			"⚠️ **从 1.0.0 直接升上来的请先看这段。**\n\n- 先停掉旧的定时任务\n- 再升级",
+		);
+	});
+
+	it("⚠️ 段后面紧跟 ### 时只取到 ### 之前", () => {
+		expect(cautionOf(MD1, "1.1.0-alpha.1")).toBe("⚠️ alpha 里要动手的事。");
+	});
+
+	it("没有 ⚠️ 段 → undefined", () => {
+		expect(cautionOf(MD1, "1.0.0")).toBeUndefined();
+	});
+
+	it("概述后面跟着一段不以 ⚠️ 开头的话 → 抛,点名是哪一版", () => {
+		const md = "## [1.2.0]\n\n概述。\n\n小心这个,不是 ⚠️ 开头。\n\n### Added\n\n- x\n";
+		expect(() => cautionOf(md, "1.2.0")).toThrow("1.2.0");
+	});
+
+	it("找不到该版本 → 抛", () => {
+		expect(() => cautionOf(MD1, "9.9.9")).toThrow("9.9.9");
+	});
+});
+
+describe("releaseNotesOf:1.0 起各版的概述与 ⚠️ 段", () => {
+	it("只收 1.0 起的段,顺序照文件(新的在前);0.x 不碰,含概述超长的 0.9.1", () => {
+		expect(releaseNotesOf(MD1).map((r) => r.version)).toEqual(["1.1.0", "1.1.0-alpha.1", "1.0.0"]);
+	});
+
+	it("概述交 markdown 原文(链接、加粗、行内代码都留着),⚠️ 段原样带上", () => {
+		const [latest] = releaseNotesOf(MD1);
+		expect(latest.summary).toBe(
+			"这一版把**推送历史**做成了可搜索的 [列表](https://example.com),`/history` 里能用。",
+		);
+		expect(latest.caution).toBe(cautionOf(MD1, "1.1.0"));
+	});
+
+	it("日期取标题「— YYYY-MM-DD」,没有就缺这一格;没有 ⚠️ 段就缺 caution", () => {
+		const entries = releaseNotesOf(MD1);
+		expect(entries[0].date).toBe("2026-11-01");
+		expect("date" in entries[1]).toBe(false);
+		expect("caution" in entries[2]).toBe(false);
+		expect(entries[2]).toEqual({
+			version: "1.0.0",
+			date: "2026-10-20",
+			summary: "第一个 1.0 正式版。",
+		});
+	});
+
+	it("版本号不成形的标题([Unreleased])跳过", () => {
+		expect(releaseNotesOf(MD1).some((r) => r.version === "Unreleased")).toBe(false);
+	});
+
+	it("概述为空或超 120 字 → 抛,点名是哪一版", () => {
+		const long = `## [1.0.0] — 2026-01-01\n\n${"字".repeat(SUMMARY_MAX_CHARS + 1)}\n`;
+		expect(() => releaseNotesOf(long)).toThrow("1.0.0");
+		const empty = "## [1.0.0] — 2026-01-01\n\n### Added\n\n- x\n";
+		expect(() => releaseNotesOf(empty)).toThrow("1.0.0");
+	});
+
+	it("120 字的上限按剥掉 markdown 之后的字数算", () => {
+		const atLimit = `**${"字".repeat(SUMMARY_MAX_CHARS)}**`;
+		const [entry] = releaseNotesOf(`## [1.0.0] — 2026-01-01\n\n${atLimit}\n`);
+		expect(entry.summary).toBe(atLimit);
+	});
+
+	it("读真仓库的 apps/CHANGELOG.md 不抛(以后写坏了 1.x 段在这里红)", () => {
+		const md = readFileSync(join(repoRoot, "apps/CHANGELOG.md"), "utf8");
+		expect(() => releaseNotesOf(md)).not.toThrow();
+	});
+});
+
+describe("assertChangelogHasVersion:装配时当前版本必须有段", () => {
+	it("不是开发版而 CHANGELOG 里没有它 → 抛,点名版本号", () => {
+		expect(() => assertChangelogHasVersion(MD1, "1.5.0")).toThrow("1.5.0");
+	});
+
+	it("有段 → 放行;开发版不查", () => {
+		expect(() => assertChangelogHasVersion(MD1, "1.1.0")).not.toThrow();
+		expect(() => assertChangelogHasVersion(MD1, "0.0.0-dev")).not.toThrow();
+		expect(() => assertChangelogHasVersion(MD1, "dev")).not.toThrow();
+	});
+
+	// 服务端的 isDevBuild(update/version-order.ts)是开发版判法的唯一源头,这里抄了一份
+	// 因为 .mjs 引不了 TS。两处判据分叉 = 装配时把开发版当成正式版红了、或反过来放过正式版。
+	it("开发版的判据与服务端 isDevBuild 的两条一致", () => {
+		const src = readFileSync(join(repoRoot, "apps/server/src/update/version-order.ts"), "utf8");
+		expect(src).toContain('return version === "dev" || version.startsWith("0.0.0-dev");');
+		for (const v of ["dev", "0.0.0-dev", "0.0.0-dev.3"]) expect(isDevBuild(v)).toBe(true);
+		for (const v of ["0.12.0", "1.0.0-alpha.1", "0.0.1"]) expect(isDevBuild(v)).toBe(false);
 	});
 });
 

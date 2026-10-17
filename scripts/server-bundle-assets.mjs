@@ -9,13 +9,19 @@ import { join, posix } from "node:path";
  *   - scripts/build-update-payload.mjs 打升级载荷前按它把关;
  *   - apps/desktop/scripts/prepare-resources.mjs 把 dist 摆进桌面资源后再验一遍。
  *
- * 为什么不各写各的:这些文件全是**运行时按路径读盘**的(词云 static、jieba 的 wasm),少一个不会在构建期报错,只会在用户点到那个功能时炸。
+ * 为什么不各写各的:这些文件全是**运行时按路径读盘**的(词云 static、jieba 的 wasm、发行说明),少一个不会在构建期报错,只会在用户点到那个功能时炸。
  * 三处各抄一份清单,就是三处可以各自落后。
  *
  * 清单之外,dist 还有带 hash 的 JS 分块(它不是一个文件:入口 + 分块 + 资产),分块名每次
  * 构建都变,进不了手写清单 —— 由装配那一刻写出的 bundle-manifest.json 兜底,见
  * writeServerBundleManifest。
  */
+/**
+ * 升级之后「本次更新」弹窗的数据:装配时从 `apps/CHANGELOG.md` 抽出 1.0 起各版的概述与 ⚠️ 段,
+ * 开机时服务端按载荷入口就近读它。不走应用内更新的人(拉镜像、重装桌面)也靠它看到说明。
+ */
+export const RELEASE_NOTES_FILE = "release-notes.json";
+
 export const SERVER_BUNDLE_FILES = [
 	// 容器 CMD、桌面壳、升级载荷起的都是它:先选版再加载载荷。
 	"boot.mjs",
@@ -30,6 +36,8 @@ export const SERVER_BUNDLE_FILES = [
 	"jieba_rs_wasm_bg.wasm",
 	// 首启动配置样例,与 bundle 平级。
 	"bn.config.example.yaml",
+	// 升级之后「本次更新」的数据,服务端开机时按载荷入口就近读。
+	RELEASE_NOTES_FILE,
 	// 装配那一刻 dist 里全部文件的清单,下游按它核对搬运有没有丢(分块也在里面)。
 	"bundle-manifest.json",
 ];

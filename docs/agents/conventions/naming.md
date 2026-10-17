@@ -82,6 +82,8 @@
 | 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |
 | BN 跑了多久 | `uptime`（目录 `uptime/`、行 `UptimeEntry { hourStartedAt, minutes }`） | `run…`（和 `runtime` 混） |
 | 作品的摘要 | `summary`（取段函数拼出、截过的整条文字） | `excerpt`、`digest`、`desc` |
+| 一个版本的更新说明（概述加可能有的 ⚠️ 段；概述一格仍叫 `summary`） | `releaseNote`（条目 `ReleaseNoteEntry`、载荷里的数据文件 `release-notes.json`、取函数 `releaseNotesOf`；10-16 主人定） | `changelog…`（它不是整份 CHANGELOG，是抽出来的几格）、`whatsNew` |
+| 更新说明里要动手的那一段（CHANGELOG 里以 ⚠️ 开头的那段，面板上叫「⚠️ 段」） | `caution`（字段名与取函数 `cautionOf`；10-16 主人定） | `warning`（`card-skin.ts` 的 `warnings` 与皮肤颜色 token `warning` 已占两义）、`heads-up`、`advisory` |
 | 把老数据压小 | `compact`（动作与定时活：`compact(key, now)`、`startStatsCompaction`）；纯函数叫 `compress…` | `prune`、`trim`（那是删）、`sweep`（那是按引用清图） |
 | 粉丝样本的一段同值 | 不单起类型：`FollowersSample` 多一格 `lastSampledAt` | `Span`、`Run`、`Interval` |
 | 整类清空 | `clear`（各仓的 `clear()`、`DELETE /api/system/storage/:category`）；只清内存里在飞的状态叫 `reset` | `purge`、`dropAll`、`wipe` |

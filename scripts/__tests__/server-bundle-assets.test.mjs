@@ -6,6 +6,7 @@ import {
 	BUNDLE_MANIFEST_FILE,
 	missingServerBundleFiles,
 	missingServerBundleFilesIn,
+	RELEASE_NOTES_FILE,
 	SERVER_BUNDLE_FILES,
 	writeServerBundleManifest,
 } from "../server-bundle-assets.mjs";
@@ -34,6 +35,12 @@ describe("missingServerBundleFiles", () => {
 		expect(SERVER_BUNDLE_FILES).toContain("index.mjs");
 		expect(SERVER_BUNDLE_FILES).toContain("boot.mjs");
 		expect(SERVER_BUNDLE_FILES).toContain("package.json");
+	});
+
+	// 开机时服务端按路径读它;少了它「本次更新」弹窗只剩标题,且不会在构建期报错。
+	it("发行说明数据文件在清单里", () => {
+		expect(SERVER_BUNDLE_FILES).toContain(RELEASE_NOTES_FILE);
+		expect(RELEASE_NOTES_FILE).toBe("release-notes.json");
 	});
 });
 
