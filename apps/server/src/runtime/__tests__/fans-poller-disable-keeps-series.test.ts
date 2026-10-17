@@ -22,6 +22,15 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 的 🔗):下面订阅 id 是 "a" / "b",uid 是 "1" / "2"。
  */
 
+// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
+vi.mock("cron", () => ({
+	CronJob: class {
+		start(): void {}
+		stop(): void {}
+	},
+}));
+
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 
 let dataDir: string;

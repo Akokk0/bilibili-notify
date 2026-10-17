@@ -23,6 +23,15 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 粉丝仓用真的(tmpdir):「有没有时序」就是盘上那份文件。
  */
 
+// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
+vi.mock("cron", () => ({
+	CronJob: class {
+		start(): void {}
+		stop(): void {}
+	},
+}));
+
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

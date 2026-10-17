@@ -29,6 +29,15 @@ import type { SubRuntime } from "../runtime/sub-runtime-store.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { fakeProfileImages } from "./support/profile-images.js";
 
+// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 不归 serviceCtx 管;这里 Date 钉在
+// 整点上,它眼下要 10 分钟后才到点,换个「现在」就不一定了 —— 别靠这个。
+vi.mock("cron", () => ({
+	CronJob: class {
+		start(): void {}
+		stop(): void {}
+	},
+}));
+
 const at = (iso: string) => Date.parse(iso);
 const NOW = at("2026-06-30T12:00:00.000Z");
 const MIN = 60_000;
