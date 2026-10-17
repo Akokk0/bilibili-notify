@@ -11,6 +11,7 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	DEFAULT_CONTENT_FILTERS,
+	DEFAULT_TEMPLATES,
 	defaultMessageKindLayout,
 	type ImageRef,
 	type MessageKindLayout,
@@ -456,6 +457,43 @@ describe("deliverPost — 模板", () => {
 		const plain = harness({ withImage: false });
 		await run(plain);
 		expect(segsOf(plain)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
+	});
+
+	it("`{postNoun}` 填来源声明的叫法;没声明填「作品」;视频模板里写了也填", async () => {
+		const named = harness({
+			withImage: false,
+			event: { postNoun: "帖子" },
+			settings: { template: "{name}发布了一条{postNoun}" },
+		});
+		await run(named);
+		expect(segsOf(named)[0]?.text).toBe(`阿绫发布了一条帖子\n${LINK}`);
+
+		const unnamed = harness({
+			withImage: false,
+			settings: { template: "{name}发布了一条{postNoun}" },
+		});
+		await run(unnamed);
+		expect(segsOf(unnamed)[0]?.text).toBe(`阿绫发布了一条作品\n${LINK}`);
+
+		const video = harness({
+			withImage: false,
+			event: { postNoun: "视频帖" },
+			post: { video: { cover: {}, title: "标题", description: "" } },
+			settings: { videoTemplate: "{name}发了{postNoun}" },
+		});
+		await run(video);
+		expect(segsOf(video)[0]?.text).toBe(`阿绫发了视频帖\n${LINK}`);
+	});
+
+	it("默认作品文案是「{name}发布了一条{postNoun}」,B 站来源声明「动态」时出字不变", async () => {
+		const h = harness({
+			withImage: false,
+			event: { postNoun: "动态" },
+			settings: { template: DEFAULT_TEMPLATES.post },
+		});
+		await run(h);
+		expect(DEFAULT_TEMPLATES.post).toBe("{name}发布了一条{postNoun}");
+		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 	});
 
 	it("设置里的模板就是用的模板;`\\n` 展开成换行", async () => {

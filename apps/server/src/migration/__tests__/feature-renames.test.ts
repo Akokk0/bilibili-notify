@@ -418,7 +418,9 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		const { templatesSeen } = store.getGlobals();
 		expect(templates.post).toBe("我写的动态 {name}");
 		expect(templates.postVideo).toBe("我写的视频 {name}");
-		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
+		// 只有 `post` 亮:作品默认文案换成了带 `{postNoun}` 的新一版,账本里记的是旧默认的指纹(这版他没见过);
+		// `postVideo` 的默认没换,指纹对得上,不亮 —— 换键没丢账是这条钉的事。
+		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual(["post"]);
 	});
 
 	it("messageLayout.dynamic → post:全局与逐订阅覆盖;live 那组(开播 / 正在直播 / 下播)不改名", async () => {
@@ -586,8 +588,13 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		const { templates } = store.getGlobals().defaults;
 		const { templatesSeen } = store.getGlobals();
-		// 升级当下:体系默认就是出厂默认,没有要更新的。
-		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
+		// 升级当下:体系默认就是出厂默认,没有要更新的。作品默认文案是 0.x 那一版、换了新默认,所以 `post` 亮
+		// (定案:盘上还是老默认的,面板亮「默认文案有更新」,主人点了才换);下面只看上舰文案那一格。
+		const pendingNonPost = (
+			seen: Record<string, string>,
+			current: Record<string, unknown> = templates,
+		) => pendingTemplateUpdates(current, DEFAULT_TEMPLATES, seen).filter((p) => p !== "post");
+		expect(pendingNonPost(templatesSeen)).toEqual([]);
 		// 主人以后把体系默认改成自己的话:这一版默认他「见过了」(账本里是新默认的指纹),不提示。没有这两条账,下面这一步就会亮灯。
 		const edited = {
 			...templates,
@@ -598,12 +605,15 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 				},
 			},
 		};
-		expect(pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
+		expect(pendingNonPost(templatesSeen, edited)).toEqual([]);
 		expect(
-			pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, {
-				...templatesSeen,
-				"membership.guard.default.template": "过期的指纹",
-			}),
+			pendingNonPost(
+				{
+					...templatesSeen,
+					"membership.guard.default.template": "过期的指纹",
+				},
+				edited,
+			),
 		).toEqual(["membership.guard.default.template"]);
 		expect(Object.keys(templatesSeen).filter((key) => key.startsWith("guardBuy"))).toEqual([]);
 	});

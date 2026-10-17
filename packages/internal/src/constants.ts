@@ -880,7 +880,7 @@ export const BUILTIN_AI_PRESETS = [
  *   由迁移改写成这三个(㉓d)
  * - 特别关注:`{mastername}` `{uname}` `{msg}`
  * - 弹幕总结:`{dmc}` `{mdn}` `{dca}` `{un1..5}` `{dc1..5}`
- * - 动态:`{name}`
+ * - 作品:`{name}` `{postNoun}`(来源对作品的叫法,没声明叫「作品」)
  *
  * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
  * (显隐 / 位置由版式决定),模板里没有链接变量。
@@ -903,7 +903,7 @@ export const DEFAULT_TEMPLATES = {
 🥉 {un3} - {dc3} 条精准狙击
 🎖️ 特别嘉奖：{un4} & {un5}
 你们的弹幕，我们都记录在案！🕵️‍♀️`,
-	post: "{name}发布了一条动态",
+	post: "{name}发布了一条{postNoun}",
 	postVideo: "{name}发布了新视频",
 	wordcloudStopWords: "",
 	viewerChat: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",

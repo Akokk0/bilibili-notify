@@ -206,13 +206,13 @@ export const TemplateBundleSchema = z.object({
 	liveEnd: z.string(),
 	liveSummary: z.string(),
 	/**
-	 * 作品推送文本模板(非视频作品)。变量:`{name}` UP 名;链接是消息版式的独立部件,
+	 * 作品推送文本模板(非视频作品)。变量:`{name}` UP 名、`{postNoun}` 来源对作品的叫法;链接是消息版式的独立部件,
 	 * 不是模板变量。`.default(...)` 让缺 post 字段的老 globals.json
 	 * (本字段加入前写入的)仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略;
 	 * 默认值直接取 `DEFAULT_TEMPLATES`,不另抄一份(抄的那份 2026-08 漂过一次)。
 	 */
 	post: z.string().default(DEFAULT_TEMPLATES.post),
-	/** 视频投稿推送文本模板。变量:`{name}` UP 名;链接同上。 */
+	/** 视频投稿推送文本模板。变量同上;链接同上。 */
 	postVideo: z.string().default(DEFAULT_TEMPLATES.postVideo),
 	/**
 	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。

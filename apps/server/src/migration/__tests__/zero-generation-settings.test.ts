@@ -375,7 +375,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		// ① liveMsgEnabled 被 strip
 		expect(t.liveMsgEnabled).toBeUndefined();
 		// ② dynamic/dynamicVideo 回填成当前默认(链接不再进模板),新代里它们叫 post / postVideo
-		expect(t.post).toBe("{name}发布了一条动态");
+		expect(t.post).toBe("{name}发布了一条{postNoun}");
 		expect(t.postVideo).toBe("{name}发布了新视频");
 		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
@@ -410,7 +410,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(onDisk).not.toHaveProperty("postVideo");
 		const store = await sandbox.load();
 		const tpl = store.getGlobals().defaults.templates;
-		expect(tpl.post).toBe("{name}发布了一条动态");
+		expect(tpl.post).toBe("{name}发布了一条{postNoun}");
 		expect(tpl.postVideo).toBe("{name}发布了新视频");
 	});
 });

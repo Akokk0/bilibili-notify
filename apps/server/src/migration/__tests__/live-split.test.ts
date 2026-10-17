@@ -208,12 +208,13 @@ describe("直播拆键 · 迁移器接缝", () => {
 		});
 
 		// 他写过自己的「正在直播」文案:账本里新键的指纹就是 1.0 默认的指纹,不会凭空亮「默认文案有更新」的灯。
+		// 唯一亮的是 `post`:作品默认文案换成了带 `{postNoun}` 的新一版(账本里记的还是旧默认的指纹),与直播文案无关。
 		const store = await sandbox.load();
 		const g = store.getGlobals().defaults;
 		expect(g.templates.liveStreaming).toBe("【直播中】{name} {time}");
 		expect(
 			pendingTemplateUpdates(g.templates, DEFAULT_TEMPLATES, store.getGlobals().templatesSeen),
-		).toEqual([]);
+		).toEqual(["post"]);
 	});
 
 	// ── 订阅 ──────────────────────────────────────────────────────────────────

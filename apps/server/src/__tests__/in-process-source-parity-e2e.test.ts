@@ -206,8 +206,9 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		id: "N08",
 		title: "模板变量 {postNoun}、{tier}、{fanclub}、时长与粉丝变量;默认文案有更新",
 		checked: false,
-		waitsFor: "3b(模板变量可满足性)",
-		reason: "作品模板今天只有 {name}",
+		waitsFor: "3b-22",
+		reason:
+			"{postNoun} 已在 P04 拍;{tier}、{fanclub}、时长与粉丝变量要假来源交得出会员与一场直播,接口上 3b-22 才有",
 	},
 	{
 		id: "N09",
@@ -793,8 +794,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			private: false,
 			kind: "composite",
 		});
-		// `{name}` 取 `post.creator.name`;链接是作品的 url,作为独立部件跟在后面。
-		expect(hit?.text).toContain("小爱发布了一条动态");
+		// `{name}` 取 `post.creator.name`,`{postNoun}` 取来源声明的叫法(假来源不声明 → 缺省「作品」);
+		// 链接是作品的 url,作为独立部件跟在后面。
+		expect(hit?.text).toContain("小爱发布了一条作品");
 		expect(hit?.text).toContain("https://acme.invalid/post/p04");
 		drove("P04");
 	});
