@@ -1,9 +1,11 @@
 import type {
 	Disposable,
+	Failure,
 	Logger,
 	MessageBus,
 	Post,
 	PostReport,
+	Result,
 	ServiceContext,
 	SourceSubscriptionView,
 } from "@bilibili-notify/internal";
@@ -18,8 +20,8 @@ import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dyn
 import type { AllDynamicResponse, Dynamic, DynamicAnchors } from "./types";
 
 /**
- * 风控/瞬时错误停 cron 后的退避重启间隔。原实现:任何非鉴权错误(-509 限流、
- * 瞬时 -403、未知码)都永久 stop cron 且唯一重启路径 `auth-restored` 不会触发
+ * 风控/瞬时错误停 cron 后的退避重启间隔。原实现:任何非鉴权错误(限流 -509 等
+ * 风控类、瞬时 -403、未知码)都永久 stop cron 且唯一重启路径 `auth-restored` 不会触发
  * → 动态轮询永久静默直到重启进程。退避后自动重探,瞬时错误/风控解除
  * 后即自愈,无需人工重启进程。
  */
@@ -185,11 +187,11 @@ export class DynamicPoller {
 	 */
 	private riskControlled = false;
 	/**
-	 * 瞬时错误(-509 / 瞬时 -403 / 4101132 之类未知码)的边沿标记,存着当前故障的错误码,**只管日志等级**
+	 * 瞬时错误(瞬时 -403 / 4101132 之类未知码 / 回应形状不对)的边沿标记,存着当前故障的错误码(字符串),**只管日志等级**
 	 * (上报每次失败都叫)。作用与 {@link riskControlled} 对称:同一个码连续失败只记一次 warn,换了码当新故障
 	 * 再记;成功拉取时靠它判断「此前真的坏过」,记一行 info。
 	 */
-	private transientErrorCode: number | null = null;
+	private transientErrorCode: string | null = null;
 	/**
 	 * 登录已失效,等 `auth-restored`。**不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
 	 * 少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,再去撞一次 -101。
@@ -499,19 +501,17 @@ export class DynamicPoller {
 	private async detectDynamics(): Promise<void> {
 		this.logger.debug("[detector] 开始获取动态信息");
 
-		let content: AllDynamicResponse | undefined;
+		let content: Result<{ data: AllDynamicResponse["data"] }>;
 		try {
-			content = (await this.api.fetchAllDynamic()) as AllDynamicResponse;
+			content = await this.api.fetchAllDynamic();
 		} catch (e) {
 			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
 			this.logger.warn(`[api] 获取动态失败：${errorMessageOf(e)}`);
 			return;
 		}
 
-		if (!content) return;
-
-		if (content.code !== 0) {
-			this.handleApiError(content.code, content.message);
+		if (!content.ok) {
+			this.handleApiError(content);
 			return;
 		}
 
@@ -665,12 +665,20 @@ export class DynamicPoller {
 		}
 	}
 
-	private handleApiError(code: number, message: string): void {
+	/**
+	 * 拉动态失败的善后。请求层已经把 B 站的数字码翻成标准码(`bilibili/error-codes.ts`):
+	 * `unauthorized` 是真鉴权失效,`rate_limited`(-352 / -412 / -799 / -509)是风控,其余
+	 * (表外码、回应形状不对)当一时的请求失败。
+	 */
+	private handleApiError(failure: Failure): void {
+		const { code, message } = failure;
+		// 日志与问题句里给人看的错误码:B 站的数字码;回应形状不对这类没有数字码的,退回标准码。
+		const errorCode = failure.upstreamCode ?? code;
 		// Stop dynamic detector first
 		this.dynamicJob?.stop();
 		this.dynamicJob = undefined;
 		switch (code) {
-			case -101: {
+			case "unauthorized": {
 				// 真鉴权失效:停 cron,靠 auth-restored 重启(不退避盲重试 ——
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
 				// interceptor 单点广播。要不要告诉主人登录失效,由问题表的未登录层看登录状态决定,
@@ -692,7 +700,7 @@ export class DynamicPoller {
 				this.transientErrorCode = null;
 				break;
 			}
-			case -352: {
+			case "rate_limited": {
 				// 风控:**非永久**。解除风控不会发任何事件,此前 cron
 				// 永久静默直到重启进程。退避后自动重探,解除即自愈。
 				// Q7 边沿(只管日志):进入风控记一次 error;退避重探仍风控 → debug;成功拉取 → info 清除。
@@ -712,7 +720,7 @@ export class DynamicPoller {
 				break;
 			}
 			default: {
-				// 瞬时错误(-509 限流 / 瞬时 -403 / 未知码):不可永久停 cron。
+				// 瞬时错误(-403 / 未知码 / 回应形状不对):不可永久停 cron。
 				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程 → Q3 warn 不冒充事故。
 				// 这一次的结果不是风控拦截:这一路的风控(如果挂着)清掉。但动态其实仍在失败,不是解除,
 				// 不对主人说「风控已解除」(`notify: false`)。每次失败都报(幂等),
@@ -721,19 +729,22 @@ export class DynamicPoller {
 				if (this.watching()) {
 					this.problems.reportFailure({
 						code: FETCH_FAILED_CODE,
-						message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
+						message: PROBLEM_TEXTS.dynamicFetchFailed.text(errorCode),
 						notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
 						// 每个退避周期都会再撞一次、再报一次:高层开着时不必存
 						lasting: false,
 					});
 				}
-				if (this.transientErrorCode !== code) {
-					this.transientErrorCode = code;
-					this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
+				const errorKey = String(errorCode);
+				if (this.transientErrorCode !== errorKey) {
+					this.transientErrorCode = errorKey;
+					this.logger.warn(
+						`[api] 获取动态信息失败，错误码：${errorKey}，${message}，将退避后自动重试`,
+					);
 				} else {
-					this.logger.debug(`[api] 仍是错误码 ${code}，退避后继续重试(不重复告警)`);
+					this.logger.debug(`[api] 仍是错误码 ${errorKey}，退避后继续重试(不重复告警)`);
 				}
-				this.scheduleDetectorRestart(`错误码 ${code}`);
+				this.scheduleDetectorRestart(`错误码 ${errorKey}`);
 			}
 		}
 	}

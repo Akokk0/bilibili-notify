@@ -1,6 +1,7 @@
 import type { CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http";
 import {
 	type Disposable,
+	fail,
 	type Logger,
 	ok,
 	type Result,
@@ -8,8 +9,11 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
+import { t } from "../../i18n/index.js";
 import { errorMessageOf } from "../../util/error-message";
 import { type BiliContext, REFRESH_TOKEN_KEY } from "../context";
+import type { AllDynamicResponse } from "../dynamic/types";
+import { failureFromBili } from "../error-codes";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
 import { createMyselfCache, type MyselfCache } from "./self-info-cache";
@@ -102,6 +106,12 @@ export class Api {
 	private ticketJob!: CronJob;
 	private refreshCookieTimer?: Disposable;
 	private loginInfoLoaded = false;
+	/**
+	 * 已经为之记过 warn 的、没有对照的 B 站码(同一个码只记一次)。放在实例上而不是模块级:测试每条新建一个
+	 * `Api` 就是干净的,不用只为测试开重置口;代价是集成重启(设置改对了当场起)时会新建一个 `Api`,
+	 * 重启后第一次撞上同一个码会再记一条 —— 重启本来就是一次重新开始,可以接受。
+	 */
+	private readonly unknownCodesSeen = new Set<number>();
 	/**
 	 * 上一次报出去的 `-101` 是哪一代报的、什么时候报的。去抖按代记:同一代里 60 秒内只报一次;代换了(重新登上、
 	 * 登录结束)就是另一段的事,不受上一段的窗口管 ——「失效 → 重登 → 又失效」报得出来,不论重登那次落盘成没成。
@@ -791,10 +801,41 @@ export class Api {
 		return this.retry(async () => (await this.client.postForm(url, body())) as T, label);
 	}
 
+	/**
+	 * 把 B 站的一份回应体翻成结果形状(请求层只在这一处查码表,ADR-0026 决策 4):code 0 → `ok`,
+	 * B 站的 `data` 原样铺在 `ok` 旁;非 0 → 标准码 + 原话 + `upstreamCode`({@link failureFromBili});
+	 * 回应不是对象、没有数字 code(HTML 页、形状变了)→ `unavailable`,不带 `upstreamCode`。
+	 * 表外的码每个记一条带原话的 warn,取证用 —— 认得了再往 `error-codes.ts` 里加一行。
+	 *
+	 * 只翻 B 站**回了**的码;连不上、超时、非 2xx 仍然是抛错,由调用方各自的 catch 接。
+	 */
+	private resultOf<D>(body: unknown, label: string): Result<{ data: D }> {
+		const reply =
+			typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+		if (reply === null || typeof reply.code !== "number") {
+			return fail("unavailable", t("bilibili.response.malformed"));
+		}
+		const { code } = reply;
+		if (code === 0) return ok({ data: reply.data as D });
+		const message =
+			typeof reply.message === "string" && reply.message !== ""
+				? reply.message
+				: t("bilibili.response.codeOnly", { code });
+		const failure = failureFromBili(code, message);
+		if (failure.code === "unknown" && !this.unknownCodesSeen.has(code)) {
+			this.unknownCodesSeen.add(code);
+			this.logger.warn(`[api] ${label}() 收到没有对照的错误码 ${code}：${message}`);
+		}
+		return failure;
+	}
+
 	// ---- Public API methods ----
 
-	async fetchAllDynamic() {
-		return this.getJson(EP.ALL_DYNAMIC_URL, "fetchAllDynamic");
+	async fetchAllDynamic(): Promise<Result<{ data: AllDynamicResponse["data"] }>> {
+		return this.resultOf(
+			await this.getJson(EP.ALL_DYNAMIC_URL, "fetchAllDynamic"),
+			"fetchAllDynamic",
+		);
 	}
 
 	async fetchUserSpaceDynamic(uid: string) {

@@ -1,6 +1,8 @@
+import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
 import { DevParamError } from "../../../devtools/registry.js";
+import type { Api } from "../../api/index.js";
 import { dynamicScenarios } from "../dynamic.js";
 import type { SubPick } from "../live.js";
 import { biliRegistry } from "./support/registry.js";
@@ -17,23 +19,30 @@ const SUBS: SubPick[] = [
 ];
 
 class FakeApi {
-	real = vi.fn(async () => ({
-		code: 0,
-		message: "ok",
-		data: {
-			has_more: false,
-			items: [{ id_str: "real-1" }],
-			offset: "",
-			update_baseline: "",
-			update_num: 0,
-		},
-	}));
+	real = vi.fn(
+		async (): ReturnType<Api["fetchAllDynamic"]> =>
+			ok({
+				data: {
+					has_more: false,
+					items: [{ id_str: "real-1" }] as never,
+					offset: "",
+					update_baseline: "",
+					update_num: 0,
+				},
+			}),
+	);
 	fetchAllDynamic() {
 		return this.real();
 	}
 }
 
 type Feed = Awaited<ReturnType<FakeApi["fetchAllDynamic"]>>;
+
+/** 拉动态成功时的动态列表;失败就让用例当场红。 */
+function itemsOf(result: Feed) {
+	if (!result.ok) throw new Error(`拉动态失败:${result.message}`);
+	return result.data.items;
+}
 
 /** 引擎那一轮看到的 feed:假动态只在那一轮里存在,跑完就撤,所以得在 detectNow 里抓。 */
 function setup() {
@@ -93,11 +102,8 @@ describe("bilibili.dynamic.post", () => {
 		expect(res.summary).toContain("甲");
 
 		const feed = seen();
-		expect(feed.data.items.map((i) => i.id_str)).toEqual([
-			expect.stringMatching(/^dev-/),
-			"real-1",
-		]);
-		const fake = feed.data.items[0] as Record<string, unknown>;
+		expect(itemsOf(feed).map((i) => i.id_str)).toEqual([expect.stringMatching(/^dev-/), "real-1"]);
+		const fake = itemsOf(feed)[0] as Record<string, unknown>;
 		expect(fake).toMatchObject({
 			type: "DYNAMIC_TYPE_WORD",
 			modules: {
@@ -132,7 +138,7 @@ describe("bilibili.dynamic.post", () => {
 	] as const)("%s:major 带齐渲染器要的字段", async (type, expected) => {
 		const { reg, seen } = setup();
 		await reg.run("bilibili.dynamic.post", { type });
-		const fake = seen().data.items[0] as unknown as {
+		const fake = itemsOf(seen())[0] as unknown as {
 			modules: { module_dynamic: unknown };
 		};
 		expect(fake.modules.module_dynamic).toMatchObject(expected);
@@ -141,7 +147,7 @@ describe("bilibili.dynamic.post", () => {
 	it("forward:带一条 orig,orig 也是完整的一条", async () => {
 		const { reg, seen } = setup();
 		await reg.run("bilibili.dynamic.post", { type: "forward" });
-		const fake = seen().data.items[0] as unknown as {
+		const fake = itemsOf(seen())[0] as unknown as {
 			type: string;
 			orig?: { type: string; modules: unknown };
 		};
@@ -156,14 +162,14 @@ describe("bilibili.dynamic.post", () => {
 		const { reg, api } = setup();
 		await reg.run("bilibili.dynamic.post", {});
 		// run 里 await 了 detectNow;之后再拉 feed 就该只剩真的。
-		expect((await api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
+		expect(itemsOf(await api.fetchAllDynamic()).map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 
 	it("真 feed 拉不到(没登录)也照样造:用一份空底", async () => {
 		const { reg, api, raw, seen } = setup();
 		raw.real.mockRejectedValue(new Error("-101"));
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toBeTruthy();
-		expect(seen().data.items).toHaveLength(1);
+		expect(itemsOf(seen())).toHaveLength(1);
 		// 撤掉之后又回到真的那条路,照样抛。
 		await expect(api.fetchAllDynamic()).rejects.toThrow("-101");
 	});
@@ -185,6 +191,6 @@ describe("bilibili.dynamic.post", () => {
 		const api = overridableApi(new FakeApi());
 		const reg = biliRegistry(dynamicScenarios({ subs: () => SUBS, api, dynamic: () => undefined }));
 		await expect(reg.run("bilibili.dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
-		expect((await api.api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
+		expect(itemsOf(await api.api.fetchAllDynamic()).map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 });

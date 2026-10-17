@@ -225,7 +225,8 @@ describe("③ 请求级的迟到 -101", () => {
 
 		await w.scan("new");
 		await w.wire.answer(EP.ALL_DYNAMIC_URL, { code: -101 });
-		expect(await late).toEqual({ code: -101 }); // 调用方照样拿到回应,只是不当成这一段登录失效
+		// 调用方照样拿到回应(请求层翻成 unauthorized),只是不当成这一段登录失效
+		expect(await late).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: -101 });
 
 		expect(w.onAuthLost).not.toHaveBeenCalled();
 		expect(w.flow.authState().status).toBe("logged-in");

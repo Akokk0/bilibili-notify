@@ -1,33 +1,42 @@
+import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
 import { DevParamError } from "../../../devtools/registry.js";
+import type { Api } from "../../api/index.js";
+import { failureFromBili } from "../../error-codes.js";
 import { dynamicScenarios } from "../dynamic.js";
 import type { SubPick } from "../live.js";
 import { biliRegistry } from "./support/registry.js";
 
 /**
  * 让拉动态返回指定错误码(状态类场景):盖的是传给 DynamicPoller 的 `api.fetchAllDynamic()` 那一个请求,
- * 「下一轮」(可选之后 N 轮)返回 `{ code, message }`,用完自己摘;收摊随时能摘。
+ * 「下一轮」(可选之后 N 轮)返回请求层会给的失败结果(标准码 + `upstreamCode`),用完自己摘;收摊随时能摘。
  * 它不经请求客户端的拦截,所以回 `-101` 也**不会**把登录状态变成失效 —— 说明文字要如实写明。
  */
 
 const SUBS: SubPick[] = [{ id: "s1", uid: "100", name: "甲", enabled: true }];
 
 class FakeApi {
-	real = vi.fn(async () => ({
-		code: 0,
-		message: "ok",
-		data: {
-			has_more: false,
-			items: [{ id_str: "real-1" }],
-			offset: "",
-			update_baseline: "",
-			update_num: 0,
-		},
-	}));
+	real = vi.fn(
+		async (): ReturnType<Api["fetchAllDynamic"]> =>
+			ok({
+				data: {
+					has_more: false,
+					items: [{ id_str: "real-1" }] as never,
+					offset: "",
+					update_baseline: "",
+					update_num: 0,
+				},
+			}),
+	);
 	fetchAllDynamic() {
 		return this.real();
 	}
+}
+
+/** 一次拉动态的结果里的 B 站码:成功是 0,失败是 `upstreamCode`。 */
+function codeOf(result: Awaited<ReturnType<FakeApi["fetchAllDynamic"]>>) {
+	return result.ok ? 0 : result.upstreamCode;
 }
 
 function setup() {
@@ -69,25 +78,30 @@ describe("bilibili.dynamic.fail", () => {
 		await reg.run(ID, { code: -509 });
 
 		const failed = await api.fetchAllDynamic();
-		expect(failed).toMatchObject({ code: -509, message: expect.stringContaining("-509") });
+		expect(failed).toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			upstreamCode: -509,
+			message: expect.stringContaining("-509"),
+		});
 		expect(raw.real).not.toHaveBeenCalled();
 
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 		expect(raw.real).toHaveBeenCalledTimes(1);
 	});
 
 	it("默认值:不给参数就是 -352、一轮", async () => {
 		const { reg, api } = setup();
 		await reg.run(ID, {});
-		expect((await api.fetchAllDynamic()).code).toBe(-352);
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(-352);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	it("rounds=3:连着三次都回错误码,第四次回真的", async () => {
 		const { reg, api } = setup();
 		await reg.run(ID, { code: -352, rounds: 3 });
-		const codes: number[] = [];
-		for (let n = 0; n < 4; n++) codes.push((await api.fetchAllDynamic()).code);
+		const codes: Array<number | string | undefined> = [];
+		for (let n = 0; n < 4; n++) codes.push(codeOf(await api.fetchAllDynamic()));
 		expect(codes).toEqual([-352, -352, -352, 0]);
 	});
 
@@ -107,8 +121,12 @@ describe("bilibili.dynamic.fail", () => {
 		const { reg, api, raw } = setup();
 		await reg.run(ID, {});
 		await api.fetchAllDynamic();
-		raw.real.mockResolvedValueOnce({ code: -509, message: "真的错", data: undefined } as never);
-		expect(await api.fetchAllDynamic()).toMatchObject({ code: -509, message: "真的错" });
+		raw.real.mockResolvedValueOnce(failureFromBili(-509, "真的错"));
+		expect(await api.fetchAllDynamic()).toMatchObject({
+			ok: false,
+			upstreamCode: -509,
+			message: "真的错",
+		});
 	});
 
 	it("收摊:没用完也能摘,摘了就回真的", async () => {
@@ -116,28 +134,28 @@ describe("bilibili.dynamic.fail", () => {
 		await reg.run(ID, { rounds: 5 });
 		await reg.reset(ID);
 		expect(reg.active()).toEqual([]);
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	it("再跑一次:换成新的错误码与轮数(不叠加)", async () => {
 		const { reg, api } = setup();
 		await reg.run(ID, { code: -352, rounds: 5 });
 		await reg.run(ID, { code: -509, rounds: 1 });
-		expect((await api.fetchAllDynamic()).code).toBe(-509);
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(-509);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	it.each([0, 1.5])("错误码 %s 不是一个错误码 → 拒", async (code) => {
 		const { reg, api } = setup();
 		await expect(reg.run(ID, { code })).rejects.toBeInstanceOf(DevParamError);
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	// 轮数不是正整数的话「还剩几轮」永远减不到头,盖板摘不掉。
 	it.each([0, -1, 1.5, "abc"])("轮数 %s 不是一个轮数 → 拒", async (rounds) => {
 		const { reg, api } = setup();
 		await expect(reg.run(ID, { code: -352, rounds })).rejects.toBeInstanceOf(DevParamError);
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	it("与「发动态」共用同一个 fetchAllDynamic 盖板,谁也不把谁摘掉", async () => {
@@ -147,9 +165,9 @@ describe("bilibili.dynamic.fail", () => {
 		await reg.run("bilibili.dynamic.post", {});
 		expect(detectNow).toHaveBeenCalledOnce();
 		expect(reg.active()[0]?.label).toContain("1");
-		expect((await api.fetchAllDynamic()).code).toBe(-352);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(-352);
 		// 用完之后「发动态」照常并假动态
-		expect((await api.fetchAllDynamic()).code).toBe(0);
+		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 		await reg.run("bilibili.dynamic.post", {});
 		expect(reg.active()).toEqual([]);
 	});

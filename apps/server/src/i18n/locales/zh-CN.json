@@ -1,4 +1,6 @@
 {
+	"bilibili.response.malformed": "B 站的回应不是预期的形状",
+	"bilibili.response.codeOnly": "B 站返回了错误码 {code}",
 	"bilibili.search.blankQuery": "搜索关键词不能为空",
 	"bilibili.search.failed": "B 站没能完成搜索",
 	"bilibili.search.failedWithReason": "B 站没能完成搜索：{reason}",

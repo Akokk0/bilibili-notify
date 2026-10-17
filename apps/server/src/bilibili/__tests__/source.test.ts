@@ -33,6 +33,7 @@ import {
 import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
+import { failureFromBili } from "../error-codes.js";
 import { createProblemLayers } from "../problem-layers.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
@@ -79,11 +80,9 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-const EMPTY_FEED = {
-	code: 0,
-	message: "ok",
+const EMPTY_FEED = ok({
 	data: { has_more: false, items: [] as unknown[], offset: "", update_baseline: "", update_num: 0 },
-};
+});
 
 /** 一条文字动态:作者是 `uid`,发布时间是 `pubTs`(秒)。 */
 const item = (uid: number, pubTs: number, id = `id-${uid}-${pubTs}`) => ({
@@ -333,7 +332,7 @@ describe("createBiliSource", () => {
 	// 验红:把 source.ts 递给引擎的 `problems: deps.problems` 换成别的对象,这条红。
 	it("引擎用的就是来源的那个上报器:拉动态撞 -352 报到它身上", async () => {
 		const { deps } = makeDeps({
-			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }]);

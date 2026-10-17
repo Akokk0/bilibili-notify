@@ -1,7 +1,9 @@
 import type { DevParamValues } from "@bilibili-notify/contract";
+import { ok } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
 import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
+import { failureFromBili } from "../error-codes.js";
 import type { SubPick } from "./live.js";
 
 /**
@@ -31,8 +33,10 @@ export interface DynamicScenarioDeps {
 	dynamic: () => DynamicPollerLike | undefined;
 }
 
-type Feed = Awaited<ReturnType<Api["fetchAllDynamic"]>>;
-type FeedItem = Feed["data"]["items"][number];
+/** 拉动态的结果(成功支铺着 `data`,失败支是标准码)与它成功时的 `data`。 */
+type FeedResult = Awaited<ReturnType<Api["fetchAllDynamic"]>>;
+type Feed = Extract<FeedResult, { ok: true }>["data"];
+type FeedItem = Feed["items"][number];
 
 const DEFAULT_TEXT = "devtools 造的一条动态:今天也要元气满满！";
 /** 没头像时的兜底图(B 站默认头像)。封面 / 图集也用它 —— 得是一张真能拉到的图。 */
@@ -197,12 +201,13 @@ function buildFake(input: FakeInput): FeedItem {
 	}
 }
 
-const EMPTY_FEED = (): Feed =>
-	({
-		code: 0,
-		message: "ok",
-		data: { has_more: false, items: [], offset: "", update_baseline: "", update_num: 0 },
-	}) as Feed;
+const EMPTY_FEED = (): Feed => ({
+	has_more: false,
+	items: [],
+	offset: "",
+	update_baseline: "",
+	update_num: 0,
+});
 
 export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 	/** 现在并在 feed 里的假动态。跑完那一轮就撤。 */
@@ -227,19 +232,19 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				failing.remaining -= 1;
 				if (failing.remaining <= 0) failing = null;
 				syncOverride();
-				// 真接口出错时的样子:只有 code 与 message,没有 data。引擎看到 code≠0 就不碰 data。
-				return { code, message: `devtools:模拟的错误码 ${code}`, ttl: 1 } as unknown as Feed;
+				// 真接口出错时的样子:请求层把 B 站的码翻成的失败结果(同一个纯函数造),没有 data。
+				return failureFromBili(code, `devtools:模拟的错误码 ${code}`);
 			}
-			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。引擎收到 code≠0 会走错误处理,
+			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。引擎收到失败会走错误处理,
 			// 那不是这次要看的东西。
 			let feed: Feed;
 			try {
-				feed = await real();
+				const result = await real();
+				feed = result.ok && result.data ? result.data : EMPTY_FEED();
 			} catch {
 				feed = EMPTY_FEED();
 			}
-			if (feed.code !== 0 || !feed.data) feed = EMPTY_FEED();
-			return { ...feed, data: { ...feed.data, items: [...pending, ...feed.data.items] } };
+			return ok({ data: { ...feed, items: [...pending, ...feed.items] } });
 		});
 	}
 

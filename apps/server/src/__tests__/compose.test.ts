@@ -92,11 +92,9 @@ function makeSub(
 	} as unknown as Subscription;
 }
 
-const EMPTY_FEED = {
-	code: 0,
-	message: "ok",
+const EMPTY_FEED = okResult({
 	data: { has_more: false, items: [], offset: "", update_baseline: "", update_num: 0 },
-};
+});
 
 const quietLogger = (): Logger => ({ info() {}, warn() {}, error() {}, debug() {} });
 

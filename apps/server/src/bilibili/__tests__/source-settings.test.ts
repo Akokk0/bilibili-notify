@@ -113,7 +113,7 @@ async function boot() {
 	const world = makeWorld([makeSub("sub-1", "1")]);
 	const source = createBiliSource({
 		api: {
-			fetchAllDynamic: async () => ({ code: 0, message: "ok", data: { items: [] } }),
+			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 		} as unknown as Api,
 		bus: world.bus,
 		imageFetcher: { fetchImage: vi.fn() } as never,

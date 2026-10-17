@@ -39,7 +39,8 @@ export const PROBLEM_TEXTS = {
 	/** 拉动态失败(风控以外的错误码,每 5 分钟自动重试):只进表,不私聊。 */
 	dynamicFetchFailed: {
 		notify: false,
-		text: (code: number) =>
+		// 没有 B 站数字码的失败(回应形状不对)传标准码,不让句子里出现 undefined
+		text: (code: number | string) =>
 			`主人，女仆拉取 B 站动态失败了（错误码 ${code}），每 5 分钟会自己再试一次；一直不好的话，麻烦主人看看日志。`,
 	},
 	/** 直播间停止监听(取信息失败、弹幕连不上、重连用尽):私聊 + 进表。`reason` 是停下的原因。 */

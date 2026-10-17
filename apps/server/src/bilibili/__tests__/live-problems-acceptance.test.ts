@@ -33,6 +33,7 @@ import {
 import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { type Api, RiskControlError } from "../api/index.js";
+import { failureFromBili } from "../error-codes.js";
 import type { SubItemView } from "../live/push-like.js";
 import type { RoomContextOptions } from "../live/session/room-context.js";
 import { RoomContext } from "../live/session/room-helpers.js";
@@ -119,8 +120,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 	world.bus.on("engine-error", (e) => engineErrors.push(e));
 	const source = createBiliSource({
 		api: {
-			fetchAllDynamic:
-				over.fetchAllDynamic ?? (async () => ({ code: 0, message: "ok", data: { items: [] } })),
+			fetchAllDynamic: over.fetchAllDynamic ?? (async () => ok({ data: { items: [] } })),
 		} as unknown as Api,
 		bus: world.bus,
 		imageFetcher: { fetchImage: async () => fail("unavailable", "不联网") } as never,
@@ -275,7 +275,7 @@ describe("失效登录开机 · 直播这一侧", () => {
 describe("已登录被风控 · 直播这一侧", () => {
 	it("动态撞 -352、一个房间预检被拦、另一个房间取信息失败:表里恰好一条风控,私聊恰好一次", async () => {
 		const b = await boot(IN, {
-			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		// biome-ignore lint/suspicious/noExplicitAny: 白盒直调一轮检测,不起 cron
 		await (b.source.dynamic() as any).detectDynamics();
@@ -300,7 +300,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 	/** 两路都被风控拦着的世界:动态撞 -352、u1 的预检被拦;u2 的房间取信息失败(风控压着,这条存着不报)。 */
 	async function riskWorld() {
 		const b = await boot(IN, {
-			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		// biome-ignore lint/suspicious/noExplicitAny: 同上
 		const dynamicEngine = b.source.dynamic() as any;
@@ -316,11 +316,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
 		// 动态那一路好了:风控还挂着 live:u1 这一路,表里还是风控
-		dynamicEngine.api.fetchAllDynamic = async () => ({
-			code: 0,
-			message: "ok",
-			data: { items: [] },
-		});
+		dynamicEngine.api.fetchAllDynamic = async () => ok({ data: { items: [] } });
 		await dynamicEngine.detectDynamics();
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
@@ -335,7 +331,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 	// 验红:ProblemLayers.revealFailures 里不把报给过核心的记成静默(冒出来恒用自己的 notify),房间停监会私聊第二遍,这条红。
 	it("先停监(已私聊)→ 风控 → 风控好了:停监冒回表里,但不说第二遍:私聊是 停监、风控、风控已解除", async () => {
 		const b = await boot(IN, {
-			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		await makeLiveSession(b, "u2", "200", { myself: async () => ({ code: -101 }) }).bootstrap();
 		await flush();
@@ -348,11 +344,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		await dynamicEngine.detectDynamics();
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
-		dynamicEngine.api.fetchAllDynamic = async () => ({
-			code: 0,
-			message: "ok",
-			data: { items: [] },
-		});
+		dynamicEngine.api.fetchAllDynamic = async () => ok({ data: { items: [] } });
 		await dynamicEngine.detectDynamics();
 		await flush();
 		await vi.advanceTimersByTimeAsync(120_000);
@@ -438,8 +430,8 @@ describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 		roomInfo: async () => ({ code: 0, data: ROOM_OFFLINE }),
 		master: async () => MASTER,
 	};
-	const RISKY = async () => ({ code: -352, message: "risk" });
-	const FINE = async () => ({ code: 0, message: "ok", data: { items: [] } });
+	const RISKY = async () => failureFromBili(-352, "risk");
+	const FINE = async () => ok({ data: { items: [] } });
 	const said = (b: Booted) => b.notifyMaster.mock.calls.map((c) => c[0]);
 
 	// 验红:直播这一路改成要私聊(`PROBLEM_TEXTS.riskControlled.notify.live` 为 true),第一、二、四条红。
@@ -525,18 +517,14 @@ describe("留着的缺口(钉现状)", () => {
 	// 通知器那边是一条全新的、不带私聊的记账,真连上时就没有恢复句了。修好之后这条的期望要翻。
 	it("已知的缺口 S-3:说过的房间停监被风控压下又露出,之后真连上了,主人收不到「监听已经恢复啦」", async () => {
 		const b = await boot(IN, {
-			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		await makeLiveSession(b, "u2", "200", { myself: async () => ({ code: -101 }) }).bootstrap();
 		await vi.advanceTimersByTimeAsync(120_000);
 		// biome-ignore lint/suspicious/noExplicitAny: 同上
 		const dynamicEngine = b.source.dynamic() as any;
 		await dynamicEngine.detectDynamics();
-		dynamicEngine.api.fetchAllDynamic = async () => ({
-			code: 0,
-			message: "ok",
-			data: { items: [] },
-		});
+		dynamicEngine.api.fetchAllDynamic = async () => ok({ data: { items: [] } });
 		await dynamicEngine.detectDynamics();
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);

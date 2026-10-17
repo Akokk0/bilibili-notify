@@ -21,12 +21,14 @@ import {
 	ok,
 	type Post,
 	type PostReport,
+	type Result,
 	type ServiceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/index.js";
+import { failureFromBili } from "../../error-codes.js";
 import { createProblemLayers, type ProblemLayers } from "../../problem-layers";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { DynamicPoller, type DynamicPoller as DynamicPollerType } from "../dynamic-poller";
@@ -253,12 +255,16 @@ function makeItem(opts: {
 	} as unknown as Dynamic;
 }
 
-function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicResponse {
-	return {
-		code,
-		message,
+/** 请求层回给引擎的东西:code 0 是成功(铺着 data),非 0 是请求层翻好的失败(标准码 + upstreamCode)。 */
+function resp(
+	items: Dynamic[],
+	code = 0,
+	message = "ok",
+): Result<{ data: AllDynamicResponse["data"] }> {
+	if (code !== 0) return failureFromBili(code, message);
+	return ok({
 		data: { has_more: false, items, offset: "", update_baseline: "", update_num: items.length },
-	};
+	});
 }
 
 /** 测试里写的订阅视图:引擎只认 uid 与 post(`post` 决定名单里的 features 有没有 post)。 */
@@ -395,6 +401,21 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
+	it.each([-412, -799, -509])(
+		"code=%i 也是风控 → 报到风控层(路名 dynamic)、不报请求失败、排退避重启",
+		async (code) => {
+			const b = makeEngine();
+			b.fetchAllDynamic.mockResolvedValue(resp([], code, "risk"));
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			expect(b.problems.reportRisk).toHaveBeenCalledTimes(1);
+			expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
+			expect(b.problems.reportFailure).not.toHaveBeenCalled();
+			expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+			expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
+		},
+	);
+
 	it("-352 风控:每次撞都上报(幂等),日志边沿不变 —— 只第一次记 error,之后 debug;恢复后再触发重新记 error(Q7)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
@@ -442,14 +463,14 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 	it("别的错误码 → 先清这一路的风控、再报请求失败(code dynamic_fetch_failed,文案带当次的码,是否私聊取自文案处)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		// 动态其实仍在失败:清风控但不是「解除」,不对主人说「风控已解除」
 		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic", { notify: false });
 		expect(b.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(b.problems.reportFailure).toHaveBeenCalledWith({
 			code: "dynamic_fetch_failed",
-			message: PROBLEM_TEXTS.dynamicFetchFailed.text(-509),
+			message: PROBLEM_TEXTS.dynamicFetchFailed.text(4101132),
 			notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
 			lasting: false,
 		});
@@ -482,7 +503,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 	});
 
 	/**
-	 * 风控只在「这一路这一次的结果不是风控拦截」时才清。风控之后同一路以别的方式失败(`-352` → 下一拍 `-509`),
+	 * 风控只在「这一路这一次的结果不是风控拦截」时才清。风控之后同一路以别的方式失败(`-352` → 下一拍 `4101132`),
 	 * 风控键还挂着的话会把这条请求失败压成一行日志,表里一直是过时的「风控」。要用**真上报器**才测得出压没压。
 	 */
 	it("风控之后同一路换了错误码失败:表里是请求失败(dynamic_fetch_failed),风控已清", async () => {
@@ -494,7 +515,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		await detect(b.engine);
 		expect(rec.present()).toEqual(["risk_controlled"]);
 
-		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		expect(rec.present()).toEqual(["dynamic_fetch_failed"]);
 
@@ -578,13 +599,13 @@ describe("DynamicPoller — 故障恢复", () => {
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
-		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -403, "访问权限不足"));
 		await detect(b.engine);
 		expect(
 			b.logs.filter((l) => l.level === "warn" && l.msg.includes("获取动态信息失败")),
 		).toHaveLength(2);
 		expect(b.problems.reportFailure).toHaveBeenLastCalledWith(
-			expect.objectContaining({ message: PROBLEM_TEXTS.dynamicFetchFailed.text(-509) }),
+			expect.objectContaining({ message: PROBLEM_TEXTS.dynamicFetchFailed.text(-403) }),
 		);
 	});
 
@@ -1961,7 +1982,7 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 
 	it("拉动态失败(非 -352)后名单空了:dynamic_fetch_failed 同样清掉", async () => {
 		const w = makeWorld();
-		w.b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(w.b.engine);
 		expect(w.table.list().map((p) => p.code)).toEqual(["dynamic_fetch_failed"]);
 
@@ -2007,7 +2028,7 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(w.b.engine);
 		await settle();
-		w.b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(w.b.engine);
 		await settle();
 
@@ -2020,7 +2041,7 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 	// 验红:去掉 handleApiError 里「这一路还在跑才报」的判断(`watching()`),这两条红。
 	it.each([
 		[-352, "risk"],
-		[-509, "限流"],
+		[4101132, "请求数据发生错误"],
 	] as const)(
 		"名单清空之后在途的那一轮才回 %i:不往表里挂,直播的停监照常进表并私聊",
 		async (code, message) => {
