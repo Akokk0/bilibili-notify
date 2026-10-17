@@ -3,7 +3,9 @@ import type { ExtensionSettingsIssue, ExtensionSettingsOp } from "@bilibili-noti
 import {
 	type ExtensionManifestField,
 	type ExtensionManifestListField,
+	type Issue,
 	isSecretField,
+	issuesFromZod,
 	LIST_ITEM_ID_KEY,
 	maskCell,
 	settingsFieldSchema,
@@ -331,14 +333,15 @@ export async function newExtensionIssues(
  * 存着的那份对拓展交过的每一份 zod 的判决(决策 36)。`values` 按 schema 放读到的结果 ——
  * 拓展 `get()` 拿到的就是它:`{ settings }` 是过了那份 zod 的值;`{ notConfigured }` 是「没设过,
  * 而空对象过不了这份 zod」(不算坏,拓展照跑,`get()` 回 `not_configured`),带的是给人看的原因。
- * `detail` 是给主人看的那句「哪一格、为什么」。
+ * `detail` 是给主人看的那句「哪一格、为什么」;`issues` 是同一批原因的逐条版(`SettingsReader.get()`
+ * 回 `invalid` 时带给拓展,路径从设置那一层往下数)。
  */
 export type StoredSettingsVerdict =
 	| {
 			ok: true;
 			values: ReadonlyMap<ZodType, { settings: unknown } | { notConfigured: string }>;
 	  }
-	| { ok: false; detail: string };
+	| { ok: false; detail: string; issues: Issue[] };
 
 type ParsedSettings = ReturnType<ZodType["safeParse"]>;
 
@@ -435,8 +438,21 @@ export function judgeStoredSettingsSync(
 		}
 		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
-	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
+	if (issues.length > 0) return unreadable(fields, raw, issues);
 	return { ok: true, values };
+}
+
+/** 解不开的判决:一句人话(给面板)+ 逐条原因(给 `get()` 的 `invalid`)。 */
+function unreadable(
+	fields: readonly ExtensionManifestField[],
+	raw: unknown,
+	issues: ZodError["issues"],
+): StoredSettingsVerdict {
+	return {
+		ok: false,
+		detail: describeSettingsIssues(fields, raw, issues),
+		issues: issuesFromZod({ issues }),
+	};
 }
 
 /**
@@ -459,14 +475,12 @@ export async function judgeStoredSettings(
 			parsed = await schema.safeParseAsync(unset ? {} : raw);
 		} catch (err) {
 			const reason = err instanceof Error ? err.message : String(err);
-			return {
-				ok: false,
-				detail: `它自己的设置校验抛了(是拓展代码的毛病,不是哪一格填错了):${reason}`,
-			};
+			const detail = `它自己的设置校验抛了(是拓展代码的毛病,不是哪一格填错了):${reason}`;
+			return { ok: false, detail, issues: [{ message: detail }] };
 		}
 		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
-	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
+	if (issues.length > 0) return unreadable(fields, raw, issues);
 	return { ok: true, values };
 }
 

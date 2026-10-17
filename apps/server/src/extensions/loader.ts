@@ -17,6 +17,7 @@ import {
 	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import { t } from "../i18n/index.js";
 import {
 	disposeThenClose,
 	type IntegrationStore,
@@ -406,6 +407,9 @@ function assertSettingsHanded(manifest: ExtensionManifest, runtime: ExtensionRun
 	);
 }
 
+/** 问题表里「设置读不了」那一条的 code(报的人是拓展 id)。问题码只要求 snake,不在失败码表里。 */
+const SETTINGS_INVALID_CODE = "settings_invalid";
+
 /** 「设置读不了」那一行:哪一格、为什么,再加一句怎么办。 */
 function unreadableDetail(why: string): string {
 	return `存着的设置不合它自己的规矩:${why}。在它的「配置」里改对,改对了会自己起来`;
@@ -571,6 +575,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (dir.state !== "ready") return;
 		const { id, manifest } = dir;
 		slot.miss = undefined;
+		resolveSettingsInvalid(id);
 
 		// 设置文件读不懂:一行代码都不跑(不 import、不 activate)、不记账 —— 这不是拓展崩了。放在这里而不
 		// 放 `admit`:开机、热装、拨开关、换版本、重载都经 `start`,关着的拓展也不会被打上状态。
@@ -582,6 +587,10 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				detail: brokenFileDetail(broken.message),
 				schemas: [],
 			};
+			reportSettingsInvalid(
+				id,
+				t("extension.settings.fileBroken", { name: manifest.name, detail: broken.message }),
+			);
 			host.logger.warn(`[ext] ${id} v${manifest.version} 设置文件读不懂,不跑:${broken.message}`);
 			return;
 		}
@@ -761,7 +770,26 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const schemas = runtime.settingsSchemas();
 		await runtime.dispose();
 		slot.miss = { state: "settings-invalid", detail: unreadableDetail(why), schemas };
+		// 🔴 必须在 `dispose()` 之后:收摊会 `clearReporter(拓展 id)`,先报的话刚记的这一条被一起清掉。
+		reportSettingsInvalid(manifest.id, problemText(manifest, why));
 		host.logger.warn(`[ext] ${manifest.id} v${manifest.version} 设置读不了,不跑:${why}`);
+	}
+
+	/**
+	 * 「设置读不了」同时记进问题表(extension-contract「问题上报」):宿主替拓展报,报的人是拓展 id,
+	 * 不带 `about`、不私聊(`notify` 缺省)。整句宿主自己写,不加「X 报告」引子。
+	 */
+	function reportSettingsInvalid(id: string, message: string): void {
+		opts.problems.report({ reporter: id, code: SETTINGS_INVALID_CODE, message });
+	}
+
+	/** 清掉那一条;表里没有就什么都不做。不补「已恢复」:改好起来了本身就是答案。 */
+	function resolveSettingsInvalid(id: string): void {
+		opts.problems.resolve({ reporter: id, code: SETTINGS_INVALID_CODE }, { notify: false });
+	}
+
+	function problemText(manifest: ExtensionManifest, why: string): string {
+		return t("extension.settings.problem", { name: manifest.name, detail: why });
 	}
 
 	/** 收掉跑着的那份(没在跑就什么都不做)。那一行怎么写由格子现推。 */
@@ -769,6 +797,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const running = slot.running;
 		slot.running = undefined;
 		slot.miss = undefined;
+		resolveSettingsInvalid(slot.disk.id);
 		// 收摊自己吞异常,拆到一半也会把剩下的拆完。
 		if (!running) return;
 		await running.runtime.dispose();
@@ -785,6 +814,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	async function admit(dir: DiskRead): Promise<void> {
 		const slot: Slot = { disk: dir, applied: false };
 		slots.set(dir.id, slot);
+		// 盘上换了一版 / 新装:上一格留下的「设置读不了」随旧格作废(没人起它就不该留着)。
+		resolveSettingsInvalid(dir.id);
 		if (dir.state !== "ready") return;
 		slot.print = await fingerprintOf(dir.entry);
 		slot.applied = isEnabled(dir.id);
@@ -922,7 +953,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				continue;
 			}
 			if (verdict.ok) await start(slot);
-			else slot.miss = { ...miss, detail: unreadableDetail(verdict.detail) };
+			else {
+				slot.miss = { ...miss, detail: unreadableDetail(verdict.detail) };
+				// 还是读不了,只换原因:同键再报只换文案、`since` 不动。
+				reportSettingsInvalid(disk.id, problemText(disk.manifest, verdict.detail));
+			}
 		}
 	}
 

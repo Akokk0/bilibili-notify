@@ -25,6 +25,7 @@ import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
@@ -135,6 +136,8 @@ async function boot(
 		issues?: Record<string, Issue>;
 		/** 同目录里另外装的拓展。 */
 		others?: PlantedManifest[];
+		/** 问题表的写口;不给就是什么都不记的那份。 */
+		problems?: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
 	} = {},
 ) {
 	await plant(opts.manifest);
@@ -173,7 +176,7 @@ async function boot(
 		host,
 		loggerOf: () => logger,
 		integrationStore: memoryIntegrationStore(),
-		problems: ignoredProblems,
+		problems: opts.problems ?? ignoredProblems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
@@ -322,6 +325,8 @@ describe("跑着时设置被旁路写坏", () => {
 			ok: false,
 			code: "invalid",
 			message: expect.stringContaining("「坏掉的那台」这一项"),
+			// SettingsReader 的约定:invalid 带逐条原因(路径从设置那一层往下数)。
+			issues: [{ path: ["links", 1, "name"], message: "名字里不许有「坏」字" }],
 		});
 		// 排在队里它后面的一件事回来了 = 收摊那一趟走完了。
 		await h.loaded.sync();
@@ -484,6 +489,131 @@ describe("设置文件读不懂(不是合法 JSON)", () => {
 		expect(h.entry()?.state).toBe("running");
 		expect(h.entry()?.detail).toBeUndefined();
 		expect(h.seen.activations).toBe(1);
+		await h.loaded.dispose();
+	});
+});
+
+/**
+ * 「设置读不了」同时记在问题表里(extension-contract「问题上报」):宿主替拓展报,报的人是拓展 id,
+ * code `settings_invalid`,不带 `about`、不私聊;改好起来、停用、卸载时清。走真问题表。
+ */
+describe("设置读不了记进问题表", () => {
+	const BROKEN: Issue = { message: "Unexpected end of JSON input" };
+
+	/** 真表 + 一份记 `report` 入参的包装(要看有没有带 `notify`)。 */
+	function tableWithReports() {
+		const table = createProblemTable({ logger: silentLogger });
+		const reports: Parameters<ProblemTable["report"]>[0][] = [];
+		const problems: Pick<ProblemTable, "report" | "resolve" | "clearReporter"> = {
+			report(input) {
+				reports.push(input);
+				table.report(input);
+			},
+			resolve: (key, options) => table.resolve(key, options),
+			clearReporter: (reporter) => table.clearReporter(reporter),
+		};
+		const mine = () => table.list().filter((problem) => problem.reporter === "douyin");
+		return { problems, reports, mine };
+	}
+
+	it("开机存着的设置过不了 zod → 正好一条 settings_invalid,不带 about、不私聊,话里有拓展名和原因", async () => {
+		const t = tableWithReports();
+		const h = await boot({ settings: { links: [GOOD, ROTTEN] }, problems: t.problems });
+		expect(t.mine()).toHaveLength(1);
+		expect(t.mine()[0]).toMatchObject({ reporter: "douyin", code: "settings_invalid" });
+		expect(t.mine()[0]?.about).toBeUndefined();
+		expect(t.mine()[0]?.message).toContain("「抖音订阅」");
+		expect(t.mine()[0]?.message).toContain("名字里不许有「坏」字");
+		expect(t.reports).toHaveLength(1);
+		expect(t.reports[0]).not.toHaveProperty("notify");
+		await h.loaded.dispose();
+	});
+
+	it("设置文件读不懂 → 同样一条,话是文件读不懂那一句", async () => {
+		const t = tableWithReports();
+		const h = await boot({ issues: { douyin: BROKEN }, problems: t.problems });
+		expect(t.mine()).toHaveLength(1);
+		expect(t.mine()[0]).toMatchObject({ code: "settings_invalid" });
+		expect(t.mine()[0]?.message).toContain("「抖音订阅」");
+		expect(t.mine()[0]?.message).toContain("不是合法的 JSON");
+		expect(t.mine()[0]?.message).toContain(BROKEN.message);
+		await h.loaded.dispose();
+	});
+
+	it("跑着时被旁路写坏、收掉之后 → 一条(收摊清掉的是它旧上下文名下的,不能连这一条一起清)", async () => {
+		const t = tableWithReports();
+		const h = await boot({ settings: { links: [GOOD] }, problems: t.problems });
+		expect(t.mine()).toHaveLength(0);
+		h.write({ links: [ROTTEN] });
+		await h.loaded.sync();
+		expect(h.entry()?.state).toBe("settings-invalid");
+		expect(t.mine()).toHaveLength(1);
+		expect(t.mine()[0]?.message).toContain("「坏掉的那台」这一项");
+		await h.loaded.dispose();
+	});
+
+	it("还是坏的、再存一次别的坏法 → 仍是一条,话换了、since 不动", async () => {
+		const t = tableWithReports();
+		const h = await boot({ settings: { links: [ROTTEN] }, problems: t.problems });
+		const first = t.mine()[0];
+		h.write({ links: [ROTTEN], interval: 90.5 });
+		await h.loaded.sync();
+		expect(t.mine()).toHaveLength(1);
+		expect(t.mine()[0]?.message).toContain("「间隔」");
+		expect(t.mine()[0]?.message).not.toBe(first?.message);
+		expect(t.mine()[0]?.since).toBe(first?.since);
+		await h.loaded.dispose();
+	});
+
+	it("改对起起来 → 没了", async () => {
+		const t = tableWithReports();
+		const h = await boot({ settings: { links: [ROTTEN] }, problems: t.problems });
+		expect(t.mine()).toHaveLength(1);
+		h.write({ links: [GOOD] });
+		await h.loaded.sync();
+		expect(h.entry()?.state).toBe("running");
+		expect(t.mine()).toHaveLength(0);
+		await h.loaded.dispose();
+	});
+
+	it("停用 → 没了", async () => {
+		const t = tableWithReports();
+		let on = true;
+		const h = await boot({
+			settings: { links: [ROTTEN] },
+			enabled: () => on,
+			problems: t.problems,
+		});
+		expect(t.mine()).toHaveLength(1);
+		on = false;
+		await h.loaded.sync();
+		expect(h.entry()?.state).toBe("disabled");
+		expect(t.mine()).toHaveLength(0);
+		await h.loaded.dispose();
+	});
+
+	it("卸载 → 没了", async () => {
+		const t = tableWithReports();
+		const h = await boot({ settings: { links: [ROTTEN] }, problems: t.problems });
+		expect(t.mine()).toHaveLength(1);
+		await rm(join(root, "douyin"), { recursive: true, force: true });
+		await h.loaded.rescan();
+		expect(h.entry()).toBeUndefined();
+		expect(t.mine()).toHaveLength(0);
+		await h.loaded.dispose();
+	});
+
+	it("对照:设置是好的、activate 抛了(failed)→ 表里没有 settings_invalid", async () => {
+		const t = tableWithReports();
+		const h = await boot({
+			settings: { links: [GOOD] },
+			problems: t.problems,
+			activate() {
+				throw new Error("activate 炸了");
+			},
+		});
+		expect(h.entry()?.state).toBe("failed");
+		expect(t.mine().filter((problem) => problem.code === "settings_invalid")).toEqual([]);
 		await h.loaded.dispose();
 	});
 });

@@ -19,6 +19,7 @@ import {
 	fail,
 	formatZodIssues,
 	type InboundHandlers,
+	type Issue,
 	type Logger,
 	manifestProvides,
 	ok,
@@ -558,14 +559,14 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let settingsRound = 0;
 
 	/** 记下「解不开」:`get()` 换成 `invalid`(交过的每一份都读不懂了,原因是整份设置的,不分哪份 zod)。 */
-	function markUnreadable(detail: string): void {
-		settingsProblem = detail;
-		const unreadable = fail("invalid", detail);
-		for (const schema of handedSchemas) settingsReads.set(schema, unreadable);
+	function markUnreadable(unreadable: { detail: string; issues: Issue[] }): void {
+		settingsProblem = unreadable.detail;
+		const failure = fail("invalid", unreadable.detail, { issues: unreadable.issues });
+		for (const schema of handedSchemas) settingsReads.set(schema, failure);
 	}
 
-	function settingsUnreadable(detail: string): void {
-		markUnreadable(detail);
+	function settingsUnreadable(unreadable: { detail: string; issues: Issue[] }): void {
+		markUnreadable(unreadable);
 		opts.onSettingsInvalid?.();
 	}
 
@@ -617,7 +618,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					for (const [schema, read] of verdict.values) settingsReads.set(schema, readOf(read));
 				} else {
 					// 读不懂也是「变了」:`get()` 已经换成 invalid,订阅者要知道去重读。
-					settingsUnreadable(verdict.detail);
+					settingsUnreadable(verdict);
 				}
 				if (now === lastSettingsDelivered) return;
 				lastSettingsDelivered = now;
@@ -858,7 +859,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				if (read) settingsReads.set(schema, readOf(read));
 			} else if (verdict) {
 				// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
-				settingsUnreadable(verdict.detail);
+				settingsUnreadable(verdict);
 				throw new ExtensionSettingsUnreadable(
 					`extension ${id}: 存着的设置过不了交进来的这份 zod(${verdict.detail})—— BN 不会起它,面板上是「设置读不了」`,
 				);
@@ -868,7 +869,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				const round = settingsRound;
 				void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
 					if (round !== settingsRound || integration.disposed) return;
-					if (!late.ok) settingsUnreadable(late.detail);
+					if (!late.ok) settingsUnreadable(late);
 					else if (!settingsReads.has(schema)) {
 						const read = late.values.get(schema);
 						if (read) settingsReads.set(schema, readOf(read));
@@ -965,7 +966,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 判的时候又落了一次盘:以变更那一道的判决为准。
 			if (round !== settingsRound) return settingsProblem;
 			if (!verdict.ok) {
-				markUnreadable(verdict.detail);
+				markUnreadable(verdict);
 				return settingsProblem;
 			}
 			// 带异步规则的那几份到这儿才第一次有值可读。

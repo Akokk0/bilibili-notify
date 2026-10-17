@@ -122,4 +122,16 @@ describe("设置文件不是合法 JSON e2e:只停那一个拓展", () => {
 		expect(body.extensions.find((e) => e.id === HEALTHY_ID)?.state).toBe("running");
 		expect(await readFile(settingsPath, "utf8")).toBe(BROKEN_FILE);
 	});
+
+	// 验红:剪 `index.ts` 递给装载器的 `problems`(或 `loader.ts` 里报「设置读不了」的那一行),这条红。
+	it("同一台 BN 的问题表里,坏的那个名下有一条 settings_invalid;好的那个没有", async () => {
+		const res = await fetch(`http://127.0.0.1:${port}/api/problems`);
+		const { problems } = (await res.json()) as {
+			problems: Array<{ reporter: string; code: string; message: string }>;
+		};
+		const mine = problems.filter((p) => p.reporter === BROKEN_ID);
+		expect(mine.map((p) => p.code)).toEqual(["settings_invalid"]);
+		expect(mine[0]?.message).toContain("不是合法的 JSON");
+		expect(problems.some((p) => p.reporter === HEALTHY_ID)).toBe(false);
+	});
 });

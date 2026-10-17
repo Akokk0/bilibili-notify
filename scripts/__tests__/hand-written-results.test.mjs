@@ -55,7 +55,7 @@ export const RATCHET = {
 	"apps/server/src/devtools/fake-bridge.ts": 3,
 	"apps/server/src/devtools/scenarios/bridge.ts": 3,
 	"apps/server/src/extensions/marketplace.ts": 14,
-	"apps/server/src/extensions/settings-io.ts": 9,
+	"apps/server/src/extensions/settings-io.ts": 8,
 	"apps/server/src/maid-skills/parse.ts": 8,
 	"apps/server/src/routes/ai.ts": 2,
 	"apps/server/src/runtime/command-params.ts": 4,
