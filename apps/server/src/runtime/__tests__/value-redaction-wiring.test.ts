@@ -106,6 +106,34 @@ describe("createAppRuntime 里的按值打码", () => {
 		api.stop();
 		await biliContext.dispose();
 	});
+
+	// 验红:去掉 `createAppRuntime` 里按标记登记引导配置那一句,这条红。
+	it("引导配置里的面板密码与口令:建运行时那一刻就登记,日志里遮;chromeEndpoint 不登记、照显", async () => {
+		const withSecrets = createAppRuntime(
+			BootstrapConfigSchema.parse({
+				dataDir,
+				logLevel: "info",
+				auth: { basicAuth: { username: "FAKE-user-name", password: "FAKE-dashboard-pass" } },
+				cookieEncryptionKey: "FAKE-cookie-passphrase",
+				chromeEndpoint: "ws://FAKE-chrome-host:9222",
+			}),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
+		try {
+			const lines: LogEntry[] = [];
+			withSecrets.serviceCtx.setLogHook((entry) => lines.push(entry));
+			withSecrets.serviceCtx.logger.info(
+				"pass=FAKE-dashboard-pass key=FAKE-cookie-passphrase user=FAKE-user-name endpoint=ws://FAKE-chrome-host:9222",
+			);
+			const row = lines.find((entry) => entry.msg.startsWith("pass="));
+			expect(row?.msg).toBe(
+				"pass=*** key=*** user=FAKE-user-name endpoint=ws://FAKE-chrome-host:9222",
+			);
+		} finally {
+			await withSecrets.dispose();
+		}
+	});
 });
 
 const NEW_TOKEN = "FAKE-WIRING-NEW-REFRESH-0001";

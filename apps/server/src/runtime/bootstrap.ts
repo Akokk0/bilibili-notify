@@ -46,6 +46,7 @@ import { createNodeMessageBus } from "./message-bus.js";
 import { bindReportedProfiles } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
+import { secretBootstrapValues } from "./settings-redaction.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
 import { createTargetScope } from "./target-scope.js";
 
@@ -253,6 +254,8 @@ export function createAppRuntime(
 	// 日志按值打码的登记册,**整个运行时只建这一个**:先于日志上下文建,日志出口从第一行就按它遮;
 	// 交给集成存储宿主(下面,各集成的值经存储把手登记)与运行时上的登记口(核心设置里的机密值),不再往别处转手。
 	const valueRedactor = createValueRedactor();
+	// 引导配置里标了机密的格（面板密码、口令）：开机就在手上，建日志上下文之前登记，日志从第一行就遮。
+	valueRedactor.replace("core", "bootstrap", secretBootstrapValues(bootstrap));
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
 		level: bootstrap.logLevel,

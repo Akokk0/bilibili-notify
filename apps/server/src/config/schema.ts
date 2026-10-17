@@ -1,3 +1,4 @@
+import { markSecret } from "@bilibili-notify/internal";
 import { z } from "zod";
 
 /**
@@ -13,7 +14,8 @@ const ServerSchema = z.object({
 
 const BasicAuthSchema = z.object({
 	username: z.string().min(1),
-	password: z.string().min(1),
+	// 标机密：开机时按标记登记进日志按值打码（`runtime/settings-redaction.ts` 的 `secretBootstrapValues`）。
+	password: markSecret(z.string().min(1)),
 });
 
 const AuthSchema = z
@@ -59,7 +61,7 @@ export const BootstrapConfigSchema = z.object({
 	 * When unset, the key provider falls back to the co-located random
 	 * `<dataDir>/secrets/master.key` (obfuscation only; boot logs a prominent warn).
 	 */
-	cookieEncryptionKey: z.string().min(1).optional(),
+	cookieEncryptionKey: markSecret(z.string().min(1)).optional(),
 	/**
 	 * Absolute path to a Chromium / Chrome binary. Required for
 	 * /api/cards/preview (puppeteer-core does NOT bundle a browser) unless

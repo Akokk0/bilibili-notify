@@ -1,10 +1,12 @@
-import type {
-	Connection,
-	Disposable,
-	ExtensionManifestField,
-	GlobalConfig,
+import {
+	type Connection,
+	type Disposable,
+	type ExtensionManifestField,
+	type GlobalConfig,
+	mapMarked,
 } from "@bilibili-notify/internal";
 import { collectRedactions } from "../backup/sanitize.js";
+import { type BootstrapConfig, BootstrapConfigSchema } from "../config/schema.js";
 import type { ConfigStore } from "../config/store.js";
 import { maskSettings } from "../extensions/settings-io.js";
 import { stringLeaves, type ValueRedactor } from "../logs/value-redactor.js";
@@ -31,6 +33,23 @@ interface SettingsRedactionViews {
 	globals(globals: GlobalConfig): unknown;
 	connection(connection: Connection, lookup: SecretCellsReader): { settings?: unknown };
 	integrationSettings(schema: unknown, settings: unknown): unknown;
+}
+
+/**
+ * 引导配置里标了机密的格（面板密码、at-rest 口令）的值。引导配置运行中不变，开机时就在手上，
+ * 建运行时那一刻登记一次、种类 `bootstrap`，不随设置换。`chromeEndpoint` 不登记（多数不带 token，
+ * 带了整串都会被遮，排查时连连的哪都看不出）。
+ */
+export function secretBootstrapValues(bootstrap: BootstrapConfig): string[] {
+	const found: string[] = [];
+	mapMarked(BootstrapConfigSchema, bootstrap, {
+		onMark: (value, mark) => {
+			if ("secret" in mark) found.push(...stringLeaves(value));
+			return value;
+		},
+		onUntyped: (value) => value,
+	});
+	return found;
 }
 
 /** 原件与打码后的那份比一遍,被遮掉的每一处的原值里的字符串。 */
