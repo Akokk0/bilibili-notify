@@ -2,9 +2,9 @@
  * 单元测试 — `segmentContentBuilder` + `segmentToPayload`(独立端直播 payload 段构造)。
  *
  * 守护契约:
- *   - builder factory:text / image(string→url, Buffer→buf+默认 mime) / atAll / message(过滤 null)
+ *   - builder factory:text / image(只收字节 + mime) / atAll / message(过滤 null)
  *   - segmentToPayload:null→[];string 空→[],非空→[text];text 空→[],非空→[text];
- *     image-url→[link];image-buf→[image];atAll→[text "@全体成员 "];
+ *     image-buf→[image];atAll→[text "@全体成员 "];
  *     message→递归 flatMap 展平嵌套
  */
 
@@ -20,10 +20,8 @@ describe("segmentContentBuilder — factory", () => {
 		expect(B.atAll()).toEqual({ kind: "atAll" });
 	});
 
-	it("image:string → image-url;Buffer → image-buf(默认 mime image/jpeg)", () => {
-		expect(B.image("http://x/a.png")).toEqual({ kind: "image-url", url: "http://x/a.png" });
+	it("image:只收字节,连同 mime 一起装成 image-buf", () => {
 		const buf = Buffer.from("X");
-		expect(B.image(buf)).toEqual({ kind: "image-buf", buffer: buf, mime: "image/jpeg" });
 		expect(B.image(buf, "image/png")).toEqual({
 			kind: "image-buf",
 			buffer: buf,
@@ -56,10 +54,7 @@ describe("segmentToPayload — 解码", () => {
 		expect(segmentToPayload({ kind: "text", text: "x" })).toEqual([{ kind: "text", text: "x" }]);
 	});
 
-	it("image-url → link;image-buf → image;atAll → @全体成员 文本", () => {
-		expect(segmentToPayload({ kind: "image-url", url: "http://x" })).toEqual([
-			{ kind: "link", href: "http://x" },
-		]);
+	it("image-buf → image;atAll → @全体成员 文本", () => {
 		const buf = Buffer.from("Z");
 		expect(segmentToPayload({ kind: "image-buf", buffer: buf, mime: "image/png" })).toEqual([
 			{ kind: "image", buffer: buf, mime: "image/png" },
@@ -75,14 +70,17 @@ describe("segmentToPayload — 解码", () => {
 				{ kind: "text", text: "" }, // 丢弃
 				{
 					kind: "message",
-					segments: [{ kind: "image-url", url: "http://i" }, { kind: "atAll" }],
+					segments: [
+						{ kind: "image-buf", buffer: Buffer.from("I"), mime: "image/png" },
+						{ kind: "atAll" },
+					],
 				},
 			],
 		};
 		const out: PayloadSegment[] = segmentToPayload(tree);
 		expect(out).toEqual([
 			{ kind: "text", text: "a" },
-			{ kind: "link", href: "http://i" },
+			{ kind: "image", buffer: Buffer.from("I"), mime: "image/png" },
 			{ kind: "text", text: "@全体成员 " },
 		]);
 	});

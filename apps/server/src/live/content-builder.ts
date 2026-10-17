@@ -14,10 +14,10 @@ export interface LiveContentBuilder {
 	/** Wrap a plain text run. Equivalent to `h.text(text)`. */
 	text(text: string): unknown;
 	/**
-	 * Wrap a remote image URL or in-memory buffer.
-	 * `mime` is provided when `source` is a `Buffer`.
+	 * Wrap an in-memory image. Bytes only: a URL handed to a platform would be sent
+	 * as a link, not a picture, so callers fetch the image first.
 	 */
-	image(source: string | Buffer, mime?: string): unknown;
+	image(buffer: Buffer, mime: string): unknown;
 	/** Equivalent to `h.at("all")` (i.e. mention everyone in a group / channel). */
 	atAll(): unknown;
 	/**

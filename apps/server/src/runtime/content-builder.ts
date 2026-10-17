@@ -7,7 +7,6 @@ import type { LiveContentBuilder } from "../live/content-builder.js";
  *
  * Each fragment is one of:
  *   - `{ kind: "text"; text }`
- *   - `{ kind: "image-url"; url }`
  *   - `{ kind: "image-buf"; buffer; mime }`
  *   - `{ kind: "atAll" }`
  *   - `{ kind: "message"; segments: SegmentValue[] }`
@@ -17,7 +16,6 @@ import type { LiveContentBuilder } from "../live/content-builder.js";
  */
 export type SegmentValue =
 	| { kind: "text"; text: string }
-	| { kind: "image-url"; url: string }
 	| { kind: "image-buf"; buffer: Buffer; mime: string }
 	| { kind: "atAll" }
 	| { kind: "message"; segments: SegmentValue[] };
@@ -26,9 +24,8 @@ export const segmentContentBuilder: LiveContentBuilder = {
 	text(text: string): SegmentValue {
 		return { kind: "text", text };
 	},
-	image(source: string | Buffer, mime?: string): SegmentValue {
-		if (typeof source === "string") return { kind: "image-url", url: source };
-		return { kind: "image-buf", buffer: source, mime: mime ?? "image/jpeg" };
+	image(buffer: Buffer, mime: string): SegmentValue {
+		return { kind: "image-buf", buffer, mime };
 	},
 	atAll(): SegmentValue {
 		return { kind: "atAll" };
@@ -49,8 +46,6 @@ export function segmentToPayload(value: unknown): PayloadSegment[] {
 	switch (v.kind) {
 		case "text":
 			return v.text.length > 0 ? [{ kind: "text", text: v.text }] : [];
-		case "image-url":
-			return [{ kind: "link", href: v.url }];
 		case "image-buf":
 			return [{ kind: "image", buffer: v.buffer, mime: v.mime }];
 		case "atAll":
