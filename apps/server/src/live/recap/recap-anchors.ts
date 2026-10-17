@@ -17,7 +17,7 @@ import { parseStopWords } from "./stop-words";
 import type { ViewerChatCollector } from "./viewer-chat-collector";
 import type { WordcloudGenerator } from "./wordcloud-generator";
 
-export interface RecapOptions {
+export interface RecapOptions extends CardSkinChoice {
 	/** 弹幕是记在哪条订阅名下的。 */
 	subscriptionId: string;
 	/** 两个附加项各自开没开;都关着就什么都不做、不取快照。 */
@@ -32,8 +32,6 @@ export interface RecapOptions {
 	creator: { name: string; avatar?: ImageRef };
 	/** 粉丝团的名字;没有就不带。 */
 	fanClubName?: string;
-	cardSkin?: string;
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 }
 
 export interface RecapDeps {

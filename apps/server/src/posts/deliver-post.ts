@@ -43,21 +43,18 @@ export const POST_COMMENT_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 /**
  * 这条订阅**折好的**作品设置(订阅覆盖与全局已折成一层,每条作品现折)。
  * 模板、图集、出图、AI 各格都是定值:全局那几格的兜底在折的那一头做完,这里不再有「留空继承」。
+ *
+ * 皮肤两格来自 {@link CardSkinChoice}:`cardSkin` 是这条订阅生效的卡片皮肤 id(ADR-0014),undefined =
+ * 内置默认皮肤;`cardSkinKnobs` 是这条订阅自己那层**皮肤旋钮覆盖**,按皮肤 id 分(ADR-0014 决策 17 的 🔗)。
+ * 旋钮不折全局值:渲染器出图时与它 config 里的全局那份逐枚合并,所以快照不会把全局冻住。
  */
-export interface PostSettings {
+export interface PostSettings extends CardSkinChoice {
 	/** 过滤规则(折好的 `ContentFilters`)。 */
 	filter: PostFilterRules;
 	/** 消息版式的作品切片(块顺序 / 显隐 / 分条符 + 分隔符):文本模板以 url='' 渲染,链接独立成部件。 */
 	messageLayout: MessageKindLayout;
 	/** 是否出图片卡片。`false` 时不调渲染器,推送降级为纯文字。 */
 	cardEnabled: boolean;
-	/** 这条订阅生效的卡片皮肤 id(ADR-0014);undefined = 内置默认皮肤。 */
-	cardSkin?: string;
-	/**
-	 * 这条订阅自己那层**皮肤旋钮覆盖**,按皮肤 id 分(ADR-0014 决策 17 的 🔗)。不折全局值:渲染器出图时与它 config
-	 * 里的全局那份逐枚合并,所以快照不会把全局冻住。
-	 */
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/**
 	 * 要不要生成 AI 点评。`false` 时不调 `CommentaryProvider.comment()`,推送只用模板文字。
 	 * 折好的结果:AI 总开关开着,且「写正文」(`ai.writing.post`)默认开、或某个现存目标的例外开

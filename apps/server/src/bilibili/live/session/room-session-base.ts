@@ -1,3 +1,4 @@
+import type { CardSkinChoice } from "@bilibili-notify/image";
 import {
 	type CardKind,
 	createSerialGate,
@@ -234,7 +235,7 @@ export abstract class RoomSessionBase {
 	 * 直播中 / 下播 / SC / 上舰)都经这一处拿,**两格捆在一起走**:各写一遍的话,哪一处只记得
 	 * 带皮肤 id,那一类卡就不认这位 UP 拧的旋钮,而且全绿(两格都是可选的)。
 	 */
-	protected skinChoice(): { cardSkin?: string; cardSkinKnobs?: SubItemView["cardSkinKnobs"] } {
+	protected skinChoice(): CardSkinChoice {
 		return { cardSkin: this.sub.cardSkin, cardSkinKnobs: this.sub.cardSkinKnobs };
 	}
 

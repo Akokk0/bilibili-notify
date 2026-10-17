@@ -37,7 +37,12 @@ export type LiveNotifySend = (
 	type: LiveNotifyPushType,
 ) => Promise<void>;
 
-export interface LiveNotifyParams {
+/**
+ * 皮肤两格(`cardSkin` / `cardSkinKnobs`)来自 {@link CardSkinChoice}:`cardSkin` 是这张卡用哪套皮肤
+ * (ADR-0014),不给 = 内置默认;`cardSkinKnobs` 是这条订阅自己那层旋钮覆盖(按皮肤 id 分,ADR-0014
+ * 决策 17 的 🔗),不给 = 全跟全局。
+ */
+export interface LiveNotifyParams extends CardSkinChoice {
 	/** 卡上画什么。 */
 	input: LiveCardInput;
 	/** 文字部件(模板已经渲染好的文案)。 */
@@ -48,10 +53,6 @@ export interface LiveNotifyParams {
 	layout: MessageKindLayout;
 	/** 这条订阅折好的直播卡样式;没启用(`enable` 为假)= 吃渲染器的全局配置。 */
 	cardStyle?: CustomCardStyleLike;
-	/** 这张卡用哪套皮肤(ADR-0014);不给 = 内置默认。 */
-	cardSkin?: string;
-	/** 这条订阅自己那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);不给 = 全跟全局。 */
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	pushType: LiveNotifyPushType;
 	/** 日志里怎么称呼这条订阅(比如 `uid=…`、`sub=…`)。 */
 	label: string;

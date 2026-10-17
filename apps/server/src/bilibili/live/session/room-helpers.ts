@@ -1,3 +1,4 @@
+import type { CardSkinChoice } from "@bilibili-notify/image";
 import { isBlockVisible, type MessageKindLayout } from "@bilibili-notify/internal";
 import { segmentsToContent } from "../../../live/content-builder";
 import {
@@ -303,31 +304,32 @@ export class RoomContext extends RoomContextBase {
 	 *
 	 * 这张卡是这次推送的本体;`extras`(下播的词云、总结)是排在它后面的锚点,同一次交给推送层。
 	 * 版式把部件全藏了、本体不发时,附加项照样交出去。
+	 *
+	 * 皮肤两格来自 `CardSkinChoice`(ADR-0014):`cardSkin` 这张卡用哪套皮肤,undefined = 内置默认;
+	 * `cardSkinKnobs` 这位 UP 那层旋钮覆盖(按皮肤 id 分,决策 17 的 🔗),undefined = 全跟全局。
 	 */
-	async sendLiveNotifyCard(params: {
-		liveType: LiveType;
-		/**
-		 * 推送类型。缺省按 `liveType` 推出({@link livePushTypeOf});重启补报画的是「直播中」那张卡
-		 * (`LiveType.LiveBroadcast`)、却不是周期那一档,所以由调用方显式给 `LivePushType.CatchUp`。
-		 */
-		pushType?: LiveNotifyPushType;
-		liveData: LiveData;
-		liveRoomInfo: LiveRoomResponse["data"];
-		master: MasterInfo;
-		cardStyle: SubItemView["customCardStyle"];
-		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */
-		cardSkin?: string;
-		/** 这位 UP 那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);undefined = 全跟全局。 */
-		cardSkinKnobs?: SubItemView["cardSkinKnobs"];
-		/** 订阅 id:出卡那一刻按它现读订阅资料里的主播头像(`avatarOf`),没有就不画。 */
-		subscriptionId: string;
-		uid: string;
-		notifyMsg: string;
-		messageLayout: MessageKindLayout;
-		roomLink?: string;
-		/** 排在这张卡后面的附加项锚点(下播卡带词云、总结);内容可以是还在做的约定。 */
-		extras?: LivePushAnchor[];
-	}): Promise<void> {
+	async sendLiveNotifyCard(
+		params: CardSkinChoice & {
+			liveType: LiveType;
+			/**
+			 * 推送类型。缺省按 `liveType` 推出({@link livePushTypeOf});重启补报画的是「直播中」那张卡
+			 * (`LiveType.LiveBroadcast`)、却不是周期那一档,所以由调用方显式给 `LivePushType.CatchUp`。
+			 */
+			pushType?: LiveNotifyPushType;
+			liveData: LiveData;
+			liveRoomInfo: LiveRoomResponse["data"];
+			master: MasterInfo;
+			cardStyle: SubItemView["customCardStyle"];
+			/** 订阅 id:出卡那一刻按它现读订阅资料里的主播头像(`avatarOf`),没有就不画。 */
+			subscriptionId: string;
+			uid: string;
+			notifyMsg: string;
+			messageLayout: MessageKindLayout;
+			roomLink?: string;
+			/** 排在这张卡后面的附加项锚点(下播卡带词云、总结);内容可以是还在做的约定。 */
+			extras?: LivePushAnchor[];
+		},
+	): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, uid } = params;
 		const extras = params.extras ?? [];
 		// 附加项的约定先接住一次:下面出卡要好几个 await,万一没走到交给推送层那一步,

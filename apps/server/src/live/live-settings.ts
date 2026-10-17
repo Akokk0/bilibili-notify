@@ -15,8 +15,14 @@ import type { CustomCardStyleLike, CustomLiveMsgLike, PickLiveCover } from "./li
  *
  * 字段在这里显式写出,B 站直播引擎的订阅视图(`SubItemView`)`extends` 它 —— 依赖方向是
  * bilibili/ → live/,两边永远是同一份定义。
+ *
+ * 皮肤两格来自 {@link CardSkinChoice}:`cardSkin` 是该 UP 生效的**卡片皮肤 id**(ADR-0014),宿主折叠
+ * `eff.cardSkin`(per-UP 指了就是它,否则全局)后填入,undefined = 内置默认皮肤,各 generate* 原样透传 ——
+ * 版式住皮肤包里,不再逐块下发。`cardSkinKnobs` 是该 UP 自己那层**皮肤旋钮覆盖**,按皮肤 id 分
+ * (`overrides.cardSkinKnobs` 原样,ADR-0014 决策 17 的 🔗),undefined = 一枚都没单独拧;与 `cardSkin` 一起
+ * 递给每一种卡的 generate*(开播 / 直播中 / 下播 / SC / 上舰 / 词云),渲染器在出图时与全局那份逐枚合并。
  */
-export interface LiveWorkSettings {
+export interface LiveWorkSettings extends CardSkinChoice {
 	liveStart: boolean;
 	/** 周期「正在直播」的开关(`features.liveStreaming`)。关着就不计时、不出卡。 */
 	liveStreaming: boolean;
@@ -35,18 +41,6 @@ export interface LiveWorkSettings {
 	liveEndGrace?: boolean;
 	/** 断流接续等待时长(分钟,1–10);仅 `liveEndGrace=true` 生效,缺省 2。 */
 	liveEndGraceMinutes?: number;
-	/**
-	 * 该 UP 生效的**卡片皮肤 id**(ADR-0014)。宿主折叠 `eff.cardSkin`(per-UP 指了就是它,
-	 * 否则全局)后填入;undefined = 内置默认皮肤。各 generate* 原样透传 —— 版式住皮肤包里,
-	 * 不再逐块下发。
-	 */
-	cardSkin?: string;
-	/**
-	 * 该 UP 自己那层**皮肤旋钮覆盖**,按皮肤 id 分(`overrides.cardSkinKnobs` 原样,ADR-0014
-	 * 决策 17 的 🔗)。undefined = 一枚都没单独拧。与 `cardSkin` 一起递给每一种卡的 generate*
-	 * (开播 / 直播中 / 下播 / SC / 上舰 / 词云),渲染器在出图时与全局那份逐枚合并。
-	 */
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/**
 	 * 该 UP 解析后的**消息版式**直播切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
 	 * `eff.messageLayout.live` 后填入。覆盖开播 / 直播中 / 下播三类推送;SC / 上舰不受影响

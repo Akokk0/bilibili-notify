@@ -25,7 +25,7 @@ import { errorMessageOf } from "../util/error-message";
 import { passesMembershipMinRank } from "./interaction-gates";
 import type { CustomCardStyleLike } from "./live-types";
 
-export interface MembershipOptions {
+export interface MembershipOptions extends CardSkinChoice {
 	/** 中立的会员事件。 */
 	event: MembershipEvent;
 	/** 这一档的展示信息(卡上画的名字、档色、宣告语;`icon` 是平台给的徽章图)。平台的档位表由调用方查好交进来。 */
@@ -38,8 +38,6 @@ export interface MembershipOptions {
 	creator: { name: string; avatar?: ImageRef };
 	/** 这条订阅折好的会员卡样式;没启用 = 吃渲染器的全局配置。 */
 	cardStyle: CustomCardStyleLike;
-	cardSkin?: string;
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/** 出不了卡时发的那句文字;平台自己的叫法由调用方拼好交进来。 */
 	fallbackText: string;
 }

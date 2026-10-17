@@ -17,7 +17,7 @@ import { errorMessageOf } from "../util/error-message";
 import { passesSuperchatMinAmount } from "./interaction-gates";
 import type { CustomCardStyleLike } from "./live-types";
 
-export interface SuperchatOptions {
+export interface SuperchatOptions extends CardSkinChoice {
 	/** 中立的醒目留言事件(档位已经算好)。 */
 	event: SuperchatEvent;
 	/** 这条订阅折好的门槛;没配不拦。 */
@@ -26,8 +26,6 @@ export interface SuperchatOptions {
 	creator: { name: string; avatar?: ImageRef };
 	/** 这条订阅折好的醒目留言卡样式;没启用(`enable` 为假)= 吃渲染器的全局配置。 */
 	cardStyle: CustomCardStyleLike;
-	cardSkin?: string;
-	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/** 出不了卡(没有出图器、出卡抛错)时发的那句文字;平台自己的叫法由调用方拼好交进来。 */
 	fallbackText: string;
 }
