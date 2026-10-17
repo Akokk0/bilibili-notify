@@ -618,7 +618,8 @@ export class PushRouter {
 	 * 第一时间发出、失败也只异步落历史,卡片正文与后续任务都不再被它拖住。
 	 *
 	 * 顺序保证:@全体 的 `sendToTarget` 在卡片之前**同步发起**(其内部 `dispatcher.send`
-	 * 先于卡片被调用),故接收端仍是 @ 提醒在前、卡片在后。
+	 * 先于卡片被调用)。保证只到「发起」这一步:接收端谁先到还看传输,每条各走一个独立请求的
+	 * (如 webhook)两条并发在路上,卡片可能先到。
 	 */
 	private async sendAtAllThenCard(
 		atAllTargets: string[],

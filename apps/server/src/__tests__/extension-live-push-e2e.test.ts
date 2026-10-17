@@ -126,6 +126,24 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 	}
 
 	const hooksFor = (key: Key) => hooks.filter((h) => h.key === key);
+	/** 这条里有没有 @全体 段。 */
+	const hasAtAll = (hook: Hook) =>
+		hook.payload.segments?.some((seg) => seg.type === "at-all") ?? false;
+	/** @全体 之外的那几条(卡 + 文案 + 链接),按收到的先后:先开播、后下播。 */
+	const cardsFor = (key: Key) => hooksFor(key).filter((h) => !hasAtAll(h));
+
+	/**
+	 * 对端先收到卡、后收到 @全体:推送层对 @全体 只保证先**发起**、不等它的结果(docs/agents/push.md ④),
+	 * 两条走两个独立的请求,负载重时到达就是这个先后(全量跑偶发红过)。所以每条 @全体 都扣到同一地址又收到
+	 * 一条别的才记下,把这个先后做成每次都有;别的那条迟迟不来(推送层哪天改成等 @全体)最多扣 1 秒。
+	 */
+	async function holdAtAllUntilNextHook(key: string): Promise<void> {
+		const seen = hooks.filter((h) => h.key === key).length;
+		const deadline = Date.now() + 1_000;
+		while (Date.now() < deadline && hooks.filter((h) => h.key === key).length === seen) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+	}
 	/** 一条 webhook 里的文字段(卡 + 文案 + 链接合成一条时,文案与链接在同一段里)。 */
 	const textOf = (hook: Hook | undefined) =>
 		hook?.payload.segments?.find((seg) => seg.type === "text")?.text;
@@ -136,8 +154,10 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			req.on("data", (chunk) => {
 				body += chunk;
 			});
-			req.on("end", () => {
-				hooks.push({ ...(JSON.parse(body) as Hook), key: req.url?.split("/").pop() ?? "" });
+			req.on("end", async () => {
+				const hook = { ...(JSON.parse(body) as Hook), key: req.url?.split("/").pop() ?? "" };
+				if (hasAtAll(hook)) await holdAtAllUntilNextHook(hook.key);
+				hooks.push(hook);
 				res.writeHead(200, { "content-type": "application/json" }).end("{}");
 			});
 		});
@@ -244,9 +264,11 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		);
 
 		for (const key of KEYS) {
-			const [atAll, hook] = hooksFor(key);
-			// 开播是唯一允许 @全体 的那一种(与 B 站同一张映射):推送层先单发一条 @全体,再发卡。
-			expect(atAll?.payload.segments?.map((seg) => seg.type)).toEqual(["at-all"]);
+			// 开播是唯一允许 @全体 的那一种(与 B 站同一张映射):推送层单发一条 @全体,另发卡。推送层只保证
+			// @全体 先发起,对端收到的先后不保证(见 `holdAtAllUntilNextHook`),所以按内容认、不按位置取。
+			const atAlls = hooksFor(key).filter(hasAtAll);
+			expect(atAlls.map((h) => h.payload.segments?.map((seg) => seg.type))).toEqual([["at-all"]]);
+			const [hook] = cardsFor(key);
 			expect(hook?.payload.kind).toBe("composite");
 			expect(hook?.payload.segments?.[0]).toMatchObject({
 				type: "image",
@@ -256,10 +278,10 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		}
 		// 链接是事件的直播间地址(决策 77)。
 		const link = "https://live\\.fake-source\\.invalid/[0-9a-f]{12}";
-		expect(textOf(hooksFor("a")[1])).toMatch(
+		expect(textOf(cardsFor("a")[0])).toMatch(
 			new RegExp(`^${escapeRe(who.a.name)} 开播啦，当前粉丝数：\\S+\\n${link}$`),
 		);
-		expect(textOf(hooksFor("b")[1])).toMatch(
+		expect(textOf(cardsFor("b")[0])).toMatch(
 			new RegExp(`^${escapeRe(who.b.name)} 开播啦，当前粉丝数：\\n${link}$`),
 		);
 
@@ -282,13 +304,15 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			{ timeout: 10_000 },
 		);
 		for (const key of KEYS) {
-			expect(hooksFor(key)[2]?.payload.segments?.[0]?.type).toBe("image");
+			// 下播不 @全体:@全体 仍只有开播那一条。
+			expect(hooksFor(key).filter(hasAtAll)).toHaveLength(1);
+			expect(cardsFor(key)[1]?.payload.segments?.[0]?.type).toBe("image");
 		}
 		// 甲这场资料没变:粉丝变化 0;乙开播时没有粉丝数:那一格空着(决策 56)。
-		expect(textOf(hooksFor("a")[2])).toMatch(
+		expect(textOf(cardsFor("a")[1])).toMatch(
 			new RegExp(`^${escapeRe(who.a.name)} 下播啦，本次直播了 \\S+，粉丝变化 0\\n`),
 		);
-		expect(textOf(hooksFor("b")[2])).toMatch(
+		expect(textOf(cardsFor("b")[1])).toMatch(
 			new RegExp(`^${escapeRe(who.b.name)} 下播啦，本次直播了 \\S+，粉丝变化 \\n`),
 		);
 	}, 15_000);
