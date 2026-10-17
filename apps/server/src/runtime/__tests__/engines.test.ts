@@ -3988,6 +3988,28 @@ describe("createEngines — 后台写登记进 track", () => {
 			await Promise.all(tracked);
 		});
 
+		// 验红:删掉 engines.ts 里 config-changed:connections 那一档的 `connectionProbe.checkSettings()`,这条红。
+		it("连接变更时设置不合法的连接当场进问题表,不用等下一轮探测", async () => {
+			const c = setup({
+				connections: [{ ...onebot(CONNECTION_ID), settings: { token: "t" } }],
+				platformAdapters: [
+					{
+						...okPlatform(async () => ok({ latencyMs: 1 })),
+						settingsSchema: z.object({ token: z.string().min(1) }),
+					},
+				],
+			});
+			active = c;
+			await vi.waitFor(() => expect(c.serviceCtx.tracking.tracked.length).toBeGreaterThan(0));
+			await Promise.all(c.serviceCtx.tracking.tracked);
+			expect(c.problems.list()).toEqual([]);
+			c.configStore._setConnections([{ ...onebot(CONNECTION_ID), settings: {} }]);
+			c.bus.emit("config-changed", { scope: "connections" });
+			expect(c.problems.list().map((p) => [p.reporter, p.code])).toEqual([
+				["onebot", "connection_settings_invalid"],
+			]);
+		});
+
 		// 接线的守卫:模块对了、没接上(问题表 / 主人连接 / 适配器在场没递进去)单元测试看不出来。
 		// 验红:删掉 engines.ts 里递给 createConnectionProbeEngine 的 `problems` / `masterConnectionId`,这两条红。
 		describe("连接断了经问题表私聊主人", () => {

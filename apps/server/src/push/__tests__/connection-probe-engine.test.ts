@@ -15,6 +15,7 @@ import {
 	type ProbeResult,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { type ZodType, z } from "zod";
 import { t } from "../../i18n/index.js";
 import { createConnectionProbeEngine } from "../connection-probe-engine.js";
 
@@ -45,6 +46,8 @@ function setup(
 		master?: string;
 		/** 哪些适配器键在场;缺省都在场。 */
 		present?: (adapterKey: string) => boolean;
+		/** 适配器的设置规则;缺省什么都收。 */
+		schema?: ZodType;
 	} = {},
 ) {
 	const report = vi.fn();
@@ -73,7 +76,10 @@ function setup(
 		recordProbeState,
 		problems: { report, resolve },
 		masterConnectionId: () => opts.master,
-		hasAdapter: opts.present ?? (() => true),
+		adapterOf: (key) =>
+			(opts.present ?? (() => true))(key)
+				? { settingsSchema: opts.schema ?? z.unknown() }
+				: undefined,
 		serviceCtx: { signal: abort.signal, track: (task) => void tracked.push(task) },
 		logger: log,
 	});
@@ -459,6 +465,98 @@ describe("ConnectionProbeEngine", () => {
 			await oneRound();
 			expect(c.probeConnection).toHaveBeenCalledTimes(1);
 			expect(c.report).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("报「连接设置不合法」", () => {
+		const schema = z.object({ token: z.string().min(1) });
+		const settingsKey = {
+			reporter: "onebot",
+			about: { connectionId: A },
+			code: "connection_settings_invalid",
+		};
+		const BAD = {};
+		const GOOD = { token: "t" };
+
+		it("设置过不了适配器的规则:报一条只进表的,原因带哪一格", async () => {
+			const c = setup([connectionOf(A, { settings: BAD })], {}, { schema });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.report).toHaveBeenCalledWith({
+				...settingsKey,
+				message: expect.stringContaining("设置不合法：token"),
+				notify: false,
+			});
+			// 整句读下来不重复:原因本身就以「设置不合法」开头。
+			expect(c.report.mock.calls[0]?.[0].message).toMatch(/^连接「bot」设置不合法：token：/);
+		});
+
+		it("不再另报「连不上」:探测回 not_configured 连续两次,只写 unreachable 带原因,不开第二条", async () => {
+			const c = setup(
+				[connectionOf(A, { settings: BAD })],
+				{ [A]: async () => fail("not_configured", "连接设置不合法：token") },
+				{ schema },
+			);
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.report.mock.calls[0]?.[0].code).toBe("connection_settings_invalid");
+			expect(c.written.map((w) => w.state.status)).toEqual(["unreachable"]);
+		});
+
+		it("好了:清掉这一条且不补「已恢复」;每分钟一轮里不重复报", async () => {
+			const connection = connectionOf(A, { settings: BAD });
+			const c = setup([connection], {}, { schema });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			connection.settings = GOOD;
+			await oneRound();
+			expect(c.resolve).toHaveBeenCalledTimes(1);
+			expect(c.resolve).toHaveBeenCalledWith(settingsKey, { notify: false });
+		});
+
+		it("checkSettings:不探测,新填的设置不用等一轮;重复调不重复报", async () => {
+			const connections: Connection[] = [];
+			const c = setup(connections, {}, { schema });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			connections.push(connectionOf(A, { settings: BAD }));
+			c.engine.checkSettings();
+			c.engine.checkSettings();
+			expect(c.report).toHaveBeenCalledTimes(1);
+			expect(c.probeConnection).not.toHaveBeenCalled();
+			const [added] = connections;
+			if (added) added.settings = GOOD;
+			c.engine.checkSettings();
+			expect(c.resolve).toHaveBeenCalledWith(settingsKey, { notify: false });
+		});
+
+		it("停用了:清掉这一条;设置不合法时已开着的「连不上」一并清掉", async () => {
+			const connection = connectionOf(A, { settings: GOOD });
+			const state = { current: fail("unavailable", "拒绝连接") as ProbeResult };
+			const c = setup([connection], { [A]: async () => state.current }, { schema });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			await oneRound();
+			expect(c.report.mock.calls.map((x) => x[0].code)).toEqual(["connection_unreachable"]);
+			connection.settings = BAD;
+			c.engine.checkSettings();
+			expect(c.resolve).toHaveBeenCalledWith(
+				{ reporter: "onebot", about: { connectionId: A }, code: "connection_unreachable" },
+				{ notify: false },
+			);
+			expect(c.report.mock.calls.map((x) => x[0].code)).toEqual([
+				"connection_unreachable",
+				"connection_settings_invalid",
+			]);
+			connection.enabled = false;
+			await oneRound();
+			expect(c.resolve).toHaveBeenLastCalledWith(settingsKey, { notify: false });
 		});
 	});
 

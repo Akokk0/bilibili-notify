@@ -971,7 +971,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		recordProbeState: (id, state) => opts.configStore.recordConnectionProbeState(id, state),
 		problems: opts.problems,
 		masterConnectionId: () => masterTarget()?.connectionId,
-		hasAdapter: (adapterKey) => opts.adapters.list().some((a) => a.adapterKey === adapterKey),
+		adapterOf: (adapterKey) => opts.adapters.list().find((a) => a.adapterKey === adapterKey),
 		serviceCtx: opts.serviceCtx,
 		logger: log,
 	});
@@ -1011,6 +1011,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 刻意不在这里触发连接探测:probe 经 recordConnectionProbeState 写回
 				// probeState 会再 emit config-changed:connections → 死循环。adapter
 				// 连通状态由 connectionProbe 的定时轮询刷新(或用户点"测试"立即刷)。
+				// 只做设置合不合法的记账(不探测、不写盘,同一句不重复报),新填的设置不用等下一轮。
+				connectionProbe.checkSettings();
 				return;
 			}
 			if (scope === "globals" || scope === "targets") {

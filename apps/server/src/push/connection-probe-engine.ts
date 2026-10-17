@@ -30,12 +30,14 @@ import {
 	type ConnectionProbeState,
 	fail,
 	type Logger,
+	type PlatformAdapter,
 	type ProbeResult,
 	type ServiceContext,
 	type TargetDispatcher,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import type { ProblemTable } from "../problems/problem-table.js";
+import { resolveSettings, settingsIssueMessage } from "./connection-settings.js";
 
 /** 后台每轮探测的间隔。 */
 const CONNECTION_PROBE_INTERVAL_MS = 60 * 1000;
@@ -45,6 +47,8 @@ const CONNECTION_PROBE_TIMEOUT_MS = 30 * 1000;
 const FAILURES_BEFORE_UNREACHABLE = 2;
 /** 宿主替连接报「连不上」用的问题码。 */
 const UNREACHABLE_CODE = "connection_unreachable";
+/** 宿主替连接报「设置不合法」用的问题码。 */
+const SETTINGS_INVALID_CODE = "connection_settings_invalid";
 /** 这两种码是「要主人去动手才会好」(接入没了、没配好),等是等不好的:只进表,不私聊。 */
 const NEEDS_OWNER_ACTION_CODES: ReadonlySet<string> = new Set(["not_configured", "not_found"]);
 
@@ -62,8 +66,8 @@ export interface ConnectionProbeEngineOptions {
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 主人私聊目标走的是哪条连接(没设主人就没有)。每次现读。 */
 	masterConnectionId(): string | undefined;
-	/** 这个适配器键此刻在不在场(拓展停了就不在)。每次现读。 */
-	hasAdapter(adapterKey: string): boolean;
+	/** 这个适配器键此刻在不在场(拓展停了就不在);在场的交出它的设置规则。每次现读。 */
+	adapterOf(adapterKey: string): Pick<PlatformAdapter, "settingsSchema"> | undefined;
 	serviceCtx: Pick<ServiceContext, "signal" | "track">;
 	logger: Logger;
 	intervalMs?: number;
@@ -75,6 +79,12 @@ export interface ConnectionProbeEngine {
 	 * 通了当场清问题,不通不算进失败次数,被限流(`rate_limited`)什么都不动。不带 `manual` 只回结果、不写任何东西。
 	 */
 	probe(connectionId: string, options?: { manual?: boolean }): Promise<ProbeResult>;
+	/**
+	 * 只对一遍各连接的设置合不合适配器的规则、记账(不合法的报、好了的清),不探测。
+	 * 连接变更时调它,新填的设置不用等下一轮;不能在这里触发探测 —— 探测写回 `probeState`
+	 * 会再发一次连接变更,那是死循环。同一句不会重复报。
+	 */
+	checkSettings(): void;
 	/** 停掉定时器。 */
 	dispose(): void;
 }
@@ -108,6 +118,8 @@ export function createConnectionProbeEngine(
 	const fingerprints = new Map<string, string>();
 	/** 还开着的「连不上」。 */
 	const outages = new Map<string, Outage>();
+	/** 还开着的「设置不合法」。 */
+	const invalid = new Map<string, { reporter: string; message: string }>();
 
 	/** 只罩连通探测这一次调用,不罩顺路补探的能力 —— 通的连接补探能力慢一点不该被当成超时。 */
 	async function probeReachability(connectionId: string): Promise<ProbeResult> {
@@ -230,7 +242,9 @@ export function createConnectionProbeEngine(
 			const count = (failures.get(connectionId) ?? 0) + 1;
 			failures.set(connectionId, count);
 			if (count < FAILURES_BEFORE_UNREACHABLE) return;
-			openOutage(connection, result);
+			// 设置不合法的连接,派发器探测必回 `not_configured`:那已经由「设置不合法」那一条说了,
+			// 不再另报一条「连不上」(`probeState` 照旧记成不通并带原话)。
+			if (!invalid.has(connectionId)) openOutage(connection, result);
 			if (statusOnDisk(connectionId) === "unreachable") return;
 			// 失败的原话填进 `message`,码不落盘。
 			await recordState(connectionId, {
@@ -294,13 +308,55 @@ export function createConnectionProbeEngine(
 		closeOutage(connectionId, { notify: false });
 	}
 
+	/** 设置好了(或这条连接不再适用):清掉「设置不合法」,不补「已恢复」。 */
+	function clearInvalid(connectionId: string): void {
+		const entry = invalid.get(connectionId);
+		if (!entry) return;
+		invalid.delete(connectionId);
+		opts.problems.resolve(
+			{ reporter: entry.reporter, about: { connectionId }, code: SETTINGS_INVALID_CODE },
+			{ notify: false },
+		);
+	}
+
+	function checkSettings(): void {
+		const connections = opts.getConnections();
+		for (const connection of connections) {
+			const adapter = connection.enabled ? opts.adapterOf(connection.adapterKey) : undefined;
+			const resolved = adapter && resolveSettings(adapter.settingsSchema, connection.settings);
+			if (!resolved || resolved.ok) {
+				clearInvalid(connection.id);
+				continue;
+			}
+			const message = t("problem.connection.settingsInvalid", {
+				name: connection.name,
+				reason: settingsIssueMessage(resolved.issues ?? []),
+			});
+			if (invalid.get(connection.id)?.message === message) continue;
+			invalid.set(connection.id, { reporter: connection.adapterKey, message });
+			// 只留一条:设置不合法了,先前开着的「连不上」没有意义了。
+			closeOutage(connection.id, { notify: false });
+			opts.problems.report({
+				reporter: connection.adapterKey,
+				about: { connectionId: connection.id },
+				code: SETTINGS_INVALID_CODE,
+				message,
+				notify: false,
+			});
+		}
+		// 删掉的连接:关于它的问题宿主已经清了,这里只丢自己的账。
+		const known = new Set(connections.map((c) => c.id));
+		for (const id of invalid.keys()) if (!known.has(id)) invalid.delete(id);
+	}
+
 	async function probeAll(): Promise<void> {
 		// 关停一开始就不再起新的一轮:登记进 track 之后不能靠预算硬等它。
 		if (serviceCtx.signal.aborted) return;
+		checkSettings();
 		const connections = opts.getConnections();
 		const toProbe: Connection[] = [];
 		for (const connection of connections) {
-			if (!connection.enabled || !opts.hasAdapter(connection.adapterKey)) {
+			if (!connection.enabled || !opts.adapterOf(connection.adapterKey)) {
 				forget(connection.id);
 				continue;
 			}
@@ -335,6 +391,7 @@ export function createConnectionProbeEngine(
 
 	return {
 		probe,
+		checkSettings,
 		dispose: () => clearInterval(timer),
 	};
 }
