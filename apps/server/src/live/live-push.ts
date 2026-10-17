@@ -360,17 +360,17 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			log.debug(`[ext-live] 订阅 ${id} 排队期间换了一场,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const row = opts.table.get(id) ?? run.session.lastRow;
-		if (!row) {
+		const entry = opts.table.get(id) ?? run.session.lastEntry;
+		if (!entry) {
 			log.debug(`[ext-live] 订阅 ${id} 已经不在在播表里,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const startedAt = run.session.startedAt ?? row.startedAt;
+		const startedAt = run.session.startedAt ?? entry.startedAt;
 		return pushCard(id, {
 			status: "streaming",
 			pushType,
 			textKind: "liveStreaming",
-			facts: row,
+			facts: entry,
 			startedAt,
 			time: startedAt === undefined ? "" : formatDuration(startedAt, now()),
 			fans: opts.profile(id)?.fans,
@@ -523,8 +523,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			return;
 		}
 		// 事件没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
-		const facts: LiveFacts = { ...defined(session?.lastRow), ...defined(value) };
-		const startedAt = session?.startedAt ?? value.startedAt ?? session?.lastRow?.startedAt;
+		const facts: LiveFacts = { ...defined(session?.lastEntry), ...defined(value) };
+		const startedAt = session?.startedAt ?? value.startedAt ?? session?.lastEntry?.startedAt;
 		enqueue(id, "下播", () => {
 			const fansNow = opts.profile(id)?.fans;
 			const fansChanged =

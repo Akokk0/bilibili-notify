@@ -135,28 +135,28 @@ function detailsOf(value: LiveDetails): LiveDetails {
  * 封面、点赞、链接、最后更新时刻)变了不惊动面板。人数那一列是累计观看(决策 75),与 B 站那几行同一个
  * 口径;此刻在线每轮都在变,放进来就是每轮让面板白重取一次。
  */
-export function extensionLiveSnapshot(row: LiveTableEntry): ExtensionLiveSnapshot {
+export function extensionLiveSnapshot(entry: LiveTableEntry): ExtensionLiveSnapshot {
 	return {
 		kind: "extension",
-		subscriptionId: row.subscriptionId,
-		extensionId: row.extensionId,
+		subscriptionId: entry.subscriptionId,
+		extensionId: entry.extensionId,
 		isLive: true,
-		title: row.title,
-		areaName: row.category,
-		startedAt: row.startedAt === undefined ? undefined : new Date(row.startedAt).toISOString(),
-		totalViewers: row.totalViewers,
+		title: entry.title,
+		areaName: entry.category,
+		startedAt: entry.startedAt === undefined ? undefined : new Date(entry.startedAt).toISOString(),
+		totalViewers: entry.totalViewers,
 	};
 }
 
 /** 这一行在面板上长什么样,拿来比「变没变」。没有这一行是空串。 */
-function faceOf(row: LiveTableEntry | undefined): string {
-	return row ? JSON.stringify(extensionLiveSnapshot(row)) : "";
+function faceOf(entry: LiveTableEntry | undefined): string {
+	return entry ? JSON.stringify(extensionLiveSnapshot(entry)) : "";
 }
 
 export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	const { bus, timers } = opts;
 	const now = opts.now ?? Date.now;
-	const rows = new Map<string, LiveTableEntry>();
+	const entries = new Map<string, LiveTableEntry>();
 	/** 窗口里挂着的那一发;整张表就这一个键。 */
 	const changed = createKeyedCoalescer({
 		windowMs: LIVE_CHANGED_COALESCE_MS,
@@ -170,9 +170,9 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 
 	/** 换掉(或删掉)一行;面板看得见的变了就记一笔。 */
 	function put(subscriptionId: string, next: LiveTableEntry | undefined): void {
-		const before = faceOf(rows.get(subscriptionId));
-		if (next) rows.set(subscriptionId, next);
-		else rows.delete(subscriptionId);
+		const before = faceOf(entries.get(subscriptionId));
+		if (next) entries.set(subscriptionId, next);
+		else entries.delete(subscriptionId);
 		if (faceOf(next) !== before) markChanged();
 	}
 
@@ -183,7 +183,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 				case "liveStart":
 					// 新的一场:整行换新,上一场留下的格一概不带(漏了下播的那场也在这儿收尾)。先删再放,
 					// 次序跟着这一场的开播走。
-					rows.delete(subscriptionId);
+					entries.delete(subscriptionId);
 					put(subscriptionId, {
 						subscriptionId,
 						extensionId,
@@ -199,7 +199,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 						put(subscriptionId, undefined);
 						break;
 					}
-					const prev = rows.get(subscriptionId);
+					const prev = entries.get(subscriptionId);
 					put(subscriptionId, {
 						...(prev ?? { subscriptionId }),
 						extensionId,
@@ -218,8 +218,8 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	const watches: Disposable[] = [
 		bus.on("subscription-reported", apply),
 		bus.on("extension-stopped", ({ extensionId }) => {
-			for (const row of [...rows.values()]) {
-				if (row.extensionId === extensionId) put(row.subscriptionId, undefined);
+			for (const entry of [...entries.values()]) {
+				if (entry.extensionId === extensionId) put(entry.subscriptionId, undefined);
 			}
 		}),
 		bus.on("subscription-changed", ({ ops }) => {
@@ -232,8 +232,8 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	];
 
 	return {
-		list: () => [...rows.values()],
-		get: (subscriptionId) => rows.get(subscriptionId),
+		list: () => [...entries.values()],
+		get: (subscriptionId) => entries.get(subscriptionId),
 		dispose() {
 			for (const watch of watches) watch.dispose();
 			changed.cancelAll();

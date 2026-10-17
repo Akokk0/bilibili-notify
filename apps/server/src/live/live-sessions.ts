@@ -70,7 +70,7 @@ export interface LiveSession {
 	 * 在播表里这一场最后一份。下播事件一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
 	 * 只是拿着那一行,不是另存的一份状态。
 	 */
-	readonly lastRow?: LiveTableEntry;
+	readonly lastEntry?: LiveTableEntry;
 	/** 断流接续正在等的那次下播:下播事件到达的时刻与它带的格。 */
 	readonly pendingEnd?: { readonly endedAt: number; readonly value: LiveEnd };
 }
@@ -159,7 +159,7 @@ interface SessionState {
 	detectedAt: number;
 	fansAtStart?: number;
 	totalViewers?: number;
-	lastRow?: LiveTableEntry;
+	lastEntry?: LiveTableEntry;
 	pendingEnd?: { endedAt: number; value: LiveEnd; handle: Disposable };
 }
 
@@ -258,7 +258,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			busStartedAt: iso(value.startedAt ?? detectedAt),
 			detectedAt,
 			fansAtStart: opts.fans(id),
-			lastRow: opts.table.get(id),
+			lastEntry: opts.table.get(id),
 		};
 		// 新的一场从头取:只算认出它的这一份。
 		noteTotalViewers(session, value);
@@ -277,7 +277,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			// 断流接续(决策 58):同一场。取消等待,开播时刻与粉丝基线沿用第一次的。
 			current.pendingEnd.handle.dispose();
 			current.pendingEnd = undefined;
-			current.lastRow = opts.table.get(id) ?? current.lastRow;
+			current.lastEntry = opts.table.get(id) ?? current.lastEntry;
 			noteTotalViewers(current, value);
 			log.debug(`[ext-live] 订阅 ${id} 断流后重新开播,接续为同一场`);
 			announce({ kind: "resume", subscriptionId: id, session: current, value });
@@ -302,7 +302,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			return;
 		}
 		if (current) {
-			current.lastRow = opts.table.get(id) ?? current.lastRow;
+			current.lastEntry = opts.table.get(id) ?? current.lastEntry;
 			current.startedAt ??= value.startedAt;
 			announce({ kind: "status", subscriptionId: id, live: true, session: current });
 			return;
@@ -331,7 +331,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			log.debug(`[ext-live] 订阅 ${id} 已经在断流等待里,这次下播忽略`);
 			return;
 		}
-		session.lastRow = opts.table.get(id) ?? session.lastRow;
+		session.lastEntry = opts.table.get(id) ?? session.lastEntry;
 		const settings = opts.settings(sub);
 		if (!settings.liveEndGrace) {
 			end(id, "ended", endedAt, value);

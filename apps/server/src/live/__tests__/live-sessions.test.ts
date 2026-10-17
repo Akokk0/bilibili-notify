@@ -160,7 +160,7 @@ describe("一场从哪开始", () => {
 			startedAt: T0 - MINUTE,
 			detectedAt: T0,
 			fansAtStart: 12_345,
-			lastRow: { totalViewers: 40 },
+			lastEntry: { totalViewers: 40 },
 		});
 	});
 
@@ -174,7 +174,7 @@ describe("一场从哪开始", () => {
 		expect(summary().at(-1)).toEqual({ kind: "status", live: true });
 		expect(sessions.get(SUB.id)).toMatchObject({
 			startedAt: T0 - HOUR,
-			lastRow: { totalViewers: 9 },
+			lastEntry: { totalViewers: 9 },
 		});
 	});
 
