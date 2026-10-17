@@ -165,6 +165,17 @@ WS 重连的 hydrate 也只补 globals / subs / targets。所以「重启完了�
 桌面版不靠这条:外壳看到 sidecar 退 0 会自己拉起,就绪后把窗口导航到新地址(新端口、
 新 token),等于整页刷新;这条流程在那之前只负责显示「正在重启」。
 
+## 升级之后的「本次更新」
+
+升级之后弹一次「本次更新」(ADR-0005 决策 16 下 2026-10-02 与 10-17 的 🔗)。服务端只交数据,标题与弹窗在面板(第 4 期)。
+
+- **数据从哪来**:打包时 `scripts/assemble-server-bundle.mjs` 从 `apps/CHANGELOG.md` 抽 1.0 起各版(预发布也收)的概述与 ⚠️ 段,写成载荷里的 `release-notes.json`(`{ releases: [{ version, date?, summary, caution? }] }`)。清单只在 `scripts/server-bundle-assets.mjs` 声明一次,所以 Docker、桌面、应用内更新三种发行形态都带它,不走应用内更新的人也看得到。`summary` / `caution` 是 **markdown 原文**,通知卡念的清单 `notes` 才是剥掉 markdown 的纯文字;概述 120 字的上限仍按剥掉 markdown 后算。装配时非开发版而 CHANGELOG 里没有当前版本,装配直接抛(Docker 链路也一样)。
+- **开机时**:`index.ts` 按载荷入口就近(`config/web-dist.ts` 的 `payloadDirOf`)读一次这份文件,缺了或读不懂都给空表、日志说清原因(开发版缺文件不出声);读到空表不是错 —— CHANGELOG 里还没有 1.x 段时就是空的,「更新了」照记、说明为空。
+- **怎么判**:`SystemNoticeStore.recordUpdate()`(`runtime/system-notices.ts`)比较正在跑的版本与这一代**跑过的最高版本**,更高就记一条 `updated`。跑过的最高版本不另存一格,恒等于 `max(generation.json 的 createdBy, 清单里每条 updated 的版本)`,所以只往高走(退回再升回不再弹)。**开发版不记**,判法只有一处:`update/version-order.ts` 的 `isDevBuild`(装配脚本里抄了一份,有测试钉着两处一致)。
+- **存什么**:盘上的 `updated` 只存 `version` 与比较的基线 `from`,**不存说明文字**;读清单那一刻用 `releasesBetween` 现补(`from < v ≤ version`,新的在前,同号正式版盖掉自己的预发布段,每条带 `releaseUrlOf` 的发布页地址)。`migrated` 在线上也带 `version`(开出这一代的版本)与 `releases`(1.0 起到它为止,0.x 升 1.0 就是 1.0.0 一段),盘上不加格。所以说明以后按语言取不用迁移。
+- **叠起来怎么办**:上一条「更新了」没看过又升了一版,合成一条,从旧那条没看过的起点算起,旧的标看过。退回旧版后,比正在跑的新的那条 `updated` 暂时不给,再升回来又给。
+- **提示清单**存在用着的那一代的 `generation.json` 的 `notices` 里,换一代就是一张新清单;读写都在原文上改,读不懂的条目不给也不抹。
+
 ## 加速站怎么选
 
 照 OpenClash 的骨架砍到够用:系统页那节里一张表,**直连打头、内置六个候选、末尾一行自定义**,
@@ -251,6 +262,9 @@ CHANNEL=stable FILE=dist/manifest.sig.json GH_TOKEN=… REPO=Akokk0/bilibili-not
 | `apps/server/src/routes/system-update.ts` | `GET /api/system/update` 与 check/download/apply/rollback/mirrors/probe |
 | `apps/web/src/components/update/` | 系统页那一节;`status.ts` 是三处消费点共用的判断与查询键 |
 | `apps/web/src/hooks/useUpdateCheckOnOpen.ts` | 打开面板查一次 + 发通知卡 |
+| `apps/server/src/update/release-notes.ts` | 读载荷里的 `release-notes.json`、`releasesBetween` |
+| `apps/server/src/runtime/system-notices.ts` | 开机提示清单,含 `recordUpdate`(「本次更新」) |
+| `scripts/changelog-section.mjs` | 从 CHANGELOG 抽概述 / ⚠️ 段 / 发行说明 |
 | `scripts/build-update-payload.mjs` | 打载荷 zip |
 | `scripts/gen-update-keys.mjs` | 生成两把 Ed25519 密钥,并打印该往哪儿贴 |
 | `scripts/sign-update-manifest.mjs` | 生成 + 签署清单 |

@@ -167,7 +167,7 @@
 - 主人目标原先指向群目标的，迁移时已清空，提示重选（ADR-0021 决策 57）；
 - 问要不要「全新开始」。
 
-🔗 ⑧ 落地（10-02）：数据走一张通用的提示清单 `SystemNotice`（`GET /api/system/notices`，看过的 `POST /api/system/notices/:id/acknowledge`），存在用着的那一代的 `generation.json` 的 `notices` 里，换一代就是一张新清单。今天三种：`migrated`（从第 0 代迁出的每一代都有一条，`cardSkinsDropped` 说老卡片皮肤没迁；3a 加主人目标已清空）、`generation-failed`（主人要求的新代没开成，原因原话）、`rolled-back`（启动器判死的、比正在跑的新的版本，那一版后来起来了就不再给）。「因契约版本不收」的拓展不进清单，面板从 `/api/ext` 现查。全新开始与从旧代重新迁移共用 `POST /api/system/generations`（`{ source: "empty" | "zero" }`）：先判拉不拉得起来、第 0 代在不在，再在 `generations/pending.json` 写一次性标记、回话、重启；开机取出标记就删。全新开始把主密钥带过去（不登出）；要求的新代没开成就留在原来那一代、原因进清单，迁移已经开始的话正常退出等着被拉起，没人拉才抛。页面本身随第 4 期出稿。
+🔗 ⑧ 落地（10-02）：数据走一张通用的提示清单 `SystemNotice`（`GET /api/system/notices`，看过的 `POST /api/system/notices/:id/acknowledge`），存在用着的那一代的 `generation.json` 的 `notices` 里，换一代就是一张新清单。今天四种：`migrated`（从第 0 代迁出的每一代都有一条，`cardSkinsDropped` 说老卡片皮肤没迁；3a 加主人目标已清空；线上另带开出这一代的版本 `version` 与 1.0 起到它为止的各版说明 `releases`，说明读清单时从载荷里的 `release-notes.json` 现补，盘上不加格）、`generation-failed`（主人要求的新代没开成，原因原话）、`rolled-back`（启动器判死的、比正在跑的新的版本，那一版后来起来了就不再给）、`updated`（升级之后的「本次更新」：正在跑的版本比这一代跑过的最高版本新就记一条，盘上存 `version` 与基线 `from`，不存说明；开发版不记；见 `docs/agents/self-update.md`）。「因契约版本不收」的拓展不进清单，面板从 `/api/ext` 现查。全新开始与从旧代重新迁移共用 `POST /api/system/generations`（`{ source: "empty" | "zero" }`）：先判拉不拉得起来、第 0 代在不在，再在 `generations/pending.json` 写一次性标记、回话、重启；开机取出标记就删。全新开始把主密钥带过去（不登出）；要求的新代没开成就留在原来那一代、原因进清单，迁移已经开始的话正常退出等着被拉起，没人拉才抛。页面本身随第 4 期出稿。
 
 ## 回退与重迁
 

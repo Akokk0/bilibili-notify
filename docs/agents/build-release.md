@@ -91,7 +91,7 @@ GitHub Release 的正文由 `create-standalone-github-release.sh` 拼(desktop-re
 默认不跑 dry-run、直接打 tag;用户点名,或本版动过 `build:desktop` / `build:update-payload` / `prepare-resources` 时,打 tag 前先手动 dry-run:
 
 - `version-tag`: `version=<VERSION>`, `dry_run=true` —— 校验 tag 格式与现有 tag 兼容性。
-- `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。
+- `image-release`: `version=<VERSION>`, `dry_run=true` —— 构建但不 push Docker digest / manifest。构建里的装配会核对 CHANGELOG,所以 `version` 也必须是 CHANGELOG 里**有段**的版本(非开发版缺段装配直接抛)。
 - `desktop-release`: `version=<VERSION>`, `dry_run=true` —— 构建并校验 Desktop artifacts,不创建 GitHub Release。
 - `update-payload`: `version=<VERSION>`, `dry_run=true` —— 打载荷并签名,不上传任何资产。`version` 必须是 CHANGELOG 里**有段且概述不超 120 字**的版本(新写的那段,或旧的如 0.8.0),否则第一步抽概述就红 —— 这正是它要验的事。
 
@@ -105,9 +105,11 @@ dashboard 是它的同级 `web-dist/`。资源目录里**没有 node_modules**:�
 `vp run build:desktop` 也就等于 `build:update-payload` + `tauri:build`。`build:update-payload` 里 web 与 server bundle 互不依赖,由一条 `pnpm --filter web --filter server run build:bundle` 并发跑 —— pnpm 一条命令只认一个 script 名,所以 web 有一条 `build:bundle` 别名指向自己的 `build`。server 的 `build:bundle` 经 `cross-env` 设 `BN_SERVER_BUNDLE=1`:桌面装同一份载荷之后这条脚本第一次在 Windows runner 上跑,pnpm 在那里用 cmd.exe 执行 script,`VAR=1 cmd` 这种 POSIX 前缀会被当成命令名而炸(0.9.1 的 dry-run 抓到的;0.9.0 之前桌面走的是普通 `build`,没碰过它)。
 
 bundle 必须带齐的文件(入口、选版器、词云 static、jieba wasm、
-配置样例、package.json)**只声明一次**:`scripts/server-bundle-assets.mjs`。装配脚本自检、
+配置样例、package.json、升级之后「本次更新」要念的 `release-notes.json`)**只声明一次**:`scripts/server-bundle-assets.mjs`。装配脚本自检、
 升级载荷把关、桌面资源准备三处都读它 —— 这些文件全是运行时按路径读盘的,少一个不会在构建期
 报错,只会在用户点到那个功能时炸。
+
+`release-notes.json` 由装配脚本从 `apps/CHANGELOG.md` 抽 1.0 起各版的概述与 ⚠️ 段写出,所以 **CHANGELOG 现在喂三处**:清单 `notes`(概述,纯文字)、发布页正文(整段)、载荷里的发行说明(概述与 ⚠️ 段,markdown 原文)。装配时非开发版而 CHANGELOG 里没有当前版本就抛 —— 三条发版链路(Docker、桌面、应用内更新)都经过装配,缺段在构建那一步就红。数据怎么用见 [self-update.md](./self-update.md)「升级之后的『本次更新』」。
 
 发版 workflow 里**版本同步在构建之前**:装配时写进 `dist/package.json` 的版本就是外壳起来后
 `/api/health` 报的那个,顺序反了安装包会永远自报 `0.0.0-dev`。
