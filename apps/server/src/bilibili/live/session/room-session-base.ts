@@ -867,7 +867,8 @@ export abstract class RoomSessionBase {
 					name: this.masterInfo?.username ?? "",
 					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
 				},
-				fanClubName: this.masterInfo?.medalName ?? "",
+				// 没有粉丝牌(缺或空串)就不带这一格。
+				...(this.masterInfo?.medalName ? { fanClubName: this.masterInfo.medalName } : {}),
 				cardSkin: this.sub.cardSkin,
 				cardSkinKnobs: this.sub.cardSkinKnobs,
 			},

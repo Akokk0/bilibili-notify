@@ -19,7 +19,7 @@ class TestSession extends RoomSessionBase {
 	protected buildEventHandler(): (ev: LiveEvent) => void {
 		return () => {};
 	}
-	recap(custom = ""): LivePushAnchor[] {
+	recap(custom = "", medalName = ""): LivePushAnchor[] {
 		// biome-ignore lint/suspicious/noExplicitAny: protected 字段的测试 setup
 		(this as any).masterInfo = {
 			username: "U",
@@ -28,7 +28,7 @@ class TestSession extends RoomSessionBase {
 			liveOpenFollowerNum: 0,
 			liveEndFollowerNum: 0,
 			liveFollowerChange: 0,
-			medalName: "",
+			medalName,
 		};
 		return this.recapAnchors(custom);
 	}
@@ -120,6 +120,23 @@ function makeCtx(opts: CtxOpts): {
 	};
 	return { ctx: stub as unknown as RoomContext, sub, snapshot, disposed };
 }
+
+describe("recapAnchors — 粉丝牌名在宿主边界折叠", () => {
+	const generateOf = (ctx: RoomContext) =>
+		(ctx.liveSummaryRequester as unknown as { generate: ReturnType<typeof vi.fn> }).generate;
+
+	it("medalName 为空串 → 传给总结请求器的参数里缺 fanClubName 这个键", () => {
+		const { ctx, sub } = makeCtx({ wantWordcloud: false, wantSummary: true, summaryText: "x" });
+		new TestSession(ctx, sub).recap("", "");
+		expect(generateOf(ctx).mock.calls[0]?.[0]).not.toHaveProperty("fanClubName");
+	});
+
+	it("medalName 有值 → 原样作为 fanClubName", () => {
+		const { ctx, sub } = makeCtx({ wantWordcloud: false, wantSummary: true, summaryText: "x" });
+		new TestSession(ctx, sub).recap("", "小晨");
+		expect(generateOf(ctx).mock.calls[0]?.[0]).toHaveProperty("fanClubName", "小晨");
+	});
+});
 
 describe("recapAnchors — 两个附加项各自门控、各一个锚点", () => {
 	it("wordcloud=on summary=on:两个附加项锚点,按「词云 → 总结」排,各带各的键", async () => {

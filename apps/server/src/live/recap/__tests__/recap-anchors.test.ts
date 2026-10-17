@@ -231,6 +231,15 @@ describe("recapAnchors", () => {
 		});
 	});
 
+	it("没有粉丝团名 → 交给总结请求器的参数里没有 fanClubName 这个键", async () => {
+		const t = setup({ senderRecord: { 观众甲: 3 }, summary: "总结正文" });
+		const { fanClubName: _omitted, ...withoutFanClub } = options({
+			extras: { wordcloud: false, liveSummary: true },
+		});
+		await settled(recapAnchors(withoutFanClub, t.d));
+		expect(t.summaryGenerate.mock.calls[0]?.[0]).not.toHaveProperty("fanClubName");
+	});
+
 	it("交给词云生成器的:热词、主播名、头像与皮肤两格", async () => {
 		const t = setup({ sortedWords: [["精彩", 5]], image: Buffer.from("img") });
 		const knobs = { "k6eee-cafed00d": { accent: "#aaaaaa" } };

@@ -35,7 +35,6 @@ function makeRequester(over: { webSearch?: boolean } = {}) {
 const PARAMS = {
 	senderRecord: SENDERS,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
-	fanClubName: "",
 	customLiveSummary: "",
 };
 
@@ -68,5 +67,25 @@ describe("LiveSummaryRequester × webSearch", () => {
 			undefined,
 			expect.objectContaining({ webSearch: true }),
 		);
+	});
+});
+
+describe("LiveSummaryRequester × 粉丝团名", () => {
+	it("没有粉丝团名 → 提示词里整项不写『粉丝牌名』", async () => {
+		const { requester, comment } = makeRequester();
+		await requester.generate({ ...PARAMS });
+		expect(comment.mock.calls[0]?.[0]).not.toContain("粉丝牌名");
+	});
+
+	it("有粉丝团名 → 提示词写『粉丝牌名：小晨』,排在发言人数之后", async () => {
+		const { requester, comment } = makeRequester();
+		await requester.generate({ ...PARAMS, fanClubName: "小晨" });
+		expect(comment.mock.calls[0]?.[0]).toContain("弹幕发言人数：6，粉丝牌名：小晨，弹幕总数：21");
+	});
+
+	it("没有粉丝团名 → 模板里的粉丝团名渲染成空串(同今天)", () => {
+		const { requester } = makeRequester();
+		const out = requester.generate({ ...PARAMS, customLiveSummary: "牌-mdn尾" });
+		expect(out?.template).toBe("牌尾");
 	});
 });

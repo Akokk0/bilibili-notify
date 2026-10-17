@@ -62,8 +62,8 @@ export class LiveSummaryRequester {
 	generate(params: {
 		senderRecord: Record<string, number>;
 		sortedWords: Array<[string, number]>;
-		/** 粉丝团的名字;拿不到给空串。 */
-		fanClubName: string;
+		/** 粉丝团的名字;没有就不带(提示词里整项不写,模板里渲染成空串)。 */
+		fanClubName?: string;
 		customLiveSummary: string;
 		/**
 		 * per-UP AI 覆盖。adapter 在 SubItemView.aiOverride 上注入,room-session 在调
@@ -87,7 +87,7 @@ export class LiveSummaryRequester {
 		const template = renderLiveSummary({
 			template: customLiveSummary,
 			senderCount,
-			fanClubName,
+			fanClubName: fanClubName ?? "",
 			viewerChatCount,
 			topSenders: top5Senders,
 		});
@@ -98,7 +98,7 @@ export class LiveSummaryRequester {
 		const prompt = [
 			"请生成直播总结",
 			`弹幕发言人数：${senderCount}`,
-			`粉丝牌名：${fanClubName}`,
+			...(fanClubName ? [`粉丝牌名：${fanClubName}`] : []),
 			`弹幕总数：${viewerChatCount}`,
 			`热词TOP10：${top10Words.join("、")}`,
 			`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,

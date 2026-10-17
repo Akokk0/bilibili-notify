@@ -30,8 +30,8 @@ export interface RecapOptions {
 	aiOverride?: CommentaryCallOverride;
 	/** 主播:名字与头像(图库引用,没有就不带)。 */
 	creator: { name: string; avatar?: ImageRef };
-	/** 粉丝团的名字;拿不到给空串。 */
-	fanClubName: string;
+	/** 粉丝团的名字;没有就不带。 */
+	fanClubName?: string;
 	cardSkin?: string;
 	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 }
@@ -88,7 +88,7 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 			made = deps.summary.generate({
 				senderRecord: snapshot.senderRecord,
 				sortedWords,
-				fanClubName: options.fanClubName,
+				...(options.fanClubName === undefined ? {} : { fanClubName: options.fanClubName }),
 				customLiveSummary: options.summaryTemplate,
 				aiOverride: options.aiOverride,
 			});
