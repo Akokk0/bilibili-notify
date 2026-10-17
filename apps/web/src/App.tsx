@@ -18,6 +18,7 @@ import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
 import { useUpdateCheckOnOpen } from "./hooks/useUpdateCheckOnOpen";
 import { useUpdateTransitionNotice } from "./hooks/useUpdateTransitionNotice";
+import { useTextSettings } from "./i18n/use-text-settings";
 import About from "./pages/About";
 import Ai from "./pages/Ai";
 import CardSkinEditor from "./pages/CardSkinEditor";
@@ -62,6 +63,8 @@ export default function App() {
 function AuthedApp() {
 	useAuthChannel();
 	useStateChannel();
+	// 语言与口吻跟服务端设置走(登录后才读得到设置,所以挂在这里而不是根上)。
+	useTextSettings();
 	usePushEventsChannel();
 	useAlertChannel();
 	// 打开面板就查一次更新(不定时)。放在这里同样是被登录门挡着的:没会话不查。

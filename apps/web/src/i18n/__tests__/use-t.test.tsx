@@ -6,7 +6,7 @@
  */
 
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../locales/zh-CN.json", () => ({
 	default: { greet: "你好 {name}", "item#other": "{count} 件" },
@@ -18,6 +18,11 @@ vi.mock("../locales/en.json", () => ({
 vi.mock("../locales/ja.json", () => ({ default: {} }));
 
 import { i18n, useT } from "../index";
+
+// 模块初值读浏览器(jsdom 下会猜成英文),所以每条用例先设回简中 + 女仆
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+});
 
 afterEach(() => {
 	cleanup();

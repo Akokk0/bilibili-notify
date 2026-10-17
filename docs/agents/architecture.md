@@ -168,7 +168,7 @@ src/
   components/   共享原子组件 + 图标
   hooks/        useAuthChannel / use-source-auth(登录态的唯一读口:`["source-auth", 来源键]` 查询缓存,读的地方各自点名要哪个来源;`store/auth.ts` 已删)/ usePushEventsChannel / useAlertChannel / useLogChannel / useStateChannel / ...
   services/     HTTP client(api.ts)+ 类型化封装(dashboard.ts,wire 类型 re-export 自 @bilibili-notify/contract)
-  i18n/         面板的字典 store(3b-09,ADR-0037):`i18n`(`@bilibili-notify/internal/i18n` 的 `createI18n` 建的单例,不包 zustand)与 `useT()`(`useSyncExternalStore` 订它,切语言或口吻后已画出来的组件自己重画);译文在 `locales/`,眼下都是空的,面板的字随第 4 期重画才收
+  i18n/         面板的字典 store(3b-09,ADR-0037):`i18n`(`@bilibili-notify/internal/i18n` 的 `createI18n` 建的单例,不包 zustand)与 `useT()`(`useSyncExternalStore` 订它,切语言或口吻后已画出来的组件自己重画);初值读浏览器(`preference.ts`:`bn.locale` / `bn.voice`,没记过语言按 `navigator.languages` 猜,`guessLocale`),登录后 `use-text-settings.ts` 的 `useTextSettings`(挂在 `AuthedApp`)订 `["settings"]`,把设置里的 `locale` / `voice` 接进 store 并记回浏览器,设置缺语言时把登录页在用的那个 PATCH 进去(只写一次);译文在 `locales/`,眼下都是空的,面板的字随第 4 期重画才收
   store/        zustand 管瞬态 UI 状态;tanstack-query 缓存管服务端状态
   types/domain.ts  域类型门面:类型 `import type` 自 internal/contract(编译期擦除),值级常量走
                    `@bilibili-notify/internal/constants` 零依赖子路径(不含 zod,bundle 零增量);

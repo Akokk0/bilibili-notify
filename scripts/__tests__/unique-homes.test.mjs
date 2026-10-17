@@ -47,6 +47,8 @@ export const HOMES = {
 	DEFAULT_LOCALE: "packages/internal/src/i18n.ts",
 	DEFAULT_VOICE: "packages/internal/src/i18n.ts",
 	textSettingsOf: "packages/internal/src/i18n.ts",
+	// 没登录时按浏览器语言猜面板的语言(3b-10;ADR-0037 决策 17):规则只住这一处。
+	guessLocale: "apps/web/src/i18n/preference.ts",
 	// 面板订阅语言 store 的那一个 hook(3b-09):组件一律经它取字,不各写一份 useSyncExternalStore。
 	useT: "apps/web/src/i18n/index.ts",
 };
