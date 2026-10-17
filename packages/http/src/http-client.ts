@@ -1,5 +1,12 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import type {
+	Hop,
+	HopHandler,
+	HttpClient as HttpClientContract,
+	HttpResponse,
+	FetchOptions as PublicFetchOptions,
+} from "@bilibili-notify/internal";
 import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal/constants";
 import { Agent, buildConnector, Headers as UndiciHeaders, fetch as undiciFetch } from "undici";
 import type { BrowserIdentity } from "./browser-identity";
@@ -56,60 +63,14 @@ export interface HttpClientOptions {
 	lookup?: (hostname: string) => Promise<readonly string[]>;
 }
 
-/** 即将发出的一跳(含第一次请求)。 */
-export interface Hop {
-	/** 这一跳要去的地址。 */
-	url: URL;
-	/** 第几跳:第一次请求是 0,之后每跟一次重定向加 1。 */
-	index: number;
-	/** 上一跳的地址与它回的状态码(重定向要去的就是 `url`);第 0 跳没有。 */
-	from?: { url: URL; status: number };
-}
+// 对外的接口类型住核心包(包之间不成环,ADR-0025 决策 6);这里转出,下游的 import 不用改。
+export type { Hop, HopHandler, HttpResponse };
 
 /**
- * 每一跳发出之前调(第一次请求也算),回 `ok()` 放行,回失败就否决:`fetch` 把这个失败原样
- * 回给调用方、这一跳不发。前一跳的 Set-Cookie 此时已经摄进罐子。可以是异步的。
+ * 宿主自用的请求选项:对外那份({@link PublicFetchOptions})加上拦内网用的 `addressCheck`。
+ * 拓展的 `ctx.http` 看不到它(拦内网只在 `fetchImage` 上,ADR-0025 决策 8)。
  */
-export type HopHandler = (hop: Hop) => Result | Promise<Result>;
-
-export interface FetchOptions {
-	/** 默认 GET。 */
-	method?: string;
-	/** 这一次请求的头,盖过客户端默认头与身份(大小写不敏感)。 */
-	headers?: Headers | Record<string, string>;
-	/**
-	 * 请求体。只收能原样重发的类型(307 / 308 要重发)。GET / HEAD 不许带。
-	 * `FormData` 每一跳由运行时现序列化(boundary 也是运行时补的,别自己写 `Content-Type`);
-	 * 但它不能和 {@link FetchOptions.addressCheck} 同用(那条路是 npm `undici`,不认全局的 `FormData`),当场回 `invalid`。
-	 */
-	body?: string | Uint8Array<ArrayBuffer> | FormData;
-	/** 调用方的中止信号。 */
-	signal?: AbortSignal;
-	/** 这一次请求的单跳超时毫秒,默认取客户端的。 */
-	timeoutMs?: number;
-	/**
-	 * 最多跟几跳重定向,默认 5。`0` 就是不跟。跟满了遇到的下一个 3xx 不当失败,原样回给调用方
-	 * (状态码 3xx、带 Location 头),由调用方判 —— 所以 `maxRedirects: 0` 就是「只看第一跳的 Location」。
-	 */
-	maxRedirects?: number;
-	/** 每一跳发出之前的检查,可否决。 */
-	beforeHop?: HopHandler;
-	/**
-	 * `"exchange"`(默认)外发罐子的 cookie、也把响应的 Set-Cookie 摄进罐子;
-	 * `"send-only"` 只外发、不摄入(罐子里的东西这个请求只读)。
-	 */
-	cookies?: "exchange" | "send-only";
-	/**
-	 * 「不带浏览器身份、不碰罐」一档:不补身份四件、不带客户端的默认头、不带 `Cookie`、不收 `Set-Cookie`
-	 * (重定向的每一跳也一样,`cookies` 选项在这一档下不起作用)。调用方这一次自己写的头照发。
-	 * 内置的适配器调官方接口 / 主人填的地址用它:那些对端不该看到 B 站这套浏览器指纹与登录态。
-	 */
-	bare?: boolean;
-	/**
-	 * 响应体的字节上限。超了回 `invalid`:带 `Content-Length` 且已经超的不读体;其余边读边数,读过上限当场掐断
-	 * (不把超大的体整个读进内存再量)。不给就整个读完。只管最后落脚的那个回应,重定向跳的体本来就不读。
-	 */
-	maxBodyBytes?: number;
+export interface FetchOptions extends PublicFetchOptions {
 	/**
 	 * 连接之前对**要连的那个地址**(IP 字面量)的检查,回失败就不连、`fetch` 回 `invalid`(消息带着那个地址)。
 	 * 判的是真正建连接用的那一次解析:名字解析出来的每个地址都判,任何一个不过整个拒;地址里直接写 IP 的不经解析
@@ -117,25 +78,6 @@ export interface FetchOptions {
 	 * 不给就不判,请求走平常那条路。
 	 */
 	addressCheck?: (address: string) => Result;
-}
-
-/**
- * 一次请求的回应。成功那一支的内容铺平在 `ok` 旁边(`Result<HttpResponse>`),所以这里**没有**
- * `ok` 这一格:先看 `result.ok`(请求有没有走通),再看 `status`(对端怎么说)。
- */
-export interface HttpResponse {
-	/** 最后落脚的地址(跟过重定向之后)。 */
-	url: string;
-	status: number;
-	headers: Headers;
-	/** 原始字节。 */
-	body: Uint8Array;
-	/** 状态码是不是 2xx。 */
-	isSuccess: boolean;
-	/** 按 UTF-8 转文本(去掉 BOM)。 */
-	text(): string;
-	/** 按 JSON 解析:不是合法 JSON 回 `invalid`(对端回了别的东西不是 bug,不抛)。 */
-	json(): Result<{ value: unknown }>;
 }
 
 const utf8 = new TextDecoder();
@@ -350,7 +292,7 @@ type Leg =
 			setCookies: string[];
 	  };
 
-export class HttpClient {
+export class HttpClient implements HttpClientContract {
 	private readonly jar: CookieJar;
 	private readonly identity: BrowserIdentity;
 	private readonly defaultHeaders: Record<string, string>;

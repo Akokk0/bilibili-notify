@@ -1,3 +1,4 @@
+import type { WebSocketLike, WebSocketOptions } from "@bilibili-notify/internal";
 import { fail, ok, type Result } from "@bilibili-notify/internal/constants";
 import WebSocket from "ws";
 
@@ -10,38 +11,8 @@ import WebSocket from "ws";
  * 时一致。
  */
 
-/**
- * `websocket()` 交出的连接 —— `ws` 的 WebSocket 的最小子集,不把第三方库的类型摆进对外面。
- *
- * 事件(`open` / `message` / `error` / `close`)用 `on` 订阅,监听器的参数照 `ws` 给:
- * `message` 是 `(data, isBinary)`,`close` 是 `(code, reason)`。**一定要挂 `error`**:
- * 握手期被关(含 `signal` 中止)时 `ws` 会先报一次 `error` 再 `close`,没人接会炸进程。
- */
-export interface WebSocketLike {
-	/** 二进制帧交给 `message` 监听器的形态;常用 `"nodebuffer"`。 */
-	binaryType: string;
-	/** 连接状态,取值照 WHATWG:0 建连中 / 1 已连上 / 2 关闭中 / 3 已关。 */
-	readonly readyState: number;
-	on(event: string, listener: (...args: unknown[]) => void): void;
-	/** 字符串发文本帧,字节发二进制帧(`ws` 本来就这么分)。 */
-	send(data: string | Uint8Array): void;
-	close(): void;
-}
-
-export interface WebSocketOptions {
-	/**
-	 * 附加的握手头。默认头(`Cookie`、`User-Agent`)在前,这里同名(大小写不敏感)的盖过它、
-	 * 留在原位置,别的追加在后面。
-	 */
-	headers?: Record<string, string>;
-	/**
-	 * 中止就关掉连接(建连时已经中止的,连接一建好就关)。握手期被关会先报一次 `error` 再 `close`。
-	 * 集成停下时自动关就靠它(3a 把 `ctx.signal` 接到这里)。
-	 */
-	signal?: AbortSignal;
-	/** 「不带身份、不碰罐」一档:握手不带 `Cookie` 与身份的 `User-Agent`,只有上面的 `headers`。 */
-	bare?: boolean;
-}
+// 对外的接口类型住核心包(包之间不成环,ADR-0025 决策 6);这里转出,下游的 import 不用改。
+export type { WebSocketLike, WebSocketOptions };
 
 /**
  * 建一条连接。协议 `ws` 不收(如 `ftp:`)时回 `invalid`,不抛 —— 地址常来自主人填的设置或

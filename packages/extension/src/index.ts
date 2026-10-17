@@ -41,6 +41,14 @@ export type {
 	Disposable,
 	Failure,
 	FailureCode,
+	/** `ctx.http` 的请求选项(对外那份,不含宿主自用的拦内网口)。 */
+	FetchOptions,
+	/** 重定向时即将发出的一跳,`beforeHop` 的参数。 */
+	Hop,
+	HopHandler,
+	/** 每个集成一个的请求客户端(`ctx.http`)。 */
+	HttpClient,
+	HttpResponse,
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
@@ -70,6 +78,8 @@ export type {
 	 * 一个集成读自己设置的把手。拓展的 `ctx.settings(schema)` 回的就是它(与内置集成同一个口)。
 	 */
 	SettingsReader,
+	WebSocketLike,
+	WebSocketOptions,
 } from "@bilibili-notify/internal";
 /**
  * 造结果的两个函数(ADR-0026 决策 6)。`send` / `probe` 回的 `DeliveryResult` / `ProbeResult`
