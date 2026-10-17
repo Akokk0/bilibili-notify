@@ -50,3 +50,12 @@ describe("specialViewerIdRefusal", () => {
 		expect(specialViewerIdRefusal(DIGITS, ["x", null, 5], [])).toBeUndefined();
 	});
 });
+
+describe("specialViewerIdRefusal:回给面板的整句话", () => {
+	it("观众 id 格式不对:整条失败的话与 issues 里的话,点名来源的 label", () => {
+		expect(specialViewerIdRefusal(DIGITS, [{ id: "abc" }], [])).toMatchObject({
+			message: "特别关注的观众 id 格式不对，要某站认的写法",
+			issues: [{ message: "这个观众 id 不是某站认的写法" }],
+		});
+	});
+});

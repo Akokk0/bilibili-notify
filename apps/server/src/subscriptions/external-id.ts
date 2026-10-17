@@ -4,7 +4,7 @@ import {
 	fail,
 	type SourceDescriptor,
 } from "@bilibili-notify/internal";
-import { EXTERNAL_ID_TEXTS } from "./external-id-texts.js";
+import { t } from "../i18n/index.js";
 
 /** 核外部 id 要用到的描述符那两格:拓展来源没有描述符对象,拿清单里的外观(同样有这两格)也行。 */
 export type ExternalIdSpec = Pick<SourceDescriptor, "label" | "externalIdRegex">;
@@ -31,11 +31,11 @@ export function externalIdRefusal(
 	) {
 		return undefined;
 	}
-	return fail("invalid", EXTERNAL_ID_TEXTS.mismatch(spec.label), {
+	return fail("invalid", t("externalId.mismatch", { label: spec.label }), {
 		issues: [
 			{
 				path: ["identity", "externalId"],
-				message: EXTERNAL_ID_TEXTS.mismatchIssue(spec.label),
+				message: t("externalId.mismatchIssue", { label: spec.label }),
 			},
 		],
 	});
@@ -58,11 +58,11 @@ export function specialViewerIdRefusal(
 		const id: unknown = entry.id;
 		if (typeof id === "string" && known.includes(id)) continue;
 		if (externalIdRefusal(spec, id) === undefined) continue;
-		return fail("invalid", EXTERNAL_ID_TEXTS.viewerMismatch(spec.label), {
+		return fail("invalid", t("externalId.viewerMismatch", { label: spec.label }), {
 			issues: [
 				{
 					path: ["specialViewers", index, "id"],
-					message: EXTERNAL_ID_TEXTS.viewerMismatchIssue(spec.label),
+					message: t("externalId.viewerMismatchIssue", { label: spec.label }),
 				},
 			],
 		});

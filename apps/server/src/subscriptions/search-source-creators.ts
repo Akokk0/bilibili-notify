@@ -1,8 +1,8 @@
 import { type CreatorCandidate, fail, type Logger, type Result } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { SourceRegistry } from "./registry.js";
-import { SEARCH_CREATORS_TEXTS } from "./search-creators-texts.js";
 
 export interface SearchSourceCreatorsDeps {
 	sources: Pick<SourceRegistry, "get" | "list">;
@@ -32,7 +32,13 @@ export async function searchSourceCreators(
 			.list()
 			.map((view) => `${view.sourceKey}（${view.descriptor.label}）`)
 			.join("、");
-		return fail("not_found", SEARCH_CREATORS_TEXTS.noSuchSource(sourceKey, listing));
+		return fail(
+			"not_found",
+			t("searchCreators.noSuchSource", {
+				sourceKey,
+				listing: listing === "" ? t("searchCreators.noSourcesListed") : listing,
+			}),
+		);
 	}
 	const { label } = source.descriptor;
 	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
@@ -44,7 +50,7 @@ export async function searchSourceCreators(
 			controller.abort(
 				new DOMException(`搜人超过 ${timeoutMs / 1000} 秒没回,BN 不等了`, "TimeoutError"),
 			);
-			resolve(fail("timeout", SEARCH_CREATORS_TEXTS.timeout(label, timeoutMs / 1000)));
+			resolve(fail("timeout", t("searchCreators.timeout", { label, seconds: timeoutMs / 1000 })));
 		}, timeoutMs);
 	});
 	const run = (async (): Promise<Result<{ candidates: CreatorCandidate[] }>> => {
@@ -52,7 +58,7 @@ export async function searchSourceCreators(
 			return await source.searchCreators(query, controller.signal);
 		} catch (err) {
 			deps.logger.error(`[source] ${sourceKey} searchCreators 抛了: ${errorMessageOf(err)}`);
-			return fail("unavailable", SEARCH_CREATORS_TEXTS.failed(label));
+			return fail("unavailable", t("searchCreators.failed", { label }));
 		}
 	})();
 	try {

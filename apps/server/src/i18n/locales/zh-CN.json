@@ -1,4 +1,7 @@
 {
+	"bilibili.search.blankQuery": "搜索关键词不能为空",
+	"bilibili.search.failed": "B 站没能完成搜索",
+	"bilibili.search.failedWithReason": "B 站没能完成搜索：{reason}",
 	"command.framework.failed": "『{word}』没办成：{message}",
 	"command.framework.crashed": "出错了，详情在日志里",
 	"command.login.noSources": "现在没有能登录的来源～",
@@ -11,5 +14,13 @@
 	"command.status.loginLabel": "{label}登录",
 	"command.report.daysOutOfRange": "天数要在 {min} 到 {max} 之间哦～",
 	"command.report.busy": "还在跑呢，稍等一下下～",
-	"command.report.noTargets": "还没配推送目标呢，周报没地方发～"
+	"command.report.noTargets": "还没配推送目标呢，周报没地方发～",
+	"externalId.mismatch": "{label}的外部 id 格式不对，没法新建订阅",
+	"externalId.mismatchIssue": "这个 id 不是{label}认的写法",
+	"externalId.viewerMismatch": "特别关注的观众 id 格式不对，要{label}认的写法",
+	"externalId.viewerMismatchIssue": "这个观众 id 不是{label}认的写法",
+	"searchCreators.noSuchSource": "没有叫「{sourceKey}」的订阅来源。在册的来源有：{listing}",
+	"searchCreators.noSourcesListed": "（一个都没有）",
+	"searchCreators.timeout": "{label}的搜人超过 {seconds} 秒没回",
+	"searchCreators.failed": "{label}的搜人出错了，详情在日志里"
 }

@@ -123,3 +123,48 @@ describe("searchSourceCreators", () => {
 		expect(seen?.aborted).toBe(true);
 	});
 });
+
+describe("searchSourceCreators:回给人 / 模型的整句话", () => {
+	it("没有这个来源:列出在册来源的键与平台名", async () => {
+		const { deps } = depsWith({
+			acme: { label: "对拍源", searchCreators: async () => ok({ candidates: [] }) },
+		});
+		expect(await searchSourceCreators(deps, "nope", "x")).toMatchObject({
+			code: "not_found",
+			message: "没有叫「nope」的订阅来源。在册的来源有：acme（对拍源）",
+		});
+	});
+
+	it("一个来源都没有:在册的来源写「（一个都没有）」", async () => {
+		const { deps } = depsWith({});
+		expect(await searchSourceCreators(deps, "nope", "x")).toMatchObject({
+			message: "没有叫「nope」的订阅来源。在册的来源有：（一个都没有）",
+		});
+	});
+
+	it("来源搜人超时:点名来源与秒数", async () => {
+		vi.useFakeTimers();
+		const { deps } = depsWith(
+			{ acme: { label: "对拍源", searchCreators: () => new Promise<Candidates>(() => {}) } },
+			1000,
+		);
+		const pending = searchSourceCreators(deps, "acme", "x");
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await pending).toMatchObject({ message: "对拍源的搜人超过 1 秒没回" });
+	});
+
+	it("来源抛了:固定的一句,原话不外露", async () => {
+		const { deps } = depsWith({
+			acme: {
+				label: "对拍源",
+				searchCreators: async () => {
+					throw new Error("boom");
+				},
+			},
+		});
+		expect(await searchSourceCreators(deps, "acme", "x")).toMatchObject({
+			code: "unavailable",
+			message: "对拍源的搜人出错了，详情在日志里",
+		});
+	});
+});

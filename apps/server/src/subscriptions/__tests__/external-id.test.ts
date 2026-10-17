@@ -56,3 +56,12 @@ describe("externalIdRefusal:按来源声明的格式核外部 id", () => {
 		expect(externalIdRefusal(undefined, "abc")).toBeUndefined();
 	});
 });
+
+describe("externalIdRefusal:回给面板的整句话", () => {
+	it("格式不对:整条失败的话与 issues 里的话,点名来源的 label", () => {
+		expect(externalIdRefusal(DIGITS, "abc")).toMatchObject({
+			message: "某站的外部 id 格式不对，没法新建订阅",
+			issues: [{ message: "这个 id 不是某站认的写法" }],
+		});
+	});
+});

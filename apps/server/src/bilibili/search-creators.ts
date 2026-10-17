@@ -1,8 +1,8 @@
 import { type CreatorCandidate, fail, ok, type Result } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { stripHtmlTags } from "../util/strip-html-tags.js";
 import type { Api } from "./api/index.js";
 import { standardCodeOfBili } from "./error-codes.js";
-import { SEARCH_TEXTS } from "./search-texts.js";
 
 /** 一次最多回几个候选(契约上限)。 */
 const MAX_CANDIDATES = 10;
@@ -33,16 +33,22 @@ export async function searchBiliCreators(
 	warn: (message: string) => void = () => {},
 ): Promise<Result<{ candidates: CreatorCandidate[] }>> {
 	const text = query.trim();
-	if (text === "") return fail("invalid", SEARCH_TEXTS.blankQuery);
+	if (text === "") return fail("invalid", t("bilibili.search.blankQuery"));
 
 	const refuse = (code: number | undefined, message: string | undefined) => {
 		const standard = code === undefined ? undefined : standardCodeOfBili(code);
 		if (standard === undefined) {
 			warn(`[bilibili] 搜人收到没有对照的返回码 ${code}: ${message ?? "(没有话)"}`);
 		}
-		return fail(standard ?? "unknown", SEARCH_TEXTS.failed(message), {
-			...(code === undefined ? {} : { upstreamCode: code }),
-		});
+		return fail(
+			standard ?? "unknown",
+			message
+				? t("bilibili.search.failedWithReason", { reason: message })
+				: t("bilibili.search.failed"),
+			{
+				...(code === undefined ? {} : { upstreamCode: code }),
+			},
+		);
 	};
 
 	const uid = /^\d+$/.test(text) ? text : spaceUidOf(text);

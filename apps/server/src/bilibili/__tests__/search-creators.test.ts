@@ -132,3 +132,24 @@ describe("searchBiliCreators", () => {
 		expect(warn).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("searchBiliCreators:回给人看的整句话", () => {
+	it("关键词是空白:搜索关键词不能为空", async () => {
+		expect(await searchBiliCreators(asApi(apiOf({})), "  ")).toMatchObject({
+			message: "搜索关键词不能为空",
+		});
+	});
+
+	it("B 站带了话:拼在固定的一句后面", async () => {
+		const out = await searchBiliCreators(
+			asApi(apiOf({ searchByType: { code: -412, message: "请求被拦截" } })),
+			"咩栗",
+		);
+		expect(out).toMatchObject({ message: "B 站没能完成搜索：请求被拦截" });
+	});
+
+	it("B 站没带话:只有固定的一句", async () => {
+		const out = await searchBiliCreators(asApi(apiOf({ searchByType: { code: -412 } })), "咩栗");
+		expect(out).toMatchObject({ message: "B 站没能完成搜索" });
+	});
+});
