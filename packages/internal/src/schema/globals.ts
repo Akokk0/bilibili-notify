@@ -6,6 +6,7 @@ import {
 	HISTORY_RETENTION_DAY_OPTIONS,
 	MIRROR_PREFIX_RE,
 } from "../constants";
+import { LOCALES, VOICES } from "../i18n";
 import { allTemplateFingerprints } from "../template-defaults";
 import { markBackupOnly, markSecret } from "./secret";
 
@@ -380,6 +381,19 @@ export const GlobalConfigSchema = z.object({
 	 * 少了它,存量实例升上来第一件事就是开不了机。
 	 */
 	update: UpdateSettingsSchema.default(() => structuredClone(DEFAULT_UPDATE_SETTINGS)),
+	/**
+	 * 界面语言(ADR-0037 决策 2、7、17)。放顶层同 `commands`:订阅覆盖不了。
+	 *
+	 * **刻意可选、不带 `.default`**:缺 = 按 `textSettingsOf` 那一条规则取默认,默认不落盘 ——
+	 * 补成 `zh-CN` 写进盘,就分不出「新装还没选过」与「选了简中」。读它一律走 `textSettingsOf`,
+	 * 不在读点各写 `?? "zh-CN"`。老配置缺这一格照常开机;「改回跟默认走」是 PATCH 发 `null` 删键。
+	 */
+	locale: z.enum(LOCALES).optional(),
+	/**
+	 * 文案口吻(ADR-0037 决策 3):女仆版或平实版。可选、不带 `.default` 的理由同 `locale`:
+	 * 默认第 4 期才定,现在写进盘,改默认时没动过的人就跟不上了。
+	 */
+	voice: z.enum(VOICES).optional(),
 	/**
 	 * 拓展的开关,键是拓展 id(= 装载目录名 = 挂载点那一段)。
 	 *

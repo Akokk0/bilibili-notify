@@ -77,6 +77,7 @@
 | 入站消息里分享卡片带的链接 | `sharedLinks`（条目 `{ url, kind }`，判别键 `kind`） | `cardLinks`、`miniAppCardLinks`、`linkPreviews`（与 BN 回出去的 `LinkPreview` 同词两义） |
 | 链接预览的门（群里的链接自动出卡片） | `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`；解析器接口仍是 `LinkResolver`；带 `linkParsing` 的名字把这个词换成 `linkPreview`） | `LinkParser`、`linkParsing` |
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
+| 界面语言（设置键与类型，ADR-0037 决策 2） | `locale`（BCP 47 写法：`zh-CN` / `zh-TW` / `en` / `ja`；类型 `Locale`、取值表 `LOCALES`） | `language`、`lang` |
 | 文案口吻（界面与私聊里固定的话读女仆版还是平实版，ADR-0037 决策 3） | `voice`，取值 `maid` / `plain`（10-15 主人定） | `tone`（只指状态的轻重 `info` / `warn` / `error`）、`persona`（只指 AI 人格）、`copyStyle` / `Style`（只指卡片样式） |
 | 直播间 id | `roomId` | `roomid` |
 | 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |

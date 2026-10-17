@@ -102,8 +102,8 @@ describe("translate", () => {
 });
 
 describe("LOCALES", () => {
-	it("第一版是简中、英、日,用 BCP 47 写法", () => {
-		expect([...LOCALES]).toEqual(["zh-CN", "en", "ja"]);
+	it("第一版是简中、繁中、英、日,用 BCP 47 写法", () => {
+		expect([...LOCALES]).toEqual(["zh-CN", "zh-TW", "en", "ja"]);
 	});
 });
 

@@ -10,14 +10,16 @@ import en from "./locales/en.json" with { type: "json" };
 import ja from "./locales/ja.json" with { type: "json" };
 import zhCN from "./locales/zh-CN.json" with { type: "json" };
 import zhCNMaid from "./locales/zh-CN.maid.json" with { type: "json" };
+import zhTW from "./locales/zh-TW.json" with { type: "json" };
 
 /** 键的集合从简体中文那份取:键写错编译时报。 */
 export type ServerTextKey = DictKey<typeof zhCN>;
 
-// 英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;日文的女仆层第 5 期才有。
+// 繁体、英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;日文的女仆层第 5 期才有,繁体的也在第 5 期。
 // 中文的女仆层第 4 期才写 —— 在那之前底里放的就是今天写死的那些话(ADR-0037 决策 16)。
 export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
+	"zh-TW": { plain: zhTW },
 	en: { plain: en },
 	ja: { plain: ja },
 } satisfies Record<Locale, LocaleDicts>;

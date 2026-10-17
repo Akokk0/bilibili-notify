@@ -501,6 +501,8 @@ interface Settings {
     accounts: { order: SourceKey[] }; // 头部显示顺序
     onboarding: { isSkipped?: boolean };
     update: UpdateSettings;           // isAutoDownloadEnabled 等
+    locale?: Locale;                  // 界面语言 zh-CN / zh-TW / en / ja；缺 = 简中（升级上来的；新装见 ADR-0037 决策 17），默认只写在 textSettingsOf 里、不落盘
+    voice?: Voice;                    // 文案口吻 maid / plain；缺 = 跟默认（第 4 期定之前女仆），默认不落盘
     marketplace: MarketplaceSettings;
     logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键（3a-38 已落，类型 LoggingSettings，levels 默认空表）
     history: HistorySettings;         // { retentionDays }：图片与重推原件保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限、不在其内（ADR-0022 决策 9 的 🔗；键名 10-04 定）

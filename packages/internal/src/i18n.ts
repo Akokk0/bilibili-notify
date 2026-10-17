@@ -6,12 +6,33 @@
  * 译文由两端各自打进包再交进来 —— 所以本文件不许引入任何值(`constants-imports.test.ts` 钉着)。
  */
 
-/** 第一版的三种语言(ADR-0037 决策 2),BCP 47 写法;两端的译文表 `satisfies Record<Locale, …>`。 */
-export const LOCALES = ["zh-CN", "en", "ja"] as const;
+/** 第一版的四种语言(ADR-0037 决策 2),BCP 47 写法;两端的译文表 `satisfies Record<Locale, …>`。 */
+export const LOCALES = ["zh-CN", "zh-TW", "en", "ja"] as const;
 export type Locale = (typeof LOCALES)[number];
 
-/** 文案口吻(ADR-0037 决策 3,命名规范词表里叫 `voice`):女仆版或平实版。 */
-export type Voice = "maid" | "plain";
+/** 文案口吻(ADR-0037 决策 3,命名规范词表里叫 `voice`):女仆版或平实版。设置 schema 要一张运行时的取值表。 */
+export const VOICES = ["maid", "plain"] as const;
+export type Voice = (typeof VOICES)[number];
+
+/** 设置里缺语言时的规则默认(ADR-0037 决策 17:升级上来的保持简体中文)。 */
+export const DEFAULT_LOCALE: Locale = "zh-CN";
+
+/** 设置里缺口吻时的规则默认:第 4 期定之前取女仆;只写在这里、不落盘,第 4 期改默认时没动过的人自动跟上。 */
+export const DEFAULT_VOICE: Voice = "maid";
+
+/**
+ * 核心设置里的 `locale` / `voice` → 交给 store 的那一份;缺的按上面两条补。
+ * 服务端绑定与面板同步共用这一处,规则不各抄一份。入参写成结构类型:本文件零依赖,不认 schema。
+ */
+export function textSettingsOf(settings: { locale?: Locale; voice?: Voice }): {
+	locale: Locale;
+	voice: Voice;
+} {
+	return {
+		locale: settings.locale ?? DEFAULT_LOCALE,
+		voice: settings.voice ?? DEFAULT_VOICE,
+	};
+}
 
 /** 一层译文:键 → 句子。带数量的句子拆成 `键#类别`(`#one` / `#other` …)。 */
 export type Dict = Readonly<Record<string, string>>;

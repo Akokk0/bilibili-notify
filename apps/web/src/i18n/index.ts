@@ -12,13 +12,15 @@ import en from "./locales/en.json";
 import ja from "./locales/ja.json";
 import zhCN from "./locales/zh-CN.json";
 import zhCNMaid from "./locales/zh-CN.maid.json";
+import zhTW from "./locales/zh-TW.json";
 
 /** 键的集合从简体中文那份取。面板的字随第 4 期重画才收,在那之前是 `never`。 */
 export type WebTextKey = DictKey<typeof zhCN>;
 
-// 英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;中文的女仆层第 4 期才写。
+// 繁体、英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底;中文的女仆层第 4 期才写,繁体的第 5 期。
 export const DICTS = {
 	"zh-CN": { plain: zhCN, maid: zhCNMaid },
+	"zh-TW": { plain: zhTW },
 	en: { plain: en },
 	ja: { plain: ja },
 } satisfies Record<Locale, LocaleDicts>;

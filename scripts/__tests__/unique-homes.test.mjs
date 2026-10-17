@@ -42,6 +42,11 @@ export const HOMES = {
 	stemOf: "packages/internal/src/i18n.ts",
 	placeholdersOf: "packages/internal/src/i18n.ts",
 	LOCALES: "packages/internal/src/i18n.ts",
+	// 语言与口吻两项设置的取值表与「缺了怎么补」的规则(3b-10):服务端绑定与面板同步共用,默认只写在这一处。
+	VOICES: "packages/internal/src/i18n.ts",
+	DEFAULT_LOCALE: "packages/internal/src/i18n.ts",
+	DEFAULT_VOICE: "packages/internal/src/i18n.ts",
+	textSettingsOf: "packages/internal/src/i18n.ts",
 	// 面板订阅语言 store 的那一个 hook(3b-09):组件一律经它取字,不各写一份 useSyncExternalStore。
 	useT: "apps/web/src/i18n/index.ts",
 };
