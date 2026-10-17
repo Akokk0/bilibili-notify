@@ -1641,7 +1641,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		if (!inbound) throw new Error("入站出口没取到");
 		const feedDirect = async (text: string) => {
 			inbound(
-				{ address: GROUP_ADDRESS, senderId: "20002", text, cardLinks: [], miniAppCardLinks: [] },
+				{ address: GROUP_ADDRESS, senderId: "20002", text, sharedLinks: [] },
 				{ connectionId: ID.connection, platform: "onebot" },
 			);
 			await quiet();

@@ -33,6 +33,18 @@ import { extractUrls } from "./extract-urls.js";
 import { linkScopeKey } from "./link-scope.js";
 import type { LinkResolverRegistry } from "./registry.js";
 
+/**
+ * 把正文与分享卡里的链接合成一串候选:`"nativeShare"` 的不收,其余每个来源各过一次通用网址正则
+ * (剥末尾标点、只收网址安全字符),再按网址原文在整条消息范围内去重,先到先得,次序正文 → 卡。
+ */
+function linkCandidates(msg: InboundGroupMessage): string[] {
+	const sources = [
+		msg.text,
+		...msg.sharedLinks.filter((link) => link.kind !== "nativeShare").map((link) => link.url),
+	];
+	return [...new Set(sources.flatMap((source) => extractUrls(source)))];
+}
+
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
 
@@ -247,12 +259,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 自己发的消息不解析 —— 机器人自己发的东西里若有链接,那是它自己贴的。
 			if (msg.selfId !== undefined && msg.senderId === msg.selfId) return;
 			// 正文里的与分享卡里的一起找;卡片链接排在正文之后,与消息里的先后一致。
-			// `miniAppCardLinks` 刻意不读:进来的本身就是一张能点开播放的原生分享卡,再回一张
+			// `"nativeShare"` 的链接刻意不读:进来的本身就是一张能点开播放的原生分享卡,再回一张
 			// (图片卡也算)都是重复 —— 主人 2026-09-07 拍板一律不回,而且不留痕(不记冷却),
 			// 随后有人把同一条链接以文字贴出来照常出卡。
 			// 先用通用网址正则挑候选,再问在册的解析器认不认,取前几个被认领的;没人认就在读配置之前返回。
 			const claimed: { url: string; key: string; resolver: LinkResolver }[] = [];
-			for (const url of extractUrls([msg.text, ...msg.cardLinks].join(" "))) {
+			for (const url of linkCandidates(msg)) {
 				const owner = claimedBy(url);
 				if (owner) claimed.push({ url, ...owner });
 				if (claimed.length >= MAX_LINKS_PER_MESSAGE) break;

@@ -2189,8 +2189,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 				senderId: "456",
 				selfId: "10000",
 				text: "hi",
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			},
 			{ connectionId: "a1" },
 		);

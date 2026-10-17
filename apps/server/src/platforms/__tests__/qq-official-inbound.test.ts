@@ -142,8 +142,7 @@ describe("官机适配器 · 入站经 ctx.inbound", () => {
 				address: "G1",
 				senderId: "M1",
 				text: "看看 https://www.bilibili.com/video/BV1xx",
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			},
 			{ connectionId: "a1" },
 		);

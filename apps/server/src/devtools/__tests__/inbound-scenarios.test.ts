@@ -191,8 +191,7 @@ describe("inbound.link", () => {
 			expect.objectContaining({
 				address: "88888",
 				text: expect.stringContaining("bilibili.com"),
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			}),
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);

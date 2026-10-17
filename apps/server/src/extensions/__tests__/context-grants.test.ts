@@ -972,7 +972,7 @@ describe("喂入站(经适配器上下文)", () => {
 		const { h, inbound } = connected();
 		inbound.private({ address: "u", text: "hi" }, { connectionId: "c1" });
 		inbound.group(
-			{ address: "g", senderId: "u", text: "hi", cardLinks: [], miniAppCardLinks: [] },
+			{ address: "g", senderId: "u", text: "hi", sharedLinks: [] },
 			{ connectionId: "c1" },
 		);
 		expect(h.inboundSeen).toEqual([

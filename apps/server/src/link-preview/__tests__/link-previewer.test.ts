@@ -485,8 +485,7 @@ describe("createLinkPreviewer", () => {
 				address: "G_OPENID",
 				senderId: "M_OPENID",
 				text: ` ${LINK}/`,
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			});
 			expect(h.resolve).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(1);
@@ -504,23 +503,21 @@ describe("createLinkPreviewer", () => {
 				address: "G_OPENID",
 				senderId: "M",
 				text: LINK,
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			});
 			expect(h.sent).toHaveLength(2);
 		});
 	});
 
 	describe("进来的本身就是原生分享卡", () => {
-		/** 进来的是一张小程序卡:它的链接在 `miniAppCardLinks` 里,正文与普通卡链接两格都空。 */
+		/** 进来的是一张小程序卡:它的链接在 `sharedLinks` 里记成 `"nativeShare"`,正文是空的。 */
 		const feedNativeCard = (h: ReturnType<typeof makeParser>) =>
 			h.parser.handleMessage({
 				connectionId: ADAPTER,
 				address: String(GROUP),
 				senderId: String(SOMEONE),
 				text: "",
-				cardLinks: [],
-				miniAppCardLinks: [LINK],
+				sharedLinks: [{ url: LINK, kind: "nativeShare" }],
 			});
 
 		it("群里已经有那张卡了 → 一律不回,不管这个群选的是哪种形式;也不问解析器", async () => {
@@ -553,8 +550,7 @@ describe("createLinkPreviewer", () => {
 				address: String(GROUP),
 				senderId: String(SOMEONE),
 				text: "",
-				cardLinks: [LINK],
-				miniAppCardLinks: [],
+				sharedLinks: [{ url: LINK, kind: "card" }],
 			});
 			expect(h.sent).toHaveLength(1);
 		});
@@ -566,8 +562,10 @@ describe("createLinkPreviewer", () => {
 				address: String(GROUP),
 				senderId: String(SOMEONE),
 				text: "",
-				cardLinks: [link("c1")],
-				miniAppCardLinks: [link("n1")],
+				sharedLinks: [
+					{ url: link("c1"), kind: "card" },
+					{ url: link("n1"), kind: "nativeShare" },
+				],
 			});
 			expect(h.resolve.mock.calls.map(([url]) => url)).toEqual([link("c1")]);
 			expect(h.sent).toHaveLength(1);
@@ -582,8 +580,7 @@ describe("createLinkPreviewer", () => {
 				address: String(GROUP),
 				senderId: String(SOMEONE),
 				text: LINK,
-				cardLinks: [LINK],
-				miniAppCardLinks: [],
+				sharedLinks: [{ url: LINK, kind: "card" }],
 			});
 			expect(h.resolve).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(1);
@@ -674,8 +671,7 @@ describe("createLinkPreviewer", () => {
 				address: "G_OPENID",
 				senderId: "M_OPENID",
 				text: LINK,
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			});
 			expect(h.sent).toHaveLength(1);
 			await h.parser.handleMessage({
@@ -683,8 +679,7 @@ describe("createLinkPreviewer", () => {
 				address: "G_OTHER",
 				senderId: "M_OPENID",
 				text: LINK,
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			});
 			expect(h.sent).toHaveLength(1);
 		});
@@ -793,8 +788,7 @@ describe("createLinkPreviewer", () => {
 				address: "G_OPENID",
 				senderId: "M_OPENID",
 				text: LINK,
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			});
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 		});

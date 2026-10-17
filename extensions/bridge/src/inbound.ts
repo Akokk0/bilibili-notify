@@ -48,12 +48,18 @@ export function routeBridgeInbound(
 			senderId: frame.message.userId,
 			text: frame.message.text,
 			selfId: bot?.selfId,
-			// 协议 1.4 起桥把分享卡里的链接单独放两格(§5.3),这里原样转交 —— 尤其是
-			// `miniAppCardLinks` 那一格必须独立活到链接解析那儿:它刻意不读那一格(群里
-			// 已经有一张能点开播放的卡了),混进 `cardLinks` 就等于 BN 对着一张卡再回一张。
+			// 线上帧不改名:协议 1.4 起桥把分享卡里的链接单独放两格(§5.3),在这里映射成 BN 内部
+			// 的一格 —— 普通卡记 `"card"`、小程序卡记 `"nativeShare"`,先普通后小程序。两种来源不能
+			// 混:`"nativeShare"` 的链接链接解析刻意不读(群里已经有一张能点开播放的卡了),
+			// 记成 `"card"` 就等于 BN 对着一张卡再回一张。
 			// 老桥(1.3)不报这两格,把链接拼在 `text` 里照旧收 —— 缺省与「这条没有卡」同义。
-			cardLinks: frame.message.cardLinks ?? [],
-			miniAppCardLinks: frame.message.miniAppCardLinks ?? [],
+			sharedLinks: [
+				...(frame.message.cardLinks ?? []).map((url) => ({ url, kind: "card" as const })),
+				...(frame.message.miniAppCardLinks ?? []).map((url) => ({
+					url,
+					kind: "nativeShare" as const,
+				})),
+			],
 		},
 		meta,
 	);

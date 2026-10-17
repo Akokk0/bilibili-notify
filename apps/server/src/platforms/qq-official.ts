@@ -337,8 +337,7 @@ export function extractQQGroupMessage(
 		address: groupOpenid,
 		senderId: typeof memberOpenid === "string" ? memberOpenid : "",
 		text: content,
-		cardLinks: [],
-		miniAppCardLinks: [],
+		sharedLinks: [],
 	};
 }
 

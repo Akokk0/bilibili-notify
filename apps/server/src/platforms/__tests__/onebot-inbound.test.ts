@@ -36,7 +36,7 @@ const MINIAPP_CARD = JSON.stringify({
 });
 
 describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () => {
-	it("B 站小程序分享卡(json 段,正文为空)→ 卡里的 b23 链接单放 miniAppCardLinks,正文留空", () => {
+	it("B 站小程序分享卡(json 段,正文为空)→ 卡里的 b23 链接记成 nativeShare,正文留空", () => {
 		const got = extractGroupMessage({
 			...BASE,
 			message: [{ type: "json", data: { data: MINIAPP_CARD } }],
@@ -47,8 +47,12 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 			senderId: "20002",
 			selfId: undefined,
 			text: "",
-			cardLinks: [],
-			miniAppCardLinks: ["https://b23.tv/AbCdEf?share_medium=android&share_source=qq"],
+			sharedLinks: [
+				{
+					url: "https://b23.tv/AbCdEf?share_medium=android&share_source=qq",
+					kind: "nativeShare",
+				},
+			],
 		});
 	});
 
@@ -59,11 +63,10 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 			...BASE,
 			message: [{ type: "json", data: { data: card } }],
 		});
-		expect(got?.cardLinks).toEqual(["https://b23.tv/XyZ?p=1"]);
-		expect(got?.miniAppCardLinks).toEqual([]);
+		expect(got?.sharedLinks).toEqual([{ url: "https://b23.tv/XyZ?p=1", kind: "card" }]);
 	});
 
-	it("正文 + 卡片同在一条里:正文还是正文,卡里的链接另放一格", () => {
+	it("正文 + 卡片同在一条里:正文还是正文,卡里的链接放进 sharedLinks", () => {
 		const got = extractGroupMessage({
 			...BASE,
 			message: [
@@ -72,9 +75,11 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 			],
 		});
 		expect(got?.text).toBe("看这个");
-		expect(got?.cardLinks).toEqual([]);
-		expect(got?.miniAppCardLinks).toEqual([
-			"https://b23.tv/AbCdEf?share_medium=android&share_source=qq",
+		expect(got?.sharedLinks).toEqual([
+			{
+				url: "https://b23.tv/AbCdEf?share_medium=android&share_source=qq",
+				kind: "nativeShare",
+			},
 		]);
 	});
 
@@ -90,8 +95,9 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 				},
 			],
 		});
-		expect(got?.cardLinks).toEqual(["https://www.bilibili.com/video/BV1zMtU6uEEb?p=1&t=2"]);
-		expect(got?.miniAppCardLinks).toEqual([]);
+		expect(got?.sharedLinks).toEqual([
+			{ url: "https://www.bilibili.com/video/BV1zMtU6uEEb?p=1&t=2", kind: "card" },
+		]);
 	});
 
 	it("卡里没有链接、也没正文 → 当没这条消息", () => {
@@ -131,8 +137,7 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 			message: "&#91;看&#93; https://www.bilibili.com/video/BV1zMtU6uEEb?a=1&amp;b=2",
 		});
 		expect(got?.text).toBe("[看] https://www.bilibili.com/video/BV1zMtU6uEEb?a=1&b=2");
-		expect(got?.cardLinks).toEqual([]);
-		expect(got?.miniAppCardLinks).toEqual([]);
+		expect(got?.sharedLinks).toEqual([]);
 	});
 
 	it("私聊里的分享卡不算 —— 指令入口只认文字", () => {
@@ -223,8 +228,7 @@ describe("routeInboundFrame — 一帧至多进一路,没接的那路连解析�
 				senderId: "20002",
 				selfId: "1",
 				text: "hi",
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			},
 			meta,
 		);

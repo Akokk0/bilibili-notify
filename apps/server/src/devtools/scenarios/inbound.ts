@@ -134,7 +134,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const text =
 				typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_LINK_TEXT;
 			handler(
-				{ address, senderId: FAKE_SENDER, text, cardLinks: [], miniAppCardLinks: [] },
+				{ address, senderId: FAKE_SENDER, text, sharedLinks: [] },
 				{ connectionId: connection.id, platform: connection.platform },
 			);
 			return {

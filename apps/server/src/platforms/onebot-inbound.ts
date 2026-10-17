@@ -64,7 +64,7 @@ function toId(v: unknown): string | undefined {
  * 与私聊那条只差「认哪种 message_type、多带一个 group_id」;文本抽取共用一份 ——
  * 段数组优先、raw_message 回落的那套容错两边都要。
  *
- * 多做一件事:**分享卡里的链接也交出去**(`cardLinks`,与正文分开)。用 B 站 App 的
+ * 多做一件事:**分享卡里的链接也交出去**(`sharedLinks`,与正文分开)。用 B 站 App 的
  * 「分享到 QQ」把视频发进群,交过来的是一张卡(json / xml 段),正文一个字都没有,链接
  * 藏在卡的字段里 —— 只取 text 段的话,这条最常见的分享方式一个字都看不见。私聊那条
  * 不做这个:指令入口只认文字。正文与卡片链接都空才当没这条消息。
@@ -76,9 +76,9 @@ export function extractGroupMessage(frame: Record<string, unknown>): InboundGrou
 	const senderId = toId(frame.user_id);
 	if (!address || !senderId) return null;
 	const text = extractText(frame).trim();
-	const { cardLinks, miniAppCardLinks } = extractCardLinks(frame);
-	if (!text && cardLinks.length === 0 && miniAppCardLinks.length === 0) return null;
-	return { address, senderId, selfId: toId(frame.self_id), text, cardLinks, miniAppCardLinks };
+	const sharedLinks = extractSharedLinks(frame);
+	if (!text && sharedLinks.length === 0) return null;
+	return { address, senderId, selfId: toId(frame.self_id), text, sharedLinks };
 }
 
 /**
@@ -126,17 +126,13 @@ const MINIAPP_CARD_APP = "com.tencent.miniapp_01";
  * 这种转义写法,对着原文找是找不到的;解析不动就退回原文找。xml 只需把 `&amp;` 还原。
  * 找出来的是「链接候选」,认不认由在册的链接解析器(`matches`)说了算。
  *
- * 小程序卡里的链接单独一格(`miniAppCardLinks`):群里已经有一张能点开播放的卡,链接解析
- * 不再回卡(见 `InboundGroupMessage`)。只看 `app` 字段:能过 {@link CARD_HOST_HINT} 又是
- * 小程序卡的,实际就是 B 站那个小程序。
+ * 交出去的是一格 `sharedLinks`,按段的先后;小程序卡里的记 `"nativeShare"`:群里已经有一张
+ * 能点开播放的卡,链接解析不再回卡(见 `InboundGroupMessage`)。别的卡记 `"card"`。只看 `app`
+ * 字段:能过 {@link CARD_HOST_HINT} 又是小程序卡的,实际就是 B 站那个小程序。
  */
-function extractCardLinks(frame: Record<string, unknown>): {
-	cardLinks: string[];
-	miniAppCardLinks: string[];
-} {
-	const cardLinks: string[] = [];
-	const miniAppCardLinks: string[] = [];
-	if (!Array.isArray(frame.message)) return { cardLinks, miniAppCardLinks };
+function extractSharedLinks(frame: Record<string, unknown>): InboundGroupMessage["sharedLinks"] {
+	const sharedLinks: InboundGroupMessage["sharedLinks"] = [];
+	if (!Array.isArray(frame.message)) return sharedLinks;
 	for (const seg of frame.message) {
 		if (typeof seg !== "object" || seg === null) continue;
 		const { type, data } = seg as { type?: unknown; data?: { data?: unknown } };
@@ -145,12 +141,12 @@ function extractCardLinks(frame: Record<string, unknown>): {
 		if (typeof raw !== "string" || raw.length > MAX_CARD_CHARS) continue;
 		if (!CARD_HOST_HINT.test(raw)) continue;
 		const card = cardStrings(type, raw);
-		const into = card.miniApp ? miniAppCardLinks : cardLinks;
+		const kind = card.miniApp ? "nativeShare" : "card";
 		for (const s of card.strings) {
-			for (const m of s.matchAll(URL_RE)) into.push(m[0]);
+			for (const m of s.matchAll(URL_RE)) sharedLinks.push({ url: m[0], kind });
 		}
 	}
-	return { cardLinks, miniAppCardLinks };
+	return sharedLinks;
 }
 
 function cardStrings(type: "json" | "xml", raw: string): { strings: string[]; miniApp: boolean } {

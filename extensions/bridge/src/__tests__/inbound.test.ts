@@ -78,7 +78,7 @@ describe("routeBridgeInbound", () => {
 		expect(s.group).not.toHaveBeenCalled();
 	});
 
-	it("群消息走链接那一路;桥没报卡链接时两格是空数组", () => {
+	it("群消息走链接那一路;桥没报卡链接时 sharedLinks 是空数组", () => {
 		const s = sinks();
 		routeBridgeInbound(groupFrame(), source, s);
 		expect(s.group).toHaveBeenCalledWith(
@@ -87,8 +87,7 @@ describe("routeBridgeInbound", () => {
 				senderId: "u1",
 				text: "看看 https://www.bilibili.com/video/BV1xx",
 				selfId: "77770000",
-				cardLinks: [],
-				miniAppCardLinks: [],
+				sharedLinks: [],
 			},
 			{ connectionId: CONNECTION_ID },
 		);
@@ -96,11 +95,11 @@ describe("routeBridgeInbound", () => {
 	});
 
 	/**
-	 * 🔴 **两格分开原样交出去**(协议 1.4)。合成一格的话小程序卡就跟普通分享卡一样了 ——
-	 * 链接解析刻意不读 `miniAppCardLinks`(群里已经有一张能点开播放的卡),混进 `cardLinks`
+	 * 🔴 **线上帧不改名,在这里映射**(协议 1.4 的两格)。小程序卡必须记 `"nativeShare"` ——
+	 * 链接解析刻意不读这一种(群里已经有一张能点开播放的卡),记成 `"card"`
 	 * 的症状是主人转一张 B 站小程序卡、BN 紧跟着再回一张。
 	 */
-	it("桥报了卡链接 → 两格原样交给群那一路,小程序卡的不混进 cardLinks", () => {
+	it("桥报了卡链接 → 普通卡记 card、小程序卡记 nativeShare,先普通后小程序", () => {
 		const s = sinks();
 		routeBridgeInbound(
 			groupFrame({
@@ -115,13 +114,15 @@ describe("routeBridgeInbound", () => {
 		);
 		expect(s.group.mock.calls[0]?.[0]).toMatchObject({
 			text: "",
-			cardLinks: ["https://b23.tv/aaa"],
-			miniAppCardLinks: ["https://b23.tv/bbb"],
+			sharedLinks: [
+				{ url: "https://b23.tv/aaa", kind: "card" },
+				{ url: "https://b23.tv/bbb", kind: "nativeShare" },
+			],
 		});
 	});
 
 	/** 一格报了、另一格没报也是常事(一条只有普通分享卡的消息)。 */
-	it("只报一格 → 另一格是空数组,不是 undefined", () => {
+	it("只报一格 → 另一格不出条目", () => {
 		const s = sinks();
 		routeBridgeInbound(
 			groupFrame({ message: { text: "", miniAppCardLinks: ["https://b23.tv/bbb"] } }),
@@ -129,8 +130,7 @@ describe("routeBridgeInbound", () => {
 			s,
 		);
 		expect(s.group.mock.calls[0]?.[0]).toMatchObject({
-			cardLinks: [],
-			miniAppCardLinks: ["https://b23.tv/bbb"],
+			sharedLinks: [{ url: "https://b23.tv/bbb", kind: "nativeShare" }],
 		});
 	});
 

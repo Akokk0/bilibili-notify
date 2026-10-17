@@ -241,8 +241,7 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 			address: "G1",
 			senderId: "M1",
 			text: "看这个 https://www.bilibili.com/video/BV1zMtU6uEEb/",
-			cardLinks: [],
-			miniAppCardLinks: [],
+			sharedLinks: [],
 		} satisfies InboundGroupMessage);
 	});
 
@@ -263,8 +262,7 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 			address: "G1",
 			senderId: "M1",
 			text: " https://b23.tv/abc",
-			cardLinks: [],
-			miniAppCardLinks: [],
+			sharedLinks: [],
 		});
 		gw.dispatch("C2C_MESSAGE_CREATE", {
 			author: { user_openid: "U1" },
@@ -321,8 +319,7 @@ describe("createQQGatewayConn — 群消息正文(链接解析的入口)", () =>
 			address: "G1",
 			senderId: "M",
 			text: "b",
-			cardLinks: [],
-			miniAppCardLinks: [],
+			sharedLinks: [],
 		});
 	});
 });

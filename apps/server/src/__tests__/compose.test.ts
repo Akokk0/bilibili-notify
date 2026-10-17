@@ -690,8 +690,7 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 			address: "g1",
 			senderId: "u1",
 			text: "hi",
-			cardLinks: [],
-			miniAppCardLinks: [],
+			sharedLinks: [],
 		};
 		ctx.inbound.group(msg, { connectionId: "ob-1" });
 		expect(group).toHaveBeenCalledWith(msg, { connectionId: "ob-1", platform: "onebot" });

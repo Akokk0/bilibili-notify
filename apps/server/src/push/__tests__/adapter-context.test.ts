@@ -304,8 +304,7 @@ describe("createPlatformAdapterContext · inbound", () => {
 		address: "g",
 		senderId: "u",
 		text: "hi",
-		cardLinks: [],
-		miniAppCardLinks: [],
+		sharedLinks: [],
 	};
 	const list = [
 		connectionOf("b1", "bridge", "telegram"),
