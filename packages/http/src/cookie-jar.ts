@@ -1,17 +1,18 @@
+import { parse as parseHost } from "tldts";
+
 /**
  * 轻量 cookie 罐 —— 取代 tough-cookie。
  *
  * 实现 RFC 6265 的存取与匹配,够一个集成连它自己的几个站用:
  * - Set-Cookie 摄取:Domain 缺省 → host-only;Max-Age 优先于 Expires;立即过期 = 删除指令;
- *   Domain 必须能匹配请求主机,不匹配整条丢弃(§5.3 第 6 步)。
+ *   Domain 是公共后缀(`com`、`com.cn`、`co.uk`,私有段如 `github.io` 也算)时,等于请求主机就当 host-only 收,
+ *   否则整条丢(§5.3 第 5 步);Domain 必须能匹配请求主机,不匹配整条丢弃(第 6 步)。
  * - 匹配:域 cookie 按段对齐的后缀匹配,host-only 精确匹配;path 前缀匹配;Secure 只发 https;
  *   过期的不发也不存盘。
  * - IP 主机只认原样(§5.1.3):不做后缀匹配,10.0.0.1 与 110.0.0.1 之间、IP 与它的任何「后缀」
  *   之间都不会串 cookie。
  *
  * 不做的(已知限制):
- * - **公共后缀**:`Set-Cookie: Domain=com` 这类不拒。漏判的后果是 cookie 在同一个罐子见过的几个
- *   站之间串 —— 每个集成一只罐子,串不到别的集成。等罐子开给拓展时再评估要不要引公共后缀表。
  * - SameSite 只存不执行(没有「第三方上下文」的概念);cookie 数量与体积不设上限。
  *
  * 存盘形状({@link Cookie})与 tough-cookie `serializeSync().cookies` 双向兼容:expires 为 ISO 串
@@ -53,6 +54,17 @@ interface StoredCookie {
 
 function stripDot(domain: string): string {
 	return domain.startsWith(".") ? domain.slice(1) : domain;
+}
+
+/**
+ * `domain` 是不是公共后缀(`tldts` 的后缀表,**私有段也算**:`github.io` 这类与浏览器一致)。
+ * 表里没有的单段名(`localhost`、内网主机名)按 `tldts` 的默认规则也算后缀 —— 它们只能当 host-only 收,
+ * 与浏览器一致。IP 字面量不是后缀。
+ */
+function isPublicSuffix(domain: string): boolean {
+	if (isIpHost(domain)) return false;
+	const parsed = parseHost(domain, { allowPrivateDomains: true });
+	return parsed.domain === null && parsed.publicSuffix === domain;
 }
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;
@@ -232,6 +244,12 @@ export class CookieJar {
 		}
 
 		const host = url.hostname.toLowerCase();
+		// RFC 6265 §5.3 第 5 步:Domain 是公共后缀时,等于请求主机就当 host-only 收,否则整条丢
+		// (不然 `Domain=com` 能给整个 .com 种 cookie)。
+		if (domain && isPublicSuffix(domain)) {
+			if (domain !== host) return;
+			domain = undefined;
+		}
 		// 域 cookie 只接受与请求 host 匹配的 Domain(防跨域投毒)。
 		if (domain && !domainMatch(host, domain)) return;
 

@@ -27,6 +27,7 @@
 	},
 	"dependencies": {
 		"@bilibili-notify/internal": "workspace:^",
+		"tldts": "catalog:",
 		"undici": "catalog:",
 		"ws": "catalog:"
 	},

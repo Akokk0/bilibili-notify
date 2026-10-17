@@ -6,9 +6,10 @@
  * domain(无前导点)/path/secure/httpOnly/sameSite)。本罐的 load/serialize
  * 必须与该形状双向兼容,否则升级即全员掉登录。
  *
- * 行为面(RFC 6265 的子集,公共后缀不做):
+ * 行为面(RFC 6265 的子集):
  * - Set-Cookie 摄取:Domain 缺省 → host-only;Max-Age 优先于 Expires;
- *   Max-Age<=0 / 过去的 Expires → 删除同名 cookie;Domain 必须匹配请求主机,否则丢弃
+ *   Max-Age<=0 / 过去的 Expires → 删除同名 cookie;Domain 是公共后缀时等于请求主机当 host-only、
+ *   否则丢弃;Domain 必须匹配请求主机,否则丢弃
  * - 匹配:domain 后缀匹配(域 cookie)/精确匹配(host-only),path 前缀匹配,
  *   Secure cookie 仅 https 外发,过期不外发;IP 主机只认原样,不做后缀匹配
  * - 同 (domain,path,key) 覆盖旧值
@@ -361,6 +362,59 @@ describe("CookieJar — Set-Cookie 的 Domain 必须匹配请求主机,不匹配
 		const jar = new CookieJar();
 		jar.setFromSetCookie("a=1; Path=/; Domain=bilibili.com", WWW);
 		expect(jar.cookieHeaderFor(API)).toBe("a=1");
+	});
+});
+
+describe("CookieJar — Domain 是公共后缀(RFC 6265 §5.3 第 5 步)", () => {
+	it.each([
+		["com", "https://www.bilibili.com/"],
+		["com.cn", "https://www.example.com.cn/"],
+		["co.uk", "https://shop.example.co.uk/"],
+	])("Domain=%s 且请求主机在其下:整条丢,同后缀下的别的站也收不到", (suffix, requestUrl) => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie(`planted=1; Path=/; Domain=${suffix}`, requestUrl);
+
+		expect(jar.serialize()).toEqual([]);
+		expect(jar.cookieHeaderFor(new URL(`https://victim.${suffix}/`))).toBe("");
+	});
+
+	it("带前导点、大小写不同的 Domain 一样拒", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("planted=1; Path=/; Domain=.CO.UK", "https://shop.example.co.uk/");
+		expect(jar.serialize()).toEqual([]);
+	});
+
+	it("Domain 等于请求主机、又是公共后缀:当 host-only 收,不外发给子域", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("own=1; Path=/; Domain=co.uk", "https://co.uk/");
+
+		expect(jar.serialize()).toEqual([expect.objectContaining({ key: "own", domain: "co.uk" })]);
+		expect(jar.cookieHeaderFor(new URL("https://co.uk/"))).toBe("own=1");
+		expect(jar.cookieHeaderFor(new URL("https://shop.example.co.uk/"))).toBe("");
+	});
+
+	it("私有段也算公共后缀:github.io 下的用户站种不进 Domain=github.io", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("planted=1; Path=/; Domain=github.io", "https://alice.github.io/");
+		expect(jar.serialize()).toEqual([]);
+	});
+
+	it("Domain=bilibili.com 照收(B 站的登录态不受影响),子域能拿到", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=s; Path=/; Domain=.bilibili.com", PASSPORT);
+		expect(jar.cookieHeaderFor(API)).toBe("SESSDATA=s");
+	});
+
+	it("Domain 是自家的私有段注册域(alice.github.io)照收", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("a=1; Path=/; Domain=alice.github.io", "https://www.alice.github.io/");
+		expect(jar.cookieHeaderFor(new URL("https://www.alice.github.io/"))).toBe("a=1");
+	});
+
+	it("IP 主机不查公共后缀:Domain 等于该 IP 照旧当 host-only", () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("a=1; Path=/; Domain=127.0.0.1", "http://127.0.0.1:8080/");
+		expect(jar.cookieHeaderFor(new URL("http://127.0.0.1:8080/"))).toBe("a=1");
 	});
 });
 

@@ -90,6 +90,7 @@ catalog:
   react: ^19.2.8
   react-dom: ^19.2.8
   tailwindcss: ^4.3.3
+  tldts: 7.4.11
   tsx: ^4.23.12
   undici: ^8.10.0
   ws: ^8.21.3

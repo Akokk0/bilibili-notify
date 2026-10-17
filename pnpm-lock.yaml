@@ -224,6 +224,9 @@ catalogs:
     tailwindcss:
       specifier: ^4.3.3
       version: 4.3.3
+    tldts:
+      specifier: 7.4.11
+      version: 7.4.11
     tsx:
       specifier: ^4.23.12
       version: 4.23.12
@@ -567,6 +570,9 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
+      tldts:
+        specifier: 'catalog:'
+        version: 7.4.11
       undici:
         specifier: 'catalog:'
         version: 8.10.0
