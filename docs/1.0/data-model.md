@@ -266,10 +266,10 @@ interface LinkPreview {                 // LinkResolver.resolve 成功时交的
 
 - `LinkResolver`（链接解析器）补 `label`，`resolve` 返回结果形状。
 - 门叫 `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`，文件 `link-preview/link-previewer.ts`）；解析器仍是 `LinkResolver`。
-- **设置 `core.linkPreview` 五格**：总开关（默认关）、默认回不回、回复形式 `replyForm`、按目标的例外 `byTarget`、`cooldownSec`。总开关与「默认」两格的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范定。链接预览回卡不走推送链，全局静音与免扰管不到，所以留一个一键全停的总开关。
+- **设置 `core.linkPreview` 五格** `{ enabled, isOnByDefault, replyForm, byTarget, cooldownSec }`：总开关 `enabled`（默认关，在逐目标的答案之前看）、默认回不回 `isOnByDefault`、回复形式 `replyForm`、按目标的例外 `byTarget`（键是目标 id，条目里 `isOn` / `replyForm`，只存显式写了的）、`cooldownSec`。全仓的 `enabled` 只表示总开关，所以「默认」不叫 `enabled`；AI 写正文的默认同样叫 `isOnByDefault`。链接预览回卡不走推送链，全局静音与免扰管不到，所以留一个一键全停的总开关。
 - 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发作者名 + 作品文字（经作品取段的那个函数，限长），不带链接。
 - 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。
-- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-previewer.ts`）用 `link-preview/extract-urls.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。入站来源标记 `sharedLinks` 取代 `miniAppCardLinks`、删 B 站域名预筛，3b-30 已落；本节其余（`replyForm`、设置改叫 `core.linkPreview` 并加回总开关与冷却）还没动；门已改名 `LinkPreviewer`（3b-28 收尾，行为不变）。
+- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-previewer.ts`）用 `link-preview/extract-urls.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。入站来源标记 `sharedLinks` 取代 `miniAppCardLinks`、删 B 站域名预筛，3b-30 已落；3b-29 已落：设置键 `linkParsing` 改成 `linkPreview` 五格（回复形式取值 `miniapp` 叫 `nativeShare`，`text` 一档随 3b-31；现在盘上的键在核心设置顶层，`core.` 前缀随第 4 期）；本节其余还没动；门已改名 `LinkPreviewer`（3b-28 收尾，行为不变）。
 
 ## 直播
 
@@ -493,11 +493,11 @@ interface Settings {
     master: { targetId?: string };    // 主人目标必须是私聊目标，见下「主人通知」
     defaults: GlobalDefaults;         // 按订阅覆盖的回退层，订阅上的覆盖与它同形
     templatesSeen: TemplatesSeen;     // 出厂文案账本（原 defaults.templateDefaultsSeen，3a-38 已上提）
-    ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处；writing: AiWritingSettings（AI 写正文按目标选，`{ post, liveSummary }` 各一份 `{ enabled, byTarget }`，byTarget 的键是目标 id，ADR-0032）
+    ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处；writing: AiWritingSettings（AI 写正文按目标选，`{ post, liveSummary }` 各一份 `{ isOnByDefault, byTarget }`，byTarget 的键是目标 id，ADR-0032）
     rankingReport: RankingReportSettings;   // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
     muteEndsAt?: string;              // 原 mutedUntil；没在静音就缺键
     commands: CommandSettings;
-    linkPreview: LinkPreviewSettings; // { enabled, replyForm: "image" | "nativeShare" | "text", byTarget }，byTarget 的键是目标 id；没有默认行那一层
+    linkPreview: LinkPreviewSettings; // { enabled, isOnByDefault, replyForm: "image" | "nativeShare" | "text", byTarget, cooldownSec }，byTarget 的键是目标 id、条目 { isOn?, replyForm? }
     accounts: { order: SourceKey[] }; // 头部显示顺序
     onboarding: { isSkipped?: boolean };
     update: UpdateSettings;           // isAutoDownloadEnabled 等
@@ -768,7 +768,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |
-| `linkParsing.enabled` / `.defaults.parse` / `.defaults.form` / `.groups`（条目里 `parse` / `form`）、`cooldownSeconds` | `linkPreview` 五格：总开关（旧 `enabled`，默认关）、默认（旧 `defaults.parse`）、`replyForm`（旧 `defaults.form`）、`byTarget`（旧 `groups`，条目里 `parse` → 开关、`form` → 回复形式）、`cooldownSec`。总开关与「默认」的名字避开 AI 写正文那边 `enabled` 的撞义，施工时定。一一对应、行为不变、名单不丢 |
+| `linkParsing.enabled` / `.defaults.parse` / `.defaults.form` / `.groups`（条目里 `parse` / `form`）、`cooldownSeconds` | `linkPreview` 五格：总开关（旧 `enabled`，默认关）、默认（旧 `defaults.parse`）、`replyForm`（旧 `defaults.form`）、`byTarget`（旧 `groups`，条目里 `parse` → 开关、`form` → 回复形式）、`cooldownSec`。名字落成 `enabled`、`isOnByDefault`、`replyForm`、`byTarget`（条目 `isOn` / `replyForm`）、`cooldownSec`；AI 写正文的默认同改 `isOnByDefault`。一一对应、行为不变、名单不丢 |
 | 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、载荷种类 `"miniapp-card"`、能力格 `miniAppCard`、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；载荷种类 `"native-share"`，类型 `NativeShare…`，能力格 `nativeShare`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧里的载荷种类（`miniapp-card`）与能力名（`miniAppCard`）alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen`。已落（3a-38）的只有位置：`defaults.ai` 整段成了顶层 `ai`、`defaults.templateDefaultsSeen` 成了顶层 `templatesSeen`，键名一个没改；`defaults.ai.presetId` 这一格没造（`activePreset` 随整段留在顶层 `ai` 里），随 AI 子键改名那一片 |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |

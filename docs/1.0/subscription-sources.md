@@ -420,7 +420,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 群里贴链接，回一张预览。
 
 - 统一叫「链接预览」（原「链接解析」「链接卡片」「小程序卡」）：目录 `link-preview/`；设置 `linkPreview`，由 `linkParsing` 迁移（原定的 `linkCards` 作废）；解析器仍叫 `LinkResolver`（链接解析器），门叫 `LinkPreviewer`（`createLinkPreviewer`、`LinkPreviewerOptions`，文件 `link-preview/link-previewer.ts`）。
-- **设置五格**：总开关（默认关）、默认回不回、回复形式、按目标的例外 `byTarget`、`cooldownSec`。链接预览回卡不走推送链、全局静音与免扰管不到，所以留一个一键全停的总开关（当初摊平时顺手带掉的）。迁移一一对应、行为不变、名单不丢：总开关 ← 旧 `enabled`，默认 ← `defaults.parse`，回复形式 ← `defaults.form`（`miniapp` → `nativeShare`），例外 ← `groups`（条目里 `parse` → 开关、`form` → 回复形式），`cooldownSeconds` → `cooldownSec`。总开关与「默认」的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范定。
+- **设置五格** `{ enabled, isOnByDefault, replyForm, byTarget, cooldownSec }`：总开关 `enabled`（默认关）、默认回不回 `isOnByDefault`、回复形式、按目标的例外 `byTarget`（条目 `isOn` / `replyForm`）、`cooldownSec`。链接预览回卡不走推送链、全局静音与免扰管不到，所以留一个一键全停的总开关（当初摊平时顺手带掉的）。迁移一一对应、行为不变、名单不丢：总开关 ← 旧 `enabled`，默认 ← `defaults.parse`，回复形式 ← `defaults.form`（`miniapp` → `nativeShare`），例外 ← `groups`（条目里 `parse` → `isOn`、`form` → `replyForm`），`cooldownSeconds` → `cooldownSec`。「默认」不叫 `enabled`，避开 AI 写正文那边曾用 `enabled` 表示默认的撞义（AI 写正文的默认也改叫 `isOnByDefault`）。3b-29 已落。
 - **闸门在核心**：开关、按目标的表、冷却、硬上限、失败不出声、一条最多三个、从分享卡取链接。冷却键是「群 + 解析器 + `canonicalId`」。
 - **挑链接**：核心先用通用网址正则挑出候选，再问各解析器的 `matches`。出口不按平台域名预筛：OneBot 入站的 B 站域名预筛删掉，64KB / 8 层的上限保留。
 - **入站链接的来源标记**：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的。
