@@ -370,6 +370,149 @@ describe("createQQGatewayConn — 心跳与重连", () => {
 	});
 });
 
+/**
+ * 网关连不上的上报:从开机或掉线起连续不在线满窗口(缺省 60 秒,测试注入小值)才叫 `onOffline`,
+ * READY / RESUMED 之后叫 `onOnline`。QQ 约每 30 分钟主动要求重连一次,几秒内就回来,不该算故障。
+ */
+describe("createQQGatewayConn — 网关连不上的上报", () => {
+	const WINDOW = 120;
+
+	it("开机后一直连不上:满窗口才报一次,带最近一次的原因;之前不报", async () => {
+		const onOffline = vi.fn();
+		const conn = createQQGatewayConn(
+			connOpts({ url: "" } as FakeGateway, {
+				resolveGatewayUrl: async () => {
+					throw new Error("getGateway 响应无 url");
+				},
+				reconnectBaseMs: 20,
+				offlineReportMs: WINDOW,
+				onOffline,
+			}),
+		);
+		cleanups.push(() => conn.close());
+		await sleep(WINDOW / 2);
+		expect(onOffline).not.toHaveBeenCalled();
+		await waitFor(() => onOffline.mock.calls.length > 0);
+		expect(onOffline).toHaveBeenCalledTimes(1);
+		expect(onOffline.mock.calls[0]?.[0]).toMatch(/getGateway 响应无 url/);
+		// 此后继续连不上也不重复报。
+		await sleep(WINDOW);
+		expect(onOffline).toHaveBeenCalledTimes(1);
+	});
+
+	it("窗口内连上(READY)就不报,也不叫 onOnline", async () => {
+		const gw = await startFakeGateway();
+		const onOffline = vi.fn();
+		const onOnline = vi.fn();
+		const conn = createQQGatewayConn(
+			connOpts(gw, { offlineReportMs: WINDOW, onOffline, onOnline }),
+		);
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => conn.isOnline());
+		await sleep(WINDOW * 2);
+		expect(onOffline).not.toHaveBeenCalled();
+		expect(onOnline).not.toHaveBeenCalled();
+	});
+
+	it("在线后掉线、窗口内重连回来:不报(服务端定期要求重连就是这样)", async () => {
+		const gw = await startFakeGateway();
+		const onOffline = vi.fn();
+		const conn = createQQGatewayConn(connOpts(gw, { offlineReportMs: WINDOW, onOffline }));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => conn.isOnline());
+		gw.conns.at(-1)?.close();
+		await waitFor(() => gw.received.some((f) => f.op === QQ_OPCODE.RESUME), 5000);
+		gw.dispatch("RESUMED", {});
+		await waitFor(() => conn.isOnline());
+		await sleep(WINDOW * 2);
+		expect(onOffline).not.toHaveBeenCalled();
+	});
+
+	it("报过之后连上(READY):叫一次 onOnline", async () => {
+		const gw = await startFakeGateway();
+		const onOffline = vi.fn();
+		const onOnline = vi.fn();
+		let reachable = false;
+		const conn = createQQGatewayConn(
+			connOpts(gw, {
+				resolveGatewayUrl: async () => {
+					if (!reachable) throw new Error("连不上");
+					return gw.url;
+				},
+				reconnectBaseMs: 20,
+				offlineReportMs: WINDOW,
+				onOffline,
+				onOnline,
+			}),
+		);
+		cleanups.push(() => conn.close());
+		await waitFor(() => onOffline.mock.calls.length > 0);
+		expect(onOnline).not.toHaveBeenCalled();
+		reachable = true;
+		await waitFor(() => lastIdentify(gw) !== undefined, 5000);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => onOnline.mock.calls.length > 0);
+		expect(onOnline).toHaveBeenCalledTimes(1);
+	});
+
+	it("连不上期间连接反复建立又被掐断、过了好几个窗口:只报一次;连上清掉后再掉线,满窗口才再报", async () => {
+		const gw = await startFakeGateway();
+		const onOffline = vi.fn();
+		const onOnline = vi.fn();
+		const conn = createQQGatewayConn(
+			connOpts(gw, { reconnectBaseMs: 10, offlineReportMs: WINDOW, onOffline, onOnline }),
+		);
+		cleanups.push(() => conn.close());
+		// 网关接得上 WS、却从不 READY,握手一次次被掐断(每次 close 都是一次「再计时」的机会)。
+		let killing = true;
+		const killer = setInterval(() => {
+			if (killing) for (const c of gw.conns) c.terminate();
+		}, 10);
+		cleanups.push(() => clearInterval(killer));
+
+		await waitFor(() => onOffline.mock.calls.length > 0);
+		await sleep(WINDOW * 3);
+		expect(onOffline).toHaveBeenCalledTimes(1);
+
+		// 放它连上:READY 之后清一次。
+		killing = false;
+		const before = gw.received.length;
+		await waitFor(() => gw.received.length > before, 5000);
+		gw.dispatch("READY", { session_id: "SID" });
+		await waitFor(() => onOnline.mock.calls.length > 0);
+		expect(onOnline).toHaveBeenCalledTimes(1);
+
+		// 再掉线:从这一刻起满一个窗口才再报,窗口前不报。
+		killing = true;
+		await sleep(WINDOW / 3);
+		expect(onOffline).toHaveBeenCalledTimes(1);
+		await waitFor(() => onOffline.mock.calls.length > 1);
+		await sleep(WINDOW * 3);
+		expect(onOffline).toHaveBeenCalledTimes(2);
+	}, 15000);
+
+	it("close() 之后不再报", async () => {
+		const onOffline = vi.fn();
+		const conn = createQQGatewayConn(
+			connOpts({ url: "" } as FakeGateway, {
+				resolveGatewayUrl: async () => {
+					throw new Error("连不上");
+				},
+				reconnectBaseMs: 20,
+				offlineReportMs: WINDOW,
+				onOffline,
+			}),
+		);
+		conn.close();
+		await sleep(WINDOW * 2);
+		expect(onOffline).not.toHaveBeenCalled();
+	});
+});
+
 describe("createQQGatewayConn — RECONNECT/RESUMED 日志开关", () => {
 	// QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认(缺省
 	// shouldLogReconnects)不应刷屏打印。

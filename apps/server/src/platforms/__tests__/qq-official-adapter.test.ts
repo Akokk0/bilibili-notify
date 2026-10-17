@@ -7,7 +7,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
+import { fakeAdapterContext, reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
@@ -93,6 +93,68 @@ function callsTo(suffix: string) {
 function bodyOf(call: unknown[]): Record<string, unknown> {
 	return JSON.parse((call[1] as { body: string }).body);
 }
+
+/**
+ * 网关连不上经 `ctx.reportProblem({ connectionId })` 只进问题表(推送走 REST,不受网关影响,不私聊):
+ * 连续 60 秒不在线才报,连接停用 / 删掉时清。接线的守卫 —— 网关连接那一层的时序在 qq-official-conn.test.ts。
+ */
+describe("createQQOfficialAdapter — 网关连不上的上报", () => {
+	/** 手动拨的定时器:谁登记了多少毫秒的定时看得见,到点由测试叫。 */
+	function manualServiceCtx() {
+		const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
+		const ctx: ServiceContext = {
+			...makeServiceCtx(),
+			setTimeout(fn, ms): Disposable {
+				const timer = { fn, ms, live: true };
+				timers.push(timer);
+				return {
+					dispose: () => {
+						timer.live = false;
+					},
+				};
+			},
+		};
+		return {
+			ctx,
+			fire: (ms: number) => {
+				for (const timer of timers) if (timer.live && timer.ms === ms) timer.fn();
+			},
+		};
+	}
+
+	it("网关一直连不上:满 60 秒报一条 gateway_offline 带原因,只进表;停用连接时清掉且不补「已恢复」", async () => {
+		fetchMock.mockImplementation(async (url: string) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			return res(200, {}); // /gateway 没给 url
+		});
+		const { ctx: serviceCtx, fire } = manualServiceCtx();
+		const ad = createQQOfficialAdapter({ ...adapterOpts(), serviceCtx });
+		const fake = fakeAdapterContext([qqConnection()]);
+		const reportProblem = vi.fn();
+		const resolveProblem = vi.fn();
+		ad.start({ ...fake.ctx, reportProblem, resolveProblem });
+
+		await vi.waitFor(() => expect(callsTo("/gateway").length).toBeGreaterThan(0));
+		expect(reportProblem).not.toHaveBeenCalled();
+		fire(60_000);
+		expect(reportProblem).toHaveBeenCalledTimes(1);
+		expect(reportProblem).toHaveBeenCalledWith({
+			connectionId: "a1",
+			code: "gateway_offline",
+			message: expect.stringContaining("getGateway"),
+		});
+
+		fake.setConnections([qqConnection({ appSecret: "" })]);
+		fake.fireChanged();
+		expect(resolveProblem).toHaveBeenCalledWith({
+			connectionId: "a1",
+			code: "gateway_offline",
+			notify: false,
+		});
+		ad.stop();
+	});
+});
 
 describe("createQQOfficialAdapter — isAvailable", () => {
 	it("enabled + 有 appId/appSecret → true", () => {

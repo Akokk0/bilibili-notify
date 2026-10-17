@@ -23,6 +23,7 @@ import { fail, ok, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/i
 import { type RawData, WebSocket } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
+import { t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
@@ -431,7 +432,19 @@ export interface QQGatewayConnOptions {
 	 * 属正常协议行为;缺省/false 时静默,避免刷屏。取活值(而非创建时定值)—— 每次
 	 * 事件发生才读,配置热更新(见 reconcile 的 logReconnectsBox 同步)无需重建连接。 */
 	shouldLogReconnects?(): boolean;
+	/**
+	 * 从开机或掉线起连续不在线满 {@link offlineReportMs} 才叫一次(带最近一次的错误原话);
+	 * 几秒内就回来的(QQ 约每 30 分钟主动要求重连一次)不算。
+	 */
+	onOffline?(reason: string | null): void;
+	/** 报过 {@link onOffline} 之后又 READY / RESUMED 了,叫一次。没报过不叫。 */
+	onOnline?(): void;
+	/** 连续不在线多久才算「连不上」,默认 60 秒。测试注入小值加速。 */
+	offlineReportMs?: number;
 }
+
+/** 网关连续不在线多久才报,毫秒。 */
+export const QQ_GATEWAY_OFFLINE_REPORT_MS = 60_000;
 
 export interface QQGatewayConn {
 	/** 是否已 READY/RESUMED 在线。 */
@@ -464,6 +477,33 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 	let lastSeq: number | null = null;
 	let acked = true;
 	const state = { lastError: null as string | null };
+
+	// --- 连不上的上报 ---
+	const offlineReportMs = opts.offlineReportMs ?? QQ_GATEWAY_OFFLINE_REPORT_MS;
+	let offlineTimer: Disposable | null = null;
+	let reportedOffline = false;
+
+	/** 从现在起计「连续不在线」;已经在计、已经报过、关了、在线都不用再起。 */
+	function armOfflineTimer(): void {
+		if (offlineTimer || reportedOffline || closed || online) return;
+		offlineTimer = serviceCtx.setTimeout(() => {
+			offlineTimer = null;
+			if (closed || online) return;
+			reportedOffline = true;
+			opts.onOffline?.(state.lastError);
+		}, offlineReportMs);
+	}
+
+	/** 在线了(READY / RESUMED):计时作废;报过的叫一声。 */
+	function markOnline(): void {
+		online = true;
+		offlineTimer?.dispose();
+		offlineTimer = null;
+		if (reportedOffline) {
+			reportedOffline = false;
+			opts.onOnline?.();
+		}
+	}
 
 	function clearHeartbeat(): void {
 		heartbeatTimer?.dispose();
@@ -538,30 +578,30 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 
 	function onDispatch(frame: QQFrame): void {
 		if (typeof frame.s === "number") lastSeq = frame.s;
-		const t = frame.t;
+		const eventName = frame.t;
 		const d = (frame.d ?? {}) as Record<string, unknown>;
-		if (t === "READY") {
+		if (eventName === "READY") {
 			if (typeof d.session_id === "string") sessionId = d.session_id;
-			online = true;
+			markOnline();
 			logger.info(`[qq] adapter=${connectionId} 网关已就绪(READY)`);
 			return;
 		}
-		if (t === "RESUMED") {
-			online = true;
+		if (eventName === "RESUMED") {
+			markOnline();
 			if (opts.shouldLogReconnects?.())
 				logger.info(`[qq] adapter=${connectionId} 网关已续连(RESUMED)`);
 			return;
 		}
-		if (t === "MESSAGE_AUDIT_REJECT") {
+		if (eventName === "MESSAGE_AUDIT_REJECT") {
 			logger.warn(`[qq] adapter=${connectionId} 消息审核未通过(MESSAGE_AUDIT_REJECT)`);
 			return;
 		}
-		if (typeof t === "string") {
-			const discovered = extractQQDiscoveredSession(t, d);
+		if (typeof eventName === "string") {
+			const discovered = extractQQDiscoveredSession(eventName, d);
 			if (discovered) opts.onDiscovered(discovered);
 			// 私聊正文另走一路(只有 C2C 认),群消息再一路。
-			deliver(opts.onInboundPrivate, () => extractQQPrivateMessage(t, d), "私聊");
-			deliver(opts.onInboundGroup, () => extractQQGroupMessage(t, d), "群消息");
+			deliver(opts.onInboundPrivate, () => extractQQPrivateMessage(eventName, d), "私聊");
+			deliver(opts.onInboundGroup, () => extractQQGroupMessage(eventName, d), "群消息");
 		}
 	}
 
@@ -638,6 +678,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		});
 		socket.on("close", (code: number) => {
 			online = false;
+			armOfflineTimer();
 			clearHeartbeat();
 			if (ws === socket) ws = null;
 			// 4000+ 非限流/超时 → 清会话(强制重新 IDENTIFY);否则保留以便 RESUME。
@@ -649,6 +690,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		});
 	}
 
+	armOfflineTimer();
 	void connect();
 
 	return {
@@ -663,6 +705,8 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			clearHeartbeat();
 			reconnectTimer?.dispose();
 			reconnectTimer = null;
+			offlineTimer?.dispose();
+			offlineTimer = null;
 			online = false;
 			try {
 				ws?.close();
@@ -1098,6 +1142,12 @@ export const qqOfficialSettingsSegment: IntegrationSettingsSegment = {
 
 const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === ADAPTER_KEY;
 
+/** 网关长连要用的那几个上下文口:入站交宿主,「连不上」报问题。 */
+type GatewayCtx = Pick<PlatformAdapterContext, "inbound" | "reportProblem" | "resolveProblem">;
+
+/** 网关连续一分钟连不上的问题码(关于这条连接,只进表)。 */
+const GATEWAY_OFFLINE_CODE = "gateway_offline";
+
 /**
  * QQ 官方机器人(q.qq.com)平台 adapter。有状态:每 adapter 一条 WS 网关长连(捞 openid
  * 进 registry)+ 一个 token 管理器,由 reconcile 按配置指纹 start/stop/rebind,dispose 全关。
@@ -1108,6 +1158,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	const { logger, serviceCtx } = opts;
 	const registry = opts.registry ?? createQQSessionRegistry();
 	const live = new Map<string, QQLive>();
+	/** 已经报过「网关连不上」、还没清的连接:关连接时补一次清,免得问题挂到天荒地老。 */
+	const gatewayDown = new Set<string>();
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
@@ -1125,10 +1177,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		});
 	}
 
-	function makeLive(
-		connection: QQOfficialConnection,
-		inbound: PlatformAdapterContext["inbound"],
-	): QQLive {
+	function makeLive(connection: QQOfficialConnection, ctx: GatewayCtx): QQLive {
+		const { inbound } = ctx;
 		const cfg = connection.settings;
 		const tm = makeTokenManager(cfg);
 		const base = qqApiBase(cfg.sandbox);
@@ -1151,6 +1201,25 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			serviceCtx,
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,
+			// 网关只管入站(捞 openid、链接解析),推送走 REST 不受它影响:只进问题表,不私聊。
+			onOffline: (reason) => {
+				gatewayDown.add(connection.id);
+				ctx.reportProblem({
+					connectionId: connection.id,
+					code: GATEWAY_OFFLINE_CODE,
+					message: reason
+						? t("qqOfficial.gateway.offline", { reason })
+						: t("qqOfficial.gateway.offlineNoReason"),
+				});
+			},
+			onOnline: () => {
+				gatewayDown.delete(connection.id);
+				ctx.resolveProblem({
+					connectionId: connection.id,
+					code: GATEWAY_OFFLINE_CODE,
+					notify: false,
+				});
+			},
 		});
 		return { tm, conn, fingerprint: qqConnectionFingerprint(cfg), logReconnectsBox };
 	}
@@ -1218,10 +1287,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
 	}
 
-	function reconcile(
-		connections: readonly Connection[],
-		inbound: PlatformAdapterContext["inbound"],
-	): void {
+	function reconcile(connections: readonly Connection[], ctx: GatewayCtx): void {
 		if (disposed) return;
 		const desired = new Map<string, QQOfficialConnection>();
 		for (const a of connections) {
@@ -1240,12 +1306,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				l.tm.dispose();
 				live.delete(id);
 				registry.clear(id);
+				// 连接不再适用(停用、删了、换了设置):报过的「网关连不上」随它清,不补「已恢复」。
+				if (gatewayDown.delete(id)) {
+					ctx.resolveProblem({ connectionId: id, code: GATEWAY_OFFLINE_CODE, notify: false });
+				}
 			}
 		}
 		// 新建:期望但无 live(或刚被指纹变更删掉)。
 		for (const [id, a] of desired) {
 			if (live.has(id)) continue;
-			live.set(id, makeLive(a, inbound));
+			live.set(id, makeLive(a, ctx));
 		}
 		// logReconnects 不参与 fingerprint(纯日志偏好,不该触发断连重建)—— 每轮把
 		// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
@@ -1337,8 +1407,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		start(ctx: PlatformAdapterContext): void {
 			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
-			reconcile(ctx.connections(), ctx.inbound);
-			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx.inbound));
+			reconcile(ctx.connections(), ctx);
+			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx));
 		},
 
 		stop(): void {
