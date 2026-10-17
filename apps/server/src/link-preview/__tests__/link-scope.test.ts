@@ -73,7 +73,7 @@ const NONE_ON = { isOnByDefault: false, replyForm: "image" as const, byTarget: {
 describe("resolveLinkPreviewPolicies", () => {
 	it("默认行解析开、没有例外 → 是目标的群和不是目标的群都解析,回默认形式", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: ALL_ON,
+			settings: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});
@@ -83,7 +83,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("默认行解析关 + 群显式开 = 原来的白名单:只有那群解析,没勾的目标群与陌生群都不", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
+			settings: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
@@ -94,7 +94,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("默认行解析开 + 群显式关 → 那一个群不解析,其余照常", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: false } } },
+			settings: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: false } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
@@ -104,7 +104,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("形式逐群覆盖:例外写了小程序卡的群回小程序卡,其余跟默认行;默认行改小程序卡则陌生群也跟", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, byTarget: { [T_GROUP]: { replyForm: "nativeShare" } } },
+			settings: { ...ALL_ON, byTarget: { [T_GROUP]: { replyForm: "nativeShare" } } },
 			targets: [onebotGroup(T_GROUP, "123"), onebotGroup(T_GROUP_2, "456")],
 			connections: ADAPTERS,
 		});
@@ -112,7 +112,7 @@ describe("resolveLinkPreviewPolicies", () => {
 		expect(table.policyFor(K_GROUP_2).replyForm).toBe("image");
 
 		const flipped = resolveLinkPreviewPolicies({
-			config: { isOnByDefault: true, replyForm: "nativeShare", byTarget: {} },
+			settings: { isOnByDefault: true, replyForm: "nativeShare", byTarget: {} },
 			targets: [],
 			connections: ADAPTERS,
 		});
@@ -123,7 +123,7 @@ describe("resolveLinkPreviewPolicies", () => {
 	// 压不过它(主人定的,两处要一致)。
 	it("目标已停用 → 不解析,哪怕默认行开、例外显式开;形式照算", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: true, replyForm: "nativeShare" } } },
+			settings: { ...ALL_ON, byTarget: { [T_GROUP]: { isOn: true, replyForm: "nativeShare" } } },
 			targets: [onebotGroup(T_GROUP, "123", { enabled: false })],
 			connections: ADAPTERS,
 		});
@@ -132,14 +132,14 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("目标所属的连接已停用、或连接已不存在 → 不解析", () => {
 		const disabledConnection = resolveLinkPreviewPolicies({
-			config: ALL_ON,
+			settings: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [connection(ONEBOT_ADAPTER, "onebot", false)],
 		});
 		expect(disabledConnection.policyFor(K_GROUP).isOn).toBe(false);
 
 		const missingConnection = resolveLinkPreviewPolicies({
-			config: ALL_ON,
+			settings: ALL_ON,
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: [],
 		});
@@ -148,7 +148,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("官机群的地址是 groupOpenid,与入站帧里的 address 同一个值", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, byTarget: { [T_QQ_GROUP]: { isOn: true } } },
+			settings: { ...NONE_ON, byTarget: { [T_QQ_GROUP]: { isOn: true } } },
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
 			connections: ADAPTERS,
 		});
@@ -157,7 +157,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("私聊目标不进表(链接解析只在群里响应),例外里写了它也没用", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, byTarget: { [T_PRIVATE]: { isOn: true } } },
+			settings: { ...NONE_ON, byTarget: { [T_PRIVATE]: { isOn: true } } },
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
 			connections: ADAPTERS,
 		});
@@ -166,7 +166,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("例外里引用的目标已经删掉 → 静默忽略,其余照常", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, byTarget: { [T_GONE]: { isOn: true }, [T_GROUP]: { isOn: true } } },
+			settings: { ...NONE_ON, byTarget: { [T_GONE]: { isOn: true }, [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});
@@ -175,7 +175,7 @@ describe("resolveLinkPreviewPolicies", () => {
 
 	it("同一个群配成了两个目标 → 先出现的那个说了算,不来回翻", () => {
 		const table = resolveLinkPreviewPolicies({
-			config: {
+			settings: {
 				...ALL_ON,
 				byTarget: { [T_GROUP]: { replyForm: "nativeShare" }, [T_GROUP_2]: { isOn: false } },
 			},
@@ -194,7 +194,7 @@ describe("linkScopeKey —— 键里没有平台,只有连接与群", () => {
 	it("两条连接上同名的群各是各的键", () => {
 		expect(linkScopeKey(ONEBOT_ADAPTER, "123")).not.toBe(linkScopeKey(QQ_ADAPTER, "123"));
 		const table = resolveLinkPreviewPolicies({
-			config: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
+			settings: { ...NONE_ON, byTarget: { [T_GROUP]: { isOn: true } } },
 			targets: [onebotGroup(T_GROUP, "123")],
 			connections: ADAPTERS,
 		});

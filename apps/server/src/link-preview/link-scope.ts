@@ -35,13 +35,13 @@ export interface LinkPolicyTable {
 }
 
 export interface ResolveLinkPreviewPoliciesOptions {
-	config: Pick<LinkPreviewSettings, "isOnByDefault" | "replyForm" | "byTarget">;
+	settings: Pick<LinkPreviewSettings, "isOnByDefault" | "replyForm" | "byTarget">;
 	targets: readonly PushTarget[];
 	connections: readonly Connection[];
 }
 
 export function resolveLinkPreviewPolicies({
-	config,
+	settings,
 	targets,
 	connections,
 }: ResolveLinkPreviewPoliciesOptions): LinkPolicyTable {
@@ -52,9 +52,9 @@ export function resolveLinkPreviewPolicies({
 		if (!address) continue;
 		const key = linkScopeKey(target.connectionId, address);
 		if (byKey.has(key)) continue;
-		const policy = linkPreviewFor(config, target.id);
+		const policy = linkPreviewFor(settings, target.id);
 		byKey.set(key, { ...policy, isOn: policy.isOn && !isTargetPaused(target, connections) });
 	}
-	const stranger: LinkPreviewPolicy = linkPreviewFor(config, undefined);
+	const stranger: LinkPreviewPolicy = linkPreviewFor(settings, undefined);
 	return { policyFor: (key) => byKey.get(key) ?? stranger };
 }

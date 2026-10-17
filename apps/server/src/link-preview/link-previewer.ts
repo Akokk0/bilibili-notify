@@ -76,12 +76,12 @@ export interface LinkCardPresentation {
 
 export interface LinkPreviewerOptions {
 	logger: Logger;
-	/** 面板上那份配置。**现读**,不快照 —— 主人关掉立刻生效。 */
-	config: () => LinkPreviewSettings;
+	/** 面板上那份链接预览设置。**现读**,不快照 —— 主人关掉立刻生效。 */
+	settings: () => LinkPreviewSettings;
 	/**
 	 * 这个群的答案:解不解析、回什么,键见 {@link linkScopeKey}。默认行与逐群例外怎么对上
 	 * 入站帧里的群(引用目标、停用、悬空、陌生群)全在 `link-preview/link-scope.ts`,这里只查表。
-	 * 与 `config` 一样每条消息现读 —— 主人改一格立刻生效。
+	 * 与 `settings` 一样每条消息现读 —— 主人改一格立刻生效。
 	 */
 	policyFor: (key: string) => LinkPreviewPolicy;
 	/**
@@ -270,8 +270,8 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 				if (claimed.length >= MAX_LINKS_PER_MESSAGE) break;
 			}
 			if (claimed.length === 0) return;
-			const config = opts.config();
-			if (!config.enabled) return;
+			const settings = opts.settings();
+			if (!settings.enabled) return;
 			// 逐群答案在渲染器之前、记账之前:不解析的群什么都不该留下 —— 冷却也不记,
 			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
 			const scope = linkScopeKey(msg.connectionId, msg.address);
@@ -288,7 +288,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
 			const useMiniApp = policy.replyForm === "nativeShare" && (await canSendMiniAppCard(dest));
 			if (!useMiniApp && !opts.renderer()) return;
-			const cooldownMs = config.cooldownSec * 1000;
+			const cooldownMs = settings.cooldownSec * 1000;
 			// 这条消息里已经回过的「解析器键 + 规范 id」:同一个东西的几种写法在一条消息里只出一张,
 			// 冷却关着(0)时也一样。只活在这次处理里,与冷却表无关、不占它的格子。
 			const repliedHere = new Set<string>();

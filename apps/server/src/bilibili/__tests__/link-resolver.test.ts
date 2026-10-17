@@ -247,7 +247,7 @@ function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 	const h = makeResolver();
 	const linkResolvers = createLinkResolverRegistry();
 	linkResolvers.register(BILIBILI_SOURCE_KEY, h.resolver);
-	const config: LinkPreviewSettings = {
+	const settings: LinkPreviewSettings = {
 		enabled: true,
 		cooldownSec: 60,
 		isOnByDefault: true,
@@ -267,7 +267,7 @@ function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 	};
 	const parser = createLinkPreviewer({
 		logger: { info() {}, warn() {}, error() {}, debug() {} },
-		config: () => config,
+		settings: () => settings,
 		linkResolvers,
 		signal: h.signal,
 		renderer: () => ({ generatePostCard }),

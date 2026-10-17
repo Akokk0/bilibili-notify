@@ -108,7 +108,7 @@ function makeParser(
 		resolve?: LinkResolver["resolve"];
 	} = {},
 ) {
-	const config: LinkPreviewSettings = {
+	const settings: LinkPreviewSettings = {
 		enabled: true,
 		cooldownSec: 60,
 		isOnByDefault: true,
@@ -144,7 +144,7 @@ function makeParser(
 	);
 	let now = 1_000_000;
 	const logger = { info() {}, warn, error() {}, debug() {} };
-	const readConfig = vi.fn(() => config);
+	const readSettings = vi.fn(() => settings);
 	const renderer = vi.fn((): { generatePostCard: typeof generatePostCard } | null => ({
 		generatePostCard,
 	}));
@@ -152,7 +152,7 @@ function makeParser(
 	const build = (rendererOverride?: () => ReturnType<typeof renderer>) =>
 		createLinkPreviewer({
 			logger,
-			config: readConfig,
+			settings: readSettings,
 			linkResolvers,
 			signal,
 			renderer: rendererOverride ?? renderer,
@@ -167,8 +167,8 @@ function makeParser(
 	return {
 		parser: build(),
 		build,
-		config,
-		readConfig,
+		settings,
+		readSettings,
 		renderer,
 		resolve,
 		matches,
@@ -252,7 +252,7 @@ describe("createLinkPreviewer", () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame("今天天气不错"));
 			expect(h.resolve).not.toHaveBeenCalled();
-			expect(h.readConfig).not.toHaveBeenCalled();
+			expect(h.readSettings).not.toHaveBeenCalled();
 		});
 
 		it("有网址但没有解析器认领:同样连配置都不读、不发", async () => {
@@ -260,7 +260,7 @@ describe("createLinkPreviewer", () => {
 			await feed(h.parser, groupFrame("看 https://example.com/page 和 foo.bar/baz"));
 			expect(h.matches).toHaveBeenCalled();
 			expect(h.resolve).not.toHaveBeenCalled();
-			expect(h.readConfig).not.toHaveBeenCalled();
+			expect(h.readSettings).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
@@ -268,7 +268,7 @@ describe("createLinkPreviewer", () => {
 			const h = makeParser();
 			const parser = createLinkPreviewer({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
-				config: h.readConfig,
+				settings: h.readSettings,
 				linkResolvers: createLinkResolverRegistry(),
 				signal: h.signal,
 				renderer: h.renderer,
@@ -278,7 +278,7 @@ describe("createLinkPreviewer", () => {
 				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
-			expect(h.readConfig).not.toHaveBeenCalled();
+			expect(h.readSettings).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
@@ -289,7 +289,7 @@ describe("createLinkPreviewer", () => {
 			const handle = other.register(RESOLVER_KEY, h.resolver);
 			const parser = createLinkPreviewer({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
-				config: h.readConfig,
+				settings: h.readSettings,
 				linkResolvers: other,
 				signal: h.signal,
 				renderer: h.renderer,
