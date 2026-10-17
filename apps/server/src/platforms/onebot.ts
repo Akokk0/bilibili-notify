@@ -74,9 +74,6 @@ export interface OnebotPlatformAdapterOptions {
 	imageMinTimeoutMs?: number;
 }
 
-/** 同一条连接的能力最多这么久重探一次 —— 探不出来时别让每个调用方各赔一次超时。 */
-const CAPABILITY_REPROBE_MS = 60_000;
-
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
@@ -660,8 +657,6 @@ class ForwardConn {
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly inbound: PlatformAdapterContext["inbound"],
-		/** 通道就绪(连上 / bot 连入)时叫一声 —— 能力探测挂在这里,连上就探。 */
-		private readonly onChannelReady?: () => void,
 	) {
 		this.connect();
 	}
@@ -688,7 +683,6 @@ class ForwardConn {
 				inboundSink(this.inbound, this.connectionId),
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.connectionId} url=${this.url}`);
-			this.onChannelReady?.();
 		});
 		ws.on("error", (err: Error) => {
 			this.lastError = err.message;
@@ -743,8 +737,6 @@ class ReverseListener {
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly inbound: PlatformAdapterContext["inbound"],
-		/** 同 ForwardConn:bot 连入就探一次能力。 */
-		private readonly onChannelReady?: () => void,
 	) {
 		this.start();
 	}
@@ -801,7 +793,6 @@ class ReverseListener {
 			channel.rejectAll(new Error("bot 连接已断开"));
 			this.bots.delete(entry);
 		});
-		this.onChannelReady?.();
 		ws.on("error", () => {
 			/* close 事件会随后到达,统一在 close 清理 */
 		});
@@ -917,7 +908,6 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		reverseListeners.clear();
 		botIdentityCache.clear();
 		miniAppCardSupport.clear();
-		knownConnections.clear();
 		capabilityFingerprints.clear();
 	}
 	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
@@ -1001,14 +991,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	// 平台能力:能不能签 QQ 小程序卡
 	// ------------------------------------------------------------------
 
-	/** 探测结果按 adapter 缓存;reconcile 清。没探过 = unknown。 */
+	/** 探测结果按 adapter 缓存;配置变了或连接没了才丢。没探过 = unknown。 */
 	const miniAppCardSupport = new Map<string, CapabilitySupport>();
-	/** 最近一次 reconcile 看到的 adapter 表 —— 通道就绪的回调只拿得到 id,探测要配置。 */
-	const knownConnections = new Map<string, OnebotConnection>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
-	/** 上次探能力的时刻 —— 探不出来的连接不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
-	const lastCapabilityProbeAt = new Map<string, number>();
 	const NOT_PROBED: CapabilitySupport = { state: "unknown" };
 	/** `atAll` / `inbound` 是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
 	const adapterStartedAt = Date.now();
@@ -1059,49 +1045,27 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	/**
-	 * 探不出来的连接(连不上 / 回自己的错误码)会一直停在「未探测」,而问一次要赔满一个
-	 * 超时。节流住在这里而不是各个调用方那边:缓存与失效规则都在这个文件,再让链接解析、
-	 * 健康探测各维护一张时间戳表,「什么时候该重探」就会摊成三份。
+	 * 探一次,如实回这一趟看到的(探不出来就是「还不知道」,带原因)。什么时候探、探不出来时
+	 * 沿用哪个答案不在这里:节奏与「不推翻已探实的答案」归宿主(`push/target-dispatcher.ts`),
+	 * 适配器只管自己看到的事实 —— 包括真发时收到 1404 把它翻成「不支持」(见 sendMiniAppCard)。
 	 */
 	async function probeMiniAppCard(connection: OnebotConnection): Promise<CapabilitySupport> {
-		const cachedBefore = miniAppCardSupport.get(connection.id);
-		const last = lastCapabilityProbeAt.get(connection.id) ?? Number.NEGATIVE_INFINITY;
-		if (cachedBefore !== undefined && Date.now() - last < CAPABILITY_REPROBE_MS) {
-			return cachedBefore;
-		}
-		lastCapabilityProbeAt.set(connection.id, Date.now());
 		let result: CapabilitySupport;
 		try {
 			result = interpretArkProbe(await callOnce(connection, "get_mini_app_ark", {}));
 		} catch (e) {
 			result = { state: "unknown", reason: e instanceof Error ? e.message : String(e) };
 		}
-		// 探不出来不推翻已经探实的答案:反向 WS 的 bot 断一次连一次就探一次,那一趟撞上实现
-		// 还没初始化完就超时,面板会莫名其妙地退回「未探测」、发卡前又要白探一趟。降级只认
-		// 一种证据 —— 真发时收到 1404(见 sendMiniAppCard)。
-		const cached = miniAppCardSupport.get(connection.id);
-		if (result.state === "unknown" && cached !== undefined && cached.state !== "unknown") {
-			log.debug(
-				`[onebot] adapter=${connection.id} 这次没探出小程序卡能力(${result.reason ?? "?"}),沿用上次的 ${cached.state}`,
-			);
-			return cached;
-		}
 		miniAppCardSupport.set(connection.id, result);
 		// 与 get_login_info 同一条规矩:探成了不出声。发不了才留一行 —— 主人选了小程序卡却
-		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,健康探测每五分钟
-		// 会再试,放 debug 免得刷屏。
+		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,宿主每分钟会再试,
+		// 放 debug 免得刷屏。
 		if (result.state === "unsupported") {
 			log.info(`[onebot] adapter=${connection.id} 发不了小程序卡:${result.reason}`);
 		} else if (result.state === "unknown") {
 			log.debug(`[onebot] adapter=${connection.id} 小程序卡能力还没探出来:${result.reason ?? "?"}`);
 		}
 		return result;
-	}
-
-	/** 通道就绪(正向连上 / 反向 bot 连入)→ 探一次。拿不到配置(已被 reconcile 移除)就算了。 */
-	function probeOnReady(connectionId: string): void {
-		const connection = knownConnections.get(connectionId);
-		if (connection && !disposed) void probeMiniAppCard(connection);
 	}
 
 	/**
@@ -1297,24 +1261,19 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 		// --- 能力缓存 ---
 		// 只在连接的配置真变了(指向另一个实现)或连接没了时丢;配置没变就留着。**不能全清**:
-		// 健康探测每五分钟写回 probeState 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
-		// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
-		for (const id of [...knownConnections.keys()]) {
+		// 健康探测写回 probeState 也会触发一次 reconcile,全清的话刚探出的答案会被周期性冲掉。
+		// 这里只管「适配器手上那一份」;什么时候重探、探不出来时沿用哪个答案,归宿主
+		// (`push/target-dispatcher.ts` 的能力记忆),适配器不自己发起探测。
+		for (const id of [...capabilityFingerprints.keys()]) {
 			if (onebots.some((a) => a.id === id)) continue;
-			knownConnections.delete(id);
 			miniAppCardSupport.delete(id);
 			capabilityFingerprints.delete(id);
-			lastCapabilityProbeAt.delete(id);
 		}
 		for (const a of onebots) {
 			const fp = JSON.stringify(a.settings);
 			const changed = capabilityFingerprints.get(a.id) !== fp;
 			capabilityFingerprints.set(a.id, fp);
-			knownConnections.set(a.id, a);
 			if (changed) miniAppCardSupport.delete(a.id);
-			// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
-			const cfg = a.settings;
-			if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
 		}
 
 		// --- 正向 ws ---
@@ -1336,16 +1295,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			existing?.close();
 			forwardConns.set(
 				id,
-				new ForwardConn(
-					id,
-					fp,
-					cfg.url,
-					forwardHeaders(cfg),
-					serviceCtx,
-					log,
-					inboundHandlers,
-					() => probeOnReady(id),
-				),
+				new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, inboundHandlers),
 			);
 		}
 
@@ -1373,9 +1323,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// error 事件落到 bindError,经 probe 暴露给 dashboard。
 			reverseListeners.set(
 				id,
-				new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, inboundHandlers, () =>
-					probeOnReady(id),
-				),
+				new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, inboundHandlers),
 			);
 		}
 	}

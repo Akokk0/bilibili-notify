@@ -234,7 +234,7 @@ function supportText(s: CapabilitySupport): { dot: "ok" | "off" | "pending"; tex
 
 /**
  * 「连接支持情况」:每条 OneBot 连接一行,三态 支持 / 不支持(带原因)/ 未探测。只列
- * OneBot —— 官机与 webhook 没有能力概念,一句话说清。探测是连上时自动做的,主人在推送
+ * OneBot —— 官机与 webhook 没有能力概念,一句话说清。探测由宿主每分钟补一轮(连上后最多一分钟就有结果),主人在推送
  * 目标页点「测试」也会补探「未探测」的。
  */
 function CapabilityPanel({
@@ -275,7 +275,7 @@ function CapabilityPanel({
 			</Section>
 			<HintNote className="mt-2">
 				QQ 官方机器人与 webhook 不支持小程序卡,那些目标一律回图片卡。OneBot 实现要有
-				get_mini_app_ark 接口(目前已知 NapCat 支持),连上时自动探测
+				get_mini_app_ark 接口(目前已知 NapCat 支持),连上后自动探测
 			</HintNote>
 		</section>
 	);

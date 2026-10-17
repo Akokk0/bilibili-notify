@@ -5,7 +5,8 @@
  *   - 探测:拿**空参数**调 `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404(不支持的
  *     动作)= 不支持;1400(参数错)= 支持,接口在;别的 = 未探测出来,带原因。零副作用,
  *     不真向腾讯要卡。认接口不认实现名:NapCat 只是今天唯一已知能签的,逻辑里不出现它。
- *   - 缓存:结果按连接记住;reconcile 清掉重探。
+ *   - 缓存:结果按连接记住;配置变了或连接没了才丢。适配器不自己发起探测,也不管重探节奏与
+ *     「探不出来沿用上次」—— 那两件归宿主(`push/__tests__/target-dispatcher.test.ts`)。
  *   - 真发:先签 ark(`type: "bili"` + 四个字段),再把返回值当 `json` 段发进群。
  *   - 发不了:签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动。
  *
@@ -128,13 +129,6 @@ function capsOf(ad: ReturnType<typeof createOnebotAdapter>) {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-async function waitFor(cond: () => boolean, timeoutMs = 2000): Promise<void> {
-	const start = Date.now();
-	while (!cond()) {
-		if (Date.now() - start > timeoutMs) throw new Error("waitFor: 超时");
-		await sleep(10);
-	}
-}
 
 describe("onebot — 小程序卡能力探测", () => {
 	it("没探过 → 未探测", () => {
@@ -172,8 +166,7 @@ describe("onebot — 小程序卡能力探测", () => {
 		expect(caps?.miniAppCard).toMatchObject({ state: "unsupported" });
 	});
 
-	it("连不上、或回了别的错 → 仍是未探测,原因带出来;过了节流窗口还会再探", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
+	it("连不上、或回了别的错 → 如实回「还不知道」,原因带出来;每问一次都真探(节奏归宿主)", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
@@ -182,12 +175,6 @@ describe("onebot — 小程序卡能力探测", () => {
 			reason: expect.stringMatching(/ECONNREFUSED/),
 		});
 
-		// 探不出来的连接每问一次赔一个超时:窗口内再问只拿上次那个答案,不再打接口。
-		const throttled = await ad.probeCapabilities?.(obConnection());
-		expect(throttled?.miniAppCard).toMatchObject({ state: "unknown" });
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-
-		vi.setSystemTime(Date.now() + 61_000);
 		fetchMock.mockResolvedValueOnce(failFrame(200, "packet backend 未就绪"));
 		const again = await ad.probeCapabilities?.(obConnection());
 		expect(again?.miniAppCard).toMatchObject({
@@ -197,35 +184,34 @@ describe("onebot — 小程序卡能力探测", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it("探实过之后再探不出来 → 沿用上次的答案,不退回未探测", async () => {
+	it("探实过之后再探不出来 → 如实回「还不知道」;沿用上次的答案是宿主的事", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		expect((await ad.probeCapabilities?.(obConnection()))?.miniAppCard).toMatchObject({
 			state: "supported",
 		});
 
-		// 反向 WS 的 bot 断一次连一次就探一次,撞上实现还没初始化完就是这一趟。
 		fetchMock.mockRejectedValueOnce(new Error("ETIMEDOUT"));
 		expect((await ad.probeCapabilities?.(obConnection()))?.miniAppCard).toMatchObject({
-			state: "supported",
+			state: "unknown",
 		});
-		expect(capsOf(ad).miniAppCard).toMatchObject({ state: "supported" });
 	});
 
-	it("第一次 reconcile 对 http 连接直接探(它没有「连上」这一刻)", async () => {
-		fetchMock.mockResolvedValueOnce(failFrame(1400));
+	it("reconcile 不自己探能力:http 连接第一次对账也不打接口,探不探由宿主定", async () => {
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
-		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
-		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
+		await sleep(30);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
 		ad.stop();
 	});
 
-	it("配置没变的 reconcile 不动缓存、不重探 —— 健康探测每五分钟写回 probeState 就会触发一次", async () => {
+	it("配置没变的 reconcile 不动缓存 —— 健康探测写回 probeState 就会触发一次", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
-		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
+		await ad.probeCapabilities?.(obConnection());
+		expect(capsOf(ad).miniAppCard.state).toBe("supported");
 
 		reconcileAdapter(ad, [obConnection()]);
 		reconcileAdapter(ad, [obConnection()]);
@@ -235,16 +221,22 @@ describe("onebot — 小程序卡能力探测", () => {
 		ad.stop();
 	});
 
-	it("配置变了(指向别的实现)→ 丢掉旧答案重探;连接没了 → 答案一起没了", async () => {
+	it("配置变了(指向别的实现)→ 丢掉旧答案、不自己重探;连接没了 → 答案一起没了", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
-		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
+		await ad.probeCapabilities?.(obConnection());
+		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+
+		reconcileAdapter(ad, [obConnection({ baseUrl: "http://other:3000" })]);
+		await sleep(30);
+		expect(capsOf(ad).miniAppCard.state).toBe("unknown");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 
 		fetchMock.mockResolvedValueOnce(failFrame(1404));
-		reconcileAdapter(ad, [obConnection({ baseUrl: "http://other:3000" })]);
-		await waitFor(() => capsOf(ad).miniAppCard.state === "unsupported");
+		await ad.probeCapabilities?.(obConnection({ baseUrl: "http://other:3000" }));
 		expect(calledPath(1)).toBe("http://other:3000/get_mini_app_ark");
+		expect(capsOf(ad).miniAppCard.state).toBe("unsupported");
 
 		reconcileAdapter(ad, []);
 		expect(capsOf(ad).miniAppCard.state).toBe("unknown");

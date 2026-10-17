@@ -3677,13 +3677,22 @@ describe("createEngines — 连接所在平台的能力", () => {
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 	});
 
-	it("探完仍「未探测」→ 主人点「测试」会再给一次机会", async () => {
+	it("探完仍「未探测」→ 主人点「测试」会再给一次机会(宿主的重探窗口 60 秒过了之后)", async () => {
 		const { pa, probeCapabilities } = fakePlatform("unknown");
 		const c = setup({ connections: [onebot], platformAdapters: [pa] });
 		active = c;
 		await tick();
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		// 窗口内:宿主不再问适配器(探不出来的连接每问一次要赔一个超时)。
 		await c.runtime.probeConnection(ADAPTER);
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			vi.setSystemTime(Date.now() + 61_000);
+			await c.runtime.probeConnection(ADAPTER);
+		} finally {
+			vi.useRealTimers();
+		}
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
 		expect(c.runtime.connectionCapabilities(ADAPTER)?.miniAppCard).toEqual({ state: "unknown" });
 	});

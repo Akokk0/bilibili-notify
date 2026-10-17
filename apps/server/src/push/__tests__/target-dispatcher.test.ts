@@ -27,7 +27,7 @@ import type {
 	PushTarget,
 } from "@bilibili-notify/internal";
 import { fail, platformDescriptor } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
@@ -548,6 +548,102 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 		expect(dispatcher.connectionCapabilities("t1")).toBeUndefined();
 		expect(dispatcher.connectionCapabilities("w1")).toBeUndefined();
 		expect(await dispatcher.probeConnectionCapabilities("w1")).toBeUndefined();
+	});
+});
+
+/**
+ * 宿主的能力记忆:探实的答案(支持 / 不支持)宿主记着,适配器回「还不知道」时沿用;
+ * 适配器自己翻成别的明确答案(真发收到 1404)照收。重探的节奏(同一条连接 60 秒一次)也归宿主。
+ */
+describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () => {
+	const supported = { state: "supported", checkedAt: 1 } as const;
+	const unknown = { state: "unknown" } as const;
+	const capsOf = (miniAppCard: ConnectionCapabilities["miniAppCard"]): ConnectionCapabilities => ({
+		atAll: supported,
+		inbound: supported,
+		miniAppCard,
+	});
+
+	/** 适配器的答案由测试随时换;`capabilities` 与 `probeCapabilities` 答同一份。 */
+	function setup() {
+		const answer = { current: capsOf(unknown) };
+		const probeCapabilities = vi.fn(async () => answer.current);
+		const pa = makePlatformAdapter("onebot", {
+			capabilities: () => answer.current,
+			probeCapabilities,
+		});
+		const connections = [makeConnection({ id: "a1", platform: "onebot" })];
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(connections, []),
+			adapters: registryOf([pa]),
+			logger: makeLogger(),
+		});
+		return { answer, probeCapabilities, connections, dispatcher };
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("已探实「支持」,再探回「还不知道」:读到的仍是「支持」", async () => {
+		const { answer, dispatcher } = setup();
+		answer.current = capsOf(supported);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
+		answer.current = capsOf({ state: "unknown", reason: "ETIMEDOUT" });
+		vi.setSystemTime(Date.now() + 61_000);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
+		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(supported);
+	});
+
+	it("适配器自己翻成「不支持」(真发时收到 1404):宿主照收", async () => {
+		const { answer, dispatcher } = setup();
+		answer.current = capsOf(supported);
+		await dispatcher.probeConnectionCapabilities("a1");
+		const unsupported = { state: "unsupported", reason: "没有这个接口", checkedAt: 2 } as const;
+		answer.current = capsOf(unsupported);
+		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unsupported);
+		// 翻过去之后「还不知道」不会把它翻回「支持」。
+		answer.current = capsOf(unknown);
+		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unsupported);
+	});
+
+	it("60 秒内第二次探能力不再调适配器,拿记着的答案;过了 60 秒再探", async () => {
+		const { answer, probeCapabilities, dispatcher } = setup();
+		answer.current = capsOf(supported);
+		await dispatcher.probeConnectionCapabilities("a1");
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		vi.setSystemTime(Date.now() + 59_000);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
+		expect(probeCapabilities).toHaveBeenCalledTimes(1);
+		vi.setSystemTime(Date.now() + 2_000);
+		await dispatcher.probeConnectionCapabilities("a1");
+		expect(probeCapabilities).toHaveBeenCalledTimes(2);
+	});
+
+	it("连接的设置变了:记着的答案与节奏一起丢,马上可以重探", async () => {
+		const { answer, probeCapabilities, connections, dispatcher } = setup();
+		answer.current = capsOf(supported);
+		await dispatcher.probeConnectionCapabilities("a1");
+		const [connection] = connections;
+		if (connection) connection.settings = { url: "https://other.example.com/hook", headers: {} };
+		answer.current = capsOf(unknown);
+		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unknown);
+		await dispatcher.probeConnectionCapabilities("a1");
+		expect(probeCapabilities).toHaveBeenCalledTimes(2);
+	});
+
+	it("连接没了:记着的答案一起没了,同 id 的新连接从头来", async () => {
+		const { answer, connections, dispatcher } = setup();
+		answer.current = capsOf(supported);
+		await dispatcher.probeConnectionCapabilities("a1");
+		const removed = connections.splice(0);
+		expect(dispatcher.connectionCapabilities("a1")).toBeUndefined();
+		connections.push(...removed);
+		answer.current = capsOf(unknown);
+		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unknown);
 	});
 });
 

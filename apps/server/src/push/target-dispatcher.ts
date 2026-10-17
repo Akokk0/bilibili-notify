@@ -1,5 +1,6 @@
 import type {
 	AddressCandidate,
+	CapabilitySupport,
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -103,10 +104,67 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return resolveConnection(found.adapter, connection);
 	}
 
+	/**
+	 * 宿主记的能力:每条连接每一格最后一次探实的答案。适配器回「还不知道」时沿用它 ——
+	 * 反向 WS 的 bot 断一次连一次就探一次,撞上实现还没初始化完就是「探不出来」,那不该把已探实的答案推翻;
+	 * 适配器自己给的明确答案(包括真发时收到 1404 翻成的「不支持」)照收。
+	 * `fingerprint` 是连接设置的指纹(变了就当换了一个实现,记忆与节奏一起丢),`probedAt` 是上次探的时刻。
+	 */
+	const capabilityMemory = new Map<
+		string,
+		{ fingerprint: string; caps?: ConnectionCapabilities; probedAt?: number }
+	>();
+
+	/** 同一条连接的能力最多这么久重探一次 —— 探不出来时别让每个调用方各赔一次超时。 */
+	const CAPABILITY_REPROBE_MS = 60_000;
+
+	function memoryOf(connection: Connection) {
+		const fingerprint = JSON.stringify(connection.settings);
+		let entry = capabilityMemory.get(connection.id);
+		if (!entry || entry.fingerprint !== fingerprint) {
+			entry = { fingerprint };
+			capabilityMemory.set(connection.id, entry);
+		}
+		return entry;
+	}
+
+	/** 逐格并起来:适配器答「还不知道」的格沿用记着的明确答案,其余取适配器的。 */
+	function mergeCapabilities(
+		remembered: ConnectionCapabilities | undefined,
+		fresh: ConnectionCapabilities,
+	): ConnectionCapabilities {
+		if (!remembered) return fresh;
+		const before: Record<string, CapabilitySupport> = { ...remembered };
+		const merged = Object.fromEntries(
+			Object.entries(fresh).map(([cell, support]) => {
+				const old = before[cell];
+				return [
+					cell,
+					support.state === "unknown" && old && old.state !== "unknown" ? old : support,
+				];
+			}),
+		);
+		return merged as unknown as ConnectionCapabilities;
+	}
+
+	/** 把适配器这一回的答案并进宿主的记忆,交出并起来的结果。 */
+	function remember(connection: Connection, fresh: ConnectionCapabilities): ConnectionCapabilities {
+		const entry = memoryOf(connection);
+		entry.caps = mergeCapabilities(entry.caps, fresh);
+		return entry.caps;
+	}
+
 	/** 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、被隔离、适配器没实现 `capabilities` 都是 `undefined`。 */
 	function capabilitiesOf(connectionId: string): ConnectionCapabilities | undefined {
+		const stored = findConnection(connectionId);
+		if (!stored) {
+			capabilityMemory.delete(connectionId);
+			return undefined;
+		}
 		const route = routeOf(connectionId);
-		return route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
+		if (!route.ok) return undefined;
+		const fresh = route.adapter.capabilities?.(route.connection);
+		return fresh && remember(stored, fresh);
 	}
 
 	return {
@@ -172,8 +230,21 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		async probeConnectionCapabilities(
 			connectionId: string,
 		): Promise<ConnectionCapabilities | undefined> {
+			const stored = findConnection(connectionId);
+			if (!stored) {
+				capabilityMemory.delete(connectionId);
+				return undefined;
+			}
 			const route = routeOf(connectionId);
-			return route.ok ? route.adapter.probeCapabilities?.(route.connection) : undefined;
+			if (!route.ok || !route.adapter.probeCapabilities) return undefined;
+			// 节奏归宿主:窗口内不再问适配器,拿记着的(并起来的)答案。
+			const entry = memoryOf(stored);
+			const now = Date.now();
+			if (entry.probedAt !== undefined && now - entry.probedAt < CAPABILITY_REPROBE_MS) {
+				return capabilitiesOf(connectionId);
+			}
+			entry.probedAt = now;
+			return remember(stored, await route.adapter.probeCapabilities(route.connection));
 		},
 
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
