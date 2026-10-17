@@ -106,14 +106,10 @@ function extractText(frame: Record<string, unknown>): string {
 const URL_RE = /https?:\/\/[^\s"'<>\\]+/g;
 
 /**
- * 解析一张卡之前先扫一眼原文有没有这两个域名 —— 下游两条视频链接正则都硬要求它们,
- * 没有就绝不可能解出东西。省掉的是每条群消息上的一次 `JSON.parse` + 整棵树的字符串
- * 收集(1KB 的小程序卡实测 4.2µs,而这道预筛 0.15µs)。转义写法照样带着字面量:
- * json 只转义斜杠、xml 只转义 `&amp;`。
+ * 分享卡的 payload 顶多几 KB;再大的不是卡,不往里翻。适配器不按来源的域名预筛 —— 认不认
+ * 哪家的链接由在册的链接解析器说了算,每条带卡的消息多付的是一次 `JSON.parse` 加整棵树的
+ * 字符串收集(1KB 的小程序卡实测 4.2µs),这两个上限就是它的边界。
  */
-const CARD_HOST_HINT = /bilibili\.com|b23\.tv/i;
-
-/** 分享卡的 payload 顶多几 KB;再大的不是卡,不往里翻。 */
 const MAX_CARD_CHARS = 64 * 1024;
 const MAX_CARD_DEPTH = 8;
 
@@ -128,7 +124,7 @@ const MINIAPP_CARD_APP = "com.tencent.miniapp_01";
  *
  * 交出去的是一格 `sharedLinks`,按段的先后;小程序卡里的记 `"nativeShare"`:群里已经有一张
  * 能点开播放的卡,链接解析不再回卡(见 `InboundGroupMessage`)。别的卡记 `"card"`。只看 `app`
- * 字段:能过 {@link CARD_HOST_HINT} 又是小程序卡的,实际就是 B 站那个小程序。
+ * 字段,不看是哪家的小程序。
  */
 function extractSharedLinks(frame: Record<string, unknown>): InboundGroupMessage["sharedLinks"] {
 	const sharedLinks: InboundGroupMessage["sharedLinks"] = [];
@@ -139,7 +135,6 @@ function extractSharedLinks(frame: Record<string, unknown>): InboundGroupMessage
 		if (type !== "json" && type !== "xml") continue;
 		const raw = data?.data;
 		if (typeof raw !== "string" || raw.length > MAX_CARD_CHARS) continue;
-		if (!CARD_HOST_HINT.test(raw)) continue;
 		const card = cardStrings(type, raw);
 		const kind = card.miniApp ? "nativeShare" : "card";
 		for (const s of card.strings) {

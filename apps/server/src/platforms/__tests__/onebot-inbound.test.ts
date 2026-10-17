@@ -108,6 +108,28 @@ describe("extractGroupMessage — 分享卡里的链接也算贴了链接", () =
 		expect(got).toBeNull();
 	});
 
+	it("别家的分享卡也交出链接 —— 适配器不按来源的域名预筛", () => {
+		const card =
+			'{"app":"com.tencent.structmsg","meta":{"news":{"jumpUrl":"https:\\/\\/example.com\\/share\\/1","title":"t"}}}';
+		const got = extractGroupMessage({
+			...BASE,
+			message: [{ type: "json", data: { data: card } }],
+		});
+		expect(got?.sharedLinks).toEqual([{ url: "https://example.com/share/1", kind: "card" }]);
+	});
+
+	it("别家的 QQ 小程序卡记成原生分享", () => {
+		const card = JSON.stringify({
+			app: "com.tencent.miniapp_01",
+			meta: { detail_1: { qqdocurl: "https://example.com/m/1" } },
+		});
+		const got = extractGroupMessage({
+			...BASE,
+			message: [{ type: "json", data: { data: card } }],
+		});
+		expect(got?.sharedLinks).toEqual([{ url: "https://example.com/m/1", kind: "nativeShare" }]);
+	});
+
 	it("超过 64KB 的卡不往里翻 —— 链接带着 B 站域名也一样,是上限挡的不是别的", () => {
 		const card = JSON.stringify({
 			app: "com.tencent.structmsg",

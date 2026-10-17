@@ -572,6 +572,16 @@ describe("createLinkPreviewer", () => {
 		});
 	});
 
+	describe("分享卡里的链接来自哪家，由解析器说了算", () => {
+		it("分享卡里是别家解析器认得的链接，也出预览 —— OneBot 适配器不按域名预筛", async () => {
+			const h = makeParser();
+			const card = `{"app":"com.tencent.structmsg","meta":{"news":{"jumpUrl":"${link("c1").replace(/\//g, "\\/")}","title":"t"}}}`;
+			await feed(h.parser, groupFrame("", { message: [{ type: "json", data: { data: card } }] }));
+			expect(h.resolve.mock.calls.map(([url]) => url)).toEqual([link("c1")]);
+			expect(h.sent).toHaveLength(1);
+		});
+	});
+
 	describe("多链接", () => {
 		it("正文与分享卡里是同一条链接:只问一次解析器", async () => {
 			const h = makeParser({ cooldownSeconds: 0 });

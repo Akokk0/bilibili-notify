@@ -269,7 +269,7 @@ interface LinkPreview {                 // LinkResolver.resolve 成功时交的
 - **设置 `core.linkPreview` 五格**：总开关（默认关）、默认回不回、回复形式 `replyForm`、按目标的例外 `byTarget`、`cooldownSec`。总开关与「默认」两格的名字要避开 AI 写正文那边 `enabled`（那边表示默认）的撞义，施工时照命名规范定。链接预览回卡不走推送链，全局静音与免扰管不到，所以留一个一键全停的总开关。
 - 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发作者名 + 作品文字（经作品取段的那个函数，限长），不带链接。
 - 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。
-- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-previewer.ts`）用 `link-preview/extract-urls.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。本节其余（`replyForm`、入站来源标记 `sharedLinks` 取代 `miniAppCardLinks`、设置改叫 `core.linkPreview` 并加回总开关与冷却）还没动；门已改名 `LinkPreviewer`（3b-28 收尾，行为不变）。
+- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-previewer.ts`）用 `link-preview/extract-urls.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。入站来源标记 `sharedLinks` 取代 `miniAppCardLinks`、删 B 站域名预筛，3b-30 已落；本节其余（`replyForm`、设置改叫 `core.linkPreview` 并加回总开关与冷却）还没动；门已改名 `LinkPreviewer`（3b-28 收尾，行为不变）。
 
 ## 直播
 
