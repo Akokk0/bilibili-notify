@@ -137,10 +137,12 @@ describe("审批指令处理", () => {
 	});
 
 	it("编号不存在 → 说清楚,不误发别的那份", async () => {
-		await seedDraft();
-		await feed(makeHandler(), "y zz");
+		const d = await seedDraft();
+		// 编号是随机的两位,写死 "zz" 约千分之一会撞上种下的那份;按它现挑一个不同的。
+		const missing = d.id === "zz" ? "zy" : "zz";
+		await feed(makeHandler(), `y ${missing}`);
 		expect(deliver).not.toHaveBeenCalled();
-		expect(String(reply.mock.calls[0]?.[0])).toContain("zz");
+		expect(String(reply.mock.calls[0]?.[0])).toContain(missing);
 	});
 
 	// **规格变更**(2026-08-11):以前这里回一句「现在没有等待审批的锐评哦～」,于是主人
