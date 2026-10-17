@@ -48,21 +48,6 @@ const BANGUMI_TRIP_ROOM_ID = 931774;
 const AUTH_LOST_DEBOUNCE_MS = 60_000;
 
 /**
- * cookie 刷新失败码分类(②4 裁决:**判别式**)。
- * - `"ok"`:code 0
- * - `"risk-control"`:`-352` / `-403` —— 风控/限流,**非会话终态**。退避等下个
- *   interval 自愈,绝不 auth-lost、绝不拆 refresh timer(误升级会把瞬时风控
- *   变成被动登出 —— 这正是 ②4 对前修复方向的反向质疑)
- * - `"terminal"`:`-101` 及其它非 0 码 —— 会话不可恢复,auth-lost + 清终态
- */
-export type RefreshOutcome = "ok" | "risk-control" | "terminal";
-export function classifyRefreshCode(code: number): RefreshOutcome {
-	if (code === 0) return "ok";
-	if (code === -352 || code === -403) return "risk-control";
-	return "terminal";
-}
-
-/**
  * 持续风控错误(wbi 签名请求刷新 wbiKeys 重试后仍 -352)。标记成独立类型,让外层
  * `this.retry` 的 `shouldRetry` 识别并 **fail-fast** —— 持续风控再快速重试 3 轮只会
  * 放大打在被限流账号上的请求量。区别于瞬时网络错误(仍应退避重试)。
@@ -516,20 +501,21 @@ export class Api {
 					this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
 					return;
 				}
-				const probeCode = typeof info?.code === "number" ? info.code : 0;
-				if (probeCode === -101) {
-					// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
-					await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
-					return;
-				}
-				if (classifyRefreshCode(probeCode) === "risk-control") {
-					// 风控/限流:非终态。跳过本轮,等下个 interval 自愈。
+				// 续期只在会话真死(请求层翻成 unauthorized,即 -101)时登出;风控、没对照的码、回应形状不对都当
+				// 一时失败,跳过本轮等下个 interval。死会话由普通请求撞 -101 时清(拦截器 → auth-lost)。
+				const probed = this.resultOf<{ refresh?: boolean } | undefined>(info, "fetchCookieInfo");
+				if (!probed.ok) {
+					if (probed.code === "unauthorized") {
+						// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
+						await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
+						return;
+					}
 					this.logger.warn(
-						`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,等下轮自愈)`,
+						`[cookie] fetchCookieInfo 失败 code=${probed.upstreamCode ?? probed.code} msg=${probed.message},跳过本轮(不触发 auth-lost,等下轮再试)`,
 					);
 					return;
 				}
-				if (!info?.data?.refresh) return;
+				if (!probed.data?.refresh) return;
 			} catch (e) {
 				// P2:此前这里还有一层 3 次 ×3s 递归重试,而内层 fetchCookieInfo 已被
 				// this.retry(4 次指数退避)包住 → 双层乘积最坏 ~16 次 HTTP,且整段
@@ -587,15 +573,16 @@ export class Api {
 				throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
 			}
 
-			const refreshData = (await this.client.postForm(EP.COOKIE_REFRESH_URL, {
+			const refreshBody = await this.client.postForm(EP.COOKIE_REFRESH_URL, {
 				csrf,
 				refresh_csrf: refreshCsrf,
 				source: "main_web",
 				refresh_token: refreshToken,
-			})) as { code: number; message: string; data: { refresh_token: string } };
+			});
+			const refreshed = this.resultOf<{ refresh_token: string }>(refreshBody, "cookie refresh");
 			// 新令牌一到手就登记要在日志里遮掉:从这里到提交(`commitLogin`)之间隔着确认 POST 和几处 await,
 			// 这段里的日志与错误不能带着它的明文。
-			const newRefreshToken: unknown = refreshData?.data?.refresh_token;
+			const newRefreshToken: unknown = refreshed.ok ? refreshed.data?.refresh_token : undefined;
 			if (typeof newRefreshToken === "string" && newRefreshToken) this.ctx.redact(newRefreshToken);
 
 			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
@@ -608,35 +595,36 @@ export class Api {
 			// 自己另留一道),这道闸都留着。
 			fate = "keep";
 
-			if (refreshData.code !== 0) {
-				const outcome = classifyRefreshCode(refreshData.code);
-				if (outcome === "risk-control") {
-					// ②4 判别式:-352/-403 是风控/限流,**非会话终态**。不 auth-lost、
-					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),下个
-					// interval 自愈;误升级为终态登出正是 ②4 反质疑的过度修复。
+			if (!refreshed.ok) {
+				const shownCode = refreshed.upstreamCode ?? refreshed.code;
+				if (refreshed.code !== "unauthorized") {
+					// 只有 -101 才是会话终态;风控、没对照的码、回应形状不对都是一时失败。不 auth-lost、
+					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),闸留着,下个 interval 再试。
+					// 死会话由普通请求撞 -101 时清;把别的码也当终态,会把瞬时风控误升级成被动登出。
 					this.logger.warn(
-						`[cookie] 刷新遇风控/限流 code=${refreshData.code} msg=${refreshData.message},跳过本轮(不触发 auth-lost,等下轮自愈)`,
+						`[cookie] 刷新失败 code=${shownCode} msg=${refreshed.message},跳过本轮(不触发 auth-lost,等下轮再试)`,
 					);
-					throw new Error(`Cookie 刷新被风控: code=${refreshData.code}`);
+					throw new Error(`Cookie 刷新失败(可重试): code=${shownCode}`);
 				}
-				// 终态(-101 / 其它非0):②3 —— B2 此前只 emit 不清理,死会话每小时
+				// 终态(-101):②3 —— B2 此前只 emit 不清理,死会话每小时
 				// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
 				fate = "release";
 				await this.terminateSession(
-					`[cookie] 刷新失败(会话终态)code=${refreshData.code} msg=${refreshData.message},触发 auth-lost`,
+					`[cookie] 刷新失败(会话终态)code=${shownCode} msg=${refreshed.message},触发 auth-lost`,
 				);
-				throw new Error(
-					`Cookie 刷新失败: code=${refreshData.code}, message=${refreshData.message}`,
-				);
+				throw new Error(`Cookie 刷新失败: code=${shownCode}, message=${refreshed.message}`);
 			}
 
 			const newCsrf = this.getCSRF();
 			if (!newCsrf) throw new Error("未找到 bili_jct cookie");
 
-			const acceptData = (await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
-				csrf: newCsrf,
-				refresh_token: refreshToken,
-			})) as { code: number };
+			const accepted = this.resultOf<unknown>(
+				await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
+					csrf: newCsrf,
+					refresh_token: refreshToken,
+				}),
+				"cookie refresh confirm",
+			);
 
 			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
 			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 generation 的结果覆盖更新的登录态。
@@ -646,25 +634,24 @@ export class Api {
 				return;
 			}
 
-			if (acceptData.code !== 0) {
-				if (classifyRefreshCode(acceptData.code) === "risk-control") {
-					// confirm 步遇风控:同 B2,非终态,退避等下轮(不 auth-lost/不拆 timer)。
-					this.logger.warn(
-						`[cookie] 刷新确认遇风控/限流 code=${acceptData.code},跳过本轮(等下轮自愈)`,
-					);
-					throw new Error(`Cookie 刷新确认被风控: code=${acceptData.code}`);
+			if (!accepted.ok) {
+				const shownCode = accepted.upstreamCode ?? accepted.code;
+				if (accepted.code !== "unauthorized") {
+					// confirm 步:同刷新那一步,只有 -101 是终态,别的退避等下轮(不 auth-lost/不拆 timer)。
+					this.logger.warn(`[cookie] 刷新确认失败 code=${shownCode},跳过本轮(等下轮再试)`);
+					throw new Error(`Cookie 刷新确认失败(可重试): code=${shownCode}`);
 				}
 				// confirm 终态:新旧 cookie 状态不可信,清净 + auth-lost(②3 同款)。
 				fate = "release";
 				await this.terminateSession(
-					`[cookie] 刷新确认失败(会话终态)code=${acceptData.code},触发 auth-lost`,
+					`[cookie] 刷新确认失败(会话终态)code=${shownCode},触发 auth-lost`,
 				);
-				throw new Error(`Cookie 刷新确认失败: code=${acceptData.code}`);
+				throw new Error(`Cookie 刷新确认失败: code=${shownCode}`);
 			}
 
 			// 提交:罐子此刻的内容(新 cookie)+ 新令牌,同一次原子写。失败时内存里已是新 cookie、盘上仍是上一对,
 			// 响亮记 error;闸留着,下一次提交成功才放。
-			const committed = await this.commitLogin(refreshData.data.refresh_token);
+			const committed = await this.commitLogin(refreshed.data.refresh_token);
 			if (!committed.ok) {
 				this.logger.error(
 					`[cookie] 刷新后的登录状态存盘失败(内存 cookie 已更新,盘上为旧值,下次启动将回退): ${committed.message}`,

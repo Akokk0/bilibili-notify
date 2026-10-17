@@ -1,37 +1,20 @@
 /**
- * 回归守护 — P1 / ②3+②4:刷新失败码判别式 + 续期链的闸与提交。
+ * 回归守护 — P1 / ②3+②4:续期的失败处置 + 续期链的闸与提交。
  *
- * 不变量 1(②4 判别式):`-352/-403` = 风控/限流 = **非会话终态**(必须
- * "risk-control",绝不 "terminal" —— 否则瞬时风控被误升级为被动登出);
- * `-101` 及其它非 0 = "terminal";`0` = "ok"。这条决定 ②3 的终态清理只在
- * 真终态触发(dispose timer + 清 loginInfoLoaded + auth-lost)。
+ * 不变量 1(②4,3b-18 起读请求层翻好的标准码):**只有 `-101`(unauthorized)是会话终态**;风控(`-352` / `-412` 等)、
+ * `-403`、没对照的码(`-111`、`86038`……)、回应形状不对都是一时失败,下个小时再试,绝不登出。终态清理只在真终态触发
+ * (dispose timer + 清 loginInfoLoaded + auth-lost);死会话靠普通请求撞 `-101` 时清。
  *
  * 不变量 2(3a-10·26):续期链进行中罐子不许自动存中间状态。闸**只在两种情况下放**:提交成功,或这一串根本没走到
  * 会改罐子的那一步(或被取代)。刷新 POST 走过之后的任何失败(确认遇风控、找不到新 `bili_jct`、提交失败)都得把闸
  * 留着 —— 放开的话盘上悄悄变成「新 cookie + 旧令牌」,类型与别的测试全绿。
  *
- * 复发点:有人把 -352 改回 terminal;把 `checkIfTokenNeedRefresh` 的 `finally` 改成一律放闸;把令牌现读改回闭包。
+ * 复发点:有人把 -101 以外的码又当成终态;把 `checkIfTokenNeedRefresh` 的 `finally` 改成一律放闸;把令牌现读改回闭包。
  */
 
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { classifyRefreshCode } from "../api";
 import { makeApi, makeServiceContext } from "./support/make-api";
-
-describe("classifyRefreshCode — ②4 判别式", () => {
-	it("0 → ok", () => {
-		expect(classifyRefreshCode(0)).toBe("ok");
-	});
-	it("-352 / -403 → risk-control(风控,非终态)", () => {
-		expect(classifyRefreshCode(-352)).toBe("risk-control");
-		expect(classifyRefreshCode(-403)).toBe("risk-control");
-	});
-	it("-101 及其它非0 → terminal(会话不可恢复)", () => {
-		expect(classifyRefreshCode(-101)).toBe("terminal");
-		expect(classifyRefreshCode(-111)).toBe("terminal");
-		expect(classifyRefreshCode(86038)).toBe("terminal");
-	});
-});
 
 function makeHost() {
 	const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -349,6 +332,58 @@ describe("续期链:闸与提交", () => {
 
 		expect(await savesAfterTouch(w)).toBe(0);
 		expect((await w.api.commitLogin("T0")).ok).toBe(true);
+		expect(await savesAfterTouch(w)).toBe(1);
+	});
+
+	// 只有 -101(请求层翻成 unauthorized)才是会话终态;别的码(含没对照的)都当一时失败,下个小时再试。
+	it("刷新那一步回 -412:不登出、auth-lost 不发、罐子不清、闸留着、记一条 warn", async () => {
+		const w = await world({ refresh: () => ({ code: -412, message: "被拦截" }) });
+
+		await run(w).catch(() => {});
+
+		expect(w.onAuthLost).not.toHaveBeenCalled();
+		expect(w.jar.serialize()).not.toEqual([]);
+		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("-412"));
+		expect(await savesAfterTouch(w)).toBe(0);
+		expect((await w.api.commitLogin("T0")).ok).toBe(true);
+		expect(await savesAfterTouch(w)).toBe(1);
+	});
+
+	it("刷新那一步回没对照的码(-111):不登出,闸留着,下个小时的定时触发照样再试", async () => {
+		const w = await world({ refresh: () => ({ code: -111, message: "csrf 校验失败" }) });
+
+		await run(w).catch(() => {});
+
+		expect(w.onAuthLost).not.toHaveBeenCalled();
+		expect(w.jar.serialize()).not.toEqual([]);
+		expect(await savesAfterTouch(w)).toBe(0);
+
+		// 下一轮没被"会话已终态"拦住:又往下发了 POST(world 的脚本只认第一次,后面的回应是默认值,所以只看总次数多了)。
+		const before = w.postForm.mock.calls.length;
+		await run(w).catch(() => {});
+		expect(w.postForm.mock.calls.length).toBeGreaterThan(before);
+	});
+
+	it("确认那一步回 86038(没对照的码):不登出,闸留着", async () => {
+		const w = await world({ confirm: () => ({ code: 86038 }) });
+
+		await run(w).catch(() => {});
+
+		expect(w.onAuthLost).not.toHaveBeenCalled();
+		expect(w.jar.serialize()).not.toEqual([]);
+		expect(await savesAfterTouch(w)).toBe(0);
+		expect((await w.api.commitLogin("T1")).ok).toBe(true);
+		expect(await savesAfterTouch(w)).toBe(1);
+	});
+
+	it("探测回 -412:跳过本轮(记 warn),不登出、没有刷新 POST,闸放了", async () => {
+		const w = await world({ probe: { code: -412, message: "被拦截" } });
+
+		await run(w);
+
+		expect(w.postForm).not.toHaveBeenCalled();
+		expect(w.onAuthLost).not.toHaveBeenCalled();
+		expect(w.host.logger.warn).toHaveBeenCalledWith(expect.stringContaining("-412"));
 		expect(await savesAfterTouch(w)).toBe(1);
 	});
 
