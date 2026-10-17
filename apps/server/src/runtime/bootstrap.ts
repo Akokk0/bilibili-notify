@@ -28,7 +28,7 @@ import { createIntegrationStore, type IntegrationStore } from "../integration-st
 import { createLinkResolverRegistry, type LinkResolverRegistry } from "../link-preview/registry.js";
 import { createLiveTable, type LiveTable } from "../live/live-table.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
-import { createValueRedactor } from "../logs/value-redactor.js";
+import { createValueRedactor, type ValueRedactor } from "../logs/value-redactor.js";
 import { createProblemTable, type ProblemTable } from "../problems/problem-table.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
@@ -87,6 +87,11 @@ export interface AppRuntime {
 	 * `settings`,它拿的是这张表现取的闭包。适配器的登记(内置 / 拓展)在 `index.ts` 里往后做。
 	 */
 	adapterRegistry: PlatformAdapterRegistry;
+	/**
+	 * 日志按值打码登记册的**登记口**(只有 `replace`,读 / 遮的一面在日志出口里):给核心自己登记设置里的机密值
+	 * (`runtime/settings-redaction.ts`)。集成的值走各自的存储把手,不经这里。
+	 */
+	valueRedactor: Pick<ValueRedactor, "replace">;
 	/** 订阅来源的登记表:建在这里、挂在运行时上,来源由 `engines.registerSource` 登进去。 */
 	sourceRegistry: SourceRegistry;
 	/** 链接解析器的登记表:来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver` 登进去。 */
@@ -246,7 +251,7 @@ export function createAppRuntime(
 	deps: AppRuntimeDeps,
 ): AppRuntime {
 	// 日志按值打码的登记册,**整个运行时只建这一个**:先于日志上下文建,日志出口从第一行就按它遮;
-	// 只交给集成存储宿主(下面),各集成的值经存储把手登记,不再往别处转手。
+	// 交给集成存储宿主(下面,各集成的值经存储把手登记)与运行时上的登记口(核心设置里的机密值),不再往别处转手。
 	const valueRedactor = createValueRedactor();
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
@@ -560,6 +565,7 @@ export function createAppRuntime(
 		loadFontFace: createFontAssetReader(dataRoot, { transform: buildFontFace }),
 		configStore,
 		adapterRegistry,
+		valueRedactor,
 		sourceRegistry,
 		linkResolvers,
 		problems,

@@ -32,6 +32,11 @@ export interface PlatformAdapterRegistry {
 	 * 后注册的拓展对它永远不存在。
 	 */
 	list(): readonly PlatformAdapterView[];
+	/**
+	 * 登记成功与撤下之后各叫一次(登记失败、重复撤下不叫)。「哪些适配器在场」会变宽变窄的消费方
+	 * (按适配器规则判连接设置里哪格是机密)靠它重算,不用在每个登记点手补。回调里再登记 / 撤下不受保护,别这么干。
+	 */
+	onChange(fn: () => void): Disposable;
 }
 
 /**
@@ -92,8 +97,17 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 		return view;
 	};
 
+	const listeners = new Set<() => void>();
+	const notify = (): void => {
+		for (const fn of [...listeners]) fn();
+	};
+
 	const registry: PlatformAdapterRegistry = {
 		list: () => adapters.map(viewFor),
+		onChange(fn) {
+			listeners.add(fn);
+			return { dispose: () => void listeners.delete(fn) };
+		},
 		register(adapter, ctx) {
 			add(adapter);
 			try {
@@ -103,12 +117,14 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 				remove(adapter);
 				throw err;
 			}
+			notify();
 			let removed = false;
 			return {
 				dispose() {
 					if (removed) return;
 					removed = true;
 					remove(adapter);
+					notify();
 					stopQuietly(
 						() => adapter.stop(),
 						(err) =>
@@ -147,6 +163,7 @@ export function deriveAdapterRegistry(
 	const derived: PlatformAdapterRegistry = {
 		register: (adapter, ctx) => base.register(adapter, ctx),
 		list: () => base.list().map(decoratedOf),
+		onChange: (fn) => base.onChange(fn),
 	};
 	fullListOf.set(derived, () => {
 		// 原表的完整表与视图表是同一时刻从同一个数组出的,顺序一一对应。

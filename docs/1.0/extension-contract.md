@@ -55,7 +55,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | `logger` | 改 | 拓展 id 写进日志行的 `name` 字段，不再拼进正文；面板按来源筛；级别键就是拓展 id，可单独调 |
 | `state` | 新增 | `KeyValueStore`：游标、分页令牌、小索引。见「state 与 secrets」 |
 | `secrets` | 新增 | 同一个 `KeyValueStore`：cookie、token。见「state 与 secrets」 |
-| `redact(value)` | 新增 | 还没存进 `secrets` 的临时凭据（比如扫码刚拿到的 token）先登记，日志落盘前按值遮掉。**一次登记一个，只增不减，直到集成停下**（宿主在收摊的最后撤掉；连续登记不会互相冲掉，停下之后再登记不生效，空串与不是字符串的忽略）。存进 `secrets` 的值、cookie 罐里的每条 cookie 一到就自动登记，不用再登记。日志按值打码：核心里写死 B 站 cookie 名的正则删掉，只留 AI 服务商密钥的 `sk-`、`Bearer` 两条；少于 8 个字符的值不遮；登录账号自己的 uid 照遮、不豁免 |
+| `redact(value)` | 新增 | 还没存进 `secrets` 的临时凭据（比如扫码刚拿到的 token）先登记，日志落盘前按值遮掉。**一次登记一个，只增不减，直到集成停下**（宿主在收摊的最后撤掉；连续登记不会互相冲掉，停下之后再登记不生效，空串与不是字符串的忽略）。存进 `secrets` 的值、cookie 罐里的每条 cookie 一到就自动登记，不用再登记；设置里标了机密的格（清单 `secret` / `generate`）宿主也自动登记，同样不用调。日志按值打码：核心里写死 B 站 cookie 名的正则删掉，只留 AI 服务商密钥的 `sk-`、`Bearer` 两条；少于 8 个字符的值不遮；登录账号自己的 uid 照遮、不豁免 |
 | `settings(schema)` | 改 | 交回的读取把手与内置集成是同一个 `SettingsReader<T>`（`get` 与 `onChange`），`get()` 回结果形状、不抛，拓展不再有自己的一份读取把手。见「设置」 |
 | `http` | 新增 | 集成自己的请求客户端，1.0 对拓展整套开放。见「ctx.http」 |
 | `fetchImage(url, { headers?, signal? })` | 新增 | 返回结果形状。见「图」 |

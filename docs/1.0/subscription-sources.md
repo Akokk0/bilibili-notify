@@ -186,7 +186,7 @@ type AuthState =                   // 状态值用 kebab
 - 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
-- 日志落盘前按值脱敏：各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记；**少于 8 个字符的值不遮**。核心里写死 B 站 cookie 名的五条正则删掉，`sk-`、`Bearer` 两条（AI 服务商密钥）留着。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉，不豁免。
+- 日志落盘前按值脱敏：各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，设置里标了机密的格（核心 `markSecret`、清单 `secret` / `generate`）宿主自动登记，还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记；**少于 8 个字符的值不遮**。核心里写死 B 站 cookie 名的五条正则删掉，`sk-`、`Bearer` 两条（AI 服务商密钥）留着。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉，不豁免。
 - **登录问题由宿主看登录状态报，来源不报**：宿主订每个有登录口的来源的 `auth.onChange`，按 `AuthState` 自己报与清 —— `expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清（私聊过的补「已恢复」）、`awaiting-scan` / `confirming` / `error` 保持上一次的结论；记在来源名下；宿主写整句并带指路（面板账号页、`login <来源>` 指令）。契约不为此加成员。B 站不再报 `auth_lost`；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。🔗 现状：未登录层今天在 `bilibili/problem-layers.ts` 里由 B 站自己报，随 3b-38 搬到宿主。
 
 ## SourceContext

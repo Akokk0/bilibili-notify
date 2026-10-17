@@ -64,6 +64,7 @@ import {
 } from "./migration/zero-generation.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
+import { connectionView, globalConfigView, integrationSettingsView } from "./routes/secret-view.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
@@ -104,6 +105,7 @@ import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { dataPath, hostPath } from "./runtime/roots.js";
+import { bindSettingsRedaction } from "./runtime/settings-redaction.js";
 import { createStatusCommand, readLogins, readSourceHealth } from "./runtime/status-command.js";
 import { createStorageUsage } from "./runtime/storage-usage.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
@@ -537,6 +539,32 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			configStore: runtime.configStore,
 		});
 		runtime.serviceCtx.onDispose(() => logLevels.dispose(), "stop");
+		// 连接 settings 里哪些格是密钥:适配器 schema 上的标记 + 拓展声明的键。下发打码、备份脱敏、日志按值打码吃同一份。
+		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
+		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
+		const connectionSecrets = createSecretCellsReader(runtime.adapterRegistry, (adapterKey) =>
+			loadedExtensions?.secretConfigCodes().get(adapterKey),
+		);
+		// 设置里标了机密的格登记进日志按值打码:紧跟配置读完;此刻适配器与拓展都还不在,连接与拓展设置整份从严,
+		// 适配器登记、拓展装好之后(`sync()`)才变窄。
+		const settingsRedaction = bindSettingsRedaction({
+			redactor: runtime.valueRedactor,
+			views: {
+				globals: globalConfigView,
+				connection: connectionView,
+				integrationSettings: integrationSettingsView,
+			},
+			configStore: runtime.configStore,
+			integrationSettings: BUILTIN_INTEGRATION_SETTINGS,
+			connectionSecrets,
+			adapters: runtime.adapterRegistry,
+			// 清单读不到(装载器没好、版本不合)= 问不出来;清单在但没声明设置项 = 确实没有机密格。
+			extensionFieldsOf: (id) => {
+				const manifest = loadedExtensions?.list().find((entry) => entry.id === id)?.manifest;
+				return manifest ? (manifest.settings?.fields ?? []) : undefined;
+			},
+		});
+		runtime.serviceCtx.onDispose(() => settingsRedaction.dispose(), "stop");
 		// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
@@ -1171,12 +1199,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
-		// 连接 settings 里哪些格是密钥:适配器 schema 上的标记 + 拓展声明的键。下发打码与备份脱敏吃同一份。
-		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
-		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
-		const connectionSecrets = createSecretCellsReader(adapterRegistry, (adapterKey) =>
-			loadedExtensions?.secretConfigCodes().get(adapterKey),
-		);
 		const backupService = authSystem
 			? createBackupService({
 					configStore: runtime.configStore,
@@ -1259,6 +1281,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 		// 才不会在核心已经拆了之后还被回调进去。
 		runtime.serviceCtx.onDispose(() => loadedExtensions?.dispose(), "stop");
+		// 清单到手了:拓展设置从「整份遮」收窄到只遮清单里标了机密的格。
+		settingsRedaction.sync();
 		// 起来的那些装载器自己记过了(版本、代码指纹、软链落点,热装与换代码同一句);这里只把
 		// 开机时没起来的说出来。
 		for (const entry of loadedExtensions.list()) {

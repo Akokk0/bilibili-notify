@@ -141,7 +141,11 @@ describe("adapter 注册表 · 出口咽喉", () => {
 
 	it("不是我们造的登记表 → 抛,不静默回空", () => {
 		expect(() =>
-			sendableAdapters({ register: () => ({ dispose() {} }), list: () => [] }),
+			sendableAdapters({
+				register: () => ({ dispose() {} }),
+				list: () => [],
+				onChange: () => ({ dispose() {} }),
+			}),
 		).toThrow();
 	});
 
@@ -346,5 +350,39 @@ describe("adapter 注册表 · class 写的适配器(方法在原型上)", () =>
 			latencyMs: 42,
 		});
 		expect(await full?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
+	});
+});
+
+describe("adapter 注册表 · onChange", () => {
+	it("登记与撤下各叫一次;start 抛了(登记失败)不叫;dispose 之后不再叫", () => {
+		const registry = createPlatformAdapterRegistry();
+		const seen = vi.fn();
+		const sub = registry.onChange(seen);
+		const handle = reg(registry, fakeAdapter("a"));
+		expect(seen).toHaveBeenCalledTimes(1);
+		handle.dispose();
+		expect(seen).toHaveBeenCalledTimes(2);
+		handle.dispose();
+		expect(seen).toHaveBeenCalledTimes(2);
+
+		const broken = fakeAdapter("b");
+		(broken.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
+			throw new Error("boom");
+		});
+		expect(() => reg(registry, broken)).toThrow("boom");
+		expect(seen).toHaveBeenCalledTimes(2);
+
+		sub.dispose();
+		reg(registry, fakeAdapter("c"));
+		expect(seen).toHaveBeenCalledTimes(2);
+	});
+
+	it("派生表的 onChange 转给原表:原表上登记的,派生表上的订阅也听得到", () => {
+		const base = createPlatformAdapterRegistry();
+		const derived = deriveAdapterRegistry(base, (view) => view);
+		const seen = vi.fn();
+		derived.onChange(seen);
+		reg(base, fakeAdapter("a"));
+		expect(seen).toHaveBeenCalledTimes(1);
 	});
 });

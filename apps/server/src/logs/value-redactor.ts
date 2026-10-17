@@ -1,5 +1,3 @@
-import type { Json } from "@bilibili-notify/internal";
-
 /**
  * 日志按值打码的登记册(ADR-0025 决策 9)。
  *
@@ -8,7 +6,8 @@ import type { Json } from "@bilibili-notify/internal";
  * 不管值出现在 msg、字符串参数、对象参数还是 `Error` 里,也不管前面是不是写着 `SESSDATA=`。
  * 核心因此不再需要知道任何一家平台的 cookie 叫什么。
  *
- * - 登记按「集成 + 种类」分:`replace` 是**整批换**(`secrets` 一份、cookie 罐一份),换走的旧值不再遮;
+ * - 登记按「归属 + 种类」分(归属是集成键,或核心自己的 `core`,照 `internal/problem.ts` 的写法):
+ *   `replace` 是**整批换**(`secrets` 一份、cookie 罐一份、核心的设置一份),换走的旧值不再遮;
  *   集成停下时 `clear` 掉它名下的。
  * - 少于 {@link MIN_REDACTED_LENGTH} 个字符的值不遮:太短的值(`"1"`、`"abc"`)几乎一定是普通文本的一部分,
  *   遮了日志就没法看。登录账号自己的 uid 不豁免 —— 它是 cookie 值,够长就照遮(字符串里按子串遮,
@@ -110,8 +109,8 @@ export function createValueRedactor(): ValueRedactor {
 	};
 }
 
-/** 一个 JSON 值里的每一段字符串(递归走数组与对象;键名、数字、布尔、null 不收)。 */
-export function stringLeaves(value: Json): string[] {
+/** 一个值里的每一段字符串(递归走数组与对象;键名、数字、布尔、null 不收)。入参不限 JSON:设置里收出来的是 `unknown`。 */
+export function stringLeaves(value: unknown): string[] {
 	if (typeof value === "string") return [value];
 	if (value === null || typeof value !== "object") return [];
 	const leaves: string[] = [];

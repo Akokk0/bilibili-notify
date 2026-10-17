@@ -83,3 +83,12 @@ export function connectionView(connection: Connection, lookup: SecretCellsReader
 export function globalConfigView(globals: GlobalConfig): GlobalConfigView {
 	return mapMarked(GlobalConfigSchema, globals, MASK_SECRETS) as GlobalConfigView;
 }
+
+/**
+ * 内置集成登记段的设置:按该段 schema 上的 `secret` 标记遮,打码走法同核心设置({@link MASK_SECRETS})。
+ * 今天只有「日志按值打码」读它(`runtime/settings-redaction.ts`,由入口注入);面板的 `/api/settings`
+ * 还原样下发集成设置,等内置适配器登段(3b-41)时一并改。
+ */
+export function integrationSettingsView(schema: unknown, settings: unknown): unknown {
+	return mapMarked(schema, settings, MASK_SECRETS);
+}

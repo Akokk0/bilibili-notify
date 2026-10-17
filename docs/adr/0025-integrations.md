@@ -99,6 +99,7 @@
     - **卸载**拓展时连它的 `state` 与 `secrets` 两个目录一起清（清不掉会报出来）；内置集成没有卸载，`remove` 对它的保留键直接拒。
     - 🔗 2026-10-14（3b 契约第 3 版，主人定）：**日志按值打码**。删掉核心里写死 B 站 cookie 名的五条正则；各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，还没存的临时值经 `ctx.redact` 登记，日志落盘前按值遮；少于 8 个字符的值不遮（与上面「很短的不遮」同一条线，定为 8）；登录账号自己的 uid 照遮、不豁免；`sk-`、`Bearer` 两条（AI 服务商密钥）留着。
     - 🔗 2026-10-16（3b，主人定）：**设置里标了机密的值也登记**。核心设置里 `markSecret` 标过的格（连接的 `accessToken`、`appSecret`、webhook 的 `url` 与 `secret`，面板密码，AI 与搜索的 key）、内置集成的设置、拓展清单里标了 `"secret": true` 的设置格，值都交给同一份登记册，设置一变整批换。这个标记今天已经在管备份脱敏，打码复用同一个；第三方拓展不用自己调 `ctx.redact`（桥的 token 就住在设置里）。
+    - 🔗 2026-10-17（3b-38-f，主人定）：**落法**。归属记在核心自己名下（`core`）、种类 `settings`，四样来源（核心设置、连接设置、内置集成设置、拓展设置）并成一批整批换，不记在各集成名下（拓展停下时存储把手会撤掉它名下的一切，而它的设置还在盘上）。「哪格算机密」取**面板打码**那一档（`secret` 标记与清单声明），不取备份那一档：`backupOnly` 的格（OneBot 地址、AI baseUrl）日志里照显，排查要看。问不出来的（适配器不在场、连接设置解不过、拓展没清单）整份字符串都登记；适配器来去经登记表的 `onChange` 重算。面板打码的函数在 `routes/`，由入口注入给 `runtime/`。面板密码一项见 38-f-2：上面说的 `dashboardAuth.password` 是 `globals.bootstrap` 下没人读的废格，真正的面板密码在引导配置 `auth.basicAuth.password`。
 10. **ctx 上的调用被拒或失败**：
     - 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。拓展契约从 v2 的 reject 改成这样。
     - 请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状，不抛错（码见 ADR-0026）：超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`；取图 404 回 `not_found`，超 8MB、不是图、内网地址回 `invalid`，超时回 `timeout`，网络或上游 5xx 回 `unavailable`。
