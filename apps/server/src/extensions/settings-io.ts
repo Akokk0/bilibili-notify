@@ -328,12 +328,37 @@ export async function newExtensionIssues(
 // ---- 存着的那份过不过得了拓展自己的 zod ------------------------------------------------
 
 /**
- * 存着的那份对拓展交过的每一份 zod 的判决(决策 36)。`values` 按 schema 放解出来的那一份 ——
- * 拓展 `get()` 拿到的就是它;`detail` 是给主人看的那句「哪一格、为什么」。
+ * 存着的那份对拓展交过的每一份 zod 的判决(决策 36)。`values` 按 schema 放读到的结果 ——
+ * 拓展 `get()` 拿到的就是它:`{ settings }` 是过了那份 zod 的值;`{ notConfigured }` 是「没设过,
+ * 而空对象过不了这份 zod」(不算坏,拓展照跑,`get()` 回 `not_configured`),带的是给人看的原因。
+ * `detail` 是给主人看的那句「哪一格、为什么」。
  */
 export type StoredSettingsVerdict =
-	| { ok: true; values: ReadonlyMap<ZodType, unknown> }
+	| {
+			ok: true;
+			values: ReadonlyMap<ZodType, { settings: unknown } | { notConfigured: string }>;
+	  }
 	| { ok: false; detail: string };
+
+type ParsedSettings = ReturnType<ZodType["safeParse"]>;
+
+/**
+ * 把一份 zod 解存着那份(没设过按空对象解)的结果记进判决。没设过而解不过的不算坏 ——
+ * 记成 `notConfigured`;设过的解不过才是坏了,攒进 `issues`。
+ */
+function recordParsed(
+	schema: ZodType,
+	parsed: ParsedSettings,
+	unset: boolean,
+	fields: readonly ExtensionManifestField[],
+	values: Map<ZodType, { settings: unknown } | { notConfigured: string }>,
+	issues: ZodError["issues"],
+): void {
+	if (parsed.success) values.set(schema, { settings: parsed.data });
+	else if (unset) {
+		values.set(schema, { notConfigured: describeSettingsIssues(fields, {}, parsed.error.issues) });
+	} else issues.push(...parsed.error.issues);
+}
 
 /** 一句话里最多点名几处。手改坏的文件一口气能报几百条,原因把整张卡撑满就什么都看不清了。 */
 const MAX_NAMED_ISSUES = 3;
@@ -390,28 +415,25 @@ function describeSettingsIssues(
  * 该平白晚一拍。判不了有两种:schema 里有异步 refine(zod 同步解析一碰就抛),或者它自己的代码抛了。
  * 🔴 两种都不按 `instanceof` 分 —— 拓展内联的是**另一份 zod**,它抛的异步错不是宿主这份的实例。
  *
- * 没设过(`undefined` / `null`)不算坏:在拓展那头是「按没有算」,每份 schema 交 `undefined`。
+ * 没设过(`undefined` / `null`)不算坏:拿空对象过每份 schema(extension-contract「设置」第二条)——
+ * 过得了就是成功并带默认值,过不了记 `notConfigured`(见 {@link StoredSettingsVerdict})。
  */
 export function judgeStoredSettingsSync(
 	schemas: readonly ZodType[],
 	fields: readonly ExtensionManifestField[],
 	raw: unknown,
 ): StoredSettingsVerdict | undefined {
-	const values = new Map<ZodType, unknown>();
+	const unset = raw === undefined || raw === null;
+	const values = new Map<ZodType, { settings: unknown } | { notConfigured: string }>();
 	const issues: ZodError["issues"] = [];
 	for (const schema of schemas) {
-		if (raw === undefined || raw === null) {
-			values.set(schema, undefined);
-			continue;
-		}
-		let parsed: ReturnType<ZodType["safeParse"]>;
+		let parsed: ParsedSettings;
 		try {
-			parsed = schema.safeParse(raw);
+			parsed = schema.safeParse(unset ? {} : raw);
 		} catch {
 			return undefined;
 		}
-		if (parsed.success) values.set(schema, parsed.data);
-		else issues.push(...parsed.error.issues);
+		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
 	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
 	return { ok: true, values };
@@ -428,12 +450,13 @@ export async function judgeStoredSettings(
 ): Promise<StoredSettingsVerdict> {
 	const sync = judgeStoredSettingsSync(schemas, fields, raw);
 	if (sync) return sync;
-	const values = new Map<ZodType, unknown>();
+	const unset = raw === undefined || raw === null;
+	const values = new Map<ZodType, { settings: unknown } | { notConfigured: string }>();
 	const issues: ZodError["issues"] = [];
 	for (const schema of schemas) {
-		let parsed: Awaited<ReturnType<ZodType["safeParseAsync"]>>;
+		let parsed: ParsedSettings;
 		try {
-			parsed = await schema.safeParseAsync(raw);
+			parsed = await schema.safeParseAsync(unset ? {} : raw);
 		} catch (err) {
 			const reason = err instanceof Error ? err.message : String(err);
 			return {
@@ -441,8 +464,7 @@ export async function judgeStoredSettings(
 				detail: `它自己的设置校验抛了(是拓展代码的毛病,不是哪一格填错了):${reason}`,
 			};
 		}
-		if (parsed.success) values.set(schema, parsed.data);
-		else issues.push(...parsed.error.issues);
+		recordParsed(schema, parsed, unset, fields, values, issues);
 	}
 	if (issues.length > 0) return { ok: false, detail: describeSettingsIssues(fields, raw, issues) };
 	return { ok: true, values };

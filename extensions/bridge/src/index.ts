@@ -41,7 +41,14 @@ export function activate(ctx: ExtensionContext): void {
 
 	// 接入名单住设置里,**现读**:面板上重新生成 token,下一次连接立刻按新的判。
 	const settings = ctx.settings(BridgeSettingsSchema);
-	const links = (): readonly BridgeLink[] => settings.get()?.links ?? [];
+	// 读不了的那一拍(跑着时被旁路写坏,`get()` 回 `invalid`,宿主随后才把拓展收掉)交**上一份好的**名单:
+	// 按空名单算的话,新来的插件收 401,按协议永久不再重连。没设过(`not_configured`)同理,名单本就是空的。
+	let lastGoodLinks: readonly BridgeLink[] = [];
+	const links = (): readonly BridgeLink[] => {
+		const read = settings.get();
+		if (read.ok) lastGoodLinks = read.settings.links;
+		return lastGoodLinks;
+	};
 
 	// `source` 与 `server` 互相要对方:端点靠接入名单认 token,adapter 靠端点发消息。
 	// 现读的闭包把这个环拆开 —— 两者都只在**运行时**才碰对方,那时早就都建好了。

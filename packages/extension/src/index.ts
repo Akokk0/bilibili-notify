@@ -66,6 +66,10 @@ export type {
 	PushTarget,
 	PushTargetScope,
 	Result,
+	/**
+	 * 一个集成读自己设置的把手。拓展的 `ctx.settings(schema)` 回的就是它(与内置集成同一个口)。
+	 */
+	SettingsReader,
 } from "@bilibili-notify/internal";
 /**
  * 造结果的两个函数(ADR-0026 决策 6)。`send` / `probe` 回的 `DeliveryResult` / `ProbeResult`
@@ -111,6 +115,7 @@ import type {
 	IntegrationContext,
 	Logger,
 	PlatformAdapter,
+	SettingsReader,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import type { ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
@@ -168,32 +173,6 @@ export interface ExtensionConnectionView<TConfig> {
 	/** 主人有没有停用这条。**停用的也在名单里** —— 拓展要拿它答「这条为什么发不出去」。 */
 	enabled: boolean;
 	config: TConfig;
-}
-
-/**
- * 拓展自己的持久设置 —— 主人在面板上给**这个拓展**填的那些(桥的接入名单就住这儿),
- * 落盘在 `config/settings/extensions/<id>.json`,**形状归拓展自己那份 zod**,宿主只保证存得住。
- *
- * 与连接是两回事:连接是「一个 bot」,是宿主认识、推送目标能挂上去的东西;设置是拓展
- * 为了拿到那些 bot 而需要主人填的东西(token、对家的名字……),宿主一格都不认识。
- *
- * ⛔ **没有写口** —— 配置的写路径在这仓里只有面板那一条(决策 30 同一条纪律)。拓展要
- * 自己记东西的那天(订阅源的游标)再开,按同一条纪律等真实用例。
- */
-export interface ExtensionSettings<T> {
-	/**
-	 * **现读**,已经过交进来的那份 zod。`undefined` 只有一个意思:**没设过**。
-	 *
-	 * 存着的那份过不了这份 zod 时,拓展**根本不会跑着**(ADR-0019 决策 36):开机时宿主不起它、
-	 * 面板上是「设置读不了」,改对了宿主自己起它;跑着时被写坏了,宿主不把那一份交给它、
-	 * 接着把它收掉 —— 这里读到的永远是一份过得了它自己 zod 的设置。
-	 */
-	get(): T | undefined;
-	/**
-	 * 内容**真的变了**才叫(globals 别处动一下不算),而且只在新的那份过得了交进来的 zod 时叫。
-	 * 卸载时自动摘掉。
-	 */
-	onChange(fn: () => void): Disposable;
 }
 
 /** 注册完一个推送源之后拿到的把手。 */
@@ -516,17 +495,32 @@ export interface ExtensionContext extends IntegrationContext {
 	 */
 	statusChanged(): void;
 	/**
-	 * 自己的持久设置(见 {@link ExtensionSettings})。交一份 zod 进来,拿回一个现读的把手。
+	 * 自己的持久设置 —— 主人在面板上给**这个拓展**填的那些(桥的接入名单就住这儿),落盘在
+	 * `config/settings/extensions/<id>.json`,**形状归拓展自己那份 zod**,宿主只保证存得住。交一份
+	 * zod 进来,拿回一个现读的 {@link SettingsReader}(与内置集成读自己的设置是同一个口)。
 	 * 可以叫多次,每次都是同一份数据的一个视图。
+	 *
+	 * 与连接是两回事:连接是「一个 bot」,是宿主认识、推送目标能挂上去的东西;设置是拓展
+	 * 为了拿到那些 bot 而需要主人填的东西(token、对家的名字……),宿主一格都不认识。
+	 * ⛔ **没有写口** —— 配置的写路径在这仓里只有面板那一条(决策 30 同一条纪律)。
+	 *
+	 * `get()` 回 `Result<{ settings }>`、**不抛**:
+	 * - 没设过:拿空对象过这份 zod。过得了是成功并带默认值,过不了回 `not_configured`(拓展照跑,
+	 *   等主人填);
+	 * - 带异步规则、交进来那一刻判不完:回 `unavailable`,等一拍再读;
+	 * - **跑着时**存着的那份被旁路写坏(恢复备份、手改文件):回 `invalid`、带原因,并叫一次 `onChange`
+	 *   —— 宿主随后把拓展收掉(ADR-0019 决策 36)。这一拍里别把 `invalid` 当成空设置:桥的做法是记着
+	 *   上一份好的名单。
 	 *
 	 * v2 拓展的这份 zod 要与清单里的 `settings.fields` 对得上(键、类型、默认值),对不上
 	 * 当场抛 —— 面板照清单画表单、宿主照 zod 解,两份漂开就是「填了存不进去」。清单声明了设置项的
 	 * v2 **必须在 `activate` 里交**(ADR-0019 决策 35):面板写进来的值要再过它这一道,不交按加载失败算。
 	 *
-	 * 存着的那份过不了这份 zod 也当场抛(ADR-0019 决策 36)—— 别接住了接着往下起:宿主认的是它自己
-	 * 记下的那一笔,接住了也照样不起,面板上是「设置读不了」,主人改对了宿主会再起它一次。
+	 * 🔴 **只有 `activate` 期间**存着的那份过不了这份 zod 会当场抛(ADR-0019 决策 36)—— 别接住了接着
+	 * 往下起:宿主认的是它自己记下的那一笔,接住了也照样不起,面板上是「设置读不了」,主人改对了宿主会
+	 * 再起它一次。
 	 */
-	settings<T>(schema: ZodType<T>): ExtensionSettings<T>;
+	settings<T>(schema: ZodType<T>): SettingsReader<T>;
 	/**
 	 * 接面板上的一个「调拓展」按钮(ADR-0019 决策 22 / 42)。`name` 必须在清单的 `actions`(一串动作名)
 	 * 里声明过 —— 清单是面板能按哪些钮的全集,没声明的注册当场抛;同一个名字接两次也抛。

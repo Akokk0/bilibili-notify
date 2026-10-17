@@ -35,6 +35,7 @@ import type {
 	PushSourceHandle,
 	PushTarget,
 } from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { BRIDGE_CLOSE_CODES } from "../contract.js";
@@ -77,6 +78,9 @@ const SETTINGS = {
 		{ id: LINK_ID, name: "家里那台 koishi", enabled: true, token: TOKEN, bridgeKind: "koishi" },
 	],
 };
+
+/** 设置「此刻读不懂」的替身值:假宿主的 `get()` 见到它回 `invalid`(真宿主是跑着时被旁路写坏的那一拍)。 */
+const UNREADABLE = Symbol("unreadable");
 
 /** 一条连接 = 那条接入上的一个 bot(ADR-0012 决策 45)。 */
 const CONNECTION: Connection = {
@@ -216,9 +220,13 @@ function hostFor(
 		statusChanged() {
 			statusChanges += 1;
 		},
-		// 设置也按真宿主的做法:拿拓展交的那份 zod 解;动了由 `settingsChanged()` 扇出。
+		// 设置也按真宿主的做法:拿拓展交的那份 zod 解、交回 `Result`;动了由 `settingsChanged()` 扇出。
 		settings: (schema) => ({
-			get: () => schema.parse(settings()),
+			get: () => {
+				const raw = settings();
+				if (raw === UNREADABLE) return fail("invalid", "存着的设置读不懂");
+				return ok({ settings: schema.parse(raw) });
+			},
 			onChange: (fn) => {
 				settingsListeners.add(fn);
 				return { dispose: () => settingsListeners.delete(fn) };
@@ -323,7 +331,7 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 	/** 宿主交下来的连接名单 —— 用例可以就地把那条连接停用掉。 */
 	let connections: Connection[];
 	/** 桥自己的设置(接入名单)—— 用例换掉它再 `host.settingsChanged()`,就是主人存了一次。 */
-	let settings: typeof SETTINGS;
+	let settings: typeof SETTINGS | typeof UNREADABLE;
 
 	beforeEach(async () => {
 		httpServer = createServer();
@@ -569,6 +577,30 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		// close 到了插件这头时,它在那之前发出的 hello BN 早就收过了(同一条 TCP,先后不乱)。
 		expect(itemView(host.status())?.status).toEqual({ tone: "off", text: "没连上" });
 		expect(host.adapter().isAvailable?.(CONNECTION, TARGET)).toBe(false);
+	});
+
+	/**
+	 * 🔴 设置读坏的那一下(`get()` 回 `invalid`),名单**不清空**:清空的话新来的插件收 401,
+	 * 按协议永久不再重连(ADR-0019 决策 36)。桥拿上一份好的名单,等装载器把它收掉。
+	 */
+	it("设置读坏的那一下,token 握手照收(不回 401),名单还是上一份好的", async () => {
+		await handshake();
+		settings = UNREADABLE;
+		host.settingsChanged();
+
+		const second = peer(port, TOKEN);
+		try {
+			await second.open();
+			second.send({
+				type: "hello",
+				protocol: { major: 1, minor: 0 },
+				bridge: { kind: "koishi", name: "家里那台 koishi", version: "0.1.0" },
+				bots: [],
+			});
+			expect(await second.next()).toMatchObject({ type: "welcome" });
+		} finally {
+			second.dispose();
+		}
 	});
 
 	it("publishView:握过手之后,面板拿得到这条接入的样子与 bot 表(ADR-0019 决策 20)", async () => {

@@ -3,10 +3,10 @@ import type {
 	ExtensionContext,
 	ExtensionOwnSubscription,
 	ExtensionPushView,
-	ExtensionSettings,
 	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionView,
 	ExtensionView,
+	SettingsReader,
 	SubscriptionSourceDef,
 } from "@bilibili-notify/extension";
 import {
@@ -32,6 +32,7 @@ import {
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import { t } from "../i18n/index.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import {
 	type CreateIntegrationContextOptions,
@@ -539,34 +540,50 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	/** 交过的每一份(对表过了的才算),写设置时宿主拿它们再过一道。Set 保序、同一份只记一次。 */
 	const handedSchemas = new Set<ZodType>();
 	/**
-	 * 每份 zod 解出来的**最近一份好的** —— `get()` 只从这里拿,解析在「交进来」与「落盘了」那两下
-	 * 做完,不挂在 `get()` 上。
+	 * 每份 zod **最近一次的读法**(`get()` 回的就是它)—— 解析在「交进来」与「落盘了」那两下做完,
+	 * 不挂在 `get()` 上。
 	 *
 	 * 🔴 不能「每问一次现读现解」:宿主那头是 `getExtensionSettings(id)`,每次都深拷贝一份、再过一遍
 	 * 拓展的 zod —— 桥每握一次手问一次。
 	 *
-	 * 🔴 **存着的那份变得解不开时这里不动**:拓展永远看不到一份过不了它自己 zod 的设置。在装载器
-	 * 把它收掉之前(那要排队),它读到的还是上一份好的 —— 从前是「按没有算」给一个 `undefined`,
+	 * 🔴 **存着的那份变得解不开时,这里换成 `invalid`**:拓展永远拿不到一份过不了它自己 zod 的值,
+	 * 拿到的是带原因的失败,并且 `onChange` 叫一次(读得懂与读不懂之间翻了)。这一拍只持续到装载器
+	 * 把它收掉(那要排队);拿它的人该像桥那样记着上一份好的。从前是「按没有算」给一个 `undefined`,
 	 * 对桥就是名单一空、插件收 401、永久不再重连。
 	 */
-	const settingsValues = new Map<ZodType, unknown>();
+	const settingsReads = new Map<ZodType, Result<{ settings: unknown }>>();
 	/** 存着的那份眼下解不开的原因;`undefined` = 解得开或没设过。装载器凭它判「设置读不了」。 */
 	let settingsProblem: string | undefined;
 	/** 第几次「这一格动了」—— 异步判完回来时,中间又动过的那一次判决作废。 */
 	let settingsRound = 0;
 
-	function settingsUnreadable(detail: string): void {
+	/** 记下「解不开」:`get()` 换成 `invalid`(交过的每一份都读不懂了,原因是整份设置的,不分哪份 zod)。 */
+	function markUnreadable(detail: string): void {
 		settingsProblem = detail;
+		const unreadable = fail("invalid", detail);
+		for (const schema of handedSchemas) settingsReads.set(schema, unreadable);
+	}
+
+	function settingsUnreadable(detail: string): void {
+		markUnreadable(detail);
 		opts.onSettingsInvalid?.();
 	}
 
-	function readSettings<T>(schema: ZodType<T>): T | undefined {
-		if (settingsValues.has(schema)) return settingsValues.get(schema) as T | undefined;
-		// 只有一种情况走到这:交进来那一刻同步判不完(schema 里有异步 refine),异步那一道还没回来。
-		// 不给 `undefined` —— 那在拓展眼里是「没设过」,正是决策 36 要堵的那种误读。
-		throw new Error(
-			`extension ${id}: 设置还没校验完 —— 这份 zod 带异步规则,交进来那一刻同步判不完,要等一拍再读(activate 里别急着读)`,
-		);
+	/** 判决里一份 zod 的读法 → `get()` 回的结果。 */
+	function readOf(read: { settings: unknown } | { notConfigured: string }) {
+		return "settings" in read
+			? ok({ settings: read.settings })
+			: fail(
+					"not_configured",
+					t("extension.settings.notConfigured", { detail: read.notConfigured }),
+				);
+	}
+
+	function readSettings<T>(schema: ZodType<T>): Result<{ settings: T }> {
+		// 没有读法只有一种情况:交进来那一刻同步判不完(schema 里有异步 refine),异步那一道还没回来。
+		// 不给「没设过」那种成功 —— 那在拓展眼里是有值可用,正是决策 36 要堵的那种误读;也不抛。
+		return (settingsReads.get(schema) ??
+			fail("unavailable", t("extension.settings.unavailable"))) as Result<{ settings: T }>;
 	}
 
 	/**
@@ -576,9 +593,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 第一个订阅者把游标推到最新,轮到第二个时「和上次一样」—— 于是**第二个订阅者永远
 	 * 收不到**。宿主的通知是「globals 落盘了」,内容变没变是 ctx 的判断,判一次就够。
 	 *
-	 * 🔴 **先判再扇出**:新的那份过不了交过的 zod,就一个订阅者都不叫、`get()` 也不换,记下原因交给
-	 * 装载器把它收掉(恢复备份、手改文件、关着时之外的旁路写入都会走到这儿 —— 面板那条写路径
-	 * 在跑着时已经过过它的 zod)。
+	 * 🔴 **先判再扇出**:新的那份过不了交过的 zod,`get()` 先换成 `invalid`(拓展拿不到那份坏值)、
+	 * 记下原因交给装载器把它收掉,再叫订阅者(读得懂与读不懂之间翻了)(恢复备份、手改文件、关着时之外的
+	 * 旁路写入都会走到这儿 —— 面板那条写路径在跑着时已经过过它的 zod)。
 	 */
 	const settingsListeners = new Set<() => void>();
 	/** 上一次看见的设置(序列化),用来判「这次 globals 落盘动的是不是我这一格」。 */
@@ -595,9 +612,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const settle = (verdict: StoredSettingsVerdict) => {
 				// 判的已经是过时的那份(中间又落了一次盘),或者已经收摊了:作废。
 				if (round !== settingsRound || integration.disposed) return;
-				if (!verdict.ok) return settingsUnreadable(verdict.detail);
-				settingsProblem = undefined;
-				for (const [schema, value] of verdict.values) settingsValues.set(schema, value);
+				if (verdict.ok) {
+					settingsProblem = undefined;
+					for (const [schema, read] of verdict.values) settingsReads.set(schema, readOf(read));
+				} else {
+					// 读不懂也是「变了」:`get()` 已经换成 invalid,订阅者要知道去重读。
+					settingsUnreadable(verdict.detail);
+				}
 				if (now === lastSettingsDelivered) return;
 				lastSettingsDelivered = now;
 				for (const fn of [...settingsListeners]) fn();
@@ -826,14 +847,15 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 窗口里已经挂着一发:这一喊由它带上 —— 它在这一喊之后才发,面板重读到的是这一喊之后的样子。
 			statusCoalescer.touch(STATUS_KEY);
 		},
-		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
+		settings<T>(schema: ZodType<T>): SettingsReader<T> {
 			checkSettingsSchema(schema);
 			// 先交后判:存着的那份解不开时,这份 zod 也得留给装载器 —— 改对了没有它就判不了能不能起。
 			if (!integration.disposed) handedSchemas.add(schema);
 			const raw = opts.settings();
 			const verdict = judgeStoredSettingsSync([schema], settingsFields, raw);
 			if (verdict?.ok) {
-				settingsValues.set(schema, verdict.values.get(schema));
+				const read = verdict.values.get(schema);
+				if (read) settingsReads.set(schema, readOf(read));
 			} else if (verdict) {
 				// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
 				settingsUnreadable(verdict.detail);
@@ -847,7 +869,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
 					if (round !== settingsRound || integration.disposed) return;
 					if (!late.ok) settingsUnreadable(late.detail);
-					else if (!settingsValues.has(schema)) settingsValues.set(schema, late.values.get(schema));
+					else if (!settingsReads.has(schema)) {
+						const read = late.values.get(schema);
+						if (read) settingsReads.set(schema, readOf(read));
+					}
 				});
 			}
 			return {
@@ -940,12 +965,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 判的时候又落了一次盘:以变更那一道的判决为准。
 			if (round !== settingsRound) return settingsProblem;
 			if (!verdict.ok) {
-				settingsProblem = verdict.detail;
+				markUnreadable(verdict.detail);
 				return settingsProblem;
 			}
 			// 带异步规则的那几份到这儿才第一次有值可读。
-			for (const [schema, value] of verdict.values) {
-				if (!settingsValues.has(schema)) settingsValues.set(schema, value);
+			for (const [schema, read] of verdict.values) {
+				if (!settingsReads.has(schema)) settingsReads.set(schema, readOf(read));
 			}
 			return undefined;
 		},

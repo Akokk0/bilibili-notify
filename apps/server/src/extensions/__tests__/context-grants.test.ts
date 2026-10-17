@@ -400,7 +400,10 @@ describe("按清单注册推送源", () => {
 
 		it("对得上 —— 照常拿得到设置", () => {
 			const h = harness({ manifest: v2(fields({ default: 60 })), settings: { cookie: "c" } });
-			expect(h.ctx.settings(SETTINGS).get()).toEqual({ cookie: "c", interval: 60 });
+			expect(h.ctx.settings(SETTINGS).get()).toEqual({
+				ok: true,
+				settings: { cookie: "c", interval: 60 },
+			});
 		});
 
 		it("对不上 —— 拿设置那一刻就抛,点名那一格", () => {
@@ -1190,11 +1193,42 @@ describe("读自己的设置", () => {
 	} as unknown as ExtensionManifest;
 	const boot = (opts: { settings: unknown }) => harness({ manifest: MANIFEST, ...opts });
 
-	it("已经过自己那份 zod;没设过就是 undefined,而不是一个空壳", () => {
+	it("已经过自己那份 zod → 成功,设置铺在 ok 旁边", () => {
 		const h = boot({ settings: { links: [{ id: "a", token: "t" }] } });
-		expect(h.ctx.settings(LINKS).get()).toEqual({ links: [{ id: "a", token: "t" }] });
-		h.setSettings(undefined);
-		expect(h.ctx.settings(LINKS).get()).toBeUndefined();
+		expect(h.ctx.settings(LINKS).get()).toEqual({
+			ok: true,
+			settings: { links: [{ id: "a", token: "t" }] },
+		});
+	});
+
+	/** 没设过拿空对象过规则(extension-contract「设置」第二条):规则给了默认值,就是成功。 */
+	it("没设过、规则收得下空对象 → 成功并带默认值", () => {
+		const WITH_DEFAULT = z.object({
+			links: z.array(z.object({ id: z.string(), token: z.string() })).default([]),
+		});
+		const h = boot({ settings: undefined });
+		expect(h.ctx.settings(WITH_DEFAULT).get()).toEqual({ ok: true, settings: { links: [] } });
+	});
+
+	it("没设过、规则收不下空对象 → not_configured,不抛;不算设置读不了", () => {
+		const h = boot({ settings: undefined });
+		const reader = h.ctx.settings(LINKS);
+		const read = reader.get();
+		expect(read).toMatchObject({ ok: false, code: "not_configured" });
+		expect(h.runtime.settingsProblem()).toBeUndefined();
+		// 之后设上了,同一个把手读到的就是新的。
+		h.setSettings({ links: [] });
+		expect(reader.get()).toEqual({ ok: true, settings: { links: [] } });
+	});
+
+	/** 异步规则交进来那一刻判不完:`get()` 不抛,回 unavailable(等一拍就好);判完回 ok。 */
+	it("带异步规则、交进来那一刻判不完 → get() 回 unavailable;判完之后回 ok", async () => {
+		const ASYNC = LINKS.refine(async () => true);
+		const h = boot({ settings: { links: [] } });
+		const reader = h.ctx.settings(ASYNC);
+		expect(reader.get()).toMatchObject({ ok: false, code: "unavailable" });
+		await h.runtime.verifySettings();
+		expect(reader.get()).toEqual({ ok: true, settings: { links: [] } });
 	});
 
 	/**
@@ -1212,9 +1246,12 @@ describe("读自己的设置", () => {
 	it("是**现读**:面板改了下一次问就是新的", () => {
 		const h = boot({ settings: { links: [] } });
 		const settings = h.ctx.settings(LINKS);
-		expect(settings.get()?.links).toHaveLength(0);
+		expect(settings.get()).toEqual({ ok: true, settings: { links: [] } });
 		h.setSettings({ links: [{ id: "a", token: "t" }] });
-		expect(settings.get()?.links).toHaveLength(1);
+		expect(settings.get()).toEqual({
+			ok: true,
+			settings: { links: [{ id: "a", token: "t" }] },
+		});
 	});
 
 	/**
@@ -1235,7 +1272,7 @@ describe("读自己的设置", () => {
 
 		h.setSettings({ links: [] });
 		const afterWrite = h.settingsReads();
-		expect(settings.get()).toEqual({ links: [] });
+		expect(settings.get()).toEqual({ ok: true, settings: { links: [] } });
 		settings.get();
 		expect(h.settingsReads() - afterWrite).toBe(0);
 	});

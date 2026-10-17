@@ -10,7 +10,9 @@
  *   (这不是拓展崩了,不能几次之后被自动停用)
  * - 拓展自己 try/catch 吞了 `ctx.settings()` 那一抛 → 照样作数
  * - 清单声明了设置项,activate 里却一份 zod 都没交 → 按加载失败算
- * - 跑着时被旁路写坏 → 🔴 **拓展看不到那一份**:订阅者不被叫,那一行变 `settings-invalid`
+ * - 跑着时被旁路写坏 → 🔴 **拓展看不到那一份**:`get()` 回 `invalid` 带原因、订阅者被叫一次,
+ *   那一行变 `settings-invalid`
+ * - 没设过不算坏:空对象过得了规则就成功拿默认值,过不了回 `not_configured`、拓展照跑
  * - 设置再变:解得开就在队里起起来;还解不开只更新原因,一行拓展代码都不重跑
  */
 
@@ -306,22 +308,27 @@ describe("清单声明了设置项,activate 里就得交 zod(决策 35)", () => 
 /**
  * 跑着时写入已经过了它的 zod(设置路由),撞上的只剩旁路:恢复备份、手改文件、关着时之外的写入。
  *
- * 🔴 **拓展永远看不到一份过不了它自己 zod 的设置**:先判再扇出,判坏了一个订阅者都不叫,`get()`
- * 也不换 —— 交给装载器在队里把它收掉。
+ * 🔴 **拓展永远拿不到一份过不了它自己 zod 的值**:先判再扇出,判坏了 `get()` 回 `invalid`(不是那份
+ * 坏值),并叫一次订阅者(读得懂与读不懂之间翻了) —— 同时交给装载器在队里把它收掉。
  */
 describe("跑着时设置被旁路写坏", () => {
-	it("订阅者不被叫、get() 还是上一份好的;那一行变「设置读不了」,它注册的东西收掉", async () => {
+	it("get() 回 invalid 带原因、订阅者被叫一次;那一行变「设置读不了」,它注册的东西收掉", async () => {
 		const h = await boot({ settings: { links: [GOOD] } });
 		expect(h.entry()?.state).toBe("running");
-		const before = h.seen.read?.();
 
 		h.write({ links: [GOOD, ROTTEN] });
-		// 收它要排队 —— 这一拍里它读到的仍是上一份好的,不是那份坏的,也不是「没有」。
-		expect(h.seen.read?.()).toEqual(before);
+		// 收它要排队 —— 这一拍里它读到的是 invalid(带原因),不是那份坏的值,也不是「没有」。
+		expect(h.seen.read?.()).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("「坏掉的那台」这一项"),
+		});
 		// 排在队里它后面的一件事回来了 = 收摊那一趟走完了。
 		await h.loaded.sync();
 
-		expect(h.seen.changes).toEqual([]);
+		// 订阅者被叫的那一下读到的也是 invalid(读得懂与读不懂之间翻了就叫)。
+		expect(h.seen.changes).toHaveLength(1);
+		expect(h.seen.changes[0]).toMatchObject({ ok: false, code: "invalid" });
 		expect(h.entry()?.state).toBe("settings-invalid");
 		expect(h.entry()?.detail).toContain("「坏掉的那台」这一项");
 		expect(h.pending()).toBe(0);
@@ -379,6 +386,35 @@ describe("「设置读不了」之后设置又变了", () => {
 		await h.loaded.sync();
 		expect(h.entry()?.state).toBe("running");
 		expect(h.seen.activations).toBe(2);
+		await h.loaded.dispose();
+	});
+
+	/**
+	 * 没设过不算坏:设置文件被删成没设过、而规则收不下空对象 → 起得来,`get()` 回 `not_configured`
+	 * (extension-contract「设置」第二条)。
+	 */
+	it("设置被删成没设过、规则收不下空对象 → 起起来,get() 回 not_configured", async () => {
+		const STRICT = z.object({ token: z.string().min(1) });
+		const strictManifest: PlantedManifest = {
+			...MANIFEST,
+			settings: { fields: [{ key: "token", type: "string", label: "token", required: true }] },
+		};
+		const h = await boot({
+			manifest: strictManifest,
+			settings: { token: "" },
+			activate(ctx, seen) {
+				const settings = ctx.settings(STRICT);
+				seen.read = () => settings.get();
+			},
+		});
+		expect(h.entry()?.state).toBe("settings-invalid");
+
+		h.write(undefined);
+		await h.loaded.sync();
+
+		expect(h.entry()?.state).toBe("running");
+		expect(h.seen.activations).toBe(2);
+		expect(h.seen.read?.()).toMatchObject({ ok: false, code: "not_configured" });
 		await h.loaded.dispose();
 	});
 
