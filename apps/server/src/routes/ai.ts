@@ -30,7 +30,6 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
 import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
-import { withTraceLabels } from "../ai/trace-labels.js";
 import {
 	buildCardWorkshopSystem,
 	CARD_WORKSHOP_MAX_TOOL_ROUNDS,
@@ -774,8 +773,7 @@ function toMeta(conv: Conversation): ConversationMeta {
 function toDetail(conv: Conversation): AiConversationDTO {
 	return {
 		...toMeta(conv),
-		// 老痕迹没有标签:在回应里现补(只补回应,不改盘上的文件)。
-		messages: conv.messages.map((m) => (m.tools ? { ...m, tools: withTraceLabels(m.tools) } : m)),
+		messages: conv.messages,
 	};
 }
 

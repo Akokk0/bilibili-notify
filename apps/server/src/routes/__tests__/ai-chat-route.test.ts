@@ -587,13 +587,15 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 				id: "0-0",
 				name: "get_creator_profile",
 				args: { creator: "bilibili:12345" },
+				label: "查看 UP 主资料",
+				argText: "12345",
 			},
 			{ phase: "end", id: "0-0", ok: true },
 		];
 
 		await chatDrained(app, id, { message: "查一下" });
 		const conv = (await readJson(await getConv(app, id))).conversation;
-		// 这些事件没带标签(像老会话):读回应里由服务端现补,盘上的不动。
+		// start 事件照生产者的形状自带标签,落盘之后读回来还在。
 		expect(conv.messages[1].tools).toEqual([
 			{
 				name: "get_creator_profile",
@@ -605,6 +607,24 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		]);
 		// 主人那条不该沾上工具 —— 工具是女仆调的。
 		expect(conv.messages[0].tools).toBeUndefined();
+	});
+
+	it("认不出的工具名(模型编的)落盘不带标签,读回也不补 —— 面板回落显示原名", async () => {
+		const { deps } = await makeDeps();
+		const app = createAiRoute(deps);
+		const id = (await readJson(await createConv(app))).conversation.id;
+		// 生产者对认不出的工具名不带 label / argText(describeToolCall 缺席即 {})。
+		H.toolEvents = [
+			{ phase: "start", id: "0-0", name: "made_up_tool", args: { x: "1" } },
+			{ phase: "end", id: "0-0", ok: true },
+		];
+
+		const done = await readDone(await chat(app, id, { message: "x" }));
+		expect(done.reply.tools).toEqual([{ name: "made_up_tool", args: { x: "1" }, ok: true }]);
+		const conv = (await readJson(await getConv(app, id))).conversation;
+		expect(conv.messages[1].tools).toEqual([{ name: "made_up_tool", args: { x: "1" }, ok: true }]);
+		expect(conv.messages[1].tools?.[0]).not.toHaveProperty("label");
+		expect(conv.messages[1].tools?.[0]).not.toHaveProperty("argText");
 	});
 
 	it("start 事件自带的标签原样过线、随痕迹落盘、done 里也有 —— 面板不再靠自己那张表", async () => {
@@ -645,9 +665,16 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		H.toolEvents = [
-			{ phase: "start", id: "0-0", name: "get_creator_profile", args: { creator: "bilibili:1" } },
+			{
+				phase: "start",
+				id: "0-0",
+				name: "get_creator_profile",
+				args: { creator: "bilibili:1" },
+				label: "查看 UP 主资料",
+				argText: "1",
+			},
 			{ phase: "end", id: "0-0", ok: false, message: "BN 手里还没有资料缓存" },
-			{ phase: "start", id: "0-1", name: "list_subscriptions", args: {} },
+			{ phase: "start", id: "0-1", name: "list_subscriptions", args: {}, label: "查看订阅列表" },
 			{ phase: "end", id: "0-1", ok: true },
 		];
 
@@ -660,17 +687,16 @@ describe("POST /conversations/:id/chat — 工具调用痕迹", () => {
 				name: "get_creator_profile",
 				args: { creator: "bilibili:1" },
 				ok: false,
+				label: "查看 UP 主资料",
+				argText: "1",
 				message: "BN 手里还没有资料缓存",
 			},
-			{ name: "list_subscriptions", args: {}, ok: true },
+			{ name: "list_subscriptions", args: {}, ok: true, label: "查看订阅列表" },
 		];
 		expect(events.find((e) => e.event === "done")?.data.reply.tools).toEqual(stored);
 		const conv = (await readJson(await getConv(app, id))).conversation;
-		// 读回应时缺标签的会被现补:这里只核对失败那句话原样在,成功的那条仍没有 message。
-		expect(conv.messages[1].tools).toEqual([
-			{ ...stored[0], label: "查看 UP 主资料", argText: "1" },
-			{ ...stored[1], label: "查看订阅列表" },
-		]);
+		// 落盘、读回都带着标签与失败那句话;成功的那条仍没有 message。
+		expect(conv.messages[1].tools).toEqual(stored);
 	});
 
 	it("done 里的回复也带着痕迹 —— 前端交接那一帧要拿它顶上", async () => {
@@ -983,7 +1009,14 @@ describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
 		const app = createAiRoute(deps);
 		const id = (await readJson(await createConv(app))).conversation.id;
 		H.toolEvents = [
-			{ phase: "start", id: "0-0", name: "create_skin", args: { brief: "赛博" } },
+			{
+				phase: "start",
+				id: "0-0",
+				name: "create_skin",
+				args: { brief: "赛博" },
+				label: "制作皮肤",
+				argText: "赛博",
+			},
 			{ phase: "progress", id: "0-0", chars: 120 },
 			{ phase: "progress", id: "0-0", chars: 860 },
 			{ phase: "end", id: "0-0", ok: true },
@@ -1015,7 +1048,14 @@ describe("POST /conversations/:id/chat — 联网搜索 flag 与来源", () => {
 			{ title: "T2", url: "https://b.example/2" },
 		];
 		H.toolEvents = [
-			{ phase: "start", id: "0-0", name: "web_search", args: { query: "b站 新闻" } },
+			{
+				phase: "start",
+				id: "0-0",
+				name: "web_search",
+				args: { query: "b站 新闻" },
+				label: "联网搜索",
+				argText: "b站 新闻",
+			},
 			{ phase: "end", id: "0-0", ok: true, sources: SOURCES },
 		];
 

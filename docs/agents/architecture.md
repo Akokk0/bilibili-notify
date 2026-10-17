@@ -259,4 +259,4 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 - **标签的字**集中放:核心自带工具(含联网搜索、看图)在 `packages/ai/src/tool-label-texts.ts`(`coreToolLabelOf` 取,小条上补的入参 = 文案表里单独写的格接上工具定义里 `required` 的格),服务端注入的几把(读技能、做皮肤、卡片工坊)在 `apps/server/src/ai/tool-label-texts.ts`;认不出的工具(模型编的名字)不带标签。
 - **痕迹事件**(生成器的 `onToolEvent`):开始事件带 `label` 与 `argText`(完整文字,截短是界面的事);结束事件带 `ok`,失败时带 `message`(与喂回模型的是同一句);慢工具中途的进度事件不落盘。`label`、`argText`、`message` 都随消息落盘(`ai/conversation-store.ts` 的 `StoredToolTrace`,存下来的字不跟着以后改名),也都经聊天 SSE 的 `tool` 事件过线;主人打斜杠点名技能时服务端手工补的那枚 `load_skill` 痕迹同样带 `label` 与 `argText`。
 - **`GET /api/ai/skills`** 在 `tools` 之外多一格 `toolLabels`(工具名 → 标签,`routes/ai-skills.ts`)。技能编辑器的勾选框今天还显示工具名,没用上这一格。
-- **面板没有按工具名查的表**:聊天里那一行小条只读痕迹自带的 `label` / `argText`(`apps/web/src/components/ai-chat/tools.ts` 的 `describeTool` 只管拼成「标签「入参」」与截短),没带标签就显示工具原名。存下来时还没有标签的老痕迹,由读会话的回应现补(`apps/server/src/ai/trace-labels.ts` 的 `withTraceLabels`,用今天在册的工具,不改写盘上的文件);已经下架的工具名补不出来,显示原名。失败的 `message` 面板接住了、还没显示。
+- **面板没有按工具名查的表**:聊天里那一行小条只读痕迹自带的 `label` / `argText`(`apps/web/src/components/ai-chat/tools.ts` 的 `describeTool` 只管拼成「标签「入参」」与截短),没带标签就显示工具原名。失败的 `message` 面板接住了、还没显示。
