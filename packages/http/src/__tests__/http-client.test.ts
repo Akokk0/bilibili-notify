@@ -12,6 +12,7 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { type AddressInfo, createServer as createNetServer, type Socket } from "node:net";
+import { ok } from "@bilibili-notify/internal/constants";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { BrowserIdentity } from "../browser-identity";
 import { CookieJar } from "../cookie-jar";
@@ -632,6 +633,110 @@ describe("HttpClient.fetch — 失败回结果形状,不抛", () => {
 			expect(res.message).not.toContain("SECRET_JCT");
 			expect(res.message).not.toContain("csrf=");
 		}
+	});
+});
+
+describe("HttpClient.fetch — bare 一档(不带身份、不碰罐)", () => {
+	const DEFAULTS = { Origin: "https://www.bilibili.com", "X-Client-Default": "d" };
+
+	it("线上没有身份四件、客户端默认头与 Cookie;调用方自己写的头照发", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=in_jar; Path=/", `${baseURL}/`);
+		await makeClient(jar, { headers: DEFAULTS }).fetch(`${baseURL}/echo`, {
+			bare: true,
+			headers: { Authorization: "Bearer t", "X-Mine": "1" },
+		});
+
+		const sent = lastReq.headers ?? {};
+		expect(sent["user-agent"]).not.toBe(IDENTITY.userAgent);
+		expect(sent["sec-ch-ua"]).toBeUndefined();
+		expect(sent["sec-ch-ua-mobile"]).toBeUndefined();
+		expect(sent["sec-ch-ua-platform"]).toBeUndefined();
+		expect(sent.origin).toBeUndefined();
+		expect(sent["x-client-default"]).toBeUndefined();
+		expect(sent.cookie).toBeUndefined();
+		expect(sent.authorization).toBe("Bearer t");
+		expect(sent["x-mine"]).toBe("1");
+	});
+
+	it("不收 Set-Cookie:响应的 cookie 不进罐,重定向跳上的也不进", async () => {
+		const jar = new CookieJar();
+		const client = makeClient(jar);
+
+		await client.fetch(`${baseURL}/set`, { bare: true });
+		await client.fetch(`${baseURL}/redirect-start`, { bare: true });
+
+		expect(jar.getValue("SESSDATA")).toBeUndefined();
+		expect(jar.getValue("hop_cookie")).toBeUndefined();
+	});
+
+	it("重定向的每一跳都不带罐子的 Cookie 与身份", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=in_jar; Path=/", `${baseURL}/`);
+		const res = await makeClient(jar).fetch(`${baseURL}/redirect-start`, { bare: true });
+
+		expect(res.ok).toBe(true);
+		expect(lastReq.url).toBe("/redirect-target");
+		expect(lastReq.cookie).toBeUndefined();
+		expect(lastReq.headers?.["sec-ch-ua"]).toBeUndefined();
+	});
+
+	it("不给 bare 的请求仍照旧补身份、带 Cookie、收 Set-Cookie(默认路径不变)", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=in_jar; Path=/", `${baseURL}/`);
+		const client = makeClient(jar, { headers: DEFAULTS });
+
+		await client.fetch(`${baseURL}/set`);
+
+		expect(lastReq.headers?.["user-agent"]).toBe(IDENTITY.userAgent);
+		expect(lastReq.headers?.["x-client-default"]).toBe("d");
+		expect(lastReq.cookie).toContain("SESSDATA=in_jar");
+		expect(jar.getValue("SESSDATA")).toBe("server_sess");
+	});
+});
+
+describe("HttpClient.fetch — FormData 请求体", () => {
+	const form = () => {
+		const data = new FormData();
+		data.set("field", "hello-form");
+		return data;
+	};
+
+	it("收 FormData:对端收到 multipart,boundary 是运行时补的", async () => {
+		const res = await makeClient().fetch(`${baseURL}/echo`, { method: "POST", body: form() });
+
+		expect(res.ok).toBe(true);
+		expect(lastReq.headers?.["content-type"]).toMatch(/^multipart\/form-data; boundary=/);
+		expect(lastReq.body).toContain('name="field"');
+		expect(lastReq.body).toContain("hello-form");
+	});
+
+	it("307 原样重发同一份表单", async () => {
+		await makeClient().fetch(`${baseURL}/temporary`, { method: "POST", body: form() });
+
+		expect(hits).toEqual(["POST /temporary", "POST /redirect-target"]);
+		expect(lastReq.headers?.["content-type"]).toMatch(/^multipart\/form-data; boundary=/);
+		expect(lastReq.body).toContain("hello-form");
+	});
+
+	it("303 降成 GET:不重发表单,也没有 multipart 的 Content-Type", async () => {
+		await makeClient().fetch(`${baseURL}/see-other`, { method: "POST", body: form() });
+
+		expect(lastReq.method).toBe("GET");
+		expect(lastReq.body).toBe("");
+		expect(lastReq.headers?.["content-type"]).toBeUndefined();
+	});
+
+	it("FormData 配 addressCheck(走 npm undici 那条路)回 invalid,一个请求都不发", async () => {
+		const res = await makeClient().fetch(`${baseURL}/echo`, {
+			method: "POST",
+			body: form(),
+			addressCheck: () => ok(),
+		});
+
+		expect(res.ok).toBe(false);
+		if (!res.ok) expect(res.code).toBe("invalid");
+		expect(hits).toEqual([]);
 	});
 });
 

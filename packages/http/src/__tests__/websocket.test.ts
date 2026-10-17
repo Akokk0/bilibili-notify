@@ -247,6 +247,24 @@ describe("HttpClient.websocket — 给错地址回 invalid", () => {
 	});
 });
 
+describe("HttpClient.websocket — bare 一档", () => {
+	it("握手没有身份的 UA 与 Cookie,调用方写的头照发", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=s; Path=/", `http://${origin}/`);
+		const socket = open(makeClient(jar, FETCH_DEFAULTS), `ws://${origin}/sub`, {
+			bare: true,
+			headers: { Authorization: "Bearer t" },
+		});
+		await opened(socket);
+
+		const names = lowered(namesOnWire(handshakes[0]));
+		expect(names).not.toContain("cookie");
+		expect(names).not.toContain("user-agent");
+		expect(names).toContain("authorization");
+		expect(handshakes[0]?.headers.authorization).toBe("Bearer t");
+	});
+});
+
 describe("HttpClient.websocket — signal", () => {
 	it("中止 → 连接被关(两头都收到 close)", async () => {
 		const controller = new AbortController();

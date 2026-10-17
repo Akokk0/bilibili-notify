@@ -39,6 +39,8 @@ export interface WebSocketOptions {
 	 * 集成停下时自动关就靠它(3a 把 `ctx.signal` 接到这里)。
 	 */
 	signal?: AbortSignal;
+	/** 「不带身份、不碰罐」一档:握手不带 `Cookie` 与身份的 `User-Agent`,只有上面的 `headers`。 */
+	bare?: boolean;
 }
 
 /**

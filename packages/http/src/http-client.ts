@@ -75,8 +75,12 @@ export interface FetchOptions {
 	method?: string;
 	/** 这一次请求的头,盖过客户端默认头与身份(大小写不敏感)。 */
 	headers?: Headers | Record<string, string>;
-	/** 请求体。只收能原样重发的类型(307 / 308 要重发)。GET / HEAD 不许带。 */
-	body?: string | Uint8Array<ArrayBuffer>;
+	/**
+	 * 请求体。只收能原样重发的类型(307 / 308 要重发)。GET / HEAD 不许带。
+	 * `FormData` 每一跳由运行时现序列化(boundary 也是运行时补的,别自己写 `Content-Type`);
+	 * 但它不能和 {@link FetchOptions.addressCheck} 同用(那条路是 npm `undici`,不认全局的 `FormData`),当场回 `invalid`。
+	 */
+	body?: string | Uint8Array<ArrayBuffer> | FormData;
 	/** 调用方的中止信号。 */
 	signal?: AbortSignal;
 	/** 这一次请求的单跳超时毫秒,默认取客户端的。 */
@@ -93,6 +97,12 @@ export interface FetchOptions {
 	 * `"send-only"` 只外发、不摄入(罐子里的东西这个请求只读)。
 	 */
 	cookies?: "exchange" | "send-only";
+	/**
+	 * 「不带浏览器身份、不碰罐」一档:不补身份四件、不带客户端的默认头、不带 `Cookie`、不收 `Set-Cookie`
+	 * (重定向的每一跳也一样,`cookies` 选项在这一档下不起作用)。调用方这一次自己写的头照发。
+	 * 内置的适配器调官方接口 / 主人填的地址用它:那些对端不该看到 B 站这套浏览器指纹与登录态。
+	 */
+	bare?: boolean;
 	/**
 	 * 响应体的字节上限。超了回 `invalid`:带 `Content-Length` 且已经超的不读体;其余边读边数,读过上限当场掐断
 	 * (不把超大的体整个读进内存再量)。不给就整个读完。只管最后落脚的那个回应,重定向跳的体本来就不读。
@@ -386,9 +396,14 @@ export class HttpClient {
 			return fail("invalid", `不是合法的地址: ${urlWithoutQuery(String(url))}`);
 		}
 
+		if (options.body instanceof FormData && options.addressCheck) {
+			return fail("invalid", "FormData 请求体不能和 addressCheck 同用");
+		}
+
 		const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
 		const timeoutMs = options.timeoutMs ?? this.timeoutMs;
-		const exchangeCookies = (options.cookies ?? "exchange") === "exchange";
+		const bare = options.bare === true;
+		const exchangeCookies = !bare && (options.cookies ?? "exchange") === "exchange";
 		// 请求发出时记下罐子换过几次:回来时对不上,这份响应属于上一个会话,Set-Cookie 不收。
 		const epoch = this.jar.epoch;
 
@@ -415,6 +430,7 @@ export class HttpClient {
 					options.headers,
 					target,
 					bodyless,
+					bare,
 				);
 			} catch (err) {
 				return fail("invalid", `请求头不合法: ${describeError(err)}`);
@@ -427,7 +443,8 @@ export class HttpClient {
 					? await undiciFetch(target, {
 							method: currentMethod,
 							headers: headers as UndiciHeaders,
-							body: currentBody,
+							// `FormData` 配 `addressCheck` 已在上面拒掉,走到这里的体只会是字符串或字节。
+							body: currentBody as string | Uint8Array<ArrayBuffer> | undefined,
 							redirect: "manual",
 							signal: attempt.signal,
 							dispatcher: this.guardedAgent(check),
@@ -515,6 +532,8 @@ export class HttpClient {
 	 * 不带 `sec-ch-ua*` / `Origin`,也不带构造客户端时交进来的默认头 —— 那些是 fetch 的头。
 	 * 头序与切过来之前裸 `ws` 建连时一致(头序也是指纹)。
 	 *
+	 * `bare` 一档:握手既不带 `Cookie` 也不带身份的 `User-Agent`,只有 `options.headers`。
+	 *
 	 * 地址不合法、协议 `ws` 不收(如 `ftp:`)时回 `invalid`,不抛(地址是输入,不是 bug)。
 	 */
 	websocket(url: string | URL, options: WebSocketOptions = {}): Result<{ socket: WebSocketLike }> {
@@ -525,9 +544,11 @@ export class HttpClient {
 			return fail("invalid", `不是合法的地址: ${urlWithoutQuery(String(url))}`);
 		}
 		const handshake: [string, string][] = [];
-		const cookie = this.jar.cookieHeaderFor(cookieLookupUrl(target));
-		if (cookie) handshake.push(["Cookie", cookie]);
-		handshake.push(["User-Agent", this.identity.userAgent]);
+		if (!options.bare) {
+			const cookie = this.jar.cookieHeaderFor(cookieLookupUrl(target));
+			if (cookie) handshake.push(["Cookie", cookie]);
+			handshake.push(["User-Agent", this.identity.userAgent]);
+		}
 		for (const [name, value] of Object.entries(options.headers ?? {})) {
 			const at = handshake.findIndex(([known]) => known.toLowerCase() === name.toLowerCase());
 			if (at >= 0) handshake[at] = [name, value];
@@ -539,15 +560,23 @@ export class HttpClient {
 	/**
 	 * 一跳的请求头:身份 < 客户端默认头 < 这次请求的头;最后才是罐子的 Cookie。
 	 * 线上头序:默认头、这次请求的头(同名的留在先出现的位置),然后是身份里调用方没写的,最后 Cookie。
+	 * `bare` 一档只剩「这次请求的头」:没有默认头、身份与 Cookie。
 	 */
 	private requestHeaders<H extends Pick<Headers, "set" | "has" | "delete">>(
 		headers: H,
 		extra: Headers | Record<string, string> | undefined,
 		target: URL,
 		bodyless: boolean,
+		bare: boolean,
 	): H {
-		for (const [name, value] of Object.entries(this.defaultHeaders)) headers.set(name, value);
+		if (!bare) {
+			for (const [name, value] of Object.entries(this.defaultHeaders)) headers.set(name, value);
+		}
 		for (const [name, value] of entriesOf(extra)) headers.set(name, value);
+		if (bare) {
+			if (bodyless) headers.delete("content-type");
+			return headers;
+		}
 		const { identity } = this;
 		const identityHeaders: [string, string][] = [
 			["User-Agent", identity.userAgent],

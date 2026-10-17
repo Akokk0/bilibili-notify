@@ -115,6 +115,7 @@
 | 校验或检查不过的一条原因 | `Issue`（`{ path?, message }`） | 当原因清单用的 `errors: string[]`；`Problem` 只指问题表里的一条 |
 | 集成共用的宿主那一层（上下文的构造、生命周期、运行状态、通用登记表）住的目录 | `integrations/`（10-07 主人定）；拓展特有的留在 `extensions/` | 把内置集成的启停放进 `extensions/` 或 `runtime/` |
 | HTTP 客户端（`packages/http`，每个集成一个） | `HttpClient`；走网络取数的方法叫 `fetch`，回应叫 `HttpResponse` | 带平台前缀的 `BiliHttpClient`；当它用的 `get` / `request`（`get…` 只留给不走网络的读取）。见 ADR-0025 决策 6 下 10-03 的 🔗 |
+| 请求客户端的单次请求「不带浏览器身份、不碰 cookie 罐」那一档（`fetch` 与 `websocket` 的选项） | `bare: true` | `anonymous`、`identity: false`（名字说不全：它连默认头与 `Set-Cookie` 一起不管） |
 | cookie 罐 | `CookieJar`；一条 cookie 的数据形状 `Cookie` | `CookieStore`（`Store` 只指存盘的仓库）、`BACookie`、`BiliCookieJar` |
 | 浏览器身份（UA 与 `sec-ch-ua` 那一套，一起生成、永远配套） | `BrowserIdentity` | 单独设一个 `userAgent`（ADR-0025 决策 7） |
 

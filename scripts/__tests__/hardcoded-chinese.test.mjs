@@ -384,7 +384,7 @@ export const RATCHET = {
 	"packages/ai/src/usage.ts": 6,
 	"packages/ai/src/vision.ts": 8,
 	"packages/ai/src/web-search.ts": 7,
-	"packages/http/src/http-client.ts": 16,
+	"packages/http/src/http-client.ts": 17,
 	"packages/http/src/public-address.ts": 2,
 	"packages/http/src/websocket.ts": 1,
 	"packages/image/src/blocks/live.tsx": 11,
