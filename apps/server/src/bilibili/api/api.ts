@@ -973,9 +973,15 @@ export class Api {
 		}
 	}
 
-	async fetchUserInfoInLive(uid: string, upUid: string) {
-		return this.getJson(
-			`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,
+	async fetchUserInfoInLive(
+		uid: string,
+		upUid: string,
+	): Promise<Result<{ data: { face?: string } | null }>> {
+		return this.resultOf(
+			await this.getJson(
+				`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,
+				"fetchUserInfoInLive",
+			),
 			"fetchUserInfoInLive",
 		);
 	}

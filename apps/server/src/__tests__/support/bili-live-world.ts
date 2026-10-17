@@ -269,7 +269,7 @@ export async function bootBiliLiveWorld(
 				},
 			};
 		},
-		fetchUserInfoInLive: async () => ({ code: 0, data: { face: bili.viewerFace } }),
+		fetchUserInfoInLive: async () => ok({ data: { face: bili.viewerFace } }),
 	};
 
 	// ---- 假的出图器:只记入参 ----

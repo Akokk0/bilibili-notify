@@ -12,7 +12,6 @@ import type { LiveEvent, LiveUser, UserActionKind } from "../protocol/events.js"
 import { superchatEventFromLiveEvent } from "../superchat-event";
 import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";
-import { fetchGuardViewerAvatar } from "../viewer-avatar";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 
@@ -651,11 +650,8 @@ export class RoomSession extends RoomSessionBase {
 					return this.ctx.guardIcons.iconOf(tier.key);
 				},
 				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出)。
-				fetchViewerAvatar: () =>
-					fetchGuardViewerAvatar(event.viewer.id, this.sub.uid, this.ctx.api, {
-						images: this.ctx.imageFetcher,
-						logger: this.ctx.logger,
-					}),
+				// 撞到限流后所有直播间共用一段冷却(`ctx.viewerAvatars`),冷却里不查。
+				fetchViewerAvatar: () => this.ctx.viewerAvatars.fetch(event.viewer.id, this.sub.uid),
 				// 使用者自填的图网址经抓图服务取回(不带 B 站的 Referer 与缩放后缀),字节从图库读。
 				fetchImage: (url) => this.ctx.imageFetcher.fetchImage(url),
 				readImage: this.ctx.readImage,

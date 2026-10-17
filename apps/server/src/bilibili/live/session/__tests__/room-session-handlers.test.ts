@@ -20,6 +20,7 @@ import { defaultMessageKindLayout, fail, ok } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { LivePushType } from "../../../../live/live-types";
+import { failureFromBili } from "../../../error-codes";
 import { PROBLEM_TEXTS } from "../../../problem-texts";
 import { membershipEventFromLiveEvent } from "../../membership-event";
 import { GuardLevel } from "../../protocol/events.js";
@@ -27,6 +28,7 @@ import type { LivePush, SubItemView } from "../../push-like";
 import { wantsLiveEndExtras } from "../../push-like";
 import { superchatEventFromLiveEvent } from "../../superchat-event";
 import { LiveType } from "../../types";
+import { createViewerAvatarFetcher, VIEWER_AVATAR_COOLDOWN_MS } from "../../viewer-avatar";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
 import { expectedStoppedFailure, liveProblemsCtx, makeLiveProblems } from "./support/live-problems";
@@ -155,7 +157,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		recordViewerChat: vi.fn(),
 		pushedMain: vi.fn(async () => {}),
 		// 默认不给头像地址:只有专门测头像的用例才覆写,其余用例的出卡输入里观众就没有 avatar。
-		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人" } })),
+		fetchUserInfoInLive: vi.fn(async () => ok({ data: { uname: "捧场人" } })),
 		fetchImage: vi.fn(async (url: string) => ok({ ref: fetchedRefOf(url) })),
 		avatarOf: vi.fn((_subscriptionId: string): string | undefined => undefined),
 		warn,
@@ -189,6 +191,12 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		},
 		api: { fetchUserInfoInLive: m.fetchUserInfoInLive },
 		imageFetcher: { fetchImage: m.fetchImage },
+		// 真的冷却部件(撞限流后所有房间共用的状态),接口与抓图是上面的假的。
+		viewerAvatars: createViewerAvatarFetcher({
+			api: { fetchUserInfoInLive: m.fetchUserInfoInLive as never },
+			images: { fetchImage: m.fetchImage as never },
+			logger: fakeServiceCtx.logger,
+		}),
 		readImage: async (ref: string) => ({ bytes: Buffer.from(ref), mime: "image/png" }),
 		avatarOf: m.avatarOf,
 		push: { push: recordMain(m.pushedMain) },
@@ -314,7 +322,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	it("订阅 SC → 不调 fetchUserInfoInLive,总是出卡(原「查发送者失败退文字」那条路没有了)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		m.fetchUserInfoInLive.mockResolvedValue({ code: -1, data: {} });
+		m.fetchUserInfoInLive.mockResolvedValue(failureFromBili(-1, "坏了"));
 		const s = new RoomSession(
 			ctx,
 			makeSub({ superchat: true, minSuperchatAmount: 30 }),
@@ -2138,7 +2146,7 @@ describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
 	function guardSession(over: Partial<SubItemView> = {}) {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-		m.fetchUserInfoInLive.mockResolvedValue({ code: 0, data: { uname: "船员", face: FACE } });
+		m.fetchUserInfoInLive.mockResolvedValue(ok({ data: { uname: "船员", face: FACE } }));
 		const s = new RoomSession(ctx, makeSub({ membership: true, ...over })) as AnySession;
 		return { ctx, m, s };
 	}
@@ -2214,9 +2222,9 @@ describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
 		it("接口失败 / 抛 / 风控 / 没给地址 / 头像抓不到:都只是没有观众头像,卡照出、不退文字、不抛", async () => {
 			const cases: Array<(m: CtxMocks) => void> = [
 				(m) => m.fetchUserInfoInLive.mockRejectedValue(new Error("网络断了")),
-				(m) => m.fetchUserInfoInLive.mockResolvedValue({ code: -352, data: null }),
-				(m) => m.fetchUserInfoInLive.mockResolvedValue({ code: 0, data: { uname: "船员" } }),
-				(m) => m.fetchUserInfoInLive.mockResolvedValue(undefined),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue(failureFromBili(-352, "风控")),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue(ok({ data: { uname: "船员" } })),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue(fail("unavailable", "回应不是预期的形状")),
 				(m) => m.fetchImage.mockResolvedValue(fail("unavailable", "连不上")),
 			];
 			for (const arrange of cases) {
@@ -2228,6 +2236,34 @@ describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
 				expect(m.pushedMain).toHaveBeenCalledTimes(1);
 				const pushed = m.pushedMain.mock.calls[0]?.[1];
 				expect(pushed).toEqual({ kind: "image" });
+			}
+		});
+
+		// 验红:去掉 room-session.ts 里 `ctx.viewerAvatars` 的冷却(每条上舰都直接查接口),第二、三次的断言红。
+		it("头像查询撞到限流:这一张卡没有观众头像;冷却 5 分钟内别的上舰不再查、卡照出;过了冷却再查", async () => {
+			vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T00:00:00Z") });
+			try {
+				const { m, s } = guardSession();
+				m.fetchUserInfoInLive.mockResolvedValue(failureFromBili(-352, "风控"));
+
+				await s.onGuardBuy(guardBody);
+				expect(m.fetchUserInfoInLive).toHaveBeenCalledTimes(1);
+				expect(m.generateMembershipCard.mock.calls[0]?.[0].viewer).toStrictEqual({ name: "船员" });
+
+				vi.setSystemTime(Date.now() + VIEWER_AVATAR_COOLDOWN_MS - 1);
+				await s.onGuardBuy(guardBody);
+				expect(m.fetchUserInfoInLive).toHaveBeenCalledTimes(1);
+				expect(m.generateMembershipCard).toHaveBeenCalledTimes(2);
+				expect(m.generateMembershipCard.mock.calls[1]?.[0].viewer).toStrictEqual({ name: "船员" });
+				expect(m.pushedMain).toHaveBeenCalledTimes(2);
+
+				vi.setSystemTime(Date.now() + 1);
+				m.fetchUserInfoInLive.mockResolvedValue(ok({ data: { uname: "船员", face: FACE } }));
+				await s.onGuardBuy(guardBody);
+				expect(m.fetchUserInfoInLive).toHaveBeenCalledTimes(2);
+				expect(m.generateMembershipCard.mock.calls[2]?.[0].viewer.avatar).toMatch(REF_PATTERN);
+			} finally {
+				vi.useRealTimers();
 			}
 		});
 

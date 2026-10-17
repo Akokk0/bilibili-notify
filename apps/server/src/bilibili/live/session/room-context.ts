@@ -19,6 +19,7 @@ import type { GuardIcons } from "../guard-icons.js";
 import type { LiveClient } from "../protocol/client.js";
 import { type PushLike, type SubItemView, wantsLiveEndExtras } from "../push-like";
 import type { LiveTemplateRenderer } from "../template-renderer";
+import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "../viewer-avatar";
 
 /**
  * 模板 / 渲染层全局配置,listener-manager + room-session 共用。
@@ -170,6 +171,8 @@ export class RoomContextBase {
 	readonly guardIcons: GuardIcons;
 	/** 抓图服务。 */
 	readonly imageFetcher: ImagesDeps["images"];
+	/** 上舰卡的观众头像:全引擎共用一个,撞到限流后的冷却是账号级的状态。 */
+	readonly viewerAvatars: ViewerAvatarFetcher;
 	/** 图库引用 → 字节。 */
 	readonly readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 订阅 id → 订阅资料里的头像引用(出卡那一刻现读,没有就是 `undefined`)。 */
@@ -204,6 +207,11 @@ export class RoomContextBase {
 		this.pickBackground = opts.pickCardBackground;
 		this.guardIcons = opts.guardIcons;
 		this.imageFetcher = opts.imageFetcher;
+		this.viewerAvatars = createViewerAvatarFetcher({
+			api: opts.api,
+			images: opts.imageFetcher,
+			logger: this.logger,
+		});
 		this.readImage = opts.readImage;
 		this.avatarOf = opts.avatarOf;
 		this.onRoomIdResolved = opts.onRoomIdResolved;

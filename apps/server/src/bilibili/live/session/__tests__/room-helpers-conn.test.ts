@@ -57,6 +57,9 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 42 } })),
 		getBuvid3: vi.fn(async () => "buv"),
 		openDanmakuSocket: vi.fn((_url: string) => fakeSocket),
+		fetchUserInfoInLive: vi.fn(async (_viewer: string, _up: string) =>
+			failureFromBili(-352, "风控"),
+		),
 	};
 	const ctx = new RoomContext({
 		serviceCtx: fakeServiceCtx,
@@ -68,6 +71,7 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		liveSummaryRequester: {},
 		danmakuCollector: {},
 		getImageRenderer: () => null,
+		imageFetcher: { fetchImage: vi.fn() },
 		config: {},
 		emitEngineError: vi.fn(),
 	} as unknown as RoomContextOptions);
@@ -142,6 +146,18 @@ describe("startLiveRoomListener × 预检读标准码", () => {
 				LiveRoomAccessDeniedError,
 			);
 		}
+	});
+});
+
+// 接线:RoomContext 自己造一个观众头像部件,用的是它手里的 api;冷却是它(也就是全引擎)共用的状态。
+describe("RoomContext × 观众头像冷却", () => {
+	it("头像查询撞到限流后,同一个 ctx 上别的上舰(哪个房间都一样)在冷却里不再查接口", async () => {
+		const { ctx, api } = makeCtx(async () => goodDanmakuInfo);
+
+		expect(await ctx.viewerAvatars.fetch("7", "u1")).toBeUndefined();
+		expect(await ctx.viewerAvatars.fetch("8", "u2")).toBeUndefined();
+
+		expect(api.fetchUserInfoInLive).toHaveBeenCalledExactlyOnceWith("7", "u1");
 	});
 });
 
