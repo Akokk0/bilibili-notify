@@ -329,7 +329,7 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
  * 🪦 2026-09-20 从四层收成一层。从前它还扫 `cardStyle.fontAsset` 的四个位置(全局基准 /
  * 全局 per-kind / UP 基准 / UP per-kind),那在字体还由卡片页管的时候是对的。今天那条路
  * **一个读者都没有**:全局那份在字体退役成旋钮时就断了,per-UP 与 per-kind 两层
- * 2026-09-20 一并摘掉(见 `runtime/engines.ts` 的 `cardStyleToColorOptions`)。
+ * 2026-09-20 一并摘掉(`runtime/engines.ts` 里那个映射函数 `cardStyleToColorOptions` 后来整个删了)。
  *
  * 继续扫它的后果是**凭一个不生效的引用拦住删除**:409 说「UP 12345 还在用」,而主人去
  * 面板上找,既找不到那个设置(入口早删了)、那款字体也根本没出现在卡上 —— 「换掉再删」

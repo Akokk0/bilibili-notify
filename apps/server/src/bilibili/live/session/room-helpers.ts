@@ -18,7 +18,7 @@ import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveCardInputFromRoomInfo } from "../live-card-input";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
-import type { LivePushAnchor, SubItemView } from "../push-like";
+import type { LivePushAnchor } from "../push-like";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { RoomContextBase } from "./room-context";
 
@@ -319,7 +319,8 @@ export class RoomContext extends RoomContextBase {
 			liveData: LiveData;
 			liveRoomInfo: LiveRoomResponse["data"];
 			master: MasterInfo;
-			cardStyle: SubItemView["customCardStyle"];
+			/** 这一张卡的自定义封面(资产 id,已轮好);不给 = 卡吃来源自己的封面。 */
+			liveCover?: string;
 			/** 订阅 id:出卡那一刻按它现读订阅资料里的主播头像(`avatarOf`),没有就不画。 */
 			subscriptionId: string;
 			uid: string;
@@ -357,7 +358,8 @@ export class RoomContext extends RoomContextBase {
 				text: params.notifyMsg,
 				link: params.roomLink ?? "",
 				layout: params.messageLayout,
-				cardStyle: params.cardStyle,
+				// 没有自定义封面就不带这一格(`pushLiveNotify` 缺省 = 吃来源自己的封面)。
+				...(params.liveCover === undefined ? {} : { liveCover: params.liveCover }),
 				cardSkin: params.cardSkin,
 				cardSkinKnobs: params.cardSkinKnobs,
 				pushType,

@@ -70,36 +70,32 @@ const image: MessageLayoutSegment = { kind: "image", buffer: CARD, mime: "image/
 const text = (t: string): MessageLayoutSegment => ({ kind: "text", text: t });
 
 describe("pushLiveNotify — 出卡", () => {
-	it("中立的输入原样交给渲染器;样式没启用时只带皮肤 id", async () => {
+	it("中立的输入原样交给渲染器;没有自定义封面时只带皮肤 id", async () => {
 		const d = deps();
-		await pushLiveNotify(
-			params({ cardStyle: { enable: false, font: "不该带上" }, cardSkin: "k1" }),
-			d.deps,
-		);
+		await pushLiveNotify(params({ cardSkin: "k1" }), d.deps);
 		expect(d.generateLiveCard).toHaveBeenCalledTimes(1);
 		expect(d.generateLiveCard.mock.calls[0]?.[0]).toBe(INPUT);
 		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1" });
 	});
 
-	it("样式启用了 → 整份样式与皮肤 id 一起交给渲染器", async () => {
+	it("有自定义封面 → 封面与皮肤 id 一起交给渲染器", async () => {
 		const d = deps();
-		const cardStyle = { enable: true, font: "思源黑体", liveCoverImage: "cover-1" };
-		await pushLiveNotify(params({ cardStyle, cardSkin: "k1" }), d.deps);
-		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ ...cardStyle, cardSkin: "k1" });
+		await pushLiveNotify(params({ liveCover: "cover-1", cardSkin: "k1" }), d.deps);
+		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({
+			liveCoverImage: "cover-1",
+			cardSkin: "k1",
+		});
 	});
 
 	/**
-	 * per-UP 那层旋钮覆盖(ADR-0014 决策 17 的 🔗)跟皮肤 id 一起走,**与样式启没启用无关** ——
-	 * 没单独调过卡片样式的 UP 也可以单独拧旋钮。验红:把 live-notify.ts 里递 `cardSkinKnobs`
+	 * per-UP 那层旋钮覆盖(ADR-0014 决策 17 的 🔗)跟皮肤 id 一起走,**与有没有自定义封面无关** ——
+	 * 没单独换过封面的 UP 也可以单独拧旋钮。验红:把 live-notify.ts 里递 `cardSkinKnobs`
 	 * 那一句删掉,这条红。
 	 */
-	it("per-UP 旋钮覆盖与皮肤 id 一起交给渲染器,样式没启用也带着", async () => {
+	it("per-UP 旋钮覆盖与皮肤 id 一起交给渲染器,没有自定义封面也带着", async () => {
 		const d = deps();
 		const cardSkinKnobs = { k1: { accent: "#aaaaaa" } };
-		await pushLiveNotify(
-			params({ cardStyle: { enable: false }, cardSkin: "k1", cardSkinKnobs }),
-			d.deps,
-		);
+		await pushLiveNotify(params({ cardSkin: "k1", cardSkinKnobs }), d.deps);
 		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1", cardSkinKnobs });
 	});
 

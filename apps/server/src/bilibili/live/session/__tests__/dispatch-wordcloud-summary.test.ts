@@ -54,7 +54,6 @@ function makeSub(
 		viewerEnter: false,
 		extras: { atAllPost: false, atAllLiveStart: true, ...extras },
 		target: {},
-		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
 		guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 		customLiveSummary: { enable: false },

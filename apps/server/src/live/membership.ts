@@ -23,7 +23,6 @@ import {
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message";
 import { passesMembershipMinRank } from "./interaction-gates";
-import type { CustomCardStyleLike } from "./live-types";
 
 export interface MembershipOptions extends CardSkinChoice {
 	/** 中立的会员事件。 */
@@ -36,8 +35,6 @@ export interface MembershipOptions extends CardSkinChoice {
 	template: MembershipTemplateBundle;
 	/** 主播:名字与头像(图库引用,没有就不带)。 */
 	creator: { name: string; avatar?: ImageRef };
-	/** 这条订阅折好的会员卡样式;没启用 = 吃渲染器的全局配置。 */
-	cardStyle: CustomCardStyleLike;
 	/** 出不了卡时发的那句文字;平台自己的叫法由调用方拼好交进来。 */
 	fallbackText: string;
 }
@@ -111,7 +108,7 @@ export async function pushMembership(
 	options: MembershipOptions,
 	deps: MembershipDeps,
 ): Promise<void> {
-	const { event, tier, creator, cardStyle } = options;
+	const { event, tier, creator } = options;
 	if (!passesMembershipMinRank(event, options.minRank)) return;
 	// 出卡与兜底共用一次取徽章(失败的那次也记住,兜底不再重打一遍网络)。
 	let iconOnce: ReturnType<MembershipDeps["fetchTierIcon"]> | undefined;
@@ -162,12 +159,8 @@ export async function pushMembership(
 						announcement: tier.announcement,
 					},
 				},
-				// 样式启用了才展开(渲染器按「缺省 → 吃全局」判,递一份禁用的样式等于把它启用);皮肤两格恒带。
-				{
-					...(cardStyle.enable ? cardStyle : undefined),
-					cardSkin: options.cardSkin,
-					cardSkinKnobs: options.cardSkinKnobs,
-				},
+				// 会员卡只认皮肤两格(封面只有直播卡带),恒带。
+				{ cardSkin: options.cardSkin, cardSkinKnobs: options.cardSkinKnobs },
 			);
 		} catch (e) {
 			deps.logger.error(`[image] 生成会员卡片失败：${errorMessageOf(e)}，降级为文字推送`);

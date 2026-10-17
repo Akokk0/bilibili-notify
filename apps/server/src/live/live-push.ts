@@ -29,7 +29,7 @@ import type { LiveSession, LiveSessionChange, LiveSessionEngine } from "./live-s
 import type { LiveWorkSettings } from "./live-settings.js";
 import type { LiveTable, LiveTableEntry } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
-import { type CustomCardStyleLike, LivePushType } from "./live-types.js";
+import { LivePushType } from "./live-types.js";
 
 /**
  * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`live-sessions.ts`)
@@ -105,8 +105,8 @@ export interface BindLivePushOptions {
 	profile(id: string): { name?: string; fans?: number } | undefined;
 	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveWorkSettings`)。 */
 	settings(sub: Subscription): LiveWorkSettings;
-	/** 这一张直播卡的生效样式(按种类 ?? 基准,再轮一张自定义封面)。每推一张调一次。 */
-	cardStyle(sub: Subscription, settings: LiveWorkSettings): CustomCardStyleLike | undefined;
+	/** 这一张直播卡用哪张自定义封面(订阅的 ?? 全局的,再轮一张)。每推一张调一次。 */
+	liveCover(sub: Subscription, settings: LiveWorkSettings): string | undefined;
 	/** 拓展在不在跑、清单里声明的事件(头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
 	sources: Pick<ExtensionSourceReader, "running" | "events">;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
@@ -320,7 +320,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				text,
 				link: facts.url ?? "",
 				layout: settings.messageLayout,
-				cardStyle: opts.cardStyle(sub, settings),
+				liveCover: opts.liveCover(sub, settings),
 				cardSkin: settings.cardSkin,
 				cardSkinKnobs: settings.cardSkinKnobs,
 				pushType: job.pushType,

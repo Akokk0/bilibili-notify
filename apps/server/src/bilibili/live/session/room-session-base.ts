@@ -1,13 +1,8 @@
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import {
-	type CardKind,
-	createSerialGate,
-	type Disposable,
-	formatDuration,
-} from "@bilibili-notify/internal";
+import { createSerialGate, type Disposable, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { liveEndGraceMinutes, rotateLiveCover } from "../../../live/live-settings";
-import { type CustomCardStyleLike, LivePushType } from "../../../live/live-types";
+import { LivePushType } from "../../../live/live-types";
 import { recapAnchors } from "../../../live/recap/recap-anchors";
 import type { LiveRoomResponse } from "../../api/index.js";
 import { PROBLEM_TEXTS } from "../../problem-texts";
@@ -203,27 +198,20 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
-	 * 取某卡片类型的生效样式:就是这条订阅的 `customCardStyle`(㉔e 起没有按卡种分层,卡种只决定要不要轮换封面)。
-	 * 始终有定义(基准恒在);是否启用由调用点据 `enable` 自行判定 —— SC / guard 把未启用
-	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
-	 * 再据 enable 门控)。
+	 * 这一张直播卡用哪张自定义封面(资产 id);没有就回 `undefined`,卡吃来源自己的封面。
 	 *
-	 * 直播封面:该 UP 自己设了 `liveCoverImages`(含空列表 = 不用自定义封面)就只用它;没设
-	 * 才用引擎级 `defaultLiveCoverImages`(全局默认封面廊)。一张固定;>1 张经注入的
-	 * `pickBackground`(游标键 `uid:live-cover`)每次推送轮换一张。都强制 `enable:true`,其余
-	 * 字段留空,靠调用点 `?? this.config.X` 逐字段回退渲染器全局配置。取法见 `rotateLiveCover`。
-	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。
+	 * 该 UP 自己设了 `liveCoverImageIds`(含空列表 = 不用自定义封面)就只用它;没设才用引擎级
+	 * `defaultLiveCoverImages`(全局默认封面廊)。一张固定;>1 张经注入的 `pickBackground`
+	 * (游标键 `uid:live-cover`)每次推送轮换一张。取法见 `rotateLiveCover`,与拓展订阅的直播共用一份规矩。
+	 * 每次调用即一次推送,故在此推进游标恰好 = 每推送一次轮换一张。只有直播卡带封面,SC / 上舰不经这里。
 	 *
 	 * 从前这里还有一份同构的**卡片背景图**轮换(`backgroundImages` + `uid:kind` 游标)。
 	 * 整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉:背景图 2026-09-14 退役成皮肤
 	 * 自己的 `image` 旋钮,轮出来的那张从 2026-09-19 起已经喂不到任何 CSS。
 	 */
-	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
-		const style = this.sub.customCardStyle;
-		if (kind !== "live") return style;
-		// 封面轮换与拓展订阅的直播共用一份规矩(`rotateLiveCover`)。
+	protected liveCover(): string | undefined {
 		return rotateLiveCover(
-			style,
+			this.sub.liveCoverImageIds,
 			this.ctx.config.defaultLiveCoverImages,
 			this.ctx.pickBackground,
 			`${this.sub.uid}:live-cover`,
@@ -487,7 +475,7 @@ export abstract class RoomSessionBase {
 						liveData: this.liveData,
 						liveRoomInfo,
 						master,
-						cardStyle: this.resolvedCardStyle("live"),
+						liveCover: this.liveCover(),
 						...this.skinChoice(),
 						subscriptionId: this.sub.subscriptionId,
 						uid: this.sub.uid,
@@ -648,7 +636,7 @@ export abstract class RoomSessionBase {
 				liveData: this.liveData,
 				liveRoomInfo,
 				master,
-				cardStyle: this.resolvedCardStyle("live"),
+				liveCover: this.liveCover(),
 				...this.skinChoice(),
 				subscriptionId: this.sub.subscriptionId,
 				uid: this.sub.uid,
@@ -825,7 +813,7 @@ export abstract class RoomSessionBase {
 						liveData: this.liveData,
 						liveRoomInfo,
 						master,
-						cardStyle: this.resolvedCardStyle("live"),
+						liveCover: this.liveCover(),
 						...this.skinChoice(),
 						subscriptionId: this.sub.subscriptionId,
 						uid: this.sub.uid,

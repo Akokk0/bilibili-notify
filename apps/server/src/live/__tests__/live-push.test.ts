@@ -67,7 +67,6 @@ function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
 		liveStart: true,
 		liveStreaming: false,
 		liveEnd: true,
-		customCardStyle: { enable: false },
 		messageLayout: defaultMessageKindLayout("live"),
 		customLiveMsg: { enable: true },
 		streamingIntervalHours: 1,
@@ -145,7 +144,7 @@ function start(): void {
 		subscription: (id) => subs.get(id),
 		profile: () => profile,
 		settings: () => settings,
-		cardStyle: () => undefined,
+		liveCover: () => undefined,
 		sources: {
 			running: () => running,
 			events: () => declaredEvents,

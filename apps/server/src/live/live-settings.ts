@@ -6,7 +6,7 @@
 
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { MessageKindLayout } from "@bilibili-notify/internal";
-import type { CustomCardStyleLike, CustomLiveMsgLike, PickLiveCover } from "./live-types";
+import type { CustomLiveMsgLike, PickLiveCover } from "./live-types";
 
 /**
  * 一条订阅折好的**直播设置** —— 开播 / 正在直播 / 下播三张卡共用的那几格(ADR-0019 决策 65 / 67):
@@ -27,7 +27,11 @@ export interface LiveWorkSettings extends CardSkinChoice {
 	/** 周期「正在直播」的开关(`features.liveStreaming`)。关着就不计时、不出卡。 */
 	liveStreaming: boolean;
 	liveEnd: boolean;
-	customCardStyle: CustomCardStyleLike;
+	/**
+	 * 该 UP 自己设的直播封面资产 id 列表(`overrides.cards.liveCoverImageIds` 原样)。键恒在、值可能是
+	 * `undefined` = 没覆盖,跟全局;`[]` = 覆盖成「不用自定义封面」(取法见 {@link rotateLiveCover})。
+	 */
+	liveCoverImageIds?: string[];
 	customLiveMsg: CustomLiveMsgLike;
 	/** 周期「正在直播」的间隔,小时(1–24)。只在 {@link liveStreaming} 开着时有意义。 */
 	streamingIntervalHours: number;
@@ -55,25 +59,22 @@ export function liveEndGraceMinutes(configured: number | undefined): number {
 }
 
 /**
- * 直播卡的样式,**每推一次轮一张自定义封面**:订阅自己设了封面列表(含空列表 = 不用自定义封面)就只
- * 用它;没设(`liveCoverImages` 为 `undefined`)才用全局那一套默认封面。一张 = 固定用它,多张经
- * `pick`(游标键 `scopeKey`)选下一张;都强制 `enable: true`,其余字段留空,由渲染器逐字段回退全局
- * 配置。没有封面 / 选不出 → 原样返回。
+ * 这一张直播卡用哪张自定义封面(资产 id),**每推一次轮一张**:订阅自己设了封面列表(含空列表 = 不用
+ * 自定义封面)就只用它;没设(`perUp` 为 `undefined`)才用全局那一套默认封面。一张 = 固定用它,多张经
+ * `pick`(游标键 `scopeKey`)选下一张。没有封面 → `undefined`,卡吃来源自己的封面。
  *
  * 每调一次就推进一次游标(多张时)—— 只在真要推一张卡时调。
  */
 export function rotateLiveCover(
-	style: CustomCardStyleLike,
+	perUp: string[] | undefined,
 	defaultCovers: string[] | undefined,
 	pick: PickLiveCover,
 	scopeKey: string,
-): CustomCardStyleLike {
+): string | undefined {
 	// 订阅自己设了列表(含空列表)就只用它:空列表是「不用自定义封面」,不落回全局 ——
 	// 面板上「没覆盖」与「覆盖成空」是两件事。没设(`undefined`)才跟全局。
-	const covers = style.liveCoverImages ?? defaultCovers;
-	if (!covers || covers.length === 0) return style;
-	// 只有一张 = 固定用它。订阅没设时递进来的样式是 `{ enable: false }`,渲染器自己的配置里
-	// 没有全局封面,所以这里得把它补上、并打开 `enable`。
-	const picked = covers.length === 1 ? covers[0] : pick(scopeKey, covers);
-	return picked === undefined ? style : { ...style, enable: true, liveCoverImage: picked };
+	const covers = perUp ?? defaultCovers;
+	if (!covers || covers.length === 0) return undefined;
+	// 选择器选不出(不轮换)时,订阅自己的列表退回它的首张;全局那套没有这一档兜底。
+	return covers.length === 1 ? covers[0] : (pick(scopeKey, covers) ?? perUp?.[0]);
 }

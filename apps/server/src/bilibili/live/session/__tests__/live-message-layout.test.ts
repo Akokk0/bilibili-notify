@@ -84,7 +84,6 @@ function baseParams(over?: Record<string, unknown>) {
 			user_cover: "",
 		} as never,
 		master: { username: "主播", userface: "", roomId: "123" } as never,
-		cardStyle: { enable: false } as SubItemView["customCardStyle"],
 		uid: "u1",
 		subscriptionId: "sub-1",
 		notifyMsg: "开播文案",

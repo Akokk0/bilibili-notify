@@ -78,29 +78,6 @@ export type LivePushFeature =
  */
 export type LiveCreatorFeature = Exclude<LivePushFeature, "viewerChat" | "viewerEnter">;
 
-/** Sub-level customisation blocks copied from `@bilibili-notify/push`. */
-export interface CustomCardStyleLike {
-	enable: boolean;
-	// 🪦 `backgroundImage` / `backgroundImages` 2026-09-20 随整条链删掉 —— 背景图归皮肤
-	// 自己的 `image` 旋钮(`--bn-knob-wallpaper`),不再从样式覆盖里透传。
-	/** 直播卡自定义封面资产 id(独立端专属);透传给 generateLiveCard 的 colorOptions。 */
-	liveCoverImage?: string;
-	/**
-	 * 直播卡自定义封面的**完整**列表(>1 张时「每次推送轮换」,与背景图同一 rotator、
-	 * key 维度独立)。adapter 填入;推送点选下一张覆盖 `liveCoverImage`。
-	 */
-	liveCoverImages?: string[];
-	/**
-	 * 字体家族名;透传给 generate* 的 colorOptions(缺省回退渲染器全局 config)。
-	 *
-	 * 这一项此前整条链都漏着:schema 存得下、resolve 算得出,但 adapter 没往这里填、
-	 * 类型里也没有 —— 于是「给这位 UP 单独换个字体」选了等于没选。
-	 */
-	font?: string;
-	/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
-	fontAsset?: string;
-}
-
 /**
  * 直播封面轮换选择器:给定 scopeKey(`uid:live-cover`)与完整图列表,返回本次该用的那张
  * (并在实现内推进游标)。宿主注入(独立端有 fs 持久化游标);返回 undefined = 不轮换。

@@ -44,7 +44,7 @@ export interface ListenerManagerConfig {
 	imageEnabled?: boolean;
 	/**
 	 * 全局默认直播封面列表(`defaults.cardStyle.liveCoverImages`,独立端专属)。
-	 * 该 UP 无覆盖时 `resolvedCardStyle("live")` 拿它做封面轮换兜底,语义同上。
+	 * 该 UP 无覆盖时 `liveCover()` 拿它做封面轮换兜底,语义同上。
 	 */
 	defaultLiveCoverImages?: string[];
 }

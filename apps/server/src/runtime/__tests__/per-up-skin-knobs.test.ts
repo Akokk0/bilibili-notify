@@ -6,7 +6,7 @@
  * (`postSettingsOf`)、拓展订阅的直播设置,各折一次。这里钉两件事:
  *
  * 1. 这几条路的视图 / 设置都带上它,而且**只带 per-UP 那层、不折全局**(全局随渲染器 config
- *    热更;折进快照,全局再改就改不动这位 UP 了 —— 与 `customCardStyle`「不伪装全局值」同一条,见 `sub-views.test.ts`);
+ *    热更;折进快照,全局再改就改不动这位 UP 了 —— 与 `liveCoverImageIds`「不伪装全局值」同一条,见 `sub-views.test.ts`);
  * 2. 一路走到真渲染器:拓展订阅的开播卡上,这位 UP 选的**字体文件与壁纸**真读了盘、进了 HTML ——
  *    这两档「别的旋钮都生效、唯独它俩静静不动」栽过一回(2026-09-19)。
  *
@@ -173,7 +173,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				subscription: (id) => (id === sub.id ? sub : undefined),
 				profile: () => ({ name: "抖音甲" }),
 				settings: (s) => liveWorkSettings(s, g),
-				cardStyle: () => undefined,
+				liveCover: () => undefined,
 				sources: {
 					running: () => true,
 					events: () => ["post", "liveStart", "liveEnd"],

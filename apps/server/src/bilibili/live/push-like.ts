@@ -113,7 +113,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "extras"
 		| "uname"
 		| "roomId"
-		| "customCardStyle"
+		| "liveCoverImageIds"
 		| "customLiveMsg"
 		| "guardTemplate"
 		| "customLiveSummary"

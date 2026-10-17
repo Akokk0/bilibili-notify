@@ -45,7 +45,7 @@ export interface LiveEngineConfig {
 	aiWebSearch?: boolean;
 	/**
 	 * 全局默认直播封面列表(独立端专属)。该 UP 无 per-UP / per-kind 覆盖时
-	 * `resolvedCardStyle("live")` 拿它做「每次推送轮换」的兜底列表,仅 live 卡消费。
+	 * `liveCover()` 拿它做「每次推送轮换」的兜底列表,仅 live 卡消费。
 	 */
 	defaultLiveCoverImages?: string[];
 }

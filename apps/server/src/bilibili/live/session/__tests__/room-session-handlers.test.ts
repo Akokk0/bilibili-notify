@@ -72,7 +72,6 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		superchat: false,
 		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
 		target: {},
-		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
 		guardTemplate: GUARD_TEMPLATE_OFF,
 		customLiveSummary: { enable: false },
@@ -396,7 +395,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 
 	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)不分卡种:SC 卡也吃这位 UP 那一份。
 	// 验红:把 room-session.ts 里 SC 那一处的皮肤选项换回只带 `cardSkin`,这条红。
-	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateSuperchatCard(样式没启用也照带)", async () => {
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateSuperchatCard", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const cardSkinKnobs = { "k7xxx-c0ffee": { accent: "#aaaaaa" } };
@@ -411,41 +410,8 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		});
 	});
 
-	it("醒目留言 → generateSuperchatCard 收到这条订阅的 colorOptions(不按卡种分层)", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				superchat: true,
-				minSuperchatAmount: 30,
-				customCardStyle: { enable: true, font: "Base Sans" },
-			}),
-		) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
-		// 第二参 = colorOptions(就是订阅那一份)。
-		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
-	});
-
-	it("无 per-kind sc 覆盖 → generateSuperchatCard 回退到基准 customCardStyle", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				superchat: true,
-				minSuperchatAmount: 30,
-				customCardStyle: { enable: true, font: "Base Sans" },
-			}),
-		) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
-	});
-
-	// 样式没启用 = 一个样式字段都不许递出去(渲染器按「缺省 → 吃全局 config」判,递一份
-	// 禁用的样式过去就等于把它启用了)。皮肤 id 不是样式,它恒在 —— 出图总得知道画哪一套。
-	it("基准与 per-kind 都未启用 → generateSuperchatCard 只收到皮肤 id,一个样式字段都没有", async () => {
+	// 醒目留言卡只认皮肤两格:封面只有直播卡带,SC 入口不收卡样式。皮肤 id 恒在 —— 出图总得知道画哪一套。
+	it("generateSuperchatCard 只收到皮肤两格,没有任何别的键", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -453,7 +419,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({ superchat: true, minSuperchatAmount: 30 }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toStrictEqual({
+			cardSkin: undefined,
+			cardSkinKnobs: undefined,
+		});
 	});
 
 	// ── ㉓a:钉住门槛与兜底文字 ────────────────────────────────────────────────
@@ -568,7 +537,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 
 	// 从前这里有三条「SC 卡背景图每次推送轮换」(per-kind 多图 / 单图不轮 / 落回全局默认
 	// 图廊)。整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉(背景图归皮肤的 `image`
-	// 旋钮),同构的**直播封面**轮换仍由下面的「resolvedCardStyle live 封面轮换」钉着。
+	// 旋钮),同构的**直播封面**轮换仍由下面的「liveCover 封面轮换」钉着。
 });
 
 // ---------------------------------------------------------------------------
@@ -1102,19 +1071,15 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("会员 → generateMembershipCard 收到这条订阅的 colorOptions(不按卡种分层)", async () => {
+	it("generateMembershipCard 只收到皮肤两格,没有任何别的键(封面只有直播卡带)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				membership: true,
-				customCardStyle: { enable: true, font: "Base Sans" },
-			}),
-		) as AnySession;
+		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 		await s.onGuardBuy(guardBody);
-		// 第二参 = colorOptions(订阅那一份)。
-		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
+		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toStrictEqual({
+			cardSkin: undefined,
+			cardSkinKnobs: undefined,
+		});
 	});
 });
 
@@ -1169,14 +1134,9 @@ describe("RoomSession.onLiveStart", () => {
 		expect(s.armPeriodicTimer).toHaveBeenCalledTimes(1);
 	});
 
-	it("直播 → sendLiveNotifyCard 收到这条订阅的 cardStyle(不按卡种分层)", async () => {
+	it("直播 → sendLiveNotifyCard 收到这条订阅轮出来的封面", async () => {
 		const { ctx, m } = makeCtx();
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				customCardStyle: { enable: true, font: "Base Sans" },
-			}),
-		) as AnySession;
+		const s = new RoomSession(ctx, makeSub({ liveCoverImageIds: ["solo"] })) as AnySession;
 		s.useLiveRoomInfo = vi.fn(async () => {
 			s.liveRoomInfo = {
 				live_time: "2026-01-01 00:00:00",
@@ -1193,9 +1153,7 @@ describe("RoomSession.onLiveStart", () => {
 		});
 		s.armPeriodicTimer = vi.fn();
 		await s.onLiveStart();
-		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.cardStyle).toMatchObject({
-			font: "Base Sans",
-		});
+		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.liveCover).toBe("solo");
 	});
 
 	it("A5:卡片推送 await 期间交错下播翻 idle → 不再 armPeriodicTimer", async () => {
@@ -1801,7 +1759,6 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			liveData: {},
 			liveRoomInfo,
 			master,
-			cardStyle: { enable: false },
 			uid: "u1",
 			notifyMsg: "msg",
 			subscriptionId: "sub-1",
@@ -1829,7 +1786,6 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			liveData: {},
 			liveRoomInfo,
 			master,
-			cardStyle: { enable: false },
 			uid: "u1",
 			notifyMsg: "msg",
 			subscriptionId: "sub-1",
@@ -1871,7 +1827,6 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 				liveData: {},
 				liveRoomInfo: roomWithCover,
 				master,
-				cardStyle: { enable: false },
 				uid: "u1",
 				notifyMsg: "msg",
 				subscriptionId: "sub-1",
@@ -1917,10 +1872,10 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 });
 
 // ---------------------------------------------------------------------------
-// resolvedCardStyle — live 卡自定义封面轮换(liveCoverImages)
+// liveCover — live 卡自定义封面轮换(liveCoverImageIds)
 // ---------------------------------------------------------------------------
 
-describe("resolvedCardStyle live 封面轮换", () => {
+describe("liveCover 封面轮换", () => {
 	function countingPicker() {
 		const cursors: Record<string, number> = {};
 		const keys: string[] = [];
@@ -1938,25 +1893,17 @@ describe("resolvedCardStyle live 封面轮换", () => {
 		const { pick, keys } = countingPicker();
 		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
 		(ctx as any).pickBackground = pick;
-		const s = new RoomSession(
-			ctx,
-			makeSub({ customCardStyle: { enable: true, liveCoverImages: ["c1", "c2"] } }),
-		) as AnySession;
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c1");
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c2");
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("c1");
+		const s = new RoomSession(ctx, makeSub({ liveCoverImageIds: ["c1", "c2"] })) as AnySession;
+		expect(s.liveCover()).toBe("c1");
+		expect(s.liveCover()).toBe("c2");
+		expect(s.liveCover()).toBe("c1");
 		expect(keys).toEqual(["u1:live-cover", "u1:live-cover", "u1:live-cover"]);
 	});
 
-	it("单张封面 → 不调选择器,沿用 engines 预填的 liveCoverImage", () => {
+	it("单张封面 → 不调选择器,固定用它", () => {
 		const { ctx } = makeCtx();
-		const s = new RoomSession(
-			ctx,
-			makeSub({
-				customCardStyle: { enable: true, liveCoverImage: "solo", liveCoverImages: ["solo"] },
-			}),
-		) as AnySession;
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("solo");
+		const s = new RoomSession(ctx, makeSub({ liveCoverImageIds: ["solo"] })) as AnySession;
+		expect(s.liveCover()).toBe("solo");
 		expect(ctx.pickBackground).not.toHaveBeenCalled();
 	});
 
@@ -1968,18 +1915,16 @@ describe("resolvedCardStyle live 封面轮换", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认
 		(ctx as any).config.defaultLiveCoverImages = ["x", "y"];
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("x");
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBe("y");
+		expect(s.liveCover()).toBe("x");
+		expect(s.liveCover()).toBe("y");
 	});
 
-	it("无覆盖、全局默认只配一张 → 固定用这一张(样式启用,不调选择器)", () => {
+	it("无覆盖、全局默认只配一张 → 固定用这一张(不调选择器)", () => {
 		const { ctx } = makeCtx();
 		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认
 		(ctx as any).config.defaultLiveCoverImages = ["only"];
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
-		const style = s.resolvedCardStyle("live");
-		expect(style.enable).toBe(true);
-		expect(style.liveCoverImage).toBe("only");
+		expect(s.liveCover()).toBe("only");
 		expect(ctx.pickBackground).not.toHaveBeenCalled();
 	});
 
@@ -1990,24 +1935,8 @@ describe("resolvedCardStyle live 封面轮换", () => {
 		(ctx as any).pickBackground = pick;
 		// biome-ignore lint/suspicious/noExplicitAny: 测试注入引擎级全局默认
 		(ctx as any).config.defaultLiveCoverImages = ["x", "y"];
-		const s = new RoomSession(
-			ctx,
-			makeSub({ customCardStyle: { enable: true, liveCoverImages: [] } }),
-		) as AnySession;
-		expect(s.resolvedCardStyle("live").liveCoverImage).toBeUndefined();
-		expect(keys).toEqual([]);
-	});
-
-	it("非 live kind 不做封面轮换(sc 解析不产生 liveCoverImage)", () => {
-		const { ctx } = makeCtx();
-		const { pick, keys } = countingPicker();
-		// biome-ignore lint/suspicious/noExplicitAny: 覆写 mock ctx 的可选回调
-		(ctx as any).pickBackground = pick;
-		const s = new RoomSession(
-			ctx,
-			makeSub({ customCardStyle: { enable: true, liveCoverImages: ["c1", "c2"] } }),
-		) as AnySession;
-		expect(s.resolvedCardStyle("sc").liveCoverImage).toBeUndefined();
+		const s = new RoomSession(ctx, makeSub({ liveCoverImageIds: [] })) as AnySession;
+		expect(s.liveCover()).toBeUndefined();
 		expect(keys).toEqual([]);
 	});
 });

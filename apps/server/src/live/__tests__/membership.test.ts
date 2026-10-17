@@ -16,7 +16,6 @@ import {
 	ok,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { CustomCardStyleLike } from "../live-types";
 import { type MembershipDeps, type MembershipOptions, pushMembership } from "../membership";
 
 const CARD = Buffer.from("guard-card-jpeg");
@@ -68,7 +67,6 @@ function options(over: Partial<MembershipOptions> = {}): MembershipOptions {
 		minRank: undefined,
 		template: TEMPLATE_OFF,
 		creator: { name: "主播", avatar: CREATOR_AVATAR },
-		cardStyle: { enable: false },
 		fallbackText: "兜底一句",
 		...over,
 	};
@@ -300,12 +298,10 @@ describe("pushMembership — 出卡那一支", () => {
 		expect(t.sent).toHaveLength(1);
 	});
 
-	it("样式没启用:不展开样式,皮肤两格照带", async () => {
+	it("会员卡的第二参恰为皮肤两格,没有别的键(封面只有直播卡带)", async () => {
 		const t = setup();
-		const cardStyle: CustomCardStyleLike = { enable: false, font: "Base Sans" };
 		await pushMembership(
 			options({
-				cardStyle,
 				cardSkin: "k7xxx-c0ffee",
 				cardSkinKnobs: { "k7xxx-c0ffee": { accent: "#aaaaaa" } },
 			}),
@@ -317,16 +313,11 @@ describe("pushMembership — 出卡那一支", () => {
 		});
 	});
 
-	it("样式启用:展开样式,再带皮肤两格", async () => {
+	it("没配皮肤 → 第二参仍只有那两个键(值为 undefined)", async () => {
 		const t = setup();
-		await pushMembership(
-			options({ cardStyle: { enable: true, font: "Base Sans" }, cardSkin: "default" }),
-			t.d,
-		);
+		await pushMembership(options(), t.d);
 		expect(t.generateMembershipCard.mock.calls[0]?.[1]).toStrictEqual({
-			enable: true,
-			font: "Base Sans",
-			cardSkin: "default",
+			cardSkin: undefined,
 			cardSkinKnobs: undefined,
 		});
 	});

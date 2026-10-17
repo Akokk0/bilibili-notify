@@ -15,7 +15,6 @@ import type {
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message";
 import { passesSuperchatMinAmount } from "./interaction-gates";
-import type { CustomCardStyleLike } from "./live-types";
 
 export interface SuperchatOptions extends CardSkinChoice {
 	/** 中立的醒目留言事件(档位已经算好)。 */
@@ -24,8 +23,6 @@ export interface SuperchatOptions extends CardSkinChoice {
 	minAmount: number | undefined;
 	/** 主播:名字与头像(图库引用,没有就不带)。 */
 	creator: { name: string; avatar?: ImageRef };
-	/** 这条订阅折好的醒目留言卡样式;没启用(`enable` 为假)= 吃渲染器的全局配置。 */
-	cardStyle: CustomCardStyleLike;
 	/** 出不了卡(没有出图器、出卡抛错)时发的那句文字;平台自己的叫法由调用方拼好交进来。 */
 	fallbackText: string;
 }
@@ -45,7 +42,7 @@ export interface SuperchatDeps {
  * 再补一句文字等于重发(失败规矩:发送抛了不许重发)。
  */
 export async function pushSuperchat(options: SuperchatOptions, deps: SuperchatDeps): Promise<void> {
-	const { event, creator, cardStyle } = options;
+	const { event, creator } = options;
 	if (!passesSuperchatMinAmount(event, options.minAmount)) return;
 	const { renderer } = deps;
 	if (renderer) {
@@ -67,12 +64,8 @@ export async function pushSuperchat(options: SuperchatOptions, deps: SuperchatDe
 					currency: event.currency,
 					tier: event.tier,
 				},
-				// 样式启用了才展开(渲染器按「缺省 → 吃全局」判,递一份禁用的样式等于把它启用);皮肤两格恒带。
-				{
-					...(cardStyle.enable ? cardStyle : undefined),
-					cardSkin: options.cardSkin,
-					cardSkinKnobs: options.cardSkinKnobs,
-				},
+				// 醒目留言卡只认皮肤两格(封面只有直播卡带),恒带。
+				{ cardSkin: options.cardSkin, cardSkinKnobs: options.cardSkinKnobs },
 			);
 		} catch (e) {
 			deps.logger.error(`[image] 生成醒目留言卡片失败：${errorMessageOf(e)}，降级为文字推送`);

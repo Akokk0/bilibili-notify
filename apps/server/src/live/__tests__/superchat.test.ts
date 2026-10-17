@@ -11,7 +11,6 @@ import type {
 	SuperchatEvent,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { CustomCardStyleLike } from "../live-types";
 import { pushSuperchat, type SuperchatDeps, type SuperchatOptions } from "../superchat";
 
 const CARD = Buffer.from("sc-card-jpeg");
@@ -32,7 +31,6 @@ function options(over: Partial<SuperchatOptions> = {}): SuperchatOptions {
 		event: EVENT,
 		minAmount: undefined,
 		creator: { name: "主播", avatar: CREATOR_AVATAR },
-		cardStyle: { enable: false },
 		fallbackText: "兜底一句",
 		...over,
 	};
@@ -147,12 +145,10 @@ describe("pushSuperchat", () => {
 		expect(t.sent[0]?.kind).toBe("image");
 	});
 
-	it("样式没启用:不展开样式,皮肤两格照带", async () => {
+	it("醒目留言卡的第二参恰为皮肤两格,没有别的键(封面只有直播卡带)", async () => {
 		const t = setup();
-		const cardStyle: CustomCardStyleLike = { enable: false, font: "Base Sans" };
 		await pushSuperchat(
 			options({
-				cardStyle,
 				cardSkin: "k7xxx-c0ffee",
 				cardSkinKnobs: { "k7xxx-c0ffee": { accent: "#aaaaaa" } },
 			}),
@@ -164,16 +160,11 @@ describe("pushSuperchat", () => {
 		});
 	});
 
-	it("样式启用:展开样式,再带皮肤两格", async () => {
+	it("没配皮肤 → 第二参仍只有那两个键(值为 undefined)", async () => {
 		const t = setup();
-		await pushSuperchat(
-			options({ cardStyle: { enable: true, font: "Base Sans" }, cardSkin: "default" }),
-			t.d,
-		);
+		await pushSuperchat(options(), t.d);
 		expect(t.generateSuperchatCard.mock.calls[0]?.[1]).toStrictEqual({
-			enable: true,
-			font: "Base Sans",
-			cardSkin: "default",
+			cardSkin: undefined,
 			cardSkinKnobs: undefined,
 		});
 	});

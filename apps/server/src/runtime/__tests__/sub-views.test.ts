@@ -2,7 +2,7 @@
  * 覆盖 buildLiveSubViewSingle 的视图形状。
  *
  * 直播视图:「无 per-UP override 时不伪装全局值」—— 此前从 `eff = resolve(sub, globals.defaults)` 派生
- * customCardStyle / aiOverride 字段并硬写 `enable: true`,即便用户没设 per-UP override 也写满视图;直播监听器是
+ * 直播封面 / aiOverride 字段并硬写成启用,即便用户没设 per-UP override 也写满视图;直播监听器是
  * add 时的快照,全局改动 hot-reload 后永远沿用旧值。修复后只有 sub.overrides 真存在时才生成对应字段。
  *
  * 动态那一半的名单(启用的才列、别的来源不列、全局开关与订阅覆盖谁压谁)搬去了
@@ -34,41 +34,37 @@ const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 });
 
 describe("buildLiveSubViewSingle — 不伪装全局值", () => {
-	it("无 per-UP override → customCardStyle.enable=false,aiOverride 是 undefined", () => {
+	it("无 per-UP override → liveCoverImageIds 是 undefined,aiOverride 也是 undefined", () => {
 		const sub = makeSub({});
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
-		expect(view.customCardStyle).toEqual({ enable: false });
+		expect(view.liveCoverImageIds).toBeUndefined();
 		expect(view.aiOverride).toBeUndefined();
 	});
 
-	it("仅设 cards override → customCardStyle.enable=true,aiOverride 仍 undefined", () => {
+	it("仅设 cards override → liveCoverImageIds 原样给出,aiOverride 仍 undefined", () => {
 		const sub = makeSub({
 			cards: { liveCoverImageIds: ["up-cover.png"] },
 		});
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
-		expect(view.customCardStyle).toEqual({
-			enable: true,
-			liveCoverImage: "up-cover.png",
-			liveCoverImages: ["up-cover.png"],
-		});
+		expect(view.liveCoverImageIds).toEqual(["up-cover.png"]);
 		expect(view.aiOverride).toBeUndefined();
 	});
 
-	it("订阅把直播封面设成空列表 → 也是覆盖(这位 UP 不用自定义封面):enable:true、封面为空", () => {
-		// 验红:把 liveWorkSettings 里的 `?.liveCoverImageIds ?` 判断改成看长度,空列表被当成没设,这条红。
+	it("订阅把直播封面设成空列表 → 也是覆盖(这位 UP 不用自定义封面):给出的是空列表,不是 undefined", () => {
+		// 验红:把 liveWorkSettings 里的 `liveCoverImageIds` 改成按长度折(空列表给 undefined),空列表被当成没设,这条红。
 		const view = buildLiveSubViewSingle(
 			makeSub({ cards: { liveCoverImageIds: [] } }),
 			fakeRuntimeStore(),
 			makeDefaultGlobalConfig(),
 		);
-		expect(view.customCardStyle).toMatchObject({ enable: true, liveCoverImages: [] });
+		expect(view.liveCoverImageIds).toEqual([]);
 	});
 
-	it("仅设 ai override → aiOverride 有值,customCardStyle 不影响", () => {
+	it("仅设 ai override → aiOverride 有值,liveCoverImageIds 不影响", () => {
 		const sub = makeSub({ ai: { preset: "inherit" } });
 		const view = buildLiveSubViewSingle(sub, fakeRuntimeStore(), makeDefaultGlobalConfig());
 		expect(view.aiOverride).toBeDefined();
-		expect(view.customCardStyle).toEqual({ enable: false });
+		expect(view.liveCoverImageIds).toBeUndefined();
 	});
 
 	it("无 per-UP 模板 override → customLiveMsg 始终下发全局默认三段(无开关,对齐 liveSummary)", () => {

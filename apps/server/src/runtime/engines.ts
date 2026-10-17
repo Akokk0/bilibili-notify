@@ -777,7 +777,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				customLiveStreaming: g.defaults.templates.liveStreaming,
 				customLiveEnd: g.defaults.templates.liveEnd,
 			},
-			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 resolvedCardStyle)。
+			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 RoomSessionBase.liveCover)。
 			defaultLiveCoverImages: g.defaults.cards.liveCoverImageIds,
 		};
 	};
@@ -889,10 +889,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
 				settings: (sub) => liveWorkSettings(sub, globals()),
 				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
-				cardStyle: (sub, settings) => {
+				liveCover: (sub, settings) => {
 					const identity = subscriptionIdentityOf(sub);
 					return rotateLiveCover(
-						settings.customCardStyle,
+						settings.liveCoverImageIds,
 						globals().defaults.cards.liveCoverImageIds,
 						pickExistingCardBg,
 						`${identity.sourceKey}:${identity.externalId}:live-cover`,
@@ -1101,7 +1101,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						);
 					}
 				}
-				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / customCardStyle /
+				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / liveCoverImageIds /
 				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格(动态那头吃名单、现算,不吃这种快照)。resolve() 把 cards / cardSkin / schedule / liveStart /
 				// liveStreaming / superchat / membership / filters / templates / features / messageLayout / imageGroup 折进每个 sub 的 eff;
 				// AI 人格不在 eff 里,由 resolveAiOverride(经 resolveSubscriptionPersona)在构造 per-sub 视图时另算 —— 任一变化都给所有
@@ -1561,42 +1561,6 @@ function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
 	};
 }
 
-/**
- * 把一份解析后的 CardStyle(或 per-UP 覆盖切片)映射成引擎消费的 colorOptions 形状
- * (`enable:true` + `liveCoverImage` 取列表首张作为静态兜底,`liveCoverImages` 透传完整
- * 列表给推送点做「每次推送轮换」——见 `RoomSessionBase.resolvedCardStyle`)。
- *
- * 无封面时 `liveCoverImage` 留 undefined(**不是** `""`)—— generate* 用
- * `colorOptions.liveCoverImage` 兜底,`""` 非 nullish 会把封面抹空而非回退 B 站原图,
- * 故只设字体之类的 per-UP 覆盖必须让封面透传 undefined。
- *
- * 从前这里还映射一对 `backgroundImage` / `backgroundImages`;整条链 2026-09-20 删掉
- * (背景图归皮肤自己的 `image` 旋钮)。
- */
-function cardStyleToColorOptions(s: {
-	liveCoverImageIds?: string[];
-}): LiveSubView["customCardStyle"] {
-	return {
-		enable: true,
-		// 🪦 字体两项(`font` / `fontAsset`)2026-09-20 从这里摘掉。它们 09-14 退役成皮肤
-		// 自己的字体旋钮,卡片页上那几栏入口也一并删了 —— 而这一步还在读盘上的老值往下喂,
-		// 于是给某位 UP / 某类卡单独设过字体的人**改不动它、它却还在生效**,面板上连看都
-		// 看不到。全局那一份早就断了(见上面 createImageRenderer 那儿的注释),漏的是
-		// per-UP 与 per-kind 这两层。
-		//
-		// ⚠️ 这里从前写的是反向的注释(「此前整个漏在这里…选了等于没选」)。那句话在入口
-		// 还在的时候是对的:收不到才是 bug。入口没了之后,继续读它才是 bug。别照着旧版本
-		// 把这两行加回来 —— 守卫在 `__tests__/sub-views.test.ts`,它也跟着翻了向。
-		//
-		// 字段本身留在 schema 里(退役字段不删,`.strict()` 会让老配置装不进来),只是再没有
-		// 读者;想换字体请拧那套皮肤的字体旋钮。
-		//
-		// 直播封面(独立端专属,仅 live 卡消费)。
-		liveCoverImage: s.liveCoverImageIds?.[0],
-		liveCoverImages: s.liveCoverImageIds,
-	};
-}
-
 /** B 站引擎说的 uid → 订阅身份(B 站的外部 id 就是 uid)。 */
 function biliIdentity(uid: string): Identity {
 	return { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid };
@@ -1720,11 +1684,10 @@ export function liveWorkSettings(
 		liveStart: eff.features.liveStart,
 		liveStreaming: eff.features.liveStreaming,
 		liveEnd: eff.features.liveEnd,
-		// customCardStyle 只在真有 per-UP override 时生成。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
-		// undefined`)自动传 undefined → ImageRenderer 走 this.config 兜底,跟全局 hot-reload 同步。
-		customCardStyle: sub.overrides.cards?.liveCoverImageIds
-			? cardStyleToColorOptions(sub.overrides.cards)
-			: { enable: false },
+		// 直播封面:订阅自己设的列表原样给(没设 = undefined,跟全局;空列表 = 不用自定义封面),取法见
+		// `rotateLiveCover`。🪦 这里从前还映射一份带 `font` / `fontAsset` 的样式对象:字体 2026-09-14 退役成皮肤
+		// 自己的旋钮,那两格再没有读者,别加回来(字段留在 schema 里只为老配置装得进来)。
+		liveCoverImageIds: sub.overrides.cards?.liveCoverImageIds,
 		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
 		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
 		// Object.assign 后即刻生效;`liveStreaming` 开关或间隔变化时 engine 额外 rearm 一次 setInterval)。
@@ -1861,7 +1824,8 @@ function subscriptionOpsToLive(
 						liveEndGraceMinutes: view.liveEndGraceMinutes,
 						aiOverride: view.aiOverride,
 						wordcloudStopWords: view.wordcloudStopWords,
-						customCardStyle: view.customCardStyle,
+						// 键恒在(值可能是 undefined):这位 UP 清掉封面覆盖后,得靠这个 undefined 把引擎里旧的那份盖掉。
+						liveCoverImageIds: view.liveCoverImageIds,
 						customLiveMsg: view.customLiveMsg,
 						guardTemplate: view.guardTemplate,
 						customLiveSummary: view.customLiveSummary,

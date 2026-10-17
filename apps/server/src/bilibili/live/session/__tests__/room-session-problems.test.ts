@@ -43,7 +43,6 @@ function makeSub(): SubItemView {
 		superchat: false,
 		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
 		target: {},
-		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
 		guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 		customLiveSummary: { enable: false },

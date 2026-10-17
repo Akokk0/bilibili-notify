@@ -18,7 +18,7 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
-import type { CustomCardStyleLike, LivePushType } from "./live-types";
+import type { LivePushType } from "./live-types";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
 export type LiveNotifyPushType =
@@ -51,8 +51,8 @@ export interface LiveNotifyParams extends CardSkinChoice {
 	link: string;
 	/** 这条订阅折好的消息版式(直播那一份)。 */
 	layout: MessageKindLayout;
-	/** 这条订阅折好的直播卡样式;没启用(`enable` 为假)= 吃渲染器的全局配置。 */
-	cardStyle?: CustomCardStyleLike;
+	/** 这一张卡的自定义封面(资产 id,已轮好);不给 = 卡吃来源自己的封面。 */
+	liveCover?: string;
 	pushType: LiveNotifyPushType;
 	/** 日志里怎么称呼这条订阅(比如 `uid=…`、`sub=…`)。 */
 	label: string;
@@ -81,8 +81,8 @@ export async function pushLiveNotify(
 	if (deps.renderer && wantCard) {
 		try {
 			card = await deps.renderer.generateLiveCard(params.input, {
-				// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与旋钮覆盖与它无关,恒要带上。
-				...(params.cardStyle?.enable ? params.cardStyle : undefined),
+				// 没有自定义封面就不带这一格(卡吃来源自己的封面);皮肤 id 与旋钮覆盖恒要带上。
+				...(params.liveCover === undefined ? {} : { liveCoverImage: params.liveCover }),
 				cardSkin: params.cardSkin,
 				cardSkinKnobs: params.cardSkinKnobs,
 			});
