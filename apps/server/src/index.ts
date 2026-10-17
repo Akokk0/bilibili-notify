@@ -47,6 +47,8 @@ import { createExtensionMounts } from "./extensions/mount.js";
 import { createReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
+import { bindTextSettings } from "./i18n/bind-settings.js";
+import { i18n } from "./i18n/index.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
 import { createLinkPreviewer } from "./link-preview/link-previewer.js";
@@ -555,6 +557,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			configStore: runtime.configStore,
 		});
 		runtime.serviceCtx.onDispose(() => logLevels.dispose(), "stop");
+		// 语言与口吻两项设置接到字典 store 上(当场推一次、之后核心设置变了再推):同样早于登录系统与引擎。
+		const textSettings = bindTextSettings({
+			set: (change) => i18n.set(change),
+			configStore: runtime.configStore,
+		});
+		runtime.serviceCtx.onDispose(() => textSettings.dispose(), "stop");
 		// 连接 settings 里哪些格是密钥:适配器 schema 上的标记 + 拓展声明的键。下发打码、备份脱敏、日志按值打码吃同一份。
 		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
 		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
