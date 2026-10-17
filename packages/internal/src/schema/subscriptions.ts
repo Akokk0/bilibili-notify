@@ -64,6 +64,9 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  *   保持原样,原本没有的只记地址(下一轮再试,面板与锐评卡也还有地址可退)。拓展订阅没有这一格。
  *
  * 没有头像就是**两格都缺**,不再写空串。
+ *
+ * `fanClubName`:粉丝团名(B 站填粉丝牌名),平台没有就缺键,模板变量 `{fanclub}` 取它。
+ * 3b-24 之前没有写者,弹幕总结照旧从直播那边取值;写进资料留给 3b-24。
  */
 export const CachedProfileSchema = z.object({
 	name: z.string(),
@@ -71,6 +74,7 @@ export const CachedProfileSchema = z.object({
 	avatarUrl: z.string().optional(),
 	sign: z.string(),
 	fans: z.number().int().min(0).optional(),
+	fanClubName: z.string().optional(),
 	lastRefreshedAt: z.string(),
 });
 export type CachedProfile = z.infer<typeof CachedProfileSchema>;

@@ -130,6 +130,14 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 		expect(CachedProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
 	});
 
+	it("CachedProfile 的 fanClubName 留得住;平台没有就缺键,不补空串", () => {
+		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		expect(CachedProfileSchema.parse({ ...base, fanClubName: "阿绫的粉丝团" })).toMatchObject({
+			fanClubName: "阿绫的粉丝团",
+		});
+		expect("fanClubName" in CachedProfileSchema.parse(base)).toBe(false);
+	});
+
 	it("FansBaselineSchema 仍可独立 parse", () => {
 		const r = FansBaselineSchema.safeParse({ value: 100, ts: "2026-05-19T00:00:00.000Z" });
 		expect(r.success).toBe(true);
