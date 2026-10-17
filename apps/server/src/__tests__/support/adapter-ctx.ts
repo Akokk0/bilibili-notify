@@ -18,6 +18,7 @@ import {
 	createPlatformAdapterRegistry,
 	type PlatformAdapterRegistry,
 } from "../../push/registry.js";
+import { inertSettings } from "./inert-settings.js";
 import { memoryStores } from "./memory-key-value-store.js";
 
 export interface FakeAdapterContext {
@@ -58,6 +59,7 @@ export function fakeAdapterContext(
 		state,
 		secrets,
 		redact() {},
+		settings: inertSettings().settings,
 		reportProblem() {},
 		resolveProblem() {},
 		connections: () => connections,

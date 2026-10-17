@@ -33,7 +33,6 @@ import type {
 	PostEvent,
 	ProbeResult,
 	PushTarget,
-	SettingsReader,
 	SourceAuth,
 	SourceContext,
 	Subscription,
@@ -1797,39 +1796,9 @@ describe("createEngines — boot wiring", () => {
 		expect(ctx?.subscriptions()).toEqual([]);
 	});
 
-	// 验红:把 engines.ts `registerSource` 里 `settings.read` 接成恒失败,头两句红;去掉 `onChanged`,「变了叫一次」红。
-	it("来源在 start 里 ctx.settings(schema) 读得到配置仓里那一段;经配置仓改了之后收得到变化(别的 scope 不叫)", async () => {
-		const c = setup({ noSource: true, bilibili: { dynamicCron: "*/7 * * * *" } });
-		active = c;
-		const seen: unknown[] = [];
-		const changes = vi.fn();
-		const readers: SettingsReader<{ dynamicCron: string }>[] = [];
-		const probe = makeSource();
-		probe.start.mockImplementation(async (ctx) => {
-			const reader = ctx.settings(z.object({ dynamicCron: z.string() }));
-			readers.push(reader);
-			seen.push(reader.get());
-			reader.onChange(changes);
-		});
-		await c.runtime.registerSource({
-			sourceKey: "bilibili",
-			source: probe,
-			integration: { logger: c.serviceCtx.logger } as any,
-			logger: c.sourceLogger,
-		});
-		expect(seen).toEqual([{ ok: true, settings: { dynamicCron: "*/7 * * * *" } }]);
-
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(changes).not.toHaveBeenCalled();
-
-		c.configStore._setBilibili(BiliSettingsSchema.parse({ dynamicCron: "*/9 * * * *" }));
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-		expect(changes).toHaveBeenCalledTimes(1);
-		expect(readers[0]?.get()).toEqual({
-			ok: true,
-			settings: { dynamicCron: "*/9 * * * *" },
-		});
-	});
+	// 来源读自己集成的设置:读法住集成上下文(`integrations/settings-reader.ts` 的 `settingsReaderOptionsOf`),
+	// 不再由引擎装配递 —— 那条线的单测在 `integrations/__tests__/settings-reader.test.ts`,从真入口的接线钉在
+	// `__tests__/builtin-source-settings-boot-e2e.test.ts`。
 
 	// 验红:删掉 engines.ts `registerSource` 里递 `problems` 的那一行,这条红。
 	it("来源上下文的 reportProblem 写进递进去的问题表,报的人是来源键", async () => {

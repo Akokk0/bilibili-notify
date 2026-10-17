@@ -29,6 +29,7 @@ import { z } from "zod";
 import type * as Compose from "../../compose.js";
 import type { IntegrationSettingsSegment } from "../../config/store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
+import { createIntegrationSettings } from "../../integrations/settings-reader.js";
 
 /** 假来源的键:带命名空间的第三方写法,过得了拓展 id 的形状(集成存储只认保留键或合法拓展 id)。 */
 export const IN_PROCESS_KEY = "acme.inprocess";
@@ -382,6 +383,8 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 						reporter: IN_PROCESS_KEY,
 						rejectedProblemLevel: "error",
 						redactValues: (values) => store.redact("redact", values),
+						// 读法取自入口递进来的那一份(`deps.settingsOf`):假来源读自己的键,不在测试里另接配置仓。
+						settings: createIntegrationSettings({ ...deps.settingsOf(IN_PROCESS_KEY), logger }),
 					});
 					opened = { integration, store };
 					const made = createInProcessSource(inProcessWorld.options);

@@ -56,6 +56,16 @@ export interface CreateIntegrationContextOptions {
 	 * 收摊的最后交一个空批,撤干净。
 	 */
 	redactValues: (values: readonly string[]) => void;
+	/**
+	 * `ctx.settings(规则)` 的实现,原样放进 `ctx`;**一个集成只有这一份**:拓展的 `activate(ctx).settings` 与它推送源
+	 * `start(ctx).settings` 拿到的是同一个,不会长出第二份通用的(通用的不对表清单、不认「设置读不了」)。内置的三处
+	 * 用 `integrations/settings-reader.ts` 的 `createIntegrationSettings` 由读源造,拓展把自己的实现交进来。
+	 * `dispose` 在上下文收摊时叫(把手挂着的宿主监听在这里摘掉)。
+	 */
+	settings: {
+		settings: IntegrationContext["settings"];
+		dispose(): void;
+	};
 	/** 收尾钩子一共最多等多久;不给就是 `DISPOSE_TIMEOUT_MS`。 */
 	disposeTimeoutMs?: number;
 	/** 开始收尾的那一刻、`signal` 中止之前叫一次;抛了记一行 error,不打断收尾。 */
@@ -164,6 +174,7 @@ export function createIntegrationContext(
 				),
 			);
 		},
+		settings: opts.settings.settings,
 	};
 
 	return {
@@ -227,6 +238,11 @@ export function createIntegrationContext(
 				} catch (err) {
 					logger.error(`回收注册项时抛了:${(err as Error).message}`);
 				}
+			}
+			try {
+				opts.settings.dispose();
+			} catch (err) {
+				logger.error(`回收设置读手时抛了:${(err as Error).message}`);
 			}
 			registered.clear();
 			// 登记的临时凭据撤在最后:收摊钩子里打的日志(比如收尾失败的原因)里还可能带着它们。

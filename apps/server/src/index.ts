@@ -51,6 +51,7 @@ import { bindTextSettings } from "./i18n/bind-settings.js";
 import { i18n } from "./i18n/index.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
+import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
 import { createLinkPreviewer } from "./link-preview/link-previewer.js";
 import { createLinkReplySender } from "./link-preview/link-reply.js";
 import { consoleErrorRedacted } from "./logs/console-fallback.js";
@@ -593,6 +594,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
 
+		// 各内置集成读自己设置的读法:造一次,递给造集成上下文的两处(登录系统、内置适配器);键由各集成自己挑。
+		const settingsOf = settingsReaderOptionsOf(runtime.configStore);
+
 		// Stage 2.4: assemble the auth stack (integration stores → Api → LoginFlow). Bus
 		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
 		try {
@@ -603,6 +607,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
 				accountImages: runtime.accountImages,
 				problems: runtime.problems,
+				settingsOf,
 			});
 		} catch (err) {
 			// Fatal: without the integration stores / Api the dashboard can't function.
@@ -789,6 +794,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			adapterRegistry,
 			integrationStore: runtime.integrationStore,
 			problems: runtime.problems,
+			settingsOf,
 			connections: () => runtime.configStore.getConnections(),
 			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			onConnectionsChanged,

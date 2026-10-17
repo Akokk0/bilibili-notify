@@ -16,6 +16,7 @@ import {
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
 import { noCandidates } from "../../__tests__/support/no-candidates.js";
+import { createIntegrationSettings } from "../../integrations/settings-reader.js";
 import type { ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createSourceRegistry, type SourceRegistry } from "../registry.js";
@@ -33,8 +34,17 @@ export const makeLogger = (): SpyLogger => ({
 	debug: vi.fn(),
 });
 
-/** 公共五格 + 故意多带两格(`http`、`cookies`),模拟 B 站交进来的那个对象运行时的样子。 */
-export const makeIntegration = (logger: Logger = makeLogger()): IntegrationContext => {
+/**
+ * 公共六格 + 故意多带两格(`http`、`cookies`),模拟 B 站交进来的那个对象运行时的样子。
+ * `settings` 是真的集成读手(`createIntegrationSettings`),读源是 `settingsHost`(不给就是一份空对象)。
+ */
+export const makeIntegration = (
+	logger: Logger = makeLogger(),
+	settingsHost: Pick<
+		ReturnType<typeof makeSettingsHost>,
+		"read" | "onChanged"
+	> = makeSettingsHost(),
+): IntegrationContext => {
 	const kv = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
 	return {
 		logger,
@@ -45,13 +55,18 @@ export const makeIntegration = (logger: Logger = makeLogger()): IntegrationConte
 		redact: vi.fn(),
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
+		settings: createIntegrationSettings({
+			read: settingsHost.read,
+			onChanged: settingsHost.onChanged,
+			logger,
+		}).settings,
 		http: { get: vi.fn() },
 		cookies: { header: vi.fn() },
 	} as unknown as IntegrationContext;
 };
 
 /**
- * 来源上下文的 `settings` 那一格的假宿主:盘上那一份可以 `set` 换掉(换完叫一声「可能变了」),
+ * 集成上下文的 `settings` 读源的假宿主:盘上那一份可以 `set` 换掉(换完叫一声「可能变了」),
  * `listenerCount` 数得出挂着几个监听。不给初值就是一份空对象。
  */
 export const makeSettingsHost = (initial: Result<{ settings: unknown }> = ok({ settings: {} })) => {

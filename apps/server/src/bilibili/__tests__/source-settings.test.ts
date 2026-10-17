@@ -138,7 +138,14 @@ async function boot() {
 		registry: createSourceRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
 		source,
-		integration: makeIntegration(),
+		// 读源从集成上下文那一侧给:来源经 `ctx.settings(规则)` 读,键(B 站)由造上下文的人挑好。
+		integration: makeIntegration(logger, {
+			read: () => store.readIntegrationSettings(SOURCE_KEY),
+			onChanged: (fn) =>
+				store.onChange((scope) => {
+					if (scope === "integration-settings") fn();
+				}),
+		}),
 		sourceKey: SOURCE_KEY,
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
@@ -146,13 +153,6 @@ async function boot() {
 		logger,
 		enqueue: vi.fn(),
 		problems: table,
-		settings: {
-			read: () => store.readIntegrationSettings(SOURCE_KEY),
-			onChanged: (fn) =>
-				store.onChange((scope) => {
-					if (scope === "integration-settings") fn();
-				}),
-		},
 	});
 	toDispose.push(registration);
 	const problems = () => table.list().map((p) => p.code);

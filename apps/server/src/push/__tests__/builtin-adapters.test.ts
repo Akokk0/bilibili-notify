@@ -6,16 +6,18 @@
  * (引擎不再替适配器对账 / 收尾 —— 这条行为搬到了这里。)
  */
 
-import type {
-	Connection,
-	Disposable,
-	PlatformAdapter,
-	PlatformAdapterContext,
+import {
+	type Connection,
+	type Disposable,
+	ok,
+	type PlatformAdapter,
+	type PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertSettingsOf } from "../../__tests__/support/inert-settings.js";
 import {
 	memoryIntegrationStore,
 	memoryStoreHandle,
@@ -85,6 +87,8 @@ async function setup() {
 	const qq = fakeAdapter("qq-official");
 	const webhook = fakeAdapter("webhook");
 	const inboundSeen: Array<{ route: string; meta: unknown }> = [];
+	/** 各适配器的集成上下文向 `settingsOf` 要过的键,按要的先后。 */
+	const settingsKeys: string[] = [];
 	const builtin = await registerBuiltinAdapters({
 		registry,
 		adapters: [onebot, qq, webhook],
@@ -95,13 +99,47 @@ async function setup() {
 		},
 		stores,
 		problems,
+		settingsOf: (key) => {
+			settingsKeys.push(key);
+			// 读到的设置带着是哪个键要的,好看出每个适配器读的是自己那一段。
+			return { read: () => ok({ settings: { key } }), onChanged: () => ({ dispose() {} }) };
+		},
 		connections: () => list,
 		onConnectionsChanged,
 	});
-	return { registry, onebot, qq, webhook, builtin, emit, listeners, stores, problems, inboundSeen };
+	return {
+		registry,
+		onebot,
+		qq,
+		webhook,
+		builtin,
+		emit,
+		listeners,
+		stores,
+		problems,
+		inboundSeen,
+		settingsKeys,
+	};
 }
 
 describe("registerBuiltinAdapters", () => {
+	// 验红:`registerBuiltinAdapters` 里按别的键(例如写死 "onebot")向 `settingsOf` 要读法,这条红。
+	it("每个适配器的集成上下文按自己的适配器键要设置的读法", async () => {
+		const { settingsKeys, builtin } = await setup();
+		expect(settingsKeys).toEqual(["onebot", "qq-official", "webhook"]);
+		await builtin.dispose();
+	});
+
+	// 验红:`adapter-context.ts` 里 `settings` 那一行不转发 `integration.settings`(换成另造一份),这条红。
+	it("适配器 start 拿到的 ctx.settings 读的是自己那一段:各读各的键", async () => {
+		const { onebot, qq, webhook, builtin } = await setup();
+		const Schema = z.object({ key: z.string() });
+		expect(onebot.ctx?.settings(Schema).get()).toEqual({ ok: true, settings: { key: "onebot" } });
+		expect(qq.ctx?.settings(Schema).get()).toEqual({ ok: true, settings: { key: "qq-official" } });
+		expect(webhook.ctx?.settings(Schema).get()).toEqual({ ok: true, settings: { key: "webhook" } });
+		await builtin.dispose();
+	});
+
 	// 验红:`registerBuiltinAdapters` 不把 `inbound` 递给 `createPlatformAdapterContext`(换成空表),这条红。
 	it("适配器 start 拿到的 ctx 带 inbound:交一条消息,宿主的下一层收到,平台是连接上的;别家的连接被丢", async () => {
 		const { onebot, builtin, inboundSeen } = await setup();
@@ -132,6 +170,7 @@ describe("registerBuiltinAdapters", () => {
 			inbound: {},
 			stores: memoryIntegrationStore(),
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
 		});
@@ -182,6 +221,7 @@ describe("registerBuiltinAdapters", () => {
 					memoryStoreHandle({}, (kind, values) => redactor.replace(key, kind, values)).handle,
 			},
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
 		});
@@ -244,6 +284,7 @@ describe("registerBuiltinAdapters", () => {
 				inbound: {},
 				stores: { open: (key) => memoryIntegrationStore().open(key) },
 				problems: ignoredProblems,
+				settingsOf: inertSettingsOf,
 				connections: () => [],
 				onConnectionsChanged: () => ({ dispose() {} }),
 			}),
@@ -266,6 +307,7 @@ describe("registerBuiltinAdapters", () => {
 				registry,
 				adapters: [first, second],
 				problems: ignoredProblems,
+				settingsOf: inertSettingsOf,
 				loggerOf: () => logger,
 				inbound: {},
 				stores: {

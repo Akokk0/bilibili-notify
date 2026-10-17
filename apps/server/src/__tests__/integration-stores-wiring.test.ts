@@ -36,6 +36,7 @@ import { createExtensionsRoute } from "../routes/extensions.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import { dataPath } from "../runtime/roots.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
+import { inertSettingsOf } from "./support/inert-settings.js";
 import { silentLogger } from "./support/silent-logger.js";
 
 const EXT_ID = "wiring-ext";
@@ -120,6 +121,7 @@ describe("内置适配器", () => {
 			loggerOf: () => logger(),
 			stores: store,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 			connections: (): readonly Connection[] => [],
 			inbound: {},
 			onConnectionsChanged: (): Disposable => ({ dispose() {} }),

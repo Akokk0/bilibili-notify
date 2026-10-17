@@ -127,6 +127,8 @@ export function createPlatformAdapterContext(
 		state: integration.state,
 		secrets: integration.secrets,
 		redact: integration.redact,
+		// 转发集成上下文那一份,不另造:一个集成只有一份 `settings` 实现(拓展的带对表与「设置读不了」)。
+		settings: integration.settings,
 		reportProblem({ connectionId, ...problem }) {
 			if (connectionId === undefined) {
 				integration.reportProblem(problem);

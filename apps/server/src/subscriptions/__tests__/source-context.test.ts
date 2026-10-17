@@ -1,4 +1,9 @@
-import { ok, type PostEvent, type PostReport } from "@bilibili-notify/internal";
+import {
+	type IntegrationContext,
+	ok,
+	type PostEvent,
+	type PostReport,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
@@ -19,14 +24,18 @@ const report = (postId = "p1"): PostReport => ({
 	post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "hi" },
 });
 
-const setup = (subs = [makeSub("a", "1")], integration = makeIntegration()) => {
+const setup = (
+	subs = [makeSub("a", "1")],
+	/** 盖在集成上下文上的几格(例如换掉 `redact`);`settings` 的读源始终是下面的 `settingsHost`。 */
+	overrides: Partial<IntegrationContext> = {},
+) => {
 	const world = makeWorld(subs);
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const problems = makeProblems();
 	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
-		integration,
+		integration: { ...makeIntegration(makeLogger(), settingsHost), ...overrides },
 		sourceKey: SOURCE_KEY,
 		descriptor: { label: "测试", postNoun: "动态" },
 		linkResolvers: createLinkResolverRegistry(),
@@ -36,7 +45,6 @@ const setup = (subs = [makeSub("a", "1")], integration = makeIntegration()) => {
 		logger,
 		enqueue,
 		problems,
-		settings: settingsHost,
 	});
 	return { ...world, logger, enqueue, problems, handle, settingsHost };
 };
@@ -65,7 +73,7 @@ describe("createSourceContext", () => {
 
 	it("ctx.redact 就是集成上下文上的那一个:来源登记的临时凭据走集成的登记口", () => {
 		const redact = vi.fn();
-		const { handle } = setup([makeSub("a", "1")], { ...makeIntegration(), redact });
+		const { handle } = setup([makeSub("a", "1")], { redact });
 		handle.ctx.redact("FAKE-TEMP-TOKEN-1");
 		expect(redact).toHaveBeenCalledWith("FAKE-TEMP-TOKEN-1");
 	});
@@ -84,7 +92,6 @@ describe("createSourceContext", () => {
 			logger: hostLogger,
 			enqueue: vi.fn(),
 			problems: makeProblems(),
-			settings: makeSettingsHost(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
 		expect(handle.ctx.logger).not.toBe(integrationLogger);
@@ -201,24 +208,29 @@ describe("createSourceContext · settings", () => {
 		expect(reader.get()).toEqual({ ok: true, settings: { cron: "c" } });
 	});
 
-	it("上下文收掉之后才来要把手:宿主那头不留监听,get() 照常能读", () => {
+	it("来源收掉之后才来要把手:get() 照常能读,onChange 不订阅(交一个空把手),设置再变不叫", () => {
 		const { handle, settingsHost } = setup();
 		settingsHost.set(ok({ settings: { cron: "a" } }));
 		handle.dispose();
 		const reader = handle.ctx.settings(Schema);
-		expect(settingsHost.listenerCount()).toBe(0);
 		expect(reader.get()).toEqual({ ok: true, settings: { cron: "a" } });
+		const fn = vi.fn();
+		reader.onChange(fn);
+		settingsHost.set(ok({ settings: { cron: "b" } }));
+		expect(fn).not.toHaveBeenCalled();
 	});
 
-	it("连造三个把手、收掉上下文后宿主那头的监听数回到零", () => {
+	// 读手本身(宿主那头的监听)属于集成上下文、随集成收摊(`integrations/__tests__/settings-reader.test.ts`);
+	// 来源这一层只摘它自己订阅的 onChange。
+	it("来源停下:它订阅过的每一个 onChange 都摘掉,读手还归集成上下文", () => {
 		const { handle, settingsHost } = setup();
-		expect(settingsHost.listenerCount()).toBe(0);
-		handle.ctx.settings(Schema);
-		handle.ctx.settings(Schema);
-		handle.ctx.settings(Schema);
+		const fns = [vi.fn(), vi.fn(), vi.fn()];
+		for (const fn of fns) handle.ctx.settings(Schema).onChange(fn);
 		expect(settingsHost.listenerCount()).toBe(3);
 		handle.dispose();
-		expect(settingsHost.listenerCount()).toBe(0);
+		settingsHost.set(ok({ settings: { cron: "z" } }));
+		for (const fn of fns) expect(fn).not.toHaveBeenCalled();
+		expect(settingsHost.listenerCount()).toBe(3);
 	});
 });
 

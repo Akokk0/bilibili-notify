@@ -1,3 +1,4 @@
+import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
 import type { PushTargetScope, Result } from "./constants";
 import type { KeyValueStore } from "./key-value-store";
@@ -51,9 +52,20 @@ export interface ServiceContext {
 	track(task: Promise<unknown>): void;
 }
 
+/** 一个集成读自己设置的把手:交一份 zod 进来,拿回它。 */
+export interface SettingsReader<T> {
+	/**
+	 * 此刻这一份。读得懂回过了那份 zod 的值;读不懂回 `invalid`,`issues` 里是逐条原因
+	 * (整个设置文件读不懂时只有一条、不带 `path`)。**不抛**,`start` 里与运行中都一样。
+	 */
+	get(): Result<{ settings: T }>;
+	/** 这一份「变了」才叫:值变了,或读得懂与读不懂之间翻了。别的集成的设置动了不叫。 */
+	onChange(fn: () => void): Disposable;
+}
+
 /**
- * 每个集成(拓展、内置集成)拿到的那一面:日志、停下信号、收尾钩子、两份小存储、日志打码登记、问题上报。
- * 成员后面各片还会往上加。
+ * 每个集成(拓展、内置集成)拿到的那一面:日志、停下信号、收尾钩子、两份小存储、日志打码登记、问题上报、
+ * 读自己的设置。成员后面各片还会往上加。
  * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
  */
 export interface IntegrationContext {
@@ -95,6 +107,12 @@ export interface IntegrationContext {
 	 * 只是不再适用,不补。表里没有这一条什么都不做。
 	 */
 	resolveProblem(problem: { code: string; notify?: boolean }): void;
+	/**
+	 * 读这个集成自己的设置(`config/settings/<集成键>.json` 那一段)。可以交多份 zod,各读各的格(zod 的
+	 * 对象默认剥掉不认识的键);没设过的拿空对象过规则:过得了是成功并带默认值,过不了回 `not_configured`。
+	 * 把手随集成停下自动收掉(来源与适配器的上下文里,订阅还随来源 / 适配器停下摘掉),不必在 `stop()` 里记得摘。
+	 */
+	settings<T>(schema: ZodType<T>): SettingsReader<T>;
 }
 
 /**

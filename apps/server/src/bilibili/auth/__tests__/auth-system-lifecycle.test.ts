@@ -28,8 +28,9 @@ import { LoginFlow } from "../login-flow.js";
 import { testAuthDeps } from "./support/auth-deps.js";
 
 /** 测试里不关心图库:统一补上替身。 */
-const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "accountImages" | "problems">) =>
-	createAuthSystemWith({ ...testAuthDeps(), ...o });
+const createAuthSystem = (
+	o: Omit<CreateAuthSystemOptions, "accountImages" | "problems" | "settingsOf">,
+) => createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 const C0 = JSON.stringify([
 	{ key: "SESSDATA", value: "sess0", domain: ".bilibili.com", path: "/", secure: true },

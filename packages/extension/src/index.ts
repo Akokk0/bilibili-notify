@@ -508,7 +508,8 @@ export interface ExtensionContext extends IntegrationContext {
 	 * 自己的持久设置 —— 主人在面板上给**这个拓展**填的那些(桥的接入名单就住这儿),落盘在
 	 * `config/settings/extensions/<id>.json`,**形状归拓展自己那份 zod**,宿主只保证存得住。交一份
 	 * zod 进来,拿回一个现读的 {@link SettingsReader}(与内置集成读自己的设置是同一个口)。
-	 * 可以叫多次,每次都是同一份数据的一个视图。
+	 * 可以叫多次,每次都是同一份数据的一个视图。(签名继承自 `IntegrationContext.settings`,这里同签名重写
+	 * 只为写拓展专属的说明;推送源 `start(ctx).settings` 与它是同一份实现。)
 	 *
 	 * 与连接是两回事:连接是「一个 bot」,是宿主认识、推送目标能挂上去的东西;设置是拓展
 	 * 为了拿到那些 bot 而需要主人填的东西(token、对家的名字……),宿主一格都不认识。

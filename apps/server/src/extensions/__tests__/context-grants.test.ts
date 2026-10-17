@@ -1243,6 +1243,30 @@ describe("读自己的设置", () => {
 		expect(h.runtime.settingsSchemas()).toEqual([LINKS]);
 	});
 
+	/**
+	 * 🔴 一个集成只有一份 `settings` 实现:推送源 `start(ctx)` 拿到的就是 `activate(ctx)` 的那一份(带对表、
+	 * 记「设置读不了」),不是集成上下文里另有的通用读手。通用读手见到坏设置只会回 `invalid`,不抛、也不记。
+	 */
+	// 验红:`adapter-context.ts` 里 `settings` 不转发 `integration.settings`(换成另造一份通用的),这条红。
+	it("推送源 start(ctx).settings 与 activate(ctx).settings 是同一份实现:交坏设置时两边一样当场抛、一样记「设置读不了」", () => {
+		const h = boot({ settings: { links: "not-a-list" } });
+		let startCtx: { settings: typeof h.ctx.settings } | undefined;
+		h.ctx.registerPushSource({
+			adapter: {
+				...fakeAdapter(),
+				start(ctx: { settings: typeof h.ctx.settings }) {
+					startCtx = ctx;
+				},
+			} as unknown as PlatformAdapter,
+			configSchema: CONFIG,
+		});
+		expect(startCtx).toBeDefined();
+		expect(() => startCtx?.settings(LINKS)).toThrow(/「links」/);
+		expect(h.runtime.settingsProblem()).toContain("「links」");
+		// 活动口那一边一样:同一份实现。
+		expect(() => h.ctx.settings(LINKS)).toThrow(/「links」/);
+	});
+
 	it("是**现读**:面板改了下一次问就是新的", () => {
 		const h = boot({ settings: { links: [] } });
 		const settings = h.ctx.settings(LINKS);

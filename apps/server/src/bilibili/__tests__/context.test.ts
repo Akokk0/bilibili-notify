@@ -11,9 +11,12 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ok } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertSettingsOf } from "../../__tests__/support/inert-settings.js";
 import { readIntegrationStateFile } from "../../integration-store/files.js";
 import { createIntegrationStore } from "../../integration-store/store.js";
 import { createIntegrationHttp } from "../../integrations/http.js";
@@ -70,6 +73,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		await first.ctx.http.fetch(`${baseURL}/x`);
 		const firstUa = lastHeaders["user-agent"];
@@ -82,6 +86,7 @@ describe("createBiliContext", () => {
 			stores: again.store,
 			serviceCtx: again.host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		await second.ctx.http.fetch(`${baseURL}/x`);
 		const secondUa = lastHeaders["user-agent"];
@@ -107,6 +112,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		ctx.cookies.jar.load([
 			{ key: "SESSDATA", value: "FAKE-JAR-COOKIE-1", domain: "bilibili.com", path: "/" },
@@ -131,6 +137,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 
 		expect(ctx.http).toBeDefined();
@@ -155,6 +162,7 @@ describe("createBiliContext", () => {
 				stores: store,
 				serviceCtx: host.serviceCtx,
 				problems: ignoredProblems,
+				settingsOf: inertSettingsOf,
 			}),
 		).rejects.toThrow("boom");
 
@@ -163,6 +171,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		expect(store.isOpen("bilibili")).toBe(true);
 		await reopened.dispose();
@@ -175,6 +184,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		const order: string[] = [];
 		handle.ctx.onDispose(() => {
@@ -198,6 +208,7 @@ describe("createBiliContext", () => {
 			stores: store,
 			serviceCtx: host.serviceCtx,
 			problems: ignoredProblems,
+			settingsOf: inertSettingsOf,
 		});
 		const drain = host.disposers.filter((d) => d.phase === "drain");
 		expect(drain).toHaveLength(1);
@@ -208,6 +219,28 @@ describe("createBiliContext", () => {
 
 		await drain[0]?.fn();
 		expect(clientDispose).toHaveBeenCalledTimes(1);
+		await store.close();
+	});
+
+	// 验红:`createBiliContext` 里按别的键(例如 "onebot")向 `settingsOf` 要读法,这条红。
+	it("B 站上下文要的是 bilibili 那一段的读法:ctx.settings(规则) 读到的是它", async () => {
+		const { host, store } = makeStore();
+		const asked: string[] = [];
+		const handle = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+			problems: ignoredProblems,
+			settingsOf: (key) => {
+				asked.push(key);
+				return { read: () => ok({ settings: { key } }), onChanged: () => ({ dispose() {} }) };
+			},
+		});
+		expect(asked).toEqual(["bilibili"]);
+		expect(handle.ctx.settings(z.object({ key: z.string() })).get()).toEqual({
+			ok: true,
+			settings: { key: "bilibili" },
+		});
+		await handle.dispose();
 		await store.close();
 	});
 });

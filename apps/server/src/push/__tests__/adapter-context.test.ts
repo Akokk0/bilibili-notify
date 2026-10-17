@@ -16,6 +16,7 @@ import type {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { inertSettings } from "../../__tests__/support/inert-settings.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -66,6 +67,7 @@ function build(
 		logger,
 		stopReason: "测试",
 		...memoryStores(),
+		settings: inertSettings(),
 		problems,
 		reporter: key,
 		rejectedProblemLevel: "error",
@@ -379,6 +381,7 @@ describe("createPlatformAdapterContext · inbound", () => {
 			logger: silentLogger,
 			stopReason: "测试",
 			...memoryStores(),
+			settings: inertSettings(),
 			problems,
 			reporter: "bridge",
 			rejectedProblemLevel: "error",

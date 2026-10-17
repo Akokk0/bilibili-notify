@@ -28,7 +28,7 @@ import { testAuthDeps } from "./support/auth-deps.js";
 
 /** 测试里不关心配置仓与图库:统一补上替身。 */
 const createAuthSystem = (
-	o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages" | "problems">,
+	o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages" | "problems" | "settingsOf">,
 ) => createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 interface RefreshCallbacks {

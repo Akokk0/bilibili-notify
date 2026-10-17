@@ -329,6 +329,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		reporter: id,
 		rejectedProblemLevel: "warn",
 		redactValues: (values) => opts.stores.redact("redact", values),
+		// 拓展自己的实现(见 `readOwnSettings`):对表、记「设置读不了」;监听都经 `integration.track`,不另需收摊。
+		settings: { settings: (schema) => readOwnSettings(schema), dispose() {} },
 		disposeTimeoutMs: opts.disposeTimeoutMs,
 		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
@@ -684,6 +686,50 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		return () => stop.removeEventListener("abort", onStop);
 	}
 
+	/**
+	 * 拓展的 `ctx.settings(规则)`:对表清单、记「设置读不了」、认异步规则,与内置集成的读手不同。
+	 * 函数声明(会提升):`createIntegrationContext` 在 `integration` 赋值之前就把它收进选项,
+	 * 它只在集成上下文回来之后才会被调。
+	 */
+	function readOwnSettings<T>(schema: ZodType<T>): SettingsReader<T> {
+		checkSettingsSchema(schema);
+		// 先交后判:存着的那份解不开时,这份 zod 也得留给装载器 —— 改对了没有它就判不了能不能起。
+		if (!integration.disposed) handedSchemas.add(schema);
+		const raw = opts.settings();
+		const verdict = judgeStoredSettingsSync([schema], settingsFields, raw);
+		if (verdict?.ok) {
+			const read = verdict.values.get(schema);
+			if (read) settingsReads.set(schema, readOf(read));
+		} else if (verdict) {
+			// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
+			settingsUnreadable(verdict);
+			throw new ExtensionSettingsUnreadable(
+				`extension ${id}: 存着的设置过不了交进来的这份 zod(${verdict.detail})—— BN 不会起它,面板上是「设置读不了」`,
+			);
+		} else {
+			// 同步判不完(异步 refine):activate 里交的,装载器 activate 之后还会判一次;这里补上
+			// 「之后才交」的那种 —— 判完才有 `get()` 可读,判坏了照样交给装载器收掉。
+			const round = settingsRound;
+			void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
+				if (round !== settingsRound || integration.disposed) return;
+				if (!late.ok) settingsUnreadable(late);
+				else if (!settingsReads.has(schema)) {
+					const read = late.values.get(schema);
+					if (read) settingsReads.set(schema, readOf(read));
+				}
+			});
+		}
+		return {
+			get: () => readSettings(schema),
+			onChange: (fn: () => void) => {
+				if (integration.disposed) return integration.refuse("settings.onChange");
+				// 每个订阅者只往扇出名单里加一格 —— 「内容变没变」在上面那一处判过了。
+				settingsListeners.add(fn);
+				return integration.track({ dispose: () => settingsListeners.delete(fn) });
+			},
+		};
+	}
+
 	const ctx: ExtensionContext = {
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
@@ -848,44 +894,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 窗口里已经挂着一发:这一喊由它带上 —— 它在这一喊之后才发,面板重读到的是这一喊之后的样子。
 			statusCoalescer.touch(STATUS_KEY);
 		},
-		settings<T>(schema: ZodType<T>): SettingsReader<T> {
-			checkSettingsSchema(schema);
-			// 先交后判:存着的那份解不开时,这份 zod 也得留给装载器 —— 改对了没有它就判不了能不能起。
-			if (!integration.disposed) handedSchemas.add(schema);
-			const raw = opts.settings();
-			const verdict = judgeStoredSettingsSync([schema], settingsFields, raw);
-			if (verdict?.ok) {
-				const read = verdict.values.get(schema);
-				if (read) settingsReads.set(schema, readOf(read));
-			} else if (verdict) {
-				// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
-				settingsUnreadable(verdict);
-				throw new ExtensionSettingsUnreadable(
-					`extension ${id}: 存着的设置过不了交进来的这份 zod(${verdict.detail})—— BN 不会起它,面板上是「设置读不了」`,
-				);
-			} else {
-				// 同步判不完(异步 refine):activate 里交的,装载器 activate 之后还会判一次;这里补上
-				// 「之后才交」的那种 —— 判完才有 `get()` 可读,判坏了照样交给装载器收掉。
-				const round = settingsRound;
-				void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
-					if (round !== settingsRound || integration.disposed) return;
-					if (!late.ok) settingsUnreadable(late);
-					else if (!settingsReads.has(schema)) {
-						const read = late.values.get(schema);
-						if (read) settingsReads.set(schema, readOf(read));
-					}
-				});
-			}
-			return {
-				get: () => readSettings(schema),
-				onChange: (fn: () => void) => {
-					if (integration.disposed) return integration.refuse("settings.onChange");
-					// 每个订阅者只往扇出名单里加一格 —— 「内容变没变」在上面那一处判过了。
-					settingsListeners.add(fn);
-					return integration.track({ dispose: () => settingsListeners.delete(fn) });
-				},
-			};
-		},
+		// 集成上下文里那一份 —— 拓展的实现在 {@link readOwnSettings},经 `createIntegrationContext` 的 `settings` 选项
+		// 交了进去:`activate(ctx).settings` 与推送源 `start(ctx).settings`(适配器上下文转发 `integration.settings`)
+		// 是同一个实现,不会有第二份通用的。
+		settings: integration.ctx.settings,
 		onAction(name, handler) {
 			if (integration.disposed) {
 				integration.refuse("onAction");

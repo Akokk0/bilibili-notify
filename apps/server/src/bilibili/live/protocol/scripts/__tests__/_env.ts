@@ -16,6 +16,7 @@ import type { Json, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import { type KeyProvider, readKeyMaterial } from "@bilibili-notify/storage";
 import { ignoredProblems } from "../../../../../__tests__/support/ignored-problems.js";
+import { inertSettingsOf } from "../../../../../__tests__/support/inert-settings.js";
 import { memoryStoreHandle } from "../../../../../__tests__/support/memory-key-value-store.js";
 import {
 	integrationStateFile,
@@ -138,6 +139,7 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		stores: { open: async () => handle },
 		serviceCtx,
 		problems: ignoredProblems,
+		settingsOf: inertSettingsOf,
 	});
 	const api = new Api({ serviceCtx, ctx: context.ctx });
 	await api.start();

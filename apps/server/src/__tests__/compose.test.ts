@@ -46,6 +46,7 @@ import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { putImage } from "./support/chat-images.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
+import { inertSettingsOf } from "./support/inert-settings.js";
 import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
 import { png } from "./support/report-images.js";
 
@@ -222,6 +223,7 @@ function compose(
 		adapterRegistry,
 		integrationStore,
 		problems: ignoredProblems,
+		settingsOf: inertSettingsOf,
 		connections: opts.connections ?? (() => []),
 		onConnectionsChanged: () => ({ dispose() {} }),
 	};

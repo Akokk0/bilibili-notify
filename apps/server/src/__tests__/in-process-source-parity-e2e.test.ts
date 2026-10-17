@@ -1181,9 +1181,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P12");
 	});
 
-	// 验红:`engines.ts` 里 `settings.read` 的键写死成别的集成:第一段不红(两边读出来都是默认值
-	// `{ mode: "normal", threshold: 10 }`),红在第二段(存对之后 `onChange` 没被叫)与 P14;
-	// `onChanged` 摘掉,存对之后 `onChange` 不叫,第二段红。
+	// 验红:`integrations/settings-reader.ts` 的 `settingsReaderOptionsOf` 里 `read` 的键写死成别的集成:第一段不红
+	// (两边读出来都是默认值 `{ mode: "normal", threshold: 10 }`),红在第二段(存对之后 `onChange` 没被叫)与 P14;
+	// 同一处的 `onChanged` 接成空操作,存对之后 `onChange` 不叫,第二段红。
 	it("P13 读设置:get() 是盘上的值;经 PATCH /api/settings 改一格 onChange 被叫、新值对;别的集成动了不叫", async () => {
 		const probe = currentProbe();
 		expect(probe.settings?.get()).toEqual({
@@ -1708,7 +1708,7 @@ describe("进程内对拍:两趟开机", () => {
 	}
 
 	// 验红:`store.ts` 的 `readIntegrationSettings` 在坏格时回默认值(不把坏格的原文放回去),`get()` 读到好值,
-	// 来源不报问题,第一段红;`engines.ts` 里 `settings.onChanged` 接成空操作,存对之后问题清不掉,第三段红。
+	// 来源不报问题,第一段红;`settingsReaderOptionsOf` 里 `onChanged` 接成空操作,存对之后问题清不掉,第三段红。
 	it("P14 设置坏着开机:起得来、来源在册;get() 回 invalid 点名那一格;来源自己报的问题在表里;经真路由存对之后没了", async () => {
 		const generation = await seedGeneration();
 		const file = join(generation, ...integrationSettingsFile(IN_PROCESS_KEY));
@@ -1885,7 +1885,7 @@ describe("进程内对拍:清单自己", () => {
 		const fixture = parseSource(FIXTURE);
 		const parity = parseSource(THIS_FILE);
 
-		// 夹具的 import 只有这几样:中立的内部包、zod、集成上下文,外加两个只取类型的(组装根、配置仓)。
+		// 夹具的 import 只有这几样:中立的内部包、zod、集成上下文及其读手(造假来源的集成上下文要一份),外加两个只取类型的(组装根、配置仓)。
 		const specifiers = importsOf(fixture).map((ref) => ref.specifier);
 		expect(specifiers.sort()).toEqual(
 			[
@@ -1894,6 +1894,7 @@ describe("进程内对拍:清单自己", () => {
 				"../../compose.js",
 				"../../config/store.js",
 				"../../integrations/context.js",
+				"../../integrations/settings-reader.js",
 			].sort(),
 		);
 		// 夹具与这份对拍文件的任何一个 import 都不解析到 bilibili/ 下。

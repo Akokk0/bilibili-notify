@@ -14,6 +14,10 @@ import {
 	createIntegrationHttp,
 	type IntegrationHttpHandle,
 } from "../integrations/http.js";
+import {
+	createIntegrationSettings,
+	type settingsReaderOptionsOf,
+} from "../integrations/settings-reader.js";
 import { defaultHeaders } from "./api/default-headers.js";
 
 /** 单跳超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让该请求永不结束。 */
@@ -49,6 +53,8 @@ export interface CreateBiliContextOptions {
 	serviceCtx: ServiceContext;
 	/** 问题表的写口:B 站集成的上报记在 B 站这个键名下(与 B 站来源同一个报的人)。 */
 	problems: CreateIntegrationContextOptions["problems"];
+	/** 按集成键要设置的读法(入口造一次):B 站在这里挑自己的键,入口不写 B 站的键。 */
+	settingsOf: ReturnType<typeof settingsReaderOptionsOf>;
 }
 
 /**
@@ -71,6 +77,10 @@ export async function createBiliContext(
 		reporter: BILIBILI_SOURCE_KEY,
 		rejectedProblemLevel: "error",
 		redactValues: (values) => store.redact("redact", values),
+		settings: createIntegrationSettings({
+			...opts.settingsOf(BILIBILI_SOURCE_KEY),
+			logger: serviceCtx.logger,
+		}),
 	});
 	let built: IntegrationHttpHandle;
 	try {

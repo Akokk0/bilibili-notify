@@ -186,6 +186,8 @@ function hostFor(
 				state: ctx.state,
 				secrets: ctx.secrets,
 				redact() {},
+				// 与真宿主一样转发集成上下文那一份(同一个实现)。
+				settings: (schema) => ctx.settings(schema),
 				reportProblem() {},
 				resolveProblem() {},
 				connections: () => connections(),

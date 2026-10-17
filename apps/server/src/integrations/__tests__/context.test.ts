@@ -4,8 +4,10 @@
  * 只经 `createIntegrationContext` 这个工厂测对外行为:拓展上下文、平台适配器、B 站都建在它上面。
  */
 
-import type { Logger } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { fail, type Logger, ok } from "@bilibili-notify/internal";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
+import { inertSettings } from "../../__tests__/support/inert-settings.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
@@ -36,6 +38,7 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 		rejectedProblemLevel: "error",
 		// 与真装配同形状:每次交来的是这个集成登记过的全部值,按种类整批换。
 		redactValues: (values) => redactor.replace("demo", "redact", values),
+		settings: inertSettings(),
 		...extra,
 	});
 	return { handle, lines, problems, redactor };
@@ -401,5 +404,64 @@ describe("createIntegrationContext · redact", () => {
 		handle.ctx.redact("FAKE-LATE-TOKEN-1");
 		expect(redactor.scrub("FAKE-LATE-TOKEN-1")).toBe("FAKE-LATE-TOKEN-1");
 		expect(lines.filter((l) => l.startsWith("warn "))).toHaveLength(1);
+	});
+});
+
+/**
+ * 集成上下文上的 `settings(规则)`:一个集成只有一份实现,由造上下文的人交进来(内置的由读源造,拓展有自己的)。
+ * 上下文只管原样放进 `ctx`、收摊时叫它的 `dispose`。
+ */
+describe("createIntegrationContext · settings", () => {
+	const Schema = z.object({ cron: z.string() });
+
+	/** 一个会记「被收了几次」的读手实现:读的是 `current`,换了叫订阅者。 */
+	function readerImpl() {
+		let current: unknown = { cron: "a" };
+		const fns = new Set<() => void>();
+		let disposed = 0;
+		return {
+			impl: {
+				settings: (schema: z.ZodType) => ({
+					get: () => {
+						const parsed = schema.safeParse(current);
+						return parsed.success ? ok({ settings: parsed.data }) : fail("invalid", "坏了");
+					},
+					onChange: (fn: () => void) => {
+						fns.add(fn);
+						return { dispose: () => void fns.delete(fn) };
+					},
+				}),
+				dispose: () => {
+					disposed += 1;
+				},
+			} as never,
+			set(next: unknown) {
+				current = next;
+				for (const fn of [...fns]) fn();
+			},
+			disposed: () => disposed,
+		};
+	}
+
+	// 验红:`ctx.settings` 不放交进来的那一份(换成另造的),这条红。
+	it("ctx.settings(规则) 就是交进来的实现:读得到它的值,它说变了才叫", () => {
+		const host = readerImpl();
+		const { handle } = make({ settings: host.impl });
+		const reader = handle.ctx.settings(Schema);
+		expect(reader.get()).toEqual({ ok: true, settings: { cron: "a" } });
+		const fn = vi.fn();
+		reader.onChange(fn);
+		host.set({ cron: "b" });
+		expect(fn).toHaveBeenCalledTimes(1);
+		expect(reader.get()).toEqual({ ok: true, settings: { cron: "b" } });
+	});
+
+	// 验红:`dispose()` 里不叫 `opts.settings.dispose()`,这条红。
+	it("收摊时叫它的 dispose 一次(幂等)", async () => {
+		const host = readerImpl();
+		const { handle } = make({ settings: host.impl });
+		await handle.dispose();
+		await handle.dispose();
+		expect(host.disposed()).toBe(1);
 	});
 });

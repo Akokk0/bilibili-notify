@@ -15,6 +15,10 @@ import {
 	createIntegrationContext,
 	type IntegrationContextHandle,
 } from "../integrations/context.js";
+import {
+	createIntegrationSettings,
+	type settingsReaderOptionsOf,
+} from "../integrations/settings-reader.js";
 import { createPlatformAdapterContext } from "./adapter-context.js";
 import type { PlatformAdapterRegistry } from "./registry.js";
 
@@ -32,6 +36,8 @@ export interface RegisterBuiltinAdaptersOptions {
 	connections: () => readonly Connection[];
 	/** 按 id 取一条连接(入站校验归属的热路径用;不给就从全表里找)。 */
 	connection?: (connectionId: string) => Connection | undefined;
+	/** 按集成键要设置的读法(入口造一次,`settingsReaderOptionsOf`):各适配器读自己那一段,键取 `adapterKey`。 */
+	settingsOf: ReturnType<typeof settingsReaderOptionsOf>;
 	/** 入站的下一层(指令分发、链接解析);各适配器经 `ctx.inbound` 交来的消息核过归属、补上平台后交给它。 */
 	inbound: InboundHandlers;
 	/** 连接配置变了的订阅。 */
@@ -59,8 +65,10 @@ export async function registerBuiltinAdapters(
 		try {
 			const stores = await opts.stores.open(adapter.adapterKey);
 			handle = stores;
+			const logger = opts.loggerOf(adapter.adapterKey);
 			const context = createIntegrationContext({
-				logger: opts.loggerOf(adapter.adapterKey),
+				logger,
+				settings: createIntegrationSettings({ ...opts.settingsOf(adapter.adapterKey), logger }),
 				stopReason: "BN 关停",
 				state: stores.state,
 				secrets: stores.secrets,

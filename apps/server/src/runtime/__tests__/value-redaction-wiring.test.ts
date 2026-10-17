@@ -12,6 +12,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { inertSettingsOf } from "../../__tests__/support/inert-settings.js";
 import { Api } from "../../bilibili/api/index.js";
 import { createBiliContext } from "../../bilibili/context.js";
 import { settingsSegment } from "../../bilibili/settings.js";
@@ -62,6 +63,7 @@ describe("createAppRuntime 里的按值打码", () => {
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,
 			problems: runtime.problems,
+			settingsOf: inertSettingsOf,
 		});
 		biliContext.ctx.cookies.jar.load([
 			{ key: "SESSDATA", value: "FAKE-WIRING-COOKIE-1", domain: "bilibili.com", path: "/" },
@@ -89,6 +91,7 @@ describe("createAppRuntime 里的按值打码", () => {
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,
 			problems: runtime.problems,
+			settingsOf: inertSettingsOf,
 		});
 		const api = new Api({ serviceCtx: runtime.serviceCtx, ctx: biliContext.ctx });
 		// 落盘那一刻(令牌还没进 secrets)正好有一行日志带着它 —— 就是审查员说的"存盘前的空档"。

@@ -15,7 +15,6 @@ import {
 	makeIntegration,
 	makeLogger,
 	makeProblems,
-	makeSettingsHost,
 	makeSource,
 	makeSub,
 	makeWorld,
@@ -48,7 +47,6 @@ const setup = (source: Source = makeSource()) => {
 		logger: makeLogger(),
 		enqueue,
 		problems,
-		settings: makeSettingsHost(),
 	};
 	return { ...world, registry, linkResolvers, enqueue, problems, options };
 };

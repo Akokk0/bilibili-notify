@@ -8,6 +8,7 @@ import {
 	type SettingsReader,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import type { ConfigStore } from "../config/store.js";
 import { errorMessageOf } from "../util/error-message.js";
 
 export interface CreateSettingsReaderOptions<T> {
@@ -86,6 +87,52 @@ export function createSettingsReader<T>(opts: CreateSettingsReaderOptions<T>): {
 			disposed = true;
 			subscribers.clear();
 			watch.dispose();
+		},
+	};
+}
+
+/** 一个集成的设置从哪读、什么时候说「可能变了」:内置集成由 {@link settingsReaderOptionsOf} 按集成键造。 */
+type SettingsReaderOptions = Pick<CreateSettingsReaderOptions<unknown>, "read" | "onChanged">;
+
+/**
+ * 「按集成键要设置的读法」:读配置仓里那一段、只在 `integration-settings` 变时说一声。入口造一次,
+ * 递给每个造内置集成上下文的地方 —— 核心不认识任何具体集成的键,键由各集成在自己那儿挑。
+ * 只 `import type` 配置仓(集成目录不碰盘,守卫 `integration-no-fs`)。
+ */
+export function settingsReaderOptionsOf(
+	store: Pick<ConfigStore, "readIntegrationSettings" | "onChange">,
+): (key: string) => SettingsReaderOptions {
+	return (key) => ({
+		read: () => store.readIntegrationSettings(key),
+		onChanged: (fn) =>
+			store.onChange((scope) => {
+				if (scope === "integration-settings") fn();
+			}),
+	});
+}
+
+/**
+ * 一个集成的 `ctx.settings(规则)`:每交一份规则造一个读手,收摊时(`dispose`)一起摘。已经收掉了才来要的,
+ * 当场摘掉宿主那头的监听(免得没人摘),`get()` 照常能读。内置集成用它;拓展有自己的实现(要对表清单、认
+ * 「设置读不了」),不走这里。
+ */
+export function createIntegrationSettings(opts: SettingsReaderOptions & { logger: Logger }): {
+	settings<T>(schema: ZodType<T>): SettingsReader<T>;
+	dispose(): void;
+} {
+	const readers = new Set<{ dispose(): void }>();
+	let disposed = false;
+	return {
+		settings(schema) {
+			const { reader, dispose } = createSettingsReader({ ...opts, schema });
+			if (disposed) dispose();
+			else readers.add({ dispose });
+			return reader;
+		},
+		dispose() {
+			disposed = true;
+			for (const entry of readers) entry.dispose();
+			readers.clear();
 		},
 	};
 }

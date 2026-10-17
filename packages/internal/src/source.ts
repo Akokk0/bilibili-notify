@@ -1,4 +1,3 @@
-import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
 import type { FeatureKey, ImageRef, Result } from "./constants";
 import type { LinkResolver } from "./link-preview";
@@ -28,23 +27,7 @@ export interface SourceSubscriptionView {
 	features: ReadonlySet<FeatureKey>;
 }
 
-/** 一个集成读自己设置的把手:交一份 zod 进来,拿回它。 */
-export interface SettingsReader<T> {
-	/**
-	 * 此刻这一份。读得懂回过了那份 zod 的值;读不懂回 `invalid`,`issues` 里是逐条原因
-	 * (整个设置文件读不懂时只有一条、不带 `path`)。**不抛**,`start` 里与运行中都一样。
-	 */
-	get(): Result<{ settings: T }>;
-	/** 这一份「变了」才叫:值变了,或读得懂与读不懂之间翻了。别的集成的设置动了不叫。 */
-	onChange(fn: () => void): Disposable;
-}
-
 export interface SourceContext extends IntegrationContext {
-	/**
-	 * 读这个来源所属集成的设置。可以交多份 zod,各读各的格(zod 的对象默认剥掉不认识的键)。
-	 * 把手随来源停下自动收掉,不必在 `stop()` 里记得摘。
-	 */
-	settings<T>(schema: ZodType<T>): SettingsReader<T>;
 	/** 名单,现读:只列启用中的;同一个人遗留的重复订阅合成一条、features 取并集。别缓存。 */
 	subscriptions(): readonly SourceSubscriptionView[];
 	/** 名单可能变了就叫一声(不保证真变了);要做事自己对比新旧名单。来源停下时自动摘掉。 */

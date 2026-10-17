@@ -67,6 +67,8 @@ export interface CreateAuthSystemOptions {
 	accountImages: ImageWriter;
 	/** 问题表的写口(`AppRuntime.problems`):B 站集成上下文的 `reportProblem` 记到这里。 */
 	problems: CreateBiliContextOptions["problems"];
+	/** 按集成键要设置的读法(入口造一次),原样递给 B 站的集成上下文。 */
+	settingsOf: CreateBiliContextOptions["settingsOf"];
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
@@ -79,6 +81,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		stores: opts.integrationStore,
 		serviceCtx,
 		problems: opts.problems,
+		settingsOf: opts.settingsOf,
 	});
 	const { ctx } = context;
 

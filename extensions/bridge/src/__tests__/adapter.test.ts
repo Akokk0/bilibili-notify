@@ -183,6 +183,11 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			state: memoryKeyValueStore(),
 			secrets: memoryKeyValueStore(),
 			redact: noop,
+			// 桥的适配器不读设置(接入名单由拓展的 `activate` 读,经 `links()` 递进来)。
+			settings: () => ({
+				get: () => ({ ok: true as const, settings: {} as never }),
+				onChange: () => ({ dispose: noop }),
+			}),
 			reportProblem: noop,
 			resolveProblem: noop,
 			connections: () => [],

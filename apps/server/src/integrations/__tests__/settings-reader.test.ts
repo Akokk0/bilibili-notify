@@ -2,7 +2,11 @@ import { type Disposable, fail, ok, type Result } from "@bilibili-notify/interna
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { makeLogger } from "../../subscriptions/__tests__/fixtures.js";
-import { createSettingsReader } from "../settings-reader.js";
+import {
+	createIntegrationSettings,
+	createSettingsReader,
+	settingsReaderOptionsOf,
+} from "../settings-reader.js";
 
 const Schema = z.object({ cron: z.string(), minutes: z.number().int().min(0) });
 type Raw = Result<{ settings: unknown }>;
@@ -203,5 +207,100 @@ describe("createSettingsReader · dispose", () => {
 		host.set(good("after"));
 		expect(fn).not.toHaveBeenCalled();
 		expect(() => dispose()).not.toThrow();
+	});
+});
+
+/**
+ * 集成级的读手:每交一份规则造一个读手,收摊(`dispose`)一起摘;已收摊才来要的当场摘掉宿主那头的监听。
+ * (从前这几条在来源上下文那一层,读手上提到集成上下文后住这儿。)
+ */
+describe("createIntegrationSettings", () => {
+	const make = () => {
+		const host = makeHost(good());
+		const settings = createIntegrationSettings({
+			read: host.read,
+			onChanged: host.onChanged,
+			logger: makeLogger(),
+		});
+		return { host, settings };
+	};
+
+	it("交的规则读得到宿主那一份,可以交多份规则各读各的格", () => {
+		const { settings } = make();
+		expect(settings.settings(Schema).get()).toEqual({
+			ok: true,
+			settings: { cron: "*/3 * * * *", minutes: 30 },
+		});
+		expect(settings.settings(z.object({ minutes: z.number() })).get()).toEqual({
+			ok: true,
+			settings: { minutes: 30 },
+		});
+	});
+
+	it("连造三个读手,收摊后宿主那头的监听数回到零", () => {
+		const { host, settings } = make();
+		settings.settings(Schema);
+		settings.settings(Schema);
+		settings.settings(Schema);
+		expect(host.listenerCount()).toBe(3);
+		settings.dispose();
+		expect(host.listenerCount()).toBe(0);
+	});
+
+	it("收摊之后才来要读手:宿主那头不留监听,get() 照常能读", () => {
+		const { host, settings } = make();
+		settings.dispose();
+		const reader = settings.settings(Schema);
+		expect(host.listenerCount()).toBe(0);
+		expect(reader.get()).toEqual({ ok: true, settings: { cron: "*/3 * * * *", minutes: 30 } });
+	});
+});
+
+/** 「按集成键要读法」:读配置仓里那一段,只在 `integration-settings` 变时说一声。 */
+describe("settingsReaderOptionsOf", () => {
+	const makeStore = () => {
+		const segments: Record<string, Raw> = {
+			bilibili: ok({ settings: { cron: "b" } }),
+			onebot: ok({ settings: { cron: "o" } }),
+		};
+		let handler: ((scope: string) => void) | undefined;
+		return {
+			store: {
+				readIntegrationSettings: (key: string) => segments[key] ?? fail("not_found", key),
+				onChange: (fn: (scope: never) => void): Disposable => {
+					handler = fn as (scope: string) => void;
+					return {
+						dispose() {
+							handler = undefined;
+						},
+					};
+				},
+			},
+			emit: (scope: string) => handler?.(scope),
+			listening: () => handler !== undefined,
+		};
+	};
+
+	// 验红:`read` 里把键写死成别的集成,这条红。
+	it("read 读的是按的那个键的段:各集成读各的", () => {
+		const { store } = makeStore();
+		const of = settingsReaderOptionsOf(store as never);
+		expect(of("bilibili").read()).toEqual({ ok: true, settings: { cron: "b" } });
+		expect(of("onebot").read()).toEqual({ ok: true, settings: { cron: "o" } });
+	});
+
+	// 验红:`onChanged` 接成空操作,或不看 scope,这条红。
+	it("onChanged 只在 integration-settings 变时叫,别的 scope 不叫;摘掉之后不再叫", () => {
+		const { store, emit, listening } = makeStore();
+		const fn = vi.fn();
+		const handle = settingsReaderOptionsOf(store as never)("bilibili").onChanged(fn);
+		emit("globals");
+		expect(fn).not.toHaveBeenCalled();
+		emit("integration-settings");
+		expect(fn).toHaveBeenCalledTimes(1);
+		handle.dispose();
+		expect(listening()).toBe(false);
+		emit("integration-settings");
+		expect(fn).toHaveBeenCalledTimes(1);
 	});
 });

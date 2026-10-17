@@ -6,12 +6,10 @@ import type {
 	MessageBus,
 	PostEvent,
 	PostReport,
-	Result,
 	SourceContext,
 	SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { createSettingsReader } from "../integrations/settings-reader.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import { problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
@@ -34,14 +32,6 @@ export interface CreateSourceContextOptions {
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
 	linkResolvers: Pick<LinkResolverRegistry, "register">;
-	/**
-	 * 这个来源所属集成的设置:`read` 读此刻那一份(整个文件读不懂回失败),`onChanged` 在「设置可能变了」时叫。
-	 * 键由造上下文的人按登记项带进来,这里不认识任何具体集成。
-	 */
-	settings: {
-		read(): Result<{ settings: unknown }>;
-		onChanged(fn: () => void): Disposable;
-	};
 }
 
 export interface SourceContextHandle {
@@ -126,18 +116,20 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		state: integration.state,
 		secrets: integration.secrets,
 		redact: integration.redact,
+		// 读手本身属于集成上下文(一个集成一份实现);来源这一层只转发,并把来源订阅的 `onChange` 记在自己名下,
+		// 来源停下就摘 —— 不指望来源在 `stop()` 里记得收(集成的上下文比来源活得久)。
 		settings(schema) {
-			const { reader, dispose } = createSettingsReader({
-				schema,
-				read: opts.settings.read,
-				onChanged: opts.settings.onChanged,
-				logger,
-			});
-			// 把手的监听跟着上下文一起摘:不指望来源在 `stop()` 里记得收。
-			// 上下文已收掉才来要把手:当场收掉宿主那头的监听,免得没人摘;`get()` 照常能读。
-			if (disposed) dispose();
-			else watches.push({ dispose });
-			return reader;
+			const reader = integration.settings(schema);
+			return {
+				get: () => reader.get(),
+				onChange(fn) {
+					// 上下文已收掉才来订阅:不订,交一个什么都不做的把手。
+					if (disposed) return { dispose() {} };
+					const subscription = reader.onChange(fn);
+					watches.push(subscription);
+					return subscription;
+				},
+			};
 		},
 		subscriptions: () =>
 			sourceSubscriptionViews(opts.subscriptions.list(), sourceKey, opts.defaults()),

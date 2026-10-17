@@ -117,6 +117,8 @@ export interface BuiltinIntegrationsDeps {
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 问题表的写口(`AppRuntime.problems`):各适配器集成上下文的 `reportProblem` 记到这里。 */
 	problems: RegisterBuiltinAdaptersOptions["problems"];
+	/** 按集成键要设置的读法(入口造一次):各适配器的集成上下文读自己那一段。 */
+	settingsOf: RegisterBuiltinAdaptersOptions["settingsOf"];
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
 	/** 「连接配置动过了」的订阅(内置适配器与拓展装载器共用)。 */
@@ -260,6 +262,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				loggerOf,
 				stores: deps.integrationStore,
 				problems: deps.problems,
+				settingsOf: deps.settingsOf,
 				connections: deps.connections,
 				...(deps.connection ? { connection: deps.connection } : {}),
 				inbound: deps.inbound,
