@@ -5,7 +5,8 @@
  * 不认 uid、房号、B 站的档位表。徽章与观众头像怎么取、发送怎么绑(推给谁、引擎拆了发不发)都由调用方交进来,
  * 这里只管次序:门槛没过什么都不做;自定义文案那一支不取数不出卡;确定要出卡才取徽章与头像。
  *
- * 消息经宿主给的内容构造口拼:会员有两支要发「一张按网址取的图加一句文字」拼成的一条消息,消息段装不下按网址取的图。
+ * 发出去的是中立的消息段(同醒目留言):图一律是取回来的字节,不是网址。自定义图经宿主的抓图口取回、徽章取自图库,
+ * 取不到图只发文字并记一条带原因的警告。
  */
 
 import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
@@ -16,10 +17,11 @@ import {
 	type MembershipEvent,
 	type MembershipTemplateBundle,
 	type MembershipTier,
+	type MessageLayoutSegment,
 	membershipTemplateOf,
+	type Result,
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message";
-import type { LiveContentBuilder } from "./content-builder";
 import { passesMembershipMinRank } from "./interaction-gates";
 import type { CustomCardStyleLike } from "./live-types";
 
@@ -49,11 +51,58 @@ export interface MembershipDeps {
 	fetchTierIcon: () => Promise<{ ref: ImageRef } | undefined>;
 	/** 确定要出卡时才取观众头像(可能走网络);取不到回 `undefined`。 */
 	fetchViewerAvatar: () => Promise<ImageRef | undefined>;
-	/** 宿主给的内容构造口:三支的消息照今天的拼法在这里拼。 */
-	content: LiveContentBuilder;
-	/** 绑到这条订阅上的发送:收一条拼好的消息。 */
-	send: (message: unknown) => Promise<void>;
+	/** 使用者自己填的图片网址:宿主的抓图口把它抓进图库(只准公网、png / jpg / webp / gif、8 MiB 内),回引用。 */
+	fetchImage: (url: string) => Promise<Result<{ ref: ImageRef }>>;
+	/** 图库引用 → 字节;读不到回 `undefined`。 */
+	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
+	/** 绑到这条订阅上的发送:收一条消息的中立段(图在前、文字在后)。 */
+	send: (segments: readonly MessageLayoutSegment[]) => Promise<void>;
 	logger: Logger;
+}
+
+type ImageSegment = Extract<MessageLayoutSegment, { kind: "image" }>;
+
+/** 图库引用 → 图段;读不到记一条警告、回 `undefined`(消息就只发文字)。 */
+async function imageSegmentOf(
+	ref: ImageRef,
+	source: "custom" | "badge",
+	deps: MembershipDeps,
+): Promise<ImageSegment | undefined> {
+	const image = await deps.readImage(ref);
+	if (image === undefined) {
+		deps.logger.warn(
+			`[guard] ${source === "custom" ? "自定义图" : "徽章"}在图库里读不到，这条上舰只发文字`,
+		);
+		return undefined;
+	}
+	return { kind: "image", buffer: Buffer.from(image.bytes), mime: image.mime };
+}
+
+/** 自定义图的网址 → 图段:先抓进图库再读字节;抓不到把原因记进警告、回 `undefined`。 */
+async function customImageSegment(
+	url: string,
+	deps: MembershipDeps,
+): Promise<ImageSegment | undefined> {
+	const fetched = await deps.fetchImage(url);
+	if (!fetched.ok) {
+		deps.logger.warn(`[guard] 自定义图抓不到：${fetched.message}，这条上舰只发文字`);
+		return undefined;
+	}
+	return await imageSegmentOf(fetched.ref, "custom", deps);
+}
+
+/** 这一档的徽章 → 图段;没有徽章、取不到都回 `undefined`(取不到记警告)。 */
+async function badgeSegment(
+	tierIcon: MembershipDeps["fetchTierIcon"],
+	deps: MembershipDeps,
+): Promise<ImageSegment | undefined> {
+	try {
+		const icon = await tierIcon();
+		return icon === undefined ? undefined : await imageSegmentOf(icon.ref, "badge", deps);
+	} catch (e) {
+		deps.logger.warn(`[guard] 取徽章失败：${errorMessageOf(e)}，这条上舰只发文字`);
+		return undefined;
+	}
 }
 
 /**
@@ -65,10 +114,13 @@ export async function pushMembership(
 	deps: MembershipDeps,
 ): Promise<void> {
 	const { event, tier, creator, cardStyle } = options;
-	const { content } = deps;
 	if (!passesMembershipMinRank(event, options.minRank)) return;
-	// 档位表里这一档的徽章地址;没有就是空串(空串不是「缺」,所以下面用 `||` 回落而不是 `??`)。
-	const badgeUrl = tier.icon?.url ?? "";
+	// 出卡与兜底共用一次取徽章(失败的那次也记住,兜底不再重打一遍网络)。
+	let iconOnce: ReturnType<MembershipDeps["fetchTierIcon"]> | undefined;
+	const tierIcon = (): ReturnType<MembershipDeps["fetchTierIcon"]> => {
+		iconOnce ??= deps.fetchTierIcon();
+		return iconOnce;
+	};
 
 	if (options.template.enabled) {
 		// 文案和图片取同一档:哪一档上舰,就用哪一档的;那一档没填的格用体系默认。
@@ -79,9 +131,11 @@ export async function pushMembership(
 			name: creator.name,
 			tier: event.tier.name,
 		}).replaceAll("\\n", "\n");
-		await deps.send(
-			content.message([content.image(custom.imageUrl || badgeUrl), content.text(text)]),
-		);
+		// 这一档没填图就回落徽章(空串不是「缺」,所以用 `||`)。
+		const picture = custom.imageUrl
+			? await customImageSegment(custom.imageUrl, deps)
+			: await badgeSegment(tierIcon, deps);
+		await deps.send([...(picture ? [picture] : []), { kind: "text", text }]);
 		return;
 	}
 
@@ -89,7 +143,7 @@ export async function pushMembership(
 	if (renderer) {
 		let card: Buffer | undefined;
 		try {
-			const icon = await deps.fetchTierIcon();
+			const icon = await tierIcon();
 			const viewerAvatar = await deps.fetchViewerAvatar();
 			card = await renderer.generateMembershipCard(
 				{
@@ -121,9 +175,10 @@ export async function pushMembership(
 			deps.logger.error(`[image] 生成会员卡片失败：${errorMessageOf(e)}，降级为文字推送`);
 		}
 		if (card !== undefined) {
-			await deps.send(content.image(card, "image/jpeg"));
+			await deps.send([{ kind: "image", buffer: card, mime: "image/jpeg" }]);
 			return;
 		}
 	}
-	await deps.send(content.message([content.image(badgeUrl), content.text(options.fallbackText)]));
+	const badge = await badgeSegment(tierIcon, deps);
+	await deps.send([...(badge ? [badge] : []), { kind: "text", text: options.fallbackText }]);
 }

@@ -89,6 +89,8 @@ export interface LiveEngineOptions {
 	guardIcons: GuardIcons;
 	/** 抓图服务:直播卡的封面在出卡前抓进图库(3a-34),透传到每个 RoomContext。 */
 	imageFetcher: ImagesDeps["images"];
+	/** 图库引用 → 字节(上舰消息发图段用),透传到每个 RoomContext。 */
+	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 订阅 id → 订阅资料里的头像引用;出卡那一刻现读。必给 —— 漏给编译不过。 */
 	avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	/**
@@ -167,6 +169,7 @@ export class LiveEngine {
 			pickCardBackground: opts.pickCardBackground,
 			guardIcons: opts.guardIcons,
 			imageFetcher: opts.imageFetcher,
+			readImage: opts.readImage,
 			avatarOf: opts.avatarOf,
 			onRoomIdResolved: opts.onRoomIdResolved,
 		});

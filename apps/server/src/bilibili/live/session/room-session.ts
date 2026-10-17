@@ -658,14 +658,18 @@ export class RoomSession extends RoomSessionBase {
 						images: this.ctx.imageFetcher,
 						logger: this.ctx.logger,
 					}),
-				content: this.ctx.contentBuilder,
+				// 使用者自填的图网址经抓图服务取回(不带 B 站的 Referer 与缩放后缀),字节从图库读。
+				fetchImage: (url) => this.ctx.imageFetcher.fetchImage(url),
+				readImage: this.ctx.readImage,
 				// 不过串行闸(三处从来都是直接推)。
-				send: async (message) => {
+				send: async (segments) => {
 					if (this.ctx.isDisposed()) return;
 					await this.ctx.push.push({
 						uid: this.sub.uid,
 						type: LivePushType.LiveGuardBuy,
-						anchors: [{ role: "main", messages: [message] }],
+						anchors: [
+							{ role: "main", messages: [segmentsToContent(this.ctx.contentBuilder, segments)] },
+						],
 					});
 				},
 				logger: this.ctx.logger,

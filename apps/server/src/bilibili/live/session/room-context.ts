@@ -111,6 +111,8 @@ export interface RoomContextOptions {
 	guardIcons: GuardIcons;
 	/** 抓图服务:直播卡的封面在出卡前抓进图库。 */
 	imageFetcher: ImagesDeps["images"];
+	/** 图库引用 → 字节:上舰消息把图(徽章 / 自定义图)作为图段发出去时读。 */
+	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 订阅 id → 订阅资料里的头像引用;出卡那一刻现读。 */
 	avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	/**
@@ -168,6 +170,8 @@ export class RoomContextBase {
 	readonly guardIcons: GuardIcons;
 	/** 抓图服务。 */
 	readonly imageFetcher: ImagesDeps["images"];
+	/** 图库引用 → 字节。 */
+	readonly readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 订阅 id → 订阅资料里的头像引用(出卡那一刻现读,没有就是 `undefined`)。 */
 	readonly avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
@@ -200,6 +204,7 @@ export class RoomContextBase {
 		this.pickBackground = opts.pickCardBackground;
 		this.guardIcons = opts.guardIcons;
 		this.imageFetcher = opts.imageFetcher;
+		this.readImage = opts.readImage;
 		this.avatarOf = opts.avatarOf;
 		this.onRoomIdResolved = opts.onRoomIdResolved;
 	}

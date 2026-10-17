@@ -790,6 +790,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		contentBuilder: segmentContentBuilder,
 		guardIcons: opts.guardIcons,
 		imageFetcher: opts.imageFetcher,
+		readImage: opts.readImage,
 		avatarOf: profileAvatarOf,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,

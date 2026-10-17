@@ -126,6 +126,11 @@ interface CtxMocks {
 	guardIconsIconOf: ReturnType<typeof vi.fn>;
 }
 
+/** 抓图服务的替身给一个地址回的引用(以地址命名);读图替身把引用本身当字节读回。 */
+function fetchedRefOf(url: string): ImageRef {
+	return `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef;
+}
+
 /** 假图库引用(64 位 hex + 扩展名),按档 key 各一张。 */
 const GUARD_ICON_REF: Record<string, string> = {
 	captain: `${"a".repeat(64)}.png`,
@@ -152,11 +157,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		pushedMain: vi.fn(async () => {}),
 		// 默认不给头像地址:只有专门测头像的用例才覆写,其余用例的出卡输入里观众就没有 avatar。
 		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人" } })),
-		fetchImage: vi.fn(async (url: string) =>
-			ok({
-				ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef,
-			}),
-		),
+		fetchImage: vi.fn(async (url: string) => ok({ ref: fetchedRefOf(url) })),
 		avatarOf: vi.fn((_subscriptionId: string): string | undefined => undefined),
 		warn,
 		generateSuperchatCard: vi.fn(async () => Buffer.from("sc")),
@@ -189,6 +190,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		},
 		api: { fetchUserInfoInLive: m.fetchUserInfoInLive },
 		imageFetcher: { fetchImage: m.fetchImage },
+		readImage: async (ref: string) => ({ bytes: Buffer.from(ref), mime: "image/png" }),
 		avatarOf: m.avatarOf,
 		push: { push: recordMain(m.pushedMain) },
 		imageRenderer: {
@@ -284,6 +286,27 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 		// ㉓c:出卡前不再查发送者(名字用消息里带的)。
 		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 live/content-builder.ts 里 `segmentsToContent` 的单图分支(`segments.length === 1 && …`)改成永不命中,这条红。
+	it("SC 出的卡是一张图 → 推出去的那条消息直接是图(不再包一层 message),字节原样", async () => {
+		const { ctx, m } = makeCtx();
+		(ctx as AnySession).contentBuilder.image = (buf: Buffer, mime: string) => ({
+			kind: "image",
+			src: buf.toString(),
+			mime,
+		});
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minSuperchatAmount: 30 }),
+		) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.pushedMain.mock.calls[0]?.[1]).toEqual({
+			kind: "image",
+			src: "sc",
+			mime: "image/jpeg",
+		});
 	});
 
 	// ㉓c:原来这里有一条「查发送者失败 → 退成一行文字、不出卡」。出卡前不再查发送者以后,那条路没有了:
@@ -580,14 +603,11 @@ describe("RoomSession.onGuardBuy", () => {
 	// ── ㉓a:钉住门槛、兜底文字与官方图 ────────────────────────────────────────
 	// ㉓c 起档位由翻译按档位表认、认不出的丢掉并记警告;㉓d 起门槛按事件档位的 rank 比(`minGuardRank`),不再拿原始 guard_level 比大小。
 
-	/** 官方上舰图(按档位):总督 / 提督 / 舰长。逐字钉 —— 图链表合并时不许换。 */
+	/** 官方上舰图(按档位)现在是图库里的徽章:总督 / 提督 / 舰长各一张,发出去的是它的字节。 */
 	const OFFICIAL_GUARD_IMG = {
-		[GuardLevel.Governor]:
-			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
-		[GuardLevel.Admiral]:
-			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
-		[GuardLevel.Captain]:
-			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
+		[GuardLevel.Governor]: GUARD_ICON_REF.governor,
+		[GuardLevel.Admiral]: GUARD_ICON_REF.commander,
+		[GuardLevel.Captain]: GUARD_ICON_REF.captain,
 	} as const;
 
 	describe("minGuardRank × 事件档位的放行表", () => {
@@ -677,7 +697,10 @@ describe("RoomSession.onGuardBuy", () => {
 		): Promise<unknown> {
 			const { ctx, m } = makeCtx();
 			// 看得见图片地址。
-			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
+			(ctx as AnySession).contentBuilder.image = (buf: Buffer) => ({
+				kind: "image",
+				src: buf.toString(),
+			});
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			arrange(m, ctx);
 			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
@@ -694,7 +717,7 @@ describe("RoomSession.onGuardBuy", () => {
 		}
 
 		// 验红:改 room-session.ts 末尾兜底里「加入了大航海（」那句的任一个字(含全角括号),这一组红;
-		// 改 `bilibili-guard.ts` 档位表里任一档的图链,对应那一档红。
+		// 改 `makeCtx` 里 `GUARD_ICON_REF` 任一档的引用,对应那一档红。
 		it.each([
 			[GuardLevel.Governor, "总督"],
 			[GuardLevel.Admiral, "提督"],
@@ -771,7 +794,10 @@ describe("RoomSession.onGuardBuy", () => {
 			giftName = "礼物",
 		): Promise<unknown> {
 			const { ctx, m } = makeCtx(where.global ? { guardTemplate: where.global } : undefined);
-			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
+			(ctx as AnySession).contentBuilder.image = (buf: Buffer) => ({
+				kind: "image",
+				src: buf.toString(),
+			});
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
@@ -790,7 +816,7 @@ describe("RoomSession.onGuardBuy", () => {
 
 		it.each(cases)("per-UP 开启:上%s → 推该档的文案与图片", async (_label, level, text, img) => {
 			expect(await pushOf(level, { sub: tiers })).toEqual([
-				{ kind: "image", src: img },
+				{ kind: "image", src: fetchedRefOf(img) },
 				{ kind: "text", text },
 			]);
 		});
@@ -799,7 +825,7 @@ describe("RoomSession.onGuardBuy", () => {
 			"per-UP 未开、全局开启:上%s → 推该档的文案与图片",
 			async (_label, level, text, img) => {
 				expect(await pushOf(level, { global: tiers })).toEqual([
-					{ kind: "image", src: img },
+					{ kind: "image", src: fetchedRefOf(img) },
 					{ kind: "text", text },
 				]);
 			},
@@ -811,7 +837,7 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { captain: { template: "本订阅的 {viewer}", imageUrl: "own.png" } },
 			});
 			expect(await pushOf(GuardLevel.Captain, { sub: subOwn, global: tiers })).toEqual([
-				{ kind: "image", src: "own.png" },
+				{ kind: "image", src: fetchedRefOf("own.png") },
 				{ kind: "text", text: "本订阅的 船员" },
 			]);
 		});
@@ -823,7 +849,7 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { captain: { template: "订阅里写了但没开", imageUrl: "off.png" } },
 			};
 			expect(await pushOf(GuardLevel.Captain, { sub: subOff, global: tiers })).toEqual([
-				{ kind: "image", src: "cap.png" },
+				{ kind: "image", src: fetchedRefOf("cap.png") },
 				{ kind: "text", text: "船员 成了 主播 的舰长" },
 			]);
 		});
@@ -836,7 +862,7 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { captain: { template: "{viewer} 成为了{tier}", imageUrl: "cap.png" } },
 			});
 			expect(await pushOf(GuardLevel.Captain, { sub: withTier }, "礼物")).toEqual([
-				{ kind: "image", src: "cap.png" },
+				{ kind: "image", src: fetchedRefOf("cap.png") },
 				{ kind: "text", text: "船员 成为了舰长" },
 			]);
 		});
@@ -846,7 +872,7 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { captain: { template: "{viewer}\\n{name}\\n{tier}", imageUrl: "cap.png" } },
 			});
 			expect(await pushOf(GuardLevel.Captain, { sub: withNewline })).toEqual([
-				{ kind: "image", src: "cap.png" },
+				{ kind: "image", src: fetchedRefOf("cap.png") },
 				{ kind: "text", text: "船员\n主播\n舰长" },
 			]);
 		});
@@ -856,7 +882,10 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { captain: { template: "{viewer}|{name}|{uname}|{guard}", imageUrl: "cap.png" } },
 			});
 			const { ctx, m } = makeCtx();
-			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
+			(ctx as AnySession).contentBuilder.image = (buf: Buffer) => ({
+				kind: "image",
+				src: buf.toString(),
+			});
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
@@ -864,7 +893,7 @@ describe("RoomSession.onGuardBuy", () => {
 			) as AnySession;
 			await s.onGuardBuy(guardBody);
 			expect(m.pushedMain.mock.calls[0]?.[1]).toEqual([
-				{ kind: "image", src: "cap.png" },
+				{ kind: "image", src: fetchedRefOf("cap.png") },
 				{ kind: "text", text: "船员||{uname}|{guard}" },
 			]);
 		});
@@ -890,11 +919,11 @@ describe("RoomSession.onGuardBuy", () => {
 				tiers: { governor: { imageUrl: "gov.png" } },
 			});
 			expect(await pushOf(GuardLevel.Captain, { sub: withDefaultImage })).toEqual([
-				{ kind: "image", src: "default.png" },
+				{ kind: "image", src: fetchedRefOf("default.png") },
 				{ kind: "text", text: "船员 来了" },
 			]);
 			expect(await pushOf(GuardLevel.Governor, { sub: withDefaultImage })).toEqual([
-				{ kind: "image", src: "gov.png" },
+				{ kind: "image", src: fetchedRefOf("gov.png") },
 				{ kind: "text", text: "船员 来了" },
 			]);
 		});
@@ -1741,6 +1770,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			pickCardBackground: () => undefined,
 			guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
 			imageFetcher: { fetchImage },
+			readImage: async () => undefined,
 			avatarOf: () => undefined,
 			onRoomIdResolved: vi.fn(),
 		});

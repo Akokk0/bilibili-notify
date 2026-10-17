@@ -18,6 +18,7 @@ import payloads from "../bilibili/live/protocol/__tests__/fixtures/payloads.json
 };
 import {
 	BILI_LIVE_EPOCH,
+	BILI_LIVE_GUARD_BADGE_REF,
 	BILI_LIVE_SECOND_TARGET_ID,
 	BILI_LIVE_SUBSCRIPTION_ID,
 	BILI_LIVE_TARGET_ID,
@@ -855,8 +856,6 @@ const GUARD_BUY = {
 		end_time: 1772337600,
 	},
 };
-const CAPTAIN_ICON =
-	"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png";
 
 // 验红(`room-session.ts` 的 `onGuardBuy`):出卡入参的 `name: tier.name` 改成 `name: ""` → 第一条红;
 // 文字兜底那句里的「加入了大航海」改一个字 → 第二条红;自定义文案那一支的 `viewer: event.viewer.name` 改成 `viewer: ""` → 第三条红;
@@ -877,6 +876,7 @@ describe("会员(上舰)", () => {
 					tier: {
 						name: "舰长",
 						rank: 1,
+						icon: { ref: BILI_LIVE_GUARD_BADGE_REF },
 						color: "#4ebcec",
 						colorEnd: "#b494e5",
 						announcement: '"{viewer}号"加入\n"{name}"大航海舰队！',
@@ -892,15 +892,14 @@ describe("会员(上舰)", () => {
 	it("没有出图器:退成「官方徽章图 + 一句文字」", async () => {
 		const w = await boot({ features: ["membership"], renderer: false });
 		await w.frame(GUARD_BUY);
-		expect(w.sent).toEqual([
-			[`[链接 ${CAPTAIN_ICON}]`, "【测试主播的直播间】观众乙加入了大航海（舰长）"],
-		]);
+		// 徽章是以图发出去的(图库里的字节),不是一串网址。
+		expect(w.sent).toEqual([["[图 徽章]", "【测试主播的直播间】观众乙加入了大航海（舰长）"]]);
 	});
 
 	it("自定义文案开着:不出卡,推「徽章图 + 套好的文案」", async () => {
 		const w = await boot({ features: ["membership"], guardTemplate: true });
 		await w.frame(GUARD_BUY);
-		expect(w.sent).toEqual([[`[链接 ${CAPTAIN_ICON}]`, "观众乙 成为了 测试主播 的舰长！"]]);
+		expect(w.sent).toEqual([["[图 徽章]", "观众乙 成为了 测试主播 的舰长！"]]);
 		expect(w.cards).toEqual([]);
 	});
 

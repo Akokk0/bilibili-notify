@@ -62,6 +62,8 @@ export const BILI_LIVE_EPOCH = "2026-03-01T04:00:00.000Z";
 
 /** 假抓图服务交回的图库引用(恒这一个)。 */
 const FETCHED_IMAGE_REF = `${"a".repeat(64)}.webp`;
+/** 世界的图库里各档大航海徽章共用的那一张;读图口只认得它,读回的字节是「徽章」。 */
+export const BILI_LIVE_GUARD_BADGE_REF = `${"f".repeat(64)}.png`;
 
 /** 服务器下行的心跳回执:16 字节头 + 4 字节人气值(`encodePacket` 只编 JSON 体,这一帧手拼)。 */
 function heartbeatReply(): Uint8Array {
@@ -384,14 +386,21 @@ export async function bootBiliLiveWorld(
 		biliProblems: recording.layers,
 		bus,
 		adapters: registryOf([adapter]),
-		guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
+		guardIcons: {
+			ensure: async () => {},
+			iconOf: () => ({ ref: BILI_LIVE_GUARD_BADGE_REF }),
+			refs: () => [],
+		} as never,
 		imageFetcher: {
 			fetchImage: async (url: string) => {
 				fetchedImages.push(url);
 				return ok({ ref: FETCHED_IMAGE_REF });
 			},
 		},
-		readImage: async () => undefined,
+		readImage: async (ref: string) =>
+			ref === BILI_LIVE_GUARD_BADGE_REF
+				? { bytes: Buffer.from("徽章"), mime: "image/png" }
+				: undefined,
 		puppeteer: null,
 	});
 	if (opts.renderer !== false) runtime.live.setImageRenderer(renderer);
