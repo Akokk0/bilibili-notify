@@ -32,7 +32,7 @@ import type { CardSkinStore } from "./card-skins/store.js";
 import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "./compose.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
-import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
+import { payloadDirOf, type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools, overridableApi } from "./devtools/index.js";
 import { manifestSubscriptionView } from "./extensions/context.js";
 import { extensionsRootIn } from "./extensions/discover.js";
@@ -114,6 +114,7 @@ import { createSystemNoticeStore } from "./runtime/system-notices.js";
 import { startStatsCompaction } from "./stats/compaction.js";
 import { bindStatsLoginState } from "./stats/login-binding.js";
 import { listLoginSources } from "./subscriptions/registry.js";
+import { readReleaseNotes } from "./update/release-notes.js";
 import { readFailedVersions } from "./update/select-version-for-boot.js";
 import { createUpdateService } from "./update/service.js";
 import {
@@ -463,6 +464,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			"drain",
 		);
 
+		// 升级之后「本次更新」要念的说明:载荷旁的 release-notes.json(装配时从 CHANGELOG 抽的)。缺了或还是空表
+		// (CHANGELOG 里还没有 1.x 段)都不是错:弹窗只剩标题。
+		const releaseNotes = await readReleaseNotes({
+			payloadDir: payloadDirOf(options.bundleUrl ?? import.meta.url),
+			runningVersion: APP_VERSION,
+			logger: log,
+		});
+
 		// 要开新代的话在这里迁(ADR-0022 决策 2):listen 之后、读数据之前。迁移期间别的接口回 503,
 		// 话里带进度;迁移抛错就和别的开机失败一样关掉 HTTP 再抛,boot.mjs 退回预装的那一版。
 		if (generation.kind === "create") {
@@ -506,7 +515,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					`[data] 没带过来的:${report.skipped.map((s) => `${s.path}(${s.reason})`).join("、")}`,
 				);
 			}
-			await createSystemNoticeStore({ dir: generation.dir, runningVersion: APP_VERSION }).append({
+			await createSystemNoticeStore({
+				dir: generation.dir,
+				runningVersion: APP_VERSION,
+				releaseNotes,
+			}).append({
 				kind: "migrated",
 				cardSkinsDropped: report?.skipped.some((s) => s.path === "card-skins") ?? false,
 				masterTargetCleared:
@@ -514,12 +527,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			});
 		}
 
-		// 开机之后要告诉主人的事(⑧)记在用着的那一代里。启动器判死过比我新的版本,各记一条「X 起不来」。
+		// 开机之后要告诉主人的事(⑧)记在用着的那一代里。启动器判死过比我新的版本,各记一条「X 起不来」;
+		// 正在跑的版本比这一代跑过的最高版本新,记一条「更新了」(开发版不记)。
 		const noticeStore = createSystemNoticeStore({
 			dir: generation.dir,
 			runningVersion: APP_VERSION,
+			releaseNotes,
 		});
 		await noticeStore.recordRollbacks(readFailedVersions(versionsRootIn(runtime.hostRoot)));
+		await noticeStore.recordUpdate();
 
 		// Load the at-rest secrets key during startup, not on the first settings write.
 		// Without this eager touch, zero-auth local runs only hit the key lazily when
