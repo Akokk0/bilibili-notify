@@ -63,8 +63,12 @@ if (roomIdInput === "auto") {
 const outFile = process.argv[4] ?? join(process.cwd(), `blive-capture-${roomIdArg}.jsonl`);
 
 const danmakuInfo = await api.fetchLiveRoomInfoStreamKey(roomIdArg);
-if (danmakuInfo.code !== 0 || !danmakuInfo.data?.token) {
-	console.error(`getDanmuInfo 失败 code=${danmakuInfo.code} message=${danmakuInfo.message ?? ""}`);
+if (!danmakuInfo.ok || !danmakuInfo.data?.token) {
+	console.error(
+		danmakuInfo.ok
+			? "getDanmuInfo 没有 token"
+			: `getDanmuInfo 失败 code=${danmakuInfo.upstreamCode ?? danmakuInfo.code} message=${danmakuInfo.message}`,
+	);
 	process.exit(1);
 }
 const hostList = danmakuInfo.data.host_list as { host: string; wss_port: number }[];

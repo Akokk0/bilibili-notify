@@ -1,9 +1,9 @@
 /**
  * startLiveRoomListener 的预检异常映射与 host 轮转(真 RoomContext + 假 api):
  *
- * - 持续 -352 经 wbiGet 以 **RiskControlError 异常**到达(它绝不把 -352 body
- *   返回给调用方)—— 必须映射成 LiveRoomPreflightBlockedError 交给长尾退避,
- *   否则「-352 永不放弃」在生产链路上整条不可达(catch 吞成 return false,
+ * - 持续 -352 由请求层翻成 rate_limited 失败(见 api/__tests__/live-room-stream-key.test.ts)—— 必须映射成
+ *   LiveRoomPreflightBlockedError 交给长尾退避,
+ *   否则「-352 永不放弃」在生产链路上整条不可达(吞成 return false,
  *   房间被当普通失败在 31s 内放弃)。
  * - host_list 按建连轮次轮转:首个 host 从用户网络不可达时,重连不至于永远
  *   钉死在死 host 上烧光梯子(被换掉的旧库会跨 host 回退)。
@@ -11,12 +11,16 @@
  *   客户端装配,这里不再自己拼 Cookie / User-Agent。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { fail, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { RiskControlError } from "../../../api/index.js";
+import { failureFromBili } from "../../../error-codes.js";
 import { connectLiveRoom } from "../../protocol/client.js";
 import type { RoomContextOptions } from "../room-context";
-import { LiveRoomPreflightBlockedError, RoomContext } from "../room-helpers";
+import {
+	LiveRoomAccessDeniedError,
+	LiveRoomPreflightBlockedError,
+	RoomContext,
+} from "../room-helpers";
 
 vi.mock("../../protocol/client.js", async (importOriginal) => {
 	const mod = await importOriginal<typeof import("../../protocol/client.js")>();
@@ -26,8 +30,7 @@ vi.mock("../../protocol/client.js", async (importOriginal) => {
 	};
 });
 
-const goodDanmakuInfo = {
-	code: 0,
+const goodDanmakuInfo = ok({
 	data: {
 		token: "tok",
 		host_list: [
@@ -36,7 +39,7 @@ const goodDanmakuInfo = {
 			{ host: "h3.example.com", wss_port: 443 },
 		],
 	},
-};
+});
 
 const fakeSocket = { binaryType: "", on() {}, send() {}, close() {} };
 
@@ -75,23 +78,70 @@ beforeEach(() => {
 	vi.mocked(connectLiveRoom).mockClear();
 });
 
-describe("startLiveRoomListener × 持续风控", () => {
-	it("预检抛 RiskControlError → 映射成 LiveRoomPreflightBlockedError 交给长尾", async () => {
-		const { ctx } = makeCtx(async () => {
-			throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)");
-		});
-
-		await expect(ctx.startLiveRoomListener("5050", () => {})).rejects.toBeInstanceOf(
-			LiveRoomPreflightBlockedError,
-		);
-	});
-
+describe("startLiveRoomListener × 预检异常", () => {
+	// 持续 -352(wbiGet 刷新签名重试后仍 -352)由请求层翻成 rate_limited 失败,见
+	// api/__tests__/live-room-stream-key.test.ts;下面「预检读标准码」那组钉住 rate_limited → 长尾。
 	it("其他预检异常仍按可重试 setup 失败返回 false(不误伤成风控)", async () => {
 		const { ctx } = makeCtx(async () => {
 			throw new Error("ECONNRESET");
 		});
 
 		await expect(ctx.startLiveRoomListener("5050", () => {})).resolves.toBe(false);
+	});
+});
+
+/**
+ * 预检读请求层翻好的标准码(3b-18):风控类(-352 / -412 / -799 / -509 → rate_limited)走长尾、不判受限房;
+ * -403 与没对照的码仍当受限房(B 站对加密 / 付费 / 测试房回什么码没核,R3);-101 不是受限房,是登录的事。
+ */
+describe("startLiveRoomListener × 预检读标准码", () => {
+	it.each([-352, -412, -799, -509])(
+		"预检回 %i(rate_limited)→ LiveRoomPreflightBlockedError(长尾),不判受限房",
+		async (code) => {
+			const { ctx } = makeCtx(async () => failureFromBili(code, "被拦截"));
+
+			await expect(ctx.startLiveRoomListener("5050", () => {})).rejects.toBeInstanceOf(
+				LiveRoomPreflightBlockedError,
+			);
+		},
+	);
+
+	it("预检回 -403 → 受限房(接口自己判,不进共用表)", async () => {
+		const { ctx } = makeCtx(async () => failureFromBili(-403, "无权限"));
+
+		await expect(ctx.startLiveRoomListener("5050", () => {})).rejects.toMatchObject({
+			name: "LiveRoomAccessDeniedError",
+			reason: "B 站返回 code=-403 message=无权限",
+		});
+	});
+
+	it("预检回没对照的码 → 仍是受限房(R3:取证靠请求层的 warn)", async () => {
+		const { ctx } = makeCtx(async () => failureFromBili(4101132, "没见过"));
+
+		await expect(ctx.startLiveRoomListener("5050", () => {})).rejects.toBeInstanceOf(
+			LiveRoomAccessDeniedError,
+		);
+	});
+
+	it("预检回 -101(unauthorized)→ 不是受限房:当弹幕连接没建起来,返回 false", async () => {
+		const { ctx } = makeCtx(async () => failureFromBili(-101, "账号未登录"));
+
+		await expect(ctx.startLiveRoomListener("5050", () => {})).resolves.toBe(false);
+	});
+
+	it("预检回应形状不对(unavailable)→ 一时失败,返回 false", async () => {
+		const { ctx } = makeCtx(async () => fail("unavailable", "回应不是预期的形状"));
+
+		await expect(ctx.startLiveRoomListener("5050", () => {})).resolves.toBe(false);
+	});
+
+	it("预检成功但没有 data / token / 服务器列表 → 受限房", async () => {
+		for (const data of [null, { host_list: [{ host: "h", wss_port: 443 }] }, { token: "t" }]) {
+			const { ctx } = makeCtx(async () => ok({ data }));
+			await expect(ctx.startLiveRoomListener("5050", () => {})).rejects.toBeInstanceOf(
+				LiveRoomAccessDeniedError,
+			);
+		}
 	});
 });
 

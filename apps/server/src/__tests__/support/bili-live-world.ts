@@ -228,10 +228,10 @@ export async function bootBiliLiveWorld(
 	};
 
 	const api = {
-		fetchLiveRoomInfoStreamKey: async () => ({
-			code: 0,
-			data: { token: "test-token", host_list: [{ host: "danmaku.test", wss_port: 443 }] },
-		}),
+		fetchLiveRoomInfoStreamKey: async () =>
+			ok({
+				data: { token: "test-token", host_list: [{ host: "danmaku.test", wss_port: 443 }] },
+			}),
 		getMyselfInfoCached: async () => ({ code: 0, data: { mid: 1, uname: "bot", face: "" } }),
 		getBuvid3: async () => "test-buvid",
 		openDanmakuSocket,

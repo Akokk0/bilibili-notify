@@ -4,7 +4,7 @@
  * 用**真 ListenerManager + 真上报器 + 记录用的假核心**:一个连不上弹幕的 UP 先把「受限」报上去,再看收拾之后表里还有没有。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../../push-like";
 import { ListenerManager } from "../listener-manager";
@@ -40,7 +40,7 @@ function setup() {
 	const manager = new ListenerManager({
 		serviceCtx,
 		api: {
-			fetchLiveRoomInfoStreamKey: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchLiveRoomInfoStreamKey: vi.fn(async () => ok({ data: {} })),
 		},
 		push: {},
 		problems: layers,

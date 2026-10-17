@@ -952,14 +952,25 @@ export class Api {
 		return this.getJson(`${EP.MASTER_INFO_URL}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
 	}
 
-	async fetchLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmakuResponse> {
+	async fetchLiveRoomInfoStreamKey(
+		roomId: string,
+	): Promise<Result<{ data: LiveRoomDanmakuResponse["data"] }>> {
 		// getDanmuInfo 现已强制 wbi 签名，裸 GET 一律被风控拦成 -352。必须走
 		// wbiGet（自动加 wts + w_rid，并自带 -352 → 刷新 wbiKeys 重试一次的自愈）。
-		return this.retry(
-			async () => this.wbiGet(EP.LIVE_ROOM_INFO_STREAM_KEY_URL, { id: roomId }),
-			"fetchLiveRoomInfoStreamKey",
-			Api.retryUnlessRiskControl,
-		);
+		try {
+			const body = await this.retry(
+				async () => this.wbiGet(EP.LIVE_ROOM_INFO_STREAM_KEY_URL, { id: roomId }),
+				"fetchLiveRoomInfoStreamKey",
+				Api.retryUnlessRiskControl,
+			);
+			return this.resultOf(body, "fetchLiveRoomInfoStreamKey");
+		} catch (e) {
+			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个 rate_limited 失败,
+			// 预检只看标准码。别的异常(连不上、超时)照旧往外抛,由调用方的 catch 接。
+			if (e instanceof RiskControlError)
+				return fail("rate_limited", e.message, { upstreamCode: -352 });
+			throw e;
+		}
 	}
 
 	async fetchUserInfoInLive(uid: string, upUid: string) {

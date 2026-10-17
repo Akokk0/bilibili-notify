@@ -7,7 +7,7 @@
  * - 这个人不再需要监听走静默清(房间又监听上了的普通清是会话里单条做的,见 room-session-problems)。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { PROBLEM_TEXTS } from "../../../problem-texts";
 import {
@@ -93,10 +93,9 @@ describe("RoomContext.stopMonitoring", () => {
 });
 
 describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志", () => {
-	const goodInfo = {
-		code: 0,
+	const goodInfo = ok({
 		data: { token: "tok", host_list: [{ host: "h1.example.com", wss_port: 443 }] },
-	};
+	});
 
 	it.each([
 		["抛错", () => Promise.reject(new Error("net down"))],

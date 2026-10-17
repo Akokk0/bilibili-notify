@@ -90,7 +90,7 @@ export const RATCHET = {
 	"apps/server/src/bilibili/images.ts": 2,
 	"apps/server/src/bilibili/link-resolver-texts.ts": 2,
 	"apps/server/src/bilibili/live/protocol/client.ts": 2,
-	"apps/server/src/bilibili/live/session/room-helpers.ts": 8,
+	"apps/server/src/bilibili/live/session/room-helpers.ts": 7,
 	"apps/server/src/bilibili/live/session/room-session-base.ts": 2,
 	"apps/server/src/bilibili/live/session/room-session.ts": 13,
 	"apps/server/src/bilibili/problem-layers.ts": 10,

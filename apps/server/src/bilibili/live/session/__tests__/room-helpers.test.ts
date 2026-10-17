@@ -2,56 +2,28 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../../push-like";
 import type { RoomContextOptions } from "../room-context";
-import {
-	describeLiveRoomDanmakuAccessDenied,
-	describeLiveRoomDanmakuPreflightFallback,
-	RoomContext,
-} from "../room-helpers";
+import { describeLiveRoomDanmakuAccessDenied, RoomContext } from "../room-helpers";
 
+/** 预检成功后体里缺不缺东西(上游的非 0 码已由请求层翻成失败,由 `startLiveRoomListener` 分流)。 */
 describe("describeLiveRoomDanmakuAccessDenied", () => {
-	it("accepts a complete danmu info response", () => {
+	it("accepts a complete danmu info", () => {
 		expect(
-			describeLiveRoomDanmakuAccessDenied({
-				code: 0,
-				data: { token: "token", host_list: [{ host: "example.com" }] },
-			}),
+			describeLiveRoomDanmakuAccessDenied({ token: "token", host_list: [{ host: "example.com" }] }),
 		).toBeUndefined();
 	});
 
-	it("rejects upstream non-zero responses without exposing token-like data", () => {
-		expect(
-			describeLiveRoomDanmakuAccessDenied({
-				code: -400,
-				message: "room is encrypted",
-				data: null,
-			}),
-		).toBe("B 站返回 code=-400 message=room is encrypted");
-	});
-
-	it("treats -352 as preflight risk-control fallback instead of hard denial", () => {
-		const info = {
-			code: -352,
-			message: "-352",
-			data: null,
-		};
-		expect(describeLiveRoomDanmakuPreflightFallback(info)).toBe("B 站返回 code=-352 message=-352");
-		expect(describeLiveRoomDanmakuAccessDenied(info)).toBeUndefined();
+	it("rejects a missing body", () => {
+		expect(describeLiveRoomDanmakuAccessDenied(null)).toBe("B 站未返回弹幕连接信息");
 	});
 
 	it("rejects missing token or host list", () => {
-		expect(
-			describeLiveRoomDanmakuAccessDenied({
-				code: 0,
-				data: { host_list: [{ host: "example.com" }] },
-			}),
-		).toBe("B 站未返回弹幕 token");
+		expect(describeLiveRoomDanmakuAccessDenied({ host_list: [{ host: "example.com" }] })).toBe(
+			"B 站未返回弹幕 token",
+		);
 
-		expect(
-			describeLiveRoomDanmakuAccessDenied({
-				code: 0,
-				data: { token: "token", host_list: [] },
-			}),
-		).toBe("B 站未返回弹幕服务器列表");
+		expect(describeLiveRoomDanmakuAccessDenied({ token: "token", host_list: [] })).toBe(
+			"B 站未返回弹幕服务器列表",
+		);
 	});
 });
 

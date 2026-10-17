@@ -32,7 +32,7 @@ import {
 } from "../../subscriptions/__tests__/fixtures.js";
 import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
-import { type Api, RiskControlError } from "../api/index.js";
+import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import type { SubItemView } from "../live/push-like.js";
 import type { RoomContextOptions } from "../live/session/room-context.js";
@@ -89,10 +89,9 @@ const MASTER = {
 	data: { follower_num: 1, info: { uname: "U", face: "" }, room_id: "100", medal_name: "" },
 };
 
-const GOOD_STREAM_KEY = {
-	code: 0,
+const GOOD_STREAM_KEY = ok({
 	data: { token: "tok", host_list: [{ host: "h1.example.com", wss_port: 443 }] },
-};
+});
 
 async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<unknown> } = {}) {
 	// 两位 UP:房间 100 / 200;订阅级的问题要有订阅可挂
@@ -235,10 +234,22 @@ describe("失效登录开机 · 直播这一侧", () => {
 		expect(b.engineErrors).toEqual([]);
 	});
 
-	it("第二支:预检回非 0 的业务码 → 受限房那一支:同样只有 auth_lost 一条、私聊一次", async () => {
+	it("第二支:预检回受限房的码(-403)→ 受限房那一支:同样只有 auth_lost 一条、私聊一次", async () => {
 		const b = await boot(EXPIRED);
 		await makeLiveSession(b, "u1", "100", {
-			streamKey: async () => ({ code: -101, message: "账号未登录" }),
+			streamKey: async () => failureFromBili(-403, "无权限"),
+		}).bootstrap();
+		await flush();
+
+		expect(codesOf(b)).toEqual(["auth_lost"]);
+		expect(b.notifyMaster).toHaveBeenCalledTimes(1);
+		expect(b.engineErrors).toEqual([]);
+	});
+
+	it("第二支′:预检回 -101 → 不是受限房,是「弹幕连接没建起来」那一支:同样只有 auth_lost 一条、私聊一次", async () => {
+		const b = await boot(EXPIRED);
+		await makeLiveSession(b, "u1", "100", {
+			streamKey: async () => failureFromBili(-101, "账号未登录"),
 		}).bootstrap();
 		await flush();
 
@@ -280,9 +291,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: 白盒直调一轮检测,不起 cron
 		await (b.source.dynamic() as any).detectDynamics();
 		await makeLiveSession(b, "u1", "100", {
-			streamKey: async () => {
-				throw new RiskControlError("-352");
-			},
+			streamKey: async () => failureFromBili(-352, "-352"),
 		}).bootstrap();
 		await makeLiveSession(b, "u2", "200", {
 			roomInfo: async () => {
@@ -306,9 +315,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		const dynamicEngine = b.source.dynamic() as any;
 		await dynamicEngine.detectDynamics();
 		const blockedRoom = makeLiveSession(b, "u1", "100", {
-			streamKey: async () => {
-				throw new RiskControlError("-352");
-			},
+			streamKey: async () => failureFromBili(-352, "-352"),
 		});
 		await blockedRoom.bootstrap();
 		const failedRoom = makeLiveSession(b, "u2", "200", {});
@@ -421,9 +428,7 @@ describe("已登录被风控 · 直播这一侧", () => {
  */
 describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 	const BLOCKED = {
-		streamKey: async () => {
-			throw new RiskControlError("-352");
-		},
+		streamKey: async () => failureFromBili(-352, "-352"),
 	};
 	/** 预检过了、也连上了(房间信息与主播信息都拿得到)。 */
 	const CONNECTED = {
@@ -449,6 +454,21 @@ describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 		expect(codesOf(b)).toEqual([]);
 		expect(b.notifyMaster).not.toHaveBeenCalled();
 	});
+
+	// 验红:预检里把 rate_limited 那一支删掉(-412 落进受限房),这条红(表里是 live_room_restricted、私聊一次)。
+	it.each([-412, -799, -509])(
+		"预检回 %i:同样是风控——表里一条风控、没有受限房、私聊零次",
+		async (code) => {
+			const b = await boot(IN);
+			await makeLiveSession(b, "u1", "100", {
+				streamKey: async () => failureFromBili(code, "请求被拦截"),
+			}).bootstrap();
+			await flush();
+
+			expect(codesOf(b)).toEqual(["risk_controlled"]);
+			expect(b.notifyMaster).not.toHaveBeenCalled();
+		},
+	);
 
 	// 验红:上报器里「有一路要私聊的进来就再报一次」去掉,这条红(动态被风控了主人也听不到)。
 	it("直播先被拦、动态后被风控:这时才私聊一次;全部解除后恢复句一次", async () => {

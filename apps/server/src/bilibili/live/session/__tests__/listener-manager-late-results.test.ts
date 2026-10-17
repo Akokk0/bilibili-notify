@@ -10,9 +10,9 @@
  * 每条都先做对照(不停会话时同样的放行确实会进表),才证明「没有」不是因为什么都没接上。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { RiskControlError } from "../../../api/index.js";
+import { failureFromBili } from "../../../error-codes.js";
 import { createProblemLayers } from "../../../problem-layers";
 import type { SubItemView } from "../../push-like";
 import { ListenerManager } from "../listener-manager";
@@ -44,10 +44,9 @@ function gate<T>() {
 	return { promise, resolve, reject };
 }
 
-const GOOD_STREAM_KEY = {
-	code: 0,
+const GOOD_STREAM_KEY = ok({
 	data: { token: "tok", host_list: [{ host: "h1.example.com", wss_port: 443 }] },
-};
+});
 
 const settle = async () => {
 	for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
@@ -150,7 +149,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 	it("对照:不停会话,预检回「被拦」→ 表里有这一路风控", async () => {
 		const w = setup(["u1"]);
 		w.manager.startForUid(makeSub("u1"));
-		w.preflights.get("u1")?.reject(new RiskControlError("-352"));
+		w.preflights.get("u1")?.resolve(failureFromBili(-352, "-352"));
 		await settle();
 		expect(w.present()).toEqual(["risk_controlled"]);
 	});
@@ -160,7 +159,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 		w.manager.startForUid(makeSub("u1"));
 		w.manager.stopForUid("u1");
 
-		w.preflights.get("u1")?.reject(new RiskControlError("-352"));
+		w.preflights.get("u1")?.resolve(failureFromBili(-352, "-352"));
 		await settle();
 
 		expect(w.calls.filter((c) => c.includes("risk_controlled"))).toEqual([]);
@@ -172,7 +171,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 	it("对照:不停会话,预检回「没有 token」→ 表里有这个房间的「受限」", async () => {
 		const w = setup(["u1"]);
 		w.manager.startForUid(makeSub("u1"));
-		w.preflights.get("u1")?.resolve({ code: 0, data: {} });
+		w.preflights.get("u1")?.resolve(ok({ data: {} }));
 		await settle();
 		expect(w.present()).toEqual(["u1:live_room_restricted"]);
 	});
@@ -182,7 +181,7 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 		w.manager.startForUid(makeSub("u1"));
 		w.manager.stopForUid("u1");
 
-		w.preflights.get("u1")?.resolve({ code: 0, data: {} });
+		w.preflights.get("u1")?.resolve(ok({ data: {} }));
 		await settle();
 
 		expect(w.calls.filter((c) => c.startsWith("report:"))).toEqual([]);
@@ -243,8 +242,8 @@ describe("预检在途时会话被停掉,迟到的结果不上报", () => {
 		w.manager.startForUid(makeSub("u2"));
 		w.manager.disposeAll();
 
-		w.preflights.get("u1")?.reject(new RiskControlError("-352"));
-		w.preflights.get("u2")?.resolve({ code: 0, data: {} });
+		w.preflights.get("u1")?.resolve(failureFromBili(-352, "-352"));
+		w.preflights.get("u2")?.resolve(ok({ data: {} }));
 		await settle();
 
 		expect(w.calls.filter((c) => c.startsWith("report:"))).toEqual([]);
@@ -258,8 +257,8 @@ describe("整批停掉 / 重建时的次序:先静默清问题,再 cancel", () =
 		const w = setup(["u1", "u2"]);
 		w.manager.startForUid(makeSub("u1"));
 		w.manager.startForUid(makeSub("u2"));
-		w.preflights.get("u1")?.reject(new RiskControlError("-352"));
-		w.preflights.get("u2")?.resolve({ code: 0, data: {} });
+		w.preflights.get("u1")?.resolve(failureFromBili(-352, "-352"));
+		w.preflights.get("u2")?.resolve(ok({ data: {} }));
 		await settle();
 		expect(w.present()).toEqual(["risk_controlled"]);
 		w.calls.length = 0;

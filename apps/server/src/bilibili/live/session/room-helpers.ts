@@ -1,5 +1,10 @@
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import { isBlockVisible, type MessageKindLayout } from "@bilibili-notify/internal";
+import {
+	type Failure,
+	isBlockVisible,
+	type MessageKindLayout,
+	type Result,
+} from "@bilibili-notify/internal";
 import { segmentsToContent } from "../../../live/content-builder";
 import {
 	type LiveNotifyPushType,
@@ -7,11 +12,11 @@ import {
 	pushLiveNotify,
 } from "../../../live/live-notify";
 import { LivePushType } from "../../../live/live-types";
-import {
-	type LiveRoomResponse,
-	type MasterInfoData,
-	type MyselfResponse,
-	RiskControlError,
+import type {
+	LiveRoomDanmakuResponse,
+	LiveRoomResponse,
+	MasterInfoData,
+	MyselfResponse,
 } from "../../api/index.js";
 import { fetchLiveCover } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
@@ -22,16 +27,8 @@ import type { LivePushAnchor } from "../push-like";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { RoomContextBase } from "./room-context";
 
-type LiveRoomDanmakuResponse = {
-	code: number;
-	message?: string;
-	msg?: string;
-	data: {
-		token?: string;
-		host_list?: unknown[];
-		[key: string]: unknown;
-	} | null;
-};
+/** 预检成功时的 `data`(请求层已把 B 站的码翻成结果形状,这里只剩体里的东西)。 */
+type DanmakuInfo = LiveRoomDanmakuResponse["data"];
 
 export class LiveRoomAccessDeniedError extends Error {
 	constructor(readonly reason: string) {
@@ -54,28 +51,18 @@ export class LiveRoomPreflightBlockedError extends Error {
 	}
 }
 
-export function describeLiveRoomDanmakuPreflightFallback(
-	info: LiveRoomDanmakuResponse,
-): string | undefined {
-	const message = info.message || info.msg;
-	const messageSuffix = message ? ` message=${message}` : "";
-	// -352 是 B 站常见风控/校验拦截码。它说明这次 HTTP 预检不可信,不等价于房间
-	// 永久不可访问;旧的直接 WS 建连路径可能仍然可用,所以只能降级回退,不能硬停。
-	if (info.code === -352) return `B 站返回 code=${info.code}${messageSuffix}`;
-	return undefined;
+/** 失败结果的原因句:B 站的数字码(没有就退回标准码)加原话。 */
+function reasonOfFailure(failure: Failure): string {
+	const message = failure.message ? ` message=${failure.message}` : "";
+	return `B 站返回 code=${failure.upstreamCode ?? failure.code}${message}`;
 }
 
-export function describeLiveRoomDanmakuAccessDenied(
-	info: LiveRoomDanmakuResponse,
-): string | undefined {
-	if (describeLiveRoomDanmakuPreflightFallback(info)) return undefined;
-	const message = info.message || info.msg;
-	const messageSuffix = message ? ` message=${message}` : "";
-	if (info.code !== 0) return `B 站返回 code=${info.code}${messageSuffix}`;
-	if (!info.data) return "B 站未返回弹幕连接信息";
-	const token = typeof info.data.token === "string" ? info.data.token.trim() : "";
+/** 预检成功了、但体里缺弹幕连接要的东西:受限房(加密 / 付费 / 测试房)。 */
+export function describeLiveRoomDanmakuAccessDenied(info: DanmakuInfo): string | undefined {
+	if (!info) return "B 站未返回弹幕连接信息";
+	const token = typeof info.token === "string" ? info.token.trim() : "";
 	if (!token) return "B 站未返回弹幕 token";
-	if (!Array.isArray(info.data.host_list) || info.data.host_list.length === 0) {
+	if (!Array.isArray(info.host_list) || info.host_list.length === 0) {
 		return "B 站未返回弹幕服务器列表";
 	}
 	return undefined;
@@ -129,24 +116,35 @@ export class RoomContext extends RoomContextBase {
 			return true;
 		}
 
-		let danmakuInfo: LiveRoomDanmakuResponse;
+		let preflight: Result<{ data: DanmakuInfo }>;
 		try {
-			danmakuInfo = await this.api.fetchLiveRoomInfoStreamKey(roomId);
+			preflight = await this.api.fetchLiveRoomInfoStreamKey(roomId);
 		} catch (e) {
-			// 持续 -352 经 wbiGet 以 RiskControlError **异常**到达(它绝不把 -352 body
-			// 返回给调用方)—— 必须映射成预检拦截交给长尾退避;吞成 return false 会让
-			// 「-352 永不放弃」整条不可达,房间被当普通失败在秒级梯子内放弃。
-			if (e instanceof RiskControlError) {
-				throw new LiveRoomPreflightBlockedError(e.message);
-			}
 			const message = e instanceof Error ? e.message : String(e);
 			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${message}`);
 			return false;
 		}
-		const fallbackReason = describeLiveRoomDanmakuPreflightFallback(danmakuInfo);
-		if (fallbackReason) {
-			throw new LiveRoomPreflightBlockedError(fallbackReason);
+		if (!preflight.ok) {
+			switch (preflight.code) {
+				case "rate_limited":
+					// 风控(含持续 -352,请求层已翻好)不是永久拒绝:走长尾退避重试预检。吞成 return false 会让
+					// 「-352 永不放弃」整条不可达,房间被当普通失败在秒级梯子内放弃。
+					throw new LiveRoomPreflightBlockedError(reasonOfFailure(preflight));
+				case "unauthorized":
+				case "unavailable":
+					// -101 是登录的事(拦截器已发 auth-lost,未登录层压着下层问题,登录恢复后整批重建);回应形状不对是一时的。
+					// 都不是「这个房间受限」:当弹幕连接没建起来。后果由随后那条「停止监听」去报。
+					this.logger.warn(
+						`[conn] 预检没拿到连接信息，房间 [${roomId}]：${reasonOfFailure(preflight)}`,
+					);
+					return false;
+				default:
+					// -403 与没对照的码:当受限房。B 站对加密 / 付费 / 测试房回什么码没核,可能就是表外的码;
+					// 请求层对每个没见过的码记过一条带原话的 warn,真机撞到再据实改。
+					throw new LiveRoomAccessDeniedError(reasonOfFailure(preflight));
+			}
 		}
+		const danmakuInfo = preflight.data;
 		const deniedReason = describeLiveRoomDanmakuAccessDenied(danmakuInfo);
 		if (deniedReason) {
 			throw new LiveRoomAccessDeniedError(deniedReason);
@@ -209,13 +207,13 @@ export class RoomContext extends RoomContextBase {
 		return true;
 	}
 
-	private readDanmakuToken(info: LiveRoomDanmakuResponse): string {
-		const token = info.data?.token;
+	private readDanmakuToken(info: DanmakuInfo): string {
+		const token = info?.token;
 		return typeof token === "string" ? token.trim() : "";
 	}
 
-	private readDanmakuHosts(info: LiveRoomDanmakuResponse): DanmakuHost[] {
-		const raw = Array.isArray(info.data?.host_list) ? info.data.host_list : [];
+	private readDanmakuHosts(info: DanmakuInfo): DanmakuHost[] {
+		const raw = Array.isArray(info?.host_list) ? info.host_list : [];
 		const hosts: DanmakuHost[] = [];
 		for (const entry of raw) {
 			const h = entry as { host?: unknown; wss_port?: unknown };

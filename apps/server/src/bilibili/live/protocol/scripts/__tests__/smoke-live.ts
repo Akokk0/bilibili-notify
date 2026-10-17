@@ -26,10 +26,11 @@ if (rec.code !== 0 || !top) {
 console.log("room:", top.roomid, top.uname);
 
 const info = await api.fetchLiveRoomInfoStreamKey(String(top.roomid));
-const token = typeof info.data?.token === "string" ? info.data.token : "";
-const hostListRaw = (info.data?.host_list ?? []) as { host: string; wss_port: number }[];
-if (info.code !== 0 || !token || hostListRaw.length === 0) {
-	console.error(`getDanmuInfo 失败 code=${info.code}`);
+const infoData = info.ok ? info.data : null;
+const token = typeof infoData?.token === "string" ? infoData.token : "";
+const hostListRaw = (infoData?.host_list ?? []) as { host: string; wss_port: number }[];
+if (!info.ok || !token || hostListRaw.length === 0) {
+	console.error(`getDanmuInfo 失败 code=${info.ok ? "0" : (info.upstreamCode ?? info.code)}`);
 	process.exit(1);
 }
 const buvid = await api.getBuvid3();
