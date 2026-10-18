@@ -15,7 +15,7 @@
 
 ## tokens(src/theme.css)
 
-`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in|drawer-in|dock-in` 动效(页面根一律 `page-in`、抽屉用 `drawer-in`、底边 dock 用 `dock-in`——都是纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的另一份正本在 `packages/image/src/styles.ts`(SSR 渲染器),改色要两边同步。
+`@theme` 品牌调色板(`--color-bn-*` → `bg-bn-pink` 等 utilities)、明暗双套玻璃/页面变量(`--bn-glass-*` / `--bn-page-bg`,暗色走 `[data-theme="dark"]`)、`html/body` 基础皮肤、`.bn-glass` / `.bn-glass-strong` 玻璃面、`bn-pulse|spin|fade-in|page-in|drawer-in|dock-in` 动效(页面根一律 `page-in`、抽屉用 `drawer-in`、底边 dock 用 `dock-in`——都是纯位移;`fade-in` 这类 opacity 动画挂在玻璃卡祖先上会瞬时杀掉磨砂)、`.bn-no-scrollbar`。品牌色的正本就是 theme.css 自己的 `@theme`;`packages/image/src/styles.ts`(SSR 渲染器)现在只放守卫 / SC 档位色,不再持有品牌色。
 
 ## 组件清单
 
@@ -54,7 +54,7 @@
 | `Section` / `Row` | 抽屉与面板里的「小节标题 + 行列表」骨架 |
 | `NoticeStack` / `NoticeCard` | 角落通知栈(portal + fixed 角落 + aria-live)与富通知卡(图标片 + 标题/时间行 + 正文 + 关闭钮,挂 `glass-strong`)。推送 toast(右下 polite)与组件告警(右上 assertive)共用;**颜色语义全留调用方** —— 逐 kind 染色走 `tileStyle`、静态语义配色走 `tileClassName`/`titleClassName`/`style`。`time` 收**预格式化**字符串(toast 到分、告警到秒,精度是语义)。一句话瞬时提示别用它,那是 `Toast` 的活 |
 
-**提示盒一家(`ErrorNote` / `WarnNote` / `EmptyNote` / `HintNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11.5px、`md` = `rounded-lg` 12.5px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
+**提示盒一家(`ErrorNote` / `WarnNote` / `EmptyNote` / `HintNote`)共用一套尺寸阶梯** —— `sm` = `rounded-md` 11px、`md` = `rounded-lg` 12px、`lg` = `rounded-xl` 13px。它们说的是同一类话,只该差颜色不该差形状;此前三个各写各的,同一个弹窗里「保存失败」与「有几处没照办」长成两种控件。阶梯**只管圆角与字号**,内边距各归各的(空态盒撑满面板留白、红盒挤在字段之间,那是位置不是漂移)。`packages/ui/src/__tests__/note-family.test.tsx` 钉着这条。
 
 ### 表单受控件(form-controls)
 
@@ -70,7 +70,7 @@
 
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
-| `GlassPanel` | 轻玻璃面板:标题/副标题/右槽/accent 渐变角光 + icon 方块。`accent` 收十六进制**或** `var(--color-bn-*)`(内部用 `color-mix()` 造透明度);缺省 = `var(--color-bn-pink)`,跟皮肤换装 |
+| `GlassPanel` | 轻玻璃面板:标题/副标题/右槽/accent 渐变角光 + icon 方块。`accent` 收十六进制**或** `var(--color-bn-*)`(内部用 `color-mix()` 造透明度);**缺省 = 不传就既不画角光也不画图标块**(想要粉色得显式传 `var(--color-bn-pink)`,这样才跟皮肤换装) |
 | `GlassStatCard` | 数字大卡:label + 等宽大数字 + 可选呼吸点/footer;`color` 同 `GlassPanel.accent`,hex 与 `var()` 都收 |
 | `GlassBox` | 重玻璃分区卡(Rules/Cards/AI 页那种):icon 芯片 + badge + 右侧动作槽 + 分隔线。`mark` 是**自绘**的图标位(不套 accent 芯片 —— 桥接入卡的角光跟连接状态走、方块却印「哪一种桥」,两者不该同色);`aside` 摆在 badge 之后同一行,给不是 accent 色的东西(状态点 + 「已连接」) |
 | `CollapseBlock` | GlassBox 内的「开关折叠块」:关=灰、开=accent 染色并展开 children |

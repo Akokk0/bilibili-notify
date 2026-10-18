@@ -30,7 +30,7 @@ export const SKIN_COLOR_TOKEN_MAP = {
 	border: "--color-bn-border",
 	borderSubtle: "--color-bn-border-subtle",
 	hoverMuted: "--color-bn-hover-muted",
-	/** 玻璃卡内数据列表行的底色/描边(默认:70% surface / 透明)——治「玻璃叠玻璃」的口子。 */
+	/** 玻璃卡内数据列表行的底色/描边(默认:行底、描边均为 transparent)——治「玻璃叠玻璃」的口子。 */
 	listRow: "--color-bn-list-row",
 	listRowBorder: "--color-bn-list-row-border",
 	codeBg: "--color-bn-code-bg",

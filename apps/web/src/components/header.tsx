@@ -334,8 +334,8 @@ function LogoutButton() {
  * 时刻。收成一处,两态就只剩 tone 一个差异。
  *
  * 不走库里的 `Pill`:那个是 `rounded-sm` 的实底/淡底徽章,这枚是带前导圆点的
- * 圆头状态条。也不走 `StatusDot` 当圆点:它是 2×2 的**写死 hex**,换过去等于把
- * 这里的 `bg-bn-success` / `bg-bn-danger` token 降级成不跟主题走的颜色。
+ * 圆头状态条。圆点本身用库里的 `StatusDot`(`sm` 档,`ok` / `err` 走 token,
+ * 跟皮肤换装)—— 它早已不是写死 hex。
  */
 function ReachBadge({
 	tone,

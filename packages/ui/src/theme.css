@@ -6,8 +6,8 @@
  *     @import "@bilibili-notify/ui/theme.css";
  *     @source "../../../packages/ui/src";   ← 相对入口 CSS,让 Tailwind 扫到本包组件里的 class
  *
- * Source-of-truth note: the canonical brand palette also lives in
- * packages/image/src/styles.ts (image renderer SSR). Keep those in sync.
+ * Source-of-truth note: the canonical brand palette is the `@theme` block below.
+ * packages/image/src/styles.ts only holds the guard / SC tier colours now.
  */
 
 @theme {
