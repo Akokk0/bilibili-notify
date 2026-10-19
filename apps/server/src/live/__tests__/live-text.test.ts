@@ -1,54 +1,15 @@
 /**
- * 单元测试 — 三句直播文案的中立渲染:`applyTemplate` 的单遍替换与 `renderLiveText`。
+ * 单元测试 — 三句直播文案的中立渲染:单遍替换与 `renderLiveText`。
  * (从 `bilibili/live/__tests__/template-renderer.test.ts` 跟着源文件搬来。)
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import {
-	applyTemplate,
 	renderLiveSummary,
 	renderLiveText,
 	renderViewerChat,
 	renderViewerEnter,
 } from "../live-text";
-
-/**
- * 回归守护 — P2:applyTemplate 单遍替换 + 裸键双语法。
- * vars 以裸键给出,模板里 `{name}`(主)与 legacy `-name`(兼容)都被替换。
- * 不变量:① 用户可控值含 token(`{link}`/`-link`)不被二次替换(token 注入);
- * ② 前缀 token(legacy `-follower`)不吞噬更长 token(`-follower_change`);
- * ③ `\n` 仍展开为真换行;④ koishi 旧存档的 `-key` 写法继续生效。
- */
-describe("applyTemplate — 单遍替换 + 裸键双语法 (P2)", () => {
-	it("用户值含 token 不被二次替换(token 注入防护)", () => {
-		const out = applyTemplate("{name} 开播 {link}", {
-			name: "黑客{link}注入",
-			link: "https://live/1",
-		});
-		expect(out).toBe("黑客{link}注入 开播 https://live/1");
-	});
-
-	it("前缀 token 不吞噬更长 token(含 legacy `-` 写法)", () => {
-		const out = applyTemplate("粉丝{follower} 变化{follower_change}", {
-			follower: "100",
-			follower_change: "+5",
-		});
-		expect(out).toBe("粉丝100 变化+5");
-		const legacy = applyTemplate("粉丝-follower 变化-follower_change", {
-			follower: "100",
-			follower_change: "+5",
-		});
-		expect(legacy).toBe("粉丝100 变化+5");
-	});
-
-	it("`\\n` 展开为真换行;未知 token 原样保留", () => {
-		expect(applyTemplate("{name}\\n{x}", { name: "A" })).toBe("A\n{x}");
-	});
-
-	it("legacy `-key` 与新 `{key}` 同模板混用都被替换(koishi 旧存档兼容)", () => {
-		expect(applyTemplate("-name / {name}", { name: "绫" })).toBe("绫 / 绫");
-	});
-});
 
 /**
  * 三句直播文案的**中立渲染**(ADR-0019 决策 65 / 67):吃中立的值,B 站与拓展订阅的直播共用。数字排成
@@ -136,13 +97,27 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 			}),
 		).toBe("+5|{follower}");
 	});
+
+	it("值里带 token 不被二次替换", () => {
+		expect(
+			renderLiveText("liveStart", "{name}|{time}", {
+				name: "{follower}",
+				time: "1分",
+				follower: 5,
+			}),
+		).toBe("{follower}|1分");
+	});
+
+	it("`\\n` 展开为真换行;未知 token 原样保留", () => {
+		expect(renderLiveText("liveStart", "{name}\\n{x}", { name: "A", time: "" })).toBe("A\n{x}");
+	});
 });
 
 describe("renderViewerChat / renderViewerEnter — 占位符 name / viewer / msg", () => {
-	it("特别弹幕:三个占位符,-key 与 {key} 两种写法", () => {
+	it("特别弹幕:三个占位符", () => {
 		expect(
 			renderViewerChat({
-				template: "-name|{viewer}|-msg|{msg}",
+				template: "{name}|{viewer}|{msg}|{msg}",
 				viewerName: "小明",
 				creatorName: "主播A",
 				text: "你好",
@@ -153,7 +128,7 @@ describe("renderViewerChat / renderViewerEnter — 占位符 name / viewer / msg
 	it("特别进场:name / viewer;msg 不是它的变量,原样留着", () => {
 		expect(
 			renderViewerEnter({
-				template: "{viewer} 进了 -name {msg}",
+				template: "{viewer} 进了 {name} {msg}",
 				viewerName: "小明",
 				creatorName: "主播A",
 			}),
@@ -163,7 +138,7 @@ describe("renderViewerChat / renderViewerEnter — 占位符 name / viewer / msg
 	it("观众名里带 token 不被二次替换", () => {
 		expect(
 			renderViewerEnter({
-				template: "{viewer}|-name",
+				template: "{viewer}|{name}",
 				viewerName: "{name}",
 				creatorName: "主播A",
 			}),
@@ -177,7 +152,7 @@ describe("renderViewerChat / renderViewerEnter — 占位符 name / viewer / msg
  * (从 `bilibili/live/__tests__/template-renderer.test.ts` 搬来。)
  */
 const SUMMARY_TPL =
-	"发言-dmc人 弹幕-dca条 | 1:-un1=-dc1 2:-un2=-dc2 3:-un3=-dc3 4:-un4=-dc4 5:-un5=-dc5";
+	"发言{dmc}人 弹幕{dca}条 | 1:{un1}={dc1} 2:{un2}={dc2} 3:{un3}={dc3} 4:{un4}={dc4} 5:{un5}={dc5}";
 
 describe("renderLiveSummary — topSenders <5 守卫", () => {
 	it("topSenders 仅 2 人 → 不抛,缺位渲染为空名/0", () => {
@@ -249,5 +224,46 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 				topSenders: [],
 			}),
 		).toBe("牌:|");
+	});
+});
+
+describe("`-key` 老写法不再认", () => {
+	it("renderLiveText:`-name` 原样留着,`{name}` 照常填值", () => {
+		expect(renderLiveText("liveStart", "-name {name}", { name: "绫", time: "1分" })).toBe(
+			"-name 绫",
+		);
+	});
+
+	it("特别弹幕:`-name` 原样留着,`{viewer}` 照常填值", () => {
+		expect(
+			renderViewerChat({
+				template: "-name {viewer}",
+				viewerName: "小明",
+				creatorName: "主播A",
+				text: "你好",
+			}),
+		).toBe("-name 小明");
+	});
+
+	it("特别进场:`-name` 原样留着,`{viewer}` 照常填值", () => {
+		expect(
+			renderViewerEnter({
+				template: "-name {viewer}",
+				viewerName: "小明",
+				creatorName: "主播A",
+			}),
+		).toBe("-name 小明");
+	});
+
+	it("弹幕总结:`-fanclub` 原样留着,`{fanclub}` 照常填值", () => {
+		expect(
+			renderLiveSummary({
+				template: "-fanclub {fanclub}",
+				senderCount: 1,
+				fanClubName: "小晨",
+				viewerChatCount: 1,
+				topSenders: [],
+			}),
+		).toBe("-fanclub 小晨");
 	});
 });

@@ -20,9 +20,10 @@ import type {
 	PostEvent,
 	PostImage,
 } from "@bilibili-notify/internal";
-import { assembleMessageGroups, interpolate, isBlockVisible } from "@bilibili-notify/internal";
+import { assembleMessageGroups, isBlockVisible } from "@bilibili-notify/internal";
 import { bytesDataUrl } from "../images/image-data-url.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { renderTemplate } from "../util/render-template.js";
 import { filterPost, type PostFilterRules } from "./post-filter";
 import type { FilteredPost, PostPushAnchor, PushSegment } from "./post-push";
 import { postText } from "./post-text";
@@ -188,7 +189,7 @@ const postNounOf = (event: PostEvent): string => (filled(event.postNoun) ? event
  * (2026-09 起不再替旧模板剥 `{url}`:写了就原样出现,请从模板里删掉)。
  */
 function renderText(template: string, name: string, postNoun: string): string {
-	return interpolate(template, { name, postNoun }).replaceAll("\\n", "\n");
+	return renderTemplate(template, { name, postNoun });
 }
 
 /**

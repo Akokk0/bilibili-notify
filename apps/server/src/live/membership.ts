@@ -12,7 +12,6 @@
 import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
 import {
 	type ImageRef,
-	interpolate,
 	type Logger,
 	type MembershipEvent,
 	type MembershipTemplateBundle,
@@ -22,6 +21,7 @@ import {
 	type Result,
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message";
+import { renderTemplate } from "../util/render-template";
 import { passesMembershipMinRank } from "./interaction-gates";
 
 export interface MembershipOptions extends CardSkinChoice {
@@ -120,12 +120,12 @@ export async function pushMembership(
 	if (options.template.enabled) {
 		// 文案和图片取同一档:哪一档上舰,就用哪一档的;那一档没填的格用体系默认。
 		const custom = membershipTemplateOf(options.template, event.tier.key);
-		// 占位符走 `interpolate`;盘上文案里字面的 `\n`(反斜杠加 n)展开成真换行,照今天的行为。
-		const text = interpolate(custom.template, {
+		// 盘上文案里字面的 `\n`(反斜杠加 n)展开成真换行,照今天的行为。
+		const text = renderTemplate(custom.template, {
 			viewer: event.viewer.name,
 			name: creator.name,
 			tier: event.tier.name,
-		}).replaceAll("\\n", "\n");
+		});
 		// 这一档没填图就回落徽章(空串不是「缺」,所以用 `||`)。
 		const picture = custom.imageUrl
 			? await customImageSegment(custom.imageUrl, deps)

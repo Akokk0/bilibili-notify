@@ -872,8 +872,7 @@ export const BUILTIN_AI_PRESETS = [
 /**
  * 模板默认值（占位，可由 UI 编辑）。
  *
- * 占位符统一 `{key}` 语法,由 `LiveTemplateRenderer.applyTemplate` / `interpolate`
- * 替换(`applyTemplate` 同时兼容旧存档的 legacy `-key`)。变量集严格对齐
+ * 占位符统一 `{key}` 语法,由 `interpolate` 替换。变量集严格对齐
  * 渲染器实际提供的字段:
  * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
  * - 会员(上舰):`{viewer}`(观众名)`{name}`(主播名)`{tier}`(档名);0.x 的 `{uname}` `{mname}` `{guard}` 与 `-key` 老写法

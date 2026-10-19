@@ -1,4 +1,5 @@
 import { formatCount } from "@bilibili-notify/internal";
+import { renderTemplate } from "../util/render-template";
 
 /**
  * Plain string-substitution based template renderer for live-related notification
@@ -7,11 +8,6 @@ import { formatCount } from "@bilibili-notify/internal";
  * - `customLiveStart` / `customLiveStreaming` / `customLiveEnd`
  * - `customSpecialDanmakuUsers.template`
  * - `customSpecialUsersEnterTheRoom.template`
- *
- * 占位符统一 `{name}` / `{time}` / `{watched}` 语法(与 `@bilibili-notify/internal`
- * 的 `interpolate` 同源)。`applyTemplate` 同时接受旧存档里的 legacy
- * `-name` / `-time` 写法 —— 老用户已保存的 `-key` 模板继续生效,新默认与文档
- * 一律走 `{key}`,二者不冲突(单遍正则,longest-first)。
  */
 
 /**
@@ -23,39 +19,7 @@ export const DEFAULT_LIVE_TEMPLATES = {
 	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
 	liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-	liveSummaryFallback: "弹幕总结",
 } as const;
-
-function escapeRegExp(s: string): string {
-	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * 单遍替换所有变量 token,再把 `\n` 转义展开为真换行。`vars` 以**裸键**(`name`/
- * `follower_change`)给出,每个键同时匹配 `{name}`(主)与 legacy `-name`(兼容)。
- *
- * P2:此前 `for…replaceAll` 顺序替换有两个缺陷 ——
- *  1. **token 注入**:用户可控值(uname / 弹幕内容)含 `{link}`/`-link` 时
- *     会被后续轮次再次替换;
- *  2. **前缀吞噬**:legacy `-follower` 先于 `-follower_change` 替换,把后者的
- *     `-follower` 段吃掉只剩 `_change`。
- * 改为基于原始模板的**单遍正则**:键按长度降序进 alternation(最长优先匹配),
- * 每个 token 恰好替换一次且替换值不再被回扫 → 杜绝注入与吞噬。
- */
-export function applyTemplate(template: string, vars: Record<string, string>): string {
-	const keys = Object.keys(vars).sort((a, b) => b.length - a.length);
-	if (keys.length === 0) return template.replaceAll("\\n", "\n");
-	// 每个裸键生成两种写法:`{key}`(主)与 `-key`(legacy)。longest-first 由 keys
-	// 的降序保证 —— `-follower_change` 的 alt 先于 `-follower` 出现,不被吞噬。
-	const alts = keys.flatMap((k) => [`\\{${escapeRegExp(k)}\\}`, `-${escapeRegExp(k)}`]);
-	const re = new RegExp(alts.join("|"), "g");
-	return template
-		.replace(re, (m) => {
-			const key = m.charCodeAt(0) === 123 /* '{' */ ? m.slice(1, -1) : m.slice(1);
-			return vars[key] ?? m;
-		})
-		.replaceAll("\\n", "\n");
-}
 
 /**
  * 「特别弹幕」那一句:模板套上中立的值。占位符:`name`(主播名)/ `viewer`(发弹幕的人)/ `msg`(弹幕正文)。
@@ -67,7 +31,7 @@ export function renderViewerChat(params: {
 	creatorName: string;
 	text: string;
 }): string {
-	return applyTemplate(params.template, {
+	return renderTemplate(params.template, {
 		name: params.creatorName,
 		viewer: params.viewerName,
 		msg: params.text,
@@ -80,7 +44,7 @@ export function renderViewerEnter(params: {
 	viewerName: string;
 	creatorName: string;
 }): string {
-	return applyTemplate(params.template, {
+	return renderTemplate(params.template, {
 		name: params.creatorName,
 		viewer: params.viewerName,
 	});
@@ -103,7 +67,7 @@ export function renderLiveSummary(params: {
 	// 索引 top[0..4] 在 <5 时直接 `undefined[0]` 抛 TypeError;缺位安全降级
 	// 为空名 / 0 条。
 	const at = (i: number): [string, number] => top[i] ?? ["", 0];
-	return applyTemplate(params.template, {
+	return renderTemplate(params.template, {
 		dmc: `${params.senderCount}`,
 		fanclub: params.fanClubName ?? "",
 		dca: `${params.viewerChatCount}`,
@@ -175,5 +139,5 @@ export function renderLiveText(
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));
 			break;
 	}
-	return applyTemplate(template ?? DEFAULT_LIVE_TEMPLATES[kind], vars);
+	return renderTemplate(template ?? DEFAULT_LIVE_TEMPLATES[kind], vars);
 }

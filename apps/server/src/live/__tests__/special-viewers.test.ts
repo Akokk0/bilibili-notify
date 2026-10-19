@@ -25,7 +25,7 @@ function danmaku(over: {
 			text: over.text ?? "你好呀",
 			settings: {
 				specialViewers: over.viewers ?? BOTH,
-				template: over.template ?? "-name 的直播间里 {viewer} 说:-msg",
+				template: over.template ?? "{name} 的直播间里 {viewer} 说:{msg}",
 			},
 			creator: { name: over.creatorName ?? "主播A" },
 		},
@@ -46,7 +46,7 @@ function enter(over: {
 			viewer: { id: over.viewerId ?? "123", name: "小明" },
 			settings: {
 				specialViewers: over.viewers ?? BOTH,
-				template: over.template ?? "{viewer} 进入了 -name 的直播间",
+				template: over.template ?? "{viewer} 进入了 {name} 的直播间",
 			},
 			creator: { name: over.creatorName ?? "主播A" },
 		},
@@ -56,7 +56,7 @@ function enter(over: {
 }
 
 describe("pushViewerChat", () => {
-	it("名单命中 → 交出套好文案的一句话(-key 与 {key} 两种写法)", () => {
+	it("名单命中 → 交出套好文案的一句话", () => {
 		const send = danmaku({});
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(send).toHaveBeenCalledWith("主播A 的直播间里 小明 说:你好呀");
@@ -80,20 +80,20 @@ describe("pushViewerChat", () => {
 	});
 
 	it("主播名给空串 → 那一格是空", () => {
-		expect(danmaku({ creatorName: "", template: "[-name] {viewer}:-msg" })).toHaveBeenCalledWith(
+		expect(danmaku({ creatorName: "", template: "[{name}] {viewer}:{msg}" })).toHaveBeenCalledWith(
 			"[] 小明:你好呀",
 		);
 	});
 
 	it("弹幕正文里带占位符样子的字不被二次替换", () => {
-		expect(danmaku({ text: "{viewer}-name", template: "-msg|{viewer}" })).toHaveBeenCalledWith(
+		expect(danmaku({ text: "{viewer}-name", template: "{msg}|{viewer}" })).toHaveBeenCalledWith(
 			"{viewer}-name|小明",
 		);
 	});
 });
 
 describe("pushViewerEnter", () => {
-	it("名单命中 → 交出套好文案的一句话(-key 与 {key} 两种写法)", () => {
+	it("名单命中 → 交出套好文案的一句话", () => {
 		const send = enter({});
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(send).toHaveBeenCalledWith("小明 进入了 主播A 的直播间");
@@ -117,7 +117,7 @@ describe("pushViewerEnter", () => {
 	});
 
 	it("主播名给空串 → 那一格是空", () => {
-		expect(enter({ creatorName: "", template: "{viewer} 进了 -name" })).toHaveBeenCalledWith(
+		expect(enter({ creatorName: "", template: "{viewer} 进了 {name}" })).toHaveBeenCalledWith(
 			"小明 进了 ",
 		);
 	});

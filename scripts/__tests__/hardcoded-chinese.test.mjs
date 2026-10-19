@@ -136,7 +136,7 @@ export const RATCHET = {
 	"apps/server/src/integrations/settings-reader.ts": 1,
 	"apps/server/src/live/live-push.ts": 14,
 	"apps/server/src/live/live-sessions.ts": 6,
-	"apps/server/src/live/live-text.ts": 5,
+	"apps/server/src/live/live-text.ts": 4,
 	"apps/server/src/live/recap/live-summary-requester.ts": 7,
 	"apps/server/src/maid-skills/builtin.ts": 72, // 含给模型的提示词(决策 11 不翻),技能说明同时显示在面板上
 	"apps/server/src/maid-skills/chat-tool.ts": 5,
