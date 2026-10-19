@@ -51,6 +51,7 @@
 - **守卫 3**（第 1 期切片 ②）：服务端除了持久化底层，不许直接写文件（`writeFile`、`rename`、`appendFile`）。管的是服务端整体，不专门管集成读文件。
 - **拓展**：官方市场发布时做静态检查，打包产物 import 了 `fs`（`fs`、`node:fs`、`fs/promises`）就不收；手动安装的第三方拓展安装时警告。
 - **出网点名表**（第 1 期切片 ④ 以棘轮开、3b 末清零，[docs/1.0/architecture.md](../../1.0/architecture.md)「第二层：静态扫描」）：服务端进程里跑的源码（含 `extensions/*/src`，不含测试）出现出站原语（`fetch(`、客户端 `new WebSocket(`、`http(s).request` / `get`、`net` / `tls` 的 connect、`undici`），文件又不在白名单里就红。白名单只有集成的请求客户端（第 2 期起是 `packages/http`）和 BN 自己的几个出口。第三方拓展的打包产物不扫。
+  🔗 现状（3b-39，2026-10-19）：棘轮已清零，`RATCHET = {}`；三个内置适配器的 12 处出网都改走了 `ctx.http` 的 `bare: true` 一档。规矩本身不变，白名单仍只有集成的请求客户端与 BN 自己的出口。
 - **守卫 22**（3a 期开）：扫 `extensions/*/src`（不含测试），不经 ctx 的 `setTimeout` / `setInterval`、`createServer`、自己监听端口的 `WebSocketServer` 就红。第三方拓展的打包产物不扫，库自己会用定时器。
 - **其余靠审查**，审 PR 时逐条看：
   1. 集成目录里有没有 `fs`、`node:fs`、`fs/promises`、`path` 拼数据目录的痕迹。

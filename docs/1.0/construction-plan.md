@@ -441,7 +441,7 @@
 | 面板自己另有一份 `LoginSnapshot`（`status` 收窄成 `BiliLoginStatusValue`），和核心那份（`status: number`）对不上，留下 ④c 唯一一处对 WS `data` 的类型断言（`useAuthChannel`）。登录状态中立化（`subscription-auth-changed`、`AuthState`）时面板改吃核心那份，断言与面板那份类型一起删掉 | ✅ 3a-29 B 站半已落（面板的 `types/auth.ts` 删了，`useAuthChannel` 用 `isWsEvent` 按事件表定型，没有类型断言了） |
 | 桥协议的失败统一成结果形状（ADR-0026 决策 7）BN 那半：`result` 帧认 `code` + `message` + `upstreamCode?`，只带 `err` 的旧回执进门翻成 `unknown`；`error` 帧补 `code`；协议升 minor 并记进 PROTOCOL.md 的版本表；投递结果接住 `code`；假桥改发新形状（`fail()` 展开），「结果不手写」棘轮里假桥那两格随之删掉 | 3b（随桥迁 v3 与假桥搬家） |
 | ~~拓展包没有 `ok()` / `fail()`，桥拓展 28 处只能手写结果~~（10-08 随 3a-15 落地：契约包导出 `ok()` / `fail()`，桥的投递与探活结果已换；下面说的取图口与守卫两件仍在）；其中取图口的 404 回的是 `{ ok: false, err }`，不合错误体规矩，而错误体守卫只认 `apps/server/src` 造的回应，拓展造的看不见。契约 v3 要不要导出 `ok()` / `fail()`、错误体守卫要不要认拓展的调用栈，随契约 v3 定 | 3b |
-| 出网点名表加不加一条判据：集成目录（`bilibili/`、`platforms/`、`extensions/*/src`）值 import `@bilibili-notify/http` 自己造客户端、绕过 `ctx.http` 就红 | 归 3b-50（10-16 主人定） |
+| 出网点名表加不加一条判据：集成目录（`bilibili/`、`platforms/`、`extensions/*/src`）值 import `@bilibili-notify/http` 自己造客户端、绕过 `ctx.http` 就红 | 归 3b-50（10-16 主人定；判据 `new HttpClient(` / `new CookieJar(`，三个集成目录都扫，宿主共用的开集成函数 `openIntegration` 放行，上限零） |
 | 全仓包版本统一 `0.0.0-dev`：剩 push、subscription、internal、image、ai、storage、extension 7 个包（api / blive / dynamic / live 在 3a 随包删掉；第 2 期新建的 `packages/http` 建时就用 `0.0.0-dev`）。⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本） | 5 |
 | 进程托管文档：孤儿自检、stdin 关停、数据目录与端口、载荷选版；桌面版和以后的插件照同一份 | 5 |
 | `docs/agents/self-update.md`：数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样 | 5 |
@@ -511,7 +511,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 桥接拓展自己的清单与视图文字出三种语言（ADR-0037 后果一节）：3b-43 只让假源带 `locales/`、当 `ctx.i18n` 的真实使用者，桥这一片不动（10-17 照规矩定） | 第 5 期翻译开工前，桥加 `locales/` 并改读 `ctx.i18n`，要发一版桥 |
 | issue 56 其余部分：填 `作者/仓库名` 加源、`.bn/`、脚手架、发布模板、契约包怎么给第三方（10-14 主人定时机） | 排在 1.0 重构之后、抖音拓展之前 |
 | 来源的 `fetchProfile`：定案点名的使用者是核心按资料刷新 cron 定时调，今天资料刷新仍由粉丝轮询那条路做 | 3b，资料刷新中立化时 |
-| `ctx.fetchImage` / `storeImage`：请求客户端这一期只有 B 站有、没进公共上下文，B 站来源仍经依赖拿抓图服务，绑上去没有调用方。10-14 定：造的时候一个集成一个写口，抓到的图挂在名单恒空的「在途」引用方下（见 [extension-contract.md](./extension-contract.md)「图」） | 请求客户端进公共上下文的那一片（3b 契约第 3 版） |
+| `ctx.fetchImage` / `storeImage`：请求客户端这一期只有 B 站有、没进公共上下文，B 站来源仍经依赖拿抓图服务，绑上去没有调用方。10-14 定：造的时候一个集成一个写口，抓到的图挂在名单恒空的「在途」引用方下（见 [extension-contract.md](./extension-contract.md)「图」） | ✅ 3b-39 已落（10-19）：每个集成经 `openIntegration` 拿到 `ctx.http` / `fetchImage` / `storeImage`，B 站来源与直播引擎改读上下文的 `fetchImage`；写口是「集成在途」（`IMAGE_REFERRERS.inTransit`，运行时 `AppRuntime.transitImages`） |
 | 登录装配进集成的 `start`（主人 10-12 定留到 3b；原归 3a-40，两次量过都是同一个结论：要进就得把 `api` 等句柄交回入口，入口的 B 站替身数不降反升、`compose.ts` 的导出类型里多一个 B 站客户端）：`createAuthSystem` 的调用与它交回的 `api` / `auth` / `integration` 等今天仍在入口，入口那 1 条越界 import 由守卫 1 的棘轮钉着，入口手里 B 站的东西由入口咽喉守卫的判据 ③、④ 钉着，都只许降 | 3b，直播、关注同步、粉丝轮询、链接解析并进来源、`Api` 的读者清掉时，一次进集成的 `start` |
 | 系统页与拓展页的日志等级入口（主人 10-11 定：服务端一次做全、面板入口第 4 期；主人 10-12 定：第 4 期之前，适配器与拓展没写自己那一格的直接跟总等级、不加回落）：今天系统页只有 `core`、`bilibili`、`image`、`ai` 四行（概览页同样看不出它们的等级），三个内置适配器与每个拓展要单独调，只能调总等级，或手发 `PATCH /api/settings`（`logging.levels.<适配器键或拓展 id>`，清掉发 `null`） | 第 4 期，系统页与拓展页按集成的描述画时 |
 | 概览页「各模块」里 `api` 那一格显示的日志等级读的仍是 `core` 的覆盖（`apps/web/src/pages/Dashboard.tsx` 的 `OVERRIDE_KEY`）：B 站接口的日志现在实际跟 `bilibili`，这一格只是显示不准、不影响实际等级；同文件与 `System.tsx` 里「B 站那一格管动态与直播两个引擎」的注释也过时（主人 10-12 定：留到第 4 期随健康卡重做一起改；概览页看不出适配器、拓展的等级同理。被否：现在改一行，`Dashboard.tsx` 的 B 站替身数 5 → 6、要涨上限） | 第 4 期，健康卡整个重做时 |

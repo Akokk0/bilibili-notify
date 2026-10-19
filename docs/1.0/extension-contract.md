@@ -128,6 +128,8 @@ type KeyValueOp =                  // batch 的一步；判别键叫 kind，取�
 - BN 自己的请求不走集成的客户端：客户端带着集成的身份与 cookie，BN 不该冒用。
 - 默认头：B 站（3a-26 已落）是在建上下文时按身份交一个函数、给出一张头表（头里要用身份的值，头序也归集成定）。给拓展的不开「默认请求头」的口，拓展每次请求自己带头。
 
+🔗 现状（3b-39 落成，2026-10-19）：上面的客户端已接到每个集成（B 站、三个内置适配器、每个拓展、对拍假来源）的上下文上，共用的开集成函数叫 `openIntegration`，一个集成一个客户端，身份存它自己的 `state`、罐子存它自己的 `secrets`。`websocket()` 回 `Result<{ socket }>`；`WebSocketLike` 能发文本帧（字符串即文本帧）、读 `readyState`（WHATWG 0–3）；错地址回 `invalid`。`bare: true`、`FormData`、跨源剥凭据头与公共后缀（含私有段）都已落成；`HttpResponse` 没有 `statusText`，内置适配器按 `node:http` 的 `STATUS_CODES` 补。
+
 ### 图
 
 ```ts
@@ -153,6 +155,8 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 | `indeterminate` | 调用方中止 |
 
 抓图失败的码共七个，以代码为准。
+
+🔗 现状（3b-39 落成，2026-10-19）：`fetchImage` / `storeImage` 已挂到每个集成的上下文上，底下的客户端就是该集成的 `ctx.http`；写口是图库「集成在途」那一家（`IMAGE_REFERRERS.inTransit`，运行时叫 `AppRuntime.transitImages`），名单恒空、靠 24 小时宽限期活到被引用；B 站来源与直播引擎已改读上下文的 `fetchImage`，账号头像、订阅资料头像、卡片真实预览、旧搜人、大航海徽章五处仍走旧路。
 
 抛错只留给 bug：宿主在边界接住，按 `unavailable` 处理并记错误日志。
 

@@ -244,7 +244,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
 | 上报被拒 | 上报类（`report*`、`reportProblem`、`resolveProblem`）一律 `void`：被拒（种类没声明、id 不合法、形状坏）或被丢格，记进该集成的 `reportDiscrepancies` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；拓展契约从 v2 的 reject 改成这样。内置集成（B 站与内置适配器）的上报被拒就是 BN 的 bug，只打错误日志、靠对拍守卫兜，不进 `reportDiscrepancies` 的展示面 |
-| `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算；B 站徽章的保活施工时另设计。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
+| `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算；B 站徽章的保活施工时另设计。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓。🔗 现状（3b-39 落成，2026-10-19）：已落成；写口是图库「集成在途」那一家（`IMAGE_REFERRERS.inTransit` / `AppRuntime.transitImages`），名单恒空、靠 24 小时宽限期；B 站来源与直播引擎已改读上下文的 `fetchImage`，账号头像、订阅资料头像、卡片真实预览、旧搜人、大航海徽章五处仍走旧路 |
 | `storeImage` | 手里已是字节的图走它（B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储，明文、不脱敏。单键 64KB、每个集成 1MB。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清。`http.` 开头的键归宿主（`ctx.http` 的浏览器身份） |
 | `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
@@ -273,6 +273,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 整体不拦内网（局域网里的 RSSHub 要连得上）；拦内网只在 `fetchImage` 那条路上。
 - 浏览器身份生成一次、存进该集成的 `state`（`http.` 前缀），重启照用；只在发版把版本区间前挪、存的低于下限时升级，只升不降。UA 与 `sec-ch-ua` 永远配套，没有自定义 UA。
 - 1.0 对拓展整套开放（请求、websocket、cookie 自动存、身份自管；不开「默认请求头」的口，拓展每次请求自己带头）；第 6 期的抖音拓展是第一个拓展用户。
+- 🔗 现状（3b-39 落成，2026-10-19）：上面这些已落成。每个集成（B 站、三个内置适配器、每个拓展、对拍假来源）经 `openIntegration` 拿自己的客户端，身份存它自己的 `state`、罐子存它自己的 `secrets`；`ctx.http` 只转发 `fetch` 与 `websocket`，`websocket` 把调用方的 `signal` 与 `ctx.signal` 合成。`websocket()` 回 `Result<{ socket }>`、能发文本帧、能读 `readyState`，错地址回 `invalid`；`bare: true`、`FormData`、跨源剥凭据头、公共后缀（含私有段）都已落成；`HttpResponse` 没有 `statusText`，内置适配器按 `node:http` 的 `STATUS_CODES` 补。B 站的客户端仍在关停 `drain` 段收，内置适配器与拓展的池子随各自收摊收。
 
 ### 设置
 
