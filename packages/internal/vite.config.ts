@@ -12,6 +12,7 @@ export default defineConfig({
 			"src/patch.ts",
 			"src/platform-descriptor.ts",
 			"src/template-defaults.ts",
+			"src/template-variables.ts",
 		],
 		// 只出 ESM:消费方(server bundle / tsx dev / web 的 `vp dev`)全是 ESM。web 在
 		// `vp dev`(浏览器原生 ESM,无打包)下运行时消费 /constants 子路径,产物若是

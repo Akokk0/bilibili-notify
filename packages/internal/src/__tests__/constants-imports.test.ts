@@ -19,6 +19,7 @@ import { describe, expect, it } from "vite-plus/test";
 // `live-monitor.ts` 经 `/live-monitor` 子路径供面板与服务端共用「要不要监听直播」的判定(3b-14),同一条纪律。
 // `i18n.ts` 经 `/i18n` 子路径供面板与服务端共用字典机制(3b-09,ADR-0037 决策 6),同一条纪律。
 // `platform-descriptor.ts` 经 `/platform-descriptor` 子路径供拓展(经门)与宿主共用中性平台描述(3b-40,ADR-0024 决策 4),同一条纪律。
+// `template-variables.ts` 经 `/template-variables` 子路径供面板拼提示条、服务端探针取变量名(3b-21),同一条纪律。
 const ZERO_DEP_SOURCES = [
 	"constants.ts",
 	"format.ts",
@@ -26,6 +27,7 @@ const ZERO_DEP_SOURCES = [
 	"live-monitor.ts",
 	"i18n.ts",
 	"platform-descriptor.ts",
+	"template-variables.ts",
 ];
 
 function sourceOf(file: string): string {

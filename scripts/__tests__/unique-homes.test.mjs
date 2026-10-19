@@ -51,6 +51,8 @@ export const HOMES = {
 	guessLocale: "apps/web/src/i18n/preference.ts",
 	// 面板订阅语言 store 的那一个 hook(3b-09):组件一律经它取字,不各写一份 useSyncExternalStore。
 	useT: "apps/web/src/i18n/index.ts",
+	// 主人可改的文案 → 它能用的变量 → 中立字段(3b-21):面板提示条与服务端可满足性探针共用这一份。
+	TEMPLATE_VARIABLES: "packages/internal/src/template-variables.ts",
 };
 
 /** 一个节点若是一处定义,回它定义的名字。 */

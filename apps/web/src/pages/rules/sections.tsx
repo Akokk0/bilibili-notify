@@ -5,6 +5,7 @@
  */
 
 import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import {
@@ -535,64 +536,167 @@ export function StopWordsHint() {
 	);
 }
 
-const SUMMARY_VARS: { code: string; desc: string }[] = [
-	{ code: "{dmc}", desc: "弹幕发言人数" },
-	{ code: "{fanclub}", desc: "粉丝牌名" },
-	{ code: "{dca}", desc: "弹幕总数" },
-	{ code: "{un1..5}", desc: "弹幕排行用户名" },
-	{ code: "{dc1..5}", desc: "对应弹幕数" },
-];
-
 interface VarSpec {
 	code: string;
 	desc: string;
 }
 
+/** 表里某条文案能用的变量名。 */
+type VariableNameOf<K extends TemplateKey> = keyof (typeof TEMPLATE_VARIABLES)[K];
+
+/** 面板给表里某条文案的每个变量各写一句说明;少一个键编译不过。 */
+type VariableDescriptions<K extends TemplateKey> = Record<VariableNameOf<K>, string>;
+
+/** 几条文案合看时能用的变量名(直播开播 / 直播中 / 下播共用一个提示条)。 */
+type UnionVariableName<K extends readonly TemplateKey[]> = {
+	[P in K[number]]: VariableNameOf<P>;
+}[K[number]];
+type UnionDescriptions<K extends readonly TemplateKey[]> = Record<UnionVariableName<K>, string>;
+
+/** 表里的变量名,顺序跟表一致;`{}` 由这里统一补。 */
+function variableNamesOf<K extends TemplateKey>(key: K): VariableNameOf<K>[] {
+	return Object.keys(TEMPLATE_VARIABLES[key]) as VariableNameOf<K>[];
+}
+
+/**
+ * 表里一条文案的变量 → 提示条的一行行。`key` 只用来把说明表钉到表里那条文案的变量名上;
+ * 展示次序照说明表(沿用改造前),不跟着表的字段顺序漂。
+ */
+function varsOf<K extends TemplateKey>(_key: K, desc: VariableDescriptions<K>): VarSpec[] {
+	return Object.keys(desc).map((name) => ({
+		code: `{${name}}`,
+		desc: desc[name as VariableNameOf<K>],
+	}));
+}
+
+/**
+ * 几条文案共用一条提示时把变量并起来。`keys` 只用来把说明表钉到这几条文案的变量名上;
+ * 提示条的展示次序照说明表(沿用改造前),不跟着表的字段顺序漂。
+ */
+function mergedVars<K extends readonly TemplateKey[]>(
+	_keys: K,
+	desc: UnionDescriptions<K>,
+): VarSpec[] {
+	return Object.keys(desc).map((name) => ({
+		code: `{${name}}`,
+		desc: desc[name as UnionVariableName<K>],
+	}));
+}
+
+/**
+ * 表里 `un1` … `un5` / `dc1` … `dc5` 是逐格登记的;提示条照旧折成 `{un1..5}` / `{dc1..5}`。
+ * 只折连续、同前缀、编号递增的那一段,别的变量名原样一个个列。
+ */
+function foldedVars(names: readonly string[], desc: Record<string, string>): VarSpec[] {
+	const out: VarSpec[] = [];
+	for (let i = 0; i < names.length; ) {
+		const first = names[i] as string;
+		const numbered = /^([A-Za-z_]+)(\d+)$/.exec(first);
+		let last = i;
+		let end = i;
+		if (numbered) {
+			const stem = numbered[1] as string;
+			const start = Number(numbered[2]);
+			while (last + 1 < names.length) {
+				const next = /^([A-Za-z_]+)(\d+)$/.exec(names[last + 1] as string);
+				if (next === null || next[1] !== stem || Number(next[2]) !== start + (last + 1 - i)) {
+					break;
+				}
+				last += 1;
+			}
+			end = start + (last - i);
+		}
+		out.push({
+			code: last > i ? `{${first}..${end}}` : `{${first}}`,
+			desc: desc[first] as string,
+		});
+		i = last + 1;
+	}
+	return out;
+}
+
+const SUMMARY_UN_DESC = "弹幕排行用户名";
+const SUMMARY_DC_DESC = "对应弹幕数";
+const SUMMARY_DESC = {
+	dmc: "弹幕发言人数",
+	fanclub: "粉丝牌名",
+	dca: "弹幕总数",
+	un1: SUMMARY_UN_DESC,
+	un2: SUMMARY_UN_DESC,
+	un3: SUMMARY_UN_DESC,
+	un4: SUMMARY_UN_DESC,
+	un5: SUMMARY_UN_DESC,
+	dc1: SUMMARY_DC_DESC,
+	dc2: SUMMARY_DC_DESC,
+	dc3: SUMMARY_DC_DESC,
+	dc4: SUMMARY_DC_DESC,
+	dc5: SUMMARY_DC_DESC,
+} satisfies VariableDescriptions<"liveSummary">;
+const SUMMARY_VARS = foldedVars(variableNamesOf("liveSummary"), SUMMARY_DESC);
+
+/** 开播 / 直播中 / 下播三格的时长说明同一句,抽出来免得三处漂开。 */
+const LIVE_TIME_DESC = "已直播时长";
+
 /**
  * 直播三段模板的变量表(链接不再是模板变量:开播链接由消息版式的「链接」部件
  * 提供;直播中 / 下播不带链接)。per-UP 覆盖框合用 LIVE_MSG_VARS(三段并列)。
  */
-const LIVE_START_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{follower}", desc: "当前粉丝数" },
-];
-const LIVE_STREAMING_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{time}", desc: "已直播时长" },
-	{ code: "{watched}", desc: "累计观看人数" },
-];
-const LIVE_END_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{time}", desc: "已直播时长" },
-	{ code: "{follower_change}", desc: "粉丝变化" },
-];
-const LIVE_MSG_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{follower}", desc: "当前粉丝数(开播)" },
-	{ code: "{follower_change}", desc: "粉丝变化(下播)" },
-	{ code: "{time}", desc: "已直播时长(直播中、下播)" },
-	{ code: "{watched}", desc: "累计观看人数(直播中)" },
-];
+const LIVE_START_DESC = {
+	name: "UP 主名字",
+	follower: "当前粉丝数",
+	time: LIVE_TIME_DESC,
+} satisfies VariableDescriptions<"liveStart">;
+const LIVE_START_VARS = varsOf("liveStart", LIVE_START_DESC);
+
+const LIVE_STREAMING_DESC = {
+	name: "UP 主名字",
+	time: LIVE_TIME_DESC,
+	watched: "累计观看人数",
+} satisfies VariableDescriptions<"liveStreaming">;
+const LIVE_STREAMING_VARS = varsOf("liveStreaming", LIVE_STREAMING_DESC);
+
+const LIVE_END_DESC = {
+	name: "UP 主名字",
+	time: LIVE_TIME_DESC,
+	follower_change: "粉丝变化",
+} satisfies VariableDescriptions<"liveEnd">;
+const LIVE_END_VARS = varsOf("liveEnd", LIVE_END_DESC);
+
+const LIVE_MSG_DESC = {
+	name: "UP 主名字",
+	follower: "当前粉丝数(开播)",
+	follower_change: "粉丝变化(下播)",
+	time: "已直播时长(直播中、下播)",
+	watched: "累计观看人数(直播中)",
+} satisfies UnionDescriptions<readonly ["liveStart", "liveStreaming", "liveEnd"]>;
+const LIVE_MSG_VARS = mergedVars(["liveStart", "liveStreaming", "liveEnd"] as const, LIVE_MSG_DESC);
 
 /** 动态模板已进消息版式:链接是独立部件,不是模板变量。 */
-const DYNAMIC_MSG_VARS: VarSpec[] = [{ code: "{name}", desc: "UP 主名字" }];
+const DYNAMIC_DESC = {
+	name: "UP 主名字",
+	postNoun: "作品叫法",
+} satisfies VariableDescriptions<"post">;
+const DYNAMIC_MSG_VARS = varsOf("post", DYNAMIC_DESC);
 
-const GUARD_VARS: VarSpec[] = [
-	{ code: "{viewer}", desc: "上舰用户名" },
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{tier}", desc: "档名(舰长 / 提督 / 总督)" },
-];
+const GUARD_DESC = {
+	viewer: "上舰用户名",
+	name: "UP 主名字",
+	tier: "档名(舰长 / 提督 / 总督)",
+} satisfies VariableDescriptions<"membership">;
+const GUARD_VARS = varsOf("membership", GUARD_DESC);
 
-const SPECIAL_DANMAKU_VARS: VarSpec[] = [
-	{ code: "{name}", desc: "UP 主名字" },
-	{ code: "{viewer}", desc: "发送弹幕的用户名" },
-	{ code: "{msg}", desc: "弹幕内容" },
-];
+const SPECIAL_DANMAKU_DESC = {
+	name: "UP 主名字",
+	viewer: "发送弹幕的用户名",
+	msg: "弹幕内容",
+} satisfies VariableDescriptions<"viewerChat">;
+const SPECIAL_DANMAKU_VARS = varsOf("viewerChat", SPECIAL_DANMAKU_DESC);
 
-const SPECIAL_ENTER_VARS: VarSpec[] = [
-	{ code: "{viewer}", desc: "进入直播间的用户名" },
-	{ code: "{name}", desc: "UP 主名字" },
-];
+const SPECIAL_ENTER_DESC = {
+	viewer: "进入直播间的用户名",
+	name: "UP 主名字",
+} satisfies VariableDescriptions<"viewerEnter">;
+const SPECIAL_ENTER_VARS = varsOf("viewerEnter", SPECIAL_ENTER_DESC);
 
 /**
  * 模板编辑器上方那条「可用变量」提示。`accent` 决定描边、底色与标题字的色相;

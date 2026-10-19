@@ -1,25 +1,79 @@
 // @vitest-environment jsdom
 
 /**
- * 直播总结模板「可用变量」速查面板回归测试。该面板曾停留在 koishi 旧版的 `-dmc` 写法,
- * 与默认模板(globals.ts 的 `{dmc}`)及渲染器主写法割裂;此测试钉住新的 `{}` 写法,
- * 防止再退回 legacy `-key`。
+ * 规则页「可用变量」速查面板回归测试:提示条上的变量代码必须与模板变量表一致。
+ *
+ * 面板曾停留在 koishi 旧版的 `-dmc` 写法,后来又漏过运行时一直认的 `{time}` / `{postNoun}`。
+ * 现在代码从 `@bilibili-notify/internal/template-variables` 取,这里逐条对表;中文说明仍住在面板,
+ * 由类型钉住「表里有的变量都有说明」。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { DEFAULT_TEMPLATES, defaultMessageKindLayout } from "@bilibili-notify/internal";
+import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { StopWordsHint, SummaryVariableHints } from "../sections";
+import {
+	DynamicMsgVariableHints,
+	GuardVariableHints,
+	LiveMsgSection,
+	LiveMsgVariableHints,
+	SpecialDanmakuVariableHints,
+	SpecialEnterVariableHints,
+	StopWordsHint,
+	SummaryVariableHints,
+} from "../sections";
 
 afterEach(cleanup);
 
-describe("SummaryVariableHints", () => {
-	it("advertises the brace-style summary variables", () => {
-		render(<SummaryVariableHints />);
-		for (const code of ["{dmc}", "{fanclub}", "{dca}", "{un1..5}", "{dc1..5}"]) {
-			expect(screen.getByText(code)).toBeTruthy();
-		}
+const codesOf = (container: HTMLElement): string[] =>
+	[...container.querySelectorAll("code")].map((node) => node.textContent ?? "");
+
+/** `{un1..5}` 这种合并写法摊回表里逐个变量名。 */
+const expandCode = (code: string): string[] => {
+	const range = /^\{([A-Za-z_]+)(\d+)\.\.(\d+)\}$/.exec(code);
+	if (!range) return [code];
+	const out: string[] = [];
+	for (let i = Number(range[2]); i <= Number(range[3]); i += 1) out.push(`{${range[1]}${i}}`);
+	return out;
+};
+
+const codesInTable = (keys: readonly TemplateKey[]): string[] => [
+	...new Set(
+		keys.flatMap((key) => Object.keys(TEMPLATE_VARIABLES[key]).map((name) => `{${name}}`)),
+	),
+];
+
+describe("提示条的变量代码与表一致", () => {
+	it.each([
+		["直播总结", SummaryVariableHints, ["liveSummary"]],
+		["直播消息", LiveMsgVariableHints, ["liveStart", "liveStreaming", "liveEnd"]],
+		["动态消息", DynamicMsgVariableHints, ["post"]],
+		["上舰提示", GuardVariableHints, ["membership"]],
+		["特别弹幕", SpecialDanmakuVariableHints, ["viewerChat"]],
+		["特别进场", SpecialEnterVariableHints, ["viewerEnter"]],
+	] as const)("%s 的提示条列出的就是表里那条的全部变量", (_label, Hint, keys) => {
+		const { container } = render(<Hint />);
+		const shown = codesOf(container).flatMap(expandCode).sort();
+		expect(shown).toEqual(codesInTable(keys).sort());
 	});
 
+	it("直播消息的开播格也列全了表里的变量", () => {
+		const { container } = render(
+			<LiveMsgSection
+				templates={{ ...DEFAULT_TEMPLATES }}
+				layout={defaultMessageKindLayout("live")}
+				onPatch={() => {}}
+			/>,
+		);
+		expect(
+			codesOf(container)
+				.filter((code) => code.startsWith("{"))
+				.sort(),
+		).toEqual(codesInTable(["liveStart"]).sort());
+	});
+});
+
+describe("SummaryVariableHints", () => {
 	it("does not show legacy dash-prefixed placeholders", () => {
 		const { container } = render(<SummaryVariableHints />);
 		// legacy 渲染器仍兼容 `-key`,但 UI 不再宣传它,以免与默认模板/文档矛盾。
