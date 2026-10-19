@@ -23,6 +23,7 @@ import type { Issue, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
@@ -172,6 +173,7 @@ async function boot(
 	const seen: Seen = { activations: 0, changes: [] };
 	const activate = opts.activate ?? standard;
 	const loaded: LoadedExtensions = await loadExtensions({
+		transitImages: inertTransitImages,
 		root,
 		host,
 		loggerOf: () => logger,

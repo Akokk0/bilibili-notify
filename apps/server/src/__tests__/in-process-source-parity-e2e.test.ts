@@ -71,6 +71,7 @@ import {
 	resetInProcessWorld,
 	SETTINGS_PROBLEM_CODE,
 } from "./support/in-process-source.js";
+import { png } from "./support/report-images.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
@@ -126,7 +127,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P26)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P27)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -159,6 +160,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P24", title: "日志按值打码:ctx.redact 与 secrets 里的值", checked: true },
 	{ id: "P25", title: "女仆订阅视图里的平台名与 creator", checked: true },
 	{ id: "P26", title: "searchCreators 经女仆的搜人工具", checked: true },
+	{
+		id: "P27",
+		title:
+			"ctx.http / fetchImage / storeImage:作品带图(存的配图与头像进卡片)、抓图拦内网、请求不拦内网",
+		checked: true,
+	},
 	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
@@ -232,13 +239,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason: "全是直播;档的图标仍取 B 站徽章图",
 	},
 	{
-		id: "N12",
-		title: "作品带图:配图、文章配图、视频与商品封面、头像进图库",
-		checked: false,
-		waitsFor: "3b 契约第 3 版(请求客户端进公共上下文)",
-		reason: "来源上下文没有抓图 / 存图的口,进程内的假来源没法把图放进图库",
-	},
-	{
 		id: "N13",
 		title: "followers-refreshed;WS 帧快照里没有 uid",
 		checked: false,
@@ -267,6 +267,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason:
 			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
 	},
+	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
 	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;N07(LinkResolver)在 3b-28 落成了,转进 P22;
 	// 编号不回填;N18(女仆订阅视图里的平台名)在 3b-33 落成了,转进对拍的 P25(P24 留给 3b-38)。
 ];
@@ -294,6 +295,9 @@ const SOURCE_CONTEXT_MEMBERS = {
 	secrets: ["P17"],
 	redact: ["P24"],
 	settings: ["P13", "P14"],
+	http: ["P27"],
+	fetchImage: ["P27"],
+	storeImage: ["P27"],
 	subscriptions: ["P02"],
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
@@ -1496,6 +1500,51 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P26");
 	});
 
+	// 验红:`createIntegrationContext` 里把 `storeImage` 绑成永远失败的写口,这条红(卡片里没有那张图);
+	// 把 `fetchImage` 的客户端换成不挂 `addressCheck` 的,抓回环那一问不再被拒,这条红。
+	it("P27 ctx.http / fetchImage / storeImage:storeImage 存的配图与头像画进卡片;fetchImage 抓回环被拒;ctx.http 打回环照通", async () => {
+		await clearCaptures();
+		const probe = currentProbe();
+		const ctx = probe.ctx;
+		if (!ctx) throw new Error("假来源还没 start");
+		const before = renderedHtml.length;
+		// 宽高写在文件头里的两张 png,字节各不相同(图库里就是引用各不相同)。
+		const picture = Buffer.from(png(16, 9, 1));
+		const avatar = Buffer.from(png(8, 8, 3));
+
+		const storedPicture = await ctx.storeImage(picture);
+		const storedAvatar = await ctx.storeImage(avatar);
+		if (!storedPicture.ok || !storedAvatar.ok) throw new Error("storeImage 存图失败");
+		// 不是图的字节被拒:
+		const notImage = await ctx.storeImage(new Uint8Array([1, 2, 3]));
+		expect(notImage.ok).toBe(false);
+		if (!notImage.ok) expect(notImage.code).toBe("invalid");
+
+		// 抓图拦内网(回环算内网),请求本身不拦(局域网里的 RSSHub 要连得上)。
+		const loopback = new URL(aiBaseUrl).origin;
+		const fetched = await ctx.fetchImage(`${loopback}/pic.png`);
+		expect(fetched.ok).toBe(false);
+		if (!fetched.ok) expect(fetched.code).toBe("invalid");
+		const plain = await ctx.http.fetch(`${loopback}/anything`);
+		expect(plain.ok).toBe(true);
+
+		ctx.reportPost(
+			EXT.alice,
+			textReport("p27", "带图的人", "带图的作品正文P27", {
+				creator: { name: "带图的人", avatar: storedAvatar.ref },
+				images: [{ ref: storedPicture.ref }],
+			}),
+		);
+		const [hit] = await settledCaptures(1);
+		expect(hit).toMatchObject({ kind: "composite", images: 1 });
+		const html = renderedHtml.slice(before).find((page) => page.includes("带图的作品正文P27"));
+		expect(html, "这条作品没画成卡").toBeDefined();
+		// 出图器按引用读图库、把字节换成 data URL 画进卡片:配图和头像的字节都在页面里。
+		expect(html).toContain(picture.toString("base64"));
+		expect(html).toContain(avatar.toString("base64"));
+		drove("P27");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -1836,18 +1885,18 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 26 行、不开 15 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 27 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(41);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 26 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 27 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25),编号不回填。
+		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => n !== 7)
+				.filter((n) => n !== 7 && n !== 12)
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {
@@ -1893,7 +1942,7 @@ describe("进程内对拍:清单自己", () => {
 				"zod",
 				"../../compose.js",
 				"../../config/store.js",
-				"../../integrations/context.js",
+				"../../integrations/open.js",
 				"../../integrations/settings-reader.js",
 			].sort(),
 		);

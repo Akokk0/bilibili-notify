@@ -14,11 +14,13 @@ import type {
 	PlatformAdapter,
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
+import { createImageFetcher } from "../../images/image-fetcher.js";
 import {
 	createPlatformAdapterRegistry,
 	type PlatformAdapterRegistry,
 } from "../../push/registry.js";
 import { inertSettings } from "./inert-settings.js";
+import { integrationIo } from "./integration-io.js";
 import { memoryStores } from "./memory-key-value-store.js";
 
 export interface FakeAdapterContext {
@@ -50,6 +52,9 @@ export function fakeAdapterContext(
 	const hooks: Array<() => void | Promise<void>> = [];
 	const controller = new AbortController();
 	const { state, secrets } = memoryStores();
+	// 不联网的请求客户端 + 记账的在途写口;适配器测试要打桩 `fetch` 的另打 `globalThis.fetch`。
+	const io = integrationIo();
+	const images = createImageFetcher({ http: io.http, images: io.transitImages });
 	const ctx: PlatformAdapterContext = {
 		logger,
 		signal: controller.signal,
@@ -60,6 +65,9 @@ export function fakeAdapterContext(
 		secrets,
 		redact() {},
 		settings: inertSettings().settings,
+		http: io.http,
+		fetchImage: images.fetchImage,
+		storeImage: images.storeImage,
 		reportProblem() {},
 		resolveProblem() {},
 		connections: () => connections,

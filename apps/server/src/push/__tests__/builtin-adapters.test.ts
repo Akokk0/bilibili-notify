@@ -18,6 +18,7 @@ import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertSettingsOf } from "../../__tests__/support/inert-settings.js";
+import { inertTransitImages, realTimeout } from "../../__tests__/support/integration-io.js";
 import {
 	memoryIntegrationStore,
 	memoryStoreHandle,
@@ -90,6 +91,8 @@ async function setup() {
 	/** 各适配器的集成上下文向 `settingsOf` 要过的键,按要的先后。 */
 	const settingsKeys: string[] = [];
 	const builtin = await registerBuiltinAdapters({
+		transitImages: inertTransitImages,
+		setTimeout: realTimeout,
 		registry,
 		adapters: [onebot, qq, webhook],
 		loggerOf: () => logger,
@@ -164,6 +167,8 @@ describe("registerBuiltinAdapters", () => {
 		const qq = fakeAdapter("qq-official");
 		const webhook = fakeAdapter("webhook");
 		const builtin = await registerBuiltinAdapters({
+			transitImages: inertTransitImages,
+			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
 			adapters: [onebot, qq, webhook],
 			loggerOf,
@@ -211,6 +216,8 @@ describe("registerBuiltinAdapters", () => {
 		const onebot = fakeAdapter("onebot");
 		const qq = fakeAdapter("qq-official");
 		const builtin = await registerBuiltinAdapters({
+			transitImages: inertTransitImages,
+			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
 			adapters: [onebot, qq],
 			loggerOf: () => logger,
@@ -278,6 +285,8 @@ describe("registerBuiltinAdapters", () => {
 		// 每次 open 都给一份独立的内存存储:这一条要走到的是登记表的「键重复」,不是存储的「同键已开」。
 		await expect(
 			registerBuiltinAdapters({
+				transitImages: inertTransitImages,
+				setTimeout: realTimeout,
 				registry,
 				adapters: [first, dup, third],
 				loggerOf: () => logger,
@@ -304,6 +313,8 @@ describe("registerBuiltinAdapters", () => {
 		const second = fakeAdapter("qq-official");
 		await expect(
 			registerBuiltinAdapters({
+				transitImages: inertTransitImages,
+				setTimeout: realTimeout,
 				registry,
 				adapters: [first, second],
 				problems: ignoredProblems,

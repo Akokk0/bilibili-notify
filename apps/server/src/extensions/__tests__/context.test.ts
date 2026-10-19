@@ -9,8 +9,11 @@
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
+import { png } from "../../__tests__/support/report-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { imageRefOf } from "../../images/image-store.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -101,17 +104,35 @@ function makeRuntime(id = "bridge") {
 	const app = new Hono();
 	app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 	const stubs = coreStubs();
+	const io = integrationIo();
 	const runtime = createExtensionContext({
+		...io,
 		id,
 		host: host.ctx,
 		loggerOf: host.loggerOf,
 		mounts,
 		...stubs,
 	});
-	return { host, mounts, app, runtime, ctx: runtime.ctx, problems: stubs.problems };
+	return { host, mounts, app, runtime, io, ctx: runtime.ctx, problems: stubs.problems };
 }
 
 describe("拓展 ctx", () => {
+	// 验红:`context.ts` 的 `ExtensionContext` 字面量里剪掉 `http` / `fetchImage` / `storeImage` 任一格,这条红(类型检查也过不去)。
+	it("ctx.http / fetchImage / storeImage 是这个拓展自己集成的那三个:存的图进它的在途写口,抓图拦内网", async () => {
+		const { ctx, io } = makeRuntime();
+		const bytes = png(8, 8, 2);
+
+		const stored = await ctx.storeImage(bytes);
+		const fetched = await ctx.fetchImage("http://127.0.0.1:8080/x.png");
+
+		expect(stored).toEqual({ ok: true, ref: imageRefOf(bytes) });
+		expect(io.stored).toEqual([bytes]);
+		expect(fetched.ok).toBe(false);
+		if (!fetched.ok) expect(fetched.code).toBe("invalid");
+		expect(typeof ctx.http.fetch).toBe("function");
+		expect(typeof ctx.http.websocket).toBe("function");
+	});
+
 	// 验红:`context.ts` 里 `logger: opts.loggerOf(id)` 改回给宿主日志器的每行正文拼 `[ext:<id>]`,这条红。
 	it("日志器是按拓展 id 向宿主要的那一个 —— 行的标签靠它,正文里不再拼 [ext:<id>]", () => {
 		const { host, ctx } = makeRuntime();
@@ -151,6 +172,7 @@ describe("拓展 ctx", () => {
 		};
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		const runtime = createExtensionContext({
+			...integrationIo(),
 			id: "bridge",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -240,6 +262,7 @@ describe("拓展 ctx", () => {
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		const a = createExtensionContext({
+			...integrationIo(),
 			id: "a",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -247,6 +270,7 @@ describe("拓展 ctx", () => {
 			...coreStubs(),
 		});
 		const b = createExtensionContext({
+			...integrationIo(),
 			id: "b",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -300,6 +324,7 @@ describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		const redactor = createValueRedactor();
 		const runtime = createExtensionContext({
+			...integrationIo(),
 			id: "bridge",
 			host: host.ctx,
 			loggerOf: host.loggerOf,

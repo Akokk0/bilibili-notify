@@ -16,6 +16,8 @@ export const IMAGE_REFERRERS = {
 	chat: "女仆对话",
 	/** 拓展作品:在途数据、名单恒空。 */
 	posts: "作品配图",
+	/** 集成在途:集成经 `ctx.fetchImage` / `ctx.storeImage` 存的图,名单恒空、全靠宽限期活到被哪一行引用上。 */
+	inTransit: "集成在途",
 	/** 拓展直播:在播表里的封面与头像。 */
 	extensionLive: "拓展直播图",
 	/** 来源声明的图:来源自己带的素材(今天是 B 站大航海三档的徽章),运行时抓进图库、名单是手里抓到的那几张。 */

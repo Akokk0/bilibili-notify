@@ -1,6 +1,7 @@
 import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
-import type { PushTargetScope, Result } from "./constants";
+import type { ImageRef, PushTargetScope, Result } from "./constants";
+import type { HttpClient } from "./http";
 import type { KeyValueStore } from "./key-value-store";
 import type { PostEvent, PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
@@ -113,6 +114,28 @@ export interface IntegrationContext {
 	 * 把手随集成停下自动收掉(来源与适配器的上下文里,订阅还随来源 / 适配器停下摘掉),不必在 `stop()` 里记得摘。
 	 */
 	settings<T>(schema: ZodType<T>): SettingsReader<T>;
+	/**
+	 * 这个集成自己的请求客户端:身份与 cookie 罐都是它自己的(宿主管着存与升),集成之间互不相干。
+	 * `fetch` 非 2xx 不抛、失败回结果形状;`websocket` 随集成停下自动关(`fetch` 不跟着断,在途的请求由调用方的
+	 * `signal` 管)。不拦内网(局域网里的 RSSHub 要连得上),拦内网只在 {@link IntegrationContext.fetchImage} 上。
+	 */
+	readonly http: HttpClient;
+	/**
+	 * 把一张远端的图抓进图库,回引用。走 {@link IntegrationContext.http} 同一个客户端(同一套身份与 cookie),
+	 * 平台要的头(Referer、签名)由这次传。每一跳都拦内网;单张 8 MiB、按内容嗅探(只认 png / jpg / gif / webp)。
+	 * 失败的码:`invalid`(地址不对、内网、太大、不是图、其余 4xx)、`unauthorized`(401 / 403)、`not_found`(404 / 410)、
+	 * `rate_limited`(429)、`timeout`、`unavailable`(连不上、5xx、磁盘写失败)、`indeterminate`(调用方中止)。
+	 * 只攥在集成自己手里、没交给宿主的引用,过了 24 小时的宽限期不保。
+	 */
+	fetchImage(
+		url: string,
+		options?: { headers?: Record<string, string>; signal?: AbortSignal },
+	): Promise<Result<{ ref: ImageRef }>>;
+	/** 手里已经是字节的图存进图库,回引用。同一套嗅探与 8 MiB;留存的规矩同 {@link IntegrationContext.fetchImage}。 */
+	storeImage(
+		bytes: Uint8Array,
+		options?: { signal?: AbortSignal },
+	): Promise<Result<{ ref: ImageRef }>>;
 }
 
 /**

@@ -167,6 +167,12 @@ function hostFor(
 		redact() {},
 		reportProblem() {},
 		resolveProblem() {},
+		http: {
+			fetch: async () => fail("unavailable", "桥的测试不联网"),
+			websocket: () => fail("unavailable", "桥的测试不联网"),
+		},
+		fetchImage: async () => fail("unavailable", "桥的测试不联网"),
+		storeImage: async () => fail("unavailable", "桥的测试不联网"),
 		setTimeout: (fn, ms) => track(setTimeout(fn, ms)),
 		setInterval: (fn, ms) => track(setInterval(fn, ms)),
 		mount(handler) {
@@ -188,6 +194,9 @@ function hostFor(
 				redact() {},
 				// 与真宿主一样转发集成上下文那一份(同一个实现)。
 				settings: (schema) => ctx.settings(schema),
+				http: ctx.http,
+				fetchImage: ctx.fetchImage,
+				storeImage: ctx.storeImage,
 				reportProblem() {},
 				resolveProblem() {},
 				connections: () => connections(),

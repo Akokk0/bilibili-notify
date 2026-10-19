@@ -1,19 +1,12 @@
-import type { HttpClient } from "@bilibili-notify/http";
 import {
 	BILIBILI_SOURCE_KEY,
 	type IntegrationContext,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { disposeThenClose, type IntegrationStore } from "../integration-store/store.js";
-import {
-	type CreateIntegrationContextOptions,
-	createIntegrationContext,
-} from "../integrations/context.js";
-import {
-	type CookieJarHandle,
-	createIntegrationHttp,
-	type IntegrationHttpHandle,
-} from "../integrations/http.js";
+import type { CreateIntegrationContextOptions } from "../integrations/context.js";
+import type { CookieJarHandle } from "../integrations/http.js";
+import { type OpenedIntegration, openIntegration } from "../integrations/open.js";
 import {
 	createIntegrationSettings,
 	type settingsReaderOptionsOf,
@@ -27,9 +20,8 @@ const REQUEST_TIMEOUT_MS = 20_000;
 export const REFRESH_TOKEN_KEY = "refreshToken";
 
 /**
- * B 站这一片先用的上下文:公共那一面,加请求客户端与 cookie 罐的把手。
- * 来源上下文(`SourceContext`)建在它之上(`AuthSystem.integration` 按公共五格的类型交出去),`http` / `cookies` 仍只在这里,
- * 3b 公共上下文开放 `http` 时才能并。
+ * B 站的上下文:公共那一面(`http`、`fetchImage`、`storeImage` 都在上面),加 cookie 罐的把手。
+ * 来源上下文(`SourceContext`)建在它之上;`cookies` 这组口不对拓展开,所以只在这里(ADR-0025 决策 6)。
  * `http.` 前缀的键归宿主,B 站自己写不进去;罐子与令牌要「同进同退」,所以提交一律经 `cookies.commit`。
  *
  * 浏览器身份由宿主管(存着的、只升不降,没有才生成),终身不变 —— 同一 cookie 会话在不同 UA 间跳变是机器人特征。
@@ -37,7 +29,6 @@ export const REFRESH_TOKEN_KEY = "refreshToken";
  * 罐子与客户端都是**长期有效的同一个**:换号 / 登出 / -101 只调罐子的 `load()` / `clear()` 原地换内容。
  */
 export interface BiliContext extends IntegrationContext {
-	readonly http: HttpClient;
 	readonly cookies: CookieJarHandle;
 }
 
@@ -53,6 +44,8 @@ export interface CreateBiliContextOptions {
 	serviceCtx: ServiceContext;
 	/** 问题表的写口:B 站集成的上报记在 B 站这个键名下(与 B 站来源同一个报的人)。 */
 	problems: CreateIntegrationContextOptions["problems"];
+	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):`ctx.fetchImage` / `ctx.storeImage` 存的图经它。 */
+	transitImages: CreateIntegrationContextOptions["transitImages"];
 	/** 按集成键要设置的读法(入口造一次):B 站在这里挑自己的键,入口不写 B 站的键。 */
 	settingsOf: ReturnType<typeof settingsReaderOptionsOf>;
 }
@@ -68,43 +61,40 @@ export async function createBiliContext(
 ): Promise<BiliContextHandle> {
 	const { serviceCtx } = opts;
 	const store = await opts.stores.open(BILIBILI_SOURCE_KEY);
-	const integration = createIntegrationContext({
-		logger: serviceCtx.logger,
-		stopReason: "BN 关停",
-		state: store.state,
-		secrets: store.secrets,
-		problems: opts.problems,
-		reporter: BILIBILI_SOURCE_KEY,
-		rejectedProblemLevel: "error",
-		redactValues: (values) => store.redact("redact", values),
-		settings: createIntegrationSettings({
-			...opts.settingsOf(BILIBILI_SOURCE_KEY),
-			logger: serviceCtx.logger,
-		}),
-	});
-	let built: IntegrationHttpHandle;
+	let opened: OpenedIntegration;
 	try {
-		built = await createIntegrationHttp({
+		opened = await openIntegration({
 			stores: store,
 			logger: serviceCtx.logger,
-			headers: defaultHeaders,
-			timeoutMs: REQUEST_TIMEOUT_MS,
-			setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
+			stopReason: "BN 关停",
+			problems: opts.problems,
+			reporter: BILIBILI_SOURCE_KEY,
+			rejectedProblemLevel: "error",
+			transitImages: opts.transitImages,
+			settings: createIntegrationSettings({
+				...opts.settingsOf(BILIBILI_SOURCE_KEY),
+				logger: serviceCtx.logger,
+			}),
+			httpOptions: {
+				headers: defaultHeaders,
+				timeoutMs: REQUEST_TIMEOUT_MS,
+				setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
+			},
 		});
 	} catch (err) {
 		// 建到一半失败:把手必须关上,不然下次 `open` 同一个键会抛「已经开着」。
-		await disposeThenClose(integration, store);
+		store.close();
 		throw err;
 	}
-	integration.ctx.onDispose(() => built.dispose());
-	serviceCtx.onDispose(() => built.client.dispose(), "drain");
+	// 连接池不随上下文收:`client.dispose()` 会让在途的请求失败,而上下文的收尾整个在 `stop` 段跑,那时抓图还没被等完。
+	serviceCtx.onDispose(() => opened.http.client.dispose(), "drain");
 
-	const ctx: BiliContext = { ...integration.ctx, http: built.client, cookies: built.cookies };
+	const ctx: BiliContext = { ...opened.handle.ctx, cookies: opened.http.cookies };
 	let disposing: Promise<void> | undefined;
 	return {
 		ctx,
 		dispose() {
-			disposing ??= disposeThenClose(integration, store);
+			disposing ??= disposeThenClose(opened.handle, store);
 			return disposing;
 		},
 	};

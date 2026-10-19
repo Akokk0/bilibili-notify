@@ -124,7 +124,7 @@ export const RATCHET = {
 	"apps/server/src/history/repush.ts": 6,
 	"apps/server/src/history/store.ts": 7,
 	"apps/server/src/images/image-fetcher.ts": 7,
-	"apps/server/src/images/image-referrers.ts": 8,
+	"apps/server/src/images/image-referrers.ts": 9,
 	"apps/server/src/images/image-store.ts": 3,
 	"apps/server/src/images/image-writes.ts": 4,
 	"apps/server/src/index.ts": 16,

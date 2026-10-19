@@ -42,7 +42,7 @@ import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
 import { createImageFetcher, type ImageFetcher } from "./images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "./images/image-referrers.js";
-import type { ImageStore } from "./images/image-store.js";
+import type { ImageStore, ImageWriter } from "./images/image-store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
 import { createOnebotAdapter, onebotSettingsSegment } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, qqOfficialSettingsSegment } from "./platforms/qq-official.js";
@@ -104,6 +104,8 @@ export interface BuiltinIntegrationsDeps {
 	 * 关停钩子的登记时刻因此与从前入口里造它们那一刻一致;登记即启动的那一步仍在 `registerAdapters`。
 	 */
 	serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem">;
+	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):内置适配器与假来源的 `ctx.fetchImage` / `ctx.storeImage` 经它。 */
+	transitImages: Pick<ImageWriter, "put">;
 	/**
 	 * 入站两路出口(下一层)。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。
 	 * 各适配器经自己的 `ctx.inbound` 交来,宿主核过归属、补上平台后才到这里。
@@ -261,6 +263,8 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				adapters,
 				loggerOf,
 				stores: deps.integrationStore,
+				transitImages: deps.transitImages,
+				setTimeout: deps.setTimeout,
 				problems: deps.problems,
 				settingsOf: deps.settingsOf,
 				connections: deps.connections,

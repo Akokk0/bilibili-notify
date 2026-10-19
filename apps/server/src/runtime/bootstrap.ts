@@ -161,6 +161,12 @@ export interface AppRuntime {
 	 */
 	postImages: ImageWriter;
 	/**
+	 * 集成往图库存图的口(ADR-0025 决策 8):每个集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 都经它。集成抓到的图是
+	 * **在途数据**:名单恒空(`listRefs` 恒空),图靠清扫的 24 小时宽限期活到被历史行、资料缓存、在播表、登录状态等
+	 * 哪一家引用上;只攥在集成自己手里、没交给宿主的引用,过了宽限期就被收走(契约里写明)。
+	 */
+	transitImages: ImageWriter;
+	/**
 	 * 拓展直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):出每张直播卡的那一刻把封面与事件带来的
 	 * 作者头像 `put` 进图库,卡输入里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与事件头像**
 	 * (`liveTable.list()`):直播可以超过 24 小时、周期卡几小时后还要用它们,不能像作品那样只靠宽限期。
@@ -499,6 +505,12 @@ export function createAppRuntime(
 		name: IMAGE_REFERRERS.posts,
 		listRefs: async () => [],
 	});
+	// 集成在途是图库的一家引用方,同样**没有东西可列**:集成经上下文抓 / 存的图在它手里只是引用,落进历史行、资料缓存
+	// 之类才有人认领;名单恒空,过了宽限期没人认领的下一轮清扫收走。每个集成共用这一个写口。
+	const transitImages = imageStore.register({
+		name: IMAGE_REFERRERS.inTransit,
+		listRefs: async () => [],
+	});
 	// 大航海徽章图(来源声明的图)由组装根造好、登记成图库的一家引用方,再经 `attachGuardIcons` 交进来。
 	let guardIcons: GuardIcons | null = null;
 	const logStore = createLogStore({
@@ -586,6 +598,7 @@ export function createAppRuntime(
 		profileImages,
 		accountImages,
 		postImages,
+		transitImages,
 		liveImages,
 		get guardIcons() {
 			if (!guardIcons) {

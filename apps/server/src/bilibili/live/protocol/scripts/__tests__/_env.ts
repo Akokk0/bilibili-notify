@@ -9,6 +9,7 @@
  * 没有令牌 `Api` 就不会触发 cookie 刷新舞步(RSA 轮换:旧 cookie 被 B 站作废而新 cookie 只在本进程内存里,
  * 脚本一退出登录态就死;2026-08-27 就这样弄丢过一次主人的扫码登录)。从前靠「记得别传 refreshToken」,现在传不进去。
  */
+
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,7 @@ import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import { type KeyProvider, readKeyMaterial } from "@bilibili-notify/storage";
 import { ignoredProblems } from "../../../../../__tests__/support/ignored-problems.js";
 import { inertSettingsOf } from "../../../../../__tests__/support/inert-settings.js";
+import { inertTransitImages } from "../../../../../__tests__/support/integration-io.js";
 import { memoryStoreHandle } from "../../../../../__tests__/support/memory-key-value-store.js";
 import {
 	integrationStateFile,
@@ -136,6 +138,7 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		(kind, values) => scriptRedactor.replace(BILIBILI_SOURCE_KEY, kind, values),
 	);
 	const context = await createBiliContext({
+		transitImages: inertTransitImages,
 		stores: { open: async () => handle },
 		serviceCtx,
 		problems: ignoredProblems,

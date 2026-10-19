@@ -24,6 +24,7 @@ import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
@@ -159,6 +160,7 @@ function quietHost(): ServiceContext {
 /** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关(给函数就现读,好中途拨)。 */
 function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedExtensions> {
 	return loadExtensions({
+		transitImages: inertTransitImages,
 		root: installRoot,
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,

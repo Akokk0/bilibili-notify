@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { loadExtensions } from "../../extensions/loader.js";
@@ -369,6 +370,7 @@ describe("软链进去的那份,装载器认得", () => {
 		await plantRepo("bridge", true);
 		await plantManifest("bridge");
 		const loaded = await loadExtensions({
+			transitImages: inertTransitImages,
 			root: installRoot,
 			isEnabled: () => true,
 			maxFailures: 3,

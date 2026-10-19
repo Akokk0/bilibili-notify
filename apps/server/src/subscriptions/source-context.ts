@@ -107,8 +107,8 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		}),
 	];
 
-	// 🔴 逐格列出公共那几个成员(不含问题上报,那一对下面按来源的规矩自己造),不许展开 `integration`:B 站交进来的对象运行时带着 `http` 与 `cookies`,
-	// 类型收窄挡不住展开把它们原样抄进来。
+	// 🔴 逐格列出公共那几个成员(不含问题上报,那一对下面按来源的规矩自己造),不许展开 `integration`:B 站交进来的对象运行时带着 `cookies`,
+	// 类型收窄挡不住展开把它原样抄进来(罐子的口对来源不开)。
 	const ctx: SourceContext = {
 		logger,
 		signal: integration.signal,
@@ -131,6 +131,9 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 				},
 			};
 		},
+		http: integration.http,
+		fetchImage: integration.fetchImage,
+		storeImage: integration.storeImage,
 		subscriptions: () =>
 			sourceSubscriptionViews(opts.subscriptions.list(), sourceKey, opts.defaults()),
 		onSubscriptionsChanged(fn) {

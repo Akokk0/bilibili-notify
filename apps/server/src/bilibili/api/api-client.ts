@@ -1,11 +1,10 @@
-import {
-	type HttpClient,
-	isRedirectStatus,
-	urlWithoutQuery,
-	type WebSocketLike,
-	type WebSocketOptions,
-} from "@bilibili-notify/http";
-import type { Result } from "@bilibili-notify/internal/constants";
+import { isRedirectStatus, urlWithoutQuery } from "@bilibili-notify/http";
+import type {
+	HttpClient,
+	Result,
+	WebSocketLike,
+	WebSocketOptions,
+} from "@bilibili-notify/internal";
 
 /**
  * B 站请求客户端 —— `@bilibili-notify/http` 的 `HttpClient` 之上的一层薄包。

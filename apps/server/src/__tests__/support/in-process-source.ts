@@ -6,7 +6,7 @@
  * `engines.registerSource`,这里的包装层调同一个(见 {@link wrapCompose}),所以入口到登记表整条接线都是真的。
  *
  * 🔴 **这个文件与它的使用者不许碰 `bilibili/`**:import 只有中立的 `@bilibili-notify/internal`、`zod`、
- * `integrations/context`,外加两个只取类型的 `compose` / `config/store`。源码里没有 B 站的键常量与那个字面量。
+ * `integrations/open`,外加两个只取类型的 `compose` / `config/store`。源码里没有 B 站的键常量与那个字面量。
  * 对拍文件里有一条用例读本文件的 import 钉着这一点。
  */
 
@@ -28,7 +28,7 @@ import {
 import { z } from "zod";
 import type * as Compose from "../../compose.js";
 import type { IntegrationSettingsSegment } from "../../config/store.js";
-import { createIntegrationContext } from "../../integrations/context.js";
+import { type OpenedIntegration, openIntegration } from "../../integrations/open.js";
 import { createIntegrationSettings } from "../../integrations/settings-reader.js";
 
 /** 假来源的键:带命名空间的第三方写法,过得了拓展 id 的形状(集成存储只认保留键或合法拓展 id)。 */
@@ -329,7 +329,8 @@ export function currentProbe(): InProcessProbe {
  *
  * 测试用组装要自己做三件事(内置来源的那几件在 `compose.ts` / 登录装配里,这里照做):
  * 1. 设置段(上面);
- * 2. 集成上下文:`integrationStore.open(键)` + `createIntegrationContext`(存储是异步开的,所以在 `registerSources` 里);
+ * 2. 集成上下文:`integrationStore.open(键)` + `openIntegration`(请求客户端、上下文与收尾挂在一起;存储是异步开的,
+ *    所以在 `registerSources` 里);
  * 3. 关停次序:上下文的收尾钩子在**这里**(早于 `createEngines`)登记 —— 关停钩子后登记的先跑,所以引擎先停来源,
  *    钩子后收上下文;钩子登记晚了,上下文会先于来源的 `stop()` 被中止。
  */
@@ -351,12 +352,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 				inProcessWorld.problemsChanged.push(reporter);
 			});
 			const logger = deps.serviceCtx.forSubsystem(IN_PROCESS_KEY, IN_PROCESS_KEY).logger;
-			let opened:
-				| {
-						integration: ReturnType<typeof createIntegrationContext>;
-						store: { close(): void };
-				  }
-				| undefined;
+			let opened: { integration: OpenedIntegration; store: { close(): void } } | undefined;
 			deps.serviceCtx.onDispose(async () => {
 				// 此刻引擎已停掉来源、收掉了来源上下文(钩子后登记的先跑),集成上下文还没收。
 				await inProcessWorld.afterSourceStopped?.();
@@ -364,9 +360,10 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 				const { integration, store } = opened;
 				opened = undefined;
 				try {
-					await integration.dispose();
+					await integration.handle.dispose();
 				} finally {
 					store.close();
+					await integration.http.client.dispose();
 				}
 			}, "stop");
 			return {
@@ -374,17 +371,17 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 				async registerSources(engines) {
 					await builtins.registerSources(engines);
 					const store = await deps.integrationStore.open(IN_PROCESS_KEY);
-					const integration = createIntegrationContext({
+					const integration = await openIntegration({
+						stores: store,
 						logger,
 						stopReason: "BN 关停",
-						state: store.state,
-						secrets: store.secrets,
 						problems: deps.problems,
 						reporter: IN_PROCESS_KEY,
 						rejectedProblemLevel: "error",
-						redactValues: (values) => store.redact("redact", values),
+						transitImages: deps.transitImages,
 						// 读法取自入口递进来的那一份(`deps.settingsOf`):假来源读自己的键,不在测试里另接配置仓。
 						settings: createIntegrationSettings({ ...deps.settingsOf(IN_PROCESS_KEY), logger }),
+						httpOptions: { setTimeout: deps.setTimeout },
 					});
 					opened = { integration, store };
 					const made = createInProcessSource(inProcessWorld.options);
@@ -392,7 +389,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 					await engines.registerSource({
 						sourceKey: IN_PROCESS_KEY,
 						source: made.source,
-						integration: integration.ctx,
+						integration: integration.handle.ctx,
 						logger,
 					});
 				},

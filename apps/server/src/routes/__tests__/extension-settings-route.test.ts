@@ -25,6 +25,7 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
@@ -202,6 +203,7 @@ async function boot(opts: {
 	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
 	let activations = 0;
 	const loader = await loadExtensions({
+		transitImages: inertTransitImages,
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertSettingsOf } from "../../__tests__/support/inert-settings.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { Api } from "../../bilibili/api/index.js";
 import { createBiliContext } from "../../bilibili/context.js";
 import { settingsSegment } from "../../bilibili/settings.js";
@@ -60,6 +61,7 @@ describe("createAppRuntime 里的按值打码", () => {
 
 	it("真的 B 站上下文:一条 cookie 进罐,经运行时的日志器打出来被遮(罐子与日志出口用的是同一份登记册)", async () => {
 		const biliContext = await createBiliContext({
+			transitImages: inertTransitImages,
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,
 			problems: runtime.problems,
@@ -88,6 +90,7 @@ describe("createAppRuntime 里的按值打码", () => {
 
 	it("续期 / 扫码拿到的新令牌:存进 secrets 之前的那一刻,经运行时的日志器打出来也被遮(不靠按名字的正则)", async () => {
 		const biliContext = await createBiliContext({
+			transitImages: inertTransitImages,
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,
 			problems: runtime.problems,

@@ -24,6 +24,7 @@ import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
@@ -112,6 +113,7 @@ function harness(
 	const adapters = createPlatformAdapterRegistry();
 
 	const runtime = createExtensionContext({
+		...integrationIo(),
 		id: "bridge",
 		manifest: opts.manifest ?? PUSH_MANIFEST,
 		host,
@@ -1135,6 +1137,7 @@ describe("认领 WS upgrade", () => {
 			debug: () => {},
 		};
 		const runtime = createExtensionContext({
+			...integrationIo(),
 			id: "bridge",
 			manifest: PUSH_MANIFEST,
 			host: {

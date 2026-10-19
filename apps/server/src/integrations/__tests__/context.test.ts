@@ -8,6 +8,7 @@ import { fail, type Logger, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { inertSettings } from "../../__tests__/support/inert-settings.js";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
@@ -30,6 +31,7 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 	const problems = createProblemTable({ logger: silentLogger });
 	const redactor = createValueRedactor();
 	const handle = createIntegrationContext({
+		...integrationIo(),
 		logger,
 		stopReason: "它停用了",
 		...memoryStores(),

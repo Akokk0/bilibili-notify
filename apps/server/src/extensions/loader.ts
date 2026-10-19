@@ -18,11 +18,8 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
-import {
-	disposeThenClose,
-	type IntegrationStore,
-	type IntegrationStoreHandle,
-} from "../integration-store/store.js";
+import type { IntegrationStore, IntegrationStoreHandle } from "../integration-store/store.js";
+import { createIntegrationHttp } from "../integrations/http.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { ExtensionConflictError } from "./conflict-error.js";
@@ -219,6 +216,8 @@ export interface LoadExtensionsOptions {
 	loggerOf: (id: string) => Logger;
 	/** 每个拓展装载前按 id 开它的 state / secrets 存储,收摊之后关把手。 */
 	integrationStore: Pick<IntegrationStore, "open">;
+	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):递给每个拓展的 ctx,`ctx.fetchImage` / `ctx.storeImage` 经它。 */
+	transitImages: CreateExtensionContextOptions["transitImages"];
 	/** 问题表的写口(`AppRuntime.problems`):递给每个拓展的 ctx,报的人是拓展 id。 */
 	problems: CreateExtensionContextOptions["problems"];
 	mounts: ExtensionMounts;
@@ -646,12 +645,23 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			});
 		}
 
+		// 请求客户端:每个拓展一个,身份存它自己的 state、罐子存它自己的 secrets(都是 `http.` 前缀,拓展写不进)。
+		// 在 stores 打开之后造;最后一次存盘与连接池的收尾在下面 `runtime.dispose` 里,排在关把手之前 / 之后。
+		// 每起一次只向宿主要一次日志器:客户端与 ctx 用的是同一个。
+		const extLogger = opts.loggerOf(id);
+		const httpHandle = await createIntegrationHttp({
+			stores,
+			logger: extLogger,
+			setTimeout: (fn, ms) => host.setTimeout(fn, ms),
+		});
 		const created = createExtensionContext({
 			id,
 			manifest,
 			host,
-			loggerOf: opts.loggerOf,
+			loggerOf: () => extLogger,
 			stores,
+			http: httpHandle.client,
+			transitImages: opts.transitImages,
 			problems: opts.problems,
 			mounts,
 			adapters: opts.adapters,
@@ -677,7 +687,17 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		// 在这里统一接上「收摊之后关把手」,不在六七处各写一遍。
 		const runtime: ExtensionRuntime = {
 			...created,
-			dispose: () => disposeThenClose(created, stores),
+			// 次序:上下文收摊(它的 websocket 随之关)→ 罐子最后一次存盘 → 关把手 → 收连接池(`dispose` 会让在途请求失败,
+			// 放在把手关了之后:拓展的收尾钩子已经跑完,不会有人再等那些请求)。
+			dispose: async () => {
+				try {
+					await created.dispose();
+					await httpHandle.dispose();
+				} finally {
+					stores.close();
+					await httpHandle.client.dispose();
+				}
+			},
 		};
 		/** 走到哪一步了 —— 超时那句话要说清是卡在 import、activate 还是判设置。 */
 		const at = { step: `import ${EXTENSION_ENTRY_FILE}` };

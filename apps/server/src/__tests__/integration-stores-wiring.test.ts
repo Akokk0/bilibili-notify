@@ -37,6 +37,7 @@ import { createAppRuntime } from "../runtime/bootstrap.js";
 import { dataPath } from "../runtime/roots.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
+import { inertTransitImages, realTimeout } from "./support/integration-io.js";
 import { silentLogger } from "./support/silent-logger.js";
 
 const EXT_ID = "wiring-ext";
@@ -67,9 +68,16 @@ async function exists(path: string): Promise<boolean> {
 	);
 }
 
-async function stateOnDisk(...segments: string[]): Promise<Record<string, unknown>> {
+/** 盘上 state 的全部键,含宿主自己写的 `http.` 前缀(每个集成第一次开机写进去的浏览器身份)。 */
+async function rawStateOnDisk(...segments: string[]): Promise<Record<string, unknown>> {
 	const raw = await readFile(join(dataRoot, "runtime", ...segments, "state.json"), "utf8");
 	return JSON.parse(raw).entries;
+}
+
+/** 集成自己写的那些键:`http.` 开头的归宿主,不算。 */
+async function stateOnDisk(...segments: string[]): Promise<Record<string, unknown>> {
+	const entries = await rawStateOnDisk(...segments);
+	return Object.fromEntries(Object.entries(entries).filter(([key]) => !key.startsWith("http.")));
 }
 
 async function secretsOnDisk(...segments: string[]): Promise<Record<string, unknown>> {
@@ -116,6 +124,8 @@ describe("内置适配器", () => {
 	}
 	async function register(adapters: Probe[]) {
 		return registerBuiltinAdapters({
+			transitImages: inertTransitImages,
+			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
 			adapters,
 			loggerOf: () => logger(),
@@ -137,6 +147,8 @@ describe("内置适配器", () => {
 		// 盘上:密钥加密在 secrets/onebot/secrets.enc,状态明文在 runtime/onebot/state.json。
 		expect(await secretsOnDisk("onebot")).toEqual({ token: "s3cret" });
 		expect(await stateOnDisk("onebot")).toEqual({ cursor: { page: 2 } });
+		// 宿主替这个适配器的请求客户端把浏览器身份存在它自己的 state 里(`http.` 前缀归宿主)。
+		expect(Object.keys(await rawStateOnDisk("onebot"))).toContain("http.identity");
 		expect(
 			await readFile(join(dataRoot, "secrets", "onebot", "secrets.enc"), "utf8"),
 		).not.toContain("s3cret");
@@ -269,6 +281,7 @@ describe("拓展", () => {
 			});
 		}
 		const loaded = await loadExtensions({
+			transitImages: inertTransitImages,
 			root: extRoot(),
 			host: quietHost(),
 			loggerOf: () => logger(),

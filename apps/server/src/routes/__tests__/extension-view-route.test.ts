@@ -16,6 +16,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import type { ConfigStore } from "../../config/store.js";
@@ -50,6 +51,7 @@ const SILENT: Logger = { info() {}, warn() {}, error() {}, debug() {} };
 /** 一个真 ctx(v2,一格列表设置里存着一项)+ 只读它状态那一口的路由。 */
 function boot() {
 	const runtime = createExtensionContext({
+		...integrationIo(),
 		id: "douyin",
 		manifest: MANIFEST,
 		host: {

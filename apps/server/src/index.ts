@@ -606,6 +606,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				integrationStore: runtime.integrationStore,
 				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
 				accountImages: runtime.accountImages,
+				transitImages: runtime.transitImages,
 				problems: runtime.problems,
 				settingsOf,
 			});
@@ -793,6 +794,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 			adapterRegistry,
 			integrationStore: runtime.integrationStore,
+			transitImages: runtime.transitImages,
 			problems: runtime.problems,
 			settingsOf,
 			connections: () => runtime.configStore.getConnections(),
@@ -1250,6 +1252,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			loggerOf: (id) => runtime.serviceCtx.forSubsystem(id, id).logger,
 			// 每个拓展装载前按 id 开自己的 state / secrets 存储,收摊后关。
 			integrationStore: runtime.integrationStore,
+			// 拓展经 `ctx.fetchImage` / `ctx.storeImage` 存的图记在图库「集成在途」那一家名下。
+			transitImages: runtime.transitImages,
 			// 拓展报的问题记在它的 id 名下(收摊时清)。
 			problems: runtime.problems,
 			mounts: extensionMounts,

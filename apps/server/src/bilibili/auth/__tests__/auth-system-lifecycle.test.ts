@@ -14,6 +14,7 @@ import type { CookieJar } from "@bilibili-notify/http";
 import { fail, type Json, type Logger, type MessageBus, ok } from "@bilibili-notify/internal";
 import { FileKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
@@ -154,6 +155,7 @@ describe("关停的次序", () => {
 
 		// 开机顺带触发一次续期(盘上有令牌)。
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -179,6 +181,7 @@ describe("关停的次序", () => {
 		await w.seed({ cookies: C0, token: "T0" });
 		const stalled = stallRenewalAtConfirm();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -203,6 +206,7 @@ describe("关停的次序", () => {
 		const w = world();
 		await w.seed({ cookies: C0 });
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -222,6 +226,7 @@ describe("关停的次序", () => {
 	it("dispose 幂等,之后存储把手已关", async () => {
 		const w = world();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -260,7 +265,12 @@ describe("日志跟 B 站那一格", () => {
 			return flowStart.call(this);
 		});
 
-		const auth = await createAuthSystem({ serviceCtx, bus, integrationStore: w.store });
+		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
+			serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
 
 		expect(forSubsystem).toHaveBeenCalledWith("bilibili", "bilibili");
 		const held = (target: unknown) => target as { serviceCtx: unknown; logger: Logger };
@@ -286,12 +296,18 @@ describe("建到一半失败", () => {
 		vi.spyOn(LoginFlow.prototype, "start").mockRejectedValueOnce(new Error("flow boom"));
 
 		await expect(
-			createAuthSystem({ serviceCtx: w.host.serviceCtx, bus, integrationStore: w.store }),
+			createAuthSystem({
+				transitImages: inertTransitImages,
+				serviceCtx: w.host.serviceCtx,
+				bus,
+				integrationStore: w.store,
+			}),
 		).rejects.toThrow("flow boom");
 
 		expect(stop).toHaveBeenCalled();
 		expect(w.store.isOpen("bilibili")).toBe(false);
 		const again = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -307,6 +323,7 @@ describe("恢复备份之后与登出", () => {
 		await w.seed({ cookies: C0, token: "T0" });
 		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -334,6 +351,7 @@ describe("恢复备份之后与登出", () => {
 		await w.seed({ cookies: C0, token: "T0" });
 		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -357,6 +375,7 @@ describe("恢复备份之后与登出", () => {
 		await w.seed({ cookies: C0, token: "T0" });
 		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -398,6 +417,7 @@ describe("恢复备份之后与登出", () => {
 				data: { card: { name: "n", face: "" } },
 			} as never);
 			const auth = await createAuthSystem({
+				transitImages: inertTransitImages,
 				serviceCtx: w.host.serviceCtx,
 				bus,
 				integrationStore: w.store,
@@ -446,6 +466,7 @@ describe("恢复备份之后与登出", () => {
 			data: { card: { name: "n", face: "" } },
 		} as never);
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -485,6 +506,7 @@ describe("恢复备份之后与登出", () => {
 		} as never);
 
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -501,6 +523,7 @@ describe("恢复备份之后与登出", () => {
 		await w.seed({ cookies: C0, token: "T0" });
 		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -518,6 +541,7 @@ describe("恢复备份之后与登出", () => {
 		const hot = vi.spyOn(LoginFlow.prototype, "setHealthCheckMs");
 		const intervals = vi.spyOn(w.host.serviceCtx, "setInterval");
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
@@ -540,6 +564,7 @@ describe("恢复备份之后与登出", () => {
 	it("auth 口的 state() / account() 读的就是登录流程的对外状态;onChange 的订阅者在状态变时被叫", async () => {
 		const w = world();
 		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,

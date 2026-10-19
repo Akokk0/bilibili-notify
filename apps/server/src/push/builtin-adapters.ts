@@ -10,11 +10,8 @@ import {
 	type IntegrationStore,
 	type IntegrationStoreHandle,
 } from "../integration-store/store.js";
-import {
-	type CreateIntegrationContextOptions,
-	createIntegrationContext,
-	type IntegrationContextHandle,
-} from "../integrations/context.js";
+import type { CreateIntegrationContextOptions } from "../integrations/context.js";
+import { type OpenedIntegration, openIntegration } from "../integrations/open.js";
 import {
 	createIntegrationSettings,
 	type settingsReaderOptionsOf,
@@ -32,6 +29,10 @@ export interface RegisterBuiltinAdaptersOptions {
 	stores: Pick<IntegrationStore, "open">;
 	/** 问题表的写口:各适配器的集成上下文把 `reportProblem` 记到这里,报的人是各自的适配器键。 */
 	problems: CreateIntegrationContextOptions["problems"];
+	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):各适配器的 `ctx.fetchImage` / `ctx.storeImage` 经它。 */
+	transitImages: CreateIntegrationContextOptions["transitImages"];
+	/** 可回收的定时器(宿主的 `serviceCtx.setTimeout`):各适配器的请求客户端攒着存 cookie 罐用。 */
+	setTimeout: (fn: () => void, ms: number) => Disposable;
 	/** 全部连接,现读。 */
 	connections: () => readonly Connection[];
 	/** 按 id 取一条连接(入站校验归属的热路径用;不给就从全表里找)。 */
@@ -61,23 +62,24 @@ export async function registerBuiltinAdapters(
 	const entries: Array<{ registration: Disposable; dispose: () => Promise<void> }> = [];
 	for (const adapter of opts.adapters) {
 		let handle: IntegrationStoreHandle | undefined;
-		let integration: IntegrationContextHandle | undefined;
+		let opened: OpenedIntegration | undefined;
 		try {
 			const stores = await opts.stores.open(adapter.adapterKey);
 			handle = stores;
 			const logger = opts.loggerOf(adapter.adapterKey);
-			const context = createIntegrationContext({
+			const made = await openIntegration({
+				stores,
 				logger,
 				settings: createIntegrationSettings({ ...opts.settingsOf(adapter.adapterKey), logger }),
 				stopReason: "BN 关停",
-				state: stores.state,
-				secrets: stores.secrets,
 				problems: opts.problems,
 				reporter: adapter.adapterKey,
 				rejectedProblemLevel: "error",
-				redactValues: (values) => stores.redact("redact", values),
+				transitImages: opts.transitImages,
+				httpOptions: { setTimeout: opts.setTimeout },
 			});
-			integration = context;
+			opened = made;
+			const context = made.handle;
 			const ctx = createPlatformAdapterContext({
 				integration: context.ctx,
 				adapterKey: adapter.adapterKey,
@@ -92,12 +94,21 @@ export async function registerBuiltinAdapters(
 			});
 			entries.push({
 				registration: opts.registry.register(adapter, ctx),
-				dispose: () => disposeThenClose(context, stores),
+				// 连接池随适配器收摊:适配器不走关停的守卫那条路,收早了也不掐任何在途的请求。
+				dispose: async () => {
+					try {
+						await disposeThenClose(context, stores);
+					} finally {
+						await made.http.client.dispose();
+					}
+				},
 			});
 		} catch (err) {
 			// 登记失败不留半个:已登记的先收回,再把错抛出去。
-			if (integration && handle) void disposeThenClose(integration, handle);
-			else handle?.close();
+			if (opened && handle) {
+				const gone = opened;
+				void disposeThenClose(gone.handle, handle).finally(() => gone.http.client.dispose());
+			} else handle?.close();
 			for (const entry of entries.splice(0).reverse()) {
 				entry.registration.dispose();
 				void entry.dispose();

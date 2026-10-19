@@ -11,15 +11,25 @@
 
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili-notify/internal";
+import {
+	EXTENSION_API_RANGE,
+	type Json,
+	type Logger,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import type { IntegrationStoreHandle } from "../../integration-store/store.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
@@ -121,6 +131,7 @@ function run(opts: {
 	loggerOf?: (id: string) => Logger;
 }) {
 	return loadExtensions({
+		transitImages: inertTransitImages,
 		root,
 		...hostOpts(opts.host),
 		...(opts.loggerOf ? { loggerOf: opts.loggerOf } : {}),
@@ -261,6 +272,7 @@ describe("加载拓展", () => {
 
 		const runOnce = () =>
 			loadExtensions({
+				transitImages: inertTransitImages,
 				root,
 				...hostOpts(fakeHost()),
 				mounts: createExtensionMounts({ logger: silentLogger }),
@@ -424,6 +436,7 @@ describe("拓展声明的密钥字段", () => {
 			},
 		});
 		const loaded = await loadExtensions({
+			transitImages: inertTransitImages,
 			root,
 			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -478,6 +491,77 @@ describe("拓展声明的密钥字段", () => {
 });
 
 /**
+ * 每个拓展一个自己的请求客户端(ADR-0025 决策 6、17):身份存它自己的 `state`、停用时它的 websocket 跟着关。
+ * 请求打到本地回环的 HTTP / WebSocket 服务。
+ */
+describe("拓展自己的请求客户端", () => {
+	it("两个拓展各发一个请求:线上的 UA 各是各自存进自己 state 的身份;停用后它的 websocket 关", async () => {
+		await plant("alpha", "export function activate() {}");
+		await plant("beta", "export function activate() {}");
+		const userAgents: string[] = [];
+		const server = createHttpServer((req, res) => {
+			userAgents.push(String(req.headers["user-agent"]));
+			res.end("ok");
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+		await new Promise<void>((resolve) => wss.once("listening", resolve));
+		const wsUrl = `ws://127.0.0.1:${(wss.address() as AddressInfo).port}/sub`;
+
+		const store = memoryIntegrationStore();
+		const handles = new Map<string, IntegrationStoreHandle>();
+		const captured = new Map<string, ExtensionContext>();
+		const loaded = await loadExtensions({
+			transitImages: inertTransitImages,
+			root,
+			...hostOpts(fakeHost()),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			...coreStubs(),
+			integrationStore: {
+				async open(key) {
+					const handle = await store.open(key);
+					handles.set(key, handle);
+					return handle;
+				},
+			},
+			isEnabled: () => true,
+			maxFailures: 3,
+			importModule: async (specifier) => ({
+				activate(ctx: ExtensionContext) {
+					captured.set(specifier.includes("alpha") ? "alpha" : "beta", ctx);
+				},
+			}),
+		});
+		try {
+			const alpha = captured.get("alpha");
+			const beta = captured.get("beta");
+			if (!alpha || !beta) throw new Error("拓展没跑起来");
+			await alpha.http.fetch(`${base}/a`);
+			await beta.http.fetch(`${base}/b`);
+			const identityOf = (id: string) =>
+				handles.get(id)?.hostState.get<Json>("http.identity") as { userAgent: string };
+			expect(userAgents).toEqual([identityOf("alpha").userAgent, identityOf("beta").userAgent]);
+
+			const socket = alpha.http.websocket(wsUrl);
+			if (!socket.ok) throw new Error("建连被拒");
+			socket.socket.on("error", () => {});
+			await new Promise<void>((resolve) => socket.socket.on("open", () => resolve()));
+			const closed = new Promise<void>((resolve) => socket.socket.on("close", () => resolve()));
+
+			await loaded.dispose();
+			await closed;
+		} finally {
+			await loaded.dispose();
+			for (const client of wss.clients) client.terminate();
+			await new Promise<void>((resolve) => wss.close(() => resolve()));
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
+});
+
+/**
  * 装载目录那一层的规矩钉在 `discover.test.ts`,这里钉的是**加载器怎么用它** ——
  * 每条记录带着自己的位置,以及账记在哪。
  */
@@ -524,6 +608,7 @@ describe("装载目录", () => {
 	it("失败记账落在装载目录,拓展自己那个目录一个文件都不多", async () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
+			transitImages: inertTransitImages,
 			root,
 			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -809,6 +894,7 @@ describe("拨开关即热装卸", () => {
 		let opens = 0;
 		let on = true;
 		const loaded = await loadExtensions({
+			transitImages: inertTransitImages,
 			root,
 			...hostOpts(host),
 			mounts: createExtensionMounts({ logger: silentLogger }),

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -101,6 +102,7 @@ async function boot(
 	const listeners = new Set<() => void>();
 	const enabled = opts.enabled ?? (() => true);
 	const loaded: LoadedExtensions = await loadExtensions({
+		transitImages: inertTransitImages,
 		root,
 		host,
 		loggerOf: () => logger,

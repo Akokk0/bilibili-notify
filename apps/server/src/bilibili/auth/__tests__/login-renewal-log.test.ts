@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
@@ -102,7 +103,12 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 			logger: ctx.logger,
 			redactor: createValueRedactor(),
 		});
-		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
+		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
+			serviceCtx: ctx,
+			bus,
+			integrationStore,
+		});
 		expect(captured.callbacks?.onCookiesRefreshed).toBeTypeOf("function");
 
 		// 驱动一次真的提交:罐子里有会话 cookie,令牌与罐子同一次写。

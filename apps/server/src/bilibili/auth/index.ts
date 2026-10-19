@@ -37,7 +37,7 @@ import { LoginFlow } from "./login-flow.js";
 export interface AuthSystem {
 	readonly api: Api;
 	/**
-	 * B 站集成的上下文(登录这一套建好的那个),按公共五格的类型交出去:核心在类型上拿不到 `http` 与 `cookies`。
+	 * B 站集成的上下文(登录这一套建好的那个),按公共那一面的类型交出去:核心在类型上拿不到 `cookies`(罐子的口不对来源开)。
 	 * 入口递给 `compose.ts`,来源的上下文建在它之上。
 	 */
 	readonly integration: IntegrationContext;
@@ -65,6 +65,8 @@ export interface CreateAuthSystemOptions {
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
 	accountImages: ImageWriter;
+	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):B 站集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 经它。 */
+	transitImages: CreateBiliContextOptions["transitImages"];
 	/** 问题表的写口(`AppRuntime.problems`):B 站集成上下文的 `reportProblem` 记到这里。 */
 	problems: CreateBiliContextOptions["problems"];
 	/** 按集成键要设置的读法(入口造一次),原样递给 B 站的集成上下文。 */
@@ -81,6 +83,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		stores: opts.integrationStore,
 		serviceCtx,
 		problems: opts.problems,
+		transitImages: opts.transitImages,
 		settingsOf: opts.settingsOf,
 	});
 	const { ctx } = context;

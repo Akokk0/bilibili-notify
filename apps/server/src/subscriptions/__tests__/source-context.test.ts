@@ -50,9 +50,11 @@ const setup = (
 };
 
 describe("createSourceContext", () => {
-	it("交出去的上下文只有公共五格加来源的七个方法:没有 http 与 cookies", () => {
+	it("交出去的上下文只有公共那一面加来源的七个方法:没有 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
+			"fetchImage",
+			"http",
 			"logger",
 			"onDispose",
 			"onSubscriptionsChanged",
@@ -65,10 +67,23 @@ describe("createSourceContext", () => {
 			"settings",
 			"signal",
 			"state",
+			"storeImage",
 			"subscriptions",
 		]);
-		expect("http" in handle.ctx).toBe(false);
 		expect("cookies" in handle.ctx).toBe(false);
+	});
+
+	// 验红:把转发的 `http` / `fetchImage` / `storeImage` 任一格从 `source-context.ts` 里剪掉,这条红(类型检查也过不去)。
+	it("ctx.http / fetchImage / storeImage 就是集成上下文上的那三个:来源抓图、请求走集成自己的客户端", () => {
+		const integration = makeIntegration();
+		const { handle } = setup([makeSub("a", "1")], {
+			http: integration.http,
+			fetchImage: integration.fetchImage,
+			storeImage: integration.storeImage,
+		});
+		expect(handle.ctx.http).toBe(integration.http);
+		expect(handle.ctx.fetchImage).toBe(integration.fetchImage);
+		expect(handle.ctx.storeImage).toBe(integration.storeImage);
 	});
 
 	it("ctx.redact 就是集成上下文上的那一个:来源登记的临时凭据走集成的登记口", () => {

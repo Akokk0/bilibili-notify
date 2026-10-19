@@ -1,9 +1,12 @@
+import type { HttpClient } from "@bilibili-notify/http";
 import type {
 	Disposable,
 	IntegrationContext,
 	KeyValueStore,
 	Logger,
 } from "@bilibili-notify/internal";
+import { createImageFetcher } from "../images/image-fetcher.js";
+import type { ImageWriter } from "../images/image-store.js";
 import { type ProblemReport, problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 
@@ -66,6 +69,17 @@ export interface CreateIntegrationContextOptions {
 		settings: IntegrationContext["settings"];
 		dispose(): void;
 	};
+	/**
+	 * 这个集成自己的请求客户端(`createIntegrationHttp` 造的那个):`ctx.http` 是它的窄面,`ctx.fetchImage` 抓图也走它
+	 * (同一套身份与 cookie)。**连接池归造它的人收**:`dispose` 会让在途的请求失败,B 站放关停的 `drain` 段,
+	 * 内置适配器与拓展随各自的收摊。
+	 */
+	http: HttpClient;
+	/**
+	 * 图库里「集成在途」那一家的写口:`ctx.fetchImage` / `ctx.storeImage` 存的图都经它。一个集成一个口;
+	 * 那一家的名单恒空,图靠 24 小时的宽限期活到被哪一行引用上(图的死活看引用落在哪)。
+	 */
+	transitImages: Pick<ImageWriter, "put">;
 	/** 收尾钩子一共最多等多久;不给就是 `DISPOSE_TIMEOUT_MS`。 */
 	disposeTimeoutMs?: number;
 	/** 开始收尾的那一刻、`signal` 中止之前叫一次;抛了记一行 error,不打断收尾。 */
@@ -131,6 +145,22 @@ export function createIntegrationContext(
 		apply();
 	}
 
+	// 抓图 / 存图服务:走这个集成自己的客户端,写进「在途」那一家。拦内网只在这里,`ctx.http` 整体不拦。
+	const images = createImageFetcher({ http: opts.http, images: opts.transitImages });
+	// `ctx.http` 是客户端的窄面:`fetch` 与选项原样转(一个选项都不抄、不丢);`websocket` 多一道 ——
+	// 集成停下时自动关,所以把调用方的 `signal` 与 `ctx.signal` 合成一个。`fetch` 不自动挂 `ctx.signal`:
+	// 关停的 `stop` 段里在途的抓图还得跑完。
+	const http: IntegrationContext["http"] = {
+		fetch: (url, options) => opts.http.fetch(url, options),
+		websocket: (url, options) =>
+			opts.http.websocket(url, {
+				...options,
+				signal: options?.signal
+					? AbortSignal.any([options.signal, controller.signal])
+					: controller.signal,
+			}),
+	};
+
 	const ctx: IntegrationContext = {
 		logger,
 		signal: controller.signal,
@@ -175,6 +205,9 @@ export function createIntegrationContext(
 			);
 		},
 		settings: opts.settings.settings,
+		http,
+		fetchImage: images.fetchImage,
+		storeImage: images.storeImage,
 	};
 
 	return {

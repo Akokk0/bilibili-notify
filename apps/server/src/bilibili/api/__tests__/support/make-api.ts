@@ -2,6 +2,7 @@ import type { BrowserIdentity } from "@bilibili-notify/http";
 import type { Disposable, Json, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { ignoredProblems } from "../../../../__tests__/support/ignored-problems";
 import { inertSettingsOf } from "../../../../__tests__/support/inert-settings";
+import { inertTransitImages } from "../../../../__tests__/support/integration-io.js";
 import { memoryStoreHandle } from "../../../../__tests__/support/memory-key-value-store";
 import { HTTP_IDENTITY_KEY } from "../../../../integrations/http";
 import type { NodeServiceContext } from "../../../../runtime/service-context";
@@ -105,6 +106,7 @@ export async function makeApi(options: MakeApiOptions = {}) {
 		options.redact,
 	);
 	const context = await createBiliContext({
+		transitImages: inertTransitImages,
 		stores: { open: async () => handle },
 		serviceCtx,
 		problems: ignoredProblems,

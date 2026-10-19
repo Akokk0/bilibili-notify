@@ -12,6 +12,7 @@ import { join } from "node:path";
 import type { Logger, ServiceContext, SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
+import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -72,6 +73,7 @@ async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 	const events: string[] = [];
 	let on = true;
 	const loaded = await loadExtensions({
+		transitImages: inertTransitImages,
 		root,
 		host,
 		loggerOf: () => silent,

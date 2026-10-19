@@ -188,6 +188,12 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 				get: () => ({ ok: true as const, settings: {} as never }),
 				onChange: () => ({ dispose: noop }),
 			}),
+			http: {
+				fetch: async () => fail("unavailable", "桥的测试不联网"),
+				websocket: () => fail("unavailable", "桥的测试不联网"),
+			},
+			fetchImage: async () => fail("unavailable", "桥的测试不联网"),
+			storeImage: async () => fail("unavailable", "桥的测试不联网"),
 			reportProblem: noop,
 			resolveProblem: noop,
 			connections: () => [],

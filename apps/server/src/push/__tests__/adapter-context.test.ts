@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { inertSettings } from "../../__tests__/support/inert-settings.js";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -64,6 +65,7 @@ function build(
 ) {
 	const problems = createProblemTable({ logger: silentLogger });
 	const handle = createIntegrationContext({
+		...integrationIo(),
 		logger,
 		stopReason: "测试",
 		...memoryStores(),
@@ -98,6 +100,14 @@ describe("createPlatformAdapterContext", () => {
 		extensionConn("g", "bridge"),
 		extensionConn("h", "matrix"),
 	];
+
+	// 验红:把转发的 `http` / `fetchImage` / `storeImage` 任一格从 `adapter-context.ts` 里剪掉,这条红(类型检查也过不去)。
+	it("ctx.http / fetchImage / storeImage 就是集成上下文上的那三个:适配器用的是自己集成的客户端与图口", () => {
+		const { handle, ctx } = build("onebot", () => all);
+		expect(ctx.http).toBe(handle.ctx.http);
+		expect(ctx.fetchImage).toBe(handle.ctx.fetchImage);
+		expect(ctx.storeImage).toBe(handle.ctx.storeImage);
+	});
 
 	it("connections() 只回 adapterKey 等于它的连接 —— onebot", () => {
 		const { ctx } = build("onebot", () => all);
@@ -378,6 +388,7 @@ describe("createPlatformAdapterContext · inbound", () => {
 		const seen: unknown[] = [];
 		const problems = createProblemTable({ logger: silentLogger });
 		const handle = createIntegrationContext({
+			...integrationIo(),
 			logger: silentLogger,
 			stopReason: "测试",
 			...memoryStores(),

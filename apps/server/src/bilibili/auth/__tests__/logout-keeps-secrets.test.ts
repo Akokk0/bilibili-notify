@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
 import { createSecretStore } from "../../../config/secret-store.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
@@ -97,7 +98,12 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 			logger: ctx.logger,
 			redactor: createValueRedactor(),
 		});
-		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
+		const auth = await createAuthSystem({
+			transitImages: inertTransitImages,
+			serviceCtx: ctx,
+			bus,
+			integrationStore,
+		});
 		await auth.auth.logout();
 		// 清完之后面板上再改一次 key:secret store 用它进程里缓存的那把钥匙写盘。
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-after" } });

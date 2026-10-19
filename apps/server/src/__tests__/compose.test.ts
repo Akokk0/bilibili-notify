@@ -47,6 +47,7 @@ import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { putImage } from "./support/chat-images.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
+import { inertTransitImages } from "./support/integration-io.js";
 import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
 import { png } from "./support/report-images.js";
 
@@ -219,6 +220,7 @@ function compose(
 		fans: () => undefined,
 		healthCheck: () => undefined,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
+		transitImages: inertTransitImages,
 		inbound: opts.inbound ?? { private: () => {}, group: () => {} },
 		adapterRegistry,
 		integrationStore,

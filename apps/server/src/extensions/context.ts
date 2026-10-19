@@ -244,6 +244,13 @@ export interface CreateExtensionContextOptions {
 	 */
 	stores: Pick<IntegrationStoreHandle, "state" | "secrets" | "redact">;
 	/**
+	 * 这个拓展自己的请求客户端(装载器在开存储之后造:身份存它自己的 `state`、罐子存它自己的 `secrets`),
+	 * 连接池与最后一次存盘由装载器在收摊时收。`ctx.http` / `ctx.fetchImage` 都经它。
+	 */
+	http: CreateIntegrationContextOptions["http"];
+	/** 图库「集成在途」那一家的写口:`ctx.fetchImage` / `ctx.storeImage` 存的图经它。 */
+	transitImages: CreateIntegrationContextOptions["transitImages"];
+	/**
 	 * 问题表的写口:拓展的 `reportProblem` 记在它的 id 名下,收摊时它名下的全清。被拒的(已停下、形状不对)
 	 * 只记 warn —— 拓展自己的 bug,不进出入表(ADR-0025 决策 10 下 2026-10-15 那条)。
 	 */
@@ -329,6 +336,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		reporter: id,
 		rejectedProblemLevel: "warn",
 		redactValues: (values) => opts.stores.redact("redact", values),
+		http: opts.http,
+		transitImages: opts.transitImages,
 		// 拓展自己的实现(见 `readOwnSettings`):对表、记「设置读不了」;监听都经 `integration.track`,不另需收摊。
 		settings: { settings: (schema) => readOwnSettings(schema), dispose() {} },
 		disposeTimeoutMs: opts.disposeTimeoutMs,
@@ -741,6 +750,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		redact: integration.ctx.redact,
 		reportProblem: integration.ctx.reportProblem,
 		resolveProblem: integration.ctx.resolveProblem,
+		http: integration.ctx.http,
+		fetchImage: integration.ctx.fetchImage,
+		storeImage: integration.ctx.storeImage,
 		setTimeout: (fn, ms) => {
 			if (integration.disposed) return integration.refuse("setTimeout");
 			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。

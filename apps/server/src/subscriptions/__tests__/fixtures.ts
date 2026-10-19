@@ -35,7 +35,7 @@ export const makeLogger = (): SpyLogger => ({
 });
 
 /**
- * 公共六格 + 故意多带两格(`http`、`cookies`),模拟 B 站交进来的那个对象运行时的样子。
+ * 公共那一面(含 `http`、`fetchImage`、`storeImage`)+ 故意多带一格 `cookies`,模拟 B 站交进来的那个对象运行时的样子。
  * `settings` 是真的集成读手(`createIntegrationSettings`),读源是 `settingsHost`(不给就是一份空对象)。
  */
 export const makeIntegration = (
@@ -60,7 +60,9 @@ export const makeIntegration = (
 			onChanged: settingsHost.onChanged,
 			logger,
 		}).settings,
-		http: { get: vi.fn() },
+		http: { fetch: vi.fn(), websocket: vi.fn() },
+		fetchImage: vi.fn(),
+		storeImage: vi.fn(),
 		cookies: { header: vi.fn() },
 	} as unknown as IntegrationContext;
 };

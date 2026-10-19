@@ -1,12 +1,14 @@
-import type { CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http";
+import type { CookieJar } from "@bilibili-notify/http";
 import {
 	type Disposable,
 	fail,
+	type HttpClient,
 	type Logger,
 	ok,
 	type Result,
 	retry as retryUtil,
 	type ServiceContext,
+	type WebSocketLike,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { t } from "../../i18n/index.js";
