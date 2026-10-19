@@ -127,7 +127,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P27)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P28)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -164,6 +164,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		id: "P27",
 		title:
 			"ctx.http / fetchImage / storeImage:作品带图(存的配图与头像进卡片)、抓图拦内网、请求不拦内网",
+		checked: true,
+	},
+	{
+		id: "P28",
+		title: "看图从图库引用:只有图库引用、没有地址的配图,喂给 AI 的是这张图的 data URL",
 		checked: true,
 	},
 	{
@@ -1545,6 +1550,37 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P27");
 	});
 
+	// 验红:`deliver-post.ts` 的 `commentImagesOf` 跳过只有引用的图,AI 那一问里没有 data URL,这条红;
+	// 把断言里的 data URL 换成另一张图的,这条也红(比的是这张图的字节,不只是有没有图)。
+	it("P28 看图从图库引用:只有图库引用、没有地址的配图,喂给 AI 的是这张图的 data URL", async () => {
+		const probe = currentProbe();
+		const ctx = probe.ctx;
+		if (!ctx) throw new Error("假来源还没 start");
+		const picture = Buffer.from(png(12, 7, 5));
+		const stored = await ctx.storeImage(picture);
+		if (!stored.ok) throw new Error("storeImage 存图失败");
+		// 主模型能看图:服务商要支持看图(deepseek 官方接口不支持,换成自定义档)且开着 enableVision。
+		await patchSettings({
+			ai: { enabled: true, providers: { fake: { provider: "custom", enableVision: true } } },
+		});
+		try {
+			aiAsked.length = 0;
+			await clearCaptures();
+			ctx.reportPost(
+				EXT.alice,
+				textReport("p28", "小爱", "只有图库引用的配图P28", { images: [{ ref: stored.ref }] }),
+			);
+			await settledCaptures(1);
+			const asked = aiAsked.join("\n");
+			expect(asked).toContain(`data:image/png;base64,${picture.toString("base64")}`);
+		} finally {
+			await patchSettings({
+				ai: { enabled: false, providers: { fake: { provider: "deepseek", enableVision: false } } },
+			});
+		}
+		drove("P28");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -1885,13 +1921,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 27 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(41);
+	it("PARITY_ROWS:对拍 28 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(42);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 27 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 28 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
