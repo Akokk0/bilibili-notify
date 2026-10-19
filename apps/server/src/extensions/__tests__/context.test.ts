@@ -9,6 +9,7 @@
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
+import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { png } from "../../__tests__/support/report-images.js";
@@ -107,6 +108,7 @@ function makeRuntime(id = "bridge") {
 	const io = integrationIo();
 	const runtime = createExtensionContext({
 		...io,
+		...noExtensionI18n(),
 		id,
 		host: host.ctx,
 		loggerOf: host.loggerOf,
@@ -173,6 +175,7 @@ describe("拓展 ctx", () => {
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		const runtime = createExtensionContext({
 			...integrationIo(),
+			...noExtensionI18n(),
 			id: "bridge",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -263,6 +266,7 @@ describe("拓展 ctx", () => {
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
 		const a = createExtensionContext({
 			...integrationIo(),
+			...noExtensionI18n(),
 			id: "a",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -271,6 +275,7 @@ describe("拓展 ctx", () => {
 		});
 		const b = createExtensionContext({
 			...integrationIo(),
+			...noExtensionI18n(),
 			id: "b",
 			host: host.ctx,
 			loggerOf: host.loggerOf,
@@ -325,6 +330,7 @@ describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
 		const redactor = createValueRedactor();
 		const runtime = createExtensionContext({
 			...integrationIo(),
+			...noExtensionI18n(),
 			id: "bridge",
 			host: host.ctx,
 			loggerOf: host.loggerOf,

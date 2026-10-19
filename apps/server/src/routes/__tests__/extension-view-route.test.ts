@@ -15,6 +15,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
@@ -52,6 +53,7 @@ const SILENT: Logger = { info() {}, warn() {}, error() {}, debug() {} };
 function boot() {
 	const runtime = createExtensionContext({
 		...integrationIo(),
+		...noExtensionI18n(),
 		id: "douyin",
 		manifest: MANIFEST,
 		host: {

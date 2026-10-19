@@ -23,6 +23,7 @@ import type {
 import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
@@ -114,6 +115,7 @@ function harness(
 
 	const runtime = createExtensionContext({
 		...integrationIo(),
+		...noExtensionI18n(),
 		id: "bridge",
 		manifest: opts.manifest ?? PUSH_MANIFEST,
 		host,
@@ -1138,6 +1140,7 @@ describe("认领 WS upgrade", () => {
 		};
 		const runtime = createExtensionContext({
 			...integrationIo(),
+			...noExtensionI18n(),
 			id: "bridge",
 			manifest: PUSH_MANIFEST,
 			host: {

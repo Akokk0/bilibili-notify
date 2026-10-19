@@ -18,6 +18,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { IntegrationStore, IntegrationStoreHandle } from "../integration-store/store.js";
 import { createIntegrationHttp } from "../integrations/http.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
@@ -213,15 +214,6 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
  */
 export const ACTIVATE_TIMEOUT_MS = 30_000;
 
-/**
- * 当前语言的读口(ADR-0037 决策 1:整台一种、出字那一刻读)。装载器与上下文只认这个口,
- * 不认服务端的语言 store —— 测试注入它就能切语言。`onChange` 只在语言**真的变了**时叫。
- */
-export interface LocaleReader {
-	current(): string;
-	onChange(fn: () => void): Disposable;
-}
-
 export interface LoadExtensionsOptions {
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
@@ -269,8 +261,9 @@ export interface LoadExtensionsOptions {
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
 	/**
-	 * 某个拓展喊了「面板数据变了」(`ctx.statusChanged`);宿主把它推到面板。只有拓展自己喊才叫它 ——
-	 * 上报出入(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
+	 * 某个拓展的面板数据变了,宿主把它推到面板。两种情况会叫它:拓展自己喊了(`ctx.statusChanged`);
+	 * 当前语言真的换了 —— 宿主替**每个在跑的**拓展各叫一次(视图是现取的,面板重取就拿到新语言的字;
+	 * 停着的、起不来的不叫)。上报出入(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
 	 */
 	onStatusChanged?: (id: string) => void;
 	/**
@@ -738,6 +731,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			onSubscriptionsChanged: opts.onSubscriptionsChanged,
 			onSubscriptionReport: opts.onSubscriptionReport,
 			onReportDiscrepancy: opts.onReportDiscrepancy,
+			locales: dir.locales,
+			localeReader: opts.locale,
 			settings: () => opts.settings(id),
 			onSettingsChanged: opts.onSettingsChanged,
 			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。
@@ -1062,6 +1057,13 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	let closed = false;
 	// 先订再起:开机那一趟里落的盘,排在开机后面对账,不会漏。
 	const settingsWatch = opts.onSettingsChanged(settleLater);
+	// 语言真的换了:在跑的拓展各喊一次「面板数据变了」。同步发、不进装载队 —— 只读此刻谁在跑。
+	const localeWatch = opts.locale.onChange(() => {
+		if (closed) return;
+		for (const [id, slot] of slots) {
+			if (slot.running) opts.onStatusChanged?.(id);
+		}
+	});
 	// 开机这一趟也在队里:activate 里喊的「设置解不开了」、开机途中落的盘,都得排在它后面。
 	await enqueue(async () => {
 		for (const dir of found) await admit(dir);
@@ -1146,6 +1148,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		async dispose() {
 			closed = true;
 			settingsWatch.dispose();
+			localeWatch.dispose();
 			// 🔴 **先等装载队里在途的那一项落定。** 在途的可能正 `start` 一个拓展 —— 不等的话,下面收摊时
 			// 它还没登记进格子,收不到它;等它起完了才落进格子,成了没人收的运行体(定时器、端点、写盘都还在),
 			// 而关停已经往下走、各写道也要关门了。队尾是吞掉失败的那一份(见 `enqueue`),等它安全。

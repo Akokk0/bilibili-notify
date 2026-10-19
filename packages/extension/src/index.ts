@@ -86,6 +86,8 @@ export type {
  * 就是 `Result`,一律拿它们造,不手写 `{ ok: false, … }`。
  */
 export { fail, ok } from "@bilibili-notify/internal/constants";
+/** `ctx.i18n.t` 的占位符取值;`count` 同时决定挑哪个单复数类别。只转类型。 */
+export type { TextValues } from "@bilibili-notify/internal/i18n";
 /**
  * 造「认不出的平台」用的中性平台描述(3b-40,ADR-0024 决策 4):连接候选里的 `platform` 拓展自己造,
  * 不必抄一份取值。第二处运行时值,理由同 `ok` / `fail`。
@@ -127,6 +129,7 @@ import type {
 	PlatformAdapter,
 	SettingsReader,
 } from "@bilibili-notify/internal";
+import type { TextValues } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
 import type { ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
 
@@ -419,6 +422,36 @@ export interface SubscriptionSourceHandle {
 }
 
 /**
+ * 拓展取自己包里译文的口(`ctx.i18n`,ADR-0037 决策 14)。译文放在包里的 `locales/<语言码>.json`,
+ * 宿主在读目录时读好;拓展没带译文也照样有这一格,`t` 回键本身。
+ *
+ * 语言整台一种、由主人在面板上选;取字时读当前那一种,所以**别把 `t` 的结果存起来用**。
+ * 口吻不交给拓展:这里只有平实一层,没有女仆层。
+ */
+export interface ExtensionI18n {
+	/**
+	 * 当前语言,**现读**。是 `string` 而不是一个固定的语言码表:宿主以后加了新语言,不该在类型上
+	 * 就把旧拓展挡在外面。
+	 */
+	locale(): string;
+	/**
+	 * 按键取字。占位符写 `{名字}`,从 `values` 里填;`values.count` 是数字时按当前语言挑单复数类别
+	 * (译文里写成 `键#one` / `键#other` …)。
+	 *
+	 * 回落链固定:当前语言 → 简中 → 英文 → 键本身,**按句**回落 —— 当前语言缺哪一句,只那一句落到后面。
+	 * 缺键回键本身(露出来好查),不抛。
+	 */
+	t(key: string, values?: TextValues): string;
+	/**
+	 * 当前语言**真的换了**时叫(只换了口吻不叫)。换了语言以后 `t` 取到的就是新语言。
+	 * 视图是现取的,宿主已经替每个在跑的拓展喊过一次「面板数据变了」,面板会自己重取 ——
+	 * 拓展**不用自己再喊** `statusChanged()`;只有自己缓存了译文算出来的东西时,才在这里重算。
+	 * 卸载时自动摘掉。
+	 */
+	onChange(fn: () => void): Disposable;
+}
+
+/**
  * 交给拓展的那面 —— **第一版刻意很窄**(ADR-0012 决策 13)。
  *
  * 窄面加宽容易,反过来不行;而我们手上只有一个真实用例(桥接),凭空设计「宿主应该提供
@@ -444,6 +477,8 @@ export interface ExtensionContext extends IntegrationContext {
 	 * (`logging.levels.<id>`),没写就跟总等级。
 	 */
 	readonly logger: Logger;
+	/** 自己包里的译文与当前语言,见 {@link ExtensionI18n}。只挂拓展的上下文,不在 `IntegrationContext` 上。 */
+	readonly i18n: ExtensionI18n;
 	// 继承自 IntegrationContext、这里不重写的:`signal`(拓展停用时中止)、`state` / `secrets`(与推送源
 	// `start(ctx)` 里拿到的是同一对)、`onDispose`(卸载时要跑的收摊钩子,后注册的先跑)、
 	// `reportProblem` / `resolveProblem`(报的人是自己的 id,停用时宿主替它清)。

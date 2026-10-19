@@ -1,4 +1,13 @@
-import type { LocaleReader } from "../extensions/loader.js";
+import type { Disposable } from "@bilibili-notify/internal";
+
+/**
+ * 当前语言的读口(ADR-0037 决策 1:整台一种、出字那一刻读)。装载器与上下文只认这个口,
+ * 不认服务端的语言 store —— 测试注入它就能切语言。`onChange` 只在语言**真的变了**时叫。
+ */
+export interface LocaleReader {
+	current(): string;
+	onChange(fn: () => void): Disposable;
+}
 
 /**
  * 把语言 store 接成装载器要的「当前语言」读口(ADR-0037 决策 1:出字那一刻读)。

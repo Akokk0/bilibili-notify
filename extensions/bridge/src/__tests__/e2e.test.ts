@@ -161,6 +161,12 @@ function hostFor(
 		hostApiVersion: 2,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
+		// 桥不取字(留给后续),这里只为过类型:键回键本身,语言一直是简中。
+		i18n: {
+			locale: () => "zh-CN",
+			t: (key) => key,
+			onChange: () => ({ dispose() {} }),
+		},
 		state: memoryKeyValueStore(),
 		secrets: memoryKeyValueStore(),
 		signal: new AbortController().signal,

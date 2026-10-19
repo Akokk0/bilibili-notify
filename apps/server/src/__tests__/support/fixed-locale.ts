@@ -1,4 +1,4 @@
-import type { LocaleReader } from "../../extensions/loader.js";
+import type { LocaleReader } from "../../i18n/locale-reader.js";
 
 /** 一直是同一种语言的读口:装载器的测试不关心语言时用。 */
 export function fixedLocale(locale = "zh-CN"): LocaleReader {

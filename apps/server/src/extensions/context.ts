@@ -1,6 +1,7 @@
 import type {
 	ExtensionConnectionView,
 	ExtensionContext,
+	ExtensionI18n,
 	ExtensionOwnSubscription,
 	ExtensionPushView,
 	ExtensionSubscriptionCandidate,
@@ -32,8 +33,10 @@ import {
 	type SubscriptionReportKind,
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
+import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import {
 	type CreateIntegrationContextOptions,
@@ -45,6 +48,7 @@ import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
+import { type ExtensionLocales, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
 	judgeStoredSettings,
@@ -278,6 +282,13 @@ export interface CreateExtensionContextOptions {
 	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
 	/** 「上报出入」的出口(见 {@link ReportDiscrepancy})。日志 ctx 已经记了;不给就只记日志。 */
 	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
+	/**
+	 * 它包里读到的译文(读目录时读好的,`ctx.i18n.t` 取字的来源)。**起的那一刻定死** —— 跑着时盘上
+	 * 换了译文标「等着换上」,不偷偷换(ADR-0012 决策 47)。没带译文就是空的。
+	 */
+	locales: ExtensionLocales;
+	/** 当前语言的读口(ADR-0037 决策 1:出字那一刻读)。`ctx.i18n.locale()` / `onChange` 都经它。 */
+	localeReader: LocaleReader;
 	/** 它自己那份设置(`config/settings/extensions/<id>.json`),**现读**、原样。 */
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
@@ -739,11 +750,31 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		};
 	}
 
+	// 每种语言的平实版只合一次(译文起的那一刻就定死了,见 `CreateExtensionContextOptions.locales`)。
+	const runtimeDicts = new Map<string, Dict>();
+	const i18n: ExtensionI18n = {
+		locale: () => opts.localeReader.current(),
+		t(key, values) {
+			const locale = opts.localeReader.current();
+			let dict = runtimeDicts.get(locale);
+			if (dict === undefined) {
+				dict = runtimeDictOf(opts.locales, locale);
+				runtimeDicts.set(locale, dict);
+			}
+			return translate(dict, locale, key, values);
+		},
+		onChange(fn) {
+			if (integration.disposed) return integration.refuse("i18n.onChange");
+			return integration.track(opts.localeReader.onChange(fn));
+		},
+	};
+
 	const ctx: ExtensionContext = {
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
+		i18n,
 		state: integration.ctx.state,
 		secrets: integration.ctx.secrets,
 		signal: integration.ctx.signal,

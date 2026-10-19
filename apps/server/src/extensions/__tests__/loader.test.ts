@@ -30,12 +30,13 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import type { LocaleReader } from "../../i18n/locale-reader.js";
 import type { IntegrationStoreHandle } from "../../integration-store/store.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
-import { type LocaleReader, loadExtensions } from "../loader.js";
+import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -132,10 +133,12 @@ function run(opts: {
 	loggerOf?: (id: string) => Logger;
 	/** 不给就一直是简中。 */
 	locale?: LocaleReader;
+	onStatusChanged?: (id: string) => void;
 }) {
 	return loadExtensions({
 		transitImages: inertTransitImages,
 		locale: opts.locale ?? fixedLocale(),
+		onStatusChanged: opts.onStatusChanged,
 		root,
 		...hostOpts(opts.host),
 		...(opts.loggerOf ? { loggerOf: opts.loggerOf } : {}),
@@ -1866,5 +1869,65 @@ describe("拓展的译文(ADR-0037 决策 14)", () => {
 		expect(entry?.staged).toEqual({ version: "1.0.0" });
 		// 跑着的照旧是旧的那份
 		expect(entry?.manifest?.name).toBe("Bridge");
+	});
+
+	it("语言变了:每个在跑的拓展各收到一次 onStatusChanged;停着的、起不来的不收", async () => {
+		await plant("alpha", HEALTHY);
+		await plant("beta", HEALTHY);
+		await plant("off", HEALTHY);
+		await plant("broken", `throw new Error("起不来");`);
+		const reader = switchableLocale("zh-CN");
+		const heard: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: (id) => id !== "off",
+			locale: reader,
+			onStatusChanged: (id) => heard.push(id),
+		});
+
+		reader.set("en");
+
+		expect([...heard].sort()).toEqual(["alpha", "beta"]);
+		await loaded.dispose();
+	});
+
+	it("读口没变不叫;装载器收摊之后换语言也不叫", async () => {
+		await plant("alpha", HEALTHY);
+		const reader = switchableLocale("zh-CN");
+		const heard: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: reader,
+			onStatusChanged: (id) => heard.push(id),
+		});
+
+		reader.set("zh-CN");
+		expect(heard).toEqual([]);
+
+		await loaded.dispose();
+		reader.set("en");
+		expect(heard).toEqual([]);
+	});
+
+	it("拓展拿到的 ctx.i18n 用的是包里的译文与装载器的读口", async () => {
+		await plant(
+			"bridge",
+			`export function activate(ctx) {
+				ctx.mount(async () => new Response(ctx.i18n.locale() + ":" + ctx.i18n.t("hi")));
+			}`,
+		);
+		await plantLocale("bridge", "en", { hi: "Hello" });
+		await plantLocale("bridge", "zh-CN", { hi: "你好" });
+		const mounts = createExtensionMounts({ logger: silentLogger });
+		const app = new Hono();
+		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
+		const reader = switchableLocale("zh-CN");
+		await run({ host: fakeHost(), mounts, locale: reader });
+
+		expect(await (await app.request("/ext/bridge/x")).text()).toBe("zh-CN:你好");
+		reader.set("en");
+		expect(await (await app.request("/ext/bridge/x")).text()).toBe("en:Hello");
 	});
 });
