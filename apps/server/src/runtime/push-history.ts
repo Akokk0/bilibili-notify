@@ -6,7 +6,8 @@ import {
 } from "@bilibili-notify/internal";
 import type { PushSendResult } from "@bilibili-notify/push";
 import type { NewHistoryEntry } from "../history/store.js";
-import { clip, POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
+import { clip } from "../posts/post-text.js";
+import { POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
 
 export interface PushHistoryReader {
 	/**
