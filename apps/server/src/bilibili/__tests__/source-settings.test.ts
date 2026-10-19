@@ -116,7 +116,6 @@ async function boot() {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 		} as unknown as Api,
 		bus: world.bus,
-		imageFetcher: { fetchImage: vi.fn() } as never,
 		loginCheck: { setHealthCheckMs },
 		setTimeout: () => ({ dispose() {} }),
 		auth: {

@@ -8,6 +8,7 @@
 import {
 	BILIBILI_GUARD_PROGRAM,
 	fail,
+	type ImageRef,
 	type IntegrationContext,
 	type LinkResolver,
 	type Logger,
@@ -84,6 +85,9 @@ const EMPTY_FEED = ok({
 	data: { has_more: false, items: [] as unknown[], offset: "", update_baseline: "", update_num: 0 },
 });
 
+/** 假上下文 `fetchImage` 回的图库引用(形状同真图库:64 位十六进制 + 后缀)。 */
+const CONTEXT_IMAGE_REF = `${"c".repeat(64)}.webp`;
+
 /** 一条文字动态:作者是 `uid`,发布时间是 `pubTs`(秒)。 */
 const item = (uid: number, pubTs: number, id = `id-${uid}-${pubTs}`) => ({
 	basic: {},
@@ -131,11 +135,9 @@ function makeConfig(initial: Partial<BiliSettings> = {}) {
 
 function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {}) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
-	const fetchImage = vi.fn();
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	return {
 		config,
-		fetchImage,
 		setHealthCheckMs,
 		deps: {
 			problems: {
@@ -148,7 +150,6 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 			},
 			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
 			bus: makeWorld().bus,
-			imageFetcher: { fetchImage },
 			loginCheck: { setHealthCheckMs },
 			setTimeout: () => ({ dispose() {} }),
 			auth: FAKE_AUTH,
@@ -175,6 +176,8 @@ function makeCtx(
 	const watchers: Array<() => void> = [];
 	const watchDisposed = vi.fn();
 	const reportPost = vi.fn<(id: string, report: PostReport) => void>();
+	/** 上下文提供的抓图口:每个地址回同一个引用,测试数调用。 */
+	const fetchImage = vi.fn(async (_url: string) => ok({ ref: CONTEXT_IMAGE_REF }));
 	const logger = makeLogger();
 	const readers: Array<{ dispose(): void }> = [];
 	const linkResolverDisposed = vi.fn();
@@ -203,6 +206,7 @@ function makeCtx(
 			return { dispose: watchDisposed };
 		},
 		reportPost,
+		fetchImage,
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 		registerLinkResolver,
@@ -214,6 +218,7 @@ function makeCtx(
 		watchers,
 		watchDisposed,
 		reportPost,
+		fetchImage,
 		logger,
 		/** 收掉上下文:把手的宿主监听一起摘(登记表撤登记时真上下文做的事)。 */
 		disposeContext: () => {
@@ -515,7 +520,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	it("来源把 deps.imageFetcher 递给引擎:带图的动态去抓图", async () => {
+	it("来源用的是上下文的 fetchImage:带图的动态,作品里图的引用就是上下文回的那个", async () => {
 		vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-11T00:00:00Z") });
 		const feed = {
 			...EMPTY_FEED,
@@ -539,14 +544,15 @@ describe("createBiliSource", () => {
 				],
 			},
 		};
-		const { deps, fetchImage } = makeDeps({ fetchAllDynamic: async () => feed });
-		fetchImage.mockResolvedValue({ ok: false, code: "unavailable", message: "x" });
+		const { deps } = makeDeps({ fetchAllDynamic: async () => feed });
 		const source = createBiliSource(deps);
-		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+		const { ctx, reportPost, fetchImage } = makeCtx([{ externalId: "1", post: true }]);
 		await source.start(ctx);
 		vi.setSystemTime(new Date("2026-10-11T00:00:20Z"));
 		await source.dynamic()?.detectNow();
 		expect(fetchImage).toHaveBeenCalled();
+		expect(reportPost).toHaveBeenCalledTimes(1);
+		expect(reportPost.mock.calls[0]?.[1].post.images?.[0]?.ref).toBe(CONTEXT_IMAGE_REF);
 		await source.stop();
 	});
 });
@@ -659,7 +665,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		vi.useFakeTimers({ toFake: ["Date"], now: new Date(T0) });
 		const world = makeWorld(subs);
 		let feedItems: unknown[] = [];
-		const { deps, fetchImage } = makeDeps({
+		const { deps } = makeDeps({
 			fetchAllDynamic: async () => ({
 				...EMPTY_FEED,
 				data: { ...EMPTY_FEED.data, items: feedItems },
@@ -668,12 +674,17 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		const source = createBiliSource({ ...deps, bus: world.bus });
 		const enqueue = vi.fn<(event: { subscriptionId: string; postId: string }) => void>();
 		const logger = makeLogger();
+		const integration = makeIntegration() as IntegrationContext;
+		const fetchImage = vi.fn<(url: string) => Promise<Result<{ ref: ImageRef }>>>(async () =>
+			ok({ ref: CONTEXT_IMAGE_REF }),
+		);
+		integration.fetchImage = fetchImage;
 		const registry = createSourceRegistry();
 		const registration = await registerBuiltinSource({
 			registry,
 			linkResolvers: createLinkResolverRegistry(),
 			source,
-			integration: makeIntegration() as IntegrationContext,
+			integration,
 			sourceKey: SOURCE_KEY,
 			subscriptions: world.store,
 			defaults: () => world.globals.defaults,
@@ -766,7 +777,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 	// 验红:删掉 `DynamicPoller.stop()` 里清表的那句(`this.postAnchors = new Map()`),这条红。
 	it("撤销登记时有一轮正卡在抓图:放行之后这条不交,来源上下文也没看到「停下还在上报」", async () => {
 		const { source, registration, enqueue, feed, fetchImage, logger } = await boot();
-		const gate = deferred<{ ok: false; code: string; message: string }>();
+		const gate = deferred<Result<{ ref: ImageRef }>>();
 		fetchImage.mockReturnValue(gate.promise);
 		const withPic = item(1, at(10), "in-flight");
 		feed({

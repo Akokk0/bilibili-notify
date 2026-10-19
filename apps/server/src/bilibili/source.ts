@@ -16,7 +16,6 @@ import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
-import type { ImagesDeps } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
@@ -31,7 +30,6 @@ export interface BiliSourceDeps {
 	api: Api;
 	/** 引擎自己还在听 auth-restored / auth-lost(登录生命周期的事件,随 3b 直播并进来源时再收)。 */
 	bus: MessageBus;
-	imageFetcher: ImagesDeps["images"];
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
@@ -143,7 +141,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						bus: deps.bus,
 						api: deps.api,
 						problems: deps.problems,
-						imageFetcher: deps.imageFetcher,
+						fetchImage: ctx.fetchImage,
 						reportPost: (externalId, report) => ctx.reportPost(externalId, report),
 						subscriptions: () => ctx.subscriptions(),
 						config: dynamicConfigOf(read.settings),
@@ -210,7 +208,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						createBiliLinkResolver({
 							label: descriptor.label,
 							api: deps.api,
-							imageFetcher: deps.imageFetcher,
+							fetchImage: ctx.fetchImage,
 							logger: ctx.logger,
 						}),
 					),

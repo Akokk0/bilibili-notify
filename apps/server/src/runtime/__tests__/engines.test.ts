@@ -765,8 +765,7 @@ describe("createEngines — 大航海徽章图标接线", () => {
 describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
 	// 验红:把 engines.ts 里递给 LiveEngine 的 `imageFetcher: opts.imageFetcher` 删掉,这条红
 	// (直播卡出卡前没人去抓图,封面只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
-	// 动态那一半:来源把 `deps.imageFetcher` 递给引擎在 `bilibili/__tests__/source.test.ts`,
-	// `compose.ts` 把入参那个递给来源在 `__tests__/compose.test.ts`。
+	// 动态那一半:来源把 `ctx.fetchImage` 递给动态引擎在 `bilibili/__tests__/source.test.ts`。
 	it("抓图服务递给 LiveEngine", () => {
 		const imageFetcher = { fetchImage: vi.fn() } as unknown as NonNullable<
 			Parameters<typeof createEngines>[0]["imageFetcher"]

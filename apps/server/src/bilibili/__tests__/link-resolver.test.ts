@@ -65,7 +65,7 @@ function makeResolver(video: VideoResponse = VIDEO) {
 	const resolver = createBiliLinkResolver({
 		label: "B 站",
 		api: { fetchVideoInfo, resolveShortLink },
-		imageFetcher: { fetchImage },
+		fetchImage,
 		logger: { info() {}, warn, error() {}, debug() {} },
 	});
 	const signal = new AbortController().signal;

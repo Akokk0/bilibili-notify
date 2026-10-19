@@ -133,10 +133,10 @@ export interface DynamicPollerOptions {
 	 */
 	problems: Pick<ProblemLayers, "reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure">;
 	/**
-	 * 抓图服务(用 B 站接口那个请求客户端建的,建在入口,经 `compose.ts` 递进来):**交出作品之前**把作品里只有地址的图抓进图库
+	 * 抓图口(来源上下文给的 `ctx.fetchImage`,走 B 站集成自己的请求客户端):**交出作品之前**把作品里只有地址的图抓进图库
 	 * (被过滤的、关了出图的动态也抓,代价主人知情)。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
-	imageFetcher: ImagesDeps["images"];
+	fetchImage: ImagesDeps["images"]["fetchImage"];
 	/**
 	 * 把一条作品交给核心的作品入口(`PostQueue`)。**没有返回值**:交完就算,不等装配、不看结果,意外抛错由核心入口自己接住;
 	 * 引擎只负责在交出后把时间线前移。签名就是订阅源上下文里 `ctx.reportPost` 的签名:来源只说「谁(外部 id)发了什么」,
@@ -172,7 +172,7 @@ export class DynamicPoller {
 	private readonly bus: MessageBus;
 	private readonly api: Api;
 	private readonly problems: DynamicPollerOptions["problems"];
-	private readonly imageFetcher: ImagesDeps["images"];
+	private readonly fetchImage: ImagesDeps["images"]["fetchImage"];
 	private readonly reportPost: (externalId: string, report: PostReport) => void;
 	private readonly logger: Logger;
 	private readonly subscriptions: () => readonly SourceSubscriptionView[];
@@ -223,7 +223,7 @@ export class DynamicPoller {
 		this.bus = opts.bus;
 		this.api = opts.api;
 		this.problems = opts.problems;
-		this.imageFetcher = opts.imageFetcher;
+		this.fetchImage = opts.fetchImage;
 		this.reportPost = opts.reportPost;
 		this.config = opts.config;
 		this.subscriptions = opts.subscriptions;
@@ -643,7 +643,7 @@ export class DynamicPoller {
 			// 转发的原作者头像与正文表情的地址只在原始动态里,与配图一起抓;外层作者的头像由核心出卡时按订阅资料补。
 			const withImages = await fetchPostImages(
 				post,
-				{ images: this.imageFetcher, logger: this.logger },
+				{ images: { fetchImage: this.fetchImage }, logger: this.logger },
 				{ repostAvatarUrl: repostAvatarUrlOf(item), emojiUrls: emojiUrlsOf(item) },
 			);
 			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、关作品开关、停下),或「删了再加」成另一条订阅:引擎只交 uid,

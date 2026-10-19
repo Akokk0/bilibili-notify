@@ -40,7 +40,7 @@ import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-laye
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
-import { createImageFetcher, type ImageFetcher } from "./images/image-fetcher.js";
+import { createImageFetcher } from "./images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "./images/image-referrers.js";
 import type { ImageStore, ImageWriter } from "./images/image-store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
@@ -86,7 +86,6 @@ export interface BuiltinIntegrationsDeps {
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
-	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	setTimeout: ServiceContext["setTimeout"];
 	/** 图库:往里登记「来源声明的图」这一家(徽章图的名单)。 */
 	imageStore: Pick<ImageStore, "register">;
@@ -233,7 +232,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					api: deps.api.api,
 					bus: deps.bus,
 					problems,
-					imageFetcher: deps.imageFetcher,
 					loginCheck: { setHealthCheckMs: (ms) => deps.setHealthCheckMs(ms) },
 					setTimeout: deps.setTimeout,
 					auth: deps.sourceAuth,

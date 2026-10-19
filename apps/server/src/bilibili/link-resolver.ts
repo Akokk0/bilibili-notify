@@ -27,8 +27,8 @@ export interface BiliLinkResolverDeps {
 	/** 解析器的名字(给日志与面板用):由造它的人传,取来源描述符上的那个。 */
 	label: string;
 	api: Pick<Api, "fetchVideoInfo" | "resolveShortLink">;
-	/** 抓图服务(与推送的动态卡同一个):封面在交出作品前抓进图库,渲染页不联网,只有地址的图画不出来。 */
-	imageFetcher: ImagesDeps["images"];
+	/** 抓图口(与推送的动态卡同一个 `ctx.fetchImage`):封面在交出作品前抓进图库,渲染页不联网,只有地址的图画不出来。 */
+	fetchImage: ImagesDeps["images"]["fetchImage"];
 	logger: Logger;
 }
 
@@ -77,7 +77,7 @@ export function createBiliLinkResolver(deps: BiliLinkResolverDeps): LinkResolver
 				const info = await deps.api.fetchVideoInfo(ref);
 				// 封面先抓进图库再交出作品;抓不到、抓图出错都不抛(那边记一条 warn),封面那一格没有引用。
 				const post = await fetchPostImages(videoToPost(info), {
-					images: deps.imageFetcher,
+					images: { fetchImage: deps.fetchImage },
 					logger: deps.logger,
 				});
 				// 规范 id 取 BV 号:av 号、带参数、移动端域名的写法落到同一个视频上。

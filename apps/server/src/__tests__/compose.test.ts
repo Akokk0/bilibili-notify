@@ -101,8 +101,11 @@ const EMPTY_FEED = okResult({
 
 const quietLogger = (): Logger => ({ info() {}, warn() {}, error() {}, debug() {} });
 
-/** 假来源上下文:`reportPost` 是 spy,名单列一个开着作品的人。 */
-function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
+/** 假来源上下文:`reportPost` 与 `fetchImage` 都是 spy,名单列一个开着作品的人。 */
+function makeFakeSourceCtx(
+	roster: SourceSubscriptionView[],
+	fetchImage = vi.fn(async () => fail("unavailable", "测试不联网")),
+) {
 	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>();
 	const ctx = {
 		logger: quietLogger(),
@@ -114,11 +117,12 @@ function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
 		subscriptions: () => roster,
 		onSubscriptionsChanged: () => ({ dispose() {} }),
 		reportPost,
+		fetchImage,
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 		registerLinkResolver: vi.fn(() => ({ dispose() {} })),
 	} as unknown as SourceContext;
-	return { ctx, reportPost };
+	return { ctx, reportPost, fetchImage };
 }
 
 /** 假引擎:`registerSource` 里直接 `await entry.source.start(假 ctx)`,记下每次登记。 */
@@ -157,7 +161,6 @@ function compose(
 	opts: {
 		subs?: Subscription[];
 		api?: Api;
-		fetchImage?: ReturnType<typeof vi.fn>;
 		sourceAuth?: SourceAuth;
 		/** 图库:不给就是个只记登记的假的;要看「来源声明的图」真进了图库的用例给真的。 */
 		imageStore?: Pick<ImageStore, "register">;
@@ -190,7 +193,6 @@ function compose(
 	});
 	const integrationStore = memoryIntegrationStore();
 	const api = overridableApi(opts.api ?? ({} as Api));
-	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	const deps = {
 		api,
@@ -209,7 +211,6 @@ function compose(
 						} as never)
 					: undefined,
 		},
-		imageFetcher: { fetchImage } as never,
 		setTimeout: () => ({ dispose() {} }),
 		imageStore: opts.imageStore ?? { register: vi.fn(() => ({}) as never) },
 		guardIconHttp: Object.hasOwn(opts, "guardIconHttp")
@@ -234,7 +235,6 @@ function compose(
 		deps,
 		setHealthCheckMs,
 		attachGuardIcons,
-		fetchImage,
 		adapterRegistry,
 		integrationStore,
 		onDispose,
@@ -409,9 +409,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			const { builtins, deps } = compose({
 				subs: [makeSub("bilibili", "100")],
 				api: { fetchAllDynamic } as unknown as Api,
-				fetchImage,
 			});
-			const { ctx, reportPost } = makeFakeSourceCtx(roster);
+			const { ctx, reportPost } = makeFakeSourceCtx(roster, fetchImage);
 			const fake = makeFakeEngines(ctx);
 			const providers = createDevtoolsProviderRegistry();
 			builtins.provideDevtools(providers);
@@ -444,7 +443,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			}
 		});
 
-		it("来源拿到的抓图服务就是入参那个(带图的动态会去抓图)", async () => {
+		it("来源用的是上下文给的抓图口(带图的动态会去抓图)", async () => {
 			const { builtins, fake, scenario, fetchImage } = setup();
 			await builtins.registerSources(fake.engines);
 			try {
@@ -478,9 +477,9 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		it("造来源那一步就同步抛了(还没到登记):标志也复位,再调一次 registerSources 能成", async () => {
 			const { builtins, deps, scenario } = setup();
 			const boom = new Error("造来源炸了");
-			// 造来源要读 `deps.imageFetcher`:让它读的时候抛
-			const original = deps.imageFetcher;
-			Object.defineProperty(deps, "imageFetcher", {
+			// 造来源要读 `deps.setTimeout`:让它读的时候抛
+			const original = deps.setTimeout;
+			Object.defineProperty(deps, "setTimeout", {
 				configurable: true,
 				get(): never {
 					throw boom;
@@ -489,7 +488,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			const broken = { registerSource: vi.fn() } as never;
 			await expect(builtins.registerSources(broken)).rejects.toBe(boom);
 			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
-			Object.defineProperty(deps, "imageFetcher", { configurable: true, value: original });
+			Object.defineProperty(deps, "setTimeout", { configurable: true, value: original });
 			const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
 			await builtins.registerSources(ok.engines);
 			await ok.registered[0]?.source.stop();

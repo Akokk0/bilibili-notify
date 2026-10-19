@@ -285,7 +285,7 @@ interface EngineBag {
 	trigger: (event: string, payload?: unknown) => void;
 	/** 换名单(`ctx.subscriptions()` 此后回新的);要让引擎知道,再调 `engine.syncSubscriptions()`。 */
 	setRoster: (subs: Roster | null) => void;
-	/** 注入给引擎的抓图服务(`imageFetcher` 选项):每个地址回一个以它命名的引用,测试数调用。 */
+	/** 注入给引擎的抓图口(`fetchImage` 选项):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
 	/** 注入给引擎的核心入口(`reportPost` 选项):引擎交出去的每一条作品。 */
 	reportPost: ReturnType<typeof vi.fn<(externalId: string, report: PostReport) => void>>;
@@ -321,7 +321,7 @@ function makeEngine(
 		bus,
 		api,
 		problems,
-		imageFetcher: { fetchImage },
+		fetchImage,
 		reportPost,
 		config: {
 			dynamicCron: "*/2 * * * *",
@@ -1516,7 +1516,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 			bus: makeBus().bus,
 			api: { fetchAllDynamic: vi.fn(async () => resp([], -352, "risk")) } as unknown as Api,
 			problems: makeFakeProblems(),
-			imageFetcher: { fetchImage: vi.fn() },
+			fetchImage: vi.fn(),
 			reportPost: () => {},
 			config: { dynamicCron: "*/2 * * * *", dynamicVideoUrlToBV: false },
 			subscriptions: () => rosterOf({ "1": { uid: "1", post: true } }),

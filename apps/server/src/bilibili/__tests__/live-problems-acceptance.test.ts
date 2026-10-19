@@ -13,7 +13,6 @@
 import {
 	type AuthState,
 	type DeliveryResult,
-	fail,
 	ok,
 	type ServiceContext,
 	type SourceAuth,
@@ -121,7 +120,6 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 			fetchAllDynamic: over.fetchAllDynamic ?? (async () => ok({ data: { items: [] } })),
 		} as unknown as Api,
 		bus: world.bus,
-		imageFetcher: { fetchImage: async () => fail("unavailable", "不联网") } as never,
 		loginCheck: { setHealthCheckMs: () => {} },
 		setTimeout: () => ({ dispose() {} }),
 		auth: authed.auth,

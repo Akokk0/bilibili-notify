@@ -339,7 +339,7 @@ export interface CreateEnginesOptions {
 	 */
 	guardIcons: GuardIcons;
 	/**
-	 * B 站作品图 / 直播封面的抓图服务(用 B 站接口那个请求客户端、`AppRuntime.postImages` 这一家引用方建的,接线层给):
+	 * B 站作品图 / 直播封面的抓图服务(接线层给 B 站集成的上下文:它自己的请求客户端,引用方是「集成在途」):
 	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;

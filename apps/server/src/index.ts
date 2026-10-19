@@ -754,13 +754,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 原样透传。B 站那组场景的认领在 `compose.ts`。
 		const devApi = overridableApi(authSystem.api);
 		const devAuth = overridableApi(authSystem.auth);
-		// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
-		// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。引擎与链接预览共用这一个。
-		// 建在 `compose.ts` 之前:来源要用它,依赖一次给齐(构造时不做任何事)。
-		const postImageFetcher = createImageFetcher({
-			http: authSystem.api.http,
-			images: runtime.postImages,
-		});
 		const builtins = composeBuiltinIntegrations({
 			api: devApi,
 			auth: devAuth,
@@ -772,7 +765,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms),
 			subscriptions: subStore,
 			subscriptionRuntime: runtime.subRuntimeStore,
-			imageFetcher: postImageFetcher,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			// 大航海徽章图在 `compose.ts` 里造:登记进图库「来源声明的图」,造好当场交回运行时(引擎与卡片路由读它)。
 			imageStore: runtime.imageStore,
@@ -915,7 +907,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			liveImages: runtime.liveImages,
 			// 大航海徽章图标(3a-33):开机抓、上舰卡按档取;引用方「来源声明的图」在 bootstrap 里登记。
 			guardIcons: runtime.guardIcons,
-			imageFetcher: postImageFetcher,
+			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)
+			// 抓进图库。引用方是「集成在途」,图靠宽限期活到卡片画完。
+			imageFetcher: authSystem.integration,
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// AI 点评看只有图库引用的图(拓展作品)时核心要量字节数,读口回字节与类型。
 			readImage: (ref) => runtime.imageStore.read(ref),

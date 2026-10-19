@@ -93,7 +93,6 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 		} as unknown as Api,
 		bus: world.bus,
-		imageFetcher: { fetchImage: async () => fail("unavailable", "不联网") } as never,
 		loginCheck: { setHealthCheckMs: () => {} },
 		setTimeout: () => ({ dispose() {} }),
 		auth: authed.auth,
