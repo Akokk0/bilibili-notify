@@ -113,7 +113,7 @@ export const RATCHET = {
 	"apps/server/src/extensions/config-fields.ts": 27,
 	"apps/server/src/extensions/context.ts": 27,
 	"apps/server/src/extensions/discover.ts": 7,
-	"apps/server/src/extensions/install.ts": 17,
+	"apps/server/src/extensions/install.ts": 15,
 	"apps/server/src/extensions/loader.ts": 13,
 	"apps/server/src/extensions/marketplace.ts": 20,
 	"apps/server/src/extensions/mount.ts": 2,

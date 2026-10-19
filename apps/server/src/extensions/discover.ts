@@ -54,6 +54,16 @@ export const EXTENSION_ENTRY_FILE = "index.mjs";
  */
 export const EXTENSION_README_FILE = "README.md";
 export const EXTENSION_CHANGELOG_FILE = "CHANGELOG.md";
+/** 拓展译文目录(ADR-0037 决策 14):一种语言一个 `<语言码>.json`,不认别的名字。 */
+export const EXTENSION_LOCALES_DIR = "locales";
+/**
+ * 一份译文的上限。译文是纯字符串表,256 KB 已经是几万句;再大多半是打错了。
+ *
+ * 打包那头同样各写一份数,`pack-extension.test.mjs` 拿两头对着钉。
+ */
+export const EXTENSION_LOCALE_FILE_MAX_BYTES = 256 * 1024;
+/** `locales/` 整个目录的上限。单份各合规、合起来过大一样拦。 */
+export const EXTENSION_LOCALES_TOTAL_MAX_BYTES = 2 * 1024 * 1024;
 /**
  * 一份文档的上限。拆包那道闸与面板这头的读**共用它** —— 两处各写一个数的话,
  * 装得进去却读不出来(或者反过来)只会在真机上露馅。

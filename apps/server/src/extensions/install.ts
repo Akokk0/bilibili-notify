@@ -3,7 +3,8 @@
  *
  * 🔴 **这条路把「往装载目录里放代码」从文件系统权限降到了一次面板会话**,而放进去的东西
  * 是会被 `import` 的。所以拆包这一层是一道**真闸**,不是格式转换:
- * ① **白名单收文件** —— 只认清单与入口,夹带的一律整包拒绝(黑名单永远漏);
+ * ① **白名单收文件** —— 只认清单、入口、文档与 `locales/<语言码>.json`,夹带的一律整包拒绝
+ *    (黑名单永远漏);
  * ② **目录名只来自清单里那个 id**,而它已经过了 `ExtensionIdSchema` 的正则 —— zip 里的
  *    路径是打包的人写的,一个字都不拿来拼路径;
  * ③ 层数、大小、文件数都封顶。
@@ -24,8 +25,10 @@ import {
 	parseExtensionManifest,
 	type Result,
 } from "@bilibili-notify/internal";
+import { LOCALES, type Locale } from "@bilibili-notify/internal/i18n";
 import { atomicWriteFile, replaceDirectory } from "@bilibili-notify/storage";
 import { strFromU8, unzipSync } from "fflate";
+import { t } from "../i18n/index.js";
 import { failureOfChecks } from "../util/failure-text.js";
 import { isJunkZipEntry } from "../zip-junk.js";
 import { ExtensionConflictError } from "./conflict-error.js";
@@ -34,6 +37,9 @@ import {
 	EXTENSION_CHANGELOG_FILE,
 	EXTENSION_DOC_MAX_BYTES,
 	EXTENSION_ENTRY_FILE,
+	EXTENSION_LOCALE_FILE_MAX_BYTES,
+	EXTENSION_LOCALES_DIR,
+	EXTENSION_LOCALES_TOTAL_MAX_BYTES,
 	EXTENSION_MANIFEST_FILE,
 	EXTENSION_README_FILE,
 } from "./discover.js";
@@ -47,12 +53,20 @@ export const MAX_EXTENSION_PACKAGE_BYTES = 10 * 1024 * 1024;
 /** 白名单之外的文件一律拒,所以这道只防「拿几万个空条目撑爆解压」。 */
 const MAX_PACKAGE_FILES = 64;
 /**
- * 解压后的**总量**上限 —— 合法的包就那四个名字,四条单文件上限加起来正好是它。
+ * 解压后的**总量**上限 —— 各单文件上限加起来会超过它,所以整包 10 MB 是更外层的硬顶。
  *
  * 🔴 光有单文件那条拦不住:白名单是**解压之后**才对的,那会儿 64 个各 8MB 的条目已经
  * 全解进内存了(镜像的堆只有 512MB)。皮肤包那头同一个位置有同一道闸,理由也一样。
  */
-const MAX_PACKAGE_TOTAL_BYTES = MAX_MANIFEST_BYTES + MAX_CODE_BYTES + 2 * EXTENSION_DOC_MAX_BYTES;
+const MAX_PACKAGE_TOTAL_BYTES = MAX_EXTENSION_PACKAGE_BYTES;
+
+/**
+ * `locales/` 下的文件名只说「这是哪一种语言」,别的什么都不说。
+ *
+ * 首段小写、后续子段照 BCP 47 的字符集 —— `zh-CN.json` 认,`zh-cn.json` 也认(但不在
+ * `LOCALES` 里,下面跳过);`notes.json` / `zh-CN.txt` 不认,照白名单整包拒。
+ */
+const EXTENSION_LOCALE_FILE_NAME = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\.json$/;
 
 export interface OpenedExtensionPackage {
 	/** 装到哪个目录名下 —— **清单说了算**,不看 zip 里的路径。 */
@@ -63,6 +77,13 @@ export interface OpenedExtensionPackage {
 	entry: Uint8Array;
 	/** 给人看的那两份,**两份都可选** —— 没写 README 不是装不了的理由。 */
 	docs: { readme?: Uint8Array; changelog?: Uint8Array };
+	/**
+	 * 认下的译文。键是 `LOCALES` 里的语言码,落盘时也按这个键重建文件名 —— zip 里的名字
+	 * 一个字都不拿来拼路径。
+	 */
+	locales: Partial<Record<Locale, Uint8Array>>;
+	/** zip 里长得像语言码、但不在 `LOCALES` 里的条目:跳过不写,并在装包结果里告知。 */
+	skippedLocales: string[];
 }
 
 /**
@@ -92,7 +113,7 @@ export type OpenExtensionPackageResult = Result<{ pkg: OpenedExtensionPackage }>
  * 剥掉「把目录整个拖进压缩软件」多出来的那一层。
  *
  * 只剥**所有条目共有的**那一层,而且只剥一层:剥多了等于允许 `a/b/index.mjs` 这种结构,
- * 而拓展包按定义是「清单 + 一个自包含入口」,没有子目录。
+ * 而拓展包按定义是「清单 + 一个自包含入口 + 可选的文档与 `locales/`」,没有别的子目录。
  */
 function commonPrefix(names: string[]): string {
 	const heads = new Set(names.map((n) => (n.includes("/") ? n.slice(0, n.indexOf("/")) : "")));
@@ -149,6 +170,10 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	let manifestBytes: Uint8Array | undefined;
 	let entry: Uint8Array | undefined;
 	const docs: { readme?: Uint8Array; changelog?: Uint8Array } = {};
+	const locales: Partial<Record<Locale, Uint8Array>> = {};
+	const skippedLocales: string[] = [];
+	let localesBytes = 0;
+	const whitelistError = (name: string): string => `${name}:${t("extension.install.filesAllowed")}`;
 	for (const [name, data] of Object.entries(entries)) {
 		const inner = name.startsWith(prefix) ? name.slice(prefix.length) : name;
 		if (inner === EXTENSION_MANIFEST_FILE) {
@@ -170,13 +195,44 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 				if (inner === EXTENSION_README_FILE) docs.readme = data;
 				else docs.changelog = data;
 			}
+		} else if (inner.startsWith(`${EXTENSION_LOCALES_DIR}/`)) {
+			const file = inner.slice(EXTENSION_LOCALES_DIR.length + 1);
+			if (file.includes("/") || !EXTENSION_LOCALE_FILE_NAME.test(file)) {
+				errors.push(whitelistError(name));
+				continue;
+			}
+			localesBytes += data.byteLength;
+			if (data.byteLength > EXTENSION_LOCALE_FILE_MAX_BYTES) {
+				errors.push(
+					t("extension.install.localeTooLarge", {
+						file: name,
+						limit: "256 KB",
+					}),
+				);
+				continue;
+			}
+			try {
+				JSON.parse(strFromU8(data));
+			} catch (err) {
+				errors.push(
+					t("extension.install.localeNotJson", {
+						file: name,
+						detail: (err as Error).message,
+					}),
+				);
+				continue;
+			}
+			const code = file.slice(0, -".json".length);
+			const locale = LOCALES.find((candidate) => candidate === code);
+			if (locale === undefined) skippedLocales.push(inner);
+			else locales[locale] = data;
 		} else {
 			// 白名单:落进装载目录的每一个文件都在一个会被 import 的目录里。
-			errors.push(
-				`${name}:拓展包里只能有 ${EXTENSION_MANIFEST_FILE}、${EXTENSION_ENTRY_FILE}` +
-					`,外加可选的 ${EXTENSION_README_FILE} 与 ${EXTENSION_CHANGELOG_FILE}`,
-			);
+			errors.push(whitelistError(name));
 		}
+	}
+	if (localesBytes > EXTENSION_LOCALES_TOTAL_MAX_BYTES) {
+		errors.push(t("extension.install.localesTooLarge", { limit: "2 MB" }));
 	}
 	if (!manifestBytes && errors.length === 0) errors.push(`包里少了 ${EXTENSION_MANIFEST_FILE}`);
 	if (!entry && errors.length === 0) errors.push(`包里少了 ${EXTENSION_ENTRY_FILE}`);
@@ -206,7 +262,15 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	}
 
 	return ok({
-		pkg: { id: read.manifest.id, manifest: read.manifest, manifestBytes, entry, docs },
+		pkg: {
+			id: read.manifest.id,
+			manifest: read.manifest,
+			manifestBytes,
+			entry,
+			docs,
+			locales,
+			skippedLocales: skippedLocales.sort(),
+		},
 	});
 }
 
@@ -321,6 +385,13 @@ async function installExtensionPackageUnlocked(input: InstallExtensionPackageInp
 			}
 			if (pkg.docs.changelog) {
 				await atomicWriteFile(join(staging, EXTENSION_CHANGELOG_FILE), pkg.docs.changelog);
+			}
+			// 文件名按语言表重建,不看 zip 里的写法;不在表里的那几份连目录都不建。
+			for (const locale of LOCALES) {
+				const bytes = pkg.locales[locale];
+				if (bytes) {
+					await atomicWriteFile(join(staging, EXTENSION_LOCALES_DIR, `${locale}.json`), bytes);
+				}
 			}
 		},
 		{

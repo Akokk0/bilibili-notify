@@ -1,8 +1,23 @@
 import { strFromU8, strToU8 } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
-import { EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES } from "../../apps/server/src/extensions/discover.js";
-import { openExtensionPackage } from "../../apps/server/src/extensions/install.js";
-import { EXTENSION_DOC_MAX_BYTES, packExtension } from "../pack-extension.mjs";
+import {
+	EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES,
+	EXTENSION_LOCALE_FILE_MAX_BYTES as LOADER_LOCALE_FILE_MAX_BYTES,
+	EXTENSION_LOCALES_TOTAL_MAX_BYTES as LOADER_LOCALES_TOTAL_MAX_BYTES,
+} from "../../apps/server/src/extensions/discover.js";
+import {
+	MAX_EXTENSION_PACKAGE_BYTES as LOADER_PACKAGE_MAX_BYTES,
+	openExtensionPackage,
+} from "../../apps/server/src/extensions/install.js";
+import { LOCALES } from "../../packages/internal/src/i18n.ts";
+import {
+	EXTENSION_DOC_MAX_BYTES,
+	EXTENSION_LOCALE_FILE_MAX_BYTES,
+	EXTENSION_LOCALES_TOTAL_MAX_BYTES,
+	EXTENSION_PACKAGE_LOCALES,
+	EXTENSION_PACKAGE_MAX_BYTES,
+	packExtension,
+} from "../pack-extension.mjs";
 
 /** 发版侧打的包,装载那头得拆得开 —— 两边各测各的,等于两边各自复述自己的想法。 */
 describe("packExtension", () => {
@@ -45,6 +60,54 @@ describe("packExtension", () => {
 		if (!opened.ok) return;
 		expect(strFromU8(opened.pkg.docs.readme)).toContain("机器人框架桥接");
 		expect(strFromU8(opened.pkg.docs.changelog)).toContain("[0.0.2]");
+	});
+
+	describe("译文", () => {
+		const locales = {
+			"locales/zh-CN.json": strToU8('{"status.connected":"已连接"}'),
+			"locales/en.json": strToU8('{"status.connected":"Connected"}'),
+		};
+
+		it("带上 locales/ 就打进包,装载那头拆得出来", () => {
+			const opened = openExtensionPackage(packExtension({ ...files, ...locales }).zip);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			expect(strFromU8(opened.pkg.locales["zh-CN"])).toContain("已连接");
+			expect(strFromU8(opened.pkg.locales.en)).toContain("Connected");
+		});
+
+		it("译文不是 JSON → 当场拒", () => {
+			expect(() =>
+				packExtension({ ...files, "locales/zh-CN.json": strToU8('{"status.connected":') }),
+			).toThrow(/locales\/zh-CN\.json/);
+		});
+
+		it("一份译文超过 256 KB → 当场拒", () => {
+			expect(() =>
+				packExtension({ ...files, "locales/zh-CN.json": new Uint8Array(256 * 1024 + 1) }),
+			).toThrow(/locales\/zh-CN\.json/);
+		});
+
+		it("locales/ 合计超过 2 MB → 当场拒", () => {
+			const huge = {};
+			for (const code of ["ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi"]) {
+				huge[`locales/${code}.json`] = strToU8(JSON.stringify({ text: "x".repeat(250 * 1024) }));
+			}
+			expect(() => packExtension({ ...files, ...huge })).toThrow(/locales\//);
+		});
+
+		it("只打语言表里的语言码", () => {
+			const opened = openExtensionPackage(
+				packExtension({
+					...files,
+					...locales,
+					"locales/ko.json": strToU8('{"hello":"안녕"}'),
+				}).zip,
+			);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			expect(Object.keys(opened.pkg.locales).sort()).toEqual(["en", "zh-CN"]);
+		});
 	});
 
 	/**
@@ -101,6 +164,10 @@ describe("packExtension", () => {
 	/** 两头各写一份数,漂了就是「打得进、拆不开」—— 所以两头对着钉。 */
 	it("打包这头的上限与装载那头是同一个数", () => {
 		expect(EXTENSION_DOC_MAX_BYTES).toBe(LOADER_DOC_MAX_BYTES);
+		expect(EXTENSION_LOCALE_FILE_MAX_BYTES).toBe(LOADER_LOCALE_FILE_MAX_BYTES);
+		expect(EXTENSION_LOCALES_TOTAL_MAX_BYTES).toBe(LOADER_LOCALES_TOTAL_MAX_BYTES);
+		expect(EXTENSION_PACKAGE_MAX_BYTES).toBe(LOADER_PACKAGE_MAX_BYTES);
+		expect(EXTENSION_PACKAGE_LOCALES).toEqual([...LOCALES]);
 	});
 
 	it("缺一个文件就拒", () => {

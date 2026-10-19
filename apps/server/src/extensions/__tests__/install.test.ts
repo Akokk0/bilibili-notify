@@ -182,6 +182,119 @@ describe("拆包", () => {
 		expect(opened.pkg.manifest.id).toBe("bridge");
 	});
 
+	describe("译文", () => {
+		const zh = JSON.stringify({ "status.connected": "已连接" });
+		const en = JSON.stringify({ "status.connected": "Connected" });
+
+		it("带 locales/zh-CN.json 与 locales/en.json → 收下", () => {
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/zh-CN.json": zh, "locales/en.json": en }),
+			);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			expect(Object.keys(opened.pkg.locales).sort()).toEqual(["en", "zh-CN"]);
+			expect(strFromU8(opened.pkg.locales["zh-CN"] as Uint8Array)).toContain("已连接");
+			expect(strFromU8(opened.pkg.locales.en as Uint8Array)).toContain("Connected");
+		});
+
+		it("locales/ko.json 与 locales/zh-cn.json 不在语言表里 → 跳过不写,并在结果里告知", async () => {
+			const opened = openExtensionPackage(
+				pack({
+					...GOOD,
+					"locales/ko.json": JSON.stringify({ hello: "안녕" }),
+					"locales/zh-cn.json": zh,
+				}),
+			);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			expect(opened.pkg.skippedLocales.slice().sort()).toEqual([
+				"locales/ko.json",
+				"locales/zh-cn.json",
+			]);
+			await installExtensionPackage({ root, pkg: opened.pkg });
+			await expect(lstat(join(root, "bridge", "locales"))).rejects.toThrow();
+		});
+
+		/** 盘上的文件名只取自语言表:zip 里那份大小写不对的 `zh-cn.json` 不会落成它自己的名字。 */
+		it("落盘文件名用表里的写法,大小写不同的那一份不写", async () => {
+			const opened = openExtensionPackage(
+				pack({
+					...GOOD,
+					"locales/zh-CN.json": zh,
+					"locales/zh-cn.json": JSON.stringify({ "status.connected": "错" }),
+				}),
+			);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			await installExtensionPackage({ root, pkg: opened.pkg });
+			expect((await readdir(join(root, "bridge", "locales"))).sort()).toEqual(["zh-CN.json"]);
+			expect(
+				JSON.parse(await readFile(join(root, "bridge", "locales", "zh-CN.json"), "utf8")),
+			).toEqual({ "status.connected": "已连接" });
+		});
+
+		it("locales/zh-CN.json 不是 JSON → 整包拒,并点名那一份", () => {
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/zh-CN.json": '{"status.connected":' }),
+			);
+			expect(opened.ok).toBe(false);
+			if (opened.ok) return;
+			expect(opened.code).toBe("invalid");
+			expect(textOf(opened)).toContain("locales/zh-CN.json");
+		});
+
+		it("一份译文超过 256 KB → 整包拒,并点名那一份", () => {
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/zh-CN.json": `"${"x".repeat(256 * 1024)}"` }),
+			);
+			expect(opened.ok).toBe(false);
+			if (opened.ok) return;
+			expect(textOf(opened)).toContain("locales/zh-CN.json");
+			expect(textOf(opened)).toContain("256");
+		});
+
+		it("locales/ 合计超过 2 MB → 整包拒", () => {
+			const files: Record<string, string> = { ...GOOD };
+			for (const code of ["ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi"]) {
+				files[`locales/${code}.json`] = JSON.stringify({ text: "x".repeat(250 * 1024) });
+			}
+			const opened = openExtensionPackage(pack(files));
+			expect(opened.ok).toBe(false);
+			if (opened.ok) return;
+			expect(textOf(opened)).toContain("locales/");
+			expect(textOf(opened)).toContain("2 MB");
+		});
+
+		it("locales/sub/x.json → 整包拒:译文目录下不许再有子目录", () => {
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/sub/x.json": JSON.stringify({ hello: "你好" }) }),
+			);
+			expect(opened.ok).toBe(false);
+			if (opened.ok) return;
+			expect(textOf(opened)).toContain("locales/sub/x.json");
+		});
+
+		it("locales/notes.txt → 整包拒:译文目录只收 <语言码>.json", () => {
+			const opened = openExtensionPackage(pack({ ...GOOD, "locales/notes.txt": "not json" }));
+			expect(opened.ok).toBe(false);
+			if (opened.ok) return;
+			expect(textOf(opened)).toContain("locales/notes.txt");
+		});
+
+		it("外面多一层目录也认,译文照样落进 <id>/locales/", async () => {
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/zh-CN.json": zh, "locales/en.json": en }, "bridge/"),
+			);
+			expect(opened.ok).toBe(true);
+			if (!opened.ok) return;
+			await installExtensionPackage({ root, pkg: opened.pkg });
+			expect((await readdir(join(root, "bridge", "locales"))).sort()).toEqual([
+				"en.json",
+				"zh-CN.json",
+			]);
+		});
+	});
+
 	it("缺入口 / 缺清单 → 各说各的", () => {
 		const noCode = openExtensionPackage(pack({ "extension.json": manifest() }));
 		expect(noCode.ok).toBe(false);
