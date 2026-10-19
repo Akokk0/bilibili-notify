@@ -15,6 +15,7 @@
 
 import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
@@ -26,12 +27,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(FIXED_NOW);
-	fetchMock = vi.fn(async () => ({
-		ok: true,
-		status: 200,
-		statusText: "",
-		text: async () => JSON.stringify({ errcode: 0, code: 0 }),
-	}));
+	fetchMock = vi.fn(
+		async () => new Response(JSON.stringify({ errcode: 0, code: 0 }), { status: 200 }),
+	);
 	vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
@@ -113,8 +111,11 @@ const PAYLOADS = {
 	},
 } satisfies Record<NotificationPayload["kind"], NotificationPayload>;
 
-const send = (platform: string, payload: NotificationPayload, secret?: string) =>
-	createWebhookAdapter({ logger }).send(connection(platform, secret), target(), payload);
+const send = (platform: string, payload: NotificationPayload, secret?: string) => {
+	const ad = createWebhookAdapter({ logger });
+	ad.start(fakeAdapterContext().ctx);
+	return ad.send(connection(platform, secret), target(), payload);
+};
 
 describe("webhook 线上格式 — generic 通用 JSON", () => {
 	const envelope = {
@@ -222,20 +223,18 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 	it("`private` 这一格留着、恒为 false(线上格式冻结,ADR-0024 决策 5):私聊目标也一样", async () => {
 		await send("generic", PAYLOADS.text);
 		expect(sentBody()).toMatchObject({ private: false, scope: "channel" });
-		await createWebhookAdapter({ logger }).send(
-			connection("generic"),
-			target({ scope: "private" }),
-			PAYLOADS.text,
-		);
+		const ad = createWebhookAdapter({ logger });
+		ad.start(fakeAdapterContext().ctx);
+		await ad.send(connection("generic"), target({ scope: "private" }), PAYLOADS.text);
 		expect(sentBody()).toMatchObject({ private: false, scope: "channel" });
 	});
 
 	it("请求头:content-type + secret 头", async () => {
 		await send("generic", PAYLOADS.text, "s3cr3t");
 		const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
-		expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://hook.local/in");
+		expect(String(fetchMock.mock.calls.at(-1)?.[0])).toBe("http://hook.local/in");
 		expect(init.method).toBe("POST");
-		expect(init.headers).toEqual({
+		expect(Object.fromEntries(new Headers(init.headers).entries())).toEqual({
 			"content-type": "application/json",
 			"x-bilibili-notify-secret": "s3cr3t",
 		});

@@ -1,23 +1,29 @@
 import { createHmac } from "node:crypto";
-import type { ConnectionCandidate, PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
+import { STATUS_CODES } from "node:http";
 import {
 	type Connection,
+	type ConnectionCandidate,
 	type ConnectionCapabilities,
 	type DeliveryResult,
 	type DestinationRef,
 	type Failure,
 	fail,
+	type HttpClient,
 	isWebhookPlatform,
 	type Logger,
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
+	type PlatformAdapter,
+	type PlatformAdapterContext,
+	type ProbeResult,
 	type WebhookConnectionSettings,
 	WebhookConnectionSettingsSchema,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
+import { t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
 
@@ -69,6 +75,8 @@ interface WebhookHttpRequest {
 export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapter {
 	const log = opts.logger;
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	/** `start(ctx)` 接住的那份客户端;生产里登记即 start,所以只有测试会碰到「还没接住」。 */
+	let http: HttpClient | undefined;
 	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
 	const adapterStartedAt = Date.now();
 
@@ -96,8 +104,12 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			};
 		},
 		// 无状态:没有连接要建、没有监听要起。
-		start() {},
-		stop() {},
+		start(ctx: PlatformAdapterContext) {
+			http = ctx.http;
+		},
+		stop() {
+			http = undefined;
+		},
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留「我只收端点」与连接收窄。
 			if (!isMine(connection) || destination.kind !== "endpoint") return false;
@@ -116,6 +128,8 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
+			const client = http;
+			if (!client) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection) || destination.kind !== "endpoint") {
 				return fail(
 					"invalid",
@@ -138,31 +152,32 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				return fail("invalid", message);
 			}
 			const t0 = Date.now();
-			const ctrl = new AbortController();
-			const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-			try {
-				const res = await fetch(req.url, {
-					method: "POST",
-					headers: req.headers,
-					body: req.body,
-					signal: ctrl.signal,
-				});
-				const latencyMs = Date.now() - t0;
-				if (!res.ok) {
-					return sanitized(httpFailure(res.status, `HTTP ${res.status} ${res.statusText}`), cfg);
-				}
-				const rejected =
-					provider === "generic" ? null : parseBusinessResponse(provider, await res.text());
-				if (rejected) return sanitized(rejected, cfg);
-				return ok({ latencyMs });
-			} catch (e) {
-				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
+			// 对端是主人自己填的地址或聊天机器人:不带浏览器身份、不碰集成的 cookie 罐。
+			const delivered = await client.fetch(req.url, {
+				method: "POST",
+				headers: req.headers,
+				body: req.body,
+				timeoutMs,
+				bare: true,
+			});
+			if (!delivered.ok) {
+				const message = sanitizeWebhookError(delivered.message, cfg);
 				log.warn(`[webhook] target=${destination.id} send failed: ${message}`);
 				// 我们自己的超时掐断:请求已经发出去了,对端可能照样处理完 —— 结果不明,不是「没通」。
-				return ctrl.signal.aborted ? fail("indeterminate", message) : fail("unavailable", message);
-			} finally {
-				clearTimeout(timer);
+				return delivered.code === "timeout"
+					? fail("indeterminate", message)
+					: fail("unavailable", message);
 			}
+			const res = delivered;
+			const latencyMs = Date.now() - t0;
+			if (!res.isSuccess) {
+				const statusText = STATUS_CODES[res.status];
+				const message = statusText ? `HTTP ${res.status} ${statusText}` : `HTTP ${res.status}`;
+				return sanitized(httpFailure(res.status, message), cfg);
+			}
+			const rejected = provider === "generic" ? null : parseBusinessResponse(provider, res.text());
+			if (rejected) return sanitized(rejected, cfg);
+			return ok({ latencyMs });
 		},
 	};
 }

@@ -1698,6 +1698,21 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 	} as unknown as PushTarget;
 }
 
+/** webhook 适配器生产里登记即 start,测试照同一条路先拿到 `ctx.http`。 */
+function startedWebhook(opts: Parameters<typeof createWebhookAdapter>[0]) {
+	const ad = createWebhookAdapter(opts);
+	ad.start(fakeAdapterContext().ctx);
+	return ad;
+}
+
+/** 真的 `Response`;参数形状沿用各用例原先手搓的假回应,免得改动用例本身。 */
+function whResponse(o: { ok: boolean; status?: number; json?: unknown; text?: string }): Response {
+	const body = o.text ?? (o.json === undefined ? null : JSON.stringify(o.json));
+	return new Response(body, {
+		status: o.status ?? (o.ok ? 200 : 500),
+	});
+}
+
 function dingTalkSign(secret: string, timestamp: string): string {
 	return createHmac("sha256", secret).update(`${timestamp}\n${secret}`).digest("base64");
 }
@@ -1707,15 +1722,23 @@ function feishuSign(secret: string, timestamp: string): string {
 }
 
 describe("webhook — send", () => {
-	it("happy:POST JSON body 含元信息 + secret/自定义 header", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: true }));
+	it("start 之前 send → unavailable(生产里登记即 start,这一支到不了)", async () => {
 		const ad = createWebhookAdapter({ logger: makeLogger() });
 		const r = await ad.send(whConnection(), whTarget(), TEXT);
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(r)).toBe("适配器还没启动");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("happy:POST JSON body 含元信息 + secret/自定义 header", async () => {
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true }));
+		const ad = startedWebhook({ logger: makeLogger() });
+		const r = await ad.send(whConnection(), whTarget(), TEXT);
 		expect(r.ok).toBe(true);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://hook.local");
-		const init = lastInit() as { headers: Record<string, string> };
-		expect(init.headers["x-bilibili-notify-secret"]).toBe("s3cr3t");
-		expect(init.headers["x-team"]).toBe("ops");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://hook.local/");
+		const headers = new Headers(lastInit().headers);
+		expect(headers.get("x-bilibili-notify-secret")).toBe("s3cr3t");
+		expect(headers.get("x-team")).toBe("ops");
 		const body = lastBody();
 		expect(body).toMatchObject({
 			targetId: "wt1",
@@ -1728,20 +1751,22 @@ describe("webhook — send", () => {
 	});
 
 	it("generic provider 显式配置仍保持旧 envelope 且不解析业务 body", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 310000, errmsg: "bad" } }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(
+			whResponse({ ok: true, json: { errcode: 310000, errmsg: "bad" } }),
+		);
+		const r = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("generic"),
 			whTarget(),
 			TEXT,
 		);
 		expect(r.ok).toBe(true);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://hook.local");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://hook.local/");
 		expect(lastBody()).toMatchObject({ payload: { kind: "text", text: "hello" } });
 	});
 
 	it("image/composite payload 序列化为 base64", async () => {
-		fetchMock.mockResolvedValue(res({ ok: true }));
-		const ad = createWebhookAdapter({ logger: makeLogger() });
+		fetchMock.mockResolvedValue(whResponse({ ok: true }));
+		const ad = startedWebhook({ logger: makeLogger() });
 		await ad.send(whConnection(), whTarget(), {
 			kind: "image",
 			image: { buffer: Buffer.from("PIC"), mime: "image/png" },
@@ -1770,8 +1795,8 @@ describe("webhook — send", () => {
 
 	it("dingtalk:text body + URL 签名 + 业务成功码", async () => {
 		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const r = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok",
 				secret: "SECxxx",
@@ -1784,16 +1809,15 @@ describe("webhook — send", () => {
 		expect(url.searchParams.get("access_token")).toBe("tok");
 		expect(url.searchParams.get("timestamp")).toBe("1710000000123");
 		expect(url.searchParams.get("sign")).toBe(dingTalkSign("SECxxx", "1710000000123"));
-		const init = lastInit() as { headers: Record<string, string> };
-		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(new Headers(lastInit().headers).get("x-bilibili-notify-secret")).toBeNull();
 		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "hello" } });
 	});
 
 	it("dingtalk:HTTP 200 业务失败 / 非 JSON 响应 → ok:false", async () => {
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { errcode: 310000, errmsg: "keywords not in content" } }),
+			whResponse({ ok: true, json: { errcode: 310000, errmsg: "keywords not in content" } }),
 		);
-		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+		const fail = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("dingtalk"),
 			whTarget(),
 			TEXT,
@@ -1802,8 +1826,8 @@ describe("webhook — send", () => {
 		expect(messageOf(fail)).toContain("DingTalk errcode=310000");
 		expect(messageOf(fail)).toContain("keywords not in content");
 
-		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
-		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, text: "not json" }));
+		const invalid = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("dingtalk"),
 			whTarget(),
 			TEXT,
@@ -1817,8 +1841,8 @@ describe("webhook — send", () => {
 
 	it("feishu:text body + body 签名 + 业务成功码", async () => {
 		vi.spyOn(Date, "now").mockReturnValue(1_710_000_000_123);
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, json: { code: 0, msg: "success" } }));
+		const r = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("feishu", {
 				url: "https://open.feishu.cn/open-apis/bot/v2/hook/token",
 				secret: "sign-secret",
@@ -1827,7 +1851,9 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r.ok).toBe(true);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("https://open.feishu.cn/open-apis/bot/v2/hook/token");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+			"https://open.feishu.cn/open-apis/bot/v2/hook/token",
+		);
 		const body = lastBody();
 		expect(body).toMatchObject({
 			msg_type: "text",
@@ -1835,15 +1861,14 @@ describe("webhook — send", () => {
 			timestamp: "1710000000",
 		});
 		expect(body.sign).toBe(feishuSign("sign-secret", "1710000000"));
-		const init = lastInit() as { headers: Record<string, string> };
-		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(new Headers(lastInit().headers).get("x-bilibili-notify-secret")).toBeNull();
 	});
 
 	it("feishu:兼容 StatusCode 成功;业务失败 / 非 JSON 响应 → ok:false", async () => {
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { StatusCode: 0, StatusMessage: "success" } }),
+			whResponse({ ok: true, json: { StatusCode: 0, StatusMessage: "success" } }),
 		);
-		const ok = await createWebhookAdapter({ logger: makeLogger() }).send(
+		const ok = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("feishu"),
 			whTarget(),
 			TEXT,
@@ -1851,9 +1876,9 @@ describe("webhook — send", () => {
 		expect(ok.ok).toBe(true);
 
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { code: 19021, msg: "sign match fail" } }),
+			whResponse({ ok: true, json: { code: 19021, msg: "sign match fail" } }),
 		);
-		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+		const fail = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("feishu"),
 			whTarget(),
 			TEXT,
@@ -1862,8 +1887,8 @@ describe("webhook — send", () => {
 		expect(messageOf(fail)).toContain("Feishu code=19021");
 		expect(messageOf(fail)).toContain("sign match fail");
 
-		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
-		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, text: "not json" }));
+		const invalid = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("feishu"),
 			whTarget(),
 			TEXT,
@@ -1876,8 +1901,8 @@ describe("webhook — send", () => {
 	});
 
 	it("wecom:text body + 业务成功码", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const r = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("wecom", {
 				url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key",
 				secret: "unused-secret",
@@ -1890,16 +1915,15 @@ describe("webhook — send", () => {
 		expect(url.searchParams.get("key")).toBe("wx-key");
 		expect(url.searchParams.has("timestamp")).toBe(false);
 		expect(url.searchParams.has("sign")).toBe(false);
-		const init = lastInit() as { headers: Record<string, string> };
-		expect(init.headers["x-bilibili-notify-secret"]).toBeUndefined();
+		expect(new Headers(lastInit().headers).get("x-bilibili-notify-secret")).toBeNull();
 		expect(lastBody()).toEqual({ msgtype: "text", text: { content: "hello" } });
 	});
 
 	it("wecom:HTTP 200 业务失败 / 非 JSON 响应 → ok:false", async () => {
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { errcode: 93000, errmsg: "invalid webhook key" } }),
+			whResponse({ ok: true, json: { errcode: 93000, errmsg: "invalid webhook key" } }),
 		);
-		const fail = await createWebhookAdapter({ logger: makeLogger() }).send(
+		const fail = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("wecom"),
 			whTarget(),
 			TEXT,
@@ -1908,8 +1932,8 @@ describe("webhook — send", () => {
 		expect(messageOf(fail)).toContain("WeCom errcode=93000");
 		expect(messageOf(fail)).toContain("invalid webhook key");
 
-		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
-		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, text: "not json" }));
+		const invalid = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("wecom"),
 			whTarget(),
 			TEXT,
@@ -1922,8 +1946,8 @@ describe("webhook — send", () => {
 	});
 
 	it("platform providers 将 image/composite/image-group 降级为可读文本", async () => {
-		fetchMock.mockResolvedValue(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
-		const ad = createWebhookAdapter({ logger: makeLogger() });
+		fetchMock.mockResolvedValue(whResponse({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
+		const ad = startedWebhook({ logger: makeLogger() });
 		await ad.send(whConnection("dingtalk"), whTarget(), {
 			kind: "image",
 			image: { buffer: Buffer.from("PIC"), mime: "image/png" },
@@ -1944,7 +1968,7 @@ describe("webhook — send", () => {
 			text: { content: "正文\n链接 https://example.com\n[图片]\n@全体成员" },
 		});
 
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true, json: { code: 0, msg: "success" } }));
 		await ad.send(whConnection("feishu", { secret: undefined }), whTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
@@ -1967,18 +1991,18 @@ describe("webhook — send", () => {
 	});
 
 	it("非 2xx → 按状态码翻标准码,upstreamCode 是 http:<status>", async () => {
-		const cases: Array<[number, string]> = [
-			[401, "unauthorized"],
-			[403, "unauthorized"],
-			[404, "not_found"],
-			[410, "not_found"],
-			[429, "rate_limited"],
-			[400, "invalid"],
-			[503, "unavailable"],
+		const cases: Array<[number, string, string]> = [
+			[401, "unauthorized", "HTTP 401 Unauthorized"],
+			[403, "unauthorized", "HTTP 403 Forbidden"],
+			[404, "not_found", "HTTP 404 Not Found"],
+			[410, "not_found", "HTTP 410 Gone"],
+			[429, "rate_limited", "HTTP 429 Too Many Requests"],
+			[400, "invalid", "HTTP 400 Bad Request"],
+			[503, "unavailable", "HTTP 503 Service Unavailable"],
 		];
-		for (const [status, code] of cases) {
-			fetchMock.mockResolvedValueOnce(res({ ok: false, status, statusText: "Nope" }));
-			const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+		for (const [status, code, message] of cases) {
+			fetchMock.mockResolvedValueOnce(whResponse({ ok: false, status }));
+			const r = await startedWebhook({ logger: makeLogger() }).send(
 				whConnection(),
 				whTarget(),
 				TEXT,
@@ -1986,7 +2010,7 @@ describe("webhook — send", () => {
 			expect(r, `HTTP ${status}`).toEqual({
 				ok: false,
 				code,
-				message: `HTTP ${status} Nope`,
+				message,
 				upstreamCode: `http:${status}`,
 			});
 		}
@@ -2001,7 +2025,7 @@ describe("webhook — send", () => {
 					);
 				}),
 		);
-		const r = await createWebhookAdapter({ logger: makeLogger(), timeoutMs: 30 }).send(
+		const r = await startedWebhook({ logger: makeLogger(), timeoutMs: 30 }).send(
 			whConnection(),
 			whTarget(),
 			TEXT,
@@ -2011,24 +2035,14 @@ describe("webhook — send", () => {
 	});
 
 	it("送达带耗时", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: true }));
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
-			whConnection(),
-			whTarget(),
-			TEXT,
-		);
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: true }));
+		const r = await startedWebhook({ logger: makeLogger() }).send(whConnection(), whTarget(), TEXT);
 		expect(r).toEqual({ ok: true, latencyMs: expect.any(Number) });
 	});
 
-	it("非 2xx statusText 会脱敏 token/sign/secret", async () => {
-		fetchMock.mockResolvedValueOnce(
-			res({
-				ok: false,
-				status: 403,
-				statusText: "access_token=tok123&sign=sig123 secret=SECxxx",
-			}),
-		);
-		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+	it("非 2xx 的状态文字取自 node:http 的标准表", async () => {
+		fetchMock.mockResolvedValueOnce(whResponse({ ok: false, status: 403 }));
+		const r = await startedWebhook({ logger: makeLogger() }).send(
 			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
 				secret: "SECxxx",
@@ -2036,20 +2050,20 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(r.ok).toBe(false);
-		expect(messageOf(r)).toContain("access_token=***");
-		expect(messageOf(r)).toContain("sign=***");
-		expect(messageOf(r)).toContain("secret=***");
-		expect(messageOf(r)).not.toContain("tok123");
-		expect(messageOf(r)).not.toContain("sig123");
-		expect(messageOf(r)).not.toContain("SECxxx");
+		expect(r).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "HTTP 403 Forbidden",
+			upstreamCode: "http:403",
+		});
 	});
 
 	it("fetch 抛错 → ok:false + logger.warn", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("network down"));
 		const logger = makeLogger();
-		const r = await createWebhookAdapter({ logger }).send(whConnection(), whTarget(), TEXT);
-		expect(r).toEqual({ ok: false, code: "unavailable", message: "network down" });
+		const r = await startedWebhook({ logger }).send(whConnection(), whTarget(), TEXT);
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(r)).toContain("network down");
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
@@ -2058,7 +2072,7 @@ describe("webhook — send", () => {
 			"request failed url=https://oapi.dingtalk.com/robot/send?access_token=tok123&sign=sig123 secret=SECxxx Authorization=Bearer abcdefghijkl";
 		fetchMock.mockRejectedValueOnce(new Error(leaked));
 		const logger = makeLogger();
-		const r = await createWebhookAdapter({ logger }).send(
+		const r = await startedWebhook({ logger }).send(
 			whConnection("dingtalk", {
 				url: "https://oapi.dingtalk.com/robot/send?access_token=tok123",
 				secret: "SECxxx",
@@ -2085,7 +2099,7 @@ describe("webhook — send", () => {
 		const url = "https://open.feishu.cn/open-apis/bot/v2/hook/path-token-123";
 		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed`));
 		const logger = makeLogger();
-		const r = await createWebhookAdapter({ logger }).send(
+		const r = await startedWebhook({ logger }).send(
 			whConnection("feishu", { url }),
 			whTarget(),
 			TEXT,
@@ -2103,7 +2117,7 @@ describe("webhook — send", () => {
 		const url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key-123";
 		fetchMock.mockRejectedValueOnce(new Error(`request to ${url} failed key=wx-key-123`));
 		const logger = makeLogger();
-		const r = await createWebhookAdapter({ logger }).send(
+		const r = await startedWebhook({ logger }).send(
 			whConnection("wecom", { url, secret: "unused-secret" }),
 			whTarget(),
 			TEXT,
@@ -2120,7 +2134,7 @@ describe("webhook — send", () => {
 
 	it("地址拼不出请求(配置的 url 不合法)→ invalid,不发请求", async () => {
 		const logger = makeLogger();
-		const r = await createWebhookAdapter({ logger }).send(
+		const r = await startedWebhook({ logger }).send(
 			whConnection("dingtalk", { url: "not a url", secret: "SECxxx" }),
 			whTarget(),
 			TEXT,
@@ -2131,7 +2145,7 @@ describe("webhook — send", () => {
 	});
 
 	it("形状不对 → ok:false", async () => {
-		const ad = createWebhookAdapter({ logger: makeLogger() });
+		const ad = startedWebhook({ logger: makeLogger() });
 		const r = await ad.send(
 			whConnection(),
 			whTarget({ kind: "session", platform: "onebot" }),
@@ -2144,13 +2158,13 @@ describe("webhook — send", () => {
 
 describe("webhook — isAvailable / probe", () => {
 	it("isAvailable:webhook 连接 + 端点去向 + url 非空(启停归派发器查)", () => {
-		const ad = createWebhookAdapter({ logger: makeLogger() });
+		const ad = startedWebhook({ logger: makeLogger() });
 		expect(ad.isAvailable(whConnection(), whTarget())).toBe(true);
 		expect(ad.isAvailable(whConnection("generic", { url: "" }), whTarget())).toBe(false);
 	});
 
 	it("probe 恒为 unsupported(webhook 无连通探测)", async () => {
-		const ad = createWebhookAdapter({ logger: makeLogger() });
+		const ad = startedWebhook({ logger: makeLogger() });
 		const r = await ad.probe(whConnection());
 		expect(r).toMatchObject({ ok: false, code: "unsupported" });
 		expect(messageOf(r)).toMatch(/does not support/);
