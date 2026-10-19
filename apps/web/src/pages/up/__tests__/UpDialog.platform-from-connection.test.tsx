@@ -54,7 +54,7 @@ const UNKNOWN = { state: "unknown" } as const;
 
 /** 能力表里 CONN 这条连接的 atAll 是给定的那一格。 */
 function capsWith(atAll: ConnectionCapabilitiesMap[string]["atAll"]): ConnectionCapabilitiesMap {
-	return { [CONN]: { atAll, inbound: UNKNOWN, miniAppCard: UNKNOWN } };
+	return { [CONN]: { atAll, inbound: UNKNOWN, nativeShare: UNKNOWN } };
 }
 const QQ_CAPS = capsWith({ state: "unsupported", reason: QQ_REASON, checkedAt: 1 });
 const OB_CAPS = capsWith({ state: "supported", checkedAt: 1 });

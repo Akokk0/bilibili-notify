@@ -248,7 +248,7 @@ describe("ConnectionProbeEngine", () => {
 				capabilities: {
 					atAll: { state: "unknown" },
 					inbound: { state: "unknown" },
-					miniAppCard: { state: "unknown" },
+					nativeShare: { state: "unknown" },
 				},
 				probeCapabilities: () =>
 					new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 40_000)),

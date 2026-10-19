@@ -55,7 +55,7 @@ function capabilitiesFor(platform: string): ConnectionCapabilitiesMap {
 					checkedAt: 1,
 				} as const)
 			: ({ state: "supported", checkedAt: 1 } as const);
-	return { "a-1": { atAll, inbound: unknown, miniAppCard: unknown } };
+	return { "a-1": { atAll, inbound: unknown, nativeShare: unknown } };
 }
 
 function renderDialog(platform: string) {

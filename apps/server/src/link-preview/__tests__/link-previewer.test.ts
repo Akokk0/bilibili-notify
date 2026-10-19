@@ -537,7 +537,7 @@ describe("createLinkPreviewer", () => {
 					capabilities: () => ({
 						atAll: { state: "unknown" },
 						inbound: { state: "unknown" },
-						miniAppCard: { state: "supported", checkedAt: 1 },
+						nativeShare: { state: "supported", checkedAt: 1 },
 					}),
 				});
 				await feedNativeCard(h);
@@ -714,7 +714,7 @@ describe("createLinkPreviewer", () => {
 		const caps = (state: "supported" | "unsupported" | "unknown"): ConnectionCapabilities => ({
 			atAll: { state: "unknown" },
 			inbound: { state: "unknown" },
-			miniAppCard:
+			nativeShare:
 				state === "supported"
 					? { state, checkedAt: 1 }
 					: state === "unsupported"

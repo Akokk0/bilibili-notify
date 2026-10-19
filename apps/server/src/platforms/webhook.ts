@@ -96,7 +96,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 					reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
 					checkedAt: adapterStartedAt,
 				},
-				miniAppCard: {
+				nativeShare: {
 					state: "unsupported",
 					reason: "webhook 发不了 QQ 小程序卡",
 					checkedAt: adapterStartedAt,

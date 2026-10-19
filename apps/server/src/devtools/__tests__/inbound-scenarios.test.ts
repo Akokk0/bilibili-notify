@@ -23,7 +23,7 @@ const INBOUND_OF: Record<string, ConnectionCapabilities["inbound"]> = {
 function capabilitiesOf(connection: Connection): ConnectionCapabilities | undefined {
 	const inbound = INBOUND_OF[connection.platform];
 	return inbound
-		? { atAll: { state: "unknown" }, inbound, miniAppCard: { state: "unknown" } }
+		? { atAll: { state: "unknown" }, inbound, nativeShare: { state: "unknown" } }
 		: undefined;
 }
 
@@ -230,7 +230,7 @@ describe("inbound.link", () => {
 				? {
 						atAll: { state: "unknown" },
 						inbound: { state: "unknown" },
-						miniAppCard: { state: "unknown" },
+						nativeShare: { state: "unknown" },
 					}
 				: capabilitiesOf(c);
 		// 第一条启用的聊天平台连接 ad-ob 不算了;官机那条停用着 → 没有可用的。

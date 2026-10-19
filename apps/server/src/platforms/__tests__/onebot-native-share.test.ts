@@ -147,7 +147,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 describe("onebot — 原生分享能力探测", () => {
 	it("没探过 → 未探测", () => {
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
+		expect(capsOf(ad).nativeShare).toEqual({ state: "unknown" });
 	});
 
 	it("空参数调 get_mini_app_ark;1404 = 这个实现没有这个接口 → 不支持,带原因", async () => {
@@ -156,8 +156,8 @@ describe("onebot — 原生分享能力探测", () => {
 		const caps = await ad.probeCapabilities?.(obConnection());
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
 		expect(calledBody(0)).toEqual({});
-		expect(caps?.miniAppCard).toMatchObject({ state: "unsupported" });
-		expect(caps?.miniAppCard.state === "unsupported" && caps.miniAppCard.reason).toMatch(
+		expect(caps?.nativeShare).toMatchObject({ state: "unsupported" });
+		expect(caps?.nativeShare.state === "unsupported" && caps.nativeShare.reason).toMatch(
 			/get_mini_app_ark/,
 		);
 		// 探过就记住,不再打接口。
@@ -169,7 +169,7 @@ describe("onebot — 原生分享能力探测", () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400, "参数错误"));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
-		expect(caps?.miniAppCard).toMatchObject({ state: "supported" });
+		expect(caps?.nativeShare).toMatchObject({ state: "supported" });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -177,21 +177,21 @@ describe("onebot — 原生分享能力探测", () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 404 }));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
-		expect(caps?.miniAppCard).toMatchObject({ state: "unsupported" });
+		expect(caps?.nativeShare).toMatchObject({ state: "unsupported" });
 	});
 
 	it("连不上、或回了别的错 → 如实回「还不知道」,原因带出来;每问一次都真探(节奏归宿主)", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
-		expect(caps?.miniAppCard).toMatchObject({
+		expect(caps?.nativeShare).toMatchObject({
 			state: "unknown",
 			reason: expect.stringMatching(/ECONNREFUSED/),
 		});
 
 		fetchMock.mockResolvedValueOnce(failFrame(200, "packet backend 未就绪"));
 		const again = await ad.probeCapabilities?.(obConnection());
-		expect(again?.miniAppCard).toMatchObject({
+		expect(again?.nativeShare).toMatchObject({
 			state: "unknown",
 			reason: expect.stringMatching(/packet/),
 		});
@@ -201,12 +201,12 @@ describe("onebot — 原生分享能力探测", () => {
 	it("探实过之后再探不出来 → 如实回「还不知道」;沿用上次的答案是宿主的事", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		expect((await ad.probeCapabilities?.(obConnection()))?.miniAppCard).toMatchObject({
+		expect((await ad.probeCapabilities?.(obConnection()))?.nativeShare).toMatchObject({
 			state: "supported",
 		});
 
 		fetchMock.mockRejectedValueOnce(new Error("ETIMEDOUT"));
-		expect((await ad.probeCapabilities?.(obConnection()))?.miniAppCard).toMatchObject({
+		expect((await ad.probeCapabilities?.(obConnection()))?.nativeShare).toMatchObject({
 			state: "unknown",
 		});
 	});
@@ -216,7 +216,7 @@ describe("onebot — 原生分享能力探测", () => {
 		reconcileAdapter(ad, [obConnection()]);
 		await sleep(30);
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
+		expect(capsOf(ad).nativeShare).toEqual({ state: "unknown" });
 		ad.stop();
 	});
 
@@ -225,12 +225,12 @@ describe("onebot — 原生分享能力探测", () => {
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
 		await ad.probeCapabilities?.(obConnection());
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 
 		reconcileAdapter(ad, [obConnection()]);
 		reconcileAdapter(ad, [obConnection()]);
 		await sleep(30);
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		ad.stop();
 	});
@@ -240,20 +240,20 @@ describe("onebot — 原生分享能力探测", () => {
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
 		await ad.probeCapabilities?.(obConnection());
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 
 		reconcileAdapter(ad, [obConnection({ baseUrl: "http://other:3000" })]);
 		await sleep(30);
-		expect(capsOf(ad).miniAppCard.state).toBe("unknown");
+		expect(capsOf(ad).nativeShare.state).toBe("unknown");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 
 		fetchMock.mockResolvedValueOnce(failFrame(1404));
 		await ad.probeCapabilities?.(obConnection({ baseUrl: "http://other:3000" }));
 		expect(calledPath(1)).toBe("http://other:3000/get_mini_app_ark");
-		expect(capsOf(ad).miniAppCard.state).toBe("unsupported");
+		expect(capsOf(ad).nativeShare.state).toBe("unsupported");
 
 		reconcileAdapter(ad, []);
-		expect(capsOf(ad).miniAppCard.state).toBe("unknown");
+		expect(capsOf(ad).nativeShare.state).toBe("unknown");
 		ad.stop();
 	});
 });
@@ -281,14 +281,14 @@ describe("onebot — 发原生分享", () => {
 			group_id: 123,
 			message: [{ type: "json", data: { data: JSON.stringify(ARK) } }],
 		});
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 	});
 
 	it("对照表里没有的 appId → unsupported,不调接口、不发,能力缓存不动", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		await ad.probeCapabilities?.(obConnection());
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 
 		const other: NotificationPayload = { ...CARD, appId: "no-such-app" } as NotificationPayload;
 		const r = await ad.send(obConnection(), obTarget(), other);
@@ -296,7 +296,7 @@ describe("onebot — 发原生分享", () => {
 		expect(!r.ok && r.message).toContain("no-such-app");
 		// 只有探测那一次;没签卡、没发消息。
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 	});
 
 	it.each(["constructor", "toString", "__proto__"])(
@@ -342,7 +342,7 @@ describe("onebot — 发原生分享", () => {
 		expect(r).toMatchObject({ ok: false, code: "unsupported", upstreamCode: 1404 });
 		expect(!r.ok && r.message).toMatch(/get_mini_app_ark/);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(capsOf(ad).miniAppCard.state).toBe("unsupported");
+		expect(capsOf(ad).nativeShare.state).toBe("unsupported");
 	});
 
 	it("签卡收到 HTTP 404(把 action 当路径的实现)→ 同样是 unsupported,码写成 http:404", async () => {
@@ -350,7 +350,7 @@ describe("onebot — 发原生分享", () => {
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r).toMatchObject({ ok: false, code: "unsupported", upstreamCode: "http:404" });
-		expect(capsOf(ad).miniAppCard.state).toBe("unsupported");
+		expect(capsOf(ad).nativeShare.state).toBe("unsupported");
 	});
 
 	it("签卡超时 → timeout(卡还没发出去,不是「结果未知」)", async () => {
@@ -392,7 +392,7 @@ describe("onebot — 发原生分享", () => {
 			message: "签小程序卡失败: packet backend 未就绪",
 			upstreamCode: 200,
 		});
-		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+		expect(capsOf(ad).nativeShare.state).toBe("supported");
 	});
 
 	it("签回来的是空的 → 不发空 json 段,报失败", async () => {

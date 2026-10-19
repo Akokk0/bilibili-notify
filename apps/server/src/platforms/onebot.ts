@@ -922,7 +922,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		for (const l of reverseListeners.values()) l.close();
 		reverseListeners.clear();
 		botIdentityCache.clear();
-		miniAppCardSupport.clear();
+		nativeShareSupport.clear();
 		capabilityFingerprints.clear();
 	}
 	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
@@ -1003,11 +1003,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	// ------------------------------------------------------------------
-	// 平台能力:能不能签 QQ 小程序卡
+	// 平台能力:能不能发原生分享(签 QQ 小程序卡)
 	// ------------------------------------------------------------------
 
-	/** 探测结果按 adapter 缓存;配置变了或连接没了才丢。没探过 = unknown。 */
-	const miniAppCardSupport = new Map<string, CapabilitySupport>();
+	/**
+	 * 探测结果按 adapter 缓存;配置变了或连接没了才丢。没探过 = unknown。
+	 * 认接口不认实现名:拿空参数探 OneBot 扩展接口 `get_mini_app_ark`,按 OneBot 11 的 retcode 判 ——
+	 * 1404「不支持的动作」= 不支持,1400「参数错」= 接口在、支持;别的(连不上、别的错)= 还没探出来,
+	 * 带原因。发送失败不翻它,只有再收到 1404 才翻成不支持。
+	 */
+	const nativeShareSupport = new Map<string, CapabilitySupport>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
 	const NOT_PROBED: CapabilitySupport = { state: "unknown" };
@@ -1066,14 +1071,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 沿用哪个答案不在这里:节奏与「不推翻已探实的答案」归宿主(`push/target-dispatcher.ts`),
 	 * 适配器只管自己看到的事实 —— 包括真发时收到 1404 把它翻成「不支持」(见 sendNativeShare)。
 	 */
-	async function probeMiniAppCard(connection: OnebotConnection): Promise<CapabilitySupport> {
+	async function probeNativeShare(connection: OnebotConnection): Promise<CapabilitySupport> {
 		let result: CapabilitySupport;
 		try {
 			result = interpretArkProbe(await callOnce(connection, "get_mini_app_ark", {}));
 		} catch (e) {
 			result = { state: "unknown", reason: e instanceof Error ? e.message : String(e) };
 		}
-		miniAppCardSupport.set(connection.id, result);
+		nativeShareSupport.set(connection.id, result);
 		// 与 get_login_info 同一条规矩:探成了不出声。发不了才留一行 —— 主人选了小程序卡却
 		// 收到图片卡时,这是唯一能解释原因的地方;没探出来多半是还没连上,宿主每分钟会再试,
 		// 放 debug 免得刷屏。
@@ -1118,7 +1123,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			});
 			if (isActionMissing(r)) {
 				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";
-				miniAppCardSupport.set(connection.id, {
+				nativeShareSupport.set(connection.id, {
 					state: "unsupported",
 					reason,
 					checkedAt: Date.now(),
@@ -1137,7 +1142,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 		const data = arkToSegmentData(ark);
 		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
-		miniAppCardSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
+		nativeShareSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
 		const built = buildSendActionFromSegments(destination, [{ type: "json", data: { data } }]);
 		if (!built.ok) return built;
 		return dispatch(connection, destination, built, t0);
@@ -1296,14 +1301,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		// (`push/target-dispatcher.ts` 的能力记忆),适配器不自己发起探测。
 		for (const id of [...capabilityFingerprints.keys()]) {
 			if (onebots.some((a) => a.id === id)) continue;
-			miniAppCardSupport.delete(id);
+			nativeShareSupport.delete(id);
 			capabilityFingerprints.delete(id);
 		}
 		for (const a of onebots) {
 			const fp = JSON.stringify(a.settings);
 			const changed = capabilityFingerprints.get(a.id) !== fp;
 			capabilityFingerprints.set(a.id, fp);
-			if (changed) miniAppCardSupport.delete(a.id);
+			if (changed) nativeShareSupport.delete(a.id);
 		}
 
 		// --- 正向 ws ---
@@ -1476,7 +1481,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				// 静态事实:OneBot 能在群里 @全体,私聊 / 群消息的入站也已经接了。
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
-				miniAppCard: miniAppCardSupport.get(connection.id) ?? NOT_PROBED,
+				nativeShare: nativeShareSupport.get(connection.id) ?? NOT_PROBED,
 			};
 		},
 
@@ -1487,7 +1492,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			return {
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
-				miniAppCard: await probeMiniAppCard(connection as OnebotConnection),
+				nativeShare: await probeNativeShare(connection as OnebotConnection),
 			};
 		},
 	};

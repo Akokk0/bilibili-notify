@@ -26,7 +26,7 @@ const UNKNOWN = { state: "unknown" } as const;
 /** 能力表:连接 c1 的 inbound 是给定的那一格;别的连接没有能力。 */
 function inboundOf(inbound: ConnectionCapabilities["inbound"]) {
 	return (id: string): ConnectionCapabilities | undefined =>
-		id === "c1" ? { atAll: UNKNOWN, inbound, miniAppCard: UNKNOWN } : undefined;
+		id === "c1" ? { atAll: UNKNOWN, inbound, nativeShare: UNKNOWN } : undefined;
 }
 const RECEIVES = inboundOf({ state: "supported", checkedAt: 1 });
 const NO_RETURN_PATH = inboundOf({

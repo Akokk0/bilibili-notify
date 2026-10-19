@@ -43,7 +43,7 @@ const UNKNOWN = { state: "unknown" } as const;
 function inboundCaps(
 	inbound: ConnectionCapabilitiesMap[string]["inbound"],
 ): ConnectionCapabilitiesMap {
-	return { [CONN]: { atAll: UNKNOWN, inbound, miniAppCard: UNKNOWN } };
+	return { [CONN]: { atAll: UNKNOWN, inbound, nativeShare: UNKNOWN } };
 }
 const RECEIVES = inboundCaps({ state: "supported", checkedAt: 1 });
 const NO_RETURN_PATH = inboundCaps({

@@ -570,9 +570,8 @@ export interface ConnectionCapabilities {
 	 */
 	inbound: CapabilitySupport;
 	/**
-	 * 能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口 `get_mini_app_ark`,
-	 * 按 OneBot 11 的 retcode 判 —— 1404「不支持的动作」= 不支持,1400「参数错」= 接口在、支持;
-	 * 别的(连不上、别的错)= 还没探出来,带原因。发送失败不翻它,只有再收到 1404 才翻成不支持。
+	 * 能不能发原生分享(平台自己的分享卡)。链接预览的门读它:发不了就回落图片;
+	 * 「还不知道」时门先探一次,探完仍未知按不能算。
 	 */
-	miniAppCard: CapabilitySupport;
+	nativeShare: CapabilitySupport;
 }

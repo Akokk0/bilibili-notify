@@ -318,7 +318,7 @@ class ClassAdapter {
 		return {
 			atAll: { state: "supported" as const, checkedAt: this.latencyMs },
 			inbound: { state: "unknown" as const },
-			miniAppCard: { state: "unknown" as const },
+			nativeShare: { state: "unknown" as const },
 		};
 	}
 }

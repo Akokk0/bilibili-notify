@@ -512,7 +512,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 	const CAPS: ConnectionCapabilities = {
 		atAll: { state: "supported", checkedAt: 1 },
 		inbound: { state: "supported", checkedAt: 1 },
-		miniAppCard: { state: "supported", checkedAt: 1 },
+		nativeShare: { state: "supported", checkedAt: 1 },
 	};
 
 	it("委派给平台实现的 capabilities / probeCapabilities,把 Connection 递过去", async () => {
@@ -558,10 +558,10 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () => {
 	const supported = { state: "supported", checkedAt: 1 } as const;
 	const unknown = { state: "unknown" } as const;
-	const capsOf = (miniAppCard: ConnectionCapabilities["miniAppCard"]): ConnectionCapabilities => ({
+	const capsOf = (nativeShare: ConnectionCapabilities["nativeShare"]): ConnectionCapabilities => ({
 		atAll: supported,
 		inbound: supported,
-		miniAppCard,
+		nativeShare,
 	});
 
 	/** 适配器的答案由测试随时换;`capabilities` 与 `probeCapabilities` 答同一份。 */
@@ -591,11 +591,11 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 	it("已探实「支持」,再探回「还不知道」:读到的仍是「支持」", async () => {
 		const { answer, dispatcher } = setup();
 		answer.current = capsOf(supported);
-		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.nativeShare).toEqual(supported);
 		answer.current = capsOf({ state: "unknown", reason: "ETIMEDOUT" });
 		vi.setSystemTime(Date.now() + 61_000);
-		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
-		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(supported);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.nativeShare).toEqual(supported);
+		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(supported);
 	});
 
 	it("适配器自己翻成「不支持」(真发时收到 1404):宿主照收", async () => {
@@ -604,10 +604,10 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 		await dispatcher.probeConnectionCapabilities("a1");
 		const unsupported = { state: "unsupported", reason: "没有这个接口", checkedAt: 2 } as const;
 		answer.current = capsOf(unsupported);
-		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unsupported);
+		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(unsupported);
 		// 翻过去之后「还不知道」不会把它翻回「支持」。
 		answer.current = capsOf(unknown);
-		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unsupported);
+		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(unsupported);
 	});
 
 	it("60 秒内第二次探能力不再调适配器,拿记着的答案;过了 60 秒再探", async () => {
@@ -616,7 +616,7 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 		await dispatcher.probeConnectionCapabilities("a1");
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 		vi.setSystemTime(Date.now() + 59_000);
-		expect((await dispatcher.probeConnectionCapabilities("a1"))?.miniAppCard).toEqual(supported);
+		expect((await dispatcher.probeConnectionCapabilities("a1"))?.nativeShare).toEqual(supported);
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 		vi.setSystemTime(Date.now() + 2_000);
 		await dispatcher.probeConnectionCapabilities("a1");
@@ -630,7 +630,7 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 		const [connection] = connections;
 		if (connection) connection.settings = { url: "https://other.example.com/hook", headers: {} };
 		answer.current = capsOf(unknown);
-		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unknown);
+		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(unknown);
 		await dispatcher.probeConnectionCapabilities("a1");
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
 	});
@@ -643,7 +643,7 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 		expect(dispatcher.connectionCapabilities("a1")).toBeUndefined();
 		connections.push(...removed);
 		answer.current = capsOf(unknown);
-		expect(dispatcher.connectionCapabilities("a1")?.miniAppCard).toEqual(unknown);
+		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(unknown);
 	});
 });
 
@@ -934,7 +934,7 @@ describe("createTargetDispatcher — supportsAtAll(问适配器)", () => {
 	const capsWithAtAll = (atAll: ConnectionCapabilities["atAll"]): ConnectionCapabilities => ({
 		atAll,
 		inbound: unknown,
-		miniAppCard: unknown,
+		nativeShare: unknown,
 	});
 
 	function dispatcherOf(

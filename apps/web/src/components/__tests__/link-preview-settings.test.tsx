@@ -88,11 +88,11 @@ const SUPPORTED = { state: "supported", checkedAt: 1 } as const;
 
 /** 一级索引:连接 id → 这条连接的能力(适配器的回答)。直连与拓展连接都在里面。 */
 const CAPS: ConnectionCapabilitiesMap = {
-	[A_OB]: { atAll: SUPPORTED, inbound: SUPPORTED, miniAppCard: SUPPORTED },
+	[A_OB]: { atAll: SUPPORTED, inbound: SUPPORTED, nativeShare: SUPPORTED },
 	[A_OB2]: {
 		atAll: SUPPORTED,
 		inbound: SUPPORTED,
-		miniAppCard: {
+		nativeShare: {
 			state: "unsupported",
 			reason: "这个实现没有 get_mini_app_ark",
 			checkedAt: 1,
@@ -102,13 +102,13 @@ const CAPS: ConnectionCapabilitiesMap = {
 	[A_QQ]: {
 		atAll: { state: "unsupported", reason: "要特殊权限", checkedAt: 1 },
 		inbound: SUPPORTED,
-		miniAppCard: { state: "unsupported", reason: "没实现", checkedAt: 1 },
+		nativeShare: { state: "unsupported", reason: "没实现", checkedAt: 1 },
 	},
 	// webhook:没有回程。
 	[A_HOOK]: {
 		atAll: SUPPORTED,
 		inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
-		miniAppCard: { state: "unsupported", reason: "发不了", checkedAt: 1 },
+		nativeShare: { state: "unsupported", reason: "发不了", checkedAt: 1 },
 	},
 };
 
@@ -370,7 +370,7 @@ describe("LinkPreviewSettings", () => {
 				renderCard(draftWith(), vi.fn(), groupOn(connection.id), {
 					connections: [connection],
 					capabilities: {
-						[connection.id]: { atAll: UNKNOWN, inbound, miniAppCard: UNKNOWN },
+						[connection.id]: { atAll: UNKNOWN, inbound, nativeShare: UNKNOWN },
 					},
 				});
 

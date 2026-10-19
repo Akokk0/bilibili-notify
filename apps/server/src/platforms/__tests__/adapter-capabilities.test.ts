@@ -60,10 +60,10 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 		expect(caps.atAll.state).toBe("supported");
 		expect(caps.inbound.state).toBe("supported");
 		// 小程序卡仍是「没探过 = 还不知道」,这一片不动它。
-		expect(caps.miniAppCard.state).toBe("unknown");
+		expect(caps.nativeShare.state).toBe("unknown");
 	});
 
-	it("qq-official:atAll 不支持(带原因)、inbound 支持、miniAppCard 不支持(带原因)", () => {
+	it("qq-official:atAll 不支持(带原因)、inbound 支持、nativeShare 不支持(带原因)", () => {
 		const adapter = createQQOfficialAdapter({
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
@@ -75,11 +75,11 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 			reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
 		});
 		expect(caps.inbound.state).toBe("supported");
-		expect(caps.miniAppCard.state).toBe("unsupported");
-		expect(caps.miniAppCard.state === "unsupported" && caps.miniAppCard.reason).toBeTruthy();
+		expect(caps.nativeShare.state).toBe("unsupported");
+		expect(caps.nativeShare.state === "unsupported" && caps.nativeShare.reason).toBeTruthy();
 	});
 
-	it("webhook:atAll 支持、inbound 不支持(原因是没有回程)、miniAppCard 不支持", () => {
+	it("webhook:atAll 支持、inbound 不支持(原因是没有回程)、nativeShare 不支持", () => {
 		const adapter = createWebhookAdapter({ logger: makeLogger() });
 		// 四个 webhook 平台共用这一个适配器 —— 回答不看平台,四档都得一样。
 		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
@@ -89,7 +89,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 				state: "unsupported",
 				reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
 			});
-			expect(caps.miniAppCard.state).toBe("unsupported");
+			expect(caps.nativeShare.state).toBe("unsupported");
 		}
 	});
 });

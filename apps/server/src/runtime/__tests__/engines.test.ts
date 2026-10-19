@@ -3600,7 +3600,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 		const caps = (): ConnectionCapabilities => ({
 			atAll: { state: "supported", checkedAt: 1 },
 			inbound: { state: "supported", checkedAt: 1 },
-			miniAppCard: state === "supported" ? { state, checkedAt: 1 } : { state },
+			nativeShare: state === "supported" ? { state, checkedAt: 1 } : { state },
 		});
 		const pa: PlatformAdapter = {
 			adapterKey: "onebot",
@@ -3624,7 +3624,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 		active = c;
 		await tick();
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
-		expect(c.runtime.connectionCapabilities(ADAPTER)?.miniAppCard).toEqual({
+		expect(c.runtime.connectionCapabilities(ADAPTER)?.nativeShare).toEqual({
 			state: "supported",
 			checkedAt: 1,
 		});
@@ -3650,7 +3650,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 			vi.useRealTimers();
 		}
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
-		expect(c.runtime.connectionCapabilities(ADAPTER)?.miniAppCard).toEqual({ state: "unknown" });
+		expect(c.runtime.connectionCapabilities(ADAPTER)?.nativeShare).toEqual({ state: "unknown" });
 	});
 
 	it("连都连不上的连接不补探能力 —— 那一趟只会白等满一个超时", async () => {

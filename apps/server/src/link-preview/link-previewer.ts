@@ -106,7 +106,7 @@ export interface LinkPreviewerOptions {
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	/**
 	 * 目的地那条连接上、那个平台的能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
-	 * 什么都发不了。形式选了小程序卡时据它决定发小程序卡还是回落图片卡。
+	 * 什么都发不了。形式选了原生分享时据它决定发原生分享还是回落图片卡。
 	 */
 	capabilities: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
 	/** 还没探出来时主动探一次(零副作用);不实现就当探不了。 */
@@ -174,12 +174,12 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	 * 「探不出来的适配器别被反复问」的节流在适配器那一层(缓存与失效规则都在那儿),
 	 * 这里放心问就是。
 	 */
-	async function canSendMiniAppCard(dest: LinkReplyDestination): Promise<boolean> {
+	async function canSendNativeShare(dest: LinkReplyDestination): Promise<boolean> {
 		let caps = opts.capabilities(dest);
-		if (caps?.miniAppCard.state === "unknown" && opts.probeCapabilities) {
+		if (caps?.nativeShare.state === "unknown" && opts.probeCapabilities) {
 			caps = await opts.probeCapabilities(dest);
 		}
-		return caps?.miniAppCard.state === "supported";
+		return caps?.nativeShare.state === "supported";
 	}
 
 	/** 日志里「在哪个群」那一段,各处共用。 */
@@ -265,7 +265,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
 			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
 			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
-			const useNativeShare = policy.replyForm === "nativeShare" && (await canSendMiniAppCard(dest));
+			const useNativeShare = policy.replyForm === "nativeShare" && (await canSendNativeShare(dest));
 			if (!useNativeShare && !opts.renderer()) return;
 			const cooldownMs = settings.cooldownSec * 1000;
 			// 这条消息里已经回过的「解析器键 + 规范 id」:同一个东西的几种写法在一条消息里只出一张,

@@ -248,14 +248,15 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		return {
 			atAll: supportOf(capabilities.atAll, checkedAt, "发不了 @全体"),
 			inbound: supportOf(capabilities.inbound, checkedAt, "收不到主人的回复"),
-			miniAppCard: supportOf(capabilities.miniAppCard, checkedAt, "发不了小程序卡"),
+			// 内部这一格叫 nativeShare;桥帧的线上名照旧是 `capabilities.miniAppCard`,进 alpha 后两步改。
+			nativeShare: supportOf(capabilities.miniAppCard, checkedAt, "发不了小程序卡"),
 		};
 	}
 
 	/** 没连着 / 没这个 bot:三项都是「还不知道」,带上原因。 */
 	function unreachableCapabilities(reason: string): ConnectionCapabilities {
 		const unknown = { state: "unknown", reason } as const;
-		return { atAll: unknown, inbound: unknown, miniAppCard: unknown };
+		return { atAll: unknown, inbound: unknown, nativeShare: unknown };
 	}
 
 	/**

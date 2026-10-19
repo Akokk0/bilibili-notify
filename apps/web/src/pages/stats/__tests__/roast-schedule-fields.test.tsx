@@ -110,7 +110,7 @@ describe("useApprovalReachability — 主人目标得是私聊才能开审批", 
 					"11111111-1111-4111-8111-111111111111": {
 						atAll: supported,
 						inbound: supported,
-						miniAppCard: { state: "unknown" },
+						nativeShare: { state: "unknown" },
 					},
 				};
 			}

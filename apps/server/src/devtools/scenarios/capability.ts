@@ -56,7 +56,7 @@ function capablePlatforms(dialects: readonly CapabilityDialect[]): Set<string> {
 const DEFAULT_REASON = "devtools:假装 1404 不支持的动作";
 
 /**
- * 假的只换 `miniAppCard` 这一格:`atAll` / `inbound` 沿用方言原本的回答(`base`)。
+ * 假的只换 `nativeShare` 这一格:`atAll` / `inbound` 沿用方言原本的回答(`base`)。
  * 整个对象换掉的话,注入期间 @全体 / 审批 / 链接解析设置读到的就全是「还不知道」了。
  */
 function build(
@@ -68,11 +68,11 @@ function build(
 	const keep = { atAll: base?.atAll ?? unknown, inbound: base?.inbound ?? unknown };
 	switch (state) {
 		case "supported":
-			return { ...keep, miniAppCard: { state: "supported", checkedAt: Date.now() } };
+			return { ...keep, nativeShare: { state: "supported", checkedAt: Date.now() } };
 		case "unsupported":
-			return { ...keep, miniAppCard: { state: "unsupported", reason, checkedAt: Date.now() } };
+			return { ...keep, nativeShare: { state: "unsupported", reason, checkedAt: Date.now() } };
 		case "unknown":
-			return { ...keep, miniAppCard: { state: "unknown" } };
+			return { ...keep, nativeShare: { state: "unknown" } };
 	}
 }
 
@@ -123,7 +123,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 				.map(([id, caps]) => {
 					const name = connections.find((a) => a.id === id)?.name ?? id;
 					const state =
-						STATES.find((s) => s.value === caps.miniAppCard.state)?.label ?? caps.miniAppCard.state;
+						STATES.find((s) => s.value === caps.nativeShare.state)?.label ?? caps.nativeShare.state;
 					return `${name} ${state}`;
 				})
 				.join(" / ");

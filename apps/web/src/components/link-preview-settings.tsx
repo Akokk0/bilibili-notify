@@ -74,11 +74,11 @@ function isGroupCandidate(
 const NOT_PROBED: CapabilitySupport = { state: "unknown" };
 
 /** 一条连接能不能签小程序卡;表里没这条(引擎没起来、没有适配器)是 `undefined`。 */
-function miniAppSupport(
+function nativeShareSupport(
 	capabilities: ConnectionCapabilitiesMap,
 	connectionId: string,
 ): CapabilitySupport | undefined {
-	return capabilities[connectionId]?.miniAppCard;
+	return capabilities[connectionId]?.nativeShare;
 }
 
 export function LinkPreviewSettings({
@@ -205,7 +205,7 @@ export function LinkPreviewSettings({
 											platform={platform}
 											cfg={cfg}
 											onPatch={onPatch}
-											support={miniAppSupport(capabilities, t.connectionId)}
+											support={nativeShareSupport(capabilities, t.connectionId)}
 											paused={isTargetPaused(t, connections)}
 										/>
 									);
@@ -255,7 +255,7 @@ function CapabilityPanel({
 					</EmptyNote>
 				) : (
 					onebots.map((a) => {
-						const support = miniAppSupport(capabilities, a.id) ?? NOT_PROBED;
+						const support = nativeShareSupport(capabilities, a.id) ?? NOT_PROBED;
 						const { dot, text } = supportText(support);
 						return (
 							<Row

@@ -35,12 +35,12 @@ describe("connections route — GET /capabilities", () => {
 		const direct = {
 			atAll: { state: "supported", checkedAt: 1 },
 			inbound: { state: "supported", checkedAt: 1 },
-			miniAppCard: { state: "supported", checkedAt: 1 },
+			nativeShare: { state: "supported", checkedAt: 1 },
 		};
 		const bridged = {
 			atAll: { state: "unsupported", reason: "桥报的:这个 bot 发不了 @全体", checkedAt: 2 },
 			inbound: unknown,
-			miniAppCard: unknown,
+			nativeShare: unknown,
 		};
 		const app = createConnectionsRoute(
 			makeDeps({

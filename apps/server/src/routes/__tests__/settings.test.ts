@@ -180,7 +180,7 @@ describe("checkApprovalEnable", () => {
 	const conns = [{ id: "c1" }] as Connections;
 	const unknown = { state: "unknown" } as const;
 	const inbound = (i: ConnectionCapabilities["inbound"]) => (id: string) =>
-		id === "c1" ? { atAll: unknown, inbound: i, miniAppCard: unknown } : undefined;
+		id === "c1" ? { atAll: unknown, inbound: i, nativeShare: unknown } : undefined;
 	const receives = inbound({ state: "supported", checkedAt: 1 });
 	const noReturnPath = inbound({
 		state: "unsupported",
@@ -267,7 +267,7 @@ describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
 			? {
 					atAll: { state: "unknown" },
 					inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
-					miniAppCard: { state: "unknown" },
+					nativeShare: { state: "unknown" },
 				}
 			: undefined;
 

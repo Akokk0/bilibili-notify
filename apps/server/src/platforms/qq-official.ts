@@ -1479,8 +1479,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					checkedAt: adapterStartedAt,
 				},
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
-				// 没实现小程序卡的发送 = 不支持。
-				miniAppCard: {
+				// 没实现原生分享(小程序卡)的发送 = 不支持。
+				nativeShare: {
 					state: "unsupported",
 					reason: "QQ 官方机器人适配器没有实现小程序卡",
 					checkedAt: adapterStartedAt,

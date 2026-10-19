@@ -504,19 +504,19 @@ describe("桥 adapter", () => {
 	it("capabilities:桥报的三态原样对应;没连着就是「还不知道」并带原因", async () => {
 		expect(
 			harness(session({}, { miniAppCard: "supported" })).adapter.capabilities?.(connection()),
-		).toMatchObject({ miniAppCard: { state: "supported" } });
+		).toMatchObject({ nativeShare: { state: "supported" } });
 		expect(
 			harness(session({}, { miniAppCard: "unsupported" })).adapter.capabilities?.(connection()),
-		).toMatchObject({ miniAppCard: { state: "unsupported" } });
+		).toMatchObject({ nativeShare: { state: "unsupported" } });
 		expect(harness().adapter.capabilities?.(connection())).toMatchObject({
-			miniAppCard: { state: "unknown" },
+			nativeShare: { state: "unknown" },
 		});
 		const offline = harness(null);
 		expect(offline.adapter.capabilities?.(connection())).toMatchObject({
-			miniAppCard: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+			nativeShare: { state: "unknown", reason: expect.stringMatching(/没连着/) },
 		});
 		expect(await offline.adapter.probeCapabilities?.(connection())).toMatchObject({
-			miniAppCard: { state: "unknown" },
+			nativeShare: { state: "unknown" },
 		});
 	});
 
@@ -551,7 +551,7 @@ describe("桥 adapter", () => {
 		const expected = {
 			atAll: { state: "unknown", reason: expect.stringMatching(/没连着/) },
 			inbound: { state: "unknown", reason: expect.stringMatching(/没连着/) },
-			miniAppCard: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+			nativeShare: { state: "unknown", reason: expect.stringMatching(/没连着/) },
 		};
 		expect(offline.adapter.capabilities?.(connection())).toMatchObject(expected);
 		expect(await offline.adapter.probeCapabilities?.(connection())).toMatchObject(expected);

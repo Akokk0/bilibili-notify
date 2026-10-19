@@ -36,7 +36,7 @@ const WH = {
 const REAL: ConnectionCapabilities = {
 	atAll: { state: "supported", checkedAt: 1 },
 	inbound: { state: "supported", checkedAt: 1 },
-	miniAppCard: { state: "unsupported", reason: "1404", checkedAt: 1 },
+	nativeShare: { state: "unsupported", reason: "1404", checkedAt: 1 },
 };
 
 function onebot(): PlatformAdapter {
@@ -110,8 +110,8 @@ describe("connection.capability", () => {
 		expect(wrapped.capabilities?.(OB)).toBe(REAL);
 		expect(await wrapped.probeCapabilities?.(OB)).toBe(REAL);
 		expect(await wrapped.probe(OB)).toEqual({ ok: true, latencyMs: 1 });
-		injector.set("ad-ob", { ...REAL, miniAppCard: { state: "supported", checkedAt: 2 } });
-		expect(wrapped.capabilities?.(OB)?.miniAppCard.state).toBe("supported");
+		injector.set("ad-ob", { ...REAL, nativeShare: { state: "supported", checkedAt: 2 } });
+		expect(wrapped.capabilities?.(OB)?.nativeShare.state).toBe("supported");
 		expect(wrapped.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
 	});
 
@@ -125,8 +125,8 @@ describe("connection.capability", () => {
 	it("注入 supported:capabilities 与 probeCapabilities 对那个 id 都回假的,别的 id 不受影响", async () => {
 		const { reg, ob } = setup();
 		const res = await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
-		expect(ob.capabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
-		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ miniAppCard: { state: "supported" } });
+		expect(ob.capabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
+		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
 		expect(ob.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
 		expect(res.active).toEqual([
 			{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" },
@@ -151,16 +151,16 @@ describe("connection.capability", () => {
 			reason: "假装 1404",
 		});
 		expect(ob.capabilities?.(OB)).toMatchObject({
-			miniAppCard: { state: "unsupported", reason: "假装 1404" },
+			nativeShare: { state: "unsupported", reason: "假装 1404" },
 		});
 		await reg.run("connection.capability", { connection: "ad-ob", state: "unknown" });
-		expect(ob.capabilities?.(OB)?.miniAppCard.state).toBe("unknown");
+		expect(ob.capabilities?.(OB)?.nativeShare.state).toBe("unknown");
 	});
 
 	it("connection 省略取第一个有能力概念的;指到 webhook 就拒", async () => {
 		const { reg, ob } = setup();
 		await reg.run("connection.capability", { state: "supported" });
-		expect(ob.capabilities?.(OB)?.miniAppCard.state).toBe("supported");
+		expect(ob.capabilities?.(OB)?.nativeShare.state).toBe("supported");
 		await expect(reg.run("connection.capability", { connection: "ad-wh" })).rejects.toBeInstanceOf(
 			DevParamError,
 		);
@@ -183,7 +183,7 @@ describe("connection.capability", () => {
 		]);
 		const wrapped = injector.wrap(qq);
 		await reg.run("connection.capability", { state: "supported" });
-		expect(wrapped.capabilities?.(conn)?.miniAppCard.state).toBe("supported");
+		expect(wrapped.capabilities?.(conn)?.nativeShare.state).toBe("supported");
 	});
 
 	it("收摊回真", async () => {
@@ -197,7 +197,7 @@ describe("connection.capability", () => {
 		const injector = createCapabilityInjector();
 		const probe = vi.fn(async () => REAL);
 		const wrapped = injector.wrap({ ...onebot(), probeCapabilities: probe });
-		injector.set("ad-ob", { ...REAL, miniAppCard: { state: "unknown" } });
+		injector.set("ad-ob", { ...REAL, nativeShare: { state: "unknown" } });
 		await wrapped.probeCapabilities?.(OB);
 		expect(probe).not.toHaveBeenCalled();
 	});
