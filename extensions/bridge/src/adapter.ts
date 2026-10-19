@@ -152,16 +152,17 @@ function toBridgeMessage(
 				),
 				forward: payload.mergeForward,
 			};
-		case "miniapp-card":
-			// 小程序卡那几格**不过剥离**:它们是卡片的结构化字段,由平台自己渲染,
-			// 从来不是一段 markdown 正文。
+		case "native-share":
+			// 原生分享那几格**不过剥离**:它们是卡片的结构化字段,由平台自己渲染,
+			// 从来不是一段 markdown 正文。线上帧还是 `miniapp-card` 五格(帧里没有 appId,
+			// 对任何 appId 都这么映射)。
 			return {
 				kind: "miniapp-card",
 				title: payload.title,
-				desc: payload.desc,
-				picUrl: payload.picUrl,
-				path: payload.path,
-				jumpUrl: payload.jumpUrl,
+				desc: payload.description,
+				picUrl: payload.imageUrl,
+				path: payload.pagePath,
+				jumpUrl: payload.webUrl,
 			};
 	}
 }

@@ -1,13 +1,14 @@
 /**
- * OneBot 适配器的「QQ 小程序卡」能力 —— 链接解析回小程序卡靠它。
+ * OneBot 适配器的「原生分享」能力 —— 链接解析回原生分享卡靠它。
  *
- * 守四件事:
+ * 守五件事:
  *   - 探测:拿**空参数**调 `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404(不支持的
  *     动作)= 不支持;1400(参数错)= 支持,接口在;别的 = 未探测出来,带原因。零副作用,
  *     不真向腾讯要卡。认接口不认实现名:NapCat 只是今天唯一已知能签的,逻辑里不出现它。
  *   - 缓存:结果按连接记住;配置变了或连接没了才丢。适配器不自己发起探测,也不管重探节奏与
  *     「探不出来沿用上次」—— 那两件归宿主(`push/__tests__/target-dispatcher.test.ts`)。
- *   - 真发:先签 ark(`type: "bili"` + 四个字段),再把返回值当 `json` 段发进群。
+ *   - 真发:按分享描述里的 appId 查对照表,先签 ark(预设 + 四个字段),再把返回值当 `json` 段发进群。
+ *   - 查不到预设:这个 appId 没有对应的签法 → `unsupported`,不调接口、不发,能力缓存不动。
  *   - 发不了:签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动。
  *
  * fetch 用 vi.stubGlobal mock,只走 http transport —— 三种 transport 调 action 共一条路,
@@ -23,6 +24,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { QQ_MINI_APP_ID } from "../../bilibili/link-resolver.js";
 import { createOnebotAdapter } from "../onebot.js";
 
 function makeLogger() {
@@ -71,12 +73,13 @@ function obTarget(): PushTarget {
 }
 
 const CARD: NotificationPayload = {
-	kind: "miniapp-card",
+	kind: "native-share",
+	appId: QQ_MINI_APP_ID,
 	title: "【测试】一个视频",
-	desc: "简介",
-	picUrl: "https://i0.hdslb.com/cover.jpg",
-	path: "pages/video/video?bvid=BV1zMtU6uEEb",
-	jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+	description: "简介",
+	imageUrl: "https://i0.hdslb.com/cover.jpg",
+	pagePath: "pages/video/video?bvid=BV1zMtU6uEEb",
+	webUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 };
 
 /** 腾讯签回来的 ark(NapCat 原样交出 data);结构只要能 JSON 序列化就行。 */
@@ -141,7 +144,7 @@ function capsOf(ad: ReturnType<typeof createOnebotAdapter>) {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-describe("onebot — 小程序卡能力探测", () => {
+describe("onebot — 原生分享能力探测", () => {
 	it("没探过 → 未探测", () => {
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
@@ -255,8 +258,8 @@ describe("onebot — 小程序卡能力探测", () => {
 	});
 });
 
-describe("onebot — 发小程序卡", () => {
-	it("先用 bili 模板签 ark,再把返回值当 json 段发进群;签成了就等于支持", async () => {
+describe("onebot — 发原生分享", () => {
+	it("B 站 QQ 小程序的原生分享按 bili 预设签 ark,再把返回值当 json 段发进群;签成了就等于支持", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame(ARK)).mockResolvedValueOnce(okFrame());
 		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
@@ -267,7 +270,7 @@ describe("onebot — 发小程序卡", () => {
 		// 把网址填进 jumpUrl 签出来的卡点开是「页面不存在」—— 2026-09-07 群友反馈那次。
 		expect(calledBody(0)).toEqual({
 			type: "bili",
-			title: CARD.kind === "miniapp-card" ? CARD.title : "",
+			title: "【测试】一个视频",
 			desc: "简介",
 			picUrl: "https://i0.hdslb.com/cover.jpg",
 			jumpUrl: "pages/video/video?bvid=BV1zMtU6uEEb",
@@ -280,6 +283,32 @@ describe("onebot — 发小程序卡", () => {
 		});
 		expect(capsOf(ad).miniAppCard.state).toBe("supported");
 	});
+
+	it("对照表里没有的 appId → unsupported,不调接口、不发,能力缓存不动", async () => {
+		fetchMock.mockResolvedValueOnce(failFrame(1400));
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		await ad.probeCapabilities?.(obConnection());
+		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+
+		const other: NotificationPayload = { ...CARD, appId: "no-such-app" } as NotificationPayload;
+		const r = await ad.send(obConnection(), obTarget(), other);
+		expect(r).toMatchObject({ ok: false, code: "unsupported" });
+		expect(!r.ok && r.message).toContain("no-such-app");
+		// 只有探测那一次;没签卡、没发消息。
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(capsOf(ad).miniAppCard.state).toBe("supported");
+	});
+
+	it.each(["constructor", "toString", "__proto__"])(
+		"appId 撞上对象原型上的名字(%s)→ 也是 unsupported,不调接口",
+		async (appId) => {
+			const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+			const other = { ...CARD, appId } as NotificationPayload;
+			const r = await ad.send(obConnection(), obTarget(), other);
+			expect(r).toMatchObject({ ok: false, code: "unsupported" });
+			expect(fetchMock).not.toHaveBeenCalled();
+		},
+	);
 
 	it("NapCat 把 ark 又套了一层 data 交出来(真机踩到:整层发出去腾讯直接吞)→ 剥掉再发", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame({ data: ARK })).mockResolvedValueOnce(okFrame());

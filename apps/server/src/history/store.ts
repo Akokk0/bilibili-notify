@@ -345,7 +345,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 					kind: "text",
 					text: `[图集 ${payload.images.length} 张${payload.mergeForward ? " · 合并转发" : ""}]`,
 				};
-			case "miniapp-card":
+			case "native-share":
 				return { kind: "text", text: `[小程序卡] ${payload.title}` };
 			case "composite": {
 				const textParts: string[] = [];

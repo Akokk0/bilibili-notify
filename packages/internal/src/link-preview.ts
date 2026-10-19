@@ -7,6 +7,7 @@
  * 解析器由集成在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver` 登记,键就是集成的键。
  */
 import type { Result } from "./constants";
+import type { NativeShare } from "./platform";
 import type { Post } from "./post";
 
 /** 解析器交回的一份预览:一个作品,加「这是哪一个」的规范 id,可选的原生分享描述。 */
@@ -19,18 +20,7 @@ export interface LinkPreview {
 	 * 原生分享卡的中立描述。有它、且发送的这条连接支持,才会回原生分享;没有或签不了就回图片。
 	 * 描述只说「分享什么」,签名由适配器去签(解析器不碰任何平台的签名接口)。
 	 */
-	nativeShare?: {
-		/** 小程序 / 应用的标识,适配器按它挑怎么签。 */
-		appId: string;
-		title: string;
-		description: string;
-		imageUrl: string;
-		/** 小程序内的页面路径。 */
-		pagePath: string;
-		/** 不支持小程序的客户端点开的网页地址。 */
-		webUrl: string;
-		iconUrl?: string;
-	};
+	nativeShare?: NativeShare;
 }
 
 /** 一个平台的链接解析器。 */

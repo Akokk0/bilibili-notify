@@ -721,17 +721,18 @@ describe("createLinkPreviewer", () => {
 						? { state, reason: "没有接口", checkedAt: 1 }
 						: { state },
 		});
-		/** 今天的小程序卡载荷:解析器交的中立描述五格一一对应。 */
+		/** 原生分享载荷:解析器交的中立描述原样装进来,`appId` 一并带着。 */
 		const MINIAPP_CARD: NotificationPayload = {
-			kind: "miniapp-card",
+			kind: "native-share",
+			appId: "acme-app",
 			title: "标题-a1",
-			desc: "描述-a1",
-			picUrl: "https://acme.invalid/a1.png",
-			path: "pages/link?id=a1",
-			jumpUrl: "https://acme.invalid/link/a1",
+			description: "描述-a1",
+			imageUrl: "https://acme.invalid/a1.png",
+			pagePath: "pages/link?id=a1",
+			webUrl: "https://acme.invalid/link/a1",
 		};
 
-		it("形式=小程序卡、连接支持 → 发小程序卡,字段来自解析器交的描述;不碰渲染器", async () => {
+		it("形式=小程序卡、连接支持 → 发原生分享,发的是解析器交的那份描述,appId 一并带着;不碰渲染器", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,
 				capabilities: () => caps("supported"),
@@ -774,7 +775,7 @@ describe("createLinkPreviewer", () => {
 				connectionId: ADAPTER,
 				address: String(GROUP),
 			});
-			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share"]);
 		});
 
 		it("探完仍未知 → 图片卡,不拿一张注定发不出去的卡去试", async () => {
@@ -792,12 +793,12 @@ describe("createLinkPreviewer", () => {
 				policyFor: miniapp,
 				capabilities: () => caps("supported"),
 				sendResult: (p) =>
-					p.kind === "miniapp-card"
+					p.kind === "native-share"
 						? fail("unavailable", "签小程序卡失败: packet 后端未就绪")
 						: { ok: true, latencyMs: 1 },
 			});
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card", "image"]);
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share", "image"]);
 			expect(h.warn).toHaveBeenCalledWith(
 				expect.stringContaining("签小程序卡失败: packet 后端未就绪,回落图片卡"),
 			);
@@ -822,7 +823,7 @@ describe("createLinkPreviewer", () => {
 			});
 			ok.renderer.mockReturnValue(null);
 			await feed(ok.parser, groupFrame(LINK));
-			expect(ok.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+			expect(ok.sent.map((s) => s.payload.kind)).toEqual(["native-share"]);
 
 			const none = makeParser({}, undefined, {
 				policyFor: miniapp,
@@ -848,7 +849,7 @@ describe("createLinkPreviewer", () => {
 
 			state = "supported";
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card"]);
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share"]);
 		});
 	});
 });

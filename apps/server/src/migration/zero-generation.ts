@@ -92,8 +92,10 @@ import { migrateUptime } from "./uptime.js";
  * `config/settings/core.json` 因此没有 `linkParsing`,摘要变)。
  * 48 = 其余六条直播文案的占位符改写(`-key` → `{key}`,`{mastername}` / `{uname}` / `{mdn}` → `{name}` / `{viewer}` / `{fanclub}`;
  * 设置与订阅覆盖里的文案变,账本里特别弹幕 / 特别进场 / 弹幕总结三条的旧默认指纹换新,摘要变)。
+ * 49 = 重推原件里的小程序卡改成原生分享(`miniapp-card` → `native-share`,`desc` / `picUrl` / `path` / `jumpUrl` →
+ * `description` / `imageUrl` / `pagePath` / `webUrl`,补 B 站 QQ 小程序的 `appId`;`history/repush/` 里这种原件的形状变)。
  */
-export const MIGRATION_REVISION = 48;
+export const MIGRATION_REVISION = 49;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

@@ -278,7 +278,7 @@ function migrateLineShape(line: string): string {
 }
 
 /**
- * 0.x 的每种载荷在 1.0 叫什么(3a-16)。`miniapp-card` 今天原样留着:它改成原生分享(连同字段)归 3b。
+ * 0.x 的每种载荷在 1.0 叫什么(3a-16;小程序卡改成原生分享是 3b-31)。
  * 0.x 多一种、这里没给去向,编译不过;守卫见 `__tests__/repush-snapshot-payloads.test.ts`。
  */
 const PAYLOAD_KIND_RENAMES = {
@@ -286,8 +286,37 @@ const PAYLOAD_KIND_RENAMES = {
 	image: "image",
 	composite: "composite",
 	"forward-images": "image-group",
-	"miniapp-card": "miniapp-card",
+	"miniapp-card": "native-share",
 } as const satisfies Record<ZeroPayloadKind, NotificationPayload["kind"]>;
+
+/**
+ * B 站在 QQ 小程序里的 appid。小程序卡那时只有 B 站的链接解析产出,所以旧原件里的卡都补这一个。
+ * 迁移只认冻住的值,不 import `bilibili/`;与解析器的 `QQ_MINI_APP_ID` 同值,由
+ * `__tests__/repush-snapshot-payloads.test.ts` 钉住。
+ */
+const FROZEN_MINI_APP_ID = "1109937557";
+
+/** 小程序卡的四格在原生分享里叫什么(`title` 同名,照搬)。 */
+const MINIAPP_CARD_FIELD_RENAMES: ReadonlyMap<string, string> = new Map([
+	["desc", "description"],
+	["picUrl", "imageUrl"],
+	["path", "pagePath"],
+	["jumpUrl", "webUrl"],
+]);
+
+/** 小程序卡 → 原生分享:四格原位改名、`kind` 换新、紧跟 `kind` 补 `appId`。 */
+function miniAppCardToNativeShare(card: Record<string, unknown>): Record<string, unknown> {
+	return Object.fromEntries(
+		Object.entries(card).flatMap(([key, value]): [string, unknown][] =>
+			key === "kind"
+				? [
+						["kind", PAYLOAD_KIND_RENAMES["miniapp-card"]],
+						["appId", FROZEN_MINI_APP_ID],
+					]
+				: [[MINIAPP_CARD_FIELD_RENAMES.get(key) ?? key, value]],
+		),
+	);
+}
 
 /** 把对象里的一个键换个名字,**键留在原来的位置**、值不动。 */
 function renameKey(
@@ -301,7 +330,8 @@ function renameKey(
 /**
  * 3a-16:原件里一条载荷改成活的 `NotificationPayload` 的名字 —— 图集 `forward-images` → `image-group`、它的开关
  * `forward` → `mergeForward`(图的 `{ url, width?, height? }` 本来就是 `PostImage` 的子集,照搬);composite 每一段的
- * 判别键 `type` → `kind`。键都留在原来的位置。已经是新名字的、读不懂的回同一个对象。
+ * 判别键 `type` → `kind`。3b-31:小程序卡 `miniapp-card` → 原生分享 `native-share`(`desc` / `picUrl` / `path` /
+ * `jumpUrl` 原位改名,补 `appId`)。键都留在原来的位置。已经是新名字的、读不懂的回同一个对象。
  */
 function migrateRepushPayload(payload: unknown): unknown {
 	if (!isPlainObject(payload)) return payload;
@@ -312,6 +342,7 @@ function migrateRepushPayload(payload: unknown): unknown {
 			kind: PAYLOAD_KIND_RENAMES["forward-images"],
 		};
 	}
+	if (payload.kind === "miniapp-card") next = miniAppCardToNativeShare(payload);
 	if (Array.isArray(payload.segments)) {
 		let changed = false;
 		const segments = (payload.segments as unknown[]).map((seg) => {
@@ -327,7 +358,7 @@ function migrateRepushPayload(payload: unknown): unknown {
 /**
  * 一份重推原件(`history/repush/<日>/<行 id>.json`)改成现在的形状:`v` → `version`(⑱c,**键留在原来的位置**),每条消息的
  * 载荷改成活的名字(3a-16,{@link migrateRepushPayload})。什么都不用改的、读不懂的回 `undefined`(不改写),所以迁两遍和
- * 迁一遍一样。小程序卡那一种的改名归 3b,不在这里。
+ * 迁一遍一样。
  */
 function migrateRepushSnapshot(value: unknown): Record<string, unknown> | undefined {
 	if (!isPlainObject(value)) return undefined;

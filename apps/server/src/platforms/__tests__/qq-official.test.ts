@@ -140,14 +140,15 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		).toEqual([{ kind: "image-url", url: "https://i0.hdslb.com/b.jpg", width: 4, height: 3 }]);
 	});
 
-	it("miniapp-card(官机签不了 ark)→ 降级成标题 + 链接,不是空片段", () => {
+	it("native-share(官机签不了 ark)→ 降级成标题 + 链接,不是空片段", () => {
 		const payload: NotificationPayload = {
-			kind: "miniapp-card",
+			kind: "native-share",
+			appId: "app-1",
 			title: "示例标题",
-			desc: "简介",
-			picUrl: "https://i0.hdslb.com/cover.jpg",
-			path: "pages/video/video?bvid=BV1zMtU6uEEb",
-			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+			description: "简介",
+			imageUrl: "https://i0.hdslb.com/cover.jpg",
+			pagePath: "pages/video/video?bvid=BV1zMtU6uEEb",
+			webUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
 			{ kind: "text", text: "示例标题\nhttps://www.bilibili.com/video/BV1zMtU6uEEb" },

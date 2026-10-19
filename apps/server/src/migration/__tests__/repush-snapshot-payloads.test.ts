@@ -16,8 +16,8 @@
  * - 活的 `NotificationPayload` 多了一种 / 改了一种的名字 → {@link CURRENT_PAYLOAD_ORIGINS} 编译不过;填上以后,它声称的
  *   0.x 种类迁出来不是它 → 红(迁移没跟上);
  * - `ZERO_PAYLOAD_KINDS` 里的某一种没有夹具 → 编译不过;迁完读不回来(过不了现行 schema)→ 红;
- * - 归后面某一片的种类(今天只有 `miniapp-card`,3b 改成原生分享)逐条列在 {@link PENDING} 里:那一片落地、盘上形状变了,
- *   「今天原样留着」那条红,提醒把它从 `PENDING` 挪走。
+ * - 小程序卡(`miniapp-card`)迁成原生分享(`native-share`):四格改名、补 appid;期望的 appid 从 B 站解析器 import,
+ *   迁移冻住的值与解析器的值被这里钉成同一个。
  *
  * 夹具是自己编的,不是真实数据;输入不往 `zero-fixtures.ts` 里加(那份的产出钉着迁移修订号)。
  */
@@ -30,6 +30,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { QQ_MINI_APP_ID } from "../../bilibili/link-resolver.js";
 import { createRepushStore } from "../../history/repush-store.js";
 import { ZERO_PAYLOAD_KINDS, type ZeroPayloadKind } from "../zero-vocabulary.js";
 import { useZeroSandbox } from "./support.js";
@@ -85,17 +86,23 @@ const CURRENT_PAYLOAD_ORIGINS: Record<NotificationPayload["kind"], ZeroPayloadKi
 	image: "image",
 	composite: "composite",
 	"image-group": "forward-images",
-	"miniapp-card": "miniapp-card",
+	"native-share": "miniapp-card",
 };
 
-/** 盘上形状归后面某一片改的 0.x 种类:今天迁移原样留着它。 */
-const PENDING: Partial<Record<ZeroPayloadKind, string>> = {
-	"miniapp-card":
-		"3b:改成原生分享(`desc` → `description`、`picUrl` → `imageUrl`、`path` → `pagePath`、`jumpUrl` → `webUrl`)",
-};
-
-/** 0.x 的名字:迁完的原件里一个都不该剩(`miniapp-card` 归 3b,不在这里查)。 */
-const ZERO_ONLY_NAMES = ['"forward-images"', '"forward"', '"type"', '"own"', '"mime"', '"v"'];
+/** 0.x 的名字:迁完的原件里一个都不该剩。 */
+const ZERO_ONLY_NAMES = [
+	'"forward-images"',
+	'"forward"',
+	'"type"',
+	'"own"',
+	'"mime"',
+	'"v"',
+	'"miniapp-card"',
+	'"desc"',
+	'"picUrl"',
+	'"path"',
+	'"jumpUrl"',
+];
 
 /** 每种 0.x 载荷各摆一份旧原件,整趟迁一次,再用真的重推原件仓逐份读回。 */
 async function migrateAll() {
@@ -159,10 +166,9 @@ describe("守卫 13 后半:重推原件的每种载荷都有去向", () => {
 		expect([...claimed].sort()).toEqual([...ZERO_PAYLOAD_KINDS].sort());
 	});
 
-	it("迁完的原件里 0.x 的名字一个不剩(归后面某一片的种类除外)", async () => {
+	it("迁完的原件里 0.x 的名字一个不剩", async () => {
 		const read = await migrateAll();
 		for (const zeroKind of ZERO_PAYLOAD_KINDS) {
-			if (zeroKind in PENDING) continue;
 			const { raw } = await read(zeroKind);
 			for (const name of ZERO_ONLY_NAMES)
 				expect(raw, `${zeroKind} 迁完还有 ${name}`).not.toContain(name);
@@ -200,12 +206,18 @@ describe("守卫 13 后半:重推原件的每种载荷都有去向", () => {
 		]);
 	});
 
-	it("归后面某一片的种类逐条列出;今天迁移原样留着它(那一片落地时这条红,把它从 PENDING 挪走)", async () => {
-		expect(Object.keys(PENDING)).toEqual(["miniapp-card"]);
-		const read = await migrateAll();
-		for (const zeroKind of Object.keys(PENDING) as ZeroPayloadKind[]) {
-			const { raw, zeroPayload } = await read(zeroKind);
-			expect(JSON.parse(raw).messages[0].payload, zeroKind).toEqual(zeroPayload);
-		}
+	it("小程序卡 → 原生分享:四格改名、`title` 照搬、补 B 站 QQ 小程序的 appid", async () => {
+		const { loaded, raw } = await (await migrateAll())("miniapp-card");
+		expect(loaded).toEqual({
+			kind: "native-share",
+			appId: QQ_MINI_APP_ID,
+			title: "视频标题",
+			description: "简介",
+			imageUrl: "https://example.com/cover.jpg",
+			pagePath: "pages/video/video?bvid=BV1xx",
+			webUrl: "https://example.com/video/BV1xx",
+		});
+		// 磁盘上的也是新形状,不只是读回来过了 schema。
+		expect(JSON.parse(raw).messages[0].payload.appId).toBe(QQ_MINI_APP_ID);
 	});
 });

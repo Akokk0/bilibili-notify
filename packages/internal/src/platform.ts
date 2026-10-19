@@ -422,6 +422,23 @@ export type PayloadSegment =
 	| { kind: "at-all" };
 
 /**
+ * 原生分享的中立描述(一张「点开进应用某一页」的分享卡):链接解析器只说「分享什么」,
+ * 签名由适配器去签。`LinkPreview.nativeShare` 与载荷的 `native-share` 一支共用这一个类型。
+ */
+export interface NativeShare {
+	/** 小程序 / 应用的标识,适配器按它挑怎么签。 */
+	appId: string;
+	title: string;
+	description: string;
+	imageUrl: string;
+	/** 应用内的页面路径。 */
+	pagePath: string;
+	/** 不支持原生分享的客户端点开的网页地址。 */
+	webUrl: string;
+	iconUrl?: string;
+}
+
+/**
  * 平台中立的消息载荷。Adapter 翻译为各平台原生格式:
  * - OneBot: text/image → message segment 数组；composite → 段拼接
  * - Webhook: 序列化为 JSON
@@ -444,23 +461,15 @@ export type NotificationPayload =
 	 */
 	| { kind: "image-group"; images: PostImage[]; mergeForward: boolean }
 	/**
-	 * QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。只有能向腾讯签 ark 的
-	 * OneBot 实现发得出(扩展接口 `get_mini_app_ark`,见 server 的 platforms/onebot.ts);
-	 * 别的平台一律回 `ok: false`,由链接解析那头回落图片卡。
+	 * 原生分享:链接解析器交的中立描述原样装进来(见 {@link NativeShare})。怎么签、签不签得了
+	 * 归适配器自己挑 —— 认识这个 `appId` 的适配器去签,不认识的、或这条连接签不了的,回
+	 * `ok: false`,由链接解析那头回落图片卡。
 	 *
-	 * `path` 是**小程序里的页面路径**(B 站小程序的视频页是 `pages/video/video?bvid=…`),
-	 * `jumpUrl` 是网页链接。两个都要:签卡协议里页面路径决定点开落在哪一页,网页链接落到卡的
-	 * `qqdocurl`;把网址填进页面路径签出来的卡点开是「页面不存在」(2026-09-07 群友反馈那次)。
-	 * 签不了 ark 的平台降级成文字时只用 `jumpUrl`。
+	 * `pagePath` 是**应用里的页面路径**,`webUrl` 是网页链接。两个都要:签名协议里页面路径决定
+	 * 点开落在哪一页,网页链接给不支持的客户端;把网址填进页面路径签出来的卡点开是「页面不存在」
+	 * (2026-09-07 群友反馈那次)。不能原生分享的平台降级成文字时只用 `webUrl`。
 	 */
-	| {
-			kind: "miniapp-card";
-			title: string;
-			desc: string;
-			picUrl: string;
-			path: string;
-			jumpUrl: string;
-	  };
+	| ({ kind: "native-share" } & NativeShare);
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。

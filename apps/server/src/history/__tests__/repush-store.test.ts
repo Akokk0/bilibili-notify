@@ -301,15 +301,20 @@ describe("三种历史丢得最狠的 payload", () => {
 		expect(out?.messages[0]?.payload).toEqual(payload);
 	});
 
-	it("小程序卡:五个字段都留着(历史只剩标题)", async () => {
+	it.each([
+		["不带 iconUrl", {}],
+		["带 iconUrl", { iconUrl: "https://i0.hdslb.com/icon.png" }],
+	])("原生分享:七格都留着(%s;历史只剩标题)", async (_label, extra) => {
 		const id = randomUUID();
 		const payload: NotificationPayload = {
-			kind: "miniapp-card",
+			kind: "native-share",
+			appId: "app-1",
 			title: "标题",
-			desc: "简介",
-			picUrl: "https://i0.hdslb.com/p.jpg",
-			path: "pages/video",
-			jumpUrl: "https://b23.tv/x",
+			description: "简介",
+			imageUrl: "https://i0.hdslb.com/p.jpg",
+			pagePath: "pages/video",
+			webUrl: "https://b23.tv/x",
+			...extra,
 		};
 		await store.append(id, TS, [{ payload, role: "main" }]);
 		const out = await store.load(id, TS, 1);

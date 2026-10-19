@@ -65,7 +65,8 @@ const StoredPostImageSchema = z.object({
 
 /**
  * 载荷在盘上的样子:与活的 `NotificationPayload` 同名同格,只有图的字节换成了图库引用。3a-16 之前图集叫
- * `forward-images` / `forward`,由迁移改写(`migration/history.ts`),这里只认新的。
+ * `forward-images` / `forward`,小程序卡(`miniapp-card`,`desc` / `picUrl` / `path` / `jumpUrl`)在 3b-31 之前
+ * 是原生分享的前身,都由迁移改写(`migration/history.ts`),这里只认新的。
  */
 const StoredPayloadSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("text"), text: z.string() }),
@@ -77,12 +78,14 @@ const StoredPayloadSchema = z.discriminatedUnion("kind", [
 		mergeForward: z.boolean(),
 	}),
 	z.object({
-		kind: z.literal("miniapp-card"),
+		kind: z.literal("native-share"),
+		appId: z.string(),
 		title: z.string(),
-		desc: z.string(),
-		picUrl: z.string(),
-		path: z.string(),
-		jumpUrl: z.string(),
+		description: z.string(),
+		imageUrl: z.string(),
+		pagePath: z.string(),
+		webUrl: z.string(),
+		iconUrl: z.string().optional(),
 	}),
 ]);
 type StoredPayload = z.infer<typeof StoredPayloadSchema>;
@@ -204,7 +207,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					images: payload.images.map((i) => ({ ...i })),
 					mergeForward: payload.mergeForward,
 				};
-			case "miniapp-card":
+			case "native-share":
 				return { ...payload };
 			case "composite": {
 				const segments: StoredSegment[] = [];
@@ -237,7 +240,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					images: stored.images.map((i) => ({ ...i })),
 					mergeForward: stored.mergeForward,
 				};
-			case "miniapp-card":
+			case "native-share":
 				return { ...stored };
 			case "composite": {
 				const segments: PayloadSegment[] = [];

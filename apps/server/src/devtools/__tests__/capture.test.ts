@@ -150,14 +150,15 @@ describe("createCaptureGate", () => {
 		],
 		[
 			{
-				kind: "miniapp-card",
+				kind: "native-share",
+				appId: "app-1",
 				title: "标题",
-				desc: "d",
-				picUrl: "p",
-				path: "pages/x",
-				jumpUrl: "j",
+				description: "d",
+				imageUrl: "p",
+				pagePath: "pages/x",
+				webUrl: "j",
 			},
-			{ kind: "miniapp-card", text: "标题", images: 0 },
+			{ kind: "native-share", text: "标题", images: 0 },
 		],
 	])("各种载荷都摘得出:%j", (payload, expected) => {
 		const gate = createCaptureGate();

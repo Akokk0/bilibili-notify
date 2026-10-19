@@ -25,7 +25,7 @@ import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import type { VideoRef, VideoResponse } from "../api/index.js";
 import type { ImagesDeps } from "../images.js";
-import { createBiliLinkResolver } from "../link-resolver.js";
+import { createBiliLinkResolver, QQ_MINI_APP_ID } from "../link-resolver.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const GROUP = 123456;
@@ -125,12 +125,12 @@ describe("createBiliLinkResolver · resolve", () => {
 		expect(result.ok && result.canonicalId).toBe("BV1zMtU6uEEb");
 	});
 
-	it("原生分享描述:五格来自视频信息,appId 取 B 站来源的键", async () => {
+	it("原生分享描述:五格来自视频信息,appId 是 B 站 QQ 小程序的 appid", async () => {
 		const h = makeResolver();
 		const result = await h.resolver.resolve(VIDEO_URL, h.signal);
 		if (!result.ok) throw new Error("应当成功");
 		expect(result.nativeShare).toEqual({
-			appId: BILIBILI_SOURCE_KEY,
+			appId: QQ_MINI_APP_ID,
 			title: "示例标题",
 			description: "示例简介",
 			imageUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
@@ -294,17 +294,18 @@ describe("B 站链接贴进群里(真解析器 + 真的门)", () => {
 		expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 	});
 
-	it("形式=小程序卡且连接支持:发小程序卡,载荷是今天的五格", async () => {
+	it("形式=小程序卡且连接支持:发原生分享,载荷是解析器交的描述", async () => {
 		const h = makeGate({}, true);
 		await feed(h.parser, groupFrame(VIDEO_URL));
 		expect(h.sent.map((s) => s.payload)).toEqual([
 			{
-				kind: "miniapp-card",
+				kind: "native-share",
+				appId: QQ_MINI_APP_ID,
 				title: "示例标题",
-				desc: "示例简介",
-				picUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
-				path: "pages/video/video?bvid=BV1zMtU6uEEb",
-				jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+				description: "示例简介",
+				imageUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+				pagePath: "pages/video/video?bvid=BV1zMtU6uEEb",
+				webUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
 			},
 		]);
 		expect(h.generatePostCard).not.toHaveBeenCalled();

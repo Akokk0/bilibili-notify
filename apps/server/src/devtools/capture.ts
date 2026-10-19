@@ -68,7 +68,7 @@ function summarize(payload: NotificationPayload): { text?: string; images: numbe
 				: { text: clip(payload.caption), images: 1 };
 		case "image-group":
 			return { images: payload.images.length };
-		case "miniapp-card":
+		case "native-share":
 			return { text: clip(payload.title), images: 0 };
 		case "composite": {
 			const parts: string[] = [];

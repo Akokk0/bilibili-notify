@@ -243,15 +243,16 @@ describe("桥适配器 — 线上帧内容", () => {
 		});
 	});
 
-	it("miniapp-card:五格原样,不过 markdown 剥离", async () => {
+	it("原生分享:帧里仍是 miniapp-card 五格,不过 markdown 剥离", async () => {
 		expect(
 			await harness("unknown").sent({
-				kind: "miniapp-card",
+				kind: "native-share",
+				appId: "app-1",
 				title: "**视频**标题",
-				desc: "简介",
-				picUrl: "https://i0.hdslb.com/cover.jpg",
-				path: "pages/video/video?bvid=BV1xx",
-				jumpUrl: "https://www.bilibili.com/video/BV1xx",
+				description: "简介",
+				imageUrl: "https://i0.hdslb.com/cover.jpg",
+				pagePath: "pages/video/video?bvid=BV1xx",
+				webUrl: "https://www.bilibili.com/video/BV1xx",
 			}),
 		).toEqual({
 			...HEAD,

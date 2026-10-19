@@ -8,11 +8,11 @@
  */
 
 import {
-	BILIBILI_SOURCE_KEY,
 	fail,
 	type LinkPreview,
 	type LinkResolver,
 	type Logger,
+	type NativeShare,
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
@@ -37,6 +37,12 @@ const directRef = (ref: VideoLinkRef): VideoRef | null =>
 	ref.kind === "bvid" ? { bvid: ref.bvid } : ref.kind === "aid" ? { aid: ref.aid } : null;
 
 /**
+ * B 站在 QQ 小程序里的 appid(B 站 App「分享到 QQ」发出的分享卡 `meta.detail_1.appid` 里读到的)。
+ * 适配器按它挑怎么签:OneBot 的对照表与迁移冻住的值是同一个字面量,由测试 import 这里钉成同值。
+ */
+export const QQ_MINI_APP_ID = "1109937557";
+
+/**
  * 原生分享(QQ 小程序卡)的中立描述,字段都来自视频信息。简介太长腾讯那边显示不下,截前 80 字;
  * 空的用 UP 名顶上 —— 卡上那行小字空着很难看。
  *
@@ -44,10 +50,10 @@ const directRef = (ref: VideoLinkRef): VideoRef | null =>
  * 解出来的是 `pages/video/video?bvid=…&share_source=qq_ugc&unique_k=…`,后两个是统计
  * 参数,只带 bvid 真机验过能开(2026-09-07)。
  */
-function nativeShareOf(info: VideoResponse): NonNullable<LinkPreview["nativeShare"]> {
+function nativeShareOf(info: VideoResponse): NativeShare {
 	const desc = info.desc.trim().slice(0, 80);
 	return {
-		appId: BILIBILI_SOURCE_KEY,
+		appId: QQ_MINI_APP_ID,
 		title: info.title,
 		description: desc || info.owner.name,
 		imageUrl: info.pic,

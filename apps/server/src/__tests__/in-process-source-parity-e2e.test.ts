@@ -1716,7 +1716,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const native = await settledCaptures(1);
 		expect(native).toHaveLength(1);
 		expect(native[0]).toMatchObject({
-			kind: "miniapp-card",
+			kind: "native-share",
 			text: `${LINK_NATIVE_PREFIX}a3`,
 			images: 0,
 		});

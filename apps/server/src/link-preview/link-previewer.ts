@@ -168,21 +168,6 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	};
 
 	/**
-	 * 解析器交的中立原生分享描述 → 今天的小程序卡载荷(五格一一对应;载荷改名是后面的事,这里不动盘)。
-	 * `appId` / `iconUrl` 今天的载荷没有位置,适配器按自己的对照表签。
-	 */
-	function miniAppCardOf(share: NonNullable<LinkPreview["nativeShare"]>): NotificationPayload {
-		return {
-			kind: "miniapp-card",
-			title: share.title,
-			desc: share.description,
-			picUrl: share.imageUrl,
-			path: share.pagePath,
-			jumpUrl: share.webUrl,
-		};
-	}
-
-	/**
 	 * 这个目的地现在能不能发小程序卡。还没探出来就先探一次(空参数探接口,零副作用);
 	 * 探完仍未知按不能算 —— 不拿一张注定发不出去的卡去试,那一趟是真向腾讯要卡。
 	 *
@@ -201,22 +186,23 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	const whereOf = (dest: LinkReplyDestination): string => `group=${dest.address}`;
 
 	/**
-	 * 发什么:小程序卡(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
+	 * 发什么:原生分享(形式 × 能力由调用方算好)发失败就回落图片卡,群里不会空着。
+	 * 发的就是解析器交的那份中立描述(`appId` 一并带着),怎么签归适配器。
 	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
 	 */
-	async function reply(dest: LinkReplyDestination, preview: LinkPreview, useMiniApp: boolean) {
-		// 解析器没交原生分享描述就没有小程序卡可发,直接走图片卡。
-		if (useMiniApp && preview.nativeShare) {
+	async function reply(dest: LinkReplyDestination, preview: LinkPreview, useNativeShare: boolean) {
+		// 解析器没交原生分享描述就没有原生分享可发,直接走图片卡。
+		if (useNativeShare && preview.nativeShare) {
 			const where = whereOf(dest);
-			const result = await opts.send(dest, miniAppCardOf(preview.nativeShare));
+			const result = await opts.send(dest, { kind: "native-share", ...preview.nativeShare });
 			if (result.ok) {
 				opts.logger.info(
-					`[link] 已回复小程序卡 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`,
+					`[link] 已回复原生分享 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`,
 				);
 				return;
 			}
 			opts.logger.warn(
-				`[link] 小程序卡发送失败 ${where} ${preview.canonicalId}: ${result.message},回落图片卡`,
+				`[link] 原生分享发送失败 ${where} ${preview.canonicalId}: ${result.message},回落图片卡`,
 			);
 		}
 		await replyWithImageCard(dest, preview);
@@ -279,8 +265,8 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
 			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
 			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
-			const useMiniApp = policy.replyForm === "nativeShare" && (await canSendMiniAppCard(dest));
-			if (!useMiniApp && !opts.renderer()) return;
+			const useNativeShare = policy.replyForm === "nativeShare" && (await canSendMiniAppCard(dest));
+			if (!useNativeShare && !opts.renderer()) return;
 			const cooldownMs = settings.cooldownSec * 1000;
 			// 这条消息里已经回过的「解析器键 + 规范 id」:同一个东西的几种写法在一条消息里只出一张,
 			// 冷却关着(0)时也一样。只活在这次处理里,与冷却表无关、不占它的格子。
@@ -317,7 +303,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 						const canonicalKey = canonicalCooldownKey(scope, resolverKey, resolved.canonicalId);
 						if (coolingDown(canonicalKey, cooldownMs)) continue;
 						markCooldown(canonicalKey, cooldownMs);
-						await reply(dest, resolved, useMiniApp);
+						await reply(dest, resolved, useNativeShare);
 					} finally {
 						inflight--;
 					}

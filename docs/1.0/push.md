@@ -223,6 +223,7 @@ type PushTarget =
 
 - 解析器交中立描述 `{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`（`LinkPreview.nativeShare`），由 OneBot 适配器去签，签不了就回图片。现行签卡写死的 `type: "bili"` 删掉。`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核）；OneBot 签名接口不收通用参数，就在适配器里放一张 appid → 预设的对照表；旧重推原件迁移补同一个 appid。
 - 载荷种类 `"miniapp-card"` 改 `"native-share"`，类型随 `NativeShare…`；能力格 `miniAppCard` 改 `nativeShare`。桥帧里的能力名（`miniAppCard`）与载荷种类（`miniapp-card`）照旧不改，进 alpha 后两步改名。
+  - 🔗 2026-10-19（载荷一半已落）：载荷种类已改 `"native-share"`，类型 `NativeShare`（`{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`）住 `platform.ts`；`appId` 是 `1109937557`（解析器的 `QQ_MINI_APP_ID`）；OneBot 按 appid → 预设的对照表去签，表里没有的回 `unsupported`；webhook 通用 JSON 与桥帧由适配器映射回线上的 `miniapp-card` 五格。能力格改名仍在后面。
 - OneBot 入站的 B 站域名预筛删掉：该不该回预览由解析器的 `matches` 说了算，适配器不认识任何一家来源。64KB / 8 层的上限保留。
 - 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格（`miniAppCardLinks`）照旧，进 alpha 之后两步改名的清单，由桥的适配器映射；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。不用 `linkPreviews` 做名字：它与 BN 回出去的 `LinkPreview` 同词两义。
 - 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发的是：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。

@@ -480,8 +480,8 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 			const urls = imageGroupUrls(payload.images).map((img) => img.url);
 			return urls.length > 0 ? `图片:\n${urls.join("\n")}` : "[图片]";
 		}
-		case "miniapp-card":
-			return `${payload.title}\n${payload.jumpUrl}`;
+		case "native-share":
+			return `${payload.title}\n${payload.webUrl}`;
 	}
 }
 
@@ -515,7 +515,10 @@ function serializeSegment(segment: PayloadSegment): unknown {
 	}
 }
 
-/** 通用 JSON 的 `payload`。字段名是线上的名字:图集叫 `forward-images`、开关叫 `forward`,不随内部改。 */
+/**
+ * 通用 JSON 的 `payload`。字段名是线上的名字:图集叫 `forward-images`、开关叫 `forward`、
+ * 原生分享叫 `miniapp-card`(五格 `desc` / `picUrl` / `path` / `jumpUrl`),不随内部改。
+ */
 function serializePayload(payload: NotificationPayload): unknown {
 	switch (payload.kind) {
 		case "text":
@@ -537,7 +540,16 @@ function serializePayload(payload: NotificationPayload): unknown {
 				images: imageGroupUrls(payload.images),
 				forward: payload.mergeForward,
 			};
-		case "miniapp-card":
-			return payload;
+		case "native-share":
+			// 原生分享那几格**不过剥离**:它们是卡片的结构化字段,由平台自己渲染。线上还是
+			// 小程序卡的五格,`appId` / `iconUrl` 线上没有位置,不上线。
+			return {
+				kind: "miniapp-card",
+				title: payload.title,
+				desc: payload.description,
+				picUrl: payload.imageUrl,
+				path: payload.pagePath,
+				jumpUrl: payload.webUrl,
+			};
 	}
 }

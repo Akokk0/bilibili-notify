@@ -26,6 +26,7 @@
     - 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。
     - 🔗 2026-10-14（3b-30，主人定）：**入站链接的来源标记落成**：`miniAppCardLinks` 删掉，适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`；正文里的链接仍由核心从 `text` 里挑，核心内部记成 `"text"`；规矩「原生分享卡里的链接不回预览」不变。`cardLinks` 改名 `sharedLinks` 是主人要求；不用 `linkPreviews`：它与 BN 回出去的 `LinkPreview` 同词两义。入站的另两格同批改名：私聊 `userId` → `address`，群消息 `groupId` → `address`、发言者 `userId` → `senderId`（与 `selfId` 成对；不用 `author`，那是作品作者），`InboundSinks` → `InboundHandlers`；桥协议帧不改名，由桥的适配器映射。
     - 🔗 2026-10-14（3b-31，主会话照规矩定）：**原生分享的命名与 appId**：载荷种类 `"miniapp-card"` → `"native-share"`，类型随 `NativeShare…`；能力格 `miniAppCard` → `nativeShare`；`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核），OneBot 签名接口不收通用参数就在适配器里放 appid → 预设的对照表；旧重推原件迁移补同一个 appid；桥帧里的能力名（`miniAppCard`）与载荷种类照旧不改，进 alpha 后两步改名。
+    - 🔗 2026-10-19（3b-31 提交 1 已落）：**载荷与对照表落成**。具名类型 `NativeShare`（`{ appId, title, description, imageUrl, pagePath, webUrl, iconUrl? }`）住 `internal` 的 `platform.ts`，`LinkPreview.nativeShare` 与载荷 `{ kind: "native-share" } & NativeShare` 共用它；B 站 QQ 小程序的 appid 取 `1109937557`，解析器导出常量 `QQ_MINI_APP_ID`。OneBot 签名接口不收通用参数（描述里没有 `sdkId` 一类的格），适配器里放 appid → 预设的对照表，今天一行（→ NapCat 的 `bili` 预设），表里没有的回 `unsupported`、不调接口、不碰能力缓存。webhook 通用 JSON 与桥帧的线上名字不变，由适配器映射（帧里没有 `appId`，对任何 `appId` 都映射成 `miniapp-card`）。重推原件里的小程序卡由迁移改成新形状并补同一个 appid（迁移修订号 49）。能力格改名 `nativeShare` 与「回文字」一档随 3b-31 的后续提交。
     - 桥帧里那一格进 alpha 之后两步改名的清单。它是插件发给 BN 的入站字段，两步要反过来走：BN 先同时认新旧两种写法，插件再改发新的。
 
 ## 取代与修订的旧条款

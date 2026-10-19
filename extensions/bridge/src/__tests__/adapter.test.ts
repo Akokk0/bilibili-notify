@@ -380,12 +380,13 @@ describe("桥 adapter", () => {
 			mergeForward: true,
 		});
 		await h.adapter.send(connection(), target(), {
-			kind: "miniapp-card",
+			kind: "native-share",
+			appId: "app-1",
 			title: "标题",
-			desc: "简介",
-			picUrl: "https://i0.hdslb.com/cover.jpg",
-			path: "pages/video/video?bvid=BV1",
-			jumpUrl: "https://www.bilibili.com/video/BV1",
+			description: "简介",
+			imageUrl: "https://i0.hdslb.com/cover.jpg",
+			pagePath: "pages/video/video?bvid=BV1",
+			webUrl: "https://www.bilibili.com/video/BV1",
 		});
 		expect(h.published).toEqual([]);
 		expect(h.send.mock.calls[0]?.[1].message).toEqual({
@@ -413,13 +414,14 @@ describe("桥 adapter", () => {
 			images: [{ url: "https://x/1.jpg" }],
 			mergeForward: false,
 		},
-		"miniapp-card": {
-			kind: "miniapp-card",
+		"native-share": {
+			kind: "native-share",
+			appId: "app-1",
 			title: "t",
-			desc: "d",
-			picUrl: "https://x/p.jpg",
-			path: "pages/video/video",
-			jumpUrl: "https://x/v",
+			description: "d",
+			imageUrl: "https://x/p.jpg",
+			pagePath: "pages/video/video",
+			webUrl: "https://x/v",
 		},
 	};
 
@@ -428,10 +430,13 @@ describe("桥 adapter", () => {
 		for (const [kind, payload] of Object.entries(EVERY_PAYLOAD)) {
 			const result = await h.adapter.send(connection(), target(), payload);
 			expect(result.ok, kind).toBe(true);
-			// 帧里的名字是线上协议的:内部的 `image-group` 在帧里照旧叫 `forward-images`,其余同名。
-			expect(h.lastRequest().message.kind, kind).toBe(
-				kind === "image-group" ? "forward-images" : kind,
-			);
+			// 帧里的名字是线上协议的:内部的 `image-group` 在帧里照旧叫 `forward-images`、
+			// `native-share` 叫 `miniapp-card`,其余同名。
+			const wireKind: Record<string, string> = {
+				"image-group": "forward-images",
+				"native-share": "miniapp-card",
+			};
+			expect(h.lastRequest().message.kind, kind).toBe(wireKind[kind] ?? kind);
 		}
 	});
 

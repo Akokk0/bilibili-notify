@@ -337,7 +337,8 @@ describe("消息投影", () => {
 		composite: "composite",
 		// 内部的图集叫 `image-group`,帧里照旧是 `forward-images`(适配器在映射)。
 		"image-group": "forward-images",
-		"miniapp-card": "miniapp-card",
+		// 内部叫 `native-share`,帧里照旧是 `miniapp-card`(适配器在映射)。
+		"native-share": "miniapp-card",
 	};
 
 	it("payload kind 与 wire kind **一一对上**,两边都不许有多出来的", () => {

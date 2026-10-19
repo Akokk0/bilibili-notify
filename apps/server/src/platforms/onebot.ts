@@ -222,6 +222,17 @@ function bufferToBase64Uri(buffer: Buffer): string {
 	return `base64://${buffer.toString("base64")}`;
 }
 
+/**
+ * 原生分享的签法对照表:小程序 appid → `get_mini_app_ark` 的预设参数。表里只有一行(NapCat 的 `bili`
+ * 预设);没有这个 appid 的分享这个适配器不会签。`get_mini_app_ark` 的通用参数中立描述给不全
+ * (还要 sdkId、scene 这类描述里没有的格),所以不走通用那一套。
+ * 键直接写 appid 字面量,与 `bilibili/link-resolver.ts` 的 `QQ_MINI_APP_ID`、迁移冻住的值同值,
+ * 由 `onebot-native-share.test.ts` 钉住。
+ */
+const NATIVE_SHARE_PRESETS: ReadonlyMap<string, { type: string }> = new Map([
+	["1109937557", { type: "bili" }],
+]);
+
 function segmentToOnebot(seg: PayloadSegment): OneBotMessageSegment {
 	switch (seg.kind) {
 		case "text":
@@ -258,8 +269,8 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 				type: "image",
 				data: { file: url },
 			}));
-		case "miniapp-card":
-			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendMiniAppCard;这里没有现成的段。
+		case "native-share":
+			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendNativeShare;这里没有现成的段。
 			return [];
 	}
 }
@@ -1053,7 +1064,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/**
 	 * 探一次,如实回这一趟看到的(探不出来就是「还不知道」,带原因)。什么时候探、探不出来时
 	 * 沿用哪个答案不在这里:节奏与「不推翻已探实的答案」归宿主(`push/target-dispatcher.ts`),
-	 * 适配器只管自己看到的事实 —— 包括真发时收到 1404 把它翻成「不支持」(见 sendMiniAppCard)。
+	 * 适配器只管自己看到的事实 —— 包括真发时收到 1404 把它翻成「不支持」(见 sendNativeShare)。
 	 */
 	async function probeMiniAppCard(connection: OnebotConnection): Promise<CapabilitySupport> {
 		let result: CapabilitySupport;
@@ -1075,7 +1086,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	/**
-	 * 发一张小程序卡:先向腾讯签 ark(bili 模板),再把 ark 当 `json` 段走普通发送。
+	 * 发一个原生分享:按分享描述里的 appId 查对照表({@link NATIVE_SHARE_PRESETS}),先向腾讯签 ark,
+	 * 再把 ark 当 `json` 段走普通发送。
+	 * 对照表里没有这个 appId → `unsupported`,不调接口、不发、不碰能力缓存(能力是「这条连接签不签得了」,
+	 * 某个 appId 没预设不等于连接签不了)。
 	 * 签卡收到 1404 → 翻成不支持、不发;别的失败只报这一条,缓存不动(可能只是暂时的)。
 	 *
 	 * 签卡请求的两个链接字段别看名字:`jumpUrl` 是**小程序页面路径**,`webUrl` 才是网页链接。
@@ -1083,21 +1097,24 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 后者接的是 `url`、签回来落到卡的 `qqdocurl`。NapCat 文档把前者写成「跳转 URL」,照着
 	 * 填网址签出来的卡点开是「页面不存在」;`webUrl` 不填则卡上压根没有 `qqdocurl`。
 	 */
-	async function sendMiniAppCard(
+	async function sendNativeShare(
 		connection: OnebotConnection,
 		destination: DestinationRef,
-		card: Extract<NotificationPayload, { kind: "miniapp-card" }>,
+		share: Extract<NotificationPayload, { kind: "native-share" }>,
 	): Promise<DeliveryResult> {
+		const preset = NATIVE_SHARE_PRESETS.get(share.appId);
+		if (!preset)
+			return fail("unsupported", t("onebot.nativeShare.noPreset", { appId: share.appId }));
 		const t0 = Date.now();
 		let ark: unknown;
 		try {
 			const r = await callOnce(connection, "get_mini_app_ark", {
-				type: "bili",
-				title: card.title,
-				desc: card.desc,
-				picUrl: card.picUrl,
-				jumpUrl: card.path,
-				webUrl: card.jumpUrl,
+				...preset,
+				title: share.title,
+				desc: share.description,
+				picUrl: share.imageUrl,
+				jumpUrl: share.pagePath,
+				webUrl: share.webUrl,
 			});
 			if (isActionMissing(r)) {
 				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";
@@ -1429,7 +1446,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (!isMine(connection)) {
 				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
 			}
-			if (payload.kind === "miniapp-card") return sendMiniAppCard(connection, destination, payload);
+			if (payload.kind === "native-share") return sendNativeShare(connection, destination, payload);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即失败返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用

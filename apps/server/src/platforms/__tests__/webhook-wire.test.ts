@@ -101,13 +101,15 @@ const PAYLOADS = {
 		],
 		mergeForward: true,
 	},
-	"miniapp-card": {
-		kind: "miniapp-card",
+	"native-share": {
+		kind: "native-share",
+		appId: "app-1",
 		title: "视频标题",
-		desc: "简介",
-		picUrl: "https://i0.hdslb.com/cover.jpg",
-		path: "pages/video/video?bvid=BV1xx",
-		jumpUrl: "https://www.bilibili.com/video/BV1xx",
+		description: "简介",
+		imageUrl: "https://i0.hdslb.com/cover.jpg",
+		pagePath: "pages/video/video?bvid=BV1xx",
+		webUrl: "https://www.bilibili.com/video/BV1xx",
+		iconUrl: "https://i0.hdslb.com/icon.png",
 	},
 } satisfies Record<NotificationPayload["kind"], NotificationPayload>;
 
@@ -205,8 +207,11 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 		});
 	});
 
-	it("miniapp-card:五格原样", async () => {
-		await send("generic", PAYLOADS["miniapp-card"]);
+	it("原生分享:线上仍是 miniapp-card 五格,没有 appId / iconUrl", async () => {
+		await send("generic", PAYLOADS["native-share"]);
+		const body = sentBody() as { payload: Record<string, unknown> };
+		expect(body.payload).not.toHaveProperty("appId");
+		expect(body.payload).not.toHaveProperty("iconUrl");
 		expect(sentBody()).toEqual({
 			...envelope,
 			payload: {
@@ -252,7 +257,7 @@ describe("webhook 线上格式 — 机器人方言(只有文字,无内部名)", 
 		image: "卡片标题",
 		composite: "正文\n[图片]\n视频 https://example.com/v\nhttps://example.com/bare\n@全体成员",
 		"image-group": "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg",
-		"miniapp-card": "视频标题\nhttps://www.bilibili.com/video/BV1xx",
+		"native-share": "视频标题\nhttps://www.bilibili.com/video/BV1xx",
 	};
 
 	const ENVELOPES: Record<string, (content: string) => unknown> = {
