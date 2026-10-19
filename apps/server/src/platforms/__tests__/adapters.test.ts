@@ -16,6 +16,7 @@
 
 import { createHmac } from "node:crypto";
 import { once } from "node:events";
+import type { IncomingHttpHeaders } from "node:http";
 import { type AddressInfo, createServer } from "node:net";
 import type {
 	Connection,
@@ -59,6 +60,13 @@ function obOpts(logger = makeLogger()) {
 	return { logger, serviceCtx: makeServiceCtx() };
 }
 
+/** 生产里登记即 `start(ctx)`,HTTP 用例照同一条路先拿到 `ctx.http`(对账名单先空着,之后的 `reconcileAdapter` 走「连接变了」)。 */
+function startedOnebot(opts: Parameters<typeof createOnebotAdapter>[0]) {
+	const ad = createOnebotAdapter(opts);
+	reconcileAdapter(ad, []);
+	return ad;
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 失败那一支的原话。成功的回空串 —— 拿它断言「含某句话」的用例会自己红。 */
@@ -79,20 +87,11 @@ async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 3000)
 /** 测试结束要清理的资源(fake server / bot)。afterEach 统一关。 */
 const cleanups: Array<() => void | Promise<void>> = [];
 
-function res(o: {
-	ok: boolean;
-	status?: number;
-	statusText?: string;
-	json?: unknown;
-	text?: string;
-}) {
-	return {
-		ok: o.ok,
+/** 真的 `Response`(请求客户端要读头、读字节);状态文字不在回应里,话里的取标准表。 */
+function res(o: { ok: boolean; status?: number; json?: unknown; text?: string }): Response {
+	return new Response(o.text ?? JSON.stringify(o.json ?? {}), {
 		status: o.status ?? (o.ok ? 200 : 500),
-		statusText: o.statusText ?? "",
-		json: async () => o.json ?? {},
-		text: async () => o.text ?? JSON.stringify(o.json ?? {}),
-	};
+	});
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -111,6 +110,15 @@ afterEach(async () => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
+
+/** 假 fetch:不回应,直到请求客户端的超时(或调用方)中止它。 */
+function hangUntilAborted(_url: URL, init: RequestInit): Promise<Response> {
+	return new Promise((_resolve, reject) => {
+		(init.signal as AbortSignal).addEventListener("abort", () => {
+			reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+		});
+	});
+}
 
 function lastBody(): Record<string, unknown> {
 	const call = fetchMock.mock.calls.at(-1);
@@ -173,6 +181,8 @@ interface FakeBotServer {
 	port: number;
 	received: Array<Record<string, unknown>>;
 	connections: WebSocket[];
+	/** 每次连入的握手请求头(线上到底带了什么)。 */
+	handshakes: IncomingHttpHeaders[];
 }
 
 /** 假 OneBot WS 服务端(给正向 WS 测试连)。默认收到 action 帧就按 echo 回成功。 */
@@ -188,8 +198,10 @@ async function startFakeBotServer(opts?: {
 	await once(wss, "listening");
 	const received: Array<Record<string, unknown>> = [];
 	const connections: WebSocket[] = [];
-	wss.on("connection", (ws) => {
+	const handshakes: IncomingHttpHeaders[] = [];
+	wss.on("connection", (ws, req) => {
 		connections.push(ws);
+		handshakes.push(req.headers);
 		ws.on("message", (raw) => {
 			const frame = JSON.parse(raw.toString()) as Record<string, unknown>;
 			received.push(frame);
@@ -210,7 +222,7 @@ async function startFakeBotServer(opts?: {
 				wss.close(() => resolve());
 			}),
 	);
-	return { port: (wss.address() as AddressInfo).port, received, connections };
+	return { port: (wss.address() as AddressInfo).port, received, connections, handshakes };
 }
 
 interface FakeBot {
@@ -271,32 +283,53 @@ function obTarget(over: Record<string, unknown> = {}): PushTarget {
 const TEXT: NotificationPayload = { kind: "text", text: "hello" };
 
 describe("onebot — send 路由", () => {
+	it("start 之前 send / probe → unavailable(生产里登记即 start,这一支到不了)", async () => {
+		const ad = createOnebotAdapter(obOpts());
+		const sent = await ad.send(obConnection(), obTarget(), TEXT);
+		expect(sent).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(sent)).toBe("适配器还没启动");
+		const probed = await ad.probe(obConnection());
+		expect(probed).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(probed)).toBe("适配器还没启动");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("group:POST /send_group_msg + group_id(Number) + Bearer + 尾斜杠裁剪", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), TEXT);
 		expect(r.ok).toBe(true);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
-		const init = lastInit() as { headers: Record<string, string> };
-		expect(init.headers.authorization).toBe("Bearer tok");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_group_msg");
+		expect(new Headers(lastInit().headers).get("authorization")).toBe("Bearer tok");
 		const body = lastBody();
 		expect(body.group_id).toBe(123);
 		expect(body.message).toEqual([{ type: "text", data: { text: "hello" } }]);
 	});
 
+	it("线上只带内容类型、Authorization 与主人配的头:不补浏览器身份,不带 Cookie", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = startedOnebot(obOpts());
+		await ad.send(obConnection({ headers: { "x-team": "ops" } }), obTarget(), TEXT);
+		expect(Object.fromEntries(new Headers(lastInit().headers))).toEqual({
+			"content-type": "application/json",
+			"x-team": "ops",
+			authorization: "Bearer tok",
+		});
+	});
+
 	it("scope=private:/send_private_msg + user_id", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget({ scope: "private", address: "456" }), TEXT);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_private_msg");
 		expect(lastBody().user_id).toBe(456);
 	});
 
 	it("群还是私聊只看 target.scope:group scope 走 send_group_msg", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget({ address: "789" }), TEXT);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_group_msg");
 		expect(lastBody().group_id).toBe(789);
 	});
 
@@ -314,7 +347,7 @@ describe("onebot — send 路由", () => {
 				},
 			}),
 		);
-		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		// 对端明确回了失败、只给了没有对照的 retcode:code 是 unknown,数字码在 upstreamCode。
 		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 1200 });
 		expect(messageOf(r)).toContain("NTEvent");
@@ -326,7 +359,7 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "failed", retcode: 1200, wording: "无权限发送消息" } }),
 		);
-		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(r).toEqual({
 			ok: false,
 			code: "unknown",
@@ -336,7 +369,7 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const p = await ad.send(obConnection(), obTarget({ scope: "private", address: "" }), TEXT);
 		expect(p).toEqual({ ok: false, code: "invalid", message: "private: userId missing" });
 		const g = await ad.send(obConnection(), obTarget({ address: "" }), TEXT);
@@ -345,7 +378,7 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("地址不是数字 → invalid,不发请求", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget({ address: "abc" }), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
 		expect(messageOf(r)).toContain("非数字");
@@ -353,7 +386,7 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("空 composite payload → empty payload,不发请求", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), { kind: "composite", segments: [] });
 		expect(r).toEqual({ ok: false, code: "invalid", message: "empty payload" });
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -361,7 +394,7 @@ describe("onebot — send 路由", () => {
 
 	it("composite 段 → OneBot segment(text/image base64/link/at-all)", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget(), {
 			kind: "composite",
 			segments: [
@@ -383,13 +416,13 @@ describe("onebot — send 路由", () => {
 		// imageGroup.mergeForward=false 默认路径:多图合并到一条普通 send_group_msg,
 		// 避开 NapCat SsoSendLongMsg 长消息通道。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			mergeForward: false,
 		});
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_group_msg");
 		expect(lastBody().message).toEqual([
 			{ type: "image", data: { file: "https://i0.hdslb.com/1.jpg" } },
 			{ type: "image", data: { file: "https://i0.hdslb.com/2.jpg" } },
@@ -397,10 +430,10 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("image-group 里没有 url 的图(只带图库引用)跳过:适配器照 url 发,普通多图与合并转发都是", async () => {
-		fetchMock.mockResolvedValue(
+		fetchMock.mockImplementation(async () =>
 			res({ ok: true, json: { status: "ok", retcode: 0, data: { user_id: 42, nickname: "B" } } }),
 		);
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const images = [
 			{ ref: `${"a".repeat(64)}.jpg` },
 			{ ref: `${"a".repeat(64)}.jpg`, url: "https://x/a.jpg" },
@@ -416,13 +449,13 @@ describe("onebot — send 路由", () => {
 
 	it("image-group mergeForward:false + private scope → send_private_msg 多 image", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget({ scope: "private", address: "999" }), {
 			kind: "image-group",
 			images: [{ url: "https://x/a.jpg" }],
 			mergeForward: false,
 		});
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_private_msg");
 		expect(lastBody().user_id).toBe(999);
 		expect(lastBody().message).toEqual([{ type: "image", data: { file: "https://x/a.jpg" } }]);
 	});
@@ -444,14 +477,14 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "ok", retcode: 0, message_id: 999 } }),
 		);
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
 			mergeForward: true,
 		});
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/get_login_info");
-		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_group_forward_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/get_login_info");
+		expect(String(fetchMock.mock.calls[1]?.[0])).toBe("http://nb:3000/send_group_forward_msg");
 		const body = lastBody();
 		expect(body.group_id).toBe(123);
 		const nodes = body.messages as Array<{
@@ -480,7 +513,7 @@ describe("onebot — send 路由", () => {
 		);
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obConnection();
 		await ad.send(connection, obTarget(), {
 			kind: "image-group",
@@ -492,7 +525,7 @@ describe("onebot — send 路由", () => {
 			images: [{ url: "https://x/2.jpg" }],
 			mergeForward: true,
 		});
-		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
+		const endpoints = fetchMock.mock.calls.map((c) => String(c[0]));
 		expect(endpoints).toEqual([
 			"http://nb:3000/get_login_info",
 			"http://nb:3000/send_group_forward_msg",
@@ -514,7 +547,7 @@ describe("onebot — send 路由", () => {
 			}),
 		); // 第二次 get_login_info 这次成了
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } })); // 第二次 forward
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obConnection();
 		await ad.send(connection, obTarget(), {
 			kind: "image-group",
@@ -526,7 +559,7 @@ describe("onebot — send 路由", () => {
 			images: [{ url: "https://x/2.jpg" }],
 			mergeForward: true,
 		});
-		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
+		const endpoints = fetchMock.mock.calls.map((c) => String(c[0]));
 		expect(endpoints).toEqual([
 			"http://nb:3000/get_login_info",
 			"http://nb:3000/send_group_forward_msg",
@@ -553,7 +586,7 @@ describe("onebot — send 路由", () => {
 			}),
 		);
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
@@ -574,14 +607,14 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "ok", retcode: 0, message_id: 999 } }),
 		);
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
 			mergeForward: true,
 		});
 		expect(r.ok).toBe(true); // 整条推送仍发出
-		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_group_forward_msg");
+		expect(String(fetchMock.mock.calls[1]?.[0])).toBe("http://nb:3000/send_group_forward_msg");
 		const nodes = lastBody().messages as Array<{ data: { name: string; uin: string } }>;
 		expect(nodes[0]?.data?.uin).toBe("10000");
 		expect(nodes[0]?.data?.name).toBe("bilibili-notify");
@@ -590,21 +623,21 @@ describe("onebot — send 路由", () => {
 	it("image-group mergeForward:false 不触发 get_login_info(仅 forward 路径需要 bot 身份)", async () => {
 		// 优化路径:多 image segment 普通群消息不带 node,无需 bot 身份;省一次往返。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
 			mergeForward: false,
 		});
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/send_group_msg");
 	});
 
 	it("image-group mergeForward:true + misconfigured target → 立即 err,不调 get_login_info", async () => {
 		// P2-B 守护:target 缺 groupId 是配错,buildSendAction 会立即 err。
 		// 必须先做 target 校验再 await get_login_info,否则浪费 15s 超时在注定
 		// 发不出去的消息上。
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		// 故意把 target.address 改成空 → 触发 "group: groupId missing"。
 		const r = await ad.send(obConnection(), obTarget({ address: "" }), {
 			kind: "image-group",
@@ -638,7 +671,7 @@ describe("onebot — send 路由", () => {
 				),
 		);
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
@@ -655,13 +688,13 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "ok", retcode: 0, message_id: 999 } }),
 		);
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		await ad.send(obConnection(), obTarget({ scope: "private", address: "888" }), {
 			kind: "image-group",
 			images: [{ url: "https://x/a.jpg" }],
 			mergeForward: true,
 		});
-		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_private_forward_msg");
+		expect(String(fetchMock.mock.calls[1]?.[0])).toBe("http://nb:3000/send_private_forward_msg");
 		expect(lastBody().user_id).toBe(888);
 		const nodes = lastBody().messages as Array<{ data: { uin: string; name: string } }>;
 		expect(nodes[0]?.data?.uin).toBe("999");
@@ -675,18 +708,18 @@ describe("onebot — 失败与重试", () => {
 			res({ ok: true, json: { status: "failed", retcode: 100, wording: "无权限" } }),
 		);
 		const logger = makeLogger();
-		const r = await createOnebotAdapter(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
 		expect(r).toEqual({ ok: false, code: "unknown", message: "无权限", upstreamCode: 100 });
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
 	it("失败的结果不带耗时(耗时只在成功那一支)", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 100 } }));
-		const failed = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const failed = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(failed).not.toHaveProperty("latencyMs");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const sent = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const sent = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(sent).toEqual({ ok: true, latencyMs: expect.any(Number) });
 	});
 
@@ -694,7 +727,7 @@ describe("onebot — 失败与重试", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "failed", retcode: 1404, wording: "不支持的动作" } }),
 		);
-		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(r).toEqual({
 			ok: false,
 			code: "unsupported",
@@ -705,29 +738,30 @@ describe("onebot — 失败与重试", () => {
 
 	it("bot 回了失败却没给 retcode → unknown,不编一个 upstreamCode", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", wording: "炸了" } }));
-		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(r).toEqual({ ok: false, code: "unknown", message: "炸了" });
 	});
 
 	it("HTTP 非 2xx → 按状态码翻标准码,upstreamCode 写成 http:<status>(与 retcode 分得开)", async () => {
-		const cases: Array<[number, string]> = [
-			[401, "unauthorized"],
-			[403, "unauthorized"],
-			[404, "not_found"],
-			[410, "not_found"],
-			[429, "rate_limited"],
-			[400, "invalid"],
-			[422, "invalid"],
-			[500, "unavailable"],
-			[502, "unavailable"],
+		// 状态文字取 node:http 的标准表(回应里没有 statusText)。
+		const cases: Array<[number, string, string]> = [
+			[401, "unauthorized", "Unauthorized"],
+			[403, "unauthorized", "Forbidden"],
+			[404, "not_found", "Not Found"],
+			[410, "not_found", "Gone"],
+			[429, "rate_limited", "Too Many Requests"],
+			[400, "invalid", "Bad Request"],
+			[422, "invalid", "Unprocessable Entity"],
+			[500, "unavailable", "Internal Server Error"],
+			[502, "unavailable", "Bad Gateway"],
 		];
-		for (const [status, code] of cases) {
-			fetchMock.mockResolvedValueOnce(res({ ok: false, status, statusText: "Nope" }));
-			const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		for (const [status, code, statusText] of cases) {
+			fetchMock.mockResolvedValueOnce(res({ ok: false, status }));
+			const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 			expect(r, `HTTP ${status}`).toEqual({
 				ok: false,
 				code,
-				message: `HTTP ${status} Nope`,
+				message: `HTTP ${status} ${statusText}`,
 				upstreamCode: `http:${status}`,
 			});
 		}
@@ -737,7 +771,7 @@ describe("onebot — 失败与重试", () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "failed", retcode: 502, wording: "bot 自己的 502" } }),
 		);
-		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts()).send(obConnection(), obTarget(), TEXT);
 		expect(r).toEqual({
 			ok: false,
 			code: "unknown",
@@ -746,11 +780,11 @@ describe("onebot — 失败与重试", () => {
 		});
 	});
 
-	it("fetch 抛错 → ok:false,展开 cause code,logger.warn", async () => {
+	it("连不上 → ok:false,客户端的话里带着底层原因,logger.warn", async () => {
 		const cause = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
 		fetchMock.mockRejectedValueOnce(Object.assign(new Error("fetch failed"), { cause }));
 		const logger = makeLogger();
-		const r = await createOnebotAdapter(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
+		const r = await startedOnebot(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
 		// 连不上:没有平台码可带。
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
 		expect(r).not.toHaveProperty("upstreamCode");
@@ -762,14 +796,14 @@ describe("onebot — 失败与重试", () => {
 		fetchMock
 			.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 1 } }))
 			.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obConnection({ maxRetries: 1, retryIntervalMs: 0 }), obTarget(), TEXT);
 		expect(r.ok).toBe(true);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	it("端点去向 → ok:false(平台对不对归派发器查,适配器只认会话地址)", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(
 			obConnection(),
 			obTarget({ kind: "endpoint", platform: "feishu" }),
@@ -790,7 +824,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 
 	it("WS 响应超时:maxRetries>0 也只发一帧,err 注明结果未知", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 120,
 			maxRetries: 3,
@@ -812,7 +846,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			onFrame: (frame, reply) =>
 				reply({ status: "failed", retcode: 100, wording: "风控", echo: frame.echo }),
 		});
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 500,
 			maxRetries: 2,
@@ -830,7 +864,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 
 	it("WS 等响应期间连接断开:不重试(帧已发出,结果未知)", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 2000,
 			maxRetries: 3,
@@ -865,7 +899,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200);
 			},
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -880,19 +914,53 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		ad.stop();
 	});
 
-	it("HTTP 请求超时(Abort):不重试,err 注明结果未知", async () => {
-		fetchMock.mockRejectedValue(
-			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-		);
-		const r = await createOnebotAdapter(obOpts()).send(
+	it("HTTP 请求超时(客户端掐断):不重试,err 注明结果未知", async () => {
+		fetchMock.mockImplementation(hangUntilAborted);
+		const r = await startedOnebot(obOpts()).send(
 			obConnection({ timeoutMs: 50, maxRetries: 2, retryIntervalMs: 0 }),
 			obTarget(),
 			TEXT,
 		);
 		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
-		expect(messageOf(r)).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/HTTP 请求超时 \(50ms\)/);
 		expect(messageOf(r)).toMatch(/结果未知/);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("HTTP 合并转发:交给客户端的是放宽后的超时,不落回客户端默认的 20 秒", async () => {
+		vi.useFakeTimers();
+		try {
+			// 取身份立刻回;合并转发本体 30 秒才回 —— 比客户端默认的 20 秒慢、比放宽后的 60 秒快。
+			fetchMock.mockImplementation((url: URL, init: RequestInit) => {
+				const slow = url.pathname !== "/get_login_info";
+				return new Promise((resolve, reject) => {
+					const t = setTimeout(
+						() =>
+							resolve(
+								res({
+									ok: true,
+									json: { status: "ok", retcode: 0, data: { user_id: 1, nickname: "b" } },
+								}),
+							),
+						slow ? 30_000 : 0,
+					);
+					(init.signal as AbortSignal).addEventListener("abort", () => {
+						clearTimeout(t);
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+					});
+				});
+			});
+			const ad = startedOnebot({ ...obOpts(), mergeForwardMinTimeoutMs: 60_000 });
+			const pending = ad.send(obConnection({ maxRetries: 0 }), obTarget(), {
+				kind: "image-group",
+				images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
+				mergeForward: true,
+			});
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect((await pending).ok).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("HTTP 合并转发:超时下限放宽(fetch 尊重 signal 时慢响应仍成功)", async () => {
@@ -915,7 +983,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 					});
 				}),
 		);
-		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		// get_login_info 用 cfg.timeoutMs(50ms)会先超时 → fallback 身份;forward 本体
 		// 在放宽后的 1000ms 下限内等到 150ms 的慢成功。
 		const r = await ad.send(obConnection({ timeoutMs: 50, maxRetries: 0 }), obTarget(), {
@@ -953,7 +1021,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 				// 模拟 LLOneBot 传图床的慢响应:超过 cfg.timeoutMs,但在放宽后的下限内。
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -969,7 +1037,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 			onFrame: (frame, reply) =>
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -987,7 +1055,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 			onFrame: (frame, reply) =>
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -1016,7 +1084,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 					});
 				}),
 		);
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const r = await ad.send(obConnection({ timeoutMs: 50, maxRetries: 0 }), obTarget(), IMAGE);
 		expect(r.ok).toBe(true);
 	});
@@ -1024,7 +1092,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 	it("配置的超时已经比下限大 → 尊重配置,下限不反过来压低它", async () => {
 		// max() 而非直接取下限:主人把超时调到 120s 是有意为之,别被 30s 的下限截断。
 		const bot = await startFakeBotServer({ autoReply: false });
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 60 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 400, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -1050,7 +1118,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
 		// opts 里的 60 是「没配时的兜底」,cfg 里的 1000 才是主人的意思。
-		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
+		const ad = startedOnebot({ ...obOpts(), imageMinTimeoutMs: 60 });
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
 			maxRetries: 0,
@@ -1070,7 +1138,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 			onFrame: (frame, reply) =>
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
 			maxRetries: 0,
@@ -1103,7 +1171,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200);
 			},
 		});
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
 			maxRetries: 0,
@@ -1127,16 +1195,16 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 
 describe("onebot — isAvailable / probe", () => {
 	it("isAvailable:直连 onebot + baseUrl 非空(启停归派发器查)", () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		expect(ad.isAvailable(obConnection(), obTarget())).toBe(true);
 		expect(ad.isAvailable(obConnection({ baseUrl: "" }), obTarget())).toBe(false);
 	});
 
 	it("probe:/get_status ok → ok:true;retcode!=0 → ok:false", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		expect((await ad.probe(obConnection())).ok).toBe(true);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/get_status");
+		expect(String(fetchMock.mock.calls[0]?.[0])).toBe("http://nb:3000/get_status");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 9 } }));
 		expect(await ad.probe(obConnection())).toEqual({
@@ -1149,33 +1217,31 @@ describe("onebot — isAvailable / probe", () => {
 
 	it("probe:通了带耗时,没通不带", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		expect(await ad.probe(obConnection())).toEqual({ ok: true, latencyMs: expect.any(Number) });
-		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 401, statusText: "Unauthorized" }));
+		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 401 }));
 		const failed = await ad.probe(obConnection());
 		expect(failed).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: "http:401" });
 		expect(failed).not.toHaveProperty("latencyMs");
 	});
 
 	it("probe:HTTP 超时 → timeout(探测是幂等的,不是「结果未知」)", async () => {
-		fetchMock.mockRejectedValueOnce(
-			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-		);
-		const r = await createOnebotAdapter(obOpts()).probe(obConnection({ timeoutMs: 50 }));
+		fetchMock.mockImplementation(hangUntilAborted);
+		const r = await startedOnebot(obOpts()).probe(obConnection({ timeoutMs: 50 }));
 		expect(r).toMatchObject({ ok: false, code: "timeout" });
-		expect(messageOf(r)).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/HTTP 请求超时 \(50ms\)/);
 	});
 
 	it("probe:连不上 → unavailable", async () => {
 		const cause = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
 		fetchMock.mockRejectedValueOnce(Object.assign(new Error("fetch failed"), { cause }));
-		const r = await createOnebotAdapter(obOpts()).probe(obConnection());
+		const r = await startedOnebot(obOpts()).probe(obConnection());
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
 		expect(messageOf(r)).toContain("ECONNREFUSED");
 	});
 
 	it("probe:wrong platform → ok:false", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const wrong = { ...obConnection(), adapterKey: "webhook" } as unknown as Connection;
 		const r = await ad.probe(wrong);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
@@ -1199,6 +1265,40 @@ describe("onebot — 正向 WS(ws)", () => {
 		const frame = bot.received.find((f) => f.action === "send_group_msg");
 		expect(frame).toBeDefined();
 		expect((frame as { params: { group_id: number } }).params.group_id).toBe(123);
+		ad.stop();
+	});
+
+	it("握手只带 Authorization 与主人配的头:没有浏览器身份,没有 Cookie", async () => {
+		const bot = await startFakeBotServer();
+		const ad = createOnebotAdapter(obOpts());
+		const connection = obWsConnection(bot.port, {
+			accessToken: "tok",
+			headers: { "x-team": "ops" },
+		});
+		reconcileAdapter(ad, [connection]);
+		await waitFor(() => bot.handshakes.length > 0);
+		const {
+			authorization,
+			"x-team": team,
+			cookie,
+			"user-agent": userAgent,
+		} = bot.handshakes[0] ?? {};
+		expect({ authorization, team, cookie, userAgent }).toEqual({
+			authorization: "Bearer tok",
+			team: "ops",
+			cookie: undefined,
+			userAgent: undefined,
+		});
+		ad.stop();
+	});
+
+	it("地址客户端不收(ftp:)→ 记进 lastError 走重连,probe 带着原因回 unavailable,不抛", async () => {
+		const ad = createOnebotAdapter(obOpts());
+		const connection = obWsConnection(1, { url: "ftp://127.0.0.1:1/x" });
+		reconcileAdapter(ad, [connection]);
+		const p = await ad.probe(connection);
+		expect(p).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(p)).toContain("ftp");
 		ad.stop();
 	});
 
@@ -1260,7 +1360,7 @@ describe("onebot — 正向 WS(ws)", () => {
 	});
 
 	it("未 reconcile / 未连接时 send → unavailable;probe 同样", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const r = await ad.send(obWsConnection(59_998), obTarget(), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
 		expect(messageOf(r)).toMatch(/未连接/);
@@ -1365,7 +1465,7 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 	});
 
 	it("反向监听还没起(没 reconcile)→ probe unavailable", async () => {
-		const ad = createOnebotAdapter(obOpts());
+		const ad = startedOnebot(obOpts());
 		const p = await ad.probe(obRevConnection(await freePort()));
 		expect(p).toEqual({ ok: false, code: "unavailable", message: "反向 WS 监听未启动" });
 		ad.stop();

@@ -62,7 +62,6 @@ export const ALLOWLIST = {
  */
 export const RATCHET = {
 	"apps/server/src/platforms/qq-official.ts": 8,
-	"apps/server/src/platforms/onebot.ts": 2,
 	"apps/server/src/platforms/qq-bind.ts": 1,
 };
 

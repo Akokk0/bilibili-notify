@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import { type IncomingMessage, STATUS_CODES } from "node:http";
 import type {
 	CapabilitySupport,
 	Connection,
@@ -8,6 +8,7 @@ import type {
 	DestinationRef,
 	Disposable,
 	Failure,
+	HttpClient,
 	Logger,
 	NotificationPayload,
 	OnebotConnectionSettings,
@@ -17,6 +18,7 @@ import type {
 	ProbeResult,
 	Result,
 	ServiceContext,
+	WebSocketLike,
 } from "@bilibili-notify/internal";
 import { fail, OnebotConnectionSettingsSchema, ok } from "@bilibili-notify/internal";
 import {
@@ -26,10 +28,12 @@ import {
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
+import { t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
+import { upstreamMessage } from "./upstream-message.js";
 
 /**
  * OneBot v11 adapter — HTTP / 正向 WS(ws)/ 反向 WS(ws-reverse)三种连接方式。
@@ -416,7 +420,7 @@ function thrownFailure(e: unknown, phase: "sent" | "idempotent"): Failure {
 		if (phase === "sent") return fail("indeterminate", e.message + INDETERMINATE_NOTE);
 		return fail(e.isTimeout ? "timeout" : "unavailable", e.message);
 	}
-	return fail("unavailable", describeFetchError(e));
+	return fail("unavailable", upstreamMessage(e));
 }
 
 // ---------------------------------------------------------------------------
@@ -427,20 +431,8 @@ function trimTrailingSlash(s: string): string {
 	return s.endsWith("/") ? s.slice(0, -1) : s;
 }
 
-/**
- * 拆开 undici `TypeError: fetch failed` 外壳,暴露底层 ECONNREFUSED / ENOTFOUND 等。
- */
-function describeFetchError(e: unknown): string {
-	if (!(e instanceof Error)) return String(e);
-	const cause = (e as Error & { cause?: unknown }).cause;
-	if (cause instanceof Error) {
-		const code = (cause as NodeJS.ErrnoException).code;
-		return code ? `${e.message}: ${code} ${cause.message}` : `${e.message}: ${cause.message}`;
-	}
-	return e.message;
-}
-
 async function postOnebotOnce(
+	http: HttpClient,
 	cfg: OnebotHttpConfig,
 	endpoint: string,
 	body: Record<string, unknown>,
@@ -450,36 +442,38 @@ async function postOnebotOnce(
 	const headers: Record<string, string> = { "content-type": "application/json", ...cfg.headers };
 	if (cfg.accessToken) headers.authorization = `Bearer ${cfg.accessToken}`;
 
-	const ctrl = new AbortController();
-	const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-	try {
-		const res = await fetch(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-			signal: ctrl.signal,
-		});
-		if (!res.ok) {
-			return {
-				status: "failed",
-				retcode: res.status,
-				httpStatus: res.status,
-				message: `HTTP ${res.status} ${res.statusText}`,
-			};
-		}
-		return (await res.json()) as OneBotResponse;
-	} catch (e) {
-		// 我们自己的超时 abort:请求已发出、结果未知 —— 与 WS 响应超时同等对待。
-		if ((e as Error | undefined)?.name === "AbortError") {
+	// bot 是主人自己填的地址:不带浏览器身份、不碰集成的 cookie 罐,线上只有上面这几个头。
+	// 超时交给客户端按单跳算(合并转发的 60 秒下限也在 `timeoutMs` 里,不能落回客户端默认的 20 秒)。
+	const res = await http.fetch(url, {
+		method: "POST",
+		headers,
+		body: JSON.stringify(body),
+		timeoutMs,
+		bare: true,
+	});
+	if (!res.ok) {
+		// 客户端自己的超时:请求已发出、结果未知 —— 与 WS 响应超时同等对待。
+		if (res.code === "timeout") {
 			throw new IndeterminateActionError(`HTTP 请求超时 (${timeoutMs}ms)`, true);
 		}
-		throw e;
-	} finally {
-		clearTimeout(timer);
+		throw new Error(res.message);
 	}
+	if (!res.isSuccess) {
+		const statusText = STATUS_CODES[res.status];
+		return {
+			status: "failed",
+			retcode: res.status,
+			httpStatus: res.status,
+			message: statusText ? `HTTP ${res.status} ${statusText}` : `HTTP ${res.status}`,
+		};
+	}
+	const parsed = res.json();
+	if (!parsed.ok) throw new Error(parsed.message);
+	return parsed.value as OneBotResponse;
 }
 
 async function postOnebot(
+	http: HttpClient,
 	cfg: OnebotHttpConfig,
 	endpoint: string,
 	body: Record<string, unknown>,
@@ -498,7 +492,7 @@ async function postOnebot(
 	let lastResponse: OneBotResponse | undefined;
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
-			const result = await postOnebotOnce(cfg, endpoint, body, timeoutMs);
+			const result = await postOnebotOnce(http, cfg, endpoint, body, timeoutMs);
 			if (result.status === "ok" && result.retcode === 0) return result;
 			lastResponse = result;
 		} catch (e) {
@@ -539,7 +533,8 @@ class WsChannel {
 	private retired = false;
 
 	constructor(
-		private readonly ws: WebSocket,
+		// 正向连接是客户端交来的 `WebSocketLike`,反向是 `ws` 的实例:两边都满足的窄形状。
+		private readonly ws: WebSocketLike,
 		private readonly idPrefix: string,
 		private readonly serviceCtx: ServiceContext,
 		/**
@@ -550,7 +545,7 @@ class WsChannel {
 		 */
 		private readonly onInbound?: (frame: Record<string, unknown>) => void,
 	) {
-		ws.on("message", (raw: RawData) => this.onMessage(raw));
+		ws.on("message", (raw) => this.onMessage(raw as RawData));
 	}
 
 	/** 发 action 帧,按 echo 等响应;`timeoutMs` 内无响应则 reject。 */
@@ -642,7 +637,7 @@ function inboundSink(
 
 /** 正向 WS:独立端作客户端主动连 bot,断线指数退避重连。 */
 class ForwardConn {
-	private ws: WebSocket | null = null;
+	private ws: WebSocketLike | null = null;
 	private channel: WsChannel | null = null;
 	private reconnectTimer: Disposable | null = null;
 	private attempt = 0;
@@ -654,6 +649,7 @@ class ForwardConn {
 		readonly fingerprint: string,
 		private readonly url: string,
 		private readonly headers: Record<string, string>,
+		private readonly http: HttpClient,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly inbound: PlatformAdapterContext["inbound"],
@@ -664,14 +660,14 @@ class ForwardConn {
 	private connect(): void {
 		if (this.closed) return;
 		this.reconnectTimer = null;
-		let ws: WebSocket;
-		try {
-			ws = new WebSocket(this.url, { headers: this.headers });
-		} catch (e) {
-			this.lastError = e instanceof Error ? e.message : String(e);
+		// 不带浏览器身份、不带 cookie:线上握手的头只有 `forwardHeaders`(Bearer 与主人配的头)。
+		const opened = this.http.websocket(this.url, { headers: this.headers, bare: true });
+		if (!opened.ok) {
+			this.lastError = opened.message;
 			this.scheduleReconnect();
 			return;
 		}
+		const ws = opened.socket;
 		this.ws = ws;
 		ws.on("open", () => {
 			this.attempt = 0;
@@ -684,8 +680,8 @@ class ForwardConn {
 			);
 			this.log.info(`[onebot] 正向 WS 已连接 adapter=${this.connectionId} url=${this.url}`);
 		});
-		ws.on("error", (err: Error) => {
-			this.lastError = err.message;
+		ws.on("error", (err) => {
+			this.lastError = upstreamMessage(err);
 		});
 		ws.on("close", () => {
 			this.channel?.rejectAll(new Error("ws 连接已断开"));
@@ -898,6 +894,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 */
 	const botIdentityCache = new Map<string, Promise<BotIdentity | null>>();
 	let disposed = false;
+	/** `start(ctx)` 接住的那份客户端;生产里登记即 start,所以只有测试会碰到「还没接住」。 */
+	let http: HttpClient | undefined;
+
+	/** 要发 HTTP / 开正向 WS 的地方取客户端;还没 start 就抛,由各处的失败路翻成 `unavailable`。 */
+	function httpOrThrow(): HttpClient {
+		if (!http) throw new Error(t("connection.adapterNotStarted"));
+		return http;
+	}
 
 	function disposeAll(): void {
 		if (disposed) return;
@@ -945,7 +949,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const cfg = connection.settings;
 		try {
 			if (cfg.transport === "http") {
-				const res = await postOnebot(cfg, "/get_login_info", {}, fallbackTimeoutMs);
+				const res = await postOnebot(httpOrThrow(), cfg, "/get_login_info", {}, fallbackTimeoutMs);
 				const verdict = interpretResponse(res);
 				if (!verdict.ok) return null;
 				return parseLoginInfo(res.data);
@@ -1016,7 +1020,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	): Promise<OneBotResponse> {
 		const cfg = connection.settings;
 		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
-		if (cfg.transport === "http") return postOnebotOnce(cfg, `/${action}`, params, timeoutMs);
+		if (cfg.transport === "http") {
+			return postOnebotOnce(httpOrThrow(), cfg, `/${action}`, params, timeoutMs);
+		}
 		const channel = channelOf(connection.id, cfg);
 		if (!channel) {
 			throw new Error(cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)");
@@ -1163,14 +1169,21 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const cfg = connection.settings;
 		if (cfg.transport === "http") {
 			try {
-				const result = await postOnebot(cfg, `/${built.action}`, built.params, fallbackTimeoutMs, {
-					nonIdempotent: true,
-					minTimeoutMs: minTimeoutFor(
-						built.action,
-						built.params,
-						minTimeoutLimits(cfg, minTimeoutFallbacks),
-					),
-				});
+				const result = await postOnebot(
+					httpOrThrow(),
+					cfg,
+					`/${built.action}`,
+					built.params,
+					fallbackTimeoutMs,
+					{
+						nonIdempotent: true,
+						minTimeoutMs: minTimeoutFor(
+							built.action,
+							built.params,
+							minTimeoutLimits(cfg, minTimeoutFallbacks),
+						),
+					},
+				);
 				const verdict = interpretResponse(result);
 				if (!verdict.ok) {
 					log.warn(
@@ -1293,9 +1306,19 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			const existing = forwardConns.get(id);
 			if (existing && existing.fingerprint === fp) continue; // 没变,幂等 no-op
 			existing?.close();
+			const client = httpOrThrow();
 			forwardConns.set(
 				id,
-				new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, inboundHandlers),
+				new ForwardConn(
+					id,
+					fp,
+					cfg.url,
+					forwardHeaders(cfg),
+					client,
+					serviceCtx,
+					log,
+					inboundHandlers,
+				),
 			);
 		}
 
@@ -1346,16 +1369,19 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		},
 
 		start(ctx: PlatformAdapterContext): void {
+			http = ctx.http;
 			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
 			reconcile(ctx.connections(), ctx.inbound);
 			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx.inbound));
 		},
 
 		stop(): void {
+			http = undefined;
 			disposeAll();
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
 				return fail("invalid", `wrong platform: ${connection.adapterKey}`);
 			}
@@ -1372,7 +1398,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				}
 			};
 			if (cfg.transport === "http") {
-				return ask(() => postOnebotOnce(cfg, "/get_status", {}, timeoutMs));
+				return ask(() => postOnebotOnce(httpOrThrow(), cfg, "/get_status", {}, timeoutMs));
 			}
 
 			if (cfg.transport === "ws") {
@@ -1399,6 +1425,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
 				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
 			}

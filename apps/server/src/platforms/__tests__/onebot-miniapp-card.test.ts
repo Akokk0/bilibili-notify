@@ -87,14 +87,16 @@ const ARK = {
 	meta: { detail_1: { qqdocurl: "https://b23.tv/abc" } },
 };
 
-function res(o: { ok: boolean; status?: number; json?: unknown }) {
-	return {
-		ok: o.ok,
-		status: o.status ?? (o.ok ? 200 : 500),
-		statusText: "",
-		json: async () => o.json ?? {},
-		text: async () => JSON.stringify(o.json ?? {}),
-	};
+/** 真的 `Response`:请求客户端要读头和字节。 */
+function res(o: { ok: boolean; status?: number; json?: unknown }): Response {
+	return new Response(JSON.stringify(o.json ?? {}), { status: o.status ?? (o.ok ? 200 : 500) });
+}
+
+/** 生产里登记即 `start(ctx)`:适配器先拿到 `ctx.http` 才发得出请求。名单先空着,之后的 `reconcileAdapter` 走「连接变了」。 */
+function startedOnebot(opts: Parameters<typeof createOnebotAdapter>[0]) {
+	const ad = createOnebotAdapter(opts);
+	reconcileAdapter(ad, []);
+	return ad;
 }
 
 const okFrame = (data?: unknown) => res({ ok: true, json: { status: "ok", retcode: 0, data } });
@@ -111,6 +113,15 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
+
+/** 假 fetch:不回应,直到请求客户端的超时中止它。 */
+function hangUntilAborted(_url: URL, init: RequestInit): Promise<Response> {
+	return new Promise((_resolve, reject) => {
+		(init.signal as AbortSignal).addEventListener("abort", () => {
+			reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+		});
+	});
+}
 
 function calledPath(i: number): string {
 	return String(fetchMock.mock.calls[i]?.[0]);
@@ -132,13 +143,13 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("onebot — 小程序卡能力探测", () => {
 	it("没探过 → 未探测", () => {
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
 	});
 
 	it("空参数调 get_mini_app_ark;1404 = 这个实现没有这个接口 → 不支持,带原因", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1404, "不支持的api"));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
 		expect(calledBody(0)).toEqual({});
@@ -153,7 +164,7 @@ describe("onebot — 小程序卡能力探测", () => {
 
 	it("1400 = 接口在、只是嫌参数空 → 支持;没真向腾讯要过卡", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400, "参数错误"));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
 		expect(caps?.miniAppCard).toMatchObject({ state: "supported" });
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -161,14 +172,14 @@ describe("onebot — 小程序卡能力探测", () => {
 
 	it("HTTP 404(把 action 当路径的实现)同样是不支持", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 404 }));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
 		expect(caps?.miniAppCard).toMatchObject({ state: "unsupported" });
 	});
 
 	it("连不上、或回了别的错 → 如实回「还不知道」,原因带出来;每问一次都真探(节奏归宿主)", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = await ad.probeCapabilities?.(obConnection());
 		expect(caps?.miniAppCard).toMatchObject({
 			state: "unknown",
@@ -186,7 +197,7 @@ describe("onebot — 小程序卡能力探测", () => {
 
 	it("探实过之后再探不出来 → 如实回「还不知道」;沿用上次的答案是宿主的事", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		expect((await ad.probeCapabilities?.(obConnection()))?.miniAppCard).toMatchObject({
 			state: "supported",
 		});
@@ -198,7 +209,7 @@ describe("onebot — 小程序卡能力探测", () => {
 	});
 
 	it("reconcile 不自己探能力:http 连接第一次对账也不打接口,探不探由宿主定", async () => {
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
 		await sleep(30);
 		expect(fetchMock).not.toHaveBeenCalled();
@@ -208,7 +219,7 @@ describe("onebot — 小程序卡能力探测", () => {
 
 	it("配置没变的 reconcile 不动缓存 —— 健康探测写回 probeState 就会触发一次", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
 		await ad.probeCapabilities?.(obConnection());
 		expect(capsOf(ad).miniAppCard.state).toBe("supported");
@@ -223,7 +234,7 @@ describe("onebot — 小程序卡能力探测", () => {
 
 	it("配置变了(指向别的实现)→ 丢掉旧答案、不自己重探;连接没了 → 答案一起没了", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);
 		await ad.probeCapabilities?.(obConnection());
 		expect(capsOf(ad).miniAppCard.state).toBe("supported");
@@ -247,7 +258,7 @@ describe("onebot — 小程序卡能力探测", () => {
 describe("onebot — 发小程序卡", () => {
 	it("先用 bili 模板签 ark,再把返回值当 json 段发进群;签成了就等于支持", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame(ARK)).mockResolvedValueOnce(okFrame());
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r.ok).toBe(true);
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
@@ -272,7 +283,7 @@ describe("onebot — 发小程序卡", () => {
 
 	it("NapCat 把 ark 又套了一层 data 交出来(真机踩到:整层发出去腾讯直接吞)→ 剥掉再发", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame({ data: ARK })).mockResolvedValueOnce(okFrame());
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r.ok).toBe(true);
 		expect(calledBody(1).message).toEqual([{ type: "json", data: { data: JSON.stringify(ARK) } }]);
@@ -280,7 +291,7 @@ describe("onebot — 发小程序卡", () => {
 
 	it("回来的东西怎么看都不像 ark(没有 app 字段)→ 不发,报失败", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame({ data: { foo: 1 } }));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		// 回了成功、内容却不是约定的形状。
 		expect(r).toEqual({ ok: false, code: "invalid", message: "签小程序卡失败: 返回的不是 ark" });
@@ -290,14 +301,14 @@ describe("onebot — 发小程序卡", () => {
 	it("实现把 ark 以字符串交出来 → 原样当 json 段的 data", async () => {
 		const raw = JSON.stringify(ARK);
 		fetchMock.mockResolvedValueOnce(okFrame(raw)).mockResolvedValueOnce(okFrame());
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		await ad.send(obConnection(), obTarget(), CARD);
 		expect(calledBody(1).message).toEqual([{ type: "json", data: { data: raw } }]);
 	});
 
 	it("签卡收到 1404 → 不发、报这个实现发不了小程序卡,能力翻成不支持", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1404, "不支持的api"));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r).toMatchObject({ ok: false, code: "unsupported", upstreamCode: 1404 });
 		expect(!r.ok && r.message).toMatch(/get_mini_app_ark/);
@@ -307,18 +318,16 @@ describe("onebot — 发小程序卡", () => {
 
 	it("签卡收到 HTTP 404(把 action 当路径的实现)→ 同样是 unsupported,码写成 http:404", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 404 }));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r).toMatchObject({ ok: false, code: "unsupported", upstreamCode: "http:404" });
 		expect(capsOf(ad).miniAppCard.state).toBe("unsupported");
 	});
 
 	it("签卡超时 → timeout(卡还没发出去,不是「结果未知」)", async () => {
-		fetchMock.mockRejectedValueOnce(
-			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-		);
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		const r = await ad.send(obConnection(), obTarget(), CARD);
+		fetchMock.mockImplementationOnce(hangUntilAborted);
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const r = await ad.send(obConnection({ timeoutMs: 50 }), obTarget(), CARD);
 		expect(r).toMatchObject({ ok: false, code: "timeout" });
 		expect(!r.ok && r.message).toMatch(/^签小程序卡失败: .*超时/);
 		expect(!r.ok && r.message).not.toMatch(/结果未知/);
@@ -327,29 +336,23 @@ describe("onebot — 发小程序卡", () => {
 
 	it("签卡时连不上 → unavailable", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
-		expect(r).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "签小程序卡失败: ECONNREFUSED",
-		});
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		// 话是客户端的:前缀说明哪一步,底层原因跟在后面。
+		expect(!r.ok && r.message).toMatch(/^签小程序卡失败: .*ECONNREFUSED/);
 	});
 
 	it("卡签好了、发出去之后超时 → indeterminate", async () => {
-		fetchMock
-			.mockResolvedValueOnce(okFrame(ARK))
-			.mockRejectedValueOnce(
-				Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-			);
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		const r = await ad.send(obConnection(), obTarget(), CARD);
+		fetchMock.mockResolvedValueOnce(okFrame(ARK)).mockImplementationOnce(hangUntilAborted);
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const r = await ad.send(obConnection({ timeoutMs: 50 }), obTarget(), CARD);
 		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
 	});
 
 	it("签卡失败但不是 1404(比如 packet 后端没起来)→ 只报这一条失败,支持与否的缓存不动", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		await ad.probeCapabilities?.(obConnection());
 
 		fetchMock.mockResolvedValueOnce(failFrame(200, "packet backend 未就绪"));
@@ -365,7 +368,7 @@ describe("onebot — 发小程序卡", () => {
 
 	it("签回来的是空的 → 不发空 json 段,报失败", async () => {
 		fetchMock.mockResolvedValueOnce(okFrame(undefined));
-		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
+		const ad = startedOnebot({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const r = await ad.send(obConnection(), obTarget(), CARD);
 		expect(r.ok).toBe(false);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
