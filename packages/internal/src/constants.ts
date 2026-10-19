@@ -878,8 +878,8 @@ export const BUILTIN_AI_PRESETS = [
  * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
  * - 会员(上舰):`{viewer}`(观众名)`{name}`(主播名)`{tier}`(档名);0.x 的 `{uname}` `{mname}` `{guard}` 与 `-key` 老写法
  *   由迁移改写成这三个(㉓d)
- * - 特别关注:`{mastername}` `{uname}` `{msg}`
- * - 弹幕总结:`{dmc}` `{mdn}` `{dca}` `{un1..5}` `{dc1..5}`
+ * - 特别关注:`{name}`(主播名)`{viewer}`(观众名)`{msg}`(弹幕正文,进场没有);0.x 的 `{mastername}` `{uname}` 与 `-key` 老写法由迁移改写(3b-21)
+ * - 弹幕总结:`{dmc}` `{fanclub}`(粉丝团名) `{dca}` `{un1..5}` `{dc1..5}`;0.x 的 `{mdn}` 同上
  * - 作品:`{name}` `{postNoun}`(来源对作品的叫法,没声明叫「作品」)
  *
  * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
@@ -894,7 +894,7 @@ export const DEFAULT_TEMPLATES = {
 	liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 	liveSummary: `🔍【弹幕情报站】本场直播数据如下：
-🧍‍♂️ 总共 {dmc} 位{mdn}上线
+🧍‍♂️ 总共 {dmc} 位{fanclub}上线
 💬 共计 {dca} 条弹幕飞驰而过
 📊 热词云图已生成，快来看看你有没有上榜！
 👑 本场顶级输出选手：
@@ -906,8 +906,8 @@ export const DEFAULT_TEMPLATES = {
 	post: "{name}发布了一条{postNoun}",
 	postVideo: "{name}发布了新视频",
 	wordcloudStopWords: "",
-	viewerChat: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
-	viewerEnter: "{uname} 进入了 {mastername} 的直播间",
+	viewerChat: "{name} 的关注用户 {viewer} 发送弹幕：{msg}",
+	viewerEnter: "{viewer} 进入了 {name} 的直播间",
 	// 会员文案,按体系 id 存(㉓d,原先 B 站专属的 `guardBuy`)。B 站的体系是 `guard`;别的体系由来源声明、事件到了才有。
 	membership: {
 		guard: {

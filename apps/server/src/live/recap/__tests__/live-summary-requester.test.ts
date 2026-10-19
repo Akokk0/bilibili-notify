@@ -17,7 +17,7 @@ const PARAMS = {
 	senderRecord: SENDERS,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
 	fanClubName: "小晨",
-	customLiveSummary: "共-dmc人，-un1发了-dc1条，-mdn",
+	customLiveSummary: "共-dmc人，-un1发了-dc1条，{fanclub}",
 };
 
 function setup(

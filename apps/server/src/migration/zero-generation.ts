@@ -90,8 +90,10 @@ import { migrateUptime } from "./uptime.js";
  * 47 = 链接设置 `linkParsing` 成了 `linkPreview` 五格(`enabled`、`isOnByDefault`、`replyForm`、`byTarget`、`cooldownSec`;
  * 0.x 的 `defaults.parse` / `defaults.form` / `groups` / `cooldownSeconds` 各归其位,回复形式 `miniapp` 叫 `nativeShare`;
  * `config/settings/core.json` 因此没有 `linkParsing`,摘要变)。
+ * 48 = 其余六条直播文案的占位符改写(`-key` → `{key}`,`{mastername}` / `{uname}` / `{mdn}` → `{name}` / `{viewer}` / `{fanclub}`;
+ * 设置与订阅覆盖里的文案变,账本里特别弹幕 / 特别进场 / 弹幕总结三条的旧默认指纹换新,摘要变)。
  */
-export const MIGRATION_REVISION = 47;
+export const MIGRATION_REVISION = 48;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

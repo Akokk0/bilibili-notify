@@ -39,6 +39,7 @@ import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import { migrateLegacyLinkParsing, renameLinkParsing } from "./link-parsing.js";
+import { rewriteGlobalLivePlaceholders } from "./live-placeholders.js";
 import { type GlobalLiveFacts, liveFactsOf, splitGlobalLiveSettings } from "./live-split.js";
 import { moveGlobalMembership } from "./membership-moves.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
@@ -67,7 +68,8 @@ export function migrateGlobals(raw: unknown): unknown {
 /**
  * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 链接设置 `linkParsing` 成 `linkPreview`
  * 五格({@link renameLinkParsing},`link-parsing.ts`) → 会员与醒目留言的搬家(两个直播阈值、
- * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 历史保留天数换键
+ * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 其余六条直播文案的占位符改写
+ * (3b-21,`live-placeholders.ts`;账本还在老位置) → 历史保留天数换键
  * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)→ 默认文案账本
  * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ AI 设置上提到顶层 `ai`(同文件;排在最后,
  * 更早的 `migrateAiSettings` 改写的是老位置 `defaults.ai`)。设置那一步
@@ -81,10 +83,12 @@ export function migrateGlobalsToCurrent(raw: unknown): unknown {
 		moveTemplateLedger(
 			splitAppSettings(
 				moveHistoryRetention(
-					splitGlobalLiveSettings(
-						moveGlobalCards(
-							moveGlobalMembership(
-								renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+					rewriteGlobalLivePlaceholders(
+						splitGlobalLiveSettings(
+							moveGlobalCards(
+								moveGlobalMembership(
+									renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+								),
 							),
 						),
 					),

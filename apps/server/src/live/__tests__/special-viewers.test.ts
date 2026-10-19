@@ -25,7 +25,7 @@ function danmaku(over: {
 			text: over.text ?? "你好呀",
 			settings: {
 				specialViewers: over.viewers ?? BOTH,
-				template: over.template ?? "-mastername 的直播间里 {uname} 说:-msg",
+				template: over.template ?? "-name 的直播间里 {viewer} 说:-msg",
 			},
 			creator: { name: over.creatorName ?? "主播A" },
 		},
@@ -46,7 +46,7 @@ function enter(over: {
 			viewer: { id: over.viewerId ?? "123", name: "小明" },
 			settings: {
 				specialViewers: over.viewers ?? BOTH,
-				template: over.template ?? "{uname} 进入了 -mastername 的直播间",
+				template: over.template ?? "{viewer} 进入了 -name 的直播间",
 			},
 			creator: { name: over.creatorName ?? "主播A" },
 		},
@@ -80,14 +80,14 @@ describe("pushViewerChat", () => {
 	});
 
 	it("主播名给空串 → 那一格是空", () => {
-		expect(
-			danmaku({ creatorName: "", template: "[-mastername] {uname}:-msg" }),
-		).toHaveBeenCalledWith("[] 小明:你好呀");
+		expect(danmaku({ creatorName: "", template: "[-name] {viewer}:-msg" })).toHaveBeenCalledWith(
+			"[] 小明:你好呀",
+		);
 	});
 
 	it("弹幕正文里带占位符样子的字不被二次替换", () => {
-		expect(danmaku({ text: "{uname}-mastername", template: "-msg|{uname}" })).toHaveBeenCalledWith(
-			"{uname}-mastername|小明",
+		expect(danmaku({ text: "{viewer}-name", template: "-msg|{viewer}" })).toHaveBeenCalledWith(
+			"{viewer}-name|小明",
 		);
 	});
 });
@@ -117,7 +117,7 @@ describe("pushViewerEnter", () => {
 	});
 
 	it("主播名给空串 → 那一格是空", () => {
-		expect(enter({ creatorName: "", template: "{uname} 进了 -mastername" })).toHaveBeenCalledWith(
+		expect(enter({ creatorName: "", template: "{viewer} 进了 -name" })).toHaveBeenCalledWith(
 			"小明 进了 ",
 		);
 	});

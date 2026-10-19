@@ -369,7 +369,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		});
 	});
 
-	it("文案账本(迁出来在顶层 templatesSeen):post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d)", async () => {
+	it("文案账本(迁出来在顶层 templatesSeen):post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d);特别弹幕 / 特别进场 / 弹幕总结三条换成新默认的指纹(3b-21)", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
@@ -384,12 +384,13 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			liveStart: "1nkgnb7",
 			liveStreaming: "oopixp",
 			liveEnd: "1mtqdty",
-			liveSummary: "1hxy5zb",
+			// 这三条夹具里记的是 0.12 默认的指纹,占位符改写之后(3b-21)换成今天默认的指纹。
+			liveSummary: "1g1d1o7",
 			post: "7uw5nq",
 			postVideo: "1omlggn",
 			wordcloudStopWords: "ztntfp",
-			viewerChat: "t4zkxd",
-			viewerEnter: "1qh1423",
+			viewerChat: "1ew6jl3",
+			viewerEnter: "8la1hb",
 			// 上舰文案搬成体系默认一条(㉓d):账本记的是新默认「{viewer} 成为了 {name} 的{tier}！」与空图的指纹。
 			"membership.guard.default.template": "8q6guf",
 			"membership.guard.default.imageUrl": "ztntfp",
@@ -402,7 +403,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		]);
 	});
 
-	it("升上来的人不会凭空亮「默认文案有更新」的灯:他写过自己的文案,账本里 post / postVideo 的指纹就是 1.0 默认的指纹", async () => {
+	it("升上来的人只亮该亮的「默认文案有更新」的灯:他写过自己的文案,账本换键没丢账,postVideo 的指纹对得上不亮,只有默认真换了的 post 亮", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		// 主人自己写的、和默认不一样的两条:「默认文案有更新」的判定只对这样的文案才有话说(和默认一样的,账本换没换键它都不亮)。

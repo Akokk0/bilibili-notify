@@ -138,11 +138,11 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 	});
 });
 
-describe("renderViewerChat / renderViewerEnter — 占位符 mastername / uname / msg", () => {
+describe("renderViewerChat / renderViewerEnter — 占位符 name / viewer / msg", () => {
 	it("特别弹幕:三个占位符,-key 与 {key} 两种写法", () => {
 		expect(
 			renderViewerChat({
-				template: "-mastername|{uname}|-msg|{msg}",
+				template: "-name|{viewer}|-msg|{msg}",
 				viewerName: "小明",
 				creatorName: "主播A",
 				text: "你好",
@@ -150,10 +150,10 @@ describe("renderViewerChat / renderViewerEnter — 占位符 mastername / uname 
 		).toBe("主播A|小明|你好|你好");
 	});
 
-	it("特别进场:mastername / uname;msg 不是它的变量,原样留着", () => {
+	it("特别进场:name / viewer;msg 不是它的变量,原样留着", () => {
 		expect(
 			renderViewerEnter({
-				template: "{uname} 进了 -mastername {msg}",
+				template: "{viewer} 进了 -name {msg}",
 				viewerName: "小明",
 				creatorName: "主播A",
 			}),
@@ -163,11 +163,11 @@ describe("renderViewerChat / renderViewerEnter — 占位符 mastername / uname 
 	it("观众名里带 token 不被二次替换", () => {
 		expect(
 			renderViewerEnter({
-				template: "{uname}|-mastername",
-				viewerName: "{mastername}",
+				template: "{viewer}|-name",
+				viewerName: "{name}",
 				creatorName: "主播A",
 			}),
-		).toBe("{mastername}|主播A");
+		).toBe("{name}|主播A");
 	});
 });
 
@@ -228,15 +228,26 @@ describe("renderLiveSummary — topSenders <5 守卫", () => {
 		expect(out).toContain("5:u5=5");
 	});
 
-	it("粉丝团名字填进 -mdn", () => {
+	it("粉丝团名字填进 {fanclub}", () => {
 		expect(
 			renderLiveSummary({
-				template: "牌:-mdn",
+				template: "牌:{fanclub}",
 				senderCount: 1,
 				fanClubName: "小晨",
 				viewerChatCount: 1,
 				topSenders: [],
 			}),
 		).toBe("牌:小晨");
+	});
+
+	it("总结缺粉丝团名:{fanclub} 填空串", () => {
+		expect(
+			renderLiveSummary({
+				template: "牌:{fanclub}|",
+				senderCount: 1,
+				viewerChatCount: 1,
+				topSenders: [],
+			}),
+		).toBe("牌:|");
 	});
 });

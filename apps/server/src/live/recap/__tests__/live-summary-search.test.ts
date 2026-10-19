@@ -85,7 +85,7 @@ describe("LiveSummaryRequester × 粉丝团名", () => {
 
 	it("没有粉丝团名 → 模板里的粉丝团名渲染成空串(同今天)", () => {
 		const { requester } = makeRequester();
-		const out = requester.generate({ ...PARAMS, customLiveSummary: "牌-mdn尾" });
+		const out = requester.generate({ ...PARAMS, customLiveSummary: "牌{fanclub}尾" });
 		expect(out?.template).toBe("牌尾");
 	});
 });

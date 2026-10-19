@@ -87,7 +87,7 @@ export class LiveSummaryRequester {
 		const template = renderLiveSummary({
 			template: customLiveSummary,
 			senderCount,
-			fanClubName: fanClubName ?? "",
+			fanClubName,
 			viewerChatCount,
 			topSenders: top5Senders,
 		});

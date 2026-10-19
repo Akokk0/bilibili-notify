@@ -58,8 +58,8 @@ export function applyTemplate(template: string, vars: Record<string, string>): s
 }
 
 /**
- * 「特别弹幕」那一句:模板套上中立的值。占位符沿用 `mastername`(主播名)/ `uname`(发弹幕的人)/
- * `msg`(弹幕正文),与存档里的模板同一套写法。
+ * 「特别弹幕」那一句:模板套上中立的值。占位符:`name`(主播名)/ `viewer`(发弹幕的人)/ `msg`(弹幕正文)。
+ * 0.x 起的 `mastername` / `uname` 由迁移改写成这两个(3b-21)。
  */
 export function renderViewerChat(params: {
 	template: string;
@@ -68,33 +68,33 @@ export function renderViewerChat(params: {
 	text: string;
 }): string {
 	return applyTemplate(params.template, {
-		mastername: params.creatorName,
-		uname: params.viewerName,
+		name: params.creatorName,
+		viewer: params.viewerName,
 		msg: params.text,
 	});
 }
 
-/** 「特别进场」那一句:占位符 `mastername` / `uname`。 */
+/** 「特别进场」那一句:占位符 `name` / `viewer`。 */
 export function renderViewerEnter(params: {
 	template: string;
 	viewerName: string;
 	creatorName: string;
 }): string {
 	return applyTemplate(params.template, {
-		mastername: params.creatorName,
-		uname: params.viewerName,
+		name: params.creatorName,
+		viewer: params.viewerName,
 	});
 }
 
 /**
- * 「弹幕总结」那一句(AI 总结用不了时的模板兜底)。占位符:`-dmc`(发言人数)、`-mdn`(粉丝团名字)、`-dca`(弹幕总数)、
- * `-un1..5`(发言最多的几位)、`-dc1..5`(各自的条数)。
+ * 「弹幕总结」那一句(AI 总结用不了时的模板兜底)。占位符:`{dmc}`(发言人数)、`{fanclub}`(粉丝团名字)、`{dca}`(弹幕总数)、
+ * `{un1..5}`(发言最多的几位)、`{dc1..5}`(各自的条数)。
  */
 export function renderLiveSummary(params: {
 	template: string;
 	senderCount: number;
-	/** 粉丝团的名字;拿不到给空串。 */
-	fanClubName: string;
+	/** 粉丝团的名字;没有(平台没有粉丝团,或还不知道)就缺着,`{fanclub}` 填空串。 */
+	fanClubName?: string;
 	viewerChatCount: number;
 	topSenders: Array<[string, number]>;
 }): string {
@@ -105,7 +105,7 @@ export function renderLiveSummary(params: {
 	const at = (i: number): [string, number] => top[i] ?? ["", 0];
 	return applyTemplate(params.template, {
 		dmc: `${params.senderCount}`,
-		mdn: params.fanClubName,
+		fanclub: params.fanClubName ?? "",
 		dca: `${params.viewerChatCount}`,
 		un1: at(0)[0],
 		dc1: `${at(0)[1]}`,

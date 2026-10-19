@@ -15,7 +15,7 @@ afterEach(cleanup);
 describe("SummaryVariableHints", () => {
 	it("advertises the brace-style summary variables", () => {
 		render(<SummaryVariableHints />);
-		for (const code of ["{dmc}", "{mdn}", "{dca}", "{un1..5}", "{dc1..5}"]) {
+		for (const code of ["{dmc}", "{fanclub}", "{dca}", "{un1..5}", "{dc1..5}"]) {
 			expect(screen.getByText(code)).toBeTruthy();
 		}
 	});

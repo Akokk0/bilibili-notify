@@ -537,7 +537,7 @@ export function StopWordsHint() {
 
 const SUMMARY_VARS: { code: string; desc: string }[] = [
 	{ code: "{dmc}", desc: "弹幕发言人数" },
-	{ code: "{mdn}", desc: "粉丝牌名" },
+	{ code: "{fanclub}", desc: "粉丝牌名" },
 	{ code: "{dca}", desc: "弹幕总数" },
 	{ code: "{un1..5}", desc: "弹幕排行用户名" },
 	{ code: "{dc1..5}", desc: "对应弹幕数" },
@@ -584,14 +584,14 @@ const GUARD_VARS: VarSpec[] = [
 ];
 
 const SPECIAL_DANMAKU_VARS: VarSpec[] = [
-	{ code: "{mastername}", desc: "UP 主名字" },
-	{ code: "{uname}", desc: "发送弹幕的用户名" },
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{viewer}", desc: "发送弹幕的用户名" },
 	{ code: "{msg}", desc: "弹幕内容" },
 ];
 
 const SPECIAL_ENTER_VARS: VarSpec[] = [
-	{ code: "{uname}", desc: "进入直播间的用户名" },
-	{ code: "{mastername}", desc: "UP 主名字" },
+	{ code: "{viewer}", desc: "进入直播间的用户名" },
+	{ code: "{name}", desc: "UP 主名字" },
 ];
 
 /**

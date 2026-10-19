@@ -158,9 +158,9 @@ export async function bootBiliLiveWorld(
 		liveStart: "{name} 开播啦，当前粉丝数：{follower}",
 		liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 		liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-		liveSummary: "共 {dmc} 位{mdn}发了 {dca} 条弹幕，第一名 {un1}（{dc1} 条）",
-		viewerChat: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
-		viewerEnter: "{uname} 进入了 {mastername} 的直播间",
+		liveSummary: "共 {dmc} 位{fanclub}发了 {dca} 条弹幕，第一名 {un1}（{dc1} 条）",
+		viewerChat: "{name} 的关注用户 {viewer} 发送弹幕：{msg}",
+		viewerEnter: "{viewer} 进入了 {name} 的直播间",
 	});
 	globals.defaults.templates.membership.guard = {
 		enabled: opts.guardTemplate === true,

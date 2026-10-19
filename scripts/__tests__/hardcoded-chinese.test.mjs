@@ -150,6 +150,7 @@ export const RATCHET = {
 	"apps/server/src/migration/history-images.ts": 2,
 	"apps/server/src/migration/history.ts": 2,
 	"apps/server/src/migration/keyed-records.ts": 1,
+	"apps/server/src/migration/live-placeholders.ts": 3,
 	"apps/server/src/migration/membership-moves.ts": 1,
 	"apps/server/src/migration/recording.ts": 2,
 	"apps/server/src/migration/roast-drafts.ts": 2,
