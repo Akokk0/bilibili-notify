@@ -29,6 +29,7 @@ import {
 	extensionDocIcon,
 	useExtensionDocs,
 } from "./extensions/docs-panel";
+import { LocaleIssuesNote } from "./extensions/locale-issues-note";
 import { ReportDiscrepanciesBox } from "./extensions/report-discrepancies";
 import {
 	ExtensionIcon,
@@ -224,6 +225,9 @@ export default function ExtensionDetail() {
 					</Btn>
 				</div>
 			</GlassBox>
+
+			{/* 拓展自带的译文没收下的几条(ADR-0037 决策 14)—— 有才出现。 */}
+			<LocaleIssuesNote ext={ext} />
 
 			{/* 订阅源报上来、BN 没照单全收的几条(决策 60)—— 有才出现。 */}
 			<ReportDiscrepanciesBox ext={ext} subs={subsQuery.data} />

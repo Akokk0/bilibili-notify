@@ -82,6 +82,27 @@ describe("传包装拓展", () => {
 		expect(screen.queryByRole("button", { name: /重启/ })).toBeNull();
 	});
 
+	it("包里有被跳过的语言文件 → 装完那句后面点到每个文件名;没有就没有这句", async () => {
+		vi.mocked(api.upload).mockResolvedValueOnce({ ...OK, skippedLocales: ["ko.json", "fr.json"] });
+		const { container } = renderSlot();
+
+		await pick(container);
+
+		await screen.findByText(/没有写进去/);
+		expect(screen.getByText("ko.json")).toBeTruthy();
+		expect(screen.getByText("fr.json")).toBeTruthy();
+	});
+
+	it("没有被跳过的语言文件 → 装完那句里没有「没有写进去」", async () => {
+		vi.mocked(api.upload).mockResolvedValue(OK);
+		const { container } = renderSlot();
+
+		await pick(container);
+
+		await screen.findByText(/装好了/);
+		expect(screen.queryByText(/没有写进去/)).toBeNull();
+	});
+
 	/**
 	 * 🔴 **头一回装进来的拓展开关是关着的**(`enabled` 缺失即关,`isExtensionEnabled`
 	 * 只认 `=== true`),而这句话从前一律说「已经在跑」—— 主人转头在卡片上看到

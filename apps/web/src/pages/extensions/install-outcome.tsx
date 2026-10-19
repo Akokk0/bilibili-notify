@@ -11,9 +11,10 @@
  */
 
 import type { ExtensionInstallResponse } from "@bilibili-notify/contract";
-import { HintNote } from "@bilibili-notify/ui";
+import { HintNote, MonoChip, WarnNote } from "@bilibili-notify/ui";
 import { Link } from "react-router-dom";
 import { DEFAULT_RESTART_WAIT, type RestartWait } from "../../components/update/restart";
+import { useT } from "../../i18n";
 import { StagedCodeNote } from "./staged-code-note";
 
 /**
@@ -61,10 +62,40 @@ export interface ExtensionInstallOutcomeProps {
 	wait?: RestartWait;
 }
 
-export function ExtensionInstallOutcome({
-	done,
-	wait = DEFAULT_RESTART_WAIT,
-}: ExtensionInstallOutcomeProps) {
+/**
+ * 包里被跳过的语言文件(ADR-0037 决策 14):长得像语言码、BN 语言表里却没有的 `locales/*.json`,
+ * 照装但没写进盘 —— 装的人得知道,否则他会以为那份译文在用。**有才出现**,三种结局都可能带。
+ */
+function SkippedLocalesNote({ done }: { done: ExtensionInstallResponse }) {
+	const t = useT();
+	// 🔴 契约里这一格是**可选**的(老服务端没有),缺了与空数组一样:不画。
+	const files = done.skippedLocales ?? [];
+	if (files.length === 0) return null;
+	return (
+		<WarnNote size="sm">
+			<div>{t("extension.install.skippedLocales")}</div>
+			<ul className="mt-1 flex flex-wrap gap-1.5">
+				{files.map((file) => (
+					<li key={file}>
+						<MonoChip>{file}</MonoChip>
+					</li>
+				))}
+			</ul>
+		</WarnNote>
+	);
+}
+
+export function ExtensionInstallOutcome(props: ExtensionInstallOutcomeProps) {
+	if (!props.done) return null;
+	return (
+		<>
+			<InstallOutcomeBody {...props} />
+			<SkippedLocalesNote done={props.done} />
+		</>
+	);
+}
+
+function InstallOutcomeBody({ done, wait = DEFAULT_RESTART_WAIT }: ExtensionInstallOutcomeProps) {
 	if (!done) return null;
 	/*
 	 * 🔴 老服务端(应用内自更新那几秒)回的是 `needsRestart` 而没有 `staged` —— 缺了就落到

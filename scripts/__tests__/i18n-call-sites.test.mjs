@@ -59,7 +59,7 @@ import {
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** 两端各自的译文入口。`minCalls`:至少扫到几处调用(扫空了比没有还糟);面板眼下零调用,豁免。 */
+/** 两端各自的译文入口。`minCalls`:至少扫到几处调用(扫空了比没有还糟);面板从 3b-43 提交 6 起有 2 处(拓展详情页的译文问题标题、装包后的跳过语言文件),下限收到 2。 */
 export const ENDS = {
 	server: {
 		root: "apps/server/src",
@@ -73,7 +73,7 @@ export const ENDS = {
 		store: "apps/web/src/i18n/index",
 		localeDir: "apps/web/src/i18n/locales",
 		valueNames: ["useT", "i18n"],
-		minCalls: 0,
+		minCalls: 2,
 		// 面板的组件里取字要订阅(useT),直接调 i18n.t 不会在切语言后重画
 		react: true,
 	},

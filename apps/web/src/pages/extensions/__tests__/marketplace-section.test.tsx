@@ -389,6 +389,25 @@ describe("拓展市场", () => {
 		expect(played).toEqual([]);
 	});
 
+	it("装成了、有语言文件被跳过 → 装完那句后面点到每个文件名;没跳过就没有这句", async () => {
+		apiPostMock.mockResolvedValueOnce({
+			id: "bridge",
+			name: "机器人框架桥接",
+			version: "0.0.2",
+			staged: false,
+			enabled: true,
+			restart: { can: true, how: "container" },
+			skippedLocales: ["ko.json", "fr.json"],
+		});
+		renderSection();
+		await userEvent.click(
+			within(await cardOf("机器人框架桥接")).getByRole("button", { name: "安装" }),
+		);
+		await screen.findByText(/没有写进去/);
+		expect(screen.getByText("ko.json")).toBeTruthy();
+		expect(screen.getByText("fr.json")).toBeTruthy();
+	});
+
 	it("装不了 → 服务端那句原样摆出来", async () => {
 		const { ApiError } = await import("../../../services/api");
 		const message = "下载到的包校验和与索引写的对不上";
