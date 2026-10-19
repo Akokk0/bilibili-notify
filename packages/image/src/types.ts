@@ -3,15 +3,6 @@ import type { CardSkinKnobOverrides } from "@bilibili-notify/internal";
 export type CardColorOptions = {
 	// 🪦 `backgroundImage` 2026-09-20 删掉:背景图 2026-09-14 退役成皮肤自己的 `image`
 	// 旋钮(`--bn-knob-wallpaper`),这一项从 2026-09-19 起已经喂不到任何 CSS。
-	/**
-	 * 字体家族名;缺省时回退渲染器全局 config。
-	 *
-	 * 这一项此前**整个漏在外面**:设置页允许给单个 UP / 单类卡另设字体,schema 存得下、
-	 * resolve 也算得出,唯独没人把它交给渲染器 —— 于是选了等于没选。
-	 */
-	font?: string;
-	/** 自带字体文件的资产 id;设了就优先于 `font`,缺省时回退渲染器全局 config。 */
-	fontAsset?: string;
 	/** 直播卡自定义封面资产 id(或已解析 URL);缺省时用 B 站房间封面/关键帧。仅 live 卡消费。 */
 	liveCoverImage?: string;
 	/**

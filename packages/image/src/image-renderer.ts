@@ -308,21 +308,15 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * 这张卡用哪款字体 —— 每个 generate* 都经它,per-call 覆盖优先于全局 config。
-	 *
-	 * `colorOptions.font` 曾经**根本没被读过**:设置页允许给单个 UP / 单类卡另设字体,
-	 * 存得下也解析得出,就是没人交给渲染器,于是选了等于没选。这一族 bug 长得都一样 ——
-	 * 界面上改得动、保存得下、行为不变。
+	 * 这张卡用哪款字体 —— 每个 generate* 都经它,一律读渲染器全局 config。
 	 *
 	 * 自带的字体文件优先:宿主把它解析成一条现成的 `@font-face`,家族名换成内部那个。
 	 * 解析不出来(资产被删了、卷丢了)就静静回落家族名 —— 出图不该因为
 	 * 少一个文件而崩,也不该塞一条空 src 的规则进 CSS。
 	 */
-	private async resolveFont(
-		colorOptions: CardColorOptions = {},
-	): Promise<{ font: string; fontFace?: string }> {
-		const font = colorOptions.font ?? this.config.font ?? "";
-		const assetId = colorOptions.fontAsset ?? this.config.fontAsset;
+	private async resolveFont(): Promise<{ font: string; fontFace?: string }> {
+		const font = this.config.font ?? "";
+		const assetId = this.config.fontAsset;
 		if (!assetId) return { font };
 
 		if (this.fontCache?.id !== assetId) {
@@ -564,7 +558,7 @@ export class ImageRenderer {
 			title: "直播通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
-			font: await this.resolveFont(colorOptions),
+			font: await this.resolveFont(),
 			props: buildLiveCardView(input, {
 				coverOverride: coverOverride || undefined,
 				imageUrl: (ref) => resolved.get(ref),
@@ -608,7 +602,7 @@ export class ImageRenderer {
 			title: "上舰通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
-			font: await this.resolveFont(colorOptions),
+			font: await this.resolveFont(),
 			props: buildMembershipCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
@@ -647,7 +641,7 @@ export class ImageRenderer {
 			title: "醒目留言通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
-			font: await this.resolveFont(colorOptions),
+			font: await this.resolveFont(),
 			props: buildSuperchatCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
@@ -692,7 +686,7 @@ export class ImageRenderer {
 			title: "动态通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
-			font: await this.resolveFont(colorOptions),
+			font: await this.resolveFont(),
 			priority: options?.priority,
 			props: { node },
 		})

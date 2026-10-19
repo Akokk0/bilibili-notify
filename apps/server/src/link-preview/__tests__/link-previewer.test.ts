@@ -68,8 +68,6 @@ async function feed(parser: LinkPreviewer, frame: Record<string, unknown>): Prom
 
 /** 主人在卡片页选的那套皮肤 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
 const SKIN = "skin-from-panel";
-/** 卡片页里给「动态」这一类调的配色 —— 同样两种卡都得吃。 */
-const COLORS: CardColorOptions = { font: "Comic Sans MS" };
 
 /** 假解析器交的预览:作品正文带 id,原生分享描述五格都能一一认出。 */
 function previewOf(id: string, withNativeShare = true): LinkPreview {
@@ -156,7 +154,7 @@ function makeParser(
 			linkResolvers,
 			signal,
 			renderer: rendererOverride ?? renderer,
-			presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
+			presentation: () => ({ cardSkin: SKIN }),
 			send,
 			now: () => now,
 			policyFor: extra.policyFor ?? (() => ({ isOn: true, replyForm: "image" })),
@@ -197,9 +195,8 @@ describe("createLinkPreviewer", () => {
 		expect(h.generatePostCard).toHaveBeenCalledTimes(1);
 		// 交给出图器的就是解析器交的作品,原样。
 		expect(firstArg(h.generatePostCard.mock.calls)).toEqual(previewOf("a1").post);
-		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
 		// 皮肤不传的话渲染器退回内置默认皮肤、主人选的那套排版就丢了。
-		expect(h.generatePostCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
+		expect(h.generatePostCard.mock.calls[0]?.[1]).toEqual({ cardSkin: SKIN });
 		// 低优先级:群里谁都能触发的卡,不能排在开播 / 动态卡前面 —— 让路这件事由渲染
 		// 队列按车道做,不靠这里数自己发了几张。
 		expect(h.generatePostCard.mock.calls[0]?.[2]).toEqual({ priority: "low" });

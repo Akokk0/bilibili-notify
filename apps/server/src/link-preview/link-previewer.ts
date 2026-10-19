@@ -69,7 +69,6 @@ export interface InboundLinkMessage extends InboundGroupMessage {
 
 /** 一张链接卡的呈现;缺省项交给渲染器的全局配置兜底。 */
 export interface LinkCardPresentation {
-	colors?: CardColorOptions;
 	/** 用哪套卡片皮肤(ADR-0014)。链接卡没有 UP 可言,吃的是全局那套。 */
 	cardSkin?: string;
 }
@@ -100,9 +99,7 @@ export interface LinkPreviewerOptions {
 		): Promise<Buffer>;
 	} | null;
 	/**
-	 * 这张卡怎么画:配色(含图廊轮到的那张背景)+ 皮肤。**每张卡取一次**,由引擎按推送
-	 * 动态卡在没有 per-UP 覆盖时的同一条规则算出来 —— 链接解析没有 UP 可言,吃的就是
-	 * 全局那份。各算一份的话,主人在卡片页给「动态」调的样式只有推送卡认。
+	 * 这张卡怎么画:皮肤。**每张卡取一次**,链接解析没有 UP 可言,吃的就是全局那份。
 	 */
 	presentation: () => LinkCardPresentation;
 	/** 往来源群发 —— 由接线层经出口咽喉(`TargetDispatcher.sendToAddress`)实现。 */
@@ -230,13 +227,9 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 		if (!renderer) return;
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
-		const { colors, cardSkin } = opts.presentation();
+		const { cardSkin } = opts.presentation();
 		// 作品里的图(封面等)已由解析器抓进图库,这里直接出卡。
-		const buffer = await renderer.generatePostCard(
-			preview.post,
-			{ ...colors, cardSkin },
-			{ priority: "low" },
-		);
+		const buffer = await renderer.generatePostCard(preview.post, { cardSkin }, { priority: "low" });
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		const where = whereOf(dest);
 		if (!result.ok) {

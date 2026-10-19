@@ -3385,8 +3385,8 @@ describe("createEngines — 消息版式", () => {
 // ---------------------------------------------------------------------------
 // 链接卡的呈现
 //
-// 动态卡没有按订阅的样式覆盖(㉔e 起,卡片设置只剩直播封面),链接卡的整份呈现(样式 + 图廊轮换 + 版式)
-// 从引擎拿,并且随 config-changed 刷新。
+// 动态卡没有按订阅的样式覆盖(㉔e 起,卡片设置只剩直播封面),链接卡的呈现(皮肤)从引擎拿,
+// 并且随 config-changed 刷新。
 // ---------------------------------------------------------------------------
 
 describe("createEngines — 链接卡的呈现与开关", () => {
@@ -3488,18 +3488,6 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		]);
 		c.bus.emit("config-changed", { scope: "connections" });
 		expect(c.runtime.linkPolicyFor(KEY).isOn).toBe(false);
-	});
-
-	it("链接卡没有样式覆盖可言:配色恒为 undefined(渲染器逐字段回退全局),改全局封面也不带进来", () => {
-		const c = setup();
-		active = c;
-		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
-
-		patchGlobals(c, (g) => {
-			g.defaults.cards.liveCoverImageIds = ["cover.png"];
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 	});
 });
 

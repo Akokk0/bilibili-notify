@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
-import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
+import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	ActivePersonaShape,
 	AddressCandidate,
@@ -98,7 +98,6 @@ import {
 } from "../live/live-sessions.js";
 import { type LiveWorkSettings, rotateLiveCover } from "../live/live-settings.js";
 import type { LiveTable } from "../live/live-table.js";
-import { resolveDynamicColorOptions } from "../posts/card-style.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
@@ -187,10 +186,9 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	linkPolicyFor(key: string): LinkPreviewPolicy;
 	/**
-	 * 链接卡的呈现 = 推送的动态卡在没有 per-UP 覆盖时的呈现:全局「动态」样式(含图廊
-	 * 轮换,**每调一次推进一次游标**)+ 全局那套皮肤。每张卡调一次,别攥着。
+	 * 链接卡的呈现 = 全局那套皮肤(链接卡没有 UP 可言)。每张卡调一次,别攥着。
 	 */
-	linkCardPresentation(): { colors: CardColorOptions | undefined; cardSkin: string };
+	linkCardPresentation(): { cardSkin: string };
 	/**
 	 * 主人点「测试」(`/api/connections/:id/probe`):顺路把还没探出来的平台能力再探一次(与定时
 	 * 健康探测同一条路),结果每次都写进连接的 `probeState`;通了当场清「连不上」,不通不算进失败次数。
@@ -981,15 +979,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 健康检查定时器(无谓扇出 + 日志噪音)。
 	let prevGlobals = initialGlobals;
 
-	// 链接卡(群里贴链接自动出的那张)的呈现与开关。呈现与推送的动态卡问同一处:全局
-	// 「动态」样式 + 全局默认图廊轮换 + 全局版式。做成随 config-changed 刷新的快照 ——
+	// 链接卡(群里贴链接自动出的那张)的呈现与开关。呈现就是全局那套皮肤。做成随
+	// config-changed 刷新的快照 ——
 	// 群里每句带链接的话都要读开关,而 `globals()` 是整份深拷贝,不该按条付这个钱。
 	const linkCardViewOf = (g: GlobalConfig) => ({
 		settings: g.linkPreview,
 		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
 		cardSkin: g.defaults.cardSkin,
-		// 动态卡没有按订阅的封面可言:链接卡就是「没有样式覆盖」(渲染器逐字段回退自己的全局配置)。
-		style: { enable: false } as const,
 	});
 	let linkCard = linkCardViewOf(initialGlobals);
 	// 逐群答案从默认行 + 例外 + 目标表 + 连接表算出来,三者任一变了都重算(见接口上的说明)。
@@ -1245,8 +1241,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		linkPreview: () => linkCard.settings,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
-			// 链接卡就是「全局那张动态卡」:吃全局那份动态样式(主人定的:它跟着全局走)。
-			colors: resolveDynamicColorOptions(linkCard.style),
 			cardSkin: linkCard.cardSkin,
 		}),
 		getModuleState: (): ModuleState => {
