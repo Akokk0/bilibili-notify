@@ -49,6 +49,13 @@ export type DictKey<D> = keyof D extends infer K
 
 const PLURAL_SEPARATOR = "#";
 const PLACEHOLDER = /\{(\w+)\}/g;
+const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"] as const;
+const DICT_KEY_SHAPE = new RegExp(
+	`^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*(#(${PLURAL_CATEGORIES.join("|")}))?$`,
+);
+const FORBIDDEN_SEGMENTS = ["__proto__", "constructor", "prototype"];
+const BRACES = /\{[^{}]*\}/g;
+const WELL_FORMED_HOLE = /^\{\w+\}$/;
 
 /** 这个键是哪一句:去掉 `#类别` 后缀。 */
 export function stemOf(key: string): string {
@@ -56,11 +63,32 @@ export function stemOf(key: string): string {
 	return at === -1 ? key : key.slice(0, at);
 }
 
+/**
+ * 译文键的判据(ADR-0037 决策 6):`段.段…`,段是 `[A-Za-z0-9_-]+`,带数量的句子可带 `#类别`;
+ * 再挡掉会碰原型链的段。守卫与宿主共用的就是这一把尺。
+ */
+export function isDictKey(key: string): boolean {
+	return (
+		DICT_KEY_SHAPE.test(key) &&
+		!stemOf(key)
+			.split(".")
+			.some((segment) => FORBIDDEN_SEGMENTS.includes(segment))
+	);
+}
+
 /** 一句译文里的占位符名,按出现顺序、不重复。 */
 export function placeholdersOf(text: string): string[] {
 	const names = new Set<string>();
 	for (const match of text.matchAll(PLACEHOLDER)) names.add(match[1] as string);
 	return [...names];
+}
+
+/**
+ * 一句译文里写坏的占位符,按出现顺序;同一个写坏的花括号出现几次就回几次。
+ * 运行时只填 `{\w+}`,其余会原样露给用户,所以守卫与宿主共用这一处判据。
+ */
+export function malformedPlaceholders(text: string): string[] {
+	return (text.match(BRACES) ?? []).filter((hole) => !WELL_FORMED_HOLE.test(hole));
 }
 
 /**

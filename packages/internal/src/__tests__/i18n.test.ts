@@ -3,7 +3,9 @@ import {
 	createI18n,
 	type Dict,
 	type DictKey,
+	isDictKey,
 	LOCALES,
+	malformedPlaceholders,
 	mergeDict,
 	placeholdersOf,
 	stemOf,
@@ -53,6 +55,79 @@ describe("stemOf / placeholdersOf", () => {
 	it("placeholdersOf 按出现顺序回不重复的占位符名", () => {
 		expect(placeholdersOf("{name} 有 {count} 条,{name} 再见")).toEqual(["name", "count"]);
 		expect(placeholdersOf("没有占位符")).toEqual([]);
+	});
+});
+
+describe("isDictKey", () => {
+	it("段由字母数字下划线连字符组成,点分;带数量的句子可带 #类别", () => {
+		for (const key of [
+			"a",
+			"a.b",
+			"failure.not_found",
+			"platform.qq-official.name",
+			"persona.gentle-maid.title",
+			"a.Mixed9",
+			"item#zero",
+			"item#one",
+			"item#two",
+			"item#few",
+			"item#many",
+			"item#other",
+		]) {
+			expect(isDictKey(key), key).toBe(true);
+		}
+	});
+
+	it("空段、别的字符、未知类别、保留段都算不合法", () => {
+		for (const key of [
+			"",
+			".a",
+			"a.",
+			"a..b",
+			"a b",
+			"a/b",
+			"名字",
+			"$manifest",
+			"a#some",
+			"a#one#other",
+			"#one",
+		]) {
+			expect(isDictKey(key), key).toBe(false);
+		}
+	});
+
+	it("挡掉会碰原型链的段,带不带 #类别 都挡", () => {
+		for (const key of [
+			"__proto__",
+			"constructor",
+			"prototype",
+			"a.constructor",
+			"prototype.x",
+			"a.__proto__.b",
+			"constructor#one",
+		]) {
+			expect(isDictKey(key), key).toBe(false);
+		}
+	});
+});
+
+describe("malformedPlaceholders", () => {
+	it("写坏的占位符按出现顺序回原文,写对的跳过", () => {
+		expect(malformedPlaceholders("{名字} {name} {user-name} { name } {} {name_2}")).toEqual([
+			"{名字}",
+			"{user-name}",
+			"{ name }",
+			"{}",
+		]);
+	});
+
+	it("没有占位符或都写对时回空", () => {
+		expect(malformedPlaceholders("没有占位符")).toEqual([]);
+		expect(malformedPlaceholders("{name} 有 {count} 条")).toEqual([]);
+	});
+
+	it("同一个写坏的花括号出现几次就回几次", () => {
+		expect(malformedPlaceholders("{a-b}{a-b}")).toEqual(["{a-b}", "{a-b}"]);
 	});
 });
 

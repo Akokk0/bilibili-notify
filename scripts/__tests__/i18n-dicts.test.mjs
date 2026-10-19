@@ -11,7 +11,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { LOCALES, placeholdersOf, stemOf } from "../../packages/internal/src/i18n.ts";
+import {
+	isDictKey,
+	LOCALES,
+	malformedPlaceholders,
+	placeholdersOf,
+	stemOf,
+} from "../../packages/internal/src/i18n.ts";
 
 /**
  * 译文文件的键与占位符(ADR-0037 决策 6):各语言的译文之间、女仆层与平实版之间,
@@ -40,19 +46,6 @@ export const COMPLETE_LOCALES = ["zh-CN"];
 
 /** 有女仆层的语言(ADR-0037 决策 4):今天 zh-CN,ja 第 5 期。其余语言出现女仆层文件就是错。 */
 export const MAID_LOCALES = ["zh-CN"];
-
-const CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
-/**
- * 键形如 `段.段…`,可带一个 `#类别`;段由字母数字下划线连字符组成。放这么宽是因为 BN 以后按码出的
- * 失败文案(`not_found`)、平台键(`qq-official`)、内置人格 id(`gentle-maid`)都会进键。
- * 拒掉会碰原型链的几个段(`__proto__` 等)。对拓展公开的键写法这一片不定,留给 3b-43 前问主人。
- */
-const KEY_SHAPE = new RegExp(`^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*(#(${CATEGORIES.join("|")}))?$`);
-const FORBIDDEN_SEGMENTS = ["__proto__", "constructor", "prototype"];
-
-/** 译文里凡是 `{…}` 的都得是 `{字母数字下划线}`;`{名字}`、`{user-name}`、`{ name }` 运行时不会被填,原样露给用户。 */
-const BRACES = /\{[^{}]*\}/g;
-const WELL_FORMED_HOLE = /^\{\w+\}$/;
 
 const isPlainObject = (value) =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
@@ -92,12 +85,7 @@ function categoriesOf(locale) {
 function checkShape(dict, report, locale, layer) {
 	let ok = true;
 	for (const [key, text] of Object.entries(dict)) {
-		if (
-			!KEY_SHAPE.test(key) ||
-			stemOf(key)
-				.split(".")
-				.some((s) => FORBIDDEN_SEGMENTS.includes(s))
-		) {
+		if (!isDictKey(key)) {
 			report(
 				"shape",
 				locale,
@@ -117,17 +105,9 @@ function checkShape(dict, report, locale, layer) {
 			report("empty-text", locale, layer, key, "值是空的");
 			ok = false;
 		}
-		for (const hole of text.match(BRACES) ?? []) {
-			if (!WELL_FORMED_HOLE.test(hole)) {
-				report(
-					"bad-placeholder",
-					locale,
-					layer,
-					key,
-					`占位符 ${hole} 写法不对,要 {字母数字下划线}`,
-				);
-				ok = false;
-			}
+		for (const hole of malformedPlaceholders(text)) {
+			report("bad-placeholder", locale, layer, key, `占位符 ${hole} 写法不对,要 {字母数字下划线}`);
+			ok = false;
 		}
 	}
 	return ok;

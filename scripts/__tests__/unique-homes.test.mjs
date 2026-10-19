@@ -42,6 +42,9 @@ export const HOMES = {
 	stemOf: "packages/internal/src/i18n.ts",
 	placeholdersOf: "packages/internal/src/i18n.ts",
 	LOCALES: "packages/internal/src/i18n.ts",
+	// 译文键与占位符的判据(3b-43):守卫与宿主共用这一把尺。
+	isDictKey: "packages/internal/src/i18n.ts",
+	malformedPlaceholders: "packages/internal/src/i18n.ts",
 	// 语言与口吻两项设置的取值表与「缺了怎么补」的规则(3b-10):服务端绑定与面板同步共用,默认只写在这一处。
 	VOICES: "packages/internal/src/i18n.ts",
 	DEFAULT_LOCALE: "packages/internal/src/i18n.ts",
