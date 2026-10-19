@@ -24,6 +24,7 @@ import type {
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
@@ -204,6 +205,7 @@ async function boot(opts: {
 	let activations = 0;
 	const loader = await loadExtensions({
 		transitImages: inertTransitImages,
+		locale: fixedLocale(),
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,

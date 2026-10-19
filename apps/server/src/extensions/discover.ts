@@ -10,6 +10,7 @@ import {
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
 import { dataPath } from "../runtime/roots.js";
+import { type ExtensionLocales, readExtensionLocales } from "./locales.js";
 import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
 
 /**
@@ -54,16 +55,6 @@ export const EXTENSION_ENTRY_FILE = "index.mjs";
  */
 export const EXTENSION_README_FILE = "README.md";
 export const EXTENSION_CHANGELOG_FILE = "CHANGELOG.md";
-/** 拓展译文目录(ADR-0037 决策 14):一种语言一个 `<语言码>.json`,不认别的名字。 */
-export const EXTENSION_LOCALES_DIR = "locales";
-/**
- * 一份译文的上限。译文是纯字符串表,256 KB 已经是几万句;再大多半是打错了。
- *
- * 打包那头同样各写一份数,`pack-extension.test.mjs` 拿两头对着钉。
- */
-export const EXTENSION_LOCALE_FILE_MAX_BYTES = 256 * 1024;
-/** `locales/` 整个目录的上限。单份各合规、合起来过大一样拦。 */
-export const EXTENSION_LOCALES_TOTAL_MAX_BYTES = 2 * 1024 * 1024;
 /**
  * 一份文档的上限。拆包那道闸与面板这头的读**共用它** —— 两处各写一个数的话,
  * 装得进去却读不出来(或者反过来)只会在真机上露馅。
@@ -107,6 +98,11 @@ export type ExtensionDirRead =
 			manifest: ExtensionManifest;
 			/** 要 import 的那个文件,绝对路径。 */
 			entry: string;
+			/**
+			 * `locales/` 里读好的译文与问题(ADR-0037 决策 14)。读目录这一步一次读好,之后只在内存里
+			 * 按当前语言合与盖 —— 读它不碰任何拓展代码。
+			 */
+			locales: ExtensionLocales;
 			/** `dir` 是条软链时,它指到哪去 —— 面板要印出「跑的其实是仓里那份」。 */
 			linkedTo?: string;
 	  };
@@ -235,9 +231,10 @@ export async function readExtensionDir(
 	// 软链就把落点也报出来:开发版装进来的是仓里那份 `dist`,而「跑的到底是哪一份」
 	// 只有这一句答得了。不是软链就没有这一格(`readlink` 会抛 EINVAL)。
 	const linkedTo = await linkTarget(dir);
+	const locales = await readExtensionLocales(dir, manifest);
 	return linkedTo === undefined
-		? { state: "ready", id, dir, manifest, entry }
-		: { state: "ready", id, dir, manifest, entry, linkedTo };
+		? { state: "ready", id, dir, manifest, entry, locales }
+		: { state: "ready", id, dir, manifest, entry, locales, linkedTo };
 }
 
 export interface DiscoverExtensionsOptions {

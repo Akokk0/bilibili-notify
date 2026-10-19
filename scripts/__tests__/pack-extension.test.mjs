@@ -1,14 +1,14 @@
 import { strFromU8, strToU8 } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES,
-	EXTENSION_LOCALE_FILE_MAX_BYTES as LOADER_LOCALE_FILE_MAX_BYTES,
-	EXTENSION_LOCALES_TOTAL_MAX_BYTES as LOADER_LOCALES_TOTAL_MAX_BYTES,
-} from "../../apps/server/src/extensions/discover.js";
+import { EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES } from "../../apps/server/src/extensions/discover.js";
 import {
 	MAX_EXTENSION_PACKAGE_BYTES as LOADER_PACKAGE_MAX_BYTES,
 	openExtensionPackage,
 } from "../../apps/server/src/extensions/install.js";
+import {
+	EXTENSION_LOCALE_FILE_MAX_BYTES as LOADER_LOCALE_FILE_MAX_BYTES,
+	EXTENSION_LOCALES_TOTAL_MAX_BYTES as LOADER_LOCALES_TOTAL_MAX_BYTES,
+} from "../../apps/server/src/extensions/locales.js";
 import { LOCALES } from "../../packages/internal/src/i18n.ts";
 import {
 	EXTENSION_DOC_MAX_BYTES,

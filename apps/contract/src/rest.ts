@@ -197,6 +197,12 @@ export interface ExtensionDTO {
 	 * 卸载清空;新记了时服务端发 `extension-report-discrepancies-changed`(按拓展合并过),面板据此重取这张表。
 	 */
 	reportDiscrepancies?: ReportDiscrepancyView[];
+	/**
+	 * 译文里没收下的条目(ADR-0037 决策 14):每条一句话,**服务端已经按当前语言取好**,面板原样印。
+	 * **有才有这一格**,详情页凭它判「有问题才出现」那个注。`name` / `description` / 设置项的标签等
+	 * 给人看的字本身也已是当前语言的(没译到的落回简中 → 英文 → 清单原字)。
+	 */
+	localeIssues?: string[];
 }
 
 /** 一条「上报出入」(见 {@link ExtensionDTO.reportDiscrepancies})。 */
@@ -403,6 +409,11 @@ export interface ExtensionInstallResponse {
 	 * 用户那里当场 TypeError —— 少一颗钮是小事,把整块「装好了」炸掉是大事。
 	 */
 	docs?: { readme: boolean; changelog: boolean };
+	/**
+	 * 包里长得像语言码、但不在 BN 语言表里的译文文件(如 `locales/ko.json`):照装但**没写进盘**,
+	 * 在这里告知(ADR-0037 决策 14)。**有才有这一格**;可选,理由同 {@link ExtensionInstallResponse.docs}。
+	 */
+	skippedLocales?: string[];
 }
 
 export interface ExtensionsResponse {

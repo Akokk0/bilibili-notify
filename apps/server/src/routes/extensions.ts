@@ -35,8 +35,10 @@ import {
 	uninstallExtension,
 } from "../extensions/install.js";
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
+import type { LocaleIssue } from "../extensions/locales.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { ReportDiscrepancyTable } from "../extensions/report-discrepancies.js";
+import { t } from "../i18n/index.js";
 import type { IntegrationStore } from "../integration-store/store.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
@@ -169,6 +171,34 @@ function reportDiscrepanciesOf(
 }
 
 /**
+ * 一条译文问题的话,按**此刻**的当前语言取(ADR-0037 决策 1:出字那一刻读)。码有八种,各一句 ——
+ * 键必须是字面量(取字调用的守卫钉着),所以逐码写开,不拼键名。
+ */
+function localeIssueText(issue: LocaleIssue): string {
+	// 取字的值必须是对象字面量、参数名与译文的占位符一一对上(守卫钉着),所以用简写逐句传。
+	const { locale } = issue;
+	const path = issue.path.join(".");
+	switch (issue.code) {
+		case "invalid-json":
+			return t("extension.localeIssue.invalidJson", { locale });
+		case "too-large":
+			return t("extension.localeIssue.tooLarge", { locale });
+		case "invalid-key":
+			return t("extension.localeIssue.invalidKey", { locale, path });
+		case "invalid-text":
+			return t("extension.localeIssue.invalidText", { locale, path });
+		case "malformed-placeholder":
+			return t("extension.localeIssue.malformedPlaceholder", { locale, path });
+		case "unknown-entry":
+			return t("extension.localeIssue.unknownEntry", { locale, path });
+		case "untranslatable-entry":
+			return t("extension.localeIssue.untranslatableEntry", { locale, path });
+		case "too-long":
+			return t("extension.localeIssue.tooLong", { locale, path });
+	}
+}
+
+/**
  * 拓展页要的两样东西:装了哪些拓展(以及开没开),和某个拓展自己交上来的那份面板数据。
  *
  * 🔴 **状态走 `/api/*` 而不是 `/ext/<id>/*`**(ADR-0012 决策 36):后者**刻意**在鉴权外
@@ -214,6 +244,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				...(entry.staged === undefined ? {} : { staged: entry.staged }),
 				// 上报出入(决策 60):有才带,详情页凭它判「有问题才出现」那个框。
 				...reportDiscrepanciesOf(entry.id, opts.reportDiscrepancies),
+				// 译文问题(决策 14):句子此刻按当前语言取好,面板原样印;没有问题就没有这一格。
+				...(entry.localeIssues === undefined
+					? {}
+					: { localeIssues: entry.localeIssues.map(localeIssueText) }),
 			};
 		});
 		const body: ExtensionsResponse = {
@@ -266,6 +300,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			version: opened.pkg.manifest.version,
 			staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
 			docs: docsPresence(opened.pkg.docs),
+			// 语言表之外的译文文件没写进盘,告知一声;没有就不带这一格。
+			...(opened.pkg.skippedLocales.length > 0
+				? { skippedLocales: opened.pkg.skippedLocales }
+				: {}),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
 			restart: install.restartAbility,
@@ -371,6 +409,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			// 市场装完已经重扫过了 —— 与上传装包同一把尺子。
 			staged: stagedAfterInstall(opts.extensions(), outcome.id),
 			docs: outcome.docs,
+			...(outcome.skippedLocales === undefined ? {} : { skippedLocales: outcome.skippedLocales }),
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),
 			restart: install.restartAbility,

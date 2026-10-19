@@ -41,6 +41,7 @@ import {
 	readExtensionDir,
 } from "./discover.js";
 import { markLoadSucceeded, readLoadLedger, recordLoadAttempt } from "./load-ledger.js";
+import { type LocaleIssue, localizeManifest } from "./locales.js";
 import type { ExtensionMounts } from "./mount.js";
 import { judgeStoredSettings, type StoredSettingsVerdict } from "./settings-io.js";
 import type { ExtensionUpgrades } from "./upgrade.js";
@@ -56,8 +57,15 @@ export interface ExtensionEntry {
 	dir: string;
 	/** 那个目录是条软链时,它指到哪去 —— 开发版装进来的是仓里那份 `dist`。 */
 	linkedTo?: string;
-	/** 清单读得出来就带上 —— 面板要印名字,哪怕它没跑起来。 */
+	/**
+	 * 清单读得出来就带上 —— 面板要印名字,哪怕它没跑起来。
+	 *
+	 * 给人看的字(名字、说明、设置项的标签……)已经按**此刻的当前语言**盖过译文(ADR-0037 决策 14),
+	 * 每次 `list()` 现取;身份那几格之外的结构原样。
+	 */
 	manifest?: ExtensionManifest;
+	/** 这一份译文里没收下的条目(`manifest` 有才可能有);没有问题就没有这一格。句子由路由出。 */
+	localeIssues?: LocaleIssue[];
 	/**
 	 * 版本不合的那些只有**身份那几格**(那一档的格式可能根本不认识)—— 面板照样印得出
 	 * 它是谁、哪一版。与 `manifest` 不会同时有。
@@ -205,9 +213,20 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
  */
 export const ACTIVATE_TIMEOUT_MS = 30_000;
 
+/**
+ * 当前语言的读口(ADR-0037 决策 1:整台一种、出字那一刻读)。装载器与上下文只认这个口,
+ * 不认服务端的语言 store —— 测试注入它就能切语言。`onChange` 只在语言**真的变了**时叫。
+ */
+export interface LocaleReader {
+	current(): string;
+	onChange(fn: () => void): Disposable;
+}
+
 export interface LoadExtensionsOptions {
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
+	/** 当前语言。拓展页上的名字与说明按它现取。 */
+	locale: LocaleReader;
 	host: ServiceContext;
 	/**
 	 * 按拓展 id 要它的日志器(标签是 id、等级跟日志等级表里那一格)。每起一个拓展都问一次;同一个 id 要到的是
@@ -323,9 +342,12 @@ type ReadyDir = Extract<ExtensionDirRead, { state: "ready" }>;
 /** 扫出来的一条(没有清单的子目录不进表,见 `discoverExtensions`)。 */
 type DiskRead = Exclude<ExtensionDirRead, { state: "absent" }>;
 
-/** 一条记录的样子(入口指纹 + 清单)—— 「这是哪一份」就认这两样。 */
-function recordOf(print: string | undefined, manifest: ExtensionManifest): string {
-	return `${print}\n${JSON.stringify(manifest)}`;
+/**
+ * 一条记录的样子(入口指纹 + 清单 + 译文)—— 「这是哪一份」就认这三样。译文算进来:盘上只换了
+ * `locales/`,跑着的那份也不偷偷换(ADR-0012 决策 47),标「等着换上」。
+ */
+function recordOf(print: string | undefined, dir: ReadyDir): string {
+	return `${print}\n${JSON.stringify(dir.manifest)}\n${JSON.stringify(dir.locales.files)}`;
 }
 
 /**
@@ -527,9 +549,52 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		const { disk, running } = slot;
 		if (disk.state !== "ready") return undefined;
 		const stuck = running
-			? recordOf(slot.print, disk.manifest) !== recordOf(running.print, running.dir.manifest)
+			? recordOf(slot.print, disk) !== recordOf(running.print, running.dir)
 			: urlFor(disk.id, disk.entry, slot.print, false) === undefined;
 		return stuck ? { version: disk.manifest.version } : undefined;
+	}
+
+	/**
+	 * 某份目录的清单按**此刻**的当前语言盖过译文。语言是出字那一刻读的(决策 1),所以不在读目录时定死;
+	 * 同一份目录同一种语言只算一次 —— `list()` 一次面板轮询就叫一遍。
+	 */
+	const localized = new WeakMap<ReadyDir, { locale: string; manifest: ExtensionManifest }>();
+	function manifestOf(dir: ReadyDir): ExtensionManifest {
+		const locale = opts.locale.current();
+		const cached = localized.get(dir);
+		if (cached?.locale === locale) return cached.manifest;
+		const manifest = localizeManifest(dir.manifest, dir.locales, locale);
+		localized.set(dir, { locale, manifest });
+		return manifest;
+	}
+
+	/** 这份译文里没收下的条目;没有就不带这一格。 */
+	function localeIssuesOf(dir: ReadyDir): Pick<ExtensionEntry, "localeIssues"> {
+		return dir.locales.issues.length === 0 ? {} : { localeIssues: dir.locales.issues };
+	}
+
+	/** 上一次为某个 id 记过的译文问题(按内容认),读目录读出同样的问题不重复记。 */
+	const loggedLocaleIssues = new Map<string, string>();
+
+	/**
+	 * 读目录读出译文问题时记一条 warn(一次,不是每次 `list()`):重扫每次都会把盘上那份读一遍,
+	 * 同样的问题只在头一回与变了的时候说。
+	 */
+	function noteLocaleIssues(dir: DiskRead): void {
+		const issues = dir.state === "ready" ? dir.locales.issues : [];
+		if (issues.length === 0) {
+			loggedLocaleIssues.delete(dir.id);
+			return;
+		}
+		const signature = JSON.stringify(issues);
+		if (loggedLocaleIssues.get(dir.id) === signature) return;
+		loggedLocaleIssues.set(dir.id, signature);
+		host.logger.warn(
+			`[ext] ${dir.id} 的译文有 ${issues.length} 处没收下(只丢这几条,拓展照常用):${issues
+				.slice(0, 5)
+				.map((issue) => `${issue.locale}.json ${issue.path.join(".") || "-"} ${issue.code}`)
+				.join(";")}`,
+		);
 	}
 
 	/** 面板那一行,从格子现推。 */
@@ -540,7 +605,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			return {
 				...entryBase(running.dir),
 				state: "running",
-				manifest: running.dir.manifest,
+				manifest: manifestOf(running.dir),
+				...localeIssuesOf(running.dir),
 				...(staged ? { staged } : {}),
 			};
 		}
@@ -556,7 +622,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				detail: apiVersionMismatch(disk.requires, disk.range),
 			};
 		}
-		const at = { ...entryBase(disk), manifest: disk.manifest };
+		const at = { ...entryBase(disk), manifest: manifestOf(disk), ...localeIssuesOf(disk) };
 		// 关着的也带上 `staged`:装完那一刻、详情页照这一格就说得出「拨开也换不上」,不必各自现判。
 		if (!slot.applied) return { ...at, state: "disabled", ...(staged ? { staged } : {}) };
 		// 线上那档 `state: "staged"` 只在这儿推出来 —— 开着、没在跑、带着 `staged`。不单独存。
@@ -836,6 +902,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		slots.set(dir.id, slot);
 		// 盘上换了一版 / 新装:上一格留下的「设置读不了」随旧格作废(没人起它就不该留着)。
 		resolveSettingsInvalid(dir.id);
+		noteLocaleIssues(dir);
 		if (dir.state !== "ready") return;
 		slot.print = await fingerprintOf(dir.entry);
 		slot.applied = isEnabled(dir.id);
@@ -851,6 +918,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 */
 	async function revisit(slot: Slot, dir: DiskRead): Promise<void> {
 		const print = dir.state === "ready" ? await fingerprintOf(dir.entry) : undefined;
+		noteLocaleIssues(dir);
 		if (slot.running) {
 			const before = stagedOf(slot);
 			slot.disk = dir;
@@ -868,7 +936,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (
 			was.state === "ready" &&
 			dir.state === "ready" &&
-			recordOf(print, dir.manifest) === recordOf(slot.print, was.manifest)
+			recordOf(print, dir) === recordOf(slot.print, was)
 		) {
 			return;
 		}
@@ -889,6 +957,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		}
 		await stop(slot);
 		slot.disk = dir;
+		noteLocaleIssues(dir);
 		slot.print = await fingerprintOf(dir.entry);
 		// 这一下等于把开关落实成「开」—— 不记下的话,下一次 sync() 又装一遍。
 		slot.applied = true;
@@ -916,6 +985,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			if (onDisk.has(id)) continue;
 			await stop(slot);
 			slots.delete(id);
+			loggedLocaleIssues.delete(id);
 		}
 
 		for (const dir of now) {

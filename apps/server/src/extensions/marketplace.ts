@@ -104,6 +104,8 @@ export type MarketplaceInstallOutcome = Result<{
 	version: string;
 	/** 包里带没带那两份说明 —— 拆包时就知道,一路带回给面板。 */
 	docs: { readme: boolean; changelog: boolean };
+	/** 包里跳过没写进盘的译文文件(见 `OpenedExtensionPackage.skippedLocales`);没有就没有这一格。 */
+	skippedLocales?: string[];
 }>;
 
 export interface Marketplace {
@@ -582,6 +584,9 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			// 「新版等着换上」不在这儿判:换不换得上只有装载器答得了(决策 47),路由照重扫之后
 			// 那一行说 —— 与上传装包同一把尺子。
 			docs: docsPresence(opened.pkg.docs),
+			...(opened.pkg.skippedLocales.length > 0
+				? { skippedLocales: opened.pkg.skippedLocales }
+				: {}),
 		});
 	}
 

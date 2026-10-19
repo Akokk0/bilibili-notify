@@ -364,3 +364,31 @@ describe("discoverExtensions", () => {
 		expect(await discoverExtensions(root)).toEqual([]);
 	});
 });
+
+describe("读目录时读译文(ADR-0037 决策 14)", () => {
+	it("ready 的记录带上 locales/ 里读好的译文与问题", async () => {
+		const dir = await plant("bridge", manifest());
+		await mkdir(join(dir, "locales"));
+		await writeFile(
+			join(dir, "locales", "en.json"),
+			JSON.stringify({ "a.b": "ok", "bad key": "x" }),
+		);
+		await writeFile(join(dir, "locales", "zh-CN.json"), "{ 坏的");
+
+		const read = await readExtensionDir(dir);
+		if (read.state !== "ready") throw new Error("unreachable");
+		expect(read.locales.files.en?.dict).toEqual({ "a.b": "ok" });
+		expect(read.locales.files["zh-CN"]).toBeUndefined();
+		expect(read.locales.issues).toEqual([
+			{ locale: "zh-CN", code: "invalid-json", path: [] },
+			{ locale: "en", code: "invalid-key", path: ["bad key"] },
+		]);
+	});
+
+	it("没有 locales/ → 空译文", async () => {
+		const dir = await plant("bridge", manifest());
+		const read = await readExtensionDir(dir);
+		if (read.state !== "ready") throw new Error("unreachable");
+		expect(read.locales).toEqual({ files: {}, issues: [] });
+	});
+});

@@ -49,6 +49,7 @@ import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { bindTextSettings } from "./i18n/bind-settings.js";
 import { i18n } from "./i18n/index.js";
+import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
@@ -1241,6 +1242,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
 			root: extensionsRoot,
+			// 当前语言(决策 1:出字那一刻读);`onChange` 只在语言真变了时转,见 `localeReaderOf`。
+			locale: localeReaderOf({
+				current: () => i18n.state().locale,
+				subscribe: (fn) => i18n.subscribe(fn),
+			}),
 			host: runtime.serviceCtx,
 			// 每个拓展的日志:标签是它的 id、等级跟设置里 `logging.levels.<id>` 那一格(没写跟总等级)。
 			loggerOf: (id) => runtime.serviceCtx.forSubsystem(id, id).logger,

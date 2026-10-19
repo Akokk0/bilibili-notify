@@ -35,6 +35,7 @@ import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createExtensionsRoute } from "../routes/extensions.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import { dataPath } from "../runtime/roots.js";
+import { fixedLocale } from "./support/fixed-locale.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
 import { inertTransitImages, realTimeout } from "./support/integration-io.js";
@@ -282,6 +283,7 @@ describe("拓展", () => {
 		}
 		const loaded = await loadExtensions({
 			transitImages: inertTransitImages,
+			locale: fixedLocale(),
 			root: extRoot(),
 			host: quietHost(),
 			loggerOf: () => logger(),

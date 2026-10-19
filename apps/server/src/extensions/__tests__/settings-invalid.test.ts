@@ -22,6 +22,7 @@ import { join } from "node:path";
 import type { Issue, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
@@ -174,6 +175,7 @@ async function boot(
 	const activate = opts.activate ?? standard;
 	const loaded: LoadedExtensions = await loadExtensions({
 		transitImages: inertTransitImages,
+		locale: fixedLocale(),
 		root,
 		host,
 		loggerOf: () => logger,

@@ -23,6 +23,7 @@ import {
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
@@ -161,6 +162,7 @@ function quietHost(): ServiceContext {
 function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedExtensions> {
 	return loadExtensions({
 		transitImages: inertTransitImages,
+		locale: fixedLocale(),
 		root: installRoot,
 		host: quietHost(),
 		loggerOf: () => quietHost().logger,
@@ -1811,5 +1813,70 @@ describe("GET /api/ext/:id/lookup", () => {
 		const res = await boot().request("/douyin/lookup?q=x");
 		expect(res.status).toBe(404);
 		expect((await failureOf(res)).code).toBe("not_found");
+	});
+});
+
+/**
+ * 拓展的译文(ADR-0037 决策 14):列表里名字与说明已经是装载器按当前语言盖好的,路由只负责
+ * 把译文的问题翻成句子;装包的回应把跳过的语言文件告诉面板。
+ */
+describe("拓展的译文", () => {
+	it("列表带上译文问题,句子在宿主按当前语言取好", async () => {
+		const entry: ExtensionEntry = {
+			...running("bridge"),
+			localeIssues: [
+				{ locale: "en", code: "invalid-key", path: ["bad key"] },
+				{ locale: "zh-TW", code: "invalid-json", path: [] },
+				{
+					locale: "en",
+					code: "unknown-entry",
+					path: ["$manifest", "settings", "fields", "nope"],
+				},
+			],
+		};
+		const body = (await (
+			await boot({ entries: [entry] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.localeIssues).toEqual([
+			"译文 en.json 里「bad key」的键写法不对，这一条没有用上",
+			"译文 zh-TW.json 不是合法的 JSON，整份没有用上",
+			"译文 en.json 里「$manifest.settings.fields.nope」在清单里找不到对应的项，这一条没有用上",
+		]);
+	});
+
+	it("没有译文问题 → 没有这一格", async () => {
+		const body = (await (
+			await boot({ entries: [running("bridge")] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0] && "localeIssues" in body.extensions[0]).toBe(false);
+	});
+
+	it("装包:带了语言表之外的译文文件 → 照装,回应里告知跳过了哪几份", async () => {
+		const zip = zipSync({
+			"extension.json": strToU8(
+				JSON.stringify({
+					id: "bridge",
+					name: "机器人框架桥接",
+					description: "测试用",
+					version: "1.1.0",
+					apiVersion: 2,
+					contributes: { push: { display: PUSH_DISPLAY } },
+				}),
+			),
+			"index.mjs": strToU8("export function activate() {}"),
+			"locales/zh-CN.json": strToU8("{}"),
+			"locales/ko.json": strToU8("{}"),
+		});
+		const res = await upload(boot(), form(new Blob([zip])));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as ExtensionInstallResponse;
+		expect(body.skippedLocales).toEqual(["locales/ko.json"]);
+		expect((await stat(join(installRoot, "bridge", "locales", "zh-CN.json"))).isFile()).toBe(true);
+	});
+
+	it("装包:没有跳过的 → 回应里没有这一格", async () => {
+		const res = await upload(boot(), form(pack()));
+		const body = (await res.json()) as ExtensionInstallResponse;
+		expect("skippedLocales" in body).toBe(false);
 	});
 });

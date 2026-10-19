@@ -25,6 +25,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
+import { fixedLocale, switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
@@ -34,7 +35,7 @@ import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
-import { loadExtensions } from "../loader.js";
+import { type LocaleReader, loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -129,9 +130,12 @@ function run(opts: {
 	disposeTimeoutMs?: number;
 	/** 不给就用 `hostOpts` 里那个(每个 id 都回假宿主的日志器)。 */
 	loggerOf?: (id: string) => Logger;
+	/** 不给就一直是简中。 */
+	locale?: LocaleReader;
 }) {
 	return loadExtensions({
 		transitImages: inertTransitImages,
+		locale: opts.locale ?? fixedLocale(),
 		root,
 		...hostOpts(opts.host),
 		...(opts.loggerOf ? { loggerOf: opts.loggerOf } : {}),
@@ -273,6 +277,7 @@ describe("加载拓展", () => {
 		const runOnce = () =>
 			loadExtensions({
 				transitImages: inertTransitImages,
+				locale: fixedLocale(),
 				root,
 				...hostOpts(fakeHost()),
 				mounts: createExtensionMounts({ logger: silentLogger }),
@@ -437,6 +442,7 @@ describe("拓展声明的密钥字段", () => {
 		});
 		const loaded = await loadExtensions({
 			transitImages: inertTransitImages,
+			locale: fixedLocale(),
 			root,
 			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -514,6 +520,7 @@ describe("拓展自己的请求客户端", () => {
 		const captured = new Map<string, ExtensionContext>();
 		const loaded = await loadExtensions({
 			transitImages: inertTransitImages,
+			locale: fixedLocale(),
 			root,
 			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -609,6 +616,7 @@ describe("装载目录", () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
 			transitImages: inertTransitImages,
+			locale: fixedLocale(),
 			root,
 			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -895,6 +903,7 @@ describe("拨开关即热装卸", () => {
 		let on = true;
 		const loaded = await loadExtensions({
 			transitImages: inertTransitImages,
+			locale: fixedLocale(),
 			root,
 			...hostOpts(host),
 			mounts: createExtensionMounts({ logger: silentLogger }),
@@ -1755,5 +1764,107 @@ describe("宿主日志:跑的是哪一份代码看得见", () => {
 		expect(host.lines.some((line) => /^warn .*bridge v2\.0\.0 换不上.*重启 BN/.test(line))).toBe(
 			true,
 		);
+	});
+});
+
+/** 往 `<root>/<id>/locales/` 里写一份译文。 */
+async function plantLocale(id: string, locale: string, content: unknown): Promise<void> {
+	await mkdir(join(root, id, "locales"), { recursive: true });
+	await writeFile(
+		join(root, id, "locales", `${locale}.json`),
+		typeof content === "string" ? content : JSON.stringify(content),
+	);
+}
+
+describe("拓展的译文(ADR-0037 决策 14)", () => {
+	it("列表按当前语言出名字与说明;切语言后跟着换,读口不变时两次一样", async () => {
+		await plant("bridge", HEALTHY, { name: "原名", description: "原说明" });
+		await plantLocale("bridge", "en", {
+			$manifest: { name: "Bridge", description: "Lends bots." },
+		});
+		await plantLocale("bridge", "zh-CN", { $manifest: { name: "桥" } });
+		const reader = switchableLocale("zh-CN");
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: reader,
+		});
+
+		// 简中只译了名字:说明缺 → 落英文(回落链:本语言 → 简中 → 英文 → 原字)
+		expect(loaded.list()[0]?.manifest).toMatchObject({ name: "桥", description: "Lends bots." });
+		// 读口不变时两次一样
+		expect(loaded.list()).toEqual(loaded.list());
+
+		reader.set("en");
+		expect(loaded.list()[0]?.manifest).toMatchObject({ name: "Bridge" });
+		reader.set("ja");
+		// 日文没有、简中有 → 简中
+		expect(loaded.list()[0]?.manifest?.name).toBe("桥");
+	});
+
+	it("没带译文的拓展:清单原字,不受语言影响", async () => {
+		await plant("bridge", HEALTHY, { name: "原名" });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: switchableLocale("en"),
+		});
+		expect(loaded.list()[0]?.manifest?.name).toBe("原名");
+		expect(loaded.list()[0]?.localeIssues).toBeUndefined();
+	});
+
+	it("版本不合的那一行:身份照清单原字,不读译文", async () => {
+		await plant("old", HEALTHY, { apiVersion: 1, provides: ["push"], contributes: undefined });
+		await plantLocale("old", "en", { $manifest: { name: "Should not show" } });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: fixedLocale("en"),
+		});
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("incompatible");
+		expect(entry?.identity?.name).toBe("old");
+	});
+
+	it("译文有问题:那一行带问题,warn 只在读目录时记一次(不是每次 list)", async () => {
+		await plant("bridge", HEALTHY);
+		await plantLocale("bridge", "en", { "bad key": "x", $manifest: { name: "Bridge" } });
+		await plantLocale("bridge", "zh-TW", "{ 坏的");
+		const host = fakeHost();
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: fixedLocale("en"),
+		});
+		expect(loaded.list()[0]?.localeIssues).toEqual([
+			{ locale: "zh-TW", code: "invalid-json", path: [] },
+			{ locale: "en", code: "invalid-key", path: ["bad key"] },
+		]);
+		loaded.list();
+		loaded.list();
+		const warns = () => host.lines.filter((line) => /^warn \[ext\] bridge.*译文/.test(line));
+		expect(warns()).toHaveLength(1);
+		// 重扫一遍、盘上没变:不再记
+		await loaded.rescan();
+		expect(warns()).toHaveLength(1);
+	});
+
+	it("盘上只换了译文、跑着的那份 → 标 staged(译文算进「这是哪一份」)", async () => {
+		await plant("bridge", HEALTHY);
+		await plantLocale("bridge", "en", { $manifest: { name: "Bridge" } });
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: fixedLocale("en"),
+		});
+		expect(loaded.list()[0]?.staged).toBeUndefined();
+
+		await plantLocale("bridge", "en", { $manifest: { name: "Bridge 2" } });
+		await loaded.rescan();
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("running");
+		expect(entry?.staged).toEqual({ version: "1.0.0" });
+		// 跑着的照旧是旧的那份
+		expect(entry?.manifest?.name).toBe("Bridge");
 	});
 });
