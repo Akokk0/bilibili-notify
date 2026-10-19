@@ -1,52 +1,87 @@
-import type { ServiceContext } from "@bilibili-notify/internal";
+import type { HttpClient, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createQQTokenManager, fetchAppAccessToken } from "../qq-official";
 
-// fetch 用 vi.stubGlobal mock,不打真实网络(对齐 adapters.test.ts)。
+// 底下的 fetch 用 vi.stubGlobal mock,不打真实网络;请求客户端是真的(对齐 adapters.test.ts)。
 let fetchMock: ReturnType<typeof vi.fn>;
+let http: HttpClient;
 beforeEach(() => {
 	fetchMock = vi.fn();
 	vi.stubGlobal("fetch", fetchMock);
+	http = integrationIo().http;
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
 });
 
-function jsonRes(body: unknown, init?: { ok?: boolean; status?: number }): Response {
-	return {
-		ok: init?.ok ?? true,
-		status: init?.status ?? 200,
-		json: async () => body,
-	} as Response;
+/** 真的 `Response`:请求客户端要读头、读字节。 */
+function jsonRes(body: unknown, init?: { status?: number }): Response {
+	return new Response(JSON.stringify(body), { status: init?.status ?? 200 });
 }
 
 describe("fetchAppAccessToken", () => {
 	it("POST bots.qq.com,带 appId/clientSecret,解析 access_token + expires_in", async () => {
 		fetchMock.mockResolvedValueOnce(jsonRes({ access_token: "TKN", expires_in: 7200 }));
-		const r = await fetchAppAccessToken("app1", "secret1");
+		const r = await fetchAppAccessToken(http, "app1", "secret1");
 		expect(r).toEqual({ token: "TKN", expiresInSec: 7200 });
 		const call = fetchMock.mock.calls[0];
 		if (!call) throw new Error("expected a fetch call");
-		expect(call[0]).toBe("https://bots.qq.com/app/getAppAccessToken");
+		expect(String(call[0])).toBe("https://bots.qq.com/app/getAppAccessToken");
 		expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({
 			appId: "app1",
 			clientSecret: "secret1",
 		});
 	});
 
+	it("线上只带内容类型一个头:不带浏览器身份、不带 Cookie", async () => {
+		fetchMock.mockResolvedValueOnce(jsonRes({ access_token: "TKN", expires_in: 7200 }));
+		await fetchAppAccessToken(http, "app1", "secret1");
+		const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+		expect(Object.fromEntries(new Headers(init.headers))).toEqual({
+			"content-type": "application/json",
+		});
+	});
+
 	it("HTTP 非 2xx → 抛错", async () => {
-		fetchMock.mockResolvedValueOnce(jsonRes({}, { ok: false, status: 401 }));
-		await expect(fetchAppAccessToken("a", "s")).rejects.toThrow(/HTTP 401/);
+		fetchMock.mockResolvedValueOnce(jsonRes({}, { status: 401 }));
+		await expect(fetchAppAccessToken(http, "a", "s")).rejects.toThrow(/HTTP 401/);
 	});
 
 	it("响应缺 access_token → 抛错", async () => {
 		fetchMock.mockResolvedValueOnce(jsonRes({ expires_in: 7200 }));
-		await expect(fetchAppAccessToken("a", "s")).rejects.toThrow(/access_token/);
+		await expect(fetchAppAccessToken(http, "a", "s")).rejects.toThrow(/access_token/);
 	});
 
 	it("expires_in 缺失/非法 → 默认 7200", async () => {
 		fetchMock.mockResolvedValueOnce(jsonRes({ access_token: "T" }));
-		expect((await fetchAppAccessToken("a", "s")).expiresInSec).toBe(7200);
+		expect((await fetchAppAccessToken(http, "a", "s")).expiresInSec).toBe(7200);
+	});
+
+	it("连不上 → 抛错(话里带底层原因)", async () => {
+		fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+		await expect(fetchAppAccessToken(http, "a", "s")).rejects.toThrow(/fetch failed/);
+	});
+
+	it("回应慢于客户端默认的 20 秒仍等得到(显式 300 秒的超时只为保住今天没有超时的行为)", async () => {
+		vi.useFakeTimers();
+		fetchMock.mockImplementation(
+			(_url: URL, init: RequestInit) =>
+				new Promise((resolve, reject) => {
+					const timer = setTimeout(
+						() => resolve(jsonRes({ access_token: "SLOW", expires_in: 7200 })),
+						30_000,
+					);
+					(init.signal as AbortSignal).addEventListener("abort", () => {
+						clearTimeout(timer);
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+					});
+				}),
+		);
+		const pending = fetchAppAccessToken(http, "a", "s");
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(await pending).toEqual({ token: "SLOW", expiresInSec: 7200 });
 	});
 });
 
@@ -82,9 +117,10 @@ function makeTestCtx() {
 
 describe("createQQTokenManager", () => {
 	it("getToken 缓存:第二次不再请求", async () => {
-		fetchMock.mockResolvedValue(jsonRes({ access_token: "T1", expires_in: 7200 }));
+		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, logger } = makeTestCtx();
 		const mgr = createQQTokenManager({
+			http,
 			appId: "a",
 			clientSecret: "s",
 			serviceCtx: ctx,
@@ -97,9 +133,10 @@ describe("createQQTokenManager", () => {
 	});
 
 	it("按 expires_in - buffer 排提前刷新定时器", async () => {
-		fetchMock.mockResolvedValue(jsonRes({ access_token: "T1", expires_in: 7200 }));
+		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
 		const mgr = createQQTokenManager({
+			http,
 			appId: "a",
 			clientSecret: "s",
 			serviceCtx: ctx,
@@ -116,7 +153,13 @@ describe("createQQTokenManager", () => {
 			.mockResolvedValueOnce(jsonRes({ access_token: "T1", expires_in: 7200 }))
 			.mockResolvedValueOnce(jsonRes({ access_token: "T2", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({ appId: "a", clientSecret: "s", serviceCtx: ctx, logger });
+		const mgr = createQQTokenManager({
+			http,
+			appId: "a",
+			clientSecret: "s",
+			serviceCtx: ctx,
+			logger,
+		});
 		expect(await mgr.getToken()).toBe("T1");
 		timers.at(-1)?.fn(); // 触发提前刷新
 		expect(await mgr.getToken()).toBe("T2");
@@ -126,19 +169,31 @@ describe("createQQTokenManager", () => {
 
 	it("首次失败不缓存 → 下次 getToken 重试", async () => {
 		fetchMock
-			.mockResolvedValueOnce(jsonRes({}, { ok: false, status: 500 }))
+			.mockResolvedValueOnce(jsonRes({}, { status: 500 }))
 			.mockResolvedValueOnce(jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({ appId: "a", clientSecret: "s", serviceCtx: ctx, logger });
+		const mgr = createQQTokenManager({
+			http,
+			appId: "a",
+			clientSecret: "s",
+			serviceCtx: ctx,
+			logger,
+		});
 		await expect(mgr.getToken()).rejects.toThrow();
 		expect(await mgr.getToken()).toBe("T1");
 		mgr.dispose();
 	});
 
 	it("dispose 后 getToken 拒绝,且定时器已停", async () => {
-		fetchMock.mockResolvedValue(jsonRes({ access_token: "T1", expires_in: 7200 }));
+		fetchMock.mockImplementation(async () => jsonRes({ access_token: "T1", expires_in: 7200 }));
 		const { ctx, timers, logger } = makeTestCtx();
-		const mgr = createQQTokenManager({ appId: "a", clientSecret: "s", serviceCtx: ctx, logger });
+		const mgr = createQQTokenManager({
+			http,
+			appId: "a",
+			clientSecret: "s",
+			serviceCtx: ctx,
+			logger,
+		});
 		await mgr.getToken();
 		mgr.dispose();
 		expect(timers.at(-1)?.disposed).toBe(true);

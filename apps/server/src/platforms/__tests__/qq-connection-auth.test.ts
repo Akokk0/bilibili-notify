@@ -8,6 +8,7 @@ import type { ConnectionAuth } from "@bilibili-notify/internal";
 import { QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createPlatformAdapterRegistry, deriveAdapterRegistry } from "../../push/registry.js";
 import { createQQConnectionAuth } from "../qq-bind.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
@@ -21,8 +22,18 @@ function logger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
+/** 真的 `Response`:请求客户端要读头、读字节。 */
 function res(status: number, body: unknown): Response {
-	return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+	return new Response(JSON.stringify(body), { status });
+}
+
+/** 假 fetch:不回应,直到请求客户端的超时(或调用方)中止它。 */
+function hangUntilAborted(init: RequestInit = {}): Promise<Response> {
+	return new Promise((_resolve, reject) => {
+		(init.signal as AbortSignal).addEventListener("abort", () => {
+			reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+		});
+	});
 }
 
 /** 假腾讯:create 记下钥匙,poll 取 `pollQueue` 队头(空了回 pending)。 */
@@ -30,19 +41,20 @@ function makeUpstream() {
 	const state = {
 		bindKey: "",
 		upstreamTaskId: "UP-TASK-1",
-		pollQueue: [] as Array<() => Promise<Response> | Response>,
-		createFails: null as null | (() => Promise<Response> | Response),
+		pollQueue: [] as Array<(init?: RequestInit) => Promise<Response> | Response>,
+		createFails: null as null | ((init?: RequestInit) => Promise<Response> | Response),
 		calls: [] as Array<{ url: string; signal?: AbortSignal | null }>,
 	};
-	const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (target: URL | string, init?: RequestInit) => {
+		const url = String(target);
 		state.calls.push({ url, signal: init?.signal });
 		if (url.endsWith("/lite/create_bind_task")) {
-			if (state.createFails) return state.createFails();
+			if (state.createFails) return state.createFails(init);
 			state.bindKey = (JSON.parse(String(init?.body)) as { key: string }).key;
 			return res(200, { retcode: 0, data: { task_id: state.upstreamTaskId } });
 		}
 		const next = state.pollQueue.shift();
-		if (next) return next();
+		if (next) return next(init);
 		return res(200, { retcode: 0, data: { status: 1 } });
 	});
 	const pollCalls = () => state.calls.filter((c) => c.url.endsWith("/lite/poll_bind_result"));
@@ -73,7 +85,8 @@ afterEach(() => {
 
 function make() {
 	const log = logger();
-	const { auth, clear } = createQQConnectionAuth({ logger: log });
+	const { http } = integrationIo();
+	const { auth, clear } = createQQConnectionAuth({ logger: log, http: () => http });
 	return { auth, clear, log };
 }
 
@@ -109,24 +122,23 @@ describe("createQQConnectionAuth.begin", () => {
 		if (!r.ok) expect(r.message).toContain("系统繁忙");
 	});
 
-	it("上游超时(TimeoutError)→ timeout", async () => {
-		up.state.createFails = () => {
-			const e = new Error("timed out");
-			e.name = "TimeoutError";
-			return Promise.reject(e);
-		};
+	it("上游一直不回:满 10 秒由请求客户端掐断 → timeout", async () => {
+		vi.useFakeTimers();
+		up.state.createFails = hangUntilAborted;
 		const { auth } = make();
-		expect(await auth.begin(signal())).toMatchObject({ ok: false, code: "timeout" });
+		const pending = auth.begin(signal());
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(await pending).toMatchObject({ ok: false, code: "timeout" });
 	});
 
-	it("调用方的 signal 往上游传(中止了上游请求也跟着中止)", async () => {
+	it("调用方中止了在途的请求 → unavailable(不是 timeout)", async () => {
 		const ac = new AbortController();
+		up.state.createFails = hangUntilAborted;
 		const { auth } = make();
-		await auth.begin(ac.signal);
-		const created = up.state.calls[0]?.signal;
-		expect(created?.aborted).toBe(false);
+		const pending = auth.begin(ac.signal);
+		await vi.waitFor(() => expect(up.state.calls).toHaveLength(1));
 		ac.abort();
-		expect(created?.aborted).toBe(true);
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 	});
 
 	it("BN_QQ_BIND_HOST 逃生口:请求打到那个主机", async () => {
@@ -220,15 +232,14 @@ describe("createQQConnectionAuth.state", () => {
 		});
 	});
 
-	it("上游超时:timeout", async () => {
+	it("上游超时:满 10 秒由请求客户端掐断 → timeout", async () => {
 		const { auth } = make();
 		const b = await begun(auth);
-		up.state.pollQueue.push(() => {
-			const e = new Error("timed out");
-			e.name = "TimeoutError";
-			return Promise.reject(e);
-		});
-		expect(await auth.state(b.taskId, signal())).toMatchObject({ ok: false, code: "timeout" });
+		vi.useFakeTimers();
+		up.state.pollQueue.push(hangUntilAborted);
+		const pending = auth.state(b.taskId, signal());
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(await pending).toMatchObject({ ok: false, code: "timeout" });
 	});
 
 	it("不认识的任务号:not_found", async () => {
@@ -369,11 +380,25 @@ describe("接线", () => {
 
 	it("adapter.stop() 之后原来的任务号回 not_found", async () => {
 		const { adapter } = qqAdapter();
+		adapter.start(fakeAdapterContext().ctx);
 		const b = await begun(adapter.connectionAuth as ConnectionAuth);
 		adapter.stop?.();
 		expect(await adapter.connectionAuth?.state(b.taskId, signal())).toMatchObject({
 			ok: false,
 			code: "not_found",
 		});
+	});
+
+	it("start 之前(或 stop 之后)begin / state → unavailable「适配器还没启动」,一个请求都不发", async () => {
+		const { adapter } = qqAdapter();
+		const auth = adapter.connectionAuth as ConnectionAuth;
+		const expected = { ok: false, code: "unavailable", message: "适配器还没启动" };
+		expect(await auth.begin(signal())).toEqual(expected);
+		adapter.start(fakeAdapterContext().ctx);
+		const b = await begun(auth);
+		adapter.stop?.();
+		expect(await auth.begin(signal())).toEqual(expected);
+		expect(await auth.state(b.taskId, signal())).toMatchObject({ ok: false, code: "not_found" });
+		expect(up.fetchMock).toHaveBeenCalledTimes(1);
 	});
 });

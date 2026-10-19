@@ -7,6 +7,9 @@ import type {
 	DestinationRef,
 	Disposable,
 	Failure,
+	FetchOptions,
+	HttpClient,
+	HttpResponse,
 	InboundGroupMessage,
 	InboundPrivateMessage,
 	Logger,
@@ -18,9 +21,10 @@ import type {
 	QQOfficialConnectionSettings,
 	Result,
 	ServiceContext,
+	WebSocketLike,
 } from "@bilibili-notify/internal";
 import { fail, ok, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
-import { type RawData, WebSocket } from "ws";
+import type { RawData } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
 import { t } from "../i18n/index.js";
@@ -32,6 +36,20 @@ import { upstreamMessage } from "./upstream-message.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
+
+/**
+ * QQ 请求的单跳超时,毫秒。这几处出网在改走请求客户端之前没有任何超时(原生 fetch 不设总时限),
+ * 而客户端的默认是 20 秒;显式给 300 秒是**只为保行为**,收紧另议。
+ */
+const QQ_REQUEST_TIMEOUT_MS = 300_000;
+
+/** QQ 的请求都走这里:不带浏览器身份、不碰 cookie 罐(线上只有调用方给的头),超时见 {@link QQ_REQUEST_TIMEOUT_MS}。 */
+function qqFetch(http: HttpClient, url: string, options: FetchOptions) {
+	return http.fetch(url, { timeoutMs: QQ_REQUEST_TIMEOUT_MS, ...options, bare: true });
+}
+
+/** WebSocket 的「已连上」(WHATWG 的 `readyState` 取值,`WebSocketLike` 不带常量)。 */
+const WS_OPEN = 1;
 
 export interface QQAccessToken {
 	token: string;
@@ -57,18 +75,25 @@ class QQTokenError extends Error {
  * 与 WS Identify 都带它。失败抛错,由 token 管理器决定重试/降级。
  */
 export async function fetchAppAccessToken(
+	http: HttpClient,
 	appId: string,
 	clientSecret: string,
 	signal?: AbortSignal,
 ): Promise<QQAccessToken> {
-	const res = await fetch(QQ_TOKEN_ENDPOINT, {
+	const res = await qqFetch(http, QQ_TOKEN_ENDPOINT, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ appId, clientSecret }),
 		signal,
 	});
-	if (!res.ok) throw new QQTokenError(`getAppAccessToken HTTP ${res.status}`, res.status);
-	const data = (await res.json()) as { access_token?: string; expires_in?: number | string };
+	// 没走通(连不上、超时、被中止):抛普通错,token 管理器与 `tokenFailure` 记成 unavailable。
+	if (!res.ok) throw new Error(res.message);
+	if (!res.isSuccess) {
+		throw new QQTokenError(`getAppAccessToken HTTP ${res.status}`, res.status);
+	}
+	const parsed = res.json();
+	if (!parsed.ok) throw new Error(parsed.message);
+	const data = parsed.value as { access_token?: string; expires_in?: number | string };
 	if (!data.access_token) throw new QQTokenError("getAppAccessToken: 响应缺 access_token");
 	const expiresInSec = Number(data.expires_in);
 	return {
@@ -185,6 +210,8 @@ export interface QQTokenManager {
 }
 
 export interface QQTokenManagerOptions {
+	/** 换 token 走这个集成的请求客户端。 */
+	http: HttpClient;
 	appId: string;
 	clientSecret: string;
 	serviceCtx: ServiceContext;
@@ -205,7 +232,11 @@ export function createQQTokenManager(opts: QQTokenManagerOptions): QQTokenManage
 	let disposed = false;
 
 	async function refresh(): Promise<string> {
-		const { token, expiresInSec } = await fetchAppAccessToken(opts.appId, opts.clientSecret);
+		const { token, expiresInSec } = await fetchAppAccessToken(
+			opts.http,
+			opts.appId,
+			opts.clientSecret,
+		);
 		if (!disposed) {
 			refreshTimer?.dispose();
 			const delayMs = Math.max(expiresInSec - buffer, 1) * 1000;
@@ -406,6 +437,8 @@ function qqRawToString(raw: RawData): string {
 }
 
 export interface QQGatewayConnOptions {
+	/** 网关长连经这个集成的请求客户端建(不带浏览器身份)。 */
+	http: HttpClient;
 	connectionId: string;
 	/** 解析 wss 网关地址(REST GET /gateway → url,沙箱改写)。每次连接前调,便于换 host。 */
 	resolveGatewayUrl(): Promise<string>;
@@ -469,7 +502,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 	const reconnectBase = opts.reconnectBaseMs ?? QQ_RECONNECT_BASE_MS;
 	const reconnectMax = opts.reconnectMaxMs ?? QQ_RECONNECT_MAX_MS;
 
-	let ws: WebSocket | null = null;
+	let ws: WebSocketLike | null = null;
 	let heartbeatTimer: Disposable | null = null;
 	let reconnectTimer: Disposable | null = null;
 	let attempt = 0;
@@ -514,7 +547,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 	}
 
 	function heartbeat(): void {
-		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		if (!ws || ws.readyState !== WS_OPEN) return;
 		if (!acked) {
 			// 上一拍心跳没收到 ACK = 僵尸连接,关掉触发重连(对齐 @satorijs)。
 			logger.warn(`[qq] adapter=${connectionId} 心跳无 ACK,判定僵尸连接,关闭重连`);
@@ -662,30 +695,31 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			return;
 		}
 		if (closed) return;
-		let socket: WebSocket;
-		try {
-			socket = new WebSocket(url);
-		} catch (e) {
-			state.lastError = e instanceof Error ? e.message : String(e);
+		// 不带浏览器身份、不带 cookie:网关握手今天就没有任何附加头。
+		const opened = opts.http.websocket(url, { bare: true });
+		if (!opened.ok) {
+			// 地址不合法 / 协议不收:与原来 `new WebSocket` 同步抛的那一路一样,记下原话、退避重连。
+			state.lastError = opened.message;
 			scheduleReconnect();
 			return;
 		}
+		const socket = opened.socket;
 		ws = socket;
 		socket.on("open", () => {
 			attempt = 0;
 			state.lastError = null;
 		});
-		socket.on("message", (raw: RawData) => onMessage(raw));
-		socket.on("error", (err: Error) => {
-			state.lastError = err.message;
+		socket.on("message", (raw) => onMessage(raw as RawData));
+		socket.on("error", (err) => {
+			state.lastError = (err as Error).message;
 		});
-		socket.on("close", (code: number) => {
+		socket.on("close", (code) => {
 			online = false;
 			armOfflineTimer();
 			clearHeartbeat();
 			if (ws === socket) ws = null;
 			// 4000+ 非限流/超时 → 清会话(强制重新 IDENTIFY);否则保留以便 RESUME。
-			if (qqShouldResetSessionOnClose(code)) {
+			if (qqShouldResetSessionOnClose(code as number)) {
 				sessionId = "";
 				lastSeq = null;
 			}
@@ -988,24 +1022,36 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 // PlatformAdapter 工厂 —— send 编排(上传→media)+ probe/reconcile/dispose 生命周期
 // ---------------------------------------------------------------------------
 
+/**
+ * 发消息的两个原语共用的收尾:没走通(连不上、超时、被中止)抛错 —— `send` 的循环接住记成
+ * unavailable,与原生 fetch 连不上抛错时同一条路;走通了回 `{status, body}`(body 解析失败回退 {})。
+ */
+function qqSendOutcome(res: Result<HttpResponse>): { status: number; body: unknown } {
+	if (!res.ok) throw new Error(res.message);
+	const parsed = res.json();
+	return { status: res.status, body: parsed.ok ? parsed.value : {} };
+}
+
 /** JSON POST,返回 `{status, body}`(body 解析失败回退 {})。 */
 async function qqPostJson(
+	http: HttpClient,
 	base: string,
 	headers: Record<string, string>,
 	path: string,
 	body: unknown,
 ): Promise<{ status: number; body: unknown }> {
-	const res = await fetch(`${base}${path}`, {
-		method: "POST",
-		headers: { ...headers, "content-type": "application/json" },
-		body: JSON.stringify(body),
-	});
-	const parsed = await res.json().catch(() => ({}));
-	return { status: res.status, body: parsed };
+	return qqSendOutcome(
+		await qqFetch(http, `${base}${path}`, {
+			method: "POST",
+			headers: { ...headers, "content-type": "application/json" },
+			body: JSON.stringify(body),
+		}),
+	);
 }
 
-/** 频道图片走 multipart `file_image`(直传 Buffer,不需公网 URL,不设 content-type 让 fetch 补 boundary)。 */
+/** 频道图片走 multipart `file_image`(直传 Buffer,不需公网 URL,不设 content-type 让运行时补 boundary)。 */
 async function qqPostChannelForm(
+	http: HttpClient,
 	base: string,
 	headers: Record<string, string>,
 	channelId: string,
@@ -1015,24 +1061,31 @@ async function qqPostChannelForm(
 	const form = new FormData();
 	form.append("content", content);
 	form.append("file_image", new Blob([buffer]), "image.png");
-	const res = await fetch(`${base}/channels/${channelId}/messages`, {
-		method: "POST",
-		headers,
-		body: form,
-	});
-	const parsed = await res.json().catch(() => ({}));
-	return { status: res.status, body: parsed };
+	return qqSendOutcome(
+		await qqFetch(http, `${base}/channels/${channelId}/messages`, {
+			method: "POST",
+			headers,
+			body: form,
+		}),
+	);
 }
 
 /** 群/C2C 富媒体两步第一步:上传拿 file_info。 */
 async function qqUploadMedia(
+	http: HttpClient,
 	base: string,
 	headers: Record<string, string>,
 	scope: "group" | "private",
 	openid: string,
 	upload: QQFileUploadBody | { file_type: number; srv_send_msg: boolean; url: string },
 ): Promise<Result<{ media: QQFileMedia }>> {
-	const { status, body } = await qqPostJson(base, headers, qqFilesPath(scope, openid), upload);
+	const { status, body } = await qqPostJson(
+		http,
+		base,
+		headers,
+		qqFilesPath(scope, openid),
+		upload,
+	);
 	const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 	const fileInfo = data.file_info;
 	if (typeof fileInfo === "string") return ok({ media: { ...data, file_info: fileInfo } });
@@ -1060,21 +1113,27 @@ export interface QQGuild {
  * 不整体崩。on-demand 一次性 token(不复用网关 manager,UI 偶发调用可接受)。
  */
 export async function fetchQQGuildChannels(
+	http: HttpClient,
 	cfg: QQOfficialConnectionSettings,
 	signal?: AbortSignal,
 ): Promise<QQGuild[]> {
-	const { token } = await fetchAppAccessToken(cfg.appId, cfg.appSecret, signal);
+	const { token } = await fetchAppAccessToken(http, cfg.appId, cfg.appSecret, signal);
 	const base = qqApiBase(cfg.sandbox);
 	const headers = qqRestHeaders(token, cfg.appId);
-	const guildsRes = await fetch(`${base}/users/@me/guilds`, { headers, signal });
-	if (!guildsRes.ok) throw new Error(`列频道服务器 HTTP ${guildsRes.status}`);
-	const guilds = (await guildsRes.json().catch(() => [])) as Array<{ id?: string; name?: string }>;
+	const guildsRes = await qqFetch(http, `${base}/users/@me/guilds`, { headers, signal });
+	// 没走通(含路由断开中止了请求)抛错,`listAddressCandidates` 接住记成 unavailable。
+	if (!guildsRes.ok) throw new Error(guildsRes.message);
+	if (!guildsRes.isSuccess) throw new Error(`列频道服务器 HTTP ${guildsRes.status}`);
+	const guildsJson = guildsRes.json();
+	const guilds = (guildsJson.ok ? guildsJson.value : []) as Array<{ id?: string; name?: string }>;
 	const out: QQGuild[] = [];
 	for (const g of guilds) {
 		if (!g.id) continue;
-		const chRes = await fetch(`${base}/guilds/${g.id}/channels`, { headers, signal });
-		if (!chRes.ok) continue; // 读不了该 guild 子频道 → 跳过,不整体失败
-		const channels = (await chRes.json().catch(() => [])) as Array<{
+		const chRes = await qqFetch(http, `${base}/guilds/${g.id}/channels`, { headers, signal });
+		if (!chRes.ok) throw new Error(chRes.message);
+		if (!chRes.isSuccess) continue; // 读不了该 guild 子频道 → 跳过,不整体失败
+		const channelsJson = chRes.json();
+		const channels = (channelsJson.ok ? channelsJson.value : []) as Array<{
 			id?: string;
 			name?: string;
 			type?: number;
@@ -1146,7 +1205,10 @@ export const qqOfficialSettingsSegment: IntegrationSettingsSegment = {
 const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === ADAPTER_KEY;
 
 /** 网关长连要用的那几个上下文口:入站交宿主,「连不上」报问题。 */
-type GatewayCtx = Pick<PlatformAdapterContext, "inbound" | "reportProblem" | "resolveProblem">;
+type GatewayCtx = Pick<
+	PlatformAdapterContext,
+	"http" | "inbound" | "reportProblem" | "resolveProblem"
+>;
 
 /** 网关连续一分钟连不上的问题码(关于这条连接,只进表)。 */
 const GATEWAY_OFFLINE_CODE = "gateway_offline";
@@ -1166,13 +1228,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
+	/** `start(ctx)` 接住的请求客户端;还没 start(或已 stop)时是 `undefined`,出网的几个口回 unavailable。 */
+	let http: HttpClient | undefined;
 	/** 扫码建连接的任务表归适配器;`stop()` 时清空(没取走的草稿不留)。 */
-	const bindAuth = createQQConnectionAuth({ logger });
+	const bindAuth = createQQConnectionAuth({ logger, http: () => http });
 	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
 	const adapterStartedAt = Date.now();
 
-	function makeTokenManager(cfg: QQOfficialConnectionSettings): QQTokenManager {
+	function makeTokenManager(cfg: QQOfficialConnectionSettings, client: HttpClient): QQTokenManager {
 		return createQQTokenManager({
+			http: client,
 			appId: cfg.appId,
 			clientSecret: cfg.appSecret,
 			serviceCtx,
@@ -1181,17 +1246,23 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 
 	function makeLive(connection: QQOfficialConnection, ctx: GatewayCtx): QQLive {
-		const { inbound } = ctx;
+		const { inbound, http: client } = ctx;
 		const cfg = connection.settings;
-		const tm = makeTokenManager(cfg);
+		const tm = makeTokenManager(cfg, client);
 		const base = qqApiBase(cfg.sandbox);
 		const logReconnectsBox = { value: cfg.logReconnects };
 		const conn = createQQGatewayConn({
+			http: client,
 			connectionId: connection.id,
 			resolveGatewayUrl: async () => {
 				const token = await tm.getToken();
-				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
-				const body = (await res.json().catch(() => ({}))) as { url?: unknown };
+				const res = await qqFetch(client, `${base}/gateway`, {
+					headers: qqRestHeaders(token, cfg.appId),
+				});
+				// 没走通抛错:连接循环记 lastError、退避重连(原生 fetch 连不上时同一条路)。
+				if (!res.ok) throw new Error(res.message);
+				const parsed = res.json();
+				const body = (parsed.ok ? parsed.value : {}) as { url?: unknown };
 				if (typeof body.url !== "string") throw new Error("getGateway 响应无 url");
 				return qqGatewayUrlForHost(body.url, cfg.sandbox);
 			},
@@ -1228,12 +1299,12 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 
 	/** send 取 token:优先复用网关连接的 manager,否则起一个仅 token 的兜底。 */
-	function tokenManagerFor(connection: QQOfficialConnection): QQTokenManager {
+	function tokenManagerFor(connection: QQOfficialConnection, client: HttpClient): QQTokenManager {
 		const l = live.get(connection.id);
 		if (l) return l.tm;
 		let tm = tokenOnly.get(connection.id);
 		if (!tm) {
-			tm = makeTokenManager(connection.settings);
+			tm = makeTokenManager(connection.settings, client);
 			tokenOnly.set(connection.id, tm);
 		}
 		return tm;
@@ -1255,6 +1326,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 	/** 发一个片段。返回 REST `{status, body}`,或上传那一步的失败。 */
 	async function sendPart(
+		client: HttpClient,
 		base: string,
 		headers: Record<string, string>,
 		scope: PushTargetScope,
@@ -1264,30 +1336,42 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	): Promise<{ status: number; body: unknown } | Failure> {
 		if (scope === "channel") {
 			if (part.kind === "text") {
-				return qqPostJson(base, headers, messagesPath, { content: part.text });
+				return qqPostJson(client, base, headers, messagesPath, { content: part.text });
 			}
 			if (part.kind === "image-url") {
-				return qqPostJson(base, headers, messagesPath, {
+				return qqPostJson(client, base, headers, messagesPath, {
 					content: part.caption ?? " ",
 					image: part.url,
 				});
 			}
-			return qqPostChannelForm(base, headers, address, part.caption ?? " ", part.buffer);
+			return qqPostChannelForm(client, base, headers, address, part.caption ?? " ", part.buffer);
 		}
 		// group / private:文本直发;图片两步上传→media。
 		const gScope = scope === "group" ? "group" : "private";
 		if (part.kind === "text") {
-			return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content: part.text }));
+			return qqPostJson(
+				client,
+				base,
+				headers,
+				messagesPath,
+				buildQQV2Message({ content: part.text }),
+			);
 		}
 		const upload =
 			part.kind === "image-buffer"
 				? buildQQFileUpload(part.buffer)
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
-		const up = await qqUploadMedia(base, headers, gScope, address, upload);
+		const up = await qqUploadMedia(client, base, headers, gScope, address, upload);
 		if (!up.ok) return up;
 		const content =
 			part.kind === "image-buffer" || part.kind === "image-url" ? part.caption : undefined;
-		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
+		return qqPostJson(
+			client,
+			base,
+			headers,
+			messagesPath,
+			buildQQV2Message({ content, media: up.media }),
+		);
 	}
 
 	function reconcile(connections: readonly Connection[], ctx: GatewayCtx): void {
@@ -1365,8 +1449,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 						),
 				});
 			}
+			// 只有频道要出网:发现表是内存里的,用不着请求客户端,没 start 也读得到。
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			try {
-				const guilds = await fetchQQGuildChannels(connection.settings, signal);
+				const guilds = await fetchQQGuildChannels(http, connection.settings, signal);
 				return ok({
 					candidates: guilds.flatMap((g) =>
 						g.channels.map(
@@ -1409,16 +1495,19 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		},
 
 		start(ctx: PlatformAdapterContext): void {
+			http = ctx.http;
 			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
 			reconcile(ctx.connections(), ctx);
 			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx));
 		},
 
 		stop(): void {
+			http = undefined;
 			disposeAll();
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			const t0 = Date.now();
 			if (!isMine(connection)) {
 				return fail("invalid", `wrong platform: ${connection.adapterKey}`);
@@ -1433,18 +1522,18 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(connection).getToken();
+				token = await tokenManagerFor(connection, http).getToken();
 			} catch (e) {
 				return tokenFailure(e);
 			}
-			try {
-				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
-				return res.ok
-					? ok({ latencyMs: Date.now() - t0 })
-					: httpFailure(res.status, `HTTP ${res.status}`);
-			} catch (e) {
-				return fail("unavailable", e instanceof Error ? e.message : String(e));
-			}
+			const res = await qqFetch(http, `${base}/gateway`, {
+				headers: qqRestHeaders(token, cfg.appId),
+			});
+			// 没走通(连不上、超时)一律 unavailable,与原生 fetch 抛错时一样。
+			if (!res.ok) return fail("unavailable", res.message);
+			return res.isSuccess
+				? ok({ latencyMs: Date.now() - t0 })
+				: httpFailure(res.status, `HTTP ${res.status}`);
 		},
 
 		async send(
@@ -1452,6 +1541,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			if (!isMine(connection)) {
 				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
 			}
@@ -1467,7 +1557,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			const base = qqApiBase(cfg.sandbox);
 			let token: string;
 			try {
-				token = await tokenManagerFor(connection).getToken();
+				token = await tokenManagerFor(connection, http).getToken();
 			} catch (e) {
 				return tokenFailure(e);
 			}
@@ -1484,6 +1574,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			) {
 				try {
 					const { status, body } = await qqPostJson(
+						http,
 						base,
 						headers,
 						endpoint.path,
@@ -1513,7 +1604,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			let failure: Failure | null = null;
 			for (const part of parts) {
 				try {
-					const r = await sendPart(base, headers, scope, address, endpoint.path, part);
+					const r = await sendPart(http, base, headers, scope, address, endpoint.path, part);
 					// 上传那一步就没成:失败原样带出。
 					if ("ok" in r) {
 						failure = r;

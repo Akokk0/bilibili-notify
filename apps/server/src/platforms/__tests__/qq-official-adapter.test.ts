@@ -66,13 +66,33 @@ function qqTarget(scope: string, address: string, parentAddress?: string): PushT
 
 const TEXT: NotificationPayload = { kind: "text", text: "阿绫发布了动态" };
 
-// fetch 按 URL 路由:token / gateway / files / messages。
+/** 生产里登记即 `start(ctx)`:send / probe 用例照同一条路先拿到 `ctx.http`(对账名单先空着)。 */
+function startedQQ(opts = adapterOpts()) {
+	const ad = createQQOfficialAdapter(opts);
+	reconcileAdapter(ad, []);
+	return ad;
+}
+
+// 底下的 fetch 按 URL 路由:token / gateway / files / messages;请求客户端是真的,所以回应也得是真的 `Response`。
 let fetchMock: ReturnType<typeof vi.fn>;
 function res(status: number, body: unknown): Response {
-	return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+	return new Response(JSON.stringify(body), { status });
+}
+/** 按地址字符串路由的假 fetch(客户端交给 fetch 的第一个参数是 `URL`)。 */
+function route(impl: (url: string, init: RequestInit) => Promise<Response> | Response): void {
+	fetchMock.mockImplementation((target: URL, init: RequestInit) => impl(String(target), init));
+}
+/** 假 fetch:不回应,直到请求客户端的超时(或调用方)中止它。 */
+function hangUntilAborted(_url: string, init: RequestInit): Promise<Response> {
+	return new Promise((_resolve, reject) => {
+		(init.signal as AbortSignal).addEventListener("abort", () => {
+			reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+		});
+	});
 }
 beforeEach(() => {
-	fetchMock = vi.fn(async (url: string) => {
+	fetchMock = vi.fn();
+	route(async (url) => {
 		if (url.includes("getAppAccessToken"))
 			return res(200, { access_token: "TKN", expires_in: 7200 });
 		if (url.endsWith("/files"))
@@ -85,6 +105,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
+	vi.useRealTimers();
 });
 
 function callsTo(suffix: string) {
@@ -123,7 +144,7 @@ describe("createQQOfficialAdapter — 网关连不上的上报", () => {
 	}
 
 	it("网关一直连不上:满 60 秒报一条 gateway_offline 带原因,只进表;停用连接时清掉且不补「已恢复」", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "TKN", expires_in: 7200 });
 			return res(200, {}); // /gateway 没给 url
@@ -167,28 +188,95 @@ describe("createQQOfficialAdapter — isAvailable", () => {
 	});
 });
 
+describe("createQQOfficialAdapter — start 之前", () => {
+	it("send / probe / listAddressCandidates → unavailable(生产里登记即 start,这一支到不了)", async () => {
+		const ad = createQQOfficialAdapter(adapterOpts());
+		const sent = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
+		expect(sent).toEqual({ ok: false, code: "unavailable", message: "适配器还没启动" });
+		const probed = await ad.probe(qqConnection());
+		expect(probed).toEqual({ ok: false, code: "unavailable", message: "适配器还没启动" });
+		const listed = await ad.listAddressCandidates?.(
+			qqConnection(),
+			"channel",
+			new AbortController().signal,
+		);
+		expect(listed).toEqual({ ok: false, code: "unavailable", message: "适配器还没启动" });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
 describe("createQQOfficialAdapter — send 文本", () => {
 	it("group:取 token → POST /v2/groups/{openid}/messages,QQBot 头 + msg_type 0", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/v2/groups/G1/messages");
 		expect(msg).toHaveLength(1);
-		const init = msg[0]?.[1] as { headers: Record<string, string> };
-		expect(init.headers.authorization).toBe("QQBot TKN");
-		expect(init.headers["x-union-appid"]).toBe("APPID");
+		const headers = new Headers(((msg[0] as unknown[])[1] as RequestInit).headers);
+		expect(headers.get("authorization")).toBe("QQBot TKN");
+		expect(headers.get("x-union-appid")).toBe("APPID");
 		expect(bodyOf(msg[0] as unknown[])).toEqual({ content: "阿绫发布了动态", msg_type: 0 });
 	});
 
+	it("线上只带鉴权与内容类型:换 token、发消息、探活都不带浏览器身份与 Cookie", async () => {
+		const ad = startedQQ();
+		await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
+		await ad.probe(qqConnection());
+		const wire = (suffix: string) => {
+			const call = fetchMock.mock.calls.find((c) => String(c[0]).endsWith(suffix));
+			if (!call) throw new Error(`no fetch call to ${suffix}`);
+			return Object.fromEntries(new Headers((call[1] as RequestInit).headers));
+		};
+		expect(wire("getAppAccessToken")).toEqual({ "content-type": "application/json" });
+		expect(wire("/v2/groups/G1/messages")).toEqual({
+			authorization: "QQBot TKN",
+			"x-union-appid": "APPID",
+			"content-type": "application/json",
+		});
+		expect(wire("/gateway")).toEqual({ authorization: "QQBot TKN", "x-union-appid": "APPID" });
+	});
+
+	it("发消息的回应慢于客户端默认的 20 秒仍等得到(显式 300 秒的超时只为保住今天没有超时的行为)", async () => {
+		vi.useFakeTimers();
+		route((url, init) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			return new Promise((resolve, reject) => {
+				const timer = setTimeout(() => resolve(res(200, { id: "SLOW" })), 30_000);
+				(init.signal as AbortSignal).addEventListener("abort", () => {
+					clearTimeout(timer);
+					reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+				});
+			});
+		});
+		const ad = startedQQ();
+		const pending = ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect((await pending).ok).toBe(true);
+	});
+
+	it("发消息的请求满 300 秒仍没回 → 客户端掐断,翻成 unavailable", async () => {
+		vi.useFakeTimers();
+		route((url, init) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			return hangUntilAborted(url, init);
+		});
+		const ad = startedQQ();
+		const pending = ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
+		await vi.advanceTimersByTimeAsync(300_000);
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
+	});
+
 	it("private:POST /v2/users/{openid}/messages", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("private", "U1"), TEXT);
 		expect(r.ok).toBe(true);
 		expect(callsTo("/v2/users/U1/messages")).toHaveLength(1);
 	});
 
 	it("channel:POST /channels/{channelId}/messages,JSON content", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("channel", "C1"), TEXT);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/channels/C1/messages");
@@ -197,14 +285,14 @@ describe("createQQOfficialAdapter — send 文本", () => {
 	});
 
 	it("session 缺字段 → 直接失败,不发 token/REST", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", ""), TEXT);
 		expect(r).toEqual({ ok: false, code: "invalid", message: "group: groupOpenid missing" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("送达带耗时;失败不带", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		expect(await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT)).toEqual({
 			ok: true,
 			latencyMs: expect.any(Number),
@@ -215,7 +303,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 	});
 
 	it("空载荷 → invalid(平台对不对归派发器查)", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const empty = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "composite",
 			segments: [],
@@ -225,7 +313,7 @@ describe("createQQOfficialAdapter — send 文本", () => {
 
 	it("取 token 被拒(HTTP 401)→ unauthorized,一条消息都没发", async () => {
 		fetchMock.mockImplementation(async () => res(401, { message: "invalid appid" }));
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: "http:401" });
 		expect(!r.ok && r.message).toContain("取 App Access Token 失败");
@@ -236,21 +324,23 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		fetchMock.mockImplementation(async () => {
 			throw new Error("fetch failed");
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
 		expect(r).not.toHaveProperty("upstreamCode");
 	});
 
 	it("发消息时连不上(fetch 抛错)→ unavailable", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			throw new Error("socket hang up");
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
-		expect(r).toEqual({ ok: false, code: "unavailable", message: "socket hang up" });
+		// 话是请求客户端的话,底层原因仍在里面。
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(!r.ok && r.message).toContain("socket hang up");
 	});
 });
 
@@ -262,7 +352,7 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 	};
 
 	it("group 图片:先 POST /files(base64 file_data)→ 再 POST /messages media(msg_type 7)", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), IMG);
 		expect(r.ok).toBe(true);
 		const upload = callsTo("/v2/groups/G1/files");
@@ -280,7 +370,7 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 	});
 
 	it("group composite 卡片图+文案:合并成一条 media 消息", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "composite",
 			segments: [
@@ -301,14 +391,14 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 	});
 
 	it("channel 图片:multipart file_image 单条(body 是 FormData,无 content-type 头)", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("channel", "C1"), IMG);
 		expect(r.ok).toBe(true);
 		const msg = callsTo("/channels/C1/messages");
 		expect(msg).toHaveLength(1);
-		const init = msg[0]?.[1] as { body: unknown; headers: Record<string, string> };
+		const init = msg[0]?.[1] as RequestInit;
 		expect(init.body).toBeInstanceOf(FormData);
-		expect(init.headers["content-type"]).toBeUndefined();
+		expect(new Headers(init.headers).get("content-type")).toBeNull();
 		// 频道不走 /files 两步上传。
 		expect(callsTo("/files")).toHaveLength(0);
 	});
@@ -325,7 +415,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	};
 
 	it("私域 group:图集合并成一条 markdown(msg_type 2),不走 /files 上传", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection({ botType: "private" }), qqTarget("group", "G1"), GALLERY);
 		expect(r.ok).toBe(true);
 		expect(callsTo("/files")).toHaveLength(0); // markdown 不上传
@@ -339,7 +429,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	});
 
 	it("公域 group:图集走 N 条 media(每图 /files + /messages),不发 markdown", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection({ botType: "public" }), qqTarget("group", "G1"), GALLERY);
 		expect(r.ok).toBe(true);
 		expect(callsTo("/v2/groups/G1/files")).toHaveLength(2); // 两图各上传一次
@@ -349,7 +439,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 	});
 
 	it("私域 channel:图集不走 markdown(频道用频道消息 API,markdown 仅群/C2C)", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(
 			qqConnection({ botType: "private" }),
 			qqTarget("channel", "C1"),
@@ -364,7 +454,7 @@ describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () =
 
 describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	it("202 + 审核中 → DeliveryResult ok(已提交)", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			return res(202, {
@@ -373,18 +463,18 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 				data: { message_audit: { audit_id: "A1" } },
 			});
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r.ok).toBe(true);
 	});
 
 	it("4xx 业务错误 → DeliveryResult 失败(带 code)", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			return res(400, { code: 11293, message: "bad request" });
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r).toEqual({
 			ok: false,
@@ -395,23 +485,23 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	});
 
 	it("被限流(HTTP 429)→ rate_limited", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			return res(429, { code: 22009, message: "msg limit exceed" });
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "rate_limited", upstreamCode: 22009 });
 	});
 
 	it("私域图集(markdown)被拒 → 同一套码", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			return res(200, { code: 40034, message: "markdown not allowed" });
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection({ botType: "private" }), qqTarget("group", "G1"), {
 			kind: "image-group",
 			images: [{ url: "https://i0.example/a.png", width: 1, height: 1 }],
@@ -421,13 +511,13 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	});
 
 	it("上传富媒体被拒 → 那一步的失败原样带出,不再发消息", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			if (url.endsWith("/files")) return res(403, { code: 11253, message: "no permission" });
 			return res(200, { id: "MSG1" });
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "image",
 			image: { buffer: Buffer.from("x"), mime: "image/png" },
@@ -437,13 +527,13 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 	});
 
 	it("上传回了 2xx 却没有 file_info → invalid(回应不是约定的形状)", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			if (url.endsWith("/files")) return res(200, { file_uuid: "F" });
 			return res(200, { id: "MSG1" });
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "image",
 			image: { buffer: Buffer.from("x"), mime: "image/png" },
@@ -458,7 +548,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 	// (WS 只用来捞 openid),导致"报错但其实能通"的假阴性。改为真实探一次 REST
 	// (取 token + 命中 /gateway 只读端点),不依赖 reconcile/WS 状态、也不发消息。
 	it("未 reconcile,REST(token+/gateway)可达 → probe ok:true,且是真实网络往返而非读缓存状态", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const p = await ad.probe(qqConnection());
 		expect(p).toEqual({ ok: true, latencyMs: expect.any(Number) });
 		expect(callsTo("/gateway")).toHaveLength(1);
@@ -466,7 +556,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 
 	it("取 App Access Token 失败 → probe ok:false(带错误信息)", async () => {
 		fetchMock.mockImplementation(async () => res(401, { message: "invalid appid" }));
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const p = await ad.probe(qqConnection());
 		expect(p).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: "http:401" });
 		expect(!p.ok && p.message).toContain("取 App Access Token 失败");
@@ -475,33 +565,44 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 
 	it("换 token 的回应里没有 access_token → invalid", async () => {
 		fetchMock.mockImplementation(async () => res(200, { code: 100016, message: "bad secret" }));
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		expect(await ad.probe(qqConnection())).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it("probe:平台不对 → invalid;/gateway 连不上 → unavailable", async () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const wrong = { ...qqConnection(), adapterKey: "onebot" } as unknown as Connection;
 		expect(await ad.probe(wrong)).toMatchObject({ ok: false, code: "invalid" });
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			throw new Error("ENOTFOUND api.sgroup.qq.com");
 		});
-		expect(await ad.probe(qqConnection())).toEqual({
-			ok: false,
-			code: "unavailable",
-			message: "ENOTFOUND api.sgroup.qq.com",
+		const down = await ad.probe(qqConnection());
+		expect(down).toMatchObject({ ok: false, code: "unavailable" });
+		expect(!down.ok && down.message).toContain("ENOTFOUND api.sgroup.qq.com");
+	});
+
+	it("probe 的 /gateway 满 300 秒仍没回 → 客户端掐断,仍是 unavailable(不是 timeout)", async () => {
+		vi.useFakeTimers();
+		route((url, init) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "T", expires_in: 7200 });
+			return hangUntilAborted(url, init);
 		});
+		const ad = startedQQ();
+		const pending = ad.probe(qqConnection());
+		await vi.advanceTimersByTimeAsync(300_000);
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 	});
 
 	it("token 换取成功但 /gateway 非 2xx → probe ok:false", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		route(async (url) => {
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "T", expires_in: 7200 });
 			return res(500, {});
 		});
-		const ad = createQQOfficialAdapter(adapterOpts());
+		const ad = startedQQ();
 		const p = await ad.probe(qqConnection());
 		expect(p).toEqual({
 			ok: false,

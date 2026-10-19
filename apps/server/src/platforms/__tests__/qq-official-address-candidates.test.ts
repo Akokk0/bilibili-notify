@@ -1,5 +1,6 @@
 import type { Connection, Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
@@ -35,8 +36,9 @@ function qqConnection(id = "a1"): Connection {
 	} as unknown as Connection;
 }
 
+/** 真的 `Response`:请求客户端要读头、读字节。 */
 function res(status: number, body: unknown): Response {
-	return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+	return new Response(JSON.stringify(body), { status });
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -55,6 +57,8 @@ function makeAdapter() {
 		serviceCtx: makeServiceCtx(),
 		registry,
 	});
+	// 生产里登记即 `start(ctx)`:先拿到 `ctx.http`(对账名单空着,不建网关)。
+	reconcileAdapter(adapter, []);
 	return { adapter, registry };
 }
 
@@ -92,6 +96,20 @@ describe("QQ 官方适配器 listAddressCandidates — 群 / 私聊(内存发现
 		expect(JSON.stringify(r)).not.toContain("lastSeenMs");
 	});
 
+	it("没 start 也读得到发现表(内存里的,用不着请求客户端)", async () => {
+		const registry = createQQSessionRegistry();
+		const adapter = createQQOfficialAdapter({
+			logger: makeLogger(),
+			serviceCtx: makeServiceCtx(),
+			registry,
+		});
+		registry.record("a1", { scope: "group", openid: "G1" }, 1000);
+		expect(await adapter.listAddressCandidates?.(qqConnection(), "group", SIGNAL)).toEqual({
+			ok: true,
+			candidates: [{ address: "G1" }],
+		});
+	});
+
 	it("group / private 不触发任何出网请求", async () => {
 		const { adapter, registry } = makeAdapter();
 		registry.record("a1", { scope: "group", openid: "G1" }, 1000);
@@ -103,7 +121,8 @@ describe("QQ 官方适配器 listAddressCandidates — 群 / 私聊(内存发现
 
 describe("QQ 官方适配器 listAddressCandidates — 频道(现去 QQ 拉)", () => {
 	function stubGuilds() {
-		fetchMock.mockImplementation(async (url: string) => {
+		fetchMock.mockImplementation(async (target: URL) => {
+			const url = String(target);
 			if (url.includes("getAppAccessToken"))
 				return res(200, { access_token: "TKN", expires_in: 7200 });
 			if (url.endsWith("/users/@me/guilds"))
@@ -137,19 +156,51 @@ describe("QQ 官方适配器 listAddressCandidates — 频道(现去 QQ 拉)", (
 		});
 	});
 
-	it("把 signal 传进每一个请求", async () => {
-		stubGuilds();
+	it("路由断开(signal 中止):在途的请求跟着中止,回 unavailable(不是 indeterminate)", async () => {
+		fetchMock.mockImplementation(
+			(_target: URL, init: RequestInit) =>
+				new Promise((_resolve, reject) => {
+					(init.signal as AbortSignal).addEventListener("abort", () => {
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+					});
+				}),
+		);
 		const { adapter } = makeAdapter();
 		const ctl = new AbortController();
-		await adapter.listAddressCandidates?.(qqConnection(), "channel", ctl.signal);
-		expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(4);
-		for (const call of fetchMock.mock.calls) {
-			expect((call[1] as RequestInit).signal).toBe(ctl.signal);
-		}
+		const pending = adapter.listAddressCandidates?.(qqConnection(), "channel", ctl.signal);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		ctl.abort();
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
+	});
+
+	it("signal 传进了每一个请求:列子频道那一步被中止也回 unavailable", async () => {
+		fetchMock.mockImplementation((target: URL, init: RequestInit) => {
+			const url = String(target);
+			if (url.includes("getAppAccessToken"))
+				return Promise.resolve(res(200, { access_token: "TKN", expires_in: 7200 }));
+			if (url.endsWith("/users/@me/guilds"))
+				return Promise.resolve(res(200, [{ id: "G1", name: "频道甲" }]));
+			return new Promise((_resolve, reject) => {
+				(init.signal as AbortSignal).addEventListener("abort", () => {
+					reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+				});
+			});
+		});
+		const { adapter } = makeAdapter();
+		const ctl = new AbortController();
+		const pending = adapter.listAddressCandidates?.(qqConnection(), "channel", ctl.signal);
+		await vi.waitFor(() =>
+			expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith("/guilds/G1/channels"))).toBe(
+				true,
+			),
+		);
+		ctl.abort();
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 	});
 
 	it("上游拉失败 → unavailable,话里带上游的原因", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
+		fetchMock.mockImplementation(async (target: URL) => {
+			const url = String(target);
 			if (url.includes("getAppAccessToken")) return res(401, {});
 			return res(404, {});
 		});
@@ -167,6 +218,7 @@ describe("QQ 官方适配器 listAddressCandidates — 频道(现去 QQ 拉)", (
 		fetchMock.mockRejectedValue(new Error("socket hang up"));
 		const { adapter } = makeAdapter();
 		const r = await adapter.listAddressCandidates?.(qqConnection(), "channel", SIGNAL);
-		expect(r).toEqual({ ok: false, code: "unavailable", message: "列出频道失败：socket hang up" });
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(!r?.ok && r?.message).toMatch(/^列出频道失败：.*socket hang up/);
 	});
 });

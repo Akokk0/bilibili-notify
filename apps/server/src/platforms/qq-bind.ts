@@ -15,9 +15,10 @@
  */
 
 import { createDecipheriv, randomBytes, randomUUID } from "node:crypto";
-import type { AuthState, ConnectionAuth, Logger } from "@bilibili-notify/internal";
+import type { AuthState, ConnectionAuth, HttpClient, Logger } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
+import { t } from "../i18n/index.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /**
@@ -72,29 +73,40 @@ export interface QQBindTask {
 }
 
 /**
- * 单次请求的上限。node 的 fetch 没有默认超时,腾讯接了 TCP 却不回(区域性网络
- * 干扰下常见)就会把 `GET /api/adapters/:adapterKey/auth/:taskId` 永远挂住:任务不清、handler 不返回,
+ * 单次请求的上限。腾讯接了 TCP 却不回(区域性网络干扰下常见)就会把
+ * `GET /api/adapters/:adapterKey/auth/:taskId` 永远挂住:任务不清、handler 不返回,
  * 而浏览器每 2 秒还在发下一轮,一路叠到用户关掉弹窗。宁可这一轮报错 —— 轮询本来
- * 就允许瞬时故障,下一轮会接着问。
+ * 就允许瞬时故障,下一轮会接着问。交给请求客户端按单跳算。
  */
 const LITE_TIMEOUT_MS = 10_000;
 
 /** POST 腾讯 lite 接口;retcode 非 0 或 HTTP 非 2xx 一律抛错(上游故障)。 */
 async function postLite(
+	http: HttpClient,
 	host: string,
 	path: string,
 	payload: Record<string, unknown>,
 	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-	const timeout = AbortSignal.timeout(LITE_TIMEOUT_MS);
-	const resp = await fetch(`https://${host}${path}`, {
+	// 不带浏览器身份、不碰 cookie 罐:腾讯这条通道不该看到 B 站那套指纹。
+	const resp = await http.fetch(`https://${host}${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "application/json" },
 		body: JSON.stringify(payload),
-		signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+		signal,
+		timeoutMs: LITE_TIMEOUT_MS,
+		bare: true,
 	});
-	if (!resp.ok) throw new Error(`QQ 绑定接口 HTTP ${resp.status}`);
-	const data = (await resp.json()) as Record<string, unknown>;
+	if (!resp.ok) {
+		// 客户端自己的超时仍按 `TimeoutError` 抛,`upstreamFailure` 翻成 timeout;其余(含调用方中止)翻 unavailable。
+		const err = new Error(resp.message);
+		if (resp.code === "timeout") err.name = "TimeoutError";
+		throw err;
+	}
+	if (!resp.isSuccess) throw new Error(`QQ 绑定接口 HTTP ${resp.status}`);
+	const parsed = resp.json();
+	if (!parsed.ok) throw new Error(parsed.message);
+	const data = parsed.value as Record<string, unknown>;
 	const retcode = Number(data.retcode ?? 0);
 	if (retcode !== 0) {
 		throw new Error(String(data.msg ?? data.message ?? `QQ 绑定接口 retcode ${retcode}`));
@@ -104,11 +116,12 @@ async function postLite(
 
 /** 创建绑定任务:生成密钥预递腾讯,返回 task_id 与二维码 URL。 */
 export async function createBindTask(
+	http: HttpClient,
 	host: string = DEFAULT_BIND_HOST,
 	signal?: AbortSignal,
 ): Promise<QQBindTask> {
 	const bindKey = generateBindKey();
-	const data = await postLite(host, "/lite/create_bind_task", { key: bindKey }, signal);
+	const data = await postLite(http, host, "/lite/create_bind_task", { key: bindKey }, signal);
 	const payload = (data.data ?? {}) as Record<string, unknown>;
 	const taskId = String(payload.task_id ?? "").trim();
 	if (!taskId) throw new Error("QQ 绑定任务响应缺少 task_id");
@@ -118,11 +131,12 @@ export async function createBindTask(
 
 /** 轮询一次绑定结果;完成态就地解密 AppSecret。 */
 export async function pollBindTask(
+	http: HttpClient,
 	taskId: string,
 	bindKey: string,
 	host: string = DEFAULT_BIND_HOST,
 ): Promise<QQBindPollResult> {
-	const data = await postLite(host, "/lite/poll_bind_result", { task_id: taskId });
+	const data = await postLite(http, host, "/lite/poll_bind_result", { task_id: taskId });
 	const payload = (data.data ?? {}) as Record<string, unknown>;
 	const status = Number(payload.status ?? 0);
 	if (status === 3) return { status: "expired" };
@@ -178,7 +192,11 @@ function upstreamFailure(err: unknown, lead: string) {
  *
  * 三个方法是闭包,不用 `this`。
  */
-export function createQQConnectionAuth(opts: { logger: Logger }): {
+export function createQQConnectionAuth(opts: {
+	logger: Logger;
+	/** 适配器 `start(ctx)` 接住的请求客户端;`connectionAuth` 在工厂里就造,所以每次现取。还没 start 时回 `undefined`。 */
+	http: () => HttpClient | undefined;
+}): {
 	auth: ConnectionAuth;
 	clear(): void;
 } {
@@ -188,16 +206,18 @@ export function createQQConnectionAuth(opts: { logger: Logger }): {
 	const bindHost = (): string | undefined => process.env.BN_QQ_BIND_HOST || undefined;
 	const sweep = (): void => {
 		const now = Date.now();
-		for (const [id, t] of tasks) {
-			if (now - t.createdAt > BIND_TASK_TTL_MS) tasks.delete(id);
+		for (const [id, task] of tasks) {
+			if (now - task.createdAt > BIND_TASK_TTL_MS) tasks.delete(id);
 		}
 	};
 
 	const auth: ConnectionAuth = {
 		async begin(signal) {
 			sweep();
+			const http = opts.http();
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			try {
-				const task = await createBindTask(bindHost(), signal);
+				const task = await createBindTask(http, bindHost(), signal);
 				const dataUrl = await QRCode.toDataURL(task.qrUrl, { margin: 1, width: 320 });
 				const createdAt = Date.now();
 				const state: AuthState = {
@@ -225,9 +245,11 @@ export function createQQConnectionAuth(opts: { logger: Logger }): {
 			const entry = tasks.get(taskId);
 			if (!entry) return fail("not_found", "绑定任务不存在或已过期");
 			if (entry.state.status !== "awaiting-scan") return ok({ state: entry.state });
+			const http = opts.http();
+			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
 			let polled: QQBindPollResult;
 			try {
-				polled = await pollBindTask(entry.upstreamTaskId, entry.bindKey, bindHost());
+				polled = await pollBindTask(http, entry.upstreamTaskId, entry.bindKey, bindHost());
 			} catch (err) {
 				// 上游故障保留任务,下一轮接着问。
 				logger.warn(`[qq] 查询绑定结果失败: ${upstreamMessage(err)}`);

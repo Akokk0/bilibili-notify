@@ -6,7 +6,9 @@
  * (AES-256-GCM,payload = 12B nonce + 密文 + 16B tag,base64)。
  */
 import { randomBytes } from "node:crypto";
+import type { HttpClient } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createBindTask, decryptBindSecret, generateBindKey, pollBindTask } from "../qq-bind.js";
 import { encryptLikeTencent } from "./tencent-bind-crypto.js";
 
@@ -46,15 +48,18 @@ describe("decryptBindSecret", () => {
 	});
 });
 
-// ── 协议客户端(fetch 全局 stub)─────────────────────────────────────────────
+// ── 协议客户端(底下的 fetch 全局 stub,客户端是真的)───────────────────────────
 
 let fetchMock: ReturnType<typeof vi.fn>;
+let http: HttpClient;
+/** 真的 `Response`:请求客户端要读头、读字节。 */
 function res(status: number, body: unknown): Response {
-	return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+	return new Response(JSON.stringify(body), { status });
 }
 beforeEach(() => {
 	fetchMock = vi.fn();
 	vi.stubGlobal("fetch", fetchMock);
+	http = integrationIo().http;
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -63,40 +68,50 @@ afterEach(() => {
 describe("createBindTask", () => {
 	it("预递密钥拿 task_id,拼出 openclaw H5 二维码 URL", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: { task_id: "T1" } }));
-		const task = await createBindTask();
+		const task = await createBindTask(http);
 		expect(task.taskId).toBe("T1");
 		expect(Buffer.from(task.bindKey, "base64")).toHaveLength(32);
 		expect(task.qrUrl).toBe("https://q.qq.com/qqbot/openclaw/connect.html?task_id=T1&_wv=2");
 
-		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe("https://q.qq.com/lite/create_bind_task");
+		const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+		expect(String(url)).toBe("https://q.qq.com/lite/create_bind_task");
 		expect(JSON.parse(String(init.body))).toEqual({ key: task.bindKey });
+	});
+
+	it("线上只带内容类型与接受类型两个头:不带浏览器身份、不带 Cookie", async () => {
+		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: { task_id: "T1" } }));
+		await createBindTask(http);
+		const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+		expect(Object.fromEntries(new Headers(init.headers))).toEqual({
+			accept: "application/json",
+			"content-type": "application/json",
+		});
 	});
 
 	it("host 可注入(通道换道逃生口)", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: { task_id: "T2" } }));
-		const task = await createBindTask("mirror.example.com");
+		const task = await createBindTask(http, "mirror.example.com");
 		expect(task.qrUrl).toBe(
 			"https://mirror.example.com/qqbot/openclaw/connect.html?task_id=T2&_wv=2",
 		);
-		expect((fetchMock.mock.calls[0] as [string])[0]).toBe(
+		expect(String((fetchMock.mock.calls[0] as [URL])[0])).toBe(
 			"https://mirror.example.com/lite/create_bind_task",
 		);
 	});
 
 	it("retcode 非 0 → 抛错并带上游 msg", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 1001, msg: "系统繁忙" }));
-		await expect(createBindTask()).rejects.toThrow("系统繁忙");
+		await expect(createBindTask(http)).rejects.toThrow("系统繁忙");
 	});
 
 	it("响应缺 task_id → 抛错", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: {} }));
-		await expect(createBindTask()).rejects.toThrow();
+		await expect(createBindTask(http)).rejects.toThrow();
 	});
 
 	it("HTTP 非 2xx → 抛错", async () => {
 		fetchMock.mockResolvedValue(res(502, {}));
-		await expect(createBindTask()).rejects.toThrow();
+		await expect(createBindTask(http)).rejects.toThrow("QQ 绑定接口 HTTP 502");
 	});
 });
 
@@ -109,68 +124,97 @@ describe("pollBindTask", () => {
 
 	it("status 0/1 → pending", async () => {
 		fetchMock.mockResolvedValueOnce(pollRes({ status: 0 }));
-		expect(await pollBindTask("T1", key)).toEqual({ status: "pending" });
+		expect(await pollBindTask(http, "T1", key)).toEqual({ status: "pending" });
 		fetchMock.mockResolvedValueOnce(pollRes({ status: 1 }));
-		expect(await pollBindTask("T1", key)).toEqual({ status: "pending" });
+		expect(await pollBindTask(http, "T1", key)).toEqual({ status: "pending" });
 	});
 
 	it("status 3 → expired", async () => {
 		fetchMock.mockResolvedValue(pollRes({ status: 3 }));
-		expect(await pollBindTask("T1", key)).toEqual({ status: "expired" });
+		expect(await pollBindTask(http, "T1", key)).toEqual({ status: "expired" });
 	});
 
 	it("status 2 → 解密 secret,回 created + 凭据", async () => {
-		fetchMock.mockResolvedValue(
+		fetchMock.mockImplementation(async () =>
 			pollRes({
 				status: 2,
 				bot_appid: "102000001",
 				bot_encrypt_secret: encryptLikeTencent("RealSecret42", key),
 			}),
 		);
-		expect(await pollBindTask("T1", key)).toEqual({
+		expect(await pollBindTask(http, "T1", key)).toEqual({
 			status: "created",
 			appId: "102000001",
 			appSecret: "RealSecret42",
 		});
-		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe("https://q.qq.com/lite/poll_bind_result");
+		const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+		expect(String(url)).toBe("https://q.qq.com/lite/poll_bind_result");
 		expect(JSON.parse(String(init.body))).toEqual({ task_id: "T1" });
 	});
 
 	it("status 2 但缺凭据字段 → error 带人话", async () => {
 		fetchMock.mockResolvedValue(pollRes({ status: 2, bot_appid: "102000001" }));
-		const r = await pollBindTask("T1", key);
+		const r = await pollBindTask(http, "T1", key);
 		expect(r.status).toBe("error");
 	});
 
 	it("status 2 但解密失败(密钥不匹配)→ error", async () => {
-		fetchMock.mockResolvedValue(
+		fetchMock.mockImplementation(async () =>
 			pollRes({
 				status: 2,
 				bot_appid: "102000001",
 				bot_encrypt_secret: encryptLikeTencent("secret", generateBindKey()),
 			}),
 		);
-		const r = await pollBindTask("T1", key);
+		const r = await pollBindTask(http, "T1", key);
 		expect(r.status).toBe("error");
 	});
 
 	it("retcode 非 0 → 抛错(上游故障,与业务态区分)", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 500, msg: "内部错误" }));
-		await expect(pollBindTask("T1", key)).rejects.toThrow("内部错误");
+		await expect(pollBindTask(http, "T1", key)).rejects.toThrow("内部错误");
 	});
 });
 
 describe("上游超时", () => {
 	/**
-	 * node 的 fetch 没有默认超时。腾讯那边接了 TCP 却不回(区域性网络干扰下很常见)
-	 * 时,`GET /api/adapters/:adapterKey/auth/:taskId` 就永远不返回:任务不清、handler 挂着,而浏览器
-	 * 每 2 秒还在发下一轮,一路叠到用户关掉弹窗为止。
+	 * 腾讯那边接了 TCP 却不回(区域性网络干扰下很常见)时,`GET /api/adapters/:adapterKey/auth/:taskId`
+	 * 就永远不返回:任务不清、handler 挂着,而浏览器每 2 秒还在发下一轮,一路叠到用户关掉弹窗为止。
 	 */
 	it("每次请求都带 AbortSignal —— 上游挂起不能把 handler 钉死", async () => {
 		fetchMock.mockResolvedValue(res(200, { retcode: 0, data: { task_id: "T9" } }));
-		await createBindTask();
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		await createBindTask(http);
+		const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
 		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it("上游一直不回:10 秒后抛 TimeoutError(`connectionAuth` 据此翻 timeout)", async () => {
+		vi.useFakeTimers();
+		try {
+			fetchMock.mockImplementation(
+				(_url: URL, init: RequestInit) =>
+					new Promise((_resolve, reject) => {
+						(init.signal as AbortSignal).addEventListener("abort", () => {
+							reject(
+								Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+							);
+						});
+					}),
+			);
+			const pending = createBindTask(http).catch((e: unknown) => e);
+			await vi.advanceTimersByTimeAsync(9_999);
+			let settled = false;
+			void pending.then(() => {
+				settled = true;
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			expect(settled).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			const err = await pending;
+			expect(err).toBeInstanceOf(Error);
+			expect((err as Error).name).toBe("TimeoutError");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

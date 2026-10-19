@@ -1,4 +1,5 @@
 import { once } from "node:events";
+import type { IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import type {
 	Disposable,
@@ -9,6 +10,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
+import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createQQGatewayConn, QQ_OPCODE, type QQDiscoveredSession } from "../qq-official";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -59,6 +61,8 @@ interface FakeGateway {
 	/** 客户端发来的所有帧(跨重连累计)。 */
 	received: Array<Record<string, unknown>>;
 	conns: WebSocket[];
+	/** 每次连入的握手请求头(线上到底带了什么)。 */
+	handshakes: IncomingHttpHeaders[];
 	/** 向最近一条连接推一条 DISPATCH(自增 seq)。 */
 	dispatch(t: string, d: unknown): void;
 	/** 向最近一条连接回 HEARTBEAT_ACK。 */
@@ -71,9 +75,11 @@ async function startFakeGateway(opts?: { heartbeatInterval?: number }): Promise<
 	await once(wss, "listening");
 	const received: Array<Record<string, unknown>> = [];
 	const conns: WebSocket[] = [];
+	const handshakes: IncomingHttpHeaders[] = [];
 	let seq = 0;
-	wss.on("connection", (ws) => {
+	wss.on("connection", (ws, req) => {
 		conns.push(ws);
+		handshakes.push(req.headers);
 		ws.send(
 			JSON.stringify({ op: 10, d: { heartbeat_interval: opts?.heartbeatInterval ?? 45000 } }),
 		);
@@ -93,6 +99,7 @@ async function startFakeGateway(opts?: { heartbeatInterval?: number }): Promise<
 		url: `ws://127.0.0.1:${port}`,
 		received,
 		conns,
+		handshakes,
 		dispatch(t, d) {
 			seq += 1;
 			conns.at(-1)?.send(JSON.stringify({ op: 0, s: seq, t, d }));
@@ -105,6 +112,7 @@ async function startFakeGateway(opts?: { heartbeatInterval?: number }): Promise<
 
 function connOpts(gw: FakeGateway, over: Partial<Parameters<typeof createQQGatewayConn>[0]> = {}) {
 	return {
+		http: integrationIo().http,
 		connectionId: "a1",
 		resolveGatewayUrl: async () => gw.url,
 		getToken: async () => "ACCESS",
@@ -128,6 +136,29 @@ describe("createQQGatewayConn — 握手", () => {
 		expect(idf.d.token).toBe("QQBot ACCESS");
 		expect(idf.d.shard).toEqual([0, 1]);
 		expect(idf.d.intents & (1 << 25)).toBeTruthy();
+	});
+
+	it("握手不带浏览器身份与 Cookie:线上没有 user-agent / cookie 头", async () => {
+		const gw = await startFakeGateway();
+		const conn = createQQGatewayConn(connOpts(gw));
+		cleanups.push(() => conn.close());
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		expect(gw.handshakes).toHaveLength(1);
+		expect(gw.handshakes[0]?.cookie).toBeUndefined();
+		expect(String(gw.handshakes[0]?.["user-agent"] ?? "")).not.toMatch(/Mozilla/);
+	});
+
+	it("网关地址不合法(不是 ws/wss):记 lastError,退避后换个地址仍能连上", async () => {
+		const gw = await startFakeGateway();
+		let attempt = 0;
+		const conn = createQQGatewayConn(
+			connOpts(gw, { resolveGatewayUrl: async () => (++attempt === 1 ? "ftp://nope" : gw.url) }),
+		);
+		cleanups.push(() => conn.close());
+		await waitFor(() => attempt >= 1 && conn.lastError !== null);
+		expect(conn.lastError).toBeTruthy();
+		await waitFor(() => lastIdentify(gw) !== undefined);
+		expect(attempt).toBeGreaterThanOrEqual(2);
 	});
 
 	it("DISPATCH READY → isOnline() 变 true", async () => {

@@ -60,10 +60,7 @@ export const ALLOWLIST = {
  * 棘轮表:文件 → 出站原语的上限(勘察时的实数)。只许往下调,到 3b 末清零。
  * 平台适配器的出口随连接与适配器搬走;出图器拉图也有去处。
  */
-export const RATCHET = {
-	"apps/server/src/platforms/qq-official.ts": 8,
-	"apps/server/src/platforms/qq-bind.ts": 1,
-};
+export const RATCHET = {};
 
 /**
  * 一份源码里的出站原语。

@@ -156,14 +156,15 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
 	let bindKey = "";
 	let pollQueue: Array<() => Response> = [];
+	/** 真的 `Response`:请求客户端要读头、读字节。 */
 	function res(status: number, body: unknown): Response {
-		return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+		return new Response(JSON.stringify(body), { status });
 	}
 	beforeEach(() => {
 		bindKey = "";
 		pollQueue = [];
-		fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-			if (url.endsWith("/lite/create_bind_task")) {
+		fetchMock = vi.fn(async (target: URL, init?: RequestInit) => {
+			if (String(target).endsWith("/lite/create_bind_task")) {
 				bindKey = (JSON.parse(String(init?.body)) as { key: string }).key;
 				return res(200, { retcode: 0, data: { task_id: "UP-1" } });
 			}
