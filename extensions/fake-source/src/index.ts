@@ -16,7 +16,7 @@ export function activate(ctx: ExtensionContext): void {
 	const source = ctx.registerSubscriptionSource({ lookup: fakeLookup });
 	const buttons = wireReportButtons(ctx, source);
 	// 视图是现取的:订阅名单每次现读,不缓存。
-	ctx.publishView(() => fakeSourceView(source.subscriptions(), buttons.blocks()));
+	ctx.publishView(() => fakeSourceView(source.subscriptions(), ctx.i18n, buttons.blocks()));
 	// 订阅一动就喊一声,面板当场重取视图 —— 不然加完一条,切回拓展页那个数还是旧的。
 	source.onSubscriptionsChanged(() => ctx.statusChanged());
 }

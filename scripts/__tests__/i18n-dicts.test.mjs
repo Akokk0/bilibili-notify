@@ -18,13 +18,16 @@ import {
 	placeholdersOf,
 	stemOf,
 } from "../../packages/internal/src/i18n.ts";
+import { parseExtensionLocaleFile } from "../../packages/internal/src/schema/extension-locale.ts";
+import { parseExtensionManifest } from "../../packages/internal/src/schema/extension-manifest.ts";
 
 /**
  * 译文文件的键与占位符(ADR-0037 决策 6):各语言的译文之间、女仆层与平实版之间,
  * 键、占位符、带数量的句子得对得上。类型只把键推成 string,推不出占位符与单复数类别,所以由这一道钉着。
  *
- * - 范围:BN 两端的译文目录(服务端、面板)。拓展的译文(3b-43)以后进同一张表或另起。
- *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于 `DICT_DIRS`。
+ * - 范围:BN 两端的译文目录(服务端、面板)。仓里拓展自带的译文另列一张表(`EXTENSION_LOCALE_DIRS`),
+ *   用宿主读目录时同一份解析查「零问题」,不进 `DICT_DIRS`。
+ *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于两张表之和。
  * - 读的是 JSON 不是源码,没有「注释被当成代码」的问题。
  * - 简体中文打底(缺的句子运行时拿它补),所以「齐不齐」是**方向**判:别的语言不许有底里没有的句子;
  *   「要求齐的语言」名单今天只有 zh-CN,第 5 期翻完把 en、ja 加进 COMPLETE_LOCALES(不用 skip,免得忘了开);
@@ -37,6 +40,12 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** BN 自己放译文的目录。目录叫 `locales/`,拓展同名(ADR-0037 决策 14 下的 🔗)。 */
 export const DICT_DIRS = ["apps/server/src/i18n/locales", "apps/web/src/i18n/locales"];
+
+/**
+ * 仓里拓展自带的译文目录(ADR-0037 决策 14)。**不进 `DICT_DIRS`**:拓展的译文没有女仆层、不要求
+ * 每种语言都有、也不拿简中当打底去对键,它的判据是宿主读目录时那一份解析(逐条丢坏的),这里要的是「零问题」。
+ */
+export const EXTENSION_LOCALE_DIRS = ["extensions/fake-source/locales"];
 
 /** 打底的语言:别的语言的句子都得是它句子的子集。 */
 export const BASE_LOCALE = "zh-CN";
@@ -279,8 +288,41 @@ export function loadDictionaryDir(dir, root = REPO_ROOT) {
 	return { locales, problems };
 }
 
+/**
+ * 读一个拓展的译文目录,用**宿主读目录时同一份解析**逐份查,返回问题清单(空 = 零问题)。
+ * 清单取目录旁边的 `extension.json`;文件名只认语言表里的 `<语言码>.json`(宿主也只读这些)。
+ */
+export function checkExtensionLocaleDir(dir, root = REPO_ROOT) {
+	const problems = [];
+	const absolute = join(root, dir);
+	if (!existsSync(absolute)) return [`${dir} 不存在`];
+	const manifestPath = join(absolute, "..", "extension.json");
+	if (!existsSync(manifestPath)) return [`${dir} 旁边没有 extension.json`];
+	const read = parseExtensionManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
+	if (!read.ok) return [`${dir} 旁边的 extension.json 读不了`];
+	for (const file of readdirSync(absolute).sort()) {
+		if (file.startsWith(".")) continue;
+		const match = /^(.+)\.json$/.exec(file);
+		if (match === null || !LOCALES.includes(match[1])) {
+			problems.push(`${dir}/${file} 的文件名不是 <语言码>.json`);
+			continue;
+		}
+		let raw;
+		try {
+			raw = JSON.parse(readFileSync(join(absolute, file), "utf8"));
+		} catch (error) {
+			problems.push(`${dir}/${file} 解析失败: ${error.message}`);
+			continue;
+		}
+		for (const issue of parseExtensionLocaleFile(raw, read.manifest).issues) {
+			problems.push(`${dir}/${file} ${issue.path.join(".") || "(根)"}: ${issue.code}`);
+		}
+	}
+	return problems;
+}
+
 /** 找 `roots` 底下所有名叫 `locales` 的目录(仓库相对路径,排好序)。不进点开头的、node_modules、dist、lib、target。 */
-export function findLocalesDirs(root, roots = ["apps", "packages"]) {
+export function findLocalesDirs(root, roots = ["apps", "packages", "extensions"]) {
 	const skipped = new Set(["node_modules", "dist", "lib", "target"]);
 	const found = [];
 	const walk = (directory) => {
@@ -545,7 +587,39 @@ describe("读目录的两个函数(临时目录样例)", () => {
 		);
 	});
 
-	it("findLocalesDirs:只看 apps 与 packages,不进 node_modules、dist、lib、target 与点开头的目录", () => {
+	it("checkExtensionLocaleDir:干净的零问题;名字不对、写坏的键、清单里没有的条目、不是 JSON 各报一条", () => {
+		const manifest = JSON.stringify({
+			id: "e",
+			name: "示例",
+			description: "x",
+			version: "0.0.1",
+			apiVersion: 2,
+			contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#fb7299" } } },
+		});
+		withTree(
+			(root) => {
+				put(root, "extensions/e/extension.json", manifest);
+				put(root, "extensions/e/locales/en.json", '{"a.b":"x","$manifest":{"name":"Demo"}}');
+			},
+			(root) => expect(checkExtensionLocaleDir("extensions/e/locales", root)).toEqual([]),
+		);
+		withTree(
+			(root) => {
+				put(root, "extensions/e/extension.json", manifest);
+				put(root, "extensions/e/locales/notes.json");
+				put(root, "extensions/e/locales/ja.json", '{"bad key":"x"}');
+				put(
+					root,
+					"extensions/e/locales/zh-CN.json",
+					'{"$manifest":{"settings":{"fields":{"nope":{"label":"x"}}}}}',
+				);
+				put(root, "extensions/e/locales/en.json", "{oops");
+			},
+			(root) => expect(checkExtensionLocaleDir("extensions/e/locales", root)).toHaveLength(4),
+		);
+	});
+
+	it("findLocalesDirs:看 apps、packages 与 extensions,不进 node_modules、dist、lib、target 与点开头的目录", () => {
 		withTree(
 			(root) => {
 				put(root, "apps/a/src/i18n/locales/en.json");
@@ -556,9 +630,15 @@ describe("读目录的两个函数(临时目录样例)", () => {
 				put(root, "apps/a/src-tauri/target/locales/en.json");
 				put(root, ".claude/worktrees/w/apps/a/locales/en.json");
 				put(root, "extensions/e/locales/en.json");
+				put(root, "extensions/e/dist/locales/en.json");
+				put(root, "extensions/e/node_modules/x/locales/en.json");
 			},
 			(root) =>
-				expect(findLocalesDirs(root)).toEqual(["apps/a/src/i18n/locales", "packages/b/locales"]),
+				expect(findLocalesDirs(root)).toEqual([
+					"apps/a/src/i18n/locales",
+					"extensions/e/locales",
+					"packages/b/locales",
+				]),
 		);
 	});
 });
@@ -583,8 +663,12 @@ describe("BN 的译文目录", () => {
 		expect(checkDictionaries({ locales })).toEqual([]);
 	});
 
-	it("仓里叫 locales 的目录必须等于 DICT_DIRS —— 新开的译文目录不许被静默漏查", () => {
-		expect(findLocalesDirs(REPO_ROOT)).toEqual([...DICT_DIRS].sort());
+	it("仓里叫 locales 的目录必须等于 DICT_DIRS 加 EXTENSION_LOCALE_DIRS —— 新开的译文目录不许被静默漏查", () => {
+		expect(findLocalesDirs(REPO_ROOT)).toEqual([...DICT_DIRS, ...EXTENSION_LOCALE_DIRS].sort());
+	});
+
+	it.each(EXTENSION_LOCALE_DIRS)("%s:拓展的译文目录用宿主同一份解析查,零问题", (dir) => {
+		expect(checkExtensionLocaleDir(dir)).toEqual([]);
 	});
 
 	it("要求齐的名单与有女仆层的名单只写 LOCALES 里的语言", () => {

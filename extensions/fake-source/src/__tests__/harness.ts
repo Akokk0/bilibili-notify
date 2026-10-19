@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import type {
 	Disposable,
 	ExtensionContext,
+	ExtensionI18n,
 	ExtensionOwnSubscription,
 	ExtensionView,
 	SubscriptionSourceDef,
@@ -28,6 +30,28 @@ export interface BootOptions {
 }
 
 type ActionHandler = (signal: AbortSignal) => void | Promise<void>;
+
+/**
+ * 假的 `ctx.i18n`:读包里真的 `locales/zh-CN.json`(宿主那套回落链与单复数不在这里重造),
+ * 带 `count` 时取 `键#other`,占位符 `{名字}` 从 `values` 填。语言永远是简中。
+ */
+function zhCNI18n(): ExtensionI18n {
+	const dict = JSON.parse(
+		readFileSync(new URL("../../locales/zh-CN.json", import.meta.url), "utf8"),
+	) as Record<string, unknown>;
+	return {
+		locale: () => "zh-CN",
+		t(key, values) {
+			const hit = values?.count === undefined ? dict[key] : dict[`${key}#other`];
+			const text = typeof hit === "string" ? hit : key;
+			return text.replace(/\{(\w+)\}/g, (whole, name: string) => {
+				const value = values?.[name];
+				return value === undefined ? whole : String(value);
+			});
+		},
+		onChange: () => ({ dispose() {} }),
+	};
+}
 
 /**
  * 手搭的 ctx:只接假源真会碰的那几格,把它交出来的东西(解析门、视图、动作、上报)攒下来给测试看。
@@ -63,6 +87,7 @@ export function bootFakeSource(
 		setTimeout: () => noop,
 		setInterval: () => noop,
 		onDispose() {},
+		i18n: zhCNI18n(),
 		registerSubscriptionSource(def: SubscriptionSourceDef) {
 			source = def;
 			return {

@@ -1,4 +1,4 @@
-import { copyFile } from "node:fs/promises";
+import { copyFile, cp, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
@@ -7,14 +7,19 @@ const DIR = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(DIR, "dist");
 
 /**
- * 拓展包 = **清单 + 代码**(ADR-0012 决策 8),所以构建产出的是一整个能直接落地的包目录:
+ * 拓展包 = **清单 + 代码 + 译文**(ADR-0012 决策 8、ADR-0037 决策 14),所以构建产出的是一整个能直接落地的包目录:
  * `dist/` 原样拷进 `<载荷>/extensions/bridge/` 或 `<dataDir>/extensions/bridge/` 就能跑。
  * 清单留在源码根便于人读,但它必须跟着代码一起走 —— 装载器在 import 任何一行之前先读它。
+ * `locales/` 有才拷(桥眼下不带译文)。
  */
-const copyManifest = {
-	name: "bn:extension-manifest",
+const copyPackageFiles = {
+	name: "bn:extension-package-files",
 	async closeBundle() {
 		await copyFile(resolve(DIR, "extension.json"), resolve(OUT, "extension.json"));
+		const locales = resolve(DIR, "locales");
+		if ((await stat(locales).catch(() => undefined))?.isDirectory()) {
+			await cp(locales, resolve(OUT, "locales"), { recursive: true });
+		}
 	},
 };
 
@@ -45,6 +50,6 @@ export default defineConfig({
 			alwaysBundle: [/^@bilibili-notify\//, /^ws(\/|$)/, /^zod(\/|$)/],
 			onlyBundle: false,
 		},
-		plugins: [copyManifest],
+		plugins: [copyPackageFiles],
 	},
 });

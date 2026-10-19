@@ -1,0 +1,16 @@
+{
+	"view.summary#one": "{count} subscription",
+	"view.summary#other": "{count} subscriptions",
+	"view.notice": "A development-only fake source with no platform behind it: it makes up candidates from what you type when creating a subscription, and typing empty / slow / bad / messy plays one kind of failure each. The buttons below report to every enabled subscription at once.",
+	"$manifest": {
+		"name": "Fake source (dev)",
+		"description": "A development-only fake subscription source with no platform behind it.",
+		"contributes": {
+			"subscription": {
+				"display": {
+					"label": "Fake source"
+				}
+			}
+		}
+	}
+}
