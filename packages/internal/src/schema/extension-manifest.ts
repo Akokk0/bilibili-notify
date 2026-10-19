@@ -72,6 +72,15 @@ export function apiVersionAccepted(
 export const ApiRevisionSchema = z.number().int().nonnegative();
 
 /**
+ * 清单里可译文字的长度上限（3b-43）。译文文件与清单共用这几个数：两边各写一份，
+ * 迟早会一边改了、另一边还在用旧数。
+ */
+export const EXTENSION_DISPLAY_LABEL_MAX_CHARS = 64;
+export const EXTENSION_SHORT_LABEL_MAX_CHARS = 8;
+export const EXTENSION_ITEM_LABEL_MAX_CHARS = 16;
+export const EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS = 40;
+
+/**
  * 这个拓展开的是哪一口。
  *
  * 只有两口(ADR-0012):**推送源**接进「推送目标」,**订阅源**接进「订阅 UP 主」。
@@ -437,7 +446,7 @@ const ListFieldSchema = z.strictObject({
 	/** 哪一格当卡片标题 —— 必须是项里一格必填的 string。 */
 	title: FieldKeySchema,
 	/** 一项叫什么(「接入」)—— 「新建接入」「还没有接入」「删掉这条接入?」。不给就用 `label`。 */
-	itemLabel: z.string().min(1).max(16).optional(),
+	itemLabel: z.string().min(1).max(EXTENSION_ITEM_LABEL_MAX_CHARS).optional(),
 	/** 哪个 enum 的选中项图标当卡片左上的方块。 */
 	mark: FieldKeySchema.optional(),
 	/** 哪一格 boolean 画成卡上的「停用 / 启用」;关着的项 BN 盖成「已停用」。 */
@@ -492,21 +501,21 @@ const HexColorSchema = z
 /** 一个口在界面上的样子(ADR-0012 决策 46 那三格,`tint` 改名 `color`)。 */
 const displayShape = {
 	/** 全名:新建连接 / 平台选择那一排。 */
-	label: z.string().min(1).max(64),
+	label: z.string().min(1).max(EXTENSION_DISPLAY_LABEL_MAX_CHARS),
 	/** 短名:卡片上那个方章。 */
-	shortLabel: z.string().min(1).max(8),
+	shortLabel: z.string().min(1).max(EXTENSION_SHORT_LABEL_MAX_CHARS),
 	color: HexColorSchema,
 };
 const PushDisplaySchema = z.strictObject(displayShape);
 const SubscriptionDisplaySchema = z.strictObject({
 	...displayShape,
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
-	postNoun: z.string().min(1).max(8).optional(),
+	postNoun: z.string().min(1).max(EXTENSION_SHORT_LABEL_MAX_CHARS).optional(),
 	/**
 	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
 	 * 链接」。不给就用通用说法。
 	 */
-	lookupPlaceholder: z.string().min(1).max(40).optional(),
+	lookupPlaceholder: z.string().min(1).max(EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS).optional(),
 	/**
 	 * 外部 id 长什么样(3b-58):正则的源码字符串,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立
 	 * 校验。编译不过 / 超长 / 疑似灾难性回溯的在这里就拒 —— 清单读不了、拓展装不上,不留到每次

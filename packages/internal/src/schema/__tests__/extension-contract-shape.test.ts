@@ -24,6 +24,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { ExtensionLocaleFileSchema } from "../extension-locale";
 import { EXTENSION_API_RANGE, ExtensionManifestV2Schema } from "../extension-manifest";
 import { SubscriptionCandidatesSchema } from "../extension-subscription";
 import { ExtensionViewSchema } from "../extension-view";
@@ -48,10 +49,11 @@ interface ContractRow {
 /**
  * 被钉的契约 —— **以后加一个 schema 就是往这里加一行**。
  *
- * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、解析门候选、视图、五种上报。
+ * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、解析门候选、视图、五种上报。
  */
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v2", schema: ExtensionManifestV2Schema, digest: "c8e5aedd9b532dcd" },
+	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "59a201debf17a4a4" },
 	{ name: "解析门候选", schema: SubscriptionCandidatesSchema, digest: "69bdc90eeb29a4b2" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
 	{ name: "上报:作品", schema: SubscriptionPostSchema, digest: "7877ab1518955737" },

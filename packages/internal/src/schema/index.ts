@@ -2,6 +2,7 @@ export * from "./ai-writing";
 export * from "./card-skin";
 export * from "./commands";
 export * from "./common";
+export * from "./extension-locale";
 export * from "./extension-manifest";
 export * from "./extension-marketplace";
 export * from "./extension-subscription";
