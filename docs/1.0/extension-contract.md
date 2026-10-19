@@ -43,7 +43,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 `activate(ctx)` 拿到的 ctx 分三层：
 
 1. **`IntegrationContext`**：每个集成（B 站、每个拓展、每个内置平台适配器）拿的都是这一种，下表逐个列。
-2. **拓展特有的窄面**：v2 已有的照留 —— 可回收定时器、`mount`、`onUpgrade`、`publishView`、`statusChanged`、面板动作 `onAction`，以及 `id` / `hostApiVersion` / `hostVersion`。
+2. **拓展特有的窄面**：v2 已有的照留 —— 可回收定时器、`mount`、`onUpgrade`、`publishView`、`statusChanged`、面板动作 `onAction`，以及 `id` / `hostApiVersion` / `hostVersion`；1.0 新加 `i18n`（`ExtensionI18n`，见「译文与 `ctx.i18n`」）。
 3. **登记方法**：`registerSource`、`registerPlatformAdapter`（见各节）。
 
 订阅侧特有的（名单、`report*`）属于 `SourceContext`，推送侧特有的（`inbound`、自己的连接等）属于 `PlatformAdapterContext`，都不在 `IntegrationContext` 里。这两份特有的和内置的一样，经所登记实现的 `start(ctx)` 递进来（def 里的 `start` 拿到的就是 `SourceContext` / `PlatformAdapterContext`）；登记交回的把手只管注销，不再像 v2 那样挂上报方法（ADR-0025 决策 1）。
@@ -356,11 +356,41 @@ interface ConnectionCandidate {
 
 ### 译文与 `ctx.i18n`（ADR-0037 决策 14）
 
-- 译文放包里的**单独目录** `locales/`（与 BN 自己放译文的目录同名），一种语言一个 `<语言码>.json`，语言码用 BCP 47 写法 `zh-CN` / `en` / `ja`；带数量的句子写成 `键#类别`（类别名照 `Intl.PluralRules`），取字时传 `count`（10-15 主人定，ADR-0037 决策 6 下的 🔗）；`extension.json` 只有一份。清单字段的译文住同一份文件的一个保留段。
-- 宿主读包里的译文，给上下文一个 `ctx.i18n`：按当前语言合好、`t(键, 参数)` 取字（占位符与单复数同 BN 一套规则）、语言变了自己换并另给 `onChange`。它顶替决策 14 原排的「当前语言 + 变了的通知」两格。
-- 键按字段在清单里的路径；一条一条的（设置项、选项）按它们自己的 `key` 而不是序号。
-- 写坏的文件或对不上的键只丢那一份 / 那几条、记 warn、拓展页注一句，不拒整个拓展。
-- 装包白名单放行「那个目录下的 `<语言码>.json`、能按 JSON 解析、单份限大小」，解压总量上限与打包脚本同改。
+这一节是对外格式：第三方照着写，定了就改不动（ADR-0037 决策 14 下 2026-10-17 的 🔗）。
+
+- **目录与文件名**：译文放包里的**单独目录** `locales/`（与 BN 自己放译文的目录同名），一种语言一个 `<语言码>.json`，语言码用 BCP 47 写法（`zh-CN` / `en` / `ja`；`zh-TW` 随 3b-10 进来），大小写照 BN 的语言表；`extension.json` 只有一份。装包时只把 BN 语言表里的语言写进盘：写盘的文件名由宿主按表里的常量重建、不取自 zip；不在表里的（如 `ko.json`、大小写写错的 `zh-cn.json`）跳过不写，并在装包结果里说明；读目录时也只读表里的。
+- **普通键**：与 BN 同一个段形，每段是 `[A-Za-z0-9_-]+`、用点分段，例如 `status.connected`。带数量的句子在译文里写成 `键#类别`（类别名照 `Intl.PluralRules` 的 `zero` / `one` / `two` / `few` / `many` / `other`），取字时传 `count`。普通键的段不含 `$`，不会与下面的保留段撞名。
+- **清单字段的保留段**：顶层保留键 `$manifest`，值是照清单形状嵌套的对象；设置项按自己的 `key`、选项按自己的 `value`、列表项按 `key` / `value` / `host` 展开成子对象。例如：
+
+```json
+{
+  "status.connected": "已连接",
+  "$manifest": {
+    "name": "示例拓展",
+    "settings": {
+      "fields": {
+        "token": { "label": "令牌" },
+        "kind": { "options": { "qq.official": { "label": "QQ 官方" } } }
+      }
+    }
+  }
+}
+```
+
+- **回落链**：固定为「本语言 → 简中 → 英文 → 清单原字」，不按语言分。运行时取字与清单字段共用前三级；清单字段最后落清单原字，运行时走到链尾仍没有就回键本身。宿主先按这条链为每种语言合成平实版再交给 `createI18n`，不给 `fallback`、不改核心。
+- **坏文件与坏条目**：装包时译文不是 JSON 或超过单份上限 → 整包拒收并点名那一份；已经在盘上的（手放的、开发版软链的），以及对不上清单的键 → 只丢那一份 / 那几条、记 warn、拓展页注一句，不拒整个拓展。
+- **上限**：单份 256 KB、`locales/` 合计 2 MB；整包上限仍是 10 MB。
+- **`ctx.i18n` 的形状**：
+
+```ts
+interface ExtensionI18n {
+  locale(): string;
+  t(key: string, values?: TextValues): string;
+  onChange(fn: () => void): Disposable;
+}
+```
+
+- `locale()` 现读当前语言，返回 `string` 而不是语言码闭集；`t` 的占位符与单复数同 BN 一套规则；`onChange` 只在语言真的变了时叫，收摊时宿主自动摘掉。只挂拓展的上下文，不挂 `IntegrationContext`；口吻不交给拓展，`ctx.i18n` 只有平实一层。
 - 连接的设置（`settingsFields` / `settingsSchema`）是另一回事，见「推送：平台适配器」。
 
 ## devtools

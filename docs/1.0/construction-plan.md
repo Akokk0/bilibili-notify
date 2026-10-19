@@ -508,6 +508,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 来源的 `searchCreators`、`GET /api/sources/:sourceKey/creators`、`/api/sources`（描述符下发）：3a-28 没做，面板这一片完全不动（已定），旧的 `/api/subscriptions/search` 与 `/lookup` 还在用。10-14 主人定提前：**来源方法 `searchCreators` 3b 造（B 站实现、只给 AI 的搜人工具用），路由 `GET /api/sources/:sourceKey/creators` 与面板仍第 4 期**；来源描述的 `creatorNoun` 与 contract 里的叫法函数 3b 造，提示词按 ADR-0030 决策 3 全做（面板上的叫法仍第 4 期） | 方法与叫法函数 3b；路由与面板第 4 期面板改造时，连同关旧口、修「搜人时风控与未登录都报成 404」一起做 |
 | 登录状态的定时检查（10-14 主人定现在不做）：仍由 B 站自己按 `healthCheckMinutes` 起定时器；宿主看 `auth.onChange` 报登录问题，但不替来源定时检查 | 第二个有登录的来源出现时一起设计（宿主定时调、统一判） |
 | 市场索引里给人看的字不分语言（10-14 主人定）：这一期索引只放清单里的默认文字，装上之后才按语言显示 | 第一个带译文的拓展上架时，给条目加一格可选的按语言文字（索引规则不严格，加一格是加宽）；见 [extension-marketplace.md](../agents/extension-marketplace.md) |
+| 桥接拓展自己的清单与视图文字出三种语言（ADR-0037 后果一节）：3b-43 只让假源带 `locales/`、当 `ctx.i18n` 的真实使用者，桥这一片不动（10-17 照规矩定） | 第 5 期翻译开工前，桥加 `locales/` 并改读 `ctx.i18n`，要发一版桥 |
 | issue 56 其余部分：填 `作者/仓库名` 加源、`.bn/`、脚手架、发布模板、契约包怎么给第三方（10-14 主人定时机） | 排在 1.0 重构之后、抖音拓展之前 |
 | 来源的 `fetchProfile`：定案点名的使用者是核心按资料刷新 cron 定时调，今天资料刷新仍由粉丝轮询那条路做 | 3b，资料刷新中立化时 |
 | `ctx.fetchImage` / `storeImage`：请求客户端这一期只有 B 站有、没进公共上下文，B 站来源仍经依赖拿抓图服务，绑上去没有调用方。10-14 定：造的时候一个集成一个写口，抓到的图挂在名单恒空的「在途」引用方下（见 [extension-contract.md](./extension-contract.md)「图」） | 请求客户端进公共上下文的那一片（3b 契约第 3 版） |
