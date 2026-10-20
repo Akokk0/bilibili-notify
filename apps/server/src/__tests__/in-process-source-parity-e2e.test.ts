@@ -129,7 +129,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P31)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P32)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -191,6 +191,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P32",
+		title: "醒目留言:非人民币过门槛、卡按档取色、头像懒取一次、出不了卡退成一句",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -215,10 +220,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N04",
-		title: "liveInteractions:醒目留言、会员、词云、总结",
+		title: "liveInteractions:会员、词云、总结",
 		checked: false,
-		waitsFor: "3b",
-		reason: "直播在 3a 只是外壳,接口上没有 liveInteractions",
+		waitsFor: "3b-22",
+		reason: "会员上报与下播回顾归 3b-22 后续提交;接口上的 liveInteractions 现在只开观众头像",
 	},
 	{
 		id: "N05",
@@ -251,10 +256,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N10",
-		title: "规则里的直播项:非人民币醒目留言门槛、custom 会员体系、minRank",
+		title: "规则里的直播项:custom 会员体系、minRank",
 		checked: false,
 		waitsFor: "3b",
-		reason: "全是直播",
+		reason: "会员体系与门槛归 3b-22 后续提交",
 	},
 	{
 		id: "N11",
@@ -312,6 +317,7 @@ const SOURCE_MEMBERS = {
 	auth: ["P16"],
 	searchCreators: ["P26"],
 	fetchLiveStatus: ["P30"],
+	liveInteractions: ["P32"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
 	logger: ["P20"],
@@ -328,7 +334,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
 	reportLive: ["P29"],
-	reportLiveInteraction: ["P31"],
+	reportLiveInteraction: ["P31", "P32"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
@@ -712,7 +718,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		await writeFile(
 			join(generation, "config", "subscriptions.json"),
 			subscriptionsFileText([
-				// alice 还路由了开播与下播(P29 的直播卡推给群)、特别弹幕与特别进场(P31),别人只路由作品。
+				// alice 还路由了开播与下播(P29 的直播卡推给群)、特别弹幕与特别进场(P31)、醒目留言(P32),别人只路由作品。
 				// 特别关注名单上有一位 7001,两样都带;特性开关出厂是关的,P31 自己开关。
 				{
 					...sub(SUB.alice, EXT.alice),
@@ -720,6 +726,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 						...sub(SUB.alice, EXT.alice).routing,
 						liveStart: [ID.group],
 						liveEnd: [ID.group],
+						superchat: [ID.group],
 						viewerChat: [ID.group],
 						viewerEnter: [ID.group],
 					},
@@ -1901,6 +1908,87 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P31");
 	}, 60_000);
 
+	// 验红:`live-interactions.ts` 不接 `superchat`(什么都不发),整条红;门槛挪到头像之前取、或忘了传 `tier`,
+	// 「不取头像」「按档取色」那两段红;不看来源给的 `fallbackText`,兜底那段红。
+	it("P32 醒目留言:非人民币过门槛、卡按档取色、头像懒取一次、出不了卡退成一句", async () => {
+		await clearCaptures();
+		const probe = currentProbe();
+		const ctx = probe.ctx;
+		if (!ctx) throw new Error("假来源还没 start");
+		const avatar = Buffer.from(png(8, 8, 21));
+		const stored = await ctx.storeImage(avatar);
+		if (!stored.ok) throw new Error("storeImage 存头像失败");
+		probe.viewerAvatarRef = stored.ref;
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		const superchat = (over: Record<string, unknown> = {}) =>
+			probe.reportLiveInteraction(ext, {
+				kind: "superchat",
+				viewer: { id: "42", name: "观众小明P32" },
+				text: "加油P32",
+				amount: 100,
+				currency: "CNY",
+				tier: { rank: 3, durationSec: 300 },
+				...over,
+			} as Parameters<typeof probe.reportLiveInteraction>[1]);
+		const htmlOf = (text: string) => renderedHtml.find((page) => page.includes(text));
+
+		await patchSettings({
+			defaults: { features: { superchat: true }, superchat: { minAmount: 30 } },
+		});
+		try {
+			// 人民币低于门槛:不推,也不取头像(懒取口只在确定要出卡时问)。
+			superchat({ amount: 10 });
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			expect(await captures()).toEqual([]);
+			expect(probe.viewerAvatarAsked).toEqual([]);
+
+			// 人民币过门槛:出卡,档 3 取默认配色表第 3 色;观众头像经来源的懒取口取一次并画进卡。
+			superchat();
+			await settledCaptures(1);
+			const first = await captures();
+			expect(first[0]).toMatchObject({ kind: "image", images: 1 });
+			const firstHtml = htmlOf("加油P32");
+			expect(firstHtml, "醒目留言没画成卡").toBeDefined();
+			expect(firstHtml).toContain("#a29bfe");
+			expect(firstHtml).toContain(avatar.toString("base64"));
+			expect(probe.viewerAvatarAsked).toEqual([`${ext}:42`]);
+
+			// 非人民币:拿美元的 5 去比人民币的 30 没有意义,放行;换一档(1)就换一套配色。
+			superchat({ amount: 5, currency: "USD", tier: { rank: 1 }, text: "美元P32" });
+			await settledCaptures(2);
+			const secondHtml = htmlOf("美元P32");
+			expect(secondHtml, "非人民币的醒目留言没出卡").toBeDefined();
+			expect(secondHtml).toContain("#a8e6cf");
+			expect(probe.viewerAvatarAsked).toEqual([`${ext}:42`, `${ext}:42`]);
+
+			// 出不了卡(出图关着):退成一句。来源给了就用来源那句;没给就用核心字典里那句中性的。
+			await patchSettings({ defaults: { cards: { enabled: false } } });
+			superchat({ text: "来源兜底P32", fallbackText: "来源给的兜底P32" });
+			await settledCaptures(3);
+			expect((await captures())[2]).toMatchObject({ kind: "text", text: "来源给的兜底P32" });
+			superchat({ text: "默认兜底P32" });
+			await settledCaptures(4);
+			const fallback = (await captures())[3];
+			expect(fallback?.text).toContain("观众小明P32");
+			expect(fallback?.text).toContain("默认兜底P32");
+			expect(fallback?.text).toContain("醒目留言");
+			// 没有卡可取,懒取口一次都没被多问。
+			expect(probe.viewerAvatarAsked).toHaveLength(2);
+			expect(await livePushCount(who, "superchat")).toBe(4);
+		} finally {
+			probe.viewerAvatarRef = undefined;
+			await patchSettings({
+				defaults: {
+					features: { superchat: false },
+					superchat: { minAmount: 0 },
+					cards: { enabled: true },
+				},
+			});
+		}
+		drove("P32");
+	}, 60_000);
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2256,13 +2344,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 31 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(45);
+	it("PARITY_ROWS:对拍 32 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(46);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 31 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 32 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(

@@ -66,7 +66,7 @@ export function createSourceRegistry(): SourceRegistry {
 					throw new Error(`source "${sourceKey}" 的 externalIdRegex 不合规: ${checked.reason}`);
 				}
 			}
-			const { health, fetchLiveStatus } = source;
+			const { health, fetchLiveStatus, liveInteractions } = source;
 			const claim = table.claim(sourceKey, {
 				sourceKey,
 				descriptor: source.descriptor,
@@ -77,6 +77,20 @@ export function createSourceRegistry(): SourceRegistry {
 				...(fetchLiveStatus
 					? {
 							fetchLiveStatus: (identity, signal) => fetchLiveStatus.call(source, identity, signal),
+						}
+					: {}),
+				// 同 `fetchLiveStatus`:转发时不丢 `this`。本提交只有观众头像;档位图标随 22-7 追加。
+				...(liveInteractions
+					? {
+							liveInteractions: {
+								fetchViewerAvatar: (identity, viewerId, signal) =>
+									liveInteractions.fetchViewerAvatar.call(
+										liveInteractions,
+										identity,
+										viewerId,
+										signal,
+									),
+							},
 						}
 					: {}),
 				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。

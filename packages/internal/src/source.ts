@@ -124,6 +124,23 @@ export interface CreatorCandidate {
 	fanClubName?: string;
 }
 
+/**
+ * 互动的懒取口(ADR-0021 决策 56 / S1):来源交给核心一份,核心到**确定要出卡**那一刻才问 —— 门槛没过、
+ * 出图关着都不该为此走一趟网络。本提交只开观众头像;会员的档位图标随后追加。
+ */
+export interface LiveInteractionReader {
+	/**
+	 * 取观众的头像(图库引用)。`viewerId` 是来源自己报上来的观众 id,`identity` 是这位主播在来源里的身份
+	 * (与 `reportLiveInteraction` 的第一参同一个);`signal` 中止(宿主不等了)后来源应尽快收手。
+	 * 取不到回结果形状、不抛;核心拿不到只是卡上没有观众头像。同一来源串行调用。
+	 */
+	fetchViewerAvatar(
+		identity: Identity,
+		viewerId: string,
+		signal: AbortSignal,
+	): Promise<Result<{ ref: ImageRef }>>;
+}
+
 export interface Source {
 	readonly descriptor: SourceDescriptor;
 	/**
@@ -142,6 +159,10 @@ export interface Source {
 	 * (宿主不等了)后来源应尽快收手。同一来源串行调用。不实现 = 只靠 `ctx.reportLive` 推送式上报。
 	 */
 	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
+	/**
+	 * 互动的懒取口。给了,核心就能在确定要出卡时补取观众头像;不给 = 卡照出,只是没有观众头像。
+	 */
+	liveInteractions?: LiveInteractionReader;
 	/** 此刻的健康状况,同步、不出网(与 `auth.state()` 同一种读口)。不交 = 这个来源在 `status` 里不占行。 */
 	health?(): SourceHealth;
 	start(ctx: SourceContext): Promise<void>;

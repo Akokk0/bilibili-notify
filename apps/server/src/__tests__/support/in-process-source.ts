@@ -14,6 +14,7 @@ import {
 	type AuthState,
 	type CreatorCandidate,
 	fail,
+	type ImageRef,
 	type Json,
 	type LiveInteractionReport,
 	type LiveSignalReport,
@@ -107,6 +108,12 @@ export interface InProcessProbe {
 	reportLive(externalId: string, report: LiveSignalReport): void;
 	/** 同上,替它在来源上下文上报一条观众互动(特别弹幕、特别进场……)。 */
 	reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
+	/**
+	 * 懒取口 `fetchViewerAvatar` 被问过的人(`externalId:viewerId`),按先后。测试用它钉「确定要出卡才取、一次」。
+	 */
+	viewerAvatarAsked: string[];
+	/** 懒取口下次交的头像引用;没摆就回失败(卡照出,只是没有观众头像)。 */
+	viewerAvatarRef: ImageRef | undefined;
 	/** 下一次 `fetchLiveStatus` 回什么;缺省回「没在播」。回完不清,测试自己摆回去。失败时假来源自己报问题。 */
 	liveStatusOutcome: LiveStatusResult;
 	/** `fetchLiveStatus` 被问过的外部 id,按先后。 */
@@ -193,6 +200,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		linkResolves: [],
 		liveStatusOutcome: { ok: true, kind: "offline" },
 		liveStatusAsked: [],
+		viewerAvatarAsked: [],
+		viewerAvatarRef: undefined,
 		reportLive(externalId, report) {
 			if (!probe.ctx) throw new Error("假来源还没 start");
 			probe.ctx.reportLive(externalId, report);
@@ -207,6 +216,14 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 	};
 	const source: Source = {
 		descriptor,
+		// 出卡时才取的懒取口(本提交只开观众头像);引用由测试先经 `ctx.storeImage` 摆进探针。
+		liveInteractions: {
+			async fetchViewerAvatar(identity, viewerId) {
+				probe.viewerAvatarAsked.push(`${identity.externalId}:${viewerId}`);
+				const ref = probe.viewerAvatarRef;
+				return ref === undefined ? fail("not_found", "没有可交的观众头像") : ok({ ref });
+			},
+		},
 		health() {
 			if (probe.healthThrows) throw new Error("健康检查炸了");
 			return { summary: probe.healthSummary };

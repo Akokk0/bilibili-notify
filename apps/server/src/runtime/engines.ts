@@ -1001,7 +1001,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),
 			}),
 		);
-		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场按这条订阅现折的设置判,发送绑到这条订阅上;
+		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场、醒目留言按这条订阅现折的设置判,发送绑到这条订阅上;
 		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。B 站老引擎到 22-10 前仍用自己那份。
 		const wordcloudStopWords = () =>
 			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
@@ -1018,6 +1018,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			sourceStatus,
 			table: liveTable,
 			profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+			profileAvatar: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+			source: (sourceKey) => opts.sources.get(sourceKey),
+			gates: sourceGates,
+			renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
 			sendFor: (id) => boundLivePush(push, id),
 			sessions: liveSessions,
 			collector: viewerChats,
