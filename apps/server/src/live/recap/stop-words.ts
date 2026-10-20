@@ -161,3 +161,8 @@ export function parseStopWords(csv?: string): string[] {
 		.map((w) => w.trim())
 		.filter((w) => w !== "");
 }
+
+/** 内置停用词加上用户逗号分隔的追加(收集器记词时用)。 */
+export function mergeStopWords(extra?: string): Set<string> {
+	return new Set([...stopwords, ...parseStopWords(extra)]);
+}

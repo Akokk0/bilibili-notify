@@ -90,6 +90,7 @@ import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import { bindExtensionLive } from "../live/extension-live.js";
+import { createLiveInteractions, type LiveInteractions } from "../live/live-interactions.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { bindLivePush } from "../live/live-push.js";
 import {
@@ -97,8 +98,10 @@ import {
 	type LiveSession,
 	type LiveSessionEngine,
 } from "../live/live-sessions.js";
-import { type LiveWorkSettings, rotateLiveCover } from "../live/live-settings.js";
+import { liveSettingsOf, rotateLiveCover } from "../live/live-settings.js";
 import type { LiveTable } from "../live/live-table.js";
+import { mergeStopWords } from "../live/recap/stop-words.js";
+import { ViewerChatCollector } from "../live/recap/viewer-chat-collector.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
@@ -874,6 +877,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const liveTable = opts.liveTable;
 	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `liveSession` 读它。 */
 	let liveSessionEngine: LiveSessionEngine | undefined;
+	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
+	let liveInteractionEngine: LiveInteractions | undefined;
 	if (extensionSources && liveTable) {
 		const liveImages = opts.liveImages;
 		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
@@ -886,7 +891,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			subscription: (id) => opts.subscriptionStore.findById(id),
 			sourceStatus,
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
-			settings: (sub) => liveWorkSettings(sub, globals()),
+			settings: (sub) => liveSettingsOf(sub, globals()),
 			timers: coreLiveCtx,
 			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的场次走下面的 B 站形状,拓展形状只给非在册的来源。
 			publishesExtensionSession: (sourceKey) => opts.sources.get(sourceKey) === undefined,
@@ -975,7 +980,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				table: liveTable,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
-				settings: (sub) => liveWorkSettings(sub, globals()),
+				settings: (sub) => liveSettingsOf(sub, globals()),
 				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
 				liveCover: (sub, settings) => {
 					const identity = subscriptionIdentityOf(sub);
@@ -996,6 +1001,30 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),
 			}),
 		);
+		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场按这条订阅现折的设置判,发送绑到这条订阅上;
+		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。B 站老引擎到 22-10 前仍用自己那份。
+		const wordcloudStopWords = () =>
+			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
+		const viewerChats = new ViewerChatCollector(wordcloudStopWords());
+		handles.push(
+			opts.bus.on("config-changed", ({ scope }) => {
+				if (scope === "globals") viewerChats.setStopwords(wordcloudStopWords());
+			}),
+		);
+		const interactions = createLiveInteractions({
+			logger: coreLiveCtx.logger,
+			subscription: (id) => opts.subscriptionStore.findById(id),
+			settings: (sub) => liveSettingsOf(sub, globals()),
+			sourceStatus,
+			table: liveTable,
+			profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+			sendFor: (id) => boundLivePush(push, id),
+			sessions: liveSessions,
+			collector: viewerChats,
+			serviceCtx: coreLiveCtx,
+		});
+		handles.push(interactions);
+		liveInteractionEngine = interactions;
 	}
 
 	handles.push(
@@ -1299,6 +1328,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						return;
 					}
 					liveSessionEngine.apply(signal);
+				},
+				liveInteractions: (subscriptionId, report) => {
+					if (!liveInteractionEngine) {
+						coreLiveCtx.logger.error(
+							`[engines] 没有直播互动入口,订阅 ${subscriptionId} 的直播互动 ${report.kind} 丢弃`,
+						);
+						return;
+					}
+					liveInteractionEngine.apply(subscriptionId, report);
 				},
 				problems: opts.problems,
 			});
@@ -1766,55 +1804,6 @@ function buildLiveSubsView(
 	return view;
 }
 
-/**
- * 一条订阅(B 站或拓展)→ 直播设置(ADR-0019 决策 65 / 67)。B 站直播引擎的视图(`buildLiveSubViewSingle`)
- * 与拓展订阅的直播都从这里拿,别抄第二份 —— 与 {@link postSettingsOf} 同一个道理:两份的话主人给某个
- * 抖音号换的文案 / 版式 / 推送频率,迟早有一格只有 B 站那头认。
- *
- * `eff` 给了就不再折一遍。
- */
-export function liveWorkSettings(
-	sub: Subscription,
-	globals: GlobalConfig,
-	eff: EffectiveSubscription = resolve(sub, globals.defaults),
-): LiveWorkSettings {
-	return {
-		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
-		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
-		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
-		liveStart: eff.features.liveStart,
-		liveStreaming: eff.features.liveStreaming,
-		liveEnd: eff.features.liveEnd,
-		// 直播封面:订阅自己设的列表原样给(没设 = undefined,跟全局;空列表 = 不用自定义封面),取法见
-		// `rotateLiveCover`。🪦 这里从前还映射一份带 `font` / `fontAsset` 的样式对象:字体 2026-09-14 退役成皮肤
-		// 自己的旋钮,那两格再没有读者,别加回来(字段留在 schema 里只为老配置装得进来)。
-		liveCoverImageIds: sub.overrides.cards?.liveCoverImageIds,
-		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
-		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
-		// Object.assign 后即刻生效;`liveStreaming` 开关或间隔变化时 engine 额外 rearm 一次 setInterval)。
-		streamingIntervalHours: eff.liveStreaming.streamingIntervalHours,
-		catchUpOnBoot: eff.liveStart.catchUpOnBoot,
-		// 断流接续:该 UP 下播是否先挂起等待重开。
-		liveEndGrace: eff.schedule.liveEndGrace,
-		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
-		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
-		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
-		customLiveMsg: {
-			enable: true,
-			customLiveStart: eff.templates.liveStart,
-			customLiveStreaming: eff.templates.liveStreaming,
-			customLiveEnd: eff.templates.liveEnd,
-		},
-		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
-		cardSkin: eff.cardSkin,
-		// 这位 UP 自己那层旋钮覆盖,原样给、不折全局(理由同 `postSettingsOf` 那一格)。
-		// 开播 / 直播中 / 下播 / SC / 上舰 / 词云都吃这一份(不分卡种)。
-		cardSkinKnobs: sub.overrides.cardSkinKnobs,
-		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
-		messageLayout: eff.messageLayout.live,
-	};
-}
-
 export function buildLiveSubViewSingle(
 	sub: Subscription,
 	subRuntimeStore: SubRuntimeStore,
@@ -1823,8 +1812,6 @@ export function buildLiveSubViewSingle(
 	const eff = resolve(sub, globals.defaults);
 	// B 站引擎以 uid 为键,调用方只给 B 站订阅。
 	const uid = subscriptionIdentityOf(sub).externalId;
-	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate),同 liveWorkSettings。
-	const feat = (k: keyof typeof eff.routing) => eff.features[k];
 	return {
 		// 中立事件(会员 / 醒目留言)要核心的订阅 id,引擎自己只认 uid —— 宿主带进来。
 		subscriptionId: sub.id,
@@ -1832,40 +1819,16 @@ export function buildLiveSubViewSingle(
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
 		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
-		post: feat("post"),
-		membership: feat("membership"),
-		superchat: feat("superchat"),
-		viewerChat: feat("viewerChat"),
-		viewerEnter: feat("viewerEnter"),
-		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
-		extras: eff.features.extras,
+		post: eff.features.post,
 		target: eff.routing,
-		// 开播 / 正在直播 / 下播三张卡共用的那几格(与拓展订阅的直播同一份)。dynamic 卡不经 LiveEngine
+		// 整份直播设置(与核心的场次 / 推送 / 互动同一份折法)。dynamic 卡不经 LiveEngine
 		// (走 DynamicPoller),所以按种类的样式只折 live / sc / guard。
-		...liveWorkSettings(sub, globals, eff),
-		// Per-UP 门槛 / AI;adapter 在 add 路径上灌入(门槛是折好的生效值,没配 = 不设门槛),room-session 在 SC / guard /
-		// liveSummary 调用点先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →
+		...liveSettingsOf(sub, globals, eff),
+		// B 站专有的两格:上舰门槛与会员体系 `guard` 的文案;AI 覆盖只在真有 per-UP override 时生成 —— 无 override →
 		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
-		minSuperchatAmount: eff.superchat.minAmount,
 		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
 		aiOverride: resolveAiOverride(sub, globals.ai),
 		guardTemplate: guardTemplateOf(eff.templates),
-		customLiveSummary: {
-			enable: true,
-			liveSummary: eff.templates.liveSummary,
-		},
-		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。room-session
-		// 在下播 dispatch 时对 sortedWords 过滤,使该 UP 的词云 / 总结热词额外生效。
-		wordcloudStopWords: eff.templates.wordcloudStopWords,
-		// 两块设置同带一份名单(条目自己说带哪把特性键),各配各的文案。
-		customSpecialDanmakuUsers: {
-			specialViewers: sub.specialViewers,
-			template: eff.templates.viewerChat,
-		},
-		customSpecialUsersEnterTheRoom: {
-			specialViewers: sub.specialViewers,
-			template: eff.templates.viewerEnter,
-		},
 	};
 }
 

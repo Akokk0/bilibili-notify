@@ -146,6 +146,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 		logger,
 		enqueue: () => {},
 		liveSignals: () => {},
+		liveInteractions: () => {},
 		problems: table,
 	});
 	return { table, notifyMaster, layers, source, engineErrors, ...authed };

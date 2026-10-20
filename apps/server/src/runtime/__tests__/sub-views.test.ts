@@ -51,7 +51,7 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 	});
 
 	it("订阅把直播封面设成空列表 → 也是覆盖(这位 UP 不用自定义封面):给出的是空列表,不是 undefined", () => {
-		// 验红:把 liveWorkSettings 里的 `liveCoverImageIds` 改成按长度折(空列表给 undefined),空列表被当成没设,这条红。
+		// 验红:把 liveSettingsOf 里的 `liveCoverImageIds` 改成按长度折(空列表给 undefined),空列表被当成没设,这条红。
 		const view = buildLiveSubViewSingle(
 			makeSub({ cards: { liveCoverImageIds: [] } }),
 			fakeRuntimeStore(),

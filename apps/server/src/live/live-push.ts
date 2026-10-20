@@ -39,7 +39,7 @@ import { LivePushType } from "./live-types.js";
  * `CatchUp`(走开播的目标、历史记成开播、不 @全体);周期那一档是 `Live`(走 `liveStreaming` 的目标)。
  *
  * **推什么、怎么推与 B 站共用**:直播装配(`pushLiveNotify`)、中立的文案渲染(`renderLiveText`)、按 UP
- * 折好的直播设置(`liveWorkSettings`)、特性键与推送类型的映射(`boundLivePush`)。**什么时候推是这里自己的**
+ * 折好的直播设置(`liveSettingsOf`)、特性键与推送类型的映射(`boundLivePush`)。**什么时候推是这里自己的**
  * (决策 67):B 站那套计时器每次触发都现问 B 站,搬不过来;拓展这边只认它报的事件与状态。
  *
  * **场次不在这里**(ADR-0020 决策 6):这一场从哪开始、到哪结束、断流接续等不等,由场次那一份算,推送与统计
@@ -98,7 +98,7 @@ export interface BindLivePushOptions {
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字与粉丝数(资料缓存,现取)。 */
 	profile(id: string): { name?: string; fans?: number } | undefined;
-	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveWorkSettings`)。 */
+	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveSettingsOf`)。 */
 	settings(sub: Subscription): LiveWorkSettings;
 	/** 这一张直播卡用哪张自定义封面(订阅的 ?? 全局的,再轮一张)。每推一张调一次。 */
 	liveCover(sub: Subscription, settings: LiveWorkSettings): string | undefined;

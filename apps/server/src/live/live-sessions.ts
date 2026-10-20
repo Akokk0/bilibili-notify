@@ -207,7 +207,7 @@ export interface CreateLiveSessionEngineOptions {
 	/** 订阅资料里的粉丝数(资料缓存,现取)。 */
 	fans(id: string): number | undefined;
 	/**
-	 * 这条订阅折好的直播设置(现折,见 `liveWorkSettings`)—— 看断流接续那两格,和周期核对的间隔
+	 * 这条订阅折好的直播设置(现折,见 `liveSettingsOf`)—— 看断流接续那两格,和周期核对的间隔
 	 * (周期「正在直播」开着用 `streamingIntervalHours`,关着用默认 1 小时)。
 	 */
 	settings(

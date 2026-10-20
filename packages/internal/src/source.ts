@@ -1,7 +1,7 @@
 import type { AuthState } from "./auth-state";
 import type { FeatureKey, Identity, ImageRef, Result } from "./constants";
 import type { LinkResolver } from "./link-preview";
-import type { LiveSignalReport, LiveStatusResult } from "./live";
+import type { LiveInteractionReport, LiveSignalReport, LiveStatusResult } from "./live";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -41,6 +41,12 @@ export interface SourceContext extends IntegrationContext {
 	 * `endedAt` 解析不出、下播没带 `endedAt`、来源已停下的上报被丢弃并记错误。
 	 */
 	reportLive(externalId: string, report: LiveSignalReport): void;
+	/**
+	 * 交一条观众互动(特别关注名单上的人发了弹幕、进了场……)。没有返回值;宿主按身份展开成这个人名下每一条订阅
+	 * 的一份,名单、特性开关、文案都按那条订阅现折的设置判,来源只管如实报「谁说了什么、谁进场了」。观众的 `id`
+	 * 是名单比对用的,要和名单里写的同一种 id。来源已停下的上报被丢弃并记错误。
+	 */
+	reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
 	/**
 	 * 报一个问题(某个人不再监听了……)。句子写平实、只说事:不称呼主人、不自称女仆、不写宿主的界面与操作;
 	 * 私聊时宿主按口吻补完整。有登录口的来源不要报登录,宿主看登录状态报与清。

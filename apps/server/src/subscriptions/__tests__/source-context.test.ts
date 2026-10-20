@@ -1,5 +1,6 @@
 import {
 	type IntegrationContext,
+	type LiveInteractionReport,
 	type LiveSignal,
 	ok,
 	type PostEvent,
@@ -34,6 +35,8 @@ const setup = (
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const liveSignals = vi.fn<(signal: LiveSignal) => void>();
+	const liveInteractions =
+		vi.fn<(subscriptionId: string, interaction: LiveInteractionReport) => void>();
 	const problems = makeProblems();
 	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
@@ -47,9 +50,19 @@ const setup = (
 		logger,
 		enqueue,
 		liveSignals,
+		liveInteractions,
 		problems,
 	});
-	return { ...world, logger, enqueue, liveSignals, problems, handle, settingsHost };
+	return {
+		...world,
+		logger,
+		enqueue,
+		liveSignals,
+		liveInteractions,
+		problems,
+		handle,
+		settingsHost,
+	};
 };
 
 describe("createSourceContext", () => {
@@ -64,6 +77,7 @@ describe("createSourceContext", () => {
 			"redact",
 			"registerLinkResolver",
 			"reportLive",
+			"reportLiveInteraction",
 			"reportPost",
 			"reportProblem",
 			"resolveProblem",
@@ -111,6 +125,7 @@ describe("createSourceContext", () => {
 			logger: hostLogger,
 			enqueue: vi.fn(),
 			liveSignals: vi.fn(),
+			liveInteractions: vi.fn(),
 			problems: makeProblems(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
@@ -233,6 +248,35 @@ describe("createSourceContext", () => {
 		handle.dispose();
 		handle.ctx.reportLive("1", { kind: "status", isLive: true, details: {} });
 		expect(liveSignals).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("reportLiveInteraction 按身份展开:每条订阅各一份(停用的也交,不在这里筛),带订阅 id,没有这个人的订阅就不交", () => {
+		const { handle, liveInteractions } = setup([
+			makeSub("a", "1"),
+			makeSub("b", "1", { enabled: false }),
+			makeSub("c", "2"),
+		]);
+		const viewer = { id: "123", name: "小明" };
+		handle.ctx.reportLiveInteraction("1", { kind: "viewerChat", viewer, text: "你好呀" });
+		handle.ctx.reportLiveInteraction("1", { kind: "viewerEnter", viewer });
+		handle.ctx.reportLiveInteraction("999", { kind: "viewerEnter", viewer });
+		expect(liveInteractions.mock.calls).toEqual([
+			["a", { kind: "viewerChat", viewer, text: "你好呀" }],
+			["b", { kind: "viewerChat", viewer, text: "你好呀" }],
+			["a", { kind: "viewerEnter", viewer }],
+			["b", { kind: "viewerEnter", viewer }],
+		]);
+	});
+
+	it("dispose 之后 reportLiveInteraction 不交并记 error", () => {
+		const { handle, liveInteractions, logger } = setup();
+		handle.dispose();
+		handle.ctx.reportLiveInteraction("1", {
+			kind: "viewerEnter",
+			viewer: { id: "123", name: "小明" },
+		});
+		expect(liveInteractions).not.toHaveBeenCalled();
 		expect(logger.error).toHaveBeenCalledTimes(1);
 	});
 

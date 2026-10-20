@@ -7,6 +7,7 @@
  */
 
 import type { Identity } from "./constants";
+import type { ViewerChatEvent, ViewerEnterEvent } from "./membership";
 import type { Creator, PostImage } from "./post";
 
 /** 一场直播的内容。 */
@@ -47,6 +48,15 @@ export type LiveStatusResult =
 	| { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
 	| { ok: true; kind: "offline" }
 	| { ok: false; code: string; message: string };
+
+/**
+ * 来源经 `reportLiveInteraction(externalId, report)` 上报的观众互动:形状是对应事件去掉 `subscriptionId`
+ * (订阅 id 来源不知道,核心按身份展开成每条订阅一份时补上)。本提交开 `viewerChat`、`viewerEnter`,
+ * 醒目留言、会员随后追加。
+ */
+export type LiveInteractionReport =
+	| ({ kind: "viewerChat" } & Omit<ViewerChatEvent, "subscriptionId">)
+	| ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">);
 
 /** 核心按身份展开后喂给场次引擎的:每条订阅一份。 */
 export type LiveSignal = LiveSignalReport & { subscriptionId: string; identity: Identity };

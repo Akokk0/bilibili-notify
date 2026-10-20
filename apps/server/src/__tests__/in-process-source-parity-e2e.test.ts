@@ -129,7 +129,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P30)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P31)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -186,6 +186,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P31",
+		title: "特别弹幕与特别进场:名单按 viewer.id、开关与名单都要",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -210,7 +215,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N04",
-		title: "liveInteractions:醒目留言、会员、特别弹幕、特别进场、词云、总结",
+		title: "liveInteractions:醒目留言、会员、词云、总结",
 		checked: false,
 		waitsFor: "3b",
 		reason: "直播在 3a 只是外壳,接口上没有 liveInteractions",
@@ -246,7 +251,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N10",
-		title: "规则里的直播项:非人民币醒目留言门槛、custom 会员体系、minRank、特别关注按 viewer.id",
+		title: "规则里的直播项:非人民币醒目留言门槛、custom 会员体系、minRank",
 		checked: false,
 		waitsFor: "3b",
 		reason: "全是直播",
@@ -323,6 +328,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
 	reportLive: ["P29"],
+	reportLiveInteraction: ["P31"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
@@ -388,6 +394,8 @@ const EXT = {
 	erin: "erin-ext",
 	frank: "frank-ext",
 } as const;
+/** alice 特别关注名单上的那位观众的 id(P31)。 */
+const SPECIAL_VIEWER = "7001";
 /** 没人认领的另一个键(名单里不该出现它名下的人)。 */
 const OTHER_KEY = "other.nobody";
 
@@ -704,14 +712,18 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		await writeFile(
 			join(generation, "config", "subscriptions.json"),
 			subscriptionsFileText([
-				// alice 还路由了开播与下播(P29 的直播卡推给群),别人只路由作品。
+				// alice 还路由了开播与下播(P29 的直播卡推给群)、特别弹幕与特别进场(P31),别人只路由作品。
+				// 特别关注名单上有一位 7001,两样都带;特性开关出厂是关的,P31 自己开关。
 				{
 					...sub(SUB.alice, EXT.alice),
 					routing: {
 						...sub(SUB.alice, EXT.alice).routing,
 						liveStart: [ID.group],
 						liveEnd: [ID.group],
+						viewerChat: [ID.group],
+						viewerEnter: [ID.group],
 					},
+					specialViewers: [{ id: SPECIAL_VIEWER, features: ["viewerChat", "viewerEnter"] }],
 				},
 				// 作品开关关着:在名单里,但 features 里没有 post。
 				{ ...sub(SUB.bob, EXT.bob), overrides: { features: { post: false } } },
@@ -1831,6 +1843,64 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P30");
 	}, 90_000);
 
+	// 验红:`live-interactions.ts` 里名单改成按名字认,「名单按 viewer.id」那段红(同名不同 id 的推了);
+	// 去掉对特性开关的核,不在本文件钉(开关关着时推送层也会丢,见 `live/__tests__/live-interactions.test.ts`)。
+	it("P31 特别弹幕与特别进场:名单按 viewer.id、开关与名单都要", async () => {
+		const probe = currentProbe();
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		const pushes = (feature: HistoryEntryView["feature"]) => livePushCount(who, feature);
+		const waitPushes = (feature: HistoryEntryView["feature"], n: number) =>
+			vi.waitFor(async () => expect(await pushes(feature)).toBe(n), { timeout: 10_000 });
+		// 「没推」要等一会儿才算数:要是推了,它会在这段时间里到。
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 500));
+		const viewer = { id: SPECIAL_VIEWER, name: "路人甲" };
+		const sameNameOtherId = { id: "7002", name: "路人甲" };
+		const sameIdOtherName = { id: SPECIAL_VIEWER, name: "路人乙" };
+
+		await patchSettings({ defaults: { features: { viewerChat: true, viewerEnter: true } } });
+		try {
+			// 特别弹幕:名单上的 7001 推;同名不同 id 的不推,同 id 换了名字的照推(认的是 id)。
+			probe.reportLiveInteraction(ext, { kind: "viewerChat", viewer, text: "你好呀" });
+			await waitPushes("viewerChat", 1);
+			probe.reportLiveInteraction(ext, {
+				kind: "viewerChat",
+				viewer: sameNameOtherId,
+				text: "你好呀",
+			});
+			await settle();
+			expect(await pushes("viewerChat")).toBe(1);
+			probe.reportLiveInteraction(ext, {
+				kind: "viewerChat",
+				viewer: sameIdOtherName,
+				text: "改名了",
+			});
+			await waitPushes("viewerChat", 2);
+
+			// 特别进场同理。
+			probe.reportLiveInteraction(ext, { kind: "viewerEnter", viewer });
+			await waitPushes("viewerEnter", 1);
+			probe.reportLiveInteraction(ext, { kind: "viewerEnter", viewer: sameNameOtherId });
+			await settle();
+			expect(await pushes("viewerEnter")).toBe(1);
+
+			// 开关与名单都要:名单上有人、这一把开关关着 → 不推;另一把照推。
+			await patchSettings({ defaults: { features: { viewerChat: false } } });
+			probe.reportLiveInteraction(ext, { kind: "viewerChat", viewer, text: "关着开关" });
+			probe.reportLiveInteraction(ext, { kind: "viewerEnter", viewer });
+			await waitPushes("viewerEnter", 2);
+			expect(await pushes("viewerChat")).toBe(2);
+
+			// 开关开着、名单没有这个人(换成别人的订阅 id 也一样:认的是这条订阅现折的名单)→ 不推。
+			probe.reportLiveInteraction(EXT.bob, { kind: "viewerEnter", viewer });
+			await settle();
+			expect(await livePushCount(SUB.bob, "viewerEnter")).toBe(0);
+		} finally {
+			await patchSettings({ defaults: { features: { viewerChat: false, viewerEnter: false } } });
+		}
+		drove("P31");
+	}, 60_000);
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2186,13 +2256,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 30 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(44);
+	it("PARITY_ROWS:对拍 31 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(45);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 30 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 31 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(

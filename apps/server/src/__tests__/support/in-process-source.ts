@@ -15,6 +15,7 @@ import {
 	type CreatorCandidate,
 	fail,
 	type Json,
+	type LiveInteractionReport,
 	type LiveSignalReport,
 	type LiveStatusResult,
 	ok,
@@ -104,6 +105,8 @@ export interface InProcessProbe {
 	 * 触发上报,这里由测试按需摆;还没 `start` 就抛。
 	 */
 	reportLive(externalId: string, report: LiveSignalReport): void;
+	/** 同上,替它在来源上下文上报一条观众互动(特别弹幕、特别进场……)。 */
+	reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
 	/** 下一次 `fetchLiveStatus` 回什么;缺省回「没在播」。回完不清,测试自己摆回去。失败时假来源自己报问题。 */
 	liveStatusOutcome: LiveStatusResult;
 	/** `fetchLiveStatus` 被问过的外部 id,按先后。 */
@@ -193,6 +196,10 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		reportLive(externalId, report) {
 			if (!probe.ctx) throw new Error("假来源还没 start");
 			probe.ctx.reportLive(externalId, report);
+		},
+		reportLiveInteraction(externalId, report) {
+			if (!probe.ctx) throw new Error("假来源还没 start");
+			probe.ctx.reportLiveInteraction(externalId, report);
 		},
 		searches: [],
 		searchOutcome: undefined,

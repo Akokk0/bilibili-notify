@@ -2,6 +2,7 @@ import type {
 	Disposable,
 	GlobalConfig,
 	IntegrationContext,
+	LiveInteractionReport,
 	LiveSignal,
 	LiveSignalReport,
 	Logger,
@@ -32,6 +33,8 @@ export interface CreateSourceContextOptions {
 	enqueue: (event: PostEvent) => void;
 	/** 直播信号的入口(`LiveSessionEngine.apply`):`reportLive` 按身份展开后,每条订阅一份交到这里。 */
 	liveSignals: (signal: LiveSignal) => void;
+	/** 直播互动的入口(`LiveInteractions.apply`):`reportLiveInteraction` 按身份展开后,每条订阅一份(订阅 id + 上报)交到这里。 */
+	liveInteractions: (subscriptionId: string, report: LiveInteractionReport) => void;
 	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
@@ -209,6 +212,21 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			for (const sub of subs) {
 				opts.liveSignals({ ...report, subscriptionId: sub.id, identity });
 			}
+		},
+		reportLiveInteraction(externalId: string, report: LiveInteractionReport) {
+			if (disposed) {
+				logger.error(
+					`[source] ${sourceKey} 已停下还在上报直播互动 ${report.kind}(丢弃;内置来源的 bug)`,
+				);
+				return;
+			}
+			const subs = opts.subscriptions.listByIdentity({ sourceKey, externalId });
+			if (subs.length === 0) {
+				logger.debug(`[source] ${sourceKey}:${externalId} 没有订阅,直播互动 ${report.kind} 不收`);
+				return;
+			}
+			// 停用的不在这里筛:互动入口按订阅现折设置、现看订阅还该不该推。
+			for (const sub of subs) opts.liveInteractions(sub.id, report);
 		},
 		reportProblem(problem) {
 			forEachProblemObject("报", problem, (about) =>

@@ -14,7 +14,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  * 直播共用:模板里的名字、字节转 data URL。
  *
  * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /
- * `postSettingsOf` / `liveWorkSettings`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
+ * `postSettingsOf` / `liveSettingsOf`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
  */
 
 /**

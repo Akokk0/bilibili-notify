@@ -10,7 +10,7 @@
  * 2. 一路走到真渲染器:拓展订阅的开播卡上,这位 UP 选的**字体文件与壁纸**真读了盘、进了 HTML ——
  *    这两档「别的旋钮都生效、唯独它俩静静不动」栽过一回(2026-09-19)。
  *
- * 验红:把 `engines.ts` 里 `liveWorkSettings` / `postSettingsOf` 递 `cardSkinKnobs` 那一句
+ * 验红:把 `live-settings.ts` 里 `liveSettingsOf` / `engines.ts` 里 `postSettingsOf` 递 `cardSkinKnobs` 那一句
  * 任删一句,对应的用例红;删 `live-push.ts` 递它那一句,最后一条红。
  */
 
@@ -29,8 +29,9 @@ import { bindExtensionLive } from "../../live/extension-live.js";
 import type { LiveNotifySend } from "../../live/live-notify.js";
 import { bindLivePush } from "../../live/live-push.js";
 import { createLiveSessionEngine } from "../../live/live-sessions.js";
+import { liveSettingsOf } from "../../live/live-settings.js";
 import { createLiveTable } from "../../live/live-table.js";
-import { buildLiveSubViewSingle, liveWorkSettings, postSettingsOf } from "../engines.js";
+import { buildLiveSubViewSingle, postSettingsOf } from "../engines.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntimeStore } from "../sub-runtime-store.js";
 
@@ -83,7 +84,7 @@ describe("订阅视图 / 设置带上这位 UP 那一层旋钮覆盖", () => {
 	it("拓展订阅:直播设置与作品设置都带着", () => {
 		const sub = makeExtensionSubscription({ overrides: { cardSkinKnobs: PER_UP } });
 		const g = globalsWith();
-		expect(liveWorkSettings(sub, g).cardSkinKnobs).toEqual(PER_UP);
+		expect(liveSettingsOf(sub, g).cardSkinKnobs).toEqual(PER_UP);
 		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toEqual(PER_UP);
 	});
 });
@@ -158,7 +159,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			subscription: (id) => (id === sub.id ? sub : undefined),
 			sourceStatus: { running: () => true },
 			fans: () => undefined,
-			settings: (s) => liveWorkSettings(s, g),
+			settings: (s) => liveSettingsOf(s, g),
 			timers,
 		});
 		disposers.push(sessions);
@@ -188,7 +189,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				table,
 				subscription: (id) => (id === sub.id ? sub : undefined),
 				profile: () => ({ name: "抖音甲" }),
-				settings: (s) => liveWorkSettings(s, g),
+				settings: (s) => liveSettingsOf(s, g),
 				liveCover: () => undefined,
 				sourceStatus: { running: () => true },
 				hasLiveTick: () => true,

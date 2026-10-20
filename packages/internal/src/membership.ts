@@ -63,6 +63,22 @@ export interface SuperchatEvent {
 }
 
 /**
+ * 特别关注名单上的人在直播间里发了弹幕(特别弹幕)。认人靠 `viewer.id`(整串比对),名字只拿去套文案;
+ * `text` 是弹幕正文。与 {@link SuperchatEvent} 同族:带订阅 id,来源上报时去掉它({@link LiveInteractionReport})。
+ */
+export interface ViewerChatEvent {
+	subscriptionId: string;
+	viewer: { id: string; name: string };
+	text: string;
+}
+
+/** 特别关注名单上的人进了直播间(特别进场)。认人同 {@link ViewerChatEvent}。 */
+export interface ViewerEnterEvent {
+	subscriptionId: string;
+	viewer: { id: string; name: string };
+}
+
+/**
  * 取一档的会员文案:**按档的 key** 取那一档自己的文案与图片,档里没填(缺、或空串)的格用体系默认。图片默认也是空串时
  * 回空串,由调用方回落该档自己的徽章。
  *

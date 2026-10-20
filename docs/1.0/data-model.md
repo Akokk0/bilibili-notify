@@ -374,6 +374,23 @@ interface SuperchatEvent {
   amount: number; currency: string;
   tier?: { rank: number; durationSec?: number };   // 醒目留言的档，来源按平台规矩算；durationSec 是留言挂多久
 }
+
+interface ViewerChatEvent {             // 特别关注名单上的人发了弹幕（特别弹幕）
+  subscriptionId: string;
+  viewer: { id: string; name: string }; // 名单按 viewer.id 整串认，名字只套文案
+  text: string;
+}
+
+interface ViewerEnterEvent {            // 名单上的人进了直播间（特别进场）
+  subscriptionId: string;
+  viewer: { id: string; name: string };
+}
+
+// 来源经 ctx.reportLiveInteraction(externalId, report) 上报：形状是对应事件去掉 subscriptionId，
+// 核心按身份展开成每条订阅一份、对着那条订阅现折的设置判（特性开关与名单两样都要）
+type LiveInteractionReport =
+  | ({ kind: "viewerChat" } & Omit<ViewerChatEvent, "subscriptionId">)
+  | ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">);   // 醒目留言、会员随后追加
 ```
 
 | 事项 | 规矩 |

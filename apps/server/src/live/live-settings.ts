@@ -5,8 +5,15 @@
  */
 
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import type { MessageKindLayout } from "@bilibili-notify/internal";
-import type { CustomLiveMsgLike, PickLiveCover } from "./live-types";
+import {
+	type EffectiveSubscription,
+	type ExtraKey,
+	type GlobalConfig,
+	type MessageKindLayout,
+	resolve,
+	type Subscription,
+} from "@bilibili-notify/internal";
+import type { CustomLiveMsgLike, PickLiveCover, SpecialViewerSettings } from "./live-types";
 
 /**
  * 一条订阅折好的**直播设置** —— 开播 / 正在直播 / 下播三张卡共用的那几格(ADR-0019 决策 65 / 67):
@@ -51,6 +58,130 @@ export interface LiveWorkSettings extends CardSkinChoice {
 	 * (走各自独立渲染,不经 sendLiveNotifyCard)。
 	 */
 	messageLayout: MessageKindLayout;
+}
+
+/**
+ * 附加项的开关(ADR-0016):挂在某把主特性下面、与本体分开发的一条消息。回顾只关心下播那两把
+ * (词云 / AI 总结);@全体 那两把归推送层。
+ */
+export type PushExtrasLike = Record<ExtraKey, boolean>;
+
+export interface CustomLiveSummaryLike {
+	enable: boolean;
+	liveSummary?: string;
+}
+
+/**
+ * 一条订阅折好的**整份直播设置**(S8):{@link LiveWorkSettings} 那几格加上直播互动与回顾要的 ——
+ * 四把互动开关(会员 / 醒目留言 / 特别弹幕 / 特别进场)、附加项、特别关注两块(名单加各自文案)、总结模板、
+ * 醒目留言门槛、词云停用词。核心的直播互动入口与回顾收集器、B 站直播引擎的订阅视图都从
+ * {@link liveSettingsOf} 拿,别抄第二份。
+ *
+ * 特别关注两块的字段名(`customSpecialDanmakuUsers` / `customSpecialUsersEnterTheRoom`)是 B 站时代的旧名,
+ * 22-10 B 站老引擎撤掉时一并改中立。
+ */
+export interface LiveSettings extends LiveWorkSettings {
+	membership: boolean;
+	superchat: boolean;
+	/**
+	 * 特别弹幕 / 特别进场的开关(`eff.features.viewerChat` / `viewerEnter`)。要不要监听直播间是「开关 ∧ 名单上有人带它」
+	 * (internal 的 `needsLiveMonitor`),名单在 {@link customSpecialDanmakuUsers} / {@link customSpecialUsersEnterTheRoom}。
+	 */
+	viewerChat: boolean;
+	viewerEnter: boolean;
+	/** 见 {@link PushExtrasLike}。宿主折叠 `eff.features.extras` 后整份填入。 */
+	extras: PushExtrasLike;
+	customLiveSummary: CustomLiveSummaryLike;
+	customSpecialDanmakuUsers: SpecialViewerSettings;
+	customSpecialUsersEnterTheRoom: SpecialViewerSettings;
+	/** 醒目留言门槛:金额低于它不推,按人民币元算;没配 = 不设门槛。 */
+	minSuperchatAmount?: number;
+	/**
+	 * 该 UP 解析后的弹幕词云额外停用词(英文逗号分隔)。下播 dispatch 时对热词再过滤一遍,使 per-UP 覆盖
+	 * 在该 UP 的词云 / 总结热词上额外生效。undefined / 空 = 不额外过滤。
+	 */
+	wordcloudStopWords?: string;
+}
+
+/** 这位 UP 要不要采集弹幕(词云 / 总结的原料):下播开着,且下播那两个附加项至少一个开着。 */
+export function wantsLiveEndExtras(
+	settings: Pick<LiveSettings, "liveEnd"> & {
+		extras: Pick<PushExtrasLike, "wordcloud" | "liveSummary">;
+	},
+): boolean {
+	return settings.liveEnd && (settings.extras.wordcloud || settings.extras.liveSummary);
+}
+
+/**
+ * 一条订阅(任何来源的)→ 整份直播设置(ADR-0019 决策 65 / 67;S8)。B 站直播引擎的视图(`buildLiveSubViewSingle`)、
+ * 核心的场次 / 推送 / 互动都从这里拿,别抄第二份 —— 与 `postSettingsOf` 同一个道理:两份的话主人给某个
+ * 抖音号换的文案 / 版式 / 推送频率,迟早有一格只有 B 站那头认。
+ *
+ * `eff` 给了就不再折一遍。
+ */
+export function liveSettingsOf(
+	sub: Subscription,
+	globals: GlobalConfig,
+	eff: EffectiveSubscription = resolve(sub, globals.defaults),
+): LiveSettings {
+	return {
+		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
+		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
+		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
+		liveStart: eff.features.liveStart,
+		liveStreaming: eff.features.liveStreaming,
+		liveEnd: eff.features.liveEnd,
+		membership: eff.features.membership,
+		superchat: eff.features.superchat,
+		viewerChat: eff.features.viewerChat,
+		viewerEnter: eff.features.viewerEnter,
+		// 四把附加项整份下发(ADR-0016);回顾只读下播那两把,@全体 归推送层。
+		extras: eff.features.extras,
+		// 直播封面:订阅自己设的列表原样给(没设 = undefined,跟全局;空列表 = 不用自定义封面),取法见
+		// `rotateLiveCover`。🪦 这里从前还映射一份带 `font` / `fontAsset` 的样式对象:字体 2026-09-14 退役成皮肤
+		// 自己的旋钮,那两格再没有读者,别加回来(字段留在 schema 里只为老配置装得进来)。
+		liveCoverImageIds: sub.overrides.cards?.liveCoverImageIds,
+		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
+		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
+		// Object.assign 后即刻生效;`liveStreaming` 开关或间隔变化时 engine 额外 rearm 一次 setInterval)。
+		streamingIntervalHours: eff.liveStreaming.streamingIntervalHours,
+		catchUpOnBoot: eff.liveStart.catchUpOnBoot,
+		// 断流接续:该 UP 下播是否先挂起等待重开。
+		liveEndGrace: eff.schedule.liveEndGrace,
+		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
+		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary
+		// 同模式;LiveEngine 在全局/per-UP 变更时收完整 update op 刷新,无快照陈旧问题。
+		customLiveMsg: {
+			enable: true,
+			customLiveStart: eff.templates.liveStart,
+			customLiveStreaming: eff.templates.liveStreaming,
+			customLiveEnd: eff.templates.liveEnd,
+		},
+		customLiveSummary: {
+			enable: true,
+			liveSummary: eff.templates.liveSummary,
+		},
+		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
+		cardSkin: eff.cardSkin,
+		// 这位 UP 自己那层旋钮覆盖,原样给、不折全局(理由同 `postSettingsOf` 那一格)。
+		// 开播 / 直播中 / 下播 / SC / 上舰 / 词云都吃这一份(不分卡种)。
+		cardSkinKnobs: sub.overrides.cardSkinKnobs,
+		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
+		messageLayout: eff.messageLayout.live,
+		// 门槛是折好的生效值,没配 = 不设门槛。
+		minSuperchatAmount: eff.superchat.minAmount,
+		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。
+		wordcloudStopWords: eff.templates.wordcloudStopWords,
+		// 两块设置同带一份名单(条目自己说带哪把特性键),各配各的文案。
+		customSpecialDanmakuUsers: {
+			specialViewers: sub.specialViewers,
+			template: eff.templates.viewerChat,
+		},
+		customSpecialUsersEnterTheRoom: {
+			specialViewers: sub.specialViewers,
+			template: eff.templates.viewerEnter,
+		},
+	};
 }
 
 /** 断流接续等多久(分钟):设置里的值,缺省 2,防御性夹到 [1, 10]。 */

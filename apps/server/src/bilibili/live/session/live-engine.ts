@@ -4,7 +4,7 @@ import type { ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { PickLiveCover } from "../../../live/live-types";
 import { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
-import definedStopWords, { parseStopWords } from "../../../live/recap/stop-words";
+import { mergeStopWords } from "../../../live/recap/stop-words";
 import { ViewerChatCollector } from "../../../live/recap/viewer-chat-collector";
 import { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
 import type { Api } from "../../api/index.js";
@@ -325,9 +325,4 @@ function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 		imageEnabled: c.imageEnabled,
 		defaultLiveCoverImages: c.defaultLiveCoverImages,
 	};
-}
-
-/** Combine the bundled stop-words with the user's comma-separated additions. */
-function mergeStopWords(extra?: string): Set<string> {
-	return new Set([...definedStopWords, ...parseStopWords(extra)]);
 }

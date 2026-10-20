@@ -27,6 +27,9 @@ export type LiveNotifyPushType =
 	| LivePushType.CatchUp
 	| LivePushType.LiveEnd;
 
+/** 特别关注的两种文字推送:特别弹幕 / 特别进场(没有卡,只有一句文字)。 */
+export type LiveTextPushType = LivePushType.ViewerChat | LivePushType.ViewerEnter;
+
 /**
  * 绑到这条订阅上的发送。装配只交「推什么」:按版式分好的消息组(至少一组;一组是一条消息,
  * 由中立的图片 / 文字段组成)与推送类型。推给谁、翻成哪个平台的消息、同一次推送里还带不带
@@ -34,7 +37,7 @@ export type LiveNotifyPushType =
  */
 export type LiveNotifySend = (
 	groups: MessageLayoutSegment[][],
-	type: LiveNotifyPushType,
+	type: LiveNotifyPushType | LiveTextPushType,
 ) => Promise<void>;
 
 /**
