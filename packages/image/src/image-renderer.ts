@@ -161,6 +161,12 @@ export interface ImageRendererOptions {
 	 */
 	resolveFontFace: (id: string) => Promise<string>;
 	/**
+	 * 全局时区(ADR-0021 决策 43)的现取口:卡上的时间按它排。**出卡那一刻取**,不在构造时存,
+	 * 主人改了设置,后续每一张卡立刻跟上。必填 —— 推送与预览两个宿主漏接一个就是「预览与
+	 * 推送分家」,让类型检查替两处把关。
+	 */
+	timezone: () => string;
+	/**
 	 * 热更日志降级到 debug。**预览渲染器**(dashboard 每来一次预览请求就
 	 * updateConfig 一遍)必须开:主人在 Cards 页拖一格滑块就是一条 INFO「配置已
 	 * 更新」,既刷屏,又和真正落盘生效的那条(推送渲染器热重载)长得一模一样,读起来
@@ -213,6 +219,7 @@ export class ImageRenderer {
 	private readonly knobImageCache = new Map<string, string>();
 	private readonly resolveAsset: (id: string) => Promise<string>;
 	private readonly resolveFontFace: (id: string) => Promise<string>;
+	private readonly timezone: () => string;
 	private readonly quietConfigUpdates: boolean;
 	private readonly resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
 	private readonly resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
@@ -257,6 +264,7 @@ export class ImageRenderer {
 		this.config = opts.config;
 		this.resolveAsset = opts.resolveAsset;
 		this.resolveFontFace = opts.resolveFontFace;
+		this.timezone = opts.timezone;
 		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
 		this.resolveCardSkin = opts.resolveCardSkin;
 		this.resolveCardSkinAsset = opts.resolveCardSkinAsset;
@@ -292,7 +300,7 @@ export class ImageRenderer {
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
 
 	unixTimestampToString(timestamp: number): string {
-		return formatCardTime(timestamp);
+		return formatCardTime(timestamp, this.timezone());
 	}
 
 	/**
@@ -562,6 +570,7 @@ export class ImageRenderer {
 			props: buildLiveCardView(input, {
 				coverOverride: coverOverride || undefined,
 				imageUrl: (ref) => resolved.get(ref),
+				timezone: this.timezone(),
 			}),
 		})
 			.then((buf) => {
@@ -657,7 +666,8 @@ export class ImageRenderer {
 
 	/**
 	 * **作品卡的入口**:吃一份平台中立的 {@link Post},不收任何平台的原始数据。`Post` → 卡片节点
-	 * ({@link nodeFromPost})→ 皮肤出卡。发布时间由本渲染器按机器本地时区排({@link unixTimestampToString})。
+	 * ({@link nodeFromPost})→ 皮肤出卡。发布时间由本渲染器按全局时区排({@link unixTimestampToString},
+	 * 时区在出卡那一刻现取)。
 	 *
 	 * B 站动态由 `apps/server/src/bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;拓展作品由服务端的 `postFromReport`
 	 * 翻成 `Post`(图已存进图库,`PostImage` 只放 `ref`);链接预览手里有现成的数据,直接造 `Post`。

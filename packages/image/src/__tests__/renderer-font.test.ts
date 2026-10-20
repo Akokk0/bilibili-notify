@@ -44,6 +44,7 @@ function makeRenderer(
 		resolveAsset: async () => "",
 		// 宿主必注入;测试缺省解析成空串(资产不存在)。
 		resolveFontFace: resolveFontFace ?? (async () => ""),
+		timezone: () => "Asia/Shanghai",
 	});
 }
 

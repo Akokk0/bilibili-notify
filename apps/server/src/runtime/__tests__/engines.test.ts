@@ -156,7 +156,6 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	return {
 		// 拓展订阅造卡用的常量与纯函数(作品翻 `Post` 的图廊张数),走真的。
 		GALLERY_MAX_IMAGES: actual.GALLERY_MAX_IMAGES,
-		formatCardTime: actual.formatCardTime,
 		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 		ImageRenderer: class {
@@ -1040,6 +1039,17 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		active = c;
 		// 验红:删掉 engines.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
 		expect(H.image[0].opts.resolveImageRef).toBe(resolveImageRef);
+	});
+
+	it("出图器拿到现取的全局时区:改了设置跟着变", () => {
+		const c = setup({ puppeteer: true });
+		active = c;
+		// 验红:删掉 engines.ts 里 `timezone: () => globals().timezone,` 那一行,这条红。
+		expect(H.image[0].opts.timezone()).toBe("Asia/Shanghai");
+		patchGlobals(c, (g) => {
+			g.timezone = "America/New_York";
+		});
+		expect(H.image[0].opts.timezone()).toBe("America/New_York");
 	});
 
 	// AI 点评看只有图库引用的图(拓展作品)时,核心要量字节数再编成 data URL,读口由接线层给(`runtime.imageStore.read`)。

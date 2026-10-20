@@ -30,9 +30,12 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
  * 预览路由要从配置里取「这套皮肤的旋钮覆盖」,所以每个 store 替身都得有 `getGlobals`。
  * 空 defaults = 没换过皮肤、一个旋钮都没拧过。
  */
-const EMPTY_GLOBALS = { defaults: { cardSkin: "default", cardSkinKnobs: {} } };
+const EMPTY_GLOBALS = {
+	defaults: { cardSkin: "default", cardSkinKnobs: {} },
+	timezone: "Asia/Shanghai",
+};
 
-function depsWithDataDir(dataDir: string): RouteDeps {
+function depsWithDataDir(dataDir: string, timezone = "Asia/Shanghai"): RouteDeps {
 	return {
 		runtime: {
 			sourceRegistry: bilibiliLikeSources(),
@@ -42,7 +45,7 @@ function depsWithDataDir(dataDir: string): RouteDeps {
 			},
 		},
 		// 预览的真实拉取要按 uid 找订阅(读资料里的头像);这些用例没有订阅。
-		store: { getGlobals: () => EMPTY_GLOBALS, getSubscriptions: () => [] },
+		store: { getGlobals: () => ({ ...EMPTY_GLOBALS, timezone }), getSubscriptions: () => [] },
 	} as unknown as RouteDeps;
 }
 
@@ -1069,6 +1072,52 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			const colorOptions = spy.mock.calls[0]?.[1] as { liveCoverImage?: string };
 			expect(colorOptions.liveCoverImage).toBe(real);
 			spy.mockRestore();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	/**
+	 * 真实数据预览与推送同一条:卡上的时间按全局时区排(这里纽约)。直播那条预览恒按「直播中」出卡、
+	 * 写的是时长(不随时区变),所以这条走真实动态预览 —— 同一条 `getImageRenderer` 接线。
+	 * 验红:删掉 cards.ts 预览渲染器里的 `timezone: () => …` 那一行,这条红。
+	 */
+	it("真实动态预览:发布时间按全局时区写(纽约)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-preview-post-tz-"));
+		try {
+			const rawItem = {
+				basic: {},
+				id_str: "1",
+				type: "DYNAMIC_TYPE_WORD",
+				modules: {
+					module_author: { name: "真实UP", pub_ts: 1_700_000_000, vip: { type: 0 } },
+					module_dynamic: {
+						desc: {
+							text: "你好",
+							rich_text_nodes: [
+								{ type: "RICH_TEXT_NODE_TYPE_TEXT", orig_text: "你好", text: "你好" },
+							],
+						},
+					},
+				},
+			};
+			const api = {
+				fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+			} as unknown as Api;
+			capturedHtml.length = 0;
+			const app = createCardsRoute({
+				deps: depsWithDataDir(dir, "America/New_York"),
+				puppeteer: makeFakePuppeteer(),
+				api,
+			});
+			const res = await postPreview(app, {
+				kind: "post",
+				style: { ...STYLE },
+				content: { uid: "999" },
+			});
+			expect(res.status).toBe(200);
+			expect(capturedHtml.at(-1) ?? "").toContain("2023年11月14日 17:13:20");
+			expect(capturedHtml.at(-1) ?? "").not.toContain("2023年11月15日 06:13:20");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}

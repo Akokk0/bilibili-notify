@@ -102,6 +102,7 @@ function makeHarness(extra: Partial<ImageRendererOptions> = {}, height = 400): H
 		config: BASE_CONFIG,
 		resolveAsset: async () => "",
 		resolveFontFace: async () => "",
+		timezone: () => "Asia/Shanghai",
 		onCardSkinFallback: (info) => fallbacks.push(info),
 		...extra,
 	});

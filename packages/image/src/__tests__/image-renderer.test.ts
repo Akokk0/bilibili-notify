@@ -43,6 +43,7 @@ function makeRenderer(
 		// 宿主必注入的两个解析回调;缺省解析成空串(= 资产不存在),用例按需覆盖。
 		resolveAsset: async () => "",
 		resolveFontFace: async () => "",
+		timezone: () => "Asia/Shanghai",
 		...extra,
 	};
 	return new ImageRenderer(opts);
@@ -53,11 +54,11 @@ function makeRenderer(
 // ---------------------------------------------------------------------------
 
 describe("ImageRenderer 纯映射辅助", () => {
-	it("unixTimestampToString 零填充格式", () => {
+	it("unixTimestampToString 按全局时区排、零填充", () => {
 		const r = makeRenderer();
-		// 2026-01-02T03:04:05Z;断言年与零填充结构(不锁时区具体小时)
+		// 2026-01-02T03:04:05Z → 上海 11:04:05。
 		const s = r.unixTimestampToString(Date.UTC(2026, 0, 2, 3, 4, 5) / 1000);
-		expect(s).toMatch(/^2026年01月\d{2}日 \d{2}:\d{2}:\d{2}$/);
+		expect(s).toBe("2026年01月02日 11:04:05");
 	});
 });
 

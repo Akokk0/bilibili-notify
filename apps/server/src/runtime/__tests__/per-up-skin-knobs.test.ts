@@ -134,6 +134,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			config: { cardSkinKnobs: g.defaults.cardSkinKnobs },
 			resolveAsset: async (id) => `data:image/png;base64,${id}`,
 			resolveFontFace: async (id) => `@font-face{font-family:"bn-user-font";src:url("${id}")}`,
+			timezone: () => "Asia/Shanghai",
 		});
 
 		const bus = createNodeMessageBus();

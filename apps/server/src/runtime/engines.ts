@@ -599,6 +599,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.dataRoot, id),
 			resolveFontFace: loadFontFace,
+			// 卡上的时间按全局时区排;出卡那一刻现取,主人改了设置,后续的卡立刻跟上。
+			timezone: () => globals().timezone,
 			// 作品卡里的图库引用(配图 / 封面 / 头像 / 小图标)出图前经它转成可画的地址。
 			resolveImageRef: opts.resolveImageRef,
 			// 皮肤库那三口(接线层给);没给就是「只有内置默认皮肤」。

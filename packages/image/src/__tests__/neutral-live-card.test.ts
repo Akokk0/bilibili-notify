@@ -46,6 +46,8 @@ function makeRenderer(
 		resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
 		/** 不给 = 默认那张表;`null` = 宿主没注入解析口。 */
 		resolveImageRef?: ((ref: ImageRef) => Promise<string | undefined>) | null;
+		/** 全局时区(现取);不给 = 出厂值。 */
+		timezone?: () => string;
 	} = {},
 ) {
 	const captured: string[] = [];
@@ -67,6 +69,7 @@ function makeRenderer(
 		config: { font: "sans-serif" },
 		resolveAsset: opts.resolveAsset ?? (async () => ""),
 		resolveFontFace: async () => "",
+		timezone: opts.timezone ?? (() => "Asia/Shanghai"),
 		resolveCardSkin: opts.resolveCardSkin,
 		resolveImageRef:
 			opts.resolveImageRef === null
@@ -139,6 +142,17 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		expect(d.time).toBe("直播时长：2小时13分5秒");
 		expect(d.currentViewers).toBe("人气：1.2万");
 		expect(d.followers).toBe("当前粉丝数：8.9万");
+	});
+
+	/** 出卡那一刻现取全局时区:设置改了,下一张直播卡跟着变。 */
+	it("卡上时间按出卡那一刻现取的时区排", async () => {
+		let timezone = "Asia/Shanghai";
+		const { renderer, captured } = makeRenderer({ timezone: () => timezone });
+		await renderer.generateLiveCard(input({ status: "start" }));
+		expect(captured[0] ?? "").toContain("开播时间：2026-09-13 20:00:00");
+		timezone = "America/New_York";
+		await renderer.generateLiveCard(input({ status: "start" }));
+		expect(captured[1] ?? "").toContain("开播时间：2026-09-13 08:00:00");
 	});
 
 	/**

@@ -54,6 +54,7 @@ function makeHarness(extra: Partial<ImageRendererOptions> = {}): Harness {
 		config: { font: "sans-serif" },
 		resolveAsset: async () => "",
 		resolveFontFace: async () => "",
+		timezone: () => "Asia/Shanghai",
 		...extra,
 	});
 	return { renderer, captured };

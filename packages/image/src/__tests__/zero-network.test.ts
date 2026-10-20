@@ -49,6 +49,7 @@ function makeHarness() {
 		config: { font: "sans-serif" },
 		resolveAsset: async (id) => img(`ASSET-${id}`),
 		resolveFontFace: async () => "",
+		timezone: () => "Asia/Shanghai",
 		resolveImageRef: async (r) => img(`REF-${r.slice(60, 64)}`),
 	});
 	return { renderer, captured };

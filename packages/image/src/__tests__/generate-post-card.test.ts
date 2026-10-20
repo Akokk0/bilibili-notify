@@ -15,7 +15,6 @@
 import type { CardSkinManifest, ImageRef, Post, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { formatCardTime } from "../format";
 import { ImageRenderer } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
@@ -32,6 +31,8 @@ const SERVICE_CTX: ServiceContext = {
 interface HarnessOptions {
 	resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
 	resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
+	/** 全局时区(现取);不给 = 出厂值。 */
+	timezone?: () => string;
 }
 
 /** 截图那一步的替身:把灌进去的 HTML 留下来。 */
@@ -55,6 +56,7 @@ function makeRenderer(options: HarnessOptions = {}) {
 		config: { font: "sans-serif" },
 		resolveAsset: async () => "",
 		resolveFontFace: async () => "",
+		timezone: options.timezone ?? (() => "Asia/Shanghai"),
 		...options,
 	});
 	return { renderer, captured };
@@ -233,12 +235,24 @@ describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {
 		const html = await htmlOf(POST);
 		expect(html).toContain("示例作者");
 		expect(html).toContain("你好世界");
-		expect(html).toContain(`${formatCardTime(1_700_000_000)} · 投稿了视频`);
+		expect(html).toContain("2023年11月15日 06:13:20 · 投稿了视频");
 		// 数字统一经 formatCount / formatClock。
 		expect(html).toContain("16:07");
 		expect(html).toMatch(/aria-label="播放量"[\s\S]*?1\.2万/);
 		expect(html).toMatch(/aria-label="点赞"[\s\S]*?<span>128<\/span>/);
 		expect(html).toMatch(/aria-label="转发"[\s\S]*?<span>1\.2万<\/span>/);
+	});
+
+	/** 出卡那一刻现取全局时区:设置改了,下一张卡跟着变,不用重建渲染器。 */
+	it("发布时间按出卡那一刻现取的时区排:改了设置,下一张卡跟着变", async () => {
+		let timezone = "Asia/Shanghai";
+		const { renderer, captured } = makeRenderer({ timezone: () => timezone });
+		await renderer.generatePostCard(POST);
+		expect(captured[0] ?? "").toContain("2023年11月15日 06:13:20 · 投稿了视频");
+		timezone = "America/New_York";
+		await renderer.generatePostCard(POST);
+		expect(captured[1] ?? "").toContain("2023年11月14日 17:13:20 · 投稿了视频");
+		expect(captured[1] ?? "").not.toContain("2023年11月15日 06:13:20");
 	});
 
 	it("配色 / 皮肤选项一路递到出卡(换皮肤 id 用的是同一条路)", async () => {

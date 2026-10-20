@@ -713,6 +713,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.runtime.dataRoot, id),
 				// 字体 id → 拼好的 @font-face(读 <dataRoot>/assets/font)。
 				resolveFontFace: loadFontFace,
+				// 卡上的时间按全局时区排(与推送同一个现取口):预览与真推送画出来一个样。
+				timezone: () => opts.deps.store.getGlobals().timezone,
 				// 图库引用 → data URL:与推送出图(runtime/engines.ts)同一个解析口,预览里带引用的图才不会
 				// 画成占位、与真推送分家。
 				resolveImageRef: imageRefDataUrl(opts.deps.runtime.imageStore),

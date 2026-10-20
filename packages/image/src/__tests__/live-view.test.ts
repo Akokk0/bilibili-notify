@@ -151,33 +151,50 @@ describe("buildLiveCardView — 主播头像(creator.avatar 是引用)", () => {
 
 describe("buildLiveCardView — 卡上那句时间", () => {
 	/**
-	 * 开播 / 下播:开播时刻按**固定的北京时间**写,与进程所在时区无关。
-	 * 已有的两份测试在什么时区跑就是什么结果 —— 开发机恰好在 UTC+8,改成"按本机时区写"它们照样绿,
-	 * 只有 UTC 的 CI / 镜像里才红。这里把默认时区拧到别处再断言。
-	 * 验红:把 `startedAtOf` 里的 `{ zone: LIVE_TIME_ZONE }` 去掉,这条红。
+	 * 开播 / 下播:开播时刻按**给的时区**(全局时区设置)写,与进程所在时区无关。
+	 * 这里把默认时区拧到别处再断言。验红:把 `startedAtOf` 里的 `{ zone }` 去掉,这条红。
 	 */
-	it("start / end:「开播时间：…」固定北京时间,不随默认时区走", () => {
+	it("start / end:「开播时间：…」按给的时区排,不随默认时区走", () => {
 		Settings.defaultZone = "America/Los_Angeles";
 		for (const status of ["start", "end"] as const) {
-			expect(buildLiveCardView(input({ status })).time).toBe("开播时间：2026-09-13 20:00:00");
+			expect(buildLiveCardView(input({ status }), { timezone: "Asia/Shanghai" }).time).toBe(
+				"开播时间：2026-09-13 20:00:00",
+			);
 		}
 	});
 
 	it("start / end:跨日也按北京时间排(UTC 16:30 → 次日 00:30)", () => {
 		const startedAt = "2026-09-13T16:30:05Z";
-		expect(buildLiveCardView(input({ status: "start", startedAt })).time).toBe(
-			"开播时间：2026-09-14 00:30:05",
-		);
+		expect(
+			buildLiveCardView(input({ status: "start", startedAt }), { timezone: "Asia/Shanghai" }).time,
+		).toBe("开播时间：2026-09-14 00:30:05");
 	});
 
 	/** ISO 带别的偏移也照样换算成北京时间;不带偏移的当北京时间读。 */
 	it("ISO 带偏移:换算成北京时间;不带偏移:当北京时间", () => {
 		expect(
-			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T15:00:00-04:00" })).time,
+			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T15:00:00-04:00" }), {
+				timezone: "Asia/Shanghai",
+			}).time,
 		).toBe("开播时间：2026-09-14 03:00:00");
-		expect(buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T20:00:00" })).time).toBe(
-			"开播时间：2026-09-13 20:00:00",
-		);
+		expect(
+			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T20:00:00" }), {
+				timezone: "Asia/Shanghai",
+			}).time,
+		).toBe("开播时间：2026-09-13 20:00:00");
+	});
+
+	/** 全局时区换成纽约:带偏移的换算到纽约,不带偏移的当纽约读(仍是原样印出)。 */
+	it("纽约:带偏移的换算过去,不带偏移的当纽约读", () => {
+		const timezone = "America/New_York";
+		expect(
+			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T16:30:05Z" }), { timezone })
+				.time,
+		).toBe("开播时间：2026-09-13 12:30:05");
+		expect(
+			buildLiveCardView(input({ status: "end", startedAt: "2026-09-13T20:00:00" }), { timezone })
+				.time,
+		).toBe("开播时间：2026-09-13 20:00:00");
 	});
 
 	it("streaming:「直播时长：…」由开播时刻与此刻的钟算", () => {

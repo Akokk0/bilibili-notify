@@ -7,6 +7,7 @@
  */
 
 import {
+	DEFAULT_TIMEZONE,
 	type FormatCountOptions,
 	formatCount,
 	formatDuration,
@@ -16,18 +17,13 @@ import { DateTime } from "luxon";
 import type { ImageUrlOf } from "./rich-text";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
-/**
- * 卡上的时间按**北京时间**写 —— B 站接口的 `live_time` 就是这个时区的字符串,卡上一直原样
- * 印它;开播时刻交 ISO 之后,照这个时区排回去,B 站的卡一个字不变。
- */
-const LIVE_TIME_ZONE = "UTC+8";
 /** 卡上「开播时间：…」那句的写法,与 B 站 `live_time` 同形。 */
 const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
 
-/** ISO 开播时刻 → 时刻;不给、读不懂都是 `undefined`(没有开播时刻)。不带时区的 ISO 当北京时间读。 */
-function startedAtOf(startedAt: string | undefined): DateTime | undefined {
+/** ISO 开播时刻 → 时刻;不给、读不懂都是 `undefined`(没有开播时刻)。不带时区的 ISO 当给的时区读。 */
+function startedAtOf(startedAt: string | undefined, timezone: string): DateTime | undefined {
 	if (startedAt === undefined) return undefined;
-	const at = DateTime.fromISO(startedAt, { zone: LIVE_TIME_ZONE });
+	const at = DateTime.fromISO(startedAt, { zone: timezone });
 	return at.isValid ? at : undefined;
 }
 
@@ -35,9 +31,13 @@ function startedAtOf(startedAt: string | undefined): DateTime | undefined {
  * 卡上那句时间。没在播写「未开播」;其余要开播时刻,没有(或读不懂)就不写(空串)——
  * 写一个「开播时间：」后面却什么都没有,不如整句不出。
  */
-function liveTimeText(status: LiveCardStatus, startedAt: string | undefined): string {
+function liveTimeText(
+	status: LiveCardStatus,
+	startedAt: string | undefined,
+	timezone: string,
+): string {
 	if (status === "offline") return "未开播";
-	const start = startedAtOf(startedAt);
+	const start = startedAtOf(startedAt, timezone);
 	if (start === undefined) return "";
 	if (status === "streaming") return `直播时长：${formatDuration(start.toMillis())}`;
 	return `开播时间：${start.toFormat(LIVE_TIME_FORMAT)}`;
@@ -100,6 +100,11 @@ export const LIVE_COVER_PLACEHOLDER = `data:image/svg+xml;base64,${Buffer.from(
 ).toString("base64")}`;
 
 export interface LiveCardViewOptions {
+	/**
+	 * 卡上时间按哪个时区排(全局时区设置)。生产调用方(出卡器)总传现取的那一格;
+	 * 只看别的格的调用方不必重复,缺省取出厂值。
+	 */
+	timezone?: string;
 	/** 主人给这条订阅设的自定义直播封面(已解析成可渲染的地址);有就盖在输入的封面上。 */
 	coverOverride?: string;
 	/** 图库引用 → 可画的地址。出图器事先把输入里用到的引用都解析好,这里同步查;不给 = 所有引用都解析不到。 */
@@ -115,7 +120,7 @@ export interface LiveCardViewOptions {
  */
 export function buildLiveCardView(
 	input: LiveCardInput,
-	{ coverOverride, imageUrl }: LiveCardViewOptions = {},
+	{ coverOverride, imageUrl, timezone = DEFAULT_TIMEZONE }: LiveCardViewOptions = {},
 ): LiveCardView {
 	const cover = coverOverride || coverUrlOf(input.cover, imageUrl) || "";
 	const avatar = input.creator.avatar;
@@ -128,7 +133,7 @@ export function buildLiveCardView(
 		description: input.description ?? "",
 		cover: cover || LIVE_COVER_PLACEHOLDER,
 		hasCover: cover !== "",
-		time: liveTimeText(input.status, input.startedAt),
+		time: liveTimeText(input.status, input.startedAt, timezone),
 		currentViewers: countText(input.currentViewers),
 		likes: countText(input.likes),
 		totalViewers: countText(input.totalViewers),
