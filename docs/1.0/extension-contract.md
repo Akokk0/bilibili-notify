@@ -285,7 +285,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
     - 不存盘：重启或停用再启用之后，还在的问题要拓展重报一遍（重启后的头几秒，订阅卡上的红字会先消失）。
 - code 用 snake（`login_expired`）。
 - 🔗 **现状（3a-30，10-11）**：问题表、`GET /api/problems`、`problems-changed` 与核心那头的通知器 3a-30 已落，但 `reportProblem` / `resolveProblem` 只造在内置来源的 `SourceContext` 上；上面第一层（`IntegrationContext`，不带对象）和 `connectionId` 那一支都没造，拓展的 `activate(ctx)` 今天没有这两个成员；`Problem.about` 今天只有 `{ subscriptionId }` 一支。三层签名与 `about` 加连接那一支随 3b-38 落成。多语言（ADR-0037）下问题句的口吻与加工见上。
-- 🔗 **现状（3b-51，10-20）**：问题句已中立化。B 站的问题句收进字典 `bilibili.problem.*`，QQ 官方网关两句去掉开头的「QQ」；两族里没有「主人 / 女仆 / 面板 / 指令 / 重启 / login」，由 `i18n/__tests__/integration-sentences-plain.test.ts` 钉着。写者标记 `writtenBy?: string` 加在问题表上报入参与 `ProblemChange` 上，值是给人看的名字；它不上 `Problem`、不进 `GET /api/problems`、不进 `apps/contract`。宿主在三个上下文入口（集成、来源、适配器）逐格抄给问题表，第三方塞不进来：集成上下文与适配器上下文的选项 `label: () => string` 在报问题那一刻取；拓展取当前语言的清单名、走与拓展列表同一条回落链；B 站取来源描述符的 `label`；内置适配器暂用适配器键（`qq-official` 等），第 4 期适配器自带描述后换。宿主直写问题表的那几条（连接探测、拓展设置、核心设置、登录）不盖。引子只在通知器把话交给发送口的那一刻加，账上存的是集成交上来的原句，「不再说」的比较不受影响；字典键 `problem.relay.reported` / `problem.relay.recovered` / `problem.relay.recoveredGeneric` / `problem.recoveredGeneric`，女仆层 `zh-CN.maid.json` 第一次有了这四条。登录问题由宿主看登录状态报：`subscriptions/login-problems.ts` 的 `watchLoginProblems` 按来源键报与清 `auth_lost`，`expired` 私聊、`logged-out` 只进表、`logged-in` 清；句子是宿主写的整句（字典 `problem.login.*`）。换语言时问题表重报另开 3b-61，本片只保证引子在出字那一刻取。
+- 🔗 **现状（3b-51，10-20）**：问题句已中立化。B 站的问题句收进字典 `bilibili.problem.*`，QQ 官方网关两句去掉开头的「QQ」；两族里没有「主人 / 女仆 / 面板 / 指令 / 重启 / login」，由 `i18n/__tests__/integration-sentences-plain.test.ts` 钉着。写者标记 `writtenBy?: string` 加在问题表上报入参与 `ProblemChange` 上，值是给人看的名字；它不上 `Problem`、不进 `GET /api/problems`、不进 `apps/contract`。宿主在三个上下文入口（集成、来源、适配器）逐格抄给问题表，第三方塞不进来：集成上下文与适配器上下文的选项 `label: () => string` 在报问题那一刻取；拓展取当前语言的清单名、走与拓展列表同一条回落链；B 站取来源描述符的 `label`；内置适配器暂用适配器键（`qq-official` 等），第 4 期适配器自带描述后换。宿主直写问题表的那几条（连接探测、拓展设置、核心设置、登录）不盖。引子只在通知器把话交给发送口的那一刻加，账上存的是集成交上来的原句，「不再说」的比较不受影响；字典键 `problem.relay.reported` / `problem.relay.recovered` / `problem.relay.recoveredGeneric` / `problem.recoveredGeneric`，女仆层 `zh-CN.maid.json` 第一次有了这四条。登录问题由宿主看登录状态报：`subscriptions/login-problems.ts` 的 `watchLoginProblems` 按来源键报与清 `auth_lost`，`expired` 私聊、`logged-out` 只进表、`logged-in` 清；句子是宿主写的整句（字典 `problem.login.*`），交的是取字函数，表在换语言或口吻变了时重跑。换语言时问题表重报已随 3b-61 落：宿主的句子交取字函数，表在语言或口吻变了时重跑；B 站与 QQ 官方机器人自己记着、换语言时重报；通知器把「只换了说法」当同一件事。
 
 ## 推送：平台适配器
 
@@ -400,6 +400,7 @@ interface ExtensionI18n {
 
 - `locale()` 现读当前语言，返回 `string` 而不是语言码闭集；`t` 的占位符与单复数同 BN 一套规则；`onChange` 只在语言真的变了时叫，收摊时宿主自动摘掉。`TextValues` 从 `@bilibili-notify/extension` 拿（只是类型）。只挂拓展的上下文，不挂 `IntegrationContext`；口吻不交给拓展，`ctx.i18n` 只有平实一层。
 - **语言真变时**：宿主替每个在跑的拓展喊一次「面板数据变了」，拓展**不用**自己 `statusChanged()`；`ctx.i18n.onChange` 只用来重算拓展自己缓存的、由译文算出来的东西。
+- 想让问题表跟着换语言，就在 `ctx.i18n.onChange` 里把开着的问题重报一遍；同一条再报只换文案，私聊不会重复。
 - 连接的设置（`settingsFields` / `settingsSchema`）是另一回事，见「推送：平台适配器」。
 
 ## devtools
