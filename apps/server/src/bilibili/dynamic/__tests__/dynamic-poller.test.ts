@@ -25,6 +25,7 @@ import {
 	type ServiceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
+import { Settings } from "luxon";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/index.js";
@@ -803,6 +804,24 @@ describe("DynamicPoller.detectDynamics — 时间线 / 订阅过滤", () => {
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(priv(b.engine).postAnchors.get("1")).toBeGreaterThan(0);
+	});
+
+	// 验红:退回按进程本地时区读,这条红(`Settings.defaultZone = "UTC"` 时会是 12:12Z)。
+	it("pub_ts 缺失但 pub_time 是不带时区的文字 → 按北京时间读,不随进程默认时区", async () => {
+		const previousZone = Settings.defaultZone;
+		Settings.defaultZone = "UTC";
+		try {
+			const b = makeEngine();
+			const item = makeItem({ uid: 1 });
+			(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
+			(item.modules.module_author as { pub_time: string }).pub_time = "2026-05-30 12:12:00";
+			b.fetchAllDynamic.mockResolvedValue(resp([item]));
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			expect(priv(b.engine).postAnchors.get("1")).toBe(1780114320);
+		} finally {
+			Settings.defaultZone = previousZone;
+		}
 	});
 
 	it("pub_ts 缺失但 pub_time 为相对时间/昨天 → 兜底解析", async () => {

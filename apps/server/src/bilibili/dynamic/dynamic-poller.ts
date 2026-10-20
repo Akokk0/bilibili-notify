@@ -60,7 +60,13 @@ function normalizeUnixSeconds(raw: unknown): number | undefined {
 	return Math.floor(n);
 }
 
-function parsePubTimeFallback(raw: unknown, now = DateTime.now()): number | undefined {
+/**
+ * B 站给的不带时区的发布时间文字(`pub_time`)是北京时间;按进程本地时区读会在海外机器上错位。这里的 `UTC+8` 是 B 站数据格式,不跟全局时区设置。
+ */
+function parsePubTimeFallback(
+	raw: unknown,
+	now = DateTime.now().setZone("UTC+8"),
+): number | undefined {
 	if (typeof raw !== "string") return undefined;
 	const text = raw.trim();
 	if (!text) return undefined;
@@ -81,7 +87,7 @@ function parsePubTimeFallback(raw: unknown, now = DateTime.now()): number | unde
 		.replace(/\s+/g, " ");
 	const formats = ["yyyy-M-d H:mm:ss", "yyyy-M-d H:mm", "yyyy-M-d", "M-d H:mm:ss", "M-d H:mm"];
 	for (const fmt of formats) {
-		let dt = DateTime.fromFormat(normalized, fmt);
+		let dt = DateTime.fromFormat(normalized, fmt, { zone: "UTC+8" });
 		if (!dt.isValid) continue;
 		if (!fmt.startsWith("yyyy")) {
 			dt = dt.set({ year: now.year });
