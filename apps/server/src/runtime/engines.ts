@@ -89,6 +89,7 @@ import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
+import { bindExtensionLive } from "../live/extension-live.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { bindLivePush } from "../live/live-push.js";
 import {
@@ -321,14 +322,14 @@ export interface CreateEnginesOptions {
 	 */
 	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/**
-	 * 拓展订阅的在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
+	 * 在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):场次引擎写它,拓展直播的计时器拿它当「最新状态」,
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
 	 */
-	liveTable?: Pick<LiveTable, "get">;
+	liveTable?: Pick<LiveTable, "get" | "replace" | "merge" | "remove">;
 	/**
-	 * 拓展直播的封面与事件带来的作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
-	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `liveTable` 就必须给** ——
-	 * 漏给是开机直接抛,不是悄悄不出图。
+	 * 拓展直播的封面与作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
+	 * 的 🔗,㉒c):拓展交的是字节,`bindExtensionLive` 收到上报就存进图库,信号与在播表里只有引用。
+	 * **给了 `extensionSources` 与 `liveTable` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
 	 */
 	liveImages?: Pick<ImageWriter, "put">;
 	/**
@@ -525,6 +526,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		const table = opts.liveTable;
 		const sources = opts.extensionSources;
 		if (!table || !sources) return undefined;
+		// `row` 直接是在播表的行(`{ startedAt, details }`),AI 工具那头读新形状。
 		return { row: (id) => table.get(id), running: (id) => sources.running(id) };
 	};
 
@@ -866,6 +868,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		const liveImages = opts.liveImages;
 		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
 		if (!liveImages) throw new Error("createEngines: 给了 liveTable 就必须给 liveImages");
+		// `liveTable` 在这里是写口:场次引擎先写表、再改场次,表自己不听上报。
 		const liveSessions = createLiveSessionEngine({
 			bus: opts.bus,
 			logger: coreLiveCtx.logger,
@@ -878,6 +881,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
+		// 拓展报的直播 → 存图 → 中立信号 → 场次引擎(引擎先写在播表、再改场次)。
+		handles.push(
+			bindExtensionLive({
+				bus: opts.bus,
+				logger: coreLiveCtx.logger,
+				serviceCtx: coreLiveCtx,
+				subscription: (id) => opts.subscriptionStore.findById(id),
+				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				liveImages,
+				sessions: liveSessions,
+			}),
+		);
 		handles.push(
 			bindLivePush({
 				bus: opts.bus,
@@ -901,7 +916,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sourceStatus,
 				hasLiveTick: (sourceKey) => extensionHasLiveTick(extensionSources, sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
-				liveImages,
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
 				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),

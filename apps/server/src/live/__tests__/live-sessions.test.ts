@@ -13,6 +13,7 @@
 
 import type {
 	ExtensionLiveSessionEvent,
+	LiveDetails,
 	Subscription,
 	SubscriptionReport,
 } from "@bilibili-notify/internal";
@@ -82,13 +83,62 @@ function start(): void {
 /** 毫秒 → 总线上的 ISO。 */
 const iso = (ms: number) => new Date(ms).toISOString();
 
+/** 毫秒 → ISO;没给就没有。 */
+const isoOr = (ms: number | undefined) => (ms === undefined ? undefined : iso(ms));
+
+/** 上报里直播那几格(测试里只用到这几样)→ 中立详情。 */
+function detailsOf(value: {
+	url?: string;
+	title?: string;
+	category?: string;
+	viewers?: number;
+	totalViewers?: number;
+	likes?: number;
+}): LiveDetails {
+	const { url, title, category, viewers, totalViewers, likes } = value;
+	return Object.fromEntries(
+		Object.entries({ url, title, category, currentViewers: viewers, totalViewers, likes }).filter(
+			([, cell]) => cell !== undefined,
+		),
+	) as LiveDetails;
+}
+
+/**
+ * 这里用上报的写法描述「来了什么」,翻成中立信号直调引擎(引擎的输入就是 `LiveSignal`;拓展上报怎么翻、
+ * 图怎么存见 `extension-live.test.ts`)。下播的时刻是调用那一刻。
+ */
 function report(r: SubscriptionReport, sub: Subscription = SUB): void {
-	bus.emit("subscription-reported", {
-		extensionId: sub.identity.sourceKey,
-		externalId: sub.identity.externalId,
-		subscriptionIds: [sub.id],
-		report: r,
-	});
+	const base = { subscriptionId: sub.id, identity: sub.identity };
+	switch (r.kind) {
+		case "liveStart":
+			sessions.apply({
+				...base,
+				kind: "start",
+				startedAt: isoOr(r.value.startedAt),
+				details: detailsOf(r.value),
+			});
+			return;
+		case "liveStatus":
+			sessions.apply({
+				...base,
+				kind: "status",
+				isLive: r.value.live,
+				startedAt: isoOr(r.value.startedAt),
+				details: detailsOf(r.value),
+			});
+			return;
+		case "liveEnd":
+			sessions.apply({
+				...base,
+				kind: "end",
+				endedAt: iso(Date.now()),
+				startedAt: isoOr(r.value.startedAt),
+				details: detailsOf(r.value),
+			});
+			return;
+		default:
+			throw new Error(`测试里不会有 ${r.kind}`);
+	}
 }
 
 const liveStart = (
@@ -153,29 +203,29 @@ describe("一场从哪开始", () => {
 		start();
 		liveStart({ startedAt: T0 - MINUTE, totalViewers: 40 });
 
-		expect(summary()).toEqual([{ kind: "start", trigger: "liveStart", startedAt: T0 - MINUTE }]);
+		expect(summary()).toEqual([{ kind: "start", trigger: "start-signal", startedAt: T0 - MINUTE }]);
 		const session = sessions.get(SUB.id);
 		expect(session).toMatchObject({
 			subscriptionId: SUB.id,
 			sourceKey: EXT,
 			startedAt: T0 - MINUTE,
 			detectedAt: T0,
-			fansAtStart: 12_345,
-			lastEntry: { totalViewers: 40 },
+			followersAtStart: 12_345,
+			lastDetails: { totalViewers: 40 },
 		});
 	});
 
 	it("BN 开始看之后见到在播:认出一场,开播时刻取状态带的;没带就空着,之后的状态带了再补上", () => {
 		start();
 		liveStatus();
-		expect(summary()).toEqual([{ kind: "start", trigger: "liveStatus", startedAt: undefined }]);
+		expect(summary()).toEqual([{ kind: "start", trigger: "status-signal", startedAt: undefined }]);
 		expect(sessions.get(SUB.id)?.detectedAt).toBe(T0);
 
 		liveStatus({ startedAt: T0 - HOUR, totalViewers: 9 });
 		expect(summary().at(-1)).toEqual({ kind: "status", live: true });
 		expect(sessions.get(SUB.id)).toMatchObject({
 			startedAt: T0 - HOUR,
-			lastEntry: { totalViewers: 9 },
+			lastDetails: { totalViewers: 9 },
 		});
 	});
 
@@ -184,7 +234,7 @@ describe("一场从哪开始", () => {
 		liveStart();
 		report({ kind: "liveStatus", value: { live: false } });
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "start", trigger: "start-signal", startedAt: T0 },
 			{ kind: "status", live: false },
 		]);
 		expect(sessions.get(SUB.id)).toBeDefined();
@@ -196,9 +246,9 @@ describe("一场从哪开始", () => {
 		vi.advanceTimersByTime(HOUR);
 		liveStart({ startedAt: Date.now(), title: "第二场" });
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "start", trigger: "start-signal", startedAt: T0 },
 			{ kind: "end", reason: "superseded", at: T0 + HOUR },
-			{ kind: "start", trigger: "liveStart", startedAt: T0 + HOUR },
+			{ kind: "start", trigger: "start-signal", startedAt: T0 + HOUR },
 		]);
 	});
 
@@ -213,6 +263,34 @@ describe("一场从哪开始", () => {
 		liveStatus();
 		expect(changes).toEqual([]);
 		expect(sessions.get(SUB.id)).toBeUndefined();
+	});
+});
+
+describe("引擎是唯一写在播表的:先写表、再改场次", () => {
+	it("开播 / 在播状态写进表(时刻进门是 ISO、表里是毫秒),不在播的状态与下播出表", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE, title: "第一场", viewers: 7 });
+		expect(table.get(SUB.id)).toMatchObject({
+			sourceKey: EXT,
+			startedAt: T0 - MINUTE,
+			details: { title: "第一场", currentViewers: 7, url: URL },
+		});
+		liveStatus({ totalViewers: 99 });
+		expect(table.get(SUB.id)?.details).toMatchObject({ title: "第一场", totalViewers: 99 });
+		report({ kind: "liveStatus", value: { live: false } });
+		expect(table.get(SUB.id)).toBeUndefined();
+
+		liveStart();
+		liveEnd();
+		expect(table.get(SUB.id)).toBeUndefined();
+	});
+
+	it("订阅停用 / 来源没在跑的信号不碰在播表", () => {
+		start();
+		running.delete(EXT);
+		liveStart();
+		liveStatus();
+		expect(table.list()).toEqual([]);
 	});
 });
 
@@ -337,7 +415,7 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "start", trigger: "start-signal", startedAt: T0 },
 			{ kind: "ending" },
 			{ kind: "resume" },
 			{ kind: "ending" },
@@ -591,7 +669,7 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 		liveStart({ totalViewers: 100, viewers: 90_000 });
 		liveStatus({ totalViewers: 800, viewers: 90_000 });
 		liveStatus({ viewers: 99_999 });
-		expect(sessions.get(SUB.id)?.totalViewers).toBe(800);
+		expect(sessions.get(SUB.id)?.peakTotalViewers).toBe(800);
 		liveEnd({ totalViewers: 900 });
 		expect(ends()).toEqual([[SUB.id, 900]]);
 	});

@@ -25,6 +25,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { bindExtensionLive } from "../../live/extension-live.js";
 import type { LiveNotifySend } from "../../live/live-notify.js";
 import { bindLivePush } from "../../live/live-push.js";
 import { createLiveSessionEngine } from "../../live/live-sessions.js";
@@ -161,6 +162,20 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			timers,
 		});
 		disposers.push(sessions);
+		// 拓展上报 → 翻成中立信号 → 引擎(这条用例没有图,图库口不会被调到)。
+		disposers.push(
+			bindExtensionLive({
+				bus,
+				logger: SERVICE_CTX.logger,
+				serviceCtx: { track: () => {} },
+				subscription: (id) => (id === sub.id ? sub : undefined),
+				profileName: () => undefined,
+				liveImages: {
+					put: async () => ({ ok: false as const, code: "invalid", message: "不存图" }) as never,
+				},
+				sessions,
+			}),
+		);
 		let delivered!: () => void;
 		const sent = new Promise<void>((resolve) => {
 			delivered = resolve;
@@ -178,9 +193,6 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				sourceStatus: { running: () => true },
 				hasLiveTick: () => true,
 				avatarRef: () => undefined,
-				liveImages: {
-					put: async () => ({ ok: false as const, code: "invalid", message: "不存图" }) as never,
-				},
 				sendFor: (): LiveNotifySend => async () => delivered(),
 				renderer: () => renderer,
 				onReportDiscrepancy: () => {},

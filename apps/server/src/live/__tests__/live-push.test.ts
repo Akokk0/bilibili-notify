@@ -31,6 +31,7 @@ import {
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { bindExtensionLive } from "../extension-live.js";
 import type { LiveNotifySend } from "../live-notify.js";
 import { bindLivePush } from "../live-push.js";
 import { createLiveSessionEngine, type LiveSessionEngine } from "../live-sessions.js";
@@ -80,6 +81,7 @@ let bus: ReturnType<typeof createNodeMessageBus>;
 let table: LiveTable;
 let sessions: LiveSessionEngine;
 let handle: { dispose(): void };
+let extensionLive: { dispose(): void };
 let sent: Sent[];
 let discrepancies: ReportDiscrepancy[];
 let settings: LiveWorkSettings;
@@ -126,6 +128,25 @@ function start(): void {
 		settings: () => settings,
 		timers,
 	});
+	// 拓展上报先存图、翻成中立信号再交引擎(真的绑定;图库换成记账的替身)。
+	extensionLive = bindExtensionLive({
+		bus,
+		logger,
+		serviceCtx: ctx,
+		subscription: (id) => subs.get(id),
+		profileName: () => profile?.name,
+		liveImages: {
+			put: async (bytes) => {
+				if (putFails)
+					return { ok: false as const, code: "unavailable", message: "磁盘写失败" } as never;
+				storedImages.push(bytes);
+				const ref = imageRefOf(bytes);
+				if (!ref) throw new Error("夹具图不合规");
+				return { ok: true as const, ref };
+			},
+		},
+		sessions,
+	});
 	const renderer = {
 		generateLiveCard: vi.fn(async (input: LiveCardInput) => {
 			renderedInputs.push(input);
@@ -147,16 +168,6 @@ function start(): void {
 		sourceStatus: { running: () => running },
 		hasLiveTick: () => sourceHasLiveTick,
 		avatarRef: () => avatarRef,
-		liveImages: {
-			put: async (bytes) => {
-				if (putFails)
-					return { ok: false as const, code: "unavailable", message: "磁盘写失败" } as never;
-				storedImages.push(bytes);
-				const ref = imageRefOf(bytes);
-				if (!ref) throw new Error("夹具图不合规");
-				return { ok: true as const, ref };
-			},
-		},
 		sendFor:
 			(id): LiveNotifySend =>
 			async (groups, type) => {
@@ -228,6 +239,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	handle?.dispose();
+	extensionLive?.dispose();
 	sessions?.dispose();
 	table?.dispose();
 	vi.useRealTimers();
@@ -368,6 +380,8 @@ describe("断流接续", () => {
 		liveStart();
 		await settle();
 		liveEnd();
+		// 上报要先翻译(存图)再交引擎:等下播进了断流等待,再让拓展停。
+		await settle();
 		running = false;
 		bus.emit("extension-stopped", { extensionId: EXT });
 		running = true;
@@ -706,13 +720,20 @@ describe("重启补报", () => {
 	it("BN 起来后第一份状态就是在播、同一轮紧跟着开播事件:只推一张开播卡", async () => {
 		settings = baseSettings({ catchUpOnBoot: true });
 		start();
+		// 上报要先翻译(存图)再交引擎,补报的卡先开始出卡(出卡要几秒,这里让它停在半路);开播信号在这期间交进引擎。
+		let release: () => void = () => {};
+		slowNext = new Promise<void>((resolve) => {
+			release = resolve;
+		});
 		liveStatus();
 		liveStart();
 		await settle();
+		release();
+		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
 		expect(sent[0]?.input?.status).toBe("start");
-		// 排队时就认出换了一场:那张「正在直播」连卡都不出。
-		expect(renderedInputs.map((i) => i.status)).toEqual(["start"]);
+		// 发送前认出换了一场:那张「正在直播」画好了也不发。
+		expect(renderedInputs.map((i) => i.status)).toEqual(["streaming", "start"]);
 	});
 
 	it("补推的「正在直播」还在出卡时开播事件到了:这张不发,只推开播卡", async () => {
@@ -843,15 +864,18 @@ describe("同一条订阅的推送按顺序", () => {
  * `liveCardInputFromReport` 翻成图库引用、**出卡那一刻才写盘**;订阅资料里的头像本来就在图库里,直接用它的引用。
  */
 describe("卡上的图走图库", () => {
-	it("事件带了头像与封面:输入里是它们的引用,出卡那一刻两张都写进图库", async () => {
+	it("事件带了头像与封面:收到上报就写进图库,输入里是它们的引用", async () => {
 		start();
 		liveStart({ cover: PNG, author: { name: "事件里的名字", avatar: PNG_B } });
 		await settle();
 
 		expect(sent[0]?.input?.cover).toEqual({ ref: imageRefOf(PNG) });
-		expect(sent[0]?.input?.creator.avatar).toBe(imageRefOf(PNG_B));
-		// 验红:删掉 `committing(...)` 里的 `await commit()`,这条红 —— 引用有了、图却没存。
-		expect(storedImages).toEqual([PNG_B, PNG]);
+		expect(sent[0]?.input?.creator).toEqual({
+			name: "事件里的名字",
+			avatar: imageRefOf(PNG_B),
+		});
+		// 存图在翻译上报时(`bindExtensionLive`),不等出卡;细节见 `extension-live.test.ts`。
+		expect(storedImages).toEqual([PNG, PNG_B]);
 	});
 
 	it("事件没带头像:订阅资料里的头像引用顶上,不再存一遍", async () => {
@@ -874,10 +898,10 @@ describe("卡上的图走图库", () => {
 	});
 
 	/**
-	 * 直播可以超过 24 小时,周期卡几小时后还要用封面:字节一直在在播表里,每一张卡出卡时都重新存一遍
-	 * (同一份字节只刷新修改时间),图库那头也把在播表里的封面登记为这一家的名单。
+	 * 直播可以超过 24 小时,周期卡几小时后还要用封面:在播表里一直装着那条图库引用(图库那头把在播表里的封面
+	 * 登记为这一家的名单,见 `live-images-wiring.test.ts`),周期卡直接用它,不再存一遍。
 	 */
-	it("周期「正在直播」卡出卡时同样再存一遍封面", async () => {
+	it("周期「正在直播」卡用在播表里的封面引用,不再存图", async () => {
 		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 1 });
 		start();
 		liveStart({ cover: PNG });
@@ -889,11 +913,12 @@ describe("卡上的图走图库", () => {
 		await vi.advanceTimersByTimeAsync(30 * MINUTE);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 0]);
-		expect(storedImages).toEqual([PNG, PNG]);
+		// 带封面的开播上报存了一次;不带封面的那份状态不存,周期卡的封面是表里留着的那条引用。
+		expect(storedImages).toEqual([PNG]);
 		expect(sent[1]?.input?.cover).toEqual({ ref: imageRefOf(PNG) });
 	});
 
-	it("版式把卡片藏起来:不出卡、不写盘,文字照发", async () => {
+	it("版式把卡片藏起来:不出卡,文字照发(图在收到上报时已经存了)", async () => {
 		const textOnly = {
 			blocks: [
 				{ id: "card", type: "card", visible: false },
@@ -908,10 +933,11 @@ describe("卡上的图走图库", () => {
 
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.input).toBeUndefined();
-		expect(storedImages).toEqual([]);
+		// 看得见的变化:存图在翻译上报时,不再等出卡 —— 不出卡的直播也存(同作品的先例,3a-27 决策 3)。
+		expect(storedImages).toEqual([PNG, PNG_B]);
 	});
 
-	it("关了出图(没有渲染器):不写盘,文字照发", async () => {
+	it("关了出图(没有渲染器):不出卡,文字照发(图照存)", async () => {
 		rendererOn = false;
 		start();
 		liveStart({ cover: PNG });
@@ -919,10 +945,10 @@ describe("卡上的图走图库", () => {
 
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.input).toBeUndefined();
-		expect(storedImages).toEqual([]);
+		expect(storedImages).toEqual([PNG]);
 	});
 
-	it("图库说存不进(写盘失败):这一次出卡失败,降级成纯文字,不抛、不吞推送", async () => {
+	it("图库说存不进(写盘失败):那张图缺着,卡照出、推送照发", async () => {
 		putFails = true;
 		start();
 		liveStart({ cover: PNG });
@@ -930,7 +956,8 @@ describe("卡上的图走图库", () => {
 
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain("开播啦");
-		expect(sent[0]?.input).toBeUndefined();
+		expect(sent[0]?.input).toBeDefined();
+		expect(Object.hasOwn(sent[0]?.input ?? {}, "cover")).toBe(false);
 	});
 });
 
@@ -946,12 +973,14 @@ describe("登记进 track", () => {
 		slowNext = sending.promise;
 		let settledAlready = false;
 		liveStart();
+		// 先让上报翻完、交进引擎(绑定那一件已经落定),推送那头的出卡才开始。
+		await settle();
 		void Promise.all(ctx.tracked).then(() => {
 			settledAlready = true;
 		});
 		await settle();
 
-		expect(ctx.tracked).toHaveLength(1);
+		expect(ctx.tracked).toHaveLength(2); // 上报的翻译(已落定)+ 这张开播卡
 		expect(settledAlready).toBe(false); // 出卡还卡着,登记的这件事不许落
 		expect(sent).toEqual([]);
 

@@ -1,15 +1,15 @@
 /**
- * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里拓展那几行的来处。
+ * 在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里那几行的来处。
  *
- * 表只听总线 —— 拓展的上报(`subscription-reported`)、订阅的增删改(`subscription-changed`)、拓展
- * 停了(`extension-stopped`)—— 所以这里拿一条真的总线去喂它,剪掉哪一处订阅都会红。
+ * 写表的是场次引擎(`LiveSessionEngine.apply` 先写表、再改场次,见 `live-sessions.test.ts`),这里直接调表的三个
+ * 写口(`replace` / `merge` / `remove`);表自己只听总线两处 —— 来源停了(`extension-stopped`)、订阅删了 / 停用了
+ * (`subscription-changed`)—— 所以拿一条真的总线去喂它,剪掉哪一处订阅都会红。
+ *
+ * 行里装的是中立的 `LiveDetails`(图是图库引用):「行装的是 `LiveDetails`」那一条钉的是 data-model 的
+ * 「图一律图库引用」。
  */
 
-import type {
-	Disposable,
-	SubscriptionReport,
-	SubscriptionReportDelivery,
-} from "@bilibili-notify/internal";
+import type { Disposable, LiveDetails } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -24,7 +24,8 @@ const EXT = "douyin";
 const SUB_A = "c0000000-0000-4000-8000-000000000001";
 const SUB_B = "c0000000-0000-4000-8000-000000000002";
 const T0 = Date.UTC(2026, 8, 23, 12);
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+const COVER_REF = `${"c".repeat(64)}.png`;
+const AVATAR_REF = `${"a".repeat(64)}.png`;
 
 /** 手摇的定时器:合并窗口什么时候到,由测试说了算。 */
 function manualTimers() {
@@ -65,154 +66,161 @@ beforeEach(() => {
 	table = createLiveTable({ bus, timers, now: () => clock });
 });
 
-function report(
-	report: SubscriptionReport,
-	subscriptionIds: string[] = [SUB_A],
-	extensionId = EXT,
-): void {
-	const delivery: SubscriptionReportDelivery = {
-		extensionId,
-		externalId: "sec-1",
-		subscriptionIds,
-		report,
-	};
-	bus.emit("subscription-reported", delivery);
-}
-
 const LIVE_URL = "https://live.douyin.com/1";
 
+/** 开一场:整行换新(引擎收到开播信号时的写法)。 */
+function start(
+	details: LiveDetails = {},
+	over: { ids?: string[]; sourceKey?: string; startedAt?: number } = {},
+): void {
+	for (const id of over.ids ?? [SUB_A]) {
+		table.replace(id, over.sourceKey ?? EXT, over.startedAt ?? T0, { url: LIVE_URL, ...details });
+	}
+}
+
+/** 一份在播的直播状态:报了的格盖上去(引擎收到 `isLive: true` 的状态信号时的写法)。 */
+function status(
+	details: LiveDetails = {},
+	over: { ids?: string[]; sourceKey?: string; startedAt?: number } = {},
+): void {
+	for (const id of over.ids ?? [SUB_A]) {
+		table.merge(id, over.sourceKey ?? EXT, over.startedAt, details);
+	}
+}
+
 describe("开播 / 下播", () => {
-	it("开播 → 进表,带着开播时刻与直播那几格;下播 → 出表", () => {
-		report({
-			kind: "liveStart",
-			value: {
-				url: LIVE_URL,
-				startedAt: T0 - 60_000,
+	it("行装的是 LiveDetails:开播 → 进表,带着开播时刻与直播那几格(图是图库引用);下播 → 出表", () => {
+		start(
+			{
 				title: "晚上好",
-				cover: PNG,
+				cover: { ref: COVER_REF },
 				category: "聊天",
-				viewers: 12,
+				currentViewers: 12,
 				totalViewers: 340,
 				likes: 3,
+				creator: { name: "抖音甲", avatar: AVATAR_REF },
 			},
-		});
+			{ startedAt: T0 - 60_000 },
+		);
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
 			sourceKey: EXT,
 			startedAt: T0 - 60_000,
-			title: "晚上好",
-			cover: PNG,
-			category: "聊天",
-			viewers: 12,
-			totalViewers: 340,
-			likes: 3,
-			url: LIVE_URL,
+			details: {
+				title: "晚上好",
+				cover: { ref: COVER_REF },
+				category: "聊天",
+				url: LIVE_URL,
+				currentViewers: 12,
+				totalViewers: 340,
+				likes: 3,
+				creator: { name: "抖音甲", avatar: AVATAR_REF },
+			},
 			updatedAt: T0,
 		});
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_A]);
 
-		report({ kind: "liveEnd", value: { url: LIVE_URL } });
+		table.remove(SUB_A);
 		expect(table.get(SUB_A)).toBeUndefined();
 		expect(table.list()).toEqual([]);
 	});
 });
 
 describe("直播状态", () => {
-	it("live: true → 报了的格盖上去、没报的留着;开播时刻一直在;最后更新时刻跟着走", () => {
-		report({
-			kind: "liveStart",
-			value: { url: LIVE_URL, startedAt: T0 - 60_000, title: "晚上好", cover: PNG, viewers: 12 },
-		});
+	it("在播 → 报了的格盖上去、没报的留着;开播时刻一直在;最后更新时刻跟着走", () => {
+		start(
+			{ title: "晚上好", cover: { ref: COVER_REF }, currentViewers: 12 },
+			{ startedAt: T0 - 60_000 },
+		);
 		clock = T0 + 30_000;
-		report({ kind: "liveStatus", value: { live: true, viewers: 40, likes: 7 } });
+		status({ currentViewers: 40, likes: 7 });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
 			sourceKey: EXT,
 			startedAt: T0 - 60_000,
-			title: "晚上好",
-			cover: PNG,
-			viewers: 40,
-			likes: 7,
-			url: LIVE_URL,
+			details: {
+				title: "晚上好",
+				cover: { ref: COVER_REF },
+				url: LIVE_URL,
+				currentViewers: 40,
+				likes: 7,
+			},
 			updatedAt: T0 + 30_000,
 		});
 		// 报了新标题就换成新的。
-		report({ kind: "liveStatus", value: { live: true, title: "改名了" } });
-		expect(table.get(SUB_A)?.title).toBe("改名了");
+		status({ title: "改名了" });
+		expect(table.get(SUB_A)?.details.title).toBe("改名了");
 		expect(table.get(SUB_A)?.startedAt).toBe(T0 - 60_000);
 	});
 
 	it("在线与累计两格各合并各的:这一轮只报了一格,另一格留着上一轮的(决策 75)", () => {
-		report({
-			kind: "liveStart",
-			value: { url: LIVE_URL, startedAt: T0, viewers: 12, totalViewers: 340 },
-		});
-		report({ kind: "liveStatus", value: { live: true, viewers: 30 } });
-		expect(table.get(SUB_A)).toMatchObject({ viewers: 30, totalViewers: 340 });
-		report({ kind: "liveStatus", value: { live: true, totalViewers: 900 } });
-		expect(table.get(SUB_A)).toMatchObject({ viewers: 30, totalViewers: 900 });
+		start({ currentViewers: 12, totalViewers: 340 });
+		status({ currentViewers: 30 });
+		expect(table.get(SUB_A)?.details).toMatchObject({ currentViewers: 30, totalViewers: 340 });
+		status({ totalViewers: 900 });
+		expect(table.get(SUB_A)?.details).toMatchObject({ currentViewers: 30, totalViewers: 900 });
 		// 只报过直播状态(BN 重启过)也带得进来。
-		report({ kind: "liveStatus", value: { live: true, totalViewers: 7 } }, [SUB_B]);
-		expect(table.get(SUB_B)?.totalViewers).toBe(7);
+		status({ totalViewers: 7 }, { ids: [SUB_B] });
+		expect(table.get(SUB_B)?.details.totalViewers).toBe(7);
 	});
 
-	it("live: true 而表里没有(BN 中途重启过、开播事件没见着)→ 照样进表;没报开播时刻就没有", () => {
-		report({ kind: "liveStatus", value: { live: true, title: "早就在播了", viewers: 5 } });
+	it("在播而表里没有(BN 中途重启过、开播信号没见着)→ 照样进表;没报开播时刻就没有", () => {
+		status({ title: "早就在播了", currentViewers: 5 });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
 			sourceKey: EXT,
-			title: "早就在播了",
-			viewers: 5,
+			details: { title: "早就在播了", currentViewers: 5 },
 			updatedAt: T0,
 		});
 	});
 
-	it("live: false → 出表", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } });
-		report({ kind: "liveStatus", value: { live: false } });
-		expect(table.get(SUB_A)).toBeUndefined();
+	it("没报的格不带键:合并时「没报」不盖掉已有的", () => {
+		start({ title: "晚上好" });
+		status({ title: undefined, likes: 1 });
+		expect(table.get(SUB_A)?.details).toEqual({ title: "晚上好", url: LIVE_URL, likes: 1 });
 	});
 
 	it("新的一场开播:上一场留下的格一概不带(漏了下播的那场在这儿收尾)", () => {
-		report({ kind: "liveStatus", value: { live: true, title: "上一场", cover: PNG, likes: 99 } });
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 + 1_000 } });
+		status({ title: "上一场", cover: { ref: COVER_REF }, likes: 99 });
+		start({}, { startedAt: T0 + 1_000 });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
 			sourceKey: EXT,
 			startedAt: T0 + 1_000,
-			url: LIVE_URL,
+			details: { url: LIVE_URL },
 			updatedAt: T0,
 		});
 	});
 
-	it("一条上报对上同一个人的几条订阅:每条各进各的", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_A, SUB_B]);
+	it("几条订阅各进各的、各出各的", () => {
+		start({}, { ids: [SUB_A, SUB_B] });
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_A, SUB_B]);
-		report({ kind: "liveEnd", value: { url: LIVE_URL } }, [SUB_B]);
+		table.remove(SUB_B);
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_A]);
 	});
 
-	it("作品与资料更新不碰在播表", () => {
-		report({
-			kind: "post",
-			value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: T0 },
+	it("总线上的上报表不看:作品、资料更新、直播信号都得经场次引擎写进来", () => {
+		bus.emit("subscription-reported", {
+			extensionId: EXT,
+			externalId: "sec-1",
+			subscriptionIds: [SUB_A],
+			report: { kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } },
 		});
-		report({ kind: "profile", value: { name: "新名字" } });
 		expect(table.list()).toEqual([]);
 		expect(timers.pending).toEqual([]);
 	});
 });
 
 describe("作废", () => {
-	it("拓展停了 → 它名下的全部出表,别的拓展的留着", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_A]);
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B], "kuaishou");
+	it("来源停了 → 它名下的全部出表,别的来源的留着", () => {
+		start({}, { ids: [SUB_A] });
+		start({}, { ids: [SUB_B], sourceKey: "kuaishou" });
 		bus.emit("extension-stopped", { extensionId: EXT });
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_B]);
 	});
 
 	it("订阅删了 / 停用了 → 出表;别的改动(改备注)不动它", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_A, SUB_B]);
+		start({}, { ids: [SUB_A, SUB_B] });
 		const a = makeExtensionSubscription({ id: SUB_A, extensionId: EXT, externalId: "sec-1" });
 		const b = makeExtensionSubscription({ id: SUB_B, extensionId: EXT, externalId: "sec-1" });
 
@@ -229,9 +237,9 @@ describe("作废", () => {
 
 describe("「在播表变了」", () => {
 	it("进表、改人数、又进一条挨着来 → 窗口尾沿只发一次", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } });
-		report({ kind: "liveStatus", value: { live: true, totalViewers: 3 } });
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B]);
+		start();
+		status({ totalViewers: 3 });
+		start({}, { ids: [SUB_B] });
 		expect(changed).toBe(0);
 		expect(timers.pending.map((job) => job.ms)).toEqual([LIVE_CHANGED_COALESCE_MS]);
 		timers.flush();
@@ -244,69 +252,57 @@ describe("「在播表变了」", () => {
 	});
 
 	it("每轮都报、面板上看得见的一格没变 → 不发", () => {
-		report({
-			kind: "liveStatus",
-			value: { live: true, title: "同一场", viewers: 3, totalViewers: 40 },
-		});
+		status({ title: "同一场", currentViewers: 3, totalViewers: 40 });
 		timers.flush();
 		changed = 0;
 		clock = T0 + 60_000;
 		// 此刻在线、点赞、封面、链接首页不画(那一列是累计观看,决策 75),变了也不惊动面板;最后更新
 		// 时刻照样跟着走。
-		report({
-			kind: "liveStatus",
-			value: {
-				live: true,
-				title: "同一场",
-				viewers: 25,
-				totalViewers: 40,
-				likes: 10,
-				cover: PNG,
-				url: LIVE_URL,
-			},
+		status({
+			title: "同一场",
+			currentViewers: 25,
+			totalViewers: 40,
+			likes: 10,
+			cover: { ref: COVER_REF },
+			url: LIVE_URL,
 		});
 		expect(timers.pending).toEqual([]);
 		expect(table.get(SUB_A)?.updatedAt).toBe(T0 + 60_000);
-		// 不在表里的下播、停了一个名下什么都没有的拓展:什么都没变。
-		report({ kind: "liveEnd", value: { url: LIVE_URL } }, [SUB_B]);
+		// 不在表里的下播、停了一个名下什么都没有的来源:什么都没变。
+		table.remove(SUB_B);
 		bus.emit("extension-stopped", { extensionId: "kuaishou" });
 		expect(timers.pending).toEqual([]);
 		expect(changed).toBe(0);
 	});
 
 	it("累计观看变了 → 发(面板上那一列就是它)", () => {
-		report({ kind: "liveStatus", value: { live: true, totalViewers: 40 } });
+		status({ totalViewers: 40 });
 		timers.flush();
 		changed = 0;
-		report({ kind: "liveStatus", value: { live: true, totalViewers: 41 } });
+		status({ totalViewers: 41 });
 		timers.flush();
 		expect(changed).toBe(1);
 	});
 
-	it("收摊之后不再听总线,挂着的那一发也不发了", () => {
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } });
+	it("收摊之后不再听总线、不再收写,挂着的那一发也不发了", () => {
+		start();
 		table.dispose();
 		timers.flush();
 		expect(changed).toBe(0);
-		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B]);
+		start({}, { ids: [SUB_B] });
 		expect(table.get(SUB_B)).toBeUndefined();
 	});
 });
 
 describe("面板上的那一行", () => {
 	it("时刻换成 ISO、分区叫 areaName、累计观看原样是数字;此刻在线、封面与点赞不上面板", () => {
-		report({
-			kind: "liveStart",
-			value: {
-				url: LIVE_URL,
-				startedAt: T0,
-				title: "晚上好",
-				cover: PNG,
-				category: "聊天",
-				viewers: 12,
-				totalViewers: 3_456,
-				likes: 3,
-			},
+		start({
+			title: "晚上好",
+			cover: { ref: COVER_REF },
+			category: "聊天",
+			currentViewers: 12,
+			totalViewers: 3_456,
+			likes: 3,
 		});
 		const row = table.get(SUB_A);
 		expect(row && JSON.parse(JSON.stringify(extensionLiveSnapshot(row)))).toEqual({

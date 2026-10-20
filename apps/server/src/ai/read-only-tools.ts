@@ -45,7 +45,7 @@ export interface ExtensionLiveSource {
 	/** 在播表里这条订阅的那一行(在播才有)。 */
 	row(
 		subscriptionId: string,
-	): { title?: string; startedAt?: number; totalViewers?: number } | undefined;
+	): { startedAt?: number; details: { title?: string; totalViewers?: number } } | undefined;
 	/** 这个拓展此刻在跑吗。 */
 	running(extensionId: string): boolean;
 }
@@ -177,9 +177,9 @@ function extensionLiveNow(
 	if (!row) return { state: "idle" };
 	return {
 		state: "live",
-		title: row.title,
+		title: row.details.title,
 		startedAt: row.startedAt,
-		totalViewers: row.totalViewers,
+		totalViewers: row.details.totalViewers,
 	};
 }
 

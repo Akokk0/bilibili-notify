@@ -200,7 +200,11 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	it("开播 → 首页有甲乙两行,带着标题、分区、累计观看与开播时刻", async () => {
 		await press("report.liveStart");
 		expect(heard.map((d) => d.report.kind)).toEqual(["liveStart", "liveStart"]);
-		const rows = await liveRows();
+		const rows = await vi.waitFor(async () => {
+			const rows = await liveRows();
+			expect(rows.map((row) => row.subscriptionId)).toEqual([SUB_IDS.a, SUB_IDS.b]);
+			return rows;
+		});
 		expect(rows.map((row) => row.subscriptionId)).toEqual([SUB_IDS.a, SUB_IDS.b]);
 		for (const row of rows) {
 			expect(row).toMatchObject({
@@ -217,9 +221,17 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	it("报直播状态 ×2 → 首页那两行的累计观看一次比一次多,开播时刻不变", async () => {
 		const [start] = await liveRows();
 		await press("report.liveStatus");
-		const [first] = await liveRows();
+		const first = await vi.waitFor(async () => {
+			const [first] = await liveRows();
+			expect(first?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
+			return first;
+		});
 		await press("report.liveStatus");
-		const [second] = await liveRows();
+		const second = await vi.waitFor(async () => {
+			const [second] = await liveRows();
+			expect(second?.totalViewers).toBeGreaterThan(first?.totalViewers ?? Number.POSITIVE_INFINITY);
+			return second;
+		});
 		expect(heard.map((d) => d.report.kind)).toEqual([
 			"liveStatus",
 			"liveStatus",
@@ -235,7 +247,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	it("下播 → 首页没了", async () => {
 		await press("report.liveEnd");
 		expect(heard.map((d) => d.report.kind)).toEqual(["liveEnd", "liveEnd"]);
-		expect(await liveRows()).toEqual([]);
+		await vi.waitFor(async () => expect(await liveRows()).toEqual([]));
 	});
 
 	it("报资料 → 订阅页甲的名字 / 粉丝 / 头像换了,再按一次头像又换一张;停用的丙不动", async () => {

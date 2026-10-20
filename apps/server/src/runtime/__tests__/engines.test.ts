@@ -66,6 +66,7 @@ import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
+import type { LiveTable, LiveTableEntry } from "../../live/live-table.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
@@ -76,6 +77,33 @@ import { dataPath } from "../roots.js";
 import type { NodeServiceContext } from "../service-context.js";
 
 // ---- 引擎包 spy mocks(每次构造把实例塞进 H.<engine>,字段方法均为 vi.fn)----
+/**
+ * 在播表的内存替身:场次引擎写它(`replace` / `merge` / `remove`),别的读它(`get`)。接线测试只关心
+ * 「引擎写进去、读的人读得到」,不关心合并窗口那一发(那是 `live-table.test.ts` 的事)。
+ */
+function memoryLiveTable(): Pick<LiveTable, "get" | "replace" | "merge" | "remove"> {
+	const rows = new Map<string, LiveTableEntry>();
+	return {
+		get: (id) => rows.get(id),
+		replace: (id, sourceKey, startedAt, details) => {
+			rows.set(id, { subscriptionId: id, sourceKey, startedAt, details, updatedAt: Date.now() });
+		},
+		merge: (id, sourceKey, startedAt, details) => {
+			const prev = rows.get(id);
+			rows.set(id, {
+				subscriptionId: id,
+				sourceKey,
+				startedAt: startedAt ?? prev?.startedAt,
+				details: { ...prev?.details, ...details },
+				updatedAt: Date.now(),
+			});
+		},
+		remove: (id) => {
+			rows.delete(id);
+		},
+	};
+}
+
 const H = vi.hoisted(() => ({
 	push: [] as any[],
 	live: [] as any[],
@@ -1552,13 +1580,8 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			// 在播表里有这一行(开播进表):表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
-			liveTable: {
-				get: (id) =>
-					id === sub.id
-						? { subscriptionId: sub.id, sourceKey: "douyin", updatedAt: Date.now() }
-						: undefined,
-			},
+			// 开播上报经场次引擎写进在播表:表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
+			liveTable: memoryLiveTable(),
 			onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
 		});
 		active = c;
@@ -1613,11 +1636,6 @@ describe("createEngines — 拓展直播的图走图库", () => {
 		postNoun: () => undefined,
 		events: () => ["post", "liveStart", "liveEnd"] as const,
 	};
-	const liveRow = (id: string) => ({
-		subscriptionId: id,
-		sourceKey: "douyin",
-		updatedAt: Date.now(),
-	});
 	const storing = () =>
 		vi.fn(async (bytes: Uint8Array) => {
 			const ref = imageRefOf(bytes);
@@ -1633,20 +1651,20 @@ describe("createEngines — 拓展直播的图走图库", () => {
 				puppeteer: true,
 				subs: [sub],
 				extensionSources: sources,
-				liveTable: { get: () => undefined },
+				liveTable: memoryLiveTable(),
 				liveImages: null,
 			}),
 		).toThrow(/liveImages/);
 	});
 
-	it("封面经 liveImages 存(出卡那一刻写盘),订阅资料里的头像引用顶上;出图器收到的输入里是引用", async () => {
+	it("封面经 liveImages 存(收到上报就写盘),订阅资料里的头像引用顶上;出图器收到的输入里是引用", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
 			extensionSources: sources,
-			liveTable: { get: (id) => (id === sub.id ? liveRow(id) : undefined) },
+			liveTable: memoryLiveTable(),
 			liveImages: { put },
 			overrides: {
 				subRuntimeStore: {
@@ -1675,7 +1693,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			},
 		});
 		await vi.waitFor(() => expect(H.image[0].generateLiveCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里传给 bindLivePush 的 `liveImages,`(整条开机就抛),或 `avatarRef` 那一行(头像没了)。
+		// 验红:删掉 engines.ts 里传给 bindExtensionLive 的 `liveImages,`(整条开机就抛),或 bindLivePush 的 `avatarRef` 那一行(头像没了)。
 		const input = H.image[0].generateLiveCard.mock.calls[0]?.[0] as {
 			creator: { name: string; avatar?: string };
 			cover?: { ref?: string };
@@ -2022,6 +2040,8 @@ describe("createEngines — boot wiring", () => {
 
 	it("只读工具那份视图里,拓展订阅的在播接的是在播表(ADR-0019 决策 64 的 🔗)", () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-1" });
+		const aiLiveTable = memoryLiveTable();
+		aiLiveTable.replace(ext.id, "douyin", undefined, { title: "在播" });
 		const c = setup({
 			globals: aiGlobals(),
 			subs: [ext],
@@ -2030,12 +2050,7 @@ describe("createEngines — boot wiring", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			liveTable: {
-				get: (id) =>
-					id === ext.id
-						? { subscriptionId: ext.id, sourceKey: "douyin", title: "在播", updatedAt: 0 }
-						: undefined,
-			},
+			liveTable: aiLiveTable,
 		});
 		active = c;
 		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.liveNow).toEqual({
@@ -2370,7 +2385,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			liveTable: { get: () => undefined },
+			liveTable: memoryLiveTable(),
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
@@ -2396,7 +2411,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
-		let playing = true;
+		const liveTable = memoryLiveTable();
 		const c = setup({
 			globals: g,
 			subs: [sub],
@@ -2405,12 +2420,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			liveTable: {
-				get: (id) =>
-					playing && id === sub.id
-						? { subscriptionId: sub.id, sourceKey: "douyin", updatedAt: Date.now() }
-						: undefined,
-			},
+			liveTable,
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
@@ -2427,7 +2437,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 				expect.objectContaining({ subscriptionId: sub.id, feature: "liveStart" }),
 			),
 		);
-		playing = false;
+		liveTable.remove(sub.id);
 		const intervals = (subsystemCtx(c, "live", "core").setInterval.mock.calls ?? []) as unknown as [
 			() => void,
 			number,

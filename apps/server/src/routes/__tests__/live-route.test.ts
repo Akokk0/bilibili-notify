@@ -45,7 +45,7 @@ function setup(opts: { engines: boolean }) {
 		expect(res.status).toBe(200);
 		return (await res.json()) as LiveListeningEntry[];
 	}
-	return { bus, listening };
+	return { bus, liveTable, listening };
 }
 
 describe("GET /api/live/listening", () => {
@@ -55,23 +55,15 @@ describe("GET /api/live/listening", () => {
 	});
 
 	it("拓展订阅在播:并在 B 站那几行后面,按订阅 id 认、标着 kind;下播了就没了", async () => {
-		const { bus, listening } = setup({ engines: true });
-		bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-1",
-			subscriptionIds: [EXT_SUB],
-			report: {
-				kind: "liveStart",
-				value: {
-					url: "https://live.douyin.com/1",
-					startedAt: T0,
-					title: "抖音这一场",
-					category: "聊天",
-					viewers: 12,
-					totalViewers: 30,
-					cover: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-				},
-			},
+		const { liveTable, listening } = setup({ engines: true });
+		// 场次引擎收到开播信号时写表的样子。
+		liveTable.replace(EXT_SUB, "douyin", T0, {
+			url: "https://live.douyin.com/1",
+			title: "抖音这一场",
+			category: "聊天",
+			currentViewers: 12,
+			totalViewers: 30,
+			cover: { ref: `${"c".repeat(64)}.png` },
 		});
 		expect(await listening()).toStrictEqual([
 			...BILI_ROWS,
@@ -88,23 +80,13 @@ describe("GET /api/live/listening", () => {
 			},
 		]);
 
-		bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-1",
-			subscriptionIds: [EXT_SUB],
-			report: { kind: "liveEnd", value: { url: "https://live.douyin.com/1" } },
-		});
+		liveTable.remove(EXT_SUB);
 		expect(await listening()).toStrictEqual(BILI_ROWS);
 	});
 
 	it("直播引擎还没挂上(开机早期):B 站那几行是空的,拓展的照样有", async () => {
-		const { bus, listening } = setup({ engines: false });
-		bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-1",
-			subscriptionIds: [EXT_SUB],
-			report: { kind: "liveStatus", value: { live: true } },
-		});
+		const { liveTable, listening } = setup({ engines: false });
+		liveTable.merge(EXT_SUB, "douyin", undefined, {});
 		expect(await listening()).toStrictEqual([
 			{ kind: "extension", subscriptionId: EXT_SUB, extensionId: "douyin", isLive: true },
 		]);

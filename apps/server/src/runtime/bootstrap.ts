@@ -19,12 +19,7 @@ import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { i18n } from "../i18n/index.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
-import {
-	createImageStore,
-	type ImageStore,
-	type ImageWriter,
-	imageRefOf,
-} from "../images/image-store.js";
+import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
 import { createLinkResolverRegistry, type LinkResolverRegistry } from "../link-preview/registry.js";
 import { createLiveTable, type LiveTable } from "../live/live-table.js";
@@ -168,9 +163,10 @@ export interface AppRuntime {
 	 */
 	transitImages: ImageWriter;
 	/**
-	 * 拓展直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):出每张直播卡的那一刻把封面与事件带来的
-	 * 作者头像 `put` 进图库,卡输入里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与事件头像**
-	 * (`liveTable.list()`):直播可以超过 24 小时、周期卡几小时后还要用它们,不能像作品那样只靠宽限期。
+	 * 直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):拓展报来的直播,收到上报就把封面与作者头像
+	 * `put` 进图库(`bindExtensionLive`),信号与在播表里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与
+	 * 头像**(`liveTable.list()` 各行 `details` 里的 `cover.ref` 与 `creator.avatar`):直播可以超过 24 小时、周期卡几小时后
+	 * 还要用它们,不能像作品那样只靠宽限期。
 	 */
 	liveImages: ImageWriter;
 	/**
@@ -524,20 +520,18 @@ export function createAppRuntime(
 		serviceCtx,
 		logger: serviceCtx.logger,
 	});
-	// 拓展订阅的在播表:只听总线,早起不漏拓展开机第一轮报上来的直播状态(拓展在 index.ts 里装载,
-	// 晚于这里)。合并那一发走 serviceCtx 的定时器,关机时一起清。
+	// 在播表:早起造好,不漏来源开机第一轮报上来的直播状态(拓展在 index.ts 里装载,晚于这里)。写表的是场次引擎
+	// (`engines.ts`),表自己只听作废的两处。合并那一发走 serviceCtx 的定时器,关机时一起清。
 	const liveTable = createLiveTable({ bus, timers: serviceCtx });
 	serviceCtx.onDispose(() => liveTable.dispose(), "stop");
-	// 拓展直播是图库的一家引用方:在播表里的封面与事件带来的头像(都是字节,`imageRefOf` 算得出它们存进图库后的引用)。
-	// 在播表只在内存,所以名单是「此刻在播的那些行」;一场播过 24 小时,周期卡出卡时也会再存一遍,这份名单让清扫
-	// 在两次出卡之间也不把它们当垃圾。算不出引用(图库不收的图)的跳过。
+	// 直播是图库的一家引用方:在播表各行 `LiveDetails` 里的封面与主播头像(都是图库引用)。在播表只在内存,所以
+	// 名单是「此刻在播的那些行」;一场播过 24 小时,周期卡几小时后还要用它们,这份名单让清扫不把它们当垃圾。
 	const liveImages = imageStore.register({
-		name: IMAGE_REFERRERS.extensionLive,
+		name: IMAGE_REFERRERS.live,
 		listRefs: async () =>
 			liveTable
 				.list()
-				.flatMap((row) => [row.cover, row.author?.avatar])
-				.flatMap((bytes) => (bytes === undefined ? [] : [imageRefOf(bytes)]))
+				.flatMap((row) => [row.details.cover?.ref, row.details.creator?.avatar])
 				.filter((ref): ref is ImageRef => ref !== undefined),
 	});
 

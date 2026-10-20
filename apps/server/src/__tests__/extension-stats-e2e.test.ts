@@ -23,6 +23,7 @@ import type {
 	ExtensionLookupResponse,
 	ExtensionsResponse,
 	FansResponse,
+	LiveListeningEntry,
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -144,10 +145,19 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		await press("report.profile");
 		await press("report.liveStart");
 		await press("report.liveStatus");
+		await vi.waitFor(async () => {
+			const listening = await api("/api/live/listening");
+			expect(listening.status, await listening.clone().text()).toBe(200);
+			const rows = (await listening.json()) as LiveListeningEntry[];
+			const [on] = rows.flatMap((row) =>
+				row.kind === "extension" && row.subscriptionId === ON ? [row] : [],
+			);
+			expect(on?.totalViewers).toBe(2000);
+		});
 
 		// 统计页读得到这两条(ADR-0020 S4):键是订阅 id、带着身份;停用的乙照样列着。甲这一场在场次模块手里 →
 		// 在播 —— 路由从引擎的 `liveSession` 读它,路由测试用的是替身,接没接上只有这里看得出来。
-		// 场次开不开是总线上同步定的(上报交到总线,按钮才 resolve),所以这一刻已经定了。
+		// 按钮只保证上报交给总线;存图与交场次在后台闸里,所以先等上面的在播行出现再读统计。
 		const res = await api("/api/stats/overview?days=7&tz=0");
 		expect(res.status).toBe(200);
 		const { rows } = (await res.json()) as StatsOverviewResponse;

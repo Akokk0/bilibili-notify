@@ -145,13 +145,52 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 	return world;
 }
 
+/** 毫秒 → ISO;没给就没有。 */
+const isoOr = (ms: number | undefined) => (ms === undefined ? undefined : iso(ms));
+
+/** 上报里直播那几格(统计用得到的只有累计观看)→ 中立详情。 */
+const liveDetailsOf = (value: { totalViewers?: number }) =>
+	value.totalViewers === undefined ? {} : { totalViewers: value.totalViewers };
+
+/**
+ * 作品、资料更新走总线;直播上报在线上经 `bindExtensionLive` 翻成中立信号(存图见 `extension-live.test.ts`),
+ * 这里直接把信号交给这套的场次引擎 —— 统计只关心场次的开始与结束帧。下播的时刻是此刻的 `clock`。
+ */
 function report(bus: World["bus"], r: SubscriptionReport, sub: Subscription = SUB): void {
+	// 记录器听的是总线上的原始上报(「来源在跑」的小账);场次引擎吃的是翻好的信号。
 	bus.emit("subscription-reported", {
 		extensionId: sub.identity.sourceKey,
 		externalId: sub.identity.externalId,
 		subscriptionIds: [sub.id],
 		report: r,
 	});
+	const sessions = worlds.find((w) => w.bus === bus)?.sessions;
+	const base = { subscriptionId: sub.id, identity: sub.identity };
+	if (!sessions) return;
+	if (r.kind === "liveStart") {
+		sessions.apply({
+			...base,
+			kind: "start",
+			startedAt: isoOr(r.value.startedAt),
+			details: liveDetailsOf(r.value),
+		});
+	} else if (r.kind === "liveStatus") {
+		sessions.apply({
+			...base,
+			kind: "status",
+			isLive: r.value.live,
+			startedAt: isoOr(r.value.startedAt),
+			details: liveDetailsOf(r.value),
+		});
+	} else if (r.kind === "liveEnd") {
+		sessions.apply({
+			...base,
+			kind: "end",
+			endedAt: iso(clock),
+			startedAt: isoOr(r.value.startedAt),
+			details: liveDetailsOf(r.value),
+		});
+	}
 }
 
 type Value<K extends SubscriptionReport["kind"]> = Extract<

@@ -2,11 +2,11 @@ import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import type {
 	Disposable,
 	ImageRef,
+	LiveDetails,
 	Logger,
 	MessageBus,
 	ServiceContext,
 	Subscription,
-	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import {
 	createSerialGate,
@@ -15,11 +15,9 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { ReportDiscrepancy } from "../extensions/context.js";
-import type { ImageWriter } from "../images/image-store.js";
-import { deferImageWrites } from "../images/image-writes.js";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
-import { type LiveCardFields, liveCardInputFromReport } from "./live-card-input-from-report.js";
+import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
 import {
 	type LiveSession,
@@ -28,7 +26,7 @@ import {
 	liveSubscriptionPushable,
 } from "./live-sessions.js";
 import type { LiveWorkSettings } from "./live-settings.js";
-import type { LiveTable, LiveTableEntry } from "./live-table.js";
+import type { LiveTable } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
 import { LivePushType } from "./live-types.js";
 
@@ -73,14 +71,8 @@ import { LivePushType } from "./live-types.js";
  * 只在内存:BN 重启之后靠拓展开机第一轮报的直播状态接上(决策 57 / 8)。
  */
 
-type LiveStart = SubscriptionReportValue<"liveStart">;
-type LiveEnd = SubscriptionReportValue<"liveEnd">;
-
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-
-/** 卡上与文案要的直播那几格(外加直播间链接)—— 事件与在播表那一行长得一样。 */
-type LiveFacts = LiveCardFields & Partial<Pick<LiveTableEntry, "url">>;
 
 /**
  * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
@@ -112,13 +104,8 @@ export interface BindLivePushOptions {
 	sourceStatus: Pick<SourceStatusReader, "running">;
 	/** 这个来源有没有周期「正在直播」这一档(现取);答没有就不挂周期推送。拓展怎么认的见 `extensionHasLiveTick`。 */
 	hasLiveTick(sourceKey: string): boolean;
-	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
+	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);详情没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
-	/**
-	 * 往图库存直播封面与事件带来的作者头像的口(`AppRuntime.liveImages`)。每张卡出卡那一刻才写盘(`deferImageWrites`),
-	 * 关了出图、版式把卡片藏起来的直播不写。
-	 */
-	liveImages: Pick<ImageWriter, "put">;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
@@ -165,7 +152,8 @@ interface CardJob {
 	status: LiveCardInput["status"];
 	pushType: LiveNotifyPushType;
 	textKind: LiveTextKind;
-	facts: LiveFacts;
+	/** 卡上与文案要的直播那几格(图是图库引用,含直播间链接)。 */
+	facts: LiveDetails;
 	startedAt?: number;
 	/** `{time}`:已经算好的时长(没有开播时刻就空着)。 */
 	time: string;
@@ -175,23 +163,6 @@ interface CardJob {
 	fansChanged?: number;
 	/** 「正在直播」卡属于哪一场:发送前推送这头已经不挂在它上面了(开播 / 下播事件到了)就不发。 */
 	run?: LiveRun;
-}
-
-/**
- * 出卡的渲染器套一层:**出卡那一刻**先把图写进图库(`commit`),再画。`pushLiveNotify` 不出卡(版式把卡片藏起来、
- * 关了出图,即没有渲染器)就不会调到它,也就不为这一张卡写盘;写盘抛错 = 这一次出卡失败,装配降级成纯文字。
- */
-function committing(
-	renderer: Pick<ImageRenderer, "generateLiveCard"> | null | undefined,
-	commit: () => Promise<void>,
-): Pick<ImageRenderer, "generateLiveCard"> | null {
-	if (!renderer) return null;
-	return {
-		generateLiveCard: async (input, colorOptions) => {
-			await commit();
-			return renderer.generateLiveCard(input, colorOptions);
-		},
-	};
 }
 
 export function bindLivePush(opts: BindLivePushOptions): Disposable {
@@ -284,19 +255,17 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const { facts } = job;
 		// 作者名按决策 54 取好(事件里的 → 资料里的 → 外部 id),卡上与文案里的 `{name}` 同一条链(决策 77)。
 		const authorName = extensionSubscriptionName(sub, {
-			eventName: facts.author?.name,
+			eventName: facts.creator?.name,
 			profileName: profile?.name,
 		});
-		// 翻成中立的输入:封面与事件头像的字节只算引用,写盘推迟到出卡那一刻;订阅资料里的头像本来就在图库里。
-		const images = deferImageWrites(opts.liveImages);
-		const input: LiveCardInput = await liveCardInputFromReport(facts, {
+		// 翻成中立的输入:封面与头像本来就是图库引用(来源交信号之前存好的);订阅资料里的头像也在图库里。
+		const input: LiveCardInput = liveCardInputFromDetails(facts, {
 			status: job.status,
 			startedAt: job.startedAt,
 			followers: job.fans,
 			followersDelta: job.fansChanged,
 			authorName,
 			profileAvatar: opts.avatarRef(id),
-			images: images.sink,
 		});
 		const text = renderLiveText(job.textKind, templateOf(settings, job.textKind), {
 			// `{name}` 与卡上的作者名同一条链(决策 77)。
@@ -320,9 +289,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				label: `sub=${id}`,
 			},
 			{
-				// 出卡那一刻才把图写进图库:`pushLiveNotify` 不出卡(版式藏起卡片、关了出图)就不会调到这里。
-				// 写盘抛错 = 这一次出卡失败,装配降级成纯文字。
-				renderer: committing(opts.renderer(), images.commit),
+				renderer: opts.renderer() ?? null,
 				send: async (groups, type) => {
 					if (!pushable(id)) {
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中停用 / 删了 / 拓展停了,这张卡不发`);
@@ -353,17 +320,18 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			log.debug(`[ext-live] 订阅 ${id} 排队期间换了一场,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const entry = opts.table.get(id) ?? run.session.lastEntry;
-		if (!entry) {
+		const row = opts.table.get(id);
+		const details = row?.details ?? run.session.lastDetails;
+		if (!details) {
 			log.debug(`[ext-live] 订阅 ${id} 已经不在在播表里,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const startedAt = run.session.startedAt ?? entry.startedAt;
+		const startedAt = run.session.startedAt ?? row?.startedAt;
 		return pushCard(id, {
 			status: "streaming",
 			pushType,
 			textKind: "liveStreaming",
-			facts: entry,
+			facts: details,
 			startedAt,
 			time: startedAt === undefined ? "" : formatDuration(startedAt, now()),
 			fans: opts.profile(id)?.fans,
@@ -421,7 +389,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	}
 
 	/** 开播事件开了新的一场:推开播卡,挂上周期推送。 */
-	function onStart(session: LiveSession, value: LiveStart): void {
+	function onStart(session: LiveSession, details: LiveDetails): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
@@ -437,10 +405,10 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 					status: "start",
 					pushType: LivePushType.StartBroadcasting,
 					textKind: "liveStart",
-					facts: value,
-					startedAt: value.startedAt,
-					time: formatDuration(value.startedAt, at),
-					fans: session.fansAtStart,
+					facts: details,
+					startedAt: session.startedAt,
+					time: session.startedAt === undefined ? "" : formatDuration(session.startedAt, at),
+					fans: session.followersAtStart,
 				}),
 			);
 		}
@@ -501,13 +469,13 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	}
 
 	/**
-	 * 推下播卡。`session` 没有 = BN 手里没有这一场(中途重启过、拓展没报过状态):时长用事件带的开播时刻。
+	 * 推下播卡。`session` 没有 = BN 手里没有这一场(中途重启过、来源没报过状态):时长用信号带的开播时刻。
 	 */
 	function finishEnd(
 		id: string,
 		session: LiveSession | undefined,
 		endedAt: number,
-		value: LiveEnd,
+		reported: { details?: LiveDetails; startedAt?: number },
 	): void {
 		const sub = pushable(id);
 		if (!sub) return;
@@ -515,14 +483,14 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			log.debug(`[ext-live] 订阅 ${id} 的下播推送关着,下播卡不推`);
 			return;
 		}
-		// 事件没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
-		const facts: LiveFacts = { ...defined(session?.lastEntry), ...defined(value) };
-		const startedAt = session?.startedAt ?? value.startedAt ?? session?.lastEntry?.startedAt;
+		// 信号没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
+		const facts: LiveDetails = { ...defined(session?.lastDetails), ...defined(reported.details) };
+		const startedAt = session?.startedAt ?? reported.startedAt;
 		enqueue(id, "下播", () => {
 			const fansNow = opts.profile(id)?.fans;
 			const fansChanged =
-				fansNow !== undefined && session?.fansAtStart !== undefined
-					? fansNow - session.fansAtStart
+				fansNow !== undefined && session?.followersAtStart !== undefined
+					? fansNow - session.followersAtStart
 					: undefined;
 			return pushCard(id, {
 				status: "end",
@@ -539,7 +507,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	function onChange(change: LiveSessionChange): void {
 		switch (change.kind) {
 			case "start":
-				if (change.trigger === "liveStart") onStart(change.session, change.value);
+				if (change.trigger === "start-signal") onStart(change.session, change.details);
 				else onStatus(change.subscriptionId, true, change.session);
 				return;
 			case "resume":
@@ -554,13 +522,19 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			case "end":
 				// 为什么结束场次那边的日志写了。
 				dropRun(change.subscriptionId, "这一场结束了");
-				// 只有拓展报的下播推下播卡;拓展停了、订阅停用 / 删了、关机的,等着的下播卡不补推(决策 61)。
-				if (change.reason === "ended" && change.value) {
-					finishEnd(change.subscriptionId, change.session, change.at, change.value);
+				// 只有来源报的下播推下播卡;来源停了、订阅停用 / 删了、关机的,等着的下播卡不补推(决策 61)。
+				if (change.reason === "ended") {
+					finishEnd(change.subscriptionId, change.session, change.at, {
+						details: change.details,
+						startedAt: change.reportedStartedAt,
+					});
 				}
 				return;
 			case "unmatched-end":
-				finishEnd(change.subscriptionId, undefined, change.at, change.value);
+				finishEnd(change.subscriptionId, undefined, change.at, {
+					details: change.details,
+					startedAt: change.reportedStartedAt,
+				});
 				return;
 		}
 	}

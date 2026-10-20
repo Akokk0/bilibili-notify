@@ -33,7 +33,7 @@ describe("classifyImage:一张图属于哪一类只看引用方", () => {
 		[[H.chat], "ai"],
 		[[H.profiles], "otherImages"],
 		[[H.posts], "otherImages"],
-		[[H.extensionLive], "otherImages"],
+		[[H.live], "otherImages"],
 		[[H.sourceDeclared], "otherImages"],
 		[[H.history, H.sourceDeclared], "otherImages"],
 		[[H.history, H.chat], "otherImages"],

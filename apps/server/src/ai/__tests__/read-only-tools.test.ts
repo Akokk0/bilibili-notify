@@ -243,7 +243,14 @@ describe("aiSubscriptionViews — 拓展订阅的在播", () => {
 	) => {
 		const s = makeStores([makeExtensionSubscription()]);
 		return aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
-			row: (id) => (id === EXT_ID ? row : undefined),
+			// 在播表的行是 `{ startedAt, details }`(details 是中立的 LiveDetails)。
+			row: (id) =>
+				id === EXT_ID && row
+					? {
+							startedAt: row.startedAt,
+							details: { title: row.title, totalViewers: row.totalViewers },
+						}
+					: undefined,
 			running: (extensionId) => running && extensionId === "douyin",
 		})[0];
 	};

@@ -1,23 +1,29 @@
 import type { ExtensionLiveSnapshot } from "@bilibili-notify/contract";
 import type {
 	Disposable,
+	LiveDetails,
 	MessageBus,
 	ServiceContext,
-	SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 
 /**
- * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61)—— 首页「正在直播」里拓展那几行从这里来。
+ * 在播表(ADR-0019 决策 12 / 57 / 61)—— 首页「正在直播」里这几行从这里来。
  *
- * 按**订阅自己的 id** 记「此刻在播」与直播那几格 —— 拓展直播的计时器(`live-push.ts`)出「正在直播」
- * 卡、场次(`live-sessions.ts`)记这一场最后一份,也都从这里取,不另存。只听总线:
- * - `subscription-reported`:开播 → 进表(整行换新,这一场从这儿算起);下播 → 出表;直播状态
- *   `live: true` → 报了的格盖上去、没报的留着(不在表里就进表 —— BN 中途重启过也接得上),
- *   `live: false` → 出表。**开播 / 下播卡与推送不在这里**,这里只管「现在在不在播」;BN 不拿状态的
- *   翻转去猜开播 / 下播(决策 53 / 57)。
- * - `extension-stopped`:它名下的全部出表(决策 61)—— 拓展重新跑起来之后靠直播状态上报接上。
+ * 按**订阅自己的 id** 记「此刻在播」与直播那几格 —— 周期「正在直播」卡(`live-push.ts`)、场次(`live-sessions.ts`)
+ * 记这一场最后一份,也都从这里取,不另存。**写表的只有场次引擎**(`LiveSessionEngine.apply` 先写表、再改场次),
+ * 表自己不听上报:
+ * - `replace`:开播 → 整行换新,这一场从这儿算起;
+ * - `merge`:直播状态 `isLive: true` → 报了的格盖上去、没报的留着(不在表里就进表 —— BN 中途重启过也接得上);
+ * - `remove`:下播、直播状态 `isLive: false` → 出表。**开播 / 下播卡与推送不在这里**,这里只管「现在在不在播」;
+ *   BN 不拿状态的翻转去猜开播 / 下播(决策 53 / 57)。
+ *
+ * 表自己还听总线两处,为的是作废(场次引擎在同一刻也各自收场):
+ * - `extension-stopped`:它名下的全部出表(决策 61)—— 拓展重新跑起来之后靠直播状态上报接上;
  * - `subscription-changed`:订阅删了、停用了 → 出表(决策 62:停用的不进首页在播)。
+ *
+ * 行里装的是 {@link LiveDetails}(中立形状,图一律是图库引用):封面与头像由来源(拓展经 `bindExtensionLive`)
+ * 先存进图库再交,表里只有引用。
  *
  * 表一变就在总线上发 `extension-live-changed`,合并过(见 {@link LIVE_CHANGED_COALESCE_MS})。
  * 🔴 **不发 `live-state-changed`**:那是统计的 B 站适配按 uid 订着记场次的口;拓展订阅的场次走
@@ -38,57 +44,42 @@ export const LIVE_CHANGED_COALESCE_MS = 1_000;
 /** 整张表就一个合并窗口,单键的合并器用的那个键。 */
 const CHANGED_KEY = "live-changed";
 
-/** 表里的一行:一条拓展订阅此刻在播。 */
+/** 表里的一行:一条订阅此刻在播。 */
 export interface LiveTableEntry {
 	subscriptionId: string;
 	/** 哪个来源报的 —— 拓展停了,它名下的按这一格出表。 */
 	sourceKey: string;
 	/**
-	 * 开播时刻(毫秒)。开播事件必带;只收到过直播状态时,拓展报了才有 —— BN 不拿「收到的时刻」冒充,
+	 * 开播时刻(毫秒)。开播信号带了才有;只收到过直播状态时,来源报了才有 —— BN 不拿「收到的时刻」冒充,
 	 * 那会把这场的时长吞掉一截。留着给下播补开播时刻、重启补推(决策 56 / 57)。
 	 */
 	startedAt?: number;
-	title?: string;
-	/** 封面的字节(拓展交的,BN 核过)。首页不画,留给周期「正在直播」与重启补推出卡。 */
-	cover?: Uint8Array;
-	/** 分区。 */
-	category?: string;
-	/** 此刻在线(决策 75)。首页不画,留给「直播中」那张卡的人气格。 */
-	viewers?: number;
-	/** 本场累计观看(决策 75)—— 首页「正在直播」那一列就是它。 */
-	totalViewers?: number;
-	likes?: number;
-	/** 简介(纯文本)。首页不画,留给「直播中」那张卡。 */
-	description?: string;
-	/** 事件里带的作者(名字 / 头像都选填,决策 54)。首页不画,出卡时优先用它。 */
-	author?: { name?: string; avatar?: Uint8Array };
-	/** 直播间链接。 */
-	url?: string;
+	/** 直播那几格(中立形状,图是图库引用)。 */
+	details: LiveDetails;
 	/** 最后一次收到关于它的上报(毫秒)—— 周期「正在直播」判「上次推送之后收到过新状态」要用(决策 61)。 */
 	updatedAt: number;
 }
-
-/** 直播那几格 —— 三种直播上报都能带,进表的就是这几样。 */
-type LiveDetails = Partial<
-	Pick<
-		LiveTableEntry,
-		| "startedAt"
-		| "title"
-		| "cover"
-		| "category"
-		| "viewers"
-		| "totalViewers"
-		| "likes"
-		| "description"
-		| "author"
-		| "url"
-	>
->;
 
 export interface LiveTable extends Disposable {
 	/** 此刻在播的,按进表的先后。 */
 	list(): readonly LiveTableEntry[];
 	get(subscriptionId: string): LiveTableEntry | undefined;
+	/** 开播:整行换新,上一场留下的格一概不带(漏了下播的那场也在这儿收尾)。次序跟着这一场的开播走。 */
+	replace(
+		subscriptionId: string,
+		sourceKey: string,
+		startedAt: number | undefined,
+		details: LiveDetails,
+	): void;
+	/** 在播的直播状态:报了的格盖上去、没报的留着;不在表里就进表。 */
+	merge(
+		subscriptionId: string,
+		sourceKey: string,
+		startedAt: number | undefined,
+		details: LiveDetails,
+	): void;
+	/** 下播、或报了不在播:出表。 */
+	remove(subscriptionId: string): void;
 }
 
 export interface CreateLiveTableOptions {
@@ -100,33 +91,9 @@ export interface CreateLiveTableOptions {
 }
 
 /** 报了的那几格(没报的不带这个键 —— 合并时才不会拿「没报」盖掉已有的)。 */
-function detailsOf(value: LiveDetails): LiveDetails {
-	const {
-		startedAt,
-		title,
-		cover,
-		category,
-		viewers,
-		totalViewers,
-		likes,
-		description,
-		author,
-		url,
-	} = value;
-	const picked: LiveDetails = {
-		startedAt,
-		title,
-		cover,
-		category,
-		viewers,
-		totalViewers,
-		likes,
-		description,
-		author,
-		url,
-	};
+function reported(details: LiveDetails): LiveDetails {
 	return Object.fromEntries(
-		Object.entries(picked).filter(([, cell]) => cell !== undefined),
+		Object.entries(details).filter(([, cell]) => cell !== undefined),
 	) as LiveDetails;
 }
 
@@ -141,10 +108,10 @@ export function extensionLiveSnapshot(entry: LiveTableEntry): ExtensionLiveSnaps
 		subscriptionId: entry.subscriptionId,
 		extensionId: entry.sourceKey,
 		isLive: true,
-		title: entry.title,
-		areaName: entry.category,
+		title: entry.details.title,
+		areaName: entry.details.category,
 		startedAt: entry.startedAt === undefined ? undefined : new Date(entry.startedAt).toISOString(),
-		totalViewers: entry.totalViewers,
+		totalViewers: entry.details.totalViewers,
 	};
 }
 
@@ -157,6 +124,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	const { bus, timers } = opts;
 	const now = opts.now ?? Date.now;
 	const entries = new Map<string, LiveTableEntry>();
+	let disposed = false;
 	/** 窗口里挂着的那一发;整张表就这一个键。 */
 	const changed = createKeyedCoalescer({
 		windowMs: LIVE_CHANGED_COALESCE_MS,
@@ -170,54 +138,14 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 
 	/** 换掉(或删掉)一行;面板看得见的变了就记一笔。 */
 	function put(subscriptionId: string, next: LiveTableEntry | undefined): void {
+		if (disposed) return;
 		const before = faceOf(entries.get(subscriptionId));
 		if (next) entries.set(subscriptionId, next);
 		else entries.delete(subscriptionId);
 		if (faceOf(next) !== before) markChanged();
 	}
 
-	function apply(delivery: SubscriptionReportDelivery): void {
-		// 总线上的投递载荷叫 `extensionId`(3b-23 改名),进了表就是来源键。
-		const { extensionId: sourceKey, report } = delivery;
-		for (const subscriptionId of delivery.subscriptionIds) {
-			switch (report.kind) {
-				case "liveStart":
-					// 新的一场:整行换新,上一场留下的格一概不带(漏了下播的那场也在这儿收尾)。先删再放,
-					// 次序跟着这一场的开播走。
-					entries.delete(subscriptionId);
-					put(subscriptionId, {
-						subscriptionId,
-						sourceKey,
-						...detailsOf(report.value),
-						updatedAt: now(),
-					});
-					break;
-				case "liveEnd":
-					put(subscriptionId, undefined);
-					break;
-				case "liveStatus": {
-					if (!report.value.live) {
-						put(subscriptionId, undefined);
-						break;
-					}
-					const prev = entries.get(subscriptionId);
-					put(subscriptionId, {
-						...(prev ?? { subscriptionId }),
-						sourceKey,
-						...detailsOf(report.value),
-						updatedAt: now(),
-					});
-					break;
-				}
-				default:
-					// 作品、资料更新与在播无关。
-					return;
-			}
-		}
-	}
-
 	const watches: Disposable[] = [
-		bus.on("subscription-reported", apply),
 		bus.on("extension-stopped", ({ extensionId }) => {
 			for (const entry of [...entries.values()]) {
 				if (entry.sourceKey === extensionId) put(entry.subscriptionId, undefined);
@@ -235,7 +163,32 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	return {
 		list: () => [...entries.values()],
 		get: (subscriptionId) => entries.get(subscriptionId),
+		replace(subscriptionId, sourceKey, startedAt, details) {
+			if (disposed) return;
+			// 先删再放,次序跟着这一场的开播走。
+			entries.delete(subscriptionId);
+			put(subscriptionId, {
+				subscriptionId,
+				sourceKey,
+				...(startedAt === undefined ? {} : { startedAt }),
+				details: reported(details),
+				updatedAt: now(),
+			});
+		},
+		merge(subscriptionId, sourceKey, startedAt, details) {
+			const prev = entries.get(subscriptionId);
+			const at = startedAt ?? prev?.startedAt;
+			put(subscriptionId, {
+				subscriptionId,
+				sourceKey,
+				...(at === undefined ? {} : { startedAt: at }),
+				details: { ...prev?.details, ...reported(details) },
+				updatedAt: now(),
+			});
+		},
+		remove: (subscriptionId) => put(subscriptionId, undefined),
 		dispose() {
+			disposed = true;
 			for (const watch of watches) watch.dispose();
 			changed.cancelAll();
 		},
