@@ -42,7 +42,7 @@ import { pushSuperchat } from "./superchat.js";
  *
  * **回顾的弹幕收集归核心**:场次开了登记,这一场里每条弹幕记一条(条件同 {@link wantsLiveEndExtras}:下播开着、
  * 词云或总结至少一个开着,不论发弹幕的人在不在名单),醒目留言的正文也记一条;场次结束清掉。没有这一场
- * (场次没开)的弹幕不记,免得攒出一份没人清的数据。B 站老引擎到 22-10 前仍用自己那份收集器。
+ * (场次没开)的弹幕不记,免得攒出一份没人清的数据。
  */
 
 type InteractionSettings = Pick<
@@ -58,8 +58,8 @@ type InteractionSettings = Pick<
 	| "viewerEnter"
 	| "cardSkin"
 	| "cardSkinKnobs"
-	| "customSpecialDanmakuUsers"
-	| "customSpecialUsersEnterTheRoom"
+	| "specialViewerChat"
+	| "specialViewerEnter"
 >;
 
 /** 来源没给这个体系声明文案:等同「没开自定义文案」,出卡或走兜底句。 */
@@ -231,7 +231,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 						{
 							viewer: report.viewer,
 							text: report.text,
-							settings: settings.customSpecialDanmakuUsers,
+							settings: settings.specialViewerChat,
 							creator,
 						},
 						{ send: textSender(subscriptionId, LivePushType.ViewerChat) },
@@ -242,7 +242,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 					pushViewerEnter(
 						{
 							viewer: report.viewer,
-							settings: settings.customSpecialUsersEnterTheRoom,
+							settings: settings.specialViewerEnter,
 							creator,
 						},
 						{ send: textSender(subscriptionId, LivePushType.ViewerEnter) },

@@ -661,7 +661,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//   2. The built-in platform adapters are constructed inside `composeBuiltinIntegrations`
 		//      and registered (registration starts them) just before the engines
 		//      (`builtins.registerAdapters`).
-		//   3. createEngines() builds Dispatcher → PushRouter → LiveEngine and registers
+		//   3. createEngines() builds Dispatcher → PushRouter → neutral live layers and registers
 		//      serviceCtx.onDispose for graceful shutdown; the built-in post source is registered
 		//      right after it (`builtins.registerSources`).
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
@@ -775,7 +775,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionRuntime: runtime.subRuntimeStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
 			healthCheck: () =>
@@ -831,6 +830,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			bus: runtime.bus,
 			puppeteer: () => puppeteer,
 			mute: () => engines?.muteState,
+			subscriptions: () =>
+				subStore.list().map((sub) => ({
+					id: sub.id,
+					enabled: sub.enabled,
+					name:
+						runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ??
+						subscriptionIdentityOf(sub).externalId,
+				})),
+			session: () =>
+				engines && {
+					tickNow: (subscriptionId: string) =>
+						engines?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
+				},
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? adapterRegistry;
@@ -938,8 +950,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			sources: runtime.sourceRegistry,
 			linkResolvers: runtime.linkResolvers,
 			problems: runtime.problems,
-			// 直播引擎由 createEngines 造、早于来源登记:B 站的分层上报器只能经入口递进去(3b 直播并进来源时撤掉)。
-			biliProblems: builtins.bilibili.problems,
 		});
 		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时引擎自己先停它再关作品入口。
 		await builtins.registerSources(engines);
@@ -962,7 +972,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			memoryLogEnabled: () => runtime.configStore.getGlobals().logging.memoryLog.enabled,
 			probes: [
 				() => {
-					const s = engines?.live.danmakuStats();
+					const s = engines?.liveDanmakuStats();
 					return s ? `弹幕 ${s.rooms} 房/${s.words} 词/${s.senders} 人` : "";
 				},
 			],

@@ -6,6 +6,7 @@ import {
 	formatAgo,
 	type Identity,
 	type ImageRef,
+	type LiveStatusResult,
 	type Logger,
 	type MembershipTier,
 	type MessageBus,
@@ -23,8 +24,9 @@ import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
-import { IMAGE_REQUEST_HEADERS } from "./images.js";
+import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
+import { BiliLiveRooms } from "./live/session/bili-live-rooms.js";
 import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
@@ -54,6 +56,15 @@ export interface BiliSourceDeps {
 	loginCheck: { setHealthCheckMs(ms: number): void };
 	/** 语言读口:`start` 里订,语言变了把读不懂的设置问题按新语言再报一遍。 */
 	locale: Pick<LocaleReader, "onChange">;
+	/** 直播那一路的宿主上下文(日志标签仍是 `live`)。 */
+	liveContext: ServiceContext;
+	/** R7 过渡口,3b-25 房号搬进 B 站 `ctx.state` 时随口删。 */
+	liveRoomIds: {
+		get(externalId: string): string | undefined;
+		set(externalId: string, roomId: string): void;
+	};
+	/** R7 过渡口,3b-24 粉丝牌名搬进资料缓存时随口删。 */
+	fanClubNames: { set(externalId: string, name: string): void };
 	/** 可注入的时钟(`health()` 的相对时间用)。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -129,6 +140,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let viewerAvatars: ViewerAvatarFetcher | undefined;
 	let lastGuardAttemptAt: number | undefined;
 	let guardFetch: Promise<void> | undefined;
+	let rooms: BiliLiveRooms | undefined;
+	const superchatAvatarUrls = new Map<string, string>();
 
 	const guardTiers = (): MembershipTier[] => {
 		const program = descriptor.membershipPrograms?.find(
@@ -190,6 +203,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				signal: AbortSignal,
 			): Promise<Result<{ ref: ImageRef }>> {
 				if (signal.aborted) return fail("indeterminate", "viewer avatar request was aborted");
+				const direct = superchatAvatarUrls.get(viewerId);
+				if (direct && sourceCtx) {
+					const ref = await fetchAvatar(direct, {
+						images: { fetchImage: sourceCtx.fetchImage },
+						logger: sourceCtx.logger,
+					});
+					return ref ? ok({ ref }) : fail("unavailable", "superchat viewer avatar is unavailable");
+				}
 				if (!viewerAvatars) return fail("unavailable", "bilibili source is not running");
 				const ref = await viewerAvatars.fetch(viewerId, identity.externalId);
 				return ref ? ok({ ref }) : fail("unavailable", "viewer avatar is unavailable");
@@ -213,6 +234,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				return ref ? ok({ ref }) : fail("unavailable", "guard icon is unavailable");
 			},
 		},
+		fetchLiveStatus(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult> {
+			if (!rooms) {
+				return Promise.resolve(fail("unavailable", "bilibili live rooms are not running"));
+			}
+			return rooms.fetchLiveStatus(identity, signal);
+		},
 		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完;日志等 start 给了 ctx 才有。
 		searchCreators: (query) => searchBiliCreators(deps.api, query, (m) => log?.warn(m)),
 		health(): SourceHealth {
@@ -226,6 +253,17 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			if (started) throw new Error("bilibili source is already started");
 			log = ctx.logger;
 			sourceCtx = ctx;
+			rooms = new BiliLiveRooms({
+				api: deps.api,
+				bus: deps.bus,
+				liveContext: deps.liveContext,
+				liveRoomIds: deps.liveRoomIds,
+				fanClubNames: deps.fanClubNames,
+				problems: deps.problems,
+				rememberSuperchatAvatar: (viewerId, url) => {
+					superchatAvatarUrls.set(viewerId, url);
+				},
+			});
 			viewerAvatars = createViewerAvatarFetcher({
 				api: deps.api,
 				images: {
@@ -352,6 +390,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					),
 				);
 				applyDynamic();
+				rooms.start(ctx, ctx.subscriptions());
 				mine.push(dynamicSettings.onChange(guarded(ctx, "动态", applyDynamic)));
 				applyLoginCheck();
 				mine.push(loginCheckSettings.onChange(guarded(ctx, "登录检查", applyLoginCheck)));
@@ -359,6 +398,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			} catch (err) {
 				// 登记表那头只会放键、收上下文,不会替来源停 cron、停心跳:自己收拾干净再抛。
 				for (const handle of mine) handle.dispose();
+				rooms.stop();
+				rooms = undefined;
 				stopEngine();
 				dynamicStopped = false;
 				deps.loginCheck.setHealthCheckMs(0);
@@ -380,6 +421,9 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		stop() {
 			// 第一步先摘:引擎收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
 			deps.problems.detach();
+			rooms?.stop();
+			rooms = undefined;
+			superchatAvatarUrls.clear();
 			for (const handle of handles) handle.dispose();
 			handles = [];
 			engine?.stop();

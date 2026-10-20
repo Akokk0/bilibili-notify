@@ -80,3 +80,19 @@ describe("rotateLiveCover — 订阅自己设了", () => {
 		expect(rotateLiveCover(["s1", "s2"], ["g1"], () => undefined, "k")).toBe("s1");
 	});
 });
+
+describe("B 站封面轮换游标", () => {
+	it("B 站来源的游标键带来源前缀: bilibili:<uid>:live-cover", () => {
+		const calls: string[] = [];
+		rotateLiveCover(
+			["s1", "s2"],
+			[],
+			(key) => {
+				calls.push(key);
+				return "s1";
+			},
+			"bilibili:u1:live-cover",
+		);
+		expect(calls).toEqual(["bilibili:u1:live-cover"]);
+	});
+});

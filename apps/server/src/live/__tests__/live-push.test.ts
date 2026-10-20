@@ -83,8 +83,8 @@ function baseSettings(over: Partial<LiveSettings> = {}): LiveSettings {
 		viewerEnter: false,
 		extras: { atAllPost: false, atAllLiveStart: false, wordcloud: false, liveSummary: false },
 		customLiveSummary: { enable: true },
-		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
-		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
+		specialViewerChat: { specialViewers: [], template: "" },
+		specialViewerEnter: { specialViewers: [], template: "" },
 		messageLayout: defaultMessageKindLayout("live"),
 		customLiveMsg: { enable: true },
 		streamingIntervalHours: 1,
@@ -1021,6 +1021,21 @@ describe("同一条订阅的推送按顺序", () => {
 		release();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);
+	});
+
+	it("下播卡在途时重开:开播卡等下播卡送达完成后才发(送达序 = 发起序)", async () => {
+		start();
+		let release: () => void = () => {};
+		slowNext = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		liveEnd();
+		liveStart({ startedAt: Date.now() });
+		await settle();
+		expect(sent).toEqual([]);
+		release();
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([9, 3]);
 	});
 });
 

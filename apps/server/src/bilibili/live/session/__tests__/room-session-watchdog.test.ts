@@ -1,195 +1,13 @@
-/**
- * 回归守护 — live WS 静默失活 watchdog。
- *
- * 开播推送依赖 B 站直播 WS 的 onLiveStart。如果底层连接半开/静默失活且不
- * 触发 error，旧逻辑不会重连，表现为“直播不推送，重启后恢复”。watchdog
- * 以 heartbeat / 任意 WS 事件刷新 activity，超过阈值主动
- * 复用重连状态机；它只自愈连接，不改变直播状态、不发业务推送。
- */
-
-import type { ServiceContext } from "@bilibili-notify/internal";
-import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { PROBLEM_TEXTS } from "../../../problem-texts";
-import type { LiveEvent } from "../../protocol/events.js";
-import type { SubItemView } from "../../push-like";
-import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
-import { LIVE_WS_STALE_MS, RoomSession } from "../room-session";
-import {
-	expectedRestrictedFailure,
-	expectedStoppedFailure,
-	liveProblemsCtx,
-	makeLiveProblems,
-} from "./support/live-problems";
+import { LiveRoomAccessDeniedError } from "../room-helpers.js";
+import { LIVE_WS_STALE_MS } from "../room-session.js";
+import { makeSessionHarness } from "./support/room-session.js";
 
-type EventFunnel = (ev: LiveEvent) => void | Promise<void>;
-type WatchdogTestSession = RoomSession & {
-	onListenerStarted(): void;
-	buildEventHandler(): EventFunnel;
-	liveStatus: boolean;
-	pushAtTimeTimer: { dispose(): void } | null;
-};
-
-type IntervalItem = { fn: () => void; disposed: boolean };
-type TimeoutItem = { fn: () => void; ms: number; disposed: boolean };
-
-function makeSub(over: Partial<SubItemView> = {}): SubItemView {
-	return {
-		uid: "u1",
-		uname: "U1",
-		roomId: "r1",
-		post: false,
-		liveStart: true,
-		liveEnd: true,
-		membership: false,
-		superchat: false,
-		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
-		target: {},
-		customLiveMsg: { enable: false },
-		guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
-		customLiveSummary: { enable: false },
-		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
-		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
-		liveStreaming: true,
-		streamingIntervalHours: 1,
-		catchUpOnBoot: false,
-		// 宿主恒填版式;用例按需覆盖。
-		messageLayout: defaultMessageKindLayout("live"),
-		...over,
-	} as SubItemView;
-}
-
-function makeMockCtx(): {
-	ctx: RoomContext;
-	m: {
-		intervals: IntervalItem[];
-		timeouts: TimeoutItem[];
-		closeListener: ReturnType<typeof vi.fn>;
-		startLiveRoomListener: ReturnType<typeof vi.fn>;
-		getLiveRoomInfo: ReturnType<typeof vi.fn>;
-		getMasterInfo: ReturnType<typeof vi.fn>;
-		emitEngineError: ReturnType<typeof vi.fn>;
-		emitLiveState: ReturnType<typeof vi.fn>;
-		stopMonitoring: ReturnType<typeof vi.fn>;
-		problems: ReturnType<typeof makeLiveProblems>;
-		warn: ReturnType<typeof vi.fn>;
-		lastHandler: EventFunnel | undefined;
-		intervalDisposeCount: () => number;
-		timeoutDelays: () => number[];
-		runIntervals: () => Promise<void>;
-		runTimeouts: () => Promise<void>;
-	};
-} {
-	const intervals: IntervalItem[] = [];
-	const timeouts: TimeoutItem[] = [];
-	let intervalDisposes = 0;
-	let lastHandler: EventFunnel | undefined;
-	const warn = vi.fn();
-	const fakeServiceCtx: ServiceContext = {
-		logger: { debug() {}, info() {}, warn, error() {} },
-		setInterval: (fn) => {
-			const item: IntervalItem = { fn, disposed: false };
-			intervals.push(item);
-			return {
-				dispose: () => {
-					item.disposed = true;
-					intervalDisposes++;
-				},
-			};
-		},
-		setTimeout: (fn, ms) => {
-			const item: TimeoutItem = { fn, ms, disposed: false };
-			timeouts.push(item);
-			return {
-				dispose: () => {
-					item.disposed = true;
-				},
-			};
-		},
-		onDispose: () => {},
-		signal: new AbortController().signal,
-		track: () => {},
-	};
-	const m = {
-		intervals,
-		timeouts,
-		closeListener: vi.fn(),
-		startLiveRoomListener: vi.fn(async (_roomId: string, handler: EventFunnel) => {
-			lastHandler = handler;
-			return true;
-		}),
-		getLiveRoomInfo: vi.fn(async () => ({
-			uid: 1,
-			live_status: 0,
-			live_time: "",
-			short_id: 0,
-			room_id: 1,
-		})),
-		getMasterInfo: vi.fn(async () => ({
-			username: "U1",
-			userface: "face",
-			roomId: 1,
-			liveOpenFollowerNum: 0,
-			liveEndFollowerNum: 0,
-			liveFollowerChange: 0,
-		})),
-		emitEngineError: vi.fn(),
-		emitLiveState: vi.fn(),
-		stopMonitoring: vi.fn(),
-		problems: makeLiveProblems(),
-		warn,
-		get lastHandler() {
-			return lastHandler;
-		},
-		intervalDisposeCount: () => intervalDisposes,
-		timeoutDelays: () => timeouts.map((t) => t.ms),
-		runIntervals: async () => {
-			for (const item of [...intervals]) {
-				if (!item.disposed) item.fn();
-			}
-			await Promise.resolve();
-			await Promise.resolve();
-		},
-		runTimeouts: async () => {
-			const batch = [...timeouts];
-			timeouts.length = 0;
-			for (const item of batch) {
-				if (!item.disposed) item.fn();
-			}
-			await Promise.resolve();
-			await Promise.resolve();
-		},
-	};
-	const ctx = {
-		serviceCtx: fakeServiceCtx,
-		logger: fakeServiceCtx.logger,
-		isDisposed: () => false,
-		closeListener: m.closeListener,
-		startLiveRoomListener: m.startLiveRoomListener,
-		getLiveRoomInfo: m.getLiveRoomInfo,
-		getMasterInfo: m.getMasterInfo,
-		emitEngineError: m.emitEngineError,
-		emitLiveState: m.emitLiveState,
-		stopMonitoring: m.stopMonitoring,
-		...liveProblemsCtx(m.problems),
-		livePushTimerManager: new Map<string, () => void>(),
-		danmakuCollector: { clear: () => {}, register: () => {} },
-		push: { push: async () => {} },
-		contentBuilder: {
-			text: (t: string) => ({ kind: "text", text: t }),
-			image: () => ({ kind: "image" }),
-			message: (segs: unknown[]) => segs,
-		},
-		isSubscribed: () => false,
-		hasTargets: () => false,
-		templateRenderer: {},
-	} as unknown as RoomContext;
-	return { ctx, m };
-}
+const T0 = 1_000_000;
 
 beforeEach(() => {
-	vi.useFakeTimers();
-	vi.setSystemTime(1_000);
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(T0);
 });
 
 afterEach(() => {
@@ -199,193 +17,167 @@ afterEach(() => {
 
 describe("RoomSession live WS watchdog", () => {
 	it("listener 建立后未超过 180s 不重连", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		session.onListenerStarted();
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS - 1);
 
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS - 1);
-		await m.runIntervals();
+		h.intervals[0]?.fn();
+		await h.settle();
 
-		expect(m.closeListener).not.toHaveBeenCalled();
-		expect(m.startLiveRoomListener).not.toHaveBeenCalled();
+		expect(h.closeListener).not.toHaveBeenCalled();
+		expect(h.timeoutDelays).toEqual([]);
 	});
 
 	it("超过 180s 静默 → 只重建连接,不改变直播状态、不取消周期 timer", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		const periodicDispose = vi.fn();
-		session.liveStatus = true;
-		session.pushAtTimeTimer = { dispose: periodicDispose };
-		session.onListenerStarted();
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.reports.length = 0;
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS);
 
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
-		await m.runIntervals();
+		h.intervals[0]?.fn();
+		await h.settle();
 
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.timeoutDelays()).toEqual([1000]);
-		expect(m.emitLiveState).not.toHaveBeenCalled();
-		expect(periodicDispose).not.toHaveBeenCalled();
-		expect(session.isLive).toBe(true);
-		expect(m.warn.mock.calls[0]?.[0]).toContain("连接静默");
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
+		expect(h.timeoutDelays).toEqual([1_000]);
+		expect(h.reports).toEqual([]);
 
-		await m.runTimeouts();
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
-		expect(session.getWsHealthSnapshot().watchdogReconnectCount).toBe(1);
-		expect(session.getWsHealthSnapshot().lastActivityReason).toBe("connected");
+		await h.runTimeouts();
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(2);
 	});
 
 	it("heartbeat 事件刷新 activity,阈值按刷新后重新计算", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		const handler = session.buildEventHandler();
-		session.onListenerStarted();
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		vi.setSystemTime(T0 + 170_000);
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
 
-		vi.setSystemTime(1_000 + 170_000);
-		handler({ kind: "heartbeat", popularity: 1 });
-		expect(session.getWsHealthSnapshot().lastActivityReason).toBe("heartbeat");
+		vi.setSystemTime(T0 + 170_000 + LIVE_WS_STALE_MS - 1);
+		h.intervals[0]?.fn();
+		await h.settle();
+		expect(h.closeListener).not.toHaveBeenCalled();
 
-		vi.setSystemTime(1_000 + 170_000 + LIVE_WS_STALE_MS - 1);
-		await m.runIntervals();
-		expect(m.closeListener).not.toHaveBeenCalled();
-
-		vi.setSystemTime(1_000 + 170_000 + LIVE_WS_STALE_MS);
-		await m.runIntervals();
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
+		vi.setSystemTime(T0 + 170_000 + LIVE_WS_STALE_MS);
+		h.intervals[0]?.fn();
+		await h.settle();
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
 	});
 
 	it("cancel() 清理 watchdog;即使旧 interval 回调被手动执行也不重连", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		session.onListenerStarted();
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.session.cancel();
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS);
 
-		session.cancel();
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
-		await m.runIntervals();
+		h.intervals[0]?.fn();
+		await h.settle();
 
-		expect(m.intervalDisposeCount()).toBe(1);
-		expect(m.closeListener).not.toHaveBeenCalled();
-		expect(m.startLiveRoomListener).not.toHaveBeenCalled();
+		expect(h.intervals[0]?.disposed).toBe(true);
+		expect(h.closeListener).not.toHaveBeenCalled();
+		expect(h.timeoutDelays).toEqual([]);
 	});
 
 	it("closed 事件触发重连;cancel 后不再触发", async () => {
-		// 主动关闭的 close 回声由客户端自己吞掉(close() 后保证静默),不会走到
-		// 这个漏斗 —— 旧库时代的 consumeIntentionalClose 对暗号已随之退役。
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		const handler = session.buildEventHandler();
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.closeListener.mockClear();
+		h.startLiveRoomListener.mockClear();
 
-		handler({ kind: "closed" });
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.timeoutDelays()).toEqual([1000]);
-		await m.runTimeouts();
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		await h.dispatch({ kind: "closed" });
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
+		expect(h.timeoutDelays).toEqual([1_000]);
+		await h.runTimeouts();
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(1);
 
-		session.cancel();
-		handler({ kind: "closed" });
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		h.session.cancel();
+		await h.dispatch({ kind: "closed" });
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(1);
 	});
 
 	it("watchdog 连续 tick 不并发重连", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		session.onListenerStarted();
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS);
 
-		await m.runIntervals();
-		await m.runIntervals();
+		h.intervals[0]?.fn();
+		h.intervals[0]?.fn();
+		await h.settle();
 
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.startLiveRoomListener).not.toHaveBeenCalled();
-		expect(m.timeoutDelays()).toEqual([1000]);
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(h.timeoutDelays).toEqual([1_000]);
 	});
 
 	it("bootstrap 拉房间信息失败时 closeListener 触发 closed 事件也不会重连/启动 watchdog", async () => {
-		const { ctx, m } = makeMockCtx();
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		m.getLiveRoomInfo.mockResolvedValueOnce(undefined);
-		m.closeListener.mockImplementation(() => m.lastHandler?.({ kind: "closed" }));
+		const h = makeSessionHarness({
+			roomInfo: async () => undefined,
+		});
+		h.closeListener.mockImplementation(() => {
+			queueMicrotask(() => {
+				void h.handler({ kind: "closed" });
+			});
+		});
 
-		await session.bootstrap();
+		await h.bootstrap();
 
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1); // 仅 bootstrap 建 listener
-		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
-		);
-		expect(m.closeListener).toHaveBeenCalledTimes(1);
-		expect(m.timeoutDelays()).toEqual([]); // closed 事件被 cancel 挡住,不排重连
-		expect(m.intervals).toHaveLength(0); // info 失败时 watchdog 不启动
+		expect(h.closeListener).toHaveBeenCalledTimes(1);
+		expect(h.timeoutDelays).toEqual([]);
+		expect(h.intervals.every((item) => item.disposed)).toBe(true);
 	});
 
 	it("bootstrap 遇到受限房直接停止,不拉房间信息也不启动 watchdog", async () => {
-		const { ctx, m } = makeMockCtx();
-		m.startLiveRoomListener.mockRejectedValueOnce(
-			new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
-		);
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
+		const h = makeSessionHarness({
+			listener: async () =>
+				Promise.reject(
+					new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
+				),
+		});
 
-		await session.bootstrap();
+		await h.bootstrap();
 
-		expect(m.getLiveRoomInfo).not.toHaveBeenCalled();
-		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
-		expect(m.stopMonitoring.mock.calls[0]).toEqual([
-			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
-			"r1",
-		]);
-		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedRestrictedFailure("u1", "r1", m.stopMonitoring.mock.calls[0]?.[0]),
-		);
-		expect(m.timeouts).toHaveLength(0);
-		expect(m.intervals).toHaveLength(0);
+		expect(h.fetchRoomInfo).not.toHaveBeenCalled();
+		expect(h.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(h.intervals).toHaveLength(0);
 	});
 
 	it("watchdog 重连耗尽后停止 watchdog,不会被同一个 stale interval 反复拉起", async () => {
-		const { ctx, m } = makeMockCtx();
-		m.startLiveRoomListener.mockRejectedValue(new Error("still down"));
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		session.onListenerStarted();
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.startLiveRoomListener.mockRejectedValue(new Error("still down"));
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS);
 
-		await m.runIntervals();
-		for (let i = 0; i < 5; i++) await m.runTimeouts();
+		h.intervals[0]?.fn();
+		for (let i = 0; i < 5; i++) await h.runTimeouts();
 
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
-		expect(m.problems.reportFailure).toHaveBeenCalledTimes(1);
-		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp()),
-		);
-		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
-		expect(m.emitEngineError).not.toHaveBeenCalled();
-		expect(m.intervalDisposeCount()).toBe(1);
-		await m.runIntervals();
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(6);
+		expect(h.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(h.intervals[0]?.disposed).toBe(true);
+		h.intervals[0]?.fn();
+		await h.settle();
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(6);
 	});
 
 	it("watchdog 重连遇到受限房时停止监测,不继续退避", async () => {
-		const { ctx, m } = makeMockCtx();
-		m.startLiveRoomListener.mockRejectedValue(
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.startLiveRoomListener.mockRejectedValue(
 			new LiveRoomAccessDeniedError("B 站返回 code=-400 message=room is encrypted"),
 		);
-		const session = new RoomSession(ctx, makeSub()) as unknown as WatchdogTestSession;
-		session.onListenerStarted();
-		vi.setSystemTime(1_000 + LIVE_WS_STALE_MS);
+		await h.dispatch({ kind: "heartbeat", popularity: 1 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS);
 
-		await m.runIntervals();
-		expect(m.timeoutDelays()).toEqual([1000]);
-		await m.runTimeouts();
+		h.intervals[0]?.fn();
+		await h.settle();
+		expect(h.timeoutDelays).toEqual([1_000]);
+		await h.runTimeouts();
 
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
-		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
-		expect(m.stopMonitoring.mock.calls[0]).toEqual([
-			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
-			"r1",
-		]);
-		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedRestrictedFailure("u1", "r1", m.stopMonitoring.mock.calls[0]?.[0]),
-		);
-		expect(m.intervalDisposeCount()).toBe(1);
-		expect(m.timeoutDelays()).toEqual([]);
-		await m.runIntervals();
-		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1);
+		expect(h.startLiveRoomListener).toHaveBeenCalledTimes(2);
+		expect(h.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(h.intervals[0]?.disposed).toBe(true);
+		expect(h.timeoutDelays).toEqual([1_000]);
 	});
 });

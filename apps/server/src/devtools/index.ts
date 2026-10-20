@@ -10,6 +10,7 @@ import type { Hono } from "hono";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
+import type { LiveSessionEngine } from "../live/live-sessions.js";
 import { routeConnection } from "../push/dispatch.js";
 import { deriveAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
@@ -102,6 +103,8 @@ export interface CreateDevtoolsInput {
 	/** 定时组要碰的两个口,都是后建的,现取。 */
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
+	subscriptions?: () => readonly { id: string; enabled: boolean; name: string }[];
+	session?: () => Pick<LiveSessionEngine, "tickNow"> | undefined;
 }
 
 export interface Devtools {
@@ -211,7 +214,13 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		}),
 		// 不跟上面那几条一起:仓里一个拓展都没有时它们整组不出现,而这一条认的是**装着的**。
 		marketplaceUpdateScenario(market),
-		...timerScenarios({ clock, mute: input.mute, puppeteer: input.puppeteer }),
+		...timerScenarios({
+			clock,
+			mute: input.mute,
+			puppeteer: input.puppeteer,
+			subscriptions: input.subscriptions ?? (() => []),
+			session: input.session ?? (() => undefined),
+		}),
 	]);
 	return {
 		registry,

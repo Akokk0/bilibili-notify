@@ -139,6 +139,15 @@ function makeDeps(
 ) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
+	const logger = makeLogger();
+	const liveContext = {
+		logger,
+		signal: new AbortController().signal,
+		setInterval: () => ({ dispose() {} }),
+		setTimeout: () => ({ dispose() {} }),
+		onDispose() {},
+		track() {},
+	};
 	return {
 		config,
 		setHealthCheckMs,
@@ -156,6 +165,12 @@ function makeDeps(
 			loginCheck: { setHealthCheckMs },
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
+			liveContext,
+			liveRoomIds: {
+				get: () => undefined,
+				set: () => {},
+			},
+			fanClubNames: { set: () => {} },
 			auth: FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
@@ -393,7 +408,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 		expect(source.dynamic()).toBeUndefined();
 		expect(cronMock.instances[0]?.isActive).toBe(false);
-		expect(watchDisposed).toHaveBeenCalledTimes(1);
+		expect(watchDisposed).toHaveBeenCalledTimes(2);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 
 		// stop 之后设置再变(上下文还没收):来源自己的订阅已摘,不会造出新的引擎、也不会再动登录检查。
@@ -594,7 +609,7 @@ describe("createBiliSource", () => {
 		await expect(source.start(ctx)).rejects.toThrow("挂心跳炸了");
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(source.dynamic()).toBeUndefined();
-		expect(watchDisposed).toHaveBeenCalledTimes(1);
+		expect(watchDisposed).toHaveBeenCalledTimes(2);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 		expect(deps.problems.attach).not.toHaveBeenCalled();
 		// 设置再变:被摘掉的订阅不会造出新的引擎

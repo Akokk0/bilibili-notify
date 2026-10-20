@@ -4,8 +4,8 @@ import { createDevRegistry, DevParamError } from "../registry.js";
 import { timerScenarios } from "../scenarios/timers.js";
 
 /**
- * 免扰时钟(单点覆盖「当作现在是 hh:mm」)、静音(真调 muteFor)、Chrome 空闲关。这些都不是
- * 假时钟:只覆盖一处判定,或者把定时器到点要做的事提前调一次。B 站的四个「现在就跑」在
+ * 免扰时钟(单点覆盖「当作现在是 hh:mm」)、静音(真调 muteFor)、Chrome 空闲关、直播复推。这些都不是
+ * 假时钟:只覆盖一处判定,或者把定时器到点要做的事提前调一次。B 站其余「现在就跑」在
  * `bilibili/devtools/__tests__/timers.test.ts`。
  */
 
@@ -21,15 +21,21 @@ function setup(over: Partial<Parameters<typeof timerScenarios>[0]> = {}) {
 		}),
 	};
 	const closeIdleNow = vi.fn(async () => true);
+	const tickNow = vi.fn(async (subscriptionId: string) => subscriptionId === "s1");
 	const reg = createDevRegistry(
 		timerScenarios({
 			clock,
 			mute: () => mute,
 			puppeteer: () => ({ closeIdleNow }),
+			subscriptions: () => [
+				{ id: "s1", enabled: true, name: "甲" },
+				{ id: "s2", enabled: false, name: "乙" },
+			],
+			session: () => ({ tickNow }),
 			...over,
 		}),
 	);
-	return { reg, clock, mute, closeIdleNow };
+	return { reg, clock, mute, closeIdleNow, tickNow };
 }
 
 beforeEach(() => {
@@ -128,12 +134,19 @@ describe("现在就跑", () => {
 		await expect(off.reg.run("chrome.idle-now", {})).rejects.toBeInstanceOf(DevParamError);
 	});
 
-	it("三个都在定时组", () => {
+	it("live.repush-now:按订阅 id 调场次的 tickNow", async () => {
+		const { reg, tickNow } = setup();
+		expect((await reg.run("live.repush-now", {})).summary).toMatch(/甲/);
+		expect(tickNow).toHaveBeenCalledWith("s1");
+		expect((await reg.run("live.repush-now", { sub: "s2" })).summary).toMatch(/没在播|没监听/);
+	});
+
+	it("四个都在定时组", () => {
 		const { reg } = setup();
 		const timers = reg
 			.list()
 			.filter((d) => d.group === "timer")
 			.map((d) => d.id);
-		expect(timers).toEqual(["push.quiet-clock", "push.mute", "chrome.idle-now"]);
+		expect(timers).toEqual(["push.quiet-clock", "push.mute", "chrome.idle-now", "live.repush-now"]);
 	});
 });

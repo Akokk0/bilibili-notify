@@ -1,13 +1,12 @@
 /**
- * 🔴 **B 站直播今天的行为,端到端钉住**(3b-13;ADR-0021 决策 28:合两套场次引擎之前先钉旧引擎)。
+ * 🔴 **B 站直播端到端钉住**(3b-13 / 3b-22)。
  *
- * 走的是真的 `createEngines`:弹幕帧(真编解码器编的)→ 真协议解析 → 真房间会话 → 真直播装配 → 真推送层 →
+ * 走的是真的 `createEngines` + 真 `createBiliSource`:弹幕帧(真编解码器编的)→ 真协议解析 → 真房间会话 → 真核心场次 → 真推送层 →
  * 真派发器 → 假平台。假件只有 B 站接口对象、弹幕连接、出图器、平台适配器四样(见 `support/bili-live-world.ts`)。
  * 断言只落在对外的结果上:推出去的内容与次序、总线上的事件与载荷、问题表里的条目、面板「正在直播」那一栏、
  * 交给出图器的输入。
  *
- * 这批是**刻画测试**:钉的是今天的样子,不等于今天的样子都对。定案要改的那几条在用例名里标了「今天的行为」
- * 与哪一片会改 —— 到时这条红是预期的,改期望、别改回去。每一组的破坏验证写在组头的「验红」里。
+ * 这批是行为测试:公开结果为准,内部怎么接线可以换。每一组的破坏验证写在组头的「验红」里。
  *
  * 时间:世界从 2026-03-01 12:00:00(北京时间)开始,B 站的 `live_time` 恒为北京时间。
  */
@@ -79,11 +78,7 @@ async function endLive(w: World): Promise<void> {
 	await w.frame(PREPARING);
 }
 
-// 验红(都真改坏跑过;文件在 `bilibili/live/session/`):
-// - `room-session.ts` 的 `onLiveStart` 里开播卡的 `liveType: LiveType.StartBroadcasting` 改成 `LiveType.LiveBroadcast`
-//   → 这一组六条全红(@全体 没了、卡的状态成了 streaming、封面成了关键帧);
-// - `room-session-base.ts` 的 `setLiveStatus` 里 `liveTimeToIso(this.liveRoomInfo?.live_time)` 换成 `undefined` → 断言事件的三条红(`at` 没了);
-// - `onLiveStart` 里冷却与「已在播」两道去重都改成 `if (false)` → 「十秒内重复」那条红(多推一张开播卡)。
+// 验红:B 站开播翻译不带 `startedAt` → live 事件丢掉 B 站开播时刻;开播冷却删掉 → 重复帧多推一张卡。
 describe("开播", () => {
 	it("收到开播帧:先 @全体,再推一条「卡 + 文案 + 链接」;总线上一条 live 事件,带 B 站的开播时刻", async () => {
 		const w = await boot({ features: ["liveStart"], extras: ["atAllLiveStart"] });
@@ -140,13 +135,12 @@ describe("开播", () => {
 		expect(w.cards).toEqual([]);
 	});
 
-	// 今天的行为:开关由推送层判,引擎不看 —— 开播关着也照样取数、出一张开播卡,交到推送层才被扔掉。
-	it("开播关着、别的直播开关开着:照样监听、照样发 live 事件,但不推(今天的行为:那张开播卡照样出了一遍)", async () => {
+	it("开播关着、别的直播开关开着:照样监听、照样发 live 事件,但不出卡也不推", async () => {
 		const w = await boot({ features: ["liveEnd"] });
 		await startLive(w);
 		expect(w.sent).toEqual([]);
 		expect(w.events).toEqual([LIVE_EVENT]);
-		expect(w.cards.map((card) => (card.input as { status: string }).status)).toEqual(["start"]);
+		expect(w.cards).toEqual([]);
 	});
 
 	it("十秒内重复的开播帧只算一次", async () => {
@@ -159,7 +153,7 @@ describe("开播", () => {
 	});
 });
 
-// 验红(`room-session-base.ts`):
+// 验红(核心 `live/live-sessions.ts` 与 `live-push.ts`):
 // - `handleLiveEnd` 里 `followerChange: this.masterInfo.liveFollowerChange` 改成 `0` → 前两条红(文案的粉丝变化);
 // - `this.liveData.fansChanged = …` 改成 `= 0` → 第二条红(卡的 `followersDelta`);
 // - `useLiveRoomInfo` 里去掉「保留 live_time」(直接 `this.liveRoomInfo = data`)→ 前两条与总结那条红(时长成了「0秒」、卡没了开播时刻);
@@ -173,7 +167,7 @@ describe("下播", () => {
 		});
 		await startLive(w);
 		await w.advance(HOUR);
-		w.bili.followers = 1025;
+		w.setFans(1025);
 		await endLive(w);
 
 		expect(w.sent).toEqual([
@@ -183,7 +177,10 @@ describe("下播", () => {
 		]);
 		expect(w.events).toEqual([
 			LIVE_EVENT,
-			["live-state-changed", { uid: BILI_LIVE_UID, status: "idle", at: undefined }],
+			[
+				"live-state-changed",
+				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T05:00:00.000Z" },
+			],
 		]);
 		expect(w.liveNow()).toEqual([]);
 	});
@@ -194,11 +191,10 @@ describe("下播", () => {
 		await w.frame({ cmd: "WATCHED_CHANGE", data: { num: 4321 } });
 		await w.frame({ cmd: "LIKE_INFO_V3_UPDATE", data: { click_count: 99 } });
 		await w.advance(HOUR);
-		w.bili.followers = 990;
+		w.setFans(990);
 		await endLive(w);
 
-		// 第一张是开播时出的那张(开播关着也出,见上面那一组)
-		expect(w.cards.slice(1)).toEqual([
+		expect(w.cards).toEqual([
 			{
 				kind: "直播卡",
 				input: {
@@ -208,21 +204,19 @@ describe("下播", () => {
 					category: "聊天",
 					description: "房间简介",
 					cover: {
-						url: "https://i0.hdslb.com/bfs/live/room-cover.jpg",
+						url: "https://i0.hdslb.com/bfs/live/keyframe.jpg",
 						ref: `${"a".repeat(64)}.webp`,
 					},
 					startedAt: LIVE_TIME_ISO,
 					currentViewers: 321,
-					likes: 99,
 					totalViewers: 4321,
-					followers: 1000,
 					followersDelta: -10,
 				},
 				options: { cardSkin: "default", cardSkinKnobs: undefined },
 			},
 		]);
 		expect(w.sent).toEqual([
-			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 -10")],
+			["[图 直播卡#1]", linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 -10")],
 		]);
 	});
 
@@ -445,7 +439,7 @@ describe("直播总结的 AI 那份要不要做(生成门看「写正文」设�
 // - `room-session.ts` 的 `onLiveStart` 开头 `if (this.pendingEndTimer) {` 改成 `if (false) {` → 只有「接续之后再下播」那条红
 //   (第一条**不红**:没有这一支,窗口里的开播帧被「已在播」去重挡掉,到期核对时 B 站说在播,对外的结果一样;
 //   差别只在第一次等待撤没撤,所以要第二次下播才看得出);
-// - `room-session-base.ts` 的 `triggerLiveEnd` 里 `this.sub.liveEndGrace && this.liveStatus` 改成 `false` → 「开着」的四条红;
+// - 核心断流接续关掉 → 「开着」的四条红;
 // - `handleLiveEnd` 里 `precomputedDiffTime ?? this.liveElapsed()` 改成只用 `this.liveElapsed()` → 断言时长的两条红(多出等待的 2 分钟);
 // - `enterGrace` 里 `this.graceEndAt = new Date().toISOString()` 改成 `= undefined` → 那两条红(idle 的 `at` 没了);
 // - `onGraceExpiry` 里 `if (reopened) {` 改成 `if (false) {` → 「到期核对时 B 站说在播」那条红。
@@ -549,7 +543,10 @@ describe("断流接续", () => {
 		]);
 		expect(w.events).toEqual([
 			LIVE_EVENT,
-			["live-state-changed", { uid: BILI_LIVE_UID, status: "idle", at: undefined }],
+			[
+				"live-state-changed",
+				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:30:00.000Z" },
+			],
 			[
 				"live-state-changed",
 				{ uid: BILI_LIVE_UID, status: "live", at: "2026-03-01T04:30:15.000Z" },
@@ -558,11 +555,11 @@ describe("断流接续", () => {
 	});
 });
 
-// 验红(`room-session-base.ts`):
+// 验红(核心 `live/live-sessions.ts`):
 // - `tickPushAtTime` 里 `if (live_status === 0 || live_status === 2) {` 改成 `if (false) {` → 前三条红(推出来的是「正在直播」而不是下播);
 // - 只去掉 `|| live_status === 2` → 「轮播」那一条红;
 // - `armPeriodicTimer` 里去掉 `!this.sub.liveStreaming ||` → 「周期推送关着」那条红(关着也兜上了)。
-describe("漏收下播的兜底(今天挂在周期「正在直播」的那一拍上)", () => {
+describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 	it.each([
 		[0, "没播"],
 		[2, "轮播"],
@@ -577,7 +574,7 @@ describe("漏收下播的兜底(今天挂在周期「正在直播」的那一拍
 			await w.advance(30 * MINUTE);
 			// 12:30 就下播了,下播帧没到
 			w.bili.liveStatus = status;
-			await w.advance(30 * MINUTE - 1_000);
+			await w.advance(28 * MINUTE + 29_000);
 			expect(w.sent).toEqual([START_MESSAGE]);
 			expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 
@@ -585,11 +582,14 @@ describe("漏收下播的兜底(今天挂在周期「正在直播」的那一拍
 
 			expect(w.sent).toEqual([
 				START_MESSAGE,
-				["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 0")],
+				["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
 			]);
 			expect(w.events).toEqual([
 				LIVE_EVENT,
-				["live-state-changed", { uid: BILI_LIVE_UID, status: "idle", at: undefined }],
+				[
+					"live-state-changed",
+					{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
+				],
 			]);
 			expect(w.liveNow()).toEqual([]);
 		},
@@ -611,41 +611,48 @@ describe("漏收下播的兜底(今天挂在周期「正在直播」的那一拍
 
 		expect(w.sent).toEqual([
 			START_MESSAGE,
-			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 0")],
+			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
 		]);
 		expect(w.events).toEqual([
 			LIVE_EVENT,
 			[
 				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T05:00:00.000Z" },
+				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
 			],
 		]);
 	});
 
-	// 今天的行为:兜底只跟着周期推送走。3b-22 把周期计时收归核心时要定「兜底覆盖到哪些订阅」,定了这条的期望会变。
-	it("今天的行为(3b-22 会定):周期推送关着的订阅没有兜底 —— 漏了下播帧,一整天过去面板上还在播,没有下播", async () => {
+	it("周期关着:1 小时后核到已下播 → 下播", async () => {
 		const w = await boot({ features: ["liveStart", "liveEnd"] });
 		await startLive(w);
 		await w.advance(30 * MINUTE);
 		w.goOffline();
 		await w.advance(24 * HOUR);
 
-		expect(w.sent).toEqual([START_MESSAGE]);
-		expect(w.events).toEqual([LIVE_EVENT]);
-		expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
+		expect(w.sent).toEqual([
+			START_MESSAGE,
+			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
+		]);
+		expect(w.events).toEqual([
+			LIVE_EVENT,
+			[
+				"live-state-changed",
+				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
+			],
+		]);
+		expect(w.liveNow()).toEqual([]);
 		expect(w.problems()).toEqual([]);
 	});
 });
 
 // 验红:
-// - `room-session-base.ts` 的 `armPeriodicTimer` 里 `hours * 1000 * 60 * 60` 改成 `1000 * 60 * 60` → 第一条红(一小时就推了);
+// - 核心周期计时忽略设置里的小时数 → 第一条红(一小时就推了);
 // - `tickPushAtTime` 里 `const watched = this.liveData.watchedNum` 改成 `= undefined` → 第一条红(印成「暂未获取到」);
 // - `room-session.ts` 里 `this.ctx.emitViewers(…)` 删掉 → 第一条红(没有观看人数事件);
 // - `room-helpers.ts` 的 `livePushTypeOf` 最后一行改成回 `LivePushType.StartBroadcasting` → 「不 @」那条与只开周期推送的两条红
 //   (周期那一条成了开播:走开播的开关、带 @全体)。
 //
-// 今天的行为:计时从**开播卡发完那一刻**起算(这里是 12:00:00),不是从 B 站的开播时刻(11:58:30)。ADR-0021 决策 27 定的是
-// 「按每一场的开播时刻各自起算」—— 3b-22 把计时收归核心时,这一组里「到点」的时刻会跟着挪,那时的红是预期的。
+// 核心按每一场的开播时刻(11:58:30)起算。
 describe("周期「正在直播」", () => {
 	it("每隔设定的小时数推一条:文案带已播时长与累计观看;卡是 streaming、用关键帧、带累计观看", async () => {
 		const w = await boot({
@@ -661,7 +668,7 @@ describe("周期「正在直播」", () => {
 
 		expect(w.sent).toEqual([
 			START_MESSAGE,
-			["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时1分30秒，累计观看：1.2万")],
+			["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时，累计观看：1.2万")],
 		]);
 		expect(w.cards[1]).toEqual({
 			kind: "直播卡",
@@ -685,12 +692,13 @@ describe("周期「正在直播」", () => {
 		expect(w.events).toEqual([
 			LIVE_EVENT,
 			["live-viewers-changed", { uid: BILI_LIVE_UID, viewers: 12345 }],
+			["live-viewers-changed", { uid: BILI_LIVE_UID, viewers: 12345 }],
 		]);
 
 		await w.advance(2 * HOUR);
 		expect(w.sent.at(-1)).toEqual([
 			"[图 直播卡#3]",
-			linked("测试主播 正在直播，已播 4小时1分30秒，累计观看：1.2万"),
+			linked("测试主播 正在直播，已播 4小时，累计观看：1.2万"),
 		]);
 		expect(w.sent).toHaveLength(3);
 	});
@@ -700,7 +708,7 @@ describe("周期「正在直播」", () => {
 		await startLive(w);
 		await w.advance(HOUR);
 		expect(w.sent).toEqual([
-			["[图 直播卡#2]", linked("测试主播 正在直播，已播 1小时1分30秒，累计观看：暂未获取到")],
+			["[图 直播卡#1]", linked("测试主播 正在直播，已播 1小时，累计观看：暂未获取到")],
 		]);
 	});
 
@@ -722,36 +730,14 @@ describe("周期「正在直播」", () => {
 		await w.advance(5 * HOUR);
 		expect(w.sent).toEqual([START_MESSAGE]);
 	});
-
-	it("那一拍取不到主播信息:这一次不推,监听不停,下一拍照推", async () => {
-		const w = await boot({ features: ["liveStreaming"], streamingIntervalHours: 1 });
-		await startLive(w);
-		w.bili.masterInfo = "throws";
-		await w.advance(HOUR);
-		expect(w.sent).toEqual([]);
-		expect(w.problems()).toEqual([]);
-		expect(w.connections()).toEqual({ opened: 1, open: 1 });
-
-		w.bili.masterInfo = "ok";
-		await w.advance(HOUR);
-		expect(w.sent).toEqual([
-			["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时1分30秒，累计观看：暂未获取到")],
-		]);
-	});
 });
 
-// 验红(今天这件事有两处在做,互相兜着):
-// - `room-session-base.ts` 的 `tickPushAtTime` 开头那段只删 `this.reportStopped(…)` → 「回了个空壳」那条红
-//   (「抛错」那条不红:`getLiveRoomInfo` 的 catch 自己也报了一次);
-// - 那一段三行(上报、`onMonitoringStopped`、`stopMonitoring`)全删、只留 `return`(也就是定案要的「跳过」)→ 两条都红;
-// - 只删 `room-helpers.ts` 的 `getLiveRoomInfo` 的 catch 里的上报与 `stopMonitoring` → **两条都不红**(`tickPushAtTime` 兜着);
-// - 两处一起删 → 两条都红。
-describe("今天的行为(定案要改:3b-22 改成「跳过这一拍并记问题,不停监听」):周期那一拍取不到房间信息 → 这个房间不再监听", () => {
+describe("周期取不到房间信息:跳过、记问题、连接不关，接口好了下一拍照推并清问题", () => {
 	it.each([
 		["throws", "接口抛错"],
 		["empty", "回了个空壳"],
 	] as const)(
-		"%s(%s):问题表里一条「停止监听」,弹幕连接关掉,不推、也不发 idle —— 面板上永远停在「在播」",
+		"%s(%s):这一轮不推并记「没取到直播状态」，监听不停；下一拍成功后照推并清掉",
 		async (mode, _label) => {
 			const w = await boot({
 				features: ["liveStart", "liveStreaming", "liveEnd"],
@@ -761,19 +747,27 @@ describe("今天的行为(定案要改:3b-22 改成「跳过这一拍并记问�
 			w.bili.roomInfo = mode;
 			await w.advance(HOUR);
 
-			expect(w.problems()).toEqual([`${BILI_LIVE_UID}:live_monitor_stopped`]);
-			expect(w.connections()).toEqual({ opened: 1, open: 0 });
+			expect(w.problems()).toEqual([`${BILI_LIVE_UID}:live_status_unavailable`]);
+			expect(w.connections()).toEqual({ opened: 1, open: 1 });
 			expect(w.sent).toEqual([START_MESSAGE]);
 			expect(w.events).toEqual([LIVE_EVENT]);
 			expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 
-			// 接口好了也不会自己回来:周期计时已经拆了,下播帧也收不到(连接关了)
 			w.bili.roomInfo = "ok";
-			await w.advance(3 * HOUR);
+			await w.advance(59 * MINUTE);
+			expect(w.sent).toEqual([
+				START_MESSAGE,
+				["[图 直播卡#2]", linked("测试主播 正在直播，已播 2小时，累计观看：暂未获取到")],
+			]);
+			expect(w.problems()).toEqual([]);
+			expect(w.connections()).toEqual({ opened: 1, open: 1 });
+
 			await endLive(w);
-			expect(w.sent).toEqual([START_MESSAGE]);
-			expect(w.events).toEqual([LIVE_EVENT]);
-			expect(w.connections()).toEqual({ opened: 1, open: 0 });
+			expect(w.sent.at(-1)).toEqual([
+				"[图 直播卡#3]",
+				linked("测试主播 下播啦，本次直播了 2小时30秒，粉丝变化 0"),
+			]);
+			expect(w.connections()).toEqual({ opened: 1, open: 1 });
 		},
 	);
 });

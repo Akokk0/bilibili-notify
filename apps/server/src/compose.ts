@@ -34,7 +34,7 @@ import {
 	createBiliDevtools,
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
-import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
+import { createProblemLayers } from "./bilibili/problem-layers.js";
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
@@ -83,10 +83,9 @@ export interface BuiltinIntegrationsDeps {
 	setHealthCheckMs: (ms: number) => void;
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
-	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
+	subscriptionRuntime: Pick<SubRuntimeStore, "get" | "patch">;
 	setTimeout: ServiceContext["setTimeout"];
-	/** 下面三样建得比这里晚,现取,原样转给开发场景。 */
-	live: BiliDevtoolsDeps["live"];
+	/** 下面两样建得比这里晚,现取,原样转给开发场景。 */
 	fans: BiliDevtoolsDeps["fans"];
 	healthCheck: BiliDevtoolsDeps["healthCheck"];
 	/**
@@ -129,8 +128,6 @@ export interface BuiltinIntegrations {
 	 * 错原样抛出去。一次性:调第二次就抛,登记途中抛了也不复位(不给重来)。
 	 */
 	registerAdapters(): Promise<BuiltinAdapters>;
-	/** B 站来源上给入口读的那一面:`problems` 是动态与直播共用的分层上报器(来源登记时接上核心)。 */
-	readonly bilibili: { problems: ProblemLayers };
 }
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
@@ -193,7 +190,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 								};
 							}),
 					dynamic,
-					live: deps.live,
 					fans: deps.fans,
 					healthCheck: deps.healthCheck,
 				}),
@@ -211,6 +207,64 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					setTimeout: deps.setTimeout,
 					auth: deps.sourceAuth,
 					locale: deps.locale,
+					liveContext: deps.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY),
+					liveRoomIds: {
+						get: (externalId) =>
+							deps.subscriptionRuntime.get(
+								deps.subscriptions
+									.list()
+									.find(
+										(sub) =>
+											subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY &&
+											subscriptionIdentityOf(sub).externalId === externalId,
+									)?.id ?? "",
+							)?.roomId,
+						set: (externalId, resolvedLiveCode) => {
+							for (const sub of deps.subscriptions.list()) {
+								const identity = subscriptionIdentityOf(sub);
+								if (
+									identity.sourceKey !== BILIBILI_SOURCE_KEY ||
+									identity.externalId !== externalId ||
+									deps.subscriptionRuntime.get(sub.id)?.roomId === resolvedLiveCode
+								) {
+									continue;
+								}
+								deps.serviceCtx.track(
+									deps.subscriptionRuntime
+										.patch(sub.id, { roomId: resolvedLiveCode })
+										.catch((error) => {
+											biliLogger.warn(
+												`[compose] room id write failed externalId=${externalId}: ${String(error)}`,
+											);
+										}),
+								);
+							}
+						},
+					},
+					fanClubNames: {
+						set: (externalId, name) => {
+							for (const sub of deps.subscriptions.list()) {
+								const identity = subscriptionIdentityOf(sub);
+								if (
+									identity.sourceKey !== BILIBILI_SOURCE_KEY ||
+									identity.externalId !== externalId
+								) {
+									continue;
+								}
+								const profile = deps.subscriptionRuntime.get(sub.id)?.cachedProfile;
+								if (!profile || profile.fanClubName === name) continue;
+								deps.serviceCtx.track(
+									deps.subscriptionRuntime
+										.patch(sub.id, { cachedProfile: { ...profile, fanClubName: name } })
+										.catch((error) => {
+											biliLogger.warn(
+												`[compose] fan club name write failed externalId=${externalId}: ${String(error)}`,
+											);
+										}),
+								);
+							}
+						},
+					},
 				});
 				source = made;
 				await engines.registerSource({
@@ -247,6 +301,5 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				onConnectionsChanged: deps.onConnectionsChanged,
 			});
 		},
-		bilibili: { problems },
 	};
 }

@@ -42,6 +42,13 @@ describe("PROBLEM_TEXTS · 句子", () => {
 		expect(PROBLEM_TEXTS.liveRoomRestricted.notify).toBe(true);
 	});
 
+	it("这一轮没取到直播状态", () => {
+		expect(PROBLEM_TEXTS.liveStatusUnavailable.text("100")).toBe(
+			"直播间 100 这一轮没取到直播状态，下一轮再取",
+		);
+		expect(PROBLEM_TEXTS.liveStatusUnavailable.notify).toBe(false);
+	});
+
 	it("设置读不懂的原因:一格坏了 / 整个文件读不懂;不带「B 站」、不带文件路径", () => {
 		expect(PROBLEM_TEXTS.settingsCause.cell("动态检查频率", "dynamicCron", "格式不对")).toBe(
 			"设置「动态检查频率」（dynamicCron）读不懂：格式不对",

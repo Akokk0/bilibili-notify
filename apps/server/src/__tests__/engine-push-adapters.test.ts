@@ -20,8 +20,7 @@
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { segmentContentBuilder } from "../runtime/content-builder";
-import { boundPostPush, makeLivePushLike } from "../runtime/engines";
+import { boundPostPush } from "../runtime/engines";
 
 /** 只拦 `push`，把交进来的那次推送原样记下来。 */
 function makePushSpy() {
@@ -39,134 +38,9 @@ function makePushSpy() {
 	return { push, pushes };
 }
 
-/** B 站那条边的 uid → 订阅 id。这批用例只认一个 UP。 */
-const subscriptionIdOf = (uid: string): string | undefined =>
-	uid === "100" ? "sub-100" : undefined;
-
-/**
- * 直播引擎交来的内容:宿主 `segmentContentBuilder` 造出来的「一条消息」(里面一段文字)。它和推送层的
- * 载荷不是一个形状 —— 没翻过去的话,下面比对载荷的断言会红。
- */
-const liveText = (text: string) =>
-	segmentContentBuilder.message([segmentContentBuilder.text(text)]);
-
 /** 一个锚点最后交出去的消息(现成的或约定)。 */
 const messagesOf = async (push: Push, i: number): Promise<NotificationPayload[] | undefined> =>
 	push.anchors[i]?.messages;
-
-describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
-	it("下播(9)带词云、总结:下播特性、不 @全体;两个附加项各带自己的键,约定兑现后翻成载荷", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 9,
-			anchors: [
-				{ role: "main", messages: [liveText("下播卡")] },
-				{ role: "extra", extra: "wordcloud", messages: Promise.resolve([liveText("词云")]) },
-				{ role: "extra", extra: "liveSummary", messages: Promise.resolve([liveText("总结")]) },
-			],
-		});
-		const [sent] = pushes;
-		expect(sent).toMatchObject({
-			subscriptionId: "sub-100",
-			feature: "liveEnd",
-			allowAtAll: false,
-		});
-		// 历史记的就是上面那把特性键,交出去的对象里没有第二套名字。
-		expect(sent).not.toHaveProperty("kind");
-		expect(sent).not.toHaveProperty("type");
-		expect(sent?.anchors.map((a) => [a.role, a.extra])).toEqual([
-			["main", undefined],
-			["extra", "wordcloud"],
-			["extra", "liveSummary"],
-		]);
-		expect(await messagesOf(sent as Push, 0)).toEqual([{ kind: "text", text: "下播卡" }]);
-		expect(await messagesOf(sent as Push, 1)).toEqual([{ kind: "text", text: "词云" }]);
-		expect(await messagesOf(sent as Push, 2)).toEqual([{ kind: "text", text: "总结" }]);
-	});
-
-	it("下播总结带 AI 版:aiMessages 兑现后翻成载荷、与 messages 各是各的;没有 AI 版的锚点不带这一格", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 9,
-			anchors: [
-				{
-					role: "extra",
-					extra: "liveSummary",
-					messages: Promise.resolve([liveText("模板总结")]),
-					aiMessages: Promise.resolve([liveText("AI 总结")]),
-				},
-				{ role: "extra", extra: "wordcloud", messages: Promise.resolve([liveText("词云")]) },
-			],
-		});
-		const sent = pushes[0] as Push;
-		expect(await messagesOf(sent, 0)).toEqual([{ kind: "text", text: "模板总结" }]);
-		expect(await sent.anchors[0]?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
-		expect(sent.anchors[0]?.extra).toBe("liveSummary");
-		expect(sent.anchors[1] && "aiMessages" in sent.anchors[1]).toBe(false);
-	});
-
-	it("约定最后什么都没给(undefined)→ 原样是 undefined,由推送层跳过那个锚点", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 9,
-			anchors: [{ role: "extra", extra: "wordcloud", messages: Promise.resolve(undefined) }],
-		});
-		expect(await messagesOf(pushes[0] as Push, 0)).toBeUndefined();
-	});
-
-	it("开播(3):允许 @全体(不带 allowAtAll),本体那个锚点**不带**附加项键 —— 带了整张卡会被收窄掉", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 3,
-			anchors: [{ role: "main", messages: [liveText("开播")] }],
-		});
-		expect(pushes[0]?.feature).toBe("liveStart");
-		expect(pushes[0]?.allowAtAll).toBeUndefined();
-		expect(pushes[0]?.anchors[0]?.extra).toBeUndefined();
-	});
-
-	it("周期「正在直播」(0):自己的特性键 liveStreaming(历史就记它)、抑制 @全体 —— @全体 是修过的 bug，别让它悄悄回来", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 0,
-			anchors: [{ role: "main", messages: [liveText("正在直播")] }],
-		});
-		expect(pushes[0]).toMatchObject({ feature: "liveStreaming", allowAtAll: false });
-		expect(pushes[0]).not.toHaveProperty("kind");
-	});
-
-	it("重启补报(11):走开播的特性键 liveStart(历史记成开播)、不 @全体 —— 不能再被记成正在直播", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 11,
-			anchors: [{ role: "main", messages: [liveText("补报")] }],
-		});
-		expect(pushes[0]).toMatchObject({ feature: "liveStart", allowAtAll: false });
-		expect(pushes[0]?.anchors[0]?.extra).toBeUndefined();
-		expect(pushes[0]).not.toHaveProperty("kind");
-	});
-
-	it("分条(开播序列):几条消息是本体那一个锚点里的一串,走的是同一张表", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 3,
-			anchors: [{ role: "main", messages: [liveText("一"), liveText("二")] }],
-		});
-		expect(pushes[0]?.allowAtAll).toBeUndefined();
-		expect(pushes[0]?.anchors).toHaveLength(1);
-		expect(await messagesOf(pushes[0] as Push, 0)).toEqual([
-			{ kind: "text", text: "一" },
-			{ kind: "text", text: "二" },
-		]);
-	});
-});
 
 describe("作品那一路(boundPostPush)真的把锚点翻过去了", () => {
 	it("主卡是本体、图集是不带键的附加项,同一次推送;特性恒为 post,不抑制 @全体", async () => {
@@ -249,34 +123,3 @@ describe("作品那一路(boundPostPush)真的把锚点翻过去了", () => {
  * 引擎说的是 B 站 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50)—— 翻译在这条边上做。
  * 剪掉这一跳(适配器把 uid 原样交下去),推送层按 id 一条订阅都找不到,每条推送静默丢掉。
  */
-describe("B 站直播那条边:uid 先翻成订阅 id 再交给推送层", () => {
-	it("直播入口把 uid 换成解析函数给的订阅 id", async () => {
-		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "100",
-			type: 3,
-			anchors: [{ role: "main", messages: [liveText("开播")] }],
-		});
-		expect(pushes.map((p) => p.subscriptionId)).toEqual(["sub-100"]);
-	});
-
-	it("解析不到(这个 uid 没有订阅)→ 一次都不交给推送层;锚点里做不出来的约定也有人接着", async () => {
-		const { push } = makePushSpy();
-		const unhandled: unknown[] = [];
-		const onUnhandled = (reason: unknown) => void unhandled.push(reason);
-		process.on("unhandledRejection", onUnhandled);
-		await makeLivePushLike(push, subscriptionIdOf).push({
-			uid: "404",
-			type: 9,
-			anchors: [
-				{ role: "main", messages: [liveText("下播卡")] },
-				{ role: "extra", extra: "liveSummary", messages: Promise.reject(new Error("没写出来")) },
-			],
-		});
-		await new Promise((r) => setTimeout(r, 0));
-		await new Promise((r) => setTimeout(r, 0));
-		process.off("unhandledRejection", onUnhandled);
-		expect(push.push).not.toHaveBeenCalled();
-		expect(unhandled).toEqual([]);
-	});
-});

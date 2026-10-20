@@ -20,9 +20,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type {
 	AuthState,
 	Connection,
@@ -61,7 +61,6 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
-import { makeLiveProblems } from "../../bilibili/live/session/__tests__/support/live-problems.js";
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
@@ -71,8 +70,7 @@ import type { LiveTable, LiveTableEntry } from "../../live/live-table.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
-import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
-import { segmentContentBuilder } from "../content-builder.js";
+import { CARD_BG_DIR } from "../card-assets.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { dataPath } from "../roots.js";
 import type { NodeServiceContext } from "../service-context.js";
@@ -108,7 +106,6 @@ function memoryLiveTable(): Pick<LiveTable, "get" | "list" | "replace" | "merge"
 
 const H = vi.hoisted(() => ({
 	push: [] as any[],
-	live: [] as any[],
 	ai: [] as any[],
 	image: [] as any[],
 }));
@@ -127,28 +124,6 @@ vi.mock("@bilibili-notify/push", () => ({
 		}
 	},
 }));
-
-vi.mock("../../bilibili/live/index.js", () => {
-	return {
-		// 拓展直播(ADR-0019 决策 67)用的直播装配、文案渲染与两处小规矩住在 `live/`,不经这里,不用 mock。
-		LiveEngine: class {
-			opts: any;
-			start = vi.fn();
-			stop = vi.fn();
-			updateConfig = vi.fn();
-			setCommentary = vi.fn();
-			setImageRenderer = vi.fn();
-			applyOps = vi.fn();
-			rebuildFromSubs = vi.fn();
-			teardown = vi.fn();
-			listLiveSnapshots = vi.fn(() => []);
-			constructor(opts: any) {
-				this.opts = opts;
-				H.live.push(this);
-			}
-		},
-	};
-});
 
 // 落盘函数前的闸默认敞开;只有「后台写登记进 track」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -202,14 +177,8 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 });
 
 // SUT must be imported AFTER the vi.mock calls register.
-const {
-	createEngines,
-	liveTypeToFeature,
-	liveTypeAllowsAtAll,
-	buildLiveSubViewSingle,
-	boundLivePush,
-	postSettingsOf,
-} = await import("../engines.js");
+const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll, boundLivePush, postSettingsOf } =
+	await import("../engines.js");
 
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
 // adapter helpers MUST stay byte-consistent across ends (same business core,
@@ -487,8 +456,6 @@ function setup(opts?: {
 	fetchLiveStatus?: Source["fetchLiveStatus"];
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
-	/** 给直播引擎的 B 站分层上报器;不给 = 四个方法都是 spy 的假件。 */
-	biliProblems?: Parameters<typeof createEngines>[0]["biliProblems"];
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
 	dataDir?: string;
 	/** 换掉存储替身里的几个口子(登记进 track 的那组用例让写停在半路)。 */
@@ -531,12 +498,10 @@ function setup(opts?: {
 	const source = makeSource();
 	if (opts?.fetchLiveStatus) source.fetchLiveStatus = opts.fetchLiveStatus;
 	const problems = createProblemTable({ logger: serviceCtx.logger });
-	const biliProblems = opts?.biliProblems ?? makeLiveProblems();
 	const runtime = createEngines({
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
 		problems,
-		biliProblems,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
@@ -730,7 +695,6 @@ const TEMPLATE_GLOBALS = (template: string): GlobalConfig => {
 let active: Ctx | null = null;
 beforeEach(() => {
 	H.push.length = 0;
-	H.live.length = 0;
 	H.ai.length = 0;
 	H.image.length = 0;
 	active = null;
@@ -743,90 +707,7 @@ afterEach(() => {
 	}
 });
 
-// ---------------------------------------------------------------------------
-// adapter 接线 —— 「真实开播时刻」这条链路唯一没人守的一段
-//
-// apps/server/src/bilibili/live 侧钉住了 RoomSession **发出** startedAt,recorder 侧钉住了它**消费**
-// startedAt,live-midstream-start 还把 recorder→store→aggregate 三层串起来测了。
-// 唯独把两头缝上的这一行没有任何测试:它是 adapter 里的一句 lambda,少写 `at`
-// 依然类型正确(载荷上 at 是可选的)、构建全绿、2483 条测试全过,而整个特性
-// 静默退回「我们发现的时刻」—— 统计侧按 startedAt 认场次,同一场随即被记成两条。
-// ---------------------------------------------------------------------------
-
-describe("createEngines — live-state-changed 接线", () => {
-	it("startedAt 一路转发到 bus,不在 adapter 这层被吃掉", () => {
-		const c = setup();
-		active = c;
-		const seen: unknown[][] = [];
-		c.bus.on("live-state-changed", ({ uid, status, at: startedAt }) => {
-			seen.push([uid, status, startedAt]);
-		});
-		// 直接调 adapter 交给引擎的那个回调 —— 被测的就是这句 lambda 本身。
-		H.live[0].opts.emitLiveState("u1", "live", "2026-05-16T12:00:00.000Z");
-		expect(seen).toEqual([["u1", "live", "2026-05-16T12:00:00.000Z"]]);
-	});
-
-	it("下播不带 startedAt —— 它只在开播时有意义", () => {
-		const c = setup();
-		active = c;
-		const seen: unknown[][] = [];
-		c.bus.on("live-state-changed", ({ uid, status, at: startedAt }) => {
-			seen.push([uid, status, startedAt]);
-		});
-		H.live[0].opts.emitLiveState("u1", "idle", undefined);
-		expect(seen).toEqual([["u1", "idle", undefined]]);
-	});
-});
-
-/**
- * 观看人数一路是精确数(㉒d,只改类型不改名):引擎节流后发的 `emitViewers(uid, 数)` 原样转成总线事件
- * `live-viewers-changed { uid, viewers }`(统计、WS、面板都挂在它后面);在播快照里的 `viewers` 也原样进
- * 「正在直播」那份快照。两处都是 adapter 里的一句 lambda,各自的单测证明不了接上了。
- */
-describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `imageFetcher: opts.imageFetcher` 删掉,这条红
-	// (直播卡出卡前没人去抓图,封面只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
-	// 动态那一半:来源把 `ctx.fetchImage` 递给动态引擎在 `bilibili/__tests__/source.test.ts`。
-	it("抓图服务递给 LiveEngine", () => {
-		const imageFetcher = { fetchImage: vi.fn() } as unknown as NonNullable<
-			Parameters<typeof createEngines>[0]["imageFetcher"]
-		>;
-		setup({ imageFetcher });
-		expect(H.live[0].opts.imageFetcher).toBe(imageFetcher);
-	});
-});
-
-describe("createEngines — 直播引擎的问题上报器接线", () => {
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `problems: opts.biliProblems` 删掉(或换成别的对象),这条红
-	// (直播间停监、撞风控报到了空处,问题表里永远没有它们,而门禁全绿)。
-	// 入口把 `builtins.bilibili.problems` 递进 `biliProblems` 这一环,靠类型(必填格)+ 审查 + 真机:
-	// `compose.test.ts` 钉着「给来源的与挂在 `bilibili.problems` 上的是同一个」。
-	it("入口递进来的 B 站分层上报器,就是直播引擎拿到的那个", () => {
-		const biliProblems = makeLiveProblems();
-		setup({ biliProblems });
-		expect(H.live[0].opts.problems).toBe(biliProblems);
-	});
-
-	it("直播引擎的私聊口没了:递给它的 push 上只有 push", () => {
-		setup();
-		expect(Object.keys(H.live[0].opts.push)).toEqual(["push"]);
-	});
-});
-
 describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `avatarOf: profileAvatarOf` 换成 undefined(类型会先红),
-	// 或把读口改成开机时取一次值,对应那条红 —— 之后才补上的头像永远出不了卡。
-	it("直播引擎拿到的读口按订阅 id 现读订阅资料,资料之后换了值,下一次读到新的", () => {
-		let profile: { avatar?: string } = {};
-		const get = vi.fn((_id: string) => ({ cachedProfile: profile }));
-		setup({ overrides: { subRuntimeStore: { get } } });
-		const opts = H.live[0].opts;
-		expect(opts.avatarOf("sub-1")).toBeUndefined();
-		profile = { avatar: `${"c".repeat(64)}.jpg` };
-		expect(opts.avatarOf("sub-1")).toBe(profile.avatar);
-		expect(get).toHaveBeenLastCalledWith("sub-1");
-	});
-
 	// 作品这头:头像由核心出卡那一刻按订阅 id 现读(`deps.avatar`),引擎不再有头像读口。
 	// 验红:把 engines.ts 里 postQueue 的 `avatar: profileAvatarOf` 去掉(或改成开机取一次),这条红。
 	it("B 站作品:出卡器收到的 Post.creator.avatar 是出卡那一刻订阅资料里的头像,资料之后换了值,下一张卡用新的", async () => {
@@ -848,58 +729,6 @@ describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
 		expect(handed[0]?.creator.avatar).toBeUndefined();
 		expect(handed[1]?.creator.avatar).toBe(profile.avatar);
 		expect(get).toHaveBeenCalledWith("sub-1");
-	});
-});
-
-describe("createEngines — 观看人数接线(精确数)", () => {
-	it("emitViewers 的精确数原样转发到 bus 的 live-viewers-changed,不被转成字符串", () => {
-		const c = setup();
-		active = c;
-		const seen: unknown[] = [];
-		c.bus.on("live-viewers-changed", (payload) => seen.push(payload));
-		// 验红:把 engines.ts 里那句 `emitViewers` 改成 `String(viewers)`(或整句删掉),这条红。
-		H.live[0].opts.emitViewers("u1", 87_334);
-		expect(seen).toEqual([{ uid: "u1", viewers: 87_334 }]);
-	});
-
-	it("在播快照的 viewers 原样进 listLiveRooms(精确数;没收到过帧就没有这个键的值)", () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-				makeEmptySubscription({ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" } }),
-			],
-		});
-		active = c;
-		H.live[0].listLiveSnapshots.mockReturnValue([
-			{ uid: "1", roomId: "r1", isLive: true, viewers: 87_334 },
-			{ uid: "2", roomId: "r2", isLive: true },
-		]);
-		// 验红:把 `listLiveRooms` 里的 `viewers: s.viewers` 去掉,这条红。
-		const rooms = c.runtime.listLiveRooms();
-		expect(rooms.map((r) => r.viewers)).toEqual([87_334, undefined]);
-	});
-});
-
-/**
- * 「正在直播」的快照带着订阅自己的 id(ADR-0019 决策 50):面板拿它对订阅,同一个 UP 配了两条
- * 订阅时也认得出是哪一条。直播引擎只认 uid,翻译在宿主这边做。
- */
-describe("createEngines — 在播快照带订阅 id", () => {
-	it("每个在播房间带上对应订阅的 id;uid 翻不到订阅的房间不出现", () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-		});
-		active = c;
-		H.live[0].listLiveSnapshots.mockReturnValue([
-			{ uid: "1", roomId: "r1", isLive: true, title: "在播" },
-			// 监听器只为在册的订阅开,翻不到只可能是刚删掉的那一瞬。
-			{ uid: "404", roomId: "r2", isLive: true, title: "刚删掉的那位" },
-		]);
-		expect(c.runtime.listLiveRooms()).toEqual([
-			{ subscriptionId: "s1", uid: "1", roomId: "r1", isLive: true, title: "在播" },
-		]);
 	});
 });
 
@@ -1344,23 +1173,6 @@ describe("createEngines — 作品过滤接线", () => {
 		return g;
 	};
 
-	// 验红:把 engines.ts 里 `dispose` 开头收 `sourceRegistrations` 的那一段挪到 `handles` 那一段之后,这条红
-	// (到那时作品入口那一排总线监听 `handles` 已经摘了)。
-	it("dispose 里来源的 stop() 早于作品入口那一排 handles 收尾:stop 同步段里总线上的监听还在", async () => {
-		const { c } = extSetup();
-		await c.sourceReady;
-		let liveListenerAlive = false;
-		c.source.stop.mockImplementation(async () => {
-			// `handles` 里有订阅变更 → 直播引擎的那条监听:它还在,说明 handles 还没收。
-			H.live[0].applyOps.mockClear();
-			c.bus.emit("subscription-changed", { ops: [] });
-			liveListenerAlive = H.live[0].applyOps.mock.calls.length > 0;
-		});
-		c.runtime.dispose();
-		expect(c.source.stop).toHaveBeenCalledTimes(1);
-		expect(liveListenerAlive).toBe(true);
-	});
-
 	// 验红:把 engines.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
 	it("dispose 关掉作品入口:关停之后拓展再交的作品不发 post-detected、不推;对照:关停之前交的照推", async () => {
 		const { c, sub } = extSetup();
@@ -1600,7 +1412,6 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 		// 替拓展跑的直播场次与推送是核心的代码:定时器挂在 live/core 那个上下文上,不是 B 站直播引擎的 live/来源键
 		// (验红:把 engines.ts 里 `bindLivePush` 的 `serviceCtx: coreLiveCtx` 换成 `liveCtx`,这条红)。
 		const liveCtx = subsystemCtx(c, "live", "core");
-		expect(subsystemCtx(c, "live", "bilibili").setInterval).not.toHaveBeenCalled();
 		const intervals = (liveCtx.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
 		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
 		expect(periodic, "周期推送没挂上").toBeDefined();
@@ -1773,37 +1584,6 @@ describe("createEngines — 在册来源的直播信号(R1 过渡输出)", () =>
 		expect(await hourly(async () => ({ ok: false, code: "x", message: "x" }))).toEqual([]);
 		active?.runtime.dispose();
 		expect(await hourly()).toEqual([60 * 60 * 1000]);
-	});
-
-	it("listLiveRooms:在播表里在册来源的行投影成 B 站形状的快照(房号取运行态仓,没有就空串)", async () => {
-		const sub = biliSubOf("42", "sub-42");
-		const table = memoryLiveTable();
-		const c = setup({
-			subs: [sub],
-			extensionSources: sources,
-			liveTable: table,
-			overrides: { subRuntimeStore: { get: () => ({ roomId: "9001" }) } },
-		});
-		active = c;
-		await c.sourceReady;
-		H.live[0].listLiveSnapshots.mockReturnValue([]);
-		c.source.ctx?.reportLive("42", {
-			kind: "start",
-			startedAt: START,
-			details: { title: "开播啦", category: "聊天", totalViewers: 5 },
-		});
-		expect(c.runtime.listLiveRooms()).toEqual([
-			{
-				subscriptionId: "sub-42",
-				uid: "42",
-				roomId: "9001",
-				isLive: true,
-				title: "开播啦",
-				areaName: "聊天",
-				startedAt: START,
-				viewers: 5,
-			},
-		]);
 	});
 });
 
@@ -2073,19 +1853,6 @@ describe("createEngines — boot wiring", () => {
 		expect(slow.stop).toHaveBeenCalledTimes(1);
 	});
 
-	it("默认 globals:push 拉起,AI 与 image 不构造", () => {
-		const c = setup();
-		active = c;
-		expect(H.push).toHaveLength(1);
-		expect(H.push[0].start).toHaveBeenCalledTimes(1);
-		expect(H.live).toHaveLength(1);
-		// 无订阅 → 初始 live view 为空 → live.start 不调用。
-		expect(H.live[0].start).not.toHaveBeenCalled();
-		// 默认 globals 无 apiKey/baseUrl / 无 puppeteer。
-		expect(H.ai).toHaveLength(0);
-		expect(H.image).toHaveLength(0);
-	});
-
 	it("apiKey+baseUrl 齐备:启动即构造 CommentaryGenerator 并 start", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
@@ -2162,36 +1929,6 @@ describe("createEngines — boot wiring", () => {
 		});
 	});
 
-	it("只读工具那份视图里,B 站订阅的在播接的是直播引擎的在播房间(不再问 B 站接口)", () => {
-		const c = setup({
-			globals: aiGlobals(),
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-				makeEmptySubscription({ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" } }),
-			],
-		});
-		active = c;
-		const reader = H.ai[0].setCreatorReader.mock.calls[0][0];
-		H.live[0].listLiveSnapshots.mockReturnValue([
-			{
-				uid: "1",
-				roomId: "r1",
-				isLive: true,
-				title: "在播",
-				startedAt: "2026-09-24T04:00:00.000Z",
-			},
-			{ uid: "2", roomId: "r2", isLive: false },
-		]);
-		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `biliLiveRooms: …` 那一行删掉,这条红。
-		const [first, second] = reader.subscriptions();
-		expect(first?.liveNow).toEqual({
-			state: "live",
-			title: "在播",
-			startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
-		});
-		expect(second?.liveNow).toEqual({ state: "idle" });
-	});
-
 	it("只读工具的读口:作品与统计接的是接线层给的统计读口(creatorStats),订阅 id 原样递下去", async () => {
 		const sub = makeEmptySubscription({
 			id: "s1",
@@ -2235,34 +1972,9 @@ describe("createEngines — boot wiring", () => {
 		expect(o.resolveCardSkinAsset).toBe(asset);
 		expect(o.onCardSkinFallback).toBe(onFallback);
 	});
-
-	it("直播消息模板无开关:boot 时 live 引擎 config 始终带全局模板(回归 liveMsgEnabled 移除)", () => {
-		// 此前 liveMsgEnabled=false(默认)→ customLiveMsg 不带 customLiveStart,引擎走
-		// builtin。现无开关:全局模板始终下发,编辑即生效(默认值 == builtin,输出不变)。
-		const c = setup();
-		active = c;
-		const liveCfg = H.live[0].opts.config;
-		expect(liveCfg.customLiveMsg.customLiveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(liveCfg.customLiveMsg.customLiveStreaming).toBe(
-			"{name} 正在直播，已播 {time}，累计观看：{watched}",
-		);
-		expect(liveCfg.customLiveMsg.customLiveEnd).toBe(
-			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-		);
-	});
 });
 
 describe("createEngines — enableImageRendering 运行时热启用", () => {
-	it("启动无 puppeteer,运行时注入 → 构造 renderer + setImageRenderer", () => {
-		const c = setup({ puppeteer: false });
-		active = c;
-		expect(H.image).toHaveLength(0); // 启动时无 renderer
-		const enabled = c.runtime.enableImageRendering({} as any);
-		expect(enabled).toBe(true);
-		expect(H.image).toHaveLength(1);
-		expect(H.live[0].setImageRenderer).toHaveBeenCalledWith(H.image[0]);
-	});
-
 	it("幂等:启动即 puppeteer 在位,再调 → 返回 false 且不重复构造", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
@@ -2270,24 +1982,6 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 		const enabled = c.runtime.enableImageRendering({} as any);
 		expect(enabled).toBe(false);
 		expect(H.image).toHaveLength(1); // 没重复构造浏览器
-	});
-
-	it("swapImageRendering:已启用时热切换 → 重建 renderer 并重新注入直播引擎", () => {
-		const c = setup({ puppeteer: true });
-		active = c;
-		expect(H.image).toHaveLength(1);
-		c.runtime.swapImageRendering({} as any);
-		expect(H.image).toHaveLength(2); // 新 renderer
-		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[1]);
-	});
-
-	it("swapImageRendering:未启用时等同首次启用(注入而非空转)", () => {
-		const c = setup({ puppeteer: false });
-		active = c;
-		expect(H.image).toHaveLength(0);
-		c.runtime.swapImageRendering({} as any);
-		expect(H.image).toHaveLength(1);
-		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[0]);
 	});
 
 	// 渲染器会被热换,核心装配只能经 `deps.image()` 这个读外层 let 的闭包拿它 —— 按值传就是
@@ -2317,22 +2011,6 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 });
 
 describe("createEngines — config-changed globals 热重载", () => {
-	it("改 B 站设置(cron + 健康检查间隔):不碰 live.updateConfig(cron 归 B 站来源,健康检查间隔归登录系统)", () => {
-		const c = setup();
-		active = c;
-		patchBilibili(c, (b) => {
-			b.dynamicCron = "*/9 * * * *";
-			b.healthCheckMinutes = 45;
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-
-		// B 站设置不是核心设置(scope 是 integration-settings 不是 globals)→ 不重算 master。
-		// (从前这几格住在 `app` 里,走 globals 那一档,setMaster 顺带被调一次。)
-		expect(H.push[0].setMaster).not.toHaveBeenCalled();
-		// B 站设置不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
-		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-	});
-
 	// cron 本身要生效(引擎换节奏)在 `bilibili/__tests__/source.test.ts`。
 
 	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
@@ -2364,26 +2042,13 @@ describe("createEngines — config-changed globals 热重载", () => {
 	// 日志等级不再由引擎装配推:各子上下文只交(标签,键),等级表由入口的 `bindLogLevels` 整张推
 	// (推的行为在 `log-levels.test.ts` 与 `service-context.test.ts`,接线在 `log-levels-boot-e2e`)。
 	// 一行日志是谁的代码打的就跟谁那一格:这里钉「键」接对了没有 —— 接反了门禁全绿,只有调等级时才露馅。
-	it("子上下文的(标签,键):作品队列与拓展直播跟 core,B 站直播引擎跟来源键,AI、出图各跟自己的", () => {
+	it("子上下文的(标签,键):作品队列与拓展直播跟 core,AI、出图各跟自己的", () => {
 		const c = setup();
 		active = c;
 		const booted = (c.serviceCtx.forSubsystem.mock.calls as unknown as [string, string][]).map(
 			([name, key]) => `${name}/${key}`,
 		);
-		expect(booted.sort()).toEqual([
-			"ai/ai",
-			"image/image",
-			"live/bilibili",
-			"live/core",
-			"posts/core",
-		]);
-	});
-
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `serviceCtx: liveCtx` 换成 `coreLiveCtx`(键成了 core),这条红。
-	it("B 站直播引擎拿到的是 live/来源键 那个上下文", () => {
-		const c = setup();
-		active = c;
-		expect(H.live[0].opts.serviceCtx).toBe(subsystemCtx(c, "live", "bilibili"));
+		expect(booted.sort()).toEqual(["ai/ai", "image/image", "live/core", "posts/core"]);
 	});
 
 	// 验红:把 engines.ts 里 `bindExtensionPosts` 的 `logger: postsCtx.logger` 换成 B 站那个上下文的,这条红。
@@ -2411,7 +2076,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		await settleTracked(c);
 		const posts = subsystemCtx(c, "posts", "core").logger;
 		expect(posts.debug).toHaveBeenCalledWith(expect.stringContaining("[ext-post]"));
-		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
@@ -2449,7 +2113,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("不收"),
 		);
-		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
@@ -2474,7 +2137,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("被过滤"),
 		);
-		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
@@ -2504,7 +2166,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("这次开播不管"),
 		);
-		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
 		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
@@ -2551,7 +2212,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("最新状态不在播"),
 		);
-		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
 		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
@@ -2626,59 +2286,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		]);
 	});
 
-	it("回归:改全局 cards.liveCoverImageIds → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
-		// 此前 liveConfig() 没有把全局默认封面廊透传给引擎,导致无 per-UP / per-kind
-		// 覆盖的 UP 永远只渲染第一张,封面配再多张也不轮换。
-		// (背景图从前有一条同构的 `defaultBackgroundImages`;整条链 2026-09-20 删掉。)
-		const c = setup();
-		active = c;
-		patchGlobals(c, (g) => {
-			g.defaults.cards.liveCoverImageIds = ["a", "b"];
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(liveCfg.defaultLiveCoverImages).toEqual(["a", "b"]);
-	});
-
-	it("回归:改全局会员文案 → live config 的 guardTemplate 带上 enabled、体系默认与按档各自的文案与图片", () => {
-		// 此前 liveConfig() 只把 `captain.template` 当成所有档位的文案传给引擎,提督 /
-		// 总督的专属文案运行时从来不读(图片倒是三档各传各的)。㉓d 起文案按体系存:这里是 B 站的 `guard` 那一份,
-		// 三档写成三句不同的话,少传一档、传串一档都会红。
-		const guard = {
-			enabled: true,
-			default: { template: "默认那句 {viewer}", imageUrl: "default.png" },
-			tiers: {
-				captain: { template: "舰长那句", imageUrl: "cap.png" },
-				commander: { template: "提督那句", imageUrl: "com.png" },
-				governor: { template: "总督那句" },
-			},
-		};
-		const c = setup();
-		active = c;
-		patchGlobals(c, (g) => {
-			g.defaults.templates.membership.guard = guard;
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(liveCfg.guardTemplate).toEqual(guard);
-	});
-
-	it("全局配置里没有 guard 这一项(手改删掉了):live config 的 guardTemplate 回出厂那份,自定义关着", () => {
-		const c = setup();
-		active = c;
-		patchGlobals(c, (g) => {
-			g.defaults.templates.membership = {};
-			// 改点别的让 updateConfig 触发(templates 变了就会)。
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(liveCfg.guardTemplate).toEqual({
-			enabled: false,
-			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
-			tiers: {},
-		});
-	});
-
 	it("item 4 — 改 ai 不扇出重设 level / healthCheck", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
@@ -2712,46 +2319,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
-	});
-
-	it("item 3 — 改全局配置:live.applyOps 收到全部订阅的 update op(刷新 per-sub 视图)", () => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ globals: aiGlobals(), subs: [sub] });
-		active = c;
-		patchGlobals(c, (g) => {
-			g.ai.persona.name = "恶魔兔";
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
-	});
-
-	it("回归:只改全局 cardSkin → live.applyOps 收到刷新;作品不经来源,下一张卡就带新皮肤 id", async () => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub], puppeteer: true });
-		active = c;
-		H.live[0].applyOps.mockClear();
-		patchGlobals(c, (g) => {
-			g.defaults.cardSkin = "skin-abc";
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
-		expect(liveOps[0].changes[0].cardSkin).toBe("skin-abc");
-		reportBili("1");
-		await settleTracked(c);
-		expect(H.image[0].generatePostCard.mock.calls.at(-1)?.[1]).toMatchObject({
-			cardSkin: "skin-abc",
-		});
 	});
 
 	// 名单只列启用中的订阅、`features` 是折好的开关:全局的作品开关一翻,所有没单独覆盖的订阅在名单里的 `post` 都跟着翻。
@@ -2794,156 +2361,9 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "targets" });
 		expect(fn).not.toHaveBeenCalled();
 	});
-
-	// 直播拆键(⑬d):周期「正在直播」的开关、间隔与启动补报各是自己的一格,从 schedule 里搬出来。
-	// 每个订阅的视图里带着折好的值,全局那几格一变就要给所有订阅合成 update op(引擎比对前后值再重排计时器)。
-	// 验红:把热更门里的 `liveSettingsChanged` 删掉,间隔与补报那两条红;`featuresChanged` 管开关那一条。
-	it.each([
-		[
-			"开关(features.liveStreaming)",
-			(g: GlobalConfig) => (g.defaults.features.liveStreaming = true),
-			{ liveStreaming: true },
-		],
-		[
-			"间隔(liveStreaming.streamingIntervalHours)",
-			(g: GlobalConfig) => (g.defaults.liveStreaming.streamingIntervalHours = 3),
-			{ streamingIntervalHours: 3 },
-		],
-		[
-			"启动补报(liveStart.catchUpOnBoot)",
-			(g: GlobalConfig) => (g.defaults.liveStart.catchUpOnBoot = true),
-			{ catchUpOnBoot: true },
-		],
-		// ㉓d:两个直播门槛搬出了 filters,自己成了 superchat / membership 两段,热更的门要跟着 ——
-		// 漏掉的话在面板上改了门槛要重启才生效(门槛在每个订阅的视图里定格,只有 applyOps 能刷)。
-		// 验红:把热更门里的 `interactionChanged` 删掉,这两条红。
-		[
-			"醒目留言门槛(superchat.minAmount)",
-			(g: GlobalConfig) => (g.defaults.superchat = { minAmount: 30 }),
-			{ minSuperchatAmount: 30 },
-		],
-		[
-			"上舰门槛(membership.minRank.guard)",
-			(g: GlobalConfig) => (g.defaults.membership = { minRank: { guard: 2 } }),
-			{ minGuardRank: 2 },
-		],
-	])("直播拆键:只改全局%s → live.applyOps 收到刷新,带上折好的新值", (_name, mutate, expected) => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub] });
-		active = c;
-		H.live[0].applyOps.mockClear();
-		patchGlobals(c, (g) => {
-			mutate(g);
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0].changes[0]).toMatchObject(expected);
-	});
-
-	it("门槛被清掉:update op 里 minSuperchatAmount / minGuardRank 两个键恒在、值是 undefined(引擎按 Object.assign 合并,靠它盖掉旧值)", () => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub] });
-		active = c;
-		patchGlobals(c, (g) => {
-			g.defaults.superchat = { minAmount: 30 };
-			g.defaults.membership = { minRank: { guard: 2 } };
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		H.live[0].applyOps.mockClear();
-		patchGlobals(c, (g) => {
-			g.defaults.superchat = {};
-			g.defaults.membership = {};
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		const change = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
-		expect(Object.hasOwn(change, "minSuperchatAmount")).toBe(true);
-		expect(Object.hasOwn(change, "minGuardRank")).toBe(true);
-		expect(change.minSuperchatAmount).toBeUndefined();
-		expect(change.minGuardRank).toBeUndefined();
-	});
-
-	it("no-op:globals 未变的 config-changed 不热推任何子系统", () => {
-		const c = setup();
-		active = c;
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-		expect(H.live[0].applyOps).not.toHaveBeenCalled();
-	});
-
-	it("targets scope:仅 push.setMaster,早退不触发 live.updateConfig", () => {
-		const c = setup();
-		active = c;
-		c.bus.emit("config-changed", { scope: "targets" });
-		expect(H.push[0].setMaster).toHaveBeenCalledTimes(1);
-		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-	});
-
-	it("subscriptions / secrets scope:不 setMaster 不 updateConfig", () => {
-		const c = setup();
-		active = c;
-		c.bus.emit("config-changed", { scope: "subscriptions" });
-		c.bus.emit("config-changed", { scope: "secrets" });
-		expect(H.push[0].setMaster).not.toHaveBeenCalled();
-		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-	});
-});
-
-// B 站自己的设置(`config/settings/bilibili.json`)走 `integration-settings` 这一档,与核心设置的 `globals`
-// 各管各的:这一档只认 B 站那两格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那两样。
-describe("createEngines — config-changed integration-settings(B 站设置)", () => {
-	it("只改核心设置的 logLevel:B 站的 cron 不动", () => {
-		const c = setup();
-		active = c;
-		patchGlobals(c, (g) => {
-			g.logging.level = "debug";
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		expect(H.push[0].setMaster).toHaveBeenCalled(); // 这一发确实被处理了
-		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-	});
-	// 「初始带 B 站设置里的 cron」「cron 变了引擎换节奏」在 `bilibili/__tests__/source.test.ts`。
 });
 
 describe("createEngines — AI 热重载三态", () => {
-	it("启用:lazy 构造 commentary 并下发给直播引擎", () => {
-		const c = setup(); // 默认无 AI
-		active = c;
-		expect(H.ai).toHaveLength(0);
-		patchGlobals(c, (g) => {
-			// 添加一家并选中它 —— 「配齐了」现在的意思是「当前那家的桶里连接齐备」。
-			g.ai.activeProfile = "deepseek";
-			g.ai.providers = aiGlobals().ai.providers;
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.ai).toHaveLength(1);
-		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
-		expect(H.live[0].setCommentary).toHaveBeenCalledWith(H.ai[0]);
-	});
-
-	it("停用:live.setCommentary(null)", () => {
-		const c = setup({ globals: aiGlobals() });
-		active = c;
-		expect(H.ai).toHaveLength(1);
-		patchGlobals(c, (g) => {
-			const p = g.ai.providers[g.ai.activeProfile];
-			if (p) p.apiKey = "";
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.live[0].setCommentary).toHaveBeenCalledWith(null);
-		// 不应构造新实例。
-		expect(H.ai).toHaveLength(1);
-	});
-
 	// AI 实例会被热换,核心装配只能经 `deps.ai()` 这个读外层 let 的闭包拿它。
 	// 验红:把 engines.ts 里 postQueue 的 `ai: () => commentary ?? undefined` 改成按值传(开机取一次),这条红。
 	it("作品的 AI 点评每条现取:开机没配 → 补齐后下一条用新实例 → 清空密钥后不再点评", async () => {
@@ -3029,48 +2449,7 @@ describe("createEngines — image 配色热更", () => {
 	});
 });
 
-describe("createEngines — 订阅 / 鉴权事件转译", () => {
-	it("subscription-changed:来源的名单回调被叫一次 + live.applyOps", async () => {
-		const c = setup();
-		active = c;
-		await c.sourceReady;
-		const fn = vi.fn();
-		c.source.ctx?.onSubscriptionsChanged(fn);
-		c.bus.emit("subscription-changed", { ops: [] });
-		expect(fn).toHaveBeenCalledTimes(1);
-		expect(H.live[0].applyOps).toHaveBeenCalledTimes(1);
-	});
-
-	it("auth-restored → live.rebuildFromSubs;auth-lost → live.teardown", () => {
-		const c = setup();
-		active = c;
-		c.bus.emit("auth-restored");
-		expect(H.live[0].rebuildFromSubs).toHaveBeenCalledTimes(1);
-		c.bus.emit("auth-lost");
-		expect(H.live[0].teardown).toHaveBeenCalledTimes(1);
-	});
-});
-
 describe("createEngines — dispose", () => {
-	it("dispose 停全引擎与登记过的来源并解绑 bus(后续 config-changed 不再生效)", async () => {
-		const c = setup();
-		active = c;
-		await c.sourceReady;
-		const live = H.live[0];
-		const push = H.push[0];
-		const fn = vi.fn();
-		c.source.ctx?.onSubscriptionsChanged(fn);
-		c.runtime.dispose();
-		active = null; // 避免 afterEach 二次 dispose
-		expect(c.source.stop).toHaveBeenCalledTimes(1);
-		expect(live.stop).toHaveBeenCalledTimes(1);
-		expect(push.stop).toHaveBeenCalledTimes(1);
-		// bus handle 已解绑:dispose 后再发 config-changed 不应再叫来源的名单回调。
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(fn).not.toHaveBeenCalled();
-		expect(c.sources.get("bilibili")).toBeUndefined();
-	});
-
 	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {
 		const c = setup({ subs: [biliSubOf("1")] });
 		active = c;
@@ -3084,20 +2463,6 @@ describe("createEngines — dispose", () => {
 		await settleTracked(c);
 		expect(detected).toEqual([]);
 		expect(errors).toHaveBeenCalledTimes(1);
-	});
-
-	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", async () => {
-		const c = setup();
-		active = c;
-		await c.sourceReady;
-		const live = H.live[0];
-		const push = H.push[0];
-		c.runtime.dispose();
-		c.runtime.dispose(); // 双调
-		active = null;
-		expect(c.source.stop).toHaveBeenCalledTimes(1);
-		expect(live.stop).toHaveBeenCalledTimes(1);
-		expect(push.stop).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -3116,36 +2481,6 @@ describe("createEngines — 背景轮换游标落盘", () => {
 	});
 	afterEach(async () => {
 		await rm(dataDir, { recursive: true, force: true });
-	});
-
-	it("dispose 把推进过的游标写进 runtime/card-bg-cursors.json,目录里不留临时文件", async () => {
-		const c = setup({ dataDir });
-		active = c;
-		const pick = H.live[0].opts.pickCardBackground;
-		expect([pick("u1:live", ids), pick("u1:live", ids)]).toEqual([ids[0], ids[1]]);
-		c.runtime.dispose();
-		active = null;
-		expect(JSON.parse(await readFile(join(dataDir, ...CARD_BG_CURSORS_FILE), "utf8"))).toEqual({
-			"u1:live": 2,
-		});
-		expect((await readdir(dataDir)).sort()).toEqual(["library", "runtime"]);
-		expect(await readdir(dirname(join(dataDir, ...CARD_BG_CURSORS_FILE)))).toEqual([
-			"card-bg-cursors.json",
-		]);
-	});
-
-	it("重启续接:下一轮从盘上的游标接着轮换,不归零", async () => {
-		const first = setup({ dataDir });
-		active = first;
-		const pickFirst = H.live[0].opts.pickCardBackground;
-		pickFirst("u1:live", ids);
-		pickFirst("u1:live", ids);
-		first.runtime.dispose();
-		active = null;
-
-		const second = setup({ dataDir });
-		active = second;
-		expect(H.live[1].opts.pickCardBackground("u1:live", ids)).toBe(ids[2]);
 	});
 
 	it("没推进过就不写盘(游标不脏)", () => {
@@ -3173,127 +2508,6 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		return s;
 	}
 
-	it("禁用订阅 update:live.applyOps 收到 delete;来源的名单里没有这个人", async () => {
-		const sub = makeSub("100", false);
-		const c = setup({ subs: [sub] });
-		active = c;
-		await c.sourceReady;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "100" }]);
-		expect(c.source.ctx?.subscriptions()).toEqual([]);
-	});
-
-	it("启用订阅 update:live.applyOps 收到完整 update(非 delete);来源的名单里有这个人", async () => {
-		const sub = makeSub("200", true);
-		const c = setup({ subs: [sub] });
-		active = c;
-		await c.sourceReady;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0].kind).toBe("update");
-		expect(liveOps[0].uid).toBe("200");
-		expect(c.source.ctx?.subscriptions().map((v) => v.externalId)).toEqual(["200"]);
-	});
-
-	/**
-	 * 给某位 UP 拧了 / 还原了旋钮(ADR-0014 决策 17 的 🔗):正在监听的直播间要当场换上,
-	 * 不能等重启 —— LiveEngine 只认 update op 里带的那几格。「全部还原」那一下这一格是
-	 * undefined,键也得在(Object.assign 靠它盖掉旧的那份)。
-	 * 验红:把 subscriptionOpsToLive 里 `cardSkinKnobs: view.cardSkinKnobs` 删掉,两条断言都红。
-	 */
-	it("订阅 update:live 的 update change 带上这位 UP 那层旋钮覆盖(还原后键在、值为 undefined)", () => {
-		const sub = makeSub("700", true);
-		sub.overrides.cardSkinKnobs = { default: { "glass-opacity": 0.4 } };
-		const c = setup({ subs: [sub] });
-		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps[0].changes[0].cardSkinKnobs).toEqual({ default: { "glass-opacity": 0.4 } });
-
-		delete sub.overrides.cardSkinKnobs;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-		const cleared = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
-		expect(Object.hasOwn(cleared, "cardSkinKnobs")).toBe(true);
-		expect(cleared.cardSkinKnobs).toBeUndefined();
-	});
-
-	it("直播拆键:update op 带上折好的 liveStreaming 开关、间隔与补报(per-UP 覆盖压过全局)", () => {
-		const sub = makeSub("710", true);
-		sub.overrides.features = { liveStreaming: true };
-		sub.overrides.liveStreaming = { streamingIntervalHours: 6 };
-		sub.overrides.liveStart = { catchUpOnBoot: true };
-		const c = setup({ subs: [sub] });
-		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-
-		const change = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
-		expect(change).toMatchObject({
-			scope: "live",
-			liveStart: true,
-			liveStreaming: true,
-			streamingIntervalHours: 6,
-			catchUpOnBoot: true,
-		});
-	});
-
-	it("直播拆键:没覆盖时取全局出厂值 —— 周期关、间隔 1 小时、不补报", () => {
-		const sub = makeSub("711", true);
-		const c = setup({ subs: [sub] });
-		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0]).toMatchObject({
-			liveStreaming: false,
-			streamingIntervalHours: 1,
-			catchUpOnBoot: false,
-		});
-	});
-
-	it("禁用订阅 add:不向 live.applyOps 下发 add op", () => {
-		const sub = makeSub("300", false);
-		const c = setup({ subs: [sub] });
-		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
-	});
-
-	it("add op:来源的名单只带身份、开关与监听判定;直播那头照旧带着折好的皮肤 id", async () => {
-		const sub = makeSub("600", true);
-		sub.overrides.imageGroup = { enabled: false };
-		sub.overrides.templates = { post: "🔔 {name}", postVideo: "🎬 {name}" };
-		sub.overrides.cardSkin = "k9zzz-0badf00d";
-		const c = setup({ subs: [sub] });
-		active = c;
-		await c.sourceReady;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
-
-		const roster = c.source.ctx?.subscriptions() ?? [];
-		expect(roster.map((v) => Object.keys(v).sort())).toEqual([
-			["externalId", "features", "monitorsLive"],
-		]);
-		expect(roster[0]?.externalId).toBe("600");
-		expect(roster[0]?.features.has("post")).toBe(true);
-		// 直播那头照旧带着折好的皮肤 id。
-		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
-		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
-	});
-
-	it("没有 per-UP 皮肤 → 直播引擎拿全局那套", () => {
-		const sub = makeSub("801", true);
-		const c = setup({ subs: [sub] });
-		active = c;
-		patchGlobals(c, (g) => {
-			g.defaults.cardSkin = "k1aaa-11111111";
-		});
-		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
-	});
-
 	it("禁用订阅 add:来源的名单不列它(停用的不进名单)", async () => {
 		const sub = makeSub("700", false);
 		const c = setup({ subs: [sub] });
@@ -3303,59 +2517,15 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 
 		expect(c.source.ctx?.subscriptions()).toEqual([]);
 	});
+});
 
-	it("订阅删了:live 收到 delete(无视 enabled);来源的名单里也没有它了", async () => {
-		const sub = makeSub("400", true);
-		const subs: Subscription[] = [sub];
-		const c = setup({ subs });
+describe("createEngines — 默认 globals", () => {
+	it("默认 globals:push 拉起,AI 与 image 不构造", () => {
+		const c = setup();
 		active = c;
-		await c.sourceReady;
-		expect(c.source.ctx?.subscriptions().map((v) => v.externalId)).toEqual(["400"]);
-		subs.length = 0;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub }] });
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "400" }]);
-		expect(c.source.ctx?.subscriptions()).toEqual([]);
-	});
-
-	it("拓展订阅的增删改不进 B 站引擎(ADR-0019 决策 9),也不进 B 站来源的名单", async () => {
-		const ext = makeExtensionSubscription({ externalId: "400" });
-		const c = setup({ subs: [ext] });
-		active = c;
-		await c.sourceReady;
-		c.bus.emit("subscription-changed", {
-			ops: [
-				{ kind: "add", sub: ext },
-				{ kind: "update", sub: ext },
-				{ kind: "remove", sub: ext },
-			],
-		});
-
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
-		expect(c.source.ctx?.subscriptions()).toEqual([]);
-	});
-
-	it("连续 disable→enable→disable:live 翻译在 delete / update 间正确切换", () => {
-		const sub = makeSub("500", true);
-		const c = setup({ subs: [sub] });
-		active = c;
-		const liveOpsOf = () => H.live[0].applyOps.mock.calls.at(-1)?.[0];
-
-		// disable
-		sub.enabled = false;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-		expect(liveOpsOf()).toEqual([{ kind: "delete", uid: "500" }]);
-
-		// re-enable → 完整 update(LiveEngine.applyOps 见无 listener 走 lookupFullSub 重建)
-		sub.enabled = true;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-		expect(liveOpsOf()).toHaveLength(1);
-		expect(liveOpsOf()[0].kind).toBe("update");
-
-		// disable again
-		sub.enabled = false;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
-		expect(liveOpsOf()).toEqual([{ kind: "delete", uid: "500" }]);
+		expect(H.push).toHaveLength(1);
+		expect(H.ai).toHaveLength(0);
+		expect(H.image).toHaveLength(0);
 	});
 });
 
@@ -3364,24 +2534,6 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 // ---------------------------------------------------------------------------
 
 describe("createEngines — 消息版式", () => {
-	const subRt = {
-		get: () => undefined,
-		getAll: () => ({}),
-		patch: vi.fn(async () => {}),
-		prune: vi.fn(async () => {}),
-		load: vi.fn(async () => {}),
-	} as any;
-
-	it("buildLiveSubViewSingle 折叠 eff.messageLayout 的直播切片", () => {
-		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({
-			id: "s1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const live = buildLiveSubViewSingle(sub, subRt, g);
-		expect(live.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.live);
-	});
-
 	it("postSettingsOf 折叠 eff.messageLayout 的作品切片", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({
@@ -3389,35 +2541,6 @@ describe("createEngines — 消息版式", () => {
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
 		expect(postSettingsOf(sub, g, true).messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
-	});
-
-	it("per-UP messageLayout 覆盖折叠进作品设置与直播视图(整份覆盖 + normalize)", () => {
-		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({
-			id: "s1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		sub.overrides.messageLayout = {
-			...DEFAULT_MESSAGE_LAYOUT,
-			post: {
-				blocks: [
-					{ id: "text", type: "text", visible: true },
-					{ id: "card", type: "card", visible: false },
-				],
-				separator: " | ",
-			},
-		};
-		const post = postSettingsOf(sub, g, true);
-		expect(post.messageLayout.blocks.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([
-			"text",
-			"card",
-		]);
-		expect(post.messageLayout.separator).toBe(" | ");
-		// normalize 追加缺失的 link 块
-		expect(post.messageLayout.blocks.map((b: { type: string }) => b.type)).toContain("link");
-		expect(buildLiveSubViewSingle(sub, subRt, g).messageLayout).toEqual(
-			DEFAULT_MESSAGE_LAYOUT.live,
-		);
 	});
 
 	it("作品分条(分条符切两条)→ 经真的队列与装配,PushRouter 收到一次推送,本体那个锚点里是两条 payload", async () => {
@@ -3447,63 +2570,6 @@ describe("createEngines — 消息版式", () => {
 		expect(payloads[1].kind).toBe("text");
 		// 作品的本体不抑制 @全体(按特性决定)
 		expect(sent).not.toHaveProperty("allowAtAll");
-	});
-
-	it("livePushLike.push(分条)→ feature 映射 + 许 @全体(开播=3)", async () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-		});
-		active = c;
-		const msg1 = segmentContentBuilder.message([
-			segmentContentBuilder.image(Buffer.from("img"), "image/jpeg"),
-		]);
-		const msg2 = segmentContentBuilder.message([segmentContentBuilder.text("开播文案")]);
-		await H.live[0].opts.push.push({
-			uid: "1",
-			type: 3,
-			anchors: [{ role: "main", messages: [msg1, msg2] }],
-		});
-		expect(H.push[0].push).toHaveBeenCalledTimes(1);
-		const [sent] = H.push[0].push.mock.calls[0];
-		expect(sent.subscriptionId).toBe("s1");
-		expect(sent.feature).toBe("liveStart");
-		const payloads = sent.anchors[0].messages;
-		expect(payloads).toHaveLength(2);
-		expect(payloads[0].kind).toBe("image");
-		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
-		expect(sent).not.toHaveProperty("allowAtAll");
-	});
-
-	it("回归镜像:只改全局 messageLayout → live.applyOps 收到刷新;作品下一条立即按新版式(不经引擎)", async () => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
-		active = c;
-		H.live[0].applyOps.mockClear();
-		reportBili("1", bilibiliPost("正文"), "d1");
-		await settleTracked(c);
-		patchGlobals(c, (g) => {
-			const block = g.defaults.messageLayout.post.blocks.find((b) => b.type === "link");
-			expect(block).toBeDefined();
-			if (block) block.visible = false;
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
-		// live 的 update change 带上 messageLayout(live 切片)
-		expect(liveOps[0].changes[0].messageLayout).toEqual(
-			c.configStore.getGlobals().defaults.messageLayout.live,
-		);
-		reportBili("1", bilibiliPost("正文"), "d2");
-		await settleTracked(c);
-		// 第一条带链接,第二条版式藏起了链接部件。
-		expect(await mainTexts()).toEqual(["阿绫更新了\nhttps://t.bilibili.com/d1", "阿绫更新了"]);
 	});
 });
 
@@ -4009,28 +3075,6 @@ describe("createEngines — 后台写登记进 track", () => {
 			changedAt: expect.any(String),
 			message: `connection not found: connectionId=${CONNECTION_ID}`,
 		});
-		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
-		const registered = newlyTracked(c, before);
-		expect(await stillPending(registered)).toBe(true);
-		write.resolve(undefined);
-		await registered;
-	});
-
-	it("房号解析出来即写盘:登记进 track —— 写交进 sub-runtime 写道,它才落定", async () => {
-		const write = deferred();
-		const patch = vi.fn(() => write.promise);
-		const sub = makeEmptySubscription({
-			id: SUB_ID,
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub], overrides: { subRuntimeStore: { patch } } });
-		active = c;
-		await new Promise((r) => setTimeout(r, 0));
-		const before = c.serviceCtx.tracking.tracked.length;
-
-		H.live[0].opts.onRoomIdResolved("1", 4242);
-
-		expect(patch).toHaveBeenCalledWith(SUB_ID, { roomId: 4242 });
 		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
 		const registered = newlyTracked(c, before);
 		expect(await stillPending(registered)).toBe(true);

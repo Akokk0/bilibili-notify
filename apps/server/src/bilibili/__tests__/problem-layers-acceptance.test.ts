@@ -101,6 +101,16 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		loginCheck: { setHealthCheckMs: () => {} },
 		locale: fixedLocale(),
 		setTimeout: () => ({ dispose() {} }),
+		liveContext: {
+			logger,
+			signal: new AbortController().signal,
+			setInterval: () => ({ dispose() {} }),
+			setTimeout: () => ({ dispose() {} }),
+			onDispose: () => {},
+			track: () => {},
+		},
+		liveRoomIds: { get: () => undefined, set: () => {} },
+		fanClubNames: { set: () => {} },
 		auth: authed.auth,
 		problems: layers,
 	});

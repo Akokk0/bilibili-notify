@@ -19,9 +19,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type GlobalConfig,
 	makeDefaultGlobalConfig,
-	makeEmptySubscription,
 	type ServiceContext,
-	type Subscription,
 } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
@@ -32,9 +30,8 @@ import { createLiveSessionEngine } from "../../live/live-sessions.js";
 import { liveSettingsOf } from "../../live/live-settings.js";
 import { createLiveTable } from "../../live/live-table.js";
 import { segmentContentBuilder } from "../content-builder.js";
-import { buildLiveSubViewSingle, postSettingsOf } from "../engines.js";
+import { postSettingsOf } from "../engines.js";
 import { createNodeMessageBus } from "../message-bus.js";
-import type { SubRuntimeStore } from "../sub-runtime-store.js";
 
 const PER_UP = {
 	[DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#aaaaaa", font: "upload:f9", wallpaper: ["bgU"] },
@@ -47,41 +44,7 @@ function globalsWith(knobs: GlobalConfig["defaults"]["cardSkinKnobs"] = {}): Glo
 	return g;
 }
 
-const biliSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
-	...makeEmptySubscription({
-		id: "11111111-1111-4111-8111-111111111111",
-		identity: { sourceKey: "bilibili", externalId: "12345" },
-	}),
-	enabled: true,
-	overrides,
-});
-
-const fakeRuntimeStore = (): SubRuntimeStore =>
-	({
-		get: () => undefined,
-		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 get
-	}) as any;
-
 describe("订阅视图 / 设置带上这位 UP 那一层旋钮覆盖", () => {
-	it("B 站订阅:直播视图与作品设置都原样带着 overrides.cardSkinKnobs", () => {
-		const sub = biliSub({ cardSkinKnobs: PER_UP });
-		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
-		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toEqual(PER_UP);
-		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toEqual(PER_UP);
-	});
-
-	/**
-	 * 全局拧过、这位 UP 没单独拧 → 视图 / 设置里**没有**这一格。折进去的话快照就把全局值冻住了:
-	 * 全局再拧,这位 UP 的卡纹丝不动。验红:把 `postSettingsOf` 里那一格改成
-	 * `sub.overrides.cardSkinKnobs ?? globals.defaults.cardSkinKnobs`,这条红。
-	 */
-	it("没单独拧过 → 没有这一格,即便全局拧过(全局由渲染器 config 热更)", () => {
-		const sub = biliSub();
-		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
-		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toBeUndefined();
-		expect(postSettingsOf(sub, g, true).cardSkinKnobs).toBeUndefined();
-	});
-
 	it("拓展订阅:直播设置与作品设置都带着", () => {
 		const sub = makeExtensionSubscription({ overrides: { cardSkinKnobs: PER_UP } });
 		const g = globalsWith();

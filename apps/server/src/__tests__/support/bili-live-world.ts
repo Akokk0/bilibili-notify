@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
-	BILIBILI_GUARD_PROGRAM,
 	type Connection,
 	EXTRA_KEYS,
 	type ExtraKey,
@@ -28,7 +27,7 @@ import {
 	type PayloadSegment,
 	type PlatformAdapter,
 	type PushTarget,
-	type SourceContext,
+	type SourceAuth,
 	type SpecialViewer,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -38,13 +37,18 @@ import { z } from "zod";
 import type { Api } from "../../bilibili/api/index.js";
 import { encodePacket, WsOp } from "../../bilibili/live/protocol/codec.js";
 import { makeRecordingLayers } from "../../bilibili/live/session/__tests__/support/live-problems.js";
+import { createBiliSource } from "../../bilibili/source.js";
 import type { ConfigStore } from "../../config/store.js";
+import { openIntegration } from "../../integrations/open.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
+import { createLiveTable } from "../../live/live-table.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { createEngines } from "../../runtime/engines.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createNodeServiceContext } from "../../runtime/service-context.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
+import { fixedLocale } from "../support/fixed-locale.js";
+import { memoryStoreHandle } from "../support/memory-key-value-store.js";
 import { registryOf } from "./adapter-ctx.js";
 import { snapshotFor } from "./connection-snapshot.js";
 
@@ -348,33 +352,41 @@ export async function bootBiliLiveWorld(
 	const recording = makeRecordingLayers();
 	const fetchedImages: string[] = [];
 	const sources = createSourceRegistry();
-	void sources.register(
-		"bilibili",
-		{
-			descriptor: {
-				label: "B 站",
-				membershipPrograms: [
-					{
-						...BILIBILI_GUARD_PROGRAM,
-						tiers: Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
-							? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => ({
-									...tier,
-									icon: { ...tier.icon, ref: BILI_LIVE_GUARD_BADGE_REF },
-								}))
-							: BILIBILI_GUARD_PROGRAM.tiers,
-					},
-				],
-			},
-			searchCreators: async () => ok({ candidates: [] }),
-			liveInteractions: {
-				fetchViewerAvatar: async () => ok({ ref: BILI_LIVE_GUARD_BADGE_REF }),
-				fetchTierIcon: async () => ok({ ref: BILI_LIVE_GUARD_BADGE_REF }),
-			},
-			start: async () => {},
-			stop: async () => {},
+	const problemTable = createProblemTable({ logger: serviceCtx.logger });
+	let runtimeRecord: {
+		roomId?: string;
+		cachedProfile?: {
+			name: string;
+			sign: string;
+			fans: number;
+			lastRefreshedAt: string;
+			fanClubName?: string;
+		};
+	} = {
+		roomId: BILI_LIVE_ROOM_ID,
+		cachedProfile: {
+			name: "测试主播",
+			sign: "",
+			fans: 1000,
+			lastRefreshedAt: "2026-03-01T00:00:00.000Z",
 		},
-		{} as SourceContext,
-	);
+	};
+	const subRuntime = {
+		get: () => structuredClone(runtimeRecord),
+		getAll: () => ({}),
+		patch: async (_id: string, partial: typeof runtimeRecord) => {
+			runtimeRecord = { ...runtimeRecord, ...structuredClone(partial) };
+		},
+		prune: async () => {},
+		load: async () => {},
+	};
+	const sourceAuth: SourceAuth = {
+		beginLogin: async () => ok(),
+		logout: async () => ok(),
+		state: () => ({ status: "logged-in", loggedInAt: "2026-03-01T00:00:00.000Z" }),
+		onChange: () => ({ dispose() {} }),
+	};
+	const liveTable = createLiveTable({ bus, timers: serviceCtx });
 	const runtime = createEngines({
 		serviceCtx,
 		dataRoot: join(tmpdir(), "bn-bili-live-e2e-no-such-dir"),
@@ -402,19 +414,12 @@ export async function bootBiliLiveWorld(
 			listByIdentity: (identity: Identity) =>
 				subscriptions.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 		} as never,
-		subRuntimeStore: {
-			// 房号是读盘复用的那一份:引擎不用再向 B 站解析一次。
-			get: () => ({ roomId: BILI_LIVE_ROOM_ID }),
-			getAll: () => ({}),
-			patch: async () => {},
-			prune: async () => {},
-			load: async () => {},
-		} as never,
+		subRuntimeStore: subRuntime as never,
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
-		problems: createProblemTable({ logger: serviceCtx.logger }),
-		biliProblems: recording.layers,
+		problems: problemTable,
 		bus,
+		liveTable,
 		adapters: registryOf([adapter]),
 		imageFetcher: {
 			fetchImage: async (url: string) => {
@@ -428,13 +433,75 @@ export async function bootBiliLiveWorld(
 				: undefined,
 		puppeteer: null,
 	});
-	if (opts.renderer !== false) runtime.live.setImageRenderer(renderer);
+	if (opts.renderer !== false) runtime.setImageRenderer(renderer);
 	// 世界里没有服务商,`createEngines` 自己建出的是 null:假的 AI 点评手动挂上。
 	if (opts.commentary) {
-		runtime.live.setCommentary({
+		runtime.setCommentary({
 			comment: opts.commentary,
-		} as unknown as Parameters<typeof runtime.live.setCommentary>[0]);
+		} as unknown as Parameters<typeof runtime.setCommentary>[0]);
 	}
+	const stores = memoryStoreHandle();
+	const integration = await openIntegration({
+		stores: stores.handle,
+		logger: serviceCtx.forSubsystem("bilibili", "bilibili").logger,
+		stopReason: "测试关停",
+		problems: problemTable,
+		reporter: "bilibili",
+		label: () => "B 站",
+		rejectedProblemLevel: "error",
+		settings: {
+			settings: (schema) => ({
+				get: () => ok({ settings: schema.parse({}) }),
+				onChange: () => ({ dispose() {} }),
+			}),
+			dispose() {},
+		},
+		httpOptions: { setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms) },
+		transitImages: {
+			put: async () => ok({ ref: FETCHED_IMAGE_REF }),
+		},
+	});
+	const source = createBiliSource({
+		api: api as unknown as Api,
+		bus,
+		setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
+		auth: sourceAuth,
+		problems: recording.layers,
+		loginCheck: { setHealthCheckMs: () => {} },
+		locale: fixedLocale(),
+		liveContext: serviceCtx.forSubsystem("live", "bilibili"),
+		liveRoomIds: {
+			get: () => runtimeRecord.roomId,
+			set: (_externalId, roomId) => {
+				runtimeRecord = { ...runtimeRecord, roomId };
+			},
+		},
+		fanClubNames: {
+			set: (_externalId, name) => {
+				if (!runtimeRecord.cachedProfile) return;
+				runtimeRecord = {
+					...runtimeRecord,
+					cachedProfile: { ...runtimeRecord.cachedProfile, fanClubName: name },
+				};
+			},
+		},
+	});
+	await runtime.registerSource({
+		sourceKey: "bilibili",
+		source,
+		integration: {
+			...integration.handle.ctx,
+			fetchImage: async (url, _options) => {
+				fetchedImages.push(url);
+				return ok({
+					ref: url.includes("/live-pay-mono/relation/")
+						? BILI_LIVE_GUARD_BADGE_REF
+						: FETCHED_IMAGE_REF,
+				});
+			},
+		},
+		logger: serviceCtx.forSubsystem("dynamic", "bilibili").logger,
+	});
 
 	/** 让在途的异步都落定(不推时间)。 */
 	const settle = async (): Promise<void> => {
@@ -442,6 +509,8 @@ export async function bootBiliLiveWorld(
 		await vi.advanceTimersByTimeAsync(0);
 	};
 	await settle();
+	// 来源启动时预抓的三张官方档位徽章已经进了描述符；用例只关心这一场随后抓的图。
+	fetchedImages.length = 0;
 
 	return {
 		bili,
@@ -463,7 +532,20 @@ export async function bootBiliLiveWorld(
 		/** 抓进图库的图的地址。 */
 		fetchedImages,
 		/** 问题表里此刻的条目(订阅级的带 `uid:` 前缀)。 */
-		problems: () => recording.present(),
+		problems: () =>
+			problemTable
+				.list()
+				.map((problem) => {
+					const subscriptionId =
+						problem.about && "subscriptionId" in problem.about
+							? problem.about.subscriptionId
+							: undefined;
+					const sub = subscriptionId
+						? subscriptions.find((candidate) => candidate.id === subscriptionId)
+						: undefined;
+					return sub ? `${subscriptionIdentityOf(sub).externalId}:${problem.code}` : problem.code;
+				})
+				.sort(),
 		/** 面板「正在直播」那一栏此刻列着的订阅 id。 */
 		liveNow: () => runtime.listLiveRooms().map((room) => room.subscriptionId),
 		/** 建过几条弹幕连接、此刻还开着几条。 */
@@ -501,6 +583,13 @@ export async function bootBiliLiveWorld(
 			bili.liveStatus = 1;
 			bili.liveTime = liveTime;
 		},
+		setFans(value: number): void {
+			if (!runtimeRecord.cachedProfile) return;
+			runtimeRecord = {
+				...runtimeRecord,
+				cachedProfile: { ...runtimeRecord.cachedProfile, fans: value },
+			};
+		},
 		/** B 站那头下播了(房间接口从此回没播,开播时刻也清成 B 站对没播的房间给的那串零)。不发帧。 */
 		goOffline(): void {
 			bili.liveStatus = 0;
@@ -508,6 +597,8 @@ export async function bootBiliLiveWorld(
 		},
 		async close(): Promise<void> {
 			runtime.dispose();
+			await integration.handle.dispose();
+			stores.handle.close();
 			await serviceCtx.dispose();
 		},
 	};

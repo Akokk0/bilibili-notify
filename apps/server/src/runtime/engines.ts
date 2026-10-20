@@ -1,5 +1,5 @@
 /**
- * Server-side engine wiring: the engines from apps/server/src/bilibili/dynamic + apps/server/src/bilibili/live,
+ * Server-side engine wiring: neutral live sessions / push plus the dynamic source adapters,
  * driven by the file-backed ConfigStore + TargetDispatcher.
  *
  * Construction order:
@@ -9,10 +9,8 @@
  *   3. Construct PushRouter({ dispatcher, store, master })
  *   4. Optionally construct CommentaryGenerator (when apiKey + baseUrl set; the
  *      `enabled` flag is enforced at engine-config gating layer in step 5/6)
- *   5. Construct LiveEngine with PushLike adapters (post sources are registered later through
- *      `registerSource`: the source builds its own engine and gets a source context)
- *   6. Wire subscription-changed → live.applyOps; auth-restored → engine reseed
- *   7. Wire config-changed (globals scope) → LiveEngine.updateConfig
+ *   5. Wire the neutral live session, interaction and push layers
+ *   6. Sources register later and report through their source contexts
  *
  * Engine-stop is registered with serviceCtx.onDispose; the runtime's dispose()
  * propagates correctly.
@@ -32,11 +30,9 @@ import type {
 	EffectiveSubscription,
 	FeatureKey,
 	GlobalConfig,
-	Identity,
 	ImageRef,
 	LinkPreviewPolicy,
 	LinkPreviewSettings,
-	MembershipTemplateBundle,
 	NotificationPayload,
 	PayloadSegment,
 	ProbeResult,
@@ -45,15 +41,11 @@ import type {
 	Result,
 	SessionRef,
 	Subscription,
-	SubscriptionOp,
 	TargetReachability,
-	TemplateBundle,
 } from "@bilibili-notify/internal";
 import {
 	aiWritingNeeded,
 	BILIBILI_SOURCE_KEY,
-	DEFAULT_TEMPLATES,
-	GUARD_PROGRAM_ID,
 	isLoggedIn,
 	isReachabilityEvidence,
 	needsLiveMonitor,
@@ -68,15 +60,6 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { Api } from "../bilibili/api/index.js";
-import {
-	LiveEngine,
-	type LiveEngineConfig,
-	type LiveEngineOptions,
-	type PushLike as LivePushLike,
-	type LiveSubscriptionOp,
-	type SubscriptionsView as LiveSubsView,
-	type SubItemView as LiveSubView,
-} from "../bilibili/live/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
@@ -144,7 +127,6 @@ export interface EnginesRuntime extends Disposable {
 	registerSource(
 		entry: Pick<RegisterBuiltinSourceOptions, "sourceKey" | "source" | "integration" | "logger">,
 	): Promise<void>;
-	readonly live: LiveEngine;
 	readonly push: PushRouter;
 	/**
 	 * 全局静音。`push` 已经接了闸(订阅推送在 `PushRouter.push` 交进来时被挡),
@@ -153,6 +135,10 @@ export interface EnginesRuntime extends Disposable {
 	readonly muteState: MuteState;
 	readonly subscriptionStore: SubscriptionStore;
 	readonly commentary: CommentaryGenerator | null;
+	/** 只给测试世界挂假点评用。 */
+	setCommentary(commentary: CommentaryGenerator | null): void;
+	/** 只给测试世界挂假出图器用。 */
+	setImageRenderer(renderer: ImageRenderer | null): void;
 	/** Started Api; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
 	readonly api: Api;
 	/**
@@ -167,12 +153,16 @@ export interface EnginesRuntime extends Disposable {
 	readonly imageRenderer: ImageRenderer | null;
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
+	/** 核心回顾收集器此刻的规模(资源监控用;22-11 随自查改名)。 */
+	liveDanmakuStats(): { rooms: number; words: number; senders: number };
 	/**
 	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `live-sessions.ts` 手里的):没在播、或没接
 	 * 拓展订阅的直播(只测 B 站那几条路的引擎)是 `undefined`。统计页拿它判拓展行「此刻在播」—— 与盘上那一场
 	 * 敞着的同源(开一场、关一场的帧都是它发的),断流等待里也还算在播,同 B 站直播间在等待期里仍是在播。
 	 */
 	liveSession(subscriptionId: string): LiveSession | undefined;
+	/** 开发场景:把这条订阅的直播核对提前到现在。 */
+	tickLiveSessionNow(subscriptionId: string): Promise<boolean>;
 	/**
 	 * 拓展订阅的平台名(清单里订阅源的叫法 → 拓展名),每次现取 —— 与女仆查订阅那份视图同一口
 	 * ({@link CreateEnginesOptions.extensionPlatformLabel})。锐评的「平台」一列用它(ADR-0020 决策 12)。
@@ -268,12 +258,6 @@ export interface CreateEnginesOptions {
 	linkResolvers: LinkResolverRegistry;
 	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
 	problems: ProblemTable;
-	/**
-	 * B 站分层上报器(`compose.ts` 造、与给来源的是同一个,入口经 `builtins.bilibili.problems` 递进来):
-	 * 直播引擎把房间不监听了、被拒了、预检撞风控报给它。直播由这里造、早于来源登记,所以只能经入口递;
-	 * 3b 直播并进来源后这一格连同这条递送一起消失。
-	 */
-	biliProblems: LiveEngineOptions["problems"];
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapterRegistry;
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
@@ -361,10 +345,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const log = opts.serviceCtx.logger;
 	// 各子上下文只交「标签」与「跟哪一格」,等级表由 `bindLogLevels`(入口,配置读完之后)整张推、热更也在那边。
 	// 一行日志是谁的代码打的就跟谁那一格:作品队列、拓展作品的接入、替拓展跑的直播场次与推送是核心的代码,跟 `core`;
-	// B 站自己的直播引擎跟来源键(3b 直播并进来源时这一处随 `LiveEngine` 的建造一起走)。
 	const initialGlobals = opts.configStore.getGlobals();
 	const postsCtx = opts.serviceCtx.forSubsystem("posts", "core");
-	const liveCtx = opts.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY);
 	const coreLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
 	/** 宿主调来源的串行闸:搜人与查直播状态共用,同一个来源一次只有一个调用在途。 */
 	const sourceGates = createSourceGates();
@@ -480,16 +462,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	});
 	push.start();
 
-	/**
-	 * B 站直播引擎说的是 uid,推送链认的是订阅自己(ADR-0019 决策 50)—— 直播适配器在这条边上先翻一次,
-	 * 遗留重复订阅只取先出现的那条(作品那一半已按身份展开,在来源上下文里,直播随 3b)。
-	 */
-	const subscriptionIdOfUid = (uid: string): string | undefined => {
-		const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
-		if (!sub) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
-		return sub?.id;
-	};
-
 	// ---------- Master notifier ----------
 	// 组件告警(`engine-error`)→ 主人私聊,共用一张 per-source 60s 节流表。登录失效不在这里:
 	// 那是「主人该知道的事」,由下面的问题通知器说(带「已恢复」)。
@@ -566,8 +538,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
 				...(opts.creatorStats ? { stats: opts.creatorStats } : {}),
 				// B 站订阅的在播读直播引擎的在播房间(与面板「正在直播」同一份),不现去问 B 站。
-				// 每次工具调用现取,`live` 在这段之后才声明,调用时早已就绪。
-				biliLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
+				// 每次工具调用现取在播表的投影。
+				biliLiveRooms: () =>
+					listRegisteredLiveRooms({
+						table: opts.liveTable,
+						sources: opts.sources,
+						subscriptionStore: opts.subscriptionStore,
+						runtimeStore: opts.subRuntimeStore,
+					}),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
@@ -586,7 +564,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Constructed when puppeteer is wired — at boot if chromePath was set, or at
 	// runtime via enableImageRendering() when the operator auto-detects Chrome in
 	// the dashboard (no restart). `cardStyle.enabled` is enforced inside
-	// DynamicPoller / LiveEngine via the `imageEnabled` config field; when false
+	// DynamicPoller via the `imageEnabled` config field; when false
 	// the engines bypass the renderer and emit text-only payloads, so we keep the
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
@@ -761,81 +739,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		runFollowSync("switch-on", flipped);
 	};
 
-	// ---------- LiveEngine ----------
-	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid);
-
-	const liveConfig = (): LiveEngineConfig => {
-		const g = globals();
-		return {
-			liveSummaryDefault: g.defaults.templates.liveSummary,
-			// 全局弹幕词云额外停用词:引擎记词时 merge 到 bundled 列表(随 templatesChanged
-			// 经 live.updateConfig → setStopwords 热更)。per-UP 覆盖另经 SubItemView 在
-			// dispatch 时过滤。
-			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
-			imageEnabled: g.defaults.cards.enabled,
-			aiWebSearch: g.ai.search.engines.live,
-			guardTemplate: guardTemplateOf(g.defaults.templates),
-			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
-			// DEFAULT_LIVE_TEMPLATES,未编辑时输出不变;编辑后即生效)。renderer 走
-			// subCustom ?? globalCustom ?? DEFAULT_LIVE_TEMPLATES,enable 仅占位、不被读。
-			customLiveMsg: {
-				enable: true,
-				customLiveStart: g.defaults.templates.liveStart,
-				customLiveStreaming: g.defaults.templates.liveStreaming,
-				customLiveEnd: g.defaults.templates.liveEnd,
-			},
-			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 RoomSessionBase.liveCover)。
-			defaultLiveCoverImages: g.defaults.cards.liveCoverImageIds,
-		};
-	};
-
-	const live = new LiveEngine({
-		serviceCtx: liveCtx,
-		api: opts.api,
-		push: livePushLike,
-		problems: opts.biliProblems,
-		contentBuilder: segmentContentBuilder,
-		sources: opts.sources,
-		imageFetcher: opts.imageFetcher,
-		readImage: opts.readImage,
-		avatarOf: profileAvatarOf,
-		imageRenderer: imageRenderer ?? null,
-		commentary: commentary ?? null,
-		// 下播总结的 AI 那份要不要做:每次现算(目标增删、写正文设置、AI 总开关改了,下一场下播就生效)。
-		isAiEnabled: () => {
-			const g = globals();
-			return g.ai.enabled && aiWritingNeeded(g.ai.writing.liveSummary, targetIds());
-		},
-		config: liveConfig(),
-		emitEngineError: (message) => opts.bus.emit("engine-error", { source: "live-engine", message }),
-		emitLiveState: (uid, status, startedAt) =>
-			opts.bus.emit("live-state-changed", { uid, status, at: startedAt }),
-		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", { uid, viewers }),
-		pickCardBackground: pickExistingCardBg,
-		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
-		// 省掉逐 UP 的 fetchUserInfo 房号解析请求。
-		onRoomIdResolved: (uid, roomId) => {
-			const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
-			if (!sub) return;
-			if (opts.subRuntimeStore.get(sub.id)?.roomId === roomId) return;
-			opts.serviceCtx.track(
-				opts.subRuntimeStore.patch(sub.id, { roomId }).catch((err) => {
-					log.warn(`[engines] 房号写盘失败 uid=${uid}: ${String(err)}`);
-				}),
-			);
-		},
-	});
-
-	// Initialise live with current subs.
-	const initialLiveView = buildLiveSubsView(
-		opts.subscriptionStore,
-		opts.subRuntimeStore,
-		globals(),
-	);
-	if (Object.keys(initialLiveView).length > 0) {
-		live.start(initialLiveView);
-	}
-
 	// ---------- Bus wiring ----------
 	const handles: Disposable[] = [postQueue];
 
@@ -868,12 +771,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	let liveSessionEngine: LiveSessionEngine | undefined;
 	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
 	let liveInteractionEngine: LiveInteractions | undefined;
+	let viewerChats: ViewerChatCollector | undefined;
 	/** 核心下播回顾的总结请求器;AI 实例热换时要跟着换引用。 */
 	let liveSummaryRequester: LiveSummaryRequester | undefined;
-	if (extensionSources && liveTable) {
-		const liveImages = opts.liveImages;
-		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
-		if (!liveImages) throw new Error("createEngines: 给了 liveTable 就必须给 liveImages");
+	if (liveTable) {
 		// `liveTable` 在这里是写口:场次引擎先写表、再改场次,表自己不听上报。
 		const liveSessions = createLiveSessionEngine({
 			bus: opts.bus,
@@ -907,7 +808,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
 		// R1 过渡输出(3b-22,3b-23 整段删):统计、面板「正在直播」、统计页「在播」三处消费者一个不动,所以在册来源
-		// (今天只有 B 站会上报直播)的场次照 B 站直播引擎的形状发 `live-state-changed` / `live-viewers-changed`。
+		// (今天只有 B 站会上报直播)的场次照原 B 站事件形状发 `live-state-changed` / `live-viewers-changed`。
 		handles.push(
 			liveSessions.onChange((change) => {
 				if (change.kind === "unmatched-end") return;
@@ -951,24 +852,29 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			}),
 		);
 		// 拓展报的直播 → 存图 → 中立信号 → 场次引擎(引擎先写在播表、再改场次)。
-		handles.push(
-			bindExtensionLive({
-				bus: opts.bus,
-				logger: coreLiveCtx.logger,
-				serviceCtx: coreLiveCtx,
-				subscription: (id) => opts.subscriptionStore.findById(id),
-				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
-				liveImages,
-				sessions: liveSessions,
-			}),
-		);
+		if (extensionSources) {
+			const liveImages = opts.liveImages;
+			// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
+			if (!liveImages) throw new Error("createEngines: 接了拓展直播就必须给 liveImages");
+			handles.push(
+				bindExtensionLive({
+					bus: opts.bus,
+					logger: coreLiveCtx.logger,
+					serviceCtx: coreLiveCtx,
+					subscription: (id) => opts.subscriptionStore.findById(id),
+					profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+					liveImages,
+					sessions: liveSessions,
+				}),
+			);
+		}
 		// 核心回顾的一份收集器与两个生产者:场次开始登记、互动记一条、下播卡同步取快照。
 		const wordcloudStopWords = () =>
 			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
-		const viewerChats = new ViewerChatCollector(wordcloudStopWords());
+		viewerChats = new ViewerChatCollector(wordcloudStopWords());
 		handles.push(
 			opts.bus.on("config-changed", ({ scope }) => {
-				if (scope === "globals") viewerChats.setStopwords(wordcloudStopWords());
+				if (scope === "globals") viewerChats?.setStopwords(wordcloudStopWords());
 			}),
 		);
 		const wordcloudGenerator = new WordcloudGenerator({
@@ -1009,7 +915,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sourceStatus,
 				// 实现了 `fetchLiveStatus` 的来源,周期「正在直播」由场次引擎的计时驱动(`tick`),推送这头不再挂自己的。
 				hasLiveTick: (sourceKey) =>
-					!hasLiveStatus(sourceKey) && extensionHasLiveTick(extensionSources, sourceKey),
+					!hasLiveStatus(sourceKey) &&
+					extensionSources !== undefined &&
+					extensionHasLiveTick(extensionSources, sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				recap: {
 					collector: viewerChats,
@@ -1023,7 +931,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			}),
 		);
 		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场、醒目留言按这条订阅现折的设置判,发送绑到这条订阅上;
-		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。B 站老引擎到 22-10 前仍用自己那份。
+		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。
 		const interactions = createLiveInteractions({
 			logger: coreLiveCtx.logger,
 			subscription: (id) => opts.subscriptionStore.findById(id),
@@ -1046,21 +954,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		liveInteractionEngine = interactions;
 	}
 
-	handles.push(
-		opts.bus.on("subscription-changed", ({ ops }) => {
-			// 动态那一半:来源上下文自己听这个事件(`subscriptions/source-context.ts`)。
-			const liveOps = subscriptionOpsToLive(
-				ops,
-				opts.subscriptionStore,
-				opts.subRuntimeStore,
-				globals(),
-			);
-			live.applyOps(liveOps, (uid) => {
-				const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
-				return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, globals()) : undefined;
-			});
-		}),
-	);
 	// 订阅删了:关于它的问题跟着清(宿主在清,不补「已恢复」)。表是总线的消费者,不是转发器 ——
 	// `problems-changed` 不会再翻回 `subscription-changed`。
 	handles.push(
@@ -1072,9 +965,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	);
 	handles.push(
 		opts.bus.on("auth-restored", () => {
-			live.rebuildFromSubs(
-				buildLiveSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
-			);
 			// 登录恢复 → 之前因未登录而关注失败的订阅在这里自愈。
 			runFollowSync("auth-restored");
 		}),
@@ -1093,11 +983,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	handles.push(
 		opts.bus.on("config-changed", ({ scope }) => {
 			if (scope === "globals") syncNewFollowTargets(new Set());
-		}),
-	);
-	handles.push(
-		opts.bus.on("auth-lost", () => {
-			live.teardown();
 		}),
 	);
 	// ---------- Connection probe ----------
@@ -1177,26 +1062,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 				const aiChanged = !eq(prev.ai, g.ai);
 				const cardStyleChanged = !eq(prev.defaults.cards, g.defaults.cards);
-				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
-				// 直播拆键(⑬d):启动补报与周期间隔从 schedule 里搬出来各成一段,热更的门一并跟着。
-				const liveSettingsChanged =
-					!eq(prev.defaults.liveStart, g.defaults.liveStart) ||
-					!eq(prev.defaults.liveStreaming, g.defaults.liveStreaming);
-				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
-				// 醒目留言与会员的门槛(㉓d 起自成 superchat / membership 两段,原先在 filters 里):它们在每个订阅的视图里定格,
-				// 只有 applyOps 能刷,所以和上面几段一样要开热更的门 —— 漏掉的话改了门槛要重启才生效。
-				const interactionChanged =
-					!eq(prev.defaults.superchat, g.defaults.superchat) ||
-					!eq(prev.defaults.membership, g.defaults.membership);
-				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
-				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
-				// 皮肤换了 = 出图整个换一副样子,与旧的「版式变了」同一档热更需求:两个引擎的
-				// per-sub 快照都得刷,否则要等重启才生效(ADR-0014 决策 15 起版式住皮肤里)。
-				const skinChanged = prev.defaults.cardSkin !== g.defaults.cardSkin;
 				// 旋钮拧一格与换皮肤同一档:出图立刻变个样。只喂渲染器的 config(旋钮不
 				// 参与 per-sub 快照 —— 它按皮肤 id 存,全局一份)。
 				const skinKnobsChanged = !eq(prev.defaults.cardSkinKnobs, g.defaults.cardSkinKnobs);
-				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
 				// 日志等级(`logging.level` / `logging.levels`)不在这里推:由入口的 `bindLogLevels` 整张推。
 				// 粉丝轮询的 cron 是顶层的 `profileRefreshCron`,同样不在这里。
@@ -1207,11 +1075,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					imageRenderer.updateConfig({
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
-				}
-				// liveConfig() 读 defaults.{templates,cardStyle} 与顶层 ai(周期间隔与补报在每个订阅的视图里,
-				// 经下面的 applyOps 推,不在引擎级的全局配置里)。
-				if (filtersChanged || templatesChanged || cardStyleChanged || aiChanged) {
-					live.updateConfig(liveConfig());
 				}
 				if (aiChanged) {
 					// AI 实例热重载:lazy 构造 + 配置失效降级 + 已存在时增量 updateConfig。
@@ -1224,11 +1087,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
 						commentary = null;
-						live.setCommentary(null);
 						liveSummaryRequester?.setCommentary(null);
 					} else if (needsCommentary && !commentary) {
 						commentary = buildCommentary();
-						live.setCommentary(commentary);
 						liveSummaryRequester?.setCommentary(commentary);
 						if (commentary) log.info("[ai] commentary 已激活");
 					} else if (commentary) {
@@ -1241,35 +1102,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 							`[ai] commentary 配置已更新: profile=${a.activeProfile}(${ap.provider}), model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
 						);
 					}
-				}
-				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / liveCoverImageIds /
-				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格(动态那头吃名单、现算,不吃这种快照)。resolve() 把 cards / cardSkin / schedule / liveStart /
-				// liveStreaming / superchat / membership / filters / templates / features / messageLayout / imageGroup 折进每个 sub 的 eff;
-				// AI 人格不在 eff 里,由 liveSettingsOf 经 resolveAiOverride 在构造 per-sub 视图时另算 —— 任一变化都给所有
-				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
-				// 状态(Object.assign,不重连 WS)。否则全局默认改了直到重启才在 live 生效。
-				if (
-					aiChanged ||
-					cardStyleChanged ||
-					scheduleChanged ||
-					liveSettingsChanged ||
-					interactionChanged ||
-					filtersChanged ||
-					templatesChanged ||
-					featuresChanged ||
-					skinChanged ||
-					messageLayoutChanged
-				) {
-					const refreshOps = subscriptionOpsToLive(
-						opts.subscriptionStore.list().map((sub) => ({ kind: "update" as const, sub })),
-						opts.subscriptionStore,
-						opts.subRuntimeStore,
-						g,
-					);
-					live.applyOps(refreshOps, (uid) => {
-						const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
-						return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, g) : undefined;
-					});
 				}
 				// 作品来源的名单(全局作品开关一翻要重算)不在这里:来源上下文自己听 `config-changed` 的 globals 一档
 				// (`subscriptions/source-context.ts`),名单每次现算,来源自己对比。
@@ -1304,11 +1136,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			} catch {
 				// best-effort
 			}
-		}
-		try {
-			live.stop();
-		} catch (e) {
-			log.warn(`[engines] live.stop failed: ${String(e)}`);
 		}
 		try {
 			push.stop();
@@ -1371,18 +1198,23 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 重启之后来源登记完:它名下要监听、手里没场次的订阅问一次,在播就认出一场(来源没实现拉取式则什么都不做)。
 			liveSessionEngine?.pollUnseen(entry.sourceKey);
 		},
-		live,
 		push,
 		muteState,
 		subscriptionStore: opts.subscriptionStore,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,
-		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了(`live` 靠 setCommentary、
-		// 作品装配经 `deps.ai()` 每条现取,都拿到了新引用),可读这个字段的聊天路由还是拿到 null,
+		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了,可读这个字段的聊天路由还是拿到 null,
 		// 于是「保存成功却照样报『还没填齐』,重启才好」。反向亦然:撤掉密钥后它会
 		// 攥着已 stop 的旧实例继续答话。
 		get commentary() {
 			return commentary;
+		},
+		setCommentary(next) {
+			commentary = next;
+			liveSummaryRequester?.setCommentary(next);
+		},
+		setImageRenderer(next) {
+			imageRenderer = next;
 		},
 		api: opts.api,
 		// getter:`imageRenderer` 是个会被热切换重新赋值的 let,取值必须每次现读。
@@ -1390,7 +1222,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => [
-			...listLiveRooms(live, opts.subscriptionStore),
 			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的在播行投影成同一个形状。
 			...listRegisteredLiveRooms({
 				table: opts.liveTable,
@@ -1399,7 +1230,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				runtimeStore: opts.subRuntimeStore,
 			}),
 		],
+		liveDanmakuStats: () => viewerChats?.stats() ?? { rooms: 0, words: 0, senders: 0 },
 		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
+		tickLiveSessionNow: (subscriptionId: string) =>
+			liveSessionEngine?.tickNow(subscriptionId) ?? Promise.resolve(false),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		probeConnection: (connectionId: string) =>
 			connectionProbe.probe(connectionId, { manual: true }),
@@ -1418,9 +1252,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}),
 		getModuleState: (): ModuleState => {
 			const g = globals();
-			// "live ready" = 至少一条启用的 B 站订阅会被 LiveEngine 开监听器:问的是 internal 里那份唯一判定
+			// "live ready" = 至少一条启用的 B 站订阅会开直播间监听:问的是 internal 里那份唯一判定
 			// (只看折好的开关与特别关注名单,不看有没有推送目标;特别关注要「开关 ∧ 名单上有人带它」;ADR-0027 决策 1)。
-			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
+			// 只数 B 站订阅:这一格说的是 B 站来源会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore
 				.list()
 				.filter(fromBilibili)
@@ -1442,7 +1276,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		enableImageRendering: (pup: PuppeteerLike): boolean => {
 			if (imageRenderer) return false; // 幂等:已启用,不重复构造浏览器
 			imageRenderer = buildImageRenderer(pup);
-			live.setImageRenderer(imageRenderer);
 			return true;
 		},
 		// 热切换浏览器来源(dashboard 改 chromePath / chromeEndpoint):无条件重建
@@ -1450,7 +1283,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
 		swapImageRendering: (pup: PuppeteerLike): void => {
 			imageRenderer = buildImageRenderer(pup);
-			live.setImageRenderer(imageRenderer);
 		},
 		dispose,
 	};
@@ -1514,14 +1346,6 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  * 再 @ 一次全体)、`allowAtAll`(掉了「每条直播推送都 @全体」那个修过的 bug 直接回归)。
  * 历史记成什么不另说:它记的就是交出去的那把特性键。
  */
-type PushForEngines = Pick<PushRouter, "push">;
-
-/**
- * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),
- * 翻译就在这两个适配器里做;查不到(推送途中被退订)就不往下交,由解析函数自己记一笔。
- */
-type SubscriptionIdOf = (uid: string) => string | undefined;
-
 /**
  * 引擎侧的锚点 → 推送层的锚点:角色与附加项的键原样带上,内容(现成的或约定)逐条翻成载荷。
  * 两个适配器共用这一处,内容怎么翻各给各的。
@@ -1546,17 +1370,6 @@ function toPushAnchors<T>(
 		messages: toPayloads(messages),
 		...(aiMessages ? { aiMessages: toPayloads(aiMessages) } : {}),
 	}));
-}
-
-/**
- * 不往下交的那条路(uid 查不到订阅):锚点里的约定没人等了,先接住,免得做不出来的内容
- * 变成没人处理的拒绝。
- */
-function dropAnchors(anchors: ReadonlyArray<{ messages: unknown; aiMessages?: unknown }>): void {
-	for (const { messages, aiMessages } of anchors) {
-		void Promise.resolve(messages).catch(() => {});
-		void Promise.resolve(aiMessages).catch(() => {});
-	}
 }
 
 /**
@@ -1591,7 +1404,7 @@ function livePushHead(type: number): Pick<Push, "feature" | "allowAtAll"> {
 /**
  * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):绑到**一条订阅**上,装配交来的消息组 →
  * 推送层的一次推送(只有本体那一个锚点),特性键与 @全体 照 {@link livePushHead}。拓展订阅的直播用它
- * (ADR-0019 决策 67);B 站的直播间经 {@link makeLivePushLike} 走同一套映射,段也照同一个口子翻
+ * (ADR-0019 决策 67);段照同一个口子翻
  * (`segmentContentBuilder` → `segmentToPayload`)。
  *
  * 一组是一条消息:几组就是本体那个锚点里的一串(推送层的序列语义,同 B 站的「分条」)。
@@ -1623,24 +1436,6 @@ export function boundLivePush(
 			...livePushHead(type),
 			anchors,
 		});
-	};
-}
-
-/** 直播引擎那侧的 PushLike:uid → 订阅 id,推送类型 → 特性键与 @全体,锚点逐个翻过去。 */
-export function makeLivePushLike(
-	push: PushForEngines,
-	subscriptionIdOf: SubscriptionIdOf,
-): LivePushLike {
-	return {
-		async push({ uid, type, anchors }) {
-			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return dropAnchors(anchors);
-			await push.push({
-				subscriptionId,
-				...livePushHead(type as number),
-				anchors: toPushAnchors(anchors, (content) => collapseSegments(segmentToPayload(content))),
-			});
-		},
 	};
 }
 
@@ -1682,12 +1477,7 @@ export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;
 }
 
-/** B 站引擎说的 uid → 订阅身份(B 站的外部 id 就是 uid)。 */
-function biliIdentity(uid: string): Identity {
-	return { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid };
-}
-
-/** 这条订阅订的是 B 站吗 —— B 站引擎(动态 / 直播)只看这样的订阅,拓展订阅不进它(ADR-0019 决策 9)。 */
+/** 这条订阅订的是 B 站吗 —— 模块状态只看在册的 B 站订阅。 */
 function fromBilibili(sub: Subscription): boolean {
 	return subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 }
@@ -1754,141 +1544,6 @@ export function makePostSettingsReader(deps: {
 }
 
 /**
- * 配置里 B 站的会员体系(`guard`)那一份文案 → 引擎视图(㉓d,原先的 `toCustomGuardBuy`):`enabled` + 体系默认 + 按档 key 存的覆盖整份
- * 下发,room-session 按事件的档位 key 取同一档(`membershipTemplateOf`)。全局(`liveConfig`)与 per-UP(`buildLiveSubViewSingle`,
- * 取的是折好的生效值)共用这一处,别在两边各抄一份映射。配置里没有 `guard` 这一项(手改删掉了)就回出厂那份:自定义关着,走官方上舰图。
- */
-function guardTemplateOf(templates: TemplateBundle): MembershipTemplateBundle {
-	return (
-		templates.membership[GUARD_PROGRAM_ID] ?? {
-			enabled: false,
-			default: { ...DEFAULT_TEMPLATES.membership.guard.default },
-			tiers: {},
-		}
-	);
-}
-
-function buildLiveSubsView(
-	store: SubscriptionStore,
-	subRuntimeStore: SubRuntimeStore,
-	globals: GlobalConfig,
-): LiveSubsView {
-	const view: LiveSubsView = {};
-	// 只有 B 站订阅进直播引擎(ADR-0019 决策 9)。
-	for (const sub of store.list().filter(fromBilibili)) {
-		if (!sub.enabled) continue;
-		view[subscriptionIdentityOf(sub).externalId] = buildLiveSubViewSingle(
-			sub,
-			subRuntimeStore,
-			globals,
-		);
-	}
-	return view;
-}
-
-export function buildLiveSubViewSingle(
-	sub: Subscription,
-	subRuntimeStore: SubRuntimeStore,
-	globals: GlobalConfig,
-): LiveSubView {
-	const eff = resolve(sub, globals.defaults);
-	// B 站引擎以 uid 为键,调用方只给 B 站订阅。
-	const uid = subscriptionIdentityOf(sub).externalId;
-	return {
-		// 中立事件(会员 / 醒目留言)要核心的订阅 id,引擎自己只认 uid —— 宿主带进来。
-		subscriptionId: sub.id,
-		uid,
-		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
-		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
-		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
-		post: eff.features.post,
-		target: eff.routing,
-		// 整份直播设置(与核心的场次 / 推送 / 互动同一份折法)。dynamic 卡不经 LiveEngine
-		// (走 DynamicPoller),所以按种类的样式只折 live / sc / guard。
-		...liveSettingsOf(sub, globals, eff),
-		// B 站专有的两格:上舰门槛与会员体系 `guard` 的文案。`aiOverride` 已随整份直播设置折进来。
-		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
-		guardTemplate: guardTemplateOf(eff.templates),
-	};
-}
-
-function subscriptionOpsToLive(
-	ops: SubscriptionOp[],
-	store: SubscriptionStore,
-	subRuntimeStore: SubRuntimeStore,
-	globals: GlobalConfig,
-): LiveSubscriptionOp[] {
-	const out: LiveSubscriptionOp[] = [];
-	for (const op of ops) {
-		// 同 subscriptionOpsToDynamic:直播引擎只管 B 站订阅。
-		if (!fromBilibili(op.sub)) continue;
-		const identity = subscriptionIdentityOf(op.sub);
-		if (op.kind === "add") {
-			// 禁用态新增不开监听器。新增订阅默认 enabled,此处为防御性兜底。
-			if (!op.sub.enabled) continue;
-			out.push({ kind: "add", sub: buildLiveSubViewSingle(op.sub, subRuntimeStore, globals) });
-		} else if (op.kind === "remove") {
-			out.push({ kind: "delete", uid: identity.externalId });
-		} else {
-			const sub = store.findByIdentity(identity);
-			if (!sub) continue;
-			// 禁用订阅 = 拆掉直播监听器。LiveEngine 是事件驱动(常驻 WS),没有每轮现读名单的兜底 —— update op 必须显式翻译
-			// 成 delete,否则 listener 一直挂着、直播事件照推(已修 bug)。重新启用时
-			// 走下面的 update 分支发完整 LiveScopedChange,LiveEngine.applyOps 见无
-			// 活跃 listener → lookupFullSub → startForUid 重新拉起。
-			if (!sub.enabled) {
-				out.push({ kind: "delete", uid: identity.externalId });
-				continue;
-			}
-			// 用完整 SubItemView 投影出所有 LiveScopedChange 支持的字段——路由布尔、
-			// per-UP 阈值 / 调度 / AI override 之外,模板 / 上舰 / 特别关注 / 卡片样式
-			// 也跟着一起同步,避免活跃 listener 用旧值(本来 add 路径就走这里,update
-			// 没必要弱化语义)。周期间隔与开关变化由 engine 在 applyOps 内单独 rearm。
-			const view = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
-			out.push({
-				kind: "update",
-				uid: identity.externalId,
-				changes: [
-					{
-						scope: "live",
-						liveStart: view.liveStart,
-						liveStreaming: view.liveStreaming,
-						liveEnd: view.liveEnd,
-						membership: view.membership,
-						superchat: view.superchat,
-						viewerChat: view.viewerChat,
-						viewerEnter: view.viewerEnter,
-						extras: view.extras,
-						// 键恒在(值可能是 undefined):没配 = 不设门槛,门槛被清掉的订阅得靠这个 undefined 把引擎里旧的那份盖掉。
-						minSuperchatAmount: view.minSuperchatAmount,
-						minGuardRank: view.minGuardRank,
-						streamingIntervalHours: view.streamingIntervalHours,
-						catchUpOnBoot: view.catchUpOnBoot,
-						liveEndGrace: view.liveEndGrace,
-						liveEndGraceMinutes: view.liveEndGraceMinutes,
-						aiOverride: view.aiOverride,
-						wordcloudStopWords: view.wordcloudStopWords,
-						// 键恒在(值可能是 undefined):这位 UP 清掉封面覆盖后,得靠这个 undefined 把引擎里旧的那份盖掉。
-						liveCoverImageIds: view.liveCoverImageIds,
-						customLiveMsg: view.customLiveMsg,
-						guardTemplate: view.guardTemplate,
-						customLiveSummary: view.customLiveSummary,
-						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
-						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,
-						cardSkin: view.cardSkin,
-						// 键恒在(值可能是 undefined):LiveEngine 按 Object.assign 合进活着的监听器,
-						// 这位 UP「全部还原」之后得靠这个 undefined 把旧的那份盖掉。
-						cardSkinKnobs: view.cardSkinKnobs,
-						messageLayout: view.messageLayout,
-					},
-				],
-			});
-		}
-	}
-	return out;
-}
-
-/**
  * 在播表里**在册来源**的行,投影成 B 站「正在直播」快照的形状(R1 过渡输出,3b-22,3b-23 整段删):面板的
  * 「正在直播」、统计页「在播」一个不动。`roomId` 取运行态仓,没有就空串;封面只带得出地址的(图库引用不是地址)。
  */
@@ -1914,36 +1569,6 @@ function listRegisteredLiveRooms(deps: {
 			startedAt:
 				entry.startedAt === undefined ? undefined : new Date(entry.startedAt).toISOString(),
 			viewers: entry.details.totalViewers,
-		});
-	}
-	return out;
-}
-
-function listLiveRooms(
-	live: LiveEngine,
-	subscriptionStore: Pick<SubscriptionStore, "findByIdentity">,
-): LiveListenerSnapshot[] {
-	// Only rooms that have reported `liveStatus === true` via the WS dispatcher
-	// surface to the Dashboard. Monitored-but-idle rooms are filtered so the
-	// "正在直播" panel matches its name (vs. the looser "正在监听" set).
-	//
-	// 每个房间带上订阅自己的 id(ADR-0019 决策 50),面板拿它对订阅。直播引擎只认 uid,在这儿翻;
-	// 翻不到的不列 —— 监听器只为在册的 B 站订阅开,翻不到只可能是订阅刚删掉的那一瞬。
-	const out: LiveListenerSnapshot[] = [];
-	for (const s of live.listLiveSnapshots()) {
-		if (!s.isLive) continue;
-		const subscriptionId = subscriptionStore.findByIdentity(biliIdentity(s.uid))?.id;
-		if (subscriptionId === undefined) continue;
-		out.push({
-			subscriptionId,
-			uid: s.uid,
-			roomId: s.roomId,
-			isLive: s.isLive,
-			title: s.title,
-			cover: s.cover,
-			areaName: s.areaName,
-			startedAt: s.startedAt,
-			viewers: s.viewers,
 		});
 	}
 	return out;

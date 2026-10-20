@@ -43,7 +43,7 @@ export interface SubRuntime {
 	/** Fans count + ts at first poll of this sub; written once, never changed. */
 	fansBaseline?: FansBaseline;
 	/**
-	 * 解析出的直播间号(uid → live_room.roomid)。LiveEngine 首次解析后写回,之后
+	 * 解析出的直播间号(uid → live_room.roomid)。B 站来源首次解析后写回,之后
 	 * 启动/reload 直接读盘复用,省掉每次对每个 UP 的 `fetchUserInfo` 房号解析请求(③)。
 	 */
 	roomId?: string;

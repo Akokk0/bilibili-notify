@@ -7,8 +7,7 @@ import type { RouteDeps } from "./types.js";
  * `GET /api/live/listening` — currently-broadcasting rooms among the
  * subscribed UPs. Powers the dashboard's "正在直播" panel.
  *
- * Backed by the LiveEngine's per-session liveStatus snapshot (set by the WS
- * dispatcher on `onLiveStart` / `handleLiveEnd`). When the engine layer is not
+ * Backed by the neutral live table's per-session snapshot. When the engine layer is not
  * attached yet (early boot, before authSystem is up) the B 站 half is `[]`
  * so the panel renders empty state cleanly.
  *

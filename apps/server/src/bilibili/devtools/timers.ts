@@ -1,50 +1,22 @@
-import { DevParamError, type DevScenarioDef, need } from "../../devtools/registry.js";
+import { type DevScenarioDef, need } from "../../devtools/registry.js";
 import type { SubPick } from "./live.js";
 
 /**
- * B 站的四个「现在就跑」:把定时器到点要做的事提前调一次,定时器本身不动。
+ * B 站的三个「现在就跑」:把定时器到点要做的事提前调一次,定时器本身不动。
  *
- * 每个调的都是引擎自己暴露的那一个口(`repushNow` / `detectNow` / `pollNow` /
- * `healthCheckNow`),不是另写一条路。中立的三条(免扰时钟、静音、Chrome 空闲关)留在核心
+ * 每个调的都是引擎自己暴露的那一个口(`detectNow` / `pollNow` / `healthCheckNow`),不是另写一条路。
+ * 中立场景(含直播复推)留在核心
  * `devtools/scenarios/timers.ts`。
  */
 export interface BiliTimerDeps {
 	subs: () => SubPick[];
 	/** 下面几样都是引擎建好之后才有的,现取。 */
-	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	dynamic: () => { detectNow(): Promise<void> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
 
 export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
-	const repush: DevScenarioDef = {
-		id: "live.repush-now",
-		group: "timer",
-		title: "复推提前到期",
-		icon: "refresh",
-		desc: "把这位 UP「正在直播」的周期复推提前到现在(走的就是定时器到点那一次)。得在(假)直播中。",
-		params: [{ key: "sub", label: "订阅", kind: "sub" }],
-		async run(params) {
-			const engine = need(deps.live(), "直播引擎");
-			const subs = deps.subs();
-			const wanted = params.sub;
-			const sub =
-				wanted === undefined
-					? subs.find((s) => s.enabled)
-					: subs.find((s) => s.id === String(wanted));
-			if (!sub) {
-				throw new DevParamError(wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
-			}
-			const ran = await engine.repushNow(sub.uid);
-			return {
-				summary: ran
-					? `已替 ${sub.name} 复推了一次「正在直播」。`
-					: `${sub.name} 没在播(或没监听),复推没跑。`,
-			};
-		},
-	};
-
 	const detect: DevScenarioDef = {
 		id: "dynamic.detect-now",
 		group: "timer",
@@ -84,5 +56,5 @@ export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
 		},
 	};
 
-	return [repush, detect, fans, health];
+	return [detect, fans, health];
 }

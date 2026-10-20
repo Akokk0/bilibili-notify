@@ -80,13 +80,18 @@ import {
 	type ImagesDeps,
 	subscribedAvatar,
 } from "../bilibili/images.js";
-import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "../bilibili/live/index.js";
+import {
+	liveDetailsFromRoomInfo,
+	liveTimeToIso,
+	superchatEventFromLiveEvent,
+} from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
 import { createImageFetcher } from "../images/image-fetcher.js";
+import { liveCardInputFromDetails } from "../live/live-card-input.js";
 import {
 	deleteCardBg,
 	firstExistingCardBg,
@@ -1214,7 +1219,7 @@ async function resolveMasterInfo(api: Api, uid: string): Promise<{ name: string 
 }
 
 /**
- * uid → 直播间号。走 `fetchUserInfo(uid).data.live_room.roomid`(与 live 引擎
+ * uid → 直播间号。走 `fetchUserInfo(uid).data.live_room.roomid`(与 B 站来源
  * listener 解析房间号同一路径)。per-UP 自动预览只持有 uid,live 真实拉取前先解析。
  * 未开通直播间 / 解析失败抛 Error。
  */
@@ -1275,25 +1280,20 @@ async function renderRealLive(
 	const avatarUrl = master.data.info.face;
 	const avatar =
 		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
-	return renderer.generateLiveCard(
-		await fetchLiveCover(
-			liveCardInputFromRoomInfo(
-				room.data,
-				master.data.info.uname,
-				{}, // liveData — no danmaku context in preview, watched/liked left blank
-				2,
-				avatar,
-			),
-			imagesDeps,
-		),
-		{
-			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
-			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
-			// B 站原始封面,即便后面还有张有效图。
-			liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImageIds),
-			...skin,
-		},
-	);
+	const startedAt = liveTimeToIso(room.data);
+	const input = liveCardInputFromDetails(liveDetailsFromRoomInfo(room.data), {
+		status: "streaming",
+		...(startedAt === undefined ? {} : { startedAt: Date.parse(startedAt) }),
+		authorName: master.data.info.uname,
+		...(avatar === undefined ? {} : { profileAvatar: avatar }),
+	});
+	return renderer.generateLiveCard(await fetchLiveCover(input, imagesDeps), {
+		// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
+		// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
+		// B 站原始封面,即便后面还有张有效图。
+		liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImageIds),
+		...skin,
+	});
 }
 
 async function renderRealDynamic(

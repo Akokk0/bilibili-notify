@@ -1,83 +1,28 @@
+import type { Disposable, LiveDetails, LiveInteractionReport } from "@bilibili-notify/internal";
+import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
+import { PROBLEM_TEXTS } from "../../problem-texts.js";
+import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
+import { membershipEventFromLiveEvent } from "../membership-event.js";
+import type { LiveEvent } from "../protocol/events.js";
+import { superchatEventFromLiveEvent } from "../superchat-event.js";
 import {
-	BILIBILI_GUARD_PROGRAM,
-	type Disposable,
-	formatCount,
-	guardTierOf,
-	type MembershipTier,
-} from "@bilibili-notify/internal";
-import { DateTime } from "luxon";
-import { segmentsToContent } from "../../../live/content-builder";
-import { LivePushType } from "../../../live/live-types";
-import { pushMembership } from "../../../live/membership";
-import { pushViewerChat, pushViewerEnter } from "../../../live/special-viewers";
-import { pushSuperchat } from "../../../live/superchat";
-import type { SourceRegistry } from "../../../subscriptions/registry.js";
-import { fetchAvatar } from "../../images";
-import { PROBLEM_TEXTS } from "../../problem-texts";
-import { membershipEventFromLiveEvent } from "../membership-event";
-import type { LiveEvent, LiveUser, UserActionKind } from "../protocol/events.js";
-import { superchatEventFromLiveEvent } from "../superchat-event";
-import { buildRoomLink } from "../template-renderer";
-import { LiveType } from "../types";
-import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
-import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
+	liveRiskPath,
+	MONITOR_STOPPED_CODE,
+	ROOM_RESTRICTED_CODE,
+	type RoomContext,
+} from "./room-context.js";
+import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers.js";
 
-type SuperChatEvent = Extract<LiveEvent, { kind: "superchat" }>;
-type GuardBuyEvent = Extract<LiveEvent, { kind: "guard-buy" }>;
-
-/**
- * One {@link RoomSession} per UID/room actively being monitored.
- *
- * Extends {@link RoomSessionBase} (state + lifecycle + transitions) with the
- * single-callback event funnel (`buildEventHandler`) and the per-event handlers
- * (`onLiveStart`, `onIncomeDanmaku`, `onIncomeSuperChat`, `onGuardBuy`,
- * `onLiveEnd`, `onError`, `onUserAction`).
- *
- * Each handler reads / mutates the protected state defined on the base.
- * `bootstrap()` (defined on the base) opens the WS connection and arms the
- * periodic timer if the room is already live; subsequent state transitions
- * are driven by the events routed through the funnel.
- */
-/** Dashboard 端期望的"实时观看人数"采样间隔。B 站每几秒推一帧 WATCHED_CHANGE,
- * 这里 per-UID 门控成 2s 最多一次,够人眼感知,WS 不会刷屏。 */
-const VIEWERS_EMIT_THROTTLE_MS = 2000;
-
-/**
- * onError 触发后的退避重连节奏(单位 ms)。失败时按下标顺序消耗,直到耗尽 → 真正放弃。
- * 重连成功后 `reconnectAttempts` 复位到 0,后续新一轮 onError 重新从 1s 开始。
- */
-const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000] as const;
-
-/**
- * 预检被 -352 风控拦截时的**长尾**退避(单位 ms),末项封顶循环、永不放弃。
- * 与上面那条秒级梯子分开:WS 是直播状态唯一信号源(没有 HTTP 轮询兜底),
- * 风控一持续就是几十分钟,拿 31 秒的梯子去顶会把好房间全停光;而无 token
- * 直连的旧回退(blive 库时代)只能收匿名残缺数据,已随自实现一并退役。
- */
-const PREFLIGHT_BLOCKED_BACKOFF_MS = [60_000, 300_000, 900_000, 1_800_000] as const;
-
-/** B 站 live WS 静默自愈:每分钟检查一次,3 分钟无 heartbeat/消息即主动重连。 */
-const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
+export const LIVE_EVENT_COOLDOWN = 10 * 1000;
 export const LIVE_WS_STALE_MS = 180_000;
 
-function guardTierAt(
-	sources: Pick<SourceRegistry, "list">,
-	guardLevel: number,
-): { sourceKey: string; program: string; tier: MembershipTier } | undefined {
-	const tierKey = guardTierOf(guardLevel)?.key;
-	if (tierKey === undefined) return undefined;
-	for (const view of sources.list()) {
-		for (const program of view.descriptor.membershipPrograms ?? []) {
-			if (program.id !== BILIBILI_GUARD_PROGRAM.id || !Array.isArray(program.tiers)) continue;
-			const tier = program.tiers.find((candidate) => candidate.key === tierKey);
-			if (tier) return { sourceKey: view.sourceKey, program: program.id, tier };
-		}
-	}
-	return undefined;
-}
+const VIEWERS_EMIT_THROTTLE_MS = 2_000;
+const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
+const PREFLIGHT_BLOCKED_BACKOFF_MS = [60_000, 300_000, 900_000, 1_800_000] as const;
+const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
 
 type ReconnectReason = "error" | "close" | "watchdog" | "preflight";
-type LiveWsActivityReason =
+type ActivityReason =
 	| "connected"
 	| "open"
 	| "auth-ok"
@@ -94,417 +39,599 @@ type LiveWsActivityReason =
 	| "other"
 	| "close";
 
-export class RoomSession extends RoomSessionBase {
-	private lastViewersEmitMs = 0;
-	// cancelled 提升到 RoomSessionBase(protected)—— armPeriodicTimer 的 teardown 守卫
-	// 需要在基类可见。语义不变:stopForUid / disposeAll / liveEnd 主动关闭时经 cancel() 置位,
-	// onError 据此跳过重连。
-	private reconnectAttempts = 0;
-	/**
-	 * L1 单飞守卫:并发 onError(WS 错误常突发多帧)若都进入重连路径,会各自
-	 * closeListener + 退避 + startLiveRoomListener,装回多个 listener。一旦一个
-	 * onError 拿到重连权,其余直接返回。
-	 */
+export class RoomSession {
+	private masterName = "";
+	private watchedNumber: number | undefined;
+	private lastLiveStart = 0;
+	private lastLiveEnd = 0;
+	private lastViewersReportAt = 0;
+	private bootstrapped = false;
+	private bootstrapInFlight = false;
+	private startingUp = false;
+	private transitioningToLive = false;
+	private endArrivedWhileTransitioning = false;
+	private cancelled = false;
 	private reconnecting = false;
-	/** L3:退避 sleep 的 Disposable + 唤醒句柄,cancel/teardown 时清掉,不留回调到 expiry。 */
+	private reconnectAttempts = 0;
 	private reconnectTimer?: Disposable;
 	private reconnectWake?: () => void;
-	private lastLiveWsActivityAt = 0;
-	private lastLiveWsActivityReason: LiveWsActivityReason = "connected";
 	private watchdogTimer?: Disposable;
-	private watchdogReconnectCount = 0;
-	/** 漂移观测:degraded raw 的 per-cmd 累计,只增不清(见 noteDegradedRaw)。 */
+	private lastActivityAt = 0;
+	private lastActivityReason: ActivityReason = "connected";
 	private readonly degradedRawCounts = new Map<string, number>();
 
-	/** 外层主动停止 listener 时调用,阻止 onError/onClose/watchdog 触发重连。 */
-	cancel(): void {
-		this.cancelled = true;
-		// P2:即时复位,不再单靠 reconnectLoop 的 finally 时序。onError 顶部
-		// cancelled 守卫已足以挡新重连,这里只是让 reconnecting 状态立即自洽。
-		this.reconnecting = false;
-		this.stopLiveWsWatchdog();
-		this.clearReconnectSleep();
-		// 挂起中的断流接续等待随 teardown 一并取消,绝不在房间已停后还触发一次下播。
-		this.cancelPendingEnd();
-		// 周期复推定时器同理。外部 teardown(stopForUid / disposeAll / startAll)本就会
-		// 经 livePushTimerManager 统一清,但**自发**放弃监听那条路径只调 cancel(),留下的
-		// timer 会一直 tick:每次 tick 看到已下播就发一条私聊,再调 triggerLiveEnd,而
-		// handleLiveEnd 在 `!liveStatus` 守卫处就返回、走不到解除定时器那行 —— 同一条
-		// 私聊每小时重复一次,直到进程重启。cancel() 语义是「这个 session 到此为止」,
-		// 留任何定时器都不对。
-		this.cancelPeriodicTimer();
-		// 会话结束:这位 UP 这一路挂着的风控不再适用(不是解除,不对主人说「风控已解除」)。
-		this.retireRisk();
+	constructor(
+		private readonly ctx: RoomContext,
+		private readonly room: { externalId: string; roomId: string },
+	) {}
+
+	private get alive(): boolean {
+		return !this.cancelled && !this.ctx.isDisposed();
 	}
 
-	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
-	private clearReconnectSleep(): void {
+	cancel(): void {
+		this.cancelled = true;
+		this.reconnecting = false;
+		this.watchdogTimer?.dispose();
+		this.watchdogTimer = undefined;
 		this.reconnectTimer?.dispose();
 		this.reconnectTimer = undefined;
 		this.reconnectWake?.();
 		this.reconnectWake = undefined;
+		this.retireRisk();
 	}
 
-	protected override onListenerStarted(): void {
-		this.markLiveWsActivity("connected");
-		this.startLiveWsWatchdog();
+	private reportStopped(reason: () => string): void {
+		if (!this.alive) return;
+		const text = PROBLEM_TEXTS.liveMonitorStopped;
+		this.ctx.problems.reportFailure({
+			externalId: this.room.externalId,
+			code: MONITOR_STOPPED_CODE,
+			message: () => text.text(this.room.roomId, reason()),
+			notify: text.notify,
+			lasting: true,
+			recoveryMessage: () => text.recovery(this.room.roomId),
+		});
 	}
 
-	protected override onMonitoringStopped(): void {
-		this.cancel();
+	private reportRestricted(reason: string): void {
+		if (!this.alive) return;
+		const text = PROBLEM_TEXTS.liveRoomRestricted;
+		this.ctx.problems.reportFailure({
+			externalId: this.room.externalId,
+			code: ROOM_RESTRICTED_CODE,
+			message: () => text.text(this.room.roomId, reason),
+			notify: text.notify,
+			lasting: true,
+			recoveryMessage: () => text.recovery(this.room.roomId),
+		});
 	}
 
-	getWsHealthSnapshot(): {
-		lastActivityAt: number;
-		lastActivityReason: LiveWsActivityReason;
-		watchdogReconnectCount: number;
-	} {
-		return {
-			lastActivityAt: this.lastLiveWsActivityAt,
-			lastActivityReason: this.lastLiveWsActivityReason,
-			watchdogReconnectCount: this.watchdogReconnectCount,
-		};
+	private resolveStopped(code: typeof MONITOR_STOPPED_CODE | typeof ROOM_RESTRICTED_CODE): void {
+		if (!this.alive) return;
+		this.ctx.problems.resolveFailure({ externalId: this.room.externalId, code });
 	}
 
-	private markLiveWsActivity(reason: LiveWsActivityReason): void {
-		this.lastLiveWsActivityAt = Date.now();
-		this.lastLiveWsActivityReason = reason;
+	private reportRisk(): void {
+		if (!this.alive) return;
+		this.ctx.problems.reportRisk(liveRiskPath(this.room.externalId), {
+			notify: PROBLEM_TEXTS.riskControlled.notify.live,
+		});
 	}
 
-	private startLiveWsWatchdog(): void {
-		if (this.watchdogTimer || this.cancelled || this.ctx.isDisposed()) return;
-		this.watchdogTimer = this.ctx.serviceCtx.setInterval(
-			() => this.checkLiveWsWatchdog(),
-			LIVE_WS_WATCHDOG_INTERVAL_MS,
+	private resolveRisk(relieved: boolean): void {
+		if (!this.alive) return;
+		this.ctx.problems.resolveRisk(
+			liveRiskPath(this.room.externalId),
+			relieved ? undefined : { notify: false },
 		);
 	}
 
-	private stopLiveWsWatchdog(): void {
-		this.watchdogTimer?.dispose();
-		this.watchdogTimer = undefined;
+	private retireRisk(): void {
+		this.ctx.problems.resolveRisk(liveRiskPath(this.room.externalId), { notify: false });
 	}
 
-	private checkLiveWsWatchdog(): void {
-		if (this.cancelled || this.ctx.isDisposed() || this.reconnecting) return;
-		if (this.lastLiveWsActivityAt <= 0) return;
-		const staleMs = Date.now() - this.lastLiveWsActivityAt;
-		if (staleMs < LIVE_WS_STALE_MS) return;
-		this.watchdogReconnectCount++;
-		void this.reconnect(
-			"watchdog",
-			`${Math.floor(staleMs / 1000)}s 无 heartbeat/消息(last=${this.lastLiveWsActivityReason},watchdog=${this.watchdogReconnectCount})`,
-		);
+	private beginLiveTransition(dedupeStart = false): void {
+		this.transitioningToLive = true;
+		this.endArrivedWhileTransitioning = false;
+		this.startingUp = dedupeStart;
 	}
 
-	// ── Event funnel ──────────────────────────────────────────────────────────
+	private finishLiveTransition(): boolean {
+		this.transitioningToLive = false;
+		this.startingUp = false;
+		const ended = this.endArrivedWhileTransitioning;
+		this.endArrivedWhileTransitioning = false;
+		return ended;
+	}
 
-	/**
-	 * 单回调漏斗:连接生命周期与业务消息都从这一个口进来,switch 一次接完。
-	 * 活跃度标记因此天然只有这一处(旧 handler 对象时代要在 13 个槽位里各撒一次)。
-	 *
-	 * 主动关闭的 close 回声不会出现在这里 —— 客户端 close() 之后保证静默,
-	 * 旧的 consumeIntentionalClose 对暗号已随之退役。
-	 */
-	protected buildEventHandler(): (ev: LiveEvent) => void | Promise<void> {
-		// 返回值透传底下 handler 的 Promise:客户端不消费它,但测试靠 await 它
-		// 才能等事件真正跑完再断言(与旧 MsgHandler 的返回语义一致)。
-		return (ev) => {
-			switch (ev.kind) {
+	private noteEndDuringTransition(): void {
+		if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
+	}
+
+	private async details(
+		roomInfo: Record<string, unknown>,
+		totalViewers = this.watchedNumber,
+		status: "start" | "streaming" = "start",
+	): Promise<LiveDetails> {
+		const roomCover = typeof roomInfo.user_cover === "string" ? roomInfo.user_cover : "";
+		const keyframe = typeof roomInfo.keyframe === "string" ? roomInfo.keyframe : "";
+		const coverUrl = status === "streaming" ? keyframe || roomCover : roomCover || keyframe;
+		let coverRef: string | undefined;
+		if (coverUrl) {
+			const fetched = await this.ctx.source.fetchImage(scaledImageUrl(coverUrl), {
+				headers: IMAGE_REQUEST_HEADERS,
+			});
+			if (fetched.ok) coverRef = fetched.ref;
+		}
+		return liveDetailsFromRoomInfo(roomInfo, {
+			...(coverRef === undefined ? {} : { coverRef }),
+			...(totalViewers === undefined ? {} : { totalViewers }),
+			status,
+		});
+	}
+
+	private async fetchState(): Promise<Record<string, unknown> | undefined> {
+		return this.ctx.fetchRoomInfo(this.room.roomId);
+	}
+
+	private async rememberFanClub(): Promise<void> {
+		const master = await this.ctx.fetchMasterSnapshot(this.room.externalId);
+		if (master.name && !this.masterName) this.masterName = master.name;
+	}
+
+	async bootstrap(): Promise<void> {
+		let listening = false;
+		try {
+			listening = await this.ctx.startLiveRoomListener(
+				this.room.roomId,
+				this.buildEventHandler(),
+				() => this.cancelled,
+			);
+		} catch (error) {
+			if (error instanceof LiveRoomAccessDeniedError) {
+				this.resolveRisk(false);
+				this.reportRestricted(error.message);
+				this.logMonitoringStopped(error.message);
+				this.ctx.closeListener(this.room.roomId);
+				this.cancel();
+				return;
+			}
+			if (error instanceof LiveRoomPreflightBlockedError) {
+				this.reportRisk();
+				this.ctx.logger.warn(
+					`[conn] 直播间 [${this.room.roomId}] ${error.message},进入长尾重试,不放弃监测`,
+				);
+				void this.reconnect("preflight");
+				return;
+			}
+			this.resolveRisk(false);
+			throw error;
+		}
+		this.resolveRisk(listening);
+		if (!listening) {
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.danmakuConnect);
+			this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.danmakuConnect());
+			this.ctx.closeListener(this.room.roomId);
+			this.cancel();
+			return;
+		}
+		this.resolveStopped(ROOM_RESTRICTED_CODE);
+		this.startWatchdog();
+
+		this.beginLiveTransition();
+		let ready = false;
+		try {
+			ready = await this.bootstrapState();
+		} finally {
+			this.finishLiveTransition();
+		}
+		if (!ready) {
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
+			this.ctx.closeListener(this.room.roomId);
+			this.cancel();
+		}
+	}
+
+	private async bootstrapState(): Promise<boolean> {
+		this.bootstrapInFlight = true;
+		try {
+			return await this.bootstrapStateInner();
+		} finally {
+			this.bootstrapInFlight = false;
+		}
+	}
+
+	private async bootstrapStateInner(): Promise<boolean> {
+		const info = await this.fetchState();
+		if (!info?.uid) return false;
+		this.bootstrapped = true;
+		this.resolveStopped(MONITOR_STOPPED_CODE);
+		if (Number(info.live_status) !== 1) return true;
+
+		const [details] = await Promise.all([
+			this.details(info, this.watchedNumber, "streaming"),
+			this.rememberFanClub(),
+		]);
+		if (this.finishLiveTransition()) {
+			this.ctx.logger.info(
+				`[live] 直播间 [${this.room.roomId}] 启动期间已收到下播事件，不按在播处理`,
+			);
+			return true;
+		}
+		this.ctx.markReportedLive(this.room.externalId, true);
+		this.ctx.source.reportLive(this.room.externalId, {
+			kind: "status",
+			isLive: true,
+			...(liveTimeToIso(String(info.live_time ?? "")) === undefined
+				? {}
+				: { startedAt: liveTimeToIso(String(info.live_time ?? "")) }),
+			details,
+		});
+		return true;
+	}
+
+	private buildEventHandler(): (event: LiveEvent) => void | Promise<void> {
+		return (event) => {
+			switch (event.kind) {
 				case "open":
-					this.markLiveWsActivity("open");
+					this.markActivity("open");
 					return;
 				case "auth-ok":
-					this.markLiveWsActivity("auth-ok");
+					this.markActivity("auth-ok");
 					return;
 				case "auth-failed":
-					// token 可能过期/失配。走重连梯子:每轮都重新预检拿新 token。
-					this.ctx.logger.warn(`[conn] 直播间 [${this.sub.roomId}] 弹幕认证失败 code=${ev.code}`);
-					void this.reconnect("error", `认证失败 code=${ev.code}`);
+					this.ctx.logger.warn(
+						`[conn] 直播间 [${this.room.roomId}] 弹幕认证失败 code=${event.code}`,
+					);
+					void this.reconnect("error", `认证失败 code=${event.code}`);
 					return;
 				case "heartbeat":
-					this.markLiveWsActivity("heartbeat");
+					this.markActivity("heartbeat");
 					return;
 				case "closed":
-					if (this.cancelled || this.ctx.isDisposed()) return;
-					this.markLiveWsActivity("close");
-					void this.reconnect("close");
+					this.markActivity("close");
+					if (!this.cancelled && !this.ctx.isDisposed()) void this.reconnect("close");
 					return;
 				case "error":
-					return this.onError();
+					return this.reconnect("error");
 				case "danmu":
-					this.markLiveWsActivity("danmu");
-					this.onIncomeDanmaku(ev);
+					this.markActivity("danmu");
+					this.reportInteraction({
+						kind: "viewerChat",
+						viewer: { id: String(event.user.uid), name: event.user.name },
+						text: event.content,
+					});
 					return;
 				case "superchat":
-					this.markLiveWsActivity("superchat");
-					return this.onIncomeSuperChat(ev);
-				case "watched": {
-					this.markLiveWsActivity("watched");
-					this.liveData.watchedNum = ev.num;
-					const now = Date.now();
-					if (now - this.lastViewersEmitMs >= VIEWERS_EMIT_THROTTLE_MS) {
-						this.lastViewersEmitMs = now;
-						this.ctx.emitViewers(this.sub.uid, ev.num);
-					}
-					return;
-				}
-				case "liked":
-					this.markLiveWsActivity("liked");
-					this.liveData.likedNum = ev.count;
-					return;
+					this.markActivity("superchat");
+					return this.onSuperchat(event);
 				case "guard-buy":
-					this.markLiveWsActivity("guard");
-					return this.onGuardBuy(ev);
+					this.markActivity("guard");
+					return this.onMembership(event);
+				case "watched":
+					this.markActivity("watched");
+					this.watchedNumber = event.num;
+					this.reportViewers(event.num);
+					return;
+				case "liked":
+					this.markActivity("liked");
+					return;
 				case "live-start":
-					this.markLiveWsActivity("live-start");
+					this.markActivity("live-start");
 					return this.onLiveStart();
 				case "live-end":
-					this.markLiveWsActivity("live-end");
+					this.markActivity("live-end");
 					return this.onLiveEnd();
 				case "user-action":
-					if (!this.hasViewerEnterListed()) return;
-					this.markLiveWsActivity("interact");
-					return this.onUserAction(ev);
+					if (event.action === "enter") {
+						this.markActivity("interact");
+						this.reportInteraction({
+							kind: "viewerEnter",
+							viewer: { id: String(event.user.uid), name: event.user.name },
+						});
+					}
+					return;
 				case "raw":
-					// 未解析命令也是活的流量 —— watchdog 只关心连接死没死
-					this.markLiveWsActivity("raw");
-					// degraded = 已知命令解析失败(B 站可能改了字段形状),是协议
-					// 漂移信号,要报出来;plain raw 是刻意不解析的命令,属正常流量
-					if (ev.degraded) this.noteDegradedRaw(ev.cmd);
+					this.markActivity("raw");
+					if (event.degraded) this.noteDegradedRaw(event.cmd);
 					return;
 				default:
-					// 已解析但业务不消费的 kind(gift / room-change / 抽奖组等,
-					// 2026-08 定案「只打协议层地基」)—— 与 raw 同理,只标活跃度
-					this.markLiveWsActivity("other");
-					return;
+					this.markActivity("other");
 			}
 		};
 	}
 
-	/**
-	 * 漂移报警限流:同 cmd 首条立即 warn,之后每满 100 条再报一次累计 ——
-	 * 漂移一旦发生是每帧都漂,逐帧 warn 会刷爆日志。计数随 session 生命周期,
-	 * 不随重连清零(漂移不会因为重连而消失)。
-	 */
-	private noteDegradedRaw(cmd: string): void {
-		const count = (this.degradedRawCounts.get(cmd) ?? 0) + 1;
-		this.degradedRawCounts.set(cmd, count);
-		if (count === 1 || count % 100 === 0) {
+	private reportInteraction(report: LiveInteractionReport): void {
+		if (!this.alive) return;
+		this.ctx.source.reportLiveInteraction(this.room.externalId, report);
+	}
+
+	private async onSuperchat(event: Extract<LiveEvent, { kind: "superchat" }>): Promise<void> {
+		if (!this.masterName) await this.rememberFanClub();
+		if (event.user.avatarUrl) {
+			this.ctx.rememberSuperchatAvatar(String(event.user.uid), event.user.avatarUrl);
+		}
+		const translated = superchatEventFromLiveEvent(event, "");
+		const { subscriptionId: _subscriptionId, ...report } = translated;
+		const name = this.masterName;
+		this.reportInteraction({
+			kind: "superchat",
+			...report,
+			fallbackText: `【${name}的直播间】${report.viewer.name}的SC:${report.text}（${report.amount}元）`,
+		});
+	}
+
+	private async onMembership(event: Extract<LiveEvent, { kind: "guard-buy" }>): Promise<void> {
+		if (!this.masterName) await this.rememberFanClub();
+		const translated = membershipEventFromLiveEvent(event, "");
+		if (!translated) {
 			this.ctx.logger.warn(
-				`[proto] 直播间 [${this.sub.roomId}] 已知命令 ${cmd} 解析降级(累计 ${count} 次)—— B 站可能调整了字段形状,请检查更新`,
+				`[guard] 直播间 [${this.room.roomId}] 认不出的档位 guard_level=${event.guardLevel},已丢弃这条事件`,
 			);
+			return;
+		}
+		const { subscriptionId: _subscriptionId, ...report } = translated;
+		this.reportInteraction({
+			kind: "membership",
+			...report,
+			fallbackText: `【${this.masterName}的直播间】${report.viewer.name}加入了大航海（${report.tier.name}）`,
+		});
+	}
+
+	private reportViewers(viewers: number): void {
+		if (!this.alive || !this.ctx.hasReportedLive(this.room.externalId)) return;
+		const now = Date.now();
+		if (now - this.lastViewersReportAt < VIEWERS_EMIT_THROTTLE_MS) return;
+		this.lastViewersReportAt = now;
+		this.ctx.source.reportLive(this.room.externalId, {
+			kind: "status",
+			isLive: true,
+			details: { totalViewers: viewers },
+		});
+	}
+
+	private async onLiveStart(): Promise<void> {
+		const now = Date.now();
+		if (now - this.lastLiveStart < LIVE_EVENT_COOLDOWN) {
+			this.ctx.logger.debug(`[live] 直播间 [${this.room.roomId}] 的开播事件在冷却期内，忽略`);
+			return;
+		}
+		if (this.startingUp || this.ctx.hasReportedLive(this.room.externalId)) {
+			this.ctx.logger.debug(
+				`[live] 直播间 [${this.room.roomId}] 已经是开播状态或正在开播准备中，忽略重复的开播事件`,
+			);
+			return;
+		}
+		this.lastLiveStart = now;
+		this.beginLiveTransition(true);
+		let info: Record<string, unknown> | undefined;
+		let details: LiveDetails | undefined;
+		try {
+			info = await this.fetchState();
+			if (info) {
+				[details] = await Promise.all([this.details(info), this.rememberFanClub()]);
+			}
+		} finally {
+			this.startingUp = false;
+		}
+		const endedMeanwhile = this.finishLiveTransition();
+		if (!info || !details || !this.alive) {
+			if (!info && this.alive) {
+				this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+				this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
+				this.ctx.closeListener(this.room.roomId);
+				this.cancel();
+			}
+			return;
+		}
+		if (endedMeanwhile) {
+			this.ctx.logger.info(
+				`[live] 直播间 [${this.room.roomId}] 开播准备期间已收到下播事件，放弃本次开播推送`,
+			);
+			return;
+		}
+		const startedAt = liveTimeToIso(String(info.live_time ?? ""));
+		this.ctx.markReportedLive(this.room.externalId, true);
+		this.ctx.source.reportLive(this.room.externalId, {
+			kind: "start",
+			...(startedAt === undefined ? {} : { startedAt }),
+			details,
+		});
+	}
+
+	private async onLiveEnd(): Promise<void> {
+		const now = Date.now();
+		if (this.transitioningToLive) {
+			this.noteEndDuringTransition();
+			return;
+		}
+		if (now - this.lastLiveEnd < LIVE_EVENT_COOLDOWN) {
+			this.ctx.logger.debug(`[live] 直播间 [${this.room.roomId}] 的下播事件在冷却期内，忽略`);
+			return;
+		}
+		this.lastLiveEnd = now;
+		if (!this.ctx.hasReportedLive(this.room.externalId)) return;
+		this.ctx.markReportedLive(this.room.externalId, false);
+		if (this.alive) {
+			this.ctx.source.reportLive(this.room.externalId, {
+				kind: "end",
+				endedAt: new Date(now).toISOString(),
+			});
 		}
 	}
 
-	// ── Event handlers ────────────────────────────────────────────────────────
+	private markActivity(reason: ActivityReason): void {
+		this.lastActivityAt = Date.now();
+		this.lastActivityReason = reason;
+	}
 
-	private onError(): Promise<void> {
-		return this.reconnect("error");
+	private startWatchdog(): void {
+		if (this.watchdogTimer || this.cancelled || this.ctx.isDisposed()) return;
+		this.watchdogTimer = this.ctx.liveContext.setInterval(() => {
+			if (this.cancelled || this.ctx.isDisposed() || this.reconnecting) return;
+			const staleMs = Date.now() - this.lastActivityAt;
+			if (staleMs >= LIVE_WS_STALE_MS) {
+				void this.reconnect(
+					"watchdog",
+					`${Math.floor(staleMs / 1000)}s 无 heartbeat/消息(last=${this.lastActivityReason})`,
+				);
+			}
+		}, LIVE_WS_WATCHDOG_INTERVAL_MS);
+	}
+
+	private sleep(ms: number): Promise<void> {
+		return new Promise((resolve) => {
+			this.reconnectWake = resolve;
+			this.reconnectTimer = this.ctx.liveContext.setTimeout(() => {
+				this.reconnectTimer = undefined;
+				this.reconnectWake = undefined;
+				resolve();
+			}, ms);
+		});
 	}
 
 	private async reconnect(reason: ReconnectReason, detail?: string): Promise<void> {
-		if (this.cancelled || this.ctx.isDisposed()) return;
-		if (this.reconnecting) return; // L1:并发 error/close/watchdog,已有重连在跑,丢弃
+		if (!this.alive || this.reconnecting) return;
 		this.reconnecting = true;
 		try {
 			await this.reconnectLoop(reason, detail);
-		} catch (e) {
-			// 总兜底:reconnect 的 promise 被 watchdog / auth-failed / closed /
-			// preflight 四个入口以 void 丢弃 —— 这里再抛就是 unhandledRejection
-			// (Node 默认崩进程)。已知失败模式都在 loop 内消化,这层只接漏网的
-			// (如补跑推卡时渲染/推送 reject)。
-			const msg = `直播间 [${this.sub.roomId}] 重连流程内部异常:${(e as Error).message}`;
-			this.ctx.logger.error(`[conn] ${msg}`);
-			this.ctx.emitEngineError(msg);
+		} catch (error) {
+			this.ctx.logger.error(
+				`[conn] 直播间 [${this.room.roomId}] 重连流程内部异常:${String(error)}`,
+			);
 		} finally {
 			this.reconnecting = false;
 		}
 	}
 
-	/**
-	 * 退避重连循环(单飞,由 reconnect 持有)。`while` 取代旧的 `setTimeout(0)`
-	 * 递归续链 —— 杜绝深栈递归 + 每步都丢弃的定时器 Disposable;每次 sleep 后
-	 * 重校 cancelled/disposed,sleep 自身可被 cancel/teardown dispose。
-	 */
 	private async reconnectLoop(reason: ReconnectReason, detail?: string): Promise<void> {
-		// 「是**我们**把在播状态翻下去的」—— 只有这种情况才需要在重连成功后核对回来。
-		// 判「当前不在播」是不够的:本来就没在播的房间会被拖去做一次没意义的网络核对。
-		let weTurnedLiveOff = false;
-		// 上一次尝试是否被预检 -352 拦下。真 → 下一次 sleep 走长尾梯子且不消耗
-		// 秒级梯子的次数(不放弃);假 → 一切同旧。bootstrap 期被拦(reason=preflight)
-		// 从第一轮就按长尾等。
 		let preflightBlocked = reason === "preflight";
-		let preflightBlockedAttempts = 0;
+		let preflightAttempts = 0;
 		while (true) {
-			if (this.cancelled || this.ctx.isDisposed()) return;
-			if (reason === "error") {
-				if (this.liveStatus) weTurnedLiveOff = true;
-				this.setLiveStatus(false);
-				this.cancelPeriodicTimer();
-			}
-			this.ctx.closeListener(this.sub.roomId);
-
-			let delay: number;
+			if (!this.alive) return;
+			this.ctx.closeListener(this.room.roomId);
+			let delay: number | undefined;
 			const reasonText = this.describeReconnectReason(reason, detail);
 			if (preflightBlocked) {
-				const idx = Math.min(preflightBlockedAttempts, PREFLIGHT_BLOCKED_BACKOFF_MS.length - 1);
-				delay = PREFLIGHT_BLOCKED_BACKOFF_MS[idx] as number;
-				preflightBlockedAttempts++;
-				// 预检被拦说明服务在响应(是风控不是连接故障)—— 复位秒级计数,
-				// 否则风控波中拦截与普通失败交替时,5 个普通轮凑齐就 break 放弃。
+				delay =
+					PREFLIGHT_BLOCKED_BACKOFF_MS[
+						Math.min(preflightAttempts++, PREFLIGHT_BLOCKED_BACKOFF_MS.length - 1)
+					];
 				this.reconnectAttempts = 0;
 				this.ctx.logger.warn(
-					`[conn] 直播间 [${this.sub.roomId}] ${reasonText},${Math.round(delay / 1000)}s 后重试预检(长尾第 ${preflightBlockedAttempts} 次,不放弃)`,
+					`[conn] 直播间 [${this.room.roomId}] ${reasonText},${Math.round((delay as number) / 1000)}s 后重试预检(长尾第 ${preflightAttempts} 次,不放弃)`,
 				);
 			} else {
 				if (this.reconnectAttempts >= RECONNECT_BACKOFF_MS.length) break;
-				delay = RECONNECT_BACKOFF_MS[this.reconnectAttempts] as number;
+				delay = RECONNECT_BACKOFF_MS[this.reconnectAttempts];
 				this.reconnectAttempts++;
 				this.ctx.logger.warn(
-					`[conn] 直播间 [${this.sub.roomId}] ${reasonText},${delay / 1000}s 后重连(第 ${this.reconnectAttempts}/${RECONNECT_BACKOFF_MS.length} 次)`,
+					`[conn] 直播间 [${this.room.roomId}] ${reasonText},${(delay as number) / 1000}s 后重连(第 ${this.reconnectAttempts}/${RECONNECT_BACKOFF_MS.length} 次)`,
 				);
 			}
-			await this.sleepReconnect(delay);
-			if (this.cancelled || this.ctx.isDisposed()) return;
+			if (delay === undefined) break;
+			await this.sleep(delay);
+			if (!this.alive) return;
 
-			// L4:startLiveRoomListener 现返回是否真有 listener(新建,或退避窗口
-			// 内已被别处恢复)。throw 与 false 一并视为本轮失败,继续退避(while
-			// 续链,无递归、无丢弃定时器)。只有真成功才复位 backoff。
-			let ok = false;
+			let connected = false;
 			preflightBlocked = false;
 			try {
-				ok = await this.ctx.startLiveRoomListener(
-					this.sub.roomId,
+				connected = await this.ctx.startLiveRoomListener(
+					this.room.roomId,
 					this.buildEventHandler(),
 					() => this.cancelled,
 				);
-			} catch (e) {
-				if (e instanceof LiveRoomAccessDeniedError) {
-					this.reconnectAttempts = 0;
-					this.setLiveStatus(false);
-					this.cancelPeriodicTimer();
-					// 先报、再 cancel:cancel 之后会话就不「活着」了,报不上去
-					this.reportRestricted(e.message);
+			} catch (error) {
+				if (error instanceof LiveRoomAccessDeniedError) {
+					this.reportRestricted(error.message);
+					this.logMonitoringStopped(error.message);
+					this.ctx.closeListener(this.room.roomId);
 					this.cancel();
-					this.ctx.stopMonitoring(e.message, this.sub.roomId);
 					return;
 				}
-				if (e instanceof LiveRoomPreflightBlockedError) {
-					// 风控还没散,回长尾继续等;计数不清零,间隔继续爬到封顶。会话在等预检时被停掉就不报:
-					// 迟到的风控留下来没人清得掉。
+				if (error instanceof LiveRoomPreflightBlockedError) {
 					this.reportRisk();
 					preflightBlocked = true;
 					continue;
 				}
+				this.ctx.logger.warn(`[conn] 直播间 [${this.room.roomId}] 重连发起异常:${String(error)}`);
+			}
+			this.resolveRisk(connected);
+			if (!connected) {
+				this.ctx.logger.warn(`[conn] 直播间 [${this.room.roomId}] 重连未成功,继续退避`);
+				continue;
+			}
+			this.ctx.logger.info(`[conn] 直播间 [${this.room.roomId}] 重连成功`);
+			this.markActivity("connected");
+			this.startWatchdog();
+			this.reconnectAttempts = 0;
+
+			if (!this.bootstrapped) {
+				if (this.bootstrapInFlight) return;
+				const ready = await this.bootstrapState();
+				if (ready) return;
 				this.ctx.logger.warn(
-					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
+					`[conn] 直播间 [${this.room.roomId}] 重连后初始房态拉取失败,回长尾退避重试`,
 				);
+				preflightBlocked = true;
+				continue;
 			}
-			// 这一次预检没被拦(连上了、没连上、别的异常都算):这一路的风控清掉;连上了才算风控解除。
-			this.resolveRisk(ok);
-			// ②6:post-await 重校。startLiveRoomListener 期间若与 stopForUid /
-			// teardown 交错(cancelled / disposed 翻转),刚建的 listener 是孤儿 ——
-			// 主动关掉再退出,绝不留永不关闭的连接(此前只判 ok 漏了这条)。
-			if (this.cancelled || this.ctx.isDisposed()) {
-				if (ok) this.ctx.closeListener(this.sub.roomId);
-				return;
-			}
-			if (ok) {
-				this.onListenerStarted();
-				this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
-				this.reconnectAttempts = 0;
-				// 预检被风控挡在 bootstrap 门外的房间,从没跑过 bootstrapRoomState ——
-				// 房间信息 / 已在播检测 / 重启补报都还欠着,这里补跑(同款
-				// 「翻成在播」窗口包裹)。与 weTurnedLiveOff 天然互斥:没 bootstrap
-				// 过的房间 liveStatus 恒为 false,不可能是我们翻下去的。
-				if (!this.bootstrapped) {
-					if (this.bootstrapInFlight) {
-						// bootstrap 窗口内断线:首跑还在途,新 listener 已就位,房态
-						// 由首跑收尾 —— 不并发第二份(双开会重复推「正在直播」卡、
-						// 交错 transition 窗口)。
-						return;
-					}
-					this.beginLiveTransition();
-					let stateReady = false;
-					try {
-						stateReady = await this.bootstrapRoomState();
-					} finally {
-						this.finishLiveTransition();
-					}
-					if (stateReady) return;
-					// 熬过风控刚连上,初始信息拉取又失败 —— 多半泡在同一场风控余波里。
-					// 回长尾继续等,不 cancel:一次瞬时 HTTP 失败不该毙掉「永不放弃」的房间。
-					this.ctx.logger.warn(
-						`[conn] 直播间 [${this.sub.roomId}] 重连后初始房态拉取失败,回长尾退避重试`,
-					);
+			if (this.ctx.hasReportedLive(this.room.externalId)) {
+				const info = await this.fetchState();
+				if (!info) {
 					preflightBlocked = true;
 					continue;
 				}
-				// 上面 `reason === "error"` 的分支把状态翻成了下播并停了周期复推。
-				// 那是保守处置(连接断了,我们确实不知道房间还在不在播),但**必须
-				// 在重连成功后核对回来** —— 否则几小时后真正的下播事件会撞上
-				// `handleLiveEnd` 的 `!this.liveStatus` 守卫被丢弃,这一场永远等不到
-				// end:面板停在断连那一刻,统计侧的时长也在那里截断。
-				//
-				// 核对走 `isLiveAgain()`(重拉房间信息看 `live_status`),它经由
-				// `useLiveRoomInfo` 的非 Start 分支保留 `live_time` —— 与开播时带出去的
-				// 是同一个字符串,统计侧据此认出这是同一场,把先前那帧 end 覆盖掉,
-				// 时长自动补回完整值。
-				//
-				// 这段 await 是个真实的抢占窗口:上面 `onListenerStarted()` 已经跑过,
-				// 新 WS 正在派发事件,而 `liveStatus` 此刻是 false。期间若真下播,那条 END
-				// 会被 `handleLiveEnd` 的守卫丢弃 —— 再无条件翻回在播就永远卡住了,
-				// 所以翻之前必须查 `endArrivedWhileTransitioning`。
-				if (weTurnedLiveOff) {
-					// 这条路径正在替这个房间裁决在播状态,并发的 LIVE 帧交给 isLiveAgain()
-					// 的结果统一收口即可,不必再走一遍开播流水线多推一张开播卡。
-					this.beginLiveTransition(true);
-					const stillLive = await this.isLiveAgain();
-					const endedMeanwhile = this.finishLiveTransition();
-					// post-await 重校:核对期间可能已被 stopForUid / teardown 掐掉。
-					if (this.cancelled || this.ctx.isDisposed()) return;
-					if (stillLive && !endedMeanwhile) {
-						this.setLiveStatus(true);
-						this.armPeriodicTimer();
-					} else if (endedMeanwhile) {
+				if (Number(info.live_status) === 1) {
+					if (!this.ctx.hasReportedLive(this.room.externalId)) {
 						this.ctx.logger.info(
-							`[conn] 直播间 [${this.sub.roomId}] 重连核对期间已收到下播事件，保持下播状态`,
+							`[conn] 直播间 [${this.room.roomId}] 重连核对期间已收到下播事件，保持下播状态`,
 						);
+						return;
 					}
+					const details = await this.details(info, this.watchedNumber, "streaming");
+					const startedAt = liveTimeToIso(String(info.live_time ?? ""));
+					this.ctx.source.reportLive(this.room.externalId, {
+						kind: "status",
+						isLive: true,
+						...(startedAt === undefined ? {} : { startedAt }),
+						details,
+					});
+					return;
 				}
-				return;
+				this.ctx.markReportedLive(this.room.externalId, false);
+				this.ctx.source.reportLive(this.room.externalId, {
+					kind: "end",
+					endedAt: new Date().toISOString(),
+				});
 			}
-			this.ctx.logger.warn(`[conn] 直播间 [${this.sub.roomId}] 重连未成功,继续退避`);
+			return;
 		}
-		// 退避耗尽 → 真正放弃 + 走 engine-error(adapter 转 master DM / log channel)。
-		this.reconnectAttempts = 0;
-		const msg = `直播间 [${this.sub.roomId}] ${this.describeReconnectReason(reason, detail)}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
-		this.ctx.logger.error(`[conn] ${msg}`);
-		this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp);
-		// 收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,watchdog /
-		// close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里 WS 已彻底关闭、
-		// 再不会有任何事件,留着 true 就是个永远「在播」的僵尸:listLiveRooms 一直把它
-		// 报成在播,统计侧按 now−startedAt 让时长无界增长。
-		if (this.liveStatus) {
-			// 但**不能只是**把状态翻下去:那样这一场对用户就是凭空消失 —— 没有下播卡、
-			// 没有词云 / 直播总结,弹幕缓冲还留着漏进下一场。死掉的只是 WS,HTTP 照样通,
-			// 整条下播流水线都跑得起来,所以正经走完它。
-			//
-			// 但这里是「一切都已经失败」的收尾路径,它自己绝不能再炸:reconnect 多由
-			// `void this.reconnect(...)`(watchdog)发起,抛出去就是个没人接的 rejection,
-			// 而且状态就停在 true —— 恰好回到我们要消灭的那个僵尸。兜住,至少把状态收口。
-			try {
-				await this.handleLiveEnd("giveup");
-			} catch (e) {
-				this.ctx.logger.warn(
-					`[conn] 直播间 [${this.sub.roomId}] 放弃监听时的下播处理失败:${(e as Error).message}`,
-				);
-				this.setLiveStatus(false);
+		const reasonText = this.describeReconnectReason(reason, detail);
+		this.ctx.logger.error(
+			`[conn] 直播间 [${this.room.roomId}] ${reasonText}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`,
+		);
+		this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp());
+		const wasReportedLive = this.ctx.hasReportedLive(this.room.externalId);
+		this.ctx.markReportedLive(this.room.externalId, false);
+		try {
+			if (wasReportedLive) {
+				this.ctx.source.reportLive(this.room.externalId, {
+					kind: "end",
+					endedAt: new Date().toISOString(),
+				});
 			}
-		} else {
-			this.setLiveStatus(false);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp);
+		} catch (error) {
+			this.ctx.logger.warn(
+				`[conn] 直播间 [${this.room.roomId}] 放弃监听时的下播处理失败:${String(error)}`,
+			);
+		} finally {
+			this.ctx.closeListener(this.room.roomId);
+			this.cancel();
 		}
-		this.cancel();
 	}
 
 	private describeReconnectReason(reason: ReconnectReason, detail?: string): string {
@@ -514,375 +641,17 @@ export class RoomSession extends RoomSessionBase {
 		return detail ? `连接静默(${detail})` : "连接静默";
 	}
 
-	/** bootstrap 期预检被 -352 拦截 → 直接进长尾重试(不占用秒级梯子、不放弃房间)。 */
-	protected override onPreflightBlocked(): void {
-		void this.reconnect("preflight");
+	private logMonitoringStopped(reason: string): void {
+		this.ctx.logger.error(`[conn] [${this.room.roomId}] ${reason}，已停止该房间的监测`);
 	}
 
-	/**
-	 * L3:可被 {@link clearReconnectSleep} 取消的退避 sleep。dispose 时立即
-	 * resolve,让 reconnectLoop 醒来重校 cancelled/disposed 后退出 —— 不再留
-	 * 一个无法清除的延迟回调到 expiry。
-	 */
-	private sleepReconnect(ms: number): Promise<void> {
-		return new Promise<void>((resolve) => {
-			this.reconnectWake = resolve;
-			this.reconnectTimer = this.ctx.serviceCtx.setTimeout(() => {
-				this.reconnectTimer = undefined;
-				this.reconnectWake = undefined;
-				resolve();
-			}, ms);
-		});
-	}
-
-	private onIncomeDanmaku(body: { content: string; user: { name: string; uid: number } }): void {
-		if (this.ctx.collectsDanmaku(this.sub)) {
-			this.ctx.danmakuCollector.recordViewerChat(
-				this.sub.subscriptionId,
-				body.content,
-				body.user.name,
-			);
-		}
-		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
-		pushViewerChat(
-			{
-				viewer: { id: String(body.user.uid), name: body.user.name },
-				text: body.content,
-				settings: this.sub.customSpecialDanmakuUsers,
-				creator: { name: this.masterInfo?.username ?? "" },
-			},
-			{ send: this.specialTextSender(LivePushType.ViewerChat) },
-		);
-	}
-
-	/** 把「推一句文字」绑到这条订阅上;引擎拆了就不再往外推。 */
-	private specialTextSender(type: LivePushType): (text: string) => void {
-		return (text) => {
-			if (this.ctx.isDisposed()) return;
-			this.ctx.safeBroadcast(
-				this.sub.uid,
-				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-				type,
-			);
-		};
-	}
-
-	/**
-	 * 醒目留言:先翻成中立的 {@link SuperchatEvent}(档位在那一步按价格算,B 站的原始数据到此为止),再按事件出卡。
-	 *
-	 * 出卡**不调接口查发送者**:名字用消息里带的,头像是帧里自带的地址(出卡前抓进图库,抓不到只是没有头像),所以
-	 * 「查发送者失败退成文字」那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛(㉓d):金额低于 `minSuperchatAmount` 才拦,
-	 * 只在币种是人民币时比(别的币种放行),没配不拦;被拦的正文照样先记进弹幕收集。
-	 */
-	private async onIncomeSuperChat(ev: SuperChatEvent): Promise<void> {
-		const collectsDanmaku = this.ctx.collectsDanmaku(this.sub);
-		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
-		if (!collectsDanmaku && !pushesSC) return;
-		if (collectsDanmaku) {
-			this.ctx.danmakuCollector.recordViewerChat(this.sub.subscriptionId, ev.content, ev.user.name);
-		}
-		if (!pushesSC) return;
-		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);
-		const masterName = this.masterInfo?.username ?? "";
-		const renderer = this.ctx.imageRenderer;
-		const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
-		// 发送绑到这条订阅上:引擎拆了不再推;图 / 文字各包成一条消息,过串行闸推出去。
-		const pushMain = async (message: unknown): Promise<void> => {
-			if (this.ctx.isDisposed()) return;
-			await this.enqueuePush(() =>
-				this.ctx.push.push({
-					uid: this.sub.uid,
-					type: LivePushType.Superchat,
-					anchors: [{ role: "main", messages: [message] }],
-				}),
-			);
-		};
-		await pushSuperchat(
-			{
-				event,
-				// minSuperchatAmount 已由 adapter 折算好(per-UP ?? 全局)。
-				minAmount: this.sub.minSuperchatAmount,
-				// 主播头像是订阅资料里已有的引用(零网络)。
-				creator: {
-					name: masterName,
-					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
-				},
-				...this.skinChoice(),
-				fallbackText: `【${masterName}的直播间】${event.viewer.name}的SC:${event.text}（${event.amount}元）`,
-			},
-			{
-				renderer: renderer?.generateSuperchatCard ? renderer : null,
-				// 观众头像取自帧里自带的地址,抓不到只是没有头像。
-				fetchViewerAvatar: async () =>
-					ev.user.avatarUrl
-						? await fetchAvatar(ev.user.avatarUrl, {
-								images: this.ctx.imageFetcher,
-								logger: this.ctx.logger,
-							})
-						: undefined,
-				send: (segment) => pushMain(segmentsToContent(this.ctx.contentBuilder, [segment])),
-				logger: this.ctx.logger,
-			},
-		);
-	}
-
-	/**
-	 * 上舰:先翻成中立的 {@link MembershipEvent},认不出档位(`guard_level` 不是 1 / 2 / 3)就**丢弃并记一条警告**
-	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自来源登记表里的描述符。
-	 *
-	 * 门槛(㉓d)、自定义文案、出卡、兜底这几支都在核心的 `live/membership.ts`(`pushMembership`);这里只管翻事件、查档位表、
-	 * 挑生效的文案包,并把徽章 / 观众头像的取法与发送(不过串行闸)绑进去。头像帧里没有,出卡前为它查一次接口再抓进图库
-	 * (失败只是没有观众头像,卡照出)。
-	 */
-	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
-		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
-		const event = membershipEventFromLiveEvent(ev, this.sub.subscriptionId);
-		const guard = guardTierAt(this.ctx.sources, ev.guardLevel);
-		if (event === undefined || guard === undefined) {
+	private noteDegradedRaw(cmd: string): void {
+		const count = (this.degradedRawCounts.get(cmd) ?? 0) + 1;
+		this.degradedRawCounts.set(cmd, count);
+		if (count === 1 || count % 100 === 0) {
 			this.ctx.logger.warn(
-				`[guard] 直播间 [${this.sub.roomId}] 认不出的档位 guard_level=${ev.guardLevel},已丢弃这条事件`,
+				`[proto] 直播间 [${this.room.roomId}] 已知命令 ${cmd} 解析降级(累计 ${count} 次)—— B 站可能调整了字段形状,请检查更新`,
 			);
-			return;
 		}
-		const { tier } = guard;
-		const masterName = this.masterInfo?.username ?? "";
-		const renderer = this.ctx.imageRenderer;
-		const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
-		await pushMembership(
-			{
-				event,
-				tier,
-				// minGuardRank 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
-				minRank: this.sub.minGuardRank,
-				// 订阅自己开了自定义文案就用订阅的整份,否则用全局的。
-				template: this.sub.guardTemplate.enabled
-					? this.sub.guardTemplate
-					: this.ctx.config.guardTemplate,
-				creator: {
-					name: masterName,
-					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
-				},
-				...this.skinChoice(),
-				fallbackText: `【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
-			},
-			{
-				renderer: renderer?.generateMembershipCard ? renderer : null,
-				// 描述符里有引用就直接用;运行中还没补上的,经来源的懒取口抓一次(两次尝试之间有最小间隔)。
-				// 还是没有就不带 `icon`,卡上的徽章块自己收起。
-				fetchTierIcon: async () => {
-					if (tier.icon?.ref !== undefined) return { ref: tier.icon.ref };
-					const reader = this.ctx.sources.get(guard.sourceKey)?.liveInteractions;
-					if (!reader) return undefined;
-					const result = await reader.fetchTierIcon(
-						{ sourceKey: guard.sourceKey, externalId: this.sub.uid },
-						guard.program,
-						tier.key,
-						this.ctx.serviceCtx.signal,
-					);
-					return result.ok ? { ref: result.ref } : undefined;
-				},
-				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出)。
-				// 撞到限流后所有直播间共用一段冷却(`ctx.viewerAvatars`),冷却里不查。
-				fetchViewerAvatar: () => this.ctx.viewerAvatars.fetch(event.viewer.id, this.sub.uid),
-				// 使用者自填的图网址经抓图服务取回(不带 B 站的 Referer 与缩放后缀),字节从图库读。
-				fetchImage: (url) => this.ctx.imageFetcher.fetchImage(url),
-				readImage: this.ctx.readImage,
-				// 不过串行闸(三处从来都是直接推)。
-				send: async (segments) => {
-					if (this.ctx.isDisposed()) return;
-					await this.ctx.push.push({
-						uid: this.sub.uid,
-						type: LivePushType.LiveGuardBuy,
-						anchors: [
-							{ role: "main", messages: [segmentsToContent(this.ctx.contentBuilder, segments)] },
-						],
-					});
-				},
-				logger: this.ctx.logger,
-			},
-		);
-	}
-
-	private async onLiveStart(): Promise<void> {
-		const now = Date.now();
-		// 断流接续:挂起等待期内的重新开播 = 同一场直播。取消等待、恢复复推,**不**发开播卡、
-		// **不**清弹幕缓冲、**不**动 liveTime/粉丝基线(全沿用第一次开播)。先于冷却 / liveStatus
-		// 去重判断,因为挂起期 liveStatus 仍为 true,否则会被既有「已开播,忽略」分支吞掉。
-		if (this.pendingEndTimer) {
-			const gapSec = Math.round((now - this.lastLiveEnd) / 1000);
-			this.cancelPendingEnd();
-			this.armPeriodicTimer();
-			this.ctx.logger.info(
-				`[grace] 直播间 [${this.sub.roomId}] 断流 ${gapSec}s 后重新开播,接续为同一场直播`,
-			);
-			return;
-		}
-		if (now - this.lastLiveStart < LIVE_EVENT_COOLDOWN) {
-			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的开播事件在冷却期内，忽略`);
-			return;
-		}
-		// `startingUp` 一并挡在这里:翻状态挪到刷新之后以后,`liveStatus` 在整段准备期
-		// 都还是 false,不能再独自兼任同步去重闸门。冷却窗口(10s)通常也够,但网络慢到
-		// await 超过冷却时就漏了,这道闸门与它是叠加关系。
-		//
-		// 注意用的是 `startingUp` 而不是 `transitioningToLive` —— 后者 bootstrap 也会开,
-		// 拿它去重会把 bootstrap 期间的真开播事件一并吞掉(见 startingUp 的说明)。
-		if (this.liveStatus || this.startingUp) {
-			this.ctx.logger.debug(
-				`[live] 直播间 [${this.sub.roomId}] 已经是开播状态或正在开播准备中，忽略重复的开播事件`,
-			);
-			return;
-		}
-		// L2:仅在真正“接受”一次开播(过冷却 + 过 liveStatus 去重)时才打冷却
-		// 戳。此前在去重前就 lastLiveStart=now,一条 >10s 的重复 START 也会刷新
-		// 窗口,导致紧随其后 10s 内的“真重启”被冷却静默吞掉。
-		this.lastLiveStart = now;
-		// 新的一场:上一场收到的观看人数与点赞清掉。`liveData` 是会话级的、房间一直开着监听,不清的话这两格会一直留到
-		// 下一场 —— 开播卡、`{watched}`、在播快照在新的一帧到来之前拿的都是上一场的数。时机就是此刻(开播事件刚被接受):
-		// 刷房间信息那几秒里到的帧已经是这一场的,晚清会把它抹掉;下播时不清(下播卡要用);断流接续里重新开播被上面
-		// 「已经是开播状态」的去重挡住了,不算新的一场。
-		this.resetLiveCounters();
-		// 先把房间信息刷成**本场**的,再翻状态 —— 这个顺序不能反。
-		//
-		// `setLiveStatus(true)` 会把 `liveRoomInfo.live_time` 换算成 `startedAt` 带出去,
-		// 而那个字符串**就是这一场的身份**:统计侧按它认场次(精确相等匹配),同一场还会
-		// 被断线重连后的核对、重启后的 bootstrap 再观测到,那两条路径读的都是 B 站的
-		// `live_time`。所以这里必须用同一把尺子。
-		//
-		// 抢在刷新之前翻状态会读到上一场的陈旧值(非 Start 分支刻意冻结 `live_time`,
-		// 好让下播卡算已播时长),带出去就是隔天的时刻。曾经为此改成「先清空再翻」,
-		// 结果 `startedAt` 变成 undefined、消费方回退到「我们发现的时刻」,与另两条
-		// 路径差着几秒 —— 同一场被记成两条区间重叠的记录,场次数与总时长直接膨胀,
-		// 而且错误写进 append-only 文件后事后无法修。两害相权,统一用 B 站的尺子。
-		//
-		// 代价是整段 await 期间 `liveStatus` 仍是 false,不能再兼任同步去重闸门:
-		// 重复 START 由上面的 `startingUp` 挡,期间到达的 END 由它记账、下面收口。
-		this.beginLiveTransition(true);
-		const refreshed =
-			(await this.useLiveRoomInfo(LiveType.StartBroadcasting)) &&
-			(await this.useMasterInfo(LiveType.StartBroadcasting));
-		// 先关窗口再判失败:否则刷新失败那条路径会把标志漏给下一次事件。
-		const endedMeanwhile = this.finishLiveTransition();
-		// 这三个条件分开写而不是并进一个布尔量:TS 的控制流收窄认字段判空,
-		// 收进变量后下面 `this.liveRoomInfo!` 就到处都要非空断言了。
-		if (!refreshed || !this.liveRoomInfo || !this.masterInfo) {
-			if (this.ctx.isDisposed()) return;
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
-			this.onMonitoringStopped();
-			this.ctx.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", this.sub.roomId);
-			return;
-		}
-		if (endedMeanwhile) {
-			// 准备期间这一场就结束了。翻成在播的话,那条已被守卫丢弃的 END 不会再来
-			// 第二次,房间从此永远卡在「直播中」。开播卡也不推 —— 人都已经下播了。
-			// 弹幕缓冲已由 finishLiveTransition 排空。
-			this.ctx.logger.info(
-				`[live] 直播间 [${this.sub.roomId}] 开播准备期间已收到下播事件，放弃本次开播推送`,
-			);
-			return;
-		}
-		this.setLiveStatus(true);
-		this.ctx.logger.info(
-			`[stat] 房间号：${this.masterInfo.roomId}，开播时的粉丝数：${this.masterInfo.liveOpenFollowerNum}`,
-		);
-		// live_time 是北京时间,兜底也得按北京时间拼:读它的 liveTimeToIso 一律当北京时间读。
-		this.liveTime =
-			this.liveRoomInfo.live_time ||
-			DateTime.now().setZone("UTC+8").toFormat("yyyy-MM-dd HH:mm:ss");
-		const diffTime = this.liveElapsed();
-		const followerNum = formatCount(this.masterInfo.liveOpenFollowerNum);
-		this.liveData.fansNum = this.masterInfo.liveOpenFollowerNum;
-		const roomLink = buildRoomLink(this.liveRoomInfo);
-		// 消息版式来自 per-UP 折叠值(宿主恒填)。链接独立成部件,
-		// 由 sendLiveNotifyCard 按块序装配。
-		const liveStartMsg = this.ctx.templateRenderer.renderLiveStart({
-			sub: this.sub,
-			globalCustom: this.ctx.config.customLiveMsg,
-			master: this.masterInfo,
-			diffTime,
-			followerNum,
-		});
-
-		// 串行闸(enqueuePush):秒级断流重开时,这张开播卡会与上一场还在途的下播卡
-		// 并发 —— 不排队的话谁快谁先送达,用户看到「先开播后下播」的倒序。
-		// 抓成局部变量再入闸:非空收窄进不了闭包,卡片也本就该反映发起时刻的状态。
-		const liveRoomInfo = this.liveRoomInfo;
-		const master = this.masterInfo;
-		await this.enqueuePush(() =>
-			this.ctx.sendLiveNotifyCard({
-				liveType: LiveType.StartBroadcasting,
-				liveData: this.liveData,
-				liveRoomInfo,
-				master,
-				liveCover: this.liveCover(),
-				...this.skinChoice(),
-				subscriptionId: this.sub.subscriptionId,
-				uid: this.sub.uid,
-				notifyMsg: liveStartMsg,
-				messageLayout: this.sub.messageLayout,
-				roomLink,
-			}),
-		);
-
-		if (this.ctx.isDisposed()) return;
-		// 跨 useLiveRoomInfo / useMasterInfo / sendLiveNotifyCard
-		// 这串长 await(卡片渲染+推送可数秒)后重校 liveStatus:期间可能已交错
-		// onLiveEnd → handleLiveEnd 把状态翻 idle 并 teardown。此刻若已非开播态,
-		// 这条 stale start 绝不能再 armPeriodicTimer,否则 idle 房间被挂上 live
-		// 周期定时器(轮询/词云/总结全部错位触发)。
-		if (!this.liveStatus) {
-			this.ctx.logger.warn(
-				`[live] 直播间 [${this.sub.roomId}] 开播流程完成时已非开播态（疑似交错下播），跳过周期任务`,
-			);
-			return;
-		}
-		this.armPeriodicTimer();
-	}
-
-	private async onLiveEnd(): Promise<void> {
-		const now = Date.now();
-		if (now - this.lastLiveEnd < LIVE_EVENT_COOLDOWN) {
-			// 冷却是用来吞掉 B 站对**同一次**转换重复派发的帧的。但正处在「翻成在播」窗口时,
-			// 这条 END 讲的是新的一场(直播抖动:END → 3s 后 LIVE → 8s 后又 END,第二条就落在
-			// 上一条的冷却里),而这里在 triggerLiveEnd 之前就 return —— 记账代码在
-			// handleLiveEnd 里,这条路径根本走不到。所以记账必须提到冷却之前。
-			this.noteEndDuringTransition();
-			this.ctx.logger.debug(`[live] 直播间 [${this.sub.roomId}] 的下播事件在冷却期内，忽略`);
-			return;
-		}
-		this.lastLiveEnd = now;
-		await this.triggerLiveEnd("ws");
-	}
-
-	/**
-	 * 特别关注用户进房。
-	 *
-	 * 事件源是 `INTERACT_WORD_V2` **一帧独供**(parser 只解它;`ENTRY_EFFECT` /
-	 * v1 `INTERACT_WORD` / `LIKE_INFO_V3_CLICK` 一律走 raw 不进来)。blive 库时代
-	 * `onUserAction` 是四个上游事件的汇流口,ENTRY_EFFECT 被硬编码成 "enter",
-	 * 舰长进房会推两次 —— 那时靠 `msg.type` 对暗号排重;自实现后源头就只有一个,
-	 * 暗号不需要了,但**别把 ENTRY_EFFECT 加回 parser**,不然旧 bug 原样复活。
-	 *
-	 * `user.uid` 是 number,而白名单存的是 string,比对前必须转。
-	 */
-	/** 名单上有没有人带 `viewerEnter`:没有就不必处理进场帧(开关归推送层判,不在这里挡)。 */
-	private hasViewerEnterListed(): boolean {
-		return this.sub.customSpecialUsersEnterTheRoom.specialViewers.some((v) =>
-			v.features.includes("viewerEnter"),
-		);
-	}
-
-	private async onUserAction(ev: { action: UserActionKind; user: LiveUser }): Promise<void> {
-		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
-		if (!this.hasViewerEnterListed()) return;
-		if (ev.action !== "enter") return;
-		pushViewerEnter(
-			{
-				viewer: { id: String(ev.user.uid), name: ev.user.name },
-				settings: this.sub.customSpecialUsersEnterTheRoom,
-				creator: { name: this.masterInfo?.username ?? "" },
-			},
-			{ send: this.specialTextSender(LivePushType.ViewerEnter) },
-		);
 	}
 }

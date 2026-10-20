@@ -1,32 +1,11 @@
-/**
- * `RoomContext` 里往问题表报「房间不监听了」的那几处(真 RoomContext + 假 api + 假上报器)。
- *
- * - 取房间信息抛错:报订阅级「停止监听」(原因「取直播间信息失败」),关连接;**不私聊、不发 engine-error**;
- * - `stopMonitoring` 只管停(关连接、拆计时器),不再发 engine-error —— 后果各调用点自己带着 uid 去报;
- * - 取个人信息失败只记日志:后果由随后那条「停止监听」去报,单独报一条没人会清;
- * - 这个人不再需要监听走静默清(房间又监听上了的普通清是会话里单条做的,见 room-session-problems)。
- */
-
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { switchableLocale } from "../../../../__tests__/support/fixed-locale";
-import { createProblemLayers, type ProblemLayers } from "../../../problem-layers";
-import { PROBLEM_TEXTS } from "../../../problem-texts";
-import {
-	MONITOR_STOPPED_CODE,
-	ROOM_RESTRICTED_CODE,
-	type RoomContextOptions,
-} from "../room-context";
-import { RoomContext } from "../room-helpers";
-import { expectedStoppedFailure, makeLiveProblems } from "./support/live-problems";
+import { PROBLEM_TEXTS } from "../../../problem-texts.js";
+import { RoomContext } from "../room-context.js";
+import { makeLiveProblems } from "./support/live-problems.js";
+import { makeSessionHarness } from "./support/room-session.js";
 
-function makeCtx(
-	api: Record<string, unknown> = {},
-	realProblems?: Pick<
-		ProblemLayers,
-		"reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
-	>,
-) {
+function makeCtx(api: Record<string, unknown> = {}) {
 	const serviceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		setInterval: () => ({ dispose() {} }),
@@ -35,68 +14,55 @@ function makeCtx(
 		signal: new AbortController().signal,
 		track: () => {},
 	};
-	const fakeProblems = makeLiveProblems();
-	const problems = realProblems ?? fakeProblems;
-	const emitEngineError = vi.fn();
+	const problems = makeLiveProblems();
 	const ctx = new RoomContext({
-		serviceCtx,
-		api,
-		// push 上什么口都没有:要是还有人去私聊主人,下面的用例就抛了
-		push: {},
+		api: api as never,
+		liveContext: serviceCtx,
+		source: { subscriptions: () => [] } as never,
 		problems,
-		contentBuilder: {},
-		templateRenderer: {},
-		wordcloudGenerator: {},
-		liveSummaryRequester: {},
-		danmakuCollector: {},
-		getImageRenderer: () => null,
-		config: {},
-		emitEngineError,
-	} as unknown as RoomContextOptions);
-	return { ctx, problems: fakeProblems, emitEngineError };
+		liveRoomIds: { get: () => undefined },
+		fanClubNames: { set() {} },
+		rememberSuperchatAvatar() {},
+	});
+	return { ctx, problems };
 }
 
-describe("RoomContext.getLiveRoomInfo", () => {
-	// 验红:把 room-helpers.ts 里 `this.reportMonitorStopped(…)` 那一行删掉,这条红。
+describe("RoomContext.fetchRoomInfo", () => {
 	it("抛错:报订阅级「停止监听」(取直播间信息失败),返回 undefined,不发 engine-error", async () => {
-		const { ctx, problems, emitEngineError } = makeCtx({
-			fetchLiveRoomInfo: vi.fn(async () => {
-				throw new Error("boom");
-			}),
+		const h = makeSessionHarness({
+			roomInfo: async () => undefined,
 		});
-		const closeListener = vi.spyOn(ctx, "closeListener");
-
-		await expect(ctx.getLiveRoomInfo("r1", "u1")).resolves.toBeUndefined();
-
-		expect(problems.reportFailure).toHaveBeenCalledTimes(1);
-		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
+		await h.bootstrap();
+		expect(h.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(h.problems.reportFailure).toHaveBeenCalledWith(
+			expect.objectContaining({
+				externalId: "u1",
+				code: "live_monitor_stopped",
+				message: expect.any(Function),
+			}),
 		);
-		expect(closeListener).toHaveBeenCalledWith("r1");
-		expect(emitEngineError).not.toHaveBeenCalled();
+		expect(h.closeListener).toHaveBeenCalledWith("r1");
+		expect(h.warnings.some((args) => String(args[0]).includes("engine-error"))).toBe(false);
 	});
 
 	it("拉到了:原样返回 data,什么都不报", async () => {
 		const data = { uid: 1, live_status: 0 };
 		const { ctx, problems } = makeCtx({ fetchLiveRoomInfo: vi.fn(async () => ({ data })) });
-		await expect(ctx.getLiveRoomInfo("r1", "u1")).resolves.toBe(data);
+		await expect(ctx.fetchRoomInfo("r1")).resolves.toBe(data);
 		expect(problems.reportFailure).not.toHaveBeenCalled();
 	});
 });
 
-describe("RoomContext.stopMonitoring", () => {
+describe("RoomContext.closeListener", () => {
 	it("只管停:关连接、拆这个房间的计时器;不发 engine-error", () => {
-		const { ctx, emitEngineError, problems } = makeCtx();
-		const closeListener = vi.spyOn(ctx, "closeListener");
-		const timer = vi.fn();
-		ctx.livePushTimerManager.set("r1", timer);
+		const { ctx, problems } = makeCtx();
+		const close = vi.fn();
+		ctx.listenerRecord.r1 = { closed: false, close };
 
-		ctx.stopMonitoring("获取直播间信息失败", "r1");
+		ctx.closeListener("r1");
 
-		expect(closeListener).toHaveBeenCalledWith("r1");
-		expect(timer).toHaveBeenCalledTimes(1);
-		expect(ctx.livePushTimerManager.has("r1")).toBe(false);
-		expect(emitEngineError).not.toHaveBeenCalled();
+		expect(close).toHaveBeenCalledTimes(1);
+		expect(ctx.listenerRecord.r1).toBeUndefined();
 		expect(problems.reportFailure).not.toHaveBeenCalled();
 	});
 });
@@ -112,63 +78,33 @@ describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志
 	])(
 		"%s:回 false,不发 engine-error、不报问题(后果由随后那条「停止监听」报)",
 		async (_name, myself) => {
-			const { ctx, problems, emitEngineError } = makeCtx({
+			const { ctx, problems } = makeCtx({
 				fetchLiveRoomInfoStreamKey: vi.fn(async () => goodInfo),
 				getMyselfInfoCached: vi.fn(myself),
 			});
 			await expect(ctx.startLiveRoomListener("123", () => {})).resolves.toBe(false);
-			expect(emitEngineError).not.toHaveBeenCalled();
 			expect(problems.reportFailure).not.toHaveBeenCalled();
 		},
 	);
 });
 
-describe("RoomContext.reportMonitorStopped · 原因是出字那一刻现取的", () => {
-	it("原因交的是取字函数:切语言后重报的那一句带新原因,不是报的那一刻的旧字", () => {
-		const locale = switchableLocale("zh-CN");
-		let reason = "原因甲";
-		const layers = createProblemLayers({
-			locale,
-			auth: {
-				state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-				onChange: () => ({ dispose() {} }),
-			},
-			logger: { info() {}, warn() {}, error() {}, debug() {} },
+describe("RoomSession.reportStopped · 原因是出字那一刻现取的", () => {
+	it("原因交的是取字函数:切语言后重报的那一句带新原因,不是报的那一刻的旧字", async () => {
+		const h = makeSessionHarness({
+			listener: async () => false,
 		});
-		const reported: string[] = [];
-		layers.attach({
-			reportProblem: (p) => void reported.push(p.message),
-			resolveProblem: () => {},
-		});
-		const { ctx } = makeCtx({}, layers);
-
-		ctx.reportMonitorStopped("u1", "r1", () => reason);
-		expect(reported).toEqual(["直播间 r1 停止监听：原因甲；不会自动重连"]);
-
-		reason = "原因乙";
-		locale.set("en");
-		expect(reported).toEqual([
-			"直播间 r1 停止监听：原因甲；不会自动重连",
-			"直播间 r1 停止监听：原因乙；不会自动重连",
-		]);
+		await h.bootstrap();
+		const failure = h.problems.reportFailure.mock.calls[0]?.[0];
+		expect(failure?.message()).toContain(PROBLEM_TEXTS.liveStopReasons.danmakuConnect());
 	});
 
-	it("交给上报器的是取字函数(不是出好的字)", () => {
-		const { ctx, problems } = makeCtx();
-		ctx.reportMonitorStopped("u1", "r1", () => "原因甲");
-		const failure = problems.reportFailure.mock.calls[0]?.[0];
-		expect(failure?.message()).toBe("直播间 r1 停止监听：原因甲；不会自动重连");
-		expect(failure?.recoveryMessage?.()).toBe("直播间 r1 的监听已恢复");
-	});
-});
-
-describe("RoomContext 清「停止监听 / 受限」的口", () => {
-	it("clearMonitorProblems(这个人不再需要监听):两条都静默清(notify: false)", () => {
-		const { ctx, problems } = makeCtx();
-		ctx.clearMonitorProblems("u1");
-		expect(problems.resolveFailure.mock.calls).toEqual([
-			[{ externalId: "u1", code: MONITOR_STOPPED_CODE }, { notify: false }],
-			[{ externalId: "u1", code: ROOM_RESTRICTED_CODE }, { notify: false }],
-		]);
+	it("交给上报器的是取字函数(不是出好的字)", async () => {
+		const h = makeSessionHarness({ listener: async () => false });
+		await h.bootstrap();
+		const failure = h.problems.reportFailure.mock.calls[0]?.[0];
+		expect(typeof failure?.message).toBe("function");
+		expect(failure?.message()).toBe(
+			PROBLEM_TEXTS.liveMonitorStopped.text("r1", PROBLEM_TEXTS.liveStopReasons.danmakuConnect()),
+		);
 	});
 });

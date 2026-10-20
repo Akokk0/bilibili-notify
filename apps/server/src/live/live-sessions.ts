@@ -172,6 +172,8 @@ export type LiveSessionChange =
 export interface LiveSessionEngine extends Disposable {
 	/** 这条订阅此刻那一场;没在播(或 BN 手里没有)就是 `undefined`。 */
 	get(subscriptionId: string): LiveSession | undefined;
+	/** 把下一次核对提前到现在(开发场景用);没有这一场回 `false`。 */
+	tickNow(subscriptionId: string): Promise<boolean>;
 	/** 喂一份信号:先写在播表、再改场次、最后按顺序同步通知监听者。 */
 	apply(signal: LiveSignal): void;
 	/** 听场次的变化。场次先改好,再按顺序同步通知。 */
@@ -339,6 +341,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		session.pollHandle?.dispose();
 		session.pollHandle = undefined;
 		sessions.delete(id);
+		opts.table.remove(id);
 		log.debug(
 			`[ext-live] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
 		);
@@ -648,10 +651,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		reason: "ended" | "poll",
 	): void {
 		const session = sessions.get(id);
-		// 下播:出表。出表之前先把最后那一份拿在手里(下播卡没带的格从这里补)。
+		// 下播:先拿最后一份。断流等待期间面板仍算在播,真结束或没开等待时再出表。
 		const lastRow = opts.table.get(id);
-		opts.table.remove(id);
 		if (!session) {
+			opts.table.remove(id);
 			announce({
 				kind: "unmatched-end",
 				subscriptionId: id,
@@ -772,6 +775,12 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 
 	return {
 		get: (subscriptionId) => sessions.get(subscriptionId),
+		async tickNow(subscriptionId) {
+			const session = sessions.get(subscriptionId);
+			if (!session || session.pendingEnd || !isCurrent(session)) return false;
+			await pollOnce(session);
+			return isCurrent(session);
+		},
 		apply(signal) {
 			switch (signal.kind) {
 				case "start":

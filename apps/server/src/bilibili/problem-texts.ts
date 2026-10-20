@@ -71,4 +71,9 @@ export const PROBLEM_TEXTS = {
 			t("bilibili.problem.liveRoomRestricted", { roomId, reason }),
 		recovery: (roomId: string) => t("bilibili.problem.liveRoomRecovered", { roomId }),
 	},
+	/** 这一轮没取到直播状态:只进表,不停监听;下一轮成功时清掉。 */
+	liveStatusUnavailable: {
+		notify: false,
+		text: (roomId: string) => t("bilibili.problem.liveStatusUnavailable", { roomId }),
+	},
 } as const;

@@ -67,7 +67,7 @@ export const RATCHET = {
 	// 3a-30(主人 10-11 点头,3 → 5):直播引擎由 `createEngines` 造、早于来源登记,B 站的分层上报器只能经入口递进去
 	// (`biliProblems: builtins.bilibili.problems`,对象键与 `bilibili` 各一处,名字如实带 `bili`,不起中立名字躲)。
 	// 3b 直播并进来源(来源自己造直播、自己把上报器给它)那一天,这一格与这条递送一起消失,数归 3。
-	"apps/server/src/index.ts": 4,
+	"apps/server/src/index.ts": 2,
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
@@ -82,7 +82,7 @@ export const RATCHET = {
 	// 3a-30(主人 10-11 点头,18 → 20):同 `index.ts` —— 直播引擎要的 B 站分层上报器经入口递进 `createEngines`,
 	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 17(上面直播引擎的子上下文那一处同时消失,再减一)。
 	// 3b-33(主人 10-16 点头,19 → 20):接线处给女仆的读口递直播引擎的在播房间(`biliLiveRooms:`),3b-22 后随它消失。
-	"apps/server/src/runtime/engines.ts": 20,
+	"apps/server/src/runtime/engines.ts": 8,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
 	"apps/server/src/stats/bili-source.ts": 13,

@@ -5,6 +5,7 @@
 	"bilibili.problem.liveMonitorStopped": "直播间 {roomId} 停止监听：{reason}；不会自动重连",
 	"bilibili.problem.liveRoomRecovered": "直播间 {roomId} 的弹幕已连上",
 	"bilibili.problem.liveRoomRestricted": "直播间 {roomId} 的弹幕连不上：{reason}（可能是加密、付费、测试房，或这个账号没有权限），这个房间先不再监听",
+	"bilibili.problem.liveStatusUnavailable": "直播间 {roomId} 这一轮没取到直播状态，下一轮再取",
 	"bilibili.problem.liveStopReason.danmakuConnect": "弹幕连接建立失败",
 	"bilibili.problem.liveStopReason.gaveUp": "连接持续失败，重试 5 次后放弃",
 	"bilibili.problem.liveStopReason.roomInfo": "取直播间信息失败",

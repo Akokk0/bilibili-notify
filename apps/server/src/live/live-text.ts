@@ -6,8 +6,8 @@ import { renderTemplate } from "../util/render-template";
  * text. Mirrors the per-occurrence templates of the live push:
  *
  * - `customLiveStart` / `customLiveStreaming` / `customLiveEnd`
- * - `customSpecialDanmakuUsers.template`
- * - `customSpecialUsersEnterTheRoom.template`
+ * - `specialViewerChat.template`
+ * - `specialViewerEnter.template`
  */
 
 /**

@@ -317,3 +317,12 @@ describe("面板上的那一行", () => {
 		});
 	});
 });
+
+describe("观看人数缺数与零", () => {
+	it("还没收到过帧 → undefined；收到 0 → 保持 0", () => {
+		start();
+		expect(table.get(SUB_A)?.details).not.toHaveProperty("totalViewers");
+		status({ totalViewers: 0 });
+		expect(table.get(SUB_A)?.details.totalViewers).toBe(0);
+	});
+});

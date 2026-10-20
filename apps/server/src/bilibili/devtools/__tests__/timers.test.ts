@@ -5,9 +5,7 @@ import { biliTimerScenarios } from "../timers.js";
 import { biliRegistry } from "./support/registry.js";
 
 /**
- * B 站的四个「现在就跑」:复推提前到期、动态检测、粉丝轮询、登录心跳 —— 把定时器到点要做的事
- * 提前调一次,各调各的口。中立的三条(免扰时钟、静音、Chrome 空闲关)在核心的
- * `devtools/__tests__/timer-scenarios.test.ts`。
+ * B 站的三个「现在就跑」:动态检测、粉丝轮询、登录心跳。直播复推已搬进核心定时组。
  */
 
 const SUBS: SubPick[] = [
@@ -16,33 +14,22 @@ const SUBS: SubPick[] = [
 ];
 
 function setup(over: Partial<Parameters<typeof biliTimerScenarios>[0]> = {}) {
-	const repushNow = vi.fn(async (uid: string) => uid === "100");
 	const detectNow = vi.fn(async () => {});
 	const pollNow = vi.fn(async () => true);
 	const healthCheckNow = vi.fn(async () => true);
 	const reg = biliRegistry(
 		biliTimerScenarios({
 			subs: () => SUBS,
-			live: () => ({ repushNow }),
 			dynamic: () => ({ detectNow }),
 			fans: () => ({ pollNow }),
 			healthCheck: () => ({ healthCheckNow }),
 			...over,
 		}),
 	);
-	return { reg, repushNow, detectNow, pollNow, healthCheckNow };
+	return { reg, detectNow, pollNow, healthCheckNow };
 }
 
 describe("B 站的现在就跑", () => {
-	it("live.repush-now:按订阅 uid 调 repushNow;没在播如实说", async () => {
-		const { reg, repushNow } = setup();
-		expect((await reg.run("bilibili.live.repush-now", {})).summary).toMatch(/甲/);
-		expect(repushNow).toHaveBeenCalledWith("100");
-		expect((await reg.run("bilibili.live.repush-now", { sub: "s2" })).summary).toMatch(
-			/没在播|没监听/,
-		);
-	});
-
 	it("dynamic.detect-now / fans.poll-now / auth.health-now 各调各的口", async () => {
 		const { reg, detectNow, pollNow, healthCheckNow } = setup();
 		await reg.run("bilibili.dynamic.detect-now", {});
@@ -54,19 +41,17 @@ describe("B 站的现在就跑", () => {
 	});
 
 	it("引擎还没起来 → 拒", async () => {
-		const { reg } = setup({ live: () => undefined, dynamic: () => undefined });
-		await expect(reg.run("bilibili.live.repush-now", {})).rejects.toBeInstanceOf(DevParamError);
+		const { reg } = setup({ dynamic: () => undefined });
 		await expect(reg.run("bilibili.dynamic.detect-now", {})).rejects.toBeInstanceOf(DevParamError);
 	});
 
-	it("四个都在定时组", () => {
+	it("三个都在定时组", () => {
 		const { reg } = setup();
 		const timers = reg
 			.list()
 			.filter((d) => d.group === "timer")
 			.map((d) => d.id);
 		expect(timers).toEqual([
-			"bilibili.live.repush-now",
 			"bilibili.dynamic.detect-now",
 			"bilibili.fans.poll-now",
 			"bilibili.auth.health-now",

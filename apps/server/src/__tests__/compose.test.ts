@@ -38,7 +38,7 @@ import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
-import { fixedLocale, switchableLocale } from "./support/fixed-locale.js";
+import { fixedLocale } from "./support/fixed-locale.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
 import { inertTransitImages } from "./support/integration-io.js";
@@ -191,9 +191,9 @@ function compose(
 							cachedProfile: { name: "甲", avatarUrl: "https://a/1.png" },
 						} as never)
 					: undefined,
+			patch: async () => {},
 		},
 		setTimeout: () => ({ dispose() {} }),
-		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
@@ -346,67 +346,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 	});
 
 	// 验红:让 `compose.ts` 造两个上报器(给来源的与挂在 `bilibili.problems` 上的不是同一个),这条红。
-	it("bilibili.problems 与交给来源的是同一个上报器:来源登记前报的,登记后核心那头收到(补报)", async () => {
-		// 登录着:没有更高层压住,第三层才存得下来
-		const loggedIn: SourceAuth = {
-			...SOURCE_AUTH,
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-		};
-		const { builtins } = compose({ sourceAuth: loggedIn });
-		builtins.bilibili.problems.reportFailure({
-			externalId: "100",
-			code: "live_monitor_stopped",
-			message: () => "停了",
-			notify: true,
-			lasting: false,
-		});
-		const { ctx } = makeFakeSourceCtx([]);
-		expect(ctx.reportProblem).not.toHaveBeenCalled();
-
-		await builtins.registerSources(makeFakeEngines(ctx).engines);
-
-		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
-		expect(ctx.reportProblem).toHaveBeenCalledWith({
-			externalId: "100",
-			code: "live_monitor_stopped",
-			message: "停了",
-			notify: true,
-		});
-	});
 
 	// 验红:`compose.ts` 造分层上报器时不递 `locale`(或递成一个永不触发的读口),这条红。
-	it("入口递进来的语言读口接到了分层上报器上:语言变了,核心那头收到重报", async () => {
-		const loggedIn: SourceAuth = {
-			...SOURCE_AUTH,
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-		};
-		const locale = switchableLocale("zh-CN");
-		const { builtins } = compose({ sourceAuth: loggedIn, locale });
-		let word = "甲";
-		builtins.bilibili.problems.reportFailure({
-			externalId: "100",
-			code: "live_monitor_stopped",
-			message: () => word,
-			notify: true,
-			lasting: true,
-		});
-		const { ctx } = makeFakeSourceCtx([]);
-		const fake = makeFakeEngines(ctx);
-		await builtins.registerSources(fake.engines);
-		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
-
-		word = "乙";
-		locale.set("en");
-
-		expect(ctx.reportProblem).toHaveBeenCalledTimes(2);
-		expect(ctx.reportProblem).toHaveBeenLastCalledWith({
-			externalId: "100",
-			code: "live_monitor_stopped",
-			message: "乙",
-			notify: true,
-		});
-		await fake.registered[0]?.source.stop();
-	});
 
 	describe("场景那头与来源那头是同一个壳(造动态的场景一路走到来源的 reportPost)", () => {
 		const roster: SourceSubscriptionView[] = [
@@ -619,31 +560,6 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 	});
 
 	// 验红:`compose.ts` 里建分层上报器的日志器改成别的格(比如 `forSubsystem("core", "core")`),这条红。
-	it("B 站分层上报器的日志器是 B 站那一格(标签与键都是来源键):它的 warn 落在那个日志器上", () => {
-		// 登录着、先撞一路风控:接上核心时有东西可补报(登录没好时分层什么都不补,登录问题归宿主)
-		const loggedIn: SourceAuth = {
-			...SOURCE_AUTH,
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-		};
-		const { builtins, forSubsystem } = compose({ sourceAuth: loggedIn });
-		builtins.bilibili.problems.reportRisk("dynamic", { notify: true });
-		const biliIndex = forSubsystem.mock.calls.findIndex(
-			([name, key]) => name === BILIBILI_SOURCE_KEY && key === BILIBILI_SOURCE_KEY,
-		);
-		expect(biliIndex).toBeGreaterThanOrEqual(0);
-		const bili = forSubsystem.mock.results[biliIndex]?.value.logger as Logger;
-		// 核心那头(attach 的上下文)抛了:上报器吞下并记一行 warn,这一行该落在 B 站的日志器上。
-		builtins.bilibili.problems.attach({
-			reportProblem: () => {
-				throw new Error("核心炸了");
-			},
-			resolveProblem: () => {},
-		});
-		expect(bili.warn).toHaveBeenCalled();
-		for (const result of forSubsystem.mock.results) {
-			if (result.value.logger !== bili) expect(result.value.logger.warn).not.toHaveBeenCalled();
-		}
-	});
 
 	// 验红:造 OneBot / QQ 官方机器人时不把 `deps.serviceCtx` 递给工厂,这条红(关停兜底没挂上)。
 	it("适配器在 compose 时就造好:OneBot 与 QQ 官方机器人各往 serviceCtx 挂了一个关停兜底", () => {

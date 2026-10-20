@@ -68,8 +68,8 @@ type InteractionSettings = Pick<
 	| "viewerEnter"
 	| "cardSkin"
 	| "cardSkinKnobs"
-	| "customSpecialDanmakuUsers"
-	| "customSpecialUsersEnterTheRoom"
+	| "specialViewerChat"
+	| "specialViewerEnter"
 >;
 
 const CHAT_TEMPLATE = "{name} 的直播间里 {viewer} 说:{msg}";
@@ -115,7 +115,7 @@ let membershipCard: ReturnType<typeof vi.fn>;
 let renderer: SuperchatRenderer | null;
 
 function settingsWith(
-	specialViewers: InteractionSettings["customSpecialDanmakuUsers"]["specialViewers"],
+	specialViewers: InteractionSettings["specialViewerChat"]["specialViewers"],
 	over: Partial<InteractionSettings> = {},
 ): InteractionSettings {
 	return {
@@ -132,8 +132,8 @@ function settingsWith(
 		extras: { atAllPost: false, atAllLiveStart: false, wordcloud: false, liveSummary: false },
 		viewerChat: true,
 		viewerEnter: true,
-		customSpecialDanmakuUsers: { specialViewers, template: CHAT_TEMPLATE },
-		customSpecialUsersEnterTheRoom: { specialViewers, template: ENTER_TEMPLATE },
+		specialViewerChat: { specialViewers, template: CHAT_TEMPLATE },
+		specialViewerEnter: { specialViewers, template: ENTER_TEMPLATE },
 		...over,
 	};
 }
@@ -454,6 +454,15 @@ describe("会员", () => {
 			tier: { key: "gold", name: "金牌", rank: 2 },
 			...over,
 		} as LiveInteractionReport);
+
+	it("未订阅 membership → 早 return", async () => {
+		settings = settingsWith([], { membership: false });
+		membership();
+		await flush();
+		expect(membershipCard).not.toHaveBeenCalled();
+		expect(tierAsked).toBe(0);
+		expect(sent).toEqual([]);
+	});
 
 	it("custom 体系:用事件里的档名,没有徽章、不问来源,自定义文案的 {tier} 取事件里的名字", async () => {
 		settings = settingsWith([], {

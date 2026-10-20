@@ -1,90 +1,14 @@
-import { isDeepStrictEqual } from "node:util";
 import { vi } from "vite-plus/test";
 import { fixedLocale } from "../../../../../__tests__/support/fixed-locale.js";
 import { createProblemLayers } from "../../../../problem-layers.js";
-import { PROBLEM_TEXTS } from "../../../../problem-texts.js";
-import {
-	type LiveProblems,
-	MONITOR_STOPPED_CODE,
-	ROOM_RESTRICTED_CODE,
-	RoomContextBase,
-} from "../../room-context.js";
 
 /** 直播会话测试用的假上报器:四个方法都是 spy,什么都不做。 */
 export function makeLiveProblems() {
 	return {
-		reportRisk: vi.fn<LiveProblems["reportRisk"]>(),
-		resolveRisk: vi.fn<LiveProblems["resolveRisk"]>(),
-		reportFailure: vi.fn<LiveProblems["reportFailure"]>(),
-		resolveFailure: vi.fn<LiveProblems["resolveFailure"]>(),
-	};
-}
-
-/**
- * 断言用:上报器收到的 `message` / `recoveryMessage` 是取字函数,这里把它们跑一遍再与期望的字比
- * (其余格原样比)。放进 `toHaveBeenCalledWith(…)` 里当期望值用。
- */
-function failureWithTexts(expected: {
-	externalId: string;
-	code: string;
-	message: string;
-	notify: boolean;
-	lasting: boolean;
-	recoveryMessage: string;
-}) {
-	return {
-		asymmetricMatch(actual: unknown): boolean {
-			const failure = actual as { message?: unknown; recoveryMessage?: unknown } | null;
-			if (typeof failure?.message !== "function") return false;
-			if (typeof failure.recoveryMessage !== "function") return false;
-			return isDeepStrictEqual(
-				{ ...failure, message: failure.message(), recoveryMessage: failure.recoveryMessage() },
-				expected,
-			);
-		},
-		toString: () => "FailureWithTexts",
-		getExpectedType: () => "object",
-		toAsymmetricMatcher: () => `FailureWithTexts ${JSON.stringify(expected)}`,
-	};
-}
-
-/** 断言用:一个房间「停止监听」时应当交给上报器的那一条(文案、code、是否私聊都取自文案文件)。 */
-export function expectedStoppedFailure(uid: string, roomId: string, reason: string) {
-	const text = PROBLEM_TEXTS.liveMonitorStopped;
-	return failureWithTexts({
-		externalId: uid,
-		code: MONITOR_STOPPED_CODE,
-		message: text.text(roomId, reason),
-		notify: text.notify,
-		lasting: true,
-		recoveryMessage: text.recovery(roomId),
-	});
-}
-
-/** 断言用:一个房间「受限」时应当交给上报器的那一条。 */
-export function expectedRestrictedFailure(uid: string, roomId: string, reason: string) {
-	const text = PROBLEM_TEXTS.liveRoomRestricted;
-	return failureWithTexts({
-		externalId: uid,
-		code: ROOM_RESTRICTED_CODE,
-		message: text.text(roomId, reason),
-		notify: text.notify,
-		lasting: true,
-		recoveryMessage: text.recovery(roomId),
-	});
-}
-
-/**
- * 手写的假 `RoomContext` 里要有的「问题」那一截:`problems` 本身,加 `RoomContextBase` 上报问题的几个方法
- * (**真实现**,绑在这个上报器上 —— 假 ctx 里不另抄一份文案与 code 的拼法)。用法:`{ ...liveProblemsCtx(problems) }`。
- */
-export function liveProblemsCtx(problems: LiveProblems) {
-	const self = { problems } as RoomContextBase;
-	return {
-		problems,
-		reportMonitorStopped: RoomContextBase.prototype.reportMonitorStopped.bind(self),
-		reportRoomRestricted: RoomContextBase.prototype.reportRoomRestricted.bind(self),
-		clearMonitorProblems: RoomContextBase.prototype.clearMonitorProblems.bind(self),
+		reportRisk: vi.fn(),
+		resolveRisk: vi.fn(),
+		reportFailure: vi.fn(),
+		resolveFailure: vi.fn(),
 	};
 }
 

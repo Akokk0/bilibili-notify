@@ -24,6 +24,7 @@ import {
 	createLiveSessionEngine,
 	type LiveSessionChange,
 	type LiveSessionEngine,
+	type LiveStatusReader,
 	liveSubscriptionPushable,
 } from "../live-sessions.js";
 import type { LiveWorkSettings } from "../live-settings.js";
@@ -70,7 +71,7 @@ const timers = {
 	},
 };
 
-function start(): void {
+function start(liveStatus?: LiveStatusReader): void {
 	table = createLiveTable({ bus, timers });
 	sessions = createLiveSessionEngine({
 		bus,
@@ -80,6 +81,7 @@ function start(): void {
 		sourceStatus: { running: (id) => running.has(id) },
 		fans: () => fans,
 		settings: () => settings,
+		...(liveStatus === undefined ? {} : { liveStatus }),
 		timers,
 	});
 	sessions.onChange((change) => changes.push(change));
@@ -785,5 +787,60 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 			[SUB.id, 1],
 			[SUB.id, 3],
 		]);
+	});
+});
+
+describe("Devtools tickNow", () => {
+	it("在播且这一场仍有效:立刻向来源核一次,回 true", async () => {
+		const fetch = vi.fn(async () => ({
+			ok: true as const,
+			kind: "live" as const,
+			details: { title: "刚才那场" },
+		}));
+		start({ has: () => true, fetch });
+		liveStart();
+
+		await expect(sessions.tickNow(SUB.id)).resolves.toBe(true);
+
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(fetch).toHaveBeenCalledWith(SUB.identity, expect.any(AbortSignal));
+	});
+
+	it("没在播:不跑,回 false", async () => {
+		const fetch = vi.fn();
+		start({ has: () => true, fetch });
+		await expect(sessions.tickNow(SUB.id)).resolves.toBe(false);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it("断流等待中:不提前到期,回 false", async () => {
+		const fetch = vi.fn();
+		settings.liveEndGrace = true;
+		start({ has: () => true, fetch });
+		liveStart();
+		liveEnd();
+
+		await expect(sessions.tickNow(SUB.id)).resolves.toBe(false);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+});
+
+describe("断流等待到期时再核来源", () => {
+	it("等待到期但 B站已重开(漏帧)→ 不下播,恢复复推", async () => {
+		const fetch = vi.fn(async () => ({
+			ok: true as const,
+			kind: "live" as const,
+			details: { title: "还在播" },
+		}));
+		settings.liveEndGrace = true;
+		start({ has: () => true, fetch });
+		liveStart();
+		liveEnd();
+
+		await vi.advanceTimersByTimeAsync((settings.liveEndGraceMinutes ?? 2) * MINUTE);
+
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(summary().some((change) => change.kind === "end")).toBe(false);
+		expect(sessions.get(SUB.id)).toBeDefined();
 	});
 });

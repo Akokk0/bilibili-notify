@@ -123,6 +123,16 @@ async function boot() {
 		loginCheck: { setHealthCheckMs },
 		locale,
 		setTimeout: () => ({ dispose() {} }),
+		liveContext: {
+			logger,
+			signal: new AbortController().signal,
+			setInterval: () => ({ dispose() {} }),
+			setTimeout: () => ({ dispose() {} }),
+			onDispose: () => {},
+			track: () => {},
+		},
+		liveRoomIds: { get: () => undefined, set: () => {} },
+		fanClubNames: { set: () => {} },
 		auth: {
 			beginLogin: async () => ok(),
 			logout: async () => ok(),

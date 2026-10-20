@@ -1,79 +1,12 @@
-/**
- * 协议漂移观测 — degraded raw 的上游报警 + 漏斗 default 的活跃度标记。
- *
- * blive 把「已知命令解析失败」标成 `degraded: true` 的 raw(SEND_GIFT_V2
- * 迁移那种字段漂移的信号);RoomSession 负责把它变成能看见的 warn 日志,
- * 但要限流 —— 漂移一旦发生是每帧都漂,逐帧 warn 会刷爆日志。
- *
- * 顺带钉住:业务不消费的已解析 kind(gift / room-change 等 12 个)走漏斗
- * default 也要标活跃度 —— 它们和 raw 一样是活的流量,watchdog 不该因为
- * 房间只刷礼物不发弹幕就误判静默。
- */
-
-import type { ServiceContext } from "@bilibili-notify/internal";
-import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { LiveEvent } from "../../protocol/events.js";
-import type { SubItemView } from "../../push-like";
-import type { RoomContext } from "../room-helpers";
-import { RoomSession } from "../room-session";
+import { LIVE_WS_STALE_MS } from "../room-session.js";
+import { makeSessionHarness } from "./support/room-session.js";
 
-type EventFunnel = (ev: LiveEvent) => void | Promise<void>;
-type TestSession = RoomSession & { buildEventHandler(): EventFunnel };
-
-function makeSub(): SubItemView {
-	return {
-		subscriptionId: "sub-1",
-		uid: "u1",
-		uname: "U1",
-		roomId: "r1",
-		post: false,
-		liveStart: true,
-		liveEnd: true,
-		membership: false,
-		membershipMinRank: {},
-		membershipTemplates: {},
-		superchat: false,
-		viewerChat: false,
-		viewerEnter: false,
-		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
-		target: {},
-		customLiveMsg: { enable: false },
-		guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
-		customLiveSummary: { enable: false },
-		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
-		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
-		liveStreaming: true,
-		streamingIntervalHours: 1,
-		catchUpOnBoot: false,
-		// 宿主恒填版式。
-		messageLayout: defaultMessageKindLayout("live"),
-	};
-}
-
-function makeSession(): { session: TestSession; warn: ReturnType<typeof vi.fn> } {
-	const warn = vi.fn();
-	const fakeServiceCtx: ServiceContext = {
-		logger: { debug() {}, info() {}, warn, error() {} },
-		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
-		onDispose: () => {},
-		signal: new AbortController().signal,
-		track: () => {},
-	};
-	const ctx = {
-		serviceCtx: fakeServiceCtx,
-		logger: fakeServiceCtx.logger,
-		isDisposed: () => false,
-		danmakuCollector: { clear: () => {}, register: () => {} },
-	} as unknown as RoomContext;
-	const session = new RoomSession(ctx, makeSub()) as unknown as TestSession;
-	return { session, warn };
-}
+const T0 = 1_000_000;
 
 beforeEach(() => {
-	vi.useFakeTimers();
-	vi.setSystemTime(1_000);
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(T0);
 });
 
 afterEach(() => {
@@ -82,57 +15,62 @@ afterEach(() => {
 });
 
 describe("degraded raw → 漂移报警(限流)", () => {
-	it("首条 degraded raw 立即 warn,同 cmd 重复不刷屏,第 100 条再报一次累计", () => {
-		const { session, warn } = makeSession();
-		const handler = session.buildEventHandler();
-		const ev: LiveEvent = {
+	it("首条 degraded raw 立即 warn,同 cmd 重复不刷屏,第 100 条再报一次累计", async () => {
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		const event = {
 			kind: "raw",
 			cmd: "SUPER_CHAT_MESSAGE",
 			payload: {},
 			degraded: true,
-		};
+		} as const;
 
-		handler(ev);
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(warn.mock.calls[0]?.[0]).toContain("SUPER_CHAT_MESSAGE");
-		expect(warn.mock.calls[0]?.[0]).toContain("r1");
+		await h.dispatch(event);
+		expect(h.warnings).toHaveLength(1);
+		expect(h.warnings[0]?.[0]).toContain("SUPER_CHAT_MESSAGE");
+		expect(h.warnings[0]?.[0]).toContain("r1");
 
-		for (let i = 2; i <= 99; i++) handler(ev);
-		expect(warn).toHaveBeenCalledTimes(1);
+		for (let i = 2; i <= 99; i++) await h.dispatch(event);
+		expect(h.warnings).toHaveLength(1);
 
-		handler(ev); // 第 100 条
-		expect(warn).toHaveBeenCalledTimes(2);
-		expect(warn.mock.calls[1]?.[0]).toContain("100");
+		await h.dispatch(event);
+		expect(h.warnings).toHaveLength(2);
+		expect(h.warnings[1]?.[0]).toContain("100");
 	});
 
-	it("不同 cmd 各自计数,各自首条都报", () => {
-		const { session, warn } = makeSession();
-		const handler = session.buildEventHandler();
+	it("不同 cmd 各自计数,各自首条都报", async () => {
+		const h = makeSessionHarness();
+		await h.bootstrap();
 
-		handler({ kind: "raw", cmd: "GUARD_BUY", payload: {}, degraded: true });
-		handler({ kind: "raw", cmd: "SEND_GIFT_V2", payload: {}, degraded: true });
-		expect(warn).toHaveBeenCalledTimes(2);
+		await h.dispatch({ kind: "raw", cmd: "GUARD_BUY", payload: {}, degraded: true });
+		await h.dispatch({ kind: "raw", cmd: "SEND_GIFT_V2", payload: {}, degraded: true });
+
+		expect(h.warnings).toHaveLength(2);
 	});
 
-	it("plain raw(刻意不解析的命令)不报警", () => {
-		const { session, warn } = makeSession();
-		const handler = session.buildEventHandler();
+	it("plain raw(刻意不解析的命令)不报警", async () => {
+		const h = makeSessionHarness();
+		await h.bootstrap();
 
-		handler({ kind: "raw", cmd: "STOP_LIVE_ROOM_LIST", payload: {} });
-		expect(warn).not.toHaveBeenCalled();
+		await h.dispatch({ kind: "raw", cmd: "STOP_LIVE_ROOM_LIST", payload: {} });
+
+		expect(h.warnings).toEqual([]);
 	});
 });
 
 describe("漏斗 default:未消费的已解析 kind 也是活的流量", () => {
-	it("gift / room-change 等标活跃度,不落进任何业务分支", () => {
-		const { session, warn } = makeSession();
-		const handler = session.buildEventHandler();
-		// 让 lastActivityAt 从 0 起跳,便于断言确实被刷新
-		expect(session.getWsHealthSnapshot().lastActivityAt).toBe(0);
+	it("gift / room-change 等标活跃度,不落进任何业务分支", async () => {
+		const h = makeSessionHarness();
+		await h.bootstrap();
+		h.closeListener.mockClear();
 
-		handler({ kind: "rank-count", count: 42 });
-		expect(session.getWsHealthSnapshot().lastActivityAt).toBe(1_000);
-		expect(session.getWsHealthSnapshot().lastActivityReason).toBe("other");
-		expect(warn).not.toHaveBeenCalled();
+		await h.dispatch({ kind: "rank-count", count: 42 });
+		vi.setSystemTime(T0 + LIVE_WS_STALE_MS - 1);
+		h.intervals[0]?.fn();
+		await h.settle();
+
+		expect(h.closeListener).not.toHaveBeenCalled();
+		expect(h.warnings).toEqual([]);
+		expect(h.reports).toEqual([]);
 	});
 });

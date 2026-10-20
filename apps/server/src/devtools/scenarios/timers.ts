@@ -1,10 +1,11 @@
+import type { LiveSessionEngine } from "../../live/live-sessions.js";
 import type { MuteState } from "../../runtime/mute-state.js";
 import type { DevClock } from "../clock.js";
 import { DevParamError, type DevScenarioDef, need } from "../registry.js";
 
 /**
- * 定时组(中立的三条):免扰时钟(单点覆盖)+ 静音(真调)+ Chrome 空闲关(把定时器到点
- * 要做的事提前调一次,定时器本身不动)。B 站的四个「现在就跑」在 `bilibili/devtools/timers.ts`。
+ * 定时组(中立的四条):免扰时钟、静音、Chrome 空闲关、直播复推提前到期。
+ * B 站的其余「现在就跑」在 `bilibili/devtools/timers.ts`。
  *
  * 「现在就跑」调的是运行时自己暴露的那一个口(`closeIdleNow`),不是另写一条路。
  */
@@ -13,6 +14,8 @@ export interface TimerScenarioDeps {
 	/** 下面几样都是引擎 / 运行时建好之后才有的,现取。 */
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
+	subscriptions?: () => readonly { id: string; enabled: boolean; name: string }[];
+	session?: () => Pick<LiveSessionEngine, "tickNow"> | undefined;
 }
 
 function hhmm(ms: number): string {
@@ -105,5 +108,32 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
-	return [quietClock, mute, chromeIdle];
+	const repush: DevScenarioDef = {
+		id: "live.repush-now",
+		group: "timer",
+		title: "复推提前到期",
+		icon: "refresh",
+		desc: "把这位 UP「正在直播」的周期复推提前到现在(走的就是定时器到点那一次)。得在(假)直播中。",
+		params: [{ key: "sub", label: "订阅", kind: "sub" }],
+		async run(params) {
+			const engine = need(deps.session?.(), "直播场次");
+			const subs = deps.subscriptions?.() ?? [];
+			const wanted = params.sub;
+			const sub =
+				wanted === undefined
+					? subs.find((candidate) => candidate.enabled)
+					: subs.find((candidate) => candidate.id === String(wanted));
+			if (!sub) {
+				throw new DevParamError(wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
+			}
+			const ran = await engine.tickNow(sub.id);
+			return {
+				summary: ran
+					? `已替 ${sub.name} 复推了一次「正在直播」。`
+					: `${sub.name} 没在播(或没监听),复推没跑。`,
+			};
+		},
+	};
+
+	return [quietClock, mute, chromeIdle, repush];
 }

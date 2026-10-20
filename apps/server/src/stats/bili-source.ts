@@ -65,7 +65,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	 * 认场次,这一场就裂成两条区间重叠的记录,场次数与总时长一起虚高。
 	 *
 	 * **它排在 live_time 之后,不是之前。** 曾经反过来写(先查闩再解析),于是闩
-	 * 一旦过期就会把新一场按到旧一场的身份上:auth-lost 走 `LiveEngine.teardown()`
+	 * 一旦过期就会把新一场按到旧一场的身份上:auth-lost 会拆除 B 站来源的全部直播间连接
 	 * → `disposeAll()`,逐个 cancel 但**不发 idle**(只有 stopForUid 才发),闩就留
 	 * 在了原地;隔天重新登录后 bootstrap 带着新的 live_time 发 live,却被闩改写回
 	 * 昨天那个身份 —— 两场各约 3 小时被并成一场 27 小时,还是写进 append-only 文件,
@@ -177,7 +177,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	);
 
 	handles.push(
-		// cookie 失效 → LiveEngine.teardown() 把所有 listener 拆掉,但**不发 idle**
+		// cookie 失效 → B 站来源把所有 listener 拆掉,但**不发 idle**
 		// (disposeAll 只 cancel,发 idle 的只有 stopForUid)。从这一刻起 B 站这头没有任何人在
 		// 观测直播,在飞的场次身份 / 峰值都不再作数 —— 留着的话,重新登录后(可能隔了
 		// 几天)开的新一场会被按到旧身份上,两场并成一场超长直播。

@@ -62,7 +62,7 @@ export const INTEGRATION_DIRS = ["apps/server/src/bilibili", "apps/server/src/pl
  */
 export const EXPORTED_TYPE_LEDGER = {
 	BiliDevtoolsDeps: {
-		limit: 5,
+		limit: 4,
 		until:
 			"开发场景今天仍直接用引擎、套了壳的 Api / 登录系统(api、auth、live、fans、healthCheck 五个过渡句柄);3b 场景改成只经 B 站自己的上下文时消",
 	},
@@ -71,14 +71,10 @@ export const EXPORTED_TYPE_LEDGER = {
 		until:
 			"核心 devtools 的类型,只因 devtools-isolation 不许 compose.ts 引核心的 devtools/ 才从 B 站 devtools 入口转出;随开发场景的过渡句柄一起消",
 	},
-	ProblemLayers: {
-		limit: 1,
-		until: "B 站分层上报器,入口(biliProblems)还在读它;3b 直播并进来源后经来源自己的上下文走,消",
-	},
 };
 
 /** ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。 */
-export const BILIBILI_MEMBERS = ["problems"];
+export const BILIBILI_MEMBERS = [];
 
 /** ④ 的范围与不扫的目录。 */
 export const SLOT_ROOTS = ["apps/server/src"];
@@ -100,7 +96,7 @@ export const API_SLOT_RATCHET = {
 	"apps/server/src/routes/ai.ts": 2, // 锐评生成拿 `engines.api`;3b `AiToolProvider` 时消
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
 	"apps/server/src/routes/subscriptions.ts": 5, // 旧搜人两口;第 4 期消
-	"apps/server/src/runtime/engines.ts": 10, // `EnginesRuntime.api` 与直播引擎宿主 / 粉丝轮询 / 关注同步 / 链接解析的递法;3b 随读者清掉
+	"apps/server/src/runtime/engines.ts": 8, // `EnginesRuntime.api` 与粉丝轮询 / 关注同步 / 链接解析的递法;3b 随读者清掉
 	"apps/server/src/runtime/fans-poller.ts": 2, // 粉丝轮询;3b 随来源 `fetchProfile`
 	"apps/server/src/runtime/follow-sync.ts": 3, // 关注同步;3b
 	"apps/server/src/stats/roast-generate.ts": 2, // 锐评生成;3b `AiToolProvider`
@@ -1016,7 +1012,7 @@ describe("入口咽喉:compose.ts 的导出面", () => {
 		const bindings = integrationBindings(COMPOSE_FILE, source);
 		expect(bindings.size).toBeGreaterThan(0);
 		expect([...bindings.values()].some((b) => !b.typeOnly)).toBe(true);
-		expect(bilibiliMembersOf(source)).toBeDefined();
+		expect(bilibiliMembersOf(source)).toBeUndefined();
 	});
 
 	it("① 导出类型里的集成类型:实数与记账一致", () => {

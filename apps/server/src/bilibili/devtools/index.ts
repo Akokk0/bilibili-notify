@@ -21,7 +21,7 @@ export type { DevtoolsProviderRegistry } from "../../devtools/providers.js";
  * 宿主汇总时统一加(`devtools/providers.ts`)。
  *
  * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / `AuthSystem`(两个 Proxy 由
- * `src/index.ts` 建好、经 `src/compose.ts` 传进来)。直播场景要 `LiveEngine` 的句柄(3b)、登录场景要
+ * `src/index.ts` 建好、经 `src/compose.ts` 传进来)。登录场景要
  * `healthCheck`、造动态的场景经壳上盖方法再调 `detectNow()` 走的是真引擎,各等各的那一片再删。
  */
 export interface BiliDevtoolsDeps {
@@ -35,7 +35,6 @@ export interface BiliDevtoolsDeps {
 	subs: () => SubPick[];
 	/** 下面几样都是引擎建好之后才有的,现取(动态引擎的句柄来自 `compose.ts` 造的 B 站来源)。 */
 	dynamic: () => DynamicPollerLike | undefined;
-	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;
 	/** 登录心跳「现在就跑」的把手(`AuthSystem.healthCheckNow`),现取。 */
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
@@ -53,7 +52,6 @@ export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
 			loginStateScenario({ auth: deps.auth, bus: deps.bus }),
 			...biliTimerScenarios({
 				subs: deps.subs,
-				live: deps.live,
 				dynamic: deps.dynamic,
 				fans: deps.fans,
 				healthCheck: deps.healthCheck,
