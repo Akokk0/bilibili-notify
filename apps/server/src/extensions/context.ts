@@ -48,7 +48,7 @@ import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
-import { type ExtensionLocales, runtimeDictOf } from "./locales.js";
+import { type ExtensionLocales, localizeManifest, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
 	judgeStoredSettings,
@@ -338,6 +338,17 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  */
 export function createExtensionContext(opts: CreateExtensionContextOptions): ExtensionRuntime {
 	const { id, host, mounts, adapters } = opts;
+	/** 每种语言的清单名只合一次(出字那一刻读当前语言,与装载器列表那条路同一套回落链)。 */
+	const manifestNames = new Map<string, string>();
+	function manifestName(): string {
+		const locale = opts.localeReader.current();
+		let name = manifestNames.get(locale);
+		if (name === undefined) {
+			name = localizeManifest(opts.manifest, opts.locales, locale).name;
+			manifestNames.set(locale, name);
+		}
+		return name;
+	}
 	const integration = createIntegrationContext({
 		logger: opts.loggerOf(id),
 		stopReason: `拓展 ${id} 停用了`,
@@ -345,6 +356,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		secrets: opts.stores.secrets,
 		problems: opts.problems,
 		reporter: id,
+		label: manifestName,
 		rejectedProblemLevel: "warn",
 		redactValues: (values) => opts.stores.redact("redact", values),
 		http: opts.http,
@@ -866,6 +878,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					createPlatformAdapterContext({
 						integration: integration.ctx,
 						adapterKey: id,
+						label: manifestName,
 						settingsSchema: def.configSchema,
 						connections: opts.connections,
 						...(opts.connection ? { connection: opts.connection } : {}),

@@ -17,6 +17,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { t } from "../../i18n/index.js";
+import { createProblemNotifier } from "../../problems/problem-notifier.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createConnectionProbeEngine } from "../connection-probe-engine.js";
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -48,10 +50,12 @@ function setup(
 		present?: (adapterKey: string) => boolean;
 		/** 适配器的设置规则;缺省什么都收。 */
 		schema?: ZodType;
+		/** 问题表写口;不给就用两个 spy。 */
+		problems?: Pick<ProblemTable, "report" | "resolve">;
 	} = {},
 ) {
-	const report = vi.fn();
-	const resolve = vi.fn();
+	const report = vi.fn<ProblemTable["report"]>(opts.problems?.report);
+	const resolve = vi.fn<ProblemTable["resolve"]>(opts.problems?.resolve);
 	const probeConnection = vi.fn(async (id: string) => {
 		const probe = probes[id];
 		return probe ? probe() : ok({ latencyMs: 1 });
@@ -355,6 +359,37 @@ describe("ConnectionProbeEngine", () => {
 			await oneRound();
 			expect(c.report).toHaveBeenCalledTimes(1);
 			expect(c.report).toHaveBeenCalledWith(expect.objectContaining({ notify: true }));
+		});
+
+		it("从通到断的私聊是宿主原句:探测引擎不盖写者,通知器不加集成引子", async () => {
+			let current: ProbeResult = ok({ latencyMs: 1 });
+			const table = createProblemTable({ logger: logger() });
+			const sent: string[] = [];
+			const notifier = createProblemNotifier({
+				table,
+				notify: async (text) => {
+					sent.push(text);
+					return ok({ latencyMs: 1 });
+				},
+				serviceCtx: {
+					track: () => {},
+					setTimeout: (fn, ms) => {
+						const timer = setTimeout(fn, ms);
+						return { dispose: () => clearTimeout(timer) };
+					},
+				},
+				logger: logger(),
+			});
+			const c = setup([connectionOf(A)], { [A]: async () => current }, { problems: table });
+			engine = c.engine;
+			await vi.advanceTimersByTimeAsync(0);
+			current = DOWN;
+			await oneRound();
+			await oneRound();
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(sent).toEqual([unreachableText]);
+			notifier.dispose();
 		});
 
 		it("断着不重复报:一直断多轮只报第一次;原因变了才再报,私聊与否冻在这次中断开始时", async () => {

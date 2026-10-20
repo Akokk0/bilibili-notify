@@ -35,13 +35,15 @@ export interface SourceContext extends IntegrationContext {
 	/** 交一条作品。没有返回值;判新、去重、限流归来源。 */
 	reportPost(externalId: string, report: PostReport): void;
 	/**
-	 * 报一个问题(登录失效了、某个人不再监听了……)。不带 `externalId` 是来源自己的问题;带了由宿主换成
+	 * 报一个问题(某个人不再监听了……)。句子写平实、只说事:不称呼主人、不自称女仆、不写宿主的界面与操作;
+	 * 私聊时宿主按口吻补完整。有登录口的来源不要报登录,宿主看登录状态报与清。
+	 * 不带 `externalId` 是来源自己的问题;带了由宿主换成
 	 * 这个人名下的每一条订阅。`code` 是 snake 风格,同一个对象下同一个 code 只有一条,再报只换文案。
 	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对(含空白的 `message` / `recoveryMessage`)、
 	 * 来源已停下的上报被丢弃。
 	 *
 	 * `recoveryMessage`:这件事清掉、且当初真私聊过时核心发的那一句(发的是私聊出去那一刻的那句);
-	 * 不给就用核心的通用说法(接当初私聊的原文)。
+	 * 不给就用宿主带来源名的通用说法(接当初私聊的原文)。
 	 */
 	reportProblem(problem: {
 		externalId?: string;

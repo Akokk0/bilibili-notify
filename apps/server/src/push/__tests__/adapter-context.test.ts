@@ -20,7 +20,7 @@ import { inertSettings } from "../../__tests__/support/inert-settings.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
-import { createProblemTable } from "../../problems/problem-table.js";
+import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createPlatformAdapterContext } from "../adapter-context.js";
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -72,12 +72,14 @@ function build(
 		settings: inertSettings(),
 		problems,
 		reporter: key,
+		label: () => key,
 		rejectedProblemLevel: "error",
 		redactValues: () => {},
 	});
 	const ctx = createPlatformAdapterContext({
 		integration: handle.ctx,
 		adapterKey: key,
+		label: () => key,
 		settingsSchema,
 		connections: list,
 		...(extra.connection ? { connection: extra.connection } : {}),
@@ -243,6 +245,26 @@ describe("createPlatformAdapterContext · reportProblem / resolveProblem", () =>
 		]);
 	});
 
+	it("带 connectionId 的上报盖上适配器给人看的名字", () => {
+		const { ctx, problems } = build("onebot", () => mine);
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "网关连不上" });
+		expect(changes[0]).toMatchObject({ kind: "opened", writtenBy: "onebot" });
+	});
+
+	it("QQ 网关的 gateway_offline 经适配器上下文进表时带着适配器的名字", () => {
+		const { ctx, problems } = build("qq-official", () => mine);
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		ctx.reportProblem({
+			connectionId: "qq1",
+			code: "gateway_offline",
+			message: "QQ 网关已经连续一分钟没连上",
+		});
+		expect(changes[0]).toMatchObject({ kind: "opened", writtenBy: "qq-official" });
+	});
+
 	it("不带 connectionId:适配器自己的问题,不带 about", () => {
 		const { ctx, problems } = build("onebot", () => mine);
 		ctx.reportProblem({ code: "adapter_broken", message: "坏了" });
@@ -395,12 +417,14 @@ describe("createPlatformAdapterContext · inbound", () => {
 			settings: inertSettings(),
 			problems,
 			reporter: "bridge",
+			label: () => "bridge",
 			rejectedProblemLevel: "error",
 			redactValues: () => {},
 		});
 		const ctx = createPlatformAdapterContext({
 			integration: handle.ctx,
 			adapterKey: "bridge",
+			label: () => "bridge",
 			settingsSchema: z.unknown(),
 			connections,
 			connection,

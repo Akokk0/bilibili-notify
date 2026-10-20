@@ -15,6 +15,8 @@ export interface CreatePlatformAdapterContextOptions {
 	/** 这个适配器所属集成的上下文(内置的由装配处现建,拓展的用拓展自己那份)。 */
 	integration: IntegrationContext;
 	adapterKey: string;
+	/** 这个适配器给人看的名字,报问题那一刻现取(拓展名随当前语言变)。 */
+	label: () => string;
 	/** 这个适配器的 settings 规则 —— `connections()` 递出去之前先按它解一遍。 */
 	settingsSchema: ZodType;
 	/** 全部连接,现读。 */
@@ -140,6 +142,7 @@ export function createPlatformAdapterContext(
 			acceptConnectionProblem("报", { connectionId, ...problem }, () =>
 				opts.problems.report({
 					reporter: adapterKey,
+					writtenBy: opts.label(),
 					about: { connectionId },
 					code: problem.code,
 					message: problem.message,

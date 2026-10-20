@@ -174,6 +174,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			forEachProblemObject("报", problem, (about) =>
 				opts.problems.report({
 					reporter: sourceKey,
+					writtenBy: descriptor.label,
 					...(about ? { about } : {}),
 					code: problem.code,
 					message: problem.message,

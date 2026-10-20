@@ -12,6 +12,7 @@ import {
 	type settingsReaderOptionsOf,
 } from "../integrations/settings-reader.js";
 import { defaultHeaders } from "./api/default-headers.js";
+import { BILI_SOURCE_DESCRIPTOR } from "./source.js";
 
 /** 单跳超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让该请求永不结束。 */
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -69,6 +70,7 @@ export async function createBiliContext(
 			stopReason: "BN 关停",
 			problems: opts.problems,
 			reporter: BILIBILI_SOURCE_KEY,
+			label: () => BILI_SOURCE_DESCRIPTOR.label,
 			rejectedProblemLevel: "error",
 			transitImages: opts.transitImages,
 			settings: createIntegrationSettings({

@@ -74,6 +74,7 @@ export async function registerBuiltinAdapters(
 				stopReason: "BN 关停",
 				problems: opts.problems,
 				reporter: adapter.adapterKey,
+				label: () => adapter.adapterKey,
 				rejectedProblemLevel: "error",
 				transitImages: opts.transitImages,
 				httpOptions: { setTimeout: opts.setTimeout },
@@ -83,6 +84,7 @@ export async function registerBuiltinAdapters(
 			const ctx = createPlatformAdapterContext({
 				integration: context.ctx,
 				adapterKey: adapter.adapterKey,
+				label: () => adapter.adapterKey,
 				settingsSchema: adapter.settingsSchema,
 				connections: opts.connections,
 				...(opts.connection ? { connection: opts.connection } : {}),

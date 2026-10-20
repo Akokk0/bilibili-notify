@@ -1160,14 +1160,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	});
 
 	// 验红:`engines.ts` 里不把问题表递给通知器(`table:` 换成一张永远空的),第一段红。
-	it("P12 问题的私聊与恢复句:notify 的问题私聊主人一条(正文是报的那句);清掉时发它自带的恢复句", async () => {
+	it("P12 问题的私聊与恢复句:notify 的问题私聊主人一条(报的那句由宿主加上来源名的引子);清掉时发它自带的恢复句(同样加引子)", async () => {
 		const probe = currentProbe();
 		await clearCaptures();
 		probe.ctx?.reportProblem({
 			code: "needs_attention",
-			message: "主人，对拍源需要您看一眼",
+			message: "有一处要看一眼",
 			notify: true,
-			recoveryMessage: "主人，对拍源已经好啦",
+			recoveryMessage: "已经好了",
 		});
 		const [asked] = await settledCaptures(1);
 		expect(await captures()).toHaveLength(1);
@@ -1175,7 +1175,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			targetId: ID.master,
 			private: true,
 			kind: "text",
-			text: "主人，对拍源需要您看一眼",
+			text: "主人，刚刚对拍源报告：有一处要看一眼",
 		});
 
 		await clearCaptures();
@@ -1185,7 +1185,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(recovered).toMatchObject({
 			targetId: ID.master,
 			private: true,
-			text: "主人，对拍源已经好啦",
+			text: "主人，好消息，对拍源报告：已经好了",
 		});
 		drove("P12");
 	});

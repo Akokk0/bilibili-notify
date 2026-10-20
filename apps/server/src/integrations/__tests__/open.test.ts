@@ -77,6 +77,7 @@ async function open(key: string, io = integrationIo()) {
 		stopReason: "测试",
 		problems: createProblemTable({ logger: silentLogger }),
 		reporter: key,
+		label: () => key,
 		rejectedProblemLevel: "error",
 		settings: inertSettings(),
 		transitImages: io.transitImages,

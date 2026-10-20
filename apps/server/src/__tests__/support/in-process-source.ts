@@ -377,6 +377,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 						stopReason: "BN 关停",
 						problems: deps.problems,
 						reporter: IN_PROCESS_KEY,
+						label: () => IN_PROCESS_KEY,
 						rejectedProblemLevel: "error",
 						transitImages: deps.transitImages,
 						// 读法取自入口递进来的那一份(`deps.settingsOf`):假来源读自己的键,不在测试里另接配置仓。

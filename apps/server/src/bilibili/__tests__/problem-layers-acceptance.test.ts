@@ -15,6 +15,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { t } from "../../i18n/index.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -30,11 +31,15 @@ import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
 import { createProblemLayers } from "../problem-layers.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
-import { createBiliSource } from "../source.js";
+import { BILI_SOURCE_DESCRIPTOR, createBiliSource } from "../source.js";
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
 const EXPIRED: AuthState = { status: "expired", message: "失效" };
 const OUT: AuthState = { status: "logged-out" };
+const relayed = (message: string) =>
+	t("problem.relay.reported", { name: BILI_SOURCE_DESCRIPTOR.label, message });
+const relayedRecovery = (message: string) =>
+	t("problem.relay.recovered", { name: BILI_SOURCE_DESCRIPTOR.label, message });
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -156,7 +161,7 @@ describe("失效登录开机", () => {
 		expect(table.list()[0]).toMatchObject({ reporter: SOURCE_KEY, code: "auth_lost" });
 		expect(table.list()[0]?.about).toBeUndefined();
 		expect(notifyMaster).toHaveBeenCalledTimes(1);
-		expect(notifyMaster).toHaveBeenCalledWith(PROBLEM_TEXTS.loginExpired.text);
+		expect(notifyMaster).toHaveBeenCalledWith(relayed(PROBLEM_TEXTS.loginExpired.text));
 	});
 
 	it("私聊不因开机那一下没连上而丢:头一次 unavailable,10 秒后再送,恰好送到一条;登录好了补一条「已恢复」", async () => {
@@ -177,7 +182,9 @@ describe("失效登录开机", () => {
 		await flush();
 		expect(table.list()).toEqual([]);
 		expect(notifyMaster).toHaveBeenCalledTimes(3);
-		expect(notifyMaster).toHaveBeenLastCalledWith(PROBLEM_TEXTS.loginExpired.recovery);
+		expect(notifyMaster).toHaveBeenLastCalledWith(
+			relayedRecovery(PROBLEM_TEXTS.loginExpired.recovery),
+		);
 	});
 
 	it("从没登录过 / 主动退出(logged-out):进表,不私聊", async () => {

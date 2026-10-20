@@ -263,7 +263,14 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 			code: "auth_lost",
 			message: "登录失效",
 			notify: true,
+			writtenBy: "测试",
 		});
+	});
+
+	it("盖上的写者名是来源描述符的 label", () => {
+		const { handle, problems } = setup();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效" });
+		expect(problems.report.mock.calls[0]?.[0]).toMatchObject({ writtenBy: "测试" });
 	});
 
 	it("带 externalId:按身份展开,遗留的两条重复订阅各记一条,别人的订阅不碰", () => {
@@ -279,6 +286,7 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 			about: { subscriptionId: "a" },
 			code: "monitor_stopped",
 			message: "停了",
+			writtenBy: "测试",
 		});
 	});
 

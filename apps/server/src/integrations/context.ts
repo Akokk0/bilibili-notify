@@ -48,6 +48,8 @@ export interface CreateIntegrationContextOptions {
 	problems: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
 	/** 报的人:这个集成的键(内置的是集成键,拓展是拓展 id)。 */
 	reporter: string;
+	/** 这个集成给人看的名字,报问题那一刻现取(拓展名随当前语言变)。 */
+	label: () => string;
 	/**
 	 * 上报被拒(已停下、形状不对)记成什么等级:内置集成被拒就是 BN 的 bug,记 `error`;
 	 * 拓展被拒是拓展自己的 bug、BN 改不了,记 `warn`(ADR-0025 决策 10)。
@@ -187,6 +189,7 @@ export function createIntegrationContext(
 			acceptProblem("报", problem, () =>
 				opts.problems.report({
 					reporter: opts.reporter,
+					writtenBy: opts.label(),
 					code: problem.code,
 					message: problem.message,
 					...(problem.notify === undefined ? {} : { notify: problem.notify }),

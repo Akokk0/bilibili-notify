@@ -16,6 +16,7 @@ import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
 import type { ExtensionLocales } from "../locales.js";
@@ -31,7 +32,14 @@ const MANIFEST = {
 	contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 } as const satisfies ExtensionManifest;
 
-function boot(locales: ExtensionLocales, initial: string) {
+function boot(
+	locales: ExtensionLocales,
+	initial: string,
+	problems: Pick<
+		ReturnType<typeof createProblemTable>,
+		"report" | "resolve" | "clearReporter"
+	> = ignoredProblems,
+) {
 	const reader = switchableLocale(initial);
 	const runtime = createExtensionContext({
 		...integrationIo(),
@@ -47,7 +55,7 @@ function boot(locales: ExtensionLocales, initial: string) {
 		},
 		loggerOf: () => silentLogger,
 		stores: { ...memoryStores(), redact() {} },
-		problems: ignoredProblems,
+		problems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
@@ -94,6 +102,22 @@ describe("ctx.i18n", () => {
 		expect(calls).toBe(1);
 		expect(i18n.locale()).toBe("en");
 		expect(i18n.t("status.up")).toBe("Connected");
+	});
+
+	it("报问题时用的写者名按当前语言取清单名:换语言后再报跟着换", () => {
+		const locales = noExtensionLocales();
+		locales.files["zh-CN"] = { dict: {}, manifest: { name: "简中名" }, issues: [] };
+		locales.files.en = { dict: {}, manifest: { name: "English name" }, issues: [] };
+		const problems = createProblemTable({ logger: silentLogger });
+		const { runtime, reader } = boot(locales, "zh-CN", problems);
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+
+		runtime.ctx.reportProblem({ code: "x_y", message: "第一句" });
+		reader.set("en");
+		runtime.ctx.reportProblem({ code: "x_y", message: "second" });
+
+		expect(changes.map((c) => c.writtenBy)).toEqual(["简中名", "English name"]);
 	});
 
 	it("收摊之后再换语言,onChange 不再叫", async () => {

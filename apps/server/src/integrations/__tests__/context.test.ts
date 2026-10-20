@@ -37,6 +37,7 @@ function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {
 		...memoryStores(),
 		problems,
 		reporter: "demo",
+		label: () => "演示集成",
 		rejectedProblemLevel: "error",
 		// 与真装配同形状:每次交来的是这个集成登记过的全部值,按种类整批换。
 		redactValues: (values) => redactor.replace("demo", "redact", values),
@@ -253,6 +254,38 @@ describe("createIntegrationContext · reportProblem / resolveProblem", () => {
 				since: expect.any(String),
 			},
 		]);
+	});
+
+	it("报问题时盖上这个集成给人看的名字:变更里有 writtenBy,表里没有", () => {
+		const { handle, problems } = make();
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效了" });
+		expect(changes[0]).toMatchObject({ kind: "opened", writtenBy: "演示集成" });
+		expect(problems.list()[0]).not.toHaveProperty("writtenBy");
+	});
+
+	it("名字在报的那一刻现取:中途换了名字,下一条变更带新的", () => {
+		let name = "甲";
+		const { handle, problems } = make({ label: () => name });
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		handle.ctx.reportProblem({ code: "auth_lost", message: "第一句" });
+		name = "乙";
+		handle.ctx.reportProblem({ code: "auth_lost", message: "第二句" });
+		expect(changes.map((c) => c.writtenBy)).toEqual(["甲", "乙"]);
+	});
+
+	it("第三方硬塞 writtenBy:被上下文盖掉,表里仍是这个集成的名字", () => {
+		const { handle, problems } = make();
+		const changes: ProblemChange[] = [];
+		problems.subscribe((c) => changes.push(c));
+		handle.ctx.reportProblem({
+			code: "auth_lost",
+			message: "登录失效了",
+			writtenBy: "冒充的",
+		} as never);
+		expect(changes[0]?.writtenBy).toBe("演示集成");
 	});
 
 	it("再报同一个 code 只换文案:还是一条", () => {
