@@ -1,5 +1,5 @@
 import {
-	BILIBILI_SOURCE_KEY,
+	featuresForEvents,
 	type Subscription,
 	type SubscriptionEventKind,
 	sniffImageFormat,
@@ -11,7 +11,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
  * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`posts/extension-post.ts`)与拓展的
- * 直播共用:模板里的名字、「这条订阅现在还该推吗」、字节转 data URL。
+ * 直播共用:模板里的名字、字节转 data URL。
  *
  * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /
  * `postSettingsOf` / `liveWorkSettings`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
@@ -27,9 +27,22 @@ export interface ExtensionSourceReader {
 	postNoun(extensionId: string): string | undefined;
 	/**
 	 * 清单里这个源声明的事件(`contributes.subscription.events`);现取不到(装载器还没起来、清单没交订阅那一口)
-	 * 就是 `undefined`。直播推送据它认「周期『正在直播』这个源有没有」(`featuresForEvents`,面板与服务端同一条规则)。
+	 * 就是 `undefined`。直播推送的 `hasLiveTick` 据它答,见 {@link extensionHasLiveTick}。
 	 */
 	events(extensionId: string): readonly SubscriptionEventKind[] | undefined;
+}
+
+/**
+ * 这个拓展有没有周期「正在直播」这一档:清单声明了开播与下播两种事件才有(`featuresForEvents`,面板上那一行
+ * 「直播中」与这里同一条规则)—— 只报开播的源没有下播事件把这一场收掉,周期推送一开就没有尽头。清单现取不到时
+ * 不拦:只在明确知道声明不全时才答没有。
+ */
+export function extensionHasLiveTick(
+	sources: Pick<ExtensionSourceReader, "events">,
+	sourceKey: string,
+): boolean {
+	const events = sources.events(sourceKey);
+	return events === undefined || featuresForEvents(events).includes("liveStreaming");
 }
 
 /** 图库里读出来的一张头像:字节与它的类型(图库按嗅探定的 mime)。 */
@@ -92,24 +105,5 @@ export interface ExtensionNameSources {
 export function extensionSubscriptionName(sub: Subscription, from: ExtensionNameSources): string {
 	return (
 		filled(from.eventName) ?? filled(from.profileName) ?? subscriptionIdentityOf(sub).externalId
-	);
-}
-
-/**
- * 这条订阅现在还该推吗:订阅还在、是拓展订阅、启用着、它的拓展还在跑。
- *
- * 事件分发那一刻 ctx 已经按开关筛过(决策 62),这里是出卡、点评几个 await 之后发送之前的**再核一次**
- * —— 期间主人可能停用了这条订阅、停用了拓展(决策 61:拓展停了,等着的推送不补)、或者删了它。
- */
-export function extensionSubscriptionPushable(
-	sub: Subscription | undefined,
-	extensionRunning: (extensionId: string) => boolean,
-): boolean {
-	if (sub === undefined) return false;
-	const identity = subscriptionIdentityOf(sub);
-	return (
-		identity.sourceKey !== BILIBILI_SOURCE_KEY &&
-		sub.enabled &&
-		extensionRunning(identity.sourceKey)
 	);
 }

@@ -10,7 +10,6 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	createSerialGate,
-	featuresForEvents,
 	formatDuration,
 	type SerialGate,
 	subscriptionIdentityOf,
@@ -18,14 +17,16 @@ import {
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { deferImageWrites } from "../images/image-writes.js";
-import {
-	type ExtensionSourceReader,
-	extensionSubscriptionName,
-	extensionSubscriptionPushable,
-} from "../runtime/extension-push-common.js";
+import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
+import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { type LiveCardFields, liveCardInputFromReport } from "./live-card-input-from-report.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
-import type { LiveSession, LiveSessionChange, LiveSessionEngine } from "./live-sessions.js";
+import {
+	type LiveSession,
+	type LiveSessionChange,
+	type LiveSessionEngine,
+	liveSubscriptionPushable,
+} from "./live-sessions.js";
 import type { LiveWorkSettings } from "./live-settings.js";
 import type { LiveTable, LiveTableEntry } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
@@ -107,8 +108,10 @@ export interface BindLivePushOptions {
 	settings(sub: Subscription): LiveWorkSettings;
 	/** 这一张直播卡用哪张自定义封面(订阅的 ?? 全局的,再轮一张)。每推一张调一次。 */
 	liveCover(sub: Subscription, settings: LiveWorkSettings): string | undefined;
-	/** 拓展在不在跑、清单里声明的事件(头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
-	sources: Pick<ExtensionSourceReader, "running" | "events">;
+	/** 来源在不在跑(现取;头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
+	sourceStatus: Pick<SourceStatusReader, "running">;
+	/** 这个来源有没有周期「正在直播」这一档(现取);答没有就不挂周期推送。拓展怎么认的见 `extensionHasLiveTick`。 */
+	hasLiveTick(sourceKey: string): boolean;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/**
@@ -205,11 +208,11 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	const seen = new Map<string, string>();
 	let disposed = false;
 
-	/** 这条订阅现在还该推吗:还在、启用着、拓展在跑。关机之后一律不推。 */
+	/** 这条订阅现在还该推吗:还在、启用着、来源在跑。关机之后一律不推。 */
 	const pushable = (id: string): Subscription | undefined => {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
-		return extensionSubscriptionPushable(sub, opts.sources.running) ? sub : undefined;
+		return liveSubscriptionPushable(sub, opts.sourceStatus) ? sub : undefined;
 	};
 
 	/** 推送这头放下这一场:周期推送拆掉。这一场本身在场次那边,不归这里收。 */
@@ -226,7 +229,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	 */
 	function armPeriodic(id: string, run: LiveRun, settings: LiveWorkSettings): void {
 		const hours =
-			settings.liveStreaming && streamingDeclared(run) && !run.session.pendingEnd
+			settings.liveStreaming && opts.hasLiveTick(run.session.sourceKey) && !run.session.pendingEnd
 				? settings.streamingIntervalHours
 				: 0;
 		if (run.periodic?.hours === hours) return;
@@ -237,16 +240,6 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			hours,
 			handle: opts.serviceCtx.setInterval(() => tick(id), hours * HOUR),
 		};
-	}
-
-	/**
-	 * 这个源有没有周期「正在直播」:清单声明了开播与下播两种事件才有(`featuresForEvents`,面板上那一行「直播中」
-	 * 与这里同一条规则)—— 只报开播的源没有下播事件把这一场收掉,周期推送一开就没有尽头。清单现取不到时不拦:
-	 * 只在明确知道声明不全时才不挂。
-	 */
-	function streamingDeclared(run: LiveRun): boolean {
-		const events = opts.sources.events(run.session.extensionId);
-		return events === undefined || featuresForEvents(events).includes("liveStreaming");
 	}
 
 	/** 设置可能变了(订阅改了、全局改了):对着现折的设置把这一场的计时器理一遍。 */
@@ -401,7 +394,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			const reason = "上次推送之后没收到新的直播状态,这一轮周期「正在直播」没推";
 			log.info(`[ext-live] 订阅 ${id}:${reason}`);
 			opts.onReportDiscrepancy({
-				extensionId: run.session.extensionId,
+				extensionId: run.session.sourceKey,
 				at: now(),
 				kind: "liveStatus",
 				externalId: subscriptionIdentityOf(sub).externalId,

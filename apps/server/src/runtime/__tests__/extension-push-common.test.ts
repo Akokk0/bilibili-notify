@@ -6,15 +6,14 @@
  *   这条规矩与名字的取法分别由 `live-card-input-from-report.test.ts` 与下面的 `extensionSubscriptionName` 钉着。
  * - 模板里的 `{name}`:事件作者名 → 资料里的名字 → 外部 id(决策 77;手填的别名已退役,ADR-0021 决策 16)。
  *   面板上标「备注」的 `notes` 是自由文字,不当名字用。
- * - 这条订阅现在还该推吗:订阅还在、启用着、它的拓展还在跑。
  */
 
-import { makeEmptySubscription } from "@bilibili-notify/internal";
+import type { SubscriptionEventKind } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import {
+	extensionHasLiveTick,
 	extensionSubscriptionName,
-	extensionSubscriptionPushable,
 	readProfileAvatar,
 } from "../extension-push-common.js";
 
@@ -76,27 +75,22 @@ describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是
 	});
 });
 
-describe("这条订阅现在还该推吗", () => {
-	const running = (id: string) => id === "douyin";
+// 周期「正在直播」只对同时声明了开播与下播的源成立(面板那一行「直播中」也是这条规则):
+// 只报开播的源没有下播事件把这一场收掉。清单现取不到时不拦,只在明确知道声明不全时才答没有。
+describe("拓展有没有周期「正在直播」这一档(extensionHasLiveTick)", () => {
+	const declaring = (events: readonly SubscriptionEventKind[] | undefined) => ({
+		events: () => events,
+	});
 
-	it("订阅还在、是拓展订阅、启用着、它的拓展在跑 —— 四样都得是", () => {
-		expect(extensionSubscriptionPushable(SUB, running)).toBe(true);
-		expect(extensionSubscriptionPushable(undefined, running)).toBe(false);
-		expect(extensionSubscriptionPushable({ ...SUB, enabled: false }, running)).toBe(false);
-		expect(
-			extensionSubscriptionPushable(
-				{ ...SUB, identity: { ...SUB.identity, sourceKey: "other" } },
-				running,
-			),
-		).toBe(false);
-		expect(
-			extensionSubscriptionPushable(
-				makeEmptySubscription({
-					id: SUB.id,
-					identity: { sourceKey: "bilibili", externalId: "100" },
-				}),
-				() => true,
-			),
-		).toBe(false);
+	it("清单声明了开播与下播 → 有", () => {
+		expect(extensionHasLiveTick(declaring(["post", "liveStart", "liveEnd"]), "douyin")).toBe(true);
+	});
+
+	it("只声明了开播(没有下播)→ 没有", () => {
+		expect(extensionHasLiveTick(declaring(["post", "liveStart"]), "douyin")).toBe(false);
+	});
+
+	it("清单现取不到(undefined,装载器还没起来)→ 不拦,算有", () => {
+		expect(extensionHasLiveTick(declaring(undefined), "douyin")).toBe(true);
 	});
 });

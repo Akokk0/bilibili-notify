@@ -19,7 +19,6 @@ import {
 	defaultMessageKindLayout,
 	type ImageRef,
 	type Subscription,
-	type SubscriptionEventKind,
 	type SubscriptionReport,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -100,8 +99,8 @@ let rendererOn: boolean;
 let slowNext: Promise<void> | undefined;
 /** 登记进 `track` 的后台活(切片 ③)。 */
 let ctx: TrackingContext;
-/** 拓展清单声明的事件(`contributes.subscription.events`);`undefined` = 现取不到(装载器还没起来)。 */
-let declaredEvents: readonly SubscriptionEventKind[] | undefined;
+/** 来源有没有周期「正在直播」这一档(读口 `hasLiveTick` 的答案)。 */
+let sourceHasLiveTick: boolean;
 /** 推送这头(`bindLivePush`)挂过的周期计时器的间隔,按挂的先后(场次 / 在播表自己的计时器不算)。 */
 let periodicIntervals: number[];
 
@@ -122,7 +121,7 @@ function start(): void {
 		logger,
 		table,
 		subscription: (id) => subs.get(id),
-		running: () => running,
+		sourceStatus: { running: () => running },
 		fans: () => profile?.fans,
 		settings: () => settings,
 		timers,
@@ -145,10 +144,8 @@ function start(): void {
 		profile: () => profile,
 		settings: () => settings,
 		liveCover: () => undefined,
-		sources: {
-			running: () => running,
-			events: () => declaredEvents,
-		},
+		sourceStatus: { running: () => running },
+		hasLiveTick: () => sourceHasLiveTick,
 		avatarRef: () => avatarRef,
 		liveImages: {
 			put: async (bytes) => {
@@ -222,7 +219,7 @@ beforeEach(() => {
 	slowNext = undefined;
 	ctx = makeTrackingContext();
 	periodicIntervals = [];
-	declaredEvents = ["post", "liveStart", "liveEnd"];
+	sourceHasLiveTick = true;
 	settings = baseSettings();
 	subs = new Map([[SUB.id, SUB]]);
 	running = true;
@@ -553,10 +550,10 @@ describe("周期「正在直播」", () => {
 		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
 	});
 
-	// 周期「正在直播」只对同时声明了开播与下播的源成立(`featuresForEvents`,面板那一行「直播中」也是这条规则):
-	// 只报开播的源没有下播事件把这一场收掉。全局默认开着(迁移把旧的周期间隔折成了全局开)时,这样的源名下的订阅也不挂。
-	it("源只声明了开播(没有下播):开关开着也不挂计时器、不推", async () => {
-		declaredEvents = ["post", "liveStart"];
+	// 周期「正在直播」只对有这一档的源成立(拓展怎么认见 `extensionHasLiveTick`)。
+	// 全局默认开着(迁移把旧的周期间隔折成了全局开)时,没有这一档的源名下的订阅也不挂。
+	it("源没有周期这一档(例如只声明了开播):开关开着也不挂计时器、不推", async () => {
+		sourceHasLiveTick = false;
 		start();
 		liveStart();
 		await settle();
@@ -567,8 +564,7 @@ describe("周期「正在直播」", () => {
 		expect(discrepancies).toEqual([]);
 	});
 
-	it("源声明了开播与下播 → 挂;清单现取不到(undefined)时不拦:只在明确知道声明不全时才不推", async () => {
-		declaredEvents = undefined;
+	it("源有周期这一档 → 挂", async () => {
 		start();
 		liveStart();
 		await settle();

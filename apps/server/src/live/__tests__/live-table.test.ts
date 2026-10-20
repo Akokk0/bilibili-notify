@@ -98,7 +98,7 @@ describe("开播 / 下播", () => {
 		});
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
-			extensionId: EXT,
+			sourceKey: EXT,
 			startedAt: T0 - 60_000,
 			title: "晚上好",
 			cover: PNG,
@@ -127,7 +127,7 @@ describe("直播状态", () => {
 		report({ kind: "liveStatus", value: { live: true, viewers: 40, likes: 7 } });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
-			extensionId: EXT,
+			sourceKey: EXT,
 			startedAt: T0 - 60_000,
 			title: "晚上好",
 			cover: PNG,
@@ -160,7 +160,7 @@ describe("直播状态", () => {
 		report({ kind: "liveStatus", value: { live: true, title: "早就在播了", viewers: 5 } });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
-			extensionId: EXT,
+			sourceKey: EXT,
 			title: "早就在播了",
 			viewers: 5,
 			updatedAt: T0,
@@ -178,7 +178,7 @@ describe("直播状态", () => {
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 + 1_000 } });
 		expect(table.get(SUB_A)).toEqual({
 			subscriptionId: SUB_A,
-			extensionId: EXT,
+			sourceKey: EXT,
 			startedAt: T0 + 1_000,
 			url: LIVE_URL,
 			updatedAt: T0,

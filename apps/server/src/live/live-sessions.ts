@@ -8,7 +8,7 @@ import type {
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
-import { extensionSubscriptionPushable } from "../runtime/extension-push-common.js";
+import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import type { LiveWorkSettings } from "./live-settings.js";
 import { liveEndGraceMinutes } from "./live-settings.js";
 import type { LiveTable, LiveTableEntry } from "./live-table.js";
@@ -32,7 +32,7 @@ import type { LiveTable, LiveTableEntry } from "./live-table.js";
  * 也在里面;断流接续里的那一下不是边界,不发。推送要的比边界多(断流等待开始了、
  * 又来一份状态、手里没有这一场的下播……),经 {@link LiveSessionEngine.onChange} 直接听,不走总线。
  *
- * 只记「订阅在、启用着、拓展在跑」的(与推送同一个判据,`extensionSubscriptionPushable`),**与推送开关无关**
+ * 只记「订阅在、启用着、来源在跑」的(与推送同一个判据,{@link liveSubscriptionPushable}),**与推送开关无关**
  * (ADR-0020 决策 4):统计记的是「UP 做了什么」,推送关着这一场照样开、照样结束 —— 推送关掉只是不推。
  *
  * 只在内存:BN 重启之后靠拓展开机第一轮报的直播状态接上(决策 57 / 8)。
@@ -44,13 +44,27 @@ type LiveStatus = SubscriptionReportValue<"liveStatus">;
 
 const MINUTE = 60_000;
 
+/**
+ * 这条订阅现在还该推吗:订阅还在、启用着、它的来源还在跑。场次与推送共用,**不认来源是哪一种**
+ * (拓展、B 站,都只看读口怎么说)。
+ *
+ * 事件分发那一刻 ctx 已经按开关筛过(决策 62),推送这头是出卡、点评几个 await 之后发送之前的**再核一次**
+ * —— 期间主人可能停用了这条订阅、停用了来源(决策 61:来源停了,等着的推送不补)、或者删了它。
+ */
+export function liveSubscriptionPushable(
+	sub: Subscription | undefined,
+	sources: Pick<SourceStatusReader, "running">,
+): sub is Subscription {
+	return sub?.enabled === true && sources.running(subscriptionIdentityOf(sub).sourceKey);
+}
+
 /** 毫秒 → 总线上的 ISO。 */
 const iso = (ms: number): string => new Date(ms).toISOString();
 
 /** 一条订阅正在播的这一场。只读:场次只由这里改。 */
 export interface LiveSession {
 	readonly subscriptionId: string;
-	readonly extensionId: string;
+	readonly sourceKey: string;
 	/**
 	 * 开播时刻(毫秒)。开播事件必带;只见过直播状态时拓展报了才有 —— 之后的状态带了再补上。断流接续时
 	 * 沿用第一次的。
@@ -137,8 +151,8 @@ export interface CreateLiveSessionEngineOptions {
 	table: Pick<LiveTable, "get">;
 	/** 此刻的这条订阅(现取)。 */
 	subscription(id: string): Subscription | undefined;
-	/** 拓展此刻在不在跑(现取)。 */
-	running(extensionId: string): boolean;
+	/** 来源此刻在不在跑(现取)。 */
+	sourceStatus: Pick<SourceStatusReader, "running">;
 	/** 订阅资料里的粉丝数(资料缓存,现取)。 */
 	fans(id: string): number | undefined;
 	/** 这条订阅折好的直播设置(现折,见 `liveWorkSettings`)—— 只看断流接续那两格。 */
@@ -152,7 +166,7 @@ export interface CreateLiveSessionEngineOptions {
 /** 场次在这里的样子:比对外多一个断流等待的定时器,和总线上这一场的开播时刻。 */
 interface SessionState {
 	subscriptionId: string;
-	extensionId: string;
+	sourceKey: string;
 	startedAt?: number;
 	/** 总线上这一场的开播时刻(身份):开始时定下,结束帧原样带着。 */
 	busStartedAt: string;
@@ -197,7 +211,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		opts.bus.emit("extension-live-session", {
 			phase: "start",
 			subscriptionId: session.subscriptionId,
-			extensionId: session.extensionId,
+			extensionId: session.sourceKey,
 			startedAt: session.busStartedAt,
 			at: iso(session.detectedAt),
 			trigger,
@@ -213,7 +227,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		opts.bus.emit("extension-live-session", {
 			phase: "end",
 			subscriptionId: session.subscriptionId,
-			extensionId: session.extensionId,
+			extensionId: session.sourceKey,
 			startedAt: session.busStartedAt,
 			at: iso(at),
 			reason,
@@ -221,11 +235,11 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		});
 	}
 
-	/** 这条订阅现在记不记:还在、启用着、拓展在跑。关机之后一律不记。 */
+	/** 这条订阅现在记不记:还在、启用着、来源在跑。关机之后一律不记。 */
 	function trackable(id: string): Subscription | undefined {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
-		return extensionSubscriptionPushable(sub, opts.running) ? sub : undefined;
+		return liveSubscriptionPushable(sub, opts.sourceStatus) ? sub : undefined;
 	}
 
 	/** 这一场结束。等着的下播不再等。 */
@@ -252,7 +266,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		const detectedAt = now();
 		const session: SessionState = {
 			subscriptionId: id,
-			extensionId: subscriptionIdentityOf(sub).sourceKey,
+			sourceKey: subscriptionIdentityOf(sub).sourceKey,
 			startedAt: value.startedAt,
 			// 状态没带开播时刻:取认出它的那一刻(ADR-0020 决策 6)。
 			busStartedAt: iso(value.startedAt ?? detectedAt),
@@ -377,7 +391,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		// 拓展停了(决策 61):它名下的全部当场结束,等着的下播不再等。重新跑起来后靠直播状态接上。
 		opts.bus.on("extension-stopped", ({ extensionId }) => {
 			for (const [id, session] of [...sessions]) {
-				if (session.extensionId === extensionId) end(id, "extension-stopped");
+				if (session.sourceKey === extensionId) end(id, "extension-stopped");
 			}
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {

@@ -124,7 +124,7 @@ import {
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentContentBuilder, segmentToPayload } from "./content-builder.js";
-import type { ExtensionSourceReader } from "./extension-push-common.js";
+import { type ExtensionSourceReader, extensionHasLiveTick } from "./extension-push-common.js";
 import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
@@ -871,7 +871,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			logger: coreLiveCtx.logger,
 			table: liveTable,
 			subscription: (id) => opts.subscriptionStore.findById(id),
-			running: (id) => extensionSources.running(id),
+			sourceStatus,
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveWorkSettings(sub, globals()),
 			timers: coreLiveCtx,
@@ -898,7 +898,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						`${identity.sourceKey}:${identity.externalId}:live-cover`,
 					);
 				},
-				sources: extensionSources,
+				sourceStatus,
+				hasLiveTick: (sourceKey) => extensionHasLiveTick(extensionSources, sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				liveImages,
 				sendFor: (id) => boundLivePush(push, id),

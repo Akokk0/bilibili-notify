@@ -155,7 +155,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			logger: SERVICE_CTX.logger,
 			table,
 			subscription: (id) => (id === sub.id ? sub : undefined),
-			running: () => true,
+			sourceStatus: { running: () => true },
 			fans: () => undefined,
 			settings: (s) => liveWorkSettings(s, g),
 			timers,
@@ -175,10 +175,8 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				profile: () => ({ name: "抖音甲" }),
 				settings: (s) => liveWorkSettings(s, g),
 				liveCover: () => undefined,
-				sources: {
-					running: () => true,
-					events: () => ["post", "liveStart", "liveEnd"],
-				},
+				sourceStatus: { running: () => true },
+				hasLiveTick: () => true,
 				avatarRef: () => undefined,
 				liveImages: {
 					put: async () => ({ ok: false as const, code: "invalid", message: "不存图" }) as never,

@@ -23,6 +23,7 @@ import {
 	createLiveSessionEngine,
 	type LiveSessionChange,
 	type LiveSessionEngine,
+	liveSubscriptionPushable,
 } from "../live-sessions.js";
 import type { LiveWorkSettings } from "../live-settings.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
@@ -70,7 +71,7 @@ function start(): void {
 		logger,
 		table,
 		subscription: (id) => subs.get(id),
-		running: (id) => running.has(id),
+		sourceStatus: { running: (id) => running.has(id) },
 		fans: () => fans,
 		settings: () => settings,
 		timers,
@@ -156,7 +157,7 @@ describe("一场从哪开始", () => {
 		const session = sessions.get(SUB.id);
 		expect(session).toMatchObject({
 			subscriptionId: SUB.id,
-			extensionId: EXT,
+			sourceKey: EXT,
 			startedAt: T0 - MINUTE,
 			detectedAt: T0,
 			fansAtStart: 12_345,
@@ -212,6 +213,35 @@ describe("一场从哪开始", () => {
 		liveStatus();
 		expect(changes).toEqual([]);
 		expect(sessions.get(SUB.id)).toBeUndefined();
+	});
+});
+
+describe("来源在不在跑只问中立的读口,不认拓展名单", () => {
+	it("读口说一个不在拓展名单里的键在跑,场次照记;说没在跑就不记", () => {
+		const bili = makeExtensionSubscription({
+			id: "e0000000-0000-4000-8000-000000000004",
+			extensionId: "bilibili",
+			externalId: "100",
+		});
+		subs.set(bili.id, bili);
+		start();
+		liveStart({}, bili);
+		expect(changes).toEqual([]);
+		running.add("bilibili");
+		liveStart({}, bili);
+		expect(sessions.get(bili.id)).toBeDefined();
+	});
+});
+
+describe("这条订阅现在还该推吗(liveSubscriptionPushable)", () => {
+	const reader = { running: (key: string) => key === EXT };
+
+	it("订阅还在、启用着、它的来源在跑 —— 三样都得是,不认来源是哪一种", () => {
+		expect(liveSubscriptionPushable(SUB, reader)).toBe(true);
+		expect(liveSubscriptionPushable(undefined, reader)).toBe(false);
+		expect(liveSubscriptionPushable({ ...SUB, enabled: false }, reader)).toBe(false);
+		expect(liveSubscriptionPushable(OTHER, reader)).toBe(false);
+		expect(liveSubscriptionPushable(OTHER, { running: () => true })).toBe(true);
 	});
 });
 

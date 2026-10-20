@@ -1556,7 +1556,7 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 			liveTable: {
 				get: (id) =>
 					id === sub.id
-						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
+						? { subscriptionId: sub.id, sourceKey: "douyin", updatedAt: Date.now() }
 						: undefined,
 			},
 			onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
@@ -1615,7 +1615,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 	};
 	const liveRow = (id: string) => ({
 		subscriptionId: id,
-		extensionId: "douyin",
+		sourceKey: "douyin",
 		updatedAt: Date.now(),
 	});
 	const storing = () =>
@@ -2033,7 +2033,7 @@ describe("createEngines — boot wiring", () => {
 			liveTable: {
 				get: (id) =>
 					id === ext.id
-						? { subscriptionId: ext.id, extensionId: "douyin", title: "在播", updatedAt: 0 }
+						? { subscriptionId: ext.id, sourceKey: "douyin", title: "在播", updatedAt: 0 }
 						: undefined,
 			},
 		});
@@ -2408,7 +2408,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			liveTable: {
 				get: (id) =>
 					playing && id === sub.id
-						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
+						? { subscriptionId: sub.id, sourceKey: "douyin", updatedAt: Date.now() }
 						: undefined,
 			},
 		});

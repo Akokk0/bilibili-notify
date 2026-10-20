@@ -41,8 +41,8 @@ const CHANGED_KEY = "live-changed";
 /** 表里的一行:一条拓展订阅此刻在播。 */
 export interface LiveTableEntry {
 	subscriptionId: string;
-	/** 哪个拓展报的 —— 拓展停了,它名下的按这一格出表。 */
-	extensionId: string;
+	/** 哪个来源报的 —— 拓展停了,它名下的按这一格出表。 */
+	sourceKey: string;
 	/**
 	 * 开播时刻(毫秒)。开播事件必带;只收到过直播状态时,拓展报了才有 —— BN 不拿「收到的时刻」冒充,
 	 * 那会把这场的时长吞掉一截。留着给下播补开播时刻、重启补推(决策 56 / 57)。
@@ -139,7 +139,7 @@ export function extensionLiveSnapshot(entry: LiveTableEntry): ExtensionLiveSnaps
 	return {
 		kind: "extension",
 		subscriptionId: entry.subscriptionId,
-		extensionId: entry.extensionId,
+		extensionId: entry.sourceKey,
 		isLive: true,
 		title: entry.title,
 		areaName: entry.category,
@@ -177,7 +177,8 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	}
 
 	function apply(delivery: SubscriptionReportDelivery): void {
-		const { extensionId, report } = delivery;
+		// 总线上的投递载荷叫 `extensionId`(3b-23 改名),进了表就是来源键。
+		const { extensionId: sourceKey, report } = delivery;
 		for (const subscriptionId of delivery.subscriptionIds) {
 			switch (report.kind) {
 				case "liveStart":
@@ -186,7 +187,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 					entries.delete(subscriptionId);
 					put(subscriptionId, {
 						subscriptionId,
-						extensionId,
+						sourceKey,
 						...detailsOf(report.value),
 						updatedAt: now(),
 					});
@@ -202,7 +203,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 					const prev = entries.get(subscriptionId);
 					put(subscriptionId, {
 						...(prev ?? { subscriptionId }),
-						extensionId,
+						sourceKey,
 						...detailsOf(report.value),
 						updatedAt: now(),
 					});
@@ -219,7 +220,7 @@ export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 		bus.on("subscription-reported", apply),
 		bus.on("extension-stopped", ({ extensionId }) => {
 			for (const entry of [...entries.values()]) {
-				if (entry.extensionId === extensionId) put(entry.subscriptionId, undefined);
+				if (entry.sourceKey === extensionId) put(entry.subscriptionId, undefined);
 			}
 		}),
 		bus.on("subscription-changed", ({ ops }) => {

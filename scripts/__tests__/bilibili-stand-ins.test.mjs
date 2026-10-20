@@ -83,7 +83,6 @@ export const RATCHET = {
 	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 17(上面直播引擎的子上下文那一处同时消失,再减一)。
 	// 3b-33(主人 10-16 点头,19 → 20):接线处给女仆的读口递直播引擎的在播房间(`biliLiveRooms:`),3b-22 后随它消失。
 	"apps/server/src/runtime/engines.ts": 20,
-	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
 	"apps/server/src/stats/bili-source.ts": 13,
