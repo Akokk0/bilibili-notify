@@ -1,5 +1,6 @@
 import {
 	type IntegrationContext,
+	type LiveSignal,
 	ok,
 	type PostEvent,
 	type PostReport,
@@ -32,6 +33,7 @@ const setup = (
 	const world = makeWorld(subs);
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
+	const liveSignals = vi.fn<(signal: LiveSignal) => void>();
 	const problems = makeProblems();
 	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
@@ -44,13 +46,14 @@ const setup = (
 		bus: world.bus,
 		logger,
 		enqueue,
+		liveSignals,
 		problems,
 	});
-	return { ...world, logger, enqueue, problems, handle, settingsHost };
+	return { ...world, logger, enqueue, liveSignals, problems, handle, settingsHost };
 };
 
 describe("createSourceContext", () => {
-	it("交出去的上下文只有公共那一面加来源的七个方法:没有 cookies", () => {
+	it("交出去的上下文只有公共那一面加来源的八个方法:没有 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
 			"fetchImage",
@@ -60,6 +63,7 @@ describe("createSourceContext", () => {
 			"onSubscriptionsChanged",
 			"redact",
 			"registerLinkResolver",
+			"reportLive",
 			"reportPost",
 			"reportProblem",
 			"resolveProblem",
@@ -106,6 +110,7 @@ describe("createSourceContext", () => {
 			bus: makeWorld().bus,
 			logger: hostLogger,
 			enqueue: vi.fn(),
+			liveSignals: vi.fn(),
 			problems: makeProblems(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
@@ -172,6 +177,63 @@ describe("createSourceContext", () => {
 		handle.ctx.reportPost("999", report());
 		expect(enqueue).not.toHaveBeenCalled();
 		expect(logger.debug).toHaveBeenCalled();
+	});
+
+	it("reportLive 按身份展开:每条订阅各一份(停用的也交,不在这里筛),带订阅 id 与身份", () => {
+		const { handle, liveSignals } = setup([
+			makeSub("a", "1"),
+			makeSub("b", "1", { enabled: false }),
+			makeSub("c", "2"),
+		]);
+		const details = { title: "开播啦", totalViewers: 3 };
+		handle.ctx.reportLive("1", { kind: "start", startedAt: "2026-10-01T08:00:00.000Z", details });
+		expect(liveSignals.mock.calls.map(([s]) => s.subscriptionId)).toEqual(["a", "b"]);
+		expect(liveSignals.mock.calls[0]?.[0]).toEqual({
+			kind: "start",
+			startedAt: "2026-10-01T08:00:00.000Z",
+			details,
+			subscriptionId: "a",
+			identity: { sourceKey: SOURCE_KEY, externalId: "1" },
+		});
+	});
+
+	it("reportLive 没有这个人的订阅:不交信号,记 debug", () => {
+		const { handle, liveSignals, logger } = setup();
+		handle.ctx.reportLive("999", { kind: "status", isLive: true, details: {} });
+		expect(liveSignals).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalled();
+	});
+
+	it("reportLive 形状坏的丢弃并记 error:时刻解析不出、下播没带 endedAt", () => {
+		const { handle, liveSignals, logger } = setup();
+		handle.ctx.reportLive("1", { kind: "start", startedAt: "不是时刻", details: {} });
+		handle.ctx.reportLive("1", {
+			kind: "status",
+			isLive: true,
+			startedAt: "2026-13-45",
+			details: {},
+		});
+		handle.ctx.reportLive("1", { kind: "end", endedAt: "昨天" });
+		handle.ctx.reportLive("1", {
+			kind: "end",
+			startedAt: "不是时刻",
+			endedAt: "2026-10-01T09:00:00.000Z",
+		});
+		// 绕过类型的:下播没带 endedAt。
+		handle.ctx.reportLive("1", { kind: "end" } as never);
+		expect(liveSignals).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(5);
+		// 合格式的照交。
+		handle.ctx.reportLive("1", { kind: "end", endedAt: "2026-10-01T09:00:00.000Z" });
+		expect(liveSignals).toHaveBeenCalledTimes(1);
+	});
+
+	it("dispose 之后 reportLive 不交信号并记 error", () => {
+		const { handle, liveSignals, logger } = setup();
+		handle.dispose();
+		handle.ctx.reportLive("1", { kind: "status", isLive: true, details: {} });
+		expect(liveSignals).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
 	});
 
 	it("dispose 之后:回调不再叫、监听摘掉、reportPost 不入队并记 error、再登记回调也不会被叫", () => {

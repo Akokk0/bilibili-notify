@@ -15,6 +15,7 @@ import {
 	type CreatorCandidate,
 	fail,
 	type Json,
+	type LiveSignalReport,
 	ok,
 	type PostEvent,
 	type Result,
@@ -95,6 +96,11 @@ export interface InProcessProbe {
 	healthThrows: boolean;
 	/** 假解析器被问过的链接(`resolve` 的入参),按先后。 */
 	linkResolves: string[];
+	/**
+	 * 假来源的直播驱动口:替它在来源上下文上报一条直播信号(开播、状态、下播)。真来源是自己的循环或推送
+	 * 触发上报,这里由测试按需摆;还没 `start` 就抛。
+	 */
+	reportLive(externalId: string, report: LiveSignalReport): void;
 	/** `searchCreators` 收到的 query,按先后。 */
 	searches: string[];
 	/** 下一次 `searchCreators` 回什么;不摆 = 回两个固定候选。回完不清,测试自己摆回去。 */
@@ -175,6 +181,10 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		healthSummary: "一切正常",
 		healthThrows: false,
 		linkResolves: [],
+		reportLive(externalId, report) {
+			if (!probe.ctx) throw new Error("假来源还没 start");
+			probe.ctx.reportLive(externalId, report);
+		},
 		searches: [],
 		searchOutcome: undefined,
 		auth: createAuth(),

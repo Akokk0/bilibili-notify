@@ -1,6 +1,7 @@
 import type { AuthState } from "./auth-state";
 import type { FeatureKey, ImageRef, Result } from "./constants";
 import type { LinkResolver } from "./link-preview";
+import type { LiveSignalReport } from "./live";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -34,6 +35,12 @@ export interface SourceContext extends IntegrationContext {
 	onSubscriptionsChanged(fn: () => void): Disposable;
 	/** 交一条作品。没有返回值;判新、去重、限流归来源。 */
 	reportPost(externalId: string, report: PostReport): void;
+	/**
+	 * 交一条直播信号(开播、直播状态、下播),发生了就报。没有返回值;宿主按身份展开成这个人名下每一条订阅的一份,
+	 * 判场次、断流接续、出卡、推送都归核心。图一律先 `storeImage` 存进图库再带引用。时刻写 ISO;`startedAt` /
+	 * `endedAt` 解析不出、下播没带 `endedAt`、来源已停下的上报被丢弃并记错误。
+	 */
+	reportLive(externalId: string, report: LiveSignalReport): void;
 	/**
 	 * 报一个问题(某个人不再监听了……)。句子写平实、只说事:不称呼主人、不自称女仆、不写宿主的界面与操作;
 	 * 私聊时宿主按口吻补完整。有登录口的来源不要报登录,宿主看登录状态报与清。

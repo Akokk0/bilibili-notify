@@ -179,6 +179,12 @@ export interface CreateLiveSessionEngineOptions {
 	settings(sub: Subscription): Pick<LiveWorkSettings, "liveEndGrace" | "liveEndGraceMinutes">;
 	/** 断流等待的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
 	timers: Pick<ServiceContext, "setTimeout">;
+	/**
+	 * 这个来源的场次要不要发 `extension-live-session`(缺省都发)。R1 过渡输出(3b-22,3b-23 整段删):在册来源的
+	 * 场次对外走 B 站形状的 `live-state-changed`(`runtime/engines.ts` 订 `onChange` 发),拓展形状对它关掉,
+	 * 不然统计会把同一场按同一个文件键记两遍。
+	 */
+	publishesExtensionSession?: (sourceKey: string) => boolean;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
@@ -228,6 +234,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 
 	/** 一场开始了,发上总线 —— 统计只要边界(ADR-0020 决策 6)。总线载荷的字面不动(3b-23 改)。 */
 	function publishStart(session: SessionState, trigger: "liveStart" | "liveStatus"): void {
+		if (opts.publishesExtensionSession?.(session.sourceKey) === false) return;
 		opts.bus.emit("extension-live-session", {
 			phase: "start",
 			subscriptionId: session.subscriptionId,
@@ -244,6 +251,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		reason: ExtensionLiveSessionEndReason,
 		at: number,
 	): void {
+		if (opts.publishesExtensionSession?.(session.sourceKey) === false) return;
 		opts.bus.emit("extension-live-session", {
 			phase: "end",
 			subscriptionId: session.subscriptionId,

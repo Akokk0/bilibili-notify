@@ -15,6 +15,8 @@ import type { RouteDeps } from "../types.js";
 
 const T0 = Date.UTC(2026, 8, 23, 12);
 const EXT_SUB = "d0000000-0000-4000-8000-000000000001";
+/** 登记表里在册的来源键:它的行走 `listLiveRooms` 的投影,不在拓展那一半。 */
+const REGISTERED_KEY = "acme.registered";
 
 const BILI_ROWS: LiveListenerSnapshot[] = [
 	{
@@ -38,6 +40,7 @@ function setup(opts: { engines: boolean }) {
 	const runtime = {
 		engines: opts.engines ? { listLiveRooms: () => BILI_ROWS } : null,
 		liveTable,
+		sourceRegistry: { get: (key: string) => (key === REGISTERED_KEY ? {} : undefined) },
 	};
 	const app = createLiveRoute({ runtime } as unknown as RouteDeps);
 	async function listening(): Promise<LiveListeningEntry[]> {
@@ -82,6 +85,23 @@ describe("GET /api/live/listening", () => {
 
 		liveTable.remove(EXT_SUB);
 		expect(await listening()).toStrictEqual(BILI_ROWS);
+	});
+
+	it("在册来源的行不再列拓展那一半:它的行已经由 listLiveRooms 投影(R1 过渡输出),不然同一场列两行", async () => {
+		const { liveTable, listening } = setup({ engines: true });
+		liveTable.replace(EXT_SUB, REGISTERED_KEY, T0, { title: "在册来源这一场" });
+		liveTable.replace(`${EXT_SUB}-2`, "douyin", T0, { title: "抖音这一场" });
+		expect(await listening()).toStrictEqual([
+			...BILI_ROWS,
+			{
+				kind: "extension",
+				subscriptionId: `${EXT_SUB}-2`,
+				extensionId: "douyin",
+				isLive: true,
+				title: "抖音这一场",
+				startedAt: new Date(T0).toISOString(),
+			},
+		]);
 	});
 
 	it("直播引擎还没挂上(开机早期):B 站那几行是空的,拓展的照样有", async () => {

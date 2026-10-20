@@ -157,6 +157,7 @@ async function boot() {
 		bus: world.bus,
 		logger,
 		enqueue: vi.fn(),
+		liveSignals: vi.fn(),
 		problems: table,
 	});
 	toDispose.push(registration);

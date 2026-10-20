@@ -69,7 +69,7 @@ export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 33,
 	"apps/server/src/routes/stats.ts": 3,
 	"apps/server/src/routes/subscriptions.ts": 15,
-	"apps/server/src/runtime/engines.ts": 39,
+	"apps/server/src/runtime/engines.ts": 43, // R1 过渡输出（3b-22），22-10 降
 	"apps/server/src/runtime/fans-poller.ts": 20,
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"apps/server/src/stats/bili-source.ts": 16,

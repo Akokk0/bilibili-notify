@@ -20,7 +20,12 @@ export function createLiveRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	app.get("/listening", (c) => {
 		const bili = deps.runtime.engines?.listLiveRooms() ?? [];
-		const extension = deps.runtime.liveTable.list().map(extensionLiveSnapshot);
+		// R1 过渡输出(3b-22,3b-23 整段删):在册来源的行已由 `listLiveRooms()` 投影成上面那一半的形状,
+		// 这里再列就是同一场两行。
+		const extension = deps.runtime.liveTable
+			.list()
+			.filter((entry) => deps.runtime.sourceRegistry.get(entry.sourceKey) === undefined)
+			.map(extensionLiveSnapshot);
 		return c.json<LiveListeningEntry[]>([...bili, ...extension]);
 	});
 	return app;

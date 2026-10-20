@@ -115,6 +115,7 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		bus: world.bus,
 		logger,
 		enqueue: () => {},
+		liveSignals: () => {},
 		problems: table,
 	});
 	return { table, notifyMaster, layers, registration, ...authed };

@@ -46,6 +46,7 @@ const setup = (source: Source = makeSource()) => {
 		bus: world.bus,
 		logger: makeLogger(),
 		enqueue,
+		liveSignals: vi.fn(),
 		problems,
 	};
 	return { ...world, registry, linkResolvers, enqueue, problems, options };

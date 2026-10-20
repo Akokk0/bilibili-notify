@@ -2,6 +2,8 @@ import type {
 	Disposable,
 	GlobalConfig,
 	IntegrationContext,
+	LiveSignal,
+	LiveSignalReport,
 	Logger,
 	MessageBus,
 	PostEvent,
@@ -28,6 +30,8 @@ export interface CreateSourceContextOptions {
 	logger: Logger;
 	/** 作品入口(`PostQueue.enqueue`)。 */
 	enqueue: (event: PostEvent) => void;
+	/** 直播信号的入口(`LiveSessionEngine.apply`):`reportLive` 按身份展开后,每条订阅一份交到这里。 */
+	liveSignals: (signal: LiveSignal) => void;
 	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
@@ -168,6 +172,42 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 					post: report.post,
 					postNoun: descriptor.postNoun,
 				});
+			}
+		},
+		reportLive(externalId: string, report: LiveSignalReport) {
+			if (disposed) {
+				logger.error(
+					`[source] ${sourceKey} 已停下还在上报直播 ${report.kind}(丢弃;内置来源的 bug)`,
+				);
+				return;
+			}
+			// 形状核:时刻能解析、下播必带 endedAt。内置来源交了坏形状就是 BN 的 bug,丢弃并记 error。
+			const unparsable = (value: string | undefined): boolean =>
+				value !== undefined && Number.isNaN(Date.parse(value));
+			if (unparsable(report.startedAt)) {
+				logger.error(
+					`[source] ${sourceKey} 上报直播 ${report.kind} 的 startedAt 不是时刻(丢弃;内置来源的 bug): ${report.startedAt}`,
+				);
+				return;
+			}
+			if (
+				report.kind === "end" &&
+				(typeof report.endedAt !== "string" || unparsable(report.endedAt))
+			) {
+				logger.error(
+					`[source] ${sourceKey} 上报直播下播的 endedAt 缺失或不是时刻(丢弃;内置来源的 bug): ${String(report.endedAt)}`,
+				);
+				return;
+			}
+			const identity = { sourceKey, externalId };
+			const subs = opts.subscriptions.listByIdentity(identity);
+			if (subs.length === 0) {
+				logger.debug(`[source] ${sourceKey}:${externalId} 没有订阅,直播 ${report.kind} 不收`);
+				return;
+			}
+			// 停用的不在这里筛:场次引擎按订阅现判该不该记。
+			for (const sub of subs) {
+				opts.liveSignals({ ...report, subscriptionId: sub.id, identity });
 			}
 		},
 		reportProblem(problem) {

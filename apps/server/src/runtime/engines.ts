@@ -325,7 +325,7 @@ export interface CreateEnginesOptions {
 	 * 在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):场次引擎写它,拓展直播的计时器拿它当「最新状态」,
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
 	 */
-	liveTable?: Pick<LiveTable, "get" | "replace" | "merge" | "remove">;
+	liveTable?: Pick<LiveTable, "get" | "list" | "replace" | "merge" | "remove">;
 	/**
 	 * 拓展直播的封面与作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
 	 * 的 🔗,㉒c):拓展交的是字节,`bindExtensionLive` 收到上报就存进图库,信号与在播表里只有引用。
@@ -878,9 +878,54 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveWorkSettings(sub, globals()),
 			timers: coreLiveCtx,
+			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的场次走下面的 B 站形状,拓展形状只给非在册的来源。
+			publishesExtensionSession: (sourceKey) => opts.sources.get(sourceKey) === undefined,
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
+		// R1 过渡输出(3b-22,3b-23 整段删):统计、面板「正在直播」、统计页「在播」三处消费者一个不动,所以在册来源
+		// (今天只有 B 站会上报直播)的场次照 B 站直播引擎的形状发 `live-state-changed` / `live-viewers-changed`。
+		handles.push(
+			liveSessions.onChange((change) => {
+				if (change.kind === "unmatched-end") return;
+				const session = change.session;
+				if (!session || opts.sources.get(session.sourceKey) === undefined) return;
+				const sub = opts.subscriptionStore.findById(session.subscriptionId);
+				if (!sub) return;
+				const { externalId } = subscriptionIdentityOf(sub);
+				const emitViewers = (viewers: number | undefined): void => {
+					if (viewers !== undefined) {
+						opts.bus.emit("live-viewers-changed", { uid: externalId, viewers });
+					}
+				};
+				switch (change.kind) {
+					case "start":
+						opts.bus.emit("live-state-changed", {
+							uid: externalId,
+							status: "live",
+							at: new Date(session.startedAt ?? session.detectedAt).toISOString(),
+						});
+						emitViewers(change.details.totalViewers);
+						return;
+					case "resume":
+						emitViewers(change.details.totalViewers);
+						return;
+					case "status":
+						if (change.live)
+							emitViewers(liveTable.get(session.subscriptionId)?.details.totalViewers);
+						return;
+					case "end":
+						opts.bus.emit("live-state-changed", {
+							uid: externalId,
+							status: "idle",
+							at: new Date(change.at).toISOString(),
+						});
+						return;
+					case "ending":
+						return;
+				}
+			}),
+		);
 		// 拓展报的直播 → 存图 → 中立信号 → 场次引擎(引擎先写在播表、再改场次)。
 		handles.push(
 			bindExtensionLive({
@@ -1215,6 +1260,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				defaults: () => globals().defaults,
 				bus: opts.bus,
 				enqueue: (event) => postQueue.enqueue(event),
+				// 没接拓展订阅的直播(没有场次引擎)时来源报直播是接线漏了:丢弃并记 error,不静默吞。
+				liveSignals: (signal) => {
+					if (!liveSessionEngine) {
+						coreLiveCtx.logger.error(
+							`[engines] 没有场次引擎,${signal.identity.sourceKey} 报的直播 ${signal.kind} 丢弃`,
+						);
+						return;
+					}
+					liveSessionEngine.apply(signal);
+				},
 				problems: opts.problems,
 			});
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
@@ -1242,7 +1297,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		get imageRenderer() {
 			return imageRenderer;
 		},
-		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
+		listLiveRooms: () => [
+			...listLiveRooms(live, opts.subscriptionStore),
+			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的在播行投影成同一个形状。
+			...listRegisteredLiveRooms({
+				table: opts.liveTable,
+				sources: opts.sources,
+				subscriptionStore: opts.subscriptionStore,
+				runtimeStore: opts.subRuntimeStore,
+			}),
+		],
 		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		probeConnection: (connectionId: string) =>
@@ -1845,6 +1909,37 @@ function subscriptionOpsToLive(
 				],
 			});
 		}
+	}
+	return out;
+}
+
+/**
+ * 在播表里**在册来源**的行,投影成 B 站「正在直播」快照的形状(R1 过渡输出,3b-22,3b-23 整段删):面板的
+ * 「正在直播」、统计页「在播」一个不动。`roomId` 取运行态仓,没有就空串;封面只带得出地址的(图库引用不是地址)。
+ */
+function listRegisteredLiveRooms(deps: {
+	table: Pick<LiveTable, "list"> | undefined;
+	sources: Pick<SourceRegistry, "get">;
+	subscriptionStore: Pick<SubscriptionStore, "findById">;
+	runtimeStore: Pick<SubRuntimeStore, "get">;
+}): LiveListenerSnapshot[] {
+	const out: LiveListenerSnapshot[] = [];
+	for (const entry of deps.table?.list() ?? []) {
+		if (deps.sources.get(entry.sourceKey) === undefined) continue;
+		const sub = deps.subscriptionStore.findById(entry.subscriptionId);
+		if (!sub) continue;
+		out.push({
+			subscriptionId: entry.subscriptionId,
+			uid: subscriptionIdentityOf(sub).externalId,
+			roomId: deps.runtimeStore.get(entry.subscriptionId)?.roomId ?? "",
+			isLive: true,
+			title: entry.details.title,
+			cover: entry.details.cover?.url,
+			areaName: entry.details.category,
+			startedAt:
+				entry.startedAt === undefined ? undefined : new Date(entry.startedAt).toISOString(),
+			viewers: entry.details.totalViewers,
+		});
 	}
 	return out;
 }

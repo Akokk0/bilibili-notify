@@ -23,6 +23,7 @@ import type {
 	DevCapturedDelivery,
 	HistoryEntryView,
 	HistoryResponse,
+	LiveListeningEntry,
 	ProblemsResponse,
 	SourceAuthResponse,
 	StatsOverviewResponse,
@@ -127,7 +128,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P28)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P29)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -169,6 +170,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{
 		id: "P28",
 		title: "看图从图库引用:只有图库引用、没有地址的配图,喂给 AI 的是这张图的 data URL",
+		checked: true,
+	},
+	{
+		id: "P29",
+		title:
+			"reportLive:开播、状态、下播进场次,推开播与下播卡,断流接续同一场,在播列表里恰好一行(按订阅 id 认)",
 		checked: true,
 	},
 	{
@@ -306,6 +313,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	subscriptions: ["P02"],
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
+	reportLive: ["P29"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
@@ -676,7 +684,15 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		await writeFile(
 			join(generation, "config", "subscriptions.json"),
 			subscriptionsFileText([
-				sub(SUB.alice, EXT.alice),
+				// alice 还路由了开播与下播(P29 的直播卡推给群),别人只路由作品。
+				{
+					...sub(SUB.alice, EXT.alice),
+					routing: {
+						...sub(SUB.alice, EXT.alice).routing,
+						liveStart: [ID.group],
+						liveEnd: [ID.group],
+					},
+				},
 				// 作品开关关着:在名单里,但 features 里没有 post。
 				{ ...sub(SUB.bob, EXT.bob), overrides: { features: { post: false } } },
 				// 停用的、另一个没人认领的键名下的:都不在名单里。
@@ -1581,6 +1597,84 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P28");
 	});
 
+	// 验红:`routes/live.ts` 里去掉「在册来源的行不列拓展那一半」的过滤,「恰好一行」那段红(同一场列了两行);
+	// `source-context.ts` 里 `reportLive` 的展开只取第一条订阅、或 `engines.ts` 不递 `liveSignals`,开播卡那段红。
+	it("P29 reportLive:开播、状态、下播进场次,推开播与下播卡,断流接续同一场,在播列表里恰好一行(按订阅 id 认)", async () => {
+		const probe = currentProbe();
+		const TITLE = "开播标题P29";
+		const aliceRows = async (): Promise<LiveListeningEntry[]> => {
+			const res = await okRes(await api("/api/live/listening"));
+			return ((await res.json()) as LiveListeningEntry[]).filter(
+				(row) => row.subscriptionId === SUB.alice,
+			);
+		};
+		/** alice 这类直播推送推了几次(同一次推送落几个消息都算一次,按 pushId 数)。 */
+		const livePushes = async (feature: "liveStart" | "liveEnd"): Promise<number> =>
+			new Set(
+				(await history())
+					.filter((row) => row.subscriptionId === SUB.alice && row.feature === feature)
+					.map((row) => row.pushId),
+			).size;
+		const waitPushes = (feature: "liveStart" | "liveEnd", n: number) =>
+			vi.waitFor(async () => expect(await livePushes(feature)).toBe(n), { timeout: 10_000 });
+		const htmlBefore = renderedHtml.length;
+
+		// 开播:推一次开播卡;在播列表里 alice 恰好一行(在册来源走 B 站形状的快照,不再列拓展形状那一行)。
+		probe.reportLive(EXT.alice, {
+			kind: "start",
+			startedAt: "2026-10-20T08:00:00.000Z",
+			details: { title: TITLE, category: "聊天", totalViewers: 7 },
+		});
+		await waitPushes("liveStart", 1);
+		expect(renderedHtml.slice(htmlBefore).some((html) => html.includes(TITLE))).toBe(true);
+		expect(await aliceRows()).toEqual([
+			expect.objectContaining({
+				subscriptionId: SUB.alice,
+				uid: EXT.alice,
+				roomId: "",
+				isLive: true,
+				title: TITLE,
+				areaName: "聊天",
+				viewers: 7,
+			}),
+		]);
+
+		// 状态:人数换新,仍是这一行;下播:推下播卡(标题从在播表里补),列表里没有了。
+		probe.reportLive(EXT.alice, { kind: "status", isLive: true, details: { totalViewers: 20 } });
+		expect(await aliceRows()).toEqual([expect.objectContaining({ viewers: 20, title: TITLE })]);
+		probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T09:00:00.000Z" });
+		await waitPushes("liveEnd", 1);
+		expect(await aliceRows()).toEqual([]);
+
+		// 断流接续:开着时下播先等,等待里又开播就是同一场 —— 不再推开播卡,列表里仍是一行。
+		await patchSettings({ defaults: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 1 } } });
+		try {
+			probe.reportLive(EXT.alice, {
+				kind: "start",
+				startedAt: "2026-10-20T10:00:00.000Z",
+				details: { title: TITLE },
+			});
+			await waitPushes("liveStart", 2);
+			probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T10:05:00.000Z" });
+			probe.reportLive(EXT.alice, {
+				kind: "start",
+				startedAt: "2026-10-20T10:00:00.000Z",
+				details: { title: TITLE },
+			});
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			expect(await livePushes("liveStart")).toBe(2);
+			expect(await livePushes("liveEnd")).toBe(1);
+			expect(await aliceRows()).toHaveLength(1);
+		} finally {
+			await patchSettings({ defaults: { schedule: { liveEndGrace: false } } });
+		}
+		// 收尾:关着断流接续时下播当场结束,不留一场在表里。
+		probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T11:00:00.000Z" });
+		await waitPushes("liveEnd", 2);
+		expect(await aliceRows()).toEqual([]);
+		drove("P29");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -1936,13 +2030,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 28 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(42);
+	it("PARITY_ROWS:对拍 29 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(43);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 28 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 29 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
