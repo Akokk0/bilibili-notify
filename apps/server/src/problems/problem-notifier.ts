@@ -6,6 +6,7 @@ import {
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-table.js";
 
@@ -43,10 +44,13 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  *   别的失败都确知没送到,**不**记:不可重试的那几种(没配主人、目标不是私聊……)与五档用完只让键停下,重新
  *   起头时试的仍是最早欠着的那条 —— 没配主人时一个一个开,每次本地试一遍同一句(不出网、不会重复送到);
  *   配上之后新开一条,说的是欠得最久的那条,其余由它盖住。
+ * - **引子**:集成写的句子(表里带 `writtenBy`)只在交给 `options.notify` 的那一刻按当前语言与口吻补完整;
+ *   账上的 `message` / `sentText` / `givenUpText` 一律是集成交上来的原句,「不再说」的比较不受引子影响。
+ *   宿主自己写的整句(没带 `writtenBy`)原样发。
  * - **已恢复**:只对真私聊过的补;报的人宿主在清的(来源停下、订阅删了)与明说不补的,表里的变更都带着
  *   `notify: false`,这里一律不补。发的是这条问题自带的 `recoveryMessage`(**当初真私聊出去那一刻**存下的,
- *   不是后来换过的);没带的用通用说法 {@link GENERIC_RECOVERY_PREFIX} 接当初真发出去的那句原文。
- *   「已恢复」没送到只记一行 warn,不再送。
+ *   不是后来换过的);有写者的再加引子,没给恢复句的用通用说法(有写者:带名字与当初真发出去的原句;
+ *   没写者:宿主自己的通用句接原句)。「已恢复」没送到只记一行 warn,不再送。
  * - **在途时清了又开**:发送途中这条问题被清、又被同一个键以「要私聊」重新开起来,新开的认领这次发送 ——
  *   等于没清过(送达后算它说过了,不补「已恢复」;没送到就照它走再送)。以「不要私聊」重开的不认领:
  *   那句话说的是已经清掉的那一条,送达后照旧对它补「已恢复」。
@@ -55,9 +59,6 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  * - 键停下之后只有旧的欠着、再没有新的一条,也没有说过的被清掉、没有恢复句送到:那几条一直没人说。
  * - 结果不明而被记成「不再说」的那一条,就算其实没送到、通道后来也好了,也不会补(宁可少说一句,不重复说)。
  */
-
-/** 报的人没给「恢复时怎么说」时的通用说法:后面接当初真发出去的那句原文。 */
-export const GENERIC_RECOVERY_PREFIX = "主人，好消息，之前说的这件事已经恢复啦：";
 
 /** 节流窗口:同一 报的人 + code,上次私聊送到之后这么久之内不再发问题私聊。 */
 export const NOTIFY_WINDOW_MS = 60_000;
@@ -93,10 +94,14 @@ interface ProblemEntry {
 	wantsNotify: boolean;
 	/** 最新的「恢复时怎么说」(报的人给的;没给就没有)。 */
 	recoveryMessage?: string;
+	/** 最新一句是哪个集成写的(给人看的名字);没给就是宿主自己写的整句。 */
+	writtenBy?: string;
 	/** 当初真发出去(回了 ok)的那句,通用的「已恢复」引它;没有 = 没真私聊过。 */
 	sentText?: string;
 	/** 发出那一刻存下的「恢复时怎么说」:清掉时发它,不是后来换过的。 */
 	sentRecovery?: string;
+	/** 发出那一刻存下的写者名:恢复句按它加引子。 */
+	sentWrittenBy?: string;
 	/** 吞掉这一条的那一句所属的问题。它还开着且说过,这一条才算被盖住。 */
 	coveredBy?: ProblemEntry;
 	/**
@@ -115,6 +120,8 @@ interface SendState {
 	/** 发出去的那句与发出那一刻的「恢复时怎么说」。 */
 	text: string;
 	recovery?: string;
+	/** 发出去的那句是哪个集成写的(发出那一刻)。 */
+	writtenBy?: string;
 	/** 发送途中问题被清了(且还没被认领):送到之后要不要补「已恢复」。 */
 	closed?: { announceRecovery: boolean };
 }
@@ -141,6 +148,27 @@ interface ThrottleState {
 
 function throttleKey(problem: { reporter: string; code: string }): string {
 	return JSON.stringify([problem.reporter, problem.code]);
+}
+
+/** 交给 `options.notify` 前补完整:集成写的句子加引子,宿主写的整句原样。 */
+function reportText(writtenBy: string | undefined, message: string): string {
+	return writtenBy === undefined
+		? message
+		: t("problem.relay.reported", { name: writtenBy, message });
+}
+
+/** 「已恢复」交给 `options.notify` 前补完整;有写者时连恢复句一起加引子。 */
+function recoveryText(
+	writtenBy: string | undefined,
+	sentText: string,
+	sentRecovery: string | undefined,
+): string {
+	if (writtenBy !== undefined) {
+		return sentRecovery === undefined
+			? t("problem.relay.recoveredGeneric", { name: writtenBy, message: sentText })
+			: t("problem.relay.recovered", { name: writtenBy, message: sentRecovery });
+	}
+	return sentRecovery ?? t("problem.recoveredGeneric", { message: sentText });
 }
 
 export function createProblemNotifier(options: CreateProblemNotifierOptions): Disposable {
@@ -262,10 +290,11 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			problemId: entry.id,
 			text: entry.message,
 			...(entry.recoveryMessage === undefined ? {} : { recovery: entry.recoveryMessage }),
+			...(entry.writtenBy === undefined ? {} : { writtenBy: entry.writtenBy }),
 		};
 		state.sending = sending;
 		serviceCtx.track(
-			deliver(sending.text).then((result) => {
+			deliver(reportText(sending.writtenBy, sending.text)).then((result) => {
 				state.sending = undefined;
 				if (disposed) return;
 				settle(state, sending, result);
@@ -276,20 +305,21 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 
 	/** 一次发送落定:记账,不决定下一步(下一步由对账定)。 */
 	function settle(state: ThrottleState, sending: SendState, result: DeliveryResult): void {
-		const { entry, text, recovery, closed } = sending;
+		const { entry, text, recovery, writtenBy, closed } = sending;
 		if (result.ok) {
 			state.lastDeliveredAt = now();
 			resetRetry(state);
 			if (!closed) {
 				entry.sentText = text;
 				entry.sentRecovery = recovery;
+				entry.sentWrittenBy = writtenBy;
 				entry.coveredBy = undefined;
 				state.lastSaid = entry;
 				return;
 			}
 			// 发送途中问题清了、没人认领:这一句照样算真私聊过,窗口照记,但没有开着的问题顶着它
 			state.lastSaid = undefined;
-			if (closed.announceRecovery) sendRecovery(entry, text, recovery);
+			if (closed.announceRecovery) sendRecovery(entry, text, recovery, writtenBy);
 			return;
 		}
 		logger.warn(
@@ -319,10 +349,11 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		problem: Pick<ProblemEntry, "reporter" | "code">,
 		sentText: string,
 		sentRecovery: string | undefined,
+		sentWrittenBy: string | undefined,
 	): void {
 		const key = throttleKey(problem);
 		serviceCtx.track(
-			deliver(sentRecovery ?? `${GENERIC_RECOVERY_PREFIX}${sentText}`).then((result) => {
+			deliver(recoveryText(sentWrittenBy, sentText, sentRecovery)).then((result) => {
 				if (disposed) return;
 				if (!result.ok) {
 					logger.warn(
@@ -356,7 +387,9 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			} else if (entry.sentText !== undefined) {
 				// 说过的一条没了:它盖着的那几条重新欠着,键要是停下了就放开
 				releaseHalt(state);
-				if (change.notify) sendRecovery(entry, entry.sentText, entry.sentRecovery);
+				if (change.notify) {
+					sendRecovery(entry, entry.sentText, entry.sentRecovery, entry.sentWrittenBy);
+				}
 			}
 			reconcile(key);
 			return;
@@ -369,12 +402,14 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 				code: change.problem.code,
 				message: change.problem.message,
 				wantsNotify: false,
+				writtenBy: change.writtenBy,
 			};
 			entries.set(id, entry);
 		}
 		const wanted = entry.wantsNotify;
 		entry.message = change.problem.message;
 		entry.recoveryMessage = change.recoveryMessage;
+		entry.writtenBy = change.writtenBy;
 		entry.wantsNotify = change.notify;
 		// 被记成「不再说」的那一条:报的人换了一句别的话、且仍要私聊,才重新算数
 		const revived =

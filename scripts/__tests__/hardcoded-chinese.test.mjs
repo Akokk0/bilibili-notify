@@ -168,7 +168,6 @@ export const RATCHET = {
 	"apps/server/src/posts/deliver-post.ts": 3,
 	"apps/server/src/posts/post-from-report.ts": 1,
 	"apps/server/src/posts/post-text.ts": 4,
-	"apps/server/src/problems/problem-notifier.ts": 1,
 	"apps/server/src/problems/problem-report.ts": 4,
 	"apps/server/src/push/adapter-context.ts": 7,
 	"apps/server/src/push/builtin-adapters.ts": 1,

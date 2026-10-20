@@ -15,14 +15,15 @@
 import { type DeliveryResult, fail, type Logger, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deferred } from "../../__tests__/support/track-context";
-import {
-	CLOSE_SETTLE_MS,
-	createProblemNotifier,
-	GENERIC_RECOVERY_PREFIX,
-} from "../problem-notifier";
+import { i18n, t } from "../../i18n/index.js";
+import { CLOSE_SETTLE_MS, createProblemNotifier } from "../problem-notifier";
 import { createProblemTable, type ProblemTable } from "../problem-table";
 
 const sent = (): DeliveryResult => ok({ latencyMs: 1 });
+/** 宿主自己的通用「已恢复」:字从字典来,不再借被测文件里的常量。 */
+const genericRecovery = (message: string) => t("problem.recoveredGeneric", { message });
+const isGenericRecovery = (text: string) =>
+	text.startsWith(t("problem.recoveredGeneric", { message: "" }));
 
 function makeLogger() {
 	return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } satisfies Logger;
@@ -73,6 +74,8 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
+	// 单例:每条用例之后设回初值
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 });
 
 describe("问题私聊:发不发、发几条", () => {
@@ -157,6 +160,78 @@ describe("问题私聊:发不发、发几条", () => {
 	});
 });
 
+describe("集成写的问题:私聊时宿主按口吻把话补完整", () => {
+	it("女仆口吻:加「主人，刚刚<名字>报告：」,原句跟在后面", async () => {
+		const { table, notify } = setup();
+		open(table, { writtenBy: "B 站", message: "拉动态失败" });
+		await flush();
+		expect(notify).toHaveBeenCalledWith("主人，刚刚B 站报告：拉动态失败");
+	});
+
+	it("平实口吻:只加「<名字>报告：」", async () => {
+		i18n.set({ voice: "plain" });
+		const { table, notify } = setup();
+		open(table, { writtenBy: "B 站", message: "拉动态失败" });
+		await flush();
+		expect(notify).toHaveBeenCalledWith("B 站报告：拉动态失败");
+	});
+
+	it("以结果不明落定之后同一句再报(仍要私聊):不再发;账上存的是原句,引子不打乱比较", async () => {
+		const { table, notify } = setup(async () => fail("indeterminate", "不知道送没送到"));
+		open(table, { writtenBy: "B 站", message: "拉动态失败" });
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		open(table, { writtenBy: "B 站", message: "拉动态失败", notify: false });
+		open(table, { writtenBy: "B 站", message: "拉动态失败", notify: true });
+		await advance(60 * 60_000);
+
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("集成写的问题:恢复句也补完整", () => {
+	it("有写者、给了恢复句:女仆口吻的好消息引子", async () => {
+		const { table, notify } = setup();
+		open(table, {
+			writtenBy: "B 站",
+			message: "风控了",
+			recoveryMessage: "风控解除了",
+		});
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("主人，好消息，B 站报告：风控解除了");
+	});
+
+	it("有写者、没给恢复句:通用句带名字与集成的原句", async () => {
+		const { table, notify } = setup();
+		open(table, { writtenBy: "拓展甲", message: "拉不到" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("主人，好消息，拓展甲之前报告的「拉不到」已经恢复啦。");
+	});
+
+	it("没写者、没给恢复句:宿主自己的通用说法接原句(保行为)", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "登录失效了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith(genericRecovery("登录失效了"));
+	});
+
+	it("没写者、给了恢复句:恢复句原样发,不加引子", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "登录失效了", recoveryMessage: "登录好啦" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("登录好啦");
+	});
+});
+
 /**
  * 被节流吞掉的那一条不能永远没人说(S1):
  * - 吞掉它的那一句所属的问题**还开着、且那一句真送到了**:这条算被那一句盖住了,不补(十个房间同时停监只说一条);
@@ -183,14 +258,14 @@ describe("被节流吞掉的问题:窗口到点时补说", () => {
 		await flush();
 		expect(notify.mock.calls.map((c) => c[0])).toEqual([
 			"登录失效了",
-			`${GENERIC_RECOVERY_PREFIX}登录失效了`,
+			genericRecovery("登录失效了"),
 		]);
 
 		await advance(60_000);
 
 		expect(notify.mock.calls.map((c) => c[0])).toEqual([
 			"登录失效了",
-			`${GENERIC_RECOVERY_PREFIX}登录失效了`,
+			genericRecovery("登录失效了"),
 			"又失效了",
 		]);
 		// 补说过就不再说
@@ -291,7 +366,7 @@ describe("发送在路上时清了又开", () => {
 		// 新开的这条算说过了:它之后真清掉时补一句(用发出那一刻的话)
 		table.resolve({ reporter: "src", code: "auth_lost" });
 		await flush();
-		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}风控了`);
+		expect(notify).toHaveBeenLastCalledWith(genericRecovery("风控了"));
 	});
 
 	it("在途的那次没送到:照新开的这条走再送,送到即停", async () => {
@@ -332,10 +407,7 @@ describe("发送在路上时清了又开", () => {
 		gate.resolve(sent());
 		await flush();
 
-		expect(notify.mock.calls.map((c) => c[0])).toEqual([
-			"风控了",
-			`${GENERIC_RECOVERY_PREFIX}风控了`,
-		]);
+		expect(notify.mock.calls.map((c) => c[0])).toEqual(["风控了", genericRecovery("风控了")]);
 	});
 
 	it("宿主清了又开(来源重启):同样认领,送达后不补", async () => {
@@ -465,7 +537,7 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", code: "auth_lost" });
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}当初那句`);
+		expect(notify).toHaveBeenLastCalledWith(genericRecovery("当初那句"));
 	});
 
 	it("带了 recoveryMessage:清掉时发它,原来的「已恢复：」前缀不再出现", async () => {
@@ -597,7 +669,7 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", about: { subscriptionId: "s1" }, code: "stopped" });
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}房间 1`);
+		expect(notify).toHaveBeenLastCalledWith(genericRecovery("房间 1"));
 
 		// 窗口外,又一条问题送出去,然后在同一个恢复窗口内连着修好两条
 		await advance(60_000);
@@ -611,8 +683,8 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", about: { subscriptionId: "s3" }, code: "stopped" });
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenNthCalledWith(1, `${GENERIC_RECOVERY_PREFIX}房间 2`);
-		expect(notify).toHaveBeenNthCalledWith(2, `${GENERIC_RECOVERY_PREFIX}房间 3`);
+		expect(notify).toHaveBeenNthCalledWith(1, genericRecovery("房间 2"));
+		expect(notify).toHaveBeenNthCalledWith(2, genericRecovery("房间 3"));
 	});
 
 	it("「已恢复」没送到只记 warn,不再送", async () => {
@@ -638,7 +710,7 @@ describe("已恢复", () => {
 		gate.resolve(sent());
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}在路上`);
+		expect(notify).toHaveBeenLastCalledWith(genericRecovery("在路上"));
 	});
 
 	it("发送还在路上时被宿主清掉:送到之后不补「已恢复」", async () => {
@@ -665,7 +737,7 @@ describe("按节流键对账", () => {
 		message: `房间 ${n}`,
 	});
 	const key = (n: number) => ({ reporter: "src", ...stopped(n) });
-	const recovered = (n: number) => `${GENERIC_RECOVERY_PREFIX}房间 ${n}`;
+	const recovered = (n: number) => genericRecovery(`房间 ${n}`);
 	const texts = (notify: { mock: { calls: unknown[][] } }) => notify.mock.calls.map((c) => c[0]);
 
 	// 验红(N1 / R1):「清」之后不对账(closed 分支末尾的 reconcile 去掉),这条与下一条红。
@@ -825,7 +897,7 @@ describe("按节流键对账", () => {
 		const deliveredAt: number[] = [];
 		const { table } = setup(async () => sent(), {
 			onNotify: (text) => {
-				if (!text.startsWith(GENERIC_RECOVERY_PREFIX)) deliveredAt.push(Date.now());
+				if (!isGenericRecovery(text)) deliveredAt.push(Date.now());
 			},
 		});
 		// 一分钟里十几件事:开、清、再开、盖它的清掉
@@ -935,7 +1007,7 @@ describe("按节流键对账", () => {
 		gate.resolve(sent());
 		await flush();
 
-		expect(texts(notify)).toEqual(["风控了", `${GENERIC_RECOVERY_PREFIX}风控了`]);
+		expect(texts(notify)).toEqual(["风控了", genericRecovery("风控了")]);
 		expect(table.list()).toHaveLength(1);
 		// 重开的那条没说过:清掉不再补
 		table.resolve({ reporter: "src", code: "auth_lost" });
@@ -990,7 +1062,7 @@ describe("清过之后的沉淀", () => {
 		message: `房间 ${n}`,
 	});
 	const key = (n: number) => ({ reporter: "src", ...stopped(n) });
-	const recovered = (n: number) => `${GENERIC_RECOVERY_PREFIX}房间 ${n}`;
+	const recovered = (n: number) => genericRecovery(`房间 ${n}`);
 	const texts = (notify: { mock: { calls: unknown[][] } }) => notify.mock.calls.map((c) => c[0]);
 
 	/** n 条同键的问题,最早那条说过、其余被它盖住,离那一句送到已过十分钟(窗口早过了)。 */
@@ -1206,7 +1278,7 @@ describe("停下之后", () => {
 		message: `房间 ${n}`,
 	});
 	const key = (n: number) => ({ reporter: "src", ...stopped(n) });
-	const recovered = (n: number) => `${GENERIC_RECOVERY_PREFIX}房间 ${n}`;
+	const recovered = (n: number) => genericRecovery(`房间 ${n}`);
 	const texts = (notify: { mock: { calls: unknown[][] } }) => notify.mock.calls.map((c) => c[0]);
 
 	/** 房间 0 送到;两分钟后通道断了,房间 1 开、六次都超时,键停下;然后通道恢复。 */
@@ -1258,7 +1330,7 @@ describe("停下之后", () => {
 		let down = false;
 		const gate = deferred<DeliveryResult>();
 		const { table, notify } = setup(async (text) => {
-			if (text.startsWith(GENERIC_RECOVERY_PREFIX)) return gate.promise;
+			if (isGenericRecovery(text)) return gate.promise;
 			return down ? fail("timeout", "通道断了") : sent();
 		});
 		open(table, stopped(0));

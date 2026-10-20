@@ -130,6 +130,47 @@ describe("createProblemTable 的记与清", () => {
 		expect(changes.at(-1)).toMatchObject({ kind: "closed", recoveryMessage: "好啦" });
 	});
 
+	it("writtenBy:变更里带着它;同键再报时只换了写者也算一次 updated,变更带新写者", () => {
+		const { table, changes } = makeTable();
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		expect(changes[0]).toMatchObject({ kind: "opened", writtenBy: "B 站" });
+
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		expect(changes).toHaveLength(1);
+
+		table.report({ ...key, message: "话", notify: true, writtenBy: "拓展甲" });
+		expect(changes).toHaveLength(2);
+		expect(changes[1]).toMatchObject({ kind: "updated", writtenBy: "拓展甲" });
+	});
+
+	it("writtenBy 不给就是宿主写的:同键再报去掉它也换一次 updated,变更里没有这一格", () => {
+		const { table, changes } = makeTable();
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		table.report({ ...key, message: "话", notify: true });
+		expect(changes).toHaveLength(2);
+		expect(changes[1]?.kind).toBe("updated");
+		expect(changes[1]?.writtenBy).toBeUndefined();
+		expect("writtenBy" in (changes[1] ?? {})).toBe(false);
+	});
+
+	it("writtenBy 不在对外的 Problem 上:list() 里没有它", () => {
+		const { table } = makeTable();
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		expect(table.list()[0]).not.toHaveProperty("writtenBy");
+	});
+
+	it("清掉的变更也带着当时的 writtenBy", () => {
+		const { table, changes } = makeTable();
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		table.resolve(key);
+		expect(changes.at(-1)).toMatchObject({ kind: "closed", writtenBy: "B 站" });
+
+		table.report({ ...key, message: "话", notify: true, writtenBy: "B 站" });
+		changes.length = 0;
+		table.clearReporter("src-a");
+		expect(changes[0]).toMatchObject({ kind: "closed", writtenBy: "B 站" });
+	});
+
 	it("键由 (报的人, 关于谁, code) 三格合成:换任何一格都是另一条", () => {
 		const { table } = makeTable();
 		table.report({ reporter: "a", code: "c", message: "1" });

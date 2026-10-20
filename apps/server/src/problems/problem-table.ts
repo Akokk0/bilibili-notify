@@ -26,6 +26,11 @@ export interface ProblemChange {
 	 * `GET /api/problems` 的回包不带它;只给问题通知器用。
 	 */
 	recoveryMessage?: string;
+	/**
+	 * 这句话是哪个集成写的(给人看的名字);没有这一格就是宿主自己写的整句。它不在 {@link Problem} 上:
+	 * 那是对外的形状,`GET /api/problems` 的回包不带它;只给问题通知器在私聊时加引子用。
+	 */
+	writtenBy?: string;
 }
 
 /** 一条问题的身份:同一个报的人、同一个对象、同一个 code。 */
@@ -39,8 +44,16 @@ export interface ProblemTable {
 	/**
 	 * 同键已有就只换 message(与 notify、recoveryMessage),`since` 不动。`notify` 缺省不私聊。
 	 * `recoveryMessage`:清掉且当初真私聊过时核心发的那一句;不给就用核心的通用说法。
+	 * `writtenBy`:这句话是哪个集成写的(给人看的名字);不给就是宿主自己写的整句。
 	 */
-	report(input: ProblemKey & { message: string; notify?: boolean; recoveryMessage?: string }): void;
+	report(
+		input: ProblemKey & {
+			message: string;
+			notify?: boolean;
+			recoveryMessage?: string;
+			writtenBy?: string;
+		},
+	): void;
 	/** 报的人自己清。`notify: false` = 这次清掉不补「已恢复」。表里没有这一条就什么都不做。 */
 	resolve(key: ProblemKey, options?: { notify?: boolean }): void;
 	/** 报的人停下:它报的全清,不补「已恢复」。 */
@@ -74,11 +87,17 @@ interface Entry {
 	problem: Problem;
 	notify: boolean;
 	recoveryMessage?: string;
+	writtenBy?: string;
 }
 
 /** 变更里带不带 `recoveryMessage`:没有就不出现这一格。 */
 function recoveryOf(entry: Entry): { recoveryMessage?: string } {
 	return entry.recoveryMessage === undefined ? {} : { recoveryMessage: entry.recoveryMessage };
+}
+
+/** 变更里带不带 `writtenBy`:没有就不出现这一格。 */
+function writtenByOf(entry: Entry): { writtenBy?: string } {
+	return entry.writtenBy === undefined ? {} : { writtenBy: entry.writtenBy };
 }
 
 /** 一条问题在表里的键;问题通知器按同一个键记账。 */
@@ -139,7 +158,13 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			if (!matches(entry.problem)) continue;
 			entries.delete(key);
 			logger.info(`[problems] 清掉(宿主) ${describe(entry.problem)}`);
-			emit({ kind: "closed", problem: entry.problem, notify: false, ...recoveryOf(entry) });
+			emit({
+				kind: "closed",
+				problem: entry.problem,
+				notify: false,
+				...recoveryOf(entry),
+				...writtenByOf(entry),
+			});
 		}
 	}
 
@@ -152,7 +177,8 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				if (
 					existing.problem.message === input.message &&
 					existing.notify === notify &&
-					existing.recoveryMessage === input.recoveryMessage
+					existing.recoveryMessage === input.recoveryMessage &&
+					existing.writtenBy === input.writtenBy
 				) {
 					return;
 				}
@@ -160,8 +186,16 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				existing.notify = notify;
 				if (input.recoveryMessage === undefined) delete existing.recoveryMessage;
 				else existing.recoveryMessage = input.recoveryMessage;
+				if (input.writtenBy === undefined) delete existing.writtenBy;
+				else existing.writtenBy = input.writtenBy;
 				logger.debug(`[problems] 换文案 ${describe(existing.problem)}: ${input.message}`);
-				emit({ kind: "updated", problem: existing.problem, notify, ...recoveryOf(existing) });
+				emit({
+					kind: "updated",
+					problem: existing.problem,
+					notify,
+					...recoveryOf(existing),
+					...writtenByOf(existing),
+				});
 				return;
 			}
 			const problem: Problem = {
@@ -175,10 +209,11 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				problem,
 				notify,
 				...(input.recoveryMessage === undefined ? {} : { recoveryMessage: input.recoveryMessage }),
+				...(input.writtenBy === undefined ? {} : { writtenBy: input.writtenBy }),
 			};
 			entries.set(key, entry);
 			logger.warn(`[problems] 开 ${describe(problem)}: ${input.message}`);
-			emit({ kind: "opened", problem, notify, ...recoveryOf(entry) });
+			emit({ kind: "opened", problem, notify, ...recoveryOf(entry), ...writtenByOf(entry) });
 		},
 		resolve(key, resolveOptions) {
 			const id = problemKeyOf(key);
@@ -191,6 +226,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 				problem: entry.problem,
 				notify: resolveOptions?.notify ?? true,
 				...recoveryOf(entry),
+				...writtenByOf(entry),
 			});
 		},
 		clearReporter(reporter) {

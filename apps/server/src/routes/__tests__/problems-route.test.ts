@@ -65,4 +65,19 @@ describe("GET /api/problems", () => {
 		problems.resolve({ reporter: "src", code: "auth_lost" });
 		expect(await (await app.request("/")).json()).toEqual({ problems: [] });
 	});
+
+	it("形状里没有 writtenBy:它只传给通知器,不上 GET /api/problems", async () => {
+		const { app, problems } = appOf();
+		problems.report({
+			reporter: "src",
+			code: "auth_lost",
+			message: "登录失效",
+			notify: true,
+			writtenBy: "B 站",
+		});
+		const body = (await (await app.request("/")).json()) as {
+			problems: Array<Record<string, unknown>>;
+		};
+		expect(body.problems[0]).not.toHaveProperty("writtenBy");
+	});
 });
