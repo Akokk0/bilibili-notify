@@ -75,8 +75,8 @@ interface PreviewContent {
 	post: { uid: string; offset: number };
 	/** `amount`:金额(元),随预览请求体发给服务端。 */
 	superchat: { text: string; amount: number };
-	/** `tierKey`:上舰那一档的 key(会员体系里档的 key),随预览请求体发给服务端。 */
-	membership: { text: string; tierKey: string };
+	/** `program`:会员体系 id;`tierKey`:那一档在这个体系里的 key。两个一起随预览请求体发给服务端。 */
+	membership: { program: string; text: string; tierKey: string };
 }
 
 /** 上舰预览能选的档,由低到高(会员体系的档位表本身的顺序);默认选最低一档。 */
@@ -89,7 +89,7 @@ const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	// membership.text empty by default so the backend falls back to the logged-in
 	// account name (the operator), with "示例新舰长" only kicking in when
 	// nobody is logged in.
-	membership: { text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
+	membership: { program: GUARD_PROGRAM_ID, text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
 };
 
 const KIND_LABELS: Record<PreviewKind, { label: string; tone: string; icon: IconName }> = {

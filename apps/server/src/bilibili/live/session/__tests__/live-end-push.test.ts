@@ -37,6 +37,8 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		liveStart: true,
 		liveEnd: true,
 		membership: false,
+		membershipMinRank: {},
+		membershipTemplates: {},
 		superchat: false,
 		viewerChat: false,
 		viewerEnter: false,

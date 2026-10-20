@@ -7,7 +7,12 @@
  */
 
 import type { Identity } from "./constants";
-import type { SuperchatEvent, ViewerChatEvent, ViewerEnterEvent } from "./membership";
+import type {
+	MembershipEvent,
+	SuperchatEvent,
+	ViewerChatEvent,
+	ViewerEnterEvent,
+} from "./membership";
 import type { Creator, PostImage } from "./post";
 
 /** 一场直播的内容。 */
@@ -51,8 +56,7 @@ export type LiveStatusResult =
 
 /**
  * 来源经 `reportLiveInteraction(externalId, report)` 上报的观众互动:形状是对应事件去掉 `subscriptionId`
- * (订阅 id 来源不知道,核心按身份展开成每条订阅一份时补上)。本提交开 `viewerChat`、`viewerEnter`、`superchat`,
- * 会员随后追加。
+ * (订阅 id 来源不知道,核心按身份展开成每条订阅一份时补上)。四种:特别弹幕、特别进场、醒目留言、会员。
  *
  * `fallbackText`:出不了卡时发的那句;来源给了就用它(平台自己的叫法由来源拼好),没给就用核心字典里一句中性的。
  */
@@ -60,6 +64,9 @@ export type LiveInteractionReport =
 	| ({ kind: "viewerChat" } & Omit<ViewerChatEvent, "subscriptionId">)
 	| ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">)
 	| ({ kind: "superchat" } & Omit<SuperchatEvent, "subscriptionId"> & {
+				fallbackText?: string;
+			})
+	| ({ kind: "membership" } & Omit<MembershipEvent, "subscriptionId"> & {
 				fallbackText?: string;
 			});
 

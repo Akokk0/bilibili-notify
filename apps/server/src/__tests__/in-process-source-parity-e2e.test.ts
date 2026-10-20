@@ -63,8 +63,13 @@ import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import {
 	currentProbe,
+	IN_PROCESS_CUSTOM_PROGRAM_ID,
 	IN_PROCESS_KEY,
 	IN_PROCESS_LABEL,
+	IN_PROCESS_OTHER_PROGRAM_ID,
+	IN_PROCESS_OTHER_TIER_KEY,
+	IN_PROCESS_PROGRAM_ID,
+	IN_PROCESS_TIER_ICON_BASE64,
 	IN_PROCESS_TIER_KEY,
 	inProcessWorld,
 	LINK_NATIVE_PREFIX,
@@ -129,7 +134,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P32)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P33)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N10、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -196,6 +201,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P33",
+		title: "会员:custom 体系、按体系的 minRank、声明档带徽章与按档换色、自定义文案的 {tier}",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -255,18 +265,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason: "描述符只造了有读者的三格,其余随面板改造",
 	},
 	{
-		id: "N10",
-		title: "规则里的直播项:custom 会员体系、minRank",
-		checked: false,
-		waitsFor: "3b",
-		reason: "会员体系与门槛归 3b-22 后续提交",
-	},
-	{
 		id: "N11",
-		title: "会员卡 custom 加 tier.icon 加按档换色、词云与总结卡",
+		title: "词云与总结卡",
 		checked: false,
 		waitsFor: "3b",
-		reason: "全是直播;档的图标仍取 B 站徽章图",
+		reason: "下播回顾归 3b-22 后续提交",
 	},
 	{
 		id: "N13",
@@ -317,7 +320,7 @@ const SOURCE_MEMBERS = {
 	auth: ["P16"],
 	searchCreators: ["P26"],
 	fetchLiveStatus: ["P30"],
-	liveInteractions: ["P32"],
+	liveInteractions: ["P32", "P33"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
 	logger: ["P20"],
@@ -334,7 +337,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
 	reportLive: ["P29"],
-	reportLiveInteraction: ["P31", "P32"],
+	reportLiveInteraction: ["P31", "P32", "P33"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
@@ -718,7 +721,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		await writeFile(
 			join(generation, "config", "subscriptions.json"),
 			subscriptionsFileText([
-				// alice 还路由了开播与下播(P29 的直播卡推给群)、特别弹幕与特别进场(P31)、醒目留言(P32),别人只路由作品。
+				// alice 还路由了开播与下播(P29)、特别弹幕与特别进场(P31)、醒目留言(P32)、会员(P33),别人只路由作品。
 				// 特别关注名单上有一位 7001,两样都带;特性开关出厂是关的,P31 自己开关。
 				{
 					...sub(SUB.alice, EXT.alice),
@@ -726,6 +729,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 						...sub(SUB.alice, EXT.alice).routing,
 						liveStart: [ID.group],
 						liveEnd: [ID.group],
+						membership: [ID.group],
 						superchat: [ID.group],
 						viewerChat: [ID.group],
 						viewerEnter: [ID.group],
@@ -1447,16 +1451,16 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P21");
 	});
 
-	// 验红:`membership-tiers.ts` 只读第一个在册来源(B 站),假来源的档 key 就认不出,第一段红。
-	it("P19 会员体系读口:假来源声明的档 key 过得了请求校验;乱写的 key 回 400、issues 点名 content.tierKey", async () => {
+	// 验红:`membership-tiers.ts` 不按体系找档(或只读第一个在册来源),假来源的（体系, 档）就认不出、或跨体系串档。
+	it("P19 会员体系读口:按（体系 id, 档 key）认档;乱写的 key、别的体系的 key 回 400;老请求不带体系照旧认", async () => {
 		/** 预览请求故意带一个无关的错(fallback 不是布尔):校验一定会跑,不碰渲染(也就不碰任何网)。 */
-		const preview = async (tierKey: string) => {
+		const preview = async (program: string | undefined, tierKey: string) => {
 			const res = await api(
 				"/api/cards/preview",
 				json({
 					kind: "membership",
 					style: {},
-					content: { tierKey },
+					content: { ...(program === undefined ? {} : { program }), tierKey },
 					fallback: "不是布尔",
 				}),
 			);
@@ -1468,13 +1472,24 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				Array.isArray(issue.path) ? issue.path.join(".") : String(issue.path),
 			);
 		};
-		const known = await preview(IN_PROCESS_TIER_KEY);
+		const known = await preview(IN_PROCESS_PROGRAM_ID, IN_PROCESS_TIER_KEY);
 		expect(known).toContain("fallback");
 		expect(known).not.toContain("content.tierKey");
 
-		const unknown = await preview("acme-不存在的档");
+		const unknown = await preview(IN_PROCESS_PROGRAM_ID, "acme-不存在的档");
 		expect(unknown).toContain("fallback");
 		expect(unknown).toContain("content.tierKey");
+
+		// 同一个档 key 在别的体系里不算数:档 key 只在体系内唯一。
+		const otherProgram = await preview(IN_PROCESS_OTHER_PROGRAM_ID, IN_PROCESS_TIER_KEY);
+		expect(otherProgram).toContain("content.tierKey");
+		expect(await preview(IN_PROCESS_OTHER_PROGRAM_ID, IN_PROCESS_OTHER_TIER_KEY)).not.toContain(
+			"content.tierKey",
+		);
+
+		// 老请求不带体系:照旧按登记先后找,不因此拒收。
+		const noProgram = await preview(undefined, IN_PROCESS_TIER_KEY);
+		expect(noProgram).not.toContain("content.tierKey");
 		drove("P19");
 	});
 
@@ -1989,6 +2004,99 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P32");
 	}, 60_000);
 
+	// 验红:会员分支不按 `program` 认体系 / 不读按体系存的 minRank / 声明档不取档色与徽章 / custom 不用事件的档名,各段红。
+	it("P33 会员:custom 体系、按体系的 minRank、声明档带徽章与按档换色、自定义文案的 {tier}", async () => {
+		await clearCaptures();
+		const probe = currentProbe();
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		expect(probe.tierIconRef, "假来源 start 里没把徽章存进图库").toBeDefined();
+		const htmlBefore = renderedHtml.length;
+		const membership = (over: Record<string, unknown> = {}) =>
+			probe.reportLiveInteraction(ext, {
+				kind: "membership",
+				viewer: { id: "42", name: "观众P33" },
+				program: IN_PROCESS_PROGRAM_ID,
+				tier: { key: IN_PROCESS_TIER_KEY, name: "事件里的名字", rank: 2 },
+				...over,
+			} as Parameters<typeof probe.reportLiveInteraction>[1]);
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 500));
+
+		await patchSettings({
+			defaults: {
+				features: { membership: true },
+				membership: { minRank: { [IN_PROCESS_PROGRAM_ID]: 2 } },
+			},
+		});
+		try {
+			// 按体系的门槛:rank 1 低于 2,不推、不出卡。
+			membership({ tier: { key: IN_PROCESS_TIER_KEY, name: "事件里的名字", rank: 1 } });
+			await settle();
+			expect(await captures()).toEqual([]);
+
+			// 过门槛:出卡,档名 / 档色 / 徽章都取声明的那一档;徽章在描述符里,不问懒取口。
+			membership();
+			await settledCaptures(1);
+			expect((await captures())[0]).toMatchObject({ kind: "image", images: 1 });
+			const cardHtml = renderedHtml
+				.slice(htmlBefore)
+				.find((html) => html.includes(IN_PROCESS_TIER_ICON_BASE64));
+			expect(cardHtml, "会员卡没画上描述符里的徽章").toBeDefined();
+			expect(cardHtml).toContain("#112233");
+			expect(cardHtml).toContain("#445566");
+			// 默认会员卡不画 tierName;假来源的档像 B 站大航海一样声明了带 `{tier}` 的宣告语,档名经它上卡。
+			expect(cardHtml).toContain("金牌");
+			expect(cardHtml).not.toContain("事件里的名字");
+			expect(probe.tierIconAsked).toEqual([]);
+
+			// 自定义文案 + custom 体系:按体系的门槛、事件带来的档名;没有徽章、不出卡。
+			await patchSettings({
+				defaults: {
+					membership: {
+						minRank: {
+							[IN_PROCESS_PROGRAM_ID]: 2,
+							[IN_PROCESS_CUSTOM_PROGRAM_ID]: 3,
+						},
+					},
+					templates: {
+						membership: {
+							[IN_PROCESS_CUSTOM_PROGRAM_ID]: {
+								enabled: true,
+								default: { template: "{viewer} 成为了 {tier}", imageUrl: "" },
+								tiers: {},
+							},
+						},
+					},
+				},
+			});
+			const custom = (rank: number) =>
+				membership({
+					program: IN_PROCESS_CUSTOM_PROGRAM_ID,
+					tier: { key: "vip", name: "自定义贵族", rank },
+				});
+			custom(2);
+			await settle();
+			expect(await captures()).toHaveLength(1);
+			custom(3);
+			await settledCaptures(2);
+			expect((await captures())[1]).toMatchObject({
+				kind: "text",
+				text: "观众P33 成为了 自定义贵族",
+			});
+			expect(renderedHtml.slice(htmlBefore)).toHaveLength(1);
+			expect(probe.tierIconAsked).toEqual([]);
+			expect(await livePushCount(who, "membership")).toBe(2);
+		} finally {
+			await patchSettings({
+				defaults: {
+					features: { membership: false },
+					membership: { minRank: {} },
+				},
+			});
+		}
+		drove("P33");
+	}, 60_000);
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2344,18 +2452,18 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 32 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 33 行、不开 13 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(46);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 32 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 33 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
+		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27)、N10 转进了 P33,编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => n !== 7 && n !== 12)
+				.filter((n) => n !== 7 && n !== 10 && n !== 12)
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

@@ -41,6 +41,16 @@ export const IN_PROCESS_KEY = "acme.inprocess";
 export const IN_PROCESS_LABEL = "对拍源";
 /** 描述符声明的会员体系里的档(key 不与 B 站撞)。 */
 export const IN_PROCESS_TIER_KEY = "acme-gold";
+/** 描述符声明的会员体系 id(档 key 只在这个体系里认)。 */
+export const IN_PROCESS_PROGRAM_ID = "acme-club";
+/** 档位由主播自定的会员体系(id 同样全局唯一)。 */
+export const IN_PROCESS_CUSTOM_PROGRAM_ID = "acme-custom";
+/** 另一套逐档声明的体系:用来钉「档 key 只在体系内唯一」。 */
+export const IN_PROCESS_OTHER_PROGRAM_ID = "acme-guild";
+export const IN_PROCESS_OTHER_TIER_KEY = "acme-silver";
+/** `start` 里存进图库的那张小图(1×1 PNG),对拍从出的卡里认得出它。 */
+export const IN_PROCESS_TIER_ICON_BASE64 =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
 /** 假解析器认的链接:`acme.invalid/link/<id>`(id 取字母数字,到查询串或斜杠为止)。 */
 const LINK_PATH = /acme\.invalid\/link\/([A-Za-z0-9]+)/;
@@ -114,6 +124,10 @@ export interface InProcessProbe {
 	viewerAvatarAsked: string[];
 	/** 懒取口下次交的头像引用;没摆就回失败(卡照出,只是没有观众头像)。 */
 	viewerAvatarRef: ImageRef | undefined;
+	/** 懒取口 `fetchTierIcon` 被问过的档(`externalId:program:tierKey`),按先后。 */
+	tierIconAsked: string[];
+	/** `start` 里给自己那档存进图库的徽章引用;存不进就是 undefined。 */
+	tierIconRef: ImageRef | undefined;
 	/** 下一次 `fetchLiveStatus` 回什么;缺省回「没在播」。回完不清,测试自己摆回去。失败时假来源自己报问题。 */
 	liveStatusOutcome: LiveStatusResult;
 	/** `fetchLiveStatus` 被问过的外部 id,按先后。 */
@@ -176,10 +190,26 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [
 			{
-				id: "acme-club",
+				id: IN_PROCESS_PROGRAM_ID,
 				name: "俱乐部",
-				tiers: [{ key: IN_PROCESS_TIER_KEY, name: "金牌", rank: 1 }],
+				tiers: [
+					{
+						key: IN_PROCESS_TIER_KEY,
+						name: "金牌",
+						rank: 1,
+						color: "#112233",
+						colorEnd: "#445566",
+						// 与 B 站大航海的档一样带宣告语:默认会员卡不画 `tierName`,档名经这一句里的 `{tier}` 上卡。
+						announcement: "{viewer} 加入了{tier}",
+					},
+				],
 			},
+			{
+				id: IN_PROCESS_OTHER_PROGRAM_ID,
+				name: "公会",
+				tiers: [{ key: IN_PROCESS_OTHER_TIER_KEY, name: "银牌", rank: 1 }],
+			},
+			{ id: IN_PROCESS_CUSTOM_PROGRAM_ID, name: "自定", tiers: "custom" },
 		],
 	};
 	const probe: InProcessProbe = {
@@ -202,6 +232,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		liveStatusAsked: [],
 		viewerAvatarAsked: [],
 		viewerAvatarRef: undefined,
+		tierIconAsked: [],
+		tierIconRef: undefined,
 		reportLive(externalId, report) {
 			if (!probe.ctx) throw new Error("假来源还没 start");
 			probe.ctx.reportLive(externalId, report);
@@ -216,12 +248,17 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 	};
 	const source: Source = {
 		descriptor,
-		// 出卡时才取的懒取口(本提交只开观众头像);引用由测试先经 `ctx.storeImage` 摆进探针。
+		// 出卡时才取的懒取口;观众头像的引用由测试先经 `ctx.storeImage` 摆进探针,徽章在 `start` 里自己存。
 		liveInteractions: {
 			async fetchViewerAvatar(identity, viewerId) {
 				probe.viewerAvatarAsked.push(`${identity.externalId}:${viewerId}`);
 				const ref = probe.viewerAvatarRef;
 				return ref === undefined ? fail("not_found", "没有可交的观众头像") : ok({ ref });
+			},
+			async fetchTierIcon(identity, program, tierKey) {
+				probe.tierIconAsked.push(`${identity.externalId}:${program}:${tierKey}`);
+				const ref = probe.tierIconRef;
+				return ref === undefined ? fail("not_found", "没有可交的徽章") : ok({ ref });
 			},
 		},
 		health() {
@@ -263,6 +300,18 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 			probe.starts += 1;
 			probe.ctx = ctx;
 			probe.rosterAtStart = ctx.subscriptions();
+			// 自己的档位徽章自己存进图库,把引用写进自己那份描述符(R2 甲):核心读到的就是这一格。
+			const storedIcon = await ctx.storeImage(Buffer.from(IN_PROCESS_TIER_ICON_BASE64, "base64"));
+			if (storedIcon.ok) {
+				probe.tierIconRef = storedIcon.ref;
+				const declared = descriptor.membershipPrograms?.find(
+					(program) => program.id === IN_PROCESS_PROGRAM_ID,
+				);
+				if (declared && Array.isArray(declared.tiers)) {
+					const own = declared.tiers.find((tier) => tier.key === IN_PROCESS_TIER_KEY);
+					if (own) own.icon = { ref: storedIcon.ref };
+				}
+			}
 			ctx.onSubscriptionsChanged(() => {
 				probe.rosterChanges.push(ctx.subscriptions());
 			});

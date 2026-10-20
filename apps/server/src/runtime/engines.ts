@@ -1022,6 +1022,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			source: (sourceKey) => opts.sources.get(sourceKey),
 			gates: sourceGates,
 			renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
+			fetchImage: (url) => opts.imageFetcher.fetchImage(url),
+			readImage: opts.readImage,
 			sendFor: (id) => boundLivePush(push, id),
 			sessions: liveSessions,
 			collector: viewerChats,

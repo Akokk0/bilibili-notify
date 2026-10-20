@@ -184,10 +184,13 @@ const ContentSchema = z
 		offset: z.number().int().positive().optional(),
 		// sc / guard: text override (sc body / guard new captain uname).
 		text: z.string().optional(),
-		// guard: 档的 key(B 站是 `captain` / `commander` / `governor`),在在册来源声明的会员体系里找档;认不出的 key
-		// 是请求本身的毛病,过不了校验(400)。这里只校形,「认不认得」要读登记表,由 `createCardsRoute` 里套的那一层判。
+		// guard: 档的 key(B 站是 `captain` / `commander` / `governor`)。档 key 只在体系内唯一:带了 `program`
+		// (体系 id,ADR-0021 决策 26)就按（体系 id, 档 key）找,不带是旧请求、按登记先后找第一个。认不出的过不了
+		// 校验(400):这里只校形,「认不认得」要读登记表,由 `createCardsRoute` 里套的那一层判。
 		// 档的徽章图、背景色、宣告语都由这一档决定,渐变样式字段对上舰不生效。
 		tierKey: z.string().optional(),
+		// guard: 会员体系 id(B 站是 `guard`);不指定 = 沿用旧请求的找法(示例卡取第一套体系的最低一档)。
+		program: z.string().optional(),
 		// sc: 金额(元)。决定醒目留言的档(= 背景色与时长);渐变样式字段对 SC 不生效。
 		amount: z.number().int().min(1).optional(),
 	})
@@ -366,12 +369,17 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const tiers = createMembershipTierReader(opts.deps.runtime.sourceRegistry);
 	// 请求体的「认不认得这个档的 key」要读登记表,不能在模块顶层的 schema 里判:在工厂里给两个请求体各套一层。
 	// 报错的说法与形状同从前(`issues` 的路径仍是 content.tierKey)。
+	const tierIssue = "不是档位表里的档";
 	const contentSchema = ContentSchema.unwrap()
-		.extend({
-			tierKey: z
-				.string()
-				.refine((key) => tiers.byKey(key) !== undefined, "不是档位表里的档")
-				.optional(),
+		.superRefine((content, ctx) => {
+			if (content?.tierKey === undefined) return;
+			if (tiers.byKey(content.program, content.tierKey) === undefined) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["tierKey"],
+					message: tierIssue,
+				});
+			}
 		})
 		.optional();
 	const previewRequestSchema = PreviewRequestSchema.extend({ content: contentSchema });
@@ -872,7 +880,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 读口给不出档(没有来源声明会员档位):先于任何渲染、取名、抓图说清原因;预览与测试推送都据此回
 			// `unavailable` 那一支(`/preview`、`/test` 的 catch 就是这么回的)。
 			if (content?.tierKey === undefined) {
-				const gone = membershipTierUnavailable(kind, tiers.lowest());
+				const gone = membershipTierUnavailable(kind, tiers.lowest(content?.program));
 				if (gone) throw new Error(gone.message);
 			}
 			const renderer = await getImageRenderer();
@@ -881,9 +889,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const me = await getLoggedInAccount();
 			const uname = content?.text?.trim() || me?.name || "示例新舰长";
 			const master = await resolvePreviewMaster(content, fallback);
-			// 请求里的 `tierKey` 是档的 key,服务端按 key 在在册来源声明的会员体系里找那一档(没带 = 最低一档,B 站下是舰长);
+			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
 			// 档的徽章、档色、宣告语都取自那份声明,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
-			const tier = content?.tierKey === undefined ? tiers.lowest() : tiers.byKey(content.tierKey);
+			const tier =
+				content?.tierKey === undefined
+					? tiers.lowest(content?.program)
+					: tiers.byKey(content.program, content.tierKey);
 			if (!tier) throw new Error(`没有这一档:tierKey=${content?.tierKey}`);
 			// 徽章图标在图库里:没抓到的先补抓一次(有最小间隔),还是没有就不带 `icon`、徽章块自己收起。
 			await opts.deps.runtime.guardIcons.ensure();

@@ -66,6 +66,26 @@ export function createSourceRegistry(): SourceRegistry {
 					throw new Error(`source "${sourceKey}" 的 externalIdRegex 不合规: ${checked.reason}`);
 				}
 			}
+			// 会员体系 id 全局唯一(R3 甲,档 key 只在体系内唯一):跟已在册的撞了、或自己这一份里写重了,
+			// 都在认领与 `start` 之前拒收 —— 放进来之后按体系 id 取门槛 / 文案 / 档位就分不清是谁的了。
+			const declaredPrograms = source.descriptor.membershipPrograms ?? [];
+			const seenPrograms = new Set<string>();
+			for (const program of declaredPrograms) {
+				if (seenPrograms.has(program.id)) {
+					throw new Error(
+						`source "${sourceKey}" declares membership program "${program.id}" twice`,
+					);
+				}
+				seenPrograms.add(program.id);
+			}
+			for (const [key, view] of table.entries()) {
+				for (const program of view.descriptor.membershipPrograms ?? []) {
+					if (!seenPrograms.has(program.id)) continue;
+					throw new Error(
+						`source "${sourceKey}" membership program "${program.id}" is already declared by "${key}"`,
+					);
+				}
+			}
 			const { health, fetchLiveStatus, liveInteractions } = source;
 			const claim = table.claim(sourceKey, {
 				sourceKey,
@@ -79,7 +99,7 @@ export function createSourceRegistry(): SourceRegistry {
 							fetchLiveStatus: (identity, signal) => fetchLiveStatus.call(source, identity, signal),
 						}
 					: {}),
-				// 同 `fetchLiveStatus`:转发时不丢 `this`。本提交只有观众头像;档位图标随 22-7 追加。
+				// 同 `fetchLiveStatus`:转发时不丢 `this`。观众头像与档位图标两个懒取口。
 				...(liveInteractions
 					? {
 							liveInteractions: {
@@ -88,6 +108,14 @@ export function createSourceRegistry(): SourceRegistry {
 										liveInteractions,
 										identity,
 										viewerId,
+										signal,
+									),
+								fetchTierIcon: (identity, program, tierKey, signal) =>
+									liveInteractions.fetchTierIcon.call(
+										liveInteractions,
+										identity,
+										program,
+										tierKey,
 										signal,
 									),
 							},

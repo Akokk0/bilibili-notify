@@ -126,7 +126,7 @@ export interface CreatorCandidate {
 
 /**
  * 互动的懒取口(ADR-0021 决策 56 / S1):来源交给核心一份,核心到**确定要出卡**那一刻才问 —— 门槛没过、
- * 出图关着都不该为此走一趟网络。本提交只开观众头像;会员的档位图标随后追加。
+ * 出图关着都不该为此走一趟网络。观众头像与会员档位图标两个取法。
  */
 export interface LiveInteractionReader {
 	/**
@@ -137,6 +137,16 @@ export interface LiveInteractionReader {
 	fetchViewerAvatar(
 		identity: Identity,
 		viewerId: string,
+		signal: AbortSignal,
+	): Promise<Result<{ ref: ImageRef }>>;
+	/**
+	 * 取一档的徽章(图库引用)。`program` 是会员体系 id、`tierKey` 是档在这个体系里的 key。
+	 * 取不到回结果形状、不抛;核心拿不到只是卡上没有徽章。同一来源串行调用。
+	 */
+	fetchTierIcon(
+		identity: Identity,
+		program: string,
+		tierKey: string,
 		signal: AbortSignal,
 	): Promise<Result<{ ref: ImageRef }>>;
 }

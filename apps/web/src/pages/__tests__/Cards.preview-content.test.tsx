@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("预览请求体里的 SC 金额与上舰档", () => {
-	it("全家福:sc 带 amount、guard 带 tierKey(默认最低一档舰长),都不再带 price / level", async () => {
+	it("全家福:sc 带 amount、guard 带 program 与 tierKey(默认最低一档舰长),都不再带 price / level", async () => {
 		renderCards();
 		await waitFor(
 			() => {
@@ -83,6 +83,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		const guard = previewBodies("membership")[0].content ?? {};
 		expect(sc.amount).toBe(30);
 		expect("price" in sc).toBe(false);
+		expect(guard.program).toBe("guard");
 		expect(guard.tierKey).toBe("captain");
 		expect("level" in guard).toBe(false);
 	});

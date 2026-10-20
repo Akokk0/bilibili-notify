@@ -9,6 +9,7 @@ import {
 	type EffectiveSubscription,
 	type ExtraKey,
 	type GlobalConfig,
+	type MembershipTemplateBundle,
 	type MessageKindLayout,
 	resolve,
 	type Subscription,
@@ -82,6 +83,16 @@ export interface CustomLiveSummaryLike {
  */
 export interface LiveSettings extends LiveWorkSettings {
 	membership: boolean;
+	/**
+	 * 会员门槛,按体系 id 记最低档(`defaults.membership.minRank` 折上订阅覆盖后的生效值)。某体系没键 = 全推。
+	 * 字段名是表外的(`minRank` 单拎出来会被误读成醒目留言的金额门槛),交付时列给主人可否决。
+	 */
+	membershipMinRank: Record<string, number>;
+	/**
+	 * 会员文案,按体系 id 取整份(`templates.membership[体系 id]`,订阅覆盖哪个体系就整份换成订阅的)。
+	 * 字段名同上,表外、可否决。
+	 */
+	membershipTemplates: Record<string, MembershipTemplateBundle>;
 	superchat: boolean;
 	/**
 	 * 特别弹幕 / 特别进场的开关(`eff.features.viewerChat` / `viewerEnter`)。要不要监听直播间是「开关 ∧ 名单上有人带它」
@@ -132,6 +143,9 @@ export function liveSettingsOf(
 		liveStreaming: eff.features.liveStreaming,
 		liveEnd: eff.features.liveEnd,
 		membership: eff.features.membership,
+		// 会员门槛与文案都按体系 id 存好;核心按事件带来的 `program` 取自己那一格,不认识任何平台的体系名。
+		membershipMinRank: eff.membership.minRank,
+		membershipTemplates: eff.templates.membership,
 		superchat: eff.features.superchat,
 		viewerChat: eff.features.viewerChat,
 		viewerEnter: eff.features.viewerEnter,

@@ -49,6 +49,8 @@ function makeSub(
 		liveStart: true,
 		liveEnd: true,
 		membership: false,
+		membershipMinRank: {},
+		membershipTemplates: {},
 		superchat: false,
 		viewerChat: false,
 		viewerEnter: false,

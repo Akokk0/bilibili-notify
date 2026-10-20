@@ -17,6 +17,7 @@ import {
 	fail,
 	type ImageRef,
 	type LiveInteractionReport,
+	type MembershipProgram,
 	type MessageLayoutSegment,
 	ok,
 	type Result,
@@ -57,6 +58,9 @@ type InteractionSettings = Pick<
 	| "liveEndGraceMinutes"
 	| "liveStreaming"
 	| "streamingIntervalHours"
+	| "membership"
+	| "membershipMinRank"
+	| "membershipTemplates"
 	| "superchat"
 	| "minSuperchatAmount"
 	| "extras"
@@ -71,8 +75,25 @@ type InteractionSettings = Pick<
 const CHAT_TEMPLATE = "{name} 的直播间里 {viewer} 说:{msg}";
 const ENTER_TEMPLATE = "{viewer} 进入了 {name} 的直播间";
 const VIEWER_AVATAR = `${"a".repeat(64)}.webp` as ImageRef;
+const TIER_ICON = `${"f".repeat(64)}.png` as ImageRef;
 const SC_CARD = Buffer.from("sc-card-jpeg");
+const MEMBERSHIP_CARD = Buffer.from("membership-card-jpeg");
 type SuperchatRenderer = NonNullable<ReturnType<LiveInteractionsOptions["renderer"]>>;
+
+const DECLARED_TIER = {
+	key: "gold",
+	name: "金牌",
+	rank: 2,
+	color: "#123456",
+	colorEnd: "#654321",
+	announcement: "{viewer} 加入了{tier}",
+};
+const DECLARED_PROGRAM: MembershipProgram = {
+	id: "acme-club",
+	name: "俱乐部",
+	tiers: [DECLARED_TIER],
+};
+const CUSTOM_PROGRAM: MembershipProgram = { id: "acme-custom", name: "自定", tiers: "custom" };
 
 let bus: ReturnType<typeof createNodeMessageBus>;
 let table: LiveTable;
@@ -86,7 +107,11 @@ let sent: Array<{ id: string; text: string; type: number }>;
 let sentSegments: Array<{ id: string; type: number; segments: MessageLayoutSegment[] }>;
 let avatarAsked: number;
 let avatarImpl: (() => Promise<Result<{ ref: ImageRef }>>) | undefined;
+let tierAsked: number;
+let tierImpl: (() => Promise<Result<{ ref: ImageRef }>>) | undefined;
+let programs: MembershipProgram[];
 let superchatCard: ReturnType<typeof vi.fn>;
+let membershipCard: ReturnType<typeof vi.fn>;
 let renderer: SuperchatRenderer | null;
 
 function settingsWith(
@@ -100,6 +125,9 @@ function settingsWith(
 		liveEndGraceMinutes: 2,
 		liveStreaming: false,
 		streamingIntervalHours: 1,
+		membership: true,
+		membershipMinRank: {},
+		membershipTemplates: {},
 		superchat: true,
 		extras: { atAllPost: false, atAllLiveStart: false, wordcloud: false, liveSummary: false },
 		viewerChat: true,
@@ -121,9 +149,16 @@ beforeEach(() => {
 	sentSegments = [];
 	avatarAsked = 0;
 	avatarImpl = undefined;
+	tierAsked = 0;
+	tierImpl = undefined;
+	programs = [DECLARED_PROGRAM, CUSTOM_PROGRAM];
 	vi.clearAllMocks();
 	superchatCard = vi.fn(async () => SC_CARD);
-	renderer = { generateSuperchatCard: superchatCard } as unknown as SuperchatRenderer;
+	membershipCard = vi.fn(async () => MEMBERSHIP_CARD);
+	renderer = {
+		generateSuperchatCard: superchatCard,
+		generateMembershipCard: membershipCard,
+	} as unknown as SuperchatRenderer;
 	settings = settingsWith([{ id: "123", features: ["viewerChat", "viewerEnter"] }]);
 	sessions = createLiveSessionEngine({
 		bus,
@@ -145,15 +180,22 @@ beforeEach(() => {
 		profileName: () => "主播A",
 		profileAvatar: () => undefined,
 		source: () => ({
+			descriptor: { label: "测试", membershipPrograms: programs },
 			liveInteractions: {
 				async fetchViewerAvatar() {
 					avatarAsked += 1;
 					return avatarImpl ? await avatarImpl() : ok({ ref: VIEWER_AVATAR });
 				},
+				async fetchTierIcon() {
+					tierAsked += 1;
+					return tierImpl ? await tierImpl() : ok({ ref: TIER_ICON });
+				},
 			},
 		}),
 		gates: createSourceGates(),
 		renderer: () => renderer,
+		readImage: async (ref: ImageRef) => ({ bytes: Buffer.from(ref), mime: "image/png" }),
+		fetchImage: async () => fail("unavailable", "测试里不抓自定义图"),
 		sendFor: (id) => async (groups, type) => {
 			const segments = groups.flat();
 			sentSegments.push({ id, type, segments });
@@ -347,9 +389,11 @@ describe("醒目留言", () => {
 			table,
 			profileName: () => "主播A",
 			profileAvatar: () => undefined,
-			source: () => ({}),
+			source: () => ({ descriptor: { label: "测试" } }),
 			gates: createSourceGates(),
 			renderer: () => renderer,
+			readImage: async (ref: ImageRef) => ({ bytes: Buffer.from(ref), mime: "image/png" }),
+			fetchImage: async () => fail("unavailable", "测试里不抓自定义图"),
 			sendFor: (id) => async (groups, type) => {
 				const segments = groups.flat();
 				sentSegments.push({ id, type, segments });
@@ -396,6 +440,113 @@ describe("醒目留言", () => {
 		expect(superchatCard).toHaveBeenCalledTimes(1);
 		expect(superchatCard.mock.calls[0]?.[0]).toMatchObject({ viewer: { name: "粉丝" } });
 		expect(superchatCard.mock.calls[0]?.[0]).not.toHaveProperty("viewer.avatar");
+	});
+});
+
+describe("会员", () => {
+	const membership = (
+		over: Partial<Omit<LiveInteractionReport & { kind: "membership" }, "kind">> = {},
+	) =>
+		interactions.apply(SUB.id, {
+			kind: "membership",
+			viewer: { id: "42", name: "船员" },
+			program: "acme-club",
+			tier: { key: "gold", name: "金牌", rank: 2 },
+			...over,
+		} as LiveInteractionReport);
+
+	it("custom 体系:用事件里的档名,没有徽章、不问来源,自定义文案的 {tier} 取事件里的名字", async () => {
+		settings = settingsWith([], {
+			membershipTemplates: {
+				"acme-custom": {
+					enabled: true,
+					default: { template: "{viewer} 成为了 {tier}", imageUrl: "" },
+					tiers: {},
+				},
+			},
+		});
+		membership({
+			program: "acme-custom",
+			tier: { key: "vip", name: "自定义贵族", rank: 3 },
+		});
+		await flush();
+		expect(sent).toEqual([
+			{ id: SUB.id, text: "船员 成为了 自定义贵族", type: LivePushType.LiveGuardBuy },
+		]);
+		expect(membershipCard).not.toHaveBeenCalled();
+		expect(tierAsked).toBe(0);
+	});
+
+	it("逐档声明的体系:取声明的那一档(名字、rank、档色),带 icon.ref 时直接用它、不问来源", async () => {
+		const icon = { ref: TIER_ICON };
+		programs = [
+			{
+				...DECLARED_PROGRAM,
+				tiers: [{ ...DECLARED_TIER, icon }],
+			} as MembershipProgram,
+			CUSTOM_PROGRAM,
+		];
+		membership();
+		await flush();
+		expect(membershipCard).toHaveBeenCalledTimes(1);
+		expect(membershipCard.mock.calls[0]?.[0]).toMatchObject({
+			viewer: { name: "船员" },
+			tier: {
+				name: "金牌",
+				rank: 2,
+				icon,
+				color: "#123456",
+				colorEnd: "#654321",
+				announcement: "{viewer} 加入了{tier}",
+			},
+		});
+		expect(tierAsked).toBe(0);
+		expect(sentSegments[0]?.type).toBe(LivePushType.LiveGuardBuy);
+	});
+
+	it("声明档没带 icon.ref:经懒取口补一次,卡照出", async () => {
+		membership();
+		await flush();
+		expect(tierAsked).toBe(1);
+		expect(membershipCard.mock.calls[0]?.[0]).toMatchObject({
+			tier: { name: "金牌", icon: { ref: TIER_ICON } },
+		});
+	});
+
+	it("来源一直不回:超时后卡照出、没有徽章,记一条错误日志", async () => {
+		tierImpl = () => new Promise(() => {});
+		membership();
+		await vi.advanceTimersByTimeAsync(LOOKUP_TIMEOUT_MS);
+		await flush();
+		expect(membershipCard).toHaveBeenCalledTimes(1);
+		expect(membershipCard.mock.calls[0]?.[0]).toMatchObject({ tier: { name: "金牌" } });
+		expect(membershipCard.mock.calls[0]?.[0]).not.toHaveProperty("tier.icon");
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("门槛按体系 id 取:同一个 rank 在别的体系的门槛下照推", async () => {
+		settings = settingsWith([], {
+			membershipMinRank: { "acme-club": 3, "acme-custom": 1 },
+		});
+		membership();
+		await flush();
+		expect(membershipCard).not.toHaveBeenCalled();
+		expect(tierAsked).toBe(0);
+		membership({
+			program: "acme-custom",
+			tier: { key: "vip", name: "自定义贵族", rank: 2 },
+		});
+		await flush();
+		expect(membershipCard).toHaveBeenCalledTimes(1);
+	});
+
+	it("认不出的体系 / 认不出的档:丢弃并记一条 warn", async () => {
+		membership({ program: "nobody" });
+		membership({ tier: { key: "nope", name: "没有", rank: 1 } });
+		await flush();
+		expect(membershipCard).not.toHaveBeenCalled();
+		expect(sent).toEqual([]);
+		expect(logger.warn).toHaveBeenCalledTimes(2);
 	});
 });
 

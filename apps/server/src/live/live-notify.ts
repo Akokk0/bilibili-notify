@@ -37,7 +37,7 @@ export type LiveTextPushType = LivePushType.ViewerChat | LivePushType.ViewerEnte
  */
 export type LiveNotifySend = (
 	groups: MessageLayoutSegment[][],
-	type: LiveNotifyPushType | LiveTextPushType | LivePushType.Superchat,
+	type: LiveNotifyPushType | LiveTextPushType | LivePushType.Superchat | LivePushType.LiveGuardBuy,
 ) => Promise<void>;
 
 /**

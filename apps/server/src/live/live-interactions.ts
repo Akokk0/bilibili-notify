@@ -5,6 +5,9 @@ import {
 	type ImageRef,
 	type LiveInteractionReport,
 	type Logger,
+	type MembershipEvent,
+	type MembershipTemplateBundle,
+	type MembershipTier,
 	type MessageLayoutSegment,
 	type Result,
 	type ServiceContext,
@@ -23,6 +26,7 @@ import { type LiveSessionEngine, liveSubscriptionPushable } from "./live-session
 import { type LiveSettings, wantsLiveEndExtras } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
 import { LivePushType } from "./live-types.js";
+import { pushMembership } from "./membership.js";
 import type { ViewerChatCollector } from "./recap/viewer-chat-collector.js";
 import { pushViewerChat, pushViewerEnter } from "./special-viewers.js";
 import { pushSuperchat } from "./superchat.js";
@@ -33,7 +37,8 @@ import { pushSuperchat } from "./superchat.js";
  * 特别关注名单上有没有这位观众(按 `viewer.id` 整串认)。开关与名单两样都要;推什么交给特别弹幕 / 特别进场的装配
  * ({@link pushViewerChat} / {@link pushViewerEnter}),发送绑到这条订阅上。
  *
- * 本提交开 `viewerChat`、`viewerEnter`、`superchat`;会员随后追加。
+ * 四种互动都从这里过:`viewerChat`、`viewerEnter`、`superchat`、`membership`。会员按事件带来的 `program`
+ * 在**这条订阅所属来源**的描述符里找体系、再按 `tier.key` 找档;体系 id 全局唯一、档 key 只在体系内唯一。
  *
  * **回顾的弹幕收集归核心**:场次开了登记,这一场里每条弹幕记一条(条件同 {@link wantsLiveEndExtras}:下播开着、
  * 词云或总结至少一个开着,不论发弹幕的人在不在名单),醒目留言的正文也记一条;场次结束清掉。没有这一场
@@ -43,6 +48,9 @@ import { pushSuperchat } from "./superchat.js";
 type InteractionSettings = Pick<
 	LiveSettings,
 	| "liveEnd"
+	| "membership"
+	| "membershipMinRank"
+	| "membershipTemplates"
 	| "superchat"
 	| "minSuperchatAmount"
 	| "extras"
@@ -53,6 +61,13 @@ type InteractionSettings = Pick<
 	| "customSpecialDanmakuUsers"
 	| "customSpecialUsersEnterTheRoom"
 >;
+
+/** 来源没给这个体系声明文案:等同「没开自定义文案」,出卡或走兜底句。 */
+const NO_MEMBERSHIP_TEMPLATE: MembershipTemplateBundle = {
+	enabled: false,
+	default: { template: "", imageUrl: "" },
+	tiers: {},
+};
 
 export interface LiveInteractionsOptions {
 	logger: Logger;
@@ -68,12 +83,16 @@ export interface LiveInteractionsOptions {
 	profileName(id: string): string | undefined;
 	/** 订阅资料里的头像引用(资料缓存,现取);没有就不带。 */
 	profileAvatar(id: string): ImageRef | undefined;
-	/** 来源的登记视图(现取):互动的懒取口从这一份上拿。 */
-	source(sourceKey: string): Pick<SourceView, "liveInteractions"> | undefined;
+	/** 来源的登记视图(现取):互动的懒取口与会员体系声明都从这一份上拿。 */
+	source(sourceKey: string): Pick<SourceView, "descriptor" | "liveInteractions"> | undefined;
 	/** 按来源键的串行闸(宿主里一份,与搜人、查直播状态共用)。 */
 	gates: SourceGates;
-	/** 出醒目留言卡的渲染器;null = 出不了卡,只发一句文字。 */
-	renderer(): Pick<ImageRenderer, "generateSuperchatCard"> | null;
+	/** 出醒目留言 / 会员卡的渲染器;null = 出不了卡,只发一句文字。 */
+	renderer(): Pick<ImageRenderer, "generateSuperchatCard" | "generateMembershipCard"> | null;
+	/** 自定义会员图网址 → 图库引用(模板里填了图片地址时才用)。 */
+	fetchImage(url: string): Promise<Result<{ ref: ImageRef }>>;
+	/** 图库引用 → 字节(会员卡的徽章 / 自定义图)。 */
+	readImage(ref: ImageRef): Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 场次 —— 回顾的弹幕收集跟着场次登记与清掉。 */
@@ -94,6 +113,41 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 	/** 此刻开着一场、收集器登记着的订阅。 */
 	const active = new Set<string>();
 	let disposed = false;
+
+	/**
+	 * 懒取口的两处共用这一段:经宿主调来源的外壳(超时、抛错、中止都收成失败)再进同一来源的串行门。
+	 * 拿不到只是卡上少一张图,不抛、不重试。
+	 */
+	const fetchSourceImage = async (
+		subscriptionId: string,
+		sourceKey: string,
+		member: "liveInteractions.fetchViewerAvatar" | "liveInteractions.fetchTierIcon",
+		call: (signal: AbortSignal) => Promise<Result<{ ref: ImageRef }>>,
+	): Promise<ImageRef | undefined> => {
+		const got = await opts.gates.run(sourceKey, () =>
+			callSource<Result<{ ref: ImageRef }>>({
+				logger: log,
+				sourceKey,
+				member,
+				timeoutMs: LOOKUP_TIMEOUT_MS,
+				call,
+				signal: opts.serviceCtx.signal,
+				onAbort: () => fail("unavailable", "the call was cancelled by the host"),
+				onTimeout: () => {
+					log.error(
+						`[live-interactions] 订阅 ${subscriptionId} 的 ${member} 超时(${LOOKUP_TIMEOUT_MS / 1000} 秒)`,
+					);
+					return fail("timeout", "the source did not answer in time");
+				},
+				onThrow: () => fail("unavailable", "the source threw"),
+			}),
+		);
+		if (!got.ok) {
+			log.debug(`[live-interactions] 订阅 ${subscriptionId} 的 ${member} 取不到: ${got.message}`);
+			return undefined;
+		}
+		return got.ref;
+	};
 
 	/** 把「推一句文字」绑到这条订阅上:过推送层,出错记日志、不重试。 */
 	const textSender = (id: string, type: LiveTextPushType) => (text: string) => {
@@ -118,6 +172,16 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 				log.error(
 					`[live-interactions] 订阅 ${id} 的醒目留言推送出错(不重试): ${errorMessageOf(err)}`,
 				);
+			});
+	};
+
+	/** 会员:一张卡、一句自定义文案或一句兜底,都算一次上舰推送。发送出错记日志、不重试。 */
+	const membershipSender = (id: string) => (segments: readonly MessageLayoutSegment[]) => {
+		if (disposed) return Promise.resolve();
+		return opts
+			.sendFor(id)([[...segments]], LivePushType.LiveGuardBuy)
+			.catch((err) => {
+				log.error(`[live-interactions] 订阅 ${id} 的会员推送出错(不重试): ${errorMessageOf(err)}`);
 			});
 	};
 
@@ -218,33 +282,13 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 								// 懒取:确定要出卡才问来源;没交这一口就是卡上没有观众头像。
 								async fetchViewerAvatar() {
 									if (!reader) return undefined;
-									// 经宿主调来源的公共外壳:超时、抛错都收成失败;再进同一来源的串行门(搜人、查直播状态共用)。
-									const got = await opts.gates.run(sub.identity.sourceKey, () =>
-										callSource<Result<{ ref: ImageRef }>>({
-											logger: log,
-											sourceKey: sub.identity.sourceKey,
-											member: "liveInteractions.fetchViewerAvatar",
-											timeoutMs: LOOKUP_TIMEOUT_MS,
-											call: (sourceSignal) =>
-												reader.fetchViewerAvatar(sub.identity, report.viewer.id, sourceSignal),
-											signal: opts.serviceCtx.signal,
-											onAbort: () => fail("unavailable", "the call was cancelled by the host"),
-											onTimeout: () => {
-												log.error(
-													`[live-interactions] 订阅 ${subscriptionId} 取观众头像超时(${LOOKUP_TIMEOUT_MS / 1000} 秒)`,
-												);
-												return fail("timeout", "the source did not answer in time");
-											},
-											onThrow: () => fail("unavailable", "the source threw"),
-										}),
+									return fetchSourceImage(
+										subscriptionId,
+										sub.identity.sourceKey,
+										"liveInteractions.fetchViewerAvatar",
+										(sourceSignal) =>
+											reader.fetchViewerAvatar(sub.identity, report.viewer.id, sourceSignal),
 									);
-									if (!got.ok) {
-										log.debug(
-											`[live-interactions] 订阅 ${subscriptionId} 的观众头像取不到: ${got.message}`,
-										);
-										return undefined;
-									}
-									return got.ref;
 								},
 								send: superchatSender(subscriptionId),
 								logger: log,
@@ -252,6 +296,98 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 						).catch((err) => {
 							log.error(
 								`[live-interactions] 订阅 ${subscriptionId} 的醒目留言推送出错(不重试): ${errorMessageOf(err)}`,
+							);
+						}),
+					);
+					return;
+				}
+				case "membership": {
+					if (!settings.membership) return;
+					const { kind: _kind, fallbackText, ...event } = report;
+					const source = opts.source(sub.identity.sourceKey);
+					const program = source?.descriptor.membershipPrograms?.find(
+						(candidate) => candidate.id === report.program,
+					);
+					if (program === undefined) {
+						log.warn(
+							`[live-interactions] 订阅 ${subscriptionId} 认不出会员体系 ${report.program},丢弃这条会员上报`,
+						);
+						return;
+					}
+					// 逐档声明:取声明的那一档(名字、rank、档色、徽章都听平台的);custom:档由主播自定,
+					// 只能用事件带来的名字与 rank,没有徽章、没有档色。
+					const tier: MembershipTier | undefined =
+						program.tiers === "custom"
+							? {
+									key: report.tier.key,
+									name: report.tier.name,
+									rank: report.tier.rank ?? 0,
+								}
+							: program.tiers.find((candidate) => candidate.key === report.tier.key);
+					if (tier === undefined) {
+						log.warn(
+							`[live-interactions] 订阅 ${subscriptionId} 的会员体系 ${program.id} 认不出档 ${report.tier.key},丢弃这条会员上报`,
+						);
+						return;
+					}
+					const avatar = opts.profileAvatar(subscriptionId);
+					const reader = source?.liveInteractions;
+					opts.serviceCtx.track(
+						pushMembership(
+							{
+								event: { subscriptionId, ...event } satisfies MembershipEvent,
+								tier,
+								minRank: settings.membershipMinRank[program.id],
+								template: settings.membershipTemplates[program.id] ?? NO_MEMBERSHIP_TEMPLATE,
+								creator: {
+									name: creator.name,
+									...(avatar === undefined ? {} : { avatar }),
+								},
+								cardSkin: settings.cardSkin,
+								cardSkinKnobs: settings.cardSkinKnobs,
+								fallbackText:
+									fallbackText ??
+									t("live.membershipFallback", {
+										name: creator.name,
+										viewer: report.viewer.name,
+										tier: tier.name,
+									}),
+							},
+							{
+								renderer: opts.renderer(),
+								async fetchTierIcon() {
+									// 来源已经把引用写进自己那档:直接读图库,不再走一趟网络。
+									const declared = tier.icon?.ref;
+									if (declared !== undefined) return { ref: declared };
+									// custom 体系声明不了徽章,也不该替它去问来源。
+									if (program.tiers === "custom" || reader === undefined) return undefined;
+									const ref = await fetchSourceImage(
+										subscriptionId,
+										sub.identity.sourceKey,
+										"liveInteractions.fetchTierIcon",
+										(sourceSignal) =>
+											reader.fetchTierIcon(sub.identity, program.id, tier.key, sourceSignal),
+									);
+									return ref === undefined ? undefined : { ref };
+								},
+								async fetchViewerAvatar() {
+									if (reader === undefined) return undefined;
+									return fetchSourceImage(
+										subscriptionId,
+										sub.identity.sourceKey,
+										"liveInteractions.fetchViewerAvatar",
+										(sourceSignal) =>
+											reader.fetchViewerAvatar(sub.identity, report.viewer.id, sourceSignal),
+									);
+								},
+								fetchImage: opts.fetchImage,
+								readImage: opts.readImage,
+								send: membershipSender(subscriptionId),
+								logger: log,
+							},
+						).catch((err) => {
+							log.error(
+								`[live-interactions] 订阅 ${subscriptionId} 的会员推送出错(不重试): ${errorMessageOf(err)}`,
 							);
 						}),
 					);
