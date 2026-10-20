@@ -272,7 +272,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 
 - 严重度、要不要打扰主人由拓展定：问题一律进面板问题框，`notify: true` 再私聊主人。
 - **问题句只说事、平实**：B 站、内置适配器、拓展写的 `message` / `recoveryMessage` 一律平实，不称呼主人、不自称女仆，写「发生了什么」与「平台这一侧自己会怎么做」（如「拉取动态失败（错误码 -352：原话），每 5 分钟会自动重试一次」），**不写宿主的界面与操作**（面板哪一页、哪条指令、哪个开关、重启）。平台的数字错误码写进 `message`，不占 `code`（`code` 是 snake 词）。口吻不交给集成，由宿主按口吻加工。
-- **宿主加工话**：私聊时宿主把话说完整 —— 女仆层「主人，刚刚 <名字> 报告：<message>」、平实版「<名字> 报告：<message>」；名字取来源描述符的 `label`、拓展清单的 `name`。恢复句同样补完整：给了 `recoveryMessage` 用「主人，好消息，<名字> 报告：<恢复句>」，没给用一句带名字的通用说法。引子按「这句话是谁写的」加，不按报的人：宿主自己写的整句（核心设置读不懂、宿主替拓展报的设置读不懂、宿主替连接报的几条、登录那一条）不加「X 报告」。
+- **宿主加工话**：私聊时宿主把话说完整 —— 女仆层「主人，刚刚 <名字> 报告：<message>」、平实版「<名字> 报告：<message>」；名字取来源描述符的 `label`、拓展清单的 `name`。恢复句同样补完整：给了 `recoveryMessage` 用「主人，好消息，<名字> 报告：<恢复句>」，没给用一句带名字与集成原句的通用说法（「主人，好消息，<名字>之前报告的「<原句>」已经恢复啦。」，2026-10-20 主人定 R2 乙；只接原句、不套两层引子）。引子按「这句话是谁写的」加，不按报的人：宿主自己写的整句（核心设置读不懂、宿主替拓展报的设置读不懂、宿主替连接报的几条、登录那一条）不加「X 报告」。
 - **有登录口的来源不报登录问题，宿主看状态报**：宿主订每个有登录口的来源的 `auth.onChange`，按 `AuthState` 自己报与清（`expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清、扫码中 / 确认中 / 出错保持上一次的结论），记在来源名下，宿主写整句并带指路。契约不为此加成员。
 - **适配器不报连接通断**：宿主每分钟调 `probe`，连续两次探不通算断，私聊与清的规矩全在宿主（见 [push.md](./push.md)）。适配器特有、探测看不出来的事仍走 `reportProblem({ connectionId })`。
 - 核心只守一条底线：同一报的人（`reporter`）、同一 code 的私聊 60 秒内只发一次。
@@ -285,6 +285,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
     - 不存盘：重启或停用再启用之后，还在的问题要拓展重报一遍（重启后的头几秒，订阅卡上的红字会先消失）。
 - code 用 snake（`login_expired`）。
 - 🔗 **现状（3a-30，10-11）**：问题表、`GET /api/problems`、`problems-changed` 与核心那头的通知器 3a-30 已落，但 `reportProblem` / `resolveProblem` 只造在内置来源的 `SourceContext` 上；上面第一层（`IntegrationContext`，不带对象）和 `connectionId` 那一支都没造，拓展的 `activate(ctx)` 今天没有这两个成员；`Problem.about` 今天只有 `{ subscriptionId }` 一支。三层签名与 `about` 加连接那一支随 3b-38 落成。多语言（ADR-0037）下问题句的口吻与加工见上。
+- 🔗 **现状（3b-51，10-20）**：问题句已中立化。B 站的问题句收进字典 `bilibili.problem.*`，QQ 官方网关两句去掉开头的「QQ」；两族里没有「主人 / 女仆 / 面板 / 指令 / 重启 / login」，由 `i18n/__tests__/integration-sentences-plain.test.ts` 钉着。写者标记 `writtenBy?: string` 加在问题表上报入参与 `ProblemChange` 上，值是给人看的名字；它不上 `Problem`、不进 `GET /api/problems`、不进 `apps/contract`。宿主在三个上下文入口（集成、来源、适配器）逐格抄给问题表，第三方塞不进来：集成上下文与适配器上下文的选项 `label: () => string` 在报问题那一刻取；拓展取当前语言的清单名、走与拓展列表同一条回落链；B 站取来源描述符的 `label`；内置适配器暂用适配器键（`qq-official` 等），第 4 期适配器自带描述后换。宿主直写问题表的那几条（连接探测、拓展设置、核心设置、登录）不盖。引子只在通知器把话交给发送口的那一刻加，账上存的是集成交上来的原句，「不再说」的比较不受影响；字典键 `problem.relay.reported` / `problem.relay.recovered` / `problem.relay.recoveredGeneric` / `problem.recoveredGeneric`，女仆层 `zh-CN.maid.json` 第一次有了这四条。登录问题由宿主看登录状态报：`subscriptions/login-problems.ts` 的 `watchLoginProblems` 按来源键报与清 `auth_lost`，`expired` 私聊、`logged-out` 只进表、`logged-in` 清；句子是宿主写的整句（字典 `problem.login.*`）。换语言时问题表重报另开 3b-61，本片只保证引子在出字那一刻取。
 
 ## 推送：平台适配器
 

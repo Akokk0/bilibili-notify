@@ -187,7 +187,7 @@ type AuthState =                   // 状态值用 kebab
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
 - 日志落盘前按值脱敏：各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，设置里标了机密的格（核心 `markSecret`、清单 `secret` / `generate`）宿主自动登记，还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记；**少于 8 个字符的值不遮**。核心里写死 B 站 cookie 名的五条正则删掉，`sk-`、`Bearer` 两条（AI 服务商密钥）留着。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉，不豁免。
-- **登录问题由宿主看登录状态报，来源不报**：宿主订每个有登录口的来源的 `auth.onChange`，按 `AuthState` 自己报与清 —— `expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清（私聊过的补「已恢复」）、`awaiting-scan` / `confirming` / `error` 保持上一次的结论；记在来源名下；宿主写整句并带指路（面板账号页、`login <来源>` 指令）。契约不为此加成员。B 站不再报 `auth_lost`；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。🔗 现状：未登录层今天在 `bilibili/problem-layers.ts` 里由 B 站自己报，随 3b-38 搬到宿主。
+- **登录问题由宿主看登录状态报，来源不报**：宿主订每个有登录口的来源的 `auth.onChange`，按 `AuthState` 自己报与清 —— `expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清（私聊过的补「已恢复」）、`awaiting-scan` / `confirming` / `error` 保持上一次的结论；记在来源名下；宿主写整句并带指路（面板账号页、`login <来源>` 指令）。契约不为此加成员。B 站不再报 `auth_lost`；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。🔗 现状（3b-51，10-20）：已落，报与清住 `subscriptions/login-problems.ts` 的 `watchLoginProblems`，由 `builtin-sources.ts` 在登记来源时接上、撤登记时先摘；整句由宿主写、不盖「谁写的」，私聊时不加引子。B 站已删掉登录那一层与 `reportLogin`，`problem-layers.ts` 只剩风控与请求失败两层，照旧按登录状态压。
 
 ## SourceContext
 
@@ -297,16 +297,16 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - **谁看**：订阅卡、连接卡看关于自己的，问题框看全部；来源本身的问题只在问题框与健康卡，不在每张订阅卡重复。`GET /api/problems` 一次给全；变了发总线事件 `problems-changed`（只带键），经 `state` 频道、250ms 合并。
 - 代价：重启后的头几秒，订阅卡上的问题红字会先消失，等来源重报（开机时关注同步与第一轮资料刷新几秒内就会重报）。
 - code 用 snake：`follow_failed`、`creator_not_found`、`risk_controlled`。
-- B 站也走它。B 站内部按因果分层，只报最上面那一条开着的根问题：未登录 → 风控 → 各项请求失败，下面的只记日志；根问题按状态报（开机就没登录也报），清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。**登录失效不再由 B 站报**，改由宿主看登录状态报；「登录掉了时把风控、请求失败压下去」的分层仍在 B 站，照旧看自己的登录状态。
+- B 站也走它。B 站内部按因果分层，只报最上面那一条开着的根问题：风控 → 各项请求失败，下面的只记日志；根问题按状态报，清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。**登录问题不由 B 站报**，改由宿主看登录状态报；B 站的分层只剩风控与请求失败两层，登录掉了时这两层被压下，登录恢复再冒出来。
 - **关注搬进 B 站之后**（3b-25）：补关注在 `onSubscriptionsChanged` 的回调里异步做，失败报 `follow_failed`（带 `externalId`、挂在那个人的订阅上、只进表），补关注成功就 `resolveProblem` 清掉；新建订阅的回应不再带关注结果；订阅列表的回应由宿主把挂在这条订阅上的问题一并带上，面板订阅卡通用地显示它们（去掉「是不是 B 站」的判断），问题变了面板刷新 —— 这是提前到 3b 的一小块面板活。订阅卡上的红色警告文字沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`）。它和别的问题一样只在内存、不再存盘，重启后由下一轮关注同步重报。
 - 来源级问题不再走 `engine-error`。
 - 🔗 **现状（3a-30，10-11）**：
   - **只造在 `SourceContext` 上**：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })` 与 `resolveProblem({ externalId?, code, notify? })`；`IntegrationContext` 与 `PlatformAdapterContext` 上的两个还没造（3a-39 是下一个要报的）。两个都是 `void`。🔗 3a-39 报了设置读不懂的三条问题（见 data-model.md「问题表」），**仍没造这两个成员**：核心设置那条由 `runtime/bootstrap.ts` 直接写问题表，B 站那两条走 `SourceContext`；等第一个在 `start(ctx)` 之外要报的集成再造。
-  - **`recoveryMessage`**：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法（3b-38 改成一句带名字的通用说法，不再接原文）。**`resolveProblem` 的 `notify`**：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
+  - **`recoveryMessage`**：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法：宿主自己写的那条用 `problem.recoveredGeneric`（「之前的问题已恢复：<原句>」）；集成写的那条用 `problem.relay.recoveredGeneric`，带名字与集成的原句（「<名字>之前报告的「<原句>」已恢复」，2026-10-20 主人定 R2 乙，只接原句、不套两层引子）。**`resolveProblem` 的 `notify`**：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
   - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
-  - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊与「已恢复」各一张 60 秒的节流表，键都是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个。
-  - **code 例子**：B 站落成的名字有 `auth_lost`（3b-38 起改由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。
-  - **B 站的分层**落在 `bilibili/problem-layers.ts`：未登录层只看 `AuthState.status`（`expired` 开并私聊、`logged-out` 开不私聊、`logged-in` 清、`awaiting-scan` / `confirming` / `error` 保持上一次的结论）；风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；第三层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。给主人看的话在 `bilibili/problem-texts.ts`。
+  - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊按 60 秒的节流表，键是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个；「已恢复」只对真私聊过的发、不受窗口与沉淀管（10-12 主人定），引子在交给发送口那一刻加。
+  - **code 例子**：B 站落成的名字有 `auth_lost`（3b-51 起由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。
+  - **B 站的分层**落在 `bilibili/problem-layers.ts`：只剩风控与请求失败两层；只看 `AuthState.status` 决定压不压（`expired` / `logged-out` 压、`logged-in` 放，`awaiting-scan` / `confirming` / `error` 保持上一次的结论），登录本身不在这里报。风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；请求失败层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。问题句在 `bilibili/problem-texts.ts` 取，字在字典 `bilibili.problem.*`（平实句）。
 
 ### 健康与运行状态
 
