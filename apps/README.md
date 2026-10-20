@@ -96,7 +96,7 @@ slim 变体的卡片图片渲染改由 `BN_CHROME_ENDPOINT` 指向的**远程浏
 | `BN_CHROME_ENDPOINT` | 未设 | 远程浏览器端点(`ws://…` / `http://…`),优先于 `BN_CHROME_PATH`;slim 变体的卡片渲染靠它 |
 | `BN_CHROME_IDLE_SECONDS` | 未设(=300) | 渲染空闲多久后关闭 / 断开浏览器省内存;`0` = 常驻 |
 | `NODE_OPTIONS` | `--max-old-space-size=512` | V8 堆上限,压住 RSS 浮高;compose 可覆盖 |
-| `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
+| `TZ` | `Asia/Shanghai` | 容器时区：影响定时任务（cron）的钟点与免扰时段；卡片上的时间看设置里的全局时区 |
 | `BN_LOG_LEVEL` | `info` | 日志级别;引擎启动后被 dashboard 配置接管 |
 | `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` | 未设 | dashboard 登录凭据(首启动 seed 源) |
 | `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(首启动 seed 源) |

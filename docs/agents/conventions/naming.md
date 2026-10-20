@@ -79,6 +79,7 @@
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
 | 界面语言（设置键与类型，ADR-0037 决策 2） | `locale`（BCP 47 写法：`zh-CN` / `zh-TW` / `en` / `ja`；类型 `Locale`、取值表 `LOCALES`） | `language`、`lang` |
 | 文案口吻（界面与私聊里固定的话读女仆版还是平实版，ADR-0037 决策 3） | `voice`，取值 `maid` / `plain`（10-15 主人定） | `tone`（只指状态的轻重 `info` / `warn` / `error`）、`persona`（只指 AI 人格）、`copyStyle` / `Style`（只指卡片样式） |
+| 时区（IANA 名，设置键与参数） | `timezone` | `timeZone`（只在直接交给 `Intl` / `cron` 的那一个参数照对方写法）、`tz`、`zone`；分钟偏移是另一个概念，沿用 `tzOffsetMin` |
 | 直播间 id | `roomId` | `roomid` |
 | 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |
 | BN 跑了多久 | `uptime`（目录 `uptime/`、行 `UptimeEntry { hourStartedAt, minutes }`） | `run…`（和 `runtime` 混） |

@@ -84,7 +84,7 @@ docker pull ghcr.io/akokk0/bilibili-notify:latest
 | `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` | 未设 | 控制台登录凭据 |
 | `BN_COOKIE_KEY` | 未设 | secrets 加密密钥(`openssl rand -base64 32` 生成) |
 | `BN_LOG_LEVEL` | `info` | 日志级别 |
-| `TZ` | `Asia/Shanghai` | 容器时区(影响日志 / 历史按日切文件) |
+| `TZ` | `Asia/Shanghai` | 容器时区：影响定时任务（cron）的钟点与免扰时段；卡片上的时间看设置里的全局时区 |
 
 `BN_CONFIG` / `BN_HOST` / `BN_PORT` / `BN_DATA_DIR` / `BN_CHROME_PATH` 由镜像固定注入,无需也不要在 compose 中重写。
 

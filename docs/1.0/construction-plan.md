@@ -229,7 +229,7 @@
     - `WATCHED_CHANGE` 的载荷是 `{ num, text_small, text_large }`，解析器要求 `num` 与 `text_small` 同时在，今天存的是 `text_small`；`text_large` 与 `rank-count` 没人用，别顺手接。B 站的「人气」来自房间接口的 `online`（类型没声明，靠 any 读），不是 WS。
     - 观看人数字符串今天的三个去处：下播卡的累计观看、文案 `{watched}`（缺了写回「暂未获取到」，下播卡因此可能印出这句）、总线事件（统计解析回数字 / WS → 面板）。统计的峰值盘上早就是数字。
     - 主人设的自定义直播封面是另一条路（`colorOptions.liveCoverImage` → `resolveAsset`），优先级 自定义 > 输入 > 「暂无封面」占位，这一片不动。
-    - 卡上「开播时间」固定 UTC+8，作品卡的时间按机器本地时区；全局时区设置单开一小片，这一片不做。
+    - 卡上「开播时间」固定 UTC+8，作品卡的时间按机器本地时区；全局时区设置单开一小片，这一片不做。🔗 现状（3b-11 已落）：两处时间都按核心设置 `timezone` 排（默认 `Asia/Shanghai`），不再看机器时区。
     - 棘轮：`bus-event-payloads` 的 `RAW_STRINGS["live-viewers-changed.viewers"]` 在那一格改成非字符串时必须同步删；B 站替身棘轮里 `bili-live-input.ts`、`image-renderer.ts`、`routes/cards.ts`、`stats/bili-format.ts`、`stats/bili-source.ts` 的上限会随搬动变（只降不升，要升先问主人）。
     - 往卡片基线里加新夹具要放末尾：出图器的 UnoCSS 生成器全进程一个，前面渲染过什么会影响后面的字节。
   - 留着的：`formatCount` 整万写「1.0万」，B 站原来多半写「1万」（没有录制帧可证，只有 87334 → 「8.7万」对得上）；重连核对那条分支把断线前后当同一场、计数不重置（它本来的口径）；mock 预览与示例里的 `LiveCardView` 仍是排好的字符串（㉔）。
@@ -460,7 +460,8 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 项 | 备注 |
 | --- | --- |
 | `PostEvent` 信封与 `post-detected` 事件（取代 `dynamic-detected`）；`deliverWork` → `deliverPost`、`NeutralWork` 退场；「正文链接」版式块；番剧、合集、课程翻成附件视频卡 | 10-05 主人定：都在 **3a**（前三件要等投递入口吃 `Post`，最后一件随 B 站翻译搬进 `bilibili/`）。**已落**：`PostEvent` / `post-detected`（`dynamic-detected` 已删）与 `deliverPost`、`NeutralWork` 退场，都在 3a-27 |
-| 全局时区设置（卡上的时间现在按机器本地时区排，ADR-0021 决策 43 要默认 `Asia/Shanghai`） | 10-05 主人定：第 4 期之前单开一小片，㉑ 不做。10-13 主人定：3b-11，排在语言设置那一片之后 |
+| 全局时区设置（ADR-0021 决策 43 要默认 `Asia/Shanghai`） | ✅ 3b-11 已落（10-20）：核心设置顶层 `timezone`（只收 IANA 名、带默认），作品卡与直播卡的时间、榜单周报 / 单人锐评与 AI 创作者统计的按天切都读它；出卡器在出卡那一刻现取。 |
+| 其余服务端墙上时间跟不跟全局时区（10-20 主人定 R1 甲：这次不跟） | **第 4 期面板露出时区那一格时一起定**。要看的几处：`apps/server/src/runtime/mute-command.ts` 的 `describeUntil`；`packages/ai/src/tools.ts` 的 `stamp` / 开播于 / 最后活动三处日期；`packages/internal/src/util/quiet-hours.ts` 的 `inQuietHours`（连同 `packages/push/src/push-router.ts` 的调用与 `apps/server/src/devtools/clock.ts` 的开发版免扰时钟）；`apps/server/src/runtime/roast-scheduler.ts`、`apps/server/src/runtime/fans-poller.ts`、`apps/server/src/bilibili/dynamic/dynamic-poller.ts` 三条 `CronJob` 与 `apps/server/src/stats/extension-source.ts` 的 `CronTime`；`apps/server/src/devtools/scenarios/timers.ts` 的下次触发显示。 |
 | 连接设置的校验：保存时适配器在场就按 `settingsSchema` 校验、不过回 400；读盘逐条校验，不过的只隔离那一条，只有外壳坏了才挡开机（ADR-0024 决策 10） | ✅ 已落（3a-22-2）：保存时按在场适配器的规则校验、不过就拒，开机读到坏的只隔离那一条；面板的「设置不合法」态仍在第 4 期 |
 | 投递失败归核心：按目标逐个投递、只重试失败的那个（`rate_limited` / `unavailable` / `timeout` 退避，`indeterminate` 与其他码不重试）；出卡或 AI 失败降级、不整条重来；每个目标一行历史，失败带 code（ADR-0024 决策 15） | 10-13 主人定：先不进 3b 的片表，3b 开工后量清楚还差什么再定（推送层按目标的退避重试与来源交完就前移已有，核心按失败种类重试没做） |
 | 删掉自定义 UA 设置，身份一律由 `packages/http` 生成；老配置里这一格由迁移丢掉、新 schema 不留（ADR-0025 决策 7） | **第 2 期 ⑭**；「换一个身份」按钮随第 4 期的 B 站设置 tab |
