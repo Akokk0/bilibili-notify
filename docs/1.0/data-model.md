@@ -572,7 +572,7 @@ interface GlobalDefaults {
 - **过滤**：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看最外层 `Post` 上「有没有」，在装配第一步、对所有来源生效；转发的原作品里的图集与视频不算，转发归 `blockReposts` 管。关键词与正则看取段函数拼出来的文字。白名单 `allowKeywords` / `allowRegex` 对 `blockKeywords` / `blockRegex`。特别关注去掉 uid 正则，template 死字段退役。SC 与会员的门槛不在 filters 里。
 - **主人通知**（ADR-0024 决策 14）：推送层只有一个 `notifyMaster(payload: string | NotificationPayload)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`），返回结果形状，审批预览卡也走它。出口上的 `sendPrivate` 与「强制私聊」标志删掉，因为主人要是选了群目标，强制私聊会把群号当 QQ 号错投。私聊的要求挪到主人目标上：`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊）；PATCH 把主人目标改成群目标直接拒收；发送时再复检一次，不是私聊就拒发（`invalid`）；迁移时指向群目标的清空，首访页提示重选。
 - **图集推送行为** `imageGroup`（全局与逐订阅）只作用于 `Post.images`，子键 `imageGroup.mergeForward`。
-- **模板变量**：`{postNoun}` 取自 `descriptor.postNoun`（原定 `{noun}`，与提示词变量同名；从没上过盘，不用迁移），默认文案「{name}发布了一条{postNoun}」；人名变量统一 `{name}` / `{viewer}`；会员事件的档名是 `{tier}`（原 `{guard}`），粉丝团名是 `{fanclub}`（原 `{mdn}`，取资料的 `fanClubName`），两者进模板变量可满足性守卫，迁移改写主人的文案、出来的字不变；弹幕总结的其余缩写不动。直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
+- **模板变量**：`{postNoun}` 取自 `descriptor.postNoun`（原定 `{noun}`，与提示词变量同名；从没上过盘，不用迁移），默认文案「{name}发布了一条{postNoun}」；人名变量统一 `{name}` / `{viewer}`；会员事件的档名是 `{tier}`（原 `{guard}`），粉丝团名是 `{fanclub}`（原 `{mdn}`，取资料的 `fanClubName`），两者进模板变量可满足性守卫，迁移改写主人的文案、出来的字不变；弹幕总结的其余缩写不动。回顾快照的中立类型名是 `RecapSnapshot`（不再用 `LiveSummarySnapshot`）。直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
 
 ### 连接与目标
 

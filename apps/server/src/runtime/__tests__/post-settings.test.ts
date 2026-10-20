@@ -2,7 +2,7 @@
  * **一条订阅的作品设置怎么折**(`postSettingsOf`)与**核心读它的口子**(`makePostSettingsReader`)。
  *
  * 核心装配(`posts/deliver-post.ts`)只吃折好的定值 `PostSettings`:订阅覆盖与全局已经折成一层,每条作品现折一次 ——
- * 全局或订阅设置改了立即对下一条生效,不再经引擎快照与热更门。折法住 `engines.ts`(`resolveAiOverride` 直播那头也在用,
+ * 全局或订阅设置改了立即对下一条生效,不再经引擎快照与热更门。AI 覆盖折法住 `runtime/ai-config.ts`(`liveSettingsOf` 也在用,
  * 搬进核心会把直播的东西一起拖走),这里钉它。
  *
  * 验红:`postSettingsOf` 里每一格改成别的来源(比如 `template` 取 `defaults` 而不看覆盖、`imageGroup` 不看覆盖、`filter` 总给

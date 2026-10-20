@@ -19,14 +19,11 @@
  */
 
 import { readFileSync } from "node:fs";
-import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
-	ActivePersonaShape,
 	AddressCandidate,
-	AISettings,
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
@@ -62,7 +59,6 @@ import {
 	needsLiveMonitor,
 	resolve,
 	resolveAIProfile,
-	resolveSubscriptionPersona,
 	type SourceAuth,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -100,8 +96,10 @@ import {
 } from "../live/live-sessions.js";
 import { liveSettingsOf, rotateLiveCover } from "../live/live-settings.js";
 import type { LiveTable } from "../live/live-table.js";
+import { LiveSummaryRequester } from "../live/recap/live-summary-requester.js";
 import { mergeStopWords } from "../live/recap/stop-words.js";
 import { ViewerChatCollector } from "../live/recap/viewer-chat-collector.js";
+import { WordcloudGenerator } from "../live/recap/wordcloud-generator.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
@@ -121,7 +119,7 @@ import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
-import { toGeneratorConfig } from "./ai-config.js";
+import { resolveAiOverride, toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
 	makeExistingCardBgPicker,
@@ -879,6 +877,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	let liveSessionEngine: LiveSessionEngine | undefined;
 	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
 	let liveInteractionEngine: LiveInteractions | undefined;
+	/** 核心下播回顾的总结请求器;AI 实例热换时要跟着换引用。 */
+	let liveSummaryRequester: LiveSummaryRequester | undefined;
 	if (extensionSources && liveTable) {
 		const liveImages = opts.liveImages;
 		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
@@ -971,6 +971,30 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sessions: liveSessions,
 			}),
 		);
+		// 核心回顾的一份收集器与两个生产者:场次开始登记、互动记一条、下播卡同步取快照。
+		const wordcloudStopWords = () =>
+			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
+		const viewerChats = new ViewerChatCollector(wordcloudStopWords());
+		handles.push(
+			opts.bus.on("config-changed", ({ scope }) => {
+				if (scope === "globals") viewerChats.setStopwords(wordcloudStopWords());
+			}),
+		);
+		const wordcloudGenerator = new WordcloudGenerator({
+			getImageRenderer: () => imageRenderer,
+			isImageEnabled: () => globals().defaults.cards.enabled,
+			logger: coreLiveCtx.logger,
+		});
+		liveSummaryRequester = new LiveSummaryRequester({
+			commentary,
+			isAiEnabled: () => {
+				const g = globals();
+				return g.ai.enabled && aiWritingNeeded(g.ai.writing.liveSummary, targetIds());
+			},
+			isWebSearchEnabled: () => globals().ai.search.engines.live,
+			logger: coreLiveCtx.logger,
+		});
+		const summaryRequester = liveSummaryRequester;
 		handles.push(
 			bindLivePush({
 				bus: opts.bus,
@@ -996,6 +1020,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				hasLiveTick: (sourceKey) =>
 					!hasLiveStatus(sourceKey) && extensionHasLiveTick(extensionSources, sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+				recap: {
+					collector: viewerChats,
+					wordcloud: wordcloudGenerator,
+					summary: summaryRequester,
+					content: segmentContentBuilder,
+				},
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
 				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),
@@ -1003,14 +1033,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		);
 		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场、醒目留言按这条订阅现折的设置判,发送绑到这条订阅上;
 		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。B 站老引擎到 22-10 前仍用自己那份。
-		const wordcloudStopWords = () =>
-			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
-		const viewerChats = new ViewerChatCollector(wordcloudStopWords());
-		handles.push(
-			opts.bus.on("config-changed", ({ scope }) => {
-				if (scope === "globals") viewerChats.setStopwords(wordcloudStopWords());
-			}),
-		);
 		const interactions = createLiveInteractions({
 			logger: coreLiveCtx.logger,
 			subscription: (id) => opts.subscriptionStore.findById(id),
@@ -1212,13 +1234,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					if (!needsCommentary && commentary) {
 						commentary = null;
 						live.setCommentary(null);
+						liveSummaryRequester?.setCommentary(null);
 					} else if (needsCommentary && !commentary) {
 						commentary = buildCommentary();
 						live.setCommentary(commentary);
+						liveSummaryRequester?.setCommentary(commentary);
 						if (commentary) log.info("[ai] commentary 已激活");
 					} else if (commentary) {
 						const next = buildAiConfig();
 						commentary.updateConfig(next);
+						liveSummaryRequester?.setCommentary(commentary);
 						// 报**真正推给引擎的那份人格**(指针指的那份),不是 `a.persona` ——
 						// 后者永远冻在老值上,照它打日志等于给排查的人指错方向。
 						log.info(
@@ -1229,7 +1254,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / liveCoverImageIds /
 				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格(动态那头吃名单、现算,不吃这种快照)。resolve() 把 cards / cardSkin / schedule / liveStart /
 				// liveStreaming / superchat / membership / filters / templates / features / messageLayout / imageGroup 折进每个 sub 的 eff;
-				// AI 人格不在 eff 里,由 resolveAiOverride(经 resolveSubscriptionPersona)在构造 per-sub 视图时另算 —— 任一变化都给所有
+				// AI 人格不在 eff 里,由 liveSettingsOf 经 resolveAiOverride 在构造 per-sub 视图时另算 —— 任一变化都给所有
 				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
 				// 状态(Object.assign,不重连 WS)。否则全局默认改了直到重启才在 live 生效。
 				if (
@@ -1584,7 +1609,7 @@ export function boundLivePush(
 	push: Pick<PushRouter, "push">,
 	subscriptionId: string,
 ): LiveNotifySend {
-	return async (groups, type) => {
+	return async (groups, type, extras = []) => {
 		const messages = groups.map((segs) =>
 			collapseSegments(
 				segmentToPayload(
@@ -1598,10 +1623,14 @@ export function boundLivePush(
 				),
 			),
 		);
+		const anchors: PushAnchor[] = [
+			{ role: "main", messages },
+			...toPushAnchors(extras, (content) => collapseSegments(segmentToPayload(content))),
+		];
 		await push.push({
 			subscriptionId,
 			...livePushHead(type),
-			anchors: [{ role: "main", messages }],
+			anchors,
 		});
 	};
 }
@@ -1662,50 +1691,6 @@ export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;
 }
 
-/**
- * 把 `EffectiveSubscription.ai` (per-UP 折叠后) 翻译成 CommentaryCallOverride。
- * schema 用「面向用户」的 baseRole / extraSystemPrompt 字段名,而 CommentaryGenerator
- * 的 PersonaConfig 沿用 customBase / extraPrompt 历史命名 —— 这里集中做翻译,
- * 引擎层不感知差异。preset 强制设为 "custom":adapter 已把 inherit / preset.id 在
- * resolve() 里折叠成具体 persona,引擎不需要再走 preset lookup 一次。
- */
-/**
- * 一条订阅的 per-UP AI 覆盖 —— 没配就是 `undefined`。
- *
- * **`undefined` 与「把全局值折进来」不是一回事。** 留 undefined 时
- * `CommentaryGenerator` 内部走 `?? this.config` 兜底,主人改了全局人格立刻生效;
- * 折进来则把当时的全局值冻成这条订阅的 per-UP 值,快照不刷就永远沿用旧值。
- *
- * 三处调用点(动态视图、直播视图、统计页的单人锐评)共用这一个入口,免得
- * 「只在真有 override 时才传」这条纪律各写各的 —— 漏写一处的表现是某位 UP
- * 的人格悄悄失效,而类型、构建、lint 全绿。
- */
-export function resolveAiOverride(
-	sub: Subscription,
-	ai: AISettings,
-): CommentaryCallOverride | undefined {
-	return sub.overrides.ai
-		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai))
-		: undefined;
-}
-
-function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
-	return {
-		persona: {
-			preset: "custom" as const,
-			name: active.persona.name,
-			addressUser: active.persona.addressUser,
-			addressSelf: active.persona.addressSelf,
-			traits: active.persona.traits,
-			catchphrase: active.persona.catchphrase,
-			customBase: active.persona.baseRole,
-			extraPrompt: active.persona.extraSystemPrompt,
-		},
-		dynamicPrompt: active.dynamicPrompt,
-		liveSummaryPrompt: active.liveSummaryPrompt,
-	};
-}
-
 /** B 站引擎说的 uid → 订阅身份(B 站的外部 id 就是 uid)。 */
 function biliIdentity(uid: string): Identity {
 	return { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid };
@@ -1721,7 +1706,7 @@ function fromBilibili(sub: Subscription): boolean {
  * 都从这里拿,别抄第二份 —— 两份的话主人给某个抖音号换的文案模板 / 版式 / 皮肤,迟早有一格只有 B 站那头认。
  * 每条作品现折一次({@link makePostSettingsReader}),没有快照问题。
  *
- * 留在 engines.ts 而不进 `posts/`:`resolveAiOverride` 直播那头也在用,搬进核心会把直播的东西一起拖走。
+ * 留在 engines.ts 而不进 `posts/`:作品设置还要和直播设置共用同一套 AI 折叠入口。
  * 刻意只在**真有 per-UP 覆盖**时才生成的两格:`aiOverride`(没配就 undefined,生成器走全局配置)与
  * `cardSkinKnobs`(订阅自己那层原样给、不折全局,渲染器出图时与全局那份逐枚合并)。
  *
@@ -1830,10 +1815,8 @@ export function buildLiveSubViewSingle(
 		// 整份直播设置(与核心的场次 / 推送 / 互动同一份折法)。dynamic 卡不经 LiveEngine
 		// (走 DynamicPoller),所以按种类的样式只折 live / sc / guard。
 		...liveSettingsOf(sub, globals, eff),
-		// B 站专有的两格:上舰门槛与会员体系 `guard` 的文案;AI 覆盖只在真有 per-UP override 时生成 —— 无 override →
-		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
+		// B 站专有的两格:上舰门槛与会员体系 `guard` 的文案。`aiOverride` 已随整份直播设置折进来。
 		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
-		aiOverride: resolveAiOverride(sub, globals.ai),
 		guardTemplate: guardTemplateOf(eff.templates),
 	};
 }

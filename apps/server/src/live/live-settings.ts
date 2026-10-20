@@ -4,6 +4,7 @@
  * 封面 / 等待时长迟早有一格只有 B 站那头认。
  */
 
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import {
 	type EffectiveSubscription,
@@ -14,6 +15,7 @@ import {
 	resolve,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { resolveAiOverride } from "../runtime/ai-config.js";
 import type { CustomLiveMsgLike, PickLiveCover, SpecialViewerSettings } from "./live-types";
 
 /**
@@ -82,6 +84,8 @@ export interface CustomLiveSummaryLike {
  * 22-10 B 站老引擎撤掉时一并改中立。
  */
 export interface LiveSettings extends LiveWorkSettings {
+	/** 这条订阅真有 per-UP 覆盖时才有;没有就让 AI 生成器跟随当前全局配置。 */
+	aiOverride?: CommentaryCallOverride;
 	membership: boolean;
 	/**
 	 * 会员门槛,按体系 id 记最低档(`defaults.membership.minRank` 折上订阅覆盖后的生效值)。某体系没键 = 全推。
@@ -136,6 +140,7 @@ export function liveSettingsOf(
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): LiveSettings {
 	return {
+		aiOverride: resolveAiOverride(sub, globals.ai),
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
 		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。

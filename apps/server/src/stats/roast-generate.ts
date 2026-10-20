@@ -20,8 +20,7 @@ import type {
 } from "@bilibili-notify/contract";
 import { type Failure, fail, ok, type Result, type Subscription } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
-import { toGeneratorConfig } from "../runtime/ai-config.js";
-import { resolveAiOverride } from "../runtime/engines.js";
+import { resolveAiOverride, toGeneratorConfig } from "../runtime/ai-config.js";
 import {
 	buildRoastPrompt,
 	buildSoloRoastPrompt,

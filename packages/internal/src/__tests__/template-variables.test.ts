@@ -57,7 +57,7 @@ describe("表里的字段与变量名", () => {
 		"LiveDetails",
 		"ViewerChatEvent",
 		"ViewerEnterEvent",
-		"LiveSummarySnapshot",
+		"RecapSnapshot",
 		"MembershipEvent",
 		"MembershipTier",
 		"Post",

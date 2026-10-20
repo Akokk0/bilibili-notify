@@ -19,7 +19,15 @@
  * 折叠成具体内容,引擎不必再走一次 preset 查表。
  */
 
-import { type AISettings, resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal";
+import type { CommentaryCallOverride } from "@bilibili-notify/ai";
+import {
+	type ActivePersonaShape,
+	type AISettings,
+	resolveActivePersona,
+	resolveAIProfile,
+	resolveSubscriptionPersona,
+	type Subscription,
+} from "@bilibili-notify/internal";
 
 export function toGeneratorConfig(ai: AISettings) {
 	const p = resolveAIProfile(ai);
@@ -56,5 +64,35 @@ export function toGeneratorConfig(ai: AISettings) {
 			apiKey: p.vision.apiKey,
 			model: p.vision.model,
 		},
+	};
+}
+
+/**
+ * 一条订阅的 per-UP AI 覆盖 —— 没配就是 `undefined`。留空时生成器走当前全局配置，
+ * 所以这里不能把全局值折进来冻成快照。
+ */
+export function resolveAiOverride(
+	sub: Subscription,
+	ai: AISettings,
+): CommentaryCallOverride | undefined {
+	return sub.overrides.ai
+		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai))
+		: undefined;
+}
+
+function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
+	return {
+		persona: {
+			preset: "custom" as const,
+			name: active.persona.name,
+			addressUser: active.persona.addressUser,
+			addressSelf: active.persona.addressSelf,
+			traits: active.persona.traits,
+			catchphrase: active.persona.catchphrase,
+			customBase: active.persona.baseRole,
+			extraPrompt: active.persona.extraSystemPrompt,
+		},
+		dynamicPrompt: active.dynamicPrompt,
+		liveSummaryPrompt: active.liveSummaryPrompt,
 	};
 }

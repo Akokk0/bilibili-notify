@@ -309,6 +309,35 @@ describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给�
 			],
 		});
 	});
+
+	it("下播卡后面的回顾:附加项按词云、总结的顺序跟在本体锚点之后", async () => {
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "下播啦" }]], 9, [
+			{
+				role: "extra",
+				extra: "wordcloud",
+				messages: [{ kind: "text", text: "词云" }],
+			},
+			{
+				role: "extra",
+				extra: "liveSummary",
+				messages: Promise.resolve([{ kind: "text", text: "模板总结" }]),
+				aiMessages: Promise.resolve([{ kind: "text", text: "AI 总结" }]),
+			},
+		]);
+		const sent = push.mock.calls[0]?.[0];
+		expect(sent?.anchors[0]).toEqual({
+			role: "main",
+			messages: [{ kind: "text", text: "下播啦" }],
+		});
+		expect(sent?.anchors[1]).toEqual({
+			role: "extra",
+			extra: "wordcloud",
+			messages: [{ kind: "text", text: "词云" }],
+		});
+		expect(await sent?.anchors[2]?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+		expect(await sent?.anchors[2]?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
+	});
 });
 
 function makeLogger() {

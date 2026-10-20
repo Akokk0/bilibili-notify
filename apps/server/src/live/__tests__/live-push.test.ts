@@ -30,6 +30,7 @@ import {
 } from "../../__tests__/support/track-context.js";
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { segmentContentBuilder } from "../../runtime/content-builder.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { bindExtensionLive } from "../extension-live.js";
 import type { LiveNotifySend } from "../live-notify.js";
@@ -39,9 +40,11 @@ import {
 	type LiveSessionEngine,
 	type LiveStatusReader,
 } from "../live-sessions.js";
-import type { LiveWorkSettings } from "../live-settings.js";
+import type { LiveSettings } from "../live-settings.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
-import { LivePushType } from "../live-types.js";
+import { type LivePushAnchor, LivePushType } from "../live-types.js";
+import type { LiveSummaryRequester } from "../recap/live-summary-requester.js";
+import { ViewerChatCollector } from "../recap/viewer-chat-collector.js";
 
 const EXT = "douyin";
 const SUB = makeExtensionSubscription({ extensionId: EXT, externalId: "sec-uid-1" });
@@ -64,13 +67,24 @@ interface Sent {
 	type: number;
 	text: string;
 	input: LiveCardInput | undefined;
+	extras: LivePushAnchor[];
 }
 
-function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
+function baseSettings(over: Partial<LiveSettings> = {}): LiveSettings {
 	return {
 		liveStart: true,
 		liveStreaming: false,
 		liveEnd: true,
+		membership: false,
+		membershipMinRank: {},
+		membershipTemplates: {},
+		superchat: false,
+		viewerChat: false,
+		viewerEnter: false,
+		extras: { atAllPost: false, atAllLiveStart: false, wordcloud: false, liveSummary: false },
+		customLiveSummary: { enable: true },
+		customSpecialDanmakuUsers: { specialViewers: [], template: "" },
+		customSpecialUsersEnterTheRoom: { specialViewers: [], template: "" },
 		messageLayout: defaultMessageKindLayout("live"),
 		customLiveMsg: { enable: true },
 		streamingIntervalHours: 1,
@@ -88,11 +102,11 @@ let handle: { dispose(): void };
 let extensionLive: { dispose(): void };
 let sent: Sent[];
 let discrepancies: ReportDiscrepancy[];
-let settings: LiveWorkSettings;
+let settings: LiveSettings;
 let subs: Map<string, Subscription>;
 let running: boolean;
 /** 订阅资料(名字 / 粉丝数),现取。 */
-let profile: { name?: string; fans?: number } | undefined;
+let profile: { name?: string; fans?: number; fanClubName?: string } | undefined;
 /** 出卡:每张卡的输入按出卡顺序记下;`slowNext` 让下一张卡卡住,由测试放行。 */
 let renderedInputs: LiveCardInput[];
 /** 订阅资料里的头像引用,现取;`undefined` = 资料里没有头像。 */
@@ -111,6 +125,12 @@ let sourceHasLiveTick: boolean;
 let periodicIntervals: number[];
 /** 来源的拉取式(`fetchLiveStatus`)读口;`undefined` = 来源没实现,场次不挂周期核对。 */
 let statusReader: LiveStatusReader | undefined;
+/** 回顾收集器:场次结束时从这里同步取一份快照。 */
+let chats: ViewerChatCollector;
+/** 发给总结请求器的参数,按调用顺序。 */
+let summaryCalls: Array<Parameters<LiveSummaryRequester["generate"]>[0]>;
+/** 下一份 AI 总结;`undefined` = 只有模板版。 */
+let aiMade: Promise<string | undefined> | undefined;
 
 function start(): void {
 	const timers = {
@@ -175,14 +195,28 @@ function start(): void {
 		sourceStatus: { running: () => running },
 		hasLiveTick: () => sourceHasLiveTick,
 		avatarRef: () => avatarRef,
+		recap: {
+			collector: chats,
+			wordcloud: { generate: async () => Buffer.from("wordcloud") },
+			summary: {
+				generate(params) {
+					summaryCalls.push(params);
+					return {
+						template: `总结模板:${Object.keys(params.senderRecord).join(",")}`,
+						...(aiMade ? { ai: aiMade } : {}),
+					};
+				},
+			},
+			content: segmentContentBuilder,
+		},
 		sendFor:
 			(id): LiveNotifySend =>
-			async (groups, type) => {
+			async (groups, type, extras = []) => {
 				const text = groups
 					.flat()
 					.flatMap((seg) => (seg.kind === "text" ? [seg.text] : []))
 					.join("\n");
-				sent.push({ id, type, text, input: renderedInputs.at(-1) });
+				sent.push({ id, type, text, input: renderedInputs.at(-1), extras: [...extras] });
 			},
 		renderer: () => (rendererOn ? renderer : null),
 		onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
@@ -240,6 +274,9 @@ beforeEach(() => {
 	statusReader = undefined;
 	sourceHasLiveTick = true;
 	settings = baseSettings();
+	chats = new ViewerChatCollector([]);
+	summaryCalls = [];
+	aiMade = undefined;
 	subs = new Map([[SUB.id, SUB]]);
 	running = true;
 	profile = { name: "抖音甲", fans: 12_345 };
@@ -336,6 +373,82 @@ describe("下播", () => {
 		liveEnd();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
+	});
+});
+
+describe("下播回顾", () => {
+	beforeEach(() => {
+		settings = baseSettings({
+			extras: { atAllPost: false, atAllLiveStart: false, wordcloud: true, liveSummary: true },
+		});
+	});
+
+	it("下播事件、BN 没这一场的兜底、断流等待到期:三种结束都把词云与总结挂在下播卡后", async () => {
+		start();
+
+		// 来源报的下播。
+		chats.recordViewerChat(SUB.id, "下播回顾甲", "观众甲");
+		liveStart({ totalViewers: 17 });
+		await settle();
+		liveEnd();
+		await settle();
+		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
+
+		// BN 手里没有这一场:下播事件仍要推一张兜底下播卡,回顾照样挂在它后面。
+		liveEnd();
+		await settle();
+		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
+
+		// 断流等待到期才真正结束。
+		settings = baseSettings({
+			liveEndGrace: true,
+			liveEndGraceMinutes: 3,
+			extras: { atAllPost: false, atAllLiveStart: false, wordcloud: true, liveSummary: true },
+		});
+		liveStart();
+		await settle();
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE);
+		await settle();
+		expect(sent.at(-1)?.type).toBe(LivePushType.LiveEnd);
+		expect(sent.at(-1)?.extras.map((anchor) => anchor.extra)).toEqual(["wordcloud", "liveSummary"]);
+	});
+
+	it("回顾读的是这一场收集器里的弹幕,粉丝团名取资料缓存", async () => {
+		profile = { name: "抖音甲", fans: 12_345, fanClubName: "资料里的粉丝团" };
+		chats.recordViewerChat(SUB.id, "recapword", "这一场的观众");
+		start();
+		liveStart();
+		await settle();
+		liveEnd();
+		await settle();
+
+		expect(summaryCalls).toHaveLength(1);
+		expect(summaryCalls[0]).toMatchObject({
+			senderRecord: { 这一场的观众: 1 },
+			fanClubName: "资料里的粉丝团",
+		});
+		expect(summaryCalls[0]?.sortedWords.some(([word]) => word === "recapword")).toBe(true);
+	});
+
+	it("关停之后才做完的 AI 总结给 undefined,模板那份照常", async () => {
+		const made = deferred<string | undefined>();
+		aiMade = made.promise;
+		start();
+		liveStart();
+		await settle();
+		liveEnd();
+		await settle();
+
+		const summary = sent.at(-1)?.extras.find((anchor) => anchor.extra === "liveSummary");
+		expect(summary).toBeDefined();
+		expect(await summary?.messages).toHaveLength(1);
+		handle.dispose();
+		made.resolve("关停后才做好的 AI 总结");
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await summary?.aiMessages).toBeUndefined();
 	});
 });
 

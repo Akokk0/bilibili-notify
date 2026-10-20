@@ -18,7 +18,7 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
-import type { LivePushType } from "./live-types";
+import type { LivePushAnchor, LivePushType } from "./live-types";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
 export type LiveNotifyPushType =
@@ -38,6 +38,8 @@ export type LiveTextPushType = LivePushType.ViewerChat | LivePushType.ViewerEnte
 export type LiveNotifySend = (
 	groups: MessageLayoutSegment[][],
 	type: LiveNotifyPushType | LiveTextPushType | LivePushType.Superchat | LivePushType.LiveGuardBuy,
+	/** 本体之后的附加项锚点(下播的词云、总结);没有就不带。 */
+	extras?: readonly LivePushAnchor[],
 ) => Promise<void>;
 
 /**
@@ -57,6 +59,8 @@ export interface LiveNotifyParams extends CardSkinChoice {
 	/** 这一张卡的自定义封面(资产 id,已轮好);不给 = 卡吃来源自己的封面。 */
 	liveCover?: string;
 	pushType: LiveNotifyPushType;
+	/** 本体之后的附加项锚点;没有就不带。 */
+	extras?: readonly LivePushAnchor[];
 	/** 日志里怎么称呼这条订阅(比如 `uid=…`、`sub=…`)。 */
 	label: string;
 }
@@ -100,5 +104,6 @@ export async function pushLiveNotify(
 		deps.logger.debug(`[push] ${params.label} 消息版式所有部件隐藏/缺失,本次不推送`);
 		return;
 	}
-	await deps.send(groups, params.pushType);
+	if (params.extras === undefined) await deps.send(groups, params.pushType);
+	else await deps.send(groups, params.pushType, params.extras);
 }

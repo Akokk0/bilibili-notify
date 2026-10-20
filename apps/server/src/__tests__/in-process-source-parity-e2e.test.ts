@@ -134,7 +134,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P33)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N10、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P35)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -206,6 +207,17 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P34",
+		title: "下播回顾:词云卡、模板总结(够人数才有)、AI 版按目标挑",
+		checked: true,
+	},
+	{
+		id: "P35",
+		title:
+			"模板变量 {tier}、{fanclub}、{time}、{follower}、{follower_change}、{watched} 由假来源交得出",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -229,13 +241,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 			"场次与周期核对在 3b-22 已并进核心(P29、P30),这两个总线事件仍是 B 站形状(按 uid),等 3b-23 改成按订阅 id 的中立事件",
 	},
 	{
-		id: "N04",
-		title: "liveInteractions:会员、词云、总结",
-		checked: false,
-		waitsFor: "3b-22",
-		reason: "会员上报与下播回顾归 3b-22 后续提交;接口上的 liveInteractions 现在只开观众头像",
-	},
-	{
 		id: "N05",
 		title: "fetchPreview、预览走它",
 		checked: false,
@@ -251,11 +256,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N08",
-		title: "模板变量 {postNoun}、{tier}、{fanclub}、时长与粉丝变量;默认文案有更新",
+		title: "默认文案有更新",
 		checked: false,
-		waitsFor: "3b-22",
-		reason:
-			"{postNoun} 已在 P04 拍;{tier}、{fanclub}、时长与粉丝变量要假来源交得出会员与一场直播,接口上 3b-22 才有",
+		waitsFor: "3b-12",
+		reason: "没改过的文案跟随当前语言的默认,归 3b-12",
 	},
 	{
 		id: "N09",
@@ -263,13 +267,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "第 4 期",
 		reason: "描述符只造了有读者的三格,其余随面板改造",
-	},
-	{
-		id: "N11",
-		title: "词云与总结卡",
-		checked: false,
-		waitsFor: "3b",
-		reason: "下播回顾归 3b-22 后续提交",
 	},
 	{
 		id: "N13",
@@ -417,6 +414,8 @@ const MASTER_USER = "10001";
 const GROUP_ADDRESS = "88888";
 const AI_REPLY = "测试女仆的点评一句话";
 const ALICE_PROFILE_NAME = "爱丽丝资料名";
+const ALICE_FAN_CLUB_NAME = "爱丽丝资料粉丝团";
+const HOUR_MS = 3_600_000;
 
 /** 一条纯文字作品。 */
 function textReport(
@@ -728,7 +727,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					routing: {
 						...sub(SUB.alice, EXT.alice).routing,
 						liveStart: [ID.group],
-						liveEnd: [ID.group],
+						liveStreaming: [ID.group],
+						liveEnd: [ID.group, ID.master],
 						membership: [ID.group],
 						superchat: [ID.group],
 						viewerChat: [ID.group],
@@ -765,7 +765,15 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		await mkdir(join(generation, "runtime"), { recursive: true });
 		await writeFile(
 			join(generation, "runtime", "sub-runtime.json"),
-			JSON.stringify({ [SUB.alice]: { cachedProfile: { name: ALICE_PROFILE_NAME } } }),
+			JSON.stringify({
+				[SUB.alice]: {
+					cachedProfile: {
+						name: ALICE_PROFILE_NAME,
+						fans: 12_345,
+						fanClubName: ALICE_FAN_CLUB_NAME,
+					},
+				},
+			}),
 		);
 
 		resetInProcessWorld();
@@ -2097,6 +2105,203 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P33");
 	}, 60_000);
 
+	// 验红:核心下播卡不带 `recapAnchors` → 没有词云 / 总结;总结锚点不带 `aiMessages` → 两个目标都收模板。
+	it("P34 下播回顾:词云卡、模板总结(够人数才有)、AI 版按目标挑", async () => {
+		await clearCaptures();
+		const probe = currentProbe();
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		aiAsked.length = 0;
+		const htmlBefore = renderedHtml.length;
+		const names = ["回顾甲", "回顾乙", "回顾丙", "回顾丁", "回顾戊"];
+
+		await patchSettings({
+			ai: {
+				enabled: true,
+				writing: {
+					liveSummary: {
+						isOnByDefault: false,
+						byTarget: { [ID.group]: true, [ID.master]: false },
+					},
+				},
+			},
+			defaults: {
+				features: {
+					extras: { wordcloud: true, liveSummary: true },
+				},
+				templates: {
+					liveSummary: "P34总结 {fanclub}|{dmc}|{dca}|{un1}|{dc1}",
+				},
+			},
+		});
+		try {
+			probe.reportLive(ext, {
+				kind: "start",
+				startedAt: new Date(Date.now() - HOUR_MS).toISOString(),
+				details: { title: "回顾场次P34" },
+			});
+			// 50 个不同热词够词云门槛;5 个不同观众够总结门槛。
+			for (let i = 0; i < 50; i += 1) {
+				probe.reportLiveInteraction(ext, {
+					kind: "viewerChat",
+					viewer: { id: `8${i % names.length}`, name: names[i % names.length] ?? "" },
+					text: `P34word${String(i).padStart(2, "0")}`,
+				});
+			}
+			probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
+
+			await vi.waitFor(
+				async () => {
+					const entries = await captures();
+					expect(
+						entries.some((entry) => entry.targetId === ID.group && entry.text === AI_REPLY),
+					).toBe(true);
+					expect(
+						entries.some(
+							(entry) =>
+								entry.targetId === ID.master &&
+								entry.text?.startsWith("P34总结") &&
+								entry.text.includes(ALICE_FAN_CLUB_NAME),
+						),
+					).toBe(true);
+					expect(
+						renderedHtml
+							.slice(htmlBefore)
+							.some((html) => html.includes("P34word00") && html.includes("P34word49")),
+					).toBe(true);
+				},
+				{ timeout: 20_000 },
+			);
+			expect(aiAsked.join("\n")).toContain(`粉丝牌名：${ALICE_FAN_CLUB_NAME}`);
+			expect(await livePushCount(who, "liveEnd")).toBeGreaterThanOrEqual(1);
+		} finally {
+			await patchSettings({
+				ai: {
+					enabled: false,
+					writing: {
+						liveSummary: { isOnByDefault: true, byTarget: {} },
+					},
+				},
+				defaults: {
+					features: {
+						extras: { wordcloud: false, liveSummary: false },
+					},
+					templates: {
+						liveSummary: makeDefaultGlobalConfig().defaults.templates.liveSummary,
+					},
+				},
+			});
+		}
+		drove("P34");
+	}, 60_000);
+
+	// 验红:下播卡不接核心收集器 / 总结不带资料的 `fanClubName` / 直播设置不折 `aiOverride`,对应段红。
+	it("P35 模板变量 {tier}、{fanclub}、{time}、{follower}、{follower_change}、{watched} 由假来源交得出", async () => {
+		await clearCaptures();
+		const probe = currentProbe();
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		const names = ["变量甲", "变量乙", "变量丙", "变量丁", "变量戊"];
+
+		await patchSettings({
+			defaults: {
+				features: {
+					membership: true,
+					liveStreaming: true,
+					extras: { wordcloud: false, liveSummary: true },
+				},
+				liveStreaming: { streamingIntervalHours: 2 },
+				templates: {
+					liveStart: "P35START {time}|{follower}",
+					liveStreaming: "P35LIVE {time}|{watched}",
+					liveEnd: "P35END {time}|{follower_change}",
+					liveSummary: "P35SUMMARY {fanclub}|{dmc}|{dca}|{un1}|{dc1}",
+					membership: {
+						[IN_PROCESS_CUSTOM_PROGRAM_ID]: {
+							enabled: true,
+							default: { template: "P35TIER {tier}", imageUrl: "" },
+							tiers: {},
+						},
+					},
+				},
+			},
+		});
+		try {
+			probe.liveStatusOutcome = {
+				ok: true,
+				kind: "live",
+				details: { title: "变量场次P35", totalViewers: 314 },
+			};
+			probe.reportLive(ext, {
+				kind: "start",
+				startedAt: new Date(Date.now() - 2 * HOUR_MS + 2_000).toISOString(),
+				details: { title: "变量场次P35", totalViewers: 314 },
+			});
+			await vi.waitFor(
+				async () => expect(await livePushCount(who, "liveStreaming")).toBeGreaterThanOrEqual(1),
+				{ timeout: 15_000 },
+			);
+			for (let i = 0; i < 5; i += 1) {
+				probe.reportLiveInteraction(ext, {
+					kind: "viewerChat",
+					viewer: { id: `9${i}`, name: names[i] ?? "" },
+					text: `变量弹幕${i}`,
+				});
+			}
+			probe.reportLiveInteraction(ext, {
+				kind: "membership",
+				viewer: { id: "95", name: "变量观众" },
+				program: IN_PROCESS_CUSTOM_PROGRAM_ID,
+				tier: { key: "vip", name: "变量贵族", rank: 3 },
+			});
+			probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
+
+			await vi.waitFor(
+				async () => {
+					const texts = (await captures()).flatMap((entry) =>
+						entry.text === undefined ? [] : [entry.text],
+					);
+					expect(texts).toContain("P35TIER 变量贵族");
+					expect(texts.some((text) => text.startsWith("P35START "))).toBe(true);
+					expect(texts.some((text) => text.startsWith("P35LIVE "))).toBe(true);
+					expect(texts.some((text) => text.startsWith("P35END "))).toBe(true);
+					expect(texts.some((text) => text.startsWith("P35SUMMARY "))).toBe(true);
+				},
+				{ timeout: 20_000 },
+			);
+
+			const texts = (await captures()).flatMap((entry) =>
+				entry.text === undefined ? [] : [entry.text],
+			);
+			const start = texts.find((text) => text.startsWith("P35START "));
+			const streaming = texts.find((text) => text.startsWith("P35LIVE "));
+			const end = texts.find((text) => text.startsWith("P35END "));
+			const summary = texts.find((text) => text.startsWith("P35SUMMARY "));
+			// 开播时刻特意摆在两小时间隔前 2 秒，让周期核对马上触发；开播卡此刻只播了约 1:59:58。
+			// 秒数随认出场次的快慢浮动，只钉到分钟。
+			expect(start).toMatch(/^P35START 1小时59分\d+秒\|1\.2万$/);
+			expect(streaming).toMatch(/^P35LIVE [^|]+\|314$/);
+			expect(end).toMatch(/^P35END [^|]+\|0$/);
+			expect(summary).toContain(`P35SUMMARY ${ALICE_FAN_CLUB_NAME}|5|5|`);
+			expect(streaming).toContain("2小时");
+			expect(end).toContain("2小时");
+		} finally {
+			probe.liveStatusOutcome = { ok: true, kind: "offline" };
+			await patchSettings({
+				defaults: {
+					features: {
+						membership: false,
+						liveStreaming: false,
+						extras: { wordcloud: false, liveSummary: false },
+					},
+					liveStreaming: { streamingIntervalHours: 1 },
+					templates: makeDefaultGlobalConfig().defaults.templates,
+				},
+			});
+		}
+		drove("P35");
+	}, 60_000);
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2452,18 +2657,19 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 33 行、不开 13 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 35 行、不开 11 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(46);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 33 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 35 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27)、N10 转进了 P33,编号不回填。
+		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35;
+		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => n !== 7 && n !== 10 && n !== 12)
+				.filter((n) => n !== 4 && n !== 7 && n !== 10 && n !== 11 && n !== 12)
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

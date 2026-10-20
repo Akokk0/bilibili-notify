@@ -10,7 +10,6 @@
  * collector / template helpers.
  */
 
-import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { MembershipTemplateBundle } from "@bilibili-notify/internal";
 import type { LiveSettings } from "../../live/live-settings";
 import type { LivePushAnchor, LivePushFeature, LivePushType } from "../../live/live-types";
@@ -53,8 +52,6 @@ export interface SubItemView extends LiveSettings {
 	 */
 	/** 上舰门槛(㉓d,原先是 `minGuardLevel`):档位 rank 低于它不推(1 = 舰长最低、3 = 总督);没配 = 全推。 */
 	minGuardRank?: number;
-	/** undefined = 该 UP 无 per-UP AI 覆盖,直播总结走 AI 引擎自身配置。 */
-	aiOverride?: CommentaryCallOverride;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;

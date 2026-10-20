@@ -17,6 +17,7 @@ import {
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
+import type { LiveContentBuilder } from "./content-builder.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
 import {
@@ -25,10 +26,14 @@ import {
 	type LiveSessionEngine,
 	liveSubscriptionPushable,
 } from "./live-sessions.js";
-import type { LiveWorkSettings } from "./live-settings.js";
+import type { LiveSettings } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
-import { LivePushType } from "./live-types.js";
+import { type LivePushAnchor, LivePushType } from "./live-types.js";
+import type { LiveSummaryRequester } from "./recap/live-summary-requester.js";
+import { recapAnchors } from "./recap/recap-anchors.js";
+import type { ViewerChatCollector } from "./recap/viewer-chat-collector.js";
+import type { WordcloudGenerator } from "./recap/wordcloud-generator.js";
 
 /**
  * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`live-sessions.ts`)
@@ -96,18 +101,25 @@ export interface BindLivePushOptions {
 	table: Pick<LiveTable, "get">;
 	/** 此刻的这条订阅(现取)。 */
 	subscription(id: string): Subscription | undefined;
-	/** 订阅资料里的名字与粉丝数(资料缓存,现取)。 */
-	profile(id: string): { name?: string; fans?: number } | undefined;
+	/** 订阅资料里的名字、粉丝数与粉丝团名(资料缓存,现取)。 */
+	profile(id: string): { name?: string; fans?: number; fanClubName?: string } | undefined;
 	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveSettingsOf`)。 */
-	settings(sub: Subscription): LiveWorkSettings;
+	settings(sub: Subscription): LiveSettings;
 	/** 这一张直播卡用哪张自定义封面(订阅的 ?? 全局的,再轮一张)。每推一张调一次。 */
-	liveCover(sub: Subscription, settings: LiveWorkSettings): string | undefined;
+	liveCover(sub: Subscription, settings: LiveSettings): string | undefined;
 	/** 来源在不在跑(现取;头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
 	sourceStatus: Pick<SourceStatusReader, "running">;
 	/** 这个来源有没有周期「正在直播」这一档(现取);答没有就不挂周期推送。拓展怎么认的见 `extensionHasLiveTick`。 */
 	hasLiveTick(sourceKey: string): boolean;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);详情没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
+	/** 下播回顾要的收集器、词云、总结与内容构造口。 */
+	recap: {
+		collector: Pick<ViewerChatCollector, "snapshot">;
+		wordcloud: Pick<WordcloudGenerator, "generate">;
+		summary: Pick<LiveSummaryRequester, "generate">;
+		content: LiveContentBuilder;
+	};
 	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
@@ -132,7 +144,7 @@ function defined<T extends object>(value: T | undefined): Partial<T> {
 }
 
 /** 三句文案各自的模板(按 UP 折好的;没有就是默认那句)。 */
-function templateOf(settings: LiveWorkSettings, kind: LiveTextKind): string | undefined {
+function templateOf(settings: LiveSettings, kind: LiveTextKind): string | undefined {
 	const msg = settings.customLiveMsg;
 	switch (kind) {
 		case "liveStart":
@@ -145,7 +157,7 @@ function templateOf(settings: LiveWorkSettings, kind: LiveTextKind): string | un
 }
 
 /** 三把直播开关里有一把开着:这一场才值得推送这头挂着(全关着就放下)。 */
-function anyLiveSwitchOn(settings: LiveWorkSettings): boolean {
+function anyLiveSwitchOn(settings: LiveSettings): boolean {
 	return settings.liveStart || settings.liveStreaming || settings.liveEnd;
 }
 
@@ -165,6 +177,8 @@ interface CardJob {
 	fansChanged?: number;
 	/** 「正在直播」卡属于哪一场:发送前推送这头已经不挂在它上面了(开播 / 下播事件到了)就不发。 */
 	run?: LiveRun;
+	/** 下播卡后面的回顾锚点;其它卡没有。 */
+	extras?: readonly LivePushAnchor[];
 }
 
 export function bindLivePush(opts: BindLivePushOptions): Disposable {
@@ -200,7 +214,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	/**
 	 * 周期「正在直播」挂成设置里那个间隔:`liveStreaming` 关着、正在断流等待里就不挂(间隔记 0)。间隔没变不动它。
 	 */
-	function armPeriodic(id: string, run: LiveRun, settings: LiveWorkSettings): void {
+	function armPeriodic(id: string, run: LiveRun, settings: LiveSettings): void {
 		const hours =
 			settings.liveStreaming && opts.hasLiveTick(run.session.sourceKey) && !run.session.pendingEnd
 				? settings.streamingIntervalHours
@@ -248,6 +262,53 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		);
 	}
 
+	/** 下播的附加项:此刻同步取收集器快照,内容随后各自完成；关停后才完成的那份不再发。 */
+	function recapFor(
+		sub: Subscription,
+		settings: LiveSettings,
+		facts: LiveDetails,
+	): LivePushAnchor[] {
+		const profile = opts.profile(sub.id);
+		const creatorName = extensionSubscriptionName(sub, {
+			eventName: facts.creator?.name,
+			profileName: profile?.name,
+		});
+		const creatorAvatar = settings.extras.wordcloud ? opts.avatarRef(sub.id) : undefined;
+		const anchors = recapAnchors(
+			{
+				subscriptionId: sub.id,
+				extras: {
+					wordcloud: settings.extras.wordcloud,
+					liveSummary: settings.extras.liveSummary,
+				},
+				wordcloudStopWords: settings.wordcloudStopWords,
+				summaryTemplate: settings.customLiveSummary.liveSummary ?? "",
+				aiOverride: settings.aiOverride,
+				creator: {
+					name: creatorName,
+					...(creatorAvatar === undefined ? {} : { avatar: creatorAvatar }),
+				},
+				...(profile?.fanClubName ? { fanClubName: profile.fanClubName } : {}),
+				cardSkin: settings.cardSkin,
+				cardSkinKnobs: settings.cardSkinKnobs,
+			},
+			{
+				collector: opts.recap.collector,
+				wordcloud: opts.recap.wordcloud,
+				summary: opts.recap.summary,
+				content: opts.recap.content,
+				logger: log,
+			},
+		);
+		const unlessDisposed = (made: LivePushAnchor["messages"]) =>
+			Promise.resolve(made).then((messages) => (disposed ? undefined : messages));
+		return anchors.map((anchor) => ({
+			...anchor,
+			messages: unlessDisposed(anchor.messages),
+			...(anchor.aiMessages ? { aiMessages: unlessDisposed(anchor.aiMessages) } : {}),
+		}));
+	}
+
 	/** 出卡 → 套文案 → 按版式分组 → 发送。发送那一刻再核一次还该推(出卡要几秒,期间可能停了拓展)。 */
 	async function pushCard(id: string, job: CardJob): Promise<void> {
 		const sub = pushable(id);
@@ -288,11 +349,12 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				cardSkin: settings.cardSkin,
 				cardSkinKnobs: settings.cardSkinKnobs,
 				pushType: job.pushType,
+				extras: job.extras,
 				label: `sub=${id}`,
 			},
 			{
 				renderer: opts.renderer() ?? null,
-				send: async (groups, type) => {
+				send: async (groups, type, extras) => {
 					if (!pushable(id)) {
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中停用 / 删了 / 拓展停了,这张卡不发`);
 						return;
@@ -301,7 +363,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中换了一场,这张「正在直播」卡不发`);
 						return;
 					}
-					await send(groups, type);
+					await send(groups, type, extras);
 				},
 				logger: log,
 			},
@@ -379,7 +441,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	}
 
 	/** 这一场该推送了吗:订阅还该推、开播 / 正在直播 / 下播推送没全关。全关着的放下这一场。 */
-	function pushSettings(id: string): { sub: Subscription; settings: LiveWorkSettings } | undefined {
+	function pushSettings(id: string): { sub: Subscription; settings: LiveSettings } | undefined {
 		const sub = pushable(id);
 		if (!sub) return undefined;
 		const settings = opts.settings(sub);
@@ -506,6 +568,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		// 信号没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
 		const facts: LiveDetails = { ...defined(session?.lastDetails), ...defined(reported.details) };
 		const startedAt = session?.startedAt ?? reported.startedAt;
+		// 收集器在另一个场次监听者里清空；这里先在结束那一刻同步取快照。
+		const extras = recapFor(sub, opts.settings(sub), facts);
 		enqueue(id, "下播", () => {
 			const fansNow = opts.profile(id)?.fans;
 			const fansChanged =
@@ -520,6 +584,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				startedAt,
 				time: startedAt === undefined ? "" : formatDuration(startedAt, endedAt),
 				fansChanged,
+				extras,
 			});
 		});
 	}
