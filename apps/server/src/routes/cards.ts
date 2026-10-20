@@ -834,6 +834,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		/** 请求里指的皮肤(缺省 = 全局在用的那套)与 per-UP 草稿旋钮(全局作用域不给)。 */
 		requested: CardSkinChoice = {},
 		fallback = false,
+		signal: AbortSignal = new AbortController().signal,
 	): Promise<{ buffer: Buffer; mime: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
@@ -896,9 +897,31 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					? tiers.lowest(content?.program)
 					: tiers.byKey(content.program, content.tierKey);
 			if (!tier) throw new Error(`没有这一档:tierKey=${content?.tierKey}`);
-			// 徽章图标在图库里:没抓到的先补抓一次(有最小间隔),还是没有就不带 `icon`、徽章块自己收起。
-			await opts.deps.runtime.guardIcons.ensure();
-			const icon = opts.deps.runtime.guardIcons.iconOf(tier.key);
+			// 来源描述符里已有图库引用就直接用;缺了才经该来源的懒取口补抓。没有来源声明的会员档
+			// 自然也没有懒取口,预览照出、徽章块自己收起。
+			let icon = tier.icon?.ref === undefined ? undefined : { ref: tier.icon.ref };
+			if (!icon) {
+				const declared = opts.deps.runtime.sourceRegistry
+					.list()
+					.find((view) =>
+						(view.descriptor.membershipPrograms ?? []).some(
+							(program) => Array.isArray(program.tiers) && program.tiers.includes(tier),
+						),
+					);
+				const program = declared?.descriptor.membershipPrograms?.find(
+					(candidate) => Array.isArray(candidate.tiers) && candidate.tiers.includes(tier),
+				);
+				const reader = declared?.liveInteractions;
+				if (declared && program && reader) {
+					const fetched = await reader.fetchTierIcon(
+						{ sourceKey: declared.sourceKey, externalId: "" },
+						program.id,
+						tier.key,
+						signal,
+					);
+					if (fetched.ok) icon = { ref: fetched.ref };
+				}
+			}
 			// 示例数据没有头像:预览不传(同上)。
 			const buffer = await renderer.generateMembershipCard(
 				{
@@ -1039,6 +1062,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				content,
 				{ cardSkin, cardSkinKnobs },
 				fallback,
+				c.req.raw.signal,
 			);
 			return c.json<PreviewResponse>(
 				ok({ dataUrl: `data:${mime};base64,${buffer.toString("base64")}` }),
@@ -1137,7 +1161,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 试一次、回报结果(同 `POST /api/targets/:id/test`):渲染没成、投递没成都是 200 + 失败那一支,耗时只在送达那一支。
 		let card: { buffer: Buffer; mime: string };
 		try {
-			card = await renderPreviewCard(kind, style, content, { cardSkin, cardSkinKnobs }, fallback);
+			card = await renderPreviewCard(
+				kind,
+				style,
+				content,
+				{ cardSkin, cardSkinKnobs },
+				fallback,
+				c.req.raw.signal,
+			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test render failed (${kind}): ${msg}`);

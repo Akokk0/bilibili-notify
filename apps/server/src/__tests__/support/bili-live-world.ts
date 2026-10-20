@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
+	BILIBILI_GUARD_PROGRAM,
 	type Connection,
 	EXTRA_KEYS,
 	type ExtraKey,
@@ -27,6 +28,7 @@ import {
 	type PayloadSegment,
 	type PlatformAdapter,
 	type PushTarget,
+	type SourceContext,
 	type SpecialViewer,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -345,6 +347,34 @@ export async function bootBiliLiveWorld(
 	const serviceCtx = createNodeServiceContext({ name: "test", level: "silent", pretty: false });
 	const recording = makeRecordingLayers();
 	const fetchedImages: string[] = [];
+	const sources = createSourceRegistry();
+	void sources.register(
+		"bilibili",
+		{
+			descriptor: {
+				label: "B 站",
+				membershipPrograms: [
+					{
+						...BILIBILI_GUARD_PROGRAM,
+						tiers: Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
+							? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => ({
+									...tier,
+									icon: { ...tier.icon, ref: BILI_LIVE_GUARD_BADGE_REF },
+								}))
+							: BILIBILI_GUARD_PROGRAM.tiers,
+					},
+				],
+			},
+			searchCreators: async () => ok({ candidates: [] }),
+			liveInteractions: {
+				fetchViewerAvatar: async () => ok({ ref: BILI_LIVE_GUARD_BADGE_REF }),
+				fetchTierIcon: async () => ok({ ref: BILI_LIVE_GUARD_BADGE_REF }),
+			},
+			start: async () => {},
+			stop: async () => {},
+		},
+		{} as SourceContext,
+	);
 	const runtime = createEngines({
 		serviceCtx,
 		dataRoot: join(tmpdir(), "bn-bili-live-e2e-no-such-dir"),
@@ -380,17 +410,12 @@ export async function bootBiliLiveWorld(
 			prune: async () => {},
 			load: async () => {},
 		} as never,
-		sources: createSourceRegistry(),
+		sources,
 		linkResolvers: createLinkResolverRegistry(),
 		problems: createProblemTable({ logger: serviceCtx.logger }),
 		biliProblems: recording.layers,
 		bus,
 		adapters: registryOf([adapter]),
-		guardIcons: {
-			ensure: async () => {},
-			iconOf: () => ({ ref: BILI_LIVE_GUARD_BADGE_REF }),
-			refs: () => [],
-		} as never,
 		imageFetcher: {
 			fetchImage: async (url: string) => {
 				fetchedImages.push(url);

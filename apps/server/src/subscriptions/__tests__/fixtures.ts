@@ -1,7 +1,10 @@
 import {
 	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
+	fail,
+	type ImageRef,
 	type IntegrationContext,
+	type LiveInteractionReader,
 	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -136,9 +139,36 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 	return registry;
 };
 
-/** 登着 B 站那份描述符(大航海三档)的来源登记表。 */
-export const bilibiliLikeSources = (): SourceRegistry =>
-	sourceRegistryOf({ membershipPrograms: [BILIBILI_GUARD_PROGRAM] });
+/** 登着 B 站那份描述符(大航海三档)的来源登记表;可用测试引用或懒取口替换档图。 */
+export const bilibiliLikeSources = (
+	options: { iconRef?: ImageRef; fetchTierIcon?: LiveInteractionReader["fetchTierIcon"] } = {},
+): SourceRegistry => {
+	const registry = createSourceRegistry();
+	const program = {
+		...BILIBILI_GUARD_PROGRAM,
+		tiers: Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
+			? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => ({
+					...tier,
+					icon: { ...tier.icon, ...(options.iconRef ? { ref: options.iconRef } : {}) },
+				}))
+			: BILIBILI_GUARD_PROGRAM.tiers,
+	};
+	void registry.register(
+		SOURCE_KEY,
+		{
+			descriptor: { label: "B 站", membershipPrograms: [program] },
+			searchCreators: noCandidates,
+			liveInteractions: {
+				fetchViewerAvatar: async () => fail("unavailable", "no viewer avatar"),
+				fetchTierIcon: options.fetchTierIcon ?? (async () => fail("unavailable", "no tier icon")),
+			},
+			start: async () => {},
+			stop: async () => {},
+		},
+		{} as SourceContext,
+	);
+	return registry;
+};
 
 /** 假来源:`start` 时记下来源上下文(`started` 记全部、`ctx` 是最近一个),`stop` 记一次;`start` / `stop` 是 spy,可换实现。 */
 export interface FakeSource extends Source {

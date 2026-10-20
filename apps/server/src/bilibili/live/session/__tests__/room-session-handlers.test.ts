@@ -15,8 +15,18 @@
  * handleLiveEnd/armPeriodicTimer 用 `(s as any).x = vi.fn()` 就地打桩。
  */
 
-import type { ImageRef, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
-import { defaultMessageKindLayout, fail, ok } from "@bilibili-notify/internal";
+import type {
+	Identity,
+	ImageRef,
+	MembershipTemplateBundle,
+	ServiceContext,
+} from "@bilibili-notify/internal";
+import {
+	BILIBILI_GUARD_PROGRAM,
+	defaultMessageKindLayout,
+	fail,
+	ok,
+} from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { LivePushType } from "../../../../live/live-types";
@@ -122,9 +132,8 @@ interface CtxMocks {
 	isSubscribed: ReturnType<typeof vi.fn>;
 	collectsDanmaku: ReturnType<typeof vi.fn>;
 	safeBroadcast: ReturnType<typeof vi.fn>;
-	/** 徽章图标:抓到之前 `iconOf` 给 undefined,`ensure()` 跑过之后才有(模拟「出卡前先抓」)。 */
-	guardIconsEnsure: ReturnType<typeof vi.fn>;
-	guardIconsIconOf: ReturnType<typeof vi.fn>;
+	/** 来源的徽章懒取口。 */
+	fetchTierIcon: ReturnType<typeof vi.fn>;
 }
 
 /** 抓图服务的替身给一个地址回的引用(以地址命名);读图替身把引用本身当字节读回。 */
@@ -144,7 +153,6 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	m: CtxMocks;
 } {
 	const warn = vi.fn();
-	let fetched = false;
 	const fakeServiceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn, error() {} },
 		setInterval: () => ({ dispose() {} }),
@@ -173,15 +181,24 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		isSubscribed: vi.fn(() => false),
 		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
 		safeBroadcast: vi.fn(),
-		guardIconsEnsure: vi.fn(async () => {
-			fetched = true;
-		}),
-		guardIconsIconOf: vi.fn((key: string) =>
-			fetched && GUARD_ICON_REF[key] ? { ref: GUARD_ICON_REF[key] } : undefined,
+		fetchTierIcon: vi.fn(async (_identity: Identity, _program: string, key: string) =>
+			GUARD_ICON_REF[key] ? ok({ ref: GUARD_ICON_REF[key] }) : fail("not_found", "none"),
 		),
 	};
+	const view = {
+		sourceKey: "bilibili",
+		descriptor: { label: "B 站", membershipPrograms: [BILIBILI_GUARD_PROGRAM] },
+		liveInteractions: {
+			fetchViewerAvatar: vi.fn(),
+			fetchTierIcon: m.fetchTierIcon,
+		},
+	};
+	const sources = {
+		list: () => [view],
+		get: (key: string) => (key === view.sourceKey ? view : undefined),
+	};
 	const ctx = {
-		guardIcons: { ensure: m.guardIconsEnsure, iconOf: m.guardIconsIconOf, refs: () => [] },
+		sources,
 		serviceCtx: fakeServiceCtx,
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
@@ -1000,14 +1017,18 @@ describe("RoomSession.onGuardBuy", () => {
 			});
 		});
 
-		// 验红:把 room-session.ts 里出卡前那句 `await this.ctx.guardIcons.ensure()` 删掉,这条红(图标还没抓到就取了)。
-		it("出卡前先 ensure() 再取图标:没抓到过时,出卡输入里带的是刚抓到的那张", async () => {
+		// 验红:把 room-session.ts 里「描述符缺引用时问来源懒取口」删掉,这条红。
+		it("描述符没引用时走来源懒取口,出卡输入里带的是刚抓到的那张", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 			await s.onGuardBuy(guardBody);
-			expect(m.guardIconsEnsure).toHaveBeenCalledTimes(1);
-			expect(m.guardIconsIconOf).toHaveBeenCalledWith("captain");
+			expect(m.fetchTierIcon).toHaveBeenCalledWith(
+				{ sourceKey: "bilibili", externalId: "u1" },
+				"guard",
+				"captain",
+				ctx.serviceCtx.signal,
+			);
 			expect(m.generateMembershipCard.mock.calls[0]?.[0].tier.icon).toEqual({
 				ref: GUARD_ICON_REF.captain,
 			});
@@ -1017,7 +1038,7 @@ describe("RoomSession.onGuardBuy", () => {
 		it("没抓到图标:出卡输入里没有 icon 这一格(徽章块自己收起),卡照出", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-			m.guardIconsEnsure.mockResolvedValue(undefined); // 抓了也没抓到:iconOf 一直给 undefined
+			m.fetchTierIcon.mockResolvedValue(fail("unavailable", "none"));
 			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 			await s.onGuardBuy(guardBody);
 			const input = m.generateMembershipCard.mock.calls[0]?.[0];
@@ -1734,7 +1755,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			emitLiveState: vi.fn(),
 			emitViewers: vi.fn(),
 			pickCardBackground: () => undefined,
-			guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
+			sources: { get: () => undefined, list: () => [] },
 			imageFetcher: { fetchImage },
 			readImage: async () => undefined,
 			avatarOf: () => undefined,

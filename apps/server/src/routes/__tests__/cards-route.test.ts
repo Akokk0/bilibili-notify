@@ -9,6 +9,7 @@ import {
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 	fail,
+	type LiveInteractionReader,
 	makeEmptySubscription,
 	ok,
 	type Post,
@@ -49,16 +50,8 @@ function depsWithDataDir(dataDir: string, timezone = "Asia/Shanghai"): RouteDeps
 	} as unknown as RouteDeps;
 }
 
-/** 假的徽章图标:`ensure()` 跑过之后 `iconOf` 才给图库引用(模拟「出卡前先抓」)。 */
+/** 描述符或来源懒取口交回的徽章图引用。 */
 const GUARD_ICON_REF = `${"d".repeat(64)}.png`;
-function makeGuardIcons(opts: { gets?: boolean } = {}) {
-	let fetched = false;
-	const ensure = vi.fn(async () => {
-		fetched = opts.gets !== false;
-	});
-	const iconOf = vi.fn((_key: string) => (fetched ? { ref: GUARD_ICON_REF } : undefined));
-	return { ensure, iconOf, refs: () => [] };
-}
 
 /** 预览路由抓图存进图库后得到的引用(假的图库每张都回它)。 */
 const PREVIEW_IMAGE_REF = `${"e".repeat(64)}.png`;
@@ -84,8 +77,8 @@ const SUBSCRIBED_UID = "12345";
 const SUBSCRIBED_AVATAR = `${"f".repeat(64)}.jpg`;
 
 function makeDeps(
-	guardIcons = makeGuardIcons(),
-	opts: { subscribed?: boolean; sourceRegistry?: SourceRegistry } = {},
+	sourceRegistry: SourceRegistry = bilibiliLikeSources({ iconRef: GUARD_ICON_REF }),
+	opts: { subscribed?: boolean } = {},
 ): RouteDeps {
 	const subscription = makeEmptySubscription({
 		id: "11111111-1111-1111-1111-111111111111",
@@ -93,9 +86,8 @@ function makeDeps(
 	});
 	return {
 		runtime: {
-			guardIcons,
 			// 会员档位读口读它:预览按档的 key 找档、示例取最低一档,路由里不认识任何平台的档位表。
-			sourceRegistry: opts.sourceRegistry ?? bilibiliLikeSources(),
+			sourceRegistry,
 			// 订阅资料里的头像(`cachedProfile.avatar`):预览的真实拉取读它,不为头像联网。
 			subRuntimeStore: {
 				get: (id: string) =>
@@ -1331,14 +1323,16 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		},
 	);
 
-	// 验红:把 cards.ts 里上舰预览那句 `await opts.deps.runtime.guardIcons.ensure()` 删掉,这条红(没抓到就取了)。
-	it("guard:预览前先 ensure() 再按档取图标", async () => {
-		const guardIcons = makeGuardIcons();
+	// 验红:把 cards.ts 里描述符缺引用时问来源懒取口的那一段删掉,这条红。
+	it("guard:描述符缺引用时经来源懒取口取图标", async () => {
+		const fetchTierIcon = vi.fn<LiveInteractionReader["fetchTierIcon"]>(async () =>
+			ok({ ref: GUARD_ICON_REF }),
+		);
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
-			deps: makeDeps(guardIcons),
+			deps: makeDeps(bilibiliLikeSources({ fetchTierIcon })),
 			puppeteer: makeFakePuppeteer(),
 			api: loggedInApi(),
 		});
@@ -1348,8 +1342,12 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			content: { tierKey: "governor" },
 			fallback: true,
 		});
-		expect(guardIcons.ensure).toHaveBeenCalledTimes(1);
-		expect(guardIcons.iconOf).toHaveBeenCalledWith("governor");
+		expect(fetchTierIcon).toHaveBeenCalledWith(
+			{ sourceKey: BILIBILI_SOURCE_KEY, externalId: "" },
+			"guard",
+			"governor",
+			expect.any(AbortSignal),
+		);
 		expect(spy.mock.calls[0]?.[0]?.tier.icon).toEqual({ ref: GUARD_ICON_REF });
 		spy.mockRestore();
 	});
@@ -1360,7 +1358,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
-			deps: makeDeps(makeGuardIcons({ gets: false })),
+			deps: makeDeps(bilibiliLikeSources()),
 			puppeteer: makeFakePuppeteer(),
 			api: loggedInApi(),
 		});
@@ -1477,7 +1475,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 				],
 			});
 			const app = createCardsRoute({
-				deps: makeDeps(makeGuardIcons(), { sourceRegistry }),
+				deps: makeDeps(sourceRegistry),
 				puppeteer: makeFakePuppeteer(),
 				api: loggedInApi(),
 			});
@@ -2705,7 +2703,7 @@ describe("cards route — 画会员卡但没有来源声明会员档位", () => 
 
 	function setup(sourceRegistry: SourceRegistry) {
 		const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
-		const deps = makeDeps(makeGuardIcons(), { sourceRegistry }) as unknown as {
+		const deps = makeDeps(sourceRegistry) as unknown as {
 			runtime: { engines?: unknown };
 			store: { getTargets?: () => unknown };
 		};

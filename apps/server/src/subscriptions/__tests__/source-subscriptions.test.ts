@@ -78,6 +78,31 @@ describe("sourceSubscriptionViews", () => {
 		expect(views[0]?.features.has("liveStart")).toBe(true);
 	});
 
+	it("monitorsLive 由整条折好的订阅算,重复订阅取或", () => {
+		const views = sourceSubscriptionViews(
+			[
+				sub("a", "1", { overrides: { features: { liveStart: false } } }),
+				sub("b", "1", { overrides: { features: { liveStart: true } } }),
+				sub("c", "2", {
+					overrides: {
+						features: {
+							liveStart: false,
+							liveStreaming: false,
+							liveEnd: false,
+							membership: false,
+							superchat: false,
+							viewerChat: false,
+							viewerEnter: false,
+						},
+					},
+				}),
+			],
+			KEY,
+			defaults(),
+		);
+		expect(views.map((view) => view.monitorsLive)).toEqual([true, false]);
+	});
+
 	it("停用的那条重复订阅不参与并集", () => {
 		const views = sourceSubscriptionViews(
 			[
@@ -91,7 +116,7 @@ describe("sourceSubscriptionViews", () => {
 		expect(views[0]?.features.has("post")).toBe(false);
 	});
 
-	it("只有 externalId 与 features 两格:作品设置(模板 / 皮肤 / 过滤……)不进名单", () => {
+	it("只有身份、开关与监听判定三格:作品设置(模板 / 皮肤 / 过滤……)不进名单", () => {
 		const [view] = sourceSubscriptionViews(
 			[
 				sub("a", "1", {
@@ -105,7 +130,7 @@ describe("sourceSubscriptionViews", () => {
 			KEY,
 			defaults(),
 		);
-		expect(Object.keys(view ?? {}).sort()).toEqual(["externalId", "features"]);
+		expect(Object.keys(view ?? {}).sort()).toEqual(["externalId", "features", "monitorsLive"]);
 	});
 
 	it("全局的作品开关一翻、订阅没单独覆盖:features 里的 post 跟着翻;订阅单独开压过全局关", () => {

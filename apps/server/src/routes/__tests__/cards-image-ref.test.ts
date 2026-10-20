@@ -10,7 +10,7 @@ import type { RouteDeps } from "../types.js";
 /**
  * 预览路由的出卡器要接得上图库解析口(3a-05;生产那条在 `runtime/engines.ts`)。
  *
- * 3a-33 起上舰预览的徽章就是图库引用(`runtime.guardIcons.iconOf`),这里用一个给引用的替身,
+ * 上舰预览的徽章是来源描述符里的图库引用 (`tier.icon.ref`),
  * 走 `POST /preview` 这扇公开的门、真的路由造的真出卡器。
  * 接线剪断(路由造出卡器时不传 `resolveImageRef`)的话,引用解析不出来,徽章块收起,断言里的 data URL 就不在了。
  */
@@ -40,8 +40,7 @@ function makeDeps(dataRoot: string): RouteDeps {
 	return {
 		runtime: {
 			dataRoot,
-			sourceRegistry: bilibiliLikeSources(),
-			guardIcons: { ensure: async () => {}, iconOf: () => ({ ref: BADGE_REF }), refs: () => [] },
+			sourceRegistry: bilibiliLikeSources({ iconRef: BADGE_REF }),
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},

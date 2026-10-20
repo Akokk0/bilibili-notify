@@ -26,6 +26,8 @@ export interface SourceSubscriptionView {
 	externalId: string;
 	/** 这个人开着的特性(只看开关,不看有没有目标)。 */
 	features: ReadonlySet<FeatureKey>;
+	/** 宿主按 {@link needsLiveMonitor} 算好:这个人有没有哪条启用中的订阅要监听直播间。 */
+	monitorsLive: boolean;
 }
 
 export interface SourceContext extends IntegrationContext {

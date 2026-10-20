@@ -68,7 +68,6 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { Api } from "../bilibili/api/index.js";
-import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -334,11 +333,6 @@ export interface CreateEnginesOptions {
 	 * **给了 `extensionSources` 与 `liveTable` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
 	 */
 	liveImages?: Pick<ImageWriter, "put">;
-	/**
-	 * 大航海徽章图标(`AppRuntime.guardIcons`,3a-33):B 站的上舰卡按档取图库引用。必给 —— 漏给上舰卡的徽章块静默收起。
-	 * 开机时调一次 `ensure()` 抓图(不等它),直播间出卡前再补一次。
-	 */
-	guardIcons: GuardIcons;
 	/**
 	 * B 站作品图 / 直播封面的抓图服务(接线层给 B 站集成的上下文:它自己的请求客户端,引用方是「集成在途」):
 	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
@@ -801,7 +795,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push: livePushLike,
 		problems: opts.biliProblems,
 		contentBuilder: segmentContentBuilder,
-		guardIcons: opts.guardIcons,
+		sources: opts.sources,
 		imageFetcher: opts.imageFetcher,
 		readImage: opts.readImage,
 		avatarOf: profileAvatarOf,
@@ -839,9 +833,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		globals(),
 	);
 	if (Object.keys(initialLiveView).length > 0) {
-		// B 站直播起来了就把徽章图抓进图库,但**不等它**:抓图慢或断网都不能拖住启动(`ensure` 不抛、失败只记日志)。
-		// 没有 B 站订阅时不抓:没人会上舰,首条上舰与卡片预览出卡前自己会补抓。
-		void opts.guardIcons.ensure();
 		live.start(initialLiveView);
 	}
 

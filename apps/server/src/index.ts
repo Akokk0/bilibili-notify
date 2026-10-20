@@ -774,9 +774,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptions: subStore,
 			subscriptionRuntime: runtime.subRuntimeStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
-			// 大航海徽章图在 `compose.ts` 里造:登记进图库「来源声明的图」,造好当场交回运行时(引擎与卡片路由读它)。
-			imageStore: runtime.imageStore,
-			attachGuardIcons: (icons) => runtime.attachGuardIcons(icons),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
@@ -914,8 +911,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			postImages: runtime.postImages,
 			// 拓展直播卡同理(㉒c):封面与事件头像经 `liveImages` 存进图库,出图器经同一个 `resolveImageRef` 取回。
 			liveImages: runtime.liveImages,
-			// 大航海徽章图标(3a-33):开机抓、上舰卡按档取;引用方「来源声明的图」在 bootstrap 里登记。
-			guardIcons: runtime.guardIcons,
 			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)
 			// 抓进图库。引用方是「集成在途」,图靠宽限期活到卡片画完。
 			imageFetcher: authSystem.integration,

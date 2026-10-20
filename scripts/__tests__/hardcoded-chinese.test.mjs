@@ -201,7 +201,7 @@ export const RATCHET = {
 	"apps/server/src/routes/targets.ts": 9,
 	"apps/server/src/routes/test-result.ts": 3,
 	"apps/server/src/routes/upload-limit.ts": 1,
-	"apps/server/src/runtime/bootstrap.ts": 2,
+	"apps/server/src/runtime/bootstrap.ts": 1,
 	"apps/server/src/runtime/card-assets.ts": 2,
 	"apps/server/src/runtime/command-dispatcher.ts": 3,
 	"apps/server/src/runtime/command-help.ts": 6,

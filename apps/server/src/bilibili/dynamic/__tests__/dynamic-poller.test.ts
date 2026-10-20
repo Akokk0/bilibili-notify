@@ -278,6 +278,7 @@ const rosterOf = (subs: Roster | null | undefined): SourceSubscriptionView[] =>
 	Object.values(subs ?? {}).map((v) => ({
 		externalId: v.uid,
 		features: new Set<FeatureKey>(v.post ? ["post"] : []),
+		monitorsLive: false,
 	}));
 
 interface EngineBag {

@@ -621,7 +621,7 @@ const IMPORTS = [
 	`import { type BiliSource, createBiliSource } from "./bilibili/source.js";`,
 	`import type { BiliDevtoolsDeps } from "./bilibili/devtools/index.js";`,
 	`import { settingsSegment } from "./bilibili/settings.js";`,
-	`import { GUARD_ICON_REQUEST_HEADERS } from "./bilibili/live/guard-icons.js";`,
+	`import { IMAGE_REQUEST_HEADERS } from "./bilibili/images.js";`,
 	`import { createOnebotAdapter } from "./platforms/onebot.js";`,
 	`import type { SourceAuth } from "@bilibili-notify/internal";`,
 	`import type { Neutral } from "./images/neutral.js";`,
@@ -884,10 +884,10 @@ describe("② 集成的值只能被调用 / 直接作参数:算(红)", () => {
 describe("② 集成的值只能被调用 / 直接作参数:不算(放行)", () => {
 	it("被调用、直接作实参、实参对象里的值、new 的实参", () => {
 		expect(misused(`createBiliSource({ a: 1 });`)).toEqual([]);
-		expect(misused(`f({ headers: GUARD_ICON_REQUEST_HEADERS });`)).toEqual([]);
+		expect(misused(`f({ headers: IMAGE_REQUEST_HEADERS });`)).toEqual([]);
 		expect(misused(`f(settingsSegment);`)).toEqual([]);
-		expect(misused(`new HttpClient({ headers: GUARD_ICON_REQUEST_HEADERS });`)).toEqual([]);
-		expect(misused(`f({ headers: { ...x, h: GUARD_ICON_REQUEST_HEADERS } });`)).toEqual([]);
+		expect(misused(`new HttpClient({ headers: IMAGE_REQUEST_HEADERS });`)).toEqual([]);
+		expect(misused(`f({ headers: { ...x, h: IMAGE_REQUEST_HEADERS } });`)).toEqual([]);
 		expect(misused(`const adapters = [createOnebotAdapter({})];`)).toEqual([]);
 	});
 

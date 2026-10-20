@@ -1,9 +1,9 @@
 /**
  * 组装根:整个核心里只有这个文件登记内置集成。只放登记与开发场景的过渡接线,不长别的逻辑。
  *
- * 今天它做四件事:认领 B 站那组开发场景(`provideDevtools`);造 B 站来源并登记(`registerSources`,
+ * 今天它做三件事:认领 B 站那组开发场景(`provideDevtools`);造 B 站来源并登记(`registerSources`,
  * 登记即启动);造三个内置平台适配器(OneBot / QQ 官方机器人 / webhook)并登记(`registerAdapters`,
- * 登记即启动);造大航海徽章图、登记成图库的一家引用方,当场交给运行时(`attachGuardIcons`)。`status` 指令的「上次抓取」不再从这里取:它读登记表里各来源自己说的那一行(`Source.health()`)。
+ * 登记即启动)。`status` 指令的「上次抓取」不从这里取:它读登记表里各来源自己说的那一行(`Source.health()`)。
  * 来源的上下文仍由登录那套建好递进来(`integration`),这里不另开存储;适配器各有各的存储与上下文,
  * 由 `registerBuiltinAdapters` 按适配器键开。
  *
@@ -16,7 +16,6 @@
  * (`devtools-isolation` 钉着,注释里也别加引号写它):构建时它被换成恒空的桩。
  */
 
-import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import {
 	BILIBILI_SOURCE_KEY,
 	type Connection,
@@ -35,15 +34,12 @@ import {
 	createBiliDevtools,
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
-import { createGuardIcons, GUARD_ICON_REQUEST_HEADERS } from "./bilibili/live/guard-icons.js";
 import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
 import type { LocaleReader } from "./i18n/locale-reader.js";
-import { createImageFetcher } from "./images/image-fetcher.js";
-import { IMAGE_REFERRERS } from "./images/image-referrers.js";
-import type { ImageStore, ImageWriter } from "./images/image-store.js";
+import type { ImageWriter } from "./images/image-store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
 import { createOnebotAdapter, onebotSettingsSegment } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, qqOfficialSettingsSegment } from "./platforms/qq-official.js";
@@ -54,7 +50,6 @@ import {
 	registerBuiltinAdapters,
 } from "./push/builtin-adapters.js";
 import type { PlatformAdapterRegistry } from "./push/registry.js";
-import type { AppRuntime } from "./runtime/bootstrap.js";
 import type { EnginesRuntime } from "./runtime/engines.js";
 import type { NodeServiceContext } from "./runtime/service-context.js";
 import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
@@ -90,12 +85,6 @@ export interface BuiltinIntegrationsDeps {
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
 	setTimeout: ServiceContext["setTimeout"];
-	/** 图库:往里登记「来源声明的图」这一家(徽章图的名单)。 */
-	imageStore: Pick<ImageStore, "register">;
-	/** 抓大航海徽章图用的请求客户端。不给就自建一个;测试换成不联网的。 */
-	guardIconHttp?: Pick<HttpClient, "fetch">;
-	/** 徽章图造好当场交给运行时(`AppRuntime.attachGuardIcons`):引擎与卡片路由读的就是它。 */
-	attachGuardIcons: AppRuntime["attachGuardIcons"];
 	/** 下面三样建得比这里晚,现取,原样转给开发场景。 */
 	live: BiliDevtoolsDeps["live"];
 	fans: BiliDevtoolsDeps["fans"];
@@ -145,7 +134,7 @@ export interface BuiltinIntegrations {
 }
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
-	// B 站的代码(上报器、舰长图标)日志行都跟 B 站那一格(与登录系统拿到的是同一个日志器)。
+	// B 站的代码(上报器、来源)日志行都跟 B 站那一格(与登录系统拿到的是同一个日志器)。
 	const biliLogger = deps.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY).logger;
 	// B 站分层上报器:先造、来源登记之后才接上核心(`BiliSource.start` 里接)。给来源与给入口读的是同一个。
 	const problems = createProblemLayers({
@@ -154,28 +143,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		locale: deps.locale,
 	});
 	deps.integration.onDispose(() => problems.dispose());
-	// 大航海徽章图(3a-33):运行时从 B 站静态站抓进图库,会员卡按档取图库引用。名单是手里抓到的那几张,
-	// 登记成图库的「来源声明的图」;抓不到时名单为空、卡上的徽章块自己收起。请求客户端是自带的一个(不借 B 站接口
-	// 那个:抓静态图不用登录态、也不该把它的 cookie 带出去),用完在 drain 段关掉它攒的连接。
-	let guardIconHttp = deps.guardIconHttp;
-	if (!guardIconHttp) {
-		const http = new HttpClient({
-			jar: new CookieJar(),
-			identity: generateBrowserIdentity(),
-			headers: GUARD_ICON_REQUEST_HEADERS,
-		});
-		deps.serviceCtx.onDispose(() => http.dispose(), "drain");
-		guardIconHttp = http;
-	}
-	const sourceDeclaredImages = deps.imageStore.register({
-		name: IMAGE_REFERRERS.sourceDeclared,
-		listRefs: async () => guardIcons.refs(),
-	});
-	const guardIcons = createGuardIcons({
-		images: createImageFetcher({ http: guardIconHttp, images: sourceDeclaredImages }),
-		logger: biliLogger,
-	});
-	deps.attachGuardIcons(guardIcons);
 	let source: BiliSource | undefined;
 	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;

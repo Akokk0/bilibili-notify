@@ -2,9 +2,15 @@ import {
 	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
 	type Failure,
+	fail,
 	formatAgo,
+	type Identity,
+	type ImageRef,
 	type Logger,
+	type MembershipTier,
 	type MessageBus,
+	ok,
+	type Result,
 	type ServiceContext,
 	type Source,
 	type SourceAuth,
@@ -17,7 +23,9 @@ import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
+import { IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
+import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { searchBiliCreators } from "./search-creators.js";
@@ -87,6 +95,25 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 };
 
+/** 每两个缺图档抓取轮次之间至少隔这么久,免得每条上舰都敲一次静态站。 */
+const GUARD_ICON_RETRY_INTERVAL_MS = 5 * 60 * 1000;
+
+/** 每个来源实例一份:运行中补上的图库引用只属于这个实例,模块里的档位表保持不变。 */
+function copyBiliDescriptor(): SourceDescriptor {
+	return {
+		...BILI_SOURCE_DESCRIPTOR,
+		membershipPrograms: BILI_SOURCE_DESCRIPTOR.membershipPrograms?.map((program) => ({
+			...program,
+			tiers: Array.isArray(program.tiers)
+				? program.tiers.map((tier) => ({
+						...tier,
+						...(tier.icon ? { icon: { ...tier.icon } } : {}),
+					}))
+				: program.tiers,
+		})),
+	};
+}
+
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
@@ -97,12 +124,95 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let dynamicStopped = false;
 	const now = deps.now ?? Date.now;
 
-	const descriptor = BILI_SOURCE_DESCRIPTOR;
+	const descriptor = copyBiliDescriptor();
+	let sourceCtx: SourceContext | undefined;
+	let viewerAvatars: ViewerAvatarFetcher | undefined;
+	let lastGuardAttemptAt: number | undefined;
+	let guardFetch: Promise<void> | undefined;
+
+	const guardTiers = (): MembershipTier[] => {
+		const program = descriptor.membershipPrograms?.find(
+			(candidate) => candidate.id === BILIBILI_GUARD_PROGRAM.id,
+		);
+		return program && Array.isArray(program.tiers) ? program.tiers : [];
+	};
+
+	/** 抓所有还缺引用的官方档位图;每档自己收错,所以这一轮不会留下未处理的拒绝。 */
+	function ensureGuardIcons(signal?: AbortSignal): Promise<void> {
+		const ctx = sourceCtx;
+		if (!ctx || signal?.aborted) return Promise.resolve();
+		const missing = guardTiers().filter(
+			(tier) => tier.icon?.url !== undefined && tier.icon.ref === undefined,
+		);
+		if (missing.length === 0) return Promise.resolve();
+		if (guardFetch) return guardFetch;
+		if (
+			lastGuardAttemptAt !== undefined &&
+			now() - lastGuardAttemptAt < GUARD_ICON_RETRY_INTERVAL_MS
+		) {
+			return Promise.resolve();
+		}
+		lastGuardAttemptAt = now();
+		const made = Promise.all(
+			missing.map(async (tier) => {
+				try {
+					const result = await ctx.fetchImage(tier.icon?.url ?? "", {
+						headers: IMAGE_REQUEST_HEADERS,
+						...(signal ? { signal } : {}),
+					});
+					if (result.ok) {
+						tier.icon = { ...tier.icon, ref: result.ref };
+						return;
+					}
+					ctx.logger.warn(
+						`[guard-icons] 抓「${tier.name}」徽章图失败: ${result.code}: ${result.message}`,
+					);
+				} catch (error) {
+					ctx.logger.warn(`[guard-icons] 抓「${tier.name}」徽章图失败: ${errorMessageOf(error)}`);
+				}
+			}),
+		).then(() => undefined);
+		guardFetch = made;
+		void made.finally(() => {
+			if (guardFetch === made) guardFetch = undefined;
+		});
+		return made;
+	}
 
 	return {
 		descriptor,
 		auth: deps.auth,
 		dynamic: () => engine,
+		liveInteractions: {
+			async fetchViewerAvatar(
+				identity: Identity,
+				viewerId: string,
+				signal: AbortSignal,
+			): Promise<Result<{ ref: ImageRef }>> {
+				if (signal.aborted) return fail("indeterminate", "viewer avatar request was aborted");
+				if (!viewerAvatars) return fail("unavailable", "bilibili source is not running");
+				const ref = await viewerAvatars.fetch(viewerId, identity.externalId);
+				return ref ? ok({ ref }) : fail("unavailable", "viewer avatar is unavailable");
+			},
+			async fetchTierIcon(
+				_identity: Identity,
+				program: string,
+				tierKey: string,
+				signal: AbortSignal,
+			): Promise<Result<{ ref: ImageRef }>> {
+				const membership = descriptor.membershipPrograms?.find(
+					(candidate) => candidate.id === program,
+				);
+				const tier =
+					membership && Array.isArray(membership.tiers)
+						? membership.tiers.find((candidate) => candidate.key === tierKey)
+						: undefined;
+				if (!tier) return fail("not_found", "membership tier not found");
+				if (tier.icon?.ref === undefined) await ensureGuardIcons(signal);
+				const ref = tier.icon?.ref;
+				return ref ? ok({ ref }) : fail("unavailable", "guard icon is unavailable");
+			},
+		},
 		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完;日志等 start 给了 ctx 才有。
 		searchCreators: (query) => searchBiliCreators(deps.api, query, (m) => log?.warn(m)),
 		health(): SourceHealth {
@@ -115,6 +225,15 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
 			log = ctx.logger;
+			sourceCtx = ctx;
+			viewerAvatars = createViewerAvatarFetcher({
+				api: deps.api,
+				images: {
+					fetchImage: (url, options) => ctx.fetchImage(url, options),
+				},
+				logger: ctx.logger,
+				now,
+			});
 			const mine: Disposable[] = [];
 			const stopEngine = (): void => {
 				engine?.stop();
@@ -244,9 +363,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				dynamicStopped = false;
 				deps.loginCheck.setHealthCheckMs(0);
 				started = false;
+				sourceCtx = undefined;
+				viewerAvatars = undefined;
 				throw err;
 			}
 			handles = mine;
+			if (ctx.subscriptions().some((view) => view.monitorsLive)) {
+				void ensureGuardIcons();
+			}
 			// 最后一步:核心那头此刻才有,不管动态起没起都接上(登录失效、风控、直播间停监照常进问题表)。
 			// 接上之前记着的问题(登录失效、风控、请求失败)在这一刻整份补报。
 			deps.problems.attach(ctx);
@@ -263,6 +387,9 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			dynamicStopped = false;
 			deps.loginCheck.setHealthCheckMs(0);
 			started = false;
+			sourceCtx = undefined;
+			viewerAvatars = undefined;
+			guardFetch = undefined;
 			return Promise.resolve();
 		},
 	};

@@ -479,8 +479,6 @@ function setup(opts?: {
 	/** 拓展订阅的在播表与上报出入框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
 	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
-	/** 大航海徽章图标(接线层给的 `runtime.guardIcons`);不给 = 一个什么都没有的替身。 */
-	guardIcons?: Parameters<typeof createEngines>[0]["guardIcons"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
@@ -569,11 +567,6 @@ function setup(opts?: {
 		bus,
 		adapters: registryOf(opts?.platformAdapters ?? []),
 		...(opts?.interceptSend ? { interceptSend: opts.interceptSend } : {}),
-		guardIcons: opts?.guardIcons ?? {
-			ensure: async () => {},
-			iconOf: () => undefined,
-			refs: () => [],
-		},
 		imageFetcher: opts?.imageFetcher ?? {
 			fetchImage: async () => fail("unavailable", "测试替身不联网"),
 		},
@@ -790,39 +783,6 @@ describe("createEngines — live-state-changed 接线", () => {
  * `live-viewers-changed { uid, viewers }`(统计、WS、面板都挂在它后面);在播快照里的 `viewers` 也原样进
  * 「正在直播」那份快照。两处都是 adapter 里的一句 lambda,各自的单测证明不了接上了。
  */
-describe("createEngines — 大航海徽章图标接线", () => {
-	const makeIcons = (ensure: () => Promise<void>) => ({
-		ensure: vi.fn(ensure),
-		iconOf: vi.fn(() => undefined),
-		refs: () => [],
-	});
-
-	const biliSub = () =>
-		makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } });
-
-	// 验红:把 engines.ts 里 `live.start` 旁边那句 `void opts.guardIcons.ensure()` 删掉,这条红(开机没人去抓徽章,首条上舰才补抓)。
-	it("有 B 站直播订阅、直播引擎起来时调一次 ensure(),而且不等它:抓图永不返回时 createEngines 照样建成", () => {
-		const guardIcons = makeIcons(() => new Promise<void>(() => {}));
-		const c = setup({ guardIcons, subs: [biliSub()] });
-		expect(guardIcons.ensure).toHaveBeenCalledTimes(1);
-		expect(c.runtime).toBeDefined();
-	});
-
-	// 验红:把那句挪到 `if` 外面(无条件开机就抓),这条红 —— 不带订阅的真开机 e2e 也会去连 B 站静态站,被测试的外网闸判红。
-	it("没有 B 站订阅(直播引擎没起来)时开机不去抓图,等首条上舰或预览再补", () => {
-		const guardIcons = makeIcons(async () => {});
-		setup({ guardIcons });
-		expect(guardIcons.ensure).not.toHaveBeenCalled();
-	});
-
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `guardIcons: opts.guardIcons` 删掉,这条红(直播间拿不到图标)。
-	it("同一份 guardIcons 递给 LiveEngine(上舰卡取图标用它)", () => {
-		const guardIcons = makeIcons(async () => {});
-		setup({ guardIcons });
-		expect(H.live[0].opts.guardIcons).toBe(guardIcons);
-	});
-});
-
 describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
 	// 验红:把 engines.ts 里递给 LiveEngine 的 `imageFetcher: opts.imageFetcher` 删掉,这条红
 	// (直播卡出卡前没人去抓图,封面只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
@@ -3301,7 +3261,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
 
-	it("add op:来源的名单只带 externalId 与 features(作品设置不在来源里,per-UP 覆盖由核心每条现折);直播那头照旧带着折好的皮肤 id", async () => {
+	it("add op:来源的名单只带身份、开关与监听判定;直播那头照旧带着折好的皮肤 id", async () => {
 		const sub = makeSub("600", true);
 		sub.overrides.imageGroup = { enabled: false };
 		sub.overrides.templates = { post: "🔔 {name}", postVideo: "🎬 {name}" };
@@ -3312,7 +3272,9 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		const roster = c.source.ctx?.subscriptions() ?? [];
-		expect(roster.map((v) => Object.keys(v).sort())).toEqual([["externalId", "features"]]);
+		expect(roster.map((v) => Object.keys(v).sort())).toEqual([
+			["externalId", "features", "monitorsLive"],
+		]);
 		expect(roster[0]?.externalId).toBe("600");
 		expect(roster[0]?.features.has("post")).toBe(true);
 		// 直播那头照旧带着折好的皮肤 id。

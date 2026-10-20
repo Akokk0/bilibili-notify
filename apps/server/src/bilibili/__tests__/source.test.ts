@@ -8,6 +8,7 @@
 import {
 	BILIBILI_GUARD_PROGRAM,
 	fail,
+	type Identity,
 	type ImageRef,
 	type IntegrationContext,
 	type LinkResolver,
@@ -38,7 +39,7 @@ import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import { createProblemLayers } from "../problem-layers.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
-import { createBiliSource } from "../source.js";
+import { BILI_SOURCE_DESCRIPTOR, createBiliSource } from "../source.js";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{
@@ -133,7 +134,9 @@ function makeConfig(initial: Partial<BiliSettings> = {}) {
 	};
 }
 
-function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {}) {
+function makeDeps(
+	over: { cron?: string; fetchAllDynamic?: () => unknown; now?: () => number } = {},
+) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	return {
@@ -154,6 +157,7 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
 			auth: FAKE_AUTH,
+			...(over.now ? { now: over.now } : {}),
 		},
 	};
 }
@@ -171,14 +175,19 @@ const FAKE_AUTH: SourceAuth = {
  * 同一个做法(真把手 + 假宿主),把手随 `dispose()` 一起收。
  */
 function makeCtx(
-	roster: Array<{ externalId: string; post: boolean }> = [],
+	roster: Array<{ externalId: string; post?: boolean; monitorsLive?: boolean }> = [],
 	config: ReturnType<typeof makeConfig> = makeConfig(),
 ) {
 	const watchers: Array<() => void> = [];
 	const watchDisposed = vi.fn();
 	const reportPost = vi.fn<(id: string, report: PostReport) => void>();
 	/** 上下文提供的抓图口:每个地址回同一个引用,测试数调用。 */
-	const fetchImage = vi.fn(async (_url: string) => ok({ ref: CONTEXT_IMAGE_REF }));
+	const fetchImage = vi.fn(
+		async (
+			_url: string,
+			_options?: { headers?: Record<string, string>; signal?: AbortSignal },
+		): Promise<Result<{ ref: ImageRef }>> => ok({ ref: CONTEXT_IMAGE_REF }),
+	);
 	const logger = makeLogger();
 	const readers: Array<{ dispose(): void }> = [];
 	const linkResolverDisposed = vi.fn();
@@ -201,6 +210,7 @@ function makeCtx(
 			roster.map((r) => ({
 				externalId: r.externalId,
 				features: new Set(r.post ? (["post"] as const) : []),
+				monitorsLive: r.monitorsLive ?? false,
 			})),
 		onSubscriptionsChanged: (fn: () => void) => {
 			watchers.push(fn);
@@ -267,6 +277,104 @@ describe("createBiliSource", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toEqual([
 			BILIBILI_GUARD_PROGRAM,
 		]);
+	});
+
+	it("每个来源实例一份描述符,抓图补上的引用不改模块常量", () => {
+		const first = createBiliSource(makeDeps().deps);
+		const second = createBiliSource(makeDeps().deps);
+		expect(first.descriptor).not.toBe(second.descriptor);
+		expect(first.descriptor.membershipPrograms?.[0]).not.toBe(
+			second.descriptor.membershipPrograms?.[0],
+		);
+		expect(BILI_SOURCE_DESCRIPTOR.membershipPrograms?.[0]?.tiers).not.toBe(
+			first.descriptor.membershipPrograms?.[0]?.tiers,
+		);
+	});
+
+	it("有人要连直播间:start 抓三档、写进实例描述符,但不等待抓图", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, fetchImage } = makeCtx([{ externalId: "1", post: true, monitorsLive: true }]);
+		const pending = deferred<Result<{ ref: ImageRef }>>();
+		fetchImage.mockImplementation(() => pending.promise);
+
+		await source.start(ctx);
+		expect(fetchImage).toHaveBeenCalledTimes(3);
+		expect(fetchImage.mock.calls.map(([url]) => url)).toEqual(
+			Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
+				? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => tier.icon?.url)
+				: [],
+		);
+		for (const [, options] of fetchImage.mock.calls) {
+			expect(options?.headers).toEqual({ Referer: "https://www.bilibili.com/" });
+			expect(Object.keys(options?.headers ?? {}).map((name) => name.toLowerCase())).not.toContain(
+				"cookie",
+			);
+		}
+
+		pending.resolve(ok({ ref: CONTEXT_IMAGE_REF }));
+		await source.liveInteractions?.fetchTierIcon(
+			{ sourceKey: "bilibili", externalId: "1" },
+			"guard",
+			"captain",
+			new AbortController().signal,
+		);
+		const tiers = source.descriptor.membershipPrograms?.[0]?.tiers;
+		expect(Array.isArray(tiers) ? tiers.map((tier) => tier.icon?.ref) : []).toEqual([
+			CONTEXT_IMAGE_REF,
+			CONTEXT_IMAGE_REF,
+			CONTEXT_IMAGE_REF,
+		]);
+		expect(BILI_SOURCE_DESCRIPTOR.membershipPrograms?.[0]?.tiers).not.toEqual(
+			source.descriptor.membershipPrograms?.[0]?.tiers,
+		);
+		await source.stop();
+	});
+
+	it("没人要连直播间:start 不抓徽章,等懒取口再抓", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, fetchImage } = makeCtx([{ externalId: "1", post: true }]);
+		await source.start(ctx);
+		expect(fetchImage).not.toHaveBeenCalled();
+
+		const identity: Identity = { sourceKey: "bilibili", externalId: "1" };
+		const result = await source.liveInteractions?.fetchTierIcon(
+			identity,
+			"guard",
+			"commander",
+			new AbortController().signal,
+		);
+		expect(result).toMatchObject({ ok: true, ref: CONTEXT_IMAGE_REF });
+		expect(fetchImage).toHaveBeenCalledTimes(3);
+		await source.stop();
+	});
+
+	it("懒取失败后 5 分钟内不重试,到点才补", async () => {
+		let clock = 1_000_000;
+		const { deps } = makeDeps({ now: () => clock });
+		const source = createBiliSource(deps);
+		const { ctx, fetchImage } = makeCtx([{ externalId: "1", post: true }]);
+		fetchImage.mockResolvedValue(fail("unavailable", "down"));
+		await source.start(ctx);
+		const identity: Identity = { sourceKey: "bilibili", externalId: "1" };
+		const fetchIcon = () =>
+			source.liveInteractions?.fetchTierIcon(
+				identity,
+				"guard",
+				"captain",
+				new AbortController().signal,
+			);
+
+		expect(await fetchIcon()).toMatchObject({ ok: false });
+		expect(fetchImage).toHaveBeenCalledTimes(3);
+		clock += 5 * 60_000 - 1;
+		expect(await fetchIcon()).toMatchObject({ ok: false });
+		expect(fetchImage).toHaveBeenCalledTimes(3);
+		clock += 1;
+		expect(await fetchIcon()).toMatchObject({ ok: false });
+		expect(fetchImage).toHaveBeenCalledTimes(6);
+		await source.stop();
 	});
 
 	it("start 后引擎在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、把手都摘了、登录检查停掉", async () => {

@@ -11,11 +11,11 @@ import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types
 import type { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
 import type { ViewerChatCollector } from "../../../live/recap/viewer-chat-collector";
 import type { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
+import type { SourceRegistry } from "../../../subscriptions/registry.js";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
 import type { ProblemLayers } from "../../problem-layers.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
-import type { GuardIcons } from "../guard-icons.js";
 import type { LiveClient } from "../protocol/client.js";
 import { type PushLike, type SubItemView, wantsLiveEndExtras } from "../push-like";
 import type { LiveTemplateRenderer } from "../template-renderer";
@@ -108,8 +108,8 @@ export interface RoomContextOptions {
 	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
 	 */
 	pickCardBackground: PickLiveCover;
-	/** 大航海徽章图标(图库里的引用):上舰卡按档取,没抓到的出卡前补抓一次。 */
-	guardIcons: GuardIcons;
+	/** 来源登记表:上舰档与徽章从来源描述符现读,缺引用时再走来源的懒取口。 */
+	sources: Pick<SourceRegistry, "get" | "list">;
 	/** 抓图服务:直播卡的封面在出卡前抓进图库。 */
 	imageFetcher: ImagesDeps["images"];
 	/** 图库引用 → 字节:上舰消息把图(徽章 / 自定义图)作为图段发出去时读。 */
@@ -167,8 +167,8 @@ export class RoomContextBase {
 	 * → 调用方回退单图。
 	 */
 	readonly pickBackground: PickLiveCover;
-	/** 大航海徽章图标。 */
-	readonly guardIcons: GuardIcons;
+	/** 来源登记表:会员档、档徽章与懒取口都从这里现读。 */
+	readonly sources: Pick<SourceRegistry, "get" | "list">;
 	/** 抓图服务。 */
 	readonly imageFetcher: ImagesDeps["images"];
 	/** 上舰卡的观众头像:全引擎共用一个,撞到限流后的冷却是账号级的状态。 */
@@ -205,7 +205,7 @@ export class RoomContextBase {
 		this.emitLiveState = opts.emitLiveState;
 		this.emitViewers = opts.emitViewers;
 		this.pickBackground = opts.pickCardBackground;
-		this.guardIcons = opts.guardIcons;
+		this.sources = opts.sources;
 		this.imageFetcher = opts.imageFetcher;
 		this.viewerAvatars = createViewerAvatarFetcher({
 			api: opts.api,

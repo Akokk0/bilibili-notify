@@ -1,10 +1,17 @@
-import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
+import {
+	BILIBILI_GUARD_PROGRAM,
+	type Disposable,
+	formatCount,
+	guardTierOf,
+	type MembershipTier,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { segmentsToContent } from "../../../live/content-builder";
 import { LivePushType } from "../../../live/live-types";
 import { pushMembership } from "../../../live/membership";
 import { pushViewerChat, pushViewerEnter } from "../../../live/special-viewers";
 import { pushSuperchat } from "../../../live/superchat";
+import type { SourceRegistry } from "../../../subscriptions/registry.js";
 import { fetchAvatar } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { membershipEventFromLiveEvent } from "../membership-event";
@@ -52,6 +59,22 @@ const PREFLIGHT_BLOCKED_BACKOFF_MS = [60_000, 300_000, 900_000, 1_800_000] as co
 /** B 站 live WS 静默自愈:每分钟检查一次,3 分钟无 heartbeat/消息即主动重连。 */
 const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
 export const LIVE_WS_STALE_MS = 180_000;
+
+function guardTierAt(
+	sources: Pick<SourceRegistry, "list">,
+	guardLevel: number,
+): { sourceKey: string; program: string; tier: MembershipTier } | undefined {
+	const tierKey = guardTierOf(guardLevel)?.key;
+	if (tierKey === undefined) return undefined;
+	for (const view of sources.list()) {
+		for (const program of view.descriptor.membershipPrograms ?? []) {
+			if (program.id !== BILIBILI_GUARD_PROGRAM.id || !Array.isArray(program.tiers)) continue;
+			const tier = program.tiers.find((candidate) => candidate.key === tierKey);
+			if (tier) return { sourceKey: view.sourceKey, program: program.id, tier };
+		}
+	}
+	return undefined;
+}
 
 type ReconnectReason = "error" | "close" | "watchdog" | "preflight";
 type LiveWsActivityReason =
@@ -605,7 +628,7 @@ export class RoomSession extends RoomSessionBase {
 
 	/**
 	 * 上舰:先翻成中立的 {@link MembershipEvent},认不出档位(`guard_level` 不是 1 / 2 / 3)就**丢弃并记一条警告**
-	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自档位表(`guardTierOf`)。
+	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自来源登记表里的描述符。
 	 *
 	 * 门槛(㉓d)、自定义文案、出卡、兜底这几支都在核心的 `live/membership.ts`(`pushMembership`);这里只管翻事件、查档位表、
 	 * 挑生效的文案包,并把徽章 / 观众头像的取法与发送(不过串行闸)绑进去。头像帧里没有,出卡前为它查一次接口再抓进图库
@@ -614,13 +637,14 @@ export class RoomSession extends RoomSessionBase {
 	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
 		const event = membershipEventFromLiveEvent(ev, this.sub.subscriptionId);
-		const tier = guardTierOf(ev.guardLevel);
-		if (event === undefined || tier === undefined) {
+		const guard = guardTierAt(this.ctx.sources, ev.guardLevel);
+		if (event === undefined || guard === undefined) {
 			this.ctx.logger.warn(
 				`[guard] 直播间 [${this.sub.roomId}] 认不出的档位 guard_level=${ev.guardLevel},已丢弃这条事件`,
 			);
 			return;
 		}
+		const { tier } = guard;
 		const masterName = this.masterInfo?.username ?? "";
 		const renderer = this.ctx.imageRenderer;
 		const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
@@ -643,11 +667,19 @@ export class RoomSession extends RoomSessionBase {
 			},
 			{
 				renderer: renderer?.generateMembershipCard ? renderer : null,
-				// 徽章图标在图库里,开机那一轮没抓到的这时补一次(两次尝试之间有最小间隔,不会每条上舰都打一次网络);
+				// 描述符里有引用就直接用;运行中还没补上的,经来源的懒取口抓一次(两次尝试之间有最小间隔)。
 				// 还是没有就不带 `icon`,卡上的徽章块自己收起。
 				fetchTierIcon: async () => {
-					await this.ctx.guardIcons.ensure();
-					return this.ctx.guardIcons.iconOf(tier.key);
+					if (tier.icon?.ref !== undefined) return { ref: tier.icon.ref };
+					const reader = this.ctx.sources.get(guard.sourceKey)?.liveInteractions;
+					if (!reader) return undefined;
+					const result = await reader.fetchTierIcon(
+						{ sourceKey: guard.sourceKey, externalId: this.sub.uid },
+						guard.program,
+						tier.key,
+						this.ctx.serviceCtx.signal,
+					);
+					return result.ok ? { ref: result.ref } : undefined;
 				},
 				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出)。
 				// 撞到限流后所有直播间共用一段冷却(`ctx.viewerAvatars`),冷却里不查。

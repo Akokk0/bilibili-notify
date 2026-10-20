@@ -53,9 +53,9 @@ export const BOUNDARIES = [
 		target: "apps/server/src/bilibili",
 		skipUnder: ["apps/server/src/bilibili"],
 		allowed: ["apps/server/src/compose.ts"],
-		// 3a-40 的实数(10 个文件 19 条;设置登记已进 `compose.ts`,`bootstrap.ts` 2 → 1)。中立小件(直播装配 / 文案 / 监听判定 /
+		// 3a-40 的实数(10 个文件 19 条;设置登记已进 `compose.ts`)。中立小件(直播装配 / 文案 / 监听判定 /
 		// 内容构造口 / 链接卡配色 / 抓图类型)已搬进核心的 `live/`、`posts/`;剩下的都在等新接口:入口登录装配(index)、
-		// 舰长图标的类型(bootstrap 的 `import type`:建造已进 `compose.ts`,类型要等 3b 中立的会员档位图标口)、直播引擎宿主(engines 的 `Api` / `GuardIcons` / `LiveEngine` 三条,3b)、关注同步与粉丝轮询
+		// 直播引擎宿主(engines 的 `Api` / `LiveEngine` 两条,3b)、关注同步与粉丝轮询
 		// (3b,随来源 `fetchProfile`)、卡片真实预览与
 		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨,3b 末清零。
 		ratchet: {
@@ -63,8 +63,7 @@ export const BOUNDARIES = [
 			"apps/server/src/index.ts": 1,
 			"apps/server/src/routes/cards.ts": 4,
 			"apps/server/src/routes/subscriptions.ts": 2,
-			"apps/server/src/runtime/bootstrap.ts": 1,
-			"apps/server/src/runtime/engines.ts": 3,
+			"apps/server/src/runtime/engines.ts": 2,
 			"apps/server/src/runtime/fans-poller.ts": 2,
 			"apps/server/src/runtime/follow-sync.ts": 2,
 		},

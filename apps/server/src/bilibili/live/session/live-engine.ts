@@ -7,9 +7,9 @@ import { LiveSummaryRequester } from "../../../live/recap/live-summary-requester
 import { mergeStopWords } from "../../../live/recap/stop-words";
 import { ViewerChatCollector } from "../../../live/recap/viewer-chat-collector";
 import { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
+import type { SourceRegistry } from "../../../subscriptions/registry.js";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
-import type { GuardIcons } from "../guard-icons.js";
 import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import { LiveTemplateRenderer } from "../template-renderer";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
@@ -85,8 +85,8 @@ export interface LiveEngineOptions {
 	 * through to every RoomContext.
 	 */
 	pickCardBackground: PickLiveCover;
-	/** 大航海徽章图标(图库引用),透传到每个 RoomContext。 */
-	guardIcons: GuardIcons;
+	/** 来源登记表:会员档与档徽章都现读来源描述符,运行中补上的引用立即可见。 */
+	sources: Pick<SourceRegistry, "get" | "list">;
 	/** 抓图服务:直播卡的封面在出卡前抓进图库(3a-34),透传到每个 RoomContext。 */
 	imageFetcher: ImagesDeps["images"];
 	/** 图库引用 → 字节(上舰消息发图段用),透传到每个 RoomContext。 */
@@ -167,7 +167,7 @@ export class LiveEngine {
 			emitLiveState: opts.emitLiveState,
 			emitViewers: opts.emitViewers,
 			pickCardBackground: opts.pickCardBackground,
-			guardIcons: opts.guardIcons,
+			sources: opts.sources,
 			imageFetcher: opts.imageFetcher,
 			readImage: opts.readImage,
 			avatarOf: opts.avatarOf,

@@ -3,7 +3,6 @@ import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
-import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { syncSettingsProblem } from "../config/settings-problems.js";
@@ -169,15 +168,6 @@ export interface AppRuntime {
 	 * 还要用它们,不能像作品那样只靠宽限期。
 	 */
 	liveImages: ImageWriter;
-	/**
-	 * 大航海三档的徽章图(3a-33):B 站这边运行时从静态站抓进图库,会员卡按档取图库引用。仓库与安装包里不放这些图。
-	 * 这一家引用的是手里抓到的那几张(`guardIcons.refs()`),在组装根(`compose.ts`)造好、登记成图库的「来源声明的图」,
-	 * 再经 {@link attachGuardIcons} 交进来。
-	 *
-	 * **晚填**:`attachGuardIcons` 之前读它是装配次序的 bug,会抛。
-	 */
-	readonly guardIcons: GuardIcons;
-	attachGuardIcons(icons: GuardIcons): void;
 	/**
 	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
 	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
@@ -367,6 +357,23 @@ export function createAppRuntime(
 	// 图库先建、先登记关门:历史仓与重推原件往里存图,同段后登记的先跑,所以图库的 `close` 得排在历史仓
 	// `close` 的登记之前 —— 历史仓先把在途的写(含它的图)落完,图库才关门;反过来的话关停时在途那一行的图存不进去。
 	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
+	// 来源声明的图:名单现读来源登记表里的描述符。B 站启动后补进各档 `icon.ref` 的徽章图
+	// 因此一写上就有人引用,不必再由组装根把一份抓图器交给运行时。
+	imageStore.register({
+		name: IMAGE_REFERRERS.sourceDeclared,
+		listRefs: async () =>
+			sourceRegistry
+				.list()
+				.flatMap((view) =>
+					(view.descriptor.membershipPrograms ?? []).flatMap((program) =>
+						Array.isArray(program.tiers)
+							? program.tiers.flatMap((tier) =>
+									tier.icon?.ref === undefined ? [] : [tier.icon.ref],
+								)
+							: [],
+					),
+				),
+	});
 	serviceCtx.onDispose(() => imageStore.close(), "flush");
 	// 推送历史是图库的一家引用方:保留期内的日文件里的配图与头像快照。名单直接读盘(不经历史仓实例),
 	// 所以先登记、再把存图的口交给历史仓,没有先有鸡还是先有蛋的问题。
@@ -513,8 +520,6 @@ export function createAppRuntime(
 		name: IMAGE_REFERRERS.inTransit,
 		listRefs: async () => [],
 	});
-	// 大航海徽章图(来源声明的图)由组装根造好、登记成图库的一家引用方,再经 `attachGuardIcons` 交进来。
-	let guardIcons: GuardIcons | null = null;
 	const logStore = createLogStore({
 		hostRoot,
 		serviceCtx,
@@ -600,17 +605,6 @@ export function createAppRuntime(
 		postImages,
 		transitImages,
 		liveImages,
-		get guardIcons() {
-			if (!guardIcons) {
-				throw new Error(
-					"guardIcons 还没交进来:`attachGuardIcons` 要先于任何读它的地方(装配次序有误)",
-				);
-			}
-			return guardIcons;
-		},
-		attachGuardIcons(next: GuardIcons) {
-			guardIcons = next;
-		},
 		historyImages,
 		conversationStore,
 		logStore,
