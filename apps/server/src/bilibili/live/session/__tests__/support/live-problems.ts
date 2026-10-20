@@ -1,4 +1,6 @@
+import { isDeepStrictEqual } from "node:util";
 import { vi } from "vite-plus/test";
+import { fixedLocale } from "../../../../../__tests__/support/fixed-locale.js";
 import { createProblemLayers } from "../../../../problem-layers.js";
 import { PROBLEM_TEXTS } from "../../../../problem-texts.js";
 import {
@@ -18,30 +20,58 @@ export function makeLiveProblems() {
 	};
 }
 
+/**
+ * 断言用:上报器收到的 `message` / `recoveryMessage` 是取字函数,这里把它们跑一遍再与期望的字比
+ * (其余格原样比)。放进 `toHaveBeenCalledWith(…)` 里当期望值用。
+ */
+function failureWithTexts(expected: {
+	externalId: string;
+	code: string;
+	message: string;
+	notify: boolean;
+	lasting: boolean;
+	recoveryMessage: string;
+}) {
+	return {
+		asymmetricMatch(actual: unknown): boolean {
+			const failure = actual as { message?: unknown; recoveryMessage?: unknown } | null;
+			if (typeof failure?.message !== "function") return false;
+			if (typeof failure.recoveryMessage !== "function") return false;
+			return isDeepStrictEqual(
+				{ ...failure, message: failure.message(), recoveryMessage: failure.recoveryMessage() },
+				expected,
+			);
+		},
+		toString: () => "FailureWithTexts",
+		getExpectedType: () => "object",
+		toAsymmetricMatcher: () => `FailureWithTexts ${JSON.stringify(expected)}`,
+	};
+}
+
 /** 断言用:一个房间「停止监听」时应当交给上报器的那一条(文案、code、是否私聊都取自文案文件)。 */
 export function expectedStoppedFailure(uid: string, roomId: string, reason: string) {
 	const text = PROBLEM_TEXTS.liveMonitorStopped;
-	return {
+	return failureWithTexts({
 		externalId: uid,
 		code: MONITOR_STOPPED_CODE,
 		message: text.text(roomId, reason),
 		notify: text.notify,
 		lasting: true,
 		recoveryMessage: text.recovery(roomId),
-	};
+	});
 }
 
 /** 断言用:一个房间「受限」时应当交给上报器的那一条。 */
 export function expectedRestrictedFailure(uid: string, roomId: string, reason: string) {
 	const text = PROBLEM_TEXTS.liveRoomRestricted;
-	return {
+	return failureWithTexts({
 		externalId: uid,
 		code: ROOM_RESTRICTED_CODE,
 		message: text.text(roomId, reason),
 		notify: text.notify,
 		lasting: true,
 		recoveryMessage: text.recovery(roomId),
-	};
+	});
 }
 
 /**
@@ -66,6 +96,7 @@ export function makeRecordingLayers() {
 	const table = new Map<string, string>();
 	const keyOf = (p: { externalId?: string; code: string }) => `${p.externalId ?? ""}|${p.code}`;
 	const layers = createProblemLayers({
+		locale: fixedLocale(),
 		auth: {
 			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),

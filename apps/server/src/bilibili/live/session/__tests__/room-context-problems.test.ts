@@ -9,6 +9,8 @@
 
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { switchableLocale } from "../../../../__tests__/support/fixed-locale";
+import { createProblemLayers, type ProblemLayers } from "../../../problem-layers";
 import { PROBLEM_TEXTS } from "../../../problem-texts";
 import {
 	MONITOR_STOPPED_CODE,
@@ -18,7 +20,13 @@ import {
 import { RoomContext } from "../room-helpers";
 import { expectedStoppedFailure, makeLiveProblems } from "./support/live-problems";
 
-function makeCtx(api: Record<string, unknown> = {}) {
+function makeCtx(
+	api: Record<string, unknown> = {},
+	realProblems?: Pick<
+		ProblemLayers,
+		"reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
+	>,
+) {
 	const serviceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		setInterval: () => ({ dispose() {} }),
@@ -27,7 +35,8 @@ function makeCtx(api: Record<string, unknown> = {}) {
 		signal: new AbortController().signal,
 		track: () => {},
 	};
-	const problems = makeLiveProblems();
+	const fakeProblems = makeLiveProblems();
+	const problems = realProblems ?? fakeProblems;
 	const emitEngineError = vi.fn();
 	const ctx = new RoomContext({
 		serviceCtx,
@@ -44,7 +53,7 @@ function makeCtx(api: Record<string, unknown> = {}) {
 		config: {},
 		emitEngineError,
 	} as unknown as RoomContextOptions);
-	return { ctx, problems, emitEngineError };
+	return { ctx, problems: fakeProblems, emitEngineError };
 }
 
 describe("RoomContext.getLiveRoomInfo", () => {
@@ -112,6 +121,45 @@ describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志
 			expect(problems.reportFailure).not.toHaveBeenCalled();
 		},
 	);
+});
+
+describe("RoomContext.reportMonitorStopped · 原因是出字那一刻现取的", () => {
+	it("原因交的是取字函数:切语言后重报的那一句带新原因,不是报的那一刻的旧字", () => {
+		const locale = switchableLocale("zh-CN");
+		let reason = "原因甲";
+		const layers = createProblemLayers({
+			locale,
+			auth: {
+				state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+				onChange: () => ({ dispose() {} }),
+			},
+			logger: { info() {}, warn() {}, error() {}, debug() {} },
+		});
+		const reported: string[] = [];
+		layers.attach({
+			reportProblem: (p) => void reported.push(p.message),
+			resolveProblem: () => {},
+		});
+		const { ctx } = makeCtx({}, layers);
+
+		ctx.reportMonitorStopped("u1", "r1", () => reason);
+		expect(reported).toEqual(["直播间 r1 停止监听：原因甲；不会自动重连"]);
+
+		reason = "原因乙";
+		locale.set("en");
+		expect(reported).toEqual([
+			"直播间 r1 停止监听：原因甲；不会自动重连",
+			"直播间 r1 停止监听：原因乙；不会自动重连",
+		]);
+	});
+
+	it("交给上报器的是取字函数(不是出好的字)", () => {
+		const { ctx, problems } = makeCtx();
+		ctx.reportMonitorStopped("u1", "r1", () => "原因甲");
+		const failure = problems.reportFailure.mock.calls[0]?.[0];
+		expect(failure?.message()).toBe("直播间 r1 停止监听：原因甲；不会自动重连");
+		expect(failure?.recoveryMessage?.()).toBe("直播间 r1 的监听已恢复");
+	});
 });
 
 describe("RoomContext 清「停止监听 / 受限」的口", () => {

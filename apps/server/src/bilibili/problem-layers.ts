@@ -1,4 +1,5 @@
 import type { Logger, SourceAuth, SourceContext } from "@bilibili-notify/internal";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
@@ -31,6 +32,11 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  * 这份现状整份报上去,所以接上之前记着的不会丢;`detach`(来源停下)之后再报继续记在自己手里,等下一次接上。
  * 这样 `since` 是接上那一刻,接上之前开了又清掉的不会出现。
  *
+ * **换语言**(ADR-0037 决策 8):第三层的句子与恢复句存的是**取字函数**,不是出好的字,出字那一刻才跑;语言真变了
+ * (`locale.onChange`),把此刻该在表里的那一份(接上时报的那一份:只报最上面一层)再报一遍,句子就是新语言的。
+ * 和接上时的补报不同,换语言**不复位** `muted`,`notify` 照各自记着的 —— 同一件事只是换了说法,不是新的一条;
+ * 没接上、已 `dispose` 时什么都不报(之后接上时的补报本来就取新字)。口吻不管:这里的句子只有平实版。
+ *
  * 每个方法都不许往外抛:调用点都在引擎的关键控制流上,核心那头抛了只记一行 warn。
  */
 export interface ProblemLayers {
@@ -46,12 +52,13 @@ export interface ProblemLayers {
 	resolveRisk(path: string, options?: { notify?: boolean }): void;
 	/**
 	 * 第三层:某项请求失败(每次失败都叫,幂等)。`notify`(必填，调用方必须表态)= 要不要私聊主人;
-	 * 原样带给核心，补报时带的是存下的这一格。
+	 * 原样带给核心，补报时带的是存下的这一格。`message` / `recoveryMessage` 只收取字函数(出字那一刻现取,
+	 * 换语言重报时再跑一遍),不收出好的字。
 	 */
 	reportFailure(failure: {
 		externalId?: string;
 		code: string;
-		message: string;
+		message: () => string;
 		notify: boolean;
 		/**
 		 * 必填:这件事是「报一次就不再报、直到有人去修」(`true`)还是「会自己再报」(`false`)。
@@ -59,7 +66,7 @@ export interface ProblemLayers {
 		 */
 		lasting: boolean;
 		/** 清掉时核心补的「恢复时怎么说」;不给用核心的通用说法。存下,补报时带上。 */
-		recoveryMessage?: string;
+		recoveryMessage?: () => string;
 	}): void;
 	/** 第三层清掉;`notify: false` = 不是修好了,只是不再适用(停监听、停下),不补「已恢复」。 */
 	resolveFailure(
@@ -76,6 +83,8 @@ export interface ProblemLayers {
 export interface CreateProblemLayersOptions {
 	auth: Pick<SourceAuth, "state" | "onChange">;
 	logger: Logger;
+	/** 语言变了就把此刻该在表里的那一份再报一遍(只在语言真变时叫,口吻变了不叫)。 */
+	locale: Pick<LocaleReader, "onChange">;
 }
 
 /** 核心那头收问题的两个口(来源上下文上的那两个成员)。 */
@@ -84,10 +93,10 @@ type CoreProblems = Pick<SourceContext, "reportProblem" | "resolveProblem">;
 interface Failure {
 	externalId?: string;
 	code: string;
-	message: string;
+	message: () => string;
 	notify: boolean;
 	lasting: boolean;
-	recoveryMessage?: string;
+	recoveryMessage?: () => string;
 	/** 曾经报给过核心(主人当时已经听过一遍):被压下去再冒出来时不再带私聊。 */
 	reported: boolean;
 	/** 已经静默冒出来过:在被清掉之前,再报也不带私聊。 */
@@ -138,11 +147,11 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		to.reportProblem({
 			...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 			code: failure.code,
-			message: failure.message,
+			message: failure.message(),
 			notify: failure.muted ? false : failure.notify,
 			...(failure.recoveryMessage === undefined
 				? {}
-				: { recoveryMessage: failure.recoveryMessage }),
+				: { recoveryMessage: failure.recoveryMessage() }),
 		});
 		failure.reported = true;
 	}
@@ -224,9 +233,27 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		}
 	}
 
+	/**
+	 * 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。接上时与换语言时共用;
+	 * 句子都是此刻现取的。
+	 */
+	function reportVisible(): void {
+		toCore("补报", (to) => {
+			// 登录没好:低层都压着,登录问题本身归宿主报,这里什么都不补
+			if (loggedOut) return;
+			if (risk.size > 0) reportRiskEntry(to);
+			else for (const failure of failures.values()) reportFailureEntry(to, failure);
+		});
+	}
+
 	// 先造、后接:造出来就读一次现状、听后续变化,核心那头晚点才接上。
 	readAuth();
 	const authWatch = options.auth.onChange(readAuth);
+	// 换语言:同一件事换个说法再报;`muted` 不复位,`notify` 照各自记着的
+	const localeWatch = options.locale.onChange(() => {
+		if (disposed) return;
+		reportVisible();
+	});
 
 	return {
 		reportRisk(path, riskOptions) {
@@ -298,13 +325,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			core = next;
 			// 接上的是一张清过的表(来源停下时核心把它名下的整份清了):手里的都是新的一条,照各自的 `notify`
 			for (const failure of failures.values()) failure.muted = false;
-			// 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。
-			toCore("补报", (to) => {
-				// 登录没好:低层都压着,登录问题本身归宿主报,这里什么都不补
-				if (loggedOut) return;
-				if (risk.size > 0) reportRiskEntry(to);
-				else for (const failure of failures.values()) reportFailureEntry(to, failure);
-			});
+			reportVisible();
 		},
 		detach() {
 			core = null;
@@ -313,6 +334,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			disposed = true;
 			core = null;
 			authWatch.dispose();
+			localeWatch.dispose();
 		},
 	};
 }

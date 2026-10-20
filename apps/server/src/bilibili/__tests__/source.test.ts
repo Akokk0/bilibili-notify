@@ -20,6 +20,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZodType } from "zod";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { deferred } from "../../__tests__/support/track-context.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
@@ -150,6 +151,7 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
 			bus: makeWorld().bus,
 			loginCheck: { setHealthCheckMs },
+			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
 			auth: FAKE_AUTH,
 		},
@@ -350,6 +352,7 @@ describe("createBiliSource", () => {
 	it("真上报器:登录是 expired 时,start 之后核心那头不收 auth_lost(登录问题归宿主报)", async () => {
 		const { deps } = makeDeps();
 		const problems = createProblemLayers({
+			locale: fixedLocale(),
 			auth: {
 				state: () => ({ status: "expired", message: "失效" }),
 				onChange: () => ({ dispose() {} }),

@@ -18,6 +18,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { t } from "../../i18n/index.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
@@ -119,7 +120,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 		},
 		logger,
 	});
-	const layers = createProblemLayers({ auth: authed.auth, logger });
+	const layers = createProblemLayers({ locale: fixedLocale(), auth: authed.auth, logger });
 	const engineErrors: unknown[] = [];
 	world.bus.on("engine-error", (e) => engineErrors.push(e));
 	const source = createBiliSource({
@@ -128,6 +129,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 		} as unknown as Api,
 		bus: world.bus,
 		loginCheck: { setHealthCheckMs: () => {} },
+		locale: fixedLocale(),
 		setTimeout: () => ({ dispose() {} }),
 		auth: authed.auth,
 		problems: layers,

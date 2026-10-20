@@ -41,10 +41,12 @@ import {
 } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import { createImageStore, IMAGE_GRACE_MS, type ImageStore } from "../images/image-store.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { putImage } from "./support/chat-images.js";
+import { fixedLocale, switchableLocale } from "./support/fixed-locale.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
 import { inertTransitImages } from "./support/integration-io.js";
@@ -162,6 +164,8 @@ function compose(
 		subs?: Subscription[];
 		api?: Api;
 		sourceAuth?: SourceAuth;
+		/** 语言读口:不给就是一直不变的;要切语言的用例给 `switchableLocale()`。 */
+		locale?: LocaleReader;
 		/** 图库:不给就是个只记登记的假的;要看「来源声明的图」真进了图库的用例给真的。 */
 		imageStore?: Pick<ImageStore, "register">;
 		/** 抓徽章图的请求客户端:不给就是个连不上的假的(不联网);显式传 `undefined` = 真的不给(走自建那一支)。 */
@@ -199,6 +203,7 @@ function compose(
 		auth: overridableApi(fakeAuth()),
 		integration,
 		sourceAuth: opts.sourceAuth ?? SOURCE_AUTH,
+		locale: opts.locale ?? fixedLocale(),
 		bus: createNodeMessageBus(),
 		setHealthCheckMs,
 		subscriptions: { list: () => subs },
@@ -381,7 +386,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		builtins.bilibili.problems.reportFailure({
 			externalId: "100",
 			code: "live_monitor_stopped",
-			message: "停了",
+			message: () => "停了",
 			notify: true,
 			lasting: false,
 		});
@@ -397,6 +402,40 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			message: "停了",
 			notify: true,
 		});
+	});
+
+	// 验红:`compose.ts` 造分层上报器时不递 `locale`(或递成一个永不触发的读口),这条红。
+	it("入口递进来的语言读口接到了分层上报器上:语言变了,核心那头收到重报", async () => {
+		const loggedIn: SourceAuth = {
+			...SOURCE_AUTH,
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+		};
+		const locale = switchableLocale("zh-CN");
+		const { builtins } = compose({ sourceAuth: loggedIn, locale });
+		let word = "甲";
+		builtins.bilibili.problems.reportFailure({
+			externalId: "100",
+			code: "live_monitor_stopped",
+			message: () => word,
+			notify: true,
+			lasting: true,
+		});
+		const { ctx } = makeFakeSourceCtx([]);
+		const fake = makeFakeEngines(ctx);
+		await builtins.registerSources(fake.engines);
+		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
+
+		word = "乙";
+		locale.set("en");
+
+		expect(ctx.reportProblem).toHaveBeenCalledTimes(2);
+		expect(ctx.reportProblem).toHaveBeenLastCalledWith({
+			externalId: "100",
+			code: "live_monitor_stopped",
+			message: "乙",
+			notify: true,
+		});
+		await fake.registered[0]?.source.stop();
 	});
 
 	describe("场景那头与来源那头是同一个壳(造动态的场景一路走到来源的 reportPost)", () => {

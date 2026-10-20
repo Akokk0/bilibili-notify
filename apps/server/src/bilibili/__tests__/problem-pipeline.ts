@@ -12,6 +12,7 @@ import {
 	type SourceContext,
 } from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { watchLoginProblems } from "../../subscriptions/login-problems.js";
@@ -60,7 +61,7 @@ export function makeProblemPipeline(
 		problems: table,
 		logger,
 	});
-	const layers = createProblemLayers({ auth, logger });
+	const layers = createProblemLayers({ locale: fixedLocale(), auth, logger });
 	const ctx: Pick<SourceContext, "reportProblem" | "resolveProblem"> = {
 		reportProblem: (problem) =>
 			table.report({

@@ -565,6 +565,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			configStore: runtime.configStore,
 		});
 		runtime.serviceCtx.onDispose(() => textSettings.dispose(), "stop");
+		// 当前语言的读口(决策 1:出字那一刻读),入口只造这一份,内置集成与拓展装载器共用;
+		// `onChange` 只在语言真变了时转,见 `localeReaderOf`。
+		const localeReader = localeReaderOf({
+			current: () => i18n.state().locale,
+			subscribe: (fn) => i18n.subscribe(fn),
+		});
 		// 连接 settings 里哪些格是密钥:适配器 schema 上的标记 + 拓展声明的键。下发打码、备份脱敏、日志按值打码吃同一份。
 		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
 		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
@@ -758,6 +764,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const builtins = composeBuiltinIntegrations({
 			api: devApi,
 			auth: devAuth,
+			locale: localeReader,
 			integration: authSystem.integration,
 			// 来源挂的是壳的 `.api`(登记表与 `/api/sources/:sourceKey/auth` 读到的就是它,开发场景才盖得到);
 			// 统计与引擎装配读的是真对象。
@@ -1243,11 +1250,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
 			root: extensionsRoot,
-			// 当前语言(决策 1:出字那一刻读);`onChange` 只在语言真变了时转,见 `localeReaderOf`。
-			locale: localeReaderOf({
-				current: () => i18n.state().locale,
-				subscribe: (fn) => i18n.subscribe(fn),
-			}),
+			locale: localeReader,
 			host: runtime.serviceCtx,
 			// 每个拓展的日志:标签是它的 id、等级跟设置里 `logging.levels.<id>` 那一格(没写跟总等级)。
 			loggerOf: (id) => runtime.serviceCtx.forSubsystem(id, id).logger,

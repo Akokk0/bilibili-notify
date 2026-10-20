@@ -325,29 +325,32 @@ export class RoomContextBase {
 		}
 	}
 
-	/** 这位 UP 的房间不监听了:报一条订阅级的「停止监听」(报一次、直到有人去修,故 lasting)。 */
-	reportMonitorStopped(uid: string, roomId: string, reason: string): void {
+	/**
+	 * 这位 UP 的房间不监听了:报一条订阅级的「停止监听」(报一次、直到有人去修,故 lasting)。
+	 * `reason` 是取字函数(`PROBLEM_TEXTS.liveStopReasons.*` 本身):出字那一刻才取,换语言重报时再取。
+	 */
+	reportMonitorStopped(uid: string, roomId: string, reason: () => string): void {
 		const text = PROBLEM_TEXTS.liveMonitorStopped;
 		this.problems.reportFailure({
 			externalId: uid,
 			code: MONITOR_STOPPED_CODE,
-			message: text.text(roomId, reason),
+			message: () => text.text(roomId, reason()),
 			notify: text.notify,
 			lasting: true,
-			recoveryMessage: text.recovery(roomId),
+			recoveryMessage: () => text.recovery(roomId),
 		});
 	}
 
-	/** 这位 UP 的房间被 B 站拒了弹幕连接:报一条订阅级的「房间受限」。 */
+	/** 这位 UP 的房间被 B 站拒了弹幕连接:报一条订阅级的「房间受限」。`reason` 是 B 站给的原话,不随语言变。 */
 	reportRoomRestricted(uid: string, roomId: string, reason: string): void {
 		const text = PROBLEM_TEXTS.liveRoomRestricted;
 		this.problems.reportFailure({
 			externalId: uid,
 			code: ROOM_RESTRICTED_CODE,
-			message: text.text(roomId, reason),
+			message: () => text.text(roomId, reason),
 			notify: text.notify,
 			lasting: true,
-			recoveryMessage: text.recovery(roomId),
+			recoveryMessage: () => text.recovery(roomId),
 		});
 	}
 

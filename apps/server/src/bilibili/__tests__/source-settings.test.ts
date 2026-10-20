@@ -16,6 +16,7 @@ import {
 	ok,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { createConfigStore, integrationSettingsFile } from "../../config/store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
@@ -106,6 +107,9 @@ async function boot() {
 	await store.load();
 
 	const table = createProblemTable({ logger });
+	// 来源每往表里报一次都过这里:同一句再报表不发变化,换语言重报要靠它看
+	const reportSpy = vi.spyOn(table, "report");
+	const locale = switchableLocale("zh-CN");
 	const changes: ProblemChange[] = [];
 	table.subscribe((c) => changes.push(c));
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
@@ -117,6 +121,7 @@ async function boot() {
 		} as unknown as Api,
 		bus: world.bus,
 		loginCheck: { setHealthCheckMs },
+		locale,
 		setTimeout: () => ({ dispose() {} }),
 		auth: {
 			beginLogin: async () => ok(),
@@ -157,7 +162,22 @@ async function boot() {
 	toDispose.push(registration);
 	const problems = () => table.list().map((p) => p.code);
 	const message = (code: string) => table.list().find((p) => p.code === code)?.message ?? "";
-	return { store, source, table, changes, setHealthCheckMs, attach, problems, message, logger };
+	/** 往表里报过的次数(按 code)。 */
+	const reportCount = (code: string) =>
+		reportSpy.mock.calls.filter(([p]) => p.code === code).length;
+	return {
+		store,
+		source,
+		table,
+		changes,
+		setHealthCheckMs,
+		attach,
+		problems,
+		message,
+		logger,
+		locale,
+		reportCount,
+	};
 }
 
 const MIN = 60_000;
@@ -344,6 +364,77 @@ describe("B 站来源 · 改好保存当场起来(经配置仓的写口,不用�
 		});
 		expect(b.problems()).toEqual([]);
 		expect(b.setHealthCheckMs).toHaveBeenLastCalledWith(45 * MIN);
+	});
+});
+
+describe("B 站来源 · 换语言时把读不懂的那一句再报一遍", () => {
+	// 验红:start 里不订 `locale.onChange`,前两条红;重报改成重跑 apply*,第三条红(心跳计时被重挂)。
+	it("动态那一格读不懂:切语言,再往表里报一次、同 code", async () => {
+		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
+		const b = await boot();
+		expect(b.reportCount(DYNAMIC)).toBe(1);
+
+		b.locale.set("en");
+
+		expect(b.reportCount(DYNAMIC)).toBe(2);
+		expect(b.reportCount(LOGIN_CHECK)).toBe(0);
+	});
+
+	it("两格都读不懂:切语言,两条都再报", async () => {
+		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 1 }));
+		const b = await boot();
+
+		b.locale.set("en");
+
+		expect(b.reportCount(DYNAMIC)).toBe(2);
+		expect(b.reportCount(LOGIN_CHECK)).toBe(2);
+	});
+
+	it("切语言不重跑 apply*:不碰登录心跳的计时、不造引擎", async () => {
+		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
+		const b = await boot();
+		const heartbeatCalls = b.setHealthCheckMs.mock.calls.length;
+
+		b.locale.set("en");
+		b.locale.set("ja");
+
+		expect(b.setHealthCheckMs.mock.calls.length).toBe(heartbeatCalls);
+		expect(cronMock.instances).toHaveLength(0);
+	});
+
+	it("读得懂:切语言什么都不报", async () => {
+		await place(JSON.stringify({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 }));
+		const b = await boot();
+
+		b.locale.set("en");
+
+		expect(b.reportCount(DYNAMIC)).toBe(0);
+		expect(b.reportCount(LOGIN_CHECK)).toBe(0);
+	});
+
+	it("改好之后(读得懂了):切语言不再报那一条", async () => {
+		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
+		const b = await boot();
+		await b.store.patchSettings({
+			integrations: { bilibili: { dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 } },
+		});
+		expect(b.problems()).toEqual([]);
+		const before = b.reportCount(DYNAMIC);
+
+		b.locale.set("en");
+
+		expect(b.reportCount(DYNAMIC)).toBe(before);
+	});
+
+	it("来源停下之后切语言:不报", async () => {
+		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
+		const b = await boot();
+		await b.source.stop();
+		const before = b.reportCount(DYNAMIC);
+
+		b.locale.set("en");
+
+		expect(b.reportCount(DYNAMIC)).toBe(before);
 	});
 });
 

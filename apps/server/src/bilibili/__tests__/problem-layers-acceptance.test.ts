@@ -15,6 +15,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -91,13 +92,14 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		},
 		logger,
 	});
-	const layers = createProblemLayers({ auth: authed.auth, logger });
+	const layers = createProblemLayers({ locale: fixedLocale(), auth: authed.auth, logger });
 	const source = createBiliSource({
 		api: {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 		} as unknown as Api,
 		bus: world.bus,
 		loginCheck: { setHealthCheckMs: () => {} },
+		locale: fixedLocale(),
 		setTimeout: () => ({ dispose() {} }),
 		auth: authed.auth,
 		problems: layers,
@@ -127,7 +129,7 @@ describe("失效登录开机", () => {
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "房间停了",
+			message: () => "房间停了",
 			notify: true,
 			lasting: false,
 		});
@@ -143,13 +145,13 @@ describe("失效登录开机", () => {
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "房间停了",
+			message: () => "房间停了",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "拉动态失败",
+			message: () => "拉动态失败",
 			notify: true,
 			lasting: false,
 		});

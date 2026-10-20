@@ -735,7 +735,7 @@ export class DynamicPoller {
 				if (this.watching()) {
 					this.problems.reportFailure({
 						code: FETCH_FAILED_CODE,
-						message: PROBLEM_TEXTS.dynamicFetchFailed.text(errorCode),
+						message: () => PROBLEM_TEXTS.dynamicFetchFailed.text(errorCode),
 						notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
 						// 每个退避周期都会再撞一次、再报一次:高层开着时不必存
 						lasting: false,

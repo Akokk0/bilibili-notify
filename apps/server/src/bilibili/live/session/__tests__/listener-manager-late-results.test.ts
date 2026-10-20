@@ -12,6 +12,7 @@
 
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../../../__tests__/support/fixed-locale.js";
 import { failureFromBili } from "../../../error-codes.js";
 import { createProblemLayers } from "../../../problem-layers";
 import type { SubItemView } from "../../push-like";
@@ -67,6 +68,7 @@ function setup(
 	const label = (p: { externalId?: string; code: string }) =>
 		p.externalId ? `${p.externalId}:${p.code}` : p.code;
 	const layers = createProblemLayers({
+		locale: fixedLocale(),
 		auth: {
 			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),
@@ -137,7 +139,7 @@ function laterFailureGetsThrough(w: ReturnType<typeof setup>): void {
 	w.layers.reportFailure({
 		externalId: "u9",
 		code: "live_monitor_stopped",
-		message: "房间停了",
+		message: () => "房间停了",
 		notify: false,
 		lasting: true,
 	});
@@ -301,7 +303,7 @@ describe("整批停掉 / 重建时的次序:先静默清问题,再 cancel", () =
 		w.layers.reportFailure({
 			externalId: "u1",
 			code: "live_monitor_stopped",
-			message: "房间停了",
+			message: () => "房间停了",
 			notify: true,
 			lasting: true,
 		});

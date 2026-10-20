@@ -40,6 +40,7 @@ import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-laye
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
+import type { LocaleReader } from "./i18n/locale-reader.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "./images/image-referrers.js";
 import type { ImageStore, ImageWriter } from "./images/image-store.js";
@@ -73,6 +74,8 @@ export interface BuiltinIntegrationsDeps {
 	/** 套了壳的 `Api` 与登录系统(壳在入口建)。来源拿 `api.api`,场景拿壳本身:只进这一次,两头不可能接成两个对象。 */
 	api: BiliDevtoolsDeps["api"];
 	auth: BiliDevtoolsDeps["auth"];
+	/** 当前语言的读口(入口造一份):内置集成的问题句在语言变了时按新语言重报,递给分层上报器与 B 站来源。 */
+	locale: LocaleReader;
 	/** B 站集成的上下文(`AuthSystem.integration`)。 */
 	integration: IntegrationContext;
 	/** 登录口(`AuthSystem.auth`,真的那一份):挂到 B 站来源的 `auth` 上,登记表与 `/api/sources/:sourceKey/auth` 读它。 */
@@ -145,7 +148,11 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 	// B 站的代码(上报器、舰长图标)日志行都跟 B 站那一格(与登录系统拿到的是同一个日志器)。
 	const biliLogger = deps.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY).logger;
 	// B 站分层上报器:先造、来源登记之后才接上核心(`BiliSource.start` 里接)。给来源与给入口读的是同一个。
-	const problems = createProblemLayers({ auth: deps.sourceAuth, logger: biliLogger });
+	const problems = createProblemLayers({
+		auth: deps.sourceAuth,
+		logger: biliLogger,
+		locale: deps.locale,
+	});
 	deps.integration.onDispose(() => problems.dispose());
 	// 大航海徽章图(3a-33):运行时从 B 站静态站抓进图库,会员卡按档取图库引用。名单是手里抓到的那几张,
 	// 登记成图库的「来源声明的图」;抓不到时名单为空、卡上的徽章块自己收起。请求客户端是自带的一个(不借 B 站接口
@@ -235,6 +242,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					loginCheck: { setHealthCheckMs: (ms) => deps.setHealthCheckMs(ms) },
 					setTimeout: deps.setTimeout,
 					auth: deps.sourceAuth,
+					locale: deps.locale,
 				});
 				source = made;
 				await engines.registerSource({

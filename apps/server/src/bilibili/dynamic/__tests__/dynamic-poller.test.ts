@@ -27,6 +27,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../../__tests__/support/fixed-locale.js";
 import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
@@ -139,6 +140,7 @@ function makeRecordingLayers() {
 	const table = new Map<string, string>();
 	const keyOf = (p: { externalId?: string; code: string }) => `${p.externalId ?? ""}|${p.code}`;
 	const layers = createProblemLayers({
+		locale: fixedLocale(),
 		auth: {
 			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),
@@ -155,6 +157,7 @@ function makeRecordingLayers() {
 /** 真上报器 + 一个一碰就抛的核心:证明上报器把抛错接住,引擎的退避不受影响。 */
 function makeThrowingLayers() {
 	const layers = createProblemLayers({
+		locale: fixedLocale(),
 		auth: {
 			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),
@@ -471,10 +474,14 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(b.problems.reportFailure).toHaveBeenCalledWith({
 			code: "dynamic_fetch_failed",
-			message: PROBLEM_TEXTS.dynamicFetchFailed.text(4101132),
+			message: expect.any(Function),
 			notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
 			lasting: false,
 		});
+		// 交的是取字函数,出字那一刻才带上当次的码
+		expect(b.problems.reportFailure.mock.calls[0]?.[0].message()).toBe(
+			PROBLEM_TEXTS.dynamicFetchFailed.text(4101132),
+		);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
@@ -605,8 +612,8 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(
 			b.logs.filter((l) => l.level === "warn" && l.msg.includes("获取动态信息失败")),
 		).toHaveLength(2);
-		expect(b.problems.reportFailure).toHaveBeenLastCalledWith(
-			expect.objectContaining({ message: PROBLEM_TEXTS.dynamicFetchFailed.text(-403) }),
+		expect(b.problems.reportFailure.mock.lastCall?.[0].message()).toBe(
+			PROBLEM_TEXTS.dynamicFetchFailed.text(-403),
 		);
 	});
 
@@ -1954,7 +1961,7 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 		const before = w.notifyMaster.mock.calls.length;
 		w.layers.reportFailure({
 			code: "live_monitor_stopped",
-			message: "房间停了",
+			message: () => "房间停了",
 			notify: true,
 			lasting: true,
 		});

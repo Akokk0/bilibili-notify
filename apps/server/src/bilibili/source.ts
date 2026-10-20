@@ -12,6 +12,7 @@ import {
 	type SourceDescriptor,
 	type SourceHealth,
 } from "@bilibili-notify/internal";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
@@ -43,6 +44,8 @@ export interface BiliSourceDeps {
 	 * 登录系统自己不认识设置;`ms <= 0` 等于不挂。
 	 */
 	loginCheck: { setHealthCheckMs(ms: number): void };
+	/** 语言读口:`start` 里订,语言变了把读不懂的设置问题按新语言再报一遍。 */
+	locale: Pick<LocaleReader, "onChange">;
 	/** 可注入的时钟(`health()` 的相对时间用)。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -121,6 +124,13 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			// 动态那一样,一个函数管起、热更、停三件事。读得懂:引擎不在就造并起,在就热更;读不懂:引擎在就停掉,
 			// 报一条问题。「先起成功、后清问题」:起来的途中抛了别的错,那一条问题还在表里,下次设置变了再试。
 			const dynamicSettings = ctx.settings(BiliDynamicSettingsSchema);
+			// 读不懂时那一句的取字函数(读得懂就清掉):换语言只把这两条再报一遍,不重跑 apply*
+			// (重跑会热更引擎、重挂心跳计时)。
+			let dynamicWording: (() => string) | undefined;
+			let loginCheckWording: (() => string) | undefined;
+			const reportInvalid = (code: string, wording: () => string, notify: boolean): void => {
+				ctx.reportProblem({ code, message: wording(), notify });
+			};
 			const applyDynamic = (): void => {
 				const read = dynamicSettings.get();
 				if (read.ok) {
@@ -147,20 +157,18 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					}
 					engine = made;
 					dynamicStopped = false;
+					dynamicWording = undefined;
 					ctx.resolveProblem({ code: DYNAMIC_PROBLEM, notify: false });
 					return;
 				}
 				stopEngine();
 				dynamicStopped = true;
-				const message = PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
 				ctx.logger.warn(
 					`[settings] 动态(${DYNAMIC_CELL.key})读不懂,动态先停着: ${read.issues?.[0]?.message ?? read.message}`,
 				);
-				ctx.reportProblem({
-					code: DYNAMIC_PROBLEM,
-					message,
-					notify: PROBLEM_TEXTS.dynamicSettingsInvalid.notify,
-				});
+				dynamicWording = () =>
+					PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
+				reportInvalid(DYNAMIC_PROBLEM, dynamicWording, PROBLEM_TEXTS.dynamicSettingsInvalid.notify);
 			};
 
 			// 登录检查那一样:读得懂按分钟数挂 / 换,读不懂停掉。登录本身照常,失效仍由请求撞 -101 报上来。
@@ -169,6 +177,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				const read = loginCheckSettings.get();
 				if (read.ok) {
 					deps.loginCheck.setHealthCheckMs(read.settings.healthCheckMinutes * 60_000);
+					loginCheckWording = undefined;
 					ctx.resolveProblem({ code: LOGIN_CHECK_PROBLEM, notify: false });
 					return;
 				}
@@ -176,11 +185,35 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				ctx.logger.warn(
 					`[settings] 登录检查(${LOGIN_CHECK_CELL.key})读不懂,定时的登录检查先停着: ${read.issues?.[0]?.message ?? read.message}`,
 				);
-				ctx.reportProblem({
-					code: LOGIN_CHECK_PROBLEM,
-					message: PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL)),
-					notify: PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
-				});
+				loginCheckWording = () =>
+					PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL));
+				reportInvalid(
+					LOGIN_CHECK_PROBLEM,
+					loginCheckWording,
+					PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
+				);
+			};
+
+			// 换语言:读不懂的那一两句按新语言再报一遍(同 code,表里只换文案)。
+			const reportInvalidAgain = (): void => {
+				try {
+					if (dynamicWording) {
+						reportInvalid(
+							DYNAMIC_PROBLEM,
+							dynamicWording,
+							PROBLEM_TEXTS.dynamicSettingsInvalid.notify,
+						);
+					}
+					if (loginCheckWording) {
+						reportInvalid(
+							LOGIN_CHECK_PROBLEM,
+							loginCheckWording,
+							PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
+						);
+					}
+				} catch (err) {
+					ctx.logger.warn(`[settings] 换语言时重报设置问题失败(已忽略): ${errorMessageOf(err)}`);
+				}
 			};
 
 			// 取设置的把手都在上面,抛了(组装处漏登记)时还没占「已起」;从这里起任何一步抛了都由下面的 catch 复位。
@@ -203,6 +236,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				mine.push(dynamicSettings.onChange(guarded(ctx, "动态", applyDynamic)));
 				applyLoginCheck();
 				mine.push(loginCheckSettings.onChange(guarded(ctx, "登录检查", applyLoginCheck)));
+				mine.push(deps.locale.onChange(reportInvalidAgain));
 			} catch (err) {
 				// 登记表那头只会放键、收上下文,不会替来源停 cron、停心跳:自己收拾干净再抛。
 				for (const handle of mine) handle.dispose();

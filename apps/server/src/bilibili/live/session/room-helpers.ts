@@ -241,7 +241,7 @@ export class RoomContext extends RoomContextBase {
 			// Q3 carve-out:catch 内『已停止该房间监测』—— 非自愈、需最终介入,留 error。
 			this.logger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
 			if (shouldReport?.() !== false) {
-				this.reportMonitorStopped(uid, roomId, PROBLEM_TEXTS.liveStopReasons.roomInfo());
+				this.reportMonitorStopped(uid, roomId, PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			}
 			this.stopMonitoring("获取直播间信息失败", roomId);
 			return undefined;

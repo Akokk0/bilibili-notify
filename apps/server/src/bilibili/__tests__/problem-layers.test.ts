@@ -8,6 +8,8 @@
 
 import type { AuthState, Disposable, SourceAuth } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale, switchableLocale } from "../../__tests__/support/fixed-locale.js";
+import type { LocaleReader } from "../../i18n/locale-reader.js";
 import { makeLogger } from "../../subscriptions/__tests__/fixtures.js";
 import { createProblemLayers, type ProblemLayers } from "../problem-layers.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
@@ -60,9 +62,9 @@ function makeCore() {
 }
 type CoreProblemsArg = Parameters<ProblemLayers["attach"]>[0];
 
-function setup(initial: AuthState = IN, attached = true) {
+function setup(initial: AuthState = IN, attached = true, locale: LocaleReader = fixedLocale()) {
 	const fake = makeAuth(initial);
-	const layers = createProblemLayers({ auth: fake.auth, logger: makeLogger() });
+	const layers = createProblemLayers({ auth: fake.auth, logger: makeLogger(), locale });
 	const core = makeCore();
 	if (attached) layers.attach(core);
 	return { ...fake, layers, core };
@@ -152,13 +154,13 @@ describe("压与抹", () => {
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "停了",
+			message: () => "停了",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -178,7 +180,7 @@ describe("压与抹", () => {
 		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -190,7 +192,7 @@ describe("压与抹", () => {
 		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -205,14 +207,14 @@ describe("压与抹", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "y",
+			message: () => "y",
 			notify: true,
 			lasting: false,
 		});
@@ -237,7 +239,7 @@ describe("压与抹", () => {
 		core.reportProblem.mockClear();
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -273,20 +275,20 @@ describe("第三层:各项请求失败", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "码 -509",
+			message: () => "码 -509",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "码 -510",
+			message: () => "码 -510",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "停了",
+			message: () => "停了",
 			notify: true,
 			lasting: false,
 		});
@@ -301,14 +303,14 @@ describe("第三层:各项请求失败", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "不私聊",
+			message: () => "不私聊",
 			notify: false,
 			lasting: false,
 		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "私聊",
+			message: () => "私聊",
 			notify: true,
 			lasting: false,
 		});
@@ -328,14 +330,14 @@ describe("第三层:各项请求失败", () => {
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "停了",
+			message: () => "停了",
 			notify: true,
 			lasting: true,
-			recoveryMessage: "连上啦",
+			recoveryMessage: () => "连上啦",
 		});
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: false,
 			lasting: false,
 		});
@@ -369,14 +371,14 @@ describe("第三层:各项请求失败", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "y",
+			message: () => "y",
 			notify: true,
 			lasting: false,
 		});
@@ -392,7 +394,7 @@ describe("第三层:各项请求失败", () => {
 		const { core, set, layers } = setup(IN);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -401,7 +403,7 @@ describe("第三层:各项请求失败", () => {
 		core.reportProblem.mockClear();
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -418,10 +420,10 @@ describe("第三层的 lasting", () => {
 	const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
 		externalId: "7",
 		code: "live_monitor_stopped",
-		message: "停了",
+		message: () => "停了",
 		notify: true,
 		lasting: true,
-		recoveryMessage: "连上啦",
+		recoveryMessage: () => "连上啦",
 		...over,
 	});
 
@@ -483,7 +485,7 @@ describe("第三层的 lasting", () => {
 		layers.reportFailure(stopped());
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: false,
 			lasting: false,
 		});
@@ -544,7 +546,7 @@ describe("第三层的 lasting", () => {
 	it("没压着的 lasting 当场报,和别的第三层一样;同键再报只换文案", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure(stopped());
-		layers.reportFailure(stopped({ message: "换了原因" }));
+		layers.reportFailure(stopped({ message: () => "换了原因" }));
 		expect(core.reportProblem.mock.calls.map(([p]) => p.message)).toEqual(["停了", "换了原因"]);
 	});
 
@@ -553,7 +555,7 @@ describe("第三层的 lasting", () => {
 		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: false,
 			lasting: false,
 		});
@@ -571,10 +573,10 @@ describe("说过的一次性故障不说第二遍", () => {
 	const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
 		externalId: "7",
 		code: "live_monitor_stopped",
-		message: "停了",
+		message: () => "停了",
 		notify: true,
 		lasting: true,
-		recoveryMessage: "连上啦",
+		recoveryMessage: () => "连上啦",
 		...over,
 	});
 
@@ -628,7 +630,7 @@ describe("说过的一次性故障不说第二遍", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure(stopped());
 		layers.reportRisk("dynamic", { notify: true });
-		layers.reportFailure(stopped({ message: "换了原因" }));
+		layers.reportFailure(stopped({ message: () => "换了原因" }));
 		core.reportProblem.mockClear();
 
 		layers.resolveRisk("dynamic");
@@ -686,7 +688,7 @@ describe("风控的清:真解除与不再适用", () => {
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "停了",
+			message: () => "停了",
 			notify: true,
 			lasting: true,
 		});
@@ -701,7 +703,7 @@ describe("先造、后接、补报", () => {
 		const { core, layers } = setup(IN, false);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -716,14 +718,14 @@ describe("先造、后接、补报", () => {
 		const { core, layers } = setup(IN, false);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
-			message: "y",
+			message: () => "y",
 			notify: true,
 			lasting: false,
 		});
@@ -745,7 +747,7 @@ describe("先造、后接、补报", () => {
 		const { core, layers } = setup(IN, false);
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
-			message: "x",
+			message: () => "x",
 			notify: true,
 			lasting: false,
 		});
@@ -794,14 +796,14 @@ describe("核心那头抛错不往外传", () => {
 	it("每个方法都接住,记一行 warn", () => {
 		const logger = makeLogger();
 		const fake = makeAuth(IN);
-		const layers = createProblemLayers({ auth: fake.auth, logger });
+		const layers = createProblemLayers({ auth: fake.auth, logger, locale: fixedLocale() });
 		layers.attach(throwingCore());
 		expect(() => {
 			layers.reportRisk("dynamic", { notify: true });
 			layers.resolveRisk("dynamic");
 			layers.reportFailure({
 				code: "dynamic_fetch_failed",
-				message: "x",
+				message: () => "x",
 				notify: true,
 				lasting: false,
 			});
@@ -841,10 +843,10 @@ describe("静默冒出来之后同一件事再报", () => {
 	const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
 		externalId: "7",
 		code: "live_monitor_stopped",
-		message: "停了",
+		message: () => "停了",
 		notify: true,
 		lasting: true,
-		recoveryMessage: "连上啦",
+		recoveryMessage: () => "连上啦",
 		...over,
 	});
 	const notifies = (core: ReturnType<typeof makeCore>) =>
@@ -859,8 +861,8 @@ describe("静默冒出来之后同一件事再报", () => {
 		core.reportProblem.mockClear();
 
 		layers.reportFailure(stopped());
-		layers.reportFailure(stopped({ message: "换了原因" }));
-		layers.reportFailure(stopped({ message: "换了原因" }));
+		layers.reportFailure(stopped({ message: () => "换了原因" }));
+		layers.reportFailure(stopped({ message: () => "换了原因" }));
 
 		expect(notifies(core)).toEqual([
 			["live_monitor_stopped", "停了", false],
@@ -897,7 +899,7 @@ describe("静默冒出来之后同一件事再报", () => {
 	it("对照:从没被压过的,再报照旧带它自己的 notify(头一句还在再送时,再报一次不许把它掐掉)", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure(stopped());
-		layers.reportFailure(stopped({ message: "换了原因" }));
+		layers.reportFailure(stopped({ message: () => "换了原因" }));
 		expect(notifies(core)).toEqual([
 			["live_monitor_stopped", "停了", true],
 			["live_monitor_stopped", "换了原因", true],
@@ -1003,5 +1005,162 @@ describe("风控层:每一路要不要私聊", () => {
 		layers.reportRisk("live:1", { notify: false });
 		layers.attach(core);
 		expect(riskCalls(core)).toEqual([false]);
+	});
+});
+
+/**
+ * 换语言:手里存着的请求失败是取字函数,语言变了把此刻该在表里的那一份(只报最上面一层)再报一遍,
+ * 句子是新语言的。`muted` 等记号不复位,`notify` 照各自记着的;没接上、已 dispose 时什么都不报。
+ */
+describe("换语言:重报此刻该在表里的那一份", () => {
+	/** 可切语言的读口 + 一个随语言变的句子。 */
+	function langSetup(initial: AuthState = IN, attached = true) {
+		const locale = switchableLocale("zh-CN");
+		const word = { lang: "zh" };
+		const s = setup(initial, attached, locale);
+		const switchTo = (lang: string): void => {
+			word.lang = lang;
+			locale.set(lang);
+		};
+		const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			message: () => `停了-${word.lang}`,
+			notify: true,
+			lasting: true,
+			recoveryMessage: () => `连上啦-${word.lang}`,
+			...over,
+		});
+		return { ...s, switchTo, stopped };
+	}
+
+	it("请求失败开着时切语言:核心多收到一次,是新字,notify 与恢复句照各自记着的", () => {
+		const { core, layers, switchTo, stopped } = langSetup();
+		layers.reportFailure(stopped());
+		core.reportProblem.mockClear();
+		switchTo("en");
+		expect(core.reportProblem.mock.calls.map(([p]) => p)).toEqual([
+			{
+				externalId: "7",
+				code: "live_monitor_stopped",
+				message: "停了-en",
+				notify: true,
+				recoveryMessage: "连上啦-en",
+			},
+		]);
+	});
+
+	it("会自己再报的(lasting: false)失败也一样重报", () => {
+		const { core, layers, switchTo, stopped } = langSetup();
+		layers.reportFailure(
+			stopped({ externalId: undefined, code: "dynamic_fetch_failed", lasting: false }),
+		);
+		core.reportProblem.mockClear();
+		switchTo("ja");
+		expect(core.reportProblem).toHaveBeenCalledTimes(1);
+		expect(core.reportProblem.mock.calls[0]?.[0]).toMatchObject({
+			code: "dynamic_fetch_failed",
+			message: "停了-ja",
+		});
+	});
+
+	it("静默冒出来过的(muted)那条切语言后仍不带私聊", () => {
+		const { core, layers, switchTo, stopped } = langSetup();
+		layers.reportFailure(stopped());
+		layers.reportRisk("dynamic", { notify: true });
+		layers.resolveRisk("dynamic");
+		// 冒出来的那一次:报回表里、不带私聊
+		expect(core.reportProblem.mock.calls.at(-1)?.[0]).toMatchObject({ notify: false });
+		core.reportProblem.mockClear();
+		switchTo("en");
+		expect(core.reportProblem.mock.calls.map(([p]) => [p.message, p.notify])).toEqual([
+			["停了-en", false],
+		]);
+	});
+
+	it("风控开着:只重报风控,不重报压着的 lasting 失败", () => {
+		const { core, layers, switchTo, stopped } = langSetup();
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportFailure(stopped());
+		core.reportProblem.mockClear();
+		switchTo("en");
+		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["risk_controlled"]);
+	});
+
+	it("登录没好:什么都不报", () => {
+		const { core, layers, switchTo, stopped } = langSetup(EXPIRED);
+		layers.reportFailure(stopped());
+		core.reportProblem.mockClear();
+		switchTo("en");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("没失败、没风控时切语言:什么都不报", () => {
+		const { core, switchTo } = langSetup();
+		switchTo("en");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("没接上(attach 前、detach 后)切语言:不报;再接上补报的是新字", () => {
+		const { core, layers, switchTo, stopped } = langSetup(IN, false);
+		layers.reportFailure(stopped());
+		switchTo("en");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+		layers.attach(core);
+		expect(core.reportProblem.mock.calls.map(([p]) => p.message)).toEqual(["停了-en"]);
+		layers.detach();
+		core.reportProblem.mockClear();
+		switchTo("ja");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("dispose 后切语言:不报", () => {
+		const { core, layers, switchTo, stopped } = langSetup();
+		layers.reportFailure(stopped());
+		core.reportProblem.mockClear();
+		layers.dispose();
+		switchTo("en");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("dispose 摘掉语言订阅(不是靠「没接上就不报」糊过去)", () => {
+		const unsubscribed = vi.fn();
+		const subscribed = vi.fn();
+		const layers = createProblemLayers({
+			auth: makeAuth(IN).auth,
+			logger: makeLogger(),
+			locale: {
+				onChange: () => {
+					subscribed();
+					return { dispose: unsubscribed };
+				},
+			},
+		});
+		expect(subscribed).toHaveBeenCalledTimes(1);
+		expect(unsubscribed).not.toHaveBeenCalled();
+		layers.dispose();
+		expect(unsubscribed).toHaveBeenCalledTimes(1);
+	});
+
+	it("取字函数抛了:接住、记 warn,不往外抛", () => {
+		const logger = makeLogger();
+		const locale = switchableLocale("zh-CN");
+		const fake = makeAuth(IN);
+		const layers = createProblemLayers({ auth: fake.auth, logger, locale });
+		const core = makeCore();
+		layers.attach(core);
+		let bad = false;
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: () => {
+				if (bad) throw new Error("没字了");
+				return "x";
+			},
+			notify: false,
+			lasting: false,
+		});
+		bad = true;
+		expect(() => locale.set("en")).not.toThrow();
+		expect(logger.warn).toHaveBeenCalled();
 	});
 });
