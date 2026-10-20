@@ -127,9 +127,9 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		const text = PROBLEM_TEXTS.riskControlled;
 		to.reportProblem({
 			code: RISK_CODE,
-			message: text.text,
+			message: text.text(),
 			notify: riskNotify,
-			recoveryMessage: text.recovery,
+			recoveryMessage: text.recovery(),
 		});
 	}
 

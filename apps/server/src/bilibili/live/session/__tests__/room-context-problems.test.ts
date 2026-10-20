@@ -61,7 +61,7 @@ describe("RoomContext.getLiveRoomInfo", () => {
 
 		expect(problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(closeListener).toHaveBeenCalledWith("r1");
 		expect(emitEngineError).not.toHaveBeenCalled();

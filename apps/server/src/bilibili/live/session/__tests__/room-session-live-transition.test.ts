@@ -354,7 +354,7 @@ describe("退避耗尽彻底放弃监听", () => {
 
 		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp()),
 		);
 		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
 		expect(mocks.emitEngineError).not.toHaveBeenCalled();
@@ -411,7 +411,7 @@ describe("退避耗尽彻底放弃监听", () => {
 
 		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp()),
 		);
 		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
 		expect(mocks.emitEngineError).not.toHaveBeenCalled();

@@ -20,11 +20,7 @@ import { createBiliLinkResolver } from "./link-resolver.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { searchBiliCreators } from "./search-creators.js";
-import {
-	BiliDynamicSettingsSchema,
-	BiliLoginCheckSettingsSchema,
-	BiliSettingsSchema,
-} from "./settings.js";
+import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
 
 export interface BiliSourceDeps {
 	api: Api;
@@ -62,7 +58,7 @@ const dynamicConfigOf = (settings: { dynamicCron: string }) => ({
 	dynamicVideoUrlToBV: false,
 });
 
-/** 面板上的叫法与键名:问题文案里带着,主人要照着去系统页找那一格。 */
+/** 设置那一格的叫法与键名:问题文案里带着,让主人认出是哪一格。 */
 const DYNAMIC_CELL = { label: "动态检查频率", key: "dynamicCron" } as const;
 const LOGIN_CHECK_CELL = { label: "登录心跳间隔", key: "healthCheckMinutes" } as const;
 
@@ -125,9 +121,6 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			// 动态那一样,一个函数管起、热更、停三件事。读得懂:引擎不在就造并起,在就热更;读不懂:引擎在就停掉,
 			// 报一条问题。「先起成功、后清问题」:起来的途中抛了别的错,那一条问题还在表里,下次设置变了再试。
 			const dynamicSettings = ctx.settings(BiliDynamicSettingsSchema);
-			// 只为分辨面板此刻显示什么:动态读者比读盘 schema 多一道「能解析」,一条字符串但解析不了的 cron 读盘时算好的,
-			// 面板显示的是盘上原文;这一份没有那一道,它读得懂而动态那份读不懂就是这一种。
-			const dynamicCell = ctx.settings(BiliSettingsSchema.pick({ dynamicCron: true }));
 			const applyDynamic = (): void => {
 				const read = dynamicSettings.get();
 				if (read.ok) {
@@ -159,11 +152,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				}
 				stopEngine();
 				dynamicStopped = true;
-				const panelShowsDefault = read.issues?.[0]?.path === undefined || !dynamicCell.get().ok;
-				const message = PROBLEM_TEXTS.dynamicSettingsInvalid.text(
-					causeOf(read, DYNAMIC_CELL),
-					panelShowsDefault,
-				);
+				const message = PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
 				ctx.logger.warn(
 					`[settings] 动态(${DYNAMIC_CELL.key})读不懂,动态先停着: ${read.issues?.[0]?.message ?? read.message}`,
 				);
@@ -189,10 +178,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				);
 				ctx.reportProblem({
 					code: LOGIN_CHECK_PROBLEM,
-					message: PROBLEM_TEXTS.loginCheckSettingsInvalid.text(
-						causeOf(read, LOGIN_CHECK_CELL),
-						true,
-					),
+					message: PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL)),
 					notify: PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
 				});
 			};

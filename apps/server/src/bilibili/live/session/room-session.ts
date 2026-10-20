@@ -457,7 +457,7 @@ export class RoomSession extends RoomSessionBase {
 		this.reconnectAttempts = 0;
 		const msg = `直播间 [${this.sub.roomId}] ${this.describeReconnectReason(reason, detail)}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
 		this.ctx.logger.error(`[conn] ${msg}`);
-		this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp);
+		this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp());
 		// 收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,watchdog /
 		// close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里 WS 已彻底关闭、
 		// 再不会有任何事件,留着 true 就是个永远「在播」的僵尸:listLiveRooms 一直把它
@@ -735,7 +735,7 @@ export class RoomSession extends RoomSessionBase {
 		// 收进变量后下面 `this.liveRoomInfo!` 就到处都要非空断言了。
 		if (!refreshed || !this.liveRoomInfo || !this.masterInfo) {
 			if (this.ctx.isDisposed()) return;
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", this.sub.roomId);
 			return;

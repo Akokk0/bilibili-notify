@@ -310,7 +310,7 @@ describe("RoomSession live WS watchdog", () => {
 
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1); // 仅 bootstrap 建 listener
 		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(m.closeListener).toHaveBeenCalledTimes(1);
 		expect(m.timeoutDelays()).toEqual([]); // closed 事件被 cancel 挡住,不排重连
@@ -352,7 +352,7 @@ describe("RoomSession live WS watchdog", () => {
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
 		expect(m.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp()),
 		);
 		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
 		expect(m.emitEngineError).not.toHaveBeenCalled();

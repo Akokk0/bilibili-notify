@@ -1230,7 +1230,7 @@ describe("RoomSession.onLiveStart", () => {
 		await s.onLiveStart();
 		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
 		expect(m.problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(m.sendLiveNotifyCard).not.toHaveBeenCalled();
 	});

@@ -384,7 +384,7 @@ export abstract class RoomSessionBase {
 		// 预检没被拦(连上了或没连上):这一路的风控清掉。连上了才算风控解除,没连上不算。
 		this.resolveRisk(listening);
 		if (!listening) {
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.danmakuConnect);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.danmakuConnect());
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 			return;
@@ -406,7 +406,7 @@ export abstract class RoomSessionBase {
 		// 首跑的信息拉取失败按原语义放弃房间;重连补跑路径(room-session)对同一个
 		// false 走长尾重试 —— 放弃与否是调用方的策略,不在 bootstrapRoomState 里定。
 		if (!stateReady) {
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 		}
@@ -597,7 +597,7 @@ export abstract class RoomSessionBase {
 	/** Periodic "正在直播" tick (callback for `setInterval`). */
 	protected async tickPushAtTime(): Promise<void> {
 		if (!(await this.useLiveRoomInfo(LiveType.LiveBroadcast)) || !this.liveRoomInfo) {
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播卡片失败", this.sub.roomId);
 			return;
@@ -768,7 +768,7 @@ export abstract class RoomSessionBase {
 			this.setLiveStatus(false, endedAt);
 			this.ctx.danmakuCollector.clear(this.sub.subscriptionId);
 			if (this.ctx.isDisposed()) return;
-			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播下播卡片失败", this.sub.roomId);
 			return;

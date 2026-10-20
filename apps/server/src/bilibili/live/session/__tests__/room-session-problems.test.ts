@@ -303,7 +303,7 @@ describe("房间不监听了:报 live_monitor_stopped(lasting),原因各取一�
 
 		expect(problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.danmakuConnect),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.danmakuConnect()),
 		);
 		expect(mocks.closeListener).toHaveBeenCalledWith("r1");
 	});
@@ -316,7 +316,7 @@ describe("房间不监听了:报 live_monitor_stopped(lasting),原因各取一�
 		await new RoomSession(ctx, makeSub()).bootstrap();
 
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(mocks.closeListener).toHaveBeenCalledWith("r1");
 	});
@@ -333,7 +333,7 @@ describe("房间不监听了:报 live_monitor_stopped(lasting),原因各取一�
 
 		expect(problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp()),
 		);
 		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 	});
@@ -383,7 +383,7 @@ describe("周期复推那一拍", () => {
 		await session.tickPushAtTime();
 
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(mocks.stopMonitoring).toHaveBeenCalledTimes(1);
 	});
@@ -399,7 +399,7 @@ describe("周期复推那一拍", () => {
 		await session.handleLiveEnd("ws");
 
 		expect(problems.reportFailure).toHaveBeenCalledWith(
-			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
 		);
 		expect(mocks.stopMonitoring).toHaveBeenCalledTimes(1);
 	});

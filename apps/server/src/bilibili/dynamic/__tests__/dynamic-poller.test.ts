@@ -1979,7 +1979,9 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 		await settle();
 
 		expect(w.table.list()).toEqual([]);
-		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.riskControlled.text(),
+		]);
 		liveStoppedGetsThrough(w);
 	});
 
@@ -2037,8 +2039,8 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 
 		expect(w.table.list()).toEqual([]);
 		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
-			PROBLEM_TEXTS.riskControlled.text,
-			PROBLEM_TEXTS.riskControlled.recovery,
+			PROBLEM_TEXTS.riskControlled.text(),
+			PROBLEM_TEXTS.riskControlled.recovery(),
 		]);
 	});
 
@@ -2052,7 +2054,9 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 		await settle();
 
 		expect(w.table.list().map((p) => p.code)).toEqual(["dynamic_fetch_failed"]);
-		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.riskControlled.text(),
+		]);
 	});
 
 	// 在途的那一轮迟到:名单已经清空(这一路不跑了、该清的清过了),它才带着失败回来。

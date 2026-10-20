@@ -225,9 +225,9 @@ describe("压与抹", () => {
 		expect(core.resolveProblem.mock.calls.every(([p]) => p.notify === false)).toBe(true);
 		expect(core.reportProblem).toHaveBeenCalledWith({
 			code: "risk_controlled",
-			message: PROBLEM_TEXTS.riskControlled.text,
+			message: PROBLEM_TEXTS.riskControlled.text(),
 			notify: true,
-			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery,
+			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery(),
 		});
 	});
 
@@ -354,14 +354,14 @@ describe("第三层:各项请求失败", () => {
 		const risky = setup(IN);
 		risky.layers.reportRisk("dynamic", { notify: true });
 		expect(risky.core.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
-			PROBLEM_TEXTS.riskControlled.recovery,
+			PROBLEM_TEXTS.riskControlled.recovery(),
 		);
 		// 补报也带
 		risky.layers.detach();
 		risky.core.reportProblem.mockClear();
 		risky.layers.attach(risky.core);
 		expect(risky.core.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
-			PROBLEM_TEXTS.riskControlled.recovery,
+			PROBLEM_TEXTS.riskControlled.recovery(),
 		);
 	});
 
@@ -940,9 +940,9 @@ describe("风控层:每一路要不要私聊", () => {
 		expect(core.reportProblem).toHaveBeenCalledTimes(1);
 		expect(core.reportProblem).toHaveBeenCalledWith({
 			code: "risk_controlled",
-			message: PROBLEM_TEXTS.riskControlled.text,
+			message: PROBLEM_TEXTS.riskControlled.text(),
 			notify: false,
-			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery,
+			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery(),
 		});
 	});
 

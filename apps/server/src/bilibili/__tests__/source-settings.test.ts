@@ -175,21 +175,22 @@ describe("B 站来源 · 动态那一格读不懂", () => {
 		expect(b.setHealthCheckMs).toHaveBeenLastCalledWith(45 * MIN);
 		expect(b.attach).toHaveBeenCalledTimes(1);
 		const text = b.message(DYNAMIC);
-		expect(text).toContain("「动态检查频率」那一格（dynamicCron）");
-		expect(text).toContain("面板上那一格现在显示的是默认值");
+		expect(text).toContain("设置「动态检查频率」（dynamicCron）读不懂");
+		// 平实句:不指路、不提面板上显示什么
+		expect(text).not.toContain("默认值");
+		expect(text).not.toContain("面板");
 		// 只进问题表,不私聊
 		expect(b.changes.map((c) => [c.kind, c.notify])).toEqual([["opened", false]]);
 	});
 
-	it("一条字符串但解析不了的 cron(读盘算好的、面板显示盘上原文):同样停动态、报一条;文案里不说「显示的是默认值」", async () => {
+	it("一条字符串但解析不了的 cron(读盘算好的):同样停动态、报一条,点名那一格", async () => {
 		await place(JSON.stringify({ dynamicCron: "not a cron expr" }));
 
 		const b = await boot();
 
 		expect(b.source.dynamic()).toBeUndefined();
 		expect(b.problems()).toEqual([DYNAMIC]);
-		expect(b.message(DYNAMIC)).toContain("「动态检查频率」那一格（dynamicCron）");
-		expect(b.message(DYNAMIC)).not.toContain("显示的是默认值");
+		expect(b.message(DYNAMIC)).toContain("设置「动态检查频率」（dynamicCron）读不懂");
 	});
 });
 
@@ -206,14 +207,15 @@ describe("B 站来源 · 登录检查那一格读不懂", () => {
 		expect(b.setHealthCheckMs).not.toHaveBeenCalledWith(30 * MIN);
 		expect(b.problems()).toEqual([LOGIN_CHECK]);
 		const text = b.message(LOGIN_CHECK);
-		expect(text).toContain("「登录心跳间隔」那一格（healthCheckMinutes）");
-		expect(text).toContain("面板上那一格现在显示的是默认值");
+		expect(text).toContain("设置「登录心跳间隔」（healthCheckMinutes）读不懂");
+		expect(text).not.toContain("默认值");
+		expect(text).not.toContain("面板");
 		expect(b.changes.map((c) => [c.kind, c.notify])).toEqual([["opened", false]]);
 	});
 });
 
 describe("B 站来源 · 整个文件读不懂", () => {
-	// 验红:文案只写「那一格」那一支(文件那一支不存在),`file` 那句话里的文件名找不到。
+	// 验红:文案只写「那一格」那一支(文件那一支不存在),`file` 那句话里的「设置文件不是合法的 JSON」找不到。
 	it("半截 JSON:两样都停、两条都在、文案走「文件」那一支、原因不带文件内容;登录与上报器照常", async () => {
 		await place(HALF_JSON);
 
@@ -223,8 +225,9 @@ describe("B 站来源 · 整个文件读不懂", () => {
 		expect(b.setHealthCheckMs).toHaveBeenLastCalledWith(0);
 		expect([...b.problems()].sort()).toEqual([DYNAMIC, LOGIN_CHECK].sort());
 		for (const code of [DYNAMIC, LOGIN_CHECK]) {
-			expect(b.message(code)).toContain("config/settings/bilibili.json");
-			expect(b.message(code)).toContain("不是合法的 JSON");
+			expect(b.message(code)).toContain("设置文件不是合法的 JSON");
+			// 宿主的存储路径不写进集成的句子
+			expect(b.message(code)).not.toContain("config/settings/bilibili.json");
 			expect(b.message(code)).not.toContain("secret-cron-text");
 		}
 		expect(b.attach).toHaveBeenCalledTimes(1);
@@ -347,42 +350,34 @@ describe("B 站来源 · 改好保存当场起来(经配置仓的写口,不用�
 describe("B 站设置读不懂的两条问题 · 文案", () => {
 	const REASON = "Invalid input: expected number, received string";
 
-	it("动态:点名停的是哪一样(动态)、因为哪一格(面板叫法 + 键名)、到哪改(系统页);登录检查与直播照常", () => {
+	// 整句的字面量钉在 `problem-texts.test.ts`;这里钉「原因原话带进来、停的是哪一样、不指路」。
+	it("动态:点名停的是哪一样(动态)、因为哪一格(叫法 + 键名)与原因;登录检查与直播照常", () => {
 		const cell = PROBLEM_TEXTS.settingsCause.cell("动态检查频率", "dynamicCron", REASON);
-		const text = PROBLEM_TEXTS.dynamicSettingsInvalid.text(cell, true);
+		const text = PROBLEM_TEXTS.dynamicSettingsInvalid.text(cell);
 
 		expect(text).toContain("动态先停着没在拉");
-		expect(text).toContain("「动态检查频率」那一格（dynamicCron）");
+		expect(text).toContain("设置「动态检查频率」（dynamicCron）读不懂");
 		expect(text).toContain(REASON);
-		expect(text).toContain("面板系统页");
-		expect(text).toContain("登录、登录检查和直播都照常");
+		expect(text).toContain("登录、登录检查和直播照常");
+		expect(text).not.toContain("面板");
 		expect(PROBLEM_TEXTS.dynamicSettingsInvalid.notify).toBe(false);
 	});
 
-	it("登录检查:点名停的是哪一样(定时的登录检查)、因为哪一格、到哪改、给出 5 到 180;登录本身照常", () => {
+	it("登录检查:点名停的是哪一样(定时的登录检查)、因为哪一格;登录本身照常", () => {
 		const cell = PROBLEM_TEXTS.settingsCause.cell("登录心跳间隔", "healthCheckMinutes", REASON);
-		const text = PROBLEM_TEXTS.loginCheckSettingsInvalid.text(cell, true);
+		const text = PROBLEM_TEXTS.loginCheckSettingsInvalid.text(cell);
 
 		expect(text).toContain("定时的登录检查先停着");
-		expect(text).toContain("「登录心跳间隔」那一格（healthCheckMinutes）");
-		expect(text).toContain("5 到 180 之间的分钟数");
-		expect(text).toContain("面板系统页");
-		expect(text).toContain("登录真的失效了女仆照样会发现");
+		expect(text).toContain("设置「登录心跳间隔」（healthCheckMinutes）读不懂");
+		expect(text).toContain("登录失效了照样会发现");
+		expect(text).not.toContain("面板");
 		expect(PROBLEM_TEXTS.loginCheckSettingsInvalid.notify).toBe(false);
 	});
 
-	it("整个文件那一支点名文件路径与「不是合法的 JSON」", () => {
+	it("整个文件那一支点名「不是合法的 JSON」与原因,不带宿主的存储路径", () => {
 		const file = PROBLEM_TEXTS.settingsCause.file("Unexpected end of JSON input");
-		expect(file).toContain("config/settings/bilibili.json");
-		expect(file).toContain("不是合法的 JSON");
+		expect(file).toContain("设置文件不是合法的 JSON");
+		expect(file).not.toContain("config/settings/bilibili.json");
 		expect(file).toContain("Unexpected end of JSON input");
-	});
-
-	it("「面板显示默认值」那一句只在面板真的显示默认值时才加", () => {
-		const cell = PROBLEM_TEXTS.settingsCause.cell("动态检查频率", "dynamicCron", REASON);
-		expect(PROBLEM_TEXTS.dynamicSettingsInvalid.text(cell, true)).toContain("显示的是默认值");
-		expect(PROBLEM_TEXTS.dynamicSettingsInvalid.text(cell, false)).not.toContain("默认值");
-		expect(PROBLEM_TEXTS.loginCheckSettingsInvalid.text(cell, true)).toContain("显示的是默认值");
-		expect(PROBLEM_TEXTS.loginCheckSettingsInvalid.text(cell, false)).not.toContain("默认值");
 	});
 });

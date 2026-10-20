@@ -44,7 +44,7 @@ import { LOGIN_EXPIRED_TEXT, LOGIN_RECOVERED_TEXT } from "./problem-pipeline.js"
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
 const EXPIRED: AuthState = { status: "expired", message: "失效" };
-/** 来源写的问题:私聊时宿主按写者名加引子(提交 2 之后、B 站句子改平实之前,原句仍是女仆口吻)。 */
+/** 来源写的问题:私聊时宿主按写者名加引子(「主人，刚刚B 站报告：」+ 平实句)。 */
 const relayed = (message: string) =>
 	t("problem.relay.reported", { name: BILI_SOURCE_DESCRIPTOR.label, message });
 const relayedRecovery = (message: string) =>
@@ -305,7 +305,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
 		expect(b.notifyMaster).toHaveBeenCalledTimes(1);
-		expect(b.notifyMaster).toHaveBeenCalledWith(relayed(PROBLEM_TEXTS.riskControlled.text));
+		expect(b.notifyMaster).toHaveBeenCalledWith(relayed(PROBLEM_TEXTS.riskControlled.text()));
 		expect(b.engineErrors).toEqual([]);
 	});
 
@@ -335,7 +335,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 
 	const U2_STOPPED = PROBLEM_TEXTS.liveMonitorStopped.text(
 		"200",
-		PROBLEM_TEXTS.liveStopReasons.roomInfo,
+		PROBLEM_TEXTS.liveStopReasons.roomInfo(),
 	);
 
 	// 验红:ProblemLayers.revealFailures 里不把报给过核心的记成静默(冒出来恒用自己的 notify),房间停监会私聊第二遍,这条红。
@@ -362,10 +362,13 @@ describe("已登录被风控 · 直播这一侧", () => {
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
 			relayed(
-				PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.danmakuConnect),
+				PROBLEM_TEXTS.liveMonitorStopped.text(
+					"200",
+					PROBLEM_TEXTS.liveStopReasons.danmakuConnect(),
+				),
 			),
-			relayed(PROBLEM_TEXTS.riskControlled.text),
-			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
+			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery()),
 		]);
 	});
 
@@ -382,8 +385,8 @@ describe("已登录被风控 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
-			relayed(PROBLEM_TEXTS.riskControlled.text),
-			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
+			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery()),
 			relayed(U2_STOPPED),
 		]);
 	});
@@ -397,7 +400,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
-			relayed(PROBLEM_TEXTS.riskControlled.text),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
 			relayed(U2_STOPPED),
 		]);
 	});
@@ -421,7 +424,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual(["auth_lost"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
-			relayed(PROBLEM_TEXTS.riskControlled.text),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
 			LOGIN_EXPIRED_TEXT,
 		]);
 	});
@@ -488,21 +491,21 @@ describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 		await dynamicEngine.detectDynamics();
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
-		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text)]);
+		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text())]);
 
 		dynamicEngine.api.fetchAllDynamic = FINE;
 		await dynamicEngine.detectDynamics();
 		await vi.advanceTimersByTimeAsync(120_000);
 		// 动态那一路好了,直播那一路还拦着:条目照旧开着,不撤回、也还没到说「解除」的时候
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
-		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text)]);
+		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text())]);
 
 		await makeLiveSession(b, "u1", "100", CONNECTED).bootstrap();
 		await flush();
 		expect(codesOf(b)).toEqual([]);
 		expect(said(b)).toEqual([
-			relayed(PROBLEM_TEXTS.riskControlled.text),
-			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
+			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery()),
 		]);
 	});
 
@@ -516,7 +519,7 @@ describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 		await vi.advanceTimersByTimeAsync(30 * 60_000);
 
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
-		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text)]);
+		expect(said(b)).toEqual([relayed(PROBLEM_TEXTS.riskControlled.text())]);
 	});
 
 	it("只有直播被拦时压在底下的房间停监:风控解除后照样冒出来、照样私聊(它自己的那一句)", async () => {
@@ -532,7 +535,9 @@ describe("直播预检被风控拦住:只进问题表,不私聊", () => {
 
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
 		expect(said(b)).toEqual([
-			relayed(PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.roomInfo)),
+			relayed(
+				PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.roomInfo()),
+			),
 		]);
 	});
 });
@@ -563,10 +568,13 @@ describe("留着的缺口(钉现状)", () => {
 		expect(codesOf(b)).toEqual([]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
 			relayed(
-				PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.danmakuConnect),
+				PROBLEM_TEXTS.liveMonitorStopped.text(
+					"200",
+					PROBLEM_TEXTS.liveStopReasons.danmakuConnect(),
+				),
 			),
-			relayed(PROBLEM_TEXTS.riskControlled.text),
-			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery),
+			relayed(PROBLEM_TEXTS.riskControlled.text()),
+			relayedRecovery(PROBLEM_TEXTS.riskControlled.recovery()),
 		]);
 	});
 });
