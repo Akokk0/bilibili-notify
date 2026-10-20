@@ -8,6 +8,7 @@ import {
 } from "../constants";
 import { LOCALES, VOICES } from "../i18n";
 import { allTemplateFingerprints } from "../template-defaults";
+import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
 import { markBackupOnly, markSecret } from "./secret";
 
 // 模板默认值住在零依赖的 `constants.ts` —— 前端要拿它跟盘上的值比对(「默认文案有
@@ -305,6 +306,17 @@ export const GlobalConfigSchema = z.object({
 	 * 不在 schema 里校验 cron 语法:`roast-schedule.ts` 里说的那条理由(用户编辑途中改一个字就存不了盘)同样适用。
 	 */
 	profileRefreshCron: z.string().default(DEFAULT_PROFILE_REFRESH_CRON),
+	/**
+	 * 全局时区(ADR-0021 决策 43):卡上的时间与服务端的按天切都读它,IANA 名(如 `Asia/Shanghai`)。
+	 * 出厂值是 `DEFAULT_TIMEZONE`(ADR 定死,`Asia/Shanghai`)。
+	 *
+	 * **必填、带 `.default`**:默认值由 ADR 定死,没有「新装要猜」的余地,所以不照 `locale` / `voice`
+	 * 写成可选、由读点按规则补 —— 老配置缺这一格由 `parse` 补上并与别处共用一份默认值。
+	 */
+	timezone: z
+		.string()
+		.refine(isTimezone, "不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai")
+		.default(DEFAULT_TIMEZONE),
 	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
 	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
 	stats: StatsSettingsSchema.default(() => structuredClone(DEFAULT_STATS_SETTINGS)),

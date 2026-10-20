@@ -509,7 +509,7 @@ interface Settings {
     history: HistorySettings;         // { retentionDays }：图片与重推原件保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限、不在其内（ADR-0022 决策 9 的 🔗；键名 10-04 定）
     stats: StatsSettings;             // { enabled }：数据统计总开关，默认开；订阅覆盖不了，所以不在 defaults 里（ADR-0027 决策 9、16）
     profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来（3a-38 已落）
-    timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
+    timezone: string;                 // 卡片时间与服务端切天读它，默认 Asia/Shanghai；IANA 名
   };
   bilibili: { dynamicCron; loginCheckIntervalMinutes };   // 由 bilibili/ 定义
   extensions: Record<ExtensionId, unknown>;   // 一个拓展一个文件，只装它的设置，由拓展自己的 zod 校验；开关在 core.extensions.<id>.enabled（归宿主）
@@ -765,7 +765,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 以前 | 现在 |
 | --- | --- |
 | 全局 `roastSchedule` 及 `targets` / `days` / `approval` | `core.rankingReport`（类型 `RankingReportSettings`）及 `targetIds` / `windowDays` / `requiresApproval` |
-| `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`（✅ 3a-38 已落，`app` 这个键已从核心设置里消失）；`core.history.retentionDays`（已落）；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
+| `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`（✅ 3a-38 已落，`app` 这个键已从核心设置里消失）；`core.history.retentionDays`（已落）；`core.timezone` 是 1.0 新增格（0.12 的 `app` 里没有这一格，零代迁移不写，缺了由 schema 默认补 `Asia/Shanghai`）；`bilibili.loginCheckIntervalMinutes` |
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |

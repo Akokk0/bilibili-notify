@@ -84,6 +84,18 @@ describe("parseCoreSettings", () => {
 		expect(invalid[0]?.issues.length).toBeGreaterThan(0);
 	});
 
+	it("timezone 坏(Mars/Base):那一格退默认 Asia/Shanghai,记一条,原文留着", () => {
+		const disk = goodDisk();
+		disk.timezone = "Mars/Base";
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(settings.timezone).toBe("Asia/Shanghai");
+		expect(invalid).toHaveLength(1);
+		expect(invalid[0]?.path).toEqual(["timezone"]);
+		expect(invalid[0]?.raw).toBe("Mars/Base");
+		expect(invalid[0]?.missing).toBe(false);
+		expect((withRawSettings(settings, invalid) as Json).timezone).toBe("Mars/Base");
+	});
+
 	it("defaults.filters 坏:只那个子格退默认,defaults 下别的子格是入参里的值", () => {
 		const disk = goodDisk();
 		disk.defaults.filters = { blockReposts: "是" };

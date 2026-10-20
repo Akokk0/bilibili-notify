@@ -413,7 +413,7 @@ export const RATCHET = {
 	"packages/internal/src/schema/extension-marketplace.ts": 9,
 	"packages/internal/src/schema/extension-subscription.ts": 10,
 	"packages/internal/src/schema/extension-view.ts": 7,
-	"packages/internal/src/schema/globals.ts": 3,
+	"packages/internal/src/schema/globals.ts": 4,
 	"packages/internal/src/schema/history.ts": 1,
 	"packages/internal/src/schema/subscription-report.ts": 41,
 	"packages/internal/src/schema/subscriptions.ts": 5,

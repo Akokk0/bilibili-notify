@@ -56,6 +56,10 @@ export const HOMES = {
 	useT: "apps/web/src/i18n/index.ts",
 	// 主人可改的文案 → 它能用的变量 → 中立字段(3b-21):面板提示条与服务端可满足性探针共用这一份。
 	TEMPLATE_VARIABLES: "packages/internal/src/template-variables.ts",
+	// 全局时区的出厂值与两条规矩(3b-11;ADR-0021 决策 43):设置 schema 与服务端切天共用这一份。
+	DEFAULT_TIMEZONE: "packages/internal/src/timezone.ts",
+	isTimezone: "packages/internal/src/timezone.ts",
+	timezoneOffsetMinutes: "packages/internal/src/timezone.ts",
 };
 
 /** 一个节点若是一处定义,回它定义的名字。 */
