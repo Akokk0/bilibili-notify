@@ -1,5 +1,6 @@
 import type { AiPostView, AiStatsView } from "@bilibili-notify/ai";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
+import { timezoneOffsetMinutes } from "@bilibili-notify/internal";
 import { statsFileKey } from "../stats/file-key.js";
 import type { StatsStore } from "../stats/store.js";
 
@@ -17,11 +18,12 @@ export interface CreatorStatsReader {
  * 造女仆读统计的口:作品读统计仓、统计读统计总览读口(面板、锐评共用的那一个,同一份缓存、同一套聚合,不另写一份),
  * 总开关问装配处递进来的缓存读口。
  *
- * 切天用机器本地时区(同定时锐评,`runtime/roast-scheduler.ts`);全局时区落地后跟着改。
+ * 切天按设置里的全局时区(同定时锐评,`runtime/roast-scheduler.ts`);偏移取「此刻」那一个。
  */
 export function createCreatorStatsReader(deps: {
 	store: Pick<StatsStore, "listRecentPosts">;
 	isEnabled: () => boolean;
+	timezone: () => string;
 	overview: (days: number, tzOffsetMin: number) => Promise<StatsOverviewResponse>;
 }): CreatorStatsReader {
 	return {
@@ -35,7 +37,10 @@ export function createCreatorStatsReader(deps: {
 			}));
 		},
 		async statsRow(subscriptionId, days) {
-			const { rows } = await deps.overview(days, new Date().getTimezoneOffset());
+			const { rows } = await deps.overview(
+				days,
+				timezoneOffsetMinutes(deps.timezone(), new Date()),
+			);
 			const row = rows.find((r) => r.subscriptionId === subscriptionId);
 			if (!row) return undefined;
 			return {

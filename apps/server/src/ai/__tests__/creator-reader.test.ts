@@ -180,6 +180,7 @@ describe("createCreatorStatsReader —— 真的统计仓与总览读口", () =>
 		const reader = createCreatorStatsReader({
 			store,
 			isEnabled: () => true,
+			timezone: () => "Asia/Kolkata",
 			overview: overviewWith([]),
 		});
 		expect(await reader.recentPosts("sub-alice", 5)).toEqual([
@@ -190,7 +191,7 @@ describe("createCreatorStatsReader —— 真的统计仓与总览读口", () =>
 		expect(await reader.recentPosts("sub-nobody", 5)).toEqual([]);
 	});
 
-	it("统计:用统计总览读口(天数、本机时区偏移),取这条订阅那一行,挑出要的几格", async () => {
+	it("统计:用统计总览读口(天数、全局时区偏移),取这条订阅那一行,挑出要的几格", async () => {
 		const overview = overviewWith([
 			{ subscriptionId: "sub-other", posts: 1 },
 			{
@@ -205,7 +206,12 @@ describe("createCreatorStatsReader —— 真的统计仓与总览读口", () =>
 				series: [1, 2],
 			},
 		]);
-		const reader = createCreatorStatsReader({ store, isEnabled: () => true, overview });
+		const reader = createCreatorStatsReader({
+			store,
+			isEnabled: () => true,
+			timezone: () => "Asia/Kolkata",
+			overview,
+		});
 		expect(await reader.statsRow("sub-alice", 14)).toEqual({
 			followers: 500,
 			netWindow: 20,
@@ -215,7 +221,7 @@ describe("createCreatorStatsReader —— 真的统计仓与总览读口", () =>
 			liveHours: 2.5,
 			lastActivityAt: "2026-10-03T00:00:00.000Z",
 		});
-		expect(overview).toHaveBeenCalledWith(14, new Date().getTimezoneOffset());
+		expect(overview).toHaveBeenCalledWith(14, -330);
 		expect(await reader.statsRow("sub-nobody", 14)).toBeUndefined();
 	});
 
@@ -225,6 +231,7 @@ describe("createCreatorStatsReader —— 真的统计仓与总览读口", () =>
 		const reader = createCreatorStatsReader({
 			store,
 			isEnabled: () => on,
+			timezone: () => "Asia/Kolkata",
 			overview: overviewWith([]),
 		});
 		expect(reader.isEnabled()).toBe(true);

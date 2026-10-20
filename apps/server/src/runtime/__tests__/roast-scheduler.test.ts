@@ -230,6 +230,22 @@ describe("调度器 — 到点之后", () => {
 		return makeScheduler();
 	}
 
+	// 验红:退回 `new Date().getTimezoneOffset()`,纽约那条红(开发机在 UTC+8,CI 在 UTC)。
+	it("统计窗口的日界按设置里的全局时区切:一月纽约 300,默认值下 -480", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-15T12:00:00.000Z"));
+		try {
+			await armed().sched.runBoardOnce();
+			expect(generateBoardRoast.mock.calls[0]?.[1]).toMatchObject({ days: 7, tz: -480 });
+
+			globals.timezone = "America/New_York";
+			await makeScheduler().sched.runBoardOnce();
+			expect(generateBoardRoast.mock.calls[1]?.[1]).toMatchObject({ days: 7, tz: 300 });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("生成成功、审批关 → 直接发到配置的所有目标", async () => {
 		const { sched } = armed();
 		await sched.runBoardOnce();

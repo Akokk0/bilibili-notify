@@ -18,6 +18,7 @@ import {
 	type NotificationPayload,
 	type RoastSchedule,
 	type Subscription,
+	timezoneOffsetMinutes,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import {
@@ -105,9 +106,12 @@ export interface RoastScheduler {
 	}): Promise<void>;
 }
 
-/** 调度器自己的时区 = 服务器本地。它没有浏览器可问,统计窗口按本地日边界对齐。 */
-function localTz(): number {
-	return new Date().getTimezoneOffset();
+/**
+ * 统计窗口的日界按设置里的全局时区切 —— 服务端没有浏览器可问(面板与统计读口那边由请求带
+ * `tzOffset`)。偏移取「此刻」那一个,窗口里跨夏令时的那一天会差一小时,与浏览器同一口径。
+ */
+function reportDayOffset(deps: Pick<RoastGenDeps, "store">): number {
+	return timezoneOffsetMinutes(deps.store.getGlobals().timezone, new Date());
 }
 
 export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastScheduler {
@@ -168,11 +172,15 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 
 		const gen =
 			kind === "board"
-				? await generateBoardRoast(deps, { days: cfg.days, tz: localTz(), fetchOverview })
+				? await generateBoardRoast(deps, {
+						days: cfg.days,
+						tz: reportDayOffset(deps),
+						fetchOverview,
+					})
 				: await generateSoloRoast(deps, {
 						subscriptionId: subscriptionId ?? "",
 						days: cfg.days,
-						tz: localTz(),
+						tz: reportDayOffset(deps),
 						fetchOverview,
 					});
 

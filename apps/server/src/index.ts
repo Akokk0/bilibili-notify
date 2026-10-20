@@ -877,6 +877,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			creatorStats: createCreatorStatsReader({
 				store: runtime.statsStore,
 				isEnabled: runtime.isStatsEnabled,
+				timezone: () => runtime.configStore.getGlobals().timezone,
 				overview: (days, tzOffsetMin) => statsOverview(days, tzOffsetMin),
 			}),
 			// 女仆查订阅时拓展订阅的平台名(ADR-0019 决策 64):清单里订阅源的叫法 → 拓展名。装载器比
