@@ -98,8 +98,8 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("直播文案占位符改名以后导出的备份是版本 20", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(20);
+	it("链接预览的回复形式多了 text 以后导出的备份是版本 21", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(21);
 	});
 
 	it("版本 19 的备份(特别弹幕 / 特别进场 / 弹幕总结还用 mastername / uname / mdn)→ unsupported:整份拒收,不悄悄印出字面变量", () => {

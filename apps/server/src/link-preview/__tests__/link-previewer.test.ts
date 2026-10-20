@@ -26,6 +26,7 @@ import {
 	createLinkPreviewer,
 	type LinkPreviewer,
 	type LinkReplyDestination,
+	TEXT_REPLY_MAX_CHARS,
 } from "../link-previewer.js";
 import { createLinkResolverRegistry } from "../registry.js";
 
@@ -850,6 +851,80 @@ describe("createLinkPreviewer", () => {
 			state = "supported";
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["native-share"]);
+		});
+	});
+
+	// 第三档:只回一段文字(作者名 + 作品文字),不带链接。最轻的一档:不要渲染器、不问能力。
+	describe("回复形式:文字", () => {
+		const textForm = () => ({ isOn: true, replyForm: "text" as const });
+
+		it("发一条文字:作者名换行作品文字;不碰渲染器、不问能力", async () => {
+			const capabilities = vi.fn(() => undefined);
+			const h = makeParser({}, undefined, { policyFor: textForm, capabilities });
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload)).toEqual([{ kind: "text", text: "链接作者\n正文-a1" }]);
+			expect(h.generatePostCard).not.toHaveBeenCalled();
+			expect(capabilities).not.toHaveBeenCalled();
+			expect(h.probeCapabilities).not.toHaveBeenCalled();
+		});
+
+		it("没有渲染器也照发", async () => {
+			const h = makeParser({}, undefined, { policyFor: textForm });
+			h.renderer.mockReturnValue(null);
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload)).toEqual([{ kind: "text", text: "链接作者\n正文-a1" }]);
+		});
+
+		it("作品文字超过上限:按码点截到 TEXT_REPLY_MAX_CHARS,不截断代理对", async () => {
+			// 第 TEXT_REPLY_MAX_CHARS 个码点是一个代理对:按 UTF-16 单元截会劈开它。
+			const body = `${"a".repeat(TEXT_REPLY_MAX_CHARS - 1)}😀${"b".repeat(50)}`;
+			const h = makeParser({}, undefined, {
+				policyFor: textForm,
+				resolve: async () => {
+					const base = previewOf("a1");
+					return ok({ ...base, post: { ...base.post, text: body } });
+				},
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload)).toEqual([
+				{ kind: "text", text: `链接作者\n${"a".repeat(TEXT_REPLY_MAX_CHARS - 1)}😀` },
+			]);
+		});
+
+		it("作品文字为空:只发作者名", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: textForm,
+				resolve: async () => {
+					const base = previewOf("a1");
+					return ok({ ...base, post: { ...base.post, text: "" } });
+				},
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload)).toEqual([{ kind: "text", text: "链接作者" }]);
+		});
+
+		it("冷却与群额度照常吃:同一条链接只回一次;换着链接刷到额度为止", async () => {
+			const h = makeParser({}, undefined, { policyFor: textForm });
+			await feed(h.parser, groupFrame(LINK));
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+
+			const h2 = makeParser({ cooldownSec: 0 }, undefined, { policyFor: textForm });
+			for (let i = 0; i < LINK_LIMITS.groupPerMinute + 2; i++) {
+				await feed(h2.parser, groupFrame(link(`t${i}`)));
+			}
+			expect(h2.sent).toHaveLength(LINK_LIMITS.groupPerMinute);
+		});
+
+		it("发送失败:只记一行 warn,不回落图片卡", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: textForm,
+				sendResult: () => fail("unavailable", "网关拒了"),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["text"]);
+			expect(h.generatePostCard).not.toHaveBeenCalled();
+			expect(h.warn).toHaveBeenCalledTimes(1);
 		});
 	});
 });

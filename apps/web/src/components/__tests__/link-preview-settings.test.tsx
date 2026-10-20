@@ -201,6 +201,16 @@ describe("LinkPreviewSettings", () => {
 			expect(onPatch).toHaveBeenCalledWith({ linkPreview: { isOnByDefault: false } });
 		});
 
+		it("形式那一格有三个选项:图片卡、小程序卡、文字;点「文字」→ 草稿收到 replyForm=text", () => {
+			const onPatch = renderCard(draftWith());
+			const defaults = row("默认(所有群)");
+			for (const name of ["图片卡", "小程序卡", "文字"]) {
+				expect(defaults.getByRole("button", { name })).toBeTruthy();
+			}
+			fireEvent.click(defaults.getByRole("button", { name: "文字" }));
+			expect(onPatch).toHaveBeenCalledWith({ linkPreview: { replyForm: "text" } });
+		});
+
 		it("形式切到「小程序卡」→ 草稿收到 replyForm=nativeShare", () => {
 			const onPatch = renderCard(draftWith());
 			fireEvent.click(row("默认(所有群)").getByRole("button", { name: "小程序卡" }));

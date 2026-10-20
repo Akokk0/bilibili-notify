@@ -426,7 +426,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **挑链接**：核心先用通用网址正则挑出候选，再问各解析器的 `matches`。出口不按平台域名预筛：OneBot 入站的 B 站域名预筛删掉，64KB / 8 层的上限保留。
 - **入站链接的来源标记**：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的。
 - **回复形式** `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。原生分享由 OneBot 适配器拿中立描述去签，签不了就回图片（签不了原生分享的出口会一直回图片）。`appId` 填 B 站 QQ 小程序真实的 appid（施工时从真分享卡里读出来核）；OneBot 签名接口不收通用参数，就在适配器里放 appid → 预设的对照表。载荷种类 `"miniapp-card"` 改 `"native-share"`、能力格 `miniAppCard` 改 `nativeShare`。
-- **「回文字」发什么**：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。
+- **「回文字」发什么**：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。🔗 10-20 已落（3b-31 提交 4）：`replyForm` 的第三档 `text` 随之进了取值表；门里 `text` 直接可发，不要渲染器也不问能力，作品文字按码点限 200，发送失败不回落图片。
 - **回复**经 `TargetDispatcher.sendToAddress` 发回原会话：不进路由、不过闸、不落历史，但要查 `isAvailable`、结果带 code、由截流统一记，不重试。原先现造的临时目标删掉。
 
 🔗 10-13（3b-27 链接半、3b-28）已落：核心的 `LinkResolver` / `LinkPreview` 类型（`packages/internal/src/link-preview.ts`）；登记表 `link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记（键取来源的键，停下时自动撤）；门（`link-preview/link-previewer.ts`）用 `link-preview/extract-urls.ts` 的通用网址正则挑候选、按登记先后问解析器认不认、取前三个被认领的，冷却分两把键（联网前按链接原文、解析成功后按 `canonicalId`），同一条消息里指着同一个东西的几种写法只出一张；B 站的解析器是 `bilibili/link-resolver.ts`（视频链接的认法 `bilibili/video-links.ts`、视频翻成作品 `bilibili/video-card.ts`，都是从别处搬来的），封面在解析器里抓，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷；对拍 N07 因此转成了 P22。「入站链接来源标记 `sharedLinks`」「回复形式 `replyForm`」「设置改叫 `linkPreview` 并加回总开关与冷却」两条还没动；门已改名 `LinkPreviewer`（3b-28 收尾，行为不变）。

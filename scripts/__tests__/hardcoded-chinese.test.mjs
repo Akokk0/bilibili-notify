@@ -260,7 +260,7 @@ export const RATCHET = {
 	"apps/web/src/components/forms.tsx": 10,
 	"apps/web/src/components/header.tsx": 33,
 	"apps/web/src/components/inherit-note.tsx": 1,
-	"apps/web/src/components/link-preview-settings.tsx": 40,
+	"apps/web/src/components/link-preview-settings.tsx": 38,
 	"apps/web/src/components/onboarding/derive.ts": 1,
 	"apps/web/src/components/onboarding/reopen-section.tsx": 4,
 	"apps/web/src/components/onboarding/tour-companion.tsx": 29,

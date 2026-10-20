@@ -37,7 +37,7 @@ export function postText(post: Post, style: PostTextStyle): string {
 	return style === "plain" ? joined : joined.trim();
 }
 
-/** 按码点截到 `max` 个字符,不截断代理对。作品摘要与推送历史里被过滤的作品留痕共用这一份截法。 */
+/** 按码点截到 `max` 个字符,不截断代理对。作品摘要、推送历史里被过滤的作品留痕与链接预览的回文字共用这一份截法。 */
 export function clip(text: string, max: number): string {
 	const chars = [...text];
 	return chars.length <= max ? text : chars.slice(0, max).join("");

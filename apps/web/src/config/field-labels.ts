@@ -172,13 +172,13 @@ export const FIELD_LABELS = {
 	},
 	"linkPreview.isOnByDefault": {
 		label: "默认(所有群)",
-		hint: "机器人在的所有群默认解不解析、回图片卡还是小程序卡;下面没写例外的群都跟这一行。小程序卡要目标所在的 OneBot 实现支持 get_mini_app_ark(目前已知 NapCat),不支持的会回落图片卡",
+		hint: "机器人在的所有群默认解不解析、回图片卡、小程序卡还是只回文字;下面没写例外的群都跟这一行。小程序卡要目标所在的 OneBot 实现支持 get_mini_app_ark(目前已知 NapCat),不支持的会回落图片卡",
 		section: "linkPreview",
 	},
 	// 默认行里「回什么」那一格:和「解析」同在一行控件里,字典里分开记,保存时才不落进「其他」。
 	"linkPreview.replyForm": {
 		label: "默认回复形式",
-		hint: "没写例外的群回图片卡还是小程序卡",
+		hint: "没写例外的群回图片卡、小程序卡还是只回文字",
 		section: "linkPreview",
 	},
 	"linkPreview.byTarget": {

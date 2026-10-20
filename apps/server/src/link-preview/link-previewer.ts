@@ -1,5 +1,6 @@
 /**
- * 链接解析 —— 群里有人贴了某个集成的解析器认得的链接(今天是 B 站视频),机器人自动回一张卡片。
+ * 链接解析 —— 群里有人贴了某个集成的解析器认得的链接(今天是 B 站视频),机器人自动回一张卡片
+ * (图片卡或原生分享卡),或者只回一段文字(作者名 + 作品文字)。
  * 门是平台中立的:通用网址正则挑候选、问在册解析器认不认、冷却限流、出卡回复;认哪些网址、
  * 怎么查都在各集成登记的解析器里。
  *
@@ -28,6 +29,7 @@ import {
 	type NotificationPayload,
 	type Post,
 } from "@bilibili-notify/internal";
+import { clip, postText } from "../posts/post-text.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { extractUrls } from "./extract-urls.js";
 import { linkScopeKey } from "./link-scope.js";
@@ -49,6 +51,21 @@ function linkCandidates(msg: InboundGroupMessage): string[] {
 const MAX_LINKS_PER_MESSAGE = 3;
 
 const BUDGET_WINDOW_MS = 60_000;
+
+/**
+ * 回文字那一档里作品文字最多留几个码点(作者名不算)。与作品摘要同一个数;不放进 `LINK_LIMITS`:
+ * 那一组是防刷的底线、面板说明在念它们,这个数只管一条回复多长。
+ */
+export const TEXT_REPLY_MAX_CHARS = 200;
+
+/** 这条消息里的链接怎么回:`null` = 什么都发不出。 */
+type ReplyRoute = "text" | "nativeShare" | "image" | null;
+
+/** 回文字的内容:作者名,换行,截过的作品文字;作品文字为空就只有作者名。 */
+function textReplyOf(post: Post): string {
+	const body = clip(postText(post, "plain"), TEXT_REPLY_MAX_CHARS);
+	return body === "" ? post.creator.name : `${post.creator.name}\n${body}`;
+}
 
 /**
  * 回复往哪儿发。**用哪个 adapter 由 `connectionId` 决定,不是消息里报的平台名** ——
@@ -90,7 +107,10 @@ export interface LinkPreviewerOptions {
 	linkResolvers: Pick<LinkResolverRegistry, "entries">;
 	/** 交给 `resolve` 的取消信号:进程关停的那个,不另加超时。 */
 	signal: AbortSignal;
-	/** 推送用的卡片渲染器;`null` = 没有 Chrome,整个功能静默不动。**每次现取**,别攥着。 */
+	/**
+	 * 推送用的卡片渲染器;`null` = 没有 Chrome,图片卡与原生分享的回落都出不了(回文字不要它)。
+	 * **每次现取**,别攥着。
+	 */
 	renderer: () => {
 		generatePostCard(
 			post: Post,
@@ -106,7 +126,7 @@ export interface LinkPreviewerOptions {
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	/**
 	 * 目的地那条连接上、那个平台的能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
-	 * 什么都发不了。形式选了原生分享时据它决定发原生分享还是回落图片卡。
+	 * 什么都发不了。形式选了原生分享时据它决定发原生分享还是回落图片卡;形式是文字时不问。
 	 */
 	capabilities: (dest: LinkReplyDestination) => ConnectionCapabilities | undefined;
 	/** 还没探出来时主动探一次(零副作用);不实现就当探不了。 */
@@ -190,9 +210,13 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 	 * 发的就是解析器交的那份中立描述(`appId` 一并带着),怎么签归适配器。
 	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
 	 */
-	async function reply(dest: LinkReplyDestination, preview: LinkPreview, useNativeShare: boolean) {
+	async function reply(dest: LinkReplyDestination, preview: LinkPreview, route: ReplyRoute) {
+		if (route === "text") {
+			await replyWithText(dest, preview);
+			return;
+		}
 		// 解析器没交原生分享描述就没有原生分享可发,直接走图片卡。
-		if (useNativeShare && preview.nativeShare) {
+		if (route === "nativeShare" && preview.nativeShare) {
 			const where = whereOf(dest);
 			const result = await opts.send(dest, { kind: "native-share", ...preview.nativeShare });
 			if (result.ok) {
@@ -206,6 +230,19 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 			);
 		}
 		await replyWithImageCard(dest, preview);
+	}
+
+	/** 回文字:最轻的一档,发失败只记一行 warn,不回落(文字都发不出去,图更发不出去)。 */
+	async function replyWithText(dest: LinkReplyDestination, preview: LinkPreview) {
+		const result = await opts.send(dest, { kind: "text", text: textReplyOf(preview.post) });
+		const where = whereOf(dest);
+		if (!result.ok) {
+			opts.logger.warn(
+				`[link] 文字回复发送失败 ${where} ${preview.canonicalId}: ${result.message}`,
+			);
+			return;
+		}
+		opts.logger.info(`[link] 已回复文字 ${where} ${preview.canonicalId}(${result.latencyMs}ms)`);
 	}
 
 	async function replyWithImageCard(dest: LinkReplyDestination, preview: LinkPreview) {
@@ -261,12 +298,20 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 				address: msg.address,
 			};
 			const where = whereOf(dest);
-			// 这条消息里的链接真能发出什么:小程序卡要形式选了且这条连接签得了,签不了就
-			// 回落图片卡 —— 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默
-			// 走人。问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
-			// 同一条链接还得等冷却过去。形式是图片卡时短路,不会为它去问适配器。
-			const useNativeShare = policy.replyForm === "nativeShare" && (await canSendNativeShare(dest));
-			if (!useNativeShare && !opts.renderer()) return;
+			// 这条消息里的链接真能发出什么,三路:文字直接可发(不碰渲染器、不问能力);
+			// 原生分享要形式选了且这条连接签得了;其余要渲染器 —— 原生分享签不了就回落图片卡,
+			// 而图片卡又没渲染器(没装 Chrome)的话,一张也发不出来,整条静默走人。
+			// 问在记账之前:什么都发不出去的链接不该白吃冷却与群额度,不然连接一恢复,
+			// 同一条链接还得等冷却过去。形式不是原生分享时短路,不会为它去问适配器。
+			const route: ReplyRoute =
+				policy.replyForm === "text"
+					? "text"
+					: policy.replyForm === "nativeShare" && (await canSendNativeShare(dest))
+						? "nativeShare"
+						: opts.renderer()
+							? "image"
+							: null;
+			if (route === null) return;
 			const cooldownMs = settings.cooldownSec * 1000;
 			// 这条消息里已经回过的「解析器键 + 规范 id」:同一个东西的几种写法在一条消息里只出一张,
 			// 冷却关着(0)时也一样。只活在这次处理里,与冷却表无关、不占它的格子。
@@ -303,7 +348,7 @@ export function createLinkPreviewer(opts: LinkPreviewerOptions): LinkPreviewer {
 						const canonicalKey = canonicalCooldownKey(scope, resolverKey, resolved.canonicalId);
 						if (coolingDown(canonicalKey, cooldownMs)) continue;
 						markCooldown(canonicalKey, cooldownMs);
-						await reply(dest, resolved, useNativeShare);
+						await reply(dest, resolved, route);
 					} finally {
 						inflight--;
 					}

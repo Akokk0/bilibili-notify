@@ -228,6 +228,7 @@ type PushTarget =
 - OneBot 入站的 B 站域名预筛删掉：该不该回预览由解析器的 `matches` 说了算，适配器不认识任何一家来源。64KB / 8 层的上限保留。
 - 入站链接的来源标记：适配器只交卡片里的链接 `sharedLinks: { url, kind: "card" | "nativeShare" }[]`，取代 `miniAppCardLinks`；正文里的链接仍由核心从 `text` 里挑、核心内部记成 `"text"`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格（`miniAppCardLinks`）照旧，进 alpha 之后两步改名的清单，由桥的适配器映射；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。不用 `linkPreviews` 做名字：它与 BN 回出去的 `LinkPreview` 同词两义。
 - 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。「回文字」发的是：作者名 + 作品文字（经作品取段的那一个函数，限长），不带链接（群友的消息里已有链接）。
+  - 🔗 2026-10-20（回文字已落）：门里 `text` 一路直接可发（不碰渲染器、不问能力），发 `作者名\n作品文字`，作品文字按码点限 200（`TEXT_REPLY_MAX_CHARS`）；冷却与群额度和图片卡同一套，发送失败只记一行警告、不回落图片。备份版本 21。
 - 链接预览回卡不走推送链，全局静音与免扰都管不到，所以 `linkPreview` 留一个总开关（默认关）与冷却 `cooldownSec`，见 [data-model.md](./data-model.md)。
 
 #### 线上格式

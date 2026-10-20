@@ -36,6 +36,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
+import { useT } from "../i18n";
 import {
 	type Connection,
 	isTargetPaused,
@@ -45,10 +46,24 @@ import {
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
 
-export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
-	image: "图片卡",
-	nativeShare: "小程序卡",
-};
+/**
+ * 回复形式三档的标签。出字那一刻才取(切语言后随组件重画),所以是个 hook 而不是模块顶层的常量;
+ * 每档一个字面量键,守卫(`i18n-call-sites`)不认拼出来的键。本地名用 `tx`:这个文件里
+ * `.filter((t) => …)` 的循环变量会遮住 `t`。
+ */
+function useReplyFormLabel(): (form: LinkReplyForm) => string {
+	const tx = useT();
+	return (form) => {
+		switch (form) {
+			case "image":
+				return tx("linkPreview.replyForm.image");
+			case "nativeShare":
+				return tx("linkPreview.replyForm.nativeShare");
+			case "text":
+				return tx("linkPreview.replyForm.text");
+		}
+	};
+}
 
 /** 三态格的取值:跟默认,或一个显式值。 */
 const INHERIT = "inherit" as const;
@@ -98,6 +113,7 @@ export function LinkPreviewSettings({
 	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkPreview;
+	const replyFormLabel = useReplyFormLabel();
 	const candidates = targets.filter((t) => isGroupCandidate(t, connections, capabilities));
 	// 两格都调回「跟默认」时草稿里留下的是个空对象(删除哨兵把字段删掉,不删这一格),
 	// 它已经不是例外了 —— 数键会让卡上多出一条根本不存在的例外,直到存盘重拉才消失。
@@ -164,7 +180,7 @@ export function LinkPreviewSettings({
 							onChange={(replyForm) => onPatch({ linkPreview: { replyForm } })}
 							options={LINK_REPLY_FORMS.map((f) => ({
 								value: f,
-								label: LINK_REPLY_FORM_LABELS[f],
+								label: replyFormLabel(f),
 								color: SECTION_ACCENT.system,
 							}))}
 						/>
@@ -312,6 +328,7 @@ function GroupRow({
 	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
 	paused: boolean;
 }) {
+	const replyFormLabel = useReplyFormLabel();
 	const o = cfg.byTarget[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
 	const isOn = o?.isOn ?? undefined;
@@ -352,10 +369,10 @@ function GroupRow({
 					value={replyForm ?? INHERIT}
 					onChange={setReplyForm}
 					options={[
-						{ value: INHERIT, label: `跟默认 · ${LINK_REPLY_FORM_LABELS[cfg.replyForm]}` },
+						{ value: INHERIT, label: `跟默认 · ${replyFormLabel(cfg.replyForm)}` },
 						...LINK_REPLY_FORMS.map((f) => ({
 							value: f,
-							label: LINK_REPLY_FORM_LABELS[f],
+							label: replyFormLabel(f),
 							color: SECTION_ACCENT.system,
 						})),
 					]}

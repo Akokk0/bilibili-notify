@@ -34,10 +34,19 @@ describe("linkPreview 配置段", () => {
 		expect(parsed.data?.linkPreview).toEqual(FRESH);
 	});
 
-	it("全新安装总开关关、默认回图片;形式只有图片 / 原生分享两档", () => {
+	it("全新安装总开关关、默认回图片;形式有图片 / 原生分享 / 文字三档", () => {
 		expect(makeDefaultGlobalConfig().linkPreview.enabled).toBe(false);
 		expect(DEFAULT_LINK_PREVIEW).toEqual(FRESH);
-		expect(LINK_REPLY_FORMS).toEqual(["image", "nativeShare"]);
+		expect(LINK_REPLY_FORMS).toEqual(["image", "nativeShare", "text"]);
+	});
+
+	it("默认行与逐目标例外都收 text", () => {
+		const parsed = LinkPreviewSettingsSchema.parse({
+			replyForm: "text",
+			byTarget: { [A]: { replyForm: "text" } },
+		});
+		expect(parsed.replyForm).toBe("text");
+		expect(parsed.byTarget).toEqual({ [A]: { replyForm: "text" } });
 	});
 
 	it("只给 enabled 也行,其余补默认", () => {
@@ -54,13 +63,13 @@ describe("五格的形状", () => {
 		).toEqual({ [B]: { isOn: false, replyForm: "nativeShare" } });
 	});
 
-	it("targetId 不是 uuid、形式不在两档之内 → 拒", () => {
+	it("targetId 不是 uuid、形式不在三档之内 → 拒", () => {
 		expect(
 			LinkPreviewSettingsSchema.safeParse({ byTarget: { "group-123": { isOn: true } } }).success,
 		).toBe(false);
 		expect(LinkPreviewSettingsSchema.safeParse({ replyForm: "both" }).success).toBe(false);
 		expect(
-			LinkPreviewSettingsSchema.safeParse({ byTarget: { [A]: { replyForm: "text" } } }).success,
+			LinkPreviewSettingsSchema.safeParse({ byTarget: { [A]: { replyForm: "card" } } }).success,
 		).toBe(false);
 		// 老取值 miniapp 不再认:那是迁移器改成 nativeShare 的事
 		expect(LinkPreviewSettingsSchema.safeParse({ replyForm: "miniapp" }).success).toBe(false);

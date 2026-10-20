@@ -1722,6 +1722,19 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		});
 		expect(renderedHtml.length).toBe(htmlBefore);
 
+		// 形式改成文字后贴新链接:只回作者名 + 作品文字,截流里是 text,不出图。
+		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "text" } });
+		await clearCaptures();
+		await say("https://acme.invalid/link/a4");
+		const texted = await settledCaptures(1);
+		expect(texted).toHaveLength(1);
+		expect(texted[0]).toMatchObject({
+			kind: "text",
+			text: expect.stringMatching(/^链接作者/),
+			images: 0,
+		});
+		expect(renderedHtml.length).toBe(htmlBefore);
+
 		// 来源停下(引擎先停来源、进程还活着的那一刻)后同一类链接再贴:没有人再认。
 		// 关停途中适配器已停、开发场景用不了,所以这一段直接往门的入站出口喂(控制组走同一条路,证明这条路是通的)。
 		const inbound = inProcessWorld.inboundGroup;
