@@ -12,7 +12,13 @@
  * 全程假时钟。推进用 `advanceTimersByTimeAsync`,别用 `waitFor`(撞上假定时器会死锁)。
  */
 
-import { type DeliveryResult, fail, type Logger, ok } from "@bilibili-notify/internal";
+import {
+	type DeliveryResult,
+	type Disposable,
+	fail,
+	type Logger,
+	ok,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deferred } from "../../__tests__/support/track-context";
 import { i18n, t } from "../../i18n/index.js";
@@ -31,10 +37,16 @@ function makeLogger() {
 
 function setup(
 	notifyImpl: (text: string) => Promise<DeliveryResult> = async () => sent(),
-	extra: { onNotify?: (text: string) => void } = {},
+	extra: {
+		onNotify?: (text: string) => void;
+		texts?: { locale(): string; onChange(fn: () => void): Disposable };
+	} = {},
 ) {
 	const logger = makeLogger();
-	const table = createProblemTable({ logger: makeLogger() });
+	const table = createProblemTable({
+		logger: makeLogger(),
+		...(extra.texts === undefined ? {} : { texts: extra.texts }),
+	});
 	const notify = vi.fn((text: string) => {
 		extra.onNotify?.(text);
 		return notifyImpl(text);
@@ -53,6 +65,26 @@ function setup(
 		logger,
 	});
 	return { table, notify, notifier, logger, tracked };
+}
+
+/** 假的语言 / 口吻读口:换一次就挨个叫订阅者(真 store 换语言或口吻都叫)。 */
+function makeTexts(initial = "zh-CN") {
+	let locale = initial;
+	const listeners = new Set<() => void>();
+	return {
+		texts: {
+			locale: () => locale,
+			onChange(fn: () => void): Disposable {
+				listeners.add(fn);
+				return { dispose: () => void listeners.delete(fn) };
+			},
+		},
+		set(next: string) {
+			if (next === locale) return;
+			locale = next;
+			for (const fn of [...listeners]) fn();
+		},
+	};
 }
 
 /** 让已经排上的微任务(发送的回执)跑完。 */
@@ -722,6 +754,89 @@ describe("已恢复", () => {
 		gate.resolve(sent());
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 换说法(换语言、换口吻):表给的变化带 `reworded`。同一件事只是换了话 —— 不能让「不再说」重新算数,
+ * 也不能让「已恢复」用旧语言。报的人真换了一句别的话不带这一格,恢复句仍用当初那句(3a-30)。
+ */
+describe("换说法:同一件事换了语言或口吻", () => {
+	it("记成「不再说」的那条换了说法重报(仍要私聊):仍不再说", async () => {
+		const words = makeTexts();
+		const { table, notify } = setup(async () => fail("indeterminate", "不知道送没送到"), {
+			texts: words.texts,
+		});
+		open(table, { message: "登录失效", notify: true });
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		words.set("en");
+		open(table, { message: "login expired", notify: true });
+		await advance(60 * 60_000);
+
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	it("已私聊过的换了说法:之后补的「已恢复」用新说法", async () => {
+		const words = makeTexts();
+		const { table, notify } = setup(undefined, { texts: words.texts });
+		open(table, { writtenBy: "B 站", message: "风控了", recoveryMessage: "风控解除了" });
+		await flush();
+		expect(notify).toHaveBeenCalledWith("主人，刚刚B 站报告：风控了");
+
+		words.set("en");
+		open(table, { writtenBy: "B 站", message: "EN problem", recoveryMessage: "EN recovered" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+
+		expect(notify).toHaveBeenLastCalledWith("主人，好消息，B 站报告：EN recovered");
+	});
+
+	it("已私聊过、没给恢复句的换了说法:通用说法带新原句", async () => {
+		const words = makeTexts();
+		const { table, notify } = setup(undefined, { texts: words.texts });
+		open(table, { writtenBy: "B 站", message: "风控了" });
+		await flush();
+
+		words.set("en");
+		open(table, { writtenBy: "B 站", message: "EN problem" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+
+		expect(notify).toHaveBeenLastCalledWith(
+			"主人，好消息，B 站之前报告的「EN problem」已经恢复啦。",
+		);
+	});
+
+	it("没换说法的「换了一句别的话」:恢复句仍用当初那句", async () => {
+		const words = makeTexts();
+		const { table, notify } = setup(undefined, { texts: words.texts });
+		open(table, { message: "当初那句", recoveryMessage: "当初的恢复说法" });
+		await flush();
+		open(table, { message: "别的话", recoveryMessage: "别的话的恢复说法" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+
+		expect(notify).toHaveBeenLastCalledWith("当初的恢复说法");
+	});
+
+	it("在途时换了说法:送到后记的是新说法,之后补「已恢复」用新恢复句", async () => {
+		const gate = deferred<DeliveryResult>();
+		const words = makeTexts();
+		const { table, notify } = setup(() => gate.promise, { texts: words.texts });
+		open(table, { message: "旧问题", recoveryMessage: "旧恢复" });
+		await flush();
+
+		words.set("en");
+		open(table, { message: "EN problem", recoveryMessage: "EN recovered" });
+		gate.resolve(sent());
+		await flush();
+
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual(["旧问题", "EN recovered"]);
 	});
 });
 

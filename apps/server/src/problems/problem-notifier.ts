@@ -40,7 +40,8 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  * - **不再说**:一句以**结果不明**的失败落定(标准码表里「绝不重发」的那一种:可能已经送到了),**那一条**记成
  *   「不再说」—— 不是「说过」:不补「已恢复」、不盖别的,只是之后对账跳过它。于是同键新开一条时试的是最早的、
  *   还没被放弃的那条(一个一个开的时候就是新开的那条自己),不会把可能已经送到的同一句再发一遍。它重新算数只有
- *   两种:自己被清掉又重开(那是新的一条),或报的人换了一句话再报、且仍要私聊。
+ *   两种:自己被清掉又重开(那是新的一条),或报的人换了一句话再报、且仍要私聊。只换了说法(换语言、换口吻)
+ *   不算换了一句别的话。
  *   别的失败都确知没送到,**不**记:不可重试的那几种(没配主人、目标不是私聊……)与五档用完只让键停下,重新
  *   起头时试的仍是最早欠着的那条 —— 没配主人时一个一个开,每次本地试一遍同一句(不出网、不会重复送到);
  *   配上之后新开一条,说的是欠得最久的那条,其余由它盖住。
@@ -48,9 +49,12 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  *   账上的 `message` / `sentText` / `givenUpText` 一律是集成交上来的原句,「不再说」的比较不受引子影响。
  *   宿主自己写的整句(没带 `writtenBy`)原样发。
  * - **已恢复**:只对真私聊过的补;报的人宿主在清的(来源停下、订阅删了)与明说不补的,表里的变更都带着
- *   `notify: false`,这里一律不补。发的是这条问题自带的 `recoveryMessage`(**当初真私聊出去那一刻**存下的,
- *   不是后来换过的);有写者的再加引子,没给恢复句的用通用说法(有写者:带名字与当初真发出去的原句;
+ *   `notify: false`,这里一律不补。发的是这条问题自带的 `recoveryMessage`(**当初真私聊出去那一刻**存下的;
+ *   换过说法的用新说法);有写者的再加引子,没给恢复句的用通用说法(有写者:带名字与发出去的原句;
  *   没写者:宿主自己的通用句接原句)。「已恢复」没送到只记一行 warn,不再送。
+ * - **换说法**:变化带 `reworded`(换语言或换口吻,同一件事换了话)时先换基线:记成「不再说」的那句、真私聊过的
+ *   那几句都跟着换,之后的「已恢复」用新说法;发送在路上时那一发也算换过说法,落定时按条目此刻的说法记账。
+ *   不带 `reworded` 的变化照旧。
  * - **在途时清了又开**:发送途中这条问题被清、又被同一个键以「要私聊」重新开起来,新开的认领这次发送 ——
  *   等于没清过(送达后算它说过了,不补「已恢复」;没送到就照它走再送)。以「不要私聊」重开的不认领:
  *   那句话说的是已经清掉的那一条,送达后照旧对它补「已恢复」。
@@ -122,6 +126,8 @@ interface SendState {
 	recovery?: string;
 	/** 发出去的那句是哪个集成写的(发出那一刻)。 */
 	writtenBy?: string;
+	/** 途中这条换了说法:落定时按条目此刻的说法记账,不用发出那一刻的旧值。 */
+	reworded?: boolean;
 	/** 发送途中问题被清了(且还没被认领):送到之后要不要补「已恢复」。 */
 	closed?: { announceRecovery: boolean };
 }
@@ -305,21 +311,27 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 
 	/** 一次发送落定:记账,不决定下一步(下一步由对账定)。 */
 	function settle(state: ThrottleState, sending: SendState, result: DeliveryResult): void {
-		const { entry, text, recovery, writtenBy, closed } = sending;
+		const { entry, text, recovery, writtenBy, closed, reworded } = sending;
+		// 途中换过说法:记的是这条此刻的说法(发出去的与记的是同一件事,只是换了语言或口吻)
+		const settledText = reworded ? entry.message : text;
+		const settledRecovery = reworded ? entry.recoveryMessage : recovery;
+		const settledWrittenBy = reworded ? entry.writtenBy : writtenBy;
 		if (result.ok) {
 			state.lastDeliveredAt = now();
 			resetRetry(state);
 			if (!closed) {
-				entry.sentText = text;
-				entry.sentRecovery = recovery;
-				entry.sentWrittenBy = writtenBy;
+				entry.sentText = settledText;
+				entry.sentRecovery = settledRecovery;
+				entry.sentWrittenBy = settledWrittenBy;
 				entry.coveredBy = undefined;
 				state.lastSaid = entry;
 				return;
 			}
 			// 发送途中问题清了、没人认领:这一句照样算真私聊过,窗口照记,但没有开着的问题顶着它
 			state.lastSaid = undefined;
-			if (closed.announceRecovery) sendRecovery(entry, text, recovery, writtenBy);
+			if (closed.announceRecovery) {
+				sendRecovery(entry, settledText, settledRecovery, settledWrittenBy);
+			}
 			return;
 		}
 		logger.warn(
@@ -329,7 +341,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		if (retry !== "later") {
 			// 结果不明(码表里「绝不重发」):这一句可能已经送到了,那一条不再说。别的不可重试的失败确知没送到,只让键停下。
 			// 发送途中清掉、没人认领的那条已经不在账上,不用记。
-			if (retry === "never" && !closed) entry.givenUpText = text;
+			if (retry === "never" && !closed) entry.givenUpText = settledText;
 			state.halted = true;
 			return;
 		}
@@ -411,6 +423,21 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		entry.recoveryMessage = change.recoveryMessage;
 		entry.writtenBy = change.writtenBy;
 		entry.wantsNotify = change.notify;
+		if (change.reworded) {
+			// 先换基线:这次只是换了说法,记着的那几句跟着换,下面的原逻辑才不会把它当成一句别的话
+			if (entry.sentText !== undefined) {
+				entry.sentText = entry.message;
+				entry.sentRecovery = entry.recoveryMessage;
+				entry.sentWrittenBy = entry.writtenBy;
+			}
+			if (entry.givenUpText !== undefined) entry.givenUpText = entry.message;
+			// 在途的那一发属于这条:落定时按这条此刻的说法记账,不用发出那一刻的旧值
+			const sending = state.sending;
+			if (sending) {
+				claimSending(sending);
+				if (sending.entry === entry) sending.reworded = true;
+			}
+		}
 		// 被记成「不再说」的那一条:报的人换了一句别的话、且仍要私聊,才重新算数
 		const revived =
 			entry.givenUpText !== undefined && change.notify && entry.message !== entry.givenUpText;
