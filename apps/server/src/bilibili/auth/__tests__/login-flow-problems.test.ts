@@ -15,9 +15,12 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
+import {
+	LOGIN_EXPIRED_TEXT,
+	LOGIN_MISSING_TEXT,
+	makeProblemPipeline,
+} from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/api";
-import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { LoginFlow } from "../login-flow";
 
 function makeHarness() {
@@ -97,7 +100,7 @@ describe("没有会话可丢时,-101 什么都不改", () => {
 
 		expect(h.flow.authState()).toEqual({ status: "logged-out" });
 		expect(h.table.list()).toHaveLength(1);
-		expect(h.table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginMissing.text);
+		expect(h.table.list()[0]?.message).toBe(LOGIN_MISSING_TEXT);
 		expect(h.notifyMaster).not.toHaveBeenCalled();
 	});
 
@@ -105,12 +108,12 @@ describe("没有会话可丢时,-101 什么都不改", () => {
 		const h = makeHarness();
 		await loggedIn(h);
 		h.flow.reportLoggedOut("notLogin");
-		expect(h.table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginMissing.text);
+		expect(h.table.list()[0]?.message).toBe(LOGIN_MISSING_TEXT);
 
 		await h.flow.handleAuthLost();
 
 		expect(h.flow.authState()).toEqual({ status: "logged-out" });
-		expect(h.table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginMissing.text);
+		expect(h.table.list()[0]?.message).toBe(LOGIN_MISSING_TEXT);
 		expect(h.notifyMaster).not.toHaveBeenCalled();
 	});
 
@@ -168,9 +171,9 @@ describe("有会话可丢时,照旧是登录失效", () => {
 
 		expect(h.flow.authState().status).toBe("expired");
 		expect(codesOf(h)).toEqual(["auth_lost"]);
-		expect(h.table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginExpired.text);
+		expect(h.table.list()[0]?.message).toBe(LOGIN_EXPIRED_TEXT);
 		expect(h.notifyMaster).toHaveBeenCalledTimes(1);
-		expect(h.notifyMaster).toHaveBeenCalledWith(PROBLEM_TEXTS.loginExpired.text);
+		expect(h.notifyMaster).toHaveBeenCalledWith(LOGIN_EXPIRED_TEXT);
 		expect(h.events.filter((e) => e === "auth-lost")).toHaveLength(1);
 	});
 
@@ -182,7 +185,7 @@ describe("有会话可丢时,照旧是登录失效", () => {
 
 		expect(h.flow.authState().status).toBe("expired");
 		expect(h.notifyMaster).toHaveBeenCalledTimes(1);
-		expect(h.notifyMaster).toHaveBeenCalledWith(PROBLEM_TEXTS.loginExpired.text);
+		expect(h.notifyMaster).toHaveBeenCalledWith(LOGIN_EXPIRED_TEXT);
 		expect(h.events).not.toContain("auth-lost");
 	});
 

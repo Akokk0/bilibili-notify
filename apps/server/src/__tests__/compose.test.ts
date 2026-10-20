@@ -729,7 +729,13 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 
 	// 验红:`compose.ts` 里建分层上报器的日志器改成别的格(比如 `forSubsystem("core", "core")`),这条红。
 	it("B 站分层上报器的日志器是 B 站那一格(标签与键都是来源键):它的 warn 落在那个日志器上", () => {
-		const { builtins, forSubsystem } = compose();
+		// 登录着、先撞一路风控:接上核心时有东西可补报(登录没好时分层什么都不补,登录问题归宿主)
+		const loggedIn: SourceAuth = {
+			...SOURCE_AUTH,
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+		};
+		const { builtins, forSubsystem } = compose({ sourceAuth: loggedIn });
+		builtins.bilibili.problems.reportRisk("dynamic", { notify: true });
 		const biliIndex = forSubsystem.mock.calls.findIndex(
 			([name, key]) => name === BILIBILI_SOURCE_KEY && key === BILIBILI_SOURCE_KEY,
 		);

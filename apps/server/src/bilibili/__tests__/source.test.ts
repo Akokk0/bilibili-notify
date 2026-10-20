@@ -36,7 +36,6 @@ import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import { createProblemLayers } from "../problem-layers.js";
-import { PROBLEM_TEXTS } from "../problem-texts.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
 import { createBiliSource } from "../source.js";
 
@@ -347,8 +346,8 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	// 验红:删掉 `start` 里的 `attach`,这条红(真上报器 + 记录用的假 ctx,开机登录已失效)。
-	it("真上报器:登录是 expired 时,start 之后核心那头收到一次 reportProblem(带私聊)", async () => {
+	// 验红:让分层上报器重新报 `auth_lost`(留着 `reportLogin`),这条红(真上报器 + 记录用的假 ctx,开机登录已失效)。
+	it("真上报器:登录是 expired 时,start 之后核心那头不收 auth_lost(登录问题归宿主报)", async () => {
 		const { deps } = makeDeps();
 		const problems = createProblemLayers({
 			auth: {
@@ -360,13 +359,7 @@ describe("createBiliSource", () => {
 		const source = createBiliSource({ ...deps, problems });
 		const { ctx } = makeCtx();
 		await source.start(ctx);
-		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
-		expect(ctx.reportProblem).toHaveBeenCalledWith({
-			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired.text,
-			notify: true,
-			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
-		});
+		expect(ctx.reportProblem).not.toHaveBeenCalled();
 		await source.stop();
 	});
 

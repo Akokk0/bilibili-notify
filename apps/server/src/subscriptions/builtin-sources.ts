@@ -1,5 +1,6 @@
 import type { AuthState, Disposable, Source } from "@bilibili-notify/internal";
 import type { ProblemTable } from "../problems/problem-table.js";
+import { watchLoginProblems } from "./login-problems.js";
 import type { SourceRegistry } from "./registry.js";
 import { type CreateSourceContextOptions, createSourceContext } from "./source-context.js";
 
@@ -22,6 +23,9 @@ export interface RegisterBuiltinSourceOptions
  *
  * 来源停下之后它报的问题整批清掉(`clearReporter`):这是宿主在清,不是来源说「好了」,所以不会补「已恢复」。
  * 登记失败那一支也清一次 —— `start` 途中可能已经报过。
+ *
+ * 来源有登录口(`source.auth`)的话,登记成功后宿主看它的登录状态报与清 `auth_lost`,记在来源键名下;
+ * 撤登记时先摘掉这个观察再清。
  */
 export async function registerBuiltinSource(
 	opts: RegisterBuiltinSourceOptions,
@@ -39,9 +43,20 @@ export async function registerBuiltinSource(
 	const auth = source.auth;
 	const authSubscription =
 		auth && onAuthChanged ? auth.onChange(() => onAuthChanged(auth.state())) : undefined;
+	// 登录有没有问题归宿主看:来源自己不报登录(见 `watchLoginProblems`)
+	const loginWatch = auth
+		? watchLoginProblems({
+				auth,
+				sourceKey: opts.sourceKey,
+				label: source.descriptor.label,
+				problems: opts.problems,
+				logger: opts.logger,
+			})
+		: undefined;
 	return {
 		dispose() {
 			authSubscription?.dispose();
+			loginWatch?.dispose();
 			registration.dispose();
 			handle.dispose();
 			opts.problems.clearReporter(opts.sourceKey);

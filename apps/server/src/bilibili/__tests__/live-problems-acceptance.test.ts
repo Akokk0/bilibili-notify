@@ -40,6 +40,7 @@ import { RoomSession } from "../live/session/room-session.js";
 import { createProblemLayers } from "../problem-layers.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
 import { BILI_SOURCE_DESCRIPTOR, createBiliSource } from "../source.js";
+import { LOGIN_EXPIRED_TEXT, LOGIN_RECOVERED_TEXT } from "./problem-pipeline.js";
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
 const EXPIRED: AuthState = { status: "expired", message: "失效" };
@@ -232,7 +233,7 @@ describe("失效登录开机 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual(["auth_lost"]);
 		expect(b.notifyMaster).toHaveBeenCalledTimes(1);
-		expect(b.notifyMaster).toHaveBeenCalledWith(relayed(PROBLEM_TEXTS.loginExpired.text));
+		expect(b.notifyMaster).toHaveBeenCalledWith(LOGIN_EXPIRED_TEXT);
 		expect(b.engineErrors).toEqual([]);
 	});
 
@@ -279,8 +280,8 @@ describe("失效登录开机 · 直播这一侧", () => {
 
 		expect(codesOf(b)).toEqual([]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
-			relayed(PROBLEM_TEXTS.loginExpired.text),
-			relayedRecovery(PROBLEM_TEXTS.loginExpired.recovery),
+			LOGIN_EXPIRED_TEXT,
+			LOGIN_RECOVERED_TEXT,
 		]);
 	});
 });
@@ -421,7 +422,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		expect(codesOf(b)).toEqual(["auth_lost"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
 			relayed(PROBLEM_TEXTS.riskControlled.text),
-			relayed(PROBLEM_TEXTS.loginExpired.text),
+			LOGIN_EXPIRED_TEXT,
 		]);
 	});
 });

@@ -263,9 +263,61 @@ describe("registerBuiltinSource · 登录口(Source.auth)", () => {
 		const handle = await registerBuiltinSource({ ...options, onAuthChanged });
 
 		handle.dispose();
-		expect(authed.disposed).toHaveBeenCalledTimes(1);
+		expect(authed.listeners.size).toBe(0);
 		authed.fire();
 		expect(onAuthChanged).not.toHaveBeenCalled();
+	});
+
+	// 验红:`builtin-sources.ts` 里不建 `watchLoginProblems`,这条红。
+	it("有登录口的来源登记后:宿主看登录状态,expired 就在来源键名下报 auth_lost(宿主那句、带私聊、不盖写者)", async () => {
+		const authed = makeAuthedSource();
+		authed.setState({ status: "expired", message: "失效" });
+		const { options, problems } = setup(authed.source);
+		await registerBuiltinSource(options);
+		expect(problems.report).toHaveBeenCalledTimes(1);
+		expect(problems.report).toHaveBeenCalledWith({
+			reporter: SOURCE_KEY,
+			code: "auth_lost",
+			message:
+				"主人，测试的登录失效了，那边订阅的内容先收不到了。到面板的账号页重新扫码登录就好，私聊发「login bilibili」也行。",
+			notify: true,
+			recoveryMessage: "主人，好消息：测试的登录已经恢复啦。",
+		});
+	});
+
+	it("登记之后登录状态变了:跟着报与清", async () => {
+		const authed = makeAuthedSource();
+		authed.setState({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		const { options, problems } = setup(authed.source);
+		await registerBuiltinSource(options);
+		expect(problems.report).not.toHaveBeenCalled();
+
+		authed.setState({ status: "expired", message: "失效" });
+		authed.fire();
+		expect(problems.report).toHaveBeenCalledTimes(1);
+
+		authed.setState({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		authed.fire();
+		expect(problems.resolve).toHaveBeenCalledWith({ reporter: SOURCE_KEY, code: "auth_lost" });
+	});
+
+	it("撤登记:先摘宿主的登录观察再整批清,清掉的不补「已恢复」,之后状态再变也不报", async () => {
+		const authed = makeAuthedSource();
+		authed.setState({ status: "expired", message: "失效" });
+		const { options, problems } = setup(authed.source);
+		const handle = await registerBuiltinSource(options);
+		problems.report.mockClear();
+
+		handle.dispose();
+
+		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
+		expect(problems.resolve).not.toHaveBeenCalled();
+		authed.setState({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		authed.fire();
+		authed.setState({ status: "expired", message: "又失效" });
+		authed.fire();
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(authed.listeners.size).toBe(0);
 	});
 
 	it("来源没有登录口:不订阅、不抛", async () => {

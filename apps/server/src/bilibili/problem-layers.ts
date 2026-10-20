@@ -5,10 +5,10 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
 /**
  * B 站的报错按因果分三层,问题表里同时只留最上面一层(动态与直播共用一个上报器):
  *
- * 1. **未登录**(`auth_lost`,来源级):只看 `AuthState.status` ——
- *    `expired` 开并带私聊;`logged-out`(从没登录过、主动退出)开、不私聊;`logged-in` 清;
- *    `awaiting-scan` / `confirming` / `error` 三种不动,保持上一次的结论(已登录时重扫不许误开,
- *    未登录时扫码途中不许误清)。
+ * 1. **未登录**(来源级):这里**不报**,登录问题(`auth_lost`)由宿主看登录状态报与清;这一层只用来压下面两层。
+ *    只看 `AuthState.status` —— `expired` / `logged-out` 算掉了;`logged-in` 算好了;
+ *    `awaiting-scan` / `confirming` / `error` 三种不动,保持上一次的结论(已登录时重扫不许误压,
+ *    未登录时扫码途中不许误松)。
  * 2. **风控**(`risk_controlled`,来源级):任一路撞了就开,所有撞着的路都清了才清。带不带私聊由撞上的路说了算
  *    (`reportRisk` 的 `notify`,取值集中在 `problem-texts.ts`):只有不要私聊的路开着时条目不带私聊;
  *    之后有一路要私聊的进来,**再报一次、带私聊**。只升不降:要私聊的那一路先走了也不撤回,条目照旧开着,
@@ -94,7 +94,6 @@ interface Failure {
 	muted: boolean;
 }
 
-const LOGIN_CODE = "auth_lost";
 const RISK_CODE = "risk_controlled";
 
 function failureKey(failure: { externalId?: string; code: string }): string {
@@ -103,8 +102,8 @@ function failureKey(failure: { externalId?: string; code: string }): string {
 
 export function createProblemLayers(options: CreateProblemLayersOptions): ProblemLayers {
 	const { logger } = options;
-	/** 未登录层:开着时带不带私聊;没开是 `null`。 */
-	let login: { notify: boolean } | null = null;
+	/** 登录掉了(`expired` / `logged-out`):压着下面两层。登录问题本身不在这里报,归宿主。 */
+	let loggedOut = false;
 	/** 风控层:撞着的路。 */
 	const risk = new Set<string>();
 	/** 风控层开着时,报给核心的那一条带不带私聊。只升不降,整层清掉(`risk` 空了)时复位。 */
@@ -122,17 +121,6 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		} catch (err) {
 			logger.warn(`[problem-layers] ${what}失败(已忽略): ${errorMessageOf(err)}`);
 		}
-	}
-
-	function reportLogin(to: CoreProblems, state: { notify: boolean }): void {
-		const text = state.notify ? PROBLEM_TEXTS.loginExpired : PROBLEM_TEXTS.loginMissing;
-		to.reportProblem({
-			code: LOGIN_CODE,
-			message: text.text,
-			notify: text.notify,
-			// 只进表的那一句没有「恢复时怎么说」(不会被用到)
-			...("recovery" in text ? { recoveryMessage: text.recovery } : {}),
-		});
 	}
 
 	function reportRiskEntry(to: CoreProblems): void {
@@ -160,7 +148,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	}
 
 	/** 第三层眼下在表里可见:没有更高层压着。 */
-	const failuresVisible = (): boolean => login === null && risk.size === 0;
+	const failuresVisible = (): boolean => !loggedOut && risk.size === 0;
 
 	/**
 	 * 高层要开了(调用时高层还没开,`wasVisible` 是调用前第三层可见不可见):表里已有的第三层静默抹掉;
@@ -207,23 +195,17 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		switch (status) {
 			case "expired":
 			case "logged-out": {
-				const next = { notify: status === "expired" };
-				const prev = login;
-				if (prev === null) {
+				if (!loggedOut) {
 					const wasVisible = failuresVisible();
 					eraseRisk();
 					pressDownFailures(wasVisible);
 				}
-				login = next;
-				if (prev === null || prev.notify !== next.notify) {
-					toCore("报未登录", (to) => reportLogin(to, next));
-				}
+				loggedOut = true;
 				return;
 			}
 			case "logged-in":
-				if (login === null) return;
-				login = null;
-				toCore("清未登录", (to) => to.resolveProblem({ code: LOGIN_CODE }));
+				if (!loggedOut) return;
+				loggedOut = false;
 				// 风控在未登录开着时存不进来,所以这时第三层重新可见
 				revealFailures();
 				return;
@@ -248,7 +230,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 
 	return {
 		reportRisk(path, riskOptions) {
-			if (login !== null) {
+			if (loggedOut) {
 				logger.debug(`[problem-layers] 登录没好,风控(${path})不另记`);
 				return;
 			}
@@ -318,8 +300,9 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			for (const failure of failures.values()) failure.muted = false;
 			// 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。
 			toCore("补报", (to) => {
-				if (login !== null) reportLogin(to, login);
-				else if (risk.size > 0) reportRiskEntry(to);
+				// 登录没好:低层都压着,登录问题本身归宿主报,这里什么都不补
+				if (loggedOut) return;
+				if (risk.size > 0) reportRiskEntry(to);
 				else for (const failure of failures.values()) reportFailureEntry(to, failure);
 			});
 		},

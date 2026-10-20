@@ -132,7 +132,7 @@ export class RoomContext extends RoomContextBase {
 					throw new LiveRoomPreflightBlockedError(reasonOfFailure(preflight));
 				case "unauthorized":
 				case "unavailable":
-					// -101 是登录的事(拦截器已发 auth-lost,未登录层压着下层问题,登录恢复后整批重建);回应形状不对是一时的。
+					// -101 是登录的事(拦截器已发 auth-lost,宿主看登录状态报登录问题,分层压着下层问题,登录恢复后整批重建);回应形状不对是一时的。
 					// 都不是「这个房间受限」:当弹幕连接没建起来。后果由随后那条「停止监听」去报。
 					this.logger.warn(
 						`[conn] 预检没拿到连接信息，房间 [${roomId}]：${reasonOfFailure(preflight)}`,

@@ -121,7 +121,8 @@ async function boot() {
 		auth: {
 			beginLogin: async () => ok(),
 			logout: async () => ok(),
-			state: () => ({ status: "logged-out" }),
+			// 已登录:这组测的是设置问题,别让宿主的登录问题(auth_lost)混进表里
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),
 		},
 		problems: {

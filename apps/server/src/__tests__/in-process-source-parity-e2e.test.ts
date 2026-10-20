@@ -1831,7 +1831,9 @@ describe("进程内对拍:两趟开机", () => {
 				(await (await api("/api/problems")).json()) as {
 					problems: Array<{ reporter: string; code: string; about?: unknown }>;
 				}
-			).problems.filter((p) => p.reporter === IN_PROCESS_KEY);
+			).problems
+				// 假来源开机是未登录:宿主会在它名下报一条 auth_lost,这一条测的是设置,不数它
+				.filter((p) => p.reporter === IN_PROCESS_KEY && p.code !== "auth_lost");
 		expect((await mine()).map((p) => p.code)).toEqual([SETTINGS_PROBLEM_CODE]);
 
 		// 经真路由把坏的那格存对:来源收到变化、问题没了、文件是新值(好的那格原样留着)。

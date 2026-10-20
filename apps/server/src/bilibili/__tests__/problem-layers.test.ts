@@ -71,88 +71,67 @@ function setup(initial: AuthState = IN, attached = true) {
 const LOGIN = { code: "auth_lost" };
 const RISK = { code: "risk_controlled" };
 
-describe("未登录层:只看 AuthState.status", () => {
-	it("开机 expired:attach 时报一条 auth_lost,来源级、带私聊", () => {
-		const { core } = setup(EXPIRED);
-		expect(core.reportProblem).toHaveBeenCalledTimes(1);
-		expect(core.reportProblem).toHaveBeenCalledWith({
-			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired.text,
-			notify: true,
-			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
-		});
-	});
+/**
+ * 登录问题(`auth_lost`)归宿主报(`subscriptions/login-problems.ts`),这一层自己不报、不清;
+ * 它只看 `AuthState.status` 判断「掉没掉」,用来压下面两层。
+ */
+describe("未登录层:不报登录问题,只用来压下面两层", () => {
+	/** 掉没掉登录,看一条风控报不报得上去。 */
+	const riskReaches = (initial: AuthState, ...then: AuthState[]): boolean => {
+		const { core, set, layers } = setup(initial);
+		for (const s of then) set(s);
+		layers.reportRisk("dynamic", { notify: true });
+		return core.reportProblem.mock.calls.some(([p]) => p.code === "risk_controlled");
+	};
 
-	it("开机 logged-out(没登录过 / 主动退出):报一条 auth_lost,不带私聊,话是「还没有登录」", () => {
-		const { core } = setup(OUT);
-		expect(core.reportProblem).toHaveBeenCalledTimes(1);
-		expect(core.reportProblem).toHaveBeenCalledWith({
-			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginMissing.text,
-			notify: false,
-		});
-	});
-
-	it("开机已登录:什么都不报", () => {
-		const { core } = setup(IN);
-		expect(core.reportProblem).not.toHaveBeenCalled();
-	});
-
-	it("运行中掉登录(logged-in → expired):当场报,带私聊", () => {
+	it("开机 expired / logged-out、运行中掉登录:核心那头收不到任何 auth_lost 的上报", () => {
+		for (const initial of [EXPIRED, OUT]) {
+			const { core } = setup(initial);
+			expect(core.reportProblem).not.toHaveBeenCalled();
+		}
 		const { core, set } = setup(IN);
 		set(EXPIRED);
-		expect(core.reportProblem).toHaveBeenCalledWith({
-			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired.text,
-			notify: true,
-			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
-		});
-	});
-
-	it("logged-in 清掉它,走普通的清(照常补「已恢复」,不带 notify)", () => {
-		const { core, set } = setup(EXPIRED);
-		set(IN);
-		expect(core.resolveProblem).toHaveBeenCalledTimes(1);
-		expect(core.resolveProblem).toHaveBeenCalledWith(LOGIN);
-	});
-
-	it("已登录时重扫 → 超时(awaiting-scan / confirming / error):一条都不开", () => {
-		const { core, set } = setup(IN);
-		for (const s of [SCAN, CONFIRMING, ERROR]) set(s);
-		expect(core.reportProblem).not.toHaveBeenCalled();
-		expect(core.resolveProblem).not.toHaveBeenCalled();
-	});
-
-	it("未登录时扫码途中(awaiting-scan / confirming / error)不清它,保持上一次的结论", () => {
-		const { core, set } = setup(EXPIRED);
-		for (const s of [SCAN, CONFIRMING, ERROR]) set(s);
-		expect(core.resolveProblem).not.toHaveBeenCalled();
-		set(IN);
-		expect(core.resolveProblem).toHaveBeenCalledTimes(1);
-	});
-
-	it("开机 confirming(还没向 B 站确认):不开;之后探到失效才开", () => {
-		const { core, set } = setup(CONFIRMING);
-		expect(core.reportProblem).not.toHaveBeenCalled();
-		set(EXPIRED);
-		expect(core.reportProblem).toHaveBeenCalledTimes(1);
-	});
-
-	it("失效后主动退出(expired → logged-out):换成不带私聊的那一句,不先清再开", () => {
-		const { core, set } = setup(EXPIRED);
-		core.reportProblem.mockClear();
 		set(OUT);
-		expect(core.reportProblem).toHaveBeenCalledWith({
-			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginMissing.text,
-			notify: false,
-		});
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("接上(attach)时登录没好也什么都不补报", () => {
+		const { core, layers } = setup(EXPIRED, false);
+		layers.attach(core);
+		expect(core.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("logged-in 不对核心清 auth_lost(清归宿主)", () => {
+		const { core, set } = setup(EXPIRED);
+		set(IN);
+		expect(core.resolveProblem).not.toHaveBeenCalledWith(LOGIN);
 		expect(core.resolveProblem).not.toHaveBeenCalled();
+	});
+
+	it("掉了登录就压着:expired / logged-out 时风控报不上去,logged-in 时报得上去", () => {
+		expect(riskReaches(EXPIRED)).toBe(false);
+		expect(riskReaches(OUT)).toBe(false);
+		expect(riskReaches(IN)).toBe(true);
+		expect(riskReaches(EXPIRED, IN)).toBe(true);
+	});
+
+	it("awaiting-scan / confirming / error 保持上一次的结论:已登录时不压,未登录时不松", () => {
+		expect(riskReaches(IN, SCAN, CONFIRMING, ERROR)).toBe(true);
+		expect(riskReaches(EXPIRED, SCAN, CONFIRMING, ERROR)).toBe(false);
+	});
+
+	it("开机 confirming(还没向 B 站确认):不压;之后探到失效才压", () => {
+		expect(riskReaches(CONFIRMING)).toBe(true);
+		expect(riskReaches(CONFIRMING, EXPIRED)).toBe(false);
+	});
+
+	it("失效后主动退出(expired → logged-out):仍然压着", () => {
+		expect(riskReaches(EXPIRED, OUT)).toBe(false);
 	});
 });
 
 describe("压与抹", () => {
-	it("未登录一开:手里的风控路在表里静默抹掉(notify: false),再报未登录", () => {
+	it("未登录一开:手里的风控路在表里静默抹掉(notify: false),自己不报未登录", () => {
 		const { core, set, layers } = setup(IN);
 		layers.reportRisk("dynamic", { notify: true });
 		layers.reportRisk("live:1", { notify: true });
@@ -162,8 +141,7 @@ describe("压与抹", () => {
 		set(EXPIRED);
 
 		expect(core.resolveProblem.mock.calls.map(([p]) => p)).toEqual([{ ...RISK, notify: false }]);
-		expect(core.reportProblem).toHaveBeenCalledTimes(1);
-		expect(core.reportProblem.mock.calls[0]?.[0].code).toBe("auth_lost");
+		expect(core.reportProblem).not.toHaveBeenCalled();
 		// 风控路清空了:之后这些路的「清」不再引出任何一次核心调用
 		layers.resolveRisk("dynamic");
 		expect(core.resolveProblem).toHaveBeenCalledTimes(1);
@@ -372,13 +350,7 @@ describe("第三层:各项请求失败", () => {
 		expect(byCode.get("dynamic_fetch_failed")).not.toHaveProperty("recoveryMessage");
 	});
 
-	it("未登录层与风控层报的时候带各自的 recovery;只进表的「还没登录」不带", () => {
-		const expired = setup(EXPIRED);
-		expect(expired.core.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
-			PROBLEM_TEXTS.loginExpired.recovery,
-		);
-		const missing = setup(OUT);
-		expect(missing.core.reportProblem.mock.calls[0]?.[0]).not.toHaveProperty("recoveryMessage");
+	it("风控层报的时候带它的 recovery,补报也带", () => {
 		const risky = setup(IN);
 		risky.layers.reportRisk("dynamic", { notify: true });
 		expect(risky.core.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
@@ -762,11 +734,11 @@ describe("先造、后接、补报", () => {
 		]);
 	});
 
-	it("未登录最优先:只补它一条", () => {
+	it("未登录最优先:压着风控,接上时什么都不补(登录问题归宿主)", () => {
 		const { core, layers } = setup(EXPIRED, false);
 		layers.reportRisk("dynamic", { notify: true });
 		layers.attach(core);
-		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["auth_lost"]);
+		expect(core.reportProblem).not.toHaveBeenCalled();
 	});
 
 	it("接上之前开了又清掉的不会出现", () => {
@@ -787,13 +759,13 @@ describe("先造、后接、补报", () => {
 		const { core, layers, set } = setup(IN);
 		layers.detach();
 		layers.reportRisk("dynamic", { notify: true });
-		set(EXPIRED);
+		set(IN);
 		layers.resolveRisk("nope");
 		expect(core.reportProblem).not.toHaveBeenCalled();
 		expect(core.resolveProblem).not.toHaveBeenCalled();
 
 		layers.attach(core);
-		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["auth_lost"]);
+		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["risk_controlled"]);
 	});
 
 	it("dispose:不再听登录口,也不再调核心", () => {

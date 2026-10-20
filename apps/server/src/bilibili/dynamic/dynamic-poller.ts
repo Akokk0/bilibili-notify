@@ -201,7 +201,7 @@ export class DynamicPoller {
 	/**
 	 * 登录已失效,等 `auth-restored`。**不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
 	 * 少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,再去撞一次 -101。
-	 * (要不要告诉主人登录失效由问题表的未登录层管,看登录状态,不看这个标记。)
+	 * (要不要告诉主人登录失效由宿主看登录状态报,不看这个标记。)
 	 */
 	private authLost = false;
 	/**
@@ -687,7 +687,7 @@ export class DynamicPoller {
 			case "unauthorized": {
 				// 真鉴权失效:停 cron,靠 auth-restored 重启(不退避盲重试 ——
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
-				// interceptor 单点广播。要不要告诉主人登录失效,由问题表的未登录层看登录状态决定,
+				// interceptor 单点广播。要不要告诉主人登录失效,由宿主看登录状态决定,
 				// 这里不再发告警。
 				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
 				this.authLost = true;
