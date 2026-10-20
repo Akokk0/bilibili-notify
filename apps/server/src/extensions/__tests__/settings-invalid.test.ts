@@ -22,11 +22,12 @@ import { join } from "node:path";
 import type { Issue, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
+import { fixedLocale, switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
 import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import type { LocaleReader } from "../../i18n/locale-reader.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
@@ -140,6 +141,8 @@ async function boot(
 		others?: PlantedManifest[];
 		/** 问题表的写口;不给就是什么都不记的那份。 */
 		problems?: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
+		/** 语言读口;不给就一直是简中。 */
+		locale?: LocaleReader;
 	} = {},
 ) {
 	await plant(opts.manifest);
@@ -175,7 +178,7 @@ async function boot(
 	const activate = opts.activate ?? standard;
 	const loaded: LoadedExtensions = await loadExtensions({
 		transitImages: inertTransitImages,
-		locale: fixedLocale(),
+		locale: opts.locale ?? fixedLocale(),
 		root,
 		host,
 		loggerOf: () => logger,
@@ -531,6 +534,34 @@ describe("设置读不了记进问题表", () => {
 		expect(t.reports).toHaveLength(1);
 		expect(t.reports[0]).not.toHaveProperty("notify");
 		await h.loaded.dispose();
+	});
+
+	it("存着的设置过不了 zod:表里那条的拓展名是此刻语言下的名字,切语言后跟着换", async () => {
+		const reader = switchableLocale("zh-CN");
+		const table = createProblemTable({
+			logger: silentLogger,
+			texts: { locale: () => reader.current(), onChange: (fn) => reader.onChange(fn) },
+		});
+		await mkdir(join(root, "douyin", "locales"), { recursive: true });
+		await writeFile(
+			join(root, "douyin", "locales", "en.json"),
+			JSON.stringify({ $manifest: { name: "Douyin feed" } }),
+		);
+		await writeFile(
+			join(root, "douyin", "locales", "zh-CN.json"),
+			JSON.stringify({ $manifest: { name: "抖音" } }),
+		);
+		const h = await boot({ settings: { links: [ROTTEN] }, problems: table, locale: reader });
+		const mine = () => table.list().filter((p) => p.reporter === "douyin");
+		expect(mine()[0]?.message).toContain("拓展「抖音」没起来");
+
+		reader.set("en");
+
+		expect(mine()).toHaveLength(1);
+		expect(mine()[0]?.message).toContain("拓展「Douyin feed」没起来");
+		expect(mine()[0]?.message).not.toContain("抖音订阅");
+		await h.loaded.dispose();
+		table.dispose();
 	});
 
 	it("设置文件读不懂 → 同样一条,话是文件读不懂那一句", async () => {

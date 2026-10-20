@@ -45,14 +45,14 @@ export function watchLoginProblems(options: WatchLoginProblemsOptions): Disposab
 						? {
 								reporter: sourceKey,
 								code: LOGIN_CODE,
-								message: t("problem.login.expired", { name: label, sourceKey }),
+								message: () => t("problem.login.expired", { name: label, sourceKey }),
 								notify: true,
-								recoveryMessage: t("problem.login.recovered", { name: label }),
+								recoveryMessage: () => t("problem.login.recovered", { name: label }),
 							}
 						: {
 								reporter: sourceKey,
 								code: LOGIN_CODE,
-								message: t("problem.login.missing", { name: label, sourceKey }),
+								message: () => t("problem.login.missing", { name: label, sourceKey }),
 								notify: false,
 							},
 				);

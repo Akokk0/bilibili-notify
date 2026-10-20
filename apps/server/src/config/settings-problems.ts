@@ -223,5 +223,5 @@ export function syncSettingsProblem(
 	logger.warn(logLine(entries));
 	if (entries.some(isHandsOff)) logger.warn(AI_PLAINTEXT_NOTE);
 	if (entries.some(isInstance)) logger.warn(INSTANCE_PLAINTEXT_NOTE);
-	problems.report({ ...KEY, message: settingsInvalidMessage(entries) });
+	problems.report({ ...KEY, message: () => settingsInvalidMessage(entries) });
 }

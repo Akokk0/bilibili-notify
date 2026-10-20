@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	EXTENSION_API_RANGE,
+	type Issue,
 	type Json,
 	type Logger,
 	type ServiceContext,
@@ -32,6 +33,7 @@ import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import type { LocaleReader } from "../../i18n/locale-reader.js";
 import type { IntegrationStoreHandle } from "../../integration-store/store.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
@@ -134,6 +136,10 @@ function run(opts: {
 	/** 不给就一直是简中。 */
 	locale?: LocaleReader;
 	onStatusChanged?: (id: string) => void;
+	/** 问题表的写口;不给就是什么都不记的那份。 */
+	problems?: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
+	/** 配置仓报「设置文件读不懂」的那张表:id → 原因。 */
+	settingsIssue?: (id: string) => Issue | undefined;
 }) {
 	return loadExtensions({
 		transitImages: inertTransitImages,
@@ -149,6 +155,8 @@ function run(opts: {
 		activateTimeoutMs: opts.activateTimeoutMs,
 		disposeTimeoutMs: opts.disposeTimeoutMs,
 		...coreStubs(),
+		...(opts.problems ? { problems: opts.problems } : {}),
+		...(opts.settingsIssue ? { settingsIssue: opts.settingsIssue } : {}),
 	});
 }
 
@@ -1803,6 +1811,36 @@ describe("拓展的译文(ADR-0037 决策 14)", () => {
 		reader.set("ja");
 		// 日文没有、简中有 → 简中
 		expect(loaded.list()[0]?.manifest?.name).toBe("桥");
+	});
+
+	it("替拓展报的「设置读不懂」:表里那条的名字是此刻语言下的名字,切语言后跟着换", async () => {
+		await plant("bridge", HEALTHY, { name: "原名" });
+		await plantLocale("bridge", "en", { $manifest: { name: "Bridge" } });
+		await plantLocale("bridge", "zh-CN", { $manifest: { name: "桥" } });
+		const reader = switchableLocale("zh-CN");
+		const problems = createProblemTable({
+			logger: silentLogger,
+			texts: { locale: () => reader.current(), onChange: (fn) => reader.onChange(fn) },
+		});
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			locale: reader,
+			problems,
+			settingsIssue: (id) => (id === "bridge" ? { message: "坏了" } : undefined),
+		});
+
+		expect(problems.list().map((p) => p.message)).toEqual([
+			"拓展「桥」没起来：它的设置文件不是合法的 JSON：坏了",
+		]);
+
+		reader.set("en");
+
+		expect(problems.list().map((p) => p.message)).toEqual([
+			"拓展「Bridge」没起来：它的设置文件不是合法的 JSON：坏了",
+		]);
+		await loaded.dispose();
+		problems.dispose();
 	});
 
 	it("没带译文的拓展:清单原字,不受语言影响", async () => {

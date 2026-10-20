@@ -294,6 +294,21 @@ describe("shortenInstanceId", () => {
 	});
 });
 
+describe("syncSettingsProblem 交进表的话", () => {
+	it("交的是取字函数(换语言或口吻时表重跑它),现取的字就是整句", () => {
+		const report = vi.fn();
+		syncSettingsProblem(
+			{ report, resolve: vi.fn() } as never,
+			[entry(["history"], "X")],
+			mkLogger(),
+		);
+		expect(report).toHaveBeenCalledTimes(1);
+		const message = report.mock.calls[0]?.[0].message;
+		expect(typeof message).toBe("function");
+		expect(message()).toBe(settingsInvalidMessage([entry(["history"], "X")]));
+	});
+});
+
 describe("brokenInstanceIdTakenMessage", () => {
 	it("女仆口吻的整句,id 超长同样截断", () => {
 		expect(brokenInstanceIdTakenMessage("mid")).toBe(

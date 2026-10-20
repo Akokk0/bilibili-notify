@@ -645,9 +645,8 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				detail: brokenFileDetail(broken.message),
 				schemas: [],
 			};
-			reportSettingsInvalid(
-				id,
-				t("extension.settings.fileBroken", { name: manifest.name, detail: broken.message }),
+			reportSettingsInvalid(id, () =>
+				t("extension.settings.fileBroken", { name: manifestOf(dir).name, detail: broken.message }),
 			);
 			host.logger.warn(`[ext] ${id} v${manifest.version} 设置文件读不懂,不跑:${broken.message}`);
 			return;
@@ -799,7 +798,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				onUnwritable: ledgerUnwritable,
 			});
 			if (unreadable !== undefined) {
-				await park(slot, runtime, manifest, unreadable);
+				await park(slot, runtime, dir, unreadable);
 				return;
 			}
 			started += 1;
@@ -844,15 +843,16 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	async function park(
 		slot: Slot,
 		runtime: ExtensionRuntime,
-		manifest: ExtensionManifest,
+		dir: ReadyDir,
 		why: string,
 	): Promise<void> {
+		const { manifest } = dir;
 		// 收摊会清空 runtime 上那份名单,先抄下来。
 		const schemas = runtime.settingsSchemas();
 		await runtime.dispose();
 		slot.miss = { state: "settings-invalid", detail: unreadableDetail(why), schemas };
 		// 🔴 必须在 `dispose()` 之后:收摊会 `clearReporter(拓展 id)`,先报的话刚记的这一条被一起清掉。
-		reportSettingsInvalid(manifest.id, problemText(manifest, why));
+		reportSettingsInvalid(manifest.id, problemText(dir, why));
 		host.logger.warn(`[ext] ${manifest.id} v${manifest.version} 设置读不了,不跑:${why}`);
 	}
 
@@ -860,7 +860,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 「设置读不了」同时记进问题表(extension-contract「问题上报」):宿主替拓展报,报的人是拓展 id,
 	 * 不带 `about`、不私聊(`notify` 缺省)。整句宿主自己写,不加「X 报告」引子。
 	 */
-	function reportSettingsInvalid(id: string, message: string): void {
+	function reportSettingsInvalid(id: string, message: () => string): void {
 		opts.problems.report({ reporter: id, code: SETTINGS_INVALID_CODE, message });
 	}
 
@@ -869,8 +869,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		opts.problems.resolve({ reporter: id, code: SETTINGS_INVALID_CODE }, { notify: false });
 	}
 
-	function problemText(manifest: ExtensionManifest, why: string): string {
-		return t("extension.settings.problem", { name: manifest.name, detail: why });
+	/** 取字函数:名字在出字那一刻按当前语言取(表在换语言时重跑它)。 */
+	function problemText(dir: ReadyDir, why: string): () => string {
+		return () => t("extension.settings.problem", { name: manifestOf(dir).name, detail: why });
 	}
 
 	/** 收掉跑着的那份(没在跑就什么都不做)。那一行怎么写由格子现推。 */
@@ -1011,7 +1012,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				const why = running.runtime.settingsProblem();
 				if (why === undefined) continue;
 				slot.running = undefined;
-				await park(slot, running.runtime, running.dir.manifest, why);
+				await park(slot, running.runtime, running.dir, why);
 				continue;
 			}
 			if (miss?.state !== "settings-invalid" || disk.state !== "ready") continue;
@@ -1041,7 +1042,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			else {
 				slot.miss = { ...miss, detail: unreadableDetail(verdict.detail) };
 				// 还是读不了,只换原因:同键再报只换文案、`since` 不动。
-				reportSettingsInvalid(disk.id, problemText(disk.manifest, verdict.detail));
+				reportSettingsInvalid(disk.id, problemText(disk, verdict.detail));
 			}
 		}
 	}

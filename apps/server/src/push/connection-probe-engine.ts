@@ -188,17 +188,16 @@ export function createConnectionProbeEngine(
 			};
 			outages.set(connection.id, outage);
 		}
-		const message = t("problem.connection.unreachable", {
-			name: connection.name,
-			reason: failure.message,
-		});
+		const reason = failure.message;
+		const wording = () => t("problem.connection.unreachable", { name: connection.name, reason });
+		const message = wording();
 		if (outage.message === message) return;
 		outage.message = message;
 		opts.problems.report({
 			...outageKey(connection.id, outage.reporter),
-			message,
+			message: wording,
 			notify: outage.notify,
-			recoveryMessage: t("problem.connection.recovered", { name: connection.name }),
+			recoveryMessage: () => t("problem.connection.recovered", { name: connection.name }),
 		});
 	}
 
@@ -328,10 +327,10 @@ export function createConnectionProbeEngine(
 				clearInvalid(connection.id);
 				continue;
 			}
-			const message = t("problem.connection.settingsInvalid", {
-				name: connection.name,
-				reason: settingsIssueMessage(resolved.issues ?? []),
-			});
+			const reason = settingsIssueMessage(resolved.issues ?? []);
+			const wording = () =>
+				t("problem.connection.settingsInvalid", { name: connection.name, reason });
+			const message = wording();
 			if (invalid.get(connection.id)?.message === message) continue;
 			invalid.set(connection.id, { reporter: connection.adapterKey, message });
 			// 只留一条:设置不合法了,先前开着的「连不上」没有意义了。
@@ -340,7 +339,7 @@ export function createConnectionProbeEngine(
 				reporter: connection.adapterKey,
 				about: { connectionId: connection.id },
 				code: SETTINGS_INVALID_CODE,
-				message,
+				message: wording,
 				notify: false,
 			});
 		}

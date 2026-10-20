@@ -4,10 +4,32 @@
  */
 
 import type { AuthState, Disposable, SourceAuth } from "@bilibili-notify/internal";
-import { describe, expect, it, vi } from "vite-plus/test";
-import type { ProblemTable } from "../../problems/problem-table.js";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { watchLoginProblems } from "../login-problems.js";
 import { makeLogger } from "./fixtures.js";
+
+// 今天只有简中有译文:把服务端的 `t` 换成"非简中时带语言前缀"的,好看出换语言后表里的字真的变了。
+vi.mock("../../i18n/index.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../../i18n/index.js")>();
+	return {
+		...real,
+		t: (key: never, vars?: never) => {
+			const locale = real.i18n.state().locale;
+			const text = real.t(key, vars);
+			return locale === "zh-CN" ? text : `${locale}|${text}`;
+		},
+	};
+});
+
+afterEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
+
+/** 交进表的 `message` / `recoveryMessage` 是取字函数:断言时现取一次。 */
+function shown(call: Parameters<ProblemTable["report"]>[0]) {
+	const pick = (v: string | (() => string) | undefined) => (typeof v === "function" ? v() : v);
+	return { ...call, message: pick(call.message), recoveryMessage: pick(call.recoveryMessage) };
+}
 
 const SCAN: AuthState = {
 	status: "awaiting-scan",
@@ -79,7 +101,10 @@ describe("watchLoginProblems", () => {
 	it("开机 expired:报一条 auth_lost,记在来源键名下、带私聊、宿主那句、不盖写者", () => {
 		const { problems } = setup(EXPIRED);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report).toHaveBeenCalledWith({
+		const call = problems.report.mock.calls[0]?.[0];
+		expect(typeof call?.message).toBe("function");
+		expect(typeof call?.recoveryMessage).toBe("function");
+		expect(call && shown(call)).toEqual({
 			reporter: "bilibili",
 			code: "auth_lost",
 			message: EXPIRED_TEXT,
@@ -88,10 +113,39 @@ describe("watchLoginProblems", () => {
 		});
 	});
 
+	it("换语言:表里开着的那条(真问题表)跟着变,不再私聊", () => {
+		const table = createProblemTable({
+			logger: makeLogger(),
+			texts: {
+				locale: () => i18n.state().locale,
+				onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
+			},
+		});
+		const changes: Array<{ kind: string; notify: boolean; reworded?: true }> = [];
+		table.subscribe((c) => changes.push(c));
+		const fake = makeAuth(EXPIRED);
+		watchLoginProblems({
+			auth: fake.auth,
+			sourceKey: "bilibili",
+			label: "B 站",
+			problems: table,
+			logger: makeLogger(),
+		});
+		expect(table.list()[0]?.message).toBe(EXPIRED_TEXT);
+
+		i18n.set({ locale: "en" });
+
+		expect(table.list()[0]?.message).toBe(`en|${EXPIRED_TEXT}`);
+		expect(table.list()).toHaveLength(1);
+		// 同一条换文案(带"换说法"记号),没有第二次 opened,所以通知器不会再私聊一遍。
+		expect(changes.map((c) => c.kind)).toEqual(["opened", "updated"]);
+		expect(changes.at(-1)?.reworded).toBe(true);
+	});
+
 	it("开机 logged-out:报一条 auth_lost,不带私聊,话是「还没有登录」", () => {
 		const { problems } = setup(OUT);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report).toHaveBeenCalledWith({
+		expect(shown(problems.report.mock.calls[0]?.[0] as never)).toEqual({
 			reporter: "bilibili",
 			code: "auth_lost",
 			message: MISSING_TEXT,
@@ -109,7 +163,7 @@ describe("watchLoginProblems", () => {
 		const { problems, set } = setup(IN);
 		set(EXPIRED);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report.mock.calls[0]?.[0]).toMatchObject({
+		expect(shown(problems.report.mock.calls[0]?.[0] as never)).toMatchObject({
 			message: EXPIRED_TEXT,
 			notify: true,
 		});
@@ -120,7 +174,7 @@ describe("watchLoginProblems", () => {
 		problems.report.mockClear();
 		set(OUT);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report).toHaveBeenCalledWith({
+		expect(shown(problems.report.mock.calls[0]?.[0] as never)).toEqual({
 			reporter: "bilibili",
 			code: "auth_lost",
 			message: MISSING_TEXT,
@@ -136,7 +190,7 @@ describe("watchLoginProblems", () => {
 		problems.report.mockClear();
 		set(EXPIRED);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report.mock.calls[0]?.[0]).toMatchObject({
+		expect(shown(problems.report.mock.calls[0]?.[0] as never)).toMatchObject({
 			message: EXPIRED_TEXT,
 			notify: true,
 		});

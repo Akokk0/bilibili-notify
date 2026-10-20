@@ -275,14 +275,21 @@ describe("registerBuiltinSource · 登录口(Source.auth)", () => {
 		const { options, problems } = setup(authed.source);
 		await registerBuiltinSource(options);
 		expect(problems.report).toHaveBeenCalledTimes(1);
-		expect(problems.report).toHaveBeenCalledWith({
+		const call = problems.report.mock.calls[0]?.[0];
+		// 交进表的是取字函数(换语言时表重跑),现取一次看字。
+		expect(call).toMatchObject({
 			reporter: SOURCE_KEY,
 			code: "auth_lost",
-			message:
-				"主人，测试的登录失效了，那边订阅的内容先收不到了。到面板的账号页重新扫码登录就好，私聊发「login bilibili」也行。",
 			notify: true,
-			recoveryMessage: "主人，好消息：测试的登录已经恢复啦。",
+			message: expect.any(Function),
+			recoveryMessage: expect.any(Function),
 		});
+		expect(typeof call?.message === "function" && call.message()).toBe(
+			"主人，测试的登录失效了，那边订阅的内容先收不到了。到面板的账号页重新扫码登录就好，私聊发「login bilibili」也行。",
+		);
+		expect(typeof call?.recoveryMessage === "function" && call.recoveryMessage()).toBe(
+			"主人，好消息：测试的登录已经恢复啦。",
+		);
 	});
 
 	it("登记之后登录状态变了:跟着报与清", async () => {

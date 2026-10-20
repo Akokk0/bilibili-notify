@@ -16,10 +16,31 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
-import { t } from "../../i18n/index.js";
+import { i18n, t } from "../../i18n/index.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createConnectionProbeEngine } from "../connection-probe-engine.js";
+
+// 今天只有简中有译文:把服务端的 `t` 换成"非简中时带语言前缀"的,好看出换语言后表里的字真的变了。
+vi.mock("../../i18n/index.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../../i18n/index.js")>();
+	return {
+		...real,
+		t: (key: never, vars?: never) => {
+			const locale = real.i18n.state().locale;
+			const text = real.t(key, vars);
+			return locale === "zh-CN" ? text : `${locale}|${text}`;
+		},
+	};
+});
+
+/** 交进表的 `message` / `recoveryMessage` 是取字函数:断言时现取一次。 */
+function shown(call: Parameters<ProblemTable["report"]>[0] | undefined) {
+	const pick = (v: string | (() => string) | undefined) => (typeof v === "function" ? v() : v);
+	return (
+		call && { ...call, message: pick(call.message), recoveryMessage: pick(call.recoveryMessage) }
+	);
+}
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -341,7 +362,8 @@ describe("ConnectionProbeEngine", () => {
 			expect(c.report).not.toHaveBeenCalled();
 			await oneRound();
 			expect(c.report).toHaveBeenCalledTimes(1);
-			expect(c.report).toHaveBeenCalledWith({
+			expect(typeof c.report.mock.calls[0]?.[0].message).toBe("function");
+			expect(shown(c.report.mock.calls[0]?.[0])).toEqual({
 				...reportKey,
 				message: unreachableText,
 				notify: false,
@@ -406,12 +428,10 @@ describe("ConnectionProbeEngine", () => {
 			state.current = fail("unauthorized", "token 不对");
 			await oneRound();
 			expect(c.report).toHaveBeenCalledTimes(2);
-			expect(c.report).toHaveBeenLastCalledWith(
-				expect.objectContaining({
-					notify: true,
-					message: t("problem.connection.unreachable", { name: "bot", reason: "token 不对" }),
-				}),
-			);
+			expect(shown(c.report.mock.lastCall?.[0])).toMatchObject({
+				notify: true,
+				message: t("problem.connection.unreachable", { name: "bot", reason: "token 不对" }),
+			});
 		});
 
 		it("主人的私聊目标走的就是这条连接:不私聊;中断中途主人换了目标也不翻", async () => {
@@ -518,13 +538,51 @@ describe("ConnectionProbeEngine", () => {
 			engine = c.engine;
 			await vi.advanceTimersByTimeAsync(0);
 			expect(c.report).toHaveBeenCalledTimes(1);
-			expect(c.report).toHaveBeenCalledWith({
+			expect(typeof c.report.mock.calls[0]?.[0].message).toBe("function");
+			expect(shown(c.report.mock.calls[0]?.[0])).toMatchObject({
 				...settingsKey,
 				message: expect.stringContaining("设置不合法：token"),
 				notify: false,
 			});
 			// 整句读下来不重复:原因本身就以「设置不合法」开头。
-			expect(c.report.mock.calls[0]?.[0].message).toMatch(/^连接「bot」设置不合法：token：/);
+			expect(shown(c.report.mock.calls[0]?.[0])?.message).toMatch(
+				/^连接「bot」设置不合法：token：/,
+			);
+		});
+
+		it("换语言:表里开着的「连不上」「设置不合法」两条(真问题表)都跟着变", async () => {
+			const table = createProblemTable({
+				logger: logger(),
+				texts: {
+					locale: () => i18n.state().locale,
+					onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
+				},
+			});
+			try {
+				const c = setup(
+					[connectionOf(A, { settings: GOOD }), connectionOf(B, { settings: BAD })],
+					{ [A]: async () => fail("unavailable", "拒绝连接") },
+					{ schema, problems: table },
+				);
+				engine = c.engine;
+				await vi.advanceTimersByTimeAsync(0);
+				await oneRound();
+				const before = Object.fromEntries(table.list().map((p) => [p.code, p.message]));
+				expect(Object.keys(before).sort()).toEqual([
+					"connection_settings_invalid",
+					"connection_unreachable",
+				]);
+				expect(before.connection_unreachable).toBe("连接「bot」连不上了：拒绝连接");
+
+				i18n.set({ locale: "en" });
+
+				const after = Object.fromEntries(table.list().map((p) => [p.code, p.message]));
+				expect(after.connection_unreachable).toBe(`en|${before.connection_unreachable}`);
+				expect(after.connection_settings_invalid).toBe(`en|${before.connection_settings_invalid}`);
+			} finally {
+				table.dispose();
+				i18n.set({ locale: "zh-CN", voice: "maid" });
+			}
 		});
 
 		it("不再另报「连不上」:探测回 not_configured 连续两次,只写 unreachable 带原因,不开第二条", async () => {
