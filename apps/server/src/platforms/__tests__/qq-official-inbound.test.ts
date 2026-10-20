@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { type WebSocket, WebSocketServer } from "ws";
 import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -126,6 +127,7 @@ describe("官机适配器 · 入站经 ctx.inbound", () => {
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		reconcileAdapter(ad, [qqConnection()], { private: priv, group });
 		cleanups.push(() => ad.stop());
@@ -158,6 +160,7 @@ describe("官机适配器 · 入站经 ctx.inbound", () => {
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		reconcileAdapter(ad, [qqConnection()], { private: priv, group });
 		cleanups.push(() => ad.stop());

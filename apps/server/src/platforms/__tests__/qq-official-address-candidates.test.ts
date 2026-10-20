@@ -2,6 +2,7 @@ import type { Connection, Disposable, Logger, ServiceContext } from "@bilibili-n
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
 function makeLogger(): Logger {
@@ -56,6 +57,7 @@ function makeAdapter() {
 		logger: makeLogger(),
 		serviceCtx: makeServiceCtx(),
 		registry,
+		locale: fixedLocale(),
 	});
 	// 生产里登记即 `start(ctx)`:先拿到 `ctx.http`(对账名单空着,不建网关)。
 	reconcileAdapter(adapter, []);
@@ -102,6 +104,7 @@ describe("QQ 官方适配器 listAddressCandidates — 群 / 私聊(内存发现
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
 			registry,
+			locale: fixedLocale(),
 		});
 		registry.record("a1", { scope: "group", openid: "G1" }, 1000);
 		expect(await adapter.listAddressCandidates?.(qqConnection(), "group", SIGNAL)).toEqual({

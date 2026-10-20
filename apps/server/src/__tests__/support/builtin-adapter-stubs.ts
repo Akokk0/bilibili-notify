@@ -12,6 +12,7 @@ import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platform
 import { createWebhookAdapter } from "../../platforms/webhook.js";
 import type { PlatformAdapterRegistry } from "../../push/registry.js";
 import { fakeAdapterContext } from "./adapter-ctx.js";
+import { fixedLocale } from "./fixed-locale.js";
 
 const quiet: Logger = { info() {}, warn() {}, error() {}, debug() {} };
 /** 工厂创建时只会登记一个关停钩子;适配器永不 start,钩子也就永不触发。 */
@@ -29,6 +30,7 @@ export function builtinAdapterStubs(): PlatformAdapter[] {
 			logger: quiet,
 			serviceCtx: quietServiceCtx,
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		}),
 		createWebhookAdapter({ logger: quiet }),
 	];

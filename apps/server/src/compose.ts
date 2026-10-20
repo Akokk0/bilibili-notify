@@ -192,6 +192,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		createQQOfficialAdapter({
 			logger: loggerOf("qq-official"),
 			serviceCtx: deps.serviceCtx,
+			locale: deps.locale,
 		}),
 		createWebhookAdapter({ logger: loggerOf("webhook") }),
 	];

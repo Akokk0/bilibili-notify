@@ -1,3 +1,5 @@
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import type {
 	Connection,
 	Disposable,
@@ -7,9 +9,24 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { WebSocketServer } from "ws";
 import { fakeAdapterContext, reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale, switchableLocale } from "../../__tests__/support/fixed-locale.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
+
+// 今天只有简中有译文:把服务端的 `t` 换成"非简中时带语言前缀"的,好看出换语言后重报的字真的变了。
+const spoken = vi.hoisted(() => ({ locale: "zh-CN" }));
+vi.mock("../../i18n/index.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../../i18n/index.js")>();
+	return {
+		...real,
+		t: (key: never, vars?: never) => {
+			const text = real.t(key, vars);
+			return spoken.locale === "zh-CN" ? text : `${spoken.locale}|${text}`;
+		},
+	};
+});
 
 function makeLogger(): Logger {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -36,6 +53,7 @@ function adapterOpts() {
 		logger: makeLogger(),
 		serviceCtx: makeServiceCtx(),
 		registry: createQQSessionRegistry(),
+		locale: fixedLocale(),
 	};
 }
 
@@ -106,6 +124,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	vi.useRealTimers();
+	spoken.locale = "zh-CN";
 });
 
 function callsTo(suffix: string) {
@@ -140,8 +159,137 @@ describe("createQQOfficialAdapter — 网关连不上的上报", () => {
 			fire: (ms: number) => {
 				for (const timer of timers) if (timer.live && timer.ms === ms) timer.fn();
 			},
+			/** 到点叫掉除了某个时长以外还活着的定时(重连的退避)。 */
+			fireAllBut: (ms: number) => {
+				for (const timer of [...timers]) {
+					if (!timer.live || timer.ms === ms) continue;
+					timer.live = false;
+					timer.fn();
+				}
+			},
 		};
 	}
+
+	/** 网关一直连不上、满 60 秒报出一条:T16 各条的起手。 */
+	async function offlineReported(locale: ReturnType<typeof switchableLocale>) {
+		route(async (url) => {
+			if (url.includes("getAppAccessToken"))
+				return res(200, { access_token: "TKN", expires_in: 7200 });
+			return res(200, {}); // /gateway 没给 url
+		});
+		const manual = manualServiceCtx();
+		const ad = createQQOfficialAdapter({
+			...adapterOpts(),
+			serviceCtx: manual.ctx,
+			locale,
+		});
+		const fake = fakeAdapterContext([qqConnection()]);
+		const reportProblem = vi.fn();
+		const resolveProblem = vi.fn();
+		ad.start({ ...fake.ctx, reportProblem, resolveProblem });
+		await vi.waitFor(() => expect(callsTo("/gateway").length).toBeGreaterThan(0));
+		manual.fire(60_000);
+		expect(reportProblem).toHaveBeenCalledTimes(1);
+		return { ad, fake, manual, reportProblem, resolveProblem };
+	}
+
+	function switchTo(locale: ReturnType<typeof switchableLocale>, to: string) {
+		spoken.locale = to;
+		locale.set(to);
+	}
+
+	const OFFLINE_ZH =
+		"网关已经连续一分钟没连上（解析网关地址失败: Error: getGateway 响应无 url），群里和私聊的消息暂时收不到；推送不受影响。";
+
+	// T16 验红:`onOffline` 只报不记原因 / 不订语言,这条红。
+	it("网关连不上进了表,换语言后再报一遍:同一个原因,用新语言的字", async () => {
+		const locale = switchableLocale();
+		const { ad, reportProblem } = await offlineReported(locale);
+		expect(reportProblem).toHaveBeenLastCalledWith({
+			connectionId: "a1",
+			code: "gateway_offline",
+			message: OFFLINE_ZH,
+		});
+
+		switchTo(locale, "en");
+		expect(reportProblem).toHaveBeenCalledTimes(2);
+		expect(reportProblem).toHaveBeenLastCalledWith({
+			connectionId: "a1",
+			code: "gateway_offline",
+			message: `en|${OFFLINE_ZH}`,
+		});
+		ad.stop();
+	});
+
+	it("网关又上线了(READY)之后换语言:不再报", async () => {
+		const locale = switchableLocale();
+		const wss = new WebSocketServer({ port: 0 });
+		await once(wss, "listening");
+		wss.on("connection", (ws) => {
+			ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 45000 } }));
+			ws.send(JSON.stringify({ op: 0, s: 1, t: "READY", d: { session_id: "SID" } }));
+		});
+		try {
+			const { ad, manual, reportProblem, resolveProblem } = await offlineReported(locale);
+			route(async (url) => {
+				if (url.includes("getAppAccessToken"))
+					return res(200, { access_token: "TKN", expires_in: 7200 });
+				if (url.endsWith("/gateway"))
+					return res(200, { url: `ws://127.0.0.1:${(wss.address() as AddressInfo).port}` });
+				return res(200, {});
+			});
+			manual.fireAllBut(60_000); // 重连的退避到点
+			await vi.waitFor(() => expect(resolveProblem).toHaveBeenCalled());
+			expect(resolveProblem).toHaveBeenCalledWith({
+				connectionId: "a1",
+				code: "gateway_offline",
+				notify: false,
+			});
+
+			switchTo(locale, "en");
+			expect(reportProblem).toHaveBeenCalledTimes(1);
+			ad.stop();
+		} finally {
+			for (const c of wss.clients) c.terminate();
+			await new Promise<void>((resolve) => wss.close(() => resolve()));
+		}
+	});
+
+	it("连接停用(对账清掉)之后换语言:不再报", async () => {
+		const locale = switchableLocale();
+		const { ad, fake, reportProblem } = await offlineReported(locale);
+		fake.setConnections([qqConnection({ appSecret: "" })]);
+		fake.fireChanged();
+
+		switchTo(locale, "en");
+		expect(reportProblem).toHaveBeenCalledTimes(1);
+		ad.stop();
+	});
+
+	it("stop() 之后换语言:不再报(语言订阅摘掉了)", async () => {
+		const inner = switchableLocale();
+		let subscribers = 0;
+		const locale = {
+			...inner,
+			onChange(fn: () => void) {
+				subscribers += 1;
+				const sub = inner.onChange(fn);
+				return {
+					dispose() {
+						subscribers -= 1;
+						sub.dispose();
+					},
+				};
+			},
+		};
+		const { ad, reportProblem } = await offlineReported(locale);
+		expect(subscribers).toBe(1);
+		ad.stop();
+		expect(subscribers).toBe(0);
+
+		switchTo(locale, "en");
+		expect(reportProblem).toHaveBeenCalledTimes(1);
+	});
 
 	it("网关一直连不上:满 60 秒报一条 gateway_offline 带原因,只进表;停用连接时清掉且不补「已恢复」", async () => {
 		route(async (url) => {

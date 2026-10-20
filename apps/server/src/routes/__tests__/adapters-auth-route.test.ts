@@ -10,6 +10,7 @@ import type { PlatformAdapter } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { encryptLikeTencent } from "../../platforms/__tests__/tencent-bind-crypto.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -190,6 +191,7 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 				track: () => {},
 			} as never,
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		const { app } = appOf([adapter], log);
 		return { app, log, adapter };

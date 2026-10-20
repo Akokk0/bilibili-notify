@@ -33,6 +33,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createOnebotAdapter } from "../../platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
@@ -139,6 +140,7 @@ describe("@全体:真派发器 + 真推送路由", () => {
 				logger: LOGGER,
 				serviceCtx: SERVICE_CTX,
 				registry: createQQSessionRegistry(),
+				locale: fixedLocale(),
 			}),
 		);
 		const connections = [connection("c-onebot", "onebot"), connection("c-qq", "qq-official")];

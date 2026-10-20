@@ -21,6 +21,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createOnebotAdapter } from "../../platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
@@ -268,6 +269,7 @@ describe("每个内置适配器:递到手上的 settings 是解过的(补了默�
 			logger: logger(),
 			serviceCtx: serviceCtx(),
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		const { dispatcher, seen } = seenBy(
 			real,

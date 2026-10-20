@@ -13,6 +13,7 @@
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
 import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
@@ -45,7 +46,12 @@ function buildMatrix(): PlatformAdapter[] {
 	const serviceCtx = makeServiceCtx();
 	return [
 		createOnebotAdapter({ logger, serviceCtx }),
-		createQQOfficialAdapter({ logger, serviceCtx, registry: createQQSessionRegistry() }),
+		createQQOfficialAdapter({
+			logger,
+			serviceCtx,
+			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
+		}),
 		createWebhookAdapter({ logger }),
 	];
 }

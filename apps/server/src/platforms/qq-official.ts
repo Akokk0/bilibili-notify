@@ -28,6 +28,7 @@ import type { RawData } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
 import { t } from "../i18n/index.js";
+import type { LocaleReader } from "../i18n/locale-reader.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
@@ -1157,6 +1158,8 @@ export interface QQOfficialAdapterOptions {
 	 * (表只归适配器用,宿主不持有);只在测试里想预先塞几条记录时传。
 	 */
 	registry?: QQSessionRegistry;
+	/** 语言变了的通知口:开着的「网关连不上」随语言重报一遍。 */
+	locale: Pick<LocaleReader, "onChange">;
 }
 
 interface QQLive {
@@ -1223,8 +1226,30 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	const { logger, serviceCtx } = opts;
 	const registry = opts.registry ?? createQQSessionRegistry();
 	const live = new Map<string, QQLive>();
-	/** 已经报过「网关连不上」、还没清的连接:关连接时补一次清,免得问题挂到天荒地老。 */
-	const gatewayDown = new Set<string>();
+	/**
+	 * 已经报过「网关连不上」、还没清的连接及其原因:关连接时补一次清,免得问题挂到天荒地老;
+	 * 语言变了按原因把这一句重报成新语言的字。
+	 */
+	const gatewayDown = new Map<string, string | null>();
+	/** `start(ctx)` 接住的上报口与语言订阅;`stop()` 摘掉。 */
+	let reporter: Pick<PlatformAdapterContext, "reportProblem"> | undefined;
+	let localeSub: Disposable | undefined;
+
+	/** 报(或重报)「网关连不上」:字在这一刻现出,原因记下来供换语言时再报。 */
+	function reportGatewayOffline(
+		ctx: Pick<PlatformAdapterContext, "reportProblem">,
+		connectionId: string,
+		reason: string | null,
+	): void {
+		gatewayDown.set(connectionId, reason);
+		ctx.reportProblem({
+			connectionId,
+			code: GATEWAY_OFFLINE_CODE,
+			message: reason
+				? t("qqOfficial.gateway.offline", { reason })
+				: t("qqOfficial.gateway.offlineNoReason"),
+		});
+	}
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
@@ -1276,16 +1301,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			logger,
 			shouldLogReconnects: () => logReconnectsBox.value,
 			// 网关只管入站(捞 openid、链接解析),推送走 REST 不受它影响:只进问题表,不私聊。
-			onOffline: (reason) => {
-				gatewayDown.add(connection.id);
-				ctx.reportProblem({
-					connectionId: connection.id,
-					code: GATEWAY_OFFLINE_CODE,
-					message: reason
-						? t("qqOfficial.gateway.offline", { reason })
-						: t("qqOfficial.gateway.offlineNoReason"),
-				});
-			},
+			onOffline: (reason) => reportGatewayOffline(ctx, connection.id, reason),
 			onOnline: () => {
 				gatewayDown.delete(connection.id);
 				ctx.resolveProblem({
@@ -1496,6 +1512,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		start(ctx: PlatformAdapterContext): void {
 			http = ctx.http;
+			reporter = ctx;
+			// 语言变了:此刻还连不上的连接,问题句照原因再说一遍(已恢复、已清掉的不在表里)。
+			localeSub = opts.locale.onChange(() => {
+				for (const [connectionId, reason] of [...gatewayDown]) {
+					if (reporter) reportGatewayOffline(reporter, connectionId, reason);
+				}
+			});
 			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
 			reconcile(ctx.connections(), ctx);
 			ctx.onConnectionsChanged(() => reconcile(ctx.connections(), ctx));
@@ -1503,6 +1526,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		stop(): void {
 			http = undefined;
+			reporter = undefined;
+			localeSub?.dispose();
+			localeSub = undefined;
 			disposeAll();
 		},
 

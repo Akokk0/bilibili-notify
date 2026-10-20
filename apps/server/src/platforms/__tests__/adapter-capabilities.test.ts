@@ -10,6 +10,7 @@ import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-noti
 import { platformDescriptor } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import { createWebhookAdapter } from "../webhook.js";
@@ -68,6 +69,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 			logger: makeLogger(),
 			serviceCtx: makeServiceCtx(),
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		const caps = capsOf(adapter, "qq-official");
 		expect(caps.atAll).toMatchObject({

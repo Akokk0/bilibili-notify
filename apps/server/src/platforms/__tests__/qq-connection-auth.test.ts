@@ -8,6 +8,7 @@ import type { ConnectionAuth } from "@bilibili-notify/internal";
 import { QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
+import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createPlatformAdapterRegistry, deriveAdapterRegistry } from "../../push/registry.js";
 import { createQQConnectionAuth } from "../qq-bind.js";
@@ -359,6 +360,7 @@ describe("接线", () => {
 			logger: log,
 			serviceCtx,
 			registry: createQQSessionRegistry(),
+			locale: fixedLocale(),
 		});
 		return { adapter };
 	}
