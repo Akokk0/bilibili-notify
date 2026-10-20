@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
+import { i18n } from "../../i18n/index.js";
 import { PROBLEMS_CHANGED_COALESCE_MS } from "../../problems/problem-table.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
 
@@ -29,6 +30,7 @@ beforeEach(async () => {
 	);
 });
 afterEach(async () => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.useRealTimers();
 	await runtime.dispose();
 	await rm(dataDir, { recursive: true, force: true });
@@ -48,5 +50,20 @@ describe("createAppRuntime 里的问题表", () => {
 		vi.advanceTimersByTime(PROBLEMS_CHANGED_COALESCE_MS);
 		expect(seen).toEqual([{ reporter: "bilibili" }]);
 		expect(runtime.problems.list()).toHaveLength(2);
+	});
+
+	// 验红:剪掉 bootstrap.ts 里 `texts: { … }` 那一格,这条红。
+	it("报一条读当前语言的取字函数:换语言之后表里当场是新语言的话", () => {
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+		runtime.problems.report({
+			reporter: "host",
+			code: "locale_probe",
+			message: () => `now:${i18n.state().locale}`,
+		});
+		expect(runtime.problems.list().map((p) => p.message)).toEqual(["now:zh-CN"]);
+
+		i18n.set({ locale: "ja" });
+
+		expect(runtime.problems.list().map((p) => p.message)).toEqual(["now:ja"]);
 	});
 });

@@ -17,6 +17,7 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
+import { i18n } from "../i18n/index.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import {
 	createImageStore,
@@ -324,6 +325,11 @@ export function createAppRuntime(
 	const problems = createProblemTable({
 		logger: serviceCtx.logger,
 		onChanged: (reporter) => bus.emit("problems-changed", { reporter }),
+		// 宿主交的是取字函数,换语言或口吻时由表重跑(见 `problems/problem-table.ts` 文件头「换语言」)。
+		texts: {
+			locale: () => i18n.state().locale,
+			onChange: (fn) => ({ dispose: i18n.subscribe(fn) }),
+		},
 	});
 	serviceCtx.onDispose(() => problems.dispose(), "stop");
 	// 各集成的设置段由组装根交进来(`compose.ts`),这里不认得是哪个集成。

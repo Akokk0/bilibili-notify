@@ -5,7 +5,7 @@
  * - 报的人停下、订阅删了,是宿主在清:变更带 `notify: false`,不许补「已恢复」。
  */
 
-import type { Logger } from "@bilibili-notify/internal";
+import type { Disposable, Logger } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	createProblemTable,
@@ -22,13 +22,38 @@ function makeLogger() {
 	} satisfies Logger;
 }
 
-function makeTable(onChanged?: (reporter: string) => void) {
+/** 假的语言 / 口吻读口:换一次就挨个叫订阅者(真 store 换语言或口吻都叫)。 */
+function makeTexts(initial = "zh-CN") {
+	let locale = initial;
+	const listeners = new Set<() => void>();
+	return {
+		texts: {
+			locale: () => locale,
+			onChange(fn: () => void): Disposable {
+				listeners.add(fn);
+				return { dispose: () => void listeners.delete(fn) };
+			},
+		},
+		/** 换语言(或只换口吻,`next` 不给就是同一种语言再叫一遍)。 */
+		change(next = locale) {
+			locale = next;
+			for (const fn of [...listeners]) fn();
+		},
+		listenerCount: () => listeners.size,
+	};
+}
+
+function makeTable(
+	onChanged?: (reporter: string) => void,
+	texts?: { locale(): string; onChange(fn: () => void): Disposable },
+) {
 	const logger = makeLogger();
 	let at = Date.parse("2026-10-11T00:00:00.000Z");
 	const table = createProblemTable({
 		logger,
 		onChanged,
 		now: () => new Date(at),
+		...(texts === undefined ? {} : { texts }),
 	});
 	const changes: ProblemChange[] = [];
 	table.subscribe((c) => changes.push(c));
@@ -44,6 +69,141 @@ function makeTable(onChanged?: (reporter: string) => void) {
 }
 
 const key = { reporter: "src-a", code: "auth_lost" };
+
+describe("问题表 · 换语言与口吻", () => {
+	it("交取字函数:重跑后字变了就换文案,带 reworded,since 与 notify 不动", () => {
+		let word = "旧话";
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: () => word, notify: true });
+		const since = table.list()[0]?.since;
+
+		// 字没变:不叫订阅方
+		words.change();
+		expect(changes).toHaveLength(1);
+
+		word = "新话";
+		words.change();
+
+		expect(changes).toHaveLength(2);
+		expect(changes[1]).toEqual({
+			kind: "updated",
+			problem: {
+				reporter: "src-a",
+				code: "auth_lost",
+				message: "新话",
+				since: "2026-10-11T00:00:00.000Z",
+			},
+			notify: true,
+			reworded: true,
+		});
+		expect(table.list()[0]?.message).toBe("新话");
+		expect(table.list()[0]?.since).toBe(since);
+	});
+
+	it("恢复句也交函数:重跑后换的是恢复句", () => {
+		let recovery = "好啦";
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: "话", recoveryMessage: () => recovery });
+
+		recovery = "好多了";
+		words.change();
+
+		expect(changes[1]).toMatchObject({
+			kind: "updated",
+			recoveryMessage: "好多了",
+			reworded: true,
+		});
+	});
+
+	it("重跑时函数抛了:留旧字、记一行 warn,别的条目照常换", () => {
+		let broken = false;
+		let word = "好话";
+		const words = makeTexts();
+		const { table, logger, changes } = makeTable(undefined, words.texts);
+		table.report({
+			reporter: "a",
+			code: "broken",
+			message: () => {
+				if (broken) throw new Error("取字坏了");
+				return "旧话";
+			},
+		});
+		table.report({ reporter: "a", code: "good", message: () => word });
+		changes.length = 0;
+
+		broken = true;
+		word = "新话";
+		words.change();
+
+		expect(table.list().map((p) => p.message)).toEqual(["旧话", "新话"]);
+		expect(changes.map((c) => c.problem.code)).toEqual(["good"]);
+		const warns = vi.mocked(logger.warn).mock.calls.map((c) => String(c[0]));
+		expect(warns.some((line) => line.includes("取字坏了"))).toBe(true);
+	});
+
+	it("按语言认换说法:语言变了之后同键再报带 reworded,同语言内换一句不带", () => {
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: "登录失效", notify: true });
+
+		words.change("en");
+		table.report({ ...key, message: "login expired", notify: true });
+
+		expect(changes[1]).toMatchObject({ kind: "updated", reworded: true });
+		expect(changes[1]?.problem.message).toBe("login expired");
+
+		table.report({ ...key, message: "login lost", notify: true });
+		expect(changes[2]?.kind).toBe("updated");
+		expect("reworded" in (changes[2] ?? {})).toBe(false);
+	});
+
+	it("原样再报没发消息也记下语言:之后再换一句不算换说法", () => {
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: "同一句", notify: true });
+
+		words.change("en");
+		table.report({ ...key, message: "同一句", notify: true });
+		expect(changes).toHaveLength(1);
+
+		table.report({ ...key, message: "别的", notify: true });
+		expect(changes[1]?.kind).toBe("updated");
+		expect("reworded" in (changes[1] ?? {})).toBe(false);
+	});
+
+	it("清掉之后不再重跑它存着的函数", () => {
+		let word = "旧话";
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: () => word });
+		expect(changes[0]?.problem.message).toBe("旧话");
+		table.resolve(key);
+		changes.length = 0;
+
+		word = "新话";
+		words.change();
+
+		expect(changes).toEqual([]);
+		expect(table.list()).toEqual([]);
+	});
+
+	it("dispose 摘掉订阅:之后换语言不再重跑", () => {
+		let word = "旧话";
+		const words = makeTexts();
+		const { table, changes } = makeTable(undefined, words.texts);
+		table.report({ ...key, message: () => word });
+
+		table.dispose();
+		word = "新话";
+		words.change();
+
+		expect(words.listenerCount()).toBe(0);
+		expect(changes).toHaveLength(1);
+		expect(table.list()[0]?.message).toBe("旧话");
+	});
+});
 
 describe("createProblemTable 的记与清", () => {
 	it("报一条:进表、since 是此刻的 ISO 时间、变更是 opened 且带上 notify", () => {
