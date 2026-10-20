@@ -14,13 +14,13 @@
  * - **下播的时刻是上报到达的那一刻**(不是翻完图的那一刻):写图库要几十毫秒,断流接续的等待与时长都不该
  *   把它算进去;
  * - **意外抛错只记错误日志、不重试**(决策 77):拓展的事件只来一次,BN 不替它重放;
- * - 上报的调用不等这里(决策 62):bus 的回调同步返回,活排进闸里,登记进 `track`(关停等它翻完交完)。
+ * - 上报的调用不等这里(决策 62):bus 的回调同步返回,活排进闸里,登记进 `track`;
+ * - 关停先退订,再等闸里已经收下的活翻完交完;场次引擎随后才收场次。
  *
  * 这条路是过渡:3b-42 删拓展 v2 的上报之后,来源直接经 `ctx.reportLive` 交中立信号。
  */
 
 import type {
-	Disposable,
 	LiveDetails,
 	LiveSignal,
 	Logger,
@@ -69,12 +69,16 @@ function isoOf(ms: number | undefined): string | undefined {
 	return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-export function bindExtensionLive(opts: BindExtensionLiveOptions): Disposable {
+export function bindExtensionLive(opts: BindExtensionLiveOptions): {
+	dispose(): Promise<void>;
+} {
 	const log = opts.logger;
 	const now = opts.now ?? Date.now;
 	/** 这个绑定自己的一道闸:上报按到达顺序一条条翻。 */
 	const gate = createSerialGate();
-	let disposed = false;
+	/** 已进闸、还没翻完的活。关停先退订,再等这张表排空。 */
+	const inFlight = new Set<Promise<void>>();
+	let stopping: Promise<void> | undefined;
 
 	/**
 	 * 写图库的口,**写不进的那张图缺着**:图库不收(`invalid`)本来就是缺着;磁盘写失败(`unavailable`)记一条 warn
@@ -165,7 +169,6 @@ export function bindExtensionLive(opts: BindExtensionLiveOptions): Disposable {
 			default:
 				return;
 		}
-		if (disposed) return;
 		opts.sessions.apply(signal);
 	}
 
@@ -176,29 +179,33 @@ export function bindExtensionLive(opts: BindExtensionLiveOptions): Disposable {
 		}
 		const arrivedAt = now();
 		const ids = delivery.subscriptionIds;
-		opts.serviceCtx.track(
-			gate
-				.run(async () => {
-					for (const id of ids) {
-						try {
-							await translateFor(id, report, arrivedAt);
-						} catch (err) {
-							log.error(
-								`[ext-live] 订阅 ${id} 的${report.kind}翻译途中出错(不重试): ${errorMessageOf(err)}`,
-							);
-						}
+		const handling = gate
+			.run(async () => {
+				for (const id of ids) {
+					try {
+						await translateFor(id, report, arrivedAt);
+					} catch (err) {
+						log.error(
+							`[ext-live] 订阅 ${id} 的${report.kind}翻译途中出错(不重试): ${errorMessageOf(err)}`,
+						);
 					}
-				})
-				.catch((err: unknown) => {
-					log.error(`[ext-live] ${report.kind} 处理途中出错(不重试): ${errorMessageOf(err)}`);
-				}),
-		);
+				}
+			})
+			.catch((err: unknown) => {
+				log.error(`[ext-live] ${report.kind} 处理途中出错(不重试): ${errorMessageOf(err)}`);
+			});
+		inFlight.add(handling);
+		void handling.then(() => inFlight.delete(handling));
+		opts.serviceCtx.track(handling);
 	});
 
 	return {
 		dispose() {
-			disposed = true;
 			watch.dispose();
+			stopping ??= (async () => {
+				while (inFlight.size > 0) await Promise.all(inFlight);
+			})();
+			return stopping;
 		},
 	};
 }

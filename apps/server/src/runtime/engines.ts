@@ -769,6 +769,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const liveTable = opts.liveTable;
 	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `liveSession` 读它。 */
 	let liveSessionEngine: LiveSessionEngine | undefined;
+	/** 拓展直播上报的绑定:另挂 stop 钩子,先排空在途上报,再让场次引擎收场次。 */
+	let extensionLiveBinding: ReturnType<typeof bindExtensionLive> | undefined;
 	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
 	let liveInteractionEngine: LiveInteractions | undefined;
 	let viewerChats: ViewerChatCollector | undefined;
@@ -856,17 +858,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const liveImages = opts.liveImages;
 			// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
 			if (!liveImages) throw new Error("createEngines: 接了拓展直播就必须给 liveImages");
-			handles.push(
-				bindExtensionLive({
-					bus: opts.bus,
-					logger: coreLiveCtx.logger,
-					serviceCtx: coreLiveCtx,
-					subscription: (id) => opts.subscriptionStore.findById(id),
-					profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
-					liveImages,
-					sessions: liveSessions,
-				}),
-			);
+			extensionLiveBinding = bindExtensionLive({
+				bus: opts.bus,
+				logger: coreLiveCtx.logger,
+				serviceCtx: coreLiveCtx,
+				subscription: (id) => opts.subscriptionStore.findById(id),
+				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				liveImages,
+				sessions: liveSessions,
+			});
 		}
 		// 核心回顾的一份收集器与两个生产者:场次开始登记、互动记一条、下播卡同步取快照。
 		const wordcloudStopWords = () =>
@@ -1118,6 +1118,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const dispose = (): void => {
 		if (disposed) return;
 		disposed = true;
+		// 正常关停时绑定的 stop 钩子已先跑过(退订并排空);直接调 `dispose` 的路径至少也要退订。
+		void extensionLiveBinding?.dispose();
 		connectionProbe.dispose();
 		clearInterval(cursorFlushTimer);
 		flushCursors(); // 关停前把未落盘的游标推进写一次,重启续接
@@ -1154,6 +1156,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
+	// 同段后登记的先跑:先退订并等已进闸的上报交完,再走 `dispose` 收场次。
+	if (extensionLiveBinding) {
+		const binding = extensionLiveBinding;
+		opts.serviceCtx.onDispose(() => binding.dispose(), "stop");
+	}
 
 	return {
 		registerSource: async (entry) => {

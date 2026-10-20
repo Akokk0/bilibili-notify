@@ -2450,6 +2450,66 @@ describe("createEngines — image 配色热更", () => {
 });
 
 describe("createEngines — dispose", () => {
+	it("拓展直播绑定先退订并排空在途上报,再让场次引擎收场次", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const liveTable = memoryLiveTable();
+		const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+		const ref = imageRefOf(image);
+		if (!ref) throw new Error("夹具图不合规");
+		const putGate = deferred();
+		const c = setup({
+			subs: [sub],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
+			liveTable,
+			liveImages: {
+				put: async () => {
+					await putGate.promise;
+					return { ok: true as const, ref };
+				},
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "liveStatus",
+				value: { live: true, url: "https://live.douyin.com/1", viewers: 2000, cover: image },
+			},
+		});
+		await Promise.resolve();
+
+		const stopHooks = c.serviceCtx.onDispose.mock.calls
+			.filter(([, phase]) => phase === "stop")
+			.map(([hook]) => hook);
+		expect(stopHooks).toHaveLength(2);
+		const [engineStop, bindingStop] = stopHooks;
+		const closing = bindingStop?.();
+		expect(liveTable.get(sub.id)).toBeUndefined();
+		putGate.resolve();
+		await closing;
+
+		expect(liveTable.get(sub.id)).toMatchObject({
+			subscriptionId: sub.id,
+			details: { currentViewers: 2000, cover: { ref } },
+		});
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: { kind: "liveEnd", value: { url: "https://live.douyin.com/1" } },
+		});
+		await Promise.resolve();
+		expect(liveTable.get(sub.id)).toBeDefined();
+		engineStop?.();
+		expect(liveTable.get(sub.id)).toBeUndefined();
+	});
+
 	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {
 		const c = setup({ subs: [biliSubOf("1")] });
 		active = c;

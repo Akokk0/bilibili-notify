@@ -34,6 +34,7 @@ const logger = { debug() {}, info() {}, warn: vi.fn(), error: vi.fn() };
 
 interface World {
 	bus: ReturnType<typeof createNodeMessageBus>;
+	handle: ReturnType<typeof bindExtensionLive>;
 	/** 交进引擎的信号,和存图,按发生的先后记在同一张表里。 */
 	events: Array<{ kind: "put"; ref: string | undefined } | { kind: "apply"; signal: LiveSignal }>;
 	signals(): LiveSignal[];
@@ -59,7 +60,7 @@ function world(
 	const events: World["events"] = [];
 	const puts: Uint8Array[] = [];
 	const ctx = makeTrackingContext();
-	bindExtensionLive({
+	const handle = bindExtensionLive({
 		bus,
 		logger,
 		serviceCtx: ctx,
@@ -85,6 +86,7 @@ function world(
 	});
 	return {
 		bus,
+		handle,
 		events,
 		signals: () => events.flatMap((event) => (event.kind === "apply" ? [event.signal] : [])),
 		puts,
@@ -99,6 +101,55 @@ function world(
 		},
 	};
 }
+
+describe("关停时的在途上报", () => {
+	it("先退订,再等已经进闸的信号交完", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const w = world({ gates: new Map([[COVER, gate]]) });
+		w.report({
+			kind: "liveStatus",
+			value: { live: true, viewers: 2000, cover: COVER },
+		});
+		await Promise.resolve();
+
+		const closing = w.handle.dispose();
+		expect(w.signals()).toEqual([]);
+		release();
+		await closing;
+
+		expect(w.signals()).toEqual([
+			expect.objectContaining({
+				kind: "status",
+				isLive: true,
+				details: { currentViewers: 2000, cover: { ref: imageRefOf(COVER) } },
+			}),
+		]);
+	});
+
+	it("关停开始之后到达的上报不再交", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const w = world({ gates: new Map([[COVER, gate]]) });
+		w.report({
+			kind: "liveStatus",
+			value: { live: true, viewers: 2000, cover: COVER },
+		});
+		await Promise.resolve();
+
+		const closing = w.handle.dispose();
+		w.report({ kind: "liveStatus", value: { live: false } });
+		release();
+		await closing;
+
+		expect(w.signals().map((signal) => signal.kind)).toEqual(["status"]);
+		expect(w.signals()[0]).toMatchObject({ isLive: true });
+	});
+});
 
 describe("开播上报:先存图,再交带引用的信号", () => {
 	it("封面与作者头像先存进图库,信号里只有引用;其余的格原样翻成中立详情", async () => {
