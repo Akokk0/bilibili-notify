@@ -44,7 +44,12 @@ const logger = { debug() {}, info() {}, warn() {}, error() {} };
 
 type GraceSettings = Pick<
 	LiveWorkSettings,
-	"liveStart" | "liveEnd" | "liveEndGrace" | "liveEndGraceMinutes"
+	| "liveStart"
+	| "liveEnd"
+	| "liveEndGrace"
+	| "liveEndGraceMinutes"
+	| "liveStreaming"
+	| "streamingIntervalHours"
 >;
 
 let bus: ReturnType<typeof createNodeMessageBus>;
@@ -183,7 +188,14 @@ beforeEach(() => {
 	bus.on("extension-live-session", (event) => frames.push(event));
 	changes = [];
 	frames = [];
-	settings = { liveStart: true, liveEnd: true, liveEndGrace: false, liveEndGraceMinutes: 2 };
+	settings = {
+		liveStart: true,
+		liveEnd: true,
+		liveEndGrace: false,
+		liveEndGraceMinutes: 2,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+	};
 	subs = new Map([
 		[SUB.id, SUB],
 		[OTHER.id, OTHER],
@@ -401,7 +413,14 @@ describe("断流接续(决策 58)", () => {
 // 都关着时这一场直接扔掉,统计就永远看不到这一场。
 describe("与推送开关无关(ADR-0020 决策 4)", () => {
 	it("开播与下播推送都关着:照样开一场、断流接续照样等、下播照样结束", async () => {
-		settings = { liveStart: false, liveEnd: false, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		settings = {
+			liveStart: false,
+			liveEnd: false,
+			liveEndGrace: true,
+			liveEndGraceMinutes: 3,
+			liveStreaming: false,
+			streamingIntervalHours: 1,
+		};
 		start();
 		liveStart();
 		expect(sessions.get(SUB.id)).toBeDefined();

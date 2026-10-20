@@ -35,5 +35,18 @@ export type LiveSignalReport =
 	| { kind: "status"; isLive: boolean; startedAt?: string; details: LiveDetails }
 	| { kind: "end"; endedAt: string; startedAt?: string; details?: LiveDetails };
 
+/**
+ * 拉取式:核心定时问来源 `fetchLiveStatus` 的结果(ADR-0026 决策 4;ADR-0021 决策 27)。
+ *
+ * - `live`:此刻在播,带数据(核心记进在播表,周期「正在直播」开着才推卡);
+ * - `offline`:此刻没在播,核心当成漏收的下播,走下播同一条路,时长算到「发现已下播的那一刻」;
+ * - `ok: false`:这一轮没取到 —— 核心跳过、记日志,**不停止监听、也不替来源报问题**(问题来源自己经
+ *   `ctx.reportProblem` 报)。
+ */
+export type LiveStatusResult =
+	| { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
+	| { ok: true; kind: "offline" }
+	| { ok: false; code: string; message: string };
+
 /** 核心按身份展开后喂给场次引擎的:每条订阅一份。 */
 export type LiveSignal = LiveSignalReport & { subscriptionId: string; identity: Identity };

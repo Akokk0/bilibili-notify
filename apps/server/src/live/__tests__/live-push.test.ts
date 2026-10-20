@@ -34,7 +34,11 @@ import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { bindExtensionLive } from "../extension-live.js";
 import type { LiveNotifySend } from "../live-notify.js";
 import { bindLivePush } from "../live-push.js";
-import { createLiveSessionEngine, type LiveSessionEngine } from "../live-sessions.js";
+import {
+	createLiveSessionEngine,
+	type LiveSessionEngine,
+	type LiveStatusReader,
+} from "../live-sessions.js";
 import type { LiveWorkSettings } from "../live-settings.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
 import { LivePushType } from "../live-types.js";
@@ -105,6 +109,8 @@ let ctx: TrackingContext;
 let sourceHasLiveTick: boolean;
 /** 推送这头(`bindLivePush`)挂过的周期计时器的间隔,按挂的先后(场次 / 在播表自己的计时器不算)。 */
 let periodicIntervals: number[];
+/** 来源的拉取式(`fetchLiveStatus`)读口;`undefined` = 来源没实现,场次不挂周期核对。 */
+let statusReader: LiveStatusReader | undefined;
 
 function start(): void {
 	const timers = {
@@ -127,6 +133,7 @@ function start(): void {
 		fans: () => profile?.fans,
 		settings: () => settings,
 		timers,
+		...(statusReader ? { liveStatus: statusReader } : {}),
 	});
 	// 拓展上报先存图、翻成中立信号再交引擎(真的绑定;图库换成记账的替身)。
 	extensionLive = bindExtensionLive({
@@ -230,6 +237,7 @@ beforeEach(() => {
 	slowNext = undefined;
 	ctx = makeTrackingContext();
 	periodicIntervals = [];
+	statusReader = undefined;
 	sourceHasLiveTick = true;
 	settings = baseSettings();
 	subs = new Map([[SUB.id, SUB]]);
@@ -633,6 +641,50 @@ describe("周期「正在直播」", () => {
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
 		expect(discrepancies).toEqual([]);
+	});
+});
+
+/**
+ * 来源实现了 `fetchLiveStatus`:周期「正在直播」归场次的计时(按这一场自己的开播时刻起算),到点问来源、还在播就
+ * 发 `tick`,推送这头据此推一张(周期那一档 `Live`);推送这头不再挂自己的周期计时器(宿主对这样的来源让
+ * `hasLiveTick` 答没有)。周期关着只核不推。
+ */
+describe("拉取式的周期「正在直播」(fetchLiveStatus)", () => {
+	beforeEach(() => {
+		sourceHasLiveTick = false;
+		statusReader = {
+			has: () => true,
+			fetch: async () => ({
+				ok: true,
+				kind: "live",
+				details: { title: "问到的标题", url: URL, totalViewers: 500 },
+			}),
+		};
+	});
+
+	it("到点还在播 → 推一张「正在直播」,卡上是刚问到的那一份;推送这头没挂周期计时器", async () => {
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 2 });
+		start();
+		liveStart({ startedAt: T0, title: "开播时的标题" });
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, 0]);
+		expect(sent[1]?.input).toMatchObject({ status: "streaming", title: "问到的标题" });
+		expect(periodicIntervals).toEqual([]);
+	});
+
+	it("周期关着:到点只核不推", async () => {
+		const fetched = vi.fn(statusReader?.fetch);
+		statusReader = { has: () => true, fetch: fetched };
+		start();
+		liveStart({ startedAt: T0 });
+		await settle();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(fetched).toHaveBeenCalledTimes(1);
+		expect(sent.map((s) => s.type)).toEqual([3]);
 	});
 });
 

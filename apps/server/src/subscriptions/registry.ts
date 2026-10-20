@@ -66,13 +66,19 @@ export function createSourceRegistry(): SourceRegistry {
 					throw new Error(`source "${sourceKey}" 的 externalIdRegex 不合规: ${checked.reason}`);
 				}
 			}
-			const { health } = source;
+			const { health, fetchLiveStatus } = source;
 			const claim = table.claim(sourceKey, {
 				sourceKey,
 				descriptor: source.descriptor,
 				auth: source.auth,
 				// 同 `health`:直接放 `source.searchCreators` 会丢掉 `this`。
 				searchCreators: (query, signal) => source.searchCreators(query, signal),
+				// 同上:直接放 `source.fetchLiveStatus` 会丢掉 `this`。没实现就不放这一格(核心据此知道它没有拉取式)。
+				...(fetchLiveStatus
+					? {
+							fetchLiveStatus: (identity, signal) => fetchLiveStatus.call(source, identity, signal),
+						}
+					: {}),
 				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。
 				...(health ? { health: () => health.call(source) } : {}),
 			});

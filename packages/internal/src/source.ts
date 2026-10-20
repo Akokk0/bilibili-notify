@@ -1,7 +1,7 @@
 import type { AuthState } from "./auth-state";
-import type { FeatureKey, ImageRef, Result } from "./constants";
+import type { FeatureKey, Identity, ImageRef, Result } from "./constants";
 import type { LinkResolver } from "./link-preview";
-import type { LiveSignalReport } from "./live";
+import type { LiveSignalReport, LiveStatusResult } from "./live";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -129,6 +129,13 @@ export interface Source {
 		query: string,
 		signal: AbortSignal,
 	): Promise<Result<{ candidates: CreatorCandidate[] }>>;
+	/**
+	 * 此刻这个人在不在播(拉取式)。实现了它,核心就按每一场的开播时刻各自起算、定时问它:确认还在播、
+	 * 发现已下播(当漏收的下播处理)、重启后认出已经在播的一场、断流等待到期时再核一次。失败回结果形状、
+	 * 不抛:这一轮没取到核心只记日志、跳过,问题由来源自己经 `ctx.reportProblem` 报。`signal` 中止
+	 * (宿主不等了)后来源应尽快收手。同一来源串行调用。不实现 = 只靠 `ctx.reportLive` 推送式上报。
+	 */
+	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
 	/** 此刻的健康状况,同步、不出网(与 `auth.state()` 同一种读口)。不交 = 这个来源在 `status` 里不占行。 */
 	health?(): SourceHealth;
 	start(ctx: SourceContext): Promise<void>;

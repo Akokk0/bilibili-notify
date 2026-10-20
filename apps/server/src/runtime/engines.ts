@@ -112,6 +112,7 @@ import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
 } from "../subscriptions/builtin-sources.js";
+import { createSourceGates, fetchSourceLiveStatus } from "../subscriptions/call-source.js";
 import { platformLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
@@ -370,6 +371,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const postsCtx = opts.serviceCtx.forSubsystem("posts", "core");
 	const liveCtx = opts.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY);
 	const coreLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
+	/** 宿主调来源的串行闸:搜人与查直播状态共用,同一个来源一次只有一个调用在途。 */
+	const sourceGates = createSourceGates();
+	/** 这个来源实现了 `fetchLiveStatus`(核心据此给它的每一场挂周期核对)。 */
+	const hasLiveStatus = (sourceKey: string): boolean =>
+		opts.sources.get(sourceKey)?.fetchLiveStatus !== undefined;
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
 	const imageCtx = opts.serviceCtx.forSubsystem("image", "image");
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
@@ -555,7 +561,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sources: opts.sources,
 				// 女仆的搜人走宿主外壳(超时、中止、抛错收成 unavailable),不直接碰来源。
 				searchCreators: (sourceKey, query) =>
-					searchSourceCreators({ sources: opts.sources, logger: log }, sourceKey, query),
+					searchSourceCreators(
+						{ sources: opts.sources, logger: log, gates: sourceGates },
+						sourceKey,
+						query,
+					),
 				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
 				extensionLive: liveSource(),
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
@@ -880,6 +890,23 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			timers: coreLiveCtx,
 			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的场次走下面的 B 站形状,拓展形状只给非在册的来源。
 			publishesExtensionSession: (sourceKey) => opts.sources.get(sourceKey) === undefined,
+			// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。
+			liveStatus: {
+				has: hasLiveStatus,
+				fetch: (identity, signal) =>
+					fetchSourceLiveStatus(
+						{ sources: opts.sources, logger: coreLiveCtx.logger, gates: sourceGates },
+						identity,
+						signal,
+					),
+			},
+			subscriptions: () => opts.subscriptionStore.list(),
+			// 要不要监听直播:internal 里那份唯一判定(折好的开关 ∧ 特别关注名单)。
+			wantsLive: (sub) =>
+				needsLiveMonitor({
+					features: resolve(sub, globals().defaults).features,
+					specialViewers: sub.specialViewers,
+				}),
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
@@ -910,8 +937,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					case "resume":
 						emitViewers(change.details.totalViewers);
 						return;
+					case "tick":
 					case "status":
-						if (change.live)
+						if (change.kind === "tick" || change.live)
 							emitViewers(liveTable.get(session.subscriptionId)?.details.totalViewers);
 						return;
 					case "end":
@@ -959,7 +987,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					);
 				},
 				sourceStatus,
-				hasLiveTick: (sourceKey) => extensionHasLiveTick(extensionSources, sourceKey),
+				// 实现了 `fetchLiveStatus` 的来源,周期「正在直播」由场次引擎的计时驱动(`tick`),推送这头不再挂自己的。
+				hasLiveTick: (sourceKey) =>
+					!hasLiveStatus(sourceKey) && extensionHasLiveTick(extensionSources, sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
@@ -1278,6 +1308,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				throw new Error("registerSource: 引擎装配已关停,来源登记作废");
 			}
 			sourceRegistrations.push(registration);
+			// 重启之后来源登记完:它名下要监听、手里没场次的订阅问一次,在播就认出一场(来源没实现拉取式则什么都不做)。
+			liveSessionEngine?.pollUnseen(entry.sourceKey);
 		},
 		live,
 		push,

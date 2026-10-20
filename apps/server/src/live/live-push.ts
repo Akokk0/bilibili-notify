@@ -73,6 +73,8 @@ import { LivePushType } from "./live-types.js";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+/** 周期「正在直播」卡在推送出错日志里的叫法(自己的周期计时与场次的 `tick` 两处共用)。 */
+const STREAMING_WHAT = "「正在直播」";
 
 /**
  * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
@@ -373,7 +375,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			return;
 		}
 		run.fresh = false;
-		enqueue(id, "「正在直播」", () => pushStreaming(id, run, LivePushType.Live));
+		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, run, LivePushType.Live));
 	}
 
 	/** 这一场该推送了吗:订阅还该推、开播 / 正在直播 / 下播推送没全关。全关着的放下这一场。 */
@@ -459,6 +461,24 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		armPeriodic(id, run, settings);
 	}
 
+	/**
+	 * 核心按这一场自己的时钟问过来源、还在播(`fetchLiveStatus`):周期「正在直播」开着就推一张(在播表里已经是
+	 * 刚问到的那一份);关着只核不推。推送这头不再挂自己的周期计时器(`hasLiveTick` 对实现了拉取式的来源答没有)。
+	 */
+	function onTick(session: LiveSession): void {
+		const id = session.subscriptionId;
+		const ready = pushSettings(id);
+		if (!ready) return;
+		let run = runs.get(id);
+		if (run?.session !== session) {
+			run = { session, fresh: false };
+			runs.set(id, run);
+		}
+		if (!ready.settings.liveStreaming) return;
+		const current = run;
+		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushType.Live));
+	}
+
 	/** 下播进了断流等待:周期推送先停。 */
 	function onEnding(session: LiveSession): void {
 		const id = session.subscriptionId;
@@ -513,6 +533,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			case "resume":
 				onResume(change.session);
 				return;
+			case "tick":
+				onTick(change.session);
+				return;
 			case "status":
 				onStatus(change.subscriptionId, change.live, change.session);
 				return;
@@ -522,8 +545,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			case "end":
 				// 为什么结束场次那边的日志写了。
 				dropRun(change.subscriptionId, "这一场结束了");
-				// 只有来源报的下播推下播卡;来源停了、订阅停用 / 删了、关机的,等着的下播卡不补推(决策 61)。
-				if (change.reason === "ended") {
+				// 只有来源报的下播(或核对发现的漏收下播,`poll`)推下播卡;来源停了、订阅停用 / 删了、关机的,
+				// 等着的下播卡不补推(决策 61)。
+				if (change.reason === "ended" || change.reason === "poll") {
 					finishEnd(change.subscriptionId, change.session, change.at, {
 						details: change.details,
 						startedAt: change.reportedStartedAt,

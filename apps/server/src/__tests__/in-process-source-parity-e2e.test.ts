@@ -69,6 +69,7 @@ import {
 	inProcessWorld,
 	LINK_NATIVE_PREFIX,
 	LINK_TITLE_PREFIX,
+	LIVE_STATUS_PROBLEM_CODE,
 	resetInProcessWorld,
 	SETTINGS_PROBLEM_CODE,
 } from "./support/in-process-source.js";
@@ -128,7 +129,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P29)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P30)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -179,6 +180,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P30",
+		title:
+			"fetchLiveStatus:按开播时刻起算的周期卡、周期关着只核不推、发现已下播走下播且时长算到发现那刻、取不到跳过不停(问题由来源自己报)、订阅开始监听时认出已在播的一场并补报",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -195,10 +202,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N03",
-		title: "fetchLiveStatus、场次、live-session-changed、live-viewers-changed",
+		title: "live-session-changed、带订阅 id 的 live-viewers-changed",
 		checked: false,
-		waitsFor: "3b 合场次引擎",
-		reason: "直播在 3a 只是外壳(出期条件),接口上没有 fetchLiveStatus",
+		waitsFor: "3b-23",
+		reason:
+			"场次与周期核对在 3b-22 已并进核心(P29、P30),这两个总线事件仍是 B 站形状(按 uid),等 3b-23 改成按订阅 id 的中立事件",
 	},
 	{
 		id: "N04",
@@ -298,6 +306,7 @@ const SOURCE_MEMBERS = {
 	stop: ["P18"],
 	auth: ["P16"],
 	searchCreators: ["P26"],
+	fetchLiveStatus: ["P30"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
 	logger: ["P20"],
@@ -454,6 +463,17 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	async function history(): Promise<HistoryEntryView[]> {
 		const res = await okRes(await api("/api/history?limit=500"));
 		return ((await res.json()) as HistoryResponse).entries;
+	}
+	/** 一条订阅某一类直播推送推了几次(同一次推送落几行都算一次,按 pushId 数)。 */
+	async function livePushCount(
+		subscriptionId: string,
+		feature: HistoryEntryView["feature"],
+	): Promise<number> {
+		return new Set(
+			(await history())
+				.filter((row) => row.subscriptionId === subscriptionId && row.feature === feature)
+				.map((row) => row.pushId),
+		).size;
 	}
 	async function problems() {
 		const res = await okRes(await api("/api/problems"));
@@ -696,12 +716,25 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				// 作品开关关着:在名单里,但 features 里没有 post。
 				{ ...sub(SUB.bob, EXT.bob), overrides: { features: { post: false } } },
 				// 停用的、另一个没人认领的键名下的:都不在名单里。
-				sub(SUB.carol, EXT.carol, { enabled: false }),
+				// carol 路由了开播(P30 里启用它,补报的「正在直播」卡走开播的目标)。
+				{
+					...sub(SUB.carol, EXT.carol, { enabled: false }),
+					routing: { ...sub(SUB.carol, EXT.carol).routing, liveStart: [ID.group] },
+				},
 				sub(SUB.dave, EXT.dave, { extensionId: OTHER_KEY }),
 				// 同一个人遗留的两条重复订阅。
 				sub(SUB.erin1, EXT.erin),
 				sub(SUB.erin2, EXT.erin),
-				sub(SUB.frank, EXT.frank),
+				// frank 路由了开播、正在直播与下播(P30 的周期卡与下播卡)。
+				{
+					...sub(SUB.frank, EXT.frank),
+					routing: {
+						...sub(SUB.frank, EXT.frank).routing,
+						liveStart: [ID.group],
+						liveStreaming: [ID.group],
+						liveEnd: [ID.group],
+					},
+				},
 			]),
 		);
 
@@ -1608,21 +1641,18 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				(row) => row.subscriptionId === SUB.alice,
 			);
 		};
-		/** alice 这类直播推送推了几次(同一次推送落几个消息都算一次,按 pushId 数)。 */
-		const livePushes = async (feature: "liveStart" | "liveEnd"): Promise<number> =>
-			new Set(
-				(await history())
-					.filter((row) => row.subscriptionId === SUB.alice && row.feature === feature)
-					.map((row) => row.pushId),
-			).size;
-		const waitPushes = (feature: "liveStart" | "liveEnd", n: number) =>
+		const livePushes = (feature: HistoryEntryView["feature"]) => livePushCount(SUB.alice, feature);
+		const waitPushes = (feature: HistoryEntryView["feature"], n: number) =>
 			vi.waitFor(async () => expect(await livePushes(feature)).toBe(n), { timeout: 10_000 });
 		const htmlBefore = renderedHtml.length;
+		// 开播时刻取此刻:来源没实现拉取式的话无所谓,实现了(假来源实现了)的话第一次周期核对在一个小时之后,
+		// 不会在这条用例中途打进来。
+		const startedAt = () => new Date().toISOString();
 
 		// 开播:推一次开播卡;在播列表里 alice 恰好一行(在册来源走 B 站形状的快照,不再列拓展形状那一行)。
 		probe.reportLive(EXT.alice, {
 			kind: "start",
-			startedAt: "2026-10-20T08:00:00.000Z",
+			startedAt: startedAt(),
 			details: { title: TITLE, category: "聊天", totalViewers: 7 },
 		});
 		await waitPushes("liveStart", 1);
@@ -1649,18 +1679,11 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		// 断流接续:开着时下播先等,等待里又开播就是同一场 —— 不再推开播卡,列表里仍是一行。
 		await patchSettings({ defaults: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 1 } } });
 		try {
-			probe.reportLive(EXT.alice, {
-				kind: "start",
-				startedAt: "2026-10-20T10:00:00.000Z",
-				details: { title: TITLE },
-			});
+			const second = startedAt();
+			probe.reportLive(EXT.alice, { kind: "start", startedAt: second, details: { title: TITLE } });
 			await waitPushes("liveStart", 2);
-			probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T10:05:00.000Z" });
-			probe.reportLive(EXT.alice, {
-				kind: "start",
-				startedAt: "2026-10-20T10:00:00.000Z",
-				details: { title: TITLE },
-			});
+			probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
+			probe.reportLive(EXT.alice, { kind: "start", startedAt: second, details: { title: TITLE } });
 			await new Promise((resolve) => setTimeout(resolve, 500));
 			expect(await livePushes("liveStart")).toBe(2);
 			expect(await livePushes("liveEnd")).toBe(1);
@@ -1669,11 +1692,144 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			await patchSettings({ defaults: { schedule: { liveEndGrace: false } } });
 		}
 		// 收尾:关着断流接续时下播当场结束,不留一场在表里。
-		probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T11:00:00.000Z" });
+		probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
 		await waitPushes("liveEnd", 2);
 		expect(await aliceRows()).toEqual([]);
 		drove("P29");
 	});
+
+	// 验红:`live-sessions.ts` 的计时起点改回「挂上那一刻」,第一段红(开播时刻往前挪了的场次两秒后没被问);
+	// `ok:false` 分支加回停计时/结束场次,「取不到」那段红;去掉断流到期的核对,不在本文件钉(单测 `live-poll.test.ts`)。
+	it("P30 fetchLiveStatus:按开播时刻起算的周期卡、周期关着只核不推、发现已下播走下播且时长算到发现那刻、取不到跳过不停(问题由来源自己报)、订阅开始监听时认出已在播的一场并补报", async () => {
+		const probe = currentProbe();
+		const who = SUB.frank;
+		const ext = EXT.frank;
+		const pushes = (feature: HistoryEntryView["feature"]) => livePushCount(who, feature);
+		const waitPushes = (feature: HistoryEntryView["feature"], n: number) =>
+			vi.waitFor(async () => expect(await pushes(feature)).toBe(n), { timeout: 15_000 });
+		const rowsOf = async (id: string): Promise<LiveListeningEntry[]> =>
+			(
+				(await (await okRes(await api("/api/live/listening"))).json()) as LiveListeningEntry[]
+			).filter((row) => row.subscriptionId === id);
+		const asked = () => probe.liveStatusAsked.filter((id) => id === ext).length;
+		const HOUR_MS = 3_600_000;
+		const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+		const startedAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+		// ⓪ 开机重建:来源登记完,它名下启用着、要监听的订阅各被问过一次(重启之后靠这一问认出已在播的场次)。
+		expect(probe.liveStatusAsked).toContain(EXT.alice);
+
+		// ① 周期「正在直播」开着、间隔 2 小时:开播时刻是 2 小时少 2 秒前 → 两秒后问一次(不是从挂上那一刻起算,
+		// 否则要等 2 小时),在播 → 推一张「正在直播」卡,卡上是这一次问到的标题。
+		await patchSettings({
+			defaults: { features: { liveStreaming: true }, liveStreaming: { streamingIntervalHours: 2 } },
+		});
+		const htmlBefore = renderedHtml.length;
+		try {
+			probe.liveStatusOutcome = {
+				ok: true,
+				kind: "live",
+				details: { title: "轮询到的标题P30", totalViewers: 99 },
+			};
+			const askedBefore = asked();
+			probe.reportLive(ext, {
+				kind: "start",
+				startedAt: startedAgo(2 * HOUR_MS - 2000),
+				details: { title: "开播标题P30" },
+			});
+			await waitPushes("liveStart", 1);
+			await waitPushes("liveStreaming", 1);
+			expect(asked()).toBe(askedBefore + 1);
+			expect(renderedHtml.slice(htmlBefore).some((html) => html.includes("轮询到的标题P30"))).toBe(
+				true,
+			);
+			probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
+			await waitPushes("liveEnd", 1);
+		} finally {
+			await patchSettings({
+				defaults: {
+					features: { liveStreaming: false },
+					liveStreaming: { streamingIntervalHours: 1 },
+				},
+			});
+		}
+
+		// ② 周期关着:间隔用默认 1 小时,开播时刻是 1 小时少 2 秒前 → 照样核一次,但不推「正在直播」。
+		const askedBeforeOff = asked();
+		probe.reportLive(ext, {
+			kind: "start",
+			startedAt: startedAgo(HOUR_MS - 2000),
+			details: { title: "开播标题P30" },
+		});
+		await waitPushes("liveStart", 2);
+		await vi.waitFor(() => expect(asked()).toBe(askedBeforeOff + 1), { timeout: 15_000 });
+		await wait(500);
+		expect(await pushes("liveStreaming")).toBe(1);
+		probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
+		await waitPushes("liveEnd", 2);
+
+		// ③ 取不到:跳过这一轮,场次还在(在播列表还有这一行)、没有下播卡;问题是来源自己报的。
+		probe.liveStatusOutcome = { ok: false, code: "rate_limited", message: "被风控了" };
+		const askedBeforeFail = asked();
+		probe.reportLive(ext, {
+			kind: "start",
+			startedAt: startedAgo(HOUR_MS - 2000),
+			details: { title: "开播标题P30" },
+		});
+		await waitPushes("liveStart", 3);
+		await vi.waitFor(() => expect(asked()).toBe(askedBeforeFail + 1), { timeout: 15_000 });
+		await vi.waitFor(async () =>
+			expect(
+				(await problems()).some(
+					(problem) =>
+						problem.reporter === IN_PROCESS_KEY && problem.code === LIVE_STATUS_PROBLEM_CODE,
+				),
+			).toBe(true),
+		);
+		await wait(500);
+		expect(await rowsOf(who)).toHaveLength(1);
+		expect(await pushes("liveEnd")).toBe(2);
+		probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
+		await waitPushes("liveEnd", 3);
+
+		// ④ 发现已下播:来源没报下播,核到「没在播」→ 走下播同一条路,推下播卡,时长算到发现的那一刻
+		// (开播时刻是 3 小时少 2 秒前,间隔 1 小时,第三个整点就是两秒后 → 时长正好 3 小时)。
+		probe.liveStatusOutcome = { ok: true, kind: "offline" };
+		await clearCaptures();
+		probe.reportLive(ext, {
+			kind: "start",
+			startedAt: startedAgo(3 * HOUR_MS - 2000),
+			details: { title: "开播标题P30" },
+		});
+		await waitPushes("liveStart", 4);
+		await waitPushes("liveEnd", 4);
+		const endCard = (await captures()).find((entry) => entry.text?.includes("下播啦"));
+		expect(endCard?.text).toContain("3小时");
+		expect(await rowsOf(who)).toEqual([]);
+
+		// ⑤ 订阅开始监听时认出已经在播的一场并补报:carol 停用着,启用的那一刻问一次,在播 → 认出一场(在播列表有
+		// 一行),补报开着就补一张「正在直播」卡(推送类型 CatchUp,历史记成开播)。
+		await patchSettings({ defaults: { liveStart: { catchUpOnBoot: true } } });
+		try {
+			probe.liveStatusOutcome = {
+				ok: true,
+				kind: "live",
+				details: { title: "补报标题P30" },
+			};
+			await okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled: true }, "PATCH")));
+			await vi.waitFor(async () => expect(await rowsOf(SUB.carol)).toHaveLength(1), {
+				timeout: 15_000,
+			});
+			await vi.waitFor(async () => expect(await livePushCount(SUB.carol, "liveStart")).toBe(1), {
+				timeout: 15_000,
+			});
+		} finally {
+			await okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled: false }, "PATCH")));
+			await patchSettings({ defaults: { liveStart: { catchUpOnBoot: false } } });
+			probe.liveStatusOutcome = { ok: true, kind: "offline" };
+		}
+		drove("P30");
+	}, 90_000);
 
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
@@ -2030,13 +2186,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 29 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(43);
+	it("PARITY_ROWS:对拍 30 行、不开 14 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(44);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 29 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 30 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17 转进了对拍(P21)、N07 转进了对拍(P22)、N18 转进了对拍(P25)、N12 转进了对拍(P27),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(

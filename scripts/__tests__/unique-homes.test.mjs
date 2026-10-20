@@ -54,6 +54,8 @@ export const HOMES = {
 	guessLocale: "apps/web/src/i18n/preference.ts",
 	// 面板订阅语言 store 的那一个 hook(3b-09):组件一律经它取字,不各写一份 useSyncExternalStore。
 	useT: "apps/web/src/i18n/index.ts",
+	// 宿主调来源的外壳(3b-22):超时、抛错收口、按来源键串行,搜人与查直播状态共用这一份。
+	callSource: "apps/server/src/subscriptions/call-source.ts",
 	// 主人可改的文案 → 它能用的变量 → 中立字段(3b-21):面板提示条与服务端可满足性探针共用这一份。
 	TEMPLATE_VARIABLES: "packages/internal/src/template-variables.ts",
 	// 全局时区的出厂值与两条规矩(3b-11;ADR-0021 决策 43):设置 schema 与服务端切天共用这一份。

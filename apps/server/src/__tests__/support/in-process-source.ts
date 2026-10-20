@@ -16,6 +16,7 @@ import {
 	fail,
 	type Json,
 	type LiveSignalReport,
+	type LiveStatusResult,
 	ok,
 	type PostEvent,
 	type Result,
@@ -60,6 +61,8 @@ export const inProcessSettingsSegment: IntegrationSettingsSegment<InProcessSetti
 
 /** 设置坏了时假来源自己报的问题 code。 */
 export const SETTINGS_PROBLEM_CODE = "settings_invalid";
+/** 这一轮没取到直播状态时假来源自己报的问题 code。 */
+export const LIVE_STATUS_PROBLEM_CODE = "live_status_unavailable";
 
 export interface InProcessOptions {
 	/** 描述符上的 `postNoun`;不给 = 不声明(对拍里有一行专看缺省叫什么)。 */
@@ -101,6 +104,10 @@ export interface InProcessProbe {
 	 * 触发上报,这里由测试按需摆;还没 `start` 就抛。
 	 */
 	reportLive(externalId: string, report: LiveSignalReport): void;
+	/** 下一次 `fetchLiveStatus` 回什么;缺省回「没在播」。回完不清,测试自己摆回去。失败时假来源自己报问题。 */
+	liveStatusOutcome: LiveStatusResult;
+	/** `fetchLiveStatus` 被问过的外部 id,按先后。 */
+	liveStatusAsked: string[];
 	/** `searchCreators` 收到的 query,按先后。 */
 	searches: string[];
 	/** 下一次 `searchCreators` 回什么;不摆 = 回两个固定候选。回完不清,测试自己摆回去。 */
@@ -181,6 +188,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		healthSummary: "一切正常",
 		healthThrows: false,
 		linkResolves: [],
+		liveStatusOutcome: { ok: true, kind: "offline" },
+		liveStatusAsked: [],
 		reportLive(externalId, report) {
 			if (!probe.ctx) throw new Error("假来源还没 start");
 			probe.ctx.reportLive(externalId, report);
@@ -207,6 +216,24 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 					],
 				})
 			);
+		},
+		async fetchLiveStatus(identity) {
+			probe.liveStatusAsked.push(identity.externalId);
+			const outcome = probe.liveStatusOutcome;
+			// 取不到:来源自己报问题(核心不替它报),取到了清掉。
+			if (outcome.ok) {
+				probe.ctx?.resolveProblem({
+					externalId: identity.externalId,
+					code: LIVE_STATUS_PROBLEM_CODE,
+				});
+			} else {
+				probe.ctx?.reportProblem({
+					externalId: identity.externalId,
+					code: LIVE_STATUS_PROBLEM_CODE,
+					message: "对拍源这一轮没取到直播状态",
+				});
+			}
+			return outcome;
 		},
 		async start(ctx) {
 			probe.starts += 1;

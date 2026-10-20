@@ -232,7 +232,6 @@ export const RATCHET = {
 	"apps/server/src/stats/roast-generate.ts": 9,
 	"apps/server/src/stats/roast.ts": 39, // 含给模型的提示词(决策 11 不翻)
 	"apps/server/src/subscriptions/registry.ts": 1,
-	"apps/server/src/subscriptions/search-source-creators.ts": 1,
 	"apps/server/src/subscriptions/source-context.ts": 2,
 	"apps/server/src/util/failure-text.ts": 4,
 	"apps/server/src/ws/server.ts": 2,

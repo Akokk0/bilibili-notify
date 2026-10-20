@@ -106,7 +106,12 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 		subscription: (id) => subs.find((sub) => sub.id === id),
 		sourceStatus: { running: () => running },
 		fans: () => undefined,
-		settings: () => ({ liveEndGrace: false, liveEndGraceMinutes: 2 }),
+		settings: () => ({
+			liveEndGrace: false,
+			liveEndGraceMinutes: 2,
+			liveStreaming: false,
+			streamingIntervalHours: 1,
+		}),
 		timers,
 		now: () => clock,
 	});

@@ -33,6 +33,7 @@ import type {
 	PostEvent,
 	ProbeResult,
 	PushTarget,
+	Source,
 	SourceAuth,
 	SourceContext,
 	Subscription,
@@ -455,6 +456,8 @@ function setup(opts?: {
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
 	loginStatus?: "logged-in" | "confirming";
+	/** 登记的假来源是否实现拉取式的 `fetchLiveStatus`;不给 = 没实现。 */
+	fetchLiveStatus?: Source["fetchLiveStatus"];
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
 	/** 给直播引擎的 B 站分层上报器;不给 = 四个方法都是 spy 的假件。 */
@@ -499,6 +502,7 @@ function setup(opts?: {
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
 	const source = makeSource();
+	if (opts?.fetchLiveStatus) source.fetchLiveStatus = opts.fetchLiveStatus;
 	const problems = createProblemTable({ logger: serviceCtx.logger });
 	const biliProblems = opts?.biliProblems ?? makeLiveProblems();
 	const runtime = createEngines({
@@ -1750,6 +1754,36 @@ describe("createEngines — 在册来源的直播信号(R1 过渡输出)", () =>
 			["42", 9],
 		]);
 		expect(sessionEvents).toEqual([]);
+	});
+
+	// 验红:去掉 engines.ts 里 `hasLiveTick` 的 `!hasLiveStatus(sourceKey) &&`,这条红(推送这头又挂了一个小时的周期计时器)。
+	it("来源实现了 fetchLiveStatus:推送这头不挂自己的周期计时器(周期归场次的计时);没实现的照旧挂", async () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.features.liveStreaming = true;
+		g.defaults.liveStreaming.streamingIntervalHours = 1;
+		const hourly = async (fetchLiveStatus?: Source["fetchLiveStatus"]): Promise<number[]> => {
+			const sub = biliSubOf("42", "sub-42");
+			const c = setup({
+				globals: g,
+				subs: [sub],
+				extensionSources: {
+					running: () => false,
+					postNoun: () => undefined,
+					events: () => undefined,
+				},
+				liveTable: memoryLiveTable(),
+				...(fetchLiveStatus ? { fetchLiveStatus } : {}),
+			});
+			active = c;
+			await c.sourceReady;
+			c.source.ctx?.reportLive("42", { kind: "start", startedAt: START, details: { title: "t" } });
+			const intervals = (subsystemCtx(c, "live", "core").setInterval.mock.calls ??
+				[]) as unknown as [() => void, number][];
+			return intervals.map(([, ms]) => ms).filter((ms) => ms === 60 * 60 * 1000);
+		};
+		expect(await hourly(async () => ({ ok: false, code: "x", message: "x" }))).toEqual([]);
+		active?.runtime.dispose();
+		expect(await hourly()).toEqual([60 * 60 * 1000]);
 	});
 
 	it("listLiveRooms:在播表里在册来源的行投影成 B 站形状的快照(房号取运行态仓,没有就空串)", async () => {
