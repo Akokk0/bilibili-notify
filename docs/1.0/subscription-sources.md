@@ -23,7 +23,7 @@ interface Source {
   // 可选
   auth?: SourceAuth;
   fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
-  liveInteractions?: LiveInteractions;     // 弹幕、SC、会员、进场
+  liveInteractions?: LiveInteractionReader;     // 出卡时才懒取观众头像与档位图标
   health?(): SourceHealth;                 // 健康卡与 status 指令的一行字
   fetchPreview?(identity: Identity, kind: "post" | "live", signal: AbortSignal)
     : Promise<Result<PostReport | LiveCardInput>>;
@@ -39,12 +39,12 @@ interface SourceHealth { summary: string }
 | `searchCreators` | 是 | 新建订阅弹窗打字时 | 「解析门」：输入框里是链接、id 还是名字都原样交进来，来源自己认；最多回 10 个 `CreatorCandidate`。失败回结果形状、不再靠抛：风控 `rate_limited`、没登录 `unauthorized`，文案由来源给、原话到面板；面板按 `code` + `message` 读一处（今天风控和没登录都报成 404） |
 | `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉 |
 | `auth` | 否 | 系统 → 账号、`login` 指令 | 见「登录与账号」 |
-| `fetchLiveStatus` | 否 | 核心按场次定时调 | 返回结果形状，成功分 `live` / `offline`，见「直播」 |
-| `liveInteractions` | 否 | 直播中 | 直播互动（弹幕、醒目留言、会员、进场）走回调、不走总线；观众头像与档位图标在确定要出卡时再取 |
+| `fetchLiveStatus` | 否 | 核心按场次定时调 | 已落（3b-22）：返回结果形状，成功分 `live` / `offline`，失败时核心只跳过这一轮，见「直播」 |
+| `liveInteractions` | 否 | 出卡时 | 已落（3b-22）：类型是 `LiveInteractionReader`；只有 `fetchViewerAvatar` / `fetchTierIcon` 两个懒取口，直播互动本身经 `reportLiveInteraction` 上报 |
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
 | `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
 
-`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3a-42，10-12）：代码里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`），`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地（`searchCreators` 这一期造、B 站实现、只给 AI 的搜人工具用，`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期）；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
+`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3b-22，10-21）：代码里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`），`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
 
 新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
@@ -222,7 +222,8 @@ interface SourceContext extends IntegrationContext {
   subscriptions(): readonly SourceSubscriptionView[];   // 名单：只列启用中的，不带订阅 id
   onSubscriptionsChanged(fn: () => void): Disposable;   // 订阅变化的唯一通知；要做事就自己对比新旧名单
   reportPost(externalId: string, report: PostReport): void;
-  reportLive(externalId: string, signal: LiveSignalReport): void;
+  reportLive(externalId: string, report: LiveSignalReport): void;
+  reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
   reportProfile(externalId: string, profile: CreatorProfileReport): void;   // 推送式平台主动报
   reportProblem(p: { externalId?: string; code: string; message: string; notify?: boolean; recoveryMessage?: string }): void;
   resolveProblem(p: { externalId?: string; code: string; notify?: boolean }): void;
@@ -233,18 +234,20 @@ interface SourceContext extends IntegrationContext {
 interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscription{ id, externalId, enabled }
   externalId: string;
   features: ReadonlySet<FeatureKey>; // 这个人开着的特性（只看开关，不看有没有目标）
+  monitorsLive: boolean;             // 宿主按 needsLiveMonitor 算好；同一人的重复订阅取或
 }
 ```
 
 | 成员 | 规矩 |
 | --- | --- |
-| `subscriptions` / `onSubscriptionsChanged` | 名单只列启用中的订阅，条目 `{ externalId, features }`、不带订阅 id；同一人遗留的重复订阅合成一条、`features` 取并集。**开了开关才干活**：单个订阅开了作品或直播类开关，来源才去监听（没开直播就不连弹幕、没开作品就不拉也不抓图），统计也只记开着的；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。来源只上报名单里的人。B 站也用这份名单，不再拿完整的订阅对象 |
+| `subscriptions` / `onSubscriptionsChanged` | 名单只列启用中的订阅，条目 `{ externalId, features, monitorsLive }`、不带订阅 id；同一人遗留的重复订阅合成一条、`features` 取并集、`monitorsLive` 取或。**开了开关才干活**：单个订阅开了作品或直播类开关，来源才去监听（没开直播就不连弹幕、没开作品就不拉也不抓图），统计也只记开着的；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。来源只上报名单里的人。B 站也用这份名单，不再拿完整的订阅对象 |
 | `reportPost` | 核心按身份展开成每条订阅一份 `PostEvent`（正常一条，老数据里的重复各一份），再发 `post-detected`（旁路通知，给统计）并交进作品装配；查不到或已停用就丢弃、记 debug 日志。判新、去重、限流归来源。来源交完就前移自己的锚点，投递失败由核心按目标重试（见 [push.md](./push.md)） |
-| `reportLive` | 同样按身份展开，喂场次引擎 |
+| `reportLive` | 已落（3b-22）：开播 / 状态 / 下播三种中立信号，按身份展开后交 `LiveSessionEngine.apply`；`status` 与 `end` 可带 `startedAt` |
+| `reportLiveInteraction` | 已落（3b-22）：`viewerChat` / `viewerEnter` / `superchat` / `membership` 四种，形状是对应事件去掉 `subscriptionId`；后两种可带 `fallbackText` |
 | `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
 | 上报被拒 | 上报类（`report*`、`reportProblem`、`resolveProblem`）一律 `void`：被拒（种类没声明、id 不合法、形状坏）或被丢格，记进该集成的 `reportDiscrepancies` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；拓展契约从 v2 的 reject 改成这样。内置集成（B 站与内置适配器）的上报被拒就是 BN 的 bug，只打错误日志、靠对拍守卫兜，不进 `reportDiscrepancies` 的展示面 |
-| `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算；B 站徽章的保活施工时另设计。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓。🔗 现状（3b-39 落成，2026-10-19）：已落成；写口是图库「集成在途」那一家（`IMAGE_REFERRERS.inTransit` / `AppRuntime.transitImages`），名单恒空、靠 24 小时宽限期；B 站来源与直播引擎已改读上下文的 `fetchImage`，账号头像、订阅资料头像、卡片真实预览、旧搜人、大航海徽章五处仍走旧路 |
+| `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓。🔗 现状（3b-39 落成，2026-10-19）：已落成；写口是图库「集成在途」那一家（`IMAGE_REFERRERS.inTransit` / `AppRuntime.transitImages`），名单恒空、靠 24 小时宽限期；B 站来源与直播引擎已改读上下文的 `fetchImage`，账号头像、订阅资料头像、卡片真实预览、旧搜人四处仍走旧路 |
 | `storeImage` | 手里已是字节的图走它（B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储，明文、不脱敏。单键 64KB、每个集成 1MB。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清。`http.` 开头的键归宿主（`ctx.http` 的浏览器身份） |
 | `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
@@ -342,18 +345,21 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 ## 直播
 
-两套场次引擎合成一套：原先拓展那套（本就中立）去掉 `Extension` 前缀升格为核心 `live/`，B 站的 `room-session-base` 删掉。
+两套场次引擎合成一套：原先拓展那套（本就中立）去掉 `Extension` 前缀升格为核心 `live/`，B 站那套旧场次实现删掉。
 
-🔗 10-13（3b-20）已落的是拓展那一半：场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine`（`live/live-sessions.ts`）、在播表 `ExtensionLiveTable` → `LiveTable`（`live/live-table.ts`）、推送 `bindExtensionLivePush` → `bindLivePush`（`live/live-push.ts`），出卡输入翻译 `live-card-input-from-report.ts` 一并搬进 `live/`；总线事件 `extension-live-changed` / `extension-live-session` 与契约里的 `ExtensionLiveSnapshot` 没改名。B 站的 `room-session-base` 还在，两套场次合成一套留给后面。
+🔗 10-13（3b-20）已落的是拓展那一半：场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine`（`live/live-sessions.ts`）、在播表 `ExtensionLiveTable` → `LiveTable`（`live/live-table.ts`）、推送 `bindExtensionLivePush` → `bindLivePush`（`live/live-push.ts`），当时的出卡输入翻译搬进 `live/`；总线事件 `extension-live-changed` / `extension-live-session` 与契约里的 `ExtensionLiveSnapshot` 没改名。B 站那一半已在 3b-22 并进来，见下。
 
 删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。🔗 10-13 四块都已抽完：特别弹幕与特别进场 3b-15（`live/special-users.ts`，随名单改叫 `specialViewers` 改名 `live/special-viewers.ts`）、醒目留言 3b-17（`live/superchat.ts`）、会员 3b-18（`live/membership.ts`，B 站会话的 `onGuardBuy` 只剩翻事件、查档位表、挑文案包、拼兜底句、绑取徽章 / 取头像与发送）。
 
-来源只有两种输入：
+🔗 10-21（3b-22）：B 站直播间连接已搬进 `bilibili/live/session/` 的 `BiliLiveRooms`，场次与计时由核心 `LiveSessionEngine` 统一；出卡输入现由 `live/live-card-input.ts` 的 `liveCardInputFromDetails` 翻，旧的 B 站场次引擎与共享会话基类已删。
+
+来源有三种输入：
 
 | 输入 | 形状 | 谁用 |
 | --- | --- | --- |
 | 推送式信号 | `ctx.reportLive(externalId, LiveSignalReport)`：`start` / `status` / `end` | 拓展照现在的上报走；B 站在 `bilibili/` 把弹幕通道的开播、下播、状态翻成这三种 |
 | 拉取式 | 核心按场次定时调 `fetchLiveStatus` | 提供了它的来源 |
+| 观众互动 | `ctx.reportLiveInteraction(externalId, LiveInteractionReport)`：`viewerChat` / `viewerEnter` / `superchat` / `membership` | 来源在直播间收到这些事件时上报；核心按订阅现折设置后出卡 |
 
 `fetchLiveStatus` 返回结果形状（ADR-0026 决策 4）：`{ ok: true, kind: "live" | "offline", … } | { ok: false, code, message }`，成功那一支的判别键是 `kind`：
 
@@ -361,19 +367,19 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | --- | --- |
 | `ok: true, kind: "live"` | 推「正在直播」卡 |
 | `ok: true, kind: "offline"` | 此刻没在播：当成漏收的下播，走 `end` 同一条路（含断流宽限与私聊主人）；时长算到「发现已下播的那一刻」 |
-| `ok: false`（带 `code` + `message`） | 跳过这一轮、记一条问题；**不再停止监听**（ADR-0021 决策 27 原文） |
+| `ok: false`（带 `code` + `message`） | 核心跳过这一轮、记日志；**不再停止监听**（ADR-0021 决策 27 原文），问题由来源自己报 |
 
 - **漏收下播的兜底与周期推送拆开**：凡在一场直播里的订阅都按间隔核一次还在不在播；周期推送（`liveStreaming`）开着照推「正在直播」卡，关着只核不推、间隔用默认 1 小时。重连后核对发现已下播也走同一条下播的路；合进核心那套之后，开播看 `liveStart` 开关。
 
 - 计时按每一场的开播时刻各自起算（`LiveSession.nextTickAt`），不全局同时拉。间隔是 `liveStreaming.streamingIntervalHours`。
-- 同一来源串行调用；超时与中止复用 `searchCreators` 那套外壳；拓展停用时用 signal 取消在途调用。
+- 同一来源串行调用；超时与中止走 `subscriptions/call-source.ts` 的 `callSource` 外壳；来源停用时取消在途调用。
 - **重启**后核心对每条开着直播推送的订阅调一次 `fetchLiveStatus` 重建场次；要不要补推一张正在直播卡由 `liveStart.catchUpOnBoot` 统一决定。补报不 @全体、历史记成开播，见 data-model「特性键」。
 - 断流：收到 `end` 先进 `pendingEnd` 等宽限，宽限里又开播就 `resume` 接着同一场；等满了才 `end`。
-- 场次的每次变化是一条 `LiveSessionChange`，推送、统计、总线（`live-session-changed`）吃同一份。
+- 场次的每次变化是一条 `LiveSessionChange`，推送与统计吃同一份；在册来源暂时由 `runtime/engines.ts` 投影成 `live-state-changed` / `live-viewers-changed`，3b-23 改成中立事件。
 - ⛔ 场次身份按开播时刻认、排在闩之前；统计 `current` 与 `isLive` 的语义不动。
-- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）就监听，只看开关与名单、不看有没有目标。看得见的变化：五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再连直播间、首页说它「不会被监听」、统计不再记它的直播（0.x 是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标，但仍是面板自己的一份键表，也没算服务端那两个特殊用户条件，进 internal 的唯一判定仍待做）。
+- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）就监听，只看开关与名单、不看有没有目标。看得见的变化：五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再连直播间、首页说它「不会被监听」、统计不再记它的直播（0.x 是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。宿主把结果算进 `SourceSubscriptionView.monitorsLive`，同一人的重复订阅取或；B 站来源的 `ListenerManager` 只连 `monitorsLive` 为真的人。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标）。`getModuleState().live` 还要求这个来源实现了直播：在册来源有 `fetchLiveStatus`，或拓展声明了直播周期。
 - **醒目留言**：`SuperchatEvent` 带可选的 `tier { rank, durationSec? }`，由来源按平台规矩算；卡按档取色（默认配色照今天六档，皮肤可按档换色），有留言时长就显示。
-- **验收**：先在旧引擎上用端到端测试钉住开播、下播、断流接续、漏收下播兜底四种行为，再换新引擎跑同一组。
+- **验收**：开播、下播、断流接续、漏收下播兜底四种行为已由端到端测试钉住，并已换到核心 `LiveSessionEngine` 跑同一组。
 - 被否的备选：拓展自己计时上报（每个拓展都得重写一遍计时）；BN 发事件要数据、拓展再另报（对不上是哪一轮要的，拓展还能自己触发推送）。
 
 ## 预览
@@ -466,7 +472,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 | 子目录 / 件 | 内容 |
 | --- | --- |
 | 原 `api` / `blive` / `dynamic` / `live` 四包 | 各成子目录（`blive` 并进 `live` 那个子目录，ADR-0021 决策 1 的 🔗）；B 站接口响应类型（Dynamic、RichTextNode、LiveData）只住这里。请求客户端、cookie 罐与浏览器身份抽进 `packages/http`，不留在这里 |
-| `Source` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、弹幕通道翻成 `LiveSignalReport`、关注同步、资料拉取、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
+| `Source` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、直播间弹幕通道翻成 `LiveSignalReport` 与 `LiveInteractionReport`、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
 | `auth/` | 扫码登录（原 AuthSystem），对外只交中立的 `AuthState`；内部若还要一个原形，叫 `BiliLoginState`。cookie 由 `ctx.http` 的 cookie 罐存进 `ctx.secrets`。（3a-29 B 站半已落：`createAuthSystem`、`LoginFlow`、`BiliLoginState` 与 `authStateFromLoginState`（内部原形 → `AuthState` 的纯映射）都在这个目录，`auth` 挂在 `Source.auth` 上；入口仍直接造它，不经 `compose.ts`） |
 | `LinkResolver` | B 站视频链接识别与解析；给原生分享的中立描述 |
 | `AiToolProvider` | B 站独有数据的只读工具（总播放、获赞、视频列表）与 B 站版周报技能 |
@@ -475,12 +481,15 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 
 - **只经中立接口进核心**，在 `compose.ts` 登记（见 [architecture.md](./architecture.md)）。
 - **只报 uid**：B 站按 uid（即 `externalId`）上报，由核心展开成订阅 id；B 站不知道订阅 id，只用 `ctx.subscriptions()` 的名单决定拉谁。
+- **直播并进来源**：`bilibili/live/session/` 的 `BiliLiveRooms` 在 B 站来源的 `start(ctx)` 里启动，按名单里 `monitorsLive` 的人维护直播间连接。`RoomSession` 管弹幕 WS、房间信息、心跳、重连与退避，把帧翻成中立的开播 / 状态 / 下播信号和四种互动上报；封面、头像等图先经 `ctx.fetchImage` 存进图库。登录事件仍从 `deps.bus` 听。
+- **拉取式直播状态**：`BiliLiveRooms.fetchLiveStatus` 查房间信息；`live_status` 为 1 时交在播数据和 `live_time` 转成的 ISO 开播时刻，0 / 2 交 `offline`。取不到房间号、回应或状态不认时经分层上报器记 `live_status_unavailable`，核心只跳过这一轮。
+- **互动懒取**：`liveInteractions.fetchViewerAvatar` 负责观众头像，`fetchTierIcon` 负责会员档位徽章。B 站描述符里的三档徽章在来源启动且名单有人要监听直播间时预抓，引用写进 `tier.icon.ref`；缺引用时按需补抓，两次尝试至少隔 5 分钟。
 - **请求走 `ctx.http`**：B 站的请求与弹幕 websocket 都经 `ctx.http` 拿，用 B 站这个集成的身份与 cookie；帧、心跳、重连、重试、退避、限流归 `bilibili/`。
 - **开了开关才监听**：关注流只能整条拉，名单里没开作品的人，那条不抓图、不上报；没开直播类开关的人不连弹幕。原先为了统计让时间线覆盖每条订阅的做法，随 ADR-0027 决策 1 推翻。
 - **进门换 ISO**：`live_time` 是不带时区的北京时间，在这里转。
 - **作品映射**：`text` 只放正文（动态正文、图文摘要）；图文标题进 `article.title`，视频标题进 `video.title`，转发的原作品进 `repost`。UP 自己的视频进 `post.video`；番剧、合集、课程进附件的视频卡。附加块翻成 card / video / goods。过滤、AI、出图都经核心 `posts/` 里同一个取段函数读这份字。
 - **开播公告直接丢**：开播时生成的那条伪动态不上报，统计也不再记（旧数据照原定不搬）。
-- **资料**：`fanClubName` 填粉丝牌名，照文档由 `fetchProfile` 交；B 站不为它多发请求 —— 直播时取主播信息本来就带粉丝牌名，记进 B 站自己的 `ctx.state`，交资料时带上。`{postNoun}` 进默认作品文案归 3b-21（ADR-0028 决策 3 的目标）；对拍 N08 随 3b-22 收尾。
+- **资料**：`fanClubName` 填粉丝牌名，照文档由 `fetchProfile` 交；B 站不为它多发请求 —— 直播时取主播信息本来就带粉丝牌名，今天经 `BiliSourceDeps.fanClubNames.set` 暂存，3b-24 接 `fetchProfile` 时删这个过渡口。`{postNoun}` 进默认作品文案归 3b-21（ADR-0028 决策 3 的目标）；对拍 N08 随 3b-22 收尾。
 - **醒目留言**：`tier` 由 B 站按平台规矩算，卡按档取色。
 - **禁 fs**：B 站的状态（`roomId`、`followed`、`followError` 等）只走 `ctx.state`，cookie 只走 `ctx.secrets`；动态游标仍只在内存。
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。系统页为 B 站单开一个 tab，名取它的 `label`（见「设置」）。`bilibili` 段校验不过只停 B 站这一个集成：来源、链接解析器、AI 工具都不登记，订阅卡显示「{label} 没在跑」，B 站 tab 显示原值、「设置不合法」与原因并进问题框，改对了当场起；BN 照常开机。

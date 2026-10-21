@@ -285,8 +285,8 @@ interface LiveDetails {                 // 一场直播的内容
 // ① 推送式信号：来源发生了就报，reportLive(externalId, signal)
 type LiveSignalReport =
   | { kind: "start";  startedAt?: string; details: LiveDetails }
-  | { kind: "status"; isLive: boolean;    details: LiveDetails }
-  | { kind: "end";    endedAt: string;    details?: LiveDetails };
+  | { kind: "status"; isLive: boolean;    startedAt?: string; details: LiveDetails }
+  | { kind: "end";    endedAt: string;    startedAt?: string; details?: LiveDetails };
 
 // 核心按身份展开后喂给场次引擎的：每条订阅一份
 type LiveSignal = LiveSignalReport & { subscriptionId: string; identity: Identity };
@@ -336,9 +336,11 @@ interface LiveCardInput {
 - `LiveSessionChange` 的 `trigger` 与 `reason` 是事件原因，不归失败规矩管。
 - 场次引擎的行为（断流、定时、重启重建）见 [subscription-sources.md](./subscription-sources.md)「直播」一节。
 
+回顾快照在模板变量表里记作 `RecapSnapshot`。今天 `ViewerChatCollector.snapshot()` 直接交 `{ sortedWords, senderRecord, senderCount, viewerChatCount }`：`sortedWords` 是按次数降序的词与次数，`senderRecord` 是观众名到弹幕数，`senderCount` 是不同观众名数量，`viewerChatCount` 是弹幕总数；代码还没有另导出一个同名类型。
+
 ## 会员、醒目留言与特别关注
 
-会员按「体系 + 档」表达：各平台档数不一、有的由主播自定，一个升序数字装不下。体系由来源在 `descriptor.membershipPrograms` 里声明。
+会员按「体系 + 档」表达：各平台档数不一、有的由主播自定，一个升序数字装不下。体系由来源在 `descriptor.membershipPrograms` 里声明。体系 id 在全部在册来源之间唯一，登记时撞了拒收；档 key 只在所属体系内唯一，查找必须带（体系 id, 档 key）。
 
 ```ts
 interface MembershipProgram {
@@ -390,8 +392,12 @@ interface ViewerEnterEvent {            // 名单上的人进了直播间（特�
 // 核心按身份展开成每条订阅一份、对着那条订阅现折的设置判（特性开关与名单两样都要）
 type LiveInteractionReport =
   | ({ kind: "viewerChat" } & Omit<ViewerChatEvent, "subscriptionId">)
-  | ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">);   // 醒目留言、会员随后追加
+  | ({ kind: "viewerEnter" } & Omit<ViewerEnterEvent, "subscriptionId">)
+  | ({ kind: "superchat" } & Omit<SuperchatEvent, "subscriptionId"> & { fallbackText?: string })
+  | ({ kind: "membership" } & Omit<MembershipEvent, "subscriptionId"> & { fallbackText?: string });
 ```
+
+醒目留言与会员的 `fallbackText` 是出不了卡时用的那句；没给就用核心的中性默认句。
 
 | 事项 | 规矩 |
 | --- | --- |
@@ -572,7 +578,7 @@ interface GlobalDefaults {
 - **过滤**：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看最外层 `Post` 上「有没有」，在装配第一步、对所有来源生效；转发的原作品里的图集与视频不算，转发归 `blockReposts` 管。关键词与正则看取段函数拼出来的文字。白名单 `allowKeywords` / `allowRegex` 对 `blockKeywords` / `blockRegex`。特别关注去掉 uid 正则，template 死字段退役。SC 与会员的门槛不在 filters 里。
 - **主人通知**（ADR-0024 决策 14）：推送层只有一个 `notifyMaster(payload: string | NotificationPayload)`（合掉 `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`），返回结果形状，审批预览卡也走它。出口上的 `sendPrivate` 与「强制私聊」标志删掉，因为主人要是选了群目标，强制私聊会把群号当 QQ 号错投。私聊的要求挪到主人目标上：`master.targetId` 必须指向私聊目标（schema 校验，面板下拉只列私聊）；PATCH 把主人目标改成群目标直接拒收；发送时再复检一次，不是私聊就拒发（`invalid`）；迁移时指向群目标的清空，首访页提示重选。
 - **图集推送行为** `imageGroup`（全局与逐订阅）只作用于 `Post.images`，子键 `imageGroup.mergeForward`。
-- **模板变量**：`{postNoun}` 取自 `descriptor.postNoun`（原定 `{noun}`，与提示词变量同名；从没上过盘，不用迁移），默认文案「{name}发布了一条{postNoun}」；人名变量统一 `{name}` / `{viewer}`；会员事件的档名是 `{tier}`（原 `{guard}`），粉丝团名是 `{fanclub}`（原 `{mdn}`，取资料的 `fanClubName`），两者进模板变量可满足性守卫，迁移改写主人的文案、出来的字不变；弹幕总结的其余缩写不动。回顾快照的中立类型名是 `RecapSnapshot`（不再用 `LiveSummarySnapshot`）。直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
+- **模板变量**：`{postNoun}` 取自 `descriptor.postNoun`（原定 `{noun}`，与提示词变量同名；从没上过盘，不用迁移），默认文案「{name}发布了一条{postNoun}」；人名变量统一 `{name}` / `{viewer}`；会员事件的档名是 `{tier}`（原 `{guard}`），粉丝团名是 `{fanclub}`（原 `{mdn}`，取资料的 `fanClubName`），两者进模板变量可满足性守卫，迁移改写主人的文案、出来的字不变；弹幕总结的其余缩写不动。回顾快照在模板变量表里记作 `RecapSnapshot`。直播文案的 `-key` 写法统一成 `{key}`，全仓只有一个模板引擎 `interpolate`。live 自己的 `applyTemplate` 删掉，直播改走 internal 的 `interpolate`（单遍替换、不回扫）。
 
 ### 连接与目标
 
@@ -740,7 +746,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription`；`EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX` | 删掉，按 `sourceKey` 判；`EXTERNAL_ID_MAX` |
 | 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchAccepts`（提示句改由核心拼）；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
 | `fetchProfile` 查无此人回 `null` | 返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败 |
-| `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscriptionView{ externalId, features }`（从订阅现算、给来源看的只读形状；只列启用中） |
+| `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscriptionView{ externalId, features, monitorsLive }`（从订阅现算、给来源看的只读形状；只列启用中，同一人的 `monitorsLive` 取或） |
 | `reportSubscriptionsChanged` | 删掉（关注同步是 BN → B 站单向） |
 | `PostEvent.id`；`reportPost(externalId, SubscriptionPost)`、`reportLiveStart` / `End` / `Status`；上报种类五种 | `postId`；`reportPost(externalId, PostReport)`、`reportLive(externalId, LiveSignalReport)`；收成 `post` / `live` / `profile` |
 | `ctx.report("problem" / "problem-resolved")` 与 `level`；`SubscriptionState.problem` | `reportProblem` / `resolveProblem` 与 `notify?: boolean`；问题表 `Problem`，全在内存，订阅运行态不再存 |
@@ -848,7 +854,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 太虚的 `Data`：storage 的 `CookieData`；出图的 `CardData`（皮肤字段取值表）、`RoastBoardData` / `RoastSoloData`（`…CardInput` 的别名；㉔f 起三个 `…CardProps` 改叫 `…CardInput`） | `CookieData` 随 `CookieStore` 退役消失（cookie 罐进 `packages/http`）；其余按装的东西起名，施工时定 |
 | `Row`：拓展在播表的 `ExtensionLiveRow`、拓展宿主递给 ctx 的 `ExtensionSubscriptionRow` | 随 1.0 消失：在播表合成一个 `LiveListeningEntry`；来源拿到的名单是 `SourceSubscriptionView`（🔗 10-13（3b-20）：`ExtensionLiveRow` 这一片先改名为 `LiveTableEntry`，随在播表 `LiveTable` 搬进 `live/live-table.ts`；合成 `LiveListeningEntry` 留给后面） |
 | 种类取值叫 `…Type`：指令参数 `ParamType`、版式块 `MessagePartType`、皮肤字段 `CardSkinFieldType`、QQ 官方机器人的 `QQOfficialBotType`（公域 / 私域）、blive 的 `UserActionType` | `ParamKind`、`MessagePartKind`、`CardSkinFieldKind`、`QQOfficialBotKind`（随适配器搬出 `internal`）、`UserActionKind`（随 blive 搬进 `bilibili/`） |
-| 当读口子用的 `Source`：AI 只读工具的 `PlatformLabelSource` / `ExtensionLiveSource`、资源采样的 `BrowserSource`、WS 的 `ResourceMonitorSource`、拓展推送的 `ExtensionNameSources` / `ExtensionCardAuthorSources`、桥的 `BridgeInboundSource`、面板的 `PersonaSource`；统计适配器的 `BiliStatsSourceOptions` / `ExtensionStatsSourceOptions` | 读口子改 `…Reader`（10-10 主人定：类型不用 `…Lookup` / `…Lookups`，`lookup` 只当函数名），各自新名施工时定；`ExtensionNameSources` / `ExtensionCardAuthorSources` 随显示名链 `displayNameOf` 与头像进图库消失，`PlatformLabelSource` / `ExtensionLiveSource` 随描述符与在播表合一多半消失；统计那两个并成 `BindStatsRecorderOptions`。市场源 `MarketplaceSource` / `MarketplaceOfficialSource` 是主人看得见的叫法，不改 |
+| 当读口子用的 `Source`：AI 只读工具的 `PlatformLabelSource` / `LiveNowReader`、资源采样的 `BrowserSource`、WS 的 `ResourceMonitorSource`、拓展推送的 `ExtensionNameSources` / `ExtensionCardAuthorSources`、桥的 `BridgeInboundSource`、面板的 `PersonaSource`；统计适配器的 `BiliStatsSourceOptions` / `ExtensionStatsSourceOptions` | 读口子改 `…Reader`（10-10 主人定：类型不用 `…Lookup` / `…Lookups`，`lookup` 只当函数名）；`LiveNowReader` 已由 `ai/read-only-tools.ts` 的所有订阅在播表读口落地；其余各自新名施工时定。市场源 `MarketplaceSource` / `MarketplaceOfficialSource` 是主人看得见的叫法，不改 |
 
 参数包叫 `Input` 的 31 个改 `…Options`：`BareAuthPolicyInput`、`BootSelectedPayloadInput`、`ResolveWebDistDirInput`、`CreateDevtoolsInput`、`CreateDevRouteInput`、`ExtensionScenariosInput`、`InstallExtensionPackageInput`、`UninstallExtensionInput`、`RecordLoadAttemptInput`、`ViewCheckInput`、`RepushGateInput`、`CreateSystemRouteInput`、`CreateUpdateRouteInput`、`ResolveLinkParsingPoliciesInput`（主干随 `linkPreview` 改）、`RestartAbilityInput`、`ResolveTargetScopeInput`、`SkinAiCreateInput`、`SkinAiEditInput`、`DecideUpdateInput`、`FetchSignedManifestInput`、`FetchSignedJsonInput`、`FetchThroughMirrorsInput`、`InstallPayloadInput`、`PruneOldVersionsInput`、`SelectVersionForBootInput`、`ReadBootViewInput`、`PinVersionInput`、`MarkBootSucceededInput`、`CreateUpdateServiceInput`、`ResolveVersionsRootInput`、`BuildProviderParamsInput`。**不改**：`LiveCardInput`（出卡模板的输入）与 `RoastInput`（喂给模型的提示词输入），它们合 Input 行。
 

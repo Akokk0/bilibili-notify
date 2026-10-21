@@ -86,7 +86,7 @@ B 站（信号 · 接口 · 扫码）──Source 等接口──┐
 internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几份之间已经有行为分歧，在它所属那一期里最先收；各项归哪一期见 [construction-plan.md](./construction-plan.md)）：
 
 - 🔴 卡种中文名 5 张表、两套键（dyn / dynamic）→ internal
-- ✅ 3b-14 已落：「要不要开直播监听」原来的 3 套判据（首页「直播」那一格读未合并的 routing，服务端读合并后的开关，面板的「不会被监听」自留一份键表）并成 internal 的零依赖子路径 `@bilibili-notify/internal/live-monitor` 里的 `needsLiveMonitor`（连同 `LIVE_ROOM_CREATOR_KEYS`、`specialUserFlagsOf`），全仓唯一判定；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。直播引擎（`RoomContext`）、统计（`recordingSwitches`）、首页「直播」那一格（`getModuleState`）、面板「没开直播推送」那句都读它；服务端「订阅 → 入参」的折法只有 `stats/recording-switches.ts` 的 `liveMonitorInputOf` 一处
+- ✅ 3b-14 已落：「要不要开直播监听」原来的 3 套判据（首页「直播」那一格读未合并的 routing，服务端读合并后的开关，面板的「不会被监听」自留一份键表）并成 internal 的零依赖子路径 `@bilibili-notify/internal/live-monitor` 里的 `needsLiveMonitor`（连同 `LIVE_ROOM_CREATOR_KEYS`、`specialUserFlagsOf`），全仓唯一判定；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。直播引擎（`RoomContext`）、统计（`recordingSwitches`）、首页「直播」那一格（`getModuleState`）、面板「没开直播推送」那句都读它；`getModuleState().live` 还要求该订阅的来源实现了直播（在册来源有 `fetchLiveStatus`，或拓展声明了直播周期）；服务端「订阅 → 入参」的折法只有 `stats/recording-switches.ts` 的 `liveMonitorInputOf` 一处
 - ✅ 3b-09 已落（10-16）：多语言的核心（`mergeDict` / `translate` / `createI18n`，连同 `LOCALES`）在 internal 的零依赖子路径 `@bilibili-notify/internal/i18n`；服务端的字典 store 在 `apps/server/src/i18n/`（`i18n` 与 `t`，译文放 `locales/`，指令回话原 `runtime/command-texts.ts` 的字是第一批键）。面板的 store 在 `apps/web/src/i18n/`（`i18n` 与 `useT()`，译文眼下只有 3b-43 加的两句简中平实层，其余随第 4 期收）。✅ 3b-10 已落（10-17）：服务端的语言与口吻跟设置走（`i18n/bind-settings.ts`）；面板登录前读浏览器里记的（`i18n/preference.ts`，没记过按浏览器语言猜），登录后跟设置走（`i18n/use-text-settings.ts`），设置缺语言时把在用的那个写进去一次
 - 🔴 「N 分钟前」4 份 → `formatAgo`（⛔ 首页「正在直播」不写「N 分钟前开播」：面板只列在播的，「开播」多余，`dashboard-live-now.test.tsx` 钉着，收的时候别顺手加上）；带正负号的增量 4 份（负号两种、零两种写法）→ 并进 `formatCount`
 - 🔴 B 站动态转纯文字两个同名函数（AI 工具那份丢掉转发）、B 站风控码集合（-412 各处不一，已定：一张共用的「数字码 → 标准码」翻译表，见 subscription-sources「B 站怎么实现」；3b-18 已落拉动态、直播预检、上舰观众头像、cookie 续期，粉丝轮询那几处归 3b-24）与响应解包（手写约 5 处）→ `bilibili/`
@@ -96,7 +96,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 - 深比较（稳定序列化 2 份、键序敏感的比较 5 处）、重试 3 套、本地日键 / 日轴 / 时区参数（`tzOffset` 与 `tz` 两种写法）→ internal
 - 时刻显示至少 7 份 → internal（精度差异有的是刻意的，逐条确认，别一刀切）
 - 字节数写法约 12 处、woff2 提示句抄 4 份 → internal
-- 生效特性：面板 3 处以写死的默认值为底 → internal 零依赖入口；`SubItemView` 由它产出
+- 生效特性：面板 3 处以写死的默认值为底 → internal 零依赖入口；来源名单的 `features` 与 `monitorsLive` 也由它产出
 - 原子写：服务端三份逐字相同的私有副本 + 约 8 种各写各的临时文件写法 → storage 的 `atomicWriteJson`；`update/durable-json.ts` 并进来（见 data-and-migration「持久化底层与关停」）
 - 资产存储三份 → 一份 `createAssetStore`；两个皮肤库 → 一份 `createSkinStore`
 - 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份（④d 已收）、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状（中立的只有 `AuthState`）→ contract
@@ -117,7 +117,7 @@ images/            图库：fetchImage / storeImage 的落点、按引用清扫�
 push/              路由、闸、免扰、TargetDispatcher（含 sendToAddress）、PlatformAdapterRegistry 与按连接分发、notifyMaster
 platforms/         内置平台适配器：OneBot、QQ 官方机器人、webhook，各带描述、设置 schema 与模板候选
 posts/             作品装配：推一条 Post，不管来自哪里；作品文字唯一的取段函数
-live/              中立场次引擎（场次、断流接续、定时、在播表）、直播装配与附加项生产
+live/              中立场次引擎（场次、断流接续、定时、在播表）、直播互动与推送、`LiveSettings`、下播回顾；B 站的直播间连接住 `bilibili/live/session/`
 link-preview/      链接预览：闸门、候选挑选、回复（经 sendToAddress）、LinkResolver 登记表
 commands/          指令框架 + 通用指令（help / mute / report / status / login [来源] 等）；没有来源指令的登记表
 roast/             锐评：生成、审批、定时、投递（从 stats/ 拆出）
@@ -134,7 +134,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 ```
 
 - 中立装配住服务端，不开新包：作品装配在 `posts/`，直播装配与直播附加项的生产在 `live/`。装配把来源交来的 `PostEvent` / 直播信号做成要发的消息，步骤见 [push.md](./push.md)「装配」。
-- 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。🔗 10-13（3b-20）拓展直播的几件已搬进 `live/`：在播表 `live-table.ts`、场次引擎 `live-sessions.ts`、推送 `live-push.ts`，出卡输入翻译 `live-card-input-from-report.ts` 一并过去（原在 `runtime/`）；`runtime/` 里只剩作品与直播共用的 `extension-push-common.ts`。
+- 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。🔗 10-13（3b-20）拓展直播的几件已搬进 `live/`：在播表 `live-table.ts`、场次引擎 `live-sessions.ts`、推送 `live-push.ts`；出卡输入翻译现在是 `live-card-input.ts` 的 `liveCardInputFromDetails`。`runtime/` 里只剩作品与直播共用的 `extension-push-common.ts`。
 - `platforms/` 只放内置适配器的实现。原先放在里面的登记表与分发是中立件，3a-14 已和 `sink/` 一起挪进 `push/`（`push/registry.ts`、`push/dispatch.ts`、`push/target-dispatcher.ts`）。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
 - `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。🔗 10-13（3b-27、3b-28）：解析器登记表 `link-preview/registry.ts` 与通用网址正则 `extract-urls.ts` 已加；B 站视频链接的认法 `video-links.ts`（原在 `packages/internal/src/util/`）与视频翻成作品的 `video-card.ts`（原在 `runtime/`）搬进了 `bilibili/`，B 站的解析器是 `bilibili/link-resolver.ts`。
 - 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-28 开工时定。
@@ -158,7 +158,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 
 | 接口 | 管什么 | 登记表 |
 | --- | --- | --- |
-| `Source` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字。🔗 现状（3a-42，10-12）：`packages/internal/src/source.ts` 里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`）；`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地（「没有实现者的接口不造」），逐项去处见下「第三层：对拍」21b 的「这版不开」名单 | `subscriptionSources` |
+| `Source` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字。🔗 现状（3b-22，10-21）：`packages/internal/src/source.ts` 里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`）；`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有，逐项去处见下「第三层：对拍」21b 的「这版不开」名单 | `subscriptionSources` |
 | `LinkResolver` | 群里的链接 → `LinkPreview { post, canonicalId, nativeShare? }`；带 `label`，`resolve` 返回结果形状（ADR-0029） | `linkResolvers` |
 | `AiToolProvider` | 来源专有的只读 AI 工具与技能（B 站：总播放、获赞、视频列表与 B 站版周报） | `aiToolProviders` |
 | `DevtoolsProvider` | 开发版的造状态 / 造事件场景：`{ scenarios: DevScenarioDef[] }`；场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2） | `devtoolsProviders`（只在开发版） |
@@ -230,9 +230,9 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 
 | 功能 | 核心负责 | B 站实现 | 拓展 |
 | --- | --- | --- | --- |
-| 推送 | 按订阅 id 路由、闸、附加项；中立装配；按身份把上报展开成每条订阅一份 | 按名单的 `features` 决定拉谁（开了开关才监听，ADR-0027 决策 1）；拉动态、把弹幕通道翻成直播信号，按 externalId 上报 | 报订阅事件（同样只带 externalId），宿主翻好交装配 |
+| 推送 | 按订阅 id 路由、闸、附加项；中立装配；按身份把上报展开成每条订阅一份 | 按名单的 `features` / `monitorsLive` 决定拉谁（开了开关才监听，ADR-0027 决策 1）；拉动态，在来源里跑直播间连接并把帧翻成中立直播信号与互动，按 externalId 上报 | 报订阅事件（同样只带 externalId），宿主翻好交装配 |
 | 投递 | `TargetDispatcher` 是唯一能发送的口；按目标逐个投递、只重试失败的那个（`rate_limited` / `unavailable` / `timeout` 退避，`indeterminate` 与其他码不重试），出卡或 AI 失败就降级、不整条重来，每个目标一行历史、失败带 code；`sendToAddress` 给链接预览与指令回复用（不进路由、不过闸、不落历史）；`notifyMaster` 收文字或消息体、返回结果形状；连接设置按适配器的 `settingsSchema` 校验，坏的只隔离那一条（ADR-0024 决策 10、13–15） | —（内置的是 `platforms/` 的三个适配器，与拓展同一个接口） | 清单 `contributes.push` 只装描述；`PlatformAdapterDef` 经 `registerPlatformAdapter` 交；`listAddressCandidates`、`connectionAuth`、描述里的条件显示与键值表字段这版不开 |
-| 直播 | 唯一的场次引擎、定时调 `fetchLiveStatus`、在播表、「会不会被监听」的唯一判定（只看开关） | 直播信号 + `fetchLiveStatus` + `liveInteractions` | 直播信号，可选 `fetchLiveStatus` |
+| 直播 | `LiveSessionEngine` 统一管场次、断流接续、每场自己的核对时钟、在播表与下播回顾；经 `callSource` 调 `fetchLiveStatus`，同一来源串行；互动上报统一过门槛与出卡；「会不会被监听」只有 `needsLiveMonitor` 一处 | `BiliLiveRooms` 在来源里跑直播间连接，交 `reportLive` / `reportLiveInteraction`；实现 `fetchLiveStatus` 与两个互动懒取口；B 站自己报 `live_status_unavailable` | 直播信号，可选 `fetchLiveStatus` |
 | 出卡 | 中立卡种、皮肤、卡种注册表；图只认图库引用；醒目留言按 `tier.rank` 取色、金额按币种；会员卡宣告语取 `MembershipTier.announcement`（ADR-0028 决策 4） | 动态翻成 `Post`（UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡）、附加块翻成三种中立数据、用 `ctx.fetchImage` 抓图；醒目留言按 B 站规矩算 `tier` | 宿主把作品翻成作品卡 |
 | 文案模板 | 全仓唯一的模板引擎；`{tier}`（原 `{guard}`）、`{fanclub}`（原 `{mdn}`）；迁移改写主人的文案，出来的字不变（ADR-0028 决策 3） | 资料里填 `fanClubName`（粉丝牌名） | 有就填，没有就空 |
 | 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板）。🔗 `searchCreators` 来源方法 3b 造（B 站实现，只给 AI 的搜人工具用），路由与面板第 4 期 | `searchCreators`（UID、主页链接、名字都认；返回结果形状） | `searchCreators`（契约的 `lookup` 改名） |
@@ -354,7 +354,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 守卫 | 判据 | 什么时候红 | 期 |
 | --- | --- | --- | --- |
 | 21a 契约层对拍 | 用仓库里的假源拓展经契约 v3 走作品与直播：带图标的链接片段、直播、资料、问题上报等 | 只有 B 站走得通、拓展走不通 | 3b |
-| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `Source`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下。🔗 现状（3a-42，10-12，已落）：落在 `apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`（夹具 `support/in-process-source.ts`，假来源键 `acme.inprocess`，经真入口与 `vi.mock` 包一层的真 `compose.ts`，与真 B 站来源并排在册；推送内容读 devtools 的截流记录，零外连）。接口上今天没有「10 个成员」（`Source` 只有 5 个，见上「接口族与登记表」），`AiToolProvider` 与 `LinkResolver` 的登记表也没有，所以今天拍的是 3a 子集 **20 行**（测试文件里 `PARITY_ROWS` 的 P01 至 P20），其余 **18 行**（N01 至 N18）列在同一张表的「这版不开」名单里、逐行写明等哪一期（第 4 期 5 行，3b 13 行），**标 3b 的行在 3b 出期时转成对拍**（见 [construction-plan.md](./construction-plan.md) 3b 的出期条件）。检查点口径是主人 10-12 定的（被否：3a 里先把这些口造出来；检查点挪到 3b）。另有成员棘轮：给 `Source`、`SourceContext`、`SourceDescriptor`、`SourceAuth` 加一个成员，测试文件类型检查就过不去，必须来补一行指向管着它的对拍行 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
+| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `Source`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下。🔗 现状（3b-22，10-21）：落在 `apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`（夹具 `apps/server/src/__tests__/support/in-process-source.ts`，假来源键 `acme.inprocess`，经真入口与 `vi.mock` 包一层的真 `compose.ts`，与真 B 站来源并排在册；推送内容读 devtools 的截流记录，零外连）。`PARITY_ROWS` 共 **46 行**：对拍 **35 行**（P01–P35），「这版不开」**11 行**（N01、N02、N03、N05、N06、N08、N09、N13、N14、N15、N16），每行都写明等待期与理由；其中第 4 期 5 行，3b 6 行。测试文件里另有一条自检核条数、id 不重、不开行的两格非空，并核对标作对拍的行确实都被驱动过。接口上 `Source` 今天有 8 个成员，`fetchProfile` / `fetchPreview` 还没上接口。成员棘轮：给 `Source`、`SourceContext`、`SourceDescriptor`、`SourceAuth` 加一个成员，测试文件类型检查就过不去，必须来补一行指向管着它的对拍行 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。来源提供的直播信号、互动与拉取式状态只有这一层能按内容验 | 3b-22 已扩到 35 行 |
 | 推送守卫③（假适配器对拍） | 一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`：要么走通，要么在「这版不开」名单里写明理由（ADR-0024 决策 11）。必须有的行：`atAll` 为 false 时不 @全体、`inbound`、`endpoint` 目标由连接托管、能力接口列得出拓展连接、登记即 `start`（晚登记的也收得到）、内置与拓展的入站都经宿主校验 | 只有内置适配器走得通的能力（勘察时：单向终点与托管目标、一个实现对多个平台、能力接口跳过拓展连接、晚注册的适配器收不到 `reconcile`） | 3b |
 | 模板变量可满足性 | 每个模板变量都映射到中立字段，表外的判红；`{tier}`、`{fanclub}` 进表。🔗 现状（3b-21，2026-10-19）：表是 `@bilibili-notify/internal/template-variables` 的 `TEMPLATE_VARIABLES`（零依赖子路径，面板提示条与服务端探针共用），每条文案登记能用的变量与变量取的中立字段，会员宣告语也收进表。判法两处：默认文案 ⊆ 表、字段以中立类型开头、变量名不在旧名黑名单（`mdn` / `guard` / `mastername` / `uname` / `mname` / `medal`），住 `packages/internal/src/__tests__/template-variables.test.ts`；运行时探针住 `apps/server/src/__tests__/template-variables-satisfiable.test.ts`，每个渲染入口用全表变量加一个表外的 `{zzz}` 调一次，多填少填都红，另有一条断言表里每条文案都有探针。开张零违例。3b-22 定了直播互动的中立类型：`ViewerChatEvent` / `ViewerEnterEvent` 沿用，回顾快照的根名改叫 `RecapSnapshot` | 模板变量只有 B 站填得出（今天的 `{guard}`、`{mdn}`） | 3b |
 | AI 工具与技能约束 | 核心工具参数统一叫 `creator`，参数里不许有 `uid`；每把工具必须带 `label` 与参数标签；内置技能的 `allowedTools` 必须是核心中立工具的子集，否则挂到提供者的 `skills` 下；缺工具的技能自动隐藏要有测试 | 工具或技能只对 B 站成立 | 3b |
