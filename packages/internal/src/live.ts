@@ -62,6 +62,20 @@ export type LiveSessionEndReason =
 	| "shutdown"
 	| "poll";
 
+/** 这一场收到的互动汇总;没有收到的那一种不写。 */
+export interface LiveSessionInteractions {
+	/** 这一场收到的弹幕条数。 */
+	readonly viewerChatCount?: number;
+	/** 发过弹幕的人数,按观众 id 去重。 */
+	readonly viewerChatSenderCount?: number;
+	/** 醒目留言条数。 */
+	readonly superchatCount?: number;
+	/** 币种 → 这一场的醒目留言总额(金额单位同 `SuperchatEvent.amount`)。 */
+	readonly superchatTotals?: Record<string, number>;
+	/** 体系 id → 档 key → 新增会员数。 */
+	readonly membershipCounts?: Record<string, Record<string, number>>;
+}
+
 /**
  * 核心记着的一条订阅正在播的这一场。只读:场次只由场次引擎改;交出引擎时只带纯数据,不带内部计时器。
  */
@@ -83,6 +97,8 @@ export interface LiveSession {
 	 * 就没有。结束帧带着它给统计当这一场的峰值。
 	 */
 	readonly peakTotalViewers?: number;
+	/** 这一场收到的互动汇总;一条互动都没记过就没有。 */
+	readonly interactions?: LiveSessionInteractions;
 	/**
 	 * 在播表里这一场最后一份。下播信号一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
 	 * 只是拿着那一行的内容,不是另存的一份状态。

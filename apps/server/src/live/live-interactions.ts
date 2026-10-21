@@ -6,6 +6,7 @@ import {
 	type LiveInteractionReport,
 	type Logger,
 	type MembershipEvent,
+	type MembershipProgram,
 	type MembershipTemplateBundle,
 	type MembershipTier,
 	type MessageLayoutSegment,
@@ -95,8 +96,8 @@ export interface LiveInteractionsOptions {
 	readImage(ref: ImageRef): Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
-	/** 场次 —— 回顾的弹幕收集跟着场次登记与清掉。 */
-	sessions: Pick<LiveSessionEngine, "onChange">;
+	/** 场次 —— 回顾的弹幕收集跟着场次登记与清掉,这一场的互动汇总也记在这里。 */
+	sessions: Pick<LiveSessionEngine, "onChange" | "noteInteraction">;
 	/** 回顾的弹幕收集器(核心这一份)。 */
 	collector: Pick<ViewerChatCollector, "register" | "recordViewerChat" | "clear">;
 	/** 每条互动文字是发出去不等的后台活,登记进 `track`,关停等它推完(推送落历史的那一笔得赶在各写道关门之前交进去)。 */
@@ -104,7 +105,7 @@ export interface LiveInteractionsOptions {
 }
 
 export interface LiveInteractions extends Disposable {
-	/** 一条订阅的一份互动上报。订阅不在 / 停用 / 来源没在跑 / 开关关着 / 名单没有这个人,都是什么都不做。 */
+	/** 一条订阅的一份互动上报;订阅不在 / 停用 / 来源没在跑就不收。推送开关只决定推不推,场次汇总照记。 */
 	apply(subscriptionId: string, report: LiveInteractionReport): void;
 }
 
@@ -220,6 +221,43 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 					profileName: opts.profileName(subscriptionId),
 				}),
 			};
+			let recognizedMembership:
+				| {
+						program: MembershipProgram;
+						tier: MembershipTier;
+				  }
+				| undefined;
+			if (report.kind === "membership") {
+				const source = opts.source(sub.identity.sourceKey);
+				const program = source?.descriptor.membershipPrograms?.find(
+					(candidate) => candidate.id === report.program,
+				);
+				if (program === undefined) {
+					log.warn(
+						`[live-interactions] 订阅 ${subscriptionId} 认不出会员体系 ${report.program},丢弃这条会员上报`,
+					);
+					return;
+				}
+				// 逐档声明:取声明的那一档(名字、rank、档色、徽章都听平台的);custom:档由主播自定,
+				// 只能用事件带来的名字与 rank,没有徽章、没有档色。
+				const tier: MembershipTier | undefined =
+					program.tiers === "custom"
+						? {
+								key: report.tier.key,
+								name: report.tier.name,
+								rank: report.tier.rank ?? 0,
+							}
+						: program.tiers.find((candidate) => candidate.key === report.tier.key);
+				if (tier === undefined) {
+					log.warn(
+						`[live-interactions] 订阅 ${subscriptionId} 的会员体系 ${program.id} 认不出档 ${report.tier.key},丢弃这条会员上报`,
+					);
+					return;
+				}
+				recognizedMembership = { program, tier };
+			}
+			// 统计记的是这一场里发生了什么,与推送开关无关。会员先认出体系与档,认不出就不记。
+			opts.sessions.noteInteraction(subscriptionId, report);
 			switch (report.kind) {
 				case "viewerChat":
 					if (active.has(subscriptionId) && wantsLiveEndExtras(settings)) {
@@ -304,32 +342,9 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 				case "membership": {
 					if (!settings.membership) return;
 					const { kind: _kind, fallbackText, ...event } = report;
+					if (recognizedMembership === undefined) return;
+					const { program, tier } = recognizedMembership;
 					const source = opts.source(sub.identity.sourceKey);
-					const program = source?.descriptor.membershipPrograms?.find(
-						(candidate) => candidate.id === report.program,
-					);
-					if (program === undefined) {
-						log.warn(
-							`[live-interactions] 订阅 ${subscriptionId} 认不出会员体系 ${report.program},丢弃这条会员上报`,
-						);
-						return;
-					}
-					// 逐档声明:取声明的那一档(名字、rank、档色、徽章都听平台的);custom:档由主播自定,
-					// 只能用事件带来的名字与 rank,没有徽章、没有档色。
-					const tier: MembershipTier | undefined =
-						program.tiers === "custom"
-							? {
-									key: report.tier.key,
-									name: report.tier.name,
-									rank: report.tier.rank ?? 0,
-								}
-							: program.tiers.find((candidate) => candidate.key === report.tier.key);
-					if (tier === undefined) {
-						log.warn(
-							`[live-interactions] 订阅 ${subscriptionId} 的会员体系 ${program.id} 认不出档 ${report.tier.key},丢弃这条会员上报`,
-						);
-						return;
-					}
 					const avatar = opts.profileAvatar(subscriptionId);
 					const reader = source?.liveInteractions;
 					opts.serviceCtx.track(

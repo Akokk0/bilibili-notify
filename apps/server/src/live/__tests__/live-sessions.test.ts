@@ -900,6 +900,162 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 	});
 });
 
+describe("本场互动汇总", () => {
+	const endOfCurrent = (): Extract<LiveSessionChange, { kind: "end" }> => {
+		liveEnd();
+		const change = changes.at(-1);
+		if (change?.kind !== "end") throw new Error("expected an end change");
+		return change;
+	};
+
+	it("两个人各发两条弹幕:条数逐条累计,人数按 viewer.id 去重", () => {
+		start();
+		liveStart();
+		for (let index = 0; index < 2; index += 1) {
+			sessions.noteInteraction(SUB.id, {
+				kind: "viewerChat",
+				viewer: { id: "viewer-1", name: "同名" },
+				text: "第一条",
+			});
+			sessions.noteInteraction(SUB.id, {
+				kind: "viewerChat",
+				viewer: { id: "viewer-2", name: "同名" },
+				text: "第二条",
+			});
+		}
+
+		expect(endOfCurrent().session.interactions).toEqual({
+			viewerChatCount: 4,
+			viewerChatSenderCount: 2,
+		});
+	});
+
+	it("醒目留言按条累计,金额按币种分别求和", () => {
+		start();
+		liveStart();
+		for (const superchat of [
+			{ amount: 5, currency: "USD" },
+			{ amount: 30, currency: "CNY" },
+			{ amount: 20, currency: "CNY" },
+		]) {
+			sessions.noteInteraction(SUB.id, {
+				kind: "superchat",
+				viewer: { id: "supporter", name: "支持的观众" },
+				text: "加油",
+				...superchat,
+			});
+		}
+
+		expect(endOfCurrent().session.interactions).toEqual({
+			superchatCount: 3,
+			superchatTotals: { USD: 5, CNY: 50 },
+		});
+	});
+
+	it("会员按体系和档累计,赠送按正整数 count 计数", () => {
+		start();
+		liveStart();
+		const membership = (
+			tier: string,
+			over: { action?: "new" | "renew" | "upgrade"; gift?: { gifter: string; count: number } } = {},
+		) =>
+			sessions.noteInteraction(SUB.id, {
+				kind: "membership",
+				viewer: { id: `member-${tier}`, name: "会员" },
+				program: "p",
+				tier: { key: tier, name: tier },
+				...over,
+			});
+		membership("a");
+		membership("a", { gift: { gifter: "member-a", count: 3 } });
+		membership("b", { action: "renew" });
+
+		expect(endOfCurrent().session.interactions).toEqual({
+			membershipCounts: { p: { a: 4, b: 1 } },
+		});
+	});
+
+	it("断流接续接着记,新的一场从零记", async () => {
+		settings = { ...settings, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		start();
+		liveStart();
+		const chat = (id: string) =>
+			sessions.noteInteraction(SUB.id, {
+				kind: "viewerChat",
+				viewer: { id, name: id },
+				text: "还在这一场",
+			});
+		chat("before-gap");
+		liveEnd();
+		chat("during-gap");
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		liveStart({ startedAt: Date.now() });
+		chat("after-resume");
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE);
+
+		const firstEnd = changes.filter((change) => change.kind === "end").at(-1);
+		expect(firstEnd?.session.interactions).toEqual({
+			viewerChatCount: 3,
+			viewerChatSenderCount: 3,
+		});
+
+		liveStart({ startedAt: Date.now() });
+		chat("next-session");
+		liveStatus({ startedAt: Date.now() + MINUTE });
+		const secondEnd = changes.filter((change) => change.kind === "end").at(-1);
+		expect(secondEnd).toMatchObject({
+			reason: "superseded",
+			session: {
+				interactions: {
+					viewerChatCount: 1,
+					viewerChatSenderCount: 1,
+				},
+			},
+		});
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+	});
+
+	it("手里没有这一场时记一笔什么都不发生,之后开的场也不带", () => {
+		start();
+		sessions.noteInteraction(SUB.id, {
+			kind: "viewerChat",
+			viewer: { id: "too-early", name: "来早了" },
+			text: "还没开播",
+		});
+		liveStart();
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+		expect(endOfCurrent().session).not.toHaveProperty("interactions");
+	});
+
+	it("一条互动都没记过:结束帧的场次没有 interactions", () => {
+		start();
+		liveStart();
+		expect(endOfCurrent().session).not.toHaveProperty("interactions");
+	});
+
+	it("结束帧带着汇总时仍是纯数据,里面没有观众 id", () => {
+		start();
+		liveStart();
+		sessions.noteInteraction(SUB.id, {
+			kind: "viewerChat",
+			viewer: { id: "private-viewer-id", name: "观众" },
+			text: "你好",
+		});
+		sessions.noteInteraction(SUB.id, {
+			kind: "membership",
+			viewer: { id: "private-member-id", name: "会员" },
+			program: "p",
+			tier: { key: "a", name: "a" },
+		});
+
+		const session = endOfCurrent().session;
+		expect(session).toEqual(JSON.parse(JSON.stringify(session)));
+		expect(JSON.stringify(session)).not.toContain("private-viewer-id");
+		expect(JSON.stringify(session)).not.toContain("private-member-id");
+	});
+});
+
 describe("Devtools tickNow", () => {
 	it("在播且这一场仍有效:立刻向来源核一次,回 true", async () => {
 		const fetch = vi.fn(async () => ({

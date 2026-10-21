@@ -229,6 +229,112 @@ const startSession = () =>
 	});
 const flush = () => vi.runAllTimersAsync();
 
+describe("场次互动汇总", () => {
+	it("推送开关全关也记,与推不推无关", () => {
+		settings = settingsWith([], {
+			viewerChat: false,
+			viewerEnter: false,
+			superchat: false,
+			membership: false,
+		});
+		startSession();
+		chat("chat-viewer");
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer: { id: "superchat-viewer", name: "醒目留言观众" },
+			text: "加油",
+			amount: 30,
+			currency: "CNY",
+		});
+		interactions.apply(SUB.id, {
+			kind: "membership",
+			viewer: { id: "member-viewer", name: "会员" },
+			program: "acme-club",
+			tier: { key: "gold", name: "金牌", rank: 2 },
+		});
+
+		expect(sessions.get(SUB.id)?.interactions).toEqual({
+			viewerChatCount: 1,
+			viewerChatSenderCount: 1,
+			superchatCount: 1,
+			superchatTotals: { CNY: 30 },
+			membershipCounts: { "acme-club": { gold: 1 } },
+		});
+	});
+
+	it("订阅停用或删了:这一场的汇总都不记", () => {
+		startSession();
+		subs.set(SUB.id, { ...SUB, enabled: false });
+		chat("disabled-viewer");
+		expect(sessions.get(SUB.id)).toBeDefined();
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+
+		subs.clear();
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer: { id: "removed-viewer", name: "观众" },
+			text: "来晚了",
+			amount: 30,
+			currency: "CNY",
+		});
+		expect(sessions.get(SUB.id)).toBeDefined();
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+	});
+
+	it("认不出会员体系或档:丢弃且不记", () => {
+		startSession();
+		interactions.apply(SUB.id, {
+			kind: "membership",
+			viewer: { id: "unknown-program", name: "会员" },
+			program: "nobody",
+			tier: { key: "gold", name: "金牌", rank: 2 },
+		});
+		interactions.apply(SUB.id, {
+			kind: "membership",
+			viewer: { id: "unknown-tier", name: "会员" },
+			program: "acme-club",
+			tier: { key: "missing", name: "没有", rank: 1 },
+		});
+
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+		expect(logger.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("进场不计;醒目留言的非有限金额只计条数;各种会员动作都计,非法赠送数量按 1", () => {
+		startSession();
+		enter("entered-viewer");
+		expect(sessions.get(SUB.id)).not.toHaveProperty("interactions");
+
+		interactions.apply(SUB.id, {
+			kind: "superchat",
+			viewer: { id: "invalid-amount", name: "观众" },
+			text: "金额坏了",
+			amount: Number.NaN,
+			currency: "CNY",
+		});
+		for (const [action, count] of [
+			["new", undefined],
+			["renew", 3],
+			["upgrade", 1.5],
+			["new", 0],
+		] as const) {
+			interactions.apply(SUB.id, {
+				kind: "membership",
+				viewer: { id: `${action}-${String(count)}`, name: "会员" },
+				program: "acme-club",
+				tier: { key: "gold", name: "金牌", rank: 2 },
+				action,
+				...(count === undefined ? {} : { gift: { gifter: "member", count } }),
+			});
+		}
+
+		expect(sessions.get(SUB.id)?.interactions).toEqual({
+			superchatCount: 1,
+			membershipCounts: { "acme-club": { gold: 6 } },
+		});
+	});
+});
+
 describe("特别弹幕", () => {
 	it("名单命中且开关开着:按订阅现折的文案交出一句,走特别弹幕这一种推送", () => {
 		chat("123");

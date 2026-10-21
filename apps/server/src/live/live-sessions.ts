@@ -2,9 +2,11 @@ import type {
 	Disposable,
 	Identity,
 	LiveDetails,
+	LiveInteractionReport,
 	LiveSession,
 	LiveSessionChange,
 	LiveSessionEndReason,
+	LiveSessionInteractions,
 	LiveSignal,
 	LiveStatusResult,
 	Logger,
@@ -85,6 +87,8 @@ export interface LiveSessionEngine extends Disposable {
 	tickNow(subscriptionId: string): Promise<boolean>;
 	/** 喂一份信号:先写在播表、再改场次、最后按顺序同步通知监听者。 */
 	apply(signal: LiveSignal): void;
+	/** 给手里的这一场记一笔互动;没有这一场就什么都不做。 */
+	noteInteraction(subscriptionId: string, report: LiveInteractionReport): void;
 	/** 听场次的变化。场次先改好,再按顺序同步通知。 */
 	onChange(listener: (change: LiveSessionChange) => void): Disposable;
 	/**
@@ -145,6 +149,14 @@ export interface CreateLiveSessionEngineOptions {
 	now?: () => number;
 }
 
+interface SessionInteractionsState {
+	viewerChatCount: number;
+	viewerChatSenders: Set<string>;
+	superchatCount: number;
+	superchatTotals: Map<string, number>;
+	membershipCounts: Map<string, Map<string, number>>;
+}
+
 /** 场次在这里的样子:比对外多一个断流等待的定时器,和总线上这一场的开播时刻。 */
 interface SessionState {
 	subscriptionId: string;
@@ -155,6 +167,7 @@ interface SessionState {
 	detectedAt: number;
 	followersAtStart?: number;
 	peakTotalViewers?: number;
+	interactions?: SessionInteractionsState;
 	lastDetails?: LiveDetails;
 	pendingEnd?: {
 		endedAt: number;
@@ -201,9 +214,44 @@ type SessionChange =
 			reportedStartedAt?: number;
 	  });
 
+/** 内部计数没收到的那一种不出现;整场一条都没记过时整格不出现。 */
+function projectInteractions(
+	interactions: SessionInteractionsState | undefined,
+): LiveSessionInteractions | undefined {
+	if (interactions === undefined) return undefined;
+	const projected: LiveSessionInteractions = {
+		...(interactions.viewerChatCount === 0
+			? {}
+			: {
+					viewerChatCount: interactions.viewerChatCount,
+					viewerChatSenderCount: interactions.viewerChatSenders.size,
+				}),
+		...(interactions.superchatCount === 0
+			? {}
+			: {
+					superchatCount: interactions.superchatCount,
+					...(interactions.superchatTotals.size === 0
+						? {}
+						: { superchatTotals: Object.fromEntries(interactions.superchatTotals) }),
+				}),
+		...(interactions.membershipCounts.size === 0
+			? {}
+			: {
+					membershipCounts: Object.fromEntries(
+						[...interactions.membershipCounts].map(([program, tiers]) => [
+							program,
+							Object.fromEntries(tiers),
+						]),
+					),
+				}),
+	};
+	return Object.keys(projected).length === 0 ? undefined : projected;
+}
+
 /** 只把外层可拿的纯数据交出去;计时器与总线的内部起算时刻留在 {@link SessionState} 里。 */
 function projectSession(session: SessionState): LiveSession {
 	const pendingEnd = session.pendingEnd;
+	const interactions = projectInteractions(session.interactions);
 	return {
 		subscriptionId: session.subscriptionId,
 		sourceKey: session.sourceKey,
@@ -215,6 +263,7 @@ function projectSession(session: SessionState): LiveSession {
 		...(session.peakTotalViewers === undefined
 			? {}
 			: { peakTotalViewers: session.peakTotalViewers }),
+		...(interactions === undefined ? {} : { interactions }),
 		...(session.lastDetails === undefined ? {} : { lastDetails: session.lastDetails }),
 		...(pendingEnd === undefined
 			? {}
@@ -835,6 +884,45 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				case "end":
 					onEnd(signal);
 					return;
+			}
+		},
+		noteInteraction(subscriptionId, report) {
+			const session = sessions.get(subscriptionId);
+			if (!session || report.kind === "viewerEnter") return;
+			session.interactions ??= {
+				viewerChatCount: 0,
+				viewerChatSenders: new Set(),
+				superchatCount: 0,
+				superchatTotals: new Map(),
+				membershipCounts: new Map(),
+			};
+			const interactions = session.interactions;
+			switch (report.kind) {
+				case "viewerChat":
+					interactions.viewerChatCount += 1;
+					interactions.viewerChatSenders.add(report.viewer.id);
+					return;
+				case "superchat":
+					interactions.superchatCount += 1;
+					if (Number.isFinite(report.amount)) {
+						interactions.superchatTotals.set(
+							report.currency,
+							(interactions.superchatTotals.get(report.currency) ?? 0) + report.amount,
+						);
+					}
+					return;
+				case "membership": {
+					const count = report.gift?.count;
+					const added =
+						typeof count === "number" && Number.isInteger(count) && count > 0 ? count : 1;
+					let tiers = interactions.membershipCounts.get(report.program);
+					if (tiers === undefined) {
+						tiers = new Map();
+						interactions.membershipCounts.set(report.program, tiers);
+					}
+					tiers.set(report.tier.key, (tiers.get(report.tier.key) ?? 0) + added);
+					return;
+				}
 			}
 		},
 		onChange(listener) {
