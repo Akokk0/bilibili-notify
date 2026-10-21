@@ -416,7 +416,7 @@ export function createAppRuntime(
 	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
 	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
 	//
-	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报与 `extension-live-session`(场次在引擎里建)。
+	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报;直播场次由中立的 `live-session-changed` 统一记。
 	// 数据统计总开关(`stats.enabled`):一个缓存布尔,设置变了作废。记录器入口与粉丝轮询共用这一个。
 	const statsEnabled = createStatsEnabled({ bus, getGlobals: () => configStore.getGlobals() });
 	const statsRecorder = createStatsRecorder({
@@ -427,7 +427,7 @@ export function createAppRuntime(
 		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
 		fansCron: () => configStore.getGlobals().profileRefreshCron,
 		logger: serviceCtx.logger,
-		// 按 uid 找订阅 id、判拓展订阅启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
+		// 判订阅在不在、启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
 		// 读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
 		subscriptions: () => {
 			const { defaults } = configStore.getGlobals();

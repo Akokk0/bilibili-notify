@@ -459,6 +459,51 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			for (const h of handlers.get(ev) ?? []) h(payload);
 			await new Promise((r) => setTimeout(r, 15));
 		};
+		const open = new Map<
+			string,
+			{
+				subscriptionId: string;
+				sourceKey: string;
+				startedAt: string;
+				detectedAt: string;
+			}
+		>();
+		const startLive = async (uid: string, startedAt: string) => {
+			const session = {
+				subscriptionId: `s${uid}`,
+				sourceKey: "bilibili",
+				startedAt,
+				detectedAt: new Date(clock).toISOString(),
+			};
+			open.set(uid, session);
+			await fire("live-session-changed", {
+				kind: "start",
+				subscriptionId: session.subscriptionId,
+				session,
+				trigger: "status-signal",
+				details: {},
+			});
+		};
+		const endLive = async (
+			uid: string,
+			endedAt: string,
+			peakTotalViewers?: number,
+			reason: "ended" | "shutdown" = "ended",
+		) => {
+			const current = open.get(uid);
+			if (!current) throw new Error(`live session ${uid} is not open`);
+			open.delete(uid);
+			await fire("live-session-changed", {
+				kind: "end",
+				subscriptionId: current.subscriptionId,
+				session: {
+					...current,
+					...(peakTotalViewers === undefined ? {} : { peakTotalViewers }),
+				},
+				reason,
+				endedAt,
+			});
+		};
 		// 3a-27 起统计听核心入口发的 `post-detected`:有没有视频看 `post.video`,不再看 B 站的类型串;
 		// 自动开播推送(`DYNAMIC_TYPE_LIVE_RCMD`)在引擎里就跳过、不交作品,所以不会有事件。
 		const dyn = (uid: string, id: string, type: string, ts: string) =>
@@ -491,26 +536,21 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		] as const) {
 			await dyn("202", id, type, ts);
 		}
-		// 203:一场完整直播,观看数有大有小、有不是数的(NaN);下播带真实时刻。
+		// 203:一场完整直播,本场峰值 12,000;下播带真实时刻。
 		clock = NOW - 2 * D;
 		await fire("auth-restored");
-		await fire("live-state-changed", { uid: "203", status: "live", at: at(2, 1) });
-		await fire("live-viewers-changed", { uid: "203", viewers: 8000 });
-		await fire("live-viewers-changed", { uid: "203", viewers: 12_000 });
-		await fire("live-viewers-changed", { uid: "203", viewers: 9500 });
-		await fire("live-viewers-changed", { uid: "203", viewers: Number.NaN });
+		await startLive("203", at(2, 1));
 		clock = NOW - 2 * D + 2 * H;
-		await fire("live-state-changed", { uid: "203", status: "idle", at: at(2, -1, 58) });
+		await endLive("203", at(2, -1, 58), 12_000);
 		// 204:开播时刻解析不出 → 回退此刻;auth-lost 之后再开一场;关服收尾。
 		clock = NOW - D;
 		await fire("auth-restored");
-		await fire("live-state-changed", { uid: "204", status: "live", at: "不是时间" });
-		await fire("live-viewers-changed", { uid: "204", viewers: 30_000 });
+		await startLive("204", "不是时间");
 		await fire("auth-lost");
 		clock = NOW - 5 * H;
-		await fire("live-state-changed", { uid: "204", status: "live", at: "还是不是时间" });
-		await fire("live-viewers-changed", { uid: "204", viewers: 150_000_000 });
+		await startLive("204", "还是不是时间");
 		clock = NOW - H;
+		await endLive("204", new Date(clock).toISOString(), 150_000_000, "shutdown");
 		await recorder.closeOpenSessions();
 		clock = NOW;
 		await fire("auth-restored");

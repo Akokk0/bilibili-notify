@@ -9,18 +9,14 @@ import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
 
 /**
- * 统计的**拓展适配**(ADR-0020 决策 17):把订阅源拓展的上报与拓展直播的场次翻成记录器的中立调用,按
- * **订阅 id** 记(决策 2 / 16)。平台的规矩只写在这里:
+ * 统计的**拓展适配**(ADR-0020 决策 17):把订阅源拓展的上报翻成记录器的中立调用,按 **订阅 id**
+ * 记(决策 2 / 16)。平台的规矩只写在这里:
  *
  *   - **记谁**(决策 4):订阅在、启用着就记,**与推送开关无关** —— 统计记的是「UP 做了什么」。停用的不记,
  *     哪怕它的资料照样报上来(ADR-0019 决策 62:资料更新的投递含停用的订阅)。
  *   - 作品行不在这里:拓展作品经核心入口发 `post-detected`,B 站与拓展共用 `recorder.ts` 里的那一个监听
  *     (有没有视频、发布时刻、同一条报几次只留一行,都在那边与 store)。
- *   - `extension-live-session` → 开一场 / 关一场(决策 6):场次边界(断流接续、没报下播又开播、拓展停了、
- *     停用、关机)由 `live/live-sessions.ts` 算、与推送共用,这里不另算。每种结束原因都是「观测
- *     到此为止」,都关;**删了的除外** —— 文件跟着订阅一起删,不再写一帧把它重新写出来。
- *   - 峰值(决策 7)照抄结束帧带的 `totalViewers`:本场报过的最大累计观看,也由场次那边算(一场报过什么只有
- *     它全看得见);没带(平台只报此刻在线)这一场就不带峰值。
+ *   - 直播场次不在这里:所有来源都走中立监听(`live-source.ts`)的 `live-session-changed`。
  *   - 资料里的粉丝数 → 粉丝时序(决策 8),不密过 B 站粉丝轮询的间隔({@link fansSampleGapMs})。
  *   - 「来源在跑」= 这个小时收到过这条订阅的任何上报(ADR-0027 决策 2):按开关记当前小时的 `posts` /
  *     `live`;资料里带粉丝数(不管被不被稀释掉)记 `followers`。作品开关关着不落作品行;直播类开关都关着不开新场次。
@@ -70,8 +66,6 @@ export function fansSampleGapMs(cron: string): number {
 
 export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): Disposable {
 	const { bus, recorder } = opts;
-	/** 交给记录器开着的场次(文件键)。关的时候只关这里有的 —— 一场恰好一帧下播。 */
-	const open = new Set<string>();
 	const handles: Disposable[] = [];
 
 	/**
@@ -92,9 +86,6 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 		if (!subById.has(id)) subById = buildIndex();
 		return subById.get(id);
 	};
-	/** 这条拓展订阅启用着吗;不是拓展订阅(或不在了)是 `undefined`。 */
-	const enabledOf = (id: string): boolean | undefined => subOf(id)?.enabled;
-
 	handles.push(
 		bus.on("subscription-reported", (delivery) => {
 			const { report } = delivery;
@@ -114,30 +105,9 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 							recorder.recordFans(key, report.value.fans, fansSampleGapMs(opts.fansCron()));
 						}
 						break;
-					// 直播那三种不在这里:场次与本场累计观看由 `extension-live-session` 带来(下面那个监听)。
+					// 直播那三种不在这里:场次与本场累计观看由中立的 `live-session-changed` 统一记。
 				}
 			}
-		}),
-	);
-
-	handles.push(
-		bus.on("extension-live-session", (event) => {
-			const key = statsFileKey({ id: event.subscriptionId });
-			if (event.phase === "start") {
-				const sub = subOf(event.subscriptionId);
-				// 直播类开关都关着不开新场次(进行中的场次照常收尾,见下面的关场)。
-				if (sub?.enabled !== true || !sub.recordsLive) return;
-				open.add(key);
-				recorder.openSession(key, event.startedAt);
-				return;
-			}
-			if (!open.delete(key)) return;
-			if (event.reason === "removed" || enabledOf(event.subscriptionId) === undefined) {
-				// 订阅删了:文件随它一起删(下面那条 `subscription-changed`),不写一帧把它重新写出来。
-				recorder.forget(key);
-				return;
-			}
-			recorder.closeSession(key, event.at, event.totalViewers);
 		}),
 	);
 
@@ -152,7 +122,6 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 				if (op.kind !== "remove") continue;
 				if (subscriptionIdentityOf(op.sub).sourceKey === BILIBILI_SOURCE_KEY) continue;
 				const key = statsFileKey(op.sub);
-				open.delete(key);
 				recorder.drop(key);
 			}
 		}),
@@ -162,7 +131,6 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 		dispose() {
 			for (const h of handles) h.dispose();
 			handles.length = 0;
-			open.clear();
 		},
 	};
 }

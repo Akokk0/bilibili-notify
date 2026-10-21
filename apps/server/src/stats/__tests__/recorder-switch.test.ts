@@ -103,13 +103,11 @@ describe("记录器 × 总开关 — 关着不落盘", () => {
 });
 
 describe("记录器 × 总开关 — 正在播的那一场照常收尾", () => {
-	it("开着时开场 → 关掉 → 下播:下播帧照写,峰值照带(关着时报的观看数也照累计)", async () => {
+	it("开着时开场 → 关掉 → 下播:下播帧照写,场次引擎给的峰值照带", async () => {
 		const { store, core } = setupCore();
 		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
-		core.reportViewers(KEY, 100);
 		enabled = false;
-		core.reportViewers(KEY, 250);
-		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 40);
+		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 250);
 		await core.flush();
 		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
 		expect(store.closeLiveSession).toHaveBeenCalledWith(KEY, "2026-05-16T11:00:00.000Z", 250);
@@ -119,7 +117,6 @@ describe("记录器 × 总开关 — 正在播的那一场照常收尾", () => {
 		enabled = false;
 		const { store, core } = setupCore();
 		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
-		core.reportViewers(KEY, 100);
 		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 100);
 		await core.flush();
 		expect(store.openLiveSession).not.toHaveBeenCalled();

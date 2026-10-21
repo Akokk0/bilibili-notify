@@ -26,7 +26,15 @@ const hoursLater = (h: number) => new Date(BOOT.getTime() + h * 3_600_000);
 /** uid "1" 的那条 B 站订阅;盘上按订阅 id 记(ADR-0020 决策 2 的 🔗)。 */
 const SUB_ID = "sub-of-1";
 const subscriptions = () =>
-	[{ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "1" } }] as never;
+	[
+		{
+			id: SUB_ID,
+			identity: { sourceKey: "bilibili", externalId: "1" },
+			enabled: true,
+			recordsPosts: true,
+			recordsLive: true,
+		},
+	] as never;
 
 describe("服务器在 UP 已开播时启动", () => {
 	let dir: string;
@@ -41,6 +49,28 @@ describe("服务器在 UP 已开播时启动", () => {
 	/** 直接触发 recorder 注册的 handler,替代真实 bus。 */
 	const emit = (ev: string, payload?: unknown) =>
 		(handlers.get(ev) as ((payload?: unknown) => void) | undefined)?.(payload);
+	const session = (startedAt: string) => ({
+		subscriptionId: SUB_ID,
+		sourceKey: "bilibili",
+		startedAt,
+		detectedAt: BOOT.toISOString(),
+	});
+	const emitStart = (startedAt: string) =>
+		emit("live-session-changed", {
+			kind: "start",
+			subscriptionId: SUB_ID,
+			session: session(startedAt),
+			trigger: "status-signal",
+			details: {},
+		});
+	const emitEnd = (endedAt: string) =>
+		emit("live-session-changed", {
+			kind: "end",
+			subscriptionId: SUB_ID,
+			session: session(REAL_START),
+			reason: "ended",
+			endedAt,
+		});
 
 	beforeEach(async () => {
 		handlers.clear();
@@ -63,7 +93,7 @@ describe("服务器在 UP 已开播时启动", () => {
 			now: () => BOOT,
 			subscriptions,
 		});
-		emit("live-state-changed", { uid: "1", status: "live", at: REAL_START });
+		emitStart(REAL_START);
 		// 落盘是 fire-and-forget,等 recorder 把交出去的写入落完。
 		await recorder.flush();
 		return { store, recorder };
@@ -93,7 +123,7 @@ describe("服务器在 UP 已开播时启动", () => {
 
 	it("下播后定格在真实总时长,不再随时间变", async () => {
 		const { store, recorder } = await bootWhileLive();
-		emit("live-state-changed", { uid: "1", status: "idle" });
+		emitEnd(BOOT.toISOString());
 		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		// 下播帧用的是 recorder 的注入时钟(BOOT),所以这一场是 20:00→22:00 共 2h。
@@ -104,9 +134,9 @@ describe("服务器在 UP 已开播时启动", () => {
 	});
 
 	it("直播中再次重启服务器 → 仍是一场,时长不翻倍", async () => {
-		// 重启后从 B 站拿到的还是同一个 live_time,于是又发了一条开播事件。
+		// 重启后从 B 站拿到的还是同一个 live_time,于是又认出了同一场。
 		const { store, recorder } = await bootWhileLive();
-		emit("live-state-changed", { uid: "1", status: "live", at: REAL_START });
+		emitStart(REAL_START);
 		await recorder.flush();
 		const sessions = await store.listLiveSessions(SUB_ID, "2026-05-01T00:00:00.000Z");
 		const got = summarizeLiveSessions(sessions, { now: hoursLater(1), isLive: true });

@@ -26,8 +26,8 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
  * 表里只有引用。
  *
  * 表一变就在总线上发 `extension-live-changed`,合并过(见 {@link LIVE_CHANGED_COALESCE_MS})。
- * 🔴 **不发 `live-state-changed`**:那是统计的 B 站适配按 uid 订着记场次的口;拓展订阅的场次走
- * `extension-live-session`(`live-sessions.ts`)。
+ * 🔴 **不发 `live-state-changed`**:那仍是在册来源的 R1 过渡输出;所有订阅的场次变化由
+ * `live-sessions.ts` 发中立的 `live-session-changed`。
  *
  * 只在内存:来源开机第一轮拿到直播状态时也会写表(决策 57),BN 重启之后表自己会满回来。
  */

@@ -5,22 +5,24 @@ import { attachBiliStatsSource } from "./bili-source.js";
 import type { RecordingCompactSummary } from "./compaction.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
+import { attachLiveStatsSource } from "./live-source.js";
 import { postEntryFromEvent } from "./post-entry-extras.js";
 import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
 
 /**
  * 统计的采集层 = 一个**中立的记录器** + 每个来源一个**适配**(ADR-0020 决策 17)。
  *
- * - 记录器(本文件的 {@link createStatsRecorderCore})只收中立的调用:记一条作品、开一场、
- *   报本场累计观看、关一场;按**文件键**({@link statsFileKey})落进 {@link StatsStore}。
+ * - 记录器(本文件的 {@link createStatsRecorderCore})只收中立的调用:记一条作品、开一场、关一场;
+ *   按**文件键**({@link statsFileKey})落进 {@link StatsStore}。
  *   它不认识任何平台,也不听总线。
  * - 适配把各来源的事件翻成这些调用,平台的规矩只写在适配里:
  *     · 作品(本文件的 `post-detected` 监听,**两支共用**):核心入口(`PostQueue`)对每条订阅发一份中立的
  *       `PostEvent`,统计照事件记一行(`postEntryFromEvent`),不认来源、不再自己看作品开关 ——
  *       该不该记的判据已经在入口里(订阅在、启用、作品开关开着、来源在跑)。
- *     · B 站(`bili-source.ts`):听直播的两条事件,把 uid 换成订阅 id 记场次与观看数;登录有效 = 来源在跑。
- *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,资料里的粉丝数
- *       按 B 站粉丝轮询的间隔稀释、累计观看取本场最大;收到上报 = 来源在跑,按开关记「在记」。
+ *     · 直播(`live-source.ts`):所有来源共用一个监听,吃中立的 `live-session-changed`。
+ *     · B 站(`bili-source.ts`):登录有效 = 来源在跑,登录失效时忘掉 B 站在飞的场次。
+ *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按 B 站粉丝轮询的间隔稀释;
+ *       收到上报 = 来源在跑,按开关记「在记」。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
  * 追加重新写出来),{@link StatsRecorderHandle.flush} 等得到全部落地 —— 关机补帧靠它。
@@ -30,16 +32,13 @@ import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
 export interface StatsRecorderCore {
 	/** 记一条作品行。同一个键下同 id 只留首条(去重在 store)。 */
 	recordPost(key: string, post: PostEntry): void;
-	/** 开一场。这个键在飞的累计观看清零,从这一场重新取最大值。 */
+	/** 开一场。 */
 	openSession(key: string, startedAtIso: string): void;
-	/** 报一次本场累计观看(看过的人数)。只留最大值;不是有限数就不收。 */
-	reportViewers(key: string, cumulative: number): void;
 	/**
-	 * 关一场。落盘的峰值 = 这一场报过的最大累计观看与 `peak` 里较大的那个(都没有就不带)——
-	 * 累计数只增不减,取大的那个就是本场最后的累计。
+	 * 关一场。落盘的峰值只取场次引擎交来的 `peak`;不是有限数就不带。
 	 */
 	closeSession(key: string, endedAtIso: string, peak?: number): void;
-	/** 忘掉这个键在飞的场次与累计观看(只动内存,不动盘)。来源那头不再观测它时调。 */
+	/** 忘掉这个键在飞的场次(只动内存,不动盘)。来源那头不再观测它时调。 */
 	forget(key: string): void;
 	/** 忘掉 + 删掉这个键的全部文件(作品、直播、「在记」、粉丝;订阅被删时调)。 */
 	drop(key: string): void;
@@ -99,8 +98,6 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	reset(): void;
 } {
 	const now = opts.now ?? (() => new Date());
-	/** 每个键本场的最大累计观看。开播时清空,下播时取走 —— 天然不跨场、不跨订阅串味。 */
-	const peaks = new Map<string, number>();
 	/** 当前仍在播的键。关服时据此补下播帧;正常下播会把它摘掉。 */
 	const openLive = new Set<string>();
 	/** `clear` 时正开着的键:它们的开播帧已随文件删了,下一次下播不写孤立的 `end`(见 {@link StatsRecorderCore.clear})。 */
@@ -200,7 +197,6 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	};
 
 	const forget = (key: string) => {
-		peaks.delete(key);
 		openLive.delete(key);
 	};
 
@@ -215,24 +211,12 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			if (!opts.isEnabled()) return;
 			// 清空之后新开的一场是真的开场,不再算「被清掉的那场」。
 			discardedOpen.delete(key);
-			peaks.delete(key);
 			openLive.add(key);
 			enqueue(key, "openLiveSession", () => opts.store.openLiveSession(key, startedAtIso));
 		},
 
-		reportViewers(key, cumulative) {
-			if (!Number.isFinite(cumulative)) return;
-			// 只替开着的场次累计峰值;关着时没开场的键不攒(开关打开后第一场从 openSession 起重新取最大)。
-			if (!openLive.has(key) && !opts.isEnabled()) return;
-			const cur = peaks.get(key);
-			if (cur === undefined || cumulative > cur) peaks.set(key, cumulative);
-		},
-
 		closeSession(key, endedAtIso, peak) {
-			const tracked = peaks.get(key);
-			const given = peak !== undefined && Number.isFinite(peak) ? peak : undefined;
-			const final =
-				tracked === undefined ? given : given === undefined ? tracked : Math.max(tracked, given);
+			const final = peak !== undefined && Number.isFinite(peak) ? peak : undefined;
 			// 「这场开没开过」要在 forget 之前读(forget 会把它摘掉),而 forget 无条件照跑。
 			// 关着时:开着时开的场次照常收尾(一场的头尾不分家),没开过场的下播不写孤立的 end。
 			const opened = openLive.has(key);
@@ -320,13 +304,9 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		async closeOpenSessions() {
 			const ts = now().toISOString();
 			for (const key of openLive) {
-				const peak = peaks.get(key);
-				enqueue(key, "closeLiveSession(shutdown)", () =>
-					opts.store.closeLiveSession(key, ts, peak),
-				);
+				enqueue(key, "closeLiveSession(shutdown)", () => opts.store.closeLiveSession(key, ts));
 			}
 			openLive.clear();
-			peaks.clear();
 			// 这里**要等**:关服写盘不能丢,进程随后就退出了。serviceCtx.dispose() 会逐个 await onDispose
 			// 钩子,所以等得到。等的是**全部**写入,不只上面补的这几帧 —— 拓展直播的场次在更早的关机步骤里
 			// 就结束了(拓展收摊、引擎拆),它们的下播帧交出去了还没落地。
@@ -355,7 +335,6 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 
 		async clear() {
 			for (const key of openLive) discardedOpen.add(key);
-			peaks.clear();
 			openLive.clear();
 			lastFans.clear();
 			slots.clear();
@@ -366,7 +345,6 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		},
 
 		reset() {
-			peaks.clear();
 			openLive.clear();
 		},
 	};
@@ -384,7 +362,7 @@ export interface StatsRecorderOptions {
 	fansCron: () => string;
 	logger: Logger;
 	/**
-	 * 当前全部订阅。B 站直播事件只带 uid,B 站适配按它找到订阅 id;拓展适配按它判「这条订阅还在、启用着」。
+	 * 当前全部订阅。中立直播监听按它判订阅还在不在、要不要记直播;各来源适配按它分流。
 	 */
 	subscriptions: () => readonly StatsSubscription[];
 	/** 注入时钟,测试用;缺省取系统时间。 */
@@ -440,15 +418,23 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		isEnabled: opts.isEnabled,
 	});
 	let isLoggedIn: (() => boolean) | undefined;
+	const liveSource = attachLiveStatsSource({
+		bus: opts.bus,
+		recorder,
+		now,
+		subscriptions: opts.subscriptions,
+	});
 	const biliSource = attachBiliStatsSource({
 		bus: opts.bus,
 		recorder,
 		now,
 		subscriptions: opts.subscriptions,
 		isLoggedIn: () => isLoggedIn?.() === true,
+		forgetOpenSessions: liveSource.forgetOpenSessions,
 	});
 	const sources: Disposable[] = [
 		biliSource,
+		liveSource,
 		// 作品行:B 站与拓展共用这一个监听,键是订阅 id。
 		opts.bus.on("post-detected", (event) =>
 			recorder.recordPost(statsFileKey({ id: event.subscriptionId }), postEntryFromEvent(event)),

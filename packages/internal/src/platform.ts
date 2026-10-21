@@ -3,7 +3,7 @@ import type { AuthState } from "./auth-state";
 import type { ImageRef, PushTargetScope, Result } from "./constants";
 import type { HttpClient } from "./http";
 import type { KeyValueStore } from "./key-value-store";
-import type { LiveSessionEndReason } from "./live";
+import type { LiveSessionChange } from "./live";
 import type { PostEvent, PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
@@ -241,22 +241,27 @@ export interface BusEvents {
 	 *
 	 *   · `status === "live"` → B 站给出的真实开播时刻。消费方务必区分它与「我们
 	 *     发现开播的时刻」—— 服务器在 UP 已开播时启动,两者能差出好几个小时,拿
-	 *     后者当开播时间会把这段直播时长整段吞掉。**它同时是这一场的身份**:统计侧
-	 *     按它认场次,同一场被重连核对 / 重启 bootstrap 再观测到时必须给出同一个值。
+	 *     后者当开播时间会把这段直播时长整段吞掉。
 	 *   · `status === "idle"` → 真实下播时刻。走断流接续(grace)时,真实下播在进入
 	 *     挂起那刻就定格了,而事件要等 N 分钟窗口到期才发得出来;不带它的话消费方
 	 *     只能用「收到事件的此刻」,每场直播平白多算一整个 grace 窗口。
 	 *
 	 * 缺失时(接口没返回 / 解析失败 / 非 grace 路径)消费方回退到「收到事件的此刻」。
+	 * 统计不再听这一条;它留到 23-5,给面板与 WS 的过渡读者。
 	 */
 	"live-state-changed": { uid: string; status: "live" | "idle"; at?: string };
 	/**
 	 * 直播间累计观看人数变化(B 站 WS `WATCHED_CHANGE` 帧 → live engine 节流后转发)。
 	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是帧里的精确数 `num`;
-	 * 排成「1.2万」是消费方的事(面板与文字渲染器各走 `formatCount`),统计直接拿它取本场最大值。
-	 * (事件的最终形状 —— 按订阅认、拆「此刻在线 / 累计观看」两格 —— 归 3b,这里只改了类型、没改名。)
+	 * 排成「1.2万」是消费方的事(面板与文字渲染器各走 `formatCount`)。统计不再听它,
+	 * 本场峰值从中立场次变化的 `session.peakTotalViewers` 取;这一条留到 23-5。
 	 */
 	"live-viewers-changed": { uid: string; viewers: number };
+	/**
+	 * 核心场次引擎的每一次变化:开始、核对、接续、状态、断流等待、结束,以及手里没有这一场的下播。
+	 * 载荷就是引擎交给进程内监听者的同一份中立纯数据投影;统计是它的消费者。
+	 */
+	"live-session-changed": LiveSessionChange;
 	/**
 	 * 某个拓展不在跑了 —— 停用、卸载、换代码、加载失败、设置读不了、宿主关机,一律在它那面 ctx
 	 * **开始收摊的那一刻**发(每面 ctx 只发一次),之后它再报什么都不收。
@@ -266,21 +271,12 @@ export interface BusEvents {
 	 */
 	"extension-stopped": { extensionId: string };
 	/**
-	 * 拓展订阅的在播表变了(进表 / 出表 / 面板看得见的那几格变了,ADR-0019 决策 12 / 57)。**拓展订阅的
-	 * 在播不走 `live-state-changed`** —— 统计按 uid 订着那一个记场次,而统计不含拓展(决策 12)。
+	 * 拓展订阅的在播表变了(进表 / 出表 / 面板看得见的那几格变了,ADR-0019 决策 12 / 57)。
 	 *
 	 * 载荷为空,面板让 `/api/live/listening` 失效、自己重取。按窗口合并过:直播状态可能每轮都报,一阵
 	 * 连着的变化只发一次(`LIVE_CHANGED_COALESCE_MS`)。
 	 */
 	"extension-live-changed": undefined;
-	/**
-	 * 拓展订阅的一场直播开始 / 结束了(ADR-0020 决策 4 / 6)—— 场次(`live/live-sessions.ts`)
-	 * 算出来的边界,按订阅 id。统计据此记拓展订阅的场次;拓展直播的推送吃的是同一份场次(不经总线)。
-	 *
-	 * 与推送开关无关:订阅在、启用着、拓展在跑就记。断流接续里的那一下、直播状态、下播进等待都**不是**边界,
-	 * 不发。同一场的开始帧与结束帧带同一个 `startedAt`。不进 WS。
-	 */
-	"extension-live-session": ExtensionLiveSessionEvent;
 	/**
 	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
 	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020
@@ -300,50 +296,6 @@ export interface BusEvents {
 	 */
 	"post-detected": PostEvent;
 }
-
-/**
- * 拓展订阅的一场直播为什么结束。
- * - `ended`:拓展报了下播(断流接续开着的,等满了);
- * - `superseded`:没报下播就又开播了,上一场在新的一场开播时收掉;
- * - `extension-stopped`:拓展停了(停用、卸载、换代码、崩了);
- * - `disabled` / `removed`:订阅停用了 / 删了;
- * - `shutdown`:BN 关机。
- */
-export type ExtensionLiveSessionEndReason = Exclude<LiveSessionEndReason, "poll">;
-
-/**
- * Bus 上 `extension-live-session` 的载荷。时刻都是 ISO。
- *
- * - `startedAt`:这一场的开播时刻,**也是这一场的身份**(同 `live-state-changed` 的 `at`)。开播事件的,
- *   或认出这一场的那份在播状态带的,没带就是认出它的那一刻;开始时定下,结束帧原样带着 —— 之后的状态补上了
- *   真开播时刻也不换,不然两帧对不上。拓展或 BN 重启之后再认出同一场,状态里带着同一个开播时刻,消费方
- *   据此接回同一场(ADR-0020 决策 6)。
- * - `at`:开始帧是 BN 认出这一场的那一刻;结束帧是这一场结束的时刻 —— 拓展报的下播是**下播事件到达那一刻**
- *   (断流接续等的那几分钟不算),其余是结束的那一刻(拓展停了、订阅停用 / 删了、关机时补的就是这一帧)。
- * - `totalViewers`(只有结束帧有):这一场里开播 / 直播状态 / 下播报过的**最大累计观看**(ADR-0020 决策 7)。
- *   累计只增不减,最大的就是本场最后那个累计数;断流接续是同一场、接着算。只报此刻在线(`viewers`)的平台
- *   一次都没报过,这一格就没有 —— 不拿在线顶替。
- */
-export type ExtensionLiveSessionEvent =
-	| {
-			phase: "start";
-			subscriptionId: string;
-			extensionId: string;
-			startedAt: string;
-			at: string;
-			/** 认出这一场的是开播事件,还是 BN(或拓展)起来之后见到的在播状态。 */
-			trigger: "liveStart" | "liveStatus";
-	  }
-	| {
-			phase: "end";
-			subscriptionId: string;
-			extensionId: string;
-			startedAt: string;
-			at: string;
-			reason: ExtensionLiveSessionEndReason;
-			/** 本场报过的最大累计观看;一次都没报过就没有这一格。 */
-			totalViewers?: number;
-	  };
 
 /**
  * Bus 上 fans-refreshed 事件 / HTTP /api/stats/followers 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行

@@ -72,7 +72,6 @@ export const RATCHET = {
 	"apps/server/src/runtime/engines.ts": 13, // R1 过渡输出（3b-22），22-10 降
 	"apps/server/src/runtime/fans-poller.ts": 20,
 	"apps/server/src/runtime/follow-sync.ts": 13,
-	"apps/server/src/stats/bili-source.ts": 16,
 	"packages/ai/src/tools.ts": 20,
 	"packages/internal/src/constants.ts": 4, // `upColor` 入参 `UpColorIdentity` 上的 `uid` 键(声明、解构、取用、调用处各一)
 	"packages/internal/src/platform.ts": 3, // 事件载荷里的 `uid` 键(与事件载荷表是同一批东西的两种记法)

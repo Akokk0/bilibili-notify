@@ -1519,25 +1519,23 @@ describe("createEngines — 拓展直播的图走图库", () => {
 
 /**
  * R1 过渡输出(3b-22,3b-23 整段删):在册来源经 `ctx.reportLive` 报的场次,对外还是今天 B 站直播的形状 ——
- * `live-state-changed` / `live-viewers-changed` 与「正在直播」的快照;同一场的拓展形状(`extension-live-session`)
- * 对在册来源关掉,不然统计会把同一场记两遍。
+ * `live-state-changed` / `live-viewers-changed` 与「正在直播」的快照。统计改吃中立的
+ * `live-session-changed`,这里只守留给面板与 WS 的 R1 过渡输出。
  */
 describe("createEngines — 在册来源的直播信号(R1 过渡输出)", () => {
 	const sources = { running: () => false, postNoun: () => undefined, events: () => [] as const };
 	const START = "2026-10-20T08:00:00.000Z";
 	const END = "2026-10-20T09:00:00.000Z";
 
-	it("开播、状态、下播:发 live-state-changed 与 live-viewers-changed,不发 extension-live-session", async () => {
+	it("开播、状态、下播:发 live-state-changed 与 live-viewers-changed", async () => {
 		const sub = biliSubOf("42", "sub-42");
 		const c = setup({ subs: [sub], extensionSources: sources, liveTable: memoryLiveTable() });
 		active = c;
 		await c.sourceReady;
 		const state: unknown[][] = [];
 		const viewers: unknown[][] = [];
-		const sessionEvents: unknown[] = [];
 		c.bus.on("live-state-changed", ({ uid, status, at }) => state.push([uid, status, at]));
 		c.bus.on("live-viewers-changed", ({ uid, viewers: n }) => viewers.push([uid, n]));
-		c.bus.on("extension-live-session", (e) => sessionEvents.push(e));
 
 		const ctx = c.source.ctx;
 		if (!ctx) throw new Error("假来源还没 start");
@@ -1561,7 +1559,6 @@ describe("createEngines — 在册来源的直播信号(R1 过渡输出)", () =>
 			["42", 5],
 			["42", 9],
 		]);
-		expect(sessionEvents).toEqual([]);
 	});
 
 	// 验红:去掉 engines.ts 里 `hasLiveTick` 的 `!hasLiveStatus(sourceKey) &&`,这条红(推送这头又挂了一个小时的周期计时器)。

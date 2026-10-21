@@ -138,7 +138,6 @@ describe("整类清空 × 正在播的场次", () => {
 	it("清空时开着的场次:之后的下播不写孤立的 end,盘上一个文件都不留", async () => {
 		const { core } = setup();
 		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
-		core.reportViewers(KEY, 300);
 		await core.clear();
 		core.closeSession(KEY, "2026-10-06T11:00:00.000Z");
 		await core.flush();

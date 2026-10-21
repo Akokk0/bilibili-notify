@@ -779,8 +779,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveSettingsOf(sub, globals()),
 			timers: coreLiveCtx,
-			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的场次走下面的 B 站形状,拓展形状只给非在册的来源。
-			publishesExtensionSession: (sourceKey) => opts.sources.get(sourceKey) === undefined,
 			// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。
 			liveStatus: {
 				has: hasLiveStatus,
@@ -801,8 +799,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
-		// R1 过渡输出(3b-22,3b-23 整段删):统计、面板「正在直播」、统计页「在播」三处消费者一个不动,所以在册来源
-		// (今天只有 B 站会上报直播)的场次照原 B 站事件形状发 `live-state-changed` / `live-viewers-changed`。
+		// R1 过渡输出(3b-22;23-5 整段删):面板「正在直播」等过渡读者还在听 B 站事件形状,所以在册来源
+		// (今天只有 B 站会上报直播)的场次照原形状发 `live-state-changed` / `live-viewers-changed`。
 		handles.push(
 			liveSessions.onChange((change) => {
 				if (change.kind === "unmatched-end") return;

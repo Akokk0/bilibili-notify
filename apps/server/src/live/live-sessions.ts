@@ -38,10 +38,9 @@ import type { LiveTable } from "./live-table.js";
  *   压着,等满了这一场才结束,结束时刻是**信号带的下播时刻**(等的那几分钟不算);没开立刻结束。
  * - **作废**(决策 61):来源停了、订阅停用 / 删了、关机 → 这一场当场结束,等着的下播不再等。
  *
- * 一场的开始与结束发上总线(`extension-live-session`,ADR-0020 决策 6),统计据此记场次 —— 结束帧带着原因与
- * 本场报过的最大累计观看(决策 7,见 {@link LiveSession.peakTotalViewers}),来源停了 / 关机时补的那一帧
- * 也在里面;断流接续里的那一下不是边界,不发。推送要的比边界多(断流等待开始了、
- * 又来一份状态、手里没有这一场的下播……),经 {@link LiveSessionEngine.onChange} 直接听,不走总线。
+ * 每一种变化都同步发上总线(`live-session-changed`),载荷与进程内监听者拿到的是同一份纯数据投影。
+ * 统计据此记场次;推送要的比统计多(断流等待开始了、又来一份状态、手里没有这一场的下播……),
+ * 经 {@link LiveSessionEngine.onChange} 直接听。
  *
  * 只记「订阅在、启用着、来源在跑」的(与推送同一个判据,{@link liveSubscriptionPushable}),**与推送开关无关**
  * (ADR-0020 决策 4):统计记的是「UP 做了什么」,推送关着这一场照样开、照样结束 —— 推送关掉只是不推。
@@ -139,12 +138,6 @@ export interface CreateLiveSessionEngineOptions {
 	wantsLive?(sub: Subscription): boolean;
 	/** 断流等待的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
 	timers: Pick<ServiceContext, "setTimeout">;
-	/**
-	 * 这个来源的场次要不要发 `extension-live-session`(缺省都发)。R1 过渡输出(3b-22,3b-23 整段删):在册来源的
-	 * 场次对外走 B 站形状的 `live-state-changed`(`runtime/engines.ts` 订 `onChange` 发),拓展形状对它关掉,
-	 * 不然统计会把同一场按同一个文件键记两遍。
-	 */
-	publishesExtensionSession?: (sourceKey: string) => boolean;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
@@ -157,13 +150,11 @@ interface SessionInteractionsState {
 	membershipCounts: Map<string, Map<string, number>>;
 }
 
-/** 场次在这里的样子:比对外多一个断流等待的定时器,和总线上这一场的开播时刻。 */
+/** 场次在这里的样子:比对外多一个断流等待的定时器。 */
 interface SessionState {
 	subscriptionId: string;
 	sourceKey: string;
 	startedAt?: number;
-	/** 总线上这一场的开播时刻(身份):开始时定下,结束帧原样带着。 */
-	busStartedAt: string;
 	detectedAt: number;
 	followersAtStart?: number;
 	peakTotalViewers?: number;
@@ -358,36 +349,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	function announce(change: SessionChange): void {
 		const projected = projectChange(change);
 		for (const listener of [...listeners]) listener(projected);
-	}
-
-	/** 一场开始了,发上总线 —— 统计只要边界(ADR-0020 决策 6)。总线载荷的字面不动(3b-23 改)。 */
-	function publishStart(session: SessionState, trigger: "liveStart" | "liveStatus"): void {
-		if (opts.publishesExtensionSession?.(session.sourceKey) === false) return;
-		opts.bus.emit("extension-live-session", {
-			phase: "start",
-			subscriptionId: session.subscriptionId,
-			extensionId: session.sourceKey,
-			startedAt: session.busStartedAt,
-			at: iso(session.detectedAt),
-			trigger,
-		});
-	}
-
-	/** 一场结束了,发上总线。 */
-	function publishEnd(session: SessionState, reason: LiveSessionEndReason, at: number): void {
-		if (opts.publishesExtensionSession?.(session.sourceKey) === false) return;
-		opts.bus.emit("extension-live-session", {
-			phase: "end",
-			subscriptionId: session.subscriptionId,
-			extensionId: session.sourceKey,
-			startedAt: session.busStartedAt,
-			at: iso(at),
-			// `poll`(核对发现已下播)只会出在可拉取的来源上,而可拉取的来源都是在册来源 —— 它们在上面那一行
-			// 就返回了(R1 过渡输出走 `live-state-changed`),到不了这里。总线载荷的类型 3b-23 才扩,
-			// 万一到了就按「来源下播」的意思记成 `ended`。
-			reason: reason === "poll" ? "ended" : reason,
-			...(session.peakTotalViewers === undefined ? {} : { totalViewers: session.peakTotalViewers }),
-		});
+		opts.bus.emit("live-session-changed", projected);
 	}
 
 	/** 这条订阅现在记不记:还在、启用着、来源在跑。关机之后一律不记。 */
@@ -425,7 +387,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			details: reported?.details,
 			reportedStartedAt: reported?.startedAt,
 		});
-		publishEnd(session, reason, at);
 	}
 
 	function begin(
@@ -439,8 +400,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			subscriptionId: id,
 			sourceKey,
 			startedAt,
-			// 状态没带开播时刻:取认出它的那一刻(ADR-0020 决策 6)。
-			busStartedAt: iso(startedAt ?? detectedAt),
 			detectedAt,
 			followersAtStart: opts.fans(id),
 			lastDetails: opts.table.get(id)?.details,
@@ -459,7 +418,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		details: LiveDetails,
 		startedAt: number | undefined,
 		trigger: "start-signal" | "status-signal" | "poll",
-		busTrigger: "liveStart" | "liveStatus",
 	): void {
 		end(id, "superseded");
 		opts.table.replace(id, sourceKey, startedAt, details);
@@ -471,7 +429,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			trigger,
 			details,
 		});
-		publishStart(session, busTrigger);
 	}
 
 	// ---- 拉取式:按每一场自己的时钟问来源(`fetchLiveStatus`) ----
@@ -571,7 +528,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				log.debug(
 					`[live-sessions] 订阅 ${id} 的周期核对照到另一个开播时刻(${iso(changedStart.previous)} / ${iso(changedStart.reported)}),上一场收掉后开新的一场`,
 				);
-				startNewSession(id, session.sourceKey, result.details, startedAt, "poll", "liveStatus");
+				startNewSession(id, session.sourceKey, result.details, startedAt, "poll");
 				return;
 			}
 			opts.table.merge(id, session.sourceKey, startedAt, result.details);
@@ -632,7 +589,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				return;
 			const startedAt = millisOf(result.startedAt);
 			log.debug(`[live-sessions] 订阅 ${sub.id} 核对发现正在播,认出这一场`);
-			startNewSession(sub.id, identity.sourceKey, result.details, startedAt, "poll", "liveStatus");
+			startNewSession(sub.id, identity.sourceKey, result.details, startedAt, "poll");
 		} finally {
 			probing.delete(sub.id);
 		}
@@ -666,7 +623,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			armPoll(current);
 			return;
 		}
-		startNewSession(id, sourceKey, signal.details, startedAt, "start-signal", "liveStart");
+		startNewSession(id, sourceKey, signal.details, startedAt, "start-signal");
 	}
 
 	function onStatus(signal: StatusSignal): void {
@@ -689,7 +646,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			log.debug(
 				`[live-sessions] 订阅 ${id} 的在播状态报了另一个开播时刻(${iso(changedStart.previous)} / ${iso(changedStart.reported)}),上一场收掉后开新的一场`,
 			);
-			startNewSession(id, sourceKey, signal.details, startedAt, "status-signal", "liveStatus");
+			startNewSession(id, sourceKey, signal.details, startedAt, "status-signal");
 			return;
 		}
 		opts.table.merge(id, sourceKey, startedAt, signal.details);
@@ -705,7 +662,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		// 没见过这一场的开播信号:BN 起来之前就开播了,或者来源停过又跑起来了。
 		log.debug(`[live-sessions] 订阅 ${id} 正在播,认出这一场`);
-		startNewSession(id, sourceKey, signal.details, startedAt, "status-signal", "liveStatus");
+		startNewSession(id, sourceKey, signal.details, startedAt, "status-signal");
 	}
 
 	function onEnd(signal: EndSignal): void {

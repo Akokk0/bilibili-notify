@@ -50,8 +50,8 @@ export type LiveStatusResult =
 	| { ok: false; code: string; message: string };
 
 /**
- * 一场为什么结束:总线上的原因(`ExtensionLiveSessionEndReason`)加一个引擎内部的 `poll` —— 核心问
- * `fetchLiveStatus` 发现已经下播(漏收的下播,时长算到发现的那一刻)。总线载荷的类型不动(3b-23)。
+ * 一场为什么结束。`poll` 是核心问 `fetchLiveStatus` 发现已经下播(漏收的下播,时长算到发现的那一刻),
+ * 其余是来源或宿主报告的实际边界。
  */
 export type LiveSessionEndReason =
 	| "ended"
