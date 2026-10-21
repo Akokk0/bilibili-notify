@@ -3,7 +3,8 @@
  *
  * 来源实现了 `fetchLiveStatus`,核心就按**每一场自己的开播时刻**起算、定时问它一次:
  * - 在播:记进在播表、发 `tick`(周期「正在直播」开着推送那头才推卡);没开周期也核,间隔默认 1 小时;
- * - 已下播:当漏收的下播,走下播同一条路(断流宽限开着先等),结束原因 `poll`,时刻是发现的那一刻;
+ * - 已下播:当漏收的下播,走下播同一条路;当场结束记 `poll`,断流宽限等满记 `grace-expired`,时刻是
+ *   发现的那一刻;
  * - 取不到:跳过这一轮、记日志,计时器留着,**不停止监听**;
  * - 断流等待到期:再核一次,还在播就接续同一场;
  * - 重启 / 来源登记 / 订阅开始要监听:手里没场次的问一次,在播就认出一场(`trigger: "poll"`)。
@@ -238,7 +239,7 @@ describe("问到的三种结果", () => {
 		expect(table.get(SUB.id)).toBeUndefined();
 	});
 
-	it("已下播且断流接续开着:先进等待(ending),等满了才结束,结束时刻仍是发现的那一刻", async () => {
+	it("已下播且断流接续开着:先进等待,等满了记 grace-expired,结束时刻仍是发现的那一刻", async () => {
 		settings.liveEndGrace = true;
 		signalStart();
 		fetchStatus.mockResolvedValue({ ok: true, kind: "offline" });
@@ -247,7 +248,7 @@ describe("问到的三种结果", () => {
 		// 等待期间不再按周期问;到期那一次核对还是下播,才结束。
 		await vi.advanceTimersByTimeAsync(2 * MINUTE);
 		const end = changes.find((c) => c.kind === "end");
-		expect(end).toMatchObject({ reason: "poll", endedAt: iso(STARTED + 2 * HOUR) });
+		expect(end).toMatchObject({ reason: "grace-expired", endedAt: iso(STARTED + 2 * HOUR) });
 	});
 
 	it("取不到(ok:false):这一轮跳过、记日志,场次还在,计时器留着,下一轮照样问", async () => {
@@ -286,7 +287,7 @@ describe("断流等待到期再核一次", () => {
 		expect(table.get(SUB.id)?.details.title).toBe("还在播");
 	});
 
-	it("核到下播(或没取到):这一场结束,原因仍是来源报的 ended", async () => {
+	it("核到下播(或没取到):这一场结束,原因记 grace-expired", async () => {
 		settings.liveEndGrace = true;
 		signalStart();
 		sessions.apply({
@@ -298,7 +299,7 @@ describe("断流等待到期再核一次", () => {
 		fetchStatus.mockResolvedValue({ ok: false, code: "unavailable", message: "没取到" });
 		await vi.advanceTimersByTimeAsync(2 * MINUTE + 10);
 		expect(changes.find((c) => c.kind === "end")).toMatchObject({
-			reason: "ended",
+			reason: "grace-expired",
 			endedAt: iso(NOW),
 		});
 	});

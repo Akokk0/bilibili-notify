@@ -105,7 +105,7 @@ function end(
 		kind: "end",
 		subscriptionId: current.subscriptionId,
 		session: current,
-		reason: "ended",
+		reason: "signal",
 		endedAt: new Date(NOW + HOUR).toISOString(),
 		...over,
 	};
@@ -228,13 +228,11 @@ describe("live-session-changed → 一场直播", () => {
 
 	it("每种结束原因都收场;订阅不在了只忘掉,不再写回文件", () => {
 		const reasons: LiveSessionEndReason[] = [
-			"ended",
+			"signal",
+			"grace-expired",
 			"poll",
 			"superseded",
-			"extension-stopped",
-			"disabled",
-			"removed",
-			"shutdown",
+			"stopped",
 		];
 		for (const reason of reasons) {
 			const { recorder, trigger } = setup();
@@ -249,7 +247,7 @@ describe("live-session-changed → 一场直播", () => {
 		const current = start().session;
 		gone.trigger("live-session-changed", start());
 		subs = [];
-		gone.trigger("live-session-changed", end(current, { reason: "removed" }));
+		gone.trigger("live-session-changed", end(current, { reason: "stopped" }));
 		expect(gone.recorder.forget).toHaveBeenCalledWith("id-1");
 		expect(gone.recorder.closeSession).not.toHaveBeenCalled();
 	});

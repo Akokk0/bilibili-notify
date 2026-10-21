@@ -488,7 +488,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			uid: string,
 			endedAt: string,
 			peakTotalViewers?: number,
-			reason: "ended" | "shutdown" = "ended",
+			reason: "signal" | "stopped" = "signal",
 		) => {
 			const current = open.get(uid);
 			if (!current) throw new Error(`live session ${uid} is not open`);
@@ -550,7 +550,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		clock = NOW - 5 * H;
 		await startLive("204", "还是不是时间");
 		clock = NOW - H;
-		await endLive("204", new Date(clock).toISOString(), 150_000_000, "shutdown");
+		await endLive("204", new Date(clock).toISOString(), 150_000_000, "stopped");
 		await recorder.closeOpenSessions();
 		clock = NOW;
 		await fire("auth-restored");

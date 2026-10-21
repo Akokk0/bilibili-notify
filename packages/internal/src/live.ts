@@ -50,17 +50,12 @@ export type LiveStatusResult =
 	| { ok: false; code: string; message: string };
 
 /**
- * 一场为什么结束。`poll` 是核心问 `fetchLiveStatus` 发现已经下播(漏收的下播,时长算到发现的那一刻),
- * 其余是来源或宿主报告的实际边界。
+ * 一场为什么结束。`signal` 是来源报了下播、当场结束;`grace-expired` 是来源报了下播且断流宽限等到期
+ * (从周期核对发现的下播开始等也算这种);`poll` 是核心问 `fetchLiveStatus` 发现已经下播、当场结束
+ * (漏收的下播,时长算到发现的那一刻);`superseded` 是没报下播又开播;`stopped` 是来源或订阅停止、
+ * 订阅删除、宿主关机。
  */
-export type LiveSessionEndReason =
-	| "ended"
-	| "superseded"
-	| "extension-stopped"
-	| "disabled"
-	| "removed"
-	| "shutdown"
-	| "poll";
+export type LiveSessionEndReason = "signal" | "grace-expired" | "poll" | "superseded" | "stopped";
 
 /** 这一场收到的互动汇总;没有收到的那一种不写。 */
 export interface LiveSessionInteractions {

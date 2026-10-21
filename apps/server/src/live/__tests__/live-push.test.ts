@@ -364,6 +364,21 @@ describe("下播", () => {
 		expect(sent[0]?.input?.startedAt).toBe(isoOf(T0 - HOUR));
 	});
 
+	it("核对发现已经下播(poll):推下播卡", async () => {
+		sourceHasLiveTick = false;
+		statusReader = {
+			has: () => true,
+			fetch: async () => ({ ok: true, kind: "offline" }),
+		};
+		start();
+		liveStart({ startedAt: T0 });
+		await settle();
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+
+		expect(sent.map((card) => card.type)).toEqual([3, 9]);
+	});
+
 	it("下播推送关着:下播卡不推", async () => {
 		settings = baseSettings({ liveEnd: false });
 		start();

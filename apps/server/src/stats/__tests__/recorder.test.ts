@@ -133,7 +133,7 @@ function liveEnd(current = liveSession()): LiveSessionChange {
 		kind: "end",
 		subscriptionId: current.subscriptionId,
 		session: current,
-		reason: "ended",
+		reason: "signal",
 		endedAt: "2026-05-16T12:00:00.000Z",
 	};
 }

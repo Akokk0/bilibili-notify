@@ -68,7 +68,7 @@ describe("服务器在 UP 已开播时启动", () => {
 			kind: "end",
 			subscriptionId: SUB_ID,
 			session: session(REAL_START),
-			reason: "ended",
+			reason: "signal",
 			endedAt,
 		});
 

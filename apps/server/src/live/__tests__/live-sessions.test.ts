@@ -40,7 +40,12 @@ const T0 = Date.UTC(2026, 8, 24, 4, 0, 0);
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const URL = "https://live.douyin.com/123";
-const logger = { debug() {}, info() {}, warn() {}, error() {} };
+const logger = {
+	debug: vi.fn(),
+	info: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+};
 
 type GraceSettings = Pick<
 	LiveWorkSettings,
@@ -203,6 +208,7 @@ beforeEach(() => {
 	]);
 	running = new Set([EXT, "kuaishou"]);
 	fans = 12_345;
+	for (const fn of Object.values(logger)) fn.mockClear();
 });
 
 afterEach(() => {
@@ -441,10 +447,25 @@ describe("一场到哪结束", () => {
 		liveEnd();
 		expect(summary().at(-1)).toEqual({
 			kind: "end",
-			reason: "ended",
+			reason: "signal",
 			endedAt: iso(T0 + 2 * HOUR),
 		});
 		expect(sessions.get(SUB.id)).toBeUndefined();
+	});
+
+	it("结束原因分得清:来源报的下播当场结束是 signal,断流等待到期是 grace-expired", async () => {
+		start();
+		liveStart();
+		liveEnd();
+		settings = { ...settings, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		liveStart({ startedAt: Date.now() });
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(3 * MINUTE);
+
+		expect(changes.flatMap((change) => (change.kind === "end" ? [change.reason] : []))).toEqual([
+			"signal",
+			"grace-expired",
+		]);
 	});
 
 	it("下播事件来了手里却没有这一场:照实说,不编一场出来", () => {
@@ -473,7 +494,7 @@ describe("断流接续(决策 58)", () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(summary().at(-1)).toEqual({
 			kind: "end",
-			reason: "ended",
+			reason: "grace-expired",
 			endedAt: iso(T0 + HOUR),
 		});
 		expect(sessions.get(SUB.id)).toBeUndefined();
@@ -500,7 +521,7 @@ describe("断流接续(决策 58)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 		expect(summary().at(-1)).toEqual({
 			kind: "end",
-			reason: "ended",
+			reason: "grace-expired",
 			endedAt: iso(endedAt),
 		});
 	});
@@ -514,7 +535,7 @@ describe("断流接续(决策 58)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 		expect(summary().slice(1)).toEqual([
 			{ kind: "ending" },
-			{ kind: "end", reason: "ended", endedAt: iso(T0) },
+			{ kind: "end", reason: "grace-expired", endedAt: iso(T0) },
 		]);
 	});
 });
@@ -548,7 +569,7 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 			{ kind: "ending" },
 			{ kind: "resume" },
 			{ kind: "ending" },
-			{ kind: "end", reason: "ended", endedAt: iso(endedAt) },
+			{ kind: "end", reason: "grace-expired", endedAt: iso(endedAt) },
 		]);
 		// 统计照样看得到这一场:一帧开始、一帧结束,断流那一下不算两场。
 		expect(frames.filter((f) => f.kind === "start" || f.kind === "end").map((f) => f.kind)).toEqual(
@@ -569,6 +590,48 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 });
 
 describe("作废(决策 61)", () => {
+	it("来源停了:日志带出这个起因", () => {
+		start();
+		liveStart();
+		bus.emit("extension-stopped", { extensionId: EXT });
+
+		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
+			"来源停了",
+		);
+	});
+
+	it("订阅停用了:日志带出这个起因", () => {
+		start();
+		liveStart();
+		bus.emit("subscription-changed", {
+			ops: [{ kind: "update", sub: { ...SUB, enabled: false } }],
+		});
+
+		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
+			"订阅停用了",
+		);
+	});
+
+	it("订阅删了:日志带出这个起因", () => {
+		start();
+		liveStart();
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB }] });
+
+		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
+			"订阅删了",
+		);
+	});
+
+	it("关机:日志带出这个起因", () => {
+		start();
+		liveStart();
+		sessions.dispose();
+
+		expect(logger.debug.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
+			"关机",
+		);
+	});
+
 	it("拓展停了:它名下的当场结束(原因分得清),等着的下播不再等;别的拓展的不动", async () => {
 		settings = { ...settings, liveEndGrace: true };
 		start();
@@ -583,7 +646,7 @@ describe("作废(决策 61)", () => {
 		expect(ends).toEqual([
 			expect.objectContaining({
 				subscriptionId: SUB.id,
-				reason: "extension-stopped",
+				reason: "stopped",
 				endedAt: iso(T0 + HOUR),
 			}),
 		]);
@@ -599,8 +662,8 @@ describe("作废(决策 61)", () => {
 		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: disabled }] });
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: OTHER }] });
 		expect(changes.filter((c) => c.kind === "end")).toEqual([
-			expect.objectContaining({ subscriptionId: SUB.id, reason: "disabled" }),
-			expect.objectContaining({ subscriptionId: OTHER.id, reason: "removed" }),
+			expect.objectContaining({ subscriptionId: SUB.id, reason: "stopped" }),
+			expect.objectContaining({ subscriptionId: OTHER.id, reason: "stopped" }),
 		]);
 	});
 
@@ -611,7 +674,7 @@ describe("作废(决策 61)", () => {
 		sessions.dispose();
 		expect(summary().at(-1)).toEqual({
 			kind: "end",
-			reason: "shutdown",
+			reason: "stopped",
 			endedAt: iso(T0 + HOUR),
 		});
 		liveStart();
@@ -697,13 +760,13 @@ describe("总线上的场次事件(给统计)", () => {
 				kind: "end",
 				subscriptionId: SUB.id,
 				endedAt: iso(endedAt),
-				reason: "ended",
+				reason: "grace-expired",
 				session: expect.objectContaining({ startedAt: iso(T0) }),
 			}),
 		);
 	});
 
-	it("结束原因分得清:拓展停了、订阅停用、订阅删了、没报下播又开播、关机", () => {
+	it("结束原因分得清:停止的四种起因都是 stopped,没报下播又开播是 superseded", () => {
 		const third = makeExtensionSubscription({
 			id: "e0000000-0000-4000-8000-000000000003",
 			extensionId: EXT,
@@ -726,9 +789,9 @@ describe("总线上的场次事件(给统计)", () => {
 			);
 		expect(ends()).toEqual([
 			[third.id, "superseded"],
-			[OTHER.id, "disabled"],
-			[SUB.id, "extension-stopped"],
-			[third.id, "extension-stopped"],
+			[OTHER.id, "stopped"],
+			[SUB.id, "stopped"],
+			[third.id, "stopped"],
 		]);
 
 		liveStart({}, OTHER);
@@ -736,8 +799,8 @@ describe("总线上的场次事件(给统计)", () => {
 		liveStart();
 		sessions.dispose();
 		expect(ends().slice(4)).toEqual([
-			[OTHER.id, "removed"],
-			[SUB.id, "shutdown"],
+			[OTHER.id, "stopped"],
+			[SUB.id, "stopped"],
 		]);
 	});
 
@@ -918,7 +981,7 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 		subs.set(SUB.id, SUB);
 		liveStart({ startedAt: Date.now(), totalViewers: 3 });
 		expect(frames.filter((f) => f.kind === "end").map((f) => f.kind === "end" && f.reason)).toEqual(
-			["disabled", "extension-stopped"],
+			["stopped", "stopped"],
 		);
 		sessions.dispose();
 		expect(ends()).toEqual([

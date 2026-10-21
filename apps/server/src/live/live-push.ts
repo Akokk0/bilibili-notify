@@ -609,9 +609,13 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			case "end":
 				// 为什么结束场次那边的日志写了。
 				dropRun(change.subscriptionId, "这一场结束了");
-				// 只有来源报的下播(或核对发现的漏收下播,`poll`)推下播卡;来源停了、订阅停用 / 删了、关机的,
-				// 等着的下播卡不补推(决策 61)。
-				if (change.reason === "ended" || change.reason === "poll") {
+				// 只有来源报的下播、断流等待到期,或核对发现的漏收下播推下播卡;来源停了、订阅停用 /
+				// 删了、关机的,等着的下播卡不补推(决策 61)。
+				if (
+					change.reason === "signal" ||
+					change.reason === "grace-expired" ||
+					change.reason === "poll"
+				) {
 					finishEnd(change.subscriptionId, change.session, change.endedAt, {
 						details: change.details,
 						startedAt: change.reportedStartedAt,

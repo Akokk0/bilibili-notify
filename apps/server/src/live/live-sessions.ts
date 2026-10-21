@@ -164,8 +164,6 @@ interface SessionState {
 		endedAt: number;
 		startedAt?: number;
 		details?: LiveDetails;
-		/** 等满了结束时记哪个原因:来源报的下播是 `ended`,核对发现的是 `poll`。 */
-		reason: "ended" | "poll";
 		handle: Disposable;
 	};
 	/** 下一次按这一场自己的时钟问来源的计时器。 */
@@ -330,13 +328,11 @@ function changedStartTimes(
 }
 
 const REASON_TEXT: Record<LiveSessionEndReason, string> = {
-	ended: "下播",
+	signal: "来源报了下播，当场结束",
+	"grace-expired": "断流等待等满了",
 	poll: "poll",
 	superseded: "没报下播就又开播了",
-	"extension-stopped": "拓展停了",
-	disabled: "订阅停用了",
-	removed: "订阅删了",
-	shutdown: "关机",
+	stopped: "停止",
 };
 
 export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): LiveSessionEngine {
@@ -376,7 +372,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		sessions.delete(id);
 		opts.table.remove(id);
 		log.debug(
-			`[live-sessions] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
+			`[live-sessions] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "grace-expired" ? ",等着的下播不再等" : ""}`,
 		);
 		announce({
 			kind: "end",
@@ -678,12 +674,12 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			millisOf(signal.endedAt) ?? now(),
 			millisOf(signal.startedAt),
 			signal.details,
-			"ended",
+			"signal",
 		);
 	}
 
 	/**
-	 * 一场收到了下播:来源报的(`ended`),或核对发现已经下播(`poll`,漏收的下播,`endedAt` 是发现的那一刻)。
+	 * 一场收到了下播:来源报的(`signal`),或核对发现已经下播(`poll`,漏收的下播,`endedAt` 是发现的那一刻)。
 	 * 走同一条路:出表、断流接续开着先等,没开立刻结束。
 	 */
 	function closeSession(
@@ -692,7 +688,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		endedAt: number,
 		reportedStartedAt: number | undefined,
 		details: LiveDetails | undefined,
-		reason: "ended" | "poll",
+		reason: "signal" | "poll",
 	): void {
 		const session = sessions.get(id);
 		// 下播:先拿最后一份。断流等待期间面板仍算在播,真结束或没开等待时再出表。
@@ -727,7 +723,6 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			endedAt,
 			startedAt: reportedStartedAt,
 			details,
-			reason,
 			handle: opts.timers.setTimeout(() => void graceExpired(session), minutes * MINUTE),
 		};
 		log.info(`[live-sessions] 订阅 ${id} 下播,进入 ${minutes} 分钟断流接续等待`);
@@ -780,7 +775,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		session.pendingEnd = undefined;
 		log.info(`[live-sessions] 订阅 ${id} 断流等待到期,没有重新开播,这一场结束`);
-		end(id, pending.reason, pending.endedAt, {
+		end(id, "grace-expired", pending.endedAt, {
 			startedAt: pending.startedAt,
 			details: pending.details,
 		});
@@ -796,13 +791,20 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				if (!sub || subscriptionIdentityOf(sub).sourceKey === extensionId) monitored.delete(id);
 			}
 			for (const [id, session] of [...sessions]) {
-				if (session.sourceKey === extensionId) end(id, "extension-stopped");
+				if (session.sourceKey !== extensionId) continue;
+				log.debug(`[live-sessions] 订阅 ${id} 的来源停了,这一场结束`);
+				end(id, "stopped");
 			}
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
-				if (op.kind === "remove") end(op.sub.id, "removed");
-				else if (op.kind === "update" && !op.sub.enabled) end(op.sub.id, "disabled");
+				if (op.kind === "remove") {
+					log.debug(`[live-sessions] 订阅 ${op.sub.id} 订阅删了,这一场结束`);
+					end(op.sub.id, "stopped");
+				} else if (op.kind === "update" && !op.sub.enabled) {
+					log.debug(`[live-sessions] 订阅 ${op.sub.id} 订阅停用了,这一场结束`);
+					end(op.sub.id, "stopped");
+				}
 				// 这一场的设置可能变了(间隔):计时重挂。
 				const session = sessions.get(op.sub.id);
 				if (session && op.kind === "update") armPoll(session);
@@ -900,7 +902,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			for (const sourceKey of [...aborters.keys()]) abortSource(sourceKey);
 			monitored.clear();
 			for (const watch of watches) watch.dispose();
-			for (const id of [...sessions.keys()]) end(id, "shutdown");
+			for (const id of [...sessions.keys()]) {
+				log.debug(`[live-sessions] 订阅 ${id} 关机,这一场结束`);
+				end(id, "stopped");
+			}
 			listeners.clear();
 		},
 	};
