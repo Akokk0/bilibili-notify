@@ -99,12 +99,12 @@ export class ViewerChatCollector {
 	 *
 	 * `senders` 报的是**跨订阅的 key 总数**而非去重人头 —— 占内存的就是 key 本身。
 	 */
-	stats(): { rooms: number; words: number; senders: number } {
+	stats(): { subscriptions: number; words: number; senders: number } {
 		let words = 0;
 		for (const rec of this.weightBySubscription.values()) words += Object.keys(rec).length;
 		let senders = 0;
 		for (const rec of this.senderBySubscription.values()) senders += Object.keys(rec).length;
-		return { rooms: this.weightBySubscription.size, words, senders };
+		return { subscriptions: this.weightBySubscription.size, words, senders };
 	}
 
 	/** Drop all collected data for a subscription (called at live-end / room-stop). */

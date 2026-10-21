@@ -6,7 +6,6 @@ import {
 	type LiveNowView,
 } from "@bilibili-notify/ai";
 import {
-	BILIBILI_SOURCE_KEY,
 	type CreatorCandidate,
 	type Failure,
 	fail,
@@ -38,29 +37,17 @@ interface SourceDescriptorSource {
 }
 
 /**
- * 拓展订阅此刻在不在播从哪儿取(ADR-0019 决策 64 的 09-24 🔗):BN 手里的在播表(拓展报的开播 / 直播状态)
- * 与「这个拓展在不在跑」—— 拓展停了,它名下的在播状态就作废了(决策 61),这时答「不知道」而不是「未开播」。
+ * 订阅此刻在不在播从哪儿取:BN 手里的在播表,以及「这个来源在不在跑」。
+ * 来源停了,它名下的在播状态就作废了(ADR-0019 决策 61),这时答「不知道」而不是「未开播」。
  */
-export interface ExtensionLiveSource {
+export interface LiveNowReader {
 	/** 在播表里这条订阅的那一行(在播才有)。 */
 	row(
 		subscriptionId: string,
 	): { startedAt?: number; details: { title?: string; totalViewers?: number } } | undefined;
-	/** 这个拓展此刻在跑吗。 */
-	running(extensionId: string): boolean;
+	/** 这个来源此刻在跑吗。 */
+	running(sourceKey: string): boolean;
 }
-
-/**
- * B 站订阅此刻在不在播从哪儿取:直播引擎列出来的在播房间(只列在播的,面板「正在直播」读的同一份)。
- * 房间快照里的 `uid` / `roomId` 视图不要 —— 对订阅靠订阅自己的 id;`startedAt` 是 ISO 字符串。
- *
- * 过渡:3b-22 把 B 站的直播并进在播表之后,B 站和拓展读同一张表,这一支就不用分了。
- */
-export type BiliLiveRoomsReader = () => ReadonlyArray<{
-	subscriptionId: string;
-	title?: string;
-	startedAt?: string;
-}>;
 
 /**
  * 把订阅**查询**能力接给女仆 —— 独立端唯一的 `setCreatorReader` 调用处。
@@ -88,8 +75,7 @@ export function attachReadOnlyTools(
 		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
 		/** 作品与统计的读口(装配处给);不给 = 这两样答「当前不可用」。 */
 		stats?: CreatorStatsReader;
-		extensionLive?: ExtensionLiveSource;
-		biliLiveRooms?: BiliLiveRoomsReader;
+		liveNow?: LiveNowReader;
 	},
 ): void {
 	/** 按 `creator` 找**启用着**的订阅:停用的、没订阅的都当不在(关掉的人不该再出现在女仆的回答里)。 */
@@ -117,8 +103,7 @@ export function attachReadOnlyTools(
 				stores.subscriptionStore,
 				stores.subRuntimeStore,
 				stores.platformLabel,
-				stores.extensionLive,
-				stores.biliLiveRooms,
+				stores.liveNow,
 			),
 		externalIdFits: (sourceKey, externalId) =>
 			externalIdRefusal(stores.sources.get(sourceKey)?.descriptor, externalId) === undefined,
@@ -166,13 +151,13 @@ export function attachReadOnlyTools(
 	});
 }
 
-/** 拓展订阅此刻的在播(见 {@link ExtensionLiveSource})。 */
-function extensionLiveNow(
-	live: ExtensionLiveSource,
+/** 订阅此刻的在播(见 {@link LiveNowReader})。 */
+function liveNowFromTable(
+	live: LiveNowReader,
 	subscriptionId: string,
-	extensionId: string,
+	sourceKey: string,
 ): LiveNowView {
-	if (!live.running(extensionId)) return { state: "unknown" };
+	if (!live.running(sourceKey)) return { state: "unknown" };
 	const row = live.row(subscriptionId);
 	if (!row) return { state: "idle" };
 	return {
@@ -180,18 +165,6 @@ function extensionLiveNow(
 		title: row.details.title,
 		startedAt: row.startedAt,
 		totalViewers: row.details.totalViewers,
-	};
-}
-
-/** B 站订阅此刻的在播:在播房间里有它就是在播,没有就是没开播(房间表只列在播的)。 */
-function biliLiveNow(rooms: ReturnType<BiliLiveRoomsReader>, subscriptionId: string): LiveNowView {
-	const room = rooms.find((r) => r.subscriptionId === subscriptionId);
-	if (!room) return { state: "idle" };
-	const startedAt = room.startedAt === undefined ? Number.NaN : Date.parse(room.startedAt);
-	return {
-		state: "live",
-		title: room.title,
-		startedAt: Number.isNaN(startedAt) ? undefined : startedAt,
 	};
 }
 
@@ -206,27 +179,22 @@ function biliLiveNow(rooms: ReturnType<BiliLiveRoomsReader>, subscriptionId: str
  * 不当名字用)。cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subscriptions` 的 join 同源。
  *
  * 每条订阅同一种形状(ADR-0030 决策 1):`creator` 是「来源键:外部 id」,平台名由宿主递进来的函数取
- * (它问来源登记表),视图本身不认哪个来源是哪个平台。在播一格:拓展接在播表,B 站接直播引擎在播的房间
- * (过渡,见 {@link BiliLiveRoomsReader});都没接上时没有这一格。
+ * (它问来源登记表),视图本身不认哪个来源是哪个平台。在播一格从在播表答(见 {@link LiveNowReader});
+ * 没接上时没有这一格。
  */
 export function aiSubscriptionViews(
 	subscriptionStore: SubscriptionReader,
 	subRuntimeStore: ProfileSource,
 	platformLabel: (sourceKey: string) => string,
-	extensionLive?: ExtensionLiveSource,
-	biliLiveRooms?: BiliLiveRoomsReader,
+	liveNowReader?: LiveNowReader,
 ): AiSubscriptionView[] {
-	// 在播房间一次工具调用只取一遍,不在每条订阅里各取一次。
-	const biliRooms = biliLiveRooms?.();
 	const view: AiSubscriptionView[] = [];
 	for (const sub of subscriptionStore.list()) {
 		// 停用的订阅不进视图:主人把某个 UP 关掉了,女仆的答案里就不该还有他。
 		if (!sub.enabled) continue;
 		const identity = subscriptionIdentityOf(sub);
 		const liveNow: LiveNowView | undefined =
-			identity.sourceKey === BILIBILI_SOURCE_KEY
-				? biliRooms && biliLiveNow(biliRooms, sub.id)
-				: extensionLive && extensionLiveNow(extensionLive, sub.id, identity.sourceKey);
+			liveNowReader && liveNowFromTable(liveNowReader, sub.id, identity.sourceKey);
 		view.push({
 			creator: creatorOf(identity.sourceKey, identity.externalId),
 			name: extensionSubscriptionName(sub, {

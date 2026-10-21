@@ -45,7 +45,6 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	aiWritingNeeded,
-	BILIBILI_SOURCE_KEY,
 	isLoggedIn,
 	isReachabilityEvidence,
 	needsLiveMonitor,
@@ -58,7 +57,7 @@ import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
-import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
+import { attachReadOnlyTools, type LiveNowReader } from "../ai/read-only-tools.js";
 import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
@@ -153,8 +152,8 @@ export interface EnginesRuntime extends Disposable {
 	readonly imageRenderer: ImageRenderer | null;
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
-	/** 核心回顾收集器此刻的规模(资源监控用;22-11 随自查改名)。 */
-	liveDanmakuStats(): { rooms: number; words: number; senders: number };
+	/** 核心回顾收集器此刻的规模(资源监控用)。 */
+	viewerChatStats(): { subscriptions: number; words: number; senders: number };
 	/**
 	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `live-sessions.ts` 手里的):没在播、或没接
 	 * 拓展订阅的直播(只测 B 站那几条路的引擎)是 `undefined`。统计页拿它判拓展行「此刻在播」—— 与盘上那一场
@@ -358,6 +357,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
 	/** 现存推送目标的 id(含停用的),每次现取:作品与直播总结的 AI 生成门共用,悬空的例外 id 不算数。 */
 	const targetIds = (): string[] => opts.configStore.getTargets().map((t) => t.id);
+	const extensionSources = opts.extensionSources;
+	const sourceStatus = createSourceStatusReader({
+		sources: opts.sources,
+		extensions: extensionSources,
+	});
+	/** 这个来源实现了直播吗:在册来源实现拉取,或拓展来源声明了直播周期。 */
+	const sourceHasLive = (sourceKey: string): boolean =>
+		hasLiveStatus(sourceKey) ||
+		(extensionSources !== undefined && extensionHasLiveTick(extensionSources, sourceKey));
 
 	// ---------- Dispatcher + push ----------
 	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
@@ -495,12 +503,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
 	const buildAiConfig = () => toGeneratorConfig(globals().ai);
 
-	const liveSource = (): ExtensionLiveSource | undefined => {
+	const liveNowReader = (): LiveNowReader | undefined => {
 		const table = opts.liveTable;
-		const sources = opts.extensionSources;
-		if (!table || !sources) return undefined;
+		if (!table) return undefined;
 		// `row` 直接是在播表的行(`{ startedAt, details }`),AI 工具那头读新形状。
-		return { row: (id) => table.get(id), running: (id) => sources.running(id) };
+		return {
+			row: (id) => table.get(id),
+			running: (sourceKey) => sourceStatus.running(sourceKey),
+		};
 	};
 
 	let commentary: CommentaryGenerator | null = null;
@@ -533,19 +543,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						sourceKey,
 						query,
 					),
-				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
-				extensionLive: liveSource(),
+				// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
+				liveNow: liveNowReader(),
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
 				...(opts.creatorStats ? { stats: opts.creatorStats } : {}),
-				// B 站订阅的在播读直播引擎的在播房间(与面板「正在直播」同一份),不现去问 B 站。
-				// 每次工具调用现取在播表的投影。
-				biliLiveRooms: () =>
-					listRegisteredLiveRooms({
-						table: opts.liveTable,
-						sources: opts.sources,
-						subscriptionStore: opts.subscriptionStore,
-						runtimeStore: opts.subRuntimeStore,
-					}),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
@@ -631,11 +632,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// ---------- 作品来源 ----------
 	// 来源只管生产(B 站的是动态引擎:拉 feed、判新、翻译、抓图),作品经来源上下文交给核心入口 `postQueue`;
 	// 过滤、出卡、点评、推送、图集都在核心里。来源由 `registerSource` 登记并启动(调它的是 `compose.ts`)。
-	const sourceStatus = createSourceStatusReader({
-		sources: opts.sources,
-		extensions: opts.extensionSources,
-	});
-
 	// 出图连续失败「只提醒一次」的计数(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个渲染器,
 	// **全进程一份**,两条路各记各的话同一次故障会各提醒一遍。
 	const cardFailures = createCardFailureTracker();
@@ -644,7 +640,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const profileAvatarOf = (subscriptionId: string): ImageRef | undefined =>
 		opts.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
 
-	const extensionSources = opts.extensionSources;
 	const postQueue = createPostQueue({
 		logger: postsCtx.logger,
 		bus: opts.bus,
@@ -914,10 +909,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				},
 				sourceStatus,
 				// 实现了 `fetchLiveStatus` 的来源,周期「正在直播」由场次引擎的计时驱动(`tick`),推送这头不再挂自己的。
-				hasLiveTick: (sourceKey) =>
-					!hasLiveStatus(sourceKey) &&
-					extensionSources !== undefined &&
-					extensionHasLiveTick(extensionSources, sourceKey),
+				hasLiveTick: (sourceKey) => !hasLiveStatus(sourceKey) && sourceHasLive(sourceKey),
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				recap: {
 					collector: viewerChats,
@@ -1237,7 +1229,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				runtimeStore: opts.subRuntimeStore,
 			}),
 		],
-		liveDanmakuStats: () => viewerChats?.stats() ?? { rooms: 0, words: 0, senders: 0 },
+		viewerChatStats: () => viewerChats?.stats() ?? { subscriptions: 0, words: 0, senders: 0 },
 		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
 		tickLiveSessionNow: (subscriptionId: string) =>
 			liveSessionEngine?.tickNow(subscriptionId) ?? Promise.resolve(false),
@@ -1259,20 +1251,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}),
 		getModuleState: (): ModuleState => {
 			const g = globals();
-			// "live ready" = 至少一条启用的 B 站订阅会开直播间监听:问的是 internal 里那份唯一判定
+			// "live ready" = 至少一条启用的订阅会开直播间监听,且它的来源实现了直播:问的是 internal 里那份唯一判定
 			// (只看折好的开关与特别关注名单,不看有没有推送目标;特别关注要「开关 ∧ 名单上有人带它」;ADR-0027 决策 1)。
-			// 只数 B 站订阅:这一格说的是 B 站来源会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
-			const liveReady = opts.subscriptionStore
-				.list()
-				.filter(fromBilibili)
-				.some(
-					(sub) =>
-						sub.enabled &&
-						needsLiveMonitor({
-							features: resolve(sub, g.defaults).features,
-							specialViewers: sub.specialViewers,
-						}),
-				);
+			const liveReady = opts.subscriptionStore.list().some(
+				(sub) =>
+					sub.enabled &&
+					needsLiveMonitor({
+						features: resolve(sub, g.defaults).features,
+						specialViewers: sub.specialViewers,
+					}) &&
+					sourceHasLive(subscriptionIdentityOf(sub).sourceKey),
+			);
 			return {
 				dynamic: true,
 				live: liveReady,
@@ -1482,11 +1471,6 @@ export function liveTypeToFeature(type: number): FeatureKey {
  */
 export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;
-}
-
-/** 这条订阅订的是 B 站吗 —— 模块状态只看在册的 B 站订阅。 */
-function fromBilibili(sub: Subscription): boolean {
-	return subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 }
 
 /**

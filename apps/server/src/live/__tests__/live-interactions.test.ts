@@ -589,7 +589,7 @@ describe("下播回顾的弹幕收集(归核心)", () => {
 		settings = wantsRecap();
 		chat("999", "路人");
 		expect(collector.snapshot(SUB.id).viewerChatCount).toBe(0);
-		expect(collector.stats().rooms).toBe(0);
+		expect(collector.stats().subscriptions).toBe(0);
 	});
 
 	it("场次结束清掉", () => {
@@ -603,7 +603,7 @@ describe("下播回顾的弹幕收集(归核心)", () => {
 			endedAt: new Date(T0 + 60_000).toISOString(),
 		});
 		expect(collector.snapshot(SUB.id).viewerChatCount).toBe(0);
-		expect(collector.stats().rooms).toBe(0);
+		expect(collector.stats().subscriptions).toBe(0);
 	});
 
 	it("醒目留言也记进回顾(条件同弹幕),醒目留言开关关着也记", async () => {

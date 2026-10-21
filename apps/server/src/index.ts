@@ -972,8 +972,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			memoryLogEnabled: () => runtime.configStore.getGlobals().logging.memoryLog.enabled,
 			probes: [
 				() => {
-					const s = engines?.liveDanmakuStats();
-					return s ? `弹幕 ${s.rooms} 房/${s.words} 词/${s.senders} 人` : "";
+					const s = engines?.viewerChatStats();
+					return s ? `弹幕 ${s.subscriptions} 房/${s.words} 词/${s.senders} 人` : "";
 				},
 			],
 		});

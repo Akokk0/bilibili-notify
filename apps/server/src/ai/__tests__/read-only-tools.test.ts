@@ -232,10 +232,10 @@ describe("attachReadOnlyTools — 搜人", () => {
 });
 
 /**
- * 女仆查直播状态对拓展订阅接上在播表(ADR-0019 决策 64 的 09-24 🔗):视图里带上 BN 手里这条订阅此刻在不在播,
- * `get_live_status` 照它答。拓展没在跑时 BN 手里没有它的在播状态(决策 61)—— 说「不知道」,不说「未开播」。
+ * 女仆查直播状态接上在播表:视图里带上 BN 手里这条订阅此刻在不在播,`get_live_status` 照它答。
+ * 来源没在跑时 BN 手里没有它的在播状态(决策 61)—— 说「不知道」,不说「未开播」。
  */
-describe("aiSubscriptionViews — 拓展订阅的在播", () => {
+describe("aiSubscriptionViews — 在播表", () => {
 	const STARTED = Date.UTC(2026, 8, 24, 4, 0, 0);
 	const withLive = (
 		row: { title?: string; startedAt?: number; totalViewers?: number } | undefined,
@@ -263,61 +263,62 @@ describe("aiSubscriptionViews — 拓展订阅的在播", () => {
 		});
 	});
 
-	it("拓展在跑、表里没有它 → 未开播", () => {
+	it("来源在跑、表里没有它 → 未开播", () => {
 		expect(withLive(undefined, true)).toMatchObject({ liveNow: { state: "idle" } });
 	});
 
-	it("拓展没在跑 → 不知道", () => {
+	it("来源没在跑 → 不知道", () => {
 		expect(withLive(undefined, false)).toMatchObject({ liveNow: { state: "unknown" } });
 	});
 
-	it("接上了在播来源才有这一格;没接 B 站的在播来源时 B 站条目没有", () => {
+	it("接上了在播读口才有这一格;所有来源都从同一张表答", () => {
 		const s = makeStores([makeSubscription({ uid: "1" }), makeExtensionSubscription()]);
 		expect(view(s)[1]).not.toHaveProperty("liveNow");
 		const v = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
 			row: () => undefined,
 			running: () => true,
 		});
-		expect(v[0]).not.toHaveProperty("liveNow");
+		expect(v[0]).toMatchObject({ liveNow: { state: "idle" } });
 	});
 });
 
 /**
- * B 站订阅的在播也从 BN 手里的状态答(`get_live_status` 不再问 B 站):读直播引擎列出来的在播房间
- * (只列在播的),按订阅 id 对。房间快照里的 `uid` / `roomId` 视图不要。
+ * 所有订阅的在播都从 BN 手里的在播表答(`get_live_status` 不再问平台):按订阅 id 对行,
+ * 再看来源此刻在不在跑。
  */
-describe("aiSubscriptionViews — B 站订阅的在播", () => {
-	const withRooms = (
-		rooms: Array<{ subscriptionId: string; title?: string; startedAt?: string }>,
-	) => {
-		const s = makeStores([makeSubscription({ uid: "1" }), makeSubscription({ uid: "2" })]);
-		return aiSubscriptionViews(
-			s.subscriptionStore,
-			s.subRuntimeStore,
-			s.platformLabel,
-			undefined,
-			() => rooms.map((r) => ({ ...r, uid: "9", roomId: "88" })),
-		);
-	};
-
-	it("在播房间里有它 → 在播,带标题与开播时刻(毫秒);不在 → 未开播", () => {
-		const v = withRooms([
-			{ subscriptionId: "id-1", title: "晚间杂谈", startedAt: "2026-09-24T04:00:00.000Z" },
-		]);
-		expect(v[0]?.liveNow).toEqual({
-			state: "live",
-			title: "晚间杂谈",
-			startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
+describe("aiSubscriptionViews — B 站订阅也读在播表", () => {
+	it.each([
+		[
+			"来源在跑",
+			true,
+			{ state: "live", title: "晚间杂谈", startedAt: Date.UTC(2026, 8, 24, 4, 0, 0) },
+		],
+		["来源没在跑", false, { state: "unknown" }],
+	])("B 站订阅也按在播表答:%s → %o", (_name, running, expected) => {
+		const s = makeStores([makeSubscription({ uid: "1" })]);
+		const [entry] = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
+			row: (id) =>
+				id === "id-1"
+					? {
+							startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
+							details: { title: "晚间杂谈" },
+						}
+					: undefined,
+			running: (sourceKey) => running && sourceKey === "bilibili",
 		});
-		expect(v[1]?.liveNow).toEqual({ state: "idle" });
+		expect(entry?.liveNow).toEqual(expected);
 	});
 
-	it("开播时刻解析不出来 → 不带这一格,不写成 NaN", () => {
-		const v = withRooms([{ subscriptionId: "id-1", startedAt: "不是时间" }]);
-		expect(v[0]?.liveNow).toEqual({ state: "live", title: undefined, startedAt: undefined });
+	it("来源在跑、表里没有它 → 未开播", () => {
+		const s = makeStores([makeSubscription({ uid: "1" })]);
+		const [entry] = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
+			row: () => undefined,
+			running: () => true,
+		});
+		expect(entry?.liveNow).toEqual({ state: "idle" });
 	});
 
-	it("没接 B 站的在播来源 → 没有这一格(工具按「查不到」答)", () => {
+	it("没接在播读口 → 没有这一格(工具按「查不到」答)", () => {
 		const s = makeStores([makeSubscription({ uid: "1" })]);
 		expect(view(s)[0]).not.toHaveProperty("liveNow");
 	});

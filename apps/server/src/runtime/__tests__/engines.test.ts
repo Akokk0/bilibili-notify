@@ -1614,15 +1614,22 @@ describe("createEngines — getModuleState.live", () => {
 		s.enabled = opts.enabled ?? true;
 		return s;
 	}
+	const setupLive = (opts: Parameters<typeof setup>[0] = {}) =>
+		setup({
+			...opts,
+			fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
+		});
 
 	it("直播类开关开着(出厂就开)、一个推送目标都没配 → 就绪", () => {
-		const c = setup({ subs: [liveSub({})] });
+		const c = setupLive({ subs: [liveSub({})] });
 		active = c;
 		expect(c.runtime.getModuleState().live).toBe(true);
 	});
 
 	it("直播类开关全关、哪怕路由里留着目标 → 不就绪", () => {
-		const c = setup({ subs: [liveSub({ features: LIVE_OFF, routing: { liveStart: [TARGET] } })] });
+		const c = setupLive({
+			subs: [liveSub({ features: LIVE_OFF, routing: { liveStart: [TARGET] } })],
+		});
 		active = c;
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
@@ -1631,7 +1638,7 @@ describe("createEngines — getModuleState.live", () => {
 	it.each(["viewerChat", "viewerEnter"] as const)(
 		"主开关全关、名单上有人带 %s、但这把特别开关关着 → 不就绪",
 		(kind) => {
-			const c = setup({
+			const c = setupLive({
 				subs: [liveSub({ features: LIVE_OFF, specialViewers: [{ id: "2", features: [kind] }] })],
 			});
 			active = c;
@@ -1642,7 +1649,7 @@ describe("createEngines — getModuleState.live", () => {
 	it.each(["viewerChat", "viewerEnter"] as const)(
 		"主开关全关、%s 开着、名单上有人带它(没有目标)→ 就绪",
 		(kind) => {
-			const c = setup({
+			const c = setupLive({
 				subs: [
 					liveSub({
 						features: { ...LIVE_OFF, [kind]: true },
@@ -1656,7 +1663,7 @@ describe("createEngines — getModuleState.live", () => {
 	);
 
 	it("viewerChat 开着、名单上的人只带 viewerEnter → 不就绪", () => {
-		const c = setup({
+		const c = setupLive({
 			subs: [
 				liveSub({
 					features: { ...LIVE_OFF, viewerChat: true },
@@ -1671,14 +1678,33 @@ describe("createEngines — getModuleState.live", () => {
 	it.each(["liveStart", "liveStreaming", "liveEnd", "membership", "superchat"] as const)(
 		"只开 %s 一把 → 就绪",
 		(key) => {
-			const c = setup({ subs: [liveSub({ features: { ...LIVE_OFF, [key]: true } })] });
+			const c = setupLive({ subs: [liveSub({ features: { ...LIVE_OFF, [key]: true } })] });
 			active = c;
 			expect(c.runtime.getModuleState().live).toBe(true);
 		},
 	);
 
 	it("停用的订阅不数", () => {
-		const c = setup({ subs: [liveSub({ enabled: false })] });
+		const c = setupLive({ subs: [liveSub({ enabled: false })] });
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(false);
+	});
+
+	it("只订了有直播周期的拓展来源 → 就绪", () => {
+		const c = setupLive({
+			subs: [makeExtensionSubscription()],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
+		});
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(true);
+	});
+
+	it("来源没实现直播 → 不就绪", () => {
+		const c = setup({ subs: [liveSub({})] });
 		active = c;
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
@@ -1920,6 +1946,25 @@ describe("createEngines — boot wiring", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
+			liveTable: aiLiveTable,
+		});
+		active = c;
+		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.liveNow).toEqual({
+			state: "live",
+			title: "在播",
+		});
+	});
+
+	it("只读工具那份视图里,B 站订阅的在播也接在播表", () => {
+		const sub = makeEmptySubscription({
+			id: "bili-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const aiLiveTable = memoryLiveTable();
+		aiLiveTable.replace(sub.id, "bilibili", undefined, { title: "在播" });
+		const c = setup({
+			globals: aiGlobals(),
+			subs: [sub],
 			liveTable: aiLiveTable,
 		});
 		active = c;
