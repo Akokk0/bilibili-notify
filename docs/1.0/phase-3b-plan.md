@@ -93,7 +93,7 @@
 | 3b-56 ✅ | 会员发真图（主人 10-14 定，3b-18 的缝；修独立端从 0.12 起就有的 bug）：自定义上舰文案与兜底两支今天把图的网址交给内容构造口，翻成链接段，OneBot 与 QQ 官方都发成一串网址。改成先取图再发图段：兜底的徽章走 `fetchTierIcon`，自定义图由宿主给取图口；`send` 收中立的消息段（同醒目留言），撤掉 `content` 与收 `unknown` 的 `send`；取不到图只发文字、记一条警告；自定义图照全仓的取图口只连公网、只收 png / jpg / webp / gif 与 8 MiB 以内，不为这里开内网例外（10-15 主人定）。先写复现的红测，把「网址翻成链接」当正确行为钉住的那条守卫跟改。内容构造口整个撤不撤留到 B 站直播并进来源（3b-22） | 3b-16 | 否 | 小 |
 | 3b-59 ✅ | 清掉单卡字体那条死链（主人 10-16 定，3b-56 的缝）。范围是渲染器的 `CardColorOptions.font` / `fontAsset`、`resolveFont` 里读每次调用传入字体的那两行、`posts/card-style.ts` 整个文件、装配里写死的 `{ enable: false }` 与 `linkCardPresentation().colors`，以及对应的测试。 | 3b-55 | 否 | 小 |
 | **庚 收口** | | | | |
-| 3b-47 | 登录装配进 B 站集成的 `start`；核心里 `api` 句柄的读者清到只剩第 4 期那几处（卡片真实预览、旧搜人） | 丙、丁、戊全部 | 否 | 大 |
+| 3b-47 | 登录装配进 B 站集成的 `start`；核心里 `api` 句柄的读者清到只剩第 4 期那几处（卡片真实预览、旧搜人）；B 站动态与直播两个引擎听登录改走 `deps.auth.onChange`，删掉 `BiliSourceDeps.bus`（今天两者经 `deps.bus` 听 `auth-lost` / `auth-restored`，不合 [集成副作用只经 ctx](../agents/conventions/integration-side-effects.md)；3b-22 留下的，主人 10-21 定排这一片） | 丙、丁、戊全部 | 否 | 大 |
 | 3b-57 | 装配文件 `runtime/engines.ts` 照 [architecture.md](./architecture.md)「`runtime/` 只留 service-context、message-bus 与装配」拆成三份，`createEngines`、`EnginesRuntime`、`attachEngines`、`runtimeEngines`、`emitEngineError` 这一族按职责改名（主人 10-15 定开这一片：词表里「引擎」只指宿主里按自己的时钟推进的部件，这个文件装的已经不是引擎）；架构文档里「引擎编排」的说法跟改。开工前先勘察剩下的装配怎么分三份，分法拿给主人看 | 3b-22、3b-47 | 否 | 中 |
 | 3b-48 ✅ | 更新后弹「本次更新」的服务端与打包脚本（ADR-0005 决策 16 下的 🔗；面板第 4 期） | 3b-09 | 否 | 中 |
 | 3b-49 | 核心包 `packages/internal` 出口整理：按领域分子路径、把 `constants.ts` 按领域拆散、加一条守卫防止再长回去。**独占工作区**；开工前先勘察，分法拿给主人定。主人 10-13 定排在各线合回之后 | 3b-01 至 3b-48 | 否 | 大 |
