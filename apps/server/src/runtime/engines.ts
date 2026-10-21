@@ -33,6 +33,7 @@ import type {
 	ImageRef,
 	LinkPreviewPolicy,
 	LinkPreviewSettings,
+	LiveSession,
 	MessageLayoutSegment,
 	NotificationPayload,
 	PayloadSegment,
@@ -71,11 +72,7 @@ import { bindExtensionLive } from "../live/extension-live.js";
 import { createLiveInteractions, type LiveInteractions } from "../live/live-interactions.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { bindLivePush } from "../live/live-push.js";
-import {
-	createLiveSessionEngine,
-	type LiveSession,
-	type LiveSessionEngine,
-} from "../live/live-sessions.js";
+import { createLiveSessionEngine, type LiveSessionEngine } from "../live/live-sessions.js";
 import { liveSettingsOf, rotateLiveCover } from "../live/live-settings.js";
 import type { LiveTable } from "../live/live-table.js";
 import { LiveSummaryRequester } from "../live/recap/live-summary-requester.js";
@@ -824,7 +821,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						opts.bus.emit("live-state-changed", {
 							uid: externalId,
 							status: "live",
-							at: new Date(session.startedAt ?? session.detectedAt).toISOString(),
+							at: session.startedAt ?? session.detectedAt,
 						});
 						emitViewers(change.details.totalViewers);
 						return;
@@ -833,14 +830,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						return;
 					case "tick":
 					case "status":
-						if (change.kind === "tick" || change.live)
+						if (change.kind === "tick" || change.isLive)
 							emitViewers(liveTable.get(session.subscriptionId)?.details.totalViewers);
 						return;
 					case "end":
 						opts.bus.emit("live-state-changed", {
 							uid: externalId,
 							status: "idle",
-							at: new Date(change.at).toISOString(),
+							at: change.endedAt,
 						});
 						return;
 					case "ending":

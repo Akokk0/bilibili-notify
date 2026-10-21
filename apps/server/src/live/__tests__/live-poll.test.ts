@@ -11,15 +11,16 @@
  * ⚠️ 假定时器:推进时间一律 `advanceTimersByTimeAsync`,别用 `waitFor`。
  */
 
-import type { Identity, LiveStatusResult, Subscription } from "@bilibili-notify/internal";
+import type {
+	Identity,
+	LiveSessionChange,
+	LiveStatusResult,
+	Subscription,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import {
-	createLiveSessionEngine,
-	type LiveSessionChange,
-	type LiveSessionEngine,
-} from "../live-sessions.js";
+import { createLiveSessionEngine, type LiveSessionEngine } from "../live-sessions.js";
 import { createLiveTable, type LiveTable } from "../live-table.js";
 
 const POLL_KEY = "acme.poll";
@@ -38,6 +39,7 @@ const NOW = Date.UTC(2026, 9, 20, 11, 59, 0);
 const STARTED = Date.UTC(2026, 9, 20, 11, 58, 30);
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const iso = (ms: number): string => new Date(ms).toISOString();
 
 const logger = {
 	debug: vi.fn(),
@@ -192,11 +194,12 @@ describe("问到的三种结果", () => {
 	it("在播:新的格记进在播表、发 tick,场次还是这一场", async () => {
 		signalStart();
 		const before = sessions.get(SUB.id);
+		expect(before).toBeDefined();
 		fetchStatus.mockResolvedValue(liveResult("轮询后的新标题"));
 		await vi.advanceTimersByTimeAsync(2 * HOUR);
 		expect(kinds()).toEqual(["start", "tick"]);
 		expect(table.get(SUB.id)?.details.title).toBe("轮询后的新标题");
-		expect(sessions.get(SUB.id)).toBe(before);
+		expect(sessions.get(SUB.id)?.detectedAt).toBe(before?.detectedAt);
 	});
 
 	it("已下播:当漏收的下播走下播的路,原因 poll,时刻是发现的那一刻(开播卡之后的时长算到这)", async () => {
@@ -204,7 +207,11 @@ describe("问到的三种结果", () => {
 		fetchStatus.mockResolvedValue({ ok: true, kind: "offline" });
 		await vi.advanceTimersByTimeAsync(2 * HOUR);
 		const end = changes.find((c) => c.kind === "end");
-		expect(end).toMatchObject({ kind: "end", reason: "poll", at: STARTED + 2 * HOUR });
+		expect(end).toMatchObject({
+			kind: "end",
+			reason: "poll",
+			endedAt: iso(STARTED + 2 * HOUR),
+		});
 		expect(sessions.get(SUB.id)).toBeUndefined();
 		expect(table.get(SUB.id)).toBeUndefined();
 	});
@@ -218,7 +225,7 @@ describe("问到的三种结果", () => {
 		// 等待期间不再按周期问;到期那一次核对还是下播,才结束。
 		await vi.advanceTimersByTimeAsync(2 * MINUTE);
 		const end = changes.find((c) => c.kind === "end");
-		expect(end).toMatchObject({ reason: "poll", at: STARTED + 2 * HOUR });
+		expect(end).toMatchObject({ reason: "poll", endedAt: iso(STARTED + 2 * HOUR) });
 	});
 
 	it("取不到(ok:false):这一轮跳过、记日志,场次还在,计时器留着,下一轮照样问", async () => {
@@ -241,6 +248,7 @@ describe("断流等待到期再核一次", () => {
 		settings.liveEndGrace = true;
 		signalStart();
 		const before = sessions.get(SUB.id);
+		expect(before).toBeDefined();
 		sessions.apply({
 			kind: "end",
 			endedAt: new Date(NOW).toISOString(),
@@ -252,7 +260,7 @@ describe("断流等待到期再核一次", () => {
 		await vi.advanceTimersByTimeAsync(2 * MINUTE + 10);
 		expect(fetchStatus).toHaveBeenCalledTimes(1);
 		expect(kinds()).toEqual(["start", "ending", "resume"]);
-		expect(sessions.get(SUB.id)).toBe(before);
+		expect(sessions.get(SUB.id)?.detectedAt).toBe(before?.detectedAt);
 		expect(table.get(SUB.id)?.details.title).toBe("还在播");
 	});
 
@@ -269,7 +277,7 @@ describe("断流等待到期再核一次", () => {
 		await vi.advanceTimersByTimeAsync(2 * MINUTE + 10);
 		expect(changes.find((c) => c.kind === "end")).toMatchObject({
 			reason: "ended",
-			at: NOW,
+			endedAt: iso(NOW),
 		});
 	});
 });
@@ -284,7 +292,7 @@ describe("重启 / 来源登记 / 订阅开始监听:手里没场次的问一次
 		expect(fetchStatus.mock.calls.map(([id]) => id.externalId)).toEqual(["ext-1"]);
 		expect(changes).toHaveLength(1);
 		expect(changes[0]).toMatchObject({ kind: "start", trigger: "poll" });
-		expect(sessions.get(SUB.id)?.startedAt).toBe(STARTED);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(STARTED));
 		expect(table.get(SUB.id)?.details.title).toBe("重启后认出的");
 		// 已有场次的不再问。
 		fetchStatus.mockClear();

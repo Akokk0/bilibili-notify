@@ -3,6 +3,8 @@ import type {
 	Disposable,
 	ImageRef,
 	LiveDetails,
+	LiveSession,
+	LiveSessionChange,
 	Logger,
 	MessageBus,
 	ServiceContext,
@@ -19,12 +21,7 @@ import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
-import {
-	type LiveSession,
-	type LiveSessionChange,
-	type LiveSessionEngine,
-	liveSubscriptionPushable,
-} from "./live-sessions.js";
+import { type LiveSessionEngine, liveSubscriptionPushable } from "./live-sessions.js";
 import type { LiveSettings } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
 import { type LiveTextKind, renderLiveText } from "./live-text.js";
@@ -139,6 +136,10 @@ function defined<T extends object>(value: T | undefined): Partial<T> {
 	return Object.fromEntries(
 		Object.entries(value).filter(([, cell]) => cell !== undefined),
 	) as Partial<T>;
+}
+
+function millisOf(time: string | undefined): number | undefined {
+	return time === undefined ? undefined : Date.parse(time);
 }
 
 /** 三句文案各自的模板(按 UP 折好的;没有就是默认那句)。 */
@@ -387,7 +388,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			log.debug(`[live-push] 订阅 ${id} 已经不在在播表里,这张「正在直播」卡不推`);
 			return Promise.resolve();
 		}
-		const startedAt = run.session.startedAt ?? row?.startedAt;
+		const startedAt = millisOf(run.session.startedAt) ?? row?.startedAt;
 		return pushCard(id, {
 			status: "streaming",
 			pushType,
@@ -457,7 +458,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const { sub, settings } = ready;
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
 		dropRun(id, "新的一场开播了");
-		const at = session.detectedAt;
+		const startedAt = millisOf(session.startedAt);
+		const at = Date.parse(session.detectedAt);
 		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
 		if (settings.liveStart) {
@@ -467,8 +469,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 					pushType: LivePushType.StartBroadcasting,
 					textKind: "liveStart",
 					facts: details,
-					startedAt: session.startedAt,
-					time: session.startedAt === undefined ? "" : formatDuration(session.startedAt, at),
+					startedAt,
+					time: startedAt === undefined ? "" : formatDuration(startedAt, at),
 					fans: session.followersAtStart,
 				}),
 			);
@@ -483,17 +485,15 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		if (!ready) return;
 		const { sub, settings } = ready;
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
-		let run = runs.get(id);
-		if (run?.session !== session) {
-			run = { session, fresh: false };
-			runs.set(id, run);
-		}
+		const run = runs.get(id) ?? { session, fresh: false };
+		run.session = session;
+		runs.set(id, run);
 		armPeriodic(id, run, settings);
 		log.info(`[live-push] 订阅 ${id} 断流后重新开播,接续为同一场(开播卡、下播卡都不发)`);
 	}
 
 	/** 一份直播状态(认出一场的那一份也是):记「见过」、「收到过新状态」,必要时补报。 */
-	function onStatus(id: string, live: boolean, session: LiveSession | undefined): void {
+	function onStatus(id: string, isLive: boolean, session: LiveSession | undefined): void {
 		const sub = pushable(id);
 		if (!sub) return;
 		const settings = opts.settings(sub);
@@ -502,9 +502,10 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const first = !seen.has(id);
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
 		// 报了不在播:BN 不拿它猜下播(决策 53),在播表自己出表;这一场的计时器等下播事件来收。
-		if (!live || !session) return;
+		if (!isLive || !session) return;
 		const current = runs.get(id);
-		if (current?.session === session) {
+		if (current) {
+			current.session = session;
 			current.fresh = true;
 			return;
 		}
@@ -528,11 +529,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
-		let run = runs.get(id);
-		if (run?.session !== session) {
-			run = { session, fresh: false };
-			runs.set(id, run);
-		}
+		const run = runs.get(id) ?? { session, fresh: false };
+		run.session = session;
+		runs.set(id, run);
 		if (!ready.settings.liveStreaming) return;
 		const current = run;
 		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushType.Live));
@@ -544,7 +543,9 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const ready = pushSettings(id);
 		if (!ready) return;
 		const run = runs.get(id);
-		if (run?.session === session) armPeriodic(id, run, ready.settings);
+		if (!run) return;
+		run.session = session;
+		armPeriodic(id, run, ready.settings);
 	}
 
 	/**
@@ -553,8 +554,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	function finishEnd(
 		id: string,
 		session: LiveSession | undefined,
-		endedAt: number,
-		reported: { details?: LiveDetails; startedAt?: number },
+		endedAtIso: string,
+		reported: { details?: LiveDetails; startedAt?: string },
 	): void {
 		const sub = pushable(id);
 		if (!sub) return;
@@ -564,7 +565,8 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		}
 		// 信号没带的格用这一场最后一份状态补;开播时刻先认 BN 自己记着的(决策 56)。
 		const facts: LiveDetails = { ...defined(session?.lastDetails), ...defined(reported.details) };
-		const startedAt = session?.startedAt ?? reported.startedAt;
+		const startedAt = millisOf(session?.startedAt) ?? millisOf(reported.startedAt);
+		const endedAt = Date.parse(endedAtIso);
 		// 收集器在另一个场次监听者里清空；这里先在结束那一刻同步取快照。
 		const extras = recapFor(sub, opts.settings(sub), facts);
 		enqueue(id, "下播", () => {
@@ -599,7 +601,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				onTick(change.session);
 				return;
 			case "status":
-				onStatus(change.subscriptionId, change.live, change.session);
+				onStatus(change.subscriptionId, change.isLive, change.session);
 				return;
 			case "ending":
 				onEnding(change.session);
@@ -610,14 +612,14 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				// 只有来源报的下播(或核对发现的漏收下播,`poll`)推下播卡;来源停了、订阅停用 / 删了、关机的,
 				// 等着的下播卡不补推(决策 61)。
 				if (change.reason === "ended" || change.reason === "poll") {
-					finishEnd(change.subscriptionId, change.session, change.at, {
+					finishEnd(change.subscriptionId, change.session, change.endedAt, {
 						details: change.details,
 						startedAt: change.reportedStartedAt,
 					});
 				}
 				return;
 			case "unmatched-end":
-				finishEnd(change.subscriptionId, undefined, change.at, {
+				finishEnd(change.subscriptionId, undefined, change.endedAt, {
 					details: change.details,
 					startedAt: change.reportedStartedAt,
 				});

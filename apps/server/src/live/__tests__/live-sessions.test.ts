@@ -14,6 +14,7 @@
 import type {
 	ExtensionLiveSessionEvent,
 	LiveDetails,
+	LiveSessionChange,
 	Subscription,
 	SubscriptionReport,
 } from "@bilibili-notify/internal";
@@ -22,7 +23,6 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createLiveSessionEngine,
-	type LiveSessionChange,
 	type LiveSessionEngine,
 	type LiveStatusReader,
 	liveSubscriptionPushable,
@@ -172,11 +172,11 @@ function summary(): Array<Record<string, unknown>> {
 			case "start":
 				return { kind: c.kind, trigger: c.trigger, startedAt: c.session.startedAt };
 			case "end":
-				return { kind: c.kind, reason: c.reason, at: c.at };
+				return { kind: c.kind, reason: c.reason, endedAt: c.endedAt };
 			case "status":
-				return { kind: c.kind, live: c.live };
+				return { kind: c.kind, isLive: c.isLive };
 			case "unmatched-end":
-				return { kind: c.kind, at: c.at };
+				return { kind: c.kind, endedAt: c.endedAt };
 			default:
 				return { kind: c.kind };
 		}
@@ -217,28 +217,50 @@ describe("一场从哪开始", () => {
 		start();
 		liveStart({ startedAt: T0 - MINUTE, totalViewers: 40 });
 
-		expect(summary()).toEqual([{ kind: "start", trigger: "start-signal", startedAt: T0 - MINUTE }]);
+		expect(summary()).toEqual([
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0 - MINUTE) },
+		]);
 		const session = sessions.get(SUB.id);
 		expect(session).toMatchObject({
 			subscriptionId: SUB.id,
 			sourceKey: EXT,
-			startedAt: T0 - MINUTE,
-			detectedAt: T0,
+			startedAt: iso(T0 - MINUTE),
+			detectedAt: iso(T0),
 			followersAtStart: 12_345,
 			lastDetails: { totalViewers: 40 },
 		});
+	});
+
+	it("交给监听者的场次是纯数据,时刻用 ISO", () => {
+		start({
+			has: () => true,
+			fetch: async () => ({ ok: false, code: "unused", message: "unused" }),
+		});
+		liveStart({ startedAt: T0 - MINUTE });
+
+		const change = changes[0];
+		if (change?.kind !== "start") throw new Error("expected a start change");
+		expect(change.session).toEqual(JSON.parse(JSON.stringify(change.session)));
+		expect(change.session).not.toHaveProperty("busStartedAt");
+		expect(change.session.startedAt).toBe(iso(T0 - MINUTE));
+		expect(change.session.detectedAt).toBe(iso(T0));
+
+		const current = sessions.get(SUB.id);
+		expect(current).toEqual(JSON.parse(JSON.stringify(current)));
+		expect(current).not.toHaveProperty("busStartedAt");
+		expect(current?.detectedAt).toBe(iso(T0));
 	});
 
 	it("BN 开始看之后见到在播:认出一场,开播时刻取状态带的;没带就空着,之后的状态带了再补上", () => {
 		start();
 		liveStatus();
 		expect(summary()).toEqual([{ kind: "start", trigger: "status-signal", startedAt: undefined }]);
-		expect(sessions.get(SUB.id)?.detectedAt).toBe(T0);
+		expect(sessions.get(SUB.id)?.detectedAt).toBe(iso(T0));
 
 		liveStatus({ startedAt: T0 - HOUR, totalViewers: 9 });
-		expect(summary().at(-1)).toEqual({ kind: "status", live: true });
+		expect(summary().at(-1)).toEqual({ kind: "status", isLive: true });
 		expect(sessions.get(SUB.id)).toMatchObject({
-			startedAt: T0 - HOUR,
+			startedAt: iso(T0 - HOUR),
 			lastDetails: { totalViewers: 9 },
 		});
 	});
@@ -248,8 +270,8 @@ describe("一场从哪开始", () => {
 		liveStart();
 		report({ kind: "liveStatus", value: { live: false } });
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "start-signal", startedAt: T0 },
-			{ kind: "status", live: false },
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0) },
+			{ kind: "status", isLive: false },
 		]);
 		expect(sessions.get(SUB.id)).toBeDefined();
 	});
@@ -260,9 +282,9 @@ describe("一场从哪开始", () => {
 		vi.advanceTimersByTime(HOUR);
 		liveStart({ startedAt: Date.now(), title: "第二场" });
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "start-signal", startedAt: T0 },
-			{ kind: "end", reason: "superseded", at: T0 + HOUR },
-			{ kind: "start", trigger: "start-signal", startedAt: T0 + HOUR },
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0) },
+			{ kind: "end", reason: "superseded", endedAt: iso(T0 + HOUR) },
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0 + HOUR) },
 		]);
 	});
 
@@ -343,14 +365,18 @@ describe("一场到哪结束", () => {
 		liveStart();
 		vi.advanceTimersByTime(2 * HOUR);
 		liveEnd();
-		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: T0 + 2 * HOUR });
+		expect(summary().at(-1)).toEqual({
+			kind: "end",
+			reason: "ended",
+			endedAt: iso(T0 + 2 * HOUR),
+		});
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 
 	it("下播事件来了手里却没有这一场:照实说,不编一场出来", () => {
 		start();
 		liveEnd({ startedAt: T0 - HOUR });
-		expect(summary()).toEqual([{ kind: "unmatched-end", at: T0 }]);
+		expect(summary()).toEqual([{ kind: "unmatched-end", endedAt: iso(T0) }]);
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 });
@@ -368,10 +394,14 @@ describe("断流接续(决策 58)", () => {
 		expect(summary().at(-1)).toEqual({ kind: "ending" });
 		await vi.advanceTimersByTimeAsync(3 * MINUTE - 1);
 		expect(summary().map((c) => c.kind)).toEqual(["start", "ending"]);
-		expect(sessions.get(SUB.id)?.pendingEnd?.endedAt).toBe(T0 + HOUR);
+		expect(sessions.get(SUB.id)?.pendingEnd?.endedAt).toBe(iso(T0 + HOUR));
 
 		await vi.advanceTimersByTimeAsync(1);
-		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: T0 + HOUR });
+		expect(summary().at(-1)).toEqual({
+			kind: "end",
+			reason: "ended",
+			endedAt: iso(T0 + HOUR),
+		});
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 
@@ -386,15 +416,19 @@ describe("断流接续(决策 58)", () => {
 		await vi.advanceTimersByTimeAsync(10 * MINUTE);
 
 		expect(summary().map((c) => c.kind)).toEqual(["start", "ending", "resume"]);
-		expect(sessions.get(SUB.id)).toBe(first);
-		expect(first?.startedAt).toBe(T0);
-		expect(first?.pendingEnd).toBeUndefined();
+		expect(sessions.get(SUB.id)).toEqual(first);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(T0));
+		expect(sessions.get(SUB.id)?.pendingEnd).toBeUndefined();
 
 		// 真下播:结束时刻是这一次下播事件到达的那一刻。
 		liveEnd();
 		const endedAt = Date.now();
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
-		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: endedAt });
+		expect(summary().at(-1)).toEqual({
+			kind: "end",
+			reason: "ended",
+			endedAt: iso(endedAt),
+		});
 	});
 
 	it("等待期间又报下播:忽略,结束时刻仍是第一次那一刻", async () => {
@@ -406,7 +440,7 @@ describe("断流接续(决策 58)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 		expect(summary().slice(1)).toEqual([
 			{ kind: "ending" },
-			{ kind: "end", reason: "ended", at: T0 },
+			{ kind: "end", reason: "ended", endedAt: iso(T0) },
 		]);
 	});
 });
@@ -436,11 +470,11 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 
 		expect(summary()).toEqual([
-			{ kind: "start", trigger: "start-signal", startedAt: T0 },
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0) },
 			{ kind: "ending" },
 			{ kind: "resume" },
 			{ kind: "ending" },
-			{ kind: "end", reason: "ended", at: endedAt },
+			{ kind: "end", reason: "ended", endedAt: iso(endedAt) },
 		]);
 		// 统计照样看得到这一场:一帧开始、一帧结束,断流那一下不算两场。
 		expect(frames.map((f) => f.phase)).toEqual(["start", "end"]);
@@ -454,7 +488,7 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: SUB }] });
 		liveStatus();
 		expect(summary().map((c) => c.kind)).toEqual(["start", "status"]);
-		expect(sessions.get(SUB.id)?.startedAt).toBe(T0);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(T0));
 	});
 });
 
@@ -474,7 +508,7 @@ describe("作废(决策 61)", () => {
 			expect.objectContaining({
 				subscriptionId: SUB.id,
 				reason: "extension-stopped",
-				at: T0 + HOUR,
+				endedAt: iso(T0 + HOUR),
 			}),
 		]);
 		expect(sessions.get(SUB.id)).toBeUndefined();
@@ -499,7 +533,11 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		vi.advanceTimersByTime(HOUR);
 		sessions.dispose();
-		expect(summary().at(-1)).toEqual({ kind: "end", reason: "shutdown", at: T0 + HOUR });
+		expect(summary().at(-1)).toEqual({
+			kind: "end",
+			reason: "shutdown",
+			endedAt: iso(T0 + HOUR),
+		});
 		liveStart();
 		expect(summary().map((c) => c.kind)).toEqual(["start", "end"]);
 	});

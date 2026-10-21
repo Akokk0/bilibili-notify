@@ -1,8 +1,10 @@
 import type {
 	Disposable,
-	ExtensionLiveSessionEndReason,
 	Identity,
 	LiveDetails,
+	LiveSession,
+	LiveSessionChange,
+	LiveSessionEndReason,
 	LiveSignal,
 	LiveStatusResult,
 	Logger,
@@ -74,100 +76,6 @@ function millisOf(time: string | undefined): number | undefined {
 	const ms = Date.parse(time);
 	return Number.isNaN(ms) ? undefined : ms;
 }
-
-/** 一条订阅正在播的这一场。只读:场次只由这里改。 */
-export interface LiveSession {
-	readonly subscriptionId: string;
-	readonly sourceKey: string;
-	/**
-	 * 开播时刻(毫秒)。开播信号带了才有;只见过直播状态时来源报了才有 —— 之后的状态带了再补上。断流接续时
-	 * 沿用第一次的。
-	 */
-	readonly startedAt?: number;
-	/** BN 认出这一场的那一刻:开播信号、或认出它的那份在播状态到达时。 */
-	readonly detectedAt: number;
-	/** 开播时(或 BN 认出这一场时)资料里的粉丝数 —— 下播算粉丝数变化的基线(决策 56)。 */
-	readonly followersAtStart?: number;
-	/**
-	 * 这一场里(开播、直播状态、下播)报过的**最大累计观看**(ADR-0020 决策 7)。累计只增不减,最大的就是本场
-	 * 最后那个累计数;断流接续是同一场,接着取;新的一场从头取。只认 `totalViewers`,此刻在线不算。一次都没报过
-	 * 就没有。结束帧带着它给统计当这一场的峰值。
-	 */
-	readonly peakTotalViewers?: number;
-	/**
-	 * 在播表里这一场最后一份。下播信号一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
-	 * 只是拿着那一行的内容,不是另存的一份状态。
-	 */
-	readonly lastDetails?: LiveDetails;
-	/** 断流接续正在等的那次下播:信号带的下播时刻(毫秒)与它带的格。 */
-	readonly pendingEnd?: {
-		readonly endedAt: number;
-		readonly startedAt?: number;
-		readonly details?: LiveDetails;
-	};
-}
-
-/**
- * 一场为什么结束:总线上的原因(`ExtensionLiveSessionEndReason`)加一个引擎内部的 `poll` —— 核心问
- * `fetchLiveStatus` 发现已经下播(漏收的下播,时长算到发现的那一刻)。总线载荷的类型不动(3b-23)。
- */
-export type LiveSessionEndReason = ExtensionLiveSessionEndReason | "poll";
-
-/**
- * 场次的每一次变化,按发生的顺序、同步地交给 {@link LiveSessionEngine.onChange} 的监听者。
- *
- * 除了一场的开始与结束,还有推送那头要的几样:断流等待里又开播了、又来一份直播状态、下播进了断流等待、
- * 下播信号来了手里却没有这一场。带着信号的详情,开播 / 下播卡要拿它出卡。
- */
-export type LiveSessionChange =
-	| {
-			kind: "start";
-			subscriptionId: string;
-			session: LiveSession;
-			/**
-			 * 认出这一场的是什么:开播信号、BN 开始看之后见到的在播状态,或核心问 `fetchLiveStatus`
-			 * (重启、来源登记、订阅开始监听时)问到的在播。
-			 */
-			trigger: "start-signal" | "status-signal" | "poll";
-			details: LiveDetails;
-	  }
-	/** 按这一场自己的时钟问了来源一次,还在播(`fetchLiveStatus`):在播表已换上新的格。 */
-	| { kind: "tick"; subscriptionId: string; session: LiveSession }
-	/** 断流等待里又开播了:同一场接着播(决策 58)。 */
-	| { kind: "resume"; subscriptionId: string; session: LiveSession; details: LiveDetails }
-	/**
-	 * 又一份直播状态(认出一场的那一份记作 `start`,不在这里)。在播的已经记到这一场上;不在播的不动这一场
-	 * (`session` 是此刻那一场,可能没有)。
-	 */
-	| {
-			kind: "status";
-			subscriptionId: string;
-			live: boolean;
-			session: LiveSession | undefined;
-	  }
-	/** 下播信号到了,断流接续开着:进等待,这一场还没结束。 */
-	| { kind: "ending"; subscriptionId: string; session: LiveSession }
-	/**
-	 * 这一场结束了。`at`:下播是信号带的下播时刻,其余是结束的那一刻;`details` / `reportedStartedAt`:下播信号
-	 * 带的格与开播时刻(毫秒)。
-	 */
-	| {
-			kind: "end";
-			subscriptionId: string;
-			session: LiveSession;
-			reason: LiveSessionEndReason;
-			at: number;
-			details?: LiveDetails;
-			reportedStartedAt?: number;
-	  }
-	/** 下播信号到了,手里却没有这一场(BN 中途重启过、来源没报过状态)。 */
-	| {
-			kind: "unmatched-end";
-			subscriptionId: string;
-			at: number;
-			details?: LiveDetails;
-			reportedStartedAt?: number;
-	  };
 
 export interface LiveSessionEngine extends Disposable {
 	/** 这条订阅此刻那一场;没在播(或 BN 手里没有)就是 `undefined`。 */
@@ -259,6 +167,103 @@ interface SessionState {
 	pollHandle?: Disposable;
 }
 
+/** 内部的场次变化:场次实例仍是带计时器的状态,时刻仍是毫秒。 */
+type SessionChange =
+	| (Omit<Extract<LiveSessionChange, { kind: "start" }>, "session"> & {
+			session: SessionState;
+	  })
+	| (Omit<Extract<LiveSessionChange, { kind: "tick" }>, "session"> & {
+			session: SessionState;
+	  })
+	| (Omit<Extract<LiveSessionChange, { kind: "resume" }>, "session"> & {
+			session: SessionState;
+	  })
+	| (Omit<Extract<LiveSessionChange, { kind: "status" }>, "session"> & {
+			session: SessionState | undefined;
+	  })
+	| (Omit<Extract<LiveSessionChange, { kind: "ending" }>, "session"> & {
+			session: SessionState;
+	  })
+	| (Omit<
+			Extract<LiveSessionChange, { kind: "end" }>,
+			"session" | "endedAt" | "reportedStartedAt"
+	  > & {
+			session: SessionState;
+			endedAt: number;
+			reportedStartedAt?: number;
+	  })
+	| (Omit<
+			Extract<LiveSessionChange, { kind: "unmatched-end" }>,
+			"endedAt" | "reportedStartedAt"
+	  > & {
+			endedAt: number;
+			reportedStartedAt?: number;
+	  });
+
+/** 只把外层可拿的纯数据交出去;计时器与总线的内部起算时刻留在 {@link SessionState} 里。 */
+function projectSession(session: SessionState): LiveSession {
+	const pendingEnd = session.pendingEnd;
+	return {
+		subscriptionId: session.subscriptionId,
+		sourceKey: session.sourceKey,
+		...(session.startedAt === undefined ? {} : { startedAt: iso(session.startedAt) }),
+		detectedAt: iso(session.detectedAt),
+		...(session.followersAtStart === undefined
+			? {}
+			: { followersAtStart: session.followersAtStart }),
+		...(session.peakTotalViewers === undefined
+			? {}
+			: { peakTotalViewers: session.peakTotalViewers }),
+		...(session.lastDetails === undefined ? {} : { lastDetails: session.lastDetails }),
+		...(pendingEnd === undefined
+			? {}
+			: {
+					pendingEnd: {
+						endedAt: iso(pendingEnd.endedAt),
+						...(pendingEnd.startedAt === undefined ? {} : { startedAt: iso(pendingEnd.startedAt) }),
+						...(pendingEnd.details === undefined ? {} : { details: pendingEnd.details }),
+					},
+				}),
+	};
+}
+
+function projectChange(change: SessionChange): LiveSessionChange {
+	switch (change.kind) {
+		case "start":
+		case "tick":
+		case "resume":
+		case "ending":
+			return { ...change, session: projectSession(change.session) };
+		case "status":
+			return {
+				...change,
+				session: change.session === undefined ? undefined : projectSession(change.session),
+			};
+		case "end":
+			return {
+				kind: change.kind,
+				subscriptionId: change.subscriptionId,
+				session: projectSession(change.session),
+				reason: change.reason,
+				endedAt: iso(change.endedAt),
+				...(change.details === undefined ? {} : { details: change.details }),
+				...(change.reportedStartedAt === undefined
+					? {}
+					: { reportedStartedAt: iso(change.reportedStartedAt) }),
+			};
+		case "unmatched-end":
+			return {
+				kind: change.kind,
+				subscriptionId: change.subscriptionId,
+				endedAt: iso(change.endedAt),
+				...(change.details === undefined ? {} : { details: change.details }),
+				...(change.reportedStartedAt === undefined
+					? {}
+					: { reportedStartedAt: iso(change.reportedStartedAt) }),
+			};
+	}
+}
+
 /** 这一份信号带的累计观看记到这一场上:只留最大的。 */
 function notePeakTotalViewers(session: SessionState, details: LiveDetails | undefined): void {
 	const total = details?.totalViewers;
@@ -285,8 +290,9 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	const listeners = new Set<(change: LiveSessionChange) => void>();
 	let disposed = false;
 
-	function announce(change: LiveSessionChange): void {
-		for (const listener of [...listeners]) listener(change);
+	function announce(change: SessionChange): void {
+		const projected = projectChange(change);
+		for (const listener of [...listeners]) listener(projected);
 	}
 
 	/** 一场开始了,发上总线 —— 统计只要边界(ADR-0020 决策 6)。总线载荷的字面不动(3b-23 改)。 */
@@ -350,7 +356,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			subscriptionId: id,
 			session,
 			reason,
-			at,
+			endedAt: at,
 			details: reported?.details,
 			reportedStartedAt: reported?.startedAt,
 		});
@@ -595,7 +601,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		// 报了不在播:出表;BN 不拿它猜下播(决策 53),这一场等下播信号来收。
 		if (!signal.isLive) {
 			opts.table.remove(id);
-			announce({ kind: "status", subscriptionId: id, live: false, session: current });
+			announce({ kind: "status", subscriptionId: id, isLive: false, session: current });
 			return;
 		}
 		const sourceKey = signal.identity.sourceKey;
@@ -606,7 +612,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			// 之前没有开播时刻、这一份带了:计时从真开播时刻重新起算。
 			const learnedStartedAt = current.startedAt === undefined && startedAt !== undefined;
 			current.startedAt ??= startedAt;
-			announce({ kind: "status", subscriptionId: id, live: true, session: current });
+			announce({ kind: "status", subscriptionId: id, isLive: true, session: current });
 			if (learnedStartedAt) armPoll(current);
 			return;
 		}
@@ -660,7 +666,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			announce({
 				kind: "unmatched-end",
 				subscriptionId: id,
-				at: endedAt,
+				endedAt,
 				details,
 				reportedStartedAt,
 			});
@@ -778,7 +784,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	];
 
 	return {
-		get: (subscriptionId) => sessions.get(subscriptionId),
+		get: (subscriptionId) => {
+			const session = sessions.get(subscriptionId);
+			return session === undefined ? undefined : projectSession(session);
+		},
 		async tickNow(subscriptionId) {
 			const session = sessions.get(subscriptionId);
 			if (!session || session.pendingEnd || !isCurrent(session)) return false;

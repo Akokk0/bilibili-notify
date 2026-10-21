@@ -30,12 +30,7 @@ export interface LiveDetails {
 	creator?: Creator;
 }
 
-/**
- * 来源推送式上报的直播信号:发生了就报,`reportLive(externalId, signal)`。时刻一律是 ISO。
- *
- * ⚠️ `status` 与 `end` 上的 `startedAt` 是对 data-model 的补充(待回写):拓展的直播状态、下播本来就能带开播时刻
- * (BN 认出一场时拿它当时长的起点;下播时手里没有这一场,下播卡的时长靠它),形状里没有就丢了。
- */
+/** 来源推送式上报的直播信号:发生了就报,`reportLive(externalId, signal)`。时刻一律是 ISO。 */
 export type LiveSignalReport =
 	| { kind: "start"; startedAt?: string; details: LiveDetails }
 	| { kind: "status"; isLive: boolean; startedAt?: string; details: LiveDetails }
@@ -53,6 +48,109 @@ export type LiveStatusResult =
 	| { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
 	| { ok: true; kind: "offline" }
 	| { ok: false; code: string; message: string };
+
+/**
+ * 一场为什么结束:总线上的原因(`ExtensionLiveSessionEndReason`)加一个引擎内部的 `poll` —— 核心问
+ * `fetchLiveStatus` 发现已经下播(漏收的下播,时长算到发现的那一刻)。总线载荷的类型不动(3b-23)。
+ */
+export type LiveSessionEndReason =
+	| "ended"
+	| "superseded"
+	| "extension-stopped"
+	| "disabled"
+	| "removed"
+	| "shutdown"
+	| "poll";
+
+/**
+ * 核心记着的一条订阅正在播的这一场。只读:场次只由场次引擎改;交出引擎时只带纯数据,不带内部计时器。
+ */
+export interface LiveSession {
+	readonly subscriptionId: string;
+	readonly sourceKey: string;
+	/**
+	 * 开播时刻(ISO)。开播信号带了才有;只见过直播状态时来源报了才有 —— 之后的状态带了再补上。断流接续时
+	 * 沿用第一次的。
+	 */
+	readonly startedAt?: string;
+	/** BN 认出这一场的那一刻(ISO):开播信号、或认出它的那份在播状态到达时。 */
+	readonly detectedAt: string;
+	/** 开播时(或 BN 认出这一场时)资料里的粉丝数 —— 下播算粉丝数变化的基线(决策 56)。 */
+	readonly followersAtStart?: number;
+	/**
+	 * 这一场里(开播、直播状态、下播)报过的**最大累计观看**(ADR-0020 决策 7)。累计只增不减,最大的就是本场
+	 * 最后那个累计数;断流接续是同一场,接着取;新的一场从头取。只认 `totalViewers`,此刻在线不算。一次都没报过
+	 * 就没有。结束帧带着它给统计当这一场的峰值。
+	 */
+	readonly peakTotalViewers?: number;
+	/**
+	 * 在播表里这一场最后一份。下播信号一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
+	 * 只是拿着那一行的内容,不是另存的一份状态。
+	 */
+	readonly lastDetails?: LiveDetails;
+	/** 断流接续正在等的那次下播:信号带的下播时刻(ISO)与它带的格。 */
+	readonly pendingEnd?: {
+		readonly endedAt: string;
+		readonly startedAt?: string;
+		readonly details?: LiveDetails;
+	};
+}
+
+/**
+ * 场次的每一次变化,按发生的顺序、同步地交给场次引擎的监听者。
+ *
+ * 除了一场的开始与结束,还有推送那头要的几样:断流等待里又开播了、又来一份直播状态、下播进了断流等待、
+ * 下播信号来了手里却没有这一场。带着信号的详情,开播 / 下播卡要拿它出卡。
+ */
+export type LiveSessionChange =
+	| {
+			kind: "start";
+			subscriptionId: string;
+			session: LiveSession;
+			/**
+			 * 认出这一场的是什么:开播信号、BN 开始看之后见到的在播状态,或核心问 `fetchLiveStatus`
+			 * (重启、来源登记、订阅开始监听时)问到的在播。
+			 */
+			trigger: "start-signal" | "status-signal" | "poll";
+			details: LiveDetails;
+	  }
+	/** 按这一场自己的时钟问了来源一次,还在播(`fetchLiveStatus`):在播表已换上新的格。 */
+	| { kind: "tick"; subscriptionId: string; session: LiveSession }
+	/** 断流等待里又开播了:同一场接着播(决策 58)。 */
+	| { kind: "resume"; subscriptionId: string; session: LiveSession; details: LiveDetails }
+	/**
+	 * 又一份直播状态(认出一场的那一份记作 `start`,不在这里)。在播的已经记到这一场上;不在播的不动这一场
+	 * (`session` 是此刻那一场,可能没有)。
+	 */
+	| {
+			kind: "status";
+			subscriptionId: string;
+			isLive: boolean;
+			session: LiveSession | undefined;
+	  }
+	/** 下播信号到了,断流接续开着:进等待,这一场还没结束。 */
+	| { kind: "ending"; subscriptionId: string; session: LiveSession }
+	/**
+	 * 这一场结束了。`endedAt`:下播是信号带的下播时刻,其余是结束的那一刻;`details` / `reportedStartedAt`:下播信号
+	 * 带的格与开播时刻(ISO)。
+	 */
+	| {
+			kind: "end";
+			subscriptionId: string;
+			session: LiveSession;
+			reason: LiveSessionEndReason;
+			endedAt: string;
+			details?: LiveDetails;
+			reportedStartedAt?: string;
+	  }
+	/** 下播信号到了,手里却没有这一场(BN 中途重启过、来源没报过状态)。 */
+	| {
+			kind: "unmatched-end";
+			subscriptionId: string;
+			endedAt: string;
+			details?: LiveDetails;
+			reportedStartedAt?: string;
+	  };
 
 /**
  * 来源经 `reportLiveInteraction(externalId, report)` 上报的观众互动:形状是对应事件去掉 `subscriptionId`

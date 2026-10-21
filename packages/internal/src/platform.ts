@@ -3,6 +3,7 @@ import type { AuthState } from "./auth-state";
 import type { ImageRef, PushTargetScope, Result } from "./constants";
 import type { HttpClient } from "./http";
 import type { KeyValueStore } from "./key-value-store";
+import type { LiveSessionEndReason } from "./live";
 import type { PostEvent, PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
@@ -308,13 +309,7 @@ export interface BusEvents {
  * - `disabled` / `removed`:订阅停用了 / 删了;
  * - `shutdown`:BN 关机。
  */
-export type ExtensionLiveSessionEndReason =
-	| "ended"
-	| "superseded"
-	| "extension-stopped"
-	| "disabled"
-	| "removed"
-	| "shutdown";
+export type ExtensionLiveSessionEndReason = Exclude<LiveSessionEndReason, "poll">;
 
 /**
  * Bus 上 `extension-live-session` 的载荷。时刻都是 ISO。
