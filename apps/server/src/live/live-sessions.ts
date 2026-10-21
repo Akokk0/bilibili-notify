@@ -53,7 +53,7 @@ const HOUR = 60 * MINUTE;
 
 /**
  * 这条订阅现在还该推吗:订阅还在、启用着、它的来源还在跑。场次与推送共用,**不认来源是哪一种**
- * (拓展、B 站,都只看读口怎么说)。
+ * (各来源都只看读口怎么说)。
  *
  * 信号分发那一刻 ctx 已经按开关筛过(决策 62),推送这头是出卡、点评几个 await 之后发送之前的**再核一次**
  * —— 期间主人可能停用了这条订阅、停用了来源(决策 61:来源停了,等着的推送不补)、或者删了它。
@@ -343,7 +343,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		sessions.delete(id);
 		opts.table.remove(id);
 		log.debug(
-			`[ext-live] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
+			`[live-sessions] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
 		);
 		announce({
 			kind: "end",
@@ -418,7 +418,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 
 	/**
 	 * 每个来源一个「撤销」控制器:来源停用 / 引擎关停时中止它名下在途的 `fetchLiveStatus`,下次要问再新建。
-	 * (ADR-0021 决策 27:拓展停用时用 signal 取消在途调用。)
+	 * (ADR-0021 决策 27:来源停用时用 signal 取消在途调用。)
 	 */
 	const aborters = new Map<string, AbortController>();
 	function signalOf(sourceKey: string): AbortSignal {
@@ -443,7 +443,9 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		try {
 			await pollOnce(session);
 		} catch (err) {
-			log.error(`[ext-live] 订阅 ${session.subscriptionId} 这一轮核对直播状态出错: ${String(err)}`);
+			log.error(
+				`[live-sessions] 订阅 ${session.subscriptionId} 这一轮核对直播状态出错: ${String(err)}`,
+			);
 		} finally {
 			armPoll(session);
 		}
@@ -464,7 +466,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		if (!result.ok) {
 			// 核心不替来源报问题(它自己报);计时器留着,下一轮再问。
 			log.warn(
-				`[ext-live] 订阅 ${id} 这一轮没取到直播状态,跳过(${result.code}: ${result.message})`,
+				`[live-sessions] 订阅 ${id} 这一轮没取到直播状态,跳过(${result.code}: ${result.message})`,
 			);
 		} else if (result.kind === "live") {
 			const startedAt = millisOf(result.startedAt);
@@ -474,7 +476,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			notePeakTotalViewers(session, result.details);
 			announce({ kind: "tick", subscriptionId: id, session });
 		} else {
-			log.info(`[ext-live] 订阅 ${id} 核对发现已经下播,当漏收的下播处理`);
+			log.info(`[live-sessions] 订阅 ${id} 核对发现已经下播,当漏收的下播处理`);
 			closeSession(id, current, now(), undefined, undefined, "poll");
 		}
 	}
@@ -527,7 +529,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			const startedAt = millisOf(result.startedAt);
 			opts.table.merge(sub.id, identity.sourceKey, startedAt, result.details);
 			const session = begin(sub.id, result.details, identity.sourceKey, startedAt);
-			log.debug(`[ext-live] 订阅 ${sub.id} 核对发现正在播,认出这一场`);
+			log.debug(`[live-sessions] 订阅 ${sub.id} 核对发现正在播,认出这一场`);
 			announce({
 				kind: "start",
 				subscriptionId: sub.id,
@@ -543,7 +545,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 
 	function probeQuietly(sub: Subscription): void {
 		probe(sub).catch((err) => {
-			log.error(`[ext-live] 订阅 ${sub.id} 开始监听时核对直播状态出错: ${String(err)}`);
+			log.error(`[live-sessions] 订阅 ${sub.id} 开始监听时核对直播状态出错: ${String(err)}`);
 		});
 	}
 
@@ -551,7 +553,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		const id = signal.subscriptionId;
 		const sub = trackable(id);
 		if (!sub) {
-			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的来源没在跑,这次开播不管`);
+			log.debug(`[live-sessions] 订阅 ${id} 已停用 / 已删 / 它的来源没在跑,这次开播不管`);
 			return;
 		}
 		const sourceKey = signal.identity.sourceKey;
@@ -565,7 +567,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			current.pendingEnd = undefined;
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
 			notePeakTotalViewers(current, signal.details);
-			log.debug(`[ext-live] 订阅 ${id} 断流后重新开播,接续为同一场`);
+			log.debug(`[live-sessions] 订阅 ${id} 断流后重新开播,接续为同一场`);
 			announce({ kind: "resume", subscriptionId: id, session: current, details: signal.details });
 			armPoll(current);
 			return;
@@ -610,7 +612,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		// 没见过这一场的开播信号:BN 起来之前就开播了,或者来源停过又跑起来了。
 		const session = begin(id, signal.details, sourceKey, startedAt);
-		log.debug(`[ext-live] 订阅 ${id} 正在播,认出这一场`);
+		log.debug(`[live-sessions] 订阅 ${id} 正在播,认出这一场`);
 		announce({
 			kind: "start",
 			subscriptionId: id,
@@ -625,7 +627,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		const id = signal.subscriptionId;
 		const sub = trackable(id);
 		if (!sub) {
-			log.debug(`[ext-live] 订阅 ${id} 已停用 / 已删 / 它的来源没在跑,这次下播不管`);
+			log.debug(`[live-sessions] 订阅 ${id} 已停用 / 已删 / 它的来源没在跑,这次下播不管`);
 			return;
 		}
 		closeSession(
@@ -666,7 +668,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		notePeakTotalViewers(session, details);
 		if (session.pendingEnd) {
-			log.debug(`[ext-live] 订阅 ${id} 已经在断流等待里,这次下播忽略`);
+			log.debug(`[live-sessions] 订阅 ${id} 已经在断流等待里,这次下播忽略`);
 			return;
 		}
 		session.lastDetails = lastRow?.details ?? session.lastDetails;
@@ -686,7 +688,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			reason,
 			handle: opts.timers.setTimeout(() => void graceExpired(session), minutes * MINUTE),
 		};
-		log.info(`[ext-live] 订阅 ${id} 下播,进入 ${minutes} 分钟断流接续等待`);
+		log.info(`[live-sessions] 订阅 ${id} 下播,进入 ${minutes} 分钟断流接续等待`);
 		announce({ kind: "ending", subscriptionId: id, session });
 	}
 
@@ -699,7 +701,9 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			await resolveGrace(session);
 		} catch (err) {
 			// 出错(比如听场次变化的监听者抛了)只记,别变成没人接的 rejection;这一场还在的话照样重挂核对。
-			log.error(`[ext-live] 订阅 ${session.subscriptionId} 断流等待到期时出错: ${String(err)}`);
+			log.error(
+				`[live-sessions] 订阅 ${session.subscriptionId} 断流等待到期时出错: ${String(err)}`,
+			);
 		} finally {
 			armPoll(session);
 		}
@@ -718,7 +722,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 					signalOf(session.sourceKey),
 				);
 			} catch (err) {
-				log.error(`[ext-live] 订阅 ${id} 断流等待到期的核对出错: ${String(err)}`);
+				log.error(`[live-sessions] 订阅 ${id} 断流等待到期的核对出错: ${String(err)}`);
 			}
 			// 等回答的时候开播信号到了(已经接续)、或这一场被收掉了:不用管。
 			if (!isCurrent(session) || session.pendingEnd !== pending) return;
@@ -727,13 +731,13 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				opts.table.merge(id, session.sourceKey, millisOf(result.startedAt), result.details);
 				session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 				notePeakTotalViewers(session, result.details);
-				log.info(`[ext-live] 订阅 ${id} 断流等待到期,核对发现还在播,接续为同一场`);
+				log.info(`[live-sessions] 订阅 ${id} 断流等待到期,核对发现还在播,接续为同一场`);
 				announce({ kind: "resume", subscriptionId: id, session, details: result.details });
 				return;
 			}
 		}
 		session.pendingEnd = undefined;
-		log.info(`[ext-live] 订阅 ${id} 断流等待到期,没有重新开播,这一场结束`);
+		log.info(`[live-sessions] 订阅 ${id} 断流等待到期,没有重新开播,这一场结束`);
 		end(id, pending.reason, pending.endedAt, {
 			startedAt: pending.startedAt,
 			details: pending.details,

@@ -88,9 +88,9 @@ export function renderLiveSummary(params: {
 export type LiveTextKind = "liveStart" | "liveStreaming" | "liveEnd";
 
 /**
- * 三句直播文案的变量,**中立的值**(ADR-0019 决策 65 / 67)—— B 站的直播间与拓展订阅的直播各自把自己的
- * 东西翻成它。数字由渲染排成「1.2万」(粉丝数变化带正负号),平台给的成品文字原样;没有的格子空着
- * (决策 56:拓展没报过资料,粉丝那一格就空着)。
+ * 三句直播文案的变量,**中立的值**(ADR-0019 决策 65 / 67)—— 推送这头从场次详情与订阅资料
+ * 取值填它。数字由渲染排成「1.2万」(粉丝数变化带正负号),平台给的成品文字原样;没有的格子空着
+ * (决策 56:来源没报过资料,粉丝那一格就空着)。
  */
 export interface LiveTextInput {
 	/** `{name}`。 */
@@ -99,7 +99,7 @@ export interface LiveTextInput {
 	time: string;
 	/** `{follower}`(开播):当前粉丝数。 */
 	follower?: number | string;
-	/** `{watched}`(正在直播):本场累计观看,精确数。缺了(一帧都没收到 / 拓展没报)由 {@link renderLiveText} 在出口印「暂未获取到」。 */
+	/** `{watched}`(正在直播):本场累计观看,精确数。缺了(一帧都没收到 / 来源没报)由 {@link renderLiveText} 在出口印「暂未获取到」。 */
 	watched?: number;
 	/** `{follower_change}`(下播):本场粉丝数变化。 */
 	followerChange?: number | string;

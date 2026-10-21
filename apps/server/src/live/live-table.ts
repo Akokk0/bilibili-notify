@@ -22,14 +22,14 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
  * - `extension-stopped`:它名下的全部出表(决策 61)—— 拓展重新跑起来之后靠直播状态上报接上;
  * - `subscription-changed`:订阅删了、停用了 → 出表(决策 62:停用的不进首页在播)。
  *
- * 行里装的是 {@link LiveDetails}(中立形状,图一律是图库引用):封面与头像由来源(拓展经 `bindExtensionLive`)
- * 先存进图库再交,表里只有引用。
+ * 行里装的是 {@link LiveDetails}(中立形状,图一律是图库引用):封面与头像由来源先存进图库再交,
+ * 表里只有引用。
  *
  * 表一变就在总线上发 `extension-live-changed`,合并过(见 {@link LIVE_CHANGED_COALESCE_MS})。
  * 🔴 **不发 `live-state-changed`**:那是统计的 B 站适配按 uid 订着记场次的口;拓展订阅的场次走
  * `extension-live-session`(`live-sessions.ts`)。
  *
- * 只在内存:拓展开机第一轮查基线时也报直播状态(决策 57),BN 重启之后表自己会满回来。
+ * 只在内存:来源开机第一轮拿到直播状态时也会写表(决策 57),BN 重启之后表自己会满回来。
  */
 
 /**

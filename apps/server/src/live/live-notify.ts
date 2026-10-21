@@ -2,12 +2,10 @@
  * **直播装配**(ADR-0019 决策 65 / 67):一张直播卡从出卡到交出去的那一段 —— 出卡 → 按版式
  * 把卡片 / 文案 / 链接分组 → 交给绑到这条订阅上的发送。
  *
- * 中立:吃中立的直播卡输入({@link LiveCardInput}),不认 uid、不认 B 站的房间数据。
- * - B 站:`RoomContext.sendLiveNotifyCard` 先把接口数据翻成输入(`liveCardInputFromRoomInfo`)、把
- *   「按 uid 推」绑成发送,再调它。
- * - 拓展订阅的直播:宿主拿事件与订阅资料拼输入、把「按订阅 id 推」绑成发送,再调它。
+ * 中立:吃中立的直播卡输入({@link LiveCardInput}),不认 uid、不认来源自己的数据形状。
+ * 推送这头(`live-push.ts`)拿场次详情与订阅资料拼输入、把「按这条订阅推」绑成发送,再调它。
  *
- * **什么时候推不在这里**(计时器、断流接续、串行闸):两边各管各的,决策 67。
+ * **什么时候推不在这里**(计时器、断流接续、串行闸):归场次(`live-sessions.ts`)与推送这头(`live-push.ts`),决策 67。
  */
 
 import type { CardSkinChoice, ImageRenderer, LiveCardInput } from "@bilibili-notify/image";

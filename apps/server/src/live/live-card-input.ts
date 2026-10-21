@@ -2,7 +2,7 @@
  * **中立的直播详情 → 直播卡输入**(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c)。
  *
  * 出卡入口 `ImageRenderer.generateLiveCard` 只认中立的 {@link LiveCardInput}(图只收引用)。详情
- * ({@link LiveDetails})里的图本来就是图库引用 —— 来源(拓展经 `bindExtensionLive`)在交信号之前存好了 ——
+ * ({@link LiveDetails})里的图本来就是图库引用 —— 来源在交信号之前存好了 ——
  * 所以这里是同步的纯翻译,不碰图库:
  *
  * - 主播名由调用方取好({@link LiveCardInputFromDetailsOptions.authorName},也是模板的 `{name}`);
