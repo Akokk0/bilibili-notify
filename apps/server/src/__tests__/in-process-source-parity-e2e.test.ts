@@ -81,6 +81,11 @@ import {
 import { png } from "./support/report-images.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
+/** 总线上看到的直播事件(P36):`live-session-changed` 与 `live-viewers-changed`,按到达先后。 */
+const liveBusEvents = vi.hoisted(
+	() => [] as Array<{ event: "live-session-changed" | "live-viewers-changed"; data: unknown }>,
+);
+
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
 const renderedHtml = vi.hoisted(() => [] as string[]);
 
@@ -122,7 +127,19 @@ vi.mock("../runtime/puppeteer.js", async (importOriginal) => {
 vi.mock("../compose.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../compose.js")>();
 	const support = await import("./support/in-process-source.js");
-	return support.wrapCompose(real);
+	const wrapped = support.wrapCompose(real);
+	return {
+		...wrapped,
+		composeBuiltinIntegrations(deps: Parameters<typeof wrapped.composeBuiltinIntegrations>[0]) {
+			deps.bus.on("live-session-changed", (data) => {
+				liveBusEvents.push({ event: "live-session-changed", data });
+			});
+			deps.bus.on("live-viewers-changed", (data) => {
+				liveBusEvents.push({ event: "live-viewers-changed", data });
+			});
+			return wrapped.composeBuiltinIntegrations(deps);
+		},
+	};
 });
 
 // ---------------------------------------------------------------------------
@@ -134,8 +151,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P35)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P36)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N03、N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -218,6 +235,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P36",
+		title:
+			"live-session-changed、live-viewers-changed 按订阅 id、WS 帧与在播列表里没有 uid / roomId",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -231,14 +254,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "3b 资料刷新中立化",
 		reason: "接口上没有 fetchProfile;资料仍由粉丝轮询那条 B 站专有的路做",
-	},
-	{
-		id: "N03",
-		title: "live-session-changed、带订阅 id 的 live-viewers-changed",
-		checked: false,
-		waitsFor: "3b-23",
-		reason:
-			"场次与周期核对在 3b-22 已并进核心(P29、P30),这两个总线事件仍是 B 站形状(按 uid),等 3b-23 改成按订阅 id 的中立事件",
 	},
 	{
 		id: "N05",
@@ -270,9 +285,9 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N13",
-		title: "followers-refreshed;WS 帧快照里没有 uid",
+		title: "followers-refreshed;粉丝帧里没有 uid",
 		checked: false,
-		waitsFor: "3b",
+		waitsFor: "3b-24",
 		reason: "粉丝走 B 站轮询;事件载荷棘轮 3b 末清零",
 	},
 	{
@@ -316,7 +331,7 @@ const SOURCE_MEMBERS = {
 	stop: ["P18"],
 	auth: ["P16"],
 	searchCreators: ["P26"],
-	fetchLiveStatus: ["P30"],
+	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
@@ -333,7 +348,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	subscriptions: ["P02"],
 	onSubscriptionsChanged: ["P03"],
 	reportPost: ["P04"],
-	reportLive: ["P29"],
+	reportLive: ["P29", "P36"],
 	reportLiveInteraction: ["P31", "P32", "P33"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
@@ -1333,8 +1348,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P15");
 	});
 
-	/** 订阅 WS 的 `auth` 频道,攒下收到的帧。 */
-	async function watchAuthFrames() {
+	/** 订阅 WS 的一个频道,攒下收到的帧。 */
+	async function watchFrames(channel: string) {
 		const frames: Array<{ type?: string; event?: string; data?: unknown }> = [];
 		const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
 		ws.on("message", (raw) => {
@@ -1344,7 +1359,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			ws.once("open", () => resolve());
 			ws.once("error", reject);
 		});
-		ws.send(JSON.stringify({ type: "subscribe", channels: ["auth"] }));
+		ws.send(JSON.stringify({ type: "subscribe", channels: [channel] }));
 		await vi.waitFor(() => expect(frames.some((f) => f.type === "subscribed")).toBe(true));
 		return {
 			frames,
@@ -1355,7 +1370,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	// 验红:`engines.ts` 里不递 `onAuthChanged`,WS 上收不到帧,第三段红;路由换成只回 `state` 不回 `account`,第一段红。
 	it("P16 登录口:GET 逐格挑、POST 进 awaiting-scan 再 POST 回 conflict、DELETE 回 logged-out;状态一变 WS 的 auth 频道收到帧", async () => {
 		const probe = currentProbe();
-		const watch = await watchAuthFrames();
+		const watch = await watchFrames("auth");
 		try {
 			const authUrl = `/api/sources/${IN_PROCESS_KEY}/auth`;
 
@@ -2303,6 +2318,104 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P35");
 	}, 60_000);
 
+	// 验红:`ws/channels.ts` 转 `live-session-changed` 时给帧多带一格 `uid`,WS 那段红;`routes/live.ts` 的行漏掉 `identity`
+	// (或带回 `uid`),在播列表那段红;`live-sessions.ts` 不发 `live-viewers-changed`,人数那段红。
+	it("P36 直播事件按订阅 id:总线与 WS 的 live-session-changed / live-viewers-changed、在播列表里都没有 uid / roomId", async () => {
+		const probe = currentProbe();
+		const who = SUB.alice;
+		const ext = EXT.alice;
+		const hasKey = (value: unknown, keys: readonly string[]): boolean => {
+			if (Array.isArray(value)) return value.some((item) => hasKey(item, keys));
+			if (typeof value !== "object" || value === null) return false;
+			return Object.entries(value).some(
+				([key, inner]) => keys.includes(key) || hasKey(inner, keys),
+			);
+		};
+		const BANNED = ["uid", "roomId"] as const;
+		const isIso = (value: unknown): boolean =>
+			typeof value === "string" && new Date(value).toISOString() === value;
+		const busFrom = liveBusEvents.length;
+		const mine = () =>
+			liveBusEvents
+				.slice(busFrom)
+				.filter((item) => (item.data as { subscriptionId?: string }).subscriptionId === who);
+		const sessionKinds = () =>
+			mine()
+				.filter((item) => item.event === "live-session-changed")
+				.map((item) => (item.data as { kind: string }).kind);
+		const startedAt = new Date(Date.now() - 60_000).toISOString();
+		const endedAt = new Date().toISOString();
+		const watch = await watchFrames("push-events");
+		try {
+			probe.reportLive(ext, {
+				kind: "start",
+				startedAt,
+				details: { title: "开播标题P36", totalViewers: 11 },
+			});
+			probe.reportLive(ext, { kind: "status", isLive: true, details: { totalViewers: 33 } });
+
+			// 在播期间的列表:带 identity,深搜没有 uid / roomId。
+			const rows = await vi.waitFor(async () => {
+				const res = await okRes(await api("/api/live/listening"));
+				const body = (await res.json()) as LiveListeningEntry[];
+				expect(body.some((row) => row.subscriptionId === who)).toBe(true);
+				return body;
+			});
+			const row = rows.find((entry) => entry.subscriptionId === who);
+			expect(row).toMatchObject({
+				subscriptionId: who,
+				identity: { sourceKey: IN_PROCESS_KEY, externalId: ext },
+				isLive: true,
+			});
+			expect(hasKey(rows, BANNED)).toBe(false);
+
+			probe.reportLive(ext, { kind: "end", endedAt });
+			await vi.waitFor(() => expect(sessionKinds()).toContain("end"));
+
+			// 总线:start / status / end 都按订阅 id,时刻是 ISO。
+			const kinds = sessionKinds();
+			expect(kinds).toContain("start");
+			expect(kinds).toContain("status");
+			const sessionOf = (kind: string) =>
+				mine()
+					.filter((item) => item.event === "live-session-changed")
+					.map(
+						(item) =>
+							item.data as { kind: string; session?: { startedAt?: string }; endedAt?: string },
+					)
+					.find((change) => change.kind === kind);
+			expect(isIso(sessionOf("start")?.session?.startedAt)).toBe(true);
+			expect(sessionOf("start")?.session?.startedAt).toBe(startedAt);
+			expect(sessionOf("end")?.endedAt).toBe(endedAt);
+			expect(isIso(sessionOf("end")?.endedAt)).toBe(true);
+			expect(isIso(sessionOf("end")?.session?.startedAt)).toBe(true);
+			const viewers = mine()
+				.filter((item) => item.event === "live-viewers-changed")
+				.map((item) => item.data);
+			expect(viewers).toContainEqual({ subscriptionId: who, totalViewers: 33 });
+			expect(hasKey(mine(), BANNED)).toBe(false);
+
+			// WS push-events:同样两种帧出现,整帧深搜没有 uid / roomId。
+			await vi.waitFor(() => {
+				const events = watch.frames.map((frame) => frame.event);
+				expect(events).toContain("live-session-changed");
+				expect(events).toContain("live-viewers-changed");
+			});
+			const liveFrames = watch.frames.filter(
+				(frame) => frame.event === "live-session-changed" || frame.event === "live-viewers-changed",
+			);
+			for (const frame of liveFrames) {
+				expect(frame.type).toBe("push-events");
+				expect((frame.data as { subscriptionId?: string }).subscriptionId).toBe(who);
+				expect(hasKey(frame, ["uid"]), JSON.stringify(frame)).toBe(false);
+				expect(hasKey(frame, BANNED), JSON.stringify(frame)).toBe(false);
+			}
+		} finally {
+			watch.close();
+		}
+		drove("P36");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2658,19 +2771,19 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 35 行、不开 11 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 36 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(46);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 35 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 36 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35;
+		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => n !== 4 && n !== 7 && n !== 10 && n !== 11 && n !== 12)
+				.filter((n) => n !== 3 && n !== 4 && n !== 7 && n !== 10 && n !== 11 && n !== 12)
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {
