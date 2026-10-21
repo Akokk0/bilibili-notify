@@ -149,9 +149,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			const listening = await api("/api/live/listening");
 			expect(listening.status, await listening.clone().text()).toBe(200);
 			const rows = (await listening.json()) as LiveListeningEntry[];
-			const [on] = rows.flatMap((row) =>
-				row.kind === "extension" && row.subscriptionId === ON ? [row] : [],
-			);
+			const [on] = rows.filter((row) => row.subscriptionId === ON);
 			expect(on?.totalViewers).toBe(2000);
 		});
 

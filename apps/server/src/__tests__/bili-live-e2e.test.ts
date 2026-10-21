@@ -11,6 +11,7 @@
  * 时间:世界从 2026-03-01 12:00:00(北京时间)开始,B 站的 `live_time` 恒为北京时间。
  */
 
+import type { LiveSessionChange } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import payloads from "../bilibili/live/protocol/__tests__/fixtures/payloads.json" with {
 	type: "json",
@@ -26,6 +27,11 @@ import {
 } from "./support/bili-live-world.js";
 
 type World = Awaited<ReturnType<typeof bootBiliLiveWorld>>;
+type ViewerChange = {
+	subscriptionId: string;
+	currentViewers?: number;
+	totalViewers?: number;
+};
 
 /** B 站的开播 / 下播帧。 */
 const LIVE = { cmd: "LIVE" };
@@ -44,10 +50,18 @@ const START_TEXT = "测试主播 开播啦，当前粉丝数：1000";
 /** 开播那一条:卡与「文案 + 链接」合成一条消息。 */
 const START_MESSAGE = ["[图 直播卡#1]", linked(START_TEXT)];
 
-const LIVE_EVENT = [
-	"live-state-changed",
-	{ uid: BILI_LIVE_UID, status: "live", at: LIVE_TIME_ISO },
-] as const;
+const liveSessions = (w: World): LiveSessionChange[] =>
+	w.events.flatMap(([name, payload]) =>
+		name === "live-session-changed" ? [payload as LiveSessionChange] : [],
+	);
+const liveKinds = (w: World): LiveSessionChange["kind"][] =>
+	liveSessions(w).map((change) => change.kind);
+const liveBoundaries = (w: World): LiveSessionChange["kind"][] =>
+	liveKinds(w).filter((kind) => kind === "start" || kind === "end");
+const viewerChanges = (w: World): ViewerChange[] =>
+	w.events.flatMap(([name, payload]) =>
+		name === "live-viewers-changed" ? [payload as ViewerChange] : [],
+	);
 
 let world: World | undefined;
 
@@ -88,7 +102,15 @@ describe("开播", () => {
 		await startLive(w);
 
 		expect(w.sent).toEqual([["[@全体]"], START_MESSAGE]);
-		expect(w.events).toEqual([LIVE_EVENT]);
+		expect(liveKinds(w)).toEqual(["start"]);
+		expect(liveSessions(w)[0]).toMatchObject({
+			subscriptionId: BILI_LIVE_SUBSCRIPTION_ID,
+			trigger: "start-signal",
+			session: { startedAt: LIVE_TIME_ISO },
+		});
+		expect(viewerChanges(w)).toEqual([
+			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321 },
+		]);
 		expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 		expect(w.problems()).toEqual([]);
 	});
@@ -139,7 +161,7 @@ describe("开播", () => {
 		const w = await boot({ features: ["liveEnd"] });
 		await startLive(w);
 		expect(w.sent).toEqual([]);
-		expect(w.events).toEqual([LIVE_EVENT]);
+		expect(liveKinds(w)).toEqual(["start"]);
 		expect(w.cards).toEqual([]);
 	});
 
@@ -149,7 +171,7 @@ describe("开播", () => {
 		await w.advance(3_000);
 		await w.frame(LIVE);
 		expect(w.sent).toEqual([START_MESSAGE]);
-		expect(w.events).toEqual([LIVE_EVENT]);
+		expect(liveKinds(w)).toEqual(["start"]);
 	});
 });
 
@@ -175,13 +197,13 @@ describe("下播", () => {
 			START_MESSAGE,
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时1分30秒，粉丝变化 +25")],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T05:00:00.000Z" },
-			],
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
+		expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+			subscriptionId: BILI_LIVE_SUBSCRIPTION_ID,
+			reason: "signal",
+			endedAt: "2026-03-01T05:00:00.000Z",
+			session: { startedAt: LIVE_TIME_ISO },
+		});
 		expect(w.liveNow()).toEqual([]);
 	});
 
@@ -226,10 +248,7 @@ describe("下播", () => {
 		await w.advance(HOUR);
 		await endLive(w);
 		expect(w.sent).toEqual([START_MESSAGE]);
-		expect(w.events.map(([, payload]) => (payload as { status: string }).status)).toEqual([
-			"live",
-			"idle",
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
 		// 下播这一道引擎自己也看开关:下播卡没有出(开播那一道不看,见上面那一组)
 		expect(w.cards.map((card) => (card.input as { status: string }).status)).toEqual(["start"]);
 	});
@@ -457,7 +476,7 @@ describe("断流接续", () => {
 		await w.advance(5 * MINUTE);
 
 		expect(w.sent).toEqual([START_MESSAGE]);
-		expect(w.events).toEqual([LIVE_EVENT]);
+		expect(liveBoundaries(w)).toEqual(["start"]);
 		expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 	});
 
@@ -476,13 +495,11 @@ describe("断流接续", () => {
 			START_MESSAGE,
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 31分30秒，粉丝变化 0")],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:30:00.000Z" },
-			],
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
+		expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+			reason: "grace-expired",
+			endedAt: "2026-03-01T04:30:00.000Z",
+		});
 		expect(w.liveNow()).toEqual([]);
 	});
 
@@ -505,13 +522,11 @@ describe("断流接续", () => {
 			START_MESSAGE,
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 13分，粉丝变化 0")],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:11:30.000Z" },
-			],
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
+		expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+			reason: "grace-expired",
+			endedAt: "2026-03-01T04:11:30.000Z",
+		});
 	});
 
 	it("开着:窗口里没收到开播帧、但到期核对时 B 站说在播 = 接续,不推下播", async () => {
@@ -524,7 +539,7 @@ describe("断流接续", () => {
 		await w.advance(10 * MINUTE);
 
 		expect(w.sent).toEqual([START_MESSAGE]);
-		expect(w.events).toEqual([LIVE_EVENT]);
+		expect(liveBoundaries(w)).toEqual(["start"]);
 		expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 	});
 
@@ -541,16 +556,19 @@ describe("断流接续", () => {
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 31分30秒，粉丝变化 0")],
 			["[图 直播卡#3]", linked(START_TEXT)],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:30:00.000Z" },
-			],
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "live", at: "2026-03-01T04:30:15.000Z" },
-			],
+		expect(liveBoundaries(w)).toEqual(["start", "end", "start"]);
+		expect(
+			liveSessions(w)
+				.filter((change) => change.kind === "start" || change.kind === "end")
+				.map((change) =>
+					change.kind === "start"
+						? [change.kind, change.session.startedAt]
+						: [change.kind, change.endedAt],
+				),
+		).toEqual([
+			["start", LIVE_TIME_ISO],
+			["end", "2026-03-01T04:30:00.000Z"],
+			["start", "2026-03-01T04:30:15.000Z"],
 		]);
 	});
 });
@@ -584,13 +602,11 @@ describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 				START_MESSAGE,
 				["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
 			]);
-			expect(w.events).toEqual([
-				LIVE_EVENT,
-				[
-					"live-state-changed",
-					{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
-				],
-			]);
+			expect(liveBoundaries(w)).toEqual(["start", "end"]);
+			expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+				reason: "poll",
+				endedAt: "2026-03-01T04:58:30.000Z",
+			});
 			expect(w.liveNow()).toEqual([]);
 		},
 	);
@@ -613,13 +629,11 @@ describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 			START_MESSAGE,
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
-			],
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
+		expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+			reason: "grace-expired",
+			endedAt: "2026-03-01T04:58:30.000Z",
+		});
 	});
 
 	it("周期关着:1 小时后核到已下播 → 下播", async () => {
@@ -633,13 +647,11 @@ describe("漏收下播的兜底(核心按开播时刻周期核对)", () => {
 			START_MESSAGE,
 			["[图 直播卡#2]", linked("测试主播 下播啦，本次直播了 1小时，粉丝变化 0")],
 		]);
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			[
-				"live-state-changed",
-				{ uid: BILI_LIVE_UID, status: "idle", at: "2026-03-01T04:58:30.000Z" },
-			],
-		]);
+		expect(liveBoundaries(w)).toEqual(["start", "end"]);
+		expect(liveSessions(w).find((change) => change.kind === "end")).toMatchObject({
+			reason: "poll",
+			endedAt: "2026-03-01T04:58:30.000Z",
+		});
 		expect(w.liveNow()).toEqual([]);
 		expect(w.problems()).toEqual([]);
 	});
@@ -689,10 +701,11 @@ describe("周期「正在直播」", () => {
 			},
 			options: { cardSkin: "default", cardSkinKnobs: undefined },
 		});
-		expect(w.events).toEqual([
-			LIVE_EVENT,
-			["live-viewers-changed", { uid: BILI_LIVE_UID, viewers: 12345 }],
-			["live-viewers-changed", { uid: BILI_LIVE_UID, viewers: 12345 }],
+		expect(viewerChanges(w)).toEqual([
+			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321 },
+			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, totalViewers: 12345 },
+			// 周期核对问到的房间信息只有此刻在线;人数帧只带这一份带了的格(累计观看在在播表里、卡上照有)。
+			{ subscriptionId: BILI_LIVE_SUBSCRIPTION_ID, currentViewers: 321 },
 		]);
 
 		await w.advance(2 * HOUR);
@@ -750,7 +763,7 @@ describe("周期取不到房间信息:跳过、记问题、连接不关，接口
 			expect(w.problems()).toEqual([`${BILI_LIVE_UID}:live_status_unavailable`]);
 			expect(w.connections()).toEqual({ opened: 1, open: 1 });
 			expect(w.sent).toEqual([START_MESSAGE]);
-			expect(w.events).toEqual([LIVE_EVENT]);
+			expect(liveBoundaries(w)).toEqual(["start"]);
 			expect(w.liveNow()).toEqual([BILI_LIVE_SUBSCRIPTION_ID]);
 
 			w.bili.roomInfo = "ok";

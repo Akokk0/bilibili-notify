@@ -89,18 +89,13 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		);
 	}
 	subs.push(
-		bus.on("live-state-changed", (change) =>
-			publish(envelope("push-events", "live-state-changed", change)),
+		bus.on("live-session-changed", (change) =>
+			publish(envelope("push-events", "live-session-changed", change)),
 		),
 		bus.on("live-viewers-changed", (change) =>
 			publish(envelope("push-events", "live-viewers-changed", change)),
 		),
 		bus.on("fans-refreshed", (fans) => publish(envelope("push-events", "fans-refreshed", fans))),
-		// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):不带载荷,面板让「正在直播」重取。在播表那头
-		// 已经按窗口合并过,这里一发一帧。
-		bus.on("extension-live-changed", () =>
-			publish(envelope("push-events", "extension-live-changed", null)),
-		),
 	);
 
 	// log channel -----------------------------------------------------------

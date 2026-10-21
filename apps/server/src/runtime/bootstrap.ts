@@ -188,8 +188,8 @@ export interface AppRuntime {
 	 */
 	logStore: LogStore;
 	/**
-	 * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里拓展那几行。只听总线(上报、
-	 * 订阅增删改、拓展停了),所以与 StatsRecorder 一样在这里就起;`/api/live/listening` 读它。
+	 * 在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里的那些订阅。只听总线(订阅增删改、
+	 * 拓展停了),所以与 StatsRecorder 一样在这里就起;`/api/live/listening` 读它。
 	 */
 	liveTable: LiveTable;
 	/**
@@ -526,8 +526,8 @@ export function createAppRuntime(
 		logger: serviceCtx.logger,
 	});
 	// 在播表:早起造好,不漏来源开机第一轮报上来的直播状态(拓展在 index.ts 里装载,晚于这里)。写表的是场次引擎
-	// (`engines.ts`),表自己只听作废的两处。合并那一发走 serviceCtx 的定时器,关机时一起清。
-	const liveTable = createLiveTable({ bus, timers: serviceCtx });
+	// (`engines.ts`),表自己只听作废的两处。
+	const liveTable = createLiveTable({ bus });
 	serviceCtx.onDispose(() => liveTable.dispose(), "stop");
 	// 直播是图库的一家引用方:在播表各行 `LiveDetails` 里的封面与主播头像(都是图库引用)。在播表只在内存,所以
 	// 名单是「此刻在播的那些行」;一场播过 24 小时,周期卡几小时后还要用它们,这份名单让清扫不把它们当垃圾。

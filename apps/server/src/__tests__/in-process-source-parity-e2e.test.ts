@@ -1672,7 +1672,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P28");
 	});
 
-	// 验红:`routes/live.ts` 里去掉「在册来源的行不列拓展那一半」的过滤,「恰好一行」那段红(同一场列了两行);
+	// 验红:`routes/live.ts` 不按订阅仓补身份,或在播表里把同一订阅列两次,「恰好一行」那段红;
 	// `source-context.ts` 里 `reportLive` 的展开只取第一条订阅、或 `engines.ts` 不递 `liveSignals`,开播卡那段红。
 	it("P29 reportLive:开播、状态、下播进场次,推开播与下播卡,断流接续同一场,在播列表里恰好一行(按订阅 id 认)", async () => {
 		const probe = currentProbe();
@@ -1702,18 +1702,19 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(await aliceRows()).toEqual([
 			expect.objectContaining({
 				subscriptionId: SUB.alice,
-				uid: EXT.alice,
-				roomId: "",
+				identity: { sourceKey: IN_PROCESS_KEY, externalId: EXT.alice },
 				isLive: true,
 				title: TITLE,
-				areaName: "聊天",
-				viewers: 7,
+				category: "聊天",
+				totalViewers: 7,
 			}),
 		]);
 
 		// 状态:人数换新,仍是这一行;下播:推下播卡(标题从在播表里补),列表里没有了。
 		probe.reportLive(EXT.alice, { kind: "status", isLive: true, details: { totalViewers: 20 } });
-		expect(await aliceRows()).toEqual([expect.objectContaining({ viewers: 20, title: TITLE })]);
+		expect(await aliceRows()).toEqual([
+			expect.objectContaining({ totalViewers: 20, title: TITLE }),
+		]);
 		probe.reportLive(EXT.alice, { kind: "end", endedAt: "2026-10-20T09:00:00.000Z" });
 		await waitPushes("liveEnd", 1);
 		expect(await aliceRows()).toEqual([]);

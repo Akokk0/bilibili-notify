@@ -151,14 +151,9 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 以下是**内存快照**,不经 jsonl —— 也就是说它们跟 TTL 没有半点关系,
 		// 必须自己进 key(见下方 key 的说明)。放在缓存查询之前取。
 		//
-		// 在播:B 站认引擎(唯一权威);拓展认场次模块手里有没有这一场(盘上那一场的帧就是它发的)。
-		const liveUids = new Set(
-			(deps.runtime.engines?.listLiveRooms() ?? []).filter((r) => r.isLive).map((r) => r.uid),
-		);
+		// 在播只看场次引擎手里有没有这一场:两种来源都从同一个中立口认。
 		const isLive = (sub: Subscription): boolean =>
-			fromBilibili(sub)
-				? liveUids.has(subscriptionIdentityOf(sub).externalId)
-				: deps.runtime.engines?.liveSession(sub.id) !== undefined;
+			deps.runtime.engines?.liveSession(sub.id) !== undefined;
 		// 此刻的粉丝数:B 站取粉丝轮询的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
 		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
 		// 右端点不该再往前走。两边没有就回退到样本末值(见成行那里)。

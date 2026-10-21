@@ -97,7 +97,7 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 						return real.closeLiveSession(...args);
 					},
 				};
-	const table = createLiveTable({ bus, timers, now: () => clock });
+	const table = createLiveTable({ bus, now: () => clock });
 	const sessions = createLiveSessionEngine({
 		bus,
 		logger,

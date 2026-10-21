@@ -12,7 +12,6 @@ import type { FeatureKey } from "../types/domain";
 
 export type {
 	DailyHistoryCount as DailyHistoryCountView,
-	ExtensionLiveSnapshot,
 	FansRefreshEntry as FansEntry,
 	FansResponse,
 	HistoryDailyResponse,
@@ -21,8 +20,7 @@ export type {
 	HistoryRepushInfo,
 	HistoryRepushResponse,
 	HistoryResponse,
-	LiveListenerSnapshot,
-	// `/api/live/listening` 的一行:B 站房间或拓展订阅的在播,按 `kind` 分。
+	// `/api/live/listening` 的一行:一条此刻在播的订阅,来源看 `identity`。
 	LiveListeningEntry,
 	// `/api/system/logs` 归档行与 WS `log` 帧共用的行视图。
 	LogArchiveEntry as LogLineView,

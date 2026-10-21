@@ -75,10 +75,9 @@ export interface WsEvents {
 		/** 历史那一行的 wire 视图(与 `GET /api/history` 同一投影),图片留文件名。 */
 		"history-recorded": HistoryEntryView;
 		"history-updated": HistoryEntryView;
-		"live-state-changed": BusEvents["live-state-changed"];
+		"live-session-changed": BusEvents["live-session-changed"];
 		"live-viewers-changed": BusEvents["live-viewers-changed"];
 		"fans-refreshed": BusEvents["fans-refreshed"];
-		"extension-live-changed": null;
 	};
 	/** 日志行按级别当事件名发,字段是冻结格式。 */
 	log: { "engine-error": BusEvents["engine-error"] } & Record<

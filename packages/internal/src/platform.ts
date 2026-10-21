@@ -235,28 +235,14 @@ export interface BusEvents {
 	 */
 	"history-updated": HistoryEntry;
 	/**
-	 * 直播状态翻转。
-	 *
-	 * `at` 是**这次状态翻转的真实发生时刻**(ISO),两个方向语义不同,都可能缺失:
-	 *
-	 *   · `status === "live"` → B 站给出的真实开播时刻。消费方务必区分它与「我们
-	 *     发现开播的时刻」—— 服务器在 UP 已开播时启动,两者能差出好几个小时,拿
-	 *     后者当开播时间会把这段直播时长整段吞掉。
-	 *   · `status === "idle"` → 真实下播时刻。走断流接续(grace)时,真实下播在进入
-	 *     挂起那刻就定格了,而事件要等 N 分钟窗口到期才发得出来;不带它的话消费方
-	 *     只能用「收到事件的此刻」,每场直播平白多算一整个 grace 窗口。
-	 *
-	 * 缺失时(接口没返回 / 解析失败 / 非 grace 路径)消费方回退到「收到事件的此刻」。
-	 * 统计不再听这一条;它留到 23-5,给面板与 WS 的过渡读者。
+	 * 一条订阅的直播人数变了。开播、在播状态、断流接续、周期核对带的格经场次引擎原样发出来;
+	 * 每个信号最多一帧,只带这份信号报了的格。此刻在线与累计观看是两个不同的数。
 	 */
-	"live-state-changed": { uid: string; status: "live" | "idle"; at?: string };
-	/**
-	 * 直播间累计观看人数变化(B 站 WS `WATCHED_CHANGE` 帧 → live engine 节流后转发)。
-	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是帧里的精确数 `num`;
-	 * 排成「1.2万」是消费方的事(面板与文字渲染器各走 `formatCount`)。统计不再听它,
-	 * 本场峰值从中立场次变化的 `session.peakTotalViewers` 取;这一条留到 23-5。
-	 */
-	"live-viewers-changed": { uid: string; viewers: number };
+	"live-viewers-changed": {
+		subscriptionId: string;
+		currentViewers?: number;
+		totalViewers?: number;
+	};
 	/**
 	 * 核心场次引擎的每一次变化:开始、核对、接续、状态、断流等待、结束,以及手里没有这一场的下播。
 	 * 载荷就是引擎交给进程内监听者的同一份中立纯数据投影;统计是它的消费者。
@@ -270,13 +256,6 @@ export interface BusEvents {
 	 * 之后靠直播状态上报接上。
 	 */
 	"extension-stopped": { extensionId: string };
-	/**
-	 * 拓展订阅的在播表变了(进表 / 出表 / 面板看得见的那几格变了,ADR-0019 决策 12 / 57)。
-	 *
-	 * 载荷为空,面板让 `/api/live/listening` 失效、自己重取。按窗口合并过:直播状态可能每轮都报,一阵
-	 * 连着的变化只发一次(`LIVE_CHANGED_COALESCE_MS`)。
-	 */
-	"extension-live-changed": undefined;
 	/**
 	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
 	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020

@@ -84,7 +84,7 @@ const liveResult = (title = "轮询到的标题", startedAt?: number): LiveStatu
 });
 
 function build(): void {
-	table = createLiveTable({ bus, timers });
+	table = createLiveTable({ bus });
 	sessions = createLiveSessionEngine({
 		bus,
 		logger,

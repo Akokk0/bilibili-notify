@@ -342,10 +342,18 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	const listeners = new Set<(change: LiveSessionChange) => void>();
 	let disposed = false;
 
-	function announce(change: SessionChange): void {
+	function announce(change: SessionChange, viewersDetails?: LiveDetails): void {
 		const projected = projectChange(change);
 		for (const listener of [...listeners]) listener(projected);
 		opts.bus.emit("live-session-changed", projected);
+		if (viewersDetails === undefined) return;
+		const { currentViewers, totalViewers } = viewersDetails;
+		if (currentViewers === undefined && totalViewers === undefined) return;
+		opts.bus.emit("live-viewers-changed", {
+			subscriptionId: change.subscriptionId,
+			...(currentViewers === undefined ? {} : { currentViewers }),
+			...(totalViewers === undefined ? {} : { totalViewers }),
+		});
 	}
 
 	/** 这条订阅现在记不记:还在、启用着、来源在跑。关机之后一律不记。 */
@@ -418,13 +426,16 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		end(id, "superseded");
 		opts.table.replace(id, sourceKey, startedAt, details);
 		const session = begin(id, details, sourceKey, startedAt);
-		announce({
-			kind: "start",
-			subscriptionId: id,
-			session,
-			trigger,
+		announce(
+			{
+				kind: "start",
+				subscriptionId: id,
+				session,
+				trigger,
+				details,
+			},
 			details,
-		});
+		);
 	}
 
 	// ---- 拉取式:按每一场自己的时钟问来源(`fetchLiveStatus`) ----
@@ -531,7 +542,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 			session.startedAt ??= startedAt;
 			notePeakTotalViewers(session, result.details);
-			announce({ kind: "tick", subscriptionId: id, session });
+			announce({ kind: "tick", subscriptionId: id, session }, result.details);
 		} else {
 			log.info(`[live-sessions] 订阅 ${id} 核对发现已经下播,当漏收的下播处理`);
 			closeSession(id, current, now(), undefined, undefined, "poll");
@@ -615,7 +626,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
 			notePeakTotalViewers(current, signal.details);
 			log.debug(`[live-sessions] 订阅 ${id} 断流后重新开播,接续为同一场`);
-			announce({ kind: "resume", subscriptionId: id, session: current, details: signal.details });
+			announce(
+				{ kind: "resume", subscriptionId: id, session: current, details: signal.details },
+				signal.details,
+			);
 			armPoll(current);
 			return;
 		}
@@ -652,7 +666,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			// 之前没有开播时刻、这一份带了:计时从真开播时刻重新起算。
 			const learnedStartedAt = current.startedAt === undefined && startedAt !== undefined;
 			current.startedAt ??= startedAt;
-			announce({ kind: "status", subscriptionId: id, isLive: true, session: current });
+			announce(
+				{ kind: "status", subscriptionId: id, isLive: true, session: current },
+				signal.details,
+			);
 			if (learnedStartedAt) armPoll(current);
 			return;
 		}
@@ -769,7 +786,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 				notePeakTotalViewers(session, result.details);
 				log.info(`[live-sessions] 订阅 ${id} 断流等待到期,核对发现还在播,接续为同一场`);
-				announce({ kind: "resume", subscriptionId: id, session, details: result.details });
+				announce(
+					{ kind: "resume", subscriptionId: id, session, details: result.details },
+					result.details,
+				);
 				return;
 			}
 		}

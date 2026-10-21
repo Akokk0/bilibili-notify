@@ -113,7 +113,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				return { dispose: () => clearInterval(h) };
 			},
 		};
-		const table = createLiveTable({ bus, timers });
+		const table = createLiveTable({ bus });
 		disposers.push(table);
 		const sessions = createLiveSessionEngine({
 			bus,

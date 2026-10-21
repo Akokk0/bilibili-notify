@@ -46,11 +46,41 @@ export interface PushToastSink {
 }
 
 /**
+ * 把一份直播详情里面板画的几格就地补到在播快照里 `subscriptionId` 对得上的那一行:只补有的格,
+ * `totalViewers` 只收有限数。快照还没拉、或没有这一行就原样不动(下一次失效重取会带上)。
+ */
+function patchLiveRow(
+	qc: QueryClient,
+	subscriptionId: string,
+	details: { title?: string; category?: string; totalViewers?: number } | undefined,
+): void {
+	if (!details) return;
+	const patch: Partial<LiveListeningEntry> = {};
+	if (typeof details.title === "string") patch.title = details.title;
+	if (typeof details.category === "string") patch.category = details.category;
+	if (typeof details.totalViewers === "number" && Number.isFinite(details.totalViewers)) {
+		patch.totalViewers = details.totalViewers;
+	}
+	if (Object.keys(patch).length === 0) return;
+	qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
+		if (!old) return old;
+		let touched = false;
+		const next = old.map((r) => {
+			if (r.subscriptionId !== subscriptionId) return r;
+			touched = true;
+			return { ...r, ...patch };
+		});
+		return touched ? next : old;
+	});
+}
+
+/**
  * 处理 `push-events` 频道的单条 envelope。逻辑大表盘:
- *   - `live-state-changed`        → invalidate ["live","listening"]
- *   - `extension-live-changed`    → invalidate ["live","listening"](拓展订阅的在播表变了)
- *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent);
- *                                    data 是 `{ uid, viewers }`
+ *   - `live-session-changed`      → start / resume / end / unmatched-end / status(下播) → invalidate
+ *                                    ["live","listening"];status(在播) 与 tick → 就地补那一行
+ *                                    (title / category / totalViewers);ending 不动
+ *   - `live-viewers-changed`      → setQueryData 按订阅 id 补那一行的 totalViewers(不存在则 silent);
+ *                                    data 是 `{ subscriptionId, currentViewers?, totalViewers? }`
  *   - `fans-refreshed`            → setQueryData 整体覆盖 ["stats", "followers"];data 是 `{ entries }`
  *   - `history-recorded`          → push 进 toast + prepend 到 ["history"] 并 dedup 截尾
  *                                    + ["history-daily"] 今日桶就地 +1(跨零点则 invalidate;
@@ -61,40 +91,47 @@ export interface PushToastSink {
  * 提取成 export 纯函数,测试注入 `qc = new QueryClient()` + spy toast 即可覆盖。
  */
 export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: PushToastSink): void {
-	// 直播状态翻转 → 让 ["live","listening"] 失效,Dashboard 立即重 fetch。
-	// 后端只在真实 transition 时 emit("live-state-changed"),所以这里不会刷屏。
-	if (isWsEvent(env, "push-events", "live-state-changed")) {
-		qc.invalidateQueries({ queryKey: ["live", "listening"] });
-		return;
+	// 场次的每一次变化(ADR-0019 决策 50:帧按订阅 id 认)。进表 / 出表的那几种让在播快照失效重取;
+	// 在播状态与周期核对(tick)只是把这一场最新的几格带来,就地补那一行 —— 不整份重取。
+	// 断流等待(`ending`)期间那一行还在表里,不动。
+	if (isWsEvent(env, "push-events", "live-session-changed")) {
+		const change = env.data;
+		switch (change?.kind) {
+			case "start":
+			case "resume":
+			case "end":
+			case "unmatched-end":
+				qc.invalidateQueries({ queryKey: ["live", "listening"] });
+				return;
+			case "status":
+				if (!change.isLive) {
+					qc.invalidateQueries({ queryKey: ["live", "listening"] });
+					return;
+				}
+				patchLiveRow(qc, change.subscriptionId, change.session?.lastDetails);
+				return;
+			case "tick":
+				patchLiveRow(qc, change.subscriptionId, change.session?.lastDetails);
+				return;
+			default:
+				return;
+		}
 	}
 
-	// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):进表 / 出表 / 人数变了都是这一帧,不带载荷,
-	// 服务端已经按窗口合并过 —— 整份重取。
-	if (isWsEvent(env, "push-events", "extension-live-changed")) {
-		qc.invalidateQueries({ queryKey: ["live", "listening"] });
-		return;
-	}
-
-	// 累计观看人数变化 —— 后端 per-UID 2s 节流过的稀疏事件,直接 setQueryData
-	// 局部 patch 该房间的 viewers 字段。0 额外 HTTP,Dashboard 数字即时跳。
-	// 房间不在快照里(可能刚下播 / 列表还没拉)就静默跳过,下一次 invalidate
-	// 会顺带刷上。
+	// 一条订阅的累计观看变了 —— 就地补那一行的 `totalViewers`。此刻在线(`currentViewers`)面板不画,
+	// 不补、也不让面板重取(ADR-0019 决策 75)。订阅不在快照里(刚下播 / 列表还没拉)就静默跳过,
+	// 下一次 invalidate 会顺带刷上。
 	if (isWsEvent(env, "push-events", "live-viewers-changed")) {
-		const uid = env.data?.uid;
-		const viewers = env.data?.viewers;
+		const subscriptionId = env.data?.subscriptionId;
+		const totalViewers = env.data?.totalViewers;
 		// 精确数(㉒d);不是有限的数(帧坏了)当没收到 —— 别把面板那一列写成「NaN」。
-		if (typeof uid !== "string" || typeof viewers !== "number" || !Number.isFinite(viewers)) return;
-		qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
-			if (!old) return old;
-			let touched = false;
-			const next = old.map((r) => {
-				// 拓展订阅的在播没有 uid,人数随 `extension-live-changed` 整份重取 —— 这一帧只管 B 站房间。
-				if (r.kind === "extension" || r.uid !== uid) return r;
-				touched = true;
-				return { ...r, viewers };
-			});
-			return touched ? next : old;
-		});
+		if (
+			typeof subscriptionId !== "string" ||
+			typeof totalViewers !== "number" ||
+			!Number.isFinite(totalViewers)
+		)
+			return;
+		patchLiveRow(qc, subscriptionId, { totalViewers });
 		return;
 	}
 

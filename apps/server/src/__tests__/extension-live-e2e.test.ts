@@ -139,12 +139,11 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		expect(res.status, await res.clone().text()).toBe(200);
 	}
 
-	/** 首页「正在直播」读的那一口里,拓展那几行。 */
-	async function extensionRows(): Promise<LiveListeningEntry[]> {
+	/** 首页「正在直播」读的那一口。 */
+	async function listening(): Promise<LiveListeningEntry[]> {
 		const res = await fetch(`${base()}/api/live/listening`);
 		expect(res.status).toBe(200);
-		const rows = (await res.json()) as LiveListeningEntry[];
-		return rows.filter((row) => row.kind === "extension");
+		return (await res.json()) as LiveListeningEntry[];
 	}
 
 	/** 拓展现在什么状态 —— 这一口会先把还没落地的开关 settle 掉,是「等它收完摊」的正路。 */
@@ -157,14 +156,13 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 	it("报开播 → 首页有它:按订阅 id 认,带着标题、分区、累计观看与开播时刻", async () => {
 		expect(await probeState()).toBe("running");
 		await press("report.liveStart");
-		expect(await extensionRows()).toEqual([
+		expect(await listening()).toEqual([
 			{
-				kind: "extension",
 				subscriptionId: SUB.id,
-				extensionId: FIXTURE_ID,
+				identity: { sourceKey: FIXTURE_ID, externalId: EXTERNAL },
 				isLive: true,
 				title: "开播了",
-				areaName: "聊天",
+				category: "聊天",
 				startedAt: new Date(T).toISOString(),
 				totalViewers: 70,
 			},
@@ -173,12 +171,12 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 
 	it("报下播 → 没了", async () => {
 		await press("report.liveEnd");
-		expect(await extensionRows()).toEqual([]);
+		expect(await listening()).toEqual([]);
 	});
 
 	it("只报过直播状态(BN 重启过、开播没见着)也进得来;拓展停掉 → 没了", async () => {
 		await press("report.liveStatus");
-		expect((await extensionRows()).map((row) => row.subscriptionId)).toEqual([SUB.id]);
+		expect((await listening()).map((row) => row.subscriptionId)).toEqual([SUB.id]);
 
 		const res = await fetch(`${base()}/api/settings`, {
 			method: "PATCH",
@@ -187,6 +185,6 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		});
 		expect(res.status).toBe(200);
 		expect(await probeState()).toBe("disabled");
-		expect(await extensionRows()).toEqual([]);
+		expect(await listening()).toEqual([]);
 	});
 });

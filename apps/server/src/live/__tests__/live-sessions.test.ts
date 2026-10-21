@@ -63,6 +63,8 @@ let sessions: LiveSessionEngine;
 let changes: LiveSessionChange[];
 /** 总线上听到的每一发 `live-session-changed`。 */
 let frames: LiveSessionChange[];
+/** 总线上听到的每一发 `live-viewers-changed`。 */
+let viewerFrames: Record<string, unknown>[];
 let settings: GraceSettings;
 let subs: Map<string, Subscription>;
 let running: Set<string>;
@@ -76,7 +78,7 @@ const timers = {
 };
 
 function start(liveStatus?: LiveStatusReader): void {
-	table = createLiveTable({ bus, timers });
+	table = createLiveTable({ bus });
 	sessions = createLiveSessionEngine({
 		bus,
 		logger,
@@ -192,8 +194,10 @@ beforeEach(() => {
 	vi.setSystemTime(T0);
 	bus = createNodeMessageBus();
 	bus.on("live-session-changed", (event) => frames.push(event));
+	bus.on("live-viewers-changed", (event) => viewerFrames.push(event));
 	changes = [];
 	frames = [];
+	viewerFrames = [];
 	settings = {
 		liveStart: true,
 		liveEnd: true,
@@ -875,6 +879,57 @@ describe("总线上的场次事件(给统计)", () => {
 				session: expect.objectContaining({ subscriptionId: SUB.id }),
 			}),
 		);
+	});
+});
+
+describe("总线上的人数事件", () => {
+	it("开播、在播状态、周期核对带了人数:都在场次事件之后发一帧,只带这一份报了的格", async () => {
+		const order: string[] = [];
+		bus.on("live-session-changed", () => order.push("session"));
+		bus.on("live-viewers-changed", () => order.push("viewers"));
+		start({
+			has: () => true,
+			fetch: async () => ({
+				ok: true,
+				kind: "live",
+				details: { currentViewers: 20, totalViewers: 100 },
+			}),
+		});
+
+		liveStart({ viewers: 12 });
+		liveStatus({ totalViewers: 80 });
+		await sessions.tickNow(SUB.id);
+
+		expect(viewerFrames).toEqual([
+			{ subscriptionId: SUB.id, currentViewers: 12 },
+			{ subscriptionId: SUB.id, totalViewers: 80 },
+			{ subscriptionId: SUB.id, currentViewers: 20, totalViewers: 100 },
+		]);
+		expect(order).toEqual(["session", "viewers", "session", "viewers", "session", "viewers"]);
+	});
+
+	it("断流接续带了人数:也发一帧,接续帧在前", async () => {
+		settings = { ...settings, liveEndGrace: true };
+		start();
+		liveStart({ viewers: 12 });
+		liveEnd();
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		liveStart({ startedAt: Date.now(), viewers: 15, totalViewers: 30 });
+
+		expect(frames.map((change) => change.kind)).toEqual(["start", "ending", "resume"]);
+		expect(viewerFrames).toEqual([
+			{ subscriptionId: SUB.id, currentViewers: 12 },
+			{ subscriptionId: SUB.id, currentViewers: 15, totalViewers: 30 },
+		]);
+	});
+
+	it("没带此刻在线或累计观看:不发", () => {
+		start();
+		liveStart({ title: "只有标题" });
+		liveStatus({ title: "状态也没带人数" });
+		liveEnd();
+
+		expect(viewerFrames).toEqual([]);
 	});
 });
 

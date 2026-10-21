@@ -9,16 +9,11 @@
  * 「图一律图库引用」。
  */
 
-import type { Disposable, LiveDetails } from "@bilibili-notify/internal";
+import type { LiveDetails } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import {
-	createLiveTable,
-	extensionLiveSnapshot,
-	LIVE_CHANGED_COALESCE_MS,
-	type LiveTable,
-} from "../live-table.js";
+import { createLiveTable, type LiveTable, liveListeningEntryOf } from "../live-table.js";
 
 const EXT = "douyin";
 const SUB_A = "c0000000-0000-4000-8000-000000000001";
@@ -27,43 +22,14 @@ const T0 = Date.UTC(2026, 8, 23, 12);
 const COVER_REF = `${"c".repeat(64)}.png`;
 const AVATAR_REF = `${"a".repeat(64)}.png`;
 
-/** 手摇的定时器:合并窗口什么时候到,由测试说了算。 */
-function manualTimers() {
-	const pending: Array<{ fn: () => void; ms: number; live: boolean }> = [];
-	return {
-		pending,
-		setTimeout(fn: () => void, ms: number): Disposable {
-			const job = { fn, ms, live: true };
-			pending.push(job);
-			return {
-				dispose() {
-					job.live = false;
-				},
-			};
-		},
-		/** 到点的那些跑一遍。 */
-		flush() {
-			for (const job of pending.splice(0)) if (job.live) job.fn();
-		},
-	};
-}
-
 let bus: ReturnType<typeof createNodeMessageBus>;
-let timers: ReturnType<typeof manualTimers>;
 let clock: number;
 let table: LiveTable;
-/** 总线上听到的每一发「在播表变了」。 */
-let changed: number;
 
 beforeEach(() => {
 	bus = createNodeMessageBus();
-	timers = manualTimers();
 	clock = T0;
-	changed = 0;
-	bus.on("extension-live-changed", () => {
-		changed += 1;
-	});
-	table = createLiveTable({ bus, timers, now: () => clock });
+	table = createLiveTable({ bus, now: () => clock });
 });
 
 const LIVE_URL = "https://live.douyin.com/1";
@@ -207,11 +173,20 @@ describe("直播状态", () => {
 			report: { kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } },
 		});
 		expect(table.list()).toEqual([]);
-		expect(timers.pending).toEqual([]);
 	});
 });
 
 describe("作废", () => {
+	it("收摊之后不再听总线、不再收写", () => {
+		start();
+		table.dispose();
+
+		bus.emit("extension-stopped", { extensionId: EXT });
+		start({}, { ids: [SUB_B] });
+
+		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_A]);
+	});
+
 	it("来源停了 → 它名下的全部出表,别的来源的留着", () => {
 		start({}, { ids: [SUB_A] });
 		start({}, { ids: [SUB_B], sourceKey: "kuaishou" });
@@ -235,67 +210,8 @@ describe("作废", () => {
 	});
 });
 
-describe("「在播表变了」", () => {
-	it("进表、改人数、又进一条挨着来 → 窗口尾沿只发一次", () => {
-		start();
-		status({ totalViewers: 3 });
-		start({}, { ids: [SUB_B] });
-		expect(changed).toBe(0);
-		expect(timers.pending.map((job) => job.ms)).toEqual([LIVE_CHANGED_COALESCE_MS]);
-		timers.flush();
-		expect(changed).toBe(1);
-
-		// 窗口过了,下一处变化另起一个窗口。
-		bus.emit("extension-stopped", { extensionId: EXT });
-		timers.flush();
-		expect(changed).toBe(2);
-	});
-
-	it("每轮都报、面板上看得见的一格没变 → 不发", () => {
-		status({ title: "同一场", currentViewers: 3, totalViewers: 40 });
-		timers.flush();
-		changed = 0;
-		clock = T0 + 60_000;
-		// 此刻在线、点赞、封面、链接首页不画(那一列是累计观看,决策 75),变了也不惊动面板;最后更新
-		// 时刻照样跟着走。
-		status({
-			title: "同一场",
-			currentViewers: 25,
-			totalViewers: 40,
-			likes: 10,
-			cover: { ref: COVER_REF },
-			url: LIVE_URL,
-		});
-		expect(timers.pending).toEqual([]);
-		expect(table.get(SUB_A)?.updatedAt).toBe(T0 + 60_000);
-		// 不在表里的下播、停了一个名下什么都没有的来源:什么都没变。
-		table.remove(SUB_B);
-		bus.emit("extension-stopped", { extensionId: "kuaishou" });
-		expect(timers.pending).toEqual([]);
-		expect(changed).toBe(0);
-	});
-
-	it("累计观看变了 → 发(面板上那一列就是它)", () => {
-		status({ totalViewers: 40 });
-		timers.flush();
-		changed = 0;
-		status({ totalViewers: 41 });
-		timers.flush();
-		expect(changed).toBe(1);
-	});
-
-	it("收摊之后不再听总线、不再收写,挂着的那一发也不发了", () => {
-		start();
-		table.dispose();
-		timers.flush();
-		expect(changed).toBe(0);
-		start({}, { ids: [SUB_B] });
-		expect(table.get(SUB_B)).toBeUndefined();
-	});
-});
-
-describe("面板上的那一行", () => {
-	it("时刻换成 ISO、分区叫 areaName、累计观看原样是数字;此刻在线、封面与点赞不上面板", () => {
+describe("在播行的对外投影", () => {
+	it("时刻换成 ISO、分区叫 category、累计观看原样是数字;带 identity,此刻在线与封面不上面板", () => {
 		start({
 			title: "晚上好",
 			cover: { ref: COVER_REF },
@@ -305,13 +221,13 @@ describe("面板上的那一行", () => {
 			likes: 3,
 		});
 		const row = table.get(SUB_A);
-		expect(row && JSON.parse(JSON.stringify(extensionLiveSnapshot(row)))).toEqual({
-			kind: "extension",
+		const identity = { sourceKey: EXT, externalId: "sec-1" };
+		expect(row && JSON.parse(JSON.stringify(liveListeningEntryOf(row, identity)))).toEqual({
 			subscriptionId: SUB_A,
-			extensionId: EXT,
+			identity,
 			isLive: true,
 			title: "晚上好",
-			areaName: "聊天",
+			category: "聊天",
 			startedAt: new Date(T0).toISOString(),
 			totalViewers: 3_456,
 		});

@@ -453,7 +453,7 @@ function setup(opts?: {
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
 	readImage?: Parameters<typeof createEngines>[0]["readImage"];
-	/** 拓展订阅的在播表与上报出入框(接线层给的);不给 = 不接拓展订阅的直播。 */
+	/** 拓展直播接线用的在播表与上报出入框;不给 = 不接拓展订阅的直播。 */
 	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
 	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
@@ -1517,49 +1517,8 @@ describe("createEngines — 拓展直播的图走图库", () => {
 	});
 });
 
-/**
- * R1 过渡输出(3b-22,3b-23 整段删):在册来源经 `ctx.reportLive` 报的场次,对外还是今天 B 站直播的形状 ——
- * `live-state-changed` / `live-viewers-changed` 与「正在直播」的快照。统计改吃中立的
- * `live-session-changed`,这里只守留给面板与 WS 的 R1 过渡输出。
- */
-describe("createEngines — 在册来源的直播信号(R1 过渡输出)", () => {
-	const sources = { running: () => false, postNoun: () => undefined, events: () => [] as const };
+describe("createEngines — 来源周期核对", () => {
 	const START = "2026-10-20T08:00:00.000Z";
-	const END = "2026-10-20T09:00:00.000Z";
-
-	it("开播、状态、下播:发 live-state-changed 与 live-viewers-changed", async () => {
-		const sub = biliSubOf("42", "sub-42");
-		const c = setup({ subs: [sub], extensionSources: sources, liveTable: memoryLiveTable() });
-		active = c;
-		await c.sourceReady;
-		const state: unknown[][] = [];
-		const viewers: unknown[][] = [];
-		c.bus.on("live-state-changed", ({ uid, status, at }) => state.push([uid, status, at]));
-		c.bus.on("live-viewers-changed", ({ uid, viewers: n }) => viewers.push([uid, n]));
-
-		const ctx = c.source.ctx;
-		if (!ctx) throw new Error("假来源还没 start");
-		ctx.reportLive("42", {
-			kind: "start",
-			startedAt: START,
-			details: { title: "开播啦", totalViewers: 5 },
-		});
-		ctx.reportLive("42", {
-			kind: "status",
-			isLive: true,
-			details: { totalViewers: 9 },
-		});
-		ctx.reportLive("42", { kind: "end", endedAt: END });
-
-		expect(state).toEqual([
-			["42", "live", START],
-			["42", "idle", END],
-		]);
-		expect(viewers).toEqual([
-			["42", 5],
-			["42", 9],
-		]);
-	});
 
 	// 验红:去掉 engines.ts 里 `hasLiveTick` 的 `!hasLiveStatus(sourceKey) &&`,这条红(推送这头又挂了一个小时的周期计时器)。
 	it("来源实现了 fetchLiveStatus:推送这头不挂自己的周期计时器(周期归场次的计时);没实现的照旧挂", async () => {

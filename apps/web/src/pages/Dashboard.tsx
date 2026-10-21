@@ -62,6 +62,7 @@ import {
 import {
 	BILIBILI_SOURCE_KEY,
 	type FeatureFlagValues,
+	identityColor,
 	type PushTarget,
 	type Subscription,
 	subscriptionIdentityOf,
@@ -75,13 +76,7 @@ import {
 	isExtensionIdentity,
 } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import {
-	colorFromSeed,
-	displayName,
-	profileAvatarUrl,
-	subscribedFeatures,
-	subscriptionColor,
-} from "./up/helpers";
+import { displayName, profileAvatarUrl, subscribedFeatures } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
@@ -91,12 +86,12 @@ function formatViewers(n: number | undefined): string {
 }
 
 /**
- * 在播那一行画成什么样。B 站房间照旧(名字对不上订阅时写 UID、按 uid 取色);拓展订阅的在播没有
- * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色照 `subscriptionColor` 跟着人走(决策 73),
- * 另带一枚平台徽章。在播快照里没有外部 id,订阅列表还没回来时颜色只能先按订阅 id 取。
+ * 在播那一行画成什么样。名字对不上订阅时照 `historyRowIdentity`(B 站写「UID x」、拓展写平台名加外部 id),
+ * 颜色照 `identityColor` 跟着人走(ADR-0019 决策 73),拓展订阅的在播另带一枚平台徽章。在播快照带着订阅的
+ * 身份,订阅列表还没回来时这些也都能画。
  *
- * 人数那一列两边都是**本场累计观看**(决策 75),都是精确数、同走 `formatViewers`:B 站行是 WATCHED_CHANGE 帧的
- * 数(`viewers`),拓展行是拓展报的 `totalViewers`。拓展只报了此刻在线的话这一列是「—」,不拿在线冒充。
+ * 人数那一列是**本场累计观看**(决策 75),精确数、走 `formatViewers`。来源只报了此刻在线的话这一列是
+ * 「—」,不拿在线冒充。
  */
 function liveRowFace(
 	r: LiveListeningEntry,
@@ -111,20 +106,18 @@ function liveRowFace(
 } {
 	const sub = lookup.byId(r.subscriptionId);
 	const avatar = profileAvatarUrl(sub?.cachedProfile);
-	if (r.kind !== "extension") {
-		return {
-			name: sub ? displayName(sub) : `UID ${r.uid}`,
-			color: colorFromSeed(r.uid),
-			avatar,
-			viewers: formatViewers(r.viewers),
-		};
-	}
-	const platform = subscriptionPlatformOf(r, extensions);
-	return {
-		name: sub ? displayName(sub) : platform.label,
-		color: sub ? subscriptionColor(sub) : colorFromSeed(r.subscriptionId),
+	const base = {
+		color: identityColor(r.identity),
 		avatar,
 		viewers: formatViewers(r.totalViewers),
+	};
+	if (!isExtensionIdentity(r.identity)) {
+		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(r) };
+	}
+	const platform = subscriptionPlatformOf({ extensionId: r.identity.sourceKey }, extensions);
+	return {
+		...base,
+		name: sub ? displayName(sub) : historyRowIdentity(r, () => platform.label),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
 	};
 }
@@ -162,7 +155,7 @@ export function LiveNowPanel({
 	globalFeatures?: FeatureFlagValues;
 }) {
 	// 在播快照带着订阅自己的 id(ADR-0019 决策 50),按它对订阅 —— 同一个 UP 配了几条订阅时,
-	// 按 uid 对不出这间直播间是替哪一条开的。
+	// 按身份对不出这间直播间是替哪一条开的。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 	// 启用着却一把直播类开关都没开的数量 —— 这些订阅的直播状态永远不会出现在面板里。
 	// empty state 里露出 hint 让用户知道该去哪开。「开着」只看开关,不看有没有推送目标。
@@ -236,9 +229,9 @@ export function LiveNowPanel({
 												{platform.label}
 											</Pill>
 										) : null}
-										{r.areaName ? (
+										{r.category ? (
 											<Pill color="var(--color-bn-pink)" subtle size="sm">
-												{r.areaName}
+												{r.category}
 											</Pill>
 										) : null}
 									</div>
@@ -895,8 +888,8 @@ export default function Dashboard() {
 	const liveQuery = useQuery({
 		queryKey: ["live", "listening"],
 		queryFn: () => api.get<LiveListeningEntry[]>("/api/live/listening"),
-		// 不再轮询；usePushEventsChannel 监听 WS `live-state-changed`(B 站)与
-		// `extension-live-changed`(拓展订阅)后 invalidate 即可让该 query 重新 fetch 最新快照。
+		// 不再轮询；usePushEventsChannel 监听 WS `live-session-changed`:进表 / 出表就 invalidate 重取,
+		// 在播中的标题 / 分区 / 累计观看随 `live-session-changed` 与 `live-viewers-changed` 就地补。
 	});
 	// 拓展订阅那几行的平台徽章照清单画;只是锦上添花,拿不到就不重试(同订阅页)。
 	const extensionsQuery = useExtensions({ retry: false });
@@ -925,8 +918,8 @@ export default function Dashboard() {
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
 	const live = liveQuery.data ?? [];
-	// 小贴士说谁:先挑 B 站房间(下播总结那句话只对它成立),没有再说拓展订阅的。
-	const tipLive = live.find((r) => r.kind !== "extension") ?? live[0];
+	// 小贴士说谁:先挑 B 站的在播(下播总结那句话只对它成立),没有再说拓展订阅的。
+	const tipLive = live.find((r) => !isExtensionIdentity(r.identity)) ?? live[0];
 	const history = historyQuery.data?.entries ?? [];
 
 	const enabledSubs = subs.filter((s) => s.enabled).length;
@@ -950,14 +943,17 @@ export default function Dashboard() {
 						// 与「正在直播」那块同一口径:按快照里的订阅 id 对(ADR-0019 决策 50)。
 						const sub = subs.find((s) => s.id === tipLive?.subscriptionId);
 						if (sub) return displayName(sub);
-						// 订阅还没回来时拓展订阅写平台名(同「正在直播」那块),B 站写 UID。
-						return tipLive?.kind === "extension"
-							? subscriptionPlatformOf(tipLive, extensionsQuery.data?.extensions).label
-							: `UID ${tipLive?.uid}`;
+						// 订阅还没回来时按身份写(同「正在直播」那块):B 站写 UID,拓展写平台名加外部 id。
+						if (!tipLive) return "";
+						return historyRowIdentity(
+							tipLive,
+							(extensionId) =>
+								subscriptionPlatformOf({ extensionId }, extensionsQuery.data?.extensions).label,
+						);
 					})()}
 				</b>{" "}
 				{/* 下播总结只有 B 站有(ADR-0019 决策 12),拓展订阅在播时不这么劝。 */}
-				{tipLive?.kind === "extension"
+				{tipLive && isExtensionIdentity(tipLive.identity)
 					? "正在直播～"
 					: "正在直播，建议在结束后推送总结到游戏交流群～"}
 			</>

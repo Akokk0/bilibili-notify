@@ -99,9 +99,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		const res = await api("/api/live/listening");
 		expect(res.status).toBe(200);
 		const rows = (await res.json()) as LiveListeningEntry[];
-		return rows
-			.flatMap((row) => (row.kind === "extension" ? [row] : []))
-			.sort((x, y) => x.subscriptionId.localeCompare(y.subscriptionId));
+		return rows.sort((x, y) => x.subscriptionId.localeCompare(y.subscriptionId));
 	}
 
 	async function profileOf(subscriptionId: string) {
@@ -208,10 +206,10 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect(rows.map((row) => row.subscriptionId)).toEqual([SUB_IDS.a, SUB_IDS.b]);
 		for (const row of rows) {
 			expect(row).toMatchObject({
-				extensionId: FAKE,
+				identity: { sourceKey: FAKE, externalId: expect.any(String) },
 				isLive: true,
 				title: expect.stringContaining("第 1 场"),
-				areaName: expect.any(String),
+				category: expect.any(String),
 				startedAt: expect.any(String),
 				totalViewers: expect.any(Number),
 			});

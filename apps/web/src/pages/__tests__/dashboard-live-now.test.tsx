@@ -7,10 +7,11 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
+import { colorFromSeed } from "@bilibili-notify/internal";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import type { LiveListenerSnapshot, LiveListeningEntry } from "../../services/dashboard";
+import type { LiveListeningEntry } from "../../services/dashboard";
 import {
 	DEFAULT_FEATURE_FLAGS,
 	type FeatureFlagValues,
@@ -20,6 +21,33 @@ import {
 import { LiveNowPanel } from "../Dashboard";
 
 afterEach(cleanup);
+
+/** 在播快照里一行 B 站订阅的(`uid` 是外部 id)。 */
+function biliLive(
+	subscriptionId: string,
+	uid: string,
+	over: Partial<LiveListeningEntry> = {},
+): LiveListeningEntry {
+	return {
+		subscriptionId,
+		identity: { sourceKey: "bilibili", externalId: uid },
+		isLive: true,
+		...over,
+	};
+}
+
+/** 在播快照里一行抖音拓展订阅的(外部 id 同 {@link extSub})。 */
+function douyinLive(
+	subscriptionId: string,
+	over: Partial<LiveListeningEntry> = {},
+): LiveListeningEntry {
+	return {
+		subscriptionId,
+		identity: { sourceKey: "douyin", externalId: "sec-1" },
+		isLive: true,
+		...over,
+	};
+}
 
 /** 一条 B 站订阅,资料缓存里的名字就是面板上显示的名字。 */
 function biliSub(id: string, uid: string, name: string): Subscription {
@@ -32,9 +60,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 
 describe("正在直播 · 房间对到哪条订阅", () => {
 	it("同 uid 几条订阅都在 → 显示快照里那条订阅的名字", () => {
-		const live: LiveListenerSnapshot[] = [
-			{ subscriptionId: "s-own", uid: "u1", roomId: "r1", isLive: true, title: "在播标题" },
-		];
+		const live = [biliLive("s-own", "u1", { title: "在播标题" })];
 		const subs = [
 			biliSub("s-first", "u1", "先出现的那条"),
 			biliSub("s-own", "u1", "快照里那条"),
@@ -98,16 +124,12 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 	it("名字照订阅、平台徽章照清单、标题 / 分区 / 累计观看都画出来;头像是那条订阅的;不写开播多久", () => {
 		const { container } = renderPanel(
 			[
-				{
-					kind: "extension",
-					subscriptionId: "s-dy",
-					extensionId: "douyin",
-					isLive: true,
+				douyinLive("s-dy", {
 					title: "抖音这一场",
-					areaName: "聊天",
+					category: "聊天",
 					startedAt: thirtyMinutesAgo(),
 					totalViewers: 12_345,
-				},
+				}),
 			],
 			[extSub("s-dy", "抖音乙")],
 			[DOUYIN],
@@ -124,31 +146,23 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(container.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 	});
 
-	it("订阅列表与拓展列表都还没回来:名字与徽章退拓展 id,不写「UID undefined」", () => {
-		renderPanel(
-			[{ kind: "extension", subscriptionId: "s-dy", extensionId: "douyin", isLive: true }],
-			[],
-		);
-		expect(screen.getAllByText("douyin").length).toBeGreaterThan(0);
+	it("订阅列表与拓展列表都还没回来:名字写拓展 id 加外部 id、徽章退拓展 id,不写「UID undefined」", () => {
+		renderPanel([douyinLive("s-dy")], []);
+		expect(screen.getByText("douyin · sec-1")).toBeTruthy();
+		expect(screen.getByText("douyin")).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
+		expect(screen.queryByText(/undefined/)).toBeNull();
 		expect(screen.getByText("（未拉取到房间标题）")).toBeTruthy();
 	});
 
 	it("拓展没报累计观看:那一列是「—」", () => {
-		renderPanel(
-			[{ kind: "extension", subscriptionId: "s-dy", extensionId: "douyin", isLive: true }],
-			[extSub("s-dy", "抖音乙")],
-			[DOUYIN],
-		);
+		renderPanel([douyinLive("s-dy")], [extSub("s-dy", "抖音乙")], [DOUYIN]);
 		expect(screen.getByText("—")).toBeTruthy();
 	});
 
 	it("与 B 站房间并排:各画各的,B 站那行照旧", () => {
 		renderPanel(
-			[
-				{ subscriptionId: "s-bili", uid: "u1", roomId: "r1", isLive: true, viewers: 3456 },
-				{ kind: "extension", subscriptionId: "s-dy", extensionId: "douyin", isLive: true },
-			],
+			[biliLive("s-bili", "u1", { totalViewers: 3456 }), douyinLive("s-dy")],
 			[biliSub("s-bili", "u1", "B 站甲"), extSub("s-dy", "抖音乙")],
 			[DOUYIN],
 		);
@@ -161,23 +175,17 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 	/**
 	 * ㉒d:B 站行的人数从「B 站排好的字串」改成精确数,与拓展行同走 `formatViewers`(`formatCount`)。
 	 * 一套写法:万以上排成「1.2万」、万以下原样不加千分位、0 是真数写「0」、没有数写「—」。
-	 * 验红:把 B 站那一行改回直接画 `r.viewers`,头两条红(画出 87334 / 渲染不出数字);去掉 `formatViewers`
+	 * 验红:把 B 站那一行改回直接画 `r.totalViewers`,头两条红(画出 87334 / 渲染不出数字);去掉 `formatViewers`
 	 * 里的 `undefined` 判断,「—」那条红。
 	 */
 	it("B 站行与拓展行同一套排法:精确数排成「1.2万」,万以下原样,0 写「0」,没有数写「—」", () => {
 		renderPanel(
 			[
-				{ subscriptionId: "s-a", uid: "u1", roomId: "r1", isLive: true, viewers: 87_334 },
-				{ subscriptionId: "s-b", uid: "u2", roomId: "r2", isLive: true, viewers: 9_999 },
-				{ subscriptionId: "s-c", uid: "u3", roomId: "r3", isLive: true, viewers: 0 },
-				{ subscriptionId: "s-d", uid: "u4", roomId: "r4", isLive: true },
-				{
-					kind: "extension",
-					subscriptionId: "s-dy",
-					extensionId: "douyin",
-					isLive: true,
-					totalViewers: 87_334,
-				},
+				biliLive("s-a", "u1", { totalViewers: 87_334 }),
+				biliLive("s-b", "u2", { totalViewers: 9_999 }),
+				biliLive("s-c", "u3", { totalViewers: 0 }),
+				biliLive("s-d", "u4"),
+				douyinLive("s-dy", { totalViewers: 87_334 }),
 			],
 			[
 				biliSub("s-a", "u1", "甲"),
@@ -193,6 +201,37 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getByText("9999")).toBeTruthy();
 		expect(screen.getByText("0")).toBeTruthy();
 		expect(screen.getAllByText("—")).toHaveLength(1);
+	});
+});
+
+describe("正在直播 · 名字兜底与颜色", () => {
+	function renderPanel(live: LiveListeningEntry[], subs: Subscription[]) {
+		return render(
+			<MemoryRouter initialEntries={["/"]}>
+				<LiveNowPanel live={live} subs={subs} />
+			</MemoryRouter>,
+		);
+	}
+
+	it("B 站身份对不上订阅(订阅列表还没回来):名字写「UID x」,不写 undefined", () => {
+		renderPanel([biliLive("s-1", "12345")], []);
+		expect(screen.getByText("UID 12345")).toBeTruthy();
+		expect(screen.queryByText(/undefined/)).toBeNull();
+	});
+
+	// 颜色跟着人走:B 站身份的颜色就是 `colorFromSeed(uid)`(改成身份读法之前的算法),不因换读法而变。
+	// 验红:把取色改成别的种子(如订阅 id),这条红。
+	it("B 站身份的颜色与按 uid 取色一致(订阅对得上与对不上都是)", () => {
+		const { container } = renderPanel(
+			[biliLive("s-a", "u1"), biliLive("s-b", "u2")],
+			[biliSub("s-a", "u1", "甲")],
+		);
+		// jsdom 把行内样式里的 #rrggbb 规范成 rgb(r, g, b)。
+		const asRgb = (hex: string) =>
+			`rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+		const links = container.querySelectorAll("a");
+		expect(links[0]?.getAttribute("style")).toContain(asRgb(colorFromSeed("u1")));
+		expect(links[1]?.getAttribute("style")).toContain(asRgb(colorFromSeed("u2")));
 	});
 });
 

@@ -18,7 +18,7 @@
 
 import { readFileSync } from "node:fs";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
-import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
+import type { ModuleState } from "@bilibili-notify/contract";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	AddressCandidate,
@@ -147,14 +147,11 @@ export interface EnginesRuntime extends Disposable {
 	 * 而这一个跟着**已保存**的 `cardStyle` 热同步 —— 周报卡要的正是后者。
 	 */
 	readonly imageRenderer: ImageRenderer | null;
-	/** Currently-broadcasting rooms; powers /api/live/listening. */
-	listLiveRooms(): LiveListenerSnapshot[];
 	/** 核心回顾收集器此刻的规模(资源监控用)。 */
 	viewerChatStats(): { subscriptions: number; words: number; senders: number };
 	/**
-	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `live-sessions.ts` 手里的):没在播、或没接
-	 * 拓展订阅的直播(只测 B 站那几条路的引擎)是 `undefined`。统计页拿它判拓展行「此刻在播」—— 与盘上那一场
-	 * 敞着的同源(开一场、关一场的帧都是它发的),断流等待里也还算在播,同 B 站直播间在等待期里仍是在播。
+	 * 这条订阅此刻那一场(ADR-0020 决策 6,场次模块 `live-sessions.ts` 手里的):没在播就是 `undefined`。
+	 * 统计页拿它判这一行「此刻在播」,断流等待里也还算在播。
 	 */
 	liveSession(subscriptionId: string): LiveSession | undefined;
 	/** 开发场景:把这条订阅的直播核对提前到现在。 */
@@ -216,7 +213,6 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	swapImageRendering(puppeteer: PuppeteerLike): void;
 }
-
 export interface CreateEnginesOptions {
 	/**
 	 * NodeServiceContext (not the platform-neutral ServiceContext) — engines.ts
@@ -799,50 +795,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
-		// R1 过渡输出(3b-22;23-5 整段删):面板「正在直播」等过渡读者还在听 B 站事件形状,所以在册来源
-		// (今天只有 B 站会上报直播)的场次照原形状发 `live-state-changed` / `live-viewers-changed`。
-		handles.push(
-			liveSessions.onChange((change) => {
-				if (change.kind === "unmatched-end") return;
-				const session = change.session;
-				if (!session || opts.sources.get(session.sourceKey) === undefined) return;
-				const sub = opts.subscriptionStore.findById(session.subscriptionId);
-				if (!sub) return;
-				const { externalId } = subscriptionIdentityOf(sub);
-				const emitViewers = (viewers: number | undefined): void => {
-					if (viewers !== undefined) {
-						opts.bus.emit("live-viewers-changed", { uid: externalId, viewers });
-					}
-				};
-				switch (change.kind) {
-					case "start":
-						opts.bus.emit("live-state-changed", {
-							uid: externalId,
-							status: "live",
-							at: session.startedAt ?? session.detectedAt,
-						});
-						emitViewers(change.details.totalViewers);
-						return;
-					case "resume":
-						emitViewers(change.details.totalViewers);
-						return;
-					case "tick":
-					case "status":
-						if (change.kind === "tick" || change.isLive)
-							emitViewers(liveTable.get(session.subscriptionId)?.details.totalViewers);
-						return;
-					case "end":
-						opts.bus.emit("live-state-changed", {
-							uid: externalId,
-							status: "idle",
-							at: change.endedAt,
-						});
-						return;
-					case "ending":
-						return;
-				}
-			}),
-		);
 		// 拓展报的直播 → 存图 → 中立信号 → 场次引擎(引擎先写在播表、再改场次)。
 		if (extensionSources) {
 			const liveImages = opts.liveImages;
@@ -1214,15 +1166,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		get imageRenderer() {
 			return imageRenderer;
 		},
-		listLiveRooms: () => [
-			// R1 过渡输出(3b-22,3b-23 整段删):在册来源的在播行投影成同一个形状。
-			...listRegisteredLiveRooms({
-				table: opts.liveTable,
-				sources: opts.sources,
-				subscriptionStore: opts.subscriptionStore,
-				runtimeStore: opts.subRuntimeStore,
-			}),
-		],
 		viewerChatStats: () => viewerChats?.stats() ?? { subscriptions: 0, words: 0, senders: 0 },
 		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
 		tickLiveSessionNow: (subscriptionId: string) =>
@@ -1523,35 +1466,4 @@ export function makePostSettingsReader(deps: {
 		if (!deps.sourceRunning(sub)) return undefined;
 		return postSettingsOf(sub, g, aiWritingNeeded(g.ai.writing.post, deps.targetIds()), eff);
 	};
-}
-
-/**
- * 在播表里**在册来源**的行,投影成 B 站「正在直播」快照的形状(R1 过渡输出,3b-22,3b-23 整段删):面板的
- * 「正在直播」、统计页「在播」一个不动。`roomId` 取运行态仓,没有就空串;封面只带得出地址的(图库引用不是地址)。
- */
-function listRegisteredLiveRooms(deps: {
-	table: Pick<LiveTable, "list"> | undefined;
-	sources: Pick<SourceRegistry, "get">;
-	subscriptionStore: Pick<SubscriptionStore, "findById">;
-	runtimeStore: Pick<SubRuntimeStore, "get">;
-}): LiveListenerSnapshot[] {
-	const out: LiveListenerSnapshot[] = [];
-	for (const entry of deps.table?.list() ?? []) {
-		if (deps.sources.get(entry.sourceKey) === undefined) continue;
-		const sub = deps.subscriptionStore.findById(entry.subscriptionId);
-		if (!sub) continue;
-		out.push({
-			subscriptionId: entry.subscriptionId,
-			uid: subscriptionIdentityOf(sub).externalId,
-			roomId: deps.runtimeStore.get(entry.subscriptionId)?.roomId ?? "",
-			isLive: true,
-			title: entry.details.title,
-			cover: entry.details.cover?.url,
-			areaName: entry.details.category,
-			startedAt:
-				entry.startedAt === undefined ? undefined : new Date(entry.startedAt).toISOString(),
-			viewers: entry.details.totalViewers,
-		});
-	}
-	return out;
 }

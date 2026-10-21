@@ -15,8 +15,8 @@ import { createStatsRoute, roastOverviewFetcher } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
 interface StubOpts {
-	/** 当前在播的 uid 集合,可在两次请求之间改。 */
-	liveUids?: string[];
+	/** 当前在播的订阅 id 集合,可在两次请求之间改。 */
+	liveSubscriptionIds?: string[];
 	/** 让 /overview 内部抛错,用来验错误信封。 */
 	failOverview?: boolean;
 	aiEnabled?: boolean;
@@ -25,7 +25,7 @@ interface StubOpts {
 }
 
 function makeDeps(opts: StubOpts = {}) {
-	const state = { liveUids: opts.liveUids ?? [], fans: 100 };
+	const state = { liveSubscriptionIds: opts.liveSubscriptionIds ?? [], fans: 100 };
 	const deps = {
 		store: {
 			getSubscriptions: () => [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }],
@@ -37,7 +37,8 @@ function makeDeps(opts: StubOpts = {}) {
 		runtime: {
 			engines: {
 				api: {},
-				listLiveRooms: () => state.liveUids.map((uid) => ({ uid, isLive: true })),
+				liveSession: (id: string) =>
+					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},
 			fansPoller: {
 				getLastEntries: () => [{ subscriptionId: "s1", uid: "1", current: state.fans }],
@@ -63,13 +64,13 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 		// 缓存键原本只有 days:tz:订阅集合,而响应体里还嵌着引擎的在播状态。于是 UP
 		// 一开播,统计页最长 30 秒仍报 live:false —— 同一个页面的「正在直播」面板走
 		// WS 实时喂,早就亮了。用户点刷新也没用,两块面板就那样互相打脸。
-		const { deps, state } = makeDeps({ liveUids: [] });
+		const { deps, state } = makeDeps({ liveSubscriptionIds: [] });
 		const app = createStatsRoute(deps);
 
 		const before = (await (await app.request("/overview?days=7&tz=0")).json()) as any;
 		expect(before.rows[0].live).toBe(false);
 
-		state.liveUids = ["1"];
+		state.liveSubscriptionIds = ["s1"];
 		const after = (await (await app.request("/overview?days=7&tz=0")).json()) as any;
 		expect(after.rows[0].live).toBe(true);
 	});

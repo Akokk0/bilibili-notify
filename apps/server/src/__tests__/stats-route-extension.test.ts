@@ -115,7 +115,6 @@ function makeDeps(f: Fixture): RouteDeps {
 				f.engines === false
 					? null
 					: {
-							listLiveRooms: () => [],
 							liveSession: (id: string) =>
 								f.liveExt?.has(id)
 									? { subscriptionId: id, extensionId: EXT, detectedAt: NOW - H }

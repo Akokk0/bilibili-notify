@@ -142,7 +142,7 @@ function start(): void {
 			return { dispose: () => clearInterval(h) };
 		},
 	};
-	table = createLiveTable({ bus, timers });
+	table = createLiveTable({ bus });
 	sessions = createLiveSessionEngine({
 		bus,
 		logger,

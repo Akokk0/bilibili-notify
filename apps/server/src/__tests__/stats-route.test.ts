@@ -23,7 +23,7 @@ interface Fixture {
 		string,
 		Array<{ startedAt: string; endedAt?: string; peakTotalViewers?: number }>
 	>;
-	liveRooms?: Array<{ uid: string; isLive: boolean }>;
+	liveSubscriptions?: string[];
 	/** 粉丝轮询的快照,按 uid 写(好读);轮询按订阅 id 记,makeDeps 替它补上 `subscriptionId`。 */
 	fansEntries?: Array<{ uid: string; current: number }>;
 	/**
@@ -65,7 +65,12 @@ function makeDeps(f: Fixture): RouteDeps {
 				listRecording: async (key: string) =>
 					f.recording?.[uidOf(key)] ?? (f.recording ? [] : ALWAYS),
 			},
-			engines: f.liveRooms ? { listLiveRooms: () => f.liveRooms } : null,
+			engines: f.liveSubscriptions
+				? {
+						liveSession: (id: string) =>
+							f.liveSubscriptions?.includes(id) ? { subscriptionId: id } : undefined,
+					}
+				: null,
 			fansPoller: f.fansEntries
 				? {
 						getLastEntries: () =>
@@ -254,10 +259,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 	it("直播中的 UP 标记 live=true", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }, { uid: "2" }],
-			liveRooms: [
-				{ uid: "1", isLive: true },
-				{ uid: "2", isLive: false },
-			],
+			liveSubscriptions: ["id-1"],
 		});
 		const body = await get(deps);
 		expect(body.rows.find((r) => r.identity.externalId === "1")?.live).toBe(true);

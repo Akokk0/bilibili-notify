@@ -1,11 +1,14 @@
 /**
- * 单元测试 — `handlePushEnvelope` 纯函数(WS `push-events` 4 个子事件分发)。
+ * 单元测试 — `handlePushEnvelope` 纯函数(WS `push-events` 子事件分发)。
  *
- * 4 个 event 的契约:
- *   - live-state-changed   → invalidate ["live","listening"](触发 dashboard refetch)
- *   - live-viewers-changed → setQueryData(["live","listening"]) patch 该房间 viewers
- *                            房间不在快照里 → 静默(返回 old,等下次 invalidate)
- *                            data 缺 uid / viewers → silent-drop
+ * 子事件的契约:
+ *   - live-session-changed → start / resume / end / unmatched-end / status(下播) → invalidate ["live","listening"];
+ *                            status(在播) 与 tick → 就地补快照里 subscriptionId 对得上的那一行
+ *                            (title / category / totalViewers,只补有的格;没有这一行跳过、不重取);
+ *                            ending 不动
+ *   - live-viewers-changed → setQueryData(["live","listening"]) 按订阅 id 补 totalViewers
+ *                            订阅不在快照里 → 静默(返回 old,等下次 invalidate)
+ *                            data 缺 subscriptionId / 人数不是有限数 → silent-drop
  *   - fans-refreshed       → setQueryData(["stats", "followers"]) 整体覆盖;data.entries 非数组 → drop
  *   - history-recorded     → push toast + setQueryData(historyQueryKey(100)) prepend + dedup id + cap
  *   - history-updated      → 同 id 换缓存里那一行 + toast 同 id 换字(不在就不弹);
@@ -14,6 +17,7 @@
  * `handlePushEnvelope(env, qc, toast)` 完全参数化,无任何外部 React state。
  */
 
+import type { LiveSession, LiveSessionChange } from "@bilibili-notify/internal";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -25,7 +29,7 @@ import {
 	type HistoryEntryView,
 	type HistoryResponse,
 	historyQueryKey,
-	type LiveListenerSnapshot,
+	type LiveListeningEntry,
 	localDayKey,
 } from "../../services/dashboard";
 import type { WsEnvelope } from "../../services/ws";
@@ -34,6 +38,18 @@ import { HISTORY_CACHE_CAP, handlePushEnvelope } from "../usePushEventsChannel";
 import { eventFrameMaker } from "./ws-frames";
 
 const TS = "2026-05-16T00:00:00.000Z";
+
+const LIVE_KEY = ["live", "listening"];
+
+/** 在播快照里的一行(默认 B 站身份),`over` 覆盖其余格。 */
+function entry(subscriptionId: string, over: Partial<LiveListeningEntry> = {}): LiveListeningEntry {
+	return {
+		subscriptionId,
+		identity: { sourceKey: "bilibili", externalId: `uid-${subscriptionId}` },
+		isLive: true,
+		...over,
+	};
+}
 
 /** 服务端发来的一帧合法事件帧:形状按 contract 的事件表写全,缺 `ts` 补上。 */
 const env = eventFrameMaker(TS);
@@ -89,74 +105,212 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		expect(h.invalidate).not.toHaveBeenCalled();
 	});
 
-	describe("live-state-changed", () => {
-		it("invalidate ['live','listening']", () => {
-			handlePushEnvelope(
-				env({
-					type: "push-events",
-					event: "live-state-changed",
-					data: { uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" },
-				}),
-				h.qc,
-				h.toast,
-			);
+	describe("live-session-changed — 进表 / 出表失效重取", () => {
+		const session = (over: Partial<LiveSession> = {}): LiveSession => ({
+			subscriptionId: "s1",
+			sourceKey: "bilibili",
+			detectedAt: TS,
+			...over,
+		});
+		const frame = (data: LiveSessionChange) =>
+			env({ type: "push-events", event: "live-session-changed", data });
+
+		const changes: [string, LiveSessionChange][] = [
+			[
+				"start",
+				{
+					kind: "start",
+					subscriptionId: "s1",
+					session: session(),
+					trigger: "start-signal",
+					details: {},
+				},
+			],
+			["resume", { kind: "resume", subscriptionId: "s1", session: session(), details: {} }],
+			[
+				"end",
+				{
+					kind: "end",
+					subscriptionId: "s1",
+					session: session(),
+					reason: "signal",
+					endedAt: TS,
+				},
+			],
+			["unmatched-end", { kind: "unmatched-end", subscriptionId: "s1", endedAt: TS }],
+			["status(下播)", { kind: "status", subscriptionId: "s1", isLive: false, session: undefined }],
+		];
+		it.each(changes)("%s:invalidate ['live','listening']", (_name, data) => {
+			handlePushEnvelope(frame(data), h.qc, h.toast);
 			expect(h.invalidate).toHaveBeenCalledTimes(1);
 			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: ["live", "listening"] });
 			expect(h.push).not.toHaveBeenCalled();
 		});
-	});
 
-	describe("extension-live-changed", () => {
-		// 拓展订阅的在播表变了(ADR-0019 决策 12 / 57):服务端合并过、不带载荷,面板整份重取。
-		it("invalidate ['live','listening']", () => {
+		it("ending:断流等待期间那一行还在表里,不重取也不动快照", () => {
+			const initial: LiveListeningEntry[] = [entry("s1")];
+			h.qc.setQueryData(LIVE_KEY, initial);
 			handlePushEnvelope(
-				env({ type: "push-events", event: "extension-live-changed", data: null }),
+				frame({ kind: "ending", subscriptionId: "s1", session: session() }),
 				h.qc,
 				h.toast,
 			);
-			expect(h.invalidate).toHaveBeenCalledTimes(1);
-			expect(h.invalidate.mock.calls[0][0]).toEqual({ queryKey: ["live", "listening"] });
-			expect(h.push).not.toHaveBeenCalled();
+			expect(h.invalidate).not.toHaveBeenCalled();
+			expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
+		});
+
+		// 在播状态 / 周期核对(tick)带来的新格就地补到那一行,不整份重取(新行为)。
+		// 验红:去掉 `status`(在播)分支的就地补,头一条红;去掉 `Number.isFinite`,NaN 那条红。
+		describe("status(在播)与 tick:就地补那一行", () => {
+			const liveFrames: [string, (s: LiveSession) => LiveSessionChange][] = [
+				[
+					"status(在播)",
+					(s) => ({ kind: "status", subscriptionId: "s1", isLive: true, session: s }),
+				],
+				["tick", (s) => ({ kind: "tick", subscriptionId: "s1", session: s })],
+			];
+
+			it.each(liveFrames)(
+				"%s:补 title / category / totalViewers,其他行与其他格不动,不重取",
+				(_n, mk) => {
+					const initial: LiveListeningEntry[] = [
+						entry("s1", { title: "旧标题", startedAt: "2026-05-16T01:00:00.000Z" }),
+						entry("s2", { title: "别人", totalViewers: 7 }),
+					];
+					h.qc.setQueryData(LIVE_KEY, initial);
+					handlePushEnvelope(
+						frame(
+							mk(
+								session({
+									lastDetails: {
+										title: "新标题",
+										category: "聊天",
+										totalViewers: 12_345,
+										currentViewers: 99,
+									},
+								}),
+							),
+						),
+						h.qc,
+						h.toast,
+					);
+					const next = h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY);
+					expect(next?.[0]).toEqual({
+						...initial[0],
+						title: "新标题",
+						category: "聊天",
+						totalViewers: 12_345,
+					});
+					expect(next?.[1]).toBe(initial[1]);
+					expect(h.invalidate).not.toHaveBeenCalled();
+				},
+			);
+
+			it("只补有的格:lastDetails 没带的格,快照里原来的留着", () => {
+				h.qc.setQueryData(LIVE_KEY, [
+					entry("s1", { title: "旧标题", category: "旧分区", totalViewers: 5 }),
+				]);
+				handlePushEnvelope(
+					frame(liveFrames[1][1](session({ lastDetails: { totalViewers: 6 } }))),
+					h.qc,
+					h.toast,
+				);
+				expect(h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY)).toEqual([
+					entry("s1", { title: "旧标题", category: "旧分区", totalViewers: 6 }),
+				]);
+			});
+
+			it("totalViewers 不是有限数:不收,别的格照补", () => {
+				h.qc.setQueryData(LIVE_KEY, [entry("s1", { totalViewers: 5 })]);
+				handlePushEnvelope(
+					frame(
+						liveFrames[1][1](session({ lastDetails: { title: "标题", totalViewers: Number.NaN } })),
+					),
+					h.qc,
+					h.toast,
+				);
+				expect(h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY)).toEqual([
+					entry("s1", { title: "标题", totalViewers: 5 }),
+				]);
+			});
+
+			it("快照里没有这一行(或快照还没拉):跳过,不重取", () => {
+				const initial: LiveListeningEntry[] = [entry("s2")];
+				h.qc.setQueryData(LIVE_KEY, initial);
+				const f = frame(liveFrames[0][1](session({ lastDetails: { title: "标题" } })));
+				handlePushEnvelope(f, h.qc, h.toast);
+				expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
+				h.qc.removeQueries({ queryKey: LIVE_KEY });
+				handlePushEnvelope(f, h.qc, h.toast);
+				expect(h.qc.getQueryData(LIVE_KEY)).toBeUndefined();
+				expect(h.invalidate).not.toHaveBeenCalled();
+			});
+
+			it("status(在播)没带 session:当没收到", () => {
+				const initial: LiveListeningEntry[] = [entry("s1")];
+				h.qc.setQueryData(LIVE_KEY, initial);
+				handlePushEnvelope(
+					frame({ kind: "status", subscriptionId: "s1", isLive: true, session: undefined }),
+					h.qc,
+					h.toast,
+				);
+				expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
+				expect(h.invalidate).not.toHaveBeenCalled();
+			});
 		});
 	});
 
 	describe("live-viewers-changed", () => {
-		it("房间在快照里:patch 该 uid 的 viewers,其他不动", () => {
-			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
-				{ subscriptionId: "s-u2", uid: "u2", roomId: "r2", isLive: true, viewers: 200 },
+		it("该订阅在快照里:补它的 totalViewers,其他不动", () => {
+			const initial: LiveListeningEntry[] = [
+				entry("s1", { totalViewers: 10_000 }),
+				entry("s2", { totalViewers: 200 }),
 			];
-			h.qc.setQueryData(["live", "listening"], initial);
+			h.qc.setQueryData(LIVE_KEY, initial);
 			handlePushEnvelope(
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "u1", viewers: 12_345 },
+					data: { subscriptionId: "s1", totalViewers: 12_345 },
 				}),
 				h.qc,
 				h.toast,
 			);
-			const next = h.qc.getQueryData<LiveListenerSnapshot[]>(["live", "listening"]);
-			expect(next?.find((r) => r.uid === "u1")?.viewers).toBe(12_345);
-			expect(next?.find((r) => r.uid === "u2")?.viewers).toBe(200);
+			const next = h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY);
+			expect(next?.find((r) => r.subscriptionId === "s1")?.totalViewers).toBe(12_345);
+			expect(next?.find((r) => r.subscriptionId === "s2")).toBe(initial[1]);
+			expect(h.invalidate).not.toHaveBeenCalled();
 		});
 
-		it("房间不在快照里:返回 old 原样不动(后续 invalidate 会补)", () => {
-			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
-			];
-			h.qc.setQueryData(["live", "listening"], initial);
+		it("只带此刻在线(currentViewers):面板不画,不补、不重取", () => {
+			const initial: LiveListeningEntry[] = [entry("s1", { totalViewers: 10_000 })];
+			h.qc.setQueryData(LIVE_KEY, initial);
 			handlePushEnvelope(
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "uX", viewers: 999 },
+					data: { subscriptionId: "s1", currentViewers: 321 },
 				}),
 				h.qc,
 				h.toast,
 			);
-			const next = h.qc.getQueryData<LiveListenerSnapshot[]>(["live", "listening"]);
-			expect(next).toBe(initial);
+			expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
+			expect(h.invalidate).not.toHaveBeenCalled();
+		});
+
+		it("订阅不在快照里:返回 old 原样不动(后续 invalidate 会补)", () => {
+			const initial: LiveListeningEntry[] = [entry("s1", { totalViewers: 10_000 })];
+			h.qc.setQueryData(LIVE_KEY, initial);
+			handlePushEnvelope(
+				env({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { subscriptionId: "sX", totalViewers: 999 },
+				}),
+				h.qc,
+				h.toast,
+			);
+			expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
 		});
 
 		it("快照不存在(undefined):返回 undefined 不创建新数组", () => {
@@ -164,46 +318,55 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "u1", viewers: 999 },
+					data: { subscriptionId: "s1", totalViewers: 999 },
 				}),
 				h.qc,
 				h.toast,
 			);
-			expect(h.qc.getQueryData(["live", "listening"])).toBeUndefined();
+			expect(h.qc.getQueryData(LIVE_KEY)).toBeUndefined();
 		});
 
 		/**
-		 * ㉒d:总线与 WS 上的 viewers 是精确数。旧形状(排好的字符串)与不是有限的数(NaN)当没收到,不动 qc ——
+		 * ㉒d:总线与 WS 上的人数是精确数。旧形状(排好的字符串)与不是有限的数(NaN)当没收到,不动 qc ——
 		 * 别把面板那一列写成「1.2万」字符串混进数字、或「NaN」。
-		 * 验红:去掉守卫里的 `Number.isFinite`,NaN 那条红(字符串那几条也会红,除非 `typeof viewers !== "number"` 还在 ——
+		 * 验红:去掉守卫里的 `Number.isFinite`,NaN 那条红(字符串那几条也会红,除非 `typeof` 判断还在 ——
 		 * 两道判断各挡一半,`typeof` 同时给 TS 收窄成 number)。
 		 */
-		it("viewers 不是数(旧形状的字符串 / NaN):silent-drop,不动 qc", () => {
-			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
-			];
-			h.qc.setQueryData(["live", "listening"], initial);
-			for (const viewers of ["1.2万", "999", Number.NaN]) {
+		it("totalViewers 不是数(旧形状的字符串 / NaN):silent-drop,不动 qc", () => {
+			const initial: LiveListeningEntry[] = [entry("s1", { totalViewers: 10_000 })];
+			h.qc.setQueryData(LIVE_KEY, initial);
+			for (const totalViewers of ["1.2万", "999", Number.NaN]) {
 				handlePushEnvelope(
 					malformed({
 						type: "push-events",
 						event: "live-viewers-changed",
-						data: { uid: "u1", viewers },
+						data: { subscriptionId: "s1", totalViewers },
 					}),
 					h.qc,
 					h.toast,
 				);
 			}
-			expect(h.qc.getQueryData(["live", "listening"])).toBe(initial);
+			expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
 		});
 
-		it("缺 uid / viewers:silent-drop,不动 qc", () => {
-			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
-			];
-			h.qc.setQueryData(["live", "listening"], initial);
+		it("缺 subscriptionId / 缺人数的键:silent-drop,不动 qc", () => {
+			const initial: LiveListeningEntry[] = [entry("s1", { totalViewers: 10_000 })];
+			h.qc.setQueryData(LIVE_KEY, initial);
 			handlePushEnvelope(
-				malformed({ type: "push-events", event: "live-viewers-changed", data: { uid: "u1" } }),
+				malformed({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { subscriptionId: "s1" },
+				}),
+				h.qc,
+				h.toast,
+			);
+			handlePushEnvelope(
+				malformed({
+					type: "push-events",
+					event: "live-viewers-changed",
+					data: { totalViewers: 5 },
+				}),
 				h.qc,
 				h.toast,
 			);
@@ -212,7 +375,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				h.qc,
 				h.toast,
 			);
-			expect(h.qc.getQueryData(["live", "listening"])).toBe(initial);
+			expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
 		});
 	});
 

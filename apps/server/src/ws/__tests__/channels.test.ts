@@ -78,19 +78,6 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		expect(h.publish).not.toHaveBeenCalled();
 	});
 
-	/**
-	 * 拓展订阅的在播表变了(ADR-0019 决策 12 / 57)—— 面板靠这一帧让「正在直播」重取。不转的话拓展的
-	 * 在播要等切页才出来 / 才下去;它也不能借 `live-state-changed` 走(统计按 uid 订着那一个)。
-	 */
-	it("extension-live-changed → push-events 频道同名帧,data=null", () => {
-		h.bus.emit("extension-live-changed");
-		expect(h.last()).toMatchObject({
-			type: "push-events",
-			event: "extension-live-changed",
-			data: null,
-		});
-	});
-
 	// 验红:删掉 `channels.ts` 里 `subscription-auth-changed` 那一条订阅,这条红(面板读新口,不转就永远看不到变化)。
 	it("subscription-auth-changed → auth 频道同名帧,data 是总线上那一个对象(来源键 + 状态,没有别的格)", () => {
 		const changed = {
@@ -115,36 +102,48 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		expect(h.last().data).toBe(fans);
 	});
 
-	it("具名载荷:live-state-changed / live-viewers-changed / engine-error 各自带命名的格子", () => {
-		h.bus.emit("live-state-changed", { uid: "u1", status: "live" });
+	it("具名载荷:live-session-changed 原样成帧", () => {
+		const change = {
+			kind: "start" as const,
+			subscriptionId: "sub-1",
+			session: {
+				subscriptionId: "sub-1",
+				sourceKey: "douyin",
+				detectedAt: "2026-05-16T09:00:00.000Z",
+			},
+			trigger: "start-signal" as const,
+			details: { title: "这一场" },
+		};
+		h.bus.emit("live-session-changed", change);
 		expect(h.last()).toMatchObject({
 			type: "push-events",
-			event: "live-state-changed",
-			data: { uid: "u1", status: "live" },
+			event: "live-session-changed",
 		});
-		h.bus.emit("live-viewers-changed", { uid: "u1", viewers: 12_000 });
+		expect(h.last().data).toBe(change);
+	});
+
+	it("live-viewers-changed 原样成帧:只带这一帧有的两格", () => {
+		const currentOnly = { subscriptionId: "sub-1", currentViewers: 12 };
+		h.bus.emit("live-viewers-changed", currentOnly);
 		expect(h.last()).toMatchObject({
 			type: "push-events",
 			event: "live-viewers-changed",
-			data: { uid: "u1", viewers: 12_000 },
 		});
-		h.bus.emit("engine-error", { source: "post-delivery", message: "boom" });
+		expect(h.last().data).toBe(currentOnly);
+
+		const both = { subscriptionId: "sub-1", currentViewers: 12, totalViewers: 120 };
+		h.bus.emit("live-viewers-changed", both);
+		expect(h.last().data).toBe(both);
+	});
+
+	it("engine-error 仍走 log 频道并原样带载荷", () => {
+		const error = { source: "post-delivery", message: "boom" };
+		h.bus.emit("engine-error", error);
 		expect(h.last()).toMatchObject({
 			type: "log",
 			event: "engine-error",
-			data: { source: "post-delivery", message: "boom" },
+			data: error,
 		});
-	});
-
-	/**
-	 * `at` 是这次状态翻转的真实发生时刻(开播时刻 / 下播时刻),总线上有它、帧里就得有 ——
-	 * 面板与拓展凭它认场次。帧以前只发 `[uid, status]`,这一格在线上被吞掉。
-	 */
-	it("live-state-changed 总线载荷带 at:帧里也带 at", () => {
-		h.bus.emit("live-state-changed", { uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		expect(h.last().data).toEqual({ uid: "u1", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		h.bus.emit("live-state-changed", { uid: "u1", status: "idle", at: "2026-05-16T11:30:00.000Z" });
-		expect(h.last().data).toEqual({ uid: "u1", status: "idle", at: "2026-05-16T11:30:00.000Z" });
 	});
 });
 

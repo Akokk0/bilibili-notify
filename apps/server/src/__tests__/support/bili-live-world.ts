@@ -344,7 +344,7 @@ export async function bootBiliLiveWorld(
 
 	const bus = createNodeMessageBus();
 	const events: Array<[string, unknown]> = [];
-	for (const name of ["live-state-changed", "live-viewers-changed", "engine-error"] as const) {
+	for (const name of ["live-session-changed", "live-viewers-changed", "engine-error"] as const) {
 		bus.on(name, (payload) => void events.push([name, payload]));
 	}
 
@@ -386,7 +386,7 @@ export async function bootBiliLiveWorld(
 		state: () => ({ status: "logged-in", loggedInAt: "2026-03-01T00:00:00.000Z" }),
 		onChange: () => ({ dispose() {} }),
 	};
-	const liveTable = createLiveTable({ bus, timers: serviceCtx });
+	const liveTable = createLiveTable({ bus });
 	const runtime = createEngines({
 		serviceCtx,
 		dataRoot: join(tmpdir(), "bn-bili-live-e2e-no-such-dir"),
@@ -527,7 +527,7 @@ export async function bootBiliLiveWorld(
 		},
 		/** 交给出图器的入参,按出卡次序。 */
 		cards,
-		/** 总线上的直播事件(`live-state-changed` / `live-viewers-changed` / `engine-error`),按发出次序。 */
+		/** 总线上的直播事件(`live-session-changed` / `live-viewers-changed` / `engine-error`),按发出次序。 */
 		events,
 		/** 抓进图库的图的地址。 */
 		fetchedImages,
@@ -547,7 +547,7 @@ export async function bootBiliLiveWorld(
 				})
 				.sort(),
 		/** 面板「正在直播」那一栏此刻列着的订阅 id。 */
-		liveNow: () => runtime.listLiveRooms().map((room) => room.subscriptionId),
+		liveNow: () => liveTable.list().map((row) => row.subscriptionId),
 		/** 建过几条弹幕连接、此刻还开着几条。 */
 		connections: () => ({
 			opened: sockets.length,

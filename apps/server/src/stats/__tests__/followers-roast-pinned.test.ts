@@ -101,7 +101,6 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 	const runtime = {
 		engines: {
 			api: {},
-			listLiveRooms: () => [],
 			liveSession: () => undefined,
 			extensionPlatformLabel: () => "抖音",
 		},
@@ -160,7 +159,7 @@ describe("锐评提示词里的粉丝两格:从样本文件经 overview 一路�
 		// 甲:净增 06-10 +50、06-24 +50(与 06-10 比)、06-26 +40、06-30 +60;06-02 是窗口里第一个有样本的日、没有基线。
 		//   近 7 日(06-24..06-30)= 50 + 40 + 60 = 150;近 30 日 = 50 + 50 + 40 + 60 = 200。
 		// 乙:06-30 比 06-29 涨 10。丙:没有样本。
-		expect(table.map((t) => [t.名称, t["近7日粉丝"], t["近30日粉丝"]])).toEqual([
+		expect(table.map((t) => [t.名称, t.近7日粉丝, t.近30日粉丝])).toEqual([
 			["甲", 150, 200],
 			["乙", 10, 10],
 			["丙", "无记录", "无记录"],
@@ -181,7 +180,7 @@ describe("锐评提示词里的粉丝两格:从样本文件经 overview 一路�
 		const data = JSON.parse(
 			String(comment.mock.calls.at(-1)?.[0]).split("\n")[1] ?? "{}",
 		) as Record<string, unknown>;
-		expect([data.名称, data["近7日粉丝"], data["近30日粉丝"]]).toEqual(["甲", 150, 200]);
+		expect([data.名称, data.近7日粉丝, data.近30日粉丝]).toEqual(["甲", 150, 200]);
 
 		await generateSoloRoast(deps, {
 			subscriptionId: "b-c",
@@ -192,6 +191,6 @@ describe("锐评提示词里的粉丝两格:从样本文件经 overview 一路�
 		const none = JSON.parse(
 			String(comment.mock.calls.at(-1)?.[0]).split("\n")[1] ?? "{}",
 		) as Record<string, unknown>;
-		expect([none.名称, none["近7日粉丝"], none["近30日粉丝"]]).toEqual(["丙", "无记录", "无记录"]);
+		expect([none.名称, none.近7日粉丝, none.近30日粉丝]).toEqual(["丙", "无记录", "无记录"]);
 	});
 });

@@ -142,7 +142,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(T0);
 	bus = createNodeMessageBus();
-	table = createLiveTable({ bus, timers });
+	table = createLiveTable({ bus });
 	subs = new Map([[SUB.id, SUB]]);
 	running = new Set([EXT]);
 	sent = [];

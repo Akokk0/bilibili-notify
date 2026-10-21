@@ -68,13 +68,14 @@ function bilibili(uids: string[]) {
 	}));
 }
 
-function makeDeps(dataDir: string, uids: string[], liveUids: string[]): RouteDeps {
+function makeDeps(dataDir: string, uids: string[], liveSubscriptionIds: string[]): RouteDeps {
 	return {
 		runtime: {
 			fansStore: createFollowersStore({ dataRoot: dataDir, logger }),
 			statsStore: createStatsStore({ dataRoot: dataDir, logger }),
 			engines: {
-				listLiveRooms: () => uids.map((uid) => ({ uid, isLive: liveUids.includes(uid) })),
+				liveSession: (id: string) =>
+					liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},
 			fansPoller: null,
 		},
@@ -200,7 +201,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			"stats/posts/s103.jsonl",
 			"stats/posts/s105.jsonl",
 		]);
-		return makeDeps(generation, uids, ["103"]);
+		return makeDeps(generation, uids, ["s103"]);
 	}
 
 	it("近 7 日(UTC+8)", async () => {
@@ -564,7 +565,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				),
 			);
 		}
-		return makeDeps(dataDir, uids, ["204"]);
+		return makeDeps(dataDir, uids, ["s204"]);
 	}
 
 	it("近 7 日(UTC+8)", async () => {

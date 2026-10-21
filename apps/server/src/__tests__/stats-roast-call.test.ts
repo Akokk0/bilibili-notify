@@ -128,7 +128,6 @@ function makeDeps(
 			},
 			engines: {
 				api: {},
-				listLiveRooms: () => [],
 				liveSession: () => undefined,
 				extensionPlatformLabel: () => "抖音",
 			},
