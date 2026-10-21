@@ -173,7 +173,7 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 - **`apps/server/src/bilibili/live` / `apps/server/src/bilibili/dynamic` 不许知道 @全体。** 今天靠「特性是个裸布尔」天然挡住。
 - **中立装配不许认身份、不许读平台原始数据。** `deliverPost` / `pushLiveNotify` / 两个中立出卡入口只吃中立形状，uid 或订阅 id 由调用方绑进发送与设置（作品的「还订阅着吗」回问是 `deliverPost` 自己经设置读口再问一次）。一段步骤两个来源共用 —— B 站那条以后加了什么，拓展那条自动有；往来源那头另加一步，另一边就静默漏掉（决策 66）。
 - **推送层不许知道平台。** 它只认订阅 id 与 `targetId`，翻译成投递是 dispatcher 的事；订阅是哪一支它也不看（只有日志那一截按支写）。
-- **MessageBus 不在这条链上。** 它走 `live-state-changed`、`post-detected` 这类状态通知去仪表盘与统计，与推送载荷两条路。方向：「发生了什么」用事件，「做 X」用直调 —— 来源把作品交给核心是直调 `PostQueue.enqueue`，`post-detected` 是入口顺手发的旁路通知，**不是装配的入口**，没有谁靠监听它来推送。
+- **MessageBus 不在这条链上。** 它走 `live-session-changed`、`post-detected` 这类状态通知去仪表盘与统计，与推送载荷两条路。方向：「发生了什么」用事件，「做 X」用直调 —— 来源把作品交给核心是直调 `PostQueue.enqueue`，`post-detected` 是入口顺手发的旁路通知，**不是装配的入口**，没有谁靠监听它来推送。
 
 ## 要改的时候
 

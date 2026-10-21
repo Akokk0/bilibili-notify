@@ -13,12 +13,12 @@
    - 对：`viewerChatCount?: number`，来源没给就不写。
    - 错：来源没给就写 `0`；或者标成必填，让拓展少报一格就被拒收。
 
-现在多收的字段（ADR-0027 决策 4；分期见决策 12：拓展作品的与 B 站作品的都已在收，场次的随 3b）：
+现在多收的字段（ADR-0027 决策 4；分期见决策 12：拓展作品的、B 站作品的与直播场次的都已落）：
 
 | 行 | 多收什么 |
 | --- | --- |
 | 作品行 `PostEntry` | 链接 `url`、标题 `title`（截 100 字）、摘要 `summary`（与 AI 同一种拼法，截 200 字）、话题 `topic`、视频时长 `videoDurationSec`。链接取信封上的 `url`，其余从 `Post` 取，都经 `stats/post-entry-extras.ts` 那一个函数 |
-| 场次行 `LiveSessionEntry` | 标题、分区、弹幕条数与发弹幕人数、醒目留言条数与按币种的总额、按档的新增会员数；累计观看本来就有（`peakTotalViewers`） |
+| 场次行 `LiveSessionEntry` | 标题 `title`、分区 `category`（开播帧）；弹幕条数 `viewerChatCount`、发弹幕人数 `viewerChatSenderCount`、醒目留言条数 `superchatCount`、按币种的总额 `superchatTotals`、按档的新增会员数 `membershipCounts`（下播帧的场次互动汇总）；累计观看本来就有（`peakTotalViewers`） |
 
 想加新字段，先按上面五条对一遍；对不上就先问主人，别默认加。
 

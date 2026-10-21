@@ -297,28 +297,38 @@ type LiveStatusResult =
   | { ok: true; kind: "offline" }                              // 此刻没在播，核心当成漏收的下播；时长算到「发现已下播的那一刻」，重连后核对发现已下播也走同一条下播的路
   | { ok: false; code: string; message: string };              // 跳过这一轮、记一条问题，不停止监听
 
-// ③ 核心自己记的一场
+// ③ 核心自己记的一场（时刻都是 ISO）
+interface LiveSessionInteractions {
+  viewerChatCount?: number;                          // 弹幕条数
+  viewerChatSenderCount?: number;                    // 发过弹幕的人数，按观众 id 去重
+  superchatCount?: number;                           // 醒目留言条数
+  superchatTotals?: Record<string, number>;          // 币种 → 本场醒目留言总额
+  membershipCounts?: Record<string, Record<string, number>>; // 体系 → 档 → 新增会员数
+}
+
 interface LiveSession {
   subscriptionId: string;
   sourceKey: SourceKey;
-  startedAt: string;          // 场次身份：来源给的开播时刻（B 站就是 live_time）⛔ 语义不动
+  startedAt?: string;         // 场次身份：来源给的开播时刻（B 站就是 live_time）⛔ 语义不动
   detectedAt: string;         // BN 认出这一场的时刻；没开播时刻时拿它当身份
   followersAtStart?: number;  // 下播卡算涨粉的基线
   peakTotalViewers?: number;  // 本场报过的最大累计观看
+  interactions?: LiveSessionInteractions;  // 经 noteInteraction 汇总，与推送开关无关
   lastDetails?: LiveDetails;  // 下播卡缺的格从这里补
-  pendingEnd?: { endedAt: string; details?: LiveDetails };   // 断流等待中
-  nextTickAt?: string;        // 下一次「正在直播」，按场次各自从开播时刻起算
+  pendingEnd?: { endedAt: string; startedAt?: string; details?: LiveDetails }; // 断流等待中
 }
+
+type LiveSessionEndReason = "signal" | "grace-expired" | "poll" | "superseded" | "stopped";
 
 // ④ 场次的变化 → 推送、统计、总线 live-session-changed
 type LiveSessionChange =
-  | { kind: "start";  session: LiveSession; trigger: "start-signal" | "status-signal" | "poll" }
-  | { kind: "resume"; session: LiveSession }
-  | { kind: "status"; session?: LiveSession; isLive: boolean }
-  | { kind: "tick";   session: LiveSession; details: LiveDetails }
-  | { kind: "ending"; session: LiveSession }
-  | { kind: "end";    session: LiveSession; reason: "signal" | "poll" | "grace-expired" | "stopped" }
-  | { kind: "unmatched-end"; subscriptionId: string; endedAt: string };
+  | { kind: "start";  subscriptionId: string; session: LiveSession; details: LiveDetails; trigger: "start-signal" | "status-signal" | "poll" }
+  | { kind: "resume"; subscriptionId: string; session: LiveSession; details: LiveDetails }
+  | { kind: "status"; subscriptionId: string; session?: LiveSession; isLive: boolean }
+  | { kind: "tick";   subscriptionId: string; session: LiveSession }
+  | { kind: "ending"; subscriptionId: string; session: LiveSession }
+  | { kind: "end";    subscriptionId: string; session: LiveSession; reason: LiveSessionEndReason; endedAt: string; details?: LiveDetails; reportedStartedAt?: string }
+  | { kind: "unmatched-end"; subscriptionId: string; endedAt: string; details?: LiveDetails; reportedStartedAt?: string };
 
 // 出卡输入
 interface LiveCardInput {
@@ -334,7 +344,12 @@ interface LiveCardInput {
 - `currentViewers`（此刻在线）与 `totalViewers`（累计观看）是两个含义，**不许互相顶替**。统计里的聚合叫 `maxViewers` / `avgViewers`。
 - ⛔ 两条语义不动：场次身份按开播时刻认、排在闩之前；统计的 `current` 是「最后一次观测时还开着」，`isLive` 是「此刻真在播」。
 - `LiveSessionChange` 的 `trigger` 与 `reason` 是事件原因，不归失败规矩管。
+- 结束原因有五种：`signal`（来源当场报下播）、`grace-expired`（断流宽限等满）、`poll`（核对发现已下播）、`superseded`（没报下播又见另一个开播时刻）、`stopped`（来源停止、订阅停用 / 删除、关机）。推下播卡的是前三种；`stopped` 的起因只进日志。
+- 场次引擎按开播时刻分场：在播状态或周期核对带来另一个已知开播时刻时，上一场以 `superseded` 结束并新开一场；断流等待期间不分场。`noteInteraction` 攒互动汇总，会员与醒目留言不开单独的总线事件，汇总随场次结束帧交统计。
+- `nextTickAt?: string` 仍是原设计：下一次「正在直播」按这一场自己的开播时刻起算；它没有读者，3b-23 未造。
 - 场次引擎的行为（断流、定时、重启重建）见 [subscription-sources.md](./subscription-sources.md)「直播」一节。
+
+🔗 10-21（3b-23）已落：`LiveSession` / `LiveSessionChange` / `LiveSessionEndReason` / `LiveSessionInteractions` 住 `packages/internal/src/live.ts`；对外是 ISO 时刻的纯数据投影，状态判定叫 `isLive`，结束时刻叫 `endedAt`，每支变化都带 `subscriptionId`。
 
 回顾快照在模板变量表里记作 `RecapSnapshot`。今天 `ViewerChatCollector.snapshot()` 直接交 `{ sortedWords, senderRecord, senderCount, viewerChatCount }`：`sortedWords` 是按次数降序的词与次数，`senderRecord` 是观众名到弹幕数，`senderCount` 是不同观众名数量，`viewerChatCount` 是弹幕总数；代码还没有另导出一个同名类型。
 
@@ -459,7 +474,7 @@ type PostPushPart = "post" | "post-images";
 | 行 | 多收什么 |
 | --- | --- |
 | 作品行 `PostEntry` | 链接 `url`、标题、摘要（取段函数的 AI 拼法，截 200 字）、话题、视频时长 |
-| 场次行 `LiveSessionEntry` | 标题、分区、弹幕条数与发弹幕人数、醒目留言条数与按币种的总额、按档的新增会员数；累计观看本来就有（`peakTotalViewers`） |
+| 场次行 `LiveSessionEntry` | 标题 `title`、分区 `category`（开播帧）；弹幕条数 `viewerChatCount`、发弹幕人数 `viewerChatSenderCount`、醒目留言条数 `superchatCount`、按币种的总额 `superchatTotals`、按档的新增会员数 `membershipCounts`（下播帧的场次互动汇总）；累计观看本来就有（`peakTotalViewers`） |
 
 - 不收：检测时点的互动数、弹幕原文、观众名单。估算 50 条订阅一年约 20MB。
 - 统计仓能回最近几条作品，AI 的 `get_creator_posts` 读它（代码里没有过单独的「最近作品小缓存」，ADR-0027 决策 14）。字段分期见决策 12：拓展作品的在 ㉖，B 站作品的随 3a，直播场次的随 3b。
@@ -717,7 +732,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `CONNECTION_PLATFORMS` / `ConnectionPlatform`、`PLATFORM_REGISTRY` | 删掉：平台信息由适配器的候选给，连接上存 `platformSnapshot` |
 | `NotificationSink`、多路分发 `MultiplexSink` | `TargetDispatcher` |
 | `BilibiliPush` / `bilibili-push.ts` / `BilibiliPushOptions` | `PushRouter` / `push-router.ts` / `PushRouterOptions` |
-| `BiliEvents`；事件 `source-auth-changed` / `live-session` / `live-viewers` | `BusEvents`；`subscription-auth-changed` / `live-session-changed` / `live-viewers-changed` |
+| `BiliEvents`；事件 `source-auth-changed` / `live-session` / `live-viewers` | `BusEvents`；`subscription-auth-changed` / `live-session-changed` / `live-viewers-changed`（🔗 10-21（3b-23）已落：后两条按订阅 id 发，人数只带来源报了的格） |
 | `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers`（🔗 10-13（3b-20）已落的只有第一个：`ExtensionLiveSession` → `LiveSession`，随场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine` 搬进 `live/live-sessions.ts`、变化类型 `LiveSessionChange` 的判别键 `type` → `kind`；`fansAtStart` 与 `totalViewers` 两格仍是旧名） |
 | `SubRuntimeStore` / `SubRuntime`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore` / `SubscriptionState`（与 `subscription-state.json` 同一个词）、头像库删掉并进图库（`SubAvatarStore` 与它的读口 ⑳c 已退役，资料缓存的 `avatar` 装图库引用、B 站的远端网址叫 `avatarUrl`）、`subscriptionId` 系、`/api/subscriptions` |
 | `identityOf`（草案名） | `subscriptionIdentityOf` |
@@ -755,10 +770,10 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `ExtensionDTO.reportProblems` 这一族 | `InstalledExtensionView.reportDiscrepancies` / `ReportDiscrepancyView` / `extension-report-discrepancies-changed`（上报出入：整条拒、丢了几格、这一轮没推都记在这；10-09 主人把原定的 `Rejection` 换成 `Discrepancy`，因为「被拒」只对其中一种；每个集成一张，与问题表分开） |
 | `LiveStatusResult.state`、`"ended"`、`reason` | 结果形状：成功 `ok: true` + `kind`（`"live"` / `"offline"`），失败 `ok: false` + `code` + `message` |
 | `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`（只交 `SourceHealth { summary }` 一行字）；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
-| ⚠️ 面板在播列表 `LiveListenerSnapshot.viewers`（装的是累计观看的排版字符串「1.2万」） | `totalViewers: number`，**不是** `currentViewers` |
+| ⚠️ 面板在播列表 `LiveListenerSnapshot.viewers`（装的是累计观看的排版字符串「1.2万」） | `totalViewers: number`，**不是** `currentViewers`（🔗 10-21（3b-23）已落：`LiveListeningEntry.totalViewers`） |
 | ⚠️ `upstream_failed` 错误体里占着 `code` 的 B 站数字码 | `upstreamCode` |
 | `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `LiveSessionEntry.peakTotalViewers`；`{ kind, occurredAt, peakTotalViewers }`；`CreatorStatsView.videoPosts` / `posts`（**口径从「其余」变「全部」**：`posts` 是全部作品，`videoPosts` 是其中带视频的）；`followers` |
-| 在播表：contract 的 `LiveListenerSnapshot` / `ExtensionLiveSnapshot`、服务端 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `LiveListeningEntry { subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder` |
+| 在播表：contract 的 `LiveListenerSnapshot` / `ExtensionLiveSnapshot`、服务端 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `LiveListeningEntry { subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder`（🔗 10-21（3b-23）已落：在播表已合成一个形状；统计的直播那一支并成 `stats/live-source.ts`，整个适配器未合） |
 | 面板 `SubscriptionPlatform` / `subscriptionPlatformOf`、`BILI_PLATFORM`、`SubscriptionLookup`、`absent`；`BILI_ONLY_EXTRAS`、`guard-levels.ts` | `SourceDescriptor` / `descriptorOf(sourceKey)`、`sourceKey`、`SubscriptionTable`、`isAbsent`；删掉，改看 `supportedExtras`、`MembershipTier.color` |
 | 历史行推送种类那格 `kind`（⑬f 已落）；`AuthState` 的 `loggedOut` / `awaitingScan` / `loggedIn` | `feature`；`logged-out` / `awaiting-scan` / `logged-in` |
 

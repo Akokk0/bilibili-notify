@@ -375,7 +375,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 同一来源串行调用；超时与中止走 `subscriptions/call-source.ts` 的 `callSource` 外壳；来源停用时取消在途调用。
 - **重启**后核心对每条开着直播推送的订阅调一次 `fetchLiveStatus` 重建场次；要不要补推一张正在直播卡由 `liveStart.catchUpOnBoot` 统一决定。补报不 @全体、历史记成开播，见 data-model「特性键」。
 - 断流：收到 `end` 先进 `pendingEnd` 等宽限，宽限里又开播就 `resume` 接着同一场；等满了才 `end`。
-- 场次的每次变化是一条 `LiveSessionChange`，推送与统计吃同一份；在册来源暂时由 `runtime/engines.ts` 投影成 `live-state-changed` / `live-viewers-changed`，3b-23 改成中立事件。
+- 场次的每次变化是一条 `LiveSessionChange`，推送与统计吃同一份；B 站与拓展来源统一由场次引擎发 `live-session-changed`，信号或核对带的人数另发 `live-viewers-changed { subscriptionId, currentViewers?, totalViewers? }`，只带实际带来的格（🔗 10-21（3b-23）已落）。
 - ⛔ 场次身份按开播时刻认、排在闩之前；统计 `current` 与 `isLive` 的语义不动。
 - 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）就监听，只看开关与名单、不看有没有目标。看得见的变化：五把直播开关全关、名单上有人、特别关注开关也关着的订阅，升级后不再连直播间、首页说它「不会被监听」、统计不再记它的直播（0.x 是「名单有人就监听」，迁移记账本留一份冻住的旧读法）。宿主把结果算进 `SourceSubscriptionView.monitorsLive`，同一人的重复订阅取或；B 站来源的 `ListenerManager` 只连 `monitorsLive` 为真的人。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标）。`getModuleState().live` 还要求这个来源实现了直播：在册来源有 `fetchLiveStatus`，或拓展声明了直播周期。
 - **醒目留言**：`SuperchatEvent` 带可选的 `tier { rank, durationSec? }`，由来源按平台规矩算；卡按档取色（默认配色照今天六档，皮肤可按档换色），有留言时长就显示。

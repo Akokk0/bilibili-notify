@@ -273,8 +273,8 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 事件 | 载荷 | 替掉的 |
 | --- | --- | --- |
 | `post-detected` | `PostEvent` | `dynamic-detected`；拓展作品也发 |
-| `live-session-changed` | `LiveSessionChange` | `live-state-changed`、`extension-live-session`、`extension-live-changed` |
-| `live-viewers-changed` | `{ subscriptionId, currentViewers?, totalViewers? }` | 原来的人数文字 |
+| `live-session-changed` | `LiveSessionChange`（🔗 10-21（3b-23）已落） | `live-state-changed`、`extension-live-session`、`extension-live-changed` |
+| `live-viewers-changed` | `{ subscriptionId, currentViewers?, totalViewers? }`（🔗 10-21（3b-23）已落） | 原来的人数文字 |
 | `subscription-auth-changed` | `{ sourceKey, state }`，`state` 是那一刻完整的中立 `AuthState`（状态取值在它的 `status` 里） | B 站四个登录事件；原载荷的 `kind` 改叫 `sourceKey` |
 | `followers-refreshed` | 按订阅 id 的粉丝刷新条目 | `fans-refreshed`（去掉 uid / extensionId 三格） |
 | `problems-changed` | `{ reporter }`：只带报的人、不带问题内容（3a-30 落成，键的形状是报的人）；经 WS 的 `state` 频道推给面板，按报的人 250ms 合并 | 新增：问题表搬进内存以后，面板靠它知道要重拉（ADR-0025 决策 11） |
@@ -284,7 +284,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - 来源与平台适配器的问题走 `reportProblem`，核心模块自己的问题直接写问题表；`engine-error` 只留流水线错误（如某一次出卡失败），`source` 改成中立的模块名（名字施工时定）。
   - 🔗 现状（3a-30，10-11）：B 站来源的问题已走 `reportProblem`（动态与直播的几处 `engine-error` 都删了）；`engine-error` 今天还有两个发射者：作品投递出图失败（`source` 是 `post-delivery`，文案带降级提示）与直播「重连流程内部异常」（`source` 是 `live-engine`），另有开发场景 `engine.error`；`source` 的中立命名仍没动。核心自己直接写问题表的路没有人走。
 - 施工时补一张「现有 22 个事件 → 1.0 去向」的全量表（含 `subscription-reported` 这类宿主内部事件），写进 events.md。
-- 直播互动（弹幕、SC、会员、进场）走回调、不走总线（3b 定）；弹幕是高频流，要在 events.md 写清。
+- 直播互动（弹幕、SC、会员、进场）走回调、不走总线（3b 定）；弹幕是高频流，要在 events.md 写清。🔗 会员与醒目留言不开总线事件，互动汇总随场次结束帧交统计（3b-23，主人 10-21 定）。
 - 被否的备选：另开一条 B 站私有总线（违反「MessageBus 是唯一事件通道」）。
 
 ## wire 契约
