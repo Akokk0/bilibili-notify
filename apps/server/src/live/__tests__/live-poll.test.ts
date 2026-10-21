@@ -202,6 +202,28 @@ describe("问到的三种结果", () => {
 		expect(sessions.get(SUB.id)?.detectedAt).toBe(before?.detectedAt);
 	});
 
+	it("在播但开播时刻变了:上一场 superseded 收掉,按 poll 认出新的一场", async () => {
+		signalStart();
+		fetchStatus.mockResolvedValue(liveResult("新的一场", STARTED + HOUR + MINUTE));
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+
+		expect(kinds()).toEqual(["start", "end", "start"]);
+		expect(changes[1]).toMatchObject({
+			kind: "end",
+			reason: "superseded",
+			endedAt: iso(STARTED + 2 * HOUR),
+		});
+		expect(changes[2]).toMatchObject({
+			kind: "start",
+			trigger: "poll",
+			session: { startedAt: iso(STARTED + HOUR + MINUTE) },
+		});
+		expect(sessions.get(SUB.id)).toMatchObject({
+			startedAt: iso(STARTED + HOUR + MINUTE),
+			lastDetails: { title: "新的一场" },
+		});
+	});
+
 	it("已下播:当漏收的下播走下播的路,原因 poll,时刻是发现的那一刻(开播卡之后的时长算到这)", async () => {
 		signalStart();
 		fetchStatus.mockResolvedValue({ ok: true, kind: "offline" });

@@ -29,8 +29,9 @@ import type { LiveTable } from "./live-table.js";
  * - **开播**:开播信号开一场(开播时刻取信号的);正处在断流等待里 → 取消等待,**同一场接着播**,开播时刻
  *   与粉丝基线沿用第一次的(决策 58)。上一场没报下播就又开播了 → 上一场在这儿收掉。
  * - **直播状态**:在播、手里又没有这一场 → 认出一场(BN 起来之前、或来源停着的时候就开播了;开播时刻取状态
- *   带的,没带就空着,之后的状态带了再补上)。有这一场 → 把在播表里最新那一份记到这一场上。不在播 → 这一场
- *   不动:BN 不拿状态的翻转猜下播(决策 53)。
+ *   带的,没带就空着,之后的状态带了再补上)。有这一场 → 把在播表里最新那一份记到这一场上;来源报了另一个
+ *   开播时刻(两场之间漏收了下播)→ 上一场按 `superseded` 收掉,再按这一份状态认出新的一场。断流等待里
+ *   仍然接续同一场(决策 58)。不在播 → 这一场不动:BN 不拿状态的翻转猜下播(决策 53)。
  * - **下播**只由信号触发(决策 53)。断流接续开着(按 UP 折好的 `liveEndGrace` / `liveEndGraceMinutes`)就先
  *   压着,等满了这一场才结束,结束时刻是**信号带的下播时刻**(等的那几分钟不算);没开立刻结束。
  * - **作废**(决策 61):来源停了、订阅停用 / 删了、关机 → 这一场当场结束,等着的下播不再等。
@@ -273,6 +274,21 @@ function notePeakTotalViewers(session: SessionState, details: LiveDetails | unde
 	}
 }
 
+/** 这一份信号的开播时刻会取代这一场时,交回前后两个毫秒时刻。 */
+function changedStartTimes(
+	session: SessionState,
+	reportedStartedAt: number | undefined,
+): { previous: number; reported: number } | undefined {
+	if (
+		session.startedAt === undefined ||
+		reportedStartedAt === undefined ||
+		session.startedAt === reportedStartedAt
+	) {
+		return undefined;
+	}
+	return { previous: session.startedAt, reported: reportedStartedAt };
+}
+
 const REASON_TEXT: Record<LiveSessionEndReason, string> = {
 	ended: "下播",
 	poll: "poll",
@@ -387,6 +403,28 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		return session;
 	}
 
+	/** 收掉上一场(如果有),整行换新,再按这一份信号宣布新的一场。 */
+	function startNewSession(
+		id: string,
+		sourceKey: string,
+		details: LiveDetails,
+		startedAt: number | undefined,
+		trigger: "start-signal" | "status-signal" | "poll",
+		busTrigger: "liveStart" | "liveStatus",
+	): void {
+		end(id, "superseded");
+		opts.table.replace(id, sourceKey, startedAt, details);
+		const session = begin(id, details, sourceKey, startedAt);
+		announce({
+			kind: "start",
+			subscriptionId: id,
+			session,
+			trigger,
+			details,
+		});
+		publishStart(session, busTrigger);
+	}
+
 	// ---- 拉取式:按每一场自己的时钟问来源(`fetchLiveStatus`) ----
 
 	const isCurrent = (session: SessionState): boolean =>
@@ -457,7 +495,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 	}
 
-	/** 问来源一次。在播 → 记到这一场发 `tick`;已下播 → 当漏收的下播;没取到(含被中止)→ 跳过这一轮。 */
+	/**
+	 * 问来源一次。在播且开播时刻没变 → 记到这一场发 `tick`;开播时刻变了 → 上一场 `superseded`、再开一场;
+	 * 已下播 → 当漏收的下播;没取到(含被中止)→ 跳过这一轮。
+	 */
 	async function pollOnce(session: SessionState): Promise<void> {
 		const reader = opts.liveStatus;
 		const id = session.subscriptionId;
@@ -476,6 +517,14 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			);
 		} else if (result.kind === "live") {
 			const startedAt = millisOf(result.startedAt);
+			const changedStart = changedStartTimes(session, startedAt);
+			if (changedStart !== undefined) {
+				log.debug(
+					`[live-sessions] 订阅 ${id} 的周期核对照到另一个开播时刻(${iso(changedStart.previous)} / ${iso(changedStart.reported)}),上一场收掉后开新的一场`,
+				);
+				startNewSession(id, session.sourceKey, result.details, startedAt, "poll", "liveStatus");
+				return;
+			}
 			opts.table.merge(id, session.sourceKey, startedAt, result.details);
 			session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 			session.startedAt ??= startedAt;
@@ -533,17 +582,8 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			if (!result.ok || result.kind !== "live" || sessions.has(sub.id) || !trackable(sub.id))
 				return;
 			const startedAt = millisOf(result.startedAt);
-			opts.table.merge(sub.id, identity.sourceKey, startedAt, result.details);
-			const session = begin(sub.id, result.details, identity.sourceKey, startedAt);
 			log.debug(`[live-sessions] 订阅 ${sub.id} 核对发现正在播,认出这一场`);
-			announce({
-				kind: "start",
-				subscriptionId: sub.id,
-				session,
-				trigger: "poll",
-				details: result.details,
-			});
-			publishStart(session, "liveStatus");
+			startNewSession(sub.id, identity.sourceKey, result.details, startedAt, "poll", "liveStatus");
 		} finally {
 			probing.delete(sub.id);
 		}
@@ -564,11 +604,10 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		}
 		const sourceKey = signal.identity.sourceKey;
 		const startedAt = millisOf(signal.startedAt);
-		// 新的一场:整行换新,上一场留下的格一概不带(漏了下播的那场也在这儿收尾)。
-		opts.table.replace(id, sourceKey, startedAt, signal.details);
 		const current = sessions.get(id);
 		if (current?.pendingEnd) {
 			// 断流接续(决策 58):同一场。取消等待,开播时刻与粉丝基线沿用第一次的。
+			opts.table.replace(id, sourceKey, startedAt, signal.details);
 			current.pendingEnd.handle.dispose();
 			current.pendingEnd = undefined;
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
@@ -578,17 +617,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			armPoll(current);
 			return;
 		}
-		// 新的一场。上一场没报下播的话,在这儿收掉。
-		end(id, "superseded");
-		const session = begin(id, signal.details, sourceKey, startedAt);
-		announce({
-			kind: "start",
-			subscriptionId: id,
-			session,
-			trigger: "start-signal",
-			details: signal.details,
-		});
-		publishStart(session, "liveStart");
+		startNewSession(id, sourceKey, signal.details, startedAt, "start-signal", "liveStart");
 	}
 
 	function onStatus(signal: StatusSignal): void {
@@ -596,18 +625,27 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		const sub = trackable(id);
 		if (!sub) return;
 		const current = sessions.get(id);
-		// 手里有这一场,报的人数就是它的(不在播的那份也是 —— 这一场还没等到下播信号)。
-		if (current) notePeakTotalViewers(current, signal.details);
+		const sourceKey = signal.identity.sourceKey;
+		const startedAt = millisOf(signal.startedAt);
+		const changedStart = current === undefined ? undefined : changedStartTimes(current, startedAt);
 		// 报了不在播:出表;BN 不拿它猜下播(决策 53),这一场等下播信号来收。
 		if (!signal.isLive) {
+			// 手里有这一场,报的人数就是它的(不在播的那份也是 —— 这一场还没等到下播信号)。
+			if (current) notePeakTotalViewers(current, signal.details);
 			opts.table.remove(id);
 			announce({ kind: "status", subscriptionId: id, isLive: false, session: current });
 			return;
 		}
-		const sourceKey = signal.identity.sourceKey;
-		const startedAt = millisOf(signal.startedAt);
+		if (current && !current.pendingEnd && changedStart !== undefined) {
+			log.debug(
+				`[live-sessions] 订阅 ${id} 的在播状态报了另一个开播时刻(${iso(changedStart.previous)} / ${iso(changedStart.reported)}),上一场收掉后开新的一场`,
+			);
+			startNewSession(id, sourceKey, signal.details, startedAt, "status-signal", "liveStatus");
+			return;
+		}
 		opts.table.merge(id, sourceKey, startedAt, signal.details);
 		if (current) {
+			notePeakTotalViewers(current, signal.details);
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
 			// 之前没有开播时刻、这一份带了:计时从真开播时刻重新起算。
 			const learnedStartedAt = current.startedAt === undefined && startedAt !== undefined;
@@ -617,16 +655,8 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			return;
 		}
 		// 没见过这一场的开播信号:BN 起来之前就开播了,或者来源停过又跑起来了。
-		const session = begin(id, signal.details, sourceKey, startedAt);
 		log.debug(`[live-sessions] 订阅 ${id} 正在播,认出这一场`);
-		announce({
-			kind: "start",
-			subscriptionId: id,
-			session,
-			trigger: "status-signal",
-			details: signal.details,
-		});
-		publishStart(session, "liveStatus");
+		startNewSession(id, sourceKey, signal.details, startedAt, "status-signal", "liveStatus");
 	}
 
 	function onEnd(signal: EndSignal): void {

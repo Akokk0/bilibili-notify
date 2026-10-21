@@ -288,6 +288,78 @@ describe("一场从哪开始", () => {
 		]);
 	});
 
+	it("在播状态报了另一个开播时刻:上一场 superseded 收掉,再按状态认出新的一场", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE, title: "第一场", totalViewers: 40 });
+		vi.advanceTimersByTime(HOUR);
+		liveStatus({ startedAt: T0 + HOUR + MINUTE, totalViewers: 5 });
+
+		expect(summary()).toEqual([
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0 - MINUTE) },
+			{ kind: "end", reason: "superseded", endedAt: iso(T0 + HOUR) },
+			{
+				kind: "start",
+				trigger: "status-signal",
+				startedAt: iso(T0 + HOUR + MINUTE),
+			},
+		]);
+		expect(sessions.get(SUB.id)).toMatchObject({
+			startedAt: iso(T0 + HOUR + MINUTE),
+			lastDetails: { totalViewers: 5 },
+			peakTotalViewers: 5,
+		});
+		expect(changes[1]).toMatchObject({
+			kind: "end",
+			session: { peakTotalViewers: 40 },
+		});
+		expect(table.get(SUB.id)).toMatchObject({
+			startedAt: T0 + HOUR + MINUTE,
+			details: { totalViewers: 5 },
+		});
+		expect(table.get(SUB.id)?.details).not.toHaveProperty("title");
+		expect(
+			frames.map((frame) => [frame.phase, frame.phase === "end" ? frame.reason : frame.trigger]),
+		).toEqual([
+			["start", "liveStart"],
+			["end", "superseded"],
+			["start", "liveStatus"],
+		]);
+	});
+
+	it("在播状态带的开播时刻与手里相同:仍当这一场,只发 status", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		liveStatus({ startedAt: T0 - MINUTE, totalViewers: 20 });
+
+		expect(summary()).toEqual([
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0 - MINUTE) },
+			{ kind: "status", isLive: true },
+		]);
+		expect(sessions.get(SUB.id)).toMatchObject({
+			startedAt: iso(T0 - MINUTE),
+			lastDetails: { totalViewers: 20 },
+		});
+	});
+
+	it("断流等待里的在播状态带另一个开播时刻:照旧接续同一场,不按状态分场", () => {
+		settings = { ...settings, liveEndGrace: true, liveEndGraceMinutes: 3 };
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		liveEnd();
+		liveStatus({ startedAt: T0 + HOUR, totalViewers: 30 });
+
+		expect(summary()).toEqual([
+			{ kind: "start", trigger: "start-signal", startedAt: iso(T0 - MINUTE) },
+			{ kind: "ending" },
+			{ kind: "status", isLive: true },
+		]);
+		expect(sessions.get(SUB.id)).toMatchObject({
+			startedAt: iso(T0 - MINUTE),
+			pendingEnd: { endedAt: iso(T0) },
+			lastDetails: { totalViewers: 30 },
+		});
+	});
+
 	it("停用的订阅、拓展没在跑:上报一概不记", () => {
 		subs.set(SUB.id, { ...SUB, enabled: false });
 		start();

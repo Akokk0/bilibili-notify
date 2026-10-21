@@ -865,6 +865,16 @@ describe("重启补报", () => {
 		expect(sent.map((s) => s.type)).toEqual([3]);
 	});
 
+	it("上一场被 superseded 收掉、新一场由在播状态认出:不推下播卡,也不补报", async () => {
+		settings = baseSettings({ catchUpOnBoot: true });
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		await settle();
+		liveStatus({ startedAt: T0 + HOUR });
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+	});
+
 	// 契约不规定状态与事件谁先报(决策 57 的 09-24 🔗):报「不在播」也算见过,「正在直播」卡发之前再认一次
 	// 这一场还是不是当前那场 —— 否则一场刚开的直播会先补推一张「正在直播」、紧跟着又推开播卡。
 	it("先报不在播、再报在播、再来开播事件:只推一张开播卡", async () => {
