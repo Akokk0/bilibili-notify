@@ -16,8 +16,8 @@ export const WORDCLOUD_TOP_WORDS = 90;
  * logic (≥50 unique words required) and surfaces logger messages identical to
  * the original live-service.
  *
- * The output is a `Buffer` so the caller decides how to wrap it for the target
- * platform (e.g. via `LiveContentBuilder.image`).
+ * The output is a `Buffer` so the caller decides how to frame it as a neutral
+ * image segment for the target platform.
  */
 export class WordcloudGenerator {
 	private readonly getImageRenderer: () => ImageRenderer | null;

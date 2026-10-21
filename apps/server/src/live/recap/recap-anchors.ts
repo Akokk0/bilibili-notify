@@ -9,8 +9,7 @@
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import type { ImageRef, Logger } from "@bilibili-notify/internal";
-import type { LiveContentBuilder } from "../content-builder";
+import type { ImageRef, Logger, MessageLayoutSegment } from "@bilibili-notify/internal";
 import type { LivePushAnchor } from "../live-types";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import { parseStopWords } from "./stop-words";
@@ -38,13 +37,11 @@ export interface RecapDeps {
 	collector: Pick<ViewerChatCollector, "snapshot">;
 	wordcloud: Pick<WordcloudGenerator, "generate">;
 	summary: Pick<LiveSummaryRequester, "generate">;
-	content: LiveContentBuilder;
 	logger: Logger;
 }
 
 export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAnchor[] {
 	const { extras, creator } = options;
-	const { content } = deps;
 	if (!extras.wordcloud && !extras.liveSummary) return [];
 
 	deps.logger.debug(
@@ -74,7 +71,9 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 					options.cardSkinKnobs,
 				);
 				if (!img) return undefined;
-				return [content.image(img, "image/jpeg")];
+				return [
+					[{ kind: "image", buffer: img, mime: "image/jpeg" }],
+				] satisfies MessageLayoutSegment[][];
 			})(),
 		});
 	}
@@ -101,10 +100,16 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 		anchors.push({
 			role: "extra",
 			extra: "liveSummary",
-			messages: Promise.resolve(made ? [content.text(made.template)] : undefined),
+			messages: Promise.resolve(
+				made
+					? ([[{ kind: "text", text: made.template }]] satisfies MessageLayoutSegment[][])
+					: undefined,
+			),
 			...(made?.ai
 				? {
-						aiMessages: made.ai.then((text) => (text ? [content.text(text)] : undefined)),
+						aiMessages: made.ai.then((text) =>
+							text ? ([[{ kind: "text", text }]] satisfies MessageLayoutSegment[][]) : undefined,
+						),
 					}
 				: {}),
 		});

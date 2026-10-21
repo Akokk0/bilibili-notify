@@ -254,6 +254,14 @@ describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给�
 		});
 	});
 
+	it("空文字段不进载荷:单图仍收成图载荷", async () => {
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[card, { kind: "text", text: "" }]], 9);
+		expect(push.mock.calls[0]?.[0]?.anchors[0]?.messages).toEqual([
+			{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
+		]);
+	});
+
 	it("重启补报:特性 liveStart(走开播的路由,历史记成开播)、不 @全体", async () => {
 		const { push, router } = spy();
 		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "补报" }]], 11);
@@ -285,13 +293,13 @@ describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给�
 			{
 				role: "extra",
 				extra: "wordcloud",
-				messages: [{ kind: "text", text: "词云" }],
+				messages: [[{ kind: "text", text: "词云" }]],
 			},
 			{
 				role: "extra",
 				extra: "liveSummary",
-				messages: Promise.resolve([{ kind: "text", text: "模板总结" }]),
-				aiMessages: Promise.resolve([{ kind: "text", text: "AI 总结" }]),
+				messages: Promise.resolve([[{ kind: "text", text: "模板总结" }]]),
+				aiMessages: Promise.resolve([[{ kind: "text", text: "AI 总结" }]]),
 			},
 		]);
 		const sent = push.mock.calls[0]?.[0];

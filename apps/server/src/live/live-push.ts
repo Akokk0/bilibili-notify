@@ -17,7 +17,6 @@ import {
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
-import type { LiveContentBuilder } from "./content-builder.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
 import {
@@ -113,12 +112,11 @@ export interface BindLivePushOptions {
 	hasLiveTick(sourceKey: string): boolean;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);详情没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
-	/** 下播回顾要的收集器、词云、总结与内容构造口。 */
+	/** 下播回顾要的收集器、词云与总结。 */
 	recap: {
 		collector: Pick<ViewerChatCollector, "snapshot">;
 		wordcloud: Pick<WordcloudGenerator, "generate">;
 		summary: Pick<LiveSummaryRequester, "generate">;
-		content: LiveContentBuilder;
 	};
 	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
@@ -296,7 +294,6 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				collector: opts.recap.collector,
 				wordcloud: opts.recap.wordcloud,
 				summary: opts.recap.summary,
-				content: opts.recap.content,
 				logger: log,
 			},
 		);

@@ -29,7 +29,6 @@ import { bindLivePush } from "../../live/live-push.js";
 import { createLiveSessionEngine } from "../../live/live-sessions.js";
 import { liveSettingsOf } from "../../live/live-settings.js";
 import { createLiveTable } from "../../live/live-table.js";
-import { segmentContentBuilder } from "../content-builder.js";
 import { postSettingsOf } from "../engines.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
@@ -169,7 +168,6 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 					},
 					wordcloud: { generate: async () => undefined },
 					summary: { generate: () => undefined },
-					content: segmentContentBuilder,
 				},
 				sendFor: (): LiveNotifySend => async () => delivered(),
 				renderer: () => renderer,

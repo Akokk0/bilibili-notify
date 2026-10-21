@@ -2,12 +2,11 @@
  * **下播的附加项锚点**(`recapAnchors`):两个附加项(词云 / AI 总结)各自门控、各是下播那次推送里的一个锚点,
  * 按「词云 → 总结」排;弹幕快照同步取,两样随即各自开始做,内容是各自的约定。
  *
- * 这里只用中立的东西喂它:一个假收集器、两个假生成器、一个把调用原样记成对象的内容构造口。期望值写死成字面量。
+ * 这里只用中立的东西喂它:一个假收集器、两个假生成器。期望值写死成字面量。
  */
 
 import type { ImageRef, Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { LiveContentBuilder } from "../../content-builder";
 import { type RecapDeps, type RecapOptions, recapAnchors } from "../recap-anchors";
 
 const AVATAR = `${"c".repeat(64)}.webp` as ImageRef;
@@ -22,13 +21,6 @@ function options(over: Partial<RecapOptions> = {}): RecapOptions {
 		...over,
 	};
 }
-
-const content: LiveContentBuilder = {
-	text: (text) => ({ kind: "text", text }),
-	image: (source, mime) => ({ kind: "image", source, ...(mime === undefined ? {} : { mime }) }),
-	atAll: () => ({ kind: "at-all" }),
-	message: (segments) => ({ kind: "message", segments }),
-};
 
 function setup(
 	opts: {
@@ -66,7 +58,6 @@ function setup(
 		collector: { snapshot },
 		wordcloud: { generate: wordcloudGenerate },
 		summary: { generate: summaryGenerate },
-		content,
 		logger: logger as unknown as Logger,
 	} as unknown as RecapDeps;
 	return { d, snapshot, wordcloudGenerate, summaryGenerate, logger };
@@ -93,7 +84,7 @@ describe("recapAnchors", () => {
 		const t = setup({ image: Buffer.from("img") });
 		const anchors = recapAnchors(options({ extras: { wordcloud: true, liveSummary: false } }), t.d);
 		expect(await settled(anchors)).toEqual([
-			["extra", "wordcloud", [{ kind: "image", source: Buffer.from("img"), mime: "image/jpeg" }]],
+			["extra", "wordcloud", [[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }]]],
 		]);
 		expect(t.summaryGenerate).not.toHaveBeenCalled();
 	});
@@ -102,7 +93,7 @@ describe("recapAnchors", () => {
 		const t = setup({ summary: "只有总结" });
 		const anchors = recapAnchors(options({ extras: { wordcloud: false, liveSummary: true } }), t.d);
 		expect(await settled(anchors)).toEqual([
-			["extra", "liveSummary", [{ kind: "text", text: "只有总结" }]],
+			["extra", "liveSummary", [[{ kind: "text", text: "只有总结" }]]],
 		]);
 		expect(t.wordcloudGenerate).not.toHaveBeenCalled();
 	});
@@ -110,8 +101,8 @@ describe("recapAnchors", () => {
 	it("两样都开:先词云后总结,各带各的键", async () => {
 		const t = setup({ image: Buffer.from("img"), summary: "总结文本" });
 		expect(await settled(recapAnchors(options(), t.d))).toEqual([
-			["extra", "wordcloud", [{ kind: "image", source: Buffer.from("img"), mime: "image/jpeg" }]],
-			["extra", "liveSummary", [{ kind: "text", text: "总结文本" }]],
+			["extra", "wordcloud", [[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }]]],
+			["extra", "liveSummary", [[{ kind: "text", text: "总结文本" }]]],
 		]);
 	});
 
@@ -165,7 +156,7 @@ describe("recapAnchors", () => {
 		t.wordcloudGenerate.mockRejectedValue(new Error("词云画不出来"));
 		const [wordcloud, summary] = recapAnchors(options(), t.d);
 		await expect(wordcloud?.messages).rejects.toThrow("词云画不出来");
-		expect(await summary?.messages).toEqual([{ kind: "text", text: "总结" }]);
+		expect(await summary?.messages).toEqual([[{ kind: "text", text: "总结" }]]);
 	});
 
 	it("总结有 AI 那份:messages 是模板那串,aiMessages 是 AI 那串;词云锚点永远没有这一格", async () => {
@@ -176,22 +167,22 @@ describe("recapAnchors", () => {
 		});
 		const [wordcloud, summary] = recapAnchors(options(), t.d);
 		expect(wordcloud && "aiMessages" in wordcloud).toBe(false);
-		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
-		expect(await summary?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
+		expect(await summary?.messages).toEqual([[{ kind: "text", text: "模板总结" }]]);
+		expect(await summary?.aiMessages).toEqual([[{ kind: "text", text: "AI 总结" }]]);
 	});
 
 	it("总结没有 AI 那份:锚点上没有 aiMessages 这个键", async () => {
 		const t = setup({ summary: "模板总结" });
 		const [, summary] = recapAnchors(options(), t.d);
 		expect(summary && "aiMessages" in summary).toBe(false);
-		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+		expect(await summary?.messages).toEqual([[{ kind: "text", text: "模板总结" }]]);
 	});
 
 	it("AI 那份兑现成 undefined:aiMessages 兑现成 undefined,模板那串不受影响", async () => {
 		const t = setup({ summary: "模板总结", ai: Promise.resolve(undefined) });
 		const [, summary] = recapAnchors(options(), t.d);
 		expect(await summary?.aiMessages).toBeUndefined();
-		expect(await summary?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
+		expect(await summary?.messages).toEqual([[{ kind: "text", text: "模板总结" }]]);
 	});
 
 	it("请求器同步抛错:总结的 messages 被拒绝,没有 aiMessages,词云不受牵连", async () => {
@@ -203,7 +194,7 @@ describe("recapAnchors", () => {
 		await expect(summary?.messages).rejects.toThrow("模板渲染炸了");
 		expect(summary && "aiMessages" in summary).toBe(false);
 		expect(await wordcloud?.messages).toEqual([
-			{ kind: "image", source: Buffer.from("img"), mime: "image/jpeg" },
+			[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
 		]);
 	});
 

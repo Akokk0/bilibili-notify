@@ -33,6 +33,7 @@ import type {
 	ImageRef,
 	LinkPreviewPolicy,
 	LinkPreviewSettings,
+	MessageLayoutSegment,
 	NotificationPayload,
 	PayloadSegment,
 	ProbeResult,
@@ -107,7 +108,6 @@ import {
 	readCardBgDataUrl,
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
-import { segmentContentBuilder, segmentToPayload } from "./content-builder.js";
 import { type ExtensionSourceReader, extensionHasLiveTick } from "./extension-push-common.js";
 import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
@@ -915,7 +915,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					collector: viewerChats,
 					wordcloud: wordcloudGenerator,
 					summary: summaryRequester,
-					content: segmentContentBuilder,
 				},
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
@@ -1334,6 +1333,16 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
 	return { kind: "composite", segments };
 }
 
+/** 一条直播消息里的中立段 → 推送载荷段;空文字段不进载荷,单图仍由 `collapseSegments` 收成图。 */
+function liveSegmentsToPayload(segments: readonly MessageLayoutSegment[]): PayloadSegment[] {
+	return segments.flatMap((segment): PayloadSegment[] => {
+		if (segment.kind === "text") {
+			return segment.text.length > 0 ? [{ kind: "text", text: segment.text }] : [];
+		}
+		return [{ kind: "image", buffer: segment.buffer, mime: segment.mime }];
+	});
+}
+
 /**
  * 引擎→推送层的两个适配器。**提成工厂是为了让这一跳自己有守卫** ——
  * 它们原本编在 `createEngines` 里、测试够不着,于是把直播那一跳的翻译整个换掉也没一条
@@ -1400,8 +1409,7 @@ function livePushHead(type: number): Pick<Push, "feature" | "allowAtAll"> {
 /**
  * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):绑到**一条订阅**上,装配交来的消息组 →
  * 推送层的一次推送(只有本体那一个锚点),特性键与 @全体 照 {@link livePushHead}。拓展订阅的直播用它
- * (ADR-0019 决策 67);段照同一个口子翻
- * (`segmentContentBuilder` → `segmentToPayload`)。
+ * (ADR-0019 决策 67);中立段在这里直接翻成推送载荷。
  *
  * 一组是一条消息:几组就是本体那个锚点里的一串(推送层的序列语义,同 B 站的「分条」)。
  */
@@ -1410,22 +1418,10 @@ export function boundLivePush(
 	subscriptionId: string,
 ): LiveNotifySend {
 	return async (groups, type, extras = []) => {
-		const messages = groups.map((segs) =>
-			collapseSegments(
-				segmentToPayload(
-					segmentContentBuilder.message(
-						segs.map((seg) =>
-							seg.kind === "image"
-								? segmentContentBuilder.image(seg.buffer, seg.mime)
-								: segmentContentBuilder.text(seg.text),
-						),
-					),
-				),
-			),
-		);
+		const messages = groups.map((segments) => collapseSegments(liveSegmentsToPayload(segments)));
 		const anchors: PushAnchor[] = [
 			{ role: "main", messages },
-			...toPushAnchors(extras, (content) => collapseSegments(segmentToPayload(content))),
+			...toPushAnchors(extras, (message) => collapseSegments(liveSegmentsToPayload(message))),
 		];
 		await push.push({
 			subscriptionId,

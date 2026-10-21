@@ -30,7 +30,6 @@ import {
 } from "../../__tests__/support/track-context.js";
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
-import { segmentContentBuilder } from "../../runtime/content-builder.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { bindExtensionLive } from "../extension-live.js";
 import type { LiveNotifySend } from "../live-notify.js";
@@ -207,7 +206,6 @@ function start(): void {
 					};
 				},
 			},
-			content: segmentContentBuilder,
 		},
 		sendFor:
 			(id): LiveNotifySend =>

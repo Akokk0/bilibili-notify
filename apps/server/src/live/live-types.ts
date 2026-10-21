@@ -3,13 +3,18 @@
  * B 站的直播间与拓展订阅的直播共用(ADR-0019 决策 65 / 67),不认 uid、不认房间数据。
  */
 
-import type { ExtraKey, PushMessageRole, SpecialViewer } from "@bilibili-notify/internal";
+import type {
+	ExtraKey,
+	MessageLayoutSegment,
+	PushMessageRole,
+	SpecialViewer,
+} from "@bilibili-notify/internal";
 
 /**
  * 一次直播推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(开播 / 下播卡、
  * 上舰、醒目留言……),或一个附加项(下播的词云、AI 总结)。锚点按先后发。
  *
- * 内容的类型有意是 `unknown`:它是宿主 `contentBuilder` 造出来的东西,引擎只原样递回去。
+ * 一条消息是一串中立的文字 / 图片段;锚点只决定这些消息先后发,不认具体平台的消息形状。
  */
 export interface LivePushAnchor {
 	/** 本体(`main`)还是附加项(`extra`)。 */
@@ -21,13 +26,13 @@ export interface LivePushAnchor {
 	 * 中止该目标这个锚点里的后续条)。也可以是一个「等会儿给」的约定(词云、总结还在做);
 	 * 最后为空就跳过,做的时候出错由推送层记一条警告并跳过。
 	 */
-	messages: unknown[] | Promise<unknown[] | undefined>;
+	messages: MessageLayoutSegment[][] | Promise<MessageLayoutSegment[][] | undefined>;
 	/**
 	 * AI 写的那一份(只有下播的总结有):形状同 `messages`,由推送层按目标挑用这份还是 `messages`
 	 * (ADR-0032)。没有 AI 版就**不带这一格**(键缺失),不是 `undefined` 值;约定兑现成 `undefined`
 	 * 或被拒绝 = 这次没做出来,所有目标用 `messages`。
 	 */
-	aiMessages?: unknown[] | Promise<unknown[] | undefined>;
+	aiMessages?: MessageLayoutSegment[][] | Promise<MessageLayoutSegment[][] | undefined>;
 }
 
 /**

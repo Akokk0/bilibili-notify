@@ -6,9 +6,9 @@
  * 纯逻辑、无 IO:持久化的读写由调用方(engines 装配处)包在 fs + 定时 flush 外层。
  */
 
-/** scope 取下一张背景:空列表→undefined,单图→该图(不推进),多图→顺序轮换并推进游标。 */
-type PickLiveCover = (scopeKey: string, images: string[]) => string | undefined;
+import type { PickLiveCover } from "../live/live-types.js";
 
+/** scope 取下一张背景:空列表→undefined,单图→该图(不推进),多图→顺序轮换并推进游标。 */
 export interface CardBgRotator {
 	pick: PickLiveCover;
 	/** 当前游标快照(浅拷贝),交给持久化层落盘。 */

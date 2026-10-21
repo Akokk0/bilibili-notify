@@ -151,7 +151,7 @@ export function planMessageGroups(
 
 /**
  * 按版式装配出来的一段:卡片图,或一段文字。平台中立 —— 调用方各自映射成自己的
- * 消息形状(动态直接当 `PushSegment` 发,直播经 `LiveContentBuilder` 包一层)。
+ * 消息形状(动态直接当 `PushSegment` 发,直播直接交一串 `MessageLayoutSegment`)。
  */
 export type MessageLayoutSegment =
 	| { kind: "image"; buffer: Buffer; mime: string }
