@@ -270,7 +270,9 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 
 		clock = "2026-05-16T12:00:00.000Z";
 		await handle.closeOpenSessions();
-		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", "2026-05-16T12:00:00.000Z");
+		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", {
+			endedAt: "2026-05-16T12:00:00.000Z",
+		});
 	});
 
 	it("没有在播的场次 → 不写多余的帧", async () => {
@@ -305,26 +307,35 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 
 	it("关一场时把场次引擎交来的 peak 原样带进下播帧", async () => {
 		const { store, recorder } = core();
-		recorder.openSession("ext-a", "2026-05-16T09:00:00.000Z");
-		recorder.closeSession("ext-a", "2026-05-16T10:00:00.000Z", 800);
-		recorder.openSession("ext-b", "2026-05-16T09:00:00.000Z");
-		recorder.closeSession("ext-b", "2026-05-16T10:00:00.000Z", 1200);
+		recorder.openSession("ext-a", { startedAt: "2026-05-16T09:00:00.000Z" });
+		recorder.closeSession("ext-a", { endedAt: "2026-05-16T10:00:00.000Z", peakTotalViewers: 800 });
+		recorder.openSession("ext-b", { startedAt: "2026-05-16T09:00:00.000Z" });
+		recorder.closeSession("ext-b", { endedAt: "2026-05-16T10:00:00.000Z", peakTotalViewers: 1200 });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
-		expect(store.closeLiveSession).toHaveBeenNthCalledWith(1, "ext-a", expect.any(String), 800);
-		expect(store.closeLiveSession).toHaveBeenNthCalledWith(2, "ext-b", expect.any(String), 1200);
+		expect(store.closeLiveSession).toHaveBeenNthCalledWith(1, "ext-a", {
+			endedAt: expect.any(String),
+			peakTotalViewers: 800,
+		});
+		expect(store.closeLiveSession).toHaveBeenNthCalledWith(2, "ext-b", {
+			endedAt: expect.any(String),
+			peakTotalViewers: 1200,
+		});
 	});
 
 	it("非有限数的累计观看不收", async () => {
 		const { store, recorder } = core();
-		recorder.openSession("k", "2026-05-16T09:00:00.000Z");
-		recorder.closeSession("k", "2026-05-16T10:00:00.000Z", Number.NaN);
+		recorder.openSession("k", { startedAt: "2026-05-16T09:00:00.000Z" });
+		recorder.closeSession("k", {
+			endedAt: "2026-05-16T10:00:00.000Z",
+			peakTotalViewers: Number.NaN,
+		});
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
-		expect(store.closeLiveSession).toHaveBeenCalledWith("k", expect.any(String), undefined);
+		expect(store.closeLiveSession).toHaveBeenCalledWith("k", { endedAt: expect.any(String) });
 	});
 
 	it("drop 忘掉在飞的状态并删文件", async () => {
 		const { store, recorder } = core();
-		recorder.openSession("ext-y", "2026-05-16T09:00:00.000Z");
+		recorder.openSession("ext-y", { startedAt: "2026-05-16T09:00:00.000Z" });
 		recorder.drop("ext-y");
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledWith("ext-y"));
 		await recorder.closeOpenSessions();

@@ -103,10 +103,10 @@ describe("StatsStore — 盘上的新键(㉖c)", () => {
 	});
 
 	it("直播帧的键是 kind / occurredAt / peakTotalViewers;没有峰值就不带这一格", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(2), 800);
-		await store.openLiveSession("1", T(5));
-		await store.closeLiveSession("1", T(6));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2), peakTotalViewers: 800 });
+		await store.openLiveSession("1", { startedAt: T(5) });
+		await store.closeLiveSession("1", { endedAt: T(6) });
 		expect((await rawLines("stats/live/1.jsonl")).map((l) => JSON.parse(l))).toEqual([
 			{ kind: "start", occurredAt: T(1) },
 			{ kind: "end", occurredAt: T(2), peakTotalViewers: 800 },
@@ -117,19 +117,137 @@ describe("StatsStore — 盘上的新键(㉖c)", () => {
 });
 
 describe("StatsStore — 直播场次", () => {
+	it("开播两格与下播六格写得进、读得出", async () => {
+		await store.openLiveSession("1", {
+			startedAt: T(1),
+			title: "标题",
+			category: "游戏",
+		});
+		await store.closeLiveSession("1", {
+			endedAt: T(4),
+			peakTotalViewers: 12_000,
+			viewerChatCount: 30,
+			viewerChatSenderCount: 8,
+			superchatCount: 2,
+			superchatTotals: { CNY: 50, USD: 5 },
+			membershipCounts: { bilibili: { captain: 2, governor: 1 } },
+		});
+		expect(await store.listLiveSessions("1", T(0))).toEqual([
+			{
+				startedAt: T(1),
+				endedAt: T(4),
+				title: "标题",
+				category: "游戏",
+				peakTotalViewers: 12_000,
+				viewerChatCount: 30,
+				viewerChatSenderCount: 8,
+				superchatCount: 2,
+				superchatTotals: { CNY: 50, USD: 5 },
+				membershipCounts: { bilibili: { captain: 2, governor: 1 } },
+			},
+		]);
+	});
+
+	it("坏格只丢那一格:字符串、负数、坏币种与坏会员档都不连累整场", async () => {
+		await putRows("live", "bad-fields", [
+			{ kind: "start", occurredAt: T(1), title: "标题", category: 42 },
+			{
+				kind: "end",
+				occurredAt: T(2),
+				peakTotalViewers: "12000",
+				viewerChatCount: "30",
+				viewerChatSenderCount: -2,
+				superchatCount: 2,
+				superchatTotals: { CNY: "五十", USD: 5, JPY: -1 },
+				membershipCounts: {
+					bilibili: { captain: "2", governor: 1 },
+					other: "坏体系",
+				},
+			},
+		]);
+		expect(await store.listLiveSessions("bad-fields", T(0))).toEqual([
+			{
+				startedAt: T(1),
+				endedAt: T(2),
+				title: "标题",
+				superchatCount: 2,
+				superchatTotals: { USD: 5 },
+				membershipCounts: { bilibili: { governor: 1 } },
+			},
+		]);
+	});
+
+	it("NaN 计数不落盘,不写成 null", async () => {
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", {
+			endedAt: T(2),
+			viewerChatCount: Number.NaN,
+			superchatCount: Number.POSITIVE_INFINITY,
+		});
+		const raw = await readFile(join(dataDir, "stats", "live", "1.jsonl"), "utf-8");
+		expect(raw).toBe(
+			`${JSON.stringify({ kind: "start", occurredAt: T(1) })}\n${JSON.stringify({ kind: "end", occurredAt: T(2) })}\n`,
+		);
+		expect(await store.listLiveSessions("1", T(0))).toEqual([{ startedAt: T(1), endedAt: T(2) }]);
+	});
+
+	it("老帧没有新格照读", async () => {
+		await putRows("live", "old", [
+			{ kind: "start", occurredAt: T(1) },
+			{ kind: "end", occurredAt: T(2), peakTotalViewers: 9 },
+		]);
+		expect(await store.listLiveSessions("old", T(0))).toEqual([
+			{ startedAt: T(1), endedAt: T(2), peakTotalViewers: 9 },
+		]);
+	});
+
+	it("同一开播时刻再认出时,后一帧的标题与分区盖上去", async () => {
+		await store.openLiveSession("1", {
+			startedAt: T(1),
+			title: "旧标题",
+			category: "旧分区",
+		});
+		await store.openLiveSession("1", {
+			startedAt: T(1),
+			title: "新标题",
+			category: "新分区",
+		});
+		await store.closeLiveSession("1", { endedAt: T(2) });
+		expect(await store.listLiveSessions("1", T(0))).toEqual([
+			{
+				startedAt: T(1),
+				endedAt: T(2),
+				title: "新标题",
+				category: "新分区",
+			},
+		]);
+	});
+
+	it("汇总里的 __proto__ 作为普通键读回,不改对象原型", async () => {
+		const superchatTotals = JSON.parse('{"__proto__":7,"CNY":5}') as Record<string, number>;
+		await putRows("live", "proto", [
+			{ kind: "start", occurredAt: T(1) },
+			{ kind: "end", occurredAt: T(2), superchatTotals },
+		]);
+		const [got] = await store.listLiveSessions("proto", T(0));
+		expect(got?.superchatTotals).toEqual(superchatTotals);
+		expect(Object.getPrototypeOf(got?.superchatTotals)).toBe(Object.prototype);
+		expect(Object.hasOwn(got?.superchatTotals ?? {}, "__proto__")).toBe(true);
+	});
+
 	it("start → end 配成一场,带峰值观看", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(4), 12_000);
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(4), peakTotalViewers: 12_000 });
 		expect(await store.listLiveSessions("1", T(0))).toEqual([
 			{ startedAt: T(1), endedAt: T(4), peakTotalViewers: 12_000 },
 		]);
 	});
 
 	it("多场按时间顺序返回", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(2));
-		await store.openLiveSession("1", T(5));
-		await store.closeLiveSession("1", T(7));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2) });
+		await store.openLiveSession("1", { startedAt: T(5) });
+		await store.closeLiveSession("1", { endedAt: T(7) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got.map((s) => [s.startedAt, s.endedAt])).toEqual([
 			[T(1), T(2)],
@@ -138,7 +256,7 @@ describe("StatsStore — 直播场次", () => {
 	});
 
 	it("未闭合的 start → endedAt 缺失(仍在直播),不伪造下播时间", async () => {
-		await store.openLiveSession("1", T(1));
+		await store.openLiveSession("1", { startedAt: T(1) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(1), current: true }]);
 	});
@@ -148,20 +266,20 @@ describe("StatsStore — 直播场次", () => {
 		// 而 hasCoverage 仍为真 → 同一行里「直播中」徽章亮着、旁边写「场次 0 /
 		// 时长 0.0h」,AI 锐评也被告知这位 UP 一场没播。窗口之前的那段时长由
 		// aggregate 的 sinceMs 夹掉,不会记到本窗口头上。
-		await store.openLiveSession("1", T(1));
+		await store.openLiveSession("1", { startedAt: T(1) });
 		expect(await store.listLiveSessions("1", T(5))).toEqual([{ startedAt: T(1), current: true }]);
 	});
 
 	it("跨窗口起始且**已闭合**的那场照旧滤掉 —— 只有在播的才破例", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(2));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2) });
 		expect(await store.listLiveSessions("1", T(5))).toEqual([]);
 	});
 
 	it("连续两个 start → 前一场留作未闭合,不吞掉", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.openLiveSession("1", T(5));
-		await store.closeLiveSession("1", T(6));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.openLiveSession("1", { startedAt: T(5) });
+		await store.closeLiveSession("1", { endedAt: T(6) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(1) }, { startedAt: T(5), endedAt: T(6) }]);
 	});
@@ -169,9 +287,9 @@ describe("StatsStore — 直播场次", () => {
 	it("同一开播时刻被重复 start(直播中重启服务)→ 合成一场,不重复计次", async () => {
 		// 重启后 live_time 拿到的还是同一个真实开播时刻,于是又写了一帧 start。
 		// 这是同一场直播被重新观测到,不是第二场。
-		await store.openLiveSession("1", T(1));
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(6));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(6) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(1), endedAt: T(6) }]);
 	});
@@ -182,32 +300,32 @@ describe("StatsStore — 直播场次", () => {
 		// 但 `current` 必须置位 —— 曾经这里卡着 `!open.endedAt`,带 endedAt 的场次
 		// 认不出还敞着,aggregate 的 inProgress 判定跟着失效,时长永远冻结在关服
 		// 那一刻,而这恰恰是「正在直播时看统计页」的常态。
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(3));
-		await store.openLiveSession("1", T(1));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(3) });
+		await store.openLiveSession("1", { startedAt: T(1) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(1), endedAt: T(3), current: true }]);
 	});
 
 	it("重新敞开后真下播 → end 覆盖成真实的下播时刻", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(3)); // 关服截断
-		await store.openLiveSession("1", T(1)); // 重启后再观测到同一场
-		await store.closeLiveSession("1", T(9)); // 真下播
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(3) }); // 关服截断
+		await store.openLiveSession("1", { startedAt: T(1) }); // 重启后再观测到同一场
+		await store.closeLiveSession("1", { endedAt: T(9) }); // 真下播
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(1), endedAt: T(9) }]);
 	});
 
 	it("孤立的 end(无 start)→ 丢弃,不产出半场", async () => {
-		await store.closeLiveSession("1", T(4), 9999);
+		await store.closeLiveSession("1", { endedAt: T(4), peakTotalViewers: 9999 });
 		expect(await store.listLiveSessions("1", T(0))).toEqual([]);
 	});
 
 	it("since 按开播时间过滤", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(2));
-		await store.openLiveSession("1", T(8));
-		await store.closeLiveSession("1", T(9));
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2) });
+		await store.openLiveSession("1", { startedAt: T(8) });
+		await store.closeLiveSession("1", { endedAt: T(9) });
 		const got = await store.listLiveSessions("1", T(5));
 		expect(got.map((s) => s.startedAt)).toEqual([T(8)]);
 	});
@@ -221,7 +339,7 @@ describe("StatsStore — 直播场次", () => {
 describe("StatsStore — drop", () => {
 	it("删掉该 uid 的动态与直播两类文件", async () => {
 		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
-		await store.openLiveSession("1", T(1));
+		await store.openLiveSession("1", { startedAt: T(1) });
 		await store.drop("1");
 		expect(await store.listPosts("1", T(0))).toEqual([]);
 		expect(await store.listLiveSessions("1", T(0))).toEqual([]);
@@ -409,9 +527,9 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		// `current` 会被打上 —— 它只说「最后一次观测时这一场敞着」,并不断言此刻在播。
 		// 这一场到底算不算进行中,由 aggregate 拿引擎的 isLive 拍板:UP 早就下播了的话
 		// isLive 为假,照旧按 endedAt 计时长。
-		await store.openLiveSession("1", T(9));
-		await store.closeLiveSession("1", T(11), 751);
-		await store.openLiveSession("1", T(9));
+		await store.openLiveSession("1", { startedAt: T(9) });
+		await store.closeLiveSession("1", { endedAt: T(11), peakTotalViewers: 751 });
+		await store.openLiveSession("1", { startedAt: T(9) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([
 			{ startedAt: T(9), endedAt: T(11), peakTotalViewers: 751, current: true },
@@ -419,31 +537,31 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 	});
 
 	it("关服写了 end,重启后同一场接续 → 下播时间取最后一次观测到的", async () => {
-		await store.openLiveSession("1", T(9));
-		await store.closeLiveSession("1", T(10)); // 关服,截断在这里
-		await store.openLiveSession("1", T(9)); // 重启,还是这一场
-		await store.closeLiveSession("1", T(13), 12_000); // 真正下播
+		await store.openLiveSession("1", { startedAt: T(9) });
+		await store.closeLiveSession("1", { endedAt: T(10) }); // 关服,截断在这里
+		await store.openLiveSession("1", { startedAt: T(9) }); // 重启,还是这一场
+		await store.closeLiveSession("1", { endedAt: T(13), peakTotalViewers: 12_000 }); // 真正下播
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got).toEqual([{ startedAt: T(9), endedAt: T(13), peakTotalViewers: 12_000 }]);
 	});
 
 	it("接回同一场之后那帧 end 的峰值更小 / 没带 → 留着前一帧更大的(累计观看只增不减)", async () => {
-		await store.openLiveSession("1", T(9));
-		await store.closeLiveSession("1", T(10), 5_000); // 关服截断,记到 5000
-		await store.openLiveSession("1", T(9)); // 重启接回,从这一刻重新取
-		await store.closeLiveSession("1", T(11), 3_000); // 这一段平台只报到 3000
-		await store.openLiveSession("1", T(9));
-		await store.closeLiveSession("1", T(12)); // 又一段,一次都没报
+		await store.openLiveSession("1", { startedAt: T(9) });
+		await store.closeLiveSession("1", { endedAt: T(10), peakTotalViewers: 5_000 }); // 关服截断,记到 5000
+		await store.openLiveSession("1", { startedAt: T(9) }); // 重启接回,从这一刻重新取
+		await store.closeLiveSession("1", { endedAt: T(11), peakTotalViewers: 3_000 }); // 这一段平台只报到 3000
+		await store.openLiveSession("1", { startedAt: T(9) });
+		await store.closeLiveSession("1", { endedAt: T(12) }); // 又一段,一次都没报
 		expect(await store.listLiveSessions("1", T(0))).toEqual([
 			{ startedAt: T(9), endedAt: T(12), peakTotalViewers: 5_000 },
 		]);
 	});
 
 	it("不同开播时刻仍是不同场次", async () => {
-		await store.openLiveSession("1", T(9));
-		await store.closeLiveSession("1", T(10));
-		await store.openLiveSession("1", T(12));
-		await store.closeLiveSession("1", T(14));
+		await store.openLiveSession("1", { startedAt: T(9) });
+		await store.closeLiveSession("1", { endedAt: T(10) });
+		await store.openLiveSession("1", { startedAt: T(12) });
+		await store.closeLiveSession("1", { endedAt: T(14) });
 		const got = await store.listLiveSessions("1", T(0));
 		expect(got.map((s) => s.startedAt)).toEqual([T(9), T(12)]);
 	});
@@ -460,8 +578,8 @@ describe("StatsStore — 盘上的行是中立的", () => {
 	});
 
 	it("下播帧的 peakTotalViewers 存数字,不存压缩好的字符串", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(3), 12_000);
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(3), peakTotalViewers: 12_000 });
 		const raw = await readFile(join(dataDir, "stats", "live", "1.jsonl"), "utf-8");
 		expect(raw).toBe(
 			`${JSON.stringify({ kind: "start", occurredAt: T(1) })}\n${JSON.stringify({ kind: "end", occurredAt: T(3), peakTotalViewers: 12_000 })}\n`,
@@ -469,9 +587,9 @@ describe("StatsStore — 盘上的行是中立的", () => {
 	});
 
 	it("没有峰值 / 峰值不是有限数 → end 帧不带 peakTotalViewers(不落一个 null 进盘)", async () => {
-		await store.openLiveSession("1", T(1));
-		await store.closeLiveSession("1", T(2));
-		await store.closeLiveSession("1", T(3), Number.NaN);
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2) });
+		await store.closeLiveSession("1", { endedAt: T(3), peakTotalViewers: Number.NaN });
 		const lines = (await readFile(join(dataDir, "stats", "live", "1.jsonl"), "utf-8"))
 			.trim()
 			.split("\n")
@@ -585,8 +703,8 @@ describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 
 	it("订阅 id 那一格就是文件名,两类文件落在同一套目录里", async () => {
 		const key = statsFileKey(BILI_SUB);
 		await store.appendPost(key, { id: "w1", hasVideo: true, publishedAt: T(1) });
-		await store.openLiveSession(key, T(2));
-		await store.closeLiveSession(key, T(3), 500);
+		await store.openLiveSession(key, { startedAt: T(2) });
+		await store.closeLiveSession(key, { endedAt: T(3), peakTotalViewers: 500 });
 		expect(await readdir(join(dataDir, "stats", "posts"))).toEqual([`${BILI_SUB.id}.jsonl`]);
 		expect(await readdir(join(dataDir, "stats", "live"))).toEqual([`${BILI_SUB.id}.jsonl`]);
 		expect(await store.listPosts(key, T(0))).toEqual([
@@ -601,7 +719,7 @@ describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 
 		const mine = statsFileKey(EXT_SUB);
 		const other = statsFileKey(BILI_SUB);
 		await store.appendPost(mine, { id: "w1", hasVideo: true, publishedAt: T(1) });
-		await store.openLiveSession(mine, T(2));
+		await store.openLiveSession(mine, { startedAt: T(2) });
 		await store.appendPost(other, { id: "a", hasVideo: false, publishedAt: T(1) });
 		await store.drop(mine);
 		expect(await readdir(join(dataDir, "stats", "posts"))).toEqual([`${other}.jsonl`]);

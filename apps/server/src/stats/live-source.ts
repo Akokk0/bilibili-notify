@@ -1,6 +1,9 @@
 import type { Disposable, LiveSessionChange, MessageBus } from "@bilibili-notify/internal";
+import { clip } from "../posts/post-text.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
+import { POST_TITLE_MAX_CHARS } from "./post-entry-extras.js";
 import type { StatsRecorderCore } from "./recorder.js";
+import type { LiveSessionClose, LiveSessionStart } from "./store.js";
 
 /**
  * 统计的**中立直播监听**(ADR-0020 决策 6 / 17):所有来源的场次都吃核心引擎发的同一份
@@ -70,7 +73,13 @@ export function attachLiveStatsSource(opts: LiveStatsSourceOptions): LiveStatsSo
 		const key = statsFileKey(sub);
 		const startedAt = liveStartIso(session.startedAt, opts.now()) ?? session.detectedAt;
 		open.set(change.subscriptionId, session.sourceKey);
-		recorder.openSession(key, startedAt);
+		const start: LiveSessionStart = { startedAt };
+		const { lastDetails } = session;
+		if (typeof lastDetails?.title === "string") {
+			start.title = clip(lastDetails.title, POST_TITLE_MAX_CHARS);
+		}
+		if (typeof lastDetails?.category === "string") start.category = lastDetails.category;
+		recorder.openSession(key, start);
 	};
 
 	const handle = bus.on("live-session-changed", (change) => {
@@ -91,7 +100,14 @@ export function attachLiveStatsSource(opts: LiveStatsSourceOptions): LiveStatsSo
 					recorder.forget(key);
 					return;
 				}
-				recorder.closeSession(key, change.endedAt, change.session.peakTotalViewers);
+				const { peakTotalViewers, interactions } = change.session;
+				// 互动汇总与场次行的五格同名同形(没收到的那种本来就不在),整份照抄。
+				const close: LiveSessionClose = {
+					endedAt: change.endedAt,
+					...(peakTotalViewers === undefined ? {} : { peakTotalViewers }),
+					...interactions,
+				};
+				recorder.closeSession(key, close);
 				return;
 			}
 			case "ending":

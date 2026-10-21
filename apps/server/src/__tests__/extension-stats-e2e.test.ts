@@ -242,7 +242,12 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		// 关机补的下播恰好一帧,峰值是报过的最大累计观看。
 		const frames = await lines("stats", "live", `${ON}.jsonl`);
 		expect(frames).toEqual([
-			{ kind: "start", occurredAt: expect.any(String) },
+			{
+				kind: "start",
+				occurredAt: expect.any(String),
+				title: "假直播 · 第 1 场",
+				category: "游戏",
+			},
 			{ kind: "end", occurredAt: expect.any(String), peakTotalViewers: 2000 },
 		]);
 

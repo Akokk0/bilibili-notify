@@ -133,18 +133,80 @@ beforeEach(() => {
 });
 
 describe("live-session-changed → 一场直播", () => {
+	it("开播把 lastDetails 的标题(截 100 字)与分区交进去", () => {
+		const { recorder, trigger } = setup();
+		const change = start();
+		const title = "题".repeat(120);
+		trigger("live-session-changed", {
+			...change,
+			session: {
+				...change.session,
+				lastDetails: { title, category: "游戏" },
+			},
+		} satisfies LiveSessionChange);
+		expect(recorder.openSession).toHaveBeenCalledWith("id-1", {
+			startedAt: change.session.startedAt,
+			title: "题".repeat(100),
+			category: "游戏",
+		});
+	});
+
+	it("没有 lastDetails 时开播只交开播时刻", () => {
+		const { recorder, trigger } = setup();
+		const change = start();
+		trigger("live-session-changed", change);
+		expect(recorder.openSession).toHaveBeenCalledWith("id-1", {
+			startedAt: change.session.startedAt,
+		});
+	});
+
+	it("下播把峰值与五格互动汇总交进去;没有的格不补默认值", () => {
+		const { recorder, trigger } = setup();
+		const change = start();
+		const interactions = {
+			viewerChatCount: 30,
+			viewerChatSenderCount: 8,
+			superchatCount: 2,
+			superchatTotals: { CNY: 50 },
+			membershipCounts: { bilibili: { captain: 1 } },
+		};
+		trigger("live-session-changed", change);
+		trigger(
+			"live-session-changed",
+			end({
+				...change.session,
+				peakTotalViewers: 12_000,
+				interactions,
+			}),
+		);
+		expect(recorder.closeSession).toHaveBeenCalledWith("id-1", {
+			endedAt: new Date(NOW + HOUR).toISOString(),
+			peakTotalViewers: 12_000,
+			...interactions,
+		});
+
+		const bare = setup();
+		const bareChange = start();
+		bare.trigger("live-session-changed", bareChange);
+		bare.trigger("live-session-changed", end(bareChange.session));
+		expect(bare.recorder.closeSession).toHaveBeenCalledWith("id-1", {
+			endedAt: new Date(NOW + HOUR).toISOString(),
+		});
+	});
+
 	it("开播开一场,结束按变化里带的时刻与峰值收场", () => {
 		const { recorder, trigger } = setup();
 		const change = start();
 		trigger("live-session-changed", change);
 		trigger("live-session-changed", end({ ...change.session, peakTotalViewers: 12_000 }));
 
-		expect(recorder.openSession).toHaveBeenCalledWith("id-1", new Date(NOW - HOUR).toISOString());
-		expect(recorder.closeSession).toHaveBeenCalledWith(
-			"id-1",
-			new Date(NOW + HOUR).toISOString(),
-			12_000,
-		);
+		expect(recorder.openSession).toHaveBeenCalledWith("id-1", {
+			startedAt: new Date(NOW - HOUR).toISOString(),
+		});
+		expect(recorder.closeSession).toHaveBeenCalledWith("id-1", {
+			endedAt: new Date(NOW + HOUR).toISOString(),
+			peakTotalViewers: 12_000,
+		});
 	});
 
 	it("手里没有这一场时,resume / tick / 在播 status 都能再认出来;已经在手上就不重复开", () => {
@@ -178,7 +240,9 @@ describe("live-session-changed → 一场直播", () => {
 		} satisfies LiveSessionChange);
 		const opened = recorder.openSession.mock.calls.length;
 		expect(opened).toBe(3);
-		expect(recorder.openSession).toHaveBeenNthCalledWith(1, "id-1", base.session.startedAt);
+		expect(recorder.openSession).toHaveBeenNthCalledWith(1, "id-1", {
+			startedAt: base.session.startedAt,
+		});
 	});
 
 	it("已经在手上的场次来 tick / 在播 status 时不查订阅", () => {
@@ -266,18 +330,14 @@ describe("live-session-changed → 一场直播", () => {
 		trigger("live-session-changed", ext);
 		trigger("live-session-changed", end({ ...bili.session, peakTotalViewers: 120 }));
 		trigger("live-session-changed", end({ ...ext.session, peakTotalViewers: 430 }));
-		expect(recorder.closeSession).toHaveBeenNthCalledWith(
-			1,
-			BILI_SUB.id,
-			end(bili.session).endedAt,
-			120,
-		);
-		expect(recorder.closeSession).toHaveBeenNthCalledWith(
-			2,
-			EXT_SUB.id,
-			end(ext.session).endedAt,
-			430,
-		);
+		expect(recorder.closeSession).toHaveBeenNthCalledWith(1, BILI_SUB.id, {
+			endedAt: end(bili.session).endedAt,
+			peakTotalViewers: 120,
+		});
+		expect(recorder.closeSession).toHaveBeenNthCalledWith(2, EXT_SUB.id, {
+			endedAt: end(ext.session).endedAt,
+			peakTotalViewers: 430,
+		});
 	});
 
 	it("同一订阅的新一场不带上另一场的峰值", () => {
@@ -291,12 +351,9 @@ describe("live-session-changed → 一场直播", () => {
 		});
 		trigger("live-session-changed", second);
 		trigger("live-session-changed", end(second.session));
-		expect(recorder.closeSession).toHaveBeenNthCalledWith(
-			2,
-			BILI_SUB.id,
-			end(second.session).endedAt,
-			undefined,
-		);
+		expect(recorder.closeSession).toHaveBeenNthCalledWith(2, BILI_SUB.id, {
+			endedAt: end(second.session).endedAt,
+		});
 	});
 
 	it("开播时刻晚于此刻或解析不出时,退回这一场被认出的时刻", () => {
@@ -315,8 +372,12 @@ describe("live-session-changed → 一场直播", () => {
 					}),
 				);
 			}
-			expect(recorder.openSession).toHaveBeenNthCalledWith(1, id, new Date(NOW + 1).toISOString());
-			expect(recorder.openSession).toHaveBeenNthCalledWith(2, id, new Date(NOW + 1).toISOString());
+			expect(recorder.openSession).toHaveBeenNthCalledWith(1, id, {
+				startedAt: new Date(NOW + 1).toISOString(),
+			});
+			expect(recorder.openSession).toHaveBeenNthCalledWith(2, id, {
+				startedAt: new Date(NOW + 1).toISOString(),
+			});
 		}
 	});
 });
@@ -346,12 +407,13 @@ describe("登录失效后忘掉在飞的场次", () => {
 		} satisfies LiveSessionChange);
 		trigger("live-session-changed", end({ ...change.session, peakTotalViewers: 4321 }));
 		expect(recorder.openSession).toHaveBeenCalledTimes(2);
-		expect(recorder.openSession).toHaveBeenLastCalledWith("id-1", change.session.startedAt);
-		expect(recorder.closeSession).toHaveBeenCalledWith(
-			"id-1",
-			new Date(NOW + HOUR).toISOString(),
-			4321,
-		);
+		expect(recorder.openSession).toHaveBeenLastCalledWith("id-1", {
+			startedAt: change.session.startedAt,
+		});
+		expect(recorder.closeSession).toHaveBeenCalledWith("id-1", {
+			endedAt: new Date(NOW + HOUR).toISOString(),
+			peakTotalViewers: 4321,
+		});
 	});
 
 	it("B 站 auth-lost 调中立监听的 forgetOpenSessions:只忘 B 站交过的键", () => {

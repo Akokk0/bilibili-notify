@@ -69,7 +69,7 @@ function setupCore() {
 /** 五种写入口各来一遍。 */
 async function touchEverything(core: ReturnType<typeof setupCore>["core"]) {
 	core.recordPost(KEY, { id: "p1", hasVideo: true, publishedAt: NOW });
-	core.openSession(KEY, "2026-05-16T09:00:00.000Z");
+	core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
 	core.recordFans(KEY, 1234, 0);
 	core.recordActive(KEY, "posts");
 	core.recordActive(KEY, "followers");
@@ -105,19 +105,22 @@ describe("记录器 × 总开关 — 关着不落盘", () => {
 describe("记录器 × 总开关 — 正在播的那一场照常收尾", () => {
 	it("开着时开场 → 关掉 → 下播:下播帧照写,场次引擎给的峰值照带", async () => {
 		const { store, core } = setupCore();
-		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
 		enabled = false;
-		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 250);
+		core.closeSession(KEY, { endedAt: "2026-05-16T11:00:00.000Z", peakTotalViewers: 250 });
 		await core.flush();
 		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
-		expect(store.closeLiveSession).toHaveBeenCalledWith(KEY, "2026-05-16T11:00:00.000Z", 250);
+		expect(store.closeLiveSession).toHaveBeenCalledWith(KEY, {
+			endedAt: "2026-05-16T11:00:00.000Z",
+			peakTotalViewers: 250,
+		});
 	});
 
 	it("关着时新来的开播不开场,它的下播也不写孤立的 end", async () => {
 		enabled = false;
 		const { store, core } = setupCore();
-		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
-		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 100);
+		core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
+		core.closeSession(KEY, { endedAt: "2026-05-16T11:00:00.000Z", peakTotalViewers: 100 });
 		await core.flush();
 		expect(store.openLiveSession).not.toHaveBeenCalled();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
@@ -125,24 +128,24 @@ describe("记录器 × 总开关 — 正在播的那一场照常收尾", () => {
 
 	it("对照:开着时没开过场的下播,照旧写 end(行为不变,孤立 end 在配对时丢弃)", async () => {
 		const { store, core } = setupCore();
-		core.closeSession(KEY, "2026-05-16T11:00:00.000Z", 5);
+		core.closeSession(KEY, { endedAt: "2026-05-16T11:00:00.000Z", peakTotalViewers: 5 });
 		await core.flush();
 		expect(store.closeLiveSession).toHaveBeenCalledTimes(1);
 	});
 
 	it("关着时下播收了场之后,同一场不会再收第二次(forget 照跑)", async () => {
 		const { store, core } = setupCore();
-		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
 		enabled = false;
-		core.closeSession(KEY, "2026-05-16T11:00:00.000Z");
-		core.closeSession(KEY, "2026-05-16T11:05:00.000Z");
+		core.closeSession(KEY, { endedAt: "2026-05-16T11:00:00.000Z" });
+		core.closeSession(KEY, { endedAt: "2026-05-16T11:05:00.000Z" });
 		await core.flush();
 		expect(store.closeLiveSession).toHaveBeenCalledTimes(1);
 	});
 
 	it("关停补帧:开着时开的场次,关着时关服也补下播帧", async () => {
 		const { store, core } = setupCore();
-		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
 		enabled = false;
 		await core.closeOpenSessions();
 		expect(store.closeLiveSession).toHaveBeenCalledTimes(1);
@@ -167,7 +170,7 @@ describe("记录器 × 总开关 — 关了又开,之后的照记", () => {
 describe("记录器 reset(原 clear)— 只清内存里的在飞状态,不删盘", () => {
 	it("开着的场次被 reset 之后,关停不再给它补下播帧;盘上的开场不动", async () => {
 		const { store, core } = setupCore();
-		core.openSession(KEY, "2026-05-16T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
 		core.reset();
 		await core.closeOpenSessions();
 		expect(store.openLiveSession).toHaveBeenCalledTimes(1);

@@ -61,12 +61,44 @@ export interface PostEntry {
 	videoDurationSec?: number;
 }
 
+/** 开一场直播要交的整包。标题与分区都是来源已经交到手的现成字段。 */
+export interface LiveSessionStart {
+	startedAt: string;
+	title?: string;
+	category?: string;
+}
+
+/** 关一场直播要交的整包;峰值与五格互动汇总都只在来源给出时才有。 */
+export interface LiveSessionClose {
+	endedAt: string;
+	peakTotalViewers?: number;
+	viewerChatCount?: number;
+	viewerChatSenderCount?: number;
+	superchatCount?: number;
+	superchatTotals?: Record<string, number>;
+	membershipCounts?: Record<string, Record<string, number>>;
+}
+
 /** 配对后的一场直播。`endedAt` 缺失 = 仍在直播或 end 帧丢失,不计入时长。 */
 export interface LiveSessionEntry {
 	startedAt: string;
 	endedAt?: string;
+	/** 开播时直播间的标题(至多 100 字)。 */
+	title?: string;
+	/** 开播时的直播分区。 */
+	category?: string;
 	/** 本场累计观看(看过的人数,ADR-0020 决策 7);未采到时缺失。 */
 	peakTotalViewers?: number;
+	/** 这一场收到的弹幕条数。 */
+	viewerChatCount?: number;
+	/** 这一场发过弹幕的人数。 */
+	viewerChatSenderCount?: number;
+	/** 这一场的醒目留言条数。 */
+	superchatCount?: number;
+	/** 币种 → 这一场的醒目留言总额。 */
+	superchatTotals?: Record<string, number>;
+	/** 会员体系 id → 档 key → 这一场的新增会员数。 */
+	membershipCounts?: Record<string, Record<string, number>>;
 	/**
 	 * 帧流读完时**仍敞开**的那一场 —— 至多一个。
 	 *
@@ -95,8 +127,15 @@ export interface RecordingEntry {
 interface LiveFrame {
 	kind: "start" | "end";
 	occurredAt: string;
+	title?: string;
+	category?: string;
 	/** 本场累计观看。 */
 	peakTotalViewers?: number;
+	viewerChatCount?: number;
+	viewerChatSenderCount?: number;
+	superchatCount?: number;
+	superchatTotals?: Record<string, number>;
+	membershipCounts?: Record<string, Record<string, number>>;
 }
 
 export interface StatsStore {
@@ -112,9 +151,9 @@ export interface StatsStore {
 	 */
 	listRecentPosts(key: string, limit: number): Promise<PostEntry[]>;
 	/** 记一帧开播。 */
-	openLiveSession(key: string, startedAtIso: string): Promise<void>;
-	/** 记一帧下播,可带本场累计观看(不是有限数就不带)。 */
-	closeLiveSession(key: string, endedAtIso: string, peakTotalViewers?: number): Promise<void>;
+	openLiveSession(key: string, start: LiveSessionStart): Promise<void>;
+	/** 记一帧下播,可带本场累计观看与五格互动汇总(坏格不落)。 */
+	closeLiveSession(key: string, close: LiveSessionClose): Promise<void>;
 	/** 配对后返回开播时间 >= sinceIso 的场次,按开播时间顺序。 */
 	listLiveSessions(key: string, sinceIso: string): Promise<LiveSessionEntry[]>;
 	/** 追加一行「在记」。不去重 —— 同一小时同一项只写一行是记录器的事。 */
@@ -181,6 +220,65 @@ function optionalPostFields(parsed: unknown): Partial<PostEntry> {
 	if (typeof row.topic === "string") out.topic = row.topic;
 	if (typeof row.videoDurationSec === "number" && Number.isFinite(row.videoDurationSec)) {
 		out.videoDurationSec = row.videoDurationSec;
+	}
+	return out;
+}
+
+type LiveStartExtras = Pick<LiveSessionEntry, "title" | "category">;
+type LiveCloseExtras = Pick<
+	LiveSessionEntry,
+	| "viewerChatCount"
+	| "viewerChatSenderCount"
+	| "superchatCount"
+	| "superchatTotals"
+	| "membershipCounts"
+>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNonNegative(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function finiteNonNegativeEntries(value: unknown): Array<[string, number]> {
+	if (!isRecord(value)) return [];
+	return Object.entries(value).filter((entry): entry is [string, number] =>
+		isFiniteNonNegative(entry[1]),
+	);
+}
+
+/** 多收的开播两格:字符串才要,坏的格单独丢掉。 */
+function liveStartExtras(parsed: unknown): LiveStartExtras {
+	if (!isRecord(parsed)) return {};
+	const out: LiveStartExtras = {};
+	if (typeof parsed.title === "string") out.title = parsed.title;
+	if (typeof parsed.category === "string") out.category = parsed.category;
+	return out;
+}
+
+/** 多收的下播五格:计数只收有限的非负数,汇总逐键过滤并用无原型风险的方式重建。 */
+function liveCloseExtras(parsed: unknown): LiveCloseExtras {
+	if (!isRecord(parsed)) return {};
+	const out: LiveCloseExtras = {};
+	if (isFiniteNonNegative(parsed.viewerChatCount)) {
+		out.viewerChatCount = parsed.viewerChatCount;
+	}
+	if (isFiniteNonNegative(parsed.viewerChatSenderCount)) {
+		out.viewerChatSenderCount = parsed.viewerChatSenderCount;
+	}
+	if (isFiniteNonNegative(parsed.superchatCount)) out.superchatCount = parsed.superchatCount;
+	if (isRecord(parsed.superchatTotals)) {
+		out.superchatTotals = Object.fromEntries(finiteNonNegativeEntries(parsed.superchatTotals));
+	}
+	if (isRecord(parsed.membershipCounts)) {
+		const programs: Array<[string, Record<string, number>]> = [];
+		for (const [program, tiers] of Object.entries(parsed.membershipCounts)) {
+			if (!isRecord(tiers)) continue;
+			programs.push([program, Object.fromEntries(finiteNonNegativeEntries(tiers))]);
+		}
+		out.membershipCounts = Object.fromEntries(programs);
 	}
 	return out;
 }
@@ -331,22 +429,21 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 				.slice(0, limit);
 		},
 
-		async openLiveSession(key, startedAtIso) {
+		async openLiveSession(key, start) {
 			await ensureRoots();
-			await appendLine(
-				liveFile(key),
-				{ kind: "start", occurredAt: startedAtIso } satisfies LiveFrame,
-				`live ${key}`,
-			);
+			const frame: LiveFrame = { kind: "start", occurredAt: start.startedAt };
+			Object.assign(frame, liveStartExtras(start));
+			await appendLine(liveFile(key), frame satisfies LiveFrame, `live ${key}`);
 		},
 
-		async closeLiveSession(key, endedAtIso, peakTotalViewers) {
+		async closeLiveSession(key, close) {
 			await ensureRoots();
-			const frame: LiveFrame = { kind: "end", occurredAt: endedAtIso };
+			const frame: LiveFrame = { kind: "end", occurredAt: close.endedAt };
 			// NaN / Infinity 进 JSON 会变成 null,不落这种东西。
-			if (peakTotalViewers !== undefined && Number.isFinite(peakTotalViewers)) {
-				frame.peakTotalViewers = peakTotalViewers;
+			if (close.peakTotalViewers !== undefined && Number.isFinite(close.peakTotalViewers)) {
+				frame.peakTotalViewers = close.peakTotalViewers;
 			}
+			Object.assign(frame, liveCloseExtras(close));
 			await appendLine(liveFile(key), frame, `live ${key}`);
 		},
 
@@ -366,14 +463,12 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			const byStart = new Map<string, LiveSessionEntry>();
 			let open: LiveSessionEntry | undefined;
 			await readLines(liveFile(key), (parsed) => {
-				const f = parsed as {
-					kind?: unknown;
-					occurredAt?: unknown;
-					peakTotalViewers?: unknown;
-				} | null;
-				if (typeof f?.occurredAt !== "string") return;
-				if (f.kind === "start") {
-					const seen = byStart.get(f.occurredAt);
+				if (!isRecord(parsed)) return;
+				const kind = parsed.kind;
+				const occurredAt = parsed.occurredAt;
+				if (typeof occurredAt !== "string") return;
+				if (kind === "start") {
+					const seen = byStart.get(occurredAt);
 					if (seen) {
 						// 这一场又被观测到了。重新挂成 open,后续的 end 会把下播时间
 						// 覆盖成更晚的那个 —— 关服截断的 end 因此能被真下播时间修正。
@@ -382,24 +477,25 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 						// 时刻的 start(这一场已结束)。盘上的帧分不出这两者,唯一知道
 						// 真相的是引擎的 isLive,所以这里只如实记「最后一次观测时它敞着」
 						// (下面打 `current`),该怎么算交给 aggregate 结合 isLive 定夺。
+						Object.assign(seen, liveStartExtras(parsed));
 						open = seen;
 						return;
 					}
-					open = { startedAt: f.occurredAt };
-					byStart.set(f.occurredAt, open);
+					open = { startedAt: occurredAt, ...liveStartExtras(parsed) };
+					byStart.set(occurredAt, open);
 					sessions.push(open);
 					return;
 				}
-				if (f.kind !== "end" || !open) return;
-				open.endedAt = f.occurredAt;
+				if (kind !== "end" || !open) return;
+				open.endedAt = occurredAt;
+				Object.assign(open, liveCloseExtras(parsed));
 				// 同一场有几帧 end(关服截断一帧、接回之后真下播一帧)时,峰值取**最大的**:它是本场累计观看,
 				// 只增不减(ADR-0020 决策 7)。接回之后那一段是从重新认出这一场才开始取的 —— 平台这回少报了、
 				// 或压根没报,都不该把前一段已经记下的数拽下去(没带的帧本来就不动它)。
-				if (typeof f.peakTotalViewers === "number") {
+				const peak = parsed.peakTotalViewers;
+				if (typeof peak === "number") {
 					open.peakTotalViewers =
-						open.peakTotalViewers === undefined
-							? f.peakTotalViewers
-							: Math.max(open.peakTotalViewers, f.peakTotalViewers);
+						open.peakTotalViewers === undefined ? peak : Math.max(open.peakTotalViewers, peak);
 				}
 				open = undefined;
 			});

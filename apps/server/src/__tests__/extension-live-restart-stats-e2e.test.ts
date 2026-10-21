@@ -191,7 +191,8 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 	/** 盘上这一位的直播帧。 */
 	const frames = (id = SUB.id) => lines("live", id);
 
-	const start = (occurredAt = T_ISO) => ({ kind: "start", occurredAt });
+	// 开始帧的标题取认出这一场那一刻的 lastDetails:第一次是开播帧报的,BN / 拓展重启后接回是在播状态报的。
+	const start = (title: string, occurredAt = T_ISO) => ({ kind: "start", occurredAt, title });
 	const end = (peakTotalViewers: number) => ({
 		kind: "end",
 		occurredAt: expect.any(String),
@@ -277,11 +278,11 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 			{ timeout: 3_000, interval: 50 },
 		);
 		await press("report.liveStart");
-		await framesSettle([start()]);
+		await framesSettle([start("开播了")]);
 		expect(await row(7)).toMatchObject({ live: true, liveSessions: 1, posts: 1, videoPosts: 0 });
 
 		await shutdown();
-		expect(await frames()).toEqual([start(), end(5000)]);
+		expect(await frames()).toEqual([start("开播了"), end(5000)]);
 	}, 15_000);
 
 	it("BN 重启:报在播、带着同一个开播时刻 → 接回同一场(一场、在播、峰值还是 5000)", async () => {
@@ -289,25 +290,25 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		expect(await probeState()).toBe("running");
 		await press("report.liveStatus");
 		// 开始帧带的是平台报的开播时刻,不是 BN 这次认出它的那一刻。
-		await framesSettle([start(), end(5000), start()]);
+		await framesSettle([start("开播了"), end(5000), start("还在播")]);
 		expect(await row(8)).toMatchObject({ live: true, liveSessions: 1, maxViewers: 5000 });
 	}, 15_000);
 
 	it("拓展停了 → 补一帧下播;又跑起来、报在播 → 还是同一场", async () => {
 		await setExtensionEnabled(false);
 		// 拓展停了,这一场观测到此为止:一帧下播,峰值是这一段报过的(300)。
-		await framesSettle([start(), end(5000), start(), end(300)]);
+		await framesSettle([start("开播了"), end(5000), start("还在播"), end(300)]);
 		expect(await row(9)).toMatchObject({ live: false, liveSessions: 1, maxViewers: 5000 });
 
 		await setExtensionEnabled(true);
 		await press("report.liveStatus");
-		await framesSettle([start(), end(5000), start(), end(300), start()]);
+		await framesSettle([start("开播了"), end(5000), start("还在播"), end(300), start("还在播")]);
 		expect(await row(10)).toMatchObject({ live: true, liveSessions: 1, maxViewers: 5000 });
 	}, 15_000);
 
 	it("断流接续(按这一位的设置):下播后等着的时候又开播 → 同一场,开始帧还是第一次的开播时刻", async () => {
 		await press("report.flickerStart");
-		await framesSettle([start(T2_ISO)], FLICKER.id);
+		await framesSettle([start("断流探针", T2_ISO)], FLICKER.id);
 		await press("report.flickerEnd");
 		await press("report.flickerStart");
 		// 这里还看不出「没落下播帧」(交出去的写入可能还在路上);关机之后那一口才是准的,见最后一条。
@@ -316,7 +317,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 
 	it("真下播 → 一帧下播;统计页一场、峰值留 5000 不被后一段拽下来;关机不再补帧", async () => {
 		await press("report.liveEnd");
-		const all = [start(), end(5000), start(), end(300), start(), end(300)];
+		const all = [start("开播了"), end(5000), start("还在播"), end(300), start("还在播"), end(300)];
 		await framesSettle(all);
 		expect(await row(12)).toMatchObject({
 			live: false,
@@ -329,6 +330,6 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		expect(await frames()).toEqual(all);
 		// 断流接续的那一位:整段只有一场 —— 中间那次下播没落帧,再开播也没另开一场;关机补的下播带着
 		// 两次开播报过的最大累计观看。
-		expect(await frames(FLICKER.id)).toEqual([start(T2_ISO), end(900)]);
+		expect(await frames(FLICKER.id)).toEqual([start("断流探针", T2_ISO), end(900)]);
 	}, 15_000);
 });

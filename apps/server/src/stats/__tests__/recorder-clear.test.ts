@@ -92,7 +92,7 @@ describe("整类清空 × 排在队里的写", () => {
 	it("盘上本来就有的各类文件都清,没有文件也成功", async () => {
 		const { core, store, fans } = setup();
 		await store.appendPost(KEY, post("p1"));
-		await store.openLiveSession(KEY, "2026-10-06T09:00:00.000Z");
+		await store.openLiveSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
 		await store.appendRecording(OTHER, {
 			kind: "live",
 			startedAt: "2026-10-06T09:00:00.000Z",
@@ -127,8 +127,8 @@ describe("整类清空 × 排在队里的写", () => {
 describe("整类清空 × 正在播的场次", () => {
 	it("对照:不清,开场再下播写出一对帧", async () => {
 		const { core, store } = setup();
-		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
-		core.closeSession(KEY, "2026-10-06T11:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
+		core.closeSession(KEY, { endedAt: "2026-10-06T11:00:00.000Z" });
 		await core.flush();
 		expect(await store.listLiveSessions(KEY, "")).toEqual([
 			{ startedAt: "2026-10-06T09:00:00.000Z", endedAt: "2026-10-06T11:00:00.000Z" },
@@ -137,19 +137,19 @@ describe("整类清空 × 正在播的场次", () => {
 
 	it("清空时开着的场次:之后的下播不写孤立的 end,盘上一个文件都不留", async () => {
 		const { core } = setup();
-		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
 		await core.clear();
-		core.closeSession(KEY, "2026-10-06T11:00:00.000Z");
+		core.closeSession(KEY, { endedAt: "2026-10-06T11:00:00.000Z" });
 		await core.flush();
 		expect(await statsFiles()).toEqual([]);
 	});
 
 	it("清空之后新开的场次是真的:头尾都记,不被「被清掉的那场」吞掉", async () => {
 		const { core, store } = setup();
-		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
 		await core.clear();
-		core.openSession(KEY, "2026-10-06T10:00:00.000Z");
-		core.closeSession(KEY, "2026-10-06T11:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T10:00:00.000Z" });
+		core.closeSession(KEY, { endedAt: "2026-10-06T11:00:00.000Z" });
 		await core.flush();
 		expect(await store.listLiveSessions(KEY, "")).toEqual([
 			{ startedAt: "2026-10-06T10:00:00.000Z", endedAt: "2026-10-06T11:00:00.000Z" },
@@ -158,7 +158,7 @@ describe("整类清空 × 正在播的场次", () => {
 
 	it("清空时开着的场次,关停补帧也不再给它补(没有可补的开播帧)", async () => {
 		const { core } = setup();
-		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
 		await core.clear();
 		await core.closeOpenSessions();
 		expect(await statsFiles()).toEqual([]);
@@ -166,11 +166,11 @@ describe("整类清空 × 正在播的场次", () => {
 
 	it("别的键清空时没开着的场次,下播照常写(只吞被清掉的那几场)", async () => {
 		const { core, store } = setup();
-		core.openSession(KEY, "2026-10-06T09:00:00.000Z");
+		core.openSession(KEY, { startedAt: "2026-10-06T09:00:00.000Z" });
 		await core.clear();
 		// OTHER 在清空之后才下播,它的开播帧在重启前的盘上 —— 这里造一个盘上有开播帧的场景。
-		await store.openLiveSession(OTHER, "2026-10-06T08:00:00.000Z");
-		core.closeSession(OTHER, "2026-10-06T11:00:00.000Z");
+		await store.openLiveSession(OTHER, { startedAt: "2026-10-06T08:00:00.000Z" });
+		core.closeSession(OTHER, { endedAt: "2026-10-06T11:00:00.000Z" });
 		await core.flush();
 		expect(await store.listLiveSessions(OTHER, "")).toEqual([
 			{ startedAt: "2026-10-06T08:00:00.000Z", endedAt: "2026-10-06T11:00:00.000Z" },

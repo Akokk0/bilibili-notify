@@ -319,10 +319,10 @@ describe("数据统计:四个目录、涨粉起点、缓存", () => {
 		});
 		w.recorder.recordFans(key, 10, 0);
 		w.recorder.recordActive(key, "posts");
-		w.recorder.openSession(key, "2026-10-06T09:00:00.000Z");
+		w.recorder.openSession(key, { startedAt: "2026-10-06T09:00:00.000Z" });
 
 		await w.storage.clear("stats");
-		w.recorder.closeSession(key, "2026-10-06T11:00:00.000Z"); // 清空时开着的场次收尾:不写孤立的 end
+		w.recorder.closeSession(key, { endedAt: "2026-10-06T11:00:00.000Z" }); // 清空时开着的场次收尾:不写孤立的 end
 		await w.recorder.flush();
 		await new Promise((r) => setTimeout(r, 60));
 

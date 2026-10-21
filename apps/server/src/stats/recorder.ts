@@ -7,7 +7,13 @@ import { attachExtensionStatsSource } from "./extension-source.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import { attachLiveStatsSource } from "./live-source.js";
 import { postEntryFromEvent } from "./post-entry-extras.js";
-import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
+import type {
+	LiveSessionClose,
+	LiveSessionStart,
+	PostEntry,
+	RecordingKind,
+	StatsStore,
+} from "./store.js";
 
 /**
  * 统计的采集层 = 一个**中立的记录器** + 每个来源一个**适配**(ADR-0020 决策 17)。
@@ -33,11 +39,11 @@ export interface StatsRecorderCore {
 	/** 记一条作品行。同一个键下同 id 只留首条(去重在 store)。 */
 	recordPost(key: string, post: PostEntry): void;
 	/** 开一场。 */
-	openSession(key: string, startedAtIso: string): void;
+	openSession(key: string, start: LiveSessionStart): void;
 	/**
-	 * 关一场。落盘的峰值只取场次引擎交来的 `peak`;不是有限数就不带。
+	 * 关一场。峰值与五格互动汇总只取场次引擎交来的那份;没有的格不动。
 	 */
-	closeSession(key: string, endedAtIso: string, peak?: number): void;
+	closeSession(key: string, close: LiveSessionClose): void;
 	/** 忘掉这个键在飞的场次(只动内存,不动盘)。来源那头不再观测它时调。 */
 	forget(key: string): void;
 	/** 忘掉 + 删掉这个键的全部文件(作品、直播、「在记」、粉丝;订阅被删时调)。 */
@@ -206,17 +212,22 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			enqueue(key, "appendPost", () => opts.store.appendPost(key, post));
 		},
 
-		openSession(key, startedAtIso) {
+		openSession(key, start) {
 			// 关着时新来的开播不开场(之后的下播也就没有「这场开没开过」可收,见 closeSession)。
 			if (!opts.isEnabled()) return;
 			// 清空之后新开的一场是真的开场,不再算「被清掉的那场」。
 			discardedOpen.delete(key);
 			openLive.add(key);
-			enqueue(key, "openLiveSession", () => opts.store.openLiveSession(key, startedAtIso));
+			enqueue(key, "openLiveSession", () => opts.store.openLiveSession(key, start));
 		},
 
-		closeSession(key, endedAtIso, peak) {
-			const final = peak !== undefined && Number.isFinite(peak) ? peak : undefined;
+		closeSession(key, close) {
+			const { endedAt, peakTotalViewers, ...interactions } = close;
+			const frame: LiveSessionClose = { endedAt, ...interactions };
+			// NaN / Infinity 进 JSON 会变成 null,不交这种东西给落盘层。
+			if (peakTotalViewers !== undefined && Number.isFinite(peakTotalViewers)) {
+				frame.peakTotalViewers = peakTotalViewers;
+			}
 			// 「这场开没开过」要在 forget 之前读(forget 会把它摘掉),而 forget 无条件照跑。
 			// 关着时:开着时开的场次照常收尾(一场的头尾不分家),没开过场的下播不写孤立的 end。
 			const opened = openLive.has(key);
@@ -225,7 +236,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 清空时开着的场次:开播帧已经被清掉,收尾也不写(不留半场)。
 			if (cleared) return;
 			if (!opened && !opts.isEnabled()) return;
-			enqueue(key, "closeLiveSession", () => opts.store.closeLiveSession(key, endedAtIso, final));
+			enqueue(key, "closeLiveSession", () => opts.store.closeLiveSession(key, frame));
 		},
 
 		forget,
@@ -304,7 +315,9 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		async closeOpenSessions() {
 			const ts = now().toISOString();
 			for (const key of openLive) {
-				enqueue(key, "closeLiveSession(shutdown)", () => opts.store.closeLiveSession(key, ts));
+				enqueue(key, "closeLiveSession(shutdown)", () =>
+					opts.store.closeLiveSession(key, { endedAt: ts }),
+				);
 			}
 			openLive.clear();
 			// 这里**要等**:关服写盘不能丢,进程随后就退出了。serviceCtx.dispose() 会逐个 await onDispose
