@@ -63,8 +63,6 @@ export interface BiliSourceDeps {
 		get(externalId: string): string | undefined;
 		set(externalId: string, roomId: string): void;
 	};
-	/** R7 过渡口,3b-24 粉丝牌名搬进资料缓存时随口删。 */
-	fanClubNames: { set(externalId: string, name: string): void };
 	/** 可注入的时钟(`health()` 的相对时间用)。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -262,11 +260,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				bus: deps.bus,
 				liveContext: deps.liveContext,
 				liveRoomIds: deps.liveRoomIds,
-				fanClubNames: {
-					set: (externalId, name) => {
-						profileFetcher?.rememberFanClubName(externalId, name);
-						deps.fanClubNames.set(externalId, name);
-					},
+				rememberFanClubName: (externalId, name) => {
+					profileFetcher?.rememberFanClubName(externalId, name);
 				},
 				problems: deps.problems,
 				rememberSuperchatAvatar: (viewerId, url) => {

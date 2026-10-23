@@ -38,7 +38,7 @@ export class BiliLiveRooms implements Disposable {
 				get(externalId: string): string | undefined;
 				set?(externalId: string, roomId: string): void;
 			};
-			fanClubNames: { set(externalId: string, name: string): void };
+			rememberFanClubName(externalId: string, name: string): void;
 			problems: LiveProblems;
 			rememberSuperchatAvatar?(viewerId: string, url: string): void;
 		},
@@ -56,7 +56,7 @@ export class BiliLiveRooms implements Disposable {
 			source: ctx,
 			problems: this.opts.problems,
 			liveRoomIds: this.liveRoomIds,
-			fanClubNames: this.opts.fanClubNames,
+			rememberFanClubName: this.opts.rememberFanClubName,
 			rememberSuperchatAvatar: this.opts.rememberSuperchatAvatar ?? (() => {}),
 		});
 		this.listener = new ListenerManager(this.roomContext);

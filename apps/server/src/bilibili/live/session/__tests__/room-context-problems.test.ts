@@ -21,7 +21,7 @@ function makeCtx(api: Record<string, unknown> = {}) {
 		source: { subscriptions: () => [] } as never,
 		problems,
 		liveRoomIds: { get: () => undefined },
-		fanClubNames: { set() {} },
+		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 	});
 	return { ctx, problems };

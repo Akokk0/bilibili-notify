@@ -110,7 +110,6 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			track: () => {},
 		},
 		liveRoomIds: { get: () => undefined, set: () => {} },
-		fanClubNames: { set: () => {} },
 		auth: authed.auth,
 		problems: layers,
 	});

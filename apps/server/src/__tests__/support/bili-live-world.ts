@@ -369,6 +369,8 @@ export async function bootBiliLiveWorld(
 			sign: "",
 			fans: 1000,
 			lastRefreshedAt: "2026-03-01T00:00:00.000Z",
+			// 直播卡从核心资料缓存读粉丝牌名;这里预置成主播接口会交的同一个值。
+			fanClubName: "测试牌",
 		},
 	};
 	const subRuntime = {
@@ -474,15 +476,6 @@ export async function bootBiliLiveWorld(
 			get: () => runtimeRecord.roomId,
 			set: (_externalId, roomId) => {
 				runtimeRecord = { ...runtimeRecord, roomId };
-			},
-		},
-		fanClubNames: {
-			set: (_externalId, name) => {
-				if (!runtimeRecord.cachedProfile) return;
-				runtimeRecord = {
-					...runtimeRecord,
-					cachedProfile: { ...runtimeRecord.cachedProfile, fanClubName: name },
-				};
 			},
 		},
 	});

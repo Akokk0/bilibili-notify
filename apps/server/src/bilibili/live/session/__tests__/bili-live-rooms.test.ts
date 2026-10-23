@@ -45,7 +45,7 @@ function harness() {
 	const interactions: Array<{ externalId: string; report: unknown }> = [];
 	const problems = makeRecordingLayers();
 	const liveRoomIds = new Map([[EXTERNAL_ID, ROOM_ID]]);
-	const fanClubNames: Array<{ externalId: string; name: string }> = [];
+	const profileStates = new Map<string, { fanClubName: string }>();
 	const fetched: string[] = [];
 	const busHandlers = new Map<string, Array<() => void>>();
 
@@ -169,9 +169,8 @@ function harness() {
 			get: (externalId) => liveRoomIds.get(externalId),
 			set: (externalId, roomId) => void liveRoomIds.set(externalId, roomId),
 		},
-		fanClubNames: {
-			set: (externalId, name) => void fanClubNames.push({ externalId, name }),
-		},
+		rememberFanClubName: (externalId, name) =>
+			void profileStates.set(`profile:${externalId}`, { fanClubName: name }),
 		problems: problems.layers,
 	});
 
@@ -182,7 +181,7 @@ function harness() {
 		problems,
 		reports,
 		interactions,
-		fanClubNames,
+		profileStates,
 		fetched,
 		sockets,
 		liveRoomIds,
@@ -290,7 +289,7 @@ describe("BiliLiveRooms", () => {
 				},
 			},
 		]);
-		expect(h.fanClubNames).toEqual([{ externalId: EXTERNAL_ID, name: "测试牌" }]);
+		expect(h.profileStates.get(`profile:${EXTERNAL_ID}`)).toEqual({ fanClubName: "测试牌" });
 		h.rooms.stop();
 	});
 

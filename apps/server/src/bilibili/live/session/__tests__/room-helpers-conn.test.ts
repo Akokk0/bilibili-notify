@@ -54,7 +54,7 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 			resolveFailure() {},
 		},
 		liveRoomIds: { get: () => undefined },
-		fanClubNames: { set() {} },
+		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 	});
 	return { ctx, api };

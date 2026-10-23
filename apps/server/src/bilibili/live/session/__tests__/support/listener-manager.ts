@@ -63,7 +63,7 @@ export function makeListenerManagerHarness(
 			get: (externalId: string) => roomIds.get(externalId),
 			set: (externalId: string, roomId: string) => void roomIds.set(externalId, roomId),
 		},
-		fanClubNames: { set() {} },
+		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 		startLiveRoomListener,
 		closeListener,

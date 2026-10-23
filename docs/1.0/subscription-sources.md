@@ -489,7 +489,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **进门换 ISO**：`live_time` 是不带时区的北京时间，在这里转。
 - **作品映射**：`text` 只放正文（动态正文、图文摘要）；图文标题进 `article.title`，视频标题进 `video.title`，转发的原作品进 `repost`。UP 自己的视频进 `post.video`；番剧、合集、课程进附件的视频卡。附加块翻成 card / video / goods。过滤、AI、出图都经核心 `posts/` 里同一个取段函数读这份字。
 - **开播公告直接丢**：开播时生成的那条伪动态不上报，统计也不再记（旧数据照原定不搬）。
-- **资料**：`fanClubName` 填粉丝牌名，照文档由 `fetchProfile` 交；B 站不为它多发请求 —— 直播时取主播信息本来就带粉丝牌名，今天经 `BiliSourceDeps.fanClubNames.set` 暂存，3b-24 接 `fetchProfile` 时删这个过渡口。`{postNoun}` 进默认作品文案归 3b-21（ADR-0028 决策 3 的目标）；对拍 N08 随 3b-22 收尾。
+- **资料**：`fanClubName` 填粉丝牌名，照文档由 `fetchProfile` 交；B 站不为它多发请求 —— 直播时取主播信息本来就带粉丝牌名，B 站先记进自己的 `ctx.state` 的 `profile:<uid>`，下一轮资料刷新经 `fetchProfile` 写进核心资料缓存。`{postNoun}` 进默认作品文案归 3b-21（ADR-0028 决策 3 的目标）；对拍 N08 随 3b-22 收尾。
 - **醒目留言**：`tier` 由 B 站按平台规矩算，卡按档取色。
 - **禁 fs**：B 站的状态（`roomId`、`followed`、`followError` 等）只走 `ctx.state`，cookie 只走 `ctx.secrets`；动态游标仍只在内存。
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。系统页为 B 站单开一个 tab，名取它的 `label`（见「设置」）。`bilibili` 段校验不过只停 B 站这一个集成：来源、链接解析器、AI 工具都不登记，订阅卡显示「{label} 没在跑」，B 站 tab 显示原值、「设置不合法」与原因并进问题框，改对了当场起；BN 照常开机。

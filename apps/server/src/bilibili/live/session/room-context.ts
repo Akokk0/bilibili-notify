@@ -39,7 +39,7 @@ export interface RoomContextOptions {
 		get(externalId: string): string | undefined;
 		set?(externalId: string, roomId: string): void;
 	};
-	fanClubNames: { set(externalId: string, name: string): void };
+	rememberFanClubName(externalId: string, name: string): void;
 	rememberSuperchatAvatar(viewerId: string, url: string): void;
 }
 
@@ -50,7 +50,7 @@ export class RoomContext {
 	readonly problems: LiveProblems;
 	readonly liveContext: ServiceContext;
 	readonly liveRoomIds: RoomContextOptions["liveRoomIds"];
-	readonly fanClubNames: RoomContextOptions["fanClubNames"];
+	readonly rememberFanClubName: RoomContextOptions["rememberFanClubName"];
 	readonly rememberSuperchatAvatar: RoomContextOptions["rememberSuperchatAvatar"];
 	readonly listenerRecord: Record<string, { close(): void; closed: boolean }> = {};
 
@@ -66,7 +66,7 @@ export class RoomContext {
 		this.source = opts.source;
 		this.problems = opts.problems;
 		this.liveRoomIds = opts.liveRoomIds;
-		this.fanClubNames = opts.fanClubNames;
+		this.rememberFanClubName = opts.rememberFanClubName;
 		this.rememberSuperchatAvatar = opts.rememberSuperchatAvatar;
 	}
 
@@ -200,7 +200,7 @@ export class RoomContext {
 			};
 			const fanClubName =
 				typeof response.data?.medal_name === "string" ? response.data.medal_name : undefined;
-			if (fanClubName) this.fanClubNames.set(externalId, fanClubName);
+			if (fanClubName) this.rememberFanClubName(externalId, fanClubName);
 			return {
 				...(typeof response.data?.info?.uname === "string"
 					? { name: response.data.info.uname }

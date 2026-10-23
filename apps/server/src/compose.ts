@@ -239,30 +239,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 							}
 						},
 					},
-					fanClubNames: {
-						set: (externalId, name) => {
-							for (const sub of deps.subscriptions.list()) {
-								const identity = subscriptionIdentityOf(sub);
-								if (
-									identity.sourceKey !== BILIBILI_SOURCE_KEY ||
-									identity.externalId !== externalId
-								) {
-									continue;
-								}
-								const profile = deps.subscriptionRuntime.get(sub.id)?.cachedProfile;
-								if (!profile || profile.fanClubName === name) continue;
-								deps.serviceCtx.track(
-									deps.subscriptionRuntime
-										.patch(sub.id, { cachedProfile: { ...profile, fanClubName: name } })
-										.catch((error) => {
-											biliLogger.warn(
-												`[compose] fan club name write failed externalId=${externalId}: ${String(error)}`,
-											);
-										}),
-								);
-							}
-						},
-					},
 				});
 				source = made;
 				await engines.registerSource({

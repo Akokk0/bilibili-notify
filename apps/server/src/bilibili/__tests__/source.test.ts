@@ -72,7 +72,7 @@ const cronMock = vi.hoisted(() => {
 });
 const roomsMock = vi.hoisted(() => ({
 	instances: [] as Array<{
-		opts: { fanClubNames: { set(externalId: string, name: string): void } };
+		opts: { rememberFanClubName(externalId: string, name: string): void };
 	}>,
 }));
 // 只换 `CronJob`:动态读者的「能解析」那一道用的是同一个包里的 `CronTime`,要留真的。
@@ -163,7 +163,6 @@ function makeDeps(
 ) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
-	const setFanClubName = vi.fn<(externalId: string, name: string) => void>();
 	const logger = makeLogger();
 	const liveContext = {
 		logger,
@@ -176,7 +175,6 @@ function makeDeps(
 	return {
 		config,
 		setHealthCheckMs,
-		setFanClubName,
 		deps: {
 			problems: {
 				attach: vi.fn(),
@@ -196,7 +194,6 @@ function makeDeps(
 				get: () => undefined,
 				set: () => {},
 			},
-			fanClubNames: { set: setFanClubName },
 			auth: FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
@@ -327,18 +324,17 @@ describe("createBiliSource", () => {
 		]);
 	});
 
-	it("直播取到粉丝牌名:写进这位 UP 的资料状态,原过渡口照旧转交", async () => {
-		const { deps, setFanClubName } = makeDeps();
+	it("直播取到粉丝牌名:只写进这位 UP 的资料状态", async () => {
+		const { deps } = makeDeps();
 		const source = createBiliSource(deps);
 		const { ctx, state } = makeCtx([{ externalId: "1", monitorsLive: true }]);
 		await source.start(ctx);
 
-		roomsMock.instances[0]?.opts.fanClubNames.set("1", "甲牌");
+		roomsMock.instances[0]?.opts.rememberFanClubName("1", "甲牌");
 
 		await vi.waitFor(() => {
 			expect(state.get("profile:1")).toEqual({ fanClubName: "甲牌" });
 		});
-		expect(setFanClubName).toHaveBeenCalledWith("1", "甲牌");
 		await source.stop();
 	});
 

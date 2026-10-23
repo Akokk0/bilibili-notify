@@ -118,7 +118,7 @@ function makeWorld(
 		liveRoomIds: {
 			get: (externalId) => (externalId === EXTERNAL_ID ? ROOM_ID : undefined),
 		},
-		fanClubNames: { set() {} },
+		rememberFanClubName() {},
 		problems: layers,
 	});
 	const subscription: SourceSubscriptionView = {

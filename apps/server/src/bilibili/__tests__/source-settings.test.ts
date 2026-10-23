@@ -132,7 +132,6 @@ async function boot() {
 			track: () => {},
 		},
 		liveRoomIds: { get: () => undefined, set: () => {} },
-		fanClubNames: { set: () => {} },
 		auth: {
 			beginLogin: async () => ok(),
 			logout: async () => ok(),
