@@ -209,6 +209,17 @@ export function UpCard({
 						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
 					</ErrorNote>
 				) : null}
+				{/* 挂在这条订阅上的问题(服务端从问题表 join 来):每条一个,不看来源、不看 code。 */}
+				{sub.problems.map((problem) => (
+					<ErrorNote
+						key={`${problem.reporter}/${problem.code}`}
+						size="sm"
+						icon={<Icon.warning size={12} />}
+						className="mb-2.5"
+					>
+						{problem.message}
+					</ErrorNote>
+				))}
 				<div className="mb-2.5 flex flex-wrap gap-1">
 					{features.length === 0 ? (
 						<span className="text-bn-2xs text-bn-text-secondary">未配置任何推送特性</span>

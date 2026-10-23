@@ -97,6 +97,48 @@ describe("UpCard 未关注警告", () => {
 });
 
 /**
+ * 挂在订阅上的问题(服务端从问题表 join 来):每条一个红字提示,正文是问题的 message;
+ * 不看来源、不看 code —— 拓展订阅一样出。没有问题就什么都不出。
+ */
+describe("UpCard 订阅上的问题", () => {
+	const PROBLEM = {
+		reporter: "douyin",
+		about: { subscriptionId: "s" },
+		code: "anything_at_all",
+		message: "这位主播的直播间读不到",
+		since: "2026-10-01T00:00:00.000Z",
+	};
+
+	it("拓展订阅带一条问题 → 出红字,正文是 message", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
+			problems: [PROBLEM],
+		};
+		const { getByText } = render(<UpCard {...props({ sub })} />);
+
+		expect(getByText(/直播间读不到/)).toBeTruthy();
+	});
+
+	it("每条问题各出一个", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			problems: [PROBLEM, { ...PROBLEM, code: "second", message: "第二件事" }],
+		};
+		const { getByText } = render(<UpCard {...props({ sub })} />);
+
+		expect(getByText(/直播间读不到/)).toBeTruthy();
+		expect(getByText(/第二件事/)).toBeTruthy();
+	});
+
+	it("没有问题 → 不出", () => {
+		const sub = makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" });
+		const { queryByText } = render(<UpCard {...props({ sub })} />);
+
+		expect(queryByText(/直播间读不到/)).toBeNull();
+	});
+});
+
+/**
  * 卡片角标(ADR-0034):写**第一个标签的名字**,名字按 id 到标签表里查;没挂标签就什么都不写 —— 不再写
  * 「默认」。订阅上只记 id,所以角标不会因为标签改名而过期。
  */

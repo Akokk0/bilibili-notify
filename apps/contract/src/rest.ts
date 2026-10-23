@@ -565,6 +565,11 @@ export interface MarketplaceInstallRequest {
 export type SubscriptionDTO = Subscription &
 	SubscriptionRuntimeDTO & {
 		/**
+		 * 问题表里关于这条订阅的(`about.subscriptionId` 是它),按 `since` 先后,与 `GET /api/problems` 同形;
+		 * 没有就是空数组。订阅卡每条出一个提示,不分来源、不看 `code`;变了服务端发 `problems-changed`。
+		 */
+		problems: Problem[];
+		/**
 		 * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态都收不到。
 		 * `undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**「未关注」—— 别拿它去吓用户。
 		 * 只对需要关注的订阅有意义:B 站的、启用中的、作品开关开着的(直播用不着关注,「关了就不查」);

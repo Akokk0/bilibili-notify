@@ -7,6 +7,7 @@ import {
 	formatZodIssues,
 	type ImageRef,
 	issuesFromZod,
+	type Problem,
 	type Subscription,
 	SubscriptionSchema,
 	subscriptionIdentityOf,
@@ -113,10 +114,23 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		return (stored?.specialViewers ?? []).map((v) => v.id);
 	}
 
+	/** 问题表里关于这条订阅的,按 `since` 先后(ISO 串,字典序即时间序)。 */
+	function problemsAbout(subscriptionId: string): Problem[] {
+		return deps.runtime.problems
+			.list()
+			.filter(
+				(p) =>
+					p.about !== undefined &&
+					"subscriptionId" in p.about &&
+					p.about.subscriptionId === subscriptionId,
+			)
+			.sort((a, b) => (a.since < b.since ? -1 : a.since > b.since ? 1 : 0));
+	}
+
 	/** Join the externalized runtime fields back onto a config Subscription. */
 	function toDTO(sub: Subscription, needFollow: ReadonlySet<string>): SubscriptionDTO {
 		const rt = deps.runtime.subRuntimeStore.get(sub.id);
-		const runtime = { cachedProfile: rt?.cachedProfile };
+		const runtime = { cachedProfile: rt?.cachedProfile, problems: problemsAbout(sub.id) };
 		// 关注状态只对需要关注的 B 站订阅有意义(动态走 B 站的关注流):别的来源、停用的、没开作品的
 		// (直播用不着关注)这两格缺着 —— 运行时状态里留着的旧「未关注」不该再挂在卡片上吓人。
 		if (!needFollow.has(sub.id)) return { ...sub, ...runtime };

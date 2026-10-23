@@ -7,7 +7,7 @@
  * 引擎没起时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { makeDefaultGlobalConfig, type Problem } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
@@ -55,6 +55,8 @@ function makeHarness(opts?: {
 	follow?: "ok" | "already" | "fail" | "throw";
 	/** true = 存储里原本没有这条订阅(POST 是新建);缺省 = 已经在(POST 是整份回来改)。 */
 	fresh?: boolean;
+	/** 问题表此刻的全部(`runtime.problems.list()` 的返回)。 */
+	problems?: Problem[];
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
 	const rtRecord = { ...opts?.rtRecord };
@@ -105,6 +107,7 @@ function makeHarness(opts?: {
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subRuntimeStore: { get: rtGet, patch: rtPatch },
+			problems: { list: () => opts?.problems ?? [] },
 			// 新建订阅按来源描述符核外部 id:B 站的描述符从登记表来。
 			sourceRegistry: {
 				get: (key: string) =>
@@ -157,6 +160,73 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 		const row = body[0] as Record<string, unknown>;
 		expect(row.cachedProfile).toEqual(PROFILE);
 		expect(row).not.toHaveProperty("state");
+	});
+});
+
+// 挂在订阅上的问题(问题表里 about 这条订阅的)随 DTO 带给面板:各归各、按 since 先后、没有就是空数组。
+describe("/api/subscriptions — 带上挂在订阅上的问题", () => {
+	const OTHER_ID = "22222222-2222-2222-2222-222222222222";
+	const OTHER = { ...SUB, id: OTHER_ID, identity: { sourceKey: "bilibili", externalId: "999" } };
+	const LATER: Problem = {
+		reporter: "bilibili",
+		about: { subscriptionId: SUB.id },
+		code: "creator_not_found",
+		message: "找不到这位 UP",
+		since: "2026-10-02T00:00:00.000Z",
+	};
+	const EARLIER: Problem = {
+		reporter: "bilibili",
+		about: { subscriptionId: SUB.id },
+		code: "follow_failed",
+		message: "关注失败",
+		since: "2026-10-01T00:00:00.000Z",
+	};
+	const ELSEWHERE: Problem = {
+		reporter: "bilibili",
+		about: { subscriptionId: OTHER_ID },
+		code: "live_unavailable",
+		message: "这一轮没取到状态",
+		since: "2026-10-01T12:00:00.000Z",
+	};
+	const SOURCE_LEVEL: Problem = {
+		reporter: "bilibili",
+		code: "login_expired",
+		message: "登录掉了",
+		since: "2026-10-01T06:00:00.000Z",
+	};
+
+	it("GET:各条订阅各带自己的问题,按 since 先后,别人的与来源自己的不混进来", async () => {
+		const h = makeHarness({
+			subs: [SUB, OTHER],
+			problems: [LATER, ELSEWHERE, SOURCE_LEVEL, EARLIER],
+		});
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect(body[0]?.problems).toEqual([EARLIER, LATER]);
+		expect(body[1]?.problems).toEqual([ELSEWHERE]);
+	});
+
+	it("没有问题:problems 是空数组,不是缺着", async () => {
+		const h = makeHarness();
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect(body[0]?.problems).toEqual([]);
+	});
+
+	it("POST 与 PATCH 的回应也带", async () => {
+		const h = makeHarness({ problems: [EARLIER] });
+		const post = await h.app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(SUB),
+		});
+		const posted = (await post.json()) as Array<Record<string, unknown>>;
+		expect(posted[0]?.problems).toEqual([EARLIER]);
+		const patch = await h.app.request(`/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ enabled: false }),
+		});
+		const patched = (await patch.json()) as Record<string, unknown>;
+		expect(patched.problems).toEqual([EARLIER]);
 	});
 });
 

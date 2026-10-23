@@ -1269,6 +1269,23 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		).toEqual([SUB.erin1, SUB.erin2].sort());
 		for (const p of perSub) expect(p.message).toBe("这个人有点状况");
 
+		// 订阅列表也带:那个人名下的两条订阅各带这条问题,别的订阅是空数组(对任何来源都成立)。
+		const problemsBySub = async () => {
+			const res = await okRes(await api("/api/subscriptions"));
+			const rows = (await res.json()) as Array<{
+				id: string;
+				problems: ProblemsResponse["problems"];
+			}>;
+			return new Map(rows.map((row) => [row.id, row.problems]));
+		};
+		const bySub = await problemsBySub();
+		for (const id of [SUB.erin1, SUB.erin2]) {
+			expect(bySub.get(id)?.map((p) => p.code)).toEqual(["person_trouble"]);
+		}
+		for (const [id, list] of bySub) {
+			if (id !== SUB.erin1 && id !== SUB.erin2) expect(list).toEqual([]);
+		}
+
 		// 再报同一个 code:只换文案,开始时刻不动。
 		const since = own?.since;
 		await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1284,6 +1301,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(left.filter((p) => p.code === "source_trouble" || p.code === "person_trouble")).toEqual(
 			[],
 		);
+		for (const list of (await problemsBySub()).values()) expect(list).toEqual([]);
 		drove("P11");
 	});
 
