@@ -15,6 +15,8 @@ import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
+import { t } from "../i18n/index.js";
+import type { ProblemTable } from "../problems/problem-table.js";
 import { statsFileKey } from "../stats/file-key.js";
 import type { StatsRecorderCore } from "../stats/recorder.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
@@ -37,6 +39,7 @@ export interface ProfileRefreshOptions {
 	fansStore: Pick<FollowersStore, "findEarliest" | "findNearestBefore">;
 	recorder: Pick<StatsRecorderCore, "recordFollowers" | "drop">;
 	profileCache: ProfileCacheWriter;
+	problems: Pick<ProblemTable, "report" | "resolve">;
 	sources: Pick<SourceRegistry, "get" | "list">;
 	/**
 	 * 与女仆回落共用同一个来源闸的 `fetchProfile`:超时、抛错收口、同一来源串行都在这里。
@@ -158,6 +161,19 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			return;
 		}
 		if (!result.ok) {
+			if (result.code === "not_found" && subscriptionNow(sub.id)?.enabled) {
+				opts.problems.report({
+					reporter: identity.sourceKey,
+					about: { subscriptionId: sub.id },
+					code: "creator_not_found",
+					message: () =>
+						t("problem.creatorNotFound", {
+							externalId: identity.externalId,
+							reason: result.message,
+						}),
+					notify: false,
+				});
+			}
 			logger.debug(
 				`[profile-refresh] ${identity.sourceKey}/${identity.externalId} 没拉到资料 ` +
 					`code=${result.code} upstreamCode=${String(result.upstreamCode)} msg=${result.message}`,
@@ -165,6 +181,11 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			return;
 		}
 		if (disposed || subscriptionNow(sub.id) === undefined) return;
+		opts.problems.resolve({
+			reporter: identity.sourceKey,
+			about: { subscriptionId: sub.id },
+			code: "creator_not_found",
+		});
 		const profile = result;
 		let changed = false;
 		try {
@@ -310,6 +331,16 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		let removedAny = false;
 		let removed = false;
 		for (const op of ops) {
+			if (op.kind === "update" && !op.sub.enabled) {
+				opts.problems.resolve(
+					{
+						reporter: subscriptionIdentityOf(op.sub).sourceKey,
+						about: { subscriptionId: op.sub.id },
+						code: "creator_not_found",
+					},
+					{ notify: false },
+				);
+			}
 			if (op.kind !== "remove") continue;
 			if (lastBySub.delete(op.sub.id)) removedAny = true;
 			opts.recorder.drop(statsFileKey(op.sub));

@@ -1038,6 +1038,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			fansStore: runtime.fansStore,
 			recorder: runtime.statsRecorder,
 			profileCache,
+			problems: runtime.problems,
 			sources: runtime.sourceRegistry,
 			fetchProfile: engines.fetchProfile,
 			serviceCtx: runtime.serviceCtx,

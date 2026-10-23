@@ -10,6 +10,7 @@ import {
 import { expect, vi } from "vite-plus/test";
 import type { FollowersAt } from "../../followers/lookup.js";
 import type { FollowersStore } from "../../followers/store.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createProfileCacheWriter } from "../profile-cache.js";
 import { type ProfileRefreshHandle, startProfileRefresh } from "../profile-refresh.js";
@@ -48,6 +49,7 @@ export interface ProfileRefreshHarnessOptions {
 	subscriptions: Subscription[];
 	sources: Record<string, FetchProfile>;
 	runtime?: Record<string, SubRuntime>;
+	problems?: ProblemTable;
 	findEarliest?: (key: string) => Promise<FollowersAt | undefined>;
 	findNearestBefore?: (key: string, beforeIso: string) => Promise<FollowersAt | undefined>;
 }
@@ -66,6 +68,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 		warn: vi.fn(),
 		error: vi.fn(),
 	};
+	const problems = opts.problems ?? createProblemTable({ logger: logger as never });
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
 	bus.on("followers-refreshed", ({ entries }) => snapshots.push(entries));
 	bus.on("subscription-profiles-changed", ({ subscriptionIds }) =>
@@ -116,6 +119,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 		fansStore: fans,
 		recorder: { recordFollowers, drop: vi.fn() },
 		profileCache: cache,
+		problems,
 		sources: registry,
 		fetchProfile: async (identity, signal) => {
 			sourceCalls.push(identity);
@@ -138,6 +142,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 		recordFollowers,
 		logger,
 		runtime,
+		problems,
 		snapshots,
 		sourceCalls,
 		setSubscriptions(next: Subscription[]) {
@@ -153,6 +158,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefreshHandle {
 	const subscriptions = () => opts.subscriptionStore.list();
 	const reported = new Map<string, FollowersAt>();
+	const problems = createProblemTable({ logger: opts.logger });
 	const cache = createProfileCacheWriter({
 		bus: opts.bus,
 		subRuntime: opts.subRuntimeStore,
@@ -205,6 +211,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 	};
 	const handle = startProfileRefresh({
 		...opts,
+		problems,
 		subscriptionStore: {
 			...opts.subscriptionStore,
 			findById: (id) => subscriptions().find((sub) => sub.id === id),
@@ -256,6 +263,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 		},
 		dispose() {
 			handle.dispose();
+			problems.dispose();
 			cache.dispose();
 		},
 	};
