@@ -412,10 +412,6 @@ interface Ctx {
 	bus: ReturnType<typeof createNodeMessageBus>;
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
-	api: {
-		fetchRelations: ReturnType<typeof vi.fn>;
-		follow?: ReturnType<typeof vi.fn>;
-	};
 	/** 开机时 `registerSource` 登进去的假来源(`noSource` 时它存在但没登记)。 */
 	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
@@ -460,8 +456,6 @@ function setup(opts?: {
 	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
-	/** 开机那一刻的登录状态;不给 = 未登录。 */
-	loginStatus?: "logged-in" | "confirming";
 	/** 登记的假来源是否实现拉取式的 `fetchLiveStatus`;不给 = 没实现。 */
 	fetchLiveStatus?: Source["fetchLiveStatus"];
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
@@ -487,22 +481,7 @@ function setup(opts?: {
 		opts?.overrides?.configStore,
 	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
-	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
-	const api = {
-		fetchRelations: vi.fn(async (uids: string[]) => ({
-			ok: true as const,
-			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
-		})),
-		...opts?.overrides?.api,
-	};
-	const auth = {
-		state: (): AuthState =>
-			opts?.loginStatus === "logged-in"
-				? { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }
-				: opts?.loginStatus === "confirming"
-					? { status: "confirming", message: "正在确认" }
-					: { status: "logged-out" },
-	};
+	const api = opts?.overrides?.api;
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
 	const source = makeSource();
@@ -521,7 +500,6 @@ function setup(opts?: {
 		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
 		loadFontFace: async () => "",
 		api: api as any,
-		auth,
 		configStore: configStore as unknown as ConfigStore,
 		historyStore: (opts?.overrides?.historyStore ?? { record: vi.fn(async () => {}) }) as any,
 		subscriptionStore: {
@@ -592,7 +570,6 @@ function setup(opts?: {
 		bus,
 		serviceCtx,
 		configStore,
-		api,
 		source,
 		sourceReady,
 		sourceLogger,
@@ -2985,58 +2962,6 @@ describe("createEngines — 推送层的 aiWriting 读口接的是活的全局�
 });
 
 /**
- * 开机补关注只在已登录时跑。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
- * 还把每条订阅标成「未关注」。未登录开机时 LoginFlow 已记下 needsRestore,扫码登录后发
- * auth-restored,由那条补上。
- */
-describe("createEngines — 开机补关注", () => {
-	it("未登录开机:不查关注关系", async () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-		});
-		active = c;
-		await new Promise((r) => setTimeout(r, 0));
-		expect(c.api.fetchRelations).not.toHaveBeenCalled();
-	});
-
-	it("开机还没确认上(confirming,不算登录):不查关注关系", async () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-			loginStatus: "confirming",
-		});
-		active = c;
-		await new Promise((r) => setTimeout(r, 0));
-		expect(c.api.fetchRelations).not.toHaveBeenCalled();
-	});
-
-	it("已登录开机:查一次关注关系", async () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-			loginStatus: "logged-in",
-		});
-		active = c;
-		await vi.waitFor(() => expect(c.api.fetchRelations).toHaveBeenCalledWith(["1"]));
-	});
-
-	it("未登录开机、之后登录恢复:补上那一次", async () => {
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-		});
-		active = c;
-		c.bus.emit("auth-restored");
-		await vi.waitFor(() => expect(c.api.fetchRelations).toHaveBeenCalledWith(["1"]));
-	});
-});
-
-/**
  * 发出去不管的写要登记进 `ctx.track()`(切片 ③)。
  *
  * 关停在 flush 段让各写道关门;关门前还没**交进写道**的活(先下载图片、再写历史)会在关门后被拒 ——
@@ -3266,197 +3191,6 @@ describe("createEngines — 后台写登记进 track", () => {
 				const c = await downAfterUp({ masterOnThisConnection: true });
 				expect(c.problems.list().map((p) => p.code)).toEqual(["connection_unreachable"]);
 				expect(H.push[0].notifyMaster).not.toHaveBeenCalled();
-			});
-		});
-	});
-
-	describe("补关注", () => {
-		const twoSubs = [
-			makeEmptySubscription({ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "1" } }),
-			makeEmptySubscription({
-				id: "55555555-5555-4555-8555-555555555555",
-				identity: { sourceKey: "bilibili", externalId: "2" },
-			}),
-		];
-		/** 关系查询回「都没关注」→ 走逐个补关注。 */
-		const noneFollowed = vi.fn(async () => ({ ok: true as const, data: null }));
-
-		it("逐个补关注:登记进 track,关停信号中止后停在手上这一个", async () => {
-			const first = deferred<{ ok: true }>();
-			const follow = vi.fn(() => first.promise);
-			const c = setup({
-				subs: twoSubs,
-				loginStatus: "logged-in",
-				overrides: { api: { fetchRelations: noneFollowed, follow } },
-			});
-			active = c;
-			await vi.waitFor(() => expect(follow).toHaveBeenCalledTimes(1));
-			const tracked = c.serviceCtx.tracking.tracked;
-			expect(await stillPending(Promise.all(tracked))).toBe(true);
-
-			c.serviceCtx.tracking.abort();
-			first.resolve({ ok: true });
-			await Promise.all(tracked);
-
-			// 第二个订阅没有再发关注 —— signal 一路交到了 syncFollows 手里。
-			expect(follow).toHaveBeenCalledTimes(1);
-			expect(follow).toHaveBeenCalledWith("1");
-		});
-
-		it("只开直播(作品关着)的订阅开机不查、不补关注", async () => {
-			const liveOnly = {
-				...biliSubOf("1"),
-				overrides: { features: { post: false } },
-			} as Subscription;
-			const follow = vi.fn(async () => ({ ok: true as const }));
-			const c = setup({
-				subs: [liveOnly, biliSubOf("2")],
-				loginStatus: "logged-in",
-				overrides: { api: { fetchRelations: noneFollowed, follow } },
-			});
-			active = c;
-			await Promise.all(c.serviceCtx.tracking.tracked);
-
-			expect(c.api.fetchRelations).toHaveBeenCalledWith(["2"]);
-			expect(follow).toHaveBeenCalledTimes(1);
-			expect(follow).toHaveBeenCalledWith("2");
-		});
-
-		/**
-		 * 开关从关到开时补一次:关了的人开机时没被关注,开关翻开以后动态才有用,得当场补上。
-		 * 只补**新变成需要关注**的那几位 —— 别的人这次连关系查询都不带;无关的变更一个请求都不发(写接口招风控)。
-		 */
-		describe("开关翻开时补一次", () => {
-			// 关系查询的替身是上面共用的一个:每条用例各数各的。
-			beforeEach(() => {
-				noneFollowed.mockClear();
-			});
-			const postOff = (sub: Subscription): Subscription => ({
-				...sub,
-				overrides: { features: { post: false } },
-			});
-			const postOn = (sub: Subscription): Subscription => ({
-				...sub,
-				overrides: { features: { post: true } },
-			});
-			const follow = () => vi.fn(async (_fid: string) => ({ ok: true as const }));
-
-			/** 开机时 1 号作品关着、2 号开着:开机那一轮只关注了 2 号。 */
-			async function booted(over?: { loggedOut?: boolean; globals?: GlobalConfig }) {
-				const send = follow();
-				const subs = [postOff(biliSubOf("1")), biliSubOf("2")];
-				const c = setup({
-					subs,
-					...(over?.globals ? { globals: over.globals } : {}),
-					// 不给 `loginStatus` = 未登录(夹具的默认)。
-					...(over?.loggedOut ? {} : { loginStatus: "logged-in" as const }),
-					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
-				});
-				active = c;
-				await Promise.all(c.serviceCtx.tracking.tracked);
-				return { c, subs, send };
-			}
-
-			it("订阅自己的作品开关从关到开 → 只补它这一位", async () => {
-				const { c, subs, send } = await booted();
-				const before = noneFollowed.mock.calls.length;
-				subs[0] = postOn(biliSubOf("1"));
-
-				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(noneFollowed.mock.calls.length).toBe(before + 1);
-				expect(noneFollowed).toHaveBeenLastCalledWith(["1"]);
-				expect(send.mock.calls.map((a) => a[0])).toEqual(["2", "1"]);
-			});
-
-			it("停用的订阅被启用 → 补", async () => {
-				const send = follow();
-				const off = { ...biliSubOf("1"), enabled: false };
-				const subs = [off];
-				const c = setup({
-					subs,
-					loginStatus: "logged-in",
-					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
-				});
-				active = c;
-				await Promise.all(c.serviceCtx.tracking.tracked);
-				expect(send).not.toHaveBeenCalled();
-
-				subs[0] = { ...off, enabled: true };
-				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(send).toHaveBeenCalledTimes(1);
-				expect(send).toHaveBeenCalledWith("1");
-			});
-
-			it("全局作品开关从关到开 → 补继承它的订阅,已经在关注范围里的不再动", async () => {
-				const base = makeDefaultGlobalConfig();
-				const globalPostOff: GlobalConfig = {
-					...base,
-					defaults: { ...base.defaults, features: { ...base.defaults.features, post: false } },
-				};
-				const send = follow();
-				const subs = [biliSubOf("1"), postOn(biliSubOf("2"))];
-				const c = setup({
-					subs,
-					globals: globalPostOff,
-					loginStatus: "logged-in",
-					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
-				});
-				active = c;
-				await Promise.all(c.serviceCtx.tracking.tracked);
-				expect(send.mock.calls.map((a) => a[0])).toEqual(["2"]); // 开机只关注了自己开着作品的 2 号
-
-				c.configStore._set(base); // 全局作品开关翻开
-				c.bus.emit("config-changed", { scope: "globals" });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(send.mock.calls.map((a) => a[0])).toEqual(["2", "1"]);
-			});
-
-			it("无关的变更(全局设置别的格 / 订阅别的字段 / 开关从开到关)一个请求都不发", async () => {
-				const { c, subs, send } = await booted();
-				const queries = noneFollowed.mock.calls.length;
-				const sends = send.mock.calls.length;
-
-				// 全局设置保存了一下,作品开关没动。
-				c.bus.emit("config-changed", { scope: "globals" });
-				// 订阅改了备注,开关没动。
-				subs[1] = { ...subs[1], notes: "改了备注" } as Subscription;
-				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[1] }] });
-				// 开关从开到关:不取关,也不用查。
-				subs[1] = postOff(biliSubOf("2"));
-				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[1] }] });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(noneFollowed.mock.calls.length).toBe(queries);
-				expect(send.mock.calls.length).toBe(sends);
-			});
-
-			it("新增的订阅不在这里补(新建的那条路由当场关注,这里再补就是重复发写请求)", async () => {
-				const { c, subs, send } = await booted();
-				const sends = send.mock.calls.length;
-				const added = biliSubOf("3");
-				subs.push(added);
-
-				c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub: added }] });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(send.mock.calls.length).toBe(sends);
-			});
-
-			it("没登录:开关翻开不查不补(等登录恢复那一轮全量补上)", async () => {
-				const { c, subs, send } = await booted({ loggedOut: true });
-				expect(noneFollowed).not.toHaveBeenCalled();
-				subs[0] = postOn(biliSubOf("1"));
-
-				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
-				await Promise.all(c.serviceCtx.tracking.tracked);
-
-				expect(noneFollowed).not.toHaveBeenCalled();
-				expect(send).not.toHaveBeenCalled();
 			});
 		});
 	});

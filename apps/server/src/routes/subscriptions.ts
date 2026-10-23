@@ -14,10 +14,8 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { ensureFollowed } from "../bilibili/api/index.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { followTargetSubscriptions } from "../runtime/follow-sync.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import {
 	type ExternalIdSpec,
@@ -85,8 +83,8 @@ const CreateProfileBodySchema = z.object({
  * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
  * 头像存进图库(决策 49)。**新建订阅**(两种来源都是)先按来源描述符声明的格式核外部 id(`externalIdRegex`,
  * 见 `subscriptions/external-id.ts`);B 站声明的是纯数字 uid。已经存在的订阅可以整份 POST 回来改
- * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、查 UID / 搜名字都只对 B 站;资料刷新
- * 对所有在登记的来源同一道口。
+ * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注归 B 站来源在名单变化时做;查 UID / 搜名字
+ * 都只对 B 站;资料刷新对所有在登记的来源同一道口。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
  * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
@@ -128,52 +126,18 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	}
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
-	function toDTO(sub: Subscription, needFollow: ReadonlySet<string>): SubscriptionDTO {
+	function toDTO(sub: Subscription): SubscriptionDTO {
 		const rt = deps.runtime.subRuntimeStore.get(sub.id);
-		const runtime = { cachedProfile: rt?.cachedProfile, problems: problemsAbout(sub.id) };
-		// 关注状态只对需要关注的 B 站订阅有意义(动态走 B 站的关注流):别的来源、停用的、没开作品的
-		// (直播用不着关注)这两格缺着 —— 运行时状态里留着的旧「未关注」不该再挂在卡片上吓人。
-		if (!needFollow.has(sub.id)) return { ...sub, ...runtime };
-		return { ...sub, ...runtime, followed: rt?.followed, followError: rt?.followError };
-	}
-
-	/** 需要关注的订阅 id:启用中、作品开关开着的 B 站订阅(见 `followTargetSubscriptions`)。 */
-	function followTargetIds(): Set<string> {
-		const targets = followTargetSubscriptions(
-			deps.store.getSubscriptions(),
-			deps.store.getGlobals().defaults,
-		);
-		return new Set(targets.map((s) => s.id));
+		return {
+			...sub,
+			cachedProfile: rt?.cachedProfile,
+			problems: problemsAbout(sub.id),
+		};
 	}
 
 	/** 整张订阅表的 DTO(GET / POST 的回应)。 */
 	function toDTOs(): SubscriptionDTO[] {
-		const needFollow = followTargetIds();
-		return deps.store.getSubscriptions().map((sub) => toDTO(sub, needFollow));
-	}
-
-	/**
-	 * 关注该 UP,并把结果记进 SubRuntimeStore。
-	 *
-	 * 动态走 `feed/all`(关注流)—— 没关注就一条动态都收不到,所以这不是可选的润色,
-	 * 是订阅能否工作的前提。**失败不阻断创建**(主人拍板):订阅记录照留,但把「未关注」
-	 * 如实写进 runtime 状态,前端在订阅卡片上持续显示,而不是弹一个转瞬即逝的 toast。
-	 * 启动时的 follow-sync 会再试一次,所以未登录 / 临时风控都能自愈。
-	 */
-	async function followUp(sub: Subscription): Promise<void> {
-		const engines = deps.runtime.engines;
-		if (!engines) return; // 启动中 / 未登录 —— 交给启动时的 follow-sync 兜底。
-		const uid = subscriptionIdentityOf(sub).externalId;
-		const outcome = await ensureFollowed(engines.api, uid);
-		if (!outcome.ok) {
-			const code = outcome.upstreamCode ?? outcome.code;
-			log.warn(`[sub] 关注 UID ${uid} 失败(code=${code}): ${outcome.message} —— 该订阅收不到动态`);
-		}
-		const code = outcome.ok ? undefined : (outcome.upstreamCode ?? outcome.code);
-		await deps.runtime.subRuntimeStore.patch(sub.id, {
-			followed: outcome.ok,
-			followError: outcome.ok ? undefined : outcome.message || `code=${code}`,
-		});
+		return deps.store.getSubscriptions().map((sub) => toDTO(sub));
 	}
 
 	/**
@@ -413,13 +377,6 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
 			if (created) {
 				const createdSource = subscriptionIdentityOf(created).sourceKey;
-				if (!exists && createdSource === BILIBILI_SOURCE_KEY) {
-					// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
-					// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
-					// 只对新建、且需要关注的(启用中、作品开着)当场关注:没开作品的用不着(直播不走关注流);
-					// 整份回来改的那条(面板的启用开关)不在这里,开关翻开补关注由引擎听订阅变更去做。
-					if (followTargetIds().has(created.id)) await followUp(created);
-				}
 				const refresh = deps.runtime.profileRefresh;
 				const hasProfile =
 					deps.runtime.subRuntimeStore.get(created.id)?.cachedProfile !== undefined;
@@ -476,7 +433,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, read.body);
-			return c.json(toDTO(next, followTargetIds()));
+			return c.json(toDTO(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/subscriptions/:id failed", err);

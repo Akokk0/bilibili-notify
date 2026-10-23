@@ -24,6 +24,7 @@ import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
+import { watchFollows } from "./follow-sync.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
@@ -412,6 +413,17 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						profileFetcher?.syncSubscriptions();
 						roomIds?.syncSubscriptions();
 						engine?.syncSubscriptions();
+					}),
+				);
+				mine.push(
+					watchFollows({
+						api: deps.api,
+						auth: deps.auth,
+						subscriptions: () => ctx.subscriptions(),
+						onSubscriptionsChanged: (fn) => ctx.onSubscriptionsChanged(fn),
+						problems: deps.problems,
+						logger: ctx.logger,
+						signal: ctx.signal,
 					}),
 				);
 				// 群里贴的 B 站视频链接归这个来源认;宿主在来源停下时也会撤,这里记着是为了启动失败时自己收拾。

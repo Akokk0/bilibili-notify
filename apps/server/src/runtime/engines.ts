@@ -49,12 +49,10 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	aiWritingNeeded,
-	isLoggedIn,
 	isReachabilityEvidence,
 	needsLiveMonitor,
 	resolve,
 	resolveAIProfile,
-	type SourceAuth,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
@@ -113,7 +111,6 @@ import {
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { type ExtensionSourceReader, extensionHasLiveTick } from "./extension-push-common.js";
-import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import {
@@ -239,11 +236,6 @@ export interface CreateEnginesOptions {
 	 */
 	loadFontFace: (id: string) => Promise<string>;
 	api: Api;
-	/**
-	 * B 站的登录口(`AuthSystem.auth`)的读面。开机关注同步那道门读它;不从来源登记表读,因为引擎装配建好的这一刻
-	 * 来源还没登记(登记在 `compose.ts`,晚于这里)。
-	 */
-	auth: Pick<SourceAuth, "state">;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
@@ -687,67 +679,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 登记过的内置来源的撤销把手(`registerSource`);关停时先于作品入口收。
 	const sourceRegistrations: Disposable[] = [];
 
-	/**
-	 * 确保所有订阅的 UP 都已在 B 站被关注 —— 动态走 `feed/all`(关注流),没关注就一条
-	 * 都收不到。独立端此前**从不** follow(只有当年的 koishi 插件做),所以存量订阅全是收不到
-	 * 动态的哑订阅。见 `follow-sync.ts`。
-	 *
-	 * best-effort:失败不阻断引擎启动,状态会落进 SubRuntimeStore 让前端显示「未关注」,
-	 * 下次 auth-restored 再试。
-	 */
-	const runFollowSync = (reason: string, only?: ReadonlySet<string>): void => {
-		// 长跑(逐个订阅补关注、中间有 300ms 间隔):登记进 track 让关停等它写完状态,
-		// 同时把 signal 交给它 —— 关停一开始它就停在当前这一个,不靠预算硬等。
-		opts.serviceCtx.track(
-			syncFollows({
-				api: opts.api,
-				subs: () => opts.subscriptionStore.list(),
-				defaults: () => globals().defaults,
-				...(only ? { only } : {}),
-				rt: opts.subRuntimeStore,
-				logger: log,
-				signal: opts.serviceCtx.signal,
-			}).then(
-				() => undefined,
-				(e: unknown) => {
-					log.warn(
-						`[follow] 关注同步(${reason})失败: ${e instanceof Error ? e.message : String(e)}`,
-					);
-				},
-			),
-		);
-	};
-	// 启动时只在已登录时补一遍。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
-	// 还把每条订阅标成「未关注」。开机时登录状态已探完(createAuthSystem 等过探活);未登录时
-	// LoginFlow 记下了 needsRestore,扫码登录后发 auth-restored,由下面那条补上。
-	// `confirming`(开机没确认上)不算登录,与从前判「已登录」一致。
-	const biliLoggedIn = (): boolean => isLoggedIn(opts.auth.state());
-	if (biliLoggedIn()) runFollowSync("boot");
-
-	// 开关从关翻到开时补一次:「关了就不查」之后,没开作品的人没被关注;订阅被启用、它的作品开关被打开、全局作品开关被打开,
-	// 都会让一些人变成需要关注的。靠对比「需要关注的 uid 集合」前后差,而不是盯着具体哪个字段变了 —— 订阅覆盖、全局默认、
-	// 启用三条路走的是同一个判据(`followTargetSubscriptions`),差集只在真有人新变成需要关注时才非空,
-	// 无关的设置保存 / 订阅编辑算出来是空差集,一个请求都不发(补关注是写接口,最招风控)。从开到关、停用:不取关,什么都不做。
-	const followTargetUidsNow = (): Set<string> =>
-		new Set(
-			followTargetSubscriptions(opts.subscriptionStore.list(), globals().defaults).map(
-				(s) => subscriptionIdentityOf(s).externalId,
-			),
-		);
-	let followTargetUids = followTargetUidsNow();
-	const syncNewFollowTargets = (justAdded: ReadonlySet<string>): void => {
-		const next = followTargetUidsNow();
-		// 新建的那条订阅由路由当场关注(要把结果带进响应),这里再补就是对同一个人重复发写请求。
-		const flipped = new Set(
-			[...next].filter((uid) => !followTargetUids.has(uid) && !justAdded.has(uid)),
-		);
-		followTargetUids = next;
-		if (flipped.size === 0) return;
-		// 没登录就不白打 B 站(与开机那一轮同一个判据);登录恢复那一轮是全量,会把它们补上。
-		if (!biliLoggedIn()) return;
-		runFollowSync("switch-on", flipped);
-	};
-
 	// ---------- Bus wiring ----------
 	const handles: Disposable[] = [postQueue];
 
@@ -924,28 +855,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			for (const op of ops) {
 				if (op.kind === "remove") opts.problems.clearSubscription(op.sub.id);
 			}
-		}),
-	);
-	handles.push(
-		opts.bus.on("auth-restored", () => {
-			// 登录恢复 → 之前因未登录而关注失败的订阅在这里自愈。
-			runFollowSync("auth-restored");
-		}),
-	);
-	handles.push(
-		opts.bus.on("subscription-changed", ({ ops }) =>
-			syncNewFollowTargets(
-				new Set(
-					ops
-						.filter((op) => op.kind === "add")
-						.map((op) => subscriptionIdentityOf(op.sub).externalId),
-				),
-			),
-		),
-	);
-	handles.push(
-		opts.bus.on("config-changed", ({ scope }) => {
-			if (scope === "globals") syncNewFollowTargets(new Set());
 		}),
 	);
 	// ---------- Connection probe ----------

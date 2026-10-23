@@ -41,25 +41,3 @@ export function sourceSubscriptionViews(
 	}
 	return [...merged].map(([externalId, entry]) => ({ externalId, ...entry }));
 }
-
-/**
- * 一个来源里「名单上开着这项特性的人」名下的全部订阅(与 {@link sourceSubscriptionViews} 同一份算法)。
- * 同一个人遗留的重复订阅有一条符合,这个人就算,他名下的每一条(连停用的、没开这一项的)都归入 —— 按人做的事
- * (比如关注)结果要记给他名下的每一条。
- */
-export function subscriptionsOfFeature(
-	subscriptions: readonly Subscription[],
-	sourceKey: string,
-	defaults: GlobalConfig["defaults"],
-	feature: FeatureKey,
-): Subscription[] {
-	const wanted = new Set(
-		sourceSubscriptionViews(subscriptions, sourceKey, defaults)
-			.filter((view) => view.features.has(feature))
-			.map((view) => view.externalId),
-	);
-	return subscriptions.filter((sub) => {
-		const identity = subscriptionIdentityOf(sub);
-		return identity.sourceKey === sourceKey && wanted.has(identity.externalId);
-	});
-}

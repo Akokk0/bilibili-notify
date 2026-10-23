@@ -235,36 +235,7 @@ describe("/api/subscriptions — 带上挂在订阅上的问题", () => {
 	});
 });
 
-// 「未关注」是服务端写进运行时状态、随 DTO 带给面板的(不是面板自己算的)。写下的 `followed:false`
-// 会一直留着 —— 主人后来把作品关了、或把订阅停了,这条订阅已经不需要关注,DTO 就不该再带它,
-// 否则卡片上还挂着「未关注 —— 收不到动态」,主人会以为出了问题。
-describe("/api/subscriptions GET — 不需要关注的订阅不带关注状态", () => {
-	const unfollowed = { followed: false, followError: "对方已将你拉黑" };
-
-	it("开着作品的启用订阅:照常带 followed / followError", async () => {
-		const h = makeHarness({ rtRecord: { [SUB.id]: unfollowed } });
-		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
-		expect(body[0]?.followed).toBe(false);
-		expect(body[0]?.followError).toBe("对方已将你拉黑");
-	});
-
-	it("只开直播(作品关着)的订阅:不带", async () => {
-		const liveOnly = { ...SUB, overrides: { features: { post: false } } };
-		const h = makeHarness({ subs: [liveOnly], rtRecord: { [SUB.id]: unfollowed } });
-		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
-		expect("followed" in (body[0] ?? {})).toBe(false);
-		expect("followError" in (body[0] ?? {})).toBe(false);
-	});
-
-	it("停用的订阅:不带", async () => {
-		const off = { ...SUB, enabled: false };
-		const h = makeHarness({ subs: [off], rtRecord: { [SUB.id]: unfollowed } });
-		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
-		expect("followed" in (body[0] ?? {})).toBe(false);
-	});
-});
-
-/** POST 期间真正写进资料缓存的那些 runtime patch(关注状态不算)。 */
+/** POST 期间真正写进资料缓存的那些 runtime patch。 */
 function cachedProfileCalls(h: Harness) {
 	return h.rtPatch.mock.calls.filter(
 		([, patch]) => typeof patch === "object" && patch !== null && "cachedProfile" in patch,
@@ -433,112 +404,29 @@ describe("/api/subscriptions PATCH — 响应同样 join", () => {
 	});
 });
 
-/**
- * POST 自动关注该 UP。
- *
- * 动态是从 `feed/all`(**关注流**)拉的 —— 只会返回你已关注的人的动态。所以订阅一个
- * UP 却不去关注他,等于订阅了个寂寞:配置里有这条记录,动态流里永远没有他,一条都推
- * 不出来。koishi 端一直在 subscription-loader 里 follow,独立端**从来没做过**。
- */
-describe("/api/subscriptions POST — 自动关注该 UP", () => {
-	beforeEach(() => vi.restoreAllMocks());
-
-	async function post(h: Harness, body: unknown = SUB) {
-		return h.app.request("/", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-		});
-	}
-
-	it("新增订阅 → 去 B 站关注该 UP(否则 feed/all 里根本没有他的动态)", async () => {
+describe("/api/subscriptions POST — 新建订阅不在路由关注", () => {
+	it("新建 B 站订阅 → 路由不调 follow,回应不带 followed / followError", async () => {
 		const h = makeHarness({ fresh: true });
-		const res = await post(h);
 
-		expect(res.status).toBe(200);
-		expect(h.follow).toHaveBeenCalledWith(SUB.identity.externalId);
-	});
-
-	// 「关了就不查」:关注只为拉到动态,直播用不着。关注是写接口,最招风控。
-	it("新建一条没开作品的订阅(只开直播)→ 不关注,也不写关注状态", async () => {
-		const liveOnly = { ...SUB, overrides: { features: { post: false } } };
-		const h = makeHarness({ fresh: true, subs: [liveOnly] });
-		const res = await post(h, liveOnly);
-
-		expect(res.status).toBe(200);
-		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.follow).not.toHaveBeenCalled();
-		expect(h.rtPatch).not.toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: true }));
-		expect(h.rtPatch).not.toHaveBeenCalledWith(
-			SUB.id,
-			expect.objectContaining({ followed: false }),
-		);
-	});
-
-	it("新建一条停用的订阅 → 不关注", async () => {
-		const off = { ...SUB, enabled: false };
-		const h = makeHarness({ fresh: true, subs: [off] });
-		await post(h, off);
-
-		expect(h.follow).not.toHaveBeenCalled();
-	});
-
-	it("整份 POST 回来改一条已有的订阅(面板的启用开关)→ 不在这里关注:开关翻开补关注归引擎听订阅变更去做", async () => {
-		const h = makeHarness(); // 默认:存储里已经有这条
-		const res = await post(h);
+		const res = await h.app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(SUB),
+		});
 
 		expect(res.status).toBe(200);
 		expect(h.follow).not.toHaveBeenCalled();
-	});
-
-	it("已经关注过(22014) → 视为成功,不当失败报", async () => {
-		const h = makeHarness({ fresh: true, follow: "already" });
-		const res = await post(h);
-
-		expect(res.status).toBe(200);
-		expect(h.rtPatch).toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: true }));
-	});
-
-	it("关注失败 → 订阅照建,但把「未关注」如实记下(别让用户以为好了)", async () => {
-		const h = makeHarness({ fresh: true, follow: "fail" });
-		const res = await post(h);
-
-		// 主人拍板:仍创建。订阅记录不能凭空消失。
-		expect(res.status).toBe(200);
-		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-
-		// 状态落进 SubRuntimeStore → DTO 带给前端 → 订阅卡片能持续显示「未关注」,
-		// 而不是一闪而过的 toast。这条订阅现在是收不到动态的,用户有权一直看见。
-		expect(h.rtPatch).toHaveBeenCalledWith(
-			SUB.id,
-			expect.objectContaining({ followed: false, followError: expect.stringContaining("拉黑") }),
-		);
-	});
-
-	it("关注请求直接抛(断网)→ 同样不阻断创建", async () => {
-		const h = makeHarness({ fresh: true, follow: "throw" });
-		const res = await post(h);
-
-		expect(res.status).toBe(200);
-		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.rtPatch).toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: false }));
-	});
-
-	it("engines 未就绪(未登录/启动中)→ 不炸,订阅照建,不写关注状态", async () => {
-		const h = makeHarness({ fresh: true, engines: "null" });
-		const res = await post(h);
-
-		expect(res.status).toBe(200);
-		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.follow).not.toHaveBeenCalled();
+		const body = (await res.json()) as Array<Record<string, unknown>>;
+		expect(body[0]).not.toHaveProperty("followed");
+		expect(body[0]).not.toHaveProperty("followError");
 	});
 });
 
 /**
  * 拓展订阅(ADR-0019 决策 9 / 12 / 50)。
  *
- * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅要宿主核过「它是装着的订阅源」;已有的
- * 那条整份 POST 回来(面板的启用开关)照收,关注 / 单条资料刷新都不碰它。身份改不动,store 拒了就是 400。
+ * GET 两支都回。新建拓展订阅要宿主核过「它是装着的订阅源」;已有的那条整份 POST 回来
+ * (面板的启用开关)照收,单条资料刷新也不碰它。身份改不动,store 拒了就是 400。
  */
 describe("/api/subscriptions × 拓展订阅", () => {
 	beforeEach(() => vi.restoreAllMocks());
@@ -571,8 +459,8 @@ describe("/api/subscriptions × 拓展订阅", () => {
 		});
 		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
 		expect(body.map((s) => s.id)).toEqual([SUB.id, EXT.id]);
-		expect(body[0]?.followed).toBe(true);
 		expect(body[1]?.cachedProfile).toEqual(PROFILE);
+		expect(body[0]).not.toHaveProperty("followed");
 		expect("followed" in (body[1] ?? {})).toBe(false);
 		expect("followError" in (body[1] ?? {})).toBe(false);
 	});

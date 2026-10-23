@@ -99,6 +99,7 @@ function makeFakeSourceCtx(
 		}),
 		subscriptions: () => roster,
 		onSubscriptionsChanged: () => ({ dispose() {} }),
+		signal: new AbortController().signal,
 		reportPost,
 		fetchImage,
 		reportProblem: vi.fn(),

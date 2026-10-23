@@ -161,11 +161,30 @@ function makeConfig(initial: Partial<BiliSettings> = {}) {
 }
 
 function makeDeps(
-	over: { cron?: string; fetchAllDynamic?: () => unknown; now?: () => number } = {},
+	over: {
+		cron?: string;
+		fetchAllDynamic?: () => unknown;
+		fetchRelations?: (uids: string[]) => Promise<unknown>;
+		follow?: (uid: string) => Promise<unknown>;
+		auth?: SourceAuth;
+		now?: () => number;
+	} = {},
 ) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	const logger = makeLogger();
+	const fetchRelations = vi.fn(
+		over.fetchRelations ?? (async (_uids: string[]) => ok({ data: null })),
+	);
+	const follow = vi.fn(over.follow ?? (async (_uid: string) => ok()));
+	const problems = {
+		attach: vi.fn(),
+		detach: vi.fn(),
+		reportRisk: vi.fn(),
+		resolveRisk: vi.fn(),
+		reportFailure: vi.fn(),
+		resolveFailure: vi.fn(),
+	};
 	const liveContext = {
 		logger,
 		signal: new AbortController().signal,
@@ -178,23 +197,23 @@ function makeDeps(
 		config,
 		setHealthCheckMs,
 		deps: {
-			problems: {
-				attach: vi.fn(),
-				detach: vi.fn(),
-				reportRisk: vi.fn(),
-				resolveRisk: vi.fn(),
-				reportFailure: vi.fn(),
-				resolveFailure: vi.fn(),
-			},
-			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
+			problems,
+			api: {
+				fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED),
+				fetchRelations,
+				follow,
+			} as unknown as Api,
 			bus: makeWorld().bus,
 			loginCheck: { setHealthCheckMs },
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
 			liveContext,
-			auth: FAKE_AUTH,
+			auth: over.auth ?? FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
+		fetchRelations,
+		follow,
+		problems,
 	};
 }
 
@@ -205,6 +224,33 @@ const FAKE_AUTH: SourceAuth = {
 	state: () => ({ status: "logged-out" }),
 	onChange: () => ({ dispose() {} }),
 };
+
+/** 可控登录口:换状态时同步叫所有 `onChange` 监听。 */
+function makeAuth(initial: ReturnType<SourceAuth["state"]>) {
+	let state = initial;
+	const listeners = new Set<() => void>();
+	const auth: SourceAuth = {
+		beginLogin: async () => ok(),
+		logout: async () => ok(),
+		state: () => state,
+		onChange(fn) {
+			listeners.add(fn);
+			return {
+				dispose() {
+					listeners.delete(fn);
+				},
+			};
+		},
+	};
+	return {
+		auth,
+		set(next: ReturnType<SourceAuth["state"]>) {
+			state = next;
+			for (const fn of [...listeners]) fn();
+		},
+		listenerCount: () => listeners.size,
+	};
+}
 
 /**
  * 假来源上下文:名单与回调可控,`onSubscriptionsChanged` 的把手记下有没有被摘;`settings(schema)` 与真上下文
@@ -234,6 +280,7 @@ function makeCtx(
 	const registerAiToolProvider = vi.fn((_provider: AiToolProvider) => ({ dispose() {} }));
 	const ctx = {
 		logger: logger as Logger,
+		signal: new AbortController().signal,
 		settings: (schema: ZodType) => {
 			const made = createSettingsReader({
 				schema,
@@ -524,7 +571,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 		expect(source.dynamic()).toBeUndefined();
 		expect(cronMock.instances[0]?.isActive).toBe(false);
-		expect(watchDisposed).toHaveBeenCalledTimes(2);
+		expect(watchDisposed).toHaveBeenCalledTimes(3);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 
 		// stop 之后设置再变(上下文还没收):来源自己的订阅已摘,不会造出新的引擎、也不会再动登录检查。
@@ -725,7 +772,7 @@ describe("createBiliSource", () => {
 		await expect(source.start(ctx)).rejects.toThrow("挂心跳炸了");
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(source.dynamic()).toBeUndefined();
-		expect(watchDisposed).toHaveBeenCalledTimes(2);
+		expect(watchDisposed).toHaveBeenCalledTimes(3);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 		expect(deps.problems.attach).not.toHaveBeenCalled();
 		// 设置再变:被摘掉的订阅不会造出新的引擎
@@ -871,14 +918,15 @@ describe("B 站来源 · health()(给 status 指令的那一行)", () => {
 		await source.stop();
 	});
 
-	// 验红:`health()` 里读 `deps.auth.state()` 拼进半句登录,这条红。
-	it("没登录时这一行不变:不提登录,也不去读登录态(登录由 status 的「登录」一行说)", async () => {
+	// 验红:`health()` 里再读 `deps.auth.state()` 拼进半句登录,这条红。
+	it("没登录时这一行不变:health() 不额外读登录态(登录由 status 的「登录」一行说)", async () => {
 		const made = makeDeps();
 		const state = vi.fn(() => ({ status: "logged-out" as const }));
 		const source = createBiliSource({ ...made.deps, auth: { ...FAKE_AUTH, state } });
 		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		const readsAtStart = state.mock.calls.length;
 		expect(source.health?.()).toEqual({ summary: "还没抓过" });
-		expect(state).not.toHaveBeenCalled();
+		expect(state).toHaveBeenCalledTimes(readsAtStart);
 		await source.stop();
 	});
 
@@ -1042,5 +1090,140 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 
 		expect(enqueue).not.toHaveBeenCalled();
 		expect(logger.error.mock.calls.filter(([msg]) => String(msg).includes("已停下"))).toEqual([]);
+	});
+});
+
+describe("createBiliSource — 关注同步", () => {
+	const loggedIn = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } as const;
+
+	it("已登录 start → 只查作品开着的人", async () => {
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({ auth: auth.auth });
+		const source = createBiliSource(made.deps);
+		await source.start(
+			makeCtx([
+				{ externalId: "1", post: true },
+				{ externalId: "2", post: false },
+			]).ctx,
+		);
+
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+		expect(made.fetchRelations).not.toHaveBeenCalledWith(["1", "2"]);
+		await source.stop();
+	});
+
+	it("名单里新加一个人 → 只对他发一轮关注", async () => {
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({ auth: auth.auth });
+		const roster = [{ externalId: "1", post: true }];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+
+		roster.push({ externalId: "2", post: true });
+		for (const changed of fake.watchers) changed();
+
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["2"]));
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+		await source.stop();
+	});
+
+	// 补关注是写接口、最招风控:名单回调只对新进关注范围的人发请求。验红:把回调里的 `run(added)` 换成 `run()`,这条红。
+	it("名单变了但没人新进关注范围 → 一个请求都不发", async () => {
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({ auth: auth.auth });
+		const roster = [
+			{ externalId: "1", post: true },
+			{ externalId: "2", post: false },
+		];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+		await vi.waitFor(() => expect(made.follow).toHaveBeenCalledWith("1"));
+
+		// 只开直播的那位还是只开直播:名单回调来了,但关注范围没变。
+		for (const changed of fake.watchers) changed();
+
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+		expect(made.follow).toHaveBeenCalledTimes(1);
+		await source.stop();
+	});
+
+	it("作品关掉 → 按不再适用清掉那个人的 follow_failed", async () => {
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({ auth: auth.auth });
+		const roster = [{ externalId: "1", post: true }];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+
+		const first = roster[0];
+		if (first === undefined) throw new Error("roster fixture is empty");
+		first.post = false;
+		for (const changed of fake.watchers) changed();
+
+		expect(made.problems.resolveFailure).toHaveBeenCalledWith(
+			{ externalId: "1", code: "follow_failed" },
+			{ notify: false },
+		);
+		await source.stop();
+	});
+
+	it("auth.onChange 从没登录变已登录 → 全量再跑一轮", async () => {
+		const auth = makeAuth({ status: "logged-out" });
+		const made = makeDeps({ auth: auth.auth });
+		const source = createBiliSource(made.deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		expect(made.fetchRelations).not.toHaveBeenCalled();
+
+		auth.set(loggedIn);
+
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+		await source.stop();
+	});
+
+	it("没登录时名单变化只更新集合,不发请求", async () => {
+		const auth = makeAuth({ status: "logged-out" });
+		const made = makeDeps({ auth: auth.auth });
+		const roster = [{ externalId: "1", post: true }];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+
+		roster.push({ externalId: "2", post: true });
+		for (const changed of fake.watchers) changed();
+
+		expect(made.fetchRelations).not.toHaveBeenCalled();
+		expect(made.follow).not.toHaveBeenCalled();
+		await source.stop();
+	});
+
+	it("stop() 后在途那一轮不再发下一个关注", async () => {
+		const auth = makeAuth(loggedIn);
+		const first = deferred<void>();
+		const follow = vi.fn(() => first.promise.then(() => ok()));
+		const made = makeDeps({ auth: auth.auth, follow });
+		const source = createBiliSource(made.deps);
+		await source.start(
+			makeCtx([
+				{ externalId: "1", post: true },
+				{ externalId: "2", post: true },
+			]).ctx,
+		);
+		await vi.waitFor(() => expect(follow).toHaveBeenCalledWith("1"));
+
+		await source.stop();
+		first.resolve();
+
+		await vi.waitFor(() =>
+			expect(made.problems.resolveFailure).toHaveBeenCalledWith({
+				externalId: "1",
+				code: "follow_failed",
+			}),
+		);
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).not.toHaveBeenCalledWith("2");
 	});
 });

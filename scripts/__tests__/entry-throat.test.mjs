@@ -94,9 +94,8 @@ export const API_SLOT_RATCHET = {
 	"apps/server/src/app.ts": 3, // 卡片预览的 `api`(属性签名、`api:` 与 `options.api`);第 4 期卡片真实预览改口时消
 	"apps/server/src/index.ts": 7, // 登录装配的产物经入口递出去(套壳、引擎、createApp);含 `devAuth.api` 杂音;3b 登录装配进集成时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
-	"apps/server/src/routes/subscriptions.ts": 3, // 旧搜人两口;第 4 期消
-	"apps/server/src/runtime/engines.ts": 6, // `EnginesRuntime.api` 与关注同步 / 链接解析的递法;3b 随读者清掉
-	"apps/server/src/runtime/follow-sync.ts": 3, // 关注同步;3b
+	"apps/server/src/routes/subscriptions.ts": 2, // 旧搜人两口;第 4 期消。3b-25 新建订阅不再当场关注(3 → 2)
+	"apps/server/src/runtime/engines.ts": 4, // `EnginesRuntime.api` 与链接解析的递法;3b 随读者清掉。3b-25 关注同步搬进 B 站来源(6 → 4)
 };
 
 // ---------------------------------------------------------------------------

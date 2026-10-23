@@ -931,7 +931,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			liveTable: runtime.liveTable,
 			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
-			auth: authSystem.auth,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
 			subscriptionStore: subBinding.store,

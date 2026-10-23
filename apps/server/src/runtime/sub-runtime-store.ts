@@ -37,18 +37,6 @@ export interface SubRuntime {
 	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
 	 */
 	cachedProfile?: CachedProfile;
-	/**
-	 * 是否已在 B 站关注该 UP。
-	 *
-	 * **这是订阅能否工作的前提,不是装饰性元数据**:动态走 `feed/all`(关注流),没关注
-	 * 就一条动态都收不到。所以它得能被前端看见 —— 订阅卡片上持续显示「未关注」,而不是
-	 * 创建时一闪而过的 toast。
-	 *
-	 * `undefined` = 还没检查过(老数据 / 当时未登录),不等于「未关注」。
-	 */
-	followed?: boolean;
-	/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),给用户看的。 */
-	followError?: string;
 }
 
 export interface SubRuntimeStore {
@@ -177,10 +165,8 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				//
 				// 🔴 判据是**键在不在**,不是值等不等于 `undefined`,而且**逐键遍历、不点名**:
 				//   - 点名的话(原先那张三键清单)往 `SubRuntime` 加一个字段而忘了补一行,
-				//     那个键就静默不落盘 —— `followed` / `followError` 正是这么丢了很久的,
-				//     类型、门禁、运行期都不会说一个字。
-				//   - 按值判的话,`{ followed: true, followError: undefined }`(两处调用方
-				//     都这么写,意思是「关上了,把上次那条错误清掉」)永远清不掉。
+				//     那个键就静默不落盘 —— 类型、门禁、运行期都不会说一个字。
+				//   - 按值判的话,显式传 `undefined`(意思是「把上次那个值清掉」)永远清不掉。
 				// 「不带这个键」仍然是「别动它」—— 空 patch 不冲掉 cachedProfile。
 				const next: Record<string, unknown> = { ...(records[id] ?? {}) };
 				for (const [key, value] of Object.entries(partial)) {

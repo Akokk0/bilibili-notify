@@ -97,6 +97,8 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 	const source = createBiliSource({
 		api: {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
+			fetchRelations: async () => ok({ data: null }),
+			follow: async () => ok(),
 		} as unknown as Api,
 		bus: world.bus,
 		loginCheck: { setHealthCheckMs: () => {} },

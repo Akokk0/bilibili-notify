@@ -58,13 +58,12 @@ export const BOUNDARIES = [
 		// 直播引擎宿主(engines 的 `Api` / `LiveEngine` 两条,3b)、关注同步与粉丝轮询
 		// (3b,随来源 `fetchProfile`)、卡片真实预览与
 		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨,3b 末清零。
+		// 3b-25:关注同步搬进 B 站来源,`runtime/follow-sync.ts` 与 `routes/subscriptions.ts`(新建时当场关注)两行清零删掉。
 		ratchet: {
 			"apps/server/src/app.ts": 1,
 			"apps/server/src/index.ts": 1,
 			"apps/server/src/routes/cards.ts": 4,
-			"apps/server/src/routes/subscriptions.ts": 1,
 			"apps/server/src/runtime/engines.ts": 1,
-			"apps/server/src/runtime/follow-sync.ts": 2,
 		},
 		reason:
 			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨,3b 末清零",

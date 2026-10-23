@@ -24,6 +24,13 @@ describe("PROBLEM_TEXTS · 句子", () => {
 		expect(PROBLEM_TEXTS.dynamicFetchFailed.notify).toBe(false);
 	});
 
+	it("补关注失败:带 B 站原话,只说收不到动态;只进表", () => {
+		expect(PROBLEM_TEXTS.followFailed.text("对方已将你拉黑")).toBe(
+			"未关注该 UP —— 收不到动态（对方已将你拉黑）",
+		);
+		expect(PROBLEM_TEXTS.followFailed.notify).toBe(false);
+	});
+
 	it("直播间停止监听:点明不会自动重连;恢复句", () => {
 		expect(PROBLEM_TEXTS.liveMonitorStopped.text("100", "取直播间信息失败")).toBe(
 			"直播间 100 停止监听：取直播间信息失败；不会自动重连",

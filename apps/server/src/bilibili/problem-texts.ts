@@ -29,6 +29,11 @@ export const PROBLEM_TEXTS = {
 		// 没有 B 站数字码的失败(回应形状不对)传标准码,不让句子里出现 undefined
 		text: (code: number | string) => t("bilibili.problem.dynamicFetchFailed", { code }),
 	},
+	/** 补关注失败:只进表,报一次就不再报,直到下一次关注同步成功。 */
+	followFailed: {
+		notify: false,
+		text: (reason: string) => t("bilibili.problem.followFailed", { reason }),
+	},
 	/** 直播间停止监听(取信息失败、弹幕连不上、重连用尽):私聊 + 进表。`reason` 是停下的原因。 */
 	liveMonitorStopped: {
 		notify: true,
