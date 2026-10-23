@@ -12,10 +12,10 @@
 
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type Failure, type FailureCode, fail } from "@bilibili-notify/internal";
+import { type Failure, type FailureCode, fail, type MaidSkill } from "@bilibili-notify/internal";
 import { atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { BUILTIN_SKILL_NAMES, BUILTIN_SKILLS } from "./builtin.js";
-import { formatSkillFile, isValidSkillName, type ParsedSkill, parseSkillFile } from "./parse.js";
+import { formatSkillFile, isValidSkillName, parseSkillFile } from "./parse.js";
 
 /** 技能文件在目录里的固定名字,与 Claude Code 的 Agent Skill 一致。 */
 const SKILL_FILE = "SKILL.md";
@@ -27,7 +27,7 @@ export interface SkillProblem {
 }
 
 /** 库里的一条技能。`builtin` 决定它改不改得动。 */
-export interface MaidSkillEntry extends ParsedSkill {
+export interface MaidSkillEntry extends MaidSkill {
 	/** 内置的只读、跟版本走(决策 15);改 / 删一律拒。 */
 	builtin: boolean;
 }
@@ -62,12 +62,14 @@ const MAX_FILE_BYTES = 256 * 1024;
 export class MaidSkillStore {
 	private readonly dir: string;
 	/** 主人自己那些(不含内置),name → 条目。 */
-	private user = new Map<string, ParsedSkill>();
+	private user = new Map<string, MaidSkill>();
 	private issues: SkillProblem[] = [];
 	private ready?: Promise<void>;
+	private readonly reservedNames: () => Iterable<string>;
 
-	constructor(opts: { dir: string }) {
+	constructor(opts: { dir: string; reservedNames?: () => Iterable<string> }) {
 		this.dir = opts.dir;
+		this.reservedNames = opts.reservedNames ?? (() => []);
 	}
 
 	/** 确保读过一次盘,幂等。 */
@@ -79,8 +81,9 @@ export class MaidSkillStore {
 	/** 从盘上全量重建索引与问题清单。 */
 	async reload(): Promise<void> {
 		await mkdir(this.dir, { recursive: true });
-		const user = new Map<string, ParsedSkill>();
+		const user = new Map<string, MaidSkill>();
 		const issues: SkillProblem[] = [];
+		const reserved = new Set([...BUILTIN_SKILL_NAMES, ...this.reservedNames()]);
 		for (const entry of await readdir(this.dir, { withFileTypes: true })) {
 			if (!entry.isDirectory()) continue;
 			const dirName = entry.name;
@@ -119,7 +122,7 @@ export class MaidSkillStore {
 				});
 				continue;
 			}
-			if (BUILTIN_SKILL_NAMES.has(dirName)) {
+			if (reserved.has(dirName)) {
 				// 内置照旧赢。让盘上一份悄悄顶掉它,主人升级之后会发现某条内置技能
 				// 永远停在旧版本,而界面上看不出任何异样。
 				issues.push({ dir: dirName, reason: "这个名字已被内置技能占用,盘上这一份不会生效" });
@@ -151,14 +154,14 @@ export class MaidSkillStore {
 		return [...this.issues];
 	}
 
-	async create(skill: ParsedSkill): Promise<void> {
+	async create(skill: MaidSkill): Promise<void> {
 		const clean = this.validate(skill);
 		await this.assertFree(clean.name);
 		await this.writeSkill(clean);
 		this.user.set(clean.name, clean);
 	}
 
-	async update(name: string, next: ParsedSkill): Promise<void> {
+	async update(name: string, next: MaidSkill): Promise<void> {
 		this.assertEditable(name);
 		if (!this.user.has(name)) throw new SkillStoreError("not_found", `技能不存在:${name}`);
 		const clean = this.validate(next);
@@ -184,7 +187,7 @@ export class MaidSkillStore {
 	 * 名字、长度、正文非空全部由 {@link parseSkillFile} 那一处判,不在这儿抄第二遍。
 	 * 两处各判各的,迟早会出现「存得进去、读不回来」的东西。
 	 */
-	private validate(skill: ParsedSkill): ParsedSkill {
+	private validate(skill: MaidSkill): MaidSkill {
 		const res = parseSkillFile(formatSkillFile(skill));
 		if (!res.ok) throw new SkillStoreError("invalid", res.reason);
 		return res.skill;
@@ -200,7 +203,7 @@ export class MaidSkillStore {
 	 * 的正文抹掉,界面上连个响都没有。缓存怎么调都堵不住,只能问盘。
 	 */
 	private async assertFree(name: string): Promise<void> {
-		if (BUILTIN_SKILL_NAMES.has(name)) {
+		if (this.isReserved(name)) {
 			throw new SkillStoreError("conflict", `「${name}」已被内置技能占用,换个名字吧`);
 		}
 		if (this.user.has(name)) throw new SkillStoreError("conflict", `「${name}」已经有了`);
@@ -218,9 +221,18 @@ export class MaidSkillStore {
 	/** 改 / 删的前置:名字合法(它要拼进路径)且不是内置。 */
 	private assertEditable(name: string): void {
 		if (!isValidSkillName(name)) throw new SkillStoreError("invalid", `技能名不合法:${name}`);
-		if (BUILTIN_SKILL_NAMES.has(name)) {
+		if (this.isReserved(name)) {
 			throw new SkillStoreError("conflict", `「${name}」是内置技能,改不动也删不掉`);
 		}
+	}
+
+	/** 内置与当前在册的提供方技能共同占名；所有读写入口都只问这一处。 */
+	private isReserved(name: string): boolean {
+		if (BUILTIN_SKILL_NAMES.has(name)) return true;
+		for (const reserved of this.reservedNames()) {
+			if (reserved === name) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -228,7 +240,7 @@ export class MaidSkillStore {
 	 * 临时名各写各的,同一条技能并发存也不会互相踩。它是给人看、给人手改的 markdown,
 	 * 所以写的就是 `formatSkillFile` 那份字节,不是状态 JSON。
 	 */
-	private async writeSkill(skill: ParsedSkill): Promise<void> {
+	private async writeSkill(skill: MaidSkill): Promise<void> {
 		await atomicWriteFile(join(this.dir, skill.name, SKILL_FILE), formatSkillFile(skill));
 	}
 }

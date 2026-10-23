@@ -63,6 +63,7 @@ import type { LogEntry } from "../ws/types.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import {
+	createInProcessAiToolProvider,
 	currentProbe,
 	IN_PROCESS_CUSTOM_PROGRAM_ID,
 	IN_PROCESS_ECHO_TOOL_LABEL,
@@ -72,6 +73,8 @@ import {
 	IN_PROCESS_OTHER_PROGRAM_ID,
 	IN_PROCESS_OTHER_TIER_KEY,
 	IN_PROCESS_PROGRAM_ID,
+	IN_PROCESS_SKILL_BODY,
+	IN_PROCESS_SKILL_FULL_NAME,
 	IN_PROCESS_TIER_ICON_BASE64,
 	IN_PROCESS_TIER_KEY,
 	inProcessWorld,
@@ -161,7 +164,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P42)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P43)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -287,6 +290,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P43",
+		title: "提供方技能经列表、聊天目录与斜杠点名可见，撤销登记后三处都拿不到",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -303,10 +311,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N06",
-		title: "技能可见性、提示词里的叫法",
+		title: "提示词里的叫法",
 		checked: false,
 		waitsFor: "3b-35",
-		reason: "技能允许名单的可见性与提示词里的叫法随 3b-35",
+		reason: "提示词按来源叫法而变随 3b-35 的后续提交",
 	},
 	{
 		id: "N08",
@@ -500,6 +508,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	const aiAsked: string[] = [];
 	/** 每一条假模型请求里收到的工具名,按请求先后。 */
 	const aiRequestedToolNames: string[][] = [];
+	/** 最近一问里 `load_skill` 的目录;P43 用它证明提供方技能进了模型自选清单。 */
+	let aiLoadSkillCatalog: { description: string; names: string[] } | undefined;
+	/** 最近一问里的 system 正文;P43 用它证明斜杠点名把技能正文交给了模型。 */
+	let aiLastSystem = "";
 	/**
 	 * 要假模型先调一把工具(只在带着工具表、末条是用户话的那一问上调,调一次就清);
 	 * 调完工具之后喂回来的 `tool` 消息正文记进 {@link aiToolSeen}。
@@ -594,6 +606,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			const { conversation } = (await created.json()) as { conversation: { id: string } };
 			aiToolSeen.length = 0;
 			aiRequestedToolNames.length = 0;
+			aiLoadSkillCatalog = undefined;
+			aiLastSystem = "";
 			aiToolScript = script;
 			const sse = await (
 				await okRes(
@@ -652,16 +666,36 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			req.on("end", () => {
 				const parsed = JSON.parse(body || "{}") as {
 					messages?: { role?: string; content?: unknown }[];
-					tools?: Array<{ function?: { name?: string } }>;
+					tools?: Array<{
+						function?: {
+							name?: string;
+							description?: string;
+							parameters?: { properties?: { name?: { enum?: string[] } } };
+						};
+					}>;
 					stream?: boolean;
 				};
 				const messages = parsed.messages;
 				aiAsked.push(JSON.stringify(messages?.at(-1)?.content ?? ""));
+				aiLastSystem = (messages ?? [])
+					.filter((message) => message.role === "system")
+					.map((message) => JSON.stringify(message.content))
+					.join("\n");
 				aiRequestedToolNames.push(
 					(parsed.tools ?? []).flatMap((tool) =>
 						typeof tool.function?.name === "string" ? [tool.function.name] : [],
 					),
 				);
+				const loadSkill = parsed.tools?.find(
+					(tool) => tool.function?.name === "load_skill",
+				)?.function;
+				aiLoadSkillCatalog =
+					loadSkill === undefined
+						? undefined
+						: {
+								description: loadSkill.description ?? "",
+								names: loadSkill.parameters?.properties?.name?.enum ?? [],
+							};
 				const last = messages?.at(-1);
 				const callsTool = aiToolScript !== null && last?.role === "user" && !!parsed.tools?.length;
 				if (last?.role === "tool") aiToolSeen.push(String(last.content));
@@ -2777,6 +2811,79 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P41");
 	});
 
+	// 验红:读口不合并提供方技能、聊天目录不读读口、斜杠不读读口,三个阶段分别红。
+	it("P43 提供方技能:列表里只读可见、聊天目录可自选、斜杠正文进 system;撤登记后三处消失且点名 not_found", async () => {
+		const probe = currentProbe();
+		const claim = probe.aiToolProviderClaim;
+		if (!claim) throw new Error("假来源没有登记 AI 工具提供方");
+		const askWithSkill = async (skill: string) => {
+			await patchSettings({ ai: { enabled: true } });
+			try {
+				const created = await okRes(await api("/api/ai/conversations", json({})));
+				const { conversation } = (await created.json()) as { conversation: { id: string } };
+				aiLastSystem = "";
+				const res = await api(
+					`/api/ai/conversations/${conversation.id}/chat`,
+					json({ message: "按技能做", skill }),
+				);
+				const text = await res.text();
+				return { res, text, system: aiLastSystem };
+			} finally {
+				await patchSettings({ ai: { enabled: false } });
+			}
+		};
+
+		const listed = (await (await okRes(await api("/api/ai/skills"))).json()) as {
+			list: Array<{ name: string; builtin: boolean }>;
+		};
+		expect(listed.list).toContainEqual(
+			expect.objectContaining({ name: IN_PROCESS_SKILL_FULL_NAME, builtin: true }),
+		);
+		for (const name of [
+			"weekly-report",
+			"unsub-cleanup",
+			"live-copy",
+			"today-digest",
+			"find-up",
+			"up-pk",
+		]) {
+			expect(
+				listed.list.some((skill) => skill.name === name),
+				name,
+			).toBe(true);
+		}
+
+		const loaded = await askMaid({
+			name: "load_skill",
+			args: { name: IN_PROCESS_SKILL_FULL_NAME },
+		});
+		expect(aiLoadSkillCatalog?.names).toContain(IN_PROCESS_SKILL_FULL_NAME);
+		expect(aiLoadSkillCatalog?.description).toContain(IN_PROCESS_SKILL_FULL_NAME);
+		expect(loaded.seen).toContain(IN_PROCESS_SKILL_BODY);
+
+		const slash = await askWithSkill(IN_PROCESS_SKILL_FULL_NAME);
+		expect(slash.res.status).toBeLessThan(300);
+		expect(slash.system).toContain(IN_PROCESS_SKILL_BODY);
+
+		claim.dispose();
+		const after = (await (await okRes(await api("/api/ai/skills"))).json()) as {
+			list: Array<{ name: string }>;
+		};
+		expect(after.list.some((skill) => skill.name === IN_PROCESS_SKILL_FULL_NAME)).toBe(false);
+
+		await askMaid({ name: "load_skill", args: { name: IN_PROCESS_SKILL_FULL_NAME } });
+		expect(aiLoadSkillCatalog?.names).not.toContain(IN_PROCESS_SKILL_FULL_NAME);
+
+		const missing = await askWithSkill(IN_PROCESS_SKILL_FULL_NAME);
+		expect(missing.res.status).toBe(404);
+		expect(JSON.parse(missing.text)).toMatchObject({ code: "not_found" });
+
+		if (probe.ctx) {
+			probe.aiToolProviderClaim = probe.ctx.registerAiToolProvider(createInProcessAiToolProvider());
+		}
+		drove("P43");
+	});
+
 	// 验红:`read-only-tools.ts` 不把登记表交给常驻生成器,或登记表包工具时忘了命名空间,
 	// 这条在请求工具表里找不到全名;`source-context.ts` 不接撤销把手,第二段还会挂着它。
 	it("P42 来源登记的只读工具:请求里是命名空间全名,执行结果喂回且痕迹带标签;撤销后请求里没有、调用记未知工具", async () => {
@@ -3170,17 +3277,17 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 42 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(50);
+	it("PARITY_ROWS:对拍 43 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(51);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 42 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 43 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42;编号不回填。
+		// N06 的登记与撤销→P42、技能可见性→P43;N06 只剩提示词叫法;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 7, 10, 11, 12, 13].includes(n))

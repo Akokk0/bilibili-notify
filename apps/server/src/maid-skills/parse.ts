@@ -11,31 +11,13 @@
  */
 
 import { complainAboutSkill, isValidSkillName } from "@bilibili-notify/contract";
+import type { MaidSkill } from "@bilibili-notify/internal";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 /** frontmatter 整块的字节上限 —— 手放的文件可能是任意东西,别让 YAML 解析器啃一整个视频。 */
 const MAX_FRONTMATTER_CHARS = 4_000;
 
-/** 一条技能的全部内容。`builtin` 之类的身份由 store 另行标注,不属于文件本身。 */
-export interface ParsedSkill {
-	/** kebab-case,既是目录名也是斜杠命令。 */
-	name: string;
-	/** 一句话说清它干什么 —— 模型靠它决定要不要自选这条。 */
-	description: string;
-	/**
-	 * 允许用的工具名**子集**;`undefined` = 不限(用这场对话本来的工具面)。
-	 *
-	 * **只减不加**(ADR 决策 11):用户可写的数据永远不能扩大工具面。所以这里给出
-	 * 的名字只用来做交集,写一个不存在的工具名不会凭空长出一把工具来。
-	 */
-	allowedTools?: string[];
-	/** 退出模型自选,只留斜杠命令这条路。 */
-	disableModelInvocation: boolean;
-	/** frontmatter 之后的正文,首尾空白已剥。 */
-	body: string;
-}
-
-export type ParseSkillResult = { ok: true; skill: ParsedSkill } | { ok: false; reason: string };
+export type ParseSkillResult = { ok: true; skill: MaidSkill } | { ok: false; reason: string };
 
 // 名字闸与五条收/拒规则都住在 contract(见那边 complainAboutSkill 的注释)。
 // 这里原样再导出,免得动这个模块现有的调用点。
@@ -107,7 +89,7 @@ export function parseSkillFile(text: string): ParseSkillResult {
 	const complaint = complainAboutSkill({ name: rec.name, description, body });
 	if (complaint) return { ok: false, reason: complaint };
 
-	const skill: ParsedSkill = {
+	const skill: MaidSkill = {
 		name: rec.name as string,
 		description,
 		disableModelInvocation: rec["disable-model-invocation"] === true,
@@ -122,7 +104,7 @@ export function parseSkillFile(text: string): ParseSkillResult {
  * 结构体 → `SKILL.md`。frontmatter 交给 yaml 序列化,不手拼 ——
  * description 里一个冒号就能让手拼的那份读不回来。
  */
-export function formatSkillFile(skill: ParsedSkill): string {
+export function formatSkillFile(skill: MaidSkill): string {
 	const fm: Record<string, unknown> = { name: skill.name, description: skill.description };
 	if (skill.allowedTools !== undefined) fm["allowed-tools"] = skill.allowedTools;
 	// 只在为真时写:缺省值不落盘,手放的文件才不会因为「少了一行」看起来不完整。

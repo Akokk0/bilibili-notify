@@ -28,6 +28,7 @@ import {
 	createAiToolProviderRegistry,
 } from "../../ai/tool-provider-registry.js";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
+import { createMaidSkillReader } from "../../maid-skills/reader.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
 import { createAiSkillsRoute } from "../ai-skills.js";
 
@@ -46,11 +47,35 @@ const sample = {
 const BUILTIN = BUILTIN_SKILLS[0];
 if (!BUILTIN) throw new Error("内置技能表是空的");
 
+const tool = (name: string): AiTool => ({
+	definition: {
+		type: "function",
+		function: {
+			name,
+			description: `调用 ${name}`,
+			parameters: { type: "object", properties: {} },
+		},
+	},
+	label: `查看 ${name}`,
+	execute: async () => ok({ text: name }),
+});
+
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-skill-route-"));
-	store = new MaidSkillStore({ dir });
 	aiToolProviders = createAiToolProviderRegistry();
-	app = createAiSkillsRoute({ skillStore: store, aiToolProviders });
+	store = new MaidSkillStore({
+		dir,
+		reservedNames: () => aiToolProviders.skills().map((skill) => skill.name),
+	});
+	const skillReader = createMaidSkillReader({
+		store,
+		providers: aiToolProviders,
+		logger: { warn() {} },
+	});
+	aiToolProviders.register("bilibili", {
+		readOnly: [tool("get_up_totals"), tool("get_up_videos")],
+	});
+	app = createAiSkillsRoute({ skillStore: store, skillReader, aiToolProviders });
 });
 
 afterEach(async () => {
@@ -94,22 +119,38 @@ describe("GET / —— 工具名单带给人看的标签", () => {
 	});
 
 	it("登记表里的提供方工具按全名和它自己的标签出现,每次 GET 现取", async () => {
-		const echo: AiTool = {
-			definition: {
-				type: "function",
-				function: {
-					name: "echo",
-					description: "回一句",
-					parameters: { type: "object", properties: {} },
-				},
-			},
-			label: "回一句",
-			execute: async () => ok({ text: "echo" }),
-		};
+		const echo: AiTool = { ...tool("echo"), label: "回一句" };
 		aiToolProviders.register("acme.inprocess", { readOnly: [echo] });
 		const body = (await (await app.request("/")).json()) as any;
 		expect(body.tools).toContain("acme_inprocess__echo");
 		expect(body.toolLabels.acme_inprocess__echo).toBe("回一句");
+	});
+
+	it("提供方技能经读口列出，缺工具的不列", async () => {
+		aiToolProviders.register("acme.inprocess", {
+			readOnly: [],
+			skills: [
+				{
+					name: "available",
+					description: "能用的",
+					disableModelInvocation: false,
+					body: "正文",
+				},
+				{
+					name: "missing",
+					description: "缺工具的",
+					allowedTools: ["not_available"],
+					disableModelInvocation: false,
+					body: "正文",
+				},
+			],
+		});
+
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.list).toContainEqual(
+			expect.objectContaining({ name: "acme-inprocess-available", builtin: true }),
+		);
+		expect(body.list.some((skill: any) => skill.name === "acme-inprocess-missing")).toBe(false);
 	});
 });
 

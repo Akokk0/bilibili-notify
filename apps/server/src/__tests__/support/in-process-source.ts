@@ -11,6 +11,7 @@
  */
 
 import {
+	type AiToolProvider,
 	type AuthState,
 	type CreatorCandidate,
 	type CreatorProfileReport,
@@ -64,6 +65,43 @@ export const LINK_NATIVE_PREFIX = "LINK-NATIVE-";
 export const IN_PROCESS_ECHO_TOOL_NAME = "acme_inprocess__echo";
 /** 那把工具在小条上给人看的名字。 */
 export const IN_PROCESS_ECHO_TOOL_LABEL = "对拍回声";
+/** 假提供方带来的技能:本名、宿主加命名空间后的全名与正文。 */
+export const IN_PROCESS_SKILL_NAME = "echo-check";
+export const IN_PROCESS_SKILL_FULL_NAME = "acme-inprocess-echo-check";
+export const IN_PROCESS_SKILL_BODY = "P43: call acme_inprocess__echo before answering.";
+
+/** 重建假提供方;P43 撤登记后还要把它交回 P42 继续验工具。 */
+export function createInProcessAiToolProvider(): AiToolProvider {
+	return {
+		readOnly: [
+			{
+				definition: {
+					type: "function",
+					function: {
+						name: "echo",
+						description: "Return the creator argument.",
+						parameters: {
+							type: "object",
+							properties: { creator: { type: "string" } },
+							required: ["creator"],
+						},
+					},
+				},
+				label: IN_PROCESS_ECHO_TOOL_LABEL,
+				execute: async (args) => ok({ text: `回声: ${args.creator ?? ""}` }),
+			},
+		],
+		skills: [
+			{
+				name: IN_PROCESS_SKILL_NAME,
+				description: "P43 provider skill",
+				allowedTools: [IN_PROCESS_ECHO_TOOL_NAME],
+				disableModelInvocation: false,
+				body: IN_PROCESS_SKILL_BODY,
+			},
+		],
+	};
+}
 
 /** 假来源的设置:两格,`threshold` 有范围,好摆「一格坏」。 */
 export const InProcessSettingsSchema = z.object({
@@ -397,26 +435,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 					});
 				},
 			});
-			probe.aiToolProviderClaim = ctx.registerAiToolProvider({
-				readOnly: [
-					{
-						definition: {
-							type: "function",
-							function: {
-								name: "echo",
-								description: "Return the creator argument.",
-								parameters: {
-									type: "object",
-									properties: { creator: { type: "string" } },
-									required: ["creator"],
-								},
-							},
-						},
-						label: IN_PROCESS_ECHO_TOOL_LABEL,
-						execute: async (args) => ok({ text: `回声: ${args.creator ?? ""}` }),
-					},
-				],
-			});
+			probe.aiToolProviderClaim = ctx.registerAiToolProvider(createInProcessAiToolProvider());
 
 			// state / secrets:第二趟开机能读到第一趟写下的。
 			probe.stateAtStart = ctx.state.get("boots");

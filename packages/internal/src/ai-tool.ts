@@ -75,6 +75,28 @@ export interface AiTool {
 export type AiToolLabelFields = Pick<AiTool, "label" | "labelArg">;
 
 /**
+ * 一条女仆技能的全部内容(主人盘上的 `SKILL.md`、内置的、提供方带来的都是这个形状)。
+ * `builtin` 之类的身份由技能库另行标注,不属于技能本身。
+ */
+export interface MaidSkill {
+	/** kebab-case,既是目录名也是斜杠命令。提供方交的是本名,登记表补上来源的命名空间。 */
+	name: string;
+	/** 一句话说清它干什么 —— 模型靠它决定要不要自选这条。 */
+	description: string;
+	/**
+	 * 允许用的工具名**子集**;`undefined` = 不限(用这场对话本来的工具面)。提供方的工具写全名。
+	 *
+	 * **只减不加**(ADR 决策 11):用户可写的数据永远不能扩大工具面。所以这里给出
+	 * 的名字只用来做交集,写一个不存在的工具名不会凭空长出一把工具来。
+	 */
+	allowedTools?: string[];
+	/** 退出模型自选,只留斜杠命令这条路。 */
+	disableModelInvocation: boolean;
+	/** frontmatter 之后的正文,首尾空白已剥。 */
+	body: string;
+}
+
+/**
  * 来源交的一组只读工具:在自己的 `start(ctx)` 里经 `ctx.registerAiToolProvider` 登记。
  *
  * 每把工具的 `definition.function.name` 是提供方自己的本名;宿主统一加命名空间,
@@ -82,4 +104,6 @@ export type AiToolLabelFields = Pick<AiTool, "label" | "labelArg">;
  */
 export interface AiToolProvider {
 	readOnly: readonly AiTool[];
+	/** 提供方带来的技能,名字给本名,宿主加命名空间(`<来源键>-<本名>`);`allowedTools` 写工具全名。 */
+	skills?: MaidSkill[];
 }

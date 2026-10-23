@@ -20,6 +20,7 @@ import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
 import type { IntegrationStore } from "./integration-store/store.js";
+import { createMaidSkillReader } from "./maid-skills/reader.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
@@ -328,11 +329,17 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		// `skins` 只差一个字母,而这是主人要亲手往里放文件的地方。
 		const skillStore = new MaidSkillStore({
 			dir: dataPath(runtime.dataRoot, "maid-skills"),
+			reservedNames: () => runtime.aiToolProviders.skills().map((skill) => skill.name),
+		});
+		const skillReader = createMaidSkillReader({
+			store: skillStore,
+			providers: runtime.aiToolProviders,
+			logger: runtime.serviceCtx.logger,
 		});
 		// 女仆技能只给 AI 聊天用、离开它没有意义,所以下沉在 `/api/ai` 底下(ADR-0036 决策 1)。
 		app.route(
 			"/api/ai/skills",
-			createAiSkillsRoute({ skillStore, aiToolProviders: runtime.aiToolProviders }),
+			createAiSkillsRoute({ skillStore, skillReader, aiToolProviders: runtime.aiToolProviders }),
 		);
 		// 卡片皮肤库(ADR-0014)。**只用传进来的那一家**,这里不 `new`(理由见
 		// `CreateAppOptions.cardSkins`)。读盘推迟到首个请求(createApp 是同步装配),
@@ -347,7 +354,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			"/api/ai",
 			createAiRoute(deps, {
 				skinStore,
-				skillStore,
+				skillReader,
 				// 与 `/api/cards/skins` 同一家店:工坊做出来的皮肤,皮肤页当场就看得见。
 				cardSkinStore,
 				cardSkinShot: (skinId, kind) => shootCardSkin?.(skinId, kind) ?? Promise.resolve(null),

@@ -39,7 +39,8 @@ import {
 import type { CardSkinStore } from "../card-skins/store.js";
 import { type ImageStore, imageExtOf, isValidImageRef } from "../images/image-store.js";
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
-import type { MaidSkillEntry, MaidSkillStore } from "../maid-skills/store.js";
+import type { MaidSkillReader } from "../maid-skills/reader.js";
+import type { MaidSkillEntry } from "../maid-skills/store.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import {
@@ -114,10 +115,10 @@ export function createAiRoute(
 		 */
 		skinStore?: SkinStore;
 		/**
-		 * 女仆技能库。给了才有 `load_skill`(女仆自选)与斜杠命令那条路;
+		 * 女仆技能的读口。给了才有 `load_skill`(女仆自选)与斜杠命令那条路;
 		 * 不给就当这个部署没装技能,聊天照旧。
 		 */
-		skillStore?: MaidSkillStore;
+		skillReader?: MaidSkillReader;
 		/**
 		 * 卡片皮肤库。给了才有卡片皮肤工坊(ADR-0015 决策 11) —— 与 `skinStore` 同理,
 		 * 写能力不该因为「某处装配忘了传」而以别的形式凭空出现。
@@ -499,11 +500,11 @@ export function createAiRoute(
 		if (skinMode && parsed.data.skill !== undefined) {
 			return respondFailure(c, fail("unsupported", "皮肤工坊里用不了技能,请回普通聊天窗口"));
 		}
-		if (!skinMode && opts?.skillStore) {
-			await opts.skillStore.reload();
+		if (!skinMode && opts?.skillReader) {
+			await opts.skillReader.reload();
 			const named = parsed.data.skill;
 			if (named !== undefined) {
-				pickedSkill = opts.skillStore.get(named);
+				pickedSkill = opts.skillReader.get(named);
 				// 认不得就当场拒。静默发出去的话,主人以为在用技能、其实在跟模型说
 				// 一句它不认识的暗号 —— 老 `/锐评 只看这三个人` 栽的正是这个坑。
 				// 这一步在 markBusy 之前,所以没有账要销。
@@ -511,7 +512,7 @@ export function createAiRoute(
 			} else {
 				// 主人自己点名了就不必再挂「读技能」那把工具 —— 正文这一轮已经在
 				// system 里了,再让模型去调一次是白烧一轮。
-				skillTool = createSkillChatTool(opts.skillStore.list());
+				skillTool = createSkillChatTool(opts.skillReader.list());
 			}
 		}
 
@@ -599,7 +600,7 @@ export function createAiRoute(
 							: {}),
 						/**
 						 * 工坊与技能是**互斥**的两套装配。真正保证互斥的是上面那句
-						 * `!skinMode && opts?.skillStore`(工坊里 skillTool 必为 null);
+						 * `!skinMode && opts?.skillReader`(工坊里 skillTool 必为 null);
 						 * 这里仍写成二选一,让互斥在一处看得见 —— 工坊的 system 与
 						 * builtinTools 只挂在它自己那支上,被顶掉就没了。
 						 */

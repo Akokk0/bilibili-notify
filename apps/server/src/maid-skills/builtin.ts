@@ -14,9 +14,9 @@
  * 那是人格那一层的事;这里只讲「这件事分几步、每步调什么、最后长什么样」。
  */
 
-import type { ParsedSkill } from "./parse.js";
+import type { MaidSkill } from "@bilibili-notify/internal";
 
-export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
+export const BUILTIN_SKILLS: readonly MaidSkill[] = [
 	{
 		name: "weekly-report",
 		description: "把所有订阅的 UP 拉一遍数据,评出本周最勤奋与最能鸽的那几位,出一张榜再锐评几句",

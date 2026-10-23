@@ -176,7 +176,7 @@ export const RATCHET = {
 	"apps/server/src/push/dispatch.ts": 1,
 	"apps/server/src/push/target-dispatcher.ts": 1,
 	"apps/server/src/routes/adapters.ts": 3,
-	"apps/server/src/routes/ai-skills.ts": 4,
+	"apps/server/src/routes/ai-skills.ts": 1,
 	"apps/server/src/routes/ai.ts": 18,
 	"apps/server/src/routes/cards-skins.ts": 23,
 	"apps/server/src/routes/cards.ts": 77,

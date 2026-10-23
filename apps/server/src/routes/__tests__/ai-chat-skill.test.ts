@@ -20,6 +20,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConversationStore } from "../../ai/conversation-store.js";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
+import { createMaidSkillReader } from "../../maid-skills/reader.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
 import { SkinStore } from "../../skins/store.js";
 import { createAiRoute } from "../ai.js";
@@ -35,7 +37,8 @@ const chatStatelessStream = vi.fn(async (_messages: unknown, opts: any) => {
 	return "好的主人~";
 });
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@bilibili-notify/ai")>()),
 	CommentaryGenerator: class {
 		chat = vi.fn();
 		chatStateless = vi.fn();
@@ -70,7 +73,13 @@ async function makeDeps() {
 	await skinStore.init();
 	const skillStore = new MaidSkillStore({ dir: join(dataDir, "maid-skills") });
 	await skillStore.ensureReady();
-	const app = createAiRoute(deps, { skinStore, skillStore });
+	const aiToolProviders = createAiToolProviderRegistry();
+	const skillReader = createMaidSkillReader({
+		store: skillStore,
+		providers: aiToolProviders,
+		logger,
+	});
+	const app = createAiRoute(deps, { skinStore, skillReader });
 	return { app, skillStore };
 }
 

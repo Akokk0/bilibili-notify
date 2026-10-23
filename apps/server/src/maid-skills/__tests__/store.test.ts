@@ -254,3 +254,36 @@ describe("SkillStoreError:拒收各带各的码", () => {
 		});
 	});
 });
+
+describe("提供方技能占名", () => {
+	it("主人不能建或改名成它，也不能改删它；盘上同名目录进 problems", async () => {
+		const reserved = new Set(["acme-inprocess-echo-check"]);
+		const guarded = new MaidSkillStore({ dir, reservedNames: () => reserved });
+		await guarded.ensureReady();
+
+		await expect(
+			guarded.create({ ...sample, name: "acme-inprocess-echo-check" }),
+		).rejects.toMatchObject({ code: "conflict" });
+
+		await guarded.create(sample);
+		await expect(
+			guarded.update("my-skill", { ...sample, name: "acme-inprocess-echo-check" }),
+		).rejects.toMatchObject({ code: "conflict" });
+		await expect(guarded.update("acme-inprocess-echo-check", sample)).rejects.toMatchObject({
+			code: "conflict",
+		});
+		await expect(guarded.remove("acme-inprocess-echo-check")).rejects.toMatchObject({
+			code: "conflict",
+		});
+
+		await handPlace(
+			"acme-inprocess-echo-check",
+			formatSkillFile({ ...sample, name: "acme-inprocess-echo-check" }),
+		);
+		await guarded.reload();
+		expect(guarded.get("acme-inprocess-echo-check")).toBeUndefined();
+		expect(guarded.problems()).toContainEqual(
+			expect.objectContaining({ dir: "acme-inprocess-echo-check" }),
+		);
+	});
+});

@@ -7,13 +7,13 @@
  * readdir + 几份小文件,量级可以忽略。
  */
 
-import { coreToolLabelOf, TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
+import { coreToolLabelOf } from "@bilibili-notify/ai";
 import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
 import { fail, issuesFromZod, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
-import { BUILTIN_SKILL_NAMES } from "../maid-skills/builtin.js";
+import { type MaidSkillReader, skillToolNames } from "../maid-skills/reader.js";
 import { type MaidSkillStore, SkillStoreError } from "../maid-skills/store.js";
 import { respondFailure } from "./respond-failure.js";
 
@@ -35,9 +35,10 @@ const NOT_A_SKILL_MESSAGE = "请求体不是一条技能的形状";
 
 export function createAiSkillsRoute(deps: {
 	skillStore: MaidSkillStore;
+	skillReader: MaidSkillReader;
 	aiToolProviders: Pick<AiToolProviderRegistry, "tools">;
 }): Hono {
-	const { skillStore, aiToolProviders } = deps;
+	const { skillStore, skillReader, aiToolProviders } = deps;
 	const app = new Hono();
 
 	app.get("/", async (c) => {
@@ -48,9 +49,9 @@ export function createAiSkillsRoute(deps: {
 		// (它按主人那颗胶囊现挂),但技能声明得着,所以补上;来源登记的取登记表,停着的来源不在。
 		// 漏配标签的工具在 `toolLabels` 里就没有这一格,有测试盯着。
 		const provided = aiToolProviders.tools();
-		const coreNames = [...TOOL_DEFINITIONS.map((tool) => tool.function.name), WEB_SEARCH_TOOL_NAME];
+		const names = skillToolNames(aiToolProviders);
 		const toolLabels: Record<string, string> = {};
-		for (const name of coreNames) {
+		for (const name of names) {
 			const label = coreToolLabelOf(name)?.label;
 			if (label !== undefined) toolLabels[name] = label;
 		}
@@ -58,9 +59,9 @@ export function createAiSkillsRoute(deps: {
 			toolLabels[tool.definition.function.name] = tool.label;
 		}
 		const body: MaidSkillsListResponse = {
-			list: skillStore.list(),
-			problems: skillStore.problems(),
-			tools: [...coreNames, ...provided.map((tool) => tool.definition.function.name)],
+			list: skillReader.list(),
+			problems: skillReader.problems(),
+			tools: names,
 			toolLabels,
 		};
 		return c.json(body);
@@ -89,11 +90,6 @@ export function createAiSkillsRoute(deps: {
 
 	app.put("/:name", async (c) => {
 		const name = c.req.param("name");
-		// 三种「动不了」分开报,主人一眼看得出是哪一种:被内置占着(`conflict`)、
-		// 压根没这条(`not_found`)、还是他写的内容本身不合规(`invalid`)。
-		if (BUILTIN_SKILL_NAMES.has(name)) {
-			return respondFailure(c, fail("conflict", "内置技能只读,改不动"));
-		}
 		const parsed = writeSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
 			return respondFailure(
@@ -102,7 +98,6 @@ export function createAiSkillsRoute(deps: {
 			);
 		}
 		await skillStore.ensureReady();
-		if (!skillStore.get(name)) return respondFailure(c, fail("not_found", `技能不存在:${name}`));
 		try {
 			await skillStore.update(name, { disableModelInvocation: false, ...parsed.data });
 		} catch (err) {
@@ -114,9 +109,6 @@ export function createAiSkillsRoute(deps: {
 
 	app.delete("/:name", async (c) => {
 		const name = c.req.param("name");
-		if (BUILTIN_SKILL_NAMES.has(name)) {
-			return respondFailure(c, fail("conflict", "内置技能删不掉"));
-		}
 		await skillStore.ensureReady();
 		try {
 			await skillStore.remove(name);
