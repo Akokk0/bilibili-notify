@@ -86,7 +86,11 @@ export function createMaidSkillReader(opts: {
 		reload: () => store.reload(),
 		list,
 		get(name) {
-			return list().find((skill) => skill.name === name);
+			const skills = list();
+			return (
+				skills.find((skill) => skill.name === name) ??
+				skills.find((skill) => skill.aliases?.includes(name))
+			);
 		},
 		problems() {
 			return store.problems();

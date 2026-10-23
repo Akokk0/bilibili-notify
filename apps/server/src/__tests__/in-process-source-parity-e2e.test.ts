@@ -2844,8 +2844,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			"unsub-cleanup",
 			"live-copy",
 			"today-digest",
-			"find-up",
-			"up-pk",
+			"find-creator",
+			"creator-pk",
 		]) {
 			expect(
 				listed.list.some((skill) => skill.name === name),

@@ -49,7 +49,9 @@ export function resolveOutgoing(input: string, skills: readonly MaidSkillDTO[]):
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("/")) return { text: trimmed };
 	const head = headOf(trimmed);
-	const skill = skills.find((s) => `/${s.name}` === head);
+	const name = head.slice(1);
+	const skill =
+		skills.find((s) => s.name === name) ?? skills.find((s) => s.aliases?.includes(name));
 	if (!skill) return { text: trimmed };
 	const rest = trimmed.slice(head.length).trim();
 	// 「后面那串字」是空的就把命令本身当这一问 —— 服务端要求消息非空,而气泡里

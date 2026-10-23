@@ -18,6 +18,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type AiTool, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConversationStore } from "../../ai/conversation-store.js";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
@@ -52,6 +53,19 @@ const toolNames = (): string[] =>
 		(t) => t.definition.function.name,
 	);
 
+const biliTool = (name: string): AiTool => ({
+	definition: {
+		type: "function",
+		function: {
+			name,
+			description: `调用 ${name}`,
+			parameters: { type: "object", properties: {} },
+		},
+	},
+	label: `查看 ${name}`,
+	execute: async () => ok({ text: name }),
+});
+
 async function makeDeps() {
 	const dataDir = await mkdtemp(join(tmpdir(), "bn-skillchat-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -74,6 +88,9 @@ async function makeDeps() {
 	const skillStore = new MaidSkillStore({ dir: join(dataDir, "maid-skills") });
 	await skillStore.ensureReady();
 	const aiToolProviders = createAiToolProviderRegistry();
+	aiToolProviders.register("bilibili", {
+		readOnly: [biliTool("get_up_totals"), biliTool("get_up_videos")],
+	});
 	const skillReader = createMaidSkillReader({
 		store: skillStore,
 		providers: aiToolProviders,
@@ -145,6 +162,24 @@ describe("模型自选", () => {
 });
 
 describe("主人打斜杠", () => {
+	it("旧斜杠名 up-pk 点得中 creator-pk，痕迹记正名", async () => {
+		const { app } = await makeDeps();
+		const { text, convId } = await say(app, { skill: "up-pk" });
+
+		expect(H.lastOpts.systemSuffix).toContain("## UP 对比 PK");
+		const conv = (await (await app.request(`/conversations/${convId}`)).json()) as any;
+		const assistant = conv.conversation.messages.at(-1);
+		expect(assistant.tools).toEqual([
+			expect.objectContaining({
+				name: "load_skill",
+				args: { name: "creator-pk" },
+				argText: "creator-pk",
+				ok: true,
+			}),
+		]);
+		expect(text).toContain("使用技能");
+	});
+
 	it("带 skill → 正文当场进 system,工具面当场收窄", async () => {
 		const { app, skillStore } = await makeDeps();
 		await skillStore.create(MINE);

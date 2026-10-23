@@ -30,6 +30,16 @@ export interface SkillProblem {
 export interface MaidSkillEntry extends MaidSkill {
 	/** 内置的只读、跟版本走(决策 15);改 / 删一律拒。 */
 	builtin: boolean;
+	/** 只在内置技能上出现:旧斜杠名,敲对了照认。不占名:主人照样能建同名技能,建了就指主人那条。 */
+	aliases?: string[];
+}
+
+function entryOfBuiltin({ aliases, ...skill }: (typeof BUILTIN_SKILLS)[number]): MaidSkillEntry {
+	return {
+		...skill,
+		...(aliases === undefined ? {} : { aliases: [...aliases] }),
+		builtin: true,
+	};
 }
 
 /**
@@ -138,13 +148,13 @@ export class MaidSkillStore {
 	list(): MaidSkillEntry[] {
 		const mine = [...this.user.values()]
 			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((s) => ({ ...s, builtin: false }));
-		return [...BUILTIN_SKILLS.map((s) => ({ ...s, builtin: true })), ...mine];
+			.map((s): MaidSkillEntry => ({ ...s, builtin: false }));
+		return [...BUILTIN_SKILLS.map(entryOfBuiltin), ...mine];
 	}
 
 	get(name: string): MaidSkillEntry | undefined {
 		const builtin = BUILTIN_SKILLS.find((s) => s.name === name);
-		if (builtin) return { ...builtin, builtin: true };
+		if (builtin) return entryOfBuiltin(builtin);
 		const mine = this.user.get(name);
 		return mine ? { ...mine, builtin: false } : undefined;
 	}

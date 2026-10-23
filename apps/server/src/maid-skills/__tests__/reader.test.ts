@@ -40,6 +40,12 @@ async function reader() {
 	return createMaidSkillReader({ store, providers, logger });
 }
 
+function registerBiliTools(): void {
+	providers.register("bilibili", {
+		readOnly: [tool("get_up_totals"), tool("get_up_videos")],
+	});
+}
+
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-skill-reader-"));
 	providers = createAiToolProviderRegistry();
@@ -57,6 +63,31 @@ afterEach(async () => {
 });
 
 describe("MaidSkillReader", () => {
+	it("旧斜杠名经别名找到改名后的内置技能，列表仍只列正名", async () => {
+		registerBiliTools();
+		const current = await reader();
+
+		expect(current.get("find-up")).toMatchObject({
+			name: "find-creator",
+			aliases: ["find-up"],
+			builtin: true,
+		});
+		expect(current.list().find((candidate) => candidate.name === "find-creator")).toMatchObject({
+			aliases: ["find-up"],
+		});
+		expect(current.list().some((candidate) => candidate.name === "find-up")).toBe(false);
+		expect(current.list().some((candidate) => candidate.name === "up-pk")).toBe(false);
+	});
+
+	it("主人建了旧斜杠名时，正名精确匹配优先于内置别名", async () => {
+		registerBiliTools();
+		await store.create(skill("find-up"));
+		const current = await reader();
+
+		expect(current.get("find-up")).toMatchObject({ name: "find-up", builtin: false });
+		expect(current.get("find-creator")).toMatchObject({ name: "find-creator", builtin: true });
+	});
+
 	it("内置、提供方与主人技能合成一张表，提供方技能按只读项出现", async () => {
 		providers.register("acme.inprocess", {
 			readOnly: [tool("echo")],
@@ -87,6 +118,7 @@ describe("MaidSkillReader", () => {
 		const current = await reader();
 		expect(current.list().some((candidate) => candidate.name === "weekly-report")).toBe(false);
 		expect(current.get("weekly-report")).toBeUndefined();
+		expect(current.get("find-up")).toBeUndefined();
 	});
 
 	it("主人技能缺工具照常列出，同一对技能与工具只在第一次缺时 warn，恢复后再缺会再 warn", async () => {

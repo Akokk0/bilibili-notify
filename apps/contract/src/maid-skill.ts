@@ -84,6 +84,8 @@ export function complainAboutSkill(d: {
 export interface MaidSkillDTO {
 	name: string;
 	description: string;
+	/** 只在内置技能上出现:旧斜杠名,敲对了照认(正名精确匹配优先,别名最后才认)。 */
+	aliases?: string[];
 	/** 允许用的工具名**子集**;缺席 = 不限。只减不加,写个不存在的名字不会长出工具。 */
 	allowedTools?: string[];
 	/** 退出模型自选,只留斜杠命令这条路。 */
@@ -115,8 +117,8 @@ export interface MaidSkillsListResponse {
 	toolLabels: Record<string, string>;
 }
 
-/** 新建 / 修改的请求体。`builtin` 不收 —— 那是服务端的判定,不是主人能声明的。 */
-export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin">;
+/** 新建 / 修改的请求体。`builtin` 与 `aliases` 不收 —— 那是服务端的判定,不是主人能声明的。 */
+export type MaidSkillWriteRequest = Omit<MaidSkillDTO, "builtin" | "aliases">;
 
 /**
  * 「读取一条技能」那把工具的名字 —— 服务端建工具、web 端画调用痕迹胶囊,

@@ -21,6 +21,10 @@ const skill = (name: string, over: Partial<MaidSkillDTO> = {}): MaidSkillDTO => 
 });
 
 const SKILLS = [skill("weekly-report"), skill("unsub-cleanup"), skill("up-pk")];
+const RENAMED_SKILLS = [
+	skill("find-creator", { aliases: ["find-up"] }),
+	skill("creator-pk", { aliases: ["up-pk"] }),
+];
 
 describe("matchSkills —— 菜单什么时候弹", () => {
 	it("不以 / 开头 → 不弹", () => {
@@ -52,9 +56,32 @@ describe("matchSkills —— 菜单什么时候弹", () => {
 	it("清单是空的 → 不弹(还没配技能的部署)", () => {
 		expect(matchSkills("/", [])).toEqual([]);
 	});
+
+	it("改名后的技能只按正名进菜单，旧别名不另出条目", () => {
+		expect(matchSkills("/find", RENAMED_SKILLS).map((s) => s.name)).toEqual(["find-creator"]);
+		expect(matchSkills("/find-up", RENAMED_SKILLS)).toEqual([]);
+	});
 });
 
 describe("resolveOutgoing —— 到底发出去什么", () => {
+	it("旧斜杠名经别名点名，交给服务端的是正名", () => {
+		expect(resolveOutgoing("/find-up 找找做菜的", RENAMED_SKILLS)).toEqual({
+			skill: "find-creator",
+			text: "找找做菜的",
+		});
+	});
+
+	it("一条技能的正名与另一条的别名同时命中时，正名优先", () => {
+		const skills = [
+			skill("find-creator", { aliases: ["find-up"] }),
+			skill("find-up", { aliases: ["creator-search"] }),
+		];
+		expect(resolveOutgoing("/find-up 在吗", skills)).toEqual({
+			skill: "find-up",
+			text: "在吗",
+		});
+	});
+
 	it("光秃秃一条命令 → 点名这条技能,原话照发", () => {
 		// 「后面那串字」是空的,那就把命令本身当这一问 —— 服务端要求消息非空,
 		// 而气泡里显示主人真打的那几个字,配上旁边那枚痕迹胶囊刚好说得通。

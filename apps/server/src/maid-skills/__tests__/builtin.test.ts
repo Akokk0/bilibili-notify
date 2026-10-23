@@ -27,6 +27,14 @@ const REAL_TOOLS = new Set([
 	...providerTools.tools().map((tool) => tool.definition.function.name),
 ]);
 
+function withoutAliases(
+	skill: (typeof BUILTIN_SKILLS)[number],
+): Omit<(typeof BUILTIN_SKILLS)[number], "aliases"> {
+	const copy = { ...skill };
+	delete copy.aliases;
+	return copy;
+}
+
 describe("内置技能表", () => {
 	it("不是空的 —— 空了的话 load_skill 根本不会挂上", () => {
 		expect(BUILTIN_SKILLS.length).toBeGreaterThan(0);
@@ -38,11 +46,25 @@ describe("内置技能表", () => {
 		expect(new Set(names).size).toBe(names.length);
 	});
 
+	it("别名都是合法正名，且不与任何内置正名或别的别名重复", () => {
+		const names = new Set(BUILTIN_SKILLS.map((s) => s.name));
+		const aliases = new Set<string>();
+		for (const skill of BUILTIN_SKILLS) {
+			for (const alias of skill.aliases ?? []) {
+				expect(isValidSkillName(alias), alias).toBe(true);
+				expect(names.has(alias), alias).toBe(false);
+				expect(aliases.has(alias), alias).toBe(false);
+				aliases.add(alias);
+			}
+		}
+	});
+
 	it("每一条都写得出、读得回 —— 与主人自己写的一条走同一道闸", () => {
 		for (const skill of BUILTIN_SKILLS) {
 			const res = parseSkillFile(formatSkillFile(skill));
 			expect(res.ok, `${skill.name}: ${res.ok ? "" : res.reason}`).toBe(true);
-			if (res.ok) expect(res.skill).toEqual(skill);
+			// 别名只住内置条目；写成主人的 SKILL.md 时不应落进 frontmatter。
+			if (res.ok) expect(res.skill).toEqual(withoutAliases(skill));
 		}
 	});
 

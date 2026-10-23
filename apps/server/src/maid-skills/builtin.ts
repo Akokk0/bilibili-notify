@@ -16,7 +16,10 @@
 
 import type { MaidSkill } from "@bilibili-notify/internal";
 
-export const BUILTIN_SKILLS: readonly MaidSkill[] = [
+/** 内置技能额外带着旧斜杠名(ADR-0030 决策 1「旧名留别名」);主人写进 `SKILL.md` 的技能不收别名。 */
+type BuiltinMaidSkill = MaidSkill & { aliases?: readonly string[] };
+
+export const BUILTIN_SKILLS: readonly BuiltinMaidSkill[] = [
 	{
 		name: "weekly-report",
 		description: "把所有订阅的 UP 拉一遍数据,评出本周最勤奋与最能鸽的那几位,出一张榜再锐评几句",
@@ -134,7 +137,8 @@ export const BUILTIN_SKILLS: readonly MaidSkill[] = [
 		].join("\n"),
 	},
 	{
-		name: "find-up",
+		name: "find-creator",
+		aliases: ["find-up"],
 		description: "按主人给的关键词或领域搜 B 站 UP 主,逐个查粉丝与简介,挑几位值得订阅的推荐给他",
 		allowedTools: [
 			"search_creators",
@@ -163,7 +167,8 @@ export const BUILTIN_SKILLS: readonly MaidSkill[] = [
 		].join("\n"),
 	},
 	{
-		name: "up-pk",
+		name: "creator-pk",
+		aliases: ["up-pk"],
 		description:
 			"把两位 UP 主拉到一块儿逐项对比数据与更新节奏,出一张对比表再给一句结论。用法:/up-pk 甲 vs 乙",
 		allowedTools: [
