@@ -31,6 +31,7 @@ import type {
 import {
 	fail,
 	makeDefaultGlobalConfig,
+	ok,
 	type Post,
 	type PostReport,
 	type Source,
@@ -85,6 +86,13 @@ import { subscriptionsFileText } from "./support/subscriptions-file.js";
 const liveBusEvents = vi.hoisted(
 	() => [] as Array<{ event: "live-session-changed" | "live-viewers-changed"; data: unknown }>,
 );
+
+/** 值里(深搜)有没有叫这些名字的键。 */
+function hasKey(value: unknown, keys: readonly string[]): boolean {
+	if (Array.isArray(value)) return value.some((item) => hasKey(item, keys));
+	if (typeof value !== "object" || value === null) return false;
+	return Object.entries(value).some(([key, inner]) => keys.includes(key) || hasKey(inner, keys));
+}
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
 const renderedHtml = vi.hoisted(() => [] as string[]);
@@ -151,8 +159,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P38)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N03、N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P40)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N02、N03、N04、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -253,19 +261,24 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P39",
+		title:
+			"资料刷新:核心按 cron 调 fetchProfile,名字、头像(图库引用)、简介、粉丝数、粉丝团名进资料缓存;not_found 记成关于那条订阅的 creator_not_found、下一次成功清;开播卡上的名字跟着新资料",
+		checked: true,
+	},
+	{
+		id: "P40",
+		title:
+			"followers-refreshed:WS 帧与 GET /api/stats/followers 的条目带 identity,整个帧与整个回应里没有 uid / extensionId",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
 		waitsFor: "第 4 期",
 		reason:
 			"searchCreators 这一期只有女仆的搜人工具读它(P26),GET /api/sources/:sourceKey/creators 与面板第 4 期;新建订阅的门只认装着的 v2 订阅源、不问登记表",
-	},
-	{
-		id: "N02",
-		title: "fetchProfile:资料、头像、粉丝、显示名链",
-		checked: false,
-		waitsFor: "3b 资料刷新中立化",
-		reason: "接口上没有 fetchProfile;资料仍由粉丝轮询那条 B 站专有的路做",
 	},
 	{
 		id: "N05",
@@ -296,13 +309,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason: "描述符只造了有读者的三格,其余随面板改造",
 	},
 	{
-		id: "N13",
-		title: "followers-refreshed;粉丝帧里没有 uid",
-		checked: false,
-		waitsFor: "3b-24",
-		reason: "粉丝走 B 站轮询;事件载荷棘轮 3b 末清零",
-	},
-	{
 		id: "N14",
 		title: "订阅、历史、统计、概览四个页面的清单",
 		checked: false,
@@ -325,6 +331,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
 	},
 	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
+	// N02(fetchProfile)与 N13(followers-refreshed)在 3b-24 落成了,转进对拍的 P39、P40;
 	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;N07(LinkResolver)在 3b-28 落成了,转进 P22;
 	// 编号不回填;N18(女仆订阅视图里的平台名)在 3b-33 落成了,转进对拍的 P25(P24 留给 3b-38)。
 ];
@@ -343,7 +350,7 @@ const SOURCE_MEMBERS = {
 	stop: ["P18"],
 	auth: ["P16"],
 	searchCreators: ["P26"],
-	fetchProfile: ["P37"],
+	fetchProfile: ["P37", "P39"],
 	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
@@ -2344,13 +2351,6 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const probe = currentProbe();
 		const who = SUB.alice;
 		const ext = EXT.alice;
-		const hasKey = (value: unknown, keys: readonly string[]): boolean => {
-			if (Array.isArray(value)) return value.some((item) => hasKey(item, keys));
-			if (typeof value !== "object" || value === null) return false;
-			return Object.entries(value).some(
-				([key, inner]) => keys.includes(key) || hasKey(inner, keys),
-			);
-		};
 		const BANNED = ["uid", "roomId"] as const;
 		const isIso = (value: unknown): boolean =>
 			typeof value === "string" && new Date(value).toISOString() === value;
@@ -2531,6 +2531,141 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		}
 		drove("P38");
 	}, 30_000);
+
+	/** 经 devtools 立刻跑一轮资料刷新(不等 cron),跑完才回。 */
+	const refreshProfilesNow = async (): Promise<void> => {
+		await okRes(await api("/api/dev/run/profiles.refresh-now", json({ params: {} })));
+	};
+
+	// 验红:`runtime/profile-refresh.ts` 的一轮跳过在册的非 B 站来源,不调来源,问题那一段第一处红;
+	// `not_found` 不记 creator_not_found,问题那一段红;成功不清,清除那一段红;资料缓存不写头像(或粉丝团名),缓存那一段红。
+	// 没资料名的订阅用出厂停用的 carol:先让来源查不到(not_found),再启用她;收尾停回去(停用时问题自己清)。
+	it("P39 资料刷新:按来源拉资料写进缓存(名字、头像引用、简介、粉丝数、粉丝团名);not_found 记成关于这条订阅的 creator_not_found、成功后清;开播卡上的名字是新资料名", async () => {
+		const probe = currentProbe();
+		const patchCarol = async (enabled: boolean) =>
+			okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled }, "PATCH")));
+		const carolProblems = async () =>
+			(await problems()).filter(
+				(row) =>
+					row.reporter === IN_PROCESS_KEY &&
+					row.code === "creator_not_found" &&
+					row.about !== undefined &&
+					"subscriptionId" in row.about &&
+					row.about.subscriptionId === SUB.carol,
+			);
+		const carolProfile = async () => {
+			const res = await okRes(await api("/api/subscriptions"));
+			const rows = (await res.json()) as Array<{
+				id: string;
+				cachedProfile?: {
+					name?: string;
+					avatar?: string;
+					sign?: string;
+					fans?: number;
+					fanClubName?: string;
+				};
+			}>;
+			return rows.find((row) => row.id === SUB.carol)?.cachedProfile;
+		};
+		const stored = await probe.ctx?.storeImage(Buffer.from(png(8, 8, 39)));
+		if (!stored?.ok) throw new Error("storeImage 存图失败");
+		try {
+			// 查不到:来源回 not_found,核心记一条关于 carol 的问题,不写资料。
+			probe.profileOutcome = fail("not_found", "对拍源没有这个人");
+			probe.profileAsked.length = 0;
+			await patchCarol(true);
+			await refreshProfilesNow();
+			expect(probe.profileAsked).toContainEqual({
+				sourceKey: IN_PROCESS_KEY,
+				externalId: EXT.carol,
+			});
+			await vi.waitFor(async () => expect(await carolProblems()).toHaveLength(1));
+			expect((await carolProblems())[0]?.message).toContain("对拍源没有这个人");
+			expect((await carolProfile())?.name).toBeUndefined();
+
+			// 查得到:资料各格进缓存(头像是图库引用,读得出来),问题清掉。
+			probe.profileOutcome = ok({
+				name: "卡罗资料名P39",
+				avatar: stored.ref,
+				bio: "卡罗的简介P39",
+				followers: 4242,
+				fanClubName: "卡罗团P39",
+			});
+			await refreshProfilesNow();
+			await vi.waitFor(async () =>
+				expect(await carolProfile()).toMatchObject({
+					name: "卡罗资料名P39",
+					avatar: stored.ref,
+					sign: "卡罗的简介P39",
+					fans: 4242,
+					fanClubName: "卡罗团P39",
+				}),
+			);
+			expect(await carolProblems()).toEqual([]);
+			const image = await api(`/api/images/${stored.ref}`);
+			expect(image.status).toBe(200);
+
+			// 资料名换了,开播卡上的名字跟着换。
+			await clearCaptures();
+			probe.reportLive(EXT.carol, {
+				kind: "start",
+				startedAt: new Date().toISOString(),
+				details: { title: "开播标题P39" },
+			});
+			const sent = await settledCaptures(1);
+			expect(sent.map((entry) => entry.text ?? "").join("\n")).toMatch(
+				/(^|\n)卡罗资料名P39 开播啦/,
+			);
+			probe.reportLive(EXT.carol, { kind: "end", endedAt: new Date().toISOString() });
+			await vi.waitFor(async () => expect(await livePushCount(SUB.carol, "liveEnd")).toBe(3), {
+				timeout: 15_000,
+			});
+		} finally {
+			probe.profileOutcome = undefined;
+			await patchCarol(false);
+		}
+		drove("P39");
+	}, 30_000);
+
+	// 验红:`ws/channels.ts` 转 `followers-refreshed` 时给每个条目多带一格 `uid`,WS 那段红;
+	// 资料刷新给条目少了 `identity`,两段都红。
+	it("P40 followers-refreshed:WS 帧与 GET /api/stats/followers 的条目带 identity(假来源的键、外部 id),整个帧与整个回应里没有 uid / extensionId", async () => {
+		const BANNED = ["uid", "extensionId"] as const;
+		const watch = await watchFrames("push-events");
+		try {
+			await refreshProfilesNow();
+			await vi.waitFor(() => {
+				const frame = watch.frames.find((one) => one.event === "followers-refreshed");
+				expect(frame).toBeDefined();
+				const data = frame?.data as { entries: Array<{ subscriptionId: string }> } | undefined;
+				expect(data?.entries.some((entry) => entry.subscriptionId === SUB.alice)).toBe(true);
+			});
+			const frames = watch.frames.filter((one) => one.event === "followers-refreshed");
+			for (const frame of frames) {
+				expect(frame.type).toBe("push-events");
+				expect(hasKey(frame, BANNED), JSON.stringify(frame)).toBe(false);
+			}
+			const last = frames.at(-1)?.data as {
+				entries: Array<{ subscriptionId: string; identity?: unknown; current?: number }>;
+			};
+			expect(last.entries.find((entry) => entry.subscriptionId === SUB.alice)).toMatchObject({
+				identity: { sourceKey: IN_PROCESS_KEY, externalId: EXT.alice },
+				current: ALICE_PROFILE.followers,
+			});
+			for (const entry of last.entries) expect(entry.identity, entry.subscriptionId).toBeDefined();
+
+			const res = await okRes(await api("/api/stats/followers"));
+			const body = (await res.json()) as { entries: Array<{ subscriptionId: string }> };
+			expect(hasKey(body, BANNED), JSON.stringify(body)).toBe(false);
+			expect(body.entries.find((entry) => entry.subscriptionId === SUB.alice)).toMatchObject({
+				identity: { sourceKey: IN_PROCESS_KEY, externalId: EXT.alice },
+				current: ALICE_PROFILE.followers,
+			});
+		} finally {
+			watch.close();
+		}
+		drove("P40");
+	});
 
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
@@ -2887,19 +3022,19 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 38 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 40 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(48);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 38 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 40 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
+		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => n !== 3 && n !== 4 && n !== 7 && n !== 10 && n !== 11 && n !== 12)
+				.filter((n) => ![2, 3, 4, 7, 10, 11, 12, 13].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {
