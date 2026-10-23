@@ -1,5 +1,5 @@
 /**
- * 首页粉丝面板的现状钉子(㉘a):`GET /api/stats/followers` 与 `fans-refreshed` 里每条的
+ * 首页粉丝面板的现状钉子(㉘a):`GET /api/stats/followers` 与 `followers-refreshed` 里每条的
  * `current / deltaSubscribed / delta24h / delta7d`,B 站订阅与拓展订阅各验,以及「涨粉起点」取哪一条、起点不被后来的样本改掉。
  *
  * ㉘c 要压缩粉丝样本文件、改行的形状;「采集与显示都不变」由这份测试裁判 —— 之后只许改 {@link sampleRow}
@@ -14,7 +14,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FansRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
+import { type FollowersRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -81,8 +81,8 @@ const profile = (fans?: number, lastRefreshedAt = isoAgo(5 * 60_000)): SubRuntim
 async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 	const runtime = new Map<string, SubRuntime>(Object.entries(seed));
 	const bus = createNodeMessageBus();
-	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", ({ entries }) => {
+	const snapshots: FollowersRefreshEntry[][] = [];
+	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	/** 每个 uid 这一轮 B 站报的粉丝数,用例里随时改。 */
@@ -146,7 +146,7 @@ async function getFollowers(h: FansPollerHandle | undefined) {
 	const app = createStatsFollowersRoute({ runtime: { fansPoller: h } } as unknown as RouteDeps);
 	const res = await app.request("/");
 	expect(res.status).toBe(200);
-	return (await res.json()) as { entries: FansRefreshEntry[] };
+	return (await res.json()) as { entries: FollowersRefreshEntry[] };
 }
 
 /** B 站那条:30 天的样本(远过 8 天),24h / 7d 的基准点两侧各放一条,用来看「取那一刻之前最近的一条」。 */
@@ -173,17 +173,19 @@ describe("首页粉丝面板 × B 站订阅:一轮轮询后的各格", () => {
 		expect(p.entries()).toEqual([
 			{
 				subscriptionId: "b1",
-				uid: "111",
+				identity: { sourceKey: "bilibili", externalId: "111" },
 				current: 1350,
-				ts: expect.any(String),
+				refreshedAt: expect.any(String),
 				deltaSubscribed: 350, // 1350 − 起点 1000
 				delta24h: 50, // 1350 − 1300(不是之后的 1320)
 				delta7d: 150, // 1350 − 1200(不是之后的 1250)
 			},
 		]);
 		// 这一轮的采样时刻就是「现在」。
-		expect(Math.abs(Date.parse(p.entries()[0]?.ts as string) - Date.now())).toBeLessThan(5_000);
-		// 接口返回与事件快照是同一份(`fans-refreshed` 里各条目的数)。
+		expect(Math.abs(Date.parse(p.entries()[0]?.refreshedAt as string) - Date.now())).toBeLessThan(
+			5_000,
+		);
+		// 接口返回与事件快照是同一份(`followers-refreshed` 里各条目的数)。
 		expect((await getFollowers(p.handle)).entries).toEqual(p.entries());
 		expect(p.snapshots.at(-1)).toEqual(p.entries());
 	});
@@ -254,9 +256,9 @@ describe("涨粉起点:订阅以来涨了多少取哪一条当起点", () => {
 		expect(p.entries()).toEqual([
 			{
 				subscriptionId: "b1",
-				uid: "111",
+				identity: { sourceKey: "bilibili", externalId: "111" },
 				current: 1330,
-				ts: expect.any(String),
+				refreshedAt: expect.any(String),
 				deltaSubscribed: 330,
 				delta24h: null,
 				delta7d: null,
@@ -292,7 +294,7 @@ describe("涨粉起点:订阅以来涨了多少取哪一条当起点", () => {
 
 describe("GET /api/stats/followers — B 站与拓展各一条", () => {
 	// 验红:把 extensionEntry 里 24h 基准的目标改成 7 天前(与 7d 同一个点),拓展的 delta24h 从 120 变 270,红。
-	it("返回最近一轮的 entries:B 站带 uid、拓展带拓展 id + 外部 id;各格的数一一对得上", async () => {
+	it("返回最近一轮的 entries:B 站与拓展各带 identity(来源键 + 外部 id);各格的数一一对得上", async () => {
 		await seedSeries("b1", BILI_LONG);
 		await seedSeries("e1", [
 			[ago(25 * DAY), 100],
@@ -316,19 +318,18 @@ describe("GET /api/stats/followers — B 站与拓展各一条", () => {
 		).toEqual([
 			{
 				subscriptionId: "b1",
-				uid: "111",
+				identity: { sourceKey: "bilibili", externalId: "111" },
 				current: 1350,
-				ts: expect.any(String),
+				refreshedAt: expect.any(String),
 				deltaSubscribed: 350,
 				delta24h: 50,
 				delta7d: 150,
 			},
 			{
 				subscriptionId: "e1",
-				extensionId: "douyin",
-				externalId: "sec-1",
+				identity: { sourceKey: "douyin", externalId: "sec-1" },
 				current: 420, // 取它最近报的资料,不是样本末值 400
-				ts: lastRefreshedAt,
+				refreshedAt: lastRefreshedAt,
 				deltaSubscribed: 320, // 420 − 第一条 100
 				delta24h: 120, // 420 − 300
 				delta7d: 270, // 420 − 150

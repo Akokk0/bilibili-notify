@@ -24,8 +24,8 @@ import type {
 	ExtensionRunState,
 	Failure,
 	FailureCode,
-	FansRefreshEntry,
 	FeatureKey,
+	FollowersRefreshEntry,
 	GlobalConfig,
 	HistoryPayload,
 	Identity,
@@ -59,7 +59,7 @@ export type {
 	ConnectionCapabilities,
 	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 CapabilitySupport 那条。
 	ExtensionProvides,
-	FansRefreshEntry,
+	FollowersRefreshEntry,
 	PushMessageRole,
 	PushStatus,
 	// `/api/subscriptions/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
@@ -963,8 +963,8 @@ export interface StatsOverviewResponse {
 
 // ---- /api/stats/followers -------------------------------------------------------------
 
-export interface FansResponse {
-	entries: FansRefreshEntry[];
+export interface FollowersResponse {
+	entries: FollowersRefreshEntry[];
 }
 
 // ---- 测试推送类端点(/api/targets/:id/test /api/cards /api/ai) ---------------

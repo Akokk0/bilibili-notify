@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FansRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
+import { type FollowersRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -14,7 +14,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 首页粉丝面板也列拓展订阅(ADR-0020 决策 8)。
  *
  * - 有粉丝时序(`<数据根>/stats/followers/<订阅 id>.jsonl`,统计的拓展适配按资料里的粉丝数写)的、启用着的拓展订阅进
- *   `fans-refreshed` 快照 / `GET /api/stats/followers`:键是订阅 id,带拓展 id + 外部 id、不带 uid。
+ *   `followers-refreshed` 快照 / `GET /api/stats/followers`:键是订阅 id,带 identity(来源键 + 外部 id)、不带 uid / extensionId。
  * - 起点 / 24h / 7d 与 B 站同一个意思、从时序里算:起点 = **第一条样本**(B 站的 fansBaseline 是第一次采到的
  *   值、开机按时序最早一条自愈 —— 同一件事);24h / 7d = 那一刻之前最近的一条样本。
  * - 当前数取它最近报的资料(比稀释过的样本新,与统计页的「当前粉丝」同一个数);资料没带就取时序末值。
@@ -87,8 +87,8 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 	let subs = initial;
 	const runtime = new Map<string, SubRuntime>(Object.entries(runtimeSeed));
 	const bus = createNodeMessageBus();
-	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", ({ entries }) => {
+	const snapshots: FollowersRefreshEntry[][] = [];
+	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	const fetchRelationStat = vi.fn(async (_uid: string) => ({
@@ -146,7 +146,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		setSubs(next: Subscription[]) {
 			subs = next;
 		},
-		entryOf(id: string): FansRefreshEntry | undefined {
+		entryOf(id: string): FollowersRefreshEntry | undefined {
 			return handle?.getLastEntries().find((e) => e.subscriptionId === id);
 		},
 	};
@@ -174,10 +174,9 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		expect(p.handle.getLastEntries()).toEqual([
 			{
 				subscriptionId: "e1",
-				extensionId: "douyin",
-				externalId: "sec-1",
+				identity: { sourceKey: "douyin", externalId: "sec-1" },
 				current: 450,
-				ts: lastRefreshedAt,
+				refreshedAt: lastRefreshedAt,
 				// 起点是十天前那第一条(100);24h 前最近的是两天前那条(300);7 天前最近的是八天前那条(150)。
 				deltaSubscribed: 350,
 				delta24h: 150,
@@ -197,7 +196,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		await p.handle.pollNow();
 		expect(p.entryOf("e1")).toMatchObject({
 			current: 400,
-			ts: E1_SERIES[3]?.sampledAt,
+			refreshedAt: E1_SERIES[3]?.sampledAt,
 			deltaSubscribed: 300,
 			delta24h: 100,
 			delta7d: 250,
@@ -250,17 +249,20 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		const bili = p.entryOf("b1");
 		expect(bili).toEqual({
 			subscriptionId: "b1",
-			uid: "12345",
+			identity: { sourceKey: "bilibili", externalId: "12345" },
 			current: 777,
-			ts: expect.any(String),
+			refreshedAt: expect.any(String),
 			// 第一次见 → 当前值就是起点;24h / 7d 之前没有样本。
 			deltaSubscribed: 0,
 			delta24h: null,
 			delta7d: null,
 		});
 		// 外部 id 恰好是同一串数字:两条各是各的,拓展那条不带 uid。
-		expect(p.entryOf("e1")).toMatchObject({ extensionId: "douyin", externalId: "12345" });
+		expect(p.entryOf("e1")).toMatchObject({
+			identity: { sourceKey: "douyin", externalId: "12345" },
+		});
 		expect(p.entryOf("e1")).not.toHaveProperty("uid");
+		expect(p.entryOf("e1")).not.toHaveProperty("extensionId");
 		expect(p.fetchRelationStat).not.toHaveBeenCalled();
 		expect(p.fetchUserCard).toHaveBeenCalledTimes(1);
 		expect(p.fetchUserCard).toHaveBeenCalledWith("12345");

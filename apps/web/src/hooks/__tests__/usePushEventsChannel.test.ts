@@ -9,7 +9,7 @@
  *   - live-viewers-changed → setQueryData(["live","listening"]) 按订阅 id 补 totalViewers
  *                            订阅不在快照里 → 静默(返回 old,等下次 invalidate)
  *                            data 缺 subscriptionId / 人数不是有限数 → silent-drop
- *   - fans-refreshed       → setQueryData(["stats", "followers"]) 整体覆盖;data.entries 非数组 → drop
+ *   - followers-refreshed       → setQueryData(["stats", "followers"]) 整体覆盖;data.entries 非数组 → drop
  *   - history-recorded     → push toast + setQueryData(historyQueryKey(100)) prepend + dedup id + cap
  *   - history-updated      → 同 id 换缓存里那一行 + toast 同 id 换字(不在就不弹);
  *                            成败翻面时日桶的失败数 ±1,缓存里没有旧行则不动
@@ -22,8 +22,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	type DailyHistoryCountView,
-	type FansEntry,
-	type FansResponse,
+	type FollowersRefreshEntry,
+	type FollowersResponse,
 	HISTORY_DAILY_QUERY_KEY,
 	type HistoryDailyResponse,
 	type HistoryEntryView,
@@ -379,49 +379,49 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		});
 	});
 
-	describe("fans-refreshed", () => {
+	describe("followers-refreshed", () => {
 		it("data.entries 是数组:整体覆盖 ['stats', 'followers']", () => {
-			const entries: FansEntry[] = [
+			const entries: FollowersRefreshEntry[] = [
 				{
 					subscriptionId: "s1",
-					uid: "u1",
+					identity: { sourceKey: "bilibili", externalId: "u1" },
 					current: 100,
-					ts: "t",
+					refreshedAt: "t",
 					deltaSubscribed: 10,
 					delta24h: 5,
 					delta7d: 20,
 				},
 			];
 			handlePushEnvelope(
-				env({ type: "push-events", event: "fans-refreshed", data: { entries } }),
+				env({ type: "push-events", event: "followers-refreshed", data: { entries } }),
 				h.qc,
 				h.toast,
 			);
-			expect(h.qc.getQueryData<FansResponse>(["stats", "followers"])).toEqual({ entries });
+			expect(h.qc.getQueryData<FollowersResponse>(["stats", "followers"])).toEqual({ entries });
 		});
 
 		it("data.entries 非数组:silent-drop", () => {
-			h.qc.setQueryData<FansResponse>(["stats", "followers"], { entries: [] });
+			h.qc.setQueryData<FollowersResponse>(["stats", "followers"], { entries: [] });
 			handlePushEnvelope(
 				malformed({
 					type: "push-events",
-					event: "fans-refreshed",
+					event: "followers-refreshed",
 					data: { entries: { not: "array" } },
 				}),
 				h.qc,
 				h.toast,
 			);
-			expect(h.qc.getQueryData<FansResponse>(["stats", "followers"])).toEqual({ entries: [] });
+			expect(h.qc.getQueryData<FollowersResponse>(["stats", "followers"])).toEqual({ entries: [] });
 		});
 
 		it("空数组:覆盖为空(表达「全部 enabled subs 已被删除」)", () => {
-			h.qc.setQueryData<FansResponse>(["stats", "followers"], {
+			h.qc.setQueryData<FollowersResponse>(["stats", "followers"], {
 				entries: [
 					{
 						subscriptionId: "s1",
-						uid: "u1",
+						identity: { sourceKey: "bilibili", externalId: "u1" },
 						current: 1,
-						ts: "t",
+						refreshedAt: "t",
 						deltaSubscribed: 0,
 						delta24h: 0,
 						delta7d: 0,
@@ -429,11 +429,11 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				],
 			});
 			handlePushEnvelope(
-				env({ type: "push-events", event: "fans-refreshed", data: { entries: [] } }),
+				env({ type: "push-events", event: "followers-refreshed", data: { entries: [] } }),
 				h.qc,
 				h.toast,
 			);
-			expect(h.qc.getQueryData<FansResponse>(["stats", "followers"])).toEqual({ entries: [] });
+			expect(h.qc.getQueryData<FollowersResponse>(["stats", "followers"])).toEqual({ entries: [] });
 		});
 	});
 

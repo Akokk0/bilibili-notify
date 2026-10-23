@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FansRefreshEntry, ok } from "@bilibili-notify/internal";
+import { type FollowersRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
@@ -75,8 +75,8 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	const followers = new Map<string, number>();
 	const runtime = new Map<string, SubRuntime>();
 	const bus = createNodeMessageBus();
-	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", ({ entries }) => {
+	const snapshots: FollowersRefreshEntry[][] = [];
+	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	const fetchRelationStat = vi.fn(async (uid: string) => ({
@@ -134,7 +134,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 			subs = next;
 		},
 		lastSnapshotUids(): Array<string | undefined> {
-			return (snapshots.at(-1) ?? []).map((e) => e.uid);
+			return (snapshots.at(-1) ?? []).map((e) => e.identity.externalId);
 		},
 	};
 }
@@ -148,7 +148,10 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 		);
 		const p = await start([biliSub("a", "1")]);
 		expect(p.handle.getLastEntries()).toEqual([
-			expect.objectContaining({ uid: "1", current: 777 }),
+			expect.objectContaining({
+				identity: { sourceKey: "bilibili", externalId: "1" },
+				current: 777,
+			}),
 		]);
 	});
 
@@ -197,7 +200,7 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		expect(await p.handle.pollNow()).toBe(true);
 
 		expect(p.lastSnapshotUids()).toEqual(["2"]);
-		expect(p.handle.getLastEntries().map((e) => e.uid)).toEqual(["2"]);
+		expect(p.handle.getLastEntries().map((e) => e.identity.externalId)).toEqual(["2"]);
 		expect(await exists(fanFile("a"))).toBe(true);
 		expect(await samples("a")).toEqual([100]);
 	});
@@ -216,7 +219,7 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 
 		expect(await samples("a")).toEqual([100, 150]);
 		expect(p.runtime.get("a")?.fansBaseline?.value).toBe(100);
-		const entry = p.handle.getLastEntries().find((e) => e.uid === "1");
+		const entry = p.handle.getLastEntries().find((e) => e.identity.externalId === "1");
 		expect(entry).toMatchObject({ current: 150, deltaSubscribed: 50 });
 		expect(p.lastSnapshotUids()).toContain("1");
 	});

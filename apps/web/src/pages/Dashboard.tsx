@@ -4,7 +4,6 @@ import type {
 	LogLevel,
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
-import { upColor } from "@bilibili-notify/internal/constants";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
 import {
@@ -45,9 +44,9 @@ import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { api } from "../services/api";
 import {
 	type DailyHistoryCountView,
-	type FansEntry,
-	type FansResponse,
 	FOLLOWERS_QUERY_KEY,
+	type FollowersRefreshEntry,
+	type FollowersResponse,
 	foldDailyBuckets,
 	HISTORY_DAILY_DAYS,
 	HISTORY_DAILY_QUERY_KEY,
@@ -464,26 +463,28 @@ export function TimelinePanel({
 
 /**
  * 粉丝面板那一行画成什么样(ADR-0020 决策 8)。条目按订阅 id 对订阅:名字走订阅卡那条链
- * (`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id),头像是那条订阅的;订阅列表还没回来时
- * B 站行写 UID、拓展行写外部 id。颜色跟着人走(`upColor`,与订阅卡、历史页、统计页同一个颜色)。拓展行另带一枚
- * 平台徽章(同「正在直播」)。
+ * (`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的外部 id),头像是那条订阅的;订阅列表还没回来时
+ * 名字照 `historyRowIdentity`(B 站写「UID x」、拓展写平台名加外部 id)。颜色照 `identityColor` 跟着人走
+ * (与订阅卡、历史页、统计页同一个颜色)。拓展行另带一枚平台徽章(同「正在直播」)。条目带着订阅的身份,
+ * 订阅列表还没回来时这些也都能画。
  */
 function fansRowFace(
-	e: FansEntry,
+	e: FollowersRefreshEntry,
 	lookup: SubscriptionLookup,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
 	const sub = lookup.byId(e.subscriptionId);
-	const fallback = e.extensionId !== undefined ? (e.externalId ?? e.extensionId) : `UID ${e.uid}`;
-	const face = {
-		name: sub ? displayName(sub) : fallback,
-		color: upColor(e, e.subscriptionId),
+	const base = {
+		color: identityColor(e.identity),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
-	if (e.extensionId === undefined) return face;
-	const platform = subscriptionPlatformOf({ extensionId: e.extensionId }, extensions);
+	if (!isExtensionIdentity(e.identity)) {
+		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(e) };
+	}
+	const platform = subscriptionPlatformOf({ extensionId: e.identity.sourceKey }, extensions);
 	return {
-		...face,
+		...base,
+		name: sub ? displayName(sub) : historyRowIdentity(e, () => platform.label),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
 	};
 }
@@ -516,16 +517,16 @@ export function FansPanel({
 	/** 装着的拓展 —— 拓展行的平台徽章照它的清单;没回来时徽章写拓展 id。 */
 	extensions?: readonly ExtensionDTO[];
 }) {
-	// 不轮询 — 由 usePushEventsChannel 的 `fans-refreshed` 覆盖式刷新缓存。
+	// 不轮询 — 由 usePushEventsChannel 的 `followers-refreshed` 覆盖式刷新缓存。
 	const fansQuery = useQuery({
 		queryKey: FOLLOWERS_QUERY_KEY,
-		queryFn: () => api.get<FansResponse>("/api/stats/followers"),
+		queryFn: () => api.get<FollowersResponse>("/api/stats/followers"),
 	});
 	// 条目按订阅 id 记(ADR-0020 决策 8):B 站订阅与有粉丝时序的拓展订阅各一行。按 uid 对的话,拓展行对不上、
 	// 同一个 uid 的两条订阅也分不开。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
 
-	const entries: FansEntry[] = fansQuery.data?.entries ?? [];
+	const entries: FollowersRefreshEntry[] = fansQuery.data?.entries ?? [];
 	const sorted = useMemo(() => {
 		// 按 |deltaSubscribed| 降序;null delta 沉底。
 		return [...entries].sort((a, b) => {
@@ -551,9 +552,7 @@ export function FansPanel({
 				<EmptyNote>
 					采样中…
 					<br />
-					<span className="text-bn-xs text-bn-text-secondary/80">
-						FansPoller 第一轮 cron tick 完成后会填充(约 1–2 分钟)
-					</span>
+					<span className="text-bn-xs text-bn-text-secondary/80">第一轮资料刷新完成后会填充</span>
 				</EmptyNote>
 			) : (
 				// 单列布局,max-h 上限 ≈ 3 行行卡(每行 ~62px + 8px gap);N 多时走

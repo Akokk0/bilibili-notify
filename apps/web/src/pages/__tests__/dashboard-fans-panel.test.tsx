@@ -2,7 +2,7 @@
 /**
  * 首页「粉丝数变化」面板也列拓展订阅(ADR-0020 决策 8)。
  *
- * 条目按订阅 id 记(`FansRefreshEntry.subscriptionId`),B 站条目带 uid、拓展条目带拓展 id + 外部 id。面板按
+ * 条目按订阅 id 记(`FollowersRefreshEntry.subscriptionId`),每条带 `identity`(来源键 + 外部 id)。面板按
  * 订阅 id 对订阅:名字走订阅卡那条链(资料里的名字 → 别名 → 外部 id),拓展行标一枚平台徽章(同「正在直播」),
  * 头像是那条订阅的。起点 / 24h / 7d 三格两支同一个画法。
  */
@@ -11,7 +11,7 @@ import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { FansEntry } from "../../services/dashboard";
+import type { FollowersRefreshEntry } from "../../services/dashboard";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 
 vi.mock("../../services/api", () => ({
@@ -53,27 +53,30 @@ function extSub(id: string, externalId: string, over: Partial<Subscription> = {}
 	return { ...makeEmptySubscription({ sourceKey: "douyin", externalId: externalId }), id, ...over };
 }
 
-const BILI_ENTRY: FansEntry = {
+const BILI_ENTRY: FollowersRefreshEntry = {
 	subscriptionId: "s-bili",
-	uid: "12345",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
 	current: 1000,
-	ts: "2026-09-24T00:00:00Z",
+	refreshedAt: "2026-09-24T00:00:00Z",
 	deltaSubscribed: 10,
 	delta24h: 1,
 	delta7d: 5,
 };
-const EXT_ENTRY: FansEntry = {
+const EXT_ENTRY: FollowersRefreshEntry = {
 	subscriptionId: "s-dy",
-	extensionId: "douyin",
-	externalId: "sec-1",
+	identity: { sourceKey: "douyin", externalId: "sec-1" },
 	current: 22_222,
-	ts: "2026-09-24T00:00:00Z",
+	refreshedAt: "2026-09-24T00:00:00Z",
 	deltaSubscribed: 3_333,
 	delta24h: -44,
 	delta7d: null,
 };
 
-function renderPanel(entries: FansEntry[], subs: Subscription[], extensions?: ExtensionDTO[]) {
+function renderPanel(
+	entries: FollowersRefreshEntry[],
+	subs: Subscription[],
+	extensions?: ExtensionDTO[],
+) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/stats/followers") return Promise.resolve({ entries });
 		return Promise.reject(new Error(`没料到的请求 ${path}`));
@@ -116,7 +119,14 @@ describe("粉丝数变化 · 拓展订阅", () => {
 
 	it("名字链:资料名 → 外部 id(别名已退役,ADR-0021 决策 16);不写「UID undefined」", async () => {
 		renderPanel(
-			[EXT_ENTRY, { ...EXT_ENTRY, subscriptionId: "s-dy2", externalId: "sec-2" }],
+			[
+				EXT_ENTRY,
+				{
+					...EXT_ENTRY,
+					subscriptionId: "s-dy2",
+					identity: { sourceKey: "douyin", externalId: "sec-2" },
+				},
+			],
 			[
 				extSub("s-dy", "sec-1", {
 					cachedProfile: {
@@ -134,15 +144,21 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 
-	it("订阅列表还没回来:拓展行写外部 id,B 站行照旧写 UID", async () => {
+	// 验红:兜底改回只写外部 id,拓展行少了平台名,这条红。
+	it("订阅列表还没回来:拓展行写「平台名 · 外部 id」(平台名照清单,清单也没回来写拓展 id),B 站行写 UID", async () => {
+		const first = renderPanel([BILI_ENTRY, EXT_ENTRY], [], [DOUYIN]);
+		await waitFor(() => expect(screen.getByText("抖音 · sec-1")).toBeTruthy());
+		expect(screen.getByText("UID 12345")).toBeTruthy();
+		first.unmount();
+		cleanup();
 		renderPanel([BILI_ENTRY, EXT_ENTRY], []);
-		await waitFor(() => expect(screen.getByText("sec-1")).toBeTruthy());
+		await waitFor(() => expect(screen.getByText("douyin · sec-1")).toBeTruthy());
 		expect(screen.getByText("UID 12345")).toBeTruthy();
 	});
 
 	it("外部 id 恰好等于某个 B 站 uid:两行各对各的订阅,不串人", async () => {
 		renderPanel(
-			[BILI_ENTRY, { ...EXT_ENTRY, externalId: "12345" }],
+			[BILI_ENTRY, { ...EXT_ENTRY, identity: { sourceKey: "douyin", externalId: "12345" } }],
 			[
 				biliSub("s-bili", "12345", "B 站甲"),
 				extSub("s-dy", "12345", {

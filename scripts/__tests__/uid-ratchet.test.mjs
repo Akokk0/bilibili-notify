@@ -68,11 +68,10 @@ export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 33,
 	"apps/server/src/routes/subscriptions.ts": 15,
 	"apps/server/src/runtime/engines.ts": 9,
-	"apps/server/src/runtime/fans-poller.ts": 20,
+	"apps/server/src/runtime/fans-poller.ts": 18,
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"packages/ai/src/tools.ts": 20,
 	"packages/internal/src/constants.ts": 4, // `upColor` 入参 `UpColorIdentity` 上的 `uid` 键(声明、解构、取用、调用处各一)
-	"packages/internal/src/platform.ts": 1, // `FansRefreshEntry.uid`
 };
 
 /** 字符串字面量里算 uid 的那几个值(不分大小写)。 */

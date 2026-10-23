@@ -22,7 +22,7 @@ import { join } from "node:path";
 import type {
 	ExtensionLookupResponse,
 	ExtensionsResponse,
-	FansResponse,
+	FollowersResponse,
 	LiveListeningEntry,
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
@@ -178,14 +178,13 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 					...json({ params: {} }),
 				});
 				expect(polled.status, await polled.clone().text()).toBe(200);
-				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 				expect(entries).toEqual([
 					{
 						subscriptionId: ON,
-						extensionId: FAKE,
-						externalId: expect.any(String),
+						identity: { sourceKey: FAKE, externalId: expect.any(String) },
 						current: 2222,
-						ts: expect.any(String),
+						refreshedAt: expect.any(String),
 						deltaSubscribed: 1111,
 						delta24h: null,
 						delta7d: null,

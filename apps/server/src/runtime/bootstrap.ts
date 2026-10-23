@@ -209,7 +209,7 @@ export interface AppRuntime {
 	attachEngines(engines: EnginesRuntime): void;
 	/**
 	 * FansPoller handle (cron 跟 globals.profileRefreshCron 刷新每个 enabled sub 的
-	 * B 站 fans 数并 emit `fans-refreshed`)。`null` 直到 attachEngines 完成 + 启动
+	 * B 站 fans 数并 emit `followers-refreshed`)。`null` 直到 attachEngines 完成 + 启动
 	 * 完成后由 index.ts 注入;Routes 通过 `runtime.fansPoller?.getLastEntries()` 读
 	 * 最近一轮快照。
 	 */

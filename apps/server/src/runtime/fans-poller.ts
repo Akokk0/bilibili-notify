@@ -2,7 +2,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
 	type Disposable,
-	type FansRefreshEntry,
+	type FollowersRefreshEntry,
 	type Logger,
 	type MessageBus,
 	type ServiceContext,
@@ -72,7 +72,7 @@ export interface FansPollerOptions {
 	/**
 	 * 数据统计的总开关(`stats.enabled`,ADR-0027 决策 9)**现取**,读缓存布尔。粉丝轮询直接写粉丝仓、绕开
 	 * 统计记录器,所以要在这里单独拦:关着时不写粉丝样本、不新建 / 不改写涨粉起点,「24 小时 / 7 天涨跌」给空;
-	 * 资料刷新、当前粉丝数、`fans-refreshed` 照常。
+	 * 资料刷新、当前粉丝数、`followers-refreshed` 照常。
 	 */
 	isStatsEnabled: () => boolean;
 }
@@ -83,7 +83,7 @@ export interface FansPollerHandle extends Disposable {
 	 * (ADR-0020 决策 8)。GET /api/stats/followers 直接读这个,免去对 jsonl 的同步查询。Bootstrap 前为空数组;
 	 * 开机从盘上恢复一份,之后每轮 tick 更新。
 	 */
-	getLastEntries(): FansRefreshEntry[];
+	getLastEntries(): FollowersRefreshEntry[];
 	/**
 	 * 把轮询提前到现在(devtools「现在就跑」)。走的就是 cron 到点调的那个 tick;上一轮
 	 * 还在跑就跳过、回 false,与 cron 撞上时的规矩一样。回的 promise 在这一轮结束时落定。
@@ -91,7 +91,7 @@ export interface FansPollerHandle extends Disposable {
 	pollNow(): Promise<boolean>;
 	/**
 	 * 数据统计被清空之后(㉙d,「存储占用」)让手里的快照不再用旧数:每一条的「订阅以来 / 24 小时 / 7 天」涨跌置空
-	 * (当前粉丝数保留),拓展那几条按(已被清空的)时序重算,然后发一次 `fans-refreshed`。只动内存,不碰盘、不问 B 站
+	 * (当前粉丝数保留),拓展那几条按(已被清空的)时序重算,然后发一次 `followers-refreshed`。只动内存,不碰盘、不问 B 站
 	 * —— 涨粉起点在订阅运行态里(清它是调用方的事),下一次采样从当时的粉丝数重新算「订阅以来」。
 	 */
 	reset(): Promise<void>;
@@ -105,7 +105,7 @@ export interface FansPollerHandle extends Disposable {
  *   3. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
  *      (不再走 configStore.patchSubscription —— 见 FansPollerOptions 注释);
  *   4. 计算 24h / 7d 窗口的 delta(从 jsonl 找近似时间点的最近样本);
- *   5. 单次轮询全部完成后 emit `fans-refreshed`(entries);
+ *   5. 单次轮询全部完成后 emit `followers-refreshed`(entries);
  *
  * 失败处理:per-uid try/catch,单 UP 失败不阻断剩余轮询。串行 + 200ms 间隔
  * 减小被 B 站风控的概率。cron 用 globals.profileRefreshCron(默认每 10min 一轮),
@@ -144,7 +144,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	// 订阅 id → 面板上那一行(两支都在这一张表里,ADR-0020 决策 8)。replace,不累加。B 站:每轮跑完
 	// 覆盖本轮采到的,跳过本轮没采到的(保留上一轮的值,避免间歇性失败导致 dashboard 数字闪烁);拓展:
 	// 每次按时序重算。键是订阅 id 而不是 uid:同一个 uid 配两条订阅时各是各的一行,拓展条目没有 uid。
-	const lastBySub = new Map<string, FansRefreshEntry>();
+	const lastBySub = new Map<string, FollowersRefreshEntry>();
 	/**
 	 * 这一进程里往哪些粉丝文件(订阅 id)写过样本。清扫按它删「删了订阅之后又被写回来」的那份 ——
 	 * 判据是**这条订阅**不在了,不是这个 uid 不在了:同一个人删了重订是另一条订阅、另一份文件,
@@ -183,7 +183,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	async function extensionEntry(
 		sub: Subscription,
 		nowMs: number,
-	): Promise<FansRefreshEntry | undefined> {
+	): Promise<FollowersRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
 		const identity = subscriptionIdentityOf(sub);
 		// 统计关着时不记粉丝样本、涨跌与起点(都靠时序)给空,当前数只取最近报的资料 / 盘上已有的末值。
@@ -205,10 +205,9 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		if (current === undefined) return undefined;
 		return {
 			subscriptionId: sub.id,
-			extensionId: identity.sourceKey,
-			externalId: identity.externalId,
+			identity,
 			current,
-			ts:
+			refreshedAt:
 				reported !== undefined && profile
 					? profile.lastRefreshedAt
 					: (latest?.sampledAt ?? new Date(nowMs).toISOString()),
@@ -246,7 +245,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	function emitSnapshot(): void {
-		bus.emit("fans-refreshed", { entries: Array.from(lastBySub.values()) });
+		bus.emit("followers-refreshed", { entries: Array.from(lastBySub.values()) });
 	}
 
 	/**
@@ -473,11 +472,11 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				}
 				if (disposed) return;
 
-				const entry: FansRefreshEntry = {
+				const entry: FollowersRefreshEntry = {
 					subscriptionId: sub.id,
-					uid,
+					identity: subscriptionIdentityOf(sub),
 					current,
-					ts: nowIso,
+					refreshedAt: nowIso,
 					deltaSubscribed,
 					delta24h,
 					delta7d,
@@ -555,9 +554,9 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				const deltaSubscribed = baseline ? last.followers - baseline.value : 0;
 				lastBySub.set(sub.id, {
 					subscriptionId: sub.id,
-					uid,
+					identity: subscriptionIdentityOf(sub),
 					current: last.followers,
-					ts: last.sampledAt,
+					refreshedAt: last.sampledAt,
 					deltaSubscribed,
 					delta24h: null,
 					delta7d: null,
@@ -742,7 +741,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			// 不主动 await in-flight tick(Disposable 接口为 void);runTick 内会在每个
 			// await 后 check disposed,中途返回,新副作用不会出现。
 		},
-		getLastEntries(): FansRefreshEntry[] {
+		getLastEntries(): FollowersRefreshEntry[] {
 			return Array.from(lastBySub.values());
 		},
 		pollNow: tickOnce,

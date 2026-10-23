@@ -77,7 +77,7 @@ export interface WsEvents {
 		"history-updated": HistoryEntryView;
 		"live-session-changed": BusEvents["live-session-changed"];
 		"live-viewers-changed": BusEvents["live-viewers-changed"];
-		"fans-refreshed": BusEvents["fans-refreshed"];
+		"followers-refreshed": BusEvents["followers-refreshed"];
 	};
 	/** 日志行按级别当事件名发,字段是冻结格式。 */
 	log: { "engine-error": BusEvents["engine-error"] } & Record<

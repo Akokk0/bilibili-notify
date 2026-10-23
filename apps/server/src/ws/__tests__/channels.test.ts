@@ -64,6 +64,25 @@ describe("buildStateHydrate", () => {
 	});
 });
 
+const FOLLOWERS_ENTRY = {
+	subscriptionId: "sub-1",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
+	current: 100,
+	refreshedAt: "2026-05-16T09:00:00.000Z",
+	deltaSubscribed: 10,
+	delta24h: 5,
+	delta7d: null,
+};
+
+/** 一个值里所有对象的键名(深搜,含数组里的)。 */
+function keysDeep(value: unknown): string[] {
+	if (Array.isArray(value)) return value.flatMap(keysDeep);
+	if (value !== null && typeof value === "object") {
+		return Object.entries(value).flatMap(([k, v]) => [k, ...keysDeep(v)]);
+	}
+	return [];
+}
+
 describe("attachChannelWiring — 总线载荷原样成帧", () => {
 	let h: Harness;
 	beforeEach(() => {
@@ -96,10 +115,33 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		expect(h.last()).toMatchObject({ type: "auth", event: "subscription-auth-changed" });
 		expect(h.last().data).toBe(changed);
 
-		const fans = { entries: [{ uid: "u1", current: 1 }] as never };
-		h.bus.emit("fans-refreshed", fans);
-		expect(h.last()).toMatchObject({ type: "push-events", event: "fans-refreshed" });
-		expect(h.last().data).toBe(fans);
+		const followers = { entries: [FOLLOWERS_ENTRY] };
+		h.bus.emit("followers-refreshed", followers);
+		expect(h.last()).toMatchObject({ type: "push-events", event: "followers-refreshed" });
+		expect(h.last().data).toBe(followers);
+	});
+
+	// 验红:转帧时给条目加回 `uid`(或 `extensionId`),这条红 —— 粉丝帧的身份只有 `identity` 一处。
+	it("followers-refreshed:条目带 identity,整个帧里没有 uid / extensionId 键", () => {
+		h.bus.emit("followers-refreshed", {
+			entries: [
+				FOLLOWERS_ENTRY,
+				{
+					...FOLLOWERS_ENTRY,
+					subscriptionId: "sub-2",
+					identity: { sourceKey: "douyin", externalId: "sec-1" },
+				},
+			],
+		});
+		const frame = h.last();
+		expect(frame).toMatchObject({ type: "push-events", event: "followers-refreshed" });
+		const entries = (frame.data as { entries: Array<{ identity: unknown }> }).entries;
+		expect(entries.map((e) => e.identity)).toEqual([
+			{ sourceKey: "bilibili", externalId: "u1" },
+			{ sourceKey: "douyin", externalId: "sec-1" },
+		]);
+		expect(keysDeep(frame)).not.toContain("uid");
+		expect(keysDeep(frame)).not.toContain("extensionId");
 	});
 
 	it("具名载荷:live-session-changed 原样成帧", () => {

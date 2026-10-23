@@ -12,8 +12,8 @@ import type { FeatureKey } from "../types/domain";
 
 export type {
 	DailyHistoryCount as DailyHistoryCountView,
-	FansRefreshEntry as FansEntry,
-	FansResponse,
+	FollowersRefreshEntry,
+	FollowersResponse,
 	HistoryDailyResponse,
 	HistoryEntryView,
 	HistoryMessageView,
@@ -39,7 +39,7 @@ export const HISTORY_QUERY_LIMITS = [100, 200] as const;
 export const historyQueryKey = (limit: number) => ["history", { limit }] as const;
 
 /**
- * 粉丝快照(`GET /api/stats/followers`)的缓存键。首页粉丝面板读它,WS `fans-refreshed` 整体覆盖它 ——
+ * 粉丝快照(`GET /api/stats/followers`)的缓存键。首页粉丝面板读它,WS `followers-refreshed` 整体覆盖它 ——
  * 读与写必须是**同一个键**:写错了键,WS 推过来的新快照落进一个没人读的缓存,面板停在旧值上,而两头
  * 各自的测试照样全绿。所以两处都从这儿取,别各写一份字面量。
  */

@@ -98,7 +98,7 @@ src/
     engines.ts            引擎热重载接线;消费 config-changed;建作品入口 `PostQueue` 并接上它的依赖(作品设置现折 `postSettingsOf` / `makePostSettingsReader`,「来源还在跑吗」问来源登记表);对外有 `registerSource`(给内置来源建上下文并登记即启动,关停时先停登记过的来源再关作品入口);把发送钉到订阅上(`boundPostPush` / `boundLivePush`)
     extension-push-common.ts 拓展作品与拓展直播共用的作者 / 名字 / 还该推吗(拓展作品那一路本体已搬进 posts/extension-post.ts)
     sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像存进图库、这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
-    fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
+    fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit followers-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
     generation-usage.ts   旧版本数据(代)的列表、两个大小、删除(能不能删在这里判)与开机收残骸;/api/system/generations
     storage-usage.ts      系统页「存储占用」:按类量大小、整类清空、手动图库清扫;/api/system/storage
     master-notifier.ts    engine-error 转 master 私聊(组件告警,按 `source` 节流 60 秒;3a-30 起**只听 engine-error**,不再听 `auth-lost`;问题表里的事归 `problems/` 的通知器,两家各有各的节流表)

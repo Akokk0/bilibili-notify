@@ -26,7 +26,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	FansResponse,
+	FollowersResponse,
 	StatsOverviewResponse,
 	StatsRoastResponse,
 	StatsRoastRunNowResponse,
@@ -479,14 +479,13 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 						...json({ params: {} }),
 					}),
 				);
-				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 				expect(entries).toEqual([
 					{
 						subscriptionId: S_EXT,
-						extensionId: FAKE,
-						externalId: EXT_ID,
+						identity: { sourceKey: FAKE, externalId: EXT_ID },
 						current: 2222,
-						ts: expect.any(String),
+						refreshedAt: expect.any(String),
 						deltaSubscribed: 1222,
 						delta24h: 1172,
 						delta7d: null,
@@ -573,7 +572,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 						...json({ params: {} }),
 					}),
 				);
-				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 				expect(entries).toEqual([]);
 			},
 			{ timeout: 3_000, interval: 100 },

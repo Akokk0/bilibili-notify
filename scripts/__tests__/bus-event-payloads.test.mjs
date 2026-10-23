@@ -32,12 +32,10 @@ const EVENT_TABLE = "BusEvents";
  * 只许删,3b 末清零。路径从载荷的根往下数,数组元素写 `[]`。
  *
  * 3b 的去向:直播状态、观看人数、动态改成按订阅 id 发中立事件(ADR-0021 决策 52);粉丝快照的身份
- * 改成 `{ sourceKey, externalId }`(历史行的已经在 ⑱b 改完,两格 `history-*` 从表里撤了)。订阅变更里的订阅已经是中立的订阅形状(⑥d d2:身份读 `identity`,
+ * 已在 3b-24 改成 `identity`(历史行的已经在 ⑱b 改完,两格 `history-*` 从表里撤了)。订阅变更里的订阅已经是中立的订阅形状(⑥d d2:身份读 `identity`,
  * 没有 `uid` 键、没有 `Bili*` 类型了);特别关注表那一格 `uid` 随 3b-16 改成中立的 `specialViewers[].id`,也撤了。
  */
-export const RATCHET = {
-	"fans-refreshed": ["uid:entries[].uid"],
-};
+export const RATCHET = {};
 
 /**
  * 已知的「平台原始值以裸 string 进载荷」:路径 → 装的是什么。守卫只核它们还在、还是 `string`;

@@ -17,7 +17,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FansRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
+import { type FollowersRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFollowersStore, FOLLOWERS_DIR, type FollowersStore } from "../followers/store.js";
 import { createStatsRoute } from "../routes/stats.js";
@@ -173,7 +173,13 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 		runtime: {
 			engines: null,
 			fansPoller: {
-				getLastEntries: () => [{ subscriptionId: "b-flat", uid: "1002", current: 8888 }],
+				getLastEntries: () => [
+					{
+						subscriptionId: "b-flat",
+						identity: { sourceKey: "bilibili", externalId: "1002" },
+						current: 8888,
+					},
+				],
 			},
 			fansStore: storeOf(root),
 			statsStore: {
@@ -222,7 +228,7 @@ describe("压缩前后:GET /api/stats/overview 的粉丝各格逐字节相同", 
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 
 /** 起一个粉丝轮询器(B 站每个 uid 报 `follower[uid]`),跑一轮,回面板上每条的条目(按订阅 id 排)。 */
-async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
+async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 	const subs = [bili("b-act", "1001"), bili("b-flat", "1002"), ext("e-1", "s1"), ext("e-2", "s2")];
 	const runtime = new Map<string, SubRuntime>([
 		[
@@ -311,10 +317,12 @@ async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
 		} as unknown as RouteDeps);
 		const res = await app.request("/");
 		expect(res.status).toBe(200);
-		const { entries } = (await res.json()) as { entries: FansRefreshEntry[] };
-		// B 站条目的 `ts` 是这一轮采样的时刻(轮询里有真实的等待,假时钟不是定死的),不是被测的东西,抹掉。
+		const { entries } = (await res.json()) as { entries: FollowersRefreshEntry[] };
+		// B 站条目的 `refreshedAt` 是这一轮采样的时刻(轮询里有真实的等待,假时钟不是定死的),不是被测的东西,抹掉。
 		return entries
-			.map((entry) => ("uid" in entry ? { ...entry, ts: "(这一轮)" } : entry))
+			.map((entry) =>
+				entry.identity.sourceKey === "bilibili" ? { ...entry, refreshedAt: "(这一轮)" } : entry,
+			)
 			.sort((a, b) => a.subscriptionId.localeCompare(b.subscriptionId));
 	} finally {
 		handle.dispose();

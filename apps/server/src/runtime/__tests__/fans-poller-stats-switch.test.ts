@@ -3,7 +3,7 @@
  *
  * B 站粉丝轮询直接往粉丝仓 `append`、绕开记录器,所以总开关要在这里单独拦。关着时:
  *   - 不写粉丝样本、不新建 / 不改写涨粉起点 `fansBaseline`;
- *   - **照跑**:当前粉丝数写进资料缓存(订阅卡上的数)、`fans-refreshed` 照发、行里的当前数照给;
+ *   - **照跑**:当前粉丝数写进资料缓存(订阅卡上的数)、`followers-refreshed` 照发、行里的当前数照给;
  *   - 「24 小时 / 7 天涨跌」是 `null`(靠粉丝时序),「订阅以来涨了多少」只依赖单独存的起点与当前数 ——
  *     起点在就照给,没有起点(关着时新订阅的第一次采样不新建它)就是 `null`。
  * 开关现取、不重启:同一个 poller 下一轮 tick 就按新值办。
@@ -11,7 +11,7 @@
  * 对照用例是开着时同样的一轮 —— 只断言「没写」会在什么都没跑时空绿。
  */
 
-import { type FansRefreshEntry, ok } from "@bilibili-notify/internal";
+import { type FollowersRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -63,9 +63,9 @@ interface Setup {
 	append: ReturnType<typeof vi.fn>;
 	findNearestBefore: ReturnType<typeof vi.fn>;
 	findEarliest: ReturnType<typeof vi.fn>;
-	snapshots: FansRefreshEntry[][];
+	snapshots: FollowersRefreshEntry[][];
 	poll(): Promise<void>;
-	entries(): FansRefreshEntry[];
+	entries(): FollowersRefreshEntry[];
 }
 
 async function start(
@@ -79,8 +79,8 @@ async function start(
 ): Promise<Setup> {
 	const runtime = new Map<string, SubRuntime>(Object.entries(over.runtime ?? {}));
 	const bus = createNodeMessageBus();
-	const snapshots: FansRefreshEntry[][] = [];
-	bus.on("fans-refreshed", ({ entries }) => {
+	const snapshots: FollowersRefreshEntry[][] = [];
+	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
 	const rtPatch = vi.fn(async (id: string, patch: SubRuntime) => {
@@ -162,7 +162,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		});
 	});
 
-	it("关着:不写样本、不新建起点;当前数照写进资料缓存、fans-refreshed 照发、涨跌两格与订阅以来都是 null", async () => {
+	it("关着:不写样本、不新建起点;当前数照写进资料缓存、followers-refreshed 照发、涨跌两格与订阅以来都是 null", async () => {
 		enabled = false;
 		const p = await start();
 		// 开机从盘上恢复首屏那一次读不算:只看这一轮 tick 有没有去翻时序。
@@ -181,9 +181,9 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		expect(p.snapshots.at(-1)).toEqual([
 			{
 				subscriptionId: "sub-1",
-				uid: "12345",
+				identity: { sourceKey: "bilibili", externalId: "12345" },
 				current: 4242,
-				ts: expect.any(String),
+				refreshedAt: expect.any(String),
 				deltaSubscribed: null,
 				delta24h: null,
 				delta7d: null,

@@ -4,11 +4,11 @@
  * 真的粉丝轮询 + 真的粉丝仓 + 真的订阅运行态(都在自己建的临时目录里),接上存储占用的 `clear("stats")`:
  * - B 站订阅:涨粉起点单独存在订阅运行态里(`fansBaseline`),清掉它,下一轮采样把当时的粉丝数当新起点;
  * - 拓展订阅:没有单独的起点,起点就是粉丝时序的第一条样本,时序一清,下一条样本就是新起点;
- * - 清完轮询手里的快照里「订阅 / 24 小时 / 7 天」涨跌立刻置空(当前粉丝数留着),并发出一次 `fans-refreshed`。
+ * - 清完轮询手里的快照里「订阅 / 24 小时 / 7 天」涨跌立刻置空(当前粉丝数留着),并发出一次 `followers-refreshed`。
  * 「不清」那一支先跑一遍当对照,证明起点确实是被清掉的而不是本来就没有。
  */
 
-import type { FansRefreshEntry } from "@bilibili-notify/internal";
+import type { FollowersRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -41,7 +41,7 @@ const EXT = makeExtensionSubscription({ id: "e1", externalId: "x", enabled: true
 let world: StorageWorld;
 let handle: FansPollerHandle | undefined;
 let follower: number;
-let snapshots: FansRefreshEntry[][];
+let snapshots: FollowersRefreshEntry[][];
 
 beforeEach(async () => {
 	world = await makeStorageWorld();
@@ -56,7 +56,7 @@ afterEach(async () => {
 
 async function start() {
 	const bus = createNodeMessageBus();
-	bus.on("fans-refreshed", ({ entries }) => snapshots.push(entries));
+	bus.on("followers-refreshed", ({ entries }) => snapshots.push(entries));
 	// B 站订阅:有 100 的起点、两天前一个样本;拓展订阅:十天前开始记,资料里报 80。
 	await world.subRuntimeStore.patch("b1", {
 		cachedProfile: { name: "甲", sign: "", fans: 110, lastRefreshedAt: iso(HOUR) },
@@ -94,7 +94,7 @@ async function start() {
 	return { storage, poller: handle };
 }
 
-const byId = (entries: FansRefreshEntry[], id: string) =>
+const byId = (entries: FollowersRefreshEntry[], id: string) =>
 	entries.find((e) => e.subscriptionId === id);
 
 describe("清数据统计 × 粉丝轮询的快照与涨粉起点", () => {

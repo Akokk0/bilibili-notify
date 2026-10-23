@@ -84,7 +84,7 @@ describe("fans poller × 拓展订阅", () => {
 		expect(await h.pollNow()).toBe(true);
 		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
 		expect(fetchRelationStat).toHaveBeenCalledWith("1");
-		expect(h.getLastEntries().map((e) => e.uid)).toEqual(["1"]);
+		expect(h.getLastEntries().map((e) => e.identity.externalId)).toEqual(["1"]);
 	});
 
 	it("删掉一条 B 站订阅 → 资料缓存的保留名单里仍有拓展订阅", () => {

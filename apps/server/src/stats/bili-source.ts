@@ -17,7 +17,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - **「来源在跑」= B 站登录有效**(ADR-0027 决策 2):定时(每 {@link BILI_SOURCE_CHECK_MS})看一眼登录状态,有效就给每条
  *     满足条件的订阅记当前小时的 `posts` / `live`;挂上时、`auth-restored` 时各立刻看一眼;登录无效不记。状态每次现读
  *     (`isLoggedIn`),事件只用来立刻补记一次,不拿它记状态;
- *   - `fans-refreshed` → 条目是 B 站订阅的、启用着的,记它采样所在小时的 `followers`(「这个小时拉资料成功过」)。
+ *   - `followers-refreshed` → 条目是 B 站订阅的、启用着的,记它采样所在小时的 `followers`(「这个小时拉资料成功过」)。
  *
  * 直播文件也按订阅 id 分;登录失效时只忘 B 站来源名下的场次,别的来源在飞的场次不受影响。
  */
@@ -57,17 +57,17 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	handles.push(bus.on("auth-restored", tick));
 
 	handles.push(
-		bus.on("fans-refreshed", ({ entries }) => {
+		bus.on("followers-refreshed", ({ entries }) => {
 			const nowMs = now().getTime();
-			const biliSubs = new Map<string, StatsSubscription>();
+			const enabledIds = new Set<string>();
 			for (const sub of opts.subscriptions()) {
-				if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
-					biliSubs.set(sub.id, sub);
+				if (sub.enabled === true) enabledIds.add(sub.id);
 			}
 			for (const entry of entries) {
-				if (biliSubs.get(entry.subscriptionId)?.enabled !== true) continue;
-				// 条目的 `ts` 是这次采样的时刻;快照里没跟上这一轮的老条目(采样失败)不算「这个小时拉成功了」。
-				const sampledAt = Date.parse(entry.ts);
+				if (entry.identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
+				if (!enabledIds.has(entry.subscriptionId)) continue;
+				// 条目的 `refreshedAt` 是这次采样的时刻;快照里没跟上这一轮的老条目(采样失败)不算「这个小时拉成功了」。
+				const sampledAt = Date.parse(entry.refreshedAt);
 				if (!Number.isFinite(sampledAt) || nowMs - sampledAt >= HOUR_MS) continue;
 				recorder.recordActive(statsFileKey({ id: entry.subscriptionId }), "followers", sampledAt);
 			}

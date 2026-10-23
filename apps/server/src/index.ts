@@ -1023,7 +1023,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 
 		// 启动 FansPoller — cron 跟 globals.profileRefreshCron,每个 enabled sub
-		// 拉一次 B 站 fans 数,写时序 jsonl + emit `fans-refreshed`。
+		// 拉一次 B 站 fans 数,写时序 jsonl + emit `followers-refreshed`。
 		const fansPoller = startFansPoller({
 			bus: runtime.bus,
 			logger: log,

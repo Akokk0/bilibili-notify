@@ -14,7 +14,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
-	FansResponse,
+	FollowersResponse,
 	ImageSweepResponse,
 	StatsOverviewResponse,
 	StorageClearResponse,
@@ -218,7 +218,7 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 	});
 
 	it("接线前提:清之前粉丝面板有拓展那一行,涨粉起点在运行态里", async () => {
-		const fans = (await (await api("/api/stats/followers")).json()) as FansResponse;
+		const fans = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 		const entry = fans.entries.find((e) => e.subscriptionId === EXT.id);
 		expect(entry?.deltaSubscribed).toBe(30); // 资料里 80 − 时序第一条 50
 		const runtime = JSON.parse(await readFile(join(gen, "runtime", "sub-runtime.json"), "utf8"));
@@ -244,7 +244,7 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 		expect(runtime[BILI.id].roomId).toBe("42");
 		expect(runtime[BILI.id].cachedProfile.fans).toBe(100);
 		// 粉丝轮询手里的快照:时序没了,拓展那一行跟着没了(不再是旧的「+30」)。
-		const fans = (await (await api("/api/stats/followers")).json()) as FansResponse;
+		const fans = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 		expect(fans.entries.find((e) => e.subscriptionId === EXT.id)).toBeUndefined();
 		// 总览缓存被作废:同一个查询不再带着清掉的作品 / 粉丝。
 		const overview = (await (

@@ -149,7 +149,13 @@ function makeDeps(): RouteDeps {
 			engines: null,
 			// B 站的当前粉丝数取轮询快照;只有 b-flat 在快照里(8888),其余回落到样本末值。
 			fansPoller: {
-				getLastEntries: () => [{ subscriptionId: "b-flat", uid: "1002", current: 8888 }],
+				getLastEntries: () => [
+					{
+						subscriptionId: "b-flat",
+						identity: { sourceKey: "bilibili", externalId: "1002" },
+						current: 8888,
+					},
+				],
 			},
 			fansStore: createFollowersStore({
 				dataRoot: dataDir,

@@ -1,6 +1,6 @@
 import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
-import type { ImageRef, PushTargetScope, Result } from "./constants";
+import type { Identity, ImageRef, PushTargetScope, Result } from "./constants";
 import type { HttpClient } from "./http";
 import type { KeyValueStore } from "./key-value-store";
 import type { LiveSessionChange } from "./live";
@@ -260,9 +260,9 @@ export interface BusEvents {
 	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
 	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020
 	 * 决策 8),各带当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
-	 * 全量覆盖 ["fans"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
+	 * 全量覆盖 ["stats", "followers"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
 	 */
-	"fans-refreshed": { entries: FansRefreshEntry[] };
+	"followers-refreshed": { entries: FollowersRefreshEntry[] };
 	/**
 	 * 一条作品进了作品装配入口(`PostQueue.enqueue`):**入口同步发的旁路通知**,不是装配的入口 ——
 	 * 事件总线不在推送链上,装配由来源直接调入口。每条订阅一份;只发一次(没有「失败后下一轮重发」);
@@ -277,25 +277,23 @@ export interface BusEvents {
 }
 
 /**
- * Bus 上 fans-refreshed 事件 / HTTP /api/stats/followers 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行
+ * Bus 上 followers-refreshed 事件 / HTTP /api/stats/followers 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行
  * (ADR-0020 决策 8)。
  */
-export interface FansRefreshEntry {
+export interface FollowersRefreshEntry {
 	/** 行的键:订阅自己的 id(同统计行,ADR-0020 决策 1 的 🔗)。面板按它对订阅、做键。 */
 	subscriptionId: string;
 	/**
-	 * 这是谁(同统计行 / 推送历史,ADR-0019 决策 73):B 站条目带 `uid`;拓展条目带 `extensionId` +
-	 * `externalId`、不带 `uid`。只管颜色与名字兜底。
+	 * 这是谁(同统计行 / 推送历史,ADR-0019 决策 73):来源键 + 外部 id,B 站与拓展同一种形状。
+	 * 只管颜色与名字兜底。
 	 */
-	uid?: string;
-	extensionId?: string;
-	externalId?: string;
+	identity: Identity;
 	/**
 	 * 当前 fans 数。B 站:本次采样问 B 站问到的;拓展:它最近一次报的资料里的(资料没带就是时序的末值)。
 	 */
 	current: number;
 	/** `current` 是什么时候的(ISO):B 站是本次采样时间,拓展是最近那次资料 / 那条样本的时间。 */
-	ts: string;
+	refreshedAt: string;
 	/**
 	 * delta 相对订阅起点:B 站是 fansBaseline(第一次采到的值,开机按时序最早一条自愈),拓展是它粉丝时序的
 	 * **第一条样本**(同一个意思:这位开始被记的那一刻);起点缺失时为 null。

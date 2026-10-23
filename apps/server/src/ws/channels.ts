@@ -95,7 +95,9 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		bus.on("live-viewers-changed", (change) =>
 			publish(envelope("push-events", "live-viewers-changed", change)),
 		),
-		bus.on("fans-refreshed", (fans) => publish(envelope("push-events", "fans-refreshed", fans))),
+		bus.on("followers-refreshed", (followers) =>
+			publish(envelope("push-events", "followers-refreshed", followers)),
+		),
 	);
 
 	// log channel -----------------------------------------------------------

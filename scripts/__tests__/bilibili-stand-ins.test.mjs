@@ -80,7 +80,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/engines.ts": 3,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
-	"apps/server/src/stats/bili-source.ts": 13,
+	"apps/server/src/stats/bili-source.ts": 10,
 	"apps/server/src/stats/extension-source.ts": 3,
 	"apps/server/src/stats/recorder.ts": 5,
 	"apps/server/src/stats/roast-subject.ts": 3,

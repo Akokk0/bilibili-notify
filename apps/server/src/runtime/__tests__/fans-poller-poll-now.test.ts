@@ -75,7 +75,7 @@ describe("fans poller pollNow", () => {
 		const h = start(fetchRelationStat);
 		expect(await h.pollNow()).toBe(true);
 		expect(fetchRelationStat).toHaveBeenCalledWith("1");
-		expect(h.getLastEntries().map((e) => e.uid)).toEqual(["1"]);
+		expect(h.getLastEntries().map((e) => e.identity.externalId)).toEqual(["1"]);
 	});
 
 	it("上一轮还在跑就跳过,回 false", async () => {
