@@ -11,7 +11,13 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { colorFromSeed, extensionColorSeed, UP_COLORS, upColor } from "../constants";
+import {
+	BILIBILI_SOURCE_KEY,
+	colorFromSeed,
+	extensionColorSeed,
+	identityColor,
+	UP_COLORS,
+} from "../constants";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
@@ -113,7 +119,7 @@ describe("UP 主配色", () => {
  * 下面的色值是拿**搬之前**那份代码(git 里面板的 `extensionColorSeed` + 这里的 `colorFromSeed`)现算出来
  * 写死的,不是拿新代码算的 —— 搬家之后订阅卡、历史行、统计页上同一个人的颜色一个都不许变。
  */
-describe("upColor — 按人取色", () => {
+describe("identityColor — 按身份取色", () => {
 	it("B 站按 uid:与搬之前一字不差", () => {
 		const before: Array<[string, string]> = [
 			["1", "#ffaf7b"],
@@ -123,7 +129,9 @@ describe("upColor — 按人取色", () => {
 			["2", "#05d6bd"],
 			["672328094", "#02b088"],
 		];
-		for (const [uid, color] of before) expect(upColor({ uid }), uid).toBe(color);
+		for (const [uid, color] of before) {
+			expect(identityColor({ sourceKey: BILIBILI_SOURCE_KEY, externalId: uid }), uid).toBe(color);
+		}
 	});
 
 	it("拓展按「拓展 id:外部 id」:与搬之前一字不差(外部 id 带 / 也照算)", () => {
@@ -135,20 +143,22 @@ describe("upColor — 按人取色", () => {
 			["douyin", "1", "#fb7299"],
 		];
 		for (const [extensionId, externalId, color] of before) {
-			expect(upColor({ extensionId, externalId }), `${extensionId} ${externalId}`).toBe(color);
+			expect(
+				identityColor({ sourceKey: extensionId, externalId }),
+				`${extensionId} ${externalId}`,
+			).toBe(color);
 			expect(extensionColorSeed(extensionId, externalId)).toBe(`${extensionId}:${externalId}`);
 		}
 	});
 
 	it("拓展不按外部 id 取色:外部 id 恰好等于某个 B 站 uid,种子也不是那串 uid", () => {
 		expect(extensionColorSeed("douyin", "12345")).not.toBe("12345");
-		expect(upColor({ extensionId: "douyin", externalId: "12345" })).toBe(
+		expect(identityColor({ sourceKey: "douyin", externalId: "12345" })).toBe(
 			colorFromSeed("douyin:12345"),
 		);
 	});
 
-	it("拓展两格缺一格不算拓展;两支都认不出退调用方给的种子(历史行给订阅 id)", () => {
-		expect(upColor({ uid: "12345", extensionId: "douyin" })).toBe("#fb7299");
-		expect(upColor({}, "s-only")).toBe("#b3cd2f");
+	it("只给种子时直接按种子取色", () => {
+		expect(colorFromSeed("s-only")).toBe("#b3cd2f");
 	});
 });

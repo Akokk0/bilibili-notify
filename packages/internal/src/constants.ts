@@ -364,29 +364,6 @@ export function extensionColorSeed(extensionId: string, externalId: string): str
 	return `${extensionId}:${externalId}`;
 }
 
-/** 按人取色要看的那两支身份(同历史行 / 统计行 / 粉丝面板条目的那几格)。 */
-export interface UpColorIdentity {
-	uid?: string;
-	extensionId?: string;
-	externalId?: string;
-}
-
-/**
- * 这个人的颜色 —— 跟着人走,不跟着订阅走(ADR-0019 决策 73):拓展(两格都有)按
- * {@link extensionColorSeed},B 站按 uid。删了再加订阅 id 变了,颜色不变。
- *
- * 面板(订阅卡、历史行、统计页、粉丝面板)与服务端出图(锐评卡)用的是这同一份(ADR-0020 决策 15)——
- * 各抄一份的话,迟早有一处同一个人换了颜色。两支都认不出(老行缺格)时退 `fallbackSeed`
- * (历史行给的是订阅 id)。
- */
-export function upColor(identity: UpColorIdentity, fallbackSeed = ""): string {
-	const { uid, extensionId, externalId } = identity;
-	if (extensionId !== undefined && externalId !== undefined) {
-		return colorFromSeed(extensionColorSeed(extensionId, externalId));
-	}
-	return colorFromSeed(uid || fallbackSeed);
-}
-
 // ---------------------------------------------------------------------------
 // 自带字体的体积口径
 // ---------------------------------------------------------------------------
@@ -1154,13 +1131,14 @@ export function sameIdentity(a: Identity, b: Identity): boolean {
 }
 
 /**
- * 这个人的颜色(身份版的 {@link upColor}):种子与 `upColor` 逐字节相同 —— B 站是 uid,拓展是
- * {@link extensionColorSeed} —— 主人屏幕上谁是什么颜色不因为换了读法而变。
+ * 这个人的颜色 —— 跟着人走,不跟着订阅走(ADR-0019 决策 73)。B 站的种子就是外部 id(uid):改成别的种子,
+ * 主人屏幕上每位 B 站 UP 的颜色都会变,所以这一支按来源单独留着。其他来源按 {@link extensionColorSeed}。
+ * 删了再加订阅 id 变了,颜色不变。面板与服务端出图共用这一份(ADR-0020 决策 15)。
  */
 export function identityColor(identity: Identity): string {
 	return identity.sourceKey === BILIBILI_SOURCE_KEY
-		? upColor({ uid: identity.externalId })
-		: upColor({ extensionId: identity.sourceKey, externalId: identity.externalId });
+		? colorFromSeed(identity.externalId)
+		: colorFromSeed(extensionColorSeed(identity.sourceKey, identity.externalId));
 }
 
 /**

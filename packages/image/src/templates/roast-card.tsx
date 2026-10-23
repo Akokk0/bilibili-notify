@@ -24,7 +24,7 @@ export type RoastCardCreator = {
 	 * 已经转成的 data URL(面板用的同源地址 `/api/images/<ref>` 截图加载不到)。缺省时退回首字母圆牌。
 	 */
 	avatar?: string;
-	/** 该 UP 的强调色,来自 internal 的 `upColor`(按人取色)—— 与 dashboard 上同一位 UP 的颜色一致。 */
+	/** 该 UP 的强调色,来自 internal 的 `identityColor`(按人取色)—— 与 dashboard 上同一位 UP 的颜色一致。 */
 	color: string;
 };
 

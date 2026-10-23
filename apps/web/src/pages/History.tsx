@@ -264,7 +264,7 @@ function HistoryRow({
 	// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
 	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
-	const upColor = historyRowColor(entry);
+	const creatorColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
 	const platform = isExtensionIdentity(entry.identity)
 		? subscriptionPlatformOf({ extensionId: entry.identity.sourceKey }, extensions)
@@ -290,7 +290,7 @@ function HistoryRow({
 				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
 					<RelativeTime at={entry.createdAt} />
 				</span>
-				<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
+				<Avatar name={upName} color={creatorColor} size={24} url={upAvatar} />
 				<Pill color={tone} subtle size="sm">
 					{FEATURE_DESCRIPTORS[entry.feature].label}
 				</Pill>

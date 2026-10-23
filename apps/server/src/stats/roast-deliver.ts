@@ -8,6 +8,7 @@
 
 import type { RoastCardCreator } from "@bilibili-notify/image";
 import {
+	colorFromSeed,
 	type Failure,
 	fail,
 	identityColor,
@@ -15,7 +16,6 @@ import {
 	type NotificationPayload,
 	type Subscription,
 	subscriptionIdentityOf,
-	upColor,
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { imageDataUrl, readProfileAvatar } from "../runtime/extension-push-common.js";
@@ -78,16 +78,16 @@ async function storedAvatar(deps: RoastDeliverDeps, subscriptionId: string) {
 	}
 }
 
-/** 一条订阅在卡上的样子。颜色跟着人走,与面板同一个算法(`upColor`,ADR-0020 决策 15)。 */
+/** 一条订阅在卡上的样子。颜色跟着人走,与面板同一个算法(`identityColor`,ADR-0020 决策 15)。 */
 async function cardUp(
 	deps: RoastDeliverDeps,
 	subscriptionId: string,
 	sub: Subscription | undefined,
 ): Promise<RoastCardCreator> {
-	if (!sub) return { name: UNKNOWN_UP_NAME, color: upColor({}, subscriptionId) };
+	if (!sub) return { name: UNKNOWN_UP_NAME, color: colorFromSeed(subscriptionId) };
 	const name = roastSubjectName(deps, sub);
 	const identity = subscriptionIdentityOf(sub);
-	// 颜色跟着人走:种子与面板的 `upColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
+	// 颜色跟着人走:种子与面板的 `identityColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
 	const color = identityColor(identity);
 	// 头像只认图库里那张(两支订阅一样):还没抓到(新订阅抓不到、或老资料等着开机冷刷补)就没有头像,
 	// 卡上画首字母圆牌 —— 渲染页不联网,来源地址交过去也画不出来。
@@ -109,7 +109,7 @@ export async function makeUpMeta(
 			metas.set(id, await cardUp(deps, id, subById.get(id)));
 		}),
 	);
-	return (id) => metas.get(id) ?? { name: UNKNOWN_UP_NAME, color: upColor({}, id) };
+	return (id) => metas.get(id) ?? { name: UNKNOWN_UP_NAME, color: colorFromSeed(id) };
 }
 
 /** 这份锐评提到的所有订阅 id —— 卡上与兜底文案要画的就是这几位。 */

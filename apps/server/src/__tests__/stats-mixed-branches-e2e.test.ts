@@ -32,7 +32,7 @@ import type {
 	StatsRoastRunNowResponse,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
-import { type SubscriptionTag, upColor } from "@bilibili-notify/internal";
+import { identityColor, type SubscriptionTag } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";
@@ -557,7 +557,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		expect(html).toContain(`data:image/png;base64,${avatar.toString("base64")}`);
 		expect(html).not.toContain("/api/images/");
 		// 颜色与面板同一个算法(按人)。
-		expect(html).toContain(upColor({ extensionId: FAKE, externalId: EXT_ID }));
+		expect(html).toContain(identityColor({ sourceKey: FAKE, externalId: EXT_ID }));
 	}, 15_000);
 
 	it("停用拓展那位:首页粉丝面板撤下它,盘上的文件都留着(决策 10)", async () => {

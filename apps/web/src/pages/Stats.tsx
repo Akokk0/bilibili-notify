@@ -103,7 +103,7 @@ function hours(h: number): string {
 interface UpMeta {
 	/** 名字:订阅卡那条链(`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id)。 */
 	name: string;
-	/** 跟着人走的颜色(`upColor`):与订阅卡、历史页同一个颜色。 */
+	/** 跟着人走的颜色(`identityColor`):与订阅卡、历史页同一个颜色。 */
 	color: string;
 	/** 头像:B 站是 CDN 链接,拓展是同源相对地址。缺省时 Avatar 退回首字母块 —— 订阅刚建、资料还没到。 */
 	avatar?: string;

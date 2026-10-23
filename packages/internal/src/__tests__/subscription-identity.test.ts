@@ -11,7 +11,6 @@ import {
 	RESERVED_INTEGRATION_KEYS,
 	sameIdentity,
 	subscriptionIdentityOf,
-	upColor,
 } from "../constants";
 import { ExtensionIdSchema } from "../schema/extension-manifest";
 import { makeEmptySubscription, SubscriptionSchema } from "../schema/subscriptions";
@@ -51,20 +50,15 @@ describe("subscriptionIdentityOf", () => {
 });
 
 describe("identityColor", () => {
-	it("和按两支读的 upColor 逐字节相同 —— 换读法不换主人屏幕上的颜色", () => {
-		for (const uid of ["1", "12345", "987654321"]) {
-			expect(identityColor({ sourceKey: BILIBILI_SOURCE_KEY, externalId: uid })).toBe(
-				upColor({ uid }),
-			);
-		}
-		for (const [extensionId, externalId] of [
-			["douyin", "MS4w"],
-			["acme.tiktok", "abc"],
-		] as const) {
-			expect(identityColor({ sourceKey: extensionId, externalId })).toBe(
-				upColor({ extensionId, externalId }),
-			);
-		}
+	it("B 站按外部 id、拓展按「拓展 id:外部 id」取色", () => {
+		const before = [
+			{
+				identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: "12345" },
+				color: "#fb7299",
+			},
+			{ identity: { sourceKey: "douyin", externalId: "12345" }, color: "#ffaf7b" },
+		];
+		for (const { identity, color } of before) expect(identityColor(identity)).toBe(color);
 	});
 });
 

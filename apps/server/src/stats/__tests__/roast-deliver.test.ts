@@ -10,7 +10,7 @@
  */
 
 import type { Connection, DeliveryResult, PushTarget } from "@bilibili-notify/internal";
-import { fail, makeDefaultGlobalConfig, ok, upColor } from "@bilibili-notify/internal";
+import { fail, identityColor, makeDefaultGlobalConfig, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	type BoardLike,
@@ -151,7 +151,7 @@ describe("deliverRoast — 停用的目标", () => {
  *
  * - 拓展的头像在资料里是图库引用(`avatar`),面板用的同源地址 `/api/images/<ref>` 截图的浏览器加载不到 —— 出卡前
  *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像抓进图库后同样读图库;头像还没抓到(资料里只有来源地址 `avatarUrl`)就没有头像 —— 渲染页不联网,远端图链交过去也画不出来。
- * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
+ * - 颜色跟着人走,与面板同一个算法(`identityColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
  * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
  */
 describe("buildRoastPayload — 卡上的人", () => {
@@ -236,7 +236,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		)?.creator;
 		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
 		expect(up?.name).toBe("抖音乙");
-		expect(up?.color).toBe(upColor({ extensionId: "douyin", externalId: "12345" }));
+		expect(up?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }));
 		// 兜底文案用的也是这个名字。
 		expect(out.text).toContain("抖音乙");
 	});
@@ -260,7 +260,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
 	});
 
-	it("榜单两支混着:B 站头像还没进图库时头像留空(不交远端图链);颜色 = upColor(按人,外部 id 与 uid 同串也不同色)", async () => {
+	it("榜单两支混着:B 站头像还没进图库时头像留空(不交远端图链);颜色 = identityColor(按人,外部 id 与 uid 同串也不同色)", async () => {
 		const { deps, generateRoastBoardCard } = makeCardDeps();
 		const board: BoardLike = {
 			pushText: "x",
@@ -278,8 +278,10 @@ describe("buildRoastPayload — 卡上的人", () => {
 			Record<string, unknown> & Array<Record<string, unknown>>
 		>;
 		expect(data.diligent).toHaveProperty("avatar", undefined);
-		expect(data.diligent?.color).toBe(upColor({ uid: "12345" }));
-		expect(data.pigeon?.color).toBe(upColor({ extensionId: "douyin", externalId: "12345" }));
+		expect(data.diligent?.color).toBe(
+			identityColor({ sourceKey: "bilibili", externalId: "12345" }),
+		);
+		expect(data.pigeon?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }));
 		expect(data.pigeon?.color).not.toBe(data.diligent?.color);
 		expect(String(data.pigeon?.avatar)).toMatch(/^data:image\/png;base64,/);
 		// 没存头像、资料里也没名字的拓展那位:名字退外部 id,头像留空(卡上画首字母),不塞相对地址。

@@ -74,8 +74,6 @@ export {
 	THINKING_LEVELS,
 	type ThinkingLevel,
 	UP_COLORS,
-	type UpColorIdentity,
-	upColor,
 	WEB_SEARCH_BACKEND_IDS,
 	WEB_SEARCH_BACKENDS,
 	WEBHOOK_PLATFORMS,

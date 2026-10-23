@@ -61,7 +61,7 @@ export function historyRowAvatarUrl(
 
 /**
  * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取,拓展订阅按「拓展 id:外部 id」取(决策 73):
- * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `identityColor` / `upColor`(ADR-0020 决策 15),服务端出图(周报 /
+ * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `identityColor`(ADR-0020 决策 15),服务端出图(周报 /
  * 锐评卡)用的是同一份,同一个人在页面与图上是同一个颜色。历史行用 {@link historyRowColor}。
  */
 export function subscriptionColor(sub: Subscription): string {

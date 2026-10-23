@@ -256,7 +256,7 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 		expect(data.pigeon.avatar).toBeUndefined();
 		expect(data.diligent.name).toBe("老番茄");
 		expect(data.days).toBe(30);
-		// 颜色来自 upColor —— 与 dashboard 上同一位 UP 的颜色一致。
+		// 颜色来自 identityColor —— 与 dashboard 上同一位 UP 的颜色一致。
 		expect(data.pigeon.color).toMatch(/^#[0-9a-f]{6}$/i);
 		expect(data.pigeon.color).not.toBe(data.diligent.color);
 	});
