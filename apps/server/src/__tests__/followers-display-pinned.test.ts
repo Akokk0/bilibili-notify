@@ -147,16 +147,6 @@ function makeDeps(): RouteDeps {
 		store: { getSubscriptions: () => SUBS },
 		runtime: {
 			engines: null,
-			// B 站的当前粉丝数取轮询快照;只有 b-flat 在快照里(8888),其余回落到样本末值。
-			profileRefresh: {
-				getLastEntries: () => [
-					{
-						subscriptionId: "b-flat",
-						identity: { sourceKey: "bilibili", externalId: "1002" },
-						current: 8888,
-					},
-				],
-			},
 			fansStore: createFollowersStore({
 				dataRoot: dataDir,
 				logger: { debug() {}, info() {}, warn() {}, error() {} } as never,
@@ -166,14 +156,16 @@ function makeDeps(): RouteDeps {
 				listLiveSessions: async () => [],
 				listRecording: async () => [],
 			},
-			// 拓展的当前粉丝数取它最近报的资料;e-3 停用着,资料里的 5 不算。
+			// B 站与拓展的当前粉丝数都取资料缓存;e-3 停用着,资料里的 5 不算。
 			subRuntimeStore: {
 				get: (id: string) =>
-					id === "e-1"
-						? { cachedProfile: { fans: 999 } }
-						: id === "e-3"
-							? { cachedProfile: { fans: 5 } }
-							: undefined,
+					id === "b-flat"
+						? { cachedProfile: { fans: 8888 } }
+						: id === "e-1"
+							? { cachedProfile: { fans: 999 } }
+							: id === "e-3"
+								? { cachedProfile: { fans: 5 } }
+								: undefined,
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 		},
@@ -296,7 +288,7 @@ describe("GET /api/stats/overview — 粉丝曲线(同一份数据三个时区�
 			expect(row.net1d).toBe(0);
 			expect(row.net7d).toBe(0);
 			expect(row.netWindow).toBe(35); // 原来的 25 加上首日的 10
-			// 当前粉丝取轮询快照(8888),不是样本末值 7025。
+			// 当前粉丝取资料缓存(8888),不是样本末值 7025。
 			expect(row.followers).toBe(8888);
 		},
 	);

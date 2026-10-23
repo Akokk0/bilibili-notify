@@ -1,4 +1,4 @@
-import { type CreatorProfileReport, ok, type Subscription } from "@bilibili-notify/internal";
+import { type CreatorProfileReport, fail, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { startProfileRefreshHarness } from "./profile-refresh-support.js";
 
@@ -84,5 +84,46 @@ describe("资料刷新按在册来源拉取", () => {
 		expect(alpha).toHaveBeenCalledTimes(1);
 		releaseAlpha();
 		await polling;
+	});
+});
+
+describe("资料刷新记录粉丝活跃", () => {
+	it("成功带粉丝数且启用时记 followers", async () => {
+		const p = await startProfileRefreshHarness({
+			subscriptions: [sub("sub-1", "alpha", "creator-1")],
+			sources: { alpha: async () => ok(report("甲", 120)) },
+		});
+		close = () => {
+			p.handle.dispose();
+			p.cache.dispose();
+		};
+
+		await p.handle.pollNow();
+
+		expect(p.recordActive.mock.calls).toEqual([["sub-1", "followers"]]);
+	});
+
+	it("停用、没带粉丝数与失败时都不记 followers", async () => {
+		const p = await startProfileRefreshHarness({
+			subscriptions: [
+				sub("disabled", "alpha", "off", false),
+				sub("without-followers", "alpha", "no-count"),
+				sub("failed", "alpha", "failed"),
+			],
+			sources: {
+				alpha: async (identity) =>
+					identity.externalId === "failed"
+						? fail("unavailable", "upstream unavailable")
+						: ok({ name: identity.externalId }),
+			},
+		});
+		close = () => {
+			p.handle.dispose();
+			p.cache.dispose();
+		};
+
+		await p.handle.pollNow();
+
+		expect(p.recordActive).not.toHaveBeenCalled();
 	});
 });

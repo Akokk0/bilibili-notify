@@ -51,8 +51,6 @@ interface Fixture {
 	profileFans?: Record<string, number>;
 	/** 此刻有一场在播的拓展订阅(场次模块手里有这一场)。 */
 	liveExt?: Set<string>;
-	/** 粉丝轮询的快照(按订阅 id 记);缺省 = 轮询没起来。 */
-	fansEntries?: Array<{ subscriptionId: string; uid?: string; current: number }>;
 	/** `false` = 引擎没挂上。 */
 	engines?: boolean;
 }
@@ -120,7 +118,6 @@ function makeDeps(f: Fixture): RouteDeps {
 									? { subscriptionId: id, extensionId: EXT, detectedAt: NOW - H }
 									: undefined,
 						},
-			profileRefresh: f.fansEntries ? { getLastEntries: () => f.fansEntries } : null,
 		},
 		store: {
 			getSubscriptions: () => [
@@ -342,7 +339,7 @@ describe("拓展行:粉丝(决策 8)", () => {
 		expect(row.activity).toEqual([0, 0, 0, 0, 0]);
 	});
 
-	it("当前粉丝取资料缓存(比样本新);停用的退回样本末值 —— 同 B 站的快照不含停用的", async () => {
+	it("当前粉丝取资料缓存(比样本新);停用的退回样本末值", async () => {
 		const samples = everyDay(5).map((sampledAt, i) => ({ sampledAt, followers: 1000 + 100 * i }));
 		const body = await get(
 			makeDeps({
@@ -439,8 +436,7 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 				bili: [{ id: B1, uid: "42" }],
 				recordedBySamples: [B1],
 				ext: [{ id: E1, externalId: "MS4wLjAB/甲" }],
-				fansEntries: [{ subscriptionId: B1, uid: "42", current: 1060 }],
-				profileFans: { [E1]: 540 },
+				profileFans: { [B1]: 1060, [E1]: 540 },
 				liveExt: new Set([E1]),
 				samples: {
 					// 05-13 有两个样本,取日末值 1010;05-14 没有样本。窗口之前的样本不在夹具里 → 首日没有基线。

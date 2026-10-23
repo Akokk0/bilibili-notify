@@ -16,7 +16,7 @@ const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 4, 16, 12, 0, 0);
 
 interface Fixture {
-	subs?: Array<{ uid: string }>;
+	subs?: Array<{ uid: string; enabled?: boolean }>;
 	samples?: Record<string, Array<{ sampledAt: string; followers: number }>>;
 	posts?: Record<string, Array<{ id: string; hasVideo: boolean; publishedAt: string }>>;
 	sessions?: Record<
@@ -24,8 +24,8 @@ interface Fixture {
 		Array<{ startedAt: string; endedAt?: string; peakTotalViewers?: number }>
 	>;
 	liveSubscriptions?: string[];
-	/** 粉丝轮询的快照,按 uid 写(好读);轮询按订阅 id 记,makeDeps 替它补上 `subscriptionId`。 */
-	fansEntries?: Array<{ uid: string; current: number }>;
+	/** 资料缓存里的当前粉丝数,按 uid 写(好读)。 */
+	profileFans?: Record<string, number>;
 	/**
 	 * 「在记」账,按 uid 写。缺省(整个字段不写)= 每位订阅三项都从很早以前一直在记;写 `{}` = 谁都没在记;
 	 * 某位不在表里 = 这位什么都没记。
@@ -71,18 +71,19 @@ function makeDeps(f: Fixture): RouteDeps {
 							f.liveSubscriptions?.includes(id) ? { subscriptionId: id } : undefined,
 					}
 				: null,
-			profileRefresh: f.fansEntries
-				? {
-						getLastEntries: () =>
-							f.fansEntries?.map((e) => ({ subscriptionId: subId(e.uid), ...e })),
-					}
-				: null,
+			subRuntimeStore: {
+				get: (id: string) => {
+					const fans = f.profileFans?.[uidOf(id)];
+					return fans === undefined ? undefined : { cachedProfile: { fans } };
+				},
+			},
 		},
 		store: {
 			getSubscriptions: () =>
 				(f.subs ?? []).map(({ uid, ...s }) => ({
 					id: subId(uid),
 					identity: { sourceKey: "bilibili", externalId: uid },
+					enabled: true,
 					...s,
 				})),
 		},
@@ -205,11 +206,11 @@ describe("GET /api/stats/overview — 窗口净增口径", () => {
 });
 
 describe("GET /api/stats/overview — 数据投影", () => {
-	it("fans 优先取 poller 快照(比 jsonl 末行新)", async () => {
+	it("fans 优先取资料缓存(比 jsonl 末行新)", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			samples: { "1": [{ sampledAt: new Date(NOW - DAY).toISOString(), followers: 100 }] },
-			fansEntries: [{ uid: "1", current: 175 }],
+			profileFans: { "1": 175 },
 		});
 		expect((await get(deps)).rows[0]?.followers).toBe(175);
 	});

@@ -37,7 +37,7 @@ export interface ProfileRefreshOptions {
 	subscriptionStore: SubscriptionStore;
 	subRuntimeStore: SubRuntimeStore;
 	fansStore: Pick<FollowersStore, "findEarliest" | "findNearestBefore">;
-	recorder: Pick<StatsRecorderCore, "recordFollowers" | "drop">;
+	recorder: Pick<StatsRecorderCore, "recordActive" | "recordFollowers" | "drop">;
 	profileCache: ProfileCacheWriter;
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	sources: Pick<SourceRegistry, "get" | "list">;
@@ -188,6 +188,10 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			code: "creator_not_found",
 		});
 		const profile = result;
+		const key = statsFileKey(sub);
+		if (profile.followers !== undefined && subscriptionNow(sub.id)?.enabled === true) {
+			opts.recorder.recordActive(key, "followers");
+		}
 		let changed = false;
 		try {
 			changed = await opts.profileCache.write(sub.id, {
@@ -205,8 +209,9 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		}
 		if (changed) opts.profileCache.announce([sub.id]);
 		// 写完再看一眼:拉取途中删掉的订阅不能因为资料晚到而多记一条样本。
-		if (profile.followers !== undefined && !disposed && subscriptionNow(sub.id) !== undefined) {
-			await opts.recorder.recordFollowers(statsFileKey(sub), profile.followers);
+		const current = subscriptionNow(sub.id);
+		if (profile.followers !== undefined && !disposed && current?.enabled === true) {
+			await opts.recorder.recordFollowers(key, profile.followers);
 		}
 	}
 

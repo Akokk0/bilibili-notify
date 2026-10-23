@@ -65,7 +65,6 @@ export const RATCHET = {
 	// 3b 直播并进来源(来源自己造直播、自己把上报器给它)那一天,这一格与这条递送一起消失,数归 3。
 	"apps/server/src/index.ts": 2,
 	"apps/server/src/routes/cards.ts": 8,
-	"apps/server/src/routes/stats.ts": 4,
 	"apps/server/src/routes/subscriptions.ts": 6,
 	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的。
 	// 3a-28 有了来源登记表里中立的「来源在跑」读口,这一处已消失(同片 20 → 17:另两处是动态那一半的订阅视图与操作翻译)。
@@ -79,7 +78,7 @@ export const RATCHET = {
 	// 3b-22(20 → 3):B 站直播并进来源、女仆统一读在播表后,只剩关注同步的 `biliLoggedIn` 声明与两处调用。
 	"apps/server/src/runtime/engines.ts": 3,
 	"apps/server/src/runtime/follow-sync.ts": 2,
-	"apps/server/src/stats/bili-source.ts": 10,
+	"apps/server/src/stats/bili-source.ts": 9,
 	"apps/server/src/stats/extension-source.ts": 3,
 	"apps/server/src/stats/recorder.ts": 5,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。

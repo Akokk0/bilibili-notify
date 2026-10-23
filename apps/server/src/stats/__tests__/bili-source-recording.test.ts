@@ -5,7 +5,6 @@
  *   登录无效不记;没绑好登录读口之前当作没在跑;
  * - 给每条「启用 ∧ 开关开着」的 B 站订阅记当前整点小时的 `posts` / `live`;
  * - 作品行不在 B 站适配里(3a-27):B 站与拓展共用 `recorder.ts` 里的 `post-detected` 监听,该不该记由核心入口判;
- * - `followers-refreshed` 里 B 站订阅、启用着、采样就在这个小时的条目记 `followers`。
  * 假时钟、假总线;落进记录器的调用看 `recordActive`。
  */
 
@@ -67,7 +66,6 @@ function setup() {
 	const source = attachBiliStatsSource({
 		bus,
 		recorder,
-		now: () => new Date(Date.now()),
 		subscriptions: () => subs as never,
 		isLoggedIn: () => loggedIn,
 		forgetOpenSessions,
@@ -178,32 +176,5 @@ describe("B 站适配 —— 登录读口没绑好之前当作没在跑", () => 
 				.sort(),
 		).toEqual(["s1/live", "s1/posts", "s2/posts"]);
 		handle.dispose();
-	});
-});
-
-describe("B 站适配 —— 作品开关与粉丝", () => {
-	it("followers-refreshed:B 站订阅、启用着、本小时采样的条目记 followers;拓展、停用、老条目不记", () => {
-		subs = [bili("s1", "1"), bili("off", "3", { enabled: false })];
-		const { trigger, recorder } = setup();
-		recorder.recordActive.mockClear();
-		const entry = (subscriptionId: string, refreshedAt: string, sourceKey = "bilibili") => ({
-			subscriptionId,
-			identity: { sourceKey, externalId: subscriptionId },
-			current: 1,
-			refreshedAt,
-			deltaSubscribed: null,
-			delta24h: null,
-			delta7d: null,
-		});
-		trigger("followers-refreshed", {
-			entries: [
-				entry("s1", new Date(T0 - 60_000).toISOString()),
-				entry("off", new Date(T0 - 60_000).toISOString()),
-				entry("ext-1", new Date(T0 - 60_000).toISOString(), "douyin"),
-				// 这一轮没采到、快照里还留着上一轮的(两小时前):不算「这个小时拉成功了」。
-				entry("s1", new Date(T0 - 2 * 3_600_000).toISOString()),
-			],
-		});
-		expect(recorder.recordActive.mock.calls).toEqual([["s1", "followers", T0 - 60_000]]);
 	});
 });

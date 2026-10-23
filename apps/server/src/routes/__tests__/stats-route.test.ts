@@ -22,13 +22,26 @@ interface StubOpts {
 	aiEnabled?: boolean;
 	/** 数据统计总开关,缺省开着。 */
 	statsEnabled?: boolean;
+	/** 样本末值:资料缓存没有当前数时,供启用中的订阅回退。 */
+	historyFans?: number;
 }
 
 function makeDeps(opts: StubOpts = {}) {
-	const state = { liveSubscriptionIds: opts.liveSubscriptionIds ?? [], fans: 100 };
+	const state = {
+		liveSubscriptionIds: opts.liveSubscriptionIds ?? [],
+		fans: 100,
+		enabled: true,
+		historyFans: opts.historyFans,
+	};
 	const deps = {
 		store: {
-			getSubscriptions: () => [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }],
+			getSubscriptions: () => [
+				{
+					id: "s1",
+					identity: { sourceKey: "bilibili", externalId: "1" },
+					enabled: state.enabled,
+				},
+			],
 			getGlobals: () => ({
 				ai: { enabled: opts.aiEnabled ?? true },
 				stats: { enabled: opts.statsEnabled ?? true },
@@ -40,10 +53,13 @@ function makeDeps(opts: StubOpts = {}) {
 				liveSession: (id: string) =>
 					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},
-			profileRefresh: {
-				getLastEntries: () => [{ subscriptionId: "s1", uid: "1", current: state.fans }],
+			fansStore: {
+				listSamplesSince: async () =>
+					state.historyFans === undefined
+						? []
+						: [{ sampledAt: "2026-05-15T10:00:00.000Z", followers: state.historyFans }],
+				findNearestBefore: async () => undefined,
 			},
-			fansStore: { listSamplesSince: async () => [], findNearestBefore: async () => undefined },
 			statsStore: {
 				listRecording: async () => {
 					if (opts.failOverview) throw new Error("盘挂了");
@@ -52,7 +68,16 @@ function makeDeps(opts: StubOpts = {}) {
 				listPosts: async () => [],
 				listLiveSessions: async () => [],
 			},
-			subRuntimeStore: { get: () => undefined },
+			subRuntimeStore: {
+				get: () => ({
+					cachedProfile: {
+						name: "甲",
+						sign: "",
+						fans: state.fans,
+						lastRefreshedAt: "2026-05-16T10:00:00.000Z",
+					},
+				}),
+			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 		},
 	} as unknown as RouteDeps;
@@ -75,7 +100,7 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 		expect(after.rows[0].live).toBe(true);
 	});
 
-	it("粉丝快照变化后也立刻反映", async () => {
+	it("资料缓存里的粉丝数变化后也立刻反映", async () => {
 		const { deps, state } = makeDeps();
 		const app = createStatsRoute(deps);
 
@@ -85,6 +110,17 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 		state.fans = 12_345;
 		const after = (await (await app.request("/overview?days=7&tz=0")).json()) as any;
 		expect(after.rows[0].followers).toBe(12_345);
+	});
+
+	it("停用的订阅不取资料缓存里的此刻粉丝数,回退到样本末值", async () => {
+		const { deps, state } = makeDeps({ historyFans: 80 });
+		state.enabled = false;
+
+		const body = (await (
+			await createStatsRoute(deps).request("/overview?days=7&tz=0")
+		).json()) as any;
+
+		expect(body.rows[0].followers).toBe(80); // 资料缓存里是 100,停用的不取
 	});
 
 	it("输入全没变时照常命中缓存 —— 别把缓存改成摆设", async () => {

@@ -4,12 +4,11 @@ import {
 	type MessageBus,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { HOUR_MS } from "../followers/cutoff.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
 
 /**
- * 统计的 **B 站适配**(ADR-0020 决策 17):记 B 站的「来源在跑」、粉丝与登录失效后的在飞场次。
+ * 统计的 **B 站适配**(ADR-0020 决策 17):记 B 站的「来源在跑」与登录失效后的在飞场次。
  *
  * B 站的规矩只写在这里。作品行不在这里:B 站与拓展共用 `recorder.ts` 里的 `post-detected` 监听。
  *   - 直播场次不在这里:所有来源都走中立监听(`live-source.ts`)的 `live-session-changed`;
@@ -17,15 +16,14 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - **「来源在跑」= B 站登录有效**(ADR-0027 决策 2):定时(每 {@link BILI_SOURCE_CHECK_MS})看一眼登录状态,有效就给每条
  *     满足条件的订阅记当前小时的 `posts` / `live`;挂上时、`auth-restored` 时各立刻看一眼;登录无效不记。状态每次现读
  *     (`isLoggedIn`),事件只用来立刻补记一次,不拿它记状态;
- *   - `followers-refreshed` → 条目是 B 站订阅的、启用着的,记它采样所在小时的 `followers`(「这个小时拉资料成功过」)。
+ *   - 粉丝「在记」由中立的资料刷新引擎记,这里不按快照再记一遍。
  *
  * 直播文件也按订阅 id 分;登录失效时只忘 B 站来源名下的场次,别的来源在飞的场次不受影响。
  */
 export interface BiliStatsSourceOptions {
 	bus: MessageBus;
 	recorder: StatsRecorderCore;
-	now: () => Date;
-	/** 当前全部订阅(拓展的会被跳过)。筛 B 站订阅、看「在记」与粉丝的开关用。 */
+	/** 当前全部订阅(拓展的会被跳过)。筛 B 站订阅、看 posts / live 的开关用。 */
 	subscriptions: () => readonly StatsSubscription[];
 	/** B 站现在登录有效吗。每次现读。没绑好之前由调用方回 false。 */
 	isLoggedIn: () => boolean;
@@ -37,7 +35,7 @@ export interface BiliStatsSourceOptions {
 export const BILI_SOURCE_CHECK_MS = 5 * 60_000;
 
 export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable & { tick(): void } {
-	const { bus, recorder, now } = opts;
+	const { bus, recorder } = opts;
 	const handles: Disposable[] = [];
 
 	/** 这个小时的账:登录有效才记,给每条满足条件的 B 站订阅记 `posts` / `live`。 */
@@ -55,24 +53,6 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	tick();
 
 	handles.push(bus.on("auth-restored", tick));
-
-	handles.push(
-		bus.on("followers-refreshed", ({ entries }) => {
-			const nowMs = now().getTime();
-			const enabledIds = new Set<string>();
-			for (const sub of opts.subscriptions()) {
-				if (sub.enabled === true) enabledIds.add(sub.id);
-			}
-			for (const entry of entries) {
-				if (entry.identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
-				if (!enabledIds.has(entry.subscriptionId)) continue;
-				// 条目的 `refreshedAt` 是这次采样的时刻;快照里没跟上这一轮的老条目(采样失败)不算「这个小时拉成功了」。
-				const sampledAt = Date.parse(entry.refreshedAt);
-				if (!Number.isFinite(sampledAt) || nowMs - sampledAt >= HOUR_MS) continue;
-				recorder.recordActive(statsFileKey({ id: entry.subscriptionId }), "followers", sampledAt);
-			}
-		}),
-	);
 
 	handles.push(
 		// cookie 失效 → B 站来源把所有 listener 拆掉,但**不发 idle**

@@ -408,7 +408,7 @@ export interface StatsRecorderOptions {
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
 export interface StatsRecorderHandle
 	extends Disposable,
-		Pick<StatsRecorderCore, "drop" | "recordFollowers"> {
+		Pick<StatsRecorderCore, "drop" | "recordActive" | "recordFollowers"> {
 	/**
 	 * 给当前仍在播的场次补一帧下播,时刻取「现在」。**关服前调用**。
 	 *
@@ -463,7 +463,6 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	const biliSource = attachBiliStatsSource({
 		bus: opts.bus,
 		recorder,
-		now,
 		subscriptions: opts.subscriptions,
 		isLoggedIn: () => isLoggedIn?.() === true,
 		forgetOpenSessions: liveSource.forgetOpenSessions,
@@ -489,6 +488,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		compactRecording: (at) => recorder.compactRecording(at),
 		clear: () => recorder.clear(),
 		drop: (key) => recorder.drop(key),
+		recordActive: (key, kind, atMs) => recorder.recordActive(key, kind, atMs),
 		recordFollowers: (key, value) => recorder.recordFollowers(key, value),
 		bindLoginState(next) {
 			isLoggedIn = next;

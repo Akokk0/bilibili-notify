@@ -7,7 +7,6 @@ import type {
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import {
-	BILIBILI_SOURCE_KEY,
 	fail,
 	issuesFromZod,
 	ok,
@@ -36,10 +35,6 @@ import {
 } from "../stats/roast-generate.js";
 import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
-
-/** 这条订阅订的是 B 站吗 —— 统计页两支的取数各算各的(ADR-0020 决策 9),分岔都看身份的来源。 */
-const fromBilibili = (sub: Subscription): boolean =>
-	subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 
 /**
  * `GET /api/stats/overview?days=30&tz=-480` —— 数据统计 Tab 的唯一数据源。
@@ -154,19 +149,10 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 在播只看场次引擎手里有没有这一场:两种来源都从同一个中立口认。
 		const isLive = (sub: Subscription): boolean =>
 			deps.runtime.engines?.liveSession(sub.id) !== undefined;
-		// 此刻的粉丝数:B 站取资料刷新的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
-		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
-		// 右端点不该再往前走。两边没有就回退到样本末值(见成行那里)。
-		// 粉丝轮询的快照按订阅 id 记(一条订阅一行)。拓展的那几行它也有,可这里取资料缓存更直接(同一个数)。
-		const fansBySub = new Map(
-			(deps.runtime.profileRefresh?.getLastEntries() ?? []).map((e) => [e.subscriptionId, e]),
-		);
+		// 此刻的粉丝数取资料缓存:在册来源每轮刷新都会写,拓展每报一次也会合并;停用的曲线停了,
+		// 右端点不该再往前走。没有就回退到样本末值(见成行那里)。
 		const currentFans = (sub: Subscription): number | undefined =>
-			fromBilibili(sub)
-				? fansBySub.get(sub.id)?.current
-				: sub.enabled
-					? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans
-					: undefined;
+			sub.enabled ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans : undefined;
 		const liveNow = subs.map(isLive);
 		const fansNow = subs.map(currentFans);
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。
@@ -278,8 +264,8 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 				// 键是订阅 id,身份随行带着(ADR-0020 决策 1 的 🔗 / 18,同推送历史)。
 				subscriptionId: sub.id,
 				identity,
-				// 当前粉丝优先用内存里的最新值(B 站的轮询快照 / 拓展的资料),它比 jsonl 末行更新;
-				// 没有(轮询还没起来、停用了、拓展还没报过)时回退到采样末值。
+				// 当前粉丝优先用资料缓存里的最新值(只有启用着的才取),它比 jsonl 末行更新;
+				// 没有(资料刷新还没跑到、停用了、拓展还没报过)时回退到采样末值。
 				followers: one.followers ?? samples.at(-1)?.followers ?? null,
 				net1d: sumTail(series, 1),
 				// 窗口装不下 7 天就没法给出 7 天口径 —— 拿 3 天的和冒充 7 天更糟。

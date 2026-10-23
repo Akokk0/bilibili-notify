@@ -61,6 +61,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 	const snapshots: FollowersRefreshEntry[][] = [];
 	const changed: string[][] = [];
 	const recordFollowers = vi.fn(async () => {});
+	const recordActive = vi.fn();
 	const sourceCalls: Array<{ sourceKey: string; externalId: string }> = [];
 	const logger = {
 		debug: vi.fn(),
@@ -117,7 +118,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 			load: vi.fn(async () => {}),
 		} as never,
 		fansStore: fans,
-		recorder: { recordFollowers, drop: vi.fn() },
+		recorder: { recordActive, recordFollowers, drop: vi.fn() } as never,
 		profileCache: cache,
 		problems,
 		sources: registry,
@@ -139,6 +140,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 		cache,
 		changed,
 		handle,
+		recordActive,
 		recordFollowers,
 		logger,
 		runtime,
@@ -240,6 +242,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 		sources,
 		fetchProfile,
 		recorder: {
+			recordActive: vi.fn(),
 			async recordFollowers(key, value) {
 				if (!opts.isStatsEnabled()) return;
 				const sample = { sampledAt: new Date().toISOString(), followers: value };

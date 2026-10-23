@@ -126,10 +126,7 @@ function setup(
 	return { bus, source, recorder, trigger };
 }
 
-let clock: number;
-
 beforeEach(() => {
-	clock = NOW;
 	vi.clearAllMocks();
 });
 
@@ -364,7 +361,6 @@ describe("live-session-changed → 一场直播", () => {
 		] as const) {
 			const { recorder, trigger } = setup();
 			for (const startedAt of [new Date(NOW + HOUR).toISOString(), "不是时间"]) {
-				clock += 1;
 				trigger(
 					"live-session-changed",
 					start(id, sourceKey, {
@@ -422,7 +418,6 @@ describe("登录失效后忘掉在飞的场次", () => {
 		attachBiliStatsSource({
 			bus,
 			recorder,
-			now: () => new Date(clock),
 			subscriptions: () => [BILI_SUB, EXT_SUB],
 			isLoggedIn: () => true,
 			forgetOpenSessions: source.forgetOpenSessions,
