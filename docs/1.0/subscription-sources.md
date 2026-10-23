@@ -417,6 +417,8 @@ interface AiToolProvider {
 interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版登记
 ```
 
+🔗 2026-10-23（3b-34）：`AiTool` / `AiToolResult` / `AiToolLabelFields` 已住 `packages/internal/src/ai-tool.ts`，`@bilibili-notify/ai` 照旧再导出；`AiToolProvider` 也住这个文件，今天只造了 `readOnly`，`chat?` / `skills?` 没造（`skills` 随 3b-35 的 B 站版周报）；`readOnly` 当前不挂推送路径。拓展清单的 `contributes.aiTools` 仍不开。
+
 | 接口 | 核心负责 | 来源负责 |
 | --- | --- | --- |
 | `LinkResolver` | 闸门与出口，见「链接预览」 | 认链接（`matches`）、解析成 `LinkPreview`（出的是 `Post`）；可选给原生分享的中立描述 |
@@ -456,7 +458,8 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - 中立工具的参数统一叫 `creator`，值是「来源键:外部 id」（按第一个冒号切）；核心工具参数里不许出现 `uid`（进 AI 约束守卫）。`list_subscriptions` 与 `search_creators` 的返回带着它。没订阅的人，读缓存类工具答查不到 —— 只有 `get_creator_profile` 例外（10-15 主人定）：资料缓存里没有这个人时，回落调一次来源的 `fetchProfile`（3b-24 造，在那之前先答查不到），交名字、粉丝数、简介；等级、视频数这类 B 站独有的不带。内置技能「找创作者」「创作者 PK」本来就冲着没订阅的人去，靠这一条不废一半。
 - **六个内置技能**全部跨来源、只用中立工具；`find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名。技能改名没有迁移改写（0.x 的女仆技能不迁，见 ADR-0030 决策 1 下 10-14 的 🔗）。
 - 统计总开关关着时，`get_creator_posts` / `get_creator_stats` 回 `not_configured`（照锐评的先例）；注入的工具失败也按结果形状返回；B 站工具的失败码走上面「B 站返回码的翻译表」。`searchCreators` 这一期造、B 站实现，`search_creators` 工具读它。
-- **来源独有的数据**经来源的 `AiToolProvider` 登记只读工具：B 站的总播放、获赞、视频列表；B 站版的周报由 B 站自己以技能提供。
+- **来源独有的数据**经来源的 `AiToolProvider` 登记只读工具：B 站的总播放、获赞、视频列表；B 站版的周报由 B 站自己以技能提供。🔗 2026-10-23（3b-34）：登记表是 `apps/server/src/ai/tool-provider-registry.ts` 的 `createAiToolProviderRegistry`，挂在 `AppRuntime.aiToolProviders`；来源经 `SourceContext.registerAiToolProvider` 登记，键取来源键，来源停下自动撤。`CommentaryGenerator.setProvidedTools(get)` 每次请求现取提供方的只读工具，挂在聊天与「试推送 / 试一句」上（凡挂核心工具的地方）；推送路径（点评 / 锐评）不挂。分发与标签的顺序是注入的 > 提供方的 > 核心。提供方起本名，宿主统一加命名空间，全名是 `<命名空间>__<本名>`，命名空间 = 来源键里 `[A-Za-z0-9_-]` 以外的字符换成 `_`（`acme.douyin` 的 `get_videos` → `acme_douyin__get_videos`）；本名非法、同组重名、全名超 64 或命名空间相撞时登记即抛。技能编辑器的工具名单每次现取核心工具 + `web_search` + 登记表。
+
 - `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。缺工具的女仆技能面板自动隐藏；面板里找不到工具的 3 条死标签（`subscribe_user`、`unsubscribe_user`、`update_subscription`）删掉。
 - 工具返回的图也是 `ImageRef`；看图时由宿主注入的读图函数读图库，`packages/ai` 不碰磁盘。
 - **提示词跟着来源叫**：内置人格、卡片工坊、锐评、内置技能与工具说明里的平台叫法改用 `{creatorNoun}`、`{postNoun}`、`{sources}`，调用时由核心按这次涉及的订阅填（规矩同「叫法」）；主人自己写的不改写，内置预设改版照旧亮「默认文案有更新」；风格性的写法（「B 站弹幕解说员」「B 站梗」）改成中性。
@@ -482,6 +485,8 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 | `AiToolProvider` | B 站独有数据的只读工具（总播放、获赞、视频列表）与 B 站版周报技能 |
 | `devtools/` | `DevtoolsProvider`，只在开发版登记；场景只经 B 站自己的 ctx 做事 |
 | 翻译表 | 大航海等级表与等级名（`guard_level` 反向换算）、档色（原面板的 `guard-levels.ts`，进 B 站的描述符）、醒目留言的档位规矩、返回码翻译表（数字码 → 标准码，见下）、响应解包、CDN 缩放后缀与 Referer、「大航海舰队」文案 |
+
+🔗 2026-10-23（3b-34；34-3 落成后）：B 站两把在 `apps/server/src/bilibili/ai-tools.ts`，由 `createBiliAiToolProvider` 交来源在 `start(ctx)` 里登记；本名 `get_up_totals`（原 `get_user_stats`）/ `get_up_videos`（原 `get_user_videos`），全名 `bilibili__get_up_totals` / `bilibili__get_up_videos`，参数都收 `creator`。来源键不是 B 站或外部 id 不合格式回 `invalid`；失败码走 B 站的翻译表，不再一律 `unavailable`。回给模型的话在 `apps/server/src/bilibili/ai-tool-texts.ts`，写死中文守卫的白名单由三份变四份；标签进字典（`bilibili.aiTools.*`）。`packages/ai` 的 `BiliReader` 与两把过渡工具删净，`packages/ai` 不再有任何 B 站认知；B 站版周报技能不在这一段的 `readOnly` 里，随 3b-35。
 
 - **只经中立接口进核心**，在 `compose.ts` 登记（见 [architecture.md](./architecture.md)）。
 - **只报 uid**：B 站按 uid（即 `externalId`）上报，由核心展开成订阅 id；B 站不知道订阅 id，只用 `ctx.subscriptions()` 的名单决定拉谁。

@@ -16,6 +16,7 @@
     - 中立工具加第六把 `get_creator_stats(creator, days?)`，读统计仓；`search_creators(source, query)`；`get_creator_posts` 读统计仓最近几条。
     - 六个内置技能全部跨来源、只用中立工具；`find-up` → `find-creator`、`up-pk` → `creator-pk`，旧名留别名。
     - B 站独有的数据（总播放、获赞、视频列表）由 B 站的 `AiToolProvider` 登记只读工具，B 站版的周报由 B 站自己以技能提供。
+    - 🔗 2026-10-23（3b-34，主人定；B 站这一段 34-3 落成后）：**工具提供方的登记与命名空间**。来源在 `start(ctx)` 里经 `SourceContext.registerAiToolProvider(provider)` 登记，键取来源键，来源停下时自动撤；登记表是 `apps/server/src/ai/tool-provider-registry.ts` 的 `createAiToolProviderRegistry`，挂在 `AppRuntime.aiToolProviders`。提供方只起本名，宿主统一加命名空间，模型与技能看到的全名是 `<命名空间>__<本名>`，命名空间 = 来源键里 `[A-Za-z0-9_-]` 以外的字符换成 `_`（`acme.douyin` 的 `get_videos` → `acme_douyin__get_videos`）；本名非法、同组重名、全名超 64 或命名空间相撞时登记即抛。B 站两把搬进 `apps/server/src/bilibili/ai-tools.ts`，由 `createBiliAiToolProvider` 交来源登记：`get_up_totals`（原 `get_user_stats`）与 `get_up_videos`（原 `get_user_videos`），全名分别为 `bilibili__get_up_totals` / `bilibili__get_up_videos`，参数都收 `creator`；来源键不是 B 站或外部 id 不合格式回 `invalid`，失败码走 B 站的翻译表。
     - `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。
     - 🔗 2026-10-14（3b-33，主人定）：**来源的 `searchCreators` 这一期造、B 站实现、只给 AI 的搜人工具用**；`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期。
     - 🔗 2026-10-14（3b-53，主人定；落细处主会话照规矩定）：**技能改名不再有迁移改写**。0.x 升 1.0 时 `maid-skills/` 与女仆对话都不带进新代（见 ADR-0022 的 🔗），所以 `find-up` → `find-creator`、`up-pk` → `creator-pk` 没有旧数据要改写；内置技能改名后旧的斜杠名照上面「旧名留别名」。技能里写了查不到的工具名记一条 warn；主人自建技能撞上内置新名，照今天的规矩（读不进来、说明原因，不删不改）。
