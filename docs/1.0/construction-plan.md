@@ -427,7 +427,7 @@
 | 日志级别的 `core` 键会和叫 `core` 的拓展撞名（`logging.levels` 是核心模块 + 集成键混放）：`core` 进保留 id 表，或把集成键分开放 | ✅ 3a-38 已落：`core` 进「拓展不许用的 id」（`RESERVED_EXTENSION_IDS`），不进内置集成的键表（那张表被当「内置集成有哪些」读） |
 | 桥迁 v3 时必须抬 `extensions/bridge/extension.json` 的 `version`（现在 `0.0.1`，同号发出去市场永远不提示更新）；具体号发 alpha 时定 | 3b 抬号，6 定号 |
 | 渲染器运行时从 `s1.hdslb.com` 拉舰长图标（`packages/image/src/image-renderer.ts` 的 `GUARD_LEVEL_IMG`），改成本地资产：B 站在 `bilibili/` 声明 `guard` 体系时用 `ctx.storeImage` 把三档图标存成 `tier.icon`，出图器只内联引用。守卫 11 的 `hdslb` 会在这里变红 | 3a（10-02 从 3b 挪进第 2 期 ㉓，理由是不挪的话出图器零联网过不了、会员卡只能画占位；10-03 出图器零联网随抓图服务挪进 3a，它跟着回去，和 `ctx.storeImage` 一起落；三档图标的字节从哪来到时定） |
-| 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b |
+| 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b ✅ 3b-25 已落（10-23）：批量查回 `unauthorized` 整批跳过、不降级，关注同步住 `bilibili/follow-sync.ts` |
 | 直播监听的唯一判定（internal）：「开着」只看开关、不看有没有目标（ADR-0027 决策 1）；首页的「不会被监听」与直播就绪判断都改用它。已知 bug 就落在这条上（见「施工中顺手修」），别拖到最后。🔗 3a-31 已把首页那句的**判定**改成只看（折好的）开关、不再数推送目标（文案改成「没开直播推送」）。✅ 3b-14 已落（10-13）：判定住 `packages/internal/src/live-monitor.ts`（零依赖子路径 `@bilibili-notify/internal/live-monitor`，主入口也转出），入参是五把开关加 `specialDanmaku` / `specialUserEnter` 两个布尔；服务端三处（直播引擎、统计、`getModuleState` 的 `liveReady`）与面板首页「没开直播推送」那句都读它，手抄的键表全删；首页「直播」那一格改成只看开关与特别关注、不再数推送目标，面板那句也算上了特别弹幕 / 特别进场。🔗 3b-16 改判（10-13 主人定）：五把直播类开关任一开着，或（`viewerChat` 开着且名单上有人带 `viewerChat`），或（`viewerEnter` 开着且名单上有人带 `viewerEnter`）；两把键 `specialDanmaku` / `specialUserEnter` 改名 `viewerChat` / `viewerEnter`，见 [data-model.md](./data-model.md)。`getModuleState().live` 还要该订阅的来源实现了直播：在册来源有 `fetchLiveStatus`，或拓展声明了直播周期 | 3b；首页在 4 |
 | 密钥打码：schema 标 `secret: true`、服务端按 `MaskedSecret` 下发；面板那一半（统一密钥输入框） | 3a；面板在 4 |
 | 重启能力的预检 `RestartAbility` 不能重启时还是 `{ can: false, reason }`（`source-run` / `unsupervised`）：按 ADR-0026 决策 2 改成 `code` + `message`，系统页与拓展页读它的地方同期跟上（10-03 ⑱a 施工中发现，主人定归期） | 第 4 期 |
@@ -492,7 +492,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 晚登记的适配器收不到对账：拓展的推送适配器在开机对账之后才登记，对账（今天的 `reconcile`）就调不到它 | 3a | 登记即 `start`（ADR-0024 决策 3） |
 | AI 工具失败在面板上显示成功：工具失败时返回一段字符串，只有抛错才记失败 | 3b | AI 工具随 ADR-0030 改写时按结果形状返回 |
 | 指令出错不回话：处理函数抛错只打 warn | 3b | `CommandDef.run` 返回结果形状；失败回「『{指令名}』没办成：{message}」，抛错回「出错了，详情在日志里」并记错误日志（ADR-0031 决策 1） |
-| 开机关注同步改了 `followed` 却不发事件，面板不跟着变 | 3b | 关注同步搬进 `bilibili/`、`followed` 进 B 站的 `ctx.state`；补关注失败按 `follow_failed` 报进问题表，问题表变了发 `problems-changed` |
+| 开机关注同步改了 `followed` 却不发事件，面板不跟着变 | 3b | 关注同步搬进 `bilibili/`、`followed` 进 B 站的 `ctx.state`；补关注失败按 `follow_failed` 报进问题表，问题表变了发 `problems-changed`。✅ 3b-25 已落（10-23）：`followed` 不再存（问题表顶替），订阅回应带 `problems`，面板订阅列表听 `problems-changed` 重取 |
 | 首页「不会被监听」只看有没有配直播推送目标，和服务端的判定对不上 | 3b 判定；首页在 4 | 见「零碎施工项」的直播监听唯一判定。🔗 3a-31 已先把首页这句改成只看折好的开关（不再数目标）。✅ 3b-14 已落（10-13）：判定并成 internal 的 `needsLiveMonitor`，面板这句与它同一份，「特别弹幕 / 特别进场」两项也算上了（首页这一片已改用它，Dashboard 的画法留到第 4 期） |
 | 没实现列 bot 方法的推送拓展建不了连接：列 bot 的接口回 404，面板说拓展没跑起来 | 4 | `listConnectionCandidates` 在 3a 改成必备；面板新建连接只走「挑一个候选 → 填字段」一条路 |
 | 会员文案自定义开着、图片是空串时 `??` 不兜底官方图，推出 href 为空的图 | 2 | `templates.membership` 重做时修（`default` 的回退正好在这条路上） |

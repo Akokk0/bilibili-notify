@@ -128,6 +128,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 18. **补关注在登录失效时跳过，停用的订阅不补（Q14）**。关注同步是 BN → B 站单向（订阅了谁就补关注谁，因为动态从关注流里拉），全在 B 站内部（决策 56）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次，整份名单先批量查关系、只补缺的（稳态写请求为零），失败按决策 47 报 `follow_failed`（09-27 S9）。停用的订阅不在名单里，自然不补。
     🔗 **2026-10-11**（3a-31，主人定）：关注只为从关注流里拉到动态，所以补关注**只对启用中、且作品开关开着的订阅做**（只开直播的订阅既不查关系也不补；不取关）；开关从关到开（订阅被启用、订阅自己的作品开关打开、全局作品开关打开）时补一次。关注同步今天仍住 `runtime/follow-sync.ts` 与引擎装配（开机、登录恢复、开关翻开三处触发），不是挂在 `onSubscriptionsChanged` 上；搬进 B 站来源的那一步没有单独的片认领。
     🔗 **2026-10-14**（3b-25，主人定）：**关注搬进 B 站之后**，补关注在「订阅名单变了」的回调里异步做，失败报 `follow_failed`（带 `externalId`、挂在那个人的订阅上、只进问题表）；新建订阅的回应不再带关注结果；订阅列表的回应由宿主把挂在这条订阅上的问题一并带上，面板订阅卡通用地显示它们（去掉「是不是 B 站」的判断），问题变了面板刷新 —— 这是提前到 3b 的一小块面板活。
+    🔗 **2026-10-23**（3b-25 落成）：关注同步住 `bilibili/follow-sync.ts` 的 `syncFollows` / `watchFollows`，由 B 站来源在开机（已登录）、`auth.onChange` 恢复成 `logged-in`、`onSubscriptionsChanged` 三处触发；名单变化只补相比上一次新进入关注范围的外部 id。整批关系查询回 `unauthorized`（B 站 `-101`）时整批跳过，不降级；其他查询失败仍降级为逐个幂等补关注。失败经 `ProblemLayers.reportFailure` 的第三层上报，带 `externalId`、`lasting: true`、只进问题表；成功或已关注时清，离开关注范围按「不再适用」清。`followed` / `followError` 不再存任何地方。
 
 ### 作品与直播数据模型
 
@@ -264,6 +265,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     🔗 **2026-09-28**：`secrets` 与 `state` 是同一个 `KeyValueStore` 接口；一个集成一个文件，按值脱敏，`http.` 前缀归宿主（ADR-0025 决策 9）。
 41. **来源不读写文件（Q77）**：
     - **B 站**：和拓展用同一个 `SourceContext`。cookie 走 `ctx.secrets`；`roomId`、`followed`、`followError` 搬出核心的订阅运行态，放进 B 站自己的 `ctx.state`。`bilibili/` 下 import `fs`，门禁判红，守卫写法同 `extension-import-boundary.test.ts`。
+      🔗 **2026-10-23**（3b-25）：实际只搬了 `roomId`，住 `ctx.state` 的 `room:<uid>`（`bilibili/live/room-ids.ts`）；`followed` / `followError` 哪里都不存，关注失败由 `follow_failed` 问题顶替，依据 `subscription-sources.md` 3b-25 那条「只在内存、不再存盘」。盘上旧三格与 0.x `roomId` 的拆分归 3b-62 的迁移。
     - **拓展**：「不读写文件」写进契约；官方市场发布时做静态检查，打包产物 import 了 `fs` 就不收；手动安装的第三方拓展在安装时警告。
     - **真正的强制要靠沙箱**：拓展与 BN 在同一个进程里，现在拦不住，见「以后再说」。
     🔗 **2026-09-29**：守卫 17 扩到 `platforms/`：内置平台适配器也是集成（ADR-0025 决策 1），同样不读写文件。
