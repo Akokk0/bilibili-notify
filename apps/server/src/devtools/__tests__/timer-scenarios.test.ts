@@ -21,12 +21,14 @@ function setup(over: Partial<Parameters<typeof timerScenarios>[0]> = {}) {
 		}),
 	};
 	const closeIdleNow = vi.fn(async () => true);
+	const pollNow = vi.fn(async () => true);
 	const tickNow = vi.fn(async (subscriptionId: string) => subscriptionId === "s1");
 	const reg = createDevRegistry(
 		timerScenarios({
 			clock,
 			mute: () => mute,
 			puppeteer: () => ({ closeIdleNow }),
+			profileRefresh: () => ({ pollNow }),
 			subscriptions: () => [
 				{ id: "s1", enabled: true, name: "甲" },
 				{ id: "s2", enabled: false, name: "乙" },
@@ -35,7 +37,7 @@ function setup(over: Partial<Parameters<typeof timerScenarios>[0]> = {}) {
 			...over,
 		}),
 	);
-	return { reg, clock, mute, closeIdleNow, tickNow };
+	return { reg, clock, mute, closeIdleNow, pollNow, tickNow };
 }
 
 beforeEach(() => {
@@ -141,12 +143,24 @@ describe("现在就跑", () => {
 		expect((await reg.run("live.repush-now", { sub: "s2" })).summary).toMatch(/没在播|没监听/);
 	});
 
-	it("四个都在定时组", () => {
+	it("profiles.refresh-now:调资料刷新把手的 pollNow", async () => {
+		const { reg, pollNow } = setup();
+		await reg.run("profiles.refresh-now", {});
+		expect(pollNow).toHaveBeenCalledOnce();
+	});
+
+	it("五个都在定时组", () => {
 		const { reg } = setup();
 		const timers = reg
 			.list()
 			.filter((d) => d.group === "timer")
 			.map((d) => d.id);
-		expect(timers).toEqual(["push.quiet-clock", "push.mute", "chrome.idle-now", "live.repush-now"]);
+		expect(timers).toEqual([
+			"push.quiet-clock",
+			"push.mute",
+			"chrome.idle-now",
+			"live.repush-now",
+			"profiles.refresh-now",
+		]);
 	});
 });

@@ -35,7 +35,6 @@ export interface BiliDevtoolsDeps {
 	subs: () => SubPick[];
 	/** 下面几样都是引擎建好之后才有的,现取(动态引擎的句柄来自 `compose.ts` 造的 B 站来源)。 */
 	dynamic: () => DynamicPollerLike | undefined;
-	fans: () => { pollNow(): Promise<boolean> } | undefined;
 	/** 登录心跳「现在就跑」的把手(`AuthSystem.healthCheckNow`),现取。 */
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
@@ -53,7 +52,6 @@ export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
 			...biliTimerScenarios({
 				subs: deps.subs,
 				dynamic: deps.dynamic,
-				fans: deps.fans,
 				healthCheck: deps.healthCheck,
 			}),
 		],

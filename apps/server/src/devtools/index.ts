@@ -15,6 +15,7 @@ import { routeConnection } from "../push/dispatch.js";
 import { deriveAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 import type { MuteState } from "../runtime/mute-state.js";
+import type { ProfileRefreshHandle } from "../runtime/profile-refresh.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
@@ -100,9 +101,11 @@ export interface CreateDevtoolsInput {
 	targets: () => PushTarget[];
 	/** 引擎错误 / 登录失效 / 登录恢复都从这条总线发。 */
 	bus: MessageBus;
-	/** 定时组要碰的两个口,都是后建的,现取。 */
+	/** 定时组要碰的几个口,都是后建的,现取。 */
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
+	/** 资料刷新在核心启动更晚,场景跑时现取。 */
+	profileRefresh: () => Pick<ProfileRefreshHandle, "pollNow"> | undefined;
 	subscriptions?: () => readonly { id: string; enabled: boolean; name: string }[];
 	session?: () => Pick<LiveSessionEngine, "tickNow"> | undefined;
 }
@@ -218,6 +221,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			clock,
 			mute: input.mute,
 			puppeteer: input.puppeteer,
+			profileRefresh: input.profileRefresh,
 			subscriptions: input.subscriptions ?? (() => []),
 			session: input.session ?? (() => undefined),
 		}),

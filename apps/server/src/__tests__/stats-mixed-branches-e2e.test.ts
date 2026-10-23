@@ -474,7 +474,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await vi.waitFor(
 			async () => {
 				await ok(
-					await api("/api/dev/run/bilibili.fans.poll-now", {
+					await api("/api/dev/run/profiles.refresh-now", {
 						method: "POST",
 						...json({ params: {} }),
 					}),
@@ -567,7 +567,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await vi.waitFor(
 			async () => {
 				await ok(
-					await api("/api/dev/run/bilibili.fans.poll-now", {
+					await api("/api/dev/run/profiles.refresh-now", {
 						method: "POST",
 						...json({ params: {} }),
 					}),

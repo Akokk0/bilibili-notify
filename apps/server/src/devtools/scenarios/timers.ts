@@ -1,5 +1,6 @@
 import type { LiveSessionEngine } from "../../live/live-sessions.js";
 import type { MuteState } from "../../runtime/mute-state.js";
+import type { ProfileRefreshHandle } from "../../runtime/profile-refresh.js";
 import type { DevClock } from "../clock.js";
 import { DevParamError, type DevScenarioDef, need } from "../registry.js";
 
@@ -14,6 +15,7 @@ export interface TimerScenarioDeps {
 	/** 下面几样都是引擎 / 运行时建好之后才有的,现取。 */
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
+	profileRefresh: () => Pick<ProfileRefreshHandle, "pollNow"> | undefined;
 	subscriptions?: () => readonly { id: string; enabled: boolean; name: string }[];
 	session?: () => Pick<LiveSessionEngine, "tickNow"> | undefined;
 }
@@ -108,6 +110,19 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
+	const profileRefresh: DevScenarioDef = {
+		id: "profiles.refresh-now",
+		group: "timer",
+		title: "资料刷新",
+		icon: "refresh",
+		desc: "立刻经各来源刷新一轮订阅资料,不等 cron。上一轮还在跑就跳过。",
+		params: [],
+		async run() {
+			const ran = await need(deps.profileRefresh(), "资料刷新").pollNow();
+			return { summary: ran ? "资料刷新跑完一轮。" : "上一轮还在跑,这次跳过。" };
+		},
+	};
+
 	const repush: DevScenarioDef = {
 		id: "live.repush-now",
 		group: "timer",
@@ -135,5 +150,5 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
-	return [quietClock, mute, chromeIdle, repush];
+	return [quietClock, mute, chromeIdle, repush, profileRefresh];
 }

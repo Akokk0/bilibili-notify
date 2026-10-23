@@ -43,7 +43,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 
 - 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
   `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`,由 `compose.ts` 的 `provideDevtools` 认领;
-  过渡接线还在:两层套了壳的句柄(`Api` 与来源的登录口 `Source.auth`)仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b;登录那组不再等 3a-29(3a-29 B 站半已把它换成盖 `state()` / `account()`、往总线发 `subscription-auth-changed`),壳留在入口、随登录装配留到 3b(3a-40 没动它):`compose.ts` 经 `BiliDevtoolsDeps` 收 `api`、`auth`、`live`、`fans`、`healthCheck` 五个过渡句柄原样转给场景,入口咽喉守卫的记账(`scripts/__tests__/entry-throat.test.mjs`)按名字记着它们,3b 场景改成只经 B 站自己的上下文时消;动态引擎的句柄不再交回入口,`compose.ts` 自己手里的 `dynamic` 闭包只给场景「现在就跑」用),
+  过渡接线还在:两层套了壳的句柄(`Api` 与来源的登录口 `Source.auth`)仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b;登录那组不再等 3a-29(3a-29 B 站半已把它换成盖 `state()` / `account()`、往总线发 `subscription-auth-changed`),壳留在入口、随登录装配留到 3b(3a-40 没动它):`compose.ts` 经 `BiliDevtoolsDeps` 收 `api`、`auth`、`live`、`healthCheck` 四个过渡句柄原样转给场景,入口咽喉守卫的记账(`scripts/__tests__/entry-throat.test.mjs`)按名字记着它们,3b 场景改成只经 B 站自己的上下文时消;动态引擎的句柄不再交回入口,`compose.ts` 自己手里的 `dynamic` 闭包只给场景「现在就跑」用),
   汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
   两边一起经 `createDevRegistry` 汇总,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
@@ -97,7 +97,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约。**限制**:宿主(派发器)记着每格最后一次探实的答案,适配器答「还不知道」的格会沿用它,所以在已探实「支持 / 不支持」的连接上注入「还不知道」会被宿主记着的答案盖住,看不到「未探测」;注入明确答案不受影响。宿主的重探窗口是 60 秒,与后台每 60 秒一轮的节奏碰上时,一次补探可能被窗口挡到下一轮 | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`PushRouter.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
 | 堆逼近上限 | 包真 `process.memoryUsage()`,按注入的占比 × 堆上限造 `heapUsed`(顺带把 `heapTotal` 抬到不低于它)。注的是**读数**不是显示值 —— 概览页那两个环的染色、近 5 分钟曲线、服务端「已逼近堆上限」那条 warn 全照真的算一遍。包好的读数由 `createDevtools` 交回去(`index.ts` 只许从 `./devtools/index.js` 引 devtools,多一个 import 就多一条漏进产物的路) | `heap-injection.ts`、`scenarios/heap.ts` |
-| 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow`(登录心跳:`bilibili/auth/index.ts` 的 `AuthSystem` 交出,`compose.ts` 递给 B 站场景时叫 `healthCheck` 那一格;没登录 / 扫码中跳过) | 同上 |
+| 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow`;资料刷新在核心定时组走 `ProfileRefreshHandle.pollNow()`,登录心跳仍由 `bilibili/auth/index.ts` 的 `AuthSystem` 交出(没登录 / 扫码中跳过) | `scenarios/timers.ts`、`bilibili/devtools/timers.ts` |
 
 副作用规矩:**默认真发,可截流**。造事件之前先开截流,推送就只进列表不出网。
 

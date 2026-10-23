@@ -85,8 +85,7 @@ export interface BuiltinIntegrationsDeps {
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get" | "patch">;
 	setTimeout: ServiceContext["setTimeout"];
-	/** 下面两样建得比这里晚,现取,原样转给开发场景。 */
-	fans: BiliDevtoolsDeps["fans"];
+	/** 登录心跳建得比这里晚,现取,原样转给 B 站开发场景。 */
 	healthCheck: BiliDevtoolsDeps["healthCheck"];
 	/**
 	 * 三个内置平台适配器要的东西。运行时(`createAppRuntime`)开机就建好了,所以和上面一样构造时给齐:
@@ -190,7 +189,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 								};
 							}),
 					dynamic,
-					fans: deps.fans,
 					healthCheck: deps.healthCheck,
 				}),
 			);

@@ -194,7 +194,6 @@ function compose(
 			patch: async () => {},
 		},
 		setTimeout: () => ({ dispose() {} }),
-		fans: () => undefined,
 		healthCheck: () => undefined,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
 		transitImages: inertTransitImages,

@@ -774,8 +774,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptions: subStore,
 			subscriptionRuntime: runtime.subRuntimeStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
-			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-			fans: () => runtime.profileRefresh ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
 			healthCheck: () =>
 				authSystem && {
@@ -830,6 +828,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			bus: runtime.bus,
 			puppeteer: () => puppeteer,
 			mute: () => engines?.muteState,
+			profileRefresh: () => runtime.profileRefresh ?? undefined,
 			subscriptions: () =>
 				subStore.list().map((sub) => ({
 					id: sub.id,

@@ -62,9 +62,9 @@ export const INTEGRATION_DIRS = ["apps/server/src/bilibili", "apps/server/src/pl
  */
 export const EXPORTED_TYPE_LEDGER = {
 	BiliDevtoolsDeps: {
-		limit: 4,
+		limit: 3,
 		until:
-			"开发场景今天仍直接用引擎、套了壳的 Api / 登录系统(api、auth、live、fans、healthCheck 五个过渡句柄);3b 场景改成只经 B 站自己的上下文时消",
+			"开发场景今天仍直接用引擎、套了壳的 Api / 登录系统(api、auth、live、healthCheck 四个过渡句柄);3b 场景改成只经 B 站自己的上下文时消",
 	},
 	DevtoolsProviderRegistry: {
 		limit: 1,

@@ -170,10 +170,10 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 
 		// 首页粉丝面板(决策 8):甲有了粉丝时序,那一行进 `GET /api/stats/followers` —— 键是订阅 id、带身份;当前数是最近报的
 		// 资料(2222),起点是时序的第一条(1111);24h / 7d 之前还没有样本。停用的乙不上。样本是记录器排队写的,
-		// 所以按 devtools 的「粉丝轮询现在就跑」、等它读到。
+		// 所以按 devtools 的「资料刷新现在就跑」、等它读到。
 		await vi.waitFor(
 			async () => {
-				const polled = await api("/api/dev/run/bilibili.fans.poll-now", {
+				const polled = await api("/api/dev/run/profiles.refresh-now", {
 					method: "POST",
 					...json({ params: {} }),
 				});
