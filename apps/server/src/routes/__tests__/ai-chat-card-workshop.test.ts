@@ -66,7 +66,9 @@ const chatStatelessStream = vi.fn(async (_messages: unknown, opts: any) => {
 	return "好的";
 });
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	CommentaryGenerator: class {
 		chatStatelessStream = chatStatelessStream;
 	},

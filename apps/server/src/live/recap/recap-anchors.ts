@@ -19,6 +19,8 @@ import type { WordcloudGenerator } from "./wordcloud-generator";
 export interface RecapOptions extends CardSkinChoice {
 	/** 弹幕是记在哪条订阅名下的。 */
 	subscriptionId: string;
+	/** 这条订阅的来源键;总结提示词按它取叫法。 */
+	sourceKey: string;
 	/** 两个附加项各自开没开;都关着就什么都不做、不取快照。 */
 	extras: { wordcloud: boolean; liveSummary: boolean };
 	/** 这条订阅额外的停用词(设置里的原文);没有就不额外过滤。 */
@@ -83,6 +85,7 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 		let made: ReturnType<typeof deps.summary.generate>;
 		try {
 			made = deps.summary.generate({
+				sourceKey: options.sourceKey,
 				senderRecord: snapshot.senderRecord,
 				sortedWords,
 				...(options.fanClubName === undefined ? {} : { fanClubName: options.fanClubName }),

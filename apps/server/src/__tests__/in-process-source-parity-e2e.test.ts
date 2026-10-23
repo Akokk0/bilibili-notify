@@ -164,8 +164,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P43)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N02、N03、N04、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P44)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N02、N03、N04、N06、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -294,6 +294,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		title: "提供方技能经列表、聊天目录与斜杠点名可见，撤销登记后三处都拿不到",
 		checked: true,
 	},
+	{ id: "P44", title: "提示词里的叫法", checked: true },
 	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
@@ -308,13 +309,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "第 4 期",
 		reason: "接口上没有 fetchPreview;卡片真实预览仍读 B 站接口",
-	},
-	{
-		id: "N06",
-		title: "提示词里的叫法",
-		checked: false,
-		waitsFor: "3b-35",
-		reason: "提示词按来源叫法而变随 3b-35 的后续提交",
 	},
 	{
 		id: "N08",
@@ -400,6 +394,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 const SOURCE_DESCRIPTOR_MEMBERS = {
 	label: ["P15"],
 	postNoun: ["P10"],
+	creatorNoun: ["P44"],
 	externalIdRegex: ["P23"],
 	membershipPrograms: ["P19"],
 	externalIdNoun: ["P38"],
@@ -518,6 +513,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	 */
 	let aiToolScript: { name: string; args: object } | null = null;
 	const aiToolSeen: string[] = [];
+	/** 每一条假模型请求里收到的系统提示词,按请求先后。 */
+	const aiSystems: string[] = [];
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
 	const json = (body: unknown, method = "POST"): RequestInit => ({
@@ -681,6 +678,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					.filter((message) => message.role === "system")
 					.map((message) => JSON.stringify(message.content))
 					.join("\n");
+				aiSystems.push(
+					JSON.stringify(messages?.find((message) => message.role === "system")?.content ?? ""),
+				);
 				aiRequestedToolNames.push(
 					(parsed.tools ?? []).flatMap((tool) =>
 						typeof tool.function?.name === "string" ? [tool.function.name] : [],
@@ -891,7 +891,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			}),
 		);
 
-		resetInProcessWorld({ knownProfiles: { [EXT.alice]: ALICE_PROFILE } });
+		resetInProcessWorld({
+			creatorNoun: "博主",
+			knownProfiles: { [EXT.alice]: ALICE_PROFILE },
+		});
 		port = await findFreePort();
 		// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 		handle = await boot(port, { BN_CHROME_PATH: "/fake/chrome" });
@@ -1310,6 +1313,27 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			await patchSettings({ ai: { enabled: false } });
 		}
 		drove("P10");
+	});
+
+	// 验红:`runtime/engines.ts` 不给生成器接叫法,或 `deliver-post.ts` 不递这条订阅,这句系统提示词里没有「博主」。
+	it("P44 提示词里的叫法:推送点评按这条订阅取创作者叫法,不混平台词", async () => {
+		await patchSettings({ ai: { enabled: true } });
+		try {
+			aiSystems.length = 0;
+			await clearCaptures();
+			currentProbe().ctx?.reportPost(EXT.alice, textReport("p44", "小爱", "看叫法"));
+			await settledCaptures(1);
+			await vi.waitFor(() => expect(aiSystems.length).toBeGreaterThan(0));
+			const system = aiSystems.at(-1) ?? "";
+			expect(system).toContain(IN_PROCESS_LABEL);
+			expect(system).toContain("博主");
+			expect(system).not.toContain("UP主");
+			expect(system).not.toContain("UP 主");
+			expect(system).not.toContain("B 站");
+		} finally {
+			await patchSettings({ ai: { enabled: false } });
+		}
+		drove("P44");
 	});
 
 	// 验红:`source-context.ts` 里 `reporter` 写成别的键,第一段红;带人的那条不按身份展开(只写一条),第二段红。
@@ -3277,20 +3301,20 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 43 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 44 行、不开 7 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(51);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 43 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 44 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43;N06 只剩提示词叫法;编号不回填。
+		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![2, 3, 4, 7, 10, 11, 12, 13].includes(n))
+				.filter((n) => ![2, 3, 4, 6, 7, 10, 11, 12, 13].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

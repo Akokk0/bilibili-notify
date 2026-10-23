@@ -14,7 +14,7 @@ import { ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
 import { type AiTool, coreToolLabelOf, describeToolCall } from "../tools";
-import { aiConfig, fakeServiceCtx, streamOf, textChunk } from "./harness";
+import { aiConfig, fakeServiceCtx, streamOf, testNouns, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -128,6 +128,7 @@ describe("工具环发 start 时带着标签", () => {
 		return new CommentaryGenerator({
 			serviceCtx: fakeServiceCtx(),
 			config: aiConfig(),
+			nouns: testNouns,
 		});
 	}
 

@@ -60,6 +60,8 @@ export class LiveSummaryRequester {
 	 * 没有 AI 版就不带 `ai` 这个键。人数不足回 `undefined`,两份都没有、不问 AI。
 	 */
 	generate(params: {
+		/** 这场直播所属订阅的来源键;提示词叫法只按这一条来源取。 */
+		sourceKey: string;
 		senderRecord: Record<string, number>;
 		sortedWords: Array<[string, number]>;
 		/** 粉丝团的名字;没有就不带(提示词里整项不写,模板里渲染成空串)。 */
@@ -72,7 +74,8 @@ export class LiveSummaryRequester {
 		 */
 		aiOverride?: CommentaryCallOverride;
 	}): { template: string; ai?: Promise<string | undefined> } | undefined {
-		const { senderRecord, sortedWords, fanClubName, customLiveSummary, aiOverride } = params;
+		const { sourceKey, senderRecord, sortedWords, fanClubName, customLiveSummary, aiOverride } =
+			params;
 		const senderCount = Object.keys(senderRecord).length;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
 			this.logger.debug(`[summary] 发言人数不足${LIVE_SUMMARY_MIN_SENDERS}位，放弃生成直播总结`);
@@ -107,7 +110,9 @@ export class LiveSummaryRequester {
 		const override = this.isWebSearchEnabled() ? { ...aiOverride, webSearch: true } : aiOverride;
 		const ai = (async (): Promise<string | undefined> => {
 			try {
-				const aiResult = await commentary.comment(prompt, "liveSummary", undefined, override);
+				const aiResult = await commentary.comment(prompt, "liveSummary", undefined, override, [
+					sourceKey,
+				]);
 				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
 				// 空串不是一份正文:当没有 AI 版,让推送层用模板。
 				return aiResult || undefined;

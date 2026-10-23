@@ -17,7 +17,11 @@
  */
 
 import { readFileSync } from "node:fs";
-import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
+import {
+	CommentaryGenerator,
+	PROMPT_NEUTRAL_NOUNS,
+	webSearchExecutorFromSettings,
+} from "@bilibili-notify/ai";
 import type { ModuleState } from "@bilibili-notify/contract";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
@@ -98,7 +102,11 @@ import {
 	fetchSourceLiveStatus,
 	fetchSourceProfile,
 } from "../subscriptions/call-source.js";
-import { platformLabelOf, subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
+import {
+	platformLabelOf,
+	sourceNounsFor,
+	subscriptionIdentityLabelOf,
+} from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
@@ -168,6 +176,8 @@ export interface EnginesRuntime extends Disposable {
 	 * 取不到(没接 / 没装 / 开机途中)是 `undefined`,调用方退拓展 id。
 	 */
 	extensionPlatformLabel(extensionId: string): string | undefined;
+	/** 拓展清单里平台对作品的叫法;取不到与 {@link extensionPlatformLabel} 同样回 `undefined`。 */
+	extensionPostNoun(extensionId: string): string | undefined;
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
 	linkPreview(): LinkPreviewSettings;
 	/**
@@ -527,6 +537,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const c = new CommentaryGenerator({
 				serviceCtx: aiCtx,
 				config: buildAiConfig(),
+				nouns: (keys) =>
+					sourceNounsFor(
+						keys,
+						{
+							...labelDeps,
+							extensionPostNoun: (id) => extensionSources?.postNoun(id),
+							subscriptions: () => opts.subscriptionStore.list(),
+						},
+						PROMPT_NEUTRAL_NOUNS,
+					),
 			});
 			// 接工具能力 —— **只读档**。少了这一步,女仆连「我订了哪些 UP」都查不到,
 			// 会一口咬定「当前没有订阅」;带上写能力则等于让她能真的加减订阅。
@@ -1107,6 +1127,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		tickLiveSessionNow: (subscriptionId: string) =>
 			liveSessionEngine?.tickNow(subscriptionId) ?? Promise.resolve(false),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
+		extensionPostNoun: (extensionId: string) => opts.extensionSources?.postNoun(extensionId),
 		probeConnection: (connectionId: string) =>
 			connectionProbe.probe(connectionId, { manual: true }),
 		connectionCapabilities: (connectionId: string) =>

@@ -12,6 +12,7 @@ export type { AiTool, AiToolLabelFields, AiToolResult } from "@bilibili-notify/i
 
 import type OpenAI from "openai";
 import { parseCreator } from "./creator";
+import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
 import { CORE_TOOL_LABEL_TEXTS } from "./tool-label-texts";
 import { TOOL_TEXTS } from "./tool-texts";
 import { WEB_SEARCH_TOOL } from "./web-search";
@@ -203,7 +204,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "list_subscriptions",
 			description:
-				"查询当前订阅的所有 UP 主，返回名称、平台、creator（来源键:外部 id）及订阅类型（动态/直播）",
+				"查询当前订阅的所有{creatorNoun}，返回名称、平台、creator（来源键:外部 id）及订阅类型（{postNoun}/直播）",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -212,7 +213,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "get_creator_posts",
 			description:
-				"获取一位已订阅的 UP 主最近发布的动态（最多 5 条，新的在前），每条带发布时间、标题与摘要（摘要超过 200 字截断）。只能答 BN 自己记下来的：没开动态记录或还没记到时会明说「BN 没记到」，这不等于他没发过。统计总开关关着时不可用。",
+				"获取一位已订阅的{creatorNoun}最近发布的{postNoun}（最多 5 条，新的在前），每条带发布时间、标题与摘要（摘要超过 200 字截断）。只能答 BN 自己记下来的：没开{postNoun}记录或还没记到时会明说「BN 没记到」，这不等于他没发过。统计总开关关着时不可用。",
 			parameters: {
 				type: "object",
 				properties: { creator: CREATOR_PARAM },
@@ -238,7 +239,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "get_creator_stats",
 			description:
-				"获取一位已订阅的 UP 主最近一段时间的统计：当前粉丝、涨粉、作品数、视频作品数、直播场次与时长、最后活动时间。“没记录”表示 BN 那段时间没在记，不等于 0。统计总开关关着时不可用。",
+				"获取一位已订阅的{creatorNoun}最近一段时间的统计：当前粉丝、涨粉、{postNoun}数、视频{postNoun}数、直播场次与时长、最后活动时间。“没记录”表示 BN 那段时间没在记，不等于 0。统计总开关关着时不可用。",
 			parameters: {
 				type: "object",
 				properties: {
@@ -254,7 +255,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "get_live_status",
 			description:
-				"查订阅里开着直播推送的那些 UP 主此刻的直播状态（未开播 / 直播中）与直播标题、开播时刻。只覆盖这些订阅：没开直播推送的订阅不在结果里，不能据此说他没在播；订阅以外的人也查不了。一律按本服务手里的在播状态回答，不现去平台上查；其他平台的订阅，该平台的拓展没在跑时答「查不到」。",
+				"查订阅里开着直播推送的那些{creatorNoun}此刻的直播状态（未开播 / 直播中）与直播标题、开播时刻。只覆盖这些订阅：没开直播推送的订阅不在结果里，不能据此说他没在播；订阅以外的人也查不了。一律按本服务手里的在播状态回答，不现去平台上查；其他平台的订阅，该平台的拓展没在跑时答「查不到」。",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -263,7 +264,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "search_creators",
 			description:
-				"在某个订阅来源里搜 UP 主，返回最多 5 位：名称、creator（来源键:外部 id）、粉丝数、简介（简介截到 80 字）。输入可以是名字、关键词、主页链接或 id，由该来源自己认。",
+				"在某个订阅来源里搜{creatorNoun}，返回最多 5 位：名称、creator（来源键:外部 id）、粉丝数、简介（简介截到 80 字）。输入可以是名字、关键词、主页链接或 id，由该来源自己认。",
 			parameters: {
 				type: "object",
 				properties: {
@@ -271,13 +272,42 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 						type: "string",
 						description: "来源键，与订阅列表里 creator 冒号前那段是同一个值",
 					},
-					query: { type: "string", description: "搜索内容，如 UP 主名字、领域、主页链接或 id" },
+					query: {
+						type: "string",
+						description: "搜索内容，如{creatorNoun}名字、领域、主页链接或 id",
+					},
 				},
 				required: ["source", "query"],
 			},
 		},
 	},
 ];
+
+/** 按这次涉及的来源渲染一份工具定义副本;原表仍留给编辑器与技能名单按名字读。 */
+export function renderToolDefinitions(nouns: PromptNouns): OpenAI.ChatCompletionFunctionTool[] {
+	return TOOL_DEFINITIONS.map((tool) => ({
+		...tool,
+		function: {
+			...tool.function,
+			description: renderPromptNouns(tool.function.description ?? "", nouns),
+			parameters: renderPromptValues(
+				tool.function.parameters,
+				nouns,
+			) as typeof tool.function.parameters,
+		},
+	}));
+}
+
+function renderPromptValues(value: unknown, nouns: PromptNouns): unknown {
+	if (typeof value === "string") return renderPromptNouns(value, nouns);
+	if (Array.isArray(value)) return value.map((item) => renderPromptValues(item, nouns));
+	if (value !== null && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [key, renderPromptValues(item, nouns)]),
+		);
+	}
+	return value;
+}
 
 /**
  * 核心自带工具(含联网搜索、看图)的标签;表外的名字查不到。
@@ -466,7 +496,7 @@ export async function executeTool(
 			const subscriptions = reader?.subscriptions() ?? [];
 			if (subscriptions.length === 0) return ok({ text: "当前没有订阅" });
 			const liveItems = subscriptions.filter((s) => s.live);
-			if (!liveItems.length) return ok({ text: "当前订阅中没有开启直播监控的 UP 主" });
+			if (!liveItems.length) return ok({ text: "当前没有开着直播监控的订阅" });
 			return ok({ text: liveItems.map(liveLine).join("\n") });
 		}
 		case "search_creators": {

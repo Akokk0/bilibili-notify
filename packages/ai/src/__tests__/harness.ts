@@ -15,7 +15,12 @@
 
 import { fail, ok, type Result, type ServiceContext } from "@bilibili-notify/internal";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import { PROMPT_NEUTRAL_NOUNS, type PromptNouns } from "../prompt-nouns";
 import type { CreatorReader } from "../tools";
+
+/** 测试里的叫法读口;不关心来源叫法的用例共用这一份。 */
+export const TEST_PROMPT_NOUNS: PromptNouns = PROMPT_NEUTRAL_NOUNS;
+export const testNouns = (): PromptNouns => TEST_PROMPT_NOUNS;
 
 /** 读口里本用例用不到的那几个方法的桩:搜不到人、谁都没订阅。凑 `CreatorReader` 字面量时 `...readerStubs`。 */
 export const readerStubs: Pick<
@@ -80,6 +85,7 @@ export function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): Commenta
 	return new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
 		config: aiConfig(over),
+		nouns: testNouns,
 	});
 }
 

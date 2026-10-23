@@ -33,6 +33,7 @@ function makeRequester(over: { webSearch?: boolean } = {}) {
 }
 
 const PARAMS = {
+	sourceKey: "fake",
 	senderRecord: SENDERS,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
 	customLiveSummary: "",
@@ -47,6 +48,7 @@ describe("LiveSummaryRequester × webSearch", () => {
 			"liveSummary",
 			undefined,
 			expect.objectContaining({ webSearch: true, model: "per-up-model" }),
+			["fake"],
 		);
 	});
 
@@ -66,6 +68,7 @@ describe("LiveSummaryRequester × webSearch", () => {
 			"liveSummary",
 			undefined,
 			expect.objectContaining({ webSearch: true }),
+			["fake"],
 		);
 	});
 });

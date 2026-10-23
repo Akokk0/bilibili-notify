@@ -9,7 +9,7 @@ import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type ToolTraceEvent } from "../commentary-generator";
 import { type AiTool, type CreatorReader, executeTool } from "../tools";
-import { aiConfig, fakeServiceCtx, readerStubs, streamOf, textChunk } from "./harness";
+import { aiConfig, fakeServiceCtx, readerStubs, streamOf, testNouns, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -115,6 +115,7 @@ describe("CommentaryGenerator.chatStatelessStream —— 工具失败在痕迹�
 		const generator = new CommentaryGenerator({
 			serviceCtx: fakeServiceCtx(),
 			config: aiConfig(),
+			nouns: testNouns,
 		});
 		if (reader) generator.setCreatorReader(reader);
 		return generator;

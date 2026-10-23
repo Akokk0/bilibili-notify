@@ -279,6 +279,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const anchors = recapAnchors(
 			{
 				subscriptionId: sub.id,
+				sourceKey: subscriptionIdentityOf(sub).sourceKey,
 				extras: {
 					wordcloud: settings.extras.wordcloud,
 					liveSummary: settings.extras.liveSummary,

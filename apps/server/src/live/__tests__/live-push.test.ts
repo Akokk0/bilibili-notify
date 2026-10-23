@@ -451,6 +451,7 @@ describe("下播回顾", () => {
 
 		expect(summaryCalls).toHaveLength(1);
 		expect(summaryCalls[0]).toMatchObject({
+			sourceKey: EXT,
 			senderRecord: { 这一场的观众: 1 },
 			fanClubName: "资料里的粉丝团",
 		});

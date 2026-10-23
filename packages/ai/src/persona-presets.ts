@@ -1,3 +1,5 @@
+import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
+
 export type PersonaKey = "assistant" | "maid" | "tsundere" | "commentator" | "critic" | "custom";
 
 /** 每个预设提供的字段默认值，用于填充用户未指定的项 */
@@ -42,7 +44,7 @@ export const PERSONA_PRESETS: Record<Exclude<PersonaKey, "custom">, PersonaPrese
 
 	commentator: {
 		baseDescription:
-			"你是一个幽默活泼的 B 站弹幕解说员，说话接地气，善于用 B 站梗和网络用语进行点评，偶尔自带吐槽。",
+			"你是一个幽默活泼的弹幕解说员，说话接地气，善于用各种梗和网络用语进行点评，偶尔自带吐槽。",
 		addressSelf: "我",
 		traits: ["活泼", "幽默", "爱吐槽", "充满网感"],
 	},
@@ -78,7 +80,7 @@ const PLAIN_TEXT_ONLY = `回复时只用纯文本，不要使用 Markdown 格式
  * 不图省事把它挪到整段末尾:那样推送侧看到的提示词顺序就变了。这条链上的
  * 收件人是主人的群,「行为不变」得是字面意义上的不变。
  */
-const CORE_IDENTITY_HEAD = `你的工作是帮用户关注 B 站等平台上的 UP 主：他们有新动态或开播时，系统会第一时间推送，你负责其中的点评、总结和答疑。`;
+const CORE_IDENTITY_HEAD = `你的工作是帮用户关注{sources}上的{creatorNoun}：他们有新{postNoun}或开播时，系统会第一时间推送，你负责其中的点评、总结和答疑。`;
 
 /**
  * 工具铁律 —— **只发给真的挂了工具的那两条路**(试推送的 `chat()` / dashboard 聊天
@@ -95,13 +97,13 @@ const CORE_IDENTITY_HEAD = `你的工作是帮用户关注 B 站等平台上的 
  * 调用」,更不能说「不存在权限不足的问题」:那是在鼓励模型表现得像它能配置订阅,轻则
  * 空转,重则回一句「已经帮你取消了」而什么也没发生。
  */
-const TOOL_LAW = `【重要规则】查询订阅、UP 主信息、直播状态等，必须调用对应工具，拿到结果后再回答；严禁在未调用工具的情况下编造或猜测结果。
+const TOOL_LAW = `【重要规则】查询订阅、{creatorNoun}信息、直播状态等，必须调用对应工具，拿到结果后再回答；严禁在未调用工具的情况下编造或猜测结果。
 订阅的添加、取消、修改只能由用户自己在面板或命令里操作，你没有这个能力——遇到这类请求直接说明并引导，不要声称已经办好。`;
 
 /**
  * 没挂工具那条路的对应规则(动态点评 / 直播总结 / 统计页锐评)。
  *
- * 光把 {@link TOOL_LAW} 摘掉不够 —— 模型仍然知道自己「负责帮用户关注 UP 主」,照样会
+ * 光把 {@link TOOL_LAW} 摘掉不够 —— 模型仍然知道自己「负责帮用户关注创作者」,照样会
  * 自作主张说要去翻订阅列表。得把这条路堵死。
  *
  * 但堵它**不必提到工具**。这条路的请求里压根没挂 tools,模型本来就调不了;写一句「你
@@ -127,6 +129,8 @@ const NO_PERSONA_TONE = `回答保持中立、简洁、就事论事，不要给�
 
 export function buildSystemPrompt(params: {
 	preset: PersonaKey;
+	/** 这次涉及的来源叫法,由服务端现取。 */
+	nouns: PromptNouns;
 	name?: string;
 	addressUser?: string;
 	addressSelf?: string;
@@ -173,7 +177,7 @@ export function buildSystemPrompt(params: {
 			...(withPersona ? [CORE_IDENTITY_TAIL] : [NO_PERSONA_TONE]),
 		].join("\n"),
 	];
-	if (!withPersona) return parts.join("\n");
+	if (!withPersona) return renderPromptNouns(parts.join("\n"), params.nouns);
 
 	// 人格描述
 	if (params.preset === "custom" || !defaults) {
@@ -210,5 +214,5 @@ export function buildSystemPrompt(params: {
 	// 额外追加内容
 	if (params.extraPrompt) parts.push(params.extraPrompt);
 
-	return parts.join("\n");
+	return renderPromptNouns(parts.join("\n"), params.nouns);
 }

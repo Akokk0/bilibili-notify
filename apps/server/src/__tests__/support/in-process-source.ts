@@ -122,6 +122,8 @@ export const SETTINGS_PROBLEM_CODE = "settings_invalid";
 export const LIVE_STATUS_PROBLEM_CODE = "live_status_unavailable";
 
 export interface InProcessOptions {
+	/** 描述符上的 `creatorNoun`;不给 = 不声明。 */
+	creatorNoun?: string;
 	/** 描述符上的 `postNoun`;不给 = 不声明(对拍里有一行专看缺省叫什么)。 */
 	postNoun?: string;
 	/**
@@ -243,6 +245,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 } {
 	const descriptor: SourceDescriptor = {
 		label: IN_PROCESS_LABEL,
+		...(options.creatorNoun === undefined ? {} : { creatorNoun: options.creatorNoun }),
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [
 			{

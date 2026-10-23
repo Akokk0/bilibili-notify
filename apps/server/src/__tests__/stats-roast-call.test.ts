@@ -26,7 +26,9 @@ import type { RouteDeps } from "../routes/types.js";
 const comment = vi.fn(async (_p: string, _scene?: unknown, _img?: unknown, _ov?: any) => "{}");
 const chat = vi.fn(async (_prompt: string) => "{}");
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	// class 而不是箭头函数 —— 路由是 `new CommentaryGenerator(...)`,
 	// 箭头函数不能当构造器。
 	CommentaryGenerator: class {

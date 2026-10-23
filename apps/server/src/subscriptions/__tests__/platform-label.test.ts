@@ -1,5 +1,8 @@
+import { makeEmptySubscription, type Subscription } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { platformLabelOf, subscriptionIdentityLabelOf } from "../platform-label.js";
+import { platformLabelOf, sourceNounsFor, subscriptionIdentityLabelOf } from "../platform-label.js";
+
+const NEUTRAL = { creatorNoun: "创作者", postNoun: "作品", sources: "各平台" };
 
 /** 来源登记表里各键的描述符 `label`;拓展装载器说的平台名另给。 */
 function depsWith(labels: Record<string, string>, extensionLabels: Record<string, string> = {}) {
@@ -74,5 +77,110 @@ describe("subscriptionIdentityLabelOf —— 按来源拼身份标签", () => {
 		expect(
 			subscriptionIdentityLabelOf({ sourceKey: "douyin", externalId: "s" }, nounDepsWith({})),
 		).toBe("douyin · s");
+	});
+});
+
+describe("sourceNounsFor —— 按这次涉及的来源取提示词叫法", () => {
+	function subscription(sourceKey: string, enabled: boolean): Subscription {
+		const sub = makeEmptySubscription({
+			id: `sub-${sourceKey}`,
+			identity: { sourceKey, externalId: "fixture" },
+		});
+		sub.enabled = enabled;
+		return sub;
+	}
+
+	function nounDeps(
+		descriptors: Record<string, { label: string; creatorNoun?: string; postNoun?: string }> = {},
+		over: {
+			extensionLabels?: Record<string, string>;
+			extensionPostNouns?: Record<string, string>;
+			subscriptions?: readonly (readonly [sourceKey: string, enabled: boolean])[];
+			registered?: readonly string[];
+		} = {},
+	) {
+		return {
+			sources: {
+				get: (key: string) =>
+					descriptors[key] === undefined ? undefined : { descriptor: descriptors[key] },
+				list: () =>
+					(over.registered ?? Object.keys(descriptors)).map((sourceKey) => ({ sourceKey })),
+			},
+			extensionPlatformLabel: (id: string) => over.extensionLabels?.[id],
+			extensionPostNoun: (id: string) => over.extensionPostNouns?.[id],
+			subscriptions: () =>
+				(over.subscriptions ?? []).map(([sourceKey, enabled]) => subscription(sourceKey, enabled)),
+		};
+	}
+
+	it("一个登记来源用它自己的叫法", () => {
+		const deps = nounDeps({
+			bilibili: { label: "B 站", creatorNoun: "UP主", postNoun: "动态" },
+		});
+		expect(sourceNounsFor(["bilibili"], deps, NEUTRAL)).toEqual({
+			creatorNoun: "UP主",
+			postNoun: "动态",
+			sources: "B 站",
+		});
+	});
+
+	it("两个来源混着用中性叫法,平台名去重后列出来", () => {
+		const deps = nounDeps({
+			a: { label: "甲站", creatorNoun: "甲主", postNoun: "甲作" },
+			b: { label: "乙站", creatorNoun: "乙主", postNoun: "乙作" },
+		});
+		expect(sourceNounsFor(["a", "b", "a"], deps, NEUTRAL)).toEqual({
+			creatorNoun: "创作者",
+			postNoun: "作品",
+			sources: "甲站、乙站",
+		});
+	});
+
+	it("不在登记表里的拓展取清单的平台名与作品叫法", () => {
+		const deps = nounDeps(
+			{},
+			{
+				extensionLabels: { douyin: "抖音" },
+				extensionPostNouns: { douyin: "视频" },
+			},
+		);
+		expect(sourceNounsFor(["douyin"], deps, NEUTRAL)).toEqual({
+			creatorNoun: "创作者",
+			postNoun: "视频",
+			sources: "抖音",
+		});
+	});
+
+	it("不给键:取全部启用订阅的来源,重复的来源只算一个", () => {
+		const deps = nounDeps(
+			{
+				bilibili: { label: "B 站", creatorNoun: "UP主", postNoun: "动态" },
+				douyin: { label: "抖音", creatorNoun: "博主", postNoun: "视频" },
+			},
+			{
+				subscriptions: [
+					["bilibili", true],
+					["douyin", false],
+					["bilibili", true],
+				],
+			},
+		);
+		expect(sourceNounsFor(undefined, deps, NEUTRAL)).toEqual({
+			creatorNoun: "UP主",
+			postNoun: "动态",
+			sources: "B 站",
+		});
+	});
+
+	it("不给键且没有启用订阅:取登记表里在册的来源", () => {
+		const deps = nounDeps(
+			{ bilibili: { label: "B 站", creatorNoun: "UP主", postNoun: "动态" } },
+			{ registered: ["bilibili"] },
+		);
+		expect(sourceNounsFor(undefined, deps, NEUTRAL)).toEqual({
+			creatorNoun: "UP主",
+			postNoun: "动态",
+			sources: "B 站",
+		});
 	});
 });

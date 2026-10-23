@@ -47,7 +47,9 @@ const lastTools = (): any[] | null => H.lastOpts?.extraTools ?? null;
 /** 皮肤设计师那一跳(嵌套调用)—— 直接回一份合法 manifest。 */
 const generateRaw = vi.fn(async (_s: string, _u: string) => JSON.stringify(DARK_SKIN));
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	CommentaryGenerator: class {
 		chat = vi.fn();
 		chatStateless = vi.fn();

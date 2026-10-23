@@ -522,6 +522,7 @@ describe("deliverPost — AI 点评", () => {
 			"dynamic",
 			[],
 			aiOverride,
+			["fake"],
 		);
 		// 模板版照发,点评是另一份:交给推送层按目标挑。
 		expect(segsOf(custom)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);

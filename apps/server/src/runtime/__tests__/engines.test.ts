@@ -1833,6 +1833,25 @@ describe("createEngines — boot wiring", () => {
 		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
 	});
 
+	it("提示词叫法接拓展清单的平台名与作品叫法,并暴露同一个现读取口", () => {
+		const c = setup({
+			globals: aiGlobals(),
+			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
+			extensionSources: {
+				running: () => true,
+				postNoun: (id) => (id === "douyin" ? "视频" : undefined),
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
+		});
+		active = c;
+		expect(c.runtime.extensionPostNoun("douyin")).toBe("视频");
+		expect(H.ai[0].opts.nouns(["douyin"])).toEqual({
+			creatorNoun: "创作者",
+			postNoun: "视频",
+			sources: "抖音",
+		});
+	});
+
 	it("构造后立刻接上联网搜索的执行器热读口 —— 快照式接线会让「刚填的 key 不生效」", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;

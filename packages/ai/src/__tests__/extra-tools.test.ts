@@ -14,7 +14,15 @@ import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator } from "../commentary-generator";
 import type { AiTool } from "../tools";
-import { aiConfig, fakeServiceCtx, makeGen, readerStubs, streamOf, textChunk } from "./harness";
+import {
+	aiConfig,
+	fakeServiceCtx,
+	makeGen,
+	readerStubs,
+	streamOf,
+	testNouns,
+	textChunk,
+} from "./harness";
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -211,6 +219,7 @@ describe("chatStatelessStream × 注入工具", () => {
 				logger: { info() {}, warn() {}, debug() {}, error: (m: string) => errors.push(m) },
 			},
 			config: aiConfig(),
+			nouns: testNouns,
 		});
 		const events: Array<{ phase: string; ok?: boolean; message?: string }> = [];
 		await gen.chatStatelessStream(HIST, {

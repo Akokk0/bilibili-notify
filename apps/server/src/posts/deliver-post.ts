@@ -316,6 +316,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
 					settings.aiWebSearch ? { ...settings.aiOverride, webSearch: true } : settings.aiOverride,
+					[event.identity.sourceKey],
 				);
 				logger.debug(`[ai] 动态点评生成完毕，长度=${aiComment?.length ?? 0}`);
 				// 点评回来是空串 / 只有空白等于 AI 没写出来:当没有 AI 版,所有目标用模板(不推一条空文字)。

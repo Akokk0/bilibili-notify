@@ -7,10 +7,12 @@ import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 
-/** 来源的自我介绍。这里只放已经有读者的格子;其余叫法随第 4 期面板改造。 */
+/** 来源的自我介绍。这里只放已经有读者的格子。 */
 export interface SourceDescriptor {
 	/** 平台名(「B 站」)。`status` 指令的那一行、以后的徽章与平台列都取它。 */
 	label: string;
+	/** 这个平台管创作者叫什么,进提示词 `{creatorNoun}`。 */
+	creatorNoun?: string;
 	/** 这个平台管外部 id 叫什么(「UID」)。身份标签由 contract 的函数拼,描述符里只放词。 */
 	externalIdNoun?: string;
 	/** 这个平台管作品叫什么(进 `PostEvent.postNoun`)。 */

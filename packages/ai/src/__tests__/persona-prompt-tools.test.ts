@@ -16,8 +16,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { CommentaryGenerator } from "../commentary-generator";
-import { buildSystemPrompt } from "../persona-presets";
-import { makeGen as baseGen } from "./harness";
+import { buildSystemPrompt as buildSystemPromptWithNouns } from "../persona-presets";
+import { makeGen as baseGen, TEST_PROMPT_NOUNS } from "./harness";
+
+const buildSystemPrompt = (
+	params: Omit<Parameters<typeof buildSystemPromptWithNouns>[0], "nouns">,
+): string => buildSystemPromptWithNouns({ ...params, nouns: TEST_PROMPT_NOUNS });
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -32,6 +36,9 @@ vi.mock("../tools", () => ({
 	coreToolLabelOf: () => undefined,
 	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
+	renderToolDefinitions: () => [
+		{ type: "function", function: { name: "fake_tool", parameters: {} } },
+	],
 	executeTool: vi.fn(async () => ({ ok: true, text: "tool-result" })),
 }));
 

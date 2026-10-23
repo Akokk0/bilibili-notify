@@ -29,6 +29,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
+import { promptNounsOf } from "../ai/prompt-nouns.js";
 import { LOAD_SKILL_LABEL } from "../ai/tool-label-texts.js";
 import {
 	buildCardWorkshopSystem,
@@ -165,6 +166,7 @@ export function createAiRoute(
 			config: toGeneratorConfig(
 				withStoredApiKey(ai, deps.store.getGlobals().ai, (body as { ai?: unknown }).ai),
 			),
+			nouns: promptNounsOf(deps),
 		});
 		generator.setProvidedTools(() => deps.runtime.aiToolProviders.tools());
 

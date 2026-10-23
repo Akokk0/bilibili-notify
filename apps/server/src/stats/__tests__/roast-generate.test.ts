@@ -31,7 +31,9 @@ const comment = vi.fn(
 );
 const setWebSearchSource = vi.fn();
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	// class 而不是箭头函数 —— 生成服务是 `new CommentaryGenerator(...)`。
 	CommentaryGenerator: class {
 		comment = comment;

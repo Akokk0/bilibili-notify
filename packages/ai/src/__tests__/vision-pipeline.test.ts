@@ -31,6 +31,7 @@ vi.mock("../tools", () => ({
 	coreToolLabelOf: () => undefined,
 	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [],
+	renderToolDefinitions: () => [],
 	DESCRIBE_IMAGE_TOOL: {
 		type: "function",
 		function: { name: "describe_image", parameters: {} },

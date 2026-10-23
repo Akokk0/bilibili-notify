@@ -20,6 +20,7 @@ import {
 	fakeServiceCtx,
 	streamOf,
 	streamUntilAborted,
+	testNouns,
 	textChunk,
 	untilAborted,
 } from "./harness";
@@ -56,6 +57,9 @@ vi.mock("../tools", () => ({
 	coreToolLabelOf: () => undefined,
 	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
+	renderToolDefinitions: () => [
+		{ type: "function", function: { name: "fake_tool", parameters: {} } },
+	],
 	executeTool: toolsMock.executeTool,
 }));
 
@@ -79,6 +83,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	const gen = new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
 		config: makeConfig(over),
+		nouns: testNouns,
 	});
 	return { gen };
 }

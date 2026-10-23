@@ -16,7 +16,9 @@ import { createRoastScheduler } from "../roast-scheduler.js";
 
 const comment = vi.fn(async () => "{}");
 
-vi.mock("@bilibili-notify/ai", () => ({
+vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	CommentaryGenerator: class {
 		comment = comment;
 		setWebSearchSource = vi.fn();

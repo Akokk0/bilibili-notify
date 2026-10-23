@@ -87,7 +87,10 @@ async function depsWithPointer(pointer: string): Promise<RoastGenDeps> {
 			engines: { extensionPlatformLabel: () => undefined },
 			serviceCtx,
 			subRuntimeStore: { get: () => ({ cachedProfile: undefined }) },
-			sourceRegistry: { get: () => ({ descriptor: { label: "B 站" } }) },
+			sourceRegistry: {
+				get: () => ({ descriptor: { label: "B 站" } }),
+				list: () => [{ sourceKey: "bilibili" }],
+			},
 		},
 		store,
 	} as unknown as RoastGenDeps;

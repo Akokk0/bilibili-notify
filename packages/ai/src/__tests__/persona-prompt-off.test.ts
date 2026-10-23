@@ -12,8 +12,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { CommentaryGenerator } from "../commentary-generator";
-import { buildSystemPrompt } from "../persona-presets";
-import { makeGen as baseGen } from "./harness";
+import { buildSystemPrompt as buildSystemPromptWithNouns } from "../persona-presets";
+import { makeGen as baseGen, TEST_PROMPT_NOUNS } from "./harness";
+
+const buildSystemPrompt = (
+	params: Omit<Parameters<typeof buildSystemPromptWithNouns>[0], "nouns">,
+): string => buildSystemPromptWithNouns({ ...params, nouns: TEST_PROMPT_NOUNS });
 
 const oai = vi.hoisted(() => {
 	const create = vi.fn();
@@ -28,6 +32,9 @@ vi.mock("../tools", () => ({
 	coreToolLabelOf: () => undefined,
 	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
+	renderToolDefinitions: () => [
+		{ type: "function", function: { name: "fake_tool", parameters: {} } },
+	],
 	executeTool: vi.fn(async () => ({ ok: true, text: "tool-result" })),
 }));
 
@@ -55,8 +62,7 @@ describe("buildSystemPrompt 的 withPersona", () => {
 
 	it("去掉的只有性格 —— 职责与工具铁律照旧", () => {
 		const off = buildSystemPrompt({ ...PERSONA, withPersona: false, withTools: true });
-		// 职责那一句不再只认 B 站(ADR-0020 决策 13):B 站的语境还在,也不把别的平台排除在外。
-		expect(off).toContain("帮用户关注 B 站等平台上的 UP 主");
+		expect(off).toContain("帮用户关注各平台上的创作者");
 		expect(off).toContain("必须调用对应工具");
 	});
 

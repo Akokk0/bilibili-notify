@@ -56,6 +56,9 @@ vi.mock("../tools", () => ({
 	TOOL_DEFINITIONS: [
 		{ type: "function", function: { name: "fake_tool", description: "假工具", parameters: {} } },
 	],
+	renderToolDefinitions: () => [
+		{ type: "function", function: { name: "fake_tool", description: "假工具", parameters: {} } },
+	],
 	executeTool: toolsMock.executeTool,
 }));
 

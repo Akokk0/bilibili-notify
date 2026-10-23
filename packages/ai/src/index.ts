@@ -17,7 +17,11 @@ export {
 	parseExtraParams,
 } from "./extra-params";
 export * from "./persona-presets";
-export { PROMPT_NEUTRAL_NOUNS } from "./prompt-nouns";
+export {
+	PROMPT_NEUTRAL_NOUNS,
+	type PromptNouns,
+	renderPromptNouns,
+} from "./prompt-nouns";
 export { type AiProbeFields, probeAiProvider } from "./provider-probe";
 export { type BuildProviderParamsInput, buildProviderParams } from "./providers";
 export {

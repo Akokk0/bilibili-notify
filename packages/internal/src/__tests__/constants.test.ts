@@ -10,6 +10,7 @@ import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
 	aiProfileAt,
+	BUILTIN_AI_PRESETS,
 	CONNECTION_PLATFORMS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	platformDescriptor,
@@ -112,6 +113,15 @@ describe("aiProfileAt —— 按 id 取表里自己的那一家", () => {
 
 	it("表整个缺席也回 undefined", () => {
 		expect(aiProfileAt(undefined, "mine")).toBeUndefined();
+	});
+});
+
+describe("内置 AI 人格", () => {
+	it("四份预设的全部文字都不写死平台或创作者叫法", () => {
+		const presetText = JSON.stringify(BUILTIN_AI_PRESETS);
+
+		expect(presetText).not.toContain("UP");
+		expect(presetText).not.toContain("B 站");
 	});
 });
 

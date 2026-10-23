@@ -14,6 +14,7 @@ const SENDERS = Object.fromEntries(
 ) as Record<string, number>;
 
 const PARAMS = {
+	sourceKey: "fake",
 	senderRecord: SENDERS,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
 	fanClubName: "小晨",
@@ -59,6 +60,7 @@ describe("LiveSummaryRequester.generate", () => {
 		expect(await made?.ai).toBe("AI 总结");
 		expect(comment).toHaveBeenCalledTimes(1);
 		expect(comment.mock.calls[0]?.[1]).toBe("liveSummary");
+		expect(comment.mock.calls[0]?.[4]).toEqual(["fake"]);
 	});
 
 	it("门关:只有模板那份,没有 ai 这个键,没问 AI", () => {

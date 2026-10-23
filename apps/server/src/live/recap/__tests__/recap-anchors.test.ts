@@ -14,6 +14,7 @@ const AVATAR = `${"c".repeat(64)}.webp` as ImageRef;
 function options(over: Partial<RecapOptions> = {}): RecapOptions {
 	return {
 		subscriptionId: "sub-1",
+		sourceKey: "fake",
 		extras: { wordcloud: true, liveSummary: true },
 		summaryTemplate: "总结模板",
 		creator: { name: "主播", avatar: AVATAR },
@@ -214,6 +215,7 @@ describe("recapAnchors", () => {
 			),
 		);
 		expect(t.summaryGenerate.mock.calls[0]?.[0]).toStrictEqual({
+			sourceKey: "fake",
 			senderRecord: { 观众甲: 3 },
 			sortedWords: [["精彩", 5]],
 			fanClubName: "小晨",

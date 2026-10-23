@@ -11,7 +11,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { buildSystemPrompt } from "../persona-presets";
+import { buildSystemPrompt as buildSystemPromptWithNouns } from "../persona-presets";
+import { TEST_PROMPT_NOUNS } from "./harness";
+
+const buildSystemPrompt = (
+	params: Omit<Parameters<typeof buildSystemPromptWithNouns>[0], "nouns">,
+): string => buildSystemPromptWithNouns({ ...params, nouns: TEST_PROMPT_NOUNS });
 
 /** 那条约束的特征串。改文案时这里跟着改,别改成宽泛的「纯文本」。 */
 const PLAIN_TEXT_RULE = "只用纯文本";

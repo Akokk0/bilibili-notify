@@ -19,6 +19,7 @@ import type {
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import { type Failure, fail, ok, type Result, type Subscription } from "@bilibili-notify/internal";
+import { promptNounsOf } from "../ai/prompt-nouns.js";
 import type { RouteDeps } from "../routes/types.js";
 import { resolveAiOverride, toGeneratorConfig } from "../runtime/ai-config.js";
 import {
@@ -106,6 +107,7 @@ function makeRoastGenerator(deps: RoastGenDeps, aiSettings: RoastAiSettings): Co
 	const generator = new CommentaryGenerator({
 		serviceCtx: deps.runtime.serviceCtx,
 		config: toGeneratorConfig(aiSettings),
+		nouns: promptNounsOf(deps),
 	});
 	generator.setWebSearchSource(() => webSearchExecutorFromSettings(aiSettings.search));
 	return generator;

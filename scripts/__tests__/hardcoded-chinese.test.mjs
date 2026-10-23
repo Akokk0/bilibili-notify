@@ -97,7 +97,7 @@ export const RATCHET = {
 	"apps/server/src/bilibili/live/session/room-session.ts": 10,
 	"apps/server/src/bilibili/problem-layers.ts": 8,
 	"apps/server/src/bilibili/settings.ts": 2,
-	"apps/server/src/bilibili/source.ts": 6,
+	"apps/server/src/bilibili/source.ts": 7,
 	"apps/server/src/bilibili/video-card.ts": 1,
 	"apps/server/src/boot.ts": 1,
 	"apps/server/src/card-skins/ai-css.ts": 36, // 含给模型的提示词(决策 11 不翻)

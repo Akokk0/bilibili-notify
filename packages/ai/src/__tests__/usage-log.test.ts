@@ -17,7 +17,7 @@
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import { aiConfig, streamOf, textChunk } from "./harness";
+import { aiConfig, streamOf, testNouns, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
 // mocks
@@ -39,6 +39,9 @@ vi.mock("../tools", () => ({
 	coreToolLabelOf: () => undefined,
 	describeToolCall: () => ({}),
 	TOOL_DEFINITIONS: [{ type: "function", function: { name: "fake_tool", parameters: {} } }],
+	renderToolDefinitions: () => [
+		{ type: "function", function: { name: "fake_tool", parameters: {} } },
+	],
 	DESCRIBE_IMAGE_TOOL: {
 		type: "function",
 		function: { name: "describe_image", parameters: {} },
@@ -81,6 +84,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	const gen = new CommentaryGenerator({
 		serviceCtx,
 		config: aiConfig(over),
+		nouns: testNouns,
 	});
 	return { gen, info };
 }
