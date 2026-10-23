@@ -204,8 +204,9 @@ interface CallToolOptions {
 	 */
 	webSearch?: WebSearchExecutor;
 	/**
-	 * 调用方注入的工具的标签(名字 → `label` 等两格)。工具环发 start 事件时据此带上
-	 * 痕迹自带的 `label` / `argText`;查不到再查核心工具的标签表,都没有就不带。
+	 * 调用方注入或提供方登记的只读工具的标签(名字 → `label` 等两格)。工具环发
+	 * start 事件时据此带上痕迹自带的 `label` / `argText`;查不到再查核心工具的
+	 * 标签表,都没有就不带。
 	 */
 	labelOf?: (name: string) => AiToolLabelFields | undefined;
 }
@@ -502,7 +503,7 @@ export interface ChatStatelessOptions {
 	 */
 	maxToolRounds?: number;
 	/**
-	 * 挂不挂内置的 B 站只读工具。默认挂;专职模式关掉之后,工具表只剩
+	 * 挂不挂核心与提供方的只读工具。默认挂;专职模式关掉之后,工具表只剩
 	 * {@link AiTool} 注入的那些 —— 少一个口子,就少一条把它带跑的路。
 	 */
 	builtinTools?: boolean;
@@ -527,6 +528,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private creatorReader: CreatorReader | null = null;
 	/** 联网搜索执行器的热读口,同 {@link creatorReader} 的纪律。 */
 	private webSearchAccessor: (() => WebSearchExecutor | null) | null = null;
+	/** 提供方只读工具的热读口;没接过时就是空表。 */
+	private providedToolsAccessor: (() => readonly AiTool[]) | null = null;
 	/** 已报过的告警键;去重用,见 {@link warnOnce}。 */
 	private readonly warned = new Set<string>();
 
@@ -557,6 +560,18 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 */
 	setWebSearchSource(get: () => WebSearchExecutor | null): void {
 		this.webSearchAccessor = get;
+	}
+
+	/**
+	 * 接上宿主登记的只读工具。**每次顶层请求现取**,不在接线时拍快照 —— 提供方
+	 * 随运行上下文登记与撤销,快照会让刚登记的工具等到重启才出现。
+	 */
+	setProvidedTools(get: () => readonly AiTool[]): void {
+		this.providedToolsAccessor = get;
+	}
+
+	private providedTools(): readonly AiTool[] {
+		return this.providedToolsAccessor?.() ?? [];
 	}
 
 	/** 这次调用要不要真挂 `web_search`:意愿(flag)与能力(执行器在)都得有。 */
@@ -642,7 +657,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 	): Promise<string> {
 		/**
 		 * 引擎路径的联网搜索:开着且执行器在,才**首次**给这条路挂工具 —— 且工具表
-		 * **只有 web_search**,B 站只读工具不顺带塞进来(那会静默改变点评的行为面)。
+		 * **只有 web_search**,核心与提供方的只读工具不顺带塞进来(那会静默改变
+		 * 点评的行为面)。
 		 *
 		 * system prompt 仍是 NO_TOOL_LAW(「就眼前素材直接作答」),与工具铁律
 		 * 无关 —— 那条铁律讲的是订阅查询。这里补一行**只讲搜索**的授权,后到的
@@ -771,7 +787,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 
 	/**
 	 * 交给副模型看一批图,并为**这一批**记一行用量 —— 看图的三个入口(点评的
-	 * 预处理、聊天的 describe_image、注入工具交回的图)都走这里。
+	 * 预处理、聊天的 describe_image、调用方或提供方工具交回的图)都走这里。
 	 *
 	 * 一批一行而不是一张一行:一条带 9 张图的动态逐张记就是 9 行,推送高峰在 info
 	 * 里刷屏。各张加总,单位写「张」;有哪张失败 / 超时就标「未完成」,成功的照加;
@@ -843,8 +859,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
-	 * 单发对话:一条消息进、一条回复出,不读也不留任何历史。自动挂上工具(B 站只读
-	 * 查询;带图且配了看图副模型时加 describe_image;开了搜索再加 web_search)。
+	 * 单发对话:一条消息进、一条回复出,不读也不留任何历史。自动挂上工具(核心与
+	 * 提供方的只读查询;带图且配了看图副模型时加 describe_image;开了搜索再加
+	 * web_search)。
 	 *
 	 * 只给 AI 页的「试推送」用 —— 回复直接推到 QQ / Telegram 这类不渲染 Markdown 的
 	 * 地方,所以带工具铁律、保持「只用纯文本」。多轮对话只有 {@link chatStateless}
@@ -868,16 +885,28 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 搜索是**加装**:开了且执行器在,才在既有工具表上多出 web_search(与
 		// chatStatelessImpl 同一口径)。
 		const searchExec = this.resolveWebSearch(opts?.webSearch);
+		const provided = new Map(this.providedTools().map((t) => [t.definition.function.name, t]));
+		const toolOptions: CallToolOptions = {
+			tools: [
+				...vision.tools,
+				...(searchExec ? [WEB_SEARCH_TOOL] : []),
+				...[...provided.values()].map((t) => t.definition),
+			],
+			onToolCall: async (name, args, onProgress) => {
+				const tool = provided.get(name);
+				if (!tool) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
+				const out = await this.runAiTool(tool, args, onProgress, toolOptions);
+				// 试推送只取文字:这条路发到纯文本聊天,不补带图消息。
+				return out.ok ? ok({ text: out.text }) : out;
+			},
+			labelOf: (name) => provided.get(name),
+			...(searchExec ? { webSearch: searchExec } : {}),
+		};
 		const result = await this.callAPI(
 			"试推送",
 			systemPrompt,
 			withVisionNote([{ role: "user", content }], vision),
-			{
-				tools: searchExec ? [...vision.tools, WEB_SEARCH_TOOL] : vision.tools,
-				onToolCall: (name, args) =>
-					executeTool(name, args, this.api, this.creatorReader, vision.ctx),
-				...(searchExec ? { webSearch: searchExec } : {}),
-			},
+			toolOptions,
 			// 配了副模型就不再把图下挂给主模型 —— 它可能根本不支持多模态。
 			vision.ctx ? undefined : this.mainModelCanSeeImages() ? imageUrls : undefined,
 		);
@@ -949,8 +978,13 @@ export class CommentaryGenerator implements CommentaryProvider {
 		// 搜索是**加装**:开了且执行器在,才在既有工具表上多出 web_search。
 		const searchExec = this.resolveWebSearch(opts?.webSearch);
 		// 注入工具同样是加装。按名字建索引,调用时**先查注入的**:同名时以调用方
-		// 给的为准 —— 注入是显式意图,不该被内置表悄悄压过去。
+		// 给的为准 —— 注入是显式意图,不该被内置表或提供方悄悄压过去。
 		const extra = new Map((opts?.extraTools ?? []).map((t) => [t.definition.function.name, t]));
+		const provided = new Map(
+			(opts?.builtinTools === false ? [] : this.providedTools())
+				.filter((t) => !extra.has(t.definition.function.name))
+				.map((t) => [t.definition.function.name, t]),
+		);
 		/**
 		 * 工具表**随这次请求现造**,而且是可变的 —— 注入的工具能在执行完之后把它
 		 * 收窄(见 {@link AiToolResult.restrictTools});取轮时每轮现读,所以下一轮
@@ -966,25 +1000,17 @@ export class CommentaryGenerator implements CommentaryProvider {
 					// 它也是 vision.tools 的一部分(专职窗口本来就不传图)。
 					...(opts?.builtinTools === false ? [] : vision.tools),
 					...(searchExec ? [WEB_SEARCH_TOOL] : []),
+					...[...provided.values()].map((t) => t.definition),
 					...[...extra.values()].map((t) => t.definition),
 				],
 				opts?.restrictTools,
 			),
 			onToolCall: async (name, args, onProgress) => {
-				const injected = extra.get(name);
-				if (!injected) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
-				const out = await injected.execute(args, onProgress);
-				// 失败原样交给工具环:它记失败,并把 `message` 喂回给模型。
-				if (!out.ok) return out;
-				if (out.restrictTools) {
-					toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
-					this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
-				}
-				return out.images?.length
-					? this.toolImagesFor(out.text, out.images)
-					: ok({ text: out.text });
+				const tool = extra.get(name) ?? provided.get(name);
+				if (!tool) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
+				return this.runAiTool(tool, args, onProgress, toolOptions);
 			},
-			labelOf: (name) => extra.get(name),
+			labelOf: (name) => extra.get(name) ?? provided.get(name),
 			onToolEvent: opts?.onToolEvent,
 			...(opts?.maxToolRounds ? { maxRounds: opts.maxToolRounds } : {}),
 			...(searchExec ? { webSearch: searchExec } : {}),
@@ -1006,7 +1032,27 @@ export class CommentaryGenerator implements CommentaryProvider {
 	}
 
 	/**
-	 * 注入工具交回的图 → 这一轮怎么让模型看见(ADR-0015 决策 19 的 🔗)。
+	 * 调用方工具与提供方工具共用的收尾:失败原样交给工具环,成功后的收窄与交图
+	 * 也走同一条路,免得两条来源对同一份 `AiToolResult` 解释成两种行为。
+	 */
+	private async runAiTool(
+		tool: AiTool,
+		args: Record<string, string>,
+		onProgress: ((chars: number) => void) | undefined,
+		toolOptions: CallToolOptions,
+	): Promise<Result<ToolCallOutput>> {
+		const out = await tool.execute(args, onProgress);
+		// 失败原样交给工具环:它记失败,并把 `message` 喂回给模型。
+		if (!out.ok) return out;
+		if (out.restrictTools) {
+			toolOptions.tools = narrowTools(toolOptions.tools, out.restrictTools);
+			this.logger.debug(`[tool] 工具面收窄至 ${toolOptions.tools.length} 把`);
+		}
+		return out.images?.length ? this.toolImagesFor(out.text, out.images) : ok({ text: out.text });
+	}
+
+	/**
+	 * 调用方或提供方工具交回的图 → 这一轮怎么让模型看见(ADR-0015 决策 19 的 🔗)。
 	 *
 	 * 三条路,顺序与聊天发图同一个口径:主模型自己看得见就把图原样交给工具环,由它补一条
 	 * 带图的消息;否则配了副模型就转成文字并进结果;两样都没有就说一句看不见。**看不见
