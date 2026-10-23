@@ -35,7 +35,7 @@ import {
  *
  * 抓不到的(不装作抓得到):
  * - **换了名字的同一个句柄**:把槽位叫成 `client` / `reader`。起名带 `bili` 的由 B 站替身棘轮接住;起中立名字躲的,
- *   只有审查与 3a-42 的对拍够得着(`packages/ai` 的 `BiliReader` 就是这一类,在 `packages/` 里不在 ④ 的范围)。
+ *   只有审查与 3a-42 的对拍够得着。
  *   ④ 按名字数,不做类型检查:一个值是不是 B 站客户端它看不出来;`function f(api: Api)` 这种光秃秃的形参、
  *   局部变量 `const api = …` 它不数(传进去那一处的 `x.api` / `api:` 已经数过)。
  * - **工厂造出来的对象在 `compose.ts` 里怎么用**(`source?.dynamic()`、`problems.dispose()`、`icons.refs()`):不拦,
@@ -93,12 +93,10 @@ export const SLOT_SKIP_DIRS = [
 export const API_SLOT_RATCHET = {
 	"apps/server/src/app.ts": 3, // 卡片预览的 `api`(属性签名、`api:` 与 `options.api`);第 4 期卡片真实预览改口时消
 	"apps/server/src/index.ts": 7, // 登录装配的产物经入口递出去(套壳、引擎、createApp);含 `devAuth.api` 杂音;3b 登录装配进集成时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)
-	"apps/server/src/routes/ai.ts": 2, // 锐评生成拿 `engines.api`;3b `AiToolProvider` 时消
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
 	"apps/server/src/routes/subscriptions.ts": 3, // 旧搜人两口;第 4 期消
-	"apps/server/src/runtime/engines.ts": 8, // `EnginesRuntime.api` 与粉丝轮询 / 关注同步 / 链接解析的递法;3b 随读者清掉
+	"apps/server/src/runtime/engines.ts": 6, // `EnginesRuntime.api` 与关注同步 / 链接解析的递法;3b 随读者清掉
 	"apps/server/src/runtime/follow-sync.ts": 3, // 关注同步;3b
-	"apps/server/src/stats/roast-generate.ts": 2, // 锐评生成;3b `AiToolProvider`
 };
 
 // ---------------------------------------------------------------------------

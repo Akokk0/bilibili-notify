@@ -5,7 +5,7 @@
 
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { AiCandidateView, BiliReader, CreatorReader } from "../tools";
+import type { AiCandidateView, CreatorReader } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
 import { readerStubs, sayOf } from "./harness";
 
@@ -18,11 +18,11 @@ const candidates = (n: number): AiCandidateView[] =>
 	}));
 
 function readerWith(searchCreators: CreatorReader["searchCreators"]): CreatorReader {
-	return { subscriptions: () => [], externalIdFits: () => true, ...readerStubs, searchCreators };
+	return { subscriptions: () => [], ...readerStubs, searchCreators };
 }
 
 const run = (args: Record<string, string>, reader: CreatorReader | null) =>
-	executeTool("search_creators", args, {} as BiliReader, reader);
+	executeTool("search_creators", args, reader);
 
 describe("search_creators", () => {
 	it("source 与 query 原样递给读口;每行带 creator、名字、粉丝,简介截到 80 字", async () => {

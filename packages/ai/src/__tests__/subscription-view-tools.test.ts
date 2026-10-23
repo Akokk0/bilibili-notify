@@ -5,12 +5,10 @@
  * 「来源键:外部 id」(ADR-0030 决策 1),B 站和别的来源不再分两种条目。钉住的是:
  * - `list_subscriptions` 每行写名字、平台名与 `creator`,不再有「UID:」。
  * - `get_live_status` 两支都从视图里的在播状态答,不问 B 站。
- * - 还按 UID 查的那几把工具(过渡)收到的 uid 不合 B 站声明的外部 id 格式时不去 B 站查 ——
- *   别家的外部 id 恰好是一串数字时,B 站那边会查出另一个人来(ADR-0021 决策 14 的 10-15 🔗)。
  */
 
-import { describe, expect, it, vi } from "vite-plus/test";
-import type { AiSubscriptionView, BiliReader, CreatorReader, LiveNowView } from "../tools";
+import { describe, expect, it } from "vite-plus/test";
+import type { AiSubscriptionView, CreatorReader, LiveNowView } from "../tools";
 import { executeTool } from "../tools";
 import { readerStubs, sayOf } from "./harness";
 
@@ -29,28 +27,15 @@ const EXT: AiSubscriptionView = {
 	live: true,
 };
 
-/** 读口替身:B 站只收纯数字的外部 id(照描述符声明的格式),别的来源不替它做主。 */
 function readerOf(items: AiSubscriptionView[]): CreatorReader {
 	return {
 		subscriptions: () => items,
-		externalIdFits: (sourceKey, externalId) =>
-			sourceKey === "bilibili" ? /^\d+$/.test(externalId) : true,
 		...readerStubs,
 	};
 }
 
-function apiStub() {
-	return {
-		fetchUserUpstat: vi.fn(async () => ({ code: 0, data: {} })),
-		fetchUserNavnum: vi.fn(async () => ({ code: 0, data: {} })),
-		fetchUserVideos: vi.fn(async () => ({ code: 0, data: { list: { vlist: [] } } })),
-		// 在播不再问 B 站:谁调了它谁红。
-		fetchLiveRoomInfoByUids: vi.fn(),
-	};
-}
-
-function run(name: string, args: Record<string, string>, api = apiStub(), items = [BILI, EXT]) {
-	return executeTool(name, args, api as unknown as BiliReader, readerOf(items));
+function run(name: string, args: Record<string, string>, items = [BILI, EXT]) {
+	return executeTool(name, args, readerOf(items));
 }
 
 describe("list_subscriptions", () => {
@@ -64,13 +49,8 @@ describe("list_subscriptions", () => {
 	});
 
 	it("没有订阅 / 没接读口 → 当前没有订阅", async () => {
-		expect(sayOf(await run("list_subscriptions", {}, apiStub(), []))).toBe("当前没有订阅");
-		const noReader = await executeTool(
-			"list_subscriptions",
-			{},
-			apiStub() as unknown as BiliReader,
-			null,
-		);
+		expect(sayOf(await run("list_subscriptions", {}, []))).toBe("当前没有订阅");
+		const noReader = await executeTool("list_subscriptions", {}, null);
 		expect(sayOf(noReader)).toBe("当前没有订阅");
 	});
 });
@@ -85,16 +65,12 @@ describe("get_live_status", () => {
 		{ ...BILI, liveNow: biliLive },
 		{ ...EXT, liveNow: extLive },
 	];
-	const status = (list: AiSubscriptionView[], api = apiStub()) =>
-		executeTool("get_live_status", {}, api as unknown as BiliReader, readerOf(list));
+	const status = (list: AiSubscriptionView[]) => executeTool("get_live_status", {}, readerOf(list));
 
 	it("B 站订阅也从 BN 手里的在播状态答,全程不问 B 站;拓展那条同样:标题、开播时刻、累计观看", async () => {
-		const api = apiStub();
 		const out = await status(
 			items({ state: "live", title: "晚饭直播", startedAt: STARTED, totalViewers: 23_456 }),
-			api,
 		);
-		expect(api.fetchLiveRoomInfoByUids).not.toHaveBeenCalled();
 		expect(out.ok).toBe(true);
 		expect(sayOf(out)).toContain("晨风：直播中「晚间杂谈」");
 		expect(sayOf(out)).toContain(
@@ -128,12 +104,10 @@ describe("get_live_status", () => {
 	});
 
 	it("B 站订阅不在播表里 → 未开播;没接上在播来源 → 查不到,都不问 B 站", async () => {
-		const api = apiStub();
-		expect(sayOf(await status([{ ...BILI, liveNow: { state: "idle" } }], api))).toContain(
+		expect(sayOf(await status([{ ...BILI, liveNow: { state: "idle" } }]))).toContain(
 			"晨风：未开播",
 		);
-		expect(sayOf(await status([BILI], api))).toContain("晨风：查不到");
-		expect(api.fetchLiveRoomInfoByUids).not.toHaveBeenCalled();
+		expect(sayOf(await status([BILI]))).toContain("晨风：查不到");
 	});
 
 	it("只开了直播推送的才在结果里", async () => {
@@ -142,40 +116,5 @@ describe("get_live_status", () => {
 			{ ...EXT, liveNow: { state: "idle" } },
 		]);
 		expect(sayOf(out)).toBe("抖音甲：未开播");
-	});
-});
-
-describe("按 UID 查的工具(过渡)", () => {
-	const UID_TOOLS: [string, keyof ReturnType<typeof apiStub>][] = [
-		["get_user_stats", "fetchUserUpstat"],
-		["get_user_videos", "fetchUserVideos"],
-	];
-
-	it.each(UID_TOOLS)(
-		"%s 收到的 uid 不合 B 站声明的外部 id 格式(别家的外部 id 或整串 creator)→ 不去 B 站查,invalid,话里说只传冒号后面那一段",
-		async (tool, method) => {
-			for (const uid of ["alice-ext", "bilibili:1", ""]) {
-				const api = apiStub();
-				const out = await run(tool, { uid }, api);
-				expect(api[method]).not.toHaveBeenCalled();
-				expect(out).toMatchObject({ ok: false, code: "invalid" });
-				expect(sayOf(out)).toContain("冒号后面");
-			}
-		},
-	);
-
-	it.each(UID_TOOLS)(
-		"%s 收到合格式的 uid → 照旧去 B 站查(订没订阅都一样)",
-		async (tool, method) => {
-			const api = apiStub();
-			await run(tool, { uid: "999" }, api);
-			expect(api[method]).toHaveBeenCalledWith("999");
-		},
-	);
-
-	it("没接读口(核不了格式)→ 照旧去查,不替来源做主", async () => {
-		const api = apiStub();
-		await executeTool("get_user_stats", { uid: "abc" }, api as unknown as BiliReader, null);
-		expect(api.fetchUserUpstat).toHaveBeenCalledWith("abc");
 	});
 });

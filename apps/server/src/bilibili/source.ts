@@ -20,8 +20,10 @@ import {
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
 import { DynamicPoller } from "./dynamic/index.js";
+import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
@@ -92,14 +94,14 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
 }
 
 /**
- * B 站来源的自我介绍。`externalIdRegex`:订阅的外部 id 就是 UID,只能是数字 —— 这条规矩住在这里,
- * 核心(新建订阅处)只照描述符核,不再自己写「B 站 uid 是数字」。
+ * B 站来源的自我介绍。`externalIdRegex`:订阅的外部 id 就是 UID,只能是数字 —— 这条规矩
+ * 由来源描述符与 AI 工具共用;核心(新建订阅处)只照描述符核,不再自己写「B 站 uid 是数字」。
  */
 export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	label: "B 站",
 	externalIdNoun: "UID",
 	postNoun: "动态",
-	externalIdRegex: "^\\d+$",
+	externalIdRegex: BILI_EXTERNAL_ID_REGEX,
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 };
 
@@ -423,6 +425,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						}),
 					),
 				);
+				mine.push(ctx.registerAiToolProvider(createBiliAiToolProvider({ api: deps.api })));
 				applyDynamic();
 				rooms.start(ctx, ctx.subscriptions());
 				mine.push(dynamicSettings.onChange(guarded(ctx, "动态", applyDynamic)));

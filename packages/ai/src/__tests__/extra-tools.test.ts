@@ -13,7 +13,7 @@
 import { fail, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator } from "../commentary-generator";
-import type { AiTool, BiliReader } from "../tools";
+import type { AiTool } from "../tools";
 import { aiConfig, fakeServiceCtx, makeGen, readerStubs, streamOf, textChunk } from "./harness";
 
 const oai = vi.hoisted(() => {
@@ -210,7 +210,6 @@ describe("chatStatelessStream × 注入工具", () => {
 				...fakeServiceCtx(),
 				logger: { info() {}, warn() {}, debug() {}, error: (m: string) => errors.push(m) },
 			},
-			api: {} as BiliReader,
 			config: aiConfig(),
 		});
 		const events: Array<{ phase: string; ok?: boolean; message?: string }> = [];
@@ -240,7 +239,6 @@ describe("chatStatelessStream × 注入工具", () => {
 		const gen = makeGen();
 		gen.setCreatorReader({
 			subscriptions: () => [{ creator: "bilibili:1", name: "咩栗", platform: "B 站", post: true }],
-			externalIdFits: () => true,
 			...readerStubs,
 		});
 		await gen.chatStatelessStream(HIST, { onDelta: () => {}, extraTools: [tool] });

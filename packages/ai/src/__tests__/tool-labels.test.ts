@@ -30,13 +30,13 @@ beforeEach(() => {
 });
 
 describe("describeToolCall", () => {
-	it("按 labelArg.keys 的顺序取第一个有值的入参(昵称优先,只有 UID 时退回 UID)", () => {
-		const spec = { label: "查看 UP 主资料", labelArg: { keys: ["name", "uid"] } };
-		expect(describeToolCall(spec, { name: "咩栗", uid: "1" })).toEqual({
+	it("按 labelArg.keys 的顺序取第一个有值的入参", () => {
+		const spec = { label: "查看 UP 主资料", labelArg: { keys: ["name", "id"] } };
+		expect(describeToolCall(spec, { name: "咩栗", id: "1" })).toEqual({
 			label: "查看 UP 主资料",
 			argText: "咩栗",
 		});
-		expect(describeToolCall(spec, { name: "  ", uid: "12345" })).toEqual({
+		expect(describeToolCall(spec, { name: "  ", id: "12345" })).toEqual({
 			label: "查看 UP 主资料",
 			argText: "12345",
 		});
@@ -74,7 +74,7 @@ describe("describeToolCall", () => {
 	});
 
 	it("认不出的工具(没有标签)→ 什么都不带,面板回落显示原名", () => {
-		expect(describeToolCall(undefined, { uid: "1" })).toEqual({});
+		expect(describeToolCall(undefined, { id: "1" })).toEqual({});
 	});
 });
 
@@ -82,18 +82,13 @@ describe("核心工具的入参格 = 文案表里单独写的格 + 工具定义�
 	const argTextOf = (name: string, args: Record<string, string>) =>
 		describeToolCall(coreToolLabelOf(name), args).argText;
 
-	it("单独写的格(昵称)优先于必填格(UID)", () => {
-		expect(argTextOf("get_user_stats", { name: "咩栗", uid: "12345" })).toBe("咩栗");
-	});
-
 	it("creator 在小条上只显示冒号后面的外部 id;切不出来就原样", () => {
 		expect(argTextOf("get_creator_profile", { creator: "bilibili:12345" })).toBe("12345");
 		expect(argTextOf("get_creator_posts", { creator: "acme.inprocess:alice:x" })).toBe("alice:x");
 		expect(argTextOf("get_creator_stats", { creator: "没有冒号" })).toBe("没有冒号");
 	});
 
-	it("只有必填格时显示它(没给昵称 → UID)", () => {
-		expect(argTextOf("get_user_stats", { uid: "12345" })).toBe("12345");
+	it("只有必填格时显示它", () => {
 		expect(argTextOf("search_creators", { source: "bilibili", query: "咩栗" })).toBe("咩栗");
 		expect(argTextOf("search_creators", { source: "bilibili" })).toBe("bilibili");
 		expect(argTextOf("web_search", { query: "b站 新闻" })).toBe("b站 新闻");
@@ -132,7 +127,6 @@ describe("工具环发 start 时带着标签", () => {
 	function makeGen(): CommentaryGenerator {
 		return new CommentaryGenerator({
 			serviceCtx: fakeServiceCtx(),
-			api: {} as never,
 			config: aiConfig(),
 		});
 	}

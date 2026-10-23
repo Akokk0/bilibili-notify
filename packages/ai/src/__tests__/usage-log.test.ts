@@ -17,7 +17,6 @@
 import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import type { BiliReader } from "../tools";
 import { aiConfig, streamOf, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -50,7 +49,6 @@ vi.mock("../tools", () => ({
 		async (
 			name: string,
 			args: Record<string, string>,
-			_api: unknown,
 			_subs: unknown,
 			visionCtx?: { images: string[]; describe: (url: string) => Promise<string> },
 		) =>
@@ -82,7 +80,6 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	};
 	const gen = new CommentaryGenerator({
 		serviceCtx,
-		api: {} as BiliReader,
 		config: aiConfig(over),
 	});
 	return { gen, info };

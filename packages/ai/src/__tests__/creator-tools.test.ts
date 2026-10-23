@@ -5,14 +5,13 @@
 
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { AiPostView, AiProfileView, AiStatsView, BiliReader, CreatorReader } from "../tools";
+import type { AiPostView, AiProfileView, AiStatsView, CreatorReader } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
 import { sayOf } from "./harness";
 
 function readerWith(over: Partial<CreatorReader>): CreatorReader {
 	return {
 		subscriptions: () => [],
-		externalIdFits: () => true,
 		searchCreators: async () => ok({ candidates: [] }),
 		profile: async () => fail("not_found", "没订阅"),
 		recentPosts: async () => fail("not_found", "没订阅"),
@@ -22,7 +21,7 @@ function readerWith(over: Partial<CreatorReader>): CreatorReader {
 }
 
 const run = (name: string, args: Record<string, string>, reader: CreatorReader | null) =>
-	executeTool(name, args, {} as BiliReader, reader);
+	executeTool(name, args, reader);
 
 const STATS: AiStatsView = {
 	days: 30,

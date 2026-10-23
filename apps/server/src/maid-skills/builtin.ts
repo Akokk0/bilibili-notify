@@ -5,7 +5,7 @@
  * 内置由我们维护,升级即生效;让盘上一份悄悄赢,主人升级之后会发现某条技能
  * 永远停在旧版本,而界面上看不出任何异样。
  *
- * **每条的 `allowed-tools` 都得对着 `TOOL_DEFINITIONS` 真有的那 7 把写。**
+ * **每条的 `allowed-tools` 都得对着聊天里真挂得出的工具写(核心 + 登记的提供方,提供方的写全名)。**
  * 老 `/体检` 就是栽在这儿:它让女仆「检查各群 / 频道的连接状态」,而一把跟推送
  * 目标有关的工具都不存在 —— 女仆要么说做不到,要么编一个。写不出工具链的点子,
  * 不该进这张表。
@@ -22,8 +22,8 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 		description: "把所有订阅的 UP 拉一遍数据,评出本周最勤奋与最能鸽的那几位,出一张榜再锐评几句",
 		allowedTools: [
 			"list_subscriptions",
-			"get_user_stats",
-			"get_user_videos",
+			"bilibili__get_up_totals",
+			"bilibili__get_up_videos",
 			"get_creator_posts",
 			"get_creator_profile",
 		],
@@ -34,8 +34,8 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到全部订阅。**一个都不要漏**,也不要只挑几个有名的看。",
-			"2. 对每一位 UP 调 `get_user_stats`(总播放 / 总获赞 / 视频数 / 动态数),再调 `get_user_videos` 看最近发了什么、什么时候发的;订了动态、没订直播的那几位,再调 `get_creator_posts` 看最近一条动态是什么时候(下面判鸽王要用)。",
-			"3. 订阅超过 12 位时,先用 `get_user_stats` 过一遍,只对**数据最活跃的前 8 位**和**最沉寂的 3 位**再拉 `get_user_videos` —— 中间那段既不上榜也不进鸽王名单,拉了也用不上。这一步省下的是主人的等待时间。",
+			"2. 对每一位 UP 调 `bilibili__get_up_totals`(总播放 / 总获赞 / 视频数 / 动态数),再调 `bilibili__get_up_videos` 看最近发了什么、什么时候发的;两把都传这位的 `creator`;订了动态、没订直播的那几位,再调 `get_creator_posts` 看最近一条动态是什么时候(下面判鸽王要用)。",
+			"3. 订阅超过 12 位时,先用 `bilibili__get_up_totals` 过一遍,只对**数据最活跃的前 8 位**和**最沉寂的 3 位**再拉 `bilibili__get_up_videos` —— 中间那段既不上榜也不进鸽王名单,拉了也用不上。这一步省下的是主人的等待时间。",
 			"",
 			"### 判定",
 			"",
@@ -54,7 +54,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 		description: "把长期不更新的订阅挑出来,给主人一份可以直接照着取关的名单,并说清每一条为什么上榜",
 		allowedTools: [
 			"list_subscriptions",
-			"get_user_videos",
+			"bilibili__get_up_videos",
 			"get_creator_posts",
 			"get_creator_profile",
 		],
@@ -65,7 +65,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"### 步骤",
 			"",
 			"1. `list_subscriptions` 拿到全部订阅,记下每一位是订了动态、直播,还是两样都订。",
-			"2. 逐个 `get_user_videos` 看最近一条视频的发布时间;**订了动态的那些**再调一次 `get_creator_posts` —— 只发动态不发视频的 UP 很常见,只看视频会把他们全判成停更。",
+			"2. 逐个用 `bilibili__get_up_videos`(传这位的 `creator`)看最近一条视频的发布时间;**订了动态的那些**再调一次 `get_creator_posts` —— 只发动态不发视频的 UP 很常见,只看视频会把他们全判成停更。",
 			"",
 			"### 判定",
 			"",
@@ -139,7 +139,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 		allowedTools: [
 			"search_creators",
 			"get_creator_profile",
-			"get_user_videos",
+			"bilibili__get_up_videos",
 			"list_subscriptions",
 		],
 		disableModelInvocation: false,
@@ -150,7 +150,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"",
 			"1. 主人没说想找什么方向时,**先问一句**再动手 —— 搜是一整趟调用,方向猜错就是白搜。",
 			"2. `search_creators` 搜关键词(`source` 填 `bilibili`)。一个词搜出来不理想就**换个说法再搜一次**(比如「做饭」换成「美食教程」),别拿第一次的结果硬凑。",
-			"3. 从结果里挑 5 位左右,逐个 `get_creator_profile` 看粉丝量与简介,`get_user_videos` 看最近真的还在更新吗。",
+			"3. 从结果里挑 5 位左右,逐个 `get_creator_profile` 看粉丝量与简介,`bilibili__get_up_videos`(传搜到的 `creator`)看最近真的还在更新吗。",
 			"4. `list_subscriptions` 对一遍,**已经订过的直接标出来**,别把主人已有的推荐第二遍。",
 			"",
 			"### 输出",
@@ -169,8 +169,8 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 		allowedTools: [
 			"search_creators",
 			"get_creator_profile",
-			"get_user_stats",
-			"get_user_videos",
+			"bilibili__get_up_totals",
+			"bilibili__get_up_videos",
 			"list_subscriptions",
 		],
 		disableModelInvocation: false,
@@ -181,7 +181,7 @@ export const BUILTIN_SKILLS: readonly ParsedSkill[] = [
 			"",
 			"1. 从主人这句话里认出**要比的两位是谁**。只给了名字没给 UID 时,先 `list_subscriptions` 在订阅里找;订阅里没有就 `search_creators` 搜(`source` 填 `bilibili`),搜到多个同名的**问一句是哪个**,别自己挑一个就开比。",
 			"2. 只说了一位时,问主人要跟谁比 —— 不要自作主张找个对手。",
-			"3. 两位都各调一遍 `get_creator_profile`(粉丝 / 简介)、`get_user_stats`(总播放 / 获赞 / 作品数)、`get_user_videos`(最近在更什么、多久更一次)。",
+			"3. 两位都各调一遍 `get_creator_profile`(粉丝 / 简介)、`bilibili__get_up_totals`(总播放 / 获赞 / 作品数)、`bilibili__get_up_videos`(最近在更什么、多久更一次);这三把都传各自的 `creator`。",
 			"",
 			"### 输出",
 			"",

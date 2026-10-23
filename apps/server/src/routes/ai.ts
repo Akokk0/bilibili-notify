@@ -159,7 +159,6 @@ export function createAiRoute(
 		// 否则「试一句」会把未保存的人格泄进真实推送。
 		const generator = new CommentaryGenerator({
 			serviceCtx: deps.runtime.serviceCtx,
-			api: engines.api,
 			// 草稿里没带的 apiKey(页面从未见过真值) —— 用已存的那把补回来。
 			// 两边都要按**同一个桶**取:草稿选的是哪家,就拿那家已存的 key。
 			config: toGeneratorConfig(

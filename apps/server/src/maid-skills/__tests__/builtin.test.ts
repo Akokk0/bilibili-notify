@@ -13,10 +13,19 @@
 import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
 import { MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
+import { createBiliAiToolProvider } from "../../bilibili/ai-tools.js";
 import { BUILTIN_SKILLS } from "../builtin.js";
 import { formatSkillFile, isValidSkillName, parseSkillFile } from "../parse.js";
 
-const REAL_TOOLS = new Set([...TOOL_DEFINITIONS.map((t) => t.function.name), WEB_SEARCH_TOOL_NAME]);
+const providerTools = createAiToolProviderRegistry();
+providerTools.register("bilibili", createBiliAiToolProvider({ api: {} as never }));
+
+const REAL_TOOLS = new Set([
+	...TOOL_DEFINITIONS.map((t) => t.function.name),
+	WEB_SEARCH_TOOL_NAME,
+	...providerTools.tools().map((tool) => tool.definition.function.name),
+]);
 
 describe("内置技能表", () => {
 	it("不是空的 —— 空了的话 load_skill 根本不会挂上", () => {
@@ -53,7 +62,7 @@ describe("内置技能表", () => {
 	});
 
 	it("正文里提到的工具名也得真有 —— 步骤里点名一把不存在的,女仆只会编一个", () => {
-		// 正文写的是「调 `get_user_stats`」这种。名字打错了模型看不出来,它会
+		// 正文写的是「调 `get_creator_stats`」这种。名字打错了模型看不出来,它会
 		// 一本正经地按那个名字去调,换回一句「未知工具」,然后自己找补。
 		const mentioned = /`([a-z_]{4,})`/g;
 		for (const s of BUILTIN_SKILLS) {

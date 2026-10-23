@@ -51,6 +51,8 @@ export const EXCLUDED_DIRS = {
 
 /** 白名单:整个文件放行,写明理由。 */
 export const ALLOWLIST = {
+	"apps/server/src/bilibili/ai-tool-texts.ts":
+		"B 站女仆工具回给模型的话:同提示词,不翻(决策 11,主人定)",
 	"apps/server/src/live/recap/stop-words.ts": "词云的中文停用词表:整份是数据,不是给人看的话",
 	"apps/server/src/ai/creator-reader-texts.ts":
 		"创作者阅读工具回给模型的话:同提示词,不翻(决策 11,主人定)",
@@ -375,8 +377,8 @@ export const RATCHET = {
 	"packages/ai/src/extra-params.ts": 2,
 	"packages/ai/src/persona-presets.ts": 44,
 	"packages/ai/src/provider-probe.ts": 15,
-	"packages/ai/src/tool-label-texts.ts": 10,
-	"packages/ai/src/tools.ts": 60, // 含给模型的话(决策 11 不翻),与给人看的话混放
+	"packages/ai/src/tool-label-texts.ts": 8,
+	"packages/ai/src/tools.ts": 50, // 含给模型的话(决策 11 不翻),与给人看的话混放
 	"packages/ai/src/usage.ts": 6,
 	"packages/ai/src/vision.ts": 8,
 	"packages/ai/src/web-search.ts": 7,

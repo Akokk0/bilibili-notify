@@ -69,7 +69,6 @@ export const RATCHET = {
 	"apps/server/src/routes/subscriptions.ts": 11,
 	"apps/server/src/runtime/engines.ts": 9,
 	"apps/server/src/runtime/follow-sync.ts": 13,
-	"packages/ai/src/tools.ts": 20,
 };
 
 /** 字符串字面量里算 uid 的那几个值(不分大小写)。 */

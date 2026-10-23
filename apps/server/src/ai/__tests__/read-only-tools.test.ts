@@ -188,32 +188,6 @@ describe("aiSubscriptionViews — 投影", () => {
 	});
 });
 
-describe("attachReadOnlyTools — 外部 id 的格式", () => {
-	const fits = (descriptors: Descriptors, sourceKey: string, externalId: string) => {
-		const setCreatorReader = vi.fn();
-		attachReadOnlyTools(
-			{ setCreatorReader, setProvidedTools: vi.fn() },
-			makeStores([], {}, {}, descriptors),
-		);
-		const reader = setCreatorReader.mock.calls[0]?.[0] as {
-			externalIdFits(sourceKey: string, externalId: string): boolean;
-		};
-		return reader.externalIdFits(sourceKey, externalId);
-	};
-
-	it("来源在描述符里声明了外部 id 的格式 → 整串匹配才算合格", () => {
-		const d = { bilibili: { label: "B 站", externalIdRegex: "[0-9]+" } };
-		expect(fits(d, "bilibili", "123")).toBe(true);
-		expect(fits(d, "bilibili", "abc")).toBe(false);
-		expect(fits(d, "bilibili", "12a")).toBe(false);
-	});
-
-	it("没声明格式 / 认不出这个来源 → 不替它做主,算合格", () => {
-		expect(fits({ bilibili: { label: "B 站" } }, "bilibili", "abc")).toBe(true);
-		expect(fits({}, "bilibili", "abc")).toBe(true);
-	});
-});
-
 describe("attachReadOnlyTools — 搜人", () => {
 	const readerWith = (
 		searchCreators: (

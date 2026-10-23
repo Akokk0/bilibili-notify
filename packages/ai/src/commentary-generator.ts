@@ -25,7 +25,6 @@ import {
 import {
 	type AiTool,
 	type AiToolLabelFields,
-	type BiliReader,
 	type CreatorReader,
 	coreToolLabelOf,
 	DESCRIBE_IMAGE_TOOL,
@@ -369,7 +368,7 @@ function cancelledError(): Error {
  * 一次工具调用的两拍。dashboard 的聊天靠它把「她正在查什么」讲出来。
  *
  * 工具轮**不产生给人看的正文**,所以那几秒在界面上跟「模型卡住了」长得一模一样。
- * 分 start / end 两拍而不是查完一次性报:查订阅要走一趟 B 站,慢起来好几秒,
+ * 分 start / end 两拍而不是查完一次性报:查订阅要走一趟来源,慢起来好几秒,
  * 那正是最需要反馈的一刻。
  */
 export type ToolTraceEvent =
@@ -425,7 +424,6 @@ export interface CommentaryProvider {
 
 export interface CommentaryGeneratorOptions {
 	serviceCtx: ServiceContext;
-	api: BiliReader;
 	config: CommentaryGeneratorConfig;
 }
 
@@ -518,11 +516,10 @@ export interface ChatStatelessOptions {
 
 /**
  * 平台中立的 AI 点评 / 多轮对话核心。
- * 不依赖任何宿主框架;宿主负责配置 logger、提供 BiliReader 与可选的订阅管理钩子。
+ * 不依赖任何宿主框架;宿主负责配置 logger 与可选的订阅查询能力。
  */
 export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
-	private readonly api: BiliReader;
 	private config: CommentaryGeneratorConfig;
 
 	private creatorReader: CreatorReader | null = null;
@@ -534,7 +531,6 @@ export class CommentaryGenerator implements CommentaryProvider {
 	private readonly warned = new Set<string>();
 
 	constructor(opts: CommentaryGeneratorOptions) {
-		this.api = opts.api;
 		this.config = opts.config;
 		this.logger = opts.serviceCtx.logger;
 	}
@@ -894,7 +890,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			],
 			onToolCall: async (name, args, onProgress) => {
 				const tool = provided.get(name);
-				if (!tool) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
+				if (!tool) return executeTool(name, args, this.creatorReader, vision.ctx);
 				const out = await this.runAiTool(tool, args, onProgress, toolOptions);
 				// 试推送只取文字:这条路发到纯文本聊天,不补带图消息。
 				return out.ok ? ok({ text: out.text }) : out;
@@ -1007,7 +1003,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			),
 			onToolCall: async (name, args, onProgress) => {
 				const tool = extra.get(name) ?? provided.get(name);
-				if (!tool) return executeTool(name, args, this.api, this.creatorReader, vision.ctx);
+				if (!tool) return executeTool(name, args, this.creatorReader, vision.ctx);
 				return this.runAiTool(tool, args, onProgress, toolOptions);
 			},
 			labelOf: (name) => extra.get(name) ?? provided.get(name),
@@ -2090,9 +2086,8 @@ export class CommentaryGenerator implements CommentaryProvider {
 		let args: Record<string, string> = {};
 		let parseErr: Error | null = null;
 		try {
-			// :461 LLM 常把 uid 输出成数字(`{"uid":12345}`)。裸 as
-			// Record<string,string> 是谎言 → 下游用 args.uid 当字符串与
-			// 订阅 key("12345")比对失配。逐值强制 String 归一。
+			// LLM 常把数字参数输出成裸数字。裸 as Record<string,string> 是谎言 →
+			// 下游拿字符串比较时会失配。逐值强制 String 归一。
 			// 对象 / 数组例外,原样回成 JSON:卡片工坊写一张卡的 `blocks` 是对象数组,
 			// `String(v)` 会把它压成一串 `[object Object]`,工具连原文都拿不回来。
 			const parsed = JSON.parse(rawArgs) as Record<string, unknown>;
@@ -2110,7 +2105,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 			parseErr = e as Error;
 		}
 
-		// 执行**之前**报一声。查订阅要走一趟 B 站,慢起来好几秒,而那正是最
+		// 执行**之前**报一声。查订阅要走一趟来源,慢起来好几秒,而那正是最
 		// 需要反馈的一刻;等查完再说等于什么都没说。
 		const { label, argText } = describeToolCall(
 			toolOptions.labelOf?.(name) ?? coreToolLabelOf(name),

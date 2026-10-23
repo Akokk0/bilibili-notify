@@ -1,4 +1,6 @@
 {
+	"bilibili.aiTools.upTotals": "查看数据概览",
+	"bilibili.aiTools.upVideos": "查看最近视频",
 	"bilibili.problem.dynamicFetchFailed": "拉取动态失败（错误码 {code}），每 5 分钟会自动重试一次",
 	"bilibili.problem.dynamicSettingsInvalid": "{cause}，动态先停着没在拉；登录、登录检查和直播照常",
 	"bilibili.problem.liveMonitorRecovered": "直播间 {roomId} 的监听已恢复",

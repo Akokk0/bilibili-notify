@@ -107,14 +107,18 @@ describe("chat 风味", () => {
 
 		await makeGen().chatStatelessStream(HIST, {
 			onDelta: () => {},
-			extraTools: [makeLoader(["list_subscriptions", "get_user_stats", "load_skill"])],
+			extraTools: [makeLoader(["list_subscriptions", "get_creator_stats", "load_skill"])],
 		});
 
 		// 第一轮:完整工具面。
-		expect(chatToolNames(0)).toContain("get_user_videos");
+		expect(chatToolNames(0)).toContain("get_creator_posts");
 		expect(chatToolNames(0)).toContain("load_skill");
 		// 第二轮:只剩技能声明的那几把。
-		expect(chatToolNames(1).sort()).toEqual(["get_user_stats", "list_subscriptions", "load_skill"]);
+		expect(chatToolNames(1).sort()).toEqual([
+			"get_creator_stats",
+			"list_subscriptions",
+			"load_skill",
+		]);
 	});
 
 	it("只减不加:restrictTools 里写个本来没有的名字,不会凭空长出来", async () => {
@@ -181,10 +185,10 @@ describe("开局就带着技能(斜杠命令那条路)", () => {
 		oai.chatCreate.mockResolvedValueOnce(streamOf([textChunk("好")]));
 		await makeGen().chatStatelessStream(HIST, {
 			onDelta: () => {},
-			restrictTools: ["list_subscriptions", "get_user_stats", "不存在的工具"],
+			restrictTools: ["list_subscriptions", "get_creator_stats", "不存在的工具"],
 		});
 		// 同样是交集:多写的那个名字长不出工具来。
-		expect(chatToolNames(0).sort()).toEqual(["get_user_stats", "list_subscriptions"]);
+		expect(chatToolNames(0).sort()).toEqual(["get_creator_stats", "list_subscriptions"]);
 	});
 });
 
@@ -201,12 +205,12 @@ describe("responses 风味", () => {
 
 		await makeGen({ apiFlavor: "responses" }).chatStatelessStream(HIST, {
 			onDelta: () => {},
-			extraTools: [makeLoader(["list_subscriptions", "get_user_stats", "load_skill"])],
+			extraTools: [makeLoader(["list_subscriptions", "get_creator_stats", "load_skill"])],
 		});
 
-		expect(responsesToolNames(0)).toContain("get_user_videos");
+		expect(responsesToolNames(0)).toContain("get_creator_posts");
 		expect(responsesToolNames(1).sort()).toEqual([
-			"get_user_stats",
+			"get_creator_stats",
 			"list_subscriptions",
 			"load_skill",
 		]);

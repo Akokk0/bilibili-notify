@@ -1,6 +1,5 @@
 import type { AiToolLabelFields } from "@bilibili-notify/internal";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Failure,
 	fail,
 	ok,
@@ -18,7 +17,7 @@ import { TOOL_TEXTS } from "./tool-texts";
 import { WEB_SEARCH_TOOL } from "./web-search";
 
 /**
- * P2:回灌进 LLM 上下文的 B 站文本(用户简介 / 动态正文)完全攻击者可控且
+ * P2:回灌进 LLM 上下文的创作者简介 / 作品正文完全攻击者可控且
  * 无长度上限 —— 既是 token 膨胀,也是间接 prompt 注入的放大面。截断封顶。
  */
 function clip(s: string, max: number): string {
@@ -30,7 +29,7 @@ function clip(s: string, max: number): string {
  * 「已经 N 天」「最近一天」「从新到旧」让它拿一个裸日期自己推,只能靠猜。按经过的
  * 时长算、不按日历日,所以与服务器时区无关。
  */
-function stamp(tsSeconds: unknown, now = Date.now()): string {
+export function publishedStamp(tsSeconds: unknown, now = Date.now()): string {
 	if (typeof tsSeconds !== "number" || !Number.isFinite(tsSeconds) || tsSeconds <= 0) {
 		return "未知时间";
 	}
@@ -46,7 +45,7 @@ function stamp(tsSeconds: unknown, now = Date.now()): string {
 
 /**
  * 女仆查订阅用的订阅条目最小视图(ADR-0030 决策 1)。仅包含工具实际访问的字段。
- * 每条订阅是同一种形状,B 站和别的来源不分叉。
+ * 每条订阅是同一种形状,不按来源分叉。
  *
  * - `creator`:「来源键:外部 id」,中立工具的参数就认这个值(见 `creator.ts`)。
  * - `name`:订阅资料里的名字,没有就是外部 id。
@@ -65,7 +64,7 @@ export interface AiSubscriptionView {
 }
 
 /**
- * 订阅此刻的在播(拓展报的开播 / 直播状态,ADR-0019 决策 57 / 64;B 站的取自直播引擎在播的房间):
+ * 订阅此刻的在播(来源报的开播 / 直播状态,ADR-0019 决策 57 / 64):
  * - `unknown`:它的拓展没在跑 —— BN 手里没有它的在播状态(拓展停了,那份状态就作废了,决策 61);
  * - `idle`:没报它在播;
  * - `live`:在播,报了哪几格就有哪几格(开播时刻毫秒、本场累计观看)。
@@ -83,11 +82,6 @@ export type LiveNowView =
 export interface CreatorReader {
 	/** 当前启用的订阅(停用的不列:关掉的人不该再出现在女仆的回答里)。 */
 	subscriptions(): AiSubscriptionView[];
-	/**
-	 * 这个外部 id 合不合那个来源在描述符里声明的格式。没声明、或认不出这个来源 = 合(核心不替来源做主)。
-	 * 按 UID 查的过渡工具靠它挡掉别家的外部 id —— 它恰好是一串数字时,B 站会查出另一个人来。
-	 */
-	externalIdFits(sourceKey: string, externalId: string): boolean;
 	/**
 	 * 在某个来源里搜人(转给该来源的 `searchCreators`)。键不在册、来源风控、没登录这些都是失败,
 	 * 话原样给模型(它得知道,才能换个办法或如实告诉主人)。
@@ -166,18 +160,6 @@ function liveLine(s: AiSubscriptionView): string {
 }
 
 /**
- * 按 UID 查的工具(过渡)收到的 uid 合不合 B 站声明的外部 id 格式 —— 不合就交回一句说明,不去 B 站查:
- * 别家的外部 id 恰好是一串数字时,B 站会查出另一个人来,女仆会把他当成这位主播讲。格式由 B 站的
- * 来源描述符声明、经读口核,核心不写死「纯数字」;没接读口(核不了)照查。
- */
-function uidRefusal(uid: string | undefined, reader: CreatorReader | null): string | null {
-	const value = uid ?? "";
-	return !reader || reader.externalIdFits(BILIBILI_SOURCE_KEY, value)
-		? null
-		: `「${value}」不是 B 站 UID 的格式 —— 这把工具只查 B 站用户，uid 只传订阅列表里 B 站 creator 冒号后面的那一段`;
-}
-
-/**
  * 按订阅人查的中立工具共用的入参核对:`creator` 要切得出「来源键:外部 id」,读口要接着。
  * 过了就交回读口与原样的 `creator`(读口自己按它认订阅);没过交回失败,话原样喂给模型。
  */
@@ -209,13 +191,6 @@ function clampDays(raw: string | undefined): number {
 	return Math.min(ROAST_MAX_DAYS, Math.max(ROAST_MIN_DAYS, Math.trunc(n)));
 }
 
-/** 按 UID 查的两把工具(`get_user_stats`、`get_user_videos`)共用的参数。B 站的 creator 冒号后面就是 UID,别家的外部 id 是最容易被错塞进来的那个。 */
-const BILI_UID_PARAM = {
-	type: "string",
-	description:
-		"B 站 UID（纯数字）。B 站的 creator 冒号后面就是 UID，只传这一段；搜索结果里的 UID 同理。其他平台订阅的外部 id 不是 B 站 UID，传进来会被拒",
-};
-
 /** 按订阅人查的中立工具共用的参数:值就是订阅列表 / 搜人结果里的 creator,原样传。 */
 const CREATOR_PARAM = {
 	type: "string",
@@ -228,7 +203,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "list_subscriptions",
 			description:
-				"查询当前订阅的所有 UP 主，返回名称、平台、creator（来源键:外部 id，B 站的 creator 冒号后面就是 UID）及订阅类型（动态/直播）",
+				"查询当前订阅的所有 UP 主，返回名称、平台、creator（来源键:外部 id）及订阅类型（动态/直播）",
 			parameters: { type: "object", properties: {} },
 		},
 	},
@@ -286,39 +261,9 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 	{
 		type: "function",
 		function: {
-			name: "get_user_stats",
-			description:
-				"获取一位 B 站 UP 主的累计数据：总播放量、总获赞数、视频数、动态数。都是历史总量，看不出最近活不活跃。",
-			parameters: {
-				type: "object",
-				properties: {
-					uid: BILI_UID_PARAM,
-				},
-				required: ["uid"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
-			name: "get_user_videos",
-			description:
-				"获取一位 B 站 UP 主最近投稿的视频（最多 5 条，新的在前），每条带发布时间、标题、播放量。",
-			parameters: {
-				type: "object",
-				properties: {
-					uid: BILI_UID_PARAM,
-				},
-				required: ["uid"],
-			},
-		},
-	},
-	{
-		type: "function",
-		function: {
 			name: "search_creators",
 			description:
-				"在某个订阅来源里搜 UP 主，返回最多 5 位：名称、creator（来源键:外部 id）、粉丝数、简介（简介截到 80 字）。输入可以是名字、关键词、主页链接或 id，由该来源自己认。B 站的 creator 冒号后面就是 UID，可以直接用于按 UID 查询的工具。",
+				"在某个订阅来源里搜 UP 主，返回最多 5 位：名称、creator（来源键:外部 id）、粉丝数、简介（简介截到 80 字）。输入可以是名字、关键词、主页链接或 id，由该来源自己认。",
 			parameters: {
 				type: "object",
 				properties: {
@@ -411,24 +356,10 @@ export interface VisionToolContext {
 }
 
 /**
- * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这三个方法,形状取自服务端的 B 站
- * 客户端,服务端把真客户端递进来、结构上直接满足。
- * 返回值一律 `unknown`:B 站响应没有声明类型,调用处自己断言。
- *
- * ⚠️ 过渡物:后面的阶段改成「来源自己登记 AI 工具」,届时这个接口整个删掉。AI 包不依赖 api 包,
- * 是因为 B 站接口包要搬进 `apps/server`,包不能反向依赖应用。
- */
-export interface BiliReader {
-	fetchUserUpstat(uid: string): Promise<unknown>;
-	fetchUserNavnum(uid: string): Promise<unknown>;
-	fetchUserVideos(uid: string, ps?: number): Promise<unknown>;
-}
-
-/**
  * 工具表是**只读**的 —— 没有任何工具会改订阅。
  *
  * 这不是"暂时还没做写功能",而是刻意下架的:群聊 AI 的上下文里塞满了外部可控
- * 内容(群友消息、B 站动态正文、图片里的文字),而群聊路径没有权限门。写能力配上
+ * 内容(群聊消息、作品正文、图片里的文字),而群聊路径没有权限门。写能力配上
  * 这样的输入面,等于任意一条群消息都可能改掉主人的订阅表。
  *
  * `packages/ai/src/__tests__/read-only-tools-gate.test.ts` 是这条约束的闸。
@@ -437,14 +368,10 @@ export interface BiliReader {
  * 话同样会作为工具输出喂回给模型(它得知道这次没查到,才能换个办法或如实告诉主人)。
  * 「查了、没有」(没订阅、暂无作品、搜不到人)是成功 —— 失败只给接口出错、对不上人、
  * 参数不对、未知工具。
- *
- * B 站接口回非 0 码一律 `unavailable`、B 站自己的码放 `upstreamCode`:这几把工具后面要搬进
- * `bilibili/`,到那边再按那边的口径(风控、未登录……)细分,这一片有意不分。
  */
 export async function executeTool(
 	name: string,
 	args: Record<string, string>,
-	api: BiliReader,
 	reader: CreatorReader | null,
 	visionCtx?: VisionToolContext,
 ): Promise<Result<{ text: string }>> {
@@ -511,7 +438,7 @@ export async function executeTool(
 					const body = [p.title, p.summary ? clip(p.summary, 200) : undefined]
 						.filter(Boolean)
 						.join(" ");
-					return `${i + 1}. [${stamp(Date.parse(p.publishedAt) / 1000)}] ${body || "（无文字内容）"}`;
+					return `${i + 1}. [${publishedStamp(Date.parse(p.publishedAt) / 1000)}] ${body || "（无文字内容）"}`;
 				})
 				.join("\n");
 			return ok({ text });
@@ -541,47 +468,6 @@ export async function executeTool(
 			const liveItems = subscriptions.filter((s) => s.live);
 			if (!liveItems.length) return ok({ text: "当前订阅中没有开启直播监控的 UP 主" });
 			return ok({ text: liveItems.map(liveLine).join("\n") });
-		}
-		case "get_user_stats": {
-			const note = uidRefusal(args.uid, reader);
-			if (note) return fail("invalid", note);
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API responses have no declared types
-			const [upstat, navnum]: [any, any] = await Promise.all([
-				api.fetchUserUpstat(args.uid),
-				api.fetchUserNavnum(args.uid),
-			]);
-			if (upstat.code !== 0)
-				return fail("unavailable", `获取数据失败: ${upstat.message}`, {
-					upstreamCode: upstat.code,
-				});
-			// 此前不校验 navnum.code:接口错误时 navnum.data 为空 → 视频/动态数
-			// 静默落 "?",把接口错误伪装成"数据空"误导 LLM。显式失败。
-			if (navnum.code !== 0)
-				return fail("unavailable", `获取数据失败: ${navnum.message}`, {
-					upstreamCode: navnum.code,
-				});
-			const view = upstat.data?.archive?.view ?? 0;
-			const likes = upstat.data?.likes ?? 0;
-			const videos = navnum.data?.video ?? "?";
-			const dynamics = navnum.data?.upos ?? "?";
-			return ok({
-				text: `总播放量: ${view}, 总获赞: ${likes}, 视频数: ${videos}, 动态数: ${dynamics}`,
-			});
-		}
-		case "get_user_videos": {
-			const note = uidRefusal(args.uid, reader);
-			if (note) return fail("invalid", note);
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.fetchUserVideos(args.uid)) as any;
-			if (res.code !== 0)
-				return fail("unavailable", `获取视频失败: ${res.message}`, { upstreamCode: res.code });
-			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const vlist: any[] = res.data?.list?.vlist ?? [];
-			if (!vlist.length) return ok({ text: "暂无投稿视频" });
-			const text = vlist
-				.map((v, i) => `${i + 1}. [${stamp(v.created)}] ${v.title}（播放: ${v.play}）`)
-				.join("\n");
-			return ok({ text });
 		}
 		case "search_creators": {
 			const source = args.source?.trim();

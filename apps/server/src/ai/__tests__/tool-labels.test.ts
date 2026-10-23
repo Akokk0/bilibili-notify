@@ -14,6 +14,7 @@ import {
 	WEB_SEARCH_TOOL_NAME,
 } from "@bilibili-notify/ai";
 import { describe, expect, it } from "vite-plus/test";
+import { createBiliAiToolProvider } from "../../bilibili/ai-tools.js";
 import { createCardWorkshopTools } from "../../card-skins/chat-tools.js";
 import { createSkillChatTool } from "../../maid-skills/chat-tool.js";
 import { createSkinChatTools } from "../../skins/chat-tool.js";
@@ -25,11 +26,12 @@ const EXPECTED_LABELS: Record<string, string> = {
 	get_creator_posts: "查看最近动态",
 	get_creator_profile: "查看 UP 主资料",
 	get_creator_stats: "查看统计数据",
-	get_user_stats: "查看数据概览",
-	get_user_videos: "查看最近视频",
 	search_creators: "搜索 UP 主",
 	web_search: "联网搜索",
 	describe_image: "查看图片",
+	// B 站来源登记的提供方
+	get_up_totals: "查看数据概览",
+	get_up_videos: "查看最近视频",
 	// 注入的三家
 	load_skill: "使用技能",
 	create_skin: "制作皮肤",
@@ -71,9 +73,17 @@ describe("聊天里挂得出的全部工具都有标签", () => {
 			WEB_SEARCH_TOOL_NAME,
 			"describe_image",
 		];
-		expect(names.length).toBe(10);
+		expect(names.length).toBe(8);
 		for (const name of names) {
 			expect(coreToolLabelOf(name)?.label, name).toBe(EXPECTED_LABELS[name]);
+		}
+	});
+
+	it("来源登记的 B 站两把:标签取自提供方自己的 getter", () => {
+		const provider = createBiliAiToolProvider({ api: {} as never });
+		for (const tool of provider.readOnly) {
+			const name = tool.definition.function.name;
+			expect(tool.label, name).toBe(EXPECTED_LABELS[name]);
 		}
 	});
 

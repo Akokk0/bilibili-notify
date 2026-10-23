@@ -12,11 +12,9 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BiliReader } from "../tools";
 import { DESCRIBE_IMAGE_TOOL, executeTool, TOOL_DEFINITIONS } from "../tools";
 import { sayOf } from "./harness";
 
-const api = {} as BiliReader;
 const noSubs = null;
 
 function ctx(images: string[] = ["http://img/a.jpg", "http://img/b.jpg"]) {
@@ -24,8 +22,8 @@ function ctx(images: string[] = ["http://img/a.jpg", "http://img/b.jpg"]) {
 	return { visionCtx: { images, describe }, describe };
 }
 
-const run = (args: Record<string, string>, visionCtx?: Parameters<typeof executeTool>[4]) =>
-	executeTool("describe_image", args, api, noSubs, visionCtx);
+const run = (args: Record<string, string>, visionCtx?: Parameters<typeof executeTool>[3]) =>
+	executeTool("describe_image", args, noSubs, visionCtx);
 
 describe("describe_image — 序号边界", () => {
 	it("合法序号 → 描述那一张", async () => {

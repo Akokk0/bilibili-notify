@@ -127,7 +127,6 @@ function makeDeps(
 				listRecording: async () => [],
 			},
 			engines: {
-				api: {},
 				liveSession: () => undefined,
 				extensionPlatformLabel: () => "抖音",
 			},

@@ -1010,20 +1010,49 @@ export class Api {
 		);
 	}
 
-	async fetchUserUpstat(uid: string) {
-		return this.getJson(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserUpstat");
-	}
-
-	async fetchUserNavnum(uid: string) {
-		return this.getJson(`${EP.USER_NAVNUM_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserNavnum");
-	}
-
-	async fetchUserVideos(uid: string, ps = 5) {
-		return this.retry(
-			async () => this.wbiGet(EP.USER_VIDEOS_URL, { mid: uid, order: "pubdate", ps }),
-			"fetchUserVideos",
-			Api.retryUnlessRiskControl,
+	async fetchUserUpstat(
+		uid: string,
+	): Promise<Result<{ data: { archive?: { view?: number }; likes?: number } }>> {
+		return this.resultOf(
+			await this.getJson(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserUpstat"),
+			"fetchUserUpstat",
 		);
+	}
+
+	async fetchUserNavnum(uid: string): Promise<Result<{ data: { video?: number; upos?: number } }>> {
+		return this.resultOf(
+			await this.getJson(`${EP.USER_NAVNUM_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserNavnum"),
+			"fetchUserNavnum",
+		);
+	}
+
+	async fetchUserVideos(
+		uid: string,
+		ps = 5,
+	): Promise<
+		Result<{
+			data: {
+				list?: {
+					vlist?: Array<{ title?: string; play?: number; created?: number }>;
+				};
+			};
+		}>
+	> {
+		try {
+			const body = await this.retry(
+				async () => this.wbiGet(EP.USER_VIDEOS_URL, { mid: uid, order: "pubdate", ps }),
+				"fetchUserVideos",
+				Api.retryUnlessRiskControl,
+			);
+			return this.resultOf(body, "fetchUserVideos");
+		} catch (error) {
+			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个
+			// rate_limited 失败。别的异常(连不上、超时)照旧往外抛,由生成器记工具执行失败。
+			if (error instanceof RiskControlError) {
+				return fail("rate_limited", error.message, { upstreamCode: -352 });
+			}
+			throw error;
+		}
 	}
 
 	/**

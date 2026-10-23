@@ -102,7 +102,6 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 	return {
 		runtime: {
 			engines: {
-				api: {},
 				extensionPlatformLabel: (id: string) => PLATFORM_LABELS[id],
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },

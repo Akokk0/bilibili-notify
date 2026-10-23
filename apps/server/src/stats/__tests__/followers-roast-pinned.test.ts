@@ -100,7 +100,6 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 	} as GlobalConfig["ai"];
 	const runtime = {
 		engines: {
-			api: {},
 			liveSession: () => undefined,
 			extensionPlatformLabel: () => "抖音",
 		},

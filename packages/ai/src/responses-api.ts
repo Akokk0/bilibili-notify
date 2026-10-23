@@ -82,7 +82,7 @@ export function toResponsesInput(
  * 工具定义:chat 的嵌套形(`function:{...}`)→ responses 的扁平形。
  *
  * `strict: false` 是有意的:strict 模式要求 JSON Schema 按它的子集写
- * (required 全列、additionalProperties:false),现有八个 B 站工具 + web_search
+ * (required 全列、additionalProperties:false),现有核心工具 + 登记来源的工具
  * 都没按那套写,开了会被 OpenAI 侧当场拒;DeepSeek 对不认识的参数静默忽略,
  * 发 false 两边都安全。缺席的 description/parameters 补 null,不让 undefined
  * 漏进序列化。

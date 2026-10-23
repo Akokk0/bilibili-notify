@@ -17,7 +17,6 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { BiliReader } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
 import { readerStubs, sayOf } from "./harness";
 
@@ -43,15 +42,17 @@ describe("AI 工具表 — 只读约束", () => {
 	it("即便模型硬编造出写工具名,executeTool 也无分支可走", async () => {
 		// 工具定义不下发只挡住了「模型知道有这个工具」;万一它凭记忆瞎猜一个名字,
 		// 执行层也必须没有对应实现,而不是靠上游少传一个依赖来兜。
-		const api = {} as BiliReader;
 		for (const w of WRITE_TOOLS) {
-			const out = await executeTool(w, { uid: "123", name: "谁" }, api, {
-				subscriptions: () => [
-					{ creator: "bilibili:123", name: "谁", platform: "B 站", post: true, live: true },
-				],
-				externalIdFits: () => true,
-				...readerStubs,
-			});
+			const out = await executeTool(
+				w,
+				{ creator: "bilibili:123", name: "谁" },
+				{
+					subscriptions: () => [
+						{ creator: "bilibili:123", name: "谁", platform: "B 站", post: true, live: true },
+					],
+					...readerStubs,
+				},
+			);
 			expect(out).toMatchObject({ ok: false, code: "not_found" });
 			expect(sayOf(out)).toContain("未知工具");
 		}

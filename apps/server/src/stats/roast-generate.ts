@@ -102,14 +102,9 @@ type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["ai"];
  * 锐评的一次性生成器。engines.commentary 那台是常驻的,这里刻意自建(见调用点
  * 注释),所以搜索源也得自己接 —— 常驻那台的接线惠及不到它。
  */
-function makeRoastGenerator(
-	deps: RoastGenDeps,
-	engines: NonNullable<RoastGenDeps["runtime"]["engines"]>,
-	aiSettings: RoastAiSettings,
-): CommentaryGenerator {
+function makeRoastGenerator(deps: RoastGenDeps, aiSettings: RoastAiSettings): CommentaryGenerator {
 	const generator = new CommentaryGenerator({
 		serviceCtx: deps.runtime.serviceCtx,
-		api: engines.api,
 		config: toGeneratorConfig(aiSettings),
 	});
 	generator.setWebSearchSource(() => webSearchExecutorFromSettings(aiSettings.search));
@@ -149,7 +144,7 @@ export async function generateBoardRoast(
 	const ups = overview.rows.map((r) => toRoastInput(deps, r, subById.get(r.subscriptionId)));
 	if (ups.length < 2) return GEN_FAILURE.tooFewUps();
 
-	const generator = makeRoastGenerator(deps, engines, aiSettings);
+	const generator = makeRoastGenerator(deps, aiSettings);
 	let reply: string;
 	try {
 		// `comment()` 而不是 `chat()` —— 工具默认不挂,只有 engines.roast 开着时才
@@ -199,7 +194,7 @@ export async function generateSoloRoast(
 
 	const up = toRoastInput(deps, row, sub);
 
-	const generator = makeRoastGenerator(deps, engines, aiSettings);
+	const generator = makeRoastGenerator(deps, aiSettings);
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的
 	// 人格没有理由不算数。
 	const aiOverride = resolveAiOverride(sub, aiSettings);

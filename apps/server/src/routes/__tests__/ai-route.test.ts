@@ -125,7 +125,7 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 						logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 					}),
 				},
-				engines: { push: { sendToTarget }, api: {} },
+				engines: { push: { sendToTarget } },
 			},
 			store: {
 				getTargets: () => [{ id: TARGET_ID, name: "我的私聊", platform: "onebot" }],

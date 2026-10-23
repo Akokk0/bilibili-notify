@@ -6,6 +6,7 @@
  */
 
 import {
+	type AiToolProvider,
 	BILIBILI_GUARD_PROGRAM,
 	fail,
 	type Identity,
@@ -230,7 +231,7 @@ function makeCtx(
 	const registerLinkResolver = vi.fn((_resolver: LinkResolver) => ({
 		dispose: linkResolverDisposed,
 	}));
-	const registerAiToolProvider = vi.fn(() => ({ dispose() {} }));
+	const registerAiToolProvider = vi.fn((_provider: AiToolProvider) => ({ dispose() {} }));
 	const ctx = {
 		logger: logger as Logger,
 		settings: (schema: ZodType) => {
@@ -304,6 +305,24 @@ describe("createBiliSource", () => {
 		expect(linkResolverDisposed).not.toHaveBeenCalled();
 		await source.stop();
 		expect(linkResolverDisposed).toHaveBeenCalledTimes(1);
+	});
+
+	it("start 里登记 B 站的 AI 工具提供方:两把本名是累计数据与最近视频", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, registerAiToolProvider } = makeCtx();
+
+		await source.start(ctx);
+
+		expect(registerAiToolProvider).toHaveBeenCalledTimes(1);
+		const provider = registerAiToolProvider.mock.calls[0]?.[0] as
+			| { readOnly: Array<{ definition: { function: { name: string } } }> }
+			| undefined;
+		expect(provider?.readOnly.map((tool) => tool.definition.function.name)).toEqual([
+			"get_up_totals",
+			"get_up_videos",
+		]);
+		await source.stop();
 	});
 
 	it("描述符的 postNoun 是「动态」", () => {

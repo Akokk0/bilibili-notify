@@ -19,7 +19,6 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { type ExternalIdSpec, externalIdRefusal } from "../subscriptions/external-id.js";
 import { CREATOR_READER_TEXTS } from "./creator-reader-texts.js";
 import type { CreatorStatsReader } from "./creator-stats.js";
 
@@ -35,11 +34,6 @@ interface SubscriptionReader {
 interface ProfileSource {
 	get(id: string): { cachedProfile?: { name?: string; fans?: number; sign?: string } } | undefined;
 }
-/** 来源登记表里读得到的那一点:描述符的 `label` 与外部 id 的格式(给 {@link CreatorReader.externalIdFits})。 */
-interface SourceDescriptorSource {
-	get(sourceKey: string): { descriptor: ExternalIdSpec } | undefined;
-}
-
 /**
  * 订阅此刻在不在播从哪儿取:BN 手里的在播表,以及「这个来源在不在跑」。
  * 来源停了,它名下的在播状态就作废了(ADR-0019 决策 61),这时答「不知道」而不是「未开播」。
@@ -76,7 +70,8 @@ export function attachReadOnlyTools(
 		platformLabel: (sourceKey: string) => string;
 		/** 订阅的身份标签(问来源登记表与拓展装载器,见 `subscriptions/platform-label.ts`)。 */
 		identityLabel: (identity: Identity) => string;
-		sources: SourceDescriptorSource;
+		/** 来源登记表里读得到的那一点:资料回落前用它确认来源在册。 */
+		sources: { get(sourceKey: string): unknown };
 		/** 在某个来源里搜人(宿主外壳 `searchSourceCreators`,已绑好登记表与日志)。 */
 		searchCreators: (
 			sourceKey: string,
@@ -119,8 +114,6 @@ export function attachReadOnlyTools(
 				stores.identityLabel,
 				stores.liveNow,
 			),
-		externalIdFits: (sourceKey, externalId) =>
-			externalIdRefusal(stores.sources.get(sourceKey)?.descriptor, externalId) === undefined,
 		async searchCreators(sourceKey, query) {
 			const found = await stores.searchCreators(sourceKey, query);
 			if (!found.ok) return found;

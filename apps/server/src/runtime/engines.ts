@@ -534,7 +534,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		try {
 			const c = new CommentaryGenerator({
 				serviceCtx: aiCtx,
-				api: opts.api,
 				config: buildAiConfig(),
 			});
 			// 接工具能力 —— **只读档**。少了这一步,女仆连「我订了哪些 UP」都查不到,
