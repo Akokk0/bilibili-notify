@@ -159,7 +159,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P40)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P41)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -273,6 +273,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P41",
+		title:
+			"get_creator_posts、get_creator_stats、get_live_status 对假来源的订阅按 creator 答得出:作品、统计、在播都读自核心手里按订阅 id 记的东西,话里是夹具里写死的内容",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -289,7 +295,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N06",
-		title: "AiToolProvider 登记与撤销、六把中立工具、技能可见性、提示词里的叫法",
+		title: "AiToolProvider 登记与撤销、技能可见性、提示词里的叫法",
 		checked: false,
 		waitsFor: "3b(守卫「AI 工具与技能约束」同期)",
 		reason: "AiToolProvider 的登记表没有造",
@@ -2667,6 +2673,59 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P40");
 	});
 
+	// 验红:`read-only-tools.ts` 里 `recentPosts` 一支不按订阅 id 读统计仓(回空数组),作品那段红;
+	// `stats` 一支回 `not_found`,统计那段红;`liveNowFromTable` 恒回 `idle`,在播那段红。
+	it("P41 get_creator_posts / get_creator_stats / get_live_status 对假来源的订阅按 creator 答得出:作品、统计、在播都是夹具里写死的内容", async () => {
+		const probe = currentProbe();
+		const creator = `${IN_PROCESS_KEY}:${EXT.alice}`;
+		try {
+			// 作品:报一条带标题与摘要、发布得最晚的作品,统计仓落一行之后女仆读得到,话里带发布时间、标题、摘要。
+			await clearCaptures();
+			probe.ctx?.reportPost(
+				EXT.alice,
+				textReport("p41", "小爱", "对拍P41的作品摘要", {
+					title: "对拍P41的作品标题",
+					// 比前面各行都晚:女仆只读最近 5 条、新的在前。
+					publishedAt: "2026-10-22T08:00:00.000Z",
+				}),
+			);
+			await settledCaptures(1);
+			await vi.waitFor(async () =>
+				expect((await statsPostRows(SUB.alice)).some((row) => row.id === "p41")).toBe(true),
+			);
+			const posts = await askMaid({ name: "get_creator_posts", args: { creator } });
+			expect(posts.seen).toContain("对拍P41的作品标题");
+			expect(posts.seen).toContain("对拍P41的作品摘要");
+			expect(posts.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_posts", ok: true }),
+			]);
+
+			// 统计:总览里 alice 那一行,当前粉丝取资料刷新写下的粉丝数。
+			const stats = await askMaid({ name: "get_creator_stats", args: { creator, days: "7" } });
+			expect(stats.seen).toContain("近 7 天");
+			expect(stats.seen).toContain(`当前粉丝: ${ALICE_PROFILE.followers}`);
+			expect(stats.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_stats", ok: true }),
+			]);
+
+			// 在播:没开播答「未开播」,开播后话里有标题,下播后回到「未开播」。
+			const idle = await askMaid({ name: "get_live_status", args: {} });
+			expect(idle.seen).toContain(`${ALICE_PROFILE_NAME}：未开播`);
+			probe.reportLive(EXT.alice, {
+				kind: "start",
+				startedAt: new Date().toISOString(),
+				details: { title: "开播标题P41", totalViewers: 5 },
+			});
+			const live = await askMaid({ name: "get_live_status", args: {} });
+			expect(live.seen).toContain(`${ALICE_PROFILE_NAME}：直播中「开播标题P41」`);
+			expect(live.tools).toEqual([expect.objectContaining({ name: "get_live_status", ok: true })]);
+		} finally {
+			probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
+			await clearCaptures();
+		}
+		drove("P41");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -3022,16 +3081,16 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 40 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(48);
+	it("PARITY_ROWS:对拍 41 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(49);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 40 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 41 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
-		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。
+		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 7, 10, 11, 12, 13].includes(n))
