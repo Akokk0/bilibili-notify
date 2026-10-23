@@ -14,6 +14,7 @@ import type { Api } from "../../api/index.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
+import type { RoomIds } from "../room-ids.js";
 import { ListenerManager } from "./listener-manager.js";
 import { type LiveProblems, RoomContext } from "./room-context.js";
 
@@ -24,27 +25,18 @@ export class BiliLiveRooms implements Disposable {
 	private listener: ListenerManager | undefined;
 	private sourceCtx: SourceContext | undefined;
 	private readonly handles: Disposable[] = [];
-	private readonly liveRoomIds: {
-		get(externalId: string): string | undefined;
-		set?(externalId: string, roomId: string): void;
-	};
 
 	constructor(
 		private readonly opts: {
 			api: Api;
 			bus: MessageBus;
 			liveContext: ServiceContext;
-			liveRoomIds: {
-				get(externalId: string): string | undefined;
-				set?(externalId: string, roomId: string): void;
-			};
+			roomIds: RoomIds;
 			rememberFanClubName(externalId: string, name: string): void;
 			problems: LiveProblems;
 			rememberSuperchatAvatar?(viewerId: string, url: string): void;
 		},
-	) {
-		this.liveRoomIds = opts.liveRoomIds;
-	}
+	) {}
 
 	start(ctx: SourceContext, subscriptions: readonly SourceSubscriptionView[]): void {
 		if (this.listener) throw new Error("bilibili live rooms are already started");
@@ -55,7 +47,7 @@ export class BiliLiveRooms implements Disposable {
 			liveContext: this.opts.liveContext,
 			source: ctx,
 			problems: this.opts.problems,
-			liveRoomIds: this.liveRoomIds,
+			roomIds: this.opts.roomIds,
 			rememberFanClubName: this.opts.rememberFanClubName,
 			rememberSuperchatAvatar: this.opts.rememberSuperchatAvatar ?? (() => {}),
 		});
@@ -98,11 +90,12 @@ export class BiliLiveRooms implements Disposable {
 			return fail("unavailable", "bilibili live rooms are not running");
 		}
 		const externalId = identity.externalId;
-		const roomId = await this.resolveRoomId(externalId);
-		if (!roomId) {
+		const resolved = await this.opts.roomIds.resolve(externalId);
+		if (!resolved.ok) {
 			this.reportStatusUnavailable(externalId, "");
 			return fail("unavailable", "live room id is unavailable");
 		}
+		const roomId = resolved.roomId;
 		try {
 			const response = await this.opts.api.fetchLiveRoomInfo(roomId);
 			if (signal.aborted) return fail("indeterminate", "live status request was aborted");
@@ -170,21 +163,5 @@ export class BiliLiveRooms implements Disposable {
 			...(coverRef === undefined ? {} : { coverRef }),
 			status: "streaming",
 		});
-	}
-
-	private async resolveRoomId(externalId: string): Promise<string | undefined> {
-		const cached = this.liveRoomIds.get(externalId);
-		if (cached) return cached;
-		try {
-			const result = await this.opts.api.fetchUserInfo(externalId);
-			if (!result.ok) return undefined;
-			const roomId = Number(result.data?.live_room?.roomid);
-			if (!Number.isFinite(roomId) || roomId <= 0) return undefined;
-			const resolved = String(roomId);
-			this.liveRoomIds.set?.(externalId, resolved);
-			return resolved;
-		} catch {
-			return undefined;
-		}
 	}
 }

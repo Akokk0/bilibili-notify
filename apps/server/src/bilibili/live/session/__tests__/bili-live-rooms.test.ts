@@ -5,8 +5,10 @@ import {
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { memoryKeyValueStores } from "../../../../__tests__/support/memory-key-value-store.js";
 import payloads from "../../protocol/__tests__/fixtures/payloads.json" with { type: "json" };
 import { encodePacket, WsOp } from "../../protocol/codec.js";
+import { createRoomIds } from "../../room-ids.js";
 import { BiliLiveRooms } from "../bili-live-rooms.js";
 import { makeRecordingLayers } from "./support/live-problems.js";
 
@@ -49,7 +51,7 @@ function harness() {
 	const reports: Array<{ externalId: string; report: unknown }> = [];
 	const interactions: Array<{ externalId: string; report: unknown }> = [];
 	const problems = makeRecordingLayers();
-	const liveRoomIds = new Map([[EXTERNAL_ID, ROOM_ID]]);
+	const state = memoryKeyValueStores("state", { [`room:${EXTERNAL_ID}`]: ROOM_ID }).store;
 	const profileStates = new Map<string, { fanClubName: string }>();
 	const fetched: string[] = [];
 	const busHandlers = new Map<string, Array<() => void>>();
@@ -154,6 +156,13 @@ function harness() {
 		onDispose() {},
 		track() {},
 	};
+	const roomIds = createRoomIds({
+		api: api as never,
+		state,
+		subscriptions: () => subscriptions,
+		setTimeout: liveContext.setTimeout,
+		logger: liveContext.logger,
+	});
 
 	const rooms = new BiliLiveRooms({
 		api: api as never,
@@ -171,10 +180,7 @@ function harness() {
 			},
 		} as never,
 		liveContext,
-		liveRoomIds: {
-			get: (externalId) => liveRoomIds.get(externalId),
-			set: (externalId, roomId) => void liveRoomIds.set(externalId, roomId),
-		},
+		roomIds,
 		rememberFanClubName: (externalId, name) =>
 			void profileStates.set(`profile:${externalId}`, { fanClubName: name }),
 		problems: problems.layers,
@@ -190,7 +196,7 @@ function harness() {
 		profileStates,
 		fetched,
 		sockets,
-		liveRoomIds,
+		roomIds,
 		setSubscriptions(value: SourceSubscriptionView[]) {
 			subscriptions = value;
 		},
@@ -200,9 +206,9 @@ function harness() {
 		setOnline(value: boolean) {
 			online = value;
 		},
-		setRoomId(value: string | undefined) {
-			if (value === undefined) liveRoomIds.delete(EXTERNAL_ID);
-			else liveRoomIds.set(EXTERNAL_ID, value);
+		async setRoomId(value: string | undefined, externalId = EXTERNAL_ID) {
+			if (value === undefined) await state.delete(`room:${externalId}`);
+			else await state.set(`room:${externalId}`, value);
 		},
 		setRoomInfoMode(value: typeof roomInfoMode) {
 			roomInfoMode = value;
@@ -467,17 +473,17 @@ describe("BiliLiveRooms", () => {
 
 	it("房号缓存没有时按订阅身份解析一次，并把结果交回上下文缓存", async () => {
 		const h = harness();
-		h.setRoomId(undefined);
+		await h.setRoomId(undefined);
 		await h.start();
 		expect(h.api.fetchUserInfo).toHaveBeenCalledWith(EXTERNAL_ID);
-		expect(h.liveRoomIds.get(EXTERNAL_ID)).toBe(ROOM_ID);
+		expect(h.roomIds.get(EXTERNAL_ID)).toBe(ROOM_ID);
 		h.rooms.stop();
 	});
 
 	it("房号解析不出来时只报这一轮状态不可用，不关掉已有监听", async () => {
 		const h = harness();
 		await h.start();
-		h.setRoomId(undefined);
+		await h.setRoomId(undefined);
 		h.api.fetchUserInfo = (async () => fail("not_found", "查无此人")) as never;
 		await expect(
 			h.rooms.fetchLiveStatus(
@@ -492,7 +498,7 @@ describe("BiliLiveRooms", () => {
 
 	it("登录失效 → 全部监听拆掉", async () => {
 		const h = harness();
-		h.liveRoomIds.set("u2", "5002");
+		await h.setRoomId("5002", "u2");
 		h.setSubscriptions([
 			{
 				externalId: EXTERNAL_ID,
@@ -513,7 +519,7 @@ describe("BiliLiveRooms", () => {
 
 	it("登录恢复 → 按名单重开", async () => {
 		const h = harness();
-		h.liveRoomIds.set("u2", "5002");
+		await h.setRoomId("5002", "u2");
 		h.setSubscriptions([
 			{
 				externalId: EXTERNAL_ID,

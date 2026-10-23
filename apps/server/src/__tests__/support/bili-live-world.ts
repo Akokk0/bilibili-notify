@@ -48,7 +48,7 @@ import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createNodeServiceContext } from "../../runtime/service-context.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { fixedLocale } from "../support/fixed-locale.js";
-import { memoryStoreHandle } from "../support/memory-key-value-store.js";
+import { memoryKeyValueStores, memoryStoreHandle } from "../support/memory-key-value-store.js";
 import { registryOf } from "./adapter-ctx.js";
 import { snapshotFor } from "./connection-snapshot.js";
 
@@ -351,10 +351,12 @@ export async function bootBiliLiveWorld(
 	const serviceCtx = createNodeServiceContext({ name: "test", level: "silent", pretty: false });
 	const recording = makeRecordingLayers();
 	const fetchedImages: string[] = [];
+	const biliState = memoryKeyValueStores("state", {
+		[`room:${BILI_LIVE_UID}`]: BILI_LIVE_ROOM_ID,
+	}).store;
 	const sources = createSourceRegistry();
 	const problemTable = createProblemTable({ logger: serviceCtx.logger });
 	let runtimeRecord: {
-		roomId?: string;
 		cachedProfile?: {
 			name: string;
 			sign: string;
@@ -363,7 +365,6 @@ export async function bootBiliLiveWorld(
 			fanClubName?: string;
 		};
 	} = {
-		roomId: BILI_LIVE_ROOM_ID,
 		cachedProfile: {
 			name: "测试主播",
 			sign: "",
@@ -472,18 +473,13 @@ export async function bootBiliLiveWorld(
 		loginCheck: { setHealthCheckMs: () => {} },
 		locale: fixedLocale(),
 		liveContext: serviceCtx.forSubsystem("live", "bilibili"),
-		liveRoomIds: {
-			get: () => runtimeRecord.roomId,
-			set: (_externalId, roomId) => {
-				runtimeRecord = { ...runtimeRecord, roomId };
-			},
-		},
 	});
 	await runtime.registerSource({
 		sourceKey: "bilibili",
 		source,
 		integration: {
 			...integration.handle.ctx,
+			state: biliState,
 			fetchImage: async (url, _options) => {
 				fetchedImages.push(url);
 				return ok({

@@ -33,9 +33,21 @@ export class ListenerManager {
 	}
 
 	private async start(externalId: string): Promise<void> {
-		const known = this.ctx.liveRoomIds.get(externalId);
-		const roomId = known ?? (await this.resolveRoomId(externalId));
-		if (!roomId || this.disposed || this.active.has(externalId)) return;
+		const result = await this.ctx.roomIds.resolve(externalId);
+		if (!result.ok) {
+			if (result.code === "not_found") {
+				this.ctx.logger.warn(
+					`[start] UID=${externalId} 未开通直播间或 live_room 解析失败，跳过 listener 创建`,
+				);
+			} else {
+				this.ctx.logger.warn(
+					`[start] UID=${externalId} 解析直播间号失败：${result.code}：${result.message}`,
+				);
+			}
+			return;
+		}
+		const roomId = result.roomId;
+		if (this.disposed || this.active.has(externalId)) return;
 		const session = new RoomSession(this.ctx, { externalId, roomId });
 		this.active.set(externalId, { externalId, roomId, session });
 		session
@@ -43,37 +55,6 @@ export class ListenerManager {
 			.catch((error) =>
 				this.ctx.logger.error(`[start] 启动直播监听失败 UID=${externalId}：${String(error)}`),
 			);
-	}
-
-	private async resolveRoomId(externalId: string): Promise<string | undefined> {
-		try {
-			const result = await this.ctx.api.fetchUserInfo(externalId);
-			if (!result.ok) {
-				this.ctx.logger.warn(
-					`[start] UID=${externalId} 解析直播间号失败：${result.code}：${result.message}`,
-				);
-				return undefined;
-			}
-			const roomId = Number(result.data?.live_room?.roomid);
-			if (!Number.isFinite(roomId) || roomId <= 0) {
-				this.ctx.logger.warn(
-					`[start] UID=${externalId} 未开通直播间或 live_room 解析失败，跳过 listener 创建`,
-				);
-				return undefined;
-			}
-			const resolved = String(roomId);
-			const existing = this.ctx.liveRoomIds.get(externalId);
-			if (!existing) {
-				const setter = this.ctx.liveRoomIds as {
-					set?(externalId: string, roomId: string): void;
-				};
-				setter.set?.(externalId, resolved);
-			}
-			return resolved;
-		} catch (error) {
-			this.ctx.logger.warn(`[start] UID=${externalId} 解析直播间号失败：${String(error)}`);
-			return undefined;
-		}
 	}
 
 	stop(externalId: string): void {

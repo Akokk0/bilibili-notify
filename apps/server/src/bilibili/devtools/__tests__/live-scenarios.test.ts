@@ -13,8 +13,8 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, roomId: "5050" },
-	{ id: "s2", uid: "200", name: "乙", enabled: false, roomId: "6060" },
+	{ id: "s1", uid: "100", name: "甲", enabled: true },
+	{ id: "s2", uid: "200", name: "乙", enabled: false },
 	{ id: "s3", uid: "300", name: "丙", enabled: true },
 ];
 
@@ -41,6 +41,10 @@ class FakeApi {
 
 function setup() {
 	const rooms = createLiveRooms();
+	const roomIds = new Map([
+		["100", "5050"],
+		["200", "6060"],
+	]);
 	const events: LiveEvent[] = [];
 	rooms.observe({
 		roomId: 5050,
@@ -48,7 +52,14 @@ function setup() {
 		client: { closed: false, close() {} },
 	});
 	const overrides = overridableApi(new FakeApi());
-	const reg = biliRegistry(liveScenarios({ subs: () => SUBS, rooms, api: overrides }));
+	const reg = biliRegistry(
+		liveScenarios({
+			subs: () => SUBS,
+			rooms,
+			api: overrides,
+			liveRooms: () => ({ roomIdOf: (externalId) => roomIds.get(externalId) }),
+		}),
+	);
 	return { reg, events, api: overrides.api };
 }
 

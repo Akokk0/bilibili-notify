@@ -14,19 +14,26 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, roomId: "5050", specialViewers: ["777"] },
+	{ id: "s1", uid: "100", name: "甲", enabled: true, specialViewers: ["777"] },
 	{ id: "s3", uid: "300", name: "丙", enabled: true },
 ];
 
 function setup() {
 	const rooms = createLiveRooms();
+	const roomIds = new Map([["100", "5050"]]);
 	const events: LiveEvent[] = [];
 	rooms.observe({
 		roomId: 5050,
 		onEvent: (ev) => events.push(ev),
 		client: { closed: false, close() {} },
 	});
-	const reg = biliRegistry(liveEventScenarios({ subs: () => SUBS, rooms }));
+	const reg = biliRegistry(
+		liveEventScenarios({
+			subs: () => SUBS,
+			rooms,
+			liveRooms: () => ({ roomIdOf: (externalId) => roomIds.get(externalId) }),
+		}),
+	);
 	return { reg, events };
 }
 

@@ -109,7 +109,6 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			onDispose: () => {},
 			track: () => {},
 		},
-		liveRoomIds: { get: () => undefined, set: () => {} },
 		auth: authed.auth,
 		problems: layers,
 	});

@@ -53,7 +53,11 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 			reportFailure() {},
 			resolveFailure() {},
 		},
-		liveRoomIds: { get: () => undefined },
+		roomIds: {
+			get: () => undefined,
+			resolve: async () => ({ ok: false, code: "not_found", message: "not used" }),
+			syncSubscriptions() {},
+		},
 		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 	});

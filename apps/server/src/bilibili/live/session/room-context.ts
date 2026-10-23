@@ -8,6 +8,7 @@ import type {
 import type { ProblemLayers } from "../../problem-layers.js";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
+import type { RoomIds } from "../room-ids.js";
 import {
 	describeLiveRoomDanmakuAccessDenied,
 	LiveRoomAccessDeniedError,
@@ -40,10 +41,7 @@ export interface RoomContextOptions {
 	liveContext: ServiceContext;
 	source: SourceContext;
 	problems: LiveProblems;
-	liveRoomIds: {
-		get(externalId: string): string | undefined;
-		set?(externalId: string, roomId: string): void;
-	};
+	roomIds: RoomIds;
 	rememberFanClubName(externalId: string, name: string): void;
 	rememberSuperchatAvatar(viewerId: string, url: string): void;
 }
@@ -54,7 +52,7 @@ export class RoomContext {
 	readonly source: SourceContext;
 	readonly problems: LiveProblems;
 	readonly liveContext: ServiceContext;
-	readonly liveRoomIds: RoomContextOptions["liveRoomIds"];
+	readonly roomIds: RoomIds;
 	readonly rememberFanClubName: RoomContextOptions["rememberFanClubName"];
 	readonly rememberSuperchatAvatar: RoomContextOptions["rememberSuperchatAvatar"];
 	readonly listenerRecord: Record<string, { close(): void; closed: boolean }> = {};
@@ -70,7 +68,7 @@ export class RoomContext {
 		this.logger = opts.liveContext.logger;
 		this.source = opts.source;
 		this.problems = opts.problems;
-		this.liveRoomIds = opts.liveRoomIds;
+		this.roomIds = opts.roomIds;
 		this.rememberFanClubName = opts.rememberFanClubName;
 		this.rememberSuperchatAvatar = opts.rememberSuperchatAvatar;
 	}
@@ -214,7 +212,7 @@ export class RoomContext {
 			};
 		} catch (error) {
 			this.logger.warn(
-				`[live] 直播间 [${this.liveRoomIds.get(externalId) ?? ""}] 取粉丝牌名失败：${String(error)}`,
+				`[live] 直播间 [${this.roomIds.get(externalId) ?? ""}] 取粉丝牌名失败：${String(error)}`,
 			);
 			return {};
 		}

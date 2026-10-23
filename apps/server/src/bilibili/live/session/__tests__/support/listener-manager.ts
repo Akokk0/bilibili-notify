@@ -5,7 +5,9 @@ import {
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
+import { memoryKeyValueStores } from "../../../../../__tests__/support/memory-key-value-store.js";
 import type { LiveEvent } from "../../../protocol/events.js";
+import { createRoomIds } from "../../../room-ids.js";
 import { ListenerManager } from "../../listener-manager.js";
 import type { LiveProblems } from "../../room-context.js";
 import { makeLiveProblems } from "./live-problems.js";
@@ -21,7 +23,6 @@ export function makeListenerManagerHarness(
 ) {
 	const activeHandlers = new Map<string, EventHandler>();
 	const reports: Array<{ externalId: string; report: unknown }> = [];
-	const roomIds = new Map<string, string>();
 	const problems = (options.problems ?? makeLiveProblems()) as ReturnType<typeof makeLiveProblems>;
 	const startLiveRoomListener = vi.fn(async (roomId: string, handler: EventHandler) => {
 		activeHandlers.set(roomId, handler);
@@ -52,25 +53,34 @@ export function makeListenerManagerHarness(
 		signal: new AbortController().signal,
 		track() {},
 	};
+	let subscriptions: SourceSubscriptionView[] = [];
+	const api = {
+		fetchUserInfo: async (
+			externalId: string,
+		): Promise<Result<{ data: { live_room?: { roomid?: number } } }>> =>
+			ok({
+				data: { live_room: { roomid: Number.parseInt(externalId.slice(1), 10) * 100 } },
+			}),
+		getMasterInfo: async () => ({ data: { medal_name: "牌" } }),
+	};
+	const roomIds = createRoomIds({
+		api: api as never,
+		state: memoryKeyValueStores("state").store,
+		subscriptions: () => subscriptions,
+		setTimeout: (fn) => {
+			fn();
+			return { dispose() {} };
+		},
+		logger: liveContext.logger,
+	});
 	const knownLive = new Set<string>();
 	const ctx = {
 		logger: liveContext.logger,
-		api: {
-			fetchUserInfo: async (
-				externalId: string,
-			): Promise<Result<{ data: { live_room?: { roomid?: number } } }>> =>
-				ok({
-					data: { live_room: { roomid: Number.parseInt(externalId.slice(1), 10) * 100 } },
-				}),
-			getMasterInfo: async () => ({ data: { medal_name: "牌" } }),
-		},
+		api,
 		liveContext,
 		source,
 		problems,
-		liveRoomIds: {
-			get: (externalId: string) => roomIds.get(externalId),
-			set: (externalId: string, roomId: string) => void roomIds.set(externalId, roomId),
-		},
+		roomIds,
 		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 		startLiveRoomListener,
@@ -106,7 +116,9 @@ export function makeListenerManagerHarness(
 		subscription,
 		settle,
 		async sync(externalIds: readonly string[]) {
-			await manager.sync(externalIds.map(subscription));
+			subscriptions = externalIds.map(subscription);
+			roomIds.syncSubscriptions();
+			await manager.sync(subscriptions);
 			await settle();
 		},
 	};

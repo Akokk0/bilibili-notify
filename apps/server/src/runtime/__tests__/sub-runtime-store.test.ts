@@ -1,15 +1,14 @@
 /**
  * SubRuntimeStore 单元测试 — Bug 1 修复的承重件。
  *
- * SubRuntimeStore 把高频写入的 cachedProfile / roomId 从持久化 Subscription
+ * SubRuntimeStore 把高频写入的 cachedProfile 从持久化 Subscription
  * 里外置出来,自带独立写路径且**不发任何事件**(无 MessageBus)——这正是切断
  * `config-changed:subscriptions → SubscriptionStore.replaceAll → subscription-changed
  * → DynamicPoller 重订阅 + [ops] 日志刷屏` 链条的关键。
  *
  * 覆盖:
  *  - 构造 API 不接收 MessageBus(结构性证明:patch 不可能 fan-out)
- *  - patch 逐键替换语义(fans-only tick 不冲掉已存在的 roomId;cachedProfile
- *    seed 不冲掉 roomId;roomId-only 不冲掉 cachedProfile)
+ *  - patch 逐键替换语义(空 patch 不冲掉 cachedProfile;不认识的键也逐键落盘)
  *  - get / getAll 返回克隆(就地改返回值不污染 store)
  *  - load 容忍 缺失 / 坏 JSON / 数组 / 非对象 → 起始为空,不抛
  *  - prune 丢孤儿 + 幂等(无可丢时不写盘)
@@ -29,6 +28,7 @@ import {
 	createSubRuntimeStore,
 	pruneOrphanSubRuntime,
 	SUB_RUNTIME_FILE,
+	type SubRuntime,
 	type SubRuntimeStore,
 } from "../sub-runtime-store.js";
 
@@ -55,8 +55,6 @@ const PROFILE_A = {
 	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
 };
 const PROFILE_A2 = { ...PROFILE_A, fans: 150, lastRefreshedAt: "2026-05-19T00:02:00.000Z" };
-const ROOM_B = "930987";
-
 let dir: string;
 let file: string;
 let logger: Logger;
@@ -104,45 +102,46 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 		await expect(readFileJson()).resolves.toEqual({ s1: { cachedProfile: PROFILE_A } });
 	});
 
-	it("fans-only tick(只传 cachedProfile)不冲掉已存在的 roomId", async () => {
+	it("后续 cachedProfile patch 整格替换旧资料,不深合并", async () => {
 		const store = make();
-		await store.patch("s1", { cachedProfile: PROFILE_A, roomId: ROOM_B });
-		// 后续一轮 tick 只更新 cachedProfile(fans 变化),roomId 不动。
+		await store.patch("s1", { cachedProfile: PROFILE_A });
 		await store.patch("s1", { cachedProfile: PROFILE_A2 });
-		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A2, roomId: ROOM_B });
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A2 });
 	});
 
-	it("cachedProfile-only seed 不冲掉已存在的 roomId", async () => {
+	it("写另一个顶层键不冲掉已存在的 cachedProfile", async () => {
 		const store = make();
-		await store.patch("s1", { roomId: ROOM_B });
-		// POST 自 seed 只写 cachedProfile —— 不能丢 roomId。
+		const withUnknown = { unknown: "kept" } as unknown as SubRuntime;
+		await store.patch("s1", withUnknown);
 		await store.patch("s1", { cachedProfile: PROFILE_A });
-		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, roomId: ROOM_B });
+		expect(store.get("s1")).toEqual({ unknown: "kept", cachedProfile: PROFILE_A });
 	});
 
-	it("roomId-only patch 不冲掉已存在的 cachedProfile", async () => {
+	it("不带这个键 = 别动它:空 patch 不冲掉 cachedProfile", async () => {
 		const store = make();
 		await store.patch("s1", { cachedProfile: PROFILE_A });
-		await store.patch("s1", { roomId: ROOM_B });
-		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, roomId: ROOM_B });
+		await store.patch("s1", {});
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A });
 	});
 
 	it("空 partial 不丢任何已存在的键", async () => {
 		const store = make();
-		await store.patch("s1", { cachedProfile: PROFILE_A, roomId: ROOM_B });
+		await store.patch("s1", { cachedProfile: PROFILE_A });
 		await store.patch("s1", {});
-		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, roomId: ROOM_B });
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A });
 	});
 
-	it("③ roomId round-trip 落盘 + 逐键替换,不冲掉 cachedProfile", async () => {
+	it("逐键遍历不点名:SubRuntime 里没写的键也原样落盘", async () => {
 		const store = make();
-		await store.patch("s1", { cachedProfile: PROFILE_A });
-		await store.patch("s1", { roomId: ROOM_B });
+		await store.patch("s1", {
+			cachedProfile: PROFILE_A,
+			unrecognized: "kept",
+		} as unknown as SubRuntime);
 		expect(store.get("s1")).toEqual({
 			cachedProfile: PROFILE_A,
-			roomId: ROOM_B,
+			unrecognized: "kept",
 		});
-		await expect(readFileJson()).resolves.toMatchObject({ s1: { roomId: ROOM_B } });
+		await expect(readFileJson()).resolves.toMatchObject({ s1: { unrecognized: "kept" } });
 	});
 
 	/**
@@ -179,7 +178,7 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 	 *
 	 * 两处调用方都写 `{ followed: true, followError: undefined }`,意思是「关上了,把上次
 	 * 那条错误**清掉**」。按值判的话这一清永远不生效,主人会一直看着一条早就不成立的报错。
-	 * 而「不带这个键」仍然是「别动它」—— fans-only 那一轮就靠这个不冲掉 roomId。
+	 * 而「不带这个键」仍然是「别动它」—— 空 patch 就靠这个不冲掉 cachedProfile。
 	 */
 	it("🔴 显式传 undefined = 清掉这个键;不带这个键 = 别动它", async () => {
 		const store = make();
@@ -192,12 +191,11 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 			s1: { cachedProfile: PROFILE_A, followed: true },
 		});
 
-		// 只写 roomId 的那种 patch 不该动到关注状态。
-		await store.patch("s1", { roomId: "930987" });
+		// 不带关注两格的 patch 不该动到关注状态。
+		await store.patch("s1", { cachedProfile: PROFILE_A2 });
 		expect(store.get("s1")).toEqual({
-			cachedProfile: PROFILE_A,
+			cachedProfile: PROFILE_A2,
 			followed: true,
-			roomId: "930987",
 		});
 	});
 });
@@ -306,7 +304,7 @@ describe("SubRuntimeStore.listImageRefs — 图库清扫要的「资料缓存引
 		await store.patch("bili-1", {
 			cachedProfile: { ...PROFILE_NO_AVATAR, avatarUrl: "https://example.com/a.png" },
 		});
-		await store.patch("bili-2", { roomId: ROOM_B });
+		await store.patch("bili-2", { cachedProfile: PROFILE_NO_AVATAR });
 
 		expect((await store.listImageRefs()).sort()).toEqual([REF_A, REF_B]);
 	});
@@ -409,13 +407,12 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		});
 	});
 
-	it("同一 id 两个并发 patch(fans 更新 + roomId)合并不丢键", async () => {
+	it("同一 id 两个并发 patch(cachedProfile 更新 + 空 patch)合并不丢键", async () => {
 		const store = make();
 		const p1 = store.patch("s1", { cachedProfile: PROFILE_A });
-		const p2 = store.patch("s1", { roomId: ROOM_B });
+		const p2 = store.patch("s1", {});
 		await Promise.all([p1, p2]);
-		// FIFO:先 cachedProfile 后 roomId,逐键替换 → 两键都在。
-		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A, roomId: ROOM_B });
+		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A });
 	});
 
 	it("patch 与 prune 并发串行:prune 在 patch 之后看到新条目", async () => {

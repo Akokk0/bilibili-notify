@@ -190,10 +190,6 @@ function makeDeps(
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
 			liveContext,
-			liveRoomIds: {
-				get: () => undefined,
-				set: () => {},
-			},
 			auth: FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
@@ -356,6 +352,21 @@ describe("createBiliSource", () => {
 		expect(result).toMatchObject({ ok: true, name: "阿甲", followers: 7 });
 		expect(fetchUserCard).toHaveBeenCalledWith("1");
 		expect(state.get("profile:1")).toEqual({});
+		await source.stop();
+	});
+
+	it("ctx.state 预置房号时,来源的直播把手直接读它,不请求用户信息", async () => {
+		const { deps } = makeDeps();
+		const fetchUserInfo = vi.fn();
+		deps.api = { ...deps.api, fetchUserInfo } as unknown as Api;
+		const source = createBiliSource(deps);
+		const { ctx, state } = makeCtx([{ externalId: "42", monitorsLive: true }]);
+		await state.set("room:42", "5050");
+
+		await source.start(ctx);
+
+		expect(source.liveRooms()?.roomIdOf("42")).toBe("5050");
+		expect(fetchUserInfo).not.toHaveBeenCalled();
 		await source.stop();
 	});
 
@@ -875,7 +886,10 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		const source = createBiliSource({ ...deps, bus: world.bus });
 		const enqueue = vi.fn<(event: { subscriptionId: string; postId: string }) => void>();
 		const logger = makeLogger();
-		const integration = makeIntegration() as IntegrationContext;
+		const integration = {
+			...makeIntegration(),
+			state: memoryKeyValueStores("state").store,
+		} as IntegrationContext;
 		const fetchImage = vi.fn<(url: string) => Promise<Result<{ ref: ImageRef }>>>(async () =>
 			ok({ ref: CONTEXT_IMAGE_REF }),
 		);

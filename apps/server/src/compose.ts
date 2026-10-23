@@ -83,7 +83,7 @@ export interface BuiltinIntegrationsDeps {
 	setHealthCheckMs: (ms: number) => void;
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
-	subscriptionRuntime: Pick<SubRuntimeStore, "get" | "patch">;
+	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录心跳建得比这里晚,现取,原样转给 B 站开发场景。 */
 	healthCheck: BiliDevtoolsDeps["healthCheck"];
@@ -169,7 +169,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					api: deps.api,
 					auth: deps.auth,
 					bus: deps.bus,
-					// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
+					// 场景挑订阅:配置里的订阅 + 运行时资料缓存。
 					// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
 					subs: () =>
 						deps.subscriptions
@@ -183,12 +183,12 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 									uid,
 									name: runtime?.cachedProfile?.name ?? uid,
 									enabled: sub.enabled,
-									roomId: runtime?.roomId,
 									specialViewers: sub.specialViewers.map((v) => v.id),
 									avatar: runtime?.cachedProfile?.avatarUrl,
 								};
 							}),
 					dynamic,
+					liveRooms: () => source?.liveRooms(),
 					healthCheck: deps.healthCheck,
 				}),
 			);
@@ -206,39 +206,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					auth: deps.sourceAuth,
 					locale: deps.locale,
 					liveContext: deps.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY),
-					liveRoomIds: {
-						get: (externalId) =>
-							deps.subscriptionRuntime.get(
-								deps.subscriptions
-									.list()
-									.find(
-										(sub) =>
-											subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY &&
-											subscriptionIdentityOf(sub).externalId === externalId,
-									)?.id ?? "",
-							)?.roomId,
-						set: (externalId, resolvedLiveCode) => {
-							for (const sub of deps.subscriptions.list()) {
-								const identity = subscriptionIdentityOf(sub);
-								if (
-									identity.sourceKey !== BILIBILI_SOURCE_KEY ||
-									identity.externalId !== externalId ||
-									deps.subscriptionRuntime.get(sub.id)?.roomId === resolvedLiveCode
-								) {
-									continue;
-								}
-								deps.serviceCtx.track(
-									deps.subscriptionRuntime
-										.patch(sub.id, { roomId: resolvedLiveCode })
-										.catch((error) => {
-											biliLogger.warn(
-												`[compose] room id write failed externalId=${externalId}: ${String(error)}`,
-											);
-										}),
-								);
-							}
-						},
-					},
 				});
 				source = made;
 				await engines.registerSource({

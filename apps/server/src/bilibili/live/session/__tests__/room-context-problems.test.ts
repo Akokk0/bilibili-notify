@@ -20,7 +20,11 @@ function makeCtx(api: Record<string, unknown> = {}) {
 		liveContext: serviceCtx,
 		source: { subscriptions: () => [] } as never,
 		problems,
-		liveRoomIds: { get: () => undefined },
+		roomIds: {
+			get: () => undefined,
+			resolve: async () => ({ ok: false, code: "not_found", message: "not used" }),
+			syncSubscriptions() {},
+		},
 		rememberFanClubName() {},
 		rememberSuperchatAvatar() {},
 	});

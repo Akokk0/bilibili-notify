@@ -10,7 +10,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { dataPath } from "./roots.js";
 
 /**
- * SubRuntimeStore — per-subscription **runtime** data, externalized out of the
+ * SubRuntimeStore — per-subscription cached profile data, externalized out of the
  * persisted `Subscription` config.
  *
  * Why this exists: `cachedProfile.fans` / `lastRefreshedAt` get rewritten by
@@ -37,11 +37,6 @@ export interface SubRuntime {
 	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
 	 */
 	cachedProfile?: CachedProfile;
-	/**
-	 * 解析出的直播间号(uid → live_room.roomid)。B 站来源首次解析后写回,之后
-	 * 启动/reload 直接读盘复用,省掉每次对每个 UP 的 `fetchUserInfo` 房号解析请求(③)。
-	 */
-	roomId?: string;
 	/**
 	 * 是否已在 B 站关注该 UP。
 	 *
@@ -186,7 +181,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				//     类型、门禁、运行期都不会说一个字。
 				//   - 按值判的话,`{ followed: true, followError: undefined }`(两处调用方
 				//     都这么写,意思是「关上了,把上次那条错误清掉」)永远清不掉。
-				// 「不带这个键」仍然是「别动它」—— 只写粉丝数的那一轮就靠这个不冲掉 roomId。
+				// 「不带这个键」仍然是「别动它」—— 空 patch 不冲掉 cachedProfile。
 				const next: Record<string, unknown> = { ...(records[id] ?? {}) };
 				for (const [key, value] of Object.entries(partial)) {
 					if (value === undefined) delete next[key];

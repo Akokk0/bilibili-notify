@@ -14,13 +14,12 @@ import type { LiveRoomHandle, LiveRooms } from "./live-rooms.js";
  * 下播即摘掉。
  */
 
-/** 场景挑订阅用的那几样;`roomId` 缺 = 还没解析出房号(没登录 / 刚添加)。 */
+/** 场景挑订阅用的那几样。 */
 export interface SubPick {
 	id: string;
 	uid: string;
 	name: string;
 	enabled: boolean;
-	roomId?: string;
 	/** 特别关注名单上的观众 id(进场 / 弹幕推送的白名单)。 */
 	specialViewers?: string[];
 	/** 头像 url(假动态的作者头像 / 封面借它)。 */
@@ -30,6 +29,8 @@ export interface SubPick {
 export interface RoomPickerDeps {
 	subs: () => SubPick[];
 	rooms: LiveRooms;
+	/** 来源自己的房号缓存;来源还没起来时没有这个把手。 */
+	liveRooms: () => { roomIdOf(externalId: string): string | undefined } | undefined;
 }
 
 export interface LiveScenarioDeps extends RoomPickerDeps {
@@ -49,15 +50,20 @@ export function pickRoom(
 	const subs = deps.subs();
 	const sub =
 		wanted === undefined
-			? subs.find((s) => s.enabled && s.roomId && deps.rooms.find(Number(s.roomId)))
+			? subs.find((s) => {
+					if (!s.enabled) return false;
+					const roomId = deps.liveRooms()?.roomIdOf(s.uid);
+					return roomId !== undefined && deps.rooms.find(Number(roomId));
+				})
 			: subs.find((s) => s.id === String(wanted));
 	if (!sub) {
 		throw new DevParamError(
 			wanted === undefined ? "没有一个启用且直播间已连上的订阅" : `没有这个订阅:${wanted}`,
 		);
 	}
-	if (!sub.roomId) throw new DevParamError(`${sub.name} 还没解析出房号(没登录 / 刚添加)`);
-	const roomId = Number(sub.roomId);
+	const resolved = deps.liveRooms()?.roomIdOf(sub.uid);
+	if (!resolved) throw new DevParamError(`${sub.name} 还没解析出房号(没登录 / 刚添加)`);
+	const roomId = Number(resolved);
 	const handle = deps.rooms.find(roomId);
 	if (!handle) {
 		throw new DevParamError(

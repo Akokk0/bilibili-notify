@@ -187,11 +187,9 @@ function compose(
 			get: (id: string) =>
 				id === "bilibili-100"
 					? ({
-							roomId: "5050",
 							cachedProfile: { name: "甲", avatarUrl: "https://a/1.png" },
 						} as never)
 					: undefined,
-			patch: async () => {},
 		},
 		setTimeout: () => ({ dispose() {} }),
 		healthCheck: () => undefined,
@@ -255,7 +253,7 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 		expect(ids.every((id) => id.startsWith(`${BILIBILI_SOURCE_KEY}.`))).toBe(true);
 	});
 
-	it("挑订阅只留 B 站订阅,七个字段照旧", () => {
+	it("挑订阅只留 B 站订阅,六个字段照旧", () => {
 		const providers = createDevtoolsProviderRegistry();
 		compose({
 			subs: [
@@ -271,7 +269,6 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 				uid: "100",
 				name: "甲",
 				enabled: true,
-				roomId: "5050",
 				specialViewers: ["777"],
 				avatar: "https://a/1.png",
 			},
@@ -280,7 +277,6 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 				uid: "200",
 				name: "200",
 				enabled: false,
-				roomId: undefined,
 				specialViewers: [],
 				avatar: undefined,
 			},

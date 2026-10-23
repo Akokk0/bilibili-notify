@@ -115,8 +115,10 @@ function makeWorld(
 		api: api as unknown as Api,
 		bus: { on: () => ({ dispose() {} }) } as never,
 		liveContext: liveContext as ServiceContext,
-		liveRoomIds: {
+		roomIds: {
 			get: (externalId) => (externalId === EXTERNAL_ID ? ROOM_ID : undefined),
+			resolve: async () => ok({ roomId: ROOM_ID }),
+			syncSubscriptions() {},
 		},
 		rememberFanClubName() {},
 		problems: layers,

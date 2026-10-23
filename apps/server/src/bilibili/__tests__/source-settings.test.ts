@@ -131,7 +131,6 @@ async function boot() {
 			onDispose: () => {},
 			track: () => {},
 		},
-		liveRoomIds: { get: () => undefined, set: () => {} },
 		auth: {
 			beginLogin: async () => ok(),
 			logout: async () => ok(),

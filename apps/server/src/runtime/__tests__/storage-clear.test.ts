@@ -281,11 +281,11 @@ describe("数据统计:四个目录、缓存", () => {
 		const profile = { name: "n", sign: "", fans: 9, lastRefreshedAt: "2026-10-06T00:00:00.000Z" };
 		await w.subRuntimeStore.patch("sub-a", {
 			cachedProfile: profile,
-			roomId: "123",
 			followed: true,
 		});
+		const secondProfile = { ...profile, name: "n2" };
 		await w.subRuntimeStore.patch("sub-b", {
-			roomId: "456",
+			cachedProfile: secondProfile,
 		});
 		await w.subRuntimeStore.patch("sub-c", { cachedProfile: profile });
 
@@ -293,10 +293,9 @@ describe("数据统计:四个目录、缓存", () => {
 
 		expect(w.subRuntimeStore.get("sub-a")).toEqual({
 			cachedProfile: profile,
-			roomId: "123",
 			followed: true,
 		});
-		expect(w.subRuntimeStore.get("sub-b")).toEqual({ roomId: "456" });
+		expect(w.subRuntimeStore.get("sub-b")).toEqual({ cachedProfile: secondProfile });
 		expect(w.subRuntimeStore.get("sub-c")).toEqual({ cachedProfile: profile });
 		// 换一个仓从文件里读,这些格也原样还在。
 		const reread = (await import("../sub-runtime-store.js")).createSubRuntimeStore({
@@ -304,7 +303,7 @@ describe("数据统计:四个目录、缓存", () => {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await reread.load();
-		expect(reread.get("sub-a")?.roomId).toBe("123");
+		expect(reread.get("sub-a")?.cachedProfile).toEqual(profile);
 	});
 
 	it("清的同时有排在队里的写(作品、粉丝样本、「在记」)和一场正在播的:清完什么都不会被写回来", async () => {

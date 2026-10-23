@@ -19,6 +19,7 @@ function deps(): BiliDevtoolsDeps {
 		bus: createNodeMessageBus(),
 		subs: () => [],
 		dynamic: () => undefined,
+		liveRooms: () => undefined,
 		healthCheck: () => undefined,
 	};
 }

@@ -25,6 +25,7 @@ import { DynamicPoller } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
+import { createRoomIds, type RoomIds } from "./live/room-ids.js";
 import { BiliLiveRooms } from "./live/session/bili-live-rooms.js";
 import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
 import type { ProblemLayers } from "./problem-layers.js";
@@ -58,11 +59,6 @@ export interface BiliSourceDeps {
 	locale: Pick<LocaleReader, "onChange">;
 	/** 直播那一路的宿主上下文(日志标签仍是 `live`)。 */
 	liveContext: ServiceContext;
-	/** R7 过渡口,3b-25 房号搬进 B 站 `ctx.state` 时随口删。 */
-	liveRoomIds: {
-		get(externalId: string): string | undefined;
-		set(externalId: string, roomId: string): void;
-	};
 	/** 可注入的时钟(`health()` 的相对时间用)。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -70,6 +66,8 @@ export interface BiliSourceDeps {
 export interface BiliSource extends Source {
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
+	/** 直播房号;没 start 或已 stop 时是 undefined。开发场景挑房间读它。 */
+	liveRooms(): { roomIdOf(externalId: string): string | undefined } | undefined;
 }
 
 /** 从 B 站设置算动态引擎的配置(启动与热更共用)。 */
@@ -138,6 +136,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let lastGuardAttemptAt: number | undefined;
 	let guardFetch: Promise<void> | undefined;
 	let rooms: BiliLiveRooms | undefined;
+	let roomIds: RoomIds | undefined;
 	let profileFetcher: ReturnType<typeof createProfileFetcher> | undefined;
 	const superchatAvatarUrls = new Map<string, string>();
 
@@ -194,6 +193,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		descriptor,
 		auth: deps.auth,
 		dynamic: () => engine,
+		liveRooms: () =>
+			roomIds === undefined
+				? undefined
+				: {
+						roomIdOf: (externalId) => roomIds?.get(externalId),
+					},
 		fetchProfile(identity, signal) {
 			return profileFetcher
 				? profileFetcher.fetchProfile(identity, signal)
@@ -255,11 +260,19 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
 			sourceCtx = ctx;
+			roomIds = createRoomIds({
+				api: deps.api,
+				state: ctx.state,
+				subscriptions: () => ctx.subscriptions(),
+				setTimeout: deps.setTimeout,
+				now,
+				logger: ctx.logger,
+			});
 			rooms = new BiliLiveRooms({
 				api: deps.api,
 				bus: deps.bus,
 				liveContext: deps.liveContext,
-				liveRoomIds: deps.liveRoomIds,
+				roomIds,
 				rememberFanClubName: (externalId, name) => {
 					profileFetcher?.rememberFanClubName(externalId, name);
 				},
@@ -395,6 +408,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				mine.push(
 					ctx.onSubscriptionsChanged(() => {
 						profileFetcher?.syncSubscriptions();
+						roomIds?.syncSubscriptions();
 						engine?.syncSubscriptions();
 					}),
 				);
@@ -425,6 +439,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				deps.loginCheck.setHealthCheckMs(0);
 				started = false;
 				sourceCtx = undefined;
+				roomIds = undefined;
 				profileFetcher = undefined;
 				viewerAvatars = undefined;
 				throw err;
@@ -453,6 +468,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			deps.loginCheck.setHealthCheckMs(0);
 			started = false;
 			sourceCtx = undefined;
+			roomIds = undefined;
 			profileFetcher = undefined;
 			viewerAvatars = undefined;
 			guardFetch = undefined;
