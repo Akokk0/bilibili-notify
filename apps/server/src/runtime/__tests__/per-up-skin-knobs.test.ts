@@ -134,6 +134,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				serviceCtx: { track: () => {} },
 				subscription: (id) => (id === sub.id ? sub : undefined),
 				profileName: () => undefined,
+				identityLabel: () => "抖音 · sec-uid-1",
 				liveImages: {
 					put: async () => ({ ok: false as const, code: "invalid", message: "不存图" }) as never,
 				},
@@ -152,6 +153,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				table,
 				subscription: (id) => (id === sub.id ? sub : undefined),
 				profile: () => ({ name: "抖音甲" }),
+				identityLabel: () => "抖音 · sec-uid-1",
 				settings: (s) => liveSettingsOf(s, g),
 				liveCover: () => undefined,
 				sourceStatus: { running: () => true },

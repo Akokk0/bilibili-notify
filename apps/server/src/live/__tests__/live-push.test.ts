@@ -161,6 +161,7 @@ function start(): void {
 		serviceCtx: ctx,
 		subscription: (id) => subs.get(id),
 		profileName: () => profile?.name,
+		identityLabel: () => "抖音 · sec-uid-1",
 		liveImages: {
 			put: async (bytes) => {
 				if (putFails)
@@ -189,6 +190,7 @@ function start(): void {
 		table,
 		subscription: (id) => subs.get(id),
 		profile: () => profile,
+		identityLabel: () => "抖音 · sec-uid-1",
 		settings: () => settings,
 		liveCover: () => undefined,
 		sourceStatus: { running: () => running },
@@ -289,6 +291,15 @@ afterEach(() => {
 });
 
 describe("开播", () => {
+	it("详情没带主播名、没资料名 → 文案以标签开头", async () => {
+		profile = { fans: 12_345 };
+		start();
+		liveStart();
+		await settle();
+		expect(sent[0]?.text).toBe(`抖音 · sec-uid-1 开播啦，当前粉丝数：1.2万\n${URL}`);
+		expect(sent[0]?.input).toMatchObject({ creator: { name: "抖音 · sec-uid-1" } });
+	});
+
 	it("开播事件 → 推一张开播卡:文案套名字与开播时的粉丝数,卡上是事件里的格,链接是事件的 url", async () => {
 		start();
 		liveStart({ cover: PNG, category: "聊天", description: "简介", likes: 3, totalViewers: 40 });

@@ -105,6 +105,7 @@ let subs: Map<string, Subscription>;
 let running: Set<string>;
 let sent: Array<{ id: string; text: string; type: number }>;
 let sentSegments: Array<{ id: string; type: number; segments: MessageLayoutSegment[] }>;
+let profileName: string | undefined;
 let avatarAsked: number;
 let avatarImpl: (() => Promise<Result<{ ref: ImageRef }>>) | undefined;
 let tierAsked: number;
@@ -147,6 +148,7 @@ beforeEach(() => {
 	running = new Set([EXT]);
 	sent = [];
 	sentSegments = [];
+	profileName = "主播A";
 	avatarAsked = 0;
 	avatarImpl = undefined;
 	tierAsked = 0;
@@ -177,7 +179,8 @@ beforeEach(() => {
 		settings: () => settings,
 		sourceStatus: { running: (key) => running.has(key) },
 		table,
-		profileName: () => "主播A",
+		profileName: () => profileName,
+		identityLabel: () => "测试 · room-1",
 		profileAvatar: () => undefined,
 		source: () => ({
 			descriptor: { label: "测试", membershipPrograms: programs },
@@ -441,6 +444,14 @@ describe("醒目留言", () => {
 		]);
 	});
 
+	it("没资料名、在播表里没主播名 → 醒目留言文案的 {name} 是标签", async () => {
+		profileName = undefined;
+		renderer = null;
+		superchat();
+		await flush();
+		expect(sent[0]?.text).toContain("测试 · room-1");
+	});
+
 	it("低于门槛:不取头像、不出卡、不发", async () => {
 		settings = settingsWith([], { minSuperchatAmount: 100 });
 		superchat();
@@ -493,7 +504,8 @@ describe("醒目留言", () => {
 			settings: () => settings,
 			sourceStatus: { running: (key) => running.has(key) },
 			table,
-			profileName: () => "主播A",
+			profileName: () => profileName,
+			identityLabel: () => "测试 · room-1",
 			profileAvatar: () => undefined,
 			source: () => ({ descriptor: { label: "测试" } }),
 			gates: createSourceGates(),

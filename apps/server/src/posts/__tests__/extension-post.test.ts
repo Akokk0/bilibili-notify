@@ -89,6 +89,7 @@ function setup(
 		put?: Put;
 		subscriptions?: Record<string, typeof SUB>;
 		profileName?: (id: string) => string | undefined;
+		identityLabel?: () => string;
 		postNoun?: (extensionId: string) => string | undefined;
 	} = {},
 ) {
@@ -110,6 +111,7 @@ function setup(
 		serviceCtx: ctx,
 		subscription: (id) => subs[id],
 		profileName: over.profileName ?? (() => "资料名"),
+		identityLabel: over.identityLabel ?? (() => "抖音 · sec-uid-1"),
 		postNoun: over.postNoun ?? (() => "作品"),
 		postImages: { put },
 		enqueue: (event) => {
@@ -158,7 +160,7 @@ describe("bindExtensionPosts — 上报翻成信封交给核心入口", () => {
 		t.handle.dispose();
 	});
 
-	it("作者名:事件里的 → 订阅资料里的 → 外部 id", async () => {
+	it("作者名:事件里的 → 订阅资料里的 → 身份标签", async () => {
 		const withProfile = setup({ profileName: () => "资料名" });
 		withProfile.emit(post(1));
 		await settleAll(withProfile.ctx);
@@ -167,7 +169,17 @@ describe("bindExtensionPosts — 上报翻成信封交给核心入口", () => {
 		const bare = setup({ profileName: () => undefined });
 		bare.emit(post(1));
 		await settleAll(bare.ctx);
-		expect(bare.enqueued[0]?.post.creator.name).toBe("sec-uid-1");
+		expect(bare.enqueued[0]?.post.creator.name).toBe("抖音 · sec-uid-1");
+	});
+
+	it("事件没带作者名、没资料名 → 作者名是递进来的标签", async () => {
+		const t = setup({
+			profileName: () => undefined,
+			identityLabel: () => "抖音 · sec-uid-1",
+		});
+		t.emit(post(1));
+		await settleAll(t.ctx);
+		expect(t.enqueued[0]?.post.creator.name).toBe("抖音 · sec-uid-1");
 	});
 
 	it("平台叫法按这条订阅所属的拓展取,只问它;清单没写就不带", async () => {
@@ -439,6 +451,7 @@ function chain(
 		serviceCtx: ctx,
 		subscription: (id) => (id === SUB.id ? SUB : undefined),
 		profileName: () => "资料名",
+		identityLabel: () => "抖音 · sec-uid-1",
 		postNoun: () => over.postNoun ?? "作品",
 		postImages: { put },
 		enqueue: (event) => queue.enqueue(event),

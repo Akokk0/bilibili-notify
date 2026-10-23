@@ -760,6 +760,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				postNoun: (extensionId) => extensionSources.postNoun(extensionId),
 				postImages,
 				enqueue: (event) => postQueue.enqueue(event),
@@ -823,6 +824,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				serviceCtx: coreLiveCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				liveImages,
 				sessions: liveSessions,
 			});
@@ -860,6 +862,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				table: liveTable,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
+				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				settings: (sub) => liveSettingsOf(sub, globals()),
 				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
 				liveCover: (sub, settings) => {
@@ -894,6 +897,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			sourceStatus,
 			table: liveTable,
 			profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+			identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 			profileAvatar: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 			source: (sourceKey) => opts.sources.get(sourceKey),
 			gates: sourceGates,

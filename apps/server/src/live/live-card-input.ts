@@ -22,7 +22,7 @@ export interface LiveCardInputFromDetailsOptions {
 	followers?: number;
 	/** 本场粉丝数变化(下播)。 */
 	followersDelta?: number;
-	/** 卡上的主播名(`extensionSubscriptionName` 取好的,也是模板的 `{name}`)。 */
+	/** 卡上的主播名(`displayNameOf` 取好的,也是模板的 `{name}`)。 */
 	authorName: string;
 	/** 订阅资料里存进图库的头像引用;详情没带头像时用它。 */
 	profileAvatar?: ImageRef;

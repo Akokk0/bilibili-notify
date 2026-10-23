@@ -39,7 +39,7 @@ import { storeOrSkip } from "../images/image-writes.js";
 type ReportedPost = SubscriptionReportValue<"post">;
 
 export interface PostFromReportOptions {
-	/** 卡上的作者名(`extensionSubscriptionName` 取好的,也是模板的 `{name}`)。 */
+	/** 卡上的作者名(`displayNameOf` 取好的,也是模板的 `{name}`)。 */
 	authorName: string;
 	/** 存图的口(`AppRuntime.postImages` / `liveImages` 的存图那一半)。 */
 	images: Pick<ImageWriter, "put">;

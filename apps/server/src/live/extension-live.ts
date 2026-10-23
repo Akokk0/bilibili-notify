@@ -20,7 +20,9 @@
  * 这条路是过渡:3b-42 删拓展 v2 的上报之后,来源直接经 `ctx.reportLive` 交中立信号。
  */
 
+import { displayNameOf } from "@bilibili-notify/contract";
 import type {
+	Identity,
 	LiveDetails,
 	LiveSignal,
 	Logger,
@@ -33,7 +35,6 @@ import type {
 import { createSerialGate, fail, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
 import { storeOrSkip } from "../images/image-writes.js";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { LiveSessionEngine } from "./live-sessions.js";
 
@@ -54,6 +55,8 @@ export interface BindExtensionLiveOptions {
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字(资料缓存,现取):作者只带了头像没带名字时,名字按这一条链补。 */
 	profileName(id: string): string | undefined;
+	/** 订阅身份标签:上报的作者名与资料名都没有时,详情里的创作者名是这个。 */
+	identityLabel(identity: Identity): string;
 	/** 往图库存直播封面与作者头像的口(`AppRuntime.liveImages`;名单是在播表各行的封面与头像)。 */
 	liveImages: Pick<ImageWriter, "put">;
 	/** 场次引擎:信号交到这里。 */
@@ -105,7 +108,10 @@ export function bindExtensionLive(opts: BindExtensionLiveOptions): {
 		if (author) {
 			const avatar = author.avatar ? await storeOrSkip(images, author.avatar) : undefined;
 			creator = {
-				name: extensionSubscriptionName(sub, { eventName: author.name, profileName }),
+				name: displayNameOf(
+					{ eventName: author.name, profileName },
+					opts.identityLabel(subscriptionIdentityOf(sub)),
+				),
 				...(avatar === undefined ? {} : { avatar }),
 			};
 		}

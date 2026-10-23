@@ -1,7 +1,9 @@
+import { displayNameOf } from "@bilibili-notify/contract";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	type Disposable,
 	fail,
+	type Identity,
 	type ImageRef,
 	type LiveInteractionReport,
 	type Logger,
@@ -14,10 +16,10 @@ import {
 	type ServiceContext,
 	type Subscription,
 	type SuperchatEvent,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import { callSource, type SourceGates } from "../subscriptions/call-source.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
@@ -82,6 +84,8 @@ export interface LiveInteractionsOptions {
 	table: Pick<LiveTable, "get">;
 	/** 订阅资料里的名字(资料缓存,现取)。 */
 	profileName(id: string): string | undefined;
+	/** 订阅身份标签:在播详情的名字与资料名都没有时,文案里的这个是它。 */
+	identityLabel(identity: Identity): string;
 	/** 订阅资料里的头像引用(资料缓存,现取);没有就不带。 */
 	profileAvatar(id: string): ImageRef | undefined;
 	/** 来源的登记视图(现取):互动的懒取口与会员体系声明都从这一份上拿。 */
@@ -214,12 +218,15 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 				return;
 			}
 			const settings = opts.settings(sub);
-			// 主播名:这一场详情里的 → 资料里的 → 外部 id(同直播卡)。
+			// 主播名:这一场详情里的 → 资料里的 → 身份标签(同直播卡)。
 			const creator = {
-				name: extensionSubscriptionName(sub, {
-					eventName: opts.table.get(subscriptionId)?.details.creator?.name,
-					profileName: opts.profileName(subscriptionId),
-				}),
+				name: displayNameOf(
+					{
+						eventName: opts.table.get(subscriptionId)?.details.creator?.name,
+						profileName: opts.profileName(subscriptionId),
+					},
+					opts.identityLabel(subscriptionIdentityOf(sub)),
+				),
 			};
 			let recognizedMembership:
 				| {

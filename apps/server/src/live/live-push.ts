@@ -1,6 +1,8 @@
+import { displayNameOf } from "@bilibili-notify/contract";
 import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import type {
 	Disposable,
+	Identity,
 	ImageRef,
 	LiveDetails,
 	LiveSession,
@@ -17,7 +19,6 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { ReportDiscrepancy } from "../extensions/context.js";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
@@ -99,6 +100,8 @@ export interface BindLivePushOptions {
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字、粉丝数与粉丝团名(资料缓存,现取)。 */
 	profile(id: string): { name?: string; fans?: number; fanClubName?: string } | undefined;
+	/** 订阅身份标签:事件名与资料名都没有时,卡上与文案里的名字是这个。 */
+	identityLabel(identity: Identity): string;
 	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveSettingsOf`)。 */
 	settings(sub: Subscription): LiveSettings;
 	/** 这一张直播卡用哪张自定义封面(订阅的 ?? 全局的,再轮一张)。每推一张调一次。 */
@@ -268,10 +271,10 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		facts: LiveDetails,
 	): LivePushAnchor[] {
 		const profile = opts.profile(sub.id);
-		const creatorName = extensionSubscriptionName(sub, {
-			eventName: facts.creator?.name,
-			profileName: profile?.name,
-		});
+		const creatorName = displayNameOf(
+			{ eventName: facts.creator?.name, profileName: profile?.name },
+			opts.identityLabel(subscriptionIdentityOf(sub)),
+		);
 		const creatorAvatar = settings.extras.wordcloud ? opts.avatarRef(sub.id) : undefined;
 		const anchors = recapAnchors(
 			{
@@ -314,11 +317,11 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const settings = opts.settings(sub);
 		const profile = opts.profile(id);
 		const { facts } = job;
-		// 作者名按决策 54 取好(事件里的 → 资料里的 → 外部 id),卡上与文案里的 `{name}` 同一条链(决策 77)。
-		const authorName = extensionSubscriptionName(sub, {
-			eventName: facts.creator?.name,
-			profileName: profile?.name,
-		});
+		// 作者名按决策 54 取好(事件名 → 资料名 → 身份标签),卡上与文案里的 `{name}` 同一条链(决策 77)。
+		const authorName = displayNameOf(
+			{ eventName: facts.creator?.name, profileName: profile?.name },
+			opts.identityLabel(subscriptionIdentityOf(sub)),
+		);
 		// 翻成中立的输入:封面与头像本来就是图库引用(来源交信号之前存好的);订阅资料里的头像也在图库里。
 		const input: LiveCardInput = liveCardInputFromDetails(facts, {
 			status: job.status,

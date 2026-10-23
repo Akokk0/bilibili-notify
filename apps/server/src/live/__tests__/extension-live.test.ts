@@ -52,6 +52,7 @@ function world(
 		subs?: Array<ReturnType<typeof makeExtensionSubscription>>;
 		gates?: Map<Uint8Array, Promise<void>>;
 		unavailable?: boolean;
+		profileName?: () => string | undefined;
 		now?: () => number;
 	} = {},
 ): World {
@@ -65,7 +66,8 @@ function world(
 		logger,
 		serviceCtx: ctx,
 		subscription: (id) => subs.get(id),
-		profileName: () => "资料里的名字",
+		profileName: over.profileName ?? (() => "资料里的名字"),
+		identityLabel: () => "抖音 · sec-uid-1",
 		liveImages: {
 			async put(bytes) {
 				await over.gates?.get(bytes);
@@ -213,6 +215,15 @@ describe("开播上报:先存图,再交带引用的信号", () => {
 		});
 	});
 
+	it("上报带了 author 但名字是空串、没资料名 → 详情里的 creator.name 是标签", async () => {
+		const w = world({ profileName: () => undefined });
+		w.report({ kind: "liveStart", value: { url: URL, startedAt: T0, author: { name: "" } } });
+		await w.ctx.settled();
+		expect(w.signals()[0]).toMatchObject({
+			details: { creator: { name: "抖音 · sec-uid-1" } },
+		});
+	});
+
 	it("一条上报对上同一个人的几条订阅:每条各一份信号,图每份各存(同一份字节只刷新修改时间)", async () => {
 		const w = world({ subs: [SUB, SUB_2] });
 		w.report({ kind: "liveStart", value: { url: URL, startedAt: T0, cover: COVER } }, [
@@ -355,6 +366,7 @@ describe("直播状态与下播", () => {
 			serviceCtx: makeTrackingContext(),
 			subscription: () => SUB,
 			profileName: () => undefined,
+			identityLabel: () => "抖音 · sec-uid-1",
 			liveImages: {
 				put: async () => ({ ok: false as const, code: "invalid", message: "" }) as never,
 			},

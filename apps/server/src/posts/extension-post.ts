@@ -17,8 +17,10 @@
  * - 上报的调用不等这里(决策 62):bus 的回调同步返回,活排进闸里,登记进 `track`(关停等它翻完交完)。
  */
 
+import { displayNameOf } from "@bilibili-notify/contract";
 import type {
 	Disposable,
+	Identity,
 	Logger,
 	MessageBus,
 	PostEvent,
@@ -28,7 +30,6 @@ import type {
 } from "@bilibili-notify/internal";
 import { createSerialGate, fail, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { postFromReport } from "./post-from-report.js";
 
@@ -46,6 +47,8 @@ export interface BindExtensionPostsOptions {
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字(资料缓存,现取)。 */
 	profileName(id: string): string | undefined;
+	/** 订阅身份标签:事件名与资料名都没有时,卡上的作者名是这个。 */
+	identityLabel(identity: Identity): string;
 	/** 平台对作品的叫法(清单 `display.postNoun`,按拓展 id 现取);没写就是 `undefined`,核心叫「作品」。 */
 	postNoun(extensionId: string): string | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
@@ -80,10 +83,10 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			return;
 		}
 		const identity = subscriptionIdentityOf(sub);
-		const authorName = extensionSubscriptionName(sub, {
-			eventName: report.author?.name,
-			profileName: opts.profileName(id),
-		});
+		const authorName = displayNameOf(
+			{ eventName: report.author?.name, profileName: opts.profileName(id) },
+			opts.identityLabel(identity),
+		);
 		const post = await postFromReport(report, { authorName, images });
 		if (disposed) return;
 		opts.enqueue({

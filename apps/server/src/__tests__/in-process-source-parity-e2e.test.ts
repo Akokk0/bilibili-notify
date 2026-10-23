@@ -2480,32 +2480,57 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P37");
 	});
 
-	// 验红:`engines.ts` 递给女仆的取标签口改成只回外部 id,第一段红(没有「对拍源 · …」);
-	// contract 的 `subscriptionIdentityLabel` 不看 noun,第二段红(没有「号 …」)。
+	// 验红:`engines.ts` 递给女仆的取标签口改成只回外部 id,女仆那一段第一处红(没有「对拍源 · …」);
+	// contract 的 `subscriptionIdentityLabel` 不看 noun,第二处红(没有「号 …」);
+	// `engines.ts` 给 `bindLivePush` 的 `identityLabel` 换成只回外部 id,直播那一段红。
 	// 没资料名的订阅:开机首轮资料刷新把启用着的都拉出了名字,所以先让来源查不到资料,再启用停着的 carol;
 	// 收尾复原(P30 之后 carol 是停用的,别的行不依赖她此刻的状态)。
-	it("P38 身份标签:没资料名的订阅,女仆订阅视图里的名字是「平台名 · 外部 id」;描述符声明了 externalIdNoun 就是「叫法 外部 id」", async () => {
+	it("P38 身份标签:没资料名的订阅,女仆订阅视图与开播卡文字里的名字是「平台名 · 外部 id」;描述符声明了 externalIdNoun 就是「叫法 外部 id」", async () => {
 		const probe = currentProbe();
 		const patchCarol = async (enabled: boolean) =>
 			okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled }, "PATCH")));
+		const liveStartText = async (round: number): Promise<string> => {
+			await clearCaptures();
+			probe.reportLive(EXT.carol, {
+				kind: "start",
+				startedAt: new Date().toISOString(),
+				details: { title: "开播标题P38" },
+			});
+			const sent = await settledCaptures(1);
+			probe.reportLive(EXT.carol, { kind: "end", endedAt: new Date().toISOString() });
+			await vi.waitFor(async () => expect(await livePushCount(SUB.carol, "liveEnd")).toBe(round), {
+				timeout: 15_000,
+			});
+			return sent.map((entry) => entry.text ?? "").join("\n");
+		};
+		// carol 出厂就路由了开播(见 SUB 的出厂数据),直播这一段直接用。
+		const carolListening = async () =>
+			(
+				(await (await okRes(await api("/api/live/listening"))).json()) as LiveListeningEntry[]
+			).filter((row) => row.subscriptionId === SUB.carol);
 		try {
 			probe.profileOutcome = fail("unavailable", "对拍源暂时查不到资料");
 			await patchCarol(true);
+			expect(await carolListening()).toEqual([]);
 
 			const plain = await askMaid({ name: "list_subscriptions", args: {} });
 			expect(plain.seen).toContain(`${IN_PROCESS_LABEL} · ${EXT.carol}`);
+			expect(await liveStartText(1)).toMatch(
+				new RegExp(`(^|\\n)${IN_PROCESS_LABEL} · ${EXT.carol} 开播啦`),
+			);
 
 			probe.descriptor.externalIdNoun = "号";
 			const named = await askMaid({ name: "list_subscriptions", args: {} });
 			expect(named.seen).toContain(`号 ${EXT.carol}`);
 			expect(named.seen).not.toContain(`${IN_PROCESS_LABEL} · ${EXT.carol}`);
+			expect(await liveStartText(2)).toMatch(new RegExp(`(^|\\n)号 ${EXT.carol} 开播啦`));
 		} finally {
 			probe.descriptor.externalIdNoun = undefined;
 			probe.profileOutcome = undefined;
 			await patchCarol(false);
 		}
 		drove("P38");
-	});
+	}, 30_000);
 
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
