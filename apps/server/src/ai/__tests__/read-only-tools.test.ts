@@ -53,13 +53,21 @@ function makeSubscription(
 }
 
 /** 来源登记表里各键的描述符(给外部 id 的格式核)。 */
-type Descriptors = Record<string, { label: string; externalIdRegex?: string }>;
+type Descriptors = Record<
+	string,
+	{ label: string; externalIdNoun?: string; externalIdRegex?: string }
+>;
+
+const DEFAULT_DESCRIPTORS: Descriptors = {
+	bilibili: { label: "B 站", externalIdNoun: "UID" },
+	douyin: { label: "抖音" },
+};
 
 function makeStores(
 	subscriptions: Subscription[],
 	names: Record<string, string> = {},
 	platformLabels: Record<string, string> = { bilibili: "B 站", douyin: "抖音" },
-	descriptors: Descriptors = {},
+	descriptors: Descriptors = DEFAULT_DESCRIPTORS,
 ) {
 	return {
 		subscriptionStore: { list: () => subscriptions },
@@ -67,6 +75,11 @@ function makeStores(
 			get: (id: string) => (names[id] ? { cachedProfile: { name: names[id] } } : undefined),
 		},
 		platformLabel: (sourceKey: string) => platformLabels[sourceKey] ?? sourceKey,
+		identityLabel: (identity: { sourceKey: string; externalId: string }) => {
+			const noun = descriptors[identity.sourceKey]?.externalIdNoun?.trim();
+			const platform = platformLabels[identity.sourceKey] ?? identity.sourceKey;
+			return noun ? `${noun} ${identity.externalId}` : `${platform} · ${identity.externalId}`;
+		},
 		searchCreators: async (): Promise<Result<{ candidates: CreatorCandidate[] }>> =>
 			ok({ candidates: [] }),
 		fetchProfile: async () => fail("not_found", "没有资料"),
@@ -78,7 +91,12 @@ function makeStores(
 }
 
 function view(s: ReturnType<typeof makeStores>) {
-	return aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel);
+	return aiSubscriptionViews(
+		s.subscriptionStore,
+		s.subRuntimeStore,
+		s.platformLabel,
+		s.identityLabel,
+	);
 }
 
 const EXT_ID = "e0000000-0000-4000-8000-000000000001";
@@ -109,7 +127,7 @@ describe("aiSubscriptionViews — 投影", () => {
 	it("有 target 才算订了该特性 —— 路由是空的就等于没订", () => {
 		const s = makeStores([makeSubscription({ uid: "1", routing: routing({ post: ["t1"] }) })]);
 		expect(view(s)).toEqual([
-			{ creator: "bilibili:1", name: "1", platform: "B 站", post: true, live: false },
+			{ creator: "bilibili:1", name: "UID 1", platform: "B 站", post: true, live: false },
 		]);
 	});
 
@@ -125,14 +143,14 @@ describe("aiSubscriptionViews — 投影", () => {
 		expect(view(s)[0]?.live).toBe(expected);
 	});
 
-	it("名字优先用平台资料缓存,没有就回落外部 id(B 站和别的来源同一条,不再写「UID xxx」)", () => {
+	it("没资料名写身份标签，B 站与别的来源同一条、不分叉", () => {
 		const s = makeStores(
 			[makeSubscription({ uid: "1" }), makeSubscription({ uid: "2" }), makeExtensionSubscription()],
 			{
 				"id-1": "晨风UP主",
 			},
 		);
-		expect(view(s).map((v) => v.name)).toEqual(["晨风UP主", "2", "sec-uid-1"]);
+		expect(view(s).map((v) => v.name)).toEqual(["晨风UP主", "UID 2", "抖音 · sec-uid-1"]);
 	});
 
 	it("停用的订阅不进视图 —— 关掉的 UP 不该出现在女仆的答案里", () => {
@@ -147,7 +165,7 @@ describe("aiSubscriptionViews — 投影", () => {
 		const ext = makeExtensionSubscription({ routing: routing({ liveStart: ["t1"] }) });
 		const s = makeStores([makeSubscription({ uid: "1" }), ext], { [EXT_ID]: "抖音甲" });
 		expect(view(s)).toEqual([
-			{ creator: "bilibili:1", name: "1", platform: "B 站", post: false, live: false },
+			{ creator: "bilibili:1", name: "UID 1", platform: "B 站", post: false, live: false },
 			{ creator: "douyin:sec-uid-1", name: "抖音甲", platform: "抖音", post: false, live: true },
 		]);
 	});
@@ -322,17 +340,23 @@ describe("aiSubscriptionViews — 在播表", () => {
 		running: boolean,
 	) => {
 		const s = makeStores([makeExtensionSubscription()]);
-		return aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
-			// 在播表的行是 `{ startedAt, details }`(details 是中立的 LiveDetails)。
-			row: (id) =>
-				id === EXT_ID && row
-					? {
-							startedAt: row.startedAt,
-							details: { title: row.title, totalViewers: row.totalViewers },
-						}
-					: undefined,
-			running: (extensionId) => running && extensionId === "douyin",
-		})[0];
+		return aiSubscriptionViews(
+			s.subscriptionStore,
+			s.subRuntimeStore,
+			s.platformLabel,
+			s.identityLabel,
+			{
+				// 在播表的行是 `{ startedAt, details }`(details 是中立的 LiveDetails)。
+				row: (id) =>
+					id === EXT_ID && row
+						? {
+								startedAt: row.startedAt,
+								details: { title: row.title, totalViewers: row.totalViewers },
+							}
+						: undefined,
+				running: (extensionId) => running && extensionId === "douyin",
+			},
+		)[0];
 	};
 
 	it("在播表里有它 → 在播,带标题、开播时刻、累计观看", () => {
@@ -354,10 +378,16 @@ describe("aiSubscriptionViews — 在播表", () => {
 	it("接上了在播读口才有这一格;所有来源都从同一张表答", () => {
 		const s = makeStores([makeSubscription({ uid: "1" }), makeExtensionSubscription()]);
 		expect(view(s)[1]).not.toHaveProperty("liveNow");
-		const v = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
-			row: () => undefined,
-			running: () => true,
-		});
+		const v = aiSubscriptionViews(
+			s.subscriptionStore,
+			s.subRuntimeStore,
+			s.platformLabel,
+			s.identityLabel,
+			{
+				row: () => undefined,
+				running: () => true,
+			},
+		);
 		expect(v[0]).toMatchObject({ liveNow: { state: "idle" } });
 	});
 });
@@ -376,25 +406,37 @@ describe("aiSubscriptionViews — B 站订阅也读在播表", () => {
 		["来源没在跑", false, { state: "unknown" }],
 	])("B 站订阅也按在播表答:%s → %o", (_name, running, expected) => {
 		const s = makeStores([makeSubscription({ uid: "1" })]);
-		const [entry] = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
-			row: (id) =>
-				id === "id-1"
-					? {
-							startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
-							details: { title: "晚间杂谈" },
-						}
-					: undefined,
-			running: (sourceKey) => running && sourceKey === "bilibili",
-		});
+		const [entry] = aiSubscriptionViews(
+			s.subscriptionStore,
+			s.subRuntimeStore,
+			s.platformLabel,
+			s.identityLabel,
+			{
+				row: (id) =>
+					id === "id-1"
+						? {
+								startedAt: Date.UTC(2026, 8, 24, 4, 0, 0),
+								details: { title: "晚间杂谈" },
+							}
+						: undefined,
+				running: (sourceKey) => running && sourceKey === "bilibili",
+			},
+		);
 		expect(entry?.liveNow).toEqual(expected);
 	});
 
 	it("来源在跑、表里没有它 → 未开播", () => {
 		const s = makeStores([makeSubscription({ uid: "1" })]);
-		const [entry] = aiSubscriptionViews(s.subscriptionStore, s.subRuntimeStore, s.platformLabel, {
-			row: () => undefined,
-			running: () => true,
-		});
+		const [entry] = aiSubscriptionViews(
+			s.subscriptionStore,
+			s.subRuntimeStore,
+			s.platformLabel,
+			s.identityLabel,
+			{
+				row: () => undefined,
+				running: () => true,
+			},
+		);
 		expect(entry?.liveNow).toEqual({ state: "idle" });
 	});
 

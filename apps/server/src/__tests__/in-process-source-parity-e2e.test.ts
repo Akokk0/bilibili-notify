@@ -151,7 +151,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P37)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P38)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N03、N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -244,6 +244,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		id: "P37",
 		title:
 			"get_creator_profile 对没订阅的人回落调 fetchProfile:identity 原样递给来源、名字粉丝简介喂回模型;订阅着且有缓存的不问来源;来源回失败,话原样喂回",
+		checked: true,
+	},
+	{
+		id: "P38",
+		title:
+			"身份标签:没资料名的订阅,女仆订阅视图里的名字是「平台名 · 外部 id」;描述符声明了 externalIdNoun 就是「叫法 外部 id」",
 		checked: true,
 	},
 	{
@@ -366,6 +372,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	postNoun: ["P10"],
 	externalIdRegex: ["P23"],
 	membershipPrograms: ["P19"],
+	externalIdNoun: ["P38"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
 	beginLogin: ["P16"],
@@ -2473,6 +2480,33 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P37");
 	});
 
+	// 验红:`engines.ts` 递给女仆的取标签口改成只回外部 id,第一段红(没有「对拍源 · …」);
+	// contract 的 `subscriptionIdentityLabel` 不看 noun,第二段红(没有「号 …」)。
+	// 没资料名的订阅:开机首轮资料刷新把启用着的都拉出了名字,所以先让来源查不到资料,再启用停着的 carol;
+	// 收尾复原(P30 之后 carol 是停用的,别的行不依赖她此刻的状态)。
+	it("P38 身份标签:没资料名的订阅,女仆订阅视图里的名字是「平台名 · 外部 id」;描述符声明了 externalIdNoun 就是「叫法 外部 id」", async () => {
+		const probe = currentProbe();
+		const patchCarol = async (enabled: boolean) =>
+			okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled }, "PATCH")));
+		try {
+			probe.profileOutcome = fail("unavailable", "对拍源暂时查不到资料");
+			await patchCarol(true);
+
+			const plain = await askMaid({ name: "list_subscriptions", args: {} });
+			expect(plain.seen).toContain(`${IN_PROCESS_LABEL} · ${EXT.carol}`);
+
+			probe.descriptor.externalIdNoun = "号";
+			const named = await askMaid({ name: "list_subscriptions", args: {} });
+			expect(named.seen).toContain(`号 ${EXT.carol}`);
+			expect(named.seen).not.toContain(`${IN_PROCESS_LABEL} · ${EXT.carol}`);
+		} finally {
+			probe.descriptor.externalIdNoun = undefined;
+			probe.profileOutcome = undefined;
+			await patchCarol(false);
+		}
+		drove("P38");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2828,13 +2862,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 37 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(47);
+	it("PARITY_ROWS:对拍 38 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(48);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 37 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 38 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。

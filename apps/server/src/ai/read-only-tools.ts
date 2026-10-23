@@ -6,6 +6,7 @@ import {
 	type LiveNowView,
 	parseCreator,
 } from "@bilibili-notify/ai";
+import { displayNameOf } from "@bilibili-notify/contract";
 import {
 	type CreatorCandidate,
 	type CreatorProfileReport,
@@ -17,7 +18,6 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 import { type ExternalIdSpec, externalIdRefusal } from "../subscriptions/external-id.js";
 import { CREATOR_READER_TEXTS } from "./creator-reader-texts.js";
 import type { CreatorStatsReader } from "./creator-stats.js";
@@ -70,6 +70,8 @@ export function attachReadOnlyTools(
 		subRuntimeStore: ProfileSource;
 		/** 订阅所属平台的叫法(问来源登记表,见 `subscriptions/platform-label.ts`)。 */
 		platformLabel: (sourceKey: string) => string;
+		/** 订阅的身份标签(问来源登记表与拓展装载器,见 `subscriptions/platform-label.ts`)。 */
+		identityLabel: (identity: Identity) => string;
 		sources: SourceDescriptorSource;
 		/** 在某个来源里搜人(宿主外壳 `searchSourceCreators`,已绑好登记表与日志)。 */
 		searchCreators: (
@@ -108,6 +110,7 @@ export function attachReadOnlyTools(
 				stores.subscriptionStore,
 				stores.subRuntimeStore,
 				stores.platformLabel,
+				stores.identityLabel,
 				stores.liveNow,
 			),
 		externalIdFits: (sourceKey, externalId) =>
@@ -197,8 +200,8 @@ function liveNowFromTable(
  * 一个特性配了却没有任何目标,推不出去任何东西,对女仆来说就等于没订。`live`(「直播 ✓」)是直播类推送:
  * 开播(`liveStart`)或周期「正在直播」(`liveStreaming`)任一有目标就算。
  *
- * 名字按「平台资料缓存 → 外部 id」取(两支同一条,走 `extensionSubscriptionName`;主人填的备注是自由文字,
- * 不当名字用)。cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subscriptions` 的 join 同源。
+ * 名字按「平台资料缓存 → 身份标签」取(两支同一条 `displayNameOf`;主人填的备注是自由文字,不当名字用)。
+ * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subscriptions` 的 join 同源。
  *
  * 每条订阅同一种形状(ADR-0030 决策 1):`creator` 是「来源键:外部 id」,平台名由宿主递进来的函数取
  * (它问来源登记表),视图本身不认哪个来源是哪个平台。在播一格从在播表答(见 {@link LiveNowReader});
@@ -208,6 +211,7 @@ export function aiSubscriptionViews(
 	subscriptionStore: SubscriptionReader,
 	subRuntimeStore: ProfileSource,
 	platformLabel: (sourceKey: string) => string,
+	identityLabel: (identity: Identity) => string,
 	liveNowReader?: LiveNowReader,
 ): AiSubscriptionView[] {
 	const view: AiSubscriptionView[] = [];
@@ -219,9 +223,12 @@ export function aiSubscriptionViews(
 			liveNowReader && liveNowFromTable(liveNowReader, sub.id, identity.sourceKey);
 		view.push({
 			creator: creatorOf(identity.sourceKey, identity.externalId),
-			name: extensionSubscriptionName(sub, {
-				profileName: subRuntimeStore.get(sub.id)?.cachedProfile?.name,
-			}),
+			name: displayNameOf(
+				{
+					profileName: subRuntimeStore.get(sub.id)?.cachedProfile?.name,
+				},
+				identityLabel(identity),
+			),
 			platform: platformLabel(identity.sourceKey),
 			post: sub.routing.post.length > 0,
 			live: sub.routing.liveStart.length > 0 || sub.routing.liveStreaming.length > 0,

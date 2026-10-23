@@ -101,6 +101,7 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
  */
 export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	label: "B 站",
+	externalIdNoun: "UID",
 	postNoun: "动态",
 	externalIdRegex: "^\\d+$",
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],

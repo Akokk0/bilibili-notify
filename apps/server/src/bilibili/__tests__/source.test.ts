@@ -313,6 +313,10 @@ describe("createBiliSource", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.postNoun).toBe("动态");
 	});
 
+	it("描述符表示这个平台管外部 id 叫 UID", () => {
+		expect(createBiliSource(makeDeps().deps).descriptor.externalIdNoun).toBe("UID");
+	});
+
 	it("描述符声明外部 id 是纯数字(UID),整串匹配", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.externalIdRegex).toBe("^\\d+$");
 	});

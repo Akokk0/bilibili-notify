@@ -48,6 +48,7 @@ function readerOf(opts: {
 					opts.profiles?.[id] ? { cachedProfile: opts.profiles[id] } : undefined,
 			},
 			platformLabel: (key: string) => key,
+			identityLabel: (identity) => identity.externalId,
 			sources: { get: () => undefined },
 			searchCreators: async () => ({ ok: true, candidates: [] }),
 			fetchProfile: (identity) => noProfile(identity, new AbortController().signal),

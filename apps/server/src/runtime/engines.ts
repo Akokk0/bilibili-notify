@@ -99,7 +99,7 @@ import {
 	fetchSourceLiveStatus,
 	fetchSourceProfile,
 } from "../subscriptions/call-source.js";
-import { platformLabelOf } from "../subscriptions/platform-label.js";
+import { platformLabelOf, subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
@@ -519,6 +519,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			running: (sourceKey) => sourceStatus.running(sourceKey),
 		};
 	};
+	const labelDeps = {
+		sources: opts.sources,
+		extensionPlatformLabel: opts.extensionPlatformLabel,
+	};
 
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
@@ -537,11 +541,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subscriptionStore: opts.subscriptionStore,
 				subRuntimeStore: opts.subRuntimeStore,
 				// 平台名问来源登记表,登记表里没有的(拓展)才问装载器 —— 与锐评同一条链。
-				platformLabel: (sourceKey) =>
-					platformLabelOf(sourceKey, {
-						sources: opts.sources,
-						extensionPlatformLabel: opts.extensionPlatformLabel,
-					}),
+				platformLabel: (sourceKey) => platformLabelOf(sourceKey, labelDeps),
+				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				sources: opts.sources,
 				// 女仆的搜人走宿主外壳(超时、中止、抛错收成 unavailable),不直接碰来源。
 				searchCreators: (sourceKey, query) =>

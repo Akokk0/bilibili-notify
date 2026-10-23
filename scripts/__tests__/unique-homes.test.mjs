@@ -58,6 +58,9 @@ export const HOMES = {
 	callSource: "apps/server/src/subscriptions/call-source.ts",
 	// 主人可改的文案 → 它能用的变量 → 中立字段(3b-21):面板提示条与服务端可满足性探针共用这一份。
 	TEMPLATE_VARIABLES: "packages/internal/src/template-variables.ts",
+	// 显示名链与身份标签(3b-24 L1):服务端与面板共用这一份，data-model「显示名只有一条链」。
+	subscriptionIdentityLabel: "apps/contract/src/nouns.ts",
+	displayNameOf: "apps/contract/src/nouns.ts",
 	// 全局时区的出厂值与两条规矩(3b-11;ADR-0021 决策 43):设置 schema 与服务端切天共用这一份。
 	DEFAULT_TIMEZONE: "packages/internal/src/timezone.ts",
 	isTimezone: "packages/internal/src/timezone.ts",
