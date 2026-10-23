@@ -71,8 +71,7 @@ function start(options: Options = {}) {
 	const append = vi.fn(options.append ?? (async () => {}));
 	const drop = vi.fn(options.drop ?? (async () => {}));
 	const prune = vi.fn(options.prune ?? (async () => {}));
-	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 4242 } }));
-	const fetchUserCards = vi.fn(async () => ({ code: 0, data: {} }));
+	const fetchUserCard = vi.fn(async () => ({ data: { card: { name: "甲", fans: 4242 } } }));
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
 	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
@@ -96,7 +95,7 @@ function start(options: Options = {}) {
 			findEarliest: vi.fn(async () => undefined),
 			drop,
 		} as never,
-		api: { fetchRelationStat, fetchUserCards, fetchUserCard: vi.fn() } as never,
+		api: { fetchUserCard } as never,
 		serviceCtx: {
 			setTimeout,
 			setInterval: vi.fn(() => ({ dispose() {} })),
@@ -112,8 +111,7 @@ function start(options: Options = {}) {
 		append,
 		drop,
 		prune,
-		fetchRelationStat,
-		fetchUserCards,
+		fetchUserCard,
 		setTimeout,
 	};
 }
@@ -138,7 +136,7 @@ describe("profile refresh × ctx.track", () => {
 	});
 
 	it("开机首轮:等 3s 门的时候被关停叫醒,马上落定,不再冷刷、不再跑 sweep", async () => {
-		const { ctx, append, fetchUserCards, setTimeout } = start();
+		const { ctx, append, fetchUserCard, setTimeout } = start();
 		await vi.waitFor(() => expect(setTimeout).toHaveBeenCalled()); // 走到了 3s 门
 		expect(ctx.tracked).toHaveLength(1);
 		const first = ctx.tracked[0] as Promise<unknown>;
@@ -148,7 +146,7 @@ describe("profile refresh × ctx.track", () => {
 		ctx.abort();
 
 		expect(await stillPending(first, 200)).toBe(false);
-		expect(fetchUserCards).not.toHaveBeenCalled();
+		expect(fetchUserCard).not.toHaveBeenCalled();
 		expect(append).not.toHaveBeenCalled();
 	});
 

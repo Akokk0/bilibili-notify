@@ -40,7 +40,9 @@ function start(list: () => unknown[]) {
 	const bus = createNodeMessageBus();
 	const prune = vi.fn(async (_keep: readonly string[]) => {});
 	const dropUid = vi.fn(async (_uid: string) => {});
-	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
+	const fetchUserCard = vi.fn(async () => ({
+		data: { card: { name: "甲", fans: 123 } },
+	}));
 	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
@@ -64,9 +66,7 @@ function start(list: () => unknown[]) {
 			drop: dropUid,
 		} as never,
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat,
-			fetchUserCard: vi.fn(),
+			fetchUserCard,
 		} as never,
 		// 不放行启动那次延时 tick:只看各用例自己触发的那一轮。
 		serviceCtx: {
@@ -76,15 +76,15 @@ function start(list: () => unknown[]) {
 			signal: new AbortController().signal,
 		} as never,
 	});
-	return { bus, prune, dropUid, fetchRelationStat, handle };
+	return { bus, prune, dropUid, fetchUserCard, handle };
 }
 
 describe("profile refresh × 拓展订阅", () => {
 	it("只调在册来源、拓展订阅不调", async () => {
-		const { fetchRelationStat, handle: h } = start(() => [BILI, EXT]);
+		const { fetchUserCard, handle: h } = start(() => [BILI, EXT]);
 		expect(await h.pollNow()).toBe(true);
-		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
-		expect(fetchRelationStat).toHaveBeenCalledWith("1");
+		expect(fetchUserCard).toHaveBeenCalledTimes(1);
+		expect(fetchUserCard).toHaveBeenCalledWith("1");
 		expect(h.getLastEntries().map((e) => e.identity.externalId)).toEqual(["1"]);
 	});
 

@@ -46,7 +46,6 @@ function baseDeps(over: {
 		identity: { sourceKey: string; externalId: string };
 		enabled: boolean;
 	}>;
-	fetchRelationStat: ReturnType<typeof vi.fn>;
 	fetchUserCard?: ReturnType<typeof vi.fn>;
 	rtGet?: ReturnType<typeof vi.fn>;
 }) {
@@ -72,10 +71,8 @@ function baseDeps(over: {
 			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
-			fetchRelationStat: over.fetchRelationStat,
 			fetchUserCard:
 				over.fetchUserCard ?? vi.fn(async () => ok({ data: { card: { ...PROFILE, fans: 1 } } })),
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
@@ -102,7 +99,6 @@ describe("① profileRefreshCron 解耦", () => {
 		handle = startMigratedProfileRefresh(
 			baseDeps({
 				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],
-				fetchRelationStat: vi.fn(),
 			}),
 		);
 		expect(cronMock.instances).toHaveLength(1);
@@ -123,7 +119,6 @@ describe("② 单条资料失败", () => {
 					{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true },
 					{ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" }, enabled: true },
 				],
-				fetchRelationStat: vi.fn(),
 				fetchUserCard,
 			}),
 		);

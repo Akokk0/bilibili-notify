@@ -94,8 +94,6 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		} as never,
 		fansStore: createFollowersStore({ dataRoot: dataDir, logger: silent }),
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: 0 } })),
 			fetchUserCard: vi.fn(async () => ok({ data: { card: {} } })),
 		} as never,
 		serviceCtx: serviceCtx as never,

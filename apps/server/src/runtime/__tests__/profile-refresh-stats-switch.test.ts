@@ -113,8 +113,6 @@ async function start(
 					data: { card: { name: "UP", face: "f", sign: "s", fans } },
 				}),
 			),
-			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: fans } })),
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {
 			// 不放行启动那次 3s 延时 tick:只看各用例自己 pollNow 的那几轮。

@@ -115,11 +115,6 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat: vi.fn(async (uid: string) => ({
-				code: 0,
-				data: { follower: follower[uid] },
-			})),
 			fetchUserCard: vi.fn(async (uid: string) =>
 				ok({
 					data: { card: { fans: follower[uid], name: `UP${uid}`, face: "", sign: "" } },

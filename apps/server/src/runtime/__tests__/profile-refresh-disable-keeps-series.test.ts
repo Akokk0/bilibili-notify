@@ -79,10 +79,6 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
-	const fetchRelationStat = vi.fn(async (uid: string) => ({
-		code: 0,
-		data: { follower: followers.get(uid) ?? 0 },
-	}));
 	const serviceCtx = {
 		setTimeout: vi.fn(() => undefined),
 		setInterval: vi.fn(() => undefined),
@@ -110,8 +106,6 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat,
 			fetchUserCard: vi.fn(async (uid: string) =>
 				ok({
 					data: { card: { fans: followers.get(uid) ?? 0, name: `UP${uid}`, face: "", sign: "" } },
@@ -129,7 +123,6 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		followers,
 		runtime,
 		snapshots,
-		fetchRelationStat,
 		setSubs(next: ReturnType<typeof biliSub>[]) {
 			subs = next;
 		},

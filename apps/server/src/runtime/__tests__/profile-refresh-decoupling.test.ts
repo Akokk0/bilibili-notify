@@ -65,18 +65,6 @@ function makeApi(fans: number) {
 				},
 			}),
 		),
-		// 稳态(已有 cachedProfile)走轻量 relation/stat;follower 即 fans。
-		fetchRelationStat: vi.fn(async (_uid: string) => ({
-			code: 0,
-			data: {
-				mid: Number(SUB.identity.externalId),
-				following: 0,
-				whisper: 0,
-				black: 0,
-				follower: fans,
-			},
-		})),
-		fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 	};
 }
 

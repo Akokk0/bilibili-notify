@@ -6,7 +6,6 @@ import {
 	ok,
 	type Result,
 	type Subscription,
-	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { expect, vi } from "vite-plus/test";
 import type { FollowersAt } from "../../followers/lookup.js";
@@ -18,7 +17,6 @@ import type { SubRuntime } from "../sub-runtime-store.js";
 
 interface MigratedApi {
 	fetchUserCard?: (externalId: string) => Promise<unknown>;
-	fetchRelationStat?: (externalId: string) => Promise<unknown>;
 }
 
 interface MigratedImages {
@@ -176,20 +174,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 		const card =
 			result?.data?.card ??
 			(raw as { data?: { card?: Record<string, unknown> } } | undefined)?.data?.card;
-		if (!card) {
-			const stat = (await opts.api.fetchRelationStat?.(identity.externalId)) as
-				| { code?: number; data?: { follower?: number } }
-				| undefined;
-			if (stat?.code !== 0 || typeof stat.data?.follower !== "number") {
-				return fail("unavailable", "the fake source returned no profile");
-			}
-			const profile = opts.subRuntimeStore.get(
-				subscriptions().find(
-					(sub) => subscriptionIdentityOf(sub).externalId === identity.externalId,
-				)?.id ?? "",
-			)?.cachedProfile;
-			return ok({ name: profile?.name ?? identity.externalId, followers: stat.data.follower });
-		}
+		if (!card) return fail("unavailable", "the fake source returned no profile");
 		let avatar: { ref: string } | undefined;
 		if (typeof card.face === "string" && card.face !== "") {
 			const fetched = await opts.images.fetchImage?.(card.face);

@@ -295,11 +295,6 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 		} as never,
 		fansStore: storeOf(root),
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat: vi.fn(async (uid: string) => ({
-				code: 0,
-				data: { follower: follower[uid] },
-			})),
 			fetchUserCard: vi.fn(async (uid: string) =>
 				ok({
 					data: { card: { fans: follower[uid], name: `UP${uid}`, face: "", sign: "" } },

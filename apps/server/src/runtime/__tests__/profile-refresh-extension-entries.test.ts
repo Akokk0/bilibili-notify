@@ -92,10 +92,6 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
-	const fetchRelationStat = vi.fn(async (_uid: string) => ({
-		code: 0,
-		data: { follower: 777 },
-	}));
 	const fetchUserCard = vi.fn(async (uid: string) =>
 		ok({
 			data: { card: { fans: 777, name: `UP${uid}`, face: "", sign: "" } },
@@ -128,8 +124,6 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
-			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
-			fetchRelationStat,
 			fetchUserCard,
 		} as never,
 		// 不放行启动那次 3s 延时 tick:只看各用例自己 pollNow 的那几轮。
@@ -142,7 +136,6 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		handle,
 		runtime,
 		snapshots,
-		fetchRelationStat,
 		fetchUserCard,
 		setSubs(next: Subscription[]) {
 			subs = next;
@@ -185,7 +178,6 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 			},
 		]);
 		// 粉丝轮询不拿外部 id 去问 B 站。
-		expect(p.fetchRelationStat).not.toHaveBeenCalled();
 		expect(p.fetchUserCard).not.toHaveBeenCalled();
 		// 快照照样 emit 出去 —— 面板靠它覆盖式刷新。
 		expect(p.snapshots.at(-1)?.map((e) => e.subscriptionId)).toEqual(["e1"]);
@@ -264,7 +256,6 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		});
 		expect(p.entryOf("e1")).not.toHaveProperty("uid");
 		expect(p.entryOf("e1")).not.toHaveProperty("extensionId");
-		expect(p.fetchRelationStat).not.toHaveBeenCalled();
 		expect(p.fetchUserCard).toHaveBeenCalledTimes(1);
 		expect(p.fetchUserCard).toHaveBeenCalledWith("12345");
 	});

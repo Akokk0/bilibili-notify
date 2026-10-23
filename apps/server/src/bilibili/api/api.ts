@@ -26,11 +26,9 @@ import type {
 	LoginQrCodeResponse,
 	MasterInfoData,
 	MyselfResponse,
-	RelationStatResponse,
 	RelationsResponse,
 	TicketResponse,
 	UserCardResponse,
-	UserCardsResponse,
 	VideoRef,
 	VideoResponse,
 } from "./types";
@@ -889,27 +887,6 @@ export class Api {
 			"fetchUserCard",
 			{ [-404]: "not_found", [-403]: "rate_limited" },
 		);
-	}
-
-	/**
-	 * 关系状态数(粉丝/关注)。粉丝计数轮询稳态用这个替代 `fetchUserCard` ——
-	 * 载荷远小于整张主页卡,更贴近 B 站对「实时粉丝计数」的预期用法。
-	 */
-	async fetchRelationStat(uid: string): Promise<RelationStatResponse> {
-		return this.getJson(
-			`${EP.RELATION_STAT_URL}?vmid=${encodeURIComponent(uid)}`,
-			"fetchRelationStat",
-		);
-	}
-
-	/**
-	 * 批量拉多用户 name/face(冷刷 cachedProfile 用)。**单次最多 50 个** uid ——
-	 * 调用方负责分片;此处只发一个请求。空列表直接短路,不发请求。
-	 */
-	async fetchUserCards(uids: string[]): Promise<UserCardsResponse> {
-		if (!uids.length) return { code: 0, data: {} };
-		const list = uids.map((u) => encodeURIComponent(u)).join(",");
-		return this.getJson(`${EP.USER_CARDS_URL}?uids=${list}`, "fetchUserCards");
 	}
 
 	async fetchUserInfo(uid: string, griskId?: string) {
