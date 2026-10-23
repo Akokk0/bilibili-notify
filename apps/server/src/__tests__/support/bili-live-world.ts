@@ -34,6 +34,7 @@ import {
 } from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
 import { z } from "zod";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import type { Api } from "../../bilibili/api/index.js";
 import { encodePacket, WsOp } from "../../bilibili/live/protocol/codec.js";
 import { makeRecordingLayers } from "../../bilibili/live/session/__tests__/support/live-problems.js";
@@ -420,6 +421,7 @@ export async function bootBiliLiveWorld(
 		subRuntimeStore: subRuntime as never,
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
+		aiToolProviders: createAiToolProviderRegistry(),
 		problems: problemTable,
 		bus,
 		liveTable,

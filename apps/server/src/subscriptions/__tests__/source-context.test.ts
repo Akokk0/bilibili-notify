@@ -8,6 +8,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createSourceContext } from "../source-context.js";
 import {
@@ -43,6 +44,7 @@ const setup = (
 		integration: { ...makeIntegration(makeLogger(), settingsHost), ...overrides },
 		sourceKey: SOURCE_KEY,
 		descriptor: { label: "测试", postNoun: "动态" },
+		aiToolProviders: createAiToolProviderRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
@@ -75,6 +77,7 @@ describe("createSourceContext", () => {
 			"onDispose",
 			"onSubscriptionsChanged",
 			"redact",
+			"registerAiToolProvider",
 			"registerLinkResolver",
 			"reportLive",
 			"reportLiveInteraction",
@@ -118,6 +121,7 @@ describe("createSourceContext", () => {
 			integration: makeIntegration(integrationLogger),
 			sourceKey: SOURCE_KEY,
 			descriptor: { label: "测试", postNoun: "动态" },
+			aiToolProviders: createAiToolProviderRegistry(),
 			linkResolvers: createLinkResolverRegistry(),
 			subscriptions: makeWorld().store,
 			defaults: () => makeWorld().globals.defaults,

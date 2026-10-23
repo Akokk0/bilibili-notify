@@ -14,6 +14,7 @@ import {
 	type AuthState,
 	type CreatorCandidate,
 	type CreatorProfileReport,
+	type Disposable,
 	fail,
 	type Identity,
 	type ImageRef,
@@ -59,6 +60,10 @@ const LINK_PATH = /acme\.invalid\/link\/([A-Za-z0-9]+)/;
 /** 假解析器交的作品正文 / 原生分享标题的前缀,后面接 id。 */
 export const LINK_TITLE_PREFIX = "LINK-TITLE-";
 export const LINK_NATIVE_PREFIX = "LINK-NATIVE-";
+/** 假来源经上下文登记的那把只读工具,宿主加完命名空间后的全名。 */
+export const IN_PROCESS_ECHO_TOOL_NAME = "acme_inprocess__echo";
+/** 那把工具在小条上给人看的名字。 */
+export const IN_PROCESS_ECHO_TOOL_LABEL = "对拍回声";
 
 /** 假来源的设置:两格,`threshold` 有范围,好摆「一格坏」。 */
 export const InProcessSettingsSchema = z.object({
@@ -118,6 +123,8 @@ export interface InProcessProbe {
 	healthThrows: boolean;
 	/** 假解析器被问过的链接(`resolve` 的入参),按先后。 */
 	linkResolves: string[];
+	/** `start` 里登记只读工具交回的把手;P42 用它验证撤销后工具立刻从请求里消失。 */
+	aiToolProviderClaim: Disposable | undefined;
 	/**
 	 * 假来源的直播驱动口:替它在来源上下文上报一条直播信号(开播、状态、下播)。真来源是自己的循环或推送
 	 * 触发上报,这里由测试按需摆;还没 `start` 就抛。
@@ -239,6 +246,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		healthSummary: "一切正常",
 		healthThrows: false,
 		linkResolves: [],
+		aiToolProviderClaim: undefined,
 		liveStatusOutcome: { ok: true, kind: "offline" },
 		liveStatusAsked: [],
 		viewerAvatarAsked: [],
@@ -388,6 +396,26 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 						},
 					});
 				},
+			});
+			probe.aiToolProviderClaim = ctx.registerAiToolProvider({
+				readOnly: [
+					{
+						definition: {
+							type: "function",
+							function: {
+								name: "echo",
+								description: "Return the creator argument.",
+								parameters: {
+									type: "object",
+									properties: { creator: { type: "string" } },
+									required: ["creator"],
+								},
+							},
+						},
+						label: IN_PROCESS_ECHO_TOOL_LABEL,
+						execute: async (args) => ok({ text: `回声: ${args.creator ?? ""}` }),
+					},
+				],
 			});
 
 			// state / secrets:第二趟开机能读到第一趟写下的。

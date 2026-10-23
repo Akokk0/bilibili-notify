@@ -27,6 +27,7 @@ const H = vi.hoisted(() => ({
 vi.mock("@bilibili-notify/ai", () => ({
 	CommentaryGenerator: class {
 		config: unknown;
+		setProvidedTools = vi.fn();
 		chat = vi.fn(async () => {
 			if (H.chatError) throw H.chatError;
 			return H.reply;

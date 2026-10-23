@@ -104,6 +104,7 @@ function makeFakeSourceCtx(
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 		registerLinkResolver: vi.fn(() => ({ dispose() {} })),
+		registerAiToolProvider: vi.fn(() => ({ dispose() {} })),
 	} as unknown as SourceContext;
 	return { ctx, reportPost, fetchImage };
 }

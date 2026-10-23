@@ -1,6 +1,7 @@
 import {
 	type AiCandidateView,
 	type AiSubscriptionView,
+	type AiTool,
 	type CreatorReader,
 	creatorOf,
 	type LiveNowView,
@@ -64,7 +65,10 @@ export interface LiveNowReader {
  * 听起来像个事实。
  */
 export function attachReadOnlyTools(
-	engine: { setCreatorReader(reader: CreatorReader): void },
+	engine: {
+		setCreatorReader(reader: CreatorReader): void;
+		setProvidedTools(get: () => readonly AiTool[]): void;
+	},
 	stores: {
 		subscriptionStore: SubscriptionReader;
 		subRuntimeStore: ProfileSource;
@@ -83,6 +87,8 @@ export function attachReadOnlyTools(
 		/** 作品与统计的读口(装配处给);不给 = 这两样答「当前不可用」。 */
 		stats?: CreatorStatsReader;
 		liveNow?: LiveNowReader;
+		/** 来源在上下文里登记的只读工具;每次请求现取,登记与撤销立刻生效。 */
+		providedTools: () => readonly AiTool[];
 	},
 ): void {
 	/** 按 `creator` 找**启用着**的订阅:停用的、没订阅的都当不在(关掉的人不该再出现在女仆的回答里)。 */
@@ -174,6 +180,7 @@ export function attachReadOnlyTools(
 			return ok({ stats: { days, ...row } });
 		},
 	});
+	engine.setProvidedTools(stores.providedTools);
 }
 
 /** 订阅此刻的在播(见 {@link LiveNowReader})。 */

@@ -21,13 +21,19 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { complainAboutSkill } from "@bilibili-notify/contract";
+import { type AiTool, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+	type AiToolProviderRegistry,
+	createAiToolProviderRegistry,
+} from "../../ai/tool-provider-registry.js";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
 import { createAiSkillsRoute } from "../ai-skills.js";
 
 let dir: string;
 let store: MaidSkillStore;
+let aiToolProviders: AiToolProviderRegistry;
 let app: ReturnType<typeof createAiSkillsRoute>;
 
 const sample = {
@@ -43,7 +49,8 @@ if (!BUILTIN) throw new Error("内置技能表是空的");
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-skill-route-"));
 	store = new MaidSkillStore({ dir });
-	app = createAiSkillsRoute({ skillStore: store });
+	aiToolProviders = createAiToolProviderRegistry();
+	app = createAiSkillsRoute({ skillStore: store, aiToolProviders });
 });
 
 afterEach(async () => {
@@ -84,6 +91,25 @@ describe("GET / —— 工具名单带给人看的标签", () => {
 		}
 		expect(body.toolLabels.get_creator_profile).toBe("查看 UP 主资料");
 		expect(body.toolLabels.web_search).toBe("联网搜索");
+	});
+
+	it("登记表里的提供方工具按全名和它自己的标签出现,每次 GET 现取", async () => {
+		const echo: AiTool = {
+			definition: {
+				type: "function",
+				function: {
+					name: "echo",
+					description: "回一句",
+					parameters: { type: "object", properties: {} },
+				},
+			},
+			label: "回一句",
+			execute: async () => ok({ text: "echo" }),
+		};
+		aiToolProviders.register("acme.inprocess", { readOnly: [echo] });
+		const body = (await (await app.request("/")).json()) as any;
+		expect(body.tools).toContain("acme_inprocess__echo");
+		expect(body.toolLabels.acme_inprocess__echo).toBe("回一句");
 	});
 });
 

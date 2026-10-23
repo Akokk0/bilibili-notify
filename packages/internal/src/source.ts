@@ -1,3 +1,4 @@
+import type { AiToolProvider } from "./ai-tool";
 import type { AuthState } from "./auth-state";
 import type { FeatureKey, Identity, ImageRef, Result } from "./constants";
 import type { LinkResolver } from "./link-preview";
@@ -81,6 +82,16 @@ export interface SourceContext extends IntegrationContext {
 	 * (一个键一个主人);自己撤了之后可以重登。
 	 */
 	registerLinkResolver(resolver: LinkResolver): Disposable;
+	/**
+	 * 登记这个来源的 AI 工具提供方。在自己的 `start(ctx)` 里登;键就是这个来源的键,不用来源自己给。
+	 * 工具名是提供方自己的本名,宿主统一加命名空间,模型看到的是 `<命名空间>__<本名>`(命名空间由
+	 * 来源键换成工具名允许的字符而来,所以不会和核心工具或别家的撞);本名不合 `[A-Za-z0-9_-]`、
+	 * 同一组里重名、全名超过 64 个字符、或命名空间与别家相撞时抛。来源停下时宿主自动撤掉,
+	 * 不必在 `stop()` 里记得摘。来源已停下
+	 * 之后再登不生效(交回一个什么都不做的把手)。同一个来源登第二个会抛(一个键一个主人);
+	 * 自己撤了之后可以重登。
+	 */
+	registerAiToolProvider(provider: AiToolProvider): Disposable;
 }
 
 /** 来源登录着的账号:名字必有;头像抓进图库之后才有 `avatar`(图库引用,不是平台的图片地址)。 */

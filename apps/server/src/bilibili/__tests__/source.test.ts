@@ -24,6 +24,7 @@ import type { ZodType } from "zod";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
 import { deferred } from "../../__tests__/support/track-context.js";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import {
@@ -229,6 +230,7 @@ function makeCtx(
 	const registerLinkResolver = vi.fn((_resolver: LinkResolver) => ({
 		dispose: linkResolverDisposed,
 	}));
+	const registerAiToolProvider = vi.fn(() => ({ dispose() {} }));
 	const ctx = {
 		logger: logger as Logger,
 		settings: (schema: ZodType) => {
@@ -256,12 +258,14 @@ function makeCtx(
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 		registerLinkResolver,
+		registerAiToolProvider,
 		state,
 	} as unknown as SourceContext;
 	return {
 		ctx,
 		state,
 		registerLinkResolver,
+		registerAiToolProvider,
 		linkResolverDisposed,
 		watchers,
 		watchDisposed,
@@ -898,6 +902,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		const registration = await registerBuiltinSource({
 			registry,
 			linkResolvers: createLinkResolverRegistry(),
+			aiToolProviders: createAiToolProviderRegistry(),
 			source,
 			integration,
 			sourceKey: SOURCE_KEY,

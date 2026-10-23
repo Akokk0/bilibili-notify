@@ -330,7 +330,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			dir: dataPath(runtime.dataRoot, "maid-skills"),
 		});
 		// 女仆技能只给 AI 聊天用、离开它没有意义,所以下沉在 `/api/ai` 底下(ADR-0036 决策 1)。
-		app.route("/api/ai/skills", createAiSkillsRoute({ skillStore }));
+		app.route(
+			"/api/ai/skills",
+			createAiSkillsRoute({ skillStore, aiToolProviders: runtime.aiToolProviders }),
+		);
 		// 卡片皮肤库(ADR-0014)。**只用传进来的那一家**,这里不 `new`(理由见
 		// `CreateAppOptions.cardSkins`)。读盘推迟到首个请求(createApp 是同步装配),
 		// 凭据记在店上,见 `ensureReady`。

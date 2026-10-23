@@ -40,7 +40,7 @@ function readerOf(opts: {
 }) {
 	const setCreatorReader = vi.fn();
 	attachReadOnlyTools(
-		{ setCreatorReader },
+		{ setCreatorReader, setProvidedTools: vi.fn() },
 		{
 			subscriptionStore: { list: () => [ALICE, BOB_OFF] },
 			subRuntimeStore: {
@@ -52,6 +52,7 @@ function readerOf(opts: {
 			sources: { get: () => undefined },
 			searchCreators: async () => ({ ok: true, candidates: [] }),
 			fetchProfile: (identity) => noProfile(identity, new AbortController().signal),
+			providedTools: () => [],
 			...(opts.stats ? { stats: opts.stats } : {}),
 		},
 	);

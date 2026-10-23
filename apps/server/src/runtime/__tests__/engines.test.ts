@@ -61,6 +61,7 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
@@ -144,6 +145,7 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
 		setCreatorReader = vi.fn();
+		setProvidedTools = vi.fn();
 		/** 作品装配的 AI 点评(经 `deps.ai()` 每条现取)。 */
 		comment = vi.fn(async (..._args: unknown[]) => "点评");
 		/** 同上:engines.ts 构造后还会接联网搜索的执行器热读口。 */
@@ -509,6 +511,7 @@ function setup(opts?: {
 	const runtime = createEngines({
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
+		aiToolProviders: createAiToolProviderRegistry(),
 		problems,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
@@ -1860,6 +1863,7 @@ describe("createEngines — boot wiring", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		expect(H.ai[0].setCreatorReader).toHaveBeenCalledTimes(1);
+		expect(H.ai[0].setProvidedTools).toHaveBeenCalledTimes(1);
 		// 只读如今是结构性的(工具表里就没有写工具),由 packages/ai 那道闸盯着;
 		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
 		expect(typeof H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions).toBe("function");

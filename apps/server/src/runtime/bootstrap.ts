@@ -2,6 +2,10 @@ import { buildFontFace } from "@bilibili-notify/image";
 import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
+import {
+	type AiToolProviderRegistry,
+	createAiToolProviderRegistry,
+} from "../ai/tool-provider-registry.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
@@ -92,6 +96,8 @@ export interface AppRuntime {
 	sourceRegistry: SourceRegistry;
 	/** 链接解析器的登记表:来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver` 登进去。 */
 	linkResolvers: LinkResolverRegistry;
+	/** AI 工具提供方的登记表:来源在自己的 `start(ctx)` 里经 `ctx.registerAiToolProvider` 登进去。 */
+	aiToolProviders: AiToolProviderRegistry;
 	/**
 	 * 问题表:各集成(今天是订阅来源)报上来的「主人该知道的事」,全在内存。写口经来源上下文
 	 * (`reportProblem`),读口是 `GET /api/problems`;变了发 `problems-changed`。
@@ -310,6 +316,7 @@ export function createAppRuntime(
 	// 订阅来源的登记表(内置来源由 `compose.ts` 经 `engines.registerSource` 登进去)。
 	const sourceRegistry = createSourceRegistry();
 	const linkResolvers = createLinkResolverRegistry();
+	const aiToolProviders = createAiToolProviderRegistry();
 	// 问题表:变了(按报的人合并过)发 `problems-changed`。表是总线的生产者,不是转发器。
 	const problems = createProblemTable({
 		logger: serviceCtx.logger,
@@ -591,6 +598,7 @@ export function createAppRuntime(
 		valueRedactor,
 		sourceRegistry,
 		linkResolvers,
+		aiToolProviders,
 		problems,
 		historyStore,
 		repushRunner,

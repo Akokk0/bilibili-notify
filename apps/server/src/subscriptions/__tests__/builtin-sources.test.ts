@@ -1,4 +1,6 @@
 import {
+	type AiTool,
+	type AiToolProvider,
 	type AuthState,
 	type LinkResolver,
 	ok,
@@ -8,6 +10,10 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
+import {
+	type AiToolProviderRegistry,
+	createAiToolProviderRegistry,
+} from "../../ai/tool-provider-registry.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { registerBuiltinSource } from "../builtin-sources.js";
 import { createSourceRegistry } from "../registry.js";
@@ -29,28 +35,46 @@ const fakeLinkResolver = (): LinkResolver => ({
 	},
 });
 
+const fakeAiTool = (): AiTool => ({
+	definition: {
+		type: "function",
+		function: {
+			name: "echo",
+			description: "回一句",
+			parameters: { type: "object", properties: {} },
+		},
+	},
+	label: "回一句",
+	execute: async () => ok({ text: "echo" }),
+});
+
+const fakeAiToolProvider = (): AiToolProvider => ({ readOnly: [fakeAiTool()] });
+
 const setup = (source: Source = makeSource()) => {
 	const world = makeWorld([makeSub("a", "1")]);
 	const registry = createSourceRegistry();
 	const linkResolvers = createLinkResolverRegistry();
+	const aiToolProviders: AiToolProviderRegistry = createAiToolProviderRegistry();
+	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const problems = makeProblems();
 	const options = {
 		registry,
 		linkResolvers,
+		aiToolProviders,
 		source,
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
 		bus: world.bus,
-		logger: makeLogger(),
+		logger,
 		enqueue,
 		liveSignals: vi.fn(),
 		liveInteractions: vi.fn(),
 		problems,
 	};
-	return { ...world, registry, linkResolvers, enqueue, problems, options };
+	return { ...world, registry, linkResolvers, aiToolProviders, logger, enqueue, problems, options };
 };
 
 describe("registerBuiltinSource", () => {
@@ -132,6 +156,49 @@ describe("registerBuiltinSource", () => {
 		handle?.dispose();
 		ctx?.registerLinkResolver(second);
 		expect(Array.from(linkResolvers.entries())).toEqual([[SOURCE_KEY, second]]);
+	});
+
+	it("来源在 start 里登的 AI 工具提供方:表里按来源的键认领,工具带命名空间;来源停下后自动撤", async () => {
+		const source = makeSource();
+		const { options, aiToolProviders } = setup(source);
+		const provider = fakeAiToolProvider();
+		source.start = vi.fn(async (ctx) => {
+			ctx.registerAiToolProvider(provider);
+		});
+		const handle = await registerBuiltinSource(options);
+		expect(aiToolProviders.tools().map((tool) => tool.definition.function.name)).toEqual([
+			`${SOURCE_KEY.replaceAll(".", "_")}__echo`,
+		]);
+		handle.dispose();
+		expect(aiToolProviders.tools()).toEqual([]);
+	});
+
+	it("来源停下之后再登 AI 工具提供方:不抛,表里仍然没有,并记 error", async () => {
+		const source = makeSource();
+		const { options, aiToolProviders, logger } = setup(source);
+		const handle = await registerBuiltinSource(options);
+		handle.dispose();
+		const late = source.started[0]?.registerAiToolProvider(fakeAiToolProvider());
+		expect(late).toBeDefined();
+		expect(() => late?.dispose()).not.toThrow();
+		expect(aiToolProviders.tools()).toEqual([]);
+		expect(logger.error).toHaveBeenCalled();
+	});
+
+	it("同一个来源登第二个 AI 工具提供方会抛;自己撤了可以重登", async () => {
+		const source = makeSource();
+		const { options, aiToolProviders } = setup(source);
+		const handle = await registerBuiltinSource(options);
+		const ctx = source.started[0];
+		const first = ctx?.registerAiToolProvider({ readOnly: [fakeAiTool()] });
+		expect(() => ctx?.registerAiToolProvider({ readOnly: [fakeAiTool()] })).toThrow(
+			`AI tool provider for key "${SOURCE_KEY}" is already registered`,
+		);
+		first?.dispose();
+		ctx?.registerAiToolProvider({ readOnly: [fakeAiTool()] });
+		expect(aiToolProviders.tools()).toHaveLength(1);
+		handle.dispose();
+		expect(aiToolProviders.tools()).toEqual([]);
 	});
 
 	it("键被占:抛,并把这次建的上下文收掉(总线上不留监听)", async () => {

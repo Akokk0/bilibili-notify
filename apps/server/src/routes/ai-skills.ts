@@ -12,6 +12,7 @@ import type { MaidSkillsListResponse } from "@bilibili-notify/contract";
 import { fail, issuesFromZod, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import { BUILTIN_SKILL_NAMES } from "../maid-skills/builtin.js";
 import { type MaidSkillStore, SkillStoreError } from "../maid-skills/store.js";
 import { respondFailure } from "./respond-failure.js";
@@ -32,34 +33,35 @@ const writeSchema = z.object({
 /** 请求体不是一条技能的形状时那一句;逐格原因(zod 的原话)放 `issues`。 */
 const NOT_A_SKILL_MESSAGE = "请求体不是一条技能的形状";
 
-/**
- * 编辑器摆 `allowed-tools` 勾选框用的那份名单 —— 就是聊天里真挂着的那些。
- *
- * 从 `TOOL_DEFINITIONS` 现取而不是手写:抄一份到别处就等于埋一张早晚过期的表,
- * 而过期在界面上长成「勾了一把根本不存在的工具」—— 收窄是交集,那一勾静默无效。
- * `web_search` 不在那张表里(它按主人那颗胶囊现挂),但技能声明得着,所以补上。
- */
-const AVAILABLE_TOOLS = [...TOOL_DEFINITIONS.map((t) => t.function.name), WEB_SEARCH_TOOL_NAME];
-
-/** 上面那份名单每个名字给人看的标签 —— 漏配的工具在这儿就是 `undefined`,有测试盯着。 */
-const TOOL_LABELS: Record<string, string> = Object.fromEntries(
-	AVAILABLE_TOOLS.flatMap((name) => {
-		const label = coreToolLabelOf(name)?.label;
-		return label === undefined ? [] : [[name, label]];
-	}),
-);
-
-export function createAiSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono {
-	const { skillStore } = deps;
+export function createAiSkillsRoute(deps: {
+	skillStore: MaidSkillStore;
+	aiToolProviders: Pick<AiToolProviderRegistry, "tools">;
+}): Hono {
+	const { skillStore, aiToolProviders } = deps;
 	const app = new Hono();
 
 	app.get("/", async (c) => {
 		await skillStore.reload();
+		// 编辑器摆 `allowed-tools` 勾选框用的那份名单 —— 就是聊天里真挂着的那些,每次现取:
+		// 抄一份到别处就等于埋一张早晚过期的表,过期在界面上长成「勾了一把根本不存在的工具」
+		// (收窄是交集,那一勾静默无效)。核心取 `TOOL_DEFINITIONS`;`web_search` 不在那张表里
+		// (它按主人那颗胶囊现挂),但技能声明得着,所以补上;来源登记的取登记表,停着的来源不在。
+		// 漏配标签的工具在 `toolLabels` 里就没有这一格,有测试盯着。
+		const provided = aiToolProviders.tools();
+		const coreNames = [...TOOL_DEFINITIONS.map((tool) => tool.function.name), WEB_SEARCH_TOOL_NAME];
+		const toolLabels: Record<string, string> = {};
+		for (const name of coreNames) {
+			const label = coreToolLabelOf(name)?.label;
+			if (label !== undefined) toolLabels[name] = label;
+		}
+		for (const tool of provided) {
+			toolLabels[tool.definition.function.name] = tool.label;
+		}
 		const body: MaidSkillsListResponse = {
 			list: skillStore.list(),
 			problems: skillStore.problems(),
-			tools: AVAILABLE_TOOLS,
-			toolLabels: TOOL_LABELS,
+			tools: [...coreNames, ...provided.map((tool) => tool.definition.function.name)],
+			toolLabels,
 		};
 		return c.json(body);
 	});

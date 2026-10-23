@@ -65,6 +65,8 @@ import { activeGeneration } from "./support/generation.js";
 import {
 	currentProbe,
 	IN_PROCESS_CUSTOM_PROGRAM_ID,
+	IN_PROCESS_ECHO_TOOL_LABEL,
+	IN_PROCESS_ECHO_TOOL_NAME,
 	IN_PROCESS_KEY,
 	IN_PROCESS_LABEL,
 	IN_PROCESS_OTHER_PROGRAM_ID,
@@ -159,7 +161,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P41)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P42)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -279,6 +281,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P42",
+		title:
+			"来源登记的只读 AI 工具以命名空间加全名挂给模型,执行结果喂回且带标签;撤销后请求里没有、调用记未知工具",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -295,10 +303,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N06",
-		title: "AiToolProvider 登记与撤销、技能可见性、提示词里的叫法",
+		title: "技能可见性、提示词里的叫法",
 		checked: false,
-		waitsFor: "3b(守卫「AI 工具与技能约束」同期)",
-		reason: "AiToolProvider 的登记表没有造",
+		waitsFor: "3b-35",
+		reason: "技能允许名单的可见性与提示词里的叫法随 3b-35",
 	},
 	{
 		id: "N08",
@@ -379,6 +387,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
+	registerAiToolProvider: ["P42"],
 } as const satisfies Record<keyof SourceContext, readonly RowId[]>;
 const SOURCE_DESCRIPTOR_MEMBERS = {
 	label: ["P15"],
@@ -489,6 +498,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	let aiBaseUrl: string;
 	/** 假模型服务收到的每一问(用户那句)。 */
 	const aiAsked: string[] = [];
+	/** 每一条假模型请求里收到的工具名,按请求先后。 */
+	const aiRequestedToolNames: string[][] = [];
 	/**
 	 * 要假模型先调一把工具(只在带着工具表、末条是用户话的那一问上调,调一次就清);
 	 * 调完工具之后喂回来的 `tool` 消息正文记进 {@link aiToolSeen}。
@@ -572,15 +583,17 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	 * 开一场新对话,让假模型先调一把工具再说话,回喂给模型的 `tool` 消息正文(`seen`)与痕迹里的工具行(`tools`)。
 	 * 回的是 SSE,读到底就是整轮(调工具 → 喂回 → 正文)走完了。AI 开关只在这一问里开着。
 	 */
-	async function askMaid(script: {
-		name: string;
-		args: object;
-	}): Promise<{ seen: string; tools: Array<{ name: string; ok: boolean }> }> {
+	async function askMaid(script: { name: string; args: object }): Promise<{
+		seen: string;
+		tools: Array<{ name: string; ok: boolean; label?: string; message?: string }>;
+		requestedTools: string[][];
+	}> {
 		await patchSettings({ ai: { enabled: true } });
 		try {
 			const created = await okRes(await api("/api/ai/conversations", json({})));
 			const { conversation } = (await created.json()) as { conversation: { id: string } };
 			aiToolSeen.length = 0;
+			aiRequestedToolNames.length = 0;
 			aiToolScript = script;
 			const sse = await (
 				await okRes(
@@ -589,9 +602,24 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			).text();
 			const done = /event: done\ndata: (.*)\n/.exec(sse)?.[1];
 			const reply = done
-				? (JSON.parse(done) as { reply?: { tools?: Array<{ name: string; ok: boolean }> } }).reply
+				? (
+						JSON.parse(done) as {
+							reply?: {
+								tools?: Array<{
+									name: string;
+									ok: boolean;
+									label?: string;
+									message?: string;
+								}>;
+							};
+						}
+					).reply
 				: undefined;
-			return { seen: aiToolSeen.join("\n"), tools: reply?.tools ?? [] };
+			return {
+				seen: aiToolSeen.join("\n"),
+				tools: reply?.tools ?? [],
+				requestedTools: aiRequestedToolNames.map((names) => [...names]),
+			};
 		} finally {
 			aiToolScript = null;
 			await patchSettings({ ai: { enabled: false } });
@@ -624,11 +652,16 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			req.on("end", () => {
 				const parsed = JSON.parse(body || "{}") as {
 					messages?: { role?: string; content?: unknown }[];
-					tools?: unknown[];
+					tools?: Array<{ function?: { name?: string } }>;
 					stream?: boolean;
 				};
 				const messages = parsed.messages;
 				aiAsked.push(JSON.stringify(messages?.at(-1)?.content ?? ""));
+				aiRequestedToolNames.push(
+					(parsed.tools ?? []).flatMap((tool) =>
+						typeof tool.function?.name === "string" ? [tool.function.name] : [],
+					),
+				);
 				const last = messages?.at(-1);
 				const callsTool = aiToolScript !== null && last?.role === "user" && !!parsed.tools?.length;
 				if (last?.role === "tool") aiToolSeen.push(String(last.content));
@@ -2744,6 +2777,44 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P41");
 	});
 
+	// 验红:`read-only-tools.ts` 不把登记表交给常驻生成器,或登记表包工具时忘了命名空间,
+	// 这条在请求工具表里找不到全名;`source-context.ts` 不接撤销把手,第二段还会挂着它。
+	it("P42 来源登记的只读工具:请求里是命名空间全名,执行结果喂回且痕迹带标签;撤销后请求里没有、调用记未知工具", async () => {
+		const probe = currentProbe();
+		const claim = probe.aiToolProviderClaim;
+		if (!claim) throw new Error("假来源没有登记 AI 工具提供方");
+		const found = await askMaid({
+			name: IN_PROCESS_ECHO_TOOL_NAME,
+			args: { creator: EXT.alice },
+		});
+		expect(found.requestedTools[0]).toContain(IN_PROCESS_ECHO_TOOL_NAME);
+		expect(found.seen).toContain(`回声: ${EXT.alice}`);
+		expect(found.tools).toEqual([
+			expect.objectContaining({
+				name: IN_PROCESS_ECHO_TOOL_NAME,
+				ok: true,
+				label: IN_PROCESS_ECHO_TOOL_LABEL,
+			}),
+		]);
+
+		claim.dispose();
+		const missing = await askMaid({
+			name: IN_PROCESS_ECHO_TOOL_NAME,
+			args: { creator: EXT.alice },
+		});
+		expect(
+			missing.requestedTools.every((names) => !names.includes(IN_PROCESS_ECHO_TOOL_NAME)),
+		).toBe(true);
+		expect(missing.tools).toEqual([
+			expect.objectContaining({
+				name: IN_PROCESS_ECHO_TOOL_NAME,
+				ok: false,
+				message: expect.stringContaining("未知工具"),
+			}),
+		]);
+		drove("P42");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -3099,16 +3170,17 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 41 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(49);
+	it("PARITY_ROWS:对拍 42 行、不开 8 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(50);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 41 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 42 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
-		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41;编号不回填。
+		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41,
+		// N06 的登记与撤销→P42;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 7, 10, 11, 12, 13].includes(n))

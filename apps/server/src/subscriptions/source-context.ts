@@ -13,6 +13,7 @@ import type {
 	SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import { problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
@@ -39,6 +40,8 @@ export interface CreateSourceContextOptions {
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
 	linkResolvers: Pick<LinkResolverRegistry, "register">;
+	/** AI 工具提供方的登记表:来源经 `ctx.registerAiToolProvider` 登,键用这个来源的键;停下时随上下文撤掉。 */
+	aiToolProviders: Pick<AiToolProviderRegistry, "register">;
 }
 
 export interface SourceContextHandle {
@@ -258,6 +261,17 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			}
 			// 键被占(含这个来源自己已经登过一个)时由登记表抛,原样出去。
 			const claim = opts.linkResolvers.register(sourceKey, resolver);
+			// 跟着上下文一起摘:不指望来源在 `stop()` 里记得收。把手自己撤过的再摘是空操作。
+			watches.push(claim);
+			return claim;
+		},
+		registerAiToolProvider(provider) {
+			if (disposed) {
+				logger.error(`[source] ${sourceKey} 已停下还在登记 AI 工具提供方(丢弃;内置来源的 bug)`);
+				return { dispose() {} };
+			}
+			// 键与工具名撞了由登记表抛,原样出去。
+			const claim = opts.aiToolProviders.register(sourceKey, provider);
 			// 跟着上下文一起摘:不指望来源在 `stop()` 里记得收。把手自己撤过的再摘是空操作。
 			watches.push(claim);
 			return claim;

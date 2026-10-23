@@ -62,6 +62,7 @@ import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import { attachReadOnlyTools, type LiveNowReader } from "../ai/read-only-tools.js";
+import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
@@ -256,6 +257,8 @@ export interface CreateEnginesOptions {
 	sources: SourceRegistry;
 	/** 链接解析器登记表(`AppRuntime.linkResolvers`);来源经上下文登进去。 */
 	linkResolvers: LinkResolverRegistry;
+	/** AI 工具提供方登记表(`AppRuntime.aiToolProviders`);来源经上下文登进去。 */
+	aiToolProviders: AiToolProviderRegistry;
 	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
 	problems: ProblemTable;
 	bus: import("@bilibili-notify/internal").MessageBus;
@@ -557,6 +560,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				liveNow: liveNowReader(),
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
 				...(opts.creatorStats ? { stats: opts.creatorStats } : {}),
+				// 每次请求现取:来源随上下文登记与撤销。
+				providedTools: () => opts.aiToolProviders.tools(),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
@@ -1130,6 +1135,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					opts.bus.emit("subscription-auth-changed", { sourceKey: entry.sourceKey, state }),
 				registry: opts.sources,
 				linkResolvers: opts.linkResolvers,
+				aiToolProviders: opts.aiToolProviders,
 				subscriptions: opts.subscriptionStore,
 				defaults: () => globals().defaults,
 				bus: opts.bus,

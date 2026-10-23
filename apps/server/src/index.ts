@@ -948,6 +948,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 			sources: runtime.sourceRegistry,
 			linkResolvers: runtime.linkResolvers,
+			aiToolProviders: runtime.aiToolProviders,
 			problems: runtime.problems,
 		});
 		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时引擎自己先停它再关作品入口。

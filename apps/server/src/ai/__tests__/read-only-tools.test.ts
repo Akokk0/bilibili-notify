@@ -83,6 +83,7 @@ function makeStores(
 		searchCreators: async (): Promise<Result<{ candidates: CreatorCandidate[] }>> =>
 			ok({ candidates: [] }),
 		fetchProfile: async () => fail("not_found", "没有资料"),
+		providedTools: () => [],
 		sources: {
 			get: (sourceKey: string) =>
 				descriptors[sourceKey] === undefined ? undefined : { descriptor: descriptors[sourceKey] },
@@ -104,15 +105,26 @@ const EXT_ID = "e0000000-0000-4000-8000-000000000001";
 describe("attachReadOnlyTools — 查询接线", () => {
 	it("接上了 —— 不接的话女仆会一口咬定「当前没有订阅」", () => {
 		const setCreatorReader = vi.fn();
-		attachReadOnlyTools({ setCreatorReader }, makeStores([]));
+		attachReadOnlyTools({ setCreatorReader, setProvidedTools: vi.fn() }, makeStores([]));
 		expect(setCreatorReader).toHaveBeenCalledTimes(1);
 		expect(typeof setCreatorReader.mock.calls[0]?.[0].subscriptions).toBe("function");
+	});
+
+	it("把提供方工具的现取口交给生成器", () => {
+		const setCreatorReader = vi.fn();
+		const setProvidedTools = vi.fn();
+		const providedTools = () => [];
+		attachReadOnlyTools(
+			{ setCreatorReader, setProvidedTools },
+			{ ...makeStores([]), providedTools },
+		);
+		expect(setProvidedTools).toHaveBeenCalledWith(providedTools);
 	});
 
 	it("订阅视图是每次现取的,不是接线那一刻的快照", () => {
 		const setCreatorReader = vi.fn();
 		const subscriptions: Subscription[] = [];
-		attachReadOnlyTools({ setCreatorReader }, makeStores(subscriptions));
+		attachReadOnlyTools({ setCreatorReader, setProvidedTools: vi.fn() }, makeStores(subscriptions));
 		const reader = setCreatorReader.mock.calls[0]?.[0] as { subscriptions(): unknown[] };
 
 		expect(reader.subscriptions()).toEqual([]);
@@ -179,7 +191,10 @@ describe("aiSubscriptionViews — 投影", () => {
 describe("attachReadOnlyTools — 外部 id 的格式", () => {
 	const fits = (descriptors: Descriptors, sourceKey: string, externalId: string) => {
 		const setCreatorReader = vi.fn();
-		attachReadOnlyTools({ setCreatorReader }, makeStores([], {}, {}, descriptors));
+		attachReadOnlyTools(
+			{ setCreatorReader, setProvidedTools: vi.fn() },
+			makeStores([], {}, {}, descriptors),
+		);
 		const reader = setCreatorReader.mock.calls[0]?.[0] as {
 			externalIdFits(sourceKey: string, externalId: string): boolean;
 		};
@@ -207,7 +222,10 @@ describe("attachReadOnlyTools — 搜人", () => {
 		) => Promise<Result<{ candidates: CreatorCandidate[] }>>,
 	) => {
 		const setCreatorReader = vi.fn();
-		attachReadOnlyTools({ setCreatorReader }, { ...makeStores([]), searchCreators });
+		attachReadOnlyTools(
+			{ setCreatorReader, setProvidedTools: vi.fn() },
+			{ ...makeStores([]), searchCreators },
+		);
 		return setCreatorReader.mock.calls[0]?.[0] as {
 			searchCreators(
 				sourceKey: string,
@@ -265,7 +283,7 @@ describe("attachReadOnlyTools — 没订阅的人回落查资料", () => {
 			set: write,
 		};
 		attachReadOnlyTools(
-			{ setCreatorReader },
+			{ setCreatorReader, setProvidedTools: vi.fn() },
 			{
 				...makeStores(options.subscriptions ?? []),
 				subRuntimeStore,

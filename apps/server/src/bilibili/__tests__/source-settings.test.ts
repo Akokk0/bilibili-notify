@@ -17,6 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { switchableLocale } from "../../__tests__/support/fixed-locale.js";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { createConfigStore, integrationSettingsFile } from "../../config/store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
@@ -150,6 +151,7 @@ async function boot() {
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
+		aiToolProviders: createAiToolProviderRegistry(),
 		source,
 		// 读源从集成上下文那一侧给:来源经 `ctx.settings(规则)` 读,键(B 站)由造上下文的人挑好。
 		integration: makeIntegration(logger, {

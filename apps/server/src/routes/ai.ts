@@ -166,6 +166,7 @@ export function createAiRoute(
 				withStoredApiKey(ai, deps.store.getGlobals().ai, (body as { ai?: unknown }).ai),
 			),
 		});
+		generator.setProvidedTools(() => deps.runtime.aiToolProviders.tools());
 
 		// 试一次、回报结果(同 cards / push 的测试推送):女仆没答上来、投递没成都是 200 + 失败那一支。
 		let reply: string;
