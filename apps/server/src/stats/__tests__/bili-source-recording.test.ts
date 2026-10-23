@@ -50,6 +50,7 @@ function makeRecorder() {
 		forget: vi.fn(),
 		drop: vi.fn(),
 		recordFans: vi.fn(),
+		recordFollowers: vi.fn(async () => {}),
 	} satisfies Record<keyof StatsRecorderCore, unknown> as unknown as StatsRecorderCore & {
 		recordActive: ReturnType<typeof vi.fn>;
 		recordPost: ReturnType<typeof vi.fn>;

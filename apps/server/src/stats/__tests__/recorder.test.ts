@@ -86,7 +86,9 @@ function makeFans() {
 		clear: vi.fn(async () => {}),
 		compact: vi.fn(async () => ({ rowsBefore: 0, rowsAfter: 0, badLines: 0, rewritten: false })),
 		close: vi.fn(async () => {}),
-	} satisfies Record<keyof FollowersStore, unknown> as unknown as FollowersStore;
+	} satisfies Record<keyof FollowersStore, unknown> as unknown as FollowersStore & {
+		append: ReturnType<typeof vi.fn>;
+	};
 }
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -293,17 +295,91 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 });
 
 describe("中立记录器(给各来源适配用的那一面)", () => {
-	function core() {
+	function core(isEnabled: () => boolean = () => true) {
 		const store = makeStore();
+		const fans = makeFans();
 		const recorder = createStatsRecorderCore({
 			store,
-			fans: makeFans(),
+			fans,
 			logger,
 			now,
-			isEnabled: () => true,
+			isEnabled,
 		});
-		return { store, recorder };
+		return { store, fans, recorder };
 	}
+
+	it("同一键间隔很短的两条拉取样本都保留,报来的样本仍按间隔稀释", async () => {
+		const { fans, recorder } = core();
+		recorder.recordFollowers("pulled", 100);
+		clock = "2026-05-16T10:00:01.000Z";
+		recorder.recordFollowers("pulled", 101);
+		recorder.recordFans("reported", 200, 60_000);
+		clock = "2026-05-16T10:00:02.000Z";
+		recorder.recordFans("reported", 201, 60_000);
+		await recorder.flush();
+		const samplesFor = (key: string) =>
+			fans.append.mock.calls.filter(([written]) => written === key).map(([, sample]) => sample);
+		expect(samplesFor("pulled")).toEqual([
+			{ sampledAt: "2026-05-16T10:00:00.000Z", followers: 100 },
+			{ sampledAt: "2026-05-16T10:00:01.000Z", followers: 101 },
+		]);
+		expect(samplesFor("reported")).toEqual([
+			{ sampledAt: "2026-05-16T10:00:01.000Z", followers: 200 },
+		]);
+	});
+
+	it("拉取样本落盘后 Promise 才落定", async () => {
+		const { fans, recorder } = core();
+		let finishAppend: (() => void) | undefined;
+		fans.append.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					finishAppend = resolve;
+				}),
+		);
+		let settled = false;
+		const pending = recorder.recordFollowers("key", 1200).then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		finishAppend?.();
+		await pending;
+		expect(settled).toBe(true);
+		expect(fans.append).toHaveBeenCalledWith("key", {
+			sampledAt: "2026-05-16T10:00:00.000Z",
+			followers: 1200,
+		});
+	});
+
+	it("总开关关着时拉取样本直接落定,时序里没有", async () => {
+		let enabled = false;
+		const { fans, recorder } = core(() => enabled);
+		await expect(recorder.recordFollowers("key", 1200)).resolves.toBeUndefined();
+		expect(fans.append).not.toHaveBeenCalled();
+		enabled = true;
+		await recorder.recordFollowers("key", 1200);
+		expect(fans.append).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([Number.NaN, -1, 1.5])("拉取样本 %s 不是有限非负整数 → 不写", async (value) => {
+		const { fans, recorder } = core();
+		await expect(recorder.recordFollowers("key", value)).resolves.toBeUndefined();
+		expect(fans.append).not.toHaveBeenCalled();
+	});
+
+	it("拉取样本更新稀释时刻:间隔内紧跟的报来样本被丢掉", async () => {
+		const { fans, recorder } = core();
+		await recorder.recordFollowers("key", 100);
+		clock = "2026-05-16T10:00:01.000Z";
+		recorder.recordFans("key", 101, 60_000);
+		await recorder.flush();
+		expect(fans.append).toHaveBeenCalledTimes(1);
+		expect(fans.append).toHaveBeenCalledWith("key", {
+			sampledAt: "2026-05-16T10:00:00.000Z",
+			followers: 100,
+		});
+	});
 
 	it("关一场时把场次引擎交来的 peak 原样带进下播帧", async () => {
 		const { store, recorder } = core();

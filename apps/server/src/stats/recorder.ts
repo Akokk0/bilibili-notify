@@ -49,6 +49,16 @@ export interface StatsRecorderCore {
 	/** 忘掉 + 删掉这个键的全部文件(作品、直播、「在记」、粉丝;订阅被删时调)。 */
 	drop(key: string): void;
 	/**
+	 * 记一条按 cron 从来源拉来的粉丝样本,时刻取「现在」。
+	 *
+	 * 拉取由核心按固定节奏发起,一轮就是一条:这里**不稀释**,相邻两轮即使挨得很近也各留一条。
+	 * 拓展上报的资料不按本进程的节奏来,仍走 {@link recordFans},按来源间隔稀释。
+	 *
+	 * 写进这个键的同一条队,落盘后 Promise 才落定;总开关关着、值不是有限非负整数、或写失败时直接落定。
+	 * 成功后更新 `recordFans` 的稀释时刻,避免紧跟着的报来样本贴着同一条拉取样本再写一遍。
+	 */
+	recordFollowers(key: string, value: number): Promise<void>;
+	/**
 	 * 记一个粉丝数,时刻取「现在」。离这个键上一条落盘的样本(重启之前落的也算)不足 `minGapMs` 就不记 ——
 	 * 留先到的那条,不密过来源给的间隔。
 	 */
@@ -252,6 +262,17 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			enqueue(key, "drop", async () => {
 				await opts.store.drop(key);
 				await opts.fans.drop(key);
+			});
+		},
+
+		async recordFollowers(key, value) {
+			if (!opts.isEnabled() || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+				return;
+			}
+			const at = now().getTime();
+			await enqueue(key, "appendFollowers", async () => {
+				await opts.fans.append(key, { sampledAt: new Date(at).toISOString(), followers: value });
+				lastFans.set(key, at);
 			});
 		},
 

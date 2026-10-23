@@ -73,6 +73,15 @@ describe("整类清空 × 排在队里的写", () => {
 		]);
 	});
 
+	it("拉来一条样本后紧跟 drop:同一条写队走完,粉丝文件不在", async () => {
+		const { core } = setup();
+		const pending = core.recordFollowers(KEY, 100);
+		core.drop(KEY);
+		await pending;
+		await core.flush();
+		expect(await statsFiles()).toEqual([]);
+	});
+
 	it("在飞的作品、粉丝样本、「在记」排在清空前面,清完文件不会被写回来", async () => {
 		const { core } = setup();
 		// 作品写入还没落盘时清空就开始了;这个键盘上一个文件都没有(只在队里)。
