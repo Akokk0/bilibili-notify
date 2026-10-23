@@ -152,7 +152,7 @@ describe("deliverRoast — 停用的目标", () => {
  * - 拓展的头像在资料里是图库引用(`avatar`),面板用的同源地址 `/api/images/<ref>` 截图的浏览器加载不到 —— 出卡前
  *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像抓进图库后同样读图库;头像还没抓到(资料里只有来源地址 `avatarUrl`)就没有头像 —— 渲染页不联网,远端图链交过去也画不出来。
  * - 颜色跟着人走,与面板同一个算法(`identityColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
- * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
+ * - 名字:所有来源都走同一条链(资料里的名字 → 身份标签);B 站经自己的描述符仍是 UID xxx。
  */
 describe("buildRoastPayload — 卡上的人", () => {
 	/** 最小的 PNG 文件头就够 `sniffImageFormat` 认出来。 */
@@ -201,9 +201,13 @@ describe("buildRoastPayload — 卡上的人", () => {
 		};
 		const deps = {
 			runtime: {
-				engines: { imageRenderer: { generateRoastBoardCard, generateRoastSoloCard } },
+				engines: {
+					extensionPlatformLabel: (id: string) => (id === "douyin" ? "抖音" : undefined),
+					imageRenderer: { generateRoastBoardCard, generateRoastSoloCard },
+				},
 				serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 				subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
+				sourceRegistry: { get: () => undefined },
 				imageStore: {
 					read: async (ref: string) => {
 						const image = images[ref];
@@ -284,8 +288,8 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(data.pigeon?.color).toBe(identityColor({ sourceKey: "douyin", externalId: "12345" }));
 		expect(data.pigeon?.color).not.toBe(data.diligent?.color);
 		expect(String(data.pigeon?.avatar)).toMatch(/^data:image\/png;base64,/);
-		// 没存头像、资料里也没名字的拓展那位:名字退外部 id,头像留空(卡上画首字母),不塞相对地址。
-		expect(data.roast?.[0]).toMatchObject({ name: "sec-bare", avatar: undefined });
+		// 没存头像、资料里也没名字的拓展那位:名字退身份标签,头像留空(卡上画首字母),不塞相对地址。
+		expect(data.roast?.[0]).toMatchObject({ name: "抖音 · sec-bare", avatar: undefined });
 	});
 
 	it("资料里的引用指着的图已经不在了 → 头像留空,照样出卡", async () => {

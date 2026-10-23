@@ -146,13 +146,13 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 		expect(prompt).not.toContain("B 站 UP 主");
 		const table = JSON.parse(prompt.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
 		expect(table.map((row) => [row.名称, row.平台])).toEqual([
-			["ext-a", "假源"],
-			["ext-b", "假源"],
+			["假源 · ext-a", "假源"],
+			["假源 · ext-b", "假源"],
 		]);
 
 		expect(body.result?.pigeon.subscriptionId).toBe(B);
 		expect(body.result?.diligent.subscriptionId).toBe(A);
 		expect(body.result?.scores.map((s) => s.subscriptionId)).toEqual([A, B]);
-		expect(body.result?.pushText).toBe("ext-b 本周鸽了");
+		expect(body.result?.pushText).toBe("假源 · ext-b 本周鸽了");
 	});
 });

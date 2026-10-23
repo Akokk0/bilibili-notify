@@ -1,9 +1,7 @@
 import {
 	featuresForEvents,
-	type Subscription,
 	type SubscriptionEventKind,
 	sniffImageFormat,
-	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { bytesDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
@@ -11,7 +9,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
  * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`posts/extension-post.ts`)与拓展的
- * 直播共用:模板里的名字、字节转 data URL。
+ * 直播共用:字节转 data URL。
  *
  * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /
  * `postSettingsOf` / `liveSettingsOf`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
@@ -80,30 +78,4 @@ export async function readProfileAvatar(
 export function imageDataUrl(bytes: Uint8Array): string | undefined {
 	const format = sniffImageFormat(bytes);
 	return format ? bytesDataUrl(`image/${format}`, bytes) : undefined;
-}
-
-/** 有字才算有:空串、只有空白的都不算。 */
-function filled(text: string | undefined): string | undefined {
-	return text !== undefined && text.trim() !== "" ? text : undefined;
-}
-
-export interface ExtensionNameSources {
-	/** 事件里带的作者名(决策 54)。 */
-	eventName?: string;
-	/** 订阅资料里的名字(拓展「报资料更新」存下的,`cachedProfile.name`)。 */
-	profileName?: string;
-}
-
-/**
- * 这条拓展订阅此刻叫什么 —— 模板的 `{name}`(决策 77)与卡上的作者名都用它:事件里的作者名 → 订阅资料里
- * 的名字 → 外部 id(别名已退役,ADR-0021 决策 16)。外部 id 恒有,所以总有个名字(与历史「没有名字就写
- * 外部 id」同一口径,决策 73)。
- *
- * ⚠️ 面板上标「备注」的是 `notes`,那是自由文字(「推给一群,周末别推」),**不当名字用** —— 印进卡里、
- * 套进文案就成了一句莫名其妙的话。
- */
-export function extensionSubscriptionName(sub: Subscription, from: ExtensionNameSources): string {
-	return (
-		filled(from.eventName) ?? filled(from.profileName) ?? subscriptionIdentityOf(sub).externalId
-	);
 }

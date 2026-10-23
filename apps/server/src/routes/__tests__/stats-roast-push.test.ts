@@ -11,6 +11,7 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
@@ -105,6 +106,11 @@ function makeDeps(opts: StubOpts = {}) {
 							opts.renderer === false ? null : { generateRoastBoardCard, generateRoastSoloCard },
 					},
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
+			// 锐评取名要问来源登记表拼身份标签(B 站声明「UID」)。
+			sourceRegistry: {
+				get: (key: string) =>
+					key === "bilibili" ? { descriptor: BILI_SOURCE_DESCRIPTOR } : undefined,
+			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 		},
 	} as unknown as RouteDeps;

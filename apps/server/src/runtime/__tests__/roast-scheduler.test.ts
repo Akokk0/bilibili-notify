@@ -126,9 +126,18 @@ function makeScheduler(
 	tellMasterPayload = vi.fn(async () => {});
 	const deps = {
 		runtime: {
-			engines: { api: {}, imageRenderer: null, push: {} },
+			engines: {
+				api: {},
+				extensionPlatformLabel: (id: string) => (id === "douyin" ? "抖音" : undefined),
+				imageRenderer: null,
+				push: {},
+			},
 			serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: ctx.track },
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: over.profiles?.[id] }) },
+			sourceRegistry: {
+				get: (id: string) =>
+					id === "bilibili" ? { descriptor: { label: "B 站", externalIdNoun: "UID" } } : undefined,
+			},
 		},
 		store: {
 			getGlobals: () => globals,
@@ -529,7 +538,7 @@ describe("调度器 — 一轮的结论", () => {
 
 /**
  * 拓展订阅的单人定时锐评(ADR-0020 决策 14 / 18):排程两支都排,到点按**订阅 id** 跑、按订阅 id 发;
- * 日志与私聊里那条叫什么走名字链(资料 → 外部 id;别名已退役,ADR-0021 决策 16),不写成「UID undefined」。
+ * 日志与私聊里那条叫什么走名字链(资料里的名字 → 身份标签),不写成「UID undefined」。
  */
 describe("调度器 — 拓展订阅的单人锐评", () => {
 	const EXT = {
@@ -560,7 +569,7 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 		});
 	});
 
-	it("日志与私聊里写它的名字:资料里的名字优先,没有退外部 id(别名已退役,ADR-0021 决策 16)", async () => {
+	it("日志与私聊里写它的名字:资料里的名字优先,没有退身份标签", async () => {
 		generateSoloRoast.mockResolvedValue(NO_DATA);
 		const withProfile = makeScheduler({ subs: [EXT], profiles: { e1: { name: "抖音乙" } } });
 		await withProfile.sched.runSoloOnce("e1");
@@ -568,7 +577,7 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 
 		const noProfile = makeScheduler({ subs: [EXT] });
 		await noProfile.sched.runSoloOnce("e1");
-		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("sec-1 的锐评");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("抖音 · sec-1 的锐评");
 		expect(String(tellMaster.mock.calls[0]?.[0])).not.toContain("UID");
 	});
 

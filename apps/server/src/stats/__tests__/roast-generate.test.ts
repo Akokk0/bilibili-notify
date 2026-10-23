@@ -107,9 +107,10 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles.get(id) }) },
-			// 「平台」一列读来源登记表的 label(拓展不在表里,问装载器)。
+			// 平台名与外部 id 的叫法都读来源登记表(拓展不在表里,问装载器)。
 			sourceRegistry: {
-				get: (key: string) => (key === "bilibili" ? { descriptor: { label: "B 站" } } : undefined),
+				get: (key: string) =>
+					key === "bilibili" ? { descriptor: { label: "B 站", externalIdNoun: "UID" } } : undefined,
 			},
 		},
 		store: {
@@ -450,7 +451,7 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		expect(comment.mock.calls.length).toBe(calls);
 	});
 
-	it("拓展行的名字链:资料里的名字 → 外部 id(别名已退役,ADR-0021 决策 16);平台名取不到(拓展卸了)写拓展 id", async () => {
+	it("拓展行的名字链:资料里的名字 → 身份标签;平台名取不到(拓展卸了)写来源键", async () => {
 		comment.mockResolvedValueOnce(
 			JSON.stringify({ pigeon: { i: 0, reason: "鸽" }, diligent: { i: 1, reason: "勤" } }),
 		);
@@ -469,7 +470,7 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		});
 		expect(tableOf(promptOfLastCall()).map((t) => [t.名称, t.平台])).toEqual([
 			["资料甲", "抖音"],
-			["sec-z", "gone"],
+			["gone · sec-z", "gone"],
 		]);
 	});
 

@@ -3,42 +3,15 @@
  *
  * - 读订阅资料里的头像(`readProfileAvatar`,锐评卡用)。㉒c 之前这里还有「卡上的作者」(`extensionCardAuthor`:
  *   事件头像 / 资料头像都转成 data URL):拓展直播卡改走图库引用后它退役了,「事件带的优先、没带的用资料里的」
- *   这条规矩与名字的取法分别由 `live-card-input-from-report.test.ts` 与下面的 `extensionSubscriptionName` 钉着。
- * - 模板里的 `{name}`:事件作者名 → 资料里的名字 → 外部 id(决策 77;手填的别名已退役,ADR-0021 决策 16)。
- *   面板上标「备注」的 `notes` 是自由文字,不当名字用。
+ *   这条规矩由 `live-card-input-from-report.test.ts` 钉着。模板里的 `{name}` 的取法搬去了 contract 的
+ *   `displayNameOf`(事件名 → 资料名 → 身份标签,决策 77),由 `apps/contract/src/__tests__/nouns.test.ts` 钉着。
  */
 
 import type { SubscriptionEventKind } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import {
-	extensionHasLiveTick,
-	extensionSubscriptionName,
-	readProfileAvatar,
-} from "../extension-push-common.js";
+import { extensionHasLiveTick, readProfileAvatar } from "../extension-push-common.js";
 
 const WEBP = new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBPVP8 ")]);
-
-const SUB = makeExtensionSubscription({
-	externalId: "sec-uid-1",
-	notes: "推给一群和二群,周末别推",
-});
-
-describe("模板里的 {name}:事件作者名 → 资料名 → 外部 id(决策 77;别名已退役,ADR-0021 决策 16)", () => {
-	it("一级一级往下退;空串与只有空白的不算有", () => {
-		expect(extensionSubscriptionName(SUB, { eventName: "事件里的", profileName: "资料里的" })).toBe(
-			"事件里的",
-		);
-		expect(extensionSubscriptionName(SUB, { eventName: " ", profileName: "资料里的" })).toBe(
-			"资料里的",
-		);
-		expect(extensionSubscriptionName(SUB, { profileName: "  " })).toBe("sec-uid-1");
-	});
-
-	it("备注(`notes`)是自由文字,从来不当名字:没有资料名就直接退到外部 id", () => {
-		expect(extensionSubscriptionName(SUB, {})).toBe("sec-uid-1");
-	});
-});
 
 describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是图库引用,字节从图库取", () => {
 	const REF = `${"a".repeat(64)}.webp`;

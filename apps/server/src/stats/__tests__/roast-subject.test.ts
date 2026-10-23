@@ -1,17 +1,26 @@
 /**
- * 锐评里「这位是谁」的名字链(`roastSubjectName`):B 站与拓展两条链,按订阅的身份分流。
- *
- *   - B 站:资料里的名字 → `UID <uid>`(主人起的别名**不**参与,改之前锐评就是这条链);
- *   - 拓展:资料里的名字 → 主人起的别名 → 外部 id。
+ * 锐评里「这位是谁」的名字链(`roastSubjectName`):资料里的名字 → 来源的身份标签。
+ * 身份标签由来源描述符与装载器决定,B 站自己不再另走一条链。
  */
 
+import type { UpStatsRow } from "@bilibili-notify/contract";
+import type { SourceDescriptor } from "@bilibili-notify/internal";
 import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { type RoastSubjectDeps, roastPlatformLabel, roastSubjectName } from "../roast-subject.js";
+import {
+	type RoastSubjectDeps,
+	roastPlatformLabel,
+	roastRowName,
+	roastSubjectName,
+} from "../roast-subject.js";
 
-/** 订阅 id → 资料里的名字。 */
-function depsWith(profiles: Record<string, string> = {}): RoastSubjectDeps {
+/** 订阅 id → 资料里的名字;来源登记表与装载器只填名字链真正读到的叫法。 */
+function depsWith(
+	profiles: Record<string, string> = {},
+	descriptors: Record<string, Pick<SourceDescriptor, "label" | "externalIdNoun">> = {},
+	extensionLabels: Record<string, string> = {},
+): RoastSubjectDeps {
 	return {
 		runtime: {
 			subRuntimeStore: {
@@ -19,25 +28,53 @@ function depsWith(profiles: Record<string, string> = {}): RoastSubjectDeps {
 					cachedProfile: profiles[id] === undefined ? undefined : { name: profiles[id] },
 				}),
 			},
+			sourceRegistry: {
+				get: (key: string) =>
+					descriptors[key] === undefined ? undefined : { descriptor: descriptors[key] },
+			},
+			engines: { extensionPlatformLabel: (id: string) => extensionLabels[id] },
 		},
 	} as unknown as RoastSubjectDeps;
 }
 
 describe("roastSubjectName", () => {
-	it("B 站:有资料名用资料名(去掉首尾空白),没有写 UID", () => {
+	it("B 站不特殊:描述符没声明叫法时写平台名 · id,声明 UID 时写 UID id", () => {
 		const sub = makeEmptySubscription({
 			id: "b1",
 			identity: { sourceKey: "bilibili", externalId: "12345" },
 		});
 		expect(roastSubjectName(depsWith({ b1: "  资料名 " }), sub)).toBe("资料名");
-		expect(roastSubjectName(depsWith({ b1: "   " }), sub)).toBe("UID 12345");
-		expect(roastSubjectName(depsWith(), sub)).toBe("UID 12345");
+		const bare = depsWith({}, { bilibili: { label: "B 站" } });
+		expect(roastSubjectName(bare, sub)).toBe("B 站 · 12345");
+		const withNoun = depsWith({}, { bilibili: { label: "B 站", externalIdNoun: "UID" } });
+		expect(roastSubjectName(withNoun, sub)).toBe("UID 12345");
 	});
 
-	it("拓展:资料名 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
+	it("拓展没资料名时用身份标签:登记表或装载器给平台名,卸了就退来源键", () => {
 		const sub = makeExtensionSubscription({ id: "e1", externalId: "sec-1" });
 		expect(roastSubjectName(depsWith({ e1: "抖音乙" }), sub)).toBe("抖音乙");
-		expect(roastSubjectName(depsWith(), sub)).toBe("sec-1");
+		const registered = depsWith({}, { douyin: { label: "抖音" } });
+		expect(roastSubjectName(registered, sub)).toBe("抖音 · sec-1");
+		const unloaded = makeExtensionSubscription({
+			id: "gone",
+			extensionId: "gone.ext",
+			externalId: "sec-2",
+		});
+		expect(roastSubjectName(depsWith(), unloaded)).toBe("gone.ext · sec-2");
+	});
+
+	it("订阅已删:统计行按行上的身份走同一个标签", () => {
+		const bare = depsWith({}, { bilibili: { label: "B 站" } });
+		const biliRow = {
+			identity: { sourceKey: "bilibili", externalId: "12345" },
+		} as UpStatsRow;
+		expect(roastRowName(bare, biliRow, undefined)).toBe("B 站 · 12345");
+		const withNoun = depsWith({}, { bilibili: { label: "B 站", externalIdNoun: "UID" } });
+		expect(roastRowName(withNoun, biliRow, undefined)).toBe("UID 12345");
+		const goneRow = {
+			identity: { sourceKey: "gone.ext", externalId: "sec-2" },
+		} as UpStatsRow;
+		expect(roastRowName(depsWith(), goneRow, undefined)).toBe("gone.ext · sec-2");
 	});
 });
 

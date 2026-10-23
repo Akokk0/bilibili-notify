@@ -9,7 +9,10 @@ export function subscriptionIdentityLabel(
 	return noun ? `${noun} ${identity.externalId}` : `${platform.label} · ${identity.externalId}`;
 }
 
-/** 显示名只有一条链:事件名 → 资料名 → 身份标签。空串与只有空白的都不算名字。 */
+/**
+ * 显示名只有一条链:事件名 → 资料名 → 身份标签。空串与只有空白的都不算名字。
+ * 面板上标「备注」的 `notes` 是自由文字(「推给一群,周末别推」),不当名字用,所以这里不收它。
+ */
 export function displayNameOf(
 	names: { eventName?: string; profileName?: string },
 	identityLabel: string,

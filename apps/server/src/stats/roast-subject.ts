@@ -3,33 +3,41 @@
  * (卡上的名字、兜底文案)、调度(日志与私聊里的那条叫什么)三处用的是这一份,各写一份的话同一位
  * UP 在提示词里、卡上、私聊里迟早叫成三个名字。
  *
- * 两支订阅在这里分流:
- * - **B 站**照旧:资料里的名字 → `UID xxx`(改之前锐评就是这条链,一个字不动)。
- * - **拓展**走卡片与历史那同一条链(ADR-0019 决策 77,少了事件里的作者名):资料里的名字 → 外部 id
- *   (`extensionSubscriptionName`;别名已退役,ADR-0021 决策 16)。
+ * 所有来源走同一条链(ADR-0019 决策 77):资料里的名字 → 来源的身份标签。身份标签只由来源描述符
+ * 与装载器决定,B 站经自己的描述符仍叫 `UID xxx`,锐评这里不再按来源键分叉。
  */
 
-import type { UpStatsRow } from "@bilibili-notify/contract";
+import { displayNameOf, type UpStatsRow } from "@bilibili-notify/contract";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Identity,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
-import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
-import { platformLabelOf } from "../subscriptions/platform-label.js";
+import {
+	type PlatformLabelDeps,
+	platformLabelOf,
+	subscriptionIdentityLabelOf,
+} from "../subscriptions/platform-label.js";
 
 export type RoastSubjectDeps = Pick<RouteDeps, "runtime">;
 
-/** 这条订阅在锐评里叫什么。见文件头的两条链。 */
+/** 锐评里的平台名与身份标签都要问同一组来源登记表和拓展装载器。 */
+function platformDeps(deps: RoastSubjectDeps): PlatformLabelDeps {
+	return {
+		sources: deps.runtime.sourceRegistry,
+		extensionPlatformLabel: (id) => deps.runtime.engines?.extensionPlatformLabel(id),
+	};
+}
+
+/** 这条订阅在锐评里叫什么。见文件头的一条链。 */
 export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): string {
 	const profileName = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name;
 	const identity = subscriptionIdentityOf(sub);
-	if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
-		return profileName?.trim() || `UID ${identity.externalId}`;
-	}
-	return extensionSubscriptionName(sub, { profileName });
+	return displayNameOf(
+		{ profileName: profileName?.trim() },
+		subscriptionIdentityLabelOf(identity, platformDeps(deps)),
+	);
 }
 
 /**
@@ -38,15 +46,12 @@ export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): str
  * 同面板(ADR-0019 决策 10)。
  */
 export function roastPlatformLabel(deps: RoastSubjectDeps, identity: Identity): string {
-	return platformLabelOf(identity.sourceKey, {
-		sources: deps.runtime.sourceRegistry,
-		extensionPlatformLabel: (id) => deps.runtime.engines?.extensionPlatformLabel(id),
-	});
+	return platformLabelOf(identity.sourceKey, platformDeps(deps));
 }
 
 /**
  * 统计行的名字:对得上订阅就走 {@link roastSubjectName};对不上(取完数到这一刻之间订阅被删了)按行上带的
- * 身份兜底 —— B 站写 `UID xxx`、拓展写外部 id,总得认得出是谁。
+ * 身份兜底成同一种身份标签,总得认得出是谁。
  */
 export function roastRowName(
 	deps: RoastSubjectDeps,
@@ -54,8 +59,5 @@ export function roastRowName(
 	sub: Subscription | undefined,
 ): string {
 	if (sub) return roastSubjectName(deps, sub);
-	const { identity } = row;
-	return identity.sourceKey === BILIBILI_SOURCE_KEY
-		? `UID ${identity.externalId}`
-		: identity.externalId;
+	return subscriptionIdentityLabelOf(row.identity, platformDeps(deps));
 }
