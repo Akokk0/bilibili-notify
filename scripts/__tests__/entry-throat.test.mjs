@@ -95,7 +95,7 @@ export const API_SLOT_RATCHET = {
 	"apps/server/src/index.ts": 7, // 登录装配的产物经入口递出去(套壳、引擎、createApp);含 `devAuth.api` 杂音;3b 登录装配进集成时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)
 	"apps/server/src/routes/ai.ts": 2, // 锐评生成拿 `engines.api`;3b `AiToolProvider` 时消
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
-	"apps/server/src/routes/subscriptions.ts": 5, // 旧搜人两口;第 4 期消
+	"apps/server/src/routes/subscriptions.ts": 3, // 旧搜人两口;第 4 期消
 	"apps/server/src/runtime/engines.ts": 8, // `EnginesRuntime.api` 与粉丝轮询 / 关注同步 / 链接解析的递法;3b 随读者清掉
 	"apps/server/src/runtime/follow-sync.ts": 3, // 关注同步;3b
 	"apps/server/src/stats/roast-generate.ts": 2, // 锐评生成;3b `AiToolProvider`

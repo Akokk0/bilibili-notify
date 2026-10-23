@@ -1,17 +1,15 @@
 /**
- * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 自 seed cachedProfile」。
+ * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 经资料刷新引擎拉资料」。
  *
  * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubRuntimeStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
- * POST 创建后服务端自 seed:engines 就绪且该 sub 尚无 cachedProfile 时,调
- * fetchUserCard 拉一次写进 SubRuntimeStore;失败 best-effort 不致命;engines
- * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
+ * POST 新建后在册来源经资料刷新的单条口拉一次并等它落定;失败 best-effort 不致命;
+ * 引擎没起时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
-import { fail, type ImageRef, makeDefaultGlobalConfig, ok } from "@bilibili-notify/internal";
+import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { png } from "../../__tests__/support/report-images.js";
 import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
 import { ConfigValidationError } from "../../config/store.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
@@ -36,37 +34,32 @@ const PROFILE = {
 	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
 };
 
-/** 头像抓进图库后的引用(假的图库每张都回它)。 */
-const AVATAR_REF = `${"a".repeat(64)}.png` as ImageRef;
-
 interface Harness {
-	/** 假的 B 站请求客户端(`Api.http`)收到的请求。 */
-	httpFetch: ReturnType<typeof vi.fn>;
-	putImage: ReturnType<typeof vi.fn>;
 	app: ReturnType<typeof createSubscriptionsRoute>;
 	getSubscriptions: ReturnType<typeof vi.fn>;
 	upsertSubscription: ReturnType<typeof vi.fn>;
 	patchSubscription: ReturnType<typeof vi.fn>;
 	rtGet: ReturnType<typeof vi.fn>;
 	rtPatch: ReturnType<typeof vi.fn>;
-	fetchUserCard: ReturnType<typeof vi.fn>;
 	follow: ReturnType<typeof vi.fn>;
+	refreshSubscription: ReturnType<typeof vi.fn>;
 }
 
 function makeHarness(opts?: {
 	subs?: unknown[];
 	rtRecord?: Record<string, unknown>;
-	engines?: "ok" | "null" | "throw" | "code-fail";
+	engines?: "ok" | "null";
+	/** 单条资料刷新引擎:ok=写一份假资料;null=引擎没起;fail=照常返回但不写;throw=刷新失败。 */
+	profileRefresh?: "ok" | "null" | "fail" | "throw";
 	/** follow() 的结果:ok=已关注成功;already=22014 已关注过;fail=业务码失败;throw=网络炸。 */
 	follow?: "ok" | "already" | "fail" | "throw";
-	/** 抓头像:ok=抓到一张 png;fail=对端连不上。 */
-	avatar?: "ok" | "fail";
 	/** true = 存储里原本没有这条订阅(POST 是新建);缺省 = 已经在(POST 是整份回来改)。 */
 	fresh?: boolean;
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
-	const rtRecord = opts?.rtRecord ?? {};
+	const rtRecord = { ...opts?.rtRecord };
 	const enginesMode = opts?.engines ?? "ok";
+	const refreshMode = opts?.profileRefresh ?? "ok";
 
 	// 新建:存储里原本没有这条,upsert 之后才有(POST 靠这个分辨「新建」与「整份回来改」)。
 	let stored = !opts?.fresh;
@@ -76,20 +69,18 @@ function makeHarness(opts?: {
 	});
 	const patchSubscription = vi.fn(async (_id: string, _patch: unknown) => SUB);
 	const rtGet = vi.fn((id: string) => rtRecord[id]);
-	const rtPatch = vi.fn(async () => {});
-
-	const fetchUserCard = vi.fn(async (_uid: string) => {
-		if (enginesMode === "throw") throw new Error("network down");
-		if (enginesMode === "code-fail") return fail("not_found", "找不着", { upstreamCode: -404 });
-		return ok({
-			data: {
-				card: {
-					mid: SUB.identity.externalId,
-					name: PROFILE.name,
-					face: PROFILE.avatarUrl,
-					sign: PROFILE.sign,
-					fans: PROFILE.fans,
-				},
+	const rtPatch = vi.fn(async (id: string, patch: Record<string, unknown>) => {
+		rtRecord[id] = { ...(rtRecord[id] as Record<string, unknown> | undefined), ...patch };
+	});
+	const refreshSubscription = vi.fn(async (id: string) => {
+		if (refreshMode === "throw") throw new Error("refresh failed");
+		if (refreshMode === "fail" || refreshMode === "null") return;
+		await rtPatch(id, {
+			cachedProfile: {
+				name: PROFILE.name,
+				sign: PROFILE.sign,
+				fans: PROFILE.fans,
+				lastRefreshedAt: PROFILE.lastRefreshedAt,
 			},
 		});
 	});
@@ -102,23 +93,7 @@ function makeHarness(opts?: {
 		return { code: 0, message: "0" };
 	});
 
-	// 假的请求客户端:不联网,数一数抓了哪些地址。
-	const httpFetch = vi.fn(async (url: URL | string) =>
-		opts?.avatar === "fail"
-			? fail("unavailable", "连不上")
-			: ok({
-					url: String(url),
-					status: 200,
-					headers: new Headers(),
-					body: png(8, 8, 1),
-					isSuccess: true,
-					text: () => "",
-					json: () => ({ ok: false as const, code: "invalid" as const, message: "不是 json" }),
-				}),
-	);
-	const putImage = vi.fn(async () => ok({ ref: AVATAR_REF }));
-	const engines =
-		enginesMode === "null" ? null : { api: { fetchUserCard, follow, http: { fetch: httpFetch } } };
+	const engines = enginesMode === "null" ? null : { api: { follow } };
 
 	const deps = {
 		store: {
@@ -130,27 +105,25 @@ function makeHarness(opts?: {
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subRuntimeStore: { get: rtGet, patch: rtPatch },
-			profileImages: { put: putImage },
 			// 新建订阅按来源描述符核外部 id:B 站的描述符从登记表来。
 			sourceRegistry: {
 				get: (key: string) =>
 					key === SUB.identity.sourceKey ? { descriptor: BILI_SOURCE_DESCRIPTOR } : undefined,
 			},
 			engines,
+			profileRefresh: refreshMode === "null" ? null : { refreshSubscription },
 		},
 	} as unknown as RouteDeps;
 
 	return {
-		httpFetch,
-		putImage,
 		app: createSubscriptionsRoute(deps),
 		getSubscriptions,
 		upsertSubscription,
 		patchSubscription,
 		rtGet,
 		rtPatch,
-		fetchUserCard,
 		follow,
+		refreshSubscription,
 	};
 }
 
@@ -216,24 +189,18 @@ describe("/api/subscriptions GET — 不需要关注的订阅不带关注状态"
 	});
 });
 
-/**
- * SubRuntimeStore.patch 里**属于 seed 的**那些调用。
- *
- * POST 现在会写两类 runtime 状态:关注结果(followed/followError)与 cachedProfile。
- * 下面这组用例只关心后者,所以按内容筛,而不是数 patch 被调了几次 —— 数次数会让它们
- * 跟「POST 还顺手做了什么」耦死,以后再加一类 runtime 写入又得全改一遍。
- */
-function seedCalls(h: Harness) {
+/** POST 期间真正写进资料缓存的那些 runtime patch(关注状态不算)。 */
+function cachedProfileCalls(h: Harness) {
 	return h.rtPatch.mock.calls.filter(
 		([, patch]) => typeof patch === "object" && patch !== null && "cachedProfile" in patch,
 	);
 }
 
-describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile", () => {
+describe("/api/subscriptions POST — 新订阅经资料刷新引擎拉资料", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("新 sub 且 engines 就绪 → 调 fetchUserCard 并 patch 进 SubRuntimeStore", async () => {
-		const h = makeHarness({ rtRecord: {} });
+	it("新 sub 且引擎就绪 → 等单条刷新拉一次,回应带资料", async () => {
+		const h = makeHarness({ rtRecord: {}, fresh: true });
 		const res = await h.app.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -241,93 +208,58 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		});
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.fetchUserCard).toHaveBeenCalledWith(SUB.identity.externalId);
-		const seeds = seedCalls(h);
-		expect(seeds).toHaveLength(1);
-		const [id, patch] = seeds[0] as [string, { cachedProfile: typeof PROFILE }];
-		expect(id).toBe(SUB.id);
-		expect(patch.cachedProfile).toMatchObject({
-			name: PROFILE.name,
-			// B 站的头像抓进图库:`avatar` 是图库引用,`avatarUrl` 记抓图用的来源地址。
-			avatar: AVATAR_REF,
-			avatarUrl: PROFILE.avatarUrl,
-			sign: PROFILE.sign,
-			fans: PROFILE.fans,
-		});
-		expect(typeof patch.cachedProfile.lastRefreshedAt).toBe("string");
-		// 响应也走 toDTO(数组)
+		expect(h.refreshSubscription).toHaveBeenCalledTimes(1);
+		expect(h.refreshSubscription).toHaveBeenCalledWith(SUB.id);
+		expect(cachedProfileCalls(h)).toHaveLength(1);
 		const body = (await res.json()) as Array<Record<string, unknown>>;
+		expect(body[0]?.cachedProfile).toMatchObject({ name: PROFILE.name, fans: PROFILE.fans });
 		expect(body[0]).not.toHaveProperty("state");
 	});
 
-	it("新建订阅当场把头像抓进图库再回应,只抓一次", async () => {
-		const h = makeHarness({ rtRecord: {} });
-		await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(h.httpFetch).toHaveBeenCalledTimes(1);
-		expect(String(h.httpFetch.mock.calls[0]?.[0])).toBe(PROFILE.avatarUrl);
-		expect(h.putImage).toHaveBeenCalledTimes(1);
-	});
-
-	it("头像抓不到 → 订阅照建(200),资料里只有 avatarUrl、没有 avatar", async () => {
-		const h = makeHarness({ rtRecord: {}, avatar: "fail" });
+	it("已有资料 → 跳过单条刷新(bounded,不重复拉资料)", async () => {
+		const h = makeHarness({ fresh: true, rtRecord: { [SUB.id]: { cachedProfile: PROFILE } } });
 		const res = await h.app.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		const [, patch] = seedCalls(h)[0] as [string, { cachedProfile: Record<string, unknown> }];
-		expect(patch.cachedProfile.avatarUrl).toBe(PROFILE.avatarUrl);
-		expect(patch.cachedProfile).not.toHaveProperty("avatar");
+		expect(h.refreshSubscription).not.toHaveBeenCalled();
 	});
 
-	it("已有 cachedProfile → 跳过 seed(bounded,不重复打 B 站)", async () => {
-		const h = makeHarness({ rtRecord: { [SUB.id]: { cachedProfile: PROFILE } } });
+	it("资料刷新引擎没起 → 跳过,不致命(200)", async () => {
+		const h = makeHarness({ fresh: true, profileRefresh: "null" });
 		const res = await h.app.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(h.fetchUserCard).not.toHaveBeenCalled();
-		expect(seedCalls(h)).toHaveLength(0);
+		expect(h.refreshSubscription).not.toHaveBeenCalled();
 	});
 
-	it("engines 为 null → 跳过 seed,不致命(200)", async () => {
-		const h = makeHarness({ engines: "null" });
+	it("单条刷新抛错 → best-effort,POST 仍 200、不写资料", async () => {
+		const h = makeHarness({ fresh: true, profileRefresh: "throw" });
 		const res = await h.app.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(seedCalls(h)).toHaveLength(0);
+		expect(h.refreshSubscription).toHaveBeenCalledOnce();
+		expect(cachedProfileCalls(h)).toHaveLength(0);
 	});
 
-	it("fetchUserCard 抛错 → best-effort,POST 仍 200", async () => {
-		const h = makeHarness({ engines: "throw" });
+	it("来源失败 → 单条刷新照常落定,POST 仍 200、不写资料", async () => {
+		const h = makeHarness({ fresh: true, profileRefresh: "fail" });
 		const res = await h.app.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(seedCalls(h)).toHaveLength(0);
-	});
-
-	it("fetchUserCard 返回失败结果 → 不 patch,POST 仍 200", async () => {
-		const h = makeHarness({ engines: "code-fail" });
-		const res = await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(res.status).toBe(200);
-		expect(seedCalls(h)).toHaveLength(0);
+		expect(h.refreshSubscription).toHaveBeenCalledOnce();
+		expect(cachedProfileCalls(h)).toHaveLength(0);
 	});
 
 	it("无效 JSON body → 400,不 upsert", async () => {
@@ -531,7 +463,7 @@ describe("/api/subscriptions POST — 自动关注该 UP", () => {
  * 拓展订阅(ADR-0019 决策 9 / 12 / 50)。
  *
  * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅要宿主核过「它是装着的订阅源」;已有的
- * 那条整份 POST 回来(面板的启用开关)照收,关注 / 资料种子都不碰它。身份改不动,store 拒了就是 400。
+ * 那条整份 POST 回来(面板的启用开关)照收,关注 / 单条资料刷新都不碰它。身份改不动,store 拒了就是 400。
  */
 describe("/api/subscriptions × 拓展订阅", () => {
 	beforeEach(() => vi.restoreAllMocks());
@@ -582,13 +514,13 @@ describe("/api/subscriptions × 拓展订阅", () => {
 		expect(h.upsertSubscription).not.toHaveBeenCalled();
 	});
 
-	it("POST 回一条已有的拓展订阅(启用开关)→ 照收,不去 B 站关注、不拉 B 站资料", async () => {
+	it("POST 回一条已有的拓展订阅(启用开关)→ 照收,不关注、不拉资料", async () => {
 		const h = makeHarness({ subs: [SUB, EXT] });
 		const res = await postJson(h, { ...EXT, enabled: false });
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
 		expect(h.follow).not.toHaveBeenCalled();
-		expect(h.fetchUserCard).not.toHaveBeenCalled();
+		expect(h.refreshSubscription).not.toHaveBeenCalled();
 		expect(h.rtPatch).not.toHaveBeenCalled();
 	});
 

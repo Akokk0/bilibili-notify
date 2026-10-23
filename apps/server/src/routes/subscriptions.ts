@@ -14,10 +14,8 @@ import {
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ensureFollowed } from "../bilibili/api/index.js";
-import { syncProfileAvatar } from "../bilibili/images.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { createImageFetcher } from "../images/image-fetcher.js";
 import { followTargetSubscriptions } from "../runtime/follow-sync.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import {
@@ -86,7 +84,8 @@ const CreateProfileBodySchema = z.object({
  * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
  * 头像存进图库(决策 49)。**新建订阅**(两种来源都是)先按来源描述符声明的格式核外部 id(`externalIdRegex`,
  * 见 `subscriptions/external-id.ts`);B 站声明的是纯数字 uid。已经存在的订阅可以整份 POST 回来改
- * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站。
+ * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、查 UID / 搜名字都只对 B 站;资料刷新
+ * 对所有在登记的来源同一道口。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
  * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
@@ -164,48 +163,9 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	}
 
 	/**
-	 * Server-owned cachedProfile seed on create. cachedProfile is a B-station
-	 * mirror owned by the server (ProfileRefresh), not client-supplied display data
-	 * — so on a brand-new sub we fetch it once ourselves instead of trusting /
-	 * peeling whatever the frontend POSTed (Zod strips it anyway). Best-effort:
-	 * any failure just leaves it for the first ProfileRefresh tick (~2min). Skipped
-	 * when a cachedProfile already exists (re-POST / edit) to bound the call.
-	 */
-	async function seedCachedProfile(sub: Subscription): Promise<void> {
-		if (deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile) return;
-		const engines = deps.runtime.engines;
-		if (!engines) return;
-		const uid = subscriptionIdentityOf(sub).externalId;
-		try {
-			const res = await engines.api.fetchUserCard(uid);
-			if (!res.ok || !res.data?.card) return;
-			const card = res.data.card;
-			// 头像当场抓进图库再回应(经 B 站接口那个请求客户端,引用方是订阅资料这一家);抓不到不让新建失败,
-			// 资料里先只记地址,下一轮粉丝轮询的冷刷会补(见 `syncProfileAvatar`)。
-			const avatarFields = await syncProfileAvatar(undefined, card.face, {
-				images: createImageFetcher({
-					http: engines.api.http,
-					images: deps.runtime.profileImages,
-				}),
-				logger: log,
-			});
-			const cachedProfile: CachedProfile = {
-				name: card.name ?? uid,
-				...avatarFields,
-				sign: card.sign ?? "",
-				fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
-				lastRefreshedAt: new Date().toISOString(),
-			};
-			await deps.runtime.subRuntimeStore.patch(sub.id, { cachedProfile });
-		} catch (err) {
-			log.warn(`/api/subscriptions seed cachedProfile uid=${uid} failed: ${String(err)}`);
-		}
-	}
-
-	/**
 	 * 新建一条拓展订阅(ADR-0019 决策 9 / 10 / 49 / 50)。**能核的先全核完再落盘**:订阅的形状 →
 	 * 带来的资料(连头像的魔数)→ 它是不是装着的订阅源;判重在 upsert 里(store 那道闸,B 站来源的也过它)。
-	 * 都过了才把头像存进图库、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败(同 B 站的资料种子)。
+	 * 都过了才把头像存进图库、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败。
 	 */
 	async function createExtensionSubscription(
 		c: Context,
@@ -437,13 +397,25 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			const id = (body as { id?: unknown }).id;
 			const created =
 				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
-			if (created && subscriptionIdentityOf(created).sourceKey === BILIBILI_SOURCE_KEY) {
-				// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
-				// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
-				// 只对新建、且需要关注的(启用中、作品开着)当场关注:没开作品的用不着(直播不走关注流);
-				// 整份回来改的那条(面板的启用开关)不在这里,开关翻开补关注由引擎听订阅变更去做。
-				if (!exists && followTargetIds().has(created.id)) await followUp(created);
-				await seedCachedProfile(created);
+			if (created) {
+				const createdSource = subscriptionIdentityOf(created).sourceKey;
+				if (!exists && createdSource === BILIBILI_SOURCE_KEY) {
+					// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
+					// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
+					// 只对新建、且需要关注的(启用中、作品开着)当场关注:没开作品的用不着(直播不走关注流);
+					// 整份回来改的那条(面板的启用开关)不在这里,开关翻开补关注由引擎听订阅变更去做。
+					if (followTargetIds().has(created.id)) await followUp(created);
+				}
+				const refresh = deps.runtime.profileRefresh;
+				const hasProfile =
+					deps.runtime.subRuntimeStore.get(created.id)?.cachedProfile !== undefined;
+				if (!exists && !hasProfile && refresh && deps.runtime.sourceRegistry.get(createdSource)) {
+					try {
+						await refresh.refreshSubscription(created.id);
+					} catch (err) {
+						log.warn(`[sub] profile refresh after create failed id=${created.id}: ${String(err)}`);
+					}
+				}
 			}
 			return c.json(toDTOs(), 200);
 		} catch (err) {

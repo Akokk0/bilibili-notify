@@ -66,7 +66,7 @@ export const ADVICE =
 export const RATCHET = {
 	"apps/server/src/compose.ts": 3, // 开发场景的订阅视图里把 `externalId` 叫成 `uid`
 	"apps/server/src/routes/cards.ts": 33,
-	"apps/server/src/routes/subscriptions.ts": 15,
+	"apps/server/src/routes/subscriptions.ts": 11,
 	"apps/server/src/runtime/engines.ts": 9,
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"packages/ai/src/tools.ts": 20,

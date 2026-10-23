@@ -52,6 +52,7 @@ export interface ProfileRefreshOptions {
 export interface ProfileRefreshHandle extends Disposable {
 	getLastEntries(): FollowersRefreshEntry[];
 	pollNow(): Promise<boolean>;
+	refreshSubscription(id: string): Promise<void>;
 	reset(): Promise<void>;
 }
 
@@ -207,6 +208,19 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		if (profile.followers !== undefined && !disposed && subscriptionNow(sub.id) !== undefined) {
 			await opts.recorder.recordFollowers(statsFileKey(sub), profile.followers);
 		}
+	}
+
+	/** 新建订阅后当场刷这一条:拉取与整轮共用,落定后只重算这一行并叫一次面板。 */
+	async function refreshSubscription(id: string): Promise<void> {
+		if (disposed) return;
+		const sub = subscriptionNow(id);
+		if (!sub?.enabled || !opts.sources.get(subscriptionIdentityOf(sub).sourceKey)) return;
+		const startedGeneration = generation;
+		await refreshOne(sub);
+		if (disposed || generation !== startedGeneration) return;
+		await refreshEntries(startedGeneration, new Set([sub.id]));
+		if (disposed || generation !== startedGeneration) return;
+		emitSnapshot();
 	}
 
 	/**
@@ -379,6 +393,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	return {
 		getLastEntries: () => Array.from(lastBySub.values()),
 		pollNow: tickOnce,
+		refreshSubscription,
 		async reset() {
 			if (disposed) return;
 			generation += 1;
