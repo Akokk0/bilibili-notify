@@ -3,6 +3,7 @@
 // 失败规矩的零件(ADR-0026)。本体在零依赖的 constants(面板经 /constants 子路径消费),
 // 这里给后端补一条根入口的路。
 
+export * from "./ai-tool";
 export * from "./auth-state";
 export * from "./bilibili-guard";
 export {
