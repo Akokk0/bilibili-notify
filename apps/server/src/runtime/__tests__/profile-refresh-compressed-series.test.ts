@@ -17,11 +17,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -37,7 +38,7 @@ const DAY = 24 * HOUR;
 const silent = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
 
 let dataDir: string;
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-fans-compressed-"));
@@ -77,7 +78,7 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		track: vi.fn(),
 		signal: new AbortController().signal,
 	};
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
@@ -100,7 +101,7 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		serviceCtx: serviceCtx as never,
 	});
 	await vi.waitFor(() => expect(serviceCtx.setTimeout).toHaveBeenCalled());
-	const poller = handle as FansPollerHandle;
+	const poller = handle as ProfileRefreshHandle;
 	return {
 		runtime,
 		patch,

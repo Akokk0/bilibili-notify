@@ -406,7 +406,9 @@ export interface StatsRecorderOptions {
 }
 
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
-export interface StatsRecorderHandle extends Disposable {
+export interface StatsRecorderHandle
+	extends Disposable,
+		Pick<StatsRecorderCore, "drop" | "recordFollowers"> {
 	/**
 	 * 给当前仍在播的场次补一帧下播,时刻取「现在」。**关服前调用**。
 	 *
@@ -430,7 +432,7 @@ export interface StatsRecorderHandle extends Disposable {
 	/** 整类清空数据统计(删盘),见 {@link StatsRecorderCore} 那头的同名口子。 */
 	clear(): Promise<void>;
 	/**
-	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachFansPoller` 的回填口)。
+	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachProfileRefresh` 的回填口)。
 	 * 没绑之前当作 B 站没在跑(不记);绑上后 B 站适配立刻看一眼。读口每次现读,不靠事件记状态。
 	 */
 	bindLoginState(isLoggedIn: () => boolean): void;
@@ -486,6 +488,8 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		flush: () => recorder.flush(),
 		compactRecording: (at) => recorder.compactRecording(at),
 		clear: () => recorder.clear(),
+		drop: (key) => recorder.drop(key),
+		recordFollowers: (key, value) => recorder.recordFollowers(key, value),
 		bindLoginState(next) {
 			isLoggedIn = next;
 			biliSource.tick();

@@ -15,7 +15,7 @@ import {
 	stillPending,
 } from "../../__tests__/support/track-context.js";
 
-// cron mock:捕获 onTick,不真正排程(同 fans-poller-decoupling 的套路)。
+// cron mock:捕获 onTick,不真正排程(同 profile-refresh-decoupling 的套路)。
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
 	class FakeCronJob {
@@ -32,7 +32,7 @@ const cronMock = vi.hoisted(() => {
 });
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 
-const { startFansPoller } = await import("../fans-poller.js");
+const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as unknown as GlobalConfig;
@@ -74,7 +74,7 @@ function start(options: Options = {}) {
 	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 4242 } }));
 	const fetchUserCards = vi.fn(async () => ({ code: 0, data: {} }));
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -118,7 +118,7 @@ function start(options: Options = {}) {
 	};
 }
 
-describe("fans poller × ctx.track", () => {
+describe("profile refresh × ctx.track", () => {
 	it("cron 到点的 tick 登记进 track:样本写落定、资料缓存也写完,它才落定", async () => {
 		const release = deferred();
 		const { ctx, append, runtimePatch } = start({ append: () => release.promise });
@@ -131,10 +131,10 @@ describe("fans poller × ctx.track", () => {
 		const tick = ctx.tracked[1] as Promise<unknown>;
 		await vi.waitFor(() => expect(append).toHaveBeenCalledTimes(1)); // 样本写走到了半路
 		expect(await stillPending(tick)).toBe(true);
-		expect(runtimePatch).not.toHaveBeenCalled();
+		expect(runtimePatch).toHaveBeenCalledTimes(1); // 资料已先写,样本的队还悬着
 		release.resolve();
 		await tick;
-		expect(runtimePatch).toHaveBeenCalledTimes(1); // 后面的资料缓存写也包在里面
+		expect(runtimePatch).toHaveBeenCalledTimes(1);
 	});
 
 	it("开机首轮:等 3s 门的时候被关停叫醒,马上落定,不再冷刷、不再跑 sweep", async () => {
@@ -164,8 +164,8 @@ describe("fans poller × ctx.track", () => {
 
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB as never }] });
 
-		expect(drop).toHaveBeenCalledWith("sub-1");
-		expect(prune).toHaveBeenCalled();
+		await vi.waitFor(() => expect(drop).toHaveBeenCalledWith("sub-1"));
+		await vi.waitFor(() => expect(prune).toHaveBeenCalled());
 		expect(ctx.tracked).toHaveLength(3);
 		const [, dropTask, pruneTask] = ctx.tracked as [
 			Promise<unknown>,

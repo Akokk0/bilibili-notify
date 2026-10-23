@@ -19,7 +19,7 @@ function makeDeps(listSamplesSince: (...args: unknown[]) => Promise<unknown[]>) 
 				listRecording: async () => [],
 			},
 			engines: null,
-			fansPoller: null,
+			profileRefresh: null,
 			subRuntimeStore: { get: () => undefined },
 		},
 		store: {

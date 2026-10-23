@@ -35,9 +35,9 @@ import { createSourceRegistry, type SourceRegistry } from "../subscriptions/regi
 import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";
 import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
 import type { EnginesRuntime } from "./engines.js";
-import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
+import type { ProfileRefreshHandle } from "./profile-refresh.js";
 import { bindReportedProfiles } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
@@ -110,7 +110,10 @@ export interface AppRuntime {
 	 */
 	statsStore: StatsStore;
 	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
-	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState" | "compactRecording" | "clear">;
+	statsRecorder: Pick<
+		StatsRecorderHandle,
+		"bindLoginState" | "compactRecording" | "clear" | "drop" | "recordFollowers"
+	>;
 	/**
 	 * 数据统计的总开关(`stats.enabled`)的缓存读口 —— 记录器入口用的就是它,B 站粉丝轮询(直接写粉丝仓、
 	 * 绕开记录器)由 `index.ts` 从这里取去用。设置变了下一次读就是新值,不用重启。
@@ -118,9 +121,9 @@ export interface AppRuntime {
 	isStatsEnabled: () => boolean;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
-	 * out of the persisted `Subscription` config so FansPoller's per-tick
+	 * out of the persisted `Subscription` config so profile refresh's per-tick
 	 * `cachedProfile` writes no longer fan out as `config-changed:subscriptions`.
-	 * Loaded alongside configStore; consumed by FansPoller / engines / the
+	 * Loaded alongside configStore; consumed by profile refresh / engines / the
 	 * `/api/subscriptions` join.
 	 */
 	subRuntimeStore: SubRuntimeStore;
@@ -208,13 +211,13 @@ export interface AppRuntime {
 	engines: EnginesRuntime | null;
 	attachEngines(engines: EnginesRuntime): void;
 	/**
-	 * FansPoller handle (cron 跟 globals.profileRefreshCron 刷新每个 enabled sub 的
-	 * B 站 fans 数并 emit `followers-refreshed`)。`null` 直到 attachEngines 完成 + 启动
-	 * 完成后由 index.ts 注入;Routes 通过 `runtime.fansPoller?.getLastEntries()` 读
+	 * ProfileRefresh handle (cron 跟 globals.profileRefreshCron 刷新每个 enabled sub 的
+	 * 资料并 emit `followers-refreshed`)。`null` 直到 attachEngines 完成 + 启动
+	 * 完成后由 index.ts 注入;Routes 通过 `runtime.profileRefresh?.getLastEntries()` 读
 	 * 最近一轮快照。
 	 */
-	fansPoller: FansPollerHandle | null;
-	attachFansPoller(poller: FansPollerHandle): void;
+	profileRefresh: ProfileRefreshHandle | null;
+	attachProfileRefresh(refresh: ProfileRefreshHandle): void;
 	/** 关停:分段跑收尾钩子,预算见 `NodeServiceContext.dispose`。再调一次拿到的是同一次关停。 */
 	dispose(options?: { timeoutMs?: number; flushReserveMs?: number }): Promise<void>;
 }
@@ -541,7 +544,7 @@ export function createAppRuntime(
 	});
 
 	let engines: EnginesRuntime | null = null;
-	let fansPoller: FansPollerHandle | null = null;
+	let profileRefresh: ProfileRefreshHandle | null = null;
 
 	/**
 	 * 路由 + 目标启停的快照。列表端点要为**每一行**失败的历史问一次闸,而 ConfigStore 的
@@ -615,11 +618,11 @@ export function createAppRuntime(
 		attachEngines(next: EnginesRuntime) {
 			engines = next;
 		},
-		get fansPoller() {
-			return fansPoller;
+		get profileRefresh() {
+			return profileRefresh;
 		},
-		attachFansPoller(next: FansPollerHandle) {
-			fansPoller = next;
+		attachProfileRefresh(next: ProfileRefreshHandle) {
+			profileRefresh = next;
 		},
 		dispose: (options) => serviceCtx.dispose(options),
 	};

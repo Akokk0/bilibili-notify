@@ -12,11 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { makeStorageWorld, type StorageWorld } from "../../__tests__/support/storage-world.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
 import { createStorageUsage } from "../storage-usage.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例恰好跨过整点时,清完之后那一轮会把当时的粉丝数写成新起点,「起点没了」就偶发红。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -38,7 +39,7 @@ const BILI = {
 const EXT = makeExtensionSubscription({ id: "e1", externalId: "x", enabled: true });
 
 let world: StorageWorld;
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 let follower: number;
 let snapshots: FollowersRefreshEntry[][];
 
@@ -66,7 +67,7 @@ async function start() {
 	await world.fansStore.append("b1", { sampledAt: iso(2 * DAY), followers: 100 });
 	await world.fansStore.append("e1", { sampledAt: iso(10 * DAY), followers: 50 });
 	await world.fansStore.append("e1", { sampledAt: iso(HOUR), followers: 80 });
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -88,7 +89,7 @@ async function start() {
 			signal: new AbortController().signal,
 		} as never,
 	});
-	const storage = createStorageUsage({ ...world.options, fansPoller: () => handle ?? null });
+	const storage = createStorageUsage({ ...world.options, profileRefresh: () => handle ?? null });
 	return { storage, poller: handle };
 }
 

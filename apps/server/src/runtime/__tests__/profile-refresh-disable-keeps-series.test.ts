@@ -5,9 +5,10 @@ import { type FollowersRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
  * 停用 ≠ 删除(ADR-0020 决策 10,修背景第 7 条老漏洞)。
@@ -15,14 +16,13 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * - 停用只把 UP 从首页粉丝面板的快照里拿掉,**粉丝时序文件留着** —— 统计页照样列着他,
  *   曲线不能跟着清空;再启用接着往同一份文件里记。
  * - 删订阅才删文件。
- * - 🔴 tick 在跑时删了订阅:remove 监听先删了文件,那一轮随后又把样本写回去 —— 下一轮的
- *   清扫得把它再删掉(判据是「一条 B 站订阅都不剩」,不是「没启用」)。
+ * - tick 在跑时删了订阅:样本写入若已排在记录器队里,删订阅的 `drop` 排在它后面,文件不会再长回来。
  *
  * 粉丝仓用真的(tmpdir),文件在不在就是断言本身。文件按**订阅 id** 命名(ADR-0020 决策 2
  * 的 🔗):下面订阅 id 是 "a" / "b",uid 是 "1" / "2"。
  */
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -34,10 +34,10 @@ vi.mock("cron", () => ({
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 
 let dataDir: string;
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 
 beforeEach(async () => {
-	dataDir = await mkdtemp(join(tmpdir(), "bn-fans-poller-"));
+	dataDir = await mkdtemp(join(tmpdir(), "bn-profile-refresh-"));
 });
 afterEach(async () => {
 	handle?.dispose();
@@ -89,7 +89,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		track: vi.fn(),
 		signal: new AbortController().signal,
 	};
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -139,7 +139,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	};
 }
 
-describe("fans poller:粉丝文件按订阅 id 读写", () => {
+describe("profile refresh:粉丝文件按订阅 id 读写", () => {
 	it("开机恢复读的是订阅 id 那份:面板首屏就有上次的粉丝数", async () => {
 		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		await writeFile(
@@ -154,40 +154,9 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 			}),
 		]);
 	});
-
-	it("uid 同一个人删了重订(换了订阅 id)→ 旧 id 那份被那一轮写回来的,清扫照样删掉", async () => {
-		const p = await start([biliSub("a", "1")]);
-		p.followers.set("1", 100);
-		await p.handle.pollNow();
-
-		let release!: () => void;
-		const gate = new Promise<void>((r) => {
-			release = r;
-		});
-		p.fetchRelationStat.mockImplementationOnce(async () => {
-			await gate;
-			return { code: 0, data: { follower: 101 } };
-		});
-		const inFlight = p.handle.pollNow();
-		await vi.waitFor(() => expect(p.fetchRelationStat).toHaveBeenCalledTimes(1));
-
-		// 删掉 a、立刻又订了同一个 uid(新订阅 id c)。
-		p.setSubs([biliSub("c", "1")]);
-		p.bus.emit("subscription-changed", {
-			ops: [{ kind: "remove", sub: biliSub("a", "1") as never }],
-		});
-		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
-		release();
-		await inFlight;
-		expect(await exists(fanFile("a"))).toBe(true); // 前提:那一轮确实写回来了
-
-		await p.handle.pollNow();
-		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
-		expect(await exists(fanFile("c"))).toBe(true);
-	});
 });
 
-describe("fans poller:停用留着粉丝时序,删除才删", () => {
+describe("profile refresh:停用留着粉丝时序,删除才删", () => {
 	it("停用 → 下一轮撤出快照,粉丝文件还在", async () => {
 		const p = await start([biliSub("a", "1"), biliSub("b", "2")]);
 		p.followers.set("1", 100).set("2", 200);
@@ -238,39 +207,5 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		expect(p.lastSnapshotUids()).toEqual(["2"]);
 		expect(await exists(fanFile("b"))).toBe(true);
-	});
-
-	it("tick 在跑时删了订阅 → 那一轮把文件写了回来,下一轮清扫再删掉", async () => {
-		const p = await start([biliSub("a", "1")]);
-		p.followers.set("1", 100);
-		// 第一轮走 card(资料还没种上),之后稳态走 relation/stat —— 把闸放在第二轮上。
-		await p.handle.pollNow();
-
-		let release!: () => void;
-		const gate = new Promise<void>((r) => {
-			release = r;
-		});
-		p.fetchRelationStat.mockImplementationOnce(async () => {
-			await gate;
-			return { code: 0, data: { follower: 101 } };
-		});
-		const inFlight = p.handle.pollNow();
-		await vi.waitFor(() => expect(p.fetchRelationStat).toHaveBeenCalledTimes(1));
-
-		p.setSubs([]);
-		p.bus.emit("subscription-changed", {
-			ops: [{ kind: "remove", sub: biliSub("a", "1") as never }],
-		});
-		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
-
-		release();
-		expect(await inFlight).toBe(true);
-		// 前提:这一轮确实把文件写回来了 —— 否则下面的断言是空转。
-		expect(await samples("a")).toEqual([101]);
-
-		expect(await p.handle.pollNow()).toBe(true);
-		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
-		expect(p.snapshots.at(-1)).toEqual([]);
-		expect(p.handle.getLastEntries()).toEqual([]);
 	});
 });

@@ -104,7 +104,7 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 			liveSession: () => undefined,
 			extensionPlatformLabel: () => "抖音",
 		},
-		fansPoller: null,
+		profileRefresh: null,
 		fansStore: createFollowersStore({
 			dataRoot: dataDir,
 			logger: { debug() {}, info() {}, warn() {}, error() {} } as never,

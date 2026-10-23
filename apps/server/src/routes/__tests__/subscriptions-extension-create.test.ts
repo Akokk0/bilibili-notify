@@ -557,7 +557,7 @@ describe("订阅头像的读口", () => {
 describe("删订阅", () => {
 	/** 宽限期过了:清扫按「一天多以后」的时钟算。 */
 	const afterGrace = () => new Date(Date.now() + IMAGE_GRACE_MS + 60 * 60 * 1000);
-	/** 开机那一步的孤儿清理(运行中是 FansPoller 听 subscription-changed 做同一件事)。 */
+	/** 开机那一步的孤儿清理(运行中是 ProfileRefresh 听 subscription-changed 做同一件事)。 */
 	const dropOrphanProfiles = () =>
 		pruneOrphanSubRuntime(runtime.subRuntimeStore, {
 			list: () => runtime.configStore.getSubscriptions(),

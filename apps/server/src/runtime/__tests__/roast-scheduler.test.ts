@@ -5,7 +5,7 @@
  * 理,全都得自己有个交代。所以这里测的重点不是「顺利时发没发」,而是每条不顺的路
  * 上主人到底知不知情。
  *
- * cron 走 FakeCronJob 捕获 onTick(同 fans-poller / dynamic-poller 的套路),不真排程。
+ * cron 走 FakeCronJob 捕获 onTick(同 profile-refresh / dynamic-poller 的套路),不真排程。
  */
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -35,7 +35,7 @@ const cronMock = vi.hoisted(() => {
 			public onTick: () => void,
 		) {
 			// 与真实 CronJob 一致:表达式解析不了就同步抛。调度器不 catch 的话
-			// 整个独立端会在启动期崩掉(fans-poller 注释里记着这个坑)。
+			// 整个独立端会在启动期崩掉(profile-refresh 注释里记着这个坑)。
 			if (cronTime === "不是 cron") throw new Error("Unknown cron expression");
 			instances.push(this);
 		}

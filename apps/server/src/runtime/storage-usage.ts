@@ -28,8 +28,8 @@ import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import type { ImageStore, ImageUsage } from "../images/image-store.js";
 import type { StatsRecorderHandle } from "../stats/recorder.js";
 import { STATS_LIVE_DIR, STATS_POSTS_DIR, STATS_RECORDING_DIR } from "../stats/store.js";
-import type { FansPollerHandle } from "./fans-poller.js";
 import { measureTree } from "./generation-usage.js";
+import type { ProfileRefreshHandle } from "./profile-refresh.js";
 import { type DataRootKey, dataPath, hostPath } from "./roots.js";
 
 /** 能整类清空的四类,也是 `DELETE /api/system/storage/:category` 认的全部键(别的一律 400)。 */
@@ -117,8 +117,8 @@ export interface StorageUsage {
 export interface StorageClearOptions extends StorageUsageOptions {
 	/** 统计记录器(整类清空经它各键的写队)。 */
 	statsRecorder: Pick<StatsRecorderHandle, "clear">;
-	/** 粉丝轮询(开机之后才有,所以是现取);清完让它手里的快照不再用旧数。 */
-	fansPoller: () => Pick<FansPollerHandle, "reset"> | null;
+	/** 资料刷新(开机之后才有,所以是现取);清完让它手里的快照不再用旧数。 */
+	profileRefresh: () => Pick<ProfileRefreshHandle, "reset"> | null;
 	/** 作废统计总览的缓存。 */
 	invalidateStatsOverview: () => void;
 	historyStore: Pick<HistoryStore, "clear">;
@@ -221,7 +221,7 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 				const before = await statsBytes();
 				// 删文件经记录器各键的写队;最后通知两处缓存。
 				await opts.statsRecorder.clear();
-				await opts.fansPoller()?.reset();
+				await opts.profileRefresh()?.reset();
 				opts.invalidateStatsOverview();
 				return Math.max(0, before - (await statsBytes()));
 			}

@@ -62,13 +62,13 @@ function look(): Record<string, boolean> {
 	};
 }
 
-vi.mock("../runtime/fans-poller.js", async (importOriginal) => {
-	const real = await importOriginal<typeof import("../runtime/fans-poller.js")>();
+vi.mock("../runtime/profile-refresh.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../runtime/profile-refresh.js")>();
 	return {
 		...real,
-		startFansPoller: (opts: Parameters<typeof real.startFansPoller>[0]) => {
+		startProfileRefresh: (opts: Parameters<typeof real.startProfileRefresh>[0]) => {
 			probe.atPoller = look();
-			return real.startFansPoller(opts);
+			return real.startProfileRefresh(opts);
 		},
 	};
 });

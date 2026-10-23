@@ -165,10 +165,10 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 
 	/**
 	 * Server-owned cachedProfile seed on create. cachedProfile is a B-station
-	 * mirror owned by the server (FansPoller), not client-supplied display data
+	 * mirror owned by the server (ProfileRefresh), not client-supplied display data
 	 * — so on a brand-new sub we fetch it once ourselves instead of trusting /
 	 * peeling whatever the frontend POSTed (Zod strips it anyway). Best-effort:
-	 * any failure just leaves it for the first FansPoller tick (~2min). Skipped
+	 * any failure just leaves it for the first ProfileRefresh tick (~2min). Skipped
 	 * when a cachedProfile already exists (re-POST / edit) to bound the call.
 	 */
 	async function seedCachedProfile(sub: Subscription): Promise<void> {

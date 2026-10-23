@@ -71,7 +71,7 @@ function makeDeps(f: Fixture): RouteDeps {
 							f.liveSubscriptions?.includes(id) ? { subscriptionId: id } : undefined,
 					}
 				: null,
-			fansPoller: f.fansEntries
+			profileRefresh: f.fansEntries
 				? {
 						getLastEntries: () =>
 							f.fansEntries?.map((e) => ({ subscriptionId: subId(e.uid), ...e })),

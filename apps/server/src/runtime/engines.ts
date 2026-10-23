@@ -25,11 +25,13 @@ import type {
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
+	CreatorProfileReport,
 	DeliveryResult,
 	Disposable,
 	EffectiveSubscription,
 	FeatureKey,
 	GlobalConfig,
+	Identity,
 	ImageRef,
 	LinkPreviewPolicy,
 	LinkPreviewSettings,
@@ -134,6 +136,8 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	readonly muteState: MuteState;
 	readonly subscriptionStore: SubscriptionStore;
+	/** 经同一来源串行闸取资料:资料刷新与女仆回落共用这一口。 */
+	fetchProfile(identity: Identity, signal?: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	readonly commentary: CommentaryGenerator | null;
 	/** 只给测试世界挂假点评用。 */
 	setCommentary(commentary: CommentaryGenerator | null): void;
@@ -346,6 +350,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const coreLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
 	/** 宿主调来源的串行闸:搜人与查直播状态共用,同一个来源一次只有一个调用在途。 */
 	const sourceGates = createSourceGates();
+	const fetchProfile = (identity: Identity, signal?: AbortSignal) =>
+		fetchSourceProfile(
+			{ sources: opts.sources, logger: log, gates: sourceGates },
+			identity,
+			signal,
+		);
 	/** 这个来源实现了 `fetchLiveStatus`(核心据此给它的每一场挂周期核对)。 */
 	const hasLiveStatus = (sourceKey: string): boolean =>
 		opts.sources.get(sourceKey)?.fetchLiveStatus !== undefined;
@@ -541,8 +551,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						query,
 					),
 				// 没订阅、停用或还没缓存时,同一份来源闸上按身份向平台查一次;不写资料缓存。
-				fetchProfile: (identity) =>
-					fetchSourceProfile({ sources: opts.sources, logger: log, gates: sourceGates }, identity),
+				fetchProfile,
 				// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
 				liveNow: liveNowReader(),
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
@@ -1153,6 +1162,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push,
 		muteState,
 		subscriptionStore: opts.subscriptionStore,
+		fetchProfile,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,
 		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了,可读这个字段的聊天路由还是拿到 null,

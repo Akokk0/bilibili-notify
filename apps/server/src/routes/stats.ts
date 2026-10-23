@@ -154,12 +154,12 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 在播只看场次引擎手里有没有这一场:两种来源都从同一个中立口认。
 		const isLive = (sub: Subscription): boolean =>
 			deps.runtime.engines?.liveSession(sub.id) !== undefined;
-		// 此刻的粉丝数:B 站取粉丝轮询的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
+		// 此刻的粉丝数:B 站取资料刷新的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
 		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
 		// 右端点不该再往前走。两边没有就回退到样本末值(见成行那里)。
 		// 粉丝轮询的快照按订阅 id 记(一条订阅一行)。拓展的那几行它也有,可这里取资料缓存更直接(同一个数)。
 		const fansBySub = new Map(
-			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.subscriptionId, e]),
+			(deps.runtime.profileRefresh?.getLastEntries() ?? []).map((e) => [e.subscriptionId, e]),
 		);
 		const currentFans = (sub: Subscription): number | undefined =>
 			fromBilibili(sub)

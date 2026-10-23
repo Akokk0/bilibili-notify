@@ -64,7 +64,6 @@ export const BOUNDARIES = [
 			"apps/server/src/routes/cards.ts": 4,
 			"apps/server/src/routes/subscriptions.ts": 2,
 			"apps/server/src/runtime/engines.ts": 1,
-			"apps/server/src/runtime/fans-poller.ts": 2,
 			"apps/server/src/runtime/follow-sync.ts": 2,
 		},
 		reason:

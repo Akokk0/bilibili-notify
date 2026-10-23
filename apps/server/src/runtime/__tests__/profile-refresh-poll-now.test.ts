@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
  * `pollNow`:把粉丝轮询提前到现在(devtools「现在就跑」)。走的就是 cron 到点调的那个
  * tick;上一轮还在跑就跳过(与 cron 撞上一样),回 false。
  */
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -24,14 +25,14 @@ const SUB = {
 	enabled: true,
 } as never;
 
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 afterEach(() => {
 	handle?.dispose();
 	handle = undefined;
 });
 
 function start(fetchRelationStat: ReturnType<typeof vi.fn>) {
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
@@ -69,7 +70,7 @@ function start(fetchRelationStat: ReturnType<typeof vi.fn>) {
 	return handle;
 }
 
-describe("fans poller pollNow", () => {
+describe("profile refresh pollNow", () => {
 	it("立刻跑一轮:拉每个启用订阅的粉丝数,promise 在这一轮结束时落定", async () => {
 		const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
 		const h = start(fetchRelationStat);

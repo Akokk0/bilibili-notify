@@ -51,7 +51,6 @@ import { bindTextSettings } from "./i18n/bind-settings.js";
 import { i18n } from "./i18n/index.js";
 import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
-import { createImageFetcher } from "./images/image-fetcher.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
 import { createLinkPreviewer } from "./link-preview/link-previewer.js";
 import { createLinkReplySender } from "./link-preview/link-reply.js";
@@ -80,7 +79,6 @@ import {
 import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
-import { startFansPoller } from "./runtime/fans-poller.js";
 import {
 	listGenerationUsage,
 	removeGeneration,
@@ -101,6 +99,8 @@ import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
 import { browserSubtreeRss } from "./runtime/process-tree.js";
+import { createProfileCacheWriter } from "./runtime/profile-cache.js";
+import { startProfileRefresh } from "./runtime/profile-refresh.js";
 import { createPuppeteerAdapter, type PuppeteerAdapter } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
 import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
@@ -667,7 +667,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
-		// longer exists (deleted while the server was down). FansPoller's
+		// longer exists (deleted while the server was down). Profile refresh's
 		// subscription-changed listener handles deletions made while running.
 		await pruneOrphanSubRuntime(runtime.subRuntimeStore, subBinding.store);
 		// 拓展订阅的头像在图库里、资料缓存里放引用(ADR-0019 决策 49):资料条目丢了,头像就不再有人引用,
@@ -775,7 +775,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionRuntime: runtime.subRuntimeStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-			fans: () => runtime.fansPoller ?? undefined,
+			fans: () => runtime.profileRefresh ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
 			healthCheck: () =>
 				authSystem && {
@@ -1022,23 +1022,31 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 		});
 
-		// 启动 FansPoller — cron 跟 globals.profileRefreshCron,每个 enabled sub
-		// 拉一次 B 站 fans 数,写时序 jsonl + emit `followers-refreshed`。
-		const fansPoller = startFansPoller({
+		// 启动资料刷新 — cron 跟 globals.profileRefreshCron;按在册来源拉资料,
+		// 写资料缓存与粉丝时序,再发 `followers-refreshed`。
+		const profileCache = createProfileCacheWriter({
+			bus: runtime.bus,
+			subRuntime: runtime.subRuntimeStore,
+			images: runtime.profileImages,
+			logger: log,
+		});
+		const profileRefresh = startProfileRefresh({
 			bus: runtime.bus,
 			logger: log,
 			configStore: runtime.configStore,
 			subscriptionStore: subBinding.store,
 			subRuntimeStore: runtime.subRuntimeStore,
 			fansStore: runtime.fansStore,
-			api: authSystem.api,
-			// B 站订阅的头像抓进图库(3a-35):首见种资料与开机冷刷用,引用方是订阅资料这一家。
-			images: createImageFetcher({ http: authSystem.api.http, images: runtime.profileImages }),
+			recorder: runtime.statsRecorder,
+			profileCache,
+			sources: runtime.sourceRegistry,
+			fetchProfile: engines.fetchProfile,
 			serviceCtx: runtime.serviceCtx,
 			isStatsEnabled: runtime.isStatsEnabled,
 		});
-		runtime.attachFansPoller(fansPoller);
-		runtime.serviceCtx.onDispose(() => fansPoller.dispose(), "stop");
+		runtime.attachProfileRefresh(profileRefresh);
+		runtime.serviceCtx.onDispose(() => profileCache.dispose(), "stop");
+		runtime.serviceCtx.onDispose(() => profileRefresh.dispose(), "stop");
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
@@ -1452,7 +1460,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					imageStore: runtime.imageStore,
 					listGenerations: () => listGenerationUsage(generationUsage),
 					statsRecorder: runtime.statsRecorder,
-					fansPoller: () => runtime.fansPoller,
+					profileRefresh: () => runtime.profileRefresh,
 					invalidateStatsOverview: () => statsOverview.invalidate(),
 					historyStore: runtime.historyStore,
 					conversationStore: runtime.conversationStore,

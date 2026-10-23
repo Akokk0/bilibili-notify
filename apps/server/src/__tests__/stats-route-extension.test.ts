@@ -120,7 +120,7 @@ function makeDeps(f: Fixture): RouteDeps {
 									? { subscriptionId: id, extensionId: EXT, detectedAt: NOW - H }
 									: undefined,
 						},
-			fansPoller: f.fansEntries ? { getLastEntries: () => f.fansEntries } : null,
+			profileRefresh: f.fansEntries ? { getLastEntries: () => f.fansEntries } : null,
 		},
 		store: {
 			getSubscriptions: () => [

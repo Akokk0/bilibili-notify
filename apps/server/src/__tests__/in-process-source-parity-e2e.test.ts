@@ -437,6 +437,12 @@ const GROUP_ADDRESS = "88888";
 const AI_REPLY = "测试女仆的点评一句话";
 const ALICE_PROFILE_NAME = "爱丽丝资料名";
 const ALICE_FAN_CLUB_NAME = "爱丽丝资料粉丝团";
+/** alice 的那份资料:既写进存好的缓存,也是假来源被问到她时回的那一份(同一份出处)。 */
+const ALICE_PROFILE = {
+	name: ALICE_PROFILE_NAME,
+	followers: 12_345,
+	fanClubName: ALICE_FAN_CLUB_NAME,
+};
 const HOUR_MS = 3_600_000;
 
 /** 一条纯文字作品。 */
@@ -790,15 +796,15 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			JSON.stringify({
 				[SUB.alice]: {
 					cachedProfile: {
-						name: ALICE_PROFILE_NAME,
-						fans: 12_345,
-						fanClubName: ALICE_FAN_CLUB_NAME,
+						name: ALICE_PROFILE.name,
+						fans: ALICE_PROFILE.followers,
+						fanClubName: ALICE_PROFILE.fanClubName,
 					},
 				},
 			}),
 		);
 
-		resetInProcessWorld();
+		resetInProcessWorld({ knownProfiles: { [EXT.alice]: ALICE_PROFILE } });
 		port = await findFreePort();
 		// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 		handle = await boot(port, { BN_CHROME_PATH: "/fake/chrome" });

@@ -148,7 +148,7 @@ function makeDeps(): RouteDeps {
 		runtime: {
 			engines: null,
 			// B 站的当前粉丝数取轮询快照;只有 b-flat 在快照里(8888),其余回落到样本末值。
-			fansPoller: {
+			profileRefresh: {
 				getLastEntries: () => [
 					{
 						subscriptionId: "b-flat",

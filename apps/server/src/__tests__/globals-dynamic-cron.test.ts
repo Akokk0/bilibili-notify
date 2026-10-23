@@ -3,7 +3,7 @@
  *
  * `dynamicCron` 是 Dashboard 里的自由文本框,此前没有任何格式校验;一条 `cron`
  * 包解析不了的表达式(如漏填字段)能被直接保存进设置文件,下次启动时
- * `DynamicPoller.startJob()` / fans-poller 的 `new CronJob(...)` 同步抛错,把
+ * `DynamicPoller.startJob()` / profile-refresh 的 `new CronJob(...)` 同步抛错,把
  * 整个独立端进程崩穿(见 fix commit 33c56ea 加的运行期 try/catch 防御)。
  * 本测试守的是纵深防御的第一层:写路径直接拒绝非法值,用户在 Dashboard 保存
  * 时就能看到明确报错,而不必等到下次启动才炸。

@@ -68,7 +68,6 @@ export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 33,
 	"apps/server/src/routes/subscriptions.ts": 15,
 	"apps/server/src/runtime/engines.ts": 9,
-	"apps/server/src/runtime/fans-poller.ts": 16,
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"packages/ai/src/tools.ts": 20,
 };

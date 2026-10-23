@@ -1,13 +1,12 @@
 /**
- * ① profileRefreshCron 解耦 + ② 风控熔断。
+ * ① profileRefreshCron 解耦 + ② 单条资料失败不阻断别的订阅。
  *
- * ①:FansPoller 的 cron 取 `globals.profileRefreshCron`(不再复用 dynamicCron)。
- * ②:稳态用 fetchRelationStat 取 follower;某个 UP 命中风控码(-352 等)时立即
- *    **中止本轮 sweep**(不继续刷后面的 UP)并退避,下一 tick 直接跳过 —— 对齐
- *    动态引擎「被限流就别继续敲」的机制。
+ * ①:ProfileRefresh 的 cron 取 `globals.profileRefreshCron`(不再复用 dynamicCron)。
+ * ②:风控与退避归来源;核心收到这一条失败只跳过它,同一来源后面的订阅照刷,
+ *    下一拍也照常再问来源。
  */
 
-import { type GlobalConfig, ok } from "@bilibili-notify/internal";
+import { fail, type GlobalConfig, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
@@ -32,7 +31,7 @@ const cronMock = vi.hoisted(() => {
 });
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 
-const { startFansPoller } = await import("../fans-poller.js");
+const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
@@ -48,6 +47,7 @@ function baseDeps(over: {
 		enabled: boolean;
 	}>;
 	fetchRelationStat: ReturnType<typeof vi.fn>;
+	fetchUserCard?: ReturnType<typeof vi.fn>;
 	rtGet?: ReturnType<typeof vi.fn>;
 }) {
 	const bus = createNodeMessageBus();
@@ -73,7 +73,8 @@ function baseDeps(over: {
 		} as never,
 		api: {
 			fetchRelationStat: over.fetchRelationStat,
-			fetchUserCard: vi.fn(async () => ok({ data: { card: { ...PROFILE, fans: 1 } } })),
+			fetchUserCard:
+				over.fetchUserCard ?? vi.fn(async () => ok({ data: { card: { ...PROFILE, fans: 1 } } })),
 			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {
@@ -98,7 +99,7 @@ afterEach(() => {
 
 describe("① profileRefreshCron 解耦", () => {
 	it("cron 用 profileRefreshCron(动态轮询那条在 B 站自己的设置里,粉丝轮询不碰)", () => {
-		handle = startFansPoller(
+		handle = startMigratedProfileRefresh(
 			baseDeps({
 				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],
 				fetchRelationStat: vi.fn(),
@@ -109,32 +110,32 @@ describe("① profileRefreshCron 解耦", () => {
 	});
 });
 
-describe("② 风控熔断", () => {
-	it("首个 UP 命中 -352 → 中止 sweep,后续 UP 不再请求;下一 tick 直接跳过", async () => {
-		const fetchRelationStat = vi.fn(async (uid: string) =>
-			uid === "1" ? { code: -352, data: null } : { code: 0, data: { follower: 5 } },
+describe("② 单条资料失败", () => {
+	it("一个订阅命中 -352 只跳过它,同来源下一条照刷;下一拍仍然照常问", async () => {
+		const fetchUserCard = vi.fn(async (uid: string) =>
+			uid === "1"
+				? fail("rate_limited", "blocked", { upstreamCode: -352 })
+				: ok({ data: { card: { ...PROFILE, name: "UP2", fans: 5 } } }),
 		);
-		handle = startFansPoller(
+		handle = startMigratedProfileRefresh(
 			baseDeps({
 				subs: [
 					{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true },
 					{ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" }, enabled: true },
 				],
-				fetchRelationStat,
+				fetchRelationStat: vi.fn(),
+				fetchUserCard,
 			}),
 		);
 
 		cronMock.instances[0]?.onTick();
-		// 首个 UP 打了一次(-352),sweep 立即中止 → 第二个 UP(uid=2)永不被请求。
-		await vi.waitFor(() => expect(fetchRelationStat).toHaveBeenCalledTimes(1), {
+		await vi.waitFor(() => expect(fetchUserCard).toHaveBeenCalledTimes(2), {
 			timeout: 2000,
 			interval: 10,
 		});
-		expect(fetchRelationStat.mock.calls.every(([uid]) => uid === "1")).toBe(true);
+		expect(fetchUserCard.mock.calls.map(([uid]) => uid)).toEqual(["1", "2"]);
 
-		// 再驱动一次 tick:仍在退避窗口内 → 整轮跳过,不新增任何请求。
 		cronMock.instances[0]?.onTick();
-		await new Promise((r) => setTimeout(r, 50));
-		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(fetchUserCard).toHaveBeenCalledTimes(4));
 	});
 });

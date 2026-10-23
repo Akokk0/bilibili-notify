@@ -20,11 +20,12 @@ import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createStatsFollowersRoute } from "../../routes/stats-followers.js";
 import type { RouteDeps } from "../../routes/types.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -38,7 +39,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 let dataDir: string;
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-fans-display-"));
@@ -95,7 +96,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 	const patch = vi.fn(async (id: string, p: SubRuntime) => {
 		runtime.set(id, { ...runtime.get(id), ...p });
 	});
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -129,7 +130,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 	});
 	// 开机恢复跑完才会排那个 3s 延时的首 tick —— 等它被排上,恢复就不会和用例的 tick 交错。
 	await vi.waitFor(() => expect(serviceCtx.setTimeout).toHaveBeenCalled());
-	const poller = handle as FansPollerHandle;
+	const poller = handle as ProfileRefreshHandle;
 	return {
 		bus,
 		runtime,
@@ -141,8 +142,8 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 	};
 }
 
-async function getFollowers(h: FansPollerHandle | undefined) {
-	const app = createStatsFollowersRoute({ runtime: { fansPoller: h } } as unknown as RouteDeps);
+async function getFollowers(h: ProfileRefreshHandle | undefined) {
+	const app = createStatsFollowersRoute({ runtime: { profileRefresh: h } } as unknown as RouteDeps);
 	const res = await app.request("/");
 	expect(res.status).toBe(200);
 	return (await res.json()) as { entries: FollowersRefreshEntry[] };

@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
  * 首页粉丝面板也列拓展订阅(ADR-0020 决策 8)。
@@ -23,7 +24,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 粉丝仓用真的(tmpdir):「有没有时序」就是盘上那份文件。
  */
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -37,10 +38,10 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 let dataDir: string;
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 
 beforeEach(async () => {
-	dataDir = await mkdtemp(join(tmpdir(), "bn-fans-poller-ext-"));
+	dataDir = await mkdtemp(join(tmpdir(), "bn-profile-refresh-ext-"));
 });
 afterEach(async () => {
 	handle?.dispose();
@@ -106,7 +107,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		track: vi.fn(),
 		signal: new AbortController().signal,
 	};
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -240,7 +241,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		expect(p.snapshots.at(-1)).toEqual([]);
 	});
 
-	it("B 站条目照旧,多带订阅 id;两支同在一份快照里", async () => {
+	it("在册来源的行与拓展行进同一份快照", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([biliSub("b1", "12345"), extSub("e1", "12345")], {
 			e1: profile(450),
@@ -304,7 +305,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 		expect(p.handle.getLastEntries()).toEqual([]);
 	});
 
-	it("删掉拓展订阅 → 当场撤掉并 emit;它的粉丝文件不归粉丝轮询删(统计的拓展适配删)", async () => {
+	it("删掉拓展订阅 → 当场撤掉并 emit;粉丝文件交给记录器删", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const sub = extSub("e1", "sec-1");
 		const p = await start([sub], { e1: profile(450) });
@@ -315,22 +316,29 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 		p.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: sub as never }] });
 		expect(p.entryOf("e1")).toBeUndefined();
 		expect(p.snapshots.at(-1)).toEqual([]);
-		expect(await exists(join(dataDir, ...FOLLOWERS_DIR, "e1.jsonl"))).toBe(true);
+		await vi.waitFor(async () =>
+			expect(await exists(join(dataDir, ...FOLLOWERS_DIR, "e1.jsonl"))).toBe(false),
+		);
 	});
 
-	it("B 站风控退避期间,拓展条目照样刷新(拓展不问 B 站),B 站不再敲", async () => {
+	it("某个来源这一条失败时,别的来源与拓展行照刷", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([biliSub("b1", "1"), extSub("e1", "sec-1")], {
 			b1: { cachedProfile: { name: "B", sign: "", fans: 1, lastRefreshedAt: "x" } },
 			e1: profile(450),
 		});
-		p.fetchRelationStat.mockResolvedValue({ code: -352, data: null } as never);
+		p.fetchUserCard.mockResolvedValue({
+			ok: false,
+			code: "rate_limited",
+			message: "blocked",
+			upstreamCode: -352,
+		} as never);
 		await p.handle.pollNow();
-		expect(p.fetchRelationStat).toHaveBeenCalledTimes(1);
+		expect(p.fetchUserCard).toHaveBeenCalledTimes(1);
 
 		p.runtime.set("e1", profile(600));
 		await p.handle.pollNow();
-		expect(p.fetchRelationStat).toHaveBeenCalledTimes(1);
+		expect(p.fetchUserCard).toHaveBeenCalledTimes(2);
 		expect(p.entryOf("e1")?.current).toBe(600);
 	});
 });

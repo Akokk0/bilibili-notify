@@ -40,7 +40,7 @@ function makeDeps(opts: StubOpts = {}) {
 				liveSession: (id: string) =>
 					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},
-			fansPoller: {
+			profileRefresh: {
 				getLastEntries: () => [{ subscriptionId: "s1", uid: "1", current: state.fans }],
 			},
 			fansStore: { listSamplesSince: async () => [], findNearestBefore: async () => undefined },

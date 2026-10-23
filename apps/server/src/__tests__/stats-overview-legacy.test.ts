@@ -77,7 +77,7 @@ function makeDeps(dataDir: string, uids: string[], liveSubscriptionIds: string[]
 				liveSession: (id: string) =>
 					liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},
-			fansPoller: null,
+			profileRefresh: null,
 		},
 		store: { getSubscriptions: () => bilibili(uids) },
 		puppeteer: null,

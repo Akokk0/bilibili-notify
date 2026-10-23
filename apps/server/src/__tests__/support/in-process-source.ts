@@ -81,6 +81,11 @@ export const LIVE_STATUS_PROBLEM_CODE = "live_status_unavailable";
 export interface InProcessOptions {
 	/** 描述符上的 `postNoun`;不给 = 不声明(对拍里有一行专看缺省叫什么)。 */
 	postNoun?: string;
+	/**
+	 * 来源「上报过资料」的人(按外部 id)。真来源上报的资料与被拉到的资料是同一份,所以 `fetchProfile`
+	 * 对这些人回这一份;没列的人回固定默认值(`资料-<id>`)。
+	 */
+	knownProfiles?: Record<string, Omit<CreatorProfileReport, "avatar">>;
 }
 
 /** 假来源登录口的内存状态机。 */
@@ -293,6 +298,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 			const ctx = probe.ctx;
 			if (!ctx) return fail("unavailable", "假来源还没 start");
 			const stored = await ctx.storeImage(Buffer.from(IN_PROCESS_TIER_ICON_BASE64, "base64"));
+			const known = options.knownProfiles?.[identity.externalId];
+			if (known) return ok({ ...known, ...(stored.ok ? { avatar: stored.ref } : {}) });
 			return ok({
 				name: `资料-${identity.externalId}`,
 				followers: 314,

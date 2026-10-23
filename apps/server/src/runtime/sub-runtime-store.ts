@@ -14,7 +14,7 @@ import { dataPath } from "./roots.js";
  * persisted `Subscription` config.
  *
  * Why this exists: `cachedProfile.fans` / `lastRefreshedAt` get rewritten by
- * `FansPoller` every dynamicCron tick (~2min). When that lived inside
+ * `ProfileRefresh` every dynamicCron tick (~2min). When that lived inside
  * `Subscription` and went through `ConfigStore.patchSubscription`, every tick
  * emitted `config-changed:subscriptions` → SubscriptionStore reseed → whole-
  * array diff → spurious `subscription-changed{update}` → DynamicPoller re-
@@ -32,7 +32,7 @@ import { dataPath } from "./roots.js";
  */
 export interface SubRuntime {
 	/**
-	 * Cached B-station public profile mirror for UI display. FansPoller-owned.
+	 * Cached B-station public profile mirror for UI display. ProfileRefresh-owned.
 	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62),头像存进图库、
 	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
 	 */
@@ -127,7 +127,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 	/** 载入只做一次;`listImageRefs` 等的就是这一次(没载完时被问的人和第一个调 `load` 的等同一件事)。 */
 	let loading: Promise<void> | undefined;
 	// Single private write queue (one key — there is only one file) so concurrent patch/prune
-	// (a FansPoller tick vs. a POST self-seed) never interleave their read-modify-write of the
+	// (a ProfileRefresh tick vs. a POST self-seed) never interleave their read-modify-write of the
 	// whole-file JSON. Errors propagate to the caller without poisoning the queue.
 	const writes = createSerialQueue();
 

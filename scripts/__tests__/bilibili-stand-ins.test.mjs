@@ -78,7 +78,6 @@ export const RATCHET = {
 	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 17(上面直播引擎的子上下文那一处同时消失,再减一)。
 	// 3b-22(20 → 3):B 站直播并进来源、女仆统一读在播表后,只剩关注同步的 `biliLoggedIn` 声明与两处调用。
 	"apps/server/src/runtime/engines.ts": 3,
-	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
 	"apps/server/src/stats/bili-source.ts": 10,
 	"apps/server/src/stats/extension-source.ts": 3,

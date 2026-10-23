@@ -1,12 +1,12 @@
 /**
- * 回归测试 — FansPoller↔SubRuntimeStore 解耦(Bug 1 的真正修复点)。
+ * 回归测试 — ProfileRefresh↔SubRuntimeStore 解耦(Bug 1 的真正修复点)。
  *
- * Bug 1 链:FansPoller 每 tick 经 configStore.patchSubscription 写
+ * Bug 1 链:ProfileRefresh 每 tick 经 configStore.patchSubscription 写
  * cachedProfile.fans → ConfigStore emit config-changed:subscriptions →
  * SubscriptionStore.replaceAll 整数组 diff → 伪 subscription-changed{update} →
  * DynamicPoller 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
  *
- * 修复后 FansPoller 每 tick 改写 subRuntimeStore.patch(独立文件、**无事件**),
+ * 修复后 ProfileRefresh 每 tick 改写 subRuntimeStore.patch(独立文件、**无事件**),
  * configStore 仅被读 getGlobals().profileRefreshCron。本测试用 dynamic-poller.test
  * 同款 `vi.mock("cron")` FakeCronJob 捕获 onTick,手动驱动**恰好一次** tick,
  * 断言:
@@ -43,7 +43,7 @@ const cronMock = vi.hoisted(() => {
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 
 // SUT imported AFTER vi.mock.
-const { startFansPoller } = await import("../fans-poller.js");
+const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
@@ -92,7 +92,7 @@ afterEach(() => {
 	handle = undefined;
 });
 
-describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
+describe("ProfileRefresh 一次 tick — 与 ConfigStore 解耦", () => {
 	it("tick 写 subRuntimeStore.patch,且**绝不**调 configStore.patchSubscription", async () => {
 		const bus = createNodeMessageBus();
 		const patchSubscription = vi.fn(async () => SUB);
@@ -108,7 +108,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		bus.on("config-changed", configChangedSpy);
 		bus.on("subscription-changed", subChangedSpy);
 
-		handle = startFansPoller({
+		handle = startMigratedProfileRefresh({
 			images: fakeProfileImages(),
 			isStatsEnabled: () => true,
 			bus,
@@ -141,7 +141,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 			} as never,
 		});
 
-		// FakeCronJob 已被构造,onTick 即 FansPoller 内部 tick。手动驱动一次。
+		// FakeCronJob 已被构造,onTick 即 ProfileRefresh 内部 tick。手动驱动一次。
 		expect(cronMock.instances).toHaveLength(1);
 		cronMock.instances[0]?.onTick();
 
@@ -164,71 +164,14 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		];
 		expect(id).toBe("sub-1");
 		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", fans: 4242 });
-		// 首见时头像抓进图库:`avatar` 是图库引用,`avatarUrl` 记抓图用的来源地址。
+		// 来源把头像抓进图库后只交引用;来源地址留在来源自己的状态里。
 		expect(payload.cachedProfile).toMatchObject({
 			avatar: PROFILE_IMAGE_REF,
-			avatarUrl: "f.png",
 		});
 		expect(payload.cachedProfile?.lastRefreshedAt).toBeTypeOf("string");
 
 		// (3) 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
 		expect(configChangedSpy).not.toHaveBeenCalled();
 		expect(subChangedSpy).not.toHaveBeenCalled();
-	});
-
-	it("已有 cachedProfile 时:走 relation/stat 取 follower,只写 cachedProfile,不碰 configStore/card", async () => {
-		const bus = createNodeMessageBus();
-		const patchSubscription = vi.fn(async () => SUB);
-		const rtPatch = vi.fn(async () => {});
-		// 既有 runtime:cachedProfile 已 seed
-		const rtGet = vi.fn(() => ({
-			cachedProfile: { name: "旧名", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" },
-		}));
-		const api = makeApi(120);
-
-		handle = startFansPoller({
-			images: fakeProfileImages(),
-			isStatsEnabled: () => true,
-			bus,
-			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
-			configStore: { getGlobals: () => GLOBALS, patchSubscription } as never,
-			subscriptionStore: { list: () => [SUB] } as never,
-			subRuntimeStore: {
-				get: rtGet,
-				getAll: () => ({}),
-				patch: rtPatch,
-				prune: vi.fn(async () => {}),
-				load: vi.fn(async () => {}),
-			} as never,
-			fansStore: {
-				append: vi.fn(async () => {}),
-				findNearestBefore: vi.fn(async () => null),
-				findEarliest: vi.fn(async () => undefined),
-				drop: vi.fn(async () => {}),
-			} as never,
-			api: api as never,
-			serviceCtx: {
-				setTimeout: vi.fn(() => undefined),
-				setInterval: vi.fn(() => undefined),
-				track: vi.fn(),
-				signal: new AbortController().signal,
-			} as never,
-		});
-
-		cronMock.instances[0]?.onTick();
-		await vi.waitFor(() => expect(rtPatch).toHaveBeenCalledTimes(1), {
-			timeout: 2000,
-			interval: 10,
-		});
-
-		expect(patchSubscription).not.toHaveBeenCalled();
-		// 稳态用 relation/stat,不再打 card。
-		expect(api.fetchRelationStat).toHaveBeenCalledWith(SUB.identity.externalId);
-		expect(api.fetchUserCard).not.toHaveBeenCalled();
-		const [, payload] = rtPatch.mock.calls[0] as unknown as [
-			string,
-			{ cachedProfile?: Record<string, unknown> },
-		];
-		expect(payload.cachedProfile).toMatchObject({ name: "旧名", fans: 120 });
 	});
 });

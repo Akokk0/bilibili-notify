@@ -324,7 +324,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 *
 	 * `new CronJob` 对无法解析的表达式**同步抛错**,而 cron 是配置页上的自由文本框
 	 * —— 不 catch 的话一个手滑的表达式能让整个独立端在启动 / reconcile 期崩掉
-	 * (fans-poller 与 dynamic-poller 都为同一件事留过注释)。
+	 * (profile-refresh 与 dynamic-poller 都为同一件事留过注释)。
 	 */
 	function arm(key: string, cron: string, onTick: () => void, label: string): void {
 		try {

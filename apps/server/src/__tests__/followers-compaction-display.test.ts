@@ -23,13 +23,14 @@ import { createFollowersStore, FOLLOWERS_DIR, type FollowersStore } from "../fol
 import { createStatsRoute } from "../routes/stats.js";
 import { createStatsFollowersRoute } from "../routes/stats-followers.js";
 import type { RouteDeps } from "../routes/types.js";
-import { type FansPollerHandle, startFansPoller } from "../runtime/fans-poller.js";
+import { startMigratedProfileRefresh as startProfileRefresh } from "../runtime/__tests__/profile-refresh-support.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import type { ProfileRefreshHandle } from "../runtime/profile-refresh.js";
 import type { SubRuntime } from "../runtime/sub-runtime-store.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { fakeProfileImages } from "./support/profile-images.js";
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 不归 serviceCtx 管;这里 Date 钉在
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 不归 serviceCtx 管;这里 Date 钉在
 // 整点上,它眼下要 10 分钟后才到点,换个「现在」就不一定了 —— 别靠这个。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -172,7 +173,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 		store: { getSubscriptions: () => SUBS },
 		runtime: {
 			engines: null,
-			fansPoller: {
+			profileRefresh: {
 				getLastEntries: () => [
 					{
 						subscriptionId: "b-flat",
@@ -276,7 +277,7 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 		track: vi.fn(),
 		signal: new AbortController().signal,
 	};
-	const handle: FansPollerHandle = startFansPoller({
+	const handle: ProfileRefreshHandle = startProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
@@ -311,7 +312,7 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 		await vi.waitFor(() => expect(serviceCtx.setTimeout).toHaveBeenCalled());
 		await handle.pollNow();
 		const app = createStatsFollowersRoute({
-			runtime: { fansPoller: handle },
+			runtime: { profileRefresh: handle },
 		} as unknown as RouteDeps);
 		const res = await app.request("/");
 		expect(res.status).toBe(200);

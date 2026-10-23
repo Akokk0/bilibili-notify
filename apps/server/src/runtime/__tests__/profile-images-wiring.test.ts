@@ -6,7 +6,7 @@
  * `createAppRuntime`:头像被资料引用着,过了宽限期清扫不删;订阅被丢掉、资料里没了这条,下一轮清扫才收走 ——
  * 这也是订阅删除之后头像文件的去路(没有「删订阅顺手删头像文件」那一步了)。另一条订阅还引用着同一张图时不删。
  *
- * `createAppRuntime` 这一层没人听 `subscription-changed` 去丢资料缓存(那在 `index.ts` 的 FansPoller 和开机的
+ * `createAppRuntime` 这一层没人听 `subscription-changed` 去丢资料缓存(那在 `index.ts` 的 ProfileRefresh 和开机的
  * `pruneOrphanSubRuntime`),所以这里直接用 `prune` 替它丢。
  */
 

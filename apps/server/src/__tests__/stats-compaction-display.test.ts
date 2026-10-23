@@ -119,7 +119,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 		store: { getSubscriptions: () => SUBS },
 		runtime: {
 			engines: null,
-			fansPoller: { getLastEntries: () => [] },
+			profileRefresh: { getLastEntries: () => [] },
 			fansStore: createFollowersStore({ dataRoot: root, logger: silent }),
 			statsStore: statsStoreOf(root),
 			subRuntimeStore: { get: () => undefined },

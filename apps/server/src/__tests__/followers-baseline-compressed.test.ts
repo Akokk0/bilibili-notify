@@ -55,7 +55,7 @@ async function row(days: number, tz: number) {
 		store: { getSubscriptions: () => [SUB] },
 		runtime: {
 			engines: null,
-			fansPoller: { getLastEntries: () => [] },
+			profileRefresh: { getLastEntries: () => [] },
 			fansStore: createFollowersStore({ dataRoot: dataDir, logger: silent }),
 			statsStore: {
 				listPosts: async () => [],

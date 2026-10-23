@@ -227,7 +227,6 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
 	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
-	"apps/server/src/runtime/fans-poller.ts": 3, // 风控码 `-352`、`-412`、`-799`
 	"apps/server/src/runtime/sub-runtime-store.ts": 1, // 订阅运行时里存的 B 站直播间号 `roomId`
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
 };

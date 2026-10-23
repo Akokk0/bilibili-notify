@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
-import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
+import type { ProfileRefreshHandle } from "../profile-refresh.js";
+import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
  * 粉丝轮询与拓展订阅(ADR-0019 决策 12 / 47)。
@@ -12,7 +13,7 @@ import { createNodeMessageBus } from "../message-bus.js";
  *   B 站订阅,拓展订阅的资料缓存就被当成孤儿静默抹掉。
  */
 
-// cron 换成不排程的假货(同 fans-poller-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
+// cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
 vi.mock("cron", () => ({
 	CronJob: class {
@@ -29,7 +30,7 @@ const BILI = {
 } as const;
 const EXT = makeExtensionSubscription({ id: "e1", externalId: "1" });
 
-let handle: FansPollerHandle | undefined;
+let handle: ProfileRefreshHandle | undefined;
 afterEach(() => {
 	handle?.dispose();
 	handle = undefined;
@@ -40,7 +41,7 @@ function start(list: () => unknown[]) {
 	const prune = vi.fn(async (_keep: readonly string[]) => {});
 	const dropUid = vi.fn(async (_uid: string) => {});
 	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
-	handle = startFansPoller({
+	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
@@ -78,8 +79,8 @@ function start(list: () => unknown[]) {
 	return { bus, prune, dropUid, fetchRelationStat, handle };
 }
 
-describe("fans poller × 拓展订阅", () => {
-	it("只问 B 站订阅的粉丝数 —— 外部 id 恰好是同一串数字也不拿去问", async () => {
+describe("profile refresh × 拓展订阅", () => {
+	it("只调在册来源、拓展订阅不调", async () => {
 		const { fetchRelationStat, handle: h } = start(() => [BILI, EXT]);
 		expect(await h.pollNow()).toBe(true);
 		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
@@ -87,19 +88,19 @@ describe("fans poller × 拓展订阅", () => {
 		expect(h.getLastEntries().map((e) => e.identity.externalId)).toEqual(["1"]);
 	});
 
-	it("删掉一条 B 站订阅 → 资料缓存的保留名单里仍有拓展订阅", () => {
+	it("删掉一条 B 站订阅 → 资料缓存的保留名单里仍有拓展订阅", async () => {
 		// 事件到的时候订阅仓已经是删完的样子(config-changed → replaceAll → subscription-changed)。
 		const { bus, prune, dropUid } = start(() => [EXT]);
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: BILI as never }] });
 		expect(prune).toHaveBeenCalledWith(["e1"]);
 		// 粉丝文件按订阅 id 命名(ADR-0020 决策 2 的 🔗),删的是这条订阅的 id,不是 uid。
-		expect(dropUid).toHaveBeenCalledWith("b1");
+		await vi.waitFor(() => expect(dropUid).toHaveBeenCalledWith("b1"));
 	});
 
-	it("删掉一条拓展订阅 → 照样清资料缓存,不碰粉丝时序", () => {
+	it("删掉一条拓展订阅 → 照样清资料缓存,粉丝文件交给记录器删", async () => {
 		const { bus, prune, dropUid } = start(() => [BILI]);
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: EXT }] });
 		expect(prune).toHaveBeenCalledWith(["b1"]);
-		expect(dropUid).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(dropUid).toHaveBeenCalledWith("e1"));
 	});
 });

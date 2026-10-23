@@ -33,7 +33,7 @@ const cronMock = vi.hoisted(() => {
 });
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 
-const { startFansPoller } = await import("../fans-poller.js");
+const { startMigratedProfileRefresh } = await import("./profile-refresh-support.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
@@ -93,7 +93,7 @@ async function start(
 	const findEarliest = vi.fn(async () => over.earliest);
 	const fans = over.fans ?? 4242;
 	const setTimeoutSpy = vi.fn(() => undefined);
-	const poller = startFansPoller({
+	const poller = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
