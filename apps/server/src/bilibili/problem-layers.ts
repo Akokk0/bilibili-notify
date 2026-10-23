@@ -41,7 +41,7 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  */
 export interface ProblemLayers {
 	/**
-	 * 风控:这一路撞了(每次撞都叫,幂等)。路的键:`dynamic`、`live:<uid>`。
+	 * 风控:这一路撞了(每次撞都叫,幂等)。路的键:`dynamic`、`live:<uid>`、`profile`。
 	 * `notify`(必填,调用方必须表态)= 这一路撞上要不要私聊主人。
 	 */
 	reportRisk(path: string, options: { notify: boolean }): void;

@@ -22,6 +22,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZodType } from "zod";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
+import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
 import { deferred } from "../../__tests__/support/track-context.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
@@ -69,14 +70,37 @@ const cronMock = vi.hoisted(() => {
 	}
 	return { instances, FakeCronJob };
 });
+const roomsMock = vi.hoisted(() => ({
+	instances: [] as Array<{
+		opts: { fanClubNames: { set(externalId: string, name: string): void } };
+	}>,
+}));
 // 只换 `CronJob`:动态读者的「能解析」那一道用的是同一个包里的 `CronTime`,要留真的。
 vi.mock("cron", async (importOriginal) => ({
 	...(await importOriginal<typeof import("cron")>()),
 	CronJob: cronMock.FakeCronJob,
 }));
+vi.mock("../live/session/bili-live-rooms.js", () => ({
+	BiliLiveRooms: class {
+		private readonly handles: Array<{ dispose(): void }> = [];
+		constructor(opts: (typeof roomsMock.instances)[number]["opts"]) {
+			roomsMock.instances.push({ opts });
+		}
+		start(source: { onSubscriptionsChanged(fn: () => void): { dispose(): void } }): void {
+			this.handles.push(source.onSubscriptionsChanged(() => {}));
+		}
+		stop(): void {
+			for (const handle of this.handles.splice(0)) handle.dispose();
+		}
+		fetchLiveStatus(): Promise<never> {
+			return Promise.reject(new Error("not used"));
+		}
+	},
+}));
 
 beforeEach(() => {
 	cronMock.instances.length = 0;
+	roomsMock.instances.length = 0;
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -139,6 +163,7 @@ function makeDeps(
 ) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
+	const setFanClubName = vi.fn<(externalId: string, name: string) => void>();
 	const logger = makeLogger();
 	const liveContext = {
 		logger,
@@ -151,6 +176,7 @@ function makeDeps(
 	return {
 		config,
 		setHealthCheckMs,
+		setFanClubName,
 		deps: {
 			problems: {
 				attach: vi.fn(),
@@ -170,7 +196,7 @@ function makeDeps(
 				get: () => undefined,
 				set: () => {},
 			},
-			fanClubNames: { set: () => {} },
+			fanClubNames: { set: setFanClubName },
 			auth: FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
@@ -206,6 +232,7 @@ function makeCtx(
 	const logger = makeLogger();
 	const readers: Array<{ dispose(): void }> = [];
 	const linkResolverDisposed = vi.fn();
+	const state = memoryKeyValueStores("state").store;
 	const registerLinkResolver = vi.fn((_resolver: LinkResolver) => ({
 		dispose: linkResolverDisposed,
 	}));
@@ -236,9 +263,11 @@ function makeCtx(
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 		registerLinkResolver,
+		state,
 	} as unknown as SourceContext;
 	return {
 		ctx,
+		state,
 		registerLinkResolver,
 		linkResolverDisposed,
 		watchers,
@@ -292,6 +321,59 @@ describe("createBiliSource", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toEqual([
 			BILIBILI_GUARD_PROGRAM,
 		]);
+	});
+
+	it("直播取到粉丝牌名:写进这位 UP 的资料状态,原过渡口照旧转交", async () => {
+		const { deps, setFanClubName } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, state } = makeCtx([{ externalId: "1", monitorsLive: true }]);
+		await source.start(ctx);
+
+		roomsMock.instances[0]?.opts.fanClubNames.set("1", "甲牌");
+
+		await vi.waitFor(() => {
+			expect(state.get("profile:1")).toEqual({ fanClubName: "甲牌" });
+		});
+		expect(setFanClubName).toHaveBeenCalledWith("1", "甲牌");
+		await source.stop();
+	});
+
+	it("start 之后 B 站来源的 fetchProfile 接在同一个 API 与资料状态上", async () => {
+		const { deps } = makeDeps();
+		const fetchUserCard = vi.fn(async () =>
+			ok({ data: { card: { name: "阿甲", face: "", sign: "", fans: 7 } } }),
+		);
+		deps.api = { ...deps.api, fetchUserCard } as unknown as Api;
+		const source = createBiliSource(deps);
+		const { ctx, state } = makeCtx([{ externalId: "1" }]);
+		await source.start(ctx);
+
+		const result = await source.fetchProfile(
+			{ sourceKey: "bilibili", externalId: "1" },
+			new AbortController().signal,
+		);
+
+		expect(result).toMatchObject({ ok: true, name: "阿甲", followers: 7 });
+		expect(fetchUserCard).toHaveBeenCalledWith("1");
+		expect(state.get("profile:1")).toEqual({});
+		await source.stop();
+	});
+
+	it("名单去掉一位时,删掉他的 profile 状态", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const roster = [{ externalId: "1" }];
+		const { ctx, state, watchers } = makeCtx(roster);
+		await state.set("profile:1", { fanClubName: "甲牌" });
+		await source.start(ctx);
+
+		roster.splice(0);
+		for (const watcher of watchers) watcher();
+
+		await vi.waitFor(() => {
+			expect(state.get("profile:1")).toBeUndefined();
+		});
+		await source.stop();
 	});
 
 	it("每个来源实例一份描述符,抓图补上的引用不改模块常量", () => {

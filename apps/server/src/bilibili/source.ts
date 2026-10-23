@@ -29,6 +29,7 @@ import { BiliLiveRooms } from "./live/session/bili-live-rooms.js";
 import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
+import { createProfileFetcher } from "./profile.js";
 import { searchBiliCreators } from "./search-creators.js";
 import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
 
@@ -69,6 +70,7 @@ export interface BiliSourceDeps {
 }
 
 export interface BiliSource extends Source {
+	fetchProfile: ReturnType<typeof createProfileFetcher>["fetchProfile"];
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
 }
@@ -138,6 +140,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let lastGuardAttemptAt: number | undefined;
 	let guardFetch: Promise<void> | undefined;
 	let rooms: BiliLiveRooms | undefined;
+	let profileFetcher: ReturnType<typeof createProfileFetcher> | undefined;
 	const superchatAvatarUrls = new Map<string, string>();
 
 	const guardTiers = (): MembershipTier[] => {
@@ -193,6 +196,11 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		descriptor,
 		auth: deps.auth,
 		dynamic: () => engine,
+		fetchProfile(identity, signal) {
+			return profileFetcher
+				? profileFetcher.fetchProfile(identity, signal)
+				: Promise.resolve(fail("unavailable", "bilibili source is not running"));
+		},
 		liveInteractions: {
 			async fetchViewerAvatar(
 				identity: Identity,
@@ -254,7 +262,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				bus: deps.bus,
 				liveContext: deps.liveContext,
 				liveRoomIds: deps.liveRoomIds,
-				fanClubNames: deps.fanClubNames,
+				fanClubNames: {
+					set: (externalId, name) => {
+						profileFetcher?.rememberFanClubName(externalId, name);
+						deps.fanClubNames.set(externalId, name);
+					},
+				},
 				problems: deps.problems,
 				rememberSuperchatAvatar: (viewerId, url) => {
 					superchatAvatarUrls.set(viewerId, url);
@@ -372,8 +385,24 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			// 取设置的把手都在上面,抛了(组装处漏登记)时还没占「已起」;从这里起任何一步抛了都由下面的 catch 复位。
 			started = true;
 			try {
+				profileFetcher = createProfileFetcher({
+					api: deps.api,
+					problems: deps.problems,
+					state: ctx.state,
+					subscriptions: () => ctx.subscriptions(),
+					images: { fetchImage: ctx.fetchImage },
+					logger: ctx.logger,
+					now,
+					setTimeout: deps.setTimeout,
+				});
+				profileFetcher.syncSubscriptions();
 				// 始终挂一次,转给当下的引擎(动态停着时没有引擎,什么都不做)。
-				mine.push(ctx.onSubscriptionsChanged(() => engine?.syncSubscriptions()));
+				mine.push(
+					ctx.onSubscriptionsChanged(() => {
+						profileFetcher?.syncSubscriptions();
+						engine?.syncSubscriptions();
+					}),
+				);
 				// 群里贴的 B 站视频链接归这个来源认;宿主在来源停下时也会撤,这里记着是为了启动失败时自己收拾。
 				mine.push(
 					ctx.registerLinkResolver(
@@ -401,6 +430,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				deps.loginCheck.setHealthCheckMs(0);
 				started = false;
 				sourceCtx = undefined;
+				profileFetcher = undefined;
 				viewerAvatars = undefined;
 				throw err;
 			}
@@ -428,6 +458,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			deps.loginCheck.setHealthCheckMs(0);
 			started = false;
 			sourceCtx = undefined;
+			profileFetcher = undefined;
 			viewerAvatars = undefined;
 			guardFetch = undefined;
 			return Promise.resolve();

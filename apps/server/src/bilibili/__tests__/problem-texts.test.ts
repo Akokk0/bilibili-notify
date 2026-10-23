@@ -10,7 +10,11 @@ describe("PROBLEM_TEXTS · 句子", () => {
 	it("风控:进表的话、恢复句;私聊只看动态那一路", () => {
 		expect(PROBLEM_TEXTS.riskControlled.text()).toBe("账号被风控，暂时访问不了，会隔一阵自动再试");
 		expect(PROBLEM_TEXTS.riskControlled.recovery()).toBe("风控已解除");
-		expect(PROBLEM_TEXTS.riskControlled.notify).toEqual({ dynamic: true, live: false });
+		expect(PROBLEM_TEXTS.riskControlled.notify).toEqual({
+			dynamic: true,
+			live: false,
+			profile: false,
+		});
 	});
 
 	it("拉动态失败:只带错误码,不带原话;只进表", () => {

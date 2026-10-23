@@ -19,7 +19,7 @@ export const PROBLEM_TEXTS = {
 	 * 拉动态被风控私聊;直播预检被拦只进表,等动态那一路也撞上了才补那一句。
 	 */
 	riskControlled: {
-		notify: { dynamic: true, live: false },
+		notify: { dynamic: true, live: false, profile: false },
 		text: () => t("bilibili.problem.riskControlled"),
 		recovery: () => t("bilibili.problem.riskControlledRecovered"),
 	},
