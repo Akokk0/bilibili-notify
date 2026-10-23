@@ -4,11 +4,14 @@ import {
 	type CreatorReader,
 	creatorOf,
 	type LiveNowView,
+	parseCreator,
 } from "@bilibili-notify/ai";
 import {
 	type CreatorCandidate,
+	type CreatorProfileReport,
 	type Failure,
 	fail,
+	type Identity,
 	ok,
 	type Result,
 	type Subscription,
@@ -73,6 +76,8 @@ export function attachReadOnlyTools(
 			sourceKey: string,
 			query: string,
 		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
+		/** 没订阅、停用或还没缓存时,向在册来源取一次资料;不写资料缓存。 */
+		fetchProfile(identity: Identity): Promise<Result<CreatorProfileReport>>;
 		/** 作品与统计的读口(装配处给);不给 = 这两样答「当前不可用」。 */
 		stats?: CreatorStatsReader;
 		liveNow?: LiveNowReader;
@@ -124,15 +129,32 @@ export function attachReadOnlyTools(
 		},
 		async profile(creator) {
 			const sub = subscribedBy(creator);
-			if (!sub) return fail("not_found", CREATOR_READER_TEXTS.notSubscribed(creator));
-			// 只读资料缓存(不出网);没订阅的人回落调来源的 `fetchProfile` 随 3b-24 接上,这一片先答查不到。
-			const cached = stores.subRuntimeStore.get(sub.id)?.cachedProfile;
-			if (!cached?.name) return fail("not_found", CREATOR_READER_TEXTS.profileNotCached(creator));
+			const cached = sub?.enabled ? stores.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
+			if (cached?.name) {
+				return ok({
+					profile: {
+						name: cached.name,
+						...(cached.fans === undefined ? {} : { followers: cached.fans }),
+						...(cached.sign ? { bio: cached.sign } : {}),
+					},
+				});
+			}
+			const identity = parseCreator(creator);
+			if (!identity || !stores.sources.get(identity.sourceKey)) {
+				return fail(
+					"not_found",
+					sub
+						? CREATOR_READER_TEXTS.profileNotCached(creator)
+						: CREATOR_READER_TEXTS.notSubscribed(creator),
+				);
+			}
+			const found = await stores.fetchProfile(identity);
+			if (!found.ok) return found;
 			return ok({
 				profile: {
-					name: cached.name,
-					...(cached.fans === undefined ? {} : { followers: cached.fans }),
-					...(cached.sign ? { bio: cached.sign } : {}),
+					name: found.name,
+					...(found.followers === undefined ? {} : { followers: found.followers }),
+					...(found.bio === undefined ? {} : { bio: found.bio }),
 				},
 			});
 		},

@@ -93,6 +93,8 @@ export function createSourceRegistry(): SourceRegistry {
 				auth: source.auth,
 				// 同 `health`:直接放 `source.searchCreators` 会丢掉 `this`。
 				searchCreators: (query, signal) => source.searchCreators(query, signal),
+				// 同 `searchCreators`:逐成员转发,别丢来源自己的 `this`。
+				fetchProfile: (identity, signal) => source.fetchProfile(identity, signal),
 				// 同上:直接放 `source.fetchLiveStatus` 会丢掉 `this`。没实现就不放这一格(核心据此知道它没有拉取式)。
 				...(fetchLiveStatus
 					? {

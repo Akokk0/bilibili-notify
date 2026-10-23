@@ -1,8 +1,9 @@
+import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { callSource, createSourceGates } from "../call-source.js";
+import { callSource, createSourceGates, fetchSourceProfile } from "../call-source.js";
 
 /**
- * 宿主调来源的公共外壳(搜人与查直播状态共用):超时叫停来源手里的 signal、来源抛了收成约定的失败并记 error,
+ * 宿主调来源的公共外壳(搜人、查直播状态与查资料共用):超时叫停来源手里的 signal、来源抛了收成约定的失败并记 error,
  * 同一来源键的调用一个接一个串行。
  */
 
@@ -135,5 +136,76 @@ describe("createSourceGates", () => {
 		releaseFirst();
 		await Promise.all([first, second, other]);
 		expect(order).toEqual(["a1 start", "b1", "a1 end", "a2"]);
+	});
+});
+
+describe("fetchSourceProfile", () => {
+	const identity = { sourceKey: "acme", externalId: "alice" };
+	const sources = (fetchProfile: (asked: typeof identity, signal: AbortSignal) => unknown) => ({
+		get: (key: string) =>
+			key === identity.sourceKey ? { fetchProfile: fetchProfile as never } : undefined,
+	});
+
+	it("超时 → timeout,并中止来源手里的 signal", async () => {
+		let seen: AbortSignal | undefined;
+		const pending = fetchSourceProfile(
+			{
+				logger,
+				gates: createSourceGates(),
+				timeoutMs: 1000,
+				sources: sources((_identity, signal) => {
+					seen = signal;
+					return new Promise(() => {});
+				}) as never,
+			},
+			identity,
+		);
+		await vi.advanceTimersByTimeAsync(1001);
+		await expect(pending).resolves.toMatchObject({ ok: false, code: "timeout" });
+		expect(seen?.aborted).toBe(true);
+	});
+
+	it("来源抛了 → unavailable,原话只进日志", async () => {
+		const out = await fetchSourceProfile(
+			{
+				logger,
+				gates: createSourceGates(),
+				sources: sources(() => {
+					throw new Error("profile-boom-detail");
+				}) as never,
+			},
+			identity,
+		);
+		expect(out).toMatchObject({ ok: false, code: "unavailable" });
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("profile-boom-detail"));
+	});
+
+	it("同一来源两发串行", async () => {
+		const order: string[] = [];
+		let resolve: () => void = () => {};
+		const firstGate = new Promise<void>((done) => {
+			resolve = done;
+		});
+		let calls = 0;
+		const source = {
+			get: () => ({
+				async fetchProfile(_identity: typeof identity) {
+					calls += 1;
+					const call = calls;
+					order.push(`start-${call}`);
+					if (call === 1) await firstGate;
+					order.push(`end-${call}`);
+					return ok({ name: "爱丽丝" });
+				},
+			}),
+		};
+		const deps = { logger, gates: createSourceGates(), sources: source as never };
+		const first = fetchSourceProfile(deps, identity);
+		const second = fetchSourceProfile(deps, identity);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(order).toEqual(["start-1"]);
+		resolve();
+		await Promise.all([first, second]);
+		expect(order).toEqual(["start-1", "end-1", "start-2", "end-2"]);
 	});
 });

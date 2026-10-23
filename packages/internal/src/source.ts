@@ -110,20 +110,28 @@ export interface SourceHealth {
 }
 
 /**
+ * 来源交的一份创作者资料(`fetchProfile` 交的就是它,字段照 `docs/1.0/data-model.md`)。核心把它写进资料缓存;
+ * 没给的格沿用缓存里原来的。搜人的候选在它上面加一个 `externalId`。
+ */
+export interface CreatorProfileReport {
+	/** 创作者的名字。 */
+	name: string;
+	/** 图库引用;来源先把平台头像抓进图库,再交引用。 */
+	avatar?: ImageRef;
+	/** 简介或签名。 */
+	bio?: string;
+	/** 粉丝数。 */
+	followers?: number;
+	/** 粉丝团名;只有有粉丝团的平台才给。 */
+	fanClubName?: string;
+}
+
+/**
  * `searchCreators` 交的一个候选(最多 10 个)。`externalId` 就是选中后新建订阅用的外部 id;
  * 头像此刻不带(候选头像抓进图库的事等第一个要显示它的读者,第 4 期面板)。
- *
- * 字段照 `docs/1.0/data-model.md`:将来资料上报也要这几格,到时它们收成 `CreatorProfileReport`、
- * 本类型 `extends` 它;现在没有第二个读者,先不造那个类型。
  */
-export interface CreatorCandidate {
+export interface CreatorCandidate extends CreatorProfileReport {
 	externalId: string;
-	name: string;
-	avatar?: ImageRef;
-	bio?: string;
-	followers?: number;
-	/** 粉丝团名;平台没有就缺键。 */
-	fanClubName?: string;
 }
 
 /**
@@ -164,6 +172,13 @@ export interface Source {
 		query: string,
 		signal: AbortSignal,
 	): Promise<Result<{ candidates: CreatorCandidate[] }>>;
+	/**
+	 * 取一个人的资料(必备)。核心按资料刷新 cron 定时调,按 id 取人(女仆查没订阅的人)也是它。头像先抓进图库
+	 * 再交引用;失败回结果形状、不抛:平台上没有这个人了回 `not_found`(核心记成关于那条订阅的问题),其余失败
+	 * 当一时的、下一轮照问;撞了风控整轮刹车是来源自己的事。`signal` 中止(宿主不等了)后来源应尽快收手。
+	 * 核心对同一来源串行调用。
+	 */
+	fetchProfile(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	/**
 	 * 此刻这个人在不在播(拉取式)。实现了它,核心就按每一场的开播时刻各自起算、定时问它:确认还在播、
 	 * 发现已下播(当漏收的下播处理)、重启后认出已经在播的一场、断流等待到期时再核一次。失败回结果形状、

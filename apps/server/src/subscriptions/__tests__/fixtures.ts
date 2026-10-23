@@ -18,7 +18,7 @@ import {
 } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
-import { noCandidates } from "../../__tests__/support/no-candidates.js";
+import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
 import { createIntegrationSettings } from "../../integrations/settings-reader.js";
 import type { ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -130,6 +130,7 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 			{
 				descriptor: { label: "测试", ...descriptor },
 				searchCreators: noCandidates,
+				fetchProfile: noProfile,
 				start: async () => {},
 				stop: async () => {},
 			},
@@ -158,6 +159,7 @@ export const bilibiliLikeSources = (
 		{
 			descriptor: { label: "B 站", membershipPrograms: [program] },
 			searchCreators: noCandidates,
+			fetchProfile: noProfile,
 			liveInteractions: {
 				fetchViewerAvatar: async () => fail("unavailable", "no viewer avatar"),
 				fetchTierIcon: options.fetchTierIcon ?? (async () => fail("unavailable", "no tier icon")),
@@ -185,6 +187,7 @@ export const makeSource = (): FakeSource => {
 	const source: FakeSource = {
 		descriptor: { label: "测试", postNoun: "动态" },
 		searchCreators: noCandidates,
+		fetchProfile: noProfile,
 		started: [],
 		stops: 0,
 		start: vi.fn(async (ctx: SourceContext) => {

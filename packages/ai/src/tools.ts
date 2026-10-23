@@ -93,8 +93,8 @@ export interface CreatorReader {
 		query: string,
 	): Promise<Result<{ candidates: AiCandidateView[] }>>;
 	/**
-	 * 一位**已订阅(启用着)**的人的资料(读缓存,不出网)。`creator` 原样是「来源键:外部 id」。
-	 * 没订阅 / 停用 / 缓存里还没有 = `not_found`。
+	 * 一位创作者的资料。订阅着的读 BN 的资料缓存;没订阅、停用或还没缓存时,现去在册来源查一次。
+	 * `creator` 原样是「来源键:外部 id」;来源不在登记表才是 `not_found`。
 	 */
 	profile(creator: string): Promise<Result<{ profile: AiProfileView }>>;
 	/**
@@ -246,7 +246,7 @@ export const TOOL_DEFINITIONS: OpenAI.ChatCompletionFunctionTool[] = [
 		function: {
 			name: "get_creator_profile",
 			description:
-				"获取一位已订阅的 UP 主的名称、粉丝数、简介（读 BN 缓存的资料，不现去平台上查）。没订阅的人查不到。",
+				"获取一位创作者的名称、粉丝数、简介（订阅着的读 BN 的资料缓存；没订阅的现去平台上查一次）。",
 			parameters: {
 				type: "object",
 				properties: { creator: CREATOR_PARAM },

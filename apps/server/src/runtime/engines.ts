@@ -92,7 +92,11 @@ import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
 } from "../subscriptions/builtin-sources.js";
-import { createSourceGates, fetchSourceLiveStatus } from "../subscriptions/call-source.js";
+import {
+	createSourceGates,
+	fetchSourceLiveStatus,
+	fetchSourceProfile,
+} from "../subscriptions/call-source.js";
 import { platformLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
@@ -536,6 +540,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						sourceKey,
 						query,
 					),
+				// 没订阅、停用或还没缓存时,同一份来源闸上按身份向平台查一次;不写资料缓存。
+				fetchProfile: (identity) =>
+					fetchSourceProfile({ sources: opts.sources, logger: log, gates: sourceGates }, identity),
 				// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
 				liveNow: liveNowReader(),
 				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。

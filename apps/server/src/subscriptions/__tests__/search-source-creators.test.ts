@@ -5,6 +5,7 @@
 
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { noProfile } from "../../__tests__/support/no-candidates.js";
 import { searchSourceCreators } from "../search-source-creators.js";
 
 type Candidates = Result<{ candidates: Array<{ externalId: string; name: string }> }>;
@@ -30,12 +31,14 @@ function depsWith(
 								sourceKey: key,
 								descriptor: { label: sources[key].label },
 								searchCreators: sources[key].searchCreators,
+								fetchProfile: noProfile,
 							},
 				list: () =>
 					Object.entries(sources).map(([key, s]) => ({
 						sourceKey: key,
 						descriptor: { label: s.label },
 						searchCreators: s.searchCreators,
+						fetchProfile: noProfile,
 					})),
 			},
 		},

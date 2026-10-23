@@ -1,6 +1,6 @@
 import { ok, type Source, type SourceAuth } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { noCandidates } from "../../__tests__/support/no-candidates.js";
+import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
 import { createSourceRegistry, listLoginSources } from "../registry.js";
 import { makeIntegration, makeLogger, makeSource, SOURCE_KEY } from "./fixtures.js";
 
@@ -76,6 +76,7 @@ describe("createSourceRegistry", () => {
 		const withHealth: Source = {
 			descriptor: { label: "甲" },
 			searchCreators: noCandidates,
+			fetchProfile: noProfile,
 			start: async () => {},
 			stop: async () => {},
 			health() {
@@ -94,6 +95,7 @@ describe("createSourceRegistry", () => {
 		const registry = createSourceRegistry();
 		const searcher: Source = {
 			descriptor: { label: "甲" },
+			fetchProfile: noProfile,
 			start: async () => {},
 			stop: async () => {},
 			async searchCreators(query) {
@@ -111,6 +113,24 @@ describe("createSourceRegistry", () => {
 		});
 	});
 
+	it("视图带着来源的 fetchProfile(调用时 this 仍是来源自己)", async () => {
+		const registry = createSourceRegistry();
+		const profiler: Source = {
+			descriptor: { label: "甲" },
+			searchCreators: noCandidates,
+			start: async () => {},
+			stop: async () => {},
+			async fetchProfile(identity) {
+				return ok({ name: this === profiler ? identity.externalId : "this 丢了" });
+			},
+		};
+		await registry.register("profile", profiler, ctxOf().ctx);
+		const identity = { sourceKey: "profile", externalId: "alice" };
+		expect(
+			await registry.get("profile")?.fetchProfile(identity, new AbortController().signal),
+		).toEqual(ok({ name: "alice" }));
+	});
+
 	// 验红:`register` 里认领视图时漏掉 `sourceKey`,这条红(`login <键>` 就认不出来源)。
 	it("视图带着登记时认领的键;listLoginSources 只挑带登录口的,键、名字、登录口原样、按登记先后", async () => {
 		const registry = createSourceRegistry();
@@ -123,6 +143,7 @@ describe("createSourceRegistry", () => {
 		const withAuth: Source = {
 			descriptor: { label: "甲" },
 			searchCreators: noCandidates,
+			fetchProfile: noProfile,
 			start: async () => {},
 			stop: async () => {},
 			auth,
@@ -150,6 +171,7 @@ describe("createSourceRegistry", () => {
 		const broken: Source = {
 			descriptor: { label: "测试" },
 			searchCreators: noCandidates,
+			fetchProfile: noProfile,
 			start: () => Promise.reject(new Error("start-boom")),
 			stop: async () => {},
 		};
@@ -192,6 +214,7 @@ describe("createSourceRegistry", () => {
 			const source: Source = {
 				descriptor: { label: "测试" },
 				searchCreators: noCandidates,
+				fetchProfile: noProfile,
 				start: async () => {},
 				stop,
 			};

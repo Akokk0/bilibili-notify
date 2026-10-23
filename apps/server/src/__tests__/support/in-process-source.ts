@@ -13,7 +13,9 @@
 import {
 	type AuthState,
 	type CreatorCandidate,
+	type CreatorProfileReport,
 	fail,
+	type Identity,
 	type ImageRef,
 	type Json,
 	type LiveInteractionReport,
@@ -136,6 +138,10 @@ export interface InProcessProbe {
 	searches: string[];
 	/** 下一次 `searchCreators` 回什么;不摆 = 回两个固定候选。回完不清,测试自己摆回去。 */
 	searchOutcome: Result<{ candidates: CreatorCandidate[] }> | undefined;
+	/** `fetchProfile` 被问到的身份,按先后。 */
+	profileAsked: Identity[];
+	/** 下一次 `fetchProfile` 回什么;不摆 = 回一份固定资料并把小头像存进图库。 */
+	profileOutcome: Result<CreatorProfileReport> | undefined;
 	readonly auth: InProcessAuth;
 }
 
@@ -244,6 +250,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		},
 		searches: [],
 		searchOutcome: undefined,
+		profileAsked: [],
+		profileOutcome: undefined,
 		auth: createAuth(),
 	};
 	const source: Source = {
@@ -277,6 +285,20 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 					],
 				})
 			);
+		},
+		async fetchProfile(identity, signal) {
+			probe.profileAsked.push(identity);
+			if (signal.aborted) return fail("unavailable", "profile request was aborted");
+			if (probe.profileOutcome) return probe.profileOutcome;
+			const ctx = probe.ctx;
+			if (!ctx) return fail("unavailable", "假来源还没 start");
+			const stored = await ctx.storeImage(Buffer.from(IN_PROCESS_TIER_ICON_BASE64, "base64"));
+			return ok({
+				name: `资料-${identity.externalId}`,
+				followers: 314,
+				bio: "现查的来源资料",
+				...(stored.ok ? { avatar: stored.ref } : {}),
+			});
 		},
 		async fetchLiveStatus(identity) {
 			probe.liveStatusAsked.push(identity.externalId);

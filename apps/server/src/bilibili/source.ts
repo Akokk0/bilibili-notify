@@ -70,7 +70,6 @@ export interface BiliSourceDeps {
 }
 
 export interface BiliSource extends Source {
-	fetchProfile: ReturnType<typeof createProfileFetcher>["fetchProfile"];
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
 }

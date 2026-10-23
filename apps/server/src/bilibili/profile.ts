@@ -1,4 +1,5 @@
 import {
+	type CreatorProfileReport,
 	type Disposable,
 	type Failure,
 	fail,
@@ -57,18 +58,7 @@ interface ProfileState {
 }
 
 export function createProfileFetcher(deps: ProfileFetcherDeps): {
-	fetchProfile(
-		identity: Identity,
-		signal: AbortSignal,
-	): Promise<
-		Result<{
-			name: string;
-			avatar?: ImageRef;
-			bio?: string;
-			followers?: number;
-			fanClubName?: string;
-		}>
-	>;
+	fetchProfile(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	rememberFanClubName(externalId: string, name: string): void;
 	syncSubscriptions(): void;
 } {

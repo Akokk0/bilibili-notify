@@ -12,7 +12,7 @@ import type { SourceContext, SourceDescriptor } from "@bilibili-notify/internal"
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { putImage } from "../../__tests__/support/chat-images.js";
-import { noCandidates } from "../../__tests__/support/no-candidates.js";
+import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_REFERRERS } from "../../images/image-referrers.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
@@ -55,6 +55,7 @@ describe("来源声明的图", () => {
 			{
 				descriptor,
 				searchCreators: noCandidates,
+				fetchProfile: noProfile,
 				start: async () => {},
 				stop: async () => {},
 			},

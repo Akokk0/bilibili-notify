@@ -15,7 +15,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { noCandidates } from "../../__tests__/support/no-candidates.js";
+import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
 import { makeIntegration, makeLogger } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { createSourcesRoute } from "../sources.js";
@@ -53,6 +53,7 @@ async function appOf(sources: Record<string, Pick<Source, "auth"> | undefined>) 
 		const source: Source = {
 			descriptor: { label: "测试" },
 			searchCreators: noCandidates,
+			fetchProfile: noProfile,
 			start: async () => {},
 			stop: async () => {},
 			...partial,

@@ -2,7 +2,7 @@
  * 女仆的中立读工具(资料 / 最近作品 / 统计)在服务端的读口实现:`attachReadOnlyTools` 递给生成器的读口上的
  * `profile` / `recentPosts` / `stats`,与它背后的统计读口 `createCreatorStatsReader`。
  *
- * 钉住的是:按 `creator`(来源键:外部 id)找**启用着的**订阅,没订阅 / 停用的一律 `not_found`;资料只读缓存;
+ * 钉住的是:按 `creator`(来源键:外部 id)找**启用着的**订阅;资料优先读缓存,来源没接上时 `not_found`;
  * 作品与统计在统计总开关关着时回 `not_configured`(资料不受总开关管:缓存本来就在);统计走真的统计仓与
  * 总览读口的一行。
  */
@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 import { makeEmptySubscription, type Result } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { noProfile } from "../../__tests__/support/no-candidates.js";
 import { createStatsStore, type StatsStore } from "../../stats/store.js";
 import { createCreatorStatsReader } from "../creator-stats.js";
 import { attachReadOnlyTools } from "../read-only-tools.js";
@@ -49,6 +50,7 @@ function readerOf(opts: {
 			platformLabel: (key: string) => key,
 			sources: { get: () => undefined },
 			searchCreators: async () => ({ ok: true, candidates: [] }),
+			fetchProfile: (identity) => noProfile(identity, new AbortController().signal),
 			...(opts.stats ? { stats: opts.stats } : {}),
 		},
 	);
@@ -75,8 +77,8 @@ describe("reader.profile —— 只读资料缓存", () => {
 		});
 	});
 
-	// 验红:去掉启用着的判断(把停用的也答出来),第二条红。
-	it("没订阅的人、停用的订阅 → not_found;缓存里还没有这个人 → not_found(回落调来源随 3b-24)", async () => {
+	// 验红:让停用订阅的缓存也答出来,第二条红。
+	it("没订阅的人、停用的订阅、来源不在登记表 → not_found", async () => {
 		const reader = readerOf({ profiles: { "sub-bob": { name: "停用的" } } });
 		expect(await reader.profile("acme:nobody")).toMatchObject({ ok: false, code: "not_found" });
 		expect(await reader.profile("acme:bob-ext")).toMatchObject({ ok: false, code: "not_found" });

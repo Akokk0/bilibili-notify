@@ -151,7 +151,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P36)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P37)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N03、N04、N07、N10、N11、N12,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -238,6 +238,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		id: "P36",
 		title:
 			"live-session-changed、live-viewers-changed 按订阅 id、WS 帧与在播列表里没有 uid / roomId",
+		checked: true,
+	},
+	{
+		id: "P37",
+		title:
+			"get_creator_profile 对没订阅的人回落调 fetchProfile:identity 原样递给来源、名字粉丝简介喂回模型;订阅着且有缓存的不问来源;来源回失败,话原样喂回",
 		checked: true,
 	},
 	{
@@ -331,6 +337,7 @@ const SOURCE_MEMBERS = {
 	stop: ["P18"],
 	auth: ["P16"],
 	searchCreators: ["P26"],
+	fetchProfile: ["P37"],
 	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
@@ -2416,6 +2423,50 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P36");
 	});
 
+	// 验红:`read-only-tools.ts` 的 profile 回落不调来源,第一段红;订阅着且有缓存的也调来源,第二段红。
+	it("P37 fetchProfile 经女仆的资料工具:没订阅的人 identity 原样递给来源、资料喂回;订阅着有缓存的不问来源;来源回失败时话原样喂回", async () => {
+		const probe = currentProbe();
+		probe.profileAsked.length = 0;
+		try {
+			const ghost = "ghost-ext";
+			const found = await askMaid({
+				name: "get_creator_profile",
+				args: { creator: `${IN_PROCESS_KEY}:${ghost}` },
+			});
+			expect(probe.profileAsked).toEqual([{ sourceKey: IN_PROCESS_KEY, externalId: ghost }]);
+			expect(found.seen).toContain(`资料-${ghost}`);
+			expect(found.seen).toContain("314");
+			expect(found.seen).toContain("现查的来源资料");
+			expect(found.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_profile", ok: true }),
+			]);
+
+			probe.profileAsked.length = 0;
+			const cached = await askMaid({
+				name: "get_creator_profile",
+				args: { creator: `${IN_PROCESS_KEY}:${EXT.alice}` },
+			});
+			expect(probe.profileAsked).toEqual([]);
+			expect(cached.seen).toContain(ALICE_PROFILE_NAME);
+			expect(cached.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_profile", ok: true }),
+			]);
+
+			probe.profileOutcome = fail("rate_limited", "对拍源查资料被风控了");
+			const limited = await askMaid({
+				name: "get_creator_profile",
+				args: { creator: `${IN_PROCESS_KEY}:${ghost}` },
+			});
+			expect(limited.seen).toContain("对拍源查资料被风控了");
+			expect(limited.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_profile", ok: false }),
+			]);
+		} finally {
+			probe.profileOutcome = undefined;
+		}
+		drove("P37");
+	});
+
 	// 验红:`external-id.ts` 的核法改成永远放行,第一段红(不合格式的被收进了下一道闸,回的不是 invalid)。
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
@@ -2771,13 +2822,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 36 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(46);
+	it("PARITY_ROWS:对拍 37 行、不开 10 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(47);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 36 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 37 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;编号不回填。

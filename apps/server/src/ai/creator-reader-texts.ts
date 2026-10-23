@@ -3,7 +3,7 @@ export const CREATOR_READER_TEXTS = {
 	/** 没订阅 / 停用:读缓存类的工具只答订阅着的人。 */
 	notSubscribed: (creator: string): string =>
 		`「${creator}」不在订阅里（没订阅，或订阅已停用），这把工具只答订阅着的人`,
-	/** 订阅着,但资料缓存里还没有(第一次拉资料前;没订阅的人回落去平台上查随 3b-24)。 */
+	/** 订阅着,但资料缓存里还没有,而他所属的来源又不在登记表里。 */
 	profileNotCached: (creator: string): string => `BN 手里还没有「${creator}」的资料缓存`,
 	/** 数据统计总开关关着:去设置里打开。 */
 	statsOff: "数据统计没开，BN 没在记作品和涨粉，请主人到设置里打开数据统计",

@@ -69,6 +69,7 @@ function makeStores(
 		platformLabel: (sourceKey: string) => platformLabels[sourceKey] ?? sourceKey,
 		searchCreators: async (): Promise<Result<{ candidates: CreatorCandidate[] }>> =>
 			ok({ candidates: [] }),
+		fetchProfile: async () => fail("not_found", "没有资料"),
 		sources: {
 			get: (sourceKey: string) =>
 				descriptors[sourceKey] === undefined ? undefined : { descriptor: descriptors[sourceKey] },
@@ -228,6 +229,85 @@ describe("attachReadOnlyTools — 搜人", () => {
 			"y",
 		);
 		expect(out).toEqual({ ok: false, code: "not_found", message: "没有这个来源" });
+	});
+});
+
+describe("attachReadOnlyTools — 没订阅的人回落查资料", () => {
+	function profileReader(options: {
+		subscriptions?: Subscription[];
+		cached?: Record<string, { name?: string; fans?: number; sign?: string }>;
+		registered?: boolean;
+		fetchProfile: Parameters<typeof attachReadOnlyTools>[1]["fetchProfile"];
+	}) {
+		const setCreatorReader = vi.fn();
+		const write = vi.fn();
+		const subRuntimeStore = {
+			get: (id: string) =>
+				options.cached?.[id] ? { cachedProfile: options.cached[id] } : undefined,
+			set: write,
+		};
+		attachReadOnlyTools(
+			{ setCreatorReader },
+			{
+				...makeStores(options.subscriptions ?? []),
+				subRuntimeStore,
+				fetchProfile: options.fetchProfile,
+				sources: {
+					get: (sourceKey) =>
+						options.registered ? { descriptor: { label: sourceKey } } : undefined,
+				},
+			},
+		);
+		const reader = setCreatorReader.mock.calls[0]?.[0] as {
+			profile(creator: string): Promise<Result<{ profile: Record<string, unknown> }>>;
+		};
+		return { reader, write };
+	}
+
+	it("没订阅的人在册来源 → 按原身份查一次,交名字、粉丝数、简介,不写缓存", async () => {
+		const fetchProfile = vi.fn(async () =>
+			ok({ name: "爱丽丝", followers: 12, bio: "简介", fanClubName: "不该喂回模型" }),
+		);
+		const { reader, write } = profileReader({ registered: true, fetchProfile });
+		expect(await reader.profile("acme:alice-ext")).toEqual({
+			ok: true,
+			profile: { name: "爱丽丝", followers: 12, bio: "简介" },
+		});
+		expect(fetchProfile).toHaveBeenCalledOnce();
+		expect(fetchProfile).toHaveBeenCalledWith({ sourceKey: "acme", externalId: "alice-ext" });
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	it("订阅着且缓存有名字 → 答缓存,不问来源", async () => {
+		const sub = makeSubscription({ uid: "alice-ext" });
+		const fetchProfile = vi.fn();
+		const { reader } = profileReader({
+			subscriptions: [sub],
+			cached: { [sub.id]: { name: "缓存里的爱丽丝" } },
+			registered: true,
+			fetchProfile,
+		});
+		expect(await reader.profile("bilibili:alice-ext")).toEqual({
+			ok: true,
+			profile: { name: "缓存里的爱丽丝" },
+		});
+		expect(fetchProfile).not.toHaveBeenCalled();
+	});
+
+	it("来源回的失败码与话原样交给模型", async () => {
+		const failure = fail("rate_limited", "平台让稍后再查");
+		const { reader } = profileReader({ registered: true, fetchProfile: async () => failure });
+		expect(await reader.profile("acme:alice-ext")).toBe(failure);
+	});
+
+	it("来源不在登记表 → 照旧查不到,不调回落", async () => {
+		const fetchProfile = vi.fn();
+		const { reader } = profileReader({ registered: false, fetchProfile });
+		expect(await reader.profile("acme:alice-ext")).toMatchObject({
+			ok: false,
+			code: "not_found",
+		});
+		expect(fetchProfile).not.toHaveBeenCalled();
 	});
 });
 
