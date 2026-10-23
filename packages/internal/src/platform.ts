@@ -257,9 +257,9 @@ export interface BusEvents {
 	 */
 	"extension-stopped": { extensionId: string };
 	/**
-	 * 一轮 FansPoller 完成后 emit(拓展订阅报了新的粉丝数时也会,见 `runtime/fans-poller.ts`)。entries
-	 * 是首页粉丝面板的整份快照:启用着的 B 站订阅(本轮采样到的)与**有粉丝时序**的拓展订阅(ADR-0020
-	 * 决策 8),各带当前 fans + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
+	 * 一轮资料刷新完成后 emit(新建订阅单条刷新后、拓展订阅报了新的粉丝数时也会,见
+	 * `runtime/profile-refresh.ts`)。entries 是首页粉丝面板的整份快照:在册来源启用着的订阅与**有粉丝
+	 * 时序**的拓展订阅(ADR-0020 决策 8),各带当前粉丝数 + 三个窗口(订阅起点 / 24h / 7d)的 delta。前端 setQueryData
 	 * 全量覆盖 ["stats", "followers"] 缓存。delta 字段为 null 表示窗口内没有可用基线/样本。
 	 */
 	"followers-refreshed": { entries: FollowersRefreshEntry[] };

@@ -22,6 +22,7 @@
     - 「最近作品小缓存」并进统计仓。（10-06 订正：代码里没有这样一个缓存，见决策 14。）
     - 理由：以后想拓展统计有数据可用；估算 50 条订阅一年约 20MB。
 5. **外部 id 的叫法**：`SourceDescriptor` 加 `externalIdNoun?`（B 站「UID」）；身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」，由一个函数生成；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
+    - 🔗 10-23（3b-24）：`externalIdNoun` 与身份标签函数已落成，服务端显示已按描述符拼；面板那一列与「复制 UID」仍归第 4 期。
 6. **面板只从描述符拿来源的信息**：
     - 描述符新加 `icon?` 与 `featureHints?`（唯一允许写自由文字的一格）；`MembershipTier` 加 `color?`（面板与出图共读，面板自己的档位色表删掉）；`LinkResolver` 补 `label`。
     - 能推导的就推导：会员那行小字取档名，下播那行取挂在下面的附加项；「词云与总结只有 B 站有」改看 `supportedExtras`。

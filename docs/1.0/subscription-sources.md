@@ -37,14 +37,14 @@ interface SourceHealth { summary: string }
 | `descriptor` | 是 | 面板、锐评、模板随时读 | 见下一节 |
 | `start` / `stop` | 是 | 开机、关停、拓展启停 | `start` 拿到 ctx；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾。`start` 期间读设置失败可以抛错中止启动（生命周期闸，唯一的例外），宿主接住记成 `settings-invalid`，见「设置」。🔗 3a-39：内置来源这一支没造（读设置回结果、不抛，哪样读不懂停哪样），拓展照旧 |
 | `searchCreators` | 是 | 新建订阅弹窗打字时 | 「解析门」：输入框里是链接、id 还是名字都原样交进来，来源自己认；最多回 10 个 `CreatorCandidate`。失败回结果形状、不再靠抛：风控 `rate_limited`、没登录 `unauthorized`，文案由来源给、原话到面板；面板按 `code` + `message` 读一处（今天风控和没登录都报成 404） |
-| `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉 |
+| `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉。🔗 10-23（3b-24）：已落成必备成员，核心经 `fetchSourceProfile` 统一处理超时、抛错、来源消失与中止；B 站已实现 |
 | `auth` | 否 | 系统 → 账号、`login` 指令 | 见「登录与账号」 |
 | `fetchLiveStatus` | 否 | 核心按场次定时调 | 已落（3b-22）：返回结果形状，成功分 `live` / `offline`，失败时核心只跳过这一轮，见「直播」 |
 | `liveInteractions` | 否 | 出卡时 | 已落（3b-22）：类型是 `LiveInteractionReader`；只有 `fetchViewerAvatar` / `fetchTierIcon` 两个懒取口，直播互动本身经 `reportLiveInteraction` 上报 |
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
 | `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
 
-`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3b-22，10-21）：代码里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`），`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
+`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3b-22，10-21）：代码里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`），`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。🔗 现状（3b-24，10-23）：代码里已有 9 个成员，新增了必备的 `fetchProfile`；只剩 `fetchPreview` 归第 4 期。
 
 新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
@@ -58,7 +58,7 @@ interface SourceDescriptor {
   icon?: string;                   // 平台图标，对齐推送侧 PlatformDescriptor.icon
   postNoun?: string;               // 这个平台管作品叫什么；缺省「作品」，B 站「动态」
   creatorNoun?: string;            // 这个平台管创作者叫什么；缺省「创作者」，B 站「UP主」
-  externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」
+  externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」（🔗 10-23（3b-24）已落，宿主已认；拓展清单仍未收）
   externalIdRegex?: string;        // 外部 id 长什么样（正则源码，整串匹配）；核心核订阅身份与特别关注名单的 id；B 站纯数字；不声明只做中立校验
   searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」
   supportedFeatures: FeatureKey[]; // 支持哪些特性（开关、规则节按它铺）；订阅上「开没开」才叫 features
@@ -78,7 +78,7 @@ interface MembershipTier {
 - 特性开关、附加项、规则节、平台徽章、CSV 平台列、锐评平台名全从 descriptor 取，逐项对照见下一节。
 - B 站那一行的平台徽章，只在装了第二个订阅源时才画。
 - `icon` 的取值怎么解释（面板图标库里的名字还是一张图；拓展加不了图标库的名字），施工时定。
-- **外部 id**：身份标签写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」，由一个函数生成（显示名链 `displayNameOf` 的最后一环）；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
+- **外部 id**：身份标签写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」，由一个函数生成（显示名链 `displayNameOf` 的最后一环）；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：`subscriptionIdentityLabel` 与 `displayNameOf` 已在 contract 落成，服务端叫法已按描述符拼；面板那一列与「复制 UID」仍归第 4 期。
 - `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。🔗 现状（3a-42，10-12）：模板变量 `{postNoun}` 3a 还没做（`posts/deliver-post.ts` 里套作品文案只传 `{name}`）；核心里读来源上报的 `postNoun` 的是拼 AI 提示词那一处（同一个文件），它的缺省原先在代码里还是「动态」，3a-42 对拍查出后改成「作品」，与这里一致（没声明 `postNoun` 的拓展的提示词因此变了，B 站来源自己声明「动态」不变）。面板自己的特性标签另走拓展清单的 `display.postNoun`，这一片没动。🔗 现状（3b-21，2026-10-19）：3b-21 已做（默认作品文案用 `{postNoun}`，来源没声明叫法填「作品」）。
 - 特别关注这项设置只在 `supportedFeatures` 含 `viewerChat` 或 `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`）时露出。
 - `creatorNoun` 与 contract 里的叫法函数这一期（3b）造，提示词里的 `{creatorNoun}` / `{postNoun}` / `{sources}` 按 ADR-0030 决策 3 全做；面板上的叫法仍第 4 期。
@@ -107,6 +107,8 @@ interface MembershipTier {
 | 露出哪些附加项（词云、总结）；「词云与总结只有 B 站有」这类小贴士也改看它（`BILI_ONLY_EXTRAS` 删掉） | `supportedExtras` | 不露 |
 | 特性开关下的小字 | `featureHints`（B 站写回「投稿 / 转发 / 专栏」「Super Chat 提醒」） | 能推导的推导：会员行 = 档名连起来，下播行 = 「下播卡片」加上挂在下面、且 `supportedExtras` 里有的附加项名；其余用核心的中性默认（「开播提醒」「醒目留言提醒」…） |
 | 会员：档名、档序、档色，每档文案与图片设置，`{tier}` 的说明，卡片页示例 | `membershipPrograms[].tiers[]` 的 `name` `rank` `icon` `announcement` `color`；体系名做规则节标题 | 没有会员体系，整节不露 |
+
+🔗 10-23（3b-24）：上表「外部 id」一行服务端已按 `externalIdNoun` 拼身份标签；面板列与「复制 UID」仍归第 4 期随 `/api/sources` 收。
 
 面板的档位色表 `guard-levels.ts` 删掉，色表搬进 `bilibili/` 的描述符。
 
@@ -331,6 +333,8 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 头像：来源先 `ctx.fetchImage` 抓进图库，再交 `ImageRef`。B 站在 `bilibili/` 里带 Referer 下载，图链没变不重抓。面板一律走同源地址、出卡一律从本地内联，删掉 `no-referrer` 绕行。
 - 动态轮询不在此列：B 站拉的是整条关注流，没法按订阅逐个拉。
 
+🔗 10-23（3b-24）：资料刷新引擎已落成（`runtime/profile-refresh.ts`），按 `profileRefreshCron` 经来源 `fetchProfile` 刷新启用中的订阅；同来源串行、不同来源并行。粉丝轮询已并入资料刷新，核心写资料缓存、记粉丝样本并发 `followers-refreshed`。
+
 **统计只记开着的**：单个订阅开了作品开关才记作品，开了直播类开关才记场次；关了就不查也不记（ADR-0027 决策 1）。
 
 **「在记」按特性分**（ADR-0027 决策 2），核心自己算：
@@ -497,6 +501,6 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **补关注**（BN → B 站单向）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次。整份名单先批量查关系、只补缺的（稳态写请求为零）；失败按「问题上报」报 `follow_failed`。登录态失效时跳过；批量查询回 -101 按「没登录」整批跳过，订阅卡上的关注状态不动，等登录恢复再跑；其他失败码仍走降级。停用的订阅不在名单里，自然不补；从停用改回启用时名单变化，那一轮就补上。
   - 🔗 **10-11 3a-31（主人定）**：关注只为从关注流里拉到动态，所以**只对启用中、且作品开关开着的订阅做**，只开直播的订阅不查也不补；开关从关到开（订阅被启用、订阅自己的作品开关打开、全局作品开关打开）时补一次；BN 只补关注、从不取关，从开到关、停用什么都不做；订阅卡上只开直播的订阅不再显示「未关注」。**这是今天的现状，不是上面那句设计的落成**：关注同步还没搬进 `bilibili/`，今天住 `runtime/follow-sync.ts` 与引擎装配（`runtime/engines.ts`：开机、登录恢复、开关翻开三处触发，不挂在 `onSubscriptionsChanged` 上），整个搬进 B 站来源、用来源上下文的名单自己算差集，没有单独的片认领（construction-plan 里「补关注 -101 整批跳过」「开机关注同步不发事件」两行顺带记着 3b），细节见 `docs/agents/subscriptions.md`「关注同步」一条。搬进 B 站之后（3b-25）：补关注在「订阅名单变了」的回调里异步做，失败报 `follow_failed`（见「问题上报」）。
 - **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来；分期见 [construction-plan.md](./construction-plan.md)）。ticket 请求和别的请求用同一个身份：原先固定用默认 UA 的特例删掉（建仓时从老插件原样搬来，没有留下理由）。
-- **B 站返回码的翻译表**：B 站在 `bilibili/` 里有一张共用的「数字码 → 标准码」表，请求层在接口回来时查一次，翻成 `fail(标准码, 原话, { upstreamCode })`：`-352`、`-412`、`-799`、`-509` → `rate_limited`；`-101` → `unauthorized`；`-403` 不进共用表，由用到它的接口自己判（也可能是真没权限，如受限直播间）；没对照的码 → `unknown`，原码进 `upstreamCode`，每个进程第一次撞上记一条 warn。各轮询把 `unknown` 当一时失败、下一轮照拉、只进表不私聊。cookie 续期只在 `unauthorized` 时登出，`unknown` 下一轮再试（死会话由普通请求撞 `-101` 时登出）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表不私聊。🔗 3b-18 落成（拉动态、直播预检、上舰观众头像、cookie 续期）：纯函数 `failureFromBili`（`bilibili/error-codes.ts`）造「标准码 + 原话 + `upstreamCode`」，请求层 `Api.resultOf` 查一次，回应不是对象或没有数字 `code` 回 `unavailable`（不是 `unknown`，失败规矩第 6 条）；表外码的 warn 是每个 `Api` 实例（集成重启会新建）每个码一次。拉动态的 `-412` / `-799` / `-509` 从此是风控（进表并私聊）。cookie 续期的探测、刷新、确认三步只有 `unauthorized` 登出，别的失败跳过本轮、闸留着。直播预检：`rate_limited`（含持续 `-352`）走长尾重试、不判受限房；`-403` 与表外码仍当受限房（B 站对加密 / 付费 / 测试房回什么码没核，靠请求层的 warn 取证）；`unauthorized` 与 `unavailable` 当「弹幕连接没建起来」。上舰观众头像撞限流后 5 分钟冷却（`RoomContext.viewerAvatars`，不进问题表）。粉丝轮询那几处与登录取码手写的 `-352` / `-403` 还没改，归 3b-24。
+- **B 站返回码的翻译表**：B 站在 `bilibili/` 里有一张共用的「数字码 → 标准码」表，请求层在接口回来时查一次，翻成 `fail(标准码, 原话, { upstreamCode })`：`-352`、`-412`、`-799`、`-509` → `rate_limited`；`-101` → `unauthorized`；`-403` 不进共用表，由用到它的接口自己判（也可能是真没权限，如受限直播间）；没对照的码 → `unknown`，原码进 `upstreamCode`，每个进程第一次撞上记一条 warn。各轮询把 `unknown` 当一时失败、下一轮照拉、只进表不私聊。cookie 续期只在 `unauthorized` 时登出，`unknown` 下一轮再试（死会话由普通请求撞 `-101` 时登出）。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表不私聊。🔗 3b-18 落成（拉动态、直播预检、上舰观众头像、cookie 续期）：纯函数 `failureFromBili`（`bilibili/error-codes.ts`）造「标准码 + 原话 + `upstreamCode`」，请求层 `Api.resultOf` 查一次，回应不是对象或没有数字 `code` 回 `unavailable`（不是 `unknown`，失败规矩第 6 条）；表外码的 warn 是每个 `Api` 实例（集成重启会新建）每个码一次。拉动态的 `-412` / `-799` / `-509` 从此是风控（进表并私聊）。cookie 续期的探测、刷新、确认三步只有 `unauthorized` 登出，别的失败跳过本轮、闸留着。直播预检：`rate_limited`（含持续 `-352`）走长尾重试、不判受限房；`-403` 与表外码仍当受限房（B 站对加密 / 付费 / 测试房回什么码没核，靠请求层的 warn 取证）；`unauthorized` 与 `unavailable` 当「弹幕连接没建起来」。上舰观众头像撞限流后 5 分钟冷却（`RoomContext.viewerAvatars`，不进问题表）。粉丝轮询那几处与登录取码手写的 `-352` / `-403` 还没改，归 3b-24。🔗 10-23（3b-24）：卡片、搜人与登录取码已按要求经码表或各自的 `-403` / `-404` 判别；表外码统一为 `unknown`，每个 `Api` 实例每个码只 warn 一次，`searchByType` 已回 `Result`。
 - **失败码**：B 站接口的数字错误码放在 `upstreamCode`，不占错误体的 `code`；`code` 取标准码表（风控 `rate_limited`、没登录 `unauthorized`……）。
 - 验收检查点：「接口先行」那一期（3a，见 [construction-plan.md](./construction-plan.md)）完成时，B 站全经中立接口运行、行为不变。

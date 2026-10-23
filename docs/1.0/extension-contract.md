@@ -186,7 +186,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 描述符里 09-28 新加的几格：
 
-- `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
+- `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收，开放清单这一格归谁未定。
 - `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。
 - `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，写正则的源码字符串，宿主按整串匹配，核新建订阅的外部 id 与特别关注名单的 id。可以不写（只做中立校验）。写在清单订阅源那一段的 `display` 里（与 `postNoun` 同处）。编译不过（或疑似灾难性回溯）的正则让清单校验不过、拓展装不上；正则源码最长 200 字（同内容过滤的 `blockRegex`），被核的值最长 256 字（同外部 id 本身的上限）。
 - `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。
