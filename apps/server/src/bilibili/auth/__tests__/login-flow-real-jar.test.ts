@@ -9,7 +9,7 @@
  * 不连 B 站:二维码、轮询、账号探测都换成替身。
  */
 
-import type { Logger, MessageBus } from "@bilibili-notify/internal";
+import { type Logger, type MessageBus, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { COOKIE_SAVE_DELAY_MS } from "../../../integrations/http";
 import { makeApi, makeServiceContext } from "../../api/__tests__/support/make-api";
@@ -33,10 +33,9 @@ async function scanWorld() {
 		.spyOn(w.api, "fetchLoginStatus")
 		.mockResolvedValue({ code: 0, data: { code: 86101 } } as never);
 	vi.spyOn(w.api, "fetchMyselfInfo").mockResolvedValue({ code: 0, data: { mid: 42 } } as never);
-	vi.spyOn(w.api, "fetchUserCard").mockResolvedValue({
-		code: 0,
-		data: { card: { mid: "42" } },
-	} as never);
+	vi.spyOn(w.api, "fetchUserCard").mockResolvedValue(
+		ok({ data: { card: { mid: "42" } } }) as never,
+	);
 
 	/** 下一次轮询回「扫码成功」:登录回应的 Set-Cookie 先进罐子,再带着令牌回来。 */
 	const scanSucceeds = () =>

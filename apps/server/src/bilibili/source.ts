@@ -7,7 +7,6 @@ import {
 	type Identity,
 	type ImageRef,
 	type LiveStatusResult,
-	type Logger,
 	type MembershipTier,
 	type MessageBus,
 	ok,
@@ -129,8 +128,6 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
 	let started = false;
-	// 搜人记 warn 用;`start` 里拿到 ctx 才有。
-	let log: Pick<Logger, "warn"> | undefined;
 	// 动态那一格设置读不懂、动态停着(`applyDynamic` 记;`health()` 读)。
 	let dynamicStopped = false;
 	const now = deps.now ?? Date.now;
@@ -240,8 +237,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			}
 			return rooms.fetchLiveStatus(identity, signal);
 		},
-		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完;日志等 start 给了 ctx 才有。
-		searchCreators: (query) => searchBiliCreators(deps.api, query, (m) => log?.warn(m)),
+		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。
+		searchCreators: (query) => searchBiliCreators(deps.api, query),
 		health(): SourceHealth {
 			// 「动态停着」优先:最需要主人动手的一条,而且这时引擎不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
 			if (dynamicStopped) return { summary: HEALTH_TEXTS.dynamicStopped };
@@ -251,7 +248,6 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		},
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
-			log = ctx.logger;
 			sourceCtx = ctx;
 			rooms = new BiliLiveRooms({
 				api: deps.api,

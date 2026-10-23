@@ -8,6 +8,7 @@
  * - 面板不再按状态码换句子,直接显示 `message` —— 所以每种失败的 `message` 都要自己说得通。
  */
 
+import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
@@ -30,10 +31,9 @@ function makeApp(api: Api | null) {
 	return { app, warn };
 }
 
-const CARD = {
-	code: 0,
+const CARD = ok({
 	data: { card: { mid: "12345", name: "测试UP", face: "https://x/a.png", sign: "签名", fans: 99 } },
-};
+});
 
 describe("GET /api/subscriptions/lookup", () => {
 	it("uid 不是纯数字 → 400 invalid", async () => {
@@ -54,7 +54,9 @@ describe("GET /api/subscriptions/lookup", () => {
 	});
 
 	it("B 站说查无此人 → 404 not_found;B 站的数字码在 upstreamCode,不占 code", async () => {
-		const { app } = makeApp({ fetchUserCard: async () => ({ code: -404, data: null }) });
+		const { app } = makeApp({
+			fetchUserCard: async () => fail("not_found", "", { upstreamCode: -404 }),
+		});
 		const res = await app.request("/lookup?uid=12345");
 		expect(res.status).toBe(404);
 		const body = await res.json();
@@ -67,7 +69,9 @@ describe("GET /api/subscriptions/lookup", () => {
 	});
 
 	it("风控 -352 现在的意思照旧(not_found),码同样只放 upstreamCode —— 分类是 3a 的事", async () => {
-		const { app } = makeApp({ fetchUserCard: async () => ({ code: -352, data: null }) });
+		const { app } = makeApp({
+			fetchUserCard: async () => fail("rate_limited", "", { upstreamCode: -352 }),
+		});
 		const res = await app.request("/lookup?uid=12345");
 		expect(res.status).toBe(404);
 		expect(await res.json()).toMatchObject({ code: "not_found", upstreamCode: -352 });
@@ -100,7 +104,7 @@ describe("GET /api/subscriptions/lookup", () => {
 
 describe("GET /api/subscriptions/search", () => {
 	it("关键词是空的 → 400 invalid,话就是面板要显示的那句", async () => {
-		const { app } = makeApp({ searchByType: async () => ({ code: 0 }) });
+		const { app } = makeApp({ searchByType: async () => ok({ data: {} }) });
 		const res = await app.request("/search?q=%20");
 		expect(res.status).toBe(400);
 		expect(await res.json()).toEqual({ code: "invalid", message: "搜索关键词不能为空" });
@@ -115,7 +119,8 @@ describe("GET /api/subscriptions/search", () => {
 
 	it("B 站回非 0 → 503 unavailable,B 站的话进 message、数字码进 upstreamCode", async () => {
 		const { app } = makeApp({
-			searchByType: async () => ({ code: -799, message: "请求过于频繁，请稍后再试" }),
+			searchByType: async () =>
+				fail("rate_limited", "请求过于频繁，请稍后再试", { upstreamCode: -799 }),
 		});
 		const res = await app.request("/search?q=abc");
 		expect(res.status).toBe(503);
@@ -127,7 +132,9 @@ describe("GET /api/subscriptions/search", () => {
 	});
 
 	it("B 站回非 0 但没带话 → 兜一句「搜索失败」,message 不许是空的", async () => {
-		const { app } = makeApp({ searchByType: async () => ({ code: -1 }) });
+		const { app } = makeApp({
+			searchByType: async () => fail("unknown", "", { upstreamCode: -1 }),
+		});
 		const res = await app.request("/search?q=abc");
 		expect(await res.json()).toEqual({
 			code: "unavailable",
@@ -155,13 +162,15 @@ describe("GET /api/subscriptions/search", () => {
 
 	it("搜到了 → 200 分页结果", async () => {
 		const { app } = makeApp({
-			searchByType: async () => ({
-				code: 0,
-				data: {
-					numResults: 1,
-					result: [{ mid: 7, uname: '<em class="keyword">阿</em>婆', upic: "//x/a.png", fans: 3 }],
-				},
-			}),
+			searchByType: async () =>
+				ok({
+					data: {
+						numResults: 1,
+						result: [
+							{ mid: 7, uname: '<em class="keyword">阿</em>婆', upic: "//x/a.png", fans: 3 },
+						],
+					},
+				}),
 		});
 		const res = await app.request("/search?q=阿婆");
 		expect(res.status).toBe(200);

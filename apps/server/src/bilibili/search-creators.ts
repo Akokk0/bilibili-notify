@@ -1,8 +1,13 @@
-import { type CreatorCandidate, fail, ok, type Result } from "@bilibili-notify/internal";
+import {
+	type CreatorCandidate,
+	type Failure,
+	fail,
+	ok,
+	type Result,
+} from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import { stripHtmlTags } from "../util/strip-html-tags.js";
 import type { Api } from "./api/index.js";
-import { standardCodeOfBili } from "./error-codes.js";
 
 /** 一次最多回几个候选(契约上限)。 */
 const MAX_CANDIDATES = 10;
@@ -24,39 +29,34 @@ type SearchApi = Pick<Api, "fetchUserCard" | "searchByType">;
 
 /**
  * B 站来源的 `searchCreators`(ADR-0021 决策 7):纯数字按 UID 精确查、空间主页链接先抽 UID 再精确查、
- * 其余按名字搜。查无此人是成功的空数组;B 站回的错码按 {@link standardCodeOfBili} 翻成标准码,表外的
- * 是 `unknown`(数字码放 `upstreamCode`)并经 `warn` 记一笔。候选不带头像、不带视频数。
+ * 其余按名字搜。查无此人是成功的空数组;失败用请求层给的标准码、原话与上游码,这里不另查表、不记日志。
+ * 候选不带头像、不带视频数。
  */
 export async function searchBiliCreators(
 	api: SearchApi,
 	query: string,
-	warn: (message: string) => void = () => {},
 ): Promise<Result<{ candidates: CreatorCandidate[] }>> {
 	const text = query.trim();
 	if (text === "") return fail("invalid", t("bilibili.search.blankQuery"));
 
-	const refuse = (code: number | undefined, message: string | undefined) => {
-		const standard = code === undefined ? undefined : standardCodeOfBili(code);
-		if (standard === undefined) {
-			warn(`[bilibili] 搜人收到没有对照的返回码 ${code}: ${message ?? "(没有话)"}`);
-		}
+	const refuse = (failure: Failure) => {
 		return fail(
-			standard ?? "unknown",
-			message
-				? t("bilibili.search.failedWithReason", { reason: message })
+			failure.code,
+			failure.message
+				? t("bilibili.search.failedWithReason", { reason: failure.message })
 				: t("bilibili.search.failed"),
-			{
-				...(code === undefined ? {} : { upstreamCode: code }),
-			},
+			{ upstreamCode: failure.upstreamCode },
 		);
 	};
 
 	const uid = /^\d+$/.test(text) ? text : spaceUidOf(text);
 	if (uid !== undefined) {
 		const res = await api.fetchUserCard(uid);
-		// -404:B 站说没有这个用户 —— 查了、没有,是成功的空数组。
-		if (res.code === -404) return ok({ candidates: [] });
-		if (res.code !== 0) return refuse(res.code, (res as { message?: string }).message);
+		if (!res.ok) {
+			// -404:B 站说没有这个用户 —— 查了、没有,是成功的空数组。
+			if (res.code === "not_found") return ok({ candidates: [] });
+			return refuse(res);
+		}
 		const card = res.data?.card;
 		if (!card) return ok({ candidates: [] });
 		return ok({
@@ -71,15 +71,10 @@ export async function searchBiliCreators(
 		});
 	}
 
-	const res = (await api.searchByType("bili_user", text)) as {
-		code?: number;
-		message?: string;
-		data?: { result?: unknown };
-	};
-	if (res?.code !== 0) return refuse(res?.code, res?.message);
-	const raw = (Array.isArray(res.data?.result) ? res.data.result : []) as Array<
-		Record<string, unknown>
-	>;
+	const res = await api.searchByType("bili_user", text);
+	if (!res.ok) return refuse(res);
+	const data = res.data as { result?: unknown } | null | undefined;
+	const raw = (Array.isArray(data?.result) ? data.result : []) as Array<Record<string, unknown>>;
 	const candidates = raw.slice(0, MAX_CANDIDATES).map(
 		(r): CreatorCandidate => ({
 			externalId: String(r.mid),

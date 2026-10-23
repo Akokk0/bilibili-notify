@@ -276,17 +276,17 @@ export class LoginFlow {
 		}
 	}
 
-	/** B 站用户卡片回应 → 我们的账号。原字段名(`card.name` / `card.face`)只留在这一处。 */
-	private accountFromCardResponse(res: unknown): BiliAccount | undefined {
-		const r = res as {
-			code?: unknown;
-			data?: { card?: { name?: unknown; face?: unknown } | null } | null;
-		} | null;
-		if (r?.code !== 0) {
-			this.logger.warn(`[account] 用户卡片没取到: code=${String(r?.code)}`);
+	/** B 站用户卡片结果 → 我们的账号。原字段名(`card.name` / `card.face`)只留在这一处。 */
+	private accountFromCardResponse(
+		res: Awaited<ReturnType<Api["fetchUserCard"]>>,
+	): BiliAccount | undefined {
+		if (!res.ok) {
+			this.logger.warn(
+				`[account] 用户卡片没取到: code=${String(res.upstreamCode)} standardCode=${res.code} message=${res.message}`,
+			);
 			return undefined;
 		}
-		const card = r.data?.card;
+		const card = res.data?.card;
 		if (typeof card?.name !== "string" || card.name === "") {
 			this.logger.warn("[account] 用户卡片缺名字,当作没取到");
 			return undefined;

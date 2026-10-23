@@ -9,6 +9,7 @@ import {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/api";
+import { failureFromBili } from "../../error-codes";
 import { LoginFlow } from "../login-flow";
 import type { BiliLoginState } from "../login-state";
 
@@ -173,10 +174,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 
 	it("code === 0 transitions to LOGGED_IN and notifies onChange once", async () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({
-			code: 0,
-			data: { card: { mid: "42", name: "n" } },
-		});
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42", name: "n" } } }));
 		const changes = vi.fn();
 		h.flow.onChange(changes);
 
@@ -190,7 +188,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 	it("code === -101 transitions to NOT_LOGIN and emits auth-lost only when previously LOGGED_IN", async () => {
 		// First, get into LOGGED_IN
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		const baselineEvents = h.events.length;
 		const changes = vi.fn();
@@ -217,7 +215,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 	it("auth-restored fires once per NOT_LOGIN → LOGGED_IN recovery, never on a clean start", async () => {
 		// Cold start straight to LOGGED_IN — nothing was ever parked, so no auth-restored.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
 
@@ -229,13 +227,13 @@ describe("LoginFlow.reportAccountInfo()", () => {
 
 		// Recover → fires auth-restored exactly once.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 
 		// And does NOT fire again on subsequent identical successes.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 	});
@@ -306,7 +304,7 @@ describe("LoginFlow.beginLogin()", () => {
 			data: { code: 0, refresh_token: "rt-xyz" },
 		});
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 
 		await h.flow.beginLogin(async (url) => `data:image/png;base64,${url}`);
 
@@ -392,7 +390,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 			data: { code: 0, refresh_token: "rt" },
 		});
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { mid: "42" } } }));
 	}
 
 	it("扫码成功那一拍:cookie 落盘之后它才落定", async () => {
@@ -532,7 +530,7 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 			data: { code: 0, refresh_token: "rt" },
 		});
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { mid: "42" } } }));
 		const commit = deferred<Result>();
 		h.api.commitLogin.mockReturnValueOnce(commit.promise);
 		await h.flow.beginLogin(async () => "data:url");
@@ -575,7 +573,7 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 			data: { code: 0, refresh_token: "rt" },
 		});
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { mid: "42" } } }));
 		h.api.commitLogin.mockResolvedValueOnce(fail("unavailable", "disk full"));
 		await h.flow.beginLogin(async () => "data:url");
 
@@ -623,7 +621,7 @@ describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 aut
 
 		// 主人扫码重新登录成功。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		// 动态引擎在自己撞上 -101 时就已经停了 cron,并明写「待 auth-restored 重启」。
@@ -675,7 +673,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 	it("心跳探活在途时会话被判死 → 迟到的 code 0 不得触发 auth-restored", async () => {
 		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(rawOf(h.flow).status).toBe("logged-in");
 
@@ -703,17 +701,17 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		// `fetchUserCard` 网络往返,那是第二个同样宽的窗口。
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		const card = deferred<{ code: number; data: { card: { mid: string } } }>();
+		const card = deferred<unknown>();
 		h.api.fetchUserCard.mockReturnValueOnce(card.promise);
 		const pending = h.flow.reportAccountInfo();
 		await flush();
 
 		await h.flow.handleAuthLost();
-		card.resolve({ code: 0, data: { card: { mid: "42" } } });
+		card.resolve(ok({ data: { card: { mid: "42" } } }));
 		await pending;
 
 		expect(rawOf(h.flow).status).toBe("logged-out");
@@ -725,7 +723,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		// 已清、内存 jar 已清,快照却被一次迟到的探活推回「已登录」。
 		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		const probe = deferred<{ code: number; data: { mid: number } }>();
@@ -750,7 +748,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 	it("迟到的探活返回风控码 → 不得把已被摘掉的心跳重新挂上", async () => {
 		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(liveTimers(h)).toHaveLength(1);
 
@@ -772,7 +770,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 	it("迟到的探活抛网络异常 → 同样不得复活心跳", async () => {
 		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		const probe = deferred<{ code: number; data: { mid: number } }>();
@@ -790,7 +788,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 	it("主人手动退出后,迟到的 -101 不得把「已退出」改写成「登录已失效」", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		const probe = deferred<{ code: number; data: { mid: number } }>();
@@ -813,7 +811,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 	it("登出与探活无交叠时,一切照旧 —— 守卫不得误伤正常恢复", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		await h.flow.handleAuthLost();
@@ -821,7 +819,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 
 		// 登出**先**落定,之后才发起的探活是问新状态的,必须照常放行。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
@@ -837,10 +835,7 @@ describe("LoginFlow.healthCheckNow()", () => {
 	it("登录着:立刻查一次,-101 就翻成未登录并发 auth-lost", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({
-			code: 0,
-			data: { card: { mid: "42", name: "n" } },
-		});
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42", name: "n" } } }));
 		await h.flow.reportAccountInfo();
 		h.api.fetchMyselfInfo.mockClear();
 
@@ -940,7 +935,7 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 
 	async function logIn(h: Harness): Promise<void> {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 		expect(rawOf(h.flow).status).toBe("logged-in");
 	}
@@ -961,10 +956,7 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		// LOGIN_FAILED 不在心跳的跳过名单里:到点照查。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		// 失败回来的这一帧没带账号:心跳成功后补取一次卡片(3a-29 S3)。
-		h.api.fetchUserCard.mockResolvedValueOnce({
-			code: 0,
-			data: { card: { mid: "42", name: "n" } },
-		});
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42", name: "n" } } }));
 		await liveHeartbeat(h)?.handle.fire();
 		await flush();
 
@@ -1018,7 +1010,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 
 	async function logIn(h: Harness, face = "https://i0.hdslb.com/a.jpg") {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: cardOf(face) });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: cardOf(face) }));
 		await h.flow.reportAccountInfo();
 		await Promise.all(h.scFake.tracked);
 	}
@@ -1050,10 +1042,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 			data: { code: 0, refresh_token: "rt" },
 		});
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({
-			code: 0,
-			data: cardOf("https://i0.hdslb.com/a.jpg"),
-		});
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: cardOf("https://i0.hdslb.com/a.jpg") }));
 		await h.flow.beginLogin(async () => "data:url");
 		const seen = watch(h);
 
@@ -1124,10 +1113,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 		});
 		const probe = deferred<{ code: number; data: { mid: number } }>();
 		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
-		h.api.fetchUserCard.mockResolvedValueOnce({
-			code: 0,
-			data: cardOf("https://i0.hdslb.com/a.jpg"),
-		});
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: cardOf("https://i0.hdslb.com/a.jpg") }));
 		await h.flow.beginLogin(async () => "data:url");
 		const polling = h.scFake.intervals[0]?.handle.fire();
 		await flush();
@@ -1151,7 +1137,7 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 
 	async function logIn(h: Harness, face = A) {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: cardOf(face) });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: cardOf(face) }));
 		await h.flow.reportAccountInfo();
 	}
 
@@ -1290,15 +1276,12 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 	const HEALTH_MS = 60_000;
 	const BAD: Array<[string, unknown]> = [
-		["非 0 码带别的 data(风控 v_voucher)", { code: -352, data: { v_voucher: "voucher_x" } }],
-		[
-			"非 0 码但 data 里带着看起来正常的 card",
-			{ code: -352, data: { card: { name: "x", face: "" } } },
-		],
-		["code 0 但 data 是空对象(缺 card)", { code: 0, data: {} }],
-		["code 0 但 data 是 null", { code: 0, data: null }],
-		["code 0 但 card 缺名字", { code: 0, data: { card: { face: "https://i0.hdslb.com/a.jpg" } } }],
-		["整个回应是 undefined", undefined],
+		["风控失败结果", failureFromBili(-352, "风控")],
+		["失败结果里带着风控说明", failureFromBili(-352, "风控说明")],
+		["成功但 data 是空对象(缺 card)", ok({ data: {} })],
+		["成功但 data 是 null", ok({ data: null })],
+		["成功但 card 缺名字", ok({ data: { card: { face: "https://i0.hdslb.com/a.jpg" } } })],
+		["回应不成形", fail("unavailable", "B 站的回应不是预期的形状")],
 	];
 
 	function liveHeartbeat(h: Harness) {
@@ -1328,7 +1311,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 	it("非 0 码的 warn 带上游的码", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: { v_voucher: "voucher_x" } });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "风控"));
 		await h.flow.reportAccountInfo();
 		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("code=-352"));
 	});
@@ -1346,7 +1329,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		const fetchAvatar = vi.fn(async () => "ref");
 		const h = makeFlow({ fetchAvatar });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n" } } }));
 		await h.flow.reportAccountInfo();
 		await Promise.all(h.scFake.tracked);
 		expect(h.flow.account()).toEqual({ name: "n" });
@@ -1360,7 +1343,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		});
 		h.flow.reportLoggedOut("notLogin");
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n", face: "" } } }));
 
 		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
@@ -1377,7 +1360,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 			throw new Error("account boom");
 		});
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n", face: "" } } }));
 
 		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
@@ -1395,20 +1378,20 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 	it("账号缺着:每次心跳成功补取一次;取到了之后就不再取", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null }); // 登录那次取不到
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "")); // 登录那次取不到
 		await h.flow.reportAccountInfo();
 		expect(h.flow.account()).toBeNull();
 		const beat = () =>
 			h.scFake.intervals.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed).at(-1);
 
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null }); // 心跳补取也失败:只试一次
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "")); // 心跳补取也失败:只试一次
 		await beat()?.handle.fire();
 		await flush();
 		expect(h.api.fetchUserCard).toHaveBeenCalledTimes(2);
 		expect(h.flow.account()).toBeNull();
 		expect(rawOf(h.flow).status).toBe("logged-in");
 
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n", face: "" } } }));
 		await beat()?.handle.fire();
 		await flush();
 		expect(h.flow.account()).toEqual({ name: "n" });
@@ -1421,7 +1404,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 	it("补取的途中登出:结果丢掉", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo();
 		const slow = deferred<unknown>();
 		h.api.fetchUserCard.mockReturnValueOnce(slow.promise);
@@ -1432,7 +1415,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 		await flush();
 
 		h.flow.reportLoggedOut("notLogin");
-		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		slow.resolve(ok({ data: { card: { name: "n", face: "" } } }));
 		// 心跳定时器的回调是 `() => void this.runHealthCheck()`,`fire()` 的返回等不到补取的续延 ——
 		// 不多等几轮的话断言在续延之前就跑了(3a-29 复审 A3 的假绿)。
 		await beating;
@@ -1447,7 +1430,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 	it("补取的途中登出又登回:旧会话的结果丢掉,账号仍缺着", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo();
 		const slow = deferred<unknown>();
 		h.api.fetchUserCard.mockReturnValueOnce(slow.promise);
@@ -1458,10 +1441,10 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 		await flush();
 
 		h.flow.reportLoggedOut("notLogin");
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo(); // 登回来了,账号还缺着
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		slow.resolve(ok({ data: { card: { name: "n", face: "" } } }));
 		await beating;
 		await flush();
 
@@ -1473,7 +1456,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 	it("补取的途中主人发起重扫:结果丢掉,状态停在等待扫码、二维码还在", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo();
 		const slow = deferred<unknown>();
 		h.api.fetchUserCard.mockReturnValueOnce(slow.promise);
@@ -1489,7 +1472,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 		});
 		await h.flow.beginLogin(async () => "data:x");
 		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
-		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		slow.resolve(ok({ data: { card: { name: "n", face: "" } } }));
 		await beating;
 		await flush();
 
@@ -1504,7 +1487,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 	it("探活的途中主人发起重扫:回来的成功丢掉,不补取、状态停在等待扫码", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n", face: "" } } }));
 		await h.flow.reportAccountInfo();
 		const probe = deferred<unknown>();
 		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
@@ -1583,7 +1566,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		h.api.fetchLoginQrCode.mockReturnValueOnce(qrFetch.promise);
 		const beginning = h.flow.beginLogin(async () => "data:new");
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { name: "n", face: "" } } }));
 
 		slow.resolve({ code: 0, data: { code: 0, refresh_token: "rt" } });
 		await tick;
@@ -1623,7 +1606,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		const firstBegin = h.flow.beginLogin(async () => "data:first");
 		await begin(h, "new");
 
-		first.resolve({ code: -352, data: null });
+		first.resolve(failureFromBili(-352, ""));
 		const r = await firstBegin;
 
 		expect(r).toMatchObject({ ok: false, code: "conflict" });
@@ -1758,7 +1741,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 	it("没有交叠时一切照旧:同一次扫码里 未扫 → 已扫 → 确认成功", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { name: "n", face: "" } } }));
 		await begin(h, "q");
 
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 86101 } });
@@ -1796,7 +1779,7 @@ describe("LoginFlow — 扫码成功后取账号的途中又发起重扫", () =>
 
 		await begin("new");
 		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
-		card.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		card.resolve(ok({ data: { card: { name: "n", face: "" } } }));
 		await tick;
 		await flush();
 
@@ -1821,7 +1804,7 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 	it("落盘途中发起:回 conflict、不取新码;落盘完成后是已登录,没建新的轮询", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { name: "n", face: "" } } }));
 		await begin(h, "old");
 		const commit = deferred<Result>();
 		h.api.commitLogin.mockReturnValueOnce(commit.promise);
@@ -1871,7 +1854,7 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 	it("落盘途中登录失效了(请求报来 -101):落盘回来同样不进已登录", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValue(ok({ data: { card: { name: "n", face: "" } } }));
 		await begin(h, "old");
 		const commit = deferred<Result>();
 		h.api.commitLogin.mockReturnValueOnce(commit.promise);
@@ -1953,7 +1936,7 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 
 	async function loggedInWithAccount(h: Harness) {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { name: "n", face: "" } } }));
 		await h.flow.reportAccountInfo();
 	}
 
@@ -1966,7 +1949,7 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 
 		h.flow.reportLoggedOut("authLost");
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo();
 
 		expect(order).toEqual(["emit:auth-lost", "notify", "emit:auth-restored", "notify"]);
@@ -1993,7 +1976,7 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 		h.flow.onChange(() => order.push("notify"));
 		order.length = 0;
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 
 		await expect(h.flow.reportAccountInfo()).rejects.toThrow("listener boom");
 
@@ -2011,7 +1994,7 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 	const HEALTH_MS = 60_000;
 	const POLL_MS = 1000;
-	const CARD = (name: string) => ({ code: 0, data: { card: { name, face: "" } } });
+	const CARD = (name: string) => ok({ data: { card: { name, face: "" } } });
 
 	const liveBeats = (h: Harness) =>
 		h.scFake.intervals.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed);
@@ -2174,7 +2157,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 	it("心跳补取账号在途 → 重扫并扫码成功 → 旧的卡片才回来:不把上一段登录的账号写到新登录上", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null }); // 账号缺着
+		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, "")); // 账号缺着
 		await h.flow.reportAccountInfo();
 		const staleCard = deferred<unknown>();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
@@ -2348,7 +2331,7 @@ describe("LoginFlow — 心跳停着(间隔 <= 0)时,登录的各条路都不会
 	const MS = 30 * 60_000;
 	const logged = (h: Harness) => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 	};
 
 	it("起步是 0:探活成功 / 风控码 / 抛网络异常这三个出口都不挂定时器", async () => {

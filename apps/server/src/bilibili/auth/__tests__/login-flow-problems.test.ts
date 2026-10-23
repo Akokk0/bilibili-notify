@@ -26,7 +26,7 @@ import { LoginFlow } from "../login-flow";
 function makeHarness() {
 	const api = {
 		fetchMyselfInfo: vi.fn(),
-		fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { name: "n", face: "" } } })),
+		fetchUserCard: vi.fn(async () => ok({ data: { card: { name: "n", face: "" } } })),
 		fetchLoginQrCode: vi.fn(async () => ({
 			code: 0,
 			data: { url: "https://example.com/qr", qrcode_key: "key" },

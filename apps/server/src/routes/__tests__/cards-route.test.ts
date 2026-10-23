@@ -1186,10 +1186,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	function loggedInApi(): Api {
 		return {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			fetchUserCard: vi.fn(async () => ({
-				code: 0,
-				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
-			})),
+			fetchUserCard: vi.fn(async () =>
+				ok({ data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } } }),
+			),
 		} as unknown as Api;
 	}
 
@@ -1561,10 +1560,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	it("sc:per-UP 传 uid → 接收方按 getMasterInfo 解析真实 UP,发送者仍为登录账号", async () => {
 		const api = {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			fetchUserCard: vi.fn(async () => ({
-				code: 0,
-				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
-			})),
+			fetchUserCard: vi.fn(async () =>
+				ok({ data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } } }),
+			),
 			getMasterInfo: vi.fn(async () => ({
 				code: 0,
 				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
@@ -1590,10 +1588,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	it("sc:接收方 getMasterInfo 失败 + fallback → 回退示例 UP,200", async () => {
 		const api = {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			fetchUserCard: vi.fn(async () => ({
-				code: 0,
-				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
-			})),
+			fetchUserCard: vi.fn(async () =>
+				ok({ data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } } }),
+			),
 			getMasterInfo: vi.fn(async () => {
 				throw new Error("network");
 			}),
@@ -1622,10 +1619,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.fn()
 			.mockResolvedValueOnce({ code: 0, data: { mid: 999, uname: "登录名" } })
 			.mockRejectedValue(new Error("network"));
-		const fetchUserCard = vi.fn(async () => ({
-			code: 0,
-			data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
-		}));
+		const fetchUserCard = vi.fn(async () =>
+			ok({ data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } } }),
+		);
 		const api = { getMyselfInfoCached, fetchUserCard } as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")

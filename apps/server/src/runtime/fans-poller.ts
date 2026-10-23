@@ -312,7 +312,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			});
 	}
 
-	function enterRiskBackoff(code: number): void {
+	function enterRiskBackoff(code: number | string): void {
 		riskBackoffUntil = Date.now() + FANS_RISK_BACKOFF_MS;
 		logger.warn(
 			`[fans-poller] 命中风控/限流 code=${code},中止本轮 sweep,退避 ${
@@ -399,18 +399,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				} else {
 					const res = await api.fetchUserCard(uid);
 					if (disposed) return;
-					if (RISK_CONTROL_CODES.has(res.code)) {
-						enterRiskBackoff(res.code); // ② 中止 sweep
+					if (!res.ok && res.code === "rate_limited") {
+						enterRiskBackoff(res.upstreamCode ?? res.code); // ② 中止 sweep
 						break;
 					}
-					if (res.code !== 0 || !res.data?.card) {
+					if (!res.ok) {
 						logger.warn(
-							`[fans-poller] uid=${uid} upstream code=${res.code} msg=${
-								(res as { message?: string }).message ?? "?"
-							}`,
+							`[fans-poller] uid=${uid} code=${res.code} upstreamCode=${String(
+								res.upstreamCode,
+							)} msg=${res.message}`,
 						);
 						continue;
 					}
+					if (!res.data?.card) continue;
 					current = res.data.card.fans;
 					seedCard = {
 						name: res.data.card.name,

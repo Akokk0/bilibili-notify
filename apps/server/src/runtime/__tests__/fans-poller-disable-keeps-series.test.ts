@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FansRefreshEntry } from "@bilibili-notify/internal";
+import { type FansRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
@@ -112,10 +112,11 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		api: {
 			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 			fetchRelationStat,
-			fetchUserCard: vi.fn(async (uid: string) => ({
-				code: 0,
-				data: { card: { fans: followers.get(uid) ?? 0, name: `UP${uid}`, face: "", sign: "" } },
-			})),
+			fetchUserCard: vi.fn(async (uid: string) =>
+				ok({
+					data: { card: { fans: followers.get(uid) ?? 0, name: `UP${uid}`, face: "", sign: "" } },
+				}),
+			),
 		} as never,
 		// 不放行启动那次 3s 延时 tick:只看各用例自己 pollNow 的那几轮。
 		serviceCtx: serviceCtx as never,

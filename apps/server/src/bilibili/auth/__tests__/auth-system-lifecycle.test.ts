@@ -412,10 +412,9 @@ describe("恢复备份之后与登出", () => {
 				code: 0,
 				data: { mid: 42, uname: "n", face: "" },
 			});
-			vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
-				code: 0,
-				data: { card: { name: "n", face: "" } },
-			} as never);
+			vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue(
+				ok({ data: { card: { name: "n", face: "" } } }) as never,
+			);
 			const auth = await createAuthSystem({
 				transitImages: inertTransitImages,
 				serviceCtx: w.host.serviceCtx,
@@ -461,10 +460,9 @@ describe("恢复备份之后与登出", () => {
 			code: 0,
 			data: { mid: 42, uname: "n", face: "" },
 		});
-		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
-			code: 0,
-			data: { card: { name: "n", face: "" } },
-		} as never);
+		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue(
+			ok({ data: { card: { name: "n", face: "" } } }) as never,
+		);
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
@@ -500,10 +498,9 @@ describe("恢复备份之后与登出", () => {
 			code: 0,
 			data: { mid: 42, uname: "n", face: "" },
 		});
-		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
-			code: -352,
-			data: { v_voucher: "voucher_x" },
-		} as never);
+		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue(
+			fail("rate_limited", "风控", { upstreamCode: -352 }) as never,
+		);
 
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,

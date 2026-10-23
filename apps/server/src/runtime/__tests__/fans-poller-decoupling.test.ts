@@ -16,7 +16,7 @@
  *   3. 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import { type GlobalConfig, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages, PROFILE_IMAGE_REF } from "../../__tests__/support/profile-images.js";
 
@@ -58,12 +58,13 @@ const SUB = {
 
 function makeApi(fans: number) {
 	return {
-		fetchUserCard: vi.fn(async (_uid: string) => ({
-			code: 0,
-			data: {
-				card: { mid: SUB.identity.externalId, name: "测试UP", face: "f.png", sign: "s", fans },
-			},
-		})),
+		fetchUserCard: vi.fn(async (_uid: string) =>
+			ok({
+				data: {
+					card: { mid: SUB.identity.externalId, name: "测试UP", face: "f.png", sign: "s", fans },
+				},
+			}),
+		),
 		// 稳态(已有 cachedProfile)走轻量 relation/stat;follower 即 fans。
 		fetchRelationStat: vi.fn(async (_uid: string) => ({
 			code: 0,

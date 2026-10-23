@@ -14,7 +14,7 @@
  *   4. earliest 不存在(全新 sub) → 不触发 self-heal
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import { type GlobalConfig, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
@@ -88,7 +88,7 @@ function runPoller(opts: {
 			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
-			fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { fans: 0 } } })),
+			fetchUserCard: vi.fn(async () => ok({ data: { card: { fans: 0 } } })),
 		} as never,
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),

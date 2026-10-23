@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
+import { type FansRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -95,10 +95,11 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		code: 0,
 		data: { follower: 777 },
 	}));
-	const fetchUserCard = vi.fn(async (uid: string) => ({
-		code: 0,
-		data: { card: { fans: 777, name: `UP${uid}`, face: "", sign: "" } },
-	}));
+	const fetchUserCard = vi.fn(async (uid: string) =>
+		ok({
+			data: { card: { fans: 777, name: `UP${uid}`, face: "", sign: "" } },
+		}),
+	);
 	const serviceCtx = {
 		setTimeout: vi.fn(() => undefined),
 		setInterval: vi.fn(() => undefined),

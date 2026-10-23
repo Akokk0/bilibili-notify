@@ -1,6 +1,7 @@
 import type { CookieJar } from "@bilibili-notify/http";
 import {
 	type Disposable,
+	type FailureCode,
 	fail,
 	type HttpClient,
 	type Logger,
@@ -795,10 +796,15 @@ export class Api {
 	 * B 站的 `data` 原样铺在 `ok` 旁;非 0 → 标准码 + 原话 + `upstreamCode`({@link failureFromBili});
 	 * 回应不是对象、没有数字 code(HTML 页、形状变了)→ `unavailable`,不带 `upstreamCode`。
 	 * 表外的码每个记一条带原话的 warn,取证用 —— 认得了再往 `error-codes.ts` 里加一行。
+	 * `-403` 这类不进共用表、由接口自己判的码从 `own` 给;命中的不记表外 warn。
 	 *
 	 * 只翻 B 站**回了**的码;连不上、超时、非 2xx 仍然是抛错,由调用方各自的 catch 接。
 	 */
-	private resultOf<D>(body: unknown, label: string): Result<{ data: D }> {
+	private resultOf<D>(
+		body: unknown,
+		label: string,
+		own?: Readonly<Record<number, FailureCode>>,
+	): Result<{ data: D }> {
 		const reply =
 			typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
 		if (reply === null || typeof reply.code !== "number") {
@@ -810,7 +816,10 @@ export class Api {
 			typeof reply.message === "string" && reply.message !== ""
 				? reply.message
 				: t("bilibili.response.codeOnly", { code });
-		const failure = failureFromBili(code, message);
+		const standard = own?.[code];
+		const failure = standard
+			? fail(standard, message, { upstreamCode: code })
+			: failureFromBili(code, message);
 		if (failure.code === "unknown" && !this.unknownCodesSeen.has(code)) {
 			this.unknownCodesSeen.add(code);
 			this.logger.warn(`[api] ${label}() 收到没有对照的错误码 ${code}：${message}`);
@@ -863,10 +872,17 @@ export class Api {
 		return this.selfInfoCache.get();
 	}
 
-	async fetchUserCard(uid: string, withPhoto = false): Promise<UserCardResponse> {
-		return this.getJson(
-			`${EP.USER_CARD_URL}?mid=${encodeURIComponent(uid)}${withPhoto ? "&photo=true" : ""}`,
+	async fetchUserCard(
+		uid: string,
+		withPhoto = false,
+	): Promise<Result<{ data: UserCardResponse["data"] }>> {
+		return this.resultOf(
+			await this.getJson(
+				`${EP.USER_CARD_URL}?mid=${encodeURIComponent(uid)}${withPhoto ? "&photo=true" : ""}`,
+				"fetchUserCard",
+			),
 			"fetchUserCard",
+			{ [-404]: "not_found", [-403]: "rate_limited" },
 		);
 	}
 
@@ -1070,17 +1086,26 @@ export class Api {
 		searchType: string,
 		keyword: string,
 		opts?: { page?: number; pageSize?: number },
-	) {
-		return this.retry(
-			async () => {
-				const params: Record<string, string> = { search_type: searchType, keyword };
-				if (opts?.page) params.page = String(opts.page);
-				if (opts?.pageSize) params.page_size = String(opts.pageSize);
-				return this.wbiGet(EP.SEARCH_BY_TYPE_URL, params);
-			},
-			"searchByType",
-			Api.retryUnlessRiskControl,
-		);
+	): Promise<Result<{ data: unknown }>> {
+		try {
+			const body = await this.retry(
+				async () => {
+					const params: Record<string, string> = { search_type: searchType, keyword };
+					if (opts?.page) params.page = String(opts.page);
+					if (opts?.pageSize) params.page_size = String(opts.pageSize);
+					return this.wbiGet(EP.SEARCH_BY_TYPE_URL, params);
+				},
+				"searchByType",
+				Api.retryUnlessRiskControl,
+			);
+			return this.resultOf(body, "searchByType", { [-403]: "rate_limited" });
+		} catch (e) {
+			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个 rate_limited 失败,
+			// 搜人只看标准码。别的异常(连不上、超时)照旧往外抛,由调用方的 catch 接。
+			if (e instanceof RiskControlError)
+				return fail("rate_limited", e.message, { upstreamCode: -352 });
+			throw e;
+		}
 	}
 
 	/**

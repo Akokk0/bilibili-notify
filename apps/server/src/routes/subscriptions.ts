@@ -178,7 +178,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const uid = subscriptionIdentityOf(sub).externalId;
 		try {
 			const res = await engines.api.fetchUserCard(uid);
-			if (res.code !== 0 || !res.data?.card) return;
+			if (!res.ok || !res.data?.card) return;
 			const card = res.data.card;
 			// 头像当场抓进图库再回应(经 B 站接口那个请求客户端,引用方是订阅资料这一家);抓不到不让新建失败,
 			// 资料里先只记地址,下一轮粉丝轮询的冷刷会补(见 `syncProfileAvatar`)。
@@ -331,25 +331,22 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		try {
-			const res = (await engines.api.searchByType("bili_user", q, {
+			const res = await engines.api.searchByType("bili_user", q, {
 				page,
 				pageSize: 5,
-			})) as {
-				code?: number;
-				message?: string;
-				data?: { result?: unknown[]; numResults?: number };
-			};
-			if (res?.code !== 0) {
+			});
+			if (!res.ok) {
 				// B 站的话(`message`)是平台的业务说明,可以给人看;它的数字码只放 upstreamCode。
-				const message = res?.message ?? "搜索失败";
+				const message = res.message || "搜索失败";
 				return respondFailure(
 					c,
 					fail("unavailable", `无法访问 B 站：${message}`, {
-						...(typeof res?.code === "number" ? { upstreamCode: res.code } : {}),
+						...(typeof res.upstreamCode === "number" ? { upstreamCode: res.upstreamCode } : {}),
 					}),
 				);
 			}
-			const raw = (Array.isArray(res.data?.result) ? res.data.result : []) as Array<
+			const data = res.data as { result?: unknown[]; numResults?: number } | null | undefined;
+			const raw = (Array.isArray(data?.result) ? data.result : []) as Array<
 				Record<string, unknown>
 			>;
 			const results = raw.slice(0, 5).map((r) => ({
@@ -363,7 +360,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				results,
 				page,
 				pageSize: 5,
-				total: typeof res.data?.numResults === "number" ? res.data.numResults : results.length,
+				total: typeof data?.numResults === "number" ? data.numResults : results.length,
 			});
 		} catch (err) {
 			// 抛出来的是原始报错:原话只进日志,回给面板一句固定的中文。
@@ -382,13 +379,14 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		try {
 			const res = await engines.api.fetchUserCard(uid);
-			if (res.code !== 0 || !res.data?.card) {
+			if (!res.ok || !res.data?.card) {
 				// 现在的意思照旧:B 站回了非 0 就当「查无此人」(风控 / 未登录也在里头 —— 分类是 3a 的
 				// `searchCreators` 的事)。B 站的数字码只放 upstreamCode。
+				const upstreamCode = res.ok ? 0 : res.upstreamCode;
 				return respondFailure(
 					c,
 					fail("not_found", "未找到该 UP 主，请检查 UID 是否正确", {
-						...(typeof res.code === "number" ? { upstreamCode: res.code } : {}),
+						...(upstreamCode === undefined ? {} : { upstreamCode }),
 					}),
 				);
 			}

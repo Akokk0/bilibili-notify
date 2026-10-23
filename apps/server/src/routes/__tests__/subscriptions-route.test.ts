@@ -80,9 +80,8 @@ function makeHarness(opts?: {
 
 	const fetchUserCard = vi.fn(async (_uid: string) => {
 		if (enginesMode === "throw") throw new Error("network down");
-		if (enginesMode === "code-fail") return { code: -404, data: null };
-		return {
-			code: 0,
+		if (enginesMode === "code-fail") return fail("not_found", "找不着", { upstreamCode: -404 });
+		return ok({
 			data: {
 				card: {
 					mid: SUB.identity.externalId,
@@ -92,7 +91,7 @@ function makeHarness(opts?: {
 					fans: PROFILE.fans,
 				},
 			},
-		};
+		});
 	});
 
 	const followMode = opts?.follow ?? "ok";
@@ -323,7 +322,7 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		expect(seedCalls(h)).toHaveLength(0);
 	});
 
-	it("fetchUserCard 返回 code!=0 → 不 patch,POST 仍 200", async () => {
+	it("fetchUserCard 返回失败结果 → 不 patch,POST 仍 200", async () => {
 		const h = makeHarness({ engines: "code-fail" });
 		const res = await h.app.request("/", {
 			method: "POST",

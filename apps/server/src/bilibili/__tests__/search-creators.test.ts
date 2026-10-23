@@ -3,6 +3,7 @@
  * (ADR-0021 决策 7)。全程假 `Api`,不外连。
  */
 
+import { type FailureCode, fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../api/index.js";
 import { searchBiliCreators, spaceUidOf } from "../search-creators.js";
@@ -16,10 +17,9 @@ function apiOf(over: { fetchUserCard?: unknown; searchByType?: unknown }) {
 const asApi = (api: ReturnType<typeof apiOf>) =>
 	api as unknown as Pick<Api, "fetchUserCard" | "searchByType">;
 
-const CARD = {
-	code: 0,
+const CARD = ok({
 	data: { card: { mid: "123", name: "咩栗", fans: 4567, sign: "你好呀", face: "https://x/f.png" } },
-};
+});
 
 describe("spaceUidOf —— 空间主页链接里的 UID", () => {
 	it.each([
@@ -69,7 +69,7 @@ describe("searchBiliCreators", () => {
 			usign: "",
 			upic: "//i0.hdslb.com/x.jpg",
 		}));
-		const api = apiOf({ searchByType: { code: 0, data: { result } } });
+		const api = apiOf({ searchByType: ok({ data: { result } }) });
 		const out = await searchBiliCreators(asApi(api), " 咩栗 ");
 		expect(api.searchByType).toHaveBeenCalledWith("bili_user", "咩栗");
 		expect(api.fetchUserCard).not.toHaveBeenCalled();
@@ -81,15 +81,16 @@ describe("searchBiliCreators", () => {
 	it("查无此人 / 搜不到 → 成功的空数组(不是失败)", async () => {
 		expect(
 			await searchBiliCreators(
-				asApi(apiOf({ fetchUserCard: { code: -404, message: "啥都木有" } })),
+				asApi(
+					apiOf({
+						fetchUserCard: fail("not_found", "啥都木有", { upstreamCode: -404 }),
+					}),
+				),
 				"9",
 			),
 		).toEqual({ ok: true, candidates: [] });
 		expect(
-			await searchBiliCreators(
-				asApi(apiOf({ searchByType: { code: 0, data: { result: [] } } })),
-				"x",
-			),
+			await searchBiliCreators(asApi(apiOf({ searchByType: ok({ data: { result: [] } }) })), "x"),
 		).toEqual({ ok: true, candidates: [] });
 	});
 
@@ -103,15 +104,15 @@ describe("searchBiliCreators", () => {
 		expect(api.searchByType).not.toHaveBeenCalled();
 	});
 
-	// 验红:去掉数字码翻译,三条红(都变成 unknown)。
+	// 翻译在请求层;搜人只把结果里的标准码、原话与上游码带出去。
 	it.each([
 		[-352, "rate_limited"],
 		[-412, "rate_limited"],
 		[-101, "unauthorized"],
-	])("B 站回 %i → %s,数字码放 upstreamCode;名字搜与精确查同一张表", async (code, standard) => {
+	])("请求层回 %i → %s,数字码放 upstreamCode;名字搜与精确查同一条路", async (code, standard) => {
 		for (const [query, api] of [
-			["x", apiOf({ searchByType: { code, message: "m" } })],
-			["5", apiOf({ fetchUserCard: { code, message: "m" } })],
+			["x", apiOf({ searchByType: fail(standard as FailureCode, "m", { upstreamCode: code }) })],
+			["5", apiOf({ fetchUserCard: fail(standard as FailureCode, "m", { upstreamCode: code }) })],
 		] as const) {
 			expect(await searchBiliCreators(asApi(api), query)).toMatchObject({
 				ok: false,
@@ -121,15 +122,16 @@ describe("searchBiliCreators", () => {
 		}
 	});
 
-	it("没对照的码 → unknown,码放 upstreamCode,并记一笔 warn", async () => {
-		const warn = vi.fn();
+	it("请求层已有的 unknown 结果原样收下,搜人不再另记 warn", async () => {
 		const out = await searchBiliCreators(
-			asApi(apiOf({ searchByType: { code: -9999, message: "怪事" } })),
+			asApi(
+				apiOf({
+					searchByType: fail("unknown", "怪事", { upstreamCode: -9999 }),
+				}),
+			),
 			"x",
-			warn,
 		);
 		expect(out).toMatchObject({ ok: false, code: "unknown", upstreamCode: -9999 });
-		expect(warn).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -142,14 +144,21 @@ describe("searchBiliCreators:回给人看的整句话", () => {
 
 	it("B 站带了话:拼在固定的一句后面", async () => {
 		const out = await searchBiliCreators(
-			asApi(apiOf({ searchByType: { code: -412, message: "请求被拦截" } })),
+			asApi(
+				apiOf({
+					searchByType: fail("rate_limited", "请求被拦截", { upstreamCode: -412 }),
+				}),
+			),
 			"咩栗",
 		);
 		expect(out).toMatchObject({ message: "B 站没能完成搜索：请求被拦截" });
 	});
 
 	it("B 站没带话:只有固定的一句", async () => {
-		const out = await searchBiliCreators(asApi(apiOf({ searchByType: { code: -412 } })), "咩栗");
+		const out = await searchBiliCreators(
+			asApi(apiOf({ searchByType: fail("rate_limited", "", { upstreamCode: -412 }) })),
+			"咩栗",
+		);
 		expect(out).toMatchObject({ message: "B 站没能完成搜索" });
 	});
 });

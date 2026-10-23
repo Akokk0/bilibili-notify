@@ -17,7 +17,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
+import { type FansRefreshEntry, ok, type Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFollowersStore, FOLLOWERS_DIR, type FollowersStore } from "../followers/store.js";
 import { createStatsRoute } from "../routes/stats.js";
@@ -295,10 +295,11 @@ async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
 				code: 0,
 				data: { follower: follower[uid] },
 			})),
-			fetchUserCard: vi.fn(async (uid: string) => ({
-				code: 0,
-				data: { card: { fans: follower[uid], name: `UP${uid}`, face: "", sign: "" } },
-			})),
+			fetchUserCard: vi.fn(async (uid: string) =>
+				ok({
+					data: { card: { fans: follower[uid], name: `UP${uid}`, face: "", sign: "" } },
+				}),
+			),
 		} as never,
 		serviceCtx: serviceCtx as never,
 	});

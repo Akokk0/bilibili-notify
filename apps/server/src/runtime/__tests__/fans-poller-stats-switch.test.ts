@@ -11,7 +11,7 @@
  * 对照用例是开着时同样的一轮 —— 只断言「没写」会在什么都没跑时空绿。
  */
 
-import type { FansRefreshEntry } from "@bilibili-notify/internal";
+import { type FansRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
@@ -108,10 +108,11 @@ async function start(
 		} as never,
 		fansStore: { append, findNearestBefore, findEarliest, drop: vi.fn(async () => {}) } as never,
 		api: {
-			fetchUserCard: vi.fn(async () => ({
-				code: 0,
-				data: { card: { name: "UP", face: "f", sign: "s", fans } },
-			})),
+			fetchUserCard: vi.fn(async () =>
+				ok({
+					data: { card: { name: "UP", face: "f", sign: "s", fans } },
+				}),
+			),
 			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: fans } })),
 			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,

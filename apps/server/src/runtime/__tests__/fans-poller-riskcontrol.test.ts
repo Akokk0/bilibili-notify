@@ -7,7 +7,7 @@
  *    动态引擎「被限流就别继续敲」的机制。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import { type GlobalConfig, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
@@ -73,7 +73,7 @@ function baseDeps(over: {
 		} as never,
 		api: {
 			fetchRelationStat: over.fetchRelationStat,
-			fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { ...PROFILE, fans: 1 } } })),
+			fetchUserCard: vi.fn(async () => ok({ data: { card: { ...PROFILE, fans: 1 } } })),
 			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {

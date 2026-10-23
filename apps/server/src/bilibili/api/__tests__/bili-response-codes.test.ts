@@ -119,3 +119,92 @@ describe("请求层的数字码翻译(fetchAllDynamic)", () => {
 		expect(w.warns).toHaveLength(2);
 	});
 });
+
+describe("请求层的数字码翻译(fetchUserCard)", () => {
+	it.each([
+		[-404, "not_found"],
+		[-403, "rate_limited"],
+	] as const)("%i → %s,接口自己认的码不记表外 warn", async (upstreamCode, code) => {
+		const w = await setup();
+		w.answer({ code: upstreamCode, message: "原话" });
+
+		expect(await w.api.fetchUserCard("42")).toEqual({
+			ok: false,
+			code,
+			message: "原话",
+			upstreamCode,
+		});
+		expect(w.warns).toHaveLength(0);
+	});
+
+	it("表外码只 warn 一次,同一个码第二次不再 warn", async () => {
+		const w = await setup();
+		w.answer({ code: 4101132, message: "没见过的错" });
+
+		await w.api.fetchUserCard("42");
+		await w.api.fetchUserCard("42");
+
+		expect(w.warns).toHaveLength(1);
+		expect(w.warns[0]).toContain("4101132");
+		expect(w.warns[0]).toContain("没见过的错");
+	});
+
+	it("code 0 → ok,data 原样铺在 ok 旁", async () => {
+		const w = await setup();
+		const data = { card: { mid: "42", name: "测试 UP" } };
+		w.answer({ code: 0, message: "0", data });
+
+		expect(await w.api.fetchUserCard("42")).toEqual({ ok: true, data });
+	});
+});
+
+describe("请求层的数字码翻译(searchByType)", () => {
+	async function setupSearch(reply: unknown) {
+		const w = await setup();
+		w.answer(reply);
+		(
+			w.api as unknown as {
+				updateBiliTicket(): Promise<void>;
+				wbiKeys: { imgKey: string; subKey: string };
+			}
+		).updateBiliTicket = async () => {
+			(
+				w.api as unknown as {
+					wbiKeys: { imgKey: string; subKey: string };
+				}
+			).wbiKeys = {
+				imgKey: "a".repeat(32),
+				subKey: "b".repeat(32),
+			};
+		};
+		return w;
+	}
+
+	it("持续 -352 → rate_limited,upstreamCode 是 -352,不抛", async () => {
+		const w = await setupSearch({ code: -352, message: "风控" });
+		const res = await w.api.searchByType("bili_user", "咩栗");
+
+		expect(res).toMatchObject({ ok: false, code: "rate_limited", upstreamCode: -352 });
+	});
+
+	it("-403 → rate_limited,接口自己认的码不记表外 warn", async () => {
+		const w = await setupSearch({ code: -403, message: "访问权限不足" });
+
+		expect(await w.api.searchByType("bili_user", "咩栗")).toEqual({
+			ok: false,
+			code: "rate_limited",
+			message: "访问权限不足",
+			upstreamCode: -403,
+		});
+		expect(w.warns).toHaveLength(0);
+	});
+
+	it("code 0 → ok,data 原样铺在 ok 旁", async () => {
+		const w = await setupSearch({ code: 0, message: "0", data: { result: [{ mid: 7 }] } });
+
+		expect(await w.api.searchByType("bili_user", "咩栗")).toEqual({
+			ok: true,
+			data: { result: [{ mid: 7 }] },
+		});
+	});
+});
