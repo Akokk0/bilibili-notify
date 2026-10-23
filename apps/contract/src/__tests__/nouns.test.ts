@@ -1,5 +1,78 @@
 import { describe, expect, it } from "vite-plus/test";
-import { displayNameOf, subscriptionIdentityLabel } from "../nouns";
+import { displayNameOf, sourceNounsOf, subscriptionIdentityLabel } from "../nouns";
+
+describe("sourceNounsOf", () => {
+	const neutral = { creatorNoun: "N-creator", postNoun: "N-post", sources: "N-sources" };
+
+	it("一项、三格都声明时，原样给出", () => {
+		expect(
+			sourceNounsOf([{ label: "B 站", creatorNoun: "UP主", postNoun: "动态" }], neutral),
+		).toEqual({
+			creatorNoun: "UP主",
+			postNoun: "动态",
+			sources: "B 站",
+		});
+	});
+
+	it("一项只声明作品叫法时，创作者落中性词", () => {
+		expect(sourceNounsOf([{ label: "B 站", postNoun: "动态" }], neutral)).toEqual({
+			creatorNoun: "N-creator",
+			postNoun: "动态",
+			sources: "B 站",
+		});
+	});
+
+	it("一项的作品叫法是空白时，落中性词", () => {
+		expect(sourceNounsOf([{ label: "B 站", postNoun: "  " }], neutral)).toEqual({
+			creatorNoun: "N-creator",
+			postNoun: "N-post",
+			sources: "B 站",
+		});
+	});
+
+	it("两项叫法不同时用中性词，来源名去重后用顿号连起来", () => {
+		expect(
+			sourceNounsOf(
+				[
+					{ label: "B 站", creatorNoun: "UP主", postNoun: "动态" },
+					{ label: "B 站", creatorNoun: "博主", postNoun: "帖子" },
+					{ label: "抖音", creatorNoun: "博主", postNoun: "视频" },
+				],
+				neutral,
+			),
+		).toEqual({ creatorNoun: "N-creator", postNoun: "N-post", sources: "B 站、抖音" });
+	});
+
+	it("零项时三格都落中性词", () => {
+		expect(sourceNounsOf([], neutral)).toEqual({
+			creatorNoun: "N-creator",
+			postNoun: "N-post",
+			sources: "N-sources",
+		});
+	});
+
+	it("一项没有来源名时，来源落中性词", () => {
+		expect(sourceNounsOf([{ creatorNoun: "UP主", postNoun: "动态" }], neutral)).toEqual({
+			creatorNoun: "UP主",
+			postNoun: "动态",
+			sources: "N-sources",
+		});
+	});
+
+	it("调用方换了中立词时，落中性的格跟着换", () => {
+		expect(
+			sourceNounsOf([{ label: "B 站" }], {
+				creatorNoun: "Alt-creator",
+				postNoun: "Alt-post",
+				sources: "Alt-sources",
+			}),
+		).toEqual({
+			creatorNoun: "Alt-creator",
+			postNoun: "Alt-post",
+			sources: "B 站",
+		});
+	});
+});
 
 describe("subscriptionIdentityLabel", () => {
 	it("声明了外部 id 的叫法时，用它写标签", () => {

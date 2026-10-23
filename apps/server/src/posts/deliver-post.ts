@@ -9,7 +9,12 @@
  * 推送层发送失败本来就收成结果、记进历史,不会抛,抛的只是调用方写错这类意外)。
  */
 
-import type { CommentaryCallOverride, CommentaryProvider } from "@bilibili-notify/ai";
+import {
+	type CommentaryCallOverride,
+	type CommentaryProvider,
+	PROMPT_NEUTRAL_NOUNS,
+} from "@bilibili-notify/ai";
+import { type SourceNouns, sourceNounsOf } from "@bilibili-notify/contract";
 import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
 import type {
 	ImageRef,
@@ -21,6 +26,7 @@ import type {
 	PostImage,
 } from "@bilibili-notify/internal";
 import { assembleMessageGroups, isBlockVisible } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { bytesDataUrl } from "../images/image-data-url.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { renderTemplate } from "../util/render-template.js";
@@ -178,11 +184,12 @@ export interface DeliverPostDeps {
 	emitEngineError(message: string): void;
 }
 
-/** 有字才算有。 */
-const filled = (text: string | undefined): text is string => !!text && text.trim() !== "";
-
-/** 作品的叫法:来源声明了(清单 `display.postNoun`)就用它,没声明核心叫「作品」。模板与 AI 提示词共用这一个取法。 */
-const postNounOf = (event: PostEvent): string => (filled(event.postNoun) ? event.postNoun : "作品");
+/**
+ * 两处都要问的叫法:来源声明了(清单 `display.postNoun`)就用它的,没声明时落调用方按读者递进来的中性词。
+ * 推送正文给人看,用字典;点评输入给模型,用提示词常量。
+ */
+const postNounsOf = (event: PostEvent, neutral: SourceNouns): SourceNouns =>
+	sourceNounsOf([{ postNoun: event.postNoun }], neutral);
 
 /**
  * 渲染推送文本:`{name}` `{postNoun}` 插值 + `\n` 展开。链接是版式的独立部件,模板里没有链接变量
@@ -262,7 +269,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 	}
 
 	const layout = settings.messageLayout;
-	const wantPart = (t: MessagePartType): boolean => isBlockVisible(layout, t);
+	const wantPart = (part: MessagePartType): boolean => isBlockVisible(layout, part);
 
 	// 出卡
 	let card: Buffer | undefined;
@@ -302,8 +309,9 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 				`[ai] 开始生成动态点评，文本长度=${commentText.length}，图片数=${imageUrls.length}${settings.aiOverride ? "，命中 per-UP override" : ""}`,
 			);
 			try {
+				// 给模型看:提示词中性词写死中文,不随界面语言翻。
 				aiComment = await ai.comment(
-					`${post.creator.name}发布了一条${postNounOf(event)}，内容如下：\n${commentText}`,
+					`${post.creator.name}发布了一条${postNounsOf(event, PROMPT_NEUTRAL_NOUNS).postNoun}，内容如下：\n${commentText}`,
 					"dynamic",
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
@@ -333,7 +341,18 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 	// 文字在「有卡」「没卡」两种情况下完全一致。模板那一份恒做;有 AI 点评时再按同一套版式多做一份 AI 版,
 	// 两份一起交给推送层,由它按目标挑(ADR-0032 决策 2)。链接独立成部件,顺序 / 显隐 / 分条全由版式决定。
 	const template = post.video !== undefined ? settings.videoTemplate : settings.template;
-	const text = wantPart("text") ? renderText(template, post.creator.name, postNounOf(event)) : "";
+	// 给人看:中性词从字典现取,切换界面语言后下一条推送跟着变。
+	const text = wantPart("text")
+		? renderText(
+				template,
+				post.creator.name,
+				postNounsOf(event, {
+					creatorNoun: t("nouns.creator"),
+					postNoun: t("nouns.post"),
+					sources: t("nouns.sources"),
+				}).postNoun,
+			)
+		: "";
 	const messages: PushSegment[][] = assembleMessageGroups(layout, { card, text, link: event.url });
 	// 点评只在文字块可见时才生成(见上),所以有点评就一定要出 AI 版。
 	const aiMessages: PushSegment[][] | undefined =

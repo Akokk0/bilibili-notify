@@ -61,6 +61,9 @@ export const HOMES = {
 	// 显示名链与身份标签(3b-24 L1):服务端与面板共用这一份，data-model「显示名只有一条链」。
 	subscriptionIdentityLabel: "apps/contract/src/nouns.ts",
 	displayNameOf: "apps/contract/src/nouns.ts",
+	// 挑叫法(3b-35):一个来源用它自己的、混着用调用方递进来的中性词;中性词给人看的进字典、给模型的住 ai 包。
+	sourceNounsOf: "apps/contract/src/nouns.ts",
+	PROMPT_NEUTRAL_NOUNS: "packages/ai/src/prompt-nouns.ts",
 	// 全局时区的出厂值与两条规矩(3b-11;ADR-0021 决策 43):设置 schema 与服务端切天共用这一份。
 	DEFAULT_TIMEZONE: "packages/internal/src/timezone.ts",
 	isTimezone: "packages/internal/src/timezone.ts",

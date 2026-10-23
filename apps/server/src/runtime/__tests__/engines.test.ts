@@ -135,6 +135,9 @@ vi.mock("@bilibili-notify/storage", async (importOriginal) => {
 vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	// 订阅视图拼 creator 用的纯函数,走真的。
 	creatorOf: (await importOriginal<typeof import("@bilibili-notify/ai")>()).creatorOf,
+	// 推送点评拼提示词时落的中性叫法,走真的常量。
+	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.PROMPT_NEUTRAL_NOUNS,
 	CommentaryGenerator: class {
 		opts: any;
 		start = vi.fn();

@@ -56,6 +56,7 @@ export const ALLOWLIST = {
 	"apps/server/src/live/recap/stop-words.ts": "词云的中文停用词表:整份是数据,不是给人看的话",
 	"apps/server/src/ai/creator-reader-texts.ts":
 		"创作者阅读工具回给模型的话:同提示词,不翻(决策 11,主人定)",
+	"packages/ai/src/prompt-nouns.ts": "提示词里的中性叫法:同提示词,不翻(决策 11,主人定)",
 	"packages/ai/src/tool-texts.ts": "AI 工具回给模型的话:同提示词,不翻(决策 11,主人定)",
 };
 
@@ -165,7 +166,7 @@ export const RATCHET = {
 	"apps/server/src/platforms/qq-official.ts": 13,
 	"apps/server/src/platforms/upstream-message.ts": 1,
 	"apps/server/src/platforms/webhook.ts": 8,
-	"apps/server/src/posts/deliver-post.ts": 3,
+	"apps/server/src/posts/deliver-post.ts": 2,
 	"apps/server/src/posts/post-from-report.ts": 1,
 	"apps/server/src/posts/post-text.ts": 4,
 	"apps/server/src/problems/problem-report.ts": 4,

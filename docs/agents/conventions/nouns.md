@@ -10,13 +10,13 @@
 
 **3. 只装了 B 站时，混着的地方也用 B 站的叫法。** 只订 B 站的主人看到的字一个不变。
 
-**4. 叫法只由 contract 里的一个函数给出。** 面板、服务端（提示词变量、模板、CSV 列名）都调它，默认词也只在那里定义，不各写一份。
+**4. 挑叫法只由 contract 里的一个函数做。** 面板、服务端（提示词变量、模板、CSV 列名）都调它，不各自判断「是不是 B 站」。没声明叫法时落的中性词由调用方递进去：给人看的（推送正文、面板）从各自的字典取，随界面语言变；给模型的（提示词）随提示词写死中文、不翻（ADR-0037 决策 11），只在 `packages/ai` 的 `PROMPT_NEUTRAL_NOUNS` 定义一次。（主人 2026-10-23 定）
 
 ```ts
 // 错：面板自己判断
 const noun = isBili ? "UP主" : "创作者";
-// 对：调 contract 的叫法函数
-const noun = creatorNounOf(sources); // 叫法函数的名字施工时定，这里只是示意
+// 对：挑法交给 contract，中性词按给谁看递进去
+const noun = sourceNounsOf(sources, neutral).creatorNoun;
 ```
 
 **5. 自己拼的句子绕开量词。** 写「新{postNoun}」「{n} 位{creatorNoun}」（「位」对人通用），不写「一条{postNoun}」。量词跟名词走，「条」配不上每个来源的叫法。不给描述符加量词字段。
