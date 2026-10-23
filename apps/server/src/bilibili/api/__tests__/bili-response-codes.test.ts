@@ -158,6 +158,31 @@ describe("请求层的数字码翻译(fetchUserCard)", () => {
 	});
 });
 
+describe("请求层的数字码翻译(fetchLoginQrCode)", () => {
+	it("-403 → rate_limited,接口自己认的码不记表外 warn", async () => {
+		const w = await setup();
+		w.answer({ code: -403, message: "访问权限不足" });
+
+		expect(await w.api.fetchLoginQrCode()).toEqual({
+			ok: false,
+			code: "rate_limited",
+			message: "访问权限不足",
+			upstreamCode: -403,
+		});
+		expect(w.warns).toHaveLength(0);
+	});
+
+	it("回应不是对象 → unavailable,不带 upstreamCode", async () => {
+		const w = await setup();
+		w.answer("<html>风控</html>");
+
+		const result = await w.api.fetchLoginQrCode();
+
+		expect(result).toMatchObject({ ok: false, code: "unavailable" });
+		expect(result).not.toHaveProperty("upstreamCode");
+	});
+});
+
 describe("请求层的数字码翻译(searchByType)", () => {
 	async function setupSearch(reply: unknown) {
 		const w = await setup();

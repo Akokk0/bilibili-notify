@@ -98,6 +98,14 @@ export interface UserCardsResponse {
 	data: Record<string, UserCardsItem> | null;
 }
 
+export interface LoginQrCodeResponse {
+	code: number;
+	data: {
+		url: string;
+		qrcode_key: string;
+	};
+}
+
 /**
  * 与某个用户的关系。`attribute`:0=未关注 / 2=已关注 / 6=互相关注 / 128=已拉黑。
  * (悄悄关注的 1 早已废弃。)

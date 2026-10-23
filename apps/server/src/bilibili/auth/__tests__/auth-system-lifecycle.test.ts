@@ -21,6 +21,7 @@ import { createValueRedactor } from "../../../logs/value-redactor.js";
 import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
 import { ApiClient } from "../../api/api-client.js";
 import { Api } from "../../api/index.js";
+import { failureFromBili } from "../../error-codes.js";
 import {
 	type CreateAuthSystemOptions,
 	createAuthSystem as createAuthSystemWith,
@@ -575,10 +576,7 @@ describe("恢复备份之后与登出", () => {
 		const changed = vi.fn();
 		const sub = auth.auth.onChange(changed);
 		// 经真 `LoginFlow` 的原型方法走一遍对外变化(reportLoggedOut 在这里是空操作,换用 beginLogin 的失败路径)。
-		vi.spyOn(Api.prototype, "fetchLoginQrCode").mockResolvedValue({
-			code: -352,
-			data: null,
-		} as never);
+		vi.spyOn(Api.prototype, "fetchLoginQrCode").mockResolvedValue(failureFromBili(-352, "风控"));
 		await auth.auth.beginLogin();
 		expect(changed).toHaveBeenCalledTimes(1);
 		expect(auth.auth.state()).toMatchObject({ status: "error" });

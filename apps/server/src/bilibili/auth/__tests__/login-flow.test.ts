@@ -60,6 +60,8 @@ function makeFakeApi() {
 
 type FakeApi = ReturnType<typeof makeFakeApi>;
 
+const qrOk = (url = "https://qr", qrcodeKey = "k") => ok({ data: { url, qrcode_key: qrcodeKey } });
+
 interface FakeTimer extends Disposable {
 	fire(): void | Promise<void>;
 	disposed: boolean;
@@ -269,10 +271,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 	it("renderQr failure: emits qrRenderFailed transition and does not start poll", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 
 		await h.flow.beginLogin(async () => {
 			throw new Error("canvas exploded");
@@ -285,7 +284,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 	it("fetchLoginQrCode returns non-zero code: reports QR failure and does not start poll", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: null });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(failureFromBili(-1, "表外码"));
 
 		await h.flow.beginLogin(async () => "ignored");
 
@@ -295,10 +294,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 	it("poll code === 0: commits the login, transitions to LOGGED_IN, calls reportAccountInfo", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({
 			code: 0,
 			data: { code: 0, refresh_token: "rt-xyz" },
@@ -322,10 +318,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 	it("poll code === 86038 (qr invalidated): cleans up the poll timer", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86038 } });
 
 		await h.flow.beginLogin(async () => "data:url");
@@ -338,10 +331,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 	it("poll code === 86101 (waitScan): keeps polling, no save, snapshot in LOGGING_QR", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 
 		await h.flow.beginLogin(async () => "data:url");
@@ -357,10 +347,7 @@ describe("LoginFlow.beginLogin()", () => {
 		// transition, so the dashboard's QR card flickered to "二维码加载中"
 		// the moment polling reported 86101/86090.
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 
 		await h.flow.beginLogin(async () => "data:image/png;base64,QR_BASE64_PAYLOAD");
@@ -381,10 +368,7 @@ describe("LoginFlow.beginLogin()", () => {
  */
 describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 	function loggedInPoll(h: Harness) {
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({
 			code: 0,
 			data: { code: 0, refresh_token: "rt" },
@@ -419,10 +403,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 
 	it("轮询里抛了错:登记进去的这件事不拒,记一条 warn,下一拍还能轮询", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 		await h.flow.beginLogin(async () => "data:url");
 		// waitScan 之后的状态汇报炸了 —— 以前这是定时器回调里的 unhandledRejection。
@@ -449,10 +430,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
  */
 describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 	function qrReady(h: Harness) {
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 	}
 
 	it("起轮询时拿一道闸;还在等扫码时一直握着", async () => {
@@ -470,7 +448,7 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 
 	it("拿不到二维码:没起轮询,也就没拿闸", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: null });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(failureFromBili(-1, "表外码"));
 		await h.flow.beginLogin(async () => "ignored");
 		expect(h.api.holdLoginSaves).not.toHaveBeenCalled();
 	});
@@ -596,10 +574,7 @@ describe("LoginFlow.stop()", () => {
 
 	it("after beginLogin, stop() disposes the active QR poll + expiry timer", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		await h.flow.beginLogin(async () => "data:url");
 
 		expect(h.scFake.intervals).toHaveLength(1);
@@ -872,19 +847,23 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		expect(changes).not.toHaveBeenCalled();
 	});
 
-	it("B 站回非 0 码:进失败状态,回 unavailable 并带 upstreamCode", async () => {
+	it("B 站回表外码:进失败状态,回 unknown 并带原码", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: null });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(failureFromBili(-1, "表外码"));
 
 		const r = await h.flow.beginLogin(async () => "ignored");
 
-		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试", { upstreamCode: -1 }));
+		expect(r).toEqual(fail("unknown", "获取二维码失败，请重试", { upstreamCode: -1 }));
 		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
-	it.each([-352, -403])("B 站回 %i(风控):回 rate_limited", async (code) => {
+	it.each([-352, -403, -412, -799, -509])("B 站回 %i(风控):回 rate_limited", async (code) => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code, data: null });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(
+			code === -403
+				? fail("rate_limited", "风控", { upstreamCode: code })
+				: failureFromBili(code, "风控"),
+		);
 
 		const r = await h.flow.beginLogin(async () => "ignored");
 
@@ -892,12 +871,19 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
+	it("取码回应不是对象:回 unavailable,不带 upstreamCode", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(fail("unavailable", "B 站的回应不是预期的形状"));
+
+		const r = await h.flow.beginLogin(async () => "ignored");
+
+		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试"));
+		expect(rawOf(h.flow).status).toBe("failed");
+	});
+
 	it("渲染二维码失败:进失败状态,回 unavailable", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 
 		const r = await h.flow.beginLogin(async () => {
 			throw new Error("canvas exploded");
@@ -909,10 +895,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 
 	it("成功:回 ok,进等待扫码", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 
 		const r = await h.flow.beginLogin(async () => "data:url");
 
@@ -943,10 +926,7 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 	it("已登录时再扫码、不扫、等超时:不发 auth-lost;心跳把快照推回已登录,不发 auth-restored", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		await logIn(h);
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 
 		await h.flow.beginLogin(async () => "data:url");
 		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "ready" });
@@ -1033,10 +1013,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 
 	it("扫码成功:进已登录叫一声(账号还没有),账号到了叫一声,头像到了再叫一声", async () => {
 		const h = makeFlow({ fetchAvatar: async () => "avatar-ref" });
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({
 			code: 0,
 			data: { code: 0, refresh_token: "rt" },
@@ -1075,10 +1052,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 
 	it("等待扫码 → 已扫等确认:从 pollOnce 驱动,叫一声且 message 是「已扫码」那句;还没扫的那拍不叫", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		await h.flow.beginLogin(async () => "data:url");
 		const seen = watch(h);
 
@@ -1103,10 +1077,7 @@ describe("LoginFlow — onChange(对外状态与账号)", () => {
 
 	it("loggedInAt 在同一段登录里不随卡片补到而变", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr", qrcode_key: "k" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
 		h.api.fetchLoginStatus.mockResolvedValueOnce({
 			code: 0,
 			data: { code: 0, refresh_token: "rt" },
@@ -1466,10 +1437,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 			?.handle.fire();
 		await flush();
 
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr/x", qrcode_key: "x" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk("https://qr/x", "x"));
 		await h.flow.beginLogin(async () => "data:x");
 		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
 		slow.resolve(ok({ data: { card: { name: "n", face: "" } } }));
@@ -1497,10 +1465,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 			?.handle.fire();
 		await flush();
 
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr/x", qrcode_key: "x" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk("https://qr/x", "x"));
 		await h.flow.beginLogin(async () => "data:x");
 		probe.resolve({ code: 0, data: { mid: 42 } });
 		await beating;
@@ -1520,10 +1485,7 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
  */
 describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 	async function begin(h: Harness, tag: string): Promise<Result> {
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: `https://qr/${tag}`, qrcode_key: tag },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk(`https://qr/${tag}`, tag));
 		return h.flow.beginLogin(async () => `data:${tag}`);
 	}
 
@@ -1573,7 +1535,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
 		expect(h.flow.authState().status).toBe("logged-in");
 
-		qrFetch.resolve({ code: 0, data: { url: "https://qr/new", qrcode_key: "new" } });
+		qrFetch.resolve(qrOk("https://qr/new", "new"));
 		const r = await beginning;
 
 		expect(r).toMatchObject({ ok: false, code: "conflict" });
@@ -1589,7 +1551,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		const firstBegin = h.flow.beginLogin(async () => "data:first");
 		await begin(h, "new");
 
-		first.resolve({ code: 0, data: { url: "https://qr/first", qrcode_key: "first" } });
+		first.resolve(qrOk("https://qr/first", "first"));
 		const r = await firstBegin;
 
 		expect(r).toMatchObject({ ok: false, code: "conflict" });
@@ -1622,7 +1584,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		const beginning = h.flow.beginLogin(async () => "data:x");
 		h.flow.reportLoggedOut("notLogin");
 
-		qr.resolve({ code: 0, data: { url: "https://qr/x", qrcode_key: "x" } });
+		qr.resolve(qrOk("https://qr/x", "x"));
 		const r = await beginning;
 
 		expect(r).toMatchObject({
@@ -1641,7 +1603,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		const firstBegin = h.flow.beginLogin(async () => "data:first");
 		await begin(h, "new");
 
-		first.resolve({ code: 0, data: { url: "https://qr/first", qrcode_key: "first" } });
+		first.resolve(qrOk("https://qr/first", "first"));
 		const r = await firstBegin;
 
 		expect(r).toMatchObject({
@@ -1653,10 +1615,7 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 
 	it("先发的渲染二维码还没完、后发的已经出码:先发的渲染完回来时同样作废", async () => {
 		const h = makeFlow();
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: "https://qr/first", qrcode_key: "first" },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk("https://qr/first", "first"));
 		const slowRender = deferred<string>();
 		const firstBegin = h.flow.beginLogin(() => slowRender.promise);
 		await flush();
@@ -1762,10 +1721,7 @@ describe("LoginFlow — 扫码成功后取账号的途中又发起重扫", () =>
 	it("取卡片在途时主人又发起一次:状态停在等待扫码、二维码还在、账号没写进去", async () => {
 		const h = makeFlow();
 		const begin = (tag: string) => {
-			h.api.fetchLoginQrCode.mockResolvedValueOnce({
-				code: 0,
-				data: { url: `https://qr/${tag}`, qrcode_key: tag },
-			});
+			h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk(`https://qr/${tag}`, tag));
 			return h.flow.beginLogin(async () => `data:${tag}`);
 		};
 		await begin("old");
@@ -1794,10 +1750,7 @@ describe("LoginFlow — 扫码成功后取账号的途中又发起重扫", () =>
 /** 3a-29 复审 A2:「确认成功」落盘的那一段里进来的发起,不得把已成立的登录盖成等待扫码。 */
 describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 	async function begin(h: Harness, tag: string): Promise<Result> {
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: `https://qr/${tag}`, qrcode_key: tag },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk(`https://qr/${tag}`, tag));
 		return h.flow.beginLogin(async () => `data:${tag}`);
 	}
 
@@ -2002,10 +1955,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		h.scFake.intervals.filter((i) => i.ms === POLL_MS && !i.handle.disposed);
 
 	async function begin(h: Harness, tag: string): Promise<Result> {
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({
-			code: 0,
-			data: { url: `https://qr/${tag}`, qrcode_key: tag },
-		});
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk(`https://qr/${tag}`, tag));
 		return h.flow.beginLogin(async () => `data:${tag}`);
 	}
 

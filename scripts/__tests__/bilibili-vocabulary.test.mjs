@@ -189,6 +189,7 @@ export const GENERATED_KEYS = [
 	"pub_action",
 	"pub_time",
 	"pub_ts",
+	"qrcode_key",
 	"refresh_token",
 	"require_text",
 	"rich_text_nodes",

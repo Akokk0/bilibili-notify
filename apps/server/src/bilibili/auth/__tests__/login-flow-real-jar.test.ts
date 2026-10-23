@@ -24,10 +24,9 @@ async function scanWorld() {
 	const bus: MessageBus = { emit: vi.fn(), on: vi.fn(() => ({ dispose: vi.fn() })) };
 	const flow = new LoginFlow({ serviceCtx: host.serviceCtx, api: w.api, bus, healthCheckMs: 0 });
 
-	vi.spyOn(w.api, "fetchLoginQrCode").mockResolvedValue({
-		code: 0,
-		data: { url: "https://qr", qrcode_key: "k" },
-	} as never);
+	vi.spyOn(w.api, "fetchLoginQrCode").mockResolvedValue(
+		ok({ data: { url: "https://qr", qrcode_key: "k" } }),
+	);
 	// 默认:还在等扫码。
 	const status = vi
 		.spyOn(w.api, "fetchLoginStatus")

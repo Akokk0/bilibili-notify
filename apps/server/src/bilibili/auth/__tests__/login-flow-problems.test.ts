@@ -21,16 +21,19 @@ import {
 	makeProblemPipeline,
 } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/api";
+import { failureFromBili } from "../../error-codes";
 import { LoginFlow } from "../login-flow";
+
+type LoginQrResult = Awaited<ReturnType<Api["fetchLoginQrCode"]>>;
 
 function makeHarness() {
 	const api = {
 		fetchMyselfInfo: vi.fn(),
 		fetchUserCard: vi.fn(async () => ok({ data: { card: { name: "n", face: "" } } })),
-		fetchLoginQrCode: vi.fn(async () => ({
-			code: 0,
-			data: { url: "https://example.com/qr", qrcode_key: "key" },
-		})),
+		fetchLoginQrCode: vi.fn(
+			async (): Promise<LoginQrResult> =>
+				ok({ data: { url: "https://example.com/qr", qrcode_key: "key" } }),
+		),
 		fetchLoginStatus: vi.fn(),
 		getCookiesJson: vi.fn(() => '[{"key":"SESSDATA","value":"x"}]'),
 		loginGeneration: 0,
@@ -136,7 +139,7 @@ describe("没有会话可丢时,-101 什么都不改", () => {
 	it("没登录过、扫码失败停在 failed 时,手动探活回 -101:不算失效", async () => {
 		const h = makeHarness();
 		h.flow.reportLoggedOut("notLogin");
-		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: { url: "", qrcode_key: "" } });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce(failureFromBili(-1, "表外码"));
 		await h.flow.beginLogin(async () => "x");
 		expect(h.flow.authState().status).toBe("error");
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101 });

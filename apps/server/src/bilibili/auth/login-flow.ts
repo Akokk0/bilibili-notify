@@ -412,10 +412,9 @@ export class LoginFlow {
 			this.authGeneration !== startedGen
 				? fail("conflict", "这一次扫码已因退出登录或登录失效而作废，请重新发起")
 				: fail("conflict", "这一次扫码已被新的一次(或已成立的登录)取代，请以最新的状态为准");
-		// biome-ignore lint/suspicious/noExplicitAny: API response shape
-		let qrContent: any;
+		let qr: Awaited<ReturnType<Api["fetchLoginQrCode"]>>;
 		try {
-			qrContent = await this.api.fetchLoginQrCode();
+			qr = await this.api.fetchLoginQrCode();
 		} catch (e) {
 			this.logger.warn(`[login] 获取登录二维码失败：${errorMessageOf(e)}`);
 			if (session !== this.scanSession) return superseded();
@@ -425,17 +424,17 @@ export class LoginFlow {
 			return fail("unavailable", LOGIN_FAILURE_MESSAGES.qrFetchFailed);
 		}
 		if (session !== this.scanSession) return superseded();
-		if (qrContent.code !== 0) {
+		if (!qr.ok) {
 			this.reportQrFailure("qrFetchFailed");
-			const upstreamCode: number = qrContent.code;
-			// -352 / -403 是 B 站的风控:稍后再来,与「接口坏了」分开。
-			const code = upstreamCode === -352 || upstreamCode === -403 ? "rate_limited" : "unavailable";
-			return fail(code, LOGIN_FAILURE_MESSAGES.qrFetchFailed, { upstreamCode });
+			// 标准码由请求层的翻译表给(`-403` 由这个接口自己认作风控)。
+			return fail(qr.code, LOGIN_FAILURE_MESSAGES.qrFetchFailed, {
+				upstreamCode: qr.upstreamCode,
+			});
 		}
 
 		let dataUrl: string;
 		try {
-			dataUrl = await renderQr(qrContent.data.url);
+			dataUrl = await renderQr(qr.data.url);
 		} catch (e) {
 			this.logger.warn(`[login] 生成二维码失败：${errorMessageOf(e)}`);
 			if (session !== this.scanSession) return superseded();
@@ -453,7 +452,7 @@ export class LoginFlow {
 			polling = false;
 			// 登记进 track:扫码成功的那一拍会把 cookie 与令牌提交进集成的密钥存储,关停得等它落完再让各写道
 			// 关门。失败在交进去之前接住(以前这里是裸的 async 回调,抛错就是一次 unhandledRejection)。
-			const poll = this.pollOnce(qrContent.data.qrcode_key, session, gen)
+			const poll = this.pollOnce(qr.data.qrcode_key, session, gen)
 				.catch((e) => {
 					this.logger.warn(`[login] 二维码轮询出错：${errorMessageOf(e)}`);
 				})

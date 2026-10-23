@@ -23,6 +23,7 @@ import { createMyselfCache, type MyselfCache } from "./self-info-cache";
 import type {
 	LiveRoomDanmakuResponse,
 	LiveRoomResponse,
+	LoginQrCodeResponse,
 	MasterInfoData,
 	MyselfResponse,
 	RelationStatResponse,
@@ -843,8 +844,12 @@ export class Api {
 		);
 	}
 
-	async fetchLoginQrCode() {
-		return this.getJson(EP.LOGIN_QR_CODE_URL, "fetchLoginQrCode");
+	async fetchLoginQrCode(): Promise<Result<{ data: LoginQrCodeResponse["data"] }>> {
+		return this.resultOf(
+			await this.getJson(EP.LOGIN_QR_CODE_URL, "fetchLoginQrCode"),
+			"fetchLoginQrCode",
+			{ [-403]: "rate_limited" },
+		);
 	}
 
 	async fetchLoginStatus(qrcodeKey: string) {
