@@ -89,7 +89,7 @@ export const RATCHET = {
 	"apps/web/src/pages/System.tsx": 5,
 	"apps/web/src/pages/rules/PerUpEditor.tsx": 6,
 	"apps/web/src/pages/rules/sections.tsx": 2,
-	"apps/web/src/pages/up/UpCard.tsx": 6,
+	"apps/web/src/pages/up/UpCard.tsx": 5,
 	"apps/web/src/pages/up/UpDialog.tsx": 10,
 	"apps/web/src/pages/up/subscription-source.ts": 2,
 	"apps/web/src/types/domain.ts": 2,

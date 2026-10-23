@@ -196,19 +196,6 @@ export function UpCard({
 						{ext.label}拓展没在跑
 					</WarnNote>
 				) : null}
-				{/*
-				 * 未关注 = 收不到动态。动态走 feed/all(关注流),没关注该 UP 就一条都拿不到 ——
-				 * 这条订阅看着正常,实际是哑的。所以是**故障**不是提示:显眼、常驻,而不是创建
-				 * 时一闪而过的 toast。followed===undefined(服务端没检查过 / 老数据)不显示,
-				 * 那不等于「未关注」,别凭空吓人。
-				 * 关注状态只有能关注的来源才有(今天只有 B 站),别的来源 `followed` 缺着,所以先判是 B 站。
-				 */}
-				{isBili && sub.followed === false ? (
-					<ErrorNote size="sm" icon={<Icon.warning size={12} />} className="mb-2.5">
-						未关注该 UP —— 收不到动态
-						{sub.followError ? <span className="opacity-80">（{sub.followError}）</span> : null}
-					</ErrorNote>
-				) : null}
 				{/* 挂在这条订阅上的问题(服务端从问题表 join 来):每条一个,不看来源、不看 code。 */}
 				{sub.problems.map((problem) => (
 					<ErrorNote

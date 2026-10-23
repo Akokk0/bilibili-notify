@@ -361,7 +361,7 @@ export const RATCHET = {
 	"apps/web/src/pages/stats/radar.ts": 10,
 	"apps/web/src/pages/stats/ranges.ts": 3,
 	"apps/web/src/pages/up/TagEditDialog.tsx": 8,
-	"apps/web/src/pages/up/UpCard.tsx": 9,
+	"apps/web/src/pages/up/UpCard.tsx": 8,
 	"apps/web/src/pages/up/UpCardMenu.tsx": 6,
 	"apps/web/src/pages/up/UpDialog.tsx": 61,
 	"apps/web/src/services/aiChat.ts": 7,

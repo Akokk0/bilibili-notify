@@ -60,43 +60,6 @@ describe("UpCard 菜单触发", () => {
 });
 
 /**
- * 「未关注」警告。
- *
- * 动态走 feed/all(关注流)—— 没关注该 UP 就一条动态都收不到。这不是提示,是**故障**:
- * 订阅卡片看着一切正常,实际什么都推不出来。所以要显眼、要一直在,而不是创建时弹个
- * toast 就消失。
- */
-describe("UpCard 未关注警告", () => {
-	it("followed=false → 显眼告知「收不到动态」,并带上原因", () => {
-		const sub = {
-			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
-			followed: false,
-			followError: "对方已将你拉黑",
-		};
-		const { getByText } = render(<UpCard {...props({ sub })} />);
-
-		expect(getByText(/收不到动态/)).toBeTruthy();
-		expect(getByText(/拉黑/)).toBeTruthy();
-	});
-
-	it("followed=true → 什么都不显示", () => {
-		const sub = {
-			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
-			followed: true,
-		};
-		const { queryByText } = render(<UpCard {...props({ sub })} />);
-
-		expect(queryByText(/收不到动态/)).toBeNull();
-	});
-
-	it("followed=undefined(老数据/服务端没检查过)→ 不显示,别凭空吓人", () => {
-		const { queryByText } = render(<UpCard {...props()} />);
-
-		expect(queryByText(/收不到动态/)).toBeNull();
-	});
-});
-
-/**
  * 挂在订阅上的问题(服务端从问题表 join 来):每条一个红字提示,正文是问题的 message;
  * 不看来源、不看 code —— 拓展订阅一样出。没有问题就什么都不出。
  */
@@ -128,6 +91,23 @@ describe("UpCard 订阅上的问题", () => {
 
 		expect(getByText(/直播间读不到/)).toBeTruthy();
 		expect(getByText(/第二件事/)).toBeTruthy();
+	});
+
+	it("关注失败(follow_failed)也走通用问题:出红字,正文是 message", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			problems: [
+				{
+					...PROBLEM,
+					reporter: "bilibili",
+					code: "follow_failed",
+					message: "未关注该 UP —— 收不到动态（对方已将你拉黑）",
+				},
+			],
+		};
+		const { getByText } = render(<UpCard {...props({ sub })} />);
+
+		expect(getByText("未关注该 UP —— 收不到动态（对方已将你拉黑）")).toBeTruthy();
 	});
 
 	it("没有问题 → 不出", () => {
@@ -234,12 +214,6 @@ describe("UpCard × 拓展订阅", () => {
 		});
 		const { getAllByText } = render(<UpCard {...props({ sub: cached })} />);
 		expect(getAllByText("资料里的名字").length).toBeGreaterThan(0);
-	});
-
-	it("不出「未关注」—— 哪怕线上带来一个 followed:false", () => {
-		const sub = { ...makeExtSub(), followed: false, followError: "x" } as never;
-		const { queryByText } = render(<UpCard {...props({ sub })} />);
-		expect(queryByText(/收不到动态/)).toBeNull();
 	});
 });
 

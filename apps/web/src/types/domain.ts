@@ -70,11 +70,11 @@ export {
 
 /**
  * Dashboard 消费的订阅一直是 wire DTO 形状(internal Subscription + 服务端
- * join 回来的 cachedProfile / problems / followed),沿用旧名 Subscription。
+ * join 回来的 cachedProfile / problems),沿用旧名 Subscription。
  *
  * 订阅只有一种形状(ADR-0021 决策 14、15):「这条订阅订的是谁」一律读
  * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`);`specialViewers` 是公共的,
- * `problems` 必带(挂在这条订阅上的问题,没有就是空数组);`followed` / `followError` 是可选格(只有能关注的来源才有)。
+ * `problems` 必带(挂在这条订阅上的问题,没有就是空数组;没关注 UP 也在里面,`code: "follow_failed"`)。
  */
 export type Subscription = SubscriptionDTO;
 

@@ -540,7 +540,7 @@ export interface MarketplaceInstallRequest {
 
 /**
  * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubRuntimeStore join
- * 回来的外置运行时字段(cachedProfile / state / 关注状态)。
+ * 回来的外置运行时字段(cachedProfile),加上问题表里挂在这条订阅上的问题(problems)。
  *
  * 只有这一种形状(ADR-0021 决策 14、15):B 站与拓展提供的订阅同一个形状,订的是谁只读
  * `identity`(`sourceKey` + `externalId`)。
@@ -569,15 +569,6 @@ export type SubscriptionDTO = Subscription &
 		 * 没有就是空数组。订阅卡每条出一个提示,不分来源、不看 `code`;变了服务端发 `problems-changed`。
 		 */
 		problems: Problem[];
-		/**
-		 * **followed 决定订阅能不能工作**:动态走 `feed/all`(关注流),没关注就一条动态都收不到。
-		 * `undefined` = 服务端还没检查过(老数据 / 当时未登录),**不等于**「未关注」—— 别拿它去吓用户。
-		 * 只对需要关注的订阅有意义:B 站的、启用中的、作品开关开着的(直播用不着关注,「关了就不查」);
-		 * 别的来源、停用的、没开作品的订阅这一格与 `followError` 缺着,运行时状态里留着的旧「未关注」不外泄。
-		 */
-		followed?: boolean;
-		/** `followed === false` 时的原因(风控 / 被拉黑 / 断网…),直接展示给用户。 */
-		followError?: string;
 	};
 
 /** 外置运行时字段(服务端 SubRuntimeStore join 回来的)。 */
