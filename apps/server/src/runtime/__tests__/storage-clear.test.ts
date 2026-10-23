@@ -257,7 +257,7 @@ describe("推送历史的文字:日文件与重推原件一起删,水位线不�
 	});
 });
 
-describe("数据统计:四个目录、涨粉起点、缓存", () => {
+describe("数据统计:四个目录、缓存", () => {
 	it("四个目录的文件全清,运行记录不动;回的是实际字节;清完通知总览与粉丝轮询", async () => {
 		const w = world;
 		await w.file("data", "stats/posts/a.jsonl", 10);
@@ -276,19 +276,18 @@ describe("数据统计:四个目录、涨粉起点、缓存", () => {
 		expect(w.pollerReset).toHaveBeenCalledOnce();
 	});
 
-	it("连订阅运行态里的涨粉起点一起清,只动这一格", async () => {
+	it("不碰订阅运行态里的资料与关注信息", async () => {
 		const w = world;
 		const profile = { name: "n", sign: "", fans: 9, lastRefreshedAt: "2026-10-06T00:00:00.000Z" };
 		await w.subRuntimeStore.patch("sub-a", {
 			cachedProfile: profile,
-			fansBaseline: { value: 100, ts: "2026-09-01T00:00:00.000Z" },
 			roomId: "123",
 			followed: true,
 		});
 		await w.subRuntimeStore.patch("sub-b", {
-			fansBaseline: { value: 7, ts: "2026-09-02T00:00:00.000Z" },
+			roomId: "456",
 		});
-		await w.subRuntimeStore.patch("sub-c", { cachedProfile: profile }); // 本来没有起点(拓展订阅)
+		await w.subRuntimeStore.patch("sub-c", { cachedProfile: profile });
 
 		await w.storage.clear("stats");
 
@@ -297,15 +296,14 @@ describe("数据统计:四个目录、涨粉起点、缓存", () => {
 			roomId: "123",
 			followed: true,
 		});
-		expect(w.subRuntimeStore.get("sub-b")).toEqual({});
+		expect(w.subRuntimeStore.get("sub-b")).toEqual({ roomId: "456" });
 		expect(w.subRuntimeStore.get("sub-c")).toEqual({ cachedProfile: profile });
-		// 落了盘:换一个仓从文件里读,也没有起点。
+		// 换一个仓从文件里读,这些格也原样还在。
 		const reread = (await import("../sub-runtime-store.js")).createSubRuntimeStore({
 			dataRoot: w.dataRoot,
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await reread.load();
-		expect(reread.get("sub-a")?.fansBaseline).toBeUndefined();
 		expect(reread.get("sub-a")?.roomId).toBe("123");
 	});
 

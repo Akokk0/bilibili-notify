@@ -171,12 +171,11 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 		expect(row.identity).toEqual(SUB.identity);
 	});
 
-	it("有 cachedProfile 时 join 回 DTO(fansBaseline 永不外泄)", async () => {
+	it("有 cachedProfile 时 join 回 DTO", async () => {
 		const h = makeHarness({
 			rtRecord: {
 				[SUB.id]: {
 					cachedProfile: PROFILE,
-					fansBaseline: { value: 1000, ts: "2026-04-01T00:00:00.000Z" },
 				},
 			},
 		});
@@ -184,8 +183,6 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 		const body = (await res.json()) as Array<Record<string, unknown>>;
 		const row = body[0] as Record<string, unknown>;
 		expect(row.cachedProfile).toEqual(PROFILE);
-		// fansBaseline 是 FansPoller 私有,绝不进 DTO
-		expect("fansBaseline" in row).toBe(false);
 		expect(row).not.toHaveProperty("state");
 	});
 });

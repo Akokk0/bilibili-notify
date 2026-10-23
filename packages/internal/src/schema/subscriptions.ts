@@ -164,16 +164,6 @@ export const SubscriptionOverridesSchema = z.object({
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;
 
 /**
- * fans 时序的「订阅起点」基线。FansPoller 第一次给该订阅取到 fans 值时写入,
- * 此后永不变。24h / 7d 的 delta 由后端读取 fans jsonl 时序计算,不在 schema 中。
- */
-export const FansBaselineSchema = z.object({
-	value: z.number().int().min(0),
-	ts: z.string(),
-});
-export type FansBaseline = z.infer<typeof FansBaselineSchema>;
-
-/**
  * 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
  * 不用来这儿补一条 refine。
  */

@@ -130,7 +130,6 @@ export async function makeStorageWorld(): Promise<StorageWorld> {
 		imageStore,
 		listGenerations: async () => generations,
 		statsRecorder: recorder,
-		subRuntime: subRuntimeStore,
 		fansPoller: () => ({ reset: pollerReset }),
 		invalidateStatsOverview: invalidate,
 		historyStore,

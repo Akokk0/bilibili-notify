@@ -2,10 +2,10 @@
  * **统计总开关 × 粉丝轮询**(ADR-0027 决策 9;㉙a)。
  *
  * B 站粉丝轮询直接往粉丝仓 `append`、绕开记录器,所以总开关要在这里单独拦。关着时:
- *   - 不写粉丝样本、不新建 / 不改写涨粉起点 `fansBaseline`;
+ *   - 不写粉丝样本;
  *   - **照跑**:当前粉丝数写进资料缓存(订阅卡上的数)、`followers-refreshed` 照发、行里的当前数照给;
- *   - 「24 小时 / 7 天涨跌」是 `null`(靠粉丝时序),「订阅以来涨了多少」只依赖单独存的起点与当前数 ——
- *     起点在就照给,没有起点(关着时新订阅的第一次采样不新建它)就是 `null`。
+ *   - 「订阅以来涨了多少」照读时序第一条;时序还没有样本时为 `null`;
+ *   - 「24 小时 / 7 天涨跌」是 `null`(靠时序的范围查询)。
  * 开关现取、不重启:同一个 poller 下一轮 tick 就按新值办。
  *
  * 对照用例是开着时同样的一轮 —— 只断言「没写」会在什么都没跑时空绿。
@@ -143,8 +143,9 @@ async function start(
 }
 
 describe("粉丝轮询 × 总开关(B 站)", () => {
-	it("对照:开着时写样本、新建起点、涨跌按时序算", async () => {
+	it("对照:开着时写样本、涨跌与订阅以来按时序算", async () => {
 		const p = await start({
+			earliest: { sampledAt: iso(0), followers: 4242 },
 			nearest: (_key, beforeIso) => {
 				// 24h 之前、7d 之前各有一条样本。
 				return { sampledAt: beforeIso, followers: beforeIso < iso(2 * 24 * HOUR) ? 3000 : 4000 };
@@ -152,8 +153,6 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		});
 		await p.poll();
 		expect(p.append).toHaveBeenCalledTimes(1);
-		const patch = p.rtPatch.mock.calls[0]?.[1] as SubRuntime;
-		expect(patch.fansBaseline).toMatchObject({ value: 4242 });
 		expect(p.entries()[0]).toMatchObject({
 			current: 4242,
 			deltaSubscribed: 0,
@@ -176,7 +175,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		expect(p.rtPatch).toHaveBeenCalledTimes(1);
 		const patch = p.rtPatch.mock.calls[0]?.[1] as SubRuntime;
 		expect(patch.cachedProfile).toMatchObject({ fans: 4242 });
-		expect(patch).not.toHaveProperty("fansBaseline");
+		expect(Object.keys(patch)).toEqual(["cachedProfile"]);
 		// 事件照发、当前数照给,涨跌给空。
 		expect(p.snapshots.at(-1)).toEqual([
 			{
@@ -191,23 +190,19 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		]);
 	});
 
-	it("关着、起点早就存着:起点不改写,「订阅以来」照给(只依赖起点与当前数),24h / 7d 给空", async () => {
+	it("关着、时序第一条早就存着:「订阅以来」照给,24h / 7d 给空", async () => {
 		enabled = false;
 		const p = await start({
 			runtime: {
 				"sub-1": {
 					cachedProfile: { name: "旧名", sign: "", fans: 100, lastRefreshedAt: iso(HOUR) },
-					fansBaseline: { value: 4000, ts: "2026-04-01T00:00:00.000Z" },
 				},
 			},
+			earliest: { sampledAt: "2026-04-01T00:00:00.000Z", followers: 4000 },
 		});
 		await p.poll();
 		const patch = p.rtPatch.mock.calls[0]?.[1] as SubRuntime;
-		expect(patch).not.toHaveProperty("fansBaseline");
-		expect(p.runtime.get("sub-1")?.fansBaseline).toEqual({
-			value: 4000,
-			ts: "2026-04-01T00:00:00.000Z",
-		});
+		expect(Object.keys(patch)).toEqual(["cachedProfile"]);
 		expect(p.entries()[0]).toMatchObject({
 			current: 4242,
 			deltaSubscribed: 242,
@@ -259,7 +254,7 @@ describe("粉丝轮询 × 总开关(拓展订阅那一行)", () => {
 		});
 	});
 
-	it("关着:当前数照给(取最近报的资料),涨跌与订阅以来都靠时序、给空", async () => {
+	it("关着:当前数照给(取最近报的资料),订阅以来照给,24h / 7d 给空", async () => {
 		enabled = false;
 		const p = await start({
 			subs: [EXT],
@@ -271,10 +266,43 @@ describe("粉丝轮询 × 总开关(拓展订阅那一行)", () => {
 		expect(p.entries()[0]).toMatchObject({
 			subscriptionId: "e1",
 			current: 450,
-			deltaSubscribed: null,
+			deltaSubscribed: 350,
 			delta24h: null,
 			delta7d: null,
 		});
+	});
+
+	it("关着:两种来源的「订阅以来」都照给,24h / 7d 都空", async () => {
+		enabled = false;
+		const p = await start({
+			subs: [BILI_SUB, EXT],
+			runtime: {
+				"sub-1": {
+					cachedProfile: { name: "B 站甲", sign: "", fans: 100, lastRefreshedAt: iso(HOUR) },
+				},
+				...extRuntime(450),
+			},
+			earliest: { sampledAt: iso(10 * 24 * HOUR), followers: 100 },
+		});
+		await p.poll();
+		expect(p.entries()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					subscriptionId: "sub-1",
+					current: 4242,
+					deltaSubscribed: 4142,
+					delta24h: null,
+					delta7d: null,
+				}),
+				expect.objectContaining({
+					subscriptionId: "e1",
+					current: 450,
+					deltaSubscribed: 350,
+					delta24h: null,
+					delta7d: null,
+				}),
+			]),
+		);
 	});
 
 	it("关着、盘上还没有时序:只要资料报了粉丝数,这一行照样在(与 B 站那一支对称)", async () => {

@@ -240,7 +240,6 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 					fans: 14248,
 					lastRefreshedAt: "2026-06-30T11:55:00.000Z",
 				},
-				fansBaseline: { value: 10000, ts: "2026-06-01T00:00:00.000Z" },
 			},
 		],
 		[
@@ -252,7 +251,6 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 					fans: 7025,
 					lastRefreshedAt: "2026-06-30T11:55:00.000Z",
 				},
-				fansBaseline: { value: 6990, ts: "2026-05-20T10:00:00.000Z" },
 			},
 		],
 		[
@@ -330,7 +328,7 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 }
 
 describe("压缩前后:GET /api/stats/followers(首页粉丝面板)的各格相同", () => {
-	it("B 站与拓展各条的 current / 起点 / 24h / 7d:压过的目录与没压过的目录算出来一样", async () => {
+	it("B 站与拓展各条的 current / 起点 / 24h / 7d:压过的目录与没压过的目录算出来一样(起点只按定案挪)", async () => {
 		const plain = await seededRoot();
 		const squeezed = await seededRoot();
 		await compactAll(squeezed, new Date(NOW));
@@ -342,7 +340,19 @@ describe("压缩前后:GET /api/stats/followers(首页粉丝面板)的各格相�
 			delta24h: expect.any(Number),
 			delta7d: expect.any(Number),
 		});
-		expect(await panelEntries(squeezed)).toEqual(want);
+		// 「订阅以来」从时序第一条算:压缩把第一个小时并成那个小时的末值,起点最多挪一小时(data-model 定的,
+		// 不算截尾)。b-act 第一个小时里一直在涨,压过之后起点是那个小时的末值,只有这一格少掉这么多;
+		// 别的格、别的条(第一个小时平着)一字不差。
+		const [firstAt, firstValue] = ACT[0] as Sample; // 夹具里 ACT 不空
+		const firstHourLast = ACT.filter(([ts]) => ts < firstAt + 60 * MIN).at(-1)?.[1] ?? firstValue;
+		expect(firstHourLast).toBeGreaterThan(firstValue);
+		expect(await panelEntries(squeezed)).toEqual(
+			want.map((e) =>
+				e.subscriptionId === "b-act" && e.deltaSubscribed !== null
+					? { ...e, deltaSubscribed: e.deltaSubscribed - (firstHourLast - firstValue) }
+					: e,
+			),
+		);
 	});
 });
 

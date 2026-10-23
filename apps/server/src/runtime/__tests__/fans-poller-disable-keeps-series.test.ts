@@ -218,7 +218,6 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		await p.handle.pollNow();
 
 		expect(await samples("a")).toEqual([100, 150]);
-		expect(p.runtime.get("a")?.fansBaseline?.value).toBe(100);
 		const entry = p.handle.getLastEntries().find((e) => e.identity.externalId === "1");
 		expect(entry).toMatchObject({ current: 150, deltaSubscribed: 50 });
 		expect(p.lastSnapshotUids()).toContain("1");

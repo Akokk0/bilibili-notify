@@ -16,11 +16,7 @@ import { FETCH_CONCURRENCY, type ImagesDeps, syncProfileAvatar } from "../bilibi
 import type { ConfigStore } from "../config/store.js";
 import type { FollowersStore } from "../followers/store.js";
 import { statsFileKey } from "../stats/file-key.js";
-import {
-	pruneOrphanSubRuntime,
-	type SubRuntime,
-	type SubRuntimeStore,
-} from "./sub-runtime-store.js";
+import { pruneOrphanSubRuntime, type SubRuntimeStore } from "./sub-runtime-store.js";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * ONE_HOUR_MS;
@@ -50,8 +46,8 @@ export interface FansPollerOptions {
 	configStore: ConfigStore;
 	subscriptionStore: SubscriptionStore;
 	/**
-	 * Per-tick cachedProfile.fans / lastRefreshedAt (+ first-time fansBaseline)
-	 * persist here — NOT via configStore.patchSubscription. That decoupling is
+	 * Per-tick cachedProfile.fans / lastRefreshedAt persist here — NOT via
+	 * configStore.patchSubscription. That decoupling is
 	 * the whole point: it stops the `config-changed:subscriptions` fan-out that
 	 * re-triggered DynamicPoller every tick (the Logs-Tab `[ops]` flooding bug).
 	 */
@@ -71,8 +67,8 @@ export interface FansPollerOptions {
 	serviceCtx: ServiceContext;
 	/**
 	 * 数据统计的总开关(`stats.enabled`,ADR-0027 决策 9)**现取**,读缓存布尔。粉丝轮询直接写粉丝仓、绕开
-	 * 统计记录器,所以要在这里单独拦:关着时不写粉丝样本、不新建 / 不改写涨粉起点,「24 小时 / 7 天涨跌」给空;
-	 * 资料刷新、当前粉丝数、`followers-refreshed` 照常。
+	 * 统计记录器,所以要在这里单独拦:关着时不写粉丝样本,「24 小时 / 7 天涨跌」给空;
+	 * 「订阅以来」照读时序第一条,资料刷新、当前粉丝数、`followers-refreshed` 照常。
 	 */
 	isStatsEnabled: () => boolean;
 }
@@ -92,7 +88,7 @@ export interface FansPollerHandle extends Disposable {
 	/**
 	 * 数据统计被清空之后(㉙d,「存储占用」)让手里的快照不再用旧数:每一条的「订阅以来 / 24 小时 / 7 天」涨跌置空
 	 * (当前粉丝数保留),拓展那几条按(已被清空的)时序重算,然后发一次 `followers-refreshed`。只动内存,不碰盘、不问 B 站
-	 * —— 涨粉起点在订阅运行态里(清它是调用方的事),下一次采样从当时的粉丝数重新算「订阅以来」。
+	 * —— 下一次采样写进第一条样本,从当时的粉丝数重新算「订阅以来」。
 	 */
 	reset(): Promise<void>;
 }
@@ -101,11 +97,10 @@ export interface FansPollerHandle extends Disposable {
  * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `fetchUserCard` 取 fans;
  *
  *   1. 追加一行样本到 FollowersStore(<dataDir>/stats/followers/<订阅 id>.jsonl,ADR-0020 决策 2 的 🔗);
- *   2. 第一次见该 sub → 把当前值作为 fansBaseline(订阅起点)写进 SubRuntimeStore;
- *   3. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
+ *   2. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
  *      (不再走 configStore.patchSubscription —— 见 FansPollerOptions 注释);
- *   4. 计算 24h / 7d 窗口的 delta(从 jsonl 找近似时间点的最近样本);
- *   5. 单次轮询全部完成后 emit `followers-refreshed`(entries);
+ *   3. 「订阅以来」取时序第一条,24h / 7d 取对应时刻之前最近的样本;
+ *   4. 单次轮询全部完成后 emit `followers-refreshed`(entries);
  *
  * 失败处理:per-uid try/catch,单 UP 失败不阻断剩余轮询。串行 + 200ms 间隔
  * 减小被 B 站风控的概率。cron 用 globals.profileRefreshCron(默认每 10min 一轮),
@@ -176,8 +171,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	 * 一条拓展订阅在面板上的那一行,从它的粉丝时序算(ADR-0020 决策 8);没有时序(平台不报粉丝数,或还没报过)
 	 * 就没有这一行。与 B 站同一个意思:
 	 *   - 当前数:它最近一次报的资料里的(比稀释过的样本新,与统计页的「当前粉丝」同一个数);资料没带取时序末值;
-	 *   - 起点:时序的**第一条样本** —— B 站的 fansBaseline 是第一次采到的值、开机按时序最早一条自愈,是同一件事。
-	 *     拓展的时序停用不删、删订阅才删,第一条就是这条订阅开始被记的那一刻,不另存一份;
+	 *   - 起点:时序的**第一条样本**。时序停用不删、删订阅才删,第一条就是这条订阅开始被记的那一刻;
 	 *   - 24h / 7d:那一刻之前最近的一条样本,同 B 站。
 	 */
 	async function extensionEntry(
@@ -186,11 +180,11 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	): Promise<FollowersRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
 		const identity = subscriptionIdentityOf(sub);
-		// 统计关着时不记粉丝样本、涨跌与起点(都靠时序)给空,当前数只取最近报的资料 / 盘上已有的末值。
+		// 统计关着时不记粉丝样本,24h / 7d 给空;「订阅以来」照读时序第一条。
 		const statsOn = isStatsEnabled();
 		const [latest, first, near24h, near7d] = await Promise.all([
 			fansStore.findNearestBefore(key, FUTURE_ISO),
-			statsOn ? fansStore.findEarliest(key) : undefined,
+			fansStore.findEarliest(key),
 			statsOn
 				? fansStore.findNearestBefore(key, new Date(nowMs - TWENTY_FOUR_HOURS_MS).toISOString())
 				: undefined,
@@ -435,17 +429,16 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					]);
 					if (disposed) return;
 				}
+				const first = await fansStore.findEarliest(key);
+				if (disposed) return;
 
-				const baseline = prev?.fansBaseline;
-				const nextBaseline = baseline ?? (statsOn ? { value: current, ts: nowIso } : undefined);
-				// 关着时没有起点(新订阅的第一次采样不新建它)就没有「订阅以来」可算。
-				const deltaSubscribed = nextBaseline ? current - nextBaseline.value : null;
+				const deltaSubscribed = first ? current - first.followers : null;
 
 				const delta24h = near24h ? current - near24h.followers : null;
 				const delta7d = near7d ? current - near7d.followers : null;
 
 				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
-				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
+				// cachedProfile.fans/lastRefreshedAt 每次写。
 				// name/avatar/avatarUrl/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
 				// 的 seedCard)兜底。稳态走 relation/stat 时 seedCard 为空,直接用既有 profile。
 				// 头像在首见时抓进图库(`avatar` + 来源地址 `avatarUrl`);抓不到先只记地址,冷刷再补。
@@ -463,10 +456,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					fans: current,
 					lastRefreshedAt: nowIso,
 				};
-				const runtimePatch: SubRuntime = { cachedProfile };
-				if (!baseline && nextBaseline) runtimePatch.fansBaseline = nextBaseline;
 				try {
-					await subRuntimeStore.patch(sub.id, runtimePatch);
+					await subRuntimeStore.patch(sub.id, { cachedProfile });
 				} catch (err) {
 					logger.warn(`[fans-poller] persist ${uid} failed: ${String(err)}`);
 				}
@@ -531,27 +522,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			try {
 				const last = await fansStore.findNearestBefore(statsFileKey(sub), FUTURE_ISO);
 				if (!last) continue;
-				// 自愈 baseline:jsonl 是 ground truth(append-only),而 sub-runtime.json
-				// 里的 fansBaseline 历史上被批量重写过(c4e9dcd 把 baseline 搬出 Subscription
-				// 时旧值没迁过来 → fans-poller 看 baseline 缺失就把当时值当起点写)。
-				// 启动时若发现 jsonl earliest 比 baseline 早,以 earliest 校准 baseline。
-				let baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
 				const earliest = await fansStore.findEarliest(statsFileKey(sub));
-				// 总开关关着时不改写涨粉起点(自愈也是一次改写)。
-				if (isStatsEnabled() && earliest && baseline && earliest.sampledAt < baseline.ts) {
-					logger.info(
-						`[fans-poller] baseline self-heal uid=${uid}: ${baseline.ts}(${baseline.value}) → ${earliest.sampledAt}(${earliest.followers})`,
-					);
-					try {
-						// 起点盘上是 `{ value, ts }`(packages/internal 的 schema 不动),与仓的样本显式映射。
-						const healed = { value: earliest.followers, ts: earliest.sampledAt };
-						await subRuntimeStore.patch(sub.id, { fansBaseline: healed });
-						baseline = healed;
-					} catch (err) {
-						logger.warn(`[fans-poller] baseline self-heal ${uid} failed: ${String(err)}`);
-					}
-				}
-				const deltaSubscribed = baseline ? last.followers - baseline.value : 0;
+				const deltaSubscribed = earliest ? last.followers - earliest.followers : null;
 				lastBySub.set(sub.id, {
 					subscriptionId: sub.id,
 					identity: subscriptionIdentityOf(sub),

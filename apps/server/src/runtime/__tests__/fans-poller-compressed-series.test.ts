@@ -4,9 +4,7 @@
  * 1. **拓展订阅**的起点是盘上第一行的值。压缩把最早那一小时换成「小时末值」(那一小时里最晚的一条):起点最多挪一小时,
  *    不算截尾,不另存起点 —— 主人定的(`docs/1.0/construction-plan.md`「涨粉起点」那条)。所以第一个小时里有好几条
  *    值不同的样本时,压缩后 `deltaSubscribed` 以那个小时的末值为起点。
- * 2. **B 站**的起点是 `fansBaseline`,开机按盘上最早一条自愈(最早的比 baseline **更早**才校准)。压缩后第一行的
- *    `sampledAt` 是第一个小时里最晚那条的真实时刻,不早于第一次采样的时刻,所以不会误触发校准;盘上确实有比 baseline
- *    更早的样本时照旧校准。
+ * 2. **B 站**与拓展同一口径,压缩后也从第一个小时的末值算「订阅以来」。
  *
  * 粉丝仓是真的(tmpdir),压缩用仓的 `compact`;期望全是手写字面量。
  */
@@ -174,11 +172,11 @@ describe("拓展订阅:压缩后的起点 = 第一个小时的末值", () => {
 	});
 });
 
-describe("B 站:压缩后开机自愈不误触发", () => {
+describe("B 站同拓展:压缩后的起点 = 第一个小时的末值", () => {
 	const biliSub = (): Subscription =>
 		({ id: "b1", identity: { sourceKey: "bilibili", externalId: "111" }, enabled: true }) as never;
 
-	it("第一个小时里有两条:baseline 记的是第一次采样的时刻,压缩后第一行(小时末那条)更晚 → 不校准", async () => {
+	it("第一个小时里有两条:压缩后从小时末的 1005 算,涨了 325", async () => {
 		const h0 = Math.floor(ago(20 * DAY) / HOUR) * HOUR;
 		await seed("b1", [
 			[h0 + 10 * MIN, 1000],
@@ -186,29 +184,11 @@ describe("B 站:压缩后开机自愈不误触发", () => {
 			[ago(2 * HOUR), 1330],
 		]);
 		await compact("b1");
-		const baseline = { value: 1000, ts: iso(h0 + 10 * MIN) };
-		const p = await start([biliSub()], { b1: { ...profile(1330), fansBaseline: baseline } });
-		expect(p.patch).not.toHaveBeenCalled();
-		expect(p.runtime.get("b1")?.fansBaseline).toEqual(baseline);
+		const p = await start([biliSub()], { b1: profile(1330) });
 		expect(p.entries()[0]).toMatchObject({
 			subscriptionId: "b1",
 			current: 1330,
-			deltaSubscribed: 330,
+			deltaSubscribed: 325,
 		});
-	});
-
-	it("盘上确实有比 baseline 更早的样本(压缩后第一行仍更早)→ 照旧校准成那一行", async () => {
-		const first = Math.floor(ago(20 * DAY) / HOUR) * HOUR + 30 * MIN;
-		await seed("b1", [
-			[first, 1000],
-			[ago(10 * DAY), 1100],
-			[ago(2 * HOUR), 1330],
-		]);
-		await compact("b1");
-		const p = await start([biliSub()], {
-			b1: { ...profile(1330), fansBaseline: { value: 1500, ts: iso(ago(5 * DAY)) } },
-		});
-		expect(p.runtime.get("b1")?.fansBaseline).toEqual({ value: 1000, ts: iso(first) });
-		expect(p.entries()[0]).toMatchObject({ current: 1330, deltaSubscribed: 330 });
 	});
 });

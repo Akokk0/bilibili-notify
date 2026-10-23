@@ -6,8 +6,8 @@
  *    cachedProfile / state(Subscription 现为纯配置)。
  *  - **不写迁移代码**:Zod 默认 strip 未知键 —— 旧 subscriptions.json 里内嵌的
  *    cachedProfile / state 在 parse 时被自动剥离,clean 加载。
- *  - CachedProfileSchema / FansBaselineSchema 仍 export(SubRuntimeStore 复用),只是从
- *    SubscriptionSchema 摘掉。旧的 SubscriptionStateSchema 没人写、1.0 第 2 期 ⑫ 删掉(新的运行态
+ *  - CachedProfileSchema 仍 export(SubRuntimeStore 复用),只是从 SubscriptionSchema 摘掉。
+ *    旧的 SubscriptionStateSchema 没人写、1.0 第 2 期 ⑫ 删掉(新的运行态
  *    `SubscriptionState` 只剩资料缓存,见 docs/1.0/data-model.md)。
  */
 
@@ -16,7 +16,6 @@ import { makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
 import {
 	CachedProfileSchema,
-	FansBaselineSchema,
 	makeEmptySubscription,
 	type Subscription,
 	SubscriptionSchema,
@@ -41,7 +40,6 @@ const LEGACY_RAW = {
 		lastDynamicId: "987654321",
 		lastPushedAt: { dynamic: "2026-05-01T00:00:00.000Z" },
 		liveStatus: "live",
-		fansBaseline: { value: 800, ts: "2026-04-01T00:00:00.000Z" },
 	},
 };
 
@@ -136,11 +134,6 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 			fanClubName: "阿绫的粉丝团",
 		});
 		expect("fanClubName" in CachedProfileSchema.parse(base)).toBe(false);
-	});
-
-	it("FansBaselineSchema 仍可独立 parse", () => {
-		const r = FansBaselineSchema.safeParse({ value: 100, ts: "2026-05-19T00:00:00.000Z" });
-		expect(r.success).toBe(true);
 	});
 });
 

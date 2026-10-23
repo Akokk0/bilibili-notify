@@ -597,7 +597,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 		});
 		runtime.serviceCtx.onDispose(() => settingsRedaction.dispose(), "stop");
-		// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
+		// Per-sub runtime data (cachedProfile, roomId, follow state). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
 
@@ -1452,7 +1452,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					imageStore: runtime.imageStore,
 					listGenerations: () => listGenerationUsage(generationUsage),
 					statsRecorder: runtime.statsRecorder,
-					subRuntime: runtime.subRuntimeStore,
 					fansPoller: () => runtime.fansPoller,
 					invalidateStatsOverview: () => statsOverview.invalidate(),
 					historyStore: runtime.historyStore,

@@ -295,8 +295,7 @@ export interface FollowersRefreshEntry {
 	/** `current` 是什么时候的(ISO):B 站是本次采样时间,拓展是最近那次资料 / 那条样本的时间。 */
 	refreshedAt: string;
 	/**
-	 * delta 相对订阅起点:B 站是 fansBaseline(第一次采到的值,开机按时序最早一条自愈),拓展是它粉丝时序的
-	 * **第一条样本**(同一个意思:这位开始被记的那一刻);起点缺失时为 null。
+	 * delta 相对订阅起点:两种来源都取粉丝时序的**第一条样本**(这位开始被记的那一刻);起点缺失时为 null。
 	 */
 	deltaSubscribed: number | null;
 	/** delta 相对 24h 前最近一条样本;窗口内无样本时为 null。 */

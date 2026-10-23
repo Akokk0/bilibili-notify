@@ -39,8 +39,8 @@ export interface FollowersStore {
 	 */
 	findNearestBefore(key: string, targetIso: string): Promise<FollowersAt | undefined>;
 	/**
-	 * 取 jsonl 最早一行有效样本(早返回,O(首行))。用于启动时 fansBaseline 自愈:earliest 比持久化的
-	 * baseline 更早时以它校准。文件不存在 / 全空 / 全乱码 → undefined。
+	 * 取 jsonl 最早一行有效样本(早返回,O(首行))。用于算「订阅以来」的起点。
+	 * 文件不存在 / 全空 / 全乱码 → undefined。
 	 */
 	findEarliest(key: string): Promise<FollowersAt | undefined>;
 	/**

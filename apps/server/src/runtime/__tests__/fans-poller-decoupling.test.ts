@@ -11,8 +11,8 @@
  * 同款 `vi.mock("cron")` FakeCronJob 捕获 onTick,手动驱动**恰好一次** tick,
  * 断言:
  *   1. configStore.patchSubscription 一次都没被调(Bug 1 链入口被切断);
- *   2. subRuntimeStore.patch 被调,且 payload = { cachedProfile, fansBaseline }
- *      (首次 tick 同时写 baseline);
+ *   2. subRuntimeStore.patch 被调,且 payload = { cachedProfile }
+ *      (首次 tick 不另写起点);
  *   3. 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
  */
 
@@ -157,10 +157,10 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		// (1) Bug 1 链入口被切断:configStore.patchSubscription 一次都没调。
 		expect(patchSubscription).not.toHaveBeenCalled();
 
-		// (2) 写进 SubRuntimeStore:首次 tick 同时带 cachedProfile + fansBaseline。
+		// (2) 写进 SubRuntimeStore:只写 cachedProfile。
 		const [id, payload] = rtPatch.mock.calls[0] as unknown as [
 			string,
-			{ cachedProfile?: Record<string, unknown>; fansBaseline?: Record<string, unknown> },
+			{ cachedProfile?: Record<string, unknown> },
 		];
 		expect(id).toBe("sub-1");
 		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", fans: 4242 });
@@ -170,21 +170,19 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 			avatarUrl: "f.png",
 		});
 		expect(payload.cachedProfile?.lastRefreshedAt).toBeTypeOf("string");
-		expect(payload.fansBaseline).toMatchObject({ value: 4242 });
 
 		// (3) 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
 		expect(configChangedSpy).not.toHaveBeenCalled();
 		expect(subChangedSpy).not.toHaveBeenCalled();
 	});
 
-	it("已有 cachedProfile 时:走 relation/stat 取 follower,只写 cachedProfile,不重写 baseline,不碰 configStore/card", async () => {
+	it("已有 cachedProfile 时:走 relation/stat 取 follower,只写 cachedProfile,不碰 configStore/card", async () => {
 		const bus = createNodeMessageBus();
 		const patchSubscription = vi.fn(async () => SUB);
 		const rtPatch = vi.fn(async () => {});
-		// 既有 runtime:baseline 已存在,cachedProfile 已 seed
+		// 既有 runtime:cachedProfile 已 seed
 		const rtGet = vi.fn(() => ({
 			cachedProfile: { name: "旧名", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" },
-			fansBaseline: { value: 80, ts: "2026-04-01T00:00:00.000Z" },
 		}));
 		const api = makeApi(120);
 
@@ -229,10 +227,8 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		expect(api.fetchUserCard).not.toHaveBeenCalled();
 		const [, payload] = rtPatch.mock.calls[0] as unknown as [
 			string,
-			{ cachedProfile?: Record<string, unknown>; fansBaseline?: unknown },
+			{ cachedProfile?: Record<string, unknown> },
 		];
-		// 逐键替换 + baseline 已存在 → payload 不带 fansBaseline(不冲掉既有 anchor)
-		expect(payload.fansBaseline).toBeUndefined();
 		expect(payload.cachedProfile).toMatchObject({ name: "旧名", fans: 120 });
 	});
 });

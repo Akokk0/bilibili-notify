@@ -31,7 +31,6 @@ import { STATS_LIVE_DIR, STATS_POSTS_DIR, STATS_RECORDING_DIR } from "../stats/s
 import type { FansPollerHandle } from "./fans-poller.js";
 import { measureTree } from "./generation-usage.js";
 import { type DataRootKey, dataPath, hostPath } from "./roots.js";
-import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /** 能整类清空的四类,也是 `DELETE /api/system/storage/:category` 认的全部键(别的一律 400)。 */
 export const CLEARABLE_STORAGE_CATEGORIES = [
@@ -118,8 +117,6 @@ export interface StorageUsage {
 export interface StorageClearOptions extends StorageUsageOptions {
 	/** 统计记录器(整类清空经它各键的写队)。 */
 	statsRecorder: Pick<StatsRecorderHandle, "clear">;
-	/** 订阅运行态(只用来删涨粉起点那一格)。 */
-	subRuntime: Pick<SubRuntimeStore, "getAll" | "patch">;
 	/** 粉丝轮询(开机之后才有,所以是现取);清完让它手里的快照不再用旧数。 */
 	fansPoller: () => Pick<FansPollerHandle, "reset"> | null;
 	/** 作废统计总览的缓存。 */
@@ -222,9 +219,8 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 		switch (category) {
 			case "stats": {
 				const before = await statsBytes();
-				// 删文件经记录器各键的写队;再删订阅运行态里的涨粉起点;最后通知两处缓存。
+				// 删文件经记录器各键的写队;最后通知两处缓存。
 				await opts.statsRecorder.clear();
-				await clearFansBaselines();
 				await opts.fansPoller()?.reset();
 				opts.invalidateStatsOverview();
 				return Math.max(0, before - (await statsBytes()));
@@ -257,18 +253,6 @@ export function createStorageUsage(opts: StorageClearOptions): StorageUsage {
 				const images = await sweepAfterClear();
 				return Math.max(0, before - (await conversationsBytes())) + images;
 			}
-		}
-	}
-
-	/**
-	 * 删订阅运行态里每条订阅的涨粉起点 `fansBaseline`(B 站订阅单独存的那一格;拓展订阅的起点就是时序的第一条样本,
-	 * 随时序一起清了)。`patch` 对值为 `undefined` 的键是删掉这一格、不带的键不动,所以别的格(资料缓存、房号、
-	 * 关注状态)原样留着。没有这一格的不碰(免得为它新建一个空条目)。
-	 */
-	async function clearFansBaselines(): Promise<void> {
-		for (const [id, record] of Object.entries(opts.subRuntime.getAll())) {
-			if (record.fansBaseline === undefined) continue;
-			await opts.subRuntime.patch(id, { fansBaseline: undefined });
 		}
 	}
 }

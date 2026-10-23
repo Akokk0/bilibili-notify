@@ -2,10 +2,10 @@
  * 🔴 **一台真 BN 上存储占用的三个口接没接上**(㉙d,ADR-0027 决策 17)。
  *
  * 路由、占用表、各个仓各自的测试全绿,证明不了 `index.ts` 把它们接到了真的那几个对象上:占用表量的是不是真数据根、
- * 清「统计」有没有经真记录器、有没有清掉订阅运行态里的涨粉起点、有没有让粉丝轮询的快照与总览缓存失效、清「历史」「女仆」
+ * 清「统计」有没有经真记录器、有没有让粉丝轮询的快照与总览缓存失效、清「历史」「女仆」
  * 有没有走真的仓与图库。这里起一台真 BN(自己的临时目录),盘上摆好各类数据,走 HTTP 把每一类清一遍。
  *
- * 摆的东西:一条拓展订阅(有粉丝时序)与一条停用的 B 站订阅(订阅运行态里有涨粉起点),四个统计目录各一份,
+ * 摆的东西:一条拓展订阅(有粉丝时序)与一条停用的 B 站订阅(订阅运行态里有资料与房号),四个统计目录各一份,
  * 历史日文件(一份在今天之前、引用一张老图)与重推原件,一份女仆对话(引用一张老图)。图的修改时间都拨到宽限期之外。
  */
 
@@ -115,14 +115,13 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 			join(...CONFIG_DIR, "subscriptions.json"),
 			subscriptionsFileText([EXT, { ...BILI, enabled: false }]),
 		);
-		// 订阅运行态:B 站那条有涨粉起点、房号与资料;拓展那条有资料(粉丝数 80)。
+		// 订阅运行态:B 站那条有房号与资料;拓展那条有资料(粉丝数 80)。
 		await write(
 			join("runtime", "sub-runtime.json"),
 			JSON.stringify({
 				[BILI.id]: {
 					roomId: "42",
 					cachedProfile: { name: "甲", sign: "", fans: 100, lastRefreshedAt: iso(H) },
-					fansBaseline: { value: 90, ts: iso(3 * 86_400_000) },
 				},
 				[EXT.id]: {
 					cachedProfile: { name: "乙", sign: "", fans: 80, lastRefreshedAt: iso(H) },
@@ -217,12 +216,12 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 		expect(rows.get("generations")).toMatchObject({ clearable: false, deletableGenerations: 0 });
 	});
 
-	it("接线前提:清之前粉丝面板有拓展那一行,涨粉起点在运行态里", async () => {
+	it("接线前提:清之前粉丝面板有拓展那一行,订阅运行态里有别的格", async () => {
 		const fans = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 		const entry = fans.entries.find((e) => e.subscriptionId === EXT.id);
 		expect(entry?.deltaSubscribed).toBe(30); // 资料里 80 − 时序第一条 50
 		const runtime = JSON.parse(await readFile(join(gen, "runtime", "sub-runtime.json"), "utf8"));
-		expect(runtime[BILI.id].fansBaseline.value).toBe(90);
+		expect(runtime[BILI.id].roomId).toBe("42");
 		// 先摸一次总览,让它进 30 秒缓存:清完要看它被作废。
 		const overview = (await (
 			await api("/api/stats/overview?days=30")
@@ -230,7 +229,7 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 		expect(overview.rows.find((r) => r.subscriptionId === EXT.id)?.posts).toBe(1);
 	});
 
-	it("DELETE stats:四个目录清空、涨粉起点没了(别的格还在)、粉丝面板与总览缓存都不再是旧数", async () => {
+	it("DELETE stats:四个目录清空、订阅运行态不动、粉丝面板与总览缓存都不再是旧数", async () => {
 		const before = (await usage()).get("stats")?.sizeBytes;
 		const res = await api("/api/system/storage/stats", { method: "DELETE" });
 		expect(res.status).toBe(200);
@@ -240,7 +239,6 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 			expect(await readdir(join(gen, ...dir))).toEqual([]);
 		}
 		const runtime = JSON.parse(await readFile(join(gen, "runtime", "sub-runtime.json"), "utf8"));
-		expect(runtime[BILI.id].fansBaseline).toBeUndefined();
 		expect(runtime[BILI.id].roomId).toBe("42");
 		expect(runtime[BILI.id].cachedProfile.fans).toBe(100);
 		// 粉丝轮询手里的快照:时序没了,拓展那一行跟着没了(不再是旧的「+30」)。

@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import {
 	type CachedProfile,
 	createSerialQueue,
-	type FansBaseline,
 	type ImageRef,
 	type Logger,
 } from "@bilibili-notify/internal";
@@ -20,7 +19,7 @@ import { dataPath } from "./roots.js";
  * emitted `config-changed:subscriptions` → SubscriptionStore reseed → whole-
  * array diff → spurious `subscription-changed{update}` → DynamicPoller re-
  * subscribe + `[ops]` info-log spam (the Logs-Tab flooding bug). Moving the
- * high-churn display cache + fans anchor here — a pure apps/server artifact
+ * high-churn display cache here — a pure apps/server artifact
  * with its own write path that emits **no** config/subscription events —
  * breaks that chain entirely.
  *
@@ -28,10 +27,8 @@ import { dataPath } from "./roots.js";
  * `Subscription.id`, atomic tmpfile+rename writes, all mutations serialized
  * through one private write queue (mirrors `ConfigStore.runScoped`).
  *
- * Record shape (sibling keys, NOT baseline-inside-profile): keeping
- * `fansBaseline` a sibling of `cachedProfile` lets `/api/subscriptions` join the
- * profile back as a zero-logic passthrough while `fansBaseline` (FansPoller-
- * private bookkeeping) never leaks into the DTO.
+ * Record shape: `/api/subscriptions` joins `cachedProfile` back as a zero-logic
+ * passthrough.
  */
 export interface SubRuntime {
 	/**
@@ -40,8 +37,6 @@ export interface SubRuntime {
 	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
 	 */
 	cachedProfile?: CachedProfile;
-	/** Fans count + ts at first poll of this sub; written once, never changed. */
-	fansBaseline?: FansBaseline;
 	/**
 	 * 解析出的直播间号(uid → live_room.roomid)。B 站来源首次解析后写回,之后
 	 * 启动/reload 直接读盘复用,省掉每次对每个 UP 的 `fetchUserInfo` 房号解析请求(③)。
@@ -72,8 +67,8 @@ export interface SubRuntimeStore {
 	/**
 	 * Replace the given top-level keys of `records[id]` (creating the entry on
 	 * demand) and atomically persist. Callers always pass complete
-	 * `cachedProfile` / `fansBaseline` objects, so this is a per-key replace,
-	 * not a deep merge. Serialized against other patch/prune calls.
+	 * `cachedProfile` objects, so this is a per-key replace, not a deep merge.
+	 * Serialized against other patch/prune calls.
 	 */
 	patch(id: string, partial: SubRuntime): Promise<void>;
 	/** Drop any entry whose id is not in `keepIds` (orphan cleanup). */
@@ -182,8 +177,8 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 
 		patch(id, partial) {
 			return runSerial(async () => {
-				// Per-key replace: callers pass complete cachedProfile / fansBaseline
-				// objects rather than deep-merge fragments.
+				// Per-key replace: callers pass complete cachedProfile objects rather
+				// than deep-merge fragments.
 				//
 				// 🔴 判据是**键在不在**,不是值等不等于 `undefined`,而且**逐键遍历、不点名**:
 				//   - 点名的话(原先那张三键清单)往 `SubRuntime` 加一个字段而忘了补一行,
@@ -191,7 +186,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				//     类型、门禁、运行期都不会说一个字。
 				//   - 按值判的话,`{ followed: true, followError: undefined }`(两处调用方
 				//     都这么写,意思是「关上了,把上次那条错误清掉」)永远清不掉。
-				// 「不带这个键」仍然是「别动它」—— fans-only 那一轮就靠这个不冲掉 baseline。
+				// 「不带这个键」仍然是「别动它」—— 只写粉丝数的那一轮就靠这个不冲掉 roomId。
 				const next: Record<string, unknown> = { ...(records[id] ?? {}) };
 				for (const [key, value] of Object.entries(partial)) {
 					if (value === undefined) delete next[key];
