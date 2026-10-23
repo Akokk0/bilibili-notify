@@ -12,9 +12,11 @@
  */
 
 import {
+	fail,
 	type GlobalConfig,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	ok,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -34,7 +36,8 @@ const defaultsOf = (): GlobalConfig["defaults"] => makeDefaultGlobalConfig().def
 const POST_OFF: Partial<Subscription> = { overrides: { features: { post: false } } };
 
 function makeDeps(opts?: {
-	relations?: unknown;
+	relationsData?: unknown;
+	relationsResult?: unknown;
 	relationsThrows?: boolean;
 	followFails?: string[];
 	subs?: Subscription[];
@@ -42,15 +45,19 @@ function makeDeps(opts?: {
 }) {
 	const fetchRelations = vi.fn(async (_fids: string[]) => {
 		if (opts?.relationsThrows) throw new Error("network down");
-		return (opts?.relations ?? {
-			code: 0,
+		if (opts?.relationsResult !== undefined) return opts.relationsResult;
+		return ok({
 			// 111 已关注(2)、222 互粉(6)、333 未关注(0)
-			data: { "111": { attribute: 2 }, "222": { attribute: 6 }, "333": { attribute: 0 } },
-		}) as never;
+			data:
+				opts?.relationsData === undefined
+					? { "111": { attribute: 2 }, "222": { attribute: 6 }, "333": { attribute: 0 } }
+					: opts.relationsData,
+		});
 	});
 	const follow = vi.fn(async (fid: string) => {
-		if (opts?.followFails?.includes(fid)) return { code: 22003, message: "对方已将你拉黑" };
-		return { code: 0, message: "0" };
+		if (opts?.followFails?.includes(fid))
+			return fail("unknown", "对方已将你拉黑", { upstreamCode: 22003 });
+		return ok();
 	});
 	const patch = vi.fn(async () => {});
 
@@ -121,7 +128,7 @@ describe("syncFollows — 启动时补齐关注", () => {
 	// 绝不能混,然后实现和测试双双踩了进去。主人首次实跑的日志里那句
 	// 「批量查询关注状态失败(code=0)」就是它 —— code=0 明明是成功码。
 	it("data 为 null(一个都没关注)→ 有效答案,照常走批量路径,不是降级", async () => {
-		const { deps, follow } = makeDeps({ relations: { code: 0, data: null } });
+		const { deps, follow } = makeDeps({ relationsData: null });
 
 		const r = await syncFollows(deps);
 
@@ -131,7 +138,9 @@ describe("syncFollows — 启动时补齐关注", () => {
 	});
 
 	it("业务码失败(如 -101 未登录)→ 才是真失败,降级为逐个", async () => {
-		const { deps, follow } = makeDeps({ relations: { code: -101, message: "账号未登录" } });
+		const { deps, follow } = makeDeps({
+			relationsResult: fail("unauthorized", "账号未登录", { upstreamCode: -101 }),
+		});
 
 		const r = await syncFollows(deps);
 
@@ -140,7 +149,7 @@ describe("syncFollows — 启动时补齐关注", () => {
 	});
 
 	it("data 是异常结构(不是对象,契约真变了)→ 降级,不是崩", async () => {
-		const { deps, follow } = makeDeps({ relations: { code: 0, data: "unexpected" } });
+		const { deps, follow } = makeDeps({ relationsData: "unexpected" });
 
 		const r = await syncFollows(deps);
 
@@ -152,7 +161,7 @@ describe("syncFollows — 启动时补齐关注", () => {
 	// 所以判定必须是「缺席即未关注」,而不能指望服务端回一个 attribute=0 的条目。
 	it("data 只列已关注的(未关注的 mid 缺席)→ 缺席即未关注,照样补上", async () => {
 		const { deps, follow } = makeDeps({
-			relations: { code: 0, data: { "111": { mid: 111, attribute: 2 } } },
+			relationsData: { "111": { mid: 111, attribute: 2 } },
 		});
 
 		const r = await syncFollows(deps);
@@ -181,11 +190,11 @@ describe("syncFollows — 启动时补齐关注", () => {
  * B 站订阅查关注关系、补关注;BN 只补关注、从不取关。
  */
 describe("syncFollows — 只管启用中且开着作品的订阅", () => {
-	const NONE_FOLLOWED = { code: 0, data: null };
+	const NONE_FOLLOWED = null;
 
 	it("只开直播(作品关着)的订阅不被查、不被补关注", async () => {
 		const { deps, fetchRelations, follow, patch } = makeDeps({
-			relations: NONE_FOLLOWED,
+			relationsData: NONE_FOLLOWED,
 			subs: [biliSub("live-only", "111", POST_OFF), biliSub("post-on", "222")],
 		});
 
@@ -200,7 +209,7 @@ describe("syncFollows — 只管启用中且开着作品的订阅", () => {
 
 	it("停用的订阅不被查、不被补关注", async () => {
 		const { deps, fetchRelations, follow } = makeDeps({
-			relations: NONE_FOLLOWED,
+			relationsData: NONE_FOLLOWED,
 			subs: [biliSub("off", "111", { enabled: false })],
 		});
 
@@ -215,7 +224,7 @@ describe("syncFollows — 只管启用中且开着作品的订阅", () => {
 		const base = defaultsOf();
 		const globalPostOff = { ...base, features: { ...base.features, post: false } };
 		const { deps, follow } = makeDeps({
-			relations: NONE_FOLLOWED,
+			relationsData: NONE_FOLLOWED,
 			defaults: globalPostOff,
 			subs: [
 				biliSub("inherits", "111"),
@@ -231,7 +240,7 @@ describe("syncFollows — 只管启用中且开着作品的订阅", () => {
 
 	it("遗留重复订阅:同一个 uid 两条开关相反,有一条符合就要关注", async () => {
 		const { deps, follow } = makeDeps({
-			relations: NONE_FOLLOWED,
+			relationsData: NONE_FOLLOWED,
 			subs: [biliSub("dup-off", "111", POST_OFF), biliSub("dup-on", "111")],
 		});
 
@@ -242,7 +251,7 @@ describe("syncFollows — 只管启用中且开着作品的订阅", () => {
 	});
 
 	it("只补指定的那几位(开关刚翻开的人),别的人连查询都不带", async () => {
-		const { deps, fetchRelations, follow } = makeDeps({ relations: NONE_FOLLOWED });
+		const { deps, fetchRelations, follow } = makeDeps({ relationsData: NONE_FOLLOWED });
 
 		const r = await syncFollows({ ...deps, only: new Set(["222"]) });
 
@@ -269,14 +278,14 @@ describe("followTargetSubscriptions", () => {
  */
 describe("syncFollows — signal 中止", () => {
 	/** 全都没关注:每个订阅都要补,中间隔 FOLLOW_GAP_MS。 */
-	const NONE_FOLLOWED = { code: 0, data: null };
+	const NONE_FOLLOWED = null;
 
 	it("补完手上这一个就停:结果照样写进 rt,后面的不再发关注,别人的状态也不再补写", async () => {
 		const shutdown = new AbortController();
-		const { deps, follow, patch } = makeDeps({ relations: NONE_FOLLOWED });
+		const { deps, follow, patch } = makeDeps({ relationsData: NONE_FOLLOWED });
 		follow.mockImplementationOnce(async () => {
 			shutdown.abort(); // 关停正好在第一个关注在途时开始
-			return { code: 0, message: "0" };
+			return ok();
 		});
 
 		const r = await syncFollows({ ...deps, signal: shutdown.signal });
@@ -291,7 +300,7 @@ describe("syncFollows — signal 中止", () => {
 
 	it("两个关注之间的间隔里中止:马上醒,不把 300ms 睡满", async () => {
 		const shutdown = new AbortController();
-		const { deps, follow } = makeDeps({ relations: NONE_FOLLOWED });
+		const { deps, follow } = makeDeps({ relationsData: NONE_FOLLOWED });
 
 		const running = syncFollows({ ...deps, signal: shutdown.signal });
 		// 第一个补完,正睡在 300ms 的间隔里。轮询间隔压小,让中止尽量贴着间隔的开头落下 ——
@@ -308,7 +317,7 @@ describe("syncFollows — signal 中止", () => {
 	it("开始之前信号就已经中止:一个关注都不发,一笔状态都不写", async () => {
 		const shutdown = new AbortController();
 		shutdown.abort();
-		const { deps, follow, patch } = makeDeps({ relations: NONE_FOLLOWED });
+		const { deps, follow, patch } = makeDeps({ relationsData: NONE_FOLLOWED });
 
 		await syncFollows({ ...deps, signal: shutdown.signal });
 

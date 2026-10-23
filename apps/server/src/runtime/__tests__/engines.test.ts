@@ -490,7 +490,7 @@ function setup(opts?: {
 	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
 	const api = {
 		fetchRelations: vi.fn(async (uids: string[]) => ({
-			code: 0,
+			ok: true as const,
 			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
 		})),
 		...opts?.overrides?.api,
@@ -3279,10 +3279,10 @@ describe("createEngines — 后台写登记进 track", () => {
 			}),
 		];
 		/** 关系查询回「都没关注」→ 走逐个补关注。 */
-		const noneFollowed = vi.fn(async () => ({ code: 0, data: null }));
+		const noneFollowed = vi.fn(async () => ({ ok: true as const, data: null }));
 
 		it("逐个补关注:登记进 track,关停信号中止后停在手上这一个", async () => {
-			const first = deferred<{ code: number; message: string }>();
+			const first = deferred<{ ok: true }>();
 			const follow = vi.fn(() => first.promise);
 			const c = setup({
 				subs: twoSubs,
@@ -3295,7 +3295,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			expect(await stillPending(Promise.all(tracked))).toBe(true);
 
 			c.serviceCtx.tracking.abort();
-			first.resolve({ code: 0, message: "0" });
+			first.resolve({ ok: true });
 			await Promise.all(tracked);
 
 			// 第二个订阅没有再发关注 —— signal 一路交到了 syncFollows 手里。
@@ -3308,7 +3308,7 @@ describe("createEngines — 后台写登记进 track", () => {
 				...biliSubOf("1"),
 				overrides: { features: { post: false } },
 			} as Subscription;
-			const follow = vi.fn(async () => ({ code: 0, message: "0" }));
+			const follow = vi.fn(async () => ({ ok: true as const }));
 			const c = setup({
 				subs: [liveOnly, biliSubOf("2")],
 				loginStatus: "logged-in",
@@ -3339,7 +3339,7 @@ describe("createEngines — 后台写登记进 track", () => {
 				...sub,
 				overrides: { features: { post: true } },
 			});
-			const follow = () => vi.fn(async (_fid: string) => ({ code: 0, message: "0" }));
+			const follow = () => vi.fn(async (_fid: string) => ({ ok: true as const }));
 
 			/** 开机时 1 号作品关着、2 号开着:开机那一轮只关注了 2 号。 */
 			async function booted(over?: { loggedOut?: boolean; globals?: GlobalConfig }) {

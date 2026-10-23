@@ -1,4 +1,3 @@
-export { Api, RiskControlError } from "./api";
-export type { FollowOutcome } from "./follow";
-export { ensureFollowed, FOLLOW_SUCCESS_CODES } from "./follow";
+export { Api, FOLLOW_SUCCESS_CODES, RiskControlError } from "./api";
+export { ensureFollowed } from "./follow";
 export * from "./types";

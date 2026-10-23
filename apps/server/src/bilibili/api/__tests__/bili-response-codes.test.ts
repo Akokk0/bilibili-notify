@@ -206,6 +206,65 @@ describe("请求层的数字码翻译(fetchUserCard)", () => {
 	});
 });
 
+describe("请求层的数字码翻译(follow)", () => {
+	it.each([0, 22014, 22001])("%i → ok,data 原样铺在 ok 旁且不记表外 warn", async (code) => {
+		const w = await setup();
+		const data = { accepted: true };
+		w.answer({ code, message: "原话", data });
+
+		expect(await w.api.follow("42")).toEqual({ ok: true, data });
+		expect(w.warns).toHaveLength(0);
+	});
+
+	it("-101 → unauthorized,拦截器那条路照旧叫一次 onAuthLost", async () => {
+		const w = await setup();
+		w.answer({ code: -101, message: "账号未登录" });
+
+		expect(await w.api.follow("42")).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "账号未登录",
+			upstreamCode: -101,
+		});
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+	});
+
+	it("表外码 → unknown,原码进 upstreamCode", async () => {
+		const w = await setup();
+		w.answer({ code: -403, message: "访问权限不足" });
+
+		expect(await w.api.follow("42")).toEqual({
+			ok: false,
+			code: "unknown",
+			message: "访问权限不足",
+			upstreamCode: -403,
+		});
+	});
+});
+
+describe("请求层的数字码翻译(fetchRelations)", () => {
+	it("code 0 → ok,data 原样铺在 ok 旁", async () => {
+		const w = await setup();
+		const data = { "42": { mid: 42, attribute: 2 } };
+		w.answer({ code: 0, message: "0", data });
+
+		expect(await w.api.fetchRelations(["42"])).toEqual({ ok: true, data });
+	});
+
+	it("-101 → unauthorized,拦截器那条路照旧叫一次 onAuthLost", async () => {
+		const w = await setup();
+		w.answer({ code: -101, message: "账号未登录" });
+
+		expect(await w.api.fetchRelations(["42"])).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "账号未登录",
+			upstreamCode: -101,
+		});
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("请求层的数字码翻译(fetchLoginQrCode)", () => {
 	it("-403 → rate_limited,接口自己认的码不记表外 warn", async () => {
 		const w = await setup();

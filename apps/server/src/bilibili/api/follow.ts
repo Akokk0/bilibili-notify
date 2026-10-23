@@ -1,3 +1,5 @@
+import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "./api.js";
 
 /**
@@ -8,37 +10,16 @@ import type { Api } from "./api.js";
  */
 
 /**
- * 「关注这件事已经成立」的业务码。
- *
- * - `0`     —— 关注成功
- * - `22014` —— 已经关注过了(重复关注)。**这不是失败** —— 目标状态已达成。
- * - `22001` —— 不能关注自己。也当成功:主人订阅自己是合法用例,动态照样收得到
- *              (自己的动态本来就在自己的 feed 流里)。
- *
- * 这套判定是当年 koishi 插件的 subscription-loader 跑了很久验证过的,提到共享包里,
- * 免得两端各写一份、各错一份。
- */
-export const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);
-
-export interface FollowOutcome {
-	ok: boolean;
-	code: number;
-	message: string;
-}
-
-/**
  * 关注一个 UP,把「已关注」「关注自己」也算成功。
  *
  * **绝不抛**:网络炸 / 响应结构不符都返回 `ok:false` + 原因。调用方(新增订阅、启动
  * 时自愈)都不该因为一次关注失败就崩掉或中断整批。
  */
-export async function ensureFollowed(api: Api, uid: string): Promise<FollowOutcome> {
+export async function ensureFollowed(api: Api, uid: string): Promise<Result> {
 	try {
-		const res = (await api.follow(uid)) as { code?: unknown; message?: unknown } | null;
-		const code = typeof res?.code === "number" ? res.code : -1;
-		const message = typeof res?.message === "string" ? res.message : "";
-		return { ok: FOLLOW_SUCCESS_CODES.has(code), code, message };
+		const followed = await api.follow(uid);
+		return followed.ok ? ok() : followed;
 	} catch (e) {
-		return { ok: false, code: -1, message: e instanceof Error ? e.message : String(e) };
+		return fail("unavailable", errorMessageOf(e));
 	}
 }

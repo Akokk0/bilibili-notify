@@ -166,13 +166,13 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const uid = subscriptionIdentityOf(sub).externalId;
 		const outcome = await ensureFollowed(engines.api, uid);
 		if (!outcome.ok) {
-			log.warn(
-				`[sub] 关注 UID ${uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
-			);
+			const code = outcome.upstreamCode ?? outcome.code;
+			log.warn(`[sub] 关注 UID ${uid} 失败(code=${code}): ${outcome.message} —— 该订阅收不到动态`);
 		}
+		const code = outcome.ok ? undefined : (outcome.upstreamCode ?? outcome.code);
 		await deps.runtime.subRuntimeStore.patch(sub.id, {
 			followed: outcome.ok,
-			followError: outcome.ok ? undefined : outcome.message || `code=${outcome.code}`,
+			followError: outcome.ok ? undefined : outcome.message || `code=${code}`,
 		});
 	}
 

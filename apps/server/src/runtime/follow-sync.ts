@@ -94,10 +94,10 @@ async function queryFollowed(
 ): Promise<Set<string> | null> {
 	try {
 		const res = await api.fetchRelations(uids);
-		if (res.code !== 0) {
-			// 真失败:-101 未登录、-400 请求错误…
+		if (!res.ok) {
+			// 真失败:-101 未登录、-400 请求错误…请求层已经把 B 站码翻成标准码。
 			logger.warn(
-				`[follow] 批量查询关注状态失败(code=${res.code}: ${res.message ?? ""}) —— 降级为逐个关注`,
+				`[follow] 批量查询关注状态失败(code=${res.upstreamCode ?? res.code}: ${res.message}) —— 降级为逐个关注`,
 			);
 			return null;
 		}
@@ -199,14 +199,16 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 				followed++;
 			} else {
 				failed++;
+				const code = outcome.upstreamCode ?? outcome.code;
 				deps.logger.warn(
-					`[follow] 关注 UID ${uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
+					`[follow] 关注 UID ${uid} 失败(code=${code}): ${outcome.message} —— 该订阅收不到动态`,
 				);
 			}
 		}
+		const code = outcome.ok ? undefined : (outcome.upstreamCode ?? outcome.code);
 		await deps.rt.patch(sub.id, {
 			followed: outcome.ok,
-			followError: outcome.ok ? undefined : outcome.message || `code=${outcome.code}`,
+			followError: outcome.ok ? undefined : outcome.message || `code=${code}`,
 		});
 	}
 

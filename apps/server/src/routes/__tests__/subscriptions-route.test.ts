@@ -90,9 +90,14 @@ function makeHarness(opts?: {
 	const followMode = opts?.follow ?? "ok";
 	const follow = vi.fn(async (_fid: string) => {
 		if (followMode === "throw") throw new Error("network down");
-		if (followMode === "already") return { code: 22014, message: "已关注" };
-		if (followMode === "fail") return { code: 22003, message: "对方已将你拉黑" };
-		return { code: 0, message: "0" };
+		if (followMode === "fail")
+			return {
+				ok: false as const,
+				code: "unknown" as const,
+				message: "对方已将你拉黑",
+				upstreamCode: 22003,
+			};
+		return { ok: true as const };
 	});
 
 	const engines = enginesMode === "null" ? null : { api: { follow } };

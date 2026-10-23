@@ -51,6 +51,19 @@ const BANGUMI_TRIP_ROOM_ID = 931774;
 const AUTH_LOST_DEBOUNCE_MS = 60_000;
 
 /**
+ * 「关注这件事已经成立」的业务码。
+ *
+ * - `0`     —— 关注成功
+ * - `22014` —— 已经关注过了(重复关注)。**这不是失败** —— 目标状态已达成。
+ * - `22001` —— 不能关注自己。也当成功:主人订阅自己是合法用例,动态照样收得到
+ *              (自己的动态本来就在自己的 feed 流里)。
+ *
+ * 这套判定是当年 koishi 插件的 subscription-loader 跑了很久验证过的,提到共享包里,
+ * 免得两端各写一份、各错一份。
+ */
+export const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);
+
+/**
  * 持续风控错误(wbi 签名请求刷新 wbiKeys 重试后仍 -352)。标记成独立类型,让外层
  * `this.retry` 的 `shouldRetry` 识别并 **fail-fast** —— 持续风控再快速重试 3 轮只会
  * 放大打在被限流账号上的请求量。区别于瞬时网络错误(仍应退避重试)。
@@ -1114,12 +1127,18 @@ export class Api {
 		);
 	}
 
-	async follow(uid: string) {
-		return this.postFormJson(
+	async follow(uid: string): Promise<Result<{ data: unknown }>> {
+		const body = await this.postFormJson(
 			EP.RELATION_MODIFY_URL,
 			() => ({ fid: uid, act: 1, re_src: 11, csrf: this.getCSRF() }),
 			"follow",
 		);
+		const reply =
+			typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+		if (reply !== null && typeof reply.code === "number" && FOLLOW_SUCCESS_CODES.has(reply.code)) {
+			return ok({ data: reply.data });
+		}
+		return this.resultOf(body, "follow");
 	}
 
 	/**
@@ -1131,9 +1150,12 @@ export class Api {
 	 * 调用方必须把它当**优化**而非正确性依赖:失败 / 结构不符时要能降级成直接 follow
 	 * (follow 本身幂等,22014=已关注)。
 	 */
-	async fetchRelations(uids: string[]): Promise<RelationsResponse> {
-		if (!uids.length) return { code: 0, data: {} };
+	async fetchRelations(uids: string[]): Promise<Result<{ data: RelationsResponse["data"] }>> {
+		if (!uids.length) return ok({ data: {} });
 		const list = uids.map((f) => encodeURIComponent(f)).join(",");
-		return this.getJson(`${EP.RELATIONS_URL}?fids=${list}`, "fetchRelations");
+		return this.resultOf<RelationsResponse["data"]>(
+			await this.getJson(`${EP.RELATIONS_URL}?fids=${list}`, "fetchRelations"),
+			"fetchRelations",
+		);
 	}
 }
