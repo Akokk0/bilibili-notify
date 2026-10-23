@@ -89,7 +89,7 @@ function makeWorld(
 		getMasterInfo: vi.fn(async () => ({
 			data: { info: { uid: 1, uname: "U" }, medal_name: "" },
 		})),
-		fetchUserInfo: vi.fn(async () => ({ data: { live_room: { roomid: 100 } } })),
+		fetchUserInfo: vi.fn(async () => ok({ data: { live_room: { roomid: 100 } } })),
 	};
 	const liveContext = {
 		logger,

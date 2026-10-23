@@ -1,8 +1,20 @@
-import { describe, expect, it } from "vite-plus/test";
+import { fail } from "@bilibili-notify/internal";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { LiveRoomAccessDeniedError } from "../room-helpers.js";
 import { makeListenerManagerHarness } from "./support/listener-manager.js";
 
 describe("ListenerManager 的问题清理", () => {
+	it("房号解析失败时 warn 带失败码与 message", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("rate_limited", "被限流"));
+		const warn = vi.spyOn(h.ctx.logger, "warn");
+
+		await h.sync(["u1"]);
+
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("rate_limited"));
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("被限流"));
+	});
+
 	it("对照:受限房的 UP 起来之后,表里有他的「受限」", async () => {
 		const h = makeListenerManagerHarness({
 			listener: async () => Promise.reject(new LiveRoomAccessDeniedError("B 站拒绝弹幕连接")),

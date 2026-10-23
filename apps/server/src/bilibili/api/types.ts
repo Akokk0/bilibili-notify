@@ -19,6 +19,16 @@ export interface TicketResponse {
 
 // ---- User Info ----
 
+export interface UserInfoResponse {
+	code: number;
+	message?: string;
+	data?: {
+		live_room?: {
+			roomid?: number;
+		} | null;
+	} | null;
+}
+
 export interface MyselfResponse {
 	code: number;
 	data: {

@@ -41,9 +41,13 @@ async function makeApi(getImpl: (url: string) => unknown) {
 }
 
 describe("wbiGet 持续 -352 收敛", () => {
-	it("持续 -352 → 抛错但不被外层 retry 放大(GET 次数收敛,不是 4 轮)", async () => {
+	it("持续 -352 → rate_limited,不被外层 retry 放大(GET 次数收敛,不是 4 轮)", async () => {
 		const { api, calls } = await makeApi(() => ({ code: -352 }));
-		await expect(api.fetchUserInfo("123")).rejects.toThrow();
+		expect(await api.fetchUserInfo("123")).toMatchObject({
+			ok: false,
+			code: "rate_limited",
+			upstreamCode: -352,
+		});
 		// 一轮 wbiGet 至多 2 次 GET(首发 + 刷新后重试一次);外层不再重跑 3 轮。
 		expect(calls.get).toBeLessThanOrEqual(2);
 	});
@@ -54,7 +58,9 @@ describe("wbiGet 持续 -352 收敛", () => {
 			n++;
 			return n === 1 ? { code: -352 } : { code: 0, data: { ok: true } };
 		});
-		const res = (await api.fetchUserInfo("123")) as { code: number };
-		expect(res.code).toBe(0);
+		expect(await api.fetchUserInfo("123")).toEqual({
+			ok: true,
+			data: { ok: true },
+		});
 	});
 });

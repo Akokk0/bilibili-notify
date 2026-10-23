@@ -1,5 +1,10 @@
 import type { Logger, Result, ServiceContext, SourceContext } from "@bilibili-notify/internal";
-import type { LiveRoomDanmakuResponse, LiveRoomResponse, MyselfResponse } from "../../api/index.js";
+import type {
+	LiveRoomDanmakuResponse,
+	LiveRoomResponse,
+	MyselfResponse,
+	UserInfoResponse,
+} from "../../api/index.js";
 import type { ProblemLayers } from "../../problem-layers.js";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
@@ -26,7 +31,7 @@ export interface RoomContextOptions {
 	api: {
 		fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse>;
 		fetchLiveRoomInfoStreamKey(roomId: string): Promise<Result<{ data: DanmakuInfo }>>;
-		fetchUserInfo(externalId: string): Promise<unknown>;
+		fetchUserInfo(externalId: string): Promise<Result<{ data: UserInfoResponse["data"] }>>;
 		getMasterInfo(externalId: string): Promise<unknown>;
 		getMyselfInfoCached(): Promise<MyselfResponse>;
 		getBuvid3(): Promise<string>;

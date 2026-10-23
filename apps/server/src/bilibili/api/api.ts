@@ -29,6 +29,7 @@ import type {
 	RelationsResponse,
 	TicketResponse,
 	UserCardResponse,
+	UserInfoResponse,
 	VideoRef,
 	VideoResponse,
 } from "./types";
@@ -889,22 +890,32 @@ export class Api {
 		);
 	}
 
-	async fetchUserInfo(uid: string, griskId?: string) {
-		return this.retry(
-			async () => {
-				if (uid === BANGUMI_TRIP_UID) {
-					return {
-						code: 0,
-						data: { live_room: { roomid: BANGUMI_TRIP_ROOM_ID } },
-					};
-				}
-				const params: Record<string, string> = { mid: uid };
-				if (griskId) params.grisk_id = griskId;
-				return this.wbiGet(EP.USER_INFO_URL, params);
-			},
-			"fetchUserInfo",
-			Api.retryUnlessRiskControl,
-		);
+	async fetchUserInfo(
+		uid: string,
+		griskId?: string,
+	): Promise<Result<{ data: UserInfoResponse["data"] }>> {
+		try {
+			const body = await this.retry(
+				async () => {
+					if (uid === BANGUMI_TRIP_UID) {
+						return {
+							code: 0,
+							data: { live_room: { roomid: BANGUMI_TRIP_ROOM_ID } },
+						};
+					}
+					const params: Record<string, string> = { mid: uid };
+					if (griskId) params.grisk_id = griskId;
+					return this.wbiGet(EP.USER_INFO_URL, params);
+				},
+				"fetchUserInfo",
+				Api.retryUnlessRiskControl,
+			);
+			return this.resultOf<UserInfoResponse["data"]>(body, "fetchUserInfo");
+		} catch (e) {
+			if (e instanceof RiskControlError)
+				return fail("rate_limited", e.message, { upstreamCode: -352 });
+			throw e;
+		}
 	}
 
 	async fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse> {

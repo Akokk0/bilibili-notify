@@ -41,7 +41,7 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		openDanmakuSocket: vi.fn(() => fakeSocket),
 		fetchLiveRoomInfo: vi.fn(),
 		getMasterInfo: vi.fn(),
-		fetchUserInfo: vi.fn(),
+		fetchUserInfo: vi.fn(async () => ok({ data: {} })),
 	};
 	const ctx = new RoomContext({
 		api: api as never,

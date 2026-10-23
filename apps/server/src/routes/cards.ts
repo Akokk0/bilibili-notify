@@ -1219,18 +1219,18 @@ async function resolveMasterInfo(api: Api, uid: string): Promise<{ name: string 
 }
 
 /**
- * uid → 直播间号。走 `fetchUserInfo(uid).data.live_room.roomid`(与 B 站来源
+ * uid → 直播间号。走 `fetchUserInfo(uid)` 的结果 `data.live_room.roomid`(与 B 站来源
  * listener 解析房间号同一路径)。per-UP 自动预览只持有 uid,live 真实拉取前先解析。
- * 未开通直播间 / 解析失败抛 Error。
+ * 未开通直播间 / 解析失败抛 Error;请求本身失败(如撞风控)时话里带上失败码与原因。
  */
 export async function resolveRoomIdFromUid(api: Api, uid: string): Promise<string> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
-	const info = (await api.fetchUserInfo(uid)) as BilibiliEnvelope<{
-		live_room?: { roomid?: number };
-	}>;
-	const roomid = info?.data?.live_room?.roomid;
+	const message = "该 UP 未开通直播间或无法解析房间号";
+	const result = await api.fetchUserInfo(uid);
+	if (!result.ok) throw new Error(`${message}（${result.code}：${result.message}）`);
+	const roomid = result.data?.live_room?.roomid;
 	const n = Number(roomid);
-	if (!Number.isFinite(n) || n <= 0) throw new Error("该 UP 未开通直播间或无法解析房间号");
+	if (!Number.isFinite(n) || n <= 0) throw new Error(message);
 	return String(n);
 }
 

@@ -1,4 +1,9 @@
-import type { SourceContext, SourceSubscriptionView } from "@bilibili-notify/internal";
+import {
+	ok,
+	type Result,
+	type SourceContext,
+	type SourceSubscriptionView,
+} from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
 import type { LiveEvent } from "../../../protocol/events.js";
 import { ListenerManager } from "../../listener-manager.js";
@@ -51,9 +56,12 @@ export function makeListenerManagerHarness(
 	const ctx = {
 		logger: liveContext.logger,
 		api: {
-			fetchUserInfo: async (externalId: string) => ({
-				data: { live_room: { roomid: Number.parseInt(externalId.slice(1), 10) * 100 } },
-			}),
+			fetchUserInfo: async (
+				externalId: string,
+			): Promise<Result<{ data: { live_room?: { roomid?: number } } }>> =>
+				ok({
+					data: { live_room: { roomid: Number.parseInt(externalId.slice(1), 10) * 100 } },
+				}),
 			getMasterInfo: async () => ({ data: { medal_name: "牌" } }),
 		},
 		liveContext,

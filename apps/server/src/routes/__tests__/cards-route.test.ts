@@ -847,7 +847,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 describe("cards route — resolveRoomIdFromUid (uid → 房间号)", () => {
 	it("fetchUserInfo 返回 live_room.roomid → 解析成房间号字符串", async () => {
 		const api = {
-			fetchUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 778899 } } })),
+			fetchUserInfo: vi.fn(async () => ok({ data: { live_room: { roomid: 778899 } } })),
 		} as unknown as Api;
 		expect(await resolveRoomIdFromUid(api, "12345")).toBe("778899");
 	});
@@ -861,9 +861,18 @@ describe("cards route — resolveRoomIdFromUid (uid → 房间号)", () => {
 
 	it("未开通直播间(live_room 缺失 / roomid<=0)→ 抛错", async () => {
 		const api = {
-			fetchUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 0 } } })),
+			fetchUserInfo: vi.fn(async () => ok({ data: { live_room: { roomid: 0 } } })),
 		} as unknown as Api;
 		await expect(resolveRoomIdFromUid(api, "12345")).rejects.toThrow(/未开通直播间|无法解析/);
+	});
+
+	it("fetchUserInfo 回失败结果 → 抛错,话里带上失败码与原因", async () => {
+		const api = {
+			fetchUserInfo: vi.fn(async () => fail("rate_limited", "被限流")),
+		} as unknown as Api;
+		await expect(resolveRoomIdFromUid(api, "12345")).rejects.toThrow(
+			"该 UP 未开通直播间或无法解析房间号（rate_limited：被限流）",
+		);
 	});
 });
 

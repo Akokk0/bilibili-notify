@@ -47,10 +47,14 @@ export class ListenerManager {
 
 	private async resolveRoomId(externalId: string): Promise<string | undefined> {
 		try {
-			const info = (await this.ctx.api.fetchUserInfo(externalId)) as {
-				data?: { live_room?: { roomid?: unknown } };
-			};
-			const roomId = Number(info?.data?.live_room?.roomid);
+			const result = await this.ctx.api.fetchUserInfo(externalId);
+			if (!result.ok) {
+				this.ctx.logger.warn(
+					`[start] UID=${externalId} 解析直播间号失败：${result.code}：${result.message}`,
+				);
+				return undefined;
+			}
+			const roomId = Number(result.data?.live_room?.roomid);
 			if (!Number.isFinite(roomId) || roomId <= 0) {
 				this.ctx.logger.warn(
 					`[start] UID=${externalId} 未开通直播间或 live_room 解析失败，跳过 listener 创建`,

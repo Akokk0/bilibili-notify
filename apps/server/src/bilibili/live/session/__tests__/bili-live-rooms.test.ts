@@ -1,4 +1,9 @@
-import type { SourceContext, SourceSubscriptionView } from "@bilibili-notify/internal";
+import {
+	fail,
+	ok,
+	type SourceContext,
+	type SourceSubscriptionView,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import payloads from "../../protocol/__tests__/fixtures/payloads.json" with { type: "json" };
 import { encodePacket, WsOp } from "../../protocol/codec.js";
@@ -109,10 +114,11 @@ function harness() {
 				medal_name: "测试牌",
 			},
 		}),
-		fetchUserInfo: vi.fn(async () => ({
-			code: 0,
-			data: { live_room: { roomid: Number(ROOM_ID) } },
-		})),
+		fetchUserInfo: vi.fn(async () =>
+			ok({
+				data: { live_room: { roomid: Number(ROOM_ID) } },
+			}),
+		),
 	};
 
 	const subscription: SourceSubscriptionView = {
@@ -472,7 +478,7 @@ describe("BiliLiveRooms", () => {
 		const h = harness();
 		await h.start();
 		h.setRoomId(undefined);
-		h.api.fetchUserInfo = (async () => ({ code: -404, data: {} })) as never;
+		h.api.fetchUserInfo = (async () => fail("not_found", "查无此人")) as never;
 		await expect(
 			h.rooms.fetchLiveStatus(
 				{ sourceKey: "bilibili", externalId: EXTERNAL_ID },

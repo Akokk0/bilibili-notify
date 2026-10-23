@@ -176,10 +176,9 @@ export class BiliLiveRooms implements Disposable {
 		const cached = this.liveRoomIds.get(externalId);
 		if (cached) return cached;
 		try {
-			const info = (await this.opts.api.fetchUserInfo(externalId)) as {
-				data?: { live_room?: { roomid?: unknown } };
-			};
-			const roomId = Number(info?.data?.live_room?.roomid);
+			const result = await this.opts.api.fetchUserInfo(externalId);
+			if (!result.ok) return undefined;
+			const roomId = Number(result.data?.live_room?.roomid);
 			if (!Number.isFinite(roomId) || roomId <= 0) return undefined;
 			const resolved = String(roomId);
 			this.liveRoomIds.set?.(externalId, resolved);

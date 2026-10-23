@@ -225,7 +225,7 @@ export const RATCHET = {
 	"apps/server/src/compose.ts": 5, // R7 过渡口，3b-25 房号搬进 B 站 `ctx.state` 时随口删
 	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
-	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
+	"apps/server/src/routes/cards.ts": 18, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×1、`roomid`×3(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
 	"apps/server/src/runtime/sub-runtime-store.ts": 1, // 订阅运行时里存的 B 站直播间号 `roomId`
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`

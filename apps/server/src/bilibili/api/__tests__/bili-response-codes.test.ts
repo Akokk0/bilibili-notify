@@ -120,6 +120,54 @@ describe("请求层的数字码翻译(fetchAllDynamic)", () => {
 	});
 });
 
+describe("请求层的数字码翻译(fetchUserInfo)", () => {
+	async function setupUserInfo() {
+		const world = await setup();
+		(
+			world.api as unknown as {
+				wbiKeys: { imgKey: string; subKey: string };
+			}
+		).wbiKeys = {
+			imgKey: "a".repeat(32),
+			subKey: "b".repeat(32),
+		};
+		return world;
+	}
+
+	it("code 0 → ok,data 原样铺在 ok 旁", async () => {
+		const w = await setupUserInfo();
+		const data = { live_room: { roomid: 778899 } };
+		w.answer({ code: 0, message: "0", data });
+
+		expect(await w.api.fetchUserInfo("42")).toEqual({ ok: true, data });
+	});
+
+	it("-101 → unauthorized,拦截器那条路照旧叫一次 onAuthLost", async () => {
+		const w = await setupUserInfo();
+		w.answer({ code: -101, message: "账号未登录" });
+
+		expect(await w.api.fetchUserInfo("42")).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "账号未登录",
+			upstreamCode: -101,
+		});
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+	});
+
+	it("表外码 → unknown,原码进 upstreamCode", async () => {
+		const w = await setupUserInfo();
+		w.answer({ code: -403, message: "访问权限不足" });
+
+		expect(await w.api.fetchUserInfo("42")).toEqual({
+			ok: false,
+			code: "unknown",
+			message: "访问权限不足",
+			upstreamCode: -403,
+		});
+	});
+});
+
 describe("请求层的数字码翻译(fetchUserCard)", () => {
 	it.each([
 		[-404, "not_found"],
