@@ -1,5 +1,4 @@
 import {
-	type CachedProfile,
 	createSerialQueue,
 	type Disposable,
 	type ImageRef,
@@ -9,9 +8,11 @@ import {
 	type SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
-import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
+import { createProfileCacheWriter } from "./profile-cache.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 import { checkSubscriptionAvatarBytes } from "./subscription-avatar.js";
+
+export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
 
 /**
  * 拓展报的资料更新落盘(ADR-0019 决策 7 / 49 / 62):bus 上 `subscription-reported` 里 `kind === "profile"`
@@ -33,12 +34,6 @@ import { checkSubscriptionAvatarBytes } from "./subscription-avatar.js";
  * 等在途的那条把头像与资料缓存写完再关门。它往图库与资料缓存仓写,所以它的 `close()` 得排在那两家
  * 的 `close()` **之前**跑 —— 见 `bootstrap.ts` 的登记。
  */
-
-/**
- * 「资料变了」合并的窗口:第一条变化起算,窗口里的变化在尾沿一起发一次,不因为又变了一条而往后推 ——
- * 与 `ctx.statusChanged()` 的合并窗口同一个数、同一个道理(`STATUS_CHANGED_COALESCE_MS`)。
- */
-export const PROFILES_CHANGED_COALESCE_MS = 250;
 
 export interface BindReportedProfilesOptions {
 	bus: MessageBus;
@@ -67,36 +62,17 @@ type ProfileValue = SubscriptionReportValue<"profile">;
 /** 写道的唯一一个键:所有资料更新排一队。 */
 const WRITE_KEY = "reported-profiles";
 
-/** 「资料变了」合并窗口的唯一一个键。 */
-const CHANGED_KEY = "profiles-changed";
-
-/** 面板看得见的那几格变没变。 */
-function visiblyChanged(prev: CachedProfile | undefined, next: CachedProfile): boolean {
-	return prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.fans !== next.fans;
-}
-
 export function bindReportedProfiles(opts: BindReportedProfilesOptions): ReportedProfilesHandle {
 	const log = opts.logger;
-	const windowMs = opts.coalesceMs ?? PROFILES_CHANGED_COALESCE_MS;
 	const queue = createSerialQueue();
 	let disposed = false;
-	/** 窗口里攒着的、变了的订阅 id。 */
-	const pending = new Set<string>();
-	/** 攒的是一整批订阅 id、到点一起发,所以合并器只有 {@link CHANGED_KEY} 这一个键。 */
-	const changedWindow = createKeyedCoalescer({
-		windowMs,
-		onFire: () => {
-			const changed = [...pending];
-			pending.clear();
-			opts.bus.emit("subscription-profiles-changed", { subscriptionIds: changed });
-		},
+	const cache = createProfileCacheWriter({
+		bus: opts.bus,
+		subRuntime: opts.subRuntime,
+		images: opts.images,
+		logger: opts.logger,
+		coalesceMs: opts.coalesceMs,
 	});
-
-	function announce(ids: readonly string[]): void {
-		for (const id of ids) pending.add(id);
-		if (pending.size === 0) return;
-		changedWindow.touch(CHANGED_KEY);
-	}
 
 	/** 这一轮报来的头像存进图库,回引用;不合规矩、存不下来都是 `undefined`(记一句,不让名字与粉丝跟着丢)。 */
 	async function storeReportedAvatar(id: string, bytes: Uint8Array): Promise<ImageRef | undefined> {
@@ -115,40 +91,10 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 		return undefined;
 	}
 
-	/**
-	 * 沿用旧头像:抄引用,先续期。图已经不在了回 `undefined`(别把悬空的引用留在资料里);续期这一步本身出了错
-	 * (不是「图不在」)就记一句、照旧沿用 —— 引用还在资料缓存里,清扫看得见它。
-	 */
-	async function carryOverAvatar(
-		id: string,
-		prev: ImageRef | undefined,
-	): Promise<ImageRef | undefined> {
-		if (prev === undefined) return undefined;
-		try {
-			return (await opts.images.keep(prev)) ? prev : undefined;
-		} catch (err) {
-			log.warn(`[sub-profile] 订阅 ${id} 原来的头像没能续期,照旧沿用: ${String(err)}`);
-			return prev;
-		}
-	}
-
 	async function applyOne(id: string, value: ProfileValue): Promise<boolean> {
-		const prev = opts.subRuntime.get(id)?.cachedProfile;
 		const avatar =
-			(value.avatar === undefined ? undefined : await storeReportedAvatar(id, value.avatar)) ??
-			(await carryOverAvatar(id, prev?.avatar));
-		const fans = value.fans ?? prev?.fans;
-		const next: CachedProfile = {
-			name: value.name ?? prev?.name ?? "",
-			// 没有头像就是这一格缺,不写空串。
-			...(avatar === undefined ? {} : { avatar }),
-			sign: prev?.sign ?? "",
-			// 不知道就不写 —— 写 0 是在面板上印一句假话(同新建时种资料那条)。
-			...(fans === undefined ? {} : { fans }),
-			lastRefreshedAt: new Date().toISOString(),
-		};
-		await opts.subRuntime.patch(id, { cachedProfile: next });
-		return visiblyChanged(prev, next);
+			value.avatar === undefined ? undefined : await storeReportedAvatar(id, value.avatar);
+		return cache.write(id, { name: value.name, avatar, fans: value.fans });
 	}
 
 	async function apply(delivery: SubscriptionReportDelivery): Promise<void> {
@@ -168,7 +114,7 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 				log.warn(`[sub-profile] 订阅 ${id} 的资料没写进去: ${String(err)}`);
 			}
 		}
-		if (!disposed) announce(changed);
+		if (!disposed) cache.announce(changed);
 	}
 
 	const sub = opts.bus.on("subscription-reported", (delivery) => {
@@ -185,8 +131,7 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 		dispose() {
 			disposed = true;
 			sub.dispose();
-			changedWindow.dispose();
-			pending.clear();
+			cache.dispose();
 		},
 	};
 }
