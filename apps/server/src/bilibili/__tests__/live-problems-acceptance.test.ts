@@ -1,6 +1,8 @@
 import {
 	type DeliveryResult,
+	fail,
 	ok,
+	type Result,
 	type ServiceContext,
 	type SourceContext,
 	type SourceSubscriptionView,
@@ -25,6 +27,7 @@ function makeWorld(
 		preflight?: () => Promise<unknown>;
 		myself?: () => Promise<unknown>;
 		roomInfo?: () => Promise<unknown>;
+		resolveRoomId?: () => Promise<Result<{ roomId: string }>>;
 	} = {},
 ) {
 	const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -117,7 +120,7 @@ function makeWorld(
 		liveContext: liveContext as ServiceContext,
 		roomIds: {
 			get: (externalId) => (externalId === EXTERNAL_ID ? ROOM_ID : undefined),
-			resolve: async () => ok({ roomId: ROOM_ID }),
+			resolve: options.resolveRoomId ?? (async () => ok({ roomId: ROOM_ID })),
 			syncSubscriptions() {},
 		},
 		rememberFanClubName() {},
@@ -188,6 +191,26 @@ describe("直播问题验收 · B 站这一侧", () => {
 		w.rooms.start(w.ctx, [w.subscription]);
 		await w.settle();
 		expect(w.codes()).toEqual(["risk_controlled"]);
+		expect(w.notifyMaster).not.toHaveBeenCalled();
+		w.rooms.stop();
+	});
+
+	it("解析房号撞风控:进风控层、只进表;解出来后真解除", async () => {
+		const resolveRoomId = vi
+			.fn()
+			.mockResolvedValueOnce(fail("rate_limited", "risk"))
+			.mockResolvedValueOnce(ok({ roomId: ROOM_ID }));
+		const w = makeWorld({ resolveRoomId });
+
+		w.rooms.start(w.ctx, [w.subscription]);
+		await w.settle();
+		expect(w.codes()).toEqual(["risk_controlled"]);
+		expect(w.notifyMaster).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(60_000);
+		await w.settle();
+		expect(resolveRoomId).toHaveBeenCalledTimes(2);
+		expect(w.codes()).toEqual([]);
 		expect(w.notifyMaster).not.toHaveBeenCalled();
 		w.rooms.stop();
 	});

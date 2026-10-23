@@ -92,8 +92,7 @@ export class BiliLiveRooms implements Disposable {
 		const externalId = identity.externalId;
 		const resolved = await this.opts.roomIds.resolve(externalId);
 		if (!resolved.ok) {
-			this.reportStatusUnavailable(externalId, "");
-			return fail("unavailable", "live room id is unavailable");
+			return resolved;
 		}
 		const roomId = resolved.roomId;
 		try {

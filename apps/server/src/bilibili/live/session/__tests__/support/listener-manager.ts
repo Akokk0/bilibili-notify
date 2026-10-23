@@ -19,6 +19,7 @@ export function makeListenerManagerHarness(
 		listener?: (roomId: string, handler: EventHandler) => Promise<boolean>;
 		roomInfo?: (roomId: string) => Promise<Record<string, unknown> | undefined>;
 		problems?: LiveProblems;
+		setTimeout?: (fn: () => void, ms: number) => { dispose(): void };
 	} = {},
 ) {
 	const activeHandlers = new Map<string, EventHandler>();
@@ -48,7 +49,12 @@ export function makeListenerManagerHarness(
 	const liveContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
+		setTimeout:
+			options.setTimeout ??
+			((fn: () => void, ms: number) => {
+				const timer = globalThis.setTimeout(fn, ms);
+				return { dispose: () => globalThis.clearTimeout(timer) };
+			}),
 		onDispose() {},
 		signal: new AbortController().signal,
 		track() {},

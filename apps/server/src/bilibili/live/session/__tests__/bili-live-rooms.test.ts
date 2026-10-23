@@ -480,7 +480,7 @@ describe("BiliLiveRooms", () => {
 		h.rooms.stop();
 	});
 
-	it("房号解析不出来时只报这一轮状态不可用，不关掉已有监听", async () => {
+	it("房号解析不出来时原样回失败，不报这一路的状态问题", async () => {
 		const h = harness();
 		await h.start();
 		await h.setRoomId(undefined);
@@ -491,7 +491,7 @@ describe("BiliLiveRooms", () => {
 				new AbortController().signal,
 			),
 		).resolves.toMatchObject({ ok: false });
-		expect(h.problems.present()).toEqual([`${EXTERNAL_ID}:live_status_unavailable`]);
+		expect(h.problems.present()).toEqual([]);
 		expect(h.sockets[0]?.closed).toBe(false);
 		h.rooms.stop();
 	});
