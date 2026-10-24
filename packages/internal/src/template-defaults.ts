@@ -72,9 +72,10 @@ function atPath(root: unknown, path: string): unknown {
 /**
  * 哪些字段该亮「默认文案有更新」的灯。
  *
- * 两个条件都成立才亮:
- * 1. **这一版默认他没见过** —— 见过就闭嘴,否则手写过文案的用户会被永久打扰
- * 2. **他的值确实和当前默认不一样** —— 一样的话没什么可更新的
+ * 三个条件都成立才亮:
+ * 1. **他存了这一条** —— 设置里没有的那条跟着当前语言的默认走(ADR-0037 决策 10),没有「旧值」可比,不算待更新
+ * 2. **这一版默认他没见过** —— 见过就闭嘴,否则手写过文案的用户会被永久打扰
+ * 3. **他的值确实和当前默认不一样** —— 一样的话没什么可更新的
  */
 export function pendingTemplateUpdates(
 	current: Record<string, unknown>,
@@ -83,7 +84,9 @@ export function pendingTemplateUpdates(
 ): string[] {
 	const out: string[] = [];
 	eachStringLeaf(defaults, "", (path, def) => {
-		if (atPath(current, path) !== def && seen[path] !== templateFingerprint(def)) out.push(path);
+		const mine = atPath(current, path);
+		if (mine !== undefined && mine !== def && seen[path] !== templateFingerprint(def))
+			out.push(path);
 	});
 	return out;
 }

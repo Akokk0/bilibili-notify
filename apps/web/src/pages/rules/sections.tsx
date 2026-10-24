@@ -4,8 +4,11 @@
  * delta for /api/settings.
  */
 
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
-import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+import {
+	type BuiltinTemplates,
+	type EffectiveMembershipTemplate,
+	withMembershipDefaults,
+} from "@bilibili-notify/internal/builtin-texts";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
@@ -35,7 +38,6 @@ import type {
 	LiveStartSettings,
 	LiveStreamingSettings,
 	MembershipSettings,
-	MembershipTemplateBundle,
 	MembershipTemplateEntry,
 	ScheduleConfig,
 	SuperchatSettings,
@@ -43,7 +45,13 @@ import type {
 } from "../../types/globals";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
 
-const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+/**
+ * 文字模板输入框的下发值(ADR-0037 决策 10):编辑到与当前语言的默认一字不差 = 回到「没存」(`null` 删键),
+ * 否则存主人写的这句。草稿合并认 `null` 删键,`buildPatch` 据此下发 `null`。
+ */
+export function templateValueToStore(value: string, factoryText: string): string | null {
+	return value === factoryText ? null : value;
+}
 
 export type SectionId =
 	| "filter"
@@ -487,13 +495,18 @@ export function LiveThresholdsSection({
 
 export function SummarySection({
 	templates,
+	factory,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	/** 当前语言的出厂文字:没存的格显示它,编辑到与它一字不差就回到没存。 */
+	factory: BuiltinTemplates;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const setText = (k: "liveSummary", v: string) =>
+		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
 	return (
 		<GlassBox
 			title="直播总结"
@@ -516,8 +529,8 @@ export function SummarySection({
 			<SummaryVariableHints />
 			<Field code="templates.liveSummary" full>
 				<TArea
-					value={templates.liveSummary}
-					onChange={(v) => setT("liveSummary", v)}
+					value={templates.liveSummary ?? factory.liveSummary}
+					onChange={(v) => setText("liveSummary", v)}
 					rows={8}
 					mono
 				/>
@@ -808,15 +821,17 @@ const LIVE_TEMPLATE_TABS = [
 
 export function LiveMsgSection({
 	templates,
+	factory,
 	layout,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	factory: BuiltinTemplates;
 	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
-		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const setText = (k: (typeof LIVE_TEMPLATE_TABS)[number]["key"], v: string) =>
+		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
 	const [tab, setTab] = useState<(typeof LIVE_TEMPLATE_TABS)[number]["key"]>("liveStart");
 	const active = LIVE_TEMPLATE_TABS.find((t) => t.key === tab) ?? LIVE_TEMPLATE_TABS[0];
 	return (
@@ -844,8 +859,8 @@ export function LiveMsgSection({
 						<Field code={active.code} full>
 							<TArea
 								key={active.key}
-								value={templates[active.key]}
-								onChange={(v) => setT(active.key, v)}
+								value={templates[active.key] ?? factory[active.key]}
+								onChange={(v) => setText(active.key, v)}
 								rows={3}
 								mono
 							/>
@@ -867,15 +882,17 @@ const DYNAMIC_TEMPLATE_TABS = [
 
 export function DynamicMsgSection({
 	templates,
+	factory,
 	layout,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	factory: BuiltinTemplates;
 	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
-		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
+	const setText = (k: (typeof DYNAMIC_TEMPLATE_TABS)[number]["key"], v: string) =>
+		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
 	const [tab, setTab] = useState<(typeof DYNAMIC_TEMPLATE_TABS)[number]["key"]>("post");
 	const active = DYNAMIC_TEMPLATE_TABS.find((t) => t.key === tab) ?? DYNAMIC_TEMPLATE_TABS[0];
 	return (
@@ -903,8 +920,8 @@ export function DynamicMsgSection({
 						<Field code={active.code} full>
 							<TArea
 								key={active.key}
-								value={templates[active.key]}
-								onChange={(v) => setT(active.key, v)}
+								value={templates[active.key] ?? factory[active.key]}
+								onChange={(v) => setText(active.key, v)}
 								rows={2}
 								mono
 							/>
@@ -927,21 +944,22 @@ type TierFieldPatch = Partial<Record<"template" | "imageUrl", string | null>>;
 /** 对 B 站体系文案(`templates.membership.guard`)的补丁。 */
 interface GuardBundlePatch {
 	enabled?: boolean;
-	default?: Partial<MembershipTemplateEntry>;
+	default?: Partial<Record<keyof MembershipTemplateEntry, string | null>>;
 	/** 按档 key:`null` = 整档拿掉。 */
 	tiers?: Record<string, TierFieldPatch | null>;
 }
 
-/** 配置里没有 B 站这一个体系(手改删掉了)时画出厂那一份:自定义关着,体系默认是出厂文案。 */
+/**
+ * 画 B 站体系文案用的整份:配置里没有这个体系(新装、或手改删掉了)就是出厂那一份 —— 自定义关着,体系默认是当前语言的出厂文案;
+ * 体系默认的文字没存(没改过)也取出厂那一句。
+ */
 export function guardBundleOf(
 	templates: Pick<TemplateBundle, "membership">,
-): MembershipTemplateBundle {
-	return (
-		templates.membership[GUARD_PROGRAM_ID] ?? {
-			enabled: false,
-			default: { ...FACTORY_TEMPLATES.membership.guard.default },
-			tiers: {},
-		}
+	factory: BuiltinTemplates,
+): EffectiveMembershipTemplate {
+	return withMembershipDefaults(
+		templates.membership[GUARD_PROGRAM_ID],
+		factory.membership.guard.default.template,
 	);
 }
 
@@ -957,7 +975,7 @@ export function GuardTemplateFields({
 	onTier,
 	tiersClassName = "space-y-2.5",
 }: {
-	bundle: MembershipTemplateBundle;
+	bundle: EffectiveMembershipTemplate;
 	onDefault: (field: "template" | "imageUrl", value: string) => void;
 	onTier: (key: string, field: "template" | "imageUrl", value: string) => void;
 	/** 三档那一块外面的排版(逐订阅覆盖里排成三列)。 */
@@ -1038,12 +1056,14 @@ export function GuardTemplateFields({
 
 export function GuardSection({
 	templates,
+	factory,
 	onPatch,
 }: {
 	templates: TemplateBundle;
+	factory: BuiltinTemplates;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const guard = guardBundleOf(templates);
+	const guard = guardBundleOf(templates, factory);
 	const patchGuard = (delta: GuardBundlePatch) =>
 		onPatch({ defaults: { templates: { membership: { [GUARD_PROGRAM_ID]: delta } } } });
 	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(盘上不留空壳)。 */
@@ -1069,7 +1089,16 @@ export function GuardSection({
 					<GuardVariableHints />
 					<GuardTemplateFields
 						bundle={guard}
-						onDefault={(field, v) => patchGuard({ default: { [field]: v } })}
+						onDefault={(field, v) =>
+							patchGuard({
+								default: {
+									[field]:
+										field === "template"
+											? templateValueToStore(v, factory.membership.guard.default.template)
+											: v,
+								},
+							})
+						}
 						onTier={setTier}
 					/>
 				</>

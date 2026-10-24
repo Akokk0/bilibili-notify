@@ -9,11 +9,16 @@ import {
 	type EffectiveSubscription,
 	type ExtraKey,
 	type GlobalConfig,
-	type MembershipTemplateBundle,
 	type MessageKindLayout,
 	resolve,
+	resolveTemplates,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import {
+	type EffectiveMembershipTemplate,
+	templateDefaultsFor,
+} from "@bilibili-notify/internal/builtin-texts";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { resolveAiOverride } from "../runtime/ai-config.js";
 import type { CustomLiveMsgLike, PickLiveCover, SpecialViewerSettings } from "./live-types";
 
@@ -90,7 +95,7 @@ export interface LiveSettings extends LiveWorkSettings {
 	 * 会员文案,按体系 id 取整份(`templates.membership[体系 id]`,订阅覆盖哪个体系就整份换成订阅的)。
 	 * 字段名同上,表外、可否决。
 	 */
-	membershipTemplates: Record<string, MembershipTemplateBundle>;
+	membershipTemplates: (programId: string) => EffectiveMembershipTemplate;
 	superchat: boolean;
 	/**
 	 * 特别弹幕 / 特别进场的开关(`eff.features.viewerChat` / `viewerEnter`)。要不要监听直播间是「开关 ∧ 名单上有人带它」
@@ -133,6 +138,12 @@ export function liveSettingsOf(
 	globals: GlobalConfig,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): LiveSettings {
+	// 文字模板设置里只存主人改过的:缺的此刻按当前语言取出厂,不写盘(换语言立即生效)。
+	const templates = resolveTemplates(
+		sub,
+		globals.defaults,
+		templateDefaultsFor(textSettingsOf(globals).locale),
+	);
 	return {
 		aiOverride: resolveAiOverride(sub, globals.ai),
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
@@ -144,7 +155,7 @@ export function liveSettingsOf(
 		membership: eff.features.membership,
 		// 会员门槛与文案都按体系 id 存好;核心按事件带来的 `program` 取自己那一格,不认识任何平台的体系名。
 		membershipMinRank: eff.membership.minRank,
-		membershipTemplates: eff.templates.membership,
+		membershipTemplates: templates.membership,
 		superchat: eff.features.superchat,
 		viewerChat: eff.features.viewerChat,
 		viewerEnter: eff.features.viewerEnter,
@@ -162,12 +173,12 @@ export function liveSettingsOf(
 		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
 		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary 同模式。
 		customLiveMsg: {
-			customLiveStart: eff.templates.liveStart,
-			customLiveStreaming: eff.templates.liveStreaming,
-			customLiveEnd: eff.templates.liveEnd,
+			customLiveStart: templates.liveStart,
+			customLiveStreaming: templates.liveStreaming,
+			customLiveEnd: templates.liveEnd,
 		},
 		customLiveSummary: {
-			liveSummary: eff.templates.liveSummary,
+			liveSummary: templates.liveSummary,
 		},
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
@@ -179,15 +190,15 @@ export function liveSettingsOf(
 		// 门槛是折好的生效值,没配 = 不设门槛。
 		minSuperchatAmount: eff.superchat.minAmount,
 		// per-UP 解析后的弹幕词云额外停用词(eff = per-UP override ?? 全局)。
-		wordcloudStopWords: eff.templates.wordcloudStopWords,
+		wordcloudStopWords: templates.wordcloudStopWords,
 		// 两块设置同带一份名单(条目自己说带哪把特性键),各配各的文案。
 		specialViewerChat: {
 			specialViewers: sub.specialViewers,
-			template: eff.templates.viewerChat,
+			template: templates.viewerChat,
 		},
 		specialViewerEnter: {
 			specialViewers: sub.specialViewers,
-			template: eff.templates.viewerEnter,
+			template: templates.viewerEnter,
 		},
 	};
 }

@@ -76,7 +76,11 @@ function baseSettings(over: Partial<LiveSettings> = {}): LiveSettings {
 		liveEnd: true,
 		membership: false,
 		membershipMinRank: {},
-		membershipTemplates: {},
+		membershipTemplates: () => ({
+			enabled: false,
+			default: { template: "", imageUrl: "" },
+			tiers: {},
+		}),
 		superchat: false,
 		viewerChat: false,
 		viewerEnter: false,

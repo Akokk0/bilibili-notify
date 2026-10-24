@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * 复现 bug:per-UP「动态过滤覆盖」与「直播阈值覆盖」曾共享同一个 overrides.filters
@@ -62,6 +63,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="filter"
 				/>
@@ -87,6 +89,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="live"
 				/>
@@ -113,6 +116,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="filter"
 				/>
@@ -128,6 +132,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="live"
 				/>
@@ -147,6 +152,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="live"
 				/>
@@ -162,6 +168,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="filter"
 				/>
@@ -184,6 +191,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 				<PerUpEditor
 					sub={sub}
 					defaults={makeDefaults()}
+					factory={templateDefaultsFor("zh-CN")}
 					presets={makeAi().presets}
 					section="filter"
 				/>

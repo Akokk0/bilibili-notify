@@ -23,7 +23,8 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { makeEmptySubscription, resolveTemplates } from "@bilibili-notify/internal";
+import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
@@ -377,9 +378,15 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		const t = store.getGlobals().defaults.templates as Record<string, unknown>;
 		// ① liveMsgEnabled 被 strip
 		expect(t.liveMsgEnabled).toBeUndefined();
-		// ② dynamic/dynamicVideo 回填成当前默认(链接不再进模板),新代里它们叫 post / postVideo
-		expect(t.post).toBe("{name}发布了一条{postNoun}");
-		expect(t.postVideo).toBe("{name}发布了新视频");
+		// ② dynamic/dynamicVideo 在新代里叫 post / postVideo,盘上没有 = 跟随默认(链接不再进模板),推出去的字是当前默认
+		expect(t.post).toBeUndefined();
+		const pushed = resolveTemplates(
+			makeEmptySubscription({ id: "s", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			store.getGlobals().defaults,
+			templateDefaultsFor(DEFAULT_LOCALE),
+		);
+		expect(pushed.post).toBe("{name}发布了一条{postNoun}");
+		expect(pushed.postVideo).toBe("{name}发布了新视频");
 		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
@@ -387,7 +394,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect((t.membership as { guard: { tiers: Obj } }).guard.tiers).toEqual({});
 	});
 
-	it("加载缺 templates.dynamic/dynamicVideo 的老 globals.json → schema 回填默认(新键 post / postVideo),不抛", async () => {
+	it("加载缺 templates.dynamic/dynamicVideo 的老 globals.json → 读时取默认(新键 post / postVideo),不抛", async () => {
 		// 回归:dynamic/dynamicVideo 字段加入前写入的 globals.json 没有这两项。
 		// 若 TemplateBundleSchema 把它们(今天叫 post / postVideo)设为 required 无默认,旧用户升级后 load() 会
 		// ConfigValidationError 直接拒绝启动。.default(...) 兜底保证旧配置仍可加载。
@@ -412,9 +419,13 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(onDisk).not.toHaveProperty("post");
 		expect(onDisk).not.toHaveProperty("postVideo");
 		const store = await sandbox.load();
-		const tpl = store.getGlobals().defaults.templates;
-		expect(tpl.post).toBe("{name}发布了一条{postNoun}");
-		expect(tpl.postVideo).toBe("{name}发布了新视频");
+		const pushed = resolveTemplates(
+			makeEmptySubscription({ id: "s", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			store.getGlobals().defaults,
+			templateDefaultsFor(DEFAULT_LOCALE),
+		);
+		expect(pushed.post).toBe("{name}发布了一条{postNoun}");
+		expect(pushed.postVideo).toBe("{name}发布了新视频");
 	});
 });
 

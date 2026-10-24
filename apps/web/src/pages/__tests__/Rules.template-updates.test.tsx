@@ -281,3 +281,100 @@ describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)"
 		expect(input.value).toBe(FACTORY_TEMPLATES.membership.guard.default.template);
 	});
 });
+
+describe("文字模板只存改过的(ADR-0037 决策 10)", () => {
+	const SEEN = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
+
+	/** 盘上没存开播文案:新装的形状(账本照新装填满不影响,这里只摆开播那条)。 */
+	function storedNothing(): GlobalConfig {
+		return globalsWith((d, top) => {
+			d.templates.liveStart = undefined as never;
+			top.templatesSeen = SEEN;
+		});
+	}
+
+	const patchedLiveStart = (): unknown => {
+		const body = vi.mocked(api.patch).mock.calls[0]?.[1] as {
+			defaults?: { templates?: Record<string, unknown> };
+		};
+		return body.defaults?.templates?.liveStart;
+	};
+
+	it("没存的那条:输入框显示当前语言的默认,不亮「默认文案有更新」,也没有「恢复默认」", async () => {
+		mount(
+			globalsWith((d) => {
+				d.templates.liveStart = undefined as never;
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		expect(noticeOfLiveStart()).toBeNull();
+		expect(resetBtnOfLiveStart()).toBeNull();
+	});
+
+	it("编辑到与默认一字不差 → 草稿里键没了,保存下发 null", async () => {
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己写的";
+				top.templatesSeen = SEEN;
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
+		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
+		await waitFor(() =>
+			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
+				"templates.liveStart",
+			),
+		);
+		useDraftStore.getState().current?.onSave();
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(patchedLiveStart()).toBeNull();
+	});
+
+	it("没存过、改了又改回默认 → 什么都不发(草稿与基线没有差别)", async () => {
+		mount(storedNothing());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		fireEvent.change(liveStartInput(), { target: { value: "随手改的" } });
+		await waitFor(() =>
+			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
+				"templates.liveStart",
+			),
+		);
+		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
+		await waitFor(() =>
+			expect(useDraftStore.getState().current?.diff.map((x) => x.code) ?? []).not.toContain(
+				"templates.liveStart",
+			),
+		);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("改成别的一句 → 存下这一句", async () => {
+		mount(storedNothing());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		fireEvent.change(liveStartInput(), { target: { value: "我自己写的" } });
+		await waitFor(() => expect(useDraftStore.getState().current).not.toBeNull());
+		useDraftStore.getState().current?.onSave();
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(patchedLiveStart()).toBe("我自己写的");
+	});
+
+	it("「恢复默认」= 删键:保存下发 null", async () => {
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己写的";
+				top.templatesSeen = SEEN;
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(resetBtnOfLiveStart()).not.toBeNull());
+		fireEvent.click(resetBtnOfLiveStart() as Element);
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		useDraftStore.getState().current?.onSave();
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		expect(patchedLiveStart()).toBeNull();
+	});
+});

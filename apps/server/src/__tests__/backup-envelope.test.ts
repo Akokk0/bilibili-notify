@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("链接预览的回复形式多了 text 以后导出的备份是版本 21", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(21);
+	it("文字模板只存改过的以后导出的备份是版本 22", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(22);
+	});
+
+	it("版本 21 的备份(文字模板整份存着默认原文)→ unsupported:整份拒收", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 21 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 19 的备份(特别弹幕 / 特别进场 / 弹幕总结还用 mastername / uname / mdn)→ unsupported:整份拒收,不悄悄印出字面变量", () => {

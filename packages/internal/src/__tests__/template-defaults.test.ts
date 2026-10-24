@@ -58,6 +58,13 @@ describe("pendingTemplateUpdates", () => {
 		);
 	});
 
+	it("设置里没存的那条跟着默认走 → 不算待更新,哪怕没见过这版指纹", () => {
+		expect(pendingTemplateUpdates({}, { liveStart: "新文案" }, {})).toEqual([]);
+		expect(
+			pendingTemplateUpdates({ liveEnd: "我改的" }, { liveStart: "新文案", liveEnd: "新下播" }, {}),
+		).toEqual(["liveEnd"]);
+	});
+
 	it("处理过上一版、主人又改了默认 → 重新亮灯", () => {
 		// 提示不是一次性的:主人每改一次默认,该问的还得再问一次。
 		expect(

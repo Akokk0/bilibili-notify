@@ -128,7 +128,11 @@ function settingsWith(
 		streamingIntervalHours: 1,
 		membership: true,
 		membershipMinRank: {},
-		membershipTemplates: {},
+		membershipTemplates: () => ({
+			enabled: false,
+			default: { template: "", imageUrl: "" },
+			tiers: {},
+		}),
 		superchat: true,
 		extras: { atAllPost: false, atAllLiveStart: false, wordcloud: false, liveSummary: false },
 		viewerChat: true,
@@ -584,13 +588,11 @@ describe("会员", () => {
 
 	it("custom 体系:用事件里的档名,没有徽章、不问来源,自定义文案的 {tier} 取事件里的名字", async () => {
 		settings = settingsWith([], {
-			membershipTemplates: {
-				"acme-custom": {
-					enabled: true,
-					default: { template: "{viewer} 成为了 {tier}", imageUrl: "" },
-					tiers: {},
-				},
-			},
+			membershipTemplates: () => ({
+				enabled: true,
+				default: { template: "{viewer} 成为了 {tier}", imageUrl: "" },
+				tiers: {},
+			}),
 		});
 		membership({
 			program: "acme-custom",

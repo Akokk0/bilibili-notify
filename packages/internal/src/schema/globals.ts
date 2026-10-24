@@ -177,7 +177,8 @@ export const GlobalDefaultsSchema = z.object({
 	// 醒目留言与会员的门槛(㉓d,原先是 `filters.minScPrice` / `minGuardLevel`):没配 = 不设门槛,缺这两段的老配置补成空段。
 	superchat: SuperchatSettingsSchema.default(() => structuredClone(DEFAULT_SUPERCHAT_SETTINGS)),
 	membership: MembershipSettingsSchema.default(() => structuredClone(DEFAULT_MEMBERSHIP_SETTINGS)),
-	templates: TemplateBundleSchema,
+	// 文字模板只存主人改过的(缺 = 跟随当前语言的默认);`.prefault` 让内层的非文字格(停用词)照常补默认。
+	templates: TemplateBundleSchema.prefault({}),
 	// 卡片设置(㉔e):出图总开关与直播封面,不再按卡种分层。缺这一段的老配置补出厂值。
 	cards: CardsSettingsSchema.default(() => structuredClone(DEFAULT_CARDS)),
 	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
@@ -468,7 +469,8 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			liveStreaming: DEFAULT_LIVE_STREAMING,
 			superchat: DEFAULT_SUPERCHAT_SETTINGS,
 			membership: DEFAULT_MEMBERSHIP_SETTINGS,
-			templates: FACTORY_TEMPLATES,
+			// 新装不存任何文字格:没改过 = 跟随当前语言的默认(ADR-0037 决策 10)。
+			templates: {},
 			cards: DEFAULT_CARDS,
 			imageGroup: DEFAULT_IMAGE_GROUP,
 		},

@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * per-UP「AI 人格」—— 这里只负责**挑一份**已有人格。
@@ -54,7 +55,13 @@ function mount(overridesAi?: Subscription["overrides"]["ai"]) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={makeDefaults()} presets={presetsOfTwo()} section="ai" />
+			<PerUpEditor
+				sub={sub}
+				defaults={makeDefaults()}
+				factory={templateDefaultsFor("zh-CN")}
+				presets={presetsOfTwo()}
+				section="ai"
+			/>
 		</QueryClientProvider>,
 	);
 }

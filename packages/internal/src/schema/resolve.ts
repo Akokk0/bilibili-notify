@@ -1,3 +1,10 @@
+import {
+	type BuiltinTemplates,
+	type EffectiveMembershipTemplate,
+	type EffectiveTemplates,
+	withMembershipDefaults,
+	withTemplateDefaults,
+} from "../builtin-texts";
 import { type ActivePersonaShape, type Identity, resolveActivePersona } from "../constants";
 import type {
 	AISettings,
@@ -11,8 +18,6 @@ import type {
 	MembershipSettings,
 	ScheduleConfig,
 	SuperchatSettings,
-	TemplateBundle,
-	TemplateBundlePartial,
 } from "./common";
 import type { GlobalDefaults } from "./globals";
 import { type MessageLayout, normalizeMessageLayout } from "./message-layout";
@@ -51,7 +56,6 @@ export interface EffectiveSubscription {
 	superchat: SuperchatSettings;
 	/** 会员门槛:`minRank` 按体系逐键合并(订阅只改了 `guard`,别的体系的全局门槛照旧);某体系没有键 = 那个体系全推。 */
 	membership: Required<MembershipSettings>;
-	templates: TemplateBundle;
 	cards: CardsSettings;
 	/** 生效的卡片皮肤 id(per-UP 指了就用它,否则全局)。 */
 	cardSkin: string;
@@ -86,20 +90,42 @@ function mergeFeatures(
 	};
 }
 
+/** 这条订阅生效的文字模板:每格都有字;会员文案按体系 id 现取。 */
+export type ResolvedTemplates = Omit<EffectiveTemplates, "membership"> & {
+	/** 某个会员体系的文案:订阅覆盖了就整份换;缺 `default.template` 取出厂那一句;没有这个体系的条目 = 自定义关着。 */
+	membership(programId: string): EffectiveMembershipTemplate;
+};
+
 /**
- * 文案的合并比别的多一层:会员文案按体系存(`membership[体系 id]`),订阅覆盖哪个体系,那个体系整份换成订阅的;没覆盖的
- * 体系还是全局的。其余文案一条一条浅合并。「订阅那份 `enabled` 为真才用订阅的整份、否则用全局的」这条规矩在引擎取文案
- * 的那一处(`room-session`),这里只负责把两层摆齐。
+ * 这条订阅生效的文字模板:订阅覆盖 → 全局设置 → 出厂(`factory`,调用方按当前语言取)。
+ *
+ * 设置里只存主人改过的格(ADR-0037 决策 10),所以**读时填、不写盘**:换语言立即生效,盘上不动。
+ * 文字一格一格浅合并;会员文案按体系,订阅覆盖哪个体系那个体系整份换成订阅的,没覆盖的还是全局的。
+ * 「订阅那份 `enabled` 为真才用订阅的整份、否则用全局的」这条规矩在引擎取文案的那一处,这里只负责把几层摆齐。
  */
-function mergeTemplates(
-	base: TemplateBundle,
-	override: TemplateBundlePartial | undefined,
-): TemplateBundle {
-	if (!override) return base;
-	const { membership, ...rest } = override;
+export function resolveTemplates(
+	sub: Pick<Subscription, "overrides">,
+	defaults: Pick<GlobalDefaults, "templates">,
+	factory: BuiltinTemplates,
+): ResolvedTemplates {
+	const own = sub.overrides.templates;
+	const { membership: _stored, ...text } = defaults.templates;
+	const { membership: _own, ...ownText } = own ?? {};
+	const merged = withTemplateDefaults(
+		{
+			...merge(text, ownText),
+			membership: { ...defaults.templates.membership, ...own?.membership },
+		},
+		factory,
+	);
+	const fallbackText = factory.membership.guard.default.template;
+	const { membership, ...rest } = merged;
 	return {
-		...merge(base, rest),
-		membership: { ...base.membership, ...membership },
+		...rest,
+		membership: (programId) =>
+			Object.hasOwn(membership, programId)
+				? (membership[programId] as EffectiveMembershipTemplate)
+				: withMembershipDefaults(undefined, fallbackText),
 	};
 }
 
@@ -166,7 +192,6 @@ function resolveCommon(
 		liveStreaming: merge(defaults.liveStreaming, ov.liveStreaming),
 		superchat: merge(defaults.superchat, ov.superchat),
 		membership: { minRank: { ...defaults.membership.minRank, ...ov.membership?.minRank } },
-		templates: mergeTemplates(defaults.templates, ov.templates),
 		cards: merge(defaults.cards, ov.cards),
 		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——
 		// 出图只认皮肤,而那个键连同折它进来的开机迁移已一并删掉(ADR-0014 决策 17 的

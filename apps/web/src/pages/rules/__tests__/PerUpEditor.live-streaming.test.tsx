@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * per-UP 编辑器里直播拆键(⑬d)的那几格:周期间隔落在 `overrides.liveStreaming`、启动补报落在
@@ -58,6 +59,7 @@ function renderEditor(sub: Subscription, section: SectionId, platform?: Subscrip
 				sub={sub}
 				platform={platform}
 				defaults={makeDefaults()}
+				factory={templateDefaultsFor("zh-CN")}
 				presets={makeAi().presets}
 				section={section}
 			/>

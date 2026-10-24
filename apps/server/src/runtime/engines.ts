@@ -57,8 +57,11 @@ import {
 	needsLiveMonitor,
 	resolve,
 	resolveAIProfile,
+	resolveTemplates,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
@@ -1384,6 +1387,8 @@ export function postSettingsOf(
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): PostSettings {
 	const d = globals.defaults;
+	// 文字模板设置里只存主人改过的:缺的此刻按当前语言取出厂,不写盘(换语言立即生效)。
+	const templates = resolveTemplates(sub, d, templateDefaultsFor(textSettingsOf(globals).locale));
 	return {
 		filter: eff.filters,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
@@ -1395,8 +1400,8 @@ export function postSettingsOf(
 		aiEnabled: globals.ai.enabled && aiWriting,
 		aiWebSearch: globals.ai.search.engines.dynamic,
 		aiOverride: resolveAiOverride(sub, globals.ai),
-		template: eff.templates.post,
-		videoTemplate: eff.templates.postVideo,
+		template: templates.post,
+		videoTemplate: templates.postVideo,
 		imageGroup: { enabled: eff.imageGroup.enabled, mergeForward: eff.imageGroup.mergeForward },
 	};
 }

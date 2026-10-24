@@ -9,7 +9,6 @@ import {
 	type Logger,
 	type MembershipEvent,
 	type MembershipProgram,
-	type MembershipTemplateBundle,
 	type MembershipTier,
 	type MessageLayoutSegment,
 	type Result,
@@ -64,13 +63,6 @@ type InteractionSettings = Pick<
 	| "specialViewerChat"
 	| "specialViewerEnter"
 >;
-
-/** 来源没给这个体系声明文案:等同「没开自定义文案」,出卡或走兜底句。 */
-const NO_MEMBERSHIP_TEMPLATE: MembershipTemplateBundle = {
-	enabled: false,
-	default: { template: "", imageUrl: "" },
-	tiers: {},
-};
 
 export interface LiveInteractionsOptions {
 	logger: Logger;
@@ -360,7 +352,7 @@ export function createLiveInteractions(opts: LiveInteractionsOptions): LiveInter
 								event: { subscriptionId, ...event } satisfies MembershipEvent,
 								tier,
 								minRank: settings.membershipMinRank[program.id],
-								template: settings.membershipTemplates[program.id] ?? NO_MEMBERSHIP_TEMPLATE,
+								template: settings.membershipTemplates(program.id),
 								creator: {
 									name: creator.name,
 									...(avatar === undefined ? {} : { avatar }),

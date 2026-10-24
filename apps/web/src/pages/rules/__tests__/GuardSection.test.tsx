@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * 规则页「上舰提示」(全局,㉓d):B 站会员体系 `guard` 的文案 —— 最上面一块是体系默认(文案 + 图片),下面舰长 / 提督 / 总督
@@ -30,7 +31,9 @@ function renderSection(guard: Bundle | null = BUNDLE) {
 		membership: guard === null ? {} : { guard },
 	};
 	const onPatch = vi.fn();
-	const view = render(<GuardSection templates={templates} onPatch={onPatch} />);
+	const view = render(
+		<GuardSection templates={templates} factory={templateDefaultsFor("zh-CN")} onPatch={onPatch} />,
+	);
 	/** 一档那一块(按档 key 那枚小标签找)。 */
 	const tierCard = (key: string): HTMLElement => {
 		const chip = Array.from(view.container.querySelectorAll("code")).find(

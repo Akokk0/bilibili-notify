@@ -56,6 +56,18 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 		}
 	});
 
+	it("设置里没存作品文案 → 取出厂那句(简体字典原文);存了的照存", () => {
+		const g = makeDefaultGlobalConfig();
+		expect(g.defaults.templates.post).toBeUndefined();
+		const s = postSettingsOf(biliSub(), g, false);
+		expect(s.template).toBe("{name}发布了一条{postNoun}");
+		expect(s.videoTemplate).toBe("{name}发布了新视频");
+		g.defaults.templates.post = "我改的 {name}";
+		const after = postSettingsOf(biliSub(), g, false);
+		expect(after.template).toBe("我改的 {name}");
+		expect(after.videoTemplate).toBe("{name}发布了新视频");
+	});
+
 	it("订阅的覆盖盖过全局:模板、图集、皮肤;过滤是折好的整份(覆盖的键盖全局,没覆盖的键沿用全局)", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.templates.post = "全局动态 {name}";

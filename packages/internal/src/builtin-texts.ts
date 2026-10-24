@@ -44,6 +44,85 @@ export type BuiltinTemplates = {
 	membership: { guard: BuiltinMembershipTemplate };
 };
 
+/** 设置里存着的一份会员体系文案:主人没改的格不在。 */
+export type StoredMembershipTemplate = {
+	enabled?: boolean;
+	default?: { template?: string; imageUrl?: string };
+	tiers?: Record<string, { template?: string; imageUrl?: string }>;
+};
+
+/** 设置里存着的文字模板(`defaults.templates` 或订阅覆盖):只有主人改过的格在。 */
+export type StoredTemplates = {
+	liveStart?: string;
+	liveStreaming?: string;
+	liveEnd?: string;
+	liveSummary?: string;
+	post?: string;
+	postVideo?: string;
+	wordcloudStopWords?: string;
+	viewerChat?: string;
+	viewerEnter?: string;
+	membership?: Record<string, StoredMembershipTemplate>;
+};
+
+/** 填好的一份会员体系文案:体系默认那句一定有。 */
+export type EffectiveMembershipTemplate = {
+	enabled: boolean;
+	default: { template: string; imageUrl: string };
+	tiers: Record<string, { template?: string; imageUrl?: string }>;
+};
+
+/** 填好的文字模板:每格都有字。 */
+export type EffectiveTemplates = Omit<BuiltinTemplates, "membership"> & {
+	membership: Record<string, EffectiveMembershipTemplate>;
+};
+
+/** 一份存着的会员体系文案里缺的格,按出厂补上(体系默认那一句不分体系,取 `fallbackText`)。 */
+export function withMembershipDefaults(
+	stored: StoredMembershipTemplate | undefined,
+	fallbackText: string,
+): EffectiveMembershipTemplate {
+	return {
+		enabled: stored?.enabled ?? false,
+		default: {
+			template: stored?.default?.template ?? fallbackText,
+			imageUrl: stored?.default?.imageUrl ?? "",
+		},
+		tiers: stored?.tiers ?? {},
+	};
+}
+
+/**
+ * 存着的取存的,缺的取 `defaults`(ADR-0037 决策 10:设置里没有 = 跟随当前语言的默认)。
+ * 会员按体系:`defaults` 里有的体系先垫底,存着的体系条目里缺 `default.template` 取出厂那一句 ——
+ * 体系默认那句不分体系,这一步先取 `guard` 的。零依赖、不改入参,服务端与面板共用。
+ */
+export function withTemplateDefaults(
+	stored: StoredTemplates | undefined,
+	defaults: BuiltinTemplates,
+): EffectiveTemplates {
+	const fallbackText = defaults.membership.guard.default.template;
+	const membership: Record<string, EffectiveMembershipTemplate> = {};
+	for (const [id, entry] of Object.entries(defaults.membership)) {
+		membership[id] = withMembershipDefaults(entry, fallbackText);
+	}
+	for (const [id, entry] of Object.entries(stored?.membership ?? {})) {
+		membership[id] = withMembershipDefaults(entry, fallbackText);
+	}
+	return {
+		liveStart: stored?.liveStart ?? defaults.liveStart,
+		liveStreaming: stored?.liveStreaming ?? defaults.liveStreaming,
+		liveEnd: stored?.liveEnd ?? defaults.liveEnd,
+		liveSummary: stored?.liveSummary ?? defaults.liveSummary,
+		post: stored?.post ?? defaults.post,
+		postVideo: stored?.postVideo ?? defaults.postVideo,
+		wordcloudStopWords: stored?.wordcloudStopWords ?? defaults.wordcloudStopWords,
+		viewerChat: stored?.viewerChat ?? defaults.viewerChat,
+		viewerEnter: stored?.viewerEnter ?? defaults.viewerEnter,
+		membership,
+	};
+}
+
 /** 一份内置人格,十格齐全(两段提示词不缺席)。 */
 export type BuiltinPreset = {
 	id: BuiltinPresetId;

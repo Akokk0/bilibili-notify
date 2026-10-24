@@ -1,15 +1,11 @@
 import { z } from "zod";
-import { templateDefaultsFor } from "../builtin-texts";
 import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
-import { DEFAULT_LOCALE } from "../i18n";
 import { checkUserRegex } from "../util/regex-safety";
 import { AiWritingSettingsSchema } from "./ai-writing";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { markBackupOnly, markSecret } from "./secret";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
-
-const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
@@ -189,6 +185,12 @@ export const MembershipTemplateEntrySchema = z.object({
 });
 export type MembershipTemplateEntry = z.infer<typeof MembershipTemplateEntrySchema>;
 
+/** 体系默认那一格:文字可缺(没改过 = 跟随出厂),图片缺 = 空串。 */
+export const MembershipDefaultEntrySchema = z.object({
+	template: z.string().optional(),
+	imageUrl: z.string().default(""),
+});
+
 /**
  * 一个会员体系的文案(㉓d,原先 B 站专属的 `guardBuy`)。`templates.membership` 是体系 id → 这一份。
  *
@@ -199,49 +201,44 @@ export type MembershipTemplateEntry = z.infer<typeof MembershipTemplateEntrySche
  */
 export const MembershipTemplateBundleSchema = z.object({
 	enabled: z.boolean().default(false),
-	default: MembershipTemplateEntrySchema,
+	// 体系默认那句文字没改过就不存(缺 = 跟随当前语言的出厂那一句);图片不是文字,缺 = 空。
+	// zod 4 的 `.default(x)` 不再把 x 过一遍内层,要「缺了按内层规则补」得用 `.prefault`。
+	default: MembershipDefaultEntrySchema.prefault({}),
 	tiers: z.record(z.string(), MembershipTemplateEntrySchema.partial()).default({}),
 });
 export type MembershipTemplateBundle = z.infer<typeof MembershipTemplateBundleSchema>;
 
+/**
+ * 推送的文字模板(ADR-0037 决策 10):**设置里只存主人改过的**。八条文字(开播 / 正在直播 / 下播 / 总结 / 作品 /
+ * 视频 / 特别弹幕 / 特别进场)与会员体系默认那一句都是可选、**不带 `.default`** —— 缺 = 跟随当前语言的出厂默认,
+ * 读的地方经 `withTemplateDefaults` / `resolveTemplates` 现取,不写盘。带了 `.default` 一读一写就整份落盘,「不存」做不成。
+ * 变量:作品 `{name}` UP 名、`{postNoun}` 来源对作品的叫法;链接是消息版式的独立部件,不是模板变量。
+ */
 export const TemplateBundleSchema = z.object({
-	liveStart: z.string(),
-	liveStreaming: z.string(),
-	liveEnd: z.string(),
-	liveSummary: z.string(),
+	liveStart: z.string().optional(),
+	liveStreaming: z.string().optional(),
+	liveEnd: z.string().optional(),
+	liveSummary: z.string().optional(),
+	post: z.string().optional(),
+	postVideo: z.string().optional(),
 	/**
-	 * 作品推送文本模板(非视频作品)。变量:`{name}` UP 名、`{postNoun}` 来源对作品的叫法;链接是消息版式的独立部件,
-	 * 不是模板变量。`.default(...)` 让缺 post 字段的老 globals.json
-	 * (本字段加入前写入的)仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略;
-	 * 默认值直接取出厂文案读口 `templateDefaultsFor`,不另抄一份(抄的那份 2026-08 漂过一次)。
-	 */
-	post: z.string().default(FACTORY_TEMPLATES.post),
-	/** 视频投稿推送文本模板。变量同上;链接同上。 */
-	postVideo: z.string().default(FACTORY_TEMPLATES.postVideo),
-	/**
-	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
-	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 post /
-	 * postVideo 同源的老配置兜底)。per-UP override 经 merge 替换全局值,在该 UP
-	 * 的词云生成时额外过滤(详见 apps/server/src/bilibili/live room-session dispatch)。
+	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。不是文字模板,缺 = 空。
+	 * per-UP override 经 merge 替换全局值,在该 UP 的词云生成时额外过滤。
 	 */
 	wordcloudStopWords: z.string().default(""),
-	viewerChat: z.string(),
-	viewerEnter: z.string(),
-	/** 会员文案,按体系 id 存(B 站的体系叫 `guard`)。形状见 {@link MembershipTemplateBundleSchema}。 */
-	membership: z.record(z.string(), MembershipTemplateBundleSchema),
+	viewerChat: z.string().optional(),
+	viewerEnter: z.string().optional(),
+	/** 会员文案,按体系 id 存(B 站的体系叫 `guard`)。形状见 {@link MembershipTemplateBundleSchema}。缺 = 没改过任何体系。 */
+	membership: z.record(z.string(), MembershipTemplateBundleSchema).default({}),
 });
 export type TemplateBundle = z.infer<typeof TemplateBundleSchema>;
 
-// `.partial()` 只把顶层字段变可选,**不剥离内层 `.default()`** —— 直接 partial 会让
-// per-UP override 解析 `{ templates: { liveSummary } }` 时把 post/postVideo
-// 注入成默认值,被下游(buildDynamicSubViewSingle / isSectionCustomized)误当成真有
-// per-UP 作品模板覆盖:该 UP 停止跟随全局作品模板热更、面板误标「已定制」、保存时
-// 把注入字段落盘。override 维度的 post/postVideo 必须是「无默认的纯可选」,
-// 与全局 TemplateBundleSchema(带 .default 供 globals.json 缺字段回填)分开。
-export const TemplateBundlePartialSchema = TemplateBundleSchema.partial().extend({
-	post: z.string().optional(),
-	postVideo: z.string().optional(),
+// per-UP override 那份:同样的八条文字可选;`wordcloudStopWords` 与 `membership` 要重写成「无默认的纯可选」——
+// 直接 `.partial()` 不会剥掉内层的 `.default`,订阅覆盖里会凭空多出 "" / {} 被误当成真有覆盖
+// (面板误标「已定制」、保存时把注入字段落盘)。
+export const TemplateBundlePartialSchema = TemplateBundleSchema.extend({
 	wordcloudStopWords: z.string().optional(),
+	membership: z.record(z.string(), MembershipTemplateBundleSchema).optional(),
 });
 export type TemplateBundlePartial = z.infer<typeof TemplateBundlePartialSchema>;
 

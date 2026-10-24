@@ -3,8 +3,11 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { describe, expect, it } from "vite-plus/test";
 import { liveSettingsOf } from "../../live/live-settings.js";
+
+const ZH = templateDefaultsFor("zh-CN");
 
 const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	...makeEmptySubscription({
@@ -49,9 +52,9 @@ describe("liveSettingsOf — 不伪装全局值", () => {
 		const g = makeDefaultGlobalConfig();
 		const view = liveSettingsOf(makeSub(), g);
 		expect(view.customLiveMsg).toEqual({
-			customLiveStart: g.defaults.templates.liveStart,
-			customLiveStreaming: g.defaults.templates.liveStreaming,
-			customLiveEnd: g.defaults.templates.liveEnd,
+			customLiveStart: ZH.liveStart,
+			customLiveStreaming: ZH.liveStreaming,
+			customLiveEnd: ZH.liveEnd,
 		});
 	});
 
@@ -60,8 +63,8 @@ describe("liveSettingsOf — 不伪装全局值", () => {
 		const view = liveSettingsOf(makeSub({ templates: { liveStart: "自定义开播文案 {name}" } }), g);
 		expect(view.customLiveMsg).toEqual({
 			customLiveStart: "自定义开播文案 {name}",
-			customLiveStreaming: g.defaults.templates.liveStreaming,
-			customLiveEnd: g.defaults.templates.liveEnd,
+			customLiveStreaming: ZH.liveStreaming,
+			customLiveEnd: ZH.liveEnd,
 		});
 	});
 });
@@ -82,17 +85,19 @@ describe("liveSettingsOf — 上舰自定义的文案按体系整份下发", () 
 			makeSub({ templates: { membership: { guard } } }),
 			makeDefaultGlobalConfig(),
 		);
-		expect(view.membershipTemplates.guard).toEqual(guard);
+		expect(view.membershipTemplates("guard")).toEqual(guard);
 	});
 
 	it("无 per-UP 覆盖 → 视图带上全局的体系文案", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.templates.membership.guard = guard;
-		expect(liveSettingsOf(makeSub(), g).membershipTemplates.guard).toEqual(guard);
+		expect(liveSettingsOf(makeSub(), g).membershipTemplates("guard")).toEqual(guard);
 	});
 
 	it("两边都没动 → 出厂那份:自定义关着,体系默认是「{viewer} 成为了 {name} 的{tier}！」", () => {
-		expect(liveSettingsOf(makeSub(), makeDefaultGlobalConfig()).membershipTemplates.guard).toEqual({
+		expect(
+			liveSettingsOf(makeSub(), makeDefaultGlobalConfig()).membershipTemplates("guard"),
+		).toEqual({
 			enabled: false,
 			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
 			tiers: {},

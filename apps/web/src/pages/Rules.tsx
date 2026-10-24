@@ -1,5 +1,5 @@
 import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
-import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	pendingTemplateUpdates,
@@ -45,12 +45,13 @@ import {
 	visibleFeaturesOf,
 } from "./up/subscription-source";
 
+// 账本(「默认文案有更新」)按简体原文算,不随语言变;输入框显示的「没存时的默认」才跟当前语言(见 `Rules` 里的 `factory`)。
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** 把点路径摊成嵌套对象:`membership.guard.default.template` → `{membership:{guard:{default:{template:v}}}}`。 */
-function nestByPath(path: string, value: string): Record<string, unknown> {
+function nestByPath(path: string, value: string | null): Record<string, unknown> {
 	const segs = path.split(".");
 	let node: Record<string, unknown> = { [segs[segs.length - 1] as string]: value };
 	for (let i = segs.length - 2; i >= 0; i -= 1) node = { [segs[i] as string]: node };
@@ -322,6 +323,10 @@ export default function Rules() {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));
 	}, []);
 
+	// 文字模板设置里只存主人改过的:没存的格显示「当前语言的默认」(ADR-0037 决策 10)。
+	const locale = textSettingsOf(draft ?? globalsQuery.data ?? {}).locale;
+	const factory = useMemo(() => templateDefaultsFor(locale), [locale]);
+
 	// ── 「默认文案有更新」 ───────────────────────────────────────────────────
 	//
 	// 主人改了某条模板的默认,已装好的用户拿不到 —— 盘上写的是当初那一版。这里算出
@@ -357,17 +362,23 @@ export default function Rules() {
 				};
 			},
 			// 「恢复默认」跟上面那个提示是两件事:它常驻,管的是「我改坏了想还原」,
-			// 只要值不是默认就一直在。顺手也把这一版记进账本 —— 值都跟默认一样了,
-			// 再问一句「要不要更新」纯属多余。
+			// 只要主人存了一句、又不是当前语言的默认就一直在。还原 = 删键(没存 = 跟随默认,下发 `null`),
+			// 顺手也把这一版记进账本 —— 值都跟默认一样了,再问一句「要不要更新」纯属多余。
 			resetter(code: string): (() => void) | null {
 				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
 				if (!path || !templates) return null;
 				const def = templateDefaultAt(FACTORY_TEMPLATES, path);
-				if (def === undefined || templateDefaultAt(templates, path) === def) return null;
+				const stored = templateDefaultAt(templates, path);
+				if (
+					def === undefined ||
+					stored === undefined ||
+					stored === templateDefaultAt(factory, path)
+				)
+					return null;
 				return () =>
 					patchDraft({
 						defaults: {
-							templates: nestByPath(path, def) as NonNullable<
+							templates: nestByPath(path, null) as NonNullable<
 								GlobalConfigPatch["defaults"]
 							>["templates"],
 						},
@@ -375,7 +386,7 @@ export default function Rules() {
 					});
 			},
 		};
-	}, [draft, patchDraft]);
+	}, [draft, factory, patchDraft]);
 
 	// 拓展订阅也能按 UP 定制(ADR-0019 决策 64),只是露的节少 —— 见 perUpSectionsFor。
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
@@ -534,6 +545,7 @@ export default function Rules() {
 								sub={focusedSub}
 								platform={focusedPlatform}
 								defaults={draft.defaults}
+								factory={factory}
 								presets={draft.ai.presets}
 								section={shownSection}
 							/>
@@ -552,21 +564,31 @@ export default function Rules() {
 								onPatch={patchDraft}
 							/>
 						) : section === "summary" ? (
-							<SummarySection templates={draft.defaults.templates} onPatch={patchDraft} />
+							<SummarySection
+								templates={draft.defaults.templates}
+								factory={factory}
+								onPatch={patchDraft}
+							/>
 						) : section === "msg" ? (
 							<LiveMsgSection
 								templates={draft.defaults.templates}
+								factory={factory}
 								layout={draft.defaults.messageLayout.live}
 								onPatch={patchDraft}
 							/>
 						) : section === "dynamicMsg" ? (
 							<DynamicMsgSection
 								templates={draft.defaults.templates}
+								factory={factory}
 								layout={draft.defaults.messageLayout.post}
 								onPatch={patchDraft}
 							/>
 						) : section === "guard" ? (
-							<GuardSection templates={draft.defaults.templates} onPatch={patchDraft} />
+							<GuardSection
+								templates={draft.defaults.templates}
+								factory={factory}
+								onPatch={patchDraft}
+							/>
 						) : null}
 					</div>
 				</FieldUpdatesProvider>

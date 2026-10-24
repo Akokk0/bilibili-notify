@@ -10,6 +10,13 @@
  * at a time — matching the design's "侧栏选 section · 主体只看一项" pattern.
  */
 
+import {
+	type BuiltinTemplates,
+	type EffectiveMembershipTemplate,
+	type EffectiveTemplates,
+	withMembershipDefaults,
+	withTemplateDefaults,
+} from "@bilibili-notify/internal/builtin-texts";
 import { Avatar, CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -39,12 +46,7 @@ import {
 	subscriptionIdentityOf,
 	type TemplateOverride,
 } from "../../types/domain";
-import type {
-	AISettings,
-	GlobalDefaults,
-	ImageGroupSettings,
-	MembershipTemplateBundle,
-} from "../../types/globals";
+import type { AISettings, GlobalDefaults, ImageGroupSettings } from "../../types/globals";
 import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
 import type { SubscriptionPlatform } from "../up/subscription-source";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
@@ -61,7 +63,6 @@ import {
 	DynamicMsgVariableHints,
 	GuardTemplateFields,
 	GuardVariableHints,
-	guardBundleOf,
 	LiveMsgVariableHints,
 	type SectionId,
 	SpecialDanmakuVariableHints,
@@ -113,6 +114,8 @@ export interface PerUpEditorProps {
 	/** 拓展订阅是哪个平台、那个源报得出什么;B 站订阅不传。 */
 	platform?: SubscriptionPlatform;
 	defaults: GlobalDefaults;
+	/** 当前语言的出厂文字:全局没存的文字格,订阅覆盖的基线取它。 */
+	factory: BuiltinTemplates;
 	/** 全局的人格库:「AI 人格」那一节从里面挑一份。 */
 	presets: AISettings["presets"];
 	section: SectionId;
@@ -123,8 +126,20 @@ interface PerUpDraft {
 	specialViewers: SpecialViewer[];
 }
 
-export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUpEditorProps) {
+export function PerUpEditor({
+	sub,
+	platform,
+	defaults,
+	factory,
+	presets,
+	section,
+}: PerUpEditorProps) {
 	const qc = useQueryClient();
+	// 订阅覆盖的文字基线 = 全局生效值(存的 ?? 当前语言的默认)。
+	const baselineTemplates = useMemo(
+		() => withTemplateDefaults(defaults.templates, factory),
+		[defaults.templates, factory],
+	);
 	const identity = subscriptionIdentityOf(sub);
 	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
 	const specialViewers = sub.specialViewers;
@@ -275,21 +290,21 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 				<SummaryOverrideBox
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
-					baseline={defaults.templates}
+					baseline={baselineTemplates}
 				/>
 			) : null}
 			{section === "msg" ? (
 				<MsgOverrideBox
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
-					baseline={defaults.templates}
+					baseline={baselineTemplates}
 				/>
 			) : null}
 			{section === "dynamicMsg" ? (
 				<DynamicMsgOverrideBox
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
-					baseline={defaults.templates}
+					baseline={baselineTemplates}
 				/>
 			) : null}
 			{section === "messageLayout" ? (
@@ -305,7 +320,8 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 				<GuardOverrideBox
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
-					baseline={defaults.templates}
+					baseline={baselineTemplates}
+					factoryGuardText={factory.membership.guard.default.template}
 				/>
 			) : null}
 			{section === "specialDanmaku" ? (
@@ -319,7 +335,7 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 					onViewersChange={setSpecialViewers}
 					template={draft.overrides.templates}
 					onTemplateChange={(v) => setSlice("templates", v)}
-					baselineTemplate={defaults.templates.viewerChat}
+					baselineTemplate={baselineTemplates.viewerChat}
 				/>
 			) : null}
 			{section === "specialEnter" ? (
@@ -333,7 +349,7 @@ export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUp
 					onViewersChange={setSpecialViewers}
 					template={draft.overrides.templates}
 					onTemplateChange={(v) => setSlice("templates", v)}
-					baselineTemplate={defaults.templates.viewerEnter}
+					baselineTemplate={baselineTemplates.viewerEnter}
 				/>
 			) : null}
 			{section === "ai" ? (
@@ -718,7 +734,7 @@ function SummaryOverrideBox({
 }: {
 	value: TemplateOverride | undefined;
 	onChange: (next: TemplateOverride | undefined) => void;
-	baseline: GlobalDefaults["templates"];
+	baseline: EffectiveTemplates;
 }) {
 	const cur = value ?? {};
 	const enabled = cur.liveSummary !== undefined || cur.wordcloudStopWords !== undefined;
@@ -790,7 +806,7 @@ function MsgOverrideBox({
 }: {
 	value: TemplateOverride | undefined;
 	onChange: (next: TemplateOverride | undefined) => void;
-	baseline: GlobalDefaults["templates"];
+	baseline: EffectiveTemplates;
 }) {
 	// 无 enable flag(与动态模板一致):有 liveStart/liveStreaming/liveEnd 任一覆盖即「覆盖中」。
 	const enabled =
@@ -862,7 +878,7 @@ function DynamicMsgOverrideBox({
 }: {
 	value: TemplateOverride | undefined;
 	onChange: (next: TemplateOverride | undefined) => void;
-	baseline: GlobalDefaults["templates"];
+	baseline: EffectiveTemplates;
 }) {
 	// 无 enable flag —— 动态推送总会发;有 post / postVideo 任一覆盖即「覆盖中」。
 	const enabled = value?.post !== undefined || value?.postVideo !== undefined;
@@ -984,19 +1000,27 @@ function GuardOverrideBox({
 	value,
 	onChange,
 	baseline,
+	factoryGuardText,
 }: {
 	value: TemplateOverride | undefined;
 	onChange: (next: TemplateOverride | undefined) => void;
-	baseline: GlobalDefaults["templates"];
+	baseline: EffectiveTemplates;
+	/** 当前语言的体系默认那一句:订阅覆盖里没存的体系默认文字取它(与引擎取文案同一规矩)。 */
+	factoryGuardText: string;
 }) {
 	// 覆盖语义:开 = 该 UP 强制启用自定义上舰文案/图片(membership.guard.enabled=true,整份换成订阅这一份);关 = 继承全局决定。
 	const own = value?.membership?.[GUARD_PROGRAM_ID];
 	const enabled = own?.enabled === true;
 	const cur = value ?? {};
-	const baselineGuard = guardBundleOf(baseline);
+	const baselineGuard = withMembershipDefaults(
+		baseline.membership[GUARD_PROGRAM_ID],
+		factoryGuardText,
+	);
 	/** 画出来的那一份:订阅自己的整份(没有就拿全局的当起点)。 */
-	const bundle: MembershipTemplateBundle = own ?? baselineGuard;
-	function writeBundle(next: MembershipTemplateBundle): void {
+	const bundle: EffectiveMembershipTemplate = own
+		? withMembershipDefaults(own, factoryGuardText)
+		: baselineGuard;
+	function writeBundle(next: EffectiveMembershipTemplate): void {
 		onChange({ ...cur, membership: { ...cur.membership, [GUARD_PROGRAM_ID]: next } });
 	}
 	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(整份是普通对象,下发时 buildOverridesPatch 编出 null)。 */

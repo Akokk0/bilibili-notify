@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * PerUpEditor 接入草稿灵动岛的接线测试。
@@ -41,6 +42,7 @@ function renderEditor(sub: Subscription, section: SectionId) {
 			<PerUpEditor
 				sub={sub}
 				defaults={makeDefaults()}
+				factory={templateDefaultsFor("zh-CN")}
 				presets={makeAi().presets}
 				section={section}
 			/>

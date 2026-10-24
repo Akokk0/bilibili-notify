@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * per-UP 编辑器头部「是谁」那一行,读订阅的身份(来源 + 来源那头的 id):
@@ -45,6 +46,7 @@ function renderEditor(sub: Subscription, platform?: SubscriptionPlatform) {
 				sub={sub}
 				platform={platform}
 				defaults={makeDefaults()}
+				factory={templateDefaultsFor("zh-CN")}
 				presets={makeAi().presets}
 				section="filter"
 			/>

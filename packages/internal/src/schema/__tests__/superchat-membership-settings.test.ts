@@ -9,7 +9,7 @@ import { templateDefaultsFor } from "../../builtin-texts";
 import { DEFAULT_LOCALE } from "../../i18n";
 import { ContentFiltersSchema, MembershipTemplateBundleSchema } from "../common";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
-import { resolve } from "../resolve";
+import { resolve, resolveTemplates } from "../resolve";
 import {
 	makeEmptySubscription,
 	type Subscription,
@@ -164,27 +164,31 @@ describe("resolve:superchat 与 membership 的生效值", () => {
 
 describe("templates.membership —— 会员文案", () => {
 	it("出厂:B 站的体系 guard 关着自定义,体系默认是「{viewer} 成为了 {name} 的{tier}！」、图片空、没有任何档的覆盖", () => {
-		const { templates } = makeDefaultGlobalConfig().defaults;
-		expect(templates.membership).toEqual({
-			guard: {
-				enabled: false,
-				default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
-				tiers: {},
-			},
+		// 新装不存文字:盘上是空的,出厂那句由 `resolveTemplates` 现取(见 resolve-templates.test.ts)。
+		expect(makeDefaultGlobalConfig().defaults.templates.membership).toEqual({});
+		const factory = templateDefaultsFor(DEFAULT_LOCALE);
+		expect(
+			resolveTemplates(SUB_BASE, makeDefaultGlobalConfig().defaults, factory).membership("guard"),
+		).toEqual({
+			enabled: false,
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			tiers: {},
 		});
 		expect(templateDefaultsFor(DEFAULT_LOCALE).membership.guard.default.template).toBe(
 			"{viewer} 成为了 {name} 的{tier}！",
 		);
 	});
 
-	it("一个体系的文案:enabled 缺了补 false、tiers 缺了补空;default 必填;档里两格各自可选", () => {
+	it("一个体系的文案:enabled 缺了补 false、tiers 缺了补空;体系默认的文字可缺(跟随出厂)、图片缺了补空;档里两格各自可选", () => {
 		const parsed = MembershipTemplateBundleSchema.parse({
 			default: { template: "t", imageUrl: "" },
 		});
 		expect(parsed).toEqual({ enabled: false, default: { template: "t", imageUrl: "" }, tiers: {} });
-		expect(MembershipTemplateBundleSchema.safeParse({ enabled: true, tiers: {} }).success).toBe(
-			false,
-		);
+		expect(MembershipTemplateBundleSchema.parse({ enabled: true, tiers: {} })).toEqual({
+			enabled: true,
+			default: { imageUrl: "" },
+			tiers: {},
+		});
 		expect(
 			MembershipTemplateBundleSchema.parse({
 				default: { template: "t", imageUrl: "" },
@@ -193,8 +197,9 @@ describe("templates.membership —— 会员文案", () => {
 		).toEqual({ captain: { imageUrl: "https://img.test/c.png" }, 任意档名: {} });
 	});
 
-	it("逐订阅覆盖:按体系各带一份;resolve 对体系整份替换,没覆盖的体系还是全局的", () => {
+	it("逐订阅覆盖:按体系各带一份;resolveTemplates 对体系整份替换,没覆盖的体系还是全局的", () => {
 		const globals = makeDefaultGlobalConfig();
+		const factory = templateDefaultsFor(DEFAULT_LOCALE);
 		const guardOverride = {
 			enabled: true,
 			default: { template: "本订阅的默认", imageUrl: "" },
@@ -204,23 +209,32 @@ describe("templates.membership —— 会员文案", () => {
 			...SUB_BASE,
 			overrides: { templates: { membership: { guard: guardOverride } } },
 		};
-		const eff = resolve(sub, globals.defaults);
-		expect(eff.templates.membership.guard).toEqual(guardOverride);
+		expect(resolveTemplates(sub, globals.defaults, factory).membership("guard")).toEqual(
+			guardOverride,
+		);
 		// 没被覆盖的体系:还是全局那一份(这里造一个全局的第二体系验证)。
 		globals.defaults.templates.membership.other = {
 			enabled: false,
 			default: { template: "全局的 other", imageUrl: "" },
 			tiers: {},
 		};
-		const eff2 = resolve(sub, globals.defaults);
-		expect(eff2.templates.membership.other?.default.template).toBe("全局的 other");
-		expect(eff2.templates.membership.guard).toEqual(guardOverride);
+		const t2 = resolveTemplates(sub, globals.defaults, factory);
+		expect(t2.membership("other").default.template).toBe("全局的 other");
+		expect(t2.membership("guard")).toEqual(guardOverride);
 	});
 
 	it("没有覆盖:整份继承全局", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.templates.membership.guard.enabled = true;
-		const eff = resolve(SUB_BASE, globals.defaults);
-		expect(eff.templates.membership).toEqual(globals.defaults.templates.membership);
+		const factory = templateDefaultsFor(DEFAULT_LOCALE);
+		globals.defaults.templates.membership.guard = {
+			enabled: true,
+			default: { imageUrl: "" },
+			tiers: {},
+		};
+		expect(resolveTemplates(SUB_BASE, globals.defaults, factory).membership("guard")).toEqual({
+			enabled: true,
+			default: { template: factory.membership.guard.default.template, imageUrl: "" },
+			tiers: {},
+		});
 	});
 });

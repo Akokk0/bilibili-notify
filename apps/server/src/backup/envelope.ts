@@ -27,6 +27,8 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 22 = 文字模板只存改过的以后导出的备份(设置 `defaults.templates` 里没改过的文字格不在,读时按当前语言取出厂;
+ * 老备份里整份存着的默认原文会被当成「主人改过的」,不再跟语言,所以整份拒收)。
  * 21 = 链接预览的回复形式多了 `text` 以后导出的备份(默认行与逐目标例外的 `replyForm` 都可能是 `text`)。
  * 20 = 直播文案占位符改名以后导出的备份(特别弹幕 / 特别进场的文案用 `{name}` / `{viewer}`,弹幕总结用 `{fanclub}`;
  * 直播的六条文案里没有 `-key` 老写法)。
@@ -77,7 +79,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 21 as const;
+export const BACKUP_SCHEMA_VERSION = 22 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

@@ -65,6 +65,7 @@ describe("提示条的变量代码与表一致", () => {
 		const { container } = render(
 			<LiveMsgSection
 				templates={{ ...FACTORY_TEMPLATES }}
+				factory={FACTORY_TEMPLATES}
 				layout={defaultMessageKindLayout("live")}
 				onPatch={() => {}}
 			/>,

@@ -14,12 +14,12 @@ import {
 	type ImageRef,
 	type Logger,
 	type MembershipEvent,
-	type MembershipTemplateBundle,
 	type MembershipTier,
 	type MessageLayoutSegment,
 	membershipTemplateOf,
 	type Result,
 } from "@bilibili-notify/internal";
+import type { EffectiveMembershipTemplate } from "@bilibili-notify/internal/builtin-texts";
 import { errorMessageOf } from "../util/error-message";
 import { renderTemplate } from "../util/render-template";
 import { passesMembershipMinRank } from "./interaction-gates";
@@ -32,7 +32,7 @@ export interface MembershipOptions extends CardSkinChoice {
 	/** 这条订阅折好的门槛(按档的 rank 比);没配不拦。 */
 	minRank: number | undefined;
 	/** 生效的自定义文案包:订阅自己开了就是订阅的那份,否则是全局的那份;由调用方挑好。 */
-	template: MembershipTemplateBundle;
+	template: EffectiveMembershipTemplate;
 	/** 主播:名字与头像(图库引用,没有就不带)。 */
 	creator: { name: string; avatar?: ImageRef };
 	/** 出不了卡时发的那句文字;平台自己的叫法由调用方拼好交进来。 */

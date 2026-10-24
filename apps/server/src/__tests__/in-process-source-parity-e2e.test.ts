@@ -2405,7 +2405,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 						extras: { wordcloud: false, liveSummary: false },
 					},
 					templates: {
-						liveSummary: makeDefaultGlobalConfig().defaults.templates.liveSummary,
+						// 恢复默认 = 删键(文字模板只存改过的,发 null 回到跟随默认)
+						liveSummary: null,
 					},
 				},
 			});
@@ -2513,7 +2514,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 						extras: { wordcloud: false, liveSummary: false },
 					},
 					liveStreaming: { streamingIntervalHours: 1 },
-					templates: makeDefaultGlobalConfig().defaults.templates,
+					// 恢复默认 = 删键(文字模板只存改过的,发 null 回到跟随默认)
+					templates: {
+						liveStart: null,
+						liveStreaming: null,
+						liveEnd: null,
+						liveSummary: null,
+						membership: { [IN_PROCESS_CUSTOM_PROGRAM_ID]: null },
+					},
 				},
 			});
 		}

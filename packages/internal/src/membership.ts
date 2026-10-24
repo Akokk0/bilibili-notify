@@ -6,9 +6,10 @@
  * 这里只放取文案的纯函数 {@link membershipTemplateOf}。3a 建 `posts/` 一类的中立目录时整个搬过去(与 `post.ts` 同批)。
  */
 
+import type { EffectiveMembershipTemplate } from "./builtin-texts";
 import type { ImageRef } from "./constants";
 import type { PostImage } from "./post";
-import type { MembershipTemplateBundle, MembershipTemplateEntry } from "./schema/common";
+import type { MembershipTemplateEntry } from "./schema/common";
 
 /**
  * 一套会员体系:各平台档数不一、有的由主播自定,一个升序数字装不下。体系由来源在
@@ -86,7 +87,7 @@ export interface ViewerEnterEvent {
  * 只认档自己的键(`Object.hasOwn`):档 key 叫 `constructor` 之类的名字也不会取到原型上的东西。回的是新对象。
  */
 export function membershipTemplateOf(
-	bundle: Pick<MembershipTemplateBundle, "default" | "tiers">,
+	bundle: Pick<EffectiveMembershipTemplate, "default" | "tiers">,
 	tierKey: string,
 ): MembershipTemplateEntry {
 	const own = Object.hasOwn(bundle.tiers, tierKey) ? bundle.tiers[tierKey] : undefined;

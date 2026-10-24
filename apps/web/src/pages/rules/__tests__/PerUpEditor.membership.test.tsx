@@ -1,3 +1,4 @@
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 // @vitest-environment jsdom
 /**
  * per-UP 编辑器里会员与醒目留言的两处(㉓d):
@@ -44,7 +45,13 @@ function renderEditor(sub: Subscription, section: SectionId, defaults: GlobalDef
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={defaults} presets={makeAi().presets} section={section} />
+			<PerUpEditor
+				sub={sub}
+				defaults={defaults}
+				factory={templateDefaultsFor("zh-CN")}
+				presets={makeAi().presets}
+				section={section}
+			/>
 		</QueryClientProvider>,
 	);
 	const field = (code: string) => view.container.querySelector(`[data-code="${code}"]`);

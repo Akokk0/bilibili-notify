@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
+import { templateDefaultsFor } from "../../builtin-texts";
 import { DEFAULT_CARD_SKIN_ID } from "../card-skin";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "../message-layout";
-import { resolve, resolveSubscriptionPersona } from "../resolve";
+import { resolve, resolveSubscriptionPersona, resolveTemplates } from "../resolve";
 import { type AIOverride, makeEmptySubscription, type Subscription } from "../subscriptions";
 
 const SUB_BASE: Subscription = makeEmptySubscription({
@@ -29,8 +30,8 @@ describe("resolve()", () => {
 	it("inherits global wordcloudStopWords when no per-UP override", () => {
 		const globals = makeDefaultGlobalConfig();
 		globals.defaults.templates.wordcloudStopWords = "全局,词";
-		const eff = resolve(SUB_BASE, globals.defaults);
-		expect(eff.templates.wordcloudStopWords).toBe("全局,词");
+		const templates = resolveTemplates(SUB_BASE, globals.defaults, templateDefaultsFor("zh-CN"));
+		expect(templates.wordcloudStopWords).toBe("全局,词");
 	});
 
 	it("per-UP wordcloudStopWords override replaces global", () => {
@@ -40,8 +41,8 @@ describe("resolve()", () => {
 			...SUB_BASE,
 			overrides: { templates: { wordcloudStopWords: "仅本UP" } },
 		};
-		const eff = resolve(sub, globals.defaults);
-		expect(eff.templates.wordcloudStopWords).toBe("仅本UP");
+		const templates = resolveTemplates(sub, globals.defaults, templateDefaultsFor("zh-CN"));
+		expect(templates.wordcloudStopWords).toBe("仅本UP");
 	});
 
 	it("inherits global live-end grace settings when no per-UP override", () => {
