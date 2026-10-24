@@ -31,6 +31,7 @@ import { rewriteSubscriptionLivePlaceholders } from "./live-placeholders.js";
 import { type GlobalLiveFacts, splitSubscriptionLiveSettings } from "./live-split.js";
 import { moveSubscriptionMembership } from "./membership-moves.js";
 import { moveSpecialViewers } from "./special-viewers.js";
+import { removeUnchangedSubscriptionTexts } from "./unchanged-texts.js";
 
 /** 两种订阅共有的那两格:`routing` 与 `overrides.features`。 */
 function migrateSharedParts(row: unknown): unknown {
@@ -77,7 +78,8 @@ export function toIdentityRow(row: unknown, kind: "bilibili" | "extension"): unk
 /**
  * 一行(已迁成 0.x 最新形状的)订阅 → 1.0 的键:先改名({@link renameSubscriptionKeys}),再搬特别关注名单
  * ({@link moveSpecialViewers},3b-16),再搬会员与醒目留言的覆盖
- * ({@link moveSubscriptionMembership}:两个阈值、上舰文案,㉓d),再搬卡片设置与老皮肤指针({@link moveSubscriptionCards},㉔e),
+ * ({@link moveSubscriptionMembership}:两个阈值、上舰文案,㉓d),再删会员覆盖里仍是迁移默认的那一格
+ * ({@link removeUnchangedSubscriptionTexts}),再搬卡片设置与老皮肤指针({@link moveSubscriptionCards},㉔e),
  * 再拆直播({@link splitSubscriptionLiveSettings},要全局的值),最后改写其余六条直播文案的占位符
  * ({@link rewriteSubscriptionLivePlaceholders},3b-21)。
  * `migrateSubscriptionFiles` 的每一行与守卫 13(`__tests__/keyed-records.test.ts`)跑的是这同一条,守卫验的就是迁移跑的。
@@ -86,7 +88,9 @@ export function toCurrentRow(row: unknown, globalLive: GlobalLiveFacts): unknown
 	return rewriteSubscriptionLivePlaceholders(
 		splitSubscriptionLiveSettings(
 			moveSubscriptionCards(
-				moveSubscriptionMembership(moveSpecialViewers(renameSubscriptionKeys(row))),
+				removeUnchangedSubscriptionTexts(
+					moveSubscriptionMembership(moveSpecialViewers(renameSubscriptionKeys(row))),
+				),
 			),
 			globalLive,
 		),

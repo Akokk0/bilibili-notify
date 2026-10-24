@@ -4,8 +4,8 @@
  * - **AI 设置**(`defaults.ai`,`migration/ai.ts`):三代老数据 ——
  *   最老一代扁平的连接字段(`apiKey` / `baseUrl` / `model` …,没有 `providers`)整份落进 `providers.custom`、指针选 `custom`;
  *   上一代「一家一桶」(桶键就是服务商名、桶里没写 `provider`,指针还叫 `provider`)按键名盖 `provider` 章、指针改名
- *   `activeProfile`,**键名原样保留**;预设上线前的 `presets: []` 与手改过的 `persona`(没有 `activePreset`)补齐内置预设、
- *   造一份装着手改人格的预设并指过去,指针悬空则收回第一份。
+ *   `activeProfile`,**键名原样保留**;预设上线前的 `presets: []` 与手改过的 `persona`(没有 `activePreset`)
+ *   把顶层人格造一份主人自己的预设并指过去,不拿运行时的内置文案补清单;指针悬空则收回第一份。
  * - **链接解析**(`linkParsing`,`migration/link-parsing.ts`):0.9.1 的 `scope` + `targets` → `defaults` + `groups`。
  * - **历代旧默认模板**(`defaults.templates`,`migration/templates.ts`):值对得上任何一代旧默认的改写成当前默认。
  *   这一项在 internal 里没有 schema 层的用例(它原先住在配置仓开机上,走接缝的那几条在 `./zero-generation-settings.test.ts`),
@@ -43,7 +43,7 @@ import { migrateGlobals, migrateGlobalsToCurrent, moveHistoryRetention } from ".
 import { migrateOldTemplateDefaults } from "../templates.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
 
-// 迁移吐的是 0.x 补齐的那四份内置(老代形状);1.0 的活 schema 里它们不再落盘,这里拿内置原文当输入
+// 非空的 0.x 清单可能带着四份内置原文;1.0 的活 schema 里它们不再落盘,这里拿内置原文当输入
 const FACTORY_PRESETS = builtinPresetsFor("zh-CN");
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -401,27 +401,30 @@ describe("AI 迁移 · 人格指针 · 首次带上指针", () => {
 });
 
 describe("AI 迁移 · 人格指针 · 不变量:恒有一份人格可用", () => {
-	it("presets 空 → 把**内置四份**补齐,而不是只留一份派生的", () => {
-		// 回归守护:`presets: []` 是预设功能上线前写的 globals.json。此前由
-		// `ConfigStore` 在加载后补齐内置四份;人格指针那道迁移一旦抢先塞进一份派生的,
-		// store 里 `presets.length === 0` 就不再成立,补齐**永远不触发** ——
-		// 那些老用户从此只剩孤零零一份,内置的三份凭空消失。
+	it("presets 空 → 不拿运行时的内置表补齐", () => {
+		// `presets: []` 是预设功能上线前的旧盘。内置人格的内容属于当前语言与当前版本,
+		// 不该把迁移那一版的四份原文写进主人设置;下一步只按冻住的 id 记删过哪几份。
 		const ai = parseAi(personaBase({ presets: [], persona: HAND_WRITTEN }));
 		for (const b of FACTORY_PRESETS) {
-			expect(ai.presets.some((p) => p.id === b.id)).toBe(true);
+			expect(ai.presets.some((p) => p.id === b.id)).toBe(false);
 		}
 	});
 
-	it("presets 空且 persona 是手改过的 → 内置四份**加上**他自己那份,并选中自己那份", () => {
+	it("presets 空且 persona 是手改过的 → 只造他自己那份,并选中它", () => {
 		const ai = parseAi(personaBase({ presets: [], persona: HAND_WRITTEN }));
-		expect(ai.presets).toHaveLength(FACTORY_PRESETS.length + 1);
+		expect(ai.presets).toHaveLength(1);
 		expect(ai.presets.find((p) => p.id === ai.activePreset)?.persona).toEqual(HAND_WRITTEN);
 	});
 
-	it("presets 空且 persona 就是内置那份 → 只补内置四份,不多造重复的", () => {
+	it("presets 空且 persona 就是内置那份 → 也把顶层副本另存为他自己的一份", () => {
 		const ai = parseAi(personaBase({ presets: [], persona: FACTORY_PRESETS[0]?.persona }));
-		expect(ai.presets).toHaveLength(FACTORY_PRESETS.length);
-		expect(ai.activePreset).toBe("gentle-maid");
+		expect(ai.presets).toEqual([
+			expect.objectContaining({
+				id: "custom-persona",
+				persona: FACTORY_PRESETS[0]?.persona,
+			}),
+		]);
+		expect(ai.activePreset).toBe("custom-persona");
 	});
 
 	it("指针指着一份不存在的预设 → 收回到第一份,不留悬空", () => {

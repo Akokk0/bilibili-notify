@@ -12,7 +12,7 @@
  *   globals 与订阅都进了 `rewritten`;两份订阅(B 站与拓展)合成了新代里的**一个** `subscriptions.json`
  *   (ADR-0021 决策 15),拓展那份自己不进新代;
  * - 配置仓开机读出来的值是最新的形状;
- * - 第 0 代那三份一个字节没变(迁移写的是新代里的文件);已经是 1.0 形状的设置不改写。
+ * - 第 0 代那三份一个字节没变(迁移写的是新代里的文件);已经是 1.0 形状的设置只补 `locale`。
  *
  * **输入是 0.x 的老形状(特性键 `dynamic` / `live` / `liveGuardBuy`、附加项 `atAllDynamic` / `atAllLive`、顶层 `extras`),
  * 期望值是 1.0 的名字**:0.x 那一遍把老形状收成 0.x 最新形状之后,还要过 1.0 的改名(`../feature-renames.ts`,
@@ -404,23 +404,24 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(store.getSubscriptions().map((s) => s.id)).toEqual([SUB_ID, EXT_SUB_ID]);
 	});
 
-	it("已经是 1.0 形状的设置不改写:新代里还是搬过来的那个文件", async () => {
+	it("已经是 1.0 形状的设置只补 locale:核心设置要改写,订阅与连接仍原样", async () => {
 		await placeConnectionsAndTargets();
 		// 1.0 的出厂设置(特性键 / 文案键 / 版式键都是 1.0 的名字):这是「已经是新键」的输入,改名那一步对它是空操作。
 		await sandbox.placeZero("state/globals.json", makeDefaultGlobalConfig());
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("config/settings/core.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
 			await sameBytes(
 				join(sandbox.zero, "state", "globals.json"),
 				sandbox.configPath("settings/core.json"),
 			),
-		).toBe(true);
+		).toBe(false);
 		const store = await sandbox.load();
 		expect(store.getGlobals().defaults.features).toEqual(
 			makeDefaultGlobalConfig().defaults.features,
 		);
+		expect(store.getGlobals().locale).toBe("zh-CN");
 	});
 });

@@ -176,7 +176,7 @@ describe("直播拆键 · 迁移器接缝", () => {
 		expect(defaults.liveStart).toEqual({ catchUpOnBoot: false });
 	});
 
-	it("文案 templates.liveOngoing → liveStreaming:全局与逐订阅覆盖,文字原样、键序不变;账本跟着换键、指纹原样", async () => {
+	it("文案 templates.liveOngoing → liveStreaming:改过的文字照存，其他 0.12 默认删键；账本跟着换键", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		globals.defaults.templates.liveOngoing = "【直播中】{name} {time}";
@@ -194,12 +194,7 @@ describe("直播拆键 · 迁移器接缝", () => {
 		const templates = defaults.templates as Obj;
 		expect(templates.liveStreaming).toBe("【直播中】{name} {time}");
 		expect(templates).not.toHaveProperty("liveOngoing");
-		expect(Object.keys(templates).slice(0, 4)).toEqual([
-			"liveStart",
-			"liveStreaming",
-			"liveEnd",
-			"liveSummary",
-		]);
+		expect(Object.keys(templates)).toEqual(["liveStreaming", "wordcloudStopWords", "membership"]);
 		// 迁出来的账本在核心设置顶层(上提在换键之后),defaults 里没有老键。
 		expect(defaults).not.toHaveProperty("templateDefaultsSeen");
 		const ledger = (await sandbox.readConfig<{ templatesSeen: Obj }>("settings/core.json"))
@@ -211,13 +206,13 @@ describe("直播拆键 · 迁移器接缝", () => {
 		});
 
 		// 他写过自己的「正在直播」文案:账本里新键的指纹就是 1.0 默认的指纹,不会凭空亮「默认文案有更新」的灯。
-		// 唯一亮的是 `post`:作品默认文案换成了带 `{postNoun}` 的新一版(账本里记的还是旧默认的指纹),与直播文案无关。
+		// 其他没改过的文字已删,`post` 不再存也不再留账,所以这里没有待更新项。
 		const store = await sandbox.load();
 		const g = store.getGlobals().defaults;
 		expect(g.templates.liveStreaming).toBe("【直播中】{name} {time}");
 		expect(
 			pendingTemplateUpdates(g.templates, FACTORY_TEMPLATES, store.getGlobals().templatesSeen),
-		).toEqual(["post"]);
+		).toEqual([]);
 	});
 
 	// ── 订阅 ──────────────────────────────────────────────────────────────────

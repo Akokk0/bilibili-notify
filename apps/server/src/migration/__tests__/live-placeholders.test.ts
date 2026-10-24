@@ -420,7 +420,7 @@ describe("订阅覆盖", () => {
 });
 
 describe("接线:真走设置流水与订阅行流水", () => {
-	it("全局:经 `migrateGlobalsToCurrent`,文案改写、账本换指纹(账本此时已上提到顶层 `templatesSeen`)", () => {
+	it("全局:经 `migrateGlobalsToCurrent`,改过的文案先改写,等于 0.12 默认的随后删键、账本一起修剪", () => {
 		const out = migrateGlobalsToCurrent(
 			globalsOf(
 				{
@@ -431,10 +431,10 @@ describe("接线:真走设置流水与订阅行流水", () => {
 				{ viewerChat: templateFingerprint(OLD_VIEWER_CHAT) },
 			),
 		) as { defaults: { templates: Obj }; templatesSeen: Obj };
-		expect(out.defaults.templates.viewerChat).toBe(FACTORY_TEMPLATES.viewerChat);
-		expect(out.defaults.templates.liveSummary).toBe(FACTORY_TEMPLATES.liveSummary);
+		expect(out.defaults.templates).not.toHaveProperty("viewerChat");
+		expect(out.defaults.templates).not.toHaveProperty("liveSummary");
 		expect(out.defaults.templates.liveStreaming).toBe("{name} {time}");
-		expect(out.templatesSeen.viewerChat).toBe(templateFingerprint(FACTORY_TEMPLATES.viewerChat));
+		expect(out.templatesSeen).toEqual({});
 	});
 
 	it("订阅:经 `toCurrentRow`,覆盖里的文案改写", () => {

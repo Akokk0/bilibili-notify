@@ -45,7 +45,7 @@ const GROUP_ID = "22222222-2222-4222-8222-222222222222";
 /** 新代 `config/settings/core.json` 里模板这一格读出来的形状(上舰文案是 `membership.guard`,㉓d)。 */
 type DiskTemplates = Record<string, unknown> & {
 	membership: {
-		guard: { enabled: boolean; default: { template: string; imageUrl: string }; tiers: Obj };
+		guard: { enabled: boolean; default: { template?: string; imageUrl: string }; tiers: Obj };
 	};
 };
 type Obj = Record<string, unknown>;
@@ -278,7 +278,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		};
 	}
 
-	it("一次性迁移:老 globals.json 旧默认直播/上舰模板 → 改写为当前默认,自定义值保留", async () => {
+	it("一次性迁移:老 globals.json 旧默认直播/上舰模板 → 认成 0.12 默认后删键,自定义值保留", async () => {
 		const old = oldGlobals();
 		// 占位符语法统一前的旧默认(用 {title}/{duration}/{user}/{mastername})
 		old.defaults.templates.liveStart = "{name} 开播了！\n直播间标题：{title}\n直播间链接：{link}";
@@ -294,7 +294,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		// 新代里的**文件本身**已经是当前默认(开机读之前)。
+		// 新代里的**文件本身**已经拿掉没改过的文字(开机读之前)。
 		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
 			await sameBytes(
@@ -304,29 +304,29 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		).toBe(false);
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
-		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(onDisk.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(onDisk).not.toHaveProperty("liveStart");
+		expect(onDisk).not.toHaveProperty("liveStreaming");
 		expect(onDisk.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
-		// 带链接那代的默认 → 无链接新默认;0.x 那一遍先认出它(认的是 `dynamic` 这个键),再过 1.0 的改名落在 `post` 上。
-		expect(onDisk.post).toBe("{name}发布了一条动态");
+		// 带链接那代的默认先回到 0.12 的无链接默认,再在流水末尾删掉;1.0 读时按来源补 `{postNoun}`。
+		expect(onDisk).not.toHaveProperty("post");
 		expect(onDisk).not.toHaveProperty("dynamic");
 		// 更早一代的上舰默认(`{user}` / `{mastername}`)先被 0.x 那一遍认成当前默认,再随上舰文案搬成 `membership.guard`:
 		// 舰长这档没动过,不进 tiers,跟随体系默认「{viewer} 成为了 {name} 的{tier}！」(推出去的字与今天一样)。
 		expect(onDisk).not.toHaveProperty("guardBuy");
 		expect(onDisk.membership.guard).toEqual({
 			enabled: false,
-			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			default: { imageUrl: "" },
 			tiers: {},
 		});
 
 		const store = await sandbox.load();
 		const t = store.getGlobals().defaults.templates;
-		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(t).not.toHaveProperty("liveStart");
+		expect(t).not.toHaveProperty("liveStreaming");
 		expect(t.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
-		expect(t.post).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
+		expect(t).not.toHaveProperty("post");
 		expect(t.membership.guard?.tiers).toEqual({});
-		expect(t.membership.guard?.default.template).toBe("{viewer} 成为了 {name} 的{tier}！");
+		expect(t.membership.guard?.default.template).toBeUndefined();
 	});
 
 	it("累积迁移:真 alpha.x globals.json(有 liveMsgEnabled、无 dynamic/dynamicVideo、旧 {title} liveStart)经 load() 自洽", async () => {
@@ -363,14 +363,13 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		// 迁移器只动它认得的那几格:盘上这份里旧默认已是当前默认。strip `liveMsgEnabled` 与回填 dynamic / dynamicVideo
-		// 是配置仓开机时 schema 的事(迁移器不碰),所以这两件只在下面开机读出来的值上看。
+		// 迁移器先认出旧默认、在流水末尾拿掉它们。strip `liveMsgEnabled` 与读时补默认是配置仓开机时 schema 的事。
 		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
-		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(onDisk.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
-		expect(onDisk.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
+		expect(onDisk).not.toHaveProperty("liveStart");
+		expect(onDisk).not.toHaveProperty("liveStreaming");
+		expect(onDisk).not.toHaveProperty("liveEnd");
 		expect(onDisk.membership.guard.tiers).toEqual({});
 
 		// ① 不报错(strip 未知键,不抛 ConfigValidationError)
@@ -387,10 +386,10 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		);
 		expect(pushed.post).toBe("{name}发布了一条{postNoun}");
 		expect(pushed.postVideo).toBe("{name}发布了新视频");
-		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
-		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
-		expect(t.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
+		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认回到 0.12 默认后删键
+		expect(t).not.toHaveProperty("liveStart");
+		expect(t).not.toHaveProperty("liveStreaming");
+		expect(t).not.toHaveProperty("liveEnd");
 		expect((t.membership as { guard: { tiers: Obj } }).guard.tiers).toEqual({});
 	});
 
@@ -564,9 +563,7 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 			activeProfile: "custom",
 			providers: { custom: { provider: "custom", model: "deepseek-v4-pro" } },
 		});
-		expect(onDisk.defaults.templates.liveEnd).toBe(
-			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-		);
+		expect(onDisk.defaults.templates).not.toHaveProperty("liveEnd");
 		expect(onDisk).not.toHaveProperty("linkParsing");
 		expect(onDisk.linkPreview).toEqual({
 			enabled: true,
@@ -583,9 +580,7 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 			provider: "custom",
 			model: "deepseek-v4-pro",
 		});
-		expect(globals.defaults.templates.liveEnd).toBe(
-			"{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-		);
+		expect(globals.defaults.templates).not.toHaveProperty("liveEnd");
 		expect(globals.linkPreview).toEqual({
 			enabled: true,
 			cooldownSec: 30,

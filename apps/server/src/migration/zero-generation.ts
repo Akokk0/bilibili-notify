@@ -98,8 +98,10 @@ import { migrateUptime } from "./uptime.js";
  * 50 = 内置人格的默认文案改成叫法变量(3b-35;`config/settings/core.json` 的 AI 人格文案变,摘要变)。
  * 51 = 资料缓存换成 `CreatorProfile` 形状并改名 `runtime/subscription-state.json`:记录只留资料,
  * 丢 `fansBaseline` / `followed` / `followError`,B 站房号拆进 B 站状态 `room:<uid>`,B 站远端头像地址不再保留。
+ * 52 = 0.x 里仍是出厂默认的文字模板不再迁进新代,内置人格只记删了哪几份、顶层人格副本删掉,
+ * 核心设置写 `locale: "zh-CN"`(摘要变)。
  */
-export const MIGRATION_REVISION = 51;
+export const MIGRATION_REVISION = 52;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

@@ -32,7 +32,7 @@ import {
 	isPrivateTarget,
 	type PushTarget,
 } from "@bilibili-notify/internal";
-import { migrateAiSettings } from "./ai.js";
+import { migrateAiSettings, removeZeroBuiltinPresets } from "./ai.js";
 import { moveGlobalCards } from "./card-moves.js";
 import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "./core-sections.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
@@ -43,6 +43,7 @@ import { rewriteGlobalLivePlaceholders } from "./live-placeholders.js";
 import { type GlobalLiveFacts, liveFactsOf, splitGlobalLiveSettings } from "./live-split.js";
 import { moveGlobalMembership } from "./membership-moves.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
+import { removeUnchangedGlobalTexts } from "./unchanged-texts.js";
 
 /**
  * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状。认不得的形状原样放过,由配置仓开机时报出来。
@@ -71,23 +72,30 @@ export function migrateGlobals(raw: unknown): unknown {
  * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 其余六条直播文案的占位符改写
  * (3b-21,`live-placeholders.ts`;账本还在老位置) → 历史保留天数换键
  * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)→ 默认文案账本
- * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ AI 设置上提到顶层 `ai`(同文件;排在最后,
- * 更早的 `migrateAiSettings` 改写的是老位置 `defaults.ai`)。设置那一步
+ * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ 没改过的文字与会员默认删键、修剪账本,
+ * 并写 `locale: "zh-CN"`(`unchanged-texts.ts`)→ AI 设置上提到顶层 `ai`(同文件;更早的
+ * `migrateAiSettings` 改写的是老位置 `defaults.ai`)→ 拆出内置人格、顶层人格三格删掉、只记删过哪几份
+ * (`ai.ts`)。设置那一步
  * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  *
  * ⚠️ 对 B 站那两格(`app.dynamicCron` / `healthCheckMinutes`)**有损**:最后一步把剩下的 `app` 整个吃掉,没先拆走的就没了。
  * 它们必须先经 {@link splitBilibiliSettings} 拆走 —— 生产路径只有 {@link migrateSettingsFiles} 一处,那里排好了次序。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
-	return moveGlobalAi(
-		moveTemplateLedger(
-			splitAppSettings(
-				moveHistoryRetention(
-					rewriteGlobalLivePlaceholders(
-						splitGlobalLiveSettings(
-							moveGlobalCards(
-								moveGlobalMembership(
-									renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+	const presetsWereEmpty = zeroAiPresetsWereEmpty(raw);
+	return removeZeroBuiltinPresets(
+		moveGlobalAi(
+			removeUnchangedGlobalTexts(
+				moveTemplateLedger(
+					splitAppSettings(
+						moveHistoryRetention(
+							rewriteGlobalLivePlaceholders(
+								splitGlobalLiveSettings(
+									moveGlobalCards(
+										moveGlobalMembership(
+											renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+										),
+									),
 								),
 							),
 						),
@@ -95,7 +103,19 @@ export function migrateGlobalsToCurrent(raw: unknown): unknown {
 				),
 			),
 		),
+		presetsWereEmpty,
 	);
+}
+
+/** 人格指针迁移之前,0.x 的清单是不是空数组 —— 新步骤靠它区分「四份都在」与「四份都删了」。 */
+function zeroAiPresetsWereEmpty(raw: unknown): boolean {
+	if (!isPlainObject(raw)) return false;
+	const ai = isPlainObject(raw.ai)
+		? raw.ai
+		: isPlainObject(raw.defaults) && isPlainObject(raw.defaults.ai)
+			? raw.defaults.ai
+			: undefined;
+	return ai !== undefined && Array.isArray(ai.presets) && ai.presets.length === 0;
 }
 
 /** 七档从短到长,换算时往上找最近的一档。 */

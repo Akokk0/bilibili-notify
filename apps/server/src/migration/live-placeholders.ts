@@ -63,7 +63,7 @@ export const ZERO_LIVE_PLACEHOLDER_RENAMES = {
 	},
 } as const;
 
-type LiveTextKey = keyof typeof ZERO_LIVE_PLACEHOLDER_RENAMES;
+export type LiveTextKey = keyof typeof ZERO_LIVE_PLACEHOLDER_RENAMES;
 
 const LIVE_TEXT_KEYS = Object.keys(ZERO_LIVE_PLACEHOLDER_RENAMES) as LiveTextKey[];
 
@@ -86,13 +86,13 @@ const OLD_SUMMARY_BRACE = `🔍【弹幕情报站】本场直播数据如下：
 const OLD_SUMMARY_DASH = OLD_SUMMARY_BRACE.replace(/\{(\w+)\}/g, "-$1");
 
 /** 账本要换指纹的三条和它们历代的旧默认。开播 / 正在直播 / 下播的 0.12 默认本来就是花括号写法,改写不动它们,账本不用换。 */
-const OLD_DEFAULTS: Partial<Record<LiveTextKey, readonly string[]>> = {
+export const OLD_DEFAULTS: Partial<Record<LiveTextKey, readonly string[]>> = {
 	viewerChat: ["{mastername} 的关注用户 {uname} 发送弹幕：{msg}"],
 	viewerEnter: ["{uname} 进入了 {mastername} 的直播间"],
 	liveSummary: [OLD_SUMMARY_BRACE, OLD_SUMMARY_DASH],
 };
 
-const rewriteText = (key: LiveTextKey, text: string): string =>
+export const rewriteText = (key: LiveTextKey, text: string): string =>
 	rewritePlaceholders(text, ZERO_LIVE_PLACEHOLDER_RENAMES[key]);
 
 /**

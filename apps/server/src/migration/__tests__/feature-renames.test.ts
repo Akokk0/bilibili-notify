@@ -317,7 +317,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		);
 	});
 
-	it("文案 templates.dynamic / dynamicVideo → post / postVideo:全局与逐订阅覆盖,文字原样、键序不变;稀疏覆盖不长出键", async () => {
+	it("文案 templates.dynamic / dynamicVideo → post / postVideo:改过的全局文字与逐订阅覆盖照存,没改的默认删键", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		globals.defaults.templates.dynamic = "【新动态】{name}";
@@ -345,16 +345,9 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(templates).not.toHaveProperty("dynamic");
 		expect(templates).not.toHaveProperty("dynamicVideo");
 		expect(Object.keys(templates)).toEqual([
-			"liveStart",
-			"liveStreaming",
-			"liveEnd",
-			"liveSummary",
 			"post",
 			"postVideo",
 			"wordcloudStopWords",
-			"viewerChat",
-			"viewerEnter",
-			// 上舰文案搬成 `membership.guard`(㉓d),占的还是原来的位置。
 			"membership",
 		]);
 		expect((await subscriptionRow(sandbox, SUB_ID)).overrides).toEqual({
@@ -372,7 +365,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		});
 	});
 
-	it("文案账本(迁出来在顶层 templatesSeen):post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d);特别弹幕 / 特别进场 / 弹幕总结三条换成新默认的指纹(3b-21)", async () => {
+	it("没存任何改过的文字时账本只剩空表:默认、停用词与图片的账都随键一起清掉", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
@@ -383,27 +376,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"settings/core.json",
 		);
 		expect(core.defaults).not.toHaveProperty("templateDefaultsSeen");
-		expect(core.templatesSeen).toEqual({
-			liveStart: "1nkgnb7",
-			liveStreaming: "oopixp",
-			liveEnd: "1mtqdty",
-			// 这三条夹具里记的是 0.12 默认的指纹,占位符改写之后(3b-21)换成今天默认的指纹。
-			liveSummary: "1g1d1o7",
-			post: "7uw5nq",
-			postVideo: "1omlggn",
-			wordcloudStopWords: "ztntfp",
-			viewerChat: "1ew6jl3",
-			viewerEnter: "8la1hb",
-			// 上舰文案搬成体系默认一条(㉓d):账本记的是新默认「{viewer} 成为了 {name} 的{tier}！」与空图的指纹。
-			"membership.guard.default.template": "8q6guf",
-			"membership.guard.default.imageUrl": "ztntfp",
-		});
-		expect(Object.keys(core.templatesSeen).slice(3, 7)).toEqual([
-			"liveSummary",
-			"post",
-			"postVideo",
-			"wordcloudStopWords",
-		]);
+		expect(core.templatesSeen).toEqual({});
 	});
 
 	it("升上来的人只亮该亮的「默认文案有更新」的灯:他写过自己的文案,账本换键没丢账,postVideo 的指纹对得上不亮,只有默认真换了的 post 亮", async () => {
@@ -548,7 +521,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.membership).toEqual({});
 	});
 
-	it("上舰文案:全局 templates.guardBuy → templates.membership.guard,改过的档进 tiers、占位符改写、没动过的档跟随体系默认;开机装得进来(㉓d)", async () => {
+	it("上舰文案:改过的档进 tiers、没动过的档与体系默认一起删键;开关、图片与档位装得进来(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		globals.defaults.templates.guardBuy = zeroGuardBuy({
@@ -568,7 +541,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(core.defaults.templates).not.toHaveProperty("guardBuy");
 		const guard = {
 			enabled: true,
-			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			default: { imageUrl: "" },
 			tiers: {
 				captain: {
 					template: "{viewer} 登上了 {name} 的船,档位 {tier}",
@@ -584,7 +557,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.templates.membership.guard).toEqual(guard);
 	});
 
-	it("上舰文案的账本:新路径记着新默认的指纹,升上来的人以后自己改了体系默认也不会被提示「默认文案有更新」(㉓d)", async () => {
+	it("上舰文案的账本:没改过体系默认时不留账;之后自己改了这一格,账本可以按新路径判断更新(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
@@ -592,14 +565,13 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		const { templates } = store.getGlobals().defaults;
 		const { templatesSeen } = store.getGlobals();
-		// 升级当下:体系默认就是出厂默认,没有要更新的。作品默认文案是 0.x 那一版、换了新默认,所以 `post` 亮
-		// (定案:盘上还是老默认的,面板亮「默认文案有更新」,主人点了才换);下面只看上舰文案那一格。
+		// 升级当下:体系默认没有存,账本里也不该留它的路径,所以不会有待更新提示。
 		const pendingNonPost = (
 			seen: Record<string, string>,
 			current: Record<string, unknown> = templates,
 		) => pendingTemplateUpdates(current, FACTORY_TEMPLATES, seen).filter((p) => p !== "post");
 		expect(pendingNonPost(templatesSeen)).toEqual([]);
-		// 主人以后把体系默认改成自己的话:这一版默认他「见过了」(账本里是新默认的指纹),不提示。没有这两条账,下面这一步就会亮灯。
+		// 主人以后把体系默认改成自己的话,面板会按当时的默认记一条新账;这里直接模拟那条账。
 		const edited = {
 			...templates,
 			membership: {
@@ -638,7 +610,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 				membership: {
 					guard: {
 						enabled: true,
-						default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+						default: { imageUrl: "" },
 						tiers: {
 							captain: {
 								template: "{viewer} 登上了 {name} 的船",
@@ -696,7 +668,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 				membership: {
 					guard: {
 						enabled: true,
-						default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+						default: { imageUrl: "" },
 						tiers: {
 							commander: {
 								template: "{viewer} 加入 {name} 的{tier}",
@@ -827,7 +799,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(loaded(EXT_SUB_ID)?.filters).toEqual(extFilters);
 	});
 
-	it("先 0.x 那一遍、再改名:旧默认原文先回到当前默认,落在新键 post 上;改过的原文照搬", async () => {
+	it("先 0.x 那一遍、再改名:旧默认回到 0.12 默认后删掉;改过的原文照搬", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		// 带链接那代的默认(0.x 的旧默认原文)+ 主人自己写的视频文案。
@@ -838,7 +810,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		await sandbox.migrate();
 
 		const core = await sandbox.readConfig<{ defaults: { templates: Obj } }>("settings/core.json");
-		expect(core.defaults.templates.post).toBe("{name}发布了一条动态");
+		expect(core.defaults.templates).not.toHaveProperty("post");
 		expect(core.defaults.templates.postVideo).toBe("我自己写的视频文案 {name}");
 	});
 

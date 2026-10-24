@@ -1,14 +1,13 @@
 /**
  * AI 设置 `defaults.ai` 的 0.x 老形状:扁平的连接字段(→ `providers.custom`)、上一代「一家一桶」与
  * `provider` 指针(→ 实例桶 + `activeProfile`)、手改过的 `persona` 与预设上线前的 `presets: []`(→ 预设 +
- * `activePreset`)。⑥c 从 internal 的 `AISettingsSchema` preprocess 里原样收进来,三步的顺序不变。
+ * `activePreset`),以及上提到顶层后拆掉内置人格、只留下主人删过哪几份。⑥c 从 internal 的
+ * `AISettingsSchema` preprocess 里原样收进来,前三步的顺序不变。
  */
 
 import { AI_PROVIDER_IDS } from "@bilibili-notify/internal";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
-import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
-
-const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
+import { isPlainObject } from "./files.js";
+import { ZERO_BUILTIN_PRESET_IDS } from "./zero-vocabulary.js";
 
 /**
  * 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。
@@ -116,19 +115,14 @@ function sameShape(a: unknown, b: unknown): boolean {
  * 顺带守住一条不变量:`presets` 恒非空、`activePreset` 恒指向真实存在的项 ——
  * 「当前这份人格」永远有着落,消费方不必各自兜底。
  *
- * `ai.persona` 本身留着不删:它是 `resolve()` 在指针万一落空时的安全网,也让老版本
- * 读同一份配置文件时行为不变。界面上不再有任何入口编辑它。
+ * 这里先保留 `ai.persona` 与两段提示词:顶层人格若要另存,内容就在这一步抄走。整条零代流水
+ * 上提到顶层并拆完内置人格之后,再统一删掉这三格。
  */
 function migratePersonaPointer(o: Record<string, unknown>): Record<string, unknown> {
 	const stored = Array.isArray(o.presets) ? (o.presets as Record<string, unknown>[]) : [];
-	// `presets: []` 是预设功能上线**之前**写的 globals.json。这里补齐内置四份 ——
-	// 而不是只拿 persona 派生一份出来:那样老用户会平白少掉三份内置人格。
-	// (此前这件事由 ConfigStore 在加载后做,条件是 `presets.length === 0`;
-	// 现在这道迁移必然把列表填成非空,那个条件再也不成立,所以责任移到这里。)
-	const presets: Record<string, unknown>[] =
-		stored.length > 0
-			? [...stored]
-			: (FACTORY_PRESETS as readonly unknown[]).map((p) => ({ ...(p as object) }));
+	// `presets: []` 是预设功能上线**之前**写的 globals.json。迁移不拿运行时的内置文案补齐:
+	// 内容会随语言与版本变化,不属于零代输入;内置人格本身也不再把内容存进设置。
+	const presets: Record<string, unknown>[] = [...stored];
 	const persona = o.persona;
 
 	if (typeof o.activePreset === "string") {
@@ -140,7 +134,8 @@ function migratePersonaPointer(o: Record<string, unknown>): Record<string, unkno
 	const matched = presets.find((p) => sameShape(p?.persona, persona));
 	if (matched) return { ...o, presets, activePreset: matched.id };
 
-	// 走到这里:persona 是手改过的(或 presets 干脆是空的)。给它造一份带得走的家。
+	// 走到这里:存着的预设里没有同一份人格(包括旧配置的 `presets: []`)。把顶层人格抄成
+	// 主人自己的一份,交接完之前一个字都不丢;预设功能上线前的老配置因此会多一份内置原文副本。
 	const name = (persona as { name?: unknown } | undefined)?.name;
 	const label = typeof name === "string" && name.trim() ? name.trim() : "我的性格";
 	const taken = new Set(presets.map((p) => p?.id));
@@ -152,4 +147,61 @@ function migratePersonaPointer(o: Record<string, unknown>): Record<string, unkno
 		mine.liveSummaryPrompt = o.liveSummaryPrompt;
 	}
 	return { ...o, presets: [...presets, mine], activePreset: id };
+}
+
+/**
+ * 顶层 `ai` 里的 0.x 内置人格 → 1.0 的删除清单。
+ *
+ * 0.x 的 `presets` 曾把四份出厂人格连同文案整份存下;1.0 按当前语言现取内容,只记主人删过哪几份。
+ * 内置 id 是 0.x 的历史事实,所以按 {@link ZERO_BUILTIN_PRESET_IDS} 认,不读运行时的出厂表。
+ * `presetsWereEmpty` 要在人格指针迁移之前取:老配置的空清单表示四份都还在,而指针迁移随后会往里
+ * 添一份顶层人格的副本;非空的纯主人清单则确实表示四份内置都删过。
+ *
+ * 顶层 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 到这一步已经由人格指针迁移抄进主人那份,
+ * 可以删掉。`activePreset` 原样保留:指内置的仍按当前语言取,指主人的仍指那一份。
+ */
+export function removeZeroBuiltinPresets(raw: unknown, presetsWereEmpty: boolean): unknown {
+	if (!isPlainObject(raw) || !isPlainObject(raw.ai)) return raw;
+	const ai = raw.ai;
+	if (!Array.isArray(ai.presets)) return raw;
+
+	const presets = ai.presets;
+	const storedIds = new Set(
+		presets.flatMap((preset) =>
+			isPlainObject(preset) && typeof preset.id === "string" ? [preset.id] : [],
+		),
+	);
+	const hasZeroTopFields =
+		Object.hasOwn(ai, "persona") ||
+		Object.hasOwn(ai, "dynamicPrompt") ||
+		Object.hasOwn(ai, "liveSummaryPrompt");
+	const hasBuiltinPreset = ZERO_BUILTIN_PRESET_IDS.some((id) => storedIds.has(id));
+	if (!hasZeroTopFields && !hasBuiltinPreset) return raw;
+
+	const ownerPresets = presets.filter(
+		(preset) =>
+			!isPlainObject(preset) ||
+			typeof preset.id !== "string" ||
+			!(ZERO_BUILTIN_PRESET_IDS as readonly string[]).includes(preset.id),
+	);
+	const removed = presetsWereEmpty
+		? []
+		: ZERO_BUILTIN_PRESET_IDS.filter((id) => !storedIds.has(id));
+	const {
+		persona: _persona,
+		dynamicPrompt: _dynamicPrompt,
+		liveSummaryPrompt: _liveSummaryPrompt,
+		removedBuiltinPresets: _removedBuiltinPresets,
+		presets: _presets,
+		...rest
+	} = ai;
+
+	return {
+		...raw,
+		ai: {
+			...rest,
+			...(removed.length > 0 ? { removedBuiltinPresets: removed } : {}),
+			presets: ownerPresets,
+		},
+	};
 }

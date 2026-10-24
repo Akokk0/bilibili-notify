@@ -142,6 +142,12 @@ export const ZERO_DEFAULT_TEMPLATES = {
 } as const;
 
 /**
+ * 0.x 从第一版起就有的四份内置人格 id,按 0.x 出厂清单的顺序。迁移只按 id 认、不比对内容,
+ * 也不读 1.0 运行时的内置表:以后改文案或增删人格都不能反过来改变零代产出。
+ */
+export const ZERO_BUILTIN_PRESET_IDS = ["gentle-maid", "tsundere", "analyst", "genki"] as const;
+
+/**
  * 0.x 的推送种类(0.12 `PushKind`),历史行的 `kind` 就是它:开播与周期「正在直播」共用一把特性键,历史上却是两种推送,
  * 所以多一个 `live-ongoing`。1.0 把历史行那一格改叫 `feature`、值换成特性键(`history.ts` 的对照表用 `satisfies
  * Record<ZeroPushKind, …>` 钉着:这里多一种、对照表没给去向,编译不过)。
