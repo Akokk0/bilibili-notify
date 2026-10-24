@@ -65,31 +65,40 @@ const T = ${T};
 const T2 = ${T2};
 const URL = "https://live.restart-probe.invalid/1";
 export function activate(ctx) {
-	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
+	let source;
+	ctx.registerSource({
+		start(current) { source = current; },
+		stop() { source = undefined; },
+		searchCreators: async () => ({ ok: true, candidates: [] }),
+		fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
+	});
 	const id = ${JSON.stringify(SUB.identity.externalId)};
 	const flicker = ${JSON.stringify(FLICKER.identity.externalId)};
 	ctx.onAction("report.post", () =>
-		handle.reportPost(id, { id: "restart-post-1", url: URL, publishedAt: Date.now(), text: "推送关着也记" }),
+		source.reportPost(id, { postId: "restart-post-1", url: URL, post: { publishedAt: Date.now(), text: "推送关着也记" } }),
 	);
 	ctx.onAction("report.liveStart", () =>
-		handle.reportLiveStart(id, { url: URL, startedAt: T, title: "开播了", viewers: 50, totalViewers: 5000 }),
+		source.reportLive(id, { kind: "start", startedAt: T, details: { url: URL, title: "开播了", currentViewers: 50, totalViewers: 5000 } }),
 	);
 	ctx.onAction("report.liveStatus", () =>
-		handle.reportLiveStatus(id, { live: true, url: URL, startedAt: T, title: "还在播", viewers: 30, totalViewers: 300 }),
+		source.reportLive(id, { kind: "status", isLive: true, startedAt: T, details: { url: URL, title: "还在播", currentViewers: 30, totalViewers: 300 } }),
 	);
-	ctx.onAction("report.liveEnd", () => handle.reportLiveEnd(id, { url: URL }));
+	ctx.onAction("report.liveEnd", () => source.reportLive(id, { kind: "end", endedAt: Date.now(), details: { url: URL } }));
 	let starts = 0;
 	ctx.onAction("report.flickerStart", () => {
 		starts += 1;
-		return handle.reportLiveStart(flicker, {
-			url: URL,
+		return source.reportLive(flicker, {
+			kind: "start",
 			startedAt: T2 + (starts - 1) * 60000,
-			title: "断流探针",
-			viewers: 10,
-			totalViewers: 500 + starts * 200,
+			details: {
+				url: URL,
+				title: "断流探针",
+				currentViewers: 10,
+				totalViewers: 500 + starts * 200,
+			},
 		});
 	});
-	ctx.onAction("report.flickerEnd", () => handle.reportLiveEnd(flicker, { url: URL }));
+	ctx.onAction("report.flickerEnd", () => source.reportLive(flicker, { kind: "end", endedAt: Date.now(), details: { url: URL } }));
 }
 `;
 
@@ -130,6 +139,8 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+			// 拓展在册即在记,由登记表的定时看一眼记上(生产 1 分钟);测试缩短,读统计页前等它落盘。
+			statsRecordingCheckMs: 200,
 		});
 	}
 
@@ -190,6 +201,20 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 	}
 	/** 盘上这一位的直播帧。 */
 	const frames = (id = SUB.id) => lines("live", id);
+
+	/**
+	 * 等这一位今天的「在记」账里作品、直播两项都落了盘。总览判「那天有记录」只看这两项,它们由登记表的定时
+	 * 看一眼写,开机后最早要等一轮间隔 —— 不等的话机器一快,统计页就赶在它前头读到 `liveSessions: null`。
+	 */
+	async function recordingSettle(id = SUB.id): Promise<void> {
+		await vi.waitFor(
+			async () => {
+				const kinds = new Set((await lines("recording", id)).map((r) => r.kind));
+				expect(kinds.has("posts") && kinds.has("live")).toBe(true);
+			},
+			{ timeout: 3_000, interval: 50 },
+		);
+	}
 
 	// 开始帧的标题取认出这一场那一刻的 lastDetails:第一次是开播帧报的,BN / 拓展重启后接回是在播状态报的。
 	const start = (title: string, occurredAt = T_ISO) => ({ kind: "start", occurredAt, title });
@@ -279,6 +304,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		);
 		await press("report.liveStart");
 		await framesSettle([start("开播了")]);
+		await recordingSettle();
 		expect(await row(7)).toMatchObject({ live: true, liveSessions: 1, posts: 1, videoPosts: 0 });
 
 		await shutdown();

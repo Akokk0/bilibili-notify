@@ -114,8 +114,6 @@ function coreStubs() {
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: () => undefined,
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},

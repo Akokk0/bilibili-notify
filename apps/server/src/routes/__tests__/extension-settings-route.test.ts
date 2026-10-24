@@ -215,8 +215,6 @@ async function boot(opts: {
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: (id) => rt.configStore.getExtensionSettings(id),
 		settingsIssue: (id) => rt.configStore.extensionSettingsIssue(id),
 		// 与 index.ts 同一根线:拓展设置落盘(`integration-settings` 那一档)→ 装载器与 ctx 各自判「我这一份动没动」。

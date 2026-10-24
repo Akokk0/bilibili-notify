@@ -188,8 +188,6 @@ async function boot(
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: () => structuredClone(stored),
 		onSettingsChanged: (fn) => {
 			listeners.add(fn);

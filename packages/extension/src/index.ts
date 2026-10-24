@@ -146,7 +146,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { TextValues } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
-import type { ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
+import type { ExtensionView } from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -376,43 +376,6 @@ export interface SourceDef {
 	health?(): SourceHealth;
 }
 
-/**
- * 一个订阅源 —— **代码那一半**:行为(ADR-0012 决策 7 的 `SubscriptionSourceDef`)。
- *
- * 外观与会报哪几种事件是静态数据,写在清单的 `contributes.subscription` 里(ADR-0019 决策 16);
- * 清单里没开这一口的拓展注册不了订阅源。
- */
-export interface SubscriptionSourceDef {
-	/**
-	 * **解析门**:主人在新建订阅的输入框里粘的东西(主页链接、id、名字……)**原样**交进来,回「可能是
-	 * 哪几个人」(ADR-0019 决策 11 / 52)。只回候选 —— 建不建、建成什么样由 BN 定。一个都认不出就
-	 * 回空表;认不出是因为平台那头出了错(被风控、cookie 过期),抛出来 —— 原话会给到面板。
-	 *
-	 * 🔴 `signal` 在两种时候中止,手上的请求接着它停:**超时**(`reason` 是 `TimeoutError`,宿主已经
-	 * 回了面板一句「超时」)与**拓展停用 / 收摊**(`AbortError`)。
-	 *
-	 * 查询**可以并发**(主人一边打字一边查),宿主不排队、不挡第二发;要节流是拓展自己的事(它才知道
-	 * 那个平台的风控松紧)。
-	 */
-	lookup(
-		query: string,
-		signal: AbortSignal,
-	): readonly ExtensionSubscriptionCandidate[] | Promise<readonly ExtensionSubscriptionCandidate[]>;
-}
-
-/**
- * 一条属于这个拓展的订阅 —— 只有拓展要的那三格(ADR-0019 决策 52):推不推、推给谁它不需要
- * 知道(决策 1)。
- */
-export interface ExtensionOwnSubscription {
-	/** BN 这条订阅自己的 id(uuid)—— 以后报资料、报事件时认的是 `externalId`,这一格用来分条。 */
-	id: string;
-	/** 那个人在平台上的 id —— 建订阅时它从解析门交出来的那个 `id`,原样。 */
-	externalId: string;
-	/** 主人有没有停用这条。**停用的也在名单里** —— 跳不跳过由拓展自己定。 */
-	enabled: boolean;
-}
-
 // ---- 订阅源的上报(ADR-0019 决策 4 / 7 / 54–57 / 62)--------------------------------------------
 //
 // 🔴 这几张表是 `@bilibili-notify/internal` 里上报 zod 的**手写镜像**(拓展进不来 internal),两份由宿主
@@ -430,7 +393,7 @@ export interface ExtensionOwnSubscription {
 
 /**
  * 卡上的作者(决策 54):都选填,出卡优先用这里的,没带的那一样用订阅资料。**不改资料** —— 订阅页的
- * 名字 / 头像只认 {@link SubscriptionSourceHandle.reportProfile}。
+ * 名字 / 头像只认来源上下文上的 `reportProfile`。
  */
 export interface SubscriptionAuthor {
 	/** 1–128 字。 */
@@ -559,44 +522,6 @@ export interface SubscriptionProfile {
 }
 
 /**
- * 注册完一个订阅源之后拿到的把手。
- *
- * **五个 `report*`**(决策 7 / 62):按外部 id 报「那个人怎么了」,BN 找出这个拓展名下所有指向他的订阅
- * 逐条分发。它们都在 BN **核完形状、对上订阅**之后就 resolve,不等出卡与推送;拒掉时 reject 一个
- * 带原因的 `Error`:
- * - 报了清单 `contributes.subscription.events` 里没声明的种类(直播状态要声明了开播或下播之一;
- *   资料更新总是收);
- * - 外部 id 不是 1–256 字的字符串;
- * - 多了 BN 不认识的字段,或者必填的缺了 / 坏了。
- *
- * 外部 id 不在自己名下(多半是订阅刚删、变更通知还没到)不算错:忽略、正常 resolve。停用的订阅收不到
- * 事件与直播状态,资料更新照样生效。
- *
- * 判新、去重、限流都归拓展(决策 53):BN 报什么收什么,不兜底 —— 开机第一轮只记基线、别报。
- */
-export interface SubscriptionSourceHandle {
-	/**
-	 * 属于自己的订阅,**现读**。别的拓展的、B 站的都不在里面。
-	 *
-	 * 别缓存 —— 缓存与真相会漂,症状是「面板上删了它还在轮询」,而且没人报错。变更通知是用来
-	 * **做动作**的(补上新订阅的基线),不是用来刷缓存的。
-	 */
-	subscriptions(): readonly ExtensionOwnSubscription[];
-	/** 订阅动过了。卸载时自动摘掉。 */
-	onSubscriptionsChanged(fn: () => void): Disposable;
-	/** 那个人发了一条新作品(清单要声明 `post`)。 */
-	reportPost(externalId: string, post: SubscriptionPost): Promise<void>;
-	/** 那个人开播了(清单要声明 `liveStart`)。 */
-	reportLiveStart(externalId: string, live: SubscriptionLiveStart): Promise<void>;
-	/** 那个人下播了(清单要声明 `liveEnd`)。 */
-	reportLiveEnd(externalId: string, live: SubscriptionLiveEnd): Promise<void>;
-	/** 那个人此刻在不在播(清单要声明 `liveStart` 或 `liveEnd`)。不触发推送。 */
-	reportLiveStatus(externalId: string, status: SubscriptionLiveStatus): Promise<void>;
-	/** 那个人的名字 / 头像 / 粉丝数(总是收)。不触发推送。 */
-	reportProfile(externalId: string, profile: SubscriptionProfile): Promise<void>;
-}
-
-/**
  * 拓展取自己包里译文的口(`ctx.i18n`,ADR-0037 决策 14)。译文放在包里的 `locales/<语言码>.json`,
  * 宿主在读目录时读好;拓展没带译文也照样有这一格,`t` 回键本身。
  *
@@ -676,13 +601,6 @@ export interface ExtensionContext extends IntegrationContext {
 	 * 清单没开推送源那一口(`contributes.push`)会抛。
 	 */
 	registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig>;
-	/**
-	 * 注册这个拓展的订阅源 —— 一个拓展就是一个平台(ADR-0019 决策 9),再注册一次会抛。
-	 *
-	 * **只有 v2**,而且清单得开了 `contributes.subscription`,否则抛:注册的口必须是清单开了的口。
-	 * 订阅记在哪个拓展名下由宿主按 id 认,拓展不自报(同推送源的分发键)。
-	 */
-	registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle;
 	/**
 	 * 注册这个拓展的订阅源(第 3 版形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
 	 *

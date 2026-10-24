@@ -5,7 +5,6 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
-	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
 	type Disposable,
 	type InboundGroupMessage,
@@ -1287,27 +1286,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			registerSource: (entry) => runtimeEngines.registerSource(entry),
 			fallbackCreatorName: (identity) => runtimeEngines.fallbackCreatorName(identity),
 			images: runtime.imageStore,
-			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
-			subscriptions: () =>
+			// 「上报出入」的关联栏:按来源身份取全部订阅 id,停用的也算。
+			subscriptionIdsOf: (identity) =>
 				runtime.configStore
 					.getSubscriptions()
-					.filter((sub) => subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
-					.map((sub) => {
-						const identity = subscriptionIdentityOf(sub);
-						return {
-							id: sub.id,
-							extensionId: identity.sourceKey,
-							externalId: identity.externalId,
-							enabled: sub.enabled,
-						};
-					}),
-			onSubscriptionsChanged: (fn) =>
-				runtime.bus.on("config-changed", ({ scope }) => {
-					if (scope === "subscriptions") fn();
-				}),
-			// 订阅源报上来、核过、对上了订阅的一条 → bus(ADR-0019 决策 7 / 62)。出卡、存资料、首页在播都从
-			// bus 上接;这一趟不等它们,拓展那头在这一下之后就 resolve。
-			onSubscriptionReport: (delivery) => runtime.bus.emit("subscription-reported", delivery),
+					.filter((sub) => {
+						const found = subscriptionIdentityOf(sub);
+						return (
+							found.sourceKey === identity.sourceKey && found.externalId === identity.externalId
+						);
+					})
+					.map((sub) => sub.id),
 			// 丢格与整条拒(决策 60)。ctx 已经记过日志;叫面板重取的那一声由记录自己发。
 			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
 			// 拓展自己那份设置住它自己的文件(`config/settings/extensions/<id>.json`);是不是自己这一份动了由 ctx
@@ -1393,8 +1382,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				loaded: () => loadedExtensions?.list() ?? [],
 				status: (id) => loadedExtensions?.status(id),
 				runAction: async (id, name) => loadedExtensions?.runAction(id, name),
-				// 新建订阅时的解析门(ADR-0019 决策 52):没在跑 / 不是订阅源时装载器回 undefined → 404。
-				lookup: async (id, query) => loadedExtensions?.lookup(id, query),
 				// 跑着的那份交过的 zod —— 写设置时再过一道(ADR-0019 决策 35)。
 				settingsSchemas: (id) => loadedExtensions?.settingsSchemas(id),
 				// 列表那一行带上它的「上报出入」,卸载时清掉那一段(决策 60)。

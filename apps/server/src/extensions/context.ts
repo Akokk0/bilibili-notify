@@ -3,25 +3,19 @@ import type {
 	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionI18n,
-	ExtensionOwnSubscription,
 	ExtensionPushView,
-	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionView,
 	ExtensionView,
 	SettingsReader,
 	SourceDef,
-	SubscriptionSourceDef,
 } from "@bilibili-notify/extension";
 import {
 	type Connection,
-	checkReportedExternalId,
-	checkSubscriptionReport,
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	fail,
 	featuresForEvents,
-	formatZodIssues,
 	type Identity,
 	type InboundHandlers,
 	type Issue,
@@ -31,11 +25,6 @@ import {
 	type PlatformAdapter,
 	type Result,
 	type ServiceContext,
-	SubscriptionCandidatesSchema,
-	type SubscriptionReport,
-	type SubscriptionReportDelivery,
-	type SubscriptionReportKind,
-	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
@@ -47,7 +36,6 @@ import {
 	type CreateIntegrationContextOptions,
 	createIntegrationContext,
 } from "../integrations/context.js";
-import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
@@ -55,7 +43,7 @@ import type { EnginesRuntime } from "../runtime/engines.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
-import { createExtensionSource, externalIdPreview } from "./extension-source.js";
+import { createExtensionSource } from "./extension-source.js";
 import { type ExtensionLocales, localizeManifest, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
@@ -79,8 +67,6 @@ export type {
 	PushSourceHandle,
 	SourceDef,
 	SourceHandle,
-	SubscriptionSourceDef,
-	SubscriptionSourceHandle,
 } from "@bilibili-notify/extension";
 
 /**
@@ -105,31 +91,8 @@ export type ActionOutcome = Result;
  */
 export class ExtensionSettingsUnreadable extends Error {}
 
-/**
- * 问一次解析门的结果(ADR-0019 决策 52)。失败各有各的码与原话:`timeout` 超时,`unavailable` 拓展自己
- * 抛了(平台那头的事:cookie 过期、被风控),`invalid` 交回来的候选形状不对(拓展的 bug,`message`
- * 点名哪儿不对)—— 并成一句「出错了」的话,面板与作者都不知道该找谁。
- */
-export type LookupOutcome = Result<{ candidates: readonly ExtensionSubscriptionCandidate[] }>;
-
 /** 一个动作最多等多久。面板那头的按钮一直转着,比报一句超时更难受。 */
 export const ACTION_TIMEOUT_MS = 30_000;
-
-/**
- * 宿主递给 ctx 的一行**拓展订阅**:归属(`extensionId`)加拓展要的那三格。
- *
- * 按结构定,不引订阅存储的类型 —— 存储那头的一行对得上这几格就能直接递过来;筛「是不是它的」
- * 在 ctx 这一层做,归属是宿主的判断(ADR-0019 决策 9 / 50)。
- */
-export interface ExtensionSubscriptionRow {
-	/** BN 这条订阅自己的 id(uuid)。 */
-	id: string;
-	/** 记在哪个拓展名下 —— 由 BN 填,不由拓展报。 */
-	extensionId: string;
-	/** 那个人在平台上的 id,BN 不解读。 */
-	externalId: string;
-	enabled: boolean;
-}
 
 /**
  * 一条「上报出入」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。
@@ -228,11 +191,6 @@ export interface ExtensionRuntime {
 	 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/**
-	 * 问一次解析门(ADR-0019 决策 52):主人输入的原话交给拓展,交回来的候选**先核形状**。超时与收摊
-	 * 时经 `signal` 叫停;**不挡并发**(查询可以同时好几发)。没注册过订阅源 / 已经收摊就是 `undefined`。
-	 */
-	lookup(query: string, opts?: { timeoutMs?: number }): Promise<LookupOutcome | undefined>;
-	/**
 	 * 这个拓展的订阅源(`ctx.registerSource`)登记落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
 	 * 之后等它 —— `start` 抛了回失败(原话带着),这一次加载就失败。没登记过订阅源就是成功。
 	 */
@@ -295,15 +253,11 @@ export interface CreateExtensionContextOptions {
 	fallbackCreatorName?: (identity: Identity) => string;
 	/** 图库读口(`ImageStore.read`):拓展作品图按引用读回字节补宽高与动图标记。不给就读不到(只放引用)。 */
 	images?: Pick<ImageStore, "read">;
-	/** 全部拓展订阅,**现读**。属于谁由宿主筛(ADR-0019 决策 52)。 */
-	subscriptions: () => readonly ExtensionSubscriptionRow[];
-	/** 订阅「订阅动过了」。同 {@link onConnectionsChanged}:宿主替它订,只把结果转给它。 */
-	onSubscriptionsChanged: (fn: () => void) => Disposable;
 	/**
-	 * 订阅源拓展报上来一条、核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 62)—— 宿主把它发到 bus。
-	 * `subscriptionIds` 已经按开关筛过(见 `SubscriptionReportDelivery`)。不给就只是没人收。
+	 * 按身份找到这个来源名下的全部订阅 id(停用的也算),用于「上报出入」的关联栏。
+	 * 来源自己的名单仍走核心 `SourceContext`,这里只补展示用的订阅 id。
 	 */
-	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
+	subscriptionIdsOf?: (identity: Identity) => readonly string[];
 	/** 「上报出入」的出口(见 {@link ReportDiscrepancy})。日志 ctx 已经记了;不给就只记日志。 */
 	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/**
@@ -389,7 +343,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		// 拓展自己的实现(见 `readOwnSettings`):对表、记「设置读不了」;监听都经 `integration.track`,不另需收摊。
 		settings: { settings: (schema) => readOwnSettings(schema), dispose() {} },
 		disposeTimeoutMs: opts.disposeTimeoutMs,
-		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
+		// 从这一刻起它的上报一概拒(上报上下文先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
 		onStopping() {
 			// 订阅源先撤:拓展的 `stop()` 要赶在 `signal` 中止之前叫到(契约:宿主先叫 stop,再中止 signal 并跑收尾钩子)。
@@ -431,11 +385,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	function revokeSource(): void {
 		revokeSourceNow?.();
 	}
-	let subscriptionSourceRegistered = false;
-	/** 注册上来的订阅源(解析门在它身上);收摊时摘掉。 */
-	let subscriptionSource: SubscriptionSourceDef | undefined;
-	/** 在跑的解析 —— 收摊时逐个叫停。**不按名字挡并发**(决策 52:查询可以同时好几发)。 */
-	const runningLookups = new Set<AbortController>();
 	/** 「面板数据变了」的合并窗口(见 {@link STATUS_CHANGED_COALESCE_MS});整个拓展就这一个键。 */
 	const statusCoalescer = createKeyedCoalescer({
 		windowMs: STATUS_CHANGED_COALESCE_MS,
@@ -462,33 +411,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			});
 		}
 		return views;
-	}
-
-	/**
-	 * 记在这个拓展名下的订阅,**全部**(停用的也在,跳不跳过由它自己定)。只交它要的三格 —— 推不推、
-	 * 推给谁它不需要知道(ADR-0019 决策 1 / 52);每次都是新抄的一份,拓展改不着宿主手里那份。
-	 */
-	function ownSubscriptions(): readonly ExtensionOwnSubscription[] {
-		return opts
-			.subscriptions()
-			.filter((row) => row.extensionId === id)
-			.map((row) => ({ id: row.id, externalId: row.externalId, enabled: row.enabled }));
-	}
-
-	/**
-	 * 订阅源那一口开没开 —— 「注册的口 ⊆ 清单开的口」(ADR-0019 决策 16),同 {@link pushViewOf}。
-	 */
-	function assertSubscriptionPort(def: SubscriptionSourceDef): void {
-		const { manifest } = opts;
-		if (!manifest.contributes.subscription) {
-			throw new Error(
-				`extension ${id}: 清单里没开订阅源那一口(contributes.subscription),不能注册订阅源`,
-			);
-		}
-		// 第三方 JS 不受类型约束:没交解析门的话,每一次查询都会炸成一句「不是函数」。
-		if (typeof def?.lookup !== "function") {
-			throw new Error(`extension ${id}: 订阅源要交解析门 lookup(query, signal)`);
-		}
 	}
 
 	/**
@@ -524,17 +446,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	// ---- 订阅源的上报(ADR-0019 决策 7 / 57 / 59 / 60 / 62)------------------------------------------
 
-	/** 清单声明的事件种类 —— 报上来的种类照它核(决策 5:清单就是能力声明)。 */
-	const declaredEvents = opts.manifest.contributes.subscription?.events ?? [];
-
-	/**
-	 * 它名下指向这个人的订阅(停用的也算 —— 资料更新要发给它们,问题框里「哪条订阅」那一栏也要它们)。
-	 * 身份是 `(这个拓展, 外部 id)`(决策 50),同一个人可能有几条订阅。
-	 */
-	function rowsOf(externalId: string) {
-		return opts
-			.subscriptions()
-			.filter((row) => row.extensionId === id && row.externalId === externalId);
+	/** 「上报出入」里「哪条订阅」那一栏:停用的也算;不在名单里就是空表。 */
+	function subscriptionIdsOf(externalId: string): readonly string[] {
+		return opts.subscriptionIdsOf?.({ sourceKey: id, externalId }) ?? [];
 	}
 
 	/**
@@ -560,92 +474,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			kind: "problem",
 			...(rejection.externalId === undefined ? {} : { externalId: rejection.externalId }),
 			subscriptionIds:
-				rejection.externalId === undefined ? [] : rowsOf(rejection.externalId).map((row) => row.id),
+				rejection.externalId === undefined ? [] : subscriptionIdsOf(rejection.externalId),
 			outcome: "rejected",
 			reasons: [rejection.reason],
 		});
-	}
-
-	/**
-	 * 收一条上报:核外部 id → 核种类 → 核形状(规矩在 `checkSubscriptionReport`,决策 59)→ 找它名下指向
-	 * 这个人的订阅 → 按开关筛 → 交给宿主。拒掉时抛带原因的错(拓展那头是一个 reject),丢格照收。
-	 *
-	 * **不等出卡与推送**(决策 62):交给宿主(发到 bus)那一下就回。
-	 */
-	async function receiveReport(
-		kind: SubscriptionReportKind,
-		rawExternalId: unknown,
-		raw: unknown,
-	): Promise<void> {
-		if (integration.disposed) {
-			integration.refuse(`上报 ${kind}`);
-			throw new Error(`extension ${id} is already unloaded`);
-		}
-		const idCheck = checkReportedExternalId(rawExternalId);
-		const externalId = idCheck.ok ? idCheck.externalId : externalIdPreview(rawExternalId);
-		// 停用的也算「对上了」(见 {@link rowsOf})。
-		const matched = idCheck.ok ? rowsOf(externalId) : [];
-		const subscriptionIds = matched.map((row) => row.id);
-		const reject = (reason: string): never => {
-			recordDiscrepancy({
-				kind,
-				externalId,
-				subscriptionIds,
-				outcome: "rejected",
-				reasons: [reason],
-			});
-			throw new Error(`BN 拒收这条 ${kind} 上报:${reason}`);
-		};
-		if (!idCheck.ok) return reject(idCheck.reason);
-		const undeclared = undeclaredReportReason(kind, declaredEvents);
-		if (undeclared !== undefined) return reject(undeclared);
-		const checked = checkSubscriptionReport(kind, raw);
-		if (!checked.ok) return reject(checked.reason);
-		if (checked.dropped.length > 0) {
-			recordDiscrepancy({
-				kind,
-				externalId,
-				subscriptionIds,
-				outcome: "dropped",
-				reasons: checked.dropped,
-			});
-		}
-		if (matched.length === 0) {
-			// 多半是订阅刚删、变更通知还没到它那儿(决策 62):不算错。
-			logger.debug(`上报 ${kind} 的外部 id ${externalId} 不在它名下的订阅里,忽略`);
-			return;
-		}
-		// 停用的:事件与直播状态收下不往下发(也不进首页在播);资料更新照样对它们生效(决策 62)。
-		const targets = kind === "profile" ? matched : matched.filter((row) => row.enabled);
-		if (targets.length === 0) {
-			logger.debug(`上报 ${kind} 的外部 id ${externalId} 名下的订阅都停用了,不往下发`);
-			return;
-		}
-		// `kind` 与 `checked.value` 是一对,只是泛型收窄不到联合的某一支。
-		const report = { kind, value: checked.value } as SubscriptionReport;
-		try {
-			opts.onSubscriptionReport?.({
-				extensionId: id,
-				externalId,
-				subscriptionIds: targets.map((row) => row.id),
-				report,
-			});
-		} catch (err) {
-			// bus 上的消费方抛了 —— 那是 BN 自己的 bug,不该变成拓展那头的一个 reject。
-			logger.error(`上报 ${kind} 交给宿主时抛了:${(err as Error).message}`);
-		}
-	}
-
-	/**
-	 * 把手上的一个 `report*`。🔴 拓展不接这个 Promise 时,它的 reject 不许变成 unhandledRejection ——
-	 * 独立端装的处理器会把整个进程关掉;拒掉的原因已经从上报出入的出口记下了。拓展 `await` 它照样拿得到。
-	 */
-	function reporter(kind: SubscriptionReportKind) {
-		return (externalId: unknown, raw: unknown): Promise<void> => {
-			const pending = receiveReport(kind, externalId, raw);
-			pending.catch(() => {});
-			return pending;
-		};
 	}
 
 	// ---- 自己的设置(ADR-0019 决策 36)----------------------------------------------------
@@ -978,37 +810,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				},
 			};
 		},
-		registerSubscriptionSource(def) {
-			if (integration.disposed) {
-				integration.refuse("registerSubscriptionSource");
-				throw new Error(`extension ${id} is already unloaded`);
-			}
-			// 一个拓展就是一个平台(决策 9);要两个平台的那天再加一格子键。
-			if (subscriptionSourceRegistered) {
-				throw new Error(`extension ${id} already registered a subscription source`);
-			}
-			assertSubscriptionPort(def);
-			subscriptionSourceRegistered = true;
-			subscriptionSource = def;
-			// 收摊时摘掉:之后再问解析门就是「没在跑」,不会叫到一个已经停了的拓展身上。
-			integration.track({
-				dispose() {
-					subscriptionSource = undefined;
-				},
-			});
-			return {
-				subscriptions: ownSubscriptions,
-				onSubscriptionsChanged: (fn) => {
-					if (integration.disposed) return integration.refuse("onSubscriptionsChanged");
-					return integration.track(opts.onSubscriptionsChanged(fn));
-				},
-				reportPost: reporter("post"),
-				reportLiveStart: reporter("liveStart"),
-				reportLiveEnd: reporter("liveEnd"),
-				reportLiveStatus: reporter("liveStatus"),
-				reportProfile: reporter("profile"),
-			};
-		},
 		registerSource(def) {
 			if (integration.disposed) {
 				integration.refuse("registerSource");
@@ -1031,7 +832,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				recordDiscrepancy: (discrepancy) =>
 					recordDiscrepancy({
 						...discrepancy,
-						subscriptionIds: rowsOf(discrepancy.externalId).map((row) => row.id),
+						subscriptionIds: subscriptionIdsOf(discrepancy.externalId),
 					}),
 				fallbackCreatorName: (externalId) =>
 					opts.fallbackCreatorName?.({ sourceKey: id, externalId }) ?? externalId,
@@ -1247,58 +1048,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				clearTimeout(timer);
 			}
 		},
-		async lookup(query, lookupOpts = {}) {
-			// 收摊一开始就把在跑的都叫停了 —— 这时再起一发就没人叫停它。
-			const source = integration.disposed ? undefined : subscriptionSource;
-			if (!source) return undefined;
-			const timeoutMs = lookupOpts.timeoutMs ?? LOOKUP_TIMEOUT_MS;
-			const controller = new AbortController();
-			const unlink = linkToStop(controller);
-			runningLookups.add(controller);
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const timeout = new Promise<LookupOutcome>((resolve) => {
-				timer = setTimeout(() => {
-					// 宿主不等了就叫它停:面板那头已经是一句「超时」,它接着问平台只是白白多挨一次风控。
-					controller.abort(
-						new DOMException(`解析门超过 ${timeoutMs / 1000} 秒没回,BN 不等了`, "TimeoutError"),
-					);
-					resolve(fail("timeout", `拓展 ${id} 的解析门超过 ${timeoutMs / 1000} 秒没回`));
-				}, timeoutMs);
-			});
-			const run = (async (): Promise<LookupOutcome> => {
-				try {
-					// 同步交回、交回 Promise、同步抛都走这一处。
-					const raw: unknown = await source.lookup(query, controller.signal);
-					const parsed = SubscriptionCandidatesSchema.safeParse(raw);
-					if (!parsed.success) {
-						// 🔴 点名哪儿不对:吞成一句「出错了」的话,拓展作者只能对着黑盒猜。
-						const message = formatZodIssues(parsed.error).join(";");
-						logger.warn(`解析门交回的候选形状不对:${message}`);
-						return fail("invalid", `拓展交回的候选不合规矩:${message}`);
-					}
-					return ok({ candidates: parsed.data });
-				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
-					logger.warn(`解析门抛了:${message}`);
-					return fail("unavailable", `拓展查询出错:${message}`);
-				} finally {
-					unlink();
-					runningLookups.delete(controller);
-				}
-			})();
-			try {
-				return await Promise.race([run, timeout]);
-			} finally {
-				clearTimeout(timer);
-			}
-		},
 		sourceRegistration: () => sourceRegistration,
 		async dispose() {
 			if (integration.disposed) return;
-			// 在跑的动作 / 解析听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。
+			// 在跑的动作听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。
 			await integration.dispose();
 			runningActions.clear();
-			runningLookups.clear();
 			actionHandlers.clear();
 			handedSchemas.clear();
 			viewFn = undefined;

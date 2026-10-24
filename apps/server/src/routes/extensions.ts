@@ -25,7 +25,6 @@ import type { ConfigStore } from "../config/store.js";
 import { ExtensionConflictError } from "../extensions/conflict-error.js";
 import {
 	type ActionOutcome,
-	type LookupOutcome,
 	manifestPushView,
 	manifestSubscriptionView,
 } from "../extensions/context.js";
@@ -83,13 +82,8 @@ export interface ExtensionsRouteOptions {
 	 */
 	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
 	/**
-	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52)。没在跑 / 不是订阅源 / 没装就是 `undefined`
-	 * (→ `not_found`)。没接这一格的话那一口永远 `not_found`。
-	 */
-	lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
-	/**
 	 * 来源登记表:拓展的来源在册的,解析门经它的 `searchCreators` 问(共用超时与串行闸);不在册的
-	 * 才走上面老的 `lookup`。
+	 * 就是没装或没跑,回 `not_found`。
 	 */
 	sources?: Pick<SourceRegistry, "get" | "list">;
 	/** 候选头像的图库引用在这里读回字节、拼成 data URL 交给面板;不给 = 候选都不带头像。 */
@@ -483,7 +477,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 拓展拿它去问平台用的是主人的 cookie,挂到鉴权外
 	 * 就是谁都能借主人的号去平台上查人。
 	 *
-	 * 每种失败各有码与原话(话在 `extensions/context.ts` 的 `lookup` 里造);两种要分得开:「拓展查询
+	 * 每种失败各有码与原话(话在来源的 `searchCreators` 里造);两种要分得开:「拓展查询
 	 * 出错」(`unavailable`)是平台那头的事(cookie 过期、被风控),「交回的候选不合规矩」(`invalid`)
 	 * 是拓展的 bug —— 并成一句的话,主人与作者都不知道该找谁。
 	 */
@@ -508,24 +502,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			if (!found.ok) return respondFailure(c, found, found.code === "invalid" ? 502 : undefined);
 			return view(await Promise.all(found.candidates.map(candidateView)));
 		}
-		// 还没搬到新口的老拓展走这一支,结果翻成同一个新形状。后面的提交把它们搬完就删掉这一支。
-		const outcome: LookupOutcome | undefined = await opts.lookup?.(id.data, query.data);
-		if (!outcome) {
-			return respondFailure(
-				c,
-				fail("not_found", `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门`),
-			);
-		}
-		// 同上:`invalid` 只会是拓展交回的候选不合规矩,回 502。
-		if (!outcome.ok)
-			return respondFailure(c, outcome, outcome.code === "invalid" ? 502 : undefined);
-		return view(
-			outcome.candidates.map((old) => ({
-				externalId: old.id,
-				name: old.name,
-				...(old.avatar === undefined ? {} : { avatarUrl: old.avatar }),
-				...(old.fans === undefined ? {} : { followers: old.fans }),
-			})),
+		return respondFailure(
+			c,
+			fail("not_found", `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门`),
 		);
 	});
 

@@ -56,14 +56,6 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
-	// 3a-28 建 `compose.ts`(8 → 5):3a-32 为开发场景多出的 3 处(引入工厂、用来源键认领、调工厂)与按来源筛订阅那 1 处搬走;
-	// 多 1 处是 `status` 指令读「上次抓取」。3a-29 B 站半:统计的登录读口改读
-	// 中立的 `auth.state()`(5 → 3),剩下的是来源键的两处与 `builtins.bilibili`。
-	// 3a-40 B(5 → 4):`status` 改读登记表里各来源的 `Source.health()`,`builtins.bilibili.dynamic` 没了。
-	// 3a-30(主人 10-11 点头,3 → 5):直播引擎由 `createEngines` 造、早于来源登记,B 站的分层上报器只能经入口递进去
-	// (`biliProblems: builtins.bilibili.problems`,对象键与 `bilibili` 各一处,名字如实带 `bili`,不起中立名字躲)。
-	// 3b 直播并进来源(来源自己造直播、自己把上报器给它)那一天,这一格与这条递送一起消失,数归 3。
-	"apps/server/src/index.ts": 2,
 	"apps/server/src/routes/cards.ts": 7,
 	"apps/server/src/routes/subscriptions.ts": 5,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。

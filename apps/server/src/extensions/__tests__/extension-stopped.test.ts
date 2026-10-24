@@ -3,13 +3,14 @@
  * `onStopped` 叫一次。停用、加载失败、换代码、关机走的都是收摊,所以每条路都得叫到 —— 漏了哪条,
  * 首页上它名下的订阅就一直「在播」。
  *
- * 钉在装载器这一层(`loadExtensions()`),拓展是装进装载根的 v2 小拓展,代码经 `importModule` 换进来。
+ * 钉在装载器这一层(`loadExtensions()`),拓展是装进装载根的 v3 小拓展,代码经 `importModule` 换进来。
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger, ServiceContext, SubscriptionReportDelivery } from "@bilibili-notify/internal";
+import type { SourceDef } from "@bilibili-notify/extension";
+import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
@@ -23,14 +24,6 @@ import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
 const ID = "douyin";
-const SUB = {
-	id: "f0000000-0000-4000-8000-000000000001",
-	extensionId: ID,
-	externalId: "sec-1",
-	enabled: true,
-};
-const LIVE = { live: true, viewers: 1 };
-
 let root: string;
 
 beforeEach(async () => {
@@ -69,6 +62,15 @@ const host: ServiceContext = {
 	track: () => {},
 };
 
+function sourceDef(): SourceDef {
+	return {
+		start() {},
+		stop() {},
+		searchCreators: async () => ({ ok: true, candidates: [] }),
+		fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
+	};
+}
+
 /** 起一个真装载器;`events` 按先后记下「停了」与「报上来了」。 */
 async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 	const events: string[] = [];
@@ -85,10 +87,7 @@ async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [SUB],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
-		onSubscriptionReport: (delivery: SubscriptionReportDelivery) =>
-			events.push(`reported ${delivery.report.kind}`),
+		registerSource: async () => ({ dispose() {} }),
 		onStopped: (id) => events.push(`stopped ${id}`),
 		settings: () => undefined,
 		onSettingsChanged: () => ({ dispose() {} }),
@@ -108,33 +107,27 @@ async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 }
 
 describe("onStopped:拓展不在跑了", () => {
-	it("停用 → 叫一次;之后它再报,宿主不收", async () => {
-		let report: (() => Promise<void>) | undefined;
+	it("停用 → 叫一次", async () => {
 		const h = await boot((ctx) => {
-			const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
-			report = () => handle.reportLiveStatus(SUB.externalId, LIVE);
+			ctx.registerSource(sourceDef());
 		});
-		await report?.();
 		h.setEnabled(false);
 		await h.loaded.sync();
-		expect(h.events).toEqual(["reported liveStatus", `stopped ${ID}`]);
-		await expect(report?.()).rejects.toThrow();
-		expect(h.events).toEqual(["reported liveStatus", `stopped ${ID}`]);
+		expect(h.events).toEqual([`stopped ${ID}`]);
 	});
 
-	it("activate 报了一条才抛(加载失败)→ 照样叫到", async () => {
+	it("activate 抛了(加载失败)→ 照样叫到", async () => {
 		const h = await boot(async (ctx) => {
-			const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
-			await handle.reportLiveStatus(SUB.externalId, LIVE);
+			ctx.registerSource(sourceDef());
 			throw new Error("activate 炸了");
 		});
 		expect(h.loaded.list()[0]?.state).toBe("failed");
-		expect(h.events).toEqual(["reported liveStatus", `stopped ${ID}`]);
+		expect(h.events).toEqual([`stopped ${ID}`]);
 	});
 
 	it("换代码(重载)→ 旧的那面叫一次,新的照常跑", async () => {
 		const h = await boot((ctx) => {
-			ctx.registerSubscriptionSource({ lookup: () => [] });
+			ctx.registerSource(sourceDef());
 		});
 		await h.loaded.reload(ID);
 		expect(h.events).toEqual([`stopped ${ID}`]);
@@ -143,7 +136,7 @@ describe("onStopped:拓展不在跑了", () => {
 
 	it("宿主关机 → 叫一次;再收一次摊不重复叫", async () => {
 		const h = await boot((ctx) => {
-			ctx.registerSubscriptionSource({ lookup: () => [] });
+			ctx.registerSource(sourceDef());
 		});
 		await h.loaded.dispose();
 		await h.loaded.dispose();

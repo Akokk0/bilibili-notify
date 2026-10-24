@@ -91,8 +91,6 @@ function hostStubs() {
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: () => undefined,
 		onSettingsChanged: () => ({ dispose() {} }),
 		inbound: {},

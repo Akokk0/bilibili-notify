@@ -374,6 +374,29 @@ describe("creator candidates", () => {
 			]).success,
 		).toBe(false);
 	});
+
+	it.each([
+		["empty name", { externalId: "creator-1", name: "" }, ["0", "name"]],
+		["long name", { externalId: "creator-1", name: "n".repeat(129) }, ["0", "name"]],
+		["empty external id", { externalId: "", name: "Creator 1" }, ["0", "externalId"]],
+		["long external id", { externalId: "x".repeat(257), name: "Creator 1" }, ["0", "externalId"]],
+		[
+			"negative followers",
+			{ externalId: "creator-1", name: "Creator 1", followers: -1 },
+			["0", "followers"],
+		],
+		[
+			"fractional followers",
+			{ externalId: "creator-1", name: "Creator 1", followers: 1.5 },
+			["0", "followers"],
+		],
+		["unknown field", { externalId: "creator-1", name: "Creator 1", url: URL }, ["0"]],
+	])("rejects %s", (_label, candidate, path) => {
+		const result = ExtensionCreatorCandidatesSchema.safeParse([candidate]);
+		expect(result.success).toBe(false);
+		if (result.success) return;
+		expect(result.error.issues.some((issue) => issue.path.join(".") === path.join("."))).toBe(true);
+	});
 });
 
 describe("live status result", () => {

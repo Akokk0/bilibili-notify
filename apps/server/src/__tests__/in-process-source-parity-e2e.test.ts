@@ -318,7 +318,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "第 4 期",
 		reason:
-			"searchCreators 这一期只有女仆的搜人工具读它(P26),GET /api/sources/:sourceKey/creators 与面板第 4 期;新建订阅的门只认装着的 v2 订阅源、不问登记表",
+			"拓展的订阅源已登进来源登记表,面板搜人经引擎的 searchCreators;经接口搜人与新建订阅的门问登记表仍归第 4 期",
 	},
 	{
 		id: "N05",
@@ -765,7 +765,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 		dataDir = await mkdtemp(join(tmpdir(), "bn-in-process-parity-e2e-"));
 
-		// —— 先空启动一趟:建连接、目标、主人、AI 的服务商(关着);订阅不能经接口建(新建订阅的门只认装着的订阅源,N01),
+		// —— 先空启动一趟:建连接、目标、主人、AI 的服务商(关着);经接口搜人与新建订阅的门仍归第 4 期(N01),
 		// 所以关掉之后往在用的那一代里直接摆订阅文件,再起第二趟。
 		const seedPort = await findFreePort();
 		const seed = await boot(seedPort);

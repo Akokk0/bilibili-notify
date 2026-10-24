@@ -1,12 +1,12 @@
 /**
  * 🔴 **拓展订阅的在播,在真 BN 上进得了首页**(ADR-0019 决策 12 / 57 / 61)。
  *
- * 拓展报开播 / 下播 / 直播状态 → ctx 核过、对上订阅 → bus 上的 `subscription-reported` → 在播表 →
+ * 拓展经来源上下文报开播 / 下播 / 直播状态 → 核心核过、对上订阅 → 在播表 →
  * `GET /api/live/listening`。拓展停了 → 它那面 ctx 收摊 → 装载器递过去的回调 → `index.ts` 发到 bus 上的
  * `extension-stopped` → 在播表清掉它名下的。中间任意一处漏接,拓展那头照样 resolve、类型与单元测试
  * 全绿,症状是首页上抖音的直播一条都不出来,或者拓展关了它还一直「在播」。
  *
- * 所以装一个真的 v2 小拓展进装载根、起一台真 BN:面板按它的动作钮报,再照面板那样读接口。
+ * 所以装一个真的 v3 小拓展进装载根、起一台真 BN:面板按它的动作钮报,再照面板那样读接口。
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -36,14 +36,20 @@ const FIXTURE_CODE = `
 const T = ${T};
 const URL = "https://live.douyin.com/1";
 export function activate(ctx) {
-	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
+	let source;
+	ctx.registerSource({
+		start(current) { source = current; },
+		stop() { source = undefined; },
+		searchCreators: async () => ({ ok: true, candidates: [] }),
+		fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
+	});
 	const id = ${JSON.stringify(EXTERNAL)};
 	ctx.onAction("report.liveStart", () =>
-		handle.reportLiveStart(id, { url: URL, startedAt: T, title: "开播了", category: "聊天", viewers: 7, totalViewers: 70 }),
+		source.reportLive(id, { kind: "start", startedAt: T, details: { url: URL, title: "开播了", category: "聊天", currentViewers: 7, totalViewers: 70 } }),
 	);
-	ctx.onAction("report.liveEnd", () => handle.reportLiveEnd(id, { url: URL }));
+	ctx.onAction("report.liveEnd", () => source.reportLive(id, { kind: "end", details: { url: URL } }));
 	ctx.onAction("report.liveStatus", () =>
-		handle.reportLiveStatus(id, { live: true, startedAt: T, title: "一直在播", viewers: 9 }),
+		source.reportLive(id, { kind: "status", isLive: true, startedAt: T, details: { title: "一直在播", currentViewers: 9 } }),
 	);
 }
 `;

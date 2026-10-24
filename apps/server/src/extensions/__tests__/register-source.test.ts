@@ -112,8 +112,10 @@ function harness(
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => rows,
-		onSubscriptionsChanged: () => ({ dispose() {} }),
+		subscriptionIdsOf: ({ sourceKey, externalId }) =>
+			rows
+				.filter((row) => row.extensionId === sourceKey && row.externalId === externalId)
+				.map((row) => row.id),
 		onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
 		settings: () => undefined,
 		onSettingsChanged: () => ({ dispose() {} }),

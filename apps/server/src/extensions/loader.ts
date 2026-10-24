@@ -14,7 +14,6 @@ import {
 	type Logger,
 	manifestSecretKeys,
 	type ServiceContext,
-	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
@@ -30,8 +29,6 @@ import {
 	createExtensionContext,
 	type ExtensionContext,
 	type ExtensionRuntime,
-	type ExtensionSubscriptionRow,
-	type LookupOutcome,
 	type ReportDiscrepancy,
 } from "./context.js";
 import {
@@ -116,15 +113,6 @@ export interface LoadedExtensions {
 	status(id: string): unknown;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
 	runAction(id: string, name: string): Promise<ActionOutcome | undefined>;
-	/**
-	 * 问某个拓展的解析门(ADR-0019 决策 11 / 52):主人输入的原话交过去,候选先核形状再交回。
-	 * 没在跑、或者它不是订阅源就是 `undefined`(路由回 404)。`timeoutMs` 默认 `LOOKUP_TIMEOUT_MS`。
-	 */
-	lookup(
-		id: string,
-		query: string,
-		opts?: { timeoutMs?: number },
-	): Promise<LookupOutcome | undefined>;
 	/**
 	 * 某个拓展经 `ctx.settings(schema)` 交过的 zod —— 写它的设置时再过一道(ADR-0019 决策 35)。
 	 * 没在跑就是 `undefined`;跑着但没交过是空表。**现取**:跑着的认跑着的那一份,换过代码的交的是
@@ -249,15 +237,8 @@ export interface LoadExtensionsOptions {
 	fallbackCreatorName?: CreateExtensionContextOptions["fallbackCreatorName"];
 	/** 图库读口(`runtime.imageStore`),递给每个拓展的 ctx:订阅源作品图补宽高与动图标记。 */
 	images?: CreateExtensionContextOptions["images"];
-	/** 全部拓展订阅(归属 + 外部 id + 开关),现读。属于谁由 ctx 那一层筛。 */
-	subscriptions: () => readonly ExtensionSubscriptionRow[];
-	/** 订阅「订阅动过了」。 */
-	onSubscriptionsChanged: (fn: () => void) => Disposable;
-	/**
-	 * 订阅源拓展报上来一条、核过、对上了它名下的订阅(ADR-0019 决策 7 / 62)—— 宿主发到 bus。载荷里
-	 * 已经带着拓展 id。
-	 */
-	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
+	/** 按来源身份取全部订阅 id(停用的也算),用于「上报出入」的关联栏。 */
+	subscriptionIdsOf?: CreateExtensionContextOptions["subscriptionIdsOf"];
 	/** 「上报出入」(决策 60):丢格、整条拒。ctx 已经记过日志;这里接到拓展详情页那个框上。 */
 	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/** 某个拓展自己那份设置(`config/settings/extensions/<id>.json`),现读、原样。 */
@@ -738,9 +719,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			registerSource: opts.registerSource,
 			fallbackCreatorName: opts.fallbackCreatorName,
 			images: opts.images,
-			subscriptions: opts.subscriptions,
-			onSubscriptionsChanged: opts.onSubscriptionsChanged,
-			onSubscriptionReport: opts.onSubscriptionReport,
+			subscriptionIdsOf: opts.subscriptionIdsOf,
 			onReportDiscrepancy: opts.onReportDiscrepancy,
 			locales: dir.locales,
 			localeReader: opts.locale,
@@ -1102,8 +1081,6 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		},
 		status: (id) => slots.get(id)?.running?.runtime.status(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
-		lookup: async (id, query, lookupOpts) =>
-			slots.get(id)?.running?.runtime.lookup(query, lookupOpts),
 		settingsSchemas: (id) => {
 			const slot = slots.get(id);
 			if (slot?.running) return slot.running.runtime.settingsSchemas();

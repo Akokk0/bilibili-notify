@@ -10,7 +10,10 @@
 import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
-import type { ExtensionView } from "@bilibili-notify/extension";
+import type {
+	SourceContext as ExtensionSourceContext,
+	ExtensionView,
+} from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
@@ -19,8 +22,9 @@ import type {
 	PlatformAdapter,
 	PlatformAdapterContext,
 	ServiceContext,
+	SourceContext,
 } from "@bilibili-notify/internal";
-import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
+import { neutralPlatformSnapshot, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
@@ -31,6 +35,7 @@ import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import {
+	type CreateExtensionContextOptions,
 	createExtensionContext,
 	manifestPushView,
 	STATUS_CHANGED_COALESCE_MS,
@@ -80,7 +85,12 @@ const PUSH_MANIFEST: ExtensionManifest = {
 };
 
 function harness(
-	opts: { connections?: Connection[]; settings?: unknown; manifest?: ExtensionManifest } = {},
+	opts: {
+		connections?: Connection[];
+		settings?: unknown;
+		manifest?: ExtensionManifest;
+		registerSource?: CreateExtensionContextOptions["registerSource"];
+	} = {},
 ) {
 	let statusChanges = 0;
 	const lines: string[] = [];
@@ -136,9 +146,6 @@ function harness(
 			listeners.add(fn);
 			return { dispose: () => listeners.delete(fn) };
 		},
-		// 订阅源那一口钉在 `subscription-source.test.ts`(装载器那一层)。
-		subscriptions: () => [],
-		onSubscriptionsChanged: () => ({ dispose() {} }),
 		// ⚠️ 与生产同形状:宿主那头是 `getExtensionSettings(id)`,它
 		// **每次都 deepClone**,所以每问一次拿到的都是一个新对象。直接把闭包变量交出去的话,
 		// 「按原始值的身份缓存」这种写法在测试里恒命中、在真机上恒不命中。
@@ -154,6 +161,7 @@ function harness(
 			return { dispose: () => settingsListeners.delete(fn) };
 		},
 		upgrades: createExtensionUpgrades(),
+		...(opts.registerSource ? { registerSource: opts.registerSource } : {}),
 		inbound: {
 			private: (_msg, meta) =>
 				inboundSeen.push({
@@ -1105,10 +1113,29 @@ describe("statusChanged 合并", () => {
 					},
 				},
 			} as unknown as ExtensionManifest,
+			registerSource: async (entry) => {
+				await entry.source.start({
+					logger: entry.logger,
+					signal: entry.integration.signal,
+					subscriptions: () => [],
+					onSubscriptionsChanged: () => ({ dispose() {} }),
+					onDispose() {},
+				} as unknown as SourceContext);
+				return { dispose() {} };
+			},
 		});
-		const source = h.ctx.registerSubscriptionSource({ lookup: () => [] });
+		let source: ExtensionSourceContext | undefined;
+		h.ctx.registerSource({
+			start(ctx) {
+				source = ctx;
+			},
+			stop() {},
+			searchCreators: async () => ok({ candidates: [] }),
+		});
+		await h.runtime.sourceRegistration();
 		// 清单没声明下播:整条拒、记一条上报出入。
-		await source.reportLiveEnd("person", { url: "https://live.example.com/1" }).catch(() => {});
+		source?.reportLive("person", { kind: "end", details: { url: "https://live.example.com/1" } });
+		await Promise.resolve();
 		vi.advanceTimersByTime(W * 10);
 		expect(h.statusChanges()).toBe(0);
 		// 上报出入照样出去了 —— 这条不是因为压根没走到那个出口才绿的。
@@ -1156,8 +1183,6 @@ describe("认领 WS upgrade", () => {
 			adapters: createPlatformAdapterRegistry(),
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
-			subscriptions: () => [],
-			onSubscriptionsChanged: () => ({ dispose() {} }),
 			settings: () => undefined,
 			onSettingsChanged: () => ({ dispose() {} }),
 			inbound: {},

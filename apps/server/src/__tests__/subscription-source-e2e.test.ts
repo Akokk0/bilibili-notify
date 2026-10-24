@@ -1,13 +1,12 @@
 /**
  * 🔴 **订阅源那一口在真 BN 上是接着的**(ADR-0019 决策 52)。
  *
- * `index.ts` 给装载器递了两根线:`subscriptions`(现读订阅表、只递拓展那一支)与
- * `onSubscriptionsChanged`(bus 上 `config-changed` / `subscriptions` 转过去);再给路由递了
- * `lookup`。装载器那层的测试(`extensions/__tests__/subscription-source.test.ts`)用的是**自己
- * 握着**的订阅表与通知 —— 这里任意一根漏接或接成空的,那边全绿,症状是拓展以为自己名下一条
- * 订阅都没有(永远不轮询)、或者面板上改了订阅它一声都没听见(新订阅不补基线)。
+ * 来源经 `registerSource` 拿到的核心 `SourceContext` 现读订阅表,并听 `onSubscriptionsChanged`;
+ * 路由经引擎的 `searchCreators` 问来源。核心来源上下文的单测用的是自己握着的订阅表与通知 ——
+ * 这里任意一根漏接或接成空的,那边全绿,症状是拓展以为自己名下一条订阅都没有(永远不轮询)、
+ * 或者面板上改了订阅它一声都没听见(新订阅不补基线)。
  *
- * 所以装一个真的 v2 小拓展进装载根、起一台真 BN:它的解析门把 `handle.subscriptions()` 与
+ * 所以装一个真的 v3 小拓展进装载根、起一台真 BN:它的 `searchCreators` 把来源名单与
  * 「听到过几次变更」原样念出来,从面板那条 HTTP 口读。
  */
 
@@ -53,16 +52,21 @@ const FOREIGN_ROW = makeExtensionSubscription({
 const FIXTURE_CODE = `
 export function activate(ctx) {
 	let changes = 0;
-	const handle = ctx.registerSubscriptionSource({
-		lookup() {
-			return handle.subscriptions().map((row) => ({
-				id: row.externalId,
-				name: \`\${row.enabled ? "on" : "off"}:\${changes}\`,
-			}));
+	let source;
+	ctx.registerSource({
+		start(current) {
+			source = current;
+			source.onSubscriptionsChanged(() => {
+				changes += 1;
+			});
 		},
-	});
-	handle.onSubscriptionsChanged(() => {
-		changes += 1;
+		stop() {},
+		searchCreators() {
+			return { ok: true, candidates: (source?.subscriptions() ?? []).map((row) => ({
+				externalId: row.externalId,
+				name: \`on:\${changes}\`,
+			})) };
+		},
 	});
 }
 `;
@@ -165,27 +169,29 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		return [...candidates].sort((a, b) => a.externalId.localeCompare(b.externalId));
 	}
 
-	it("开机即读得到自己名下的两条(停用的也在),别的拓展那条不在;还没听到过变更", async () => {
-		expect(byId(await lookup())).toEqual([
-			{ externalId: "ext-off", name: "off:0" },
-			{ externalId: "ext-on", name: "on:0" },
-		]);
+	it("开机即读得到自己名下启用中的一条,停用的与别的拓展那条都不在;还没听到过变更", async () => {
+		expect(byId(await lookup())).toEqual([{ externalId: "ext-on", name: "on:0" }]);
 	});
 
-	it("经面板那条 API 停用一条 → 拓展现读到它停了,而且听到了变更", async () => {
-		const res = await fetch(`http://127.0.0.1:${port}/api/subscriptions/${ENABLED_ROW.id}`, {
+	it("经面板那条 API 改开关 → 拓展现读到停用的不在,而且每一次都听到了变更", async () => {
+		const enabled = await fetch(`http://127.0.0.1:${port}/api/subscriptions/${DISABLED_ROW.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ enabled: true }),
+		});
+		expect(enabled.status, await enabled.clone().text()).toBe(200);
+
+		expect(byId(await lookup())).toEqual([
+			{ externalId: "ext-off", name: "on:1" },
+			{ externalId: "ext-on", name: "on:1" },
+		]);
+
+		const disabled = await fetch(`http://127.0.0.1:${port}/api/subscriptions/${ENABLED_ROW.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ enabled: false }),
 		});
-		expect(res.status, await res.clone().text()).toBe(200);
-
-		const candidates = byId(await lookup());
-		expect(candidates.map((c) => c.externalId)).toEqual(["ext-off", "ext-on"]);
-		for (const c of candidates) {
-			const [state, changes] = c.name.split(":");
-			expect(state, c.externalId).toBe("off");
-			expect(Number(changes), c.externalId).toBeGreaterThanOrEqual(1);
-		}
+		expect(disabled.status, await disabled.clone().text()).toBe(200);
+		expect(byId(await lookup())).toEqual([{ externalId: "ext-off", name: "on:2" }]);
 	});
 });
