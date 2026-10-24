@@ -246,6 +246,7 @@ describe("选了订阅源", () => {
 		const create = await screen.findByRole("button", { name: "创建订阅" });
 		expect(screen.getAllByText("作品").length).toBeGreaterThan(0);
 		expect(screen.queryByText("上舰")).toBeNull();
+		expect((screen.getByAltText("抖音甲") as HTMLImageElement).src).toBe(AVATAR);
 		fireEvent.click(create);
 
 		await waitFor(() => expect(api.post).toHaveBeenCalled());
@@ -258,16 +259,17 @@ describe("选了订阅源", () => {
 			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			enabled: true,
 			tagIds: [],
-			// 候选的头像 data URL 是网址:草稿里放 `avatarUrl`,服务端存进图库后才有 `avatar`。
-			cachedProfile: { name: "抖音甲", avatarUrl: AVATAR, fans: 12_345, sign: "" },
+			// 新建请求只带候选资料;落库后的响应资料由服务端另生成。
+			cachedProfile: { name: "抖音甲", avatarUrl: AVATAR, followers: 12_345 },
 		});
 		expect(body.id).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
 		);
 		expect(body).not.toHaveProperty("uid");
-		expect(typeof (body.cachedProfile as { lastRefreshedAt: unknown }).lastRefreshedAt).toBe(
-			"string",
-		);
+		expect(body).not.toHaveProperty("problems");
+		expect(body.cachedProfile).not.toHaveProperty("sign");
+		expect(body.cachedProfile).not.toHaveProperty("fans");
+		expect(body.cachedProfile).not.toHaveProperty("lastRefreshedAt");
 	});
 
 	it("候选没带头像 / 粉丝 → 头像两格都缺(「没有」),粉丝数不带 —— 不编一个 0", async () => {
@@ -286,6 +288,7 @@ describe("选了订阅源", () => {
 		expect(body.cachedProfile).not.toHaveProperty("avatar");
 		expect(body.cachedProfile).not.toHaveProperty("avatarUrl");
 		expect(body.cachedProfile).not.toHaveProperty("fans");
+		expect(body.cachedProfile).not.toHaveProperty("followers");
 	});
 });
 

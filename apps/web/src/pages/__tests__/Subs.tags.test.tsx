@@ -231,5 +231,7 @@ describe("Subs 订阅详情 × 标签", () => {
 		const [, body] = (api.post as ReturnType<typeof vi.fn>).mock.calls[0] as [string, Subscription];
 		expect(body.identity).toEqual({ sourceKey: "bilibili", externalId: "999" });
 		expect(body.tagIds).toEqual([GAME.id]);
+		expect(body).not.toHaveProperty("problems");
+		expect(body.cachedProfile).toEqual({ name: "查到的 999", followers: 5 });
 	});
 });

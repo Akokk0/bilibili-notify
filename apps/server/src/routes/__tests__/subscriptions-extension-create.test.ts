@@ -185,7 +185,7 @@ describe("新建拓展订阅", () => {
 			cachedProfile: {
 				name: "抖音某人",
 				avatarUrl: avatarDataUrl("png", PNG_BYTES),
-				fans: 42,
+				followers: 42,
 				// 客户端给的这两格不收:签名没人报过,刷新时间是服务端的事。
 				sign: "客户端编的",
 				lastRefreshedAt: "1999-01-01T00:00:00.000Z",
@@ -215,6 +215,18 @@ describe("新建拓展订阅", () => {
 		expect(img.status).toBe(200);
 		expect(Buffer.from(await img.arrayBuffer()).equals(PNG_BYTES)).toBe(true);
 		expect(img.headers.get("content-type")).toBe("image/png");
+	});
+
+	it("新建请求只认 followers;旧的 fans 按 zod 现状当多余键丢掉", async () => {
+		const withOldName = await post({
+			...extSub({ id: OTHER_ID }),
+			cachedProfile: { name: "只用旧名的人", fans: 99 },
+		});
+		expect(withOldName.status, await withOldName.clone().text()).toBe(200);
+
+		const profile = (await listed()).find((s) => s.id === OTHER_ID)?.cachedProfile;
+		expect(profile).toMatchObject({ name: "只用旧名的人", sign: "" });
+		expect(profile && "fans" in profile).toBe(false);
 	});
 
 	it("不知道粉丝数就不写这一格(写 0 是撒谎);没给头像 → 头像两格都缺、不建图", async () => {
@@ -354,16 +366,22 @@ describe("新建拓展订阅", () => {
 	});
 
 	it.each([
-		["名字是空串", { name: "" }],
-		["粉丝数是负的", { name: "某人", fans: -1 }],
-		["不是对象", "某人"],
-	])("资料里%s → 400", async (_label, cachedProfile) => {
+		["名字是空串", { name: "" }, ["cachedProfile", "name"]],
+		["粉丝数是负的", { name: "某人", followers: -1 }, ["cachedProfile", "followers"]],
+		["不是对象", "某人", ["cachedProfile"]],
+	])("资料里%s → 400,issues 点名对应格", async (_label, cachedProfile, issuePath) => {
 		const res = await post({ ...extSub(), cachedProfile });
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { code: string; message: string; issues: unknown[] };
+		const body = (await res.json()) as {
+			code: string;
+			message: string;
+			issues: Array<{ path: string[]; message: string }>;
+		};
 		expect(body.code).toBe("invalid");
 		expect(body.message).toContain("资料不合规");
-		expect(body.issues.length).toBeGreaterThan(0);
+		expect(body.issues).toContainEqual(
+			expect.objectContaining({ path: issuePath, message: expect.any(String) }),
+		);
 		expect(await listed()).toEqual([]);
 	});
 

@@ -551,16 +551,6 @@ export interface MarketplaceInstallRequest {
  *   走面板鉴权;引用随内容变,可以放心缓存),没有头像就**缺这一格**(不再写空串)。B 站订阅的头像由服务端抓进图库,
  *   同样放 `cachedProfile.avatar`,`cachedProfile.avatarUrl` 记抓图用的来源地址(抓不到时可能只有它);拓展订阅没有 `avatarUrl`。
  *   `cachedProfile.fans` 可能没有 —— 拓展不一定知道粉丝数,别补成 0。
- * - **新建**(`POST /api/subscriptions`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
- *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatarUrl?, fans? }`,`avatarUrl` 就是候选
- *   里那个位图 data URL(它是个网址,所以叫 `avatarUrl`)。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),
- *   头像存进图库后资料里换成图库引用 `avatar`、不再带那个 data URL。宿主先核,都过了才落盘:`identity.sourceKey`
- *   这个拓展得是装着的订阅源
- *   (**不要求在跑**,决策 10),没装是 404 `not_found`,装着但不是订阅源(没开订阅源那一口 /
- *   清单读不出来)是 400 `unsupported`;同一身份已经有了 → 409 `conflict`;资料不合规矩(头像不是
- *   png / jpeg / webp、魔数对不上、超过 128 KiB……)→ 400 `invalid`,`issues` 点名 `cachedProfile.*`。
- *   失败体一律是 {@link ErrorResponse}。已有的整份 POST 回来(启用开关)照旧,带来的 `cachedProfile`
- *   不收。
  */
 export type SubscriptionDTO = Subscription &
 	SubscriptionRuntimeDTO & {
@@ -575,6 +565,26 @@ export type SubscriptionDTO = Subscription &
 interface SubscriptionRuntimeDTO {
 	cachedProfile?: CreatorProfile;
 }
+
+/**
+ * 新建订阅(`POST /api/subscriptions`,`id` 还不存在)的整个请求体:整条订阅,外加可选的
+ * `cachedProfile` —— 放面板从解析门(`GET /api/ext/:id/lookup`)挑中的候选资料。
+ *
+ * `avatarUrl` 是候选里那个位图 data URL(它是个网址,所以叫 `avatarUrl`),规矩照旧。服务端只收
+ * `{ name, avatarUrl?, followers? }`,头像存进图库后资料里换成图库引用 `avatar`、不再带那个 data URL。
+ * 宿主先核,都过了才落盘:`identity.sourceKey` 这个拓展得是装着的订阅源(**不要求在跑**,决策 10),
+ * 没装是 404 `not_found`,装着但不是订阅源(没开订阅源那一口 / 清单读不出来)是 400
+ * `unsupported`;同一身份已经有了 → 409 `conflict`;资料不合规矩(头像不是 png / jpeg / webp、魔数对不上、
+ * 超过 128 KiB……)→ 400 `invalid`,`issues` 点名 `cachedProfile.*`。失败体一律是 {@link ErrorResponse}。
+ * 已有的整份 POST 回来(启用开关)照旧,带来的 `cachedProfile` 不收。
+ */
+export type SubscriptionCreateRequest = Subscription & {
+	cachedProfile?: {
+		name: string;
+		avatarUrl?: string;
+		followers?: number;
+	};
+};
 
 // ---- /api/history ----------------------------------------------------------
 

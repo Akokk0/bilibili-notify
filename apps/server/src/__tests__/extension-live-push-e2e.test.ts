@@ -226,7 +226,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
 			who[key] = { externalId: candidate.id, name: candidate.name, target: targetOf(key) };
-			const { id: _id, ...profile } = candidate;
+			const { id: _id, fans, ...profile } = candidate;
 			const base = makeExtensionSubscription({
 				id: SUBS[key].id,
 				extensionId: FAKE,
@@ -238,7 +238,10 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 					...json({
 						...base,
 						routing: { ...base.routing, liveStart: [who[key].target], liveEnd: [who[key].target] },
-						cachedProfile: profile,
+						cachedProfile: {
+							...profile,
+							...(fans === undefined ? {} : { followers: fans }),
+						},
 					}),
 				}),
 			);

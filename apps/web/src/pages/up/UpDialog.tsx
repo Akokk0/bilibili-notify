@@ -1,4 +1,8 @@
-import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
+import type {
+	CapabilitySupport,
+	ConnectionCapabilitiesMap,
+	SubscriptionCreateRequest,
+} from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddButton,
@@ -181,6 +185,8 @@ export interface UpDialogProps {
 	onSave: (next: Subscription) => void;
 	onDelete: () => void;
 	saving: boolean;
+	/** 新建草稿另拿的候选资料。它只用于预览与随 POST 提交,不冒充服务端回来的资料缓存。 */
+	createProfile?: NonNullable<SubscriptionCreateRequest["cachedProfile"]>;
 	/**
 	 * 拓展订阅是哪个平台的(ADR-0019 决策 5):只列它报得出的特性、「动态」按它的叫法、头部写它。
 	 * B 站订阅不看它。
@@ -286,6 +292,7 @@ export function UpDialog({
 	onSave,
 	onDelete,
 	saving,
+	createProfile,
 	focusSection,
 	platform,
 	tags,
@@ -341,6 +348,7 @@ export function UpDialog({
 	if (!draft) return null;
 
 	const color = subscriptionColor(draft);
+	const previewName = createProfile?.name.trim() || displayName(draft);
 	const identity = subscriptionIdentityOf(draft);
 	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
 	// 拓展订阅只列它那个源报得出的那几把特性(决策 5);B 站订阅全列,一切照旧。
@@ -602,17 +610,17 @@ export function UpDialog({
 				/>
 				<div className="absolute -bottom-7 left-5 flex items-end gap-3">
 					<Avatar
-						name={displayName(draft)}
+						name={previewName}
 						color={color}
 						size={64}
-						url={profileAvatarUrl(draft.cachedProfile)}
+						url={createProfile?.avatarUrl ?? profileAvatarUrl(draft.cachedProfile)}
 						ring
 					/>
 					<div
 						className="pb-2 text-bn-on-solid"
 						style={{ textShadow: "0 1px 4px rgba(0,0,0,0.45)" }}
 					>
-						<div className="text-bn-md font-bold">{displayName(draft)}</div>
+						<div className="text-bn-md font-bold">{previewName}</div>
 						<div
 							className="mt-0.5 text-bn-xs font-semibold"
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
@@ -625,10 +633,12 @@ export function UpDialog({
 									{ext.label}
 								</Pill>
 							) : null}
-							{draft.cachedProfile?.fans != null ? (
+							{(createProfile?.followers ?? draft.cachedProfile?.fans) != null ? (
 								<>
 									{isBili || ext ? <span className="mx-1 opacity-70">·</span> : null}
-									<span>{formatCount(draft.cachedProfile.fans)} 粉丝</span>
+									<span>
+										{formatCount(createProfile?.followers ?? draft.cachedProfile?.fans ?? 0)} 粉丝
+									</span>
 								</>
 							) : null}
 						</div>

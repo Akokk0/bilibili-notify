@@ -2,6 +2,7 @@ import type {
 	ConnectionCapabilitiesMap,
 	ExtensionLookupResponse,
 	ExtensionSubscriptionCandidate,
+	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
 import { colorFromSeed } from "@bilibili-notify/internal/constants";
 import { formatCount } from "@bilibili-notify/internal/format";
@@ -637,7 +638,7 @@ function CandidateList({
 }
 
 /**
- * 用选中的候选预填资料(ADR-0019 决策 49)—— 与 B 站那边把查到的资料放进草稿同一个做法。头像是
+ * 用选中的候选预填新建请求资料(ADR-0019 决策 49)—— 与 B 站那边把查到的资料放进草稿同一个做法。头像是
  * 候选的 data URL,它是个网址,放 `avatarUrl`;建成之后服务端把它存进图库、回来的资料里换成图库引用 `avatar`。
  * 没有头像就缺这一格(头像件见没有退首字)。
  *
@@ -645,14 +646,17 @@ function CandidateList({
  */
 function candidateProfile(
 	candidate: ExtensionSubscriptionCandidate,
-): NonNullable<Subscription["cachedProfile"]> {
+): NonNullable<SubscriptionCreateRequest["cachedProfile"]> {
 	return {
 		name: candidate.name,
 		...(candidate.avatar ? { avatarUrl: candidate.avatar } : {}),
-		sign: "",
-		lastRefreshedAt: new Date().toISOString(),
-		...(candidate.fans !== undefined ? { fans: candidate.fans } : {}),
+		...(candidate.fans !== undefined ? { followers: candidate.fans } : {}),
 	};
+}
+
+interface SubscriptionCreateDraft {
+	subscription: Subscription;
+	cachedProfile: NonNullable<SubscriptionCreateRequest["cachedProfile"]>;
 }
 
 function fansLabel(n: number): string {
@@ -769,11 +773,11 @@ export default function Subs() {
 	}, [copyMsg]);
 	const [showNewDialog, setShowNewDialog] = useState(false);
 	/**
-	 * Staged 草稿:点 NewSubDialog 搜索结果后,不立即 POST,而是构造一份 Subscription
-	 * 草稿放这里,接着打开 UpDialog 让用户配 routing / features / template 等;点
-	 * 「创建订阅」才落盘。关闭/取消则丢弃,UP 不会出现在订阅列表。
+	 * Staged 草稿:点 NewSubDialog 搜索结果后,不立即 POST,而是把订阅配置与候选的创建资料
+	 * 分开放这里,接着打开 UpDialog 让用户配 routing / features / template 等;点
+	 * 「创建订阅」才组装请求并落盘。关闭/取消则丢弃,UP 不会出现在订阅列表。
 	 */
-	const [newDraft, setNewDraft] = useState<Subscription | null>(null);
+	const [newDraft, setNewDraft] = useState<SubscriptionCreateDraft | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const filterDef = FILTERS.find((f) => f.id === filterId) ?? FILTERS[0];
@@ -843,11 +847,11 @@ export default function Subs() {
 			: null;
 
 	const upsert = useMutation({
-		mutationFn: async (s: Subscription) => {
+		mutationFn: async (body: Subscription | SubscriptionCreateRequest) => {
 			setError(null);
 			try {
-				await api.post<Subscription[]>("/api/subscriptions", s);
-				return s;
+				await api.post<Subscription[]>("/api/subscriptions", body);
+				return body;
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
 				else setError(String(err));
@@ -941,15 +945,16 @@ export default function Subs() {
 			sourceKey: BILIBILI_SOURCE_KEY,
 			externalId: profile.uid,
 		});
-		fresh.cachedProfile = {
-			name: profile.name,
-			// B 站的头像是 CDN 图链:放 `avatarUrl`;没有就缺这一格。
-			...(profile.avatar ? { avatarUrl: profile.avatar } : {}),
-			sign: profile.sign,
-			fans: profile.fans,
-			lastRefreshedAt: new Date().toISOString(),
+		const draft: SubscriptionCreateDraft = {
+			subscription: fresh,
+			cachedProfile: {
+				name: profile.name,
+				// B 站的头像是 CDN 图链:放 `avatarUrl`;没有就缺这一格。
+				...(profile.avatar ? { avatarUrl: profile.avatar } : {}),
+				followers: profile.fans,
+			},
 		};
-		setNewDraft(fresh);
+		setNewDraft(draft);
 		setShowNewDialog(false);
 	}
 
@@ -959,8 +964,10 @@ export default function Subs() {
 		candidate: ExtensionSubscriptionCandidate,
 	): void {
 		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.id });
-		fresh.cachedProfile = candidateProfile(candidate);
-		setNewDraft(fresh);
+		setNewDraft({
+			subscription: fresh,
+			cachedProfile: candidateProfile(candidate),
+		});
 		setShowNewDialog(false);
 	}
 
@@ -1127,18 +1134,24 @@ export default function Subs() {
 
 			{newDraft ? (
 				<UpDialog
-					sub={newDraft}
+					sub={newDraft.subscription}
+					createProfile={newDraft.cachedProfile}
 					targets={targets}
 					connections={connectionsQuery.data}
 					capabilities={capabilitiesQuery.data}
-					platform={platformOf(newDraft)}
+					platform={platformOf(newDraft.subscription)}
 					tags={tags}
 					globalFeatures={globalFeatures}
 					mode="create"
 					onClose={() => setNewDraft(null)}
 					saving={upsert.isPending}
 					onSave={(next: Subscription) => {
-						upsert.mutate(next, {
+						const { cachedProfile: _responseProfile, problems: _problems, ...subscription } = next;
+						const request: SubscriptionCreateRequest = {
+							...subscription,
+							cachedProfile: newDraft.cachedProfile,
+						};
+						upsert.mutate(request, {
 							onSuccess: () => setNewDraft(null),
 						});
 					}}

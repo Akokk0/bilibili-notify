@@ -1,4 +1,4 @@
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { SubscriptionCreateRequest, SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	type CreatorProfile,
@@ -46,22 +46,23 @@ export interface SubsRouteOptions {
 /**
  * 新建拓展订阅时随订阅一起交的资料 —— 面板挑中的那个解析门候选(决策 11 / 52)。
  *
- * 只收 `name` / `avatarUrl` / `fans`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
+ * 只收 `name` / `avatarUrl` / `followers`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
  * `avatarUrl` 要么不给(没有头像),要么是位图 data URL(它是个网址,所以叫 `avatarUrl`),魔数另核(见
  * `decodeSubscriptionAvatar`)。服务端把它存进图库,资料里换成图库引用 `avatar`。
  */
-const CreateProfileSchema = z.object({
-	name: z
-		.string({ error: "名字要是字符串" })
-		.min(1, "名字不能是空串")
-		.max(128, "名字不能超过 128 字"),
-	avatarUrl: z.string({ error: "头像要是字符串" }).optional(),
-	fans: z
-		.number({ error: "粉丝数要是数字" })
-		.int("粉丝数要是整数")
-		.nonnegative("粉丝数不能是负的")
-		.optional(),
-});
+const CreateProfileSchema: z.ZodType<NonNullable<SubscriptionCreateRequest["cachedProfile"]>> =
+	z.object({
+		name: z
+			.string({ error: "名字要是字符串" })
+			.min(1, "名字不能是空串")
+			.max(128, "名字不能超过 128 字"),
+		avatarUrl: z.string({ error: "头像要是字符串" }).optional(),
+		followers: z
+			.number({ error: "粉丝数要是数字" })
+			.int("粉丝数要是整数")
+			.nonnegative("粉丝数不能是负的")
+			.optional(),
+	});
 const CreateProfileBodySchema = z.object({
 	cachedProfile: CreateProfileSchema.optional(),
 });
@@ -226,7 +227,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			...(avatar === undefined ? {} : { avatar }),
 			sign: "",
 			// 不知道就不写 —— 写 0 是在面板上印一句假话。
-			...(seed.fans === undefined ? {} : { fans: seed.fans }),
+			...(seed.followers === undefined ? {} : { fans: seed.followers }),
 			lastRefreshedAt: new Date().toISOString(),
 		};
 		try {
