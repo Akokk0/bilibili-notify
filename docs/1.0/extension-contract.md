@@ -189,7 +189,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 - `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收。🔗 10-23（主人定）：清单收这一格随 3b-42 一起做。
 - `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。
 - `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，写正则的源码字符串，宿主按整串匹配，核新建订阅的外部 id 与特别关注名单的 id。可以不写（只做中立校验）。写在清单订阅源那一段的 `display` 里（与 `postNoun` 同处）。编译不过（或疑似灾难性回溯）的正则让清单校验不过、拓展装不上；正则源码最长 200 字（同内容过滤的 `blockRegex`），被核的值最长 256 字（同外部 id 本身的上限）。
-- `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。
+- `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。🔗 现状（3b-35，10-24）：描述符的 `creatorNoun` 与叫法函数已落，清单收 `creatorNoun` 仍随清单那几片。
 - `searchCreators` 3b 造、B 站实现、只给 AI 的搜人工具用；`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期。
 - `featureHints?`：唯一允许写自由文字的一格，覆盖特性开关下的小字。其余格只填词；描述符不装界面句子，句子由核心拼。
 - 清单**不收** `membershipPrograms` 与 `supportedExtras`：1.0 拓展声明不了会员与直播互动类特性（见下，ADR-0021 决策 38），这两格填了也用不上。会员档位（含 `color?` / `announcement?`）这一格等开放会员类特性时再加。
