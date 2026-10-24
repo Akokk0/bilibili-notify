@@ -82,7 +82,7 @@ function start(options: Options = {}) {
 		subscriptionStore: { list: options.list ?? (() => [SUB]) } as never,
 		subscriptionStateStore: {
 			get: vi.fn(() => ({
-				cachedProfile: { name: "甲", fans: 1, lastRefreshedAt: "x" },
+				cachedProfile: { name: "甲", followers: 1, refreshedAt: "x" },
 			})),
 			getAll: () => ({}),
 			patch: runtimePatch,

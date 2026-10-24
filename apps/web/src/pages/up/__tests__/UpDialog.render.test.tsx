@@ -114,7 +114,7 @@ describe("UpDialog · B 站订阅的头部", () => {
 	it("写「UID xxx」", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
-			cachedProfile: { name: "UP甲", sign: "", fans: 1, lastRefreshedAt: "t" },
+			cachedProfile: { name: "UP甲", followers: 1, refreshedAt: "t" },
 		};
 		render(
 			<UpDialog

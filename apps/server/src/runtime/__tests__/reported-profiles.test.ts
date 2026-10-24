@@ -115,7 +115,7 @@ describe("bindReportedProfiles", () => {
 		await new Promise((resolve) => setTimeout(resolve, coalesceMs + 50));
 		expect(announced).toHaveLength(1);
 		// 后报的粉丝没把先报的名字冲掉 —— 排成一条队处理。
-		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({ name: "甲", fans: 3 });
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({ name: "甲", followers: 3 });
 		expect(subscriptionState.get(B)?.cachedProfile).toMatchObject({ name: "乙" });
 	});
 
@@ -185,7 +185,7 @@ describe("bindReportedProfiles", () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
 		await subscriptionState.patch(A, {
-			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", lastRefreshedAt: "t" },
+			cachedProfile: { name: "旧名字", avatar: old.ref, refreshedAt: "t" },
 		});
 		const keep = vi.fn(images.keep);
 		bind({ images: { put: images.put, keep } });
@@ -204,8 +204,7 @@ describe("bindReportedProfiles", () => {
 			cachedProfile: {
 				name: "旧名字",
 				avatar: `${"c".repeat(64)}.png`,
-				sign: "",
-				lastRefreshedAt: "t",
+				refreshedAt: "t",
 			},
 		});
 		bind();
@@ -226,9 +225,8 @@ describe("bindReportedProfiles", () => {
 			cachedProfile: {
 				name: "旧名字",
 				avatar: old.ref,
-				sign: "",
-				fans: 1,
-				lastRefreshedAt: "2026-09-01T00:00:00.000Z",
+				followers: 1,
+				refreshedAt: "2026-09-01T00:00:00.000Z",
 			},
 		});
 		bind({
@@ -245,7 +243,7 @@ describe("bindReportedProfiles", () => {
 		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: old.ref,
-			fans: 1,
+			followers: 1,
 		});
 	});
 
@@ -253,7 +251,7 @@ describe("bindReportedProfiles", () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
 		await subscriptionState.patch(A, {
-			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", lastRefreshedAt: "t" },
+			cachedProfile: { name: "旧名字", avatar: old.ref, refreshedAt: "t" },
 		});
 		bind();
 		const gif = new Uint8Array(Buffer.from("GIF89a\x01\x00\x01\x00", "latin1"));
@@ -327,7 +325,12 @@ describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
 		await subscriptionState.patch(A, {
-			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", fans: 1, lastRefreshedAt: "t" },
+			cachedProfile: {
+				name: "旧名字",
+				avatar: old.ref,
+				followers: 1,
+				refreshedAt: "t",
+			},
 		});
 		// 另开一个图库,目录是个普通文件:往里写必挂(ENOTDIR)。续期仍走好的那个(旧头像在它那儿)。
 		const blocked = join(dataDir, "挡路");
@@ -351,7 +354,7 @@ describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
 		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: old.ref,
-			fans: 1,
+			followers: 1,
 		});
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/没存下来.*ENOTDIR/));
 	});

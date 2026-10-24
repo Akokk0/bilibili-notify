@@ -450,7 +450,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 					(await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.followers),
 				).toEqual([1000, 1050, 1111]);
 				const profile = (await extSub())?.cachedProfile;
-				expect(profile?.fans).toBe(2222);
+				expect(profile?.followers).toBe(2222);
 				expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
 			},
 			{ timeout: 3_000, interval: 50 },

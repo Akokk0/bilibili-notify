@@ -13,7 +13,7 @@ import { dataPath } from "./roots.js";
  * SubscriptionStateStore — per-subscription cached profile data, externalized out of the
  * persisted `Subscription` config.
  *
- * Why this exists: `cachedProfile.fans` / `lastRefreshedAt` get rewritten by
+ * Why this exists: `cachedProfile.followers` / `refreshedAt` get rewritten by
  * `ProfileRefresh` every dynamicCron tick (~2min). When that lived inside
  * `Subscription` and went through `ConfigStore.patchSubscription`, every tick
  * emitted `config-changed:subscriptions` → SubscriptionStore reseed → whole-
@@ -23,7 +23,7 @@ import { dataPath } from "./roots.js";
  * with its own write path that emits **no** config/subscription events —
  * breaks that chain entirely.
  *
- * Topology: single JSON file `<dataRoot>/state/sub-runtime.json` keyed by
+ * Topology: single JSON file `<dataRoot>/runtime/subscription-state.json` keyed by
  * `Subscription.id`, atomic tmpfile+rename writes, all mutations serialized
  * through one private write queue (mirrors `ConfigStore.runScoped`).
  *
@@ -56,11 +56,11 @@ export interface SubscriptionStateStore {
 	patch(id: string, partial: SubscriptionState): Promise<void>;
 	/** Drop any entry whose id is not in `keepIds` (orphan cleanup). */
 	prune(keepIds: readonly string[]): Promise<void>;
-	/** Load `<dataRoot>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
+	/** Load `<dataRoot>/runtime/subscription-state.json` (absent / malformed → empty). Idempotent. */
 	load(): Promise<void>;
 	/**
 	 * 所有订阅资料里存进图库的头像(去重)—— 图库清扫要的「这一家引用着谁」,装配时登记成引用方交出去。
-	 * 两支订阅的 `avatar` 都算;来源地址(`avatarUrl`)不是图库的东西,不算。
+	 * 两支订阅的 `avatar` 都算;B 站头像的来源网址不在核心资料缓存里,不算。
 	 *
 	 * 读的是内存里最新的那一份(patch 在写盘之前就换了它)。还没载入就被问,先把盘上的载进来再答 ——
 	 * 清扫要是赶在开机载入之前,拿一份空名单去删图,所有拓展订阅的头像过了宽限期就没了。
@@ -102,7 +102,7 @@ function cloneRuntime(r: SubscriptionState): SubscriptionState {
 }
 
 /** 订阅运行态在代里的位置。 */
-export const SUBSCRIPTION_STATE_FILE = ["runtime", "sub-runtime.json"] as const;
+export const SUBSCRIPTION_STATE_FILE = ["runtime", "subscription-state.json"] as const;
 
 export function createSubscriptionStateStore(
 	opts: CreateSubscriptionStateStoreOptions,

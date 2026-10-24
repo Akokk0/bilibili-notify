@@ -49,18 +49,22 @@ function makeLogger(): Logger {
 
 const PROFILE_A = {
 	name: "UP-A",
-	avatarUrl: "https://example.com/a.png",
-	sign: "sign-a",
-	fans: 100,
-	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
+	avatar: `${"a".repeat(64)}.png`,
+	bio: "sign-a",
+	followers: 100,
+	refreshedAt: "2026-05-19T00:00:00.000Z",
 };
-const PROFILE_A2 = { ...PROFILE_A, fans: 150, lastRefreshedAt: "2026-05-19T00:02:00.000Z" };
+const PROFILE_A2 = {
+	...PROFILE_A,
+	followers: 150,
+	refreshedAt: "2026-05-19T00:02:00.000Z",
+};
 let dir: string;
 let file: string;
 let logger: Logger;
 
 beforeEach(async () => {
-	dir = await mkdtemp(join(tmpdir(), "sub-runtime-test-"));
+	dir = await mkdtemp(join(tmpdir(), "subscription-state-test-"));
 	file = join(dir, ...SUBSCRIPTION_STATE_FILE);
 	logger = makeLogger();
 });
@@ -78,6 +82,10 @@ async function readFileJson(): Promise<Record<string, unknown>> {
 }
 
 describe("SubscriptionStateStore — 构造契约 (Bug 1 结构证明)", () => {
+	it("资料缓存落在 runtime/subscription-state.json", () => {
+		expect(SUBSCRIPTION_STATE_FILE).toEqual(["runtime", "subscription-state.json"]);
+	});
+
 	it("createSubscriptionStateStore 选项只有 dataRoot/logger,不接收任何 MessageBus/事件汇", () => {
 		// 纯结构断言:构造选项里没有 bus,所以 patch/prune 在源头上就不可能
 		// fan-out 成 config-changed / subscription-changed —— Bug 1 链被切断。
@@ -179,10 +187,10 @@ describe("SubscriptionStateStore.get / getAll — 防御性克隆", () => {
 		const store = make();
 		await store.patch("s1", { cachedProfile: { ...PROFILE_A } });
 		const all = store.getAll();
-		const s1 = all.s1 as { cachedProfile: { fans: number } };
-		s1.cachedProfile.fans = -999;
-		const reread = store.getAll().s1 as { cachedProfile: { fans: number } };
-		expect(reread.cachedProfile.fans).toBe(100);
+		const s1 = all.s1 as { cachedProfile: { followers: number } };
+		s1.cachedProfile.followers = -999;
+		const reread = store.getAll().s1 as { cachedProfile: { followers: number } };
+		expect(reread.cachedProfile.followers).toBe(100);
 		expect(store.get("does-not-exist")).toBeUndefined();
 	});
 });
@@ -255,19 +263,15 @@ describe("SubscriptionStateStore.listImageRefs — 图库清扫要的「资料�
 	/** 拓展订阅的资料:没有头像(两格都缺)。 */
 	const PROFILE_NO_AVATAR = {
 		name: "拓展甲",
-		sign: "",
-		lastRefreshedAt: "2026-05-19T00:00:00.000Z",
+		refreshedAt: "2026-05-19T00:00:00.000Z",
 	};
 
-	it("交出所有订阅资料里存进图库的头像(去重);B 站的远端网址和没有头像的不算", async () => {
+	it("交出所有订阅资料里存进图库的头像(去重);没有头像的不算", async () => {
 		const store = make();
 		await store.patch("ext-1", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } });
 		await store.patch("ext-2", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } });
 		await store.patch("ext-3", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_B } });
 		await store.patch("ext-4", { cachedProfile: PROFILE_NO_AVATAR });
-		await store.patch("bili-1", {
-			cachedProfile: { ...PROFILE_NO_AVATAR, avatarUrl: "https://example.com/a.png" },
-		});
 		await store.patch("bili-2", { cachedProfile: PROFILE_NO_AVATAR });
 
 		expect((await store.listImageRefs()).sort()).toEqual([REF_A, REF_B]);

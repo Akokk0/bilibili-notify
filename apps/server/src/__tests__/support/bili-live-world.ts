@@ -360,17 +360,15 @@ export async function bootBiliLiveWorld(
 	let runtimeRecord: {
 		cachedProfile?: {
 			name: string;
-			sign: string;
-			fans: number;
-			lastRefreshedAt: string;
+			followers: number;
+			refreshedAt: string;
 			fanClubName?: string;
 		};
 	} = {
 		cachedProfile: {
 			name: "测试主播",
-			sign: "",
-			fans: 1000,
-			lastRefreshedAt: "2026-03-01T00:00:00.000Z",
+			followers: 1000,
+			refreshedAt: "2026-03-01T00:00:00.000Z",
 			// 直播卡从核心资料缓存读粉丝牌名;这里预置成主播接口会交的同一个值。
 			fanClubName: "测试牌",
 		},
@@ -576,7 +574,7 @@ export async function bootBiliLiveWorld(
 			if (!runtimeRecord.cachedProfile) return;
 			runtimeRecord = {
 				...runtimeRecord,
-				cachedProfile: { ...runtimeRecord.cachedProfile, fans: value },
+				cachedProfile: { ...runtimeRecord.cachedProfile, followers: value },
 			};
 		},
 		/** B 站那头下播了(房间接口从此回没播,开播时刻也清成 B 站对没播的房间给的那串零)。不发帧。 */

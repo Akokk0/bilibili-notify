@@ -4,7 +4,6 @@ import {
 	type Failure,
 	fail,
 	type Identity,
-	type ImageRef,
 	type Json,
 	type KeyValueStore,
 	type Logger,
@@ -14,7 +13,7 @@ import {
 import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
-import { type ImagesDeps, syncProfileAvatar } from "./images.js";
+import { type ImagesDeps, type ProfileAvatarFields, syncProfileAvatar } from "./images.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
 /**
@@ -51,9 +50,7 @@ export interface ProfileFetcherDeps {
 }
 
 /** `ctx.state` 里 `profile:<uid>` 那一份:头像两格同 `syncProfileAvatar` 的规矩,粉丝牌名是直播那头记的。 */
-interface ProfileState {
-	avatarUrl?: string;
-	avatar?: ImageRef;
+interface ProfileState extends ProfileAvatarFields {
 	fanClubName?: string;
 }
 

@@ -50,8 +50,7 @@ const imagesOnDisk = () => readdir(dataPath(dataDir, "images"));
 const profileWith = (avatar: string) => ({
 	name: "拓展甲",
 	avatar,
-	sign: "",
-	lastRefreshedAt: "2026-10-04T00:00:00.000Z",
+	refreshedAt: "2026-10-04T00:00:00.000Z",
 });
 
 describe("createAppRuntime 里的订阅资料头像", () => {
@@ -83,14 +82,12 @@ describe("createAppRuntime 里的订阅资料头像", () => {
 		expect((await runtime.imageStore.sweep({ now: afterGrace() })).removed).toEqual([shared]);
 	});
 
-	it("B 站订阅的远端网址不是图库的东西:不会让任何一张图被当成还在引用", async () => {
+	it("核心资料没有远端网址格:只有不带头像的资料时,图库里的图不再被引用", async () => {
 		const ref = await putImage(runtime.profileImages, PNG_BYTES);
 		await runtime.subscriptionStateStore.patch(SUB_A, {
 			cachedProfile: {
 				name: "UP",
-				avatarUrl: "https://i0.hdslb.com/bfs/face/a.jpg",
-				sign: "",
-				lastRefreshedAt: "t",
+				refreshedAt: "t",
 			},
 		});
 

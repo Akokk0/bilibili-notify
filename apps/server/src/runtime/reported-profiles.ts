@@ -19,7 +19,7 @@ export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
  * 的那些,逐条写进它对上的每条订阅的资料缓存(`SubscriptionStateStore.cachedProfile`),头像存进图库、资料里放引用。
  *
  * - **给了哪格改哪格**:名字 / 粉丝数没给的保持原样;头像没给就沿用原来那张 —— 沿用也是「抄引用」,先 `keep`
- *   续期,图已经不在了就不留悬空的引用(头像格直接缺)。`lastRefreshedAt` 每次都换 —— 它说的是「资料什么时候
+ *   续期,图已经不在了就不留悬空的引用(头像格直接缺)。`refreshedAt` 每次都换 —— 它说的是「资料什么时候
  *   报过」。
  * - **同一张图再报一次引用不变**:图库按内容起名,面板的地址随之不变、浏览器的缓存照样命中。头像不合规矩
  *   (只收 png / jpeg / webp,约 96 KiB 封顶)或存不下来,只记一句,名字与粉丝照样更新、头像沿用原来那张。
@@ -94,7 +94,11 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 	async function applyOne(id: string, value: ProfileValue): Promise<boolean> {
 		const avatar =
 			value.avatar === undefined ? undefined : await storeReportedAvatar(id, value.avatar);
-		return cache.write(id, { name: value.name, avatar, fans: value.fans });
+		return cache.write(id, {
+			name: value.name,
+			avatar,
+			followers: value.fans,
+		});
 	}
 
 	async function apply(delivery: SubscriptionReportDelivery): Promise<void> {

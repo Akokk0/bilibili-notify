@@ -16,7 +16,7 @@ const WEBP = new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from(
 describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是图库引用,字节从图库取", () => {
 	const REF = `${"a".repeat(64)}.webp`;
 	const runtimeWith = (
-		cachedProfile: { avatar?: string; avatarUrl?: string } | undefined,
+		cachedProfile: { avatar?: string } | undefined,
 		read: (ref: string) => Promise<{ bytes: Buffer; mime: string } | undefined>,
 	) => ({
 		subscriptionStateStore: { get: () => (cachedProfile ? { cachedProfile } : undefined) },
@@ -34,8 +34,8 @@ describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是
 		expect(runtime.imageStore.read).toHaveBeenCalledWith(REF);
 	});
 
-	it("没有图库引用(没有资料、没有头像、B 站的远端网址):不去图库问", async () => {
-		for (const profile of [undefined, {}, { avatarUrl: "https://i0.hdslb.com/a.jpg" }]) {
+	it("没有图库引用(没有资料或没有头像):不去图库问", async () => {
+		for (const profile of [undefined, {}, { avatar: undefined }]) {
 			const runtime = runtimeWith(profile, async () => undefined);
 			expect(await readProfileAvatar(runtime as never, "s1")).toBeUndefined();
 			expect(runtime.imageStore.read).not.toHaveBeenCalled();

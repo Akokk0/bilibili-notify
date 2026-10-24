@@ -37,6 +37,8 @@ export interface BiliDevtoolsDeps {
 	dynamic: () => DynamicPollerLike | undefined;
 	/** 来源自己的房号缓存;直播场景挑房间时现取。 */
 	liveRooms: () => { roomIdOf(externalId: string): string | undefined } | undefined;
+	/** 来源自己的资料状态;假动态借作者头像时现取。 */
+	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
 	/** 登录心跳「现在就跑」的把手(`AuthSystem.healthCheckNow`),现取。 */
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
@@ -49,7 +51,12 @@ export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
 		scenarios: [
 			...liveScenarios({ subs: deps.subs, rooms, api: deps.api, liveRooms: deps.liveRooms }),
 			...liveEventScenarios({ subs: deps.subs, rooms, liveRooms: deps.liveRooms }),
-			...dynamicScenarios({ subs: deps.subs, api: deps.api, dynamic: deps.dynamic }),
+			...dynamicScenarios({
+				subs: deps.subs,
+				api: deps.api,
+				dynamic: deps.dynamic,
+				profileAvatars: deps.profileAvatars,
+			}),
 			loginStateScenario({ auth: deps.auth, bus: deps.bus }),
 			...biliTimerScenarios({
 				subs: deps.subs,

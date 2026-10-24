@@ -11,13 +11,13 @@ import { POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
 
 export interface PushHistoryReader {
 	/**
-	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubscriptionStateStore 的 cachedProfile:`avatar` 是存进图库的头像引用,
-	 * `avatarUrl` 是它的来源地址)。查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
+	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubscriptionStateStore 的 cachedProfile:`avatar` 是存进图库的头像引用)。
+	 * 查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
 	 */
 	subscriptionOf(subscriptionId: string):
 		| {
 				subscription: Subscription;
-				profile?: { name?: string; avatar?: string; avatarUrl?: string };
+				profile?: { name?: string; avatar?: string };
 		  }
 		| undefined;
 }

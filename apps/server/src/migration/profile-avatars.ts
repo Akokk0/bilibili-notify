@@ -2,15 +2,15 @@
  * 0.x 的拓展订阅头像 `avatars/<订阅 id>.<png|jpeg|webp>` → 图库 `images/<sha256>.<ext>`,资料缓存跟着改写
  * (ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,⑳c)。
  *
- * 不整目录搬:资料缓存(新代里的 `runtime/sub-runtime.json`,搬位置那一步复制进来的)每条资料的 `avatar` 按值的形状分:
+ * 不整目录搬:资料缓存(新代里的 `runtime/subscription-state.json`,搬位置那一步复制进来的)每条资料的 `avatar` 按值的形状分:
  *
  * - **同源相对地址**(开头是 `/`,0.x 的 `/api/subs/<id>/avatar?v=<摘要>`):拓展订阅才写得出来。顺着记录的键(订阅 id)
  *   找到 `avatars/` 里那一个文件,读字节、按嗅探认格式,是图库收的图就**复制**(不硬链接:图库靠刷新修改时间做宽限期,
  *   硬链接会改到第 0 代那份)进新代的图库,`avatar` 换成引用;对不上(文件不在、嗅探不过、超 8MB、软链、订阅 id 不是
- *   干净的文件名)就两格都缺。0.x 换图片类型时先写新的再删旧的,中间崩了会两个并存 —— 认地址里 `?v=` 的内容摘要
+ *   干净的文件名)就头像缺键。0.x 换图片类型时先写新的再删旧的,中间崩了会两个并存 —— 认地址里 `?v=` 的内容摘要
  *   对得上的那个,都对不上取最新写的(0.x 读头像也是取最新的)。
- * - **远端网址**(`http(s)://` 或 `//`,B 站的 CDN 图链):挪到 `avatarUrl`,不碰图库。
- * - **空串**:两格都缺。已经是图库引用的原样(对新代再迁不改字节)。
+ * - **远端网址**(`http(s)://` 或 `//`,B 站的 CDN 图链):直接丢掉,不碰图库;开机首轮资料刷新重新抓。
+ * - **空串**:头像缺键。已经是图库引用的原样(对新代再迁不改字节)。
  *
  * 按值的形状认、不去读订阅文件认身份:资料缓存按订阅 id 存,订阅文件读不懂时(配置仓开机会拒收它)这一步照样做得了。
  * 没有任何资料引用的头像文件(孤儿)不搬。资料缓存文件不在 / 读不懂 / 不是对象就不动它。
@@ -52,12 +52,8 @@ export interface ProfileAvatarResult {
 	orphans: number;
 }
 
-/** 一条资料的 `avatar` 迁成什么:不动、换成引用、挪成网址、两格都缺。 */
-type Converted =
-	| { kind: "keep" }
-	| { kind: "ref"; ref: ImageRef }
-	| { kind: "url"; url: string }
-	| { kind: "none" };
+/** 一条资料的 `avatar` 迁成什么:不动、换成引用、缺键。 */
+type Converted = { kind: "keep" } | { kind: "ref"; ref: ImageRef } | { kind: "none" };
 
 const isRemoteUrl = (value: string): boolean => /^(?:https?:)?\/\//i.test(value);
 
@@ -66,7 +62,7 @@ export async function migrateProfileAvatars(options: {
 	zeroDir: string;
 	/** 新代的图库目录 `images/`。 */
 	imagesDir: string;
-	/** 新代里的资料缓存 `runtime/sub-runtime.json`。 */
+	/** 新代里的资料缓存 `runtime/subscription-state.json`。 */
 	runtimeFile: string;
 }): Promise<ProfileAvatarResult> {
 	const { zeroDir, imagesDir, runtimeFile } = options;
@@ -117,7 +113,7 @@ export async function migrateProfileAvatars(options: {
 
 	async function convert(subId: string, avatar: string): Promise<Converted> {
 		if (isValidImageRef(avatar)) return { kind: "keep" };
-		if (isRemoteUrl(avatar)) return { kind: "url", url: avatar };
+		if (isRemoteUrl(avatar)) return { kind: "none" };
 		if (!avatar.startsWith("/")) return { kind: "none" }; // 空串,和认不得的值:都当没有。
 		const ref = await adopt(subId, avatar);
 		if (ref === undefined) {
@@ -144,12 +140,11 @@ export async function migrateProfileAvatars(options: {
 				continue;
 			}
 			changed = true;
-			// `avatar` 在原位换掉(引用 / 挪成 avatarUrl / 拿掉),别的格一个不动。
+			// `avatar` 在原位换掉(引用 / 拿掉),别的格一个不动。
 			const cachedProfile: Record<string, unknown> = {};
 			for (const [key, value] of Object.entries(profile)) {
 				if (key !== "avatar") cachedProfile[key] = value;
 				else if (converted.kind === "ref") cachedProfile.avatar = converted.ref;
-				else if (converted.kind === "url") cachedProfile.avatarUrl = converted.url;
 			}
 			next[subId] = { ...record, cachedProfile };
 		}

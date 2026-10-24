@@ -160,11 +160,11 @@ function makeDeps(): RouteDeps {
 			subscriptionStateStore: {
 				get: (id: string) =>
 					id === "b-flat"
-						? { cachedProfile: { fans: 8888 } }
+						? { cachedProfile: { followers: 8888 } }
 						: id === "e-1"
-							? { cachedProfile: { fans: 999 } }
+							? { cachedProfile: { followers: 999 } }
 							: id === "e-3"
-								? { cachedProfile: { fans: 5 } }
+								? { cachedProfile: { followers: 5 } }
 								: undefined,
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },

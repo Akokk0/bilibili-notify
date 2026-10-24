@@ -225,10 +225,9 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			name: seed.name,
 			// 没有头像就是这一格缺,不写空串。
 			...(avatar === undefined ? {} : { avatar }),
-			sign: "",
 			// 不知道就不写 —— 写 0 是在面板上印一句假话。
-			...(seed.followers === undefined ? {} : { fans: seed.followers }),
-			lastRefreshedAt: new Date().toISOString(),
+			...(seed.followers === undefined ? {} : { followers: seed.followers }),
+			refreshedAt: new Date().toISOString(),
 		};
 		try {
 			await deps.runtime.subscriptionStateStore.patch(sub.id, { cachedProfile });

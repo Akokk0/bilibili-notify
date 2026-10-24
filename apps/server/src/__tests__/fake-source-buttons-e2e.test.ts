@@ -107,11 +107,11 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		return list.find((s) => s.id === subscriptionId)?.cachedProfile;
 	}
 
-	/** 等甲这一次报的资料落进去(`lastRefreshedAt` 换过)。 */
+	/** 等甲这一次报的资料落进去(`refreshedAt` 换过)。 */
 	function refreshedAfter(before: Awaited<ReturnType<typeof profileOf>>) {
 		return vi.waitFor(async () => {
 			const now = await profileOf(SUB_IDS.a);
-			expect(now?.lastRefreshedAt).not.toBe(before?.lastRefreshedAt);
+			expect(now?.refreshedAt).not.toBe(before?.refreshedAt);
 			return now;
 		});
 	}
@@ -254,7 +254,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		await press("report.profile");
 		const first = await refreshedAfter(before);
 		expect(first?.name).toContain("第 1 版");
-		expect(first?.fans).not.toBe(before?.fans);
+		expect(first?.followers).not.toBe(before?.followers);
 		expect(first?.avatar && isValidImageRef(first.avatar)).toBe(true);
 		expect(first?.avatar).not.toBe(before?.avatar);
 

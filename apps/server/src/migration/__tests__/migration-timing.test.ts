@@ -363,9 +363,9 @@ async function expectMigrated(
 	expect(libraryImages.every(isValidImageRef)).toBe(true);
 	// 引用图库的有两家:资料缓存,和保留期内的历史行(原件指的是这些行的同一批图)。
 	const referenced = new Set<string>(historyRefs);
-	// 资料缓存:拓展订阅的头像是图库引用(旧的相对地址一个不剩),B 站订阅的头像挪到了 avatarUrl。
+	// 资料缓存:拓展订阅头像是图库引用;B 站远端头像地址不保留。
 	const profiles = JSON.parse(
-		await readFile(join(generation, "runtime", "sub-runtime.json"), "utf8"),
+		await readFile(join(generation, "runtime", "subscription-state.json"), "utf8"),
 	) as Record<string, { cachedProfile?: { avatar?: string; avatarUrl?: string } }>;
 	for (const id of counts.extensionSubscriptionIds) {
 		const avatar = profiles[id]?.cachedProfile?.avatar ?? "";
@@ -373,7 +373,7 @@ async function expectMigrated(
 		referenced.add(avatar);
 	}
 	for (const { id } of counts.biliSubscriptions) {
-		expect(profiles[id]?.cachedProfile?.avatarUrl, `${id} 的头像网址`).toMatch(/^https:\/\//);
+		expect(profiles[id]?.cachedProfile).not.toHaveProperty("avatarUrl");
 		expect(profiles[id]?.cachedProfile).not.toHaveProperty("avatar");
 	}
 	expect([...referenced].sort()).toEqual(libraryImages);

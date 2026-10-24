@@ -5,8 +5,8 @@
  * 不再整目录搬:资料缓存(0.x 的 `state/sub-runtime.json`,迁移里复制进新代)里拓展订阅的 `avatar` 是同源相对地址
  * `/api/subs/<id>/avatar?v=…`,迁移顺着订阅 id 找到 `avatars/` 里那一个文件,读字节、按嗅探认格式,是图库收的图就
  * **复制**(不硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份)进新代 `images/<sha256>.<ext>`,`avatar`
- * 换成引用。B 站订阅的 `avatar` 是 B 站 CDN 的远端网址,挪到 `avatarUrl`。空串、对不上的(文件不在、嗅探不过、超 8MB、
- * 软链、订阅 id 不是干净的文件名)都是两格都缺。没有任何资料引用的头像文件(孤儿)不搬。
+ * 换成引用。B 站订阅的 `avatar` 是 B 站 CDN 的远端网址,直接丢掉。空串、对不上的(文件不在、嗅探不过、超 8MB、
+ * 软链、订阅 id 不是干净的文件名)都是头像缺键。没有任何资料引用的头像文件(孤儿)不搬。
  * 改写写的是新文件(原子换名),第 0 代一个字节不动。
  *
  * 怎么认一条资料是拓展的还是 B 站的:**看 `avatar` 值的形状** —— 开头是 `/` 的同源相对地址只有拓展订阅写得出来,
@@ -95,22 +95,24 @@ describe("拓展订阅的头像", () => {
 			(await stat(join(sandbox.zero, "avatars", `${EXT_A}.png`))).ino,
 		);
 		const record = (await readRuntime())[EXT_A];
-		expect(record?.cachedProfile).toEqual(
-			profile(ref, { fans: 7 }), // avatar 在原位换成引用,别的格一个不动
-		);
-		expect(record?.cachedProfile).not.toHaveProperty("avatarUrl");
-		// 记录里别的东西不碰。
-		expect(record).toMatchObject({
-			fansBaseline: { value: 5, ts: "2026-09-01T00:00:00.000Z" },
-			roomId: "123",
-			followed: true,
+		expect(record).toEqual({
+			cachedProfile: {
+				name: "某人",
+				avatar: ref,
+				followers: 7,
+				refreshedAt: "2026-09-01T00:00:00.000Z",
+			},
 		});
+		expect(record?.cachedProfile).not.toHaveProperty("avatarUrl");
+		expect(record).not.toHaveProperty("roomId");
+		expect(record).not.toHaveProperty("fansBaseline");
+		expect(record).not.toHaveProperty("followed");
 		expect(report.transfers).toContainEqual({
 			from: `avatars/${EXT_A}.png`,
 			to: `images/${ref}`,
 			method: "copy",
 		});
-		expect(report.rewritten).toContain("runtime/sub-runtime.json");
+		expect(report.rewritten).toContain("runtime/subscription-state.json");
 		// 头像目录不再整个搬进新代。
 		expect(await readdir(join(sandbox.target, "avatars")).catch(() => [])).toEqual([]);
 	});
@@ -181,7 +183,7 @@ describe("拓展订阅的头像", () => {
 });
 
 describe("B 站订阅的头像", () => {
-	it("远端网址挪到 avatarUrl,不碰图库;相对协议的 // 也是网址", async () => {
+	it("B 站远端网址直接丢掉,不碰图库;相对协议的 // 也丢掉", async () => {
 		await placeRuntime({
 			[BILI]: { cachedProfile: profile(BILI_URL, { fans: 9 }) },
 			b2: { cachedProfile: profile("//i1.hdslb.com/bfs/face/x.jpg") },
@@ -192,21 +194,21 @@ describe("B 站订阅的头像", () => {
 		const runtime = await readRuntime();
 		expect(runtime[BILI]?.cachedProfile).toEqual({
 			name: "某人",
-			avatarUrl: BILI_URL,
-			sign: "",
-			lastRefreshedAt: "2026-09-01T00:00:00.000Z",
-			fans: 9,
+			followers: 9,
+			refreshedAt: "2026-09-01T00:00:00.000Z",
 		});
 		expect(runtime[BILI]?.cachedProfile).not.toHaveProperty("avatar");
-		expect(runtime.b2?.cachedProfile).toMatchObject({ avatarUrl: "//i1.hdslb.com/bfs/face/x.jpg" });
+		expect(runtime[BILI]?.cachedProfile).not.toHaveProperty("avatarUrl");
+		expect(runtime.b2?.cachedProfile).not.toHaveProperty("avatar");
+		expect(runtime.b2?.cachedProfile).not.toHaveProperty("avatarUrl");
 		expect(await readImagesDir()).toEqual([]);
 		expect(report.transfers.some((t) => t.to.startsWith("images/"))).toBe(false);
-		expect(report.rewritten).toContain("runtime/sub-runtime.json");
+		expect(report.rewritten).toContain("runtime/subscription-state.json");
 	});
 });
 
 describe("没有头像", () => {
-	it("空串 → 两格都缺;没有 avatar 这一格的资料原样", async () => {
+	it("空串 → 头像缺键;没有资料的记录整条删", async () => {
 		await placeRuntime({
 			[EXT_A]: { cachedProfile: profile("") },
 			[BILI]: {
@@ -222,28 +224,27 @@ describe("没有头像", () => {
 		const runtime = await readRuntime();
 		expect(runtime[EXT_A]?.cachedProfile).toEqual({
 			name: "某人",
-			sign: "",
-			lastRefreshedAt: "2026-09-01T00:00:00.000Z",
+			refreshedAt: "2026-09-01T00:00:00.000Z",
 		});
 		expect(runtime[BILI]?.cachedProfile).toEqual({
 			name: "无头像",
-			sign: "",
-			lastRefreshedAt: "t",
+			refreshedAt: "t",
 		});
-		expect(runtime.bare).toEqual({ roomId: "1" });
+		expect(runtime.bare).toBeUndefined();
 	});
 
-	it("什么都不用改的资料缓存不重写(不进 rewritten,还是从第 0 代原样复制过来的那一份)", async () => {
+	it("头像不用改也因资料形状变化重写", async () => {
 		await placeRuntime({
 			[BILI]: { cachedProfile: { name: "无头像", sign: "", lastRefreshedAt: "t" } },
 		});
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("runtime/sub-runtime.json");
-		expect(await readFile(runtimePath())).toEqual(
-			await readFile(join(sandbox.zero, "state", "sub-runtime.json")),
-		);
+		expect(report.rewritten).toContain("runtime/subscription-state.json");
+		expect((await readRuntime())[BILI]?.cachedProfile).toEqual({
+			name: "无头像",
+			refreshedAt: "t",
+		});
 	});
 
 	it("连资料缓存文件都没有、头像目录里却有文件 → 不炸,头像都是孤儿", async () => {
@@ -264,7 +265,7 @@ describe("没有头像", () => {
 		const report = await sandbox.migrate();
 
 		expect(await readFile(runtimePath(), "utf8")).toBe("{ not json");
-		expect(report.rewritten).not.toContain("runtime/sub-runtime.json");
+		expect(report.rewritten).not.toContain("runtime/subscription-state.json");
 	});
 });
 
@@ -285,7 +286,7 @@ describe("带不过来的头像", () => {
 		});
 	});
 
-	it("被引用却对不上的(文件不在、不是图库收的图、超 8MB、软链、订阅 id 不是干净的文件名)两格都缺,别的原样", async () => {
+	it("被引用却对不上的(文件不在、不是图库收的图、超 8MB、软链、订阅 id 不是干净的文件名)头像缺键,别的原样", async () => {
 		const missing = "a0000000-0000-4000-8000-0000000000c1";
 		const notImage = "a0000000-0000-4000-8000-0000000000c2";
 		const huge = "a0000000-0000-4000-8000-0000000000c3";
@@ -355,7 +356,7 @@ describe("迁出来的新代", () => {
 		const store = createSubscriptionStateStore({ dataRoot: sandbox.target, logger: silentLogger });
 
 		expect(await store.listImageRefs()).toEqual([refOf(PNG_BYTES, "png")]);
-		expect(store.get(BILI)?.cachedProfile?.avatarUrl).toBe(BILI_URL);
+		expect(store.get(BILI)?.cachedProfile).not.toHaveProperty("avatarUrl");
 	});
 
 	it("对新代再迁一次什么都不改:已经是图库引用的原样留着,不去第 0 代找", async () => {

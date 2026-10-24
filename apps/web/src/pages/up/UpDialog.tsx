@@ -633,11 +633,12 @@ export function UpDialog({
 									{ext.label}
 								</Pill>
 							) : null}
-							{(createProfile?.followers ?? draft.cachedProfile?.fans) != null ? (
+							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
 								<>
 									{isBili || ext ? <span className="mx-1 opacity-70">·</span> : null}
 									<span>
-										{formatCount(createProfile?.followers ?? draft.cachedProfile?.fans ?? 0)} 粉丝
+										{formatCount(createProfile?.followers ?? draft.cachedProfile?.followers ?? 0)}{" "}
+										粉丝
 									</span>
 								</>
 							) : null}

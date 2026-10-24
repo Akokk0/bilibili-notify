@@ -878,12 +878,13 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		// alice 有存好的资料名(历史行的名字快照取它);别人没有。
 		await mkdir(join(generation, "runtime"), { recursive: true });
 		await writeFile(
-			join(generation, "runtime", "sub-runtime.json"),
+			join(generation, "runtime", "subscription-state.json"),
 			JSON.stringify({
 				[SUB.alice]: {
 					cachedProfile: {
 						name: ALICE_PROFILE.name,
-						fans: ALICE_PROFILE.followers,
+						followers: ALICE_PROFILE.followers,
+						refreshedAt: new Date().toISOString(),
 						fanClubName: ALICE_PROFILE.fanClubName,
 					},
 				},
@@ -2770,8 +2771,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				expect(await carolProfile()).toMatchObject({
 					name: "卡罗资料名P39",
 					avatar: stored.ref,
-					sign: "卡罗的简介P39",
-					fans: 4242,
+					bio: "卡罗的简介P39",
+					followers: 4242,
 					fanClubName: "卡罗团P39",
 				}),
 			);

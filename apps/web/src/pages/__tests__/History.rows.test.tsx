@@ -262,7 +262,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
-		cachedProfile: { name, sign: "", lastRefreshedAt: "2026-09-23T00:00:00Z" },
+		cachedProfile: { name, refreshedAt: "2026-09-23T00:00:00Z" },
 	};
 }
 
@@ -330,8 +330,7 @@ describe("推送历史 · 拓展行", () => {
 			id: "s-readded",
 			cachedProfile: {
 				name: "现在的抖音号",
-				sign: "",
-				lastRefreshedAt: "2026-09-24T00:00:00Z",
+				refreshedAt: "2026-09-24T00:00:00Z",
 			},
 		};
 		mockApi([extRow()], [readded]);
@@ -341,19 +340,19 @@ describe("推送历史 · 拓展行", () => {
 
 	describe("头像:写入期快照赢过订阅现在的头像;没有快照就用订阅现在的(⑳c:图库引用 / 远端网址)", () => {
 		const REF = `${"d".repeat(64)}.png`;
-		const withAvatar = (sub: Subscription, avatar: { avatar?: string; avatarUrl?: string }) => ({
+		const withAvatar = (sub: Subscription, avatar: { avatar?: string }) => ({
 			...sub,
 			cachedProfile: {
 				...(sub.cachedProfile as NonNullable<Subscription["cachedProfile"]>),
 				...avatar,
 			},
 		});
-		const readded = (avatar: { avatar?: string; avatarUrl?: string }): Subscription =>
+		const readded = (avatar: { avatar?: string }): Subscription =>
 			withAvatar(
 				{
 					...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 					id: "s-readded",
-					cachedProfile: { name: "现在的抖音号", sign: "", lastRefreshedAt: "t" },
+					cachedProfile: { name: "现在的抖音号", refreshedAt: "t" },
 				},
 				avatar,
 			);
@@ -384,32 +383,24 @@ describe("推送历史 · 拓展行", () => {
 			expect(container.querySelector(`img[src="/api/images/${SNAPSHOT}"]`)).toBeNull();
 		});
 
-		it("B 站行没有头像快照(服务端不抓 B 站头像)→ 订阅现在的远端网址,不会有旧网址", async () => {
+		it("B 站行没有头像快照 → 用订阅现在的图库头像,走 /api/images/<引用>", async () => {
 			mockApi(
 				[row({ subscriptionId: "s-bili", nameSnapshot: undefined, avatarSnapshot: undefined })],
-				[
-					withAvatar(biliSub("s-bili", "u1", "某B站UP"), {
-						avatarUrl: "https://i0.hdslb.com/new.jpg",
-					}),
-				],
+				[withAvatar(biliSub("s-bili", "u1", "某B站UP"), { avatar: REF })],
 			);
 			const { container } = renderHistory();
 			await waitFor(() => expect(screen.getByText("某B站UP")).toBeTruthy());
-			expect(container.querySelector('img[src="https://i0.hdslb.com/new.jpg"]')).not.toBeNull();
+			expect(container.querySelector(`img[src="/api/images/${REF}"]`)).not.toBeNull();
 		});
 
-		it("B 站行没有快照 → 订阅现在的远端网址", async () => {
+		it("B 站行没有快照 → 没有图库头像就不画图片", async () => {
 			mockApi(
 				[row({ subscriptionId: "s-bili", nameSnapshot: undefined })],
-				[
-					withAvatar(biliSub("s-bili", "u1", "某B站UP"), {
-						avatarUrl: "https://i0.hdslb.com/new.jpg",
-					}),
-				],
+				[biliSub("s-bili", "u1", "某B站UP")],
 			);
 			const { container } = renderHistory();
 			await waitFor(() => expect(screen.getByText("某B站UP")).toBeTruthy());
-			expect(container.querySelector('img[src="https://i0.hdslb.com/new.jpg"]')).not.toBeNull();
+			expect(container.querySelector("img")).toBeNull();
 		});
 	});
 

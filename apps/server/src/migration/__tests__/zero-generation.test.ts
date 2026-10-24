@@ -224,9 +224,9 @@ const ZERO_FILES: Record<string, string> = {
 		},
 	]),
 	"state/adapters.json": "[]",
-	// 资料缓存:拓展订阅的头像是同源相对地址、B 站的是远端网址 —— 第二遍换成图库引用 / 挪到 avatarUrl。
+	// 资料缓存:拓展订阅头像换图库引用,B 站远端头像与记录层旧字段由后续迁移丢弃。
 	"state/sub-runtime.json": JSON.stringify({
-		"sub-1": {
+		"33333333-3333-4333-8333-333333333333": {
 			cachedProfile: {
 				name: "B 站甲",
 				avatar: BILI_AVATAR_URL,
@@ -375,7 +375,7 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"state/subscriptions.json": "config/subscriptions.json",
 	"state/connections.json": "config/connections.json",
 	"state/targets.json": "config/targets.json",
-	"state/sub-runtime.json": "runtime/sub-runtime.json",
+	"state/sub-runtime.json": "runtime/subscription-state.json",
 	"state/roast-drafts.json": "runtime/roast-drafts.json",
 	"secrets/master.key": "secrets/master.key",
 	"secrets/kdf.salt": "secrets/kdf.salt",
@@ -412,8 +412,9 @@ const REWRITTEN = [
 	"history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json",
 	"history/repush/2026-09-30/row-2.json",
+	"runtime/bilibili/state.json",
 	"runtime/roast-drafts.json",
-	"runtime/sub-runtime.json",
+	"runtime/subscription-state.json",
 	"skins/dashboard/active.json",
 	"skins/dashboard/skin-1/skin.json",
 	"stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
@@ -507,6 +508,8 @@ describe("migrateZeroGeneration", () => {
 			"stats/recording/33333333-3333-4333-8333-333333333333.jsonl",
 			// 运行记录是迁移新写的(㉗b)。
 			"uptime/hours.jsonl",
+			// 旧资料记录里的 B 站房号拆进集成自己的状态袋(3b-62)。
+			"runtime/bilibili/state.json",
 			// B 站登录由 `secrets/cookies.json` 转成(3a-26)。
 			"secrets/bilibili/secrets.enc",
 			`images/${AVATAR_REF}`,
@@ -639,7 +642,7 @@ describe("migrateZeroGeneration", () => {
 		}
 	});
 
-	it("拓展订阅头像:资料缓存引用着的复制进图库(记在搬过去的里),资料里换成引用、B 站的网址挪到 avatarUrl;孤儿不搬,按数量记一句", async () => {
+	it("资料头像进图库后改资料形状,B 站远端头像丢掉、房号进它自己的状态;孤儿头像不搬", async () => {
 		await placeZeroGeneration();
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
@@ -651,21 +654,53 @@ describe("migrateZeroGeneration", () => {
 			new Uint8Array(JPEG_BYTES),
 		);
 		const runtime = JSON.parse(
-			await readFile(join(target, "runtime", "sub-runtime.json"), "utf8"),
-		) as Record<string, { cachedProfile?: Record<string, unknown>; roomId?: string }>;
+			await readFile(join(target, "runtime", "subscription-state.json"), "utf8"),
+		) as Record<string, { cachedProfile?: Record<string, unknown> }>;
 		expect(runtime["sub-2"]?.cachedProfile).toMatchObject({ name: "抖音乙", avatar: AVATAR_REF });
-		expect(runtime["sub-1"]?.cachedProfile).toMatchObject({
-			name: "B 站甲",
-			avatarUrl: BILI_AVATAR_URL,
+		expect(runtime["33333333-3333-4333-8333-333333333333"]).toEqual({
+			cachedProfile: {
+				name: "B 站甲",
+				followers: 10,
+				refreshedAt: "2026-09-30T00:00:00.000Z",
+			},
 		});
-		expect(runtime["sub-1"]?.cachedProfile).not.toHaveProperty("avatar");
-		expect(runtime["sub-1"]?.roomId).toBe("21000000");
+		const biliState = JSON.parse(
+			await readFile(join(target, "runtime", "bilibili", "state.json"), "utf8"),
+		) as { version: number; entries: Record<string, unknown> };
+		expect(biliState).toEqual({ version: 1, entries: { "room:12345": "21000000" } });
 		// 头像目录不整个搬进新代。
 		expect(existsSync(join(target, "avatars"))).toBe(false);
 		expect(report.skipped.filter((s) => s.path === "avatars").map((s) => s.reason)).toEqual([
 			expect.stringContaining("不整目录进新代"),
 			"1 个头像文件没有任何资料引用,没带过来",
 		]);
+	});
+
+	it("订阅文件读不到时资料照迁成新形状,房号一个不写", async () => {
+		await placeZeroGeneration();
+		await writeFile(join(zero, "state", "subscriptions.json"), "{ not json");
+
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
+
+		const runtime = JSON.parse(
+			await readFile(join(target, "runtime", "subscription-state.json"), "utf8"),
+		) as Record<string, { cachedProfile?: Record<string, unknown> }>;
+		expect(runtime["33333333-3333-4333-8333-333333333333"]).toEqual({
+			cachedProfile: {
+				name: "B 站甲",
+				followers: 10,
+				refreshedAt: "2026-09-30T00:00:00.000Z",
+			},
+		});
+		expect(runtime["sub-2"]?.cachedProfile).toMatchObject({
+			name: "抖音乙",
+			avatar: AVATAR_REF,
+			refreshedAt: "2026-09-30T00:00:00.000Z",
+		});
+		expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("sign");
+		expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("lastRefreshedAt");
+		expect(existsSync(join(target, "runtime", "bilibili", "state.json"))).toBe(false);
+		expect(report.rewritten).toContain("runtime/subscription-state.json");
 	});
 
 	it("历史图:保留期内的行引用着的复制进图库(记在搬过去的里),行里 imageRef 换成 image、远端头像网址丢掉;历史图目录不整个搬,记一句", async () => {
@@ -791,8 +826,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 50,
-			output: "48af15eca84e848877bc8fe3c0df6355052e2c4023e4fb0b20d3a3ea63a1c20c",
+			revision: 51,
+			output: "cdc1461318fefbb1e2062f71c1966c0bd88e6ad6a29ff4c543c31e3af7cfc7d6",
 		});
 	});
 });

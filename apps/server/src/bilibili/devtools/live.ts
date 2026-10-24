@@ -22,8 +22,6 @@ export interface SubPick {
 	enabled: boolean;
 	/** 特别关注名单上的观众 id(进场 / 弹幕推送的白名单)。 */
 	specialViewers?: string[];
-	/** 头像 url(假动态的作者头像 / 封面借它)。 */
-	avatar?: string;
 }
 
 export interface RoomPickerDeps {

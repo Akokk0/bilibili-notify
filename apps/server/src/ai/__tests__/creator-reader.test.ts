@@ -32,7 +32,7 @@ const BOB_OFF = {
 	enabled: false,
 };
 
-type Profiles = Record<string, { name?: string; fans?: number; sign?: string }>;
+type Profiles = Record<string, { name?: string; followers?: number; bio?: string }>;
 
 function readerOf(opts: {
 	profiles?: Profiles;
@@ -64,9 +64,9 @@ function readerOf(opts: {
 }
 
 describe("reader.profile —— 只读资料缓存", () => {
-	it("订阅着的人:缓存里的名字、粉丝数、简介(缓存里的 sign 就是简介);缺的格不带", async () => {
+	it("订阅着的人:缓存里的名字、粉丝数、简介;缺的格不带", async () => {
 		const reader = readerOf({
-			profiles: { "sub-alice": { name: "爱丽丝", fans: 99, sign: "简介" } },
+			profiles: { "sub-alice": { name: "爱丽丝", followers: 99, bio: "简介" } },
 		});
 		expect(await reader.profile("acme:alice-ext")).toEqual({
 			ok: true,

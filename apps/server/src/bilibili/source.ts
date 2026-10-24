@@ -71,6 +71,8 @@ export interface BiliSource extends Source {
 	dynamic(): DynamicPoller | undefined;
 	/** 直播房号;没 start 或已 stop 时是 undefined。开发场景挑房间读它。 */
 	liveRooms(): { roomIdOf(externalId: string): string | undefined } | undefined;
+	/** 资料头像网址;没 start 或已 stop 时是 undefined。开发场景造 B 站假动态时读它。 */
+	profileAvatars(): { avatarUrlOf(externalId: string): string | undefined } | undefined;
 }
 
 /** 从 B 站设置算动态引擎的配置(启动与热更共用)。 */
@@ -202,6 +204,19 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				? undefined
 				: {
 						roomIdOf: (externalId) => roomIds?.get(externalId),
+					},
+		profileAvatars: () =>
+			sourceCtx === undefined
+				? undefined
+				: {
+						avatarUrlOf: (externalId) => {
+							const profile = sourceCtx?.state?.get(`profile:${externalId}`);
+							if (typeof profile !== "object" || profile === null || Array.isArray(profile)) {
+								return undefined;
+							}
+							const avatarUrl = (profile as Record<string, unknown>).avatarUrl;
+							return typeof avatarUrl === "string" ? avatarUrl : undefined;
+						},
 					},
 		fetchProfile(identity, signal) {
 			return profileFetcher

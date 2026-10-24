@@ -46,7 +46,12 @@ function setup() {
 		await api.api.fetchAllDynamic();
 	});
 	const reg = biliRegistry(
-		dynamicScenarios({ subs: () => SUBS, api, dynamic: () => ({ detectNow }) }),
+		dynamicScenarios({
+			subs: () => SUBS,
+			api,
+			dynamic: () => ({ detectNow }),
+			profileAvatars: () => undefined,
+		}),
 	);
 	return { reg, api: api.api, raw, detectNow };
 }

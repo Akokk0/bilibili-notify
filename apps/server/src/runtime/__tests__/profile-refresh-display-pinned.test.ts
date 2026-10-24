@@ -74,8 +74,8 @@ const biliSub = (id: string, uid: string): Subscription =>
 const extSub = (id: string, externalId: string): Subscription =>
 	makeExtensionSubscription({ id, extensionId: "douyin", externalId, enabled: true });
 
-const profile = (fans?: number, lastRefreshedAt = isoAgo(5 * 60_000)): SubscriptionState => ({
-	cachedProfile: { name: "x", sign: "", ...(fans === undefined ? {} : { fans }), lastRefreshedAt },
+const profile = (followers?: number, refreshedAt = isoAgo(5 * 60_000)): SubscriptionState => ({
+	cachedProfile: { name: "x", ...(followers === undefined ? {} : { followers }), refreshedAt },
 });
 
 async function start(subs: Subscription[], seed: Record<string, SubscriptionState>) {
@@ -290,10 +290,10 @@ describe("GET /api/stats/followers — B 站与拓展各一条", () => {
 			[ago(23 * HOUR), 330], // 之后 → 不算
 			[ago(HOUR), 400],
 		]);
-		const lastRefreshedAt = isoAgo(5 * 60_000);
+		const refreshedAt = isoAgo(5 * 60_000);
 		const p = await start([biliSub("b1", "111"), extSub("e1", "sec-1")], {
 			b1: profile(1330),
-			e1: profile(420, lastRefreshedAt),
+			e1: profile(420, refreshedAt),
 		});
 		p.follower["111"] = 1350;
 		await p.handle.pollNow();
@@ -315,7 +315,7 @@ describe("GET /api/stats/followers — B 站与拓展各一条", () => {
 				subscriptionId: "e1",
 				identity: { sourceKey: "douyin", externalId: "sec-1" },
 				current: 420, // 取它最近报的资料,不是样本末值 400
-				refreshedAt: lastRefreshedAt,
+				refreshedAt,
 				deltaSubscribed: 320, // 420 − 第一条 100
 				delta24h: 120, // 420 − 300
 				delta7d: 270, // 420 − 150

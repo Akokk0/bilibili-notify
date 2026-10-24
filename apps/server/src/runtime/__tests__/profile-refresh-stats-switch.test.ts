@@ -172,7 +172,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		// 资料缓存照写(订阅卡上的当前粉丝数),但不带起点。
 		expect(p.rtPatch).toHaveBeenCalledTimes(1);
 		const patch = p.rtPatch.mock.calls[0]?.[1] as SubscriptionState;
-		expect(patch.cachedProfile).toMatchObject({ fans: 4242 });
+		expect(patch.cachedProfile).toMatchObject({ followers: 4242 });
 		expect(Object.keys(patch)).toEqual(["cachedProfile"]);
 		// 事件照发、当前数照给,涨跌给空。
 		expect(p.snapshots.at(-1)).toEqual([
@@ -193,7 +193,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		const p = await start({
 			runtime: {
 				"sub-1": {
-					cachedProfile: { name: "旧名", sign: "", fans: 100, lastRefreshedAt: iso(HOUR) },
+					cachedProfile: { name: "旧名", followers: 100, refreshedAt: iso(HOUR) },
 				},
 			},
 			earliest: { sampledAt: "2026-04-01T00:00:00.000Z", followers: 4000 },
@@ -229,8 +229,8 @@ describe("粉丝轮询 × 总开关(拓展订阅那一行)", () => {
 		externalId: "sec-1",
 		enabled: true,
 	});
-	const extRuntime = (fans: number): Record<string, SubscriptionState> => ({
-		e1: { cachedProfile: { name: "抖音甲", sign: "", fans, lastRefreshedAt: iso(HOUR) } },
+	const extRuntime = (followers: number): Record<string, SubscriptionState> => ({
+		e1: { cachedProfile: { name: "抖音甲", followers, refreshedAt: iso(HOUR) } },
 	});
 	const series = (key: string, beforeIso: string) =>
 		key === "e1" ? { sampledAt: beforeIso, followers: 300 } : null;
@@ -276,7 +276,7 @@ describe("粉丝轮询 × 总开关(拓展订阅那一行)", () => {
 			subs: [BILI_SUB, EXT],
 			runtime: {
 				"sub-1": {
-					cachedProfile: { name: "B 站甲", sign: "", fans: 100, lastRefreshedAt: iso(HOUR) },
+					cachedProfile: { name: "B 站甲", followers: 100, refreshedAt: iso(HOUR) },
 				},
 				...extRuntime(450),
 			},

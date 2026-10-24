@@ -114,7 +114,11 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				...SUB,
-				cachedProfile: { name: "候选的名字", fans: 7, avatarUrl: avatarDataUrl("png", SEED_PNG) },
+				cachedProfile: {
+					name: "候选的名字",
+					followers: 7,
+					avatarUrl: avatarDataUrl("png", SEED_PNG),
+				},
 			}),
 		});
 		expect(res.status, await res.clone().text()).toBe(200);
@@ -130,11 +134,11 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		return list.find((s) => s.id === SUB.id)?.cachedProfile;
 	}
 
-	/** 等这一次报的资料落进去(`lastRefreshedAt` 换过)。 */
+	/** 等这一次报的资料落进去(`refreshedAt` 换过)。 */
 	function refreshedAfter(before: Awaited<ReturnType<typeof profile>>) {
 		return vi.waitFor(async () => {
 			const now = await profile();
-			expect(now?.lastRefreshedAt).not.toBe(before?.lastRefreshedAt);
+			expect(now?.refreshedAt).not.toBe(before?.refreshedAt);
 			return now;
 		});
 	}
@@ -209,7 +213,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		const after = await refreshedAfter(before);
 
 		expect(after?.name).toBe("报来的名字");
-		expect(after?.fans).toBe(4321);
+		expect(after?.followers).toBe(4321);
 		expect(after?.avatar && isValidImageRef(after.avatar)).toBe(true);
 		expect(after?.avatar).not.toBe(before?.avatar);
 		const img = await api(`/api/images/${after?.avatar}`);
@@ -250,7 +254,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		const after = await refreshedAfter(before);
 
 		expect(after?.name).toBe("只改了名字");
-		expect(after?.fans).toBe(4321);
+		expect(after?.followers).toBe(4321);
 		expect(after?.avatar).toBe(before?.avatar);
 	});
 

@@ -28,10 +28,9 @@ const SUB = {
 
 const PROFILE = {
 	name: "测试UP",
-	avatarUrl: "https://example.com/a.png",
-	sign: "签名",
-	fans: 1234,
-	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
+	bio: "签名",
+	followers: 1234,
+	refreshedAt: "2026-05-19T00:00:00.000Z",
 };
 
 interface Harness {
@@ -80,9 +79,9 @@ function makeHarness(opts?: {
 		await rtPatch(id, {
 			cachedProfile: {
 				name: PROFILE.name,
-				sign: PROFILE.sign,
-				fans: PROFILE.fans,
-				lastRefreshedAt: PROFILE.lastRefreshedAt,
+				bio: PROFILE.bio,
+				followers: PROFILE.followers,
+				refreshedAt: PROFILE.refreshedAt,
 			},
 		});
 	});
@@ -258,7 +257,10 @@ describe("/api/subscriptions POST — 新订阅经资料刷新引擎拉资料", 
 		expect(h.refreshSubscription).toHaveBeenCalledWith(SUB.id);
 		expect(cachedProfileCalls(h)).toHaveLength(1);
 		const body = (await res.json()) as Array<Record<string, unknown>>;
-		expect(body[0]?.cachedProfile).toMatchObject({ name: PROFILE.name, fans: PROFILE.fans });
+		expect(body[0]?.cachedProfile).toMatchObject({
+			name: PROFILE.name,
+			followers: PROFILE.followers,
+		});
 		expect(body[0]).not.toHaveProperty("state");
 	});
 

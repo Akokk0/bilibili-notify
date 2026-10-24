@@ -12,12 +12,11 @@ import type { SubscriptionStateStore } from "./subscription-state-store.js";
 /**
  * 两条路共用:拓展报的资料更新与以后资料刷新都写这一份缓存、都按同一套口径叫面板。
  *
- * - **给了哪格改哪格**:名字 / 头像 / 签名 / 粉丝数 / 粉丝团名没给的保持原样;头像没给就沿用原来那张 ——
+ * - **给了哪格改哪格**:名字 / 头像 / 简介 / 粉丝数 / 粉丝团名没给的保持原样;头像没给就沿用原来那张 ——
  *   沿用也是「抄引用」,先 `keep` 续期,图已经不在了就不留悬空的引用(头像格直接缺)。
- *   `lastRefreshedAt` 每次都换 —— 它说的是「资料什么时候报过」。
- * - 名字与签名都没有时写空串;粉丝数不知道就不写 —— 写 0 是在面板上印一句假话。
- * - `avatarUrl`(B 站头像的来源地址;今天新建订阅与粉丝轮询会写,B 站的资料刷新把它记在自己的状态里)这里不改,
- *   沿用旧值;拓展报资料那条路本来也没有它。
+ *   `refreshedAt` 每次都换 —— 它说的是「资料什么时候报过」。
+ * - 名字没给又没旧值时写空串;简介为空串时按缺键处理;粉丝数不知道就不写 —— 写 0 是在面板上印一句假话。
+ * - B 站头像的来源网址住集成自己的状态,不写进核心资料缓存。
  * - 面板看得见的那几格真变了,才发 `subscription-profiles-changed`(按窗口合并),面板据此重取订阅列表。
  */
 
@@ -25,8 +24,8 @@ export interface ProfileCacheUpdate {
 	name?: string;
 	/** 已经存进图库的引用;没给 = 沿用旧的那张(先 keep 续期,图不在了就缺这一格)。 */
 	avatar?: ImageRef;
-	sign?: string;
-	fans?: number;
+	bio?: string;
+	followers?: number;
 	fanClubName?: string;
 }
 
@@ -48,7 +47,9 @@ const CHANGED_KEY = "profiles-changed";
 
 /** 面板看得见的那几格变没变。 */
 function visiblyChanged(prev: CreatorProfile | undefined, next: CreatorProfile): boolean {
-	return prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.fans !== next.fans;
+	return (
+		prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.followers !== next.followers
+	);
 }
 
 export function createProfileCacheWriter(opts: {
@@ -101,18 +102,18 @@ export function createProfileCacheWriter(opts: {
 		const prev = opts.subscriptionState.get(id)?.cachedProfile;
 		const avatar =
 			update.avatar === undefined ? await carryOverAvatar(id, prev?.avatar) : update.avatar;
-		const fans = update.fans ?? prev?.fans;
+		const bio = update.bio === "" ? undefined : (update.bio ?? prev?.bio);
+		const followers = update.followers ?? prev?.followers;
 		const fanClubName = update.fanClubName ?? prev?.fanClubName;
 		const next: CreatorProfile = {
 			name: update.name ?? prev?.name ?? "",
 			// 没有头像就是这一格缺,不写空串。
 			...(avatar === undefined ? {} : { avatar }),
-			...(prev?.avatarUrl === undefined ? {} : { avatarUrl: prev.avatarUrl }),
-			sign: update.sign ?? prev?.sign ?? "",
+			...(bio === undefined ? {} : { bio }),
 			// 不知道就不写 —— 写 0 是在面板上印一句假话(同新建时种资料那条)。
-			...(fans === undefined ? {} : { fans }),
+			...(followers === undefined ? {} : { followers }),
 			...(fanClubName === undefined ? {} : { fanClubName }),
-			lastRefreshedAt: new Date().toISOString(),
+			refreshedAt: new Date().toISOString(),
 		};
 		await opts.subscriptionState.patch(id, { cachedProfile: next });
 		return visiblyChanged(prev, next);

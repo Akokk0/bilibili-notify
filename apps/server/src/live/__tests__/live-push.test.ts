@@ -105,7 +105,7 @@ let settings: LiveSettings;
 let subs: Map<string, Subscription>;
 let running: boolean;
 /** 订阅资料(名字 / 粉丝数),现取。 */
-let profile: { name?: string; fans?: number; fanClubName?: string } | undefined;
+let profile: { name?: string; followers?: number; fanClubName?: string } | undefined;
 /** 出卡:每张卡的输入按出卡顺序记下;`slowNext` 让下一张卡卡住,由测试放行。 */
 let renderedInputs: LiveCardInput[];
 /** 订阅资料里的头像引用,现取;`undefined` = 资料里没有头像。 */
@@ -149,7 +149,7 @@ function start(): void {
 		table,
 		subscription: (id) => subs.get(id),
 		sourceStatus: { running: () => running },
-		fans: () => profile?.fans,
+		fans: () => profile?.followers,
 		settings: () => settings,
 		timers,
 		...(statusReader ? { liveStatus: statusReader } : {}),
@@ -279,7 +279,7 @@ beforeEach(() => {
 	aiMade = undefined;
 	subs = new Map([[SUB.id, SUB]]);
 	running = true;
-	profile = { name: "抖音甲", fans: 12_345 };
+	profile = { name: "抖音甲", followers: 12_345 };
 });
 
 afterEach(() => {
@@ -292,7 +292,7 @@ afterEach(() => {
 
 describe("开播", () => {
 	it("详情没带主播名、没资料名 → 文案以标签开头", async () => {
-		profile = { fans: 12_345 };
+		profile = { followers: 12_345 };
 		start();
 		liveStart();
 		await settle();
@@ -333,7 +333,7 @@ describe("下播", () => {
 		await settle();
 		await vi.advanceTimersByTimeAsync(2 * HOUR + 13 * MINUTE);
 		// 这场涨了 128 个粉丝(拓展报过资料更新);下播事件只带链接与点赞。
-		profile = { name: "抖音甲", fans: 12_345 + 128 };
+		profile = { name: "抖音甲", followers: 12_345 + 128 };
 		liveEnd({ likes: 900 });
 		await settle();
 
@@ -356,7 +356,7 @@ describe("下播", () => {
 		start();
 		liveStart();
 		await settle();
-		profile = { name: "抖音甲", fans: 50 };
+		profile = { name: "抖音甲", followers: 50 };
 		liveEnd();
 		await settle();
 
@@ -441,7 +441,7 @@ describe("下播回顾", () => {
 	});
 
 	it("回顾读的是这一场收集器里的弹幕,粉丝团名取资料缓存", async () => {
-		profile = { name: "抖音甲", fans: 12_345, fanClubName: "资料里的粉丝团" };
+		profile = { name: "抖音甲", followers: 12_345, fanClubName: "资料里的粉丝团" };
 		chats.recordViewerChat(SUB.id, "recapword", "这一场的观众");
 		start();
 		liveStart();
@@ -1024,7 +1024,7 @@ describe("推送中途关掉又打开", () => {
 		await settle();
 		settings = baseSettings({ liveStreaming: false, liveStart: false, liveEnd: false });
 		bus.emit("config-changed", { scope: "globals" });
-		profile = { name: "抖音甲", fans: 12_345 + 55 };
+		profile = { name: "抖音甲", followers: 12_345 + 55 };
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
@@ -1034,7 +1034,7 @@ describe("推送中途关掉又打开", () => {
 		bus.emit("config-changed", { scope: "globals" });
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
-		profile = { name: "抖音甲", fans: 12_345 + 100 };
+		profile = { name: "抖音甲", followers: 12_345 + 100 };
 		liveEnd();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);

@@ -146,14 +146,13 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, Subscr
 	};
 }
 
-/** 资料缓存里的一份资料;`fans` 不给就是平台没报粉丝数。 */
-function profile(fans?: number, lastRefreshedAt = iso(5 * 60_000)): SubscriptionState {
+/** 资料缓存里的一份资料;`followers` 不给就是平台没报粉丝数。 */
+function profile(followers?: number, refreshedAt = iso(5 * 60_000)): SubscriptionState {
 	return {
 		cachedProfile: {
 			name: "抖音甲",
-			sign: "",
-			...(fans === undefined ? {} : { fans }),
-			lastRefreshedAt,
+			...(followers === undefined ? {} : { followers }),
+			refreshedAt,
 		},
 	};
 }
@@ -161,8 +160,8 @@ function profile(fans?: number, lastRefreshedAt = iso(5 * 60_000)): Subscription
 describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算", () => {
 	it("键是订阅 id、带拓展 id + 外部 id、不带 uid;当前 = 最近报的资料,起点 = 第一条样本,24h / 7d = 那一刻之前最近的样本", async () => {
 		await writeSeries("e1", E1_SERIES);
-		const lastRefreshedAt = iso(5 * 60_000);
-		const p = await start([extSub("e1", "sec-1")], { e1: profile(450, lastRefreshedAt) });
+		const refreshedAt = iso(5 * 60_000);
+		const p = await start([extSub("e1", "sec-1")], { e1: profile(450, refreshedAt) });
 		expect(await p.handle.pollNow()).toBe(true);
 
 		expect(p.handle.getLastEntries()).toEqual([
@@ -170,7 +169,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 				subscriptionId: "e1",
 				identity: { sourceKey: "douyin", externalId: "sec-1" },
 				current: 450,
-				refreshedAt: lastRefreshedAt,
+				refreshedAt,
 				// 起点是十天前那第一条(100);24h 前最近的是两天前那条(300);7 天前最近的是八天前那条(150)。
 				deltaSubscribed: 350,
 				delta24h: 150,
@@ -315,7 +314,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 	it("某个来源这一条失败时,别的来源与拓展行照刷", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([biliSub("b1", "1"), extSub("e1", "sec-1")], {
-			b1: { cachedProfile: { name: "B", sign: "", fans: 1, lastRefreshedAt: "x" } },
+			b1: { cachedProfile: { name: "B", followers: 1, refreshedAt: "x" } },
 			e1: profile(450),
 		});
 		p.fetchUserCard.mockResolvedValue({

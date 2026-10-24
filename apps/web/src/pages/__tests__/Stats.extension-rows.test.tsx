@@ -76,9 +76,7 @@ const BILI_SUB: Subscription = {
 	id: "s-bili",
 	cachedProfile: {
 		name: "B 站甲",
-		avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg",
-		sign: "",
-		lastRefreshedAt: "2026-09-24T00:00:00Z",
+		refreshedAt: "2026-09-24T00:00:00Z",
 	},
 };
 const EXT_SUB: Subscription = {
@@ -88,8 +86,7 @@ const EXT_SUB: Subscription = {
 	cachedProfile: {
 		name: "抖音乙",
 		avatar: `${"d".repeat(64)}.png`,
-		sign: "",
-		lastRefreshedAt: "2026-09-24T00:00:00Z",
+		refreshedAt: "2026-09-24T00:00:00Z",
 	},
 };
 
@@ -168,8 +165,8 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(ext.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 		expect(within(ext).getByText(/直播中/)).toBeTruthy();
 		const bili = tableRow("B 站甲");
-		// B 站的头像是远端网址,照旧。
-		expect(bili.querySelector('img[src="https://i0.hdslb.com/bfs/face/x.jpg"]')).not.toBeNull();
+		// 核心资料缓存没有远端头像网址,没有图库引用就画首字。
+		expect(bili.querySelector("img")).toBeNull();
 		expect(within(bili).queryByText("抖")).toBeNull();
 		expect(within(bili).queryByText(/直播中/)).toBeNull();
 

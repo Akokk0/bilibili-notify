@@ -28,9 +28,8 @@ describe("资料刷新写资料缓存", () => {
 					cachedProfile: {
 						name: "旧名字",
 						avatar: "old-avatar" as ImageRef,
-						sign: "",
-						fans: 100,
-						lastRefreshedAt: new Date(0).toISOString(),
+						followers: 100,
+						refreshedAt: new Date(0).toISOString(),
 					},
 				},
 			},
@@ -46,8 +45,8 @@ describe("资料刷新写资料缓存", () => {
 		expect(p.runtime.get("sub-1")?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar,
-			sign: "新签名",
-			fans: 120,
+			bio: "新签名",
+			followers: 120,
 		});
 		await vi.waitFor(() => expect(p.changed).toEqual([["sub-1"]]));
 

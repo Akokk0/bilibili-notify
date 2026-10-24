@@ -245,7 +245,7 @@ describe("attachReadOnlyTools — 搜人", () => {
 describe("attachReadOnlyTools — 没订阅的人回落查资料", () => {
 	function profileReader(options: {
 		subscriptions?: Subscription[];
-		cached?: Record<string, { name?: string; fans?: number; sign?: string }>;
+		cached?: Record<string, { name?: string; followers?: number; bio?: string }>;
 		registered?: boolean;
 		fetchProfile: Parameters<typeof attachReadOnlyTools>[1]["fetchProfile"];
 	}) {

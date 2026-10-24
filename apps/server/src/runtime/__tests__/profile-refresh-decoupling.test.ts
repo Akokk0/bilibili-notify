@@ -2,7 +2,7 @@
  * 回归测试 — ProfileRefresh↔SubscriptionStateStore 解耦(Bug 1 的真正修复点)。
  *
  * Bug 1 链:ProfileRefresh 每 tick 经 configStore.patchSubscription 写
- * cachedProfile.fans → ConfigStore emit config-changed:subscriptions →
+ * cachedProfile.followers → ConfigStore emit config-changed:subscriptions →
  * SubscriptionStore.replaceAll 整数组 diff → 伪 subscription-changed{update} →
  * DynamicPoller 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
  *
@@ -151,12 +151,12 @@ describe("ProfileRefresh 一次 tick — 与 ConfigStore 解耦", () => {
 			{ cachedProfile?: Record<string, unknown> },
 		];
 		expect(id).toBe("sub-1");
-		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", fans: 4242 });
+		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", followers: 4242 });
 		// 来源把头像抓进图库后只交引用;来源地址留在来源自己的状态里。
 		expect(payload.cachedProfile).toMatchObject({
 			avatar: PROFILE_IMAGE_REF,
 		});
-		expect(payload.cachedProfile?.lastRefreshedAt).toBeTypeOf("string");
+		expect(payload.cachedProfile?.refreshedAt).toBeTypeOf("string");
 
 		// (3) 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
 		expect(configChangedSpy).not.toHaveBeenCalled();

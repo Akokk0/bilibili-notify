@@ -98,14 +98,12 @@ function makeDeps(f: Fixture): RouteDeps {
 			subscriptionStateStore: {
 				get: (id: string) =>
 					f.profileFans?.[id] === undefined
-						? { cachedProfile: { name: "n", avatar: "", sign: "", lastRefreshedAt: at(0) } }
+						? { cachedProfile: { name: "n", refreshedAt: at(0) } }
 						: {
 								cachedProfile: {
 									name: "n",
-									avatar: "",
-									sign: "",
-									fans: f.profileFans[id],
-									lastRefreshedAt: at(0),
+									followers: f.profileFans[id],
+									refreshedAt: at(0),
 								},
 							},
 			},

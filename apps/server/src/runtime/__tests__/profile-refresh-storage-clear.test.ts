@@ -59,10 +59,10 @@ async function start() {
 	bus.on("followers-refreshed", ({ entries }) => snapshots.push(entries));
 	// B 站订阅:两天前一个样本;拓展订阅:十天前开始记,资料里报 80。
 	await world.subscriptionStateStore.patch("b1", {
-		cachedProfile: { name: "甲", sign: "", fans: 110, lastRefreshedAt: iso(HOUR) },
+		cachedProfile: { name: "甲", followers: 110, refreshedAt: iso(HOUR) },
 	});
 	await world.subscriptionStateStore.patch("e1", {
-		cachedProfile: { name: "乙", sign: "", fans: 80, lastRefreshedAt: iso(HOUR) },
+		cachedProfile: { name: "乙", followers: 80, refreshedAt: iso(HOUR) },
 	});
 	await world.fansStore.append("b1", { sampledAt: iso(2 * DAY), followers: 100 });
 	await world.fansStore.append("e1", { sampledAt: iso(10 * DAY), followers: 50 });
@@ -128,7 +128,7 @@ describe("清数据统计 × 粉丝轮询的快照与涨粉起点", () => {
 		follower = 140;
 		// 拓展订阅清空后第一次报粉丝:资料里 90,时序里记下第一条 90。
 		await world.subscriptionStateStore.patch("e1", {
-			cachedProfile: { name: "乙", sign: "", fans: 90, lastRefreshedAt: iso(0) },
+			cachedProfile: { name: "乙", followers: 90, refreshedAt: iso(0) },
 		});
 		await world.fansStore.append("e1", { sampledAt: iso(0), followers: 90 });
 		await poller.pollNow();

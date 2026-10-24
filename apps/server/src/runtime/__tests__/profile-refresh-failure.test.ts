@@ -4,8 +4,8 @@ import { startProfileRefreshHarness } from "./profile-refresh-support.js";
 
 const sub = (id: string, sourceKey: string, externalId: string): Subscription =>
 	({ id, identity: { sourceKey, externalId }, enabled: true }) as Subscription;
-const runtime = (name: string, fans: number) => ({
-	cachedProfile: { name, fans, sign: "", lastRefreshedAt: new Date(0).toISOString() },
+const runtime = (name: string, followers: number) => ({
+	cachedProfile: { name, followers, refreshedAt: new Date(0).toISOString() },
 });
 
 let close: (() => void) | undefined;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 // `extrasRecord` 直接从零依赖的词表取:它是内部工具,没必要跟着 EXTRA_KEYS 那批
 // 一起经 ./common 重导出去撑大根入口的 API 面。
-import { extrasRecord } from "../constants";
+import { extrasRecord, IMAGE_REF_PATTERN } from "../constants";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
 	CardsOverridesSchema,
@@ -46,36 +46,22 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
 });
 
 /**
- * 缓存的 UP 主档案，用于 UI 显示。non-authoritative。
+ * 订阅的资料缓存，用于 UI 与卡片显示。non-authoritative。
  *
- * **不再内嵌于 Subscription**（高频 fans/lastRefreshedAt 写入会污染配置写路径）。
- * 独立端持久化到 apps/server 的 SubscriptionStateStore（`<dataDir>/state/sub-runtime.json`）；
- * schema/type 仍导出,供 SubscriptionStateStore + `/api/subscriptions` join 复用。
+ * **不内嵌于 Subscription**（高频资料写入会污染配置写路径）。独立端持久化到
+ * SubscriptionStateStore（`<dataDir>/runtime/subscription-state.json`），`/api/subscriptions` join 回来。
  *
- * `fans` 可缺:拓展订阅的候选 / 资料不一定知道粉丝数(ADR-0019 决策 52 的 `fans?`),缺了写成 0
- * 就是在面板上印一句「0 粉丝」的假话。B 站那支照旧总有。`sub-runtime.json` 读盘是裸
- * `JSON.parse`、不过这份 schema,所以旧载荷读到缺这一格的条目也照常开机。
- *
- * 头像按来源不同,分两格(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,命名见 `docs/agents/conventions/naming.md`):
- * - `avatar`:存进图库的头像,是 `ImageRef`,面板从 `/api/images/<ref>` 取。两支订阅都有(B 站的由服务端抓,
- *   拓展的由拓展报上来);
- * - `avatarUrl`:远端网址。**只要有 `avatar`,`avatarUrl` 就是那张图的来源地址**(B 站给的原地址,不是缩放后的)。
- *   B 站订阅用它认「头像要不要重新抓」:地址变了、或有地址却没有 `avatar` 才抓;抓不到时原本有 `avatar` 的两格
- *   保持原样,原本没有的只记地址(下一轮再试,面板与锐评卡也还有地址可退)。拓展订阅没有这一格。
- *
- * 没有头像就是**两格都缺**,不再写空串。
- *
- * `fanClubName`:粉丝团名(B 站填粉丝牌名),平台没有就缺键,模板变量 `{fanclub}` 取它。
- * 3b-24 之前没有写者,弹幕总结照旧从直播那边取值;写进资料留给 3b-24。
+ * `followers` 可缺：拓展订阅的资料不一定知道粉丝数，缺了不能补成 0。`bio` 是空串时按缺键处理。
+ * `avatar` 只装图库引用，远端头像网址住 B 站自己的集成状态，不在核心资料缓存里。
+ * `fanClubName` 是粉丝团名（B 站填粉丝牌名），平台没有就缺键，模板变量 `{fanclub}` 取它。
  */
 export const CreatorProfileSchema = z.object({
 	name: z.string(),
-	avatar: z.string().optional(),
-	avatarUrl: z.string().optional(),
-	sign: z.string(),
-	fans: z.number().int().min(0).optional(),
+	avatar: z.string().regex(IMAGE_REF_PATTERN).optional(),
+	bio: z.string().optional(),
+	followers: z.number().int().min(0).optional(),
 	fanClubName: z.string().optional(),
-	lastRefreshedAt: z.string(),
+	refreshedAt: z.string(),
 });
 export type CreatorProfile = z.infer<typeof CreatorProfileSchema>;
 

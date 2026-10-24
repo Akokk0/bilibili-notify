@@ -35,7 +35,7 @@ describe("资料刷新单条订阅", () => {
 		expect(beta).not.toHaveBeenCalled();
 		expect(p.runtime.get("sub-1")?.cachedProfile).toMatchObject({
 			name: "新名字",
-			fans: 120,
+			followers: 120,
 		});
 		expect(p.snapshots).toHaveLength(1);
 		expect(p.snapshots[0]).toEqual(

@@ -72,9 +72,8 @@ function makeDeps(opts: StubOpts = {}) {
 				get: () => ({
 					cachedProfile: {
 						name: "甲",
-						sign: "",
-						fans: state.fans,
-						lastRefreshedAt: "2026-05-16T10:00:00.000Z",
+						followers: state.fans,
+						refreshedAt: "2026-05-16T10:00:00.000Z",
 					},
 				}),
 			},

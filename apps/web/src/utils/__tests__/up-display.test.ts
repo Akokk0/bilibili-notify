@@ -38,25 +38,15 @@ describe("profileAvatarUrl(订阅资料里头像的显示地址)", () => {
 		expect(profileAvatarUrl({ avatar: REF })).toBe(`/api/images/${REF}`);
 	});
 
-	it("远端网址(B 站的 avatarUrl,或新建草稿里装着的候选头像 data URL)→ 原样", () => {
-		expect(profileAvatarUrl({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" })).toBe(
-			"https://i0.hdslb.com/bfs/face/x.jpg",
-		);
-		expect(profileAvatarUrl({ avatarUrl: "data:image/png;base64,AAAA" })).toBe(
-			"data:image/png;base64,AAAA",
-		);
+	it("不认核心资料之外的 avatarUrl;没图库引用就画首字", () => {
+		const legacy = { avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" };
+		expect(profileAvatarUrl(legacy as unknown as { avatar?: string })).toBeUndefined();
 	});
 
-	it("两格都有时图库的赢(服务端不会同时给,但拿图库里的才是服务端落了盘的)", () => {
-		expect(profileAvatarUrl({ avatar: REF, avatarUrl: "https://example.com/a.jpg" })).toBe(
-			`/api/images/${REF}`,
-		);
-	});
-
-	it("都没有(两格都缺、没有资料、旧数据里的空串)→ undefined,头像件画首字", () => {
+	it("没有图库引用(没有资料或旧数据里的空串)→ undefined,头像件画首字", () => {
 		expect(profileAvatarUrl(undefined)).toBeUndefined();
 		expect(profileAvatarUrl({})).toBeUndefined();
-		expect(profileAvatarUrl({ avatar: "", avatarUrl: "" })).toBeUndefined();
+		expect(profileAvatarUrl({ avatar: "" })).toBeUndefined();
 	});
 });
 
@@ -157,11 +147,10 @@ describe("historyRowAvatarUrl(历史行上 UP 的头像地址)", () => {
 		);
 	});
 
-	it("没有快照(B 站行)→ 订阅现在的头像:图库的、远端网址的都行", () => {
+	it("没有快照(B 站行)→ 订阅现在的图库头像;远端网址不认", () => {
 		expect(historyRowAvatarUrl({}, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
-		expect(historyRowAvatarUrl({}, { avatarUrl: "https://i0.hdslb.com/new.jpg" })).toBe(
-			"https://i0.hdslb.com/new.jpg",
-		);
+		const legacy = { avatarUrl: "https://i0.hdslb.com/new.jpg" };
+		expect(historyRowAvatarUrl({}, legacy as unknown as { avatar?: string })).toBeUndefined();
 	});
 
 	it("没有快照、订阅也没了(或没有头像)→ undefined,头像件画首字", () => {

@@ -184,11 +184,11 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 									name: runtime?.cachedProfile?.name ?? uid,
 									enabled: sub.enabled,
 									specialViewers: sub.specialViewers.map((v) => v.id),
-									avatar: runtime?.cachedProfile?.avatarUrl,
 								};
 							}),
 					dynamic,
 					liveRooms: () => source?.liveRooms(),
+					profileAvatars: () => source?.profileAvatars(),
 					healthCheck: deps.healthCheck,
 				}),
 			);

@@ -38,7 +38,13 @@ const GLOBALS = {
 	profileRefreshCron: "*/10 * * * *",
 } as unknown as GlobalConfig;
 
-const PROFILE = { name: "UP", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
+const PROFILE = {
+	name: "UP",
+	bio: "s",
+	followers: 100,
+	refreshedAt: "x",
+};
+const CARD = { name: "UP", face: "", sign: "s", fans: 100 };
 
 function baseDeps(over: {
 	subs: Array<{
@@ -72,7 +78,7 @@ function baseDeps(over: {
 		} as never,
 		api: {
 			fetchUserCard:
-				over.fetchUserCard ?? vi.fn(async () => ok({ data: { card: { ...PROFILE, fans: 1 } } })),
+				over.fetchUserCard ?? vi.fn(async () => ok({ data: { card: { ...CARD, fans: 1 } } })),
 		} as never,
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
@@ -111,7 +117,7 @@ describe("② 单条资料失败", () => {
 		const fetchUserCard = vi.fn(async (uid: string) =>
 			uid === "1"
 				? fail("rate_limited", "blocked", { upstreamCode: -352 })
-				: ok({ data: { card: { ...PROFILE, name: "UP2", fans: 5 } } }),
+				: ok({ data: { card: { ...CARD, name: "UP2", fans: 5 } } }),
 		);
 		handle = startMigratedProfileRefresh(
 			baseDeps({

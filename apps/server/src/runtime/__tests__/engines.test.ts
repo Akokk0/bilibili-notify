@@ -859,8 +859,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 									cachedProfile: {
 										name: "资料名",
 										avatar: AVATAR_REF,
-										sign: "",
-										lastRefreshedAt: "2026-10-05T00:00:00.000Z",
+										refreshedAt: "2026-10-05T00:00:00.000Z",
 									},
 								}
 							: undefined,
@@ -1470,8 +1469,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 									cachedProfile: {
 										name: "资料名",
 										avatar: PROFILE_AVATAR,
-										sign: "",
-										lastRefreshedAt: "2026-10-05T00:00:00.000Z",
+										refreshedAt: "2026-10-05T00:00:00.000Z",
 									},
 								}
 							: undefined,

@@ -74,7 +74,7 @@ function makeDeps(f: Fixture): RouteDeps {
 			subscriptionStateStore: {
 				get: (id: string) => {
 					const fans = f.profileFans?.[uidOf(id)];
-					return fans === undefined ? undefined : { cachedProfile: { fans } };
+					return fans === undefined ? undefined : { cachedProfile: { followers: fans } };
 				},
 			},
 		},

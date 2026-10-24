@@ -101,35 +101,57 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 });
 
 describe("M2: 外置 schema 仍 export(SubscriptionStateStore / join 复用)", () => {
+	it("CreatorProfile 用规格里的中立资料字段,旧缓存字段不再进结果", () => {
+		const profile = CreatorProfileSchema.parse({
+			name: "阿绫",
+			avatar: `${"a".repeat(64)}.png`,
+			bio: "今天也要开心",
+			followers: 42,
+			fanClubName: "阿绫的粉丝团",
+			refreshedAt: "2026-10-24T00:00:00.000Z",
+			sign: "旧签名",
+			fans: 24,
+			lastRefreshedAt: "2026-10-23T00:00:00.000Z",
+			avatarUrl: "https://example.com/old.png",
+		});
+		expect(profile).toEqual({
+			name: "阿绫",
+			avatar: `${"a".repeat(64)}.png`,
+			bio: "今天也要开心",
+			followers: 42,
+			fanClubName: "阿绫的粉丝团",
+			refreshedAt: "2026-10-24T00:00:00.000Z",
+		});
+	});
+
 	it("CreatorProfileSchema 仍可独立 parse", () => {
 		const r = CreatorProfileSchema.safeParse({
 			name: "n",
-			avatarUrl: "https://example.com/x.png",
-			sign: "s",
-			fans: 10,
-			lastRefreshedAt: "2026-05-19T00:00:00.000Z",
+			bio: "s",
+			followers: 10,
+			refreshedAt: "2026-05-19T00:00:00.000Z",
 		});
 		expect(r.success).toBe(true);
 	});
 
-	it("头像是两格:avatar 装图库引用(拓展订阅),avatarUrl 装远端网址(B 站订阅);没有就是两格都缺", () => {
-		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+	it("头像只认图库引用;没有头像就缺键", () => {
+		const base = { name: "n", refreshedAt: "2026-09-23T00:00:00.000Z" };
 		const ref = `${"a".repeat(64)}.png`;
 		expect(CreatorProfileSchema.safeParse(base).success).toBe(true);
 		expect(CreatorProfileSchema.parse({ ...base, avatar: ref })).toMatchObject({ avatar: ref });
 		expect(
-			CreatorProfileSchema.parse({ ...base, avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" }),
-		).toMatchObject({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" });
+			CreatorProfileSchema.safeParse({ ...base, avatar: "https://example.com/x.png" }).success,
+		).toBe(false);
 	});
 
 	it("CreatorProfile 可以不带粉丝数(拓展的候选不一定知道;写成 0 就是撒谎),带了照旧不许负数", () => {
-		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		const base = { name: "n", refreshedAt: "2026-09-23T00:00:00.000Z" };
 		expect(CreatorProfileSchema.safeParse(base).success).toBe(true);
-		expect(CreatorProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
+		expect(CreatorProfileSchema.safeParse({ ...base, followers: -1 }).success).toBe(false);
 	});
 
 	it("CreatorProfile 的 fanClubName 留得住;平台没有就缺键,不补空串", () => {
-		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		const base = { name: "n", refreshedAt: "2026-09-23T00:00:00.000Z" };
 		expect(CreatorProfileSchema.parse({ ...base, fanClubName: "阿绫的粉丝团" })).toMatchObject({
 			fanClubName: "阿绫的粉丝团",
 		});

@@ -137,7 +137,7 @@ describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅�
 		expect((await api(`/api/subscriptions/${SUB_ID}`, { method: "DELETE" })).status).toBe(204);
 
 		// ProfileRefresh 听 subscription-changed 丢掉资料缓存里这一条。
-		const runtimeFile = join(gen, "runtime", "sub-runtime.json");
+		const runtimeFile = join(gen, "runtime", "subscription-state.json");
 		await vi.waitFor(async () => {
 			const onDisk = JSON.parse(await readFile(runtimeFile, "utf8")) as Record<string, unknown>;
 			expect(onDisk).not.toHaveProperty(SUB_ID);

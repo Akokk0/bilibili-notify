@@ -29,6 +29,8 @@ export interface DynamicPollerLike {
 export interface DynamicScenarioDeps {
 	subs: () => SubPick[];
 	api: OverridableApi<Pick<Api, "fetchAllDynamic">>;
+	/** B 站自己的资料状态;假动态的作者头像与图集封面借它。 */
+	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
 	/** 引擎是后建的,现取;还没起来就 undefined。 */
 	dynamic: () => DynamicPollerLike | undefined;
 }
@@ -63,9 +65,9 @@ function pubTime(ts: number): string {
 	return `${d.slice(5, 10)} ${d.slice(11, 16)}`;
 }
 
-function author(sub: SubPick, ts: number, pubAction: string) {
+function author(sub: SubPick, ts: number, pubAction: string, avatar: string) {
 	return {
-		face: sub.avatar ?? FALLBACK_PIC,
+		face: avatar,
 		following: true,
 		jump_url: `https://space.bilibili.com/${sub.uid}/dynamic`,
 		label: "",
@@ -83,9 +85,9 @@ function author(sub: SubPick, ts: number, pubAction: string) {
 
 const ZERO_STAT = { comment: { count: 0 }, forward: { count: 0 }, like: { count: 0 } };
 
-function buildFake(input: FakeInput): FeedItem {
+function buildFake(input: FakeInput, avatar: string): FeedItem {
 	const { id, kind, sub, text, ts } = input;
-	const pic = sub.avatar ?? FALLBACK_PIC;
+	const pic = avatar;
 	const base = {
 		basic: { comment_id_str: id, comment_type: 17, rid_str: id },
 		id_str: id,
@@ -97,7 +99,7 @@ function buildFake(input: FakeInput): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_WORD",
 				modules: {
-					module_author: author(sub, ts, ""),
+					module_author: author(sub, ts, "", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: { desc: richText(text) },
 				},
@@ -107,7 +109,7 @@ function buildFake(input: FakeInput): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_DRAW",
 				modules: {
-					module_author: author(sub, ts, ""),
+					module_author: author(sub, ts, "", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						major: {
@@ -134,7 +136,7 @@ function buildFake(input: FakeInput): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_AV",
 				modules: {
-					module_author: author(sub, ts, "投稿了视频"),
+					module_author: author(sub, ts, "投稿了视频", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						desc: richText(text),
@@ -165,7 +167,7 @@ function buildFake(input: FakeInput): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_ARTICLE",
 				modules: {
-					module_author: author(sub, ts, "投稿了专栏"),
+					module_author: author(sub, ts, "投稿了专栏", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						major: {
@@ -186,17 +188,20 @@ function buildFake(input: FakeInput): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_FORWARD",
 				modules: {
-					module_author: author(sub, ts, "转发动态"),
+					module_author: author(sub, ts, "转发动态", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: { desc: richText(text) },
 				},
-				orig: buildFake({
-					id: `${id}-orig`,
-					kind: "word",
-					sub,
-					text: "被转发的那条(devtools 造的)。",
-					ts: ts - 3600,
-				}),
+				orig: buildFake(
+					{
+						id: `${id}-orig`,
+						kind: "word",
+						sub,
+						text: "被转发的那条(devtools 造的)。",
+						ts: ts - 3600,
+					},
+					avatar,
+				),
 			} as unknown as FeedItem;
 	}
 }
@@ -294,13 +299,16 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				);
 			const kind = String(params.type ?? "word") as Kind;
 			seq += 1;
-			const fake = buildFake({
-				id: `dev-${Date.now()}-${seq}`,
-				kind,
-				sub,
-				text: typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_TEXT,
-				ts: Math.floor(Date.now() / 1000),
-			});
+			const fake = buildFake(
+				{
+					id: `dev-${Date.now()}-${seq}`,
+					kind,
+					sub,
+					text: typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_TEXT,
+					ts: Math.floor(Date.now() / 1000),
+				},
+				deps.profileAvatars()?.avatarUrlOf(sub.uid) ?? FALLBACK_PIC,
+			);
 			pending.push(fake);
 			syncOverride();
 			try {

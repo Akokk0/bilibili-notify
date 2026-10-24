@@ -278,7 +278,11 @@ describe("数据统计:四个目录、缓存", () => {
 
 	it("不碰订阅运行态里的资料", async () => {
 		const w = world;
-		const profile = { name: "n", sign: "", fans: 9, lastRefreshedAt: "2026-10-06T00:00:00.000Z" };
+		const profile = {
+			name: "n",
+			followers: 9,
+			refreshedAt: "2026-10-06T00:00:00.000Z",
+		};
 		await w.subscriptionStateStore.patch("sub-a", {
 			cachedProfile: profile,
 		});

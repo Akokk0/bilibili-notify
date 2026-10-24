@@ -14,7 +14,7 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, avatar: "https://i0.hdslb.com/a.jpg" },
+	{ id: "s1", uid: "100", name: "甲", enabled: true },
 	{ id: "s2", uid: "200", name: "乙", enabled: false },
 ];
 
@@ -45,7 +45,11 @@ function itemsOf(result: Feed) {
 }
 
 /** 引擎那一轮看到的 feed:假动态只在那一轮里存在,跑完就撤,所以得在 detectNow 里抓。 */
-function setup() {
+interface SetupOptions {
+	profileAvatars?: () => { avatarUrlOf(uid: string): string | undefined } | undefined;
+}
+
+function setup(options: SetupOptions = {}) {
 	const raw = new FakeApi();
 	const api = overridableApi(raw);
 	let seen: Feed | undefined;
@@ -53,7 +57,12 @@ function setup() {
 		seen = await api.api.fetchAllDynamic();
 	});
 	const reg = biliRegistry(
-		dynamicScenarios({ subs: () => SUBS, api, dynamic: () => ({ detectNow }) }),
+		dynamicScenarios({
+			subs: () => SUBS,
+			api,
+			dynamic: () => ({ detectNow }),
+			profileAvatars: options.profileAvatars ?? (() => undefined),
+		}),
 	);
 	return {
 		reg,
@@ -110,7 +119,7 @@ describe("bilibili.dynamic.post", () => {
 				module_author: {
 					mid: 100,
 					name: "甲",
-					face: "https://i0.hdslb.com/a.jpg",
+					face: "https://i0.hdslb.com/bfs/face/member/noface.jpg",
 					pub_ts: Math.floor(Date.parse("2026-09-06T08:00:00.000Z") / 1000),
 					vip: { type: 0 },
 				},
@@ -118,6 +127,28 @@ describe("bilibili.dynamic.post", () => {
 				module_dynamic: { desc: { text: "今天也要元气满满" } },
 			},
 		});
+	});
+
+	it("假动态作者头像取自 B 站状态里记的网址;没有就退默认头像", async () => {
+		const fromState = setup({
+			profileAvatars: () => ({
+				avatarUrlOf: (uid) => (uid === "200" ? "https://i0.hdslb.com/state/200.jpg" : undefined),
+			}),
+		});
+		await fromState.reg.run("bilibili.dynamic.post", { sub: "s2", type: "word" });
+		const withState = itemsOf(fromState.seen())[0] as {
+			modules: { module_author: { face: unknown } };
+		};
+		expect(withState.modules.module_author.face).toBe("https://i0.hdslb.com/state/200.jpg");
+
+		const withoutState = setup();
+		await withoutState.reg.run("bilibili.dynamic.post", { sub: "s2", type: "word" });
+		const fallback = itemsOf(withoutState.seen())[0] as {
+			modules: { module_author: { face: unknown } };
+		};
+		expect(fallback.modules.module_author.face).toBe(
+			"https://i0.hdslb.com/bfs/face/member/noface.jpg",
+		);
 	});
 
 	it.each([
@@ -189,7 +220,14 @@ describe("bilibili.dynamic.post", () => {
 
 	it("引擎还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
 		const api = overridableApi(new FakeApi());
-		const reg = biliRegistry(dynamicScenarios({ subs: () => SUBS, api, dynamic: () => undefined }));
+		const reg = biliRegistry(
+			dynamicScenarios({
+				subs: () => SUBS,
+				api,
+				dynamic: () => undefined,
+				profileAvatars: () => undefined,
+			}),
+		);
 		await expect(reg.run("bilibili.dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
 		expect(itemsOf(await api.api.fetchAllDynamic()).map((i) => i.id_str)).toEqual(["real-1"]);
 	});

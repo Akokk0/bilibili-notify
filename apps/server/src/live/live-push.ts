@@ -99,7 +99,7 @@ export interface BindLivePushOptions {
 	/** 此刻的这条订阅(现取)。 */
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字、粉丝数与粉丝团名(资料缓存,现取)。 */
-	profile(id: string): { name?: string; fans?: number; fanClubName?: string } | undefined;
+	profile(id: string): { name?: string; followers?: number; fanClubName?: string } | undefined;
 	/** 订阅身份标签:事件名与资料名都没有时,卡上与文案里的名字是这个。 */
 	identityLabel(identity: Identity): string;
 	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveSettingsOf`)。 */
@@ -400,7 +400,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 			facts: details,
 			startedAt,
 			time: startedAt === undefined ? "" : formatDuration(startedAt, now()),
-			fans: opts.profile(id)?.fans,
+			fans: opts.profile(id)?.followers,
 			run,
 		});
 	}
@@ -574,7 +574,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		// 收集器在另一个场次监听者里清空；这里先在结束那一刻同步取快照。
 		const extras = recapFor(sub, opts.settings(sub), facts);
 		enqueue(id, "下播", () => {
-			const fansNow = opts.profile(id)?.fans;
+			const fansNow = opts.profile(id)?.followers;
 			const fansChanged =
 				fansNow !== undefined && session?.followersAtStart !== undefined
 					? fansNow - session.followersAtStart

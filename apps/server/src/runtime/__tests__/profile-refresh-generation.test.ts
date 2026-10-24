@@ -42,9 +42,8 @@ describe("资料刷新代数", () => {
 				"sub-1": {
 					cachedProfile: {
 						name: "名字",
-						fans: 500,
-						sign: "",
-						lastRefreshedAt: new Date(0).toISOString(),
+						followers: 500,
+						refreshedAt: new Date(0).toISOString(),
 					},
 				},
 			},

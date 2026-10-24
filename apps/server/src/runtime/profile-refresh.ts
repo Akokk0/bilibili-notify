@@ -84,7 +84,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	): Promise<FollowersRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
 		const statsOn = opts.isStatsEnabled();
-		const reportedBefore = subscriptionStateStore.get(sub.id)?.cachedProfile?.fans;
+		const reportedBefore = subscriptionStateStore.get(sub.id)?.cachedProfile?.followers;
 		const needsLatest = reportedBefore === undefined || statsOn;
 		const [latest, first, near24h, near7d] = await Promise.all([
 			needsLatest ? fansStore.findNearestBefore(key, FUTURE_ISO) : undefined,
@@ -97,7 +97,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 				: undefined,
 		]);
 		const profile = subscriptionStateStore.get(sub.id)?.cachedProfile;
-		const reported = profile?.fans;
+		const reported = profile?.followers;
 		if (!latest && reported === undefined) return undefined;
 		if (!latest && statsOn && !allowReportedWithoutSample) return undefined;
 		const current = reported ?? latest?.followers;
@@ -108,7 +108,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			current,
 			refreshedAt:
 				reported !== undefined && profile
-					? profile.lastRefreshedAt
+					? profile.refreshedAt
 					: (latest?.sampledAt ?? new Date(nowMs).toISOString()),
 			deltaSubscribed: first ? current - first.followers : null,
 			delta24h: near24h ? current - near24h.followers : null,
@@ -200,8 +200,8 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			changed = await opts.profileCache.write(sub.id, {
 				name: profile.name,
 				...(profile.avatar === undefined ? {} : { avatar: profile.avatar }),
-				sign: profile.bio ?? "",
-				...(profile.followers === undefined ? {} : { fans: profile.followers }),
+				...(profile.bio === undefined ? {} : { bio: profile.bio }),
+				...(profile.followers === undefined ? {} : { followers: profile.followers }),
 				...(profile.fanClubName === undefined ? {} : { fanClubName: profile.fanClubName }),
 			});
 		} catch (err) {

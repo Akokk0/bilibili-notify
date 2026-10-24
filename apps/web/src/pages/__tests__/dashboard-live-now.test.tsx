@@ -54,7 +54,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
-		cachedProfile: { name, sign: "", lastRefreshedAt: "2026-09-23T00:00:00Z" },
+		cachedProfile: { name, refreshedAt: "2026-09-23T00:00:00Z" },
 	};
 }
 
@@ -85,8 +85,7 @@ function extSub(id: string, name: string): Subscription {
 		cachedProfile: {
 			name,
 			avatar: `${"d".repeat(64)}.png`,
-			sign: "",
-			lastRefreshedAt: "2026-09-23T00:00:00Z",
+			refreshedAt: "2026-09-23T00:00:00Z",
 		},
 	};
 }

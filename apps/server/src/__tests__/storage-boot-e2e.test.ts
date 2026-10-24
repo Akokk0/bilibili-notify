@@ -115,18 +115,21 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 			join(...CONFIG_DIR, "subscriptions.json"),
 			subscriptionsFileText([EXT, { ...BILI, enabled: false }]),
 		);
-		// 订阅运行态:B 站那条有房号与资料;拓展那条有资料(粉丝数 80)。
+		// 订阅运行态只留资料;B 站房号住它自己的状态。
 		await write(
-			join("runtime", "sub-runtime.json"),
+			join("runtime", "subscription-state.json"),
 			JSON.stringify({
 				[BILI.id]: {
-					roomId: "42",
-					cachedProfile: { name: "甲", sign: "", fans: 100, lastRefreshedAt: iso(H) },
+					cachedProfile: { name: "甲", followers: 100, refreshedAt: iso(H) },
 				},
 				[EXT.id]: {
-					cachedProfile: { name: "乙", sign: "", fans: 80, lastRefreshedAt: iso(H) },
+					cachedProfile: { name: "乙", followers: 80, refreshedAt: iso(H) },
 				},
 			}),
+		);
+		await write(
+			join("runtime", "bilibili", "state.json"),
+			JSON.stringify({ version: 1, entries: { [`room:${BILI.identity.externalId}`]: "42" } }),
 		);
 		// 数据统计:四个目录各一份(拓展订阅的粉丝时序是真的两条样本,没有压缩可压)。
 		sizes.posts = await write(
@@ -220,8 +223,17 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 		const fans = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 		const entry = fans.entries.find((e) => e.subscriptionId === EXT.id);
 		expect(entry?.deltaSubscribed).toBe(30); // 资料里 80 − 时序第一条 50
-		const runtime = JSON.parse(await readFile(join(gen, "runtime", "sub-runtime.json"), "utf8"));
-		expect(runtime[BILI.id].roomId).toBe("42");
+		const runtime = JSON.parse(
+			await readFile(join(gen, "runtime", "subscription-state.json"), "utf8"),
+		);
+		expect(runtime[BILI.id]).toMatchObject({
+			cachedProfile: { name: "甲", followers: 100 },
+		});
+		expect(Object.keys(runtime[BILI.id])).toEqual(["cachedProfile"]);
+		const biliState = JSON.parse(
+			await readFile(join(gen, "runtime", "bilibili", "state.json"), "utf8"),
+		);
+		expect(biliState.entries[`room:${BILI.identity.externalId}`]).toBe("42");
 		// 先摸一次总览,让它进 30 秒缓存:清完要看它被作废。
 		const overview = (await (
 			await api("/api/stats/overview?days=30")
@@ -238,9 +250,15 @@ describe("存储占用 e2e:真 BN 上用量表与四类清理", () => {
 		for (const dir of [STATS_POSTS_DIR, STATS_LIVE_DIR, STATS_RECORDING_DIR, FOLLOWERS_DIR]) {
 			expect(await readdir(join(gen, ...dir))).toEqual([]);
 		}
-		const runtime = JSON.parse(await readFile(join(gen, "runtime", "sub-runtime.json"), "utf8"));
-		expect(runtime[BILI.id].roomId).toBe("42");
-		expect(runtime[BILI.id].cachedProfile.fans).toBe(100);
+		const runtime = JSON.parse(
+			await readFile(join(gen, "runtime", "subscription-state.json"), "utf8"),
+		);
+		expect(runtime[BILI.id]).not.toHaveProperty("roomId");
+		expect(runtime[BILI.id].cachedProfile.followers).toBe(100);
+		const biliState = JSON.parse(
+			await readFile(join(gen, "runtime", "bilibili", "state.json"), "utf8"),
+		);
+		expect(biliState.entries[`room:${BILI.identity.externalId}`]).toBe("42");
 		// 粉丝轮询手里的快照:时序没了,拓展那一行跟着没了(不再是旧的「+30」)。
 		const fans = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 		expect(fans.entries.find((e) => e.subscriptionId === EXT.id)).toBeUndefined();

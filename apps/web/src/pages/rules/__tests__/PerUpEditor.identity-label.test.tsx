@@ -52,7 +52,7 @@ function renderEditor(sub: Subscription, platform?: SubscriptionPlatform) {
 	);
 }
 
-const PROFILE = { name: "某位", sign: "", fans: 1, lastRefreshedAt: "t" };
+const PROFILE = { name: "某位", followers: 1, refreshedAt: "t" };
 
 describe("PerUpEditor 头部的「是谁」", () => {
 	it("B 站订阅:UID xxx", () => {

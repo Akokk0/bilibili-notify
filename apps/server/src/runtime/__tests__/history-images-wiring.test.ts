@@ -120,8 +120,7 @@ describe("createAppRuntime 里的推送历史与重推原件", () => {
 			cachedProfile: {
 				name: "拓展甲",
 				avatar,
-				sign: "",
-				lastRefreshedAt: "2026-10-04T00:00:00.000Z",
+				refreshedAt: "2026-10-04T00:00:00.000Z",
 			},
 		});
 		const { day } = await recordImageRow(distinctPng(4), { avatarSnapshot: avatar });
@@ -144,8 +143,7 @@ describe("createAppRuntime 里的推送历史与重推原件", () => {
 			cachedProfile: {
 				name: "拓展甲",
 				avatar,
-				sign: "",
-				lastRefreshedAt: "2026-10-04T00:00:00.000Z",
+				refreshedAt: "2026-10-04T00:00:00.000Z",
 			},
 		});
 		const { day } = await recordImageRow(distinctPng(5), { avatarSnapshot: avatar });

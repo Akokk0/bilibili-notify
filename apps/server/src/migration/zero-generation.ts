@@ -60,6 +60,7 @@ import {
 } from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
+import { migrateSubscriptionState } from "./subscription-state.js";
 import {
 	type BiliSubscriptionKey,
 	migrateSubscriptionFiles,
@@ -95,8 +96,10 @@ import { migrateUptime } from "./uptime.js";
  * 49 = 重推原件里的小程序卡改成原生分享(`miniapp-card` → `native-share`,`desc` / `picUrl` / `path` / `jumpUrl` →
  * `description` / `imageUrl` / `pagePath` / `webUrl`,补 B 站 QQ 小程序的 `appId`;`history/repush/` 里这种原件的形状变)。
  * 50 = 内置人格的默认文案改成叫法变量(3b-35;`config/settings/core.json` 的 AI 人格文案变,摘要变)。
+ * 51 = 资料缓存换成 `CreatorProfile` 形状并改名 `runtime/subscription-state.json`:记录只留资料,
+ * 丢 `fansBaseline` / `followed` / `followError`,B 站房号拆进 B 站状态 `room:<uid>`,B 站远端头像地址不再保留。
  */
-export const MIGRATION_REVISION = 50;
+export const MIGRATION_REVISION = 51;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";
@@ -545,7 +548,13 @@ const REWRITES: readonly {
 					reason: `${done.orphans} 个头像文件没有任何资料引用,没带过来`,
 				});
 			}
-			return done.rewritten;
+			const subscriptions = await readBiliSubscriptionKeys(dataPath(opts.targetDir, ...CONFIG_DIR));
+			const migrated = await migrateSubscriptionState({
+				dataRoot: opts.targetDir,
+				biliSubscriptions: subscriptions ?? [],
+			});
+			report.skipped.push(...migrated.skipped);
+			return [...done.rewritten, ...migrated.rewritten];
 		},
 	},
 	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },

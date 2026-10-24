@@ -58,14 +58,14 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
-		cachedProfile: { name: "抖音乙", sign: "", fans: 3, lastRefreshedAt: "t" },
+		cachedProfile: { name: "抖音乙", followers: 3, refreshedAt: "t" },
 		...over,
 	};
 }
 
 const BILI: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }),
-	cachedProfile: { name: "UP甲", sign: "", fans: 0, lastRefreshedAt: "t" },
+	cachedProfile: { name: "UP甲", followers: 0, refreshedAt: "t" },
 };
 
 let subs: Subscription[];

@@ -108,8 +108,8 @@ async function start(subs: Subscription[], seeded: Record<string, SubscriptionSt
 	};
 }
 
-const profile = (fans: number): SubscriptionState => ({
-	cachedProfile: { name: "x", sign: "", fans, lastRefreshedAt: iso(ago(5 * MIN)) },
+const profile = (followers: number): SubscriptionState => ({
+	cachedProfile: { name: "x", followers, refreshedAt: iso(ago(5 * MIN)) },
 });
 
 describe("拓展订阅:压缩后的起点 = 第一个小时的末值", () => {

@@ -32,7 +32,9 @@ interface SubscriptionReader {
 	list(): Subscription[];
 }
 interface ProfileSource {
-	get(id: string): { cachedProfile?: { name?: string; fans?: number; sign?: string } } | undefined;
+	get(
+		id: string,
+	): { cachedProfile?: { name?: string; followers?: number; bio?: string } } | undefined;
 }
 /**
  * 订阅此刻在不在播从哪儿取:BN 手里的在播表,以及「这个来源在不在跑」。
@@ -138,8 +140,8 @@ export function attachReadOnlyTools(
 				return ok({
 					profile: {
 						name: cached.name,
-						...(cached.fans === undefined ? {} : { followers: cached.fans }),
-						...(cached.sign ? { bio: cached.sign } : {}),
+						...(cached.followers === undefined ? {} : { followers: cached.followers }),
+						...(cached.bio ? { bio: cached.bio } : {}),
 					},
 				});
 			}

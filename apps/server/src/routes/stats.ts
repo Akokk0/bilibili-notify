@@ -153,7 +153,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 右端点不该再往前走。没有就回退到样本末值(见成行那里)。
 		const currentFans = (sub: Subscription): number | undefined =>
 			sub.enabled
-				? deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.fans
+				? deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.followers
 				: undefined;
 		const liveNow = subs.map(isLive);
 		const fansNow = subs.map(currentFans);

@@ -20,6 +20,7 @@ function deps(): BiliDevtoolsDeps {
 		subs: () => [],
 		dynamic: () => undefined,
 		liveRooms: () => undefined,
+		profileAvatars: () => undefined,
 		healthCheck: () => undefined,
 	};
 }

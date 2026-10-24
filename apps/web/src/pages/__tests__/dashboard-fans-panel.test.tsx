@@ -45,7 +45,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
-		cachedProfile: { name, sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
+		cachedProfile: { name, refreshedAt: "2026-09-24T00:00:00Z" },
 	};
 }
 
@@ -99,8 +99,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 					cachedProfile: {
 						name: "抖音乙",
 						avatar: `${"d".repeat(64)}.png`,
-						sign: "",
-						lastRefreshedAt: "2026-09-24T00:00:00Z",
+						refreshedAt: "2026-09-24T00:00:00Z",
 					},
 				}),
 			],
@@ -131,8 +130,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "sec-1", {
 					cachedProfile: {
 						name: "资料里的名",
-						sign: "",
-						lastRefreshedAt: "2026-09-24T00:00:00Z",
+						refreshedAt: "2026-09-24T00:00:00Z",
 					},
 				}),
 				extSub("s-dy2", "sec-2"),
@@ -164,8 +162,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "12345", {
 					cachedProfile: {
 						name: "抖音同号",
-						sign: "",
-						lastRefreshedAt: "2026-09-24T00:00:00Z",
+						refreshedAt: "2026-09-24T00:00:00Z",
 					},
 				}),
 			],

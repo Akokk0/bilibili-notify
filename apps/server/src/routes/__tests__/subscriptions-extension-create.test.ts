@@ -196,12 +196,12 @@ describe("新建拓展订阅", () => {
 		const row = (await listed()).find((s) => s.id === SUB_ID);
 		expect(row).toMatchObject({ identity: { sourceKey: "douyin", externalId: "sec-1" } });
 		const profile = row?.cachedProfile;
-		expect(profile).toMatchObject({ name: "抖音某人", sign: "", fans: 42 });
+		expect(profile).toMatchObject({ name: "抖音某人", followers: 42 });
 		// 请求里的 data URL 是网址、落进图库;回来的资料里只有引用,没有那个 data URL。
 		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
 		expect(profile?.avatar).toMatch(/\.png$/);
 		expect(profile).not.toHaveProperty("avatarUrl");
-		expect(Date.parse(profile?.lastRefreshedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
+		expect(Date.parse(profile?.refreshedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
 
 		// 落了盘:订阅那个文件里有它(带 identity),图在图库里。
 		const disk = JSON.parse(
@@ -225,7 +225,8 @@ describe("新建拓展订阅", () => {
 		expect(withOldName.status, await withOldName.clone().text()).toBe(200);
 
 		const profile = (await listed()).find((s) => s.id === OTHER_ID)?.cachedProfile;
-		expect(profile).toMatchObject({ name: "只用旧名的人", sign: "" });
+		expect(profile).toMatchObject({ name: "只用旧名的人" });
+		expect(profile).not.toHaveProperty("bio");
 		expect(profile && "fans" in profile).toBe(false);
 	});
 
@@ -233,7 +234,8 @@ describe("新建拓展订阅", () => {
 		const res = await post({ ...extSub(), cachedProfile: { name: "没头像的人" } });
 		expect(res.status, await res.clone().text()).toBe(200);
 		const profile = (await listed()).find((s) => s.id === SUB_ID)?.cachedProfile;
-		expect(profile).toMatchObject({ name: "没头像的人", sign: "" });
+		expect(profile).toMatchObject({ name: "没头像的人" });
+		expect(profile).not.toHaveProperty("bio");
 		expect(profile && "fans" in profile).toBe(false);
 		expect(profile && "avatar" in profile).toBe(false);
 		expect(profile && "avatarUrl" in profile).toBe(false);

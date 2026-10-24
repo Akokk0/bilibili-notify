@@ -745,7 +745,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			table: liveTable,
 			subscription: (id) => opts.subscriptionStore.findById(id),
 			sourceStatus,
-			fans: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.fans,
+			fans: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.followers,
 			settings: (sub) => liveSettingsOf(sub, globals()),
 			timers: coreLiveCtx,
 			// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。

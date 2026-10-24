@@ -90,7 +90,7 @@ export function UpCard({
 	const features = subscribedFeatures(sub, globalFeatures).filter((k) => visible.includes(k));
 	// 拓展停了 / 没装:订阅留着、不轮询不推送(决策 10)。拓展列表没回来时是 undefined,不下结论。
 	const paused = ext?.absent === true;
-	const fans = sub.cachedProfile?.fans;
+	const fans = sub.cachedProfile?.followers;
 	const fansLabel = fans == null ? "粉丝数未刷新" : `${formatCount(fans)} 粉丝`;
 	// 角标只写第一个标签的名字;没挂(或查不到)就什么都不写 —— 不再写「默认」。
 	const firstTagName = resolveTagNames(sub.tagIds, tags ?? [])[0];
@@ -232,7 +232,7 @@ export function UpCard({
 					) : null}
 					<span className="ml-auto">
 						{firstTagName !== undefined ? "· " : null}更新于{" "}
-						<RelativeTime at={sub.cachedProfile?.lastRefreshedAt} />
+						<RelativeTime at={sub.cachedProfile?.refreshedAt} />
 					</span>
 				</div>
 			</div>

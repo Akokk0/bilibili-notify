@@ -548,9 +548,8 @@ export interface MarketplaceInstallRequest {
  * `identity.sourceKey` 是拓展 id 时:
  *
  * - `cachedProfile.avatar` 是存进图库的头像,即 `ImageRef`(决策 49:头像进图库,面板从 `/api/images/<ref>` 取,
- *   走面板鉴权;引用随内容变,可以放心缓存),没有头像就**缺这一格**(不再写空串)。B 站订阅的头像由服务端抓进图库,
- *   同样放 `cachedProfile.avatar`,`cachedProfile.avatarUrl` 记抓图用的来源地址(抓不到时可能只有它);拓展订阅没有 `avatarUrl`。
- *   `cachedProfile.fans` 可能没有 —— 拓展不一定知道粉丝数,别补成 0。
+ *   走面板鉴权;引用随内容变,可以放心缓存),没有头像就**缺这一格**(不再写空串)。B 站头像的来源地址住在
+ *   B 站自己的状态里,核心资料缓存不带。`cachedProfile.followers` 可能没有 —— 拓展不一定知道粉丝数,别补成 0。
  */
 export type SubscriptionDTO = Subscription &
 	SubscriptionRuntimeDTO & {

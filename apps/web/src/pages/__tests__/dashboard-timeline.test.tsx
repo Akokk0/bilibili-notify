@@ -90,8 +90,7 @@ describe("最近推送活动 · 行是谁", () => {
 			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 			cachedProfile: {
 				name: "现在的抖音号",
-				sign: "",
-				lastRefreshedAt: "2026-09-24T00:00:00Z",
+				refreshedAt: "2026-09-24T00:00:00Z",
 			},
 		};
 		renderPanel([extRow()], [readded], [DOUYIN]);
@@ -103,8 +102,7 @@ describe("最近推送活动 · 行是谁", () => {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "u1" }),
 			cachedProfile: {
 				name: "某B站UP",
-				sign: "",
-				lastRefreshedAt: "2026-09-24T00:00:00Z",
+				refreshedAt: "2026-09-24T00:00:00Z",
 			},
 		};
 		renderPanel(

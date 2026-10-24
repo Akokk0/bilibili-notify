@@ -35,9 +35,8 @@ function makeSub(uid: string, name: string, tagIds: string[]): Subscription {
 		tagIds,
 		cachedProfile: {
 			name,
-			sign: "",
-			fans: 0,
-			lastRefreshedAt: "1970-01-01T00:00:00.000Z",
+			followers: 0,
+			refreshedAt: "1970-01-01T00:00:00.000Z",
 		},
 	};
 }

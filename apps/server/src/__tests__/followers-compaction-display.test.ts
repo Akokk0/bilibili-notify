@@ -189,7 +189,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 				listRecording: async () => [],
 			},
 			subscriptionStateStore: {
-				get: (id: string) => (id === "e-1" ? { cachedProfile: { fans: 999 } } : undefined),
+				get: (id: string) => (id === "e-1" ? { cachedProfile: { followers: 999 } } : undefined),
 			},
 			serviceCtx: { logger: silent },
 		},
@@ -237,9 +237,8 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 			{
 				cachedProfile: {
 					name: "x",
-					sign: "",
-					fans: 14248,
-					lastRefreshedAt: "2026-06-30T11:55:00.000Z",
+					followers: 14248,
+					refreshedAt: "2026-06-30T11:55:00.000Z",
 				},
 			},
 		],
@@ -248,9 +247,8 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 			{
 				cachedProfile: {
 					name: "x",
-					sign: "",
-					fans: 7025,
-					lastRefreshedAt: "2026-06-30T11:55:00.000Z",
+					followers: 7025,
+					refreshedAt: "2026-06-30T11:55:00.000Z",
 				},
 			},
 		],
@@ -259,16 +257,12 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 			{
 				cachedProfile: {
 					name: "x",
-					sign: "",
-					fans: 350,
-					lastRefreshedAt: "2026-06-30T11:50:00.000Z",
+					followers: 350,
+					refreshedAt: "2026-06-30T11:50:00.000Z",
 				},
 			},
 		],
-		[
-			"e-2",
-			{ cachedProfile: { name: "x", sign: "", lastRefreshedAt: "2026-06-30T11:50:00.000Z" } },
-		],
+		["e-2", { cachedProfile: { name: "x", refreshedAt: "2026-06-30T11:50:00.000Z" } }],
 	]);
 	const follower: Record<string, number> = { "1001": 14250, "1002": 7030 };
 	const serviceCtx = {

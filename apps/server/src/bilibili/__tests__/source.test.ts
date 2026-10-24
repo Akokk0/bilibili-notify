@@ -440,6 +440,22 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
+	it("B 站自己的资料状态经同步读口交头像网址;start 前与坏值都没有", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, state } = makeCtx([{ externalId: "42" }]);
+		await state.set("profile:42", { avatarUrl: "https://i0.hdslb.com/bfs/face/42.jpg" });
+		await state.set("profile:43", { avatarUrl: 43 });
+
+		expect(source.profileAvatars()).toBeUndefined();
+		await source.start(ctx);
+		expect(source.profileAvatars()?.avatarUrlOf("42")).toBe("https://i0.hdslb.com/bfs/face/42.jpg");
+		expect(source.profileAvatars()?.avatarUrlOf("43")).toBeUndefined();
+		expect(source.profileAvatars()?.avatarUrlOf("missing")).toBeUndefined();
+		await source.stop();
+		expect(source.profileAvatars()).toBeUndefined();
+	});
+
 	it("名单去掉一位时,删掉他的 profile 状态", async () => {
 		const { deps } = makeDeps();
 		const source = createBiliSource(deps);
