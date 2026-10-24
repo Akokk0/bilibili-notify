@@ -147,8 +147,8 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 		isEnabled: () => true,
 		bus,
 		store,
-		fans: makeFans(),
-		fansCron: () => "*/10 * * * *",
+		followers: makeFans(),
+		profileRefreshCron: () => "*/10 * * * *",
 		logger,
 		now,
 		subscriptions: subs as never,
@@ -301,7 +301,7 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		const fans = makeFans();
 		const recorder = createStatsRecorderCore({
 			store,
-			fans,
+			followers: fans,
 			logger,
 			now,
 			isEnabled,
@@ -314,9 +314,9 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		recorder.recordFollowers("pulled", 100);
 		clock = "2026-05-16T10:00:01.000Z";
 		recorder.recordFollowers("pulled", 101);
-		recorder.recordFans("reported", 200, 60_000);
+		recorder.recordReportedFollowers("reported", 200, 60_000);
 		clock = "2026-05-16T10:00:02.000Z";
-		recorder.recordFans("reported", 201, 60_000);
+		recorder.recordReportedFollowers("reported", 201, 60_000);
 		await recorder.flush();
 		const samplesFor = (key: string) =>
 			fans.append.mock.calls.filter(([written]) => written === key).map(([, sample]) => sample);
@@ -373,7 +373,7 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		const { fans, recorder } = core();
 		await recorder.recordFollowers("key", 100);
 		clock = "2026-05-16T10:00:01.000Z";
-		recorder.recordFans("key", 101, 60_000);
+		recorder.recordReportedFollowers("key", 101, 60_000);
 		await recorder.flush();
 		expect(fans.append).toHaveBeenCalledTimes(1);
 		expect(fans.append).toHaveBeenCalledWith("key", {
@@ -436,7 +436,7 @@ describe("中立记录器 —— 「在记」小账按整点小时记(ADR-0027 �
 		store.listRecording.mockResolvedValue(existing);
 		const core = createStatsRecorderCore({
 			store,
-			fans: makeFans(),
+			followers: makeFans(),
 			logger,
 			now,
 			isEnabled: () => true,
@@ -494,7 +494,7 @@ describe("中立记录器 —— 「在记」小账按整点小时记(ADR-0027 �
 		]);
 	});
 
-	it("上一个小时的也收(粉丝轮询一轮跨过整点:上个小时采的、下个小时才发出事件),再早的丢掉", async () => {
+	it("上一个小时的也收(资料刷新一轮跨过整点:上个小时采的、下个小时才发出事件),再早的丢掉", async () => {
 		const { store, core } = make();
 		core.recordActive("id-1", "posts", T + HOUR);
 		core.recordActive("id-1", "followers", T + 30 * 60_000);

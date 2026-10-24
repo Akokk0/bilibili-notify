@@ -29,7 +29,7 @@ import type {
  *     · 直播(`live-source.ts`):所有来源共用一个监听,吃中立的 `live-session-changed`。
  *     · 登记表(`registry-source.ts`):在册来源的「这个小时在记」由核心记 —— 来源在册、没有登录口或登录口
  *       现读是已登录,就按每条订阅的两格开关记作品 / 直播;来源登录丢了就忘掉它名下的在飞场次。
- *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按 B 站粉丝轮询的间隔稀释;
+ *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按资料刷新的间隔稀释;
  *       收到上报 = 来源在跑,按开关记「在记」。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
@@ -54,17 +54,17 @@ export interface StatsRecorderCore {
 	 * 记一条按 cron 从来源拉来的粉丝样本,时刻取「现在」。
 	 *
 	 * 拉取由核心按固定节奏发起,一轮就是一条:这里**不稀释**,相邻两轮即使挨得很近也各留一条。
-	 * 拓展上报的资料不按本进程的节奏来,仍走 {@link recordFans},按来源间隔稀释。
+	 * 拓展上报的资料不按本进程的节奏来,仍走 {@link recordReportedFollowers},按来源间隔稀释。
 	 *
 	 * 写进这个键的同一条队,落盘后 Promise 才落定;总开关关着、值不是有限非负整数、或写失败时直接落定。
-	 * 成功后更新 `recordFans` 的稀释时刻,避免紧跟着的报来样本贴着同一条拉取样本再写一遍。
+	 * 成功后更新 `recordReportedFollowers` 的稀释时刻,避免紧跟着的报来样本贴着同一条拉取样本再写一遍。
 	 */
 	recordFollowers(key: string, value: number): Promise<void>;
 	/**
 	 * 记一个粉丝数,时刻取「现在」。离这个键上一条落盘的样本(重启之前落的也算)不足 `minGapMs` 就不记 ——
 	 * 留先到的那条,不密过来源给的间隔。
 	 */
-	recordFans(key: string, value: number, minGapMs: number): void;
+	recordReportedFollowers(key: string, value: number, minGapMs: number): void;
 	/**
 	 * 记「这个小时这一项在记」(ADR-0027 决策 2 / 13):`atMs` 所在的 UTC 整点小时,缺省取「现在」。
 	 * 同一个小时同一项只落一行 —— 进程内用集合挡重复,重启后第一次写某个键之前读一次账、把这个小时已有的种进去。
@@ -74,8 +74,8 @@ export interface StatsRecorderCore {
 
 export interface StatsRecorderCoreOptions {
 	store: StatsStore;
-	/** 粉丝时序 —— 拓展的粉丝数从这里落(B 站的由粉丝轮询自己写)。 */
-	fans: FollowersStore;
+	/** 粉丝时序 —— 拓展的粉丝数从这里落(B 站的由资料刷新自己写)。 */
+	followers: FollowersStore;
 	logger: Logger;
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
@@ -121,10 +121,10 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	/** `clear` 时正开着的键:它们的开播帧已随文件删了,下一次下播不写孤立的 `end`(见 {@link StatsRecorderCore.clear})。 */
 	const discardedOpen = new Set<string>();
 	/** 每个键上一条落盘的粉丝样本的时刻(毫秒)。第一次用到时从盘上接上,见 {@link thinned}。 */
-	const lastFans = new Map<string, number>();
+	const lastFollowers = new Map<string, number>();
 	/**
 	 * 「在记」账的内存挡板:每个(小时,键)一格,记着这一小时哪几项**已经交出去**(`handed`)、哪几项**已经在盘上**
-	 * (`written`,含盘上本来就有的)。同一个小时同一项只落一行靠它。只留最新的两个小时 —— 粉丝轮询一轮可能跨过整点
+	 * (`written`,含盘上本来就有的)。同一个小时同一项只落一行靠它。只留最新的两个小时 —— 资料刷新一轮可能跨过整点
 	 * (上一个小时采的样本、下一个小时才发出事件),所以上一个小时还收;再早的不会再有人写。
 	 * `seeded`:重启后第一次写某个键前读一次盘,把这个小时已有的种进 `written`。
 	 */
@@ -258,12 +258,12 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 已删的键再 append 一帧 end,把 drop 刚 unlink 掉的 jsonl 整个重新创建出来 ——
 			// 从此是一份没人会读、也没人会再清的孤儿。
 			forget(key);
-			lastFans.delete(key);
+			lastFollowers.delete(key);
 			for (const [id, slot] of slots) if (slot.key === key) slots.delete(id);
 			// 排在这个键还没落地的写入后面:先删的话,它们落地时会把文件重新写出来。
 			enqueue(key, "drop", async () => {
 				await opts.store.drop(key);
-				await opts.fans.drop(key);
+				await opts.followers.drop(key);
 			});
 		},
 
@@ -273,23 +273,28 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			}
 			const at = now().getTime();
 			await enqueue(key, "appendFollowers", async () => {
-				await opts.fans.append(key, { sampledAt: new Date(at).toISOString(), followers: value });
-				lastFans.set(key, at);
+				await opts.followers.append(key, {
+					sampledAt: new Date(at).toISOString(),
+					followers: value,
+				});
+				lastFollowers.set(key, at);
 			});
 		},
 
-		recordFans(key, value, minGapMs) {
+		recordReportedFollowers(key, value, minGapMs) {
 			if (!Number.isFinite(value) || !opts.isEnabled()) return;
 			thinned(
 				key,
 				"appendFans",
 				minGapMs,
-				lastFans,
+				lastFollowers,
 				async (sinceIso) =>
 					latestOf(
-						(await opts.fans.listSamplesSince(key, sinceIso)).map((sample) => sample.sampledAt),
+						(await opts.followers.listSamplesSince(key, sinceIso)).map(
+							(sample) => sample.sampledAt,
+						),
 					),
-				(sampledAt) => opts.fans.append(key, { sampledAt, followers: value }),
+				(sampledAt) => opts.followers.append(key, { sampledAt, followers: value }),
 			);
 		},
 
@@ -372,12 +377,12 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		async clear() {
 			for (const key of openLive) discardedOpen.add(key);
 			openLive.clear();
-			lastFans.clear();
+			lastFollowers.clear();
 			slots.clear();
 			const keys = new Set(await opts.store.keys());
 			for (const key of tails.keys()) keys.add(key);
 			await Promise.all([...keys].map((key) => enqueue(key, "clear", () => opts.store.drop(key))));
-			await opts.fans.clear();
+			await opts.followers.clear();
 		},
 
 		reset() {
@@ -389,13 +394,13 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 export interface StatsRecorderOptions {
 	bus: MessageBus;
 	store: StatsStore;
-	/** 粉丝时序 —— 拓展的粉丝数从资料上报里来,落在这里(B 站的由粉丝轮询写)。 */
-	fans: FollowersStore;
+	/** 粉丝时序 —— 拓展的粉丝数从资料上报里来,落在这里(B 站的由资料刷新写)。 */
+	followers: FollowersStore;
 	/**
-	 * B 站粉丝轮询的 cron(`globals.profileRefreshCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
+	 * 资料刷新的 cron(`globals.profileRefreshCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
 	 * 两边的粉丝曲线一样疏密。
 	 */
-	fansCron: () => string;
+	profileRefreshCron: () => string;
 	logger: Logger;
 	/**
 	 * 当前全部订阅。中立直播监听按它判订阅还在不在、要不要记直播;各来源适配按它分流。
@@ -447,7 +452,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	const now = opts.now ?? (() => new Date());
 	const recorder = createStatsRecorderCore({
 		store: opts.store,
-		fans: opts.fans,
+		followers: opts.followers,
 		logger: opts.logger,
 		now,
 		isEnabled: opts.isEnabled,
@@ -484,7 +489,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 			bus: opts.bus,
 			recorder,
 			subscriptions: opts.subscriptions,
-			fansCron: opts.fansCron,
+			profileRefreshCron: opts.profileRefreshCron,
 		}),
 	];
 

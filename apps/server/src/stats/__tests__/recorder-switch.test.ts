@@ -1,7 +1,7 @@
 /**
  * **统计总开关在记录器入口拦着**(ADR-0027 决策 9、16;㉙a)。
  *
- * 开关由装配处注入一个 `isEnabled()`,记录器在 `recordPost / openSession / recordFans / recordActive` 四个入口
+ * 开关由装配处注入一个 `isEnabled()`,记录器在 `recordPost / openSession / recordReportedFollowers / recordActive` 四个入口
  * 头上判一次。关着时:作品、新开的场次、粉丝样本、「在记」的账都不落盘;**开着时开的场次关着时照样收尾**
  * (一场的头尾不分家),关着时新来的开播不开场、没开过场的下播不写孤立的 `end`。
  *
@@ -58,7 +58,7 @@ function setupCore() {
 	const fans = makeFans();
 	const core = createStatsRecorderCore({
 		store,
-		fans,
+		followers: fans,
 		logger,
 		now: () => new Date(NOW),
 		isEnabled: () => enabled,
@@ -70,7 +70,7 @@ function setupCore() {
 async function touchEverything(core: ReturnType<typeof setupCore>["core"]) {
 	core.recordPost(KEY, { id: "p1", hasVideo: true, publishedAt: NOW });
 	core.openSession(KEY, { startedAt: "2026-05-16T09:00:00.000Z" });
-	core.recordFans(KEY, 1234, 0);
+	core.recordReportedFollowers(KEY, 1234, 0);
 	core.recordActive(KEY, "posts");
 	core.recordActive(KEY, "followers");
 	await core.flush();
@@ -213,8 +213,8 @@ describe("记录器 × 总开关 — 热更新(整条采集链,下一条事件�
 		createStatsRecorder({
 			bus,
 			store,
-			fans: makeFans(),
-			fansCron: () => "*/10 * * * *",
+			followers: makeFans(),
+			profileRefreshCron: () => "*/10 * * * *",
 			logger,
 			now: () => new Date(NOW),
 			isEnabled: () => enabled,

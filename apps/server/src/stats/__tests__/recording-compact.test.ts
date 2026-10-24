@@ -125,7 +125,7 @@ describe("recorder.compactRecording", () => {
 		createStatsRecorderCore({
 			isEnabled: () => true,
 			store,
-			fans: {} as never,
+			followers: {} as never,
 			logger: log,
 			now: () => clock,
 		});

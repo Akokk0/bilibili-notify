@@ -113,7 +113,7 @@ export async function makeStorageWorld(): Promise<StorageWorld> {
 	await subRuntimeStore.load();
 	const recorder = createStatsRecorderCore({
 		store: statsStore,
-		fans: fansStore,
+		followers: fansStore,
 		logger,
 		now: () => new Date(NOW),
 		isEnabled: () => true,

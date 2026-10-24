@@ -432,11 +432,11 @@ export function createAppRuntime(
 	const statsRecorder = createStatsRecorder({
 		bus,
 		store: statsStore,
-		fans: fansStore,
+		followers: fansStore,
 		sources: sourceRegistry,
 		isEnabled: statsEnabled.isEnabled,
-		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
-		fansCron: () => configStore.getGlobals().profileRefreshCron,
+		// 拓展报的粉丝数不密过资料刷新(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
+		profileRefreshCron: () => configStore.getGlobals().profileRefreshCron,
 		logger: serviceCtx.logger,
 		// 判订阅在不在、启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
 		// 读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。

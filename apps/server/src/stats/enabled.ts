@@ -5,7 +5,7 @@ import type { Disposable, MessageBus, StatsSettings } from "@bilibili-notify/int
  *
  * 设置每读一次是整份深拷贝,而观看人数约两秒一帧、粉丝样本与「在记」也密,不能每次现读。这里留一个布尔,
  * 核心设置变了(总线上 `config-changed` 的 `globals`)才作废,下一次读按新值 —— 改开关不用重启。
- * 记录器(装配处注入)与粉丝轮询共用同一个,两边对「现在开没开」没有第二份说法。
+ * 记录器(装配处注入)与资料刷新共用同一个,两边对「现在开没开」没有第二份说法。
  */
 export interface StatsEnabled extends Disposable {
 	isEnabled(): boolean;

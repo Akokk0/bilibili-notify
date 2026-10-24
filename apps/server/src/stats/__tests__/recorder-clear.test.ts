@@ -36,7 +36,7 @@ function setup() {
 	const fans = createFollowersStore({ dataRoot, logger: silentLogger });
 	const core = createStatsRecorderCore({
 		store,
-		fans,
+		followers: fans,
 		logger: silentLogger,
 		now: () => new Date(NOW),
 		isEnabled: () => enabled,
@@ -63,7 +63,7 @@ describe("整类清空 × 排在队里的写", () => {
 	it("对照:不清,同样的写都会落盘", async () => {
 		const { core } = setup();
 		core.recordPost(KEY, post("p1"));
-		core.recordFans(KEY, 100, 0);
+		core.recordReportedFollowers(KEY, 100, 0);
 		core.recordActive(KEY, "posts");
 		await core.flush();
 		expect(await statsFiles()).toEqual([
@@ -86,7 +86,7 @@ describe("整类清空 × 排在队里的写", () => {
 		const { core } = setup();
 		// 作品写入还没落盘时清空就开始了;这个键盘上一个文件都没有(只在队里)。
 		core.recordPost(KEY, post("p1"));
-		core.recordFans(KEY, 100, 0);
+		core.recordReportedFollowers(KEY, 100, 0);
 		core.recordActive(KEY, "posts");
 		core.recordPost(OTHER, post("p2"));
 

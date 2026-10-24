@@ -46,7 +46,7 @@ function makeRecorder() {
 		closeSession: vi.fn(),
 		forget: vi.fn(),
 		drop: vi.fn(),
-		recordFans: vi.fn(),
+		recordReportedFollowers: vi.fn(),
 		recordFollowers: vi.fn(async () => {}),
 		recordActive: vi.fn(),
 	} satisfies Record<keyof StatsRecorderCore, unknown> as unknown as StatsRecorderCore & {

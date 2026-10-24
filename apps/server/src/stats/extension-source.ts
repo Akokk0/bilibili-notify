@@ -12,7 +12,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - 作品行不在这里:拓展作品经核心入口发 `post-detected`,B 站与拓展共用 `recorder.ts` 里的那一个监听
  *     (有没有视频、发布时刻、同一条报几次只留一行,都在那边与 store)。
  *   - 直播场次不在这里:所有来源都走中立监听(`live-source.ts`)的 `live-session-changed`。
- *   - 资料里的粉丝数 → 粉丝时序(决策 8),不密过 B 站粉丝轮询的间隔({@link fansSampleGapMs})。
+ *   - 资料里的粉丝数 → 粉丝时序(决策 8),不密过资料刷新的间隔({@link followersSampleGapMs})。
  *   - 「来源在跑」= 这个小时收到过这条订阅的任何上报(ADR-0027 决策 2):按开关记当前小时的 `posts` /
  *     `live`;资料里带粉丝数(不管被不被稀释掉)记 `followers`。作品开关关着不落作品行;直播类开关都关着不开新场次。
  *   - 订阅删了 → 四份文件由记录器的中立监听删;停用的留着(决策 10)。
@@ -22,12 +22,12 @@ export interface ExtensionStatsSourceOptions {
 	recorder: StatsRecorderCore;
 	/** 当前全部订阅。按它判「这条拓展订阅还在、启用着」;订阅一变就重查。 */
 	subscriptions: () => readonly StatsSubscription[];
-	/** B 站粉丝轮询的 cron(`globals.profileRefreshCron`,现取)。 */
-	fansCron: () => string;
+	/** 资料刷新的 cron(`globals.profileRefreshCron`,现取)。 */
+	profileRefreshCron: () => string;
 }
 
-/** cron 读不出来时拓展粉丝的间隔 —— 与默认的 `DEFAULT_PROFILE_REFRESH_CRON`(`*\/10 * * * *`)同一个数。 */
-export const DEFAULT_FANS_SAMPLE_GAP_MS = 10 * 60_000;
+/** cron 读不出来时拓展上报粉丝的间隔 —— 与默认的 `DEFAULT_PROFILE_REFRESH_CRON`(`*\/10 * * * *`)同一个数。 */
+export const DEFAULT_FOLLOWERS_SAMPLE_GAP_MS = 10 * 60_000;
 
 /** 往后看几次触发。够跨过一个小时的边界(`*\/7` 那种在整点处只隔 4 分钟),算一次也就几毫秒。 */
 const CRON_LOOKAHEAD = 32;
@@ -35,14 +35,14 @@ const CRON_LOOKAHEAD = 32;
 const gapCache = new Map<string, number>();
 
 /**
- * B 站粉丝轮询两次采样之间**最短**隔多久:取 cron 往后几次触发里相邻两次的最小间隔 —— 「不密过它」要比的是它
+ * 资料刷新两次采样之间**最短**隔多久:取 cron 往后几次触发里相邻两次的最小间隔 —— 「不密过它」要比的是它
  * 最密的地方(`0 9,21 * * *` 是 12 小时,`*\/10 9-17 * * *` 是 10 分钟)。读不出来(面板上是自由文本框,
- * 粉丝轮询那头这时也起不来)就按 {@link DEFAULT_FANS_SAMPLE_GAP_MS}。按表达式缓存。
+ * 资料刷新这时也起不来)就按 {@link DEFAULT_FOLLOWERS_SAMPLE_GAP_MS}。按表达式缓存。
  */
-export function fansSampleGapMs(cron: string): number {
+export function followersSampleGapMs(cron: string): number {
 	const cached = gapCache.get(cron);
 	if (cached !== undefined) return cached;
-	let gap = DEFAULT_FANS_SAMPLE_GAP_MS;
+	let gap = DEFAULT_FOLLOWERS_SAMPLE_GAP_MS;
 	try {
 		const fires = new CronTime(cron).sendAt(CRON_LOOKAHEAD);
 		let min = Number.POSITIVE_INFINITY;
@@ -97,7 +97,11 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 						if (report.value.fans !== undefined) {
 							// 这个小时拉资料成功过(不管粉丝样本被不被稀释掉)。
 							recorder.recordActive(key, "followers");
-							recorder.recordFans(key, report.value.fans, fansSampleGapMs(opts.fansCron()));
+							recorder.recordReportedFollowers(
+								key,
+								report.value.fans,
+								followersSampleGapMs(opts.profileRefreshCron()),
+							);
 						}
 						break;
 					// 直播那三种不在这里:场次与本场累计观看由中立的 `live-session-changed` 统一记。

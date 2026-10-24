@@ -7,7 +7,7 @@
  * - 启用着就记、与推送开关无关;停用的、不认识的一样都不记(停用的资料照收也不记,决策 4);
  * - 作品行不在这里(3a-27):拓展作品经核心入口发 `post-detected`,统计由一个监听记(`post-detected.test.ts`);
  * - 直播场次与峰值由中立的 `live-session-changed` 监听统一记,用例在 `live-source.test.ts`;
- * - 粉丝:资料带粉丝数就记,不密过 B 站那边的粉丝轮询(决策 8);
+ * - 粉丝:资料带粉丝数就记,不密过资料刷新(决策 8);
  * - 「在记」小账(ADR-0027 决策 2 / 13):这个小时收到过任何上报 = 来源在跑,按作品 / 直播开关记当前整点小时;
  *   资料带粉丝数记粉丝;同一小时同一项只一行,重启后也不重复;开关关着不落作品行、不开新场次;
  * - 删订阅四份文件全删,停用留着。
@@ -55,7 +55,7 @@ let dataDir: string;
 let clock: number;
 let subs: Subscription[];
 let running: boolean;
-let fansCron: string;
+let profileRefreshCron: string;
 /** 订阅的作品开关 / 直播类开关(有效值,真线上由 bootstrap 算好交给适配)。 */
 let switches: { posts: boolean; live: boolean };
 /** 这一轮起的几套(重启的用例起两套),收尾时一起拆。 */
@@ -118,8 +118,8 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 		isEnabled: () => true,
 		bus,
 		store,
-		fans: createFollowersStore({ dataRoot: dataDir, logger }),
-		fansCron: () => fansCron,
+		followers: createFollowersStore({ dataRoot: dataDir, logger }),
+		profileRefreshCron: () => profileRefreshCron,
 		logger,
 		now,
 		subscriptions: () =>
@@ -264,7 +264,7 @@ beforeEach(async () => {
 	clock = T0;
 	subs = [SUB, OFF];
 	running = true;
-	fansCron = "*/10 * * * *";
+	profileRefreshCron = "*/10 * * * *";
 	switches = { posts: true, live: true };
 	worlds = [];
 });
@@ -325,7 +325,7 @@ describe("记谁(决策 4)", () => {
 });
 
 describe("粉丝(决策 8)", () => {
-	it("资料带了粉丝数就记一个样本(时刻是收到那一刻);不密过 B 站粉丝轮询(默认每 10 分钟),留先到的", async () => {
+	it("资料带了粉丝数就记一个样本(时刻是收到那一刻);不密过资料刷新(默认每 10 分钟),留先到的", async () => {
 		const world = boot();
 		report(world.bus, profile({ fans: 100 }));
 		clock = T0 + 5 * MINUTE;
@@ -354,8 +354,8 @@ describe("粉丝(决策 8)", () => {
 		expect(await fansRows()).toBeUndefined();
 	});
 
-	it("间隔跟着 fansCron 走:改成每 2 分钟,2 分钟后那份就记", async () => {
-		fansCron = "*/2 * * * *";
+	it("间隔跟着 profileRefreshCron 走:改成每 2 分钟,2 分钟后那份就记", async () => {
+		profileRefreshCron = "*/2 * * * *";
 		const world = boot();
 		report(world.bus, profile({ fans: 100 }));
 		clock = T0 + 2 * MINUTE;
@@ -367,8 +367,8 @@ describe("粉丝(决策 8)", () => {
 		]);
 	});
 
-	it("fansCron 读不出来(面板上是自由文本):按默认的 10 分钟", async () => {
-		fansCron = "每十分钟";
+	it("profileRefreshCron 读不出来(面板上是自由文本):按默认的 10 分钟", async () => {
+		profileRefreshCron = "每十分钟";
 		const world = boot();
 		report(world.bus, profile({ fans: 100 }));
 		clock = T0 + 5 * MINUTE;

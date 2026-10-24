@@ -312,7 +312,7 @@ describe("数据统计:四个目录、缓存", () => {
 			hasVideo: false,
 			publishedAt: "2026-10-06T11:00:00.000Z",
 		});
-		w.recorder.recordFans(key, 10, 0);
+		w.recorder.recordReportedFollowers(key, 10, 0);
 		w.recorder.recordActive(key, "posts");
 		w.recorder.openSession(key, { startedAt: "2026-10-06T09:00:00.000Z" });
 
