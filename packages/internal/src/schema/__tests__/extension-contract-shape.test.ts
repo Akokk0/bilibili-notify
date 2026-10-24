@@ -26,6 +26,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ExtensionLocaleFileSchema } from "../extension-locale";
 import { EXTENSION_API_RANGE, ExtensionManifestV2Schema } from "../extension-manifest";
+import {
+	ExtensionCreatorCandidatesSchema,
+	ExtensionCreatorProfileReportSchema,
+	ExtensionLiveSignalReportSchema,
+	ExtensionLiveStatusResultSchema,
+	ExtensionPostReportSchema,
+	ExtensionSourceHealthSchema,
+} from "../extension-report";
 import { SubscriptionCandidatesSchema } from "../extension-subscription";
 import { ExtensionViewSchema } from "../extension-view";
 import {
@@ -49,7 +57,7 @@ interface ContractRow {
 /**
  * 被钉的契约 —— **以后加一个 schema 就是往这里加一行**。
  *
- * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、解析门候选、视图、五种上报。
+ * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、搜人候选、视图、两版上报与读取结果。
  */
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v2", schema: ExtensionManifestV2Schema, digest: "c8e5aedd9b532dcd" },
@@ -61,6 +69,32 @@ const CONTRACT: readonly ContractRow[] = [
 	{ name: "上报:下播", schema: SubscriptionLiveEndSchema, digest: "04a4949b77f4cad6" },
 	{ name: "上报:直播状态", schema: SubscriptionLiveStatusSchema, digest: "b345df6a00258083" },
 	{ name: "上报:资料更新", schema: SubscriptionProfileSchema, digest: "a522bed1fa10e01b" },
+	{ name: "第 3 版上报:作品", schema: ExtensionPostReportSchema, digest: "2ae99df5a25fd825" },
+	{
+		name: "第 3 版上报:直播信号",
+		schema: ExtensionLiveSignalReportSchema,
+		digest: "4f0e25af3fecf0e7",
+	},
+	{
+		name: "第 3 版上报:资料",
+		schema: ExtensionCreatorProfileReportSchema,
+		digest: "32cd1648903b01ea",
+	},
+	{
+		name: "第 3 版搜人候选",
+		schema: ExtensionCreatorCandidatesSchema,
+		digest: "9496a7928db50e24",
+	},
+	{
+		name: "第 3 版直播拉取结果",
+		schema: ExtensionLiveStatusResultSchema,
+		digest: "11b4fae69993e7d1",
+	},
+	{
+		name: "第 3 版来源健康",
+		schema: ExtensionSourceHealthSchema,
+		digest: "43d728077867a532",
+	},
 ];
 
 /**

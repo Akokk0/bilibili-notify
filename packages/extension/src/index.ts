@@ -36,11 +36,14 @@ export type {
 	Connection,
 	ConnectionCandidate,
 	ConnectionCapabilities,
+	CreatorCandidate,
+	CreatorProfileReport,
 	DeliveryResult,
 	DestinationRef,
 	Disposable,
 	Failure,
 	FailureCode,
+	FeatureKey,
 	/** `ctx.http` 的请求选项(对外那份,不含宿主自用的拦内网口)。 */
 	FetchOptions,
 	/** 重定向时即将发出的一跳,`beforeHop` 的参数。 */
@@ -49,6 +52,8 @@ export type {
 	/** 每个集成一个的请求客户端(`ctx.http`)。 */
 	HttpClient,
 	HttpResponse,
+	Identity,
+	ImageRef,
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
@@ -78,6 +83,8 @@ export type {
 	 * 一个集成读自己设置的把手。拓展的 `ctx.settings(schema)` 回的就是它(与内置集成同一个口)。
 	 */
 	SettingsReader,
+	SourceHealth,
+	SourceSubscriptionView,
 	WebSocketLike,
 	WebSocketOptions,
 } from "@bilibili-notify/internal";
@@ -123,11 +130,19 @@ export type {
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type {
+	SourceContext as CoreSourceContext,
+	CreatorCandidate,
+	CreatorProfileReport,
 	Disposable,
+	FailureCode,
+	Identity,
+	ImageRef,
 	IntegrationContext,
 	Logger,
 	PlatformAdapter,
+	Result,
 	SettingsReader,
+	SourceHealth,
 } from "@bilibili-notify/internal";
 import type { TextValues } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
@@ -199,6 +214,166 @@ export interface PushSourceHandle<TConfig> {
 	connections(): readonly ExtensionConnectionView<TConfig>[];
 	/** 配置动过了。卸载时自动摘掉。 */
 	onConnectionsChanged(fn: () => void): Disposable;
+}
+
+/**
+ * 上报卡上的创作者。这里只开放名字与图库引用;没有带的那一样由宿主按订阅资料补。
+ */
+export interface SubscriptionCreator {
+	/** 1–128 字。 */
+	name?: string;
+	/** 图库引用;不是平台图片地址。 */
+	avatar?: ImageRef;
+}
+
+/** 正文片段与中立 `RichText` 同形,契约只开放这五种。 */
+export type RichTextSegment =
+	| { kind: "text"; text: string }
+	| { kind: "mention"; text: string; userId?: string }
+	| { kind: "topic"; text: string; name: string }
+	| { kind: "link"; text: string; url: string; icon?: ImageRef }
+	| { kind: "emoji"; text: string; image?: ImageRef };
+
+/** 作品正文的片段列表;片段的 `text` 拼起来必须等于正文 `text`。 */
+export type RichText = RichTextSegment[];
+
+/**
+ * 来源交的一条作品。作品 id 与地址在信封上,内容在中立 `Post` 的同名位置。
+ *
+ * 不开放标题、文章、转发、附加块、锁、提醒、会员标记等格。图一律交图库引用;
+ * `publishedAt` 是毫秒时间戳,宿主进门时换成 ISO。
+ */
+export interface PostReport {
+	/** 平台自己的作品 id。 */
+	postId: string;
+	/** 作品地址。 */
+	url: string;
+	post: {
+		/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
+		creator?: SubscriptionCreator;
+		/** 发布时刻,毫秒。 */
+		publishedAt: number;
+		/** 正文,必交。 */
+		text: string;
+		/** 正文片段;给了就要与 `text` 对得上。 */
+		richText?: RichText;
+		/** 作品图,图库引用。 */
+		images?: ImageRef[];
+		/** 话题名,不带 `#`;第一个上卡。 */
+		topic?: string;
+		video?: {
+			cover?: ImageRef;
+			title?: string;
+			description?: string;
+			/** 时长,秒。 */
+			durationSec?: number;
+			views?: number;
+		};
+		stats?: {
+			likes?: number;
+			comments?: number;
+			shares?: number;
+		};
+	};
+}
+
+/**
+ * 一场直播的内容;与核心的 `LiveDetails` 同义同名。差别只在拓展这一侧:`cover` 是图库引用,
+ * `creator` 是 {@link SubscriptionCreator}。
+ */
+export interface LiveDetails {
+	creator?: SubscriptionCreator;
+	title?: string;
+	cover?: ImageRef;
+	category?: string;
+	url?: string;
+	/** 此刻在线人数。 */
+	currentViewers?: number;
+	/** 本场累计观看人数。 */
+	totalViewers?: number;
+	likes?: number;
+	description?: string;
+}
+
+/**
+ * 来源推送式上报的一场直播变化。时刻都是毫秒;下播可以不交 `endedAt`,宿主取到达那一刻。
+ */
+export type LiveSignalReport =
+	| { kind: "start"; startedAt?: number; details: LiveDetails }
+	| { kind: "status"; isLive: boolean; startedAt?: number; details: LiveDetails }
+	| {
+			kind: "end";
+			endedAt?: number;
+			startedAt?: number;
+			details?: LiveDetails;
+	  };
+
+/**
+ * 来源拉取式直播状态。时刻都是毫秒;失败回标准结果形状,不抛。
+ */
+export type LiveStatusResult =
+	| { ok: true; kind: "live"; startedAt?: number; details: LiveDetails }
+	| { ok: true; kind: "offline" }
+	| { ok: false; code: FailureCode; message: string };
+
+/** 注册完一个订阅源之后拿到的唯一把手:注销这个来源。 */
+export interface SourceHandle {
+	/** 注销来源;幂等,调用后来源不再上报。 */
+	dispose(): void;
+}
+
+/**
+ * 拓展拿到的订阅源上下文:与核心那一份同一套名单、请求与收尾口,
+ * 只开放作品、直播、资料三种上报。上报返回 `void`,被拒也不回话。
+ */
+export interface SourceContext
+	extends Omit<
+		CoreSourceContext,
+		| "reportPost"
+		| "reportLive"
+		| "reportLiveInteraction"
+		| "registerLinkResolver"
+		| "registerAiToolProvider"
+	> {
+	/** 交一条作品。没有返回值;图和时刻按拓展契约交。 */
+	reportPost(externalId: string, report: PostReport): void;
+	/** 交一条直播信号。没有返回值;`status` 不触发推送。 */
+	reportLive(externalId: string, report: LiveSignalReport): void;
+	/** 交一份创作者资料。没有返回值;停用的订阅不收。 */
+	reportProfile(externalId: string, report: CreatorProfileReport): void;
+}
+
+/**
+ * 订阅源代码那一半。清单负责外观与能力声明;这里的成员按表拿,未开放的成员即使给了也不认。
+ */
+export interface SourceDef {
+	/**
+	 * 启动来源。拿到名单与三种上报口;这里可以同步返回,也可以回 Promise。
+	 * `stop()` 之后不许再上报。
+	 */
+	start(ctx: SourceContext): void | Promise<void>;
+	/** 停下来源。宿主先叫它,再中止 `ctx.signal` 并跑收尾钩子。 */
+	stop(): void | Promise<void>;
+	/**
+	 * 搜人:输入可以是链接、id 或名字,原样交进来。最多回 10 个候选;
+	 * 查无此人是成功的空数组,失败回结果形状、不抛。`signal` 中止后应尽快收手。
+	 */
+	searchCreators(
+		query: string,
+		signal: AbortSignal,
+	): Promise<Result<{ candidates: CreatorCandidate[] }>>;
+	/**
+	 * 取一个人的资料。可选;不实现就靠 `ctx.reportProfile` 主动上报。
+	 * 失败回结果形状、不抛,`signal` 中止后应尽快收手。
+	 */
+	fetchProfile?(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;
+	/**
+	 * 此刻这个人在不在播,时刻按毫秒交。声明了周期直播必须实现它,否则拓展装不上。
+	 * 不实现就只靠 `ctx.reportLive` 推送式上报。
+	 */
+	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
+	/** 此刻的健康状况,同步、不出网。不交就不占状态行。 */
+	health?(): SourceHealth;
 }
 
 /**

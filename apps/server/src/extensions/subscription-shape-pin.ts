@@ -12,9 +12,16 @@
  */
 
 import type {
+	CreatorCandidate,
+	CreatorProfileReport,
 	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionDisplay,
 	ExtensionSubscriptionEventKind,
+	LiveDetails,
+	LiveSignalReport,
+	LiveStatusResult,
+	PostReport,
+	SourceHealth,
 	SubscriptionLiveEnd,
 	SubscriptionLiveStart,
 	SubscriptionLiveStatus,
@@ -22,7 +29,13 @@ import type {
 	SubscriptionProfile,
 } from "@bilibili-notify/extension";
 import type {
+	ExtensionCreatorCandidatesSchema,
+	ExtensionCreatorProfileReportSchema,
+	ExtensionLiveSignalReportSchema,
+	ExtensionLiveStatusResultSchema,
 	ExtensionManifestV2,
+	ExtensionPostReportSchema,
+	ExtensionSourceHealthSchema,
 	SubscriptionCandidateSchema,
 	SubscriptionEventKind,
 	SubscriptionLiveEndSchema,
@@ -69,4 +82,31 @@ export type SubscriptionLiveStatusPinned = Pinned<
 >;
 export type SubscriptionProfilePinned = Pinned<
 	Equals<z.infer<typeof SubscriptionProfileSchema>, SubscriptionProfile>
+>;
+
+// ---- Version 3 reports and read results ---------------------------------------------------
+
+export type ExtensionPostReportPinned = Pinned<
+	Equals<z.infer<typeof ExtensionPostReportSchema>, PostReport>
+>;
+export type ExtensionLiveSignalReportPinned = Pinned<
+	Equals<z.infer<typeof ExtensionLiveSignalReportSchema>, LiveSignalReport>
+>;
+export type ExtensionLiveDetailsPinned = Pinned<
+	Equals<
+		Extract<z.infer<typeof ExtensionLiveSignalReportSchema>, { kind: "start" }>["details"],
+		LiveDetails
+	>
+>;
+export type ExtensionCreatorProfileReportPinned = Pinned<
+	Equals<z.infer<typeof ExtensionCreatorProfileReportSchema>, CreatorProfileReport>
+>;
+export type ExtensionCreatorCandidatesPinned = Pinned<
+	Equals<z.infer<typeof ExtensionCreatorCandidatesSchema>, CreatorCandidate[]>
+>;
+export type ExtensionLiveStatusResultPinned = Pinned<
+	Equals<z.infer<typeof ExtensionLiveStatusResultSchema>, LiveStatusResult>
+>;
+export type ExtensionSourceHealthPinned = Pinned<
+	Equals<z.infer<typeof ExtensionSourceHealthSchema>, SourceHealth>
 >;
