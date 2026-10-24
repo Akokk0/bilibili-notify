@@ -223,7 +223,7 @@ describe("createQQOfficialAdapter — 网关连不上的上报", () => {
 
 	it("网关又上线了(READY)之后换语言:不再报", async () => {
 		const locale = switchableLocale();
-		const wss = new WebSocketServer({ port: 0 });
+		const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 		await once(wss, "listening");
 		wss.on("connection", (ws) => {
 			ws.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 45000 } }));

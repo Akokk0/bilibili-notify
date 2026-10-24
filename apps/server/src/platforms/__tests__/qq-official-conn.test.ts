@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import type { IncomingHttpHeaders } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer } from "node:net";
 import type {
 	Disposable,
 	InboundGroupMessage,
@@ -69,9 +69,15 @@ interface FakeGateway {
 	ack(): void;
 }
 
-/** 假 QQ 网关:每条连接一上来就下发 HELLO,收集客户端帧。 */
+/**
+ * 假 QQ 网关:每条连接一上来就下发 HELLO,收集客户端帧。
+ *
+ * **只绑 127.0.0.1**,客户端连的也是它。不给 host 会绑通配地址(`::`),macOS 上那挡不住并行跑的
+ * 别的测试进程再在 127.0.0.1 上绑同号端口,而连 127.0.0.1 落到更具体的那个绑定上 —— 连接全打到
+ * 别人的 HTTP 服务、一路 404,退避越涨越长,等到超时(全量跑时撞过)。
+ */
 async function startFakeGateway(opts?: { heartbeatInterval?: number }): Promise<FakeGateway> {
-	const wss = new WebSocketServer({ port: 0 });
+	const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 	await once(wss, "listening");
 	const received: Array<Record<string, unknown>> = [];
 	const conns: WebSocket[] = [];
@@ -126,6 +132,19 @@ function connOpts(gw: FakeGateway, over: Partial<Parameters<typeof createQQGatew
 
 const lastIdentify = (gw: FakeGateway) => gw.received.find((f) => f.op === QQ_OPCODE.IDENTIFY);
 
+describe("假网关(测试脚手架)", () => {
+	it("独占它的回环端口:别人再在 127.0.0.1 上绑同号端口会撞 EADDRINUSE", async () => {
+		const gw = await startFakeGateway();
+		const squatter = createServer();
+		const outcome = await new Promise<string>((resolve) => {
+			squatter.once("error", (e: NodeJS.ErrnoException) => resolve(e.code ?? "error"));
+			squatter.listen(Number(new URL(gw.url).port), "127.0.0.1", () => resolve("listening"));
+		});
+		if (squatter.listening) squatter.close();
+		expect(outcome).toBe("EADDRINUSE");
+	});
+});
+
 describe("createQQGatewayConn — 握手", () => {
 	it("收到 HELLO → 回 IDENTIFY(QQBot token + intents + shard[0,1])", async () => {
 		const gw = await startFakeGateway();
@@ -151,14 +170,23 @@ describe("createQQGatewayConn — 握手", () => {
 	it("网关地址不合法(不是 ws/wss):记 lastError,退避后换个地址仍能连上", async () => {
 		const gw = await startFakeGateway();
 		let attempt = 0;
+		// 第二次取地址那一刻读 lastError:第一次的失败还记着,第二条连接还没 open(open 会清掉它)。
+		// 别轮询 lastError —— 它只亮一个退避的工夫(约 10 毫秒),满载下轮询会整段错过。
+		let errorBeforeRetry: string | null = null;
 		const conn = createQQGatewayConn(
-			connOpts(gw, { resolveGatewayUrl: async () => (++attempt === 1 ? "ftp://nope" : gw.url) }),
+			connOpts(gw, {
+				resolveGatewayUrl: async () => {
+					attempt += 1;
+					if (attempt === 1) return "ftp://nope";
+					if (attempt === 2) errorBeforeRetry = conn.lastError;
+					return gw.url;
+				},
+			}),
 		);
 		cleanups.push(() => conn.close());
-		await waitFor(() => attempt >= 1 && conn.lastError !== null);
-		expect(conn.lastError).toBeTruthy();
 		await waitFor(() => lastIdentify(gw) !== undefined);
 		expect(attempt).toBeGreaterThanOrEqual(2);
+		expect(errorBeforeRetry).toMatch(/ftp:\/\/nope/);
 	});
 
 	it("DISPATCH READY → isOnline() 变 true", async () => {
@@ -475,6 +503,9 @@ describe("createQQGatewayConn — 网关连不上的上报", () => {
 					return gw.url;
 				},
 				reconnectBaseMs: 20,
+				// 退避上限压小:不压的话,放行时排着的那次重连要等的差不多是已经过去的时长(每失败一次翻一倍),
+				// 放行前慢多少、放行后就再慢多少。
+				reconnectMaxMs: 50,
 				offlineReportMs: WINDOW,
 				onOffline,
 				onOnline,
@@ -484,7 +515,7 @@ describe("createQQGatewayConn — 网关连不上的上报", () => {
 		await waitFor(() => onOffline.mock.calls.length > 0);
 		expect(onOnline).not.toHaveBeenCalled();
 		reachable = true;
-		await waitFor(() => lastIdentify(gw) !== undefined, 5000);
+		await waitFor(() => lastIdentify(gw) !== undefined);
 		gw.dispatch("READY", { session_id: "SID" });
 		await waitFor(() => onOnline.mock.calls.length > 0);
 		expect(onOnline).toHaveBeenCalledTimes(1);

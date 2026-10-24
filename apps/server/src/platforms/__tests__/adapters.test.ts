@@ -194,7 +194,7 @@ async function startFakeBotServer(opts?: {
 		reply: (body: Record<string, unknown>) => void,
 	) => void;
 }): Promise<FakeBotServer> {
-	const wss = new WebSocketServer({ port: 0 });
+	const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 	await once(wss, "listening");
 	const received: Array<Record<string, unknown>> = [];
 	const connections: WebSocket[] = [];
@@ -1311,7 +1311,7 @@ describe("onebot — 正向 WS(ws)", () => {
 
 	it("echo 乱序:并发两次 send,bot 乱序回 → 各自匹配正确响应", async () => {
 		const pending: Array<{ ws: WebSocket; echo: unknown }> = [];
-		const wss = new WebSocketServer({ port: 0 });
+		const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 		await once(wss, "listening");
 		const port = (wss.address() as AddressInfo).port;
 		wss.on("connection", (ws) => {

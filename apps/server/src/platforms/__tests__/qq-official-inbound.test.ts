@@ -79,7 +79,7 @@ afterEach(async () => {
 
 /** 本机假网关:一上来下发 HELLO,`dispatch` 向最近一条连接推事件。 */
 async function startFakeGateway() {
-	const wss = new WebSocketServer({ port: 0 });
+	const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
 	await once(wss, "listening");
 	const conns: WebSocket[] = [];
 	wss.on("connection", (ws) => {
