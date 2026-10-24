@@ -62,15 +62,13 @@ let subs: ReturnType<typeof bili>[];
 function setup() {
 	const { bus, trigger } = makeBus();
 	const recorder = makeRecorder();
-	const forgetOpenSessions = vi.fn();
 	const source = attachBiliStatsSource({
 		bus,
 		recorder,
 		subscriptions: () => subs as never,
 		isLoggedIn: () => loggedIn,
-		forgetOpenSessions,
 	});
-	return { bus, trigger, recorder, source, forgetOpenSessions };
+	return { bus, trigger, recorder, source };
 }
 
 const calls = (recorder: ReturnType<typeof makeRecorder>) =>
@@ -114,13 +112,11 @@ describe("B 站适配 —— 登录有效时定时记当前小时", () => {
 		expect(calls(recorder)).toEqual(["s1/posts", "s1/live", "s1/posts", "s1/live"]);
 	});
 
-	it("auth-lost 之后停,直到恢复:定时现读状态,auth-restored 立刻补记一次", () => {
-		const { trigger, recorder, forgetOpenSessions } = setup();
+	it("登录状态丢失之后停,直到恢复:定时现读状态,auth-restored 立刻补记一次", () => {
+		const { trigger, recorder } = setup();
 		recorder.recordActive.mockClear();
-		// 登录丢了:状态读口回 false,事件只负责清理在飞状态。
+		// 登录丢了:状态读口回 false,定时下一轮不再记。
 		loggedIn = false;
-		trigger("auth-lost");
-		expect(forgetOpenSessions).toHaveBeenCalledWith("bilibili");
 		vi.advanceTimersByTime(BILI_SOURCE_CHECK_MS * 3);
 		expect(calls(recorder)).toEqual([]);
 		// 恢复:不等下一次定时,事件到了就补记。
@@ -164,6 +160,7 @@ describe("B 站适配 —— 登录读口没绑好之前当作没在跑", () => 
 			logger: { info() {}, warn() {}, error() {}, debug() {} },
 			now: () => new Date(Date.now()),
 			subscriptions: () => subs as never,
+			sources: { get: () => undefined },
 		});
 		vi.advanceTimersByTime(BILI_SOURCE_CHECK_MS * 2);
 		await handle.flush();

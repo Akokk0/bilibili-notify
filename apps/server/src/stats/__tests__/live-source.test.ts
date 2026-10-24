@@ -1,13 +1,16 @@
 import type {
+	AuthState,
 	LiveSession,
 	LiveSessionChange,
 	LiveSessionEndReason,
 	MessageBus,
+	SourceAuth,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { attachBiliStatsSource } from "../bili-source.js";
+import type { SourceView } from "../../subscriptions/registry.js";
 import { attachLiveStatsSource } from "../live-source.js";
-import type { StatsRecorderCore } from "../recorder.js";
+import { createStatsRecorder, type StatsRecorderCore } from "../recorder.js";
+import type { StatsStore } from "../store.js";
 
 const NOW = Date.parse("2026-05-16T10:00:00.000Z");
 const HOUR = 60 * 60_000;
@@ -413,20 +416,62 @@ describe("登录失效后忘掉在飞的场次", () => {
 		});
 	});
 
-	it("B 站 auth-lost 调中立监听的 forgetOpenSessions:只忘 B 站交过的键", () => {
-		const { bus, recorder, source, trigger } = setup();
-		attachBiliStatsSource({
+	it("来源登录丢了:经记录器忘掉这一场,end 不写;同一开播时刻再认出后照常收尾", async () => {
+		let state: AuthState = { status: "logged-in", loggedInAt: new Date(NOW).toISOString() };
+		const { bus, trigger } = makeBus();
+		const store = {
+			openLiveSession: vi.fn(async () => {}),
+			closeLiveSession: vi.fn(async () => {}),
+		} as unknown as StatsStore & {
+			openLiveSession: ReturnType<typeof vi.fn>;
+			closeLiveSession: ReturnType<typeof vi.fn>;
+		};
+		const readState = vi.fn(() => state);
+		const auth = { state: readState } as unknown as SourceAuth;
+		const getSource = vi.fn((sourceKey: string) =>
+			sourceKey === "douyin" ? ({ auth } as SourceView) : undefined,
+		);
+		const handle = createStatsRecorder({
+			isEnabled: () => true,
 			bus,
-			recorder,
-			subscriptions: () => [BILI_SUB, EXT_SUB],
-			isLoggedIn: () => true,
-			forgetOpenSessions: source.forgetOpenSessions,
+			store,
+			fans: {} as never,
+			fansCron: () => "*/10 * * * *",
+			logger: { info() {}, warn() {}, error() {}, debug() {} },
+			now: () => new Date(NOW),
+			subscriptions: () => [EXT_SUB],
+			sources: { get: getSource },
 		});
-		trigger("live-session-changed", start());
-		trigger("live-session-changed", start(EXT_SUB.id, "douyin"));
-		trigger("auth-lost");
-		expect(recorder.forget).toHaveBeenCalledWith(BILI_SUB.id);
-		expect(recorder.forget).not.toHaveBeenCalledWith(EXT_SUB.id);
+
+		const change = start(EXT_SUB.id, "douyin");
+		trigger("live-session-changed", change);
+		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
+
+		state = { status: "logged-out" };
+		expect(auth.state()).toEqual({ status: "logged-out" });
+		trigger("subscription-auth-changed", { sourceKey: "douyin", state });
+		expect(getSource).toHaveBeenCalledWith("douyin");
+		expect(readState).toHaveReturnedWith({ status: "logged-out" });
+		trigger("live-session-changed", end(change.session));
+		expect(store.closeLiveSession).not.toHaveBeenCalled();
+
+		trigger("live-session-changed", {
+			kind: "status",
+			subscriptionId: change.subscriptionId,
+			isLive: true,
+			session: change.session,
+		} satisfies LiveSessionChange);
+		await handle.flush();
+		expect(store.openLiveSession).toHaveBeenCalledTimes(2);
+		expect(store.openLiveSession).toHaveBeenLastCalledWith("ext-1", {
+			startedAt: change.session.startedAt,
+		});
+		trigger("live-session-changed", end(change.session));
+		await handle.flush();
+		expect(store.closeLiveSession).toHaveBeenCalledWith("ext-1", {
+			endedAt: new Date(NOW + HOUR).toISOString(),
+		});
+		handle.dispose();
 	});
 });
 

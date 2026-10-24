@@ -433,6 +433,7 @@ export function createAppRuntime(
 		bus,
 		store: statsStore,
 		fans: fansStore,
+		sources: sourceRegistry,
 		isEnabled: statsEnabled.isEnabled,
 		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
 		fansCron: () => configStore.getGlobals().profileRefreshCron,

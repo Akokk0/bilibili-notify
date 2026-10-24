@@ -12,7 +12,7 @@ import type { LiveSessionClose, LiveSessionStart } from "./store.js";
  * - 开始,或登录失效 / 重启之后手里没有这一场时再见到 resume / tick / 在播 status,记一场;
  * - 结束只认 `end`,峰值与结束时刻都取变化里的;其余变化不是场次的头尾;
  * - 订阅不在了不补文件(删文件跟 `subscription-changed` 走),只忘掉内存;
- * - B 站登录失效时由 B 站适配叫 {@link LiveStatsSource.forgetOpenSessions},忘掉之后这一场的 end 不写;
+ * - 来源登录丢了时由 `registry-source.ts` 叫 {@link LiveStatsSource.forgetOpenSessions},忘掉之后这一场的 end 不写;
  *   登录恢复后再见到同一开播时刻,按 `startedAt` 把它接回来。
  */
 export interface LiveStatsSourceOptions {
@@ -26,7 +26,7 @@ export interface LiveStatsSourceOptions {
 export interface LiveStatsSource extends Disposable {
 	/**
 	 * 忘掉这个来源名下仍在统计里的场次(只动内存):之后它们的 `end` 不再写。
-	 * B 站 cookie 失效时调用;别的来源在飞的场次不受影响。
+	 * 来源登录丢了时由 `registry-source.ts` 调用;别的来源在飞的场次不受影响。
 	 */
 	forgetOpenSessions(sourceKey: string): void;
 }

@@ -1,12 +1,14 @@
 import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
+import type { SourceRegistry } from "../subscriptions/registry.js";
 import { attachBiliStatsSource } from "./bili-source.js";
 import type { RecordingCompactSummary } from "./compaction.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import { attachLiveStatsSource } from "./live-source.js";
 import { postEntryFromEvent } from "./post-entry-extras.js";
+import { attachRegistryStatsSource } from "./registry-source.js";
 import type {
 	LiveSessionClose,
 	LiveSessionStart,
@@ -26,7 +28,8 @@ import type {
  *       `PostEvent`,统计照事件记一行(`postEntryFromEvent`),不认来源、不再自己看作品开关 ——
  *       该不该记的判据已经在入口里(订阅在、启用、作品开关开着、来源在跑)。
  *     · 直播(`live-source.ts`):所有来源共用一个监听,吃中立的 `live-session-changed`。
- *     · B 站(`bili-source.ts`):登录有效 = 来源在跑,登录失效时忘掉 B 站在飞的场次。
+ *     · B 站(`bili-source.ts`):登录有效 = 来源在跑。
+ *     · 登记表(`registry-source.ts`):来源登录丢了就忘掉它名下的在飞场次。
  *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按 B 站粉丝轮询的间隔稀释;
  *       收到上报 = 来源在跑,按开关记「在记」。
  *
@@ -399,6 +402,8 @@ export interface StatsRecorderOptions {
 	 * 当前全部订阅。中立直播监听按它判订阅还在不在、要不要记直播;各来源适配按它分流。
 	 */
 	subscriptions: () => readonly StatsSubscription[];
+	/** 在册来源;登录状态由登记表视图现读。 */
+	sources: Pick<SourceRegistry, "get">;
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
 	/** 数据统计的总开关,见 {@link StatsRecorderCoreOptions.isEnabled}。装配处给一个读缓存布尔的函数。 */
@@ -465,9 +470,14 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		recorder,
 		subscriptions: opts.subscriptions,
 		isLoggedIn: () => isLoggedIn?.() === true,
+	});
+	const registrySource = attachRegistryStatsSource({
+		bus: opts.bus,
+		sources: opts.sources,
 		forgetOpenSessions: liveSource.forgetOpenSessions,
 	});
 	const sources: Disposable[] = [
+		registrySource,
 		biliSource,
 		liveSource,
 		opts.bus.on("subscription-changed", ({ ops }) => {

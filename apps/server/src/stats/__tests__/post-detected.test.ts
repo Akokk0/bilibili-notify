@@ -66,6 +66,7 @@ function setup(enabled = true) {
 		isEnabled: () => enabled,
 		// 订阅清单只给 B 站的 tick 与拓展的上报用;作品行不看它(判据在核心入口)。
 		subscriptions: () => [],
+		sources: { get: () => undefined },
 	});
 	return { bus, store, handle };
 }

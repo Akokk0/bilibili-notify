@@ -32,6 +32,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
+import type { AuthState } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFollowersStore, FOLLOWERS_DIR } from "../followers/store.js";
 import { migrateZeroGeneration } from "../migration/zero-generation.js";
@@ -425,6 +426,10 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 	async function recordEvents() {
 		let clock = NOW - 3 * D;
 		const now = () => new Date(clock);
+		let authState: AuthState = {
+			status: "logged-in",
+			loggedInAt: "2026-05-13T00:00:00.000Z",
+		};
 		const handlers = new Map<string, Array<(payload?: unknown) => void>>();
 		const bus = {
 			on: (ev: string, h: (payload?: unknown) => void) => {
@@ -451,6 +456,12 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 					recordsPosts: true,
 					recordsLive: true,
 				})),
+			sources: {
+				get: (sourceKey) =>
+					sourceKey === "bilibili"
+						? ({ sourceKey, auth: { state: () => authState } } as never)
+						: undefined,
+			},
 		});
 		// 登录有效:「在记」按小时账记。老版本拿粉丝样本当「那天 B 站在看着」的证据,样本落在这几天(见文件尾);
 		// 现在账记的是 B 站适配的定时检查,下面每到一天就让它看一眼(`auth-restored` 立刻补记一次),天数与样本那几天一致。
@@ -543,11 +554,12 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		await startLive("203", at(2, 1));
 		clock = NOW - 2 * D + 2 * H;
 		await endLive("203", at(2, -1, 58), 12_000);
-		// 204:开播时刻解析不出 → 回退此刻;auth-lost 之后再开一场;关服收尾。
+		// 204:开播时刻解析不出 → 回退此刻;登录失效之后再开一场;关服收尾。
 		clock = NOW - D;
 		await fire("auth-restored");
 		await startLive("204", "不是时间");
-		await fire("auth-lost");
+		authState = { status: "expired", message: "expired" };
+		await fire("subscription-auth-changed", { sourceKey: "bilibili", state: authState });
 		clock = NOW - 5 * H;
 		await startLive("204", "还是不是时间");
 		clock = NOW - H;

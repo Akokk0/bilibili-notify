@@ -92,6 +92,7 @@ describe("服务器在 UP 已开播时启动", () => {
 			logger,
 			now: () => BOOT,
 			subscriptions,
+			sources: { get: () => undefined },
 		});
 		emitStart(REAL_START);
 		// 落盘是 fire-and-forget,等 recorder 把交出去的写入落完。

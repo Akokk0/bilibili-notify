@@ -45,6 +45,7 @@ function setup(initial: AuthState) {
 					recordsLive: true,
 				},
 			] as never,
+		sources: { get: () => undefined },
 	});
 	return {
 		handle,

@@ -152,6 +152,7 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 		logger,
 		now,
 		subscriptions: subs as never,
+		sources: { get: () => undefined },
 	});
 	return { trigger, store, handle };
 }

@@ -227,6 +227,7 @@ describe("记录器 × 总开关 — 热更新(整条采集链,下一条事件�
 					recordsLive: true,
 				},
 			],
+			sources: { get: () => undefined },
 		});
 		const dynamic = (id: string): PostEvent => ({
 			subscriptionId: KEY,

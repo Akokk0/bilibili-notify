@@ -130,6 +130,7 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 				recordsPosts: sub.enabled && switches.posts,
 				recordsLive: sub.enabled && switches.live,
 			})),
+		sources: { get: () => undefined },
 	});
 	let down = false;
 	const world: World = {
