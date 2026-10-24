@@ -19,6 +19,7 @@ import type { AllDynamicResponse } from "../dynamic/types";
 import { failureFromBili } from "../error-codes";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
+import { RiskControlError } from "./risk-control";
 import { createMyselfCache, type MyselfCache } from "./self-info-cache";
 import type {
 	LiveRoomDanmakuResponse,
@@ -62,18 +63,6 @@ const AUTH_LOST_DEBOUNCE_MS = 60_000;
  * 免得两端各写一份、各错一份。
  */
 export const FOLLOW_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 22014, 22001]);
-
-/**
- * 持续风控错误(wbi 签名请求刷新 wbiKeys 重试后仍 -352)。标记成独立类型,让外层
- * `this.retry` 的 `shouldRetry` 识别并 **fail-fast** —— 持续风控再快速重试 3 轮只会
- * 放大打在被限流账号上的请求量。区别于瞬时网络错误(仍应退避重试)。
- */
-export class RiskControlError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "RiskControlError";
-	}
-}
 
 export interface ApiOptions {
 	serviceCtx: ServiceContext;
@@ -747,7 +736,7 @@ export class Api {
 			if (retried && typeof retried === "object" && retried.code === -352) {
 				// 抛「持续风控」类型 —— 外层 retry 的 shouldRetry 据此 fail-fast,
 				// 不再把刷新+重试整轮跑 3 遍放大请求量(风控收敛)。
-				throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)");
+				throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)", -352);
 			}
 			return retried;
 		}
@@ -756,29 +745,43 @@ export class Api {
 
 	// ---- Request helpers ----
 
-	private retry<T>(
-		fn: () => Promise<T>,
-		label: string,
-		opts?: { shouldRetry?: (err: unknown) => boolean },
-	): Promise<T> {
+	private retry<T>(fn: () => Promise<T>, label: string): Promise<T> {
 		return retryUtil(() => fn(), {
 			attempts: 4, // 1 initial + 3 retries
 			baseDelayMs: 200,
-			shouldRetry: opts?.shouldRetry ? (err) => opts.shouldRetry?.(err) ?? true : undefined,
+			shouldRetry: (error) => !(error instanceof RiskControlError),
 			onRetry: (err, attempt) => {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessageOf(err);
 				this.logger.warn(`[retry] ${label}() 第 ${attempt} 次失败: ${message}`);
 			},
 		});
 	}
 
 	/**
-	 * wbi 签名请求的外层 retry 判定:持续风控({@link RiskControlError})fail-fast,
-	 * 瞬时网络错误仍退避重试。所有经 wbiGet 的公有方法共用。
+	 * 回 `Result` 的公有方法共用的请求收口:先经 {@link retry},再用 {@link resultOf} 翻 B 站码。
+	 *
+	 * {@link RiskControlError} 无论来自 HTTP 412 风控页,还是 wbi 请求刷新签名后仍持续 -352,
+	 * 都翻成 `rate_limited`,不再向外抛。持续 -352 的错误自带 `upstreamCode: -352`,原样保留;
+	 * HTTP 412 是传输层状态,不带 `upstreamCode`。调用方(如直播预检与搜人)只看标准码。
+	 * 连不上、超时及其他异常仍原样抛给调用方,由各自的失败边界处理。
 	 */
-	private static readonly retryUnlessRiskControl = {
-		shouldRetry: (err: unknown) => !(err instanceof RiskControlError),
-	};
+	private async retryResult<D>(
+		request: () => Promise<unknown>,
+		label: string,
+		own?: Readonly<Record<number, FailureCode>>,
+		successCodes?: ReadonlySet<number>,
+	): Promise<Result<{ data: D }>> {
+		try {
+			const body = await this.retry(request, label);
+			return this.resultOf<D>(body, label, own, successCodes);
+		} catch (error) {
+			if (!(error instanceof RiskControlError)) throw error;
+			const upstreamCode = error.upstreamCode;
+			return upstreamCode === undefined
+				? fail("rate_limited", error.message)
+				: fail("rate_limited", error.message, { upstreamCode });
+		}
+	}
 
 	/**
 	 * GET + retry,返回响应体(等价旧 axios 的 `.data`)。默认 `any` 沿袭 axios
@@ -791,22 +794,8 @@ export class Api {
 	}
 
 	/**
-	 * 表单 POST + retry(bilibili 写接口一律 x-www-form-urlencoded)。body 是
-	 * 惰性闭包:csrf(bili_jct)必须在**每次尝试时**现取 —— 与旧实现把
-	 * `getCSRF()` 写在 retry 闭包内的语义一致(刷新轮换后重试用新值)。
-	 */
-	// biome-ignore lint/suspicious/noExplicitAny: 见 getJson
-	private postFormJson<T = any>(
-		url: string,
-		body: () => Record<string, string | number | boolean | undefined>,
-		label: string,
-	): Promise<T> {
-		return this.retry(async () => (await this.client.postForm(url, body())) as T, label);
-	}
-
-	/**
-	 * 把 B 站的一份回应体翻成结果形状(请求层只在这一处查码表,ADR-0026 决策 4):code 0 → `ok`,
-	 * B 站的 `data` 原样铺在 `ok` 旁;非 0 → 标准码 + 原话 + `upstreamCode`({@link failureFromBili});
+	 * 把 B 站的一份回应体翻成结果形状(请求层只在这一处查码表,ADR-0026 决策 4):code 0(或接口自己
+	 * 认的 `successCodes`,如关注的「已关注」)→ `ok`,B 站的 `data` 原样铺在 `ok` 旁;非 0 → 标准码 + 原话 + `upstreamCode`({@link failureFromBili});
 	 * 回应不是对象、没有数字 code(HTML 页、形状变了)→ `unavailable`,不带 `upstreamCode`。
 	 * 表外的码每个记一条带原话的 warn,取证用 —— 认得了再往 `error-codes.ts` 里加一行。
 	 * `-403` 这类不进共用表、由接口自己判的码从 `own` 给;命中的不记表外 warn。
@@ -817,6 +806,7 @@ export class Api {
 		body: unknown,
 		label: string,
 		own?: Readonly<Record<number, FailureCode>>,
+		successCodes?: ReadonlySet<number>,
 	): Result<{ data: D }> {
 		const reply =
 			typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
@@ -824,7 +814,7 @@ export class Api {
 			return fail("unavailable", t("bilibili.response.malformed"));
 		}
 		const { code } = reply;
-		if (code === 0) return ok({ data: reply.data as D });
+		if (code === 0 || successCodes?.has(code)) return ok({ data: reply.data as D });
 		const message =
 			typeof reply.message === "string" && reply.message !== ""
 				? reply.message
@@ -843,8 +833,8 @@ export class Api {
 	// ---- Public API methods ----
 
 	async fetchAllDynamic(): Promise<Result<{ data: AllDynamicResponse["data"] }>> {
-		return this.resultOf(
-			await this.getJson(EP.ALL_DYNAMIC_URL, "fetchAllDynamic"),
+		return this.retryResult<AllDynamicResponse["data"]>(
+			() => this.client.get(EP.ALL_DYNAMIC_URL),
 			"fetchAllDynamic",
 		);
 	}
@@ -857,8 +847,8 @@ export class Api {
 	}
 
 	async fetchLoginQrCode(): Promise<Result<{ data: LoginQrCodeResponse["data"] }>> {
-		return this.resultOf(
-			await this.getJson(EP.LOGIN_QR_CODE_URL, "fetchLoginQrCode"),
+		return this.retryResult<LoginQrCodeResponse["data"]>(
+			() => this.client.get(EP.LOGIN_QR_CODE_URL),
 			"fetchLoginQrCode",
 			{ [-403]: "rate_limited" },
 		);
@@ -893,11 +883,11 @@ export class Api {
 		uid: string,
 		withPhoto = false,
 	): Promise<Result<{ data: UserCardResponse["data"] }>> {
-		return this.resultOf(
-			await this.getJson(
-				`${EP.USER_CARD_URL}?mid=${encodeURIComponent(uid)}${withPhoto ? "&photo=true" : ""}`,
-				"fetchUserCard",
-			),
+		return this.retryResult<UserCardResponse["data"]>(
+			() =>
+				this.client.get(
+					`${EP.USER_CARD_URL}?mid=${encodeURIComponent(uid)}${withPhoto ? "&photo=true" : ""}`,
+				),
 			"fetchUserCard",
 			{ [-404]: "not_found", [-403]: "rate_limited" },
 		);
@@ -907,28 +897,17 @@ export class Api {
 		uid: string,
 		griskId?: string,
 	): Promise<Result<{ data: UserInfoResponse["data"] }>> {
-		try {
-			const body = await this.retry(
-				async () => {
-					if (uid === BANGUMI_TRIP_UID) {
-						return {
-							code: 0,
-							data: { live_room: { roomid: BANGUMI_TRIP_ROOM_ID } },
-						};
-					}
-					const params: Record<string, string> = { mid: uid };
-					if (griskId) params.grisk_id = griskId;
-					return this.wbiGet(EP.USER_INFO_URL, params);
-				},
-				"fetchUserInfo",
-				Api.retryUnlessRiskControl,
-			);
-			return this.resultOf<UserInfoResponse["data"]>(body, "fetchUserInfo");
-		} catch (e) {
-			if (e instanceof RiskControlError)
-				return fail("rate_limited", e.message, { upstreamCode: -352 });
-			throw e;
-		}
+		return this.retryResult<UserInfoResponse["data"]>(async () => {
+			if (uid === BANGUMI_TRIP_UID) {
+				return {
+					code: 0,
+					data: { live_room: { roomid: BANGUMI_TRIP_ROOM_ID } },
+				};
+			}
+			const params: Record<string, string> = { mid: uid };
+			if (griskId) params.grisk_id = griskId;
+			return this.wbiGet(EP.USER_INFO_URL, params);
+		}, "fetchUserInfo");
 	}
 
 	async fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse> {
@@ -981,31 +960,21 @@ export class Api {
 	): Promise<Result<{ data: LiveRoomDanmakuResponse["data"] }>> {
 		// getDanmuInfo 现已强制 wbi 签名，裸 GET 一律被风控拦成 -352。必须走
 		// wbiGet（自动加 wts + w_rid，并自带 -352 → 刷新 wbiKeys 重试一次的自愈）。
-		try {
-			const body = await this.retry(
-				async () => this.wbiGet(EP.LIVE_ROOM_INFO_STREAM_KEY_URL, { id: roomId }),
-				"fetchLiveRoomInfoStreamKey",
-				Api.retryUnlessRiskControl,
-			);
-			return this.resultOf(body, "fetchLiveRoomInfoStreamKey");
-		} catch (e) {
-			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个 rate_limited 失败,
-			// 预检只看标准码。别的异常(连不上、超时)照旧往外抛,由调用方的 catch 接。
-			if (e instanceof RiskControlError)
-				return fail("rate_limited", e.message, { upstreamCode: -352 });
-			throw e;
-		}
+		return this.retryResult<LiveRoomDanmakuResponse["data"]>(
+			() => this.wbiGet(EP.LIVE_ROOM_INFO_STREAM_KEY_URL, { id: roomId }),
+			"fetchLiveRoomInfoStreamKey",
+		);
 	}
 
 	async fetchUserInfoInLive(
 		uid: string,
 		upUid: string,
 	): Promise<Result<{ data: { face?: string } | null }>> {
-		return this.resultOf(
-			await this.getJson(
-				`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,
-				"fetchUserInfoInLive",
-			),
+		return this.retryResult<{ face?: string } | null>(
+			() =>
+				this.client.get(
+					`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,
+				),
 			"fetchUserInfoInLive",
 		);
 	}
@@ -1013,15 +982,15 @@ export class Api {
 	async fetchUserUpstat(
 		uid: string,
 	): Promise<Result<{ data: { archive?: { view?: number }; likes?: number } }>> {
-		return this.resultOf(
-			await this.getJson(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserUpstat"),
+		return this.retryResult<{ archive?: { view?: number }; likes?: number }>(
+			() => this.client.get(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`),
 			"fetchUserUpstat",
 		);
 	}
 
 	async fetchUserNavnum(uid: string): Promise<Result<{ data: { video?: number; upos?: number } }>> {
-		return this.resultOf(
-			await this.getJson(`${EP.USER_NAVNUM_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserNavnum"),
+		return this.retryResult<{ video?: number; upos?: number }>(
+			() => this.client.get(`${EP.USER_NAVNUM_URL}?mid=${encodeURIComponent(uid)}`),
 			"fetchUserNavnum",
 		);
 	}
@@ -1038,21 +1007,14 @@ export class Api {
 			};
 		}>
 	> {
-		try {
-			const body = await this.retry(
-				async () => this.wbiGet(EP.USER_VIDEOS_URL, { mid: uid, order: "pubdate", ps }),
-				"fetchUserVideos",
-				Api.retryUnlessRiskControl,
-			);
-			return this.resultOf(body, "fetchUserVideos");
-		} catch (error) {
-			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个
-			// rate_limited 失败。别的异常(连不上、超时)照旧往外抛,由生成器记工具执行失败。
-			if (error instanceof RiskControlError) {
-				return fail("rate_limited", error.message, { upstreamCode: -352 });
-			}
-			throw error;
-		}
+		return this.retryResult<{
+			list?: {
+				vlist?: Array<{ title?: string; play?: number; created?: number }>;
+			};
+		}>(
+			() => this.wbiGet(EP.USER_VIDEOS_URL, { mid: uid, order: "pubdate", ps }),
+			"fetchUserVideos",
+		);
 	}
 
 	/**
@@ -1122,25 +1084,16 @@ export class Api {
 		keyword: string,
 		opts?: { page?: number; pageSize?: number },
 	): Promise<Result<{ data: unknown }>> {
-		try {
-			const body = await this.retry(
-				async () => {
-					const params: Record<string, string> = { search_type: searchType, keyword };
-					if (opts?.page) params.page = String(opts.page);
-					if (opts?.pageSize) params.page_size = String(opts.pageSize);
-					return this.wbiGet(EP.SEARCH_BY_TYPE_URL, params);
-				},
-				"searchByType",
-				Api.retryUnlessRiskControl,
-			);
-			return this.resultOf(body, "searchByType", { [-403]: "rate_limited" });
-		} catch (e) {
-			// 持续 -352(刷新 wbiKeys 重试后仍被拒)由 wbiGet 以异常抛出,这里翻成同一个 rate_limited 失败,
-			// 搜人只看标准码。别的异常(连不上、超时)照旧往外抛,由调用方的 catch 接。
-			if (e instanceof RiskControlError)
-				return fail("rate_limited", e.message, { upstreamCode: -352 });
-			throw e;
-		}
+		return this.retryResult<unknown>(
+			async () => {
+				const params: Record<string, string> = { search_type: searchType, keyword };
+				if (opts?.page) params.page = String(opts.page);
+				if (opts?.pageSize) params.page_size = String(opts.pageSize);
+				return this.wbiGet(EP.SEARCH_BY_TYPE_URL, params);
+			},
+			"searchByType",
+			{ [-403]: "rate_limited" },
+		);
 	}
 
 	/**
@@ -1157,17 +1110,19 @@ export class Api {
 	}
 
 	async follow(uid: string): Promise<Result<{ data: unknown }>> {
-		const body = await this.postFormJson(
-			EP.RELATION_MODIFY_URL,
-			() => ({ fid: uid, act: 1, re_src: 11, csrf: this.getCSRF() }),
+		// csrf(bili_jct)在每次尝试时现取:刷新轮换之后的重试要用新值。
+		return this.retryResult<unknown>(
+			() =>
+				this.client.postForm(EP.RELATION_MODIFY_URL, {
+					fid: uid,
+					act: 1,
+					re_src: 11,
+					csrf: this.getCSRF(),
+				}),
 			"follow",
+			undefined,
+			FOLLOW_SUCCESS_CODES,
 		);
-		const reply =
-			typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
-		if (reply !== null && typeof reply.code === "number" && FOLLOW_SUCCESS_CODES.has(reply.code)) {
-			return ok({ data: reply.data });
-		}
-		return this.resultOf(body, "follow");
 	}
 
 	/**
@@ -1182,8 +1137,8 @@ export class Api {
 	async fetchRelations(uids: string[]): Promise<Result<{ data: RelationsResponse["data"] }>> {
 		if (!uids.length) return ok({ data: {} });
 		const list = uids.map((f) => encodeURIComponent(f)).join(",");
-		return this.resultOf<RelationsResponse["data"]>(
-			await this.getJson(`${EP.RELATIONS_URL}?fids=${list}`, "fetchRelations"),
+		return this.retryResult<RelationsResponse["data"]>(
+			() => this.client.get(`${EP.RELATIONS_URL}?fids=${list}`),
 			"fetchRelations",
 		);
 	}

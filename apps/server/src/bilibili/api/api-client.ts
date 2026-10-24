@@ -5,14 +5,16 @@ import type {
 	WebSocketLike,
 	WebSocketOptions,
 } from "@bilibili-notify/internal";
+import { RiskControlError } from "./risk-control";
 
 /**
  * B 站请求客户端 —— `@bilibili-notify/http` 的 `HttpClient` 之上的一层薄包。
  *
  * 通用底座对「非 2xx 不抛、回原始字节、失败回结果形状」,而 B 站这一路从 axios 时代起就靠下面
  * 这几条语义跑着,这里原样保住,调用方(Api 与外层 retry)一个字不用改:
- * - **非 2xx 抛错**:等价 axios validateStatus 默认 —— 412 风控页等以异常进入外层 retry,
- *   不会被当成功响应。消息里的 URL 去掉 query(凭据常塞在 query 里,见 {@link urlWithoutQuery})。
+ * - **非 2xx 抛错**:等价 axios validateStatus 默认,不会被当成功响应。412 风控页抛
+ *   {@link RiskControlError},外层不重试;其余非 2xx 抛普通错误,仍走外层 retry。
+ *   消息里的 URL 去掉 query(凭据常塞在 query 里,见 {@link urlWithoutQuery})。
  * - **JSON 尝试解析、失败回退原文**:JSON API 得对象,correspond HTML 页得字符串。
  * - **`onBody` 只对 2xx 的体触发**:响应拦截器挂点(-101 auth-lost 探测),非 2xx 先抛了,轮不到它。
  *   它带着这次请求发出去之前取的登录代(`generation`),迟到的回应由调用方按它认。
@@ -140,10 +142,10 @@ export class ApiClient {
 		}
 		const text = result.text();
 		if (!result.isSuccess) {
-			// 等价 axios validateStatus 默认:非 2xx 一律异常,进外层 retry。
-			throw new Error(
-				`Request failed with status code ${result.status}: ${method} ${urlWithoutQuery(result.url)}`,
-			);
+			// 等价 axios validateStatus 默认:非 2xx 一律异常。
+			const message = `Request failed with status code ${result.status}: ${method} ${urlWithoutQuery(result.url)}`;
+			if (result.status === 412) throw new RiskControlError(message);
+			throw new Error(message);
 		}
 		const parsed = tryParseJson(text);
 		this.onBody?.(parsed, generation);
