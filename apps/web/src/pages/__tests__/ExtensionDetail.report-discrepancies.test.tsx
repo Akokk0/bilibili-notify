@@ -90,11 +90,11 @@ describe("拓展详情页:上报出入", () => {
 		disk.discrepancies = [
 			{
 				at: Date.now() - 5 * 60_000,
-				kind: "liveStart",
+				kind: "profile",
 				externalId: "sec-stranger",
 				subscriptionIds: [],
 				outcome: "rejected",
-				reasons: ["清单 contributes.subscription.events 里没声明 liveStart,BN 不收这一种"],
+				reasons: ["资料更新缺少名字"],
 			},
 			{
 				at: Date.now() - 10 * 60_000,
@@ -114,11 +114,11 @@ describe("拓展详情页:上报出入", () => {
 		const rows = within(box).getAllByRole("listitem");
 		expect(rows).toHaveLength(2);
 
-		// 新的在前:没对上订阅的那条印外部 id;开播照常叫「开播」。
+		// 新的在前:没对上订阅的那条印外部 id。
 		expect(within(rows[0] as HTMLElement).getByText("sec-stranger")).toBeTruthy();
-		expect(within(rows[0] as HTMLElement).getByText("开播")).toBeTruthy();
+		expect(within(rows[0] as HTMLElement).getByText("资料")).toBeTruthy();
 		expect(within(rows[0] as HTMLElement).getByText("整条拒了")).toBeTruthy();
-		expect(within(rows[0] as HTMLElement).getByText(/没声明 liveStart/)).toBeTruthy();
+		expect(within(rows[0] as HTMLElement).getByText(/缺少名字/)).toBeTruthy();
 		expect(within(rows[0] as HTMLElement).getByText("5 分钟前")).toBeTruthy();
 
 		// 对上了订阅的印订阅的名字;作品按平台叫法(抖音叫「作品」);动了几格就列几句。药丸说「动了」不说

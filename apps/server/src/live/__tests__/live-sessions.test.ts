@@ -11,12 +11,7 @@
  * ⚠️ 这个文件用假定时器:别用 `waitFor` / `findBy*`(会死锁),推进时间一律 `advanceTimersByTimeAsync`。
  */
 
-import type {
-	LiveDetails,
-	LiveSessionChange,
-	Subscription,
-	SubscriptionReport,
-} from "@bilibili-notify/internal";
+import type { LiveDetails, LiveSessionChange, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -99,15 +94,18 @@ const iso = (ms: number) => new Date(ms).toISOString();
 /** 毫秒 → ISO;没给就没有。 */
 const isoOr = (ms: number | undefined) => (ms === undefined ? undefined : iso(ms));
 
-/** 上报里直播那几格(测试里只用到这几样)→ 中立详情。 */
-function detailsOf(value: {
+interface LiveInput {
 	url?: string;
 	title?: string;
 	category?: string;
 	viewers?: number;
 	totalViewers?: number;
 	likes?: number;
-}): LiveDetails {
+	startedAt?: number;
+}
+
+/** 测试里习惯写此刻在线为 `viewers`;喂引擎前换成中立的 `currentViewers`。 */
+function detailsOf(value: LiveInput): LiveDetails {
 	const { url, title, category, viewers, totalViewers, likes } = value;
 	return Object.fromEntries(
 		Object.entries({ url, title, category, currentViewers: viewers, totalViewers, likes }).filter(
@@ -116,60 +114,38 @@ function detailsOf(value: {
 	) as LiveDetails;
 }
 
-/**
- * 这里用上报的写法描述「来了什么」,翻成中立信号直调引擎(引擎的输入就是 `LiveSignal`;拓展上报怎么翻、
- * 图由来源在调用前存好)。下播的时刻是调用那一刻。
- */
-function report(r: SubscriptionReport, sub: Subscription = SUB): void {
-	const base = { subscriptionId: sub.id, identity: sub.identity };
-	switch (r.kind) {
-		case "liveStart":
-			sessions.apply({
-				...base,
-				kind: "start",
-				startedAt: isoOr(r.value.startedAt),
-				details: detailsOf(r.value),
-			});
-			return;
-		case "liveStatus":
-			sessions.apply({
-				...base,
-				kind: "status",
-				isLive: r.value.live,
-				startedAt: isoOr(r.value.startedAt),
-				details: detailsOf(r.value),
-			});
-			return;
-		case "liveEnd":
-			sessions.apply({
-				...base,
-				kind: "end",
-				endedAt: iso(Date.now()),
-				startedAt: isoOr(r.value.startedAt),
-				details: detailsOf(r.value),
-			});
-			return;
-		default:
-			throw new Error(`测试里不会有 ${r.kind}`);
-	}
-}
-
-const liveStart = (
-	over: Partial<Extract<SubscriptionReport, { kind: "liveStart" }>["value"]> = {},
-	sub?: Subscription,
-) =>
-	report(
-		{ kind: "liveStart", value: { url: URL, startedAt: Date.now(), title: "第一场", ...over } },
-		sub,
-	);
-const liveEnd = (
-	over: Partial<Extract<SubscriptionReport, { kind: "liveEnd" }>["value"]> = {},
-	sub?: Subscription,
-) => report({ kind: "liveEnd", value: { url: URL, ...over } }, sub);
-const liveStatus = (
-	over: Partial<Extract<SubscriptionReport, { kind: "liveStatus" }>["value"]> = {},
-	sub?: Subscription,
-) => report({ kind: "liveStatus", value: { live: true, url: URL, ...over } }, sub);
+const liveStart = (over: LiveInput = {}, sub?: Subscription) => {
+	const target = sub ?? SUB;
+	sessions.apply({
+		subscriptionId: target.id,
+		identity: target.identity,
+		kind: "start",
+		startedAt: isoOr(over.startedAt ?? Date.now()),
+		details: detailsOf({ url: URL, title: "第一场", ...over }),
+	});
+};
+const liveEnd = (over: LiveInput = {}, sub?: Subscription) => {
+	const target = sub ?? SUB;
+	sessions.apply({
+		subscriptionId: target.id,
+		identity: target.identity,
+		kind: "end",
+		endedAt: iso(Date.now()),
+		startedAt: isoOr(over.startedAt),
+		details: detailsOf({ url: URL, ...over }),
+	});
+};
+const liveStatus = (over: LiveInput = {}, sub?: Subscription, isLive = true) => {
+	const target = sub ?? SUB;
+	sessions.apply({
+		subscriptionId: target.id,
+		identity: target.identity,
+		kind: "status",
+		isLive,
+		startedAt: isoOr(over.startedAt),
+		details: detailsOf({ url: URL, ...over }),
+	});
+};
 
 /** 变化的要点:种类 + 开始的触发 / 结束的原因与时刻 —— 断言只看这几样。 */
 function summary(): Array<Record<string, unknown>> {
@@ -277,7 +253,7 @@ describe("一场从哪开始", () => {
 	it("不在播的状态不动这一场:BN 不拿状态的翻转猜下播(决策 53)", () => {
 		start();
 		liveStart();
-		report({ kind: "liveStatus", value: { live: false } });
+		liveStatus({}, undefined, false);
 		expect(summary()).toEqual([
 			{ kind: "start", trigger: "start-signal", startedAt: iso(T0) },
 			{ kind: "status", isLive: false },
@@ -397,7 +373,7 @@ describe("引擎是唯一写在播表的:先写表、再改场次", () => {
 		});
 		liveStatus({ totalViewers: 99 });
 		expect(table.get(SUB.id)?.details).toMatchObject({ title: "第一场", totalViewers: 99 });
-		report({ kind: "liveStatus", value: { live: false } });
+		liveStatus({}, undefined, false);
 		expect(table.get(SUB.id)).toBeUndefined();
 
 		liveStart();
@@ -854,7 +830,7 @@ describe("总线上的场次事件(给统计)", () => {
 		settings = { ...settings, liveEndGrace: true };
 		start();
 		liveEnd();
-		report({ kind: "liveStatus", value: { live: false } });
+		liveStatus({}, undefined, false);
 		liveStart();
 		liveStatus({ totalViewers: 3 });
 		liveEnd();
@@ -980,7 +956,7 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 	it("不在播的状态(还没等到下播事件)报的也算这一场的", () => {
 		start();
 		liveStart({ totalViewers: 10 });
-		report({ kind: "liveStatus", value: { live: false, totalViewers: 70 } });
+		liveStatus({ totalViewers: 70 }, undefined, false);
 		liveEnd();
 		expect(ends()).toEqual([[SUB.id, 70]]);
 	});
@@ -1016,7 +992,7 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 		start();
 		liveStart({ totalViewers: 400 });
 		liveEnd();
-		report({ kind: "liveStatus", value: { live: false, totalViewers: 9_999 } });
+		liveStatus({ totalViewers: 9_999 }, undefined, false);
 		liveStart({ startedAt: Date.now() });
 		liveEnd();
 		expect(ends()).toEqual([

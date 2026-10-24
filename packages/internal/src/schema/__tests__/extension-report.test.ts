@@ -4,11 +4,9 @@ import {
 	ExtensionCreatorCandidatesSchema,
 	ExtensionLiveStatusResultSchema,
 	ExtensionSourceHealthSchema,
-} from "../extension-report";
-import {
 	SUBSCRIPTION_REPORT_TEXT_MAX,
 	SUBSCRIPTION_REPORT_TITLE_MAX,
-} from "../subscription-report";
+} from "../extension-report";
 
 const T = Date.UTC(2026, 8, 23, 12, 0, 0);
 const IMAGE = `${"a".repeat(64)}.png`;
@@ -97,6 +95,16 @@ describe("post report", () => {
 	});
 
 	it("rejects missing or invalid required fields with a structured path", () => {
+		const { url: _url, ...withoutUrl } = POST;
+		expect(rejected("post", withoutUrl)).toContainEqual(
+			expect.objectContaining({ path: ["url"], code: "required" }),
+		);
+		expect(rejected("post", { ...POST, url: "javascript:alert(1)" })).toContainEqual(
+			expect.objectContaining({ path: ["url"], code: "invalid" }),
+		);
+		expect(rejected("post", { ...POST, postId: "" })).toContainEqual(
+			expect.objectContaining({ path: ["postId"], code: "too-short" }),
+		);
 		const { text: _text, ...withoutText } = POST.post;
 		expect(rejected("post", { ...POST, post: withoutText })).toContainEqual(
 			expect.objectContaining({ path: ["post", "text"], code: "required" }),
@@ -131,6 +139,28 @@ describe("post report", () => {
 				code: "negative",
 			}),
 		);
+	});
+
+	it("drops an optional object when the whole cell has the wrong type", () => {
+		const result = checkExtensionReport("post", {
+			...POST,
+			post: { ...POST.post, video: "not-object" },
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value.post.video).toBeUndefined();
+		expect(result.dropped).toEqual([{ path: ["post", "video"], code: "type" }]);
+	});
+
+	it("drops a bad optional field inside a valid object", () => {
+		const result = checkExtensionReport("post", {
+			...POST,
+			post: { ...POST.post, video: { title: "keep", durationSec: -3 } },
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value.post.video).toEqual({ title: "keep" });
+		expect(result.dropped).toEqual([
+			{ path: ["post", "video", "durationSec"], code: "negative", limit: 0 },
+		]);
 	});
 
 	it("truncates body and video title but only drops other overlong optional text", () => {
@@ -242,6 +272,27 @@ describe("post report", () => {
 				expect.objectContaining({ path: ["post", "creator", "avatar"], code: "invalid" }),
 			]),
 		);
+
+		const badCover = dropped("post", {
+			...POST,
+			post: { ...POST.post, video: { cover: "also-bad" } },
+		});
+		expect(badCover).toContainEqual(
+			expect.objectContaining({ path: ["post", "video", "cover"], code: "invalid" }),
+		);
+	});
+
+	it("keeps thirty image refs and drops the extras", () => {
+		const result = checkExtensionReport("post", {
+			...POST,
+			post: {
+				...POST.post,
+				images: Array.from({ length: 32 }, () => IMAGE),
+			},
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value.post.images).toHaveLength(30);
+		expect(result.dropped).toEqual([{ path: ["post", "images", 30], code: "too-many", limit: 30 }]);
 	});
 });
 

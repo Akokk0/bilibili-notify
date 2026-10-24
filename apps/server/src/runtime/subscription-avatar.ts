@@ -16,7 +16,7 @@ import {
  * - 来源经 `ctx.reportProfile` 报的头像已经是图库引用,由来源先经 `ctx.storeImage` 存入图库。
  *
  * 这一道**不收 gif、不收 SVG**:图库收 gif,头像不收 —— 头像要在卡里和面板上按位图画,同源的 SVG 被直接打开时会跑脚本。
- * 认魔数只有一份(`sniffImageFormat`,上报校验也用它)。
+ * 认魔数只有一份(`sniffImageFormat`,图库、取图与来源适配器共用)。
  */
 
 /** 过关回头像的字节,不过回点名原因的 `invalid`(路由原样交给面板)。 */

@@ -123,7 +123,7 @@ function whoOf(
 	return names.size > 0 ? [...names].join("、") : discrepancy.externalId;
 }
 
-/** 报的哪一种。作品按平台叫法(`postNoun`,抖音叫「作品」,不给叫「动态」),开播 / 下播与订阅页同一套字。 */
+/** 报的哪一种。作品按平台叫法(`postNoun`,抖音叫「作品」,不给叫「动态」)。 */
 function kindLabel(
 	kind: ReportDiscrepancyView["kind"],
 	postNoun: string | undefined,
@@ -139,12 +139,6 @@ function kindLabel(
 			return problemLabel;
 		case "post":
 			return featureLabelOf("post", { postNoun });
-		case "liveStart":
-			return featureLabelOf("liveStart", { postNoun });
-		case "liveEnd":
-			return featureLabelOf("liveEnd", { postNoun });
-		case "liveStatus":
-			return "直播状态";
 		case "profile":
 			return "资料";
 	}

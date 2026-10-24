@@ -37,7 +37,6 @@ import type {
 	Result,
 	SourceAccount,
 	Subscription,
-	SubscriptionReportKind,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
@@ -205,11 +204,10 @@ export interface ExtensionDTO {
 }
 
 /**
- * 「上报出入」里报的是哪一种:第 2 版的五种(作品 / 开播 / 下播 / 直播状态 / 资料)加第 3 版的 `live`
- * (`ctx.reportLive` 一条,开播 / 直播状态 / 下播不再分开记)与 `problem`(问题上报被拒)。第 2 版那几种
- * 随旧的上报口一起删时再收。
+ * 「上报出入」里报的是哪一种:作品、直播、资料,以及问题上报被拒。
+ * `ctx.reportLive` 一条包含开播 / 直播状态 / 下播,不再分开记。
  */
-export type ReportDiscrepancyKind = SubscriptionReportKind | "live" | "problem";
+export type ReportDiscrepancyKind = "post" | "live" | "profile" | "problem";
 
 /** 一条「上报出入」(见 {@link ExtensionDTO.reportDiscrepancies})。 */
 export interface ReportDiscrepancyView {

@@ -1,14 +1,22 @@
 import { z } from "zod";
 import { FAILURE_CODES, type Failure, type FailureCode, fail, type Issue, ok } from "../constants";
 import { ImageRefSchema } from "./history";
-import {
-	SUBSCRIPTION_POST_IMAGES_MAX,
-	SUBSCRIPTION_REPORT_NAME_MAX,
-	SUBSCRIPTION_REPORT_TEXT_MAX,
-	SUBSCRIPTION_REPORT_TITLE_MAX,
-	SUBSCRIPTION_REPORT_URL_MAX,
-} from "./subscription-report";
 import { EXTERNAL_ID_MAX } from "./subscriptions";
+
+/**
+ * 一条作品最多几张图。抖音图文一次最多 30 张(开放平台「创建图文」文档:「每次最多上传 30 张图片」;
+ * App 里选图也是最多勾 30 张)。
+ */
+export const SUBSCRIPTION_POST_IMAGES_MAX = 30;
+
+/** 正文、简介这类长文本的字数上限。 */
+export const SUBSCRIPTION_REPORT_TEXT_MAX = 10_000;
+/** 标题、分区的字数上限。 */
+export const SUBSCRIPTION_REPORT_TITLE_MAX = 256;
+/** 名字的字数上限。 */
+export const SUBSCRIPTION_REPORT_NAME_MAX = 128;
+/** 链接的字数上限。 */
+export const SUBSCRIPTION_REPORT_URL_MAX = 2048;
 
 const TIME_MIN = Date.UTC(2000, 0, 1);
 const TIME_MAX = 8_640_000_000_000_000;
