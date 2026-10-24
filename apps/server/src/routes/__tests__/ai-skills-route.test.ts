@@ -71,6 +71,7 @@ beforeEach(async () => {
 		store,
 		providers: aiToolProviders,
 		logger: { warn() {} },
+		nouns: () => ({ creatorNoun: "创作者", postNoun: "作品", sources: "各平台" }),
 	});
 	aiToolProviders.register("bilibili", {
 		readOnly: [tool("get_up_totals"), tool("get_up_videos")],
@@ -251,11 +252,13 @@ describe("PUT /:name", () => {
 	});
 
 	it("改内置 → conflict(409),一个字都动不了", async () => {
+		const before = (await (await app.request("/")).json()) as any;
+		const original = before.list.find((s: any) => s.name === BUILTIN.name).body;
 		const res = await put(BUILTIN.name, { ...BUILTIN, body: "篡改" });
 		expect(res.status).toBe(409);
 		expect(((await res.json()) as any).code).toBe("conflict");
 		const body = (await (await app.request("/")).json()) as any;
-		expect(body.list.find((s: any) => s.name === BUILTIN.name).body).toBe(BUILTIN.body);
+		expect(body.list.find((s: any) => s.name === BUILTIN.name).body).toBe(original);
 	});
 
 	it("改不存在的 → not_found(404)", async () => {

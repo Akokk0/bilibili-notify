@@ -37,7 +37,12 @@ const skill = (name: string, allowedTools?: string[]) => ({
 
 async function reader() {
 	await store.reload();
-	return createMaidSkillReader({ store, providers, logger });
+	return createMaidSkillReader({
+		store,
+		providers,
+		logger,
+		nouns: () => ({ creatorNoun: "创作者", postNoun: "作品", sources: "各平台" }),
+	});
 }
 
 function registerBiliTools(): void {
@@ -114,11 +119,40 @@ describe("MaidSkillReader", () => {
 		expect(current.get("acme-echo-check")).toBeUndefined();
 	});
 
-	it("内置技能缺少声明的工具时不列、get 也拿不到", async () => {
+	it("B 站工具不在时，只用中立工具的内置技能照常可见", async () => {
 		const current = await reader();
-		expect(current.list().some((candidate) => candidate.name === "weekly-report")).toBe(false);
-		expect(current.get("weekly-report")).toBeUndefined();
-		expect(current.get("find-up")).toBeUndefined();
+		expect(current.list().some((candidate) => candidate.name === "weekly-report")).toBe(true);
+		expect(current.get("weekly-report")).toBeDefined();
+		expect(current.get("find-up")).toMatchObject({ name: "find-creator", builtin: true });
+	});
+
+	it("内置技能按调用时给的叫法渲染", async () => {
+		let nouns = { creatorNoun: "UP主", postNoun: "动态", sources: "B 站" };
+		const current = createMaidSkillReader({ store, providers, logger, nouns: () => nouns });
+
+		expect(current.get("weekly-report")).toMatchObject({
+			description: expect.stringContaining("UP主"),
+			body: expect.stringContaining("UP主"),
+		});
+
+		nouns = { creatorNoun: "创作者", postNoun: "作品", sources: "各平台" };
+		expect(current.get("weekly-report")).toMatchObject({
+			description: expect.stringContaining("创作者"),
+			body: expect.stringContaining("创作者"),
+		});
+	});
+
+	it("主人技能里的叫法占位符原样保留", async () => {
+		await store.create({
+			...skill("mine"),
+			description: "给 {creatorNoun} 使用",
+			body: "处理 {postNoun}，来源是 {sources}",
+		});
+
+		expect((await reader()).get("mine")).toMatchObject({
+			description: "给 {creatorNoun} 使用",
+			body: "处理 {postNoun}，来源是 {sources}",
+		});
 	});
 
 	it("主人技能缺工具照常列出，同一对技能与工具只在第一次缺时 warn，恢复后再缺会再 warn", async () => {

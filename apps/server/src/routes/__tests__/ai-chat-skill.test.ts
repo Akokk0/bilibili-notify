@@ -95,6 +95,7 @@ async function makeDeps() {
 		store: skillStore,
 		providers: aiToolProviders,
 		logger,
+		nouns: () => ({ creatorNoun: "创作者", postNoun: "作品", sources: "各平台" }),
 	});
 	const app = createAiRoute(deps, { skinStore, skillReader });
 	return { app, skillStore };
@@ -166,7 +167,7 @@ describe("主人打斜杠", () => {
 		const { app } = await makeDeps();
 		const { text, convId } = await say(app, { skill: "up-pk" });
 
-		expect(H.lastOpts.systemSuffix).toContain("## UP 对比 PK");
+		expect(H.lastOpts.systemSuffix).toContain("## 创作者对比 PK");
 		const conv = (await (await app.request(`/conversations/${convId}`)).json()) as any;
 		const assistant = conv.conversation.messages.at(-1);
 		expect(assistant.tools).toEqual([

@@ -1,4 +1,9 @@
-import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
+import {
+	type PromptNouns,
+	renderPromptNouns,
+	TOOL_DEFINITIONS,
+	WEB_SEARCH_TOOL_NAME,
+} from "@bilibili-notify/ai";
 import type { Logger, MaidSkill } from "@bilibili-notify/internal";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { MaidSkillEntry, MaidSkillStore, SkillProblem } from "./store.js";
@@ -38,8 +43,10 @@ export function createMaidSkillReader(opts: {
 	store: MaidSkillStore;
 	providers: Pick<AiToolProviderRegistry, "skills" | "tools">;
 	logger: Pick<Logger, "warn">;
+	/** 内置技能用全局叫法渲染;主人自己写的不改写(ADR-0030 决策 3),提供方带来的写的就是它自己的叫法。 */
+	nouns: () => PromptNouns;
 }): MaidSkillReader {
-	const { store, providers, logger } = opts;
+	const { store, providers, logger, nouns } = opts;
 	const warnedMissing = new Set<string>();
 
 	function availableTools(): Set<string> {
@@ -73,10 +80,17 @@ export function createMaidSkillReader(opts: {
 				builtin: true,
 			}),
 		);
+		const builtinNouns = nouns();
 		// 提供方比技能库读盘晚登记时,盘上同名那份还在库里:提供方的占名,主人那份不列(下次读盘进 problems)。
 		const offeredNames = new Set(offered.map((skill) => skill.name));
 		return [
-			...builtins.filter((skill) => missingTools(skill, available).length === 0),
+			...builtins
+				.filter((skill) => missingTools(skill, available).length === 0)
+				.map((skill) => ({
+					...skill,
+					description: renderPromptNouns(skill.description, builtinNouns),
+					body: renderPromptNouns(skill.body, builtinNouns),
+				})),
 			...offered.filter((skill) => missingTools(skill, available).length === 0),
 			...mine.filter((skill) => !offeredNames.has(skill.name)),
 		];

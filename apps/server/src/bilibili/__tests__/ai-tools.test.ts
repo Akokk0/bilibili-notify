@@ -8,7 +8,9 @@
 import type { AiTool } from "@bilibili-notify/internal";
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { i18n, t } from "../../i18n/index.js";
+import { skillToolNames } from "../../maid-skills/reader.js";
 import { createBiliAiToolProvider } from "../ai-tools.js";
 import { makeApi, makeServiceContext } from "../api/__tests__/support/make-api.js";
 import type { Api } from "../api/index.js";
@@ -71,6 +73,33 @@ async function actualApi() {
 }
 
 describe("B 站 AI 工具提供方", () => {
+	it("提供 B 站版周报，登记后使用来源前缀的技能名", () => {
+		const provider = createBiliAiToolProvider({ api: fakeApi() as unknown as Api });
+		const weekly = provider.skills?.[0];
+
+		expect(provider.skills).toHaveLength(1);
+		expect(weekly).toMatchObject({
+			name: "weekly-report",
+			description: expect.stringContaining("B 站版"),
+			allowedTools: [
+				"list_subscriptions",
+				"bilibili__get_up_totals",
+				"bilibili__get_up_videos",
+				"get_creator_posts",
+				"get_creator_profile",
+			],
+		});
+		const coreTools = new Set(skillToolNames(createAiToolProviderRegistry()));
+		const ownTools = new Set(["bilibili__get_up_totals", "bilibili__get_up_videos"]);
+		for (const name of weekly?.allowedTools ?? []) {
+			expect(coreTools.has(name) || ownTools.has(name), name).toBe(true);
+		}
+
+		const registry = createAiToolProviderRegistry();
+		registry.register("bilibili", provider);
+		expect(registry.skills().map((skill) => skill.name)).toEqual(["bilibili-weekly-report"]);
+	});
+
 	it("登记两把本名工具,累计数据与最近视频的成功文字逐字同今天", async () => {
 		const createdAt = Math.floor(Date.parse("2026-10-20T04:00:00Z") / 1000);
 		const api = fakeApi({

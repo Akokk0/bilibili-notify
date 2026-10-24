@@ -10,22 +10,15 @@
  *    那道闸 —— 直到主人照着它新建一条,才发现同样的写法存不进去。
  */
 
-import { TOOL_DEFINITIONS, WEB_SEARCH_TOOL_NAME } from "@bilibili-notify/ai";
+import { renderPromptNouns } from "@bilibili-notify/ai";
 import { MAID_SKILL_LIMITS } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
-import { createBiliAiToolProvider } from "../../bilibili/ai-tools.js";
 import { BUILTIN_SKILLS } from "../builtin.js";
 import { formatSkillFile, isValidSkillName, parseSkillFile } from "../parse.js";
+import { skillToolNames } from "../reader.js";
 
-const providerTools = createAiToolProviderRegistry();
-providerTools.register("bilibili", createBiliAiToolProvider({ api: {} as never }));
-
-const REAL_TOOLS = new Set([
-	...TOOL_DEFINITIONS.map((t) => t.function.name),
-	WEB_SEARCH_TOOL_NAME,
-	...providerTools.tools().map((tool) => tool.definition.function.name),
-]);
+const CORE_TOOLS = new Set(skillToolNames(createAiToolProviderRegistry()));
 
 function withoutAliases(
 	skill: (typeof BUILTIN_SKILLS)[number],
@@ -74,39 +67,47 @@ describe("内置技能表", () => {
 		}
 	});
 
-	it("allowed-tools 里每个名字都真有那把工具", () => {
-		// 这一条是「写不出工具链的点子不该进这张表」那句纪律的机械化版本。
+	it("allowed-tools 只列核心中立工具，不依赖任何提供方", () => {
 		for (const s of BUILTIN_SKILLS) {
 			for (const tool of s.allowedTools ?? []) {
-				expect(REAL_TOOLS.has(tool), `${s.name} 声明了不存在的工具 ${tool}`).toBe(true);
+				expect(CORE_TOOLS.has(tool), `${s.name} 声明了非核心工具 ${tool}`).toBe(true);
+				expect(tool, `${s.name} 的 allowed-tools 不许写提供方全名`).not.toContain("__");
 			}
 		}
 	});
 
-	it("正文里提到的工具名也得真有 —— 步骤里点名一把不存在的,女仆只会编一个", () => {
+	it("正文里提到的每个工具都在核心中立工具与本条 allowed-tools 里", () => {
 		// 正文写的是「调 `get_creator_stats`」这种。名字打错了模型看不出来,它会
 		// 一本正经地按那个名字去调,换回一句「未知工具」,然后自己找补。
 		const mentioned = /`([a-z_]{4,})`/g;
 		for (const s of BUILTIN_SKILLS) {
 			for (const [, name] of s.body.matchAll(mentioned)) {
 				if (!name?.includes("_")) continue;
-				expect(REAL_TOOLS.has(name), `${s.name} 正文提到了不存在的工具 ${name}`).toBe(true);
-			}
-		}
-	});
-
-	it("正文点名的工具都在它自己的 allowed-tools 里 —— 读技能之后工具面会收窄到那张清单", () => {
-		// 收窄是交集:正文让她调、清单里却没有的那把,读完技能就从工具表上消失了。
-		// 她只能说做不到,或者编一个结果。
-		const mentioned = /`([a-z_]{4,})`/g;
-		for (const s of BUILTIN_SKILLS) {
-			if (!s.allowedTools) continue;
-			for (const [, name] of s.body.matchAll(mentioned)) {
-				if (!name?.includes("_")) continue;
+				expect(CORE_TOOLS.has(name), `${s.name} 正文提到了非核心工具 ${name}`).toBe(true);
 				expect(s.allowedTools, `${s.name} 正文点名了 ${name},allowed-tools 里却没有`).toContain(
 					name,
 				);
 			}
+		}
+	});
+
+	it("渲染前的 description 与正文不含平台叫法", () => {
+		for (const s of BUILTIN_SKILLS) {
+			expect(s.description, `${s.name} 的 description`).not.toMatch(
+				/UP|B\s*站|UID|(?<![A-Za-z0-9_])bilibili(?![A-Za-z0-9_])/i,
+			);
+			expect(s.body, `${s.name} 的正文`).not.toMatch(
+				/UP|B\s*站|UID|(?<![A-Za-z0-9_])bilibili(?![A-Za-z0-9_])/i,
+			);
+		}
+	});
+
+	it("按 B 站叫法渲染后使用 UP主", () => {
+		const nouns = { creatorNoun: "UP主", postNoun: "动态", sources: "B 站" };
+		for (const skill of BUILTIN_SKILLS) {
+			expect(renderPromptNouns(`${skill.description}\n${skill.body}`, nouns), skill.name).toMatch(
+				/UP主|\{sources\}/,
+			);
 		}
 	});
 });

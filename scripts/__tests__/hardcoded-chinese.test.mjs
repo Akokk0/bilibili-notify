@@ -53,6 +53,10 @@ export const EXCLUDED_DIRS = {
 export const ALLOWLIST = {
 	"apps/server/src/bilibili/ai-tool-texts.ts":
 		"B 站女仆工具回给模型的话:同提示词,不翻(决策 11,主人定)",
+	"apps/server/src/bilibili/weekly-report-skill.ts":
+		"B 站版周报技能:给模型的提示词,不翻(决策 11,主人定)",
+	"apps/server/src/maid-skills/builtin.ts":
+		"内置女仆技能:给模型的提示词(说明同时显示在面板上),不翻(决策 11,主人定)",
 	"apps/server/src/live/recap/stop-words.ts": "词云的中文停用词表:整份是数据,不是给人看的话",
 	"apps/server/src/ai/creator-reader-texts.ts":
 		"创作者阅读工具回给模型的话:同提示词,不翻(决策 11,主人定)",
@@ -139,7 +143,6 @@ export const RATCHET = {
 	"apps/server/src/live/live-sessions.ts": 4,
 	"apps/server/src/live/live-text.ts": 4,
 	"apps/server/src/live/recap/live-summary-requester.ts": 7,
-	"apps/server/src/maid-skills/builtin.ts": 72, // 含给模型的提示词(决策 11 不翻),技能说明同时显示在面板上
 	"apps/server/src/maid-skills/chat-tool.ts": 5,
 	"apps/server/src/maid-skills/parse.ts": 6,
 	"apps/server/src/maid-skills/store.ts": 12,

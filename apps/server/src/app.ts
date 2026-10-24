@@ -5,6 +5,7 @@ import { type CardKind, fail, type Logger } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { ZodType } from "zod";
+import { promptNounsOf } from "./ai/prompt-nouns.js";
 import { createDashboardAuth } from "./auth/dashboard-auth.js";
 import { createDesktopTokenAuth } from "./auth/desktop-token.js";
 import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
@@ -335,6 +336,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			store: skillStore,
 			providers: runtime.aiToolProviders,
 			logger: runtime.serviceCtx.logger,
+			nouns: () => promptNounsOf(deps)(),
 		});
 		// 女仆技能只给 AI 聊天用、离开它没有意义,所以下沉在 `/api/ai` 底下(ADR-0036 决策 1)。
 		app.route(
