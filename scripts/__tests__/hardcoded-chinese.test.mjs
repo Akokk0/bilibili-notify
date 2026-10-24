@@ -141,7 +141,7 @@ export const RATCHET = {
 	"apps/server/src/integrations/settings-reader.ts": 1,
 	"apps/server/src/live/live-push.ts": 14,
 	"apps/server/src/live/live-sessions.ts": 4,
-	"apps/server/src/live/live-text.ts": 4,
+	"apps/server/src/live/live-text.ts": 1,
 	"apps/server/src/live/recap/live-summary-requester.ts": 7,
 	"apps/server/src/maid-skills/chat-tool.ts": 5,
 	"apps/server/src/maid-skills/parse.ts": 6,

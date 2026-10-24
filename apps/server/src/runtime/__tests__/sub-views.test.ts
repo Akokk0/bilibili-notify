@@ -49,7 +49,6 @@ describe("liveSettingsOf — 不伪装全局值", () => {
 		const g = makeDefaultGlobalConfig();
 		const view = liveSettingsOf(makeSub(), g);
 		expect(view.customLiveMsg).toEqual({
-			enable: true,
 			customLiveStart: g.defaults.templates.liveStart,
 			customLiveStreaming: g.defaults.templates.liveStreaming,
 			customLiveEnd: g.defaults.templates.liveEnd,
@@ -60,7 +59,6 @@ describe("liveSettingsOf — 不伪装全局值", () => {
 		const g = makeDefaultGlobalConfig();
 		const view = liveSettingsOf(makeSub({ templates: { liveStart: "自定义开播文案 {name}" } }), g);
 		expect(view.customLiveMsg).toEqual({
-			enable: true,
 			customLiveStart: "自定义开播文案 {name}",
 			customLiveStreaming: g.defaults.templates.liveStreaming,
 			customLiveEnd: g.defaults.templates.liveEnd,

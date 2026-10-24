@@ -145,8 +145,8 @@ function millisOf(time: string | undefined): number | undefined {
 	return time === undefined ? undefined : Date.parse(time);
 }
 
-/** 三句文案各自的模板(按 UP 折好的;没有就是默认那句)。 */
-function templateOf(settings: LiveSettings, kind: LiveTextKind): string | undefined {
+/** 三句文案各自的模板(按 UP 折好的)。 */
+function templateOf(settings: LiveSettings, kind: LiveTextKind): string {
 	const msg = settings.customLiveMsg;
 	switch (kind) {
 		case "liveStart":
@@ -285,7 +285,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 					liveSummary: settings.extras.liveSummary,
 				},
 				wordcloudStopWords: settings.wordcloudStopWords,
-				summaryTemplate: settings.customLiveSummary.liveSummary ?? "",
+				summaryTemplate: settings.customLiveSummary.liveSummary,
 				aiOverride: settings.aiOverride,
 				creator: {
 					name: creatorName,

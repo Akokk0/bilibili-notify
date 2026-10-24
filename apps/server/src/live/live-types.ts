@@ -93,10 +93,9 @@ export type LiveCreatorFeature = Exclude<LivePushFeature, "viewerChat" | "viewer
 export type PickLiveCover = (scopeKey: string, images: string[]) => string | undefined;
 
 export interface CustomLiveMsgLike {
-	enable: boolean;
-	customLiveStart?: string;
-	customLiveStreaming?: string;
-	customLiveEnd?: string;
+	customLiveStart: string;
+	customLiveStreaming: string;
+	customLiveEnd: string;
 }
 
 /**

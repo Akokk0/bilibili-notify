@@ -11,17 +11,6 @@ import { renderTemplate } from "../util/render-template";
  */
 
 /**
- * Defaults applied when neither sub-level nor global config provides a template.
- * 链接不再进模板(开播链接是消息版式的独立部件);与 `@bilibili-notify/internal`
- * 的 `DEFAULT_TEMPLATES.liveStart/.liveStreaming` 保持字面量一致。
- */
-export const DEFAULT_LIVE_TEMPLATES = {
-	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
-	liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
-	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
-} as const;
-
-/**
  * 「特别弹幕」那一句:模板套上中立的值。占位符:`name`(主播名)/ `viewer`(发弹幕的人)/ `msg`(弹幕正文)。
  * 0.x 起的 `mastername` / `uname` 由迁移改写成这两个(3b-21)。
  */
@@ -84,7 +73,7 @@ export function renderLiveSummary(params: {
 	});
 }
 
-/** 三句直播文案:开播 / 正在直播(周期推送、重启补报)/ 下播。键与 `DEFAULT_LIVE_TEMPLATES` 同名。 */
+/** 三句直播文案:开播 / 正在直播(周期推送、重启补报)/ 下播。 */
 export type LiveTextKind = "liveStart" | "liveStreaming" | "liveEnd";
 
 /**
@@ -114,7 +103,7 @@ function textOf(v: number | string | undefined, format: (n: number) => string): 
 }
 
 /**
- * **三句直播文案的中立渲染**:模板(没给 = 默认那句)套上中立的值。
+ * **三句直播文案的中立渲染**:把调用方给的模板套上中立的值。
  *
  * 每一种只认自己那几个变量 —— 开播:`{name}` `{time}` `{follower}`;正在直播:`{name}` `{time}`
  * `{watched}`;下播:`{name}` `{time}` `{follower_change}`。别的原样留在文案里(与从前 B 站那三句一样,
@@ -122,7 +111,7 @@ function textOf(v: number | string | undefined, format: (n: number) => string): 
  */
 export function renderLiveText(
 	kind: LiveTextKind,
-	template: string | undefined,
+	template: string,
 	values: LiveTextInput,
 ): string {
 	const vars: Record<string, string> = { name: values.name, time: values.time };
@@ -139,5 +128,5 @@ export function renderLiveText(
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));
 			break;
 	}
-	return renderTemplate(template ?? DEFAULT_LIVE_TEMPLATES[kind], vars);
+	return renderTemplate(template, vars);
 }

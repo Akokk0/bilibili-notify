@@ -68,8 +68,7 @@ export interface LiveWorkSettings extends CardSkinChoice {
 export type PushExtrasLike = Record<ExtraKey, boolean>;
 
 export interface CustomLiveSummaryLike {
-	enable: boolean;
-	liveSummary?: string;
+	liveSummary: string;
 }
 
 /**
@@ -163,13 +162,11 @@ export function liveSettingsOf(
 		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
 		// 无开关:始终下发 eff 模板(eff 合并 per-UP override → 全局),与 liveSummary 同模式。
 		customLiveMsg: {
-			enable: true,
 			customLiveStart: eff.templates.liveStart,
 			customLiveStreaming: eff.templates.liveStreaming,
 			customLiveEnd: eff.templates.liveEnd,
 		},
 		customLiveSummary: {
-			enable: true,
 			liveSummary: eff.templates.liveSummary,
 		},
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。

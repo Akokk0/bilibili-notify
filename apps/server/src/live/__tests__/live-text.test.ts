@@ -14,28 +14,40 @@ import {
 /**
  * 三句直播文案的**中立渲染**(ADR-0019 决策 65 / 67):吃中立的值,B 站与拓展订阅的直播共用。数字排成
  * 「1.2万」、粉丝数变化带正负号,平台给的成品文字原样;没有的格子空着(决策 56:拓展没报过资料,粉丝那格
- * 就空着)。模板没给就是默认那句。
+ * 就空着)。模板由调用方显式给出。
  */
 describe("renderLiveText — 中立的三句直播文案", () => {
-	it("数字排成卡片同款的写法;没给模板就用默认那句", () => {
+	it("数字排成卡片同款的写法", () => {
 		expect(
-			renderLiveText("liveStart", undefined, { name: "甲", time: "5秒", follower: 12_345 }),
+			renderLiveText("liveStart", "{name} 开播啦，当前粉丝数：{follower}", {
+				name: "甲",
+				time: "5秒",
+				follower: 12_345,
+			}),
 		).toBe("甲 开播啦，当前粉丝数：1.2万");
 		expect(
-			renderLiveText("liveStreaming", undefined, { name: "甲", time: "2小时", watched: 23_456 }),
+			renderLiveText("liveStreaming", "{name} 正在直播，已播 {time}，累计观看：{watched}", {
+				name: "甲",
+				time: "2小时",
+				watched: 23_456,
+			}),
 		).toBe("甲 正在直播，已播 2小时，累计观看：2.3万");
+		const liveEnd = "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}";
 		expect(
-			renderLiveText("liveEnd", undefined, { name: "甲", time: "3小时", followerChange: 128 }),
+			renderLiveText("liveEnd", liveEnd, { name: "甲", time: "3小时", followerChange: 128 }),
 		).toBe("甲 下播啦，本次直播了 3小时，粉丝变化 +128");
 		expect(
-			renderLiveText("liveEnd", undefined, { name: "甲", time: "3小时", followerChange: -12_000 }),
+			renderLiveText("liveEnd", liveEnd, { name: "甲", time: "3小时", followerChange: -12_000 }),
 		).toBe("甲 下播啦，本次直播了 3小时，粉丝变化 -1.2万");
 	});
 
 	it("没有的格子空着,不写 undefined / 0", () => {
-		expect(renderLiveText("liveStart", undefined, { name: "甲", time: "5秒" })).toBe(
-			"甲 开播啦，当前粉丝数：",
-		);
+		expect(
+			renderLiveText("liveStart", "{name} 开播啦，当前粉丝数：{follower}", {
+				name: "甲",
+				time: "5秒",
+			}),
+		).toBe("甲 开播啦，当前粉丝数：");
 		expect(renderLiveText("liveEnd", "[{follower_change}]", { name: "甲", time: "1分" })).toBe(
 			"[]",
 		);
@@ -47,10 +59,7 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 	 * 有数就走 `formatCount`,0 是真数(印「0」,不是占位)。
 	 * 验红:把 `renderLiveText` 里缺数时的兜底去掉(印空串),前两条红;让 0 也当缺数,第三条红。
 	 */
-	it("{watched} 缺数:出口印「暂未获取到」(默认那句与自定义模板都一样)", () => {
-		expect(renderLiveText("liveStreaming", undefined, { name: "甲", time: "2小时" })).toBe(
-			"甲 正在直播，已播 2小时，累计观看：暂未获取到",
-		);
+	it("{watched} 缺数:出口印「暂未获取到」", () => {
 		expect(renderLiveText("liveStreaming", "{watched}|{time}", { name: "甲", time: "" })).toBe(
 			"暂未获取到|",
 		);
