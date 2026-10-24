@@ -18,7 +18,6 @@ import {
 	type SerialGate,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { SourceStatusReader } from "../subscriptions/source-status.js";
 import { liveCardInputFromDetails } from "./live-card-input.js";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
@@ -34,10 +33,10 @@ import type { WordcloudGenerator } from "./recap/wordcloud-generator.js";
 
 /**
  * **直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`live-sessions.ts`)
- * 的变化逐条订阅推开播 / 正在直播 / 下播卡,外加没有拉取式状态的来源用的那个小计时器(周期「正在直播」)。
+ * 的变化逐条订阅推开播 / 正在直播 / 下播卡,周期「正在直播」的计时不在这里(核心按每一场的开播时刻计时、调来源的 `fetchLiveStatus`,场次发 `tick`)。
  *
- * **三把开关各管各的**(⑬d 直播拆键):`liveStart` 管开播卡与重启补报,`liveStreaming` 管周期「正在直播」(计时器
- * 只在它开着时挂,间隔 `streamingIntervalHours`),`liveEnd` 管下播卡。补报画的是「正在直播」那张卡,推送类型却是
+ * **三把开关各管各的**(⑬d 直播拆键):`liveStart` 管开播卡与重启补报,`liveStreaming` 管周期「正在直播」(核心按每一场的开播时刻计时,
+ * 开着时间隔 `streamingIntervalHours`,到点只在它开着时才推),`liveEnd` 管下播卡。补报画的是「正在直播」那张卡,推送类型却是
  * `CatchUp`(走开播的目标、历史记成开播、不 @全体);周期那一档是 `Live`(走 `liveStreaming` 的目标)。
  *
  * **推什么、怎么推由各来源共用**:直播装配(`pushLiveNotify`)、中立的文案渲染(`renderLiveText`)、按 UP
@@ -45,37 +44,33 @@ import type { WordcloudGenerator } from "./recap/wordcloud-generator.js";
  * (决策 67):来源交来什么事件与状态,这里据此决定补报、周期推送和收尾。
  *
  * **场次不在这里**(ADR-0020 决策 6):这一场从哪开始、到哪结束、断流接续等不等,由场次那一份算,推送与统计
- * 共用;这里只管推送自己的几样 —— 挂在哪一场上、上次推送之后收到过新状态没有、周期计时器、重启补报要的
- * 「见过」、每条订阅的串行闸。
+ * 共用;这里只管推送自己的几样 —— 挂在哪一场上、重启补报要的「见过」、每条订阅的串行闸。
  *
  * - **开播 / 下播卡只由事件触发**(决策 53):BN 不拿直播状态的翻转自己猜开播 / 下播。
- * - **开播**:场次开了一场 → 推开播卡(开播时刻取事件的、粉丝数取这一场开播时记下的),挂上周期「正在直播」(开关开着的话)。
- *   断流等待里又开播(场次说「接着播」)→ 两张卡都不发、周期推送接着挂(决策 58)。
- * - **直播状态**:最新一份住在播表里(`live-table.ts`),这里只记「上次推送之后收到过新状态」。BN 开始看
+ * - **开播**:场次开了一场 → 推开播卡(开播时刻取事件的、粉丝数取这一场开播时记下的),。
+ *   断流等待里又开播(场次说「接着播」)→ 两张卡都不发(决策 58)。
+ * - **直播状态**:最新一份住在播表里(`live-table.ts`)。BN 开始看
  *   这条订阅之后**收到的第一份状态**就是在播、又没见过这一场的开播事件 → 重启补报(`catchUpOnBoot`)与开播推送都开着就补报一张「正在直播」
- *   卡(决策 57 的 09-24 🔗),并挂上周期推送。报「不在播」也算见过:契约不规定状态与事件谁先报,一场刚开
+ *   卡(决策 57 的 09-24 🔗)。报「不在播」也算见过:契约不规定状态与事件谁先报,一场刚开
  *   的直播不能先补报一张「正在直播」、紧跟着又推开播卡。拓展停了「见过」一并作废,它重新跑起来收到的第一
  *   份状态照开机那样判 —— 它停着的时候开的播照样补报。
- * - **周期「正在直播」**:到点时上次推送之后收到过新状态才推(拿在播表里最新那一份出卡),否则这一轮跳过、
- *   记进上报出入框(决策 60 / 61)—— 不管来源多久报一次都不误伤。在播表里没有这一行(最新状态说不在播,
- *   来源没报下播或下播被拒收)→ 这一轮悄悄跳过,不记问题、也不替来源判下播(决策 53);又报在播就接着推。
+ * - **周期「正在直播」**:只经核心的 `tick`(ADR-0021 决策 27、38)。核心按这一场的开播时刻到点,调来源的
+ *   `fetchLiveStatus`,问到还在播(在播表里已是刚问到的那一份)、`liveStreaming` 开着才推;来源答不在播不在这里
+ *   处理(也不替来源判下播,决策 53)。推送这头不再有自己的周期计时,也没有「这一轮没推」的上报(R3)。
  * - 排着队的「正在直播」卡(补报或周期)**这一场已经不是当前那场**就不发:开始跑时认一次,出完卡发送前
  *   再认一次 —— 出卡的那几秒里开播事件到了,也不会在开播卡前面多一张。
  * - **下播**:场次说这一场因为下播结束了(断流接续开着的,等满了才算)才推下播卡。时长从这一场的开播时刻算到
  *   下播事件到达那一刻(等的那几分钟不算);BN 中途重启过、手里没有这一场时用事件带的开播时刻。粉丝数变化 =
  *   推的那一刻资料里的粉丝数 − 这一场开播时记下的(决策 56),哪头没有就空着;默认卡不画它,文案与皮肤契约有
  *   (决策 76)。
- * - **作废**(决策 61):场次因为拓展停了(停用、卸载、换代码、崩了)、订阅删了 / 停用了、关机而结束 → 计时器
- *   拆掉,等着的下播卡**不补推**。直播三把开关(开播 / 正在直播 / 下播)都关了 → 推送这头放下这一场。停用的订阅事件收下不推(决策 62)。
+ * - **作废**(决策 61):场次因为拓展停了(停用、卸载、换代码、崩了)、订阅删了 / 停用了、关机而结束 → 等着的下播卡**不补推**。直播三把开关(开播 / 正在直播 / 下播)都关了 → 推送这头放下这一场。停用的订阅事件收下不推(决策 62)。
  * - **同一条订阅的推送按发起顺序送到**(每条订阅一道串行闸):秒级断流重开时,前一场的下播卡还在出卡,
  *   新一场的开播卡不会抢先送到(同 B 站的 `enqueuePush`)。
  *
  * 只在内存:BN 重启之后靠来源开机第一轮报的直播状态接上(决策 57 / 8)。
  */
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-/** 周期「正在直播」卡在推送出错日志里的叫法(自己的周期计时与场次的 `tick` 两处共用)。 */
+/** 周期「正在直播」卡在推送出错日志里的叫法。 */
 const STREAMING_WHAT = "「正在直播」";
 
 /**
@@ -83,10 +78,6 @@ const STREAMING_WHAT = "「正在直播」";
  */
 interface LiveRun {
 	session: LiveSession;
-	/** 上次推送之后收到过新的直播状态(决策 61)。推一张卡就清。 */
-	fresh: boolean;
-	/** 周期「正在直播」。 */
-	periodic?: { handle: Disposable; hours: number };
 }
 
 export interface BindLivePushOptions {
@@ -108,8 +99,6 @@ export interface BindLivePushOptions {
 	liveCover(sub: Subscription, settings: LiveSettings): string | undefined;
 	/** 来源在不在跑(现取;头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
 	sourceStatus: Pick<SourceStatusReader, "running">;
-	/** 这个来源有没有周期「正在直播」这一档(现取);答没有就不挂周期推送。拓展怎么认的见 `extensionHasLiveTick`。 */
-	hasLiveTick(sourceKey: string): boolean;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);详情没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/** 下播回顾要的收集器、词云与总结。 */
@@ -122,13 +111,11 @@ export interface BindLivePushOptions {
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
 	renderer(): Pick<ImageRenderer, "generateLiveCard"> | null | undefined;
-	/** 上报出入框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
-	onReportDiscrepancy(discrepancy: ReportDiscrepancy): void;
 	/**
-	 * 宿主的 ServiceContext。`setInterval` 管周期推送的定时器(关机时一起清);每张卡的出卡与推送是
+	 * 宿主的 ServiceContext。每张卡的出卡与推送是
 	 * 发出去不等的后台活，登记进 `track`,关停等它推完 —— 推送落历史的那一笔得赶在各写道关门之前交进去。
 	 */
-	serviceCtx: Pick<ServiceContext, "setInterval" | "track">;
+	serviceCtx: Pick<ServiceContext, "track">;
 	/** 只有测试会换。 */
 	now?: () => number;
 }
@@ -204,34 +191,15 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		return liveSubscriptionPushable(sub, opts.sourceStatus) ? sub : undefined;
 	};
 
-	/** 推送这头放下这一场:周期推送拆掉。这一场本身在场次那边,不归这里收。 */
+	/** 推送这头放下这一场。这一场本身在场次那边,不归这里收。 */
 	function dropRun(id: string, why: string): void {
 		const run = runs.get(id);
 		if (!run) return;
-		run.periodic?.handle.dispose();
 		runs.delete(id);
 		log.debug(`[live-push] 订阅 ${id} 的这一场推送这头放下了(${why})`);
 	}
 
-	/**
-	 * 周期「正在直播」挂成设置里那个间隔:`liveStreaming` 关着、正在断流等待里就不挂(间隔记 0)。间隔没变不动它。
-	 */
-	function armPeriodic(id: string, run: LiveRun, settings: LiveSettings): void {
-		const hours =
-			settings.liveStreaming && opts.hasLiveTick(run.session.sourceKey) && !run.session.pendingEnd
-				? settings.streamingIntervalHours
-				: 0;
-		if (run.periodic?.hours === hours) return;
-		run.periodic?.handle.dispose();
-		run.periodic = undefined;
-		if (hours <= 0) return;
-		run.periodic = {
-			hours,
-			handle: opts.serviceCtx.setInterval(() => tick(id), hours * HOUR),
-		};
-	}
-
-	/** 设置可能变了(订阅改了、全局改了):对着现折的设置把这一场的计时器理一遍。 */
+	/** 设置可能变了(订阅改了、全局改了):对着现折的设置看这一场还该不该挂着(三把直播开关全关了就放下)。 */
 	function reconcile(id: string): void {
 		const run = runs.get(id);
 		if (!run) return;
@@ -243,9 +211,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const settings = opts.settings(sub);
 		if (!anyLiveSwitchOn(settings)) {
 			dropRun(id, "开播、正在直播与下播推送都关了");
-			return;
 		}
-		armPeriodic(id, run, settings);
 	}
 
 	function enqueue(id: string, what: string, job: () => Promise<void>): void {
@@ -405,43 +371,6 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		});
 	}
 
-	function tick(id: string): void {
-		const run = runs.get(id);
-		if (!run) return;
-		const sub = pushable(id);
-		if (!sub) {
-			dropRun(id, "订阅停用 / 删了,或来源没在跑");
-			return;
-		}
-		const settings = opts.settings(sub);
-		if (!settings.liveStreaming) {
-			armPeriodic(id, run, settings);
-			return;
-		}
-		if (!opts.table.get(id)) {
-			// 最新状态说不在播,下播事件却没来(来源没报、或被拒收了)。来源在报,记「没收到新状态」是冤枉它;
-			// 也不替它判下播(决策 53)—— 这一轮不推,计时器留着,又报在播就接着推。
-			log.debug(`[live-push] 订阅 ${id} 最新状态不在播,这一轮周期「正在直播」不推`);
-			return;
-		}
-		if (!run.fresh) {
-			const reason = "上次推送之后没收到新的直播状态,这一轮周期「正在直播」没推";
-			log.info(`[live-push] 订阅 ${id}:${reason}`);
-			opts.onReportDiscrepancy({
-				extensionId: run.session.sourceKey,
-				at: now(),
-				kind: "liveStatus",
-				externalId: subscriptionIdentityOf(sub).externalId,
-				subscriptionIds: [id],
-				outcome: "skipped",
-				reasons: [reason],
-			});
-			return;
-		}
-		run.fresh = false;
-		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, run, LivePushType.Live));
-	}
-
 	/** 这一场该推送了吗:订阅还该推、开播 / 正在直播 / 下播推送没全关。全关着的放下这一场。 */
 	function pushSettings(id: string): { sub: Subscription; settings: LiveSettings } | undefined {
 		const sub = pushable(id);
@@ -464,7 +393,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		dropRun(id, "新的一场开播了");
 		const startedAt = millisOf(session.startedAt);
 		const at = Date.parse(session.detectedAt);
-		const run: LiveRun = { session, fresh: false };
+		const run: LiveRun = { session };
 		runs.set(id, run);
 		if (settings.liveStart) {
 			enqueue(id, "开播", () =>
@@ -479,20 +408,18 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 				}),
 			);
 		}
-		armPeriodic(id, run, settings);
 	}
 
-	/** 断流等待里又开播(决策 58):同一场,两张卡都不发,周期推送接着挂。 */
+	/** 断流等待里又开播(决策 58):同一场,两张卡都不发。 */
 	function onResume(session: LiveSession): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
-		const { sub, settings } = ready;
+		const { sub } = ready;
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
-		const run = runs.get(id) ?? { session, fresh: false };
+		const run = runs.get(id) ?? { session };
 		run.session = session;
 		runs.set(id, run);
-		armPeriodic(id, run, settings);
 		log.info(`[live-push] 订阅 ${id} 断流后重新开播,接续为同一场(开播卡、下播卡都不发)`);
 	}
 
@@ -510,11 +437,10 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const current = runs.get(id);
 		if (current) {
 			current.session = session;
-			current.fresh = true;
 			return;
 		}
 		// 推送这头没挂着这一场:BN 起来之前就开播了、来源停过又跑起来了,或者推送关过又打开了。
-		const run: LiveRun = { session, fresh: false };
+		const run: LiveRun = { session };
 		runs.set(id, run);
 		if (first && settings.catchUpOnBoot && settings.liveStart) {
 			log.info(`[live-push] 订阅 ${id} 在 BN 起来之前就开播了,补报一张「正在直播」`);
@@ -522,18 +448,17 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		} else {
 			log.debug(`[live-push] 订阅 ${id} 正在播,接上这一场(不补报)`);
 		}
-		armPeriodic(id, run, settings);
 	}
 
 	/**
 	 * 核心按这一场自己的时钟问过来源、还在播(`fetchLiveStatus`):周期「正在直播」开着就推一张(在播表里已经是
-	 * 刚问到的那一份);关着只核不推。推送这头不再挂自己的周期计时器(`hasLiveTick` 对实现了拉取式的来源答没有)。
+	 * 刚问到的那一份);关着只核不推。周期「正在直播」只经这一条,推送这头没有自己的计时器。
 	 */
 	function onTick(session: LiveSession): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
-		const run = runs.get(id) ?? { session, fresh: false };
+		const run = runs.get(id) ?? { session };
 		run.session = session;
 		runs.set(id, run);
 		if (!ready.settings.liveStreaming) return;
@@ -541,7 +466,7 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		enqueue(id, STREAMING_WHAT, () => pushStreaming(id, current, LivePushType.Live));
 	}
 
-	/** 下播进了断流等待:周期推送先停。 */
+	/** 下播进了断流等待:换上带着等待的那份场次(周期推送的停由核心的计时管)。 */
 	function onEnding(session: LiveSession): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
@@ -549,7 +474,6 @@ export function bindLivePush(opts: BindLivePushOptions): Disposable {
 		const run = runs.get(id);
 		if (!run) return;
 		run.session = session;
-		armPeriodic(id, run, ready.settings);
 	}
 
 	/**

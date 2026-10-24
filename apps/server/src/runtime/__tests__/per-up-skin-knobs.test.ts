@@ -157,7 +157,6 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				settings: (s) => liveSettingsOf(s, g),
 				liveCover: () => undefined,
 				sourceStatus: { running: () => true },
-				hasLiveTick: () => true,
 				avatarRef: () => undefined,
 				recap: {
 					collector: {
@@ -173,8 +172,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				},
 				sendFor: (): LiveNotifySend => async () => delivered(),
 				renderer: () => renderer,
-				onReportDiscrepancy: () => {},
-				serviceCtx: { setInterval: timers.setInterval, track: () => {} },
+				serviceCtx: { track: () => {} },
 			}),
 		);
 

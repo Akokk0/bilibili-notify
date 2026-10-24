@@ -20,6 +20,7 @@ import {
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	fail,
+	featuresForEvents,
 	formatZodIssues,
 	type Identity,
 	type InboundHandlers,
@@ -148,11 +149,9 @@ export interface ReportDiscrepancy {
 	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
 	subscriptionIds: readonly string[];
 	/**
-	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢掉或截断了这几格(每格一句);`skipped`:周期
-	 * 「正在直播」到点时上次推送之后没收到新的直播状态,这一轮没推(决策 61,`kind` 是 `liveStatus`,一句)
-	 * —— 这一种不是 ctx 记的,是拓展直播的计时器(`live/live-push.ts`)记的。
+	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢掉或截断了这几格(每格一句)。
 	 */
-	outcome: "rejected" | "dropped" | "skipped";
+	outcome: "rejected" | "dropped";
 	reasons: readonly string[];
 }
 
@@ -495,6 +494,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	/**
 	 * 第 3 版订阅源那一口:清单得开了 `contributes.subscription`(「注册的口 ⊆ 清单开的口」),
 	 * 必交 `start` / `stop` / `searchCreators` —— 第三方 JS 不受类型约束,缺了的话每一次叫到都是一句「不是函数」。
+	 *
+	 * 清单声明了周期直播(`featuresForEvents` 推得出 `liveStreaming`,即开播 + 下播都声明了)就必须交 `fetchLiveStatus`:
+	 * 周期「正在直播」只由核心按每一场的开播时刻计时、调来源的拉取式状态(ADR-0021 决策 27、38),推送这头没有
+	 * 自己的计时,缺了就是声明了却永远不会推。不合就抛,这次加载失败。
+	 * 清单第 3 版(`supportedFeatures`)落地前按 `events` 推;3b-44 换成读 `supportedFeatures`,换的就是这一处。
 	 */
 	function assertSourceDef(def: SourceDef): void {
 		if (!opts.manifest.contributes.subscription) {
@@ -506,6 +510,15 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			if (typeof def?.[member] !== "function") {
 				throw new Error(`extension ${id}: a source needs ${member}()`);
 			}
+		}
+		const declared = opts.manifest.contributes.subscription.events;
+		if (
+			featuresForEvents(declared).includes("liveStreaming") &&
+			typeof def.fetchLiveStatus !== "function"
+		) {
+			throw new Error(
+				`extension ${id}: the manifest declares periodic live streaming (liveStart and liveEnd events), so the source needs fetchLiveStatus()`,
+			);
 		}
 	}
 

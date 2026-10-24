@@ -468,13 +468,14 @@ function setup(opts?: {
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
 	readImage?: Parameters<typeof createEngines>[0]["readImage"];
-	/** 拓展直播接线用的在播表与上报出入框;不给 = 不接拓展订阅的直播。 */
+	/** 拓展直播接线用的在播表;不给 = 不接拓展订阅的直播。 */
 	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
-	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 登记的假来源是否实现拉取式的 `fetchLiveStatus`;不给 = 没实现。 */
 	fetchLiveStatus?: Source["fetchLiveStatus"];
+	/** 假来源登记在哪个键下;不给 = `bilibili`。 */
+	sourceKey?: string;
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
@@ -566,14 +567,13 @@ function setup(opts?: {
 					},
 				}
 			: {}),
-		...(opts?.onReportDiscrepancy ? { onReportDiscrepancy: opts.onReportDiscrepancy } : {}),
 	});
 	// 登记即 start:`start` 与键的认领都在同一个同步段里发生(下面 await 的只是登记表的收尾)。
 	const sourceLogger = makeLogger();
 	const sourceReady = opts?.noSource
 		? Promise.resolve()
 		: runtime.registerSource({
-				sourceKey: "bilibili",
+				sourceKey: opts?.sourceKey ?? "bilibili",
 				source,
 				// 来源上下文的 logger 是登记项带进来的(组装根造的),不取自集成上下文;集成上下文的其余格在这批用例里不被碰
 				// (这里的 logger 故意是基础 logger,与登记项带的不同,「ctx.logger 来自哪」的用例才分得出)。
@@ -752,7 +752,6 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 			extensionSources: {
 				running: () => true,
 				postNoun: () => "作品",
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
 		active = c;
@@ -799,7 +798,6 @@ describe("createEngines — 拓展作品的图走图库", () => {
 	const sources = {
 		running: () => true,
 		postNoun: () => undefined,
-		events: () => ["post", "liveStart", "liveEnd"] as const,
 	};
 	const PNG_1X1 = new Uint8Array([
 		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
@@ -1052,7 +1050,6 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 			extensionSources: {
 				running: () => running,
 				postNoun: () => "作品",
-				events: () => ["post"],
 			},
 		});
 		active = c;
@@ -1102,7 +1099,6 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 			extensionSources: {
 				running: () => true,
 				postNoun: (extensionId) => (extensionId === "douyin" ? "视频" : undefined),
-				events: () => ["post"],
 			},
 		});
 		active = c;
@@ -1372,28 +1368,24 @@ describe("createEngines — 作品过滤接线", () => {
 });
 
 /**
- * 拓展订阅的直播接进引擎(ADR-0019 决策 57 / 60 / 61):计时器挂在 live 子系统的定时器上,周期「正在直播」
- * 因为没有新状态跳过的那一轮记进接线层给的上报出入框;开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
- * 剪掉注册、上报出入框那一口没往下传,这里都会红。
+ * 拓展订阅的直播接进引擎(ADR-0019 决策 57 / 61):开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
+ * 周期「正在直播」不在这里 —— 推送这头没有自己的计时器(核心按每一场的开播时刻问来源,见「来源周期核对」)。
+ * 剪掉注册那一口没往下传,这里会红。
  */
-describe("createEngines — 拓展直播接上计时器与上报出入框", () => {
-	it("开播 → 推送层收到按订阅 id 的开播;周期推送到点没有新状态 → 记进 onReportDiscrepancy", async () => {
+describe("createEngines — 拓展直播接上推送", () => {
+	it("开播 → 推送层收到按订阅 id 的开播", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
-		const discrepancies: unknown[] = [];
 		const c = setup({
 			globals: g,
 			subs: [sub],
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			// 开播上报经场次引擎写进在播表:表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
 			liveTable: memoryLiveTable(),
-			onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
@@ -1412,23 +1404,6 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 		);
 		// 真开播许 @全体:交出去的推送上没有 `allowAtAll: false`。
 		expect(H.push[0].push.mock.calls[0]?.[0]).not.toHaveProperty("allowAtAll");
-
-		// 周期推送挂在 live 子系统的定时器上,一小时一次。
-		// 替拓展跑的直播场次与推送是核心的代码:定时器挂在 live/core 那个上下文上,不是 B 站直播引擎的 live/来源键
-		// (验红:把 engines.ts 里 `bindLivePush` 的 `serviceCtx: coreLiveCtx` 换成 `liveCtx`,这条红)。
-		const liveCtx = subsystemCtx(c, "live", "core");
-		const intervals = (liveCtx.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
-		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
-		expect(periodic, "周期推送没挂上").toBeDefined();
-		periodic?.[0]();
-		expect(discrepancies).toEqual([
-			expect.objectContaining({
-				extensionId: "douyin",
-				kind: "liveStatus",
-				subscriptionIds: [sub.id],
-				outcome: "skipped",
-			}),
-		]);
 	});
 });
 
@@ -1444,7 +1419,6 @@ describe("createEngines — 拓展直播的图走图库", () => {
 	const sources = {
 		running: () => true,
 		postNoun: () => undefined,
-		events: () => ["post", "liveStart", "liveEnd"] as const,
 	};
 	const storing = () =>
 		vi.fn(async (bytes: Uint8Array) => {
@@ -1516,8 +1490,10 @@ describe("createEngines — 拓展直播的图走图库", () => {
 describe("createEngines — 来源周期核对", () => {
 	const START = "2026-10-20T08:00:00.000Z";
 
-	// 验红:去掉 engines.ts 里 `hasLiveTick` 的 `!hasLiveStatus(sourceKey) &&`,这条红(推送这头又挂了一个小时的周期计时器)。
-	it("来源实现了 fetchLiveStatus:推送这头不挂自己的周期计时器(周期归场次的计时);没实现的照旧挂", async () => {
+	// 周期「正在直播」只由核心的计时驱动,推送这头不挂自己的:不管来源实现没实现 `fetchLiveStatus`,
+	// live/core 上下文上都不该有一小时的 setInterval(验红:在 `bindLivePush` 里加回一个 `serviceCtx.setInterval(…, 小时)`,
+	// 同时把 `serviceCtx` 的类型放回 `setInterval`,这条红)。
+	it("推送这头不挂自己的周期计时器(周期归场次的计时)", async () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
@@ -1529,7 +1505,6 @@ describe("createEngines — 来源周期核对", () => {
 				extensionSources: {
 					running: () => false,
 					postNoun: () => undefined,
-					events: () => undefined,
 				},
 				liveTable: memoryLiveTable(),
 				...(fetchLiveStatus ? { fetchLiveStatus } : {}),
@@ -1543,7 +1518,7 @@ describe("createEngines — 来源周期核对", () => {
 		};
 		expect(await hourly(async () => ({ ok: false, code: "x", message: "x" }))).toEqual([]);
 		active?.runtime.dispose();
-		expect(await hourly()).toEqual([60 * 60 * 1000]);
+		expect(await hourly()).toEqual([]);
 	});
 });
 
@@ -1650,13 +1625,14 @@ describe("createEngines — getModuleState.live", () => {
 		expect(c.runtime.getModuleState().live).toBe(false);
 	});
 
-	it("只订了有直播周期的拓展来源 → 就绪", () => {
+	// 声明了周期直播的拓展登记时就核过要交 `fetchLiveStatus`,所以「有直播」与今天的口径一致:来源实现了拉取式。
+	it("只订了实现了 fetchLiveStatus 的拓展来源 → 就绪", () => {
 		const c = setupLive({
+			sourceKey: "douyin",
 			subs: [makeExtensionSubscription()],
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
 		active = c;
@@ -1952,7 +1928,6 @@ describe("createEngines — boot wiring", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: (id) => (id === "douyin" ? "视频" : undefined),
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
 		active = c;
@@ -2023,7 +1998,6 @@ describe("createEngines — boot wiring", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			liveTable: aiLiveTable,
 		});
@@ -2184,7 +2158,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
 		active = c;
@@ -2228,7 +2201,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			extensionSources: {
 				running: () => false,
 				postNoun: () => undefined,
-				events: () => ["post"],
 			},
 		});
 		active = c;
@@ -2252,7 +2224,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: () => "作品",
-				events: () => ["post"],
 			},
 		});
 		active = c;
@@ -2272,7 +2243,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			extensionSources: {
 				running: () => false,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			liveTable: memoryLiveTable(),
 		});
@@ -2294,47 +2264,26 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 
 	// 验红:把 engines.ts 里 `bindLivePush` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
-	it("拓展直播推送记的日志走 live/core 那一个(周期到点时最新状态不在播)", async () => {
+	it("拓展直播推送记的日志走 live/core 那一个(BN 起来后收到的状态是在播,接上这一场)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const g = makeDefaultGlobalConfig();
-		g.defaults.features.liveStreaming = true;
-		g.defaults.liveStreaming.streamingIntervalHours = 1;
-		const liveTable = memoryLiveTable();
 		const c = setup({
-			globals: g,
 			subs: [sub],
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			liveTable,
+			liveTable: memoryLiveTable(),
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
 			extensionId: "douyin",
 			externalId: "sec-uid-1",
 			subscriptionIds: [sub.id],
-			report: {
-				kind: "liveStart",
-				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
-			},
+			report: { kind: "liveStatus", value: { live: true, url: "https://live.douyin.com/1" } },
 		});
-		await vi.waitFor(() =>
-			expect(H.push[0].push).toHaveBeenCalledWith(
-				expect.objectContaining({ subscriptionId: sub.id, feature: "liveStart" }),
-			),
-		);
-		liveTable.remove(sub.id);
-		const intervals = (subsystemCtx(c, "live", "core").setInterval.mock.calls ?? []) as unknown as [
-			() => void,
-			number,
-		][];
-		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
-		expect(periodic, "周期推送没挂上").toBeDefined();
-		periodic?.[0]();
+		await settleTracked(c);
 		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
-			expect.stringContaining("最新状态不在播"),
+			expect.stringContaining("接上这一场"),
 		);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
 	});
@@ -2600,7 +2549,6 @@ describe("createEngines — dispose", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			liveTable,
 			liveImages: {

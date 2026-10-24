@@ -95,7 +95,7 @@ function DiscrepancyRow({
 }
 
 /**
- * 那颗药丸:整条拒了 / 动了几格 / 周期「正在直播」因为没有新状态跳过了一轮(决策 61)。「动了」不说「丢了」:
+ * 那颗药丸:整条拒了 / 动了几格。「动了」不说「丢了」:
  * 超长的正文与视频标题是截断收下的(决策 59 的 09-24 🔗),也走 `dropped` 这一种 —— 丢了还是截了由每一句自己说。
  */
 function outcomeLabel(discrepancy: ReportDiscrepancyView): string {
@@ -104,8 +104,6 @@ function outcomeLabel(discrepancy: ReportDiscrepancyView): string {
 			return "整条拒了";
 		case "dropped":
 			return `动了 ${discrepancy.reasons.length} 格`;
-		case "skipped":
-			return "跳过一轮";
 	}
 }
 

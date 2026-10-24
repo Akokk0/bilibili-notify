@@ -71,7 +71,6 @@ import { attachReadOnlyTools, type LiveNowReader } from "../ai/read-only-tools.j
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
-import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
@@ -122,7 +121,7 @@ import {
 	readCardBgDataUrl,
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
-import { type ExtensionSourceReader, extensionHasLiveTick } from "./extension-push-common.js";
+import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import {
@@ -361,11 +360,6 @@ export interface CreateEnginesOptions {
 	 */
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	/**
-	 * 拓展详情页的「上报出入」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
-	 * 记进去。不给就只记日志。
-	 */
-	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
-	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
 	 */
@@ -413,10 +407,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		sources: opts.sources,
 		extensions: extensionSources,
 	});
-	/** 这个来源实现了直播吗:在册来源实现拉取,或拓展来源声明了直播周期。 */
-	const sourceHasLive = (sourceKey: string): boolean =>
-		hasLiveStatus(sourceKey) ||
-		(extensionSources !== undefined && extensionHasLiveTick(extensionSources, sourceKey));
+	/**
+	 * 这个来源实现了直播吗:就是它实现了 `fetchLiveStatus`。声明了周期直播的拓展现在必须实现拉取式(登记订阅源时核,
+	 * 不合就加载失败),所以与今天的模块状态口径一致。
+	 */
+	const sourceHasLive = (sourceKey: string): boolean => hasLiveStatus(sourceKey);
 
 	// ---------- Dispatcher + push ----------
 	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
@@ -864,8 +859,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					);
 				},
 				sourceStatus,
-				// 实现了 `fetchLiveStatus` 的来源,周期「正在直播」由场次引擎的计时驱动(`tick`),推送这头不再挂自己的。
-				hasLiveTick: (sourceKey) => !hasLiveStatus(sourceKey) && sourceHasLive(sourceKey),
 				avatarRef: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.avatar,
 				recap: {
 					collector: viewerChats,
@@ -874,7 +867,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				},
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
-				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),
 			}),
 		);
 		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场、醒目留言按这条订阅现折的设置判,发送绑到这条订阅上;

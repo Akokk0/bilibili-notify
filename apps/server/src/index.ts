@@ -904,17 +904,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				return view?.display.label ?? entryIdentity(entry)?.name;
 			},
 			// 拓展订阅推送要现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、清单里平台对作品的
-			// 叫法、声明的事件。同上,装载器晚一步建起来,所以都现取。
+			// 叫法。同上,装载器晚一步建起来,所以都现取。
 			extensionSources: {
 				running: (id) =>
 					loadedExtensions?.list().some((one) => one.id === id && one.state === "running") ?? false,
 				postNoun: (id) => {
 					const entry = loadedExtensions?.list().find((one) => one.id === id);
 					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
-				},
-				events: (id) => {
-					const entry = loadedExtensions?.list().find((one) => one.id === id);
-					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.events;
 				},
 			},
 			// 拓展作品卡是 `Post`(㉑d):配图 / 封面 / 事件带来的头像经 `postImages` 存进图库,出图器出卡前
@@ -932,7 +928,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			readImage: (ref) => runtime.imageStore.read(ref),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			liveTable: runtime.liveTable,
-			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
 			subscriptionStore: subBinding.store,

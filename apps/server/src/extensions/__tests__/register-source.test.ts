@@ -161,6 +161,8 @@ function def(over: Partial<SourceDef> = {}): SourceDef {
 		start() {},
 		stop() {},
 		searchCreators: async () => ({ ok: true, candidates: [] }),
+		// 夹具清单声明了开播 + 下播,登记时核要交(见「没交 fetchLiveStatus」那条)。
+		fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
 		...over,
 	};
 }
@@ -188,6 +190,30 @@ describe("ctx.registerSource:登记前的规矩", () => {
 			expect(h.record.entries).toEqual([]);
 		},
 	);
+
+	it("清单声明了开播 + 下播却没交 fetchLiveStatus:当场抛(点名它),不往登记表交", () => {
+		const h = harness();
+		expect(() => h.ctx.registerSource(def({ fetchLiveStatus: undefined }))).toThrow(
+			/fetchLiveStatus/,
+		);
+		expect(h.record.entries).toEqual([]);
+	});
+
+	it("清单只声明了开播:没交 fetchLiveStatus 照常登", () => {
+		const h = harness({
+			manifest: {
+				...SOURCE_MANIFEST,
+				contributes: {
+					subscription: {
+						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
+						events: ["post", "liveStart"],
+					},
+				},
+			},
+		});
+		h.ctx.registerSource(def({ fetchLiveStatus: undefined }));
+		expect(h.record.entries).toHaveLength(1);
+	});
 
 	it("宿主没接来源登记表:抛(写清是宿主没接,而不是拓展写错)", () => {
 		const h = harness({ withoutHost: true });

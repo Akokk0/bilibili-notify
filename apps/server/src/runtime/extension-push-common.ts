@@ -1,8 +1,4 @@
-import {
-	featuresForEvents,
-	type SubscriptionEventKind,
-	sniffImageFormat,
-} from "@bilibili-notify/internal";
+import { sniffImageFormat } from "@bilibili-notify/internal";
 import { bytesDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
@@ -23,24 +19,6 @@ export interface ExtensionSourceReader {
 	running(extensionId: string): boolean;
 	/** 清单里平台对作品的叫法(`contributes.subscription.display.postNoun`);没写就是 `undefined`。 */
 	postNoun(extensionId: string): string | undefined;
-	/**
-	 * 清单里这个源声明的事件(`contributes.subscription.events`);现取不到(装载器还没起来、清单没交订阅那一口)
-	 * 就是 `undefined`。直播推送的 `hasLiveTick` 据它答,见 {@link extensionHasLiveTick}。
-	 */
-	events(extensionId: string): readonly SubscriptionEventKind[] | undefined;
-}
-
-/**
- * 这个拓展有没有周期「正在直播」这一档:清单声明了开播与下播两种事件才有(`featuresForEvents`,面板上那一行
- * 「直播中」与这里同一条规则)—— 只报开播的源没有下播事件把这一场收掉,周期推送一开就没有尽头。清单现取不到时
- * 不拦:只在明确知道声明不全时才答没有。
- */
-export function extensionHasLiveTick(
-	sources: Pick<ExtensionSourceReader, "events">,
-	sourceKey: string,
-): boolean {
-	const events = sources.events(sourceKey);
-	return events === undefined || featuresForEvents(events).includes("liveStreaming");
 }
 
 /** 图库里读出来的一张头像:字节与它的类型(图库按嗅探定的 mime)。 */

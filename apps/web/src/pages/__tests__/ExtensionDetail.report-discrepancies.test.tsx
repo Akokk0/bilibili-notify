@@ -131,29 +131,6 @@ describe("拓展详情页:上报出入", () => {
 		expect(within(second).getByText(/stats\.likes/)).toBeTruthy();
 	});
 
-	it("周期「正在直播」因为没有新状态跳过的那一轮也记在这儿(决策 61),标成跳过,不说丢了几格", async () => {
-		disk.subs = [extSub("s1", "sec-1", "某位 UP")];
-		disk.discrepancies = [
-			{
-				at: Date.now() - 60_000,
-				kind: "liveStatus",
-				externalId: "sec-1",
-				subscriptionIds: ["s1"],
-				outcome: "skipped",
-				reasons: ["上次推送之后没收到新的直播状态,这一轮周期「正在直播」没推"],
-			},
-		];
-		renderDetail();
-
-		const box = await screen.findByRole("region", { name: "上报出入" });
-		const [row] = within(box).getAllByRole("listitem");
-		expect(await within(row as HTMLElement).findByText("某位 UP")).toBeTruthy();
-		expect(within(row as HTMLElement).getByText("直播状态")).toBeTruthy();
-		expect(within(row as HTMLElement).getByText("跳过一轮")).toBeTruthy();
-		expect(within(row as HTMLElement).queryByText(/丢了/)).toBeNull();
-		expect(within(row as HTMLElement).getByText(/没收到新的直播状态/)).toBeTruthy();
-	});
-
 	// 验红:去掉 `report-discrepancies.tsx` `kindLabel` 里 `live` 那一支(或字典里的键),这条红(药丸旁边没有「报的哪一种」)。
 	it("第 3 版的 live 一条(开播 / 直播状态 / 下播不再分开记):标签取面板字典里的字", async () => {
 		disk.subs = [extSub("s1", "sec-1", "某位 UP")];

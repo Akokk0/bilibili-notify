@@ -7,9 +7,8 @@
  *   `displayNameOf`(事件名 → 资料名 → 身份标签,决策 77),由 `apps/contract/src/__tests__/nouns.test.ts` 钉着。
  */
 
-import type { SubscriptionEventKind } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { extensionHasLiveTick, readProfileAvatar } from "../extension-push-common.js";
+import { readProfileAvatar } from "../extension-push-common.js";
 
 const WEBP = new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBPVP8 ")]);
 
@@ -45,25 +44,5 @@ describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是
 	it("引用指着的图已经不在了:没有头像", async () => {
 		const runtime = runtimeWith({ avatar: REF }, async () => undefined);
 		expect(await readProfileAvatar(runtime as never, "s1")).toBeUndefined();
-	});
-});
-
-// 周期「正在直播」只对同时声明了开播与下播的源成立(面板那一行「直播中」也是这条规则):
-// 只报开播的源没有下播事件把这一场收掉。清单现取不到时不拦,只在明确知道声明不全时才答没有。
-describe("拓展有没有周期「正在直播」这一档(extensionHasLiveTick)", () => {
-	const declaring = (events: readonly SubscriptionEventKind[] | undefined) => ({
-		events: () => events,
-	});
-
-	it("清单声明了开播与下播 → 有", () => {
-		expect(extensionHasLiveTick(declaring(["post", "liveStart", "liveEnd"]), "douyin")).toBe(true);
-	});
-
-	it("只声明了开播(没有下播)→ 没有", () => {
-		expect(extensionHasLiveTick(declaring(["post", "liveStart"]), "douyin")).toBe(false);
-	});
-
-	it("清单现取不到(undefined,装载器还没起来)→ 不拦,算有", () => {
-		expect(extensionHasLiveTick(declaring(undefined), "douyin")).toBe(true);
 	});
 });

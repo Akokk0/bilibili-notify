@@ -491,6 +491,7 @@ describe("注册订阅源(第 3 版 registerSource):装载器等登记落定", (
 						start() {},
 						stop() {},
 						searchCreators: async () => ({ ok: true, candidates: [] }),
+						fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
 					});
 				},
 			},
@@ -520,6 +521,7 @@ describe("注册订阅源(第 3 版 registerSource):装载器等登记落定", (
 						start() {},
 						stop() {},
 						searchCreators: async () => ({ ok: true, candidates: [] }),
+						fetchLiveStatus: async () => ({ ok: true, kind: "offline" }),
 					});
 				},
 			},
@@ -540,6 +542,54 @@ describe("注册订阅源(第 3 版 registerSource):装载器等登记落定", (
 		const { loaded } = await booting;
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["douyin", "running"]]);
 		expect(entries).toEqual([{ sourceKey: "douyin", level: "warn" }]);
+	});
+
+	// 周期「正在直播」只由核心按每一场的开播时刻计时、调来源的 `fetchLiveStatus`(ADR-0021 决策 27、38),所以清单声明了
+	// 周期直播(开播 + 下播,`featuresForEvents` 推得出 `liveStreaming`)就必须交这个口;3b-44 换成读 `supportedFeatures`。
+	// 验红:去掉 `context.ts` `assertSourceDef` 里核 `fetchLiveStatus` 的那一段,第一条红(拓展照样是 running)。
+	it("清单声明了开播 + 下播、registerSource 没交 fetchLiveStatus → 这次加载失败,原因点名 fetchLiveStatus,不往登记表交", async () => {
+		await plant("douyin", { subscription: SUBSCRIPTION });
+		let registered = 0;
+		const { loaded } = await boot(
+			{
+				douyin(ctx) {
+					ctx.registerSource({
+						start() {},
+						stop() {},
+						searchCreators: async () => ({ ok: true, candidates: [] }),
+					});
+				},
+			},
+			{
+				registerSource: async () => {
+					registered += 1;
+					return { dispose() {} };
+				},
+			},
+		);
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("failed");
+		expect(entry?.detail).toContain("fetchLiveStatus");
+		expect(registered).toBe(0);
+	});
+
+	it("只声明了开播(推不出周期直播)、没交 fetchLiveStatus → 照常加载", async () => {
+		await plant("douyin", {
+			subscription: { ...SUBSCRIPTION, events: ["post", "liveStart"] },
+		});
+		const { loaded } = await boot(
+			{
+				douyin(ctx) {
+					ctx.registerSource({
+						start() {},
+						stop() {},
+						searchCreators: async () => ({ ok: true, candidates: [] }),
+					});
+				},
+			},
+			{ registerSource: async () => ({ dispose() {} }) },
+		);
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["douyin", "running"]]);
 	});
 
 	it("宿主没接来源登记表 → 注册当场抛,加载失败、话里说是宿主没接", async () => {

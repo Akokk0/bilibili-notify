@@ -29,6 +29,9 @@ import { activeGeneration } from "./support/generation.js";
 const PROBE = "source-probe";
 const BROKEN = "source-broken";
 const EXTERNAL = "probe-user-1";
+/** 只靠拉取式(`fetchLiveStatus`)认出来的那位:探针对它回在播,从不 `reportLive`。 */
+const PULLED = "probe-pulled-1";
+const PULLED_SUB_ID = "e3000000-0000-4000-8000-000000000002";
 const SUB_ID = "e3000000-0000-4000-8000-000000000001";
 const CONNECTION_ID = "e3000000-0000-4000-8000-00000000c001";
 const TARGET_ID = "e3000000-0000-4000-8000-00000000d001";
@@ -43,6 +46,11 @@ export function activate(ctx) {
 		start(c) { source = c; },
 		stop() {},
 		searchCreators: async () => ({ ok: true, candidates: [] }),
+		// 清单声明了开播 + 下播,登记时核要交(周期「正在直播」只经核心问来源)。
+		fetchLiveStatus: async (identity) =>
+			identity.externalId === ${JSON.stringify(PULLED)}
+				? { ok: true, kind: "live", startedAt: ${STARTED_AT}, details: { title: "问到的标题" } }
+				: { ok: true, kind: "offline" },
 	});
 	ctx.onAction("report.post", () =>
 		source.reportPost(ID, {
@@ -272,7 +280,10 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 	it("报一条开播:在播表里有它,标题、分区、累计观看照搬,开播时刻是毫秒换成的 ISO", async () => {
 		await press("report.liveStart");
 		const res = await okRes(await api("/api/live/listening"));
-		expect((await res.json()) as LiveListeningEntry[]).toEqual([
+		const entries = ((await res.json()) as LiveListeningEntry[]).filter(
+			(entry) => entry.subscriptionId === SUB_ID,
+		);
+		expect(entries).toEqual([
 			{
 				subscriptionId: SUB_ID,
 				identity: { sourceKey: PROBE, externalId: EXTERNAL },
@@ -283,6 +294,31 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 				totalViewers: 70,
 			},
 		]);
+	});
+
+	// 接线的钉子(不推时间):订阅进了监听,核心对「要监听直播、手里没场次」的订阅调来源的 `fetchLiveStatus`,
+	// 在播就认出一场 —— 拓展一次 `reportLive` 都没调。去掉 `extension-source.ts` 里放 `fetchLiveStatus` 的那一格,这条红。
+	it("拉取式认出一场:探针的 fetchLiveStatus 回在播、从不 reportLive → 在播表里有这一场,开播时刻是 ISO", async () => {
+		const sub = makeExtensionSubscription({
+			id: PULLED_SUB_ID,
+			extensionId: PROBE,
+			externalId: PULLED,
+			enabled: true,
+		});
+		await okRes(await api("/api/subscriptions", json(sub)));
+		await vi.waitFor(
+			async () => {
+				const res = await okRes(await api("/api/live/listening"));
+				const entries = (await res.json()) as LiveListeningEntry[];
+				expect(entries.find((entry) => entry.subscriptionId === PULLED_SUB_ID)).toMatchObject({
+					identity: { sourceKey: PROBE, externalId: PULLED },
+					isLive: true,
+					title: "问到的标题",
+					startedAt: new Date(STARTED_AT).toISOString(),
+				});
+			},
+			{ timeout: 10_000 },
+		);
 	});
 
 	it("报一份资料:订阅页读到的资料缓存变了(名字、粉丝数)", async () => {
