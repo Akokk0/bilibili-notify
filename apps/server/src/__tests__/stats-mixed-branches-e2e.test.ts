@@ -123,6 +123,7 @@ async function findFreePort(): Promise<number> {
 async function listenJson(
 	onBody: (body: unknown) => unknown,
 ): Promise<{ server: Server; port: number }> {
+	// 回字符串 = 一整段 SSE 文本(女仆聊天口是流式);其余照旧回 JSON。
 	const server = createHttpServer((req, res) => {
 		let raw = "";
 		req.on("data", (chunk) => {
@@ -130,6 +131,10 @@ async function listenJson(
 		});
 		req.on("end", () => {
 			const reply = onBody(JSON.parse(raw));
+			if (typeof reply === "string") {
+				res.writeHead(200, { "content-type": "text/event-stream" }).end(reply);
+				return;
+			}
 			res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(reply));
 		});
 	});
@@ -137,6 +142,34 @@ async function listenJson(
 	const address = server.address();
 	if (!address || typeof address === "string") throw new Error("本地服务没起来");
 	return { server, port: address.port };
+}
+
+/** 女仆聊天口(流式)那一问:第一轮回一次 `get_creator_stats` 的工具调用,工具结果喂回来之后回一句话;喂回来的正文记下。 */
+const maidSeen: string[] = [];
+function maidStatsReply(messages: Array<{ role: string; content: string }>): string {
+	const chunk = (delta: object, finish: string | null) =>
+		`data: ${JSON.stringify({
+			id: "chatcmpl-fake",
+			object: "chat.completion.chunk",
+			created: 0,
+			model: "stub-model",
+			choices: [{ index: 0, delta, finish_reason: finish }],
+		})}\n\n`;
+	const last = messages.at(-1);
+	if (last?.role === "tool") {
+		maidSeen.push(String(last.content));
+		return `${chunk({ role: "assistant", content: "看完了" }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;
+	}
+	const call = {
+		index: 0,
+		id: "call_1",
+		type: "function",
+		function: {
+			name: "get_creator_stats",
+			arguments: JSON.stringify({ creator: `${FAKE}:${EXT_ID}`, days: "7" }),
+		},
+	};
+	return `${chunk({ role: "assistant", tool_calls: [call] }, null)}${chunk({}, "tool_calls")}data: [DONE]\n\n`;
 }
 
 const jsonl = (rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`;
@@ -220,6 +253,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		const ai = await listenJson((body) => {
 			const messages = (body as { messages: Array<{ role: string; content: string }> }).messages;
 			const system = messages.find((m) => m.role === "system")?.content ?? "";
+			if ((body as { stream?: boolean }).stream) return maidStatsReply(messages);
 			const user = messages.find((m) => m.role === "user")?.content ?? "";
 			aiCalls.push({ system, user });
 			let content: string;
@@ -494,6 +528,80 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			},
 			{ timeout: 3_000, interval: 100 },
 		);
+	}, 15_000);
+
+	// 验红:`index.ts` 递给资料刷新的 `isStatsEnabled` 换成 `() => true`,这条红(关着时 24h 还在)。
+	it("首页粉丝面板:统计总开关关着时 24h / 7d 空、订阅以来照给;打开后 24h 回来", async () => {
+		const read = async () => {
+			await ok(
+				await api("/api/dev/run/profiles.refresh-now", { method: "POST", ...json({ params: {} }) }),
+			);
+			const { entries } = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
+			return entries[0];
+		};
+		await ok(
+			await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: false } }) }),
+		);
+		try {
+			await vi.waitFor(
+				async () => {
+					expect(await read()).toMatchObject({
+						current: 2222,
+						deltaSubscribed: 1222,
+						delta24h: null,
+						delta7d: null,
+					});
+				},
+				{ timeout: 10_000, interval: 100 },
+			);
+		} finally {
+			await ok(
+				await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: true } }) }),
+			);
+		}
+		await vi.waitFor(async () => expect((await read())?.delta24h).toBe(1172), {
+			timeout: 10_000,
+			interval: 100,
+		});
+	}, 15_000);
+
+	// 验红:`index.ts` 递给 `createCreatorStatsReader` 的 `isEnabled` 换成 `() => true`,关着那半条红。
+	it("女仆的 get_creator_stats:统计总开关关着回 not_configured 那句话,开着能答", async () => {
+		const ask = async () => {
+			maidSeen.length = 0;
+			const created = await api("/api/ai/conversations", { method: "POST", ...json({}) });
+			await ok(created.clone());
+			const { conversation } = (await created.json()) as { conversation: { id: string } };
+			const sse = await (
+				await api(`/api/ai/conversations/${conversation.id}/chat`, {
+					method: "POST",
+					...json({ message: "查一下统计" }),
+				})
+			).text();
+			const done = /event: done\ndata: (.*)\n/.exec(sse)?.[1];
+			const tools = done
+				? ((JSON.parse(done) as { reply?: { tools?: Array<{ name: string; ok: boolean }> } }).reply
+						?.tools ?? [])
+				: [];
+			return { seen: maidSeen.join("\n"), tools };
+		};
+		await ok(
+			await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: false } }) }),
+		);
+		try {
+			const off = await ask();
+			expect(off.seen).toContain("数据统计没开，BN 没在记作品和涨粉");
+			expect(off.tools).toEqual([
+				expect.objectContaining({ name: "get_creator_stats", ok: false }),
+			]);
+		} finally {
+			await ok(
+				await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: true } }) }),
+			);
+		}
+		const on = await ask();
+		expect(on.seen).not.toContain("数据统计没开");
+		expect(on.tools).toEqual([expect.objectContaining({ name: "get_creator_stats", ok: true })]);
 	}, 15_000);
 
 	it("榜单锐评:两支混在一张表里、平台一列各写各的,名字走资料那条链;人格那一句不再只说 B 站;结果按订阅 id 回指", async () => {
