@@ -48,25 +48,33 @@ const SUB = makeExtensionSubscription({
 	enabled: true,
 });
 
-/** 清单只声明作品:报下播要被整条拒;作品里那张 SVG 解不开、丢掉。 */
+/**
+ * 清单只声明作品:报下播(`live`)要被整条拒;作品图里那个不合形状的引用解不开、丢掉。
+ * 第 3 版拓展:图先 `storeImage` 存成引用,上报在来源上下文上交、没有返回值。
+ */
 const FIXTURE_CODE = `
 const T = Date.UTC(2026, 8, 23, 12);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
-const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
 const PERSON = ${JSON.stringify(PERSON)};
 export function activate(ctx) {
-	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
-	ctx.onAction("report.dropped", () =>
-		handle.reportPost(PERSON, {
-			id: "p1",
+	let source;
+	ctx.registerSource({
+		start(s) { source = s; },
+		stop() { source = undefined; },
+		searchCreators: async () => ({ ok: true, candidates: [] }),
+	});
+	ctx.onAction("report.dropped", async () => {
+		const stored = await source.storeImage(PNG);
+		if (!stored.ok) throw new Error(stored.message);
+		source.reportPost(PERSON, {
+			postId: "p1",
 			url: "https://www.douyin.com/video/p1",
-			publishedAt: T,
-			images: [SVG, PNG],
-		}),
-	);
-	ctx.onAction("report.undeclared", async () => {
+			post: { publishedAt: T, text: "一条作品", images: ["not-a-ref", stored.ref] },
+		});
+	});
+	ctx.onAction("report.undeclared", () => {
 		// 拒掉是意料之中的:动作本身不算失败,拒的原因看上报出入。
-		await handle.reportLiveEnd(PERSON, { url: "https://live.douyin.com/1" }).catch(() => {});
+		source.reportLive(PERSON, { kind: "end", details: { url: "https://live.douyin.com/1" } });
 	});
 }
 `;
@@ -173,8 +181,12 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 	it("丢了一张图:记一条「丢了」,带上哪条订阅与原因;面板被叫去重取(上报出入自己那一声)", async () => {
 		await press("report.dropped");
 
-		const discrepancies = (await probeRow())?.reportDiscrepancies;
-		expect(discrepancies).toHaveLength(1);
+		// 上报排串行队,动作先回、出入记得稍后:一律等。
+		const discrepancies = await vi.waitFor(async () => {
+			const found = (await probeRow())?.reportDiscrepancies;
+			expect(found).toHaveLength(1);
+			return found;
+		});
 		expect(discrepancies?.[0]).toMatchObject({
 			kind: "post",
 			externalId: PERSON,
@@ -191,9 +203,13 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 	it("报了清单没声明的种类:记一条「拒了」,排在最前", async () => {
 		await press("report.undeclared");
 
-		const discrepancies = (await probeRow())?.reportDiscrepancies;
+		const discrepancies = await vi.waitFor(async () => {
+			const found = (await probeRow())?.reportDiscrepancies;
+			expect(found).toHaveLength(2);
+			return found;
+		});
 		expect(discrepancies?.map((p) => [p.kind, p.outcome])).toEqual([
-			["liveEnd", "rejected"],
+			["live", "rejected"],
 			["post", "dropped"],
 		]);
 		expect(discrepancies?.[0]?.reasons[0]).toContain("没声明");

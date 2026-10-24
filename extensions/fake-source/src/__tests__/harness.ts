@@ -1,32 +1,41 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
-	Disposable,
+	CreatorCandidate,
 	ExtensionContext,
 	ExtensionI18n,
-	ExtensionOwnSubscription,
 	ExtensionView,
-	SubscriptionSourceDef,
+	Identity,
+	ImageRef,
+	LiveStatusResult,
+	Result,
+	SourceContext,
+	SourceDef,
+	SourceSubscriptionView,
 } from "@bilibili-notify/extension";
 import { activate } from "../index.js";
 
-/** 五种上报的种类名 —— 与宿主那张表同一套词。 */
-export type HeardKind = "post" | "liveStart" | "liveEnd" | "liveStatus" | "profile";
+/** 三种上报的种类名 —— 与宿主那张表同一套词。 */
+export type HeardKind = "post" | "live" | "profile";
 
-/** 假源经 `handle.report*` 报出去的一条,原样攒着(`value` 就是它交的那个对象)。 */
+/** 假源经 `ctx.report*` 报出去的一条,原样攒着(`value` 就是它交的那个对象)。 */
 export interface HeardReport {
 	kind: HeardKind;
 	externalId: string;
 	value: unknown;
 }
 
+/** 测试摆的一条订阅:假源只认外部 id 与开没开着(宿主的名单只列开着的,同一个人合成一条)。 */
+export interface HarnessSub {
+	externalId: string;
+	enabled: boolean;
+}
+
 export interface BootOptions {
-	/**
-	 * 演宿主拒收:回一句原因就把这条上报 reject 掉(拓展拿到的是带这句话的错),回 `undefined` 就收下。
-	 * 拒掉的不进 {@link HeardReport} 那一串 —— 与宿主一样,拒了就是没收。
-	 */
-	refuse?: (report: HeardReport) => string | undefined;
-	/** 演宿主那头慢:交回一个 Promise 就先等它再收(测两颗按钮交错着跑)。 */
-	hold?: (report: HeardReport) => Promise<void> | undefined;
+	/** 演图库那头存不下:回一句原因就把这次 `storeImage` 回成 `invalid` 失败,回 `undefined` 就存下。 */
+	refuseStore?: (bytes: Uint8Array) => string | undefined;
+	/** 演图库那头慢:第 `index` 次(从 0 数)存图交回一个 Promise 就先等它(测两颗按钮交错着跑)。 */
+	holdStore?: (index: number) => Promise<void> | undefined;
 }
 
 type ActionHandler = (signal: AbortSignal) => void | Promise<void>;
@@ -53,33 +62,66 @@ function zhCNI18n(): ExtensionI18n {
 	};
 }
 
+/** 图库认的引用长这样:`<sha256>.<png|jpg|gif|webp>`(与宿主 `IMAGE_REF_PATTERN` 同一个形状)。 */
+export const IMAGE_REF_PATTERN = /^[0-9a-f]{64}\.(png|jpg|gif|webp)$/;
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
 /**
- * 手搭的 ctx:只接假源真会碰的那几格,把它交出来的东西(解析门、视图、动作、上报)攒下来给测试看。
- * 订阅名单由测试自己摆,`changeSubscriptions` 模拟宿主「订阅动过了」那一声。
+ * 手搭的 ctx:只接假源真会碰的那几格,把它交出来的东西(来源定义、视图、动作、上报)攒下来给测试看。
+ * 订阅名单由测试自己摆,`changeSubscriptions` 模拟宿主「订阅动过了」那一声。注册来源时当场 `start`
+ * (宿主是异步登记,这里省掉那一等),`stop()` 模拟收摊。
  */
-export function bootFakeSource(
-	initial: readonly ExtensionOwnSubscription[] = [],
-	opts: BootOptions = {},
-) {
+export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOptions = {}) {
 	let subs = [...initial];
-	let source: SubscriptionSourceDef | undefined;
+	let source: SourceDef | undefined;
 	let view: (() => ExtensionView) | undefined;
 	const listeners: (() => void)[] = [];
 	const actions = new Map<string, ActionHandler>();
 	const heard: HeardReport[] = [];
+	/** 图库里存下的图:引用 → 字节。 */
+	const stored = new Map<ImageRef, Uint8Array>();
+	let storeCalls = 0;
 	let statusChanges = 0;
-	const noop: Disposable = { dispose() {} };
+	const noop = { dispose() {} };
 
-	/** 宿主那头的 `report*`:核完就回(这里不核,只按 `refuse` 演拒收)。 */
-	const reporter =
-		(kind: HeardKind) =>
-		async (externalId: string, value: unknown): Promise<void> => {
-			const report = { kind, externalId, value };
-			await opts.hold?.(report);
-			const reason = opts.refuse?.(report);
-			if (reason !== undefined) throw new Error(`BN 拒收这条 ${kind} 上报:${reason}`);
-			heard.push(report);
-		};
+	/** 宿主的名单:只列开着的,同一个人合成一条。 */
+	function roster(): SourceSubscriptionView[] {
+		const people = new Set(subs.filter((one) => one.enabled).map((one) => one.externalId));
+		return [...people].map((externalId) => ({
+			externalId,
+			features: new Set(),
+			monitorsLive: false,
+		}));
+	}
+
+	const reporter = (kind: HeardKind) => (externalId: string, value: unknown) => {
+		heard.push({ kind, externalId, value });
+	};
+
+	const sourceCtx = {
+		subscriptions: roster,
+		onSubscriptionsChanged(fn: () => void) {
+			listeners.push(fn);
+			return noop;
+		},
+		reportPost: reporter("post"),
+		reportLive: reporter("live"),
+		reportProfile: reporter("profile"),
+		async storeImage(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>> {
+			const index = storeCalls++;
+			await opts.holdStore?.(index);
+			const refused = opts.refuseStore?.(bytes);
+			if (refused !== undefined) return { ok: false, code: "invalid", message: refused };
+			// 与宿主一样按内容嗅探:不是位图(这里只认 png)存不下。
+			if (!PNG_MAGIC.every((byte, i) => bytes[i] === byte)) {
+				return { ok: false, code: "invalid", message: "不是图" };
+			}
+			const ref = `${createHash("sha256").update(bytes).digest("hex")}.png`;
+			stored.set(ref, bytes);
+			return { ok: true, ref };
+		},
+	} as unknown as SourceContext;
 
 	const ctx = {
 		id: "fake-source",
@@ -88,20 +130,10 @@ export function bootFakeSource(
 		setInterval: () => noop,
 		onDispose() {},
 		i18n: zhCNI18n(),
-		registerSubscriptionSource(def: SubscriptionSourceDef) {
+		registerSource(def: SourceDef) {
 			source = def;
-			return {
-				subscriptions: () => subs,
-				onSubscriptionsChanged(fn: () => void) {
-					listeners.push(fn);
-					return noop;
-				},
-				reportPost: reporter("post"),
-				reportLiveStart: reporter("liveStart"),
-				reportLiveEnd: reporter("liveEnd"),
-				reportLiveStatus: reporter("liveStatus"),
-				reportProfile: reporter("profile"),
-			};
+			void def.start(sourceCtx);
+			return noop;
 		},
 		publishView(fn: () => ExtensionView) {
 			view = fn;
@@ -118,16 +150,45 @@ export function bootFakeSource(
 
 	activate(ctx);
 
+	const def = (): SourceDef => {
+		if (!source) throw new Error("假源没注册订阅源");
+		return source;
+	};
+
 	return {
-		lookup(query: string, signal: AbortSignal = new AbortController().signal) {
-			if (!source) throw new Error("假源没注册订阅源");
-			return source.lookup(query, signal);
+		/** 搜人:原样交给假源登记的 `searchCreators`。 */
+		searchCreators(
+			query: string,
+			signal: AbortSignal = new AbortController().signal,
+		): Promise<Result<{ candidates: CreatorCandidate[] }>> {
+			return def().searchCreators(query, signal);
 		},
+		/** 搜人,只要候选(失败就让测试红)。 */
+		async candidates(query: string): Promise<CreatorCandidate[]> {
+			const found = await def().searchCreators(query, new AbortController().signal);
+			if (!found.ok) throw new Error(`搜人失败:${found.message}`);
+			return found.candidates;
+		},
+		/** 拉取式直播状态。 */
+		fetchLiveStatus(
+			identity: Identity,
+			signal: AbortSignal = new AbortController().signal,
+		): Promise<LiveStatusResult> {
+			const fetchLiveStatus = def().fetchLiveStatus;
+			if (!fetchLiveStatus) throw new Error("假源没实现 fetchLiveStatus");
+			return Promise.resolve(fetchLiveStatus(identity, signal));
+		},
+		/** 宿主收摊:先叫来源的 `stop()`。 */
+		async stop(): Promise<void> {
+			await def().stop();
+		},
+		/** 来源定义里登了哪些成员。 */
+		members: () => Object.keys(def()).sort(),
 		view(): ExtensionView {
 			if (!view) throw new Error("假源没交视图");
 			return view();
 		},
-		changeSubscriptions(next: readonly ExtensionOwnSubscription[]) {
+		changeSubscriptions(next: readonly HarnessSub[]) {
 			subs = [...next];
 			for (const fn of listeners) fn();
 		},
@@ -142,5 +203,8 @@ export function bootFakeSource(
 		actionNames: () => [...actions.keys()],
 		/** 宿主收下的上报,按报的先后。 */
 		reports: () => [...heard],
+		/** 图库里某个引用对应的字节;没有就是 `undefined`。 */
+		imageBytes: (ref: unknown): Uint8Array | undefined =>
+			typeof ref === "string" ? stored.get(ref) : undefined,
 	};
 }

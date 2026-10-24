@@ -155,6 +155,8 @@ export interface StartServerOptions {
 	 * (见 `config/web-dist.ts`)。只有测试需要传 —— 真实运行永远是本模块自己。
 	 */
 	bundleUrl?: string;
+	/** 测试用:统计看登记表记「在记」的间隔(毫秒)。生产不传,缺省 1 分钟。 */
+	statsRecordingCheckMs?: number;
 }
 
 /** 主人要求的新代没开成:原因记进原来那一代的提示清单,交回记下的原因。 */
@@ -264,7 +266,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	runtime = createAppRuntime(
 		bootstrap,
 		{ dataRoot: generation.dir },
-		{ integrationSettings: BUILTIN_INTEGRATION_SETTINGS },
+		{
+			integrationSettings: BUILTIN_INTEGRATION_SETTINGS,
+			statsRecordingCheckMs: options.statsRecordingCheckMs,
+		},
 	);
 	const log = runtime.serviceCtx.logger;
 	// 日志从运行时建好那一刻起就进归档与 WS 的环形缓冲:开机那一段(以后的迁移)出了事也查得到。

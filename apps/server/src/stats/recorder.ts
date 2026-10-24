@@ -412,6 +412,8 @@ export interface StatsRecorderOptions {
 	now?: () => Date;
 	/** 数据统计的总开关,见 {@link StatsRecorderCoreOptions.isEnabled}。装配处给一个读缓存布尔的函数。 */
 	isEnabled: () => boolean;
+	/** 测试用:看登记表记「在记」的间隔。生产不传,缺省 1 分钟(`RECORDING_CHECK_MS`)。 */
+	recordingCheckMs?: number;
 }
 
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
@@ -472,6 +474,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		forgetOpenSessions: liveSource.forgetOpenSessions,
 		recorder,
 		subscriptions: opts.subscriptions,
+		checkMs: opts.recordingCheckMs,
 	});
 	const sources: Disposable[] = [
 		registrySource,

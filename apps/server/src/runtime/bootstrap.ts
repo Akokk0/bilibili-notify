@@ -258,6 +258,8 @@ export interface AppRuntimeRoots {
 export interface AppRuntimeDeps {
 	/** 各集成的设置段(配置仓构造时定死):入口递内置集成那份(`compose.ts` 的 `BUILTIN_INTEGRATION_SETTINGS`)。 */
 	integrationSettings: readonly IntegrationSettingsSegment[];
+	/** 测试用:统计看登记表记「在记」的间隔。生产不传,缺省 1 分钟。 */
+	statsRecordingCheckMs?: number;
 }
 
 export function createAppRuntime(
@@ -447,6 +449,7 @@ export function createAppRuntime(
 		followers: fansStore,
 		sources: sourceRegistry,
 		isEnabled: statsEnabled.isEnabled,
+		recordingCheckMs: deps.statsRecordingCheckMs,
 		// 拓展报的粉丝数不密过资料刷新(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
 		profileRefreshCron: () => configStore.getGlobals().profileRefreshCron,
 		logger: serviceCtx.logger,

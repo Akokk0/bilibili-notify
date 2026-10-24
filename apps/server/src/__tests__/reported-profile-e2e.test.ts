@@ -63,17 +63,35 @@ const SEED_PNG = png(0, 0, 0, 1);
 const REPORTED_PNG = png(1, 2, 3, 4);
 const NEXT_PNG = png(5, 6, 7, 8);
 
+/**
+ * 第 3 版拓展:来源起来后拿到来源上下文,图先 `storeImage` 存成图库引用再随资料交上去(上报没有返回值)。
+ * 资料的名字是必交的,所以「只报头像」「只报名字」两种都带着名字。
+ */
 const FIXTURE_CODE = `
 const png = (...tail) => new Uint8Array([${PNG_MAGIC.join(", ")}, ...tail]);
 const PERSON = ${JSON.stringify(PERSON)};
 export function activate(ctx) {
-	const handle = ctx.registerSubscriptionSource({ lookup: () => [] });
-	ctx.onAction("profile.full", () =>
-		handle.reportProfile(PERSON, { name: "报来的名字", fans: 4321, avatar: png(1, 2, 3, 4) }),
+	let source;
+	ctx.registerSource({
+		start(s) { source = s; },
+		stop() { source = undefined; },
+		searchCreators: async () => ({ ok: true, candidates: [] }),
+	});
+	async function avatarOf(bytes) {
+		const stored = await source.storeImage(bytes);
+		if (!stored.ok) throw new Error(stored.message);
+		return stored.ref;
+	}
+	ctx.onAction("profile.full", async () =>
+		source.reportProfile(PERSON, { name: "报来的名字", followers: 4321, avatar: await avatarOf(png(1, 2, 3, 4)) }),
 	);
-	ctx.onAction("profile.sameAvatar", () => handle.reportProfile(PERSON, { avatar: png(1, 2, 3, 4) }));
-	ctx.onAction("profile.nameOnly", () => handle.reportProfile(PERSON, { name: "只改了名字" }));
-	ctx.onAction("profile.nextAvatar", () => handle.reportProfile(PERSON, { avatar: png(5, 6, 7, 8) }));
+	ctx.onAction("profile.sameAvatar", async () =>
+		source.reportProfile(PERSON, { name: "报来的名字", avatar: await avatarOf(png(1, 2, 3, 4)) }),
+	);
+	ctx.onAction("profile.nameOnly", () => source.reportProfile(PERSON, { name: "只改了名字" }));
+	ctx.onAction("profile.nextAvatar", async () =>
+		source.reportProfile(PERSON, { name: "报来的名字", avatar: await avatarOf(png(5, 6, 7, 8)) }),
+	);
 }
 `;
 
@@ -241,7 +259,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		expect(heard.profiles).toEqual([]);
 	});
 
-	it("停用了、只报名字:照样更新,粉丝与头像不动", async () => {
+	it("停用了、只报名字:不收,名字 / 粉丝 / 头像都不动(停用的订阅不收资料)", async () => {
 		const off = await api(`/api/subscriptions/${SUB.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
@@ -251,11 +269,22 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		const before = await profile();
 
 		await press("profile.nameOnly");
-		const after = await refreshedAfter(before);
+		// 上报排串行队、被丢的没有可等的信号,留足时间让它走完再看。
+		await new Promise((resolve) => setTimeout(resolve, 400));
+		const after = await profile();
 
-		expect(after?.name).toBe("只改了名字");
+		expect(after?.name).toBe(before?.name);
 		expect(after?.followers).toBe(4321);
 		expect(after?.avatar).toBe(before?.avatar);
+		expect(after?.refreshedAt).toBe(before?.refreshedAt);
+
+		// 下一条要用启用着的订阅。
+		const on = await api(`/api/subscriptions/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ enabled: true }),
+		});
+		expect(on.status, await on.clone().text()).toBe(200);
 	});
 
 	it("换一张头像:引用变了,取回来的是新的那张", async () => {

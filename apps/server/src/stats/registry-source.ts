@@ -17,8 +17,9 @@ import type { StatsRecorderCore } from "./recorder.js";
  * 拓展订阅今天不在登记表里,由拓展适配(`extension-source.ts`)按上报记,不能被核心多记。
  * 两格开关(`recordsPosts` / `recordsLive`)已在装配处算好、含「启用」,这里不认配置。
  *
- * 边界:3b-42 把拓展来源登进登记表之后,没有登录口的拓展会被这里当成「在册即在跑」,与
- * 「拓展没连上不算在跑」不一致,3b-42 要定拓展来源的在跑怎么算。
+ * 拓展来源(3b-42)也登在登记表里:没有登录口的拓展按这条规则就是「在册即在记」(主人 2026-10-24 定),
+ * ADR-0027 决策 13 里的「拓展没连上」在 1.0 读作「拓展没在跑」(没登记)。拓展不再另有按上报记的适配那一支
+ * 在记「这个小时」。
  */
 export interface RegistryStatsSourceOptions {
 	bus: MessageBus;
@@ -28,6 +29,8 @@ export interface RegistryStatsSourceOptions {
 	recorder: Pick<StatsRecorderCore, "recordActive">;
 	/** 当前全部订阅。现取。 */
 	subscriptions: () => readonly StatsSubscription[];
+	/** 测试用:看登记表的间隔。生产不传,缺省 {@link RECORDING_CHECK_MS}。 */
+	checkMs?: number;
 }
 
 /**
@@ -51,7 +54,7 @@ export function attachRegistryStatsSource(opts: RegistryStatsSourceOptions): Dis
 			if (sub.recordsLive) opts.recorder.recordActive(key, "live");
 		}
 	};
-	const timer = setInterval(tick, RECORDING_CHECK_MS);
+	const timer = setInterval(tick, opts.checkMs ?? RECORDING_CHECK_MS);
 	timer.unref?.();
 	// 挂上时看一眼:记录器建在运行时里,那会儿登记表还空(来源要等数据那一代就位才登记,ADR-0022 决策 2 ——
 	// 建运行时那会儿不许碰盘),所以这一下什么都不写;来源登记之后由定时或登录事件记上。

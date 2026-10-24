@@ -16,7 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -31,6 +31,7 @@ import type {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
@@ -171,6 +172,8 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			],
 			// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
+			// 拓展在册即在记,由登记表的定时看一眼记上(生产 1 分钟);测试缩短,断言再等它。
+			statsRecordingCheckMs: 200,
 		});
 		await ok(
 			await api("/api/settings", {
@@ -314,7 +317,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(card?.match(/data:image\/png;base64,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
 	});
 
-	it("卡上的每一张 png 都是图库里的图:作品配图经 postImages 存进图库,出图器按引用取回来画(㉑d)", async () => {
+	it("卡上的每一张 png 都是图库里的图:作品配图是拓展经 storeImage 存的在途图,出图器按引用取回来画(㉑d)", async () => {
 		const card = renderedHtml.find(
 			(html) => html.includes(who.a.name) && html.includes("旅行第 1 天，去海边拍了三张"),
 		);
@@ -326,7 +329,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			const bytes = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
 			const ref = `${createHash("sha256").update(bytes).digest("hex")}.png`;
 			// 验红:删掉 index.ts 里传给 createEngines 的 `resolveImageRef`,卡上的图退成占位、上面的数量不够;
-			// 把 postImages 换成别处的口,配图就不在图库里,这里 404。
+			// 假源改成直接交字节(不经 storeImage),宿主拒收那一格,卡上的图不够、这里也 404。
 			const stored = await api(`/api/images/${ref}`);
 			expect(stored.status, ref).toBe(200);
 			expect(Buffer.from(await stored.arrayBuffer()).equals(bytes), ref).toBe(true);
@@ -347,6 +350,30 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 	it("统计:拓展报的作品在统计里有作品行(统计只听 post-detected —— 证明拓展这条路真的发了事件)", async () => {
 		// 验红:把 `posts/post-queue.ts` 的 `bus.emit("post-detected", …)` 删掉,甲乙两行的作品数都是 0。
 		// 被屏蔽词挡下的也算 UP 的产出(乙两条都记);停用的丙收不到作品(决策 62),入口不发事件、统计无行。
+		// 总览判「那天有记录」看 posts / live 两项「在记」,对拓展来源只由登记表的定时 tick 写;总览有 30 秒缓存,
+		// tick 没跑时先问一次,null 就被钉进缓存、重试也只拿到缓存 —— 所以先等盘上今天的「在记」账落下,再问总览。
+		const gen = await activeGeneration(dataDir);
+		for (const key of ["a", "b"] as const) {
+			await vi.waitFor(
+				async () => {
+					const raw = await readFile(
+						join(gen, "stats", "recording", `${SUBS[key].id}.jsonl`),
+						"utf8",
+					).catch((err: NodeJS.ErrnoException) => {
+						if (err.code === "ENOENT") return "";
+						throw err;
+					});
+					const kinds = new Set(
+						raw
+							.split("\n")
+							.filter((line) => line.trim())
+							.map((line) => (JSON.parse(line) as { kind: string }).kind),
+					);
+					expect([...kinds]).toEqual(expect.arrayContaining(["posts", "live"]));
+				},
+				{ timeout: 10_000, interval: 50 },
+			);
+		}
 		await vi.waitFor(
 			async () => {
 				const res = await api("/api/stats/overview?days=7&tz=0");

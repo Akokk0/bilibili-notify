@@ -217,6 +217,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			],
 			// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
+			// 拓展在册即在记,由登记表的定时看一眼记上(生产 1 分钟);测试缩短,开机后的 `beforeAll` 等它落盘。
+			statsRecordingCheckMs: 200,
 		});
 	}
 
@@ -435,17 +437,21 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 		// 今天:假源紧挨着报两份资料(粉丝 1111、2222,带头像)。粉丝样本不密过 B 站的采样间隔,只落先到的 1111;
 		// 资料缓存是最新的 2222 —— 两处「当前粉丝」于是分得出取的是哪一个(决策 8:取资料)。等三样都落了地 ——
-		// 「在记」小账(今天这个小时的粉丝一行)、粉丝样本(记录器排队写)、资料缓存(合并窗口满了才写)—— 再往下问,
-		// 免得读到半截的盘、又被 overview 的缓存钉住。
+		// 「在记」小账(今天这个小时的粉丝一行由报资料写;作品、直播两行由登记表的定时看一眼写,开机后最早要等一轮
+		// 间隔,不等的话机器一快,统计页就赶在它前头读到「今天无记录」)、粉丝样本(记录器排队写)、资料缓存(合并
+		// 窗口满了才写)—— 再往下问,免得读到半截的盘、又被 overview 的缓存钉住。
 		await ok(await api(`/api/ext/${FAKE}/actions/report.profile`, { method: "POST" }));
 		await ok(await api(`/api/ext/${FAKE}/actions/report.profile`, { method: "POST" }));
 		await vi.waitFor(
 			async () => {
-				expect(
-					(await lines("stats", "recording", `${S_EXT}.jsonl`))?.some(
-						(row) => row.kind === "followers",
-					),
-				).toBe(true);
+				// 今天的(N 是当地正午,今天从 N − 12h 起;盘上摆的老账最晚是昨天这个钟点)。按种类去重:这几行可能
+				// 正好跨过一个整点,不认是哪一个小时。
+				const today = new Set(
+					(await lines("stats", "recording", `${S_EXT}.jsonl`))
+						?.filter((row) => Date.parse(String(row.startedAt)) >= N - 12 * H)
+						.map((row) => row.kind),
+				);
+				expect([...today].sort()).toEqual(["followers", "live", "posts"]);
 				expect(
 					(await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.followers),
 				).toEqual([1000, 1050, 1111]);

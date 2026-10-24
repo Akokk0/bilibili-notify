@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import type {
-	SubscriptionLiveDetails,
-	SubscriptionPost,
-	SubscriptionProfile,
+	CreatorProfileReport,
+	ImageRef,
+	LiveDetails,
+	PostReport,
+	RichText,
+	SourceContext,
 } from "@bilibili-notify/extension";
-import { FAKE_AVATARS, FAKE_PROFILE_AVATARS, FAKE_SVG } from "./avatars.js";
+import { FAKE_AVATARS, FAKE_PROFILE_AVATARS } from "./avatars.js";
 
 /**
  * 假源那几颗上报按钮造的数据 —— **确定、可复现**:只吃序号、时刻与外部 id,不掷骰子。主人按第三下
@@ -13,20 +16,33 @@ import { FAKE_AVATARS, FAKE_PROFILE_AVATARS, FAKE_SVG } from "./avatars.js";
  * 链接全落在 `.invalid` 上(RFC 2606 保留、永远解析不到),卡片上的链接点了也不会跑到别人家。
  */
 
-/** data URL → 字节。 */
-const bytesOf = (url: string) => Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
-
-/** 四张假头像的字节 —— 作品图与封面从这里轮着取。真 png,宿主按文件头认得出。 */
-const PICTURES: readonly Uint8Array[] = FAKE_AVATARS.map(bytesOf);
+/** 四张假头像的字节 —— 作品图与封面从这里轮着取。真 png,图库按内容嗅探认得出。 */
+const PICTURES: readonly Uint8Array[] = FAKE_AVATARS;
 /** 报资料的头像另有四张,与解析门候选的不重样(理由见 `FAKE_PROFILE_AVATARS`)。 */
-const PROFILE_PICTURES: readonly Uint8Array[] = FAKE_PROFILE_AVATARS.map(bytesOf);
+const PROFILE_PICTURES: readonly Uint8Array[] = FAKE_PROFILE_AVATARS;
 
 /** 第 `i` 张(轮着取)。 */
 export function pictureAt(i: number): Uint8Array {
 	return PICTURES[i % PICTURES.length] as Uint8Array;
 }
 
-const SVG_BYTES = new TextEncoder().encode(FAKE_SVG);
+/**
+ * 把一张图存进图库、回引用。上报里的图一律交图库引用,不交字节(契约:图先 `ctx.storeImage`)。
+ * 存不下抛一句带原因的错 —— 按钮的失败面板上就是这句话。
+ */
+export type StorePicture = (bytes: Uint8Array) => Promise<ImageRef>;
+
+/** 用来源上下文的 `storeImage` 造一个 {@link StorePicture};`signal` 中止时存图跟着停。 */
+export function pictureStore(
+	ctx: Pick<SourceContext, "storeImage">,
+	signal?: AbortSignal,
+): StorePicture {
+	return async (bytes) => {
+		const stored = await ctx.storeImage(bytes, signal === undefined ? undefined : { signal });
+		if (!stored.ok) throw new Error(`存图失败(${stored.code}):${stored.message}`);
+		return stored.ref;
+	};
+}
 
 /** 分区轮着取。 */
 const CATEGORIES = ["聊天", "游戏", "唱见"] as const;
@@ -39,12 +55,24 @@ function tagOf(externalId: string): string {
 	return createHash("sha256").update(externalId).digest("hex").slice(0, 12);
 }
 
-function postBase(externalId: string, n: number, now: number) {
+/**
+ * 正文末尾那个 `#话题` 片段化:前面是文字、末尾是话题片段(`text` 带 `#`,`name` 不带),片段拼起来正好
+ * 等于正文。宿主据此给话题上色(第 3 版里话题上色靠 `richText`,不再由宿主从正文里找 `#`)。
+ */
+function withTrailingTopic(text: string, name: string): RichText {
+	const tag = `#${name}`;
+	const at = text.lastIndexOf(tag);
+	return [
+		...(at > 0 ? [{ kind: "text" as const, text: text.slice(0, at) }] : []),
+		{ kind: "topic" as const, text: tag, name },
+	];
+}
+
+function postBase(externalId: string, n: number) {
 	const tag = tagOf(externalId);
 	return {
-		id: `fake-${tag}-post-${n}`,
+		postId: `fake-${tag}-post-${n}`,
 		url: `https://fake-source.invalid/${tag}/post/${n}`,
-		publishedAt: now,
 	};
 }
 
@@ -68,57 +96,95 @@ const PICTURE_POST_TEXTS: readonly ((n: number) => string)[] = [
 /**
  * 一条作品:单数是图文(正文 + 三张图),双数是视频 —— 两种卡按两下就都看得见。
  *
- * 话题照契约报名字、不带 `#`:图文报「假话题」;视频报「城市散步」「vlog」,正文末尾只有
- * `#城市散步` —— 第二个在正文里找不到,演「只进名单、不上色,宿主照收不报错」。
+ * 话题照契约报名字、不带 `#`,且一条作品只报一个(`topic`):图文报「假话题」,视频报「城市散步」,
+ * 正文末尾也是 `#城市散步`。第 3 版契约把话题从列表收成单个,原来视频那个「正文里找不到、只进名单」的
+ * 第二话题(`vlog`)没有位置了。
  */
-export function fakePost(externalId: string, n: number, now: number): SubscriptionPost {
-	const base = postBase(externalId, n, now);
+export async function fakePost(
+	externalId: string,
+	n: number,
+	now: number,
+	store: StorePicture,
+): Promise<PostReport> {
+	const base = postBase(externalId, n);
 	if (n % 2 === 1) {
+		const text = PICTURE_POST_TEXTS[((n - 1) / 2) % PICTURE_POST_TEXTS.length]?.(n) as string;
 		return {
 			...base,
-			text: PICTURE_POST_TEXTS[((n - 1) / 2) % PICTURE_POST_TEXTS.length]?.(n),
-			images: [pictureAt(n), pictureAt(n + 1), pictureAt(n + 2)],
-			topics: ["假话题"],
-			stats: statsOf(n),
+			post: {
+				publishedAt: now,
+				text,
+				richText: withTrailingTopic(text, "假话题"),
+				images: [
+					await store(pictureAt(n)),
+					await store(pictureAt(n + 1)),
+					await store(pictureAt(n + 2)),
+				],
+				topic: "假话题",
+				stats: statsOf(n),
+			},
 		};
 	}
+	const text = `第 ${n} 支视频来啦，这次拍了一整天的城市散步，喜欢的话点个赞 #城市散步`;
 	return {
 		...base,
-		text: `第 ${n} 支视频来啦，这次拍了一整天的城市散步，喜欢的话点个赞 #城市散步`,
-		topics: ["城市散步", "vlog"],
-		video: {
-			cover: pictureAt(n),
-			title: `城市散步 vlog · 第 ${n} 期`,
-			duration: 120 + n,
-			description: "从早走到晚，两万多步，记下了沿路的小店和街景。",
-			plays: n * 1_234,
+		post: {
+			publishedAt: now,
+			text,
+			richText: withTrailingTopic(text, "城市散步"),
+			topic: "城市散步",
+			video: {
+				cover: await store(pictureAt(n)),
+				title: `城市散步 vlog · 第 ${n} 期`,
+				durationSec: 120 + n,
+				description: "从早走到晚，两万多步，记下了沿路的小店和街景。",
+				views: n * 1_234,
+			},
+			stats: statsOf(n),
 		},
-		stats: statsOf(n),
 	};
 }
 
-/** 带坏图的作品:三张图里第二张是 SVG —— 宿主应只丢那一张,其余照收(决策 59)。 */
-export function fakePostWithBadImage(externalId: string, n: number, now: number): SubscriptionPost {
+/** 一个不合形状的图库引用。 */
+export const BAD_IMAGE_REF = "not-a-ref";
+
+/**
+ * 带坏图的作品:三张图里第二张交一个不合形状的引用(`"not-a-ref"`,不是 `<sha256>.<png|jpg|gif|webp>`)——
+ * 宿主应只丢那一格(点名 `images[1]`),其余照收(决策 59)。第 3 版里图一律是图库引用,「混进一张 SVG」
+ * 已经没有地方放了:SVG 字节在 `storeImage` 那一步就被图库拒掉,根本到不了上报。
+ */
+export async function fakePostWithBadImage(
+	externalId: string,
+	n: number,
+	now: number,
+	store: StorePicture,
+): Promise<PostReport> {
 	return {
-		...postBase(externalId, n, now),
-		text: `第 ${n} 条：随手拍了三张，第二张好像传坏了`,
-		images: [pictureAt(n), SVG_BYTES, pictureAt(n + 1)],
+		...postBase(externalId, n),
+		post: {
+			publishedAt: now,
+			text: `第 ${n} 条：随手拍了三张，第二张好像传坏了`,
+			images: [await store(pictureAt(n)), BAD_IMAGE_REF, await store(pictureAt(n + 1))],
+		},
 	};
 }
 
 /**
- * 多一格的作品:多带一格作品表里没有的「弹幕数」(契约明说不收的那一格)—— 演拓展照更新的契约写、
+ * 多一格的作品:作品里多带一格作品表里没有的「弹幕数」(契约明说不收的那一格)—— 演拓展照更新的契约写、
  * 却把要的契约小号写低了,宿主应整条拒(决策 59)。
  */
 export function fakePostWithExtraField(
 	externalId: string,
 	n: number,
 	now: number,
-): SubscriptionPost & { danmaku: number } {
+): PostReport & { post: { danmaku: number } } {
 	return {
-		...postBase(externalId, n, now),
-		text: `假源的第 ${n} 条作品:多带了一格「弹幕数」—— BN 不认识,应整条拒。`,
-		danmaku: n * 12,
+		...postBase(externalId, n),
+		post: {
+			publishedAt: now,
+			text: `假源的第 ${n} 条作品:多带了一格「弹幕数」—— BN 不认识,应整条拒。`,
+			danmaku: n * 12,
+		},
 	};
 }
 
@@ -139,16 +205,21 @@ export function fakeLiveUrl(externalId: string): string {
 	return `https://live.fake-source.invalid/${tagOf(externalId)}`;
 }
 
-/** 这一场在直播那张表里的格(开播、直播状态、下播共用)。 */
-export function fakeLiveDetails(
+/**
+ * 这一场在直播那张表里的格(开播、直播状态、下播、拉取式直播状态共用)。开播时刻不在这里 ——
+ * 它在上报信封上(`startedAt`)。封面先存进图库、交引用。
+ */
+export async function fakeLiveDetails(
+	externalId: string,
 	session: FakeLiveSession,
-): SubscriptionLiveDetails & { startedAt: number } {
+	store: StorePicture,
+): Promise<LiveDetails> {
 	return {
-		startedAt: session.startedAt,
+		url: fakeLiveUrl(externalId),
 		title: `假直播 · 第 ${session.n} 场`,
-		cover: pictureAt(session.n),
+		cover: await store(pictureAt(session.n)),
 		category: CATEGORIES[session.n % CATEGORIES.length] as string,
-		viewers: session.viewers,
+		currentViewers: session.viewers,
 		totalViewers: session.totalViewers,
 		likes: session.viewers * 2,
 		description: `假源造的第 ${session.n} 场直播。`,
@@ -159,10 +230,14 @@ export function fakeLiveDetails(
  * 资料更新:名字带版次(外加外部 id 的短标签,两个人同一下不同名)、粉丝数照版次涨、头像在报资料专用的
  * 四张里轮 —— 相邻两版一定不同,第一版也不会撞上建订阅时候选的那张,宿主「摘要不同才覆盖」那一道才看得见在换。
  */
-export function fakeProfile(externalId: string, n: number): SubscriptionProfile {
+export async function fakeProfile(
+	externalId: string,
+	n: number,
+	store: StorePicture,
+): Promise<CreatorProfileReport> {
 	return {
 		name: `假名字 · 第 ${n} 版(${tagOf(externalId).slice(0, 4)})`,
-		fans: n * 1_111,
-		avatar: PROFILE_PICTURES[(n - 1) % PROFILE_PICTURES.length] as Uint8Array,
+		followers: n * 1_111,
+		avatar: await store(PROFILE_PICTURES[(n - 1) % PROFILE_PICTURES.length] as Uint8Array),
 	};
 }

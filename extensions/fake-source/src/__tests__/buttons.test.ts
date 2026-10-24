@@ -12,13 +12,22 @@
 
 import { readFile } from "node:fs/promises";
 import type {
+	CreatorProfileReport,
 	ExtensionBlock,
-	ExtensionOwnSubscription,
 	ExtensionRichText,
 	ExtensionView,
+	LiveDetails,
+	LiveSignalReport,
+	PostReport,
 } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { bootFakeSource, type HeardKind, type HeardReport } from "./harness.js";
+import {
+	bootFakeSource,
+	type HarnessSub,
+	type HeardKind,
+	type HeardReport,
+	IMAGE_REF_PATTERN,
+} from "./harness.js";
 
 const T = Date.UTC(2026, 8, 23, 12);
 
@@ -31,16 +40,16 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function sub(id: number, externalId: string, enabled: boolean): ExtensionOwnSubscription {
-	return { id: `00000000-0000-4000-8000-00000000000${id}`, externalId, enabled };
+function sub(externalId: string, enabled: boolean): HarnessSub {
+	return { externalId, enabled };
 }
 
 /** 甲两条开着的(推给两组群)、乙一条开着的、丙一条停用的。 */
 const PEOPLE = [
-	sub(1, "person-a", true),
-	sub(2, "person-a", true),
-	sub(3, "person-b", true),
-	sub(4, "person-c", false),
+	sub("person-a", true),
+	sub("person-a", true),
+	sub("person-b", true),
+	sub("person-c", false),
 ];
 
 /** 清单里声明的动作名。 */
@@ -51,38 +60,19 @@ async function manifestActions(): Promise<string[]> {
 	return manifest.actions ?? [];
 }
 
-type Post = {
-	id: string;
-	url: string;
-	publishedAt: number;
-	text?: string;
-	images?: Uint8Array[];
-	topics?: string[];
-	video?: {
-		cover?: Uint8Array;
-		title?: string;
-		duration?: number;
-		description?: string;
-		plays?: number;
-	};
-	stats?: { likes?: number; comments?: number; shares?: number };
-};
-type Live = {
-	live?: boolean;
-	url?: string;
-	startedAt?: number;
-	title?: string;
-	cover?: Uint8Array;
-	category?: string;
-	viewers?: number;
-	totalViewers?: number;
-	likes?: number;
-	description?: string;
-};
-type Profile = { name?: string; avatar?: Uint8Array; fans?: number };
-
+/** 上报的第 `kind` 种,按先后。 */
 function valuesOf<T>(reports: readonly HeardReport[], kind: HeardKind): T[] {
 	return reports.filter((r) => r.kind === kind).map((r) => r.value as T);
+}
+
+/** 直播信号里某一种(`start` / `status` / `end`),按先后。 */
+function signalsOf<K extends LiveSignalReport["kind"]>(
+	reports: readonly HeardReport[],
+	kind: K,
+): Extract<LiveSignalReport, { kind: K }>[] {
+	return valuesOf<LiveSignalReport>(reports, "live").filter(
+		(v): v is Extract<LiveSignalReport, { kind: K }> => v.kind === kind,
+	);
 }
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -150,6 +140,16 @@ describe("七颗按钮", () => {
 		const fake = bootFakeSource(PEOPLE);
 		expect([...fake.actionNames()].sort()).toEqual([...(await manifestActions())].sort());
 	});
+
+	/** 清单 `events` 声明了开播 + 下播,宿主据此推出周期直播并要求 `fetchLiveStatus`。 */
+	it("来源登记了 start / stop / searchCreators / fetchLiveStatus", () => {
+		expect(bootFakeSource().members()).toEqual([
+			"fetchLiveStatus",
+			"searchCreators",
+			"start",
+			"stop",
+		]);
+	});
 });
 
 describe("作用于谁", () => {
@@ -163,7 +163,7 @@ describe("作用于谁", () => {
 	});
 
 	it("没有开着的订阅:七颗按哪颗都不报,页上说一句「还没有开着的订阅」,并喊面板重取", async () => {
-		const fake = bootFakeSource([sub(4, "person-c", false)]);
+		const fake = bootFakeSource([sub("person-c", false)]);
 		const before = fake.statusChanges();
 		for (const { action } of actionButtons(fake.view())) await fake.press(action);
 		expect(fake.reports()).toEqual([]);
@@ -179,9 +179,10 @@ describe("作用于谁", () => {
 		expect(said.some((text) => text.includes("报一条作品") && mentions(text, 2))).toBe(true);
 	});
 
-	it("宿主拒了一条正常的:动作失败,原话带到面板", async () => {
-		const fake = bootFakeSource(PEOPLE, { refuse: () => "链接不对" });
-		await expect(fake.press("report.post")).rejects.toThrow(/链接不对/);
+	it("图库存不下图:动作失败,原话带到面板,什么都没报", async () => {
+		const fake = bootFakeSource(PEOPLE, { refuseStore: () => "图库满了" });
+		await expect(fake.press("report.post")).rejects.toThrow(/图库满了/);
+		expect(fake.reports()).toEqual([]);
 	});
 
 	it("交进来时 signal 已经中止(超时 / 拓展停用):一条都不报,按它的 reason 拒掉", async () => {
@@ -192,51 +193,80 @@ describe("作用于谁", () => {
 		await expect(fake.press("report.post", controller.signal)).rejects.toBe(reason);
 		expect(fake.reports()).toEqual([]);
 	});
+
+	it("来源停了(stop 之后):按钮照实回「来源没在跑」,什么都不报,页上也这么说", async () => {
+		const fake = bootFakeSource(PEOPLE);
+		await fake.stop();
+		await expect(fake.press("report.post")).rejects.toThrow(/来源没在跑/);
+		expect(fake.reports()).toEqual([]);
+		const error = noticesOf(fake.view()).find((n) => n.tone === "error");
+		expect(plain(error?.text ?? "")).toContain("来源没在跑");
+	});
 });
 
 describe("报一条作品", () => {
 	/**
-	 * 话题照契约报名字(不带 `#`):图文报的那个正文里有 `#假话题`,卡上既有标签又有上色;视频报两个,
-	 * 第二个(`vlog`)正文里没有 —— 演「只进名单、正文里找不到就不上色」,宿主照收不报错。
+	 * 话题照契约报名字(不带 `#`),一条作品只报一个:图文报「假话题」(正文里有 #假话题,卡上既有标签又有
+	 * 上色);视频报「城市散步」,正文末尾也是 `#城市散步`。
 	 */
-	it("话题:图文报「假话题」(正文里有 #假话题);视频报「城市散步」「vlog」,正文末尾只有 #城市散步", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+	it("话题:图文报「假话题」(正文里有 #假话题);视频报「城市散步」,正文末尾是 #城市散步", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const [first, second] = valuesOf<Post>(fake.reports(), "post");
+		const [first, second] = valuesOf<PostReport>(fake.reports(), "post");
 
-		expect(first?.topics).toEqual(["假话题"]);
-		expect(first?.text).toContain("#假话题");
+		expect(first?.post.topic).toBe("假话题");
+		expect(first?.post.text).toContain("#假话题");
 
-		expect(second?.topics).toEqual(["城市散步", "vlog"]);
-		expect(second?.text).toMatch(/#城市散步$/);
-		expect(second?.text).not.toContain("#vlog");
+		expect(second?.post.topic).toBe("城市散步");
+		expect(second?.post.text).toMatch(/#城市散步$/);
 	});
 
-	it("单数是图文(正文 + 三张 png + 互动数),双数是视频(封面 png、标题、时长、简介、播放数 + 互动数)", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+	/** 话题上色靠 `richText`:片段的字拼起来要正好等于正文(否则宿主丢掉富文本),末尾是话题片段。 */
+	it("richText 的片段拼起来等于正文,末尾是与 topic 同名的话题片段", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const [first, second] = valuesOf<Post>(fake.reports(), "post");
+		for (const report of valuesOf<PostReport>(fake.reports(), "post")) {
+			const segments = report.post.richText ?? [];
+			expect(segments.map((one) => one.text).join("")).toBe(report.post.text);
+			expect(segments.at(-1)).toMatchObject({
+				kind: "topic",
+				text: `#${report.post.topic}`,
+				name: report.post.topic,
+			});
+		}
+	});
 
-		expect(first?.publishedAt).toBe(T);
-		expect(first?.text).toEqual(expect.any(String));
-		expect(first?.images).toHaveLength(3);
-		expect(first?.images?.every(isPng)).toBe(true);
-		expect(first?.video).toBeUndefined();
+	it("单数是图文(正文 + 三张图库里的 png + 互动数),双数是视频(封面 png、标题、时长、简介、播放数 + 互动数)", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
+		await fake.press("report.post");
+		await fake.press("report.post");
+		const [first, second] = valuesOf<PostReport>(fake.reports(), "post");
 
-		expect(second?.images).toBeUndefined();
-		expect(isPng(second?.video?.cover)).toBe(true);
-		expect(mentions(second?.video?.title, 2)).toBe(true);
-		expect(second?.video?.duration).toBeGreaterThan(0);
-		expect(second?.video?.description).toEqual(expect.any(String));
-		expect(isCount(second?.video?.plays)).toBe(true);
+		expect(first?.post.publishedAt).toBe(T);
+		expect(first?.post.text).toEqual(expect.any(String));
+		expect(first?.post.images).toHaveLength(3);
+		for (const ref of first?.post.images ?? []) {
+			expect(ref).toMatch(IMAGE_REF_PATTERN);
+			expect(isPng(fake.imageBytes(ref))).toBe(true);
+		}
+		expect(first?.post.video).toBeUndefined();
 
-		for (const post of [first, second]) {
-			expect(isCount(post?.stats?.likes)).toBe(true);
-			expect(isCount(post?.stats?.comments)).toBe(true);
-			expect(isCount(post?.stats?.shares)).toBe(true);
-			expect(isHarmlessUrl(post?.url)).toBe(true);
+		expect(second?.post.images).toBeUndefined();
+		const video = second?.post.video;
+		expect(video?.cover).toMatch(IMAGE_REF_PATTERN);
+		expect(isPng(fake.imageBytes(video?.cover))).toBe(true);
+		expect(mentions(video?.title, 2)).toBe(true);
+		expect(video?.durationSec).toBeGreaterThan(0);
+		expect(video?.description).toEqual(expect.any(String));
+		expect(isCount(video?.views)).toBe(true);
+
+		for (const report of [first, second]) {
+			expect(isCount(report?.post.stats?.likes)).toBe(true);
+			expect(isCount(report?.post.stats?.comments)).toBe(true);
+			expect(isCount(report?.post.stats?.shares)).toBe(true);
+			expect(isHarmlessUrl(report?.url)).toBe(true);
 		}
 	});
 
@@ -244,7 +274,7 @@ describe("报一条作品", () => {
 		const fake = bootFakeSource(PEOPLE);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const posts = valuesOf<Post>(fake.reports(), "post");
+		const posts = valuesOf<PostReport>(fake.reports(), "post");
 		expect(posts).toHaveLength(4);
 		const [a1, b1, a2] = posts;
 		for (const [post, n] of [
@@ -252,139 +282,189 @@ describe("报一条作品", () => {
 			[b1, 1],
 			[a2, 2],
 		] as const) {
-			expect(mentions(post?.id, n), post?.id).toBe(true);
+			expect(mentions(post?.postId, n), post?.postId).toBe(true);
 			expect(mentions(post?.url, n), post?.url).toBe(true);
-			expect(mentions(post?.text, n), post?.text).toBe(true);
+			expect(mentions(post?.post.text, n), post?.post.text).toBe(true);
 		}
-		expect(new Set(posts.map((p) => p.id)).size).toBe(4);
+		expect(new Set(posts.map((p) => p.postId)).size).toBe(4);
 	});
 
 	it("没有开着的订阅时按的那一下不占序号", async () => {
 		const fake = bootFakeSource([]);
 		await fake.press("report.post");
-		fake.changeSubscriptions([sub(1, "person-a", true)]);
+		fake.changeSubscriptions([sub("person-a", true)]);
 		await fake.press("report.post");
-		const [post] = valuesOf<Post>(fake.reports(), "post");
-		expect(mentions(post?.id, 1)).toBe(true);
+		const [post] = valuesOf<PostReport>(fake.reports(), "post");
+		expect(mentions(post?.postId, 1)).toBe(true);
 	});
 });
 
 describe("开播 / 报直播状态 / 下播", () => {
-	it("开播:链接、开播时刻、带场次的标题、封面 png、分区、在线与累计人数、点赞、简介都填上", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+	it("开播:链接、开播时刻、带场次的标题、封面(图库引用)、分区、在线与累计人数、点赞、简介都填上", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.liveStart");
-		const [start] = valuesOf<Live>(fake.reports(), "liveStart");
-		expect(isHarmlessUrl(start?.url)).toBe(true);
+		const [start] = signalsOf(fake.reports(), "start");
+		const d = start?.details as LiveDetails;
 		expect(start?.startedAt).toBe(T);
-		expect(mentions(start?.title, 1)).toBe(true);
-		expect(isPng(start?.cover)).toBe(true);
-		expect(start?.category).toEqual(expect.any(String));
-		expect(start?.viewers).toBeGreaterThan(0);
+		expect(isHarmlessUrl(d.url)).toBe(true);
+		expect(mentions(d.title, 1)).toBe(true);
+		expect(d.cover).toMatch(IMAGE_REF_PATTERN);
+		expect(isPng(fake.imageBytes(d.cover))).toBe(true);
+		expect(d.category).toEqual(expect.any(String));
+		expect(d.currentViewers).toBeGreaterThan(0);
 		// 两个人数各给一个看得出区别的数:首页那一列画的是累计观看(决策 75),一眼要认得出不是在线。
-		expect(start?.totalViewers).toBeGreaterThan(start?.viewers ?? Number.POSITIVE_INFINITY);
-		expect(isCount(start?.totalViewers)).toBe(true);
-		expect(isCount(start?.likes)).toBe(true);
-		expect(start?.description).toEqual(expect.any(String));
+		expect(d.totalViewers).toBeGreaterThan(d.currentViewers ?? Number.POSITIVE_INFINITY);
+		expect(isCount(d.totalViewers)).toBe(true);
+		expect(isCount(d.likes)).toBe(true);
+		expect(d.description).toEqual(expect.any(String));
 	});
 
 	it("报直播状态:报「在播」,在线与累计每按一次都往上涨;开播时刻沿用开播那一刻,链接同一个", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.liveStart");
 		vi.setSystemTime(T + 60_000);
 		await fake.press("report.liveStatus");
 		vi.setSystemTime(T + 120_000);
 		await fake.press("report.liveStatus");
-		const [start] = valuesOf<Live>(fake.reports(), "liveStart");
-		const [s1, s2] = valuesOf<Live>(fake.reports(), "liveStatus");
-		expect([s1?.live, s2?.live]).toEqual([true, true]);
-		expect(s1?.viewers).toBeGreaterThan(start?.viewers ?? Number.POSITIVE_INFINITY);
-		expect(s2?.viewers).toBeGreaterThan(s1?.viewers ?? Number.POSITIVE_INFINITY);
-		expect(s1?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
-		expect(s2?.totalViewers).toBeGreaterThan(s1?.totalViewers ?? Number.POSITIVE_INFINITY);
+		const [start] = signalsOf(fake.reports(), "start");
+		const [s1, s2] = signalsOf(fake.reports(), "status");
+		expect([s1?.isLive, s2?.isLive]).toEqual([true, true]);
+		const inf = Number.POSITIVE_INFINITY;
+		expect(s1?.details.currentViewers).toBeGreaterThan(start?.details.currentViewers ?? inf);
+		expect(s2?.details.currentViewers).toBeGreaterThan(s1?.details.currentViewers ?? inf);
+		expect(s1?.details.totalViewers).toBeGreaterThan(start?.details.totalViewers ?? inf);
+		expect(s2?.details.totalViewers).toBeGreaterThan(s1?.details.totalViewers ?? inf);
 		expect([s1?.startedAt, s2?.startedAt]).toEqual([T, T]);
-		expect([s1?.url, s2?.url]).toEqual([start?.url, start?.url]);
-		expect(mentions(s2?.title, 1)).toBe(true);
+		expect([s1?.details.url, s2?.details.url]).toEqual([start?.details.url, start?.details.url]);
+		expect(mentions(s2?.details.title, 1)).toBe(true);
 	});
 
 	/**
 	 * 不同的动作宿主不挡着并发(决策 42 只挡同一个)。开播还在一个个报的时候按了报直播状态,后面那几个人的
-	 * 开播不该沾上涨过的人数 —— 每一下报的是按下那一刻的样子。
+	 * 开播不该沾上涨过的人数 —— 每一下报的是按下那一刻的样子。这里让开播第一次存封面的那一下卡住。
 	 */
 	it("开播报到一半按了报直播状态:同一下开播,每个人拿到的人数一样", async () => {
 		let release: () => void = () => {};
 		const held = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		let holding = true;
 		const fake = bootFakeSource(PEOPLE, {
-			hold: (report) => {
-				if (!holding || report.kind !== "liveStart") return undefined;
-				holding = false;
-				return held;
-			},
+			holdStore: (index) => (index === 0 ? held : undefined),
 		});
 		const starting = fake.press("report.liveStart");
 		await fake.press("report.liveStatus");
 		release();
 		await starting;
-		const counts = valuesOf<Live>(fake.reports(), "liveStart").map((v) => [
-			v.viewers,
-			v.totalViewers,
+		const counts = signalsOf(fake.reports(), "start").map((v) => [
+			v.details.currentViewers,
+			v.details.totalViewers,
 		]);
 		expect(counts).toHaveLength(2);
 		expect(counts[1]).toEqual(counts[0]);
 	});
 
 	it("没开播就报直播状态(演 BN 重启过、开播没见着):照样报在播,从这一刻算起", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.liveStatus");
-		const [status] = valuesOf<Live>(fake.reports(), "liveStatus");
-		expect(status?.live).toBe(true);
+		const [status] = signalsOf(fake.reports(), "status");
+		expect(status?.isLive).toBe(true);
 		expect(status?.startedAt).toBe(T);
-		expect(status?.viewers).toBeGreaterThan(0);
-		expect(status?.totalViewers).toBeGreaterThan(status?.viewers ?? Number.POSITIVE_INFINITY);
+		const d = status?.details as LiveDetails;
+		expect(d.currentViewers).toBeGreaterThan(0);
+		expect(d.totalViewers).toBeGreaterThan(d.currentViewers ?? Number.POSITIVE_INFINITY);
 	});
 
 	it("下播:补上开播时刻;之后再报直播状态是新的一场", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.liveStart");
 		vi.setSystemTime(T + 3_600_000);
 		await fake.press("report.liveEnd");
 		vi.setSystemTime(T + 7_200_000);
 		await fake.press("report.liveStatus");
-		const [start] = valuesOf<Live>(fake.reports(), "liveStart");
-		const [end] = valuesOf<Live>(fake.reports(), "liveEnd");
-		const [again] = valuesOf<Live>(fake.reports(), "liveStatus");
-		expect(end?.url).toBe(start?.url);
+		const [start] = signalsOf(fake.reports(), "start");
+		const [end] = signalsOf(fake.reports(), "end");
+		const [again] = signalsOf(fake.reports(), "status");
+		expect(end?.details?.url).toBe(start?.details.url);
 		expect(end?.startedAt).toBe(T);
 		expect(again?.startedAt).toBe(T + 7_200_000);
-		expect(mentions(again?.title, 2)).toBe(true);
+		expect(mentions(again?.details.title, 2)).toBe(true);
+	});
+});
+
+describe("拉取式直播状态(fetchLiveStatus)", () => {
+	const A: { sourceKey: string; externalId: string } = {
+		sourceKey: "fake-source",
+		externalId: "person-a",
+	};
+
+	it("没开播:回 offline", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
+		expect(await fake.fetchLiveStatus(A)).toEqual({ ok: true, kind: "offline" });
+	});
+
+	it("开播之后:回 live,带开播时刻与这一场的内容;每按一次报直播状态,人数跟着涨", async () => {
+		const fake = bootFakeSource([sub("person-a", true), sub("person-b", true)]);
+		await fake.press("report.liveStart");
+		const first = await fake.fetchLiveStatus(A);
+		expect(first).toMatchObject({ ok: true, kind: "live", startedAt: T });
+		if (!first.ok || first.kind !== "live") throw new Error("应该在播");
+		expect(mentions(first.details.title, 1)).toBe(true);
+		expect(first.details.cover).toMatch(IMAGE_REF_PATTERN);
+		await fake.press("report.liveStatus");
+		const second = await fake.fetchLiveStatus(A);
+		if (!second.ok || second.kind !== "live") throw new Error("应该在播");
+		expect(second.details.currentViewers).toBeGreaterThan(first.details.currentViewers ?? 0);
+		expect(await fake.fetchLiveStatus({ ...A, externalId: "person-b" })).toMatchObject({
+			kind: "live",
+		});
+	});
+
+	it("下播之后:回 offline", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
+		await fake.press("report.liveStart");
+		await fake.press("report.liveEnd");
+		expect(await fake.fetchLiveStatus(A)).toEqual({ ok: true, kind: "offline" });
+	});
+
+	it("没被报过的人(停用的、外人)回 offline", async () => {
+		const fake = bootFakeSource([sub("person-a", true), sub("person-c", false)]);
+		await fake.press("report.liveStart");
+		expect(await fake.fetchLiveStatus({ ...A, externalId: "person-c" })).toEqual({
+			ok: true,
+			kind: "offline",
+		});
+	});
+
+	it("来源停了:回「来源没在跑」的失败,不抛", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
+		await fake.stop();
+		expect(await fake.fetchLiveStatus(A)).toMatchObject({ ok: false, code: "unavailable" });
 	});
 });
 
 describe("报资料", () => {
-	it("名字带版次、粉丝数换一个、头像是 png 且远小于宿主那 96 KiB", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+	it("名字带版次、粉丝数换一个、头像是图库里的 png 且远小于宿主那 8 MiB", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.profile");
 		await fake.press("report.profile");
-		const [p1, p2] = valuesOf<Profile>(fake.reports(), "profile");
+		const [p1, p2] = valuesOf<CreatorProfileReport>(fake.reports(), "profile");
 		expect(mentions(p1?.name, 1)).toBe(true);
 		expect(mentions(p2?.name, 2)).toBe(true);
-		expect(isCount(p1?.fans)).toBe(true);
-		expect(p2?.fans).not.toBe(p1?.fans);
+		expect(isCount(p1?.followers)).toBe(true);
+		expect(p2?.followers).not.toBe(p1?.followers);
 		for (const p of [p1, p2]) {
-			expect(isPng(p?.avatar)).toBe(true);
-			expect(p?.avatar?.byteLength).toBeLessThan(96 * 1024);
+			expect(p?.avatar).toMatch(IMAGE_REF_PATTERN);
+			const bytes = fake.imageBytes(p?.avatar);
+			expect(isPng(bytes)).toBe(true);
+			expect(bytes?.byteLength).toBeLessThan(96 * 1024);
 		}
 	});
 
 	/** 宿主只在摘要不同时才覆盖头像 —— 连按两下头像得真的不同,主人才看得见它换了。 */
 	it("头像在四张里循环:相邻两下不同,第五下回到第一张", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		const fake = bootFakeSource([sub("person-a", true)]);
 		for (let i = 0; i < 5; i++) await fake.press("report.profile");
-		const avatars = valuesOf<Profile>(fake.reports(), "profile").map((p) =>
-			Buffer.from(p.avatar ?? []).toString("hex"),
-		);
+		const avatars = valuesOf<CreatorProfileReport>(fake.reports(), "profile").map((p) => p.avatar);
 		expect(new Set(avatars.slice(0, 4)).size).toBe(4);
 		expect(avatars[4]).toBe(avatars[0]);
 	});
@@ -394,73 +474,61 @@ describe("报资料", () => {
 	 * 看着像「头像没换」。
 	 */
 	it("报资料的头像与解析门候选的头像一张都不重样", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+		const fake = bootFakeSource([sub("person-a", true)]);
 		const candidateAvatars = new Set<string>();
 		for (const query of ["阿梓", "七海", "嘉然", "向晚", "乃琳", "贝拉"]) {
-			for (const one of await fake.lookup(query)) {
-				if (one.avatar) candidateAvatars.add(one.avatar.slice(one.avatar.indexOf(",") + 1));
+			for (const one of await fake.candidates(query)) {
+				if (one.avatar) candidateAvatars.add(one.avatar);
 			}
 		}
 		// 六句字、每句两张,四张候选头像全见过了 —— 下面那条「不重样」才不是空话。
 		expect(candidateAvatars.size).toBe(4);
 		for (let i = 0; i < 4; i++) await fake.press("report.profile");
-		for (const profile of valuesOf<Profile>(fake.reports(), "profile")) {
-			expect(candidateAvatars.has(Buffer.from(profile.avatar ?? []).toString("base64"))).toBe(
-				false,
-			);
+		for (const profile of valuesOf<CreatorProfileReport>(fake.reports(), "profile")) {
+			expect(candidateAvatars.has(profile.avatar as string)).toBe(false);
 		}
 	});
 
 	it("两个人同一下拿到的名字不一样", async () => {
 		const fake = bootFakeSource(PEOPLE);
 		await fake.press("report.profile");
-		const names = valuesOf<Profile>(fake.reports(), "profile").map((p) => p.name);
+		const names = valuesOf<CreatorProfileReport>(fake.reports(), "profile").map((p) => p.name);
 		expect(names).toHaveLength(2);
 		expect(names[0]).not.toBe(names[1]);
 	});
 });
 
 describe("两颗报坏的", () => {
-	it("带坏图的作品:三张图,第二张是 SVG,另外两张是 png", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
+	it("带坏图的作品:三张图,第二张是个不合形状的引用,另外两张是图库里的 png", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.badImage");
-		const [post] = valuesOf<Post>(fake.reports(), "post");
-		expect(post?.images).toHaveLength(3);
-		expect(isPng(post?.images?.[0])).toBe(true);
-		expect(new TextDecoder().decode(post?.images?.[1]).startsWith("<svg")).toBe(true);
-		expect(isPng(post?.images?.[2])).toBe(true);
+		const [post] = valuesOf<PostReport>(fake.reports(), "post");
+		const images = post?.post.images ?? [];
+		expect(images).toHaveLength(3);
+		expect(isPng(fake.imageBytes(images[0]))).toBe(true);
+		expect(images[1]).toBe("not-a-ref");
+		expect(images[1]).not.toMatch(IMAGE_REF_PATTERN);
+		expect(isPng(fake.imageBytes(images[2]))).toBe(true);
 	});
 
-	/** 作品那张表认的格,抄自契约 `SubscriptionPost`。 */
+	/** 作品里宿主认的格(`ExtensionPostReportSchema` 的 `post`)。 */
 	const POST_KEYS = [
-		"id",
-		"url",
+		"creator",
 		"publishedAt",
 		"text",
+		"richText",
 		"images",
-		"topics",
+		"topic",
 		"video",
 		"stats",
-		"author",
 	];
 
-	it("多一格的作品:多带一格作品表里没有的字段;宿主整条拒是意料之中,动作不算失败", async () => {
-		let refused: HeardReport | undefined;
-		const fake = bootFakeSource([sub(1, "person-a", true)], {
-			refuse: (report) => {
-				refused = report;
-				return "BN 不认识这几格";
-			},
-		});
+	it("多一格的作品:作品里多带一格宿主不认识的字段;上报没有返回值,动作照样成", async () => {
+		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.extraField");
-		expect(refused?.kind).toBe("post");
-		const extra = Object.keys(refused?.value as object).filter((key) => !POST_KEYS.includes(key));
-		expect(extra).toHaveLength(1);
-	});
-
-	it("多一格的作品宿主竟然收下了:动作失败,说 BN 本该整条拒 —— 那是 BN 的毛病,别让它静悄悄过去", async () => {
-		const fake = bootFakeSource([sub(1, "person-a", true)]);
-		await expect(fake.press("report.extraField")).rejects.toThrow(/整条拒/);
+		const [report] = valuesOf<PostReport>(fake.reports(), "post");
+		const extra = Object.keys(report?.post ?? {}).filter((key) => !POST_KEYS.includes(key));
+		expect(extra).toEqual(["danmaku"]);
 	});
 });
 

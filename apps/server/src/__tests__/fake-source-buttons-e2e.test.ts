@@ -21,15 +21,18 @@ import type {
 	LiveListeningEntry,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
-import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
+import type { PostEvent } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 
-/** bus 上收到的每一条 `subscription-reported`。 */
-const heard = vi.hoisted(() => [] as SubscriptionReportDelivery[]);
+/**
+ * bus 上收到的每一条 `post-detected`(拓展作品经来源登记表进核心入口后,核心对每条订阅发的中立事件)。
+ * 老的 `subscription-reported` 在新路上不再发。上报排串行队,断言一律 `vi.waitFor`。
+ */
+const heard = vi.hoisted(() => [] as PostEvent[]);
 
 vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../runtime/message-bus.js")>();
@@ -37,8 +40,8 @@ vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 		...real,
 		createNodeMessageBus: () => {
 			const bus = real.createNodeMessageBus();
-			bus.on("subscription-reported", (delivery) => {
-				heard.push(delivery);
+			bus.on("post-detected", (event) => {
+				heard.push(event);
 			});
 			return bus;
 		},
@@ -181,23 +184,28 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	it("报一条作品 ×2:甲乙各收一条图文、一条视频,停用的丙没有;都过了宿主那道校验,一格没丢", async () => {
 		await press("report.post");
 		await press("report.post");
-		expect(heard.map((d) => [d.report.kind, d.externalId, d.subscriptionIds])).toEqual([
-			["post", external.a, [SUB_IDS.a]],
-			["post", external.b, [SUB_IDS.b]],
-			["post", external.a, [SUB_IDS.a]],
-			["post", external.b, [SUB_IDS.b]],
-		]);
-		const posts = heard.flatMap((d) => (d.report.kind === "post" ? [d.report.value] : []));
+		await vi.waitFor(() =>
+			expect(heard.map((d) => [d.identity.externalId, d.subscriptionId])).toEqual([
+				[external.a, SUB_IDS.a],
+				[external.b, SUB_IDS.b],
+				[external.a, SUB_IDS.a],
+				[external.b, SUB_IDS.b],
+			]),
+		);
+		const posts = heard.map((d) => d.post);
 		expect(posts[0]?.images).toHaveLength(3);
 		expect(posts[0]?.stats?.likes).toEqual(expect.any(Number));
-		expect(posts[2]?.video?.cover).toBeInstanceOf(Uint8Array);
+		// 作品图与封面是拓展经 `storeImage` 存的图库引用,宿主补宽高。
+		expect(posts[0]?.images?.[0]?.ref && isValidImageRef(posts[0].images[0].ref)).toBe(true);
+		expect(posts[2]?.video?.cover?.ref).toEqual(expect.any(String));
 		expect(posts[2]?.video?.title).toEqual(expect.any(String));
+		// 视频作品不再有宿主替平台写的「投稿了视频」(主人 2026-10-24 定)。
+		expect(JSON.stringify(posts[2])).not.toContain("投稿了视频");
 		expect((await fakeRow())?.reportDiscrepancies).toBeUndefined();
 	});
 
 	it("开播 → 首页有甲乙两行,带着标题、分区、累计观看与开播时刻", async () => {
 		await press("report.liveStart");
-		expect(heard.map((d) => d.report.kind)).toEqual(["liveStart", "liveStart"]);
 		const rows = await vi.waitFor(async () => {
 			const rows = await liveRows();
 			expect(rows.map((row) => row.subscriptionId)).toEqual([SUB_IDS.a, SUB_IDS.b]);
@@ -230,12 +238,6 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 			expect(second?.totalViewers).toBeGreaterThan(first?.totalViewers ?? Number.POSITIVE_INFINITY);
 			return second;
 		});
-		expect(heard.map((d) => d.report.kind)).toEqual([
-			"liveStatus",
-			"liveStatus",
-			"liveStatus",
-			"liveStatus",
-		]);
 		expect(first?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect(second?.totalViewers).toBeGreaterThan(first?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect(second?.startedAt).toBe(start?.startedAt);
@@ -244,7 +246,6 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 
 	it("下播 → 首页没了", async () => {
 		await press("report.liveEnd");
-		expect(heard.map((d) => d.report.kind)).toEqual(["liveEnd", "liveEnd"]);
 		await vi.waitFor(async () => expect(await liveRows()).toEqual([]));
 	});
 
@@ -269,14 +270,15 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect((await fakeRow())?.reportDiscrepancies).toBeUndefined();
 	});
 
-	it("带坏图的作品:照样送到(少了那张 SVG),「上报出入」里甲乙各一条「丢了」,点名 images[1]", async () => {
+	it("带坏图的作品:照样送到(少了那个坏引用),「上报出入」里甲乙各一条「丢了」,点名 images[1]", async () => {
 		await press("report.badImage");
-		expect(heard).toHaveLength(2);
-		for (const delivery of heard) {
-			expect(delivery.report.kind).toBe("post");
-			if (delivery.report.kind === "post") expect(delivery.report.value.images).toHaveLength(2);
-		}
-		const discrepancies = (await fakeRow())?.reportDiscrepancies ?? [];
+		await vi.waitFor(() => expect(heard).toHaveLength(2));
+		for (const event of heard) expect(event.post.images).toHaveLength(2);
+		const discrepancies = await vi.waitFor(async () => {
+			const found = (await fakeRow())?.reportDiscrepancies ?? [];
+			expect(found).toHaveLength(2);
+			return found;
+		});
 		expect(discrepancies.map((p) => [p.outcome, p.kind, p.subscriptionIds]).sort()).toEqual([
 			["dropped", "post", [SUB_IDS.a]],
 			["dropped", "post", [SUB_IDS.b]],
@@ -289,10 +291,14 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 
 	it("多一格的作品:整条拒 —— bus 上没有,动作照样成;「上报出入」里甲乙各一条「拒了」,点名那一格", async () => {
 		await press("report.extraField");
+		const rejected = await vi.waitFor(async () => {
+			const found = ((await fakeRow())?.reportDiscrepancies ?? []).filter(
+				(p) => p.outcome === "rejected",
+			);
+			expect(found).toHaveLength(2);
+			return found;
+		});
 		expect(heard).toEqual([]);
-		const rejected = ((await fakeRow())?.reportDiscrepancies ?? []).filter(
-			(p) => p.outcome === "rejected",
-		);
 		expect(rejected.map((p) => p.subscriptionIds).sort()).toEqual([[SUB_IDS.a], [SUB_IDS.b]]);
 		for (const discrepancy of rejected) expect(discrepancy.reasons[0]).toContain("danmaku");
 	});

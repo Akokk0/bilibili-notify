@@ -103,6 +103,8 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 				"silent",
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+			// 拓展在册即在记,由登记表的定时看一眼记上(生产 1 分钟);测试缩短,断言再等它。
+			statsRecordingCheckMs: 200,
 		});
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
@@ -192,6 +194,18 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 				]);
 			},
 			{ timeout: 3_000, interval: 100 },
+		);
+
+		// 「在记」账作品、直播两项由登记表的定时看一眼写(粉丝一行由报资料写),开机后最早要等一轮间隔;
+		// 关机前等今天的三种都落了盘,不然机器一快,关机比那一轮还早,盘上只剩粉丝一种。
+		await vi.waitFor(
+			async () => {
+				const kinds = new Set(
+					(await lines("stats", "recording", `${ON}.jsonl`))?.map((r) => r.kind),
+				);
+				expect([...kinds].sort()).toEqual(["followers", "live", "posts"]);
+			},
+			{ timeout: 3_000, interval: 50 },
 		);
 
 		await handle?.close("test shutdown");

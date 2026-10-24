@@ -1,11 +1,11 @@
 /**
  * 假头像:四张 64×64 纯色 png,各一百来字节。
  *
- * 必须是**真的 png**:建订阅时宿主先按 data URL 声明的类型核魔数(`89 50 4E 47 …`),对不上
- * 整条订阅建不成。只收位图、不收 SVG(ADR-0019 决策 49)。一次性生成好贴在这里 —— 拓展包旁边
- * 没有 node_modules,也没必要为几张色块在运行时现编码。
+ * 必须是**真的 png**:`ctx.storeImage` 按内容嗅探,认不出位图就回 `invalid`(图库只收位图,不收 SVG,
+ * ADR-0019 决策 49)。一次性生成好贴在这里 —— 拓展包旁边没有 node_modules,也没必要为几张色块在运行时
+ * 现编码。这里存的是 data URL 原文,出口 {@link FAKE_AVATARS} 是解出来的字节,交给 `storeImage` 存成图库引用。
  */
-export const FAKE_AVATARS: readonly string[] = [
+const AVATAR_URLS: readonly string[] = [
 	// teal #14b8a6
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAUElEQVR42u3PQQkAAAgEsAth/6cZjGcE38JgBZaafi0CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICApcFwfUhWhBJI9UAAAAASUVORK5CYII=",
 	// amber #f59e0b
@@ -17,17 +17,10 @@ export const FAKE_AVATARS: readonly string[] = [
 ];
 
 /**
- * 一张 SVG —— 宿主**必须拒**的那种图(只收位图,ADR-0019 决策 49 / 62)。「乱」交回的候选头像与
- * 「报一条带坏图的作品」混进去的那张都是它。
- */
-export const FAKE_SVG =
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#0d9488"/></svg>';
-
-/**
  * 「报资料」轮着换的另四张(同样 64×64 纯色 png)—— 与上面那四张**不重样**:订阅是拿解析门候选的头像
  * 建的,报资料若也从那四张里挑,第一下可能恰好是同一张,宿主摘要一样不覆盖,主人看着像「头像没换」。
  */
-export const FAKE_PROFILE_AVATARS: readonly string[] = [
+const PROFILE_AVATAR_URLS: readonly string[] = [
 	// sky #0ea5e9
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAUElEQVR42u3PQQkAAAgEsEtg/wKGs4URfAuDFViq57UICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICFwW59LBeEtKdBAAAAAASUVORK5CYII=",
 	// lime #84cc16
@@ -37,3 +30,13 @@ export const FAKE_PROFILE_AVATARS: readonly string[] = [
 	// orange #f97316
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsEthUdP7M4JvYbACy3S9FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywJ9TCFpNWCOBAAAAABJRU5ErkJggg==",
 ];
+
+/** data URL → 字节。 */
+const bytesOf = (url: string) =>
+	new Uint8Array(Buffer.from(url.slice(url.indexOf(",") + 1), "base64"));
+
+/** 四张假头像的字节 —— 解析门候选头像、作品图与封面从这里轮着取。 */
+export const FAKE_AVATARS: readonly Uint8Array[] = AVATAR_URLS.map(bytesOf);
+
+/** 报资料的四张头像的字节。 */
+export const FAKE_PROFILE_AVATARS: readonly Uint8Array[] = PROFILE_AVATAR_URLS.map(bytesOf);
