@@ -55,6 +55,12 @@ export interface SourceContext extends IntegrationContext {
 	 */
 	reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
 	/**
+	 * 报一个人的资料(名字、头像、简介、粉丝数、粉丝团名),变了或刚拿到就报。没有返回值;宿主按身份展开成这个人名下
+	 * **启用中**的每一条订阅(停用的不收),写进资料缓存、叫面板跟着变、粉丝数记进粉丝时序。头像一律先 `storeImage`
+	 * 存进图库再带引用。没给的格沿用缓存里原来的(名字没给又没旧值才是空)。来源已停下的上报被丢弃并记错误。
+	 */
+	reportProfile(externalId: string, report: CreatorProfileReport): void;
+	/**
 	 * 报一个问题(某个人不再监听了……)。句子写平实、只说事:不称呼主人、不自称女仆、不写宿主的界面与操作;
 	 * 私聊时宿主按口吻补完整。有登录口的来源不要报登录,宿主看登录状态报与清。
 	 * 不带 `externalId` 是来源自己的问题;带了由宿主换成

@@ -1,4 +1,5 @@
 import {
+	type CreatorProfileReport,
 	type IntegrationContext,
 	type LiveInteractionReport,
 	type LiveSignal,
@@ -38,6 +39,8 @@ const setup = (
 	const liveSignals = vi.fn<(signal: LiveSignal) => void>();
 	const liveInteractions =
 		vi.fn<(subscriptionId: string, interaction: LiveInteractionReport) => void>();
+	const profiles =
+		vi.fn<(subscriptionIds: readonly string[], report: CreatorProfileReport) => void>();
 	const problems = makeProblems();
 	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
@@ -53,6 +56,7 @@ const setup = (
 		enqueue,
 		liveSignals,
 		liveInteractions,
+		profiles,
 		problems,
 	});
 	return {
@@ -61,6 +65,7 @@ const setup = (
 		enqueue,
 		liveSignals,
 		liveInteractions,
+		profiles,
 		problems,
 		handle,
 		settingsHost,
@@ -83,6 +88,7 @@ describe("createSourceContext", () => {
 			"reportLiveInteraction",
 			"reportPost",
 			"reportProblem",
+			"reportProfile",
 			"resolveProblem",
 			"secrets",
 			"settings",
@@ -130,6 +136,7 @@ describe("createSourceContext", () => {
 			enqueue: vi.fn(),
 			liveSignals: vi.fn(),
 			liveInteractions: vi.fn(),
+			profiles: vi.fn(),
 			problems: makeProblems(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
@@ -281,6 +288,36 @@ describe("createSourceContext", () => {
 			viewer: { id: "123", name: "小明" },
 		});
 		expect(liveInteractions).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("reportProfile 按身份展开:只交启用中的订阅(停用的不收),连同整份上报一起交一次;没有这个人的订阅记 debug 不交", () => {
+		const { handle, profiles, logger } = setup([
+			makeSub("a", "1"),
+			makeSub("b", "1", { enabled: false }),
+			makeSub("c", "1"),
+			makeSub("d", "2"),
+		]);
+		const profile: CreatorProfileReport = { name: "新名字", followers: 42 };
+		handle.ctx.reportProfile("1", profile);
+		expect(profiles.mock.calls).toEqual([[["a", "c"], profile]]);
+		handle.ctx.reportProfile("999", profile);
+		expect(profiles).toHaveBeenCalledTimes(1);
+		expect(logger.debug).toHaveBeenCalledTimes(1);
+	});
+
+	it("reportProfile:这个人名下的订阅全停用了也不交,记 debug", () => {
+		const { handle, profiles, logger } = setup([makeSub("a", "1", { enabled: false })]);
+		handle.ctx.reportProfile("1", { name: "x" });
+		expect(profiles).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalledTimes(1);
+	});
+
+	it("dispose 之后 reportProfile 不交并记 error", () => {
+		const { handle, profiles, logger } = setup();
+		handle.dispose();
+		handle.ctx.reportProfile("1", { name: "x" });
+		expect(profiles).not.toHaveBeenCalled();
 		expect(logger.error).toHaveBeenCalledTimes(1);
 	});
 

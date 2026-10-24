@@ -169,6 +169,7 @@ async function boot() {
 		enqueue: vi.fn(),
 		liveSignals: vi.fn(),
 		liveInteractions: vi.fn(),
+		profiles: vi.fn(),
 		problems: table,
 	});
 	toDispose.push(registration);

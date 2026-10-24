@@ -172,6 +172,8 @@ export interface InProcessProbe {
 	reportLive(externalId: string, report: LiveSignalReport): void;
 	/** 同上,替它在来源上下文上报一条观众互动(特别弹幕、特别进场……)。 */
 	reportLiveInteraction(externalId: string, report: LiveInteractionReport): void;
+	/** 同上,替它在来源上下文上报一份资料(名字、头像引用、简介、粉丝数、粉丝团名)。 */
+	reportProfile(externalId: string, report: CreatorProfileReport): void;
 	/**
 	 * 懒取口 `fetchViewerAvatar` 被问过的人(`externalId:viewerId`),按先后。测试用它钉「确定要出卡才取、一次」。
 	 */
@@ -301,6 +303,10 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		reportLiveInteraction(externalId, report) {
 			if (!probe.ctx) throw new Error("假来源还没 start");
 			probe.ctx.reportLiveInteraction(externalId, report);
+		},
+		reportProfile(externalId, report) {
+			if (!probe.ctx) throw new Error("假来源还没 start");
+			probe.ctx.reportProfile(externalId, report);
 		},
 		searches: [],
 		searchOutcome: undefined,

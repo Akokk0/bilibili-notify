@@ -129,6 +129,7 @@ import {
 	historyRecordFromSend,
 	type PushHistoryReader,
 } from "./push-history.js";
+import type { ProfileReportHandler } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
@@ -264,6 +265,8 @@ export interface CreateEnginesOptions {
 	linkResolvers: LinkResolverRegistry;
 	/** AI 工具提供方登记表(`AppRuntime.aiToolProviders`);来源经上下文登进去。 */
 	aiToolProviders: AiToolProviderRegistry;
+	/** 来源报资料的收口(`AppRuntime.profileReports`):递给来源上下文的 `profiles` 选项。 */
+	profileReports: Pick<ProfileReportHandler, "report">;
 	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
 	problems: ProblemTable;
 	bus: import("@bilibili-notify/internal").MessageBus;
@@ -1092,6 +1095,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					}
 					liveInteractionEngine.apply(subscriptionId, report);
 				},
+				profiles: (subscriptionIds, report) => opts.profileReports.report(subscriptionIds, report),
 				problems: opts.problems,
 			});
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。

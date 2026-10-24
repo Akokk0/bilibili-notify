@@ -996,6 +996,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 			enqueue: enqueue as never,
 			liveSignals: () => {},
 			liveInteractions: () => {},
+			profiles: () => {},
 			problems: { report: vi.fn(), resolve: vi.fn(), clearReporter: vi.fn() },
 		});
 		const feed = (...items: unknown[]) => {

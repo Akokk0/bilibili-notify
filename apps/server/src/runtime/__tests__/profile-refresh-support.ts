@@ -261,6 +261,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 		getLastEntries: () => handle.getLastEntries(),
 		pollNow: () => handle.pollNow(),
 		refreshSubscription: (id) => handle.refreshSubscription(id),
+		refreshReportedEntries: (ids) => handle.refreshReportedEntries(ids),
 		reset() {
 			reported.clear();
 			return handle.reset();

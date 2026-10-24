@@ -72,6 +72,7 @@ const setup = (source: Source = makeSource()) => {
 		enqueue,
 		liveSignals: vi.fn(),
 		liveInteractions: vi.fn(),
+		profiles: vi.fn(),
 		problems,
 	};
 	return { ...world, registry, linkResolvers, aiToolProviders, logger, enqueue, problems, options };

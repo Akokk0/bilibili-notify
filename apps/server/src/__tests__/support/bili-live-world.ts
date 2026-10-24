@@ -419,6 +419,7 @@ export async function bootBiliLiveWorld(
 		linkResolvers: createLinkResolverRegistry(),
 		aiToolProviders: createAiToolProviderRegistry(),
 		problems: problemTable,
+		profileReports: { report: () => {} },
 		bus,
 		liveTable,
 		adapters: registryOf([adapter]),

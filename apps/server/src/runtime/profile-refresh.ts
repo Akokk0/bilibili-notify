@@ -56,6 +56,11 @@ export interface ProfileRefreshHandle extends Disposable {
 	getLastEntries(): FollowersRefreshEntry[];
 	pollNow(): Promise<boolean>;
 	refreshSubscription(id: string): Promise<void>;
+	/**
+	 * 来源经 `ctx.reportProfile` 报的资料写完之后,当场重算面板上这几行并叫一次面板(没变就不叫)。
+	 * 与 `refreshSubscription` 的差别:不拉取,资料缓存已经由收口写好了。
+	 */
+	refreshReportedEntries(ids: readonly string[]): Promise<void>;
 	reset(): Promise<void>;
 }
 
@@ -231,6 +236,15 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		emitSnapshot();
 	}
 
+	/** 收口写完一份报来的资料后调:只重算这几行(仍启用着的),变了才叫面板。 */
+	async function refreshReportedEntries(ids: readonly string[]): Promise<void> {
+		if (disposed) return;
+		const startedGeneration = generation;
+		// 第三个参数 `true`:刚报来的粉丝数样本是排队异步记的,这一刻未必已落盘;统计开着时不能因此把这一行撤掉。
+		const changed = await refreshEntries(startedGeneration, new Set(ids), true);
+		if (changed && !disposed && generation === startedGeneration) emitSnapshot();
+	}
+
 	/**
 	 * 一轮:同一来源按订阅列表顺序一条接一条,不同来源并行。来源不在登记表里的(今天的拓展订阅)
 	 * 不调,但它们的资料缓存与时序仍进同一份面板快照。
@@ -402,6 +416,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		getLastEntries: () => Array.from(lastBySub.values()),
 		pollNow: tickOnce,
 		refreshSubscription,
+		refreshReportedEntries,
 		async reset() {
 			if (disposed) return;
 			generation += 1;

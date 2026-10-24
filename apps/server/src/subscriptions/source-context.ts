@@ -1,4 +1,5 @@
 import type {
+	CreatorProfileReport,
 	Disposable,
 	GlobalConfig,
 	IntegrationContext,
@@ -36,6 +37,12 @@ export interface CreateSourceContextOptions {
 	liveSignals: (signal: LiveSignal) => void;
 	/** 直播互动的入口(`LiveInteractions.apply`):`reportLiveInteraction` 按身份展开后,每条订阅一份(订阅 id + 上报)交到这里。 */
 	liveInteractions: (subscriptionId: string, report: LiveInteractionReport) => void;
+	/**
+	 * 资料的入口(`createProfileReportHandler(...).report`):`reportProfile` 按身份展开、只取**启用中**的订阅后,
+	 * 把订阅 id 列表连同整份上报交到这里一次(不是每条订阅一份 —— 资料缓存的写排成一条队,一批一起过)。
+	 * 停用的订阅不收资料,所以交到这里的 id 一定非空、都启用着。
+	 */
+	profiles: (subscriptionIds: readonly string[], report: CreatorProfileReport) => void;
 	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
@@ -230,6 +237,22 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			}
 			// 停用的不在这里筛:互动入口按订阅现折设置、现看订阅还该不该推。
 			for (const sub of subs) opts.liveInteractions(sub.id, report);
+		},
+		reportProfile(externalId: string, report: CreatorProfileReport) {
+			if (disposed) {
+				logger.error(`[source] ${sourceKey} 已停下还在上报资料 ${externalId}(丢弃;内置来源的 bug)`);
+				return;
+			}
+			// 停用的订阅不收资料(契约:停用的不收);重新启用后等下一轮资料刷新或下一次上报补上。
+			const ids = opts.subscriptions
+				.listByIdentity({ sourceKey, externalId })
+				.filter((sub) => sub.enabled)
+				.map((sub) => sub.id);
+			if (ids.length === 0) {
+				logger.debug(`[source] ${sourceKey}:${externalId} 没有启用中的订阅,资料不收`);
+				return;
+			}
+			opts.profiles(ids, report);
 		},
 		reportProblem(problem) {
 			forEachProblemObject("报", problem, (about) =>

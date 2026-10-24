@@ -915,6 +915,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 拓展作品卡是 `Post`(㉑d):配图 / 封面 / 事件带来的头像经 `postImages` 存进图库,出图器出卡前
 			// 经 `resolveImageRef` 把引用换成 data URL。两头缺一头,症状都是作品卡上一张图都没有。
 			postImages: runtime.postImages,
+			// 来源经 `ctx.reportProfile` 报的资料的收口(递给来源上下文的 `profiles`)。
+			profileReports: runtime.profileReports,
 			// 拓展直播卡同理(㉒c):封面与事件头像经 `liveImages` 存进图库,出图器经同一个 `resolveImageRef` 取回。
 			liveImages: runtime.liveImages,
 			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)

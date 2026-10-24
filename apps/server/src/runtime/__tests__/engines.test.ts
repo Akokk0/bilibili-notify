@@ -509,6 +509,7 @@ function setup(opts?: {
 		linkResolvers: createLinkResolverRegistry(),
 		aiToolProviders: createAiToolProviderRegistry(),
 		problems,
+		profileReports: { report: () => {} },
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发

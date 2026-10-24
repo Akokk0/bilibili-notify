@@ -417,7 +417,10 @@ export interface StatsRecorderOptions {
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
 export interface StatsRecorderHandle
 	extends Disposable,
-		Pick<StatsRecorderCore, "drop" | "recordActive" | "recordFollowers"> {
+		Pick<
+			StatsRecorderCore,
+			"drop" | "recordActive" | "recordFollowers" | "recordReportedFollowers"
+		> {
 	/**
 	 * 给当前仍在播的场次补一帧下播,时刻取「现在」。**关服前调用**。
 	 *
@@ -501,6 +504,8 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		drop: (key) => recorder.drop(key),
 		recordActive: (key, kind, atMs) => recorder.recordActive(key, kind, atMs),
 		recordFollowers: (key, value) => recorder.recordFollowers(key, value),
+		recordReportedFollowers: (key, value, minGapMs) =>
+			recorder.recordReportedFollowers(key, value, minGapMs),
 
 		dispose() {
 			for (const s of sources) s.dispose();

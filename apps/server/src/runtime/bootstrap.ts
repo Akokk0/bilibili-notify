@@ -42,7 +42,11 @@ import type { EnginesRuntime } from "./engines.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import type { ProfileRefreshHandle } from "./profile-refresh.js";
-import { bindReportedProfiles } from "./reported-profiles.js";
+import {
+	bindReportedProfiles,
+	createProfileReportHandler,
+	type ProfileReportHandler,
+} from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import { secretBootstrapValues } from "./settings-redaction.js";
@@ -156,6 +160,11 @@ export interface AppRuntime {
 	 * (`subscriptionStateStore.listImageRefs`),装配时登记。
 	 */
 	profileImages: ImageWriter;
+	/**
+	 * 来源经 `ctx.reportProfile` 报的资料的收口(`createProfileReportHandler`):`createEngines` 把它递给来源上下文的
+	 * `profiles` 选项。写资料缓存、记粉丝样本、写完叫资料刷新(现取 {@link AppRuntime.profileRefresh})重算面板那几行。
+	 */
+	profileReports: ProfileReportHandler;
 	/**
 	 * 账号头像往图库存图的口:来源的登录系统(今天是 B 站的)登录后与头像网址变了时抓头像、存进图库。这一家引用的是
 	 * 在册来源 `auth.account().avatar`(现读来源登记表),装配时登记。
@@ -510,6 +519,24 @@ export function createAppRuntime(
 	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
 	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
 	serviceCtx.onDispose(() => reportedProfiles.close(), "flush");
+	// 来源经 `ctx.reportProfile` 报的资料(3b-42):不听总线,由引擎装配把它递给来源上下文。写同一个资料缓存。
+	// 写完叫资料刷新重算面板那几行 —— 资料刷新在开机更后面才建(`attachProfileRefresh`),所以现取;
+	// 还没建好时面板还没有快照,什么都不用做。
+	const profileReports = createProfileReportHandler({
+		bus,
+		subscriptionState: subscriptionStateStore,
+		images: profileImages,
+		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
+		recorder: statsRecorder,
+		profileRefreshCron: () => configStore.getGlobals().profileRefreshCron,
+		refreshReportedEntries: async (ids) => {
+			await profileRefresh?.refreshReportedEntries(ids);
+		},
+		logger: serviceCtx.logger,
+	});
+	serviceCtx.onDispose(() => profileReports.dispose(), "stop");
+	// 🔴 顺序承重:同上一条 —— 它也往图库与资料缓存仓写,登记在那两家的 close 之后、先于它们关门。
+	serviceCtx.onDispose(() => profileReports.close(), "flush");
 	const conversationStore = createConversationStore({
 		dataRoot,
 		logger: serviceCtx.logger,
@@ -616,6 +643,7 @@ export function createAppRuntime(
 		imageStore,
 		chatImages,
 		profileImages,
+		profileReports,
 		accountImages,
 		postImages,
 		transitImages,

@@ -164,7 +164,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P46)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P47)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -307,6 +307,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P47",
+		title:
+			"reportProfile：名字、头像（图库引用）、简介、粉丝数、粉丝团名进资料缓存；停用的不收；粉丝样本按刷新间隔稀释；面板那一行当场跟着变",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -388,6 +394,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	resolveProblem: ["P11"],
 	registerLinkResolver: ["P22"],
 	registerAiToolProvider: ["P42"],
+	reportProfile: ["P47"],
 } as const satisfies Record<keyof SourceContext, readonly RowId[]>;
 const SOURCE_DESCRIPTOR_MEMBERS = {
 	label: ["P15"],
@@ -2903,6 +2910,89 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P40");
 	});
 
+	// 验红:`source-context.ts` 的 `reportProfile` 去掉「只取启用中的」,停用的 carol 那一格红;
+	// 收口(`reported-profiles.ts`)写完不叫 `refreshReportedEntries`,面板那一行不当场变,最后一段红;
+	// 收口不记「在记」(`recordActive`),`recording.followers` 那一段红。
+	// 用 erin(同一个人遗留的两条启用订阅)当收的一方、停用的 carol 当不收的一方。
+	it("P47 reportProfile:名字、头像(图库引用)、简介、粉丝数、粉丝团名进启用中订阅的资料缓存;停用的不收;面板那一行当场跟着变", async () => {
+		const probe = currentProbe();
+		const profiles = async () => {
+			const res = await okRes(await api("/api/subscriptions"));
+			const rows = (await res.json()) as Array<{
+				id: string;
+				cachedProfile?: Record<string, unknown>;
+			}>;
+			return new Map(rows.map((row) => [row.id, row.cachedProfile]));
+		};
+		const stored = await probe.ctx?.storeImage(Buffer.from(png(8, 8, 46)));
+		if (!stored?.ok) throw new Error("storeImage 存图失败");
+		const carolBefore = (await profiles()).get(SUB.carol);
+
+		probe.reportProfile(EXT.erin, {
+			name: "艾琳资料名P47",
+			avatar: stored.ref,
+			bio: "艾琳的简介P47",
+			followers: 4646,
+			fanClubName: "艾琳团P47",
+		});
+		probe.reportProfile(EXT.carol, { name: "卡罗不该收P47", followers: 1 });
+
+		// 资料缓存是排队写的:等到名字出现。
+		const expected = {
+			name: "艾琳资料名P47",
+			avatar: stored.ref,
+			bio: "艾琳的简介P47",
+			followers: 4646,
+			fanClubName: "艾琳团P47",
+		};
+		await vi.waitFor(async () => {
+			const got = await profiles();
+			expect(got.get(SUB.erin1)).toMatchObject(expected);
+			expect(got.get(SUB.erin2)).toMatchObject(expected);
+		});
+		// 停用的 carol:不收(上面两份是同一个队列里的,erin 落了 carol 若收早已落)。
+		expect((await profiles()).get(SUB.carol)).toEqual(carolBefore);
+
+		// 没给的格沿用原来的:这次只改名字与粉丝数。
+		probe.reportProfile(EXT.erin, { name: "艾琳新名P47", followers: 4700 });
+		await vi.waitFor(async () =>
+			expect((await profiles()).get(SUB.erin1)).toMatchObject({
+				name: "艾琳新名P47",
+				avatar: stored.ref,
+				bio: "艾琳的简介P47",
+				followers: 4700,
+				fanClubName: "艾琳团P47",
+			}),
+		);
+
+		// 面板那一行当场跟着变:不等下一轮资料刷新,GET /api/stats/followers 里 erin 的当前数就是 4700。
+		await vi.waitFor(async () => {
+			const res = await okRes(await api("/api/stats/followers"));
+			const body = (await res.json()) as {
+				entries: Array<{ subscriptionId: string; current?: number }>;
+			};
+			expect(body.entries.find((entry) => entry.subscriptionId === SUB.erin1)?.current).toBe(4700);
+			expect(body.entries.find((entry) => entry.subscriptionId === SUB.carol)).toBeUndefined();
+		});
+
+		// 带粉丝数的上报让统计记「这个小时拉过资料」(followers 那一格;carol 在 P39 里记过,不能拿来比)。每轮换一个 `days` 绕开总览缓存。
+		let days = 20;
+		await vi.waitFor(
+			async () => {
+				const res = await okRes(await api(`/api/stats/overview?days=${days++}&tz=0`));
+				const rows = ((await res.json()) as StatsOverviewResponse).rows;
+				const followersRecorded = (id: string) =>
+					rows
+						.find((row) => row.subscriptionId === id)
+						?.recording.followers.some((d) => d === true);
+				expect(followersRecorded(SUB.erin1)).toBe(true);
+				expect(followersRecorded(SUB.erin2)).toBe(true);
+			},
+			{ timeout: 10_000, interval: 200 },
+		);
+		drove("P47");
+	}, 30_000);
+
 	// 验红:`read-only-tools.ts` 里 `recentPosts` 一支不按订阅 id 读统计仓(回空数组),作品那段红;
 	// `stats` 一支回 `not_found`,统计那段红;`liveNowFromTable` 恒回 `idle`,在播那段红。
 	it("P41 get_creator_posts / get_creator_stats / get_live_status 对假来源的订阅按 creator 答得出:作品、统计、在播都是夹具里写死的内容", async () => {
@@ -3422,17 +3512,17 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 46 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(51);
+	it("PARITY_ROWS:对拍 47 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(52);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 46 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 47 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填。
+		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来)。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
