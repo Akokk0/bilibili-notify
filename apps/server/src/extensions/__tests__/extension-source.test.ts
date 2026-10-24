@@ -23,7 +23,9 @@ import {
 	parseExtensionManifest,
 	type SourceContext,
 } from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { readSourceHealth } from "../../runtime/status-command.js";
+import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { createExtensionSource, type ExtensionSourceDiscrepancy } from "../extension-source.js";
 
 const REF = `${"a".repeat(64)}.png`;
@@ -137,7 +139,11 @@ type Stored = { bytes: Buffer; mime: string } | undefined;
 /** 造一份适配后的来源并 `start` 过。`def` 里没给的必备成员补空实现。 */
 async function make(
 	def: Partial<SourceDef> & Record<string, unknown> = {},
-	opts: { events?: string[]; images?: (ref: string) => Promise<Stored> | Stored } = {},
+	opts: {
+		events?: string[];
+		images?: (ref: string) => Promise<Stored> | Stored;
+		start?: boolean;
+	} = {},
 ): Promise<Made> {
 	const { logger, lines } = recordingLogger();
 	const discrepancies: ExtensionSourceDiscrepancy[] = [];
@@ -161,7 +167,7 @@ async function make(
 		now: () => ARRIVED,
 	});
 	const core = coreContext();
-	await source.start(core.ctx);
+	if (opts.start !== false) await source.start(core.ctx);
 	return {
 		source,
 		core,
@@ -216,7 +222,7 @@ describe("createExtensionSource:成员与描述符", () => {
 		expect(impl.calls).toEqual(["start", "search:猫", "stop"]);
 	});
 
-	it("不开的成员带了也不认:auth、liveInteractions、descriptor、health", async () => {
+	it("不开的成员带了也不认:auth、liveInteractions、descriptor;health 按表收下", async () => {
 		const made = await make({
 			auth: { state: () => ({ status: "logged-in" }) },
 			liveInteractions: { fetchViewerAvatar: async () => ({ ok: false }) },
@@ -225,7 +231,7 @@ describe("createExtensionSource:成员与描述符", () => {
 		});
 		expect(made.source.auth).toBeUndefined();
 		expect(made.source.liveInteractions).toBeUndefined();
-		expect(made.source.health).toBeUndefined();
+		expect(made.source.health?.()).toEqual({ summary: "好着呢" });
 		expect(made.source.descriptor.label).toBe("抖音");
 	});
 
@@ -261,6 +267,73 @@ describe("createExtensionSource:成员与描述符", () => {
 			fallbackCreatorName: () => "x",
 		});
 		await expect(source.start(coreContext().ctx)).rejects.toThrow("连不上平台");
+	});
+});
+
+describe("createExtensionSource:健康状态按外来数据收", () => {
+	async function healthRows(health: unknown) {
+		const made = await make({ health } as Partial<SourceDef>, { start: false });
+		const registry = createSourceRegistry();
+		await registry.register("douyin", made.source, made.core.ctx);
+		const error = vi.fn();
+		const read = () => readSourceHealth(registry.list(), { error });
+		return { read, error, lines: made.lines };
+	}
+
+	it("非对象、summary 类型不对、空白、Promise 与 thenable:都写「状态读不到」", async () => {
+		const badBodies = [
+			() => ({}),
+			() => null,
+			() => [],
+			() => ({ summary: 1 }),
+			() => ({ summary: " \n\t " }),
+			() => Promise.reject(new Error("late failure")),
+			() => ({
+				// biome-ignore lint/suspicious/noThenProperty: 这里故意交 thenable,验适配器的拒绝会被接住
+				then(_resolve: unknown, reject: (err: Error) => void) {
+					reject(new Error("late thenable failure"));
+				},
+			}),
+		];
+		for (const health of badBodies) {
+			const made = await healthRows(health);
+			expect(made.read()).toEqual([{ label: "抖音", summary: "状态读不到" }]);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+
+	it("换行与连续空白收成一个空格,首尾空白去掉", async () => {
+		const made = await healthRows(() => ({ summary: "  上次\n抓取 \t 2 分钟前  " }));
+		expect(made.read()).toEqual([{ label: "抖音", summary: "上次 抓取 2 分钟前" }]);
+	});
+
+	it("超过 120 字截断,截断处不劈开代理对", async () => {
+		const many = await healthRows(() => ({ summary: "a".repeat(300) }));
+		expect(many.read()[0]?.summary).toBe("a".repeat(120));
+
+		const paired = await healthRows(() => ({ summary: `${"a".repeat(119)}😀z` }));
+		expect(paired.read()[0]?.summary).toBe("a".repeat(119));
+	});
+
+	it("正常的一行原样交出去", async () => {
+		const made = await healthRows(() => ({ summary: "抓取正常" }));
+		expect(made.read()).toEqual([{ label: "抖音", summary: "抓取正常" }]);
+	});
+
+	it("同一个坏法连读三次只 warn 一次;原因换了再记", async () => {
+		const same = await healthRows(() => ({}));
+		same.read();
+		same.read();
+		same.read();
+		expect(same.lines.filter((line) => line.startsWith("warn "))).toHaveLength(1);
+
+		let summary: unknown = 1;
+		const changing = await healthRows(() => ({ summary }));
+		changing.read();
+		changing.read();
+		summary = "";
+		changing.read();
+		expect(changing.lines.filter((line) => line.startsWith("warn "))).toHaveLength(2);
 	});
 });
 

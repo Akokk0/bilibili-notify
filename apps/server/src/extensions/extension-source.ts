@@ -38,6 +38,7 @@ import {
 	type SourceContext,
 	type SourceDescriptor,
 	sniffImageFormat,
+	truncateText,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import type { ImageStore } from "../images/image-store.js";
@@ -58,9 +59,12 @@ import { errorMessageOf } from "../util/error-message.js";
  *   补、下播没交 `endedAt` 取到达那一刻,再交核心那一份 ctx;
  * - **读口**(搜人、取资料、拉取式直播状态):抛了回失败(原话进 `message`),形状坏了回 `invalid`、点名哪一格,不抛。
  *
- * 开放给拓展的成员由 {@link SOURCE_DEF_MEMBERS} 这张表定:表外的(`auth`、`liveInteractions`、`descriptor`,
- * 以及这一步还没开的 `health`)带了也不认 —— 契约的宽度是不可逆的,没开放的口子先被人用上就改不动了。
+ * 开放给拓展的成员由 {@link SOURCE_DEF_MEMBERS} 这张表定:表外的(`auth`、`liveInteractions`、`descriptor`)
+ * 带了也不认 —— 契约的宽度是不可逆的,没开放的口子先被人用上就改不动了。
  */
+
+/** `status` 里来源健康那一行的上限;超出截断,不拒整行。 */
+export const SOURCE_HEALTH_SUMMARY_MAX_CHARS = 120;
 
 /** 一条该记进「上报出入」的事(宿主再补时刻与「哪条订阅」)。 */
 export interface ExtensionSourceDiscrepancy {
@@ -98,7 +102,7 @@ export interface CreateExtensionSourceOptions {
 
 /**
  * 开放给拓展的 `SourceDef` 成员。`satisfies Record<keyof SourceDef, boolean>` 把「接口多一个成员,这里要记得
- * 表态」变成编译错。`health` 这一步还没开(外来数据怎么收,下一个提交一起放)。
+ * 表态」变成编译错。
  */
 const SOURCE_DEF_MEMBERS = {
 	start: true,
@@ -106,7 +110,7 @@ const SOURCE_DEF_MEMBERS = {
 	searchCreators: true,
 	fetchProfile: true,
 	fetchLiveStatus: true,
-	health: false,
+	health: true,
 } satisfies Record<keyof SourceDef, boolean>;
 
 const OPEN_MEMBER_NAMES = (Object.keys(SOURCE_DEF_MEMBERS) as (keyof SourceDef)[]).filter(
@@ -114,10 +118,19 @@ const OPEN_MEMBER_NAMES = (Object.keys(SOURCE_DEF_MEMBERS) as (keyof SourceDef)[
 );
 
 type OpenMembers = Pick<SourceDef, "start" | "stop" | "searchCreators"> &
-	Partial<Pick<SourceDef, "fetchProfile" | "fetchLiveStatus">>;
+	Partial<Pick<SourceDef, "fetchProfile" | "fetchLiveStatus" | "health">>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+	try {
+		return typeof (value as { then?: unknown }).then === "function";
+	} catch {
+		return false;
+	}
 }
 
 /** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
@@ -243,6 +256,36 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	let stopped = false;
 	/** 这个来源自己的一条串行队:三种上报按到达顺序一条条处理。 */
 	const queue = createSerialQueue();
+	/** 上一次 `health()` 的毛病;同一句连读只记一遍,好了再坏会重新记。 */
+	let lastHealthProblem: string | undefined;
+
+	function refuseHealth(problem: string): never {
+		if (lastHealthProblem !== problem) {
+			logger.warn(`拓展来源 ${id} 的 health(): ${problem}`);
+			lastHealthProblem = problem;
+		}
+		throw new Error(`extension ${id}: health() ${problem}`);
+	}
+
+	function readHealth(): { summary: string } {
+		let raw: unknown;
+		try {
+			raw = def.health?.();
+		} catch (err) {
+			return refuseHealth(`threw: ${errorMessageOf(err)}`);
+		}
+		if (isThenable(raw)) {
+			// 同步读口不等人;仍接住它后来的拒绝,免得没被处理的 rejection 把宿主带走。
+			Promise.resolve(raw).catch(() => {});
+			return refuseHealth("must return synchronously, not a Promise or thenable");
+		}
+		if (!isRecord(raw)) return refuseHealth("must return an object");
+		if (typeof raw.summary !== "string") return refuseHealth("summary must be a string");
+		const summary = raw.summary.replace(/\s+/g, " ").trim();
+		if (summary === "") return refuseHealth("summary must not be blank");
+		lastHealthProblem = undefined;
+		return { summary: truncateText(summary, SOURCE_HEALTH_SUMMARY_MAX_CHARS) };
+	}
 
 	function reject(
 		kind: ExtensionReportKind,
@@ -453,6 +496,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 
 	return {
 		descriptor,
+		...(def.health ? { health: readHealth } : {}),
 		async start(ctx: SourceContext) {
 			// 🔴 逐格列出开放的成员,不展开核心那一份:`registerLinkResolver` / `registerAiToolProvider` /
 			// `reportLiveInteraction` 运行时也拿不到(类型上排除不够,第三方 JS 不受类型约束)。

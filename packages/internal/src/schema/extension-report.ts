@@ -52,7 +52,8 @@ const VideoTitleSchema = truncatingText(SUBSCRIPTION_REPORT_TITLE_MAX);
 const LongTextSchema = z.string().max(SUBSCRIPTION_REPORT_TEXT_MAX);
 const NarrativeTextSchema = z.string().max(SUBSCRIPTION_REPORT_TITLE_MAX);
 
-function truncateText(value: string, max: number): string {
+/** 按 UTF-16 单元截、不劈开代理对。 */
+export function truncateText(value: string, max: number): string {
 	const last = value.charCodeAt(max - 1);
 	return value.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
 }
