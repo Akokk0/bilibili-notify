@@ -444,33 +444,32 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		!disposed && sessions.get(session.subscriptionId) === session;
 
 	/**
-	 * 下一次问来源还要等多久:`nextTickAt = 开播时刻 + k × 间隔`(没有开播时刻用认出这一场的那一刻),取第一个
-	 * 在此刻之后的 k。间隔:周期「正在直播」开着用设置里的 `streamingIntervalHours`,关着用默认 1 小时
+	 * 下一次该问来源的时刻:`开播时刻 + k × 间隔`(没有开播时刻用认出这一场的那一刻),取第一个**严格在此刻
+	 * 之后**的 k。间隔:周期「正在直播」开着用设置里的 `streamingIntervalHours`,关着用默认 1 小时
 	 * (关着只核不推,漏收的下播照样兜得住)。
 	 */
-	function pollDelay(session: SessionState, sub: Subscription): number {
+	function nextPollAt(session: SessionState, sub: Subscription): number {
 		const settings = opts.settings(sub);
 		const interval = (settings.liveStreaming ? settings.streamingIntervalHours : 1) * HOUR;
 		const base = session.startedAt ?? session.detectedAt;
 		const k = Math.max(1, Math.floor((now() - base) / interval) + 1);
-		return base + k * interval - now();
+		return base + k * interval;
 	}
 
 	/**
 	 * 给这一场挂(或重挂)下一次核对的计时器。来源没实现 `fetchLiveStatus`、这一场正在断流等待里(到期那一次
-	 * 另有核对)、订阅不在了,就不挂。设置变了、认出了真开播时刻都重挂一次。
+	 * 另有核对)、订阅不在了,就不挂。设置变了、认出了真开播时刻都重挂一次。`dueAt` 缺省 = 按此刻现算的下一格;
+	 * 给了就挂到这一格(计时器早到、补等剩下的那一下用,不能现算 —— 补等前那一瞬墙钟可能刚跨过这一格,现算就整格跳过了)。
 	 */
-	function armPoll(session: SessionState): void {
+	function armPoll(session: SessionState, dueAt?: number): void {
 		session.pollHandle?.dispose();
 		session.pollHandle = undefined;
 		const reader = opts.liveStatus;
 		if (!reader?.has(session.sourceKey) || session.pendingEnd || !isCurrent(session)) return;
 		const sub = opts.subscription(session.subscriptionId);
 		if (!sub) return;
-		session.pollHandle = opts.timers.setTimeout(
-			() => void pollTick(session),
-			pollDelay(session, sub),
-		);
+		const at = dueAt ?? nextPollAt(session, sub);
+		session.pollHandle = opts.timers.setTimeout(() => void pollTick(session, at), at - now());
 	}
 
 	/**
@@ -494,9 +493,17 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 	/**
 	 * 到点了:问来源一次。出了错(比如听场次变化的监听者抛了)记 error,**照样重挂下一轮** —— 否则这一场从此
 	 * 没人核,而且是静默的。
+	 *
+	 * 计时器按事件循环自己的单调钟(毫秒取整)走,对墙钟(`now`)能早到一两毫秒。按墙钟还没到 `dueAt` 就不算这一轮,
+	 * 重挂补等剩下的:否则来源答得比这还快时,问完重挂的那一刻仍在同一格里 —— 同一格问两次,
+	 * 核到下播时结束时刻也落在格前,时长少算成「差一秒」。
 	 */
-	async function pollTick(session: SessionState): Promise<void> {
+	async function pollTick(session: SessionState, dueAt: number): Promise<void> {
 		session.pollHandle = undefined;
+		if (now() < dueAt) {
+			armPoll(session, dueAt);
+			return;
+		}
 		try {
 			await pollOnce(session);
 		} catch (err) {

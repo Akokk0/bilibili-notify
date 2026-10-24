@@ -69,9 +69,17 @@ let fetchStatus: ReturnType<
 /** 这个来源键认不认得 `fetchLiveStatus`。 */
 let pollable: boolean;
 
+/**
+ * 下一个挂上的计时器提前这么多毫秒到(只这一个)。真机上 Node 的计时器按事件循环自己的单调钟(毫秒取整)算,
+ * 对 `Date.now()` 能早到一两毫秒;假定时器下两只钟是同一只,只能这样造。
+ */
+let leadNextTimerMs = 0;
+
 const timers = {
 	setTimeout: (fn: () => void, ms: number) => {
-		const h = setTimeout(fn, ms);
+		const lead = leadNextTimerMs;
+		leadNextTimerMs = 0;
+		const h = setTimeout(fn, Math.max(0, ms - lead));
 		return { dispose: () => clearTimeout(h) };
 	},
 };
@@ -131,6 +139,7 @@ beforeEach(() => {
 	]);
 	wanted = new Set([SUB.id, SUB_B.id]);
 	pollable = true;
+	leadNextTimerMs = 0;
 	fetchStatus = vi.fn(async () => liveResult());
 	for (const fn of Object.values(logger)) fn.mockClear();
 	build();
@@ -181,6 +190,30 @@ describe("按每一场的开播时刻起算", () => {
 		expect(fetchStatus).not.toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(2000);
 		expect(fetchStatus).toHaveBeenCalledTimes(1);
+	});
+
+	// 来源答得比计时器早到的那一两毫秒还快时(进程内的来源、有缓存的来源),问完再挂的那一刻仍在同一格里。
+	it("计时器比墙钟早到:不当这一轮,补等到点才问;同一格只问一次", async () => {
+		leadNextTimerMs = 5;
+		signalStart();
+		await vi.advanceTimersByTimeAsync(2 * HOUR - 30 * 1000 - 5); // 13:58:29.995,早到的那一跳
+		expect(fetchStatus).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(5); // 13:58:30
+		expect(fetchStatus).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		expect(fetchStatus).toHaveBeenCalledTimes(1);
+	});
+
+	it("计时器比墙钟早到、核到已下播:结束时刻不早于那一格(时长不会差一秒)", async () => {
+		leadNextTimerMs = 5;
+		fetchStatus.mockResolvedValue({ ok: true, kind: "offline" });
+		signalStart();
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+		expect(fetchStatus).toHaveBeenCalledTimes(1);
+		expect(changes.find((c) => c.kind === "end")).toMatchObject({
+			reason: "poll",
+			endedAt: iso(STARTED + 2 * HOUR),
+		});
 	});
 
 	it("来源没实现 fetchLiveStatus:不挂计时器,一次都不问", async () => {
