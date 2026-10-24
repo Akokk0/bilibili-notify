@@ -33,7 +33,11 @@ const setup = (
 	/** 盖在集成上下文上的几格(例如换掉 `redact`);`settings` 的读源始终是下面的 `settingsHost`。 */
 	overrides: Partial<IntegrationContext> = {},
 	/** 来源上下文自己的几个选项(例如被拒的问题上报记成什么等级)。 */
-	extra: { rejectedProblemLevel?: "warn" | "error"; label?: () => string } = {},
+	extra: {
+		rejectedProblemLevel?: "warn" | "error";
+		label?: () => string;
+		onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
+	} = {},
 ) => {
 	const world = makeWorld(subs);
 	const logger = makeLogger();
@@ -544,6 +548,27 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		expect(problems.resolve).not.toHaveBeenCalled();
 		expect(logger.warn).toHaveBeenCalledTimes(2);
 		expect(logger.error).not.toHaveBeenCalled();
+	});
+
+	it("给了 onRejectedProblem:带上 externalId 与原因,日志照记", () => {
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { handle, problems, logger } = setup(
+			[makeSub("a", "1")],
+			{},
+			{
+				onRejectedProblem: (rejection) => rejections.push(rejection),
+				rejectedProblemLevel: "warn",
+			},
+		);
+		handle.ctx.reportProblem({ externalId: "1", code: "auth_lost", message: "   " });
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(rejections).toEqual([
+			{
+				externalId: "1",
+				reason: "问题「auth_lost」被拒：message 是空白",
+			},
+		]);
 	});
 
 	it("来源停下之后:报与清都丢弃,各记一行 error", () => {

@@ -144,7 +144,13 @@ export interface EnginesRuntime extends Disposable {
 	registerSource(
 		entry: Pick<
 			RegisterBuiltinSourceOptions,
-			"sourceKey" | "source" | "integration" | "logger" | "rejectedProblemLevel" | "label"
+			| "sourceKey"
+			| "source"
+			| "integration"
+			| "logger"
+			| "rejectedProblemLevel"
+			| "onRejectedProblem"
+			| "label"
 		>,
 	): Promise<Disposable>;
 	/**

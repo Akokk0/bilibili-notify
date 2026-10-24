@@ -62,6 +62,8 @@
 	"extension.report.issue.tooShort": "{cell}至少要有 {limit} 字",
 	"extension.report.issue.type": "{cell}的类型不对",
 	"extension.report.issue.unknownField": "{cell}是 BN 不认识的格，整条拒收",
+	"extension.report.problemRejected": "问题「{code}」被拒：{reason}",
+	"extension.report.problemRejectedStopped": "已停下，还在报问题「{code}」",
 	"extension.report.undeclared": "清单 contributes.subscription.events 里没声明 {event}，BN 不收这一种",
 	"extension.report.undeclaredLiveStatus": "直播状态只在清单 contributes.subscription.events 声明了 liveStart 或 liveEnd 时才收",
 	"extension.report.whole": "整条上报",

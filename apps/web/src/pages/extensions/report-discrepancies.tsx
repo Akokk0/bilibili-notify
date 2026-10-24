@@ -25,6 +25,7 @@ export function ReportDiscrepanciesBox({
 }) {
 	const t = useT();
 	const liveLabel = t("extension.reportDiscrepancies.kindLive");
+	const problemLabel = t("extension.reportDiscrepancies.kindProblem");
 	const discrepancies = ext.reportDiscrepancies ?? [];
 	if (discrepancies.length === 0) return null;
 	const postNoun = ext.subscription?.display.postNoun;
@@ -45,7 +46,7 @@ export function ReportDiscrepanciesBox({
 							key={index}
 							discrepancy={discrepancy}
 							who={whoOf(discrepancy, subs)}
-							kind={kindLabel(discrepancy.kind, postNoun, liveLabel)}
+							kind={kindLabel(discrepancy.kind, postNoun, liveLabel, problemLabel)}
 						/>
 					))}
 				</ul>
@@ -60,7 +61,7 @@ function DiscrepancyRow({
 	kind,
 }: {
 	discrepancy: ReportDiscrepancyView;
-	who: string;
+	who: string | undefined;
 	kind: string;
 }) {
 	const rejected = discrepancy.outcome === "rejected";
@@ -74,7 +75,7 @@ function DiscrepancyRow({
 				>
 					{outcomeLabel(discrepancy)}
 				</Pill>
-				<span className="text-bn-xs font-bold text-bn-text-primary">{who}</span>
+				{who ? <span className="text-bn-xs font-bold text-bn-text-primary">{who}</span> : null}
 				<span className="text-bn-xs text-bn-text-secondary">{kind}</span>
 				<span
 					className="ml-auto text-bn-2xs tabular-nums text-bn-text-tertiary"
@@ -115,7 +116,7 @@ function outcomeLabel(discrepancy: ReportDiscrepancyView): string {
 function whoOf(
 	discrepancy: ReportDiscrepancyView,
 	subs: readonly Subscription[] | undefined,
-): string {
+): string | undefined {
 	const names = new Set<string>();
 	for (const id of discrepancy.subscriptionIds) {
 		const sub = subs?.find((one) => one.id === id);
@@ -130,10 +131,14 @@ function kindLabel(
 	postNoun: string | undefined,
 	/** 第 3 版 `live` 一条的标签(面板字典里的字,调用方取好递进来)。 */
 	liveLabel: string,
+	/** 问题上报被拒的标签(面板字典里的字,调用方取好递进来)。 */
+	problemLabel: string,
 ): string {
 	switch (kind) {
 		case "live":
 			return liveLabel;
+		case "problem":
+			return problemLabel;
 		case "post":
 			return featureLabelOf("post", { postNoun });
 		case "liveStart":

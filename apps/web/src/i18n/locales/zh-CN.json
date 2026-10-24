@@ -2,6 +2,7 @@
 	"extension.detail.localeIssuesTitle": "这个拓展自带的译文有几处没有用上",
 	"extension.install.skippedLocales": "包里这几个语言文件 BN 还不认得，没有写进去，其余照常装上了",
 	"extension.reportDiscrepancies.kindLive": "直播",
+	"extension.reportDiscrepancies.kindProblem": "问题",
 	"linkPreview.replyForm.image": "图片卡",
 	"linkPreview.replyForm.nativeShare": "小程序卡",
 	"linkPreview.replyForm.text": "文字"

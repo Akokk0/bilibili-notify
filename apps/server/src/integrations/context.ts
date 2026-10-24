@@ -7,7 +7,11 @@ import type {
 } from "@bilibili-notify/internal";
 import { createImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
-import { type ProblemReport, problemReportIssue } from "../problems/problem-report.js";
+import {
+	type ProblemReport,
+	problemRejectionReason,
+	problemReportIssue,
+} from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 
 /**
@@ -55,6 +59,8 @@ export interface CreateIntegrationContextOptions {
 	 * 拓展被拒是拓展自己的 bug、BN 改不了,记 `warn`(ADR-0025 决策 10)。
 	 */
 	rejectedProblemLevel: "warn" | "error";
+	/** 问题上报被拒时,除了照 `rejectedProblemLevel` 记日志,再把给人看的原因交给它。 */
+	onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
 	/**
 	 * 日志按值打码的登记口(接到存储把手的 `redact("redact", values)`):每次交来的是这个集成经 `ctx.redact`
 	 * 登记过的**全部**值 —— 底下的登记是整批换的,所以这里攒住、每次整批交,连续登记不会互相冲掉。
@@ -142,6 +148,9 @@ export function createIntegrationContext(
 		const issue = disposed ? "集成已停下" : problemReportIssue(problem);
 		if (issue !== undefined) {
 			logger[opts.rejectedProblemLevel](`${what}问题 ${problem.code} 被拒(丢弃):${issue}`);
+			opts.onRejectedProblem?.({
+				reason: problemRejectionReason(problem, disposed, issue),
+			});
 			return;
 		}
 		apply();

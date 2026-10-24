@@ -180,6 +180,30 @@ describe("拓展详情页:上报出入", () => {
 		expect(within(row as HTMLElement).getByText("整条拒了")).toBeTruthy();
 	});
 
+	it("问题上报被拒:画「问题」标签;没有 externalId 就不印人", async () => {
+		disk.discrepancies = [
+			{
+				at: Date.now() - 60_000,
+				kind: "problem",
+				subscriptionIds: [],
+				outcome: "rejected",
+				reasons: ["问题「Bad Code」被拒：code 不是 snake 风格"],
+			},
+		];
+		renderDetail();
+
+		const box = await screen.findByRole("region", { name: "上报出入" });
+		const [row] = within(box).getAllByRole("listitem");
+		expect(
+			within(row as HTMLElement).getByText(
+				(zhCN as Record<string, string>)["extension.reportDiscrepancies.kindProblem"] as string,
+			),
+		).toBeTruthy();
+		expect(within(row as HTMLElement).getByText("整条拒了")).toBeTruthy();
+		// 人那一格整格不画,不是画一个用来占位的空 span。
+		expect((row as HTMLElement).querySelector(".text-bn-text-primary")).toBeNull();
+	});
+
 	it("没有问题:不出这个框", async () => {
 		renderDetail();
 		await screen.findByRole("button", { name: "删除拓展" });

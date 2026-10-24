@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js";
+
 /**
  * 问题上报的入口校验 —— 集成层、来源层(以及之后的适配器层)共用的一份规矩:
  * `code` 是 snake 风格,`message` / `recoveryMessage` 不许空白,`externalId` 不许空串。
@@ -24,4 +26,21 @@ export function problemReportIssue(problem: ProblemReport): string | undefined {
 		return "recoveryMessage 是空白";
 	}
 	return undefined;
+}
+
+/** 被拒的问题上报给人看的一句话:已停下与形状 / 归属不对分开说。 */
+export function problemRejectionReason(
+	problem: Pick<ProblemReport, "code">,
+	stopped: boolean,
+	issue: string,
+): string;
+export function problemRejectionReason(problem: Pick<ProblemReport, "code">, stopped: true): string;
+export function problemRejectionReason(
+	problem: Pick<ProblemReport, "code">,
+	stopped: boolean,
+	issue?: string,
+): string {
+	return stopped
+		? t("extension.report.problemRejectedStopped", { code: problem.code })
+		: t("extension.report.problemRejected", { code: problem.code, reason: issue ?? "" });
 }

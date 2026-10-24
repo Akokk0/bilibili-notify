@@ -351,11 +351,11 @@ describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
 		);
 	});
 
-	it("报坏 code:不进表,只记一行 warn(不是 error)", () => {
+	it("报坏 code:不进问题表,问题上报与上报出入各记一行 warn(不是 error)", () => {
 		const { host, ctx, problems } = makeRuntime();
 		ctx.reportProblem({ code: "Bad Code", message: "x" });
 		expect(problems.list()).toEqual([]);
-		expect(host.lines.filter((l) => l.startsWith("warn bridge:"))).toHaveLength(1);
+		expect(host.lines.filter((l) => l.startsWith("warn bridge:"))).toHaveLength(2);
 		expect(host.lines.filter((l) => l.startsWith("error "))).toEqual([]);
 	});
 });

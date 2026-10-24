@@ -16,7 +16,7 @@ import type {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
-import { problemReportIssue } from "../problems/problem-report.js";
+import { problemRejectionReason, problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
@@ -54,6 +54,8 @@ export interface CreateSourceContextOptions {
 	 * 被拒是拓展自己的 bug、BN 改不了,记 `warn`。同集成层与推送适配器上下文的那一格。
 	 */
 	rejectedProblemLevel?: "warn" | "error";
+	/** 问题上报被拒时,除了照 `rejectedProblemLevel` 记日志,再带上外部 id 与给人看的原因交给它。 */
+	onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
 	/**
 	 * 报问题时写进问题表的「写者名」,报那一刻现取(随当前语言变)。拓展的来源给它的清单名(与拓展列表同一条回落链);
 	 * 不给取描述符的 `label`(B 站的「B 站」)。同集成上下文与推送适配器上下文的同名选项。
@@ -105,6 +107,10 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	): void => {
 		if (disposed) {
 			log(`[source] ${sourceKey} 已停下还在${what}问题 ${problem.code}(丢弃;来源的 bug)`);
+			opts.onRejectedProblem?.({
+				...(problem.externalId === undefined ? {} : { externalId: problem.externalId }),
+				reason: problemRejectionReason(problem, true),
+			});
 			return;
 		}
 		const issue = problemReportIssue(problem);
@@ -112,6 +118,10 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			log(
 				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;来源的 bug): ${problem.code}(${issue})`,
 			);
+			opts.onRejectedProblem?.({
+				...(problem.externalId === undefined ? {} : { externalId: problem.externalId }),
+				reason: problemRejectionReason(problem, false, issue),
+			});
 			return;
 		}
 		if (problem.externalId === undefined) {

@@ -348,6 +348,18 @@ describe("createIntegrationContext · reportProblem / resolveProblem", () => {
 		expect(lines.filter((l) => l.startsWith("error "))).toEqual([]);
 	});
 
+	it("给了 onRejectedProblem:照旧记日志,并把给人看的原因交给它", () => {
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { handle, lines, problems } = make({
+			onRejectedProblem: (rejection) => rejections.push(rejection),
+			rejectedProblemLevel: "warn",
+		});
+		handle.ctx.reportProblem({ code: "Bad", message: "x" });
+		expect(problems.list()).toEqual([]);
+		expect(lines.filter((l) => l.startsWith("warn "))).toHaveLength(1);
+		expect(rejections).toEqual([{ reason: "问题「Bad」被拒：code 不是 snake 风格" }]);
+	});
+
 	it("收摊时它名下的全清、不补已恢复;别的报的人的不动", async () => {
 		const { handle, problems } = make();
 		problems.report({ reporter: "other", code: "x_y", message: "别人的" });

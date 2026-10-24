@@ -15,23 +15,31 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	type CreatorCandidate,
+	type ExtensionManifest,
 	fail,
 	type GlobalConfig,
 	ok,
 	RESERVED_EXTENSION_IDS,
 	type Result,
 	type ServiceContext,
+	type SourceContext,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
-import { inertTransitImages } from "../../__tests__/support/integration-io.js";
-import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
+import { inertTransitImages, integrationIo } from "../../__tests__/support/integration-io.js";
+import {
+	memoryIntegrationStore,
+	memoryStores,
+} from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
+import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
 import type { ActionOutcome, LookupOutcome } from "../../extensions/context.js";
+import { createExtensionContext } from "../../extensions/context.js";
 import {
 	type ExtensionEntry,
 	type LoadedExtensions,
@@ -46,9 +54,11 @@ import {
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import type { ImageStore } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { SourceRegistry, SourceView } from "../../subscriptions/registry.js";
+import { createSourceContext } from "../../subscriptions/source-context.js";
 import { createExtensionsRoute } from "../extensions.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 
@@ -276,6 +286,87 @@ function running(id: string): ExtensionEntry {
 			contributes: { push: { display: PUSH_DISPLAY } },
 		},
 	};
+}
+
+const REPORTING_SOURCE_MANIFEST = {
+	id: "douyin",
+	name: "抖音拓展",
+	description: "测试用",
+	version: "1.0.0",
+	apiVersion: 2,
+	contributes: {
+		subscription: {
+			display: {
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#111111",
+				postNoun: "作品",
+			},
+			events: ["post"],
+		},
+	},
+} as const satisfies ExtensionManifest;
+
+/** 一个真拓展 ctx + 真的来源 ctx,被拒的问题上报经回调记进列表用的那张表。 */
+function reportingExtension(reportDiscrepancies: ReportDiscrepancyTable) {
+	const host = {
+		logger: silentLogger,
+		setInterval: () => ({ dispose() {} }),
+		setTimeout: () => ({ dispose() {} }),
+		onDispose() {},
+		signal: new AbortController().signal,
+		track() {},
+	} as unknown as ServiceContext;
+	let sourceContext: SourceContext | undefined;
+	const runtime = createExtensionContext({
+		...integrationIo(),
+		...noExtensionI18n(),
+		id: "douyin",
+		manifest: REPORTING_SOURCE_MANIFEST,
+		host,
+		loggerOf: () => silentLogger,
+		stores: { ...memoryStores(), redact() {} },
+		problems: ignoredProblems,
+		mounts: createExtensionMounts({ logger: silentLogger }),
+		adapters: createPlatformAdapterRegistry(),
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
+		subscriptions: () => [{ id: "sub-1", extensionId: "douyin", externalId: "u1", enabled: true }],
+		onSubscriptionsChanged: () => ({ dispose() {} }),
+		settings: () => undefined,
+		onSettingsChanged: () => ({ dispose() {} }),
+		inbound: {},
+		upgrades: createExtensionUpgrades(),
+		onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
+		registerSource: async (entry) => {
+			const source = createSourceContext({
+				integration: entry.integration,
+				sourceKey: entry.sourceKey,
+				descriptor: entry.source.descriptor,
+				subscriptions: {
+					list: () => [],
+					listByIdentity: () => [],
+				},
+				defaults: () => ({}) as GlobalConfig["defaults"],
+				bus: { on: () => ({ dispose() {} }) },
+				logger: entry.logger,
+				enqueue() {},
+				liveSignals() {},
+				liveInteractions() {},
+				profiles() {},
+				problems: ignoredProblems,
+				linkResolvers: createLinkResolverRegistry(),
+				aiToolProviders: createAiToolProviderRegistry(),
+				rejectedProblemLevel: entry.rejectedProblemLevel,
+				label: entry.label,
+				onRejectedProblem: entry.onRejectedProblem,
+			});
+			sourceContext = source.ctx;
+			await entry.source.start(sourceContext);
+			return { dispose() {} };
+		},
+	});
+	return { runtime, sourceContext: () => sourceContext };
 }
 
 describe("GET /api/ext", () => {
@@ -639,6 +730,52 @@ describe("GET /api/ext:上报出入(ADR-0019 决策 60)", () => {
 		expect(body.extensions.find((e) => e.id === "bridge")).not.toHaveProperty(
 			"reportDiscrepancies",
 		);
+	});
+
+	it("被拒的问题上报也经列表出来:集成层没有 externalId,来源层带上它与订阅 id", async () => {
+		const reportDiscrepancies = createReportDiscrepancyTable();
+		const { runtime, sourceContext } = reportingExtension(reportDiscrepancies);
+		runtime.ctx.reportProblem({ code: "Bad Code", message: "x" });
+		runtime.ctx.registerSource({
+			start() {},
+			stop() {},
+			searchCreators: async () => ({ ok: true, candidates: [] }),
+		});
+		await runtime.sourceRegistration();
+		sourceContext()?.reportProblem({
+			externalId: "u1",
+			code: "auth_lost",
+			message: "   ",
+		});
+
+		const body = (await (
+			await boot({
+				entries: [running("douyin")],
+				reportDiscrepancies,
+			}).request("/")
+		).json()) as ExtensionsResponse;
+		const rows = body.extensions.find(
+			(extension) => extension.id === "douyin",
+		)?.reportDiscrepancies;
+		const fromIntegration = rows?.find((row) =>
+			row.reasons.some((reason) => reason.includes("code 不是 snake")),
+		);
+		const fromSource = rows?.find((row) =>
+			row.reasons.some((reason) => reason.includes("message 是空白")),
+		);
+		expect(fromIntegration).toMatchObject({
+			kind: "problem",
+			outcome: "rejected",
+			subscriptionIds: [],
+		});
+		expect(fromIntegration).not.toHaveProperty("externalId");
+		expect(fromSource).toMatchObject({
+			kind: "problem",
+			externalId: "u1",
+			subscriptionIds: ["sub-1"],
+			outcome: "rejected",
+		});
+		await runtime.dispose();
 	});
 });
 

@@ -61,6 +61,7 @@ function build(
 	extra: {
 		inbound?: InboundHandlers;
 		connection?: (connectionId: string) => Connection | undefined;
+		onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
 	} = {},
 ) {
 	const problems = createProblemTable({ logger: silentLogger });
@@ -87,6 +88,7 @@ function build(
 		onConnectionsChanged: on,
 		problems,
 		rejectedProblemLevel: "error",
+		...(extra.onRejectedProblem ? { onRejectedProblem: extra.onRejectedProblem } : {}),
 	});
 	return { handle, ctx, problems };
 }
@@ -299,6 +301,18 @@ describe("createPlatformAdapterContext · reportProblem / resolveProblem", () =>
 		ctx.reportProblem({ connectionId: "ob1", code: "Bad Code", message: "x" });
 		expect(problems.list()).toEqual([]);
 		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("给了 onRejectedProblem:记日志,并把原因交给它", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger, {
+			onRejectedProblem: (rejection) => rejections.push(rejection),
+		});
+		ctx.reportProblem({ connectionId: "ob1", code: "Bad Code", message: "x" });
+		expect(problems.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledTimes(1);
+		expect(rejections).toEqual([{ reason: "问题「Bad Code」被拒：code 不是 snake 风格" }]);
 	});
 
 	it("resolveProblem 带 connectionId 清那一条;notify: false 不补已恢复", () => {

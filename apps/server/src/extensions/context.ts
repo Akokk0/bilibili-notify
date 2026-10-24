@@ -141,10 +141,10 @@ export interface ReportDiscrepancy {
 	extensionId: string;
 	/** 什么时候(毫秒)。 */
 	at: number;
-	/** 报的哪一种(第 3 版的 `post` / `live` / `profile`,加第 2 版的五种,后者随旧上报口一起删)。 */
+	/** 报的哪一种(第 3 版的 `post` / `live` / `profile` / `problem`,加第 2 版的五种,后者随旧上报口一起删)。 */
 	kind: ReportDiscrepancyKind;
-	/** 拓展报的外部 id(不是字符串 / 太长的,截成一段能看的)。 */
-	externalId: string;
+	/** 拓展报的外部 id(不是字符串 / 太长的,截成一段能看的);问题上报在集成、适配器层没有这一格。 */
+	externalId?: string;
 	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
 	subscriptionIds: readonly string[];
 	/**
@@ -383,6 +383,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		reporter: id,
 		label: manifestName,
 		rejectedProblemLevel: "warn",
+		onRejectedProblem: recordRejectedProblem,
 		redactValues: (values) => opts.stores.redact("redact", values),
 		http: opts.http,
 		transitImages: opts.transitImages,
@@ -528,13 +529,28 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 详情页那个框接的就是它。丢格、整条拒都从这里过,别散着写。
 	 */
 	function recordDiscrepancy(discrepancy: Omit<ReportDiscrepancy, "extensionId" | "at">): void {
-		const what = `${discrepancy.kind}(外部 id ${discrepancy.externalId})`;
+		const what =
+			discrepancy.externalId === undefined
+				? discrepancy.kind
+				: `${discrepancy.kind}(外部 id ${discrepancy.externalId})`;
 		logger.warn(
 			discrepancy.outcome === "rejected"
 				? `上报 ${what} 整条拒了:${discrepancy.reasons.join(";")}`
 				: `上报 ${what} 动了 ${discrepancy.reasons.length} 格:${discrepancy.reasons.join(";")}`,
 		);
 		opts.onReportDiscrepancy?.({ ...discrepancy, extensionId: id, at: Date.now() });
+	}
+
+	/** 三层上下文里被拒的问题上报都从这里进「上报出入」;外部 id 只有来源层带。 */
+	function recordRejectedProblem(rejection: { externalId?: string; reason: string }): void {
+		recordDiscrepancy({
+			kind: "problem",
+			...(rejection.externalId === undefined ? {} : { externalId: rejection.externalId }),
+			subscriptionIds:
+				rejection.externalId === undefined ? [] : rowsOf(rejection.externalId).map((row) => row.id),
+			outcome: "rejected",
+			reasons: [rejection.reason],
+		});
 	}
 
 	/**
@@ -937,6 +953,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
 						problems: opts.problems,
 						rejectedProblemLevel: "warn",
+						onRejectedProblem: recordRejectedProblem,
 					}),
 				),
 			);
@@ -1014,6 +1031,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					integration: integration.ctx,
 					logger,
 					rejectedProblemLevel: "warn",
+					onRejectedProblem: recordRejectedProblem,
 					// 问题表的写者名:当前语言的清单名,与集成上下文是同一个函数(3b-51)。
 					label: manifestName,
 				})

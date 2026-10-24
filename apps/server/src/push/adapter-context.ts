@@ -7,7 +7,7 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import { problemReportIssue } from "../problems/problem-report.js";
+import { problemRejectionReason, problemReportIssue } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { resolveSettings, settingsIssueMessage } from "./connection-settings.js";
 
@@ -40,6 +40,8 @@ export interface CreatePlatformAdapterContextOptions {
 	problems: Pick<ProblemTable, "report" | "resolve">;
 	/** 被拒的上报(连接不归我、形状不对、已停下)记成什么等级:内置 `error`,拓展 `warn`;同集成层那一格。 */
 	rejectedProblemLevel: "warn" | "error";
+	/** 问题上报被拒时,除了照 `rejectedProblemLevel` 记日志,再把给人看的原因交给它。 */
+	onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
 }
 
 /**
@@ -91,6 +93,9 @@ export function createPlatformAdapterContext(
 			integration.logger[opts.rejectedProblemLevel](
 				`${what}问题 ${problem.code} 被拒(丢弃):${issue}`,
 			);
+			opts.onRejectedProblem?.({
+				reason: problemRejectionReason(problem, stopped(), issue),
+			});
 			return;
 		}
 		apply();
