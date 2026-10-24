@@ -48,18 +48,20 @@ function makeDeps(opts?: {
 	});
 	const reportFailure = vi.fn();
 	const resolveFailure = vi.fn();
+	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
 	return {
 		deps: {
 			api: { fetchRelations, follow } as never,
 			subscriptions: () => opts?.views ?? UIDS.map((externalId) => view(externalId)),
 			problems: { reportFailure, resolveFailure } as never,
-			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+			logger: logger as never,
 		},
 		fetchRelations,
 		follow,
 		reportFailure,
 		resolveFailure,
+		logger,
 	};
 }
 
@@ -120,6 +122,26 @@ describe("syncFollows — 补齐关注", () => {
 		expect(r.degraded).toBe(false);
 	});
 
+	it("批量查撞风控 → 整批跳过,不降级、不发关注、不碰问题", async () => {
+		const { deps, follow, reportFailure, resolveFailure, logger } = makeDeps({
+			relationsResult: fail("rate_limited", "请求过于频繁", { upstreamCode: -352 }),
+		});
+
+		const r = await syncFollows(deps);
+
+		expect(follow).not.toHaveBeenCalled();
+		expect(reportFailure).not.toHaveBeenCalled();
+		expect(resolveFailure).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("请求过于频繁"));
+		expect(r).toEqual({
+			checked: UIDS.length,
+			followed: 0,
+			alreadyFollowed: 0,
+			failed: 0,
+			degraded: false,
+		});
+	});
+
 	it("单个关注 unauthorized → 这一批停下,不报也不清", async () => {
 		const { deps, follow, reportFailure, resolveFailure } = makeDeps({
 			views: [view("111"), view("222")],
@@ -133,6 +155,24 @@ describe("syncFollows — 补齐关注", () => {
 		expect(follow).toHaveBeenCalledWith("111");
 		expect(reportFailure).not.toHaveBeenCalled();
 		expect(resolveFailure).not.toHaveBeenCalled();
+	});
+
+	it("逐个关注撞风控 → 报当前一位失败,后面的不再写", async () => {
+		const { deps, follow, reportFailure } = makeDeps({
+			relationsData: null,
+			followResults: [ok(), fail("rate_limited", "请求过于频繁", { upstreamCode: -352 })],
+		});
+
+		const r = await syncFollows(deps);
+
+		expect(follow).toHaveBeenCalledTimes(2);
+		expect(follow).toHaveBeenLastCalledWith("222");
+		expect(reportFailure).toHaveBeenCalledTimes(1);
+		expect(reportFailure).toHaveBeenCalledWith(
+			expect.objectContaining({ externalId: "222", code: "follow_failed" }),
+		);
+		expect(r.failed).toBe(1);
+		expect(r.followed).toBe(1);
 	});
 
 	it("批量查询炸了 → 降级为对每个人直接 follow(幂等,不能因为一个优化接口就瘫痪)", async () => {

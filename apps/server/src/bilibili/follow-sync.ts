@@ -89,7 +89,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
  * 批量查出「已经关注了的 uid」。
  *
  * 返回 `null` 表示**查不出来**(请求炸 / 业务码失败 / 结构真的变了),调用方据此降级。
- * `"unauthorized"` 单独分出:整批跳过、不动问题,等登录恢复。
+ * `"unauthorized"`(等登录恢复)与 `"rate_limited"`(撞风控,不降级成逐个写)单独分出:整批跳过、不动问题。
  *
  * **「查不出来」与「查出来了,一个都没关注」是两回事,绝不能混**:后者说明确实要补 N 个
  * (返回空集),前者说明我们对现状一无所知,只能靠 follow 的幂等性兜底。
@@ -102,13 +102,19 @@ async function queryFollowed(
 	api: Api,
 	uids: string[],
 	logger: Logger,
-): Promise<Set<string> | "unauthorized" | null> {
+): Promise<Set<string> | "unauthorized" | "rate_limited" | null> {
 	try {
 		const res = await api.fetchRelations(uids);
 		if (!res.ok) {
 			if (res.code === "unauthorized") {
 				logger.info("[follow] 账号未登录,本轮关注同步整批跳过,等登录恢复");
 				return "unauthorized";
+			}
+			if (res.code === "rate_limited") {
+				logger.warn(
+					`[follow] 批量查询关注状态撞风控，本轮关注同步整批跳过、不降级(code=${res.upstreamCode ?? res.code}: ${res.message})`,
+				);
+				return "rate_limited";
 			}
 			logger.warn(
 				`[follow] 批量查询关注状态失败(code=${res.upstreamCode ?? res.code}: ${res.message}) —— 降级为逐个关注`,
@@ -159,7 +165,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	}
 
 	const alreadyFollowed = await queryFollowed(deps.api, uids, deps.logger);
-	if (alreadyFollowed === "unauthorized") {
+	if (alreadyFollowed === "unauthorized" || alreadyFollowed === "rate_limited") {
 		return { checked: uids.length, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
 	}
 	const degraded = alreadyFollowed === null;
@@ -220,6 +226,12 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 			notify: PROBLEM_TEXTS.followFailed.notify,
 			lasting: true,
 		});
+		if (outcome.code === "rate_limited") {
+			deps.logger.warn(
+				`[follow] 撞风控，停下这一批，剩下 ${needFollow.length - sent} 位等下次关注同步`,
+			);
+			break;
+		}
 	}
 
 	if (interrupted()) {
