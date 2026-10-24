@@ -115,10 +115,10 @@ export interface AppRuntime {
 	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
 	 */
 	statsStore: StatsStore;
-	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
+	/** 统计采集。构造时只挂上总线;「在记」由登记表适配按在册来源记,开机时登记表还空、不碰盘,来源登记之后最多 1 分钟记上。 */
 	statsRecorder: Pick<
 		StatsRecorderHandle,
-		"bindLoginState" | "compactRecording" | "clear" | "drop" | "recordActive" | "recordFollowers"
+		"compactRecording" | "clear" | "drop" | "recordActive" | "recordFollowers"
 	>;
 	/**
 	 * 数据统计的总开关(`stats.enabled`)的缓存读口 —— 记录器入口用的就是它,B 站粉丝轮询(直接写粉丝仓、

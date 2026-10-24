@@ -422,6 +422,9 @@ describe("登录失效后忘掉在飞的场次", () => {
 		const store = {
 			openLiveSession: vi.fn(async () => {}),
 			closeLiveSession: vi.fn(async () => {}),
+			// 在册来源登录着,挂上时登记表适配会记「这个小时在记」,与场次写进同一个键的队。
+			appendRecording: vi.fn(async () => {}),
+			listRecording: vi.fn(async () => []),
 		} as unknown as StatsStore & {
 			openLiveSession: ReturnType<typeof vi.fn>;
 			closeLiveSession: ReturnType<typeof vi.fn>;
@@ -445,6 +448,8 @@ describe("登录失效后忘掉在飞的场次", () => {
 
 		const change = start(EXT_SUB.id, "douyin");
 		trigger("live-session-changed", change);
+		// 排在「在记」那一笔后面:等队落地。
+		await handle.flush();
 		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
 
 		state = { status: "logged-out" };

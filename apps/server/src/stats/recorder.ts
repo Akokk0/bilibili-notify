@@ -2,7 +2,6 @@ import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
-import { attachBiliStatsSource } from "./bili-source.js";
 import type { RecordingCompactSummary } from "./compaction.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
@@ -28,8 +27,8 @@ import type {
  *       `PostEvent`,统计照事件记一行(`postEntryFromEvent`),不认来源、不再自己看作品开关 ——
  *       该不该记的判据已经在入口里(订阅在、启用、作品开关开着、来源在跑)。
  *     · 直播(`live-source.ts`):所有来源共用一个监听,吃中立的 `live-session-changed`。
- *     · B 站(`bili-source.ts`):登录有效 = 来源在跑。
- *     · 登记表(`registry-source.ts`):来源登录丢了就忘掉它名下的在飞场次。
+ *     · 登记表(`registry-source.ts`):在册来源的「这个小时在记」由核心记 —— 来源在册、没有登录口或登录口
+ *       现读是已登录,就按每条订阅的两格开关记作品 / 直播;来源登录丢了就忘掉它名下的在飞场次。
  *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按 B 站粉丝轮询的间隔稀释;
  *       收到上报 = 来源在跑,按开关记「在记」。
  *
@@ -436,11 +435,6 @@ export interface StatsRecorderHandle
 	compactRecording(now: Date): Promise<RecordingCompactSummary>;
 	/** 整类清空数据统计(删盘),见 {@link StatsRecorderCore} 那头的同名口子。 */
 	clear(): Promise<void>;
-	/**
-	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachProfileRefresh` 的回填口)。
-	 * 没绑之前当作 B 站没在跑(不记);绑上后 B 站适配立刻看一眼。读口每次现读,不靠事件记状态。
-	 */
-	bindLoginState(isLoggedIn: () => boolean): void;
 }
 
 /**
@@ -458,27 +452,21 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		now,
 		isEnabled: opts.isEnabled,
 	});
-	let isLoggedIn: (() => boolean) | undefined;
 	const liveSource = attachLiveStatsSource({
 		bus: opts.bus,
 		recorder,
 		now,
 		subscriptions: opts.subscriptions,
 	});
-	const biliSource = attachBiliStatsSource({
-		bus: opts.bus,
-		recorder,
-		subscriptions: opts.subscriptions,
-		isLoggedIn: () => isLoggedIn?.() === true,
-	});
 	const registrySource = attachRegistryStatsSource({
 		bus: opts.bus,
 		sources: opts.sources,
 		forgetOpenSessions: liveSource.forgetOpenSessions,
+		recorder,
+		subscriptions: opts.subscriptions,
 	});
 	const sources: Disposable[] = [
 		registrySource,
-		biliSource,
 		liveSource,
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
@@ -508,10 +496,6 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		drop: (key) => recorder.drop(key),
 		recordActive: (key, kind, atMs) => recorder.recordActive(key, kind, atMs),
 		recordFollowers: (key, value) => recorder.recordFollowers(key, value),
-		bindLoginState(next) {
-			isLoggedIn = next;
-			biliSource.tick();
-		},
 
 		dispose() {
 			for (const s of sources) s.dispose();

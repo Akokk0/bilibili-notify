@@ -116,7 +116,6 @@ import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
 import { startStatsCompaction } from "./stats/compaction.js";
-import { bindStatsLoginState } from "./stats/login-binding.js";
 import { listLoginSources } from "./subscriptions/registry.js";
 import { readReleaseNotes } from "./update/release-notes.js";
 import { readFailedVersions } from "./update/select-version-for-boot.js";
@@ -623,10 +622,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			throw err;
 		}
 		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
-		// 统计的「B 站在跑」= 登录有效:读口回填给记录器(它建在运行时里、比登录系统早;数据那一代已经就位,
-		// 到这里才开始记,ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。每次现读状态,不靠事件记。
-		// `confirming`(开机没确认、等手机确认)不算登录,与从前判「已登录」一致。
-		bindStatsLoginState(runtime.statsRecorder, authSystem.auth);
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview

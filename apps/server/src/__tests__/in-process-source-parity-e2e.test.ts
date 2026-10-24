@@ -164,8 +164,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P44)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N02、N03、N04、N06、N07、N10、N11、N12、N13,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P45)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N02、N03、N04、N06、N07、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -296,6 +296,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{ id: "P44", title: "提示词里的叫法", checked: true },
 	{
+		id: "P45",
+		title:
+			"统计「在记」由核心算：在册来源登录着，这个小时按每条订阅的开关记作品 / 直播；没登录、停用、作品开关关着、没人认领的键不记",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -338,14 +344,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		waitsFor: "第 4 期健康卡(等第一个读者)",
 		reason: "没造,「在册就算在跑」",
 	},
-	{
-		id: "N16",
-		title: "统计「在记」",
-		checked: false,
-		waitsFor: "3b",
-		reason:
-			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
-	},
+	// N16(统计「在记」)在 3b-26 落成了,转进对拍的 P45;
 	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
 	// N02(fetchProfile)与 N13(followers-refreshed)在 3b-24 落成了,转进对拍的 P39、P40;
 	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;N07(LinkResolver)在 3b-28 落成了,转进 P22;
@@ -1264,7 +1263,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	});
 
 	// 验红:`stats/recorder.ts` 里摘掉 `post-detected` 的监听,作品行落不了盘,这条红。
-	// 「在记」那一格(统计总览里 posts 为数)对内置的非 B 站来源今天不成立,见「这版不开」N16;所以这里读的是落盘的作品行。
+	// 「在记」那一格见 P45;这里读的是落盘的作品行。
 	it("P09 统计作品行:每条作品(含被过滤的)在这条订阅名下落一行,带不带视频与报的一致", async () => {
 		await vi.waitFor(async () => {
 			const aliceRows = await statsPostRows(SUB.alice);
@@ -1489,6 +1488,66 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		}
 		drove("P15");
 	});
+
+	// 验红:`stats/registry-source.ts` 里去掉 `auth` 判断,「登录前全假」红;不看 `recordsPosts`,bob 红;
+	// 登记表里没有的键也记,dave 红;`bootstrap.ts` 递一张空登记表,登录后的那段红。
+	it("P45 统计「在记」由核心算:在册来源登录着,这个小时按每条订阅的开关记作品 / 直播;没登录、停用、作品开关关着、没人认领的键不记", async () => {
+		const probe = currentProbe();
+		/**
+		 * 窗口里有没有哪一天「在记」,按订阅 id 取;`days` 不同缓存键就不同(总览缓存 30 秒、键不含账)。
+		 * 不只看最后一天:账记下与查询之间跨了 UTC 午夜,最后一格就成了新的一天。P45 之前没有哪一行让假来源登录过,
+		 * 所以登录前窗口里一天都不该在记。
+		 */
+		const recordedInWindow = async (days: number) => {
+			const res = await okRes(await api(`/api/stats/overview?days=${days}&tz=0`));
+			const rows = ((await res.json()) as StatsOverviewResponse).rows;
+			const anyDayOf = (id: string) => {
+				const recording = rows.find((row) => row.subscriptionId === id)?.recording;
+				return {
+					posts: recording?.posts.some((day) => day === true) ?? false,
+					live: recording?.live.some((day) => day === true) ?? false,
+				};
+			};
+			return {
+				alice: anyDayOf(SUB.alice),
+				bob: anyDayOf(SUB.bob),
+				carol: anyDayOf(SUB.carol),
+				dave: anyDayOf(SUB.dave),
+			};
+		};
+		const none = { posts: false, live: false };
+		try {
+			// 登录前:假来源起始 logged-out,谁也不记。
+			probe.auth.set({ status: "logged-out" });
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			expect(await recordedInWindow(5)).toEqual({
+				alice: none,
+				bob: none,
+				carol: none,
+				dave: none,
+			});
+
+			// 登上:登录口一发事件,核心现读到已登录就立刻记(不等定时)。
+			probe.auth.set({ status: "logged-in", loggedInAt: "2026-10-01T00:00:00.000Z" });
+			// 每轮换一个 `days`:同一个 `days` 的头一次查要是赶在账落盘之前,那份结果会缓存 30 秒,之后每轮都读到旧的。
+			let days = 6;
+			await vi.waitFor(
+				async () => {
+					const got = await recordedInWindow(days++);
+					expect(got.alice).toEqual({ posts: true, live: true });
+				},
+				{ timeout: 10_000, interval: 200 },
+			);
+			// 作品开关关着的 bob 不记作品;停用的 carol、没人认领的键 dave 全不记(alice 记上之后再换一个 `days` 查)。
+			const after = await recordedInWindow(days);
+			expect(after.bob.posts).toBe(false);
+			expect(after.carol).toEqual(none);
+			expect(after.dave).toEqual(none);
+		} finally {
+			probe.auth.set({ status: "logged-out" });
+		}
+		drove("P45");
+	}, 30_000);
 
 	/** 订阅 WS 的一个频道,攒下收到的帧。 */
 	async function watchFrames(channel: string) {
@@ -3301,20 +3360,20 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 44 行、不开 7 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 45 行、不开 6 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(51);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 44 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 45 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;编号不回填。
+		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![2, 3, 4, 6, 7, 10, 11, 12, 13].includes(n))
+				.filter((n) => ![2, 3, 4, 6, 7, 10, 11, 12, 13, 16].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

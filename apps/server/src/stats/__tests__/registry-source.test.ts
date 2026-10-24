@@ -4,11 +4,12 @@ import type {
 	MessageBus,
 	SourceAuth,
 } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SourceView } from "../../subscriptions/registry.js";
+import type { StatsSubscription } from "../file-key.js";
 import { attachLiveStatsSource } from "../live-source.js";
 import type { StatsRecorderCore } from "../recorder.js";
-import { attachRegistryStatsSource } from "../registry-source.js";
+import { attachRegistryStatsSource, RECORDING_CHECK_MS } from "../registry-source.js";
 
 const NOW = Date.parse("2026-05-16T10:00:00.000Z");
 
@@ -120,6 +121,8 @@ describe("RegistryStatsSource — 来源登录丢了", () => {
 							: undefined,
 			},
 			forgetOpenSessions: live.forgetOpenSessions,
+			recorder,
+			subscriptions: () => [],
 		});
 
 		const a = liveStart("a-1", "alpha");
@@ -145,6 +148,8 @@ describe("RegistryStatsSource — 来源登录丢了", () => {
 			bus,
 			sources: { get: () => authView(() => state) },
 			forgetOpenSessions,
+			recorder: makeRecorder(),
+			subscriptions: () => [],
 		});
 		trigger("subscription-auth-changed", {
 			sourceKey: "alpha",
@@ -161,6 +166,8 @@ describe("RegistryStatsSource — 来源登录丢了", () => {
 			bus,
 			sources: { get: () => authView(() => state) },
 			forgetOpenSessions,
+			recorder: makeRecorder(),
+			subscriptions: () => [],
 		});
 		const states: AuthState[] = [
 			{ status: "logged-in", loggedInAt: "2026-05-16T09:00:00.000Z" },
@@ -187,11 +194,150 @@ describe("RegistryStatsSource — 来源登录丢了", () => {
 				get: (key) => (key === "no-auth" ? ({} as SourceView) : undefined),
 			},
 			forgetOpenSessions,
+			recorder: makeRecorder(),
+			subscriptions: () => [],
 		});
 		expect(() => {
 			trigger("subscription-auth-changed", { sourceKey: "missing", state: { status: "expired" } });
 			trigger("subscription-auth-changed", { sourceKey: "no-auth", state: { status: "expired" } });
 		}).not.toThrow();
 		expect(forgetOpenSessions).not.toHaveBeenCalled();
+	});
+});
+
+// ———— 「这个小时在记」:核心对所有在册来源记 ————
+
+const T0 = Date.parse("2026-05-16T10:00:00.000Z");
+const LOGGED_IN: AuthState = { status: "logged-in", loggedInAt: "2026-05-16T09:00:00.000Z" };
+const sub = (
+	id: string,
+	sourceKey: string,
+	over: Partial<StatsSubscription> = {},
+): StatsSubscription => ({
+	id,
+	identity: { sourceKey, externalId: id },
+	enabled: true,
+	recordsPosts: true,
+	recordsLive: true,
+	...over,
+});
+
+describe("RegistryStatsSource — 记这个小时在记", () => {
+	let subs: StatsSubscription[];
+	let views: Record<string, SourceView>;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(T0);
+		subs = [];
+		views = {};
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function setup() {
+		const { bus, trigger } = makeBus();
+		const recorder = makeRecorder();
+		const source = attachRegistryStatsSource({
+			bus,
+			sources: { get: (key) => views[key] },
+			forgetOpenSessions: vi.fn(),
+			recorder,
+			subscriptions: () => subs,
+		});
+		return { trigger, recorder, source };
+	}
+	const calls = (recorder: ReturnType<typeof makeRecorder>) =>
+		(recorder.recordActive as ReturnType<typeof vi.fn>).mock.calls.map((c) => `${c[0]}/${c[1]}`);
+
+	it("没有登录口的在册来源:挂上时就按两格开关记", () => {
+		views.alpha = {} as SourceView;
+		subs = [sub("a-1", "alpha"), sub("a-2", "alpha", { recordsLive: false })];
+		const { recorder } = setup();
+		expect(calls(recorder)).toEqual(["a-1/posts", "a-1/live", "a-2/posts"]);
+	});
+
+	it("登录口六种状态:只有 logged-in 记", () => {
+		const states: AuthState[] = [
+			LOGGED_IN,
+			{ status: "logged-out" },
+			{ status: "awaiting-scan", qr: { dataUrl: "data:x", expiresAt: "2026-05-16T10:03:00.000Z" } },
+			{ status: "confirming", message: "正在向 B 站确认登录状态" },
+			{ status: "expired", message: "m" },
+			{ status: "error", message: "m" },
+		];
+		subs = [sub("a-1", "alpha")];
+		const recorded: string[] = [];
+		for (const state of states) {
+			views.alpha = authView(() => state);
+			const { recorder, source } = setup();
+			if (calls(recorder).length > 0) recorded.push(state.status);
+			vi.advanceTimersByTime(RECORDING_CHECK_MS);
+			source.dispose();
+		}
+		expect(recorded).toEqual(["logged-in"]);
+	});
+
+	it("事件只当扳机:载荷说已登录、现读是 logged-out → 不记", () => {
+		subs = [sub("a-1", "alpha")];
+		views.alpha = authView(() => ({ status: "logged-out" }));
+		const { trigger, recorder } = setup();
+		trigger("subscription-auth-changed", { sourceKey: "alpha", state: LOGGED_IN });
+		expect(calls(recorder)).toEqual([]);
+	});
+
+	it("发已登录事件不推时钟就立刻记", () => {
+		subs = [sub("a-1", "alpha")];
+		let state: AuthState = { status: "logged-out" };
+		views.alpha = authView(() => state);
+		const { trigger, recorder } = setup();
+		expect(calls(recorder)).toEqual([]);
+		state = LOGGED_IN;
+		trigger("subscription-auth-changed", { sourceKey: "alpha", state });
+		expect(calls(recorder)).toEqual(["a-1/posts", "a-1/live"]);
+	});
+
+	it("登记表里没有的键(拓展订阅、没人认领)不记", () => {
+		views.alpha = {} as SourceView;
+		subs = [sub("a-1", "alpha"), sub("x-1", "ext-bot"), sub("m-1", "nobody")];
+		const { recorder } = setup();
+		vi.advanceTimersByTime(RECORDING_CHECK_MS);
+		expect([...new Set(calls(recorder))]).toEqual(["a-1/posts", "a-1/live"]);
+	});
+
+	it("开机登记表空 → 一行不写;之后登记一个来源,推一个 RECORDING_CHECK_MS 就记上", () => {
+		subs = [sub("a-1", "alpha")];
+		const { recorder } = setup();
+		vi.advanceTimersByTime(RECORDING_CHECK_MS - 1);
+		expect(calls(recorder)).toEqual([]);
+		views.alpha = {} as SourceView;
+		vi.advanceTimersByTime(1);
+		expect(calls(recorder)).toEqual(["a-1/posts", "a-1/live"]);
+	});
+
+	it("两格开关各看各的:recordsPosts 关着不记 posts", () => {
+		views.alpha = {} as SourceView;
+		subs = [sub("a-1", "alpha", { recordsPosts: false })];
+		const { recorder } = setup();
+		expect(calls(recorder)).toEqual(["a-1/live"]);
+	});
+
+	it("定时器不挡进程退出(unref)", () => {
+		const spy = vi.spyOn(global, "setInterval");
+		setup();
+		const timer = spy.mock.results[0]?.value as { hasRef?: () => boolean } | undefined;
+		expect(timer?.hasRef?.()).toBe(false);
+		spy.mockRestore();
+	});
+
+	it("dispose 清掉定时器:之后不再记", () => {
+		views.alpha = {} as SourceView;
+		subs = [sub("a-1", "alpha")];
+		const { recorder, source } = setup();
+		(recorder.recordActive as ReturnType<typeof vi.fn>).mockClear();
+		source.dispose();
+		vi.advanceTimersByTime(RECORDING_CHECK_MS * 3);
+		expect(calls(recorder)).toEqual([]);
 	});
 });

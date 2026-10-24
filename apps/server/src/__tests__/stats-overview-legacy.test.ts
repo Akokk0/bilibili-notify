@@ -464,8 +464,10 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			},
 		});
 		// 登录有效:「在记」按小时账记。老版本拿粉丝样本当「那天 B 站在看着」的证据,样本落在这几天(见文件尾);
-		// 现在账记的是 B 站适配的定时检查,下面每到一天就让它看一眼(`auth-restored` 立刻补记一次),天数与样本那几天一致。
-		recorder.bindLoginState(() => true);
+		// 现在账记的是登记表适配对在册来源的检查(上面假登记表里放着一个已登录的 B 站来源),下面每到一天就让它看一眼
+		// (`subscription-auth-changed` 立刻补记一次),天数与样本那几天一致。
+		const loginChanged = () =>
+			fire("subscription-auth-changed", { sourceKey: "bilibili", state: authState });
 		// 落盘是 fire-and-forget,每条事件之后让它写完,免得同一文件的「先读再追加」互相踩。
 		const fire = async (ev: string, payload?: unknown) => {
 			for (const h of handlers.get(ev) ?? []) h(payload);
@@ -550,13 +552,13 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		}
 		// 203:一场完整直播,本场峰值 12,000;下播带真实时刻。
 		clock = NOW - 2 * D;
-		await fire("auth-restored");
+		await loginChanged();
 		await startLive("203", at(2, 1));
 		clock = NOW - 2 * D + 2 * H;
 		await endLive("203", at(2, -1, 58), 12_000);
 		// 204:开播时刻解析不出 → 回退此刻;登录失效之后再开一场;关服收尾。
 		clock = NOW - D;
-		await fire("auth-restored");
+		await loginChanged();
 		await startLive("204", "不是时间");
 		authState = { status: "expired", message: "expired" };
 		await fire("subscription-auth-changed", { sourceKey: "bilibili", state: authState });
@@ -566,7 +568,9 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		await endLive("204", new Date(clock).toISOString(), 150_000_000, "stopped");
 		await recorder.closeOpenSessions();
 		clock = NOW;
-		await fire("auth-restored");
+		// 登录恢复了:账只在登录有效时记(从前读口恒回 true,这里要把登录口放回已登录)。
+		authState = { status: "logged-in", loggedInAt: "2026-05-13T00:00:00.000Z" };
+		await loginChanged();
 
 		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		for (const uid of ["201", "202", "203"]) {
