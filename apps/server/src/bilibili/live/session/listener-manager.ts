@@ -1,7 +1,8 @@
 import type { Disposable, SourceSubscriptionView } from "@bilibili-notify/internal";
+import { riskBackoffStepMs } from "../../api/index.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { LIVE_ROOM_NOT_FOUND_CODE, liveRiskPath, type RoomContext } from "./room-context.js";
-import { liveLongTailBackoffMs, RoomSession } from "./room-session.js";
+import { RoomSession } from "./room-session.js";
 
 interface ActiveRoom {
 	externalId: string;
@@ -152,7 +153,7 @@ export class ListenerManager {
 				notify: PROBLEM_TEXTS.riskControlled.notify.live,
 			});
 		}
-		const delay = liveLongTailBackoffMs(retry.attempts++);
+		const delay = riskBackoffStepMs(retry.attempts++);
 		retry.timer?.dispose();
 		retry.timer = this.ctx.liveContext.setTimeout(() => {
 			retry.timer = undefined;

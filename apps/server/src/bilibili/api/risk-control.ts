@@ -11,3 +11,12 @@ export class RiskControlError extends Error {
 		this.upstreamCode = upstreamCode;
 	}
 }
+
+/** 直播长尾与 wbi 熔断共用的退避窗口；用尽后停在最后一格。 */
+export const RISK_BACKOFF_STEPS_MS = [60_000, 300_000, 900_000, 1_800_000] as const;
+
+export function riskBackoffStepMs(attempt: number): number {
+	return RISK_BACKOFF_STEPS_MS[
+		Math.min(Math.max(attempt, 0), RISK_BACKOFF_STEPS_MS.length - 1)
+	] as number;
+}

@@ -1,4 +1,5 @@
 import type { Disposable, LiveDetails, LiveInteractionReport } from "@bilibili-notify/internal";
+import { riskBackoffStepMs } from "../../api/index.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
@@ -19,15 +20,6 @@ export const LIVE_WS_STALE_MS = 180_000;
 const VIEWERS_EMIT_THROTTLE_MS = 2_000;
 const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 const LIVE_WS_WATCHDOG_INTERVAL_MS = 60_000;
-
-/** 预检与房号解析共用的长尾退避；用尽后停在最后一格。 */
-export const LIVE_LONG_TAIL_BACKOFF_MS = [60_000, 300_000, 900_000, 1_800_000] as const;
-
-export function liveLongTailBackoffMs(attempt: number): number {
-	return LIVE_LONG_TAIL_BACKOFF_MS[
-		Math.min(Math.max(attempt, 0), LIVE_LONG_TAIL_BACKOFF_MS.length - 1)
-	] as number;
-}
 
 type ReconnectReason = "error" | "close" | "watchdog" | "preflight";
 type ActivityReason =
@@ -523,7 +515,7 @@ export class RoomSession {
 			let delay: number | undefined;
 			const reasonText = this.describeReconnectReason(reason, detail);
 			if (preflightBlocked) {
-				delay = liveLongTailBackoffMs(preflightAttempts++);
+				delay = riskBackoffStepMs(preflightAttempts++);
 				this.reconnectAttempts = 0;
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.room.roomId}] ${reasonText},${Math.round((delay as number) / 1000)}s 后重试预检(长尾第 ${preflightAttempts} 次,不放弃)`,

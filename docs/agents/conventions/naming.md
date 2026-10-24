@@ -119,6 +119,7 @@
 | 请求客户端的单次请求「不带浏览器身份、不碰 cookie 罐」那一档（`fetch` 与 `websocket` 的选项） | `bare: true` | `anonymous`、`identity: false`（名字说不全：它连默认头与 `Set-Cookie` 一起不管） |
 | cookie 罐 | `CookieJar`；一条 cookie 的数据形状 `Cookie` | `CookieStore`（`Store` 只指存盘的仓库）、`BACookie`、`BiliCookieJar` |
 | 浏览器身份（UA 与 `sec-ch-ua` 那一套，一起生成、永远配套） | `BrowserIdentity` | 单独设一个 `userAgent`（ADR-0025 决策 7） |
+| 一族请求撞持续风控后先不出网、到期只放一个调用去试探、其余合流等它（一族共用的那种；一条路自己歇一会儿的不叫它） | `breaker`（`WbiBreaker`、`createWbiBreaker`；中文「熔断」；10-24 主人定） | `gate` /「闸」（推送链路里指「路由与闸」）、`circuit` |
 
 ## 不管的
 

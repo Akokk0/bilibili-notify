@@ -35,6 +35,7 @@ import type {
 	VideoResponse,
 } from "./types";
 import { buildTicketParams, encWbi, type WbiKeys } from "./wbi";
+import { createWbiBreaker, type WbiBreaker } from "./wbi-breaker";
 
 export interface ApiHandlers {
 	/**
@@ -129,6 +130,8 @@ export class Api {
 	 * 重试)会各自触发一次 ticket POST 风暴;共享同一在途 Promise 收敛为一次。
 	 */
 	private biliTicketInFlight?: Promise<void>;
+	/** wbi 签名请求一族的熔断(见 {@link WbiBreaker})。按实例记:集成重启就是重新开始;新登录成立时清。 */
+	private readonly wbiBreaker: WbiBreaker;
 	/**
 	 * ④ 账号身份缓存(getMyselfInfoCached 共享给直播建连 / 卡片预览)。换号 / 登出 /
 	 * -101 时 invalidate。lazy 调 `this.fetchMyselfInfo`,故传 `this` 安全。
@@ -153,6 +156,7 @@ export class Api {
 				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code, generation);
 			},
 		});
+		this.wbiBreaker = createWbiBreaker({ now: () => Date.now(), logger: this.logger });
 	}
 
 	/** 此刻的登录代(见 `generation` 字段)。登录状态机在发登录检查之前读它、落地之前比它。 */
@@ -376,6 +380,7 @@ export class Api {
 		from: { kind: "stored" } | { kind: "scanned"; refreshToken: string | undefined },
 	): Promise<Result> {
 		this.selfInfoCache.invalidate();
+		this.wbiBreaker.reset();
 		const generation = ++this.generation;
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
@@ -718,29 +723,33 @@ export class Api {
 	 * WBI 签名 GET。B3:`getWbi` 仅在 imgKey 为空时才刷新 key,服务端轮换 WBI
 	 * 后既有 key 仍非空 → 所有签名请求一路 `-352` 直到午夜 ticket cron。这里在
 	 * 响应 `code === -352` 时清空 wbiKeys 强制重取 ticket,并重试一次。
+	 *
+	 * 整段包在 {@link wbiBreaker} 里:持续风控开闸之后当场回 {@link RiskControlError},不出网、也不清 wbiKeys。
 	 */
 	private async wbiGet(endpoint: string, params: Record<string, string | number | object>) {
-		const once = async () => {
-			const wbi = await this.getWbi(params);
-			// biome-ignore lint/suspicious/noExplicitAny: 保持 axios 时代的宽松返回契约,下游各自 cast 收窄
-			return (await this.client.get(`${endpoint}?${wbi}`)) as any;
-		};
-		const data = await once();
-		if (data && typeof data === "object" && data.code === -352) {
-			this.logger.debug("[wbi] 签名请求返回 -352（WBI key 疑似轮换），刷新 wbiKeys 后重试一次");
-			this.wbiKeys = { imgKey: "", subKey: "" }; // 强制下次 getWbi 重新拉 ticket
-			const retried = await once();
-			// P2:二次仍 -352 时此前**静默返回 -352 body**,外层 this.retry 只认
-			// 抛错、感知不到业务码 → 调用方拿到一个看似成功的 -352 响应。抛错让
-			// 外层 retry 重走(含重取 ticket),最终把持续风控如实暴露给调用方。
-			if (retried && typeof retried === "object" && retried.code === -352) {
-				// 抛「持续风控」类型 —— 外层 retry 的 shouldRetry 据此 fail-fast,
-				// 不再把刷新+重试整轮跑 3 遍放大请求量(风控收敛)。
-				throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)", -352);
+		return this.wbiBreaker.run(async () => {
+			const once = async () => {
+				const wbi = await this.getWbi(params);
+				// biome-ignore lint/suspicious/noExplicitAny: 保持 axios 时代的宽松返回契约,下游各自 cast 收窄
+				return (await this.client.get(`${endpoint}?${wbi}`)) as any;
+			};
+			const data = await once();
+			if (data && typeof data === "object" && data.code === -352) {
+				this.logger.debug("[wbi] 签名请求返回 -352（WBI key 疑似轮换），刷新 wbiKeys 后重试一次");
+				this.wbiKeys = { imgKey: "", subKey: "" }; // 强制下次 getWbi 重新拉 ticket
+				const retried = await once();
+				// P2:二次仍 -352 时此前**静默返回 -352 body**,外层 this.retry 只认
+				// 抛错、感知不到业务码 → 调用方拿到一个看似成功的 -352 响应。抛错让
+				// 外层 retry 重走(含重取 ticket),最终把持续风控如实暴露给调用方。
+				if (retried && typeof retried === "object" && retried.code === -352) {
+					// 抛「持续风控」类型 —— 外层 retry 的 shouldRetry 据此 fail-fast,
+					// 不再把刷新+重试整轮跑 3 遍放大请求量(风控收敛)。
+					throw new RiskControlError("[wbi] 刷新 wbiKeys 后仍 -352(WBI 签名持续被拒/风控)", -352);
+				}
+				return retried;
 			}
-			return retried;
-		}
-		return data;
+			return data;
+		});
 	}
 
 	// ---- Request helpers ----
