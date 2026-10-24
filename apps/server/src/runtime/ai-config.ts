@@ -9,9 +9,9 @@
  * 两件事在这里定死:
  *
  * - **连接与生成参数按服务商分桶** —— 取 `provider` 指的那一桶(`resolveAIProfile`)。
- * - **人格看指针** —— 取 `activePreset` 指的那份(`resolveActivePersona`),
- *   **不是** `ai.persona`。后者自指针上线就没有界面入口、永远冻在老值上,直读它
- *   就是「主人换了人格,女仆开口还是原来那位」。
+ * - **人格看指针** —— 取 `activePreset` 指的那份(`resolveActivePersona`)。内置那几份
+ *   不在设置里、内容按当前语言取,所以调用方要把当前语言的内置人格(`builtinPersonasOf`)传进来;
+ *   谁绕开这一处自己翻 `presets`,就是「主人换了人格 / 语言,女仆开口还是原来那位」。
  *
  * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,引擎的
  * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名,
@@ -22,16 +22,24 @@
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import {
 	type ActivePersonaShape,
+	type AIBuiltinPresetShape,
 	type AISettings,
 	resolveActivePersona,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 
-export function toGeneratorConfig(ai: AISettings) {
+/** 此刻(设置里的语言)的内置人格:设置里不存它们的内容,每次按当前语言取。 */
+export function builtinPersonasOf(settings: Parameters<typeof textSettingsOf>[0]) {
+	return builtinPresetsFor(textSettingsOf(settings).locale);
+}
+
+export function toGeneratorConfig(ai: AISettings, builtins: readonly AIBuiltinPresetShape[]) {
 	const p = resolveAIProfile(ai);
-	const active = resolveActivePersona(ai);
+	const active = resolveActivePersona(ai, builtins);
 	return {
 		apiKey: p.apiKey,
 		baseURL: p.baseUrl,
@@ -74,9 +82,10 @@ export function toGeneratorConfig(ai: AISettings) {
 export function resolveAiOverride(
 	sub: Subscription,
 	ai: AISettings,
+	builtins: readonly AIBuiltinPresetShape[],
 ): CommentaryCallOverride | undefined {
 	return sub.overrides.ai
-		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai))
+		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai, builtins))
 		: undefined;
 }
 

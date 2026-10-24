@@ -114,7 +114,7 @@ import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
-import { resolveAiOverride, toGeneratorConfig } from "./ai-config.js";
+import { builtinPersonasOf, resolveAiOverride, toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
 	makeExistingCardBgPicker,
@@ -516,7 +516,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 本体在 `./ai-config.ts` —— 「试一句」与统计页的锐评用的是同一份映射,人格该
 	// 从哪儿读只能有一个答案。指针指向一个还没添加的服务商时 resolveAIProfile 兜一套
 	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
-	const buildAiConfig = () => toGeneratorConfig(globals().ai);
+	const buildAiConfig = () => toGeneratorConfig(globals().ai, builtinPersonasOf(globals()));
 
 	const liveNowReader = (): LiveNowReader | undefined => {
 		const table = opts.liveTable;
@@ -955,7 +955,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 都把 ai 误判成变了 → 白白热重载 AI)。往 globals 里塞键的新代码
 				// 必须维持这个不变式,否则这里会静默产生假阳性。
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-				const aiChanged = !eq(prev.ai, g.ai);
+				// 内置人格的内容跟着语言走:只换语言(ai 没动)常驻生成器也要换成新语言的人格。
+				const aiChanged =
+					!eq(prev.ai, g.ai) || textSettingsOf(prev).locale !== textSettingsOf(g).locale;
 				const cardStyleChanged = !eq(prev.defaults.cards, g.defaults.cards);
 				// 旋钮拧一格与换皮肤同一档:出图立刻变个样。只喂渲染器的 config(旋钮不
 				// 参与 per-sub 快照 —— 它按皮肤 id 存,全局一份)。
@@ -1399,7 +1401,7 @@ export function postSettingsOf(
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		aiEnabled: globals.ai.enabled && aiWriting,
 		aiWebSearch: globals.ai.search.engines.dynamic,
-		aiOverride: resolveAiOverride(sub, globals.ai),
+		aiOverride: resolveAiOverride(sub, globals.ai, builtinPersonasOf(globals)),
 		template: templates.post,
 		videoTemplate: templates.postVideo,
 		imageGroup: { enabled: eff.imageGroup.enabled, mergeForward: eff.imageGroup.mergeForward },

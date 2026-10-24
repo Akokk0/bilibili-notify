@@ -32,16 +32,19 @@
 import {
 	AI_PROVIDER_IDS,
 	AISettingsSchema,
-	DEFAULT_AI,
 	GlobalConfigSchema,
 	LinkPreviewSettingsSchema,
 } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
 import { migrateLegacyLinkParsing, renameLinkParsing } from "../link-parsing.js";
 import { migrateGlobals, migrateGlobalsToCurrent, moveHistoryRetention } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
+
+// 迁移吐的是 0.x 补齐的那四份内置(老代形状);1.0 的活 schema 里它们不再落盘,这里拿内置原文当输入
+const FACTORY_PRESETS = builtinPresetsFor("zh-CN");
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -310,11 +313,11 @@ describe("AI 迁移 · 桶内字段的默认值与拒收", () => {
 function personaBase(over: Record<string, unknown> = {}) {
 	return {
 		enabled: true,
-		persona: DEFAULT_AI.persona,
+		persona: FACTORY_PRESETS[0]?.persona,
 		dynamicPrompt: "",
 		liveSummaryPrompt: "",
 		providers: {},
-		presets: DEFAULT_AI.presets,
+		presets: FACTORY_PRESETS,
 		...over,
 	};
 }
@@ -338,10 +341,10 @@ describe("AI 迁移 · 人格指针 · 首次带上指针", () => {
 
 	it("persona 与某份预设一模一样 → 指向它,不平白多造一份重复的", () => {
 		const ai = parseAi(
-			personaBase({ persona: DEFAULT_AI.presets[1]?.persona }), // 傲娇毒舌
+			personaBase({ persona: FACTORY_PRESETS[1]?.persona }), // 傲娇毒舌
 		);
 		expect(ai.activePreset).toBe("tsundere");
-		expect(ai.presets).toHaveLength(DEFAULT_AI.presets.length);
+		expect(ai.presets).toHaveLength(FACTORY_PRESETS.length);
 	});
 
 	it("persona 是手改过的 → 造一份预设装着它并指过去,一个字都不丢", () => {
@@ -371,7 +374,9 @@ describe("AI 迁移 · 人格指针 · 首次带上指针", () => {
 		// 最阴的一条:主人选了「傲娇毒舌」,但 ai.persona 还留着女仆那份内容(指针本来
 		// 就不改写 persona)。迁移若不先认指针,每次读配置都会按 persona 把选择重置回
 		// 「温柔女仆」—— 主人换来换去发现「怎么重启又变回去了」。
-		const ai = parseAi(personaBase({ persona: DEFAULT_AI.persona, activePreset: "tsundere" }));
+		const ai = parseAi(
+			personaBase({ persona: FACTORY_PRESETS[0]?.persona, activePreset: "tsundere" }),
+		);
 		expect(ai.activePreset).toBe("tsundere");
 	});
 
@@ -379,7 +384,7 @@ describe("AI 迁移 · 人格指针 · 首次带上指针", () => {
 		const ai = parseAi(
 			personaBase({
 				persona: HAND_WRITTEN,
-				presets: [{ id: "custom-persona", label: "占位的", persona: DEFAULT_AI.persona }],
+				presets: [{ id: "custom-persona", label: "占位的", persona: FACTORY_PRESETS[0]?.persona }],
 			}),
 		);
 		const ids = ai.presets.map((p) => p.id);
@@ -402,20 +407,20 @@ describe("AI 迁移 · 人格指针 · 不变量:恒有一份人格可用", () =
 		// store 里 `presets.length === 0` 就不再成立,补齐**永远不触发** ——
 		// 那些老用户从此只剩孤零零一份,内置的三份凭空消失。
 		const ai = parseAi(personaBase({ presets: [], persona: HAND_WRITTEN }));
-		for (const b of DEFAULT_AI.presets) {
+		for (const b of FACTORY_PRESETS) {
 			expect(ai.presets.some((p) => p.id === b.id)).toBe(true);
 		}
 	});
 
 	it("presets 空且 persona 是手改过的 → 内置四份**加上**他自己那份,并选中自己那份", () => {
 		const ai = parseAi(personaBase({ presets: [], persona: HAND_WRITTEN }));
-		expect(ai.presets).toHaveLength(DEFAULT_AI.presets.length + 1);
+		expect(ai.presets).toHaveLength(FACTORY_PRESETS.length + 1);
 		expect(ai.presets.find((p) => p.id === ai.activePreset)?.persona).toEqual(HAND_WRITTEN);
 	});
 
 	it("presets 空且 persona 就是内置那份 → 只补内置四份,不多造重复的", () => {
-		const ai = parseAi(personaBase({ presets: [], persona: DEFAULT_AI.persona }));
-		expect(ai.presets).toHaveLength(DEFAULT_AI.presets.length);
+		const ai = parseAi(personaBase({ presets: [], persona: FACTORY_PRESETS[0]?.persona }));
+		expect(ai.presets).toHaveLength(FACTORY_PRESETS.length);
 		expect(ai.activePreset).toBe("gentle-maid");
 	});
 

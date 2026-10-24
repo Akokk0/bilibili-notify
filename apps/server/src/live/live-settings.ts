@@ -19,7 +19,7 @@ import {
 	templateDefaultsFor,
 } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
-import { resolveAiOverride } from "../runtime/ai-config.js";
+import { builtinPersonasOf, resolveAiOverride } from "../runtime/ai-config.js";
 import type { CustomLiveMsgLike, PickLiveCover, SpecialViewerSettings } from "./live-types";
 
 /**
@@ -145,7 +145,7 @@ export function liveSettingsOf(
 		templateDefaultsFor(textSettingsOf(globals).locale),
 	);
 	return {
-		aiOverride: resolveAiOverride(sub, globals.ai),
+		aiOverride: resolveAiOverride(sub, globals.ai, builtinPersonasOf(globals)),
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
 		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。

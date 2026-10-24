@@ -42,7 +42,7 @@ import { type ImageStore, imageExtOf, isValidImageRef } from "../images/image-st
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillReader } from "../maid-skills/reader.js";
 import type { MaidSkillEntry } from "../maid-skills/store.js";
-import { toGeneratorConfig } from "../runtime/ai-config.js";
+import { builtinPersonasOf, toGeneratorConfig } from "../runtime/ai-config.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import {
 	type ChatSkinImage,
@@ -163,6 +163,7 @@ export function createAiRoute(
 			// 两边都要按**同一个桶**取:草稿选的是哪家,就拿那家已存的 key。
 			config: toGeneratorConfig(
 				withStoredApiKey(ai, deps.store.getGlobals().ai, (body as { ai?: unknown }).ai),
+				builtinPersonasOf(deps.store.getGlobals()),
 			),
 			nouns: promptNounsOf(deps),
 		});

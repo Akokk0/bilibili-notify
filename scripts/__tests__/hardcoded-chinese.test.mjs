@@ -282,7 +282,7 @@ export const RATCHET = {
 	"apps/web/src/components/update/status.ts": 14,
 	"apps/web/src/components/update/update-section.tsx": 46,
 	"apps/web/src/config/auth-status.ts": 6,
-	"apps/web/src/config/field-labels.ts": 229,
+	"apps/web/src/config/field-labels.ts": 220,
 	"apps/web/src/config/nav.ts": 12,
 	"apps/web/src/config/push-features.ts": 20,
 	"apps/web/src/hooks/useUpdateCheckOnOpen.ts": 1,

@@ -116,7 +116,7 @@ export interface PerUpEditorProps {
 	defaults: GlobalDefaults;
 	/** 当前语言的出厂文字:全局没存的文字格,订阅覆盖的基线取它。 */
 	factory: BuiltinTemplates;
-	/** 全局的人格库:「AI 人格」那一节从里面挑一份。 */
+	/** 全局的人格库(没删的内置 + 主人自己的,内置取当前语言):「AI 人格」那一节从里面挑一份。 */
 	presets: AISettings["presets"];
 	section: SectionId;
 }
@@ -1246,8 +1246,8 @@ function AiOverrideBox({
 	 * 开它,写回去的是一个干干净净的新对象,当年残留的 persona / prompt 顺手就没了。
 	 */
 	const enabled = hasAiPersonaOverride(value, presets);
-	// 开关打开时落到第一份。`presets` 按约定恒非空(出厂默认、迁移器补齐 0.x 的空列表、设置页删不掉
-	// 最后一份,见 `AISettingsObjectSchema` 里 presets 的注释),所以这里不必为空列表留一条走不到的分支。
+	// 开关打开时落到第一份。人格库按约定恒非空(设置页删不掉最后一份,内置的又不落盘、只记删了哪几份),
+	// 所以这里不必为空列表留一条走不到的分支。
 	const firstPresetId = presets[0]?.id ?? "";
 
 	return (

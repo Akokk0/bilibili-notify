@@ -6,10 +6,12 @@ import {
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSourceAuth } from "../../hooks/use-source-auth";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
@@ -279,9 +281,10 @@ export function ChatPage() {
 	const ai = globalsQuery.data?.ai;
 	const modelName = ai ? resolveAIProfile(ai).model : undefined;
 	// 名字 / 自称 / 对主人的称呼一律跟**当前选中的那份人格**走(`activePreset` 指的
-	// 那份),界面上不写死。直读 `ai.persona` 的话主人换了人格这里也不动 —— 那个字段
-	// 自人格指针上线就没有界面入口、永远冻在老值上,而她开口自称的是新那位。
-	const persona = resolveChatPersona(ai ? resolveActivePersona(ai).persona : undefined);
+	// 那份),界面上不写死。内置人格的内容按当前语言取(设置里不存),与引擎同一个读法。
+	const locale = textSettingsOf(globalsQuery.data ?? {}).locale;
+	const builtins = useMemo(() => builtinPresetsFor(locale), [locale]);
+	const persona = resolveChatPersona(ai ? resolveActivePersona(ai, builtins).persona : undefined);
 
 	const { state: authState, account } = useSourceAuth(BILIBILI_SOURCE_KEY);
 	const card = authState?.status === "logged-in" ? account : undefined;

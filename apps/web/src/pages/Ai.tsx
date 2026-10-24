@@ -10,9 +10,8 @@
  *   同一套语义。右侧是那一份的整套配置:模型连接 / 图片理解 / 生成参数。哪些字段
  *   摆出来由 `AIProviderMeta` 的能力位说了算 —— 摆一个那家根本不支持的选项,
  *   主人调了没反应只会以为保存坏了。
- * - **女仆性格** —— 左栏是「默认 + presets[]」。点某一项 = 切换**我在编辑谁**,
- *   不再像旧界面那样把预设复制进 `ai.persona`(点着看看就覆盖掉主人手写的全局
- *   人格)。要套用到全局有单独的「设为默认」按钮。
+ * - **女仆性格** —— 左栏是没删的内置(内容取当前语言,设置里只记删了哪几份)加主人自己的 `presets[]`。
+ *   点某一项 = 切换**我在编辑谁**,不是「换用这一份」。要套用到全局有单独的「设为默认」按钮。
  *
  * 总开关不属于任何一家或任何一份人格,放在头图上,不进 Tab。(曾经并排摆在底部的
  * 日志等级已整体搬去系统页那格「按模块覆盖」,与另外四个模块同住。)
@@ -21,6 +20,7 @@
  */
 
 import type { GlobalConfigView, SecretCellDraft } from "@bilibili-notify/contract";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import {
 	type APIFlavorId,
 	canProfileThink,
@@ -32,6 +32,7 @@ import {
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
 } from "@bilibili-notify/internal/constants";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Btn,
@@ -131,23 +132,12 @@ function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<str
  *
  * AISettings 字段在 JSX 里 code 风格分两组:
  * - 连接 / 参数:`<Field code={`ai.providers.${家}.apiKey`}>` → `ai.providers` 下逐家
- * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层
+ * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层(只有主人自己的那几份;内置的不落盘)
  */
 function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
-	const {
-		dynamicPrompt,
-		liveSummaryPrompt,
-		persona,
-		presets,
-		enabled,
-		activeProfile,
-		activePreset,
-		search,
-	} = ai;
+	const { presets, removedBuiltinPresets, enabled, activeProfile, activePreset, search } = ai;
 	return {
 		ai: {
-			dynamicPrompt,
-			liveSummaryPrompt,
 			// `ai.chat`(聊天页的思考等级)**不在**这里:它的编辑口在聊天侧栏的
 			// 「设置」弹层,点档位立即 PATCH,不走本页的草稿 + 保存条。
 			// 联网搜索(后端 / key / 引擎开关)。两侧都经 schema 补齐,恒为完整对象,
@@ -164,8 +154,9 @@ function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
 			// 全局用哪份人格是个指针,不改写 persona —— 不显式喂给灵动岛的话,
 			// 换一份性格在它眼里毫无变化,保存条不亮。
 			activePreset: activePreset ?? "",
+			// 删掉了哪几份内置:内置不落盘、删一份 `presets` 不会变,不喂进去的话删内置保存条不亮。
+			removedBuiltinPresets: (removedBuiltinPresets ?? []).join(","),
 		},
-		persona,
 		presets,
 		enabled,
 	};
@@ -251,6 +242,10 @@ export default function Ai() {
 		return packIsland(globalsQuery.data.ai, providerKeys);
 	}, [globalsQuery.data, providerKeys]);
 
+	// 内置人格的内容按当前语言取,设置里不存(ADR-0037 决策 11);语言来自整份设置。
+	const locale = textSettingsOf(globalsQuery.data ?? {}).locale;
+	const builtins = useMemo(() => builtinPresetsFor(locale), [locale]);
+
 	useDirtyDraft({
 		pageKey: "ai",
 		pageLabel: "智能女仆",
@@ -291,9 +286,8 @@ export default function Ai() {
 	// 头图那颗药丸报的是**女仆真正在用的那份**的模型,与左栏在看哪一份无关。
 	const globalProfile = resolveAIProfile(draft);
 	// 头图那行名字同理:报的是**女仆真正在用的那份人格**(`activePreset` 指的那份),
-	// 与左栏在编辑哪一份无关。直读 `draft.persona` 的话换来换去它一动不动 —— 那个
-	// 字段自人格指针上线就没有界面入口、永远冻在老值上。
-	const globalPersona = resolveActivePersona(draft).persona;
+	// 与左栏在编辑哪一份无关;内置那份的内容取当前语言。
+	const globalPersona = resolveActivePersona(draft, builtins).persona;
 	// 配了视觉副模型 = 副模型无条件接管,enableVision 与它的地址/密钥两格的
 	// 可交互性都跟着这一个判断走(与 CommentaryGenerator#resolveImages 同源)。
 	const visionSubModelOn = profile.vision.model.trim().length > 0;
@@ -303,20 +297,17 @@ export default function Ai() {
 
 	// 左栏选中项收敛到真实存在的一项,否则会出现「左栏没有任何高亮、右侧却显示着
 	// 默认那一份」——高亮项与内容各说各话。
-	const activePersonaId = resolvePersonaRailId(draft, personaRailId);
-	const personaDraft = personaAt(draft, activePersonaId);
+	const activePersonaId = resolvePersonaRailId(draft, builtins, personaRailId);
+	const personaDraft = personaAt(draft, builtins, activePersonaId);
+	const personaRail = personaRailItems(draft, builtins);
 	// 这一份是不是女仆平时用的那份。左栏副标题、右上角按钮与说明条都跟着它。
-	const isGlobalPersona = globalPersonaRailId(draft) === activePersonaId;
-	const activePresetId =
-		personaRailItems(draft).find((i) => i.id === activePersonaId)?.presetId ?? "";
+	const isGlobalPersona = globalPersonaRailId(draft, builtins) === activePersonaId;
+	const activePresetId = personaRail.find((i) => i.id === activePersonaId)?.presetId ?? "";
 	// 内置那几份是只读的参照库:能删、能「从内置修改」另存一份可改的,但不能就地改
 	// —— 改花了「从内置恢复」就没有稳定的东西可恢复了。
 	const personaLocked = isBuiltinPersona(activePresetId);
-	const restorable = missingBuiltinPersonas(draft);
-	const ActivePersonaGlyph =
-		Icon[
-			personaIconKey(personaRailItems(draft).find((i) => i.id === activePersonaId)?.presetId ?? "")
-		];
+	const restorable = missingBuiltinPersonas(draft, builtins);
+	const ActivePersonaGlyph = Icon[personaIconKey(activePresetId)];
 
 	function setAi<K extends keyof AISettingsDraft>(k: K, v: AISettingsDraft[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
@@ -377,14 +368,14 @@ export default function Ai() {
 	function setPersona<K extends keyof AIPersona>(k: K, v: AIPersona[K]): void {
 		setDraft((d) =>
 			d
-				? updatePersonaAt(d, activePersonaId, {
-						persona: { ...personaAt(d, activePersonaId).persona, [k]: v },
+				? updatePersonaAt(d, builtins, activePersonaId, {
+						persona: { ...personaAt(d, builtins, activePersonaId).persona, [k]: v },
 					})
 				: d,
 		);
 	}
 	function setPersonaPrompt(k: "dynamicPrompt" | "liveSummaryPrompt", v: string): void {
-		setDraft((d) => (d ? updatePersonaAt(d, activePersonaId, { [k]: v }) : d));
+		setDraft((d) => (d ? updatePersonaAt(d, builtins, activePersonaId, { [k]: v }) : d));
 	}
 
 	return (
@@ -544,8 +535,8 @@ export default function Ai() {
 						</FieldNote>
 					</GlassBox>
 
-					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写 ai.persona。
-					    切回「默认」时主人手写的那份原封不动地回来;想改内容去「女仆性格」那个 Tab。 */}
+					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写任何一份的内容;
+					    想改内容去「女仆性格」那个 Tab。 */}
 					<GlassBox
 						title="全局人格 · persona"
 						subtitle="女仆平时用哪一份性格 · ai.activePreset"
@@ -557,20 +548,20 @@ export default function Ai() {
 							code="ai.activePreset"
 							full
 							hint={
-								draft.presets.length === 0
+								personaRail.length === 0
 									? "还没有别的性格 —— 到「女仆性格」那个 Tab 点「+ 添加」造一份"
 									: undefined
 							}
 						>
 							<Picker<string>
-								value={globalPersonaRailId(draft)}
-								onChange={(v) => setDraft((d) => (d ? setGlobalPersona(d, v) : d))}
-								options={personaRailItems(draft).map((i) => ({ value: i.id, label: i.label }))}
+								value={globalPersonaRailId(draft, builtins)}
+								onChange={(v) => setDraft((d) => (d ? setGlobalPersona(d, builtins, v) : d))}
+								options={personaRail.map((i) => ({ value: i.id, label: i.label }))}
 							/>
 						</Field>
 						<FieldNote>
 							这里只决定<strong>用哪一份</strong>，不改它的内容 —— 内容在「女仆性格」那个 Tab
-							里编辑。 换来换去都不会动到主人手写的那份「默认」
+							里编辑。 换来换去都不会动到任何一份的内容
 						</FieldNote>
 					</GlassBox>
 
@@ -916,7 +907,7 @@ export default function Ai() {
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
 						heading="性格"
-						items={personaRailItems(draft).map((item) => {
+						items={personaRail.map((item) => {
 							// 四份内置的各有各的样子(主人一眼要认出哪个是哪个);自己加的
 							// 用通用小人像。映射与漏画守卫见 ./ai/persona-icons。
 							const Glyph = Icon[personaIconKey(item.presetId)];
@@ -926,7 +917,7 @@ export default function Ai() {
 								// 与服务商那栏同一颗指示器。此前这里写的是一行副标题文字,
 								// 两栏各说各的;共用之后观感只有一处定义。
 								badge:
-									globalPersonaRailId(draft) === item.id ? (
+									globalPersonaRailId(draft, builtins) === item.id ? (
 										<RailDot title="女仆平时用的就是这份" active={item.id === activePersonaId} />
 									) : undefined,
 								icon: <Glyph size={14} />,
@@ -1014,7 +1005,7 @@ export default function Ai() {
 												variant="outline"
 												size="sm"
 												onClick={() => {
-													const next = duplicatePersona(draft, activePersonaId);
+													const next = duplicatePersona(draft, builtins, activePersonaId);
 													setDraft(next.ai);
 													setPersonaRailId(next.railId);
 												}}
@@ -1027,7 +1018,7 @@ export default function Ai() {
 												variant="outline"
 												size="sm"
 												onClick={() =>
-													setDraft((d) => (d ? setGlobalPersona(d, activePersonaId) : d))
+													setDraft((d) => (d ? setGlobalPersona(d, builtins, activePersonaId) : d))
 												}
 											>
 												设为默认
@@ -1035,12 +1026,12 @@ export default function Ai() {
 										)}
 										{/* 最后一份删不掉 —— AI 总得有一份人格。按钮直接不摆,
 									    好过摆一个点了没反应的。 */}
-										{draft.presets.length > 1 ? (
+										{personaRail.length > 1 ? (
 											<Btn
 												variant="danger-outline"
 												size="sm"
 												onClick={() => {
-													setDraft((d) => (d ? removePersona(d, activePersonaId) : d));
+													setDraft((d) => (d ? removePersona(d, builtins, activePersonaId) : d));
 													setPersonaRailId("");
 												}}
 											>
@@ -1070,11 +1061,9 @@ export default function Ai() {
 								)}
 								<Field code="presets" label="性格名称" full>
 									<TInput
-										value={
-											personaRailItems(draft).find((i) => i.id === activePersonaId)?.label ?? ""
-										}
+										value={personaRail.find((i) => i.id === activePersonaId)?.label ?? ""}
 										onChange={(v) =>
-											setDraft((d) => (d ? renamePersona(d, activePersonaId, v) : d))
+											setDraft((d) => (d ? renamePersona(d, builtins, activePersonaId, v) : d))
 										}
 										placeholder="傲娇"
 									/>

@@ -126,7 +126,7 @@ function baseDisk(): Json {
 	disk.profileRefreshCron = "*/5 * * * *";
 	disk.mutedUntil = 123;
 	disk.defaults.imageGroup = { ...disk.defaults.imageGroup, enabled: false };
-	disk.ai.dynamicPrompt = "自己写的提示词";
+	disk.ai.activePreset = "analyst";
 	return disk;
 }
 
@@ -208,7 +208,7 @@ const BAD_KINDS: Array<{
 		spoil: (d) => {
 			d.ai.providers = [{ provider: "openrouter" }];
 		},
-		sibling: { path: ["ai", "dynamicPrompt"], value: "自己写的提示词" },
+		sibling: { path: ["ai", "activePreset"], value: "analyst" },
 	},
 	{
 		name: "ai 整格是字符串",
@@ -1093,15 +1093,27 @@ describe("ai 的子格坏着、到面板重存(真 SecretStore、真文件)", ()
 	/** 每一格:怎么弄坏、面板重存时发的合法新值(要与内存里的默认值不同,才算「重存了那一格」)。 */
 	const OTHER_CELLS: Array<[cell: string, broken: unknown, fixed: () => unknown]> = [
 		["enabled", "开", () => !makeDefaultGlobalConfig().ai.enabled],
-		["persona", "坏的", () => ({ ...makeDefaultGlobalConfig().ai.persona, name: "新名字" })],
-		["dynamicPrompt", 5, () => "新的动态提示词"],
-		["liveSummaryPrompt", 5, () => "新的总结提示词"],
+		["removedBuiltinPresets", "坏的", () => ["genki"]],
 		["activeProfile", 5, () => "openrouter"],
 		["activePreset", 5, () => "some-preset"],
 		[
 			"presets",
 			"坏的",
-			() => makeDefaultGlobalConfig().ai.presets.map((p) => ({ ...p, label: `${p.label}改` })),
+			() => [
+				{
+					id: "mine",
+					label: "我的",
+					persona: {
+						name: "阿绫",
+						addressUser: "老板",
+						addressSelf: "我",
+						traits: "",
+						catchphrase: "",
+						baseRole: "",
+						extraSystemPrompt: "",
+					},
+				},
+			],
 		],
 		["chat", "坏的", () => ({ thinkingLevel: "high" })],
 	];

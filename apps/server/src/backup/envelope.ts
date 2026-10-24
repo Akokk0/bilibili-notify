@@ -28,7 +28,9 @@ import { BackupRejectedError } from "./rejected-error.js";
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
  * 22 = 文字模板只存改过的以后导出的备份(设置 `defaults.templates` 里没改过的文字格不在,读时按当前语言取出厂;
- * 老备份里整份存着的默认原文会被当成「主人改过的」,不再跟语言,所以整份拒收)。
+ * 老备份里整份存着的默认原文会被当成「主人改过的」,不再跟语言,所以整份拒收)；内置人格也只记删了哪几份
+ * (`ai.removedBuiltinPresets`,缺 = 一份没删;`ai.presets` 只装主人自己的,顶层 `persona` / 两段提示词不再有,
+ * 老备份里整份存着的四份内置会和内置列表撞 id,同样整份拒收)。
  * 21 = 链接预览的回复形式多了 `text` 以后导出的备份(默认行与逐目标例外的 `replyForm` 都可能是 `text`)。
  * 20 = 直播文案占位符改名以后导出的备份(特别弹幕 / 特别进场的文案用 `{name}` / `{viewer}`,弹幕总结用 `{fanclub}`;
  * 直播的六条文案里没有 `-key` 老写法)。

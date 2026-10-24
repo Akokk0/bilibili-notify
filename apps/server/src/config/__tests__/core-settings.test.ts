@@ -19,7 +19,7 @@ function goodDisk(): Json {
 	disk.mutedUntil = 123;
 	disk.defaults.filters.blockKeywords = ["广告"];
 	disk.defaults.imageGroup = { ...disk.defaults.imageGroup, enabled: false };
-	disk.ai.dynamicPrompt = "自己写的提示词";
+	disk.ai.activePreset = "analyst";
 	disk.ai.activeProfile = "p1";
 	disk.ai.providers = { p1: { provider: "openrouter", label: "我的实例", model: "m" } };
 	// 过一遍 schema 补齐带默认的子格:这样「别的格是入参里的值」可以直接 toEqual 入参那一格。
@@ -126,7 +126,7 @@ describe("parseCoreSettings", () => {
 		}).a;
 		expect(settings.ai.providers.a).toEqual(expectedA);
 		expect(settings.ai.providers.c?.label).toBe("第三家");
-		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
+		expect(settings.ai.activePreset).toBe("analyst");
 		expect(settings.ai.activeProfile).toBe("p1");
 		expect(invalid).toHaveLength(1);
 		expect(invalid[0]?.path).toEqual(["ai", "providers", "b"]);
@@ -146,7 +146,7 @@ describe("parseCoreSettings", () => {
 			post: { isOnByDefault: true, byTarget: {} },
 			liveSummary: { isOnByDefault: true, byTarget: {} },
 		});
-		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
+		expect(settings.ai.activePreset).toBe("analyst");
 		expect(settings.ai.activeProfile).toBe("p1");
 		expect(settings.ai.providers).toEqual(disk.ai.providers);
 		expect(invalid).toHaveLength(1);
@@ -194,7 +194,7 @@ describe("parseCoreSettings", () => {
 		disk.ai.providers = [{ provider: "openrouter" }];
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(settings.ai.providers).toEqual({});
-		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
+		expect(settings.ai.activePreset).toBe("analyst");
 		expect(invalid.map((e) => e.path)).toEqual([["ai", "providers"]]);
 		expect(invalid[0]?.raw).toEqual([{ provider: "openrouter" }]);
 	});
@@ -286,7 +286,7 @@ describe("parseCoreSettings", () => {
 		delete disk.ai.enabled;
 		const { settings, invalid } = parseCoreSettings(disk);
 		expect(settings.ai.enabled).toBe(makeDefaultGlobalConfig().ai.enabled);
-		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
+		expect(settings.ai.activePreset).toBe("analyst");
 		expect(invalid.map((e) => [e.path, e.missing])).toEqual([[["ai", "enabled"], true]]);
 	});
 

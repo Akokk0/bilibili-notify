@@ -339,9 +339,6 @@ export type AIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
 /** AI 总配置（在 GlobalConfig.ai 出现）。 */
 const AISettingsObjectSchema = z.object({
 	enabled: z.boolean(),
-	persona: AIPersonaSchema,
-	dynamicPrompt: z.string(),
-	liveSummaryPrompt: z.string(),
 	/**
 	 * 当前用哪份实例(指向 {@link providers} 的键)。**只认主人明确选过的那一份,
 	 * 绝不按 baseUrl 猜** —— 猜错就是替主人往别家发方言参数(几乎必然 400)。
@@ -430,33 +427,36 @@ const AISettingsObjectSchema = z.object({
 		liveSummary: { isOnByDefault: true, byTarget: {} },
 	})),
 	/**
-	 * 全局此刻启用哪一份人格。**不填 = 用 `persona`**(老配置一字不变,无需迁移);
-	 * 填了就用 `presets` 里那一份。
+	 * 全局此刻启用哪一份人格:指着 `presetsOf` 清单(没删的内置 + `presets`)里的某一份。
+	 * 落空(没填 / 指着刚删掉或备份换掉的)静静回落清单第一份,再落空回落内置首份。
 	 *
-	 * 它是个**指针**而不是「把预设复制进 `persona`」—— 后者一下就把主人手写的那份
-	 * 覆盖了且换不回来,而且想显示「现在选的是哪份」还得拿 persona 去逐字段比对猜。
-	 * 指向一份已不存在的预设时(刚删掉 / 备份换了一批)静静回落 `persona`。
-	 *
-	 * per-UP 的 `overrides.ai.preset` 语义**完全不受影响**:它照旧压过全局,
-	 * 而没设 per-UP 覆盖时继承的就是这里指定的那一份。
+	 * 它是个**指针**而不是「把预设复制出去」—— 复制会把主人手写的那份覆盖掉且换不回来。
+	 * per-UP 的 `overrides.ai.preset` 照旧压过全局;没设覆盖时继承的就是这里指定的那一份。
 	 */
 	activePreset: z.string().optional(),
 	/**
-	 * 备着的人格清单。**按约定恒非空** —— 出厂默认就是内置那几份,0.x 预设上线前的 `presets: []` 由迁移器
-	 * 补齐(`apps/server/src/migration/ai.ts`),设置页又删不掉最后一份,所以设置页不必为「一份都没有」留分支。
-	 * schema 自己不拦空数组:手改配置写得进来,那时 `resolveActivePersona` 回落 `ai.persona`。
-	 *
-	 * per-UP 的 `overrides.ai.preset` 指的就是这里的 `id`(详见 `AIOverrideSchema`)。
+	 * 删掉了哪几份内置人格(内置的 id)。**缺 = 一份没删**,不带 `.default` —— 只有改过的才落盘,
+	 * 新装不写这一格;以后新加的内置人格所有人自动看到,删过的不回来(ADR-0037 决策 11,主人 10-24 定)。
+	 * 内置的内容每次按当前语言取(`builtinPresetsFor`),设置里不存它们的内容。
 	 */
-	presets: z.array(
-		z.object({
-			id: z.string(),
-			label: z.string(),
-			persona: AIPersonaSchema,
-			dynamicPrompt: z.string().optional(),
-			liveSummaryPrompt: z.string().optional(),
-		}),
-	),
+	removedBuiltinPresets: z.array(z.string()).optional(),
+	/**
+	 * 主人自己建的人格(含从内置「修改」另存的副本 —— 另存的是当时那种语言的内容,之后不再跟语言)。
+	 * 不装内置那几份;老代的盘上若混着内置 id 的条目,`presetsOf` 以内置为准、跳过它们。
+	 *
+	 * per-UP 的 `overrides.ai.preset` 指的就是 `presetsOf` 清单里的 `id`(详见 `AIOverrideSchema`)。
+	 */
+	presets: z
+		.array(
+			z.object({
+				id: z.string(),
+				label: z.string(),
+				persona: AIPersonaSchema,
+				dynamicPrompt: z.string().optional(),
+				liveSummaryPrompt: z.string().optional(),
+			}),
+		)
+		.default([]),
 });
 
 /**

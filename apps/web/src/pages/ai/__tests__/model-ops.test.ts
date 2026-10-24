@@ -6,9 +6,9 @@
  * 删到一家不剩会不会炸、新人格的 id 撞没撞上。
  */
 
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/constants";
-import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+import { buildPatch } from "@bilibili-notify/internal/patch";
 import { describe, expect, it } from "vite-plus/test";
 import type { AIPersona, AISettings } from "../../../types/globals";
 import {
@@ -32,7 +32,8 @@ import {
 	updatePersonaAt,
 } from "../model-ops";
 
-const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
+// 内置人格每次按当前语言取,设置里不存(ADR-0037 决策 11)
+const BUILTINS = builtinPresetsFor("zh-CN");
 
 const PERSONA: AIPersona = {
 	name: "",
@@ -47,9 +48,6 @@ const PERSONA: AIPersona = {
 function settings(over: Partial<AISettings> = {}): AISettings {
 	return {
 		enabled: true,
-		persona: PERSONA,
-		dynamicPrompt: "",
-		liveSummaryPrompt: "",
 		activeProfile: "",
 		providers: {},
 		chat: {},
@@ -317,15 +315,17 @@ describe("removeProfile", () => {
 
 // ── 人格左栏 ────────────────────────────────────────────────────────────
 //
-// 人格只住在 `presets[]` 里,`activePreset` 指着全局用的那一份。曾经还有个「默认」项
-// 对应 `ai.persona` —— 但它与 `presets[0]`「温柔女仆」本就是同一份东西,摆两个入口是
-// 重复。presets 恒非空、指针恒有着落:出厂默认自带,0.x 的存量配置由迁移器补齐
-// (见 apps/server/src/migration/ai.ts)。
+// 左栏 = 没删的内置(内容取当前语言)+ 主人自己的 `presets[]`;`activePreset` 指着全局用的那一份。
+// 设置里只记「删了哪几份内置」(`removedBuiltinPresets`,缺 = 一份没删)。
+// 下面凡是只想测"主人自己的"那一支,用 `ownerOnly` 把四份内置都标成已删。
 
 const TSUNDERE: AIPersona = { ...PERSONA, name: "傲娇", traits: "毒舌" };
+const ALL_BUILTIN_IDS = [...BUILTIN_PRESET_IDS];
 
-function withPresets(...labels: string[]): AISettings {
+/** 只有主人自己的人格(四份内置都标成已删)。 */
+function ownerOnly(...labels: string[]): AISettings {
 	return settings({
+		removedBuiltinPresets: ALL_BUILTIN_IDS,
 		presets: labels.map((label, i) => ({
 			id: `p${i}`,
 			label,
@@ -335,51 +335,74 @@ function withPresets(...labels: string[]): AISettings {
 }
 
 describe("personaRailItems", () => {
-	it("左栏就是人格清单本身,没有多余的「默认」项", () => {
-		expect(personaRailItems(withPresets("温柔女仆", "傲娇毒舌")).map((i) => i.label)).toEqual([
-			"温柔女仆",
-			"傲娇毒舌",
+	it("左栏 = 没删的内置 + 主人自己的,内置在前", () => {
+		const ai = settings({
+			removedBuiltinPresets: ["tsundere"],
+			presets: [{ id: "mine", label: "我的", persona: PERSONA }],
+		});
+		expect(personaRailItems(ai, BUILTINS).map((i) => i.presetId)).toEqual([
+			"gentle-maid",
+			"analyst",
+			"genki",
+			"mine",
 		]);
 	});
 
+	it("缺 removedBuiltinPresets = 一份没删:四份内置全在", () => {
+		expect(personaRailItems(settings(), BUILTINS).map((i) => i.presetId)).toEqual(ALL_BUILTIN_IDS);
+	});
+
+	it("内置的名字取传进来的(当前语言)那份", () => {
+		const en = BUILTINS.map((p) => ({ ...p, label: `EN ${p.label}` }));
+		expect(personaRailItems(settings(), en)[0]?.label).toBe("EN 温柔女仆");
+	});
+
 	it("带上原始 preset id —— 调用方查图标要用,不该自己去切前缀", () => {
-		expect(personaRailItems(withPresets("温柔女仆"))[0]).toMatchObject({
+		expect(personaRailItems(ownerOnly("温柔女仆"), BUILTINS)[0]).toMatchObject({
 			id: "preset:p0",
 			presetId: "p0",
 		});
 	});
 
 	it("没起名的显示占位,而不是渲染成一条空白行", () => {
-		const ai = settings({ presets: [{ id: "x", label: "", persona: PERSONA }] });
-		expect(personaRailItems(ai)[0]?.label).toBe("(未命名)");
+		const ai = settings({
+			removedBuiltinPresets: ALL_BUILTIN_IDS,
+			presets: [{ id: "x", label: "", persona: PERSONA }],
+		});
+		expect(personaRailItems(ai, BUILTINS)[0]?.label).toBe("(未命名)");
 	});
 });
 
 describe("personaAt —— 右侧编辑的是谁", () => {
 	const ai = settings({
-		dynamicPrompt: "全局动态",
-		liveSummaryPrompt: "全局总结",
 		presets: [
-			{ id: "tsundere", label: "傲娇", persona: TSUNDERE, dynamicPrompt: "傲娇动态" },
-			{ id: "maid", label: "女仆", persona: { ...PERSONA, name: "小绫" } },
+			{ id: "mine-a", label: "傲娇", persona: TSUNDERE, dynamicPrompt: "傲娇动态" },
+			{ id: "mine-b", label: "女仆", persona: { ...PERSONA, name: "小绫2" } },
 		],
 	});
 
 	it("选哪一份就编辑哪一份", () => {
-		expect(personaAt(ai, "preset:maid").persona.name).toBe("小绫");
-		expect(personaAt(ai, "preset:tsundere").persona.name).toBe("傲娇");
+		expect(personaAt(ai, BUILTINS, "preset:mine-b").persona.name).toBe("小绫2");
+		expect(personaAt(ai, BUILTINS, "preset:mine-a").persona.name).toBe("傲娇");
 	});
 
-	it("预设没写的那段 prompt 显示为空,而不是把全局那段搬过来充数", () => {
-		// prompt 是 optional:undefined = 用全局那份(见 resolve() 的 ?? 链)。把全局
-		// 文案填进输入框的话,主人一保存就把它坐实成一份副本,此后改全局再也带不动它,
-		// 而界面上完全看不出发生了这件事。
-		expect(personaAt(ai, "preset:tsundere").liveSummaryPrompt).toBe("");
-		expect(personaAt(ai, "preset:tsundere").dynamicPrompt).toBe("傲娇动态");
+	it("内置的内容取传进来的(当前语言)那份,两段 prompt 齐全", () => {
+		const en = BUILTINS.map((p) => ({ ...p, dynamicPrompt: `EN ${p.dynamicPrompt}` }));
+		expect(personaAt(ai, en, "preset:tsundere").dynamicPrompt).toBe(
+			`EN ${BUILTINS[1]?.dynamicPrompt}`,
+		);
+		expect(personaAt(ai, BUILTINS, "preset:tsundere").persona.name).toBe("凛子");
 	});
 
-	it("指向一份不存在的(刚被删掉)→ 收回第一份,不炸", () => {
-		expect(personaAt(ai, "preset:gone").persona.name).toBe("傲娇");
+	it("主人那份没写的 prompt 显示为空,而不是把内置那段搬过来充数", () => {
+		// prompt 是 optional:undefined = 用内置首份的那段。把它填进输入框的话,主人一保存
+		// 就把「跟随」坐实成一份副本,而界面上完全看不出发生了这件事。
+		expect(personaAt(ai, BUILTINS, "preset:mine-a").liveSummaryPrompt).toBe("");
+		expect(personaAt(ai, BUILTINS, "preset:mine-a").dynamicPrompt).toBe("傲娇动态");
+	});
+
+	it("指向一份不存在的(刚被删掉)→ 收回左栏第一份,不炸", () => {
+		expect(personaAt(ai, BUILTINS, "preset:gone").persona.name).toBe("小绫");
 	});
 });
 
@@ -388,7 +411,6 @@ describe("updatePersonaAt —— 编辑落在谁身上", () => {
 	// 这一组测的是自建人格的编辑路径。
 	function base(): AISettings {
 		return settings({
-			persona: { ...PERSONA, name: "遗留的" },
 			presets: [
 				{ id: "mine-a", label: "傲娇", persona: TSUNDERE, dynamicPrompt: "傲娇动态" },
 				{ id: "mine-b", label: "女仆", persona: { ...PERSONA, name: "小绫" } },
@@ -397,62 +419,56 @@ describe("updatePersonaAt —— 编辑落在谁身上", () => {
 	}
 
 	it("改的是选中那一份,别的一根毛都不动", () => {
-		const next = updatePersonaAt(base(), "preset:mine-a", {
+		const next = updatePersonaAt(base(), BUILTINS, "preset:mine-a", {
 			persona: { ...TSUNDERE, name: "改了" },
 		});
 		expect(next.presets[0]?.persona.name).toBe("改了");
 		expect(next.presets[1]?.persona.name).toBe("小绫");
 	});
 
-	it("**不碰** ai.persona —— 它已经没有界面入口,只是 resolve() 的安全网", () => {
-		const next = updatePersonaAt(base(), "preset:mine-a", {
-			persona: { ...TSUNDERE, name: "改了" },
-		});
-		expect(next.persona.name).toBe("遗留的");
-	});
-
-	it("prompt 清空 → 存回 undefined,也就是恢复「用全局那份」", () => {
-		// 存成 "" 的话 resolve() 里的 `?? ` 不会再落到全局(空串不是 nullish),
+	it("prompt 清空 → 存回 undefined,也就是恢复「用内置首份的那段」", () => {
+		// 存成 "" 的话读取处的 `??` 不会再落到内置(空串不是 nullish),
 		// 该预设从此强制发一段**空** prompt。
 		expect(
-			updatePersonaAt(base(), "preset:mine-a", { dynamicPrompt: "" }).presets[0]?.dynamicPrompt,
+			updatePersonaAt(base(), BUILTINS, "preset:mine-a", { dynamicPrompt: "" }).presets[0]
+				?.dynamicPrompt,
 		).toBeUndefined();
 	});
 
 	it("prompt 填了字就照存", () => {
-		const next = updatePersonaAt(base(), "preset:mine-b", { liveSummaryPrompt: "女仆总结" });
+		const next = updatePersonaAt(base(), BUILTINS, "preset:mine-b", {
+			liveSummaryPrompt: "女仆总结",
+		});
 		expect(next.presets[1]?.liveSummaryPrompt).toBe("女仆总结");
 	});
 
 	it("不改原对象", () => {
 		const ai = base();
-		updatePersonaAt(ai, "preset:mine-a", { persona: { ...TSUNDERE, name: "改了" } });
+		updatePersonaAt(ai, BUILTINS, "preset:mine-a", { persona: { ...TSUNDERE, name: "改了" } });
 		expect(ai.presets[0]?.persona.name).toBe("傲娇");
 	});
 });
 
 describe("addPersona", () => {
 	it("追加一份空白人格,并把左栏 id 交回调用方切过去", () => {
-		const { ai, railId } = addPersona(withPresets("温柔女仆"));
+		const { ai, railId } = addPersona(ownerOnly("温柔女仆"));
 		expect(ai.presets).toHaveLength(2);
-		expect(personaAt(ai, railId).persona).toEqual(PERSONA);
+		expect(personaAt(ai, BUILTINS, railId).persona).toEqual(PERSONA);
 	});
 
-	it("新人格的两段 prompt 是 undefined —— 一开始就用全局那份", () => {
-		const { ai } = addPersona(withPresets("温柔女仆"));
+	it("新人格的两段 prompt 是 undefined —— 一开始就用内置首份的那段", () => {
+		const { ai } = addPersona(ownerOnly("温柔女仆"));
 		expect(ai.presets[1]?.dynamicPrompt).toBeUndefined();
 		expect(ai.presets[1]?.liveSummaryPrompt).toBeUndefined();
 	});
 
 	it("id 挑的是**第一个空位**,不是「数一数有几份」", () => {
-		// 只有一份、id 却是 persona-2 时,「presets.length + 1」正好也算出 persona-2,
-		// 当场撞车。数量与编号本来就没有关系。
 		const ai = settings({ presets: [{ id: "persona-2", label: "手写的", persona: PERSONA }] });
 		expect(addPersona(ai).ai.presets[1]?.id).toBe("persona-1");
 	});
 
 	it("撞 id 会静默串台,所以必须跳过已占用的", () => {
-		// per-UP overrides.ai.preset 指着那个 id,resolve() 用 find() 取第一个匹配 ——
+		// per-UP overrides.ai.preset 指着那个 id,读取处用 find() 取第一个匹配 ——
 		// 两份同 id 的预设永远只有前一份生效,主人改后一份怎么改都不生效。
 		const ai = settings({
 			presets: [
@@ -464,77 +480,110 @@ describe("addPersona", () => {
 	});
 
 	it("不改原对象", () => {
-		const ai = withPresets("温柔女仆");
+		const ai = ownerOnly("温柔女仆");
 		addPersona(ai);
 		expect(ai.presets).toHaveLength(1);
 	});
 });
 
 describe("removePersona", () => {
-	it("删掉一份", () => {
-		const next = removePersona(withPresets("甲", "乙"), "preset:p0");
+	it("删掉主人自己的一份 = 从 presets 拿掉,不碰 removedBuiltinPresets", () => {
+		const next = removePersona(ownerOnly("甲", "乙"), BUILTINS, "preset:p0");
 		expect(next.presets.map((p) => p.label)).toEqual(["乙"]);
+		expect(next.removedBuiltinPresets).toEqual(ALL_BUILTIN_IDS);
 	});
 
-	it("**最后一份删不掉** —— AI 总得有一份人格", () => {
-		// 删空了右侧就没东西可显示,resolve() 也只能回落到那份界面上已无入口的 ai.persona。
-		const ai = withPresets("就剩这一份");
-		expect(removePersona(ai, "preset:p0")).toEqual(ai);
+	it("删掉一份内置 = 把它的 id 记进 removedBuiltinPresets,presets 不动", () => {
+		const ai = settings({ presets: [{ id: "mine", label: "我的", persona: PERSONA }] });
+		const next = removePersona(ai, BUILTINS, "preset:tsundere");
+		expect(next.removedBuiltinPresets).toEqual(["tsundere"]);
+		expect(next.presets).toEqual(ai.presets);
+		expect(personaRailItems(next, BUILTINS).map((i) => i.presetId)).not.toContain("tsundere");
+	});
+
+	it("再删一份内置 → 两个 id 都在,且不重复", () => {
+		const once = removePersona(settings(), BUILTINS, "preset:tsundere");
+		const twice = removePersona(once, BUILTINS, "preset:genki");
+		expect(twice.removedBuiltinPresets).toEqual(["tsundere", "genki"]);
+	});
+
+	it("**最后一份删不掉**按左栏总数算(没删的内置 + 主人的)—— AI 总得有一份人格", () => {
+		const ai = ownerOnly("就剩这一份");
+		expect(removePersona(ai, BUILTINS, "preset:p0")).toEqual(ai);
+		// 只剩一份内置、主人也没有:同样删不掉
+		const lastBuiltin = settings({ removedBuiltinPresets: ["gentle-maid", "tsundere", "analyst"] });
+		expect(removePersona(lastBuiltin, BUILTINS, "preset:genki")).toEqual(lastBuiltin);
+		// 内置只剩一份、主人有一份:总数是 2,删得掉
+		const two = settings({
+			removedBuiltinPresets: ["gentle-maid", "tsundere", "analyst"],
+			presets: [{ id: "mine", label: "我的", persona: PERSONA }],
+		});
+		expect(removePersona(two, BUILTINS, "preset:genki").removedBuiltinPresets).toContain("genki");
 	});
 
 	it("删掉正被全局用着的那份 → 指针落到剩下的第一份", () => {
-		const ai = { ...withPresets("甲", "乙"), activePreset: "p0" };
-		expect(removePersona(ai, "preset:p0").activePreset).toBe("p1");
+		const ai = { ...ownerOnly("甲", "乙"), activePreset: "p0" };
+		expect(removePersona(ai, BUILTINS, "preset:p0").activePreset).toBe("p1");
+		const builtin = { ...settings(), activePreset: "gentle-maid" };
+		expect(removePersona(builtin, BUILTINS, "preset:gentle-maid").activePreset).toBe("tsundere");
 	});
 
 	it("删掉**不是**正用着的那份 → 指针不动", () => {
-		const ai = { ...withPresets("甲", "乙"), activePreset: "p0" };
-		expect(removePersona(ai, "preset:p1").activePreset).toBe("p0");
+		const ai = { ...ownerOnly("甲", "乙"), activePreset: "p0" };
+		expect(removePersona(ai, BUILTINS, "preset:p1").activePreset).toBe("p0");
 	});
 
 	it("删一份不存在的 → 原样返回", () => {
-		const ai = withPresets("甲", "乙");
-		expect(removePersona(ai, "preset:gone")).toEqual(ai);
+		const ai = ownerOnly("甲", "乙");
+		expect(removePersona(ai, BUILTINS, "preset:gone")).toEqual(ai);
 	});
 
 	it("不改原对象", () => {
-		const ai = withPresets("甲", "乙");
-		removePersona(ai, "preset:p0");
-		expect(ai.presets).toHaveLength(2);
+		const ai = settings();
+		removePersona(ai, BUILTINS, "preset:tsundere");
+		expect(ai.removedBuiltinPresets).toBeUndefined();
+		const own = ownerOnly("甲", "乙");
+		removePersona(own, BUILTINS, "preset:p0");
+		expect(own.presets).toHaveLength(2);
 	});
 });
 
 describe("renamePersona", () => {
 	it("改名字,不动人格内容", () => {
-		const next = renamePersona(withPresets("傲娇"), "preset:p0", "超傲娇");
+		const next = renamePersona(ownerOnly("傲娇"), BUILTINS, "preset:p0", "超傲娇");
 		expect(next.presets[0]?.label).toBe("超傲娇");
 		expect(next.presets[0]?.persona.name).toBe("傲娇");
 	});
 });
 
 describe("全局人格指针", () => {
-	it("没设指针 → 落在第一份(出厂默认的第一份是「温柔女仆」)", () => {
-		expect(globalPersonaRailId(withPresets("温柔女仆", "傲娇"))).toBe("preset:p0");
+	it("没设指针 → 落在左栏第一份(出厂默认的第一份是「温柔女仆」)", () => {
+		expect(globalPersonaRailId(settings(), BUILTINS)).toBe("preset:gentle-maid");
+		expect(globalPersonaRailId(ownerOnly("温柔女仆", "傲娇"), BUILTINS)).toBe("preset:p0");
 	});
 
-	it("设为某份 → 指针记下它的 id,而**不是**把它复制进 ai.persona", () => {
-		// 旧界面正是靠复制来表达选中的:一下就把主人手写的全局人格盖掉且换不回来。
-		const ai = { ...withPresets("甲", "乙"), persona: { ...PERSONA, name: "遗留的" } };
-		const next = setGlobalPersona(ai, "preset:p1");
+	it("设为某份 → 指针记下它的 id", () => {
+		const next = setGlobalPersona(ownerOnly("甲", "乙"), BUILTINS, "preset:p1");
 		expect(next.activePreset).toBe("p1");
-		expect(next.persona.name).toBe("遗留的");
-		expect(globalPersonaRailId(next)).toBe("preset:p1");
+		expect(globalPersonaRailId(next, BUILTINS)).toBe("preset:p1");
+		expect(setGlobalPersona(settings(), BUILTINS, "preset:analyst").activePreset).toBe("analyst");
 	});
 
 	it("指针指着一份已被删掉的 → 读回第一份,不让左栏高亮到虚空", () => {
-		expect(globalPersonaRailId({ ...withPresets("甲", "乙"), activePreset: "gone" })).toBe(
+		expect(globalPersonaRailId({ ...ownerOnly("甲", "乙"), activePreset: "gone" }, BUILTINS)).toBe(
 			"preset:p0",
 		);
+		expect(
+			globalPersonaRailId(
+				{ ...settings({ removedBuiltinPresets: ["tsundere"] }), activePreset: "tsundere" },
+				BUILTINS,
+			),
+		).toBe("preset:gentle-maid");
 	});
 
 	it("不改原对象", () => {
-		const ai = withPresets("甲", "乙");
-		setGlobalPersona(ai, "preset:p1");
+		const ai = ownerOnly("甲", "乙");
+		setGlobalPersona(ai, BUILTINS, "preset:p1");
 		expect(ai.activePreset).toBeUndefined();
 	});
 });
@@ -547,7 +596,7 @@ describe("全局人格指针", () => {
 
 describe("isBuiltinPersona", () => {
 	it("内置四份都算", () => {
-		for (const p of FACTORY_PRESETS) expect(isBuiltinPersona(p.id)).toBe(true);
+		for (const p of BUILTINS) expect(isBuiltinPersona(p.id)).toBe(true);
 	});
 
 	it("主人自己加的不算", () => {
@@ -557,34 +606,27 @@ describe("isBuiltinPersona", () => {
 });
 
 describe("内置的改不动", () => {
-	function withBuiltin(): AISettings {
-		return settings({
-			presets: FACTORY_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
-		});
-	}
-
 	it("编辑内置人格是空操作 —— 界面禁掉了,这里是第二道闸", () => {
-		const ai = withBuiltin();
-		const next = updatePersonaAt(ai, "preset:tsundere", {
+		const ai = settings();
+		const next = updatePersonaAt(ai, BUILTINS, "preset:tsundere", {
 			persona: { ...PERSONA, name: "改了" },
 		});
 		expect(next).toEqual(ai);
 	});
 
 	it("给内置人格改名也不行", () => {
-		const ai = withBuiltin();
-		expect(renamePersona(ai, "preset:tsundere", "别的名")).toEqual(ai);
+		const ai = settings();
+		expect(renamePersona(ai, BUILTINS, "preset:tsundere", "别的名")).toEqual(ai);
 	});
 
 	it("但删得掉 —— 主人不想要就该能拿走", () => {
-		expect(removePersona(withBuiltin(), "preset:tsundere").presets.map((p) => p.id)).not.toContain(
-			"tsundere",
-		);
+		const next = removePersona(settings(), BUILTINS, "preset:tsundere");
+		expect(personaRailItems(next, BUILTINS).map((i) => i.presetId)).not.toContain("tsundere");
 	});
 
 	it("自己加的照旧能改", () => {
-		const { ai } = addPersona(withBuiltin());
-		const next = updatePersonaAt(ai, "preset:persona-1", {
+		const { ai } = addPersona(settings());
+		const next = updatePersonaAt(ai, BUILTINS, "preset:persona-1", {
 			persona: { ...PERSONA, name: "改了" },
 		});
 		expect(next.presets.find((p) => p.id === "persona-1")?.persona.name).toBe("改了");
@@ -593,38 +635,33 @@ describe("内置的改不动", () => {
 
 describe("missingBuiltinPersonas —— 「从内置恢复」列什么", () => {
 	it("一份没删时是空的(按钮该收起来)", () => {
-		const ai = settings({ presets: FACTORY_PRESETS.map((p) => ({ ...p })) });
-		expect(missingBuiltinPersonas(ai)).toEqual([]);
+		expect(missingBuiltinPersonas(settings(), BUILTINS)).toEqual([]);
 	});
 
-	it("只列被删掉的那几份", () => {
-		const ai = settings({
-			presets: FACTORY_PRESETS.filter((p) => p.id !== "tsundere").map((p) => ({ ...p })),
-		});
-		expect(missingBuiltinPersonas(ai).map((p) => p.id)).toEqual(["tsundere"]);
+	it("只列被删掉的那几份,按内置的顺序,名字取当前语言", () => {
+		const ai = settings({ removedBuiltinPresets: ["genki", "tsundere"] });
+		expect(missingBuiltinPersonas(ai, BUILTINS)).toEqual([
+			{ id: "tsundere", label: "傲娇毒舌" },
+			{ id: "genki", label: BUILTINS[3]?.label },
+		]);
+	});
+
+	it("认不得的 id 不列", () => {
+		expect(missingBuiltinPersonas(settings({ removedBuiltinPresets: ["nope"] }), BUILTINS)).toEqual(
+			[],
+		);
 	});
 });
 
 describe("restoreBuiltinPersona", () => {
-	function without(...ids: string[]): AISettings {
-		return settings({
-			presets: [
-				...FACTORY_PRESETS.filter((p) => !ids.includes(p.id)).map((p) => ({ ...p })),
-				{ id: "mine", label: "我的", persona: PERSONA },
-			],
+	it("从 removedBuiltinPresets 里拿掉它,左栏里它回到内置的原位", () => {
+		const ai = settings({
+			removedBuiltinPresets: ["tsundere"],
+			presets: [{ id: "mine", label: "我的", persona: PERSONA }],
 		});
-	}
-
-	it("把内置那份原样加回来,内容与注册表一致", () => {
-		const { ai } = restoreBuiltinPersona(without("tsundere"), "tsundere");
-		const back = ai.presets.find((p) => p.id === "tsundere");
-		expect(back).toEqual(FACTORY_PRESETS.find((p) => p.id === "tsundere"));
-	});
-
-	it("插回它在内置清单里的原位,而不是甩到末尾", () => {
-		// 恢复完排在自建人格后头会让清单看起来乱了套 —— 内置那几份该始终保持注册表序。
-		const { ai } = restoreBuiltinPersona(without("tsundere"), "tsundere");
-		expect(ai.presets.map((p) => p.id)).toEqual([
+		const { ai: next } = restoreBuiltinPersona(ai, "tsundere");
+		expect(next.removedBuiltinPresets).toBeUndefined();
+		expect(personaRailItems(next, BUILTINS).map((i) => i.presetId)).toEqual([
 			"gentle-maid",
 			"tsundere",
 			"analyst",
@@ -633,73 +670,102 @@ describe("restoreBuiltinPersona", () => {
 		]);
 	});
 
-	it("交回左栏 id,好当场切过去", () => {
-		const { ai, railId } = restoreBuiltinPersona(without("genki"), "genki");
-		expect(personaAt(ai, railId).persona.name).toBe("小阳");
+	it("还有别的没恢复的 → 只拿掉这一个", () => {
+		const { ai } = restoreBuiltinPersona(
+			settings({ removedBuiltinPresets: ["tsundere", "genki"] }),
+			"tsundere",
+		);
+		expect(ai.removedBuiltinPresets).toEqual(["genki"]);
 	});
 
-	it("已经在清单里就原样返回,不造重复项", () => {
-		const ai = without();
+	it("拿空了就删键 —— 草稿里没有这一键,存盘时下发 null(JSON Merge Patch 的删除)", () => {
+		const before = settings({ removedBuiltinPresets: ["tsundere"] });
+		const { ai } = restoreBuiltinPersona(before, "tsundere");
+		expect("removedBuiltinPresets" in ai).toBe(false);
+		expect(buildPatch({ ai }, { ai: before })).toMatchObject({
+			ai: { removedBuiltinPresets: null },
+		});
+	});
+
+	it("删一份内置再存盘:补丁里带 removedBuiltinPresets", () => {
+		const before = settings();
+		const next = removePersona(before, BUILTINS, "preset:tsundere");
+		expect(buildPatch({ ai: next }, { ai: before })).toMatchObject({
+			ai: { removedBuiltinPresets: ["tsundere"] },
+		});
+	});
+
+	it("交回左栏 id,好当场切过去", () => {
+		const { ai, railId } = restoreBuiltinPersona(
+			settings({ removedBuiltinPresets: ["genki"] }),
+			"genki",
+		);
+		expect(personaAt(ai, BUILTINS, railId).persona.name).toBe("小阳");
+	});
+
+	it("本来就没删的(或不认得的)→ 原样返回", () => {
+		const ai = settings();
 		expect(restoreBuiltinPersona(ai, "tsundere").ai).toEqual(ai);
+		expect(restoreBuiltinPersona(ai, "nope").ai).toEqual(ai);
 	});
 
 	it("不改原对象", () => {
-		const ai = without("tsundere");
+		const ai = settings({ removedBuiltinPresets: ["tsundere"] });
 		restoreBuiltinPersona(ai, "tsundere");
-		expect(ai.presets.map((p) => p.id)).not.toContain("tsundere");
+		expect(ai.removedBuiltinPresets).toEqual(["tsundere"]);
 	});
 });
 
 describe("duplicatePersona —— 「从内置修改」", () => {
-	function withBuiltin(): AISettings {
-		return settings({
-			presets: FACTORY_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
-		});
-	}
-
-	it("另存一份**可改**的副本", () => {
-		const { ai, railId } = duplicatePersona(withBuiltin(), "preset:tsundere");
+	it("另存一份**可改**的副本,进 presets(主人自己的)", () => {
+		const { ai, railId } = duplicatePersona(settings(), BUILTINS, "preset:tsundere");
 		const copyId = railId.replace("preset:", "");
 		expect(isBuiltinPersona(copyId)).toBe(false);
-		const edited = updatePersonaAt(ai, railId, { persona: { ...PERSONA, name: "我的傲娇" } });
-		expect(personaAt(edited, railId).persona.name).toBe("我的傲娇");
+		expect(ai.presets.map((p) => p.id)).toEqual([copyId]);
+		const edited = updatePersonaAt(ai, BUILTINS, railId, {
+			persona: { ...PERSONA, name: "我的傲娇" },
+		});
+		expect(personaAt(edited, BUILTINS, railId).persona.name).toBe("我的傲娇");
 	});
 
-	it("内容照抄原件", () => {
-		const { ai, railId } = duplicatePersona(withBuiltin(), "preset:tsundere");
-		const src = FACTORY_PRESETS.find((p) => p.id === "tsundere");
-		expect(personaAt(ai, railId).persona).toEqual(src?.persona);
+	it("抄的是**当前语言**的内容:换成别的语言的内置,副本里就是那份,此后不再跟语言", () => {
+		const en = BUILTINS.map((p) => ({
+			...p,
+			label: `EN ${p.label}`,
+			persona: { ...p.persona, name: `EN ${p.persona.name}` },
+			dynamicPrompt: `EN ${p.dynamicPrompt}`,
+		}));
+		const { ai, railId } = duplicatePersona(settings(), en, "preset:tsundere");
+		const copy = ai.presets[0];
+		expect(copy?.persona.name).toBe("EN 凛子");
+		expect(copy?.dynamicPrompt).toBe(`EN ${BUILTINS[1]?.dynamicPrompt}`);
+		expect(copy?.label).toBe("EN 傲娇毒舌 副本");
+		// 换回简体:副本不变
+		expect(personaAt(ai, BUILTINS, railId).persona.name).toBe("EN 凛子");
 	});
 
 	it("名字带个后缀,好与原件区分", () => {
-		const { ai, railId } = duplicatePersona(withBuiltin(), "preset:tsundere");
-		const copy = ai.presets.find((p) => `preset:${p.id}` === railId);
-		expect(copy?.label).toBe("傲娇毒舌 副本");
+		const { ai } = duplicatePersona(settings(), BUILTINS, "preset:tsundere");
+		expect(ai.presets[0]?.label).toBe("傲娇毒舌 副本");
 	});
 
-	it("原件一根毛都不动", () => {
-		const { ai } = duplicatePersona(withBuiltin(), "preset:tsundere");
-		expect(ai.presets.find((p) => p.id === "tsundere")).toEqual(
-			FACTORY_PRESETS.find((p) => p.id === "tsundere"),
-		);
+	it("原件一根毛都不动:内置还在左栏、removedBuiltinPresets 没变", () => {
+		const { ai } = duplicatePersona(settings(), BUILTINS, "preset:tsundere");
+		expect(ai.removedBuiltinPresets).toBeUndefined();
+		expect(personaRailItems(ai, BUILTINS).map((i) => i.presetId)).toContain("tsundere");
 	});
 
 	it("副本与原件**不共享**任何可变对象", () => {
-		// 别名本身就是缺陷,所以这里断言的是「不是同一个对象」而不是某次改动的结果:
-		// 当前写路径(updatePersonaAt)整体替换 persona,共享与否看不出差别 —— 但只要
-		// 哪天有人图省事就地改一个字段,内置那份就当场被改花,而「锁死内置」正是为了
-		// 不让这种事发生。这条测试守的是那个前提。
-		const ai = withBuiltin();
-		const { ai: next, railId } = duplicatePersona(ai, "preset:tsundere");
-		const src = next.presets.find((p) => p.id === "tsundere");
-		const copy = next.presets.find((p) => `preset:${p.id}` === railId);
-		expect(copy?.persona).toEqual(src?.persona);
-		expect(copy?.persona).not.toBe(src?.persona);
-		expect(copy).not.toBe(src);
+		// 别名本身就是缺陷:只要哪天有人图省事就地改一个字段,内置那份就当场被改花,
+		// 而「锁死内置」正是为了不让这种事发生。这条守的是那个前提。
+		const { ai } = duplicatePersona(settings(), BUILTINS, "preset:tsundere");
+		const src = BUILTINS.find((p) => p.id === "tsundere");
+		expect(ai.presets[0]?.persona).toEqual(src?.persona);
+		expect(ai.presets[0]?.persona).not.toBe(src?.persona);
 	});
 
 	it("复制一份不存在的 → 原样返回", () => {
-		const ai = withBuiltin();
-		expect(duplicatePersona(ai, "preset:gone").ai).toEqual(ai);
+		const ai = settings();
+		expect(duplicatePersona(ai, BUILTINS, "preset:gone").ai).toEqual(ai);
 	});
 });

@@ -10,6 +10,7 @@
  */
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
@@ -84,7 +85,11 @@ function draftAi(
 			{
 				id: "demon-bunny",
 				label: "恶魔兔",
-				persona: { ...ai.persona, name: "恶魔兔", traits: "调皮，会整活" },
+				persona: {
+					...builtinPresetsFor("zh-CN")[0]?.persona,
+					name: "恶魔兔",
+					traits: "调皮，会整活",
+				} as never,
 				dynamicPrompt: "用恶魔兔的口气讲",
 			},
 		],

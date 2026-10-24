@@ -5,7 +5,13 @@ import {
 	withMembershipDefaults,
 	withTemplateDefaults,
 } from "../builtin-texts";
-import { type ActivePersonaShape, type Identity, resolveActivePersona } from "../constants";
+import {
+	type ActivePersonaShape,
+	type AIBuiltinPresetShape,
+	type Identity,
+	presetsOf,
+	resolveActivePersona,
+} from "../constants";
 import type {
 	AISettings,
 	CardsSettings,
@@ -129,20 +135,24 @@ export function resolveTemplates(
 	};
 }
 
-/** 这条订阅生效的人格与两段提示词:订阅挑了一份就用它(缺的那段回落全局),没挑或挑的那份不在了就是全局此刻用的那份。 */
+/**
+ * 这条订阅生效的人格与两段提示词:订阅挑了一份就用它(缺的那段回落全局),没挑或挑的那份不在了就是全局此刻用的那份。
+ * @param builtins 当前语言的内置人格(设置里不存它们的内容,每次按语言取)。
+ */
 export function resolveSubscriptionPersona(
 	ai: AISettings,
 	override: AIOverride | undefined,
+	builtins: readonly AIBuiltinPresetShape[],
 ): ActivePersonaShape {
 	// 全局此刻用的是哪份人格 —— 读法只有一处(`resolveActivePersona`),各端共用。
 	// 这里曾经自己展开过那三行,于是别的消费方(常驻 generator、试一句、锐评、聊天窗
 	// 抬头)照着 `ai.persona` 各写各的,换了人格全都不跟着变。
-	const base = resolveActivePersona(ai);
+	const base = resolveActivePersona(ai, builtins);
 
 	if (!override) return base;
 
 	/*
-	 * per-UP 只做一件事:**从 `globals.presets` 里挑一份**。挑不着就是全局那份。
+	 * per-UP 只做一件事:**从人格清单(`presetsOf`)里挑一份**。挑不着就是全局那份。
 	 *
 	 * 设置页曾经给过一档「完全自定义」能就地写死一套人设(`persona` / `dynamicPrompt` /
 	 * `liveSummaryPrompt`),那一档撤掉了(人格一律在「智能女仆」页里写),那三个字段也已
@@ -153,7 +163,7 @@ export function resolveSubscriptionPersona(
 	 * 老的 `'custom'`、以及指向一份已被删掉的人格。三者的实际行为本来就都是「继承
 	 * 全局」,设置页据此把开关显示成「关」,界面与行为对得上。
 	 */
-	const namedPreset = ai.presets.find((p) => p.id === override.preset);
+	const namedPreset = presetsOf(ai, builtins).find((p) => p.id === override.preset);
 
 	return {
 		persona: namedPreset?.persona ?? base.persona,

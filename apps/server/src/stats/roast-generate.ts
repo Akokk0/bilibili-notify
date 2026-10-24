@@ -21,7 +21,7 @@ import type {
 import { type Failure, fail, ok, type Result, type Subscription } from "@bilibili-notify/internal";
 import { promptNounsOf } from "../ai/prompt-nouns.js";
 import type { RouteDeps } from "../routes/types.js";
-import { resolveAiOverride, toGeneratorConfig } from "../runtime/ai-config.js";
+import { builtinPersonasOf, resolveAiOverride, toGeneratorConfig } from "../runtime/ai-config.js";
 import {
 	buildRoastPrompt,
 	buildSoloRoastPrompt,
@@ -103,10 +103,14 @@ type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["ai"];
  * 锐评的一次性生成器。engines.commentary 那台是常驻的,这里刻意自建(见调用点
  * 注释),所以搜索源也得自己接 —— 常驻那台的接线惠及不到它。
  */
-function makeRoastGenerator(deps: RoastGenDeps, aiSettings: RoastAiSettings): CommentaryGenerator {
+function makeRoastGenerator(
+	deps: RoastGenDeps,
+	aiSettings: RoastAiSettings,
+	builtins: ReturnType<typeof builtinPersonasOf>,
+): CommentaryGenerator {
 	const generator = new CommentaryGenerator({
 		serviceCtx: deps.runtime.serviceCtx,
-		config: toGeneratorConfig(aiSettings),
+		config: toGeneratorConfig(aiSettings, builtins),
 		nouns: promptNounsOf(deps),
 	});
 	generator.setWebSearchSource(() => webSearchExecutorFromSettings(aiSettings.search));
@@ -148,7 +152,7 @@ export async function generateBoardRoast(
 	const sourceKeys = [...new Set(overview.rows.map((r) => r.identity.sourceKey))];
 	const nouns = promptNounsOf(deps)(sourceKeys);
 
-	const generator = makeRoastGenerator(deps, aiSettings);
+	const generator = makeRoastGenerator(deps, aiSettings, builtinPersonasOf(globals));
 	let reply: string;
 	try {
 		// `comment()` 而不是 `chat()` —— 工具默认不挂,只有 engines.roast 开着时才
@@ -201,10 +205,10 @@ export async function generateSoloRoast(
 	const sourceKeys = [row.identity.sourceKey];
 	const nouns = promptNounsOf(deps)(sourceKeys);
 
-	const generator = makeRoastGenerator(deps, aiSettings);
+	const generator = makeRoastGenerator(deps, aiSettings, builtinPersonasOf(globals));
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的
 	// 人格没有理由不算数。
-	const aiOverride = resolveAiOverride(sub, aiSettings);
+	const aiOverride = resolveAiOverride(sub, aiSettings, builtinPersonasOf(globals));
 	let reply: string;
 	try {
 		// scene / imageUrls 留空:锐评既不属于 dynamic 也不属于 liveSummary,更没有图。

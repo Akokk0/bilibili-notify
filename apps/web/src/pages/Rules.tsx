@@ -1,4 +1,5 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { presetsOf } from "@bilibili-notify/internal/constants";
 import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
@@ -346,6 +347,12 @@ export default function Rules() {
 	// 文字模板设置里只存主人改过的:没存的格显示「当前语言的默认」(ADR-0037 决策 10)。
 	const locale = textSettingsOf(draft ?? globalsQuery.data ?? {}).locale;
 	const factory = useMemo(() => templateDefaultsFor(locale), [locale]);
+	// 人格库 = 没删的内置(内容取当前语言)+ 主人自己的:「AI 人格」那一节从里面挑一份。
+	const personaBuiltins = useMemo(() => builtinPresetsFor(locale), [locale]);
+	const personaList = useMemo(
+		() => (draft ? presetsOf(draft.ai, personaBuiltins) : []),
+		[draft, personaBuiltins],
+	);
 
 	// ── 「默认文案有更新」 ───────────────────────────────────────────────────
 	//
@@ -501,7 +508,7 @@ export default function Rules() {
 			? new Set(
 					sections
 						.map((s) => s.id)
-						.filter((id) => isSectionCustomized(focusedSub, id, draft?.ai.presets ?? [])),
+						.filter((id) => isSectionCustomized(focusedSub, id, personaList)),
 				)
 			: undefined;
 
@@ -555,7 +562,7 @@ export default function Rules() {
 								platform={focusedPlatform}
 								defaults={draft.defaults}
 								factory={factory}
-								presets={draft.ai.presets}
+								presets={personaList}
 								section={shownSection}
 							/>
 						) : section === "filter" ? (

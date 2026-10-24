@@ -149,7 +149,6 @@ const G = vi.hoisted(() => ({
 		// 模型名住在当前生效的那个服务商桶里(各家一套配置)。
 		activeProfile: "deepseek",
 		providers: { deepseek: { model: "gpt-test" } },
-		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	} as Record<string, unknown>,
 	/** `GET /api/sources/bilibili/auth` 回的那一份;默认没登录。 */
 	auth: { state: { status: "logged-out" } } as Record<string, unknown>,
@@ -229,7 +228,6 @@ beforeEach(() => {
 		// 模型名住在当前生效的那个服务商桶里(各家一套配置)。
 		activeProfile: "deepseek",
 		providers: { deepseek: { model: "gpt-test" } },
-		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	};
 	G.auth = { state: { status: "logged-out" } };
 	useAiChatStore.setState({ rail: true, activeId: null });
@@ -1116,13 +1114,20 @@ describe("AiChatDock — 设置弹层不再有玻璃质感项", () => {
 describe("AiChatDock — 称呼跟人格走", () => {
 	/**
 	 * 设计稿里通篇写的是「小铃」,那只是画稿时的临时名字。真实名字在
-	 * `globals.ai.persona`,主人换预设或改名之后,界面上每一处都得跟着变 ——
+	 * 指针指的那份人格里(内置的按当前语言取,主人自己的在 `presets`),换预设或改名之后,界面上每一处都得跟着变 ——
 	 * 漏掉任何一处,表现都是「侧栏写着 A、她自己开口自称 B」。
 	 */
 	const RINKO = {
 		activeProfile: "deepseek",
 		providers: { deepseek: { model: "gpt-test" } },
-		persona: { name: "凛子", addressSelf: "本小姐", addressUser: "笨蛋" },
+		activePreset: "mine",
+		presets: [
+			{
+				id: "mine",
+				label: "凛",
+				persona: { name: "凛子", addressSelf: "本小姐", addressUser: "笨蛋" },
+			},
+		],
 	};
 
 	it("侧栏标题用配置里的名字,不是设计稿的「小铃」", async () => {
@@ -1157,26 +1162,15 @@ describe("AiChatDock — 称呼跟人格走", () => {
 	});
 
 	/**
-	 * 名字得跟着**指针**走,不是跟着 `ai.persona` 走。
-	 *
-	 * `ai.persona` 自人格指针上线就没有界面入口了,永远冻在老值上。直读它的话,
-	 * 主人在「智能女仆」页换成谁,聊天窗抬头都还写着原来那位 —— 而她开口自称的
-	 * 又是新那位(那一侧走的是后端 resolve),两边对不上。
+	 * 名字得跟着**指针**走,指着内置那份时内容取当前语言的内置人格(设置里不存它)。
+	 * 主人在「智能女仆」页换成谁,聊天窗抬头也得是谁 —— 而她开口自称的又是新那位
+	 * (那一侧走的是后端 resolve),两边对不上就是漏接了读法。
 	 */
-	it("换了人格 → 抬头跟着指针指的那份走,不是冻着的 ai.persona", async () => {
+	it("换了人格 → 抬头跟着指针指的那份走(内置的取内置原文)", async () => {
 		G.ai = {
 			activeProfile: "deepseek",
 			providers: { deepseek: { model: "gpt-test" } },
-			persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 			activePreset: "tsundere",
-			presets: [
-				{ id: "gentle-maid", label: "温柔女仆", persona: { name: "小绫" } },
-				{
-					id: "tsundere",
-					label: "傲娇毒舌",
-					persona: { name: "凛子", addressSelf: "本小姐", addressUser: "笨蛋" },
-				},
-			],
 		};
 		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 凛子/)).toBeTruthy());
@@ -1186,7 +1180,10 @@ describe("AiChatDock — 称呼跟人格走", () => {
 		G.ai = {
 			activeProfile: "deepseek",
 			providers: { deepseek: { model: "gpt-test" } },
-			persona: { name: "", addressSelf: "", addressUser: "" },
+			activePreset: "mine",
+			presets: [
+				{ id: "mine", label: "空名", persona: { name: "", addressSelf: "", addressUser: "" } },
+			],
 		};
 		render(wrap(<ChatPage />));
 		await waitFor(() => expect(screen.getByText(/女仆AI · 女仆/)).toBeTruthy());

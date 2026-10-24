@@ -331,6 +331,7 @@ export const FIELD_LABELS = {
 	enabled: { label: "启用", section: "general" },
 	"ai.dynamicPrompt": { label: "动态点评 prompt", section: "ai" },
 	"ai.liveSummaryPrompt": { label: "直播总结 prompt", section: "ai" },
+	"ai.removedBuiltinPresets": { label: "删掉的内置性格", section: "persona" },
 	presets: {
 		label: "基础预设",
 		// Ai.tsx 在 presets 非空时显式传 hint={undefined} 回落到此默认值;为空时传
@@ -360,27 +361,6 @@ export const FIELD_LABELS = {
 		section: "persona",
 	},
 	"persona.extraSystemPrompt": {
-		label: "追加 system prompt",
-		hint: "附加到 system prompt 末尾,用于安全约束、避讳词、语气微调",
-		section: "persona",
-	},
-
-	// ── AI 人格(per-UP 视角:ai.persona.*) ───────────────────────────────
-	"ai.persona.name": { label: "名字", section: "persona" },
-	"ai.persona.addressUser": { label: "称呼用户", section: "persona" },
-	"ai.persona.addressSelf": { label: "自称", section: "persona" },
-	"ai.persona.catchphrase": { label: "口头禅", section: "persona" },
-	"ai.persona.traits": {
-		label: "性格特点",
-		hint: "逗号分隔",
-		section: "persona",
-	},
-	"ai.persona.baseRole": {
-		label: "基础角色描述",
-		hint: "system prompt 起手段,定义 AI 的身份",
-		section: "persona",
-	},
-	"ai.persona.extraSystemPrompt": {
 		label: "追加 system prompt",
 		hint: "附加到 system prompt 末尾,用于安全约束、避讳词、语气微调",
 		section: "persona",

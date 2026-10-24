@@ -161,6 +161,20 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	webSearchExecutorFromSettings: () => null,
 }));
 
+// 英文字典现在是空的:给 en 的内置人格名字戴个前缀,才看得出常驻生成器拿到的是「新语言」的那一份。
+vi.mock("@bilibili-notify/internal/builtin-texts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/internal/builtin-texts")>();
+	return {
+		...actual,
+		builtinPresetsFor: (...args: Parameters<typeof actual.builtinPresetsFor>) => {
+			const list = actual.builtinPresetsFor(...args);
+			return args[0] === "en"
+				? list.map((p) => ({ ...p, persona: { ...p.persona, name: `EN-${p.persona.name}` } }))
+				: list;
+		},
+	};
+});
+
 vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@bilibili-notify/image")>();
 	return {
@@ -2300,7 +2314,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.ai.persona.name = "恶魔兔";
+			g.ai.activePreset = "tsundere";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		// AI 本身热更。
@@ -2325,7 +2339,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 
 		// 对照:换成改顶层 ai 里的人设,同一条路就会热更(门比的是顶层 ai,不是别的什么)。
 		patchGlobals(c, (g) => {
-			g.ai.persona.name = "恶魔兔";
+			g.ai.activePreset = "tsundere";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
@@ -2407,6 +2421,20 @@ describe("createEngines — AI 热重载三态", () => {
 		expect(H.ai[0].comment).toHaveBeenCalledTimes(1); // 撤掉之后没再调
 		expect((await mainTexts()).at(-1)).toBe("模板 阿绫\nhttps://t.bilibili.com/d3");
 		expect(await aiTexts()).toHaveLength(1); // 撤掉之后这一条没有 AI 版
+	});
+
+	// 内置人格的内容跟着语言走(ADR-0037 决策 11):只换语言、ai 一格没动,常驻生成器也要换成新语言的人格。
+	// 验红:把 `aiChanged` 里「语言变了」那一条去掉,这条红。
+	it("只换语言(ai 没动):updateConfig 一次,拿到的是新语言的内置人格", () => {
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(H.ai[0].opts.config.persona.name).toBe("小绫");
+		patchGlobals(c, (g) => {
+			g.locale = "en";
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
+		expect(H.ai[0].updateConfig.mock.calls[0]?.[0].persona.name).toBe("EN-小绫");
 	});
 
 	it("仍启用但改配置:增量 updateConfig,不重建实例", () => {

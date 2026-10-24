@@ -1,20 +1,15 @@
 import { z } from "zod";
-import { builtinPresetsFor } from "../builtin-texts";
 import {
 	DEFAULT_HISTORY_RETENTION_DAYS,
 	HISTORY_RETENTION_DAY_OPTIONS,
 	MIRROR_PREFIX_RE,
 } from "../constants";
-import { DEFAULT_LOCALE, LOCALES, VOICES } from "../i18n";
+import { LOCALES, VOICES } from "../i18n";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
-import { markBackupOnly, markSecret } from "./secret";
-
-// 出厂文案住在零依赖的 `builtin-texts.ts` —— 前端要拿它显示 / 比对,从这里(带 zod)拿会把 zod 拽进浏览器 bundle。
-const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
-
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
+	type AISettings,
 	AISettingsSchema,
 	type CardsSettings,
 	CardsSettingsSchema,
@@ -40,6 +35,7 @@ import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema } from "./link-preview";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
+import { markBackupOnly, markSecret } from "./secret";
 
 /** 启动时注入、运行时只读的引导配置。 */
 export const BootstrapConfigSchema = z.object({
@@ -433,18 +429,14 @@ export function isExtensionEnabled(
 
 export const DEFAULT_AI = {
 	enabled: false,
-	// 默认 AI 配置 = 首个预设「温柔女仆」:persona 与两个 prompt 都取自 `builtinPresetsFor` 的首份。
-	persona: FACTORY_PRESETS[0].persona,
-	dynamicPrompt: FACTORY_PRESETS[0].dynamicPrompt,
-	liveSummaryPrompt: FACTORY_PRESETS[0].liveSummaryPrompt,
 	// 全新安装一份实例都没添加 —— 设置页左栏是空的,引擎按「还没配齐」停用。
 	// activeProfile 指针先悬空,主人添加第一份时会跟着落过去。
 	activeProfile: "",
 	providers: {},
-	presets: FACTORY_PRESETS,
-	// 全新安装的人格指针直接指着首份内置人格。从前靠 schema 的 preprocess 每次 parse 时按内容匹配补出来;
-	// 那道 preprocess 是给 0.x 老配置的,⑥c 搬进迁移器之后默认值得自己完整。
-	activePreset: FACTORY_PRESETS[0].id,
+	// 内置人格不落盘(只记删了哪几份,缺 = 一份没删);`presets` 只装主人自己建的。
+	presets: [] as AISettings["presets"],
+	// 全新安装的人格指针直接指着首份内置人格。
+	activePreset: "gentle-maid",
 } as const;
 
 /** 出厂的卡片设置:出图开着、没有自定义直播封面。 */

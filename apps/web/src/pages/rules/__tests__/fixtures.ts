@@ -14,20 +14,8 @@ import type { GlobalConfig, GlobalDefaults } from "../../../types/globals";
 
 /** AI 设置的 fixture(3a-38 ④:AI 在核心设置的顶层,不在 `defaults` 里)。 */
 export function makeAi(): GlobalConfig["ai"] {
-	const persona = {
-		name: "",
-		addressUser: "",
-		addressSelf: "",
-		traits: "",
-		catchphrase: "",
-		baseRole: "",
-		extraSystemPrompt: "",
-	};
 	return {
 		enabled: false,
-		persona,
-		dynamicPrompt: "",
-		liveSummaryPrompt: "",
 		// 一份实例都没添加 = 全新配置。连接与生成参数都住在实例桶里。
 		activeProfile: "",
 		providers: {},

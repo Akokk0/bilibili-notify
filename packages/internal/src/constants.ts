@@ -711,7 +711,7 @@ export interface AIPersonaShape {
 	extraSystemPrompt: string;
 }
 
-/** 人格库里的一份 —— 两段 prompt 缺席 = 「用全局那份」。 */
+/** 人格库里的一份 —— 两段 prompt 缺席 = 「用内置首份的那段」。 */
 export interface AIPresetShape {
 	id: string;
 	persona: AIPersonaShape;
@@ -726,32 +726,60 @@ export interface ActivePersonaShape {
 	liveSummaryPrompt: string;
 }
 
+/** 内置人格的形状:两段提示词齐全、带名字。`builtin-texts.ts` 的 `BuiltinPreset` 与它同形。 */
+export interface AIBuiltinPresetShape extends AIPresetShape {
+	label: string;
+	dynamicPrompt: string;
+	liveSummaryPrompt: string;
+}
+
+/**
+ * 人格左栏 / 候选清单 —— 内置没被删的 + 主人自己的(ADR-0037 决策 11)。
+ *
+ * 设置里只记「删了哪几份内置」(`removedBuiltinPresets`,缺 = 一份没删)与主人自己建的(`presets`);
+ * 内置的内容**每次按当前语言取**,由调用方把当前语言的 `builtins` 传进来(它们的顺序就是内置的顺序)。
+ * `presets` 里若混进内置 id 的条目(只有老代的盘会有,迁移会拆掉),以内置为准、那一份不进列表;
+ * `removedBuiltinPresets` 里认不得的 id 直接忽略。
+ */
+export function presetsOf<B extends AIBuiltinPresetShape, P extends AIPresetShape>(
+	ai: { removedBuiltinPresets?: readonly string[]; presets?: readonly P[] },
+	builtins: readonly B[],
+): (B | P)[] {
+	const removed = new Set(ai.removedBuiltinPresets ?? []);
+	const builtinIds = new Set(builtins.map((b) => b.id));
+	return [
+		...builtins.filter((b) => !removed.has(b.id)),
+		...(ai.presets ?? []).filter((p) => !builtinIds.has(p.id)),
+	];
+}
+
 /**
  * 全局此刻用的是哪份人格 —— **「当前用哪份」只能有这一个读法**。
  *
- * 人格住在 `presets[]` 里,`activePreset` 是指着其中一份的指针,且**不改写**
- * `ai.persona`(切回原来那份时主人手写的内容原封不动地回来)。代价是 `ai.persona`
- * 自指针上线就再没有界面入口 —— 它只剩两个身份:老配置的原值、以及指针落空时的
- * 安全网。**谁直读它,谁那条路上的人格就永远停在老值上**:主人在设置页换来换去,
- * 那一侧的女仆还是原来那位,而界面上高亮、指示器全都指着新那份,看不出哪儿不对。
- * (「换了人格没反应」就是这么来的,一次同时坑了常驻 generator、试一句、锐评与
- * 聊天窗抬头四处。)
+ * `activePreset` 是指着 {@link presetsOf} 清单里某一份的指针。谁绕开这个函数自己去翻 `presets`,
+ * 谁那条路上就看不见内置那几份(它们不在设置里),也不会跟着语言变 —— 常驻 generator、试一句、锐评与聊天窗
+ * 抬头四处都经它。
  *
- * 指针落空 —— 没填、或指着一份刚被删掉 / 备份换掉的预设 —— 静静回落 `ai.persona`。
- * 两段 prompt 逐段回落:预设里缺席 = 「用全局那段」,不是「发一段空的」。
+ * 指针落空 —— 没填、或指着一份刚被删掉 / 备份换掉的 —— 静静回落清单第一份;清单空了(内置全删光、
+ * 主人也没建)回落内置首份。两段 prompt 逐段回落:这份里缺席 = 「用内置首份的那段」,不是「发一段空的」。
+ * @param builtins 当前语言的内置人格,至少一份。
  */
-export function resolveActivePersona(ai: {
-	persona: AIPersonaShape;
-	dynamicPrompt: string;
-	liveSummaryPrompt: string;
-	activePreset?: string;
-	presets?: readonly AIPresetShape[];
-}): ActivePersonaShape {
-	const active = ai.activePreset ? ai.presets?.find((p) => p.id === ai.activePreset) : undefined;
+export function resolveActivePersona(
+	ai: {
+		activePreset?: string;
+		removedBuiltinPresets?: readonly string[];
+		presets?: readonly AIPresetShape[];
+	},
+	builtins: readonly AIBuiltinPresetShape[],
+): ActivePersonaShape {
+	const list = presetsOf(ai, builtins);
+	const first = builtins[0] as AIBuiltinPresetShape;
+	const active =
+		(ai.activePreset ? list.find((p) => p.id === ai.activePreset) : undefined) ?? list[0] ?? first;
 	return {
-		persona: active?.persona ?? ai.persona,
-		dynamicPrompt: active?.dynamicPrompt ?? ai.dynamicPrompt,
-		liveSummaryPrompt: active?.liveSummaryPrompt ?? ai.liveSummaryPrompt,
+		persona: active.persona,
+		dynamicPrompt: active.dynamicPrompt ?? first.dynamicPrompt,
+		liveSummaryPrompt: active.liveSummaryPrompt ?? first.liveSummaryPrompt,
 	};
 }
 

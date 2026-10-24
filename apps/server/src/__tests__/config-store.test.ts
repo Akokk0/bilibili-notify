@@ -286,15 +286,15 @@ describe("ConfigStore", () => {
 	 * (指针必须原样认下,不能有哪一层按 `ai.persona` 的内容把选择拨回去)→ 落盘 →
 	 * 冷重启再读。
 	 */
-	it("换全局人格:activePreset 存得住,冷重启后不被 ai.persona 拨回去", async () => {
+	it("换全局人格:activePreset 存得住,冷重启后不被拨回去", async () => {
 		// 默认配置的 persona 就是「温柔女仆」那份,指针也指着它 —— 换成傲娇毒舌之后,
 		// persona 与指针刻意不一致,正是「按内容匹配指针」最容易判错的形状。
 		expect(store.getGlobals().ai.activePreset).toBe("gentle-maid");
 
 		const next = await store.patchGlobals({ ai: { activePreset: "tsundere" } });
 		expect(next.ai.activePreset).toBe("tsundere");
-		// 指针不改写 persona —— 主人手写的那份原封不动。
-		expect(next.ai.persona.name).toBe("小绫");
+		// 指针不改写任何一份 —— 内置不落盘,换指针也不会往 presets 里写东西。
+		expect(next.ai.presets).toEqual([]);
 
 		const bus2 = makeFakeBus();
 		const store2 = createConfigStore({
@@ -305,6 +305,28 @@ describe("ConfigStore", () => {
 		});
 		await store2.load();
 		expect(store2.getGlobals().ai.activePreset).toBe("tsundere");
+	});
+
+	// ADR-0037 决策 11:内置人格不落盘 —— 新装写出的 `ai` 里没有内置四份、没有顶层人格三格,也没有「删了哪几份」。
+	it("新装写一次盘:core.json 的 ai 里 presets 是空的,没有顶层人格三格与 removedBuiltinPresets", async () => {
+		await store.patchGlobals({ profileRefreshCron: "*/5 * * * *" });
+		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
+		expect(onDisk.ai.presets).toEqual([]);
+		expect(onDisk.ai.activePreset).toBe("gentle-maid");
+		for (const key of ["persona", "dynamicPrompt", "liveSummaryPrompt", "removedBuiltinPresets"]) {
+			expect(onDisk.ai).not.toHaveProperty(key);
+		}
+	});
+
+	it("删一份内置只记 id;恢复到一份不剩时,键从盘上消失(PATCH 里 null = 删)", async () => {
+		await store.patchGlobals({ ai: { removedBuiltinPresets: ["tsundere"] } });
+		let onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
+		expect(onDisk.ai.removedBuiltinPresets).toEqual(["tsundere"]);
+		expect(onDisk.ai.presets).toEqual([]);
+
+		await store.patchGlobals({ ai: { removedBuiltinPresets: null } } as never);
+		onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
+		expect(onDisk.ai).not.toHaveProperty("removedBuiltinPresets");
 	});
 
 	it("setGlobals rejects malformed input with ConfigValidationError", async () => {
