@@ -27,8 +27,8 @@ const comment = vi.fn(async (_p: string, _scene?: unknown, _img?: unknown, _ov?:
 const chat = vi.fn(async (_prompt: string) => "{}");
 
 vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
-	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
-		.PROMPT_NEUTRAL_NOUNS,
+	// 叫法常量与渲染函数走真的(锐评提示词要用),只顶掉生成器。
+	...(await importOriginal<typeof import("@bilibili-notify/ai")>()),
 	// class 而不是箭头函数 —— 路由是 `new CommentaryGenerator(...)`,
 	// 箭头函数不能当构造器。
 	CommentaryGenerator: class {
@@ -131,6 +131,7 @@ function makeDeps(
 			engines: {
 				liveSession: () => undefined,
 				extensionPlatformLabel: () => "抖音",
+				extensionPostNoun: () => undefined,
 			},
 			profileRefresh: null,
 			subRuntimeStore: { get: () => ({ cachedProfile: { name: "老番茄" } }) },

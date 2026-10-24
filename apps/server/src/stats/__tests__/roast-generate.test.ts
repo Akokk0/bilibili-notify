@@ -27,6 +27,7 @@ const comment = vi.fn(
 		_scene?: string,
 		_imgs?: string[],
 		_override?: Record<string, unknown>,
+		_sourceKeys?: readonly string[],
 	) => "{}",
 );
 const setWebSearchSource = vi.fn();
@@ -34,6 +35,8 @@ const setWebSearchSource = vi.fn();
 vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
 		.PROMPT_NEUTRAL_NOUNS,
+	renderPromptNouns: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.renderPromptNouns,
 	// class 而不是箭头函数 —— 生成服务是 `new CommentaryGenerator(...)`。
 	CommentaryGenerator: class {
 		comment = comment;
@@ -105,13 +108,23 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 		runtime: {
 			engines: {
 				extensionPlatformLabel: (id: string) => PLATFORM_LABELS[id],
+				extensionPostNoun: () => undefined,
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles.get(id) }) },
 			// 平台名与外部 id 的叫法都读来源登记表(拓展不在表里,问装载器)。
 			sourceRegistry: {
 				get: (key: string) =>
-					key === "bilibili" ? { descriptor: { label: "B 站", externalIdNoun: "UID" } } : undefined,
+					key === "bilibili"
+						? {
+								descriptor: {
+									label: "B 站",
+									creatorNoun: "UP主",
+									postNoun: "动态",
+									externalIdNoun: "UID",
+								},
+							}
+						: undefined,
 			},
 		},
 		store: {
@@ -356,6 +369,7 @@ describe("联网搜索 override(engines.roast)", () => {
 			undefined,
 			undefined,
 			expect.objectContaining({ webSearch: true }),
+			["bilibili"],
 		);
 	});
 
@@ -380,6 +394,7 @@ describe("联网搜索 override(engines.roast)", () => {
 			undefined,
 			undefined,
 			expect.objectContaining({ webSearch: true }),
+			["bilibili"],
 		);
 	});
 });
@@ -425,6 +440,8 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		expect(r.ok && r.result.scores.map((x) => x.subscriptionId)).toEqual([biliId("1"), "ext-dy"]);
 		// pushText 里的下标换回的是拓展那位的名字。
 		expect(r.ok && r.result.pushText).toBe("抖音乙 是鸽王");
+		expect(promptOfLastCall()).toContain("2 位创作者");
+		expect(comment.mock.calls.at(-1)?.[4]).toEqual(["bilibili", "douyin"]);
 	});
 
 	it("两位都是拓展订阅也评得出来 —— 「至少 2 位」数的是两支加起来的人头", async () => {
@@ -487,6 +504,7 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 				({ rows: [row("1"), extRow(DY)] }) as unknown as StatsOverviewResponse,
 		});
 		expect(r.ok && r.result.subscriptionId).toBe("ext-dy");
+		expect(comment.mock.calls.at(-1)?.[4]).toEqual(["douyin"]);
 		const data = JSON.parse(promptOfLastCall().split("\n")[1] ?? "{}") as Record<string, unknown>;
 		expect(data.名称).toBe("抖音乙");
 		expect(data.平台).toBe("抖音");

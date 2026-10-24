@@ -635,7 +635,11 @@ describe("look_card", () => {
 });
 
 describe("提示词从契约常量拼", () => {
-	const system = buildCardWorkshopSystem();
+	const system = buildCardWorkshopSystem({
+		creatorNoun: "创作者",
+		postNoun: "动态",
+		sources: "B 站",
+	});
 
 	it("七种卡、每种卡的内置块名、外框挂点都在", () => {
 		for (const kind of CARD_KINDS) {
@@ -647,6 +651,17 @@ describe("提示词从契约常量拼", () => {
 		for (const hook of Object.keys(CARD_SKIN_FRAME_HOOKS)) {
 			expect(system).toContain(`[data-bn="${hook}"]`);
 		}
+	});
+
+	it("推送内容按传入的来源与作品叫法渲染,并改用中性的「订阅数据」", () => {
+		const prompt = buildCardWorkshopSystem({
+			creatorNoun: "创作者",
+			postNoun: "笔记",
+			sources: "喵站",
+		});
+		expect(prompt).toContain("喵站的笔记、直播这些消息");
+		expect(prompt).toContain("查订阅数据");
+		expect(prompt).not.toContain("B 站");
 	});
 
 	it("每种卡的字段路径都在", () => {

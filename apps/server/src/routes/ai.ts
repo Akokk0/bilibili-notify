@@ -133,8 +133,6 @@ export function createAiRoute(
 	},
 ): Hono {
 	const app = new Hono();
-	/** 卡片工坊的 system 只由常量拼成,拼一次就够。 */
-	const cardWorkshopSystem = buildCardWorkshopSystem();
 
 	app.post("/test", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;
@@ -478,7 +476,8 @@ export function createAiRoute(
 		const workshop = cardWorkshop
 			? {
 					extraTools: cardWorkshop.tools,
-					systemPrompt: cardWorkshopSystem,
+					// 订阅随时会增减,每次进工坊都按当下的全局来源重拼叫法。
+					systemPrompt: buildCardWorkshopSystem(promptNounsOf(deps)()),
 					builtinTools: false,
 					// 从零做一整套至少 8 把调用,默认的 8 轮正好卡死(决策 23 的 🔗)。
 					maxToolRounds: CARD_WORKSHOP_MAX_TOOL_ROUNDS,

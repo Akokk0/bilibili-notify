@@ -504,8 +504,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		const calls = aiCalls.filter((c) => c.user.includes("鸽王"));
 		expect(calls).toHaveLength(1);
 		const [call] = calls;
-		expect(call?.system).toContain("帮用户关注假源上的创作者");
-		expect(call?.user).toContain("以下是我订阅的 2 位 UP 主近 7 天的数据");
+		expect(call?.system).toContain("帮用户关注B 站、假源上的创作者");
+		expect(call?.user).toContain("以下是我订阅的 2 位创作者近 7 天的数据");
 		expect(call?.user).not.toContain("B 站 UP 主");
 		const table = JSON.parse(call?.user.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
 		const profileName = (await extSub())?.cachedProfile?.name;
@@ -534,7 +534,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			outcome: { kind: "sent", mode: "image", sent: 1, skipped: [], failed: [] },
 		});
 
-		const solo = aiCalls.filter((c) => c.user.includes("一位 UP 主"));
+		const solo = aiCalls.filter((c) => c.user.includes("一位创作者"));
 		expect(solo).toHaveLength(1);
 		const data = JSON.parse(solo[0]?.user.split("\n")[1] ?? "{}") as Record<string, unknown>;
 		expect(data).toMatchObject({

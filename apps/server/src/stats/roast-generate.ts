@@ -145,6 +145,8 @@ export async function generateBoardRoast(
 	const subById = new Map(deps.store.getSubscriptions().map((s) => [s.id, s]));
 	const ups = overview.rows.map((r) => toRoastInput(deps, r, subById.get(r.subscriptionId)));
 	if (ups.length < 2) return GEN_FAILURE.tooFewUps();
+	const sourceKeys = [...new Set(overview.rows.map((r) => r.identity.sourceKey))];
+	const nouns = promptNounsOf(deps)(sourceKeys);
 
 	const generator = makeRoastGenerator(deps, aiSettings);
 	let reply: string;
@@ -153,10 +155,11 @@ export async function generateBoardRoast(
 		// 带上 web_search(见 roastSearchOverride)。chat() 会挂上整套 B 站工具与工具
 		// 铁律,模型可能中途发起 tool call 而不是回 JSON(详见 stats-roast-call.test.ts)。
 		reply = await generator.comment(
-			buildRoastPrompt(ups, opts.days),
+			buildRoastPrompt(ups, opts.days, nouns),
 			undefined,
 			undefined,
 			roastSearchOverride(aiSettings),
+			sourceKeys,
 		);
 	} catch (err) {
 		return GEN_FAILURE.aiError(err);
@@ -195,6 +198,8 @@ export async function generateSoloRoast(
 	if (!row) return GEN_FAILURE.noData();
 
 	const up = toRoastInput(deps, row, sub);
+	const sourceKeys = [row.identity.sourceKey];
+	const nouns = promptNounsOf(deps)(sourceKeys);
 
 	const generator = makeRoastGenerator(deps, aiSettings);
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的
@@ -204,10 +209,11 @@ export async function generateSoloRoast(
 	try {
 		// scene / imageUrls 留空:锐评既不属于 dynamic 也不属于 liveSummary,更没有图。
 		reply = await generator.comment(
-			buildSoloRoastPrompt(up, opts.days),
+			buildSoloRoastPrompt(up, opts.days, nouns),
 			undefined,
 			undefined,
 			roastSearchOverride(aiSettings, aiOverride),
+			sourceKeys,
 		);
 	} catch (err) {
 		return GEN_FAILURE.aiError(err);

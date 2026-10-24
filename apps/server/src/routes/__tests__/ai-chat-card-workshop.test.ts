@@ -69,6 +69,8 @@ const chatStatelessStream = vi.fn(async (_messages: unknown, opts: any) => {
 vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
 		.PROMPT_NEUTRAL_NOUNS,
+	renderPromptNouns: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.renderPromptNouns,
 	CommentaryGenerator: class {
 		chatStatelessStream = chatStatelessStream;
 	},
@@ -77,6 +79,17 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 async function makeDeps(opts: { cards?: boolean } = {}) {
 	const dataDir = await mkdtemp(join(tmpdir(), "bn-cardchat-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	const subscriptions = [
+		{
+			id: "sub-1",
+			enabled: true,
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		},
+	];
+	const descriptors: Record<string, unknown> = {
+		bilibili: { label: "B 站", creatorNoun: "UP主", postNoun: "动态", externalIdNoun: "UID" },
+		acme: { label: "喵站", creatorNoun: "博主", postNoun: "笔记", externalIdNoun: "ID" },
+	};
 	const deps = {
 		store: {
 			getGlobals: () => ({
@@ -84,12 +97,17 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 				defaults: { cardSkin: DEFAULT_CARD_SKIN_ID },
 			}),
 			getTargets: () => [],
+			getSubscriptions: () => subscriptions,
 		},
 		runtime: {
 			dataRoot: dataDir,
 			serviceCtx: { logger },
 			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
 			engines: { api: {}, commentary: { chatStatelessStream } },
+			sourceRegistry: {
+				get: (key: string) => (descriptors[key] ? { descriptor: descriptors[key] } : undefined),
+				list: () => Object.keys(descriptors).map((sourceKey) => ({ sourceKey })),
+			},
 		},
 	} as unknown as RouteDeps;
 	const skinStore = new SkinStore({ skinsDir: join(dataDir, ...DASHBOARD_SKINS_DIR) });
@@ -101,7 +119,7 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 		skinStore,
 		...(opts.cards === false ? {} : { cardSkinStore, cardSkinShot: shot }),
 	});
-	return { app, cardSkinStore, dataDir, shot };
+	return { app, cardSkinStore, dataDir, shot, subscriptions };
 }
 
 async function open(app: ReturnType<typeof createAiRoute>, init: object): Promise<any> {
@@ -180,6 +198,22 @@ describe("卡片工坊的装配", () => {
 		expect(H.lastOpts.systemPrompt).toMatch(/卡片皮肤工坊/);
 		expect(H.lastOpts.builtinTools).toBe(false);
 		expect(H.lastOpts.maxToolRounds).toBe(CARD_WORKSHOP_MAX_TOOL_ROUNDS);
+	});
+
+	it("每次进工坊都按当前订阅现取叫法", async () => {
+		const { app, subscriptions } = await makeDeps();
+		const conv = await open(app, CARD);
+		await say(app, conv.id);
+		expect(H.lastOpts.systemPrompt).toContain("B 站的动态、直播这些消息");
+
+		subscriptions[0] = {
+			id: "sub-1",
+			enabled: true,
+			identity: { sourceKey: "acme", externalId: "1" },
+		};
+		await say(app, conv.id);
+		expect(H.lastOpts.systemPrompt).toContain("喵站的笔记、直播这些消息");
+		expect(H.lastOpts.systemPrompt).not.toContain("B 站的动态");
 	});
 
 	it("dashboard 工坊原样:只有 create_skin、老 system、不放宽轮数", async () => {

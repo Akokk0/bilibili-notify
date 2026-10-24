@@ -1,3 +1,4 @@
+import { type PromptNouns, renderPromptNouns } from "@bilibili-notify/ai";
 import type { StatsRoastResult, StatsSoloRoastResult } from "@bilibili-notify/contract";
 import { z } from "zod";
 
@@ -72,7 +73,11 @@ const RoastReplySchema = z.object({
 	pushText: z.string().default(""),
 });
 
-export function buildRoastPrompt(ups: readonly RoastInput[], days: number): string {
+export function buildRoastPrompt(
+	ups: readonly RoastInput[],
+	days: number,
+	nouns: PromptNouns,
+): string {
 	const table = ups.map((u, i) => ({
 		i,
 		名称: u.name,
@@ -85,26 +90,29 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 		直播时长h: u.liveHours === null ? "无记录" : Math.round(u.liveHours * 10) / 10,
 		最后活动: u.lastActivityAt ?? "无记录",
 	}));
-	return [
-		`以下是我订阅的 ${ups.length} 位 UP 主近 ${days} 天的数据(JSON):`,
-		JSON.stringify(table),
-		"",
-		"请评选出「鸽王」(最不勤奋:掉粉/停更/投稿直播都少)和「勤奋 UP」(更新最勤/涨粉最猛),",
-		"并对若干 UP 给出简短锐评。",
-		"",
-		"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
-		'{"pigeon":{"i":0,"reason":""},"diligent":{"i":0,"reason":""},',
-		'"roast":[{"i":0,"comment":""}],"scores":[{"i":0,"score":0}],"pushText":""}',
-		"",
-		"要求:",
-		"- pigeon / diligent / roast / scores 里的 i 字段一律填上表的下标(整数),不要写名字;",
-		"- reason 一句话;roast 给出 3-4 条最有梗的锐评;",
-		`- scores 必须覆盖全部 ${ups.length} 位 UP,score 为 0-100 的综合勤奋度评分(越勤奋越高);`,
-		"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该 UP 偷懒;",
-		"- pushText 是一段可直接发到群里的中文周报,群友扫一眼就能读完(可带少量 emoji)。",
-		"  **它是唯一给人读的字段**:里面提到 UP 时一律写上表的「名称」,不要出现下标",
-		"  (读者手上没有这张表,写「i=0」他们不知道是谁)。",
-	].join("\n");
+	return renderPromptNouns(
+		[
+			`以下是我订阅的 ${ups.length} 位{creatorNoun}近 ${days} 天的数据(JSON):`,
+			JSON.stringify(table),
+			"",
+			"请评选出「鸽王」(最不勤奋:掉粉/停更/投稿直播都少)和「勤奋 UP」(更新最勤/涨粉最猛),",
+			"并对若干{creatorNoun}给出简短锐评。",
+			"",
+			"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
+			'{"pigeon":{"i":0,"reason":""},"diligent":{"i":0,"reason":""},',
+			'"roast":[{"i":0,"comment":""}],"scores":[{"i":0,"score":0}],"pushText":""}',
+			"",
+			"要求:",
+			"- pigeon / diligent / roast / scores 里的 i 字段一律填上表的下标(整数),不要写名字;",
+			"- reason 一句话;roast 给出 3-4 条最有梗的锐评;",
+			`- scores 必须覆盖全部 ${ups.length} 位{creatorNoun},score 为 0-100 的综合勤奋度评分(越勤奋越高);`,
+			"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该{creatorNoun}偷懒;",
+			"- pushText 是一段可直接发到群里的中文周报,群友扫一眼就能读完(可带少量 emoji)。",
+			"  **它是唯一给人读的字段**:里面提到{creatorNoun}时一律写上表的「名称」,不要出现下标",
+			"  (读者手上没有这张表,写「i=0」他们不知道是谁)。",
+		].join("\n"),
+		nouns,
+	);
 }
 
 /**
@@ -201,7 +209,7 @@ const SoloRoastReplySchema = z.object({
 	pushText: z.string().default(""),
 });
 
-export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
+export function buildSoloRoastPrompt(up: RoastInput, days: number, nouns: PromptNouns): string {
 	const data = {
 		名称: up.name,
 		平台: up.platform,
@@ -213,24 +221,27 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 		直播时长h: up.liveHours === null ? "无记录" : Math.round(up.liveHours * 10) / 10,
 		最后活动: up.lastActivityAt ?? "无记录",
 	};
-	return [
-		`以下是我订阅的一位 UP 主近 ${days} 天的数据(JSON):`,
-		JSON.stringify(data),
-		"",
-		"请只针对这一位 UP 主作出评价 —— 他这段时间是勤快还是在鸽,",
-		"涨粉掉粉说明了什么,投稿与直播的节奏如何。",
-		"",
-		"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
-		'{"verdict":"","score":0,"highlights":[{"label":"","comment":""}],"pushText":""}',
-		"",
-		"要求:",
-		"- verdict 是一句话总评,要有梗但别造谣;",
-		"- score 是 0-100 的综合勤奋度评分(越勤奋越高);",
-		"- highlights 给 3-4 条分维度点评,label 是维度名(如「涨粉」「投稿」「直播」),comment 一句话;",
-		"- 没有对照组,**不要**和「其他 UP」比较,只就他自己的数据说话;",
-		"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该 UP 偷懒;",
-		"- pushText 是一段可直接发到群里的中文短评,扫一眼就能读完(可带少量 emoji)。",
-	].join("\n");
+	return renderPromptNouns(
+		[
+			`以下是我订阅的一位{creatorNoun}近 ${days} 天的数据(JSON):`,
+			JSON.stringify(data),
+			"",
+			"请只针对这一位{creatorNoun}作出评价 —— 他这段时间是勤快还是在鸽,",
+			"涨粉掉粉说明了什么,投稿与直播的节奏如何。",
+			"",
+			"严格只输出如下 JSON,不要任何多余文字、解释或 markdown 围栏:",
+			'{"verdict":"","score":0,"highlights":[{"label":"","comment":""}],"pushText":""}',
+			"",
+			"要求:",
+			"- verdict 是一句话总评,要有梗但别造谣;",
+			"- score 是 0-100 的综合勤奋度评分(越勤奋越高);",
+			"- highlights 给 3-4 条分维度点评,label 是维度名(如「涨粉」「投稿」「直播」),comment 一句话;",
+			"- 没有对照组,**不要**和「其他{creatorNoun}」比较,只就他自己的数据说话;",
+			"- 标注为「无记录」的字段表示我们那段时间没有采集到数据,不要据此判定该{creatorNoun}偷懒;",
+			"- pushText 是一段可直接发到群里的中文短评,扫一眼就能读完(可带少量 emoji)。",
+		].join("\n"),
+		nouns,
+	);
 }
 
 /**

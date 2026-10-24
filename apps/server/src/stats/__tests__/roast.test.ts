@@ -5,6 +5,7 @@
  * 垃圾时怎么诚实地失败」,而不是「顺利时怎么解析」。
  */
 
+import type { PromptNouns } from "@bilibili-notify/ai";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	buildRoastPrompt,
@@ -144,29 +145,35 @@ describe("parseRoastReply — 局部脏数据只丢局部", () => {
 
 describe("buildRoastPrompt", () => {
 	it("带上全部 UP 与下标", () => {
-		const p = buildRoastPrompt(UPS, 30);
+		const p = buildRoastPrompt(UPS, 30, BILI_NOUNS);
 		expect(p).toContain("老番茄");
 		expect(p).toContain("机智的党妹");
 		expect(p).toContain("2 位");
 	});
 
 	it("把 null 标成「无记录」并叮嘱模型别当成偷懒", () => {
-		const p = buildRoastPrompt(UPS, 30);
+		const p = buildRoastPrompt(UPS, 30, BILI_NOUNS);
 		expect(p).toContain("无记录");
-		expect(p).toContain("不要据此判定该 UP 偷懒");
+		expect(p).toContain("不要据此判定该UP主偷懒");
 	});
 
 	it("要求 JSON 的 i 字段用下标回指,而不是写名字", () => {
-		expect(buildRoastPrompt(UPS, 30)).toContain("不要写名字");
+		expect(buildRoastPrompt(UPS, 30, BILI_NOUNS)).toContain("不要写名字");
 	});
 
-	it("一张榜混着比:开头不写死「B 站」、仍叫「UP 主」;数据表多一列「平台」(ADR-0020 决策 12)", () => {
-		const p = buildRoastPrompt(UPS, 30);
+	it("按传入叫法称呼创作者;数据表多一列「平台」(ADR-0020 决策 12)", () => {
+		const p = buildRoastPrompt(UPS, 30, BILI_NOUNS);
 		expect(p).not.toContain("B 站 UP 主");
-		expect(p).toContain("2 位 UP 主");
+		expect(p).toContain("2 位UP主");
 		const table = JSON.parse(p.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
 		expect(table.map((row) => row.平台)).toEqual(["B 站", "抖音"]);
 		expect(table.map((row) => row.名称)).toEqual(["老番茄", "机智的党妹"]);
+	});
+
+	it("中性叫法改称「创作者」;「勤奋 UP」是卡片与解析按原文认的称号,保留不动", () => {
+		const p = buildRoastPrompt(UPS, 30, NEUTRAL_NOUNS);
+		expect(p).toContain("2 位创作者");
+		expect(p.replace("「勤奋 UP」", "")).not.toContain("UP");
 	});
 
 	it("**单独**叮嘱 pushText 要写名字 —— 那段是给群友看的,他们看不到下标表", () => {
@@ -174,7 +181,7 @@ describe("buildRoastPrompt", () => {
 		// 也套到了 pushText 上,推出去的周报长这样:
 		//   「鸽王i=0,30天零投稿零直播却涨粉;劳模i=5直播3场独撑排面。」
 		// 群里没人知道 i=0 是谁。下标纪律只对 JSON 结构字段成立,必须分开讲。
-		const p = buildRoastPrompt(UPS, 30);
+		const p = buildRoastPrompt(UPS, 30, BILI_NOUNS);
 		expect(p).toContain("名称");
 		expect(p).toMatch(/pushText[^\n]*/);
 		expect(p).toContain("不要出现下标");
@@ -211,6 +218,16 @@ describe("parseRoastReply — pushText 里的下标回指必须换回名字", ()
 // ── 单 UP 锐评 ───────────────────────────────────────────────────────────────
 
 const SOLO = UPS[1] as RoastInput;
+const BILI_NOUNS = {
+	creatorNoun: "UP主",
+	postNoun: "动态",
+	sources: "B 站",
+} satisfies PromptNouns;
+const NEUTRAL_NOUNS = {
+	creatorNoun: "创作者",
+	postNoun: "作品",
+	sources: "各平台",
+} satisfies PromptNouns;
 
 const goodSolo = {
 	verdict: "一个月就发一条,鸽子精本精",
@@ -224,25 +241,31 @@ const goodSolo = {
 
 describe("buildSoloRoastPrompt", () => {
 	it("只放这一位 UP 的数据,不泄漏其他订阅", () => {
-		const p = buildSoloRoastPrompt(SOLO, 30);
+		const p = buildSoloRoastPrompt(SOLO, 30, BILI_NOUNS);
 		expect(p).toContain("机智的党妹");
 		expect(p).not.toContain("老番茄");
 	});
 
 	it("窗口天数进提示词", () => {
-		expect(buildSoloRoastPrompt(SOLO, 90)).toContain("90");
+		expect(buildSoloRoastPrompt(SOLO, 90, BILI_NOUNS)).toContain("90");
 	});
 
-	it("开头同样不写死「B 站」,数据里带上平台", () => {
-		const p = buildSoloRoastPrompt(SOLO, 30);
+	it("按传入叫法称呼这一位创作者,数据里带上平台", () => {
+		const p = buildSoloRoastPrompt(SOLO, 30, BILI_NOUNS);
 		expect(p).not.toContain("B 站 UP 主");
-		expect(p).toContain("一位 UP 主");
+		expect(p).toContain("一位UP主");
 		const data = JSON.parse(p.split("\n")[1] ?? "{}") as Record<string, unknown>;
 		expect(data.平台).toBe("抖音");
 	});
 
+	it("中性叫法改称「创作者」,不留其他 UP 引用", () => {
+		const p = buildSoloRoastPrompt(SOLO, 30, NEUTRAL_NOUNS);
+		expect(p).toContain("一位创作者");
+		expect(p).not.toContain("UP");
+	});
+
 	it("无记录的字段标成「无记录」,并叮嘱模型别当成偷懒", () => {
-		const p = buildSoloRoastPrompt(SOLO, 30);
+		const p = buildSoloRoastPrompt(SOLO, 30, BILI_NOUNS);
 		expect(p).toContain("无记录");
 		expect(p).toContain("不要据此判定");
 	});
@@ -258,7 +281,10 @@ describe("提示词只讲任务,不讲身份", () => {
 		// 锐评早先在这里写死了「你是一个毒舌但公正的 B 站数据女仆」,于是它和主人
 		// 在 AI 页配的人格变成**两条并列的身份指令**,人格一旦不是毒舌女仆就串味,
 		// 最后听谁的全看模型心情。
-		for (const p of [buildRoastPrompt(UPS, 30), buildSoloRoastPrompt(SOLO, 30)]) {
+		for (const p of [
+			buildRoastPrompt(UPS, 30, BILI_NOUNS),
+			buildSoloRoastPrompt(SOLO, 30, BILI_NOUNS),
+		]) {
 			expect(p).not.toContain("你是");
 		}
 	});
@@ -267,8 +293,8 @@ describe("提示词只讲任务,不讲身份", () => {
 		// 锐评没有像 dynamic / liveSummary 那样的场景补充提示词可挂,「要评什么、
 		// 输出什么形状」只能写在这里。删过头会让默认人格(专业简洁的助理)交出一份
 		// 味同嚼蜡的周报。
-		expect(buildRoastPrompt(UPS, 30)).toContain("鸽王");
-		expect(buildSoloRoastPrompt(SOLO, 30)).toContain("只针对这一位");
+		expect(buildRoastPrompt(UPS, 30, BILI_NOUNS)).toContain("鸽王");
+		expect(buildSoloRoastPrompt(SOLO, 30, BILI_NOUNS)).toContain("只针对这一位");
 	});
 });
 
@@ -319,7 +345,7 @@ describe("提示词里的「投稿 / 动态」两个数 —— 投稿取 videoPo
 	const UP: RoastInput = { ...(UPS[0] as RoastInput), videoPosts: 3, posts: 8 };
 
 	it("榜单:数据表里 投稿=videoPosts、动态=posts−videoPosts,写成 JSON 片段", () => {
-		const p = buildRoastPrompt([UP], 30);
+		const p = buildRoastPrompt([UP], 30, BILI_NOUNS);
 		const table = JSON.parse(p.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
 		expect(table[0]?.投稿).toBe(3);
 		expect(table[0]?.动态).toBe(5);
@@ -327,7 +353,7 @@ describe("提示词里的「投稿 / 动态」两个数 —— 投稿取 videoPo
 	});
 
 	it("单人:同样的两格、同样的写法", () => {
-		const p = buildSoloRoastPrompt(UP, 30);
+		const p = buildSoloRoastPrompt(UP, 30, BILI_NOUNS);
 		const data = JSON.parse(p.split("\n")[1] ?? "{}") as Record<string, unknown>;
 		expect(data.投稿).toBe(3);
 		expect(data.动态).toBe(5);
@@ -336,12 +362,14 @@ describe("提示词里的「投稿 / 动态」两个数 —— 投稿取 videoPo
 
 	it("两格(行上两格同时为 null 或同时为数)为 null → 两项都写「无记录」,不写成 0", () => {
 		const none = { ...UP, videoPosts: null, posts: null };
-		expect(buildRoastPrompt([none], 30)).toContain('"投稿":"无记录","动态":"无记录",');
-		expect(buildSoloRoastPrompt(none, 30)).toContain('"投稿":"无记录","动态":"无记录",');
+		expect(buildRoastPrompt([none], 30, BILI_NOUNS)).toContain('"投稿":"无记录","动态":"无记录",');
+		expect(buildSoloRoastPrompt(none, 30, BILI_NOUNS)).toContain(
+			'"投稿":"无记录","动态":"无记录",',
+		);
 	});
 
 	it("没有视频投稿的行:投稿是 0 而不是「无记录」,动态是全部作品数", () => {
-		const p = buildSoloRoastPrompt({ ...UP, videoPosts: 0, posts: 4 }, 30);
+		const p = buildSoloRoastPrompt({ ...UP, videoPosts: 0, posts: 4 }, 30, BILI_NOUNS);
 		expect(p).toContain('"投稿":0,"动态":4,');
 	});
 });

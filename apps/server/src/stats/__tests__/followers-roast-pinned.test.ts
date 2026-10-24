@@ -28,6 +28,8 @@ const comment = vi.fn(async (_content: string) => "{}");
 vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	PROMPT_NEUTRAL_NOUNS: (await importOriginal<typeof import("@bilibili-notify/ai")>())
 		.PROMPT_NEUTRAL_NOUNS,
+	renderPromptNouns: (await importOriginal<typeof import("@bilibili-notify/ai")>())
+		.renderPromptNouns,
 	CommentaryGenerator: class {
 		comment = comment;
 		setWebSearchSource = vi.fn();
@@ -104,6 +106,7 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 		engines: {
 			liveSession: () => undefined,
 			extensionPlatformLabel: () => "抖音",
+			extensionPostNoun: () => undefined,
 		},
 		profileRefresh: null,
 		fansStore: createFollowersStore({

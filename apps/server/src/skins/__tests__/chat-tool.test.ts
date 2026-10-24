@@ -95,6 +95,11 @@ describe("create_skin 工具定义", () => {
 });
 
 describe("皮肤工坊的 system", () => {
+	it("无关话题改称中性的「查订阅数据」,不含「B 站」", () => {
+		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("查订阅数据");
+		expect(SKIN_MODE_SYSTEM_PROMPT).not.toContain("B 站");
+	});
+
 	it("教会模型先查资料再动手 —— 「某部作品风格」靠猜配色做不出来", () => {
 		expect(SKIN_MODE_SYSTEM_PROMPT).toContain("联网搜索");
 		// 不点工具名:web_search 只在这场会话开了搜索、且配了 key 时才挂上。system 里
