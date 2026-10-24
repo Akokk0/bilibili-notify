@@ -68,7 +68,7 @@ export type PostNodeVideo = {
  *
  * - 宽高缺了就不判长图,按普通比例铺(拓展的图宽高由 BN 读文件头拿,读不出来也照样出卡)。
  * - `animated` 由来源自己判(`PostImage.isAnimated`):B 站看 `live_url` 或 `.gif` 结尾(`postFromDynamic`),
- *   拓展看图的文件头(`postFromReport`)—— 图廊自己不看地址结尾。
+ *   拓展来源在图库收图时看文件头 —— 图廊自己不看地址结尾。
  */
 export type GalleryImage = {
 	url: string;
@@ -125,7 +125,7 @@ export type PostNode = {
 
 /**
  * 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。来源据此决定往图库存前几张(排在后面的
- * 不画,不必存):`Post` 的翻译(拓展的 `postFromReport`)从这儿取,全仓只有这一个数。
+ * 不画,不必存):拓展来源把外来作品翻成 `Post` 时从这儿取,全仓只有这一个数。
  */
 export const GALLERY_MAX_IMAGES = 9;
 

@@ -33,7 +33,7 @@ import { dataPath } from "./roots.js";
 export interface SubscriptionState {
 	/**
 	 * Cached B-station public profile mirror for UI display. ProfileRefresh-owned.
-	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62),头像存进图库、
+	 * 拓展订阅那一支由来源上下文的 `reportProfile` 写(`reported-profiles.ts`,ADR-0019 决策 7 / 62),头像存进图库、
 	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubscriptionStateStore.listImageRefs}。
 	 */
 	cachedProfile?: CreatorProfile;
@@ -78,7 +78,7 @@ export interface SubscriptionStateStore {
  * 删订阅再扫一次。
  *
  * 🔴 **留下的是全部订阅的 id —— 两支都算**(ADR-0019 决策 47)。拓展订阅的资料缓存也住在
- * 这里(拓展报来的名字 / 头像 / 粉丝,决策 7);只拿 B 站订阅当保留名单的话,开机一次、
+ * 这里(来源报来的名字 / 头像 / 粉丝,决策 7);只拿 B 站订阅当保留名单的话,开机一次、
  * 每删一条 B 站订阅一次,拓展订阅的资料就被静默抹掉 —— 类型、测试、构建全绿。所以这里
  * 收的是整个订阅仓而不是一份现成的 id 列表:调用方没有机会先筛一遍。
  */

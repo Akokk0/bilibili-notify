@@ -268,7 +268,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 });
 
 describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
-	it("拓展报了新的粉丝数(subscription-profiles-changed)→ 不等下一轮,当场刷新那一条并 emit", async () => {
+	it("来源报完资料直接叫 refreshReportedEntries → 不等下一轮,当场刷新那一条并 emit", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([extSub("e1", "sec-1"), extSub("e2", "sec-2")], {
 			e1: profile(450),
@@ -278,7 +278,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 
 		p.runtime.set("e1", profile(500));
 		// 不是拓展订阅的 id、没有时序的 id 混在里面也不碍事。
-		p.bus.emit("subscription-profiles-changed", { subscriptionIds: ["e1", "e2", "b-unknown"] });
+		await p.handle.refreshReportedEntries(["e1", "e2", "b-unknown"]);
 		await vi.waitFor(() => expect(p.snapshots.length).toBeGreaterThan(before));
 		expect(p.snapshots.at(-1)).toEqual([
 			expect.objectContaining({ subscriptionId: "e1", current: 500 }),
@@ -289,7 +289,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 	it("停用着的报了资料也不上面板", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([extSub("e1", "sec-1", false)], { e1: profile(450) });
-		p.bus.emit("subscription-profiles-changed", { subscriptionIds: ["e1"] });
+		await p.handle.refreshReportedEntries(["e1"]);
 		// 给它一点时间:要是会上面板,这里早该有了。
 		await new Promise((r) => setTimeout(r, 50));
 		expect(p.handle.getLastEntries()).toEqual([]);

@@ -902,23 +902,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				const view = entry.manifest && manifestSubscriptionView(entry.manifest);
 				return view?.display.label ?? entryIdentity(entry)?.name;
 			},
-			// 拓展订阅推送要现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、清单里平台对作品的
-			// 叫法。同上,装载器晚一步建起来,所以都现取。
-			extensionSources: {
-				running: (id) =>
-					loadedExtensions?.list().some((one) => one.id === id && one.state === "running") ?? false,
-				postNoun: (id) => {
-					const entry = loadedExtensions?.list().find((one) => one.id === id);
-					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
-				},
+			extensionPostNoun: (id) => {
+				const entry = loadedExtensions?.list().find((one) => one.id === id);
+				return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
 			},
-			// 拓展作品卡是 `Post`(㉑d):配图 / 封面 / 事件带来的头像经 `postImages` 存进图库,出图器出卡前
-			// 经 `resolveImageRef` 把引用换成 data URL。两头缺一头,症状都是作品卡上一张图都没有。
-			postImages: runtime.postImages,
 			// 来源经 `ctx.reportProfile` 报的资料的收口(递给来源上下文的 `profiles`)。
 			profileReports: runtime.profileReports,
-			// 拓展直播卡同理(㉒c):封面与事件头像经 `liveImages` 存进图库,出图器经同一个 `resolveImageRef` 取回。
-			liveImages: runtime.liveImages,
 			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)
 			// 抓进图库。引用方是「集成在途」,图靠宽限期活到卡片画完。
 			imageFetcher: authSystem.integration,

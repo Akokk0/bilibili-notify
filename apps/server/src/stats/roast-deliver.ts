@@ -17,8 +17,8 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { imageDataUrl, readProfileAvatar } from "../images/profile-avatar.js";
 import type { RouteDeps } from "../routes/types.js";
-import { imageDataUrl, readProfileAvatar } from "../runtime/extension-push-common.js";
 import { roastSubjectName } from "./roast-subject.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;

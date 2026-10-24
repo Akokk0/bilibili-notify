@@ -1,6 +1,5 @@
 /**
- * 往图库存图的两个小件:拓展作品与拓展直播卡共用,所以不住在 `posts/` 里。存图的口一律是
- * `Pick<ImageWriter, "put">`(`AppRuntime.postImages` / `liveImages` 的存图那一半)。
+ * 往图库存图的小件;存图的口一律是 `Pick<ImageWriter, "put">`。
  */
 
 import { fail, type ImageRef, ok } from "@bilibili-notify/internal";

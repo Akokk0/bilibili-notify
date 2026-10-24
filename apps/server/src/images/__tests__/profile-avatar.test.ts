@@ -1,14 +1,5 @@
-/**
- * 拓展订阅推送的公共件(ADR-0019 决策 54 / 62 / 77):作品与直播两条路都用。
- *
- * - 读订阅资料里的头像(`readProfileAvatar`,锐评卡用)。㉒c 之前这里还有「卡上的作者」(`extensionCardAuthor`:
- *   事件头像 / 资料头像都转成 data URL):拓展直播卡改走图库引用后它退役了,「事件带的优先、没带的用资料里的」
- *   这条规矩由 `live-card-input-from-report.test.ts` 钉着。模板里的 `{name}` 的取法搬去了 contract 的
- *   `displayNameOf`(事件名 → 资料名 → 身份标签,决策 77),由 `apps/contract/src/__tests__/nouns.test.ts` 钉着。
- */
-
 import { describe, expect, it, vi } from "vite-plus/test";
-import { readProfileAvatar } from "../extension-push-common.js";
+import { readProfileAvatar } from "../profile-avatar.js";
 
 const WEBP = new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBPVP8 ")]);
 

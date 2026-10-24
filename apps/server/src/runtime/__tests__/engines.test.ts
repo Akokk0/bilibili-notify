@@ -31,6 +31,7 @@ import type {
 	PlatformAdapter,
 	Post,
 	PostEvent,
+	PostReport,
 	ProbeResult,
 	PushTarget,
 	Source,
@@ -65,7 +66,6 @@ import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
-import { imageRefOf } from "../../images/image-store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import type { LiveTable, LiveTableEntry } from "../../live/live-table.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
@@ -433,6 +433,10 @@ interface Ctx {
 	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
 	sourceReady: Promise<unknown>;
+	/** 主来源的撤登记把手;`noSource` 时没有。 */
+	sourceRegistration?: Promise<{ dispose(): void }>;
+	/** 额外来源的上下文,按来源键取(`extraSources` 登记的那些)。 */
+	extraSource(sourceKey: string): SourceContext;
 	/** `registerSource` 的登记项带进去的日志器(来源上下文的 `ctx.logger` 该是它)。 */
 	sourceLogger: ReturnType<typeof makeLogger>;
 	sources: SourceRegistry;
@@ -456,19 +460,15 @@ function setup(opts?: {
 	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
 	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
 	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
+	/** 拓展清单里作品叫法(接线层给的);不给 = 女仆那份视图退中性叫法。 */
+	extensionPostNoun?: Parameters<typeof createEngines>[0]["extensionPostNoun"];
 	/** 女仆读统计的口(接线层给的);不给 = 女仆的作品 / 统计工具答「没接上」。 */
 	creatorStats?: Parameters<typeof createEngines>[0]["creatorStats"];
-	/** 拓展订阅推送现取的那几样(接线层给的);不给 = 不接拓展订阅的推送。 */
-	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
-	/** 拓展作品往图库存图的口(接线层给的 `runtime.postImages`);给了 `extensionSources` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
-	postImages?: Parameters<typeof createEngines>[0]["postImages"] | null;
-	/** 拓展直播往图库存封面与事件头像的口(接线层给的 `runtime.liveImages`);给了 `extensionSources` 与 `liveTable` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
-	liveImages?: Parameters<typeof createEngines>[0]["liveImages"] | null;
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
 	readImage?: Parameters<typeof createEngines>[0]["readImage"];
-	/** 拓展直播接线用的在播表;不给 = 不接拓展订阅的直播。 */
+	/** 直播场次用的在播表;不给 = 不接直播。 */
 	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
@@ -476,6 +476,10 @@ function setup(opts?: {
 	fetchLiveStatus?: Source["fetchLiveStatus"];
 	/** 假来源登记在哪个键下;不给 = `bilibili`。 */
 	sourceKey?: string;
+	/** 主来源的描述符作品叫法;不给 = `makeSource()` 的「动态」。 */
+	sourcePostNoun?: string;
+	/** 主来源之外再登记几个来源。 */
+	extraSources?: Array<{ sourceKey: string; source: ReturnType<typeof makeSource> }>;
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
@@ -503,6 +507,9 @@ function setup(opts?: {
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
 	const source = makeSource();
+	if (opts?.sourcePostNoun) {
+		Object.assign(source, { descriptor: { ...source.descriptor, postNoun: opts.sourcePostNoun } });
+	}
 	if (opts?.fetchLiveStatus) source.fetchLiveStatus = opts.fetchLiveStatus;
 	const problems = createProblemTable({ logger: serviceCtx.logger });
 	const runtime = createEngines({
@@ -549,29 +556,15 @@ function setup(opts?: {
 			? { extensionPlatformLabel: opts.extensionPlatformLabel }
 			: {}),
 		...(opts?.creatorStats ? { creatorStats: opts.creatorStats } : {}),
-		...(opts?.extensionSources ? { extensionSources: opts.extensionSources } : {}),
-		...(opts?.extensionSources && opts.postImages !== null
-			? {
-					postImages: opts.postImages ?? {
-						put: async () => ({ ok: true as const, ref: `${"0".repeat(63)}1.png` }),
-					},
-				}
-			: {}),
+		...(opts?.extensionPostNoun ? { extensionPostNoun: opts.extensionPostNoun } : {}),
 		...(opts?.resolveImageRef ? { resolveImageRef: opts.resolveImageRef } : {}),
 		readImage: opts?.readImage ?? (async () => undefined),
 		...(opts?.liveTable ? { liveTable: opts.liveTable } : {}),
-		...(opts?.extensionSources && opts.liveTable && opts.liveImages !== null
-			? {
-					liveImages: opts.liveImages ?? {
-						put: async () => ({ ok: true as const, ref: `${"0".repeat(63)}2.png` }),
-					},
-				}
-			: {}),
 	});
 	// 登记即 start:`start` 与键的认领都在同一个同步段里发生(下面 await 的只是登记表的收尾)。
 	const sourceLogger = makeLogger();
-	const sourceReady = opts?.noSource
-		? Promise.resolve()
+	const sourceRegistration = opts?.noSource
+		? undefined
 		: runtime.registerSource({
 				sourceKey: opts?.sourceKey ?? "bilibili",
 				source,
@@ -580,9 +573,19 @@ function setup(opts?: {
 				integration: { logger: serviceCtx.logger } as any,
 				logger: sourceLogger,
 			});
+	const sourceReady = sourceRegistration ?? Promise.resolve();
 	// 没人 await 它就 dispose 的用例:关停后登记作废会让它 reject,这里挂一条旁支吞掉「未处理的 rejection」,
 	// sourceReady 本身仍会 reject(await 它的用例照样看得到)。
 	sourceReady.catch(() => {});
+	const extraReady = (opts?.extraSources ?? []).map(({ sourceKey, source: extra }) =>
+		runtime.registerSource({
+			sourceKey,
+			source: extra,
+			integration: { logger: serviceCtx.logger } as any,
+			logger: sourceLogger,
+		}),
+	);
+	for (const ready of extraReady) ready.catch(() => {});
 	lastSetup = {
 		runtime,
 		bus,
@@ -590,6 +593,12 @@ function setup(opts?: {
 		configStore,
 		source,
 		sourceReady,
+		...(sourceRegistration ? { sourceRegistration } : {}),
+		extraSource(sourceKey) {
+			const found = opts?.extraSources?.find((entry) => entry.sourceKey === sourceKey)?.source.ctx;
+			if (!found) throw new Error(`额外的来源 ${sourceKey} 还没 start`);
+			return found;
+		},
 		sourceLogger,
 		sources,
 		problems,
@@ -749,21 +758,18 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		const c = setup({
 			puppeteer: true,
 			subs: [ext, biliSubOf("1")],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => "作品",
-			},
+			extraSources: [{ sourceKey: "douyin", source: makeSource() }],
 		});
 		active = c;
 		H.image[0].generatePostCard.mockRejectedValue(new Error("浏览器挂了"));
 
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [ext.id],
-			report: {
-				kind: "post",
-				value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
+		c.extraSource("douyin").reportPost("sec-uid-1", {
+			postId: "p1",
+			url: "https://www.douyin.com/video/p1",
+			post: {
+				creator: { name: "作者" },
+				publishedAt: new Date().toISOString(),
+				text: "作品",
 			},
 		});
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
@@ -780,90 +786,45 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 	});
 });
 
-/**
- * 拓展作品的图走图库(ADR-0021 决策 22 下 2026-10-05 的 🔗,㉑d):作品卡是 `Post`,配图 / 封面 / 事件带来的头像
- * 经 `postImages` 存进图库、`Post` 里只放引用;出图器出卡前经注入的 `resolveImageRef` 把引用换成地址。三处接线
- * (`postImages` 传给消费者、资料里的头像引用传给消费者、`resolveImageRef` 传给出图器)各自的单元测试都证明不了
- * engines 真的接上了,漏接的症状是作品卡上一张图都没有而门禁全绿。
- */
+/** 来源上下文交来的作品图已经是图库引用；引擎要把引用、资料头像和 `resolveImageRef` 接到出图器。 */
 describe("createEngines — 拓展作品的图走图库", () => {
 	const AVATAR_REF = `${"a".repeat(63)}1.png`;
-	/** 存图的口:回图库起的那个名字(内容哈希)。写盘推迟到出卡,翻译时算的引用必须与它一致。 */
-	const storing = () =>
-		vi.fn(async (bytes: Uint8Array) => {
-			const ref = imageRefOf(bytes);
-			if (!ref) throw new Error("夹具图不合规");
-			return { ok: true as const, ref };
-		});
-	const sources = {
-		running: () => true,
-		postNoun: () => undefined,
-	};
-	const PNG_1X1 = new Uint8Array([
-		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
-		0, 0, 0, 1, 8, 6, 0, 0, 0,
-	]);
-
-	function report(sub: { id: string }, value: Record<string, unknown> = {}) {
-		return {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: {
-				kind: "post" as const,
-				value: {
-					id: "p1",
-					url: "https://www.douyin.com/video/p1",
-					publishedAt: Date.now(),
-					...value,
-				},
-			},
-		};
-	}
+	const IMAGE_REF = `${"c".repeat(64)}.png`;
 
 	/** 出图器收到的 `Post`(第一个参数)。 */
 	const postOf = (call: unknown[]) =>
 		call[0] as { creator: { avatar?: string }; images?: unknown[] };
 
-	it("给了 extensionSources 却没给 postImages:开机就抛,不悄悄不出图", () => {
+	it("来源交来的头像与配图引用原样到出图器", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		// 验红:删掉 engines.ts 里 `if (!postImages) throw …` 那一行,这条红。
-		expect(() =>
-			setup({ puppeteer: true, subs: [sub], extensionSources: sources, postImages: null }),
-		).toThrow(/postImages/);
-	});
-
-	it("事件带来的头像与配图经 postImages 存(交给核心之前就写盘),出图器收到的 Post 里是图库的引用", async () => {
-		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
-			extensionSources: sources,
-			postImages: { put },
+			sourceKey: "douyin",
 		});
 		active = c;
-		c.bus.emit(
-			"subscription-reported",
-			report(sub, { author: { name: "作者", avatar: PNG_1X1 }, images: [PNG_1X1] }),
-		);
+		c.source.ctx?.reportPost("sec-uid-1", {
+			postId: "p1",
+			url: "https://www.douyin.com/video/p1",
+			post: {
+				publishedAt: new Date().toISOString(),
+				creator: { name: "作者", avatar: IMAGE_REF },
+				text: "有图的作品",
+				images: [{ ref: IMAGE_REF }],
+			},
+		});
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里传给 bindExtensionPosts 的 `postImages,` 这一行,这条红。
-		// 头像和配图各存一次(同一份字节,同一个引用)。
-		expect(put).toHaveBeenCalledTimes(2);
 		const post = postOf(H.image[0].generatePostCard.mock.calls[0] ?? []);
-		expect(post.creator.avatar).toBe(imageRefOf(PNG_1X1));
-		expect(post.images).toEqual([expect.objectContaining({ ref: imageRefOf(PNG_1X1) })]);
+		expect(post.creator.avatar).toBe(IMAGE_REF);
+		expect(post.images).toEqual([expect.objectContaining({ ref: IMAGE_REF })]);
 	});
 
-	it("事件没带头像:订阅资料里存的头像引用顶上(不再存一遍)", async () => {
+	it("事件没带头像:订阅资料里存的头像引用顶上", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
-			extensionSources: sources,
-			postImages: { put },
+			sourceKey: "douyin",
 			overrides: {
 				subscriptionStateStore: {
 					get: (id: string) =>
@@ -880,11 +841,17 @@ describe("createEngines — 拓展作品的图走图库", () => {
 			},
 		});
 		active = c;
-		c.bus.emit("subscription-reported", report(sub));
+		c.source.ctx?.reportPost("sec-uid-1", {
+			postId: "p1",
+			url: "https://www.douyin.com/video/p1",
+			post: {
+				creator: { name: "作者" },
+				publishedAt: new Date().toISOString(),
+				text: "作品",
+			},
+		});
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里 postQueue 的 `avatar: profileAvatarOf,` 那一行,这条红(头像退成没有)。
 		expect(postOf(H.image[0].generatePostCard.mock.calls[0] ?? []).creator.avatar).toBe(AVATAR_REF);
-		expect(put).not.toHaveBeenCalled();
 	});
 
 	it("出图器拿到接线层给的 resolveImageRef", () => {
@@ -919,13 +886,21 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		const c = setup({
 			globals: aiOn,
 			subs: [sub],
-			extensionSources: sources,
+			sourceKey: "douyin",
 			readImage,
 		});
 		active = c;
-		c.bus.emit("subscription-reported", report(sub, { text: "有图的作品", images: [PNG_1X1] }));
+		c.source.ctx?.reportPost("sec-uid-1", {
+			postId: "p1",
+			url: "https://www.douyin.com/video/p1",
+			post: {
+				creator: { name: "作者" },
+				publishedAt: new Date().toISOString(),
+				text: "有图的作品",
+				images: [{ ref: `${"0".repeat(63)}1.png` }],
+			},
+		});
 		await vi.waitFor(() => expect(H.ai[0].comment).toHaveBeenCalledTimes(1));
-		// 接线层的默认存图替身给的就是这个引用。
 		expect(readImage).toHaveBeenCalledWith(`${"0".repeat(63)}1.png`);
 		expect(H.ai[0].comment.mock.calls[0]?.[2]).toEqual([
 			`data:image/png;base64,${Buffer.from([1, 2, 3]).toString("base64")}`,
@@ -1039,33 +1014,33 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 	});
 
-	// 「来源在跑」读口问的是来源登记表(内置来源)与拓展读口(拓展订阅):拓展停了,等着的作品不补(决策 61);
+	// 「来源在跑」读口问的是来源登记表:拓展停了,等着的作品不补(决策 61);
 	// B 站来源没登记(或撤了)也不推。
-	// 验红:把 engines.ts 里 `sourceRunning` 改成恒真,拓展那段与 B 站那段都红。
+	// 验红:把 engines.ts 里 `sourceRunning` 改成恒真,这些用例都红。
 	it("来源没在跑:拓展订阅与没登记的 B 站来源的作品都不推;对照:拓展在跑、B 站来源登了就推", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		let running = false;
 		const c = setup({
 			subs: [ext, biliSubOf("1")],
-			extensionSources: {
-				running: () => running,
-				postNoun: () => "作品",
-			},
+			extraSources: [{ sourceKey: "douyin", source: makeSource() }],
 		});
 		active = c;
 		const extReport = () =>
-			c.bus.emit("subscription-reported", {
-				extensionId: "douyin",
-				externalId: "sec-uid-1",
-				subscriptionIds: [ext.id],
-				report: {
-					kind: "post" as const,
-					value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
+			c.extraSource("douyin").reportPost("sec-uid-1", {
+				postId: "p1",
+				url: "https://www.douyin.com/video/p1",
+				post: {
+					creator: { name: "作者" },
+					publishedAt: new Date().toISOString(),
+					text: "作品",
 				},
 			});
+		await c.sourceReady;
+		const realGet = c.sources.get;
+		c.sources.get = (key) => (key === "douyin" ? undefined : realGet(key));
 		extReport();
 		await settleTracked(c);
 		expect(H.push[0].push).not.toHaveBeenCalled(); // 拓展没在跑
+		c.sources.get = realGet;
 
 		// B 站来源在登记表里:不看拓展在不在跑。
 		reportBili("1");
@@ -1073,48 +1048,36 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 
 		// 登记表里暂时认不出 B 站来源(用读口模拟「没登记」):同一条订阅的作品被丢。
-		await c.sourceReady;
-		const realGet = c.sources.get;
 		c.sources.get = (key) => (key === "bilibili" ? undefined : realGet(key));
 		reportBili("1", bilibiliPost("没人认领"), "d2");
 		await settleTracked(c);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 		c.sources.get = realGet;
 
-		running = true;
 		extReport();
 		await settleTracked(c);
 		expect(H.push[0].push).toHaveBeenCalledTimes(2);
 	});
 
-	// 验红:把 engines.ts 里 bindExtensionPosts 的 `postNoun: (extensionId) => extensionSources.postNoun(extensionId)` 换成
-	// 恒回 undefined,这条红(叫法退回「动态」)。
-	it("拓展清单里的平台叫法一路走到 AI 提示词:「发布了一条视频」", async () => {
+	// 来源描述符里的作品叫法随 `SourceContext.reportPost` 的信封交进作品入口,AI 提示词照它说。
+	it("来源描述符里的作品叫法一路走到 AI 提示词:「发布了一条视频」", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const aiOn = aiGlobals();
 		aiOn.ai.enabled = true;
 		const c = setup({
 			globals: aiOn,
 			subs: [ext],
-			extensionSources: {
-				running: () => true,
-				postNoun: (extensionId) => (extensionId === "douyin" ? "视频" : undefined),
-			},
+			sourceKey: "douyin",
+			sourcePostNoun: "视频",
 		});
 		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [ext.id],
-			report: {
-				kind: "post" as const,
-				value: {
-					id: "p1",
-					url: "https://www.douyin.com/video/p1",
-					publishedAt: Date.now(),
-					text: "今天去海边",
-					author: { name: "甲" },
-				},
+		c.source.ctx?.reportPost("sec-uid-1", {
+			postId: "p1",
+			url: "https://www.douyin.com/video/p1",
+			post: {
+				publishedAt: new Date().toISOString(),
+				text: "今天去海边",
+				creator: { name: "甲" },
 			},
 		});
 		await vi.waitFor(() => expect(H.ai[0].comment).toHaveBeenCalledTimes(1));
@@ -1128,32 +1091,21 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
  * 各自的单元测试证明不了 engines 真的把全局 / 按 UP 的过滤递到了两条路上:漏递的症状是该挡的作品照推。
  */
 describe("createEngines — 作品过滤接线", () => {
-	const sources = {
-		running: () => true,
-		postNoun: () => "作品",
-		events: () => ["post"] as const,
-	};
-	const PNG = new Uint8Array([
-		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
-		0, 0, 0, 1, 8, 6, 0, 0, 0,
-	]);
-	const extReport = (sub: { id: string }, value: Record<string, unknown>) => ({
-		extensionId: "douyin",
-		externalId: "sec-uid-1",
-		subscriptionIds: [sub.id],
-		report: {
-			kind: "post" as const,
-			value: {
-				id: "p1",
-				url: "https://www.douyin.com/video/p1",
-				publishedAt: Date.now(),
-				...value,
-			},
-		},
+	const IMAGE_REF = `${"c".repeat(64)}.png`;
+	const extReport = (_sub: { id: string }, value: Record<string, unknown>): PostReport => ({
+		postId: "p1",
+		url: "https://www.douyin.com/video/p1",
+		post: {
+			creator: { name: "作者" },
+			publishedAt: new Date().toISOString(),
+			text: "",
+			...value,
+		} as PostReport["post"],
 	});
 	const videoReport = (sub: { id: string }) =>
 		extReport(sub, { text: "新视频", video: { title: "一期" }, images: undefined });
-	const imagesReport = (sub: { id: string }) => extReport(sub, { text: "返图", images: [PNG] });
+	const imagesReport = (sub: { id: string }) =>
+		extReport(sub, { text: "返图", images: [{ ref: IMAGE_REF }] });
 	const textReport = (sub: { id: string }) => extReport(sub, { text: "只有字" });
 
 	function extSetup(over: { globals?: GlobalConfig; sub?: Subscription } = {}) {
@@ -1162,7 +1114,7 @@ describe("createEngines — 作品过滤接线", () => {
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
-			extensionSources: sources,
+			sourceKey: "douyin",
 			...(over.globals ? { globals: over.globals } : {}),
 		});
 		active = c;
@@ -1179,11 +1131,11 @@ describe("createEngines — 作品过滤接线", () => {
 		const { c, sub } = extSetup();
 		const detected: PostEvent[] = [];
 		c.bus.on("post-detected", (event) => detected.push(event));
-		c.bus.emit("subscription-reported", textReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 
 		c.runtime.dispose();
-		c.bus.emit("subscription-reported", textReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await settleTracked(c);
 		expect(detected).toHaveLength(1);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
@@ -1221,9 +1173,9 @@ describe("createEngines — 作品过滤接线", () => {
 
 	it("拓展作品:全局开着「屏蔽视频」,视频作品被挡(不出卡不推);没挡的类型照推", async () => {
 		const { c, sub } = extSetup({ globals: globalsWith({ blockVideos: true }) });
-		// 验红:把 engines.ts 里递给 bindExtensionPosts 的 `filter: eff.filters` 换成空规则,这条红。
-		c.bus.emit("subscription-reported", videoReport(sub));
-		c.bus.emit("subscription-reported", textReport(sub));
+		// 验红:把来源上下文交给作品入口的 `filter: eff.filters` 换成空规则,这条红。
+		c.source.ctx?.reportPost("sec-uid-1", videoReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		// 只有那条纯文字的出了卡、推了;视频那条被挡在过滤上。
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
@@ -1232,8 +1184,8 @@ describe("createEngines — 作品过滤接线", () => {
 
 	it("拓展作品:全局开着「屏蔽图集」,带配图的作品被挡", async () => {
 		const { c, sub } = extSetup({ globals: globalsWith({ blockImages: true }) });
-		c.bus.emit("subscription-reported", imagesReport(sub));
-		c.bus.emit("subscription-reported", textReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", imagesReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "只有字" });
@@ -1241,8 +1193,8 @@ describe("createEngines — 作品过滤接线", () => {
 
 	it("拓展作品:类型开关都关着,视频与配图照推(出厂行为)", async () => {
 		const { c, sub } = extSetup();
-		c.bus.emit("subscription-reported", videoReport(sub));
-		c.bus.emit("subscription-reported", imagesReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", videoReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", imagesReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(2));
 	});
 
@@ -1253,7 +1205,7 @@ describe("createEngines — 作品过滤接线", () => {
 			overrides: { filters: { blockVideos: false } },
 		});
 		const a = extSetup({ globals: globalsWith({ blockVideos: true }), sub: open });
-		a.c.bus.emit("subscription-reported", videoReport(a.sub));
+		a.c.source.ctx?.reportPost("sec-uid-1", videoReport(a.sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 	});
 
@@ -1264,8 +1216,8 @@ describe("createEngines — 作品过滤接线", () => {
 			overrides: { filters: { blockVideos: true } },
 		});
 		const { c, sub } = extSetup({ sub: strict });
-		c.bus.emit("subscription-reported", videoReport(sub));
-		c.bus.emit("subscription-reported", textReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", videoReport(sub));
+		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 	});
@@ -1339,12 +1291,12 @@ describe("createEngines — 作品过滤接线", () => {
 			const c = setup({
 				puppeteer: true,
 				subs: [sub],
-				extensionSources: sources,
+				sourceKey: "douyin",
 				globals: globalsWith({ blockVideos: true }),
 				overrides: { historyStore: { record } },
 			});
 			active = c;
-			c.bus.emit("subscription-reported", videoReport(sub));
+			c.source.ctx?.reportPost("sec-uid-1", videoReport(sub));
 			await vi.waitFor(() => expect(record).toHaveBeenCalledTimes(1));
 			expect(record).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -1381,21 +1333,14 @@ describe("createEngines — 拓展直播接上推送", () => {
 		const c = setup({
 			globals: g,
 			subs: [sub],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
+			sourceKey: "douyin",
 			liveTable: memoryLiveTable(),
 		});
 		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: {
-				kind: "liveStart",
-				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
-			},
+		c.source.ctx?.reportLive("sec-uid-1", {
+			kind: "start",
+			startedAt: new Date().toISOString(),
+			details: { url: "https://live.douyin.com/1" },
 		});
 		await vi.waitFor(() =>
 			expect(H.push[0].push).toHaveBeenCalledWith(
@@ -1408,48 +1353,20 @@ describe("createEngines — 拓展直播接上推送", () => {
 });
 
 /**
- * 拓展直播卡的图走图库(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):封面与事件带来的作者头像经 `liveImages`
- * 存进图库、卡输入里只放引用;订阅资料里的头像引用(`cachedProfile.avatar`)传给消费者。两处接线
- * (`liveImages`、`avatarRef`)各自的单元测试都证明不了 engines 真的接上了,漏接的症状是拓展直播卡没有封面与头像
- * 而门禁全绿。出图器收到的第一个参数就是中立的 `LiveCardInput`。
+ * 来源交来的直播图已经是图库引用;卡输入里只放引用,订阅资料里的头像引用(`cachedProfile.avatar`)也要接到消费者。
+ * 出图器收到的第一个参数就是中立的 `LiveCardInput`。
  */
 describe("createEngines — 拓展直播的图走图库", () => {
 	const PROFILE_AVATAR = `${"a".repeat(64)}.png`;
-	const PNG_A = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-	const sources = {
-		running: () => true,
-		postNoun: () => undefined,
-	};
-	const storing = () =>
-		vi.fn(async (bytes: Uint8Array) => {
-			const ref = imageRefOf(bytes);
-			if (!ref) throw new Error("夹具图不合规");
-			return { ok: true as const, ref };
-		});
+	const COVER_REF = `${"c".repeat(64)}.png`;
 
-	it("给了 liveTable 却没给 liveImages:开机就抛,不悄悄不出图", () => {
+	it("封面引用与订阅资料里的头像引用都到出图器", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		// 验红:删掉 engines.ts 里 `if (!liveImages) throw …` 那一行,这条红。
-		expect(() =>
-			setup({
-				puppeteer: true,
-				subs: [sub],
-				extensionSources: sources,
-				liveTable: memoryLiveTable(),
-				liveImages: null,
-			}),
-		).toThrow(/liveImages/);
-	});
-
-	it("封面经 liveImages 存(收到上报就写盘),订阅资料里的头像引用顶上;出图器收到的输入里是引用", async () => {
-		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
-			extensionSources: sources,
+			sourceKey: "douyin",
 			liveTable: memoryLiveTable(),
-			liveImages: { put },
 			overrides: {
 				subscriptionStateStore: {
 					get: (id: string) =>
@@ -1466,23 +1383,17 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			},
 		});
 		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: {
-				kind: "liveStart",
-				value: { url: "https://live.douyin.com/1", startedAt: Date.now(), cover: PNG_A },
-			},
+		c.source.ctx?.reportLive("sec-uid-1", {
+			kind: "start",
+			startedAt: new Date().toISOString(),
+			details: { url: "https://live.douyin.com/1", cover: { ref: COVER_REF } },
 		});
 		await vi.waitFor(() => expect(H.image[0].generateLiveCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里传给 bindExtensionLive 的 `liveImages,`(整条开机就抛),或 bindLivePush 的 `avatarRef` 那一行(头像没了)。
 		const input = H.image[0].generateLiveCard.mock.calls[0]?.[0] as {
 			creator: { name: string; avatar?: string };
 			cover?: { ref?: string };
 		};
-		expect(put).toHaveBeenCalledTimes(1);
-		expect(input.cover).toEqual({ ref: imageRefOf(PNG_A) });
+		expect(input.cover).toEqual({ ref: COVER_REF });
 		expect(input.creator).toEqual({ name: "资料名", avatar: PROFILE_AVATAR });
 	});
 });
@@ -1502,10 +1413,6 @@ describe("createEngines — 来源周期核对", () => {
 			const c = setup({
 				globals: g,
 				subs: [sub],
-				extensionSources: {
-					running: () => false,
-					postNoun: () => undefined,
-				},
 				liveTable: memoryLiveTable(),
 				...(fetchLiveStatus ? { fetchLiveStatus } : {}),
 			});
@@ -1630,10 +1537,6 @@ describe("createEngines — getModuleState.live", () => {
 		const c = setupLive({
 			sourceKey: "douyin",
 			subs: [makeExtensionSubscription()],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
 		});
 		active = c;
 		expect(c.runtime.getModuleState().live).toBe(true);
@@ -1925,10 +1828,7 @@ describe("createEngines — boot wiring", () => {
 		const c = setup({
 			globals: aiGlobals(),
 			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
-			extensionSources: {
-				running: () => true,
-				postNoun: (id) => (id === "douyin" ? "视频" : undefined),
-			},
+			extensionPostNoun: (id) => (id === "douyin" ? "视频" : undefined),
 		});
 		active = c;
 		expect(c.runtime.extensionPostNoun("douyin")).toBe("视频");
@@ -1988,20 +1888,18 @@ describe("createEngines — boot wiring", () => {
 		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.platform).toBe("抖音");
 	});
 
-	it("只读工具那份视图里,拓展订阅的在播接的是在播表(ADR-0019 决策 64 的 🔗)", () => {
+	it("只读工具那份视图里,拓展订阅的在播接的是在播表(ADR-0019 决策 64 的 🔗)", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-1" });
 		const aiLiveTable = memoryLiveTable();
 		aiLiveTable.replace(ext.id, "douyin", undefined, { title: "在播" });
 		const c = setup({
 			globals: aiGlobals(),
 			subs: [ext],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
 			liveTable: aiLiveTable,
+			sourceKey: "douyin",
 		});
 		active = c;
+		await c.sourceReady;
 		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.liveNow).toEqual({
 			state: "live",
 			title: "在播",
@@ -2149,62 +2047,31 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(booted.sort()).toEqual(["ai/ai", "image/image", "live/core", "posts/core"]);
 	});
 
-	// 验红:把 engines.ts 里 `bindExtensionPosts` 的 `logger: postsCtx.logger` 换成 B 站那个上下文的,这条红。
-	it("拓展作品的接入记的日志走 posts/core 那一个", async () => {
-		const gone = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const c = setup({
-			puppeteer: true,
-			subs: [],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
-		});
-		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [gone.id],
-			report: {
-				kind: "post",
-				value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
-			},
-		});
-		await settleTracked(c);
-		const posts = subsystemCtx(c, "posts", "core").logger;
-		expect(posts.debug).toHaveBeenCalledWith(expect.stringContaining("[ext-post]"));
-		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
-	});
-
-	const extensionPostReport = (id: string, video: boolean) => ({
-		extensionId: "douyin",
-		externalId: "sec-uid-1",
-		subscriptionIds: [id],
-		report: {
-			kind: "post" as const,
-			value: {
-				id: "p1",
-				url: "https://www.douyin.com/video/p1",
-				publishedAt: Date.now(),
-				text: "新视频",
-				...(video ? { video: { title: "一期" } } : {}),
-			},
+	const extensionPostReport = (video: boolean): PostReport => ({
+		postId: "p1",
+		url: "https://www.douyin.com/video/p1",
+		post: {
+			creator: { name: "作者" },
+			publishedAt: new Date().toISOString(),
+			text: "新视频",
+			...(video ? { video: { cover: {}, title: "一期", description: "" } } : {}),
 		},
 	});
 
 	// 验红:把 engines.ts 里 `createPostQueue` 的顶层 `logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
-	it("作品队列自己记的日志走 posts/core 那一个(订阅的拓展没在跑 → 不收)", async () => {
-		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+	it("作品队列自己记的日志走 posts/core 那一个(订阅停用 → 不收)", async () => {
+		const sub = makeExtensionSubscription({
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			enabled: false,
+		});
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
-			extensionSources: {
-				running: () => false,
-				postNoun: () => undefined,
-			},
+			sourceKey: "douyin",
 		});
 		active = c;
-		c.bus.emit("subscription-reported", extensionPostReport(sub.id, false));
+		c.source.ctx?.reportPost("sec-uid-1", extensionPostReport(false));
 		await settleTracked(c);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("不收"),
@@ -2221,13 +2088,11 @@ describe("createEngines — config-changed globals 热重载", () => {
 			puppeteer: true,
 			subs: [sub],
 			globals: g,
-			extensionSources: {
-				running: () => true,
-				postNoun: () => "作品",
-			},
+			sourceKey: "douyin",
+			sourcePostNoun: "作品",
 		});
 		active = c;
-		c.bus.emit("subscription-reported", extensionPostReport(sub.id, true));
+		c.source.ctx?.reportPost("sec-uid-1", extensionPostReport(true));
 		await settleTracked(c);
 		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
 			expect.stringContaining("被过滤"),
@@ -2235,51 +2100,20 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `createLiveSessionEngine` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
-	it("拓展直播场次记的日志走 live/core 那一个(拓展没在跑 → 这次开播不管)", async () => {
-		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const c = setup({
-			subs: [sub],
-			extensionSources: {
-				running: () => false,
-				postNoun: () => undefined,
-			},
-			liveTable: memoryLiveTable(),
-		});
-		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: {
-				kind: "liveStart",
-				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
-			},
-		});
-		await settleTracked(c);
-		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
-			expect.stringContaining("这次开播不管"),
-		);
-		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
-	});
-
 	// 验红:把 engines.ts 里 `bindLivePush` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("拓展直播推送记的日志走 live/core 那一个(BN 起来后收到的状态是在播,接上这一场)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
 			subs: [sub],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
+			sourceKey: "douyin",
 			liveTable: memoryLiveTable(),
 		});
 		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: { kind: "liveStatus", value: { live: true, url: "https://live.douyin.com/1" } },
+		await c.sourceReady;
+		c.source.ctx?.reportLive("sec-uid-1", {
+			kind: "status",
+			isLive: true,
+			details: { url: "https://live.douyin.com/1" },
 		});
 		await settleTracked(c);
 		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
@@ -2537,63 +2371,28 @@ describe("createEngines — image 配色热更", () => {
 });
 
 describe("createEngines — dispose", () => {
-	it("拓展直播绑定先退订并排空在途上报,再让场次引擎收场次", async () => {
+	it("关停先撤来源登记再收场次:在播行出去,来源上下文随登记停掉", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const liveTable = memoryLiveTable();
-		const image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-		const ref = imageRefOf(image);
-		if (!ref) throw new Error("夹具图不合规");
-		const putGate = deferred();
 		const c = setup({
 			subs: [sub],
-			extensionSources: {
-				running: () => true,
-				postNoun: () => undefined,
-			},
+			sourceKey: "douyin",
 			liveTable,
-			liveImages: {
-				put: async () => {
-					await putGate.promise;
-					return { ok: true as const, ref };
-				},
-			},
 		});
 		active = c;
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: {
-				kind: "liveStatus",
-				value: { live: true, url: "https://live.douyin.com/1", viewers: 2000, cover: image },
-			},
+		await c.sourceReady;
+		c.source.ctx?.reportLive("sec-uid-1", {
+			kind: "status",
+			isLive: true,
+			details: { url: "https://live.douyin.com/1", currentViewers: 2000 },
 		});
-		await Promise.resolve();
-
-		const stopHooks = c.serviceCtx.onDispose.mock.calls
-			.filter(([, phase]) => phase === "stop")
-			.map(([hook]) => hook);
-		expect(stopHooks).toHaveLength(2);
-		const [engineStop, bindingStop] = stopHooks;
-		const closing = bindingStop?.();
-		expect(liveTable.get(sub.id)).toBeUndefined();
-		putGate.resolve();
-		await closing;
-
 		expect(liveTable.get(sub.id)).toMatchObject({
 			subscriptionId: sub.id,
-			details: { currentViewers: 2000, cover: { ref } },
+			details: { currentViewers: 2000 },
 		});
-		c.bus.emit("subscription-reported", {
-			extensionId: "douyin",
-			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
-			report: { kind: "liveEnd", value: { url: "https://live.douyin.com/1" } },
-		});
-		await Promise.resolve();
-		expect(liveTable.get(sub.id)).toBeDefined();
-		engineStop?.();
+		c.runtime.dispose();
 		expect(liveTable.get(sub.id)).toBeUndefined();
+		expect(c.source.stops).toBe(1);
 	});
 
 	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {

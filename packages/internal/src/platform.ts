@@ -7,7 +7,6 @@ import type { LiveSessionChange } from "./live";
 import type { PostEvent, PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
-import type { SubscriptionReportDelivery } from "./schema/subscription-report";
 import type { Subscription } from "./schema/subscriptions";
 import type { PushTarget, SessionRef } from "./schema/targets";
 
@@ -203,17 +202,6 @@ export interface BusEvents {
 	 * `GET /api/problems` 过期、自己去取,数据本身不上 bus。
 	 */
 	"problems-changed": { reporter: string };
-	/**
-	 * 订阅源拓展报上来一条、宿主核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 57 / 62)。五种都走这一个
-	 * 事件,按 `report.kind` 分:三种事件(`post` / `liveStart` / `liveEnd`)与两种不触发推送的上报
-	 * (`profile` / `liveStatus`)。
-	 *
-	 * `subscriptionIds` 已经按开关筛过:事件与直播状态只含开着的订阅,资料更新含全部(见
-	 * {@link SubscriptionReportDelivery})。一条都对不上就不发。
-	 *
-	 * 🔴 载荷里的图是字节(`Uint8Array`),**不进 WS 帧**、不落盘 —— 出卡、存头像这些消费方自己取用。
-	 */
-	"subscription-reported": SubscriptionReportDelivery;
 	/**
 	 * 拓展报的资料更新(ADR-0019 决策 7 / 62)落进资料缓存与图库里的头像之后,面板看得见的那几格(名字 /
 	 * 头像 / 粉丝数)真变了的订阅 id。**按窗口合并过**:拓展起来时可能一口气报一百条资料,一阵只发一次。

@@ -445,7 +445,6 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			bus,
 			store,
 			followers: createFollowersStore({ dataRoot: dataDir, logger }),
-			profileRefreshCron: () => "*/10 * * * *",
 			logger,
 			now,
 			// 作品与直播开关都开着(与老版本「不看开关都记」同一个结果)。

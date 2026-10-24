@@ -214,7 +214,6 @@ describe("记录器 × 总开关 — 热更新(整条采集链,下一条事件�
 			bus,
 			store,
 			followers: makeFans(),
-			profileRefreshCron: () => "*/10 * * * *",
 			logger,
 			now: () => new Date(NOW),
 			isEnabled: () => enabled,

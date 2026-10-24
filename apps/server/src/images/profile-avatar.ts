@@ -1,25 +1,7 @@
 import { sniffImageFormat } from "@bilibili-notify/internal";
-import { bytesDataUrl } from "../images/image-data-url.js";
-import type { ImageStore } from "../images/image-store.js";
-import type { SubscriptionStateStore } from "./subscription-state-store.js";
-
-/**
- * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`posts/extension-post.ts`)与拓展的
- * 直播共用:字节转 data URL。
- *
- * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /
- * `postSettingsOf` / `liveSettingsOf`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
- */
-
-/**
- * 拓展订阅推送要从宿主那头**现取**的几样。装载器比引擎晚建起来,拓展的装卸也随时发生,所以都是函数。
- */
-export interface ExtensionSourceReader {
-	/** 这个拓展此刻在跑吗(决策 61:拓展停了,等着的推送不补)。 */
-	running(extensionId: string): boolean;
-	/** 清单里平台对作品的叫法(`contributes.subscription.display.postNoun`);没写就是 `undefined`。 */
-	postNoun(extensionId: string): string | undefined;
-}
+import type { SubscriptionStateStore } from "../runtime/subscription-state-store.js";
+import { bytesDataUrl } from "./image-data-url.js";
+import type { ImageStore } from "./image-store.js";
 
 /** 图库里读出来的一张头像:字节与它的类型(图库按嗅探定的 mime)。 */
 export interface StoredAvatar {
@@ -33,7 +15,7 @@ export interface StoredAvatar {
  *
  * 锐评卡用:它的图只认字符串地址(决策 68),要把字节转成 data URL,面板用的 `/api/images/<ref>`
  * 截图的浏览器加载不到。拓展作品卡与拓展直播卡不走这里:头像是图库引用,出图器按引用取
- * (`postFromReport` / `liveCardInputFromReport` + `images/image-data-url.ts`)。
+ * (`liveCardInputFromDetails` + `images/image-data-url.ts`)。
  */
 export async function readProfileAvatar(
 	runtime: {

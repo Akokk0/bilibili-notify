@@ -11,9 +11,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { putImage } from "../../__tests__/support/chat-images.js";
-import { imageDataUrl } from "../../runtime/extension-push-common.js";
 import { imageRefDataUrl } from "../image-data-url.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../image-store.js";
+import { imageDataUrl } from "../profile-avatar.js";
 
 let dir: string;
 let store: ImageStore;

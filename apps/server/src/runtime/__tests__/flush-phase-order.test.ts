@@ -141,16 +141,11 @@ describe("createAppRuntime 的 flush 段", () => {
 	});
 
 	it("在途的资料更新先走空,图库与资料缓存仓才关门:关停返回时那条资料与它的头像已在盘上", async () => {
-		// 带头像:先把头像存进图库(停在闸门口),之后才轮到写资料缓存 —— 这第二笔是关停开始**以后**才发出的,
-		// 资料缓存仓要是已经先关了门,它就被拒、这条资料丢掉;图库要是先关了门,头像存不进去、引用也就没有。
-		// 光是「在途的写等得到」测不出先后。
+		// 来源上下文先存头像、再交引用;这里让资料缓存那笔写停在闸门口,关停等它落盘后才关仓。
+		const stored = await runtime.profileImages.put(PNG_BYTES);
+		if (!stored.ok) throw new Error(stored.message);
 		storageWriteGate.hold();
-		runtime.bus.emit("subscription-reported", {
-			extensionId: SUB.identity.sourceKey,
-			externalId: SUB.identity.externalId,
-			subscriptionIds: [SUB.id],
-			report: { kind: "profile", value: { name: "甲", avatar: PNG_BYTES } },
-		});
+		runtime.profileReports.report([SUB.id], { name: "甲", avatar: stored.ref });
 		await storageWriteGate.arrived();
 
 		let closed = false;

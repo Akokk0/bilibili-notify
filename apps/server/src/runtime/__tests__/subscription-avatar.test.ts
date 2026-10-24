@@ -1,11 +1,8 @@
 /**
- * 拓展订阅头像进图库之前的两道关(ADR-0019 决策 49 / 62;存进图库本身归图库,见 `images/image-store.ts`):
- * - 新建订阅时解析门候选带的位图 data URL(128 KiB 封顶):声明的类型得对得上字节;
- * - 拓展报资料时交的字节(约 96 KiB 封顶):类型按文件头认。
- * 两条都只收 png / jpeg / webp —— 图库收 gif,头像不收。
+ * 新建订阅解析门候选带的头像 data URL(ADR-0019 决策 49):128 KiB 封顶、只收 png / jpeg / webp,
+ * 声明的类型得对得上字节。来源后报的头像已经过图库存好图,不再经过这里。
  */
 
-import { SUBSCRIPTION_AVATAR_MAX_BYTES } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	avatarDataUrl,
@@ -13,7 +10,7 @@ import {
 	PNG_BYTES,
 	WEBP_BYTES,
 } from "../../__tests__/support/avatar-fixtures.js";
-import { checkSubscriptionAvatarBytes, decodeSubscriptionAvatar } from "../subscription-avatar.js";
+import { decodeSubscriptionAvatar } from "../subscription-avatar.js";
 
 describe("decodeSubscriptionAvatar(候选里的 data URL)", () => {
 	it.each([
@@ -35,25 +32,5 @@ describe("decodeSubscriptionAvatar(候选里的 data URL)", () => {
 		const decoded = decodeSubscriptionAvatar(dataUrl);
 		expect(decoded.ok).toBe(false);
 		if (!decoded.ok) expect(decoded.message.length).toBeGreaterThan(0);
-	});
-});
-
-describe("checkSubscriptionAvatarBytes(拓展报资料交的字节)", () => {
-	it.each([
-		["png", PNG_BYTES],
-		["jpeg", JPEG_BYTES],
-		["webp", WEBP_BYTES],
-	] as const)("%s:按文件头认 → 收", (_type, bytes) => {
-		const checked = checkSubscriptionAvatarBytes(new Uint8Array(bytes));
-		expect(checked.ok && checked.bytes.equals(bytes)).toBe(true);
-	});
-
-	it.each([
-		["gif", Buffer.from("GIF89a\x01\x00\x01\x00", "latin1")],
-		["svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
-		["空的", Buffer.alloc(0)],
-		["超过头像的上限", Buffer.concat([PNG_BYTES, Buffer.alloc(SUBSCRIPTION_AVATAR_MAX_BYTES)])],
-	])("%s → 拒收", (_label, bytes) => {
-		expect(checkSubscriptionAvatarBytes(new Uint8Array(bytes)).ok).toBe(false);
 	});
 });

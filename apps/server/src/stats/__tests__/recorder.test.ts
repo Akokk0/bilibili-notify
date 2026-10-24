@@ -148,7 +148,6 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 		bus,
 		store,
 		followers: makeFans(),
-		profileRefreshCron: () => "*/10 * * * *",
 		logger,
 		now,
 		subscriptions: subs as never,

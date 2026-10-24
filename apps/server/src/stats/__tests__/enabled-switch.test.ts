@@ -2,7 +2,7 @@
  * 统计总开关的**缓存读口**(ADR-0027 决策 9;㉙a)。
  *
  * 设置每读一次是整份深拷贝,而观看人数约两秒一帧、粉丝样本与「在记」也密 —— 开关判断读的是一个缓存的布尔,
- * 设置变了(总线上的 `config-changed`,范围是核心设置)才作废。先例:`stats/extension-source.ts` 的订阅清单缓存。
+ * 设置变了(总线上的 `config-changed`,范围是核心设置)才作废。
  */
 
 import type { MessageBus } from "@bilibili-notify/internal";

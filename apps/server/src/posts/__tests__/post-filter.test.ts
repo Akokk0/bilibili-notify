@@ -10,7 +10,7 @@
  *
  * 过滤吃的本来就是中立的 `Post`,所以这里的作品一律手工造(`posts/` 的测试不依赖 `bilibili/`):B 站翻出来是什么形状
  * (转发带 `repost`、专栏带 `article`、图文带 `images`、投稿带 `video`)由 `post-from-dynamic.test.ts` 钉,拓展那一腿的
- * 逐开关用例在 `extension-post.test.ts`。
+ * 逐开关用例在 `runtime/__tests__/engines.test.ts` 的拓展作品过滤接线。
  */
 
 import { DEFAULT_CONTENT_FILTERS, type Logger, type Post } from "@bilibili-notify/internal";

@@ -467,22 +467,6 @@ export type SubscriptionReport = {
 	[K in SubscriptionReportKind]: { kind: K; value: SubscriptionReportValue<K> };
 }[SubscriptionReportKind];
 
-/**
- * 核过、对上了订阅的一条上报 —— bus 上 `subscription-reported` 的载荷。
- *
- * `subscriptionIds`:这个拓展名下指向这个人的订阅(同一个人可能有几条)。**事件与直播状态只含开着的**
- * (停用的收下不推、也不进首页在播,决策 62);**资料更新含全部**(停用的订阅照样该有名字与头像)。
- * 一条都没有就不发。
- */
-export interface SubscriptionReportDelivery {
-	/** 哪个拓展报的 —— 宿主从 ctx 认,不由拓展说。 */
-	extensionId: string;
-	/** 拓展报的外部 id,原样。 */
-	externalId: string;
-	subscriptionIds: string[];
-	report: SubscriptionReport;
-}
-
 // ---- 走格子 ---------------------------------------------------------------------------------
 
 export type SubscriptionReportCheck<K extends SubscriptionReportKind> =

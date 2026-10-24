@@ -439,7 +439,6 @@ describe("登录失效后忘掉在飞的场次", () => {
 			bus,
 			store,
 			followers: {} as never,
-			profileRefreshCron: () => "*/10 * * * *",
 			logger: { info() {}, warn() {}, error() {}, debug() {} },
 			now: () => new Date(NOW),
 			subscriptions: () => [EXT_SUB],

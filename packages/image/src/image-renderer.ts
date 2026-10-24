@@ -669,8 +669,8 @@ export class ImageRenderer {
 	 * ({@link nodeFromPost})→ 皮肤出卡。发布时间由本渲染器按全局时区排({@link unixTimestampToString},
 	 * 时区在出卡那一刻现取)。
 	 *
-	 * B 站动态由 `apps/server/src/bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;拓展作品由服务端的 `postFromReport`
-	 * 翻成 `Post`(图已存进图库,`PostImage` 只放 `ref`);链接预览手里有现成的数据,直接造 `Post`。
+	 * B 站动态由 `apps/server/src/bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;来源上下文交来的作品
+	 * 已经是 `Post`(图已存进图库,`PostImage` 只放 `ref`);链接预览手里有现成的数据,直接造 `Post`。
 	 *
 	 * **图库引用在这里事先解析**:作品里用到的每个引用(配图、封面、头像、正文里的小图标与表情图、附加块文字行的
 	 * 图标)交给宿主注入的 {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步造节点。出图器自己不读盘、

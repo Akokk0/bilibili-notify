@@ -7,8 +7,8 @@
  *   `.gif`,拓展看文件头);
  * - 宽高缺了就按普通比例铺,不判长图。
  *
- * 纯文本正文怎么切成带话题的 `RichText` 片段(从前的 `buildPlainText`)搬去了服务端的 `postFromReport`,
- * 测试在 `apps/server/src/runtime/__tests__/post-from-report.test.ts`。
+ * 纯文本正文怎么切成带话题的 `RichText` 片段(从前的 `buildPlainText`)归拓展来源的外来数据收口,
+ * 测试在 `apps/server/src/extensions/__tests__/extension-source.test.ts`。
  */
 
 import { renderToString } from "@vue/server-renderer";

@@ -164,16 +164,6 @@ describe("直播状态", () => {
 		table.remove(SUB_B);
 		expect(table.list().map((row) => row.subscriptionId)).toEqual([SUB_A]);
 	});
-
-	it("总线上的上报表不看:作品、资料更新、直播信号都得经场次引擎写进来", () => {
-		bus.emit("subscription-reported", {
-			extensionId: EXT,
-			externalId: "sec-1",
-			subscriptionIds: [SUB_A],
-			report: { kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } },
-		});
-		expect(table.list()).toEqual([]);
-	});
 });
 
 describe("作废", () => {

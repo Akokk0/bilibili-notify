@@ -88,7 +88,6 @@ describe("服务器在 UP 已开播时启动", () => {
 			bus,
 			store,
 			followers: createFollowersStore({ dataRoot: dir, logger }),
-			profileRefreshCron: () => "*/10 * * * *",
 			logger,
 			now: () => BOOT,
 			subscriptions,

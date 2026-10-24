@@ -73,10 +73,8 @@ import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
-import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
-import { bindExtensionLive } from "../live/extension-live.js";
 import { createLiveInteractions, type LiveInteractions } from "../live/live-interactions.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { bindLivePush } from "../live/live-push.js";
@@ -88,7 +86,6 @@ import { mergeStopWords } from "../live/recap/stop-words.js";
 import { ViewerChatCollector } from "../live/recap/viewer-chat-collector.js";
 import { WordcloudGenerator } from "../live/recap/wordcloud-generator.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
-import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
 import { createPostQueue } from "../posts/post-queue.js";
 import { createProblemNotifier } from "../problems/problem-notifier.js";
@@ -121,7 +118,6 @@ import {
 	readCardBgDataUrl,
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
-import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import {
@@ -316,23 +312,13 @@ export interface CreateEnginesOptions {
 	 * 晚建起来,装卸也随时发生。取不到(没接 / 没装 / 开机途中)交 `undefined`,视图退拓展 id。
 	 */
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
+	/** 拓展清单里平台对作品的叫法;与 {@link extensionPlatformLabel} 同源、同样现取。 */
+	extensionPostNoun?: (extensionId: string) => string | undefined;
 	/**
 	 * 女仆读作品与统计的口(`ai/creator-stats.ts`,接线层造):统计仓、数据统计总开关、统计总览读口。
 	 * 不给 = 女仆的作品 / 统计工具答「当前不可用」。
 	 */
 	creatorStats?: CreatorStatsReader;
-	/**
-	 * 拓展订阅推送要从外面现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、平台对作品的叫法、
-	 * 清单里声明的事件。装载器比引擎晚建起来,装卸也随时发生,都现取。
-	 *
-	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
-	 */
-	extensionSources?: ExtensionSourceReader;
-	/**
-	 * 拓展作品的配图、封面、事件带来的头像往图库存的口(`AppRuntime.postImages`,ADR-0021 决策 22 下的 ㉑d):
-	 * 作品卡是 `Post`,图只收图库引用。**给了 `extensionSources` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
-	 */
-	postImages?: Pick<ImageWriter, "put">;
 	/**
 	 * 出图器的「图库引用 → 可画的地址」解析口(`imageRefDataUrl(runtime.imageStore)`):作品卡里的配图、封面、
 	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的引擎时)。
@@ -343,17 +329,8 @@ export interface CreateEnginesOptions {
 	 * (超 3 MiB 的跳过)再编成 data URL,所以不复用上面那个回拼好的串的 `resolveImageRef`。必给 —— 漏给是编译不过,不是悄悄不给 AI 看图。
 	 */
 	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
-	/**
-	 * 在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):场次引擎写它,拓展直播的计时器拿它当「最新状态」,
-	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
-	 */
+	/** 在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):场次引擎写它,女仆查直播状态也从它答。 */
 	liveTable?: Pick<LiveTable, "get" | "list" | "replace" | "merge" | "remove">;
-	/**
-	 * 拓展直播的封面与作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
-	 * 的 🔗,㉒c):拓展交的是字节,`bindExtensionLive` 收到上报就存进图库,信号与在播表里只有引用。
-	 * **给了 `extensionSources` 与 `liveTable` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
-	 */
-	liveImages?: Pick<ImageWriter, "put">;
 	/**
 	 * B 站作品图 / 直播封面的抓图服务(接线层给 B 站集成的上下文:它自己的请求客户端,引用方是「集成在途」):
 	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
@@ -402,10 +379,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
 	/** 现存推送目标的 id(含停用的),每次现取:作品与直播总结的 AI 生成门共用,悬空的例外 id 不算数。 */
 	const targetIds = (): string[] => opts.configStore.getTargets().map((t) => t.id);
-	const extensionSources = opts.extensionSources;
 	const sourceStatus = createSourceStatusReader({
 		sources: opts.sources,
-		extensions: extensionSources,
 	});
 	/**
 	 * 这个来源实现了直播吗:就是它实现了 `fetchLiveStatus`。声明了周期直播的拓展现在必须实现拉取式(登记订阅源时核,
@@ -561,6 +536,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const labelDeps = {
 		sources: opts.sources,
 		extensionPlatformLabel: opts.extensionPlatformLabel,
+		extensionPostNoun: opts.extensionPostNoun,
 	};
 
 	let commentary: CommentaryGenerator | null = null;
@@ -576,7 +552,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						keys,
 						{
 							...labelDeps,
-							extensionPostNoun: (id) => extensionSources?.postNoun(id),
 							subscriptions: () => opts.subscriptionStore.list(),
 						},
 						PROMPT_NEUTRAL_NOUNS,
@@ -704,8 +679,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			settings: makePostSettingsReader({
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				globals,
-				// 「来源还在跑吗」:登记表里有它(内置来源),或拓展订阅的拓展在跑(决策 61:拓展停了,等着的作品不补);
-				// 没接拓展订阅(`extensionSources` 没给)的拓展键就一律不推。
+				// 「来源还在跑吗」:登记表里有它。拓展停止时撤销登记,还在队列里的作品不再补推。
 				sourceRunning: (sub) => sourceStatus.running(subscriptionIdentityOf(sub).sourceKey),
 				targetIds,
 			}),
@@ -731,36 +705,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// ---------- Bus wiring ----------
 	const handles: Disposable[] = [postQueue];
 
-	// 拓展订阅的作品(ADR-0019 决策 69–72):听上报,逐条订阅翻成中立的信封(图已写进图库)交给同一个核心入口 —— 与 B 站动态
-	// 同一份装配、同一个渲染器、同一份出图失败计数。设置每条现折(`makePostSettingsReader`),渲染器与 AI 每条现取(会被热换)。
-	if (extensionSources) {
-		const postImages = opts.postImages;
-		// 漏接线的症状是「拓展作品卡一张图都没有」而门禁全绿,所以开机就抛,不悄悄跳过。
-		if (!postImages) throw new Error("createEngines: 给了 extensionSources 就必须给 postImages");
-		handles.push(
-			bindExtensionPosts({
-				bus: opts.bus,
-				logger: postsCtx.logger,
-				serviceCtx: opts.serviceCtx,
-				subscription: (id) => opts.subscriptionStore.findById(id),
-				profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
-				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-				postNoun: (extensionId) => extensionSources.postNoun(extensionId),
-				postImages,
-				enqueue: (event) => postQueue.enqueue(event),
-			}),
-		);
-	}
-
-	// 拓展订阅的直播(ADR-0019 决策 57 / 58 / 61 / 67):场次(开播 / 下播、断流接续)由 `liveSessions` 算一份,
+	// 订阅来源的直播(ADR-0019 决策 57 / 58 / 61 / 67):场次(开播 / 下播、断流接续)由 `liveSessions` 算一份,
 	// 推送吃它(ADR-0020 决策 6);开播 / 下播卡由事件触发,周期「正在直播」、重启补推由推送那头的小计时器管;
 	// 推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、特性键映射)。最新状态从在播表取,
 	// 出卡的渲染器现取(热换、关了出图时不出卡)。
 	const liveTable = opts.liveTable;
-	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `liveSession` 读它。 */
+	/** 订阅来源的场次;统计页经 `liveSession` 读它。 */
 	let liveSessionEngine: LiveSessionEngine | undefined;
-	/** 拓展直播上报的绑定:另挂 stop 钩子,先排空在途上报,再让场次引擎收场次。 */
-	let extensionLiveBinding: ReturnType<typeof bindExtensionLive> | undefined;
 	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
 	let liveInteractionEngine: LiveInteractions | undefined;
 	let viewerChats: ViewerChatCollector | undefined;
@@ -797,22 +748,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		});
 		handles.push(liveSessions);
 		liveSessionEngine = liveSessions;
-		// 拓展报的直播 → 存图 → 中立信号 → 场次引擎(引擎先写在播表、再改场次)。
-		if (extensionSources) {
-			const liveImages = opts.liveImages;
-			// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
-			if (!liveImages) throw new Error("createEngines: 接了拓展直播就必须给 liveImages");
-			extensionLiveBinding = bindExtensionLive({
-				bus: opts.bus,
-				logger: coreLiveCtx.logger,
-				serviceCtx: coreLiveCtx,
-				subscription: (id) => opts.subscriptionStore.findById(id),
-				profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
-				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-				liveImages,
-				sessions: liveSessions,
-			});
-		}
 		// 核心回顾的一份收集器与两个生产者:场次开始登记、互动记一条、下播卡同步取快照。
 		const wordcloudStopWords = () =>
 			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
@@ -1038,8 +973,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const dispose = (): void => {
 		if (disposed) return;
 		disposed = true;
-		// 正常关停时绑定的 stop 钩子已先跑过(退订并排空);直接调 `dispose` 的路径至少也要退订。
-		void extensionLiveBinding?.dispose();
 		connectionProbe.dispose();
 		clearInterval(cursorFlushTimer);
 		flushCursors(); // 关停前把未落盘的游标推进写一次,重启续接
@@ -1076,12 +1009,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
-	// 同段后登记的先跑:先退订并等已进闸的上报交完,再走 `dispose` 收场次。
-	if (extensionLiveBinding) {
-		const binding = extensionLiveBinding;
-		opts.serviceCtx.onDispose(() => binding.dispose(), "stop");
-	}
-
 	return {
 		registerSource: async (entry) => {
 			const registration = await registerBuiltinSource({
@@ -1179,7 +1106,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		tickLiveSessionNow: (subscriptionId: string) =>
 			liveSessionEngine?.tickNow(subscriptionId) ?? Promise.resolve(false),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
-		extensionPostNoun: (extensionId: string) => opts.extensionSources?.postNoun(extensionId),
+		extensionPostNoun: (extensionId: string) => opts.extensionPostNoun?.(extensionId),
 		probeConnection: (connectionId: string) =>
 			connectionProbe.probe(connectionId, { manual: true }),
 		connectionCapabilities: (connectionId: string) =>

@@ -118,7 +118,7 @@ function detailsOf(value: {
 
 /**
  * 这里用上报的写法描述「来了什么」,翻成中立信号直调引擎(引擎的输入就是 `LiveSignal`;拓展上报怎么翻、
- * 图怎么存见 `extension-live.test.ts`)。下播的时刻是调用那一刻。
+ * 图由来源在调用前存好)。下播的时刻是调用那一刻。
  */
 function report(r: SubscriptionReport, sub: Subscription = SUB): void {
 	const base = { subscriptionId: sub.id, identity: sub.identity };

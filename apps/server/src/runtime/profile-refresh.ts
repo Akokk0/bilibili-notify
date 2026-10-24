@@ -392,26 +392,6 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		if (removedAny) emitSnapshot();
 	});
 
-	// 拓展报资料只重算报了的、且不在来源登记表里的那几条;资料刷新自己写的资料不再绕一圈重算。
-	const offProfiles = bus.on("subscription-profiles-changed", ({ subscriptionIds }) => {
-		const wanted = new Set(
-			enabledSubscriptions()
-				.filter((sub) => {
-					const sourceKey = subscriptionIdentityOf(sub).sourceKey;
-					return !opts.sources.get(sourceKey) && subscriptionIds.includes(sub.id);
-				})
-				.map((sub) => sub.id),
-		);
-		if (wanted.size === 0) return;
-		opts.serviceCtx.track(
-			refreshEntries(generation, wanted)
-				.then((changed) => {
-					if (changed && !disposed) emitSnapshot();
-				})
-				.catch((err) => logger.debug(`[profile-refresh] 拓展资料条目刷新失败: ${String(err)}`)),
-		);
-	});
-
 	return {
 		getLastEntries: () => Array.from(lastBySub.values()),
 		pollNow: tickOnce,
@@ -428,7 +408,6 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 			job?.stop();
 			offConfig.dispose();
 			offSubs.dispose();
-			offProfiles.dispose();
 		},
 	};
 }

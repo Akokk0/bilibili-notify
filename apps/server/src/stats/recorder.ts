@@ -3,7 +3,6 @@ import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import type { RecordingCompactSummary } from "./compaction.js";
-import { attachExtensionStatsSource } from "./extension-source.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import { attachLiveStatsSource } from "./live-source.js";
 import { postEntryFromEvent } from "./post-entry-extras.js";
@@ -29,8 +28,8 @@ import type {
  *     · 直播(`live-source.ts`):所有来源共用一个监听,吃中立的 `live-session-changed`。
  *     · 登记表(`registry-source.ts`):在册来源的「这个小时在记」由核心记 —— 来源在册、没有登录口或登录口
  *       现读是已登录,就按每条订阅的两格开关记作品 / 直播;来源登录丢了就忘掉它名下的在飞场次。
- *     · 拓展(`extension-source.ts`):听订阅上报,资料里的粉丝数按资料刷新的间隔稀释;
- *       收到上报 = 来源在跑,按开关记「在记」。
+ *     · 拓展来源与内置来源一样登在登记表里,「在记」由核心按登记表记;资料里的粉丝数由资料收口
+ *       按刷新间隔稀释。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
  * 追加重新写出来),{@link StatsRecorderHandle.flush} 等得到全部落地 —— 关机补帧靠它。
@@ -396,11 +395,6 @@ export interface StatsRecorderOptions {
 	store: StatsStore;
 	/** 粉丝时序 —— 拓展的粉丝数从资料上报里来,落在这里(B 站的由资料刷新写)。 */
 	followers: FollowersStore;
-	/**
-	 * 资料刷新的 cron(`globals.profileRefreshCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
-	 * 两边的粉丝曲线一样疏密。
-	 */
-	profileRefreshCron: () => string;
 	logger: Logger;
 	/**
 	 * 当前全部订阅。中立直播监听按它判订阅还在不在、要不要记直播;各来源适配按它分流。
@@ -491,12 +485,6 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		opts.bus.on("post-detected", (event) =>
 			recorder.recordPost(statsFileKey({ id: event.subscriptionId }), postEntryFromEvent(event)),
 		),
-		attachExtensionStatsSource({
-			bus: opts.bus,
-			recorder,
-			subscriptions: opts.subscriptions,
-			profileRefreshCron: opts.profileRefreshCron,
-		}),
 	];
 
 	return {

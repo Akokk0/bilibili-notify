@@ -4,8 +4,7 @@
  * 详情里的图已经是图库引用(来源先存好再交),这里是同步的纯翻译:开播时刻是毫秒、卡输入里是 ISO;
  * 人数只收精确数,没报就没有这个键;主播头像:详情里的引用优先,否则订阅资料里的。
  *
- * 从前这里的前身 `liveCardInputFromReport` 吃字节、自己存图;存图搬到了 `bindExtensionLive`
- * (`extension-live.test.ts`)。
+ * 从前这里的前身 `liveCardInputFromReport` 吃字节、自己存图;现在来源先存好图,这里只接引用。
  */
 
 import type { LiveDetails } from "@bilibili-notify/internal";

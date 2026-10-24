@@ -42,11 +42,7 @@ import type { EnginesRuntime } from "./engines.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import type { ProfileRefreshHandle } from "./profile-refresh.js";
-import {
-	bindReportedProfiles,
-	createProfileReportHandler,
-	type ProfileReportHandler,
-} from "./reported-profiles.js";
+import { createProfileReportHandler, type ProfileReportHandler } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import { secretBootstrapValues } from "./settings-redaction.js";
@@ -170,11 +166,7 @@ export interface AppRuntime {
 	 * 在册来源 `auth.account().avatar`(现读来源登记表),装配时登记。
 	 */
 	accountImages: ImageWriter;
-	/**
-	 * 拓展作品往图库存图的口(ADR-0021 决策 22 下 2026-10-05 的 🔗,㉑d):收到上报、出卡前把配图与视频封面(以及随事件
-	 * 带来的作者头像)`put` 进图库,`Post` 里只放引用,出卡器按引用读图。作品是**在途数据、不落盘**,这一家没有引用可列
-	 * (`listRefs` 恒空),存进去的图靠清扫的 24 小时宽限期活到卡片画完 —— 登记它的意义是拿到存图的口,不是留图。
-	 */
+	/** 作品输入里的图往图库存的口:真实卡片预览也经它抓图。 */
 	postImages: ImageWriter;
 	/**
 	 * 集成往图库存图的口(ADR-0025 决策 8):每个集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 都经它。集成抓到的图是
@@ -182,13 +174,6 @@ export interface AppRuntime {
 	 * 哪一家引用上;只攥在集成自己手里、没交给宿主的引用,过了宽限期就被收走(契约里写明)。
 	 */
 	transitImages: ImageWriter;
-	/**
-	 * 直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):拓展报来的直播,收到上报就把封面与作者头像
-	 * `put` 进图库(`bindExtensionLive`),信号与在播表里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与
-	 * 头像**(`liveTable.list()` 各行 `details` 里的 `cover.ref` 与 `creator.avatar`):直播可以超过 24 小时、周期卡几小时后
-	 * 还要用它们,不能像作品那样只靠宽限期。
-	 */
-	liveImages: ImageWriter;
 	/**
 	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
 	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
@@ -440,7 +425,7 @@ export function createAppRuntime(
 	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
 	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
 	//
-	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报;直播场次由中立的 `live-session-changed` 统一记。
+	// 来源在记由登记表统一记,直播场次由中立的 `live-session-changed` 统一记。
 	// 数据统计总开关(`stats.enabled`):一个缓存布尔,设置变了作废。记录器入口与粉丝轮询共用这一个。
 	const statsEnabled = createStatsEnabled({ bus, getGlobals: () => configStore.getGlobals() });
 	const statsRecorder = createStatsRecorder({
@@ -450,8 +435,6 @@ export function createAppRuntime(
 		sources: sourceRegistry,
 		isEnabled: statsEnabled.isEnabled,
 		recordingCheckMs: deps.statsRecordingCheckMs,
-		// 拓展报的粉丝数不密过资料刷新(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
-		profileRefreshCron: () => configStore.getGlobals().profileRefreshCron,
 		logger: serviceCtx.logger,
 		// 判订阅在不在、启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
 		// 读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
@@ -509,19 +492,6 @@ export function createAppRuntime(
 				return avatar === undefined ? [] : [avatar];
 			}),
 	});
-	// 拓展报的资料更新 → 资料缓存 + 图库里的头像(ADR-0019 决策 7 / 49 / 62)。只听总线,所以在这儿就能起,
-	// 不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
-	const reportedProfiles = bindReportedProfiles({
-		bus,
-		subscriptionState: subscriptionStateStore,
-		images: profileImages,
-		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
-		logger: serviceCtx.logger,
-	});
-	serviceCtx.onDispose(() => reportedProfiles.dispose(), "stop");
-	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
-	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
-	serviceCtx.onDispose(() => reportedProfiles.close(), "flush");
 	// 来源经 `ctx.reportProfile` 报的资料(3b-42):不听总线,由引擎装配把它递给来源上下文。写同一个资料缓存。
 	// 写完叫资料刷新重算面板那几行 —— 资料刷新在开机更后面才建(`attachProfileRefresh`),所以现取;
 	// 还没建好时面板还没有快照,什么都不用做。
@@ -538,7 +508,8 @@ export function createAppRuntime(
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => profileReports.dispose(), "stop");
-	// 🔴 顺序承重:同上一条 —— 它也往图库与资料缓存仓写,登记在那两家的 close 之后、先于它们关门。
+	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
+	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
 	serviceCtx.onDispose(() => profileReports.close(), "flush");
 	const conversationStore = createConversationStore({
 		dataRoot,
@@ -551,8 +522,8 @@ export function createAppRuntime(
 		name: IMAGE_REFERRERS.chat,
 		listRefs: () => conversationStore.listImageRefs(),
 	});
-	// 拓展作品是图库的一家引用方,但它**没有东西可列**:作品是在途数据(收到上报 → 出卡 → 推送),不落盘,图只在
-	// 出卡那一刻要用。所以名单恒空,图全靠新图 24 小时的宽限期活到卡片画完;卡画完、没有哪家引用(历史行的配图是
+	// 作品输入里的图(今天只有卡片的真实预览经它抓图)是图库的一家引用方,但它**没有东西可列**:作品是在途数据,
+	// 不落盘,图只在出卡那一刻要用。所以名单恒空,图全靠新图 24 小时的宽限期活到卡片画完;卡画完、没有哪家引用(历史行的配图是
 	// 推送时另存的一份,头像抄的是资料缓存里的引用),下一轮清扫就收走。名单不会因为「列不出」而抛 —— 空就是空。
 	const postImages = imageStore.register({
 		name: IMAGE_REFERRERS.posts,
@@ -575,7 +546,7 @@ export function createAppRuntime(
 	serviceCtx.onDispose(() => liveTable.dispose(), "stop");
 	// 直播是图库的一家引用方:在播表各行 `LiveDetails` 里的封面与主播头像(都是图库引用)。在播表只在内存,所以
 	// 名单是「此刻在播的那些行」;一场播过 24 小时,周期卡几小时后还要用它们,这份名单让清扫不把它们当垃圾。
-	const liveImages = imageStore.register({
+	imageStore.register({
 		name: IMAGE_REFERRERS.live,
 		listRefs: async () =>
 			liveTable
@@ -650,7 +621,6 @@ export function createAppRuntime(
 		accountImages,
 		postImages,
 		transitImages,
-		liveImages,
 		historyImages,
 		conversationStore,
 		logStore,
