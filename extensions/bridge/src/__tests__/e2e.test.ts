@@ -228,6 +228,9 @@ function hostFor(
 		registerSubscriptionSource() {
 			throw new Error("桥的清单没开 contributes.subscription,不该注册订阅源");
 		},
+		registerSource() {
+			throw new Error("桥的清单没开 contributes.subscription,不该注册订阅源");
+		},
 		onUpgrade(handler) {
 			upgradeHandler = handler;
 		},

@@ -49,6 +49,16 @@ export interface CreateSourceContextOptions {
 	linkResolvers: Pick<LinkResolverRegistry, "register">;
 	/** AI 工具提供方的登记表:来源经 `ctx.registerAiToolProvider` 登,键用这个来源的键;停下时随上下文撤掉。 */
 	aiToolProviders: Pick<AiToolProviderRegistry, "register">;
+	/**
+	 * 被拒的问题上报(已停下、形状不对)记成什么等级:内置来源被拒就是 BN 的 bug,记 `error`(缺省);拓展的来源
+	 * 被拒是拓展自己的 bug、BN 改不了,记 `warn`。同集成层与推送适配器上下文的那一格。
+	 */
+	rejectedProblemLevel?: "warn" | "error";
+	/**
+	 * 报问题时写进问题表的「写者名」,报那一刻现取(随当前语言变)。拓展的来源给它的清单名(与拓展列表同一条回落链);
+	 * 不给取描述符的 `label`(B 站的「B 站」)。同集成上下文与推送适配器上下文的同名选项。
+	 */
+	label?: () => string;
 }
 
 export interface SourceContextHandle {
@@ -67,6 +77,9 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	const { integration, sourceKey, descriptor, logger } = opts;
 	const listeners = new Set<() => void>();
 	let disposed = false;
+	// 被拒的问题上报记成什么等级(内置缺省 error,拓展 warn)。名字叫 `log`:字符串写在日志调用里,不算写死的中文。
+	const log = (message: string): void =>
+		opts.rejectedProblemLevel === "warn" ? logger.warn(message) : logger.error(message);
 
 	const notify = (): void => {
 		for (const fn of [...listeners]) {
@@ -80,7 +93,8 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	};
 
 	/**
-	 * 问题上报的公共一步:已停下、形状不对的丢弃并记 error(内置来源被拒就是 BN 的 bug);
+	 * 问题上报的公共一步:已停下、形状不对的丢弃并按 `rejectedProblemLevel` 记日志(内置来源被拒就是 BN 的 bug,
+	 * 缺省记 error);
 	 * 不带 `externalId` 交一个「来源自己」的对象,带了按身份展开成这个人名下的每一条订阅
 	 * (遗留的同身份重复订阅各算一条;一条都没有就什么都不做)。
 	 */
@@ -90,15 +104,13 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		visit: (about: { subscriptionId: string } | undefined) => void,
 	): void => {
 		if (disposed) {
-			logger.error(
-				`[source] ${sourceKey} 已停下还在${what}问题 ${problem.code}(丢弃;内置来源的 bug)`,
-			);
+			log(`[source] ${sourceKey} 已停下还在${what}问题 ${problem.code}(丢弃;来源的 bug)`);
 			return;
 		}
 		const issue = problemReportIssue(problem);
 		if (issue !== undefined) {
-			logger.error(
-				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;内置来源的 bug): ${problem.code}(${issue})`,
+			log(
+				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;来源的 bug): ${problem.code}(${issue})`,
 			);
 			return;
 		}
@@ -258,7 +270,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			forEachProblemObject("报", problem, (about) =>
 				opts.problems.report({
 					reporter: sourceKey,
-					writtenBy: descriptor.label,
+					writtenBy: opts.label?.() ?? descriptor.label,
 					...(about ? { about } : {}),
 					code: problem.code,
 					message: problem.message,

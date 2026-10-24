@@ -23,7 +23,7 @@ import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
-import { type LoadedExtensions, loadExtensions } from "../loader.js";
+import { type LoadExtensionsOptions, type LoadedExtensions, loadExtensions } from "../loader.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -82,7 +82,12 @@ interface SubscriptionRow {
  */
 async function boot(
 	activate: Record<string, (ctx: ExtensionContext) => void | Promise<void>>,
-	opts: { enabled?: (id: string) => boolean; subscriptions?: SubscriptionRow[] } = {},
+	opts: {
+		enabled?: (id: string) => boolean;
+		subscriptions?: SubscriptionRow[];
+		/** 引擎那头的「登进来源登记表」替身(第 3 版订阅源);不给 = 宿主没接,拓展调 `registerSource` 会抛。 */
+		registerSource?: LoadExtensionsOptions["registerSource"];
+	} = {},
 ) {
 	const lines: string[] = [];
 	const logger: Logger = {
@@ -114,6 +119,7 @@ async function boot(
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
+		...(opts.registerSource ? { registerSource: opts.registerSource } : {}),
 		subscriptions: () => rows,
 		onSubscriptionsChanged: (fn): Disposable => {
 			listeners.add(fn);
@@ -471,5 +477,84 @@ describe("读自己名下的订阅", () => {
 		expect(h.listenerCount()).toBe(0);
 		h.setSubscriptions([]);
 		expect(calls).toBe(1);
+	});
+});
+
+describe("注册订阅源(第 3 版 registerSource):装载器等登记落定", () => {
+	// 验红:去掉 loader.ts `activate` 之后等 `sourceRegistration()` 的那一段,下面「抛了」那条红(拓展照样是 running)。
+	it("登记里 start 抛了 → 这次加载失败,原因进拓展列表(与推送源 start 抛了同一个结局)", async () => {
+		await plant("douyin", { subscription: SUBSCRIPTION });
+		const { loaded } = await boot(
+			{
+				douyin(ctx) {
+					ctx.registerSource({
+						start() {},
+						stop() {},
+						searchCreators: async () => ({ ok: true, candidates: [] }),
+					});
+				},
+			},
+			{
+				registerSource: async () => {
+					throw new Error("平台连不上");
+				},
+			},
+		);
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("failed");
+		expect(entry?.detail).toContain("平台连不上");
+	});
+
+	it("登记还没落定 → 加载不算完,落定了才是 running;登记项带拓展 id、拓展的日志器与 warn 等级", async () => {
+		await plant("douyin", { subscription: SUBSCRIPTION });
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const entries: Array<{ sourceKey: string; level: string | undefined }> = [];
+		let settled = false;
+		const booting = boot(
+			{
+				douyin(ctx) {
+					ctx.registerSource({
+						start() {},
+						stop() {},
+						searchCreators: async () => ({ ok: true, candidates: [] }),
+					});
+				},
+			},
+			{
+				registerSource: async (entry) => {
+					entries.push({ sourceKey: entry.sourceKey, level: entry.rejectedProblemLevel });
+					await gate;
+					return { dispose() {} };
+				},
+			},
+		).then((made) => {
+			settled = true;
+			return made;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(settled).toBe(false);
+		release();
+		const { loaded } = await booting;
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([["douyin", "running"]]);
+		expect(entries).toEqual([{ sourceKey: "douyin", level: "warn" }]);
+	});
+
+	it("宿主没接来源登记表 → 注册当场抛,加载失败、话里说是宿主没接", async () => {
+		await plant("douyin", { subscription: SUBSCRIPTION });
+		const { loaded } = await boot({
+			douyin(ctx) {
+				ctx.registerSource({
+					start() {},
+					stop() {},
+					searchCreators: async () => ({ ok: true, candidates: [] }),
+				});
+			},
+		});
+		const entry = loaded.list()[0];
+		expect(entry?.state).toBe("failed");
+		expect(entry?.detail).toContain("source registry");
 	});
 });

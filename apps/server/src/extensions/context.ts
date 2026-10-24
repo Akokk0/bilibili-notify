@@ -1,3 +1,4 @@
+import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
 import type {
 	ExtensionConnectionView,
 	ExtensionContext,
@@ -8,6 +9,7 @@ import type {
 	ExtensionSubscriptionView,
 	ExtensionView,
 	SettingsReader,
+	SourceDef,
 	SubscriptionSourceDef,
 } from "@bilibili-notify/extension";
 import {
@@ -19,6 +21,7 @@ import {
 	type ExtensionManifest,
 	fail,
 	formatZodIssues,
+	type Identity,
 	type InboundHandlers,
 	type Issue,
 	type Logger,
@@ -37,6 +40,7 @@ import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
+import type { ImageStore } from "../images/image-store.js";
 import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import {
 	type CreateIntegrationContextOptions,
@@ -46,8 +50,11 @@ import { LOOKUP_TIMEOUT_MS } from "../integrations/lookup-timeout.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
+import type { EnginesRuntime } from "../runtime/engines.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
+import { createExtensionSource, externalIdPreview } from "./extension-source.js";
 import { type ExtensionLocales, localizeManifest, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
@@ -69,6 +76,8 @@ export type {
 	ExtensionPushView,
 	PushExtensionDef,
 	PushSourceHandle,
+	SourceDef,
+	SourceHandle,
 	SubscriptionSourceDef,
 	SubscriptionSourceHandle,
 } from "@bilibili-notify/extension";
@@ -132,8 +141,8 @@ export interface ReportDiscrepancy {
 	extensionId: string;
 	/** 什么时候(毫秒)。 */
 	at: number;
-	/** 报的哪一种。 */
-	kind: SubscriptionReportKind;
+	/** 报的哪一种(第 3 版的 `post` / `live` / `profile`,加第 2 版的五种,后者随旧上报口一起删)。 */
+	kind: ReportDiscrepancyKind;
 	/** 拓展报的外部 id(不是字符串 / 太长的,截成一段能看的)。 */
 	externalId: string;
 	/** 它名下指向这个人的订阅(停用的也算)—— 「哪条订阅」那一栏。一条都没对上就是空表。 */
@@ -224,6 +233,11 @@ export interface ExtensionRuntime {
 	 * 时经 `signal` 叫停;**不挡并发**(查询可以同时好几发)。没注册过订阅源 / 已经收摊就是 `undefined`。
 	 */
 	lookup(query: string, opts?: { timeoutMs?: number }): Promise<LookupOutcome | undefined>;
+	/**
+	 * 这个拓展的订阅源(`ctx.registerSource`)登记落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
+	 * 之后等它 —— `start` 抛了回失败(原话带着),这一次加载就失败。没登记过订阅源就是成功。
+	 */
+	sourceRegistration(): Promise<Result>;
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
 }
@@ -271,6 +285,17 @@ export interface CreateExtensionContextOptions {
 	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。⛔ 拿不到 bus —— 宿主替它订,只把结果转给它。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 把拓展的订阅源登进来源登记表(引擎的 `registerSource`,登记即 `start`)。不给就是这台宿主没接来源登记表,
+	 * 拓展的 `ctx.registerSource` 抛。
+	 */
+	registerSource?: EnginesRuntime["registerSource"];
+	/**
+	 * 事件里没带作者名时补的名字(资料名 → 身份标签,引擎的 `fallbackCreatorName`)。不给就退外部 id。
+	 */
+	fallbackCreatorName?: (identity: Identity) => string;
+	/** 图库读口(`ImageStore.read`):拓展作品图按引用读回字节补宽高与动图标记。不给就读不到(只放引用)。 */
+	images?: Pick<ImageStore, "read">;
 	/** 全部拓展订阅,**现读**。属于谁由宿主筛(ADR-0019 决策 52)。 */
 	subscriptions: () => readonly ExtensionSubscriptionRow[];
 	/** 订阅「订阅动过了」。同 {@link onConnectionsChanged}:宿主替它订,只把结果转给它。 */
@@ -367,6 +392,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
 		onStopping() {
+			// 订阅源先撤:拓展的 `stop()` 要赶在 `signal` 中止之前叫到(契约:宿主先叫 stop,再中止 signal 并跑收尾钩子)。
+			revokeSource();
 			try {
 				opts.onDisposed?.();
 			} catch (err) {
@@ -396,6 +423,14 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 收摊时逐个叫停。
 	 */
 	const runningActions = new Map<string, AbortController>();
+	let sourceRegistered = false;
+	/** 订阅源登记落定的结果(`sourceRegistration`);没登记过就是成功。 */
+	let sourceRegistration: Promise<Result> = Promise.resolve(ok());
+	/** 撤掉已登记的订阅源(登记落定后才有);幂等,收摊时 `onStopping` 先叫它。 */
+	let revokeSourceNow: (() => void) | undefined;
+	function revokeSource(): void {
+		revokeSourceNow?.();
+	}
 	let subscriptionSourceRegistered = false;
 	/** 注册上来的订阅源(解析门在它身上);收摊时摘掉。 */
 	let subscriptionSource: SubscriptionSourceDef | undefined;
@@ -456,15 +491,36 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		}
 	}
 
+	/**
+	 * 第 3 版订阅源那一口:清单得开了 `contributes.subscription`(「注册的口 ⊆ 清单开的口」),
+	 * 必交 `start` / `stop` / `searchCreators` —— 第三方 JS 不受类型约束,缺了的话每一次叫到都是一句「不是函数」。
+	 */
+	function assertSourceDef(def: SourceDef): void {
+		if (!opts.manifest.contributes.subscription) {
+			throw new Error(
+				`extension ${id}: manifest has no contributes.subscription, cannot register a source`,
+			);
+		}
+		for (const member of ["start", "stop", "searchCreators"] as const) {
+			if (typeof def?.[member] !== "function") {
+				throw new Error(`extension ${id}: a source needs ${member}()`);
+			}
+		}
+	}
+
 	// ---- 订阅源的上报(ADR-0019 决策 7 / 57 / 59 / 60 / 62)------------------------------------------
 
 	/** 清单声明的事件种类 —— 报上来的种类照它核(决策 5:清单就是能力声明)。 */
 	const declaredEvents = opts.manifest.contributes.subscription?.events ?? [];
 
-	/** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
-	function externalIdPreview(raw: unknown): string {
-		if (typeof raw !== "string") return `(${typeof raw})`;
-		return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
+	/**
+	 * 它名下指向这个人的订阅(停用的也算 —— 资料更新要发给它们,问题框里「哪条订阅」那一栏也要它们)。
+	 * 身份是 `(这个拓展, 外部 id)`(决策 50),同一个人可能有几条订阅。
+	 */
+	function rowsOf(externalId: string) {
+		return opts
+			.subscriptions()
+			.filter((row) => row.extensionId === id && row.externalId === externalId);
 	}
 
 	/**
@@ -498,13 +554,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		}
 		const idCheck = checkReportedExternalId(rawExternalId);
 		const externalId = idCheck.ok ? idCheck.externalId : externalIdPreview(rawExternalId);
-		// 身份是 `(这个拓展, 外部 id)`(决策 50),同一个人可能有几条订阅。停用的也算「对上了」:资料更新
-		// 要发给它们,问题框里「哪条订阅」那一栏也要它们。
-		const matched = idCheck.ok
-			? opts
-					.subscriptions()
-					.filter((row) => row.extensionId === id && row.externalId === externalId)
-			: [];
+		// 停用的也算「对上了」(见 {@link rowsOf})。
+		const matched = idCheck.ok ? rowsOf(externalId) : [];
 		const subscriptionIds = matched.map((row) => row.id);
 		const reject = (reason: string): never => {
 			recordDiscrepancy({
@@ -928,6 +979,67 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				reportProfile: reporter("profile"),
 			};
 		},
+		registerSource(def) {
+			if (integration.disposed) {
+				integration.refuse("registerSource");
+				throw new Error(`extension ${id} is already unloaded`);
+			}
+			if (!opts.registerSource) {
+				throw new Error(`extension ${id}: the host has no source registry wired in`);
+			}
+			// 一个拓展就是一个平台(决策 9);要两个平台的那天再加一格子键。
+			if (sourceRegistered) throw new Error(`extension ${id} already registered a source`);
+			assertSourceDef(def);
+			sourceRegistered = true;
+			// 外观取清单(按当前语言盖好),代码里不再交一份 —— 两份会打架。
+			const source = createExtensionSource({
+				id,
+				manifest: localizeManifest(opts.manifest, opts.locales, opts.localeReader.current()),
+				def,
+				logger,
+				images: opts.images ?? { read: async () => undefined },
+				recordDiscrepancy: (discrepancy) =>
+					recordDiscrepancy({
+						...discrepancy,
+						subscriptionIds: rowsOf(discrepancy.externalId).map((row) => row.id),
+					}),
+				fallbackCreatorName: (externalId) =>
+					opts.fallbackCreatorName?.({ sourceKey: id, externalId }) ?? externalId,
+			});
+			// 登记即 `start`,是异步的:这里同步交回把手,登记在后台落定,装载器在 `activate` 之后等它。
+			sourceRegistration = opts
+				.registerSource({
+					sourceKey: id,
+					source,
+					integration: integration.ctx,
+					logger,
+					rejectedProblemLevel: "warn",
+					// 问题表的写者名:当前语言的清单名,与集成上下文是同一个函数(3b-51)。
+					label: manifestName,
+				})
+				.then(
+					(registration): Result => {
+						// 登记途中收摊了:当场撤,不留孤儿(撤登记会叫到拓展的 `stop`)。
+						if (integration.disposed) {
+							registration.dispose();
+							return ok();
+						}
+						revokeSourceNow = () => registration.dispose();
+						return ok();
+					},
+					(err: unknown): Result => {
+						logger.warn(`订阅源登记失败: ${errorMessageOf(err)}`);
+						return fail("unavailable", errorMessageOf(err));
+					},
+				);
+			// 收摊时随名册撤(`onStopping` 已经先撤过一次,这里是兜底;撤登记幂等)。
+			integration.track({ dispose: revokeSource });
+			return {
+				dispose() {
+					revokeSource();
+				},
+			};
+		},
 		onUpgrade(handler) {
 			if (integration.disposed) {
 				integration.refuse("onUpgrade");
@@ -1149,6 +1261,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				clearTimeout(timer);
 			}
 		},
+		sourceRegistration: () => sourceRegistration,
 		async dispose() {
 			if (integration.disposed) return;
 			// 在跑的动作 / 解析听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。

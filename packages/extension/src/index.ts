@@ -684,6 +684,17 @@ export interface ExtensionContext extends IntegrationContext {
 	 */
 	registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle;
 	/**
+	 * 注册这个拓展的订阅源(第 3 版形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
+	 *
+	 * 清单得开了 `contributes.subscription`,否则抛。`def.start(ctx)` 拿到与核心来源同一套的上下文
+	 * ({@link SourceContext}),三种上报都在 `ctx` 上;交回的把手只管注销。
+	 *
+	 * 🔴 登记是**异步**的:这里同步交回把手,宿主在后台等 `start` 落定;`start` 抛了,这一次加载就失败
+	 * (原因进拓展列表),与推送源的 `start` 抛了同一个结局。停用 / 卸载时宿主替它撤登记
+	 * (先叫 `stop()`,再中止 `ctx.signal`);把手的 `dispose()` 幂等。
+	 */
+	registerSource(def: SourceDef): SourceHandle;
+	/**
 	 * 认领 `/ext/<id>` 底下的 WS upgrade。
 	 *
 	 * 交给它的是**原样的三样原料**(`req` / `socket` / `head`)加一段剥掉前缀的路径:

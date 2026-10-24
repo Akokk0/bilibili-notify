@@ -32,6 +32,8 @@ const setup = (
 	subs = [makeSub("a", "1")],
 	/** 盖在集成上下文上的几格(例如换掉 `redact`);`settings` 的读源始终是下面的 `settingsHost`。 */
 	overrides: Partial<IntegrationContext> = {},
+	/** 来源上下文自己的几个选项(例如被拒的问题上报记成什么等级)。 */
+	extra: { rejectedProblemLevel?: "warn" | "error"; label?: () => string } = {},
 ) => {
 	const world = makeWorld(subs);
 	const logger = makeLogger();
@@ -58,6 +60,7 @@ const setup = (
 		liveInteractions,
 		profiles,
 		problems,
+		...extra,
 	});
 	return {
 		...world,
@@ -509,6 +512,38 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		handle.ctx.resolveProblem({ code: "Bad Code" });
 		expect(problems.resolve).not.toHaveBeenCalled();
 		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:把 `reportProblem` 里的 `writtenBy` 改回恒取 `descriptor.label`,这条红。
+	it("给了 label(拓展的来源:当前语言的清单名):写者名取它,报问题那一刻现取;不给照旧取描述符的 label", () => {
+		let current = "抖音拓展";
+		const { handle, problems } = setup([makeSub("a", "1")], {}, { label: () => current });
+		handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		current = "Douyin extension";
+		handle.ctx.reportProblem({ code: "other_code", message: "y" });
+		expect(problems.report.mock.calls.map(([call]) => call.writtenBy)).toEqual([
+			"抖音拓展",
+			"Douyin extension",
+		]);
+		const plain = setup();
+		plain.handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		expect(plain.problems.report.mock.calls[0]?.[0].writtenBy).toBe("测试");
+	});
+
+	// 验红:让 `forEachProblemObject` 里两处记日志不看 `rejectedProblemLevel`、一律 `error`,这条红。
+	it("rejectedProblemLevel 给 warn(拓展的来源):形状不对与已停下的问题上报被拒,记 warn、不记 error", () => {
+		const { handle, problems, logger } = setup(
+			[makeSub("a", "1")],
+			{},
+			{ rejectedProblemLevel: "warn" },
+		);
+		handle.ctx.reportProblem({ code: "Bad Code", message: "x" });
+		handle.dispose();
+		handle.ctx.resolveProblem({ code: "auth_lost" });
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(problems.resolve).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledTimes(2);
+		expect(logger.error).not.toHaveBeenCalled();
 	});
 
 	it("来源停下之后:报与清都丢弃,各记一行 error", () => {

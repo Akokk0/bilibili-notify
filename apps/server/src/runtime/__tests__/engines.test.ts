@@ -432,7 +432,7 @@ interface Ctx {
 	/** 开机时 `registerSource` 登进去的假来源(`noSource` 时它存在但没登记)。 */
 	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
-	sourceReady: Promise<void>;
+	sourceReady: Promise<unknown>;
 	/** `registerSource` 的登记项带进去的日志器(来源上下文的 `ctx.logger` 该是它)。 */
 	sourceLogger: ReturnType<typeof makeLogger>;
 	sources: SourceRegistry;
@@ -1837,6 +1837,76 @@ describe("createEngines — boot wiring", () => {
 		gate.resolve();
 		expect(await outcome).toContain("已关停");
 		expect(slow.stop).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:让 engines.ts `registerSource` 的返回值不撤登记(回一个空把手),这条红(登记表里的来源还在、stop 没被叫)。
+	it("registerSource 交回撤登记的把手:撤一次来源 stop 一次、登记表里没了;再撤与引擎关停都是空操作", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const extra = makeSource();
+		const registration = await c.runtime.registerSource({
+			sourceKey: "douyin",
+			source: extra,
+			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
+		});
+		expect(c.sources.get("douyin")).toBeDefined();
+		registration.dispose();
+		registration.dispose();
+		expect(extra.stop).toHaveBeenCalledTimes(1);
+		expect(c.sources.get("douyin")).toBeUndefined();
+		c.runtime.dispose();
+		expect(extra.stop).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:让登记项里的 `rejectedProblemLevel` 到不了 `createSourceContext`(例如 `registerBuiltinSource` 不再把它递下去),这条红(被拒的问题上报记成 error)。
+	it("registerSource 的登记项带 rejectedProblemLevel: warn:来源报了形状不对的问题,记 warn 不记 error", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const extra = makeSource();
+		await c.runtime.registerSource({
+			sourceKey: "douyin",
+			source: extra,
+			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
+			rejectedProblemLevel: "warn",
+		});
+		extra.ctx?.reportProblem({ code: "Bad Code", message: "x" });
+		expect(c.sourceLogger.warn).toHaveBeenCalledTimes(1);
+		expect(c.sourceLogger.error).not.toHaveBeenCalled();
+	});
+
+	it("fallbackCreatorName:订阅资料里有名字用它,没有退身份标签(平台名 · 外部 id)", () => {
+		const sub = makeExtensionSubscription({
+			id: "e0000000-0000-4000-8000-0000000000aa",
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+		});
+		const named = setup({
+			subs: [sub],
+			overrides: {
+				subscriptionStateStore: {
+					get: (id: string) =>
+						id === sub.id ? { cachedProfile: { name: "资料里的名字" } } : undefined,
+				},
+			},
+		});
+		active = named;
+		expect(
+			named.runtime.fallbackCreatorName({ sourceKey: "douyin", externalId: "sec-uid-1" }),
+		).toBe("资料里的名字");
+		const unnamed = setup({
+			subs: [sub],
+			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
+		});
+		active = unnamed;
+		expect(
+			unnamed.runtime.fallbackCreatorName({ sourceKey: "douyin", externalId: "sec-uid-1" }),
+		).toBe("抖音 · sec-uid-1");
+		// 订阅都不在了(刚删):只剩身份标签。
+		expect(unnamed.runtime.fallbackCreatorName({ sourceKey: "douyin", externalId: "gone" })).toBe(
+			"抖音 · gone",
+		);
 	});
 
 	it("apiKey+baseUrl 齐备:启动即构造 CommentaryGenerator 并 start", () => {

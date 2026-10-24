@@ -1,4 +1,5 @@
 import type { PlatformAdapter } from "@bilibili-notify/internal";
+import { pickBoundMembers } from "../util/bound-members.js";
 
 /**
  * `PlatformAdapter` 的全部成员名。`satisfies Record<keyof PlatformAdapter, true>` 把「接口多一个成员,
@@ -34,12 +35,6 @@ export function pickAdapterMembers<
 	S extends Partial<PlatformAdapter>,
 	O extends keyof PlatformAdapter,
 >(source: S, omit: readonly O[]): Omit<S, O> {
-	const picked: Record<string, unknown> = {};
-	for (const name of MEMBER_NAMES) {
-		if ((omit as readonly string[]).includes(name)) continue;
-		const value: unknown = source[name];
-		if (value === undefined) continue;
-		picked[name] = typeof value === "function" ? value.bind(source) : value;
-	}
-	return picked as Omit<S, O>;
+	const kept = MEMBER_NAMES.filter((name) => !(omit as readonly string[]).includes(name));
+	return pickBoundMembers(source, kept) as Omit<S, O>;
 }

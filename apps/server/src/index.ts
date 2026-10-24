@@ -1283,6 +1283,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
 			onConnectionsChanged,
+			// 拓展的订阅源(第 3 版)登进来源登记表:登记即 `start`,异步;作者名缺了按资料名 → 身份标签补。
+			registerSource: (entry) => runtimeEngines.registerSource(entry),
+			fallbackCreatorName: (identity) => runtimeEngines.fallbackCreatorName(identity),
+			images: runtime.imageStore,
 			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
 			subscriptions: () =>
 				runtime.configStore

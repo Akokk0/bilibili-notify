@@ -240,6 +240,15 @@ export interface LoadExtensionsOptions {
 	connection?: (connectionId: string) => Connection | undefined;
 	/** 订阅「连接配置动过了」。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
+	/**
+	 * 把拓展的订阅源登进来源登记表(引擎的 `registerSource`)。登记是异步的:装载器在 `activate` 之后等它落定,
+	 * `start` 抛了就是这次加载失败。不给就是没接来源登记表,拓展调 `ctx.registerSource` 会抛。
+	 */
+	registerSource?: CreateExtensionContextOptions["registerSource"];
+	/** 事件里没带作者名时补的名字(引擎的 `fallbackCreatorName`),递给每个拓展的 ctx。 */
+	fallbackCreatorName?: CreateExtensionContextOptions["fallbackCreatorName"];
+	/** 图库读口(`runtime.imageStore`),递给每个拓展的 ctx:订阅源作品图补宽高与动图标记。 */
+	images?: CreateExtensionContextOptions["images"];
 	/** 全部拓展订阅(归属 + 外部 id + 开关),现读。属于谁由 ctx 那一层筛。 */
 	subscriptions: () => readonly ExtensionSubscriptionRow[];
 	/** 订阅「订阅动过了」。 */
@@ -726,6 +735,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			connections: opts.connections,
 			connection: opts.connection,
 			onConnectionsChanged: opts.onConnectionsChanged,
+			registerSource: opts.registerSource,
+			fallbackCreatorName: opts.fallbackCreatorName,
+			images: opts.images,
 			subscriptions: opts.subscriptions,
 			onSubscriptionsChanged: opts.onSubscriptionsChanged,
 			onSubscriptionReport: opts.onSubscriptionReport,
@@ -783,6 +795,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			const unreadable = await runtime.verifySettings();
 			if (unreadable !== undefined) return unreadable;
 			if (crashed) throw crashed.err;
+			// 订阅源的登记是后台异步的(登记即 `start`):等它落定,`start` 抛了就是这次加载失败,
+			// 与推送源的 `start` 抛了同一个结局(原因进拓展列表)。放在判设置与 `activate` 的抛之后:
+			// 设置读不了时订阅源的 `start` 多半也是因此抛的,那一笔要记成「设置读不了」而不是加载失败。
+			at.step = "registerSource()";
+			const registered = await runtime.sourceRegistration();
+			if (!registered.ok) throw new Error(registered.message);
 			assertSettingsHanded(manifest, runtime);
 			return undefined;
 		})();

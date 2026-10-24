@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import zhCN from "../../i18n/locales/zh-CN.json";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import ExtensionDetail from "../ExtensionDetail";
 
@@ -151,6 +152,32 @@ describe("拓展详情页:上报出入", () => {
 		expect(within(row as HTMLElement).getByText("跳过一轮")).toBeTruthy();
 		expect(within(row as HTMLElement).queryByText(/丢了/)).toBeNull();
 		expect(within(row as HTMLElement).getByText(/没收到新的直播状态/)).toBeTruthy();
+	});
+
+	// 验红:去掉 `report-discrepancies.tsx` `kindLabel` 里 `live` 那一支(或字典里的键),这条红(药丸旁边没有「报的哪一种」)。
+	it("第 3 版的 live 一条(开播 / 直播状态 / 下播不再分开记):标签取面板字典里的字", async () => {
+		disk.subs = [extSub("s1", "sec-1", "某位 UP")];
+		disk.discrepancies = [
+			{
+				at: Date.now() - 60_000,
+				kind: "live",
+				externalId: "sec-1",
+				subscriptionIds: ["s1"],
+				outcome: "rejected",
+				reasons: ["清单 contributes.subscription.events 里没声明 liveEnd,BN 不收这一种"],
+			},
+		];
+		renderDetail();
+
+		const box = await screen.findByRole("region", { name: "上报出入" });
+		const [row] = within(box).getAllByRole("listitem");
+		expect(await within(row as HTMLElement).findByText("某位 UP")).toBeTruthy();
+		expect(
+			within(row as HTMLElement).getByText(
+				(zhCN as Record<string, string>)["extension.reportDiscrepancies.kindLive"] as string,
+			),
+		).toBeTruthy();
+		expect(within(row as HTMLElement).getByText("整条拒了")).toBeTruthy();
 	});
 
 	it("没有问题:不出这个框", async () => {

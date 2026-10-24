@@ -22,7 +22,7 @@ import {
 	PROMPT_NEUTRAL_NOUNS,
 	webSearchExecutorFromSettings,
 } from "@bilibili-notify/ai";
-import type { ModuleState } from "@bilibili-notify/contract";
+import { displayNameOf, type ModuleState } from "@bilibili-notify/contract";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	AddressCandidate,
@@ -135,10 +135,22 @@ import type { NodeServiceContext } from "./service-context.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 export interface EnginesRuntime extends Disposable {
-	/** 登记一个内置来源(建它的来源上下文、登记即 start)。关停时引擎自己先停掉登记过的来源,再关作品入口。 */
+	/**
+	 * 登记一个来源(建它的来源上下文、登记即 start):内置来源与拓展的订阅源走同一个口。交回撤登记的把手
+	 * (先撤登记、触发来源的 `stop`,再收上下文;**幂等**);引擎关停时自己先停掉没撤的,再关作品入口。
+	 * `rejectedProblemLevel`:拓展的来源给 `warn`(被拒的问题上报是拓展自己的 bug),内置的缺省 `error`。
+	 */
 	registerSource(
-		entry: Pick<RegisterBuiltinSourceOptions, "sourceKey" | "source" | "integration" | "logger">,
-	): Promise<void>;
+		entry: Pick<
+			RegisterBuiltinSourceOptions,
+			"sourceKey" | "source" | "integration" | "logger" | "rejectedProblemLevel" | "label"
+		>,
+	): Promise<Disposable>;
+	/**
+	 * 事件里没带作者名时补的名字:这个人名下订阅的资料缓存里的名字,没有就是身份标签
+	 * (`displayNameOf` 那条链的后两段)。拓展的上报按它补缺的作者名(`extensions/extension-source.ts`)。
+	 */
+	fallbackCreatorName(identity: Identity): string;
 	readonly push: PushRouter;
 	/**
 	 * 全局静音。`push` 已经接了闸(订阅推送在 `PushRouter.push` 交进来时被挡),
@@ -1103,10 +1115,32 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				registration.dispose();
 				throw new Error("registerSource: 引擎装配已关停,来源登记作废");
 			}
-			sourceRegistrations.push(registration);
+			// 撤登记幂等:拓展收摊时自己撤,引擎关停再兜底收一遍,第二遍什么都不做。
+			let revoked = false;
+			const revocable: Disposable = {
+				dispose() {
+					if (revoked) return;
+					revoked = true;
+					const at = sourceRegistrations.indexOf(revocable);
+					if (at !== -1) sourceRegistrations.splice(at, 1);
+					registration.dispose();
+				},
+			};
+			sourceRegistrations.push(revocable);
 			// 重启之后来源登记完:它名下要监听、手里没场次的订阅问一次,在播就认出一场(来源没实现拉取式则什么都不做)。
 			liveSessionEngine?.pollUnseen(entry.sourceKey);
+			return revocable;
 		},
+		fallbackCreatorName: (identity) =>
+			displayNameOf(
+				{
+					profileName: opts.subscriptionStore
+						.listByIdentity(identity)
+						.map((sub) => opts.subscriptionStateStore.get(sub.id)?.cachedProfile?.name)
+						.find((name) => name !== undefined && name.trim() !== ""),
+				},
+				subscriptionIdentityLabelOf(identity, labelDeps),
+			),
 		push,
 		muteState,
 		subscriptionStore: opts.subscriptionStore,

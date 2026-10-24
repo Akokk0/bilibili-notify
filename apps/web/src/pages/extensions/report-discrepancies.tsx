@@ -1,5 +1,6 @@
 import type { ExtensionDTO, ReportDiscrepancyView } from "@bilibili-notify/contract";
 import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
+import { useT } from "../../i18n";
 import type { Subscription } from "../../types/domain";
 import { displayName } from "../../utils/up-display";
 import { RelativeTime } from "../up/relative-time";
@@ -22,6 +23,8 @@ export function ReportDiscrepanciesBox({
 	/** 订阅列表 —— 按订阅 id 印名字。还没回来时先印外部 id。 */
 	subs: readonly Subscription[] | undefined;
 }) {
+	const t = useT();
+	const liveLabel = t("extension.reportDiscrepancies.kindLive");
 	const discrepancies = ext.reportDiscrepancies ?? [];
 	if (discrepancies.length === 0) return null;
 	const postNoun = ext.subscription?.display.postNoun;
@@ -42,7 +45,7 @@ export function ReportDiscrepanciesBox({
 							key={index}
 							discrepancy={discrepancy}
 							who={whoOf(discrepancy, subs)}
-							kind={kindLabel(discrepancy.kind, postNoun)}
+							kind={kindLabel(discrepancy.kind, postNoun, liveLabel)}
 						/>
 					))}
 				</ul>
@@ -122,8 +125,15 @@ function whoOf(
 }
 
 /** 报的哪一种。作品按平台叫法(`postNoun`,抖音叫「作品」,不给叫「动态」),开播 / 下播与订阅页同一套字。 */
-function kindLabel(kind: ReportDiscrepancyView["kind"], postNoun: string | undefined): string {
+function kindLabel(
+	kind: ReportDiscrepancyView["kind"],
+	postNoun: string | undefined,
+	/** 第 3 版 `live` 一条的标签(面板字典里的字,调用方取好递进来)。 */
+	liveLabel: string,
+): string {
 	switch (kind) {
+		case "live":
+			return liveLabel;
 		case "post":
 			return featureLabelOf("post", { postNoun });
 		case "liveStart":

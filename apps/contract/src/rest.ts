@@ -205,12 +205,18 @@ export interface ExtensionDTO {
 	localeIssues?: string[];
 }
 
+/**
+ * 「上报出入」里报的是哪一种:第 2 版的五种(作品 / 开播 / 下播 / 直播状态 / 资料)加第 3 版的 `live`
+ * (`ctx.reportLive` 一条,开播 / 直播状态 / 下播不再分开记)。第 2 版那几种随旧的上报口一起删时再收。
+ */
+export type ReportDiscrepancyKind = SubscriptionReportKind | "live";
+
 /** 一条「上报出入」(见 {@link ExtensionDTO.reportDiscrepancies})。 */
 export interface ReportDiscrepancyView {
 	/** 什么时候(毫秒时间戳)。 */
 	at: number;
-	/** 报的哪一种:三种事件 + 直播状态 + 资料。 */
-	kind: SubscriptionReportKind;
+	/** 报的哪一种(见 {@link ReportDiscrepancyKind})。 */
+	kind: ReportDiscrepancyKind;
 	/** 拓展报的外部 id(不是字符串 / 太长的已截成一段能看的)—— 订阅名对不上时就印它。 */
 	externalId: string;
 	/** 它名下指向这个人的订阅(停用的也算);一条都没对上是空表。 */
