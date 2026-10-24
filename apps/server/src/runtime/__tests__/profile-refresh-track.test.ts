@@ -80,7 +80,7 @@ function start(options: Options = {}) {
 		logger: logger as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: options.list ?? (() => [SUB]) } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: vi.fn(() => ({
 				cachedProfile: { name: "甲", fans: 1, lastRefreshedAt: "x" },
 			})),

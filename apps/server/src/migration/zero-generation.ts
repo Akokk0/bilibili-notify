@@ -35,7 +35,7 @@ import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
 import { FONT_DIR } from "../runtime/font-assets.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.js";
-import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
+import { SUBSCRIPTION_STATE_FILE } from "../runtime/subscription-state-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { BILI_LOGIN_TARGET, migrateBiliLogin } from "./bili-login.js";
 import { migrateConnectionFiles } from "./connections.js";
@@ -170,7 +170,7 @@ const ZERO_GENERATION_MOVES = {
 			"subscriptions.json": [...CONFIG_DIR, "subscriptions.json"],
 			"connections.json": [...CONFIG_DIR, "connections.json"],
 			"targets.json": [...CONFIG_DIR, "targets.json"],
-			"sub-runtime.json": SUB_RUNTIME_FILE,
+			"sub-runtime.json": SUBSCRIPTION_STATE_FILE,
 			"roast-drafts.json": ROAST_DRAFTS_FILE,
 		},
 		inputs: {
@@ -523,7 +523,7 @@ const REWRITES: readonly {
 			const done = await migrateProfileAvatars({
 				zeroDir: zeroPath(opts.zeroRoot, "avatars"),
 				imagesDir: dataPath(opts.targetDir, "images"),
-				runtimeFile: dataPath(opts.targetDir, ...SUB_RUNTIME_FILE),
+				runtimeFile: dataPath(opts.targetDir, ...SUBSCRIPTION_STATE_FILE),
 			});
 			// 头像的账:搬进图库的各记一条(旧路径 → 图库里的引用),没搬的按数量各记一句,不逐个列。
 			for (const { file, ref } of done.copied) {

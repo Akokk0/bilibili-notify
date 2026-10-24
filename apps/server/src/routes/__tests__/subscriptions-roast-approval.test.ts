@@ -216,7 +216,7 @@ function routeWith(
 		},
 		runtime: {
 			serviceCtx: { logger: { warn() {}, error() {}, info() {}, debug() {} } },
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 			problems: { list: () => [] },
 			engines:
 				opts.engines === false || !inbound ? null : { connectionCapabilities: inboundOf(inbound) },

@@ -24,7 +24,7 @@ function makeApp(api: Api | null) {
 		store: { getSubscriptions: () => [] },
 		runtime: {
 			serviceCtx: { logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 			engines: api ? { api } : null,
 		},
 	} as unknown as RouteDeps);

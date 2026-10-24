@@ -133,7 +133,7 @@ function makeScheduler(
 				push: {},
 			},
 			serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: ctx.track },
-			subRuntimeStore: { get: (id: string) => ({ cachedProfile: over.profiles?.[id] }) },
+			subscriptionStateStore: { get: (id: string) => ({ cachedProfile: over.profiles?.[id] }) },
 			sourceRegistry: {
 				get: (id: string) =>
 					id === "bilibili" ? { descriptor: { label: "B 站", externalIdNoun: "UID" } } : undefined,

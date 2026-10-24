@@ -23,7 +23,7 @@ function depsWith(
 ): RoastSubjectDeps {
 	return {
 		runtime: {
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) => ({
 					cachedProfile: profiles[id] === undefined ? undefined : { name: profiles[id] },
 				}),

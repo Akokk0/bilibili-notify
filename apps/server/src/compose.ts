@@ -52,7 +52,7 @@ import {
 import type { PlatformAdapterRegistry } from "./push/registry.js";
 import type { EnginesRuntime } from "./runtime/engines.js";
 import type { NodeServiceContext } from "./runtime/service-context.js";
-import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
+import type { SubscriptionStateStore } from "./runtime/subscription-state-store.js";
 
 /**
  * 各内置集成的设置段:建运行时(配置仓)时交进去,段在配置仓构造期定死,所以是模块级常量、不在
@@ -83,7 +83,7 @@ export interface BuiltinIntegrationsDeps {
 	setHealthCheckMs: (ms: number) => void;
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
-	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
+	subscriptionState: Pick<SubscriptionStateStore, "get">;
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录心跳建得比这里晚,现取,原样转给 B 站开发场景。 */
 	healthCheck: BiliDevtoolsDeps["healthCheck"];
@@ -177,7 +177,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 							.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
 							.map((sub) => {
 								const uid = subscriptionIdentityOf(sub).externalId;
-								const runtime = deps.subscriptionRuntime.get(sub.id);
+								const runtime = deps.subscriptionState.get(sub.id);
 								return {
 									id: sub.id,
 									uid,

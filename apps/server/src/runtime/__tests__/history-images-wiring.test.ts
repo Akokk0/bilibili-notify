@@ -37,7 +37,7 @@ beforeEach(async () => {
 		},
 		{ integrationSettings: [settingsSegment] },
 	);
-	await runtime.subRuntimeStore.load();
+	await runtime.subscriptionStateStore.load();
 });
 afterEach(async () => {
 	await runtime.dispose();
@@ -116,7 +116,7 @@ describe("createAppRuntime 里的推送历史与重推原件", () => {
 
 	it("拓展行的头像快照:订阅删了、资料缓存没了,历史行还引用着就留;水位线推过去才收走", async () => {
 		const avatar = await putImage(runtime.profileImages, PNG_BYTES);
-		await runtime.subRuntimeStore.patch(SUB, {
+		await runtime.subscriptionStateStore.patch(SUB, {
 			cachedProfile: {
 				name: "拓展甲",
 				avatar,
@@ -125,7 +125,7 @@ describe("createAppRuntime 里的推送历史与重推原件", () => {
 			},
 		});
 		const { day } = await recordImageRow(distinctPng(4), { avatarSnapshot: avatar });
-		await runtime.subRuntimeStore.prune([]);
+		await runtime.subscriptionStateStore.prune([]);
 
 		const kept = await runtime.imageStore.sweep({ now: afterGrace() });
 		expect(kept.removed).not.toContain(avatar);
@@ -140,7 +140,7 @@ describe("createAppRuntime 里的推送历史与重推原件", () => {
 
 	it("历史行过了保留期,但资料缓存还引用着同一张头像:不收", async () => {
 		const avatar = await putImage(runtime.profileImages, PNG_BYTES);
-		await runtime.subRuntimeStore.patch(SUB, {
+		await runtime.subscriptionStateStore.patch(SUB, {
 			cachedProfile: {
 				name: "拓展甲",
 				avatar,

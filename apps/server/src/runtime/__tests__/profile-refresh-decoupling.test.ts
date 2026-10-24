@@ -1,17 +1,17 @@
 /**
- * 回归测试 — ProfileRefresh↔SubRuntimeStore 解耦(Bug 1 的真正修复点)。
+ * 回归测试 — ProfileRefresh↔SubscriptionStateStore 解耦(Bug 1 的真正修复点)。
  *
  * Bug 1 链:ProfileRefresh 每 tick 经 configStore.patchSubscription 写
  * cachedProfile.fans → ConfigStore emit config-changed:subscriptions →
  * SubscriptionStore.replaceAll 整数组 diff → 伪 subscription-changed{update} →
  * DynamicPoller 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
  *
- * 修复后 ProfileRefresh 每 tick 改写 subRuntimeStore.patch(独立文件、**无事件**),
+ * 修复后 ProfileRefresh 每 tick 改写 subscriptionStateStore.patch(独立文件、**无事件**),
  * configStore 仅被读 getGlobals().profileRefreshCron。本测试用 dynamic-poller.test
  * 同款 `vi.mock("cron")` FakeCronJob 捕获 onTick,手动驱动**恰好一次** tick,
  * 断言:
  *   1. configStore.patchSubscription 一次都没被调(Bug 1 链入口被切断);
- *   2. subRuntimeStore.patch 被调,且 payload = { cachedProfile }
+ *   2. subscriptionStateStore.patch 被调,且 payload = { cachedProfile }
  *      (首次 tick 不另写起点);
  *   3. 整个 tick 期间 bus 上没有 config-changed / subscription-changed 冒泡。
  */
@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe("ProfileRefresh 一次 tick — 与 ConfigStore 解耦", () => {
-	it("tick 写 subRuntimeStore.patch,且**绝不**调 configStore.patchSubscription", async () => {
+	it("tick 写 subscriptionStateStore.patch,且**绝不**调 configStore.patchSubscription", async () => {
 		const bus = createNodeMessageBus();
 		const patchSubscription = vi.fn(async () => SUB);
 		const rtPatch = vi.fn(async () => {});
@@ -106,7 +106,7 @@ describe("ProfileRefresh 一次 tick — 与 ConfigStore 解耦", () => {
 				patchSubscription,
 			} as never,
 			subscriptionStore: { list: () => [SUB] } as never,
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: rtGet,
 				getAll: () => ({}),
 				patch: rtPatch,
@@ -145,7 +145,7 @@ describe("ProfileRefresh 一次 tick — 与 ConfigStore 解耦", () => {
 		// (1) Bug 1 链入口被切断:configStore.patchSubscription 一次都没调。
 		expect(patchSubscription).not.toHaveBeenCalled();
 
-		// (2) 写进 SubRuntimeStore:只写 cachedProfile。
+		// (2) 写进 SubscriptionStateStore:只写 cachedProfile。
 		const [id, payload] = rtPatch.mock.calls[0] as unknown as [
 			string,
 			{ cachedProfile?: Record<string, unknown> },

@@ -26,7 +26,7 @@ import { BootstrapConfigSchema } from "../../config/schema.js";
 import { isValidImageRef } from "../../images/image-store.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
 import { dataPath } from "../roots.js";
-import { SUB_RUNTIME_FILE } from "../sub-runtime-store.js";
+import { SUBSCRIPTION_STATE_FILE } from "../subscription-state-store.js";
 
 // 落盘函数前的闸默认敞开;只有「先后」那条用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -51,7 +51,7 @@ beforeEach(async () => {
 		{ integrationSettings: [settingsSegment] },
 	);
 	await runtime.configStore.load();
-	await runtime.subRuntimeStore.load();
+	await runtime.subscriptionStateStore.load();
 	await runtime.configStore.upsertSubscription(SUB);
 });
 afterEach(async () => {
@@ -81,7 +81,7 @@ describe("createAppRuntime 的 flush 段", () => {
 				messages: [],
 			}),
 		).rejects.toMatchObject(CLOSED);
-		await expect(runtime.subRuntimeStore.prune([])).rejects.toMatchObject(CLOSED);
+		await expect(runtime.subscriptionStateStore.prune([])).rejects.toMatchObject(CLOSED);
 		await expect(runtime.profileImages.put(PNG_BYTES)).rejects.toMatchObject(CLOSED);
 		await expect(runtime.historyImages.put(PNG_BYTES)).rejects.toMatchObject(CLOSED);
 		await expect(runtime.conversationStore.create()).rejects.toMatchObject(CLOSED);
@@ -162,10 +162,9 @@ describe("createAppRuntime 的 flush 段", () => {
 
 		storageWriteGate.release();
 		await closing;
-		const onDisk = JSON.parse(await readFile(join(dataDir, ...SUB_RUNTIME_FILE), "utf8")) as Record<
-			string,
-			{ cachedProfile?: { name: string; avatar?: string } }
-		>;
+		const onDisk = JSON.parse(
+			await readFile(join(dataDir, ...SUBSCRIPTION_STATE_FILE), "utf8"),
+		) as Record<string, { cachedProfile?: { name: string; avatar?: string } }>;
 		const profile = onDisk[SUB.id]?.cachedProfile;
 		expect(profile?.name).toBe("甲");
 		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);

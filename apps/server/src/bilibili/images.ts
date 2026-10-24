@@ -12,7 +12,7 @@ import { urlWithoutQuery } from "@bilibili-notify/http";
 import type { LiveCardInput } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
-	type CachedProfile,
+	type CreatorProfile,
 	type FailureCode,
 	type ImageRef,
 	type Logger,
@@ -333,7 +333,7 @@ function fetchEmoji(url: string, deps: ImagesDeps): Promise<ImageRef | undefined
 }
 
 /** 资料缓存里头像的两格:`avatar` 是图库引用,`avatarUrl` 是那张图的来源地址。 */
-export type ProfileAvatarFields = Pick<CachedProfile, "avatar" | "avatarUrl">;
+export type ProfileAvatarFields = Pick<CreatorProfile, "avatar" | "avatarUrl">;
 
 /**
  * 按 B 站这次给的头像地址 `avatarUrl`,算资料里头像两格该是什么(调用方把结果并进 `cachedProfile`)。
@@ -367,7 +367,7 @@ export async function syncProfileAvatar(
  */
 export function subscribedAvatar(
 	subscriptions: readonly Subscription[],
-	profileOf: (subscriptionId: string) => Pick<CachedProfile, "avatar"> | undefined,
+	profileOf: (subscriptionId: string) => Pick<CreatorProfile, "avatar"> | undefined,
 	uid: string,
 ): ImageRef | undefined {
 	const subscription = subscriptions.find((sub) => {

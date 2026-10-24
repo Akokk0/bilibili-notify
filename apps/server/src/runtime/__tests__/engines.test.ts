@@ -469,7 +469,7 @@ function setup(opts?: {
 	overrides?: {
 		configStore?: Record<string, unknown>;
 		historyStore?: unknown;
-		subRuntimeStore?: Record<string, unknown>;
+		subscriptionStateStore?: Record<string, unknown>;
 		api?: Record<string, unknown>;
 	};
 }): Ctx {
@@ -513,13 +513,13 @@ function setup(opts?: {
 				subs.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 			findById: (id: string) => subs.find((s) => s.id === id),
 		} as any,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: () => undefined,
 			getAll: () => ({}),
 			patch: vi.fn(async () => {}),
 			prune: vi.fn(async () => {}),
 			load: vi.fn(async () => {}),
-			...opts?.overrides?.subRuntimeStore,
+			...opts?.overrides?.subscriptionStateStore,
 		} as any,
 		bus,
 		adapters: registryOf(opts?.platformAdapters ?? []),
@@ -707,7 +707,7 @@ describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
 		const c = setup({
 			puppeteer: true,
 			subs: [biliSubOf("1")],
-			overrides: { subRuntimeStore: { get } },
+			overrides: { subscriptionStateStore: { get } },
 		});
 		active = c;
 		reportBili("1", bilibiliPost("第一条"), "d1");
@@ -852,7 +852,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 			extensionSources: sources,
 			postImages: { put },
 			overrides: {
-				subRuntimeStore: {
+				subscriptionStateStore: {
 					get: (id: string) =>
 						id === sub.id
 							? {
@@ -1280,7 +1280,7 @@ describe("createEngines — 作品过滤接线", () => {
 				globals: globalsWith({ blockKeywords: ["禁词"] }),
 				overrides: {
 					historyStore: { record },
-					subRuntimeStore: { get: () => ({ cachedProfile: { name: "某UP" } }) },
+					subscriptionStateStore: { get: () => ({ cachedProfile: { name: "某UP" } }) },
 				},
 			});
 			active = c;
@@ -1463,7 +1463,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			liveTable: memoryLiveTable(),
 			liveImages: { put },
 			overrides: {
-				subRuntimeStore: {
+				subscriptionStateStore: {
 					get: (id: string) =>
 						id === sub.id
 							? {

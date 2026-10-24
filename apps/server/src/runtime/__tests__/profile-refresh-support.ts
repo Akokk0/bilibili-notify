@@ -14,7 +14,7 @@ import { createProblemTable, type ProblemTable } from "../../problems/problem-ta
 import { createNodeMessageBus } from "../message-bus.js";
 import { createProfileCacheWriter } from "../profile-cache.js";
 import { type ProfileRefreshHandle, startProfileRefresh } from "../profile-refresh.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 
 interface MigratedApi {
 	fetchUserCard?: (externalId: string) => Promise<unknown>;
@@ -29,7 +29,7 @@ interface MigratedOptions {
 	logger: Parameters<typeof startProfileRefresh>[0]["logger"];
 	configStore: Parameters<typeof startProfileRefresh>[0]["configStore"];
 	subscriptionStore: Parameters<typeof startProfileRefresh>[0]["subscriptionStore"];
-	subRuntimeStore: Parameters<typeof startProfileRefresh>[0]["subRuntimeStore"];
+	subscriptionStateStore: Parameters<typeof startProfileRefresh>[0]["subscriptionStateStore"];
 	fansStore: Parameters<typeof startProfileRefresh>[0]["fansStore"] & {
 		append(key: string, sample: { sampledAt: string; followers: number }): Promise<void>;
 		drop(key: string): Promise<void>;
@@ -48,7 +48,7 @@ export type FetchProfile = (
 export interface ProfileRefreshHarnessOptions {
 	subscriptions: Subscription[];
 	sources: Record<string, FetchProfile>;
-	runtime?: Record<string, SubRuntime>;
+	runtime?: Record<string, SubscriptionState>;
 	problems?: ProblemTable;
 	findEarliest?: (key: string) => Promise<FollowersAt | undefined>;
 	findNearestBefore?: (key: string, beforeIso: string) => Promise<FollowersAt | undefined>;
@@ -77,9 +77,9 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 	);
 	const cache = createProfileCacheWriter({
 		bus,
-		subRuntime: {
+		subscriptionState: {
 			get: (id: string) => runtime.get(id),
-			patch: async (id: string, patch: SubRuntime) => {
+			patch: async (id: string, patch: SubscriptionState) => {
 				runtime.set(id, { ...runtime.get(id), ...patch });
 			},
 		} as never,
@@ -108,10 +108,10 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 			list: () => [...subscriptions],
 			findById: (id: string) => subscriptions.find((sub) => sub.id === id),
 		} as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
-			patch: async (id: string, patch: SubRuntime) => {
+			patch: async (id: string, patch: SubscriptionState) => {
 				runtime.set(id, { ...runtime.get(id), ...patch });
 			},
 			prune: vi.fn(async () => {}),
@@ -163,7 +163,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 	const problems = createProblemTable({ logger: opts.logger });
 	const cache = createProfileCacheWriter({
 		bus: opts.bus,
-		subRuntime: opts.subRuntimeStore,
+		subscriptionState: opts.subscriptionStateStore,
 		images: { keep: async () => true },
 		logger: opts.logger,
 	});

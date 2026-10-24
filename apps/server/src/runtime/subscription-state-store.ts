@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import {
-	type CachedProfile,
+	type CreatorProfile,
 	createSerialQueue,
 	type ImageRef,
 	type Logger,
@@ -10,7 +10,7 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { dataPath } from "./roots.js";
 
 /**
- * SubRuntimeStore — per-subscription cached profile data, externalized out of the
+ * SubscriptionStateStore — per-subscription cached profile data, externalized out of the
  * persisted `Subscription` config.
  *
  * Why this exists: `cachedProfile.fans` / `lastRefreshedAt` get rewritten by
@@ -30,30 +30,30 @@ import { dataPath } from "./roots.js";
  * Record shape: `/api/subscriptions` joins `cachedProfile` back as a zero-logic
  * passthrough.
  */
-export interface SubRuntime {
+export interface SubscriptionState {
 	/**
 	 * Cached B-station public profile mirror for UI display. ProfileRefresh-owned.
 	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62),头像存进图库、
-	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
+	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubscriptionStateStore.listImageRefs}。
 	 */
-	cachedProfile?: CachedProfile;
+	cachedProfile?: CreatorProfile;
 }
 
-export interface SubRuntimeStore {
+export interface SubscriptionStateStore {
 	/**
 	 * One sub's runtime record (clone), or undefined if never seeded.
 	 * Treat as read-only — it's a defensive copy, mutating it does nothing.
 	 */
-	get(id: string): SubRuntime | undefined;
+	get(id: string): SubscriptionState | undefined;
 	/** Whole map snapshot (clone). Consumed by the `/api/subscriptions` join. */
-	getAll(): Record<string, SubRuntime>;
+	getAll(): Record<string, SubscriptionState>;
 	/**
 	 * Replace the given top-level keys of `records[id]` (creating the entry on
 	 * demand) and atomically persist. Callers always pass complete
 	 * `cachedProfile` objects, so this is a per-key replace, not a deep merge.
 	 * Serialized against other patch/prune calls.
 	 */
-	patch(id: string, partial: SubRuntime): Promise<void>;
+	patch(id: string, partial: SubscriptionState): Promise<void>;
 	/** Drop any entry whose id is not in `keepIds` (orphan cleanup). */
 	prune(keepIds: readonly string[]): Promise<void>;
 	/** Load `<dataRoot>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
@@ -82,31 +82,33 @@ export interface SubRuntimeStore {
  * 每删一条 B 站订阅一次,拓展订阅的资料就被静默抹掉 —— 类型、测试、构建全绿。所以这里
  * 收的是整个订阅仓而不是一份现成的 id 列表:调用方没有机会先筛一遍。
  */
-export function pruneOrphanSubRuntime(
-	runtime: SubRuntimeStore,
+export function pruneOrphanSubscriptionState(
+	runtime: SubscriptionStateStore,
 	subscriptions: Pick<SubscriptionStore, "list">,
 ): Promise<void> {
 	return runtime.prune(subscriptions.list().map((s) => s.id));
 }
 
-export interface CreateSubRuntimeStoreOptions {
+export interface CreateSubscriptionStateStoreOptions {
 	dataRoot: string;
 	logger: Logger;
 }
 
 /** 写道的唯一一个键:整份只有一个文件。 */
-const WRITE_KEY = "sub-runtime";
+const WRITE_KEY = "subscription-state";
 
-function cloneRuntime(r: SubRuntime): SubRuntime {
+function cloneRuntime(r: SubscriptionState): SubscriptionState {
 	return structuredClone(r);
 }
 
 /** 订阅运行态在代里的位置。 */
-export const SUB_RUNTIME_FILE = ["runtime", "sub-runtime.json"] as const;
+export const SUBSCRIPTION_STATE_FILE = ["runtime", "sub-runtime.json"] as const;
 
-export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRuntimeStore {
-	const file = dataPath(opts.dataRoot, ...SUB_RUNTIME_FILE);
-	let records: Record<string, SubRuntime> = {};
+export function createSubscriptionStateStore(
+	opts: CreateSubscriptionStateStoreOptions,
+): SubscriptionStateStore {
+	const file = dataPath(opts.dataRoot, ...SUBSCRIPTION_STATE_FILE);
+	let records: Record<string, SubscriptionState> = {};
 	/** 载入只做一次;`listImageRefs` 等的就是这一次(没载完时被问的人和第一个调 `load` 的等同一件事)。 */
 	let loading: Promise<void> | undefined;
 	// Single private write queue (one key — there is only one file) so concurrent patch/prune
@@ -122,7 +124,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 		try {
 			await atomicWriteJson(file, records);
 		} catch (err) {
-			opts.logger.warn(`[sub-runtime] persist failed: ${String(err)}`);
+			opts.logger.warn(`[subscription-state] persist failed: ${String(err)}`);
 			throw err;
 		}
 	}
@@ -133,13 +135,13 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				const raw = await readFile(file, "utf8");
 				const parsed = JSON.parse(raw);
 				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-					records = parsed as Record<string, SubRuntime>;
+					records = parsed as Record<string, SubscriptionState>;
 				} else {
-					opts.logger.warn("[sub-runtime] file is not an object; starting empty");
+					opts.logger.warn("[subscription-state] file is not an object; starting empty");
 				}
 			} catch (err) {
 				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[sub-runtime] load failed, starting empty: ${String(err)}`);
+					opts.logger.warn(`[subscription-state] load failed, starting empty: ${String(err)}`);
 				}
 			}
 		})();
@@ -153,7 +155,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 		},
 
 		getAll() {
-			const out: Record<string, SubRuntime> = {};
+			const out: Record<string, SubscriptionState> = {};
 			for (const [id, r] of Object.entries(records)) out[id] = cloneRuntime(r);
 			return out;
 		},
@@ -164,7 +166,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				// than deep-merge fragments.
 				//
 				// 🔴 判据是**键在不在**,不是值等不等于 `undefined`,而且**逐键遍历、不点名**:
-				//   - 点名的话(原先那张三键清单)往 `SubRuntime` 加一个字段而忘了补一行,
+				//   - 点名的话(原先那张三键清单)往 `SubscriptionState` 加一个字段而忘了补一行,
 				//     那个键就静默不落盘 —— 类型、门禁、运行期都不会说一个字。
 				//   - 按值判的话,显式传 `undefined`(意思是「把上次那个值清掉」)永远清不掉。
 				// 「不带这个键」仍然是「别动它」—— 空 patch 不冲掉 cachedProfile。
@@ -173,7 +175,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 					if (value === undefined) delete next[key];
 					else next[key] = value;
 				}
-				records = { ...records, [id]: next as SubRuntime };
+				records = { ...records, [id]: next as SubscriptionState };
 				await persist();
 			});
 		},
@@ -181,7 +183,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 		prune(keepIds) {
 			return runSerial(async () => {
 				const keep = new Set(keepIds);
-				const next: Record<string, SubRuntime> = {};
+				const next: Record<string, SubscriptionState> = {};
 				let dropped = 0;
 				for (const [id, r] of Object.entries(records)) {
 					if (keep.has(id)) next[id] = r;
@@ -190,7 +192,7 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 				if (dropped === 0) return;
 				records = next;
 				await persist();
-				opts.logger.debug(`[sub-runtime] pruned ${dropped} orphan entr(ies)`);
+				opts.logger.debug(`[subscription-state] pruned ${dropped} orphan entr(ies)`);
 			});
 		},
 

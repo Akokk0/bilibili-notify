@@ -7,7 +7,7 @@
  * 这也是订阅删除之后头像文件的去路(没有「删订阅顺手删头像文件」那一步了)。另一条订阅还引用着同一张图时不删。
  *
  * `createAppRuntime` 这一层没人听 `subscription-changed` 去丢资料缓存(那在 `index.ts` 的 ProfileRefresh 和开机的
- * `pruneOrphanSubRuntime`),所以这里直接用 `prune` 替它丢。
+ * `pruneOrphanSubscriptionState`),所以这里直接用 `prune` 替它丢。
  */
 
 import { mkdtemp, readdir, rm } from "node:fs/promises";
@@ -37,7 +37,7 @@ beforeEach(async () => {
 		},
 		{ integrationSettings: [settingsSegment] },
 	);
-	await runtime.subRuntimeStore.load();
+	await runtime.subscriptionStateStore.load();
 });
 afterEach(async () => {
 	await runtime.dispose();
@@ -57,13 +57,13 @@ const profileWith = (avatar: string) => ({
 describe("createAppRuntime 里的订阅资料头像", () => {
 	it("资料缓存引用着的头像,过了宽限期清扫也不删;订阅被丢掉,下一轮才收走", async () => {
 		const ref = await putImage(runtime.profileImages, PNG_BYTES);
-		await runtime.subRuntimeStore.patch(SUB_A, { cachedProfile: profileWith(ref) });
+		await runtime.subscriptionStateStore.patch(SUB_A, { cachedProfile: profileWith(ref) });
 
 		const kept = await runtime.imageStore.sweep({ now: afterGrace() });
 		expect(kept).toMatchObject({ removed: [], referenced: 1 });
 		expect(await imagesOnDisk()).toEqual([ref]);
 
-		await runtime.subRuntimeStore.prune([]);
+		await runtime.subscriptionStateStore.prune([]);
 		const swept = await runtime.imageStore.sweep({ now: afterGrace() });
 		expect(swept.removed).toEqual([ref]);
 		expect(await imagesOnDisk()).toEqual([]);
@@ -71,21 +71,21 @@ describe("createAppRuntime 里的订阅资料头像", () => {
 
 	it("另一条订阅还引用着同一张图:这条被丢掉,图不删;两条都没了才收走", async () => {
 		const shared = await putImage(runtime.profileImages, PNG_BYTES);
-		await runtime.subRuntimeStore.patch(SUB_A, { cachedProfile: profileWith(shared) });
-		await runtime.subRuntimeStore.patch(SUB_B, { cachedProfile: profileWith(shared) });
+		await runtime.subscriptionStateStore.patch(SUB_A, { cachedProfile: profileWith(shared) });
+		await runtime.subscriptionStateStore.patch(SUB_B, { cachedProfile: profileWith(shared) });
 
-		await runtime.subRuntimeStore.prune([SUB_B]);
+		await runtime.subscriptionStateStore.prune([SUB_B]);
 		const kept = await runtime.imageStore.sweep({ now: afterGrace() });
 		expect(kept).toMatchObject({ removed: [], referenced: 1 });
 		expect(await imagesOnDisk()).toEqual([shared]);
 
-		await runtime.subRuntimeStore.prune([]);
+		await runtime.subscriptionStateStore.prune([]);
 		expect((await runtime.imageStore.sweep({ now: afterGrace() })).removed).toEqual([shared]);
 	});
 
 	it("B 站订阅的远端网址不是图库的东西:不会让任何一张图被当成还在引用", async () => {
 		const ref = await putImage(runtime.profileImages, PNG_BYTES);
-		await runtime.subRuntimeStore.patch(SUB_A, {
+		await runtime.subscriptionStateStore.patch(SUB_A, {
 			cachedProfile: {
 				name: "UP",
 				avatarUrl: "https://i0.hdslb.com/bfs/face/a.jpg",

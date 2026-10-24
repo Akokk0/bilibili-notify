@@ -128,7 +128,7 @@ import {
 } from "./push-history.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
-import type { SubRuntimeStore } from "./sub-runtime-store.js";
+import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 export interface EnginesRuntime extends Disposable {
 	/** 登记一个内置来源(建它的来源上下文、登记即 start)。关停时引擎自己先停掉登记过的来源,再关作品入口。 */
@@ -254,7 +254,7 @@ export interface CreateEnginesOptions {
 	 * views). cachedProfile was externalized out of `Subscription`, so the
 	 * config subs from subscriptionStore no longer carry it — read it here.
 	 */
-	subRuntimeStore: SubRuntimeStore;
+	subscriptionStateStore: SubscriptionStateStore;
 	/** 订阅来源登记表(`AppRuntime.sourceRegistry`);来源由 `registerSource` 登进去。 */
 	sources: SourceRegistry;
 	/** 链接解析器登记表(`AppRuntime.linkResolvers`);来源经上下文登进去。 */
@@ -440,7 +440,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			if (!subscription) return undefined;
 			return {
 				subscription,
-				profile: opts.subRuntimeStore.get(subscription.id)?.cachedProfile,
+				profile: opts.subscriptionStateStore.get(subscription.id)?.cachedProfile,
 			};
 		},
 	};
@@ -553,7 +553,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 两种都不是我们要的,取舍写在 attachReadOnlyTools 的文档里。
 			attachReadOnlyTools(c, {
 				subscriptionStore: opts.subscriptionStore,
-				subRuntimeStore: opts.subRuntimeStore,
+				subscriptionStateStore: opts.subscriptionStateStore,
 				// 平台名问来源登记表,登记表里没有的(拓展)才问装载器 —— 与锐评同一条链。
 				platformLabel: (sourceKey) => platformLabelOf(sourceKey, labelDeps),
 				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
@@ -664,7 +664,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// 卡上的主播头像:订阅 id → 订阅资料里的头像引用。**每次出卡现读**,所以资料之后补上 / 换掉的头像不用重启就跟上。
 	const profileAvatarOf = (subscriptionId: string): ImageRef | undefined =>
-		opts.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
+		opts.subscriptionStateStore.get(subscriptionId)?.cachedProfile?.avatar;
 
 	const postQueue = createPostQueue({
 		logger: postsCtx.logger,
@@ -714,7 +714,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				logger: postsCtx.logger,
 				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
-				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
 				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				postNoun: (extensionId) => extensionSources.postNoun(extensionId),
 				postImages,
@@ -745,7 +745,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			table: liveTable,
 			subscription: (id) => opts.subscriptionStore.findById(id),
 			sourceStatus,
-			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
+			fans: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveSettingsOf(sub, globals()),
 			timers: coreLiveCtx,
 			// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。
@@ -778,7 +778,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				logger: coreLiveCtx.logger,
 				serviceCtx: coreLiveCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
-				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
 				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				liveImages,
 				sessions: liveSessions,
@@ -816,7 +816,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sessions: liveSessions,
 				table: liveTable,
 				subscription: (id) => opts.subscriptionStore.findById(id),
-				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
+				profile: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile,
 				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				settings: (sub) => liveSettingsOf(sub, globals()),
 				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
@@ -832,7 +832,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sourceStatus,
 				// 实现了 `fetchLiveStatus` 的来源,周期「正在直播」由场次引擎的计时驱动(`tick`),推送这头不再挂自己的。
 				hasLiveTick: (sourceKey) => !hasLiveStatus(sourceKey) && sourceHasLive(sourceKey),
-				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+				avatarRef: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.avatar,
 				recap: {
 					collector: viewerChats,
 					wordcloud: wordcloudGenerator,
@@ -851,9 +851,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			settings: (sub) => liveSettingsOf(sub, globals()),
 			sourceStatus,
 			table: liveTable,
-			profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+			profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
 			identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-			profileAvatar: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+			profileAvatar: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.avatar,
 			source: (sourceKey) => opts.sources.get(sourceKey),
 			gates: sourceGates,
 			renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),

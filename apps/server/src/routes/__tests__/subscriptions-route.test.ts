@@ -1,7 +1,7 @@
 /**
  * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 经资料刷新引擎拉资料」。
  *
- * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubRuntimeStore join 回(有才带,
+ * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubscriptionStateStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
  * POST 新建后在册来源经资料刷新的单条口拉一次并等它落定;失败 best-effort 不致命;
  * 引擎没起时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
@@ -111,7 +111,7 @@ function makeHarness(opts?: {
 		},
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-			subRuntimeStore: { get: rtGet, patch: rtPatch },
+			subscriptionStateStore: { get: rtGet, patch: rtPatch },
 			problems: { list: () => opts?.problems ?? [] },
 			// 新建订阅按来源描述符核外部 id:B 站的描述符从登记表来。
 			sourceRegistry: {
@@ -394,7 +394,7 @@ describe("/api/subscriptions PATCH — 响应同样 join", () => {
 			store: { getSubscriptions: () => [], deleteSubscription: async () => false },
 			runtime: {
 				serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-				subRuntimeStore: { get: () => undefined },
+				subscriptionStateStore: { get: () => undefined },
 				engines: null,
 			},
 		} as unknown as RouteDeps);
@@ -505,7 +505,7 @@ describe("/api/subscriptions × 拓展订阅", () => {
 				},
 				runtime: {
 					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-					subRuntimeStore: { get: () => undefined, patch: vi.fn() },
+					subscriptionStateStore: { get: () => undefined, patch: vi.fn() },
 					sourceRegistry: { get: () => undefined },
 					engines: null,
 				},

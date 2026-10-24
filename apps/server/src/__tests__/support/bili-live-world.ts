@@ -375,7 +375,7 @@ export async function bootBiliLiveWorld(
 			fanClubName: "测试牌",
 		},
 	};
-	const subRuntime = {
+	const subscriptionState = {
 		get: () => structuredClone(runtimeRecord),
 		getAll: () => ({}),
 		patch: async (_id: string, partial: typeof runtimeRecord) => {
@@ -416,7 +416,7 @@ export async function bootBiliLiveWorld(
 			listByIdentity: (identity: Identity) =>
 				subscriptions.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 		} as never,
-		subRuntimeStore: subRuntime as never,
+		subscriptionStateStore: subscriptionState as never,
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
 		aiToolProviders: createAiToolProviderRegistry(),

@@ -185,7 +185,7 @@ function compose(
 		bus: createNodeMessageBus(),
 		setHealthCheckMs,
 		subscriptions: { list: () => subs },
-		subscriptionRuntime: {
+		subscriptionState: {
 			get: (id: string) =>
 				id === "bilibili-100"
 					? ({

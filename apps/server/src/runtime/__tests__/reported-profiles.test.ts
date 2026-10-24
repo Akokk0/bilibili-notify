@@ -24,10 +24,10 @@ import {
 import { createNodeMessageBus } from "../message-bus.js";
 import { bindReportedProfiles, type ReportedProfilesHandle } from "../reported-profiles.js";
 import {
-	createSubRuntimeStore,
-	SUB_RUNTIME_FILE,
-	type SubRuntimeStore,
-} from "../sub-runtime-store.js";
+	createSubscriptionStateStore,
+	SUBSCRIPTION_STATE_FILE,
+	type SubscriptionStateStore,
+} from "../subscription-state-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -57,7 +57,7 @@ function profileReport(
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
-let subRuntime: SubRuntimeStore;
+let subscriptionState: SubscriptionStateStore;
 let imageStore: ImageStore;
 let images: ImageWriter;
 let alive: string[];
@@ -67,7 +67,7 @@ let announced: string[][];
 function bind(over: { images?: ImageWriter; coalesceMs?: number } = {}): void {
 	handle = bindReportedProfiles({
 		bus,
-		subRuntime,
+		subscriptionState,
 		images: over.images ?? images,
 		subscriptionIds: () => alive,
 		logger: makeLogger(),
@@ -78,9 +78,12 @@ function bind(over: { images?: ImageWriter; coalesceMs?: number } = {}): void {
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-reported-profiles-"));
 	bus = createNodeMessageBus();
-	subRuntime = createSubRuntimeStore({ dataRoot: dataDir, logger: makeLogger() });
+	subscriptionState = createSubscriptionStateStore({ dataRoot: dataDir, logger: makeLogger() });
 	imageStore = createImageStore({ dir: join(dataDir, "images") });
-	images = imageStore.register({ name: "订阅资料", listRefs: () => subRuntime.listImageRefs() });
+	images = imageStore.register({
+		name: "订阅资料",
+		listRefs: () => subscriptionState.listImageRefs(),
+	});
 	alive = [A, B];
 	announced = [];
 	bus.on("subscription-profiles-changed", ({ subscriptionIds }) => {
@@ -112,8 +115,8 @@ describe("bindReportedProfiles", () => {
 		await new Promise((resolve) => setTimeout(resolve, coalesceMs + 50));
 		expect(announced).toHaveLength(1);
 		// 后报的粉丝没把先报的名字冲掉 —— 排成一条队处理。
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({ name: "甲", fans: 3 });
-		expect(subRuntime.get(B)?.cachedProfile).toMatchObject({ name: "乙" });
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({ name: "甲", fans: 3 });
+		expect(subscriptionState.get(B)?.cachedProfile).toMatchObject({ name: "乙" });
 	});
 
 	it("窗口从第一条变了起算,后面又变的不往后推", async () => {
@@ -140,7 +143,7 @@ describe("bindReportedProfiles", () => {
 		await handle.idle();
 		await new Promise((resolve) => setTimeout(resolve, 60));
 
-		expect(subRuntime.get(GONE)).toBeUndefined();
+		expect(subscriptionState.get(GONE)).toBeUndefined();
 		await expect(imagesOnDisk()).rejects.toMatchObject({ code: "ENOENT" });
 		expect(announced).toEqual([]);
 	});
@@ -150,12 +153,12 @@ describe("bindReportedProfiles", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "甲", avatar: PNG_BYTES }));
 		await handle.idle();
 
-		const avatar = subRuntime.get(A)?.cachedProfile?.avatar;
+		const avatar = subscriptionState.get(A)?.cachedProfile?.avatar;
 		expect(avatar && isValidImageRef(avatar)).toBe(true);
 		expect(avatar).toMatch(/\.png$/);
 		const stored = await imageStore.read(avatar ?? "");
 		expect(stored?.bytes.equals(PNG_BYTES)).toBe(true);
-		expect(subRuntime.get(A)?.cachedProfile).not.toHaveProperty("avatarUrl");
+		expect(subscriptionState.get(A)?.cachedProfile).not.toHaveProperty("avatarUrl");
 	});
 
 	it("同一张图再报一次:引用不变,面板不被叫;换一张:引用变,面板被叫", async () => {
@@ -163,25 +166,25 @@ describe("bindReportedProfiles", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "甲", avatar: PNG_BYTES }));
 		await handle.idle();
 		await vi.waitFor(() => expect(announced).toEqual([[A]]));
-		const first = subRuntime.get(A)?.cachedProfile?.avatar;
+		const first = subscriptionState.get(A)?.cachedProfile?.avatar;
 
 		bus.emit("subscription-reported", profileReport([A], { avatar: PNG_BYTES }));
 		await handle.idle();
 		await new Promise((resolve) => setTimeout(resolve, 80));
-		expect(subRuntime.get(A)?.cachedProfile?.avatar).toBe(first);
+		expect(subscriptionState.get(A)?.cachedProfile?.avatar).toBe(first);
 		expect(announced).toEqual([[A]]);
 
 		bus.emit("subscription-reported", profileReport([A], { avatar: JPEG_BYTES }));
 		await handle.idle();
 		await vi.waitFor(() => expect(announced).toEqual([[A], [A]]));
-		expect(subRuntime.get(A)?.cachedProfile?.avatar).not.toBe(first);
-		expect(subRuntime.get(A)?.cachedProfile?.avatar).toMatch(/\.jpg$/);
+		expect(subscriptionState.get(A)?.cachedProfile?.avatar).not.toBe(first);
+		expect(subscriptionState.get(A)?.cachedProfile?.avatar).toMatch(/\.jpg$/);
 	});
 
 	it("没给头像:沿用旧的引用,而且先续期(抄引用要 keep)", async () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", lastRefreshedAt: "t" },
 		});
 		const keep = vi.fn(images.keep);
@@ -190,11 +193,14 @@ describe("bindReportedProfiles", () => {
 		await handle.idle();
 
 		expect(keep).toHaveBeenCalledWith(old.ref);
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({ name: "新名字", avatar: old.ref });
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
+			name: "新名字",
+			avatar: old.ref,
+		});
 	});
 
 	it("没给头像、旧的引用指着的图已经不在了:资料里两格都缺,不留悬空的引用", async () => {
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: {
 				name: "旧名字",
 				avatar: `${"c".repeat(64)}.png`,
@@ -206,7 +212,7 @@ describe("bindReportedProfiles", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "新名字" }));
 		await handle.idle();
 
-		const profile = subRuntime.get(A)?.cachedProfile;
+		const profile = subscriptionState.get(A)?.cachedProfile;
 		expect(profile?.name).toBe("新名字");
 		expect(profile).not.toHaveProperty("avatar");
 		expect(profile).not.toHaveProperty("avatarUrl");
@@ -216,7 +222,7 @@ describe("bindReportedProfiles", () => {
 	it("头像存不下来:名字与粉丝照样更新,头像留着原来那张", async () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: {
 				name: "旧名字",
 				avatar: old.ref,
@@ -236,7 +242,7 @@ describe("bindReportedProfiles", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "新名字", avatar: JPEG_BYTES }));
 		await handle.idle();
 
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: old.ref,
 			fans: 1,
@@ -246,7 +252,7 @@ describe("bindReportedProfiles", () => {
 	it("报来的头像不是头像收的图(gif):名字照样更新,头像留着原来那张", async () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", lastRefreshedAt: "t" },
 		});
 		bind();
@@ -254,7 +260,10 @@ describe("bindReportedProfiles", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "新名字", avatar: gif }));
 		await handle.idle();
 
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({ name: "新名字", avatar: old.ref });
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
+			name: "新名字",
+			avatar: old.ref,
+		});
 		expect(await imagesOnDisk()).toEqual([old.ref]);
 	});
 
@@ -265,7 +274,7 @@ describe("bindReportedProfiles", () => {
 			report: { kind: "liveStatus", value: { live: true } },
 		});
 		await handle.idle();
-		expect(subRuntime.get(A)).toBeUndefined();
+		expect(subscriptionState.get(A)).toBeUndefined();
 	});
 });
 
@@ -273,7 +282,7 @@ describe("bindReportedProfiles.close", () => {
 	beforeEach(() => storageWriteGate.reset());
 	afterEach(() => storageWriteGate.reset());
 
-	const runtimeFile = () => join(dataDir, ...SUB_RUNTIME_FILE);
+	const runtimeFile = () => join(dataDir, ...SUBSCRIPTION_STATE_FILE);
 
 	it("close 等在途的资料落盘(dispose 只摘监听、置标记,不等队列)", async () => {
 		bind();
@@ -317,7 +326,7 @@ describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
 	it("图库的目录建不出来:名字与粉丝照样更新,头像留着原来那张,记一句 warn", async () => {
 		const old = await images.put(PNG_BYTES);
 		if (!old.ok) throw new Error(old.message);
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", fans: 1, lastRefreshedAt: "t" },
 		});
 		// 另开一个图库,目录是个普通文件:往里写必挂(ENOTDIR)。续期仍走好的那个(旧头像在它那儿)。
@@ -330,7 +339,7 @@ describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
 		const logger = makeLogger();
 		handle = bindReportedProfiles({
 			bus,
-			subRuntime,
+			subscriptionState,
 			images: { put: broken.put, keep: images.keep },
 			subscriptionIds: () => alive,
 			logger,
@@ -339,7 +348,7 @@ describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
 		bus.emit("subscription-reported", profileReport([A], { name: "新名字", avatar: JPEG_BYTES }));
 		await handle.idle();
 
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: old.ref,
 			fans: 1,

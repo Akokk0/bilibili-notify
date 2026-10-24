@@ -279,24 +279,24 @@ describe("数据统计:四个目录、缓存", () => {
 	it("不碰订阅运行态里的资料", async () => {
 		const w = world;
 		const profile = { name: "n", sign: "", fans: 9, lastRefreshedAt: "2026-10-06T00:00:00.000Z" };
-		await w.subRuntimeStore.patch("sub-a", {
+		await w.subscriptionStateStore.patch("sub-a", {
 			cachedProfile: profile,
 		});
 		const secondProfile = { ...profile, name: "n2" };
-		await w.subRuntimeStore.patch("sub-b", {
+		await w.subscriptionStateStore.patch("sub-b", {
 			cachedProfile: secondProfile,
 		});
-		await w.subRuntimeStore.patch("sub-c", { cachedProfile: profile });
+		await w.subscriptionStateStore.patch("sub-c", { cachedProfile: profile });
 
 		await w.storage.clear("stats");
 
-		expect(w.subRuntimeStore.get("sub-a")).toEqual({
+		expect(w.subscriptionStateStore.get("sub-a")).toEqual({
 			cachedProfile: profile,
 		});
-		expect(w.subRuntimeStore.get("sub-b")).toEqual({ cachedProfile: secondProfile });
-		expect(w.subRuntimeStore.get("sub-c")).toEqual({ cachedProfile: profile });
+		expect(w.subscriptionStateStore.get("sub-b")).toEqual({ cachedProfile: secondProfile });
+		expect(w.subscriptionStateStore.get("sub-c")).toEqual({ cachedProfile: profile });
 		// 换一个仓从文件里读,这些格也原样还在。
-		const reread = (await import("../sub-runtime-store.js")).createSubRuntimeStore({
+		const reread = (await import("../subscription-state-store.js")).createSubscriptionStateStore({
 			dataRoot: w.dataRoot,
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});

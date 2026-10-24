@@ -24,7 +24,7 @@ import type { CreatorStatsReader } from "./creator-stats.js";
 
 /**
  * 只按**真正读到的那点东西**声明依赖,而不是整个 `SubscriptionStore` /
- * `SubRuntimeStore`。这两个 store 各带十来个写方法,全要过来等于宣称本模块
+ * `SubscriptionStateStore`。这两个 store 各带十来个写方法,全要过来等于宣称本模块
  * 可能改数据 —— 而这是「只读档」的接线处,签名本身就该说清它做不到写。
  * 顺带让测试不必为了调一个纯投影函数去伪造一整个 store。
  */
@@ -65,7 +65,7 @@ export function attachReadOnlyTools(
 	},
 	stores: {
 		subscriptionStore: SubscriptionReader;
-		subRuntimeStore: ProfileSource;
+		subscriptionStateStore: ProfileSource;
 		/** 订阅所属平台的叫法(问来源登记表,见 `subscriptions/platform-label.ts`)。 */
 		platformLabel: (sourceKey: string) => string;
 		/** 订阅的身份标签(问来源登记表与拓展装载器,见 `subscriptions/platform-label.ts`)。 */
@@ -109,7 +109,7 @@ export function attachReadOnlyTools(
 		subscriptions: () =>
 			aiSubscriptionViews(
 				stores.subscriptionStore,
-				stores.subRuntimeStore,
+				stores.subscriptionStateStore,
 				stores.platformLabel,
 				stores.identityLabel,
 				stores.liveNow,
@@ -131,7 +131,9 @@ export function attachReadOnlyTools(
 		},
 		async profile(creator) {
 			const sub = subscribedBy(creator);
-			const cached = sub?.enabled ? stores.subRuntimeStore.get(sub.id)?.cachedProfile : undefined;
+			const cached = sub?.enabled
+				? stores.subscriptionStateStore.get(sub.id)?.cachedProfile
+				: undefined;
 			if (cached?.name) {
 				return ok({
 					profile: {
@@ -209,7 +211,7 @@ function liveNowFromTable(
  */
 export function aiSubscriptionViews(
 	subscriptionStore: SubscriptionReader,
-	subRuntimeStore: ProfileSource,
+	subscriptionStateStore: ProfileSource,
 	platformLabel: (sourceKey: string) => string,
 	identityLabel: (identity: Identity) => string,
 	liveNowReader?: LiveNowReader,
@@ -225,7 +227,7 @@ export function aiSubscriptionViews(
 			creator: creatorOf(identity.sourceKey, identity.externalId),
 			name: displayNameOf(
 				{
-					profileName: subRuntimeStore.get(sub.id)?.cachedProfile?.name,
+					profileName: subscriptionStateStore.get(sub.id)?.cachedProfile?.name,
 				},
 				identityLabel(identity),
 			),

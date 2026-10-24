@@ -13,7 +13,10 @@ import type { Logger } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createProfileCacheWriter, type ProfileCacheWriter } from "../profile-cache.js";
-import { createSubRuntimeStore, type SubRuntimeStore } from "../sub-runtime-store.js";
+import {
+	createSubscriptionStateStore,
+	type SubscriptionStateStore,
+} from "../subscription-state-store.js";
 
 const A = "b0000000-0000-4000-8000-000000000001";
 const OLD_AVATAR = `${"a".repeat(64)}.png`;
@@ -24,7 +27,7 @@ function makeLogger(): Logger {
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
-let subRuntime: SubRuntimeStore;
+let subscriptionState: SubscriptionStateStore;
 let keep: ReturnType<typeof vi.fn<(ref: string) => Promise<boolean>>>;
 let writer: ProfileCacheWriter;
 let announced: string[][];
@@ -32,11 +35,11 @@ let announced: string[][];
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-profile-cache-"));
 	bus = createNodeMessageBus();
-	subRuntime = createSubRuntimeStore({ dataRoot: dataDir, logger: makeLogger() });
+	subscriptionState = createSubscriptionStateStore({ dataRoot: dataDir, logger: makeLogger() });
 	keep = vi.fn(async () => true);
 	writer = createProfileCacheWriter({
 		bus,
-		subRuntime,
+		subscriptionState,
 		images: { keep },
 		logger: makeLogger(),
 		coalesceMs: 30,
@@ -49,14 +52,14 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	writer.dispose();
-	await subRuntime.close();
+	await subscriptionState.close();
 	vi.useRealTimers();
 	await rm(dataDir, { recursive: true, force: true });
 });
 
 describe("profile-cache", () => {
 	it("给了哪格换哪格;没给的名字、头像、签名、粉丝和粉丝团名都沿用", async () => {
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: {
 				name: "旧名字",
 				avatar: OLD_AVATAR,
@@ -69,7 +72,7 @@ describe("profile-cache", () => {
 		});
 
 		expect(await writer.write(A, { name: "新名字" })).toBe(true);
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: OLD_AVATAR,
 			avatarUrl: "https://example.com/avatar.png",
@@ -79,7 +82,7 @@ describe("profile-cache", () => {
 		});
 
 		expect(await writer.write(A, { sign: "新签名", fans: 2, fanClubName: "新粉丝团" })).toBe(true);
-		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
 			avatar: OLD_AVATAR,
 			avatarUrl: "https://example.com/avatar.png",
@@ -87,28 +90,28 @@ describe("profile-cache", () => {
 			fans: 2,
 			fanClubName: "新粉丝团",
 		});
-		expect(subRuntime.get(A)?.cachedProfile?.lastRefreshedAt).not.toBe("old");
+		expect(subscriptionState.get(A)?.cachedProfile?.lastRefreshedAt).not.toBe("old");
 	});
 
 	it("头像没给时续期后沿用;图不在了就缺这一格", async () => {
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: { name: "甲", avatar: OLD_AVATAR, sign: "", lastRefreshedAt: "old" },
 		});
 		await writer.write(A, { name: "新甲" });
 		expect(keep).toHaveBeenCalledWith(OLD_AVATAR);
-		expect(subRuntime.get(A)?.cachedProfile?.avatar).toBe(OLD_AVATAR);
+		expect(subscriptionState.get(A)?.cachedProfile?.avatar).toBe(OLD_AVATAR);
 
 		const B = "b0000000-0000-4000-8000-000000000002";
-		await subRuntime.patch(B, {
+		await subscriptionState.patch(B, {
 			cachedProfile: { name: "乙", avatar: OLD_AVATAR, sign: "", lastRefreshedAt: "old" },
 		});
 		keep.mockResolvedValueOnce(false);
 		await writer.write(B, { name: "新乙" });
-		expect(subRuntime.get(B)?.cachedProfile).not.toHaveProperty("avatar");
+		expect(subscriptionState.get(B)?.cachedProfile).not.toHaveProperty("avatar");
 	});
 
 	it("名字、头像、粉丝变了回 true;只改签名回 false", async () => {
-		await subRuntime.patch(A, {
+		await subscriptionState.patch(A, {
 			cachedProfile: { name: "甲", sign: "", fans: 1, lastRefreshedAt: "old" },
 		});
 
@@ -119,7 +122,7 @@ describe("profile-cache", () => {
 
 	it("没有旧资料又没给名字、签名、粉丝时,写空串但不写假的 0", async () => {
 		expect(await writer.write(A, {})).toBe(true);
-		const profile = subRuntime.get(A)?.cachedProfile;
+		const profile = subscriptionState.get(A)?.cachedProfile;
 		expect(profile).toMatchObject({ name: "", sign: "" });
 		expect(profile).not.toHaveProperty("fans");
 		expect(profile).not.toHaveProperty("avatar");

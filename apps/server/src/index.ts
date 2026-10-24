@@ -112,7 +112,7 @@ import { dataPath, hostPath } from "./runtime/roots.js";
 import { bindSettingsRedaction } from "./runtime/settings-redaction.js";
 import { createStatusCommand, readLogins, readSourceHealth } from "./runtime/status-command.js";
 import { createStorageUsage } from "./runtime/storage-usage.js";
-import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
+import { pruneOrphanSubscriptionState } from "./runtime/subscription-state-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
 import { startStatsCompaction } from "./stats/compaction.js";
@@ -598,7 +598,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		runtime.serviceCtx.onDispose(() => settingsRedaction.dispose(), "stop");
 		// Per-sub runtime data (cachedProfile, roomId, follow state). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
-		await runtime.subRuntimeStore.load();
+		await runtime.subscriptionStateStore.load();
 
 		// 各内置集成读自己设置的读法:造一次,递给造集成上下文的两处(登录系统、内置适配器);键由各集成自己挑。
 		const settingsOf = settingsReaderOptionsOf(runtime.configStore);
@@ -664,7 +664,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
 		// longer exists (deleted while the server was down). Profile refresh's
 		// subscription-changed listener handles deletions made while running.
-		await pruneOrphanSubRuntime(runtime.subRuntimeStore, subBinding.store);
+		await pruneOrphanSubscriptionState(runtime.subscriptionStateStore, subBinding.store);
 		// 拓展订阅的头像在图库里、资料缓存里放引用(ADR-0019 决策 49):资料条目丢了,头像就不再有人引用,
 		// 由图库清扫收走,这里不用另外扫头像。头像不进备份(与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
 		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
@@ -767,7 +767,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			bus: runtime.bus,
 			setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms),
 			subscriptions: subStore,
-			subscriptionRuntime: runtime.subRuntimeStore,
+			subscriptionState: runtime.subscriptionStateStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
 			healthCheck: () =>
@@ -829,7 +829,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					id: sub.id,
 					enabled: sub.enabled,
 					name:
-						runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ??
+						runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.name ??
 						subscriptionIdentityOf(sub).externalId,
 				})),
 			session: () =>
@@ -929,7 +929,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
 			subscriptionStore: subBinding.store,
-			subRuntimeStore: runtime.subRuntimeStore,
+			subscriptionStateStore: runtime.subscriptionStateStore,
 			bus: runtime.bus,
 			adapters,
 			// 开发版的推送截流接在派发器调适配器那一处;生产 `devtools` 是 null,不传。
@@ -1020,7 +1020,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 写资料缓存与粉丝时序,再发 `followers-refreshed`。
 		const profileCache = createProfileCacheWriter({
 			bus: runtime.bus,
-			subRuntime: runtime.subRuntimeStore,
+			subscriptionState: runtime.subscriptionStateStore,
 			images: runtime.profileImages,
 			logger: log,
 		});
@@ -1029,7 +1029,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 			configStore: runtime.configStore,
 			subscriptionStore: subBinding.store,
-			subRuntimeStore: runtime.subRuntimeStore,
+			subscriptionStateStore: runtime.subscriptionStateStore,
 			fansStore: runtime.fansStore,
 			recorder: runtime.statsRecorder,
 			profileCache,

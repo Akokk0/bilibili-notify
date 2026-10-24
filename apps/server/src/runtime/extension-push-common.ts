@@ -5,7 +5,7 @@ import {
 } from "@bilibili-notify/internal";
 import { bytesDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
-import type { SubRuntimeStore } from "./sub-runtime-store.js";
+import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 /**
  * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`posts/extension-post.ts`)与拓展的
@@ -59,12 +59,12 @@ export interface StoredAvatar {
  */
 export async function readProfileAvatar(
 	runtime: {
-		subRuntimeStore: Pick<SubRuntimeStore, "get">;
+		subscriptionStateStore: Pick<SubscriptionStateStore, "get">;
 		imageStore: Pick<ImageStore, "read">;
 	},
 	subscriptionId: string,
 ): Promise<StoredAvatar | undefined> {
-	const ref = runtime.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
+	const ref = runtime.subscriptionStateStore.get(subscriptionId)?.cachedProfile?.avatar;
 	if (ref === undefined) return undefined;
 	return (await runtime.imageStore.read(ref)) ?? undefined;
 }

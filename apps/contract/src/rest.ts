@@ -15,11 +15,11 @@ import type {
 	AIProviderProfile,
 	AISettings,
 	AuthState,
-	CachedProfile,
 	CardKind,
 	Connection,
 	ConnectionCandidate,
 	ConnectionCapabilities,
+	CreatorProfile,
 	ExtensionProvides,
 	ExtensionRunState,
 	Failure,
@@ -539,7 +539,7 @@ export interface MarketplaceInstallRequest {
 // ---- /api/subscriptions ------------------------------------------------------------
 
 /**
- * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubRuntimeStore join
+ * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubscriptionStateStore join
  * 回来的外置运行时字段(cachedProfile),加上问题表里挂在这条订阅上的问题(problems)。
  *
  * 只有这一种形状(ADR-0021 决策 14、15):B 站与拓展提供的订阅同一个形状,订的是谁只读
@@ -571,9 +571,9 @@ export type SubscriptionDTO = Subscription &
 		problems: Problem[];
 	};
 
-/** 外置运行时字段(服务端 SubRuntimeStore join 回来的)。 */
+/** 外置运行时字段(服务端 SubscriptionStateStore join 回来的)。 */
 interface SubscriptionRuntimeDTO {
-	cachedProfile?: CachedProfile;
+	cachedProfile?: CreatorProfile;
 }
 
 // ---- /api/history ----------------------------------------------------------

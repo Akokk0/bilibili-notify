@@ -71,7 +71,7 @@ function makeDeps(f: Fixture): RouteDeps {
 							f.liveSubscriptions?.includes(id) ? { subscriptionId: id } : undefined,
 					}
 				: null,
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) => {
 					const fans = f.profileFans?.[uidOf(id)];
 					return fans === undefined ? undefined : { cachedProfile: { fans } };
@@ -530,7 +530,7 @@ describe("POST /api/stats/roast/:subscriptionId — 单 UP 锐评", () => {
 			ai: { enabled },
 			stats: { enabled: true },
 		});
-		(deps.runtime as unknown as { subRuntimeStore: unknown }).subRuntimeStore = {
+		(deps.runtime as unknown as { subscriptionStateStore: unknown }).subscriptionStateStore = {
 			get: () => undefined,
 		};
 		return deps;

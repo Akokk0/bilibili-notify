@@ -400,7 +400,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const subscribedAvatarOf = (uid: string): ImageRef | undefined =>
 		subscribedAvatar(
 			opts.deps.store.getSubscriptions(),
-			(id) => opts.deps.runtime.subRuntimeStore.get(id)?.cachedProfile,
+			(id) => opts.deps.runtime.subscriptionStateStore.get(id)?.cachedProfile,
 			uid,
 		);
 

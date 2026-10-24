@@ -8,7 +8,7 @@ import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { ProfileRefreshHandle } from "../profile-refresh.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
@@ -84,9 +84,9 @@ function biliSub(id: string, uid: string, enabled = true): Subscription {
 	return { id, identity: { sourceKey: "bilibili", externalId: uid }, enabled } as never;
 }
 
-async function start(initial: Subscription[], runtimeSeed: Record<string, SubRuntime> = {}) {
+async function start(initial: Subscription[], runtimeSeed: Record<string, SubscriptionState> = {}) {
 	let subs = initial;
-	const runtime = new Map<string, SubRuntime>(Object.entries(runtimeSeed));
+	const runtime = new Map<string, SubscriptionState>(Object.entries(runtimeSeed));
 	const bus = createNodeMessageBus();
 	const snapshots: FollowersRefreshEntry[][] = [];
 	bus.on("followers-refreshed", ({ entries }) => {
@@ -110,10 +110,10 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => [...subs] } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
-			patch: async (id: string, patch: SubRuntime) => {
+			patch: async (id: string, patch: SubscriptionState) => {
 				runtime.set(id, { ...runtime.get(id), ...patch });
 			},
 			prune: vi.fn(async () => {}),
@@ -147,7 +147,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 }
 
 /** 资料缓存里的一份资料;`fans` 不给就是平台没报粉丝数。 */
-function profile(fans?: number, lastRefreshedAt = iso(5 * 60_000)): SubRuntime {
+function profile(fans?: number, lastRefreshedAt = iso(5 * 60_000)): SubscriptionState {
 	return {
 		cachedProfile: {
 			name: "抖音甲",

@@ -105,7 +105,7 @@ function makeDeps(opts: StubOpts = {}) {
 						imageRenderer:
 							opts.renderer === false ? null : { generateRoastBoardCard, generateRoastSoloCard },
 					},
-			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
+			subscriptionStateStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
 			// 锐评取名要问来源登记表拼身份标签(B 站声明「UID」)。
 			sourceRegistry: {
 				get: (key: string) =>

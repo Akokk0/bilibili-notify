@@ -9,14 +9,14 @@ import {
 } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
 import { createProfileCacheWriter } from "./profile-cache.js";
-import type { SubRuntimeStore } from "./sub-runtime-store.js";
 import { checkSubscriptionAvatarBytes } from "./subscription-avatar.js";
+import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
 
 /**
  * 拓展报的资料更新落盘(ADR-0019 决策 7 / 49 / 62):bus 上 `subscription-reported` 里 `kind === "profile"`
- * 的那些,逐条写进它对上的每条订阅的资料缓存(`SubRuntimeStore.cachedProfile`),头像存进图库、资料里放引用。
+ * 的那些,逐条写进它对上的每条订阅的资料缓存(`SubscriptionStateStore.cachedProfile`),头像存进图库、资料里放引用。
  *
  * - **给了哪格改哪格**:名字 / 粉丝数没给的保持原样;头像没给就沿用原来那张 —— 沿用也是「抄引用」,先 `keep`
  *   续期,图已经不在了就不留悬空的引用(头像格直接缺)。`lastRefreshedAt` 每次都换 —— 它说的是「资料什么时候
@@ -37,7 +37,7 @@ export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
 
 export interface BindReportedProfilesOptions {
 	bus: MessageBus;
-	subRuntime: SubRuntimeStore;
+	subscriptionState: SubscriptionStateStore;
 	/** 图库的存图口(登记成引用方才拿得到,见 `bootstrap.ts`)。 */
 	images: ImageWriter;
 	/** 此刻还在的订阅 id(两支都算),**现取**。 */
@@ -68,7 +68,7 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 	let disposed = false;
 	const cache = createProfileCacheWriter({
 		bus: opts.bus,
-		subRuntime: opts.subRuntime,
+		subscriptionState: opts.subscriptionState,
 		images: opts.images,
 		logger: opts.logger,
 		coalesceMs: opts.coalesceMs,

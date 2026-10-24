@@ -22,7 +22,10 @@ import type { StatsRecorderCore } from "../stats/recorder.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { ProfileCacheWriter } from "./profile-cache.js";
-import { pruneOrphanSubRuntime, type SubRuntimeStore } from "./sub-runtime-store.js";
+import {
+	pruneOrphanSubscriptionState,
+	type SubscriptionStateStore,
+} from "./subscription-state-store.js";
 
 const START_DELAY_MS = 3_000;
 const TWENTY_FOUR_HOURS_MS = 24 * HOUR_MS;
@@ -35,7 +38,7 @@ export interface ProfileRefreshOptions {
 	logger: Logger;
 	configStore: Pick<ConfigStore, "getGlobals">;
 	subscriptionStore: SubscriptionStore;
-	subRuntimeStore: SubRuntimeStore;
+	subscriptionStateStore: SubscriptionStateStore;
 	fansStore: Pick<FollowersStore, "findEarliest" | "findNearestBefore">;
 	recorder: Pick<StatsRecorderCore, "recordActive" | "recordFollowers" | "drop">;
 	profileCache: ProfileCacheWriter;
@@ -57,7 +60,7 @@ export interface ProfileRefreshHandle extends Disposable {
 }
 
 export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefreshHandle {
-	const { bus, logger, configStore, subscriptionStore, subRuntimeStore, fansStore } = opts;
+	const { bus, logger, configStore, subscriptionStore, subscriptionStateStore, fansStore } = opts;
 	let currentCron = configStore.getGlobals().profileRefreshCron;
 	let job: CronJob | undefined;
 	let running = false;
@@ -81,7 +84,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	): Promise<FollowersRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
 		const statsOn = opts.isStatsEnabled();
-		const reportedBefore = subRuntimeStore.get(sub.id)?.cachedProfile?.fans;
+		const reportedBefore = subscriptionStateStore.get(sub.id)?.cachedProfile?.fans;
 		const needsLatest = reportedBefore === undefined || statsOn;
 		const [latest, first, near24h, near7d] = await Promise.all([
 			needsLatest ? fansStore.findNearestBefore(key, FUTURE_ISO) : undefined,
@@ -93,7 +96,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 				? fansStore.findNearestBefore(key, new Date(nowMs - SEVEN_DAYS_MS).toISOString())
 				: undefined,
 		]);
-		const profile = subRuntimeStore.get(sub.id)?.cachedProfile;
+		const profile = subscriptionStateStore.get(sub.id)?.cachedProfile;
 		const reported = profile?.fans;
 		if (!latest && reported === undefined) return undefined;
 		if (!latest && statsOn && !allowReportedWithoutSample) return undefined;
@@ -367,7 +370,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		}
 		if (removed) {
 			opts.serviceCtx.track(
-				pruneOrphanSubRuntime(subRuntimeStore, subscriptionStore).catch((err) => {
+				pruneOrphanSubscriptionState(subscriptionStateStore, subscriptionStore).catch((err) => {
 					logger.warn(`[profile-refresh] 清理已删订阅的资料缓存失败: ${String(err)}`);
 				}),
 			);

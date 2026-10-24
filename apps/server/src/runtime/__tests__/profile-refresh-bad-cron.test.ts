@@ -69,7 +69,7 @@ describe("ProfileRefresh — 无法解析的 profileRefreshCron", () => {
 				logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: errorLog } as never,
 				configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 				subscriptionStore: { list: () => [SUB] } as never,
-				subRuntimeStore: {
+				subscriptionStateStore: {
 					get: () => undefined,
 					getAll: () => ({}),
 					patch: vi.fn(async () => {}),

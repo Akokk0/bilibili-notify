@@ -21,7 +21,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { IMAGE_MAX_BYTES } from "../../images/image-store.js";
-import { createSubRuntimeStore, SUB_RUNTIME_FILE } from "../../runtime/sub-runtime-store.js";
+import {
+	createSubscriptionStateStore,
+	SUBSCRIPTION_STATE_FILE,
+} from "../../runtime/subscription-state-store.js";
 import { migrateProfileAvatars } from "../profile-avatars.js";
 import { useZeroSandbox } from "./support.js";
 
@@ -61,7 +64,7 @@ async function placeRuntime(records: Record<string, unknown>): Promise<void> {
 
 const imagesDir = () => join(sandbox.target, "images");
 const readImagesDir = async () => (await readdir(imagesDir()).catch(() => [])).sort();
-const runtimePath = () => join(sandbox.target, ...SUB_RUNTIME_FILE);
+const runtimePath = () => join(sandbox.target, ...SUBSCRIPTION_STATE_FILE);
 const readRuntime = async () =>
 	JSON.parse(await readFile(runtimePath(), "utf8")) as Record<
 		string,
@@ -349,7 +352,7 @@ describe("迁出来的新代", () => {
 		});
 		await sandbox.migrate();
 
-		const store = createSubRuntimeStore({ dataRoot: sandbox.target, logger: silentLogger });
+		const store = createSubscriptionStateStore({ dataRoot: sandbox.target, logger: silentLogger });
 
 		expect(await store.listImageRefs()).toEqual([refOf(PNG_BYTES, "png")]);
 		expect(store.get(BILI)?.cachedProfile?.avatarUrl).toBe(BILI_URL);

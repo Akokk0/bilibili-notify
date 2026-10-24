@@ -1,7 +1,7 @@
 /**
- * SubRuntimeStore 单元测试 — Bug 1 修复的承重件。
+ * SubscriptionStateStore 单元测试 — Bug 1 修复的承重件。
  *
- * SubRuntimeStore 把高频写入的 cachedProfile 从持久化 Subscription
+ * SubscriptionStateStore 把高频写入的 cachedProfile 从持久化 Subscription
  * 里外置出来,自带独立写路径且**不发任何事件**(无 MessageBus)——这正是切断
  * `config-changed:subscriptions → SubscriptionStore.replaceAll → subscription-changed
  * → DynamicPoller 重订阅 + [ops] 日志刷屏` 链条的关键。
@@ -25,12 +25,12 @@ import { makeExtensionSubscription } from "../../__tests__/support/extension-sub
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import {
-	createSubRuntimeStore,
-	pruneOrphanSubRuntime,
-	SUB_RUNTIME_FILE,
-	type SubRuntime,
-	type SubRuntimeStore,
-} from "../sub-runtime-store.js";
+	createSubscriptionStateStore,
+	pruneOrphanSubscriptionState,
+	SUBSCRIPTION_STATE_FILE,
+	type SubscriptionState,
+	type SubscriptionStateStore,
+} from "../subscription-state-store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -61,7 +61,7 @@ let logger: Logger;
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "sub-runtime-test-"));
-	file = join(dir, ...SUB_RUNTIME_FILE);
+	file = join(dir, ...SUBSCRIPTION_STATE_FILE);
 	logger = makeLogger();
 });
 
@@ -69,16 +69,16 @@ afterEach(async () => {
 	await rm(dir, { recursive: true, force: true });
 });
 
-function make(): SubRuntimeStore {
-	return createSubRuntimeStore({ dataRoot: dir, logger });
+function make(): SubscriptionStateStore {
+	return createSubscriptionStateStore({ dataRoot: dir, logger });
 }
 
 async function readFileJson(): Promise<Record<string, unknown>> {
 	return JSON.parse(await readFile(file, "utf8"));
 }
 
-describe("SubRuntimeStore — 构造契约 (Bug 1 结构证明)", () => {
-	it("createSubRuntimeStore 选项只有 dataRoot/logger,不接收任何 MessageBus/事件汇", () => {
+describe("SubscriptionStateStore — 构造契约 (Bug 1 结构证明)", () => {
+	it("createSubscriptionStateStore 选项只有 dataRoot/logger,不接收任何 MessageBus/事件汇", () => {
 		// 纯结构断言:构造选项里没有 bus,所以 patch/prune 在源头上就不可能
 		// fan-out 成 config-changed / subscription-changed —— Bug 1 链被切断。
 		const store = make() as unknown as Record<string, unknown>;
@@ -94,7 +94,7 @@ describe("SubRuntimeStore — 构造契约 (Bug 1 结构证明)", () => {
 	});
 });
 
-describe("SubRuntimeStore.patch — 逐键替换语义", () => {
+describe("SubscriptionStateStore.patch — 逐键替换语义", () => {
 	it("空 store patch cachedProfile 创建条目", async () => {
 		const store = make();
 		await store.patch("s1", { cachedProfile: PROFILE_A });
@@ -111,7 +111,7 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 
 	it("写另一个顶层键不冲掉已存在的 cachedProfile", async () => {
 		const store = make();
-		const withUnknown = { unknown: "kept" } as unknown as SubRuntime;
+		const withUnknown = { unknown: "kept" } as unknown as SubscriptionState;
 		await store.patch("s1", withUnknown);
 		await store.patch("s1", { cachedProfile: PROFILE_A });
 		expect(store.get("s1")).toEqual({ unknown: "kept", cachedProfile: PROFILE_A });
@@ -131,12 +131,12 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A });
 	});
 
-	it("逐键遍历不点名:SubRuntime 里没写的键也原样落盘", async () => {
+	it("逐键遍历不点名:SubscriptionState 里没写的键也原样落盘", async () => {
 		const store = make();
 		await store.patch("s1", {
 			cachedProfile: PROFILE_A,
 			unrecognized: "kept",
-		} as unknown as SubRuntime);
+		} as unknown as SubscriptionState);
 		expect(store.get("s1")).toEqual({
 			cachedProfile: PROFILE_A,
 			unrecognized: "kept",
@@ -164,7 +164,7 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 	});
 });
 
-describe("SubRuntimeStore.get / getAll — 防御性克隆", () => {
+describe("SubscriptionStateStore.get / getAll — 防御性克隆", () => {
 	it("get 返回克隆:就地改返回值不污染 store", async () => {
 		const store = make();
 		await store.patch("s1", { cachedProfile: { ...PROFILE_A } });
@@ -187,7 +187,7 @@ describe("SubRuntimeStore.get / getAll — 防御性克隆", () => {
 	});
 });
 
-describe("SubRuntimeStore.load — 损坏输入容忍", () => {
+describe("SubscriptionStateStore.load — 损坏输入容忍", () => {
 	it("文件缺失 → 起始为空,不抛,不告警 ENOENT", async () => {
 		const store = make();
 		await expect(store.load()).resolves.toBeUndefined();
@@ -249,7 +249,7 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 	});
 });
 
-describe("SubRuntimeStore.listImageRefs — 图库清扫要的「资料缓存引用着谁」", () => {
+describe("SubscriptionStateStore.listImageRefs — 图库清扫要的「资料缓存引用着谁」", () => {
 	const REF_A = `${"a".repeat(64)}.png`;
 	const REF_B = `${"b".repeat(64)}.webp`;
 	/** 拓展订阅的资料:没有头像(两格都缺)。 */
@@ -300,7 +300,7 @@ describe("SubRuntimeStore.listImageRefs — 图库清扫要的「资料缓存引
 	});
 });
 
-describe("pruneOrphanSubRuntime — 保留名单是两支订阅的全部 id(ADR-0019 决策 47)", () => {
+describe("pruneOrphanSubscriptionState — 保留名单是两支订阅的全部 id(ADR-0019 决策 47)", () => {
 	it("拓展订阅的资料缓存不被当成孤儿抹掉;真孤儿照丢", async () => {
 		const runtime = make();
 		const subs = createSubscriptionStore(createNodeMessageBus());
@@ -314,13 +314,13 @@ describe("pruneOrphanSubRuntime — 保留名单是两支订阅的全部 id(ADR-
 		await runtime.patch("e1", { cachedProfile: PROFILE_A2 });
 		await runtime.patch("gone", { cachedProfile: PROFILE_A });
 
-		await pruneOrphanSubRuntime(runtime, subs);
+		await pruneOrphanSubscriptionState(runtime, subs);
 
 		expect(Object.keys(runtime.getAll()).sort()).toEqual(["b1", "e1"]);
 	});
 });
 
-describe("SubRuntimeStore.prune — 孤儿清理 + 幂等", () => {
+describe("SubscriptionStateStore.prune — 孤儿清理 + 幂等", () => {
 	it("丢掉不在 keepIds 里的条目", async () => {
 		const store = make();
 		await store.patch("keep", { cachedProfile: PROFILE_A });
@@ -357,7 +357,7 @@ describe("SubRuntimeStore.prune — 孤儿清理 + 幂等", () => {
 	});
 });
 
-describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
+describe("SubscriptionStateStore — 并发串行(单 FIFO,无丢写)", () => {
 	it("两个未 await 的 patch 串行后两 key 都在", async () => {
 		const store = make();
 		const p1 = store.patch("a", { cachedProfile: PROFILE_A });
@@ -405,14 +405,14 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		// 抛 ENOTDIR —— 确定性地走 persist 的 catch→rethrow 分支。
 		const collisionFile = join(dir, "not-a-dir");
 		await writeFile(collisionFile, "x", "utf8");
-		const store = createSubRuntimeStore({ dataRoot: collisionFile, logger });
+		const store = createSubscriptionStateStore({ dataRoot: collisionFile, logger });
 
 		await expect(store.patch("bad", { cachedProfile: PROFILE_A })).rejects.toBeDefined();
 		// 错误已抛给调用方且 logger.warn 记了一笔
 		expect(logger.warn).toHaveBeenCalled();
 		// 队列没被毒化:把 dataDir 换成正常目录的新实例可正常工作
 		// (同实例下 records 已就地改但盘写失败 —— get 反映内存态,验证不毒化即可)
-		const ok = createSubRuntimeStore({ dataRoot: dir, logger });
+		const ok = createSubscriptionStateStore({ dataRoot: dir, logger });
 		await ok.patch("ok", { cachedProfile: PROFILE_A });
 		expect(ok.get("ok")).toEqual({ cachedProfile: PROFILE_A });
 	});
@@ -422,7 +422,7 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 		// 已就地改 → 内存态可见,且 catch→rethrow 不毒化 FIFO 队列。
 		const collisionFile = join(dir, "poison-probe");
 		await writeFile(collisionFile, "x", "utf8");
-		const store = createSubRuntimeStore({ dataRoot: collisionFile, logger });
+		const store = createSubscriptionStateStore({ dataRoot: collisionFile, logger });
 		await expect(store.patch("a", { cachedProfile: PROFILE_A })).rejects.toBeDefined();
 		// 队列未毒化:下一笔 task 仍被调度执行(仍会 persist 失败,但 task 跑了 →
 		// 内存 records 反映该写入,证明 queue.then 链没被永久 reject 卡死)。
@@ -432,7 +432,7 @@ describe("SubRuntimeStore — 并发串行(单 FIFO,无丢写)", () => {
 	});
 });
 
-describe("SubRuntimeStore.close", () => {
+describe("SubscriptionStateStore.close", () => {
 	beforeEach(() => storageWriteGate.reset());
 	afterEach(() => storageWriteGate.reset());
 

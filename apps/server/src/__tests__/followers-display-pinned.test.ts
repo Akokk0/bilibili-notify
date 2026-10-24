@@ -157,7 +157,7 @@ function makeDeps(): RouteDeps {
 				listRecording: async () => [],
 			},
 			// B 站与拓展的当前粉丝数都取资料缓存;e-3 停用着,资料里的 5 不算。
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) =>
 					id === "b-flat"
 						? { cachedProfile: { fans: 8888 } }

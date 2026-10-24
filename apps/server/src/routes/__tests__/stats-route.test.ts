@@ -68,7 +68,7 @@ function makeDeps(opts: StubOpts = {}) {
 				listPosts: async () => [],
 				listLiveSessions: async () => [],
 			},
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: () => ({
 					cachedProfile: {
 						name: "甲",

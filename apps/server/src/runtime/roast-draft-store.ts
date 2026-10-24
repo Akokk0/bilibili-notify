@@ -8,7 +8,7 @@ import { dataPath } from "./roots.js";
  * RoastDraftStore —— 等主人点头的锐评草稿。
  *
  * 审批开着时,到点生成出来的稿子不能只待在内存里:主人可能过几个小时才回一句 `y`,
- * 中间容器重启过一次。所以落盘,拓扑与 {@link SubRuntimeStore} 同款 —— 单个 JSON
+ * 中间容器重启过一次。所以落盘,拓扑与 {@link SubscriptionStateStore} 同款 —— 单个 JSON
  * 文件 `<dataRoot>/state/roast-drafts.json`、tmpfile+rename 原子写、全部写操作走
  * 一条私有写道(两条流水线可能在同一分钟里各自生成一份)。
  *
@@ -90,7 +90,7 @@ export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): Roast
 	let records: RoastDraft[] = [];
 	let loaded = false;
 	// 单键写道 —— 两条流水线(榜单 / 某位 UP)可能在同一分钟里各自落一份草稿,
-	// 整文件的 read-modify-write 交错就会丢掉其中一份。同 SubRuntimeStore。
+	// 整文件的 read-modify-write 交错就会丢掉其中一份。同 SubscriptionStateStore。
 	const writes = createSerialQueue();
 
 	function runSerial<T>(task: () => Promise<T>): Promise<T> {

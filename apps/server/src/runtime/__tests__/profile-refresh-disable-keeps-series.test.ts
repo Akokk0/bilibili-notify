@@ -7,7 +7,7 @@ import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { ProfileRefreshHandle } from "../profile-refresh.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 /**
@@ -73,7 +73,7 @@ async function samples(key: string): Promise<number[]> {
 async function start(initial: ReturnType<typeof biliSub>[]) {
 	let subs = initial;
 	const followers = new Map<string, number>();
-	const runtime = new Map<string, SubRuntime>();
+	const runtime = new Map<string, SubscriptionState>();
 	const bus = createNodeMessageBus();
 	const snapshots: FollowersRefreshEntry[][] = [];
 	bus.on("followers-refreshed", ({ entries }) => {
@@ -92,10 +92,10 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => [...subs] } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
-			patch: async (id: string, patch: SubRuntime) => {
+			patch: async (id: string, patch: SubscriptionState) => {
 				runtime.set(id, { ...runtime.get(id), ...patch });
 			},
 			prune: vi.fn(async () => {}),

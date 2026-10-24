@@ -50,7 +50,7 @@ function start(list: () => unknown[]) {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: vi.fn(() => ({
 				cachedProfile: { name: "甲", fans: 1, lastRefreshedAt: "x" },
 			})),

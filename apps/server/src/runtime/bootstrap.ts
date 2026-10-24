@@ -46,7 +46,10 @@ import { bindReportedProfiles } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
 import { secretBootstrapValues } from "./settings-redaction.js";
-import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
+import {
+	createSubscriptionStateStore,
+	type SubscriptionStateStore,
+} from "./subscription-state-store.js";
 import { createTargetScope } from "./target-scope.js";
 
 export interface AppRuntime {
@@ -132,7 +135,7 @@ export interface AppRuntime {
 	 * Loaded alongside configStore; consumed by profile refresh / engines / the
 	 * `/api/subscriptions` join.
 	 */
-	subRuntimeStore: SubRuntimeStore;
+	subscriptionStateStore: SubscriptionStateStore;
 	/** 运行记录(ADR-0033 决策 3):每个 UTC 整点小时里 BN 跑了多少分钟。不算数据统计,与 `statsStore` 无关。 */
 	uptimeStore: UptimeStore;
 	/** 运行记录的记录器。构造时不碰盘、不排定时器;`index.ts` 在数据那一代就位之后 `start()`,关停的 flush 段补记并停表。 */
@@ -150,7 +153,7 @@ export interface AppRuntime {
 	/**
 	 * 订阅头像往图库存图的口(ADR-0019 决策 49;头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):新建订阅
 	 * 那条路、拓展「报资料更新」与 B 站头像的抓取(3a-35,经抓图服务)存头像,资料缓存里放回来的引用。这一家引用的是资料缓存里的 `avatar`
-	 * (`subRuntimeStore.listImageRefs`),装配时登记。
+	 * (`subscriptionStateStore.listImageRefs`),装配时登记。
 	 */
 	profileImages: ImageWriter;
 	/**
@@ -472,16 +475,16 @@ export function createAppRuntime(
 		await uptimeRecorder.stop();
 		await uptimeStore.close();
 	}, "flush");
-	const subRuntimeStore = createSubRuntimeStore({
+	const subscriptionStateStore = createSubscriptionStateStore({
 		dataRoot,
 		logger: serviceCtx.logger,
 	});
-	serviceCtx.onDispose(() => subRuntimeStore.close(), "flush");
+	serviceCtx.onDispose(() => subscriptionStateStore.close(), "flush");
 	// 订阅资料是图库的一家引用方:拓展订阅的头像由资料缓存交名单,清扫据此留下还在资料里的图。订阅被删之后
 	// 资料缓存里没了这一条,头像就不再被引用、由清扫收走 —— 没有「删订阅顺手删头像文件」这一步。
 	const profileImages = imageStore.register({
 		name: IMAGE_REFERRERS.profiles,
-		listRefs: () => subRuntimeStore.listImageRefs(),
+		listRefs: () => subscriptionStateStore.listImageRefs(),
 	});
 	// 账号头像是图库的一家引用方:名单从来源登记表现读(每个在册来源登录着的账号的头像),不点名哪个来源 ——
 	// 以后别的来源交了 `auth.account()` 自动进名单。登录这套在登记表之外抓、存(`accountImages`),重启后重抓;
@@ -498,7 +501,7 @@ export function createAppRuntime(
 	// 不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const reportedProfiles = bindReportedProfiles({
 		bus,
-		subRuntime: subRuntimeStore,
+		subscriptionState: subscriptionStateStore,
 		images: profileImages,
 		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
 		logger: serviceCtx.logger,
@@ -609,7 +612,7 @@ export function createAppRuntime(
 		isStatsEnabled: statsEnabled.isEnabled,
 		uptimeStore,
 		uptimeRecorder,
-		subRuntimeStore,
+		subscriptionStateStore,
 		imageStore,
 		chatImages,
 		profileImages,

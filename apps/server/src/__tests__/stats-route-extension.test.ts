@@ -95,7 +95,7 @@ function makeDeps(f: Fixture): RouteDeps {
 					return rows.filter((r) => r.endedAt > since);
 				},
 			},
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) =>
 					f.profileFans?.[id] === undefined
 						? { cachedProfile: { name: "n", avatar: "", sign: "", lastRefreshedAt: at(0) } }

@@ -26,7 +26,7 @@ import type { RouteDeps } from "../routes/types.js";
 import { startMigratedProfileRefresh as startProfileRefresh } from "../runtime/__tests__/profile-refresh-support.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import type { ProfileRefreshHandle } from "../runtime/profile-refresh.js";
-import type { SubRuntime } from "../runtime/sub-runtime-store.js";
+import type { SubscriptionState } from "../runtime/subscription-state-store.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { fakeProfileImages } from "./support/profile-images.js";
 
@@ -188,7 +188,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 				listLiveSessions: async () => [],
 				listRecording: async () => [],
 			},
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) => (id === "e-1" ? { cachedProfile: { fans: 999 } } : undefined),
 			},
 			serviceCtx: { logger: silent },
@@ -231,7 +231,7 @@ const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 /** 起一个粉丝轮询器(B 站每个 uid 报 `follower[uid]`),跑一轮,回面板上每条的条目(按订阅 id 排)。 */
 async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 	const subs = [bili("b-act", "1001"), bili("b-flat", "1002"), ext("e-1", "s1"), ext("e-2", "s2")];
-	const runtime = new Map<string, SubRuntime>([
+	const runtime = new Map<string, SubscriptionState>([
 		[
 			"b-act",
 			{
@@ -284,10 +284,10 @@ async function panelEntries(root: string): Promise<FollowersRefreshEntry[]> {
 		logger: silent,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => subs } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
-			patch: vi.fn(async (id: string, p: SubRuntime) => {
+			patch: vi.fn(async (id: string, p: SubscriptionState) => {
 				runtime.set(id, { ...runtime.get(id), ...p });
 			}),
 			prune: vi.fn(async () => {}),

@@ -19,7 +19,7 @@ import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { ProfileRefreshHandle } from "../profile-refresh.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 // cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
@@ -67,9 +67,9 @@ async function compact(key: string): Promise<void> {
 	await createFollowersStore({ dataRoot: dataDir, logger: silent }).compact(key, new Date());
 }
 
-async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
-	const runtime = new Map<string, SubRuntime>(Object.entries(seeded));
-	const patch = vi.fn(async (id: string, p: SubRuntime) => {
+async function start(subs: Subscription[], seeded: Record<string, SubscriptionState>) {
+	const runtime = new Map<string, SubscriptionState>(Object.entries(seeded));
+	const patch = vi.fn(async (id: string, p: SubscriptionState) => {
 		runtime.set(id, { ...runtime.get(id), ...p });
 	});
 	const serviceCtx = {
@@ -85,7 +85,7 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		logger: silent,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => subs } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
 			patch,
@@ -108,7 +108,7 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 	};
 }
 
-const profile = (fans: number): SubRuntime => ({
+const profile = (fans: number): SubscriptionState => ({
 	cachedProfile: { name: "x", sign: "", fans, lastRefreshedAt: iso(ago(5 * MIN)) },
 });
 

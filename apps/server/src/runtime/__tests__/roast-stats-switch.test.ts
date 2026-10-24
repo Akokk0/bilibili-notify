@@ -92,7 +92,7 @@ function makeDeps(statsEnabled: boolean) {
 			runtime: {
 				engines: { api: {}, imageRenderer: null, push: {} },
 				serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: vi.fn() },
-				subRuntimeStore: { get: () => undefined },
+				subscriptionStateStore: { get: () => undefined },
 				// 「平台」一列读来源登记表的 label。
 				sourceRegistry: {
 					get: (key: string) =>

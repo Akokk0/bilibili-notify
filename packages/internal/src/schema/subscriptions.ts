@@ -49,8 +49,8 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  * 缓存的 UP 主档案，用于 UI 显示。non-authoritative。
  *
  * **不再内嵌于 Subscription**（高频 fans/lastRefreshedAt 写入会污染配置写路径）。
- * 独立端持久化到 apps/server 的 SubRuntimeStore（`<dataDir>/state/sub-runtime.json`）；
- * schema/type 仍导出,供 SubRuntimeStore + `/api/subscriptions` join 复用。
+ * 独立端持久化到 apps/server 的 SubscriptionStateStore（`<dataDir>/state/sub-runtime.json`）；
+ * schema/type 仍导出,供 SubscriptionStateStore + `/api/subscriptions` join 复用。
  *
  * `fans` 可缺:拓展订阅的候选 / 资料不一定知道粉丝数(ADR-0019 决策 52 的 `fans?`),缺了写成 0
  * 就是在面板上印一句「0 粉丝」的假话。B 站那支照旧总有。`sub-runtime.json` 读盘是裸
@@ -68,7 +68,7 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  * `fanClubName`:粉丝团名(B 站填粉丝牌名),平台没有就缺键,模板变量 `{fanclub}` 取它。
  * 3b-24 之前没有写者,弹幕总结照旧从直播那边取值;写进资料留给 3b-24。
  */
-export const CachedProfileSchema = z.object({
+export const CreatorProfileSchema = z.object({
 	name: z.string(),
 	avatar: z.string().optional(),
 	avatarUrl: z.string().optional(),
@@ -77,7 +77,7 @@ export const CachedProfileSchema = z.object({
 	fanClubName: z.string().optional(),
 	lastRefreshedAt: z.string(),
 });
-export type CachedProfile = z.infer<typeof CachedProfileSchema>;
+export type CreatorProfile = z.infer<typeof CreatorProfileSchema>;
 
 /**
  * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.ai.presets` 里挑一份**。
@@ -272,7 +272,7 @@ export const SubscriptionTagListSchema = z.array(SubscriptionTagSchema).superRef
  * 一条订阅(ADR-0021 决策 14、15):B 站与拓展同一种形状,盘上同一个文件 `config/subscriptions.json`,行行带
  * `identity`。订的是谁只看 `identity`;来源支不支持某项能力(特别关注、关注同步……)看来源,不看这一行。
  *
- * **纯配置**:资料缓存与运行状态在 apps/server 的 SubRuntimeStore。未知键被剥掉(不是 strict)。
+ * **纯配置**:资料缓存与运行状态在 apps/server 的 SubscriptionStateStore。未知键被剥掉(不是 strict)。
  */
 export const SubscriptionSchema = z
 	.object({

@@ -22,7 +22,7 @@ import { createStatsFollowersRoute } from "../../routes/stats-followers.js";
 import type { RouteDeps } from "../../routes/types.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { ProfileRefreshHandle } from "../profile-refresh.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 // cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
@@ -74,12 +74,12 @@ const biliSub = (id: string, uid: string): Subscription =>
 const extSub = (id: string, externalId: string): Subscription =>
 	makeExtensionSubscription({ id, extensionId: "douyin", externalId, enabled: true });
 
-const profile = (fans?: number, lastRefreshedAt = isoAgo(5 * 60_000)): SubRuntime => ({
+const profile = (fans?: number, lastRefreshedAt = isoAgo(5 * 60_000)): SubscriptionState => ({
 	cachedProfile: { name: "x", sign: "", ...(fans === undefined ? {} : { fans }), lastRefreshedAt },
 });
 
-async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
-	const runtime = new Map<string, SubRuntime>(Object.entries(seed));
+async function start(subs: Subscription[], seed: Record<string, SubscriptionState>) {
+	const runtime = new Map<string, SubscriptionState>(Object.entries(seed));
 	const bus = createNodeMessageBus();
 	const snapshots: FollowersRefreshEntry[][] = [];
 	bus.on("followers-refreshed", ({ entries }) => {
@@ -93,7 +93,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 		track: vi.fn(),
 		signal: new AbortController().signal,
 	};
-	const patch = vi.fn(async (id: string, p: SubRuntime) => {
+	const patch = vi.fn(async (id: string, p: SubscriptionState) => {
 		runtime.set(id, { ...runtime.get(id), ...p });
 	});
 	handle = startMigratedProfileRefresh({
@@ -103,7 +103,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => subs } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
 			patch,
@@ -164,7 +164,7 @@ describe("首页粉丝面板 × B 站订阅:一轮轮询后的各格", () => {
 			b1: {
 				...profile(1330),
 				fansBaseline: { value: 900, ts: isoAgo(21 * DAY) },
-			} as SubRuntime,
+			} as SubscriptionState,
 		});
 		p.follower["111"] = 1350;
 		expect(await p.handle.pollNow()).toBe(true);

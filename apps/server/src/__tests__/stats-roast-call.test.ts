@@ -134,7 +134,7 @@ function makeDeps(
 				extensionPostNoun: () => undefined,
 			},
 			profileRefresh: null,
-			subRuntimeStore: { get: () => ({ cachedProfile: { name: "老番茄" } }) },
+			subscriptionStateStore: { get: () => ({ cachedProfile: { name: "老番茄" } }) },
 			// 「平台」一列读来源登记表的 label(拓展不在表里,问装载器)。
 			sourceRegistry: {
 				get: (key: string) => (key === "bilibili" ? { descriptor: { label: "B 站" } } : undefined),

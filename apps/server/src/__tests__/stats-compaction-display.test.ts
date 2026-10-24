@@ -122,7 +122,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 			profileRefresh: { getLastEntries: () => [] },
 			fansStore: createFollowersStore({ dataRoot: root, logger: silent }),
 			statsStore: statsStoreOf(root),
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 			serviceCtx: { logger: silent },
 		},
 	} as unknown as RouteDeps;

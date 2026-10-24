@@ -20,7 +20,7 @@ function makeDeps(listSamplesSince: (...args: unknown[]) => Promise<unknown[]>) 
 			},
 			engines: null,
 			profileRefresh: null,
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 		},
 		store: {
 			getSubscriptions: () => [

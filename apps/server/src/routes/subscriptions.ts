@@ -1,7 +1,7 @@
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
-	type CachedProfile,
+	type CreatorProfile,
 	type Failure,
 	fail,
 	formatZodIssues,
@@ -33,7 +33,7 @@ import type { RouteDeps } from "./types.js";
 const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成或稍后再试";
 
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
-// SubRuntimeStore join 回来的外置运行时字段。
+// SubscriptionStateStore join 回来的外置运行时字段。
 
 export interface SubsRouteOptions {
 	/**
@@ -127,7 +127,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
 	function toDTO(sub: Subscription): SubscriptionDTO {
-		const rt = deps.runtime.subRuntimeStore.get(sub.id);
+		const rt = deps.runtime.subscriptionStateStore.get(sub.id);
 		return {
 			...sub,
 			cachedProfile: rt?.cachedProfile,
@@ -220,7 +220,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
 			}
 		}
-		const cachedProfile: CachedProfile = {
+		const cachedProfile: CreatorProfile = {
 			name: seed.name,
 			// 没有头像就是这一格缺,不写空串。
 			...(avatar === undefined ? {} : { avatar }),
@@ -230,7 +230,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			lastRefreshedAt: new Date().toISOString(),
 		};
 		try {
-			await deps.runtime.subRuntimeStore.patch(sub.id, { cachedProfile });
+			await deps.runtime.subscriptionStateStore.patch(sub.id, { cachedProfile });
 		} catch (err) {
 			log.warn(`[sub] 拓展订阅 ${sub.id} 的资料缓存没写进去: ${String(err)}`);
 		}
@@ -379,7 +379,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				const createdSource = subscriptionIdentityOf(created).sourceKey;
 				const refresh = deps.runtime.profileRefresh;
 				const hasProfile =
-					deps.runtime.subRuntimeStore.get(created.id)?.cachedProfile !== undefined;
+					deps.runtime.subscriptionStateStore.get(created.id)?.cachedProfile !== undefined;
 				if (!exists && !hasProfile && refresh && deps.runtime.sourceRegistry.get(createdSource)) {
 					try {
 						await refresh.refreshSubscription(created.id);

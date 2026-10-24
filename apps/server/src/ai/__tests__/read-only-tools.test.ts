@@ -71,7 +71,7 @@ function makeStores(
 ) {
 	return {
 		subscriptionStore: { list: () => subscriptions },
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => (names[id] ? { cachedProfile: { name: names[id] } } : undefined),
 		},
 		platformLabel: (sourceKey: string) => platformLabels[sourceKey] ?? sourceKey,
@@ -94,7 +94,7 @@ function makeStores(
 function view(s: ReturnType<typeof makeStores>) {
 	return aiSubscriptionViews(
 		s.subscriptionStore,
-		s.subRuntimeStore,
+		s.subscriptionStateStore,
 		s.platformLabel,
 		s.identityLabel,
 	);
@@ -251,7 +251,7 @@ describe("attachReadOnlyTools — 没订阅的人回落查资料", () => {
 	}) {
 		const setCreatorReader = vi.fn();
 		const write = vi.fn();
-		const subRuntimeStore = {
+		const subscriptionStateStore = {
 			get: (id: string) =>
 				options.cached?.[id] ? { cachedProfile: options.cached[id] } : undefined,
 			set: write,
@@ -260,7 +260,7 @@ describe("attachReadOnlyTools — 没订阅的人回落查资料", () => {
 			{ setCreatorReader, setProvidedTools: vi.fn() },
 			{
 				...makeStores(options.subscriptions ?? []),
-				subRuntimeStore,
+				subscriptionStateStore,
 				fetchProfile: options.fetchProfile,
 				sources: {
 					get: (sourceKey) =>
@@ -334,7 +334,7 @@ describe("aiSubscriptionViews — 在播表", () => {
 		const s = makeStores([makeExtensionSubscription()]);
 		return aiSubscriptionViews(
 			s.subscriptionStore,
-			s.subRuntimeStore,
+			s.subscriptionStateStore,
 			s.platformLabel,
 			s.identityLabel,
 			{
@@ -372,7 +372,7 @@ describe("aiSubscriptionViews — 在播表", () => {
 		expect(view(s)[1]).not.toHaveProperty("liveNow");
 		const v = aiSubscriptionViews(
 			s.subscriptionStore,
-			s.subRuntimeStore,
+			s.subscriptionStateStore,
 			s.platformLabel,
 			s.identityLabel,
 			{
@@ -400,7 +400,7 @@ describe("aiSubscriptionViews — B 站订阅也读在播表", () => {
 		const s = makeStores([makeSubscription({ uid: "1" })]);
 		const [entry] = aiSubscriptionViews(
 			s.subscriptionStore,
-			s.subRuntimeStore,
+			s.subscriptionStateStore,
 			s.platformLabel,
 			s.identityLabel,
 			{
@@ -421,7 +421,7 @@ describe("aiSubscriptionViews — B 站订阅也读在播表", () => {
 		const s = makeStores([makeSubscription({ uid: "1" })]);
 		const [entry] = aiSubscriptionViews(
 			s.subscriptionStore,
-			s.subRuntimeStore,
+			s.subscriptionStateStore,
 			s.platformLabel,
 			s.identityLabel,
 			{

@@ -17,7 +17,10 @@ import {
 	type StorageClearOptions,
 	type StorageUsage,
 } from "../../runtime/storage-usage.js";
-import { createSubRuntimeStore, type SubRuntimeStore } from "../../runtime/sub-runtime-store.js";
+import {
+	createSubscriptionStateStore,
+	type SubscriptionStateStore,
+} from "../../runtime/subscription-state-store.js";
 import { createStatsRecorderCore } from "../../stats/recorder.js";
 import { createStatsStore, type StatsStore } from "../../stats/store.js";
 import { distinctPng } from "./chat-images.js";
@@ -47,7 +50,7 @@ export interface StorageWorld {
 	fansStore: FollowersStore;
 	historyStore: HistoryStore;
 	conversationStore: ConversationStore;
-	subRuntimeStore: SubRuntimeStore;
+	subscriptionStateStore: SubscriptionStateStore;
 	recorder: ReturnType<typeof createStatsRecorderCore>;
 	pollerReset: ReturnType<typeof vi.fn>;
 	invalidate: ReturnType<typeof vi.fn>;
@@ -109,8 +112,8 @@ export async function makeStorageWorld(): Promise<StorageWorld> {
 	});
 	const statsStore = createStatsStore({ dataRoot, logger });
 	const fansStore = createFollowersStore({ dataRoot, logger });
-	const subRuntimeStore = createSubRuntimeStore({ dataRoot, logger });
-	await subRuntimeStore.load();
+	const subscriptionStateStore = createSubscriptionStateStore({ dataRoot, logger });
+	await subscriptionStateStore.load();
 	const recorder = createStatsRecorderCore({
 		store: statsStore,
 		followers: fansStore,
@@ -152,7 +155,7 @@ export async function makeStorageWorld(): Promise<StorageWorld> {
 		fansStore,
 		historyStore,
 		conversationStore,
-		subRuntimeStore,
+		subscriptionStateStore,
 		recorder,
 		pollerReset,
 		invalidate,

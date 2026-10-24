@@ -15,7 +15,7 @@ import { type FollowersRefreshEntry, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
-import type { SubRuntime } from "../sub-runtime-store.js";
+import type { SubscriptionState } from "../subscription-state-store.js";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ onTick: () => void }> = [];
@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 interface Setup {
-	runtime: Map<string, SubRuntime>;
+	runtime: Map<string, SubscriptionState>;
 	rtPatch: ReturnType<typeof vi.fn>;
 	append: ReturnType<typeof vi.fn>;
 	findNearestBefore: ReturnType<typeof vi.fn>;
@@ -71,19 +71,19 @@ interface Setup {
 async function start(
 	over: {
 		subs?: unknown[];
-		runtime?: Record<string, SubRuntime>;
+		runtime?: Record<string, SubscriptionState>;
 		nearest?: (key: string, beforeIso: string) => { sampledAt: string; followers: number } | null;
 		earliest?: { sampledAt: string; followers: number } | undefined;
 		fans?: number;
 	} = {},
 ): Promise<Setup> {
-	const runtime = new Map<string, SubRuntime>(Object.entries(over.runtime ?? {}));
+	const runtime = new Map<string, SubscriptionState>(Object.entries(over.runtime ?? {}));
 	const bus = createNodeMessageBus();
 	const snapshots: FollowersRefreshEntry[][] = [];
 	bus.on("followers-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
-	const rtPatch = vi.fn(async (id: string, patch: SubRuntime) => {
+	const rtPatch = vi.fn(async (id: string, patch: SubscriptionState) => {
 		runtime.set(id, { ...runtime.get(id), ...patch });
 	});
 	const append = vi.fn(async () => {});
@@ -99,7 +99,7 @@ async function start(
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => over.subs ?? [BILI_SUB] } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: (id: string) => runtime.get(id),
 			getAll: () => Object.fromEntries(runtime),
 			patch: rtPatch,
@@ -171,7 +171,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 		expect(p.findNearestBefore).toHaveBeenCalledTimes(readsAtBoot);
 		// 资料缓存照写(订阅卡上的当前粉丝数),但不带起点。
 		expect(p.rtPatch).toHaveBeenCalledTimes(1);
-		const patch = p.rtPatch.mock.calls[0]?.[1] as SubRuntime;
+		const patch = p.rtPatch.mock.calls[0]?.[1] as SubscriptionState;
 		expect(patch.cachedProfile).toMatchObject({ fans: 4242 });
 		expect(Object.keys(patch)).toEqual(["cachedProfile"]);
 		// 事件照发、当前数照给,涨跌给空。
@@ -199,7 +199,7 @@ describe("粉丝轮询 × 总开关(B 站)", () => {
 			earliest: { sampledAt: "2026-04-01T00:00:00.000Z", followers: 4000 },
 		});
 		await p.poll();
-		const patch = p.rtPatch.mock.calls[0]?.[1] as SubRuntime;
+		const patch = p.rtPatch.mock.calls[0]?.[1] as SubscriptionState;
 		expect(Object.keys(patch)).toEqual(["cachedProfile"]);
 		expect(p.entries()[0]).toMatchObject({
 			current: 4242,
@@ -229,7 +229,7 @@ describe("粉丝轮询 × 总开关(拓展订阅那一行)", () => {
 		externalId: "sec-1",
 		enabled: true,
 	});
-	const extRuntime = (fans: number): Record<string, SubRuntime> => ({
+	const extRuntime = (fans: number): Record<string, SubscriptionState> => ({
 		e1: { cachedProfile: { name: "抖音甲", sign: "", fans, lastRefreshedAt: iso(HOUR) } },
 	});
 	const series = (key: string, beforeIso: string) =>

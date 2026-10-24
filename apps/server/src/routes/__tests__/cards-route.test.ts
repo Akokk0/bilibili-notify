@@ -89,7 +89,7 @@ function makeDeps(
 			// 会员档位读口读它:预览按档的 key 找档、示例取最低一档,路由里不认识任何平台的档位表。
 			sourceRegistry,
 			// 订阅资料里的头像(`cachedProfile.avatar`):预览的真实拉取读它,不为头像联网。
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) =>
 					opts.subscribed && id === subscription.id
 						? { cachedProfile: { name: "真实UP", avatar: SUBSCRIBED_AVATAR } }

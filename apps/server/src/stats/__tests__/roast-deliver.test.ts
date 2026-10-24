@@ -57,7 +57,7 @@ function makeDeps() {
 		runtime: {
 			engines: { imageRenderer: null, push: { sendToTarget } },
 			serviceCtx: { logger },
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 		},
 		store: {
 			getGlobals: () => makeDefaultGlobalConfig(),
@@ -206,7 +206,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 					imageRenderer: { generateRoastBoardCard, generateRoastSoloCard },
 				},
 				serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
-				subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
+				subscriptionStateStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
 				sourceRegistry: { get: () => undefined },
 				imageStore: {
 					read: async (ref: string) => {

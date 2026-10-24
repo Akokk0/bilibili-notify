@@ -57,7 +57,7 @@ function baseDeps(over: {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => over.subs } as never,
-		subRuntimeStore: {
+		subscriptionStateStore: {
 			get: over.rtGet ?? vi.fn(() => ({ cachedProfile: { ...PROFILE } })),
 			getAll: () => ({}),
 			patch: vi.fn(async () => {}),

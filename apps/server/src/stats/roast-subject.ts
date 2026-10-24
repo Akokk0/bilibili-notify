@@ -32,7 +32,7 @@ function platformDeps(deps: RoastSubjectDeps): PlatformLabelDeps {
 
 /** 这条订阅在锐评里叫什么。见文件头的一条链。 */
 export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): string {
-	const profileName = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name;
+	const profileName = deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.name;
 	const identity = subscriptionIdentityOf(sub);
 	return displayNameOf(
 		{ profileName: profileName?.trim() },

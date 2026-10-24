@@ -111,7 +111,7 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 				extensionPostNoun: () => undefined,
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
-			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles.get(id) }) },
+			subscriptionStateStore: { get: (id: string) => ({ cachedProfile: profiles.get(id) }) },
 			// 平台名与外部 id 的叫法都读来源登记表(拓展不在表里,问装载器)。
 			sourceRegistry: {
 				get: (key: string) =>

@@ -152,7 +152,9 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		// 此刻的粉丝数取资料缓存:在册来源每轮刷新都会写,拓展每报一次也会合并;停用的曲线停了,
 		// 右端点不该再往前走。没有就回退到样本末值(见成行那里)。
 		const currentFans = (sub: Subscription): number | undefined =>
-			sub.enabled ? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans : undefined;
+			sub.enabled
+				? deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.fans
+				: undefined;
 		const liveNow = subs.map(isLive);
 		const fansNow = subs.map(currentFans);
 		// key 必须覆盖**响应里所有会变的输入**,否则缓存就在替页面撒谎。

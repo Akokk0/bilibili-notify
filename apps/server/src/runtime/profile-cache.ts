@@ -1,5 +1,5 @@
 import type {
-	CachedProfile,
+	CreatorProfile,
 	Disposable,
 	ImageRef,
 	Logger,
@@ -7,7 +7,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
-import type { SubRuntimeStore } from "./sub-runtime-store.js";
+import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 /**
  * 两条路共用:拓展报的资料更新与以后资料刷新都写这一份缓存、都按同一套口径叫面板。
@@ -47,13 +47,13 @@ export const PROFILES_CHANGED_COALESCE_MS = 250;
 const CHANGED_KEY = "profiles-changed";
 
 /** 面板看得见的那几格变没变。 */
-function visiblyChanged(prev: CachedProfile | undefined, next: CachedProfile): boolean {
+function visiblyChanged(prev: CreatorProfile | undefined, next: CreatorProfile): boolean {
 	return prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.fans !== next.fans;
 }
 
 export function createProfileCacheWriter(opts: {
 	bus: MessageBus;
-	subRuntime: SubRuntimeStore;
+	subscriptionState: SubscriptionStateStore;
 	images: Pick<ImageWriter, "keep">;
 	logger: Logger;
 	coalesceMs?: number;
@@ -98,12 +98,12 @@ export function createProfileCacheWriter(opts: {
 	}
 
 	async function write(id: string, update: ProfileCacheUpdate): Promise<boolean> {
-		const prev = opts.subRuntime.get(id)?.cachedProfile;
+		const prev = opts.subscriptionState.get(id)?.cachedProfile;
 		const avatar =
 			update.avatar === undefined ? await carryOverAvatar(id, prev?.avatar) : update.avatar;
 		const fans = update.fans ?? prev?.fans;
 		const fanClubName = update.fanClubName ?? prev?.fanClubName;
-		const next: CachedProfile = {
+		const next: CreatorProfile = {
 			name: update.name ?? prev?.name ?? "",
 			// 没有头像就是这一格缺,不写空串。
 			...(avatar === undefined ? {} : { avatar }),
@@ -114,7 +114,7 @@ export function createProfileCacheWriter(opts: {
 			...(fanClubName === undefined ? {} : { fanClubName }),
 			lastRefreshedAt: new Date().toISOString(),
 		};
-		await opts.subRuntime.patch(id, { cachedProfile: next });
+		await opts.subscriptionState.patch(id, { cachedProfile: next });
 		return visiblyChanged(prev, next);
 	}
 

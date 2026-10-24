@@ -62,7 +62,7 @@ async function row(days: number, tz: number) {
 				listLiveSessions: async () => [],
 				listRecording: async () => [],
 			},
-			subRuntimeStore: { get: () => undefined },
+			subscriptionStateStore: { get: () => undefined },
 			serviceCtx: { logger: silent },
 		},
 	} as unknown as RouteDeps;

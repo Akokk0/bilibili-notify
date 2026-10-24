@@ -58,10 +58,10 @@ async function start() {
 	const bus = createNodeMessageBus();
 	bus.on("followers-refreshed", ({ entries }) => snapshots.push(entries));
 	// B 站订阅:两天前一个样本;拓展订阅:十天前开始记,资料里报 80。
-	await world.subRuntimeStore.patch("b1", {
+	await world.subscriptionStateStore.patch("b1", {
 		cachedProfile: { name: "甲", sign: "", fans: 110, lastRefreshedAt: iso(HOUR) },
 	});
-	await world.subRuntimeStore.patch("e1", {
+	await world.subscriptionStateStore.patch("e1", {
 		cachedProfile: { name: "乙", sign: "", fans: 80, lastRefreshedAt: iso(HOUR) },
 	});
 	await world.fansStore.append("b1", { sampledAt: iso(2 * DAY), followers: 100 });
@@ -74,7 +74,7 @@ async function start() {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS } as never,
 		subscriptionStore: { list: () => [BILI, EXT] } as never,
-		subRuntimeStore: world.subRuntimeStore,
+		subscriptionStateStore: world.subscriptionStateStore,
 		fansStore: world.fansStore,
 		api: {
 			fetchUserCard: vi.fn(async () => ({
@@ -127,7 +127,7 @@ describe("清数据统计 × 粉丝轮询的快照与涨粉起点", () => {
 
 		follower = 140;
 		// 拓展订阅清空后第一次报粉丝:资料里 90,时序里记下第一条 90。
-		await world.subRuntimeStore.patch("e1", {
+		await world.subscriptionStateStore.patch("e1", {
 			cachedProfile: { name: "乙", sign: "", fans: 90, lastRefreshedAt: iso(0) },
 		});
 		await world.fansStore.append("e1", { sampledAt: iso(0), followers: 90 });

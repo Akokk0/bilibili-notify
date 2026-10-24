@@ -6,7 +6,7 @@
  *    cachedProfile / state(Subscription 现为纯配置)。
  *  - **不写迁移代码**:Zod 默认 strip 未知键 —— 旧 subscriptions.json 里内嵌的
  *    cachedProfile / state 在 parse 时被自动剥离,clean 加载。
- *  - CachedProfileSchema 仍 export(SubRuntimeStore 复用),只是从 SubscriptionSchema 摘掉。
+ *  - CreatorProfileSchema 仍 export(SubscriptionStateStore 复用),只是从 SubscriptionSchema 摘掉。
  *    旧的 SubscriptionStateSchema 没人写、1.0 第 2 期 ⑫ 删掉(新的运行态
  *    `SubscriptionState` 只剩资料缓存,见 docs/1.0/data-model.md)。
  */
@@ -15,7 +15,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
 import {
-	CachedProfileSchema,
+	CreatorProfileSchema,
 	makeEmptySubscription,
 	type Subscription,
 	SubscriptionSchema,
@@ -100,9 +100,9 @@ describe("M2: SubscriptionSchema 剥离 cachedProfile / state", () => {
 	});
 });
 
-describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
-	it("CachedProfileSchema 仍可独立 parse", () => {
-		const r = CachedProfileSchema.safeParse({
+describe("M2: 外置 schema 仍 export(SubscriptionStateStore / join 复用)", () => {
+	it("CreatorProfileSchema 仍可独立 parse", () => {
+		const r = CreatorProfileSchema.safeParse({
 			name: "n",
 			avatarUrl: "https://example.com/x.png",
 			sign: "s",
@@ -115,25 +115,25 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 	it("头像是两格:avatar 装图库引用(拓展订阅),avatarUrl 装远端网址(B 站订阅);没有就是两格都缺", () => {
 		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
 		const ref = `${"a".repeat(64)}.png`;
-		expect(CachedProfileSchema.safeParse(base).success).toBe(true);
-		expect(CachedProfileSchema.parse({ ...base, avatar: ref })).toMatchObject({ avatar: ref });
+		expect(CreatorProfileSchema.safeParse(base).success).toBe(true);
+		expect(CreatorProfileSchema.parse({ ...base, avatar: ref })).toMatchObject({ avatar: ref });
 		expect(
-			CachedProfileSchema.parse({ ...base, avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" }),
+			CreatorProfileSchema.parse({ ...base, avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" }),
 		).toMatchObject({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" });
 	});
 
-	it("CachedProfile 可以不带粉丝数(拓展的候选不一定知道;写成 0 就是撒谎),带了照旧不许负数", () => {
+	it("CreatorProfile 可以不带粉丝数(拓展的候选不一定知道;写成 0 就是撒谎),带了照旧不许负数", () => {
 		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
-		expect(CachedProfileSchema.safeParse(base).success).toBe(true);
-		expect(CachedProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
+		expect(CreatorProfileSchema.safeParse(base).success).toBe(true);
+		expect(CreatorProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
 	});
 
-	it("CachedProfile 的 fanClubName 留得住;平台没有就缺键,不补空串", () => {
+	it("CreatorProfile 的 fanClubName 留得住;平台没有就缺键,不补空串", () => {
 		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
-		expect(CachedProfileSchema.parse({ ...base, fanClubName: "阿绫的粉丝团" })).toMatchObject({
+		expect(CreatorProfileSchema.parse({ ...base, fanClubName: "阿绫的粉丝团" })).toMatchObject({
 			fanClubName: "阿绫的粉丝团",
 		});
-		expect("fanClubName" in CachedProfileSchema.parse(base)).toBe(false);
+		expect("fanClubName" in CreatorProfileSchema.parse(base)).toBe(false);
 	});
 });
 

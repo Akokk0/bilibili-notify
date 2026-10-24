@@ -19,7 +19,7 @@ describe("读订阅资料里的头像(readProfileAvatar):资料里的 avatar 是
 		cachedProfile: { avatar?: string; avatarUrl?: string } | undefined,
 		read: (ref: string) => Promise<{ bytes: Buffer; mime: string } | undefined>,
 	) => ({
-		subRuntimeStore: { get: () => (cachedProfile ? { cachedProfile } : undefined) },
+		subscriptionStateStore: { get: () => (cachedProfile ? { cachedProfile } : undefined) },
 		imageStore: { read: vi.fn(read) },
 	});
 

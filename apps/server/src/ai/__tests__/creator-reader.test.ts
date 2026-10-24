@@ -43,7 +43,7 @@ function readerOf(opts: {
 		{ setCreatorReader, setProvidedTools: vi.fn() },
 		{
 			subscriptionStore: { list: () => [ALICE, BOB_OFF] },
-			subRuntimeStore: {
+			subscriptionStateStore: {
 				get: (id: string) =>
 					opts.profiles?.[id] ? { cachedProfile: opts.profiles[id] } : undefined,
 			},
