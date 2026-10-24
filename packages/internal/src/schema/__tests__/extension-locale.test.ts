@@ -287,6 +287,22 @@ describe("清单那层（$manifest）", () => {
 		]);
 	});
 
+	it("订阅源外部 id 的叫法也住 $manifest，能单独翻译", () => {
+		const parsed = parse({
+			$manifest: {
+				contributes: {
+					subscription: { display: { externalIdNoun: "account" } },
+				},
+			},
+		});
+		expect(parsed.issues).toEqual([]);
+		expect(parsed.manifest).toEqual({
+			contributes: {
+				subscription: { display: { externalIdNoun: "account" } },
+			},
+		});
+	});
+
 	it("超过清单那一格自己的长度上限的丢掉并记一条问题，别的照盖", () => {
 		const parsed = parse({
 			$manifest: {

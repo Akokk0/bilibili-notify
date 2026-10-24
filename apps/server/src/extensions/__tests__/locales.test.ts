@@ -204,4 +204,32 @@ describe("盖清单", () => {
 			{ locale: "en", code: "unknown-entry", path: ["$manifest", "settings", "fields", "nope"] },
 		]);
 	});
+
+	it("订阅源的外部 id 叫法能经 $manifest 翻译", async () => {
+		const manifest = {
+			...MANIFEST,
+			contributes: {
+				...MANIFEST.contributes,
+				subscription: {
+					display: {
+						label: "订阅",
+						shortLabel: "订",
+						color: "#fe2c55",
+						externalIdNoun: "账号",
+					},
+					events: ["post" as const],
+				},
+			},
+		} as ExtensionManifest;
+		await put("en.json", {
+			$manifest: {
+				contributes: { subscription: { display: { externalIdNoun: "account" } } },
+			},
+		});
+		const locales = await readExtensionLocales(dir, manifest);
+		expect(locales.issues).toEqual([]);
+		expect(
+			localizeManifest(manifest, locales, "en").contributes.subscription?.display.externalIdNoun,
+		).toBe("account");
+	});
 });

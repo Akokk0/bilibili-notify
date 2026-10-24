@@ -507,10 +507,17 @@ const displayShape = {
 	color: HexColorSchema,
 };
 const PushDisplaySchema = z.strictObject(displayShape);
+const ShortNounSchema = z
+	.string()
+	.min(1)
+	.max(EXTENSION_SHORT_LABEL_MAX_CHARS)
+	.refine((value) => value.trim() !== "");
 const SubscriptionDisplaySchema = z.strictObject({
 	...displayShape,
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
-	postNoun: z.string().min(1).max(EXTENSION_SHORT_LABEL_MAX_CHARS).optional(),
+	postNoun: ShortNounSchema.optional(),
+	/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
+	externalIdNoun: ShortNounSchema.optional(),
 	/**
 	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
 	 * 链接」。不给就用通用说法。

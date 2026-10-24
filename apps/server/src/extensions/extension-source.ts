@@ -243,10 +243,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
 	const declared: ReadonlySet<string> = new Set(subscription.events);
-	const { label, postNoun, externalIdRegex } = subscription.display;
+	const { label, postNoun, externalIdNoun, externalIdRegex } = subscription.display;
 	const descriptor: SourceDescriptor = {
 		label,
 		...(postNoun === undefined ? {} : { postNoun }),
+		...(externalIdNoun === undefined ? {} : { externalIdNoun }),
 		...(externalIdRegex === undefined ? {} : { externalIdRegex }),
 	};
 	// 成员按表取、方法 bind 回拓展交上来的那个实例(class 写的方法在原型上、吃 `this`)。

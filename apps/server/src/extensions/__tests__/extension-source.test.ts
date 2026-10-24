@@ -25,6 +25,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { readSourceHealth } from "../../runtime/status-command.js";
+import { subscriptionIdentityLabelOf } from "../../subscriptions/platform-label.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { createExtensionSource, type ExtensionSourceDiscrepancy } from "../extension-source.js";
 
@@ -37,7 +38,10 @@ const T_ISO = "2026-09-23T12:00:00.000Z";
 const ARRIVED = Date.UTC(2026, 8, 23, 14);
 const ARRIVED_ISO = "2026-09-23T14:00:00.000Z";
 
-function manifestOf(events: string[] = ["post", "liveStart", "liveEnd"]): ExtensionManifest {
+function manifestOf(
+	events: string[] = ["post", "liveStart", "liveEnd"],
+	externalIdNoun?: string,
+): ExtensionManifest {
 	const read = parseExtensionManifest({
 		id: "douyin",
 		name: "抖音拓展",
@@ -52,6 +56,7 @@ function manifestOf(events: string[] = ["post", "liveStart", "liveEnd"]): Extens
 					color: "#fe2c55",
 					postNoun: "作品",
 					externalIdRegex: "[a-z0-9-]+",
+					...(externalIdNoun === undefined ? {} : { externalIdNoun }),
 				},
 				events,
 			},
@@ -143,6 +148,7 @@ async function make(
 		events?: string[];
 		images?: (ref: string) => Promise<Stored> | Stored;
 		start?: boolean;
+		externalIdNoun?: string;
 	} = {},
 ): Promise<Made> {
 	const { logger, lines } = recordingLogger();
@@ -158,7 +164,7 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: manifestOf(opts.events),
+		manifest: manifestOf(opts.events, opts.externalIdNoun),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -189,6 +195,29 @@ describe("createExtensionSource:成员与描述符", () => {
 			postNoun: "作品",
 			externalIdRegex: "[a-z0-9-]+",
 		});
+	});
+
+	it("描述符带上外部 id 叫法,身份标签用「叫法 + id」;没声明时照旧用平台名", async () => {
+		const named = await make({}, { start: false, externalIdNoun: "账号" });
+		const namedRegistry = createSourceRegistry();
+		await namedRegistry.register("douyin", named.source, named.core.ctx);
+		expect(named.source.descriptor.externalIdNoun).toBe("账号");
+		expect(
+			subscriptionIdentityLabelOf(
+				{ sourceKey: "douyin", externalId: "u1" },
+				{ sources: namedRegistry },
+			),
+		).toBe("账号 u1");
+
+		const unnamed = await make({}, { start: false });
+		const unnamedRegistry = createSourceRegistry();
+		await unnamedRegistry.register("douyin", unnamed.source, unnamed.core.ctx);
+		expect(
+			subscriptionIdentityLabelOf(
+				{ sourceKey: "douyin", externalId: "u1" },
+				{ sources: unnamedRegistry },
+			),
+		).toBe("抖音 · u1");
 	});
 
 	it("成员按表取,方法 bind 回拓展交的实例(class 写的拓展方法在原型上、吃 this)", async () => {

@@ -222,10 +222,17 @@ interface DisplayTranslation {
 	label?: string;
 	shortLabel?: string;
 	postNoun?: string;
+	externalIdNoun?: string;
 	lookupPlaceholder?: string;
 }
 
-const DISPLAY_TEXT_KEYS = ["label", "shortLabel", "postNoun", "lookupPlaceholder"] as const;
+const DISPLAY_TEXT_KEYS = [
+	"label",
+	"shortLabel",
+	"postNoun",
+	"externalIdNoun",
+	"lookupPlaceholder",
+] as const;
 
 /** 外观里几格给人看的字:链上有就用,没有留原字(原清单没写的可选格,译文给了也一并盖上)。 */
 function localizeDisplay<D extends { label: string; shortLabel: string }>(

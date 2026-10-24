@@ -398,6 +398,19 @@ describe("v2 的外观(display)", () => {
 		unreadable(v2({ contributes: { push: { display: { ...DISPLAY, postNoun: "作品" } } } }));
 	});
 
+	it("externalIdNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
+		const withNoun = ok(sub({ display: { ...DISPLAY, externalIdNoun: "账号" } }));
+		if (withNoun.apiVersion !== 2) throw new Error("应该是 v2");
+		expect(withNoun.contributes.subscription?.display.externalIdNoun).toBe("账号");
+
+		expect(() =>
+			ok(sub({ display: { ...DISPLAY, externalIdNoun: "字".repeat(8) } })),
+		).not.toThrow();
+		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: "字".repeat(9) } }));
+		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: " \n\t " } }));
+		unreadable(v2({ contributes: { push: { display: { ...DISPLAY, externalIdNoun: "账号" } } } }));
+	});
+
 	/**
 	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51)—— B 站是「UID 或名字」,抖音大概是「粘主页
 	 * 链接」。静态外观,住清单;不给就用通用说法。

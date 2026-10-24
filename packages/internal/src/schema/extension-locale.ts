@@ -112,6 +112,7 @@ const ManifestTranslationSchema = z.strictObject({
 							label: DisplayLabelSchema.optional(),
 							shortLabel: ShortLabelSchema.optional(),
 							postNoun: ShortLabelSchema.optional(),
+							externalIdNoun: ShortLabelSchema.optional(),
 							lookupPlaceholder: LookupPlaceholderSchema.optional(),
 						})
 						.optional(),
@@ -161,6 +162,7 @@ interface DisplayTranslation {
 	label?: string;
 	shortLabel?: string;
 	postNoun?: string;
+	externalIdNoun?: string;
 	lookupPlaceholder?: string;
 }
 
@@ -203,12 +205,16 @@ function textOf(
 	key: string,
 	path: Path,
 	issues: ExtensionLocaleIssue[],
-	limits: { min?: number; max?: number } = {},
+	limits: { min?: number; max?: number; nonBlank?: boolean } = {},
 ): string | undefined {
-	const { min = 1, max } = limits;
+	const { min = 1, max, nonBlank = false } = limits;
 	if (!Object.hasOwn(source, key)) return undefined;
 	const value = source[key];
 	if (typeof value !== "string" || value.length < min) {
+		issues.push({ path: [...path, key], code: "invalid-text" });
+		return undefined;
+	}
+	if (nonBlank && value.trim() === "") {
 		issues.push({ path: [...path, key], code: "invalid-text" });
 		return undefined;
 	}
@@ -414,6 +420,7 @@ function displayOf(
 	const untranslatable = new Set(["color"]);
 	if (kind === "subscription") {
 		translatable.add("postNoun");
+		translatable.add("externalIdNoun");
 		translatable.add("lookupPlaceholder");
 		untranslatable.add("externalIdRegex");
 	}
@@ -434,7 +441,10 @@ function displayOf(
 				: key === "lookupPlaceholder"
 					? EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS
 					: EXTENSION_SHORT_LABEL_MAX_CHARS;
-		const text = textOf(source, key, path, issues, { max });
+		const text = textOf(source, key, path, issues, {
+			max,
+			nonBlank: key === "postNoun" || key === "externalIdNoun",
+		});
 		if (text !== undefined) put(out, key, text);
 	}
 	return nonEmptyObject(out) ? out : undefined;
