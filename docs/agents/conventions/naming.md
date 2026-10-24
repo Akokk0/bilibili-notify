@@ -39,7 +39,7 @@
 | 指向别处一份东西的引用（只装认出它要的那几格，不装内容本身） | `Ref`（`ImageRef`、`VideoRef`）；装引用的**字段**按装的是什么起名（`avatar`、`cover`），不另挂 `Ref` | 不是引用的东西用 `Ref` |
 | 供人挑选、还没成为实体的候选 | `Candidate` | — |
 | 富文本里的一段（文字、链接、表情、提及……） | `Segment`（`RichTextSegment`） | `Node`、`Part`、`Chunk` |
-| 把别处的形状翻成领域实体的函数 | `<实体>From<来处>`（`postFromDynamic`、`postFromReport`） | `to…`、`convert…`、`build…` |
+| 把别处的形状翻成领域实体的函数 | `<实体>From<来处>`（`postFromDynamic`、`liveCardInputFromDetails`） | `to…`、`convert…`、`build…` |
 | 从作品取文字的唯一一处 | `postText(post, 形式)`（形式 `plain` / `labeled`）；别处不许自己拼 | 各处手拼的 `extract…Text` |
 | 种类的取值；说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格） | `Kind` | `Type`（只留给外部协议里的原名） |
 | 发出去的改动 / schema 的全可选版 / 按订阅覆盖的那一层 / 一步操作 | `Patch` / `Partial` / `Overrides` / `Op`（`SubscriptionOp`、`KeyValueOp`） | `Operation` |
@@ -52,7 +52,7 @@
 
 - **领域实体用本名**：`Post`、`Creator`、`Subscription`、`Problem`、`Connection`。从实体现算出来给某个读者看的投影加 `View`（`SourceSubscriptionView`）。
 - **核心接口用角色名，交进登记表的那一整包叫 `…Def`**：`PlatformAdapter` 对 `PlatformAdapterDef`，`Source` 对 `SourceDef`。
-- **订阅来源就叫 `Source`，不加 `Subscription` 前缀**（主人 2026-10-10 定）：接口 `Source`、交进登记表的 `SourceDef`、上下文 `SourceContext`、键 `SourceKey`、描述 `SourceDescriptor`、登录 `SourceAuth`，一族同一个词头。拓展契约里今天还叫 `registerSubscriptionSource` / `SubscriptionSourceDef` / `SubscriptionSourceHandle` 的三个，随契约第 3 版改成 `registerSource` / `SourceDef` / `SourceHandle`。
+- **订阅来源就叫 `Source`，不加 `Subscription` 前缀**（主人 2026-10-10 定）：接口 `Source`、交进登记表的 `SourceDef`、上下文 `SourceContext`、键 `SourceKey`、描述 `SourceDescriptor`、登录 `SourceAuth`，一族同一个词头。拓展契约的三个口现在是 `registerSource` / `SourceDef` / `SourceHandle`。
 - **核心里的 `Source` 只指订阅来源**：读数据的口子，类型一律叫 `…Reader`（一包几个读法的也是，不加复数）；`lookup` 是「查一下」这个动作，只用在函数名上，不当类型名的后缀（`…Lookup` / `…Lookups` 都不用，主人 10-10 定）。「市场源」是主人在界面上看得到的叫法，算例外。
 - **「内置的那一组」交回的对象用复数名词、不带后缀**（主人 2026-10-11 定）：`BuiltinAdapters`、`BuiltinIntegrations`。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。

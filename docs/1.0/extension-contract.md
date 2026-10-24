@@ -173,20 +173,20 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 ### 拓展这一侧交什么
 
-宿主把拓展的订阅源转成一份 `Source`。注册口沿用 `registerSource(def: SourceDef): SourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。
+宿主把拓展的订阅源转成一份 `Source`。注册口沿用 `registerSource(def: SourceDef): SourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。🔗 现状（3b-42，10-24）：已落成 `registerSource` / `SourceDef` / `SourceHandle { dispose }`；`ctx.registerSource` 同步交回把手，登记在后台异步完成，装载器等 `start` 落定，`start` 抛了就是这次加载失败。推送口的改名在 3b-44，两侧名字到那时才对称。
 
 | `Source` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
 | `start(ctx)` / `stop()` | def 里的 `start` 拿到 `SourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
 | `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了 |
-| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`） |
+| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`）<br>🔗 现状（3b-42，10-24）：面板 `GET /api/ext/:id/lookup` 已改经引擎的 `searchCreators`，与取资料、查直播状态共用同一来源的串行闸；回应是 `CreatorCandidateView`，头像读回 data URL，路径不改名（N01 第 4 期）。拓展没实现 `fetchProfile` 时宿主补一个回 `unsupported` 的 |
 | `fetchProfile` | 可选；不实现就靠主动报资料。返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；整轮要不要刹车由拓展自己定 | 宿主适配补齐 |
-| `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选；`health()` 只交一行字 `{ summary }`，给健康卡与 `status` 指令 | 形状同中立接口 |
+| `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选；`health()` 只交一行字 `{ summary }`，给健康卡与 `status` 指令 | 形状同中立接口<br>🔗 现状（3b-42，10-24）：主人 10-24 定 `auth` 这一版不对拓展开（类型排除、运行时带了也不认），等第一个要登录的拓展；`health()` 当外来数据收：只收同步对象的字符串 `summary`，空白收成一行，按 `SOURCE_HEALTH_SUMMARY_MAX_CHARS`（120）截断且不劈代理对，坏了就显示「状态读不到」，同一原因只 warn 一次 |
 | `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |
 
 描述符里 09-28 新加的几格：
 
-- `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收。🔗 10-23（主人定）：清单收这一格随 3b-42 一起做。
+- `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收。🔗 10-23（主人定）：清单收这一格随 3b-42 一起做。🔗 现状（3b-42，10-24）：拓展清单已收这一格，与 `postNoun` 同尺子；`postNoun` / `externalIdNoun` 纯空白都拒。
 - `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。
 - `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，写正则的源码字符串，宿主按整串匹配，核新建订阅的外部 id 与特别关注名单的 id。可以不写（只做中立校验）。写在清单订阅源那一段的 `display` 里（与 `postNoun` 同处）。编译不过（或疑似灾难性回溯）的正则让清单校验不过、拓展装不上；正则源码最长 200 字（同内容过滤的 `blockRegex`），被核的值最长 256 字（同外部 id 本身的上限）。
 - `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。🔗 现状（3b-35，10-24）：描述符的 `creatorNoun` 与叫法函数已落，清单收 `creatorNoun` 仍随清单那几片。
@@ -198,13 +198,13 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 没有「新建 / 启用订阅」钩子：拓展要在订阅变化时做事，一律用 `onSubscriptionsChanged`，自己对比新旧名单。
 
-**能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。
+**能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。🔗 现状（3b-42，10-24）：清单 v2 先按 `events` 推出周期直播，声明了却没实现 `fetchLiveStatus` 就在登记时拒、这次加载失败；推送侧的周期计时与 `skipped` 出入已删（主人 10-24 R3）；3b-44 换读 `supportedFeatures`。
 
 `signal` 的规矩照旧：超时（`TimeoutError`，宿主已回了面板「超时」）与拓展停用 / 收摊（`AbortError`）两种时候中止，手上的请求要接着它停。
 
 ### 上报
 
-上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。
+上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。🔗 现状（3b-42，10-24）：第 3 版上报已落。拓展这一侧的 `SourceContext` 是核心那份去掉 `reportLiveInteraction` / `registerLinkResolver` / `registerAiToolProvider`；进门 zod 在 `packages/internal/src/schema/extension-report.ts`。外来数据只在 `extensions/extension-source.ts` 的 `createExtensionSource` 收：外部 id → 清单声明的种类 → 形状；毫秒 → ISO；图库引用读回字节补宽高与动图标记；作者缺名按资料名 → 身份标签补；下播缺 `endedAt` 取到达时刻；每个来源一条串行队，置停后队里还没交的丢、记 debug。视频作品不再由宿主写「投稿了视频」（主人 10-24）。
 
 附加块 `attachment` 这版不对拓展开：ADR-0021 决策 38 的开放清单没有它，v3 的上报 schema 也就没有这一格（照「多交一格宿主不认识的，整条拒」处理）。
 
@@ -242,7 +242,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 上报种类（原 `SubscriptionReportKind` 五种）收成 `post` / `live` / `profile`。
 
-**被拒不回话**：报了没声明的种类、外部 id 不合法、形状坏了，整条拒；认识的选填格值坏了只丢那一格。被拒与丢格都记进该拓展的 `reportDiscrepancies`（拓展详情页 `InstalledExtensionView` 上的那个框）并打 warn 日志，拓展自己不知道；报的人不在名单里照旧静默忽略。`reportDiscrepancies` 与拓展自报的问题是两张表。理由：被拒都是拓展自己的 bug，运行时改不了，回结果只会诱导它重报。
+**被拒不回话**：报了没声明的种类、外部 id 不合法、形状坏了，整条拒；认识的选填格值坏了只丢那一格。被拒与丢格都记进该拓展的 `reportDiscrepancies`（拓展详情页 `InstalledExtensionView` 上的那个框）并打 warn 日志，拓展自己不知道；报的人不在名单里照旧静默忽略。`reportDiscrepancies` 与拓展自报的问题是两张表。理由：被拒都是拓展自己的 bug，运行时改不了，回结果只会诱导它重报。🔗 现状（3b-42，10-24）：出入种类是 `post` / `live` / `profile` / `problem`；拓展三层问题上报被拒也进出入表（3b-38 的尾巴）。
 
 照旧不变的规矩：
 
@@ -285,7 +285,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
     - 不存盘：重启或停用再启用之后，还在的问题要拓展重报一遍（重启后的头几秒，订阅卡上的红字会先消失）。
 - code 用 snake（`login_expired`）。
 - 🔗 **现状（3a-30，10-11）**：问题表、`GET /api/problems`、`problems-changed` 与核心那头的通知器 3a-30 已落，但 `reportProblem` / `resolveProblem` 只造在内置来源的 `SourceContext` 上；上面第一层（`IntegrationContext`，不带对象）和 `connectionId` 那一支都没造，拓展的 `activate(ctx)` 今天没有这两个成员；`Problem.about` 今天只有 `{ subscriptionId }` 一支。三层签名与 `about` 加连接那一支随 3b-38 落成。多语言（ADR-0037）下问题句的口吻与加工见上。
-- 🔗 **现状（3b-51，10-20）**：问题句已中立化。B 站的问题句收进字典 `bilibili.problem.*`，QQ 官方网关两句去掉开头的「QQ」；两族里没有「主人 / 女仆 / 面板 / 指令 / 重启 / login」，由 `i18n/__tests__/integration-sentences-plain.test.ts` 钉着。写者标记 `writtenBy?: string` 加在问题表上报入参与 `ProblemChange` 上，值是给人看的名字；它不上 `Problem`、不进 `GET /api/problems`、不进 `apps/contract`。宿主在三个上下文入口（集成、来源、适配器）逐格抄给问题表，第三方塞不进来：集成上下文与适配器上下文的选项 `label: () => string` 在报问题那一刻取；拓展取当前语言的清单名、走与拓展列表同一条回落链；B 站取来源描述符的 `label`；内置适配器暂用适配器键（`qq-official` 等），第 4 期适配器自带描述后换。宿主直写问题表的那几条（连接探测、拓展设置、核心设置、登录）不盖。引子只在通知器把话交给发送口的那一刻加，账上存的是集成交上来的原句，「不再说」的比较不受影响；字典键 `problem.relay.reported` / `problem.relay.recovered` / `problem.relay.recoveredGeneric` / `problem.recoveredGeneric`，女仆层 `zh-CN.maid.json` 第一次有了这四条。登录问题由宿主看登录状态报：`subscriptions/login-problems.ts` 的 `watchLoginProblems` 按来源键报与清 `auth_lost`，`expired` 私聊、`logged-out` 只进表、`logged-in` 清；句子是宿主写的整句（字典 `problem.login.*`），交的是取字函数，表在换语言或口吻变了时重跑。换语言时问题表重报已随 3b-61 落：宿主的句子交取字函数，表在语言或口吻变了时重跑；B 站与 QQ 官方机器人自己记着、换语言时重报；通知器把「只换了说法」当同一件事。
+- 🔗 **现状（3b-51，10-20）**：问题句已中立化。B 站的问题句收进字典 `bilibili.problem.*`，QQ 官方网关两句去掉开头的「QQ」；两族里没有「主人 / 女仆 / 面板 / 指令 / 重启 / login」，由 `i18n/__tests__/integration-sentences-plain.test.ts` 钉着。写者标记 `writtenBy?: string` 加在问题表上报入参与 `ProblemChange` 上，值是给人看的名字；它不上 `Problem`、不进 `GET /api/problems`、不进 `apps/contract`。宿主在三个上下文入口（集成、来源、适配器）逐格抄给问题表，第三方塞不进来：集成上下文与适配器上下文的选项 `label: () => string` 在报问题那一刻取；拓展取当前语言的清单名、走与拓展列表同一条回落链；B 站取来源描述符的 `label`；内置适配器暂用适配器键（`qq-official` 等），第 4 期适配器自带描述后换。宿主直写问题表的那几条（连接探测、拓展设置、核心设置、登录）不盖。引子只在通知器把话交给发送口的那一刻加，账上存的是集成交上来的原句，「不再说」的比较不受影响；字典键 `problem.relay.reported` / `problem.relay.recovered` / `problem.relay.recoveredGeneric` / `problem.recoveredGeneric`，女仆层 `zh-CN.maid.json` 第一次有了这四条。登录问题由宿主看登录状态报：`subscriptions/login-problems.ts` 的 `watchLoginProblems` 按来源键报与清 `auth_lost`，`expired` 私聊、`logged-out` 只进表、`logged-in` 清；句子是宿主写的整句（字典 `problem.login.*`），交的是取字函数，表在换语言或口吻变了时重跑。换语言时问题表重报已随 3b-61 落：宿主的句子交取字函数，表在语言或口吻变了时重跑；B 站与 QQ 官方机器人自己记着、换语言时重报；通知器把「只换了说法」当同一件事。🔗 现状（3b-42，10-24）：拓展订阅源的来源 ctx 写者名也取清单名（`label` 选项），与集成、适配器两层一致。
 
 ## 推送：平台适配器
 

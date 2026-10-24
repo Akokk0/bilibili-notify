@@ -246,7 +246,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `reportPost` | 核心按身份展开成每条订阅一份 `PostEvent`（正常一条，老数据里的重复各一份），再发 `post-detected`（旁路通知，给统计）并交进作品装配；查不到或已停用就丢弃、记 debug 日志。判新、去重、限流归来源。来源交完就前移自己的锚点，投递失败由核心按目标重试（见 [push.md](./push.md)） |
 | `reportLive` | 已落（3b-22）：开播 / 状态 / 下播三种中立信号，按身份展开后交 `LiveSessionEngine.apply`；`status` 与 `end` 可带 `startedAt` |
 | `reportLiveInteraction` | 已落（3b-22）：`viewerChat` / `viewerEnter` / `superchat` / `membership` 四种，形状是对应事件去掉 `subscriptionId`；后两种可带 `fallbackText` |
-| `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
+| `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密。🔗 现状（3b-42，10-24）：已落成；停用的订阅不收，写完当场重算面板那几行，粉丝样本按刷新间隔稀释 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
 | 上报被拒 | 上报类（`report*`、`reportProblem`、`resolveProblem`）一律 `void`：被拒（种类没声明、id 不合法、形状坏）或被丢格，记进该集成的 `reportDiscrepancies` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；拓展契约从 v2 的 reject 改成这样。内置集成（B 站与内置适配器）的上报被拒就是 BN 的 bug，只打错误日志、靠对拍守卫兜，不进 `reportDiscrepancies` 的展示面 |
 | `fetchImage` | 走集成自己的客户端（同一套 cookie 与身份），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败共七个码：404 回 `not_found`；401 / 403 回 `unauthorized`；429 回 `rate_limited`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`；调用方中止回 `indeterminate`。抓到的图算「在途」：一个集成一个写口，挂在一家名单恒空的「在途」引用方下，图活不活看引用落在哪（上报进历史 / 重推、资料缓存、在播表、登录状态、来源描述）；只攥在集成自己手里、没交给宿主的引用，过了 24 小时宽限期不保；「来源声明的图」的名单改成宿主从在册来源的描述里现算。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓。🔗 现状（3b-39 落成，2026-10-19）：已落成；写口是图库「集成在途」那一家（`IMAGE_REFERRERS.inTransit` / `AppRuntime.transitImages`），名单恒空、靠 24 小时宽限期；B 站来源与直播引擎已改读上下文的 `fetchImage`，账号头像、订阅资料头像、卡片真实预览、旧搜人四处仍走旧路 |
@@ -316,7 +316,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 ### 健康与运行状态
 
 - 内置集成的运行状态只取 `running` / `failed` / `settings-invalid`；内置集成与拓展走同一套生命周期（`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时先调 `stop()`，再中止 `signal`、跑 `onDispose`）。系统页、健康卡、`status` 指令与 `/api/sources` 的 `status` 都读它。🔗 3a-39：内置来源的运行状态读口还没造（没有读者），`failed` 没造，`settings-invalid` 今天只有拓展装载器产生；B 站设置读不懂时来源仍是在册的，停着的那一样在问题表里。再看的时机是 3a-40 的 `health()`。🔗 3a-40：`health()` 造出来了（同步、可选、只交一句话，今天只有 B 站来源实现、只有 `status` 指令读它），但它不是运行状态读口，运行状态读口仍没造，再看的时机待定（见 construction-plan 的「以后再说」）。
-- `health?()` 交 `SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字。
+- `health?()` 交 `SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字。🔗 现状（3b-42，10-24）：拓展来源的返回已按 [extension-contract.md](./extension-contract.md)「订阅源」一节所述当外来数据收，核心只认规整后的 `{ summary }`。
 - **订阅卡的「暂停 / 不可用」不看 `health()`**：看运行状态（「{label} 没在跑」）与问题表里关于这条订阅的条目。
 - 健康卡分两排：核心（持久化、订阅、推送、卡片、AI）与集成（每个集成一格；推送适配器有连接才占格；同时供来源与适配器的拓展也只占一格）。集成格的灯按运行状态与问题分四色（绿正常、黄有问题、红失败或设置不合法、灰停用）；小字取 `health().summary`，没实现就写运行状态，登录态由宿主从 `AuthState` 补。
 - 数据放 `/api/health/details`；短版 `/api/health` 只留存活探测要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程），B 站的格子删掉。卡片的界面第 4 期先出设计稿再重做。
