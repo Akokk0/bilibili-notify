@@ -227,9 +227,10 @@ describe("createAiToolProviderRegistry", () => {
 	});
 
 	it("技能 description / body 超限时整次登记抛，失败的那次没有占住键", () => {
-		const oversized = [skill("echo-check"), skill("echo-check", undefined)];
-		oversized[0]!.description = "x".repeat(201);
-		oversized[1]!.body = "x".repeat(20_001);
+		const oversized = [
+			{ ...skill("echo-check"), description: "x".repeat(201) },
+			{ ...skill("echo-check", undefined), body: "x".repeat(20_001) },
+		];
 
 		for (const bad of oversized) {
 			const registry = createAiToolProviderRegistry();
