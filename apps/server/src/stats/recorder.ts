@@ -470,6 +470,14 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	const sources: Disposable[] = [
 		biliSource,
 		liveSource,
+		opts.bus.on("subscription-changed", ({ ops }) => {
+			for (const op of ops) {
+				if (op.kind !== "remove") continue;
+				// 取消订阅就把这条订阅的统计文件一并删掉,与 FollowersStore 的处置一致 ——
+				// 否则退订过的创作者会在 stats 目录里永久留一份读不到、也删不掉的孤儿。
+				recorder.drop(statsFileKey(op.sub));
+			}
+		}),
 		// 作品行:B 站与拓展共用这一个监听,键是订阅 id。
 		opts.bus.on("post-detected", (event) =>
 			recorder.recordPost(statsFileKey({ id: event.subscriptionId }), postEntryFromEvent(event)),

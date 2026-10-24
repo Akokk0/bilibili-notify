@@ -202,22 +202,22 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		expect(store.drop).toHaveBeenCalledWith("id-1");
 	});
 
-	it("一次删掉一条拓展订阅、一条 B 站订阅 → 两支的适配各删各的,每条恰好删一次(ADR-0020 S3)", async () => {
-		const { trigger, store } = setup();
+	it("一次删掉 B 站、拓展、在册的非 B 站内置来源订阅 → 三条统计文件各删一次", async () => {
+		const subscriptions = [
+			{ id: "bili-1", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
+			{ id: "ext-1", identity: { sourceKey: "douyin", externalId: "1" }, ...ON },
+			{ id: "builtin-1", identity: { sourceKey: "acme.inprocess", externalId: "1" }, ...ON },
+		];
+		const { trigger, store } = setup(() => subscriptions);
 		trigger("subscription-changed", {
-			ops: [
-				{
-					kind: "remove",
-					sub: { id: "ext-1", identity: { sourceKey: "douyin", externalId: "1" } },
-				},
-				{
-					kind: "remove",
-					sub: { id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" } },
-				},
-			],
+			ops: subscriptions.map((sub) => ({ kind: "remove", sub })),
 		});
-		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledTimes(2));
-		expect(store.drop.mock.calls.map((c) => c[0]).sort()).toEqual(["ext-1", "id-2"]);
+		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledTimes(3));
+		expect(store.drop.mock.calls.map((call) => call[0]).sort()).toEqual([
+			"bili-1",
+			"builtin-1",
+			"ext-1",
+		]);
 	});
 
 	it("退订正在直播的 UP → 关服时不再给他补下播帧,免得把刚删的文件重建出来", async () => {

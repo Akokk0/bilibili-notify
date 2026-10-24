@@ -1,9 +1,4 @@
-import {
-	BILIBILI_SOURCE_KEY,
-	type Disposable,
-	type MessageBus,
-	subscriptionIdentityOf,
-} from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY, type Disposable, type MessageBus } from "@bilibili-notify/internal";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
 
@@ -12,7 +7,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  *
  * B 站的规矩只写在这里。作品行不在这里:B 站与拓展共用 `recorder.ts` 里的 `post-detected` 监听。
  *   - 直播场次不在这里:所有来源都走中立监听(`live-source.ts`)的 `live-session-changed`;
- *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件;
+ *   - `auth-lost` → 忘掉 B 站这头在飞的场次(删订阅的统计文件由中立的记录器处理);
  *   - **「来源在跑」= B 站登录有效**(ADR-0027 决策 2):定时(每 {@link BILI_SOURCE_CHECK_MS})看一眼登录状态,有效就给每条
  *     满足条件的订阅记当前小时的 `posts` / `live`;挂上时、`auth-restored` 时各立刻看一眼;登录无效不记。状态每次现读
  *     (`isLoggedIn`),事件只用来立刻补记一次,不拿它记状态;
@@ -42,7 +37,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	const tick = () => {
 		if (!opts.isLoggedIn()) return;
 		for (const sub of opts.subscriptions()) {
-			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) continue;
+			if (sub.identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
 			const key = statsFileKey(sub);
 			if (sub.recordsPosts) recorder.recordActive(key, "posts");
 			if (sub.recordsLive) recorder.recordActive(key, "live");
@@ -64,21 +59,6 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 		// 手里的这一场,之后引擎再发它的 end 也不写;登录恢复后再观测到同一开播时刻时按状态再认出。
 		bus.on("auth-lost", () => {
 			opts.forgetOpenSessions(BILIBILI_SOURCE_KEY);
-		}),
-	);
-
-	handles.push(
-		bus.on("subscription-changed", ({ ops }) => {
-			for (const op of ops) {
-				// 拓展订阅的统计文件由拓展适配自己删(ADR-0020 S3);这里只管 B 站这一支。
-				if (op.kind !== "remove") continue;
-				const identity = subscriptionIdentityOf(op.sub);
-				if (identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
-				const key = statsFileKey(op.sub);
-				// 取消订阅就把这条订阅的统计文件一并删掉,与 FollowersStore 的处置一致 ——
-				// 否则退订过的 UP 会在 stats 目录里永久留一份读不到、也删不掉的孤儿。
-				recorder.drop(key);
-			}
 		}),
 	);
 

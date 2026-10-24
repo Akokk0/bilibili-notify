@@ -13,7 +13,7 @@
  * - 删订阅四份文件全删,停用留着。
  */
 
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -258,15 +258,6 @@ const hourRow = (kind: "posts" | "live" | "followers", at = T0) => {
 	return { kind, startedAt: iso(from), endedAt: iso(from + 3_600_000) };
 };
 
-async function exists(path: string): Promise<boolean> {
-	try {
-		await access(join(dataDir, path));
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-stats-ext-"));
 	clock = T0;
@@ -510,22 +501,24 @@ describe("「在记」小账(ADR-0027 决策 2 / 13)", () => {
 		expect(await liveFrames()).toHaveLength(2);
 	});
 
-	it("B 站订阅的作品事件落作品行,但不经拓展适配落「在记」(B 站的由登录状态定时记,没登录就没有)", async () => {
-		subs = [
-			SUB,
-			makeEmptySubscription({ id: "b-7", identity: { sourceKey: "bilibili", externalId: "7" } }),
-		];
+	it("索引收全部订阅:订阅上报带 B 站 id 时仍按开关记「在记」,作品行仍由中立监听记", async () => {
+		const bili = makeEmptySubscription({
+			id: "b-7",
+			identity: { sourceKey: "bilibili", externalId: "7" },
+		});
+		subs = [SUB, bili];
 		const world = boot();
 		world.bus.emit("post-detected", {
 			...detected({ id: "d1", video: true }),
 			subscriptionId: "b-7",
 			identity: { sourceKey: "bilibili", externalId: "7" },
 		});
+		report(world.bus, post({ id: "d1" }), bili);
 		await world.recorder.flush();
 		expect(await dynRows("b-7")).toEqual([
 			expect.objectContaining({ id: "d1", hasVideo: true, publishedAt: iso(T0 - MINUTE) }),
 		]);
-		expect(await exists(join("stats", "recording", "b-7.jsonl"))).toBe(false);
+		expect(await recordingRows("b-7")).toEqual([hourRow("posts"), hourRow("live")]);
 	});
 });
 
@@ -542,7 +535,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		expect(await liveFrames()).toHaveLength(1);
 	}
 
-	it("删了:作品 / 直播 / 「在记」/ 粉丝四份全删 —— 开着的那一场结束也不把直播文件写回来", async () => {
+	it("经记录器删了:作品 / 直播 / 「在记」/ 粉丝四份全删 —— 开着的那一场结束也不把直播文件写回来", async () => {
 		const world = boot();
 		await fillAll(world);
 		subs = [OFF];

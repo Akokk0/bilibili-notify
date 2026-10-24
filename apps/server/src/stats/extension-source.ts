@@ -1,9 +1,4 @@
-import {
-	BILIBILI_SOURCE_KEY,
-	type Disposable,
-	type MessageBus,
-	subscriptionIdentityOf,
-} from "@bilibili-notify/internal";
+import type { Disposable, MessageBus } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
@@ -20,12 +15,12 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - 资料里的粉丝数 → 粉丝时序(决策 8),不密过 B 站粉丝轮询的间隔({@link fansSampleGapMs})。
  *   - 「来源在跑」= 这个小时收到过这条订阅的任何上报(ADR-0027 决策 2):按开关记当前小时的 `posts` /
  *     `live`;资料里带粉丝数(不管被不被稀释掉)记 `followers`。作品开关关着不落作品行;直播类开关都关着不开新场次。
- *   - 订阅删了 → 四份文件全删;停用的留着(决策 10)。
+ *   - 订阅删了 → 四份文件由记录器的中立监听删;停用的留着(决策 10)。
  */
 export interface ExtensionStatsSourceOptions {
 	bus: MessageBus;
 	recorder: StatsRecorderCore;
-	/** 当前全部订阅(B 站的会被跳过)。按它判「这条拓展订阅还在、启用着」;订阅一变就重查。 */
+	/** 当前全部订阅。按它判「这条拓展订阅还在、启用着」;订阅一变就重查。 */
 	subscriptions: () => readonly StatsSubscription[];
 	/** B 站粉丝轮询的 cron(`globals.profileRefreshCron`,现取)。 */
 	fansCron: () => string;
@@ -69,7 +64,7 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	const handles: Disposable[] = [];
 
 	/**
-	 * 订阅 id → 这条拓展订阅(启用着没有、两格「在记」条件),只收拓展订阅。惰性建、订阅或设置一变就作废
+	 * 订阅 id → 这条订阅(启用着没有、两格「在记」条件)。惰性建、订阅或设置一变就作废
 	 * (开关是订阅覆盖合并全局默认之后的有效值,全局改了也要重算);查不到时重建一次(刚加的不必等作废通知)。
 	 * 资料更新可能一口气报一百条,不能每条都重算一遍。
 	 */
@@ -77,7 +72,7 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	const buildIndex = () => {
 		const index = new Map<string, StatsSubscription>();
 		for (const sub of opts.subscriptions()) {
-			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) index.set(sub.id, sub);
+			index.set(sub.id, sub);
 		}
 		return index;
 	};
@@ -115,15 +110,8 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	handles.push(bus.on("config-changed", () => (subById = undefined)));
 
 	handles.push(
-		bus.on("subscription-changed", ({ ops }) => {
+		bus.on("subscription-changed", () => {
 			subById = undefined;
-			for (const op of ops) {
-				// B 站那一支由 B 站适配删;这里只管拓展这一支。停用的文件留着。
-				if (op.kind !== "remove") continue;
-				if (subscriptionIdentityOf(op.sub).sourceKey === BILIBILI_SOURCE_KEY) continue;
-				const key = statsFileKey(op.sub);
-				recorder.drop(key);
-			}
 		}),
 	);
 
