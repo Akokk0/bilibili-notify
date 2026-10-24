@@ -69,7 +69,7 @@
 
 容易混的几处：
 
-- **失败码与问题码是两套。** 失败码（`code`）取标准码表；问题表里的 `code` 另算，不受码表约束，只要求 snake_case，如 `follow_failed`、`creator_not_found`、`renderer_unavailable`。
+- **失败码与问题码是两套。** 失败码（`code`）取标准码表；问题表里的 `code` 另算，不受码表约束，只要求 snake_case，如 `follow_failed`、`live_room_not_found`、`creator_not_found`、`renderer_unavailable`。
 - **码是 snake，状态值是 kebab。** `settings-invalid`、`logged-out` 这类是状态或事件的取值，写 kebab；错误码与问题码写 snake。应用内更新的失败原因 `reason` 也是失败原因，从 kebab 改成 snake。
 - **`reason` 的禁令只管失败原因。** 事件里描述「为什么下播」的字段不受它约束。
 

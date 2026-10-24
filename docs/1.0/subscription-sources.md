@@ -310,7 +310,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
   - **`recoveryMessage`**：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法：宿主自己写的那条用 `problem.recoveredGeneric`（「之前的问题已恢复：<原句>」）；集成写的那条用 `problem.relay.recoveredGeneric`，带名字与集成的原句（「<名字>之前报告的「<原句>」已恢复」，2026-10-20 主人定 R2 乙，只接原句、不套两层引子）。**`resolveProblem` 的 `notify`**：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
   - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
   - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊按 60 秒的节流表，键是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个；「已恢复」只对真私聊过的发、不受窗口与沉淀管（10-12 主人定），引子在交给发送口那一刻加。
-  - **code 例子**：B 站落成的名字有 `auth_lost`（3b-51 起由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。🔗 **现状（3b-25，10-23）：已接**。补关注失败由 `bilibili/problem-layers.ts` 的第三层经 `ProblemLayers.reportFailure` 上报，带 `externalId`、`lasting: true`、只进表、不私聊；成功或查到已关注时清掉。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。
+  - **code 例子**：B 站落成的名字有 `auth_lost`（3b-51 起由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。🔗 **现状（3b-25，10-23）：已接**。补关注失败由 `bilibili/problem-layers.ts` 的第三层经 `ProblemLayers.reportFailure` 上报，带 `externalId`、`lasting: true`、只进表、不私聊；成功或查到已关注时清掉。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。🔗 现状（3b-26，10-24）：新落一个 `live_room_not_found`：B 站房号解析得到「没开通直播间」而这位 UP 开着直播推送时报，挂在这位 UP 名下、只进问题表、显示在订阅卡上、不私聊；离开直播监听名单（关推送、停用、删订阅）静默清，之后解析成功也清（`bilibili/live/session/listener-manager.ts`）。
   - **B 站的分层**落在 `bilibili/problem-layers.ts`：只剩风控与请求失败两层；只看 `AuthState.status` 决定压不压（`expired` / `logged-out` 压、`logged-in` 放，`awaiting-scan` / `confirming` / `error` 保持上一次的结论），登录本身不在这里报。风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；请求失败层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。问题句在 `bilibili/problem-texts.ts` 取，字在字典 `bilibili.problem.*`（平实句）。
 
 ### 健康与运行状态
@@ -342,6 +342,8 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 作品：那天作品开关开着，且来源在跑；
 - 直播：那天直播类任一开关开着，且来源在跑；
 - 粉丝：那天拉资料成功。
+
+🔗 **现状（3b-26，10-24）**：「来源在跑」这里只看登录：来源在登记表里，且没有登录口或登录口现读是 `logged-in`（`confirming` 不算），核心就按每条订阅的作品 / 直播开关记当前小时（`stats/registry-source.ts`）。作品入口的闸与女仆查直播仍是「在册即在跑」；两种说法合成一个读口归第 4 期。
 
 每张图（热力图也是）读自己的「在记」，关着的日子显示「没在记」、不画成 0；锐评与榜单跳过没在记的日子。seen（「那天有没有联系上来源」）不再单独当判据。在播状态与当前粉丝数取在播表与资料缓存。「在记」记成每个订阅一份按小时的小账 `stats/recording/`，原来的 `seen/` 并进去（ADR-0027 决策 13）。
 
