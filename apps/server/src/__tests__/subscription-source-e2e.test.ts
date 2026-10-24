@@ -162,13 +162,13 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 
 	/** 候选按 externalId 排好 —— 名单的次序不是这里要钉的东西。 */
 	function byId(candidates: ExtensionLookupResponse["candidates"]) {
-		return [...candidates].sort((a, b) => a.id.localeCompare(b.id));
+		return [...candidates].sort((a, b) => a.externalId.localeCompare(b.externalId));
 	}
 
 	it("开机即读得到自己名下的两条(停用的也在),别的拓展那条不在;还没听到过变更", async () => {
 		expect(byId(await lookup())).toEqual([
-			{ id: "ext-off", name: "off:0" },
-			{ id: "ext-on", name: "on:0" },
+			{ externalId: "ext-off", name: "off:0" },
+			{ externalId: "ext-on", name: "on:0" },
 		]);
 	});
 
@@ -181,11 +181,11 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		expect(res.status, await res.clone().text()).toBe(200);
 
 		const candidates = byId(await lookup());
-		expect(candidates.map((c) => c.id)).toEqual(["ext-off", "ext-on"]);
+		expect(candidates.map((c) => c.externalId)).toEqual(["ext-off", "ext-on"]);
 		for (const c of candidates) {
 			const [state, changes] = c.name.split(":");
-			expect(state, c.id).toBe("off");
-			expect(Number(changes), c.id).toBeGreaterThanOrEqual(1);
+			expect(state, c.externalId).toBe("off");
+			expect(Number(changes), c.externalId).toBeGreaterThanOrEqual(1);
 		}
 	});
 });

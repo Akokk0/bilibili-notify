@@ -225,12 +225,12 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		for (const [i, key] of KEYS.entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
-			who[key] = { externalId: candidate.id, name: candidate.name, target: targetOf(key) };
-			const { id: _id, fans, ...profile } = candidate;
+			who[key] = { externalId: candidate.externalId, name: candidate.name, target: targetOf(key) };
+			const { externalId: _id, ...profile } = candidate;
 			const base = makeExtensionSubscription({
 				id: SUBS[key].id,
 				extensionId: FAKE,
-				externalId: candidate.id,
+				externalId: candidate.externalId,
 			});
 			await ok(
 				await api("/api/subscriptions", {
@@ -238,16 +238,13 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 					...json({
 						...base,
 						routing: { ...base.routing, liveStart: [who[key].target], liveEnd: [who[key].target] },
-						cachedProfile: {
-							...profile,
-							...(fans === undefined ? {} : { followers: fans }),
-						},
+						cachedProfile: profile,
 					}),
 				}),
 			);
 		}
-		expect(candidates[0]?.fans).toBeGreaterThan(0);
-		expect(candidates[1]?.fans).toBeUndefined();
+		expect(candidates[0]?.followers).toBeGreaterThan(0);
+		expect(candidates[1]?.followers).toBeUndefined();
 	});
 
 	afterAll(async () => {

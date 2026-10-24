@@ -14,10 +14,12 @@ import type {
 	ExtensionsResponse,
 } from "@bilibili-notify/contract";
 import {
+	type CreatorCandidate,
 	fail,
 	type GlobalConfig,
 	ok,
 	RESERVED_EXTENSION_IDS,
+	type Result,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
@@ -42,9 +44,11 @@ import {
 	type ReportDiscrepancyTable,
 } from "../../extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import type { ImageStore } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import type { SourceRegistry, SourceView } from "../../subscriptions/registry.js";
 import { createExtensionsRoute } from "../extensions.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 
@@ -84,6 +88,15 @@ function boot(
 		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
 		/** 解析门(`GET /:id/lookup`)。不给就是那一口没接上。 */
 		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
+		/** 来源登记表(判在不在册)。不给就是只有老的 `lookup` 那一支。 */
+		sources?: Pick<SourceRegistry, "get" | "list">;
+		/** 引擎的搜人口(在册的来源经它问)。 */
+		searchCreators?: (
+			sourceKey: string,
+			query: string,
+		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
+		/** 图库(把候选头像的引用读回字节)。 */
+		images?: Pick<ImageStore, "read">;
 		/** 换掉「只重载」那一口 —— 只有要看「装载器拒绝以外的抛错」的用例给。 */
 		swap?: (id: string) => Promise<void>;
 		/** 「上报出入」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
@@ -132,6 +145,9 @@ function boot(
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
 		lookup: over.lookup,
+		...(over.sources ? { sources: over.sources } : {}),
+		...(over.images ? { images: over.images } : {}),
+		...(over.searchCreators ? { searchCreators: over.searchCreators } : {}),
 		reportDiscrepancies: over.reportDiscrepancies,
 		...(over.swap ? { swap: over.swap } : loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
@@ -1713,19 +1729,31 @@ describe("POST /api/ext/:id/actions/:name", () => {
  * 要分得开:前者是平台那头的事(cookie 过期、被风控),后者是拓展的 bug。
  */
 describe("GET /api/ext/:id/lookup", () => {
-	const CANDIDATE = { id: "MS4wLjABAAAA-x", name: "抖音作者", fans: 12 };
+	/** 老拓展(还没搬到新口)交回的候选;路由翻成面板看的新形状。 */
+	const CANDIDATE = {
+		id: "MS4wLjABAAAA-x",
+		name: "抖音作者",
+		fans: 12,
+		avatar: "data:image/png;base64,AA==",
+	};
+	const CANDIDATE_VIEW = {
+		externalId: "MS4wLjABAAAA-x",
+		name: "抖音作者",
+		followers: 12,
+		avatarUrl: "data:image/png;base64,AA==",
+	};
 
 	function stub(outcome: LookupOutcome | undefined) {
 		return vi.fn(async (_id: string, _query: string) => outcome);
 	}
 
-	it("问到了 —— 200,{ candidates } 原样下发;交给拓展的是 id 与主人输入的原话", async () => {
+	it("老拓展问到了 —— 200,候选翻成新形状(id → externalId、avatar → avatarUrl、fans → followers);交给拓展的是 id 与主人输入的原话", async () => {
 		const lookup = stub(ok({ candidates: [CANDIDATE] }));
 		const res = await boot({ lookup }).request(
 			`/douyin/lookup?q=${encodeURIComponent("https://v.douyin.com/abc/")}`,
 		);
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ candidates: [CANDIDATE] });
+		expect(await res.json()).toEqual({ candidates: [CANDIDATE_VIEW] });
 		expect(lookup).toHaveBeenCalledWith("douyin", "https://v.douyin.com/abc/");
 	});
 
@@ -1813,6 +1841,97 @@ describe("GET /api/ext/:id/lookup", () => {
 		const res = await boot().request("/douyin/lookup?q=x");
 		expect(res.status).toBe(404);
 		expect((await failureOf(res)).code).toBe("not_found");
+	});
+});
+
+/**
+ * 解析门的新口:拓展的来源在登记表里,搜人经 `searchSourceCreators`(共用超时与串行闸),候选的头像引用
+ * 由路由从图库读回字节、拼成 data URL 交给面板。
+ */
+describe("GET /api/ext/:id/lookup —— 来源登记表那一口", () => {
+	const REF = "img-ref-1";
+	const BYTES = new Uint8Array([1, 2, 3, 4]);
+	const PNG_URL = `data:image/png;base64,${Buffer.from(BYTES).toString("base64")}`;
+
+	/** 在册的 douyin + 引擎的搜人口(测试里就是传进来的这个函数)。 */
+	function withSearch(
+		searchCreators: (
+			sourceKey: string,
+			query: string,
+		) => Promise<Result<{ candidates: CreatorCandidate[] }>>,
+	): { sources: Pick<SourceRegistry, "get" | "list">; searchCreators: typeof searchCreators } {
+		const view = { sourceKey: "douyin", descriptor: { label: "抖音" } } as unknown as SourceView;
+		return {
+			sources: { get: (key) => (key === "douyin" ? view : undefined), list: () => [view] },
+			searchCreators,
+		};
+	}
+
+	const images = (found: boolean): Pick<ImageStore, "read"> => ({
+		read: async () => (found ? { bytes: Buffer.from(BYTES), mime: "image/png" } : undefined),
+	});
+
+	it("在册的来源交带图库引用的候选 —— avatarUrl 是那张图的 data URL,followers 与 externalId 原样", async () => {
+		const search = vi.fn(async () =>
+			ok({
+				candidates: [
+					{ externalId: "sec-1", name: "作者", avatar: REF, bio: "简介", followers: 77 },
+				],
+			}),
+		);
+		const res = await boot({ ...withSearch(search), images: images(true) }).request(
+			"/douyin/lookup?q=x",
+		);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			candidates: [
+				{ externalId: "sec-1", name: "作者", avatarUrl: PNG_URL, bio: "简介", followers: 77 },
+			],
+		});
+		expect(search).toHaveBeenCalledWith("douyin", "x");
+	});
+
+	it("图库读不到那张图 —— 没有 avatarUrl,其余照回", async () => {
+		const res = await boot({
+			...withSearch(async () =>
+				ok({ candidates: [{ externalId: "sec-1", name: "作者", avatar: REF, followers: 5 }] }),
+			),
+			images: images(false),
+		}).request("/douyin/lookup?q=x");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			candidates: [{ externalId: "sec-1", name: "作者", followers: 5 }],
+		});
+	});
+
+	it("来源回 invalid —— 502,话原样", async () => {
+		const res = await boot({
+			...withSearch(async () => fail("invalid", "拓展交回的候选不合规矩:0.name")),
+			images: images(true),
+		}).request("/douyin/lookup?q=x");
+		expect(res.status).toBe(502);
+		const body = await failureOf(res);
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain("0.name");
+	});
+
+	it("不在册、也不是老拓展 —— 404 not_found", async () => {
+		const res = await boot({
+			...withSearch(async () => ok({ candidates: [] })),
+			lookup: async () => undefined,
+		}).request("/other/lookup?q=x");
+		expect(res.status).toBe(404);
+		expect((await failureOf(res)).code).toBe("not_found");
+	});
+
+	it("在册的来源优先 —— 老的 lookup 不再被问", async () => {
+		const lookup = vi.fn(async () => ok({ candidates: [] }));
+		await boot({
+			...withSearch(async () => ok({ candidates: [] })),
+			images: images(true),
+			lookup,
+		}).request("/douyin/lookup?q=x");
+		expect(lookup).not.toHaveBeenCalled();
 	});
 });
 

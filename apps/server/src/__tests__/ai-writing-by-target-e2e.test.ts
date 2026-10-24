@@ -239,7 +239,7 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 		const base = makeExtensionSubscription({
 			id: SUB_ID,
 			extensionId: FAKE,
-			externalId: candidate.id,
+			externalId: candidate.externalId,
 			enabled: true,
 		});
 		await ok(

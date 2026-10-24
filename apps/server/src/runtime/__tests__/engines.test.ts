@@ -1859,6 +1859,35 @@ describe("createEngines — boot wiring", () => {
 		expect(extra.stop).toHaveBeenCalledTimes(1);
 	});
 
+	// 验红:让 engines.ts 的 `searchCreators` 另建一道 `createSourceGates()`(不用共用的 `sourceGates`),这条红
+	// (取资料在搜人还没落定时就被调了)。
+	it("searchCreators 与 fetchProfile 对同一来源排同一道闸:第二个要等第一个落定", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const gate = deferred();
+		const source = makeSource();
+		source.searchCreators = vi.fn(async () => {
+			await gate.promise;
+			return { ok: true as const, candidates: [] };
+		});
+		source.fetchProfile = vi.fn(async () => ({ ok: true as const, name: "某人" }));
+		await c.runtime.registerSource({
+			sourceKey: "douyin",
+			source,
+			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
+		});
+		const searching = c.runtime.searchCreators("douyin", "q");
+		const fetching = c.runtime.fetchProfile({ sourceKey: "douyin", externalId: "x" });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(source.searchCreators).toHaveBeenCalledTimes(1);
+		expect(source.fetchProfile).not.toHaveBeenCalled();
+		gate.resolve();
+		await searching;
+		await fetching;
+		expect(source.fetchProfile).toHaveBeenCalledTimes(1);
+	});
+
 	// 验红:让登记项里的 `rejectedProblemLevel` 到不了 `createSourceContext`(例如 `registerBuiltinSource` 不再把它递下去),这条红(被拒的问题上报记成 error)。
 	it("registerSource 的登记项带 rejectedProblemLevel: warn:来源报了形状不对的问题,记 warn 不记 error", async () => {
 		const c = setup({ noSource: true });

@@ -215,17 +215,17 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		for (const [i, key] of KEYS.entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
-			who[key] = { externalId: candidate.id, name: candidate.name, target: targetOf(key) };
+			who[key] = { externalId: candidate.externalId, name: candidate.name, target: targetOf(key) };
 			// 面板把候选预填进草稿的做法:候选的头像是 data URL,它是个网址,放 `avatarUrl`。
 			const profile = {
 				name: candidate.name,
-				...(candidate.avatar ? { avatarUrl: candidate.avatar } : {}),
-				...(candidate.fans === undefined ? {} : { fans: candidate.fans }),
+				...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
+				...(candidate.followers === undefined ? {} : { followers: candidate.followers }),
 			};
 			const base = makeExtensionSubscription({
 				id: SUBS[key].id,
 				extensionId: FAKE,
-				externalId: candidate.id,
+				externalId: candidate.externalId,
 				enabled: key !== "c",
 			});
 			await ok(

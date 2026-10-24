@@ -29,6 +29,7 @@ import type {
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
+	CreatorCandidate,
 	CreatorProfileReport,
 	DeliveryResult,
 	Disposable,
@@ -160,6 +161,14 @@ export interface EnginesRuntime extends Disposable {
 	readonly subscriptionStore: SubscriptionStore;
 	/** 经同一来源串行闸取资料:资料刷新与女仆回落共用这一口。 */
 	fetchProfile(identity: Identity, signal?: AbortSignal): Promise<Result<CreatorProfileReport>>;
+	/**
+	 * 在某个来源里搜人(宿主外壳 `searchSourceCreators`):与 `fetchProfile`、查直播状态共用同一道来源串行闸,
+	 * 同一个来源一次只有一个调用在途。女仆的搜人工具与面板的解析门都走这一个,别各自再绑一份。
+	 */
+	searchCreators(
+		sourceKey: string,
+		query: string,
+	): Promise<Result<{ candidates: CreatorCandidate[] }>>;
 	readonly commentary: CommentaryGenerator | null;
 	/** 只给测试世界挂假点评用。 */
 	setCommentary(commentary: CommentaryGenerator | null): void;
@@ -379,6 +388,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			identity,
 			signal,
 		);
+	const searchCreators = (sourceKey: string, query: string) =>
+		searchSourceCreators(
+			{ sources: opts.sources, logger: log, gates: sourceGates },
+			sourceKey,
+			query,
+		);
 	/** 这个来源实现了 `fetchLiveStatus`(核心据此给它的每一场挂周期核对)。 */
 	const hasLiveStatus = (sourceKey: string): boolean =>
 		opts.sources.get(sourceKey)?.fetchLiveStatus !== undefined;
@@ -577,12 +592,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
 				sources: opts.sources,
 				// 女仆的搜人走宿主外壳(超时、中止、抛错收成 unavailable),不直接碰来源。
-				searchCreators: (sourceKey, query) =>
-					searchSourceCreators(
-						{ sources: opts.sources, logger: log, gates: sourceGates },
-						sourceKey,
-						query,
-					),
+				searchCreators,
 				// 没订阅、停用或还没缓存时,同一份来源闸上按身份向平台查一次;不写资料缓存。
 				fetchProfile,
 				// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
@@ -1145,6 +1155,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		muteState,
 		subscriptionStore: opts.subscriptionStore,
 		fetchProfile,
+		searchCreators,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,
 		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了,可读这个字段的聊天路由还是拿到 null,

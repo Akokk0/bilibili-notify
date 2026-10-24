@@ -1,4 +1,5 @@
 import type {
+	CreatorCandidateView,
 	ExtensionDTO,
 	ExtensionInstallResponse,
 	ExtensionLookupResponse,
@@ -9,12 +10,14 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	ActionNameSchema,
+	type CreatorCandidate,
 	ExtensionIdSchema,
 	fail,
 	isExtensionEnabled,
 	manifestProvides,
 	ok,
 	RESERVED_EXTENSION_IDS,
+	type Result,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
@@ -39,7 +42,10 @@ import type { LocaleIssue } from "../extensions/locales.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { ReportDiscrepancyTable } from "../extensions/report-discrepancies.js";
 import { t } from "../i18n/index.js";
+import { imageRefDataUrl } from "../images/image-data-url.js";
+import type { ImageStore } from "../images/image-store.js";
 import type { IntegrationStore } from "../integration-store/store.js";
+import type { SourceRegistry } from "../subscriptions/registry.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -81,6 +87,21 @@ export interface ExtensionsRouteOptions {
 	 * (→ `not_found`)。没接这一格的话那一口永远 `not_found`。
 	 */
 	lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
+	/**
+	 * 来源登记表:拓展的来源在册的,解析门经它的 `searchCreators` 问(共用超时与串行闸);不在册的
+	 * 才走上面老的 `lookup`。
+	 */
+	sources?: Pick<SourceRegistry, "get" | "list">;
+	/** 候选头像的图库引用在这里读回字节、拼成 data URL 交给面板;不给 = 候选都不带头像。 */
+	images?: Pick<ImageStore, "read">;
+	/**
+	 * 在来源里搜人(引擎的 `searchCreators`:与女仆搜人、取资料、查直播状态共用同一道来源串行闸)。热读,引擎
+	 * 还没挂上就是 `undefined` —— 按「不在册」那一支走。
+	 */
+	searchCreators?: (
+		sourceKey: string,
+		query: string,
+	) => Promise<Result<{ candidates: CreatorCandidate[] }> | undefined>;
 	/**
 	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
 	 * 抛 {@link ExtensionConflictError},那句话原样交给面板(→ `conflict`)。别的抛错是 bug,交给全局
@@ -209,6 +230,7 @@ function localeIssueText(issue: LocaleIssue): string {
  */
 export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	const app = new Hono();
+	const resolveAvatar = opts.images ? imageRefDataUrl(opts.images) : undefined;
 
 	app.get("/", async (c) => {
 		await opts.settle?.();
@@ -472,6 +494,21 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (!query.success) {
 			return respondFailure(c, fail("invalid", query.error.issues[0]?.message ?? "q 不合规矩"));
 		}
+		const view = (candidates: CreatorCandidateView[]) => {
+			const body: ExtensionLookupResponse = { candidates };
+			return c.json(body);
+		};
+		// 登记表里有它的来源:同一来源串行、超时共用 `LOOKUP_TIMEOUT_MS`(都在引擎的搜人口里)。
+		const found = opts.sources?.get(id.data)
+			? await opts.searchCreators?.(id.data, query.data)
+			: undefined;
+		if (found) {
+			// 走到这里的 `invalid` 只会是拓展交回的候选不合规矩(`q` 不合规矩在上面就拦了):请求本身
+			// 没错,是对端交回了不合格的东西,所以显式回 502,不回怪发请求那头的 400。
+			if (!found.ok) return respondFailure(c, found, found.code === "invalid" ? 502 : undefined);
+			return view(await Promise.all(found.candidates.map(candidateView)));
+		}
+		// 还没搬到新口的老拓展走这一支,结果翻成同一个新形状。后面的提交把它们搬完就删掉这一支。
 		const outcome: LookupOutcome | undefined = await opts.lookup?.(id.data, query.data);
 		if (!outcome) {
 			return respondFailure(
@@ -479,13 +516,34 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				fail("not_found", `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门`),
 			);
 		}
-		// 走到这里的 `invalid` 只会是拓展交回的候选不合规矩(`q` 不合规矩在上面就拦了):请求本身
-		// 没错,是对端交回了不合格的东西,所以显式回 502,不回怪发请求那头的 400。
+		// 同上:`invalid` 只会是拓展交回的候选不合规矩,回 502。
 		if (!outcome.ok)
 			return respondFailure(c, outcome, outcome.code === "invalid" ? 502 : undefined);
-		const body: ExtensionLookupResponse = { candidates: outcome.candidates };
-		return c.json(body);
+		return view(
+			outcome.candidates.map((old) => ({
+				externalId: old.id,
+				name: old.name,
+				...(old.avatar === undefined ? {} : { avatarUrl: old.avatar }),
+				...(old.fans === undefined ? {} : { followers: old.fans }),
+			})),
+		);
 	});
+
+	/**
+	 * 核心的候选 → 面板看的候选:头像的图库引用读回字节、拼成 data URL;读不到(引用已被清扫、读盘出错)
+	 * 就缺这一格,一个人的头像坏了不拖累整张候选表。
+	 */
+	async function candidateView(candidate: CreatorCandidate): Promise<CreatorCandidateView> {
+		const avatarUrl =
+			candidate.avatar === undefined ? undefined : await resolveAvatar?.(candidate.avatar);
+		return {
+			externalId: candidate.externalId,
+			name: candidate.name,
+			...(avatarUrl === undefined ? {} : { avatarUrl }),
+			...(candidate.bio === undefined ? {} : { bio: candidate.bio }),
+			...(candidate.followers === undefined ? {} : { followers: candidate.followers }),
+		};
+	}
 
 	/**
 	 * **只重载这个拓展**(ADR-0012 决策 47):收摊 → 按指纹换一个 URL 重新 `import` → 重新

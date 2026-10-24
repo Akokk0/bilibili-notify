@@ -385,6 +385,12 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				status: (id) => options.extensions?.status(id),
 				runAction: async (id, name) => options.extensions?.runAction?.(id, name),
 				lookup: async (id, query) => options.extensions?.lookup?.(id, query),
+				// 解析门:拓展的来源在册的经登记表问,头像引用从图库读回。
+				sources: deps.runtime.sourceRegistry,
+				images: deps.runtime.imageStore,
+				// 热读:engines 是后挂的;搜人走引擎那道共用的来源串行闸。
+				searchCreators: async (sourceKey, query) =>
+					deps.runtime.engines?.searchCreators(sourceKey, query),
 				settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
 				reportDiscrepancies: options.extensions?.reportDiscrepancies,
 				// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。

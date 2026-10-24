@@ -151,15 +151,15 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		for (const [i, key] of keys.entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
-			external[key] = candidate.id;
-			const { id: _id, ...profile } = candidate;
+			external[key] = candidate.externalId;
+			const { externalId: _id, ...profile } = candidate;
 			const created = await api("/api/subscriptions", {
 				method: "POST",
 				...json({
 					...makeExtensionSubscription({
 						id: SUB_IDS[key],
 						extensionId: FAKE,
-						externalId: candidate.id,
+						externalId: candidate.externalId,
 						enabled: key !== "c",
 					}),
 					cachedProfile: profile,

@@ -204,7 +204,9 @@ describe("解析门的接线", () => {
 		});
 		const res = await app.request("/api/ext/douyin/lookup?q=%E6%8A%96%E9%9F%B3");
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ candidates: [CANDIDATE] });
+		expect(await res.json()).toEqual({
+			candidates: [{ externalId: CANDIDATE.id, name: CANDIDATE.name }],
+		});
 		expect(lookup).toHaveBeenCalledWith("douyin", "抖音");
 		expect((await app.request("/ext/douyin/lookup?q=x")).status).toBe(404);
 		await runtime.dispose();

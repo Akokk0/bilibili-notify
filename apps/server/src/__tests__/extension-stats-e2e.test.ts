@@ -118,7 +118,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		for (const [i, id] of [ON, OFF].entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
-			const { id: externalId, ...profile } = candidate;
+			const { externalId, ...profile } = candidate;
 			const created = await api("/api/subscriptions", {
 				method: "POST",
 				...json({

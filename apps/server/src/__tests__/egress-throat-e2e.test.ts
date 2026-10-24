@@ -271,7 +271,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 			const base = makeExtensionSubscription({
 				id: subId,
 				extensionId: FAKE,
-				externalId: candidate.id,
+				externalId: candidate.externalId,
 				enabled: true,
 			});
 			await okRes(

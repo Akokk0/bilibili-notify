@@ -79,8 +79,8 @@ beforeEach(() => {
 		if (path.startsWith("/api/ext/douyin/lookup")) {
 			return Promise.resolve({
 				candidates: [
-					{ id: "111", name: "抖音同号" },
-					{ id: "sec-9", name: "抖音别人" },
+					{ externalId: "111", name: "抖音同号" },
+					{ externalId: "sec-9", name: "抖音别人" },
 				],
 			});
 		}

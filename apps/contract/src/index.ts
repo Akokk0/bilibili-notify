@@ -26,7 +26,6 @@ export type {
 	ExtensionRichRun,
 	ExtensionRichText,
 	ExtensionScalarField,
-	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionDisplay,
 	ExtensionSubscriptionEventKind,
 	ExtensionSubscriptionView,

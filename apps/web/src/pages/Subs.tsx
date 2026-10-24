@@ -1,7 +1,7 @@
 import type {
 	ConnectionCapabilitiesMap,
+	CreatorCandidateView,
 	ExtensionLookupResponse,
-	ExtensionSubscriptionCandidate,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
 import { colorFromSeed } from "@bilibili-notify/internal/constants";
@@ -176,7 +176,7 @@ function NewSubDialog({
 	sources,
 }: {
 	onSubmit: (profile: UpProfileLookup) => void;
-	onPickCandidate: (source: SourceExtension, candidate: ExtensionSubscriptionCandidate) => void;
+	onPickCandidate: (source: SourceExtension, candidate: CreatorCandidateView) => void;
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
@@ -188,9 +188,7 @@ function NewSubDialog({
 	const [platformId, setPlatformId] = useState(BILI_PLATFORM);
 	// 选中的拓展中途停了(拓展列表刷新后不在里面)就退回 B 站 —— 问一个不在场的解析门只会 404。
 	const source = sources.find((one) => one.id === platformId);
-	const [candidates, setCandidates] = useState<readonly ExtensionSubscriptionCandidate[] | null>(
-		null,
-	);
+	const [candidates, setCandidates] = useState<readonly CreatorCandidateView[] | null>(null);
 	const [input, setInput] = useState("");
 	const [profile, setProfile] = useState<UpProfileLookup | null>(null);
 	const [searchData, setSearchData] = useState<SearchResponse | null>(null);
@@ -591,7 +589,7 @@ const NO_EXTERNAL_IDS: ReadonlySet<string> = new Set();
 
 /**
  * 解析门交回的候选(ADR-0019 决策 52):与 B 站的搜索结果同一种行,整行点击就进配置弹层。
- * 最多 20 条,不翻页;已经订阅过的(同一个拓展 + 同一个外部 id)标「已订阅」、挑不了。
+ * 最多 10 条,不翻页;已经订阅过的(同一个拓展 + 同一个外部 id)标「已订阅」、挑不了。
  */
 function CandidateList({
 	candidates,
@@ -599,10 +597,10 @@ function CandidateList({
 	pending,
 	onPick,
 }: {
-	candidates: readonly ExtensionSubscriptionCandidate[];
+	candidates: readonly CreatorCandidateView[];
 	existing: ReadonlySet<string>;
 	pending: boolean;
-	onPick: (candidate: ExtensionSubscriptionCandidate) => void;
+	onPick: (candidate: CreatorCandidateView) => void;
 }) {
 	return (
 		<div className="mt-4 flex flex-col gap-1.5">
@@ -610,11 +608,11 @@ function CandidateList({
 				<EmptyNote>没有匹配的 UP 主</EmptyNote>
 			) : (
 				candidates.map((c) => {
-					const subscribed = existing.has(c.id);
+					const subscribed = existing.has(c.externalId);
 					const disabled = subscribed || pending;
 					return (
 						<button
-							key={c.id}
+							key={c.externalId}
 							type="button"
 							onClick={() => !disabled && onPick(c)}
 							disabled={disabled}
@@ -622,10 +620,17 @@ function CandidateList({
 							data-bn="option"
 							className={resultRowClass(subscribed)}
 						>
-							<UpProfileSummary profile={c} subscribed={subscribed} size="sm">
-								{c.fans !== undefined ? (
+							<UpProfileSummary
+								profile={{
+									name: c.name,
+									...(c.avatarUrl === undefined ? {} : { avatar: c.avatarUrl }),
+								}}
+								subscribed={subscribed}
+								size="sm"
+							>
+								{c.followers !== undefined ? (
 									<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
-										{fansLabel(c.fans)}
+										{fansLabel(c.followers)}
 									</div>
 								) : null}
 							</UpProfileSummary>
@@ -645,12 +650,12 @@ function CandidateList({
  * 候选没带粉丝数就**不带这一格**:编一个 `0` 出来,卡上就会写「0 粉丝」这种假话。
  */
 function candidateProfile(
-	candidate: ExtensionSubscriptionCandidate,
+	candidate: CreatorCandidateView,
 ): NonNullable<SubscriptionCreateRequest["cachedProfile"]> {
 	return {
 		name: candidate.name,
-		...(candidate.avatar ? { avatarUrl: candidate.avatar } : {}),
-		...(candidate.fans !== undefined ? { followers: candidate.fans } : {}),
+		...(candidate.avatarUrl ? { avatarUrl: candidate.avatarUrl } : {}),
+		...(candidate.followers !== undefined ? { followers: candidate.followers } : {}),
 	};
 }
 
@@ -959,11 +964,8 @@ export default function Subs() {
 	}
 
 	/** 同 {@link handleNew},草稿的身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
-	function handleNewCandidate(
-		source: SourceExtension,
-		candidate: ExtensionSubscriptionCandidate,
-	): void {
-		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.id });
+	function handleNewCandidate(source: SourceExtension, candidate: CreatorCandidateView): void {
+		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.externalId });
 		setNewDraft({
 			subscription: fresh,
 			cachedProfile: candidateProfile(candidate),

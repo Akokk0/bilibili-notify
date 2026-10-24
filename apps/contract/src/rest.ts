@@ -7,7 +7,6 @@
 import type {
 	ExtensionField,
 	ExtensionPushView,
-	ExtensionSubscriptionCandidate,
 	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
@@ -231,11 +230,25 @@ export interface ReportDiscrepancyView {
 }
 
 /**
+ * 面板上看的一个候选人:从核心的 `CreatorCandidate` 算出来,头像已经从图库引用换成 data URL(面板不认图库引用,
+ * 建订阅时的 `cachedProfile.avatarUrl` 也是它);图库里读不到那张图就缺 `avatarUrl` 这一格。
+ */
+export interface CreatorCandidateView {
+	/** 这个人在来源里的外部 id —— 选中后新建订阅用的就是它。 */
+	externalId: string;
+	name: string;
+	/** 头像的 data URL(位图)。 */
+	avatarUrl?: string;
+	bio?: string;
+	followers?: number;
+}
+
+/**
  * `GET /api/ext/:id/lookup?q=` —— 新建订阅时那个拓展的解析门交回的候选(ADR-0019 决策 11 / 52)。
- * 服务端已经核过形状(最多 20 条、头像只收位图 data URL……)。一个都认不出是空表,不是 404。
+ * 服务端已经核过形状(最多 10 条……)。一个都认不出是空表,不是 404。
  */
 export interface ExtensionLookupResponse {
-	candidates: readonly ExtensionSubscriptionCandidate[];
+	candidates: readonly CreatorCandidateView[];
 }
 
 // ---- /api/ext/:id/settings(ADR-0019 决策 35)------------------------------------
