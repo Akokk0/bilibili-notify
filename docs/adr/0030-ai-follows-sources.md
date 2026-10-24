@@ -29,6 +29,7 @@
 3. **提示词跟着来源叫**：内置人格、卡片工坊、锐评、内置技能与工具说明里的平台叫法改用 `{creatorNoun}`、`{postNoun}`、`{sources}`，调用时由核心按这次涉及的订阅填（叫法规矩同 ADR-0027 决策 6）；主人自己写的不改写，内置预设改版照旧亮「默认文案有更新」；风格性的写法（「B 站弹幕解说员」「B 站梗」）改成中性。
     - 🔗 2026-10-14（3b-35，主人定）：**来源描述的 `creatorNoun` 与 contract 里的叫法函数这一期（3b）造，提示词按本条全做**；面板上的叫法仍第 4 期。
     - 🔗 2026-10-24（3b-35，主人定）：**叫法落成**。`SourceDescriptor.creatorNoun`（B 站「UP主」）；contract `sourceNounsOf(platforms, neutral)` 只管挑，中性词由调用方按读者递 —— 给人看的从服务端字典 `nouns.*` 取，给模型的用 `packages/ai` 的 `PROMPT_NEUTRAL_NOUNS`（叫法规矩第 4 条同改）。服务端按来源键取叫法的是 `subscriptions/platform-label.ts` 的 `sourceNounsFor`（不给键 = 全部启用订阅的来源，一个都没有取在册来源），路由侧共用 `ai/prompt-nouns.ts` 的 `promptNounsOf`；人格、核心工具说明、锐评、两个工坊、内置技能、设置里的内置人格（`BUILTIN_AI_PRESETS`）都按这次涉及的来源填。推送点评与下播总结按那条订阅、榜单锐评按上榜那批、聊天 / 试一句 / 工坊 / 内置技能按全局；风格性写法改中性。内置人格默认文案变了，零代迁移修订号 49 → 50（主人批）。「勤奋 UP」这个称号跟着面板与推送正文，等第 4 期面板叫法。
+    - 🔗 2026-10-24（3b-12，主人定）：**上一条里「内置预设改版照旧亮『默认文案有更新』」作废**。内置人格按语言各一份，内容每次按当前语言从 `@bilibili-notify/internal/builtin-texts` 的 `builtinPresetsFor(locale)` 取，不存进设置；改版与换语言都直接跟上，设置只记 `ai.removedBuiltinPresets`（缺 = 一份没删）与主人自建的 `ai.presets`。主人自己写的提示词与从内置另存的副本不改写、不跟语言。
 
 ## 取代与修订的旧条款
 

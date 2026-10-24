@@ -86,6 +86,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
     - 理由：`defaults` 原先一词三义（回退层、链接卡默认行、出厂文案账本），而且挂着不少根本没有订阅覆盖版本的东西。
     🔗 **2026-09-28**：链接卡改名链接预览，配置摊平成 `linkPreview { enabled, replyForm, byTarget }`，没有 `base` 这一层（ADR-0029 决策 1）。
     🔗 **2026-10-10**（3a-38，主人定范围）：出厂文案账本与 AI 整段已上提到核心设置顶层（`templatesSeen`、`ai`），`defaults` 里不再有这两块，键名一个没改。人格预设 `defaults.ai.presetId` 这一格这一片没造：人格指针与人格库当同一个对象读写，单拆指针要改读者的入参与 AI 页的草稿，所以指针 `activePreset` 暂随整段留在顶层 `ai`，`presetId` 随 AI 子键改名那一片造。
+    🔗 **2026-10-24**（3b-12 落成）：`templatesSeen` 仍住核心设置顶层，但含义重定为「主人第一次改某条文字时的简体出厂指纹」。只有存着的文字才进账本；「默认文案有更新」要这条存着、存着的字不是现在简体出厂、账本有这条、记的指纹也不同时才亮。换语言不亮，删键时同步删账本；词云停用词与图片地址不是文字，不进账本。
 14. **三路审查的机械改名整批采纳**：推送（如订阅顶层 `extras` → `extraTargets`、`retryOf` → `repushOf`、`testStatus` → `probeStatus`）、订阅（如 `reportProblems` 这一族 → `reportRejections`，把「上报被拒」和来源自报的问题分开）、配置（如全局 `roastSchedule` → `rankingReport`、`app` 拆成 `logging` / `history` / `timezone`）。逐条对照以 [docs/1.0/data-model.md](../1.0/data-model.md) 改名对照里订阅、推送、配置三张表为准。
     - ⚠️ 两个机械替换会改错的坑：面板在播列表的 `viewers` 装的是累计观看（还是排好版的字符串），要改成 `totalViewers: number`，**不是** `currentViewers`；B 站接口的数字错误码原先占着 `code`，统一错误体以后挪到 `upstreamCode`。
     🔗 **2026-09-28**：`probeStatus` 装的是对象，按后缀表改叫 `probeState`，三态取值放在里面的 `status`（决策 15）。

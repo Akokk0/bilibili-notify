@@ -572,6 +572,8 @@ interface GlobalDefaults {
 }
 ```
 
+- 🔗 现状（3b-12，10-24，`templatesSeen` 与 `ai`）：`templatesSeen` 只给设置里存着的文字记账，值是在主人第一次改那条时记下的简体出厂指纹；新装是空表，换语言不亮「默认文案有更新」。「默认文案有更新」只在文字仍存着、它与当前简体出厂不同、账本有这条、记录的指纹也与当前简体出厂不同时出现；删掉文字时同步删这一条，词云停用词与图片地址不进账本。`ai` 的内置人格内容不存，设置只留 `ai.removedBuiltinPresets`（缺 = 一份没删）与主人自建的 `ai.presets`；顶层 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 已删。指针落空先取清单第一份、再落空取内置首份，缺少的提示词取内置首份那段；从内置另存的副本不跟语言。备份版本 22 拒绝 21 及以前。
+
 **设置坏了只停那一处，不挡开机**（ADR-0025 决策 4）：
 
 | 段 | 校验不过 | 谁能读 |
@@ -810,7 +812,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |
 | `linkParsing.enabled` / `.defaults.parse` / `.defaults.form` / `.groups`（条目里 `parse` / `form`）、`cooldownSeconds` | `linkPreview` 五格：总开关（旧 `enabled`，默认关）、默认（旧 `defaults.parse`）、`replyForm`（旧 `defaults.form`）、`byTarget`（旧 `groups`，条目里 `parse` → 开关、`form` → 回复形式）、`cooldownSec`。名字落成 `enabled`、`isOnByDefault`、`replyForm`、`byTarget`（条目 `isOn` / `replyForm`）、`cooldownSec`；AI 写正文的默认同改 `isOnByDefault`。一一对应、行为不变、名单不丢 |
 | 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、载荷种类 `"miniapp-card"`、能力格 `miniAppCard`、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；载荷种类 `"native-share"`，类型 `NativeShare…`，能力格 `nativeShare`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧里的载荷种类（`miniapp-card`）与能力名（`miniAppCard`）alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md)；🔗 2026-10-19 能力格已改名：`ConnectionCapabilities.miniAppCard` → `nativeShare`（内部，不动盘），桥帧线上名照旧 |
-| `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen`。已落（3a-38）的只有位置：`defaults.ai` 整段成了顶层 `ai`、`defaults.templateDefaultsSeen` 成了顶层 `templatesSeen`，键名一个没改；`defaults.ai.presetId` 这一格没造（`activePreset` 随整段留在顶层 `ai` 里），随 AI 子键改名那一片 |
+| `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen`。已落（3a-38）的只有位置：`defaults.ai` 整段成了顶层 `ai`、`defaults.templateDefaultsSeen` 成了顶层 `templatesSeen`，键名一个没改；`defaults.ai.presetId` 这一格没造（`activePreset` 随整段留在顶层 `ai` 里），随 AI 子键改名那一片。🔗 现状（3b-12，10-24）：顶层 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 已删；内置人格只按当前语言取，`ai.presets` 只存主人自建的，删过的内置 id 存在 `ai.removedBuiltinPresets`。`templatesSeen` 只给存着的文字记账。零代迁移修订号 52。 |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
 **类型名后缀（ADR-0023 决策 15，按 [naming.md](../agents/conventions/naming.md) 改）。** 上面几张表里已有的不重复列。
