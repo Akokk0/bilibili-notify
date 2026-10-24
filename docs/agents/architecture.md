@@ -99,7 +99,7 @@ src/
     message-bus.ts        NodeMessageBus(mitt 风格,事件表 BusEvents)
     engines.ts            引擎热重载接线;消费 config-changed;建作品入口 `PostQueue` 并接上它的依赖(作品设置现折 `postSettingsOf` / `makePostSettingsReader`,「来源还在跑吗」问来源登记表);对外有 `registerSource`(给内置来源建上下文并登记即启动,关停时先停登记过的来源再关作品入口);把发送钉到订阅上(`boundPostPush` / `boundLivePush`)
     extension-push-common.ts 拓展作品与拓展直播共用的作者 / 名字 / 还该推吗(拓展作品那一路本体已搬进 posts/extension-post.ts)
-    sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拉来的与拓展报的资料共用 profile-cache.ts 落进来,给了哪格改哪格、头像存进图库后这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
+    subscription-state-store.ts  资料缓存 <数据根>/runtime/subscription-state.json;拉来的与拓展报的资料共用 profile-cache.ts 落进来,给了哪格改哪格、头像存进图库后这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
     profile-refresh.ts    ProfileRefresh —— 按 `profileRefreshCron` 经来源 `fetchProfile` 刷新启用中的订阅、记 <数据根>/stats/followers/<订阅 id>.jsonl,emit followers-refreshed;同来源串行、不同来源并行,新建订阅单条刷新,not_found 记 creator_not_found
     profile-cache.ts      拉来的与报来的资料共用的 writer —— 逐格合并、沿用并续期旧头像、250ms 合并发 subscription-profiles-changed
     generation-usage.ts   旧版本数据(代)的列表、两个大小、删除(能不能删在这里判)与开机收残骸;/api/system/generations

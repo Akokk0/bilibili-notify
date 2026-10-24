@@ -51,7 +51,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - devtools 场景挑订阅（`compose.ts` 的 `provideDevtools` 里那段 `subs`，3a-28 从入口搬来）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
-反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
+反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubscriptionState`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
 
 ## 来源登记表与名单（B 站这一支，3a-28 起）
 
@@ -70,23 +70,23 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 ## 资料与头像
 
-**资料缓存**是 `SubRuntimeStore`（`apps/server/src/runtime/sub-runtime-store.ts`，`<数据根>/runtime/sub-runtime.json`，按订阅 id）里的 `cachedProfile { name, avatar?, avatarUrl?, sign, fans?, lastRefreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile），面板看得见的名字 / 头像 / 粉丝变了才经 `runtime/profile-cache.ts` 合并发 `subscription-profiles-changed`。`GET /api/subscriptions` 在 `toDTO` 里把它 join 进 DTO。
+**资料缓存**是 `SubscriptionStateStore`（`apps/server/src/runtime/subscription-state-store.ts`，`<数据根>/runtime/subscription-state.json`，按订阅 id）里的 `cachedProfile: CreatorProfile { name, avatar?, bio?, followers?, fanClubName?, refreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile），面板看得见的名字 / 头像 / 粉丝变了才经 `runtime/profile-cache.ts` 合并发 `subscription-profiles-changed`。`GET /api/subscriptions` 在 `toDTO` 里把它 join 进 DTO。
 
 | | B 站 | 拓展 |
 |---|---|---|
-| 新建时 | 路由调 `ProfileRefresh.refreshSubscription` 立刻经来源 `fetchProfile` 刷这一条，失败不回滚新建 | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成草稿的 `cachedProfile { name, avatarUrl?, fans? }` 随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 种资料、头像存进图库 |
+| 新建时 | 路由调 `ProfileRefresh.refreshSubscription` 立刻经来源 `fetchProfile` 刷这一条，失败不回滚新建 | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成 `SubscriptionCreateRequest` 的 `cachedProfile { name, avatarUrl?, followers? }`，随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 种资料、头像存进图库 |
 | 之后 | `ProfileRefresh` 按 `profileRefreshCron` 经 B 站来源的 `fetchProfile` 刷新启用中的订阅；B 站每轮取整张用户卡（名字、头像、签名、粉丝数），粉丝牌名从来源自己的 `ctx.state` 带入 | 拓展仍未并进来源登记表，继续认「报资料更新」（`reportProfile`）；它的资料缓存与时序进同一份 `followers-refreshed` 快照。事件里带的作者只上卡、不改资料（决策 54） |
-| 头像存的是 | `avatar`：抓进图库的引用；头像来源地址与引用记在 B 站自己的 `ctx.state` 的 `profile:<uid>`（`bilibili/profile.ts` 的 `syncProfileAvatar`：480 宽、第一帧、webp 的缩放版，缩放版抓不到不回退原图）。只给订阅名单里的人抓头像、写状态；地址与引用没变就不重抓。核心缓存里的旧 `avatarUrl` 暂沿用到 3b-62 | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**两格都缺**，不写空串。**卡片也读它**：动态与直播出卡时按订阅 id 读 `cachedProfile.avatar`（缺键就是没有），动态外层作者、开播 / 直播中 / 下播、会员、醒目留言卡的主播头像都读这一格，出卡时零网络 |
-| `fans` | 资料刷新来的粉丝数 | 可缺 —— 缺了写 0 就是在面板上印一句「0 粉丝」的假话 |
+| 头像存的是 | `avatar`：抓进图库的引用；头像来源地址与引用记在 B 站自己的 `ctx.state` 的 `profile:<uid>`（`bilibili/profile.ts` 的 `syncProfileAvatar`：480 宽、第一帧、webp 的缩放版，缩放版抓不到不回退原图）。只给订阅名单里的人抓头像、写状态；地址与引用没变就不重抓。核心资料缓存不存 `avatarUrl` | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**缺着 `avatar`**，不写空串。**卡片也读它**：动态与直播出卡时按订阅 id 读 `cachedProfile.avatar`（缺键就是没有），动态外层作者、开播 / 直播中 / 下播、会员、醒目留言卡的主播头像都读这一格，出卡时零网络 |
+| `followers` | 资料刷新来的粉丝数 | 可缺 —— 缺了写 0 就是在面板上印一句「0 粉丝」的假话 |
 
-**资料的落盘**：拉来的资料与 `subscription-reported`（`kind === "profile"`）报来的资料共用 `runtime/profile-cache.ts`：给了哪格改哪格，头像没给就沿用并 `keep` 续期，`lastRefreshedAt` 每次更新。拓展报资料由 `runtime/reported-profiles.ts` 接；停用的订阅照样更新，订阅刚删时报上来的不再种，写入排一条队。面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
+**资料的落盘**：拉来的资料与 `subscription-reported`（`kind === "profile"`）报来的资料共用 `runtime/profile-cache.ts`：给了哪格改哪格（简介 `bio` 给的是空串就缺这一格），头像没给就沿用并 `keep` 续期，`refreshedAt` 每次更新。拓展报资料由 `runtime/reported-profiles.ts` 接；停用的订阅照样更新，订阅刚删时报上来的不再种，写入排一条队。面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
 
-**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，否则 `avatarUrl`，都没有退首字）。
+**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，没有退首字）。
 
 - 两条来路都走 `runtime.profileImages`（图库的存图口，资料缓存登记成引用方后才拿得到，装配在 `runtime/bootstrap.ts`）：新建订阅时的 `seedExtensionProfile`（面板交的 data URL 先在路由层过 `decodeSubscriptionAvatar`，128 KiB 的字、只收 png / jpeg / webp、魔数得对得上声明），与「报资料更新」（`reported-profiles.ts`，字节过 `checkSubscriptionAvatarBytes`，约 96 KiB 封顶）。两道关都在 `runtime/subscription-avatar.ts`，**不收 gif、不收 SVG**；图库自己再按嗅探认格式。
-- 图按内容起名：同一张图再报一次引用不变（面板地址不变，浏览器缓存照样命中）。没给头像时沿用旧的引用 —— 沿用也是「抄引用」，先 `keep` 续期；图已经不在了就两格都缺，不留悬空的引用。
-- **没有「删订阅顺手删头像文件」这一步**：订阅被删，资料缓存里没了这一条（`ProfileRefresh` 听 `subscription-changed`、开机 `pruneOrphanSubRuntime`），头像不再被引用，由图库清扫（每 6 小时加开机，过了 24 小时宽限期）收走；另一条订阅还引用着同一张图时不收。资料缓存仓的 `listImageRefs()` 交名单，没载入就被问会先载入再答。
-- 出卡时 `/api/images/<ref>` 截图加载不到：拓展作品卡与拓展直播卡的头像是图库引用，出图器经注入的 `resolveImageRef` 读字节转 data URL（作品：`postFromReport`；直播：`live/live-card-input.ts` 的 `liveCardInputFromDetails`，事件带了作者头像字节就存进图库用它，没带用资料里的引用，哪儿都没有就没有头像、头像块收起，决策 54 / 68，ADR-0021 决策 22 下 10-05 的 🔗）；锐评卡（`stats/roast-deliver.ts`，B 站与拓展同一条路；资料里还没有 `avatar` 就没有头像、画首字母圆牌，不再把 `avatarUrl` 交给出图器）图只认字符串地址，用 `runtime/extension-push-common.ts` 的 `readProfileAvatar` 读字节、`imageDataUrl` 转 data URL。拓展作品与直播卡上作者名和模板 `{name}` 走 contract 的 `displayNameOf`：事件里的作者名 → 资料名 → 身份标签（别名 `name` 已退役）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
+- 图按内容起名：同一张图再报一次引用不变（面板地址不变，浏览器缓存照样命中）。没给头像时沿用旧的引用 —— 沿用也是「抄引用」，先 `keep` 续期；图已经不在了就缺着 `avatar`，不留悬空的引用。
+- **没有「删订阅顺手删头像文件」这一步**：订阅被删，资料缓存里没了这一条（`ProfileRefresh` 听 `subscription-changed`、开机 `pruneOrphanSubscriptionState`），头像不再被引用，由图库清扫（每 6 小时加开机，过了 24 小时宽限期）收走；另一条订阅还引用着同一张图时不收。资料缓存仓的 `listImageRefs()` 交名单，没载入就被问会先载入再答。
+- 出卡时 `/api/images/<ref>` 截图加载不到：拓展作品卡与拓展直播卡的头像是图库引用，出图器经注入的 `resolveImageRef` 读字节转 data URL（作品：`postFromReport`；直播：`live/live-card-input.ts` 的 `liveCardInputFromDetails`，事件带了作者头像字节就存进图库用它，没带用资料里的引用，哪儿都没有就没有头像、头像块收起，决策 54 / 68，ADR-0021 决策 22 下 10-05 的 🔗）；锐评卡（`stats/roast-deliver.ts`，B 站与拓展同一条路；资料里还没有 `avatar` 就没有头像、画首字母圆牌）图只认字符串地址，用 `runtime/extension-push-common.ts` 的 `readProfileAvatar` 读字节、`imageDataUrl` 转 data URL。拓展作品与直播卡上作者名和模板 `{name}` 走 contract 的 `displayNameOf`：事件里的作者名 → 资料名 → 身份标签（别名 `name` 已退役）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
 - 历史行的头像快照 ⑳d 起叫 `avatarSnapshot`、只装图库引用：拓展行写行时抄资料缓存里的 `avatar`（历史仓先续期，续不上不写这一格）；B 站行同样抄资料里的 `avatar`（B 站头像进图库后；资料里还没有 `avatar` 的行缺着，面板退到订阅现在的头像〔`profileAvatarUrl`〕）；过了保留期的行面板也不用快照。
 
 **显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
@@ -165,7 +165,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 | 往契约里加东西（事件表一格、ctx 一个方法、一种积木、清单一格） | 改 `packages/internal` 的 zod + `packages/extension` 的手写镜像（shape-pin 会逼你两边一起改）；BN 发过版就抬 `EXTENSION_API_RANGE.revision`；更新契约形状守卫的摘要。漏了抬小号，老 BN 会照装新拓展、再把它报的东西整条拒掉 |
 | 加一处要遍历所有订阅的地方 | **所有来源都处理**；只该认 B 站的就按 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY` 过滤并写一句为什么；绝不拿外部 id 去问 B 站 |
 | 按身份找订阅 | 按 `identity` 两格比（`sameIdentity`），或两层 map、不拼串；「先认订阅 id、再认人、绝不跨来源」（`target-scope.ts` / `subscription-lookup.ts`） |
-| 给订阅挂新的运行期数据 | 按订阅 id 存；高频写的别进配置（`config-changed "subscriptions"` 会整条重建），照 `SubRuntimeStore` 另存；删订阅时的清理听 `subscription-changed` 的 remove |
+| 给订阅挂新的运行期数据 | 按订阅 id 存；高频写的别进配置（`config-changed "subscriptions"` 会整条重建），照 `SubscriptionStateStore` 另存；删订阅时的清理听 `subscription-changed` 的 remove |
 | 改订阅的 schema | 新格要选填或带默认值；改了盘上的形状就抬迁移修订号（开发期）或在迁移器里加一步（发版后）—— 回退读的是旧的数据代，不再要求新旧载荷读同一个文件（ADR-0022） |
 | 改拓展作品怎么推 | 入口在共用的 `PostQueue`（`posts/post-queue.ts`）、步骤在共用的 `deliverPost`、设置在共用的 `postSettingsOf`（都见 [push.md](./push.md)）；拓展这头只有绑定 `posts/extension-post.ts`、翻译 `posts/post-from-report.ts`、公共件 `runtime/extension-push-common.ts` —— 公共件拓展直播也要用，别写成作品专属 |
 | 给来源接口加一个成员，或让核心多给来源一种待遇 | 进程内对拍（守卫 21b，`apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`）会拦：成员表是 `as const satisfies Record<keyof 接口, …>`，加成员类型检查就红，必须来补一行指向管着它的对拍行。**加一行对拍**：在夹具 `apps/server/src/__tests__/support/in-process-source.ts` 的假来源上补这条能力（它只实现中立的 `Source`、键 `acme.inprocess`，夹具不许 import `bilibili/`）→ 在测试文件的 `PARITY_ROWS` 里加 `{ id, title, checked: true }`（id 接着 P20 往后排）→ 写一条按内容断言的用例，结尾调 `drove("Pxx")` → 把成员表里相关成员指向它 → 「清单自己」一组里写死的条数与 id 序列（总 38、对拍 20、不开 18）跟着改 → **验红**：真把核心里这条能力对应的那一处改坏跑一次，用例必须红，用例前写一句改坏的是哪处。**这能力今天拍不了**：在 `PARITY_ROWS` 里加一行 `checked: false`，写清 `waitsFor`（等哪一期）与 `reason`，条数自检跟着改。**把名单里的一行转成对拍**（标 3b 的行 3b 出期时要做）：该行改成 `checked: true`、去掉 `waitsFor` 与 `reason`、补用例。 |
