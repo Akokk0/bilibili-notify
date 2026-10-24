@@ -31,6 +31,11 @@ describe("PROBLEM_TEXTS · 句子", () => {
 		expect(PROBLEM_TEXTS.followFailed.notify).toBe(false);
 	});
 
+	it("没开通直播间:只说直播推送收不到;只进表", () => {
+		expect(PROBLEM_TEXTS.liveRoomNotFound.text()).toBe("该 UP 还没开通直播间，直播推送收不到");
+		expect(PROBLEM_TEXTS.liveRoomNotFound.notify).toBe(false);
+	});
+
 	it("直播间停止监听:点明不会自动重连;恢复句", () => {
 		expect(PROBLEM_TEXTS.liveMonitorStopped.text("100", "取直播间信息失败")).toBe(
 			"直播间 100 停止监听：取直播间信息失败；不会自动重连",

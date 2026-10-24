@@ -34,6 +34,11 @@ export const PROBLEM_TEXTS = {
 		notify: false,
 		text: (reason: string) => t("bilibili.problem.followFailed", { reason }),
 	},
+	/** 没开通直播间:只进表,等它开通或离开直播监听范围。 */
+	liveRoomNotFound: {
+		notify: false,
+		text: () => t("bilibili.problem.liveRoomNotFound"),
+	},
 	/** 直播间停止监听(取信息失败、弹幕连不上、重连用尽):私聊 + 进表。`reason` 是停下的原因。 */
 	liveMonitorStopped: {
 		notify: true,

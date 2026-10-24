@@ -1,6 +1,6 @@
 import type { Disposable, SourceSubscriptionView } from "@bilibili-notify/internal";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
-import { liveRiskPath, type RoomContext } from "./room-context.js";
+import { LIVE_ROOM_NOT_FOUND_CODE, liveRiskPath, type RoomContext } from "./room-context.js";
 import { liveLongTailBackoffMs, RoomSession } from "./room-session.js";
 
 interface ActiveRoom {
@@ -19,6 +19,7 @@ export class ListenerManager {
 	private readonly active = new Map<string, ActiveRoom>();
 	private readonly retries = new Map<string, RoomIdRetry>();
 	private readonly starting = new Set<string>();
+	private readonly notFoundRooms = new Set<string>();
 	private wanted = new Set<string>();
 	private syncTail = Promise.resolve();
 	private disposed = false;
@@ -46,7 +47,11 @@ export class ListenerManager {
 		this.ctx.logger.debug(
 			`[start] 启动直播监听，共 ${wanted.size} 个 UID：${[...wanted].join(", ")}`,
 		);
-		for (const externalId of new Set([...this.active.keys(), ...this.retries.keys()])) {
+		for (const externalId of new Set([
+			...this.active.keys(),
+			...this.retries.keys(),
+			...this.notFoundRooms,
+		])) {
 			if (!wanted.has(externalId)) this.stop(externalId);
 		}
 		await Promise.all(
@@ -78,7 +83,7 @@ export class ListenerManager {
 		const result = await this.ctx.roomIds.resolve(externalId);
 		if (this.disposed || !this.wanted.has(externalId) || this.active.has(externalId)) return;
 		if (!result.ok) {
-			this.logResolutionFailure(externalId, result);
+			this.handleResolutionFailure(externalId, result);
 			if (
 				result.code === "rate_limited" ||
 				result.code === "unavailable" ||
@@ -94,6 +99,12 @@ export class ListenerManager {
 			}
 			return;
 		}
+		if (this.notFoundRooms.delete(externalId)) {
+			this.ctx.problems.resolveFailure({
+				externalId,
+				code: LIVE_ROOM_NOT_FOUND_CODE,
+			});
+		}
 		if (retry) {
 			this.retries.delete(externalId);
 			if (retry.riskReported) this.ctx.problems.resolveRisk(liveRiskPath(externalId));
@@ -108,11 +119,19 @@ export class ListenerManager {
 			);
 	}
 
-	private logResolutionFailure(
+	private handleResolutionFailure(
 		externalId: string,
 		failure: { code: string; message: string },
 	): void {
 		if (failure.code === "not_found") {
+			this.notFoundRooms.add(externalId);
+			this.ctx.problems.reportFailure({
+				externalId,
+				code: LIVE_ROOM_NOT_FOUND_CODE,
+				message: () => PROBLEM_TEXTS.liveRoomNotFound.text(),
+				notify: PROBLEM_TEXTS.liveRoomNotFound.notify,
+				lasting: true,
+			});
 			this.ctx.logger.warn(
 				`[start] UID=${externalId} 未开通直播间或 live_room 解析失败，跳过 listener 创建`,
 			);
@@ -155,6 +174,12 @@ export class ListenerManager {
 
 	stop(externalId: string): void {
 		this.wanted.delete(externalId);
+		if (this.notFoundRooms.delete(externalId)) {
+			this.ctx.problems.resolveFailure(
+				{ externalId, code: LIVE_ROOM_NOT_FOUND_CODE },
+				{ notify: false },
+			);
+		}
 		const retry = this.retries.get(externalId);
 		if (retry) {
 			retry.timer?.dispose();
@@ -181,13 +206,21 @@ export class ListenerManager {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
-		for (const externalId of new Set([...this.active.keys(), ...this.retries.keys()])) {
+		for (const externalId of new Set([
+			...this.active.keys(),
+			...this.retries.keys(),
+			...this.notFoundRooms,
+		])) {
 			this.stop(externalId);
 		}
 	}
 
 	teardown(): void {
-		for (const externalId of new Set([...this.active.keys(), ...this.retries.keys()])) {
+		for (const externalId of new Set([
+			...this.active.keys(),
+			...this.retries.keys(),
+			...this.notFoundRooms,
+		])) {
 			this.stop(externalId);
 		}
 	}

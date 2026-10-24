@@ -25,6 +25,7 @@ export type LiveProblems = Pick<
 
 export const MONITOR_STOPPED_CODE = "live_monitor_stopped";
 export const ROOM_RESTRICTED_CODE = "live_room_restricted";
+export const LIVE_ROOM_NOT_FOUND_CODE = "live_room_not_found";
 
 export const liveRiskPath = (externalId: string): string => `live:${externalId}`;
 

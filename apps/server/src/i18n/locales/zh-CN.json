@@ -4,6 +4,7 @@
 	"bilibili.problem.dynamicFetchFailed": "拉取动态失败（错误码 {code}），每 5 分钟会自动重试一次",
 	"bilibili.problem.dynamicSettingsInvalid": "{cause}，动态先停着没在拉；登录、登录检查和直播照常",
 	"bilibili.problem.followFailed": "未关注该 UP —— 收不到动态（{reason}）",
+	"bilibili.problem.liveRoomNotFound": "该 UP 还没开通直播间，直播推送收不到",
 	"bilibili.problem.liveMonitorRecovered": "直播间 {roomId} 的监听已恢复",
 	"bilibili.problem.liveMonitorStopped": "直播间 {roomId} 停止监听：{reason}；不会自动重连",
 	"bilibili.problem.liveRoomRecovered": "直播间 {roomId} 的弹幕已连上",

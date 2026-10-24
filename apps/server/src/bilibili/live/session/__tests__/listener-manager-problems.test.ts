@@ -75,6 +75,93 @@ describe("ListenerManager 的问题清理", () => {
 	});
 });
 
+describe("ListenerManager 未开通直播间的问题", () => {
+	it("开着直播推送但房号解析为 not_found 时,报在这位 UP 名下且只进表", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
+
+		await h.sync(["u1"]);
+
+		expect(h.problems.reportFailure).toHaveBeenCalledWith(
+			expect.objectContaining({
+				externalId: "u1",
+				code: "live_room_not_found",
+				notify: false,
+				lasting: true,
+			}),
+		);
+		const failure = h.problems.reportFailure.mock.calls[0]?.[0] as { message: () => string };
+		expect(failure.message()).toBe("该 UP 还没开通直播间，直播推送收不到");
+		h.manager.dispose();
+	});
+
+	it("关掉直播推送(人还在名单里、monitorsLive 翻成 false)时静默清掉", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
+		await h.sync(["u1"]);
+		h.problems.resolveFailure.mockClear();
+
+		await h.manager.sync([{ externalId: "u1", features: new Set(["post"]), monitorsLive: false }]);
+		await h.settle();
+
+		expect(h.problems.resolveFailure).toHaveBeenCalledWith(
+			{ externalId: "u1", code: "live_room_not_found" },
+			{ notify: false },
+		);
+		h.manager.dispose();
+	});
+
+	// 停用与删掉在这一层是同一个输入:sourceSubscriptionViews 只收 enabled 的订阅
+	// (subscriptions/source-subscriptions.ts 的 `!sub.enabled` 跳过),停用的和删掉的都从视图里消失。
+	it("订阅停用或删掉、人从视图里消失时静默清掉", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
+		await h.sync(["u1"]);
+		h.problems.resolveFailure.mockClear();
+
+		await h.manager.sync([]);
+		await h.settle();
+
+		expect(h.problems.resolveFailure).toHaveBeenCalledWith(
+			{ externalId: "u1", code: "live_room_not_found" },
+			{ notify: false },
+		);
+		h.manager.dispose();
+	});
+
+	it("之后房号解析成功时清掉", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi
+			.fn()
+			.mockResolvedValueOnce(fail("not_found", "没开通直播间"))
+			.mockResolvedValueOnce(ok({ data: { live_room: { roomid: 100 } } }));
+		await h.sync(["u1"]);
+		h.problems.resolveFailure.mockClear();
+
+		await h.sync(["u1"]);
+
+		expect(h.problems.resolveFailure).toHaveBeenCalledWith({
+			externalId: "u1",
+			code: "live_room_not_found",
+		});
+		h.manager.dispose();
+	});
+
+	it("没开直播推送、不在监听名单里时不报", async () => {
+		const h = makeListenerManagerHarness();
+		h.ctx.api.fetchUserInfo = vi.fn(async () => fail("not_found", "没开通直播间"));
+
+		await h.manager.sync([
+			{ externalId: "u1", features: new Set(["liveStart"]), monitorsLive: false },
+		]);
+		await h.settle();
+
+		expect(h.ctx.api.fetchUserInfo).not.toHaveBeenCalled();
+		expect(h.problems.reportFailure).not.toHaveBeenCalled();
+		h.manager.dispose();
+	});
+});
+
 describe("ListenerManager 房号解析长尾重试", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
