@@ -164,8 +164,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P45)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N02、N03、N04、N06、N07、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P46)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N02、N03、N04、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -302,6 +302,11 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P46",
+		title: "文字模板跟随默认：没改过的不落盘、读时取出厂；改过的照存；删键回到默认；换语言不写盘",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -315,13 +320,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "第 4 期",
 		reason: "接口上没有 fetchPreview;卡片真实预览仍读 B 站接口",
-	},
-	{
-		id: "N08",
-		title: "默认文案有更新",
-		checked: false,
-		waitsFor: "3b-12",
-		reason: "没改过的文案跟随当前语言的默认,归 3b-12",
 	},
 	{
 		id: "N09",
@@ -344,6 +342,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		waitsFor: "第 4 期健康卡(等第一个读者)",
 		reason: "没造,「在册就算在跑」",
 	},
+	// N08(默认文案)在 3b-12 落成了,转进对拍的 P46(「默认文案有更新」是面板算的、与来源无关,由面板测试钉,不在对拍里);
 	// N16(统计「在记」)在 3b-26 落成了,转进对拍的 P45;
 	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
 	// N02(fetchProfile)与 N13(followers-refreshed)在 3b-24 落成了,转进对拍的 P39、P40;
@@ -1006,6 +1005,60 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(hit?.text).toContain("小爱发布了一条作品");
 		expect(hit?.text).toContain("https://acme.invalid/post/p04");
 		drove("P04");
+	});
+
+	/** 盘上的核心设置(`core.json`,写盘是后台的,调用方自己 `waitFor`)。 */
+	async function storedCore(): Promise<{
+		locale?: unknown;
+		defaults?: { templates?: Record<string, unknown> };
+	}> {
+		return JSON.parse(await readFile(join(generation, "config", "settings", "core.json"), "utf8"));
+	}
+
+	/** 盘上核心设置里 `defaults.templates` 的文字格。 */
+	async function storedTemplates(): Promise<Record<string, unknown>> {
+		return (await storedCore()).defaults?.templates ?? {};
+	}
+
+	// 验红:`resolveTemplates`(packages/internal)里不回落出厂,①③④ 三段红(推出去的不是出厂那句);
+	// 设置写入那条路上换语言时把出厂文字写回盘,④ 的「盘上没有 post」红。
+	it("P46 文字模板跟随默认:没改过的不落盘、读时取出厂;改过的照存;删键回到默认;换语言不写盘", async () => {
+		const pushedText = async (tag: string) => {
+			await clearCaptures();
+			currentProbe().ctx?.reportPost(EXT.alice, textReport(tag, "小爱", "今天天气不错"));
+			const [hit] = await settledCaptures(1);
+			return hit?.text ?? "";
+		};
+		const factoryText = "小爱发布了一条作品"; // P04 钉过的出厂那句
+		try {
+			// ① 新装的盘上没有 post,推出去是出厂那句。
+			expect(await storedTemplates()).not.toHaveProperty("post");
+			expect(await pushedText("p46a")).toContain(factoryText);
+
+			// ② 改过的照存,假来源没声明叫法 → `{postNoun}` 填「作品」。
+			await patchSettings({ defaults: { templates: { post: "自定义 {name} 的{postNoun}" } } });
+			await vi.waitFor(async () =>
+				expect(await storedTemplates()).toHaveProperty("post", "自定义 {name} 的{postNoun}"),
+			);
+			const custom = await pushedText("p46b");
+			expect(custom).toContain("自定义 小爱 的作品");
+			expect(custom).not.toContain(factoryText);
+
+			// ③ 发 null 删键:盘上没了,回到出厂那句。
+			await patchSettings({ defaults: { templates: { post: null } } });
+			await vi.waitFor(async () => expect(await storedTemplates()).not.toHaveProperty("post"));
+			expect(await pushedText("p46c")).toContain(factoryText);
+
+			// ④ 换语言不写盘:英文今天没有出厂文字、拿简体打底,盘上仍没有 post,推出去仍是出厂那句。
+			await patchSettings({ locale: "en" });
+			// 等语言落了盘再看:语言与模板在同一份文件里一次写完,换语言时若顺手写了 post,此刻它也在。
+			await vi.waitFor(async () => expect((await storedCore()).locale).toBe("en"));
+			expect(await storedTemplates()).not.toHaveProperty("post");
+			expect(await pushedText("p46d")).toContain(factoryText);
+		} finally {
+			await patchSettings({ locale: null, defaults: { templates: { post: null } } });
+		}
+		drove("P46");
 	});
 
 	/** 某条订阅的统计作品行(`stats/posts/<订阅 id>.jsonl`,落盘是后台写的,调用方自己 `waitFor`)。 */
@@ -3369,20 +3422,20 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 45 行、不开 6 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 46 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(51);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 45 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 46 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
-		// N08 只留下「默认文案有更新」这一半,等 3b-12;N06 的「六把中立工具」那一半→P41,
+		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
 		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![2, 3, 4, 6, 7, 10, 11, 12, 13, 16].includes(n))
+				.filter((n) => ![2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {
