@@ -122,8 +122,9 @@ export function parseCell(
  * 盘上读进来的核心设置 → 规范形态的 `settings`,加上被隔离的格。顶层不是普通对象是信封坏(全部格一起退默认
  * 比挡开机更隐蔽:目标清空、AI 关掉、拓展全关),照整份校验不过的老办法抛。
  *
- * 退默认取 `makeDefaultGlobalConfig()` 同一路径上的值而不是 schema 的 `.default`:两边只有 `templatesSeen`
- * 不一致(schema 默认空表,出厂值是填满的账本),取出厂值才不会在退默认后凭空冒出一排「默认文案有更新」。
+ * 退默认取 `makeDefaultGlobalConfig()` 同一路径上的值而不是 schema 的 `.default`:出厂值才是"新装的样子"。
+ * 账本 `templatesSeen` 曾是两边唯一不一致的一格(出厂值填满账本);现在新装账本也是空的(只在主人改某条时才记),
+ * 两边已经一致,这条理由不再靠它撑着,取出厂值的写法留着是为了日后哪一格再分叉时不必回头改这里。
  */
 export function parseCoreSettings(raw: unknown): {
 	settings: GlobalConfig;

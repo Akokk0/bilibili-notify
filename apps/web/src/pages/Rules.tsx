@@ -2,8 +2,10 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
+	factoryTemplateAt,
 	pendingTemplateUpdates,
-	templateDefaultAt,
+	storedTemplateAt,
+	syncTemplatesSeen,
 	templateFingerprint,
 } from "@bilibili-notify/internal/template-defaults";
 import {
@@ -45,8 +47,10 @@ import {
 	visibleFeaturesOf,
 } from "./up/subscription-source";
 
-// 账本(「默认文案有更新」)按简体原文算,不随语言变;输入框显示的「没存时的默认」才跟当前语言(见 `Rules` 里的 `factory`)。
+// 账本(「默认文案有更新」)按简体原文算,不随语言变:换语言不亮,以后补上别的语言的译文也不亮。
+// 输入框显示的「没存时的默认」才跟当前语言(见 `Rules` 里的 `factory`)。
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+const NO_SEEN: GlobalConfig["templatesSeen"] = Object.freeze({});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -319,8 +323,24 @@ export default function Rules() {
 
 	// useCallback 不是为了省渲染:下面 `fieldUpdates` 那个 useMemo 要把它列进依赖,
 	// 每渲染新建一个函数会让 memo 每次都重算,等于白 memo。
+	//
+	// 账本(`templatesSeen`)在编辑这一层跟着「存没存」走:一条文字从没存变成存了,记下此刻简体出厂原文的指纹;
+	// 变回没存(恢复默认、用新默认、编辑到与默认一字不差)就拿掉。账本因此始终是草稿的纯函数,
+	// 改了又改回、丢弃草稿都不会留脏条目 —— 放在保存那一层就得再拿基线比一遍,保存条的 diff 也看不见这笔。
 	const patchDraft = useCallback((delta: GlobalConfigPatch): void => {
-		setDraft((d) => (d ? deepMerge(d, delta) : d));
+		setDraft((d) => {
+			if (!d) return d;
+			const next = deepMerge(d, delta);
+			// 基线里没有账本这一格(老形态)时别凭空补一个 `{}`,否则草稿与基线对不上、保存条白亮。
+			const before = next.templatesSeen ?? NO_SEEN;
+			const seen = syncTemplatesSeen(
+				d.defaults.templates,
+				next.defaults.templates,
+				before,
+				FACTORY_TEMPLATES,
+			);
+			return seen === before ? next : { ...next, templatesSeen: seen };
+		});
 	}, []);
 
 	// 文字模板设置里只存主人改过的:没存的格显示「当前语言的默认」(ADR-0037 决策 10)。
@@ -329,8 +349,8 @@ export default function Rules() {
 
 	// ── 「默认文案有更新」 ───────────────────────────────────────────────────
 	//
-	// 主人改了某条模板的默认,已装好的用户拿不到 —— 盘上写的是当初那一版。这里算出
-	// 哪几条该亮提示,经 context 广播下去:`Field` 拿自己的 code 去认领,于是十几个
+	// 只对主人改过(存着)的那几条有意义:账本记的是他改那一刻的简体出厂指纹,简体出厂文案后来变了才亮。
+	// 这里算出哪几条该亮,经 context 广播下去:`Field` 拿自己的 code 去认领,于是十几个
 	// 模板字段的调用点**一个都不用改**(详见 packages/ui 的 field-updates.tsx)。
 	const fieldUpdates = useMemo(() => {
 		const templates = draft?.defaults.templates;
@@ -338,52 +358,41 @@ export default function Rules() {
 		const pending = new Set(
 			templates ? pendingTemplateUpdates(templates, FACTORY_TEMPLATES, seen) : [],
 		);
+		const pathOf = (code: string): string | null =>
+			code.startsWith("templates.") ? code.slice("templates.".length) : null;
+		// 「用新默认」「恢复默认」是同一件事:删键(没存 = 跟随当前语言的默认,下发 `null`),账本那一条也删。
+		const dropStored = (path: string): void =>
+			patchDraft({
+				defaults: {
+					templates: nestByPath(path, null) as NonNullable<
+						GlobalConfigPatch["defaults"]
+					>["templates"],
+				},
+				templatesSeen: { [path]: null },
+			});
 		return {
 			lookup(code: string): FieldUpdate | null {
-				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
+				const path = pathOf(code);
 				if (!path || !pending.has(path)) return null;
-				const next = templateDefaultAt(FACTORY_TEMPLATES, path);
-				if (next === undefined) return null;
-				// 两个动作都记账 ——「保持我的」尤其要紧:不记的话主人每次打开这页
-				// 都被问一遍同一件事,提示很快就被当成噪音。
-				const remember = { [path]: templateFingerprint(next) };
+				// 预览摆当前语言的默认:点「用新默认」后他看到的就是它(没存 = 跟随当前语言)。
+				const preview = factoryTemplateAt(factory, path);
+				const latest = factoryTemplateAt(FACTORY_TEMPLATES, path);
+				if (preview === undefined || latest === undefined) return null;
 				return {
-					preview: next,
-					accept: () =>
-						patchDraft({
-							defaults: {
-								templates: nestByPath(path, next) as NonNullable<
-									GlobalConfigPatch["defaults"]
-								>["templates"],
-							},
-							templatesSeen: remember,
-						}),
-					keep: () => patchDraft({ templatesSeen: remember }),
+					preview,
+					accept: () => dropStored(path),
+					// 「保持我的」尤其要紧:账本记新的简体指纹,不记的话主人每次打开这页都被问一遍同一件事。
+					keep: () => patchDraft({ templatesSeen: { [path]: templateFingerprint(latest) } }),
 				};
 			},
 			// 「恢复默认」跟上面那个提示是两件事:它常驻,管的是「我改坏了想还原」,
-			// 只要主人存了一句、又不是当前语言的默认就一直在。还原 = 删键(没存 = 跟随默认,下发 `null`),
-			// 顺手也把这一版记进账本 —— 值都跟默认一样了,再问一句「要不要更新」纯属多余。
+			// 只要主人存了一句、又不是当前语言的默认就一直在。
 			resetter(code: string): (() => void) | null {
-				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
+				const path = pathOf(code);
 				if (!path || !templates) return null;
-				const def = templateDefaultAt(FACTORY_TEMPLATES, path);
-				const stored = templateDefaultAt(templates, path);
-				if (
-					def === undefined ||
-					stored === undefined ||
-					stored === templateDefaultAt(factory, path)
-				)
-					return null;
-				return () =>
-					patchDraft({
-						defaults: {
-							templates: nestByPath(path, null) as NonNullable<
-								GlobalConfigPatch["defaults"]
-							>["templates"],
-						},
-						templatesSeen: { [path]: templateFingerprint(def) },
-					});
+				const stored = storedTemplateAt(templates, path);
+				if (stored === undefined || stored === factoryTemplateAt(factory, path)) return null;
+				return () => dropStored(path);
 			},
 		};
 	}, [draft, factory, patchDraft]);

@@ -321,7 +321,7 @@ export function PerUpEditor({
 					value={draft.overrides.templates}
 					onChange={(v) => setSlice("templates", v)}
 					baseline={baselineTemplates}
-					factoryGuardText={factory.membership.guard.default.template}
+					factoryGuardText={factory.membership}
 				/>
 			) : null}
 			{section === "specialDanmaku" ? (

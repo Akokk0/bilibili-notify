@@ -957,10 +957,7 @@ export function guardBundleOf(
 	templates: Pick<TemplateBundle, "membership">,
 	factory: BuiltinTemplates,
 ): EffectiveMembershipTemplate {
-	return withMembershipDefaults(
-		templates.membership[GUARD_PROGRAM_ID],
-		factory.membership.guard.default.template,
-	);
+	return withMembershipDefaults(templates.membership[GUARD_PROGRAM_ID], factory.membership);
 }
 
 /**
@@ -1092,10 +1089,7 @@ export function GuardSection({
 						onDefault={(field, v) =>
 							patchGuard({
 								default: {
-									[field]:
-										field === "template"
-											? templateValueToStore(v, factory.membership.guard.default.template)
-											: v,
+									[field]: field === "template" ? templateValueToStore(v, factory.membership) : v,
 								},
 							})
 						}

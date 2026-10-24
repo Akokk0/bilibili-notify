@@ -95,10 +95,13 @@ describe("templatesSeen 的保存往返", () => {
 		});
 	});
 
-	it("首次启动落盘的 globals.json 里账本是满的,不是空对象", async () => {
-		// 全新安装不该看见任何「有更新」。账本空着的话,主人一改文案就被提示。
-		const seen = store.getGlobals().templatesSeen;
-		expect(Object.keys(seen).length).toBeGreaterThan(0);
-		expect(seen.liveStart).toBeTruthy();
+	it("首次启动的账本是空的:新装一条文字都没存,没有「改的那一刻」可记", async () => {
+		expect(store.getGlobals().templatesSeen).toEqual({});
+	});
+
+	it("账本那一条置 null 就是删掉(「用新默认」「恢复默认」下发的就是它),别的条目还在", async () => {
+		await store.patchGlobals({ templatesSeen: { liveStart: "aaa", liveEnd: "bbb" } });
+		await store.patchGlobals({ templatesSeen: { liveStart: null } } as never);
+		expect(store.getGlobals().templatesSeen).toEqual({ liveEnd: "bbb" });
 	});
 });

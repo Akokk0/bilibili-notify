@@ -64,7 +64,7 @@ describe("提示条的变量代码与表一致", () => {
 	it("直播消息的开播格也列全了表里的变量", () => {
 		const { container } = render(
 			<LiveMsgSection
-				templates={{ ...FACTORY_TEMPLATES }}
+				templates={{ ...FACTORY_TEMPLATES, wordcloudStopWords: "", membership: {} }}
 				factory={FACTORY_TEMPLATES}
 				layout={defaultMessageKindLayout("live")}
 				onPatch={() => {}}

@@ -174,7 +174,7 @@ describe("templates.membership —— 会员文案", () => {
 			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
 			tiers: {},
 		});
-		expect(templateDefaultsFor(DEFAULT_LOCALE).membership.guard.default.template).toBe(
+		expect(templateDefaultsFor(DEFAULT_LOCALE).membership).toBe(
 			"{viewer} 成为了 {name} 的{tier}！",
 		);
 	});
@@ -233,7 +233,7 @@ describe("templates.membership —— 会员文案", () => {
 		};
 		expect(resolveTemplates(SUB_BASE, globals.defaults, factory).membership("guard")).toEqual({
 			enabled: true,
-			default: { template: factory.membership.guard.default.template, imageUrl: "" },
+			default: { template: factory.membership, imageUrl: "" },
 			tiers: {},
 		});
 	});

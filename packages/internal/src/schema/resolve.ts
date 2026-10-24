@@ -118,7 +118,7 @@ export function resolveTemplates(
 		},
 		factory,
 	);
-	const fallbackText = factory.membership.guard.default.template;
+	const fallbackText = factory.membership;
 	const { membership, ...rest } = merged;
 	return {
 		...rest,

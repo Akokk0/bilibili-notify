@@ -56,9 +56,15 @@ describe("新装的设置形状", () => {
 	});
 
 	it("老盘上整份存着的默认文字照样解析得进来,值原样保留", () => {
-		const parsed = TemplateBundleSchema.parse({ ...ZH });
+		const { membership, ...texts } = ZH;
+		const parsed = TemplateBundleSchema.parse({
+			...texts,
+			membership: {
+				guard: { enabled: false, default: { template: membership, imageUrl: "" }, tiers: {} },
+			},
+		});
 		expect(parsed.liveStart).toBe(ZH.liveStart);
-		expect(parsed.membership.guard?.default.template).toBe(ZH.membership.guard.default.template);
+		expect(parsed.membership.guard?.default.template).toBe(ZH.membership);
 	});
 });
 
@@ -155,7 +161,8 @@ describe("withTemplateDefaults", () => {
 		expect(out.post).toBe("我的作品句");
 		expect(out.postVideo).toBe(ZH.postVideo);
 		expect(stored).toEqual({ post: "我的作品句", membership: {} });
-		expect(out.membership.guard?.enabled).toBe(false);
+		expect(out.wordcloudStopWords).toBe("");
+		expect(out.membership).toEqual({});
 	});
 
 	it("用到的默认语言常量没偏", () => {

@@ -1,18 +1,15 @@
 import { z } from "zod";
-import { builtinPresetsFor, templateDefaultsFor } from "../builtin-texts";
+import { builtinPresetsFor } from "../builtin-texts";
 import {
 	DEFAULT_HISTORY_RETENTION_DAYS,
 	HISTORY_RETENTION_DAY_OPTIONS,
 	MIRROR_PREFIX_RE,
 } from "../constants";
 import { DEFAULT_LOCALE, LOCALES, VOICES } from "../i18n";
-import { allTemplateFingerprints } from "../template-defaults";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
 import { markBackupOnly, markSecret } from "./secret";
 
-// 出厂文案住在零依赖的 `builtin-texts.ts` —— 前端要拿它跟盘上的值比对(「默认文案有
-// 更新」那套),从这里(带 zod)拿会把 zod 拽进浏览器 bundle。
-const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+// 出厂文案住在零依赖的 `builtin-texts.ts` —— 前端要拿它显示 / 比对,从这里(带 zod)拿会把 zod 拽进浏览器 bundle。
 const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
 
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
@@ -324,18 +321,15 @@ export const GlobalConfigSchema = z.object({
 	master: MasterConfigSchema,
 	defaults: GlobalDefaultsSchema,
 	/**
-	 * 「这一版默认文案我已经知道了」的账本:点路径 → 当时那版默认的指纹。
+	 * 「这条我改的时候,简体默认长这样」的账本:点路径 → 那一刻**简体**出厂原文的指纹。
 	 *
-	 * 主人改了某条模板的默认,已装好的用户拿不到 —— 他们盘上写的是当初那一版。
-	 * 判定「要不要提示他更新」靠的就是这本账:**指纹对不上 = 这版默认他没见过**。
-	 * 于是不必再去猜「他到底改没改过」,那条路要维护一张历代默认表,而那张表
-	 * 没人守得住(`liveSummary` 已经漏过一次)。判定见 `../template-defaults.ts`。
+	 * 文字模板只存主人改过的(ADR-0037 决策 10),没存的跟当前语言的出厂走,不会"过期";只有存着的那几条,
+	 * 后来简体出厂文案变了才值得提示他。面板在主人第一次改某条时记下指纹(「保持我的」记新指纹,
+	 * 「恢复默认」「用新默认」删这一条);账本里没有的条目不亮灯。判定见 `../template-defaults.ts`。
 	 *
 	 * 放顶层而非 `defaults`(3a-38):它是面板的簿记、不是「per-UP overrides 缺字段时回退到这里」的值。
 	 *
-	 * `.default({})` 是老配置兜底(同 imageGroup);全新安装由
-	 * `makeDefaultGlobalConfig` 一次填满 —— 理由见
-	 * `./__tests__/template-defaults-seen.test.ts` 里那条「改了自己的文案不该立刻被提示」。
+	 * 全新安装是空的(一条文字都没存);`.default({})` 同时是老配置的兜底(同 imageGroup)。
 	 */
 	templatesSeen: z.record(z.string(), z.string()).default({}),
 	/**
@@ -474,9 +468,6 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			cards: DEFAULT_CARDS,
 			imageGroup: DEFAULT_IMAGE_GROUP,
 		},
-		// 全新安装把账本一次填满:他拿到的就是当前默认,没什么可更新的。
-		// 空着的话,他一动手改文案就会被提示「默认文案有更新」—— 更新到哪去?
-		templatesSeen: allTemplateFingerprints(FACTORY_TEMPLATES),
 		ai: DEFAULT_AI,
 	});
 }

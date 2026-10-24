@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * 「默认文案有更新」的逐字段小标记。
+ * 「默认文案有更新」的逐字段小标记 + 账本的写法。
  *
- * 主人改了某条模板的默认,已装好的用户拿不到 —— 他们盘上写的是当初那一版。这套
- * 提示就是让他们知道,并自己选:换成新的,还是留着自己的。判定本身是纯函数
- * (`@bilibili-notify/internal/template-defaults`),这里只管界面接线接对没有 ——
- * 标记该亮时亮、点完消失、两个动作各自改对了东西。
+ * 文字模板设置里只存主人改过的(ADR-0037 决策 10),没存的跟当前语言的出厂走。这套提示只对存着的那几条有意义:
+ * 主人第一次改某条时,面板记下那一刻**简体**出厂原文的指纹;之后简体出厂文案变了才亮灯。判定本身是纯函数
+ * (`@bilibili-notify/internal/template-defaults`),这里只管界面接线接对没有 —— 标记该亮时亮、
+ * 两个动作各自改对了东西、账本不留脏条目。
  */
 
 import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
@@ -28,21 +28,22 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+const FP_LIVE_START = templateFingerprint(FACTORY_TEMPLATES.liveStart);
+const FP_GUARD = templateFingerprint(FACTORY_TEMPLATES.membership);
+const GUARD_PATH = "membership.guard.default.template";
 
 /**
- * 造一份 globals;`mutate` 里改 defaults,要摆账本就写 `top.templatesSeen`(账本在核心设置顶层,不在 defaults 里)。
- * 空账本 = 刚从老版本升上来的形态(该字段引入前写的 globals.json),拿它当基线正合适。
+ * 造一份 globals,起点是新装的形状:一条文字都没存、账本空;`mutate` 里摆主人存着的文字(`d.templates`)
+ * 与账本(`top.templatesSeen`,在核心设置顶层,不在 defaults 里)。
  */
 function globalsWith(
 	mutate: (
 		d: ReturnType<typeof makeDefaults>,
 		top: { templatesSeen: Record<string, string> },
-	) => void,
+	) => void = () => {},
 ): GlobalConfig {
 	const defaults = makeDefaults();
-	// fixture 的模板全是空串,先摆成「值就等于当前默认」的干净基线,
-	// 这样只有测试自己动过的那条才会亮灯。
-	defaults.templates = { ...defaults.templates, ...FACTORY_TEMPLATES };
+	defaults.templates = { wordcloudStopWords: "", membership: {} } as never;
 	const top = { templatesSeen: {} as Record<string, string> };
 	mutate(defaults, top);
 	return {
@@ -107,101 +108,6 @@ function liveStartInput(): HTMLTextAreaElement | HTMLInputElement {
 	return el as HTMLTextAreaElement | HTMLInputElement;
 }
 
-describe("默认文案有更新的小标记", () => {
-	it("盘上还是旧默认、账本又没记过这一版 → 该字段亮标记", async () => {
-		mount(globalsWith((d) => (d.templates.liveStart = "上一版的开播文案")));
-		await gotoLiveMsg();
-		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
-	});
-
-	it("值已经等于当前默认 → 不亮标记,没什么可更新的", async () => {
-		mount(globalsWith(() => {}));
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput()).toBeTruthy());
-		expect(noticeOfLiveStart()).toBeNull();
-	});
-
-	it("账本已经记过这一版 → 不亮标记,哪怕文案是主人自己写的", async () => {
-		// 手写过文案的主人,值**永远**不等于默认。若这条不成立,提示会一直挂着不灭。
-		mount(
-			globalsWith((d, top) => {
-				d.templates.liveStart = "我自己写的";
-				top.templatesSeen = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
-			}),
-		);
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput()).toBeTruthy());
-		expect(noticeOfLiveStart()).toBeNull();
-	});
-
-	it("点「用新默认」→ 文案换成当前默认,提示消失", async () => {
-		mount(globalsWith((d) => (d.templates.liveStart = "上一版的开播文案")));
-		await gotoLiveMsg();
-		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
-		fireEvent.click(screen.getByText("用新默认"));
-		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
-		expect(noticeOfLiveStart()).toBeNull();
-	});
-
-	it("点「保持我的」→ 文案一个字不动,提示也消失", async () => {
-		// 提示消失靠的是账本被记上。不记的话主人每次打开这页都被问一遍同一件事。
-		mount(globalsWith((d) => (d.templates.liveStart = "我自己写的")));
-		await gotoLiveMsg();
-		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
-		fireEvent.click(screen.getByText("保持我的"));
-		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
-		expect(liveStartInput().value).toBe("我自己写的");
-	});
-});
-
-describe("账本存盘:在核心设置顶层,不在 defaults 里", () => {
-	/** 点保存(灵动岛触发的那条路),返回下发给 `/api/settings` 的 body。 */
-	async function saveAndGetBody(): Promise<Record<string, unknown>> {
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("rules"));
-		const onSave = useDraftStore.getState().current?.onSave as (() => Promise<void>) | undefined;
-		await onSave?.();
-		expect(api.patch).toHaveBeenCalledWith("/api/settings", expect.anything());
-		return vi.mocked(api.patch).mock.calls.at(-1)?.[1] as Record<string, unknown>;
-	}
-
-	it("点「保持我的」后存盘 → 补丁里顶层有 templatesSeen.liveStart,defaults 里没有 templateDefaultsSeen", async () => {
-		mount(globalsWith((d) => (d.templates.liveStart = "我自己写的")));
-		await gotoLiveMsg();
-		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
-		fireEvent.click(screen.getByText("保持我的"));
-		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
-		const body = await saveAndGetBody();
-		expect(body.templatesSeen).toEqual({
-			liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart),
-		});
-		expect(body.defaults).not.toHaveProperty("templateDefaultsSeen");
-	});
-
-	it("「保持我的」点完保存条会亮(账本变了算脏),刷新(重读)后提示不再出现", async () => {
-		const g = globalsWith((d) => (d.templates.liveStart = "我自己写的"));
-		mount(g);
-		await gotoLiveMsg();
-		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
-		fireEvent.click(screen.getByText("保持我的"));
-		await waitFor(() =>
-			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
-				"templatesSeen.liveStart",
-			),
-		);
-		cleanup();
-		resetStore();
-		// 服务端回来的就是存好的账本。
-		const saved = {
-			...g,
-			templatesSeen: { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) },
-		} as GlobalConfig;
-		mount(saved);
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput()).toBeTruthy());
-		expect(noticeOfLiveStart()).toBeNull();
-	});
-});
-
 /** liveStart 字段上的「恢复默认」按钮(没有就 null)。 */
 function resetBtnOfLiveStart(): Element | null {
 	// 定位锚是外层的 `data-field-reset`,点击目标是里面那个真按钮 —— 点外层的
@@ -209,39 +115,214 @@ function resetBtnOfLiveStart(): Element | null {
 	return document.querySelector('[data-code="templates.liveStart"] [data-field-reset] button');
 }
 
-describe("恢复默认按钮", () => {
-	it("改过的文案旁边有「恢复默认」,点了还原成当前默认", async () => {
-		// 这个按钮跟「有更新」的提示是两件事:它常驻,管的是「我改坏了想还原」。
+const diffCodes = (): string[] => useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
+
+/** 点保存(灵动岛触发的那条路),返回下发给 `/api/settings` 的 body。 */
+async function saveAndGetBody(): Promise<{
+	defaults: { templates?: Record<string, unknown> };
+	templatesSeen?: Record<string, unknown>;
+}> {
+	await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("rules"));
+	const onSave = useDraftStore.getState().current?.onSave as (() => Promise<void>) | undefined;
+	await onSave?.();
+	expect(api.patch).toHaveBeenCalledWith("/api/settings", expect.anything());
+	return vi.mocked(api.patch).mock.calls.at(-1)?.[1] as never;
+}
+
+describe("默认文案有更新的小标记", () => {
+	it("存着、账本里有、指纹是旧简体的 → 该字段亮标记", async () => {
 		mount(
 			globalsWith((d, top) => {
 				d.templates.liveStart = "我自己写的";
-				// 记上账本,把「有更新」的提示排除掉 —— 这条只验恢复按钮。
-				top.templatesSeen = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
+				top.templatesSeen = { liveStart: templateFingerprint("上一版的开播文案") };
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+	});
+
+	it("没存的 → 不亮,哪怕账本里躺着旧指纹", async () => {
+		mount(
+			globalsWith((_d, top) => {
+				top.templatesSeen = { liveStart: templateFingerprint("上一版的开播文案") };
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		expect(noticeOfLiveStart()).toBeNull();
+	});
+
+	it("存着但账本里没有这条 → 不亮", async () => {
+		mount(globalsWith((d) => (d.templates.liveStart = "我自己写的")));
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
+		expect(noticeOfLiveStart()).toBeNull();
+	});
+
+	it("存着、账本指纹等于当前简体 → 不亮(这一版他见过了)", async () => {
+		// 手写过文案的主人,值**永远**不等于默认。若这条不成立,提示会一直挂着不灭。
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己写的";
+				top.templatesSeen = { liveStart: FP_LIVE_START };
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
+		expect(noticeOfLiveStart()).toBeNull();
+	});
+});
+
+/** 账本过期的一条自己写的开播文案:提示亮着。 */
+const staleLiveStart = () =>
+	globalsWith((d, top) => {
+		d.templates.liveStart = "我自己写的";
+		top.templatesSeen = { liveStart: templateFingerprint("上一版的开播文案") };
+	});
+
+describe("两个动作与账本", () => {
+	it("点「用新默认」→ 删键 + 删账本那一条:输入框回到默认、提示消失,保存两处都下发 null", async () => {
+		mount(staleLiveStart());
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		fireEvent.click(screen.getByText("用新默认"));
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		expect(noticeOfLiveStart()).toBeNull();
+		const body = await saveAndGetBody();
+		expect(body.defaults.templates?.liveStart).toBeNull();
+		expect(body.templatesSeen).toEqual({ liveStart: null });
+	});
+
+	it("点「保持我的」→ 文案一个字不动,账本记新的简体指纹,提示消失", async () => {
+		mount(staleLiveStart());
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		fireEvent.click(screen.getByText("保持我的"));
+		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
+		expect(liveStartInput().value).toBe("我自己写的");
+		const body = await saveAndGetBody();
+		expect(body.templatesSeen).toEqual({ liveStart: FP_LIVE_START });
+		expect(body.defaults).not.toHaveProperty("templateDefaultsSeen");
+	});
+
+	it("「保持我的」点完保存条会亮(账本变了算脏),刷新(重读)后提示不再出现", async () => {
+		const g = staleLiveStart();
+		mount(g);
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		fireEvent.click(screen.getByText("保持我的"));
+		await waitFor(() => expect(diffCodes()).toContain("templatesSeen.liveStart"));
+		cleanup();
+		resetStore();
+		// 服务端回来的就是存好的账本。
+		mount({ ...g, templatesSeen: { liveStart: FP_LIVE_START } } as GlobalConfig);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput()).toBeTruthy());
+		expect(noticeOfLiveStart()).toBeNull();
+	});
+
+	it("「恢复默认」= 删键 + 删账本那一条:保存两处都下发 null", async () => {
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己写的";
+				top.templatesSeen = { liveStart: FP_LIVE_START };
 			}),
 		);
 		await gotoLiveMsg();
 		await waitFor(() => expect(resetBtnOfLiveStart()).not.toBeNull());
 		fireEvent.click(resetBtnOfLiveStart() as Element);
 		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		const body = await saveAndGetBody();
+		expect(body.defaults.templates?.liveStart).toBeNull();
+		expect(body.templatesSeen).toEqual({ liveStart: null });
 	});
 
-	it("值本来就是默认 → 不显示按钮,点了也没意义", async () => {
-		mount(globalsWith(() => {}));
+	it("值本来就是默认(没存)→ 没有「恢复默认」按钮", async () => {
+		mount(globalsWith());
 		await gotoLiveMsg();
 		await waitFor(() => expect(liveStartInput()).toBeTruthy());
 		expect(resetBtnOfLiveStart()).toBeNull();
 	});
 });
 
-describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)", () => {
-	const GUARD_DEFAULT = "templates.membership.guard.default.template";
+describe("账本在第一次改某条时记", () => {
+	it("没存 → 改成别的一句:存下这一句,账本记下此刻简体出厂原文的指纹", async () => {
+		mount(globalsWith());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		fireEvent.change(liveStartInput(), { target: { value: "我自己写的" } });
+		await waitFor(() => expect(diffCodes()).toContain("templatesSeen.liveStart"));
+		const body = await saveAndGetBody();
+		expect(body.defaults.templates?.liveStart).toBe("我自己写的");
+		expect(body.templatesSeen).toEqual({ liveStart: FP_LIVE_START });
+	});
 
-	/** 打开自定义上舰提示,体系默认文案摆成 `template`。 */
-	function withGuardDefault(template: string, seen?: Record<string, string>) {
+	it("改了又改回默认 → 草稿与基线没有差别:账本不留脏条目,什么都不发", async () => {
+		mount(globalsWith());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		fireEvent.change(liveStartInput(), { target: { value: "随手改的" } });
+		await waitFor(() => expect(diffCodes()).toContain("templatesSeen.liveStart"));
+		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
+		await waitFor(() => expect(diffCodes()).not.toContain("templates.liveStart"));
+		expect(diffCodes()).not.toContain("templatesSeen.liveStart");
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("没保存就离开(丢弃)→ 账本回到基线", async () => {
+		mount(globalsWith());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		fireEvent.change(liveStartInput(), { target: { value: "随手改的" } });
+		await waitFor(() => expect(diffCodes()).toContain("templatesSeen.liveStart"));
+		useDraftStore.getState().current?.onDiscard();
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
+		await waitFor(() => expect(diffCodes()).toEqual([]));
+	});
+
+	it("已经存着的再改一句 → 账本不动(旧指纹留着,提示才能继续问)", async () => {
+		mount(staleLiveStart());
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
+		fireEvent.change(liveStartInput(), { target: { value: "我又改了一句" } });
+		await waitFor(() => expect(diffCodes()).toContain("templates.liveStart"));
+		expect(diffCodes()).not.toContain("templatesSeen.liveStart");
+		const body = await saveAndGetBody();
+		expect(body.defaults.templates?.liveStart).toBe("我又改了一句");
+		// 账本原样带着(旧指纹没被换成新的)
+		expect(body.templatesSeen).toEqual({ liveStart: templateFingerprint("上一版的开播文案") });
+	});
+
+	it("编辑到与默认一字不差 → 键没了,账本那一条也跟着没", async () => {
+		mount(
+			globalsWith((d, top) => {
+				d.templates.liveStart = "我自己写的";
+				top.templatesSeen = { liveStart: FP_LIVE_START };
+			}),
+		);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
+		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
+		await waitFor(() => expect(diffCodes()).toContain("templates.liveStart"));
+		const body = await saveAndGetBody();
+		expect(body.defaults.templates?.liveStart).toBeNull();
+		expect(body.templatesSeen).toEqual({ liveStart: null });
+	});
+});
+
+describe("上舰文案的体系默认也接上「默认文案有更新」", () => {
+	const GUARD_DEFAULT = `templates.${GUARD_PATH}`;
+
+	/** 打开自定义上舰提示;`template` 不给 = 体系默认那一句没存。 */
+	function withGuard(template?: string, seen?: Record<string, string>) {
 		return globalsWith((d, top) => {
 			d.templates.membership = {
-				guard: { enabled: true, default: { template, imageUrl: "" }, tiers: {} },
-			};
+				guard: {
+					enabled: true,
+					...(template === undefined ? {} : { default: { template, imageUrl: "" } }),
+					tiers: {},
+				},
+			} as never;
 			if (seen) top.templatesSeen = seen;
 		});
 	}
@@ -256,125 +337,41 @@ describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)"
 
 	const noticeOfGuard = () =>
 		document.querySelector(`[data-code="${GUARD_DEFAULT}"] [data-template-update]`);
+	const guardInput = () =>
+		document.querySelector(
+			`[data-code="${GUARD_DEFAULT}"] input, [data-code="${GUARD_DEFAULT}"] textarea`,
+		) as HTMLInputElement;
 
-	it("盘上还是旧默认、账本没记过这一版 → 亮标记", async () => {
-		mount(withGuardDefault("上一版的上舰文案"));
+	it("存着、账本是旧简体 → 亮标记", async () => {
+		mount(withGuard("我的上舰文案", { [GUARD_PATH]: templateFingerprint("上一版的上舰文案") }));
 		await gotoGuard();
 		await waitFor(() => expect(noticeOfGuard()).not.toBeNull());
 	});
 
-	it("值就是当前默认 → 不亮", async () => {
-		mount(withGuardDefault(FACTORY_TEMPLATES.membership.guard.default.template));
+	it("体系默认那一句没存 → 不亮,输入框显示出厂句", async () => {
+		mount(withGuard(undefined, { [GUARD_PATH]: templateFingerprint("上一版的上舰文案") }));
 		await gotoGuard();
 		expect(noticeOfGuard()).toBeNull();
+		expect(guardInput().value).toBe(FACTORY_TEMPLATES.membership);
 	});
 
-	it("点「用新默认」→ 体系默认文案换成当前默认,提示消失", async () => {
-		mount(withGuardDefault("上一版的上舰文案"));
+	it("点「用新默认」→ 删键 + 删账本,体系默认回到出厂句,提示消失", async () => {
+		mount(withGuard("我的上舰文案", { [GUARD_PATH]: templateFingerprint("上一版的上舰文案") }));
 		await gotoGuard();
 		await waitFor(() => expect(noticeOfGuard()).not.toBeNull());
 		fireEvent.click(screen.getByText("用新默认"));
 		await waitFor(() => expect(noticeOfGuard()).toBeNull());
-		const input = document.querySelector(
-			`[data-code="${GUARD_DEFAULT}"] input, [data-code="${GUARD_DEFAULT}"] textarea`,
-		) as HTMLInputElement;
-		expect(input.value).toBe(FACTORY_TEMPLATES.membership.guard.default.template);
-	});
-});
-
-describe("文字模板只存改过的(ADR-0037 决策 10)", () => {
-	const SEEN = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
-
-	/** 盘上没存开播文案:新装的形状(账本照新装填满不影响,这里只摆开播那条)。 */
-	function storedNothing(): GlobalConfig {
-		return globalsWith((d, top) => {
-			d.templates.liveStart = undefined as never;
-			top.templatesSeen = SEEN;
-		});
-	}
-
-	const patchedLiveStart = (): unknown => {
-		const body = vi.mocked(api.patch).mock.calls[0]?.[1] as {
-			defaults?: { templates?: Record<string, unknown> };
-		};
-		return body.defaults?.templates?.liveStart;
-	};
-
-	it("没存的那条:输入框显示当前语言的默认,不亮「默认文案有更新」,也没有「恢复默认」", async () => {
-		mount(
-			globalsWith((d) => {
-				d.templates.liveStart = undefined as never;
-			}),
-		);
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
-		expect(noticeOfLiveStart()).toBeNull();
-		expect(resetBtnOfLiveStart()).toBeNull();
+		expect(guardInput().value).toBe(FACTORY_TEMPLATES.membership);
+		const body = await saveAndGetBody();
+		expect(body.templatesSeen).toEqual({ [GUARD_PATH]: null });
 	});
 
-	it("编辑到与默认一字不差 → 草稿里键没了,保存下发 null", async () => {
-		mount(
-			globalsWith((d, top) => {
-				d.templates.liveStart = "我自己写的";
-				top.templatesSeen = SEEN;
-			}),
-		);
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput().value).toBe("我自己写的"));
-		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
-		await waitFor(() =>
-			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
-				"templates.liveStart",
-			),
-		);
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
-		expect(patchedLiveStart()).toBeNull();
-	});
-
-	it("没存过、改了又改回默认 → 什么都不发(草稿与基线没有差别)", async () => {
-		mount(storedNothing());
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
-		fireEvent.change(liveStartInput(), { target: { value: "随手改的" } });
-		await waitFor(() =>
-			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
-				"templates.liveStart",
-			),
-		);
-		fireEvent.change(liveStartInput(), { target: { value: FACTORY_TEMPLATES.liveStart } });
-		await waitFor(() =>
-			expect(useDraftStore.getState().current?.diff.map((x) => x.code) ?? []).not.toContain(
-				"templates.liveStart",
-			),
-		);
-		expect(api.patch).not.toHaveBeenCalled();
-	});
-
-	it("改成别的一句 → 存下这一句", async () => {
-		mount(storedNothing());
-		await gotoLiveMsg();
-		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
-		fireEvent.change(liveStartInput(), { target: { value: "我自己写的" } });
-		await waitFor(() => expect(useDraftStore.getState().current).not.toBeNull());
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
-		expect(patchedLiveStart()).toBe("我自己写的");
-	});
-
-	it("「恢复默认」= 删键:保存下发 null", async () => {
-		mount(
-			globalsWith((d, top) => {
-				d.templates.liveStart = "我自己写的";
-				top.templatesSeen = SEEN;
-			}),
-		);
-		await gotoLiveMsg();
-		await waitFor(() => expect(resetBtnOfLiveStart()).not.toBeNull());
-		fireEvent.click(resetBtnOfLiveStart() as Element);
-		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
-		expect(patchedLiveStart()).toBeNull();
+	it("第一次改体系默认那一句 → 账本记简体出厂句的指纹", async () => {
+		mount(withGuard());
+		await gotoGuard();
+		fireEvent.change(guardInput(), { target: { value: "我自己的上舰文案" } });
+		await waitFor(() => expect(diffCodes()).toContain(`templatesSeen.${GUARD_PATH}`));
+		const body = await saveAndGetBody();
+		expect(body.templatesSeen).toEqual({ [GUARD_PATH]: FP_GUARD });
 	});
 });

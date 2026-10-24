@@ -1,100 +1,176 @@
 /**
  * 「默认文案有更新」的亮灯判定。
  *
- * 主人改了某条模板的默认文案,已经装好的用户拿不到 —— 他们盘上写的是**当初那一版**。
- * 此前靠 `store.ts` 里一张手写的「历代旧默认」表来认「这人没改过」,可那张表跟当前
- * 默认分居两个包,改默认时没有任何东西提醒你去补一条。`liveSummary` 就这么漏过一次。
- *
- * 换个思路:不再判断「他改没改过」,只判断「**这一版默认他见过没有**」。见过就闭嘴,
- * 没见过且他的值确实和当前默认不一样,就亮个灯让他自己决定。于是历代表整张作废。
+ * 文字模板设置里只存主人改过的(ADR-0037 决策 10),没存的读时跟当前语言的出厂走。所以这套提示
+ * 只对**存着的那几条**还有意义:主人改的那一刻,账本记下当时的简体出厂原文的指纹;后来简体出厂
+ * 文案变了,指纹对不上,才亮灯问他「换成新的,还是留着自己的」。简体原文当「这一版默认」的版本号 ——
+ * 换语言、以后补上别的语言的译文,都不该亮。
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { type BuiltinDicts, templateDefaultsFor } from "../builtin-texts";
+import { DEFAULT_LOCALE } from "../i18n";
+import zhCN from "../locales/zh-CN.json";
 import {
-	allTemplateFingerprints,
+	factoryTemplateAt,
 	pendingTemplateUpdates,
-	templateDefaultAt,
+	storedTemplateAt,
+	syncTemplatesSeen,
 	templateFingerprint,
 } from "../template-defaults";
 
+const fp = templateFingerprint;
+
+/** 简体出厂(形状同 `templateDefaultsFor` 交出的:八条文字 + 会员体系默认那一句)。 */
+const FACTORY = { liveStart: "新开播", liveEnd: "新下播", membership: "新上舰" };
+
 describe("pendingTemplateUpdates", () => {
-	it("老配置没有 seen、盘上还是旧默认 → 亮灯", () => {
-		// 这就是主人要解的那件事:改了默认,已装好的用户得知道。
-		expect(pendingTemplateUpdates({ liveStart: "旧文案" }, { liveStart: "新文案" }, {})).toEqual([
-			"liveStart",
-		]);
-	});
-
-	it("嵌套的 guardBuy 三档文案也算模板,按点路径报出来", () => {
-		// 上舰三档的文案藏在 guardBuy 底下,而它们确实是主人会改默认的东西
-		// (`store.ts` 那张旧迁移表里就专门有 OLD_GUARD 一节)。只扫顶层会漏掉它们。
+	it("存着、账本里有、指纹是旧简体的 → 亮灯", () => {
 		expect(
-			pendingTemplateUpdates(
-				{ guardBuy: { enable: false, captain: { imageUrl: "", template: "旧的舰长文案" } } },
-				{ guardBuy: { enable: false, captain: { imageUrl: "", template: "新的舰长文案" } } },
-				{},
-			),
-		).toEqual(["guardBuy.captain.template"]);
+			pendingTemplateUpdates({ liveStart: "我写的" }, FACTORY, { liveStart: fp("旧开播") }),
+		).toEqual(["liveStart"]);
 	});
 
-	it("这一版默认已经见过 → 闭嘴", () => {
-		// 主人手写过自己的文案,他的值**永远**不等于默认。若只看「值不一样」就亮灯,
-		// 这灯从此不灭,他会学会无视它 —— 等真有要紧的更新时也一样看不见。
-		// 所以判据是「**这一版**默认他见过没有」,见过就不再打扰。
+	it("没存的不亮,哪怕账本里有旧指纹", () => {
+		expect(pendingTemplateUpdates({}, FACTORY, { liveStart: fp("旧开播") })).toEqual([]);
 		expect(
-			pendingTemplateUpdates(
-				{ liveStart: "我自己写的" },
-				{ liveStart: "新文案" },
-				{ liveStart: templateFingerprint("新文案") },
-			),
-		).toEqual([]);
-	});
-
-	it("值已经等于当前默认 → 不亮灯,哪怕没见过这版指纹", () => {
-		// 这条挡的是「某字段默认从没变过」的老用户:他的 seen 是空的(新字段),
-		// 但值句句等于默认,没有任何可更新的东西。少了这个条件他会满屏亮灯。
-		expect(pendingTemplateUpdates({ liveStart: "同一句" }, { liveStart: "同一句" }, {})).toEqual(
-			[],
-		);
-	});
-
-	it("设置里没存的那条跟着默认走 → 不算待更新,哪怕没见过这版指纹", () => {
-		expect(pendingTemplateUpdates({}, { liveStart: "新文案" }, {})).toEqual([]);
-		expect(
-			pendingTemplateUpdates({ liveEnd: "我改的" }, { liveStart: "新文案", liveEnd: "新下播" }, {}),
+			pendingTemplateUpdates({ liveEnd: "我写的" }, FACTORY, {
+				liveStart: fp("旧开播"),
+				liveEnd: fp("旧下播"),
+			}),
 		).toEqual(["liveEnd"]);
 	});
 
-	it("处理过上一版、主人又改了默认 → 重新亮灯", () => {
-		// 提示不是一次性的:主人每改一次默认,该问的还得再问一次。
+	it("存着但账本里没有这条 → 不亮", () => {
+		expect(pendingTemplateUpdates({ liveStart: "我写的" }, FACTORY, {})).toEqual([]);
+	});
+
+	it("存着、账本指纹就是当前简体 → 不亮(这一版他见过了)", () => {
 		expect(
-			pendingTemplateUpdates(
-				{ liveStart: "我自己写的" },
-				{ liveStart: "第三版文案" },
-				{ liveStart: templateFingerprint("第二版文案") }, // 他只见过第二版
-			),
-		).toEqual(["liveStart"]);
+			pendingTemplateUpdates({ liveStart: "我写的" }, FACTORY, { liveStart: fp("新开播") }),
+		).toEqual([]);
+	});
+
+	it("存着的字已经就是新的简体出厂 → 不亮(换成新的等于什么都没变)", () => {
+		expect(
+			pendingTemplateUpdates({ liveStart: "新开播" }, FACTORY, { liveStart: fp("旧开播") }),
+		).toEqual([]);
+	});
+
+	it("换语言不亮:比的永远是简体出厂,不看当前语言的出厂", () => {
+		const dicts: BuiltinDicts = {
+			"zh-CN": zhCN,
+			"zh-TW": {},
+			en: { "template.liveStart": "English start" },
+			ja: {},
+		};
+		const zh = templateDefaultsFor(DEFAULT_LOCALE, dicts);
+		const en = templateDefaultsFor("en", dicts);
+		expect(en.liveStart).toBe("English start");
+		const seen = { liveStart: fp(zh.liveStart) };
+		expect(pendingTemplateUpdates({ liveStart: "我写的" }, zh, seen)).toEqual([]);
+		// 把英文当成「这一版默认」去比就会亮 —— 这正是不许做的
+		expect(pendingTemplateUpdates({ liveStart: "我写的" }, en, seen)).toEqual(["liveStart"]);
+	});
+
+	it("会员:存着的体系里那一句按出厂句判;没存那一句的体系不亮", () => {
+		const stored = {
+			membership: {
+				guard: { enabled: true, default: { template: "我写的上舰" } },
+				other: { enabled: true, default: { imageUrl: "https://x" } },
+				bare: { tiers: {} },
+			},
+		};
+		const seen = {
+			"membership.guard.default.template": fp("旧上舰"),
+			"membership.other.default.template": fp("旧上舰"),
+			"membership.bare.default.template": fp("旧上舰"),
+		};
+		expect(pendingTemplateUpdates(stored, FACTORY, seen)).toEqual([
+			"membership.guard.default.template",
+		]);
+	});
+
+	it("不是文字的格出局:词云停用词、图片地址即使存着、账本里有旧指纹也不亮", () => {
+		const stored = {
+			wordcloudStopWords: "哈哈",
+			membership: { guard: { default: { imageUrl: "https://x" } } },
+		};
+		expect(
+			pendingTemplateUpdates(stored, FACTORY, {
+				wordcloudStopWords: fp(""),
+				"membership.guard.default.imageUrl": fp(""),
+			}),
+		).toEqual([]);
 	});
 
 	it("多条同时有更新 → 一条不落全报出来", () => {
 		expect(
-			pendingTemplateUpdates(
-				{ liveStart: "旧一", liveEnd: "旧二", dynamic: "没变" },
-				{ liveStart: "新一", liveEnd: "新二", dynamic: "没变" },
-				{},
-			),
+			pendingTemplateUpdates({ liveStart: "我一", liveEnd: "我二" }, FACTORY, {
+				liveStart: fp("旧一"),
+				liveEnd: fp("旧二"),
+			}),
 		).toEqual(["liveStart", "liveEnd"]);
 	});
 });
 
-describe("templateDefaultAt", () => {
-	it("顺着点路径取出那条默认文案 —— 界面要拿它做预览、也拿它写值", () => {
-		const defaults = { guardBuy: { captain: { template: "舰长文案" } } };
-		expect(templateDefaultAt(defaults, "guardBuy.captain.template")).toBe("舰长文案");
+describe("storedTemplateAt / factoryTemplateAt", () => {
+	it("按点路径取存着的文字,会员走 membership.<体系>.default.template", () => {
+		const stored = { liveStart: "x", membership: { guard: { default: { template: "y" } } } };
+		expect(storedTemplateAt(stored, "liveStart")).toBe("x");
+		expect(storedTemplateAt(stored, "membership.guard.default.template")).toBe("y");
+		expect(storedTemplateAt(stored, "liveEnd")).toBeUndefined();
+		expect(storedTemplateAt(stored, "membership.other.default.template")).toBeUndefined();
 	});
 
-	it("路径不存在 → undefined,不是抛错", () => {
-		expect(templateDefaultAt({ liveStart: "x" }, "guardBuy.captain.template")).toBeUndefined();
+	it("出厂一侧:会员那一句不分体系,每个体系取同一句", () => {
+		expect(factoryTemplateAt(FACTORY, "liveStart")).toBe("新开播");
+		expect(factoryTemplateAt(FACTORY, "membership.guard.default.template")).toBe("新上舰");
+		expect(factoryTemplateAt(FACTORY, "membership.other.default.template")).toBe("新上舰");
+		expect(factoryTemplateAt(FACTORY, "wordcloudStopWords")).toBeUndefined();
+		expect(factoryTemplateAt(FACTORY, "membership")).toBeUndefined();
+	});
+});
+
+describe("syncTemplatesSeen:账本跟着「存没存」走", () => {
+	it("没存 → 存了:记下此刻简体出厂原文的指纹", () => {
+		expect(syncTemplatesSeen({}, { liveStart: "我写的" }, {}, FACTORY)).toEqual({
+			liveStart: fp("新开播"),
+		});
+	});
+
+	it("会员体系默认那一句同理", () => {
+		const next = { membership: { guard: { default: { template: "我写的" } } } };
+		expect(syncTemplatesSeen({}, next, {}, FACTORY)).toEqual({
+			"membership.guard.default.template": fp("新上舰"),
+		});
+	});
+
+	it("存了 → 没存(恢复默认、用新默认、改回一字不差):账本里这一条也走", () => {
+		expect(
+			syncTemplatesSeen(
+				{ liveStart: "我写的" },
+				{},
+				{ liveStart: fp("旧开播"), liveEnd: "k" },
+				FACTORY,
+			),
+		).toEqual({ liveEnd: "k" });
+	});
+
+	it("存着改成另一句:账本不动(旧指纹要留着,提示才能继续问)", () => {
+		const seen = { liveStart: fp("旧开播") };
+		expect(syncTemplatesSeen({ liveStart: "一" }, { liveStart: "二" }, seen, FACTORY)).toBe(seen);
+	});
+
+	it("非文字的格(词云停用词)存了不记账", () => {
+		expect(syncTemplatesSeen({}, { wordcloudStopWords: "哈哈" }, {}, FACTORY)).toEqual({});
+	});
+
+	it("不改入参", () => {
+		const seen = Object.freeze({ liveEnd: "k" });
+		const out = syncTemplatesSeen({}, { liveStart: "我写的" }, seen, FACTORY);
+		expect(out).not.toBe(seen);
+		expect(seen).toEqual({ liveEnd: "k" });
 	});
 });
 
@@ -105,19 +181,5 @@ describe("templateFingerprint", () => {
 
 	it("同一份内容指纹稳定 —— 否则每次启动都会误判成「默认变了」", () => {
 		expect(templateFingerprint("开播啦")).toBe(templateFingerprint("开播啦"));
-	});
-});
-
-describe("allTemplateFingerprints", () => {
-	it("把每条文案的当前指纹按点路径列全 —— 主人改默认后新装的用户不该看见「有更新」", () => {
-		expect(
-			allTemplateFingerprints({
-				liveStart: "开播啦",
-				guardBuy: { enable: false, captain: { template: "舰长文案" } },
-			}),
-		).toEqual({
-			liveStart: templateFingerprint("开播啦"),
-			"guardBuy.captain.template": templateFingerprint("舰长文案"),
-		});
 	});
 });

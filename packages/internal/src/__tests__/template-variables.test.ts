@@ -28,7 +28,7 @@ const defaultTextOf = (
 		liveSummary: DEFAULT_TEMPLATES.liveSummary,
 		viewerChat: DEFAULT_TEMPLATES.viewerChat,
 		viewerEnter: DEFAULT_TEMPLATES.viewerEnter,
-		membership: DEFAULT_TEMPLATES.membership.guard.default.template,
+		membership: DEFAULT_TEMPLATES.membership,
 	};
 };
 

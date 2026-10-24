@@ -18,7 +18,7 @@ describe("出厂文案读口:按语言打底", () => {
 		const out = templateDefaultsFor("en", dicts);
 		expect(out.liveStart).toBe("{name} is live");
 		expect(out.liveEnd).toBe(zhCN["template.liveEnd"]);
-		expect(out.membership.guard.default.template).toBe(zhCN["template.membership"]);
+		expect(out.membership).toBe(zhCN["template.membership"]);
 	});
 
 	it("人格同理:一个字段取本语言,别的字段与别的人格取简体", () => {
@@ -43,8 +43,12 @@ describe("出厂文案读口:按语言打底", () => {
 });
 
 describe("出厂文案读口:真字典", () => {
-	it("templateDefaultsFor(zh-CN) 与搬家前的 DEFAULT_TEMPLATES 逐字相等", () => {
-		expect(templateDefaultsFor("zh-CN")).toEqual(before.templates);
+	it("templateDefaultsFor(zh-CN) 的文字与搬家前的 DEFAULT_TEMPLATES 逐字相等(非文字的格已收出去)", () => {
+		const { wordcloudStopWords: _w, membership, ...texts } = before.templates;
+		expect(templateDefaultsFor("zh-CN")).toEqual({
+			...texts,
+			membership: membership.guard.default.template,
+		});
 	});
 
 	it("builtinPresetsFor(zh-CN) 与搬家前的 BUILTIN_AI_PRESETS 逐字相等", () => {

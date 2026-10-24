@@ -305,13 +305,12 @@ describe("parseCoreSettings", () => {
 		]);
 	});
 
-	it("templatesSeen 坏:取出厂值(填满的账本),不是 schema 的空表", () => {
+	it("templatesSeen 坏:取出厂值(新装的账本是空的),并报这一格", () => {
 		const disk = goodDisk();
 		disk.templatesSeen = "账本";
 		const { settings, invalid } = parseCoreSettings(disk);
-		const factory = makeDefaultGlobalConfig().templatesSeen;
-		expect(Object.keys(factory).length).toBeGreaterThan(0);
-		expect(settings.templatesSeen).toEqual(factory);
+		expect(settings.templatesSeen).toEqual(makeDefaultGlobalConfig().templatesSeen);
+		expect(settings.templatesSeen).toEqual({});
 		expect(invalid.map((e) => e.path)).toEqual([["templatesSeen"]]);
 	});
 

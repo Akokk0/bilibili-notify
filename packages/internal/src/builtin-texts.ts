@@ -23,14 +23,10 @@ const BUNDLED_DICTS: BuiltinDicts = { "zh-CN": zhCN, "zh-TW": zhTW, en, ja };
 export const BUILTIN_PRESET_IDS = ["gentle-maid", "tsundere", "analyst", "genki"] as const;
 export type BuiltinPresetId = (typeof BUILTIN_PRESET_IDS)[number];
 
-/** 会员体系里的一份文案(体系默认那一格)。 */
-export type BuiltinMembershipTemplate = {
-	enabled: boolean;
-	default: { template: string; imageUrl: string };
-	tiers: Record<string, never>;
-};
-
-/** 出厂文字模板:与存进设置里的 `defaults.templates` 同形状。 */
+/**
+ * 出厂文字模板:只有按语言取的文字 —— 八条文字,加会员体系默认那一句(不分体系)。
+ * 词云停用词、会员文案的开关 / 图片 / 分档都不是文字,不在这里(由用到的地方就地给空值 / 关着)。
+ */
 export type BuiltinTemplates = {
 	liveStart: string;
 	liveStreaming: string;
@@ -38,10 +34,9 @@ export type BuiltinTemplates = {
 	liveSummary: string;
 	post: string;
 	postVideo: string;
-	wordcloudStopWords: string;
 	viewerChat: string;
 	viewerEnter: string;
-	membership: { guard: BuiltinMembershipTemplate };
+	membership: string;
 };
 
 /** 设置里存着的一份会员体系文案:主人没改的格不在。 */
@@ -72,8 +67,9 @@ export type EffectiveMembershipTemplate = {
 	tiers: Record<string, { template?: string; imageUrl?: string }>;
 };
 
-/** 填好的文字模板:每格都有字。 */
+/** 填好的文字模板:每格都有字;会员只列存着的体系(没列的体系用 `withMembershipDefaults(undefined, …)` 现填)。 */
 export type EffectiveTemplates = Omit<BuiltinTemplates, "membership"> & {
+	wordcloudStopWords: string;
 	membership: Record<string, EffectiveMembershipTemplate>;
 };
 
@@ -94,20 +90,16 @@ export function withMembershipDefaults(
 
 /**
  * 存着的取存的,缺的取 `defaults`(ADR-0037 决策 10:设置里没有 = 跟随当前语言的默认)。
- * 会员按体系:`defaults` 里有的体系先垫底,存着的体系条目里缺 `default.template` 取出厂那一句 ——
- * 体系默认那句不分体系,这一步先取 `guard` 的。零依赖、不改入参,服务端与面板共用。
+ * 会员按体系:只列存着的体系,每个体系缺 `default.template` 取出厂那一句(不分体系)。
+ * 词云停用词不是按语言的文字,没存就是空。零依赖、不改入参,服务端与面板共用。
  */
 export function withTemplateDefaults(
 	stored: StoredTemplates | undefined,
 	defaults: BuiltinTemplates,
 ): EffectiveTemplates {
-	const fallbackText = defaults.membership.guard.default.template;
 	const membership: Record<string, EffectiveMembershipTemplate> = {};
-	for (const [id, entry] of Object.entries(defaults.membership)) {
-		membership[id] = withMembershipDefaults(entry, fallbackText);
-	}
 	for (const [id, entry] of Object.entries(stored?.membership ?? {})) {
-		membership[id] = withMembershipDefaults(entry, fallbackText);
+		membership[id] = withMembershipDefaults(entry, defaults.membership);
 	}
 	return {
 		liveStart: stored?.liveStart ?? defaults.liveStart,
@@ -116,7 +108,7 @@ export function withTemplateDefaults(
 		liveSummary: stored?.liveSummary ?? defaults.liveSummary,
 		post: stored?.post ?? defaults.post,
 		postVideo: stored?.postVideo ?? defaults.postVideo,
-		wordcloudStopWords: stored?.wordcloudStopWords ?? defaults.wordcloudStopWords,
+		wordcloudStopWords: stored?.wordcloudStopWords ?? "",
 		viewerChat: stored?.viewerChat ?? defaults.viewerChat,
 		viewerEnter: stored?.viewerEnter ?? defaults.viewerEnter,
 		membership,
@@ -167,19 +159,10 @@ export function templateDefaultsFor(
 		liveSummary: text("liveSummary"),
 		post: text("post"),
 		postVideo: text("postVideo"),
-		wordcloudStopWords: "",
 		viewerChat: text("viewerChat"),
 		viewerEnter: text("viewerEnter"),
-		// 会员文案,按体系 id 存;B 站的体系是 `guard`,别的体系由来源声明、事件到了才有
-		membership: {
-			guard: {
-				// false = 官方上舰图 / 上舰卡;true = 用 default / tiers 里的自定义文案与图片
-				enabled: false,
-				default: { template: text("membership"), imageUrl: "" },
-				// 只存改过的档;出厂都跟随上面的默认
-				tiers: {},
-			},
-		},
+		// 会员体系默认那一句:不分体系(B 站的体系是 `guard`,别的体系由来源声明、事件到了才有)
+		membership: text("membership"),
 	};
 }
 
