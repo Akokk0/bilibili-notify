@@ -352,7 +352,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	}
 
 	/** 作者:事件里的名字优先,没有按「资料名 → 身份标签」补;头像是事件带的图库引用。 */
-	function creatorOf(
+	function creatorFromExtension(
 		externalId: string,
 		creator: { name?: string; avatar?: string } | undefined,
 	): Creator {
@@ -367,7 +367,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	 * 出图器判「长图」要宽高、认动图要标记,与第 2 版宿主读字节补的一样);读不到(图已被清扫、读盘出错)
 	 * 就只放 `ref` 并记 debug,不拒整条 —— 出图器对没有宽高的图照样画。
 	 */
-	async function postImageOf(ref: string): Promise<PostImage> {
+	async function postImageFromRef(ref: string): Promise<PostImage> {
 		let stored: Awaited<ReturnType<ImageReader["read"]>>;
 		try {
 			stored = await opts.images.read(ref);
@@ -391,7 +391,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		return { ref };
 	}
 
-	async function postReportOf(
+	async function postReportFromExtension(
 		externalId: string,
 		value: ExtensionReportValue<"post">,
 	): Promise<PostReport> {
@@ -399,7 +399,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		// 换行统一成 `\n`;只有空白的正文是空串,卡上正文块收起。
 		const text = reported.text.replace(/\r\n?/g, "\n");
 		const post: Post = {
-			creator: creatorOf(externalId, reported.creator),
+			creator: creatorFromExtension(externalId, reported.creator),
 			publishedAt: isoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
@@ -408,13 +408,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			post.richText = reported.richText as RichText;
 		}
 		if (reported.images !== undefined) {
-			post.images = await Promise.all(reported.images.map(postImageOf));
+			post.images = await Promise.all(reported.images.map(postImageFromRef));
 		}
 		// 视频作品的 `label`(「投稿了视频」)不要了:主人 2026-10-24 定,契约不开 `label`,宿主也不替平台写这句。
 		if (reported.video !== undefined) {
 			const video = reported.video;
 			post.video = {
-				cover: video.cover === undefined ? {} : await postImageOf(video.cover),
+				cover: video.cover === undefined ? {} : await postImageFromRef(video.cover),
 				title: video.title ?? "",
 				description: video.description ?? "",
 				...(video.durationSec === undefined ? {} : { durationSec: video.durationSec }),
@@ -428,7 +428,10 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		return { postId: value.postId, url: value.url, post: normalizePost(post) };
 	}
 
-	function liveDetailsOf(externalId: string, details: ExtensionLiveDetails): LiveDetails {
+	function liveDetailsFromExtension(
+		externalId: string,
+		details: ExtensionLiveDetails,
+	): LiveDetails {
 		return {
 			...(details.title === undefined ? {} : { title: details.title }),
 			...(details.cover === undefined ? {} : { cover: coverOf(details.cover) }),
@@ -438,11 +441,13 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			...(details.totalViewers === undefined ? {} : { totalViewers: details.totalViewers }),
 			...(details.likes === undefined ? {} : { likes: details.likes }),
 			...(details.description === undefined ? {} : { description: details.description }),
-			...(details.creator === undefined ? {} : { creator: creatorOf(externalId, details.creator) }),
+			...(details.creator === undefined
+				? {}
+				: { creator: creatorFromExtension(externalId, details.creator) }),
 		};
 	}
 
-	function liveSignalOf(
+	function liveSignalFromExtension(
 		externalId: string,
 		value: ExtensionReportValue<"live">,
 		arrivedAt: number,
@@ -450,13 +455,17 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		const startedAt = value.startedAt === undefined ? {} : { startedAt: isoOf(value.startedAt) };
 		switch (value.kind) {
 			case "start":
-				return { kind: "start", ...startedAt, details: liveDetailsOf(externalId, value.details) };
+				return {
+					kind: "start",
+					...startedAt,
+					details: liveDetailsFromExtension(externalId, value.details),
+				};
 			case "status":
 				return {
 					kind: "status",
 					isLive: value.isLive,
 					...startedAt,
-					details: liveDetailsOf(externalId, value.details),
+					details: liveDetailsFromExtension(externalId, value.details),
 				};
 			case "end":
 				return {
@@ -466,7 +475,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 					...startedAt,
 					...(value.details === undefined
 						? {}
-						: { details: liveDetailsOf(externalId, value.details) }),
+						: { details: liveDetailsFromExtension(externalId, value.details) }),
 				};
 		}
 	}
@@ -520,7 +529,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 					enqueue("post", async () => {
 						const admitted = admit("post", externalId, report);
 						if (admitted) {
-							const translated = await postReportOf(admitted.externalId, admitted.value);
+							const translated = await postReportFromExtension(admitted.externalId, admitted.value);
 							if (stillOpen("post")) ctx.reportPost(admitted.externalId, translated);
 						}
 					});
@@ -533,7 +542,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						if (admitted && stillOpen("live")) {
 							ctx.reportLive(
 								admitted.externalId,
-								liveSignalOf(admitted.externalId, admitted.value, arrivedAt),
+								liveSignalFromExtension(admitted.externalId, admitted.value, arrivedAt),
 							);
 						}
 					});
@@ -622,7 +631,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 							kind: "live" as const,
 							...(result.startedAt === undefined ? {} : { startedAt: isoOf(result.startedAt) }),
 							// 作者名缺了同样按「资料名 → 身份标签」补(外部 id 取自被问的身份)。
-							details: liveDetailsOf(identity.externalId, result.details),
+							details: liveDetailsFromExtension(identity.externalId, result.details),
 						});
 					},
 				}
