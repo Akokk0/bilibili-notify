@@ -6,11 +6,9 @@
  * 删到一家不剩会不会炸、新人格的 id 撞没撞上。
  */
 
-import {
-	type AIProviderId,
-	BUILTIN_AI_PRESETS,
-	EMPTY_AI_PROVIDER_PROFILE,
-} from "@bilibili-notify/internal/constants";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/constants";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { describe, expect, it } from "vite-plus/test";
 import type { AIPersona, AISettings } from "../../../types/globals";
 import {
@@ -33,6 +31,8 @@ import {
 	setGlobalPersona,
 	updatePersonaAt,
 } from "../model-ops";
+
+const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
 
 const PERSONA: AIPersona = {
 	name: "",
@@ -547,7 +547,7 @@ describe("全局人格指针", () => {
 
 describe("isBuiltinPersona", () => {
 	it("内置四份都算", () => {
-		for (const p of BUILTIN_AI_PRESETS) expect(isBuiltinPersona(p.id)).toBe(true);
+		for (const p of FACTORY_PRESETS) expect(isBuiltinPersona(p.id)).toBe(true);
 	});
 
 	it("主人自己加的不算", () => {
@@ -559,7 +559,7 @@ describe("isBuiltinPersona", () => {
 describe("内置的改不动", () => {
 	function withBuiltin(): AISettings {
 		return settings({
-			presets: BUILTIN_AI_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
+			presets: FACTORY_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
 		});
 	}
 
@@ -593,13 +593,13 @@ describe("内置的改不动", () => {
 
 describe("missingBuiltinPersonas —— 「从内置恢复」列什么", () => {
 	it("一份没删时是空的(按钮该收起来)", () => {
-		const ai = settings({ presets: BUILTIN_AI_PRESETS.map((p) => ({ ...p })) });
+		const ai = settings({ presets: FACTORY_PRESETS.map((p) => ({ ...p })) });
 		expect(missingBuiltinPersonas(ai)).toEqual([]);
 	});
 
 	it("只列被删掉的那几份", () => {
 		const ai = settings({
-			presets: BUILTIN_AI_PRESETS.filter((p) => p.id !== "tsundere").map((p) => ({ ...p })),
+			presets: FACTORY_PRESETS.filter((p) => p.id !== "tsundere").map((p) => ({ ...p })),
 		});
 		expect(missingBuiltinPersonas(ai).map((p) => p.id)).toEqual(["tsundere"]);
 	});
@@ -609,7 +609,7 @@ describe("restoreBuiltinPersona", () => {
 	function without(...ids: string[]): AISettings {
 		return settings({
 			presets: [
-				...BUILTIN_AI_PRESETS.filter((p) => !ids.includes(p.id)).map((p) => ({ ...p })),
+				...FACTORY_PRESETS.filter((p) => !ids.includes(p.id)).map((p) => ({ ...p })),
 				{ id: "mine", label: "我的", persona: PERSONA },
 			],
 		});
@@ -618,7 +618,7 @@ describe("restoreBuiltinPersona", () => {
 	it("把内置那份原样加回来,内容与注册表一致", () => {
 		const { ai } = restoreBuiltinPersona(without("tsundere"), "tsundere");
 		const back = ai.presets.find((p) => p.id === "tsundere");
-		expect(back).toEqual(BUILTIN_AI_PRESETS.find((p) => p.id === "tsundere"));
+		expect(back).toEqual(FACTORY_PRESETS.find((p) => p.id === "tsundere"));
 	});
 
 	it("插回它在内置清单里的原位,而不是甩到末尾", () => {
@@ -653,7 +653,7 @@ describe("restoreBuiltinPersona", () => {
 describe("duplicatePersona —— 「从内置修改」", () => {
 	function withBuiltin(): AISettings {
 		return settings({
-			presets: BUILTIN_AI_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
+			presets: FACTORY_PRESETS.map((p) => ({ ...p, persona: { ...p.persona } })),
 		});
 	}
 
@@ -667,7 +667,7 @@ describe("duplicatePersona —— 「从内置修改」", () => {
 
 	it("内容照抄原件", () => {
 		const { ai, railId } = duplicatePersona(withBuiltin(), "preset:tsundere");
-		const src = BUILTIN_AI_PRESETS.find((p) => p.id === "tsundere");
+		const src = FACTORY_PRESETS.find((p) => p.id === "tsundere");
 		expect(personaAt(ai, railId).persona).toEqual(src?.persona);
 	});
 
@@ -680,7 +680,7 @@ describe("duplicatePersona —— 「从内置修改」", () => {
 	it("原件一根毛都不动", () => {
 		const { ai } = duplicatePersona(withBuiltin(), "preset:tsundere");
 		expect(ai.presets.find((p) => p.id === "tsundere")).toEqual(
-			BUILTIN_AI_PRESETS.find((p) => p.id === "tsundere"),
+			FACTORY_PRESETS.find((p) => p.id === "tsundere"),
 		);
 	});
 

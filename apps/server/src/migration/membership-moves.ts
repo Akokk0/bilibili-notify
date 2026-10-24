@@ -56,7 +56,7 @@ function isUnchangedGuardText(role: ZeroGuardRole, rewritten: string): boolean {
 	);
 }
 
-/** 账本里新路径的两条(顺序同 `DEFAULT_TEMPLATES` 里字符串叶子的顺序)。 */
+/** 账本里新路径的两条(顺序同 `templateDefaultsFor` 交出的对象里字符串叶子的顺序)。 */
 const LEDGER_PATH_TEMPLATE = "membership.guard.default.template";
 const LEDGER_PATH_IMAGE = "membership.guard.default.imageUrl";
 

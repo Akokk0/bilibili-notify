@@ -6,8 +6,9 @@
  * 值级 import 就能把 zod(以及它拽着的整张 schema 图)拉进前端 bundle。症状不是报错,
  * 是**产物悄悄胖一圈**,而门禁全绿。
  *
- * `import type` 编译后整条擦掉,所以它随便写;值级的一条都不许有 —— 顺带也就杜绝了
- * 「A 只 import 了 B、B 才 import zod」那种传递路径。
+ * `import type` 编译后整条擦掉,所以它随便写;值级的只许指向名单里别的文件(它们自己也受这条约束)
+ * 与同包 `locales/` 里打包时内联的 JSON —— 顺带也就杜绝了「A 只 import 了 B、B 才 import zod」那种
+ * 传递路径。
  */
 
 import { readFileSync } from "node:fs";
@@ -20,6 +21,8 @@ import { describe, expect, it } from "vite-plus/test";
 // `i18n.ts` 经 `/i18n` 子路径供面板与服务端共用字典机制(3b-09,ADR-0037 决策 6),同一条纪律。
 // `platform-descriptor.ts` 经 `/platform-descriptor` 子路径供拓展(经门)与宿主共用中性平台描述(3b-40,ADR-0024 决策 4),同一条纪律。
 // `template-variables.ts` 经 `/template-variables` 子路径供面板拼提示条、服务端探针取变量名(3b-21),同一条纪律。
+// `template-defaults.ts` 经 `/template-defaults` 子路径供面板判「默认文案有更新」,同一条纪律。
+// `builtin-texts.ts` 经 `/builtin-texts` 子路径供面板与服务端共用出厂文案(3b-12,ADR-0037 决策 10、11),同一条纪律。
 const ZERO_DEP_SOURCES = [
 	"constants.ts",
 	"format.ts",
@@ -28,7 +31,17 @@ const ZERO_DEP_SOURCES = [
 	"i18n.ts",
 	"platform-descriptor.ts",
 	"template-variables.ts",
+	"template-defaults.ts",
+	"builtin-texts.ts",
 ];
+
+/** 值级 import 放行的目标:名单里的别的文件,与 `locales/` 的 JSON。 */
+function isZeroDepTarget(line: string): boolean {
+	const target = /\bfrom\s+["']\.\/([^"']+)["']/.exec(line)?.[1];
+	if (target === undefined) return false;
+	if (/^locales\/[\w-]+\.json$/.test(target)) return true;
+	return ZERO_DEP_SOURCES.includes(`${target}.ts`);
+}
 
 function sourceOf(file: string): string {
 	return readFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), "utf8");
@@ -46,9 +59,10 @@ function moduleReferences(source: string): string[] {
 }
 
 describe("零依赖子路径的 import 纪律", () => {
-	it.each(ZERO_DEP_SOURCES)("%s 的每一条都得是 type import —— 值级的一条都不许有", (file) => {
+	it.each(ZERO_DEP_SOURCES)("%s 的值级 import 只许指向零依赖的同伴", (file) => {
 		const offenders = moduleReferences(sourceOf(file)).filter(
-			(line) => !/^import\s+type\b/.test(line) && !/^export\s+type\b/.test(line),
+			(line) =>
+				!/^import\s+type\b/.test(line) && !/^export\s+type\b/.test(line) && !isZeroDepTarget(line),
 		);
 		expect(offenders).toEqual([]);
 	});

@@ -5,6 +5,7 @@ export default defineConfig({
 		entry: [
 			"src/index.ts",
 			"src/bilibili-guard.ts",
+			"src/builtin-texts.ts",
 			"src/constants.ts",
 			"src/format.ts",
 			"src/i18n.ts",

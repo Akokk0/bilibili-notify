@@ -8,7 +8,9 @@
  * 由类型钉住「表里有的变量都有说明」。
  */
 
-import { DEFAULT_TEMPLATES, defaultMessageKindLayout } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -22,6 +24,8 @@ import {
 	StopWordsHint,
 	SummaryVariableHints,
 } from "../sections";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 afterEach(cleanup);
 
@@ -60,7 +64,7 @@ describe("提示条的变量代码与表一致", () => {
 	it("直播消息的开播格也列全了表里的变量", () => {
 		const { container } = render(
 			<LiveMsgSection
-				templates={{ ...DEFAULT_TEMPLATES }}
+				templates={{ ...FACTORY_TEMPLATES }}
 				layout={defaultMessageKindLayout("live")}
 				onPatch={() => {}}
 			/>,

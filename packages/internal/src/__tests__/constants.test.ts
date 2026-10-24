@@ -6,17 +6,18 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { builtinPresetsFor } from "../builtin-texts";
 import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
 	aiProfileAt,
-	BUILTIN_AI_PRESETS,
 	CONNECTION_PLATFORMS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	platformDescriptor,
 	providerMeta,
 	resolveAIProfile,
 } from "../constants";
+import { DEFAULT_LOCALE } from "../i18n";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	it("DeepSeek 不声称支持看图 —— 官方接口里一个视觉模型都没有", () => {
@@ -118,7 +119,7 @@ describe("aiProfileAt —— 按 id 取表里自己的那一家", () => {
 
 describe("内置 AI 人格", () => {
 	it("四份预设的全部文字都不写死平台或创作者叫法", () => {
-		const presetText = JSON.stringify(BUILTIN_AI_PRESETS);
+		const presetText = JSON.stringify(builtinPresetsFor(DEFAULT_LOCALE));
 
 		expect(presetText).not.toContain("UP");
 		expect(presetText).not.toContain("B 站");

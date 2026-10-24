@@ -20,7 +20,8 @@
  */
 
 import { ContentFiltersSchema } from "@bilibili-notify/internal";
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { pendingTemplateUpdates } from "@bilibili-notify/internal/template-defaults";
 import { describe, expect, it } from "vite-plus/test";
 import { renameGlobalSettingsKeys, renameSubscriptionKeys } from "../feature-renames.js";
@@ -35,6 +36,8 @@ import {
 	zeroGuardBuy,
 	zeroMembershipOverrides,
 } from "./zero-fixtures.js";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 const T1 = "22222222-2222-4222-8222-222222222222";
@@ -421,7 +424,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(templates.postVideo).toBe("我写的视频 {name}");
 		// 只有 `post` 亮:作品默认文案换成了带 `{postNoun}` 的新一版,账本里记的是旧默认的指纹(这版他没见过);
 		// `postVideo` 的默认没换,指纹对得上,不亮 —— 换键没丢账是这条钉的事。
-		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual(["post"]);
+		expect(pendingTemplateUpdates(templates, FACTORY_TEMPLATES, templatesSeen)).toEqual(["post"]);
 	});
 
 	it("messageLayout.dynamic → post:全局与逐订阅覆盖;live 那组(开播 / 正在直播 / 下播)不改名", async () => {
@@ -594,7 +597,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		const pendingNonPost = (
 			seen: Record<string, string>,
 			current: Record<string, unknown> = templates,
-		) => pendingTemplateUpdates(current, DEFAULT_TEMPLATES, seen).filter((p) => p !== "post");
+		) => pendingTemplateUpdates(current, FACTORY_TEMPLATES, seen).filter((p) => p !== "post");
 		expect(pendingNonPost(templatesSeen)).toEqual([]);
 		// 主人以后把体系默认改成自己的话:这一版默认他「见过了」(账本里是新默认的指纹),不提示。没有这两条账,下面这一步就会亮灯。
 		const edited = {

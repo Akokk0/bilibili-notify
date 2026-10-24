@@ -19,6 +19,7 @@
 	"exports": {
 		".": "./lib/index.mjs",
 		"./bilibili-guard": "./lib/bilibili-guard.mjs",
+		"./builtin-texts": "./lib/builtin-texts.mjs",
 		"./constants": "./lib/constants.mjs",
 		"./format": "./lib/format.mjs",
 		"./i18n": "./lib/i18n.mjs",

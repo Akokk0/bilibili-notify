@@ -23,7 +23,8 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BUILTIN_AI_PRESETS } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
 import type { BiliSettings } from "../../bilibili/settings.js";
@@ -32,6 +33,8 @@ import { type ConfigStore, createConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { makeServiceCtx, useZeroSandbox, type ZeroSandbox } from "./support.js";
 import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
+
+const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
 
 /** 仓里内存那一份 B 站设置。 */
 const bili = (store: ConfigStore) => store.getAllIntegrationSettings().bilibili as BiliSettings;
@@ -623,6 +626,6 @@ describe("全新安装的人格指针", () => {
 	// (`DEFAULT_AI.activePreset`)。全新安装开机之后,「当前这份人格」必须有着落 —— 指着第一份内置预设。
 	it("空的数据根上开机:activePreset 指着第一份内置人格", async () => {
 		const store = await sandbox.load();
-		expect(store.getGlobals().ai.activePreset).toBe(BUILTIN_AI_PRESETS[0].id);
+		expect(store.getGlobals().ai.activePreset).toBe(FACTORY_PRESETS[0]?.id);
 	});
 });

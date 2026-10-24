@@ -1,4 +1,5 @@
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	pendingTemplateUpdates,
@@ -43,6 +44,8 @@ import {
 	subscriptionPlatformOf,
 	visibleFeaturesOf,
 } from "./up/subscription-source";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -328,13 +331,13 @@ export default function Rules() {
 		const templates = draft?.defaults.templates;
 		const seen = draft?.templatesSeen ?? {};
 		const pending = new Set(
-			templates ? pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, seen) : [],
+			templates ? pendingTemplateUpdates(templates, FACTORY_TEMPLATES, seen) : [],
 		);
 		return {
 			lookup(code: string): FieldUpdate | null {
 				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
 				if (!path || !pending.has(path)) return null;
-				const next = templateDefaultAt(DEFAULT_TEMPLATES, path);
+				const next = templateDefaultAt(FACTORY_TEMPLATES, path);
 				if (next === undefined) return null;
 				// 两个动作都记账 ——「保持我的」尤其要紧:不记的话主人每次打开这页
 				// 都被问一遍同一件事,提示很快就被当成噪音。
@@ -359,7 +362,7 @@ export default function Rules() {
 			resetter(code: string): (() => void) | null {
 				const path = code.startsWith("templates.") ? code.slice("templates.".length) : null;
 				if (!path || !templates) return null;
-				const def = templateDefaultAt(DEFAULT_TEMPLATES, path);
+				const def = templateDefaultAt(FACTORY_TEMPLATES, path);
 				if (def === undefined || templateDefaultAt(templates, path) === def) return null;
 				return () =>
 					patchDraft({

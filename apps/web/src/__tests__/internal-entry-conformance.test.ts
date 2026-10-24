@@ -2,7 +2,7 @@
  * internal 入口 conformance —— 扫 `apps/web/src` 全部非测试源码,断言对
  * `@bilibili-notify/internal` **根入口**的引用一律是 `import type` / `export type`
  * (编译后擦除)。要值就走零依赖子路径 `@bilibili-notify/internal/constants`
- * (或 `/patch`、`/template-defaults`)。
+ * (或 `/patch`、`/template-defaults`、`/builtin-texts`;出厂文案与内置人格一律从 `/builtin-texts` 取,不走根入口)。
  *
  * 为什么需要静态护栏:根入口把 **zod** 拽进来,而这件事在任何门禁下都是绿的 ——
  * typecheck 绿(类型没错)、Biome 绿(import 合法)、全部组件测试绿(vitest 不打包,

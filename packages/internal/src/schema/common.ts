@@ -1,11 +1,15 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
+import { templateDefaultsFor } from "../builtin-texts";
+import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
+import { DEFAULT_LOCALE } from "../i18n";
 import { checkUserRegex } from "../util/regex-safety";
 import { AiWritingSettingsSchema } from "./ai-writing";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { markBackupOnly, markSecret } from "./secret";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 // 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
 // 这里重导出维持根入口的既有 API 面,后端消费者无感。
@@ -209,11 +213,11 @@ export const TemplateBundleSchema = z.object({
 	 * 作品推送文本模板(非视频作品)。变量:`{name}` UP 名、`{postNoun}` 来源对作品的叫法;链接是消息版式的独立部件,
 	 * 不是模板变量。`.default(...)` 让缺 post 字段的老 globals.json
 	 * (本字段加入前写入的)仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略;
-	 * 默认值直接取 `DEFAULT_TEMPLATES`,不另抄一份(抄的那份 2026-08 漂过一次)。
+	 * 默认值直接取出厂文案读口 `templateDefaultsFor`,不另抄一份(抄的那份 2026-08 漂过一次)。
 	 */
-	post: z.string().default(DEFAULT_TEMPLATES.post),
+	post: z.string().default(FACTORY_TEMPLATES.post),
 	/** 视频投稿推送文本模板。变量同上;链接同上。 */
-	postVideo: z.string().default(DEFAULT_TEMPLATES.postVideo),
+	postVideo: z.string().default(FACTORY_TEMPLATES.postVideo),
 	/**
 	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
 	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 post /

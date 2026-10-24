@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_TEMPLATES } from "../../constants";
+import { templateDefaultsFor } from "../../builtin-texts";
+import { DEFAULT_LOCALE } from "../../i18n";
 import { ContentFiltersSchema, MembershipTemplateBundleSchema } from "../common";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
@@ -171,7 +172,7 @@ describe("templates.membership —— 会员文案", () => {
 				tiers: {},
 			},
 		});
-		expect(DEFAULT_TEMPLATES.membership.guard.default.template).toBe(
+		expect(templateDefaultsFor(DEFAULT_LOCALE).membership.guard.default.template).toBe(
 			"{viewer} 成为了 {name} 的{tier}！",
 		);
 	});

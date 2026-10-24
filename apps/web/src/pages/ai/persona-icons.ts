@@ -13,7 +13,7 @@ import type { Icon } from "@bilibili-notify/ui";
 export type IconKey = keyof typeof Icon;
 
 /**
- * 内置四份各自的图标。键取自 `packages/internal` 的 `DEFAULT_AI.presets`,
+ * 内置四份各自的图标。键取自 `packages/internal` 的 `builtinPresetsFor` 交出的清单(`BUILTIN_PRESET_IDS`),
  * 一致性由 `__tests__/persona-icons.test.ts` 守着(漏画 / 多余 / 撞图都会红)。
  */
 export const BUILTIN_PERSONA_ICONS: Record<string, IconKey> = {

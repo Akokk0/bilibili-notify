@@ -14,7 +14,8 @@
  */
 
 import { resolve } from "@bilibili-notify/internal";
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { pendingTemplateUpdates } from "@bilibili-notify/internal/template-defaults";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -29,6 +30,8 @@ import {
 	zeroEmptyRouting,
 	zeroExtensionRow,
 } from "./zero-fixtures.js";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 const T1 = "22222222-2222-4222-8222-222222222222";
@@ -213,7 +216,7 @@ describe("直播拆键 · 迁移器接缝", () => {
 		const g = store.getGlobals().defaults;
 		expect(g.templates.liveStreaming).toBe("【直播中】{name} {time}");
 		expect(
-			pendingTemplateUpdates(g.templates, DEFAULT_TEMPLATES, store.getGlobals().templatesSeen),
+			pendingTemplateUpdates(g.templates, FACTORY_TEMPLATES, store.getGlobals().templatesSeen),
 		).toEqual(["post"]);
 	});
 

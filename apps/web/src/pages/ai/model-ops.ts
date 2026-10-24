@@ -5,15 +5,18 @@
  * 指针指向哪、删到一份不剩会不会炸、新实例 / 新人格的 id 撞没撞上。
  */
 
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import {
 	AI_PROVIDER_IDS,
 	type AIProviderId,
 	aiProfileAt,
-	BUILTIN_AI_PRESETS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 } from "@bilibili-notify/internal/constants";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import type { AIPersona, AISettingsDraft } from "../../types/globals";
+
+const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
 
 type AIPreset = AISettingsDraft["presets"][number];
 
@@ -342,7 +345,7 @@ export function setGlobalPersona(ai: AISettingsDraft, railId: string): AISetting
 // 就地改。理由很实在:「从内置恢复」要有个稳定的东西可恢复,内置被改花了这条路就断了。
 // 判据是 **id** 而不是内容 —— 按内容判会出现「同样是傲娇毒舌,这份能改那份不能」。
 
-const BUILTIN_IDS: ReadonlySet<string> = new Set(BUILTIN_AI_PRESETS.map((p) => p.id));
+const BUILTIN_IDS: ReadonlySet<string> = new Set(FACTORY_PRESETS.map((p) => p.id));
 
 export function isBuiltinPersona(presetId: string): boolean {
 	return BUILTIN_IDS.has(presetId);
@@ -351,7 +354,7 @@ export function isBuiltinPersona(presetId: string): boolean {
 /** 被删掉的内置人格 —— 「从内置恢复」列的就是这些。空数组 = 一份没删,入口收起来。 */
 export function missingBuiltinPersonas(ai: AISettingsDraft): { id: string; label: string }[] {
 	const have = new Set(ai.presets.map((p) => p.id));
-	return BUILTIN_AI_PRESETS.filter((p) => !have.has(p.id)).map((p) => ({
+	return FACTORY_PRESETS.filter((p) => !have.has(p.id)).map((p) => ({
 		id: p.id,
 		label: p.label,
 	}));
@@ -376,12 +379,12 @@ export function restoreBuiltinPersona(
 	presetId: string,
 ): { ai: AISettingsDraft; railId: string } {
 	const railId = `${PRESET_RAIL_PREFIX}${presetId}`;
-	const src = BUILTIN_AI_PRESETS.find((p) => p.id === presetId);
+	const src = FACTORY_PRESETS.find((p) => p.id === presetId);
 	if (!src || ai.presets.some((p) => p.id === presetId)) return { ai, railId };
 
-	const order = BUILTIN_AI_PRESETS.findIndex((p) => p.id === presetId);
+	const order = FACTORY_PRESETS.findIndex((p) => p.id === presetId);
 	// 插在「注册表里排在它之后、且当前在清单里」的第一份之前;找不到就追加。
-	const laterIds = new Set<string>(BUILTIN_AI_PRESETS.slice(order + 1).map((p) => p.id));
+	const laterIds = new Set<string>(FACTORY_PRESETS.slice(order + 1).map((p) => p.id));
 	let at = ai.presets.findIndex((p) => laterIds.has(p.id));
 	if (at < 0) at = ai.presets.length;
 

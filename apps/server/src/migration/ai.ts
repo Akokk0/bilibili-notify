@@ -4,7 +4,11 @@
  * `activePreset`)。⑥c 从 internal 的 `AISettingsSchema` preprocess 里原样收进来,三步的顺序不变。
  */
 
-import { AI_PROVIDER_IDS, BUILTIN_AI_PRESETS } from "@bilibili-notify/internal";
+import { AI_PROVIDER_IDS } from "@bilibili-notify/internal";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+
+const FACTORY_PRESETS = builtinPresetsFor(DEFAULT_LOCALE);
 
 /**
  * 上一版的扁平连接字段。读老配置时整份搬进 `providers.custom`。
@@ -124,7 +128,7 @@ function migratePersonaPointer(o: Record<string, unknown>): Record<string, unkno
 	const presets: Record<string, unknown>[] =
 		stored.length > 0
 			? [...stored]
-			: (BUILTIN_AI_PRESETS as readonly unknown[]).map((p) => ({ ...(p as object) }));
+			: (FACTORY_PRESETS as readonly unknown[]).map((p) => ({ ...(p as object) }));
 	const persona = o.persona;
 
 	if (typeof o.activePreset === "string") {

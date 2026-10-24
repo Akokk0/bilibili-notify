@@ -4,7 +4,8 @@
  * delta for /api/settings.
  */
 
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
@@ -41,6 +42,8 @@ import type {
 	TemplateBundle,
 } from "../../types/globals";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 export type SectionId =
 	| "filter"
@@ -936,7 +939,7 @@ export function guardBundleOf(
 	return (
 		templates.membership[GUARD_PROGRAM_ID] ?? {
 			enabled: false,
-			default: { ...DEFAULT_TEMPLATES.membership.guard.default },
+			default: { ...FACTORY_TEMPLATES.membership.guard.default },
 			tiers: {},
 		}
 	);

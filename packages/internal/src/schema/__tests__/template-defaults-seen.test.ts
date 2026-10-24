@@ -12,8 +12,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { templateDefaultsFor } from "../../builtin-texts";
+import { DEFAULT_LOCALE } from "../../i18n";
 import { allTemplateFingerprints, pendingTemplateUpdates } from "../../template-defaults";
-import { DEFAULT_TEMPLATES, GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
+
+const DEFAULT_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 describe("templatesSeen", () => {
 	it("老 globals.json 没有这个字段 → 自动补空账本,不是解析失败", () => {

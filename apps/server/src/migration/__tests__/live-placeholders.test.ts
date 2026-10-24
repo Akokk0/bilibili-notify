@@ -6,7 +6,9 @@
  * 走同一条纯函数流水:设置 `migrateGlobalsToCurrent`,订阅行 `toCurrentRow`。
  */
 
-import { DEFAULT_TEMPLATES, interpolate } from "@bilibili-notify/internal";
+import { interpolate } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateFingerprint } from "@bilibili-notify/internal/template-defaults";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -17,6 +19,8 @@ import {
 import { ZERO_GLOBAL_LIVE_FACTS } from "../live-split.js";
 import { migrateGlobalsToCurrent } from "../settings.js";
 import { toCurrentRow } from "../subscriptions.js";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 type Obj = Record<string, unknown>;
 
@@ -271,13 +275,13 @@ describe("每一代旧默认改写之后就是今天的默认", () => {
 				}),
 			),
 		);
-		expect(out.viewerChat).toBe(DEFAULT_TEMPLATES.viewerChat);
-		expect(out.viewerEnter).toBe(DEFAULT_TEMPLATES.viewerEnter);
-		expect(out.liveSummary).toBe(DEFAULT_TEMPLATES.liveSummary);
+		expect(out.viewerChat).toBe(FACTORY_TEMPLATES.viewerChat);
+		expect(out.viewerEnter).toBe(FACTORY_TEMPLATES.viewerEnter);
+		expect(out.liveSummary).toBe(FACTORY_TEMPLATES.liveSummary);
 		expect(
 			templatesOf(rewriteGlobalLivePlaceholders(globalsOf({ liveSummary: OLD_SUMMARY_BRACE })))
 				.liveSummary,
-		).toBe(DEFAULT_TEMPLATES.liveSummary);
+		).toBe(FACTORY_TEMPLATES.liveSummary);
 	});
 
 	it("开播、正在直播、下播的 0.12 默认本来就是今天的默认,改写不动它们", () => {
@@ -288,9 +292,9 @@ describe("每一代旧默认改写之后就是今天的默认", () => {
 		};
 		expect(templatesOf(rewriteGlobalLivePlaceholders(globalsOf(zero)))).toEqual(zero);
 		expect(zero).toEqual({
-			liveStart: DEFAULT_TEMPLATES.liveStart,
-			liveStreaming: DEFAULT_TEMPLATES.liveStreaming,
-			liveEnd: DEFAULT_TEMPLATES.liveEnd,
+			liveStart: FACTORY_TEMPLATES.liveStart,
+			liveStreaming: FACTORY_TEMPLATES.liveStreaming,
+			liveEnd: FACTORY_TEMPLATES.liveEnd,
 		});
 	});
 });
@@ -309,9 +313,9 @@ describe("账本:这三条记着旧默认的指纹的,换成新默认的指纹",
 		const out = ledgerOf(rewriteGlobalLivePlaceholders(globalsOf({}, ledger)));
 		expect(out).toEqual({
 			liveStart: "1nkgnb7",
-			viewerChat: fp(DEFAULT_TEMPLATES.viewerChat),
-			viewerEnter: fp(DEFAULT_TEMPLATES.viewerEnter),
-			liveSummary: fp(DEFAULT_TEMPLATES.liveSummary),
+			viewerChat: fp(FACTORY_TEMPLATES.viewerChat),
+			viewerEnter: fp(FACTORY_TEMPLATES.viewerEnter),
+			liveSummary: fp(FACTORY_TEMPLATES.liveSummary),
 			post: "7uw5nq",
 		});
 		expect(Object.keys(out)).toEqual(Object.keys(ledger));
@@ -319,7 +323,7 @@ describe("账本:这三条记着旧默认的指纹的,换成新默认的指纹",
 		expect(
 			ledgerOf(rewriteGlobalLivePlaceholders(globalsOf({}, { liveSummary: fp(OLD_SUMMARY_BRACE) })))
 				.liveSummary,
-		).toBe(fp(DEFAULT_TEMPLATES.liveSummary));
+		).toBe(fp(FACTORY_TEMPLATES.liveSummary));
 		// 对不上任何一代旧默认的指纹(比如他见过的是别的版本)原样留着。
 		expect(
 			ledgerOf(
@@ -427,10 +431,10 @@ describe("接线:真走设置流水与订阅行流水", () => {
 				{ viewerChat: templateFingerprint(OLD_VIEWER_CHAT) },
 			),
 		) as { defaults: { templates: Obj }; templatesSeen: Obj };
-		expect(out.defaults.templates.viewerChat).toBe(DEFAULT_TEMPLATES.viewerChat);
-		expect(out.defaults.templates.liveSummary).toBe(DEFAULT_TEMPLATES.liveSummary);
+		expect(out.defaults.templates.viewerChat).toBe(FACTORY_TEMPLATES.viewerChat);
+		expect(out.defaults.templates.liveSummary).toBe(FACTORY_TEMPLATES.liveSummary);
 		expect(out.defaults.templates.liveStreaming).toBe("{name} {time}");
-		expect(out.templatesSeen.viewerChat).toBe(templateFingerprint(DEFAULT_TEMPLATES.viewerChat));
+		expect(out.templatesSeen.viewerChat).toBe(templateFingerprint(FACTORY_TEMPLATES.viewerChat));
 	});
 
 	it("订阅:经 `toCurrentRow`,覆盖里的文案改写", () => {

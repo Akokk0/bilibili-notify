@@ -9,7 +9,8 @@
  * 标记该亮时亮、点完消失、两个动作各自改对了东西。
  */
 
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateFingerprint } from "@bilibili-notify/internal/template-defaults";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -26,6 +27,8 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
+
 /**
  * 造一份 globals;`mutate` 里改 defaults,要摆账本就写 `top.templatesSeen`(账本在核心设置顶层,不在 defaults 里)。
  * 空账本 = 刚从老版本升上来的形态(该字段引入前写的 globals.json),拿它当基线正合适。
@@ -39,7 +42,7 @@ function globalsWith(
 	const defaults = makeDefaults();
 	// fixture 的模板全是空串,先摆成「值就等于当前默认」的干净基线,
 	// 这样只有测试自己动过的那条才会亮灯。
-	defaults.templates = { ...defaults.templates, ...DEFAULT_TEMPLATES };
+	defaults.templates = { ...defaults.templates, ...FACTORY_TEMPLATES };
 	const top = { templatesSeen: {} as Record<string, string> };
 	mutate(defaults, top);
 	return {
@@ -123,7 +126,7 @@ describe("默认文案有更新的小标记", () => {
 		mount(
 			globalsWith((d, top) => {
 				d.templates.liveStart = "我自己写的";
-				top.templatesSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
+				top.templatesSeen = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
 			}),
 		);
 		await gotoLiveMsg();
@@ -136,7 +139,7 @@ describe("默认文案有更新的小标记", () => {
 		await gotoLiveMsg();
 		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
 		fireEvent.click(screen.getByText("用新默认"));
-		await waitFor(() => expect(liveStartInput().value).toBe(DEFAULT_TEMPLATES.liveStart));
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
 		expect(noticeOfLiveStart()).toBeNull();
 	});
 
@@ -169,7 +172,7 @@ describe("账本存盘:在核心设置顶层,不在 defaults 里", () => {
 		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
 		const body = await saveAndGetBody();
 		expect(body.templatesSeen).toEqual({
-			liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart),
+			liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart),
 		});
 		expect(body.defaults).not.toHaveProperty("templateDefaultsSeen");
 	});
@@ -190,7 +193,7 @@ describe("账本存盘:在核心设置顶层,不在 defaults 里", () => {
 		// 服务端回来的就是存好的账本。
 		const saved = {
 			...g,
-			templatesSeen: { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) },
+			templatesSeen: { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) },
 		} as GlobalConfig;
 		mount(saved);
 		await gotoLiveMsg();
@@ -213,13 +216,13 @@ describe("恢复默认按钮", () => {
 			globalsWith((d, top) => {
 				d.templates.liveStart = "我自己写的";
 				// 记上账本,把「有更新」的提示排除掉 —— 这条只验恢复按钮。
-				top.templatesSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
+				top.templatesSeen = { liveStart: templateFingerprint(FACTORY_TEMPLATES.liveStart) };
 			}),
 		);
 		await gotoLiveMsg();
 		await waitFor(() => expect(resetBtnOfLiveStart()).not.toBeNull());
 		fireEvent.click(resetBtnOfLiveStart() as Element);
-		await waitFor(() => expect(liveStartInput().value).toBe(DEFAULT_TEMPLATES.liveStart));
+		await waitFor(() => expect(liveStartInput().value).toBe(FACTORY_TEMPLATES.liveStart));
 	});
 
 	it("值本来就是默认 → 不显示按钮,点了也没意义", async () => {
@@ -261,7 +264,7 @@ describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)"
 	});
 
 	it("值就是当前默认 → 不亮", async () => {
-		mount(withGuardDefault(DEFAULT_TEMPLATES.membership.guard.default.template));
+		mount(withGuardDefault(FACTORY_TEMPLATES.membership.guard.default.template));
 		await gotoGuard();
 		expect(noticeOfGuard()).toBeNull();
 	});
@@ -275,6 +278,6 @@ describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)"
 		const input = document.querySelector(
 			`[data-code="${GUARD_DEFAULT}"] input, [data-code="${GUARD_DEFAULT}"] textarea`,
 		) as HTMLInputElement;
-		expect(input.value).toBe(DEFAULT_TEMPLATES.membership.guard.default.template);
+		expect(input.value).toBe(FACTORY_TEMPLATES.membership.guard.default.template);
 	});
 });

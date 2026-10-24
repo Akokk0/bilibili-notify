@@ -7,36 +7,45 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_TEMPLATES } from "../constants";
-import { placeholdersOf } from "../i18n";
+import { templateDefaultsFor } from "../builtin-texts";
+import { LOCALES, type Locale, placeholdersOf } from "../i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "../template-variables";
 
 /**
  * 每条有出厂默认的文案。宣告语不是默认文案(由来源的档位表交来),单独留在表里,
  * 所以这里少一格;下面那条反向断言钉住「少的那一格只许是它」。
  */
-const DEFAULT_TEXT_OF: Record<Exclude<TemplateKey, "membershipAnnouncement">, string> = {
-	post: DEFAULT_TEMPLATES.post,
-	postVideo: DEFAULT_TEMPLATES.postVideo,
-	liveStart: DEFAULT_TEMPLATES.liveStart,
-	liveStreaming: DEFAULT_TEMPLATES.liveStreaming,
-	liveEnd: DEFAULT_TEMPLATES.liveEnd,
-	liveSummary: DEFAULT_TEMPLATES.liveSummary,
-	viewerChat: DEFAULT_TEMPLATES.viewerChat,
-	viewerEnter: DEFAULT_TEMPLATES.viewerEnter,
-	membership: DEFAULT_TEMPLATES.membership.guard.default.template,
+const defaultTextOf = (
+	locale: Locale,
+): Record<Exclude<TemplateKey, "membershipAnnouncement">, string> => {
+	const DEFAULT_TEMPLATES = templateDefaultsFor(locale);
+	return {
+		post: DEFAULT_TEMPLATES.post,
+		postVideo: DEFAULT_TEMPLATES.postVideo,
+		liveStart: DEFAULT_TEMPLATES.liveStart,
+		liveStreaming: DEFAULT_TEMPLATES.liveStreaming,
+		liveEnd: DEFAULT_TEMPLATES.liveEnd,
+		liveSummary: DEFAULT_TEMPLATES.liveSummary,
+		viewerChat: DEFAULT_TEMPLATES.viewerChat,
+		viewerEnter: DEFAULT_TEMPLATES.viewerEnter,
+		membership: DEFAULT_TEMPLATES.membership.guard.default.template,
+	};
 };
 
 describe("默认文案 ⊆ 模板变量表", () => {
-	it("表里除宣告语外每条文案都有默认文案", () => {
-		expect(Object.keys(DEFAULT_TEXT_OF).sort()).toEqual(
+	it.each(LOCALES)("%s:表里除宣告语外每条文案都有默认文案", (locale) => {
+		expect(Object.keys(defaultTextOf(locale)).sort()).toEqual(
 			Object.keys(TEMPLATE_VARIABLES)
 				.filter((key) => key !== "membershipAnnouncement")
 				.sort(),
 		);
 	});
 
-	it.each(Object.entries(DEFAULT_TEXT_OF))("%s 的默认文案只用了表里登记过的变量", (key, text) => {
+	const cases = LOCALES.flatMap((locale) =>
+		Object.entries(defaultTextOf(locale)).map(([key, text]) => [locale, key, text] as const),
+	);
+
+	it.each(cases)("%s:%s 的默认文案只用了表里登记过的变量", (_locale, key, text) => {
 		const declared = new Set(Object.keys(TEMPLATE_VARIABLES[key as TemplateKey]));
 		// `placeholdersOf` 认 `\{(\w+)\}`;运行时 `interpolate` 认 `[\w.]+`。模板里今天没有
 		// 带点的变量,所以两者取出来的一样;真出现 `{a.b}` 时这里认不出来(这一条会漏检)。

@@ -12,7 +12,8 @@
  * `zero-generation-settings.test.ts`。
  */
 
-import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { allTemplateFingerprints } from "@bilibili-notify/internal/template-defaults";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -23,6 +24,8 @@ import {
 import { OLD_GUARD } from "../templates.js";
 import { ZERO_DEFAULT_TEMPLATES } from "../zero-vocabulary.js";
 import { zeroGuardBuy } from "./zero-fixtures.js";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 type Obj = Record<string, unknown>;
 
@@ -67,9 +70,9 @@ const defaultsOf = (raw: unknown): Obj => (raw as { defaults: Obj }).defaults;
 
 describe("体系默认文案", () => {
 	it("迁移写的体系默认就是此刻的出厂默认(出厂默认改了这条就红:迁移是冻住的,要不要跟着改得当场定)", () => {
-		expect(MEMBERSHIP_DEFAULT_TEMPLATE).toBe(DEFAULT_TEMPLATES.membership.guard.default.template);
+		expect(MEMBERSHIP_DEFAULT_TEMPLATE).toBe(FACTORY_TEMPLATES.membership.guard.default.template);
 		expect(MEMBERSHIP_DEFAULT_TEMPLATE).toBe("{viewer} 成为了 {name} 的{tier}！");
-		expect(allTemplateFingerprints(DEFAULT_TEMPLATES)).toMatchObject({
+		expect(allTemplateFingerprints(FACTORY_TEMPLATES)).toMatchObject({
 			"membership.guard.default.template": FP_DEFAULT_TEMPLATE,
 			"membership.guard.default.imageUrl": FP_EMPTY,
 		});
@@ -303,7 +306,7 @@ describe("全局:默认文案账本 templateDefaultsSeen", () => {
 
 	it("升上来不亮「默认文案有更新」:账本里的指纹就是 1.0 出厂默认的指纹", () => {
 		const ledger = ledgerOf(moveGlobalMembership(globals()));
-		const fresh = allTemplateFingerprints(DEFAULT_TEMPLATES);
+		const fresh = allTemplateFingerprints(FACTORY_TEMPLATES);
 		expect(ledger["membership.guard.default.template"]).toBe(
 			fresh["membership.guard.default.template"],
 		);

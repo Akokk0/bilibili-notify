@@ -30,7 +30,7 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
 /**
  * 递归走遍 `defaults` 里的所有**字符串叶子**,路径用点连(`membership.guard.default.template`)。
  *
- * 遍历的是 defaults 本身而不是手写一张字段清单 —— 往 `DEFAULT_TEMPLATES` 加新文案时
+ * 遍历的是 defaults 本身而不是手写一张字段清单 —— 往 `templateDefaultsFor` 的出厂文案加新条时
  * 自动纳入,不需要谁记得来这儿补一行(那正是旧迁移表栽过的跟头)。非字符串叶子
  * (`membership.guard.enabled` 这种 boolean)自动跳过。
  */

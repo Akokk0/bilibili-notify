@@ -11,13 +11,14 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	DEFAULT_CONTENT_FILTERS,
-	DEFAULT_TEMPLATES,
 	defaultMessageKindLayout,
 	type ImageRef,
 	type MessageKindLayout,
 	type Post,
 	type PostEvent,
 } from "@bilibili-notify/internal";
+import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	type CardFailureTracker,
@@ -29,6 +30,8 @@ import {
 	type PostSettings,
 } from "../deliver-post";
 import type { PostPushAnchor } from "../post-push";
+
+const FACTORY_TEMPLATES = templateDefaultsFor(DEFAULT_LOCALE);
 
 type Seg = { kind: string; text?: string; buffer?: Buffer; mime?: string };
 
@@ -489,10 +492,10 @@ describe("deliverPost — 模板", () => {
 		const h = harness({
 			withImage: false,
 			event: { postNoun: "动态" },
-			settings: { template: DEFAULT_TEMPLATES.post },
+			settings: { template: FACTORY_TEMPLATES.post },
 		});
 		await run(h);
-		expect(DEFAULT_TEMPLATES.post).toBe("{name}发布了一条{postNoun}");
+		expect(FACTORY_TEMPLATES.post).toBe("{name}发布了一条{postNoun}");
 		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 	});
 
