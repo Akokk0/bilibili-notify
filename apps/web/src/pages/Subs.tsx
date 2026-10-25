@@ -141,7 +141,7 @@ interface SearchResponse {
  */
 const BILI_PLATFORM = "@bilibili";
 
-/** 订阅源拓展没交 `lookupPlaceholder` 时输入框里那句(ADR-0019 决策 51 的「通用说法」)。 */
+/** 拓展订阅源先落这句;按 `searchAccepts` 拼提示句随第 4 期叫法函数一起接。 */
 const GENERIC_LOOKUP_PLACEHOLDER = "输入主页链接或账号 id";
 
 /** 已经订阅了的身份:来源键 → 它名下的外部 id。B 站这个来源的键是 `bilibili`,外部 id 就是 uid。 */
@@ -348,11 +348,7 @@ function NewSubDialog({
 					full
 					value={input}
 					onChange={handleInputChange}
-					placeholder={
-						sourceView
-							? (sourceView.lookupPlaceholder ?? GENERIC_LOOKUP_PLACEHOLDER)
-							: "搜索 UID 或 UP 主名字"
-					}
+					placeholder={sourceView ? GENERIC_LOOKUP_PLACEHOLDER : "搜索 UID 或 UP 主名字"}
 					icon={<Icon.user size={14} />}
 				/>
 				<Btn variant="outline" size="sm" onClick={runQuery} disabled={queryDisabled}>

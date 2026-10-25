@@ -230,4 +230,34 @@ describe("盖清单", () => {
 			"account",
 		);
 	});
+
+	it("订阅源的搜人输入种类不可译,译文写了就丢掉并保留清单原值", async () => {
+		const manifest = {
+			...MANIFEST,
+			contributes: {
+				...MANIFEST.contributes,
+				subscription: {
+					label: "订阅",
+					searchAccepts: ["name"],
+					supportedFeatures: ["post" as const],
+				},
+			},
+		} as ExtensionManifest;
+		await put("en.json", {
+			$manifest: {
+				contributes: { subscription: { searchAccepts: ["id"] } },
+			},
+		});
+		const locales = await readExtensionLocales(dir, manifest);
+		expect(locales.issues).toEqual([
+			{
+				locale: "en",
+				code: "untranslatable-entry",
+				path: ["$manifest", "contributes", "subscription", "searchAccepts"],
+			},
+		]);
+		expect(
+			localizeManifest(manifest, locales, "en").contributes.subscription?.searchAccepts,
+		).toEqual(["name"]);
+	});
 });

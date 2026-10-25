@@ -23,6 +23,8 @@ export {
 	BILIBILI_SOURCE_KEY,
 	CONNECTION_PLATFORMS,
 	type ConnectionPlatform,
+	CREATOR_SEARCH_INPUTS,
+	type CreatorSearchInput,
 	canReceiveReply,
 	colorFromSeed,
 	countsAsDelivery,

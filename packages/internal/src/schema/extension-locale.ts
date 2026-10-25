@@ -4,7 +4,6 @@ import { isDictKey, malformedPlaceholders } from "../i18n";
 import {
 	EXTENSION_DISPLAY_LABEL_MAX_CHARS,
 	EXTENSION_ITEM_LABEL_MAX_CHARS,
-	EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS,
 	EXTENSION_SHORT_LABEL_MAX_CHARS,
 	type ExtensionManifest,
 	type ExtensionManifestField,
@@ -54,7 +53,6 @@ const LocaleTextSchema = z.string().min(1);
 const DisplayLabelSchema = LocaleTextSchema.max(EXTENSION_DISPLAY_LABEL_MAX_CHARS);
 const ShortLabelSchema = LocaleTextSchema.max(EXTENSION_SHORT_LABEL_MAX_CHARS);
 const ItemLabelSchema = LocaleTextSchema.max(EXTENSION_ITEM_LABEL_MAX_CHARS);
-const LookupPlaceholderSchema = LocaleTextSchema.max(EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS);
 // 清单里这几格本身允许空串（`z.string().optional()`）：译文清空它们是有意义的事，
 // 不该当成坏条目丢掉。
 const OptionalTextSchema = z.string();
@@ -103,7 +101,6 @@ const ManifestTranslationSchema = z.strictObject({
 					shortLabel: ShortLabelSchema.optional(),
 					postNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
-					lookupPlaceholder: LookupPlaceholderSchema.optional(),
 				})
 				.optional(),
 		})
@@ -151,7 +148,6 @@ interface DisplayTranslation {
 	shortLabel?: string;
 	postNoun?: string;
 	externalIdNoun?: string;
-	lookupPlaceholder?: string;
 }
 
 interface PushTranslation extends DisplayTranslation {
@@ -394,13 +390,12 @@ function fieldOf(
 	return nonEmptyObject(out) ? out : undefined;
 }
 
-/** 两口外观里给人看的几格:推送口只有名字两格,订阅口多三格叫法与提示。 */
+/** 两口外观里给人看的几格:推送口只有名字两格,订阅口多两格叫法。 */
 const PUSH_TEXT_KEYS: ReadonlySet<string> = new Set(["label", "shortLabel"]);
 const SUBSCRIPTION_TEXT_KEYS: ReadonlySet<string> = new Set([
 	...PUSH_TEXT_KEYS,
 	"postNoun",
 	"externalIdNoun",
-	"lookupPlaceholder",
 ]);
 
 /** 外观里一格给人看的字:长度上限照清单那一侧,叫法那两格纯空白也拒(同一把尺子)。 */
@@ -411,12 +406,7 @@ function putDisplayText(
 	path: Path,
 	issues: ExtensionLocaleIssue[],
 ): void {
-	const max =
-		key === "label"
-			? EXTENSION_DISPLAY_LABEL_MAX_CHARS
-			: key === "lookupPlaceholder"
-				? EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS
-				: EXTENSION_SHORT_LABEL_MAX_CHARS;
+	const max = key === "label" ? EXTENSION_DISPLAY_LABEL_MAX_CHARS : EXTENSION_SHORT_LABEL_MAX_CHARS;
 	const text = textOf(source, key, path, issues, {
 		max,
 		nonBlank: key === "postNoun" || key === "externalIdNoun",
@@ -473,6 +463,7 @@ function subscriptionOf(
 		} else if (
 			key === "color" ||
 			key === "externalIdRegex" ||
+			key === "searchAccepts" ||
 			key === "supportedFeatures" ||
 			key === "cardSkin"
 		) {

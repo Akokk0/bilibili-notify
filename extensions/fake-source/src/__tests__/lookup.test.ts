@@ -98,16 +98,15 @@ describe("普通的字", () => {
 
 describe("四个魔法词", () => {
 	/**
-	 * 主人只从输入框那句提示里知道有这四个词 —— 改了词忘了改提示,那条路在真机上就没人走得到。
-	 * 宿主收的提示最多 40 字,超了整份清单读不了。
+	 * 主人从拓展视图里的说明知道有这四个词。搜人输入框改由核心拼通用提示,这句说明不能再跟着
+	 * 那份旧占位文案一起丢。
 	 */
-	it("清单里那句输入框提示点名了四个魔法词,且不超过 40 字", async () => {
-		const manifest = JSON.parse(
-			await readFile(new URL("../../extension.json", import.meta.url), "utf8"),
+	it("简中视图的 notice 点名了四个魔法词", async () => {
+		const locale = JSON.parse(
+			await readFile(new URL("../../locales/zh-CN.json", import.meta.url), "utf8"),
 		);
-		const placeholder: string = manifest.contributes.subscription.lookupPlaceholder;
-		expect(placeholder.length).toBeLessThanOrEqual(40);
-		for (const word of ["空", "慢", "坏", "乱"]) expect(placeholder).toContain(word);
+		const notice: string = locale["view.notice"];
+		for (const word of ["空", "慢", "坏", "乱"]) expect(notice).toContain(word);
 	});
 
 	/** 认不出任何人 —— 面板那头说「没找到」(成功的空表,不是失败)。 */

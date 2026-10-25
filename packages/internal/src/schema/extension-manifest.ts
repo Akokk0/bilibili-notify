@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	CREATOR_SEARCH_INPUTS,
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
 	EXTENSION_SOURCE_FEATURES,
@@ -79,7 +80,6 @@ export const ApiRevisionSchema = z.number().int().nonnegative();
 export const EXTENSION_DISPLAY_LABEL_MAX_CHARS = 64;
 export const EXTENSION_SHORT_LABEL_MAX_CHARS = 8;
 export const EXTENSION_ITEM_LABEL_MAX_CHARS = 16;
-export const EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS = 40;
 
 /**
  * 这个拓展开的是哪一口。
@@ -565,10 +565,17 @@ const ContributesSchema = z
 				/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
 				externalIdNoun: ShortNounSchema.optional(),
 				/**
-				 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
-				 * 链接」。不给就用通用说法。
+				 * 搜人输入框收哪几种输入(id / 链接 / 名字);提示句由核心按这份声明拼,来源不自己写句子。拼句的
+				 * 叫法函数随第 4 期,在那之前面板对拓展一律用通用说法。
 				 */
-				lookupPlaceholder: z.string().min(1).max(EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS).optional(),
+				searchAccepts: z
+					.array(z.enum(CREATOR_SEARCH_INPUTS))
+					.min(1)
+					.refine(
+						(inputs) => new Set(inputs).size === inputs.length,
+						"searchAccepts must not repeat an input",
+					)
+					.optional(),
 				/**
 				 * 外部 id 长什么样(3b-58):正则的源码字符串,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立
 				 * 校验。编译不过 / 超长 / 疑似灾难性回溯的在这里就拒 —— 清单读不了、拓展装不上,不留到每次

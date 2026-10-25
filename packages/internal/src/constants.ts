@@ -40,6 +40,10 @@ export const EXTENSION_SOURCE_FEATURES = [
 	"liveEnd",
 ] as const satisfies readonly FeatureKey[];
 
+/** 订阅源搜人输入框接受的输入种类;提示句以后按这份声明拼,不让来源自己写一句。 */
+export const CREATOR_SEARCH_INPUTS = ["id", "link", "name"] as const;
+export type CreatorSearchInput = (typeof CREATOR_SEARCH_INPUTS)[number];
+
 /**
  * 按 {@link FEATURE_KEYS} 摊一张「每把特性一格」的表 —— 和 {@link extrasRecord} 同一个安排:`Object.fromEntries`
  * 的返回类型是宽的,收进泛型之后 `T` 由 `make` 的返回值推断,调用方不用各自补一发 `as`。

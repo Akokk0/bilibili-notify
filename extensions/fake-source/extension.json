@@ -20,7 +20,7 @@
 			"shortLabel": "假",
 			"color": "#0d9488",
 			"postNoun": "作品",
-			"lookupPlaceholder": "随便输点什么;空 / 慢 / 坏 / 乱 各演一种失败",
+			"searchAccepts": ["name"],
 			"supportedFeatures": ["post", "liveStart", "liveStreaming", "liveEnd"]
 		}
 	}

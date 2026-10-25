@@ -46,7 +46,7 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 			shortLabel: "抖音",
 			color: "#161823",
 			postNoun: "作品",
-			lookupPlaceholder: "粘主页链接",
+			searchAccepts: ["link"],
 			supportedFeatures: ["post", "liveStart"],
 		},
 		...over,
@@ -128,23 +128,23 @@ describe("平台选择出不出现", () => {
 		expect(screen.queryByRole("button", { name: "抖音" })).toBeNull();
 	});
 
-	it("有在跑的订阅源 → B 站 + 它,默认 B 站;切回 B 站就是今天那一套", async () => {
+	it("有在跑的订阅源 → B 站 + 它;拓展先落通用提示,切回 B 站就是今天那一套", async () => {
 		await openNewDialog();
 		expect(await screen.findByRole("button", { name: "B 站" })).toBeTruthy();
 		expect(screen.getByPlaceholderText("搜索 UID 或 UP 主名字")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "抖音" }));
-		expect(screen.getByPlaceholderText("粘主页链接")).toBeTruthy();
+		expect(screen.getByPlaceholderText("输入主页链接或账号 id")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "B 站" }));
 		expect(screen.getByPlaceholderText("搜索 UID 或 UP 主名字")).toBeTruthy();
 	});
 });
 
 describe("选了订阅源", () => {
-	it("提示照清单;查找走它的解析门;候选列出来,已订阅的挑不了", async () => {
+	it("声明 searchAccepts 也先落通用提示;查找走它的解析门;已订阅的挑不了", async () => {
 		subs = [BILI, extSub()];
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
-		const input = screen.getByPlaceholderText("粘主页链接");
+		const input = screen.getByPlaceholderText("输入主页链接或账号 id");
 		fireEvent.change(input, { target: { value: "https://v.douyin.com/abc/" } });
 		fireEvent.click(screen.getByRole("button", { name: "查找" }));
 
@@ -162,7 +162,7 @@ describe("选了订阅源", () => {
 		expect(within(taken).getByText("已订阅")).toBeTruthy();
 	});
 
-	it("清单没给提示 → 通用说法", async () => {
+	it("运行时残留的旧占位字不再作数 → 一律落通用说法", async () => {
 		const plain = source();
 		plain.subscription = {
 			label: "抖音",
@@ -170,6 +170,7 @@ describe("选了订阅源", () => {
 			color: "#161823",
 			supportedFeatures: ["post"],
 		};
+		Object.assign(plain.subscription, { lookupPlaceholder: "粘主页链接" });
 		extensions = Promise.resolve({ extensions: [plain] });
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
@@ -188,7 +189,9 @@ describe("选了订阅源", () => {
 		});
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
-		fireEvent.change(screen.getByPlaceholderText("粘主页链接"), { target: { value: "x" } });
+		fireEvent.change(screen.getByPlaceholderText("输入主页链接或账号 id"), {
+			target: { value: "x" },
+		});
 		fireEvent.click(screen.getByRole("button", { name: "查找" }));
 		expect(await screen.findByText(/拓展交回来的候选形状不对:第 1 条缺 name/)).toBeTruthy();
 	});
@@ -224,7 +227,9 @@ describe("选了订阅源", () => {
 		});
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
-		fireEvent.change(screen.getByPlaceholderText("粘主页链接"), { target: { value: "abc" } });
+		fireEvent.change(screen.getByPlaceholderText("输入主页链接或账号 id"), {
+			target: { value: "abc" },
+		});
 		fireEvent.click(screen.getByRole("button", { name: "查找" }));
 		await waitFor(() =>
 			expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/api\/ext\/douyin\/lookup/)),
@@ -240,7 +245,9 @@ describe("选了订阅源", () => {
 	it("挑一个候选 → 同一个配置弹层 → 创建时发整条拓展订阅 + 候选预填的资料", async () => {
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
-		fireEvent.change(screen.getByPlaceholderText("粘主页链接"), { target: { value: "abc" } });
+		fireEvent.change(screen.getByPlaceholderText("输入主页链接或账号 id"), {
+			target: { value: "abc" },
+		});
 		fireEvent.click(screen.getByRole("button", { name: "查找" }));
 		fireEvent.click(await screen.findByRole("button", { name: /抖音甲/ }));
 
@@ -277,7 +284,9 @@ describe("选了订阅源", () => {
 	it("候选没带头像 / 粉丝 → 头像两格都缺(「没有」),粉丝数不带 —— 不编一个 0", async () => {
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
-		fireEvent.change(screen.getByPlaceholderText("粘主页链接"), { target: { value: "abc" } });
+		fireEvent.change(screen.getByPlaceholderText("输入主页链接或账号 id"), {
+			target: { value: "abc" },
+		});
 		fireEvent.click(screen.getByRole("button", { name: "查找" }));
 		fireEvent.click(await screen.findByRole("button", { name: /抖音乙/ }));
 		fireEvent.click(await screen.findByRole("button", { name: "创建订阅" }));

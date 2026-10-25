@@ -519,21 +519,21 @@ describe("v3 的订阅与推送外观", () => {
 	});
 
 	/**
-	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51)—— B 站是「UID 或名字」,抖音大概是「粘主页
-	 * 链接」。静态外观,住清单;不给就用通用说法。
+	 * 新建订阅的输入框只声明收哪几种输入(ADR-0021 决策 10 的 🔗),提示句由核心按这份声明拼。
+	 * 自由文字若还混在清单里,新旧两份建议迟早说成两种样子。
 	 */
-	it("lookupPlaceholder:订阅源那段可选一句,1 到 40 字", () => {
-		const m = ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "粘抖音主页链接" } }));
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
-		expect(m.contributes.subscription?.lookupPlaceholder).toBe("粘抖音主页链接");
-		expect(() =>
-			ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "字".repeat(40) } })),
-		).not.toThrow();
-		unreadable(sub({ display: { ...DISPLAY, lookupPlaceholder: "" } }));
-		unreadable(sub({ display: { ...DISPLAY, lookupPlaceholder: "字".repeat(41) } }));
+	it("searchAccepts:订阅源可选地声明收 id / link / name,不为空且不重复", () => {
+		for (const accepts of [["id"], ["link"], ["name"], ["id", "link", "name"]] as const) {
+			const m = ok(sub({ searchAccepts: accepts }));
+			expect(m.contributes.subscription?.searchAccepts).toEqual(accepts);
+		}
+		unreadable(sub({ searchAccepts: ["url"] }));
+		unreadable(sub({ searchAccepts: [] }));
+		unreadable(sub({ searchAccepts: ["id", "id"] }));
 	});
 
-	it("lookupPlaceholder 只有订阅源那段有 —— 推送源没有「新建订阅」那个输入框", () => {
+	it("lookupPlaceholder 已从清单退场 —— 不论订阅段还是推送段都读不了", () => {
+		unreadable(sub({ lookupPlaceholder: "粘链接" }));
 		unreadable(v3({ contributes: { push: { ...DISPLAY, lookupPlaceholder: "粘链接" } } }));
 	});
 

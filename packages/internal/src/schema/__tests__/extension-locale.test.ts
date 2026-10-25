@@ -70,7 +70,7 @@ const MANIFEST = manifestOf({
 			shortLabel: "订",
 			color: "#fe2c55",
 			postNoun: "作品",
-			lookupPlaceholder: "UID 或名字",
+			searchAccepts: ["id", "name"],
 			supportedFeatures: ["post"],
 		},
 	},
@@ -187,7 +187,6 @@ describe("清单那层（$manifest）", () => {
 						label: "Subscription",
 						shortLabel: "Su",
 						postNoun: "post",
-						lookupPlaceholder: "UID or name",
 					},
 				},
 			},
@@ -233,7 +232,6 @@ describe("清单那层（$manifest）", () => {
 					label: "Subscription",
 					shortLabel: "Su",
 					postNoun: "post",
-					lookupPlaceholder: "UID or name",
 				},
 			},
 		});
@@ -254,7 +252,7 @@ describe("清单那层（$manifest）", () => {
 				},
 				contributes: {
 					push: { color: "#000000" },
-					subscription: { color: "#000000" },
+					subscription: { color: "#000000", searchAccepts: ["id"] },
 				},
 				extra: "没有这个键",
 			},
@@ -279,6 +277,10 @@ describe("清单那层（$manifest）", () => {
 			},
 			{
 				path: ["$manifest", "contributes", "subscription", "color"],
+				code: "untranslatable-entry",
+			},
+			{
+				path: ["$manifest", "contributes", "subscription", "searchAccepts"],
 				code: "untranslatable-entry",
 			},
 			{ path: ["$manifest", "extra"], code: "unknown-entry" },

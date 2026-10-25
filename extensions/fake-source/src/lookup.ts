@@ -29,8 +29,8 @@ const MESSY_CANDIDATES: readonly CreatorCandidate[] = [
 ];
 
 /**
- * 搜人。普通的字现编三个候选;四个魔法词各演一种宿主要接住的样子(清单里那句
- * `lookupPlaceholder` 告诉主人有这四个)。失败回结果形状,不抛。
+ * 搜人。普通的字现编三个候选;四个魔法词各演一种宿主要接住的样子(拓展视图的
+ * `view.notice` 告诉主人有这四个)。失败回结果形状,不抛。
  *
  * `store` 是来源起来之后才有的(`ctx.storeImage`);候选头像先存进图库、交引用。
  */

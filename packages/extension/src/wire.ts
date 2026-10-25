@@ -126,8 +126,13 @@ export interface ExtensionSubscriptionView {
 	externalIdNoun?: string;
 	/** 外部 id 长什么样:正则源码,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立校验。编译不过的让清单读不了。 */
 	externalIdRegex?: string;
-	/** 新建订阅时输入框里那句提示(抖音:粘主页链接)。不给就用通用说法(ADR-0019 决策 51)。 */
-	lookupPlaceholder?: string;
+	/**
+	 * 搜人输入框收哪几种输入。提示句由核心按这份声明拼;第 4 期接上面板叫法函数前先不下发句子。
+	 *
+	 * 🔴 手写的字面量联合 —— 镜像 `@bilibili-notify/internal` 的 `CREATOR_SEARCH_INPUTS`(这个
+	 * 入口不许 import internal),两份由宿主那头的类型断言双向钉住。
+	 */
+	searchAccepts?: readonly ("id" | "link" | "name")[];
 	/**
 	 * 这个源声明的特性(ADR-0019 决策 4 / 5),配置弹层只列这几种;顺序不保证,面板照 `FEATURE_KEYS` 排。
 	 * `liveStreaming`(周期「正在直播」)是**同时有开播与下播**才有的(⑬d),这个推法由服务端算一次。

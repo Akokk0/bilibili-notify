@@ -21,6 +21,7 @@ import type {
 	SourceHealth,
 } from "@bilibili-notify/extension";
 import type {
+	CREATOR_SEARCH_INPUTS,
 	EXTENSION_SOURCE_FEATURES,
 	ExtensionCreatorCandidatesSchema,
 	ExtensionCreatorProfileReportSchema,
@@ -37,7 +38,9 @@ import type { Equals, Pinned } from "./view-shape-pin.js";
 type ManifestSubscription = NonNullable<ExtensionManifestV3["contributes"]["subscription"]>;
 type ManifestPush = NonNullable<ExtensionManifestV3["contributes"]["push"]>;
 type ReadonlyArrays<T> = {
-	[K in keyof T]: T[K] extends readonly unknown[] ? Readonly<T[K]> : T[K];
+	[K in keyof T]: NonNullable<T[K]> extends readonly unknown[]
+		? Readonly<NonNullable<T[K]>> | Extract<T[K], undefined>
+		: T[K];
 };
 
 /** 清单订阅段去掉装包用的 `cardSkin`,与过 wire 的订阅视图双向严格相等。 */
@@ -49,6 +52,13 @@ export type SubscriptionFeaturesPinned = Pinned<
 	Equals<
 		(typeof EXTENSION_SOURCE_FEATURES)[number],
 		ExtensionSubscriptionView["supportedFeatures"][number]
+	>
+>;
+/** 清单声明的搜人输入种类与 wire 视图的字面量双向严格相等。 */
+export type SubscriptionSearchInputsPinned = Pinned<
+	Equals<
+		(typeof CREATOR_SEARCH_INPUTS)[number],
+		NonNullable<ExtensionSubscriptionView["searchAccepts"]>[number]
 	>
 >;
 /** 推送段的纯外观逐格严格相等;字段表由下一行单向钉住可赋值。 */

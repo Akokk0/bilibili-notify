@@ -567,7 +567,7 @@ describe("GET /api/ext", () => {
 			shortLabel: "抖",
 			color: "#fe2c55",
 			postNoun: "作品",
-			lookupPlaceholder: "粘抖音主页链接",
+			searchAccepts: ["link", "name"] as ("id" | "link" | "name")[],
 		};
 		const douyin: ExtensionEntry = {
 			id: "douyin",
