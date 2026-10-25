@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { LivePushType } from "../live/live-types";
-import { liveTypeAllowsAtAll, liveTypeToFeature } from "../runtime/engines";
+import { LivePushType } from "../../live/live-types";
+import { liveTypeAllowsAtAll, liveTypeToFeature } from "../bound-push";
 
 describe("liveTypeToFeature", () => {
 	it("完整映射表", () => {

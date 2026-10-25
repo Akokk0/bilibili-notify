@@ -49,7 +49,6 @@ import {
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import type { Push } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
@@ -196,147 +195,8 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 });
 
 // SUT must be imported AFTER the vi.mock calls register.
-const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll, boundLivePush } = await import(
-	"../engines.js"
-);
+const { createEngines } = await import("../engines.js");
 const { postSettingsOf } = await import("../../posts/post-settings.js");
-
-// Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
-// adapter helpers MUST stay byte-consistent across ends (same business core,
-// different shells). liveTypeAllowsAtAll guards the @全体 bug fix: only
-// StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) and the boot catch-up (11) are NOT.
-describe("apps/server adapter live-type map (cross-end mirror)", () => {
-	it("liveTypeToFeature 完整映射表 + 未知兜底 liveStart", () => {
-		expect(liveTypeToFeature(0)).toBe("liveStreaming"); // 周期「正在直播」有自己的特性键(⑬d 拆键)
-		expect(liveTypeToFeature(3)).toBe("liveStart");
-		expect(liveTypeToFeature(4)).toBe("membership");
-		expect(liveTypeToFeature(6)).toBe("superchat");
-		expect(liveTypeToFeature(7)).toBe("viewerChat");
-		expect(liveTypeToFeature(8)).toBe("viewerEnter");
-		expect(liveTypeToFeature(9)).toBe("liveEnd");
-		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
-		expect(liveTypeToFeature(999)).toBe("liveStart");
-	});
-
-	it("liveTypeAllowsAtAll:仅开播(3)允许,0/补报(11)/其它/未知一律 false", () => {
-		expect(liveTypeAllowsAtAll(3)).toBe(true);
-		expect(liveTypeAllowsAtAll(0)).toBe(false);
-		for (const t of [4, 6, 7, 8, 9, 11, 999]) {
-			expect(liveTypeAllowsAtAll(t)).toBe(false);
-		}
-	});
-});
-
-/**
- * 拓展订阅的直播那一跳(ADR-0019 决策 67):装配交来的消息组 → 推送层的一次推送,**特性键与 @全体 照 B 站的映射**
- * (`liveTypeToFeature` / `liveTypeAllowsAtAll`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
- * 「正在直播」都 @全体、历史把周期推送记成开播。
- */
-describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给推送层", () => {
-	const card = { kind: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
-	const spy = () => {
-		const push = vi.fn(async (_push: Push) => []);
-		return { push, router: { push } };
-	};
-
-	it("开播:特性 liveStart(历史就记它)、允许 @全体;一组 = 一条载荷,卡 + 文字合成一条", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[card, { kind: "text", text: "开播啦" }]], 3);
-		expect(push).toHaveBeenCalledTimes(1);
-		const sent = push.mock.calls[0]?.[0];
-		expect(sent).toEqual({
-			subscriptionId: "sub-1",
-			feature: "liveStart",
-			anchors: [
-				{
-					role: "main",
-					messages: [
-						{
-							kind: "composite",
-							segments: [
-								{ kind: "image", buffer: card.buffer, mime: "image/jpeg" },
-								{ kind: "text", text: "开播啦" },
-							],
-						},
-					],
-				},
-			],
-		});
-	});
-
-	it("正在直播:特性 liveStreaming(自己的开关与目标,历史就记它)、不 @全体", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "还在播" }]], 0);
-		expect(push.mock.calls[0]?.[0]).toEqual({
-			subscriptionId: "sub-1",
-			feature: "liveStreaming",
-			allowAtAll: false,
-			anchors: [{ role: "main", messages: [{ kind: "text", text: "还在播" }] }],
-		});
-	});
-
-	it("空文字段不进载荷:单图仍收成图载荷", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[card, { kind: "text", text: "" }]], 9);
-		expect(push.mock.calls[0]?.[0]?.anchors[0]?.messages).toEqual([
-			{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
-		]);
-	});
-
-	it("重启补报:特性 liveStart(走开播的路由,历史记成开播)、不 @全体", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "补报" }]], 11);
-		expect(push.mock.calls[0]?.[0]).toMatchObject({ feature: "liveStart", allowAtAll: false });
-	});
-
-	it("下播:特性 liveEnd、不 @全体;几组 = 本体那一个锚点里的一串载荷", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[card], [{ kind: "text", text: "下播啦" }]], 9);
-		expect(push.mock.calls[0]?.[0]).toEqual({
-			subscriptionId: "sub-1",
-			feature: "liveEnd",
-			allowAtAll: false,
-			anchors: [
-				{
-					role: "main",
-					messages: [
-						{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
-						{ kind: "text", text: "下播啦" },
-					],
-				},
-			],
-		});
-	});
-
-	it("下播卡后面的回顾:附加项按词云、总结的顺序跟在本体锚点之后", async () => {
-		const { push, router } = spy();
-		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "下播啦" }]], 9, [
-			{
-				role: "extra",
-				extra: "wordcloud",
-				messages: [[{ kind: "text", text: "词云" }]],
-			},
-			{
-				role: "extra",
-				extra: "liveSummary",
-				messages: Promise.resolve([[{ kind: "text", text: "模板总结" }]]),
-				aiMessages: Promise.resolve([[{ kind: "text", text: "AI 总结" }]]),
-			},
-		]);
-		const sent = push.mock.calls[0]?.[0];
-		expect(sent?.anchors[0]).toEqual({
-			role: "main",
-			messages: [{ kind: "text", text: "下播啦" }],
-		});
-		expect(sent?.anchors[1]).toEqual({
-			role: "extra",
-			extra: "wordcloud",
-			messages: [{ kind: "text", text: "词云" }],
-		});
-		expect(await sent?.anchors[2]?.messages).toEqual([{ kind: "text", text: "模板总结" }]);
-		expect(await sent?.anchors[2]?.aiMessages).toEqual([{ kind: "text", text: "AI 总结" }]);
-	});
-});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };

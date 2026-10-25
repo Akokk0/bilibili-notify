@@ -317,7 +317,7 @@ const summariesBy = (w: World, targetId: string): Array<string | string[]> =>
 // - `live/recap/recap-anchors.ts` 里总结锚点不带 `aiMessages`(只交模板)→ 「默认设置两边都收 AI」那条红;
 // - `live/recap/live-summary-requester.ts` 里退回「AI 成功就不渲染模板」(交 AI 那串当 messages)→ 「乙写了关」那条红
 //   (乙收到 AI 那句);
-// - `runtime/engines.ts` 的 `toPushAnchors` 里删掉 `aiMessages` 那一支 → 「默认设置两边都收 AI」红。
+// - `push/bound-push.ts` 的 `toPushAnchors` 里删掉 `aiMessages` 那一支 → 「默认设置两边都收 AI」红。
 describe("直播总结按目标挑 AI 版或模板(ADR-0032)", () => {
 	it("默认开、乙写了关:甲收 AI 写的总结,乙收模板那句;AI 只问了一次", async () => {
 		const comment = vi.fn(async (_prompt: string) => "AI 写的总结");
