@@ -43,6 +43,12 @@ export const EXTENSION_MANIFEST_FILE = "extension.json";
  * 分发出去的拓展指定加载哪个文件。入口固定,**宿主自己判**。
  */
 export const EXTENSION_ENTRY_FILE = "index.mjs";
+/**
+ * 开发版场景入口。名字同样由宿主定,不进清单;发行包与装包白名单都不收它。
+ *
+ * 清单里的 `contributes.devtools` 只表示「可以来找这个文件」,不能指定别的路径。
+ */
+export const EXTENSION_DEVTOOLS_ENTRY_FILE = "devtools.mjs";
 
 /**
  * 拓展**给人看的**那两份,都是可选的。

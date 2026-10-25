@@ -299,6 +299,24 @@ describe("改完自动重载", () => {
 		}
 	});
 
+	it("devtools.mjs 变了也重载", async () => {
+		await installed("bridge");
+		const entry = join(repoDir, "bridge", "dist", "devtools.mjs");
+		const reloaded: string[] = [];
+		const watch = must("ext.watch", {
+			reload: async (id: string) => {
+				reloaded.push(id);
+			},
+		});
+		await watch.run({ ext: "bridge" });
+		try {
+			await editUntilSeen(entry, () => reloaded.length > 0);
+			expect(reloaded[0]).toBe("bridge");
+		} finally {
+			await watch.reset?.();
+		}
+	});
+
 	it("盯着的时候进「当前生效」条,收摊就不盯了", async () => {
 		const entry = await installed("bridge");
 		const reloaded: string[] = [];

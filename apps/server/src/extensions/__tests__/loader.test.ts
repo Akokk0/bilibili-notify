@@ -129,6 +129,7 @@ function run(opts: {
 	importModule?: (specifier: string) => Promise<unknown>;
 	activateTimeoutMs?: number;
 	disposeTimeoutMs?: number;
+	attachDevtools?: (started: { id: string; dir: string; ctx: ExtensionContext }) => Promise<void>;
 	/** 不给就用 `hostOpts` 里那个(每个 id 都回假宿主的日志器)。 */
 	loggerOf?: (id: string) => Logger;
 	/** 不给就一直是简中。 */
@@ -152,6 +153,7 @@ function run(opts: {
 		importModule: opts.importModule,
 		activateTimeoutMs: opts.activateTimeoutMs,
 		disposeTimeoutMs: opts.disposeTimeoutMs,
+		attachDevtools: opts.attachDevtools,
 		...coreStubs(),
 		...(opts.problems ? { problems: opts.problems } : {}),
 		...(opts.settingsIssue ? { settingsIssue: opts.settingsIssue } : {}),
@@ -405,6 +407,101 @@ describe("加载拓展", () => {
 		expect(douyin?.detail).toContain(`小号 ${wants}`);
 		expect(douyin?.detail).toContain(`只到小号 ${EXTENSION_API_RANGE.revision}`);
 		expect(douyin?.detail).toContain("先升级 BN");
+		await loaded.dispose();
+	});
+});
+
+describe("开发版开发入口", () => {
+	const WITH_DEVTOOLS = {
+		contributes: {
+			push: { label: "测试", shortLabel: "测", color: "#000000" },
+			devtools: {},
+		},
+	};
+
+	it("清单开了 devtools → activate 之后调一次,拿到同一个 ctx", async () => {
+		await plant("demo", "export function activate() {}", WITH_DEVTOOLS);
+		const order: string[] = [];
+		let activated: ExtensionContext | undefined;
+		const seen: Array<{ id: string; dir: string; ctx: ExtensionContext }> = [];
+		const host = fakeHost();
+		let loadedLineSeen = false;
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					activated = ctx;
+					order.push("activate");
+				},
+			}),
+			attachDevtools: async (started) => {
+				order.push("attach");
+				loadedLineSeen = host.lines.some((line) => line.includes("已加载"));
+				seen.push(started);
+			},
+		});
+
+		expect(loaded.list()[0]?.state).toBe("running");
+		expect(order).toEqual(["activate", "attach"]);
+		expect(loadedLineSeen).toBe(true);
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.id).toBe("demo");
+		expect(seen[0]?.dir).toBe(join(root, "demo"));
+		expect(seen[0]?.ctx).toBe(activated);
+		await loaded.dispose();
+	});
+
+	it("清单没开 devtools → 不调", async () => {
+		await plant("demo", "export function activate() {}");
+		const attachDevtools = vi.fn(async () => {});
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			attachDevtools,
+		});
+
+		expect(loaded.list()[0]?.state).toBe("running");
+		expect(attachDevtools).not.toHaveBeenCalled();
+		await loaded.dispose();
+	});
+
+	it("开发入口装载失败 → 拓展照旧 running,只记一行 warn", async () => {
+		await plant("demo", "export function activate() {}", WITH_DEVTOOLS);
+		const host = fakeHost();
+		const loaded = await run({
+			host,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			importModule: async () => ({ activate() {} }),
+			attachDevtools: async () => {
+				throw new Error("开发入口炸了");
+			},
+		});
+
+		expect(loaded.list()[0]?.state).toBe("running");
+		expect(host.lines.filter((line) => line.startsWith("warn "))).toHaveLength(1);
+		expect(host.lines.join("\n")).toContain("开发入口炸了");
+		await loaded.dispose();
+	});
+
+	it("重载之后前一份 ctx 已中止,再调一次拿到新的 ctx", async () => {
+		await plant("demo", "export function activate() {}", WITH_DEVTOOLS);
+		const attached: ExtensionContext[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			importModule: async () => ({ activate() {} }),
+			attachDevtools: async ({ ctx }) => {
+				attached.push(ctx);
+			},
+		});
+
+		await loaded.reload("demo");
+
+		expect(attached).toHaveLength(2);
+		expect(attached[0]?.signal.aborted).toBe(true);
+		expect(attached[1]?.signal.aborted).toBe(false);
+		expect(attached[0]).not.toBe(attached[1]);
 		await loaded.dispose();
 	});
 });

@@ -3,7 +3,11 @@ import { access, lstat, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { type DevParamField, fail, ok } from "@bilibili-notify/internal";
-import { EXTENSION_ENTRY_FILE, EXTENSION_MANIFEST_FILE } from "../../extensions/discover.js";
+import {
+	EXTENSION_DEVTOOLS_ENTRY_FILE,
+	EXTENSION_ENTRY_FILE,
+	EXTENSION_MANIFEST_FILE,
+} from "../../extensions/discover.js";
 import type { DevScenarioDef } from "../registry.js";
 
 /**
@@ -195,7 +199,7 @@ function watchScenario(
 		group: "ext",
 		title: "改完自动重载",
 		icon: "refresh",
-		desc: "盯着装进来那份的 index.mjs,一变就自己重载。配 `vp pack -w` 就是保存即生效。⚠️ 每重载一次漏一份旧模块(ESM 卸不掉),开发版无所谓,但别当常态开着。",
+		desc: "盯着装进来那份的 index.mjs / devtools.mjs,一变就自己重载。配 `vp pack -w` 就是保存即生效。⚠️ 每重载一次漏一份旧模块(ESM 卸不掉),开发版无所谓,但别当常态开着。",
 		params: [pick],
 		async run(params) {
 			const id = String(params.ext);
@@ -209,7 +213,13 @@ function watchScenario(
 			// 一次重建会连着来好几发事件(写文件、改名),攒一下只重载一次。
 			let pending: NodeJS.Timeout | undefined;
 			const watcher = watchDir(dir, (_event, name) => {
-				if (name !== null && name !== EXTENSION_ENTRY_FILE) return;
+				if (
+					name !== null &&
+					name !== EXTENSION_ENTRY_FILE &&
+					name !== EXTENSION_DEVTOOLS_ENTRY_FILE
+				) {
+					return;
+				}
 				if (pending) clearTimeout(pending);
 				pending = setTimeout(() => {
 					void reload();

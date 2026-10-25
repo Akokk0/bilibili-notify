@@ -265,6 +265,8 @@ export interface LoadExtensionsOptions {
 	inbound: InboundHandlers;
 	/** WS upgrade 的分发表。 */
 	upgrades: ExtensionUpgrades;
+	/** 开发版专属:拓展已在跑之后,把它的开发入口挂进 devtools。 */
+	attachDevtools?: (started: { id: string; dir: string; ctx: ExtensionContext }) => Promise<void>;
 	isEnabled(id: string): boolean;
 	/** 载荷版本号,原样交给每个拓展的 ctx。 */
 	hostVersion?: string;
@@ -827,6 +829,21 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			await runtime.dispose();
 			runtime.ctx.logger.error(`加载失败:${detail}`);
 			slot.miss = { state: "failed", detail };
+		}
+		if (slot.running?.runtime !== runtime) return;
+		if (manifest.contributes?.devtools !== undefined && opts.attachDevtools !== undefined) {
+			try {
+				await within(
+					opts.attachDevtools({ id, dir: dir.dir, ctx: runtime.ctx }),
+					activateTimeoutMs,
+				);
+			} catch (err) {
+				if (err instanceof Overdue) {
+					host.logger.warn(`[ext] ${id} 开发入口超过 ${activateTimeoutMs / 1000} 秒没回来`);
+				} else {
+					host.logger.warn(`[ext] ${id} 开发入口没加载上:${errorMessageOf(err)}`);
+				}
+			}
 		}
 	}
 

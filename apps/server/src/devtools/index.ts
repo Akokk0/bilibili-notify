@@ -7,6 +7,7 @@ import type {
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
+import type { ExtensionContext } from "../extensions/context.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
@@ -22,6 +23,7 @@ import { isDevBuild } from "../update/version-order.js";
 import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
+import { createDevEntryAttacher } from "./dev-entry.js";
 import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
 import { injectableMarketplace } from "./marketplace-injection.js";
 import { createDevtoolsProviderRegistry, type DevtoolsProviderRegistry } from "./providers.js";
@@ -133,6 +135,8 @@ export interface Devtools {
 	memoryUsage: () => MemoryUsageSample;
 	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
 	quietHoursNow: () => Date;
+	/** 装载器在拓展跑起来之后调:只给开了 `contributes.devtools` 的那几家挂开发场景。 */
+	attachExtension: (started: { id: string; dir: string; ctx: ExtensionContext }) => Promise<void>;
 }
 
 export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
@@ -222,6 +226,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	const providers = createDevtoolsProviderRegistry(coreDefs.map((def) => def.id));
 	input.provide(providers);
 	const registry = createDevRegistry(coreDefs, providers);
+	const attachExtension = createDevEntryAttacher({ providers, address: input.address });
 	return {
 		registry,
 		route: createDevRoute({ registry, captures }),
@@ -240,5 +245,6 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			() => getHeapStatistics().heap_size_limit,
 		),
 		captures,
+		attachExtension,
 	};
 }

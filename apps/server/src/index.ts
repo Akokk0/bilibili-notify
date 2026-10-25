@@ -1271,6 +1271,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				group: (msg, meta) => onInboundGroup?.(msg, meta),
 			},
 			upgrades: extensionUpgrades,
+			attachDevtools: devtools?.attachExtension,
 		});
 		// 拓展登记得晚,同一段里就先收:它注册的定时器 / 端点都挂在自己那面 ctx 上,收在核心之前
 		// 才不会在核心已经拆了之后还被回调进去。
