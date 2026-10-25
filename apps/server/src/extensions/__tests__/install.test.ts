@@ -130,6 +130,19 @@ describe("拆包", () => {
 		expect(opened.issues).toBeUndefined();
 	});
 
+	it("夹带开发入口 → 整包拒绝,提示是白名单那一句", () => {
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "devtools.mjs": "export function devtools() {}" }),
+		);
+		expect(opened.ok).toBe(false);
+		if (opened.ok) return;
+		expect(opened.code).toBe("invalid");
+		expect(opened.issues).toBeUndefined();
+		expect(opened.message).toBe(
+			"devtools.mjs:拓展包里只能有 extension.json、index.mjs、locales/<语言码>.json，外加可选的 README.md 与 CHANGELOG.md",
+		);
+	});
+
 	/** 意见不止一条:message 一句概括,逐条放 issues —— 面板把它们摆成清单,主人照着一处处改。 */
 	it("夹带了不止一个文件 → message 一句概括,每个文件一条 issues", () => {
 		const opened = openExtensionPackage(pack({ ...GOOD, "a.mjs": "//", "b.mjs": "//" }));

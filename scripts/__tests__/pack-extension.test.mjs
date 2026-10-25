@@ -1,6 +1,12 @@
-import { strFromU8, strToU8 } from "fflate";
+import { readdir, readFile } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { strFromU8, strToU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
-import { EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES } from "../../apps/server/src/extensions/discover.js";
+import {
+	EXTENSION_DEVTOOLS_ENTRY_FILE,
+	EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES,
+} from "../../apps/server/src/extensions/discover.js";
 import {
 	MAX_EXTENSION_PACKAGE_BYTES as LOADER_PACKAGE_MAX_BYTES,
 	openExtensionPackage,
@@ -18,6 +24,8 @@ import {
 	EXTENSION_PACKAGE_MAX_BYTES,
 	packExtension,
 } from "../pack-extension.mjs";
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** 发版侧打的包,装载那头得拆得开 —— 两边各测各的,等于两边各自复述自己的想法。 */
 describe("packExtension", () => {
@@ -172,5 +180,55 @@ describe("packExtension", () => {
 
 	it("缺一个文件就拒", () => {
 		expect(() => packExtension({ "index.mjs": files["index.mjs"] })).toThrow(/extension\.json/);
+	});
+});
+
+describe("桥的发行包边界", () => {
+	const bridgeDist = resolve(REPO_ROOT, "extensions/bridge/dist");
+	const buildCommand = "vp run -F @bilibili-notify/extension-bridge build";
+	const relativeSpecifier =
+		/(?:\b(?:import|export)\b[^"'`;\n]{0,500}\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)["']\.{1,2}\//;
+
+	async function readBridgeDist() {
+		let entries;
+		try {
+			entries = await readdir(bridgeDist, { recursive: true, withFileTypes: true });
+		} catch (error) {
+			throw new Error(`桥还没构建:${bridgeDist} 里读不到产物。先跑 ${buildCommand}`, {
+				cause: error,
+			});
+		}
+		const files = {};
+		for (const entry of entries) {
+			if (!entry.isFile()) continue;
+			const path = resolve(entry.parentPath, entry.name);
+			files[relative(bridgeDist, path)] = new Uint8Array(await readFile(path));
+		}
+		return files;
+	}
+
+	it("真的桥构建里有宿主约定的开发入口", async () => {
+		const files = await readBridgeDist();
+		expect(files[EXTENSION_DEVTOOLS_ENTRY_FILE]).toBeDefined();
+		expect(files["index.mjs"]).toBeDefined();
+	});
+
+	it("发行包不收开发入口", async () => {
+		const zipped = unzipSync(packExtension(await readBridgeDist()).zip);
+		expect(Object.keys(zipped)).not.toContain(EXTENSION_DEVTOOLS_ENTRY_FILE);
+	});
+
+	it("发行入口是自包含的", async () => {
+		const files = await readBridgeDist();
+		expect(strFromU8(files["index.mjs"])).not.toMatch(relativeSpecifier);
+	});
+
+	it("发行入口不带开发场景文案", async () => {
+		const files = await readBridgeDist();
+		// 这是开发入口第一条场景的标题,发行入口不该带上任何开发场景文案。
+		// 挑标题而不是 API 名,避免发行入口里无关的兼容注释碰巧命中。
+		const devtoolsTitle = "假装一条桥连上来";
+		expect(strFromU8(files[EXTENSION_DEVTOOLS_ENTRY_FILE])).toContain(devtoolsTitle);
+		expect(strFromU8(files["index.mjs"])).not.toContain(devtoolsTitle);
 	});
 });
