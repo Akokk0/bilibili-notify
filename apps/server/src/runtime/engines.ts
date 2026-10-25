@@ -17,11 +17,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import {
-	CommentaryGenerator,
-	PROMPT_NEUTRAL_NOUNS,
-	webSearchExecutorFromSettings,
-} from "@bilibili-notify/ai";
+import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import { displayNameOf, type ModuleState } from "@bilibili-notify/contract";
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
@@ -52,15 +48,14 @@ import {
 	isReachabilityEvidence,
 	needsLiveMonitor,
 	resolve,
-	resolveAIProfile,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { type CommentaryDeps, createCommentary, reloadCommentary } from "../ai/commentary.js";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
-import { attachReadOnlyTools, type LiveNowReader } from "../ai/read-only-tools.js";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
@@ -94,16 +89,11 @@ import {
 	fetchSourceLiveStatus,
 	fetchSourceProfile,
 } from "../subscriptions/call-source.js";
-import {
-	platformLabelOf,
-	sourceNounsFor,
-	subscriptionIdentityLabelOf,
-} from "../subscriptions/platform-label.js";
+import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
 import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
-import { builtinPersonasOf, toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
 	makeExistingCardBgPicker,
@@ -507,83 +497,30 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		logger: log,
 	});
 
-	// ---------- AI (optional) ----------
-	// 构造仅依赖 apiKey / baseUrl 是否齐备 —— 与 `enabled` 解耦,后者交给引擎 config 层
-	// 的 aiEnabled flag 在每次推送前热判断。这样用户在 dashboard 把 AI 开关切关再切开
-	// 不需要重启服务。完整字段变更则走下方 `rebuildCommentary` 重建实例。
-	//
-	// `AISettings` → CommentaryGeneratorConfig 的翻译(含字段改名与「人格看指针」)
-	// 本体在 `./ai-config.ts` —— 「试一句」与统计页的锐评用的是同一份映射,人格该
-	// 从哪儿读只能有一个答案。指针指向一个还没添加的服务商时 resolveAIProfile 兜一套
-	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
-	const buildAiConfig = () => toGeneratorConfig(globals().ai, builtinPersonasOf(globals()));
-
-	const liveNowReader = (): LiveNowReader | undefined => {
-		const table = opts.liveTable;
-		if (!table) return undefined;
-		// `row` 直接是在播表的行(`{ startedAt, details }`),AI 工具那头读新形状。
-		return {
-			row: (id) => table.get(id),
-			running: (sourceKey) => sourceStatus.running(sourceKey),
-		};
-	};
 	const labelDeps = {
 		sources: opts.sources,
 		extensionPlatformLabel: opts.extensionPlatformLabel,
 		extensionPostNoun: opts.extensionPostNoun,
 	};
 
-	let commentary: CommentaryGenerator | null = null;
-	const buildCommentary = (): CommentaryGenerator | null => {
-		const p = resolveAIProfile(globals().ai);
-		if (!p.apiKey || !p.baseUrl) return null;
-		try {
-			const c = new CommentaryGenerator({
-				serviceCtx: aiCtx,
-				config: buildAiConfig(),
-				nouns: (keys) =>
-					sourceNounsFor(
-						keys,
-						{
-							...labelDeps,
-							subscriptions: () => opts.subscriptionStore.list(),
-						},
-						PROMPT_NEUTRAL_NOUNS,
-					),
-			});
-			// 接工具能力 —— **只读档**。少了这一步,女仆连「我订了哪些 UP」都查不到,
-			// 会一口咬定「当前没有订阅」;带上写能力则等于让她能真的加减订阅。
-			// 两种都不是我们要的,取舍写在 attachReadOnlyTools 的文档里。
-			attachReadOnlyTools(c, {
-				subscriptionStore: opts.subscriptionStore,
-				subscriptionStateStore: opts.subscriptionStateStore,
-				// 平台名问来源登记表,登记表里没有的(拓展)才问装载器 —— 与锐评同一条链。
-				platformLabel: (sourceKey) => platformLabelOf(sourceKey, labelDeps),
-				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-				sources: opts.sources,
-				// 女仆的搜人走宿主外壳(超时、中止、抛错收成 unavailable),不直接碰来源。
-				searchCreators,
-				// 没订阅、停用或还没缓存时,同一份来源闸上按身份向平台查一次;不写资料缓存。
-				fetchProfile,
-				// 女仆查直播状态统一从在播表答;来源没在跑时 BN 手里没有它的在播状态。
-				liveNow: liveNowReader(),
-				// 作品与统计:统计仓、总开关、统计总览读口(接线层给的,总览比引擎晚一步建)。
-				...(opts.creatorStats ? { stats: opts.creatorStats } : {}),
-				// 每次请求现取:来源随上下文登记与撤销。
-				providedTools: () => opts.aiToolProviders.tools(),
-			});
-			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
-			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
-			// 生成器那侧静默不挂 web_search。
-			c.setWebSearchSource(() => webSearchExecutorFromSettings(globals().ai.search));
-			c.start();
-			return c;
-		} catch (err) {
-			log.warn(`[ai] commentary init failed: ${String(err)}`);
-			return null;
-		}
+	const aiDeps: CommentaryDeps = {
+		serviceCtx: aiCtx,
+		globals,
+		logger: log,
+		subscriptionStore: opts.subscriptionStore,
+		subscriptionStateStore: opts.subscriptionStateStore,
+		sources: opts.sources,
+		extensionPlatformLabel: opts.extensionPlatformLabel,
+		extensionPostNoun: opts.extensionPostNoun,
+		searchCreators,
+		fetchProfile,
+		liveTable: opts.liveTable,
+		sourceStatus,
+		...(opts.creatorStats ? { creatorStats: opts.creatorStats } : {}),
+		aiToolProviders: opts.aiToolProviders,
 	};
-	commentary = buildCommentary();
+	let commentary: CommentaryGenerator | null = null;
+	commentary = createCommentary(aiDeps);
 
 	// ---------- ImageRenderer (optional) ----------
 	// Constructed when puppeteer is wired — at boot if chromePath was set, or at
@@ -929,31 +866,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					});
 				}
 				if (aiChanged) {
-					// AI 实例热重载:lazy 构造 + 配置失效降级 + 已存在时增量 updateConfig。
-					// 直播引擎构造时 commentary 字段是 snapshot,新建/置空后必须通过 setCommentary
-					// 把引用同步过去,否则永远沿用启动时的 null;作品装配经 `deps.ai()` 每条现取,不用同步。
-					const a = g.ai;
-					// 当前选中那份实例的连接是否配齐 —— 换实例也会走到这里(activeProfile
-					// 指针本身就在 ai 里,变了就算 aiChanged)。
-					const ap = resolveAIProfile(a);
-					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
-					if (!needsCommentary && commentary) {
-						commentary = null;
-						liveSummaryRequester?.setCommentary(null);
-					} else if (needsCommentary && !commentary) {
-						commentary = buildCommentary();
-						liveSummaryRequester?.setCommentary(commentary);
-						if (commentary) log.info("[ai] commentary 已激活");
-					} else if (commentary) {
-						const next = buildAiConfig();
-						commentary.updateConfig(next);
-						liveSummaryRequester?.setCommentary(commentary);
-						// 报**真正推给引擎的那份人格**(指针指的那份),不是 `a.persona` ——
-						// 后者永远冻在老值上,照它打日志等于给排查的人指错方向。
-						log.info(
-							`[ai] commentary 配置已更新: profile=${a.activeProfile}(${ap.provider}), model=${ap.model}, persona.name=${next.persona.name}, traits=${next.persona.traits}`,
-						);
-					}
+					commentary = reloadCommentary(commentary, aiDeps);
+					liveSummaryRequester?.setCommentary(commentary);
 				}
 				// 作品来源的名单(全局作品开关一翻要重算)不在这里:来源上下文自己听 `config-changed` 的 globals 一档
 				// (`subscriptions/source-context.ts`),名单每次现算,来源自己对比。
