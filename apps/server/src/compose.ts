@@ -66,8 +66,8 @@ export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[]
 
 export interface BuiltinIntegrationsDeps {
 	/** 套了壳的 `Api` 与登录系统(壳在入口建)。来源拿 `api.api`,场景拿壳本身:只进这一次,两头不可能接成两个对象。 */
-	api: BiliDevtoolsDeps["api"];
-	auth: BiliDevtoolsDeps["auth"];
+	api: NonNullable<ReturnType<BiliDevtoolsDeps["api"]>>;
+	auth: NonNullable<ReturnType<BiliDevtoolsDeps["auth"]>>;
 	/** 当前语言的读口(入口造一份):内置集成的问题句在语言变了时按新语言重报,递给分层上报器与 B 站来源。 */
 	locale: LocaleReader;
 	/** B 站集成的上下文(`AuthSystem.integration`)。 */
@@ -158,8 +158,8 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			providers.claim(
 				BILIBILI_SOURCE_KEY,
 				createBiliDevtools({
-					api: deps.api,
-					auth: deps.auth,
+					api: () => deps.api,
+					auth: () => deps.auth,
 					bus: deps.bus,
 					// 场景挑订阅:配置里的订阅 + 运行时资料缓存。
 					// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。

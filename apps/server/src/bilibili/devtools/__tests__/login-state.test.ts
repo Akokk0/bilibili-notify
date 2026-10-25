@@ -19,7 +19,7 @@ function setup() {
 	const reports: Array<{ sourceKey: string; state: AuthState }> = [];
 	bus.on("subscription-auth-changed", (changed) => reports.push(changed));
 	const auth = overridableApi(fakeAuth(REAL, { name: "真的" }));
-	const reg = biliRegistry([loginStateScenario({ auth, bus })]);
+	const reg = biliRegistry([loginStateScenario({ auth: () => auth, bus })]);
 	return { reg, reports, state: () => auth.api.state(), account: () => auth.api.account() };
 }
 

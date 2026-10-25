@@ -3,6 +3,7 @@ import type { OverridableApi } from "../../devtools/api-overrides.js";
 import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
 import type { LiveRoomHandle, LiveRooms } from "./live-rooms.js";
+import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
 /**
  * A1:开播 / 下播 —— 往房间的事件漏斗塞 `live-start` / `live-end`,走的是与真帧完全相同的
@@ -33,7 +34,7 @@ export interface RoomPickerDeps {
 
 export interface LiveScenarioDeps extends RoomPickerDeps {
 	/** 用 Pick 而不是整个 OverridableApi<Api>:测试里只需要装得下 `fetchLiveRoomInfo`。 */
-	api: OverridableApi<Pick<Api, "fetchLiveRoomInfo">>;
+	api: () => OverridableApi<Pick<Api, "fetchLiveRoomInfo">> | undefined;
 }
 
 /**
@@ -89,12 +90,12 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 	/** 假直播中的房间。 */
 	const fakes = new Map<number, FakeLive>();
 
-	function syncOverride(): void {
+	function syncOverride(api: OverridableApi<Pick<Api, "fetchLiveRoomInfo">>): void {
 		if (fakes.size === 0) {
-			deps.api.clear("fetchLiveRoomInfo");
+			api.clear("fetchLiveRoomInfo");
 			return;
 		}
-		deps.api.override("fetchLiveRoomInfo", async (real, roomId) => {
+		api.override("fetchLiveRoomInfo", async (real, roomId) => {
 			const res = await real(roomId);
 			const fake = fakes.get(Number(roomId));
 			if (!fake || !res.data) return res;
@@ -112,7 +113,8 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 
 	function endFake(roomId: number): void {
 		fakes.delete(roomId);
-		syncOverride();
+		const api = deps.api();
+		if (api) syncOverride(api);
 		deps.rooms.find(roomId)?.inject({ kind: "live-end" });
 	}
 
@@ -128,11 +130,13 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 			{ key: "title", label: "直播标题", kind: "text", default: DEFAULT_TITLE },
 		],
 		run(params) {
+			const api = deps.api();
+			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
 			const { sub, roomId, handle } = pickRoom(deps, params);
 			const title =
 				typeof params.title === "string" && params.title !== "" ? params.title : DEFAULT_TITLE;
 			fakes.set(roomId, { sub, roomId, title, startedAt: Date.now() });
-			syncOverride();
+			syncOverride(api);
 			handle.inject({ kind: "live-start" });
 			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了开播事件,开播卡走真链路。` };
 		},
@@ -155,6 +159,8 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 		quick: true,
 		params: [{ key: "sub", label: "订阅", kind: "sub" }],
 		run(params) {
+			const api = deps.api();
+			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
 			const { sub, roomId, handle } = pickRoom(deps, params);
 			if (fakes.has(roomId)) {
 				endFake(roomId);

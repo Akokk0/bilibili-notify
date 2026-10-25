@@ -48,7 +48,7 @@ function setup() {
 	const reg = biliRegistry(
 		dynamicScenarios({
 			subs: () => SUBS,
-			api,
+			api: () => api,
 			dynamic: () => ({ detectNow }),
 			profileAvatars: () => undefined,
 		}),

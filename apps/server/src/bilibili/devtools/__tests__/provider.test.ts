@@ -14,8 +14,8 @@ import { fakeAuth } from "./support/fake-auth.js";
 
 function deps(): BiliDevtoolsDeps {
 	return {
-		api: overridableApi({} as Api),
-		auth: overridableApi(fakeAuth()),
+		api: () => overridableApi({} as Api),
+		auth: () => overridableApi(fakeAuth()),
 		bus: createNodeMessageBus(),
 		subs: () => [],
 		dynamic: () => undefined,

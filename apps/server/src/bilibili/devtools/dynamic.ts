@@ -5,6 +5,7 @@ import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import type { SubPick } from "./live.js";
+import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
 /**
  * A3:四类动态(文字 / 图文 / 视频 / 专栏,外加转发)。
@@ -28,7 +29,7 @@ export interface DynamicPollerLike {
 
 export interface DynamicScenarioDeps {
 	subs: () => SubPick[];
-	api: OverridableApi<Pick<Api, "fetchAllDynamic">>;
+	api: () => OverridableApi<Pick<Api, "fetchAllDynamic">> | undefined;
 	/** B 站自己的资料状态;假动态的作者头像与图集封面借它。 */
 	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
 	/** 引擎是后建的,现取;还没起来就 undefined。 */
@@ -226,17 +227,17 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 	 * `fetchAllDynamic` 只有一个盖板位:假动态与错误码共用它,各自的状态变了都来这里对一次 ——
 	 * 谁还要用就留着,都不用了才摘。错误码优先:真请求都不发(也就不打 B 站)。
 	 */
-	function syncOverride(): void {
+	function syncOverride(api: OverridableApi<Pick<Api, "fetchAllDynamic">>): void {
 		if (pending.length === 0 && failing === null) {
-			deps.api.clear("fetchAllDynamic");
+			api.clear("fetchAllDynamic");
 			return;
 		}
-		deps.api.override("fetchAllDynamic", async (real) => {
+		api.override("fetchAllDynamic", async (real) => {
 			if (failing) {
 				const { code } = failing;
 				failing.remaining -= 1;
 				if (failing.remaining <= 0) failing = null;
-				syncOverride();
+				syncOverride(api);
 				// 真接口出错时的样子:请求层把 B 站的码翻成的失败结果(同一个纯函数造),没有 data。
 				return failureFromBili(code, `devtools:模拟的错误码 ${code}`);
 			}
@@ -291,6 +292,8 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 			{ key: "text", label: "正文", kind: "text", default: DEFAULT_TEXT },
 		],
 		async run(params) {
+			const api = deps.api();
+			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
 			const sub = pickSub(params);
 			const engine = deps.dynamic();
 			if (!engine)
@@ -310,12 +313,12 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				deps.profileAvatars()?.avatarUrlOf(sub.uid) ?? FALLBACK_PIC,
 			);
 			pending.push(fake);
-			syncOverride();
+			syncOverride(api);
 			try {
 				await engine.detectNow();
 			} finally {
 				pending.splice(pending.indexOf(fake), 1);
-				syncOverride();
+				syncOverride(api);
 			}
 			return { summary: `已替 ${sub.name} 发了一条假动态(${kind}),检测已跑完一轮。` };
 		},
@@ -332,6 +335,8 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 			{ key: "rounds", label: "连着几轮", kind: "number", default: 1, min: 1, max: 50 },
 		],
 		run(params) {
+			const api = deps.api();
+			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
 			const code = Number(params.code ?? -352);
 			if (!Number.isInteger(code) || code === 0) {
 				throw new DevParamError("错误码要是个非 0 的整数(0 是成功)");
@@ -341,7 +346,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				throw new DevParamError("轮数要是个不小于 1 的整数");
 			}
 			failing = { code, remaining: rounds };
-			syncOverride();
+			syncOverride(api);
 			return { summary: `接下来 ${failing.remaining} 轮拉动态会回错误码 ${code}。` };
 		},
 		active() {
@@ -354,7 +359,8 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		reset() {
 			if (!failing) return;
 			failing = null;
-			syncOverride();
+			const api = deps.api();
+			if (api) syncOverride(api);
 		},
 	};
 

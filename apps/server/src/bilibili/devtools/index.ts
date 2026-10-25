@@ -21,14 +21,14 @@ export type { DevtoolsProviderRegistry } from "../../devtools/providers.js";
  * 宿主汇总时统一加(`devtools/providers.ts`)。
  *
  * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / `AuthSystem`(两个 Proxy 由
- * `src/index.ts` 建好、经 `src/compose.ts` 传进来)。登录场景要
+ * `src/index.ts` 建好,经 `src/compose.ts` 作为现取函数传进来,场景按下时才取)。登录场景要
  * `healthCheck`、造动态的场景经壳上盖方法再调 `detectNow()` 走的是真引擎,各等各的那一片再删。
  */
 export interface BiliDevtoolsDeps {
-	/** 传给引擎的 `Api` 外面的那层 Proxy —— 引擎拿的就是它的 `.api`。 */
-	api: OverridableApi<Api>;
-	/** 来源的登录口外面的那层 Proxy(`state()` / `account()` 可注入);来源挂的是它的 `.api`。 */
-	auth: OverridableApi<Required<SourceAuth>>;
+	/** 传给引擎的 `Api` 外面的那层 Proxy;来源造好之前取不到。 */
+	api: () => OverridableApi<Api> | undefined;
+	/** 来源登录口外面的那层 Proxy(`state()` / `account()` 可注入);来源造好之前取不到。 */
+	auth: () => OverridableApi<Required<SourceAuth>> | undefined;
 	/** 假登录状态从这条总线发(`subscription-auth-changed`)。 */
 	bus: MessageBus;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */

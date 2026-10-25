@@ -7,6 +7,7 @@ import {
 import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import { fakeQrDataUrl } from "./fake-qr.js";
+import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
 /**
  * B2:登录状态的假货。面板从两处读登录态:`GET /api/sources/:sourceKey/auth`(来源的 `auth.state()` /
@@ -17,8 +18,8 @@ import { fakeQrDataUrl } from "./fake-qr.js";
  * 选项就是 `AuthState` 的六种取值,其中 `confirming` 有两种情况(已扫等手机确认 / 开机没确认),各给一项。
  */
 export interface LoginStateDeps {
-	/** 来源的登录口外面的 Proxy:`state` 与 `account` 能盖能摘。 */
-	auth: OverridableApi<Required<SourceAuth>>;
+	/** 来源登录口外面的 Proxy:`state` 与 `account` 能盖能摘;来源造好之前取不到。 */
+	auth: () => OverridableApi<Required<SourceAuth>> | undefined;
 	bus: MessageBus;
 }
 
@@ -90,7 +91,7 @@ async function build(key: Key, uname: string, message: string): Promise<Fake> {
 }
 
 export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
-	let fake: { key: Key } | null = null;
+	let fake: { key: Key; auth: OverridableApi<Required<SourceAuth>> } | null = null;
 
 	const publish = (state: AuthState): void => {
 		deps.bus.emit("subscription-auth-changed", { sourceKey: BILIBILI_SOURCE_KEY, state });
@@ -108,15 +109,17 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 			{ key: "message", label: "失败原因(失败 / 失效时)", kind: "text", default: DEFAULT_FAIL },
 		],
 		async run(params) {
+			const auth = deps.auth();
+			if (!auth) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
 			const key = String(params.status ?? "awaiting-scan") as Key;
 			const uname =
 				typeof params.uname === "string" && params.uname !== "" ? params.uname : DEFAULT_UNAME;
 			const message =
 				typeof params.message === "string" && params.message !== "" ? params.message : DEFAULT_FAIL;
 			const built = await build(key, uname, message);
-			fake = { key };
-			deps.auth.override("state", () => built.state);
-			deps.auth.override("account", () => built.account);
+			fake = { key, auth };
+			auth.override("state", () => built.state);
+			auth.override("account", () => built.account);
 			publish(built.state);
 			return {};
 		},
@@ -127,10 +130,11 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 		},
 		reset() {
 			if (!fake) return;
+			const { auth } = fake;
 			fake = null;
-			deps.auth.clear("state");
-			deps.auth.clear("account");
-			publish(deps.auth.api.state());
+			auth.clear("state");
+			auth.clear("account");
+			publish(auth.api.state());
 		},
 	};
 }

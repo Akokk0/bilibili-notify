@@ -59,7 +59,7 @@ function setup(options: SetupOptions = {}) {
 	const reg = biliRegistry(
 		dynamicScenarios({
 			subs: () => SUBS,
-			api,
+			api: () => api,
 			dynamic: () => ({ detectNow }),
 			profileAvatars: options.profileAvatars ?? (() => undefined),
 		}),
@@ -223,7 +223,7 @@ describe("bilibili.dynamic.post", () => {
 		const reg = biliRegistry(
 			dynamicScenarios({
 				subs: () => SUBS,
-				api,
+				api: () => api,
 				dynamic: () => undefined,
 				profileAvatars: () => undefined,
 			}),

@@ -56,7 +56,7 @@ function setup() {
 		liveScenarios({
 			subs: () => SUBS,
 			rooms,
-			api: overrides,
+			api: () => overrides,
 			liveRooms: () => ({ roomIdOf: (externalId) => roomIds.get(externalId) }),
 		}),
 	);
