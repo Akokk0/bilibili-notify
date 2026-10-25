@@ -18,7 +18,7 @@ import {
 	CARD_SKIN_UPLOAD_PREFIX,
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 import type { GlobalConfig } from "../../types/globals";
 import type { FontChoice } from "./font-ops";
 

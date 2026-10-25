@@ -5,8 +5,8 @@ import type {
 	ExtensionDTO,
 	TestResponse,
 } from "@bilibili-notify/contract";
-// 走零依赖的 /constants 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
-import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/constants";
+// 走零依赖的 /platform-registry 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
+import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/platform-registry";
 import {
 	AddCard,
 	Btn,

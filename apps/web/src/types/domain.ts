@@ -3,8 +3,8 @@
  *
  * 类型的单一来源:域模型在 `@bilibili-notify/internal`(全部 `import type`,
  * 编译后擦除,web 产物不含核心代码);wire DTO 在 `@bilibili-notify/contract`。
- * 值级常量(FEATURE_KEYS / DEFAULT_FEATURE_FLAGS)从 internal 的零依赖子路径
- * `@bilibili-notify/internal/constants` 运行时导入 —— 该模块不含 zod,bundle
+ * 值级常量(FEATURE_KEYS / DEFAULT_FEATURE_FLAGS)从 internal 的各领域零依赖子路径
+ * 运行时导入 —— 这些模块不含 zod,bundle
  * 零增量。本文件自留的只剩 UI 文案、工厂函数与表单辅助。
  *
  * 旧镜像时代的 `*Full` / `*Override` 命名以别名保留,消费者无需改动:
@@ -26,31 +26,33 @@ import type {
 	PushTarget,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
+import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/ai";
 import {
-	BILIBILI_SOURCE_KEY,
-	CONNECTION_PLATFORMS,
-	countsAsDelivery,
-	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
-	DEFAULT_ROAST_SCHEDULE,
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
 	type FeatureFlagValues,
 	type FeatureKey,
+	PUSH_EXTRAS,
+} from "@bilibili-notify/internal/features";
+import { countsAsDelivery, countsAsFailure } from "@bilibili-notify/internal/history";
+import {
+	BILIBILI_SOURCE_KEY,
 	type Identity,
 	identityColor,
-	isTargetPaused,
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-	PLATFORM_REGISTRY,
-	PUSH_EXTRAS,
-	platformOfTarget,
 	RESERVED_INTEGRATION_KEYS,
 	type SourceKey,
 	sameIdentity,
 	subscriptionIdentityOf,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/identity";
+import {
+	CONNECTION_PLATFORMS,
+	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	PLATFORM_REGISTRY,
+} from "@bilibili-notify/internal/platform-registry";
+import { isTargetPaused, platformOfTarget } from "@bilibili-notify/internal/push-target";
 
 export type { ExtraKey, FeatureFlagValues, FeatureKey, Identity, SourceKey, SubscriptionTag };
 export {

@@ -22,7 +22,7 @@ import {
 	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	cardSkinBytes,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 import {
 	AddFileButton,
 	Btn,

@@ -13,7 +13,7 @@
  *   跳一截,那是所有人第一次拖就会骂的那种手感。
  */
 
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/card-skin";
 import { gridsOverlap } from "./skin-draft-ops";
 
 /** 一条网格轨道在屏幕上的范围(px);列用横向、行用纵向,同一套算法。 */

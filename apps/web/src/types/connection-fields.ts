@@ -27,7 +27,7 @@ import {
 	isWebhookPlatform,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/platform-registry";
 import { settingsAreMasked } from "./connection-credentials";
 import { switchOnebotTransport, webhookSecretHint, webhookUrlPlaceholder } from "./domain";
 

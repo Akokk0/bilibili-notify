@@ -72,7 +72,7 @@ describe("providerMeta.supportsResponses", () => {
  * 「这份实例能不能开思考」曾经在三处各手抄一份谓词(聊天胶囊/实例编辑器/
  * 「AI 聊天」设置块),第三处漏掉了 responses 解锁 —— custom+responses 下胶囊
  * 点得亮、真在发 reasoning.effort,设置页却藏起档位还谎称「不会发思考参数」。
- * 谓词只能有一份,住在 constants。
+ * 谓词只能有一份,住在 ai.ts。
  */
 describe("canProfileThink", () => {
 	it("chat 风味看 meta.supportsThinking;responses 风味一律解禁(标准字段)", () => {

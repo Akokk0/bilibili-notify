@@ -5,7 +5,7 @@
  */
 
 import type { ExtensionSettingsIssue, FailureCode } from "@bilibili-notify/contract";
-import { FAILURE_CODES } from "@bilibili-notify/internal/constants";
+import { FAILURE_CODES } from "@bilibili-notify/internal/result";
 import { withDesktopTokenHeader } from "./desktop-token";
 
 /**

@@ -18,7 +18,7 @@
  */
 
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
-import { CARD_KIND_EVENT_NAMES } from "@bilibili-notify/internal/constants";
+import { CARD_KIND_EVENT_NAMES } from "@bilibili-notify/internal/card-skin";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Btn,

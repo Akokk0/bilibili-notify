@@ -140,7 +140,7 @@ describe("取当前生效的那一套", () => {
 describe("零依赖的空档案与 schema 默认值同步", () => {
 	it("EMPTY_AI_PROVIDER_PROFILE 与 parse 出的最小桶逐字段相同", () => {
 		// 两份默认值分居两处是**刻意**的:`resolveAIProfile` 要给前端用,不能把 zod
-		// 拖进浏览器 bundle(见 constants.ts 顶部的零依赖约定)。代价是有走偏的风险,
+		// 拖进浏览器 bundle(见 ai.ts 顶部的零依赖约定)。代价是有走偏的风险,
 		// 这条测试就是那道锁 —— 一处改了另一处忘改,这里当场红。
 		expect(EMPTY_AI_PROVIDER_PROFILE).toEqual(
 			AIProviderProfileSchema.parse({ provider: "custom" }),

@@ -289,7 +289,7 @@ const BooleanFieldSchema = z.strictObject({
 
 /**
  * 拓展交的图片 —— 判据见 {@link EXTENSION_IMAGE_DATA_URL_RE} 与 {@link EXTENSION_IMAGE_MAX_CHARS}
- * (住 constants,面板也用同一份)。
+ * (住 `extension/wire`,面板也用同一份)。
  */
 export const ExtensionImageSchema = z
 	.string()

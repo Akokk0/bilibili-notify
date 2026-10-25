@@ -7,7 +7,7 @@
  */
 
 import type { SkinManifest } from "@bilibili-notify/contract";
-import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/card-skin";
 import { strFromU8 } from "fflate";
 import { parseAssetNames } from "../runtime/asset-labels.js";
 import { openZipEntries } from "../zip-junk.js";

@@ -1,4 +1,4 @@
-import type { ImageRef } from "@bilibili-notify/internal/constants";
+import type { ImageRef } from "@bilibili-notify/internal";
 
 /**
  * 图库里一张图的显示地址(ADR-0022 决策 9、ADR-0036 决策 5):图库的同源读口 `GET /api/images/<ref>`。

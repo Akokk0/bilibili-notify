@@ -7,7 +7,7 @@
  * 而两边都看不出哪里不对。这正是本仓库反复复发的那类「切了没生效 / 关不掉」。
  */
 
-import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/constants";
+import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/card-skin";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	fontSelection,

@@ -14,7 +14,7 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ok, type Result } from "@bilibili-notify/internal/constants";
+import { ok, type Result } from "@bilibili-notify/internal/result";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { BrowserIdentity } from "../browser-identity";
 import { CookieJar } from "../cookie-jar";

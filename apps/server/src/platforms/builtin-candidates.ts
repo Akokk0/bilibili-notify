@@ -2,7 +2,7 @@ import { type ConnectionCandidate, PLATFORM_REGISTRY } from "@bilibili-notify/in
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/platform-registry";
 
 /**
  * 模板候选的 `settings`:新建一条连接时的默认值,按适配器键分。

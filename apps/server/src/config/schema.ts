@@ -33,7 +33,7 @@ const AuthSchema = z
 /**
  * Optional preset push targets injected at first boot to save the user from doing it
  * manually in the dashboard. Stage 2.1 stores them as opaque records — full Zod typing
- * lives in `@bilibili-notify/internal/schema/targets`, but the loader stays decoupled
+ * lives in `packages/internal/src/schema/targets.ts`, but the loader stays decoupled
  * so that adding a new platform later doesn't force a config-schema bump here.
  */
 const PresetPushTargetSchema = z

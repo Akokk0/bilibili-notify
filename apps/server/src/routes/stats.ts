@@ -47,7 +47,7 @@ import type { RouteDeps } from "./types.js";
  * 每多一天就多扫一天的 fans 采样。
  */
 
-// 单一来源:定时锐评的 schema 校验用的是同一对边界(见 internal 的 constants),
+// 单一来源:定时锐评的 schema 校验用的是同一对边界(见 internal 的 ai.ts),
 // 在这儿另立一份的话,两条路对「90 天」的理解迟早会漂开。
 const MIN_DAYS = ROAST_MIN_DAYS;
 const MAX_DAYS = ROAST_MAX_DAYS;

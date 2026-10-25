@@ -1,5 +1,5 @@
 import type { WebSocketLike, WebSocketOptions } from "@bilibili-notify/internal";
-import { fail, ok, type Result } from "@bilibili-notify/internal/constants";
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 import WebSocket from "ws";
 
 /**

@@ -20,7 +20,6 @@
  */
 
 import type { GlobalConfigView, SecretCellDraft } from "@bilibili-notify/contract";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import {
 	type APIFlavorId,
 	canProfileThink,
@@ -31,7 +30,8 @@ import {
 	type ThinkingLevel,
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/ai";
+import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
@@ -839,7 +839,7 @@ export default function Ai() {
 									badge="generation"
 								>
 									{/* responses 风味下思考是标准字段(reasoning.effort),custom 也能开 ——
-									    「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 constants。 */}
+									    「方言未知不敢发」只是 chat completions 的处境。谓词一份,住 ai.ts。 */}
 									{canProfileThink(profile) ? (
 										<>
 											<Field code={`ai.providers.${editing}.enableThinking`}>

@@ -21,7 +21,7 @@
  */
 
 import type { CardKind, CardSkinManifest } from "@bilibili-notify/contract";
-import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/card-skin";
 import { columnsOf } from "./skin-draft-ops";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;

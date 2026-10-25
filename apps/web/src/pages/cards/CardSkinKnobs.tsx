@@ -21,7 +21,7 @@
 
 import type { CardSkinKnob } from "@bilibili-notify/contract";
 // 两层合并走零依赖子路径(理由同 knob-ops.ts 顶上那句):与出图、预览是**同一个**函数。
-import { effectiveCardSkinKnobs } from "@bilibili-notify/internal/constants";
+import { effectiveCardSkinKnobs } from "@bilibili-notify/internal/card-skin";
 import { Btn, GlassBox, HintNote, Icon, Pill, Toggle } from "@bilibili-notify/ui";
 import { FIELD_ROW_CHROME, TColor, TSelect } from "../../components/forms";
 import { useCardSkinList } from "./card-skins-query";

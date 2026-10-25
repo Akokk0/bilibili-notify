@@ -34,7 +34,7 @@ import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_LIMITS,
 	rowMapOf,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 import { AddButton, Btn, EmptyNote, Icon, Pill, SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { animate, type MotionValue, motion, useMotionValue } from "motion/react";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";

@@ -13,11 +13,8 @@
  */
 
 import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import {
-	LINK_REPLY_FORMS,
-	type LinkReplyForm,
-	listsForLinkPreview,
-} from "@bilibili-notify/internal/constants";
+import { LINK_REPLY_FORMS, type LinkReplyForm } from "@bilibili-notify/internal/link-preview";
+import { listsForLinkPreview } from "@bilibili-notify/internal/push-target";
 import {
 	DisclosurePill,
 	EmptyNote,

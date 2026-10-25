@@ -1,7 +1,7 @@
 /**
  * internal 入口 conformance —— 扫 `apps/web/src` 全部非测试源码,断言对
  * `@bilibili-notify/internal` **根入口**的引用一律是 `import type` / `export type`
- * (编译后擦除)。要值就走零依赖子路径 `@bilibili-notify/internal/constants`
+ * (编译后擦除)。要值就走零依赖领域子路径,如 `@bilibili-notify/internal/identity`
  * (或 `/patch`、`/template-defaults`、`/builtin-texts`;出厂文案与内置人格一律从 `/builtin-texts` 取,不走根入口)。
  *
  * 为什么需要静态护栏:根入口把 **zod** 拽进来,而这件事在任何门禁下都是绿的 ——
@@ -11,10 +11,10 @@
  * 这不是假想:`pages/up/helpers.ts` 曾经写成
  * `export { colorFromSeed, UP_COLORS } from "@bilibili-notify/internal"` —— 只为一个
  * 调色板,整个 zod(产物里 300+ 处引用)被打进页面。修法是把那两个值搬进零依赖的
- * `constants.ts`(见那边「UP 主强调色」那一段),这条测试钉住它不再回来。
+ * `identity.ts`(见那边「UP 主强调色」那一段),这条测试钉住它不再回来。
  *
  * `astrbot/page` 同一条纪律,它那侧目前是干净的(`api/types.ts` 全 `import type`,
- * 值走 `/constants`)。测试留在 web 是因为这里的引用点最多、最容易顺手写错。
+ * 值走各领域子路径)。测试留在 web 是因为这里的引用点最多、最容易顺手写错。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -25,7 +25,7 @@ import {
 	parseSource,
 } from "../../../../scripts/source-scan.mjs";
 
-/** 根入口:把 zod 拽进来的那一个。子路径(`/constants` 等)是零依赖的,不在此列。 */
+/** 根入口:把 zod 拽进来的那一个。领域子路径(`/identity` 等)是零依赖的,不在此列。 */
 const INTERNAL_ROOT = "@bilibili-notify/internal";
 
 /**
@@ -90,7 +90,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(offendersIn(`type T = import("${INTERNAL_ROOT}").GlobalConfig;`)).toEqual([]);
 
 		// 零依赖子路径是合法的取值入口;别的包不归这条管。
-		expect(offendersIn(`import { UP_COLORS } from "${INTERNAL_ROOT}/constants";`)).toEqual([]);
+		expect(offendersIn(`import { UP_COLORS } from "${INTERNAL_ROOT}/identity";`)).toEqual([]);
 		expect(offendersIn(`import { z } from "zod";`)).toEqual([]);
 
 		// 注释、字符串里写得再像也不算(原先的按分号切语句会被它们绊倒)。
@@ -106,7 +106,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		// 分号相邻的两条:合法的子路径语句不会和后面的根入口语句配成一对。
 		expect(
 			offendersIn(
-				`import { a } from "${INTERNAL_ROOT}/constants"; import type { B } from "${INTERNAL_ROOT}";`,
+				`import { a } from "${INTERNAL_ROOT}/identity"; import type { B } from "${INTERNAL_ROOT}";`,
 			),
 		).toEqual([]);
 	});

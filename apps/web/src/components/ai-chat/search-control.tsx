@@ -1,5 +1,5 @@
 import type { GlobalConfigView } from "@bilibili-notify/contract";
-import { webSearchBackendMeta } from "@bilibili-notify/internal/constants";
+import { webSearchBackendMeta } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../services/api";

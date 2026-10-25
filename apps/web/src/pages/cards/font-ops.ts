@@ -8,7 +8,7 @@
  */
 
 /** 卡片样式里与字体有关的那两栏。只声明用得到的,不绑整个 CardStyle。 */
-import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/constants";
+import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/card-skin";
 
 export interface FontChoice {
 	font: string;

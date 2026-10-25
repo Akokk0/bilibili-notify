@@ -8,7 +8,6 @@ export default defineConfig({
 			"src/bilibili-guard.ts",
 			"src/builtin-texts.ts",
 			"src/card-skin.ts",
-			"src/constants.ts",
 			"src/extension/wire.ts",
 			"src/features.ts",
 			"src/format.ts",

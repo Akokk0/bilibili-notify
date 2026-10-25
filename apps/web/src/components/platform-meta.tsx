@@ -16,7 +16,7 @@
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
 import type { NewConnection } from "@bilibili-notify/internal";
-import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
+import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/platform-registry";
 import { type PlatformMeta, PlatformMetaProvider, usePlatformMeta } from "@bilibili-notify/ui";
 import { type ReactNode, useMemo } from "react";
 import { useExtensions } from "../hooks/useExtensions";

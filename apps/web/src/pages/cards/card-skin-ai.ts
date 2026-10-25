@@ -9,7 +9,7 @@
  */
 
 import type { GlobalConfigView } from "@bilibili-notify/contract";
-import { resolveAIProfile } from "@bilibili-notify/internal/constants";
+import { resolveAIProfile } from "@bilibili-notify/internal/ai";
 
 export type CardSkinAiReadiness = { ready: true } | { ready: false; reason: string };
 

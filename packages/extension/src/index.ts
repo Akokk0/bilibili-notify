@@ -99,11 +99,6 @@ export type {
 	WebSocketLike,
 	WebSocketOptions,
 } from "@bilibili-notify/internal";
-/**
- * 造结果的两个函数(ADR-0026 决策 6)。`send` / `probe` 回的 `DeliveryResult` / `ProbeResult`
- * 就是 `Result`,一律拿它们造,不手写 `{ ok: false, … }`。
- */
-export { fail, ok } from "@bilibili-notify/internal/constants";
 /** `ctx.i18n.t` 的占位符取值;`count` 同时决定挑哪个单复数类别。只转类型。 */
 export type { TextValues } from "@bilibili-notify/internal/i18n";
 /**
@@ -111,6 +106,11 @@ export type { TextValues } from "@bilibili-notify/internal/i18n";
  * 不必抄一份取值。第二处运行时值,理由同 `ok` / `fail`。
  */
 export { neutralPlatformDescriptor } from "@bilibili-notify/internal/platform-descriptor";
+/**
+ * 造结果的两个函数(ADR-0026 决策 6)。`send` / `probe` 回的 `DeliveryResult` / `ProbeResult`
+ * 就是 `Result`,一律拿它们造,不手写 `{ ok: false, … }`。
+ */
+export { fail, ok } from "@bilibili-notify/internal/result";
 
 /**
  * 面板也要认的那几个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**

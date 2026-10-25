@@ -3,7 +3,7 @@ import {
 	canProfileThink,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/ai";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 

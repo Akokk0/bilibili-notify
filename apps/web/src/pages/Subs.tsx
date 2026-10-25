@@ -4,8 +4,8 @@ import type {
 	ExtensionLookupResponse,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
-import { colorFromSeed } from "@bilibili-notify/internal/constants";
 import { formatCount } from "@bilibili-notify/internal/format";
+import { colorFromSeed } from "@bilibili-notify/internal/identity";
 import {
 	AddCard,
 	Avatar,

@@ -6,7 +6,7 @@
  */
 
 import { neutralPlatformSnapshot, type PlatformSnapshot } from "@bilibili-notify/internal";
-import { platformDescriptor } from "@bilibili-notify/internal/constants";
+import { platformDescriptor } from "@bilibili-notify/internal/platform-registry";
 
 /** 平台由哪个内置适配器管;认不出的(桥借来的)回平台名自己,当它的拓展 id 用。 */
 export function adapterKeyFor(platform: string): string {

@@ -13,7 +13,7 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 
 type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 type Block = Card["blocks"][number];

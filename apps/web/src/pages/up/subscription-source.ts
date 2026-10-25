@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import { EXTENSION_SOURCE_FEATURES } from "@bilibili-notify/internal/constants";
+import { EXTENSION_SOURCE_FEATURES } from "@bilibili-notify/internal/features";
 import { isExtensionPresent } from "../../hooks/useExtensions";
 import {
 	BILIBILI_SOURCE_KEY,

@@ -24,7 +24,6 @@ import { describe, expect, it } from "vite-plus/test";
 // `template-defaults.ts` 经 `/template-defaults` 子路径供面板判「默认文案有更新」,同一条纪律。
 // `builtin-texts.ts` 经 `/builtin-texts` 子路径供面板与服务端共用出厂文案(3b-12,ADR-0037 决策 10、11),同一条纪律。
 const ZERO_DEP_SOURCES = [
-	"constants.ts",
 	"result.ts",
 	"identity.ts",
 	"features.ts",
@@ -36,7 +35,6 @@ const ZERO_DEP_SOURCES = [
 	"link-preview.ts",
 	"update.ts",
 	"image-ref.ts",
-	"source.ts",
 	"extension/wire.ts",
 	"format.ts",
 	"bilibili-guard.ts",

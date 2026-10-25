@@ -15,7 +15,7 @@ import {
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_RANK_GUIDE,
 	type CardKind,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";

@@ -1,8 +1,6 @@
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import {
-	HISTORY_RETENTION_DAY_OPTIONS,
-	isPrivateTarget,
-} from "@bilibili-notify/internal/constants";
+import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/history";
+import { isPrivateTarget } from "@bilibili-notify/internal/push-target";
 import {
 	Avatar,
 	Btn,

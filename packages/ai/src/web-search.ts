@@ -1,4 +1,4 @@
-import type { WebSearchBackendId } from "@bilibili-notify/internal/constants";
+import type { WebSearchBackendId } from "@bilibili-notify/internal/ai";
 import type OpenAI from "openai";
 
 /**

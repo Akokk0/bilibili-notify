@@ -13,7 +13,7 @@
  */
 
 import type { CardSkinManifest } from "@bilibili-notify/contract";
-import { CARD_SKIN_KNOB_LIMITS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_KNOB_LIMITS, CARD_SKIN_LIMITS } from "@bilibili-notify/internal/card-skin";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	addBlock,

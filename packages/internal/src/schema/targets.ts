@@ -118,7 +118,7 @@ export const OnebotConnectionSettingsSchema = z.discriminatedUnion("transport", 
 export type OnebotConnectionSettings = z.infer<typeof OnebotConnectionSettingsSchema>;
 export type OnebotTransport = OnebotConnectionSettings["transport"];
 
-/** 词表本体在零依赖的 constants,`WebhookPlatform` 这个类型也从那边导 —— 别在这儿再声明一份。 */
+/** 词表本体在零依赖的 `platform-registry.ts`,`WebhookPlatform` 这个类型也从那边导 —— 别在这儿再声明一份。 */
 export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
 
 /**

@@ -8,7 +8,7 @@
  */
 
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
+import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/platform-registry";
 import { Icon, type IconName, usePlatformLabel } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";

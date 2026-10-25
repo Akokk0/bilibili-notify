@@ -5,7 +5,7 @@
  * rank 却是 1 = 最低 = 舰长)**全仓只许出现在这一个文件里**。3a 建 `bilibili/` 时整个搬进 B 站的来源描述符
  * (`descriptor.membershipPrograms`),由 `/api/sources` 下发。
  *
- * 🔴 **一条值级 import 都不许有**(只许 `import type`):㉓e 起面板要读它,同 `constants.ts` / `format.ts` 的纪律
+ * 🔴 **一条值级 import 都不许有**(只许 `import type`):㉓e 起面板要读它,同 `format.ts` 的纪律
  * (`constants-imports.test.ts` 钉着)。
  */
 

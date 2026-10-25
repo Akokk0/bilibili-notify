@@ -16,12 +16,8 @@
  * 由各调用处兜底。
  */
 
-import {
-	AI_PROVIDER_IDS,
-	type AIProviderId,
-	LINK_LIMITS,
-	providerMeta,
-} from "@bilibili-notify/internal/constants";
+import { AI_PROVIDER_IDS, type AIProviderId, providerMeta } from "@bilibili-notify/internal/ai";
+import { LINK_LIMITS } from "@bilibili-notify/internal/link-preview";
 import { GUARD_PROGRAM_ID, membershipTiersOf } from "./membership-programs";
 
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */

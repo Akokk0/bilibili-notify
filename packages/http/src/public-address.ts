@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { fail, ok, type Result } from "@bilibili-notify/internal/constants";
+import { fail, ok, type Result } from "@bilibili-notify/internal/result";
 
 /**
  * 这个地址是不是公网地址 —— 抓图那一层拦内网(防 SSRF)用的判定,`FetchOptions.addressCheck` 的生产默认实现。

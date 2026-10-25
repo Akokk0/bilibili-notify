@@ -7,7 +7,7 @@ import type {
 	HttpResponse,
 	FetchOptions as PublicFetchOptions,
 } from "@bilibili-notify/internal";
-import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal/constants";
+import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal/result";
 import { Agent, buildConnector, Headers as UndiciHeaders, fetch as undiciFetch } from "undici";
 import type { BrowserIdentity } from "./browser-identity";
 import type { CookieJar } from "./cookie-jar";

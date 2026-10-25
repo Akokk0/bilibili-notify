@@ -6,7 +6,7 @@
  * 主人一眼就能确认选中的是不是自家那一块。
  */
 
-import { AI_PROVIDERS, type AIProviderId } from "@bilibili-notify/internal/constants";
+import { AI_PROVIDERS, type AIProviderId } from "@bilibili-notify/internal/ai";
 import type { CSSProperties } from "react";
 import { PROVIDER_BRANDS, ProviderLogo } from "./provider-logos";
 

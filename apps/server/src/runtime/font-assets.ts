@@ -13,7 +13,7 @@
  *    清单丢了照样列得出字体(名字回落成 id),清单里多出盘上没有的记录则一概不列。
  */
 
-import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { FONT_ASSET_WARN_BYTES, MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/card-skin";
 import {
 	AssetRejectedError,
 	type AssetStore,
@@ -24,7 +24,7 @@ import { FONT_EXT_TO_MIME, fontExtOf } from "./font-mime.js";
 import { dataPath } from "./roots.js";
 
 /**
- * 单款字体上限 —— 与前端共用一个数(`@bilibili-notify/internal/constants`),否则两边各写
+ * 单款字体上限 —— 与前端共用一个数(`@bilibili-notify/internal/card-skin`),否则两边各写
  * 一个 20MB,改了一处另一处照旧,主人看到的说明和实际拒收线就对不上。
  *
  * 超过 {@link FONT_ASSET_WARN_BYTES} 的**不拒**,只在设置页提醒转 woff2:上限是按文件

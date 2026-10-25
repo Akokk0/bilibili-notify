@@ -7,7 +7,7 @@
  * 能逐条钉死,组件那半只剩一条细线(指针事件 → 调用这些函数 → 交回 patch),另有守卫。
  */
 
-import { CARD_SKIN_LIMITS, rowMapOf } from "@bilibili-notify/internal/constants";
+import { CARD_SKIN_LIMITS, rowMapOf } from "@bilibili-notify/internal/card-skin";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	createVelocityTracker,

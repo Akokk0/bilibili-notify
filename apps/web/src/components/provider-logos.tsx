@@ -8,7 +8,7 @@
  * 想换成官方矢量图的话,把对应 `<svg>` 的内容替换掉即可,外面那层 tile 不用动。
  */
 
-import type { AIProviderId } from "@bilibili-notify/internal/constants";
+import type { AIProviderId } from "@bilibili-notify/internal/ai";
 
 export interface ProviderBrand {
 	/** 品牌主色,同时用于图形描边与 tile 的低透明度底色。 */

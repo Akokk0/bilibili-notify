@@ -15,7 +15,7 @@
  */
 
 import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
-import { CARD_KIND_SHORT_NAMES } from "@bilibili-notify/internal/constants";
+import { CARD_KIND_SHORT_NAMES } from "@bilibili-notify/internal/card-skin";
 import {
 	Btn,
 	ConfirmDialog,
@@ -36,7 +36,7 @@ import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
-/** 七种卡在回落告警里怎么称呼:短名(名字只住在 internal 的 constants,见 `CARD_KIND_SHORT_NAMES`)。 */
+/** 七种卡在回落告警里怎么称呼:短名(名字只住在 internal 的 card-skin.ts,见 `CARD_KIND_SHORT_NAMES`)。 */
 const KIND_LABEL = CARD_KIND_SHORT_NAMES;
 
 /**

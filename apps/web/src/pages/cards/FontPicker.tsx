@@ -13,7 +13,7 @@
  * 要指定具体某款:上传字体文件(两端都作数),或走「手填」用本机装过的。
  */
 
-import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/constants";
+import { MAX_FONT_ASSET_BYTES } from "@bilibili-notify/internal/card-skin";
 import {
 	AddFileButton,
 	Btn,

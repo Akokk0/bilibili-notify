@@ -5,7 +5,6 @@
  * 指针指向哪、删到一份不剩会不会炸、新实例 / 新人格的 id 撞没撞上。
  */
 
-import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/builtin-texts";
 import {
 	AI_PROVIDER_IDS,
 	type AIProviderId,
@@ -13,7 +12,8 @@ import {
 	EMPTY_AI_PROVIDER_PROFILE,
 	presetsOf,
 	providerMeta,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/ai";
+import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/builtin-texts";
 import type { AIPersona, AISettingsDraft } from "../../types/globals";
 
 type AIPreset = AISettingsDraft["presets"][number];

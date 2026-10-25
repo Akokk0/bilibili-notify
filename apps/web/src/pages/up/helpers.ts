@@ -16,16 +16,13 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  *   不给这种目标单发 @全体,这里据它禁用开关并提示「发送时会自动跳过」。曾经这里自己写了一份、
  *   推送层不知道,官机目标每次开播都多记一条「empty payload」失败 —— 界面上说跳过就得真的跳过。
  *
- * **必须走 `/constants` 子路径**,不能从根入口拿:根入口带 zod,而这是页面里唯一
+ * **必须走零依赖领域子路径**,不能从根入口拿:根入口带 zod,而这是页面里唯一
  * 一处从 internal 做**运行时**导入的地方 —— 曾经写成根入口,于是整个 zod(300+ 处
  * 引用)被拖进浏览器 bundle,只为一个调色板。其余对 internal 的引用一律 `import type`
  * (编译后擦除),见 `types/domain.ts` 开头那段。
  */
-export {
-	colorFromSeed,
-	shouldSendAtAll,
-	UP_COLORS,
-} from "@bilibili-notify/internal/constants";
+export { colorFromSeed, UP_COLORS } from "@bilibili-notify/internal/identity";
+export { shouldSendAtAll } from "@bilibili-notify/internal/push-target";
 // displayName 真身在 utils/up-display(组件层也要用,不能反向 import 页面层),这里转口。
 export { displayName, profileAvatarUrl, subscriptionColor } from "../../utils/up-display";
 

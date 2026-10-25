@@ -15,7 +15,7 @@ import type {
 	CardSkinPreviewResponse,
 } from "@bilibili-notify/contract";
 import type { CardKind } from "@bilibili-notify/internal";
-import { CARD_KIND_NAMES, CARD_KINDS } from "@bilibili-notify/internal/constants";
+import { CARD_KIND_NAMES, CARD_KINDS } from "@bilibili-notify/internal/card-skin";
 import {
 	Btn,
 	ErrorNote,

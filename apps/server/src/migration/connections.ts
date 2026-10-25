@@ -23,7 +23,7 @@ import {
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/platform-registry";
 import { readJsonFile, rewriteJsonFile } from "./files.js";
 import {
 	isZeroWebhookPlatform,

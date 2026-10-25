@@ -10,7 +10,7 @@
  *   过了保留期的行不用快照(那几天已不是图库的引用方,图会被清扫收走)。
  */
 
-import { colorFromSeed } from "@bilibili-notify/internal/constants";
+import { colorFromSeed } from "@bilibili-notify/internal/identity";
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
 import {

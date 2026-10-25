@@ -6,8 +6,8 @@
  * 删到一家不剩会不会炸、新人格的 id 撞没撞上。
  */
 
+import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/ai";
 import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
-import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import { describe, expect, it } from "vite-plus/test";
 import type { AIPersona, AISettings } from "../../../types/globals";

@@ -24,7 +24,7 @@ import { fail, OnebotConnectionSettingsSchema, ok } from "@bilibili-notify/inter
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/platform-registry";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
@@ -82,7 +82,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
-// 两个下限与前端共用一个数(见 `@bilibili-notify/internal/constants` 的说明),否则
+// 两个下限与前端共用一个数(见 `@bilibili-notify/internal/platform-registry` 的说明),否则
 // 界面上写着 30s、这边实际按别的数放宽,主人对不上账。
 const DEFAULT_FORWARD_MIN_TIMEOUT_MS = ONEBOT_FORWARD_MIN_TIMEOUT_MS;
 const DEFAULT_IMAGE_MIN_TIMEOUT_MS = ONEBOT_IMAGE_MIN_TIMEOUT_MS;

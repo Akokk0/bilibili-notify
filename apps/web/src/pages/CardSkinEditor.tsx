@@ -21,7 +21,7 @@ import {
 	CARD_KIND_SHORT_NAMES,
 	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/card-skin";
 import {
 	Btn,
 	ErrorNote,

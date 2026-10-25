@@ -1,9 +1,6 @@
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import {
-	canReceiveReply,
-	DEFAULT_ROAST_CRON,
-	isPrivateTarget,
-} from "@bilibili-notify/internal/constants";
+import { DEFAULT_ROAST_CRON } from "@bilibili-notify/internal/ai";
+import { canReceiveReply, isPrivateTarget } from "@bilibili-notify/internal/push-target";
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";

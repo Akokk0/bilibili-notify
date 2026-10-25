@@ -12,7 +12,7 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { type AddressInfo, createServer as createNetServer, type Socket } from "node:net";
-import { ok } from "@bilibili-notify/internal/constants";
+import { ok } from "@bilibili-notify/internal/result";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { BrowserIdentity } from "../browser-identity";
 import { CookieJar } from "../cookie-jar";
