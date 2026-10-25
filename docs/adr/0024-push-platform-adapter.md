@@ -19,6 +19,7 @@
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
     - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。
     - 🔗 10-09（3a-20b-2）：`start(ctx)` / `stop()` 已落，登记即启动、注销即停止。`PlatformAdapterContext` 这一片有的成员：集成上下文的 `logger` / `signal` / `onDispose`，加 `connections()`（归这个适配器的连接，现读）与 `onConnectionsChanged(fn)` —— 主人定的形状，与拓展推送源把手同形（被否：宿主替适配器逐条连接起停）。`inbound` 还没进上下文。3b 写拓展契约文档时要讲清：每次发送连接都会递到手上，只调 HTTP 接口的适配器不用管连接名单，维持长连接的才需要对账。
+    - 🔗 现状（3b-46，10-25）：拓展契约文档已按这句写了「连接名单要不要管」一小节，样板摘自假源拓展的假适配器；`scripts/__tests__/contract-samples.test.mjs` 守卫钉住文档样板与源码一字不差。
     - `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段），`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法）。
     - 三个内置适配器的键是 `onebot`、`qq-official`、`webhook`，和 `bilibili` 一样是保留 id（守卫 18），拓展占不了。
     - 理由：当初改名是怕 `platform` 一词两义，这个歧义已经由订阅侧的 `sourceLabel` 消掉；多家机器人框架都这么叫；改回来要动的地方最少。
@@ -64,6 +65,7 @@
     - 🔗 2026-10-17（3b-52 落成）：问题码 `connection_settings_invalid`；每轮探测前与每次连接变更时记账，连接变更时不探测。
 11. **这一版不对拓展开放**：`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
     - 🔗 10-11（3a-29，主人定）：这一版仍不对拓展开放，**运行时也照这个来**：宿主登记拓展适配器时把 `listAddressCandidates` 与 `connectionAuth` 摘掉再登记，带了也不认（有测试钉着）；此前只在类型上排除，用 JS 写的、或绕过类型的拓展带了这两个成员就是活的。主人认为这两个成员对桥有用（挑群、扫码建连接）；开放要连同拓展契约、桥协议与仓外两个桥插件一起设计，留到 alpha 之后改桥协议时一次做。被否：现在就开放（单独成片）；运行时不管、只在类型上排除。
+    - 🔗 现状（3b-46，10-25）：推送守卫③已落在 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts`；`listAddressCandidates` / `connectionAuth` 两行按本决策记「不开」，运行时剥离由 `apps/server/src/extensions/__tests__/context-grants.test.ts` 钉着。
 12. **内置适配器的入站也经 `ctx.inbound`**：宿主核归属、平台取自连接，不再由适配器自报。
     - 🔗 2026-10-16（3b-40，停下之后的那一条主人定，形状主会话照规矩定）：**已落**。适配器交入站时 meta 只带 `connectionId`，宿主补上平台再交下一层；核归属与关于连接的问题上报共用一个判法（按原始连接表看 `adapterKey`）。适配器停下之后再交来的入站丢掉并记一行，与上下文里别的口子停下之后一律拒绝一致 —— 宿主拦不住适配器自己的代码去调，只能在门口拒收。
 13. **只有 `TargetDispatcher` 能发送**（出口咽喉）。它另开 `sendToAddress(connectionId, address, payload)`，给链接预览的回复与指令回复用：不进路由、不过闸、不落历史，但要查 `isAvailable`、结果带 code、由截流统一记，不重试。链接回复原先现造的临时目标删掉。

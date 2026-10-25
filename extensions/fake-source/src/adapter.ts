@@ -164,6 +164,7 @@ export function createFakeAdapter(hooks: FakeAdapterHooks) {
 	/** 最近的发送,最旧的在前。 */
 	const sentRing: FakeSentEntry[] = [];
 
+	// #region sample: adapter-reconcile
 	// 对账:读一遍此刻归我的连接,和上次记的表比;没变是空操作,变了换表、喊视图刷新。
 	// 幂等 —— 同一份名单来多少次都一样;不写配置、不触发探测(会经 `config-changed` 绕回来)。
 	function reconcile(): boolean {
@@ -182,8 +183,10 @@ export function createFakeAdapter(hooks: FakeAdapterHooks) {
 		tracked = next;
 		return true;
 	}
+	// #endregion sample: adapter-reconcile
 
-	// 发送:只用递进来的 `connection` 与去向,**不查上面那张表** —— 这就是「只调 HTTP 接口的适配器
+	// #region sample: adapter-send
+	// 发送:只用递进来的 `connection` 与去向,**不查自己记的连接表** —— 这就是「只调 HTTP 接口的适配器
 	// 不用管连接名单」的样子。记一条账(满 50 条丢最旧的),回成功。
 	async function send(
 		connection: Connection,
@@ -199,6 +202,7 @@ export function createFakeAdapter(hooks: FakeAdapterHooks) {
 		if (sentRing.length > SENT_RING_SIZE) sentRing.shift();
 		return ok({ latencyMs: 0 });
 	}
+	// #endregion sample: adapter-send
 
 	const def = {
 		// 故意的:下面三个成员不对拓展开放(ADR-0024 决策 11),类型里排除,这里照样塞进去,
@@ -215,6 +219,7 @@ export function createFakeAdapter(hooks: FakeAdapterHooks) {
 		async listConnectionCandidates() {
 			return CANDIDATES.map((make) => make());
 		},
+		// #region sample: adapter-start
 		start(ctx: PlatformAdapterContext) {
 			running = ctx;
 			// 先对一次账,再订变更。头一次对账不算「变了」:视图本来就是现取的。
@@ -223,6 +228,7 @@ export function createFakeAdapter(hooks: FakeAdapterHooks) {
 				if (reconcile()) hooks.changed();
 			});
 		},
+		// #endregion sample: adapter-start
 		stop() {
 			running = undefined;
 			tracked = new Map();

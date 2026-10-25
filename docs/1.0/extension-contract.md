@@ -184,6 +184,8 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 | `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选；`health()` 只交一行字 `{ summary }`，给健康卡与 `status` 指令 | 形状同中立接口<br>🔗 现状（3b-42，10-24）：主人 10-24 定 `auth` 这一版不对拓展开（类型排除、运行时带了也不认），等第一个要登录的拓展；`health()` 当外来数据收：只收同步对象的字符串 `summary`，空白收成一行，按 `SOURCE_HEALTH_SUMMARY_MAX_CHARS`（120）截断且不劈代理对，坏了就显示「状态读不到」，同一原因只 warn 一次 |
 | `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |
 
+🔗 现状（3b-46，10-25）：守卫 21a 已落在 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts`，用仓里的假源拓展逐成员走 `SourceDef`（成员表 `apps/server/src/extensions/extension-source.ts` 的 `SOURCE_DEF_MEMBERS`）与清单订阅段每一格。
+
 描述符里 09-28 新加的几格：
 
 - `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收。🔗 10-23（主人定）：清单收这一格随 3b-42 一起做。🔗 现状（3b-42，10-24）：拓展清单已收这一格，与 `postNoun` 同尺子；`postNoun` / `externalIdNoun` 纯空白都拒。
@@ -306,7 +308,76 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 | `listAddressCandidates(connection, scope, signal)` | 否 | 不开 | alpha 之后桥帧改名时再看；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
 | `connectionAuth` | 否 | 不开 | 与订阅侧同一个 `AuthState`，结果是一份连接草稿；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
 
-对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
+对拍逐成员核：要么走通，要么在「不开」名单里写明理由。🔗 现状（3b-46，10-25）：推送守卫③已落在 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts`；假适配器住假源拓展（`extensions/fake-source/src/adapter.ts`，主人 10-25 定给假源加一口、不另起拓展），一个拓展同时开订阅与推送两口。
+
+### 连接名单要不要管
+
+宿主每次调 `send` / `isAvailable` / `probe` / `capabilities` / `probeCapabilities` 时，都把那条连接递到手上；连接的 `settings` 已经按 `settingsSchema` 解好。`start(ctx)` 的上下文另有 `connections()`（此刻归这个适配器的连接，现读、别缓存）与 `onConnectionsChanged(fn)`。
+
+**只调 HTTP 接口的适配器不用管连接名单**：每次照递进来的连接发即可，`start` 里不用读名单。样板（`adapter-send`）：
+
+<!-- sample: extensions/fake-source/src/adapter.ts#adapter-send -->
+
+```ts
+// 发送:只用递进来的 `connection` 与去向,**不查自己记的连接表** —— 这就是「只调 HTTP 接口的适配器
+// 不用管连接名单」的样子。记一条账(满 50 条丢最旧的),回成功。
+async function send(
+	connection: Connection,
+	destination: DestinationRef,
+	payload: NotificationPayload,
+) {
+	sentRing.push({
+		connectionId: connection.id,
+		platform: connection.platform,
+		destination: destinationOf(destination),
+		segments: segmentsOf(payload),
+	});
+	if (sentRing.length > SENT_RING_SIZE) sentRing.shift();
+	return ok({ latencyMs: 0 });
+}
+```
+
+假适配器不出网，所以这一段只是记账；真适配器在这里经 `ctx.http` 发请求，形状一样 —— 只用递进来的连接，不查自己的表。
+
+**维持长连接的才要对账**：`start` 里先对一次账、再订 `onConnectionsChanged`；对账必须幂等、够便宜（没变就是空操作），且不写配置、不触发探测。样板（`adapter-start`）：
+
+<!-- sample: extensions/fake-source/src/adapter.ts#adapter-start -->
+
+```ts
+start(ctx: PlatformAdapterContext) {
+	running = ctx;
+	// 先对一次账,再订变更。头一次对账不算「变了」:视图本来就是现取的。
+	reconcile();
+	ctx.onConnectionsChanged(() => {
+		if (reconcile()) hooks.changed();
+	});
+},
+```
+
+对账样板（`adapter-reconcile`）：
+
+<!-- sample: extensions/fake-source/src/adapter.ts#adapter-reconcile -->
+
+```ts
+// 对账:读一遍此刻归我的连接,和上次记的表比;没变是空操作,变了换表、喊视图刷新。
+// 幂等 —— 同一份名单来多少次都一样;不写配置、不触发探测(会经 `config-changed` 绕回来)。
+function reconcile(): boolean {
+	if (!running) return false;
+	const next = new Map<string, TrackedConnection>();
+	for (const connection of running.connections()) {
+		next.set(connection.id, { platform: connection.platform, enabled: connection.enabled });
+	}
+	const unchanged =
+		next.size === tracked.size &&
+		[...next].every(([id, one]) => {
+			const old = tracked.get(id);
+			return old?.platform === one.platform && old.enabled === one.enabled;
+		});
+	if (unchanged) return false;
+	tracked = next;
+	return true;
+}
+```
 
 **清单 `contributes.push`**：键名不变，装适配器的描述 —— 原来 `display` 里的 `label`、`shortLabel`、`color`，加上 `icon`；连接配置项 `connection.fields` 改叫 `settingsFields`。`display` 这一层要不要照订阅口摊平、`icon` 在清单里怎么写（清单里没有图库），施工时定。🔗 现状（3b-44，10-25）：现已摊平成 `{ label, shortLabel, color, icon?, settingsFields? }`，`display` 已删，`settingsFields` 缺省按空表读。
 
@@ -338,6 +409,7 @@ interface ConnectionCandidate {
 - `platformSnapshot` 只有宿主写（新建时照候选抄、列候选时按平台名刷新）：拓展停了、桥没连上时，面板照样画得出已有的连接。适配器不读它；快照变了不许触发重连。
 - **连接设置的校验**：保存时适配器在场就按 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。读盘时逐条校验，不过的只隔离那一条（不交给适配器、不投递；面板显示「设置不合法」与原因；盘上原文不动），BN 照常开机。这是宿主替连接报的问题：进问题表、不私聊，记在那条连接所属适配器的名下。
 - 接入凭据（如桥的 token）住拓展自己的设置里，不是连接。
+- **两层地址这一版只能手填**：拓展适配器没有 `listAddressCandidates`（本版不开，运行时也摘），目标的 `address` 与上一级 `parentAddress`（比如频道所在的服务器与子频道）由主人在面板上手填。对拍 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts` 有一条「两层地址这一版只能手填」钉着它走得通。
 
 ### 发送与入站
 
