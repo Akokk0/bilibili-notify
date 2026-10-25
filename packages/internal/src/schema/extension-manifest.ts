@@ -562,6 +562,8 @@ const ContributesSchema = z
 				color: displayShape.color.optional(),
 				/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 				postNoun: ShortNounSchema.optional(),
+				/** 这个平台管创作者叫什么(抖音:博主)。不给就落中性叫法(`sourceNounsOf` 的中性词)。 */
+				creatorNoun: ShortNounSchema.optional(),
 				/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
 				externalIdNoun: ShortNounSchema.optional(),
 				/**

@@ -100,6 +100,7 @@ const ManifestTranslationSchema = z.strictObject({
 					label: DisplayLabelSchema.optional(),
 					shortLabel: ShortLabelSchema.optional(),
 					postNoun: ShortLabelSchema.optional(),
+					creatorNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
 				})
 				.optional(),
@@ -147,6 +148,7 @@ interface DisplayTranslation {
 	label?: string;
 	shortLabel?: string;
 	postNoun?: string;
+	creatorNoun?: string;
 	externalIdNoun?: string;
 }
 
@@ -390,15 +392,16 @@ function fieldOf(
 	return nonEmptyObject(out) ? out : undefined;
 }
 
-/** 两口外观里给人看的几格:推送口只有名字两格,订阅口多两格叫法。 */
+/** 两口外观里给人看的几格:推送口只有名字两格,订阅口多三格叫法。 */
 const PUSH_TEXT_KEYS: ReadonlySet<string> = new Set(["label", "shortLabel"]);
 const SUBSCRIPTION_TEXT_KEYS: ReadonlySet<string> = new Set([
 	...PUSH_TEXT_KEYS,
 	"postNoun",
+	"creatorNoun",
 	"externalIdNoun",
 ]);
 
-/** 外观里一格给人看的字:长度上限照清单那一侧,叫法那两格纯空白也拒(同一把尺子)。 */
+/** 外观里一格给人看的字:长度上限照清单那一侧,叫法那三格纯空白也拒(同一把尺子)。 */
 function putDisplayText(
 	out: object,
 	source: Record<string, unknown>,
@@ -409,7 +412,7 @@ function putDisplayText(
 	const max = key === "label" ? EXTENSION_DISPLAY_LABEL_MAX_CHARS : EXTENSION_SHORT_LABEL_MAX_CHARS;
 	const text = textOf(source, key, path, issues, {
 		max,
-		nonBlank: key === "postNoun" || key === "externalIdNoun",
+		nonBlank: key === "postNoun" || key === "creatorNoun" || key === "externalIdNoun",
 	});
 	if (text !== undefined) put(out, key, text);
 }

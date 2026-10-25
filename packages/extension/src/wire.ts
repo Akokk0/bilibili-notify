@@ -122,6 +122,8 @@ export interface ExtensionSubscriptionView {
 	color?: string;
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 	postNoun?: string;
+	/** 这个平台管创作者叫什么(抖音:博主)。不给就落中性叫法(`sourceNounsOf` 的中性词)。 */
+	creatorNoun?: string;
 	/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
 	externalIdNoun?: string;
 	/** 外部 id 长什么样:正则源码,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立校验。编译不过的让清单读不了。 */

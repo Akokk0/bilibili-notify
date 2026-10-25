@@ -231,6 +231,32 @@ describe("盖清单", () => {
 		);
 	});
 
+	it("订阅源的创作者叫法能经 $manifest 翻译", async () => {
+		const manifest = {
+			...MANIFEST,
+			contributes: {
+				...MANIFEST.contributes,
+				subscription: {
+					label: "订阅",
+					shortLabel: "订",
+					color: "#fe2c55",
+					creatorNoun: "博主",
+					supportedFeatures: ["post" as const],
+				},
+			},
+		} as ExtensionManifest;
+		await put("en.json", {
+			$manifest: {
+				contributes: { subscription: { creatorNoun: "creator" } },
+			},
+		});
+		const locales = await readExtensionLocales(dir, manifest);
+		expect(locales.issues).toEqual([]);
+		expect(localizeManifest(manifest, locales, "en").contributes.subscription?.creatorNoun).toBe(
+			"creator",
+		);
+	});
+
 	it("订阅源的搜人输入种类不可译,译文写了就丢掉并保留清单原值", async () => {
 		const manifest = {
 			...MANIFEST,

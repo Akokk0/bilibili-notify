@@ -41,6 +41,7 @@ const ARRIVED_ISO = "2026-09-23T14:00:00.000Z";
 function manifestOf(
 	supportedFeatures: string[] = ["post", "liveStart", "liveEnd"],
 	externalIdNoun?: string,
+	creatorNoun?: string,
 ): ExtensionManifest {
 	const read = parseExtensionManifest({
 		id: "douyin",
@@ -56,6 +57,7 @@ function manifestOf(
 				postNoun: "作品",
 				externalIdRegex: "[a-z0-9-]+",
 				...(externalIdNoun === undefined ? {} : { externalIdNoun }),
+				...(creatorNoun === undefined ? {} : { creatorNoun }),
 				supportedFeatures,
 			},
 		},
@@ -147,6 +149,7 @@ async function make(
 		images?: (ref: string) => Promise<Stored> | Stored;
 		start?: boolean;
 		externalIdNoun?: string;
+		creatorNoun?: string;
 	} = {},
 ): Promise<Made> {
 	const { logger, lines } = recordingLogger();
@@ -162,7 +165,7 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: manifestOf(opts.supportedFeatures, opts.externalIdNoun),
+		manifest: manifestOf(opts.supportedFeatures, opts.externalIdNoun, opts.creatorNoun),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -216,6 +219,11 @@ describe("createExtensionSource:成员与描述符", () => {
 				{ sources: unnamedRegistry },
 			),
 		).toBe("抖音 · u1");
+	});
+
+	it("描述符带上创作者叫法", async () => {
+		const made = await make({}, { start: false, creatorNoun: "博主" });
+		expect(made.source.descriptor.creatorNoun).toBe("博主");
 	});
 
 	it("成员按表取,方法 bind 回拓展交的实例(class 写的拓展方法在原型上、吃 this)", async () => {

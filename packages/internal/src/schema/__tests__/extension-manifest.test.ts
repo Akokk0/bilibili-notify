@@ -506,6 +506,15 @@ describe("v3 的订阅与推送外观", () => {
 		unreadable(v3({ contributes: { push: { ...DISPLAY, postNoun: "作品" } } }));
 	});
 
+	it("creatorNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
+		const withNoun = ok(sub({ creatorNoun: "博主" }));
+		expect(withNoun.contributes.subscription?.creatorNoun).toBe("博主");
+		expect(() => ok(sub({ creatorNoun: "字".repeat(8) }))).not.toThrow();
+		unreadable(sub({ creatorNoun: "字".repeat(9) }));
+		unreadable(sub({ creatorNoun: " \n\t " }));
+		unreadable(v3({ contributes: { push: { ...DISPLAY, creatorNoun: "博主" } } }));
+	});
+
 	it("externalIdNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
 		const withNoun = ok(sub({ display: { ...DISPLAY, externalIdNoun: "账号" } }));
 		expect(withNoun.contributes.subscription?.externalIdNoun).toBe("账号");

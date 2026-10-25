@@ -243,10 +243,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
 	const declared: ReadonlySet<string> = new Set(subscription.supportedFeatures);
-	const { label, postNoun, externalIdNoun, externalIdRegex } = subscription;
+	const { label, postNoun, creatorNoun, externalIdNoun, externalIdRegex } = subscription;
 	const descriptor: SourceDescriptor = {
 		label,
 		...(postNoun === undefined ? {} : { postNoun }),
+		...(creatorNoun === undefined ? {} : { creatorNoun }),
 		...(externalIdNoun === undefined ? {} : { externalIdNoun }),
 		...(externalIdRegex === undefined ? {} : { externalIdRegex }),
 	};

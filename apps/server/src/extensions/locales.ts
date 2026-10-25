@@ -217,15 +217,22 @@ function localizeFields<F extends ExtensionManifestField>(
 	);
 }
 
-/** 外观里给人看的五格(推送口只有前两格)。 */
+/** 外观里给人看的六格(推送口只有前两格)。 */
 interface DisplayTranslation {
 	label?: string;
 	shortLabel?: string;
 	postNoun?: string;
+	creatorNoun?: string;
 	externalIdNoun?: string;
 }
 
-const DISPLAY_TEXT_KEYS = ["label", "shortLabel", "postNoun", "externalIdNoun"] as const;
+const DISPLAY_TEXT_KEYS = [
+	"label",
+	"shortLabel",
+	"postNoun",
+	"creatorNoun",
+	"externalIdNoun",
+] as const;
 
 /** 外观里几格给人看的字:链上有就用,没有留原字(原清单没写的可选格,译文给了也一并盖上)。 */
 function localizeDisplay<D extends { label: string }>(
