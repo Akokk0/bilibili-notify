@@ -101,6 +101,8 @@ export interface PlatformAdapterDescriptor {
 	shortLabel: string;
 	/** 方章的底色,hex。 */
 	color: string;
+	/** 平台图标:图片 data URL(面板第 4 期按描述画时当 `<img>` 画,这一版还不读)。 */
+	icon?: string;
 	/** 要主人填的连接配置项;连接是挑出来的那种拓展就是空表。 */
 	settingsFields: readonly ExtensionScalarField[];
 }
@@ -120,6 +122,8 @@ export interface ExtensionSubscriptionView {
 	shortLabel?: string;
 	/** 方章的底色,hex。不给就退「认不出」那档灰。 */
 	color?: string;
+	/** 平台图标:图片 data URL(面板第 4 期按描述画时当 `<img>` 画,这一版还不读)。 */
+	icon?: string;
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 	postNoun?: string;
 	/** 这个平台管创作者叫什么(抖音:博主)。不给就落中性叫法(`sourceNounsOf` 的中性词)。 */

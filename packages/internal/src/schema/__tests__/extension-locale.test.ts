@@ -251,8 +251,12 @@ describe("清单那层（$manifest）", () => {
 					},
 				},
 				contributes: {
-					push: { color: "#000000" },
-					subscription: { color: "#000000", searchAccepts: ["id"] },
+					push: { color: "#000000", icon: "data:image/png;base64,AA==" },
+					subscription: {
+						color: "#000000",
+						icon: "data:image/png;base64,AA==",
+						searchAccepts: ["id"],
+					},
 				},
 				extra: "没有这个键",
 			},
@@ -276,7 +280,15 @@ describe("清单那层（$manifest）", () => {
 				code: "untranslatable-entry",
 			},
 			{
+				path: ["$manifest", "contributes", "push", "icon"],
+				code: "untranslatable-entry",
+			},
+			{
 				path: ["$manifest", "contributes", "subscription", "color"],
+				code: "untranslatable-entry",
+			},
+			{
+				path: ["$manifest", "contributes", "subscription", "icon"],
 				code: "untranslatable-entry",
 			},
 			{

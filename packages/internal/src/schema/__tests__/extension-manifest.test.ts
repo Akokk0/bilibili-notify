@@ -515,6 +515,25 @@ describe("v3 的订阅与推送外观", () => {
 		unreadable(v3({ contributes: { push: { ...DISPLAY, creatorNoun: "博主" } } }));
 	});
 
+	it("订阅段与推送段各收一张图片 data URL 作为图标", () => {
+		const subscription = ok(sub({ icon: PNG }));
+		expect(subscription.contributes.subscription?.icon).toBe(PNG);
+		const push = ok(v3({ contributes: { push: { ...DISPLAY, icon: PNG } } }));
+		expect(push.contributes.push?.icon).toBe(PNG);
+	});
+
+	it("非图片 data URL、内联 SVG 与超长图标 —— 订阅段和推送段都拒", () => {
+		const icons = [
+			"https://example.invalid/icon.png",
+			'<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>',
+			`data:image/png;base64,${"A".repeat(constants.EXTENSION_IMAGE_MAX_CHARS)}`,
+		];
+		for (const icon of icons) {
+			unreadable(sub({ icon }));
+			unreadable(v3({ contributes: { push: { ...DISPLAY, icon } } }));
+		}
+	});
+
 	it("externalIdNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
 		const withNoun = ok(sub({ display: { ...DISPLAY, externalIdNoun: "账号" } }));
 		expect(withNoun.contributes.subscription?.externalIdNoun).toBe("账号");

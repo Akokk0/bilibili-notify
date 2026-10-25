@@ -502,6 +502,8 @@ const displayShape = {
 	/** 短名:卡片上那个方章。 */
 	shortLabel: z.string().min(1).max(EXTENSION_SHORT_LABEL_MAX_CHARS),
 	color: HexColorSchema,
+	/** 平台图标:图片 data URL(面板第 4 期当 `<img>` 画)。与清单身份那格的内联 SVG 是两回事。 */
+	icon: ExtensionImageSchema.optional(),
 };
 const ShortNounSchema = z
 	.string()

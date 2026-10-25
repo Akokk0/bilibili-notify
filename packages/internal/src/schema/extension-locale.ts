@@ -440,7 +440,7 @@ function pushOf(
 				issues,
 			);
 			if (fields !== undefined) out.settingsFields = fields;
-		} else if (key === "color") {
+		} else if (key === "color" || key === "icon") {
 			issues.push({ path: here, code: "untranslatable-entry" });
 		} else {
 			issues.push({ path: here, code: "unknown-entry" });
@@ -465,6 +465,7 @@ function subscriptionOf(
 			putDisplayText(out, source, key, path, issues);
 		} else if (
 			key === "color" ||
+			key === "icon" ||
 			key === "externalIdRegex" ||
 			key === "searchAccepts" ||
 			key === "supportedFeatures" ||

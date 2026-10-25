@@ -511,7 +511,12 @@ describe("GET /api/ext", () => {
 	 * 就是不跑代码也知道。这里不给 `push` 的假口子:清单那一份不该去问代码。
 	 */
 	it("停着的拓展照清单交出推送源那一口(外观 + 设置字段);只开订阅那口的没有", async () => {
-		const display = { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" };
+		const display = {
+			label: "机器人框架桥接",
+			shortLabel: "桥接",
+			color: "#a855f7",
+			icon: "data:image/png;base64,iVBORw0KGgo=",
+		};
 		const fields = [{ type: "string", key: "room", label: "房间" }];
 		const bridge: ExtensionEntry = {
 			id: "bridge",
@@ -566,6 +571,7 @@ describe("GET /api/ext", () => {
 			label: "抖音",
 			shortLabel: "抖",
 			color: "#fe2c55",
+			icon: "data:image/png;base64,iVBORw0KGgo=",
 			postNoun: "作品",
 			searchAccepts: ["link", "name"] as ("id" | "link" | "name")[],
 		};
