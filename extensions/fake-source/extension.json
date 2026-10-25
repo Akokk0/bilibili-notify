@@ -6,6 +6,7 @@
 	"apiVersion": 3,
 	"actions": [
 		"report.post",
+		"report.richPost",
 		"report.liveStart",
 		"report.liveEnd",
 		"report.profile",

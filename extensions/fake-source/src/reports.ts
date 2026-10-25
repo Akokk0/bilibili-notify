@@ -145,6 +145,46 @@ export async function fakePost(
 	};
 }
 
+/**
+ * 一条把契约开放的五种正文片段都走一遍的作品。链接图标与表情图也按真作品的路走:
+ * 现造的 png 字节先存进图库,上报里只交 `storeImage` 交回的引用。
+ */
+export async function fakeRichPost(
+	externalId: string,
+	n: number,
+	now: number,
+	store: StorePicture,
+): Promise<PostReport> {
+	const icon = await store(pictureAt(n));
+	const emoji = await store(pictureAt(n + 1));
+	const richText: RichText = [
+		{ kind: "text", text: `第 ${n} 条五种片段：` },
+		{ kind: "mention", text: "@假朋友", userId: `fake-user-${tagOf(externalId)}` },
+		{ kind: "text", text: " 在 " },
+		{ kind: "topic", text: "#假话题", name: "假话题" },
+		{ kind: "text", text: " 里看到一个 " },
+		{
+			kind: "link",
+			text: "网页",
+			url: `https://fake-source.invalid/${tagOf(externalId)}/rich/${n}`,
+			icon,
+		},
+		{ kind: "text", text: " " },
+		{ kind: "emoji", text: "[doge]", image: emoji },
+		{ kind: "text", text: "，都看懂了。" },
+	];
+	return {
+		...postBase(externalId, n),
+		post: {
+			publishedAt: now,
+			text: richText.map((segment) => segment.text).join(""),
+			richText,
+			topic: "假话题",
+			stats: statsOf(n),
+		},
+	};
+}
+
 /** 一个不合形状的图库引用。 */
 export const BAD_IMAGE_REF = "not-a-ref";
 

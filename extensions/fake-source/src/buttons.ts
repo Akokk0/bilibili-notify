@@ -17,6 +17,7 @@ import {
 	fakePostWithBadImage,
 	fakePostWithExtraField,
 	fakeProfile,
+	fakeRichPost,
 	pictureStore,
 	type StorePicture,
 } from "./reports.js";
@@ -41,6 +42,10 @@ interface ReportButton {
 }
 
 const POST: ReportButton = { action: "report.post", label: "报一条作品" };
+const RICH_POST: ReportButton = {
+	action: "report.richPost",
+	label: "报一条五种片段的作品",
+};
 const LIVE_START: ReportButton = { action: "report.liveStart", label: "开播" };
 const LIVE_END: ReportButton = { action: "report.liveEnd", label: "下播" };
 const PROFILE: ReportButton = { action: "report.profile", label: "报资料" };
@@ -75,7 +80,7 @@ function openPeople(people: readonly SourceSubscriptionView[]): string[] {
 }
 
 /**
- * 接上七颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
+ * 接上八颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
  * `running()` 回此刻在跑的那份来源上下文,没在跑是 `undefined`。
  */
 export function wireReportButtons(
@@ -157,6 +162,15 @@ export function wireReportButtons(
 			each: async (externalId, store) =>
 				running()?.reportPost(externalId, await fakePost(externalId, n, now, store)),
 			note: `第 ${n} 条 · ${n % 2 === 1 ? "图文" : "视频"}`,
+		};
+	});
+
+	on(RICH_POST, (now) => {
+		const n = ++postSeq;
+		return {
+			each: async (externalId, store) =>
+				running()?.reportPost(externalId, await fakeRichPost(externalId, n, now, store)),
+			note: `第 ${n} 条 · 五种正文片段`,
 		};
 	});
 
@@ -272,6 +286,7 @@ export function wireReportButtons(
 		blocks() {
 			const blocks: ExtensionBlock[] = [
 				button(POST),
+				button(RICH_POST),
 				button(LIVE_START),
 				button(LIVE_END),
 				button(PROFILE),

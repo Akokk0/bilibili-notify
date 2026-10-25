@@ -19,6 +19,7 @@ import type {
 	LiveDetails,
 	LiveSignalReport,
 	PostReport,
+	RichTextSegment,
 } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -119,11 +120,12 @@ function actionButtons(view: ExtensionView): { label: string; action: string }[]
 	return out;
 }
 
-describe("七颗按钮", () => {
-	it("页上有五颗正常的、两颗报坏的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
+describe("八颗按钮", () => {
+	it("页上有六颗正常的、两颗报坏的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
 		const buttons = actionButtons(bootFakeSource(PEOPLE).view());
 		expect(buttons.map((b) => b.label)).toEqual([
 			"报一条作品",
+			"报一条五种片段的作品",
 			"开播",
 			"下播",
 			"报资料",
@@ -166,7 +168,7 @@ describe("作用于谁", () => {
 		]);
 	});
 
-	it("没有开着的订阅:七颗按哪颗都不报,页上说一句「还没有开着的订阅」,并喊面板重取", async () => {
+	it("没有开着的订阅:八颗按哪颗都不报,页上说一句「还没有开着的订阅」,并喊面板重取", async () => {
 		const fake = bootFakeSource([sub("person-c", false)]);
 		const before = fake.statusChanges();
 		for (const { action } of actionButtons(fake.view())) await fake.press(action);
@@ -205,6 +207,57 @@ describe("作用于谁", () => {
 		expect(fake.reports()).toEqual([]);
 		const error = noticesOf(fake.view()).find((n) => n.tone === "error");
 		expect(plain(error?.text ?? "")).toContain("来源没在跑");
+	});
+});
+
+describe("报一条五种正文片段的作品", () => {
+	it("按现有选人规矩上报;五种片段各有,片段文字拼起来等于正文,图标与表情图都是图库交回的引用", async () => {
+		const fake = bootFakeSource(PEOPLE);
+		await fake.press("report.richPost");
+		const heard = fake.reports();
+		const reports = valuesOf<PostReport>(heard, "post");
+
+		expect(heard.map((report) => [report.kind, report.externalId])).toEqual([
+			["post", "person-a"],
+			["post", "person-b"],
+		]);
+		expect(reports).toHaveLength(2);
+		for (const report of reports) {
+			const segments = report.post.richText ?? [];
+			const kinds = segments.map((segment) => segment.kind);
+			expect(new Set(kinds)).toEqual(new Set(["text", "mention", "topic", "link", "emoji"]));
+			expect(segments.map((segment) => segment.text).join("")).toBe(report.post.text);
+
+			const mention = segments.find(
+				(segment): segment is Extract<RichTextSegment, { kind: "mention" }> =>
+					segment.kind === "mention",
+			);
+			const topic = segments.find(
+				(segment): segment is Extract<RichTextSegment, { kind: "topic" }> =>
+					segment.kind === "topic",
+			);
+			const link = segments.find(
+				(segment): segment is Extract<RichTextSegment, { kind: "link" }> => segment.kind === "link",
+			);
+			const emoji = segments.find(
+				(segment): segment is Extract<RichTextSegment, { kind: "emoji" }> =>
+					segment.kind === "emoji",
+			);
+
+			expect(mention?.userId).toEqual(expect.any(String));
+			expect(topic?.name).toEqual(expect.any(String));
+			expect(isHarmlessUrl(link?.url)).toBe(true);
+			expect(fake.storedRefs()).toContain(link?.icon);
+			expect(fake.storedRefs()).toContain(emoji?.image);
+			expect(isPng(fake.imageBytes(link?.icon))).toBe(true);
+			expect(isPng(fake.imageBytes(emoji?.image))).toBe(true);
+		}
+	});
+
+	it("图库存不下图标或表情图时照普通作品按钮的路失败,原话带到面板,一条都不报", async () => {
+		const fake = bootFakeSource(PEOPLE, { refuseStore: () => "图库满了" });
+		await expect(fake.press("report.richPost")).rejects.toThrow(/图库满了/);
+		expect(fake.reports()).toEqual([]);
 	});
 });
 

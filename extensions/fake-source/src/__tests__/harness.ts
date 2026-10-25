@@ -223,5 +223,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		/** 图库里某个引用对应的字节;没有就是 `undefined`。 */
 		imageBytes: (ref: unknown): Uint8Array | undefined =>
 			typeof ref === "string" ? stored.get(ref) : undefined,
+		/** 图库每存下一张图时交回的那些引用,按次的先后。 */
+		storedRefs: (): ImageRef[] => [...stored.keys()],
 	};
 }
