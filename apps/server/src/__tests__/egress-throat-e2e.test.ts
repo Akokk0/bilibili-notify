@@ -377,11 +377,11 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 		expect(hit).toMatchObject({ targetId: ID.group, connectionId: ID.connection, private: false });
 	});
 
-	it("通知主人:服务端主动告警(engine-error)→ notifyMaster 发到主人目标,恰好一条", async () => {
+	it("通知主人:服务端主动告警(pipeline-error)→ notifyMaster 发到主人目标,恰好一条", async () => {
 		const hit = await exactlyOneCapture(
 			"notify-master",
 			async () => {
-				await okRes(await api("/api/dev/run/engine.error", json({ params: {} })));
+				await okRes(await api("/api/dev/run/pipeline.error", json({ params: {} })));
 			},
 			{ async: true },
 		);

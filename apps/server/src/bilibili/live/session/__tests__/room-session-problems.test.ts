@@ -147,7 +147,7 @@ describe("房间不监听了:报 live_monitor_stopped(lasting),原因各取一�
 		expect(h.closeListener).toHaveBeenCalledWith("r1");
 	});
 
-	it("重连五档用完放弃:原因是「连接持续失败，重试 5 次后放弃」,不走组件告警", async () => {
+	it("重连五档用完放弃:原因是「连接持续失败，重试 5 次后放弃」,不走推送链路错误", async () => {
 		const h = makeSessionHarness();
 		await h.bootstrap();
 		h.startLiveRoomListener.mockRejectedValue(new Error("network down"));

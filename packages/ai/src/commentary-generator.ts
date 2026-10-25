@@ -1751,7 +1751,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 				const rejection = CommentaryGenerator.fatalOf(e);
 				if (rejection) throw rejection;
 				// :384 OpenAI SDK 错误原文常含 baseURL / Authorization: Bearer
-				// <apikey> 片段;callAPI 的错误会经 engine-error / log WS 外泄到
+				// <apikey> 片段;callAPI 的错误会经 pipeline-error / log WS 外泄到
 				// dashboard。脱敏后再 warn / 抛出。
 				// 只要这轮真发了方言参数就值得摘掉重来一次 —— 不限于「开着思考」:
 				// DeepSeek / 火山这类默认开思考的家,连「关」位都要发一条显式禁用,

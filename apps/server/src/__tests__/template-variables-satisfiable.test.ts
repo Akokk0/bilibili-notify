@@ -91,7 +91,7 @@ async function deliveredPostText(video: boolean): Promise<string> {
 			anchors.push(...pushed);
 		},
 		recordFiltered: vi.fn(),
-		emitEngineError: vi.fn(),
+		emitPipelineError: vi.fn(),
 	});
 	const main = anchors.find((anchor) => anchor.role === "main");
 	if (main === undefined) return "";

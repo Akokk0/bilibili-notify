@@ -637,7 +637,7 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		await settleTracked(c);
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(2);
 
-		// 告诉主人的只有一路:engine-error 经 MasterNotifier 的那条(带 `[post-delivery]` 前缀)。作品投递不再
+		// 告诉主人的只有一路:pipeline-error 经 MasterNotifier 的那条(带 `[post-delivery]` 前缀)。作品投递不再
 		// 自己直发一条。两条路共用一份计数、一个来源(60 秒节流键),第二次失败不会再补一条,面板上也只亮一次。
 		const texts = H.push[0].notifyMaster.mock.calls.map((call: unknown[]) => String(call[0]));
 		expect(texts).toHaveLength(1);

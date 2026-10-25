@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 /**
- * Top-right `<AlertShell>` 红色告警面板的数据源。被 `engine-error` WS 事件喂养
+ * Top-right `<AlertShell>` 红色告警面板的数据源。被 `pipeline-error` WS 事件喂养
  * (apps/server/src/ws/channels.ts → log channel)。
  *
  * 与 push-events 的 ToastShell 区分：

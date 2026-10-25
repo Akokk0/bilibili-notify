@@ -80,7 +80,7 @@ export interface WsEvents {
 		"followers-refreshed": BusEvents["followers-refreshed"];
 	};
 	/** 日志行按级别当事件名发,字段是冻结格式。 */
-	log: { "engine-error": BusEvents["engine-error"] } & Record<
+	log: { "pipeline-error": BusEvents["pipeline-error"] } & Record<
 		LogLevel,
 		Pick<LogEntry, "msg" | "args" | "name">
 	>;

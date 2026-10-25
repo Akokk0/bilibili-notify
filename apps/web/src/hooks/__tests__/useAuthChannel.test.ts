@@ -41,7 +41,7 @@ describe("handleAuthEnvelope — auth 频道事件分发", () => {
 
 	it("非 auth 频道帧:不动缓存", () => {
 		handleAuthEnvelope(
-			env({ type: "log", event: "engine-error", data: { source: "x", message: "y" } }),
+			env({ type: "log", event: "pipeline-error", data: { source: "x", message: "y" } }),
 			qc,
 		);
 		expect(qc.getQueryCache().getAll()).toHaveLength(0);

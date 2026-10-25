@@ -9,11 +9,11 @@ import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
  * WS `log` 频道 → `["system", "logs", {day:"live"}]` 缓存 prepend(镜像
  * usePushEventsChannel 的 setQueryData patch)。两类帧都收:
  *   - 级别帧 { type:"log", event:<level>, data:{ msg,args,name } }
- *   - engine-error { type:"log", event:"engine-error", data:{ source, message } }
- *     合成成一条 level=error / name=source 的行,让引擎错误也进日志流。
+ *   - pipeline-error { type:"log", event:"pipeline-error", data:{ source, message } }
+ *     合成成一条 level=error / name=source 的行,让推送链路错误也进日志流。
  *
  * 提取为 export 纯函数:测试注入 `qc = new QueryClient()` 即可覆盖形状校验
- * 与 silent-drop 契约,无需渲染 hook。`useAlertChannel`(engine-error →
+ * 与 silent-drop 契约,无需渲染 hook。`useAlertChannel`(pipeline-error →
  * 右上角 AlertShell)保持独立、不受影响 —— 二者共用同一 `log` 订阅各自消费。
  *
  * 服务端 /api/system/logs 只按 day/limit 分页;level/source/文本过滤全在页面客户端
@@ -34,7 +34,7 @@ export function parseLogEnvelope(env: WsEnvelope): LogLineView | null {
 		return line;
 	}
 
-	if (isWsEvent(env, "log", "engine-error")) {
+	if (isWsEvent(env, "log", "pipeline-error")) {
 		const d = env.data;
 		if (typeof d?.source !== "string" || typeof d.message !== "string") return null;
 		return { ts: env.ts, level: "error", name: d.source, msg: d.message };

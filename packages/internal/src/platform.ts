@@ -156,8 +156,8 @@ export type SubscriptionOp =
 /**
  * 总线的事件表:事件名 → 载荷。业务核心唯一事件源,独立端 WS channel 都源自这里。
  *
- * 载荷一律是一个具名对象(没有载荷的写 `undefined`):`bus.emit("engine-error", { source, message })`、
- * `bus.on("engine-error", ({ source, message }) => …)`。不用位置参数 —— 加一格不会挪动别的格,
+ * 载荷一律是一个具名对象(没有载荷的写 `undefined`):`bus.emit("pipeline-error", { source, message })`、
+ * `bus.on("pipeline-error", ({ source, message }) => …)`。不用位置参数 —— 加一格不会挪动别的格,
  * WS 帧的 `data` 也能直接从这里推导(`apps/contract` 的事件表),面板不用再手写类型断言。
  */
 export interface BusEvents {
@@ -168,11 +168,11 @@ export interface BusEvents {
 	 */
 	"subscription-auth-changed": { sourceKey: string; state: AuthState };
 	/**
-	 * Surface a runtime error from a business engine / subsystem.
+	 * Surface a runtime error from the push pipeline / subsystem.
 	 * `source` 是逻辑发射源标识(e.g. "post-delivery" / "live-engine" / "image" / "ai")
 	 * 用于消费方（master-notifier / AlertShell）做按域节流与展示。
 	 */
-	"engine-error": { source: string; message: string };
+	"pipeline-error": { source: string; message: string };
 	ready: undefined;
 	"config-changed": { scope: ConfigScope };
 	/**

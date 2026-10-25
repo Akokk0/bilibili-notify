@@ -381,14 +381,14 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
-	it("code=-101(未登录)→ 不发组件告警、不交作品、不报问题;这一路遗留的风控与请求失败静默清掉", async () => {
+	it("code=-101(未登录)→ 不发推送链路错误、不交作品、不报问题;这一路遗留的风控与请求失败静默清掉", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).not.toHaveBeenCalled();
-		// 要不要告诉主人登录失效由问题表的未登录层管(看登录状态),引擎不再发 engine-error
-		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		// 要不要告诉主人登录失效由问题表的未登录层管(看登录状态),引擎不再发 pipeline-error
+		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
 		// 不再适用,不是风控解除:带 notify: false
@@ -400,7 +400,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.logs.some((l) => l.level === "error" && l.msg.includes("账号未登录"))).toBe(true);
 	});
 
-	it("code=-352(风控)→ 报到风控层(路名 dynamic),不发组件告警、不报请求失败、排退避重启", async () => {
+	it("code=-352(风控)→ 报到风控层(路名 dynamic),不发推送链路错误、不报请求失败、排退避重启", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		seed(b.engine, "1", 0);
@@ -408,7 +408,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		expect(b.problems.reportRisk).toHaveBeenCalledTimes(1);
 		expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
-		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
@@ -422,7 +422,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 			expect(b.problems.reportRisk).toHaveBeenCalledTimes(1);
 			expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 			expect(b.problems.reportFailure).not.toHaveBeenCalled();
-			expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+			expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 			expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 		},
 	);
@@ -490,7 +490,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 			PROBLEM_TEXTS.dynamicFetchFailed.text(4101132),
 		);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
-		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
@@ -690,7 +690,7 @@ describe("DynamicPoller — 故障恢复", () => {
 
 /**
  * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等登录恢复。
- * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 engine-error。
+ * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 pipeline-error。
  */
 describe("DynamicPoller — 登录失效时的 cron", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
@@ -704,21 +704,21 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 	});
 
-	it("-101 一律不发组件告警:不管有没有先收到登录失效(冷启动 cookie 过期也是)", async () => {
+	it("-101 一律不发推送链路错误:不管有没有先收到登录失效(冷启动 cookie 过期也是)", async () => {
 		const withLost = makeEngine(oneSub);
 		withLost.engine.start();
 		withLost.loseLogin();
 		withLost.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(withLost.engine, "1", 0);
 		await detect(withLost.engine);
-		expect(withLost.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(withLost.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 
 		const withoutLost = makeEngine(oneSub);
 		withoutLost.engine.start();
 		withoutLost.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(withoutLost.engine, "1", 0);
 		await detect(withoutLost.engine);
-		expect(withoutLost.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(withoutLost.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 	});
 
 	it("登录失效之后订阅变更不许把 cron 拉回来 —— 登录还没恢复,拉起来就是再撞一次", () => {

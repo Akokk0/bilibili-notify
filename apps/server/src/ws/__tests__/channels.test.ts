@@ -170,12 +170,12 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		expect(h.last().data).toBe(both);
 	});
 
-	it("engine-error 仍走 log 频道并原样带载荷", () => {
+	it("pipeline-error 仍走 log 频道并原样带载荷", () => {
 		const error = { source: "post-delivery", message: "boom" };
-		h.bus.emit("engine-error", error);
+		h.bus.emit("pipeline-error", error);
 		expect(h.last()).toMatchObject({
 			type: "log",
-			event: "engine-error",
+			event: "pipeline-error",
 			data: error,
 		});
 	});
@@ -447,10 +447,10 @@ describe("attachChannelWiring — log channel + dispose", () => {
 
 	it("dispose() 后所有 bus / log 订阅解绑,不再 publish", () => {
 		const h = wire();
-		h.bus.emit("engine-error", { source: "test", message: "before dispose" });
+		h.bus.emit("pipeline-error", { source: "test", message: "before dispose" });
 		const before = h.publish.mock.calls.length;
 		h.dispose();
-		h.bus.emit("engine-error", { source: "test", message: "after dispose" });
+		h.bus.emit("pipeline-error", { source: "test", message: "after dispose" });
 		h.bus.emit("config-changed", { scope: "globals" });
 		h.log.push({ level: "info", msg: "x", args: [], ts: "t" });
 		expect(h.publish.mock.calls.length).toBe(before);

@@ -7,7 +7,7 @@ import type { PushRouter } from "@bilibili-notify/push";
  */
 const NOTIFY_DEBOUNCE_MS = 60_000;
 
-/** master-notifier 内部用的"逻辑 source"字符串:`engine-error` 带来的 `source`。 */
+/** master-notifier 内部用的"逻辑 source"字符串:`pipeline-error` 带来的 `source`。 */
 type SourceKey = string;
 
 export interface MasterNotifierOptions {
@@ -22,7 +22,7 @@ export interface MasterNotifierOptions {
 }
 
 /**
- * master 私聊聚合器（组件告警）。观察 `engine-error({ source, message })`：业务 engine 报告的
+ * master 私聊聚合器（推送链路错误）。观察 `pipeline-error({ source, message })`：推送链路报告的
  * 运行时错误。以"逻辑 source"为 key 做 per-source 60s 防抖：同 source 60s 内重复告警合并为一条；
  * 不同 source 各自独立放行。
  *
@@ -40,8 +40,8 @@ export class MasterNotifier {
 
 	install(): void {
 		this.handles.push(
-			this.opts.bus.on("engine-error", ({ source, message }) => {
-				// 每条 engine-error 都先落 warn(不节流) —— 主人 push 未配置 / send
+			this.opts.bus.on("pipeline-error", ({ source, message }) => {
+				// 每条 pipeline-error 都先落 warn(不节流) —— 主人 push 未配置 / send
 				// PrivateMsg no-op 时,日志是唯一可观测通道,丢日志=运行时错误对运维
 				// 彻底静默。DM 仍走 notify() 的 per-source 60s 节流避免刷屏。两端对称。
 				this.opts.logger.warn(`[${source}] ${message}`);

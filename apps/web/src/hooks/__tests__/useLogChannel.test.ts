@@ -5,7 +5,7 @@
  * 守护契约(镜像 useAlertChannel 的 silent-drop 风格):
  *   - 非 log 频道帧 → null / 不动缓存
  *   - 级别帧 data.msg 非 string → silent-drop
- *   - engine-error → 合成 level=error / name=source 一行
+ *   - pipeline-error → 合成 level=error / name=source 一行
  *   - 合法帧 prepend(新→旧),封顶 LOG_CACHE_CAP
  */
 
@@ -51,11 +51,11 @@ describe("parseLogEnvelope", () => {
 		expect(parseLogEnvelope(malformed({ type: "log", event: "info", data: undefined }))).toBeNull();
 	});
 
-	it("engine-error → 合成 level=error / name=source", () => {
+	it("pipeline-error → 合成 level=error / name=source", () => {
 		const line = parseLogEnvelope(
 			env({
 				type: "log",
-				event: "engine-error",
+				event: "pipeline-error",
 				data: { source: "post-delivery", message: "boom" },
 			}),
 		);
@@ -67,16 +67,18 @@ describe("parseLogEnvelope", () => {
 		});
 	});
 
-	it("engine-error data 形状不符 → null", () => {
+	it("pipeline-error data 形状不符 → null", () => {
 		expect(
-			parseLogEnvelope(malformed({ type: "log", event: "engine-error", data: "x" })),
-		).toBeNull();
-		expect(
-			parseLogEnvelope(malformed({ type: "log", event: "engine-error", data: { source: "only" } })),
+			parseLogEnvelope(malformed({ type: "log", event: "pipeline-error", data: "x" })),
 		).toBeNull();
 		expect(
 			parseLogEnvelope(
-				malformed({ type: "log", event: "engine-error", data: { source: 1, message: "m" } }),
+				malformed({ type: "log", event: "pipeline-error", data: { source: "only" } }),
+			),
+		).toBeNull();
+		expect(
+			parseLogEnvelope(
+				malformed({ type: "log", event: "pipeline-error", data: { source: 1, message: "m" } }),
 			),
 		).toBeNull();
 	});

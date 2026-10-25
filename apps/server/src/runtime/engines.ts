@@ -464,9 +464,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	push.start();
 
 	// ---------- Master notifier ----------
-	// 组件告警(`engine-error`)→ 主人私聊,共用一张 per-source 60s 节流表。登录失效不在这里:
+	// 推送链路错误(`pipeline-error`)→ 主人私聊,共用一张 per-source 60s 节流表。登录失效不在这里:
 	// 那是「主人该知道的事」,由下面的问题通知器说(带「已恢复」)。
-	// Web dashboard 上同样会通过 AlertShell 看到 engine-error;两路通道互不影响。
+	// Web dashboard 上同样会通过 AlertShell 看到 pipeline-error;两路通道互不影响。
 	const masterNotifier = new MasterNotifier({
 		bus: opts.bus,
 		push,
@@ -477,7 +477,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// ---------- 问题通知器 ----------
 	// 问题表里 `notify` 为真的问题 → 主人私聊(只有真送到才算说过,没送到限次再送;清掉时补「已恢复」)。
-	// 与上面的 MasterNotifier 各有各的节流表:组件告警按 source,问题按 报的人 + code。
+	// 与上面的 MasterNotifier 各有各的节流表:推送链路错误按 source,问题按 报的人 + code。
 	const problemNotifier = createProblemNotifier({
 		table: opts.problems,
 		notify: (text) => push.notifyMaster(text),
@@ -610,11 +610,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			readImage: opts.readImage,
 			push: (subscriptionId, anchors) => boundPostPush(push, subscriptionId)(anchors),
 			recordFiltered: recordFilteredPost,
-			// 出图失败的提醒只剩这一路组件告警(`MasterNotifier` 私聊一条 + 面板红条)。
-			// 单列一个来源:主人私聊的 60 秒节流按来源算,与别的组件告警共用一个的话,
+			// 出图失败的提醒只剩这一路推送链路错误(`MasterNotifier` 私聊一条 + 面板红条)。
+			// 单列一个来源:主人私聊的 60 秒节流按来源算,与别的推送链路错误共用一个的话,
 			// 一边刚报过,另一边这次出图失败的告警就被吞了。B 站与拓展两条路共用这一个。
-			emitEngineError: (message) =>
-				opts.bus.emit("engine-error", { source: "post-delivery", message }),
+			emitPipelineError: (message) =>
+				opts.bus.emit("pipeline-error", { source: "post-delivery", message }),
 		},
 	});
 

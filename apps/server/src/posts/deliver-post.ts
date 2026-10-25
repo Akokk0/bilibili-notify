@@ -178,10 +178,10 @@ export interface DeliverPostDeps {
 	/** 被过滤的作品在推送历史里留一行(只留痕,不是推送)。同步调、不等它;抛错只记 warn。 */
 	recordFiltered(filtered: FilteredPost): void;
 	/**
-	 * 出图失败、这一串还没提醒过时发一次组件告警(`engine-error`):经主人私聊的限流通知器私聊一条,
+	 * 出图失败、这一串还没提醒过时发一次推送链路错误(`pipeline-error`):经主人私聊的限流通知器私聊一条,
 	 * 同时点亮告警面板。同步;抛错 = 没发出去,下次失败再提醒。
 	 */
-	emitEngineError(message: string): void;
+	emitPipelineError(message: string): void;
 }
 
 /**
@@ -390,7 +390,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 
 /**
  * 出图失败:软降级(这一条走纯文字),并在连续失败的**头一次**提醒主人 —— 长时间没有卡片又不刷屏。
- * 提醒就是发一次组件告警(`engine-error`,经主人私聊的限流通知器 + 面板红条),不再另发直聊:
+ * 提醒就是发一次推送链路错误(`pipeline-error`,经主人私聊的限流通知器 + 面板红条),不再另发直聊:
  * 发射是同步的,没有「在路上」与「没送达」,所以发射完就算提醒过;只有发射同步抛了才放回去、下一次失败再试。
  * 提醒在发之前领(`claimNotice`),并发的几条失败只有一条发。
  */
@@ -401,7 +401,7 @@ function noteCardFailure(err: unknown, deps: DeliverPostDeps): void {
 	const notice = deps.cardFailures.claimNotice();
 	if (!notice) return;
 	try {
-		deps.emitEngineError(`生成动态图片失败：${reason}，已降级为纯文字推送，请检查图片插件状态`);
+		deps.emitPipelineError(`生成动态图片失败：${reason}，已降级为纯文字推送，请检查图片插件状态`);
 		notice.settle(true);
 	} catch (notifyErr) {
 		notice.settle(false);

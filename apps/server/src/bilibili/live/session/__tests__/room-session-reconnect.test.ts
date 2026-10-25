@@ -4,7 +4,7 @@ import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "../roo
 import { makeSessionHarness } from "./support/room-session.js";
 
 describe("RoomSession.cancel() — P1-C 短期-c", () => {
-	it("cancel() 之后触发 onError 不重连(直接 return,不动 startLiveRoomListener / emitEngineError)", async () => {
+	it("cancel() 之后触发 onError 不重连(直接 return,不动 startLiveRoomListener / emitPipelineError)", async () => {
 		const h = makeSessionHarness();
 		await h.bootstrap();
 		h.session.cancel();

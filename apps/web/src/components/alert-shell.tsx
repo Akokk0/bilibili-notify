@@ -2,7 +2,7 @@ import { Icon, NoticeCard, NoticeStack } from "@bilibili-notify/ui";
 import { type AlertItem, useAlertStore } from "../store/alerts";
 
 /**
- * 右上角红色告警面板。被 `engine-error` WS 事件喂养。
+ * 右上角红色告警面板。被 `pipeline-error` WS 事件喂养。
  *
  * 与 ToastShell 区分：
  *   - 不自动消失（错误需要主人主动确认）

@@ -356,7 +356,7 @@ describe("总线的事件载荷不带 B 站的形状", () => {
 
 	it("事件表真找到了、每个事件都走到了(扫空了比没有还糟)", () => {
 		expect(Object.keys(audited)).toEqual(
-			expect.arrayContaining(["engine-error", "live-session-changed", "history-recorded"]),
+			expect.arrayContaining(["pipeline-error", "live-session-changed", "history-recorded"]),
 		);
 		expect(Object.keys(audited).length).toBeGreaterThan(15);
 	});

@@ -19,7 +19,7 @@ import { withDesktopTokenHeader } from "../services/desktop-token";
  * 取数(镜像 History):服务端 /api/system/logs 只按 day/limit 分页;level / source /
  * 文本过滤全在本页客户端做,所以 live query key 稳定、`useLogChannel` 的 WS
  * tail 能 setQueryData-append 不漂移。选过去某天 → 不同 key 的冻结历史视图,
- * WS 不污染。AlertShell(engine-error 红色面板)独立并存。
+ * WS 不污染。AlertShell(pipeline-error 红色面板)独立并存。
  */
 
 const LEVELS: ReadonlyArray<LogLineLevel> = ["debug", "info", "warn", "error"];
@@ -94,7 +94,7 @@ export default function Logs() {
 	if (!paused) frozenRef.current = liveEntries;
 	const sourceEntries = paused ? frozenRef.current : liveEntries;
 
-	// 源/子系统下拉项 —— 从当前数据集 distinct(含 engine-error 的 source)。
+	// 源/子系统下拉项 —— 从当前数据集 distinct(含 pipeline-error 的 source)。
 	const sources = useMemo(() => {
 		const s = new Set<string>();
 		for (const e of sourceEntries) if (e.name) s.add(e.name);

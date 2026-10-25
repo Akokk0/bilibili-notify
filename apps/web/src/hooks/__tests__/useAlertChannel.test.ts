@@ -1,9 +1,9 @@
 /**
- * 单元测试 — `handleLogEnvelope` 纯函数(WS `log` 频道 engine-error 分发)。
+ * 单元测试 — `handleLogEnvelope` 纯函数(WS `log` 频道 pipeline-error 分发)。
  *
  * 守护契约:
  *   - 非 log 频道帧 silent-drop
- *   - engine-error 之外的 event 不动 store
+ *   - pipeline-error 之外的 event 不动 store
  *   - data 形状不符合 { source, message } 的 silent-drop(不是对象 / 缺格 / 格非 string)
  *   - 合法帧 push 到 useAlertStore
  */
@@ -26,17 +26,17 @@ const env = eventFrameMaker(TS);
 /** 故意违反类型的坏帧(`data` 缺格 / 类型不对、事件名不存在、频道与事件名对不上),测 hook 的防御。 */
 const malformed = (frame: object) => ({ ts: TS, ...frame }) as WsEnvelope;
 
-describe("handleLogEnvelope — log 频道 engine-error", () => {
+describe("handleLogEnvelope — log 频道 pipeline-error", () => {
 	beforeEach(resetStore);
 
 	it("非 log 频道帧:不 push", () => {
 		handleLogEnvelope(
-			malformed({ type: "auth", event: "engine-error", data: { source: "x", message: "y" } }),
+			malformed({ type: "auth", event: "pipeline-error", data: { source: "x", message: "y" } }),
 		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
-	it("log 频道但 event 不是 engine-error:不 push", () => {
+	it("log 频道但 event 不是 pipeline-error:不 push", () => {
 		handleLogEnvelope(
 			malformed({ type: "log", event: "log-line", data: { source: "x", message: "y" } }),
 		);
@@ -47,7 +47,7 @@ describe("handleLogEnvelope — log 频道 engine-error", () => {
 		handleLogEnvelope(
 			env({
 				type: "log",
-				event: "engine-error",
+				event: "pipeline-error",
 				data: { source: "post-delivery", message: "boom" },
 			}),
 		);
@@ -58,33 +58,33 @@ describe("handleLogEnvelope — log 频道 engine-error", () => {
 	});
 
 	it("data 不是对象:silent-drop", () => {
-		handleLogEnvelope(malformed({ type: "log", event: "engine-error", data: "oops" }));
+		handleLogEnvelope(malformed({ type: "log", event: "pipeline-error", data: "oops" }));
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("data 缺 message:silent-drop", () => {
 		handleLogEnvelope(
-			malformed({ type: "log", event: "engine-error", data: { source: "only-source" } }),
+			malformed({ type: "log", event: "pipeline-error", data: { source: "only-source" } }),
 		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("source / message 任一非 string:silent-drop", () => {
 		handleLogEnvelope(
-			malformed({ type: "log", event: "engine-error", data: { source: "src", message: 42 } }),
+			malformed({ type: "log", event: "pipeline-error", data: { source: "src", message: 42 } }),
 		);
 		handleLogEnvelope(
-			malformed({ type: "log", event: "engine-error", data: { source: null, message: "msg" } }),
+			malformed({ type: "log", event: "pipeline-error", data: { source: null, message: "msg" } }),
 		);
 		expect(useAlertStore.getState().items).toHaveLength(0);
 	});
 
 	it("连续 push:按时间倒序累计,id 不重复", () => {
 		handleLogEnvelope(
-			env({ type: "log", event: "engine-error", data: { source: "a", message: "1" } }),
+			env({ type: "log", event: "pipeline-error", data: { source: "a", message: "1" } }),
 		);
 		handleLogEnvelope(
-			env({ type: "log", event: "engine-error", data: { source: "b", message: "2" } }),
+			env({ type: "log", event: "pipeline-error", data: { source: "b", message: "2" } }),
 		);
 		const items = useAlertStore.getState().items;
 		expect(items).toHaveLength(2);

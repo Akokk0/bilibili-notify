@@ -32,7 +32,7 @@ function makeCtx(api: Record<string, unknown> = {}) {
 }
 
 describe("RoomContext.fetchRoomInfo", () => {
-	it("抛错:报订阅级「停止监听」(取直播间信息失败),返回 undefined,不发 engine-error", async () => {
+	it("抛错:报订阅级「停止监听」(取直播间信息失败),返回 undefined,不发 pipeline-error", async () => {
 		const h = makeSessionHarness({
 			roomInfo: async () => undefined,
 		});
@@ -46,7 +46,7 @@ describe("RoomContext.fetchRoomInfo", () => {
 			}),
 		);
 		expect(h.closeListener).toHaveBeenCalledWith("r1");
-		expect(h.warnings.some((args) => String(args[0]).includes("engine-error"))).toBe(false);
+		expect(h.warnings.some((args) => String(args[0]).includes("pipeline-error"))).toBe(false);
 	});
 
 	it("拉到了:原样返回 data,什么都不报", async () => {
@@ -58,7 +58,7 @@ describe("RoomContext.fetchRoomInfo", () => {
 });
 
 describe("RoomContext.closeListener", () => {
-	it("只管停:关连接、拆这个房间的计时器;不发 engine-error", () => {
+	it("只管停:关连接、拆这个房间的计时器;不发 pipeline-error", () => {
 		const { ctx, problems } = makeCtx();
 		const close = vi.fn();
 		ctx.listenerRecord.r1 = { closed: false, close };
@@ -80,7 +80,7 @@ describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志
 		["抛错", () => Promise.reject(new Error("net down"))],
 		["回非 0 的码", () => Promise.resolve({ code: -101 })],
 	])(
-		"%s:回 false,不发 engine-error、不报问题(后果由随后那条「停止监听」报)",
+		"%s:回 false,不发 pipeline-error、不报问题(后果由随后那条「停止监听」报)",
 		async (_name, myself) => {
 			const { ctx, problems } = makeCtx({
 				fetchLiveRoomInfoStreamKey: vi.fn(async () => goodInfo),
