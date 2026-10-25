@@ -788,7 +788,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				master: masterIdentity(),
 			}),
 			connectionConfigs: () => runtime.configStore.getConnections(),
-			extensionSettings: (id) => runtime.configStore.getExtensionSettings(id),
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			puppeteer: () => puppeteer,

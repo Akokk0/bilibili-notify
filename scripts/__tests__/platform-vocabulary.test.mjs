@@ -447,8 +447,6 @@ export function scanRepo() {
  * 行内注释只如实写这一格是什么,不写清零期。
  */
 export const RATCHET = {
-	"apps/server/src/devtools/fake-bridge.ts": 4, // 假桥入站帧的 `userId` / `groupId`(私聊 1、群 2)与 `miniAppCardLinks`
-	"apps/server/src/devtools/scenarios/bridge.ts": 12, // 假 bot 的平台默认值 `"onebot"`×2、能力表 `miniAppCard`×2、入站的 `userId` / `groupId`×8
 	"apps/server/src/devtools/scenarios/inbound.ts": 2, // 提示文字里的「群 openid」「OneBot / 官机」(参数名与变量里的 `userId` / `groupId` 15 处随 3b-40 入站改名清掉)
 	"packages/extension/src/index.ts": 1, // 同名不同物:拓展契约里正文「@某人」片段的 `userId`,是来源那边的用户,不是推送平台的入站地址
 	"packages/internal/src/constants.ts": 28, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2、保留 id `"onebot"` / `"qq-official"` 2

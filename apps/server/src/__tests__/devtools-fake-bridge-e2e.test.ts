@@ -1,13 +1,11 @@
 /**
- * 🔴 **devtools 那条假桥,对上真桥。**
+ * 🔴 **桥自己的开发入口,对上真桥。**
  *
- * 假桥说的帧是**手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),而手写的东西会漂:
- * 桥那边改一个字段名、升一次协议 major,假桥仍旧编译得过、单元测试仍旧全绿 —— 症状是
- * 主人按下场景之后卡片不变绿,而**没有任何门禁会红**。
- *
- * 所以这一条把**真桥的构建产物**装进装载根、起一台真 BN,让 devtools 那条场景连一次:
- * 从「面板按钮」一路到「拓展 `publishView` 里真的多了一条会话」。这中间任意一环
- * (token 怎么读、地址怎么拼、帧长什么样、协议版本认不认)错了,这条就红。
+ * 假桥住在桥的包里(`extensions/bridge/src/devtools/`),跟桥同一份协议常量,所以帧漂不了;
+ * 这一条钉的是**接线**:真桥的构建产物装进装载根、起一台真 BN,宿主开发版在桥 `activate`
+ * 之后 `import()` 它的 `devtools.mjs`,登记成 `bridge.*` 的场景,面板按一下就连一次。
+ * 从「面板按钮」一路到「拓展 `publishView` 里真的多了一条会话」,中间任意一环
+ * (入口认领、前缀、token 怎么读、地址怎么拼、帧长什么样、协议版本认不认、停用即撤)错了,这条就红。
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -322,6 +320,79 @@ describe("devtools 的假桥 → 真桥", () => {
 		} finally {
 			panel.close();
 		}
+	});
+
+	/** 面板场景表里的 id(`GET /api/dev`)。 */
+	async function listedScenarioIds(): Promise<string[]> {
+		const res = await fetch(`http://127.0.0.1:${port}/api/dev`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { scenarios: { id: string }[] };
+		return body.scenarios.map((s) => s.id);
+	}
+
+	function setBridgeEnabled(enabled: boolean): Promise<Response> {
+		return fetch(`http://127.0.0.1:${port}/api/settings`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ extensions: { bridge: { enabled } } }),
+		});
+	}
+
+	async function bridgeState(): Promise<string | undefined> {
+		const res = await fetch(`http://127.0.0.1:${port}/api/ext`);
+		const body = (await res.json()) as { extensions: { id: string; state: string }[] };
+		return body.extensions.find((e) => e.id === "bridge")?.state;
+	}
+
+	/**
+	 * 热卸载 / 热装在写口回 200 之后才落地(同 bridge-e2e):轮询到条件成立或到点,
+	 * 交回最后一次读到的值,断言由调用方照常写。
+	 */
+	async function pollUntil<T>(
+		read: () => Promise<T>,
+		done: (value: T) => boolean,
+		ms: number,
+	): Promise<T> {
+		const deadline = Date.now() + ms;
+		let value = await read();
+		while (!done(value) && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			value = await read();
+		}
+		return value;
+	}
+
+	it("面板场景表里列得出桥登记的两条:bridge.connect / bridge.inbound", async () => {
+		const ids = await listedScenarioIds();
+		expect(ids).toContain("bridge.connect");
+		expect(ids).toContain("bridge.inbound");
+	});
+
+	it("经面板的写口停用桥 → 两条场景都撤了,跑它们回 404;再打开又回来", async () => {
+		expect((await setBridgeEnabled(false)).status).toBe(200);
+		const offIds = await pollUntil(
+			listedScenarioIds,
+			(ids) => !ids.includes("bridge.connect"),
+			3_000,
+		);
+		expect(offIds).not.toContain("bridge.connect");
+		expect(offIds).not.toContain("bridge.inbound");
+		for (const id of ["bridge.connect", "bridge.inbound"]) {
+			const res = await runScenario(id);
+			expect(res.status).toBe(404);
+			expect(((await res.json()) as { code?: string }).code).toBe("not_found");
+		}
+
+		expect((await setBridgeEnabled(true)).status).toBe(200);
+		// 启用那一路要真 import 文件:先等 `GET /api/ext` 报 running,再等开发入口认领上。
+		expect(await pollUntil(bridgeState, (state) => state === "running", 5_000)).toBe("running");
+		const onIds = await pollUntil(
+			listedScenarioIds,
+			(ids) => ids.includes("bridge.connect"),
+			3_000,
+		);
+		expect(onIds).toContain("bridge.connect");
+		expect(onIds).toContain("bridge.inbound");
 	});
 
 	/** 桥驮上来的私聊 —— 真入站链路,核心那条「私聊指令」场景够不着桥。 */

@@ -53,7 +53,6 @@ export const ALLOWLIST = {
 	"packages/ai/src/web-search.ts": "BN 自己的出口:联网搜索",
 	// 设置页的 AI 连通测试(3b-02 从路由挪来:路由不出网,拿一份服务商配置去探活是 AI 包的事)。
 	"packages/ai/src/provider-probe.ts": "BN 自己的出口:AI 服务商的连通探活",
-	"apps/server/src/devtools/fake-bridge.ts": "开发版专属的假桥",
 };
 
 /**

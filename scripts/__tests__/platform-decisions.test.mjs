@@ -152,8 +152,6 @@ const EQUALITY = new Set([
  * 行内注释只如实写这一格是什么,不写清零期。
  */
 export const RATCHET = {
-	// 开发场景取参数 `text(params.platform, "onebot")`:取出来只用来造假 bot,是误伤(判据不为它开例外,见文件头去处表)。
-	"apps/server/src/devtools/scenarios/bridge.ts": 1,
 	// 平台表自己:`PLATFORM_REGISTRY[platform]` 当下标一处,`isWebhookPlatform` 与 `addressNounFor` 里各一次 `platformDescriptor(platform)`。
 	"packages/internal/src/constants.ts": 3,
 };

@@ -222,8 +222,7 @@ export const GENERATED_KEY_EXCLUSIONS = {};
  * 行内注释只如实写这一格是什么,不写清零期。
  */
 export const RATCHET = {
-	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
-	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
+	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/routes/cards.ts": 18, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×1、`roomid`×3(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
