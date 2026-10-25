@@ -1,4 +1,4 @@
-import type { DevScenario } from "@bilibili-notify/contract";
+import type { DevScenarioDescriptor } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { mergeScenarios, type WebDevScenario } from "../registry";
 
@@ -8,7 +8,7 @@ import { mergeScenarios, type WebDevScenario } from "../registry";
  * 一个只会让「按了没反应」查不出来)。
  */
 
-const server: DevScenario[] = [
+const server: DevScenarioDescriptor[] = [
 	{ id: "update.state", group: "state", title: "更新状态", params: [] },
 	{ id: "bilibili.live.start", group: "event", title: "开播", params: [] },
 ];

@@ -28,6 +28,10 @@
 /**
  * 实现推送源用得着的域类型 —— `send` / `probe` / `reconcile` 的签名就是拿它们拼的。
  *
+ * devtools 场景的中立词汇(`DevtoolsProvider` / `DevScenarioDef` 那一族,核心、B 站与拓展共用)
+ * 也从这里转:开发入口交的东西就拿它们拼,见 {@link ExtensionDevtoolsContext};面板另经
+ * `@bilibili-notify/contract` 拿同一份。
+ *
  * ⛔ 域模型的其余部分(globals / subscriptions / 订阅与推送的落盘形状……)**刻意不转** ——
  * 拓展碰不着配置的写路径,那条路在这仓里只有一条。
  */
@@ -40,6 +44,13 @@ export type {
 	CreatorProfileReport,
 	DeliveryResult,
 	DestinationRef,
+	DevInjection,
+	DevParamField,
+	DevParamValues,
+	DevScenarioDef,
+	DevScenarioDescriptor,
+	DevScenarioGroup,
+	DevtoolsProvider,
 	Disposable,
 	Failure,
 	FailureCode,
@@ -519,4 +530,24 @@ export interface ExtensionContext extends IntegrationContext {
 	 * 真的回来为止:超时叫停了却不停的,照样挡着下一发。不同的动作互不相干。
 	 */
 	onAction(name: string, handler: (signal: AbortSignal) => void | Promise<void>): void;
+}
+
+/**
+ * 开发入口拿到的上下文:就是这个拓展 `activate` 时那份 `ExtensionContext`,外加 `mountUrl()`。
+ *
+ * 开发入口的约定:
+ * - 包里固定文件名 `devtools.mjs` —— 名字由宿主定,清单只写 `"devtools": {}` 开口、不带路径
+ *   (ADR-0012 决策 35);
+ * - 导出 `devtools(ctx: ExtensionDevtoolsContext): DevtoolsProvider`,**同步**交回;模块顶层不存状态;
+ * - 只在开发版加载;拓展停用 / 卸载 / 重载时宿主撤掉它的场景(`ctx.signal` 中止);
+ * - 场景 id 写不带前缀的,宿主加 `<拓展 id>.`;参数这一版只收 `text` / `number` / `enum`,
+ *   别的种类整包拒;`run` 回结果,只用自己的 ctx 做事。
+ */
+export interface ExtensionDevtoolsContext extends ExtensionContext {
+	/**
+	 * 自己那条总入口在本机回环上的完整地址(形如 `http://127.0.0.1:<端口>/ext/<自己的 id>`);
+	 * HTTP 还没起来时回 `undefined`,每次现取。开发入口拿它连回自己的端点 —— `ctx.mount()`
+	 * 只许主入口申请一次,回的也只是前缀。
+	 */
+	mountUrl(): string | undefined;
 }

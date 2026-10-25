@@ -1,5 +1,4 @@
-import type { DevParamValues } from "@bilibili-notify/contract";
-import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { type DevParamValues, fail, ok, type Result } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";

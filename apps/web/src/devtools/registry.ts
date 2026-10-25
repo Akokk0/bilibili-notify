@@ -1,4 +1,8 @@
-import type { DevInjection, DevParamValues, DevScenario } from "@bilibili-notify/contract";
+import type {
+	DevInjection,
+	DevParamValues,
+	DevScenarioDescriptor,
+} from "@bilibili-notify/contract";
 import type { QueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
@@ -13,7 +17,7 @@ export interface WebRunContext {
 	qc: QueryClient;
 }
 
-export interface WebDevScenario extends DevScenario {
+export interface WebDevScenario extends DevScenarioDescriptor {
 	group: "web";
 	/** 回一句回执(「涌了 6 条」)或什么都不回。 */
 	run(params: DevParamValues, ctx: WebRunContext): Promise<string | undefined> | string | undefined;
@@ -63,11 +67,11 @@ export function useWebActive(scenarios: readonly WebDevScenario[]): DevInjection
 /** 面板里的一条:声明 + 它在哪一边跑。 */
 export interface DevEntry {
 	side: "server" | "web";
-	decl: DevScenario;
+	decl: DevScenarioDescriptor;
 }
 
 export function mergeScenarios(
-	server: readonly DevScenario[],
+	server: readonly DevScenarioDescriptor[],
 	web: readonly WebDevScenario[],
 ): DevEntry[] {
 	const seen = new Set<string>();

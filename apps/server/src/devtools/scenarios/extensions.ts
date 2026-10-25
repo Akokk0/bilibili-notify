@@ -2,8 +2,7 @@ import { existsSync, readdirSync, watch as watchDir } from "node:fs";
 import { access, lstat, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
-import type { DevParamField } from "@bilibili-notify/contract";
-import { fail, ok } from "@bilibili-notify/internal";
+import { type DevParamField, fail, ok } from "@bilibili-notify/internal";
 import { EXTENSION_ENTRY_FILE, EXTENSION_MANIFEST_FILE } from "../../extensions/discover.js";
 import type { DevScenarioDef } from "../registry.js";
 

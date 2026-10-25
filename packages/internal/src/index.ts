@@ -85,6 +85,7 @@ export {
 	type WebSearchBackendMeta,
 	webSearchBackendMeta,
 } from "./constants";
+export * from "./devtools";
 export * from "./format";
 export * from "./http";
 export * from "./key-value-store";

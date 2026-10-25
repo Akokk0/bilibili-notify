@@ -1,16 +1,7 @@
+import type { DevScenarioDef, DevtoolsProvider } from "@bilibili-notify/internal";
 import { createRegistry } from "../integrations/registry.js";
-import type { DevScenarioDef } from "./registry.js";
 
-/**
- * 一家集成交给 devtools 的那一包场景。B 站是第一个实现者(`bilibili/devtools/`),拓展的
- * `contributes.devtools` 随 3b 接进来。
- *
- * 场景里写**不带前缀**的 id:来源前缀由汇总那一处统一加(`providers.scenarios()`),
- * 各家不用知道自己叫什么、也冒充不了别家(ADR-0031 决策 2)。
- */
-export interface DevtoolsProvider {
-	scenarios: DevScenarioDef[];
-}
+export type { DevtoolsProvider } from "@bilibili-notify/internal";
 
 /**
  * 登记表 `devtoolsProviders`:按来源 id 认领,核心从这里汇总出全部场景。

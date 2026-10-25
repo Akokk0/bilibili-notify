@@ -1,16 +1,22 @@
-import type {
-	DevInjection,
-	DevParamField,
-	DevParamValues,
-	DevRunResponse,
-	DevScenario,
-} from "@bilibili-notify/contract";
-import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal";
+import type { DevRunResponse } from "@bilibili-notify/contract";
+import {
+	type DevInjection,
+	type DevParamField,
+	type DevParamValues,
+	type DevScenarioDef,
+	type DevScenarioDescriptor,
+	type Failure,
+	fail,
+	ok,
+	type Result,
+} from "@bilibili-notify/internal";
+
+export type { DevScenarioDef } from "@bilibili-notify/internal";
 
 /**
  * devtools 的中央注册表(服务端这半)。
  *
- * 场景是「声明 + 三个函数」:声明(契约里的 `DevScenario`)原样交给面板画控件;`run` 做事;
+ * 场景是「声明 + 三个函数」:声明(中立词汇里的 `DevScenarioDescriptor`)原样交给面板画控件;`run` 做事;
  * 状态类场景再带 `active` / `reset`,「当前生效」条与一键收摊靠它们 —— 生效与否的真相在
  * 各自的装饰器手里(一条真动作就能把假状态顶掉),注册表不另记一份,只问。
  *
@@ -19,19 +25,8 @@ import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal";
  * 是「第一个启用的订阅」这类要查配置的事,归场景自己。
  */
 
-export interface DevScenarioDef extends DevScenario {
-	run(params: DevParamValues): Result<{ summary?: string }> | Promise<Result<{ summary?: string }>>;
-	/** 状态类场景:现在生效着的那条注入,没有就 null。事件类不写。 */
-	active?(): DevInjection | null;
-	/**
-	 * 状态类场景:收摊。可以是异步的 —— 有的收摊要写盘(静音),写失败得能一路冒到路由,
-	 * 而不是变成一个没人接的 promise 把进程带走。
-	 */
-	reset?(): void | Promise<void>;
-}
-
 export interface DevRegistry {
-	list(): DevScenario[];
+	list(): DevScenarioDescriptor[];
 	run(id: string, params: DevParamValues): Promise<Result<DevRunResponse>>;
 	active(): DevInjection[];
 	/** 收摊:给 id 只收那一个,不给全收。回收完之后的生效表。 */
@@ -44,8 +39,13 @@ export function notReady(what: string): Failure {
 }
 
 /** 把声明从 def 里剥出来 —— 函数不能过 JSON,而且面板也不该拿到。 */
-function declarationOf(def: DevScenarioDef): DevScenario {
-	const out: DevScenario = { id: def.id, group: def.group, title: def.title, params: def.params };
+function declarationOf(def: DevScenarioDef): DevScenarioDescriptor {
+	const out: DevScenarioDescriptor = {
+		id: def.id,
+		group: def.group,
+		title: def.title,
+		params: def.params,
+	};
 	if (def.desc !== undefined) out.desc = def.desc;
 	if (def.quick !== undefined) out.quick = def.quick;
 	if (def.icon !== undefined) out.icon = def.icon;
