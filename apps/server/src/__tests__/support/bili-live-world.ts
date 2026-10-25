@@ -37,7 +37,6 @@ import { z } from "zod";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import type { Api } from "../../bilibili/api/index.js";
 import { encodePacket, WsOp } from "../../bilibili/live/protocol/codec.js";
-import { makeRecordingLayers } from "../../bilibili/live/session/__tests__/support/live-problems.js";
 import { createBiliSource } from "../../bilibili/source.js";
 import type { ConfigStore } from "../../config/store.js";
 import { openIntegration } from "../../integrations/open.js";
@@ -350,7 +349,6 @@ export async function bootBiliLiveWorld(
 	}
 
 	const serviceCtx = createNodeServiceContext({ name: "test", level: "silent", pretty: false });
-	const recording = makeRecordingLayers();
 	const fetchedImages: string[] = [];
 	const biliState = memoryKeyValueStores("state", {
 		[`room:${BILI_LIVE_UID}`]: BILI_LIVE_ROOM_ID,
@@ -467,7 +465,7 @@ export async function bootBiliLiveWorld(
 		api: api as unknown as Api,
 		setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
 		auth: sourceAuth,
-		problems: recording.layers,
+		logger: serviceCtx.forSubsystem("bilibili", "bilibili").logger,
 		loginCheck: { setHealthCheckMs: () => {} },
 		locale: fixedLocale(),
 		liveContext: serviceCtx.forSubsystem("live", "bilibili"),

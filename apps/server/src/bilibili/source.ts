@@ -7,6 +7,7 @@ import {
 	type Identity,
 	type ImageRef,
 	type LiveStatusResult,
+	type Logger,
 	type MembershipTier,
 	ok,
 	type Result,
@@ -30,7 +31,7 @@ import { createBiliLinkResolver } from "./link-resolver.js";
 import { createRoomIds, type RoomIds } from "./live/room-ids.js";
 import { BiliLiveRooms } from "./live/session/bili-live-rooms.js";
 import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
-import type { ProblemLayers } from "./problem-layers.js";
+import { createProblemLayers, type ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { createProfileFetcher } from "./profile.js";
 import { searchBiliCreators } from "./search-creators.js";
@@ -42,14 +43,8 @@ export interface BiliSourceDeps {
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
 	auth: SourceAuth;
-	/**
-	 * 分层上报器(`compose.ts` 造,与给入口的是同一个):`start` 最后一步接上这个来源的上下文,
-	 * `stop` 第一步摘下;动态引擎拉失败时往里报、拉成功与停下时往里清。
-	 */
-	problems: Pick<
-		ProblemLayers,
-		"attach" | "detach" | "reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
-	>;
+	/** 分层上报器用的日志器(与 B 站其它日志同一格,标签仍是 `bilibili`)。 */
+	logger: Logger;
 	/**
 	 * 定时的登录检查(心跳)的开关(`AuthSystem.setHealthCheckMs`):`start` 里按设置挂上 / 停下,`stop` 里停掉。
 	 * 登录系统自己不认识设置;`ms <= 0` 等于不挂。
@@ -128,6 +123,7 @@ function copyBiliDescriptor(): SourceDescriptor {
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
+	let problems: ProblemLayers | undefined;
 	let started = false;
 	// 动态那一格设置读不懂、动态停着(`applyDynamic` 记;`health()` 读)。
 	let dynamicStopped = false;
@@ -275,143 +271,152 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		},
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
+			started = true;
 			sourceCtx = ctx;
-			roomIds = createRoomIds({
-				api: deps.api,
-				state: ctx.state,
-				subscriptions: () => ctx.subscriptions(),
-				setTimeout: deps.setTimeout,
-				now,
-				logger: ctx.logger,
-			});
-			rooms = new BiliLiveRooms({
-				api: deps.api,
+			const layers = createProblemLayers({
 				auth: deps.auth,
-				liveContext: deps.liveContext,
-				roomIds,
-				rememberFanClubName: (externalId, name) => {
-					profileFetcher?.rememberFanClubName(externalId, name);
-				},
-				problems: deps.problems,
-				rememberSuperchatAvatar: (viewerId, url) => {
-					superchatAvatarUrls.set(viewerId, url);
-				},
+				locale: deps.locale,
+				logger: deps.logger,
 			});
-			viewerAvatars = createViewerAvatarFetcher({
-				api: deps.api,
-				images: {
-					fetchImage: (url, options) => ctx.fetchImage(url, options),
-				},
-				logger: ctx.logger,
-				now,
-			});
+			problems = layers;
 			const mine: Disposable[] = [];
 			const stopEngine = (): void => {
 				engine?.stop();
 				engine = undefined;
 			};
+			try {
+				roomIds = createRoomIds({
+					api: deps.api,
+					state: ctx.state,
+					subscriptions: () => ctx.subscriptions(),
+					setTimeout: deps.setTimeout,
+					now,
+					logger: ctx.logger,
+				});
+				rooms = new BiliLiveRooms({
+					api: deps.api,
+					auth: deps.auth,
+					liveContext: deps.liveContext,
+					roomIds,
+					rememberFanClubName: (externalId, name) => {
+						profileFetcher?.rememberFanClubName(externalId, name);
+					},
+					problems: layers,
+					rememberSuperchatAvatar: (viewerId, url) => {
+						superchatAvatarUrls.set(viewerId, url);
+					},
+				});
+				viewerAvatars = createViewerAvatarFetcher({
+					api: deps.api,
+					images: {
+						fetchImage: (url, options) => ctx.fetchImage(url, options),
+					},
+					logger: ctx.logger,
+					now,
+				});
 
-			// 动态那一样,一个函数管起、热更、停三件事。读得懂:引擎不在就造并起,在就热更;读不懂:引擎在就停掉,
-			// 报一条问题。「先起成功、后清问题」:起来的途中抛了别的错,那一条问题还在表里,下次设置变了再试。
-			const dynamicSettings = ctx.settings(BiliDynamicSettingsSchema);
-			// 读不懂时那一句的取字函数(读得懂就清掉):换语言只把这两条再报一遍,不重跑 apply*
-			// (重跑会热更引擎、重挂心跳计时)。
-			let dynamicWording: (() => string) | undefined;
-			let loginCheckWording: (() => string) | undefined;
-			const reportInvalid = (code: string, wording: () => string, notify: boolean): void => {
-				ctx.reportProblem({ code, message: wording(), notify });
-			};
-			const applyDynamic = (): void => {
-				const read = dynamicSettings.get();
-				if (read.ok) {
-					if (engine) {
-						engine.updateConfig(dynamicConfigOf(read.settings));
+				// 动态那一样,一个函数管起、热更、停三件事。读得懂:引擎不在就造并起,在就热更;读不懂:引擎在就停掉,
+				// 报一条问题。「先起成功、后清问题」:起来的途中抛了别的错,那一条问题还在表里,下次设置变了再试。
+				const dynamicSettings = ctx.settings(BiliDynamicSettingsSchema);
+				// 读不懂时那一句的取字函数(读得懂就清掉):换语言只把这两条再报一遍,不重跑 apply*
+				// (重跑会热更引擎、重挂心跳计时)。
+				let dynamicWording: (() => string) | undefined;
+				let loginCheckWording: (() => string) | undefined;
+				const reportInvalid = (code: string, wording: () => string, notify: boolean): void => {
+					ctx.reportProblem({ code, message: wording(), notify });
+				};
+				const applyDynamic = (): void => {
+					const read = dynamicSettings.get();
+					if (read.ok) {
+						if (engine) {
+							engine.updateConfig(dynamicConfigOf(read.settings));
+							return;
+						}
+						const made = new DynamicPoller({
+							logger: ctx.logger,
+							setTimeout: deps.setTimeout,
+							auth: deps.auth,
+							api: deps.api,
+							problems: layers,
+							fetchImage: ctx.fetchImage,
+							reportPost: (externalId, report) => ctx.reportPost(externalId, report),
+							subscriptions: () => ctx.subscriptions(),
+							config: dynamicConfigOf(read.settings),
+						});
+						try {
+							made.start();
+						} catch (err) {
+							made.stop();
+							throw err;
+						}
+						engine = made;
+						dynamicStopped = false;
+						dynamicWording = undefined;
+						ctx.resolveProblem({ code: DYNAMIC_PROBLEM, notify: false });
 						return;
 					}
-					const made = new DynamicPoller({
-						logger: ctx.logger,
-						setTimeout: deps.setTimeout,
-						auth: deps.auth,
-						api: deps.api,
-						problems: deps.problems,
-						fetchImage: ctx.fetchImage,
-						reportPost: (externalId, report) => ctx.reportPost(externalId, report),
-						subscriptions: () => ctx.subscriptions(),
-						config: dynamicConfigOf(read.settings),
-					});
+					stopEngine();
+					dynamicStopped = true;
+					ctx.logger.warn(
+						`[settings] 动态(${DYNAMIC_CELL.key})读不懂,动态先停着: ${read.issues?.[0]?.message ?? read.message}`,
+					);
+					dynamicWording = () =>
+						PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
+					reportInvalid(
+						DYNAMIC_PROBLEM,
+						dynamicWording,
+						PROBLEM_TEXTS.dynamicSettingsInvalid.notify,
+					);
+				};
+
+				// 登录检查那一样:读得懂按分钟数挂 / 换,读不懂停掉。登录本身照常,失效仍由请求撞 -101 报上来。
+				const loginCheckSettings = ctx.settings(BiliLoginCheckSettingsSchema);
+				const applyLoginCheck = (): void => {
+					const read = loginCheckSettings.get();
+					if (read.ok) {
+						deps.loginCheck.setHealthCheckMs(read.settings.healthCheckMinutes * 60_000);
+						loginCheckWording = undefined;
+						ctx.resolveProblem({ code: LOGIN_CHECK_PROBLEM, notify: false });
+						return;
+					}
+					deps.loginCheck.setHealthCheckMs(0);
+					ctx.logger.warn(
+						`[settings] 登录检查(${LOGIN_CHECK_CELL.key})读不懂,定时的登录检查先停着: ${read.issues?.[0]?.message ?? read.message}`,
+					);
+					loginCheckWording = () =>
+						PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL));
+					reportInvalid(
+						LOGIN_CHECK_PROBLEM,
+						loginCheckWording,
+						PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
+					);
+				};
+
+				// 换语言:读不懂的那一两句按新语言再报一遍(同 code,表里只换文案)。
+				const reportInvalidAgain = (): void => {
 					try {
-						made.start();
+						if (dynamicWording) {
+							reportInvalid(
+								DYNAMIC_PROBLEM,
+								dynamicWording,
+								PROBLEM_TEXTS.dynamicSettingsInvalid.notify,
+							);
+						}
+						if (loginCheckWording) {
+							reportInvalid(
+								LOGIN_CHECK_PROBLEM,
+								loginCheckWording,
+								PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
+							);
+						}
 					} catch (err) {
-						made.stop();
-						throw err;
+						ctx.logger.warn(`[settings] 换语言时重报设置问题失败(已忽略): ${errorMessageOf(err)}`);
 					}
-					engine = made;
-					dynamicStopped = false;
-					dynamicWording = undefined;
-					ctx.resolveProblem({ code: DYNAMIC_PROBLEM, notify: false });
-					return;
-				}
-				stopEngine();
-				dynamicStopped = true;
-				ctx.logger.warn(
-					`[settings] 动态(${DYNAMIC_CELL.key})读不懂,动态先停着: ${read.issues?.[0]?.message ?? read.message}`,
-				);
-				dynamicWording = () =>
-					PROBLEM_TEXTS.dynamicSettingsInvalid.text(causeOf(read, DYNAMIC_CELL));
-				reportInvalid(DYNAMIC_PROBLEM, dynamicWording, PROBLEM_TEXTS.dynamicSettingsInvalid.notify);
-			};
+				};
 
-			// 登录检查那一样:读得懂按分钟数挂 / 换,读不懂停掉。登录本身照常,失效仍由请求撞 -101 报上来。
-			const loginCheckSettings = ctx.settings(BiliLoginCheckSettingsSchema);
-			const applyLoginCheck = (): void => {
-				const read = loginCheckSettings.get();
-				if (read.ok) {
-					deps.loginCheck.setHealthCheckMs(read.settings.healthCheckMinutes * 60_000);
-					loginCheckWording = undefined;
-					ctx.resolveProblem({ code: LOGIN_CHECK_PROBLEM, notify: false });
-					return;
-				}
-				deps.loginCheck.setHealthCheckMs(0);
-				ctx.logger.warn(
-					`[settings] 登录检查(${LOGIN_CHECK_CELL.key})读不懂,定时的登录检查先停着: ${read.issues?.[0]?.message ?? read.message}`,
-				);
-				loginCheckWording = () =>
-					PROBLEM_TEXTS.loginCheckSettingsInvalid.text(causeOf(read, LOGIN_CHECK_CELL));
-				reportInvalid(
-					LOGIN_CHECK_PROBLEM,
-					loginCheckWording,
-					PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
-				);
-			};
-
-			// 换语言:读不懂的那一两句按新语言再报一遍(同 code,表里只换文案)。
-			const reportInvalidAgain = (): void => {
-				try {
-					if (dynamicWording) {
-						reportInvalid(
-							DYNAMIC_PROBLEM,
-							dynamicWording,
-							PROBLEM_TEXTS.dynamicSettingsInvalid.notify,
-						);
-					}
-					if (loginCheckWording) {
-						reportInvalid(
-							LOGIN_CHECK_PROBLEM,
-							loginCheckWording,
-							PROBLEM_TEXTS.loginCheckSettingsInvalid.notify,
-						);
-					}
-				} catch (err) {
-					ctx.logger.warn(`[settings] 换语言时重报设置问题失败(已忽略): ${errorMessageOf(err)}`);
-				}
-			};
-
-			// 取设置的把手都在上面,抛了(组装处漏登记)时还没占「已起」;从这里起任何一步抛了都由下面的 catch 复位。
-			started = true;
-			try {
 				profileFetcher = createProfileFetcher({
 					api: deps.api,
-					problems: deps.problems,
+					problems: layers,
 					state: ctx.state,
 					subscriptions: () => ctx.subscriptions(),
 					images: { fetchImage: ctx.fetchImage },
@@ -434,7 +439,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						auth: deps.auth,
 						subscriptions: () => ctx.subscriptions(),
 						onSubscriptionsChanged: (fn) => ctx.onSubscriptionsChanged(fn),
-						problems: deps.problems,
+						problems: layers,
 						logger: ctx.logger,
 						signal: ctx.signal,
 					}),
@@ -457,14 +462,23 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				applyLoginCheck();
 				mine.push(loginCheckSettings.onChange(guarded(ctx, "登录检查", applyLoginCheck)));
 				mine.push(deps.locale.onChange(reportInvalidAgain));
+				handles = mine;
+				if (ctx.subscriptions().some((view) => view.monitorsLive)) {
+					void ensureGuardIcons();
+				}
+				// 最后一步:核心那头此刻才有,不管动态起没起都接上(登录失效、风控、直播间停监照常进问题表)。
+				// 接上之前记着的问题(登录失效、风控、请求失败)在这一刻整份补报。
+				layers.attach(ctx);
 			} catch (err) {
 				// 登记表那头只会放键、收上下文,不会替来源停 cron、停心跳:自己收拾干净再抛。
 				for (const handle of mine) handle.dispose();
-				rooms.stop();
+				rooms?.stop();
 				rooms = undefined;
 				stopEngine();
 				dynamicStopped = false;
 				deps.loginCheck.setHealthCheckMs(0);
+				layers.dispose();
+				problems = undefined;
 				started = false;
 				sourceCtx = undefined;
 				roomIds = undefined;
@@ -472,19 +486,11 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				viewerAvatars = undefined;
 				throw err;
 			}
-			handles = mine;
-			if (ctx.subscriptions().some((view) => view.monitorsLive)) {
-				void ensureGuardIcons();
-			}
-			// 最后一步:核心那头此刻才有,不管动态起没起都接上(登录失效、风控、直播间停监照常进问题表)。
-			// 接上之前记着的问题(登录失效、风控、请求失败)在这一刻整份补报。
-			deps.problems.attach(ctx);
 		},
-		// 🔴 没有 await:登记表撤登记时调 stop 是不等它的,而引擎的 dispose 是同步函数、紧接着就关作品入口,
-		// 「来源先停、入口后关」只在 stop 的同步段里已经停干净时成立。
+		// 登记表撤登记会等 `stop()` 落定(最多 30 秒),之后才收来源上下文;引擎也等来源停完再关作品入口。
 		stop() {
 			// 第一步先摘:引擎收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
-			deps.problems.detach();
+			problems?.detach();
 			rooms?.stop();
 			rooms = undefined;
 			superchatAvatarUrls.clear();
@@ -500,6 +506,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			profileFetcher = undefined;
 			viewerAvatars = undefined;
 			guardFetch = undefined;
+			problems?.dispose();
+			problems = undefined;
 			return Promise.resolve();
 		},
 	};

@@ -30,7 +30,7 @@ import {
 import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
-import { createProblemLayers } from "../problem-layers.js";
+import { failureFromBili } from "../error-codes.js";
 import { createBiliSource } from "../source.js";
 import {
 	LOGIN_EXPIRED_TEXT,
@@ -71,8 +71,12 @@ function makeAuth(initial: AuthState) {
 	};
 }
 
-/** 起一整套:返回表、记录用的 notifyMaster、层、拨登录口与撤登记的把手。 */
-async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<DeliveryResult>) {
+/** 起一整套:返回表、记录用的 notifyMaster、来源、拨登录口与撤登记的把手。 */
+async function boot(
+	initial: AuthState,
+	notifyImpl?: (text: string) => Promise<DeliveryResult>,
+	fetchAllDynamic: () => Promise<unknown> = async () => ok({ data: { items: [] } }),
+) {
 	// 一条 UP 7 的订阅:订阅级的问题(房间停监)要有订阅可挂
 	const world = makeWorld([makeSub("sub-7", "7")]);
 	const logger = makeLogger();
@@ -93,10 +97,9 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		},
 		logger,
 	});
-	const layers = createProblemLayers({ locale: fixedLocale(), auth: authed.auth, logger });
 	const source = createBiliSource({
 		api: {
-			fetchAllDynamic: async () => ok({ data: { items: [] } }),
+			fetchAllDynamic,
 			fetchRelations: async () => ok({ data: null }),
 			follow: async () => ok(),
 		} as unknown as Api,
@@ -112,7 +115,7 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			track: () => {},
 		},
 		auth: authed.auth,
-		problems: layers,
+		logger,
 	});
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
@@ -131,7 +134,7 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		profiles: () => {},
 		problems: table,
 	});
-	return { table, notifyMaster, layers, registration, ...authed };
+	return { source, table, notifyMaster, registration, ...authed };
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -139,37 +142,21 @@ const codes = (table: ReturnType<typeof createProblemTable>) => table.list().map
 
 describe("失效登录开机", () => {
 	it("对照:登录正常时,下层的问题(请求失败)确实会进表、私聊一条", async () => {
-		const { table, notifyMaster, layers } = await boot(IN);
-		layers.reportFailure({
-			externalId: "7",
-			code: "live_monitor_stopped",
-			message: () => "房间停了",
-			notify: true,
-			lasting: false,
-		});
+		const { source, table, notifyMaster } = await boot(IN, undefined, async () =>
+			failureFromBili(-352, "risk"),
+		);
+		await source.dynamic()?.detectNow();
 		await flush();
-		expect(codes(table)).toEqual(["live_monitor_stopped"]);
+		expect(codes(table)).toEqual(["risk_controlled"]);
 		expect(notifyMaster).toHaveBeenCalledTimes(1);
 	});
 
 	// 验红:删掉上报器里「未登录开着时低层不存」的判断(reportFailure / reportRisk 开头的 login 判断),这条红。
 	it("登录口是 expired:表里恰好一条 auth_lost(来源级),私聊恰好一次,下层的失败与风控压在底下", async () => {
-		const { table, notifyMaster, layers } = await boot(EXPIRED);
-		// 开机后直播与动态各自撞上的下层症状(今天会各发一条私聊)
-		layers.reportFailure({
-			externalId: "7",
-			code: "live_monitor_stopped",
-			message: () => "房间停了",
-			notify: true,
-			lasting: false,
-		});
-		layers.reportFailure({
-			code: "dynamic_fetch_failed",
-			message: () => "拉动态失败",
-			notify: true,
-			lasting: false,
-		});
-		layers.reportRisk("dynamic", { notify: true });
+		const { source, table, notifyMaster } = await boot(EXPIRED, undefined, async () =>
+			failureFromBili(-352, "risk"),
+		);
+		await source.dynamic()?.detectNow();
 		await flush();
 
 		expect(table.list()).toHaveLength(1);

@@ -114,11 +114,11 @@ async function boot() {
 	const changes: ProblemChange[] = [];
 	table.subscribe((c) => changes.push(c));
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
-	const attach = vi.fn();
 	const world = makeWorld([makeSub("sub-1", "1")]);
 	const source = createBiliSource({
 		api: {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
+			fetchRelations: async () => ok({ data: { "1": { attribute: 2 } } }),
 		} as unknown as Api,
 		loginCheck: { setHealthCheckMs },
 		locale,
@@ -138,14 +138,7 @@ async function boot() {
 			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
 			onChange: () => ({ dispose() {} }),
 		},
-		problems: {
-			attach,
-			detach: vi.fn(),
-			reportRisk: vi.fn(),
-			resolveRisk: vi.fn(),
-			reportFailure: vi.fn(),
-			resolveFailure: vi.fn(),
-		},
+		logger,
 	});
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
@@ -183,7 +176,6 @@ async function boot() {
 		table,
 		changes,
 		setHealthCheckMs,
-		attach,
 		problems,
 		message,
 		logger,
@@ -205,7 +197,6 @@ describe("B 站来源 · 动态那一格读不懂", () => {
 		expect(cronMock.instances).toHaveLength(0);
 		expect(b.problems()).toEqual([DYNAMIC]);
 		expect(b.setHealthCheckMs).toHaveBeenLastCalledWith(45 * MIN);
-		expect(b.attach).toHaveBeenCalledTimes(1);
 		const text = b.message(DYNAMIC);
 		expect(text).toContain("设置「动态检查频率」（dynamicCron）读不懂");
 		// 平实句:不指路、不提面板上显示什么
@@ -262,7 +253,6 @@ describe("B 站来源 · 整个文件读不懂", () => {
 			expect(b.message(code)).not.toContain("config/settings/bilibili.json");
 			expect(b.message(code)).not.toContain("secret-cron-text");
 		}
-		expect(b.attach).toHaveBeenCalledTimes(1);
 		// 文件字节没动
 		expect(await readFile(bilibiliFile(), "utf8")).toBe(HALF_JSON);
 	});

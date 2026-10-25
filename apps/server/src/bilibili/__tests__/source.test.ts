@@ -28,6 +28,7 @@ import { deferred } from "../../__tests__/support/track-context.js";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
+import { createProblemTable } from "../../problems/problem-table.js";
 import {
 	makeIntegration,
 	makeLogger,
@@ -40,7 +41,6 @@ import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
-import { createProblemLayers } from "../problem-layers.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
 import { BILI_SOURCE_DESCRIPTOR, createBiliSource } from "../source.js";
 
@@ -177,14 +177,6 @@ function makeDeps(
 		over.fetchRelations ?? (async (_uids: string[]) => ok({ data: null })),
 	);
 	const follow = vi.fn(over.follow ?? (async (_uid: string) => ok()));
-	const problems = {
-		attach: vi.fn(),
-		detach: vi.fn(),
-		reportRisk: vi.fn(),
-		resolveRisk: vi.fn(),
-		reportFailure: vi.fn(),
-		resolveFailure: vi.fn(),
-	};
 	const liveContext = {
 		logger,
 		signal: new AbortController().signal,
@@ -197,7 +189,7 @@ function makeDeps(
 		config,
 		setHealthCheckMs,
 		deps: {
-			problems,
+			logger,
 			api: {
 				fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED),
 				fetchRelations,
@@ -212,8 +204,39 @@ function makeDeps(
 		},
 		fetchRelations,
 		follow,
-		problems,
 	};
+}
+
+async function bootProblemTable(
+	initialAuth: ReturnType<SourceAuth["state"]>,
+	fetchAllDynamic: () => Promise<unknown> = async () => EMPTY_FEED,
+) {
+	const auth = makeAuth(initialAuth);
+	const made = makeDeps({
+		auth: auth.auth,
+		fetchAllDynamic,
+	});
+	const source = createBiliSource(made.deps);
+	const world = makeWorld([makeSub("sub-1", "1")]);
+	const table = createProblemTable({ logger: made.deps.logger });
+	const registration = await registerBuiltinSource({
+		registry: createSourceRegistry(),
+		linkResolvers: createLinkResolverRegistry(),
+		aiToolProviders: createAiToolProviderRegistry(),
+		source,
+		integration: makeIntegration(),
+		sourceKey: SOURCE_KEY,
+		subscriptions: world.store,
+		defaults: () => world.globals.defaults,
+		bus: world.bus,
+		logger: made.deps.logger,
+		enqueue: () => {},
+		liveSignals: () => {},
+		liveInteractions: () => {},
+		profiles: () => {},
+		problems: table,
+	});
+	return { auth, registration, source, table };
 }
 
 /** 假登录口:来源只是原样挂着它。 */
@@ -327,6 +350,33 @@ function makeCtx(
 }
 
 describe("createBiliSource", () => {
+	it("start 之后登录失效:问题表只剩登录失效那一条", async () => {
+		const { auth, registration, source, table } = await bootProblemTable(
+			{ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
+			async () => failureFromBili(-352, "risk"),
+		);
+		await source.dynamic()?.detectNow();
+		expect(table.list().map((problem) => problem.code)).toEqual(["risk_controlled"]);
+
+		auth.set({ status: "expired", message: "失效" });
+
+		expect(table.list()).toHaveLength(1);
+		expect(table.list()[0]).toMatchObject({ reporter: SOURCE_KEY, code: "auth_lost" });
+		await registration.dispose();
+	});
+
+	it("停下来源后登录再变化:问题表不再收到新的", async () => {
+		const { auth, registration, table } = await bootProblemTable({ status: "logged-out" });
+		expect(table.list().map((problem) => problem.code)).toEqual(["auth_lost"]);
+
+		await registration.dispose();
+		expect(auth.listenerCount()).toBe(0);
+		auth.set({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		auth.set({ status: "expired", message: "失效" });
+
+		expect(table.list()).toEqual([]);
+	});
+
 	it("对外交登录口:挂的就是传进来的那一份,登记表的视图带着它", async () => {
 		const { deps } = makeDeps();
 		const source = createBiliSource(deps);
@@ -601,28 +651,34 @@ describe("createBiliSource", () => {
 		expect(config.listeners()).toBe(0);
 	});
 
-	// 验红:删掉 source.ts `start` 里的 `deps.problems.attach(ctx)`,这条红。
-	it("start 最后一步把上报器接上这个来源的上下文;stop 第一步摘下(在引擎停之前)", async () => {
-		const { deps } = makeDeps();
-		const order: string[] = [];
-		deps.problems.attach.mockImplementation(() => void order.push("attach"));
-		deps.problems.detach.mockImplementation(() => {
-			order.push(`detach(引擎${source.dynamic()?.isActive ? "还在跑" : "已停"})`);
+	// 验红:把 `problems?.detach()` 挪到引擎停下之后,这条红(引擎收尾的「不再适用」被当成「已恢复」)。
+	it("start 后风控进表;stop 先摘上报器再停引擎,不补「已恢复」", async () => {
+		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		const { deps } = makeDeps({
+			auth: auth.auth,
+			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
 		await source.start(ctx);
-		expect(deps.problems.attach).toHaveBeenCalledTimes(1);
-		expect(deps.problems.attach).toHaveBeenCalledWith(ctx);
-		expect(source.dynamic()).toBeDefined();
+		await source.dynamic()?.detectNow();
+		expect(ctx.reportProblem).toHaveBeenCalledWith(
+			expect.objectContaining({ code: "risk_controlled", notify: true }),
+		);
+		vi.mocked(ctx.resolveProblem).mockClear();
 
 		await source.stop();
-		expect(order).toEqual(["attach", "detach(引擎还在跑)"]);
+		expect(ctx.resolveProblem).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 `attach` 挪进 `applyDynamic` 读得懂的那一支里(或只在引擎起来时才接),这条红。
-	it("动态那格读不懂、引擎没造:上报器照样接上核心(登录失效、风控、直播间停监照常进问题表);stop 照常摘", async () => {
-		const { deps, config } = makeDeps();
+	// 验红:动态那格读不懂时不报这条问题,第一条断言红;把 `layers.attach(ctx)` 挪进引擎起来的那一支,
+	// 关注失败那条断言红(上报器没接上核心,经它报的问题进不了表)。
+	it("动态那格读不懂、引擎没造:设置问题照样进表,上报器照样接上核心", async () => {
+		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
+		const { deps, config } = makeDeps({
+			auth: auth.auth,
+			follow: async () => fail("unavailable", "关注失败"),
+		});
 		config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
@@ -630,37 +686,43 @@ describe("createBiliSource", () => {
 		await source.start(ctx);
 
 		expect(source.dynamic()).toBeUndefined();
-		expect(deps.problems.attach).toHaveBeenCalledTimes(1);
-		expect(deps.problems.attach).toHaveBeenCalledWith(ctx);
+		expect(ctx.reportProblem).toHaveBeenCalledWith(
+			expect.objectContaining({ code: "dynamic_settings_invalid", notify: false }),
+		);
+		await vi.waitFor(() =>
+			expect(ctx.reportProblem).toHaveBeenCalledWith(
+				expect.objectContaining({ externalId: "1", code: "follow_failed" }),
+			),
+		);
 		await source.stop();
-		expect(deps.problems.detach).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:把 source.ts 递给引擎的 `problems: deps.problems` 换成别的对象,这条红。
+	// 验红:把 source.ts 递给引擎的 `problems: layers` 换成别的对象,这条红。
 	it("引擎用的就是来源的那个上报器:拉动态撞 -352 报到它身上", async () => {
+		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
 		const { deps } = makeDeps({
+			auth: auth.auth,
 			fetchAllDynamic: async () => failureFromBili(-352, "risk"),
 		});
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
 		await source.start(ctx);
 		await source.dynamic()?.detectNow();
-		expect(deps.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
+		expect(ctx.reportProblem).toHaveBeenCalledWith(
+			expect.objectContaining({ code: "risk_controlled", notify: true }),
+		);
 		await source.stop();
 	});
 
 	// 验红:让分层上报器重新报 `auth_lost`(留着 `reportLogin`),这条红(真上报器 + 记录用的假 ctx,开机登录已失效)。
 	it("真上报器:登录是 expired 时,start 之后核心那头不收 auth_lost(登录问题归宿主报)", async () => {
-		const { deps } = makeDeps();
-		const problems = createProblemLayers({
-			locale: fixedLocale(),
+		const { deps } = makeDeps({
 			auth: {
+				...FAKE_AUTH,
 				state: () => ({ status: "expired", message: "失效" }),
-				onChange: () => ({ dispose() {} }),
 			},
-			logger: makeLogger(),
 		});
-		const source = createBiliSource({ ...deps, problems });
+		const source = createBiliSource(deps);
 		const { ctx } = makeCtx();
 		await source.start(ctx);
 		expect(ctx.reportProblem).not.toHaveBeenCalled();
@@ -789,7 +851,7 @@ describe("createBiliSource", () => {
 		expect(source.dynamic()).toBeUndefined();
 		expect(watchDisposed).toHaveBeenCalledTimes(3);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
-		expect(deps.problems.attach).not.toHaveBeenCalled();
+		expect(ctx.reportProblem).not.toHaveBeenCalled();
 		// 设置再变:被摘掉的订阅不会造出新的引擎
 		config.set({ dynamicCron: "*/9 * * * *" });
 		expect(cronMock.instances).toHaveLength(1);
@@ -1168,21 +1230,27 @@ describe("createBiliSource — 关注同步", () => {
 
 	it("作品关掉 → 按不再适用清掉那个人的 follow_failed", async () => {
 		const auth = makeAuth(loggedIn);
-		const made = makeDeps({ auth: auth.auth });
+		const made = makeDeps({
+			auth: auth.auth,
+			follow: async () => fail("unavailable", "关注失败"),
+		});
 		const roster = [{ externalId: "1", post: true }];
 		const source = createBiliSource(made.deps);
 		const fake = makeCtx(roster);
 		await source.start(fake.ctx);
-		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+		await vi.waitFor(() =>
+			expect(fake.ctx.reportProblem).toHaveBeenCalledWith(
+				expect.objectContaining({ externalId: "1", code: "follow_failed" }),
+			),
+		);
 
 		const first = roster[0];
 		if (first === undefined) throw new Error("roster fixture is empty");
 		first.post = false;
 		for (const changed of fake.watchers) changed();
 
-		expect(made.problems.resolveFailure).toHaveBeenCalledWith(
-			{ externalId: "1", code: "follow_failed" },
-			{ notify: false },
+		expect(fake.ctx.resolveProblem).toHaveBeenCalledWith(
+			expect.objectContaining({ externalId: "1", code: "follow_failed", notify: false }),
 		);
 		await source.stop();
 	});
@@ -1222,23 +1290,17 @@ describe("createBiliSource — 关注同步", () => {
 		const follow = vi.fn(() => first.promise.then(() => ok()));
 		const made = makeDeps({ auth: auth.auth, follow });
 		const source = createBiliSource(made.deps);
-		await source.start(
-			makeCtx([
-				{ externalId: "1", post: true },
-				{ externalId: "2", post: true },
-			]).ctx,
-		);
+		const fake = makeCtx([
+			{ externalId: "1", post: true },
+			{ externalId: "2", post: true },
+		]);
+		await source.start(fake.ctx);
 		await vi.waitFor(() => expect(follow).toHaveBeenCalledWith("1"));
 
 		await source.stop();
 		first.resolve();
 
-		await vi.waitFor(() =>
-			expect(made.problems.resolveFailure).toHaveBeenCalledWith({
-				externalId: "1",
-				code: "follow_failed",
-			}),
-		);
+		await first.promise;
 		expect(follow).toHaveBeenCalledTimes(1);
 		expect(follow).not.toHaveBeenCalledWith("2");
 	});

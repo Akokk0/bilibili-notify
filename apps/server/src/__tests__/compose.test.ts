@@ -127,10 +127,11 @@ function makeFakeEngines(ctx: SourceContext) {
 	return { engines: engines as never, registered, registerSource: engines.registerSource };
 }
 
+const integrationOnDispose = vi.fn();
 const integration = {
 	logger: quietLogger(),
 	signal: new AbortController().signal,
-	onDispose() {},
+	onDispose: integrationOnDispose,
 	state: {},
 	secrets: {},
 } as unknown as IntegrationContext;
@@ -220,6 +221,7 @@ function compose(
 
 beforeEach(() => {
 	vi.mocked(createBiliDevtools).mockClear();
+	integrationOnDispose.mockClear();
 });
 
 afterEach(() => {
@@ -290,6 +292,11 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 });
 
 describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
+	it("compose 不再往集成上下文挂分层上报器的收尾", () => {
+		compose();
+		expect(integrationOnDispose).not.toHaveBeenCalled();
+	});
+
 	// 验红:把 `compose.ts` 里登记项的 `logger` 换成 `deps.logger`,或把 `forSubsystem("dynamic", …)` 的键换成 `"core"`,这条红。
 	it("来源登记项带的日志器:标签 dynamic、键是 B 站的来源键", async () => {
 		const { builtins, forSubsystem } = compose();
@@ -339,10 +346,6 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		await registered[0]?.source.stop();
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 	});
-
-	// 验红:让 `compose.ts` 造两个上报器(给来源的与挂在 `bilibili.problems` 上的不是同一个),这条红。
-
-	// 验红:`compose.ts` 造分层上报器时不递 `locale`(或递成一个永不触发的读口),这条红。
 
 	describe("场景那头与来源那头是同一个壳(造动态的场景一路走到来源的 reportPost)", () => {
 		const roster: SourceSubscriptionView[] = [
@@ -553,8 +556,6 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 		expect(asked).toEqual(registered.map((key) => JSON.stringify([key, key])));
 		await adapters.dispose();
 	});
-
-	// 验红:`compose.ts` 里建分层上报器的日志器改成别的格(比如 `forSubsystem("core", "core")`),这条红。
 
 	// 验红:造 OneBot / QQ 官方机器人时不把 `deps.serviceCtx` 递给工厂,这条红(关停兜底没挂上)。
 	it("适配器在 compose 时就造好:OneBot 与 QQ 官方机器人各往 serviceCtx 挂了一个关停兜底", () => {

@@ -34,7 +34,6 @@ import {
 	createBiliDevtools,
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
-import { createProblemLayers } from "./bilibili/problem-layers.js";
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
@@ -132,13 +131,6 @@ export interface BuiltinIntegrations {
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
 	// B 站的代码(上报器、来源)日志行都跟 B 站那一格(与登录系统拿到的是同一个日志器)。
 	const biliLogger = deps.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY).logger;
-	// B 站分层上报器:先造、来源登记之后才接上核心(`BiliSource.start` 里接)。给来源与给入口读的是同一个。
-	const problems = createProblemLayers({
-		auth: deps.sourceAuth,
-		logger: biliLogger,
-		locale: deps.locale,
-	});
-	deps.integration.onDispose(() => problems.dispose());
 	let source: BiliSource | undefined;
 	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;
@@ -199,7 +191,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			try {
 				const made = createBiliSource({
 					api: deps.api.api,
-					problems,
+					logger: biliLogger,
 					loginCheck: { setHealthCheckMs: (ms) => deps.setHealthCheckMs(ms) },
 					setTimeout: deps.setTimeout,
 					auth: deps.sourceAuth,
