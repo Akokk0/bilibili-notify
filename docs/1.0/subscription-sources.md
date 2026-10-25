@@ -185,7 +185,7 @@ type AuthState =                   // 状态值用 kebab
 - 🔗 **10-11 以上四条（列一行、排序、多账号下拉、按来源生成引导步）3a-29 没做，推到第 4 期**（主人选范围甲档）：今天只有 B 站一个有登录的来源，读者都在第 4 期，现在造 `accounts/` 与排序键是没有读者的东西。3a-29 B 站半做的是「不退化」：头部、AI 对话、引导、概览、系统页账号卡都改读 B 站那一个来源的登录口。已记进 construction-plan 的「以后再说」。
 - 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。（3a-29 B 站半：`login` 读 `AuthState`——从 `awaiting-scan` 的 `qr.dataUrl` 解出图发回；发起失败回结果里的话；`status` 指令的登录行也由核心按 `AuthState` 拼。3b-06 已改成通用的 `login [来源]`：带登录的来源现读来源登记表，只有一个直接扫、有好几个列出来让主人挑；`status` 的登录行每个带登录的来源各一行，不再直读 B 站登录系统。）
 - 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。（落成：面板的数据面是 react-query 的查询缓存，键 `["source-auth", 来源键]`（`hooks/use-source-auth.ts`），读的地方各自点名要哪个来源；WS `auth` 频道的帧按帧里的 `sourceKey` 写那一条缓存并让它失效重取，重连后 `hydrate` 让整个前缀失效。原来的 zustand 登录仓库删了。）
-- 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。
+- 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。🔗 现状（3b-47，10-25）：登录装配已进 B 站来源；`createAuthSystem` 由 `createBiliSource` 同步造一次，随来源 `start` / `stop`，入口不再造。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
 - 日志落盘前按值脱敏：各集成 `secrets` 里的每一段字符串、cookie 罐里每条 cookie 一到就登记，设置里标了机密的格（核心 `markSecret`、清单 `secret` / `generate`）宿主自动登记，还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记；**少于 8 个字符的值不遮**。核心里写死 B 站 cookie 名的五条正则删掉，`sk-`、`Bearer` 两条（AI 服务商密钥）留着。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉，不豁免。
@@ -311,7 +311,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
   - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
   - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊按 60 秒的节流表，键是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个；「已恢复」只对真私聊过的发、不受窗口与沉淀管（10-12 主人定），引子在交给发送口那一刻加。
   - **code 例子**：B 站落成的名字有 `auth_lost`（3b-51 起由宿主看登录状态报，B 站不再报）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b-25）。🔗 **现状（3b-25，10-23）：已接**。补关注失败由 `bilibili/problem-layers.ts` 的第三层经 `ProblemLayers.reportFailure` 上报，带 `externalId`、`lasting: true`、只进表、不私聊；成功或查到已关注时清掉。资料刷新搬进 B 站来源后撞风控也进同一个风控层（路名 `profile`），只进表、不私聊。🔗 现状（3b-26，10-24）：新落一个 `live_room_not_found`：B 站房号解析得到「没开通直播间」而这位 UP 开着直播推送时报，挂在这位 UP 名下、只进问题表、显示在订阅卡上、不私聊；离开直播监听名单（关推送、停用、删订阅）静默清，之后解析成功也清（`bilibili/live/session/listener-manager.ts`）。
-  - **B 站的分层**落在 `bilibili/problem-layers.ts`：只剩风控与请求失败两层；只看 `AuthState.status` 决定压不压（`expired` / `logged-out` 压、`logged-in` 放，`awaiting-scan` / `confirming` / `error` 保持上一次的结论），登录本身不在这里报。风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；请求失败层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。问题句在 `bilibili/problem-texts.ts` 取，字在字典 `bilibili.problem.*`（平实句）。
+  - **B 站的分层**落在 `bilibili/problem-layers.ts`：只剩风控与请求失败两层；只看 `AuthState.status` 决定压不压（`expired` / `logged-out` 压、`logged-in` 放，`awaiting-scan` / `confirming` / `error` 保持上一次的结论），登录本身不在这里报。风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；请求失败层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。问题句在 `bilibili/problem-texts.ts` 取，字在字典 `bilibili.problem.*`（平实句）。🔗 现状（3b-47，10-25）：`ProblemLayers` 改在来源 `start` 里造、`stop` 里收；“先造后接”的过渡线已拆，`attach` 仍是启动末步。
 
 ### 健康与运行状态
 
@@ -493,7 +493,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 
 - **只经中立接口进核心**，在 `compose.ts` 登记（见 [architecture.md](./architecture.md)）。
 - **只报 uid**：B 站按 uid（即 `externalId`）上报，由核心展开成订阅 id；B 站不知道订阅 id，只用 `ctx.subscriptions()` 的名单决定拉谁。
-- **直播并进来源**：`bilibili/live/session/` 的 `BiliLiveRooms` 在 B 站来源的 `start(ctx)` 里启动，按名单里 `monitorsLive` 的人维护直播间连接。`RoomSession` 管弹幕 WS、房间信息、心跳、重连与退避，把帧翻成中立的开播 / 状态 / 下播信号和四种互动上报；封面、头像等图先经 `ctx.fetchImage` 存进图库。登录事件仍从 `deps.bus` 听。
+- **直播并进来源**：`bilibili/live/session/` 的 `BiliLiveRooms` 在 B 站来源的 `start(ctx)` 里启动，按名单里 `monitorsLive` 的人维护直播间连接。`RoomSession` 管弹幕 WS、房间信息、心跳、重连与退避，把帧翻成中立的开播 / 状态 / 下播信号和四种互动上报；封面、头像等图先经 `ctx.fetchImage` 存进图库。🔗 现状（3b-47，10-25）：`BiliLiveRooms` 改听 `watchLoginEdges`；`BiliSourceDeps.bus` 已删，动态引擎也走同一条登录边。
 - **拉取式直播状态**：`BiliLiveRooms.fetchLiveStatus` 查房间信息；`live_status` 为 1 时交在播数据和 `live_time` 转成的 ISO 开播时刻，0 / 2 交 `offline`。取不到房间号、回应或状态不认时经分层上报器记 `live_status_unavailable`，核心只跳过这一轮。
 - **互动懒取**：`liveInteractions.fetchViewerAvatar` 负责观众头像，`fetchTierIcon` 负责会员档位徽章。B 站描述符里的三档徽章在来源启动且名单有人要监听直播间时预抓，引用写进 `tier.icon.ref`；缺引用时按需补抓，两次尝试至少隔 5 分钟。
 - **请求走 `ctx.http`**：B 站的请求与弹幕 websocket 都经 `ctx.http` 拿，用 B 站这个集成的身份与 cookie；帧、心跳、重连、重试、退避、限流归 `bilibili/`。

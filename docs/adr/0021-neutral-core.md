@@ -66,6 +66,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 5. **核心账号模块叫 `accounts/`**，管「系统 → 账号」、账号排序、汇总各来源的登录态。B 站的登录系统进 `bilibili/auth/`。
     🔗 **2026-10-11**（3a-29 B 站半）：登录系统已搬进 `bilibili/auth/`（`createAuthSystem`、`LoginFlow` 与内部原形 `BiliLoginState`），对外只交 `Source.auth`；仍由入口 `index.ts` 造，登录装配进 `compose.ts` 随 3a-40。`accounts/` 本身没造，见决策 46 下的 🔗。
     🔗 **2026-10-12**（3a-40）：登录装配进 `compose.ts` 3a-40 也没做，留到 3b（主人 10-12 定，理由与被否的选项见 ADR-0025 决策 5 下的 🔗）。
+    🔗 现状（3b-47，10-25）：`createAuthSystem` 已改为同步收现成的 `BiliContext`，在 `createBiliSource` 里造一次，并由来源 `start` / `stop` 管生命周期；登录不再由入口装配。
 
 ### 方向原则与接口族
 
@@ -91,7 +92,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 
    理由：原先按订阅 `kind` 分派认不出是哪个拓展，所以一度给拓展的键加 `ext:` 前缀；身份摊平（决策 14）以后分派直接读 `sourceKey`。前缀只是为了防拓展 id 恰好叫 `bilibili`，而不带点的 id 本就只留给官方源（ADR-0013），再把 `bilibili` 列为保留 id（`ExtensionIdSchema` 拒收），手动放进目录的拓展也撞不上，前缀就不需要了。
     🔗 **2026-10-10**（3a-38）：保留 id 另加 `core`（核心自己的名字：日志等级表的键、设置文件名；日志等级的键开放以后拓展 id 会和它撞）。它只放进「拓展不许用的 id」那张表 `RESERVED_EXTENSION_IDS`，不进 `RESERVED_INTEGRATION_KEYS`，因为后者被当作「内置集成有哪些」读（开存储、导备份时逐个读密钥文件）。
-    🔗 **2026-10-11**（3a-28）：订阅来源这一张表落成 `SourceRegistry`（`apps/server/src/subscriptions/registry.ts`），建在通用登记表 `Registry<T>` 上，实例挂在 `AppRuntime.sourceRegistry`；`entries()` 已补，第一个读者是会员档位读口（不是 `/api/sources`）。B 站由 `compose.ts` 登记，登记即 `await source.start(ctx)`、撤登记即 `stop()`（不等它）。其余几张表（链接解析器、AI 工具）这一片没建。
+    🔗 **2026-10-11**（3a-28）：订阅来源这一张表落成 `SourceRegistry`（`apps/server/src/subscriptions/registry.ts`），建在通用登记表 `Registry<T>` 上，实例挂在 `AppRuntime.sourceRegistry`；`entries()` 已补，第一个读者是会员档位读口（不是 `/api/sources`）。B 站由 `compose.ts` 登记，登记即 `await source.start(ctx)`、撤登记即 `stop()`（不等它）。其余几张表（链接解析器、AI 工具）这一片没建。🔗 现状（3b-47，10-25）：`SourceRegistry` 的撤登记把手会等 `stop()` 落定（最多 30 秒，到时记 warn），再收来源上下文；`EnginesRuntime.dispose` 也异步等在途撤登记落定。
 10. **来源用 `descriptor` 做自我介绍（Q61、Q74、Q10；09-27 S5 修订）**：字段有 `label`、`shortLabel`、`color`、`postNoun`、`creatorNoun`、`searchPlaceholder`、`supportedFeatures`、`supportedExtras`、`membershipPrograms`。「支持哪些」加 `supported` 前缀，和订阅上表示「开没开」的 `features` 分开。拓展清单的 `contributes.subscription` 直接写这些同名字段，删掉 `display` 那一层与 `events`，宿主的对照表 `SUBSCRIPTION_EVENT_FEATURES` 删掉。面板、锐评、模板都只读它，所有 `isBili` 分叉删掉。B 站那一行的平台徽章，只在装了第二个订阅源时才画。
     🔗 **2026-09-28 ADR-0027**：描述符加 `externalIdNoun?`（决策 5）、`icon?` 与 `featureHints?`（决策 6）。
     🔗 **2026-09-29**：`searchPlaceholder` 删掉，换成 `searchAccepts?: ("id" | "link" | "name")[]`：来源只声明搜人输入框收哪几种输入，提示句由 contract 的叫法函数拼（id 用 `externalIdNoun`，B 站三种都收，拼成「UID、主页链接或名字」），不声明就是「搜索{creatorNoun}」。描述符里的自由文字仍只有 `featureHints` 一格（ADR-0027 决策 6）。
