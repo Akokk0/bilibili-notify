@@ -6,9 +6,9 @@
  * 名字没填就用 bot 的。字段表那一半只对「要人填」的拓展有意义(桥的是空表)。
  */
 
-import type { ConnectionCandidatesResponse, ExtensionScalarField } from "@bilibili-notify/contract";
+import type { ConnectionCandidatesResponse, SettingsScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { extensionConnectionFields } from "../connection-fields";
+import { connectionSettingsFields } from "../connection-fields";
 import {
 	makeEmptyExtensionConnection,
 	makeExtensionConnectionDraft,
@@ -31,7 +31,7 @@ const BOT: ConnectionCandidatesResponse["candidates"][number] = {
 	via: "家里那台",
 };
 
-const FIELDS: readonly ExtensionScalarField[] = [
+const FIELDS: readonly SettingsScalarField[] = [
 	{
 		type: "enum",
 		key: "flavor",
@@ -70,14 +70,14 @@ describe("makeEmptyExtensionConnection", () => {
 	});
 });
 
-describe("extensionConnectionFields", () => {
+describe("connectionSettingsFields", () => {
 	const connection: NewConnection = {
 		...makeEmptyExtensionConnection("demo", BOT, ""),
 		settings: { flavor: "a", note: "", retries: 0, loud: false },
 	};
 
 	it("字段表一栏翻一栏,身份带着拓展 id —— 与内置平台的字段不撞", () => {
-		const fields = extensionConnectionFields(connection, FIELDS);
+		const fields = connectionSettingsFields(connection, FIELDS);
 		expect(fields.map((f) => ("code" in f ? f.code : f.kind))).toEqual([
 			"ext.demo.flavor",
 			"ext.demo.note",
@@ -87,7 +87,7 @@ describe("extensionConnectionFields", () => {
 	});
 
 	it("改一栏只落自己那一格,别的格原样", () => {
-		const [flavor] = extensionConnectionFields(connection, FIELDS);
+		const [flavor] = connectionSettingsFields(connection, FIELDS);
 		if (flavor?.kind !== "select") throw new Error("第一栏该是 select");
 		const next = flavor.set("b");
 		expect(next.settings).toEqual({ flavor: "b", note: "", retries: 0, loud: false });
@@ -98,7 +98,7 @@ describe("extensionConnectionFields", () => {
 		// 键缺省时拓展那份 zod 会补成 default:表单要是画成「关」/ 第一项,主人不碰就存,
 		// 屏幕上的和实际生效的就是两个值。
 		const bare: NewConnection = { ...connection, settings: {} };
-		const fields = extensionConnectionFields(bare, [
+		const fields = connectionSettingsFields(bare, [
 			{ type: "boolean", key: "loud", label: "吵", default: true },
 			{
 				type: "enum",
@@ -118,16 +118,16 @@ describe("extensionConnectionFields", () => {
 
 	it("没声明 default 的照旧:关 / 第一项 / 空串 / min", () => {
 		const bare: NewConnection = { ...connection, settings: {} };
-		const fields = extensionConnectionFields(bare, [
+		const fields = connectionSettingsFields(bare, [
 			...FIELDS.slice(0, 2),
 			{ type: "number", key: "retries", label: "重试", min: 2 },
-			FIELDS[3] as ExtensionScalarField,
+			FIELDS[3] as SettingsScalarField,
 		]);
 		expect(fields.map((f) => ("value" in f ? f.value : undefined))).toEqual(["a", "", 2, false]);
 	});
 
 	it("存着的值压过 default —— default 只管键缺省", () => {
-		const fields = extensionConnectionFields(connection, [
+		const fields = connectionSettingsFields(connection, [
 			{ type: "boolean", key: "loud", label: "吵", default: true },
 			{
 				type: "enum",
@@ -144,6 +144,6 @@ describe("extensionConnectionFields", () => {
 	});
 
 	it("空字段表翻出来就是空的 —— 桥那种「挑出来的」连接没有一栏是人填的", () => {
-		expect(extensionConnectionFields(connection, [])).toEqual([]);
+		expect(connectionSettingsFields(connection, [])).toEqual([]);
 	});
 });

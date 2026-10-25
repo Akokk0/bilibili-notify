@@ -11,6 +11,7 @@ import {
 	type Logger,
 	ok,
 	type PlatformAdapter,
+	type PlatformAdapterDescriptor,
 	type Result,
 	type ServiceContext,
 	type SettingsReader,
@@ -25,7 +26,6 @@ import type {
 import type {
 	ExtensionSubscriptionView,
 	ExtensionView,
-	PlatformAdapterDescriptor,
 } from "@bilibili-notify/internal/extension/wire";
 import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";

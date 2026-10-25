@@ -51,7 +51,7 @@ import {
 import {
 	type ConnectionField,
 	connectionFields,
-	extensionConnectionFields,
+	connectionSettingsFields,
 } from "../types/connection-fields";
 import {
 	type Connection,
@@ -793,7 +793,7 @@ function editorFields(
 	// 整格是遮挡的没有表单可画,也不许往里加键(见 connection-credentials.ts)。
 	if (settingsAreMasked(connection)) return [];
 	if (!isBuiltinConnection(connection)) {
-		return extension ? extensionConnectionFields(connection, extension.push.settingsFields) : [];
+		return extension ? connectionSettingsFields(connection, extension.push.settingsFields) : [];
 	}
 	return connectionFields(connection);
 }

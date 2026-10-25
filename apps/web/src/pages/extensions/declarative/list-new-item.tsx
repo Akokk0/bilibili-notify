@@ -1,4 +1,4 @@
-import type { ExtensionListField, ExtensionScalarField } from "@bilibili-notify/contract";
+import type { SettingsListField, SettingsScalarField } from "@bilibili-notify/contract";
 import {
 	Btn,
 	ErrorNote,
@@ -40,7 +40,7 @@ type Draft = Record<string, string | boolean>;
  * 打开时每格的样子:清单的默认值;枚举没有默认值就选第一个(选项卡片总得有一张亮着);
  * **生成的那一格每次打开都现生成一把** —— 屏幕上这一把就是要存下去的那一把。
  */
-function initialDraft(fields: readonly ExtensionScalarField[]): Draft {
+function initialDraft(fields: readonly SettingsScalarField[]): Draft {
 	const draft: Draft = {};
 	for (const sub of fields) {
 		switch (sub.type) {
@@ -65,7 +65,7 @@ function initialDraft(fields: readonly ExtensionScalarField[]): Draft {
  * 编辑时每格的样子:这一项存着的值;没存的按新建时的样子(清单默认值 / 第一个选项)—— 那正是拓展
  * 那份 zod 读到的值。存着的值与这一格的种类对不上的(手改过的文件)当它没存。
  */
-function itemDraft(fields: readonly ExtensionScalarField[], item: ListItem): Draft {
+function itemDraft(fields: readonly SettingsScalarField[], item: ListItem): Draft {
 	const draft = initialDraft(fields);
 	for (const sub of fields) {
 		const raw = item[sub.key];
@@ -86,7 +86,7 @@ function itemDraft(fields: readonly ExtensionScalarField[], item: ListItem): Dra
 }
 
 /** 必填却空着(只有空格也算空)的那几格 —— 有一格就不给「创建」。 */
-function isMissing(sub: ExtensionScalarField, value: string | boolean | undefined): boolean {
+function isMissing(sub: SettingsScalarField, value: string | boolean | undefined): boolean {
 	if (!sub.required || (sub.type !== "string" && sub.type !== "number")) return false;
 	return String(value ?? "").trim() === "";
 }
@@ -99,7 +99,7 @@ function isMissing(sub: ExtensionScalarField, value: string | boolean | undefine
  * 空着的格不说:必填的空着由「创建」按不动来说,一打开就满屏「这一格必填」只是吓人。
  */
 function draftErrorOf(
-	sub: ExtensionScalarField,
+	sub: SettingsScalarField,
 	value: string | boolean | undefined,
 ): string | undefined {
 	if (typeof value !== "string" || value.trim() === "") return undefined;
@@ -110,7 +110,7 @@ function draftErrorOf(
  * 草稿 → 存下去的那几格。字去掉首尾空格;**空着的可选格不写** —— 拓展那份 zod 按「没设过」
  * 补默认值,写一个空串进去反倒成了「设过了,是空的」。
  */
-function valuesOf(fields: readonly ExtensionScalarField[], draft: Draft): Record<string, unknown> {
+function valuesOf(fields: readonly SettingsScalarField[], draft: Draft): Record<string, unknown> {
 	const values: Record<string, unknown> = {};
 	for (const sub of fields) {
 		const value = draft[sub.key];
@@ -136,7 +136,7 @@ function valuesOf(fields: readonly ExtensionScalarField[], draft: Draft): Record
  * 可选格发 `null` —— 线上「删掉这一格」只有它说得出来;没填的格不写反倒是「不改」。
  */
 function changedValuesOf(
-	fields: readonly ExtensionScalarField[],
+	fields: readonly SettingsScalarField[],
 	initial: Draft,
 	draft: Draft,
 ): Record<string, unknown> {
@@ -164,7 +164,7 @@ export function ItemDialog({
 	onSubmit,
 }: {
 	extensionId: string;
-	field: ExtensionListField;
+	field: SettingsListField;
 	/** 给了就是编辑这一项(决策 37);不给是新建。 */
 	item?: ListItem;
 	/**
@@ -293,7 +293,7 @@ export function ItemDialog({
  * 这个地址看着这一页,决策 28),或者本项的某一格(**草稿里的这一份**,也就是要存下去的那一份)。
  */
 function copyRowsOf(
-	field: ExtensionListField,
+	field: SettingsListField,
 	extensionId: string,
 	values: Readonly<Record<string, unknown>>,
 ): { key: string; label: string; value: string }[] {
@@ -314,7 +314,7 @@ function DraftControl({
 	value,
 	onChange,
 }: {
-	sub: ExtensionScalarField;
+	sub: SettingsScalarField;
 	value: string | boolean | undefined;
 	onChange: (value: string | boolean) => void;
 }): ReactNode {

@@ -16,8 +16,6 @@
 import type {
 	ErrorResponse,
 	ExtensionDTO,
-	ExtensionField,
-	ExtensionListField,
 	ExtensionPanelView,
 	ExtensionSettingsOp,
 	ExtensionSettingsPatch,
@@ -25,6 +23,8 @@ import type {
 	ExtensionSettingsWriteResponse,
 	ExtensionsResponse,
 	ExtensionView,
+	SettingsField,
+	SettingsListField,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
@@ -40,7 +40,7 @@ export const KOISHI_PNG =
 export const ASTRBOT_SVG = `data:image/svg+xml;base64,${btoa("<svg xmlns='http://www.w3.org/2000/svg'/>")}`;
 
 /** 桥那一格列表 —— 照清单 v2 的写法。 */
-export const LINKS_FIELD: ExtensionListField = {
+export const LINKS_FIELD: SettingsListField = {
 	key: "links",
 	type: "list",
 	label: "桥接入",
@@ -195,7 +195,7 @@ export function maskOf(value: string): string {
 	return value.length < 24 ? dots : `${value.slice(0, 4)}${dots}${value.slice(-4)}`;
 }
 
-function isSecretSub(field: ExtensionField): boolean {
+function isSecretSub(field: SettingsField): boolean {
 	return field.type === "string" && (field.secret === true || field.generate === true);
 }
 

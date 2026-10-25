@@ -11,14 +11,14 @@ import {
 	EXTENSION_VIEW_MAX_BYTES,
 	EXTENSION_VIEW_MAX_PAGE_BLOCKS,
 	ExtensionItemViewSchema,
-	type ExtensionManifestField,
-	type ExtensionManifestListField,
 	ExtensionPageBlockSchema,
 	ExtensionViewImagesSchema,
 	ExtensionViewSummarySchema,
 	formatZodIssues,
 	imageMissing,
 	isSecretField,
+	type SettingsField,
+	type SettingsListField,
 } from "@bilibili-notify/internal";
 import type {
 	ExtensionBlock,
@@ -45,7 +45,7 @@ import type { ZodError } from "zod";
 
 export interface ViewCheckInput {
 	/** 清单里声明的设置项(v2 的 `settings.fields`)—— `items` 的第一层键只认其中的列表。 */
-	fields: readonly ExtensionManifestField[];
+	fields: readonly SettingsField[];
 	/**
 	 * 清单声明过的动作名(v2 的 `actions`,没声明就是空的)—— 「调拓展」的按钮只认这里面的。
 	 * 必填:可选的话哪天漏传一处,这道核就静默没了。
@@ -94,10 +94,8 @@ function kb(bytes: number): string {
 }
 
 /** 清单里的列表设置项。Map:键是拓展起的名字,不拿普通对象按下标查。 */
-function listsOf(
-	fields: readonly ExtensionManifestField[],
-): Map<string, ExtensionManifestListField> {
-	const lists = new Map<string, ExtensionManifestListField>();
+function listsOf(fields: readonly SettingsField[]): Map<string, SettingsListField> {
+	const lists = new Map<string, SettingsListField>();
 	for (const field of fields) if (field.type === "list") lists.set(field.key, field);
 	return lists;
 }
@@ -352,7 +350,7 @@ function checkItems(
 /** 核一项:合规矩交出核过的那份,不合规矩说清哪里。 */
 function checkItem(
 	raw: unknown,
-	field: ExtensionManifestListField,
+	field: SettingsListField,
 	images: CheckedImages,
 	actions: ReadonlySet<string>,
 ): { view: ExtensionItemView } | { reason: string } {
@@ -389,7 +387,7 @@ function checkItem(
  */
 function setIssues(
 	set: Readonly<Record<string, string | number | boolean>>,
-	list: ExtensionManifestListField,
+	list: SettingsListField,
 	at: string,
 ): string[] {
 	const fields = new Map(list.fields.map((sub) => [sub.key, sub]));

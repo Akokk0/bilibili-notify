@@ -7,13 +7,13 @@ import {
 	type Disposable,
 	type ExtensionIdentity,
 	type ExtensionManifest,
-	type ExtensionManifestField,
 	type ExtensionRunState,
 	type InboundHandlers,
 	type Issue,
 	type Logger,
 	manifestSecretKeys,
 	type ServiceContext,
+	type SettingsField,
 } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { ZodType } from "zod";
@@ -396,7 +396,7 @@ function entryBase(dir: ReadyDir): Pick<ExtensionEntry, "id" | "dir" | "linkedTo
 }
 
 /** 清单里声明的设置项。 */
-function declaredSettings(manifest: ExtensionManifest): readonly ExtensionManifestField[] {
+function declaredSettings(manifest: ExtensionManifest): readonly SettingsField[] {
 	return manifest.settings?.fields ?? [];
 }
 

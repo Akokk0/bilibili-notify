@@ -4,8 +4,8 @@ import {
 	type ExtensionLocaleFile,
 	type ExtensionLocaleIssueCode,
 	type ExtensionManifest,
-	type ExtensionManifestField,
 	parseExtensionLocaleFile,
+	type SettingsField,
 } from "@bilibili-notify/internal";
 import { type Dict, LOCALES, type Locale, mergeDict } from "@bilibili-notify/internal/i18n";
 
@@ -149,10 +149,7 @@ function pick<T, R>(layers: Layers<T>, get: (layer: T) => R | undefined): R | un
 	return undefined;
 }
 
-function localizeField<F extends ExtensionManifestField>(
-	field: F,
-	layers: Layers<FieldTranslation>,
-): F {
+function localizeField<F extends SettingsField>(field: F, layers: Layers<FieldTranslation>): F {
 	const out: Record<string, unknown> = { ...field };
 	const label = pick(layers, (layer) => layer.label);
 	if (label !== undefined) out.label = label;
@@ -205,7 +202,7 @@ function localizeField<F extends ExtensionManifestField>(
 	return out as F;
 }
 
-function localizeFields<F extends ExtensionManifestField>(
+function localizeFields<F extends SettingsField>(
 	fields: readonly F[],
 	layers: Layers<Record<string, FieldTranslation>>,
 ): F[] {

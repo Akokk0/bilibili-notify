@@ -13,7 +13,7 @@
  * 要整份换 settings,官机扫码回填还要补显示名),页面不用知道。
  */
 
-import type { ExtensionScalarField } from "@bilibili-notify/contract";
+import type { SettingsScalarField } from "@bilibili-notify/contract";
 import type {
 	NewConnection,
 	OnebotConnectionSettings,
@@ -400,9 +400,9 @@ function webhookFields(connection: NewConnection): ConnectionField[] {
  * 🔴 键缺省时先落到字段声明的 `default`,再落到各控件的兜底:键缺省的格存下去,拓展那份
  * zod 补的就是 `default` —— 表单要是画成「关」/ 第一项,屏幕上的和实际生效的就是两个值。
  */
-export function extensionConnectionFields(
+export function connectionSettingsFields(
 	connection: NewConnection,
-	fields: readonly ExtensionScalarField[],
+	fields: readonly SettingsScalarField[],
 ): ConnectionField[] {
 	const bag = (
 		typeof connection.settings === "object" && connection.settings !== null

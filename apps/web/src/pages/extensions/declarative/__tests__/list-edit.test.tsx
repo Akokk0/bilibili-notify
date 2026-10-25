@@ -12,7 +12,7 @@
  * - 没成时弹窗不关、草稿还在;校验不过的那句落在那一格底下。
  */
 
-import type { ExtensionListField } from "@bilibili-notify/contract";
+import type { SettingsListField } from "@bilibili-notify/contract";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -40,12 +40,12 @@ import {
 } from "./list-harness";
 
 /** 多一格可选的备注 —— 清空它要发 `null`。 */
-const WITH_MEMO: ExtensionListField = {
+const WITH_MEMO: SettingsListField = {
 	...LINKS_FIELD,
 	fields: [...LINKS_FIELD.fields, { key: "memo", type: "string", label: "备注" }],
 };
 
-async function openEdit(opts: { field?: ExtensionListField; items?: unknown[] } = {}) {
+async function openEdit(opts: { field?: SettingsListField; items?: unknown[] } = {}) {
 	renderList({
 		ext: opts.field ? { ...BRIDGE, settings: { fields: [opts.field] } } : BRIDGE,
 		items: opts.items ?? [HOME, OFFICE],
@@ -172,7 +172,7 @@ describe("编辑弹窗", () => {
 	/** 弹窗里一格都填不了(只有 token 与停用)的列表没有这颗钮 —— 开出来是个空框。 */
 	it("没有能编辑的格:没有这颗钮", async () => {
 		const { mark: _, ...unmarked } = LINKS_FIELD;
-		const bare: ExtensionListField = {
+		const bare: SettingsListField = {
 			...unmarked,
 			title: "token",
 			fields: LINKS_FIELD.fields.filter((sub) => sub.key === "token" || sub.key === "enabled"),

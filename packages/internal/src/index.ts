@@ -38,11 +38,13 @@ export {
 	inboundIdentity,
 	type PlatformAdapter,
 	type PlatformAdapterContext,
+	type PlatformAdapterDescriptor,
 	type ProbeResult,
 } from "./push-source";
 export * from "./push-target";
 export * from "./result";
 export * from "./schema";
+export * from "./settings-field";
 export * from "./source";
 export * from "./timezone";
 export * from "./update";

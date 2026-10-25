@@ -1,12 +1,12 @@
 import type {
 	ExtensionDTO,
 	ExtensionItemView,
-	ExtensionListField,
 	ExtensionPanelItem,
-	ExtensionScalarField,
 	ExtensionSettingsOp,
 	ExtensionTone,
 	ExtensionViewFault,
+	SettingsListField,
+	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import {
 	Btn,
@@ -108,7 +108,7 @@ const TONE_ACCENT: Record<ExtensionTone, string> = {
 /** 要先问一句的那两件事:删掉这一项 / 换一把钥匙。 */
 type Confirming =
 	| { kind: "remove"; item: ListItem }
-	| { kind: "regenerate"; item: ListItem; sub: ExtensionScalarField };
+	| { kind: "regenerate"; item: ListItem; sub: SettingsScalarField };
 
 /** 开着的那个弹窗:新建一项,或编辑某一项(决策 37)。 */
 type Dialog = { kind: "new" } | { kind: "edit"; item: ListItem };
@@ -132,10 +132,10 @@ interface CardActions {
 	edit(item: ListItem): void;
 	toggle(item: ListItem): void;
 	set(item: ListItem, set: Readonly<Record<string, string | number | boolean>>): void;
-	regenerate(item: ListItem, sub: ExtensionScalarField): void;
+	regenerate(item: ListItem, sub: SettingsScalarField): void;
 	remove(item: ListItem): void;
 	/** 刚生成、还亮着的明文 —— 没有(或已经不是存着的那一把)就是 `undefined`。 */
-	revealed(item: ListItem, sub: ExtensionScalarField): string | undefined;
+	revealed(item: ListItem, sub: SettingsScalarField): string | undefined;
 	/**
 	 * 上一发写还在路上。
 	 *
@@ -158,7 +158,7 @@ const revealKey = (id: string, key: string) => JSON.stringify([id, key]);
  * 就该是今天那一页。卡上每一块归三处之一 —— **清单**声明的(标题、方块、字段行、停用 / 启用)、
  * **视图**交来的(状态、药丸、副标题、按钮、积木)、**BN** 自己画的(删除、图例、三句盖章)。
  */
-export function ListSection({ ext, field }: { ext: ExtensionDTO; field: ExtensionListField }) {
+export function ListSection({ ext, field }: { ext: ExtensionDTO; field: SettingsListField }) {
 	const [dialog, setDialog] = useState<Dialog | null>(null);
 	/** 两件要确认的事共用底下那**一个**确认框 —— 谁在等,由它说了算。 */
 	const [confirming, setConfirming] = useState<Confirming | null>(null);
@@ -247,7 +247,7 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
 	 * 换一把钥匙:新的在这一刻生成,写成之后卡上亮一次(存下之后浏览器只有头尾,不亮的话主人
 	 * 拿不到它)。
 	 */
-	const regenerateNow = (item: ListItem, sub: ExtensionScalarField) => {
+	const regenerateNow = (item: ListItem, sub: SettingsScalarField) => {
 		const text = newHexSecret();
 		send([{ op: "update", list: field.key, id: item.id, values: { [sub.key]: text } }], {
 			id: item.id,
@@ -434,7 +434,7 @@ export function ListSection({ ext, field }: { ext: ExtensionDTO; field: Extensio
  * 什么,只知道「正用着它的那一头」。删除那句「删了会怎样」由清单的 `removeWarning` 交 ——
  * 那是安全提示,通用说法说不出来(决策 29)。
  */
-function confirmationOf(confirming: Confirming, field: ExtensionListField) {
+function confirmationOf(confirming: Confirming, field: SettingsListField) {
 	const title = titleOf(field, confirming.item);
 	if (confirming.kind === "remove") {
 		return {
@@ -469,7 +469,7 @@ function ListEmpty({
 	busy,
 	onAdd,
 }: {
-	field: ExtensionListField;
+	field: SettingsListField;
 	busy: boolean;
 	onAdd: () => void;
 }) {
@@ -518,7 +518,7 @@ function ListCard({
 	actions,
 }: {
 	extensionId: string;
-	field: ExtensionListField;
+	field: SettingsListField;
 	item: ListItem;
 	itemView: ExtensionItemView | undefined;
 	/**
@@ -691,7 +691,7 @@ function FieldRow({
 	revealed,
 	onRegenerate,
 }: {
-	sub: ExtensionScalarField;
+	sub: SettingsScalarField;
 	item: ListItem;
 	title: string;
 	itemLabel: string;
@@ -747,7 +747,7 @@ function RowLabel({ children }: { children: string }) {
 }
 
 /** 别的格:名字 + 值,只读。 */
-function PlainRow({ sub, text }: { sub: ExtensionScalarField; text: string }) {
+function PlainRow({ sub, text }: { sub: SettingsScalarField; text: string }) {
 	const mono = sub.type === "string" && sub.monospace === true;
 	return (
 		<div data-field-row={sub.key} className="flex flex-wrap items-center gap-2.5">

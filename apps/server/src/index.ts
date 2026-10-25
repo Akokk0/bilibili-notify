@@ -592,7 +592,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			connectionSecrets,
 			adapters: runtime.adapterRegistry,
 			// 清单读不到(装载器没好、版本不合)= 问不出来;清单在但没声明设置项 = 确实没有机密格。
-			extensionFieldsOf: (id) => {
+			settingsFieldsOf: (id) => {
 				const manifest = loadedExtensions?.list().find((entry) => entry.id === id)?.manifest;
 				return manifest ? (manifest.settings?.fields ?? []) : undefined;
 			},

@@ -12,9 +12,9 @@
  */
 
 import type {
-	ExtensionScalarField,
 	ExtensionSettingsPatch,
 	ExtensionSettingsResponse,
+	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -34,7 +34,7 @@ const PNG =
 const COOKIE = "sessionid=0123456789abcdef;uid_tt=d41c";
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
-const FIELDS: ExtensionScalarField[] = [
+const FIELDS: SettingsScalarField[] = [
 	{
 		key: "cookie",
 		type: "string",
@@ -91,7 +91,7 @@ function maskOf(value: string): string {
 }
 
 /** 服务端眼下下发的那一份 —— GET 回它;PATCH 回的也是它(写后的整份)外加 `added`。 */
-function served(fields: readonly ExtensionScalarField[] = FIELDS): ExtensionSettingsResponse {
+function served(fields: readonly SettingsScalarField[] = FIELDS): ExtensionSettingsResponse {
 	const values: Record<string, unknown> = { ...stored };
 	for (const field of fields) {
 		const value = values[field.key];
@@ -122,9 +122,9 @@ function applyPatch(body: unknown) {
 }
 
 /** 这一轮渲染的清单 —— 假服务端照它遮密钥。 */
-let rendered: readonly ExtensionScalarField[] = FIELDS;
+let rendered: readonly SettingsScalarField[] = FIELDS;
 
-function renderForm(fields: ExtensionScalarField[] = FIELDS) {
+function renderForm(fields: SettingsScalarField[] = FIELDS) {
 	rendered = fields;
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
@@ -510,7 +510,7 @@ describe("校验", () => {
 	});
 
 	it("必填的清空了当场说", async () => {
-		const fields: ExtensionScalarField[] = [
+		const fields: SettingsScalarField[] = [
 			{ key: "name", type: "string", label: "名字", required: true },
 		];
 		stored = { name: "抖音" };
@@ -588,7 +588,7 @@ describe("校验", () => {
 	 * `Object.prototype` 上的同名函数。服务端会在清单那一步挡掉这些名字,但面板自己也得站得住。
 	 */
 	describe("key 撞上 Object.prototype 上的名字", () => {
-		const PROTO_FIELDS: ExtensionScalarField[] = [
+		const PROTO_FIELDS: SettingsScalarField[] = [
 			{ key: "valueOf", type: "number", label: "次数", default: 5 },
 			{ key: "toString", type: "string", label: "称呼" },
 		];

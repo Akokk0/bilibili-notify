@@ -9,7 +9,7 @@
  * 声明过的格、整份视图有字节上限。
  */
 
-import type { ExtensionManifestField } from "@bilibili-notify/internal";
+import type { SettingsField } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { checkExtensionView, faultedExtensionView, type ViewCheckInput } from "../view-check.js";
 
@@ -17,7 +17,7 @@ const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 /** 桥那张列表,外加一格数字(拿来钉「值的类型对得上」)与一格单值设置(它不是列表)。 */
-const FIELDS: ExtensionManifestField[] = [
+const FIELDS: SettingsField[] = [
 	{ key: "nick", type: "string", label: "昵称" },
 	{
 		key: "links",

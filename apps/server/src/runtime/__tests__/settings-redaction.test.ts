@@ -7,11 +7,11 @@
 
 import {
 	type Connection,
-	type ExtensionManifestField,
 	makeDefaultGlobalConfig,
 	markBackupOnly,
 	markSecret,
 	neutralPlatformSnapshot,
+	type SettingsField,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
@@ -52,23 +52,23 @@ function connection(
 	};
 }
 
-const SECRET_FIELD: ExtensionManifestField = {
+const SECRET_FIELD: SettingsField = {
 	key: "token",
 	type: "string",
 	label: "令牌",
 	secret: true,
-} as ExtensionManifestField;
-const PLAIN_FIELD: ExtensionManifestField = {
+} as SettingsField;
+const PLAIN_FIELD: SettingsField = {
 	key: "botId",
 	type: "string",
 	label: "机器人",
-} as ExtensionManifestField;
+} as SettingsField;
 const LIST_FIELD = {
 	key: "peers",
 	type: "list",
 	label: "对端",
 	fields: [SECRET_FIELD, PLAIN_FIELD],
-} as unknown as ExtensionManifestField;
+} as unknown as SettingsField;
 
 function baseInput() {
 	return {
@@ -80,7 +80,7 @@ function baseInput() {
 		}),
 		integrationSettings: [] as Array<{ key: string; schema: z.ZodType; settings: unknown }>,
 		extensionSettings: {} as Record<string, unknown>,
-		extensionFieldsOf: (_id: string): readonly ExtensionManifestField[] | undefined => undefined,
+		settingsFieldsOf: (_id: string): readonly SettingsField[] | undefined => undefined,
 	};
 }
 
@@ -147,7 +147,7 @@ describe("secretSettingValues", () => {
 				peers: [{ token: "FAKE-peer-token", botId: "FAKE-peer-visible" }],
 			},
 		};
-		input.extensionFieldsOf = () => [SECRET_FIELD, PLAIN_FIELD, LIST_FIELD];
+		input.settingsFieldsOf = () => [SECRET_FIELD, PLAIN_FIELD, LIST_FIELD];
 		const got = secretSettingValues(input);
 		expect(got.sort()).toEqual(["FAKE-bridge-token", "FAKE-peer-token"]);
 	});
@@ -186,7 +186,7 @@ describe("bindSettingsRedaction", () => {
 		let globals = makeDefaultGlobalConfig();
 		let connections: Connection[] = [];
 		let extensionSettings: Record<string, unknown> = {};
-		let fields: readonly ExtensionManifestField[] | undefined = [SECRET_FIELD, PLAIN_FIELD];
+		let fields: readonly SettingsField[] | undefined = [SECRET_FIELD, PLAIN_FIELD];
 		const handlers: Array<(scope: string) => void> = [];
 		const adapterHandlers: Array<() => void> = [];
 		let adapterList: Array<{ adapterKey: string; settingsSchema: z.ZodType }> = [
@@ -213,7 +213,7 @@ describe("bindSettingsRedaction", () => {
 					return { dispose: () => adapterHandlers.splice(adapterHandlers.indexOf(fn), 1) };
 				},
 			},
-			extensionFieldsOf: () => fields,
+			settingsFieldsOf: () => fields,
 		});
 		return {
 			redactor,

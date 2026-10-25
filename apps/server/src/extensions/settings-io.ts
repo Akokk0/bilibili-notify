@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ExtensionSettingsIssue, ExtensionSettingsOp } from "@bilibili-notify/contract";
 import {
-	type ExtensionManifestField,
-	type ExtensionManifestListField,
 	type Issue,
 	isSecretField,
 	issuesFromZod,
 	maskCell,
+	type SettingsField,
+	type SettingsListField,
 	settingsFieldSchema,
 	settingsListItemSchema,
 } from "@bilibili-notify/internal";
@@ -35,7 +35,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * —— 拓展可能有面板不管的格,那不归 BN 判是不是密钥。存着的根本不是对象(手改坏了)就当没设过。
  */
 export function maskSettings(
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	stored: unknown,
 ): Record<string, unknown> {
 	if (!isPlainObject(stored)) return {};
@@ -134,7 +134,7 @@ export type AppliedSettingsOps =
  * 路径从设置那一层往下数,列表项**按 id 点名**(增删之后下标会挪)。
  */
 export function applySettingsOps(
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	stored: unknown,
 	ops: readonly ExtensionSettingsOp[],
 ): AppliedSettingsOps {
@@ -148,7 +148,7 @@ export function applySettingsOps(
 	const pathKey = (path: Path) => JSON.stringify(path);
 
 	/** 列表的那一格;不是列表回一句为什么。 */
-	const listOf = (key: string): ExtensionManifestListField | string => {
+	const listOf = (key: string): SettingsListField | string => {
 		const field = byKey.get(key);
 		if (!field) return "清单里没有这一格";
 		if (field.type !== "list") return "这一格不是列表 —— 单值的格用 set 改";
@@ -170,7 +170,7 @@ export function applySettingsOps(
 				message: issue.message,
 			}));
 		/** 一项里交来的那几格:`id` 归 BN 管、没声明的不收、遮挡不收。 */
-		const itemValueIssues = (list: ExtensionManifestListField, values: object, prefix: Path) => {
+		const itemValueIssues = (list: SettingsListField, values: object, prefix: Path) => {
 			const declared = new Set(list.fields.map((field) => field.key));
 			return Object.entries(values).flatMap(([key, value]) => {
 				const why =
@@ -287,7 +287,7 @@ export function applySettingsOps(
  */
 export async function newExtensionIssues(
 	schemas: readonly ZodType[],
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	before: unknown,
 	after: Record<string, unknown>,
 ): Promise<{ path: Path; message: string }[]> {
@@ -353,7 +353,7 @@ function recordParsed(
 	schema: ZodType,
 	parsed: ParsedSettings,
 	unset: boolean,
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	values: Map<ZodType, { settings: unknown } | { notConfigured: string }>,
 	issues: ZodError["issues"],
 ): void {
@@ -370,7 +370,7 @@ const MAX_NAMED_ISSUES = 3;
  * zod 路径 → 主人认得的说法:格按清单里的名字,**列表项按它的标题**(没有标题按 id,再没有才按
  * 第几项)—— 下标对主人没有意义,删掉前面一条它就挪了。清单没声明的格路径原样念。
  */
-function whereOf(fields: readonly ExtensionManifestField[], raw: unknown, path: Path): string {
+function whereOf(fields: readonly SettingsField[], raw: unknown, path: Path): string {
 	const [head, ...rest] = path;
 	if (head === undefined) return "整份设置";
 	const field = fields.find((candidate) => candidate.key === head);
@@ -397,7 +397,7 @@ function whereOf(fields: readonly ExtensionManifestField[], raw: unknown, path: 
 
 /** zod 的问题 → 一句人话:「哪一格:为什么」,同一句只说一次,多了只点名前几处。 */
 function describeSettingsIssues(
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	raw: unknown,
 	issues: readonly { path: readonly PropertyKey[]; message: string }[],
 ): string {
@@ -423,7 +423,7 @@ function describeSettingsIssues(
  */
 export function judgeStoredSettingsSync(
 	schemas: readonly ZodType[],
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	raw: unknown,
 ): StoredSettingsVerdict | undefined {
 	const unset = raw === undefined || raw === null;
@@ -444,7 +444,7 @@ export function judgeStoredSettingsSync(
 
 /** 解不开的判决:一句人话(给面板)+ 逐条原因(给 `get()` 的 `invalid`)。 */
 function unreadable(
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	raw: unknown,
 	issues: ZodError["issues"],
 ): StoredSettingsVerdict {
@@ -461,7 +461,7 @@ function unreadable(
  */
 export async function judgeStoredSettings(
 	schemas: readonly ZodType[],
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	raw: unknown,
 ): Promise<StoredSettingsVerdict> {
 	const sync = judgeStoredSettingsSync(schemas, fields, raw);

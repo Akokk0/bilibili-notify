@@ -5,12 +5,12 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	ExtensionIdSchema,
-	type ExtensionManifestField,
 	fail,
 	formatZodIssues,
 	issuesFromZod,
 	ok,
 	type Result,
+	type SettingsField,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
@@ -72,7 +72,7 @@ const PatchSchema = z
 	});
 
 /** 这个 id 有没有一份能照着管的设置声明:有就交出 id 与设置项,没有是 `invalid`(id 不合规矩)或 `not_found`。 */
-type Resolved = Result<{ id: string; fields: readonly ExtensionManifestField[] }>;
+type Resolved = Result<{ id: string; fields: readonly SettingsField[] }>;
 
 /**
  * 拓展设置自己的读写口(ADR-0019 决策 35)—— 挂在 `/api/ext` 底下,吃面板会话鉴权。
@@ -115,7 +115,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		fail("invalid", `拓展设置没通过检查（共 ${issues.length} 条）`, { issues });
 
 	/** 下发的那一份:密钥遮着,带版本号。GET 与 PATCH 的回应共用这一段,两边不许说成两种样子。 */
-	function view(fields: readonly ExtensionManifestField[], stored: unknown) {
+	function view(fields: readonly SettingsField[], stored: unknown) {
 		return { revision: settingsRevision(stored), values: maskSettings(fields, stored) };
 	}
 

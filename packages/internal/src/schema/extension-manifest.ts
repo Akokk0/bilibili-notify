@@ -6,6 +6,7 @@ import {
 } from "../extension/wire";
 import { EXTENSION_SOURCE_FEATURES } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
+import type { SettingsField, SettingsListField } from "../settings-field";
 import { CREATOR_SEARCH_INPUTS } from "../source";
 import { checkUserRegex } from "../util/regex-safety";
 
@@ -465,15 +466,14 @@ const ListFieldSchema = z.strictObject({
 	removeWarning: z.string().min(1).optional(),
 });
 
-const FieldSchema = z.discriminatedUnion("type", [
+/** 一格设置项 —— 按**数据类型**分,不按控件分(ADR-0019 决策 17)。 */
+export const SettingsFieldSchema = z.discriminatedUnion("type", [
 	StringFieldSchema,
 	NumberFieldSchema,
 	BooleanFieldSchema,
 	EnumFieldSchema,
 	ListFieldSchema,
 ]);
-/** 一格设置项 —— 按**数据类型**分,不按控件分,与 zod 一一对应(ADR-0019 决策 17)。 */
-export type ExtensionManifestField = z.infer<typeof FieldSchema>;
 
 /**
  * `{ fields: [...] }` —— 表单永远是这一个形状。
@@ -482,7 +482,7 @@ export type ExtensionManifestField = z.infer<typeof FieldSchema>;
  * `config[key] = v`。
  */
 const SettingsSchema = z.strictObject({
-	fields: z.array(FieldSchema).max(64).superRefine(checkFieldList),
+	fields: z.array(SettingsFieldSchema).max(64).superRefine(checkFieldList),
 });
 /**
  * 颜色进样式,而清单来自第三方 —— 只收 hex,别的写法(`url(...)`、带分号的)一律拒。
@@ -765,7 +765,7 @@ export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides
  */
 export function manifestSecretKeys(manifest: ExtensionManifest): string[] {
 	const keys = new Set<string>();
-	const collect = (fields: readonly ExtensionManifestField[]) => {
+	const collect = (fields: readonly SettingsField[]) => {
 		for (const field of fields) {
 			if (isSecretField(field)) keys.add(field.key);
 			if (field.type === "list") collect(field.fields);
@@ -777,7 +777,7 @@ export function manifestSecretKeys(manifest: ExtensionManifest): string[] {
 }
 
 /** 一格设置项的值该长什么样 —— BN 这头照声明现造,不看拓展那份 zod(它可能根本没在跑)。 */
-function valueSchemaOf(field: ExtensionManifestField): z.ZodType {
+function valueSchemaOf(field: SettingsField): z.ZodType {
 	// 有默认值的格,存储里没有它也不算缺 —— 拓展那份 zod 会补上(对表时已经钉住两边的默认值
 	// 一样)。当成「必填却缺了」的话,主人还没碰过它,改别的格就被拦下。
 	const need = (schema: z.ZodType) =>
@@ -826,7 +826,7 @@ function valueSchemaOf(field: ExtensionManifestField): z.ZodType {
  * 没声明的键**原样放过**(loose):拓展可能有面板不管的格,BN 不认识不等于写坏了。列表项多一格
  * BN 管的 `id`(ADR-0019 决策 29),必须是非空字符串。
  */
-function fieldsObjectSchema(fields: readonly ExtensionManifestField[], listItem: boolean) {
+function fieldsObjectSchema(fields: readonly SettingsField[], listItem: boolean) {
 	const shape: Record<string, z.ZodType> = {};
 	if (listItem) shape[LIST_ITEM_ID_KEY] = z.string().min(1, "列表项要有 id");
 	for (const field of fields) shape[field.key] = valueSchemaOf(field);
@@ -840,19 +840,16 @@ function fieldsObjectSchema(fields: readonly ExtensionManifestField[], listItem:
  * zod 解不出的设置,按「没设过」算 —— 桥就是接入名单变空、所有 token 当场失效,而面板上一切
  * 正常。没设过(`undefined`)照收:那是「按没有算」,不是写坏了。
  */
-export function settingsValueSchema(fields: readonly ExtensionManifestField[]): z.ZodType {
+export function settingsValueSchema(fields: readonly SettingsField[]): z.ZodType {
 	return fieldsObjectSchema(fields, false).optional();
 }
-
-/** 列表那一种设置项。 */
-export type ExtensionManifestListField = Extract<ExtensionManifestField, { type: "list" }>;
 
 /**
  * **一格**设置项的值该长什么样 —— 按项写设置(`/api/ext/:id/settings`)时,`set` 只照它校验
  * 动到的那一格(ADR-0019 决策 35「存量里别的不合规的不连坐」)。清掉(`undefined`)照「必填
  * 且没默认值」判。
  */
-export function settingsFieldSchema(field: ExtensionManifestField): z.ZodType {
+export function settingsFieldSchema(field: SettingsField): z.ZodType {
 	return valueSchemaOf(field);
 }
 
@@ -860,6 +857,6 @@ export function settingsFieldSchema(field: ExtensionManifestField): z.ZodType {
  * 列表的**一项**该长什么样(带 BN 管的 `id`)—— 增 / 改一项只照它校验合并之后的那一项,
  * 同一列表里别的项不看。
  */
-export function settingsListItemSchema(list: ExtensionManifestListField): z.ZodType {
+export function settingsListItemSchema(list: SettingsListField): z.ZodType {
 	return fieldsObjectSchema(list.fields, true);
 }

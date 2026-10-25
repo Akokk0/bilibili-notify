@@ -1,7 +1,7 @@
 import type {
-	ExtensionListField,
-	ExtensionScalarField,
 	ExtensionSettingsResponse,
+	SettingsListField,
+	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import { ApiError } from "../../../services/api";
@@ -60,23 +60,20 @@ export function itemsOf(settings: Readonly<Record<string, unknown>>, key: string
 }
 
 /** 一项叫什么(「接入」)—— 不给就用整格的名字。 */
-export function itemLabelOf(field: ExtensionListField): string {
+export function itemLabelOf(field: SettingsListField): string {
 	return field.itemLabel ?? field.label;
 }
 
 /** 项里的一格声明。 */
 export function subFieldOf(
-	field: ExtensionListField,
+	field: SettingsListField,
 	key: string | undefined,
-): ExtensionScalarField | undefined {
+): SettingsScalarField | undefined {
 	return key === undefined ? undefined : field.fields.find((sub) => sub.key === key);
 }
 
 /** 卡的标题:清单指的那一格(必填的 string)。 */
-export function titleOf(
-	field: ExtensionListField,
-	item: Readonly<Record<string, unknown>>,
-): string {
+export function titleOf(field: SettingsListField, item: Readonly<Record<string, unknown>>): string {
 	const value = item[field.title];
 	return typeof value === "string" ? value : "";
 }
@@ -85,13 +82,13 @@ export function titleOf(
  * 「停用 / 启用」那一格没存时算什么:清单里的默认值,默认值也没有就算开着 —— 与新建时补上的
  * 那一格同一个答案,不然新建出来的项一刷新就换了个样子。
  */
-export function toggleDefaultOf(field: ExtensionListField): boolean {
+export function toggleDefaultOf(field: SettingsListField): boolean {
 	const toggle = subFieldOf(field, field.toggle);
 	return toggle?.type === "boolean" ? (toggle.default ?? true) : true;
 }
 
 /** 这一项是不是停用着。没声明 `toggle` 的列表没有「停用」这回事。 */
-export function isPaused(field: ExtensionListField, item: ListItem): boolean {
+export function isPaused(field: SettingsListField, item: ListItem): boolean {
 	if (field.toggle === undefined) return false;
 	const value = item[field.toggle];
 	return typeof value === "boolean" ? !value : !toggleDefaultOf(field);
@@ -102,7 +99,7 @@ export function isPaused(field: ExtensionListField, item: ListItem): boolean {
  * —— 不是图片 data URL 的当它没有,退回两个字母。
  */
 export function markOf(
-	field: ExtensionListField,
+	field: SettingsListField,
 	item: ListItem,
 ): { value: string; image: string | undefined } | undefined {
 	const choice = subFieldOf(field, field.mark);
@@ -115,7 +112,7 @@ export function markOf(
 }
 
 /** 卡正文里一格一行的那几格 —— 标题、方块、停用 / 启用各有自己的位置,不再重复画一遍。 */
-export function rowFieldsOf(field: ExtensionListField): ExtensionScalarField[] {
+export function rowFieldsOf(field: SettingsListField): SettingsScalarField[] {
 	const placed = new Set([field.title, field.mark, field.toggle]);
 	return field.fields.filter((sub) => !placed.has(sub.key));
 }
@@ -124,7 +121,7 @@ export function rowFieldsOf(field: ExtensionListField): ExtensionScalarField[] {
  * 别的格在卡上怎么念:存着的值,没存的按清单默认值(拓展那份 zod 读到的就是它),都没有是一道
  * 横线。枚举念选项的名字,不念存着的那个词。
  */
-export function plainValueOf(sub: ExtensionScalarField, raw: unknown): string {
+export function plainValueOf(sub: SettingsScalarField, raw: unknown): string {
 	switch (sub.type) {
 		case "string": {
 			const value = typeof raw === "string" ? raw : (sub.default ?? "");
@@ -153,7 +150,7 @@ export function plainValueOf(sub: ExtensionScalarField, raw: unknown): string {
  * 挡在外面;没声明的键也不归一颗按钮管。
  */
 export function declaredPatchOf(
-	field: ExtensionListField,
+	field: SettingsListField,
 	set: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> {
 	const declared = new Set(field.fields.map((sub) => sub.key));
@@ -166,16 +163,16 @@ export function declaredPatchOf(
  * 走「重新生成」;`id` 本来就不是一格(BN 生成、不许改,决策 29)。
  */
 export function dialogFieldsOf(
-	field: ExtensionListField,
+	field: SettingsListField,
 	mode: "new" | "edit",
-): ExtensionScalarField[] {
+): SettingsScalarField[] {
 	return field.fields.filter(
 		(sub) => sub.key !== field.toggle && (mode === "new" || !isSecretSub(sub)),
 	);
 }
 
 /** 密钥 / 生成的那种格:下发时只有头尾,卡上与弹窗里都另有画法。 */
-export function isSecretSub(sub: ExtensionScalarField): boolean {
+export function isSecretSub(sub: SettingsScalarField): boolean {
 	return sub.type === "string" && (sub.secret === true || sub.generate === true);
 }
 
@@ -238,7 +235,7 @@ export function writeReasonOf(err: unknown): string {
  */
 export function writeFailureOf(
 	err: unknown,
-	field: ExtensionListField,
+	field: SettingsListField,
 	items: readonly ListItem[],
 ): string {
 	const issues = settingsIssuesOf(err);
@@ -248,7 +245,7 @@ export function writeFailureOf(
 
 function issueText(
 	issue: SettingsIssue,
-	field: ExtensionListField,
+	field: SettingsListField,
 	items: readonly ListItem[],
 ): string {
 	const [key, id, subKey] = issue.path;
@@ -269,7 +266,7 @@ function issueText(
  */
 export function dialogIssuesOf(
 	err: unknown,
-	field: ExtensionListField,
+	field: SettingsListField,
 	keys: ReadonlySet<string>,
 	items: readonly ListItem[],
 ): { byField: Record<string, string>; rest: string[] } | null {

@@ -1,4 +1,4 @@
-import type { ExtensionField } from "@bilibili-notify/internal/extension/wire";
+import type { SettingsField } from "@bilibili-notify/internal";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodType } from "zod";
 
@@ -21,7 +21,7 @@ import type { ZodType } from "zod";
 export function assertConfigFieldsMatchSchema(
 	id: string,
 	schema: ZodType,
-	fields: readonly ExtensionField[],
+	fields: readonly SettingsField[],
 	opts: {
 		/**
 		 * 连接是从候选(`listConnectionCandidates`)里**挑**出来的(ADR-0012 决策 45)—— settings 由拓展自己交,没有
@@ -170,7 +170,7 @@ function unwrap(schema: unknown, depth = 0, underOptional = false): Unwrapped {
 }
 
 /** 设置项的类型 → zod 那边剥完包装应该是什么。enum 不止一种写法,另由 {@link enumValuesOf} 认。 */
-const ZOD_TYPE_OF: Record<Exclude<ExtensionField["type"], "enum">, string> = {
+const ZOD_TYPE_OF: Record<Exclude<SettingsField["type"], "enum">, string> = {
 	string: "string",
 	number: "number",
 	boolean: "boolean",
@@ -243,7 +243,7 @@ function tighter(a: Bound | undefined, b: Bound, dir: 1 | -1): Bound {
 function checkFields(
 	prefix: string,
 	members: Record<string, unknown>,
-	fields: readonly ExtensionField[],
+	fields: readonly SettingsField[],
 	fail: (msg: string) => never,
 	opts: { picked: boolean; listItem: boolean },
 ): void {
@@ -281,7 +281,7 @@ function checkFields(
 
 function checkField(
 	path: string,
-	field: ExtensionField,
+	field: SettingsField,
 	member: unknown,
 	fail: (msg: string) => never,
 ): void {

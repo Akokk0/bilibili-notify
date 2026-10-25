@@ -11,6 +11,12 @@
  * (zod schema)是服务端职责,留在 apps/server 各自模块里,用这里的类型做注解防漂移。
  */
 
+export type {
+	PlatformAdapterDescriptor,
+	SettingsField,
+	SettingsListField,
+	SettingsScalarField,
+} from "@bilibili-notify/internal";
 /**
  * 拓展的设置项 / 外观 / bot 视图 / 状态视图(积木)—— 本体住
  * `@bilibili-notify/internal/extension/wire`(拓展门与宿主都从那里取),这里借一道给面板:
@@ -19,10 +25,7 @@
 export type {
 	ExtensionBlock,
 	ExtensionButton,
-	ExtensionField,
 	ExtensionItemView,
-	ExtensionListField,
-	ExtensionScalarField,
 	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
@@ -31,7 +34,6 @@ export type {
 	ExtensionViewSummary,
 	ExtensionViewText,
 	ExtensionViewTextSegment,
-	PlatformAdapterDescriptor,
 } from "@bilibili-notify/internal/extension/wire";
 export * from "./card-skin";
 export * from "./devtools";

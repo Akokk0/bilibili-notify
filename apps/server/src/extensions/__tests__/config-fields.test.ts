@@ -8,7 +8,7 @@
  * 没有它的话,症状是「面板上填了保存不了」或者「有个必填项面板上根本没有」。
  */
 
-import type { ExtensionField, ExtensionScalarField } from "@bilibili-notify/contract";
+import type { SettingsField, SettingsScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { assertConfigFieldsMatchSchema } from "../config-fields.js";
@@ -19,7 +19,7 @@ const SCHEMA = z.object({
 	label: z.string().optional(),
 });
 
-function fields(...over: ExtensionField[]): ExtensionField[] {
+function fields(...over: SettingsField[]): SettingsField[] {
 	return over.length > 0
 		? over
 		: [
@@ -37,7 +37,7 @@ function fields(...over: ExtensionField[]): ExtensionField[] {
 			];
 }
 
-const check = (f: ExtensionField[], schema: z.ZodType = SCHEMA) =>
+const check = (f: SettingsField[], schema: z.ZodType = SCHEMA) =>
 	assertConfigFieldsMatchSchema("bridge", schema, f);
 
 describe("字段表 × zod 对表", () => {
@@ -57,14 +57,14 @@ describe("字段表 × zod 对表", () => {
 	 */
 	it("字段表里的 key 是 Object.prototype 上的名字、zod 里没有 → 拒", () => {
 		const schema = z.object({ a: z.string().optional() });
-		const field: ExtensionField = { type: "string", key: "toString", label: "?" };
+		const field: SettingsField = { type: "string", key: "toString", label: "?" };
 		expect(() => assertConfigFieldsMatchSchema("demo", schema, [field])).toThrow(
 			/"toString" 不是 config schema 的键/,
 		);
 	});
 
 	it("zod 的必填键没人填 → 拒,并说出是哪个键", () => {
-		expect(() => check([fields()[0] as ExtensionField])).toThrow(/bridgeKind/);
+		expect(() => check([fields()[0] as SettingsField])).toThrow(/bridgeKind/);
 	});
 
 	/**
@@ -131,10 +131,10 @@ describe("字段表 × zod 对表", () => {
  * 存不进去;面板上显示默认 30、实际用的是 60。
  */
 describe("对表:类型与默认值", () => {
-	const one = (field: ExtensionField, member: ZodType) =>
+	const one = (field: SettingsField, member: ZodType) =>
 		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
 
-	it.each<[string, ExtensionField, ZodType]>([
+	it.each<[string, SettingsField, ZodType]>([
 		["string", { type: "string", key: "a", label: "A", required: true }, z.string().min(1)],
 		[
 			"number(整数、上下限两边一样)",
@@ -195,7 +195,7 @@ describe("对表:类型与默认值", () => {
 		).not.toThrow();
 	});
 
-	it.each<[string, ExtensionField, ZodType]>([
+	it.each<[string, SettingsField, ZodType]>([
 		["两边不一样", { type: "number", key: "a", label: "A", default: 30 }, z.number().default(60)],
 		["只有设置项写了", { type: "boolean", key: "a", label: "A", default: true }, z.boolean()],
 		["只有 zod 写了", { type: "string", key: "a", label: "A" }, z.string().default("x")],
@@ -210,7 +210,7 @@ describe("对表:类型与默认值", () => {
 			token: z.string(),
 			note: z.string().optional(),
 		});
-		const list = (fields: ExtensionScalarField[]): ExtensionField => ({
+		const list = (fields: SettingsScalarField[]): SettingsField => ({
 			type: "list",
 			key: "links",
 			label: "接入",
@@ -218,13 +218,13 @@ describe("对表:类型与默认值", () => {
 			required: true,
 			fields,
 		});
-		const NAME: ExtensionScalarField = {
+		const NAME: SettingsScalarField = {
 			type: "string",
 			key: "name",
 			label: "名字",
 			required: true,
 		};
-		const TOKEN: ExtensionScalarField = {
+		const TOKEN: SettingsScalarField = {
 			type: "string",
 			key: "token",
 			label: "Token",
@@ -281,10 +281,10 @@ describe("对表:类型与默认值", () => {
  * 按没设过算(桥就是全部接入一起失效)。所以拒绝加载,并说清哪一格、怎么改。
  */
 describe("对表:必填", () => {
-	const one = (field: ExtensionField, member: ZodType) =>
+	const one = (field: SettingsField, member: ZodType) =>
 		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
 
-	it.each<[string, ExtensionField, ZodType]>([
+	it.each<[string, SettingsField, ZodType]>([
 		["string", { type: "string", key: "a", label: "A" }, z.string()],
 		["number", { type: "number", key: "a", label: "A" }, z.number()],
 		["boolean", { type: "boolean", key: "a", label: "A" }, z.boolean()],
@@ -299,7 +299,7 @@ describe("对表:必填", () => {
 
 	it("列表项里的一格也算 —— 点名到列表里那一格", () => {
 		const item = z.object({ id: z.string(), token: z.string() });
-		const list: ExtensionField = {
+		const list: SettingsField = {
 			type: "list",
 			key: "links",
 			label: "接入",
@@ -312,7 +312,7 @@ describe("对表:必填", () => {
 
 	it("列表本身 zod 必填(没有 .default([]))、清单没写 required —— 拒,提示给 zod 一个默认值", () => {
 		const item = z.object({ id: z.string(), name: z.string().optional() });
-		const list: ExtensionField = {
+		const list: SettingsField = {
 			type: "list",
 			key: "links",
 			label: "接入",
@@ -323,7 +323,7 @@ describe("对表:必填", () => {
 		expect(() => one(list, z.array(item).default([]))).not.toThrow();
 	});
 
-	it.each<[string, ExtensionField, ZodType]>([
+	it.each<[string, SettingsField, ZodType]>([
 		[
 			"清单写了 required: true",
 			{ type: "string", key: "a", label: "A", required: true },
@@ -345,7 +345,7 @@ describe("对表:必填", () => {
  * **漂了对不出来** —— 面板放行的值拓展一读就整份失败,或者面板显示的默认值是假话。
  */
 describe("对表:误判 —— 这些写法是合法的,得认得", () => {
-	const one = (field: ExtensionField, member: ZodType) =>
+	const one = (field: SettingsField, member: ZodType) =>
 		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
 
 	/**
@@ -370,7 +370,7 @@ describe("对表:误判 —— 这些写法是合法的,得认得", () => {
 
 	/** 一组字符串取值,zod 里除了 `z.enum` 还常写成字面量的 union —— 两种说的是同一件事。 */
 	describe("enum 用字面量写", () => {
-		const XY: ExtensionField = {
+		const XY: SettingsField = {
 			type: "enum",
 			key: "a",
 			label: "A",
@@ -380,9 +380,9 @@ describe("对表:误判 —— 这些写法是合法的,得认得", () => {
 				{ value: "y", label: "Y" },
 			],
 		};
-		const X_ONLY: ExtensionField = { ...XY, options: [{ value: "x", label: "X" }] };
+		const X_ONLY: SettingsField = { ...XY, options: [{ value: "x", label: "X" }] };
 
-		it.each<[string, ExtensionField, ZodType]>([
+		it.each<[string, SettingsField, ZodType]>([
 			["字面量的 union", XY, z.union([z.literal("y"), z.literal("x")])],
 			["一个字面量带几个值", XY, z.literal(["x", "y"])],
 			["单个字面量", X_ONLY, z.literal("x")],
@@ -405,7 +405,7 @@ describe("对表:误判 —— 这些写法是合法的,得认得", () => {
 		});
 
 		it('字面量不是字符串 —— 拒(面板存的永远是字符串,选项写 "1" 也存不成数字 1)', () => {
-			const field: ExtensionField = {
+			const field: SettingsField = {
 				...XY,
 				options: [
 					{ value: "x", label: "X" },
@@ -459,7 +459,7 @@ describe("对表:误判 —— 这些写法是合法的,得认得", () => {
 	describe("异步 refine", () => {
 		const ok = async () => true;
 
-		it.each<[string, ExtensionField, ZodType]>([
+		it.each<[string, SettingsField, ZodType]>([
 			[
 				"带默认值",
 				{ type: "string", key: "a", label: "A", default: "" },
@@ -508,7 +508,7 @@ describe("对表:误判 —— 这些写法是合法的,得认得", () => {
 });
 
 describe("对表:漏判 —— 漂了今天对不出来", () => {
-	const one = (field: ExtensionField, member: ZodType) =>
+	const one = (field: SettingsField, member: ZodType) =>
 		assertConfigFieldsMatchSchema("demo", z.object({ [field.key]: member }), [field]);
 
 	/**
@@ -517,8 +517,8 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 	 */
 	describe("数值上下限", () => {
 		const num = (
-			over: Partial<Extract<ExtensionField, { type: "number" }>> = {},
-		): ExtensionField => ({
+			over: Partial<Extract<SettingsField, { type: "number" }>> = {},
+		): SettingsField => ({
 			type: "number",
 			key: "a",
 			label: "A",
@@ -526,7 +526,7 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 			...over,
 		});
 
-		it.each<[string, ExtensionField, ZodType]>([
+		it.each<[string, SettingsField, ZodType]>([
 			["两边都没有", num(), z.number()],
 			["整数本身不算上下限", num(), z.int()],
 			["min / max 两边一样", num({ min: 1, max: 10 }), z.number().min(1).max(10)],
@@ -537,7 +537,7 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 			expect(() => one(field, member)).not.toThrow();
 		});
 
-		it.each<[string, ExtensionField, ZodType, RegExp]>([
+		it.each<[string, SettingsField, ZodType, RegExp]>([
 			["zod 有下限、设置项没写", num(), z.number().min(1), /"a" 的下限/],
 			["设置项写了上限、zod 没有", num({ max: 10 }), z.number(), /"a" 的上限/],
 			["下限的数不一样", num({ min: 1 }), z.number().min(0), /"a" 的下限/],
@@ -553,7 +553,7 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 	 * 规矩对。但它只在里面那层**拒了** undefined 时才出手,所以不是每个 `.catch` 都补值。
 	 */
 	describe(".catch 当默认值对", () => {
-		const field = (fill: number | undefined): ExtensionField => ({
+		const field = (fill: number | undefined): SettingsField => ({
 			type: "number",
 			key: "a",
 			label: "A",
@@ -599,7 +599,7 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 	 * (ADR-0019 决策 36)。对表时就拒,并说清怎么改。
 	 */
 	describe("strict 对象", () => {
-		const A: ExtensionField = { type: "string", key: "a", label: "A", required: true };
+		const A: SettingsField = { type: "string", key: "a", label: "A", required: true };
 		const list = (item: ZodType) =>
 			assertConfigFieldsMatchSchema("demo", z.object({ links: z.array(item).default([]) }), [
 				{

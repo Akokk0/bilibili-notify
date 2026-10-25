@@ -1,8 +1,8 @@
 import type {
 	ExtensionDTO,
-	ExtensionField,
-	ExtensionListField,
-	ExtensionScalarField,
+	SettingsField,
+	SettingsListField,
+	SettingsScalarField,
 } from "@bilibili-notify/contract";
 import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify/ui";
 import { reasonOf } from "../shared";
@@ -80,10 +80,10 @@ export function DeclarativeConfig({ ext }: { ext: ExtensionDTO }) {
  * 拓展把哪一格写在前面,是它在说「先填这个」。
  */
 type ConfigGroup =
-	| { kind: "form"; fields: ExtensionScalarField[] }
-	| { kind: "list"; field: ExtensionListField };
+	| { kind: "form"; fields: SettingsScalarField[] }
+	| { kind: "list"; field: SettingsListField };
 
-function configGroupsOf(fields: readonly ExtensionField[]): ConfigGroup[] {
+function configGroupsOf(fields: readonly SettingsField[]): ConfigGroup[] {
 	const groups: ConfigGroup[] = [];
 	for (const field of fields) {
 		if (field.type === "list") {

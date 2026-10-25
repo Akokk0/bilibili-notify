@@ -1,9 +1,9 @@
 import {
 	type Connection,
 	type Disposable,
-	type ExtensionManifestField,
 	type GlobalConfig,
 	mapMarked,
+	type SettingsField,
 } from "@bilibili-notify/internal";
 import { collectRedactions } from "../backup/sanitize.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "../config/schema.js";
@@ -70,7 +70,7 @@ export function secretSettingValues(input: {
 	integrationSettings: ReadonlyArray<{ schema: unknown; settings: unknown }>;
 	extensionSettings: Record<string, unknown>;
 	/** 拓展清单里的设置字段;清单读不到回 `undefined`。 */
-	extensionFieldsOf(id: string): readonly ExtensionManifestField[] | undefined;
+	settingsFieldsOf(id: string): readonly SettingsField[] | undefined;
 }): string[] {
 	const { views } = input;
 	const values = new Set<string>(maskedStrings(input.globals, views.globals(input.globals)));
@@ -84,7 +84,7 @@ export function secretSettingValues(input: {
 		}
 	}
 	for (const [id, stored] of Object.entries(input.extensionSettings)) {
-		const fields = input.extensionFieldsOf(id);
+		const fields = input.settingsFieldsOf(id);
 		const found = fields
 			? maskedStrings(stored, maskSettings(fields, stored))
 			: stringLeaves(stored);
@@ -114,7 +114,7 @@ export function bindSettingsRedaction(opts: {
 	integrationSettings: ReadonlyArray<{ key: string; schema: unknown }>;
 	connectionSecrets: SecretCellsReader;
 	adapters: Pick<PlatformAdapterRegistry, "onChange">;
-	extensionFieldsOf(id: string): readonly ExtensionManifestField[] | undefined;
+	settingsFieldsOf(id: string): readonly SettingsField[] | undefined;
 }): Disposable & { sync(): void } {
 	let last: string | undefined;
 	const sync = (): void => {
@@ -130,7 +130,7 @@ export function bindSettingsRedaction(opts: {
 			connectionSecrets: opts.connectionSecrets,
 			integrationSettings,
 			extensionSettings: opts.configStore.getAllExtensionSettings(),
-			extensionFieldsOf: opts.extensionFieldsOf,
+			settingsFieldsOf: opts.settingsFieldsOf,
 		});
 		// 一样就不换:探测状态写回之类每次都发 `config-changed`。
 		const key = JSON.stringify(values.sort());

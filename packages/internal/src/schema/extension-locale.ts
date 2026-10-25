@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { Dict } from "../i18n";
 import { isDictKey, malformedPlaceholders } from "../i18n";
+import type { SettingsField } from "../settings-field";
 import {
 	EXTENSION_DISPLAY_LABEL_MAX_CHARS,
 	EXTENSION_ITEM_LABEL_MAX_CHARS,
 	EXTENSION_SHORT_LABEL_MAX_CHARS,
 	type ExtensionManifest,
-	type ExtensionManifestField,
 } from "./extension-manifest";
 
 /**
@@ -297,7 +297,7 @@ function newItemCopyOf(
 
 function fieldsOf(
 	source: unknown,
-	fields: readonly ExtensionManifestField[],
+	fields: readonly SettingsField[],
 	path: Path,
 	issues: ExtensionLocaleIssue[],
 ): Record<string, FieldTranslation> | undefined {
@@ -322,7 +322,7 @@ function fieldsOf(
 
 function fieldOf(
 	source: unknown,
-	field: ExtensionManifestField,
+	field: SettingsField,
 	path: Path,
 	issues: ExtensionLocaleIssue[],
 ): FieldTranslation | undefined {

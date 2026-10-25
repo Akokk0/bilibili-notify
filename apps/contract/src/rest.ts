@@ -25,20 +25,18 @@ import type {
 	Identity,
 	ImageRef,
 	Issue,
+	PlatformAdapterDescriptor,
 	PostFilterReason,
 	Problem,
 	PushMessageRole,
 	PushStatus,
 	Result,
+	SettingsField,
 	SourceAccount,
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
-import type {
-	ExtensionField,
-	ExtensionSubscriptionView,
-	PlatformAdapterDescriptor,
-} from "@bilibili-notify/internal/extension/wire";
+import type { ExtensionSubscriptionView } from "@bilibili-notify/internal/extension/wire";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
 
@@ -158,7 +156,7 @@ export interface ExtensionDTO {
 	 * 清单里声明的设置项(ADR-0019 决策 17 / 30)—— 面板照它画设置表单。**没在跑的也有**:
 	 * 它来自清单,「装好 → 填 → 启用」这个顺序靠它才走得通。
 	 */
-	settings?: { fields: readonly ExtensionField[] };
+	settings?: { fields: readonly SettingsField[] };
 	/** 卡片图标,一段 SVG —— **服务端已经过过白名单**(决策 20)。没有就退回灰方章。 */
 	icon?: string;
 	/** 它自己那个目录,绝对路径(`<数据根>/extensions/<id>`)。 */

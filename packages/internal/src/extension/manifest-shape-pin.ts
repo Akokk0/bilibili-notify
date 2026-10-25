@@ -10,6 +10,7 @@
  */
 
 import type { z } from "zod";
+import type { PlatformAdapterDescriptor } from "../push-source";
 import type {
 	ExtensionCreatorCandidatesSchema,
 	ExtensionCreatorProfileReportSchema,
@@ -18,7 +19,9 @@ import type {
 	ExtensionManifestV3,
 	ExtensionPostReportSchema,
 	ExtensionSourceHealthSchema,
+	SettingsFieldSchema,
 } from "../schema";
+import type { SettingsField, SettingsScalarField } from "../settings-field";
 import type { CreatorCandidate, CreatorProfileReport, SourceHealth } from "../source";
 import type {
 	ExtensionLiveDetails,
@@ -27,31 +30,39 @@ import type {
 	ExtensionPostReport,
 } from "./index";
 import type { Equals, Pinned } from "./view-shape-pin.js";
-import type { ExtensionSubscriptionView, PlatformAdapterDescriptor } from "./wire";
+import type { ExtensionSubscriptionView } from "./wire";
 
 /** 清单里订阅源那一段。 */
 type ManifestSubscription = NonNullable<ExtensionManifestV3["contributes"]["subscription"]>;
 type ManifestPush = NonNullable<ExtensionManifestV3["contributes"]["push"]>;
-type ReadonlyArrays<T> = {
-	[K in keyof T]: NonNullable<T[K]> extends readonly unknown[]
-		? Readonly<NonNullable<T[K]>> | Extract<T[K], undefined>
-		: T[K];
-};
+type ReadonlyArrays<T> = T extends readonly (infer U)[]
+	? ReadonlyArray<ReadonlyArrays<U>>
+	: T extends object
+		? { [K in keyof T]: ReadonlyArrays<T[K]> }
+		: T;
 
 /** 清单订阅段去掉装包用的 `cardSkin`,与过 wire 的订阅视图双向严格相等。 */
 export type SubscriptionPinned = Pinned<
 	Equals<ReadonlyArrays<Omit<ManifestSubscription, "cardSkin">>, ExtensionSubscriptionView>
 >;
-/** 推送段的纯外观逐格严格相等;字段表由下一行单向钉住可赋值。 */
+/** 推送段的纯外观逐格严格相等。 */
 export type PushDisplayPinned = Pinned<
 	Equals<Omit<ManifestPush, "settingsFields">, Omit<PlatformAdapterDescriptor, "settingsFields">>
 >;
+/** 推送段的字段表与描述符的字段表严格相等。 */
 export type PushSettingsFieldsPinned = Pinned<
-	NonNullable<
-		ManifestPush["settingsFields"]
-	>[number] extends PlatformAdapterDescriptor["settingsFields"][number]
-		? true
-		: false
+	Equals<
+		ReadonlyArrays<NonNullable<ManifestPush["settingsFields"]>>,
+		PlatformAdapterDescriptor["settingsFields"]
+	>
+>;
+/** zod 字段规则推出的形状与手写设置字段严格相等。 */
+export type SettingsFieldsPinned = Pinned<
+	Equals<ReadonlyArrays<z.infer<typeof SettingsFieldSchema>>, SettingsField>
+>;
+/** 清单推送段的字段元素与单值设置字段严格相等。 */
+export type ManifestSettingsFieldsPinned = Pinned<
+	Equals<ReadonlyArrays<NonNullable<ManifestPush["settingsFields"]>[number]>, SettingsScalarField>
 >;
 // ---- Version 3 reports and read results ---------------------------------------------------
 

@@ -87,15 +87,19 @@ export type {
 	 */
 	PlatformAdapter,
 	PlatformAdapterContext,
+	PlatformAdapterDescriptor,
 	PlatformDescriptor,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
 	Result,
+	SettingsField,
+	SettingsListField,
 	/**
 	 * 一个集成读自己设置的把手。拓展的 `ctx.settings(schema)` 回的就是它(与内置集成同一个口)。
 	 */
 	SettingsReader,
+	SettingsScalarField,
 	SourceHealth,
 	SourceSubscriptionView,
 	WebSocketLike,
@@ -129,10 +133,7 @@ export type {
 export type {
 	ExtensionBlock,
 	ExtensionButton,
-	ExtensionField,
 	ExtensionItemView,
-	ExtensionListField,
-	ExtensionScalarField,
 	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
@@ -141,7 +142,6 @@ export type {
 	ExtensionViewSummary,
 	ExtensionViewText,
 	ExtensionViewTextSegment,
-	PlatformAdapterDescriptor,
 } from "@bilibili-notify/internal/extension/wire";
 /** `ctx.i18n.t` 的占位符取值;`count` 同时决定挑哪个单复数类别。只转类型。 */
 export type { TextValues } from "@bilibili-notify/internal/i18n";

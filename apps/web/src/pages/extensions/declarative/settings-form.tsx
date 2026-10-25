@@ -1,4 +1,4 @@
-import type { ExtensionScalarField } from "@bilibili-notify/contract";
+import type { SettingsScalarField } from "@bilibili-notify/contract";
 import {
 	Btn,
 	ConfirmDialog,
@@ -35,7 +35,7 @@ import { type SettingsWrite, useExtensionSettings, useSettingsWrite } from "./se
 type Edit = string | boolean;
 
 /** 只遮不改的那种:`secret` 且不是 `generate`(那种是只读 + 重新生成)。 */
-function isSecretInput(field: ExtensionScalarField): boolean {
+function isSecretInput(field: SettingsScalarField): boolean {
 	return field.type === "string" && field.secret === true && field.generate !== true;
 }
 
@@ -58,7 +58,7 @@ function own<T>(bag: Readonly<Record<string, T>> | undefined, key: string): T | 
  * 默认值只是**显示**:没改过的格不发,拓展那份 zod 自己会补默认值。密钥与生成的那种不看默认值 ——
  * 一把写在清单里的默认钥匙人人都知道。
  */
-function baselineOf(field: ExtensionScalarField, stored: Record<string, unknown>): Edit {
+function baselineOf(field: SettingsScalarField, stored: Record<string, unknown>): Edit {
 	const raw = own(stored, field.key);
 	switch (field.type) {
 		case "string":
@@ -85,7 +85,7 @@ function baselineOf(field: ExtensionScalarField, stored: Record<string, unknown>
  * 那串点,或者一个空串把真值抹掉)。
  */
 function isDirty(
-	field: ExtensionScalarField,
+	field: SettingsScalarField,
 	edits: Readonly<Record<string, Edit>>,
 	stored: Record<string, unknown>,
 ): boolean {
@@ -123,7 +123,7 @@ export function decimalOf(text: string): number | undefined {
  * 当场就能说的毛病(决策 30「min / max 当场校验」)。设置表单只拿它看**改过的**格(没动过的格
  * 是存着的样子,那归服务端说);新建弹窗拿它看填了字的格。
  */
-export function clientErrorOf(field: ExtensionScalarField, value: Edit): string | undefined {
+export function clientErrorOf(field: SettingsScalarField, value: Edit): string | undefined {
 	if (field.type === "number") {
 		const text = String(value).trim();
 		if (text === "") return field.required ? "这一格必填" : undefined;
@@ -142,7 +142,7 @@ export function clientErrorOf(field: ExtensionScalarField, value: Edit): string 
  * 发出去的那一格(`set` 的 `value`)。**空着的可选格发 `null`** —— 「删掉这一格」在线上只有 `null`
  * 说得出来;不发这一格的意思是「不改」,旧值会原样留着。
  */
-function wireValueOf(field: ExtensionScalarField, value: Edit): unknown {
+function wireValueOf(field: SettingsScalarField, value: Edit): unknown {
 	if (typeof value === "boolean") return value;
 	// 认不出的数走不到这里(`clientErrorOf` 拦着保存)。
 	if (field.type === "number") return value.trim() === "" ? null : decimalOf(value);
@@ -187,14 +187,14 @@ export function SettingsForm({
 	fields,
 }: {
 	extensionId: string;
-	fields: readonly ExtensionScalarField[];
+	fields: readonly SettingsScalarField[];
 }) {
 	const settings = useExtensionSettings(extensionId);
 	const [edits, setEdits] = useState<Record<string, Edit>>({});
 	/** 按了「换一份」的密钥 —— 只管显示(遮住 / 输入框),值照样只在 `edits` 里。 */
 	const [replacing, setReplacing] = useState<Record<string, boolean>>({});
 	/** 等着确认「重新生成」的那一格。 */
-	const [confirming, setConfirming] = useState<ExtensionScalarField | null>(null);
+	const [confirming, setConfirming] = useState<SettingsScalarField | null>(null);
 
 	const stored = settingsValuesOf(settings.data);
 
@@ -209,7 +209,7 @@ export function SettingsForm({
 		);
 	});
 
-	const currentOf = (field: ExtensionScalarField): Edit =>
+	const currentOf = (field: SettingsScalarField): Edit =>
 		Object.hasOwn(edits, field.key) ? (edits[field.key] as Edit) : baselineOf(field, stored);
 
 	const edit = (key: string, value: Edit) => {
@@ -259,7 +259,7 @@ export function SettingsForm({
 	 * 重新生成。**有值的先问一句**(决策 30):存下之后旧的那份就作废,用着它的那一头会断开。
 	 * 空着的(脱敏备份恢复回来就是这样)与刚生成、还没存的那份不问 —— 没有旧钥匙可作废。
 	 */
-	const regenerate = (field: ExtensionScalarField) => {
+	const regenerate = (field: SettingsScalarField) => {
 		const hasSaved = maskedOf(own(stored, field.key)) !== undefined;
 		if (hasSaved && !Object.hasOwn(edits, field.key)) {
 			setConfirming(field);
@@ -346,7 +346,7 @@ export function SettingsForm({
 // ── 一格 ─────────────────────────────────────────────────────────────────────
 
 /** 占满一整行的:字(可能很长)与带图标的选项卡片;数字、开关、分段按钮两两并排。 */
-function isWide(field: ExtensionScalarField): boolean {
+function isWide(field: SettingsScalarField): boolean {
 	if (field.type === "string") return true;
 	return field.type === "enum" && field.options.some((option) => option.icon);
 }
@@ -365,7 +365,7 @@ export function FieldShell({
 	children,
 	...box
 }: {
-	field: ExtensionScalarField;
+	field: SettingsScalarField;
 	error?: string;
 	children: ReactNode;
 } & Omit<HTMLAttributes<HTMLDivElement>, "children">) {
@@ -401,7 +401,7 @@ function FieldControl({
 	onCancelReplace,
 	onRegenerate,
 }: {
-	field: ExtensionScalarField;
+	field: SettingsScalarField;
 	value: Edit;
 	/** 存着的那一把在屏幕上的样子(服务端给的遮挡)—— 只给密钥那两种用;没存是 `undefined`。 */
 	savedMask: string | undefined;
@@ -449,7 +449,7 @@ export function ScalarControl({
 	value,
 	onChange,
 }: {
-	field: ExtensionScalarField;
+	field: SettingsScalarField;
 	value: string | boolean;
 	onChange: (value: string | boolean) => void;
 }) {
@@ -505,7 +505,7 @@ function EnumControl({
 	value,
 	onChange,
 }: {
-	field: Extract<ExtensionScalarField, { type: "enum" }>;
+	field: Extract<SettingsScalarField, { type: "enum" }>;
 	value: string;
 	onChange: (value: string) => void;
 }) {

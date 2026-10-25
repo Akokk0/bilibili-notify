@@ -6,7 +6,7 @@
  * 「被改过了」;不是那份 400 的、拆不出一条的,原话照搬 —— 失败的原因不许吞。
  */
 
-import type { ExtensionListField } from "@bilibili-notify/contract";
+import type { SettingsListField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "../../../../services/api";
 import {
@@ -20,7 +20,7 @@ import {
 	writeReasonOf,
 } from "../list-items";
 
-const LINKS: ExtensionListField = {
+const LINKS: SettingsListField = {
 	key: "links",
 	type: "list",
 	label: "桥接入",

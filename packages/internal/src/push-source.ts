@@ -25,6 +25,7 @@ import type {
 	DestinationRef,
 	PlatformDescriptor,
 } from "./schema/targets";
+import type { SettingsScalarField } from "./settings-field";
 
 /**
  * 一次连接探测的结果(ADR-0026):通了是 `{ ok: true, latencyMs }`,没通是 `Failure`。
@@ -122,6 +123,29 @@ export interface PlatformAdapter {
 	 * 不对拓展开放(ADR-0024 决策 11):拓展的 `adapter` 类型把它排除掉。
 	 */
 	connectionAuth?: ConnectionAuth;
+}
+
+/**
+ * 一个平台适配器给面板的描述(ADR-0012 决策 33 / 46 那三格外观,加要主人填的那几栏):
+ * 推送目标页照它画新建连接那一排的名字、连接卡上那张脸、以及连接配置项。中立概念:今天只有拓展交,
+ * 内置适配器第 4 期(面板改成按描述画)用同一种(ADR-0024 决策 3)。
+ *
+ * **就这几格**:作用域、地址名词、能不能 @全体这些都是**bot 所在平台**的事(一条拓展连接
+ * 就是一个借来的 bot,决策 45),从 bot 报的 `platform` 查注册表,不从这儿来。
+ *
+ * 拓展写在清单里,拓展停着也有(ADR-0019 决策 41)。**有它不等于拓展在场** —— 要在场的看它的运行状态。
+ */
+export interface PlatformAdapterDescriptor {
+	/** 全名:新建连接那一排、「经 xxx 借来的」那句。 */
+	label: string;
+	/** 短名:卡片上那个方章。 */
+	shortLabel: string;
+	/** 方章的底色,hex。 */
+	color: string;
+	/** 平台图标:图片 data URL(面板第 4 期按描述画时当 `<img>` 画,这一版还不读)。 */
+	icon?: string;
+	/** 要主人填的连接配置项;不需要配置的适配器就是空表。 */
+	settingsFields: readonly SettingsScalarField[];
 }
 
 /**

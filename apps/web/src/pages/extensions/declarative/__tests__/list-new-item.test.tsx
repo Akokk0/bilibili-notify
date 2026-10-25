@@ -13,7 +13,7 @@
  * - 没成时弹窗不关、草稿留着:版本号对不上(409)重读一遍再按;校验不过(400)那句话落在那一格底下。
  */
 
-import type { ExtensionListField } from "@bilibili-notify/contract";
+import type { SettingsListField } from "@bilibili-notify/contract";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -41,7 +41,7 @@ const ADDRESS = "ws://192.168.1.20:8787/ext/bridge";
 const HEX32 = /^[0-9a-f]{32}$/;
 
 /** 带一格数字的列表 —— 夹具里的桥没有数字格。 */
-const WITH_RETRY: ExtensionListField = {
+const WITH_RETRY: SettingsListField = {
 	...LINKS_FIELD,
 	newItemCopy: undefined,
 	fields: [
@@ -51,7 +51,7 @@ const WITH_RETRY: ExtensionListField = {
 };
 
 /** 开弹窗:有卡时按标题行那颗,没卡时按空态那颗。 */
-async function openDialog(opts: { field?: ExtensionListField; items?: unknown[] } = {}) {
+async function openDialog(opts: { field?: SettingsListField; items?: unknown[] } = {}) {
 	const items = opts.items ?? [HOME];
 	renderList({
 		ext: opts.field ? { ...BRIDGE, settings: { fields: [opts.field] } } : BRIDGE,
@@ -144,7 +144,7 @@ describe("照清单画", () => {
 	});
 
 	it("清单没给默认值就选第一个", async () => {
-		const field: ExtensionListField = {
+		const field: SettingsListField = {
 			...LINKS_FIELD,
 			fields: LINKS_FIELD.fields.map((sub) =>
 				sub.type === "enum"
@@ -160,7 +160,7 @@ describe("照清单画", () => {
 	});
 
 	it("没图标的枚举、数字、开关、别的字也照清单画、照填的存", async () => {
-		const field: ExtensionListField = {
+		const field: SettingsListField = {
 			...LINKS_FIELD,
 			newItemCopy: undefined,
 			fields: [
@@ -204,7 +204,7 @@ describe("照清单画", () => {
 
 	/** 🔴 密钥格(不是生成的那种)按密码框画,全文不上屏;多行的是等宽的文本框。 */
 	it("密钥格:单行是密码框,多行是等宽的文本框;monospace 的字等宽", async () => {
-		const field: ExtensionListField = {
+		const field: SettingsListField = {
 			...LINKS_FIELD,
 			newItemCopy: undefined,
 			fields: [
@@ -305,7 +305,7 @@ describe("要填到对面去的那几样", () => {
 	});
 
 	it("几样就说几样;没声明就没有这一块", async () => {
-		const three: ExtensionListField = {
+		const three: SettingsListField = {
 			...LINKS_FIELD,
 			newItemCopy: [...(LINKS_FIELD.newItemCopy ?? []), { field: "name" }],
 		};
@@ -362,7 +362,7 @@ describe("创建", () => {
 	});
 
 	it("停用那一格清单默认关着,新建的就是关着的", async () => {
-		const field: ExtensionListField = {
+		const field: SettingsListField = {
 			...LINKS_FIELD,
 			fields: LINKS_FIELD.fields.map((sub) =>
 				sub.key === "enabled"
