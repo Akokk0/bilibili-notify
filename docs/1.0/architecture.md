@@ -129,12 +129,14 @@ integrations/      集成宿主：IntegrationContext 的构造、内置集成与
 extensions/        拓展特有的：装载、市场、安装、设置、视图 + 收件口
 bilibili/          B 站：Source 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
 bilibili/devtools/ B 站的 DevtoolsProvider，只在开发版登记
-runtime/           只留 service-context、message-bus、引擎编排（engines.ts 拆三份）
+runtime/           只留 service-context、message-bus、推送链路的装配（pipeline.ts）
 routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 ```
 
 - 中立装配住服务端，不开新包：作品装配在 `posts/`，直播装配与直播附加项的生产在 `live/`。装配把来源交来的 `PostEvent` / 直播信号做成要发的消息，步骤见 [push.md](./push.md)「装配」。
+  - 🔗 现状（3b-57，10-25）：原 `runtime/engines.ts` 拆开，推送链路的装配枢纽改名为 `runtime/pipeline.ts`（`PipelineRuntime` / `createPipelineRuntime`）；作品设置折叠住 `posts/post-settings.ts`，推送绑定住 `push/bound-push.ts`，常驻 AI 的构造与三态热重载住 `ai/commentary.ts`，直播场次、观众发言、回顾与互动入口的装配住 `live/live-runtime.ts`（`createLiveRuntime`）。
 - 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。🔗 10-13（3b-20）拓展直播的几件已搬进 `live/`：在播表 `live-table.ts`、场次引擎 `live-sessions.ts`、推送 `live-push.ts`；出卡输入翻译现在是 `live-card-input.ts` 的 `liveCardInputFromDetails`。`runtime/` 里只剩作品与直播共用的 `extension-push-common.ts`。
+  - 🔗 现状（3b-57，10-25）：`runtime/extension-push-common.ts` 已不在；作品与直播共用的推送绑定今天住 `push/bound-push.ts`。
 - `platforms/` 只放内置适配器的实现。原先放在里面的登记表与分发是中立件，3a-14 已和 `sink/` 一起挪进 `push/`（`push/registry.ts`、`push/dispatch.ts`、`push/target-dispatcher.ts`）。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
 - `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。🔗 10-13（3b-27、3b-28）：解析器登记表 `link-preview/registry.ts` 与通用网址正则 `extract-urls.ts` 已加；B 站视频链接的认法 `video-links.ts`（原在 `packages/internal/src/util/`）与视频翻成作品的 `video-card.ts`（原在 `runtime/`）搬进了 `bilibili/`，B 站的解析器是 `bilibili/link-resolver.ts`。
 - 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-28 开工时定。
@@ -266,6 +268,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
   - 表在 `apps/server/src/problems/problem-table.ts`，建在 `runtime/bootstrap.ts`、挂在 `AppRuntime.problems`；`Problem { reporter: string, about?: { subscriptionId }, code, message, since }` 住 `packages/internal/src/problem.ts`（`reporter` 是来源键字符串；`about` 只有订阅一支，连接那一支没造；`recoveryMessage` 不在这个对外的形状上）。同一个 报的人 + 对象 + code 一条，再报只换文案、`since` 不动。
   - 写口：`SourceContext.reportProblem` / `resolveProblem`（`subscriptions/source-context.ts`），带 `externalId` 的按身份展开成这个人名下的每一条订阅（遗留的同身份重复订阅各一条）；报的人停下（来源撤登记、登记失败）整批 `clearReporter`，订阅删了 `clearSubscription`，两种都不补「已恢复」；报的人自己 `resolveProblem` 才可能补，`notify: false` 不补。
   - 私聊：`problems/problem-notifier.ts`，`createEngines` 里与 `MasterNotifier` 并排建；「该不该说、什么时候说」只在一处按节流键（报的人 + code，不含对象）对账：同键上一句问题私聊送到之后 60 秒内不再发，同键每清掉一条后 5 秒沉淀内也不发；`notifyMaster` 回 ok 才算真私聊过；没送到而失败码是「稍后可重试」的（目标不可达、超时、限流）按 10 秒、30 秒、60 秒、5 分钟、15 分钟再送五次，档位记在键上，结果不明的失败不再重发；清掉时对真私聊过的发这条问题自带的恢复说法（`recoveryMessage`；没给时集成写的用 `problem.relay.recoveredGeneric` 带名字与原句，宿主写的用 `problem.recoveredGeneric`）；集成写的句子在交给 `notifyMaster` 那一刻按当前语言与口吻加引子，账上存原句；**「已恢复」不受窗口与沉淀管、不限流**（一批同时恢复同一拍各发一句；没送到只记 warn、不再送）；被节流吞掉而挡住它的是一条已清掉的旧事的，窗口到点时它还开着就补说一次；发送在路上时问题被清了又开的，新开的认领那次发送。清风控分「真解除」（才说「风控已经解除啦」）与「不再适用」，详见 phase-3a-plan.md 的「3a-30 独立审查」。`MasterNotifier` 不再听 `auth-lost`，只听 `engine-error`。
+    - 🔗 现状（3b-57，10-25）：装配入口已改名到 `runtime/pipeline.ts` 的 `createPipelineRuntime`，`ProblemNotifier` 仍与 `MasterNotifier` 并排建。
   - B 站的分层只剩风控与各项请求失败两层（同时只留最上面一层），在 `bilibili/problem-layers.ts`；登录掉了只拿来压下这两层，登录问题由宿主的 `subscriptions/login-problems.ts` 报。问题字在字典 `bilibili.problem.*`（平实句，私聊时宿主加引子），`bilibili/problem-texts.ts` 只管每条私聊不私聊、取哪句。
 - **健康**（ADR-0025 决策 12）：`SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字；订阅卡的「暂停 / 不可用」改看运行状态与问题表。健康卡分两排：核心（持久化、订阅、推送、卡片、AI）与集成（每个集成一格；推送适配器有连接才占格；灯按运行状态与问题分四色）。数据放 `/api/health/details`，短版 `/api/health` 见「wire 契约」。🔗 现状（3a-40，10-12）：`SourceHealth` 与 `Source.health?()` 已造，**同步、可选**，`SourceDescriptor` 多了必填的 `label`（`status` 里冒号前的平台名取它）；今天唯一的实现者是 B 站来源（三句话集中在 `bilibili/health-texts.ts`），唯一的读者是 `status` 指令（`readSourceHealth`：没交 `health` 的来源不占行、抛了那一行写「状态读不到」）；健康卡与运行状态读口没造，路由上现有的 `/api/health/details` 是更早的「更详细的报告」，不读 `health()`，也不是上面「分核心、集成两组」的形状。拓展来源 3b 才进登记表、才有 `health`，到时它的返回要当外来数据收（记在 construction-plan 的「以后再说」）。🔗 现状（3b-42，10-24）：拓展来源的 `health()` 已在登记表适配层当作外来数据收，只交规整后的单行 `summary`。
 
@@ -289,6 +292,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - 🔗 现状（3b-47，10-25）：两条总线事件已删；动态引擎与 `BiliLiveRooms` 都改听 `watchLoginEdges`，由 `auth.onChange` 的掉线 / 恢复回调驱动。
 - 来源与平台适配器的问题走 `reportProblem`，核心模块自己的问题直接写问题表；`engine-error` 只留流水线错误（如某一次出卡失败），`source` 改成中立的模块名（名字施工时定）。
   - 🔗 现状（3a-30，10-11）：B 站来源的问题已走 `reportProblem`（动态与直播的几处 `engine-error` 都删了）；`engine-error` 今天还有两个发射者：作品投递出图失败（`source` 是 `post-delivery`，文案带降级提示）与直播「重连流程内部异常」（`source` 是 `live-engine`），另有开发场景 `engine.error`；`source` 的中立命名仍没动。核心自己直接写问题表的路没有人走。
+  - 🔗 现状（3b-57，10-25）：事件已改名 `pipeline-error`，依赖已改名 `emitPipelineError`，开发场景已改名 `pipeline.error`；发射者只剩作品投递出图失败（`post-delivery`）与开发场景，直播「重连流程内部异常」不再发。
 - 施工时补一张「现有 22 个事件 → 1.0 去向」的全量表（含 `subscription-reported` 这类宿主内部事件），写进 events.md。
 - 直播互动（弹幕、SC、会员、进场）走回调、不走总线（3b 定）；弹幕是高频流，要在 events.md 写清。🔗 会员与醒目留言不开总线事件，互动汇总随场次结束帧交统计（3b-23，主人 10-21 定）。
 - 被否的备选：另开一条 B 站私有总线（违反「MessageBus 是唯一事件通道」）。

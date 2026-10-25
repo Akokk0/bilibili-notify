@@ -93,7 +93,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishView` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。回执是结果形状(协议 1.5)。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
 | 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。装那个 id **先等「假装下载」那几秒、再假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |
 | 动态拉取报错(`bilibili.dynamic.fail`,宿主按来源键加前缀;场景里的 id 是 `dynamic.fail`) | 同一个 `fetchAllDynamic` 盖板位:让下一轮(参数 `rounds` 连着几轮,1 至 50,默认 1)拉动态的请求不发真请求、回请求层会给的失败结果(经 `failureFromBili` 造:参数 `code` 翻成标准码、原码放 `upstreamCode`,没有 `data`;`code` 非 0 整数,默认 `-352`,`-412` / `-799` / `-509` 同样是风控,`-101` 是未登录;非法值抛 `DevParamError`),用完自己摘。**只装弹、不触发检测**:想立刻看到就再点「动态检测」。**与「四类动态」共用盖板位**:场景里一个函数 `syncOverride()` 汇总,错误码优先,谁还要用就留着、都不用了才摘,收摊两边各清各的。盖的只是拉动态这一个请求、不经请求客户端对 `-101` 的拦截,所以**回 `-101` 不会让登录状态变成失效**,动态引擎停 cron 后等 `watchLoginEdges` 的恢复边;要把它拉起来,先按「登录失效」、再按「重新确认登录」。用来看动态引擎的退避、问题表(风控 `risk_controlled`、拉动态失败 `dynamic_fetch_failed`)与风控私聊、恢复句 | `bilibili/devtools/dynamic.ts` |
-| 引擎错误 | `engine.error` 仍直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律),让主人收到私聊、面板右上角出告警 | `scenarios/bus-events.ts` |
+| 推送链路错误 | `pipeline.error` 仍直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律),让主人收到私聊、面板右上角出告警 | `scenarios/bus-events.ts` |
 | 登录失效 / 重新确认登录(`bilibili.auth.lost` / `bilibili.auth.recheck`) | 经 B 站来源的 `login()` 把手调登录流程的 `handleAuthLost` / `reportAccountInfo`,真改登录状态:动态检测会停、直播监听会拆,会进问题表、主人会收私聊,恢复时补「已恢复」;cookie 罐不动,所以「重新确认登录」能把它拉回来。没登录时「登录失效」不调、只说没有可判失效的会话;来源还没起来时两个都回「B 站来源还没起来」 | `bilibili/devtools/login.ts` |
 | 登录状态(`AuthState` 的各取值) | 盖来源登录口(`Source.auth`)的 `state()` 与 `account()`,再往总线发同一份 `subscription-auth-changed`;开发壳由 B 站 devtools 自建,登记表里挂的是壳的 `.api`,所以 `GET /api/sources/:sourceKey/auth` 与 WS 帧都读得到注入值,收摊时摘掉并把真状态再发一遍让面板对回去。选项:未登录、等待扫码、正在确认(已扫码等手机确认 / 开机还没向 B 站确认,各一项)、已登录(带账号名)、登录失效、登录失败;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `bilibili/devtools/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约。**限制**:宿主(派发器)记着每格最后一次探实的答案,适配器答「还不知道」的格会沿用它,所以在已探实「支持 / 不支持」的连接上注入「还不知道」会被宿主记着的答案盖住,看不到「未探测」;注入明确答案不受影响。宿主的重探窗口是 60 秒,与后台每 60 秒一轮的节奏碰上时,一次补探可能被窗口挡到下一轮 | `capability-injection.ts` |
@@ -119,7 +119,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 
 验过:更新状态(系统页 / 概览卡 / 刷新后「有新版」通知卡)、截流 + 清历史行、假开播 → 开播卡 →
 60 条弹幕 → 下播卡 + 词云 + AI 总结、假图文动态 → 卡片 + 点评 + 图集、`/help` 回复、群链接
-回卡、假二维码弹窗、engine-error 进主人私聊、能力 supported、四个「现在就跑」、涌 toast、
+回卡、假二维码弹窗、pipeline-error 进主人私聊、能力 supported、四个「现在就跑」、涌 toast、
 灵动岛保存中。没验过:免扰时钟(主人配置里 quietHours 为空,单测覆盖)、Chrome 空闲关
 (当时浏览器没起)、新手指引步(导览关着)、Windows。
 

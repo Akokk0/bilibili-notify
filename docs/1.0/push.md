@@ -291,7 +291,7 @@ type PushTarget =
 | 指令回复（`CommandDef.run` 的 `reply`） | 否 | 经 `sendToAddress` 回到发指令的那个会话，不再发到主人目标那条连接；挡掉的话主人只会看到指令毫无反应 |
 | `ctx.reportProblem({ …, notify: true })` | 否 | 集成定严重度、写事实句（平实，不称呼主人、不写面板与指令；口吻与引子由宿主按口吻加工，见 extension-contract.md「问题上报」）；核心按「同一报的人（`reporter`）、同一 code 60 秒一次」节流；同时进面板问题框。🔗 3a-30 已落（只在内置来源的 `SourceContext` 上，由 `problems/problem-notifier.ts` 发；真送到才算、没送到限次再送、清掉时补「已恢复」） |
 | `ctx.reportProblem({ … })`（不带 notify） | — | 只进面板问题框，不私聊。🔗 3a-30 已落（B 站的「没登录过 / 主动退出」与「拉动态失败」就是这一种） |
-| `engine-error` | 否 | 只剩流水线错误（如出卡失败）；`source` 改成中立模块名（施工时定）；出图连续失败只提醒一次。🔗 3a-30 之后今天的发射者只剩作品投递出图失败（`post-delivery`）与直播「重连流程内部异常」（`live-engine`），经 `MasterNotifier` 私聊、面板红条看得到 |
+| `engine-error` | 否 | 只剩流水线错误（如出卡失败）；`source` 改成中立模块名（施工时定）；出图连续失败只提醒一次。🔗 3a-30 之后今天的发射者只剩作品投递出图失败（`post-delivery`）与直播「重连流程内部异常」（`live-engine`），经 `MasterNotifier` 私聊、面板红条看得到。🔗 现状（3b-57，10-25）：事件已改名 `pipeline-error`、依赖已改名 `emitPipelineError`；发射者只剩作品投递出图失败与开发场景 `pipeline.error` |
 
 来源级问题（关注同步失败等）一律走 `reportProblem`，不再走 `engine-error`；拿不到直播状态不归来源报，由核心调 `fetchLiveStatus` 拿到失败时自己记。**登录问题不由来源报**：有登录口的来源，宿主订它的 `auth.onChange`、按 `AuthState` 自己报与清（`expired` 进表并私聊、`logged-out` 只进表、`logged-in` 清并对私聊过的补「已恢复」），记在来源名下，宿主写整句并带指路；B 站不再报 `auth_lost`。平台适配器也经 `ctx.reportProblem` 报适配器特有的问题，带 `connectionId`，宿主核这条连接是不是这个适配器的，不是就拒收；连接通断不归适配器报，由宿主探（见 ⑤「连接通不通」）；连接卡看关于自己的，问题框看全部（ADR-0025 决策 11）。问题进表于是有三条路：集成自己报、宿主看登录状态报、宿主探连接报，外加宿主自己的事。
 

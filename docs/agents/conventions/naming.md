@@ -107,6 +107,7 @@
 | 外部接口的地址常量 | 名词加 `_URL`（`USER_CARD_URL`、`TICKET_URL`）；只是路径的叫 `_PATH`（10-07 主人定） | 带动词的 `GET_…`、什么都不带的 |
 | 下播后的回顾（攒下来的弹幕出词云、请 AI 写总结，这两样合起来） | `recap`（目录 `live/recap/`；10-07 主人定） | 拿 `wordcloud` 或 `summary` 代指两样（`summary` 另有用处，见上） |
 | 宿主里长期运行、按自己的时钟推进的部件 | `Engine`。宿主直播一侧只有场次引擎一个（`LiveSessionEngine`）；来源内部的拉取部件按各自的职责起名（如定时去取的叫 `Poller`，先例 `FansPoller`）（10-14 主人定） | 当它用的 `Manager` |
+| 推送链路（来源 → 装配 → 路由与闸 → 发送 → 投递 → 历史）接好之后交出的那一套运行中部件，以及这条链上出的错 | `pipeline`（`PipelineRuntime`、`createPipelineRuntime`，文件 `runtime/pipeline.ts`；链上的错是事件 `pipeline-error`、依赖 `emitPipelineError`；中文「推送链路」，错叫「推送链路错误」）（10-25 主人定） | 「引擎」（`EnginesRuntime`、`engine-error`）、`Delivery`（是第⑤段「投递」）、`Core`、「组件告警」 |
 | 走网络取数 | `fetch…`；`get…` 只留给不走网络的读取（`ctx.state.get`） | 走网络却叫 `get…` 的 |
 | 单个 / 一批 | `fetchUserCard` / `fetchUserCards` | `…Batch`、单复数对不上 |
 | 一次操作失败的那一支 | `Failure`（`{ ok: false, code, message, … }`）；整个结果 `Result<T>`，标准码 `FailureCode`；HTTP 非 2xx 的回应体 `ErrorResponse`（装的是去掉 `ok` 的 `Failure`） | `err`、`reason`、`why`（只管失败原因，ADR-0026 决策 2） |
