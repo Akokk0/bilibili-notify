@@ -73,25 +73,29 @@ describe("parseBridgeFrame", () => {
 
 	it("握手帧缺字段 / 形状不对 → invalid,消息里点得出是哪一格", () => {
 		const noProtocol = parseBridgeFrame(helloFrame({ protocol: undefined }));
-		expect(noProtocol).toMatchObject({ ok: false, reason: "invalid" });
-		if (noProtocol.ok || noProtocol.reason !== "invalid") return;
+		expect(noProtocol).toMatchObject({ ok: false, code: "invalid" });
+		if (noProtocol.ok || noProtocol.code !== "invalid") return;
 		expect(noProtocol.message).toContain("protocol");
 
 		const badBots = parseBridgeFrame(helloFrame({ bots: "一堆" }));
-		expect(badBots).toMatchObject({ ok: false, reason: "invalid" });
-		if (badBots.ok || badBots.reason !== "invalid") return;
+		expect(badBots).toMatchObject({ ok: false, code: "invalid" });
+		if (badBots.ok || badBots.code !== "invalid") return;
 		expect(badBots.message).toContain("bots");
 	});
 
 	it("**不认识的帧类型是忽略,不是拒绝** —— 桥比 BN 新时要还连得住", () => {
 		const parsed = parseBridgeFrame({ type: "telemetry", payload: { anything: 1 } });
-		expect(parsed).toEqual({ ok: false, reason: "unknown-type", type: "telemetry" });
+		expect(parsed).toEqual({
+			ok: false,
+			code: "unsupported",
+			message: expect.stringContaining("telemetry"),
+		});
 	});
 
 	it("连 type 都没有 / 不是对象 → invalid(这不叫「新帧」,叫垃圾)", () => {
-		expect(parseBridgeFrame({ nope: 1 })).toMatchObject({ ok: false, reason: "invalid" });
-		expect(parseBridgeFrame("hello")).toMatchObject({ ok: false, reason: "invalid" });
-		expect(parseBridgeFrame(null)).toMatchObject({ ok: false, reason: "invalid" });
+		expect(parseBridgeFrame({ nope: 1 })).toMatchObject({ ok: false, code: "invalid" });
+		expect(parseBridgeFrame("hello")).toMatchObject({ ok: false, code: "invalid" });
+		expect(parseBridgeFrame(null)).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it("bots 帧是**全量快照**,空数组合法(桥的宿主里一个 bot 都没有)", () => {
@@ -159,8 +163,8 @@ describe("parseBridgeFrame", () => {
 
 	it("那两格不是字符串数组 → invalid,消息里点得出是哪一格", () => {
 		const parsed = parseBridgeFrame(groupInbound({ cardLinks: "https://b23.tv/aaa" }));
-		expect(parsed).toMatchObject({ ok: false, reason: "invalid" });
-		if (parsed.ok || parsed.reason !== "invalid") return;
+		expect(parsed).toMatchObject({ ok: false, code: "invalid" });
+		if (parsed.ok || parsed.code !== "invalid") return;
 		expect(parsed.message).toContain("cardLinks");
 	});
 
@@ -226,7 +230,7 @@ describe("parseBridgeFrame", () => {
 			platform: "telegram",
 			message: { scope: "channel", userId: "u1", text: "x" },
 		});
-		expect(parsed).toMatchObject({ ok: false, reason: "invalid" });
+		expect(parsed).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it("result 帧把 id 与成败带回来", () => {

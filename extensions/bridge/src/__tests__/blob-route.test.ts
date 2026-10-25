@@ -57,6 +57,13 @@ describe("GET <挂载点>/blob/:id", () => {
 		expect((await get("/blob/0123456789abcdef0123456789abcdef")).status).toBe(404);
 	});
 
+	it("404 的错误体是平铺的 code + message", async () => {
+		const { get } = boot();
+		const res = await get("/blob/0123456789abcdef0123456789abcdef");
+		expect(res.status).toBe(404);
+		expect(await res.json()).toEqual({ code: "not_found", message: "not found" });
+	});
+
 	it("**不许缓存** —— 中间层留一份,取过即焚就等于没焚", async () => {
 		const { store, get } = boot();
 		const id = store.put(JPEG, "image/jpeg");

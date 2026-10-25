@@ -40,8 +40,6 @@ export const ALLOWLIST = {
  * - `{ ok, reason }` / `{ ok, err }`(应用内更新、拓展市场与清单、女仆技能、头像、正则、
  *   订阅源上报、拓展设置、指令参数):更新的 kebab `reason` 改 snake 码(决策 3),其余改 `code` + `message`。
  * - 面板:登录的 `{ ok, kind, message }` 与 devtools 的几处。
- * - 桥拓展剩下的两个文件:`protocol.ts` 是协议帧的解析结果,`blob-route.ts` 是回给薄插件的 HTTP 体,都是线上字节,
- *   随 3b 桥协议统一成结果形状时改(投递与探活的结果 3a-15 已换成契约包导出的 `ok()` / `fail()`)。
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  * - devtools 假桥发的 `result` 帧:3b 桥协议的回执统一成结果形状后改用 `fail()` 展开(ADR-0026 决策 7)。
  */
@@ -70,8 +68,6 @@ export const RATCHET = {
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/services/session.ts": 6,
-	"extensions/bridge/src/blob-route.ts": 1,
-	"extensions/bridge/src/protocol.ts": 5,
 	"packages/ai/src/extra-params.ts": 5,
 	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,

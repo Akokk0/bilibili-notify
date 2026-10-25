@@ -476,9 +476,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 		const parsed = parseBridgeFrame(payload);
 		if (!parsed.ok) {
-			if (parsed.reason === "unknown-type") {
+			if (parsed.code === "unsupported") {
 				// 桥比我们新。忽略是协议写死的 —— 断在这里等于每次插件加一种帧就打死老 BN。
-				log.debug(`bridge ${conn.linkId} sent unknown frame "${parsed.type}"; ignoring`);
+				const type = (payload as { type: string }).type;
+				log.debug(`bridge ${conn.linkId} sent unknown frame "${type}"; ignoring`);
 				return;
 			}
 			log.warn(`bridge ${conn.linkId} sent a malformed frame: ${parsed.message}`);

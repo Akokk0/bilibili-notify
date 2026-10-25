@@ -10,6 +10,8 @@
  * 单边演进;后者反了,一条畸形帧被当成正常帧喂进 BN 内部。
  */
 
+import type { Result } from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { z } from "zod";
 import {
 	BRIDGE_CAPABILITIES,
@@ -153,13 +155,10 @@ export const BRIDGE_FRAME_CONTRACT_ALIGNED: BridgeFrameContractAligned = true;
 // ---------------------------------------------------------------------------
 
 /**
- * 三态,不是两态。`unknown-type` 与 `invalid` 的**处置完全不同**:前者记一行 debug
- * 继续用这条连接,后者断连(`BRIDGE_CLOSE_CODES.badFrame`)。
+ * 两种失败,处置不同:`unsupported` 记一行 debug 继续用这条连接,`invalid` 断连
+ * (`BRIDGE_CLOSE_CODES.badFrame`)。
  */
-export type BridgeFrameParse =
-	| { ok: true; frame: BridgeToServerFrame }
-	| { ok: false; reason: "unknown-type"; type: string }
-	| { ok: false; reason: "invalid"; message: string };
+export type BridgeFrameParseResult = Result<{ frame: BridgeToServerFrame }>;
 
 const KNOWN_FRAME_TYPES: ReadonlySet<string> = new Set(BRIDGE_TO_SERVER_FRAME_TYPES);
 
@@ -169,24 +168,24 @@ function describeIssues(error: z.ZodError): string {
 		.join("; ");
 }
 
-export function parseBridgeFrame(raw: unknown): BridgeFrameParse {
+export function parseBridgeFrame(raw: unknown): BridgeFrameParseResult {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-		return { ok: false, reason: "invalid", message: "帧不是一个对象" };
+		return fail("invalid", "帧不是一个对象");
 	}
 	const type = (raw as { type?: unknown }).type;
 	if (typeof type !== "string") {
-		return { ok: false, reason: "invalid", message: "帧没有 type" };
+		return fail("invalid", "帧没有 type");
 	}
 	// 认不认识要在 zod 之前判:判别联合对没见过的 type 只会回一条「不是这几个之一」,
 	// 分不出「桥比我新」与「这是垃圾」—— 而这两者的处置一个是忽略、一个是断连。
 	if (!KNOWN_FRAME_TYPES.has(type)) {
-		return { ok: false, reason: "unknown-type", type };
+		return fail("unsupported", `不认识的帧类型: ${type}`);
 	}
 	const parsed = BridgeFrameSchema.safeParse(raw);
 	if (!parsed.success) {
-		return { ok: false, reason: "invalid", message: describeIssues(parsed.error) };
+		return fail("invalid", describeIssues(parsed.error));
 	}
-	return { ok: true, frame: parsed.data };
+	return ok({ frame: parsed.data });
 }
 
 // ---------------------------------------------------------------------------

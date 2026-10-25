@@ -21,7 +21,7 @@ export interface BridgeBlobRouteOptions {
 const BLOB_PATH = new RegExp(`^${BRIDGE_BLOB_SEGMENT}/([^/]+)/?$`);
 
 function notFound(): Response {
-	return Response.json({ ok: false, err: "not found" }, { status: 404 });
+	return Response.json({ code: "not_found", message: "not found" }, { status: 404 });
 }
 
 /**

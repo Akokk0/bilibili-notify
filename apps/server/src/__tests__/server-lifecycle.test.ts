@@ -356,7 +356,7 @@ describe("server lifecycle", () => {
 		expect(blob.status).toBe(404);
 		// 断 body 不只断状态码:挂载点**没接上**的话请求落到 Hono 的默认 404,那也是 404 ——
 		// 只看状态码的话这条守卫永远不会红(实测过)。
-		expect(await blob.text()).toBe('{"ok":false,"err":"not found"}');
+		expect(await blob.text()).toBe('{"code":"not_found","message":"not found"}');
 
 		// upgrade 交到桥手里了 —— 交到了才会有人应答,没交的话这条连接会一直吊着。
 		const upgradeStatus = await new Promise<number>((resolve, reject) => {
