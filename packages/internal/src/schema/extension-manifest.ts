@@ -87,6 +87,9 @@ export const EXTENSION_ITEM_LABEL_MAX_CHARS = 16;
  * 只有两口(ADR-0012):**推送源**接进「推送目标」,**订阅源**接进「订阅 UP 主」。
  * 面板要在不加载代码的前提下把卡片归类,所以它得从清单里读得出来:由
  * `contributes` 的键推出来({@link manifestProvides})。
+ *
+ * `devtools` 不在这里:开发入口只在开发版生效,单开这一口的拓展在发行版里什么都不做;
+ * 而 `provides` 要供面板分节、数连接,不能混进开发版专属的能力。
  */
 export const EXTENSION_PROVIDES = ["push", "subscription"] as const;
 export const ExtensionProvidesSchema = z.enum(EXTENSION_PROVIDES);
@@ -599,6 +602,11 @@ const ContributesSchema = z
 				cardSkin: PackagePathSchema.optional(),
 			})
 			.optional(),
+		/**
+		 * 只开口、不带路径 —— 入口文件名由宿主定(ADR-0012 决策 35)。开发入口只在开发版生效,
+		 * 单开这一口的拓展在发行版里什么都不做。
+		 */
+		devtools: z.strictObject({}).optional(),
 	})
 	.refine(
 		(contributes) => EXTENSION_PROVIDES.some((key) => contributes[key] !== undefined),

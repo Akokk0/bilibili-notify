@@ -484,6 +484,30 @@ describe("v3:严格", () => {
 	});
 });
 
+describe("contributes.devtools", () => {
+	it("只在清单里开口、不带入口路径时收下", () => {
+		const m = ok(v3({ contributes: { push: DISPLAY, devtools: {} } }));
+		expect(m.contributes.devtools).toEqual({});
+	});
+
+	it("入口路径不写进清单 —— 多一格 entry 就读不了", () => {
+		expect(
+			unreadable(v3({ contributes: { push: DISPLAY, devtools: { entry: "x.mjs" } } })).join("\n"),
+		).toContain("devtools");
+	});
+
+	it("只开 devtools 不算开放 —— 仍因至少要开一口而读不了", () => {
+		expect(unreadable(v3({ contributes: { devtools: {} } })).join("\n")).toContain(
+			"contributes 至少要开一口",
+		);
+	});
+
+	it("devtools 不进 manifestProvides —— 开放列表仍只含推送", () => {
+		const m = ok(v3({ contributes: { push: DISPLAY, devtools: {} } }));
+		expect(manifestProvides(m)).toEqual(["push"]);
+	});
+});
+
 describe("v3 的订阅与推送外观", () => {
 	it.each(["#fe2c55", "#FE2C55", "#abc"])("color %s —— 收下", (color) => {
 		expect(() => ok(sub({ display: { ...DISPLAY, color } }))).not.toThrow();
