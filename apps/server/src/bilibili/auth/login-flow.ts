@@ -4,7 +4,6 @@ import {
 	fail,
 	type ImageRef,
 	type Logger,
-	type MessageBus,
 	ok,
 	type Result,
 	type ServiceContext,
@@ -25,7 +24,6 @@ import {
 export interface LoginFlowOptions {
 	serviceCtx: ServiceContext;
 	api: Api;
-	bus: MessageBus;
 	/** Periodic auth probe cadence in ms. 0 disables the heartbeat. */
 	healthCheckMs: number;
 	/**
@@ -63,7 +61,6 @@ async function defaultRenderQr(url: string): Promise<string> {
 export class LoginFlow {
 	private readonly serviceCtx: ServiceContext;
 	private readonly api: Api;
-	private readonly bus: MessageBus;
 	private healthCheckMs: number;
 	private readonly logger: Logger;
 
@@ -98,29 +95,13 @@ export class LoginFlow {
 	 */
 	private committingLogin = false;
 	/**
-	 * Marks "we are unauthenticated, so something downstream may be parked waiting". On the next
-	 * successful login the flag is flipped and `auth-restored` fires. Avoids relying on the
-	 * previous frame's status, which would miss the path logged-out → qr (ready, waiting) → logged-in.
-	 *
-	 * Deliberately NOT gated on having been logged in first. Engines park themselves the moment
-	 * they hit -101 on their own — the dynamic detector stops its cron and waits for
-	 * `auth-restored` — and that happens on a cold start with stale cookies, where this flow goes
-	 * checking → logged-out without ever emitting `auth-lost`. Gating the flag on a prior
-	 * logged-in left those engines parked forever after the user re-scanned the QR.
-	 *
-	 * The cost is one redundant `auth-restored` after a first-ever login. Every consumer reseeds
-	 * from the current subscription set (restart detection / rebuildFromSubs / follow-sync), so a
-	 * spurious one is wasted work, never corruption.
-	 */
-	private needsRestore = false;
-	/**
 	 * 每次 `reportLoggedOut` 递增。在途探活在入口捕获它,落地前比对 —— 不一致说明
 	 * 这份结果问的是一个已经作废的会话,整份丢掉。
 	 *
-	 * 没有它会怎样(2026-07-27 线上实况):cookie 刷新链拿到 `-101`,拦截器同步发
-	 * `auth-lost`,动态检测暂停、直播间连接全关;**33 毫秒后**,一次在会话被判死
+	 * 没有它会怎样(2026-07-27 线上实况):cookie 刷新链拿到 `-101`,登录失效,
+	 * 动态检测暂停、直播间连接全关;**33 毫秒后**,一次在会话被判死
 	 * **之前**就发出去的探活带着 `code 0` 回来,`reportLoggedIn` 只看「上一帧不是
-	 * 已登录」+「needsRestore」,于是把状态推回已登录并发一条 `auth-restored`。
+	 * 已登录」,于是把状态推回已登录。
 	 * 下游照单全收:重建直播监听、重启动态检测、补关注 —— 全部再撞一遍 `-101`,
 	 * 主人的私聊被刷屏,「账号登录已失效」还连发两条。
 	 *
@@ -153,7 +134,6 @@ export class LoginFlow {
 	constructor(opts: LoginFlowOptions) {
 		this.serviceCtx = opts.serviceCtx;
 		this.api = opts.api;
-		this.bus = opts.bus;
 		this.healthCheckMs = opts.healthCheckMs;
 		this.logger = opts.serviceCtx.logger;
 		this.fetchAvatar = opts.fetchAvatar;
@@ -193,12 +173,21 @@ export class LoginFlow {
 	}
 
 	private changeKey(): string {
-		return JSON.stringify([this.authState(), this.account()]);
+		// 账号算不出来也要按状态比对、照常通知:订阅方里有只认状态的(引擎听登录的边停 / 起),不能因为账号读不出来
+		// 就把一次登录掉线或恢复整个吞掉。
+		let account: unknown;
+		try {
+			account = this.account();
+		} catch (e) {
+			this.logger.error(`[auth] 算账号失败,这次只按登录状态比对: ${errorMessageOf(e)}`);
+			account = null;
+		}
+		return JSON.stringify([this.authState(), account]);
 	}
 
 	/**
 	 * 算对外的变化并通知订阅方。**这一步的任何抛错(算账号、订阅方的回调)都在这里接住、记 error,
-	 * 不许传回状态机**:各个 reporter 在边事件、`needsRestore`、代数、心跳的挂摘都做完之后才调它。
+	 * 不许传回状态机**:各个 reporter 在记账、代数、心跳的挂摘都做完之后才调它。
 	 */
 	private notifyIfChanged(): void {
 		try {
@@ -365,7 +354,6 @@ export class LoginFlow {
 
 	/** Mark the session as logged-out for a specific reason. */
 	reportLoggedOut(reasonKey: "notLogin" | "authLost" = "notLogin"): void {
-		const wasLoggedIn = this.state.status === "logged-in";
 		this.hasSession = false;
 		// 登出一并结束扫码会话:在途的旧码回应迟到时不得把登出的结果盖掉。
 		this.endScanSession();
@@ -375,21 +363,11 @@ export class LoginFlow {
 		this.transition({ status: "logged-out", reason: reasonKey });
 		// 进了 logged-out 就要记账,与之前是不是已登录无关 —— 冷启动时 cookie
 		// 已过期的话这里是 checking → logged-out,而引擎照样会自己撞上
-		// -101 并停下等 auth-restored。
-		this.needsRestore = true;
+		// -101 并停下等登录恢复。
 		// 作废任何在途探活 —— 它们问的是刚死掉的那个会话,迟到的 code 0 不得
-		// 把状态推回已登录(更不得由此发出一条假的 auth-restored)。
+		// 把状态推回已登录。
 		this.authGeneration++;
-		// auth-lost 仍只在真的丢掉一个好会话时发:它的消费方是 teardown,
-		// 拆一个从没建起来的引擎没有意义。
-		try {
-			if (wasLoggedIn) {
-				this.bus.emit("auth-lost");
-			}
-		} finally {
-			// 边事件的监听者同步抛错也要通知订阅方;抛错本身照旧往外传。
-			this.notifyIfChanged();
-		}
+		this.notifyIfChanged();
 	}
 
 	/**
@@ -522,7 +500,7 @@ export class LoginFlow {
 					}
 					const refreshToken = (loginContent.data.refresh_token as string | undefined) ?? "";
 					if (!refreshToken) {
-						// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
+						// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出登录失效。
 						// 至少响亮告警让运维知道这次登录拿不到自动续期。
 						this.logger.warn(
 							"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
@@ -567,14 +545,13 @@ export class LoginFlow {
 	}
 
 	// ---- Internal reporters (drive state transitions) ----
-	// 每个 reporter 在边事件、记账都做完之后,最后一步才 `notifyIfChanged()`。
+	// 每个 reporter 在记账都做完之后,最后一步才 `notifyIfChanged()`。
 
 	private reportLoggedIn(
 		account?: BiliAccount,
 		reasonKey: "loggedIn" | "loginJustSucceeded" = "loggedIn",
 	): void {
 		const prev = this.state;
-		const wasLoggedIn = prev.status === "logged-in";
 		this.hasSession = true;
 		const fallback = prev.status === "logged-in" ? prev.account : undefined;
 		this.transition({
@@ -584,15 +561,7 @@ export class LoginFlow {
 			loggedInAt: prev.status === "logged-in" ? prev.loggedInAt : new Date().toISOString(),
 			account: account ?? fallback,
 		});
-		try {
-			if (!wasLoggedIn && this.needsRestore) {
-				this.needsRestore = false;
-				this.bus.emit("auth-restored");
-			}
-		} finally {
-			// 边事件的监听者同步抛错也要通知订阅方;抛错本身照旧往外传。
-			this.notifyIfChanged();
-		}
+		this.notifyIfChanged();
 	}
 
 	private reportLoginCheck(code: number): void {

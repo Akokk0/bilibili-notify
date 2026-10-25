@@ -2,7 +2,6 @@ import {
 	type Disposable,
 	fail,
 	type Logger,
-	type MessageBus,
 	ok,
 	type Result,
 	type ServiceContext,
@@ -10,6 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/api";
 import { failureFromBili } from "../../error-codes";
+import { watchLoginEdges } from "../../login-edges";
 import { LoginFlow } from "../login-flow";
 import type { BiliLoginState } from "../login-state";
 
@@ -122,29 +122,10 @@ function makeFakeServiceCtx() {
 	return { sc, intervals, timeouts, disposeHooks, logger, tracked };
 }
 
-interface RecordedEvent {
-	event: string;
-	payload: unknown;
-}
-
-function makeFakeBus(): { bus: MessageBus; events: RecordedEvent[] } {
-	const events: RecordedEvent[] = [];
-	const bus: MessageBus = {
-		emit(event, payload?: unknown) {
-			events.push({ event, payload });
-		},
-		on() {
-			return { dispose: vi.fn() };
-		},
-	};
-	return { bus, events };
-}
-
 interface Harness {
 	flow: LoginFlow;
 	api: FakeApi;
-	bus: MessageBus;
-	events: RecordedEvent[];
+	edges: string[];
 	scFake: ReturnType<typeof makeFakeServiceCtx>;
 }
 
@@ -152,20 +133,23 @@ function makeFlow(
 	opts: { healthCheckMs?: number; fetchAvatar?: (url: string) => Promise<string | undefined> } = {},
 ): Harness {
 	const api = makeFakeApi();
-	const { bus, events } = makeFakeBus();
 	const scFake = makeFakeServiceCtx();
 	const flow = new LoginFlow({
 		serviceCtx: scFake.sc,
 		api: api as unknown as Api,
-		bus,
 		healthCheckMs: opts.healthCheckMs ?? 0,
 		fetchAvatar: opts.fetchAvatar,
 	});
-	return { flow, api, bus, events, scFake };
+	const edges: string[] = [];
+	watchLoginEdges(
+		{ state: () => flow.authState(), onChange: (fn) => flow.onChange(fn) },
+		{ onLost: () => void edges.push("lost"), onRestored: () => void edges.push("restored") },
+	);
+	return { flow, api, edges, scFake };
 }
 
-function eventsOfKind(events: RecordedEvent[], kind: string): RecordedEvent[] {
-	return events.filter((e) => e.event === kind);
+function eventsOfKind(events: string[], kind: string): string[] {
+	return events.filter((event) => event === kind);
 }
 
 describe("LoginFlow.reportAccountInfo()", () => {
@@ -187,12 +171,12 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		expect(h.flow.authState()).toMatchObject({ status: "logged-in" });
 	});
 
-	it("code === -101 transitions to NOT_LOGIN and emits auth-lost only when previously LOGGED_IN", async () => {
+	it("code === -101 transitions to NOT_LOGIN and reports 登录失效 only when previously LOGGED_IN", async () => {
 		// First, get into LOGGED_IN
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
-		const baselineEvents = h.events.length;
+		const baselineEvents = h.edges.length;
 		const changes = vi.fn();
 		h.flow.onChange(changes);
 
@@ -201,43 +185,44 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		await h.flow.reportAccountInfo();
 
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		const newEvents = h.events.slice(baselineEvents);
+		const newEvents = h.edges.slice(baselineEvents);
 		expect(changes).toHaveBeenCalledTimes(1);
-		expect(eventsOfKind(newEvents, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(newEvents, "lost")).toHaveLength(1);
 	});
 
-	it("code === -101 from cold start does NOT emit auth-lost (was never LOGGED_IN)", async () => {
+	it("code === -101 from cold start does NOT report 登录失效 (was never LOGGED_IN)", async () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
 		await h.flow.reportAccountInfo();
 
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
 	});
 
-	it("auth-restored fires once per NOT_LOGIN → LOGGED_IN recovery, never on a clean start", async () => {
-		// Cold start straight to LOGGED_IN — nothing was ever parked, so no auth-restored.
+	it("登录恢复 fires once per NOT_LOGIN → LOGGED_IN recovery, never on a clean start", async () => {
+		// Cold start straight to LOGGED_IN — nothing was ever parked, so no 登录恢复.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		h.edges.length = 0;
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(0);
 
-		// Become invalid (LOGGED_IN → NOT_LOGIN sets needsRestore = true)
+		// Become invalid: the next successful login is a restoration.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
 		await h.flow.reportAccountInfo();
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(0);
 
-		// Recover → fires auth-restored exactly once.
+		// Recover → fires 登录恢复 exactly once.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 
 		// And does NOT fire again on subsequent identical successes.
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 	});
 });
 
@@ -586,8 +571,8 @@ describe("LoginFlow.stop()", () => {
 	});
 });
 
-describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 auth-restored", () => {
-	it("启动时 cookie 已失效 → 重新登录后仍发 auth-restored(下游引擎靠它复活)", async () => {
+describe("LoginFlow — 冷启动即登录过期,重新登录后必须报告登录恢复", () => {
+	it("启动时 cookie 已失效 → 重新登录后仍报告登录恢复(下游引擎靠它复活)", async () => {
 		const h = makeFlow();
 		// 冷启动探测:cookie 过期。此时快照还是 LOADING_LOGIN_INFO,不是 LOGGED_IN。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
@@ -599,9 +584,9 @@ describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 aut
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
-		// 动态引擎在自己撞上 -101 时就已经停了 cron,并明写「待 auth-restored 重启」。
-		// 它是否收到这条事件,与登录流当初有没有发过 auth-lost 无关。
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		// 动态引擎在自己撞上 -101 时就已经停了 cron,并明写「待登录恢复重启」。
+		// 它是否看到登录恢复,与登录流当初有没有报告登录失效无关。
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 	});
 });
 
@@ -633,23 +618,24 @@ function flush(): Promise<void> {
 describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它救活", () => {
 	/*
 	 * 线上实况(2026-07-27 20:15:12):cookie 刷新链拿到 -101,拦截器同步发
-	 * `auth-lost`,动态检测暂停、三个直播间连接全关。**33 毫秒后**却冒出一条
-	 * `auth-restored`,于是直播监听重建、动态检测重启、五个订阅补关注 —— 全部
+	 * 登录失效,动态检测暂停、三个直播间连接全关。**33 毫秒后**却冒出一条
+	 * 登录恢复,于是直播监听重建、动态检测重启、五个订阅补关注 —— 全部
 	 * 再撞一遍 -101,主人的 QQ 被刷了六条私聊,其中「账号登录已失效」两条。
 	 *
 	 * 根因不是谁乱发事件,而是**在会话被判死之前发出去的那次探活**迟到返回了
-	 * code 0:`reportLoggedIn` 只看「上一帧不是 LOGGED_IN」+「needsRestore」,
+	 * code 0:`reportLoggedIn` 只看「上一帧不是已登录」,
 	 * 没有任何判据能认出这份成功已经过期。
 	 *
 	 * 健康检查默认 30 分钟、cookie 刷新固定 60 分钟,两者每小时对齐一次 ——
 	 * 这个窗口不是理论上的,是每小时都要经过一遍的。
 	 */
 
-	it("心跳探活在途时会话被判死 → 迟到的 code 0 不得触发 auth-restored", async () => {
+	it("心跳探活在途时会话被判死 → 迟到的 code 0 不得触发 登录恢复", async () => {
 		const h = makeFlow({ healthCheckMs: 30 * 60_000 });
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
+		h.edges.length = 0;
 		expect(rawOf(h.flow).status).toBe("logged-in");
 
 		// 心跳发出探活请求,此刻会话还活着,B 站也还认。
@@ -661,13 +647,13 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		// 探活在途期间,cookie 刷新链撞上 -101 —— 拦截器同步走到这里。
 		await h.flow.handleAuthLost();
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
 
 		// 迟到的答复:它问的是那个已经死掉的会话,答案早就不作数了。
 		probe.resolve({ code: 0, data: { mid: 42 } });
 		await flush();
 
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(0);
 		expect(rawOf(h.flow).status).toBe("logged-out");
 	});
 
@@ -678,6 +664,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
+		h.edges.length = 0;
 
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		const card = deferred<unknown>();
@@ -690,7 +677,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		await pending;
 
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(0);
 	});
 
 	it("主人手动退出登录后,在途探活不得把他登回去", async () => {
@@ -788,9 +775,10 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
+		h.edges.length = 0;
 
 		await h.flow.handleAuthLost();
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
 
 		// 登出**先**落定,之后才发起的探活是问新状态的,必须照常放行。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
@@ -798,7 +786,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		await h.flow.reportAccountInfo();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 	});
 });
 
@@ -807,7 +795,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
  * 到点跑的那次心跳:登录着才查(一次 fetchMyselfInfo),没登录 / 扫码中就跳过、回 false。
  */
 describe("LoginFlow.healthCheckNow()", () => {
-	it("登录着:立刻查一次,-101 就翻成未登录并发 auth-lost", async () => {
+	it("登录着:立刻查一次,-101 就翻成未登录并发 登录失效", async () => {
 		const h = makeFlow();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42", name: "n" } } }));
@@ -819,7 +807,7 @@ describe("LoginFlow.healthCheckNow()", () => {
 
 		expect(h.api.fetchMyselfInfo).toHaveBeenCalledTimes(1);
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
 	});
 
 	it("没登录:跳过,不打请求,回 false", async () => {
@@ -905,7 +893,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 });
 
 /**
- * 两个边事件 `auth-lost` / `auth-restored` 的刻画测试(3a-29 提交 ②):钉的是今天的行为,
+ * 登录失效 / 登录恢复两条边的刻画测试(3a-29 提交 ②):钉的是今天的行为,
  * 后面改状态机外壳时它们不许动。真 `LoginFlow` + 假 `Api` + 手动拨的假定时器。
  */
 describe("LoginFlow — 两个边事件今天的确切语义", () => {
@@ -920,10 +908,11 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
+		h.edges.length = 0;
 		expect(rawOf(h.flow).status).toBe("logged-in");
 	}
 
-	it("已登录时再扫码、不扫、等超时:不发 auth-lost;心跳把快照推回已登录,不发 auth-restored", async () => {
+	it("已登录时再扫码、不扫、等超时:不报告登录失效;心跳把快照推回已登录,不报告登录恢复", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		await logIn(h);
 		h.api.fetchLoginQrCode.mockResolvedValueOnce(qrOk());
@@ -942,11 +931,11 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(h.flow.account()).toEqual({ name: "n" });
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(0);
 	});
 
-	it("冷启动探活网络失败(停在 LOADING)之后心跳成功:不发 auth-restored", async () => {
+	it("冷启动探活网络失败(停在 LOADING)之后心跳成功:报告登录恢复", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("net down"));
 		await h.flow.reportAccountInfo();
@@ -957,20 +946,20 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		await flush();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 	});
 
-	it('手动退出登录(reportLoggedOut("notLogin")):上一帧是已登录就发一次 auth-lost,没登录时不发', async () => {
+	it('手动退出登录(reportLoggedOut("notLogin")):上一帧是已登录就报告一次登录失效,没登录时不报告', async () => {
 		const h = makeFlow();
 		await logIn(h);
 
 		h.flow.reportLoggedOut("notLogin");
 		expect(rawOf(h.flow).status).toBe("logged-out");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
 
 		h.flow.reportLoggedOut("notLogin"); // 已经是未登录:再退不再发
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(1);
 	});
 });
 
@@ -1134,13 +1123,13 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 	it("抓不到(回空):账号照常、头像缺着,登录状态与事件一个字不动", async () => {
 		const h = makeFlow({ fetchAvatar: async () => undefined });
 		await logIn(h);
-		const eventsBefore = h.events.length;
+		const eventsBefore = h.edges.length;
 		await Promise.all(h.scFake.tracked);
 
 		expect(h.flow.account()).toEqual({ name: "n" });
 		expect(h.flow.authState().status).toBe("logged-in");
-		expect(h.events.length).toBe(eventsBefore);
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(h.edges.length).toBe(eventsBefore);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
 	});
 
 	it("抓头像抛了:记 warn,账号照常、状态不变,不走到登出与瞬时失败", async () => {
@@ -1150,12 +1139,12 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 			},
 		});
 		await logIn(h);
-		const eventsBefore = h.events.length;
+		const eventsBefore = h.edges.length;
 		await Promise.all(h.scFake.tracked);
 
 		expect(h.flow.account()).toEqual({ name: "n" });
 		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loggedIn" });
-		expect(h.events.length).toBe(eventsBefore);
+		expect(h.edges.length).toBe(eventsBefore);
 		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
 	});
 
@@ -1242,7 +1231,7 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 
 /**
  * M1:B 站的用户卡片回应是外部数据。形状不对(非 0 码带别的 data、`code 0` 缺格、data 是 null)时按「卡片没取到」走:
- * 状态照常是已登录、`auth-restored` 照发、心跳照挂、`account()` 是 `null`(方案 §3.2:没取到就是 null)、什么都不抛。
+ * 状态照常是已登录、报告登录恢复、心跳照挂、`account()` 是 `null`(方案 §3.2:没取到就是 null)、什么都不抛。
  */
 describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 	const HEALTH_MS = 60_000;
@@ -1259,25 +1248,22 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		return h.scFake.intervals.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed).at(-1);
 	}
 
-	it.each(BAD)(
-		"%s:不抛,已登录,auth-restored 照发,心跳照挂,account() 是 null",
-		async (_name, bad) => {
-			const h = makeFlow({ healthCheckMs: HEALTH_MS });
-			h.flow.reportLoggedOut("notLogin"); // 记账:needsRestore
-			h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
-			h.api.fetchUserCard.mockResolvedValueOnce(bad);
+	it.each(BAD)("%s:不抛,已登录,报告登录恢复,心跳照挂,account() 是 null", async (_name, bad) => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.flow.reportLoggedOut("notLogin"); // 从已登出状态重新登上:会产生登录恢复
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce(bad);
 
-			await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
+		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
-			expect(rawOf(h.flow).status).toBe("logged-in");
-			expect(h.flow.authState().status).toBe("logged-in");
-			expect(h.flow.account()).toBeNull();
-			expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
-			expect(liveHeartbeat(h)).toBeDefined();
-			// 只记上游的码,不把整个回应(可能带 voucher)写进日志。
-			expect(JSON.stringify(vi.mocked(h.scFake.logger.warn).mock.calls)).not.toContain("voucher_x");
-		},
-	);
+		expect(rawOf(h.flow).status).toBe("logged-in");
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(h.flow.account()).toBeNull();
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
+		expect(liveHeartbeat(h)).toBeDefined();
+		// 只记上游的码,不把整个回应(可能带 voucher)写进日志。
+		expect(JSON.stringify(vi.mocked(h.scFake.logger.warn).mock.calls)).not.toContain("voucher_x");
+	});
 
 	it("非 0 码的 warn 带上游的码", async () => {
 		const h = makeFlow();
@@ -1307,7 +1293,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		expect(fetchAvatar).not.toHaveBeenCalled();
 	});
 
-	it("订阅方的回调抛了:不影响状态机(auth-restored 照发、心跳照挂),记 error", async () => {
+	it("订阅方的回调抛了:不影响状态机(仍报告登录恢复、心跳照挂),记 error", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.flow.onChange(() => {
 			throw new Error("listener boom");
@@ -1319,7 +1305,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
 		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("listener boom"));
 	});
@@ -1336,7 +1322,8 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
+		// 账号算不出来也照状态通知:引擎听的恢复边不能被吞。
+		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
 		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("account boom"));
 	});
@@ -1798,7 +1785,7 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 
 		expect(rawOf(h.flow)).toMatchObject({ status: "logged-out", reason: "notLogin" });
 		expect(h.api.fetchMyselfInfo).not.toHaveBeenCalled();
-		expect(h.events.map((e) => e.event)).toEqual([]);
+		expect(h.edges).toEqual([]);
 		// 扫码那道闸照样放了,之后能正常再发起
 		expect(h.api.holds.every((hold) => hold.disposed)).toBe(true);
 		expect(await begin(h, "again")).toEqual(ok());
@@ -1822,7 +1809,7 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 
 		expect(rawOf(h.flow)).toMatchObject({ status: "logged-out", reason: "authLost" });
 		expect(h.api.fetchMyselfInfo).not.toHaveBeenCalled();
-		expect(h.events.map((e) => e.event)).not.toContain("auth-restored");
+		expect(h.edges).not.toContain("restored");
 	});
 
 	it("落盘抛错:放开,之后能正常再发起", async () => {
@@ -1861,30 +1848,24 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 	});
 });
 
-/** 3a-29 复审记一笔 1 / 2:边事件在前、通知在后;边事件的监听者抛错不吞掉通知。 */
-describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
-	function makeFlowWith(bus: MessageBus): Harness {
-		const api = makeFakeApi();
-		const scFake = makeFakeServiceCtx();
-		const flow = new LoginFlow({
-			serviceCtx: scFake.sc,
-			api: api as unknown as Api,
-			bus,
-			healthCheckMs: 0,
-		});
-		return { flow, api, bus, events: [], scFake };
-	}
-
-	function orderedBus(order: string[], throwOn?: string): MessageBus {
-		return {
-			emit(event, _payload?: unknown) {
-				order.push(`emit:${String(event)}`);
-				if (event === throwOn) throw new Error("listener boom");
+/** 3a-29 复审记一笔 1 / 2:登录边在状态通知里产生,监听者抛错不吞掉后续通知。 */
+describe("LoginFlow — 边与通知的先后、监听者抛错", () => {
+	function makeFlowWith(order: string[], throwOn?: "lost" | "restored"): Harness {
+		const h = makeFlow();
+		watchLoginEdges(
+			{ state: () => h.flow.authState(), onChange: (fn) => h.flow.onChange(fn) },
+			{
+				onLost: () => {
+					order.push("lost");
+					if (throwOn === "lost") throw new Error("listener boom");
+				},
+				onRestored: () => {
+					order.push("restored");
+					if (throwOn === "restored") throw new Error("listener boom");
+				},
 			},
-			on() {
-				return { dispose: vi.fn() };
-			},
-		};
+		);
+		return h;
 	}
 
 	async function loggedInWithAccount(h: Harness) {
@@ -1893,9 +1874,9 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 		await h.flow.reportAccountInfo();
 	}
 
-	it("先发边事件、后通知订阅方:登出(auth-lost)与登回(auth-restored)都是", async () => {
+	it("先观察登录边、后通知订阅方:登出与登回都是", async () => {
 		const order: string[] = [];
-		const h = makeFlowWith(orderedBus(order));
+		const h = makeFlowWith(order);
 		await loggedInWithAccount(h);
 		h.flow.onChange(() => order.push("notify"));
 		order.length = 0;
@@ -1905,25 +1886,25 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 		await h.flow.reportAccountInfo();
 
-		expect(order).toEqual(["emit:auth-lost", "notify", "emit:auth-restored", "notify"]);
+		expect(order).toEqual(["lost", "notify", "restored", "notify"]);
 	});
 
-	it("auth-lost 的监听者抛错:抛错照旧往外传,订阅方照样收到状态变化", async () => {
+	it("登录失效的监听者抛错:订阅方照样收到状态变化,错误记进日志", async () => {
 		const order: string[] = [];
-		const h = makeFlowWith(orderedBus(order, "auth-lost"));
+		const h = makeFlowWith(order, "lost");
 		await loggedInWithAccount(h);
 		h.flow.onChange(() => order.push("notify"));
 		order.length = 0;
 
-		expect(() => h.flow.reportLoggedOut("authLost")).toThrow("listener boom");
+		expect(() => h.flow.reportLoggedOut("authLost")).not.toThrow();
 
-		expect(order).toEqual(["emit:auth-lost", "notify"]);
+		expect(order).toEqual(["lost", "notify"]);
 		expect(h.flow.authState().status).toBe("expired");
 	});
 
-	it("auth-restored 的监听者抛错:抛错照旧往外传,订阅方照样收到状态变化", async () => {
+	it("登录恢复的监听者抛错:订阅方照样收到状态变化,错误记进日志", async () => {
 		const order: string[] = [];
-		const h = makeFlowWith(orderedBus(order, "auth-restored"));
+		const h = makeFlowWith(order, "restored");
 		await loggedInWithAccount(h);
 		h.flow.reportLoggedOut("authLost");
 		h.flow.onChange(() => order.push("notify"));
@@ -1931,9 +1912,9 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(failureFromBili(-352, ""));
 
-		await expect(h.flow.reportAccountInfo()).rejects.toThrow("listener boom");
+		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
-		expect(order).toEqual(["emit:auth-restored", "notify"]);
+		expect(order).toEqual(["restored", "notify"]);
 		expect(h.flow.authState().status).toBe("logged-in");
 	});
 });
@@ -1964,6 +1945,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
 		h.api.fetchUserCard.mockResolvedValueOnce(CARD(name));
 		await h.flow.reportAccountInfo();
+		h.edges.length = 0;
 		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(liveBeats(h)).toHaveLength(1);
 	}
@@ -1994,7 +1976,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 	// ---- 钉现状(动实现之前就是绿的) ----
 
 	// 验红:把 `runHealthCheck` 里「回 0 且在扫码就丢掉」的条件去掉 `res.code === 0`(扫码中一律丢),这条红。
-	it("心跳在途 → 发起重扫(没扫成)→ 回 -101:照旧失效、这次扫码被结束、不发 auth-lost", async () => {
+	it("心跳在途 → 发起重扫(没扫成)→ 回 -101:照旧失效、这次扫码被结束、不发 登录失效", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		await loggedIn(h);
 		const { probe, beating } = await beatInFlight(h);
@@ -2008,7 +1990,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		expect(h.flow.authState().status).toBe("expired");
 		expect(livePolls(h)).toHaveLength(0);
 		expect(liveBeats(h)).toHaveLength(0);
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
 	});
 
 	// 验红:把 `runHealthCheck` 里那一支的条件从 `status === "qr"` 放宽到也含 `failed`,这条红。
@@ -2028,7 +2010,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		expect(liveBeats(h)).toHaveLength(1);
 	});
 
-	// 验红:把 `reportLoggedIn` 里发 `auth-restored` 的条件改成「上一帧不是 checking」(已登录时再进已登录也发),这条红。
+	// 验红:把 `reportLoggedIn` 里发 `登录恢复` 的条件改成「上一帧不是 checking」(已登录时再进已登录也发),这条红。
 	it("心跳在途 → 再来一次心跳:两份都落地,状态、登录时刻、心跳、边事件都不变", async () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		await loggedIn(h);
@@ -2048,7 +2030,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		});
 		expect(h.flow.account()).toEqual({ name: "old" });
 		expect(liveBeats(h)).toHaveLength(1);
-		expect(h.events).toHaveLength(0);
+		expect(h.edges).toHaveLength(0);
 	});
 
 	// ---- A1:检查在途时一段新登录成立了 ----
@@ -2066,7 +2048,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		await flush();
 
 		expect(h.flow.authState().status).toBe("logged-in");
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
 
 		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
 		newProbe.resolve({ code: 0, data: { mid: 2 } });
@@ -2076,7 +2058,7 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		expect(h.flow.authState().status).toBe("logged-in");
 		expect(h.flow.account()).toEqual({ name: "new" });
 		expect(liveBeats(h)).toHaveLength(1);
-		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.edges, "lost")).toHaveLength(0);
 	});
 
 	it("心跳在途 → 重扫并扫码成功 → 旧心跳回 0:同样丢掉,不拿旧会话的用户 id 去补取账号", async () => {

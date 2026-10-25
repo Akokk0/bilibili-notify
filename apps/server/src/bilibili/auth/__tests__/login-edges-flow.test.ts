@@ -1,16 +1,11 @@
-import {
-	type Disposable,
-	type MessageBus,
-	ok,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
+import { type Disposable, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/api.js";
 import { watchLoginEdges } from "../../login-edges.js";
 import { LoginFlow } from "../login-flow.js";
 
-const LOGGED_IN_EVENT = "auth-restored";
-const LOGGED_OUT_EVENT = "auth-lost";
+const RESTORED = "restored";
+const LOST = "lost";
 
 interface FakeTimer extends Disposable {
 	fire(): void;
@@ -50,20 +45,10 @@ function makeApi() {
 
 function harness() {
 	const api = makeApi();
-	const busEvents: string[] = [];
-	const bus: MessageBus = {
-		emit(event, ..._payload) {
-			if (event === LOGGED_IN_EVENT || event === LOGGED_OUT_EVENT) busEvents.push(event);
-		},
-		on() {
-			return { dispose() {} };
-		},
-	};
 	const { serviceCtx, timeouts } = makeServiceContext();
 	const flow = new LoginFlow({
 		serviceCtx,
 		api: api as unknown as Api,
-		bus,
 		healthCheckMs: 0,
 	});
 	const watchEvents: string[] = [];
@@ -73,8 +58,8 @@ function harness() {
 			onChange: (fn) => flow.onChange(fn),
 		},
 		{
-			onLost: () => void watchEvents.push(LOGGED_OUT_EVENT),
-			onRestored: () => void watchEvents.push(LOGGED_IN_EVENT),
+			onLost: () => void watchEvents.push(LOST),
+			onRestored: () => void watchEvents.push(RESTORED),
 		},
 	);
 
@@ -95,7 +80,6 @@ function harness() {
 
 	return {
 		api,
-		busEvents,
 		flow,
 		signIn,
 		openQr,
@@ -108,79 +92,69 @@ function harness() {
 	};
 }
 
-describe("watchLoginEdges 对照 auth-lost / auth-restored 总线边", () => {
-	it("开机未登录，之后登上：两边都是 restored 一次", async () => {
+describe("watchLoginEdges 观察 LoginFlow 的登录边", () => {
+	it("开机未登录，之后登上：restored 一次", async () => {
 		const h = harness();
 		h.flow.reportLoggedOut("notLogin");
-		h.busEvents.length = 0;
 		h.watchEvents.length = 0;
 
 		await h.signIn();
 
-		expect(h.busEvents).toEqual([LOGGED_IN_EVENT]);
-		expect(h.watchEvents).toEqual(h.busEvents);
+		expect(h.watchEvents).toEqual([RESTORED]);
 		h.dispose();
 	});
 
-	it("运行中掉线再重登：两边都是 lost、restored 各一次", async () => {
+	it("运行中掉线再重登：lost、restored 各一次", async () => {
 		const h = harness();
 		await h.signIn();
-		h.busEvents.length = 0;
 		h.watchEvents.length = 0;
 
 		await h.flow.handleAuthLost();
 		await h.signIn();
 
-		expect(h.busEvents).toEqual([LOGGED_OUT_EVENT, LOGGED_IN_EVENT]);
-		expect(h.watchEvents).toEqual(h.busEvents);
+		expect(h.watchEvents).toEqual([LOST, RESTORED]);
 		h.dispose();
 	});
 
-	it("手动退出登录：两边都是 lost 一次，重复退出不多发", async () => {
+	it("手动退出登录：lost 一次，重复退出不多发", async () => {
 		const h = harness();
 		await h.signIn();
-		h.busEvents.length = 0;
 		h.watchEvents.length = 0;
 
 		h.flow.reportLoggedOut("notLogin");
 		h.flow.reportLoggedOut("notLogin");
 
-		expect(h.busEvents).toEqual([LOGGED_OUT_EVENT]);
-		expect(h.watchEvents).toEqual(h.busEvents);
+		expect(h.watchEvents).toEqual([LOST]);
 		h.dispose();
 	});
 
-	it("已登录时重扫、不扫等超时再心跳回来：两边都没有登录边", async () => {
+	it("已登录时重扫、不扫等超时再心跳回来：没有登录边", async () => {
 		const h = harness();
 		await h.signIn();
-		h.busEvents.length = 0;
 		h.watchEvents.length = 0;
 
 		await h.openQr();
 		h.timeouts.at(-1)?.fire();
 		await h.signIn();
 
-		expect(h.busEvents).toEqual([]);
-		expect(h.watchEvents).toEqual(h.busEvents);
+		expect(h.watchEvents).toEqual([]);
 		h.dispose();
 	});
 
-	it("重扫途中撞 -101 再登上：两边都是没有 lost、restored 一次", async () => {
+	it("重扫途中撞 -101 再登上：没有 lost、restored 一次", async () => {
 		const h = harness();
 		await h.signIn();
-		h.busEvents.length = 0;
 		h.watchEvents.length = 0;
 
 		await h.openQr();
 		await h.flow.handleAuthLost();
 		await h.signIn();
 
-		expect(h.busEvents).toEqual([LOGGED_IN_EVENT]);
-		expect(h.watchEvents).toEqual(h.busEvents);
+		expect(h.watchEvents).toEqual([RESTORED]);
 		h.dispose();
 	});
 
-	it("开机停在 confirming 后心跳成功：总线没有边，新监听 restored 一次（有意不同）", async () => {
+	it("开机停在 confirming 后心跳成功：restored 一次", async () => {
 		const h = harness();
 		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("network down"));
 		await h.flow.reportAccountInfo();
@@ -191,8 +165,7 @@ describe("watchLoginEdges 对照 auth-lost / auth-restored 总线边", () => {
 		);
 		await h.flow.healthCheckNow();
 
-		expect(h.busEvents).toEqual([]);
-		expect(h.watchEvents).toEqual([LOGGED_IN_EVENT]);
+		expect(h.watchEvents).toEqual([RESTORED]);
 		h.dispose();
 	});
 });

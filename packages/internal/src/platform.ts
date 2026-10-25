@@ -161,8 +161,6 @@ export type SubscriptionOp =
  * WS 帧的 `data` 也能直接从这里推导(`apps/contract` 的事件表),面板不用再手写类型断言。
  */
 export interface BusEvents {
-	"auth-lost": undefined;
-	"auth-restored": undefined;
 	"subscription-changed": { ops: SubscriptionOp[] };
 	/**
 	 * 一个来源的登录状态或账号变了(宿主订阅 `Source.auth.onChange` 后发)。载荷只有来源键与此刻的状态:

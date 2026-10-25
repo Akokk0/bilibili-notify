@@ -121,7 +121,7 @@ describe("watchLoginEdges", () => {
 		expect(seen.restored).toHaveBeenCalledTimes(1);
 	});
 
-	it("开机停在 confirming、后来心跳成功：restored 一次（有意与旧 auth-restored 行为不同）", () => {
+	it("开机停在 confirming、后来心跳成功：restored 一次", () => {
 		const h = makeAuth(CONFIRMING);
 		const seen = observe(h.auth);
 

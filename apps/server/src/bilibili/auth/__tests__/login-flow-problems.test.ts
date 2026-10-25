@@ -9,7 +9,6 @@
 import {
 	type Disposable,
 	type Logger,
-	type MessageBus,
 	ok,
 	type Result,
 	type ServiceContext,
@@ -22,6 +21,7 @@ import {
 } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/api";
 import { failureFromBili } from "../../error-codes";
+import { watchLoginEdges } from "../../login-edges";
 import { LoginFlow } from "../login-flow";
 
 type LoginQrResult = Awaited<ReturnType<Api["fetchLoginQrCode"]>>;
@@ -61,24 +61,21 @@ function makeHarness() {
 		signal: new AbortController().signal,
 		track() {},
 	} as unknown as ServiceContext;
-	const events: string[] = [];
-	const bus = {
-		emit(event: string) {
-			events.push(event);
-		},
-		on: () => ({ dispose() {} }),
-	} as unknown as MessageBus;
 	const flow = new LoginFlow({
 		serviceCtx,
 		api: api as unknown as Api,
-		bus,
 		healthCheckMs: 0,
 	});
+	const lost = vi.fn();
+	watchLoginEdges(
+		{ state: () => flow.authState(), onChange: (fn) => flow.onChange(fn) },
+		{ onLost: lost, onRestored: vi.fn() },
+	);
 	const pipeline = makeProblemPipeline({
 		state: () => flow.authState(),
 		onChange: (fn) => flow.onChange(fn),
 	});
-	return { flow, api, intervals, events, ...pipeline };
+	return { flow, api, intervals, lost, ...pipeline };
 }
 
 type Harness = ReturnType<typeof makeHarness>;
@@ -166,7 +163,7 @@ describe("没有会话可丢时,-101 什么都不改", () => {
 });
 
 describe("有会话可丢时,照旧是登录失效", () => {
-	it("登着时来 -101:变成失效、私聊恰好一次、发一次 auth-lost", async () => {
+	it("登着时来 -101:变成失效、私聊恰好一次、收到一次登录失效", async () => {
 		const h = makeHarness();
 		await loggedIn(h);
 
@@ -177,10 +174,10 @@ describe("有会话可丢时,照旧是登录失效", () => {
 		expect(h.table.list()[0]?.message).toBe(LOGIN_EXPIRED_TEXT);
 		expect(h.notifyMaster).toHaveBeenCalledTimes(1);
 		expect(h.notifyMaster).toHaveBeenCalledWith(LOGIN_EXPIRED_TEXT);
-		expect(h.events.filter((e) => e === "auth-lost")).toHaveLength(1);
+		expect(h.lost).toHaveBeenCalledTimes(1);
 	});
 
-	it("开机存着的登录确认下来已失效(探活回 -101):照旧失效、私聊恰好一次、不发 auth-lost", async () => {
+	it("开机存着的登录确认下来已失效(探活回 -101):照旧失效、私聊恰好一次、不报登录失效", async () => {
 		const h = makeHarness();
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101 });
 
@@ -189,7 +186,7 @@ describe("有会话可丢时,照旧是登录失效", () => {
 		expect(h.flow.authState().status).toBe("expired");
 		expect(h.notifyMaster).toHaveBeenCalledTimes(1);
 		expect(h.notifyMaster).toHaveBeenCalledWith(LOGIN_EXPIRED_TEXT);
-		expect(h.events).not.toContain("auth-lost");
+		expect(h.lost).not.toHaveBeenCalled();
 	});
 
 	it("开机探活的请求自己撞上 -101(请求客户端先报):同样失效、私聊恰好一次", async () => {

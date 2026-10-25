@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CookieJar } from "@bilibili-notify/http";
-import { fail, type Json, type Logger, type MessageBus, ok } from "@bilibili-notify/internal";
+import { fail, type Json, type Logger, ok } from "@bilibili-notify/internal";
 import { FileKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
@@ -22,6 +22,7 @@ import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
 import { ApiClient } from "../../api/api-client.js";
 import { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
+import { watchLoginEdges } from "../../login-edges.js";
 import {
 	type CreateAuthSystemOptions,
 	createAuthSystem as createAuthSystemWith,
@@ -44,8 +45,6 @@ const C1 = JSON.stringify([
 	{ key: "bili_jct", value: "jct1", domain: ".bilibili.com", path: "/", secure: true },
 	{ key: "buvid3", value: "b3", domain: ".bilibili.com", path: "/", secure: true },
 ]);
-
-const bus: MessageBus = { emit: vi.fn(), on: vi.fn(() => ({ dispose: vi.fn() })) };
 
 let dataDir: string;
 beforeEach(async () => {
@@ -158,7 +157,6 @@ describe("关停的次序", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		stalled.setJar(w.jarOf(auth.api));
@@ -178,13 +176,11 @@ describe("关停的次序", () => {
 	it("停 Api 的收尾排在最后一次存盘之前:关停后迟到的确认回应是「被取代」,不是去撞已关的写道", async () => {
 		const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 		const w = world(logger);
-		vi.mocked(bus.emit).mockClear();
 		await w.seed({ cookies: C0, token: "T0" });
 		const stalled = stallRenewalAtConfirm();
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		stalled.setJar(w.jarOf(auth.api));
@@ -209,7 +205,6 @@ describe("关停的次序", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		// 假时钟不推进:攒着的那一下根本没到点。
@@ -229,7 +224,6 @@ describe("关停的次序", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		expect(w.store.isOpen("bilibili")).toBe(true);
@@ -269,7 +263,6 @@ describe("日志跟 B 站那一格", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 
@@ -300,7 +293,6 @@ describe("建到一半失败", () => {
 			createAuthSystem({
 				transitImages: inertTransitImages,
 				serviceCtx: w.host.serviceCtx,
-				bus,
 				integrationStore: w.store,
 			}),
 		).rejects.toThrow("flow boom");
@@ -310,7 +302,6 @@ describe("建到一半失败", () => {
 		const again = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		await again.dispose();
@@ -326,7 +317,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		const probe = vi.mocked(LoginFlow.prototype.reportAccountInfo);
@@ -354,7 +344,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 
@@ -378,7 +367,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		const clear = vi.spyOn(Api.prototype, "clearCookies");
@@ -419,13 +407,13 @@ describe("恢复备份之后与登出", () => {
 			const auth = await createAuthSystem({
 				transitImages: inertTransitImages,
 				serviceCtx: w.host.serviceCtx,
-				bus,
 				integrationStore: w.store,
 			});
 			expect(auth.auth.state().status).toBe("logged-in");
+			const lost = vi.fn();
+			watchLoginEdges(auth.auth, { onLost: lost, onRestored: vi.fn() });
 			const seen: string[] = [];
 			auth.auth.onChange(() => seen.push(auth.auth.state().status));
-			vi.mocked(bus.emit).mockClear();
 			// 落盘悬着的那一段里,一个带着旧 cookie 发出去的请求回了 -101(经 `Api` 的拦截器那个口进来)。
 			const commit = vi.spyOn(Api.prototype, "commitLogin").mockImplementation(async () => {
 				(auth.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
@@ -439,19 +427,15 @@ describe("恢复备份之后与登出", () => {
 			expect(r.ok).toBe(saved.ok);
 			expect(seen).toEqual(["logged-out"]);
 			expect(auth.auth.state()).toEqual({ status: "logged-out" });
-			// 丢掉一个好会话:`auth-lost` 恰好一次(退出那一下),不因为那个 -101 再来一次。
-			expect(
-				vi.mocked(bus.emit).mock.calls.filter(([event]) => event === "auth-lost"),
-			).toHaveLength(1);
+			// 丢掉一个好会话:登录失效恰好一次(退出那一下),不因为那个 -101 再来一次。
+			expect(lost).toHaveBeenCalledTimes(1);
 			commit.mockRestore();
 			await auth.dispose();
 			await w.store.close();
 		},
 	);
 
-	// 报未登录提到了最前面,`auth-lost` 的监听者同步抛错会从那一句传出来。
-	// 验红:把 `logout` 里的 try / finally 拆掉(报未登录之后顺着写清罐与落盘),这条红(罐子没清、没落盘)。
-	it("主动退出时 auth-lost 的监听者抛错:抛错照旧往外传,但罐子照样清、存着的登录状态照样删", async () => {
+	it("主动退出时登录失效回调抛错:不影响退出,罐子照样清、存着的登录状态照样删", async () => {
 		const w = world();
 		await w.seed({ cookies: C0, token: "T0" });
 		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
@@ -467,17 +451,17 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		expect(auth.auth.state().status).toBe("logged-in");
-		vi.mocked(bus.emit).mockImplementation((event: string) => {
-			if (event === "auth-lost") throw new Error("listener boom");
+		const lost = vi.fn(() => {
+			throw new Error("listener boom");
 		});
+		watchLoginEdges(auth.auth, { onLost: lost, onRestored: vi.fn() });
 
-		await expect(auth.auth.logout()).rejects.toThrow("listener boom");
-		vi.mocked(bus.emit).mockReset();
+		await expect(auth.auth.logout()).resolves.toEqual(ok());
 
+		expect(lost).toHaveBeenCalledTimes(1);
 		expect(auth.auth.state()).toEqual({ status: "logged-out" });
 		expect(auth.api.getCookiesJson()).toBe("[]");
 		await auth.dispose();
@@ -506,7 +490,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 
@@ -523,7 +506,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 
@@ -541,7 +523,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		const MS = 45 * 60_000;
@@ -564,7 +545,6 @@ describe("恢复备份之后与登出", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: w.host.serviceCtx,
-			bus,
 			integrationStore: w.store,
 		});
 		// 开机的 reportAccountInfo / reportLoggedOut 在这个文件里被换成空操作:状态还是初值(开机没确认)。

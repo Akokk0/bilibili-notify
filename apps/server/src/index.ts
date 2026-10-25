@@ -612,7 +612,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		try {
 			authSystem = await createAuthSystem({
 				serviceCtx: runtime.serviceCtx,
-				bus: runtime.bus,
 				integrationStore: runtime.integrationStore,
 				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
 				accountImages: runtime.accountImages,

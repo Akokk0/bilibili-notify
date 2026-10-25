@@ -13,7 +13,7 @@ import { fakeQrDataUrl } from "./fake-qr.js";
  * `auth.account()`)与 WS auth 频道的 `subscription-auth-changed`(总线上那条事件)。注入 = 两处一起换:
  * `state()` / `account()` 盖掉,再往总线上发一条同样的状态;收摊 = 摘掉,把真状态再发一遍让面板对回去。
  *
- * 只换面板看到的:登录流程本身(轮询 / 健康检查)一行不动,也不会因此发 `auth-lost`。
+ * 只换面板看到的:登录流程本身(轮询 / 健康检查)一行不动,也不会因此判定登录失效。
  * 选项就是 `AuthState` 的六种取值,其中 `confirming` 有两种情况(已扫等手机确认 / 开机没确认),各给一项。
  */
 export interface LoginStateDeps {

@@ -13,7 +13,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
@@ -67,8 +67,6 @@ function makeCtx() {
 	return ctx;
 }
 
-const bus: MessageBus = { emit: vi.fn(), on: vi.fn(() => ({ dispose: vi.fn() })) };
-
 let dataDir: string;
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-reset-cookies-"));
@@ -101,7 +99,6 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: ctx,
-			bus,
 			integrationStore,
 		});
 		await auth.auth.logout();

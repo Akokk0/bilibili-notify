@@ -2,12 +2,10 @@ import type { MessageBus } from "@bilibili-notify/internal";
 import type { DevScenarioDef } from "../registry.js";
 
 /**
- * A5:引擎错误 / 登录失效 / 登录恢复 —— 直接往 MessageBus 上**发射**一条事件。
+ * A5:直接往 MessageBus 上**发射**一条引擎错误。
  *
  * 发射不是转发:这里没有第二条通道,不存在「bus ↔ 别的通道」的回环(那条铁律见
- * `runtime/message-bus.ts`)。消费方全是真的:`engine-error` → 主人私聊 + 面板右上角告警;
- * `auth-lost` → 动态检测停摆、直播监听拆掉(不改登录状态,所以不进问题表、不私聊);`auth-restored` → 各引擎按当前订阅
- * 重新播种。所以 lost 之后记得 restored,不然引擎就真的停在那儿了。
+ * `runtime/message-bus.ts`)。消费方是真的:`engine-error` → 主人私聊 + 面板右上角告警。
  */
 export interface BusEventDeps {
 	bus: MessageBus;
@@ -46,31 +44,5 @@ export function busEventScenarios(deps: BusEventDeps): DevScenarioDef[] {
 		},
 	};
 
-	const authLost: DevScenarioDef = {
-		id: "auth.lost",
-		group: "event",
-		title: "登录失效",
-		icon: "logout",
-		desc: "往总线上发 auth-lost:动态检测停摆、直播监听拆掉。只发总线事件、不改登录状态,所以不会进问题表、主人也不会收私聊。引擎会真的停 —— 看完记得发「登录恢复」。",
-		params: [],
-		run() {
-			deps.bus.emit("auth-lost");
-			return { summary: "已发射 auth-lost。引擎现在停着,看完记得发「登录恢复」。" };
-		},
-	};
-
-	const authRestored: DevScenarioDef = {
-		id: "auth.restored",
-		group: "event",
-		title: "登录恢复",
-		icon: "check",
-		desc: "往总线上发 auth-restored:各引擎按当前订阅重新播种(动态 cron 重启、直播重连)。",
-		params: [],
-		run() {
-			deps.bus.emit("auth-restored");
-			return { summary: "已发射 auth-restored,引擎重新播种。" };
-		},
-	};
-
-	return [engineError, authLost, authRestored];
+	return [engineError];
 }

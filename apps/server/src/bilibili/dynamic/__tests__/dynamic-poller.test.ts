@@ -650,7 +650,7 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(recovery[0]?.msg).toContain("4101132");
 	});
 
-	it("跨 -101 后恢复:不拿陈旧错误码记恢复(登录恢复由 auth-restored 负责)", async () => {
+	it("跨 -101 后恢复:不拿陈旧错误码记恢复(登录恢复另行处理)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
@@ -689,13 +689,13 @@ describe("DynamicPoller — 故障恢复", () => {
 });
 
 /**
- * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等 `auth-restored`。
+ * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等登录恢复。
  * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 engine-error。
  */
 describe("DynamicPoller — 登录失效时的 cron", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
 
-	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
+	it("收到登录失效立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
 		const b = makeEngine(oneSub);
 		b.engine.start();
 		expect(cronMock.instances[0]?.isActive).toBe(true);
@@ -704,7 +704,7 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 	});
 
-	it("-101 一律不发组件告警:不管有没有先收到 auth-lost(冷启动 cookie 过期也是)", async () => {
+	it("-101 一律不发组件告警:不管有没有先收到登录失效(冷启动 cookie 过期也是)", async () => {
 		const withLost = makeEngine(oneSub);
 		withLost.engine.start();
 		withLost.loseLogin();
@@ -721,9 +721,9 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		expect(withoutLost.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 	});
 
-	it("auth-lost 之后订阅变更不许把 cron 拉回来 —— 登录还没恢复,拉起来就是再撞一次", () => {
+	it("登录失效之后订阅变更不许把 cron 拉回来 —— 登录还没恢复,拉起来就是再撞一次", () => {
 		// reconcileJob 原本只认「-352 退避窗口」这一个不许启动的理由,登录失效不在其列。
-		// 于是 auth-lost 停掉 cron 之后,随便一次订阅增删都会立刻把它重新建起来。
+		// 于是登录失效停掉 cron 之后,随便一次订阅增删都会立刻把它重新建起来。
 		const b = makeEngine(oneSub);
 		b.engine.start();
 		b.loseLogin();
@@ -735,7 +735,7 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		expect(cronMock.instances.length).toBe(after);
 	});
 
-	it("auth-restored 之后才重新开跑", () => {
+	it("登录恢复之后才重新开跑", () => {
 		const b = makeEngine(oneSub);
 		b.engine.start();
 		b.loseLogin();
@@ -1506,7 +1506,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		expect(b.engine.isActive).toBe(false);
 	});
 
-	it("start() 空名单 → 不建 cron;auth-restored 后用新名单重建", () => {
+	it("start() 空名单 → 不建 cron;登录恢复后用新名单重建", () => {
 		const b = makeEngine();
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(0);

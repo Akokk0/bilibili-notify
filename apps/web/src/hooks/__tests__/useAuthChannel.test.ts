@@ -94,8 +94,8 @@ describe("handleAuthEnvelope — auth 频道事件分发", () => {
 		expect(invalidate).not.toHaveBeenCalled();
 	});
 
-	it("不识别的 event(含不再处理的 auth-lost):不动缓存", () => {
-		handleAuthEnvelope(malformed({ type: "auth", event: "auth-lost", data: null }), qc);
+	it("不识别的 event:不动缓存", () => {
+		handleAuthEnvelope(malformed({ type: "auth", event: "unknown-auth-event", data: null }), qc);
 		handleAuthEnvelope(malformed({ type: "auth", event: "subscribed" }), qc);
 		expect(qc.getQueryCache().getAll()).toHaveLength(0);
 		expect(invalidate).not.toHaveBeenCalled();

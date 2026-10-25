@@ -128,7 +128,7 @@ export const FIELD_LABELS = {
 	},
 	"bilibili.healthCheckMinutes": {
 		label: "登录心跳间隔",
-		hint: "每 N 分钟向 B 站 getMyselfInfo 探活;失效会触发 auth-lost + master 通知",
+		hint: "每 N 分钟向 B 站探活一次;登录失效会记进问题表并私聊提醒主人",
 		section: "general",
 	},
 	"history.retentionDays": {

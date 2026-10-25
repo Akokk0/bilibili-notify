@@ -2,7 +2,6 @@ import {
 	BILIBILI_SOURCE_KEY,
 	fail,
 	type IntegrationContext,
-	type MessageBus,
 	ok,
 	type Result,
 	type SourceAuth,
@@ -60,7 +59,6 @@ export interface AuthSystem {
 export interface CreateAuthSystemOptions {
 	/** 只用它开 B 站那一格的子上下文;往下递的(日志器、定时器、收尾钩子)都是那个子上下文的。 */
 	serviceCtx: Pick<NodeServiceContext, "forSubsystem">;
-	bus: MessageBus;
 	/** 集成存储宿主(`AppRuntime.integrationStore`):登录的 cookie 与令牌住在这个集成自己的存储里。 */
 	integrationStore: Pick<IntegrationStore, "open">;
 	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
@@ -100,11 +98,11 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 					log.info("[auth] 登录续期已落盘");
 				},
 				// handleAuthLost() 是 Promise:此前 void 丢弃 → reject 成 unhandled
-				// 且 auth-lost 状态迁移静默失败。改 .catch 经 logger;flow 仍为
+				// 且登录失效处理静默失败。改 .catch 经 logger;flow 仍为
 				// undefined 时(构造期)?. 双重短路不调用 .catch。
 				onAuthLost: () => {
 					flow?.handleAuthLost()?.catch((e) => {
-						log.error(`[auth] auth-lost 处理失败: ${errorMessageOf(e)}`);
+						log.error(`[auth] 登录失效处理失败: ${errorMessageOf(e)}`);
 					});
 				},
 			},
@@ -125,7 +123,6 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		flow = new LoginFlow({
 			serviceCtx,
 			api,
-			bus: opts.bus,
 			// 心跳起步是关着的:间隔住在 B 站设置里,由来源 `start` 读了设置、经 `setHealthCheckMs` 挂上(读不懂就一直关着)。
 			healthCheckMs: 0,
 			fetchAvatar: (url) => fetchAvatar(url, { images: avatarImages, logger: log }),
@@ -165,8 +162,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			try {
 				flowFinal.reportLoggedOut("notLogin");
 			} finally {
-				// 放在 finally 里:`auth-lost` 的监听者同步抛错会从上面那句传出来,清罐与落盘不能因此被跳过
-				// (状态已经说了未登录,罐里、盘上却还留着登录)。抛错照旧往外传。
+				// 放在 finally 里:状态已经说了未登录,后面哪一步抛错都不能把罐里、盘上的登录留着。
 				// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
 				await api.clearCookies();
 				// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error,并把失败交给调用方。

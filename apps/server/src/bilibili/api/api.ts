@@ -217,7 +217,7 @@ export class Api {
 
 	/**
 	 * Response-interceptor path: only `-101` (session invalid) from an arbitrary
-	 * endpoint counts as auth-lost. `-352` etc. seen here are transient
+	 * endpoint counts as login loss. `-352` etc. seen here are transient
 	 * risk-control on data endpoints, NOT session death — must not widen this
 	 * gate or every throttled data call would spuriously log the user out.
 	 *
@@ -512,7 +512,7 @@ export class Api {
 					return;
 				}
 				// 续期只在会话真死(请求层翻成 unauthorized,即 -101)时登出;风控、没对照的码、回应形状不对都当
-				// 一时失败,跳过本轮等下个 interval。死会话由普通请求撞 -101 时清(拦截器 → auth-lost)。
+				// 一时失败,跳过本轮等下个 interval。死会话由普通请求撞 -101 时清(拦截器 → 登录失效)。
 				const probed = this.resultOf<{ refresh?: boolean } | undefined>(info, "fetchCookieInfo");
 				if (!probed.ok) {
 					if (probed.code === "unauthorized") {
@@ -521,7 +521,7 @@ export class Api {
 						return;
 					}
 					this.logger.warn(
-						`[cookie] fetchCookieInfo 失败 code=${probed.upstreamCode ?? probed.code} msg=${probed.message},跳过本轮(不触发 auth-lost,等下轮再试)`,
+						`[cookie] fetchCookieInfo 失败 code=${probed.upstreamCode ?? probed.code} msg=${probed.message},跳过本轮(不判定登录失效,等下轮再试)`,
 					);
 					return;
 				}
@@ -608,11 +608,11 @@ export class Api {
 			if (!refreshed.ok) {
 				const shownCode = refreshed.upstreamCode ?? refreshed.code;
 				if (refreshed.code !== "unauthorized") {
-					// 只有 -101 才是会话终态;风控、没对照的码、回应形状不对都是一时失败。不 auth-lost、
+					// 只有 -101 才是会话终态;风控、没对照的码、回应形状不对都是一时失败。不判定登录失效、
 					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),闸留着,下个 interval 再试。
 					// 死会话由普通请求撞 -101 时清;把别的码也当终态,会把瞬时风控误升级成被动登出。
 					this.logger.warn(
-						`[cookie] 刷新失败 code=${shownCode} msg=${refreshed.message},跳过本轮(不触发 auth-lost,等下轮再试)`,
+						`[cookie] 刷新失败 code=${shownCode} msg=${refreshed.message},跳过本轮(不判定登录失效,等下轮再试)`,
 					);
 					throw new Error(`Cookie 刷新失败(可重试): code=${shownCode}`);
 				}
@@ -620,7 +620,7 @@ export class Api {
 				// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
 				fate = "release";
 				await this.terminateSession(
-					`[cookie] 刷新失败(会话终态)code=${shownCode} msg=${refreshed.message},触发 auth-lost`,
+					`[cookie] 刷新失败(会话终态)code=${shownCode} msg=${refreshed.message},判定登录失效`,
 				);
 				throw new Error(`Cookie 刷新失败: code=${shownCode}, message=${refreshed.message}`);
 			}
@@ -637,7 +637,7 @@ export class Api {
 			);
 
 			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
-			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 generation 的结果覆盖更新的登录态。
+			// 终态会清别人的罐子、判定登录失效、留闸;下面接着就是写盘,同样不能用过期 generation 的结果覆盖更新的登录态。
 			if (generation !== this.generation) {
 				this.logger.debug("[cookie] 刷新确认返回时已被取代,丢弃(不看码、不回写)");
 				fate = "release";
@@ -647,14 +647,14 @@ export class Api {
 			if (!accepted.ok) {
 				const shownCode = accepted.upstreamCode ?? accepted.code;
 				if (accepted.code !== "unauthorized") {
-					// confirm 步:同刷新那一步,只有 -101 是终态,别的退避等下轮(不 auth-lost/不拆 timer)。
+					// confirm 步:同刷新那一步,只有 -101 是终态,别的退避等下轮(不判定登录失效/不拆 timer)。
 					this.logger.warn(`[cookie] 刷新确认失败 code=${shownCode},跳过本轮(等下轮再试)`);
 					throw new Error(`Cookie 刷新确认失败(可重试): code=${shownCode}`);
 				}
-				// confirm 终态:新旧 cookie 状态不可信,清净 + auth-lost(②3 同款)。
+				// confirm 终态:新旧 cookie 状态不可信,清罐 + 判定登录失效(②3 同款)。
 				fate = "release";
 				await this.terminateSession(
-					`[cookie] 刷新确认失败(会话终态)code=${shownCode},触发 auth-lost`,
+					`[cookie] 刷新确认失败(会话终态)code=${shownCode},判定登录失效`,
 				);
 				throw new Error(`Cookie 刷新确认失败: code=${shownCode}`);
 			}

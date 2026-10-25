@@ -2,8 +2,8 @@
  * 回归守护 — cookie 续期落盘之后登录系统只记一行 info(3a-29 提交 ⑤:`cookies-refreshed` 事件随
  * 「刷新 Cookie」按钮一起退役)。
  *
- * cookie 与 refreshToken 是整套登录会话的密钥:总线上不许有、日志里也不许有它们的内容。
- * 这里钉的是**源头**:刷新回调触发后,总线一条都没发,日志只有那一行固定的话。
+ * cookie 与 refreshToken 是整套登录会话的密钥:日志里不许有它们的内容。
+ * 这里钉的是**源头**:刷新回调触发后,日志只有那一行固定的话。
  *
  * 走真的 `createAuthSystem()` + 真的集成存储宿主(临时目录、真 FileKeyProvider),只把会联网的 B 站
  * API 与登录流换成替身,并把 `Api` 收到的回调与上下文截下来:回调当作 api 续期成功那一刻去调,上下文用来
@@ -13,7 +13,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
+import { ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { inertTransitImages } from "../../../__tests__/support/integration-io.js";
@@ -92,9 +92,7 @@ afterEach(async () => {
 });
 
 describe("AuthSystem — 续期落盘之后的回调", () => {
-	it("刷新回调触发后只记一行 info、总线与日志里没有 cookie 内容;盘上那份由提交写,解开后两个键都在", async () => {
-		const emit = vi.fn();
-		const bus: MessageBus = { emit, on: vi.fn(() => ({ dispose: vi.fn() })) };
+	it("刷新回调触发后只记一行 info、日志里没有 cookie 内容;盘上那份由提交写,解开后两个键都在", async () => {
 		const ctx = makeCtx();
 		const keyProvider = new FileKeyProvider(join(dataDir, "secrets", "master.key"), ctx.logger);
 		const integrationStore = createIntegrationStore({
@@ -106,7 +104,6 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 		const auth = await createAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: ctx,
-			bus,
 			integrationStore,
 		});
 		expect(captured.callbacks?.onCookiesRefreshed).toBeTypeOf("function");
@@ -122,14 +119,12 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 		expect(committed.ok).toBe(true);
 		await captured.callbacks?.onCookiesRefreshed?.();
 
-		// 续期落盘只记一行 info(`cookies-refreshed` 事件已没有任何读者,随之退役);总线上一条都不发。
+		// 续期落盘只记一行 info。
 		expect(ctx.logger.info).toHaveBeenCalledWith("[auth] 登录续期已落盘");
-		expect(emit).not.toHaveBeenCalled();
-		// 日志与总线上任何一次的内容里,都不许出现 cookie 或 refreshToken 的内容。
-		expect(JSON.stringify(emit.mock.calls)).not.toContain("SECRET");
+		// 日志里不许出现 cookie 或 refreshToken 的内容。
 		expect(JSON.stringify(vi.mocked(ctx.logger.info).mock.calls)).not.toContain("SECRET");
 
-		// 总线上少了 cookie 不等于少存一份:提交把它们写进了 secrets/bilibili/secrets.enc。
+		// 提交把 cookie 与令牌写进了 secrets/bilibili/secrets.enc。
 		await auth.dispose();
 		await integrationStore.close();
 		const read = await readIntegrationSecretsFile({

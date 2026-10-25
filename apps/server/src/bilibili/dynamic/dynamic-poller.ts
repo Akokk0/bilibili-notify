@@ -22,7 +22,7 @@ import type { AllDynamicResponse, Dynamic, DynamicAnchors } from "./types";
 
 /**
  * 风控/瞬时错误停 cron 后的退避重启间隔。原实现:任何非鉴权错误(限流 -509 等
- * 风控类、瞬时 -403、未知码)都永久 stop cron 且唯一重启路径 `auth-restored` 不会触发
+ * 风控类、瞬时 -403、未知码)都永久 stop cron 且登录恢复不会触发重启
  * → 动态轮询永久静默直到重启进程。退避后自动重探,瞬时错误/风控解除
  * 后即自愈,无需人工重启进程。
  */
@@ -200,8 +200,8 @@ export class DynamicPoller {
 	 */
 	private transientErrorCode: string | null = null;
 	/**
-	 * 登录已失效,等 `auth-restored`。**不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
-	 * 少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,再去撞一次 -101。
+	 * 登录已失效,等登录恢复。**不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
+	 * 少了它,登录失效停掉 cron 之后随便一次订阅增删就会把它重新建起来,再去撞一次 -101。
 	 * (要不要告诉主人登录失效由宿主看登录状态报,不看这个标记。)
 	 */
 	private authLost = false;
@@ -247,7 +247,7 @@ export class DynamicPoller {
 		this.authWatch = watchLoginEdges(this.auth, {
 			onRestored: () => {
 				this.authLost = false;
-				// 前缀与 auth-lost 那条、以及直播引擎的同一对日志统一成 [auth]:
+				// 前缀与登录失效那条、以及直播引擎的同一对日志统一成 [auth]:
 				// 这是登录生命周期事件,不是检测器自己的事。
 				this.logger.info("[auth] 账号登录已恢复，正在重启动态检测");
 				this.restartDetector();
@@ -420,14 +420,14 @@ export class DynamicPoller {
 
 	/**
 	 * 登录失效时停掉检测循环,但**保留事件订阅** —— 与 `stop()` 的区别就在这:
-	 * 这里还等着 `auth-restored` 把它拉起来。
+	 * 这里还等着登录恢复把它拉起来。
 	 *
 	 * 挂着的退避重启必须一并作废:`scheduleDetectorRestart` 到点是直接调
 	 * `restartDetector`,绕过 `reconcileJob`,所以 `authLost` 那道门拦不住它 ——
 	 * 上一轮 -352 排下的计时会在五分钟后把 cron 重新建起来,拿一个已经死掉的会话
 	 * 再去撞一次。
 	 *
-	 * 面向运维的那条日志由调用方打(auth-lost 是 warn,-101 是 error),这里不重复。
+	 * 面向运维的那条日志由调用方打(登录失效是 warn,-101 是 error),这里不重复。
 	 */
 	private suspendDetector(): void {
 		this.detectorRestartTimer?.dispose();
@@ -454,7 +454,7 @@ export class DynamicPoller {
 			// · detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口。提前 startJob
 			//   会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
 			//   scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
-			// · authLost = 登录已经失效,等 auth-restored。这时候拉起来只是再撞一次 -101。
+			// · authLost = 登录已经失效,等登录恢复。这时候拉起来只是再撞一次 -101。
 			this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
 			this.startJob();
 		}
@@ -683,8 +683,8 @@ export class DynamicPoller {
 		switch (code) {
 			case "unauthorized": {
 				// 真鉴权失效:停 cron,靠登录恢复重启(不退避盲重试 ——
-				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
-				// interceptor 单点广播。要不要告诉主人登录失效,由宿主看登录状态决定,
+				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。登录失效由请求层的拦截器
+				// 报给登录流。要不要告诉主人登录失效,由宿主看登录状态决定,
 				// 这里不再发告警。
 				this.logger.error("[api] 账号未登录，动态检测已停止（登录恢复后重启）");
 				this.authLost = true;
@@ -694,11 +694,11 @@ export class DynamicPoller {
 				this.dropProblems();
 				// 上面只停了 job,挂着的退避重启还得作废 —— 见 suspendDetector。
 				this.suspendDetector();
-				// auth-loss 是与风控不同的独立 episode,会停 cron 待 auth-restored。
+				// 登录失效是与风控不同的独立 episode,会停 cron 待登录恢复。
 				// 清掉风控边沿:恢复后若再遇 -352 是全新 episode,必须重新告警
 				// (否则跨 auth-loss 的新风控会被陈旧 flag 静默 —— 审计发现的缺口)。
 				this.riskControlled = false;
-				// 瞬时错误边沿同理清掉。登录恢复后的第一次成功拉取属于 auth-restored
+				// 瞬时错误边沿同理清掉。登录恢复后的第一次成功拉取属于登录恢复
 				// 那条线(上层自己会通知),不该由这里拿着跨 episode 的陈旧错误码报喜。
 				this.transientErrorCode = null;
 				break;

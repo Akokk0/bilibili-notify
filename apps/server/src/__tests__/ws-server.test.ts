@@ -39,7 +39,7 @@ async function stopHttpServer(server: HttpServer): Promise<void> {
 	await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
-/** `auth` 频道现在唯一的一种帧的载荷(原来拿 `auth-lost` 帧当「这个频道有没有转发」的探针)。 */
+/** `auth` 频道现在唯一的一种帧的载荷。 */
 const AUTH_CHANGED = {
 	sourceKey: "bilibili",
 	state: { status: "logged-out" },

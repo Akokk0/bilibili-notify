@@ -15,7 +15,7 @@
  *   config-changed 其它 scope:no-op
  *   AI 启 / 停 / 改:           lazy 构造 + 失效降级 + 已存在时 updateConfig
  *   image 配色热更:            puppeteer 在位时 imageRenderer.updateConfig
- *   subscription-changed / auth-restored / auth-lost: 转译并下发到引擎
+ *   subscription-changed:     转译并下发到引擎
  *   dispose():                stop 全引擎 + 解绑 bus(dispose 后 config-changed 不再生效)
  */
 

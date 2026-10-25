@@ -4,7 +4,7 @@ import { makeApi, makeServiceContext } from "./support/make-api";
 
 /**
  * 请求层把 B 站的数字码翻成标准码(ADR-0026 决策 4 下 10-14 的 🔗):经公开口 `fetchAllDynamic`,
- * 线是最底下的 `http.fetch` 替身,所以 `ApiClient` 的响应拦截器(-101 → auth-lost)也在路上。
+ * 线是最底下的 `http.fetch` 替身,所以 `ApiClient` 的响应拦截器(-101 → 登录失效)也在路上。
  */
 async function setup() {
 	const warns: string[] = [];

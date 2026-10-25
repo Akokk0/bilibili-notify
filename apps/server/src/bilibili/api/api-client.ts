@@ -16,7 +16,7 @@ import { RiskControlError } from "./risk-control";
  *   {@link RiskControlError},外层不重试;其余非 2xx 抛普通错误,仍走外层 retry。
  *   消息里的 URL 去掉 query(凭据常塞在 query 里,见 {@link urlWithoutQuery})。
  * - **JSON 尝试解析、失败回退原文**:JSON API 得对象,correspond HTML 页得字符串。
- * - **`onBody` 只对 2xx 的体触发**:响应拦截器挂点(-101 auth-lost 探测),非 2xx 先抛了,轮不到它。
+ * - **`onBody` 只对 2xx 的体触发**:响应拦截器挂点(-101 登录失效探测),非 2xx 先抛了,轮不到它。
  *   它带着这次请求发出去之前取的登录代(`generation`),迟到的回应由调用方按它认。
  * - **失败一律抛**:`HttpClient` 回的失败结果(超时、连不上)在这里转成 `Error`,进外层 retry。
  * - 重定向最多跟 5 跳,跟满还在跳就抛。
@@ -28,7 +28,7 @@ import { RiskControlError } from "./risk-control";
 export interface ApiClientOptions {
 	http: HttpClient;
 	/**
-	 * 每个 2xx 响应解析后回调(响应拦截器挂点,-101 auth-lost 探测用)。第二个参数是这次请求**发出去之前**
+	 * 每个 2xx 响应解析后回调(响应拦截器挂点,-101 登录失效探测用)。第二个参数是这次请求**发出去之前**
 	 * 取的那个记号(没给 `generation` 就是 `undefined`)。
 	 */
 	onBody?: (body: unknown, generation: number | undefined) => void;

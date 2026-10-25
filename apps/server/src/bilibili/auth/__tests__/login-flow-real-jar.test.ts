@@ -9,7 +9,7 @@
  * 不连 B 站:二维码、轮询、账号探测都换成替身。
  */
 
-import { type Logger, type MessageBus, ok } from "@bilibili-notify/internal";
+import { type Logger, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { COOKIE_SAVE_DELAY_MS } from "../../../integrations/http";
 import { makeApi, makeServiceContext } from "../../api/__tests__/support/make-api";
@@ -21,8 +21,7 @@ async function scanWorld() {
 	const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 	const host = makeServiceContext(logger);
 	const w = await makeApi({ serviceCtx: host.serviceCtx });
-	const bus: MessageBus = { emit: vi.fn(), on: vi.fn(() => ({ dispose: vi.fn() })) };
-	const flow = new LoginFlow({ serviceCtx: host.serviceCtx, api: w.api, bus, healthCheckMs: 0 });
+	const flow = new LoginFlow({ serviceCtx: host.serviceCtx, api: w.api, healthCheckMs: 0 });
 
 	vi.spyOn(w.api, "fetchLoginQrCode").mockResolvedValue(
 		ok({ data: { url: "https://qr", qrcode_key: "k" } }),

@@ -113,7 +113,7 @@ export class ViewerChatCollector {
 		this.senderBySubscription.delete(subscriptionId);
 	}
 
-	/** Drop everything (called on engine stop / auth-lost). */
+	/** Drop everything (called on engine stop / login loss). */
 	clearAll(): void {
 		this.weightBySubscription.clear();
 		this.senderBySubscription.clear();

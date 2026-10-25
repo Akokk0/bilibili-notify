@@ -326,7 +326,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		group: "state",
 		title: "动态拉取报错",
 		icon: "dyn",
-		desc: "让下一轮(可选:之后连着 N 轮)拉动态的请求返回指定的错误码,看动态引擎的退避、问题表与私聊怎么反应。想立刻看到就再点「动态检测」。盖的只是拉动态这一个请求,不经请求客户端的拦截:回 -101 也不会把登录状态变成失效,只会让动态引擎停着等 auth-restored;要验登录失效得用真的失效登录。收摊即回真。",
+		desc: "让下一轮(可选:之后连着 N 轮)拉动态的请求返回指定的错误码,看动态引擎的退避、问题表与私聊怎么反应。想立刻看到就再点「动态检测」。盖的只是拉动态这一个请求,不经请求客户端的拦截:回 -101 也不会把登录状态变成失效,只会让动态引擎停着,等登录恢复才重启;要验登录失效得用真的失效登录。收摊即回真。",
 		params: [
 			{ key: "code", label: "错误码", kind: "number", default: -352 },
 			{ key: "rounds", label: "连着几轮", kind: "number", default: 1, min: 1, max: 50 },

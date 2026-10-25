@@ -1,7 +1,7 @@
 /**
  * 端到端:独立端 `MasterNotifier` 把 bus `engine-error` 翻译成主人私聊
  * (`push.notifyMaster`),并按 per-source 60s 节流合并。登录失效不在这里说(由问题通知器说),
- * 它不再听 `auth-lost`。
+ * 它只监听组件错误。
  */
 
 import type { Logger } from "@bilibili-notify/internal";
@@ -30,25 +30,13 @@ function makePush() {
 	} as unknown as PushRouter & { notifyMaster: ReturnType<typeof vi.fn> };
 }
 
-describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
+describe("MasterNotifier — engine-error → 私聊", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
-	});
-
-	// 登录失效改由问题表与问题通知器说(带「已恢复」);这里再听 auth-lost 会让主人同一件事收两条。
-	it("不再听 auth-lost:发一条也不私聊", async () => {
-		const bus = createNodeMessageBus();
-		const push = makePush();
-		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
-
-		bus.emit("auth-lost");
-		await vi.runAllTimersAsync();
-
-		expect(push.notifyMaster).not.toHaveBeenCalled();
 	});
 
 	it("engine-error → push.notifyMaster + logger.warn(双通道)", async () => {

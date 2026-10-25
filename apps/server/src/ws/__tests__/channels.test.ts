@@ -89,14 +89,6 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		h = wire();
 	});
 
-	// 两个边事件留在总线上给引擎 / 统计 / 主人私聊用,但不再成 WS 帧:面板读 `subscription-auth-changed`,
-	// 旧的 `auth-lost` / `auth-restored` 帧随提交 ⑤ 一起退役(`auth` 频道只剩那一种帧)。
-	it("auth-lost / auth-restored 不再成帧", () => {
-		h.bus.emit("auth-lost");
-		h.bus.emit("auth-restored");
-		expect(h.publish).not.toHaveBeenCalled();
-	});
-
 	// 验红:删掉 `channels.ts` 里 `subscription-auth-changed` 那一条订阅,这条红(面板读新口,不转就永远看不到变化)。
 	it("subscription-auth-changed → auth 频道同名帧,data 是总线上那一个对象(来源键 + 状态,没有别的格)", () => {
 		const changed = {
@@ -455,10 +447,10 @@ describe("attachChannelWiring — log channel + dispose", () => {
 
 	it("dispose() 后所有 bus / log 订阅解绑,不再 publish", () => {
 		const h = wire();
-		h.bus.emit("auth-lost");
+		h.bus.emit("engine-error", { source: "test", message: "before dispose" });
 		const before = h.publish.mock.calls.length;
 		h.dispose();
-		h.bus.emit("auth-lost");
+		h.bus.emit("engine-error", { source: "test", message: "after dispose" });
 		h.bus.emit("config-changed", { scope: "globals" });
 		h.log.push({ level: "info", msg: "x", args: [], ts: "t" });
 		expect(h.publish.mock.calls.length).toBe(before);

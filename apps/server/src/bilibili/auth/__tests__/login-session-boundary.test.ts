@@ -16,10 +16,11 @@
  * 把 `-101` 的去抖改回只按时间记。
  */
 
-import type { Logger, MessageBus } from "@bilibili-notify/internal";
+import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeApi, makeServiceContext } from "../../api/__tests__/support/make-api";
 import * as EP from "../../api/endpoints";
+import { watchLoginEdges } from "../../login-edges";
 import { LoginFlow } from "../login-flow";
 
 const cookiesOf = (tag: string) =>
@@ -47,18 +48,17 @@ async function world(opts: { cookies?: string; token?: string; healthCheckMs?: n
 	if (opts.cookies !== undefined) secrets["http.cookies"] = opts.cookies;
 	if (opts.token !== undefined) secrets.refreshToken = opts.token;
 	const w = await makeApi({ serviceCtx: host.serviceCtx, callbacks: { onAuthLost }, secrets });
-	const events: string[] = [];
-	const bus: MessageBus = {
-		emit: (event: string) => void events.push(event),
-		on: () => ({ dispose() {} }),
-	} as MessageBus;
 	flow = new LoginFlow({
 		serviceCtx: host.serviceCtx,
 		api: w.api,
-		bus,
 		healthCheckMs: opts.healthCheckMs ?? 0,
 	});
 	const theFlow = flow;
+	const lost = vi.fn();
+	watchLoginEdges(
+		{ state: () => theFlow.authState(), onChange: (fn) => theFlow.onChange(fn) },
+		{ onLost: lost, onRestored: vi.fn() },
+	);
 
 	// ---- 线:最底下的 fetch 换成替身。给了自动回应的地址立刻回,别的悬着等用例回。 ----
 	const autos = new Map<string, Reply>();
@@ -132,7 +132,7 @@ async function world(opts: { cookies?: string; token?: string; healthCheckMs?: n
 		await pass(1_000);
 	}
 
-	return { ...w, host, flow: theFlow, onAuthLost, events, wire, pass, resumeLogin, scan };
+	return { ...w, host, flow: theFlow, onAuthLost, lost, wire, pass, resumeLogin, scan };
 }
 
 describe("① 扫码登上之后续期要起来", () => {
@@ -262,7 +262,7 @@ describe("③ 请求级的迟到 -101", () => {
 
 		expect(w.secrets.persists).toHaveLength(1);
 		expect(w.flow.authState().status).toBe("logged-in");
-		expect(w.events).toEqual([]);
+		expect(w.lost).not.toHaveBeenCalled();
 	});
 
 	it("同一段登录里连着来的 -101 只报一次(去抖还在)", async () => {
@@ -300,7 +300,7 @@ describe("④ 恢复备份换罐之后也是一段新登录", () => {
 
 		expect(w.onAuthLost).not.toHaveBeenCalled();
 		expect(w.flow.authState().status).not.toBe("expired");
-		expect(w.events).not.toContain("auth-lost");
+		expect(w.lost).not.toHaveBeenCalled();
 
 		await w.wire.answer(EP.MYSELF_INFO_URL, { code: 0, data: { mid: 7 } });
 		await resumed;
