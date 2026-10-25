@@ -1,10 +1,6 @@
+import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import {
-	createDevRegistry,
-	DevParamError,
-	type DevScenarioDef,
-	DevScenarioNotFound,
-} from "../registry.js";
+import { createDevRegistry, type DevScenarioDef } from "../registry.js";
 
 /**
  * devtools 的中央注册表:一张表、两半共用一个形状。这一层管三件事 —— 把声明(纯数据)
@@ -18,7 +14,7 @@ function def(overrides: Partial<DevScenarioDef> = {}): DevScenarioDef {
 		group: "state",
 		title: "一号",
 		params: [],
-		run: vi.fn(async () => ({})),
+		run: vi.fn(async () => ok()),
 		...overrides,
 	};
 }
@@ -50,7 +46,7 @@ describe("createDevRegistry", () => {
 	});
 
 	it("run() 按 schema 补默认值:enum / number / text 各一档", async () => {
-		const run = vi.fn(async () => ({ summary: "done" }));
+		const run = vi.fn(async () => ok({ summary: "done" }));
 		const reg = createDevRegistry([
 			def({
 				id: "a",
@@ -72,11 +68,11 @@ describe("createDevRegistry", () => {
 		const res = await reg.run("a", {});
 
 		expect(run).toHaveBeenCalledWith({ phase: "ready", count: 6, target: "0.99.0" });
-		expect(res.summary).toBe("done");
+		expect(res).toMatchObject({ ok: true, summary: "done" });
 	});
 
 	it("run() 给的值压过默认值;number 收字符串也转成数", async () => {
-		const run = vi.fn(async () => ({}));
+		const run = vi.fn(async () => ok());
 		const reg = createDevRegistry([
 			def({
 				id: "a",
@@ -94,7 +90,7 @@ describe("createDevRegistry", () => {
 		expect(run).toHaveBeenCalledWith({ count: 8, target: "1.2.3" });
 	});
 
-	it("enum 不在选项里 / number 越界 → DevParamError", async () => {
+	it("enum 不在选项里 / number 越界 → invalid", async () => {
 		const reg = createDevRegistry([
 			def({
 				id: "a",
@@ -111,13 +107,22 @@ describe("createDevRegistry", () => {
 			}),
 		]);
 
-		await expect(reg.run("a", { phase: "nope" })).rejects.toBeInstanceOf(DevParamError);
-		await expect(reg.run("a", { count: 11 })).rejects.toBeInstanceOf(DevParamError);
-		await expect(reg.run("a", { count: "abc" })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("a", { phase: "nope" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		await expect(reg.run("a", { count: 11 })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		await expect(reg.run("a", { count: "abc" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 
 	it("sub / target / adapter 不补默认值 —— 省略就省略,交给场景自己在服务端挑", async () => {
-		const run = vi.fn(async () => ({}));
+		const run = vi.fn(async () => ok());
 		const reg = createDevRegistry([
 			def({ id: "a", params: [{ key: "sub", label: "订阅", kind: "sub" }], run }),
 		]);
@@ -129,9 +134,13 @@ describe("createDevRegistry", () => {
 		expect(run).toHaveBeenLastCalledWith({ sub: "uid-1" });
 	});
 
-	it("没这个场景 → DevScenarioNotFound", async () => {
+	it("没这个场景 → not_found", async () => {
 		const reg = createDevRegistry([def({ id: "a" })]);
-		await expect(reg.run("zzz", {})).rejects.toBeInstanceOf(DevScenarioNotFound);
+		await expect(reg.run("zzz", {})).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: "没有这个场景:zzz",
+		});
 	});
 
 	it("active() 汇总各场景当前生效的注入;run() 回执里也带一份", async () => {
@@ -141,7 +150,7 @@ describe("createDevRegistry", () => {
 				id: "a",
 				run: async () => {
 					on = true;
-					return {};
+					return ok();
 				},
 				active: () => (on ? { scenarioId: "a", label: "假的 A" } : null),
 				reset: () => {
@@ -154,7 +163,7 @@ describe("createDevRegistry", () => {
 
 		expect(reg.active()).toEqual([]);
 		const res = await reg.run("a", {});
-		expect(res.active).toEqual([{ scenarioId: "a", label: "假的 A" }]);
+		expect(res).toMatchObject({ ok: true, active: [{ scenarioId: "a", label: "假的 A" }] });
 		expect(reg.active()).toEqual([{ scenarioId: "a", label: "假的 A" }]);
 	});
 
@@ -165,7 +174,7 @@ describe("createDevRegistry", () => {
 				id,
 				run: async () => {
 					state[id] = true;
-					return {};
+					return ok();
 				},
 				active: () => (state[id] ? { scenarioId: id, label: id } : null),
 				reset: () => {
@@ -176,13 +185,20 @@ describe("createDevRegistry", () => {
 		await reg.run("a", {});
 		await reg.run("c", {});
 
-		expect(await reg.reset("a")).toEqual([{ scenarioId: "c", label: "c" }]);
-		expect(await reg.reset()).toEqual([]);
-		await expect(reg.reset("zzz")).rejects.toBeInstanceOf(DevScenarioNotFound);
+		expect(await reg.reset("a")).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "c", label: "c" }],
+		});
+		expect(await reg.reset()).toMatchObject({ ok: true, active: [] });
+		await expect(reg.reset("zzz")).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: "没有这个场景:zzz",
+		});
 	});
 	it("list() 回的是同一份声明表:声明是静态的,轮询不该每次都重新剥一遍", () => {
 		const reg = createDevRegistry([
-			{ id: "a", group: "state", title: "A", params: [], run: () => ({}) },
+			{ id: "a", group: "state", title: "A", params: [], run: () => ok() },
 		]);
 		expect(reg.list()).toBe(reg.list());
 	});

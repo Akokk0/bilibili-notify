@@ -108,7 +108,7 @@ describe("createDevtools", () => {
 
 	/** 登记表接线:剪断 `providers.scenarios()` 那一行,这条就红(别家登记的场景进不了注册表)。 */
 	it("登记表里各家交的场景汇进注册表,id 带来源前缀", async () => {
-		const run = vi.fn(() => ({ summary: "跑了" }));
+		const run = vi.fn(() => ok({ summary: "跑了" }));
 		const dev = createDevtools({
 			...BARE,
 			payloadVersion: "0.0.0-dev",
@@ -122,7 +122,10 @@ describe("createDevtools", () => {
 		const ids = dev.registry.list().map((s) => s.id);
 		expect(ids).toContain("demo.hello");
 		expect(ids).not.toContain("hello");
-		expect((await dev.registry.run("demo.hello", {})).summary).toBe("跑了");
+		expect(await dev.registry.run("demo.hello", {})).toMatchObject({
+			ok: true,
+			summary: "跑了",
+		});
 	});
 });
 
@@ -214,7 +217,10 @@ describe("createDevtools · 截流接线", () => {
 		expect(send).toHaveBeenCalledTimes(1);
 
 		const res = await dev.registry.run("push.capture", {});
-		expect(res.active).toEqual([{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }],
+		});
 		await dispatcher.send("t", { kind: "text", text: "a" });
 		await dispatcher.sendToAddress(
 			"ad",

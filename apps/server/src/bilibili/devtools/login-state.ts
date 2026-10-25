@@ -2,6 +2,7 @@ import {
 	type AuthState,
 	BILIBILI_SOURCE_KEY,
 	type MessageBus,
+	ok,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
@@ -110,7 +111,7 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 		],
 		async run(params) {
 			const auth = deps.auth();
-			if (!auth) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
+			if (!auth) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
 			const key = String(params.status ?? "awaiting-scan") as Key;
 			const uname =
 				typeof params.uname === "string" && params.uname !== "" ? params.uname : DEFAULT_UNAME;
@@ -121,7 +122,7 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 			auth.override("state", () => built.state);
 			auth.override("account", () => built.account);
 			publish(built.state);
-			return {};
+			return ok();
 		},
 		active() {
 			if (!fake) return null;

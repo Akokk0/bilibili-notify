@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
-import { DevParamError } from "../../../devtools/registry.js";
 import type { LiveEvent } from "../../live/protocol/events.js";
 import { liveScenarios, type SubPick } from "../live.js";
 import { createLiveRooms } from "../live-rooms.js";
@@ -85,7 +84,7 @@ describe("live.start / live.end", () => {
 		const res = await reg.run("bilibili.live.start", {});
 
 		expect(events).toEqual([{ kind: "live-start" }]);
-		expect(res.summary).toContain("5050");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("5050") });
 		const info = await api.fetchLiveRoomInfo("5050");
 		expect(info.data).toMatchObject({
 			live_status: 1,
@@ -95,7 +94,10 @@ describe("live.start / live.end", () => {
 		});
 		// 别的房间不受影响。
 		expect((await api.fetchLiveRoomInfo("7070")).data.live_status).toBe(0);
-		expect(res.active).toEqual([{ scenarioId: "bilibili.live.start", label: "假直播中 · 甲" }]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "bilibili.live.start", label: "假直播中 · 甲" }],
+		});
 	});
 
 	it("指定 sub 与标题", async () => {
@@ -106,13 +108,19 @@ describe("live.start / live.end", () => {
 
 	it("房间没连上 → 参数错误,说清楚是哪个", async () => {
 		const { reg } = setup();
-		await expect(reg.run("bilibili.live.start", { sub: "s3" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
-		await expect(reg.run("bilibili.live.start", { sub: "s2" })).rejects.toThrow(/6060/);
-		await expect(reg.run("bilibili.live.start", { sub: "nope" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("bilibili.live.start", { sub: "s3" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		await expect(reg.run("bilibili.live.start", { sub: "s2" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("6060"),
+		});
+		await expect(reg.run("bilibili.live.start", { sub: "nope" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 
 	it("下播:塞 live-end,补丁摘掉,生效表清空", async () => {
@@ -122,13 +130,13 @@ describe("live.start / live.end", () => {
 
 		expect(events).toEqual([{ kind: "live-start" }, { kind: "live-end" }]);
 		expect((await api.fetchLiveRoomInfo("5050")).data.live_status).toBe(0);
-		expect(res.active).toEqual([]);
+		expect(res).toMatchObject({ ok: true, active: [] });
 	});
 
 	it("收摊 = 对每个假直播中的房间下播", async () => {
 		const { reg, events, api } = setup();
 		await reg.run("bilibili.live.start", {});
-		expect(await reg.reset("bilibili.live.start")).toEqual([]);
+		expect(await reg.reset("bilibili.live.start")).toMatchObject({ ok: true, active: [] });
 		expect(events.at(-1)).toEqual({ kind: "live-end" });
 		expect((await api.fetchLiveRoomInfo("5050")).data.live_status).toBe(0);
 	});
@@ -137,6 +145,6 @@ describe("live.start / live.end", () => {
 		const { reg, events } = setup();
 		const res = await reg.run("bilibili.live.end", {});
 		expect(events).toEqual([{ kind: "live-end" }]);
-		expect(res.summary).toContain("真");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("真") });
 	});
 });

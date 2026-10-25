@@ -1,9 +1,14 @@
-import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
-import { RESERVED_INTEGRATION_KEYS } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	type ConnectionCapabilities,
+	fail,
+	ok,
+	RESERVED_INTEGRATION_KEYS,
+} from "@bilibili-notify/internal";
 import { routeConnection } from "../../push/dispatch.js";
 import type { PlatformAdapterView } from "../../push/registry.js";
 import type { CapabilityInjector } from "../capability-injection.js";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../registry.js";
 
 /**
  * B3:连接能力三态 —— 小程序卡 支持 / 不支持 / 未知。面板的能力探测面板、系统页支持面板、
@@ -97,12 +102,14 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 					? connections.find((a) => capable.has(a.adapterKey))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					wanted === undefined ? "没有有能力概念的连接" : `没有这个连接:${wanted}`,
 				);
 			}
 			if (!capable.has(connection.adapterKey)) {
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有能力这回事`,
 				);
 			}
@@ -113,7 +120,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			const route = routeConnection(deps.dialects(), connection);
 			const base = route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
 			deps.injector.set(connection.id, build(state, reason, base));
-			return {};
+			return ok();
 		},
 		active() {
 			const entries = deps.injector.entries();

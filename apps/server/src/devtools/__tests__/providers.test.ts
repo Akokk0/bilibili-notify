@@ -1,3 +1,4 @@
+import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { createDevtoolsProviderRegistry } from "../providers.js";
 import { createDevRegistry, type DevScenarioDef } from "../registry.js";
@@ -8,7 +9,7 @@ import { createDevRegistry, type DevScenarioDef } from "../registry.js";
  */
 
 function def(id: string, over: Partial<DevScenarioDef> = {}): DevScenarioDef {
-	return { id, group: "event", title: id, params: [], run: () => ({}), ...over };
+	return { id, group: "event", title: id, params: [], run: () => ok(), ...over };
 }
 
 describe("devtoolsProviders", () => {
@@ -58,7 +59,7 @@ describe("devtoolsProviders", () => {
 				def("auth.login-state", {
 					run: () => {
 						on = true;
-						return {};
+						return ok();
 					},
 					active: () => (on ? { scenarioId: "auth.login-state", label: "假登录" } : null),
 					reset: () => {
@@ -70,8 +71,14 @@ describe("devtoolsProviders", () => {
 		const registry = createDevRegistry(providers.scenarios());
 
 		const res = await registry.run("bilibili.auth.login-state", {});
-		expect(res.active).toEqual([{ scenarioId: "bilibili.auth.login-state", label: "假登录" }]);
-		expect(await registry.reset("bilibili.auth.login-state")).toEqual([]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "bilibili.auth.login-state", label: "假登录" }],
+		});
+		expect(await registry.reset("bilibili.auth.login-state")).toMatchObject({
+			ok: true,
+			active: [],
+		});
 	});
 
 	it("没有 active 的场景汇总后仍没有 active", () => {

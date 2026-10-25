@@ -23,7 +23,7 @@ describe("总线事件场景", () => {
 		const { reg, seen } = setup();
 		const res = await reg.run("pipeline.error", { source: "post-delivery", message: "假的炸了" });
 		expect(seen).toEqual([["pipeline-error", ["post-delivery", "假的炸了"]]]);
-		expect(res.summary).toContain("post-delivery");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("post-delivery") });
 	});
 
 	it("pipeline.error 默认值:live-engine + 一句看得出是假的话", async () => {

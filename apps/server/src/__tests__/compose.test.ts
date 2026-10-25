@@ -538,7 +538,11 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			const pipeline = { registerSource: vi.fn().mockRejectedValueOnce(boom) } as never;
 			await expect(builtins.registerSources(pipeline)).rejects.toBe(boom);
 			expect(integrationStore.openKeys()).toEqual([]);
-			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
+			await expect(runScenario(scenario)).resolves.toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining("动态引擎还没起来"),
+			});
 			// 锚点 = 来源起来那一刻:拨回起点再登记,场景那条假动态才晚于锚点。
 			vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
 			await builtins.registerSources(fake.pipeline);
@@ -581,7 +585,11 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await builtins.registerSources(fake.pipeline);
 			await runScenario(scenario);
 			await fake.registered[0]?.source.stop();
-			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
+			await expect(runScenario(scenario)).resolves.toMatchObject({
+				ok: false,
+				code: "invalid",
+				message: expect.stringContaining("动态引擎还没起来"),
+			});
 		});
 	});
 

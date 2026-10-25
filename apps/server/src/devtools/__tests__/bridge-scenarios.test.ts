@@ -111,7 +111,7 @@ describe("假装一条桥连上来", () => {
 			bridge: { kind: "koishi" },
 			bots: [{ platform: "onebot" }],
 		});
-		expect(out.summary).toContain("家里那台 koishi");
+		expect(out).toMatchObject({ ok: true, summary: expect.stringContaining("家里那台 koishi") });
 	});
 
 	it("连上之后进「当前生效」条,收摊就没了", async () => {
@@ -149,24 +149,40 @@ describe("假装一条桥连上来", () => {
 
 	it("没有桥接入 → 说清楚要先去建一条,别默默连一条空的", async () => {
 		settings = undefined;
-		await expect(from("bridge.connect").run({})).rejects.toThrow(/接入/);
+		await expect(from("bridge.connect").run({})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/接入/),
+		});
 	});
 
 	it("设置的形状不对 → 当一条都没有,不在 devtools 里炸", async () => {
 		settings = { links: "nope" };
-		await expect(from("bridge.connect").run({})).rejects.toThrow(/接入/);
+		await expect(from("bridge.connect").run({})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/接入/),
+		});
 	});
 
 	it("接入的 token 是空的 → 明说(备份恢复回来的那条就是空的)", async () => {
 		settings = { links: [{ ...LINK, token: "" }] };
-		await expect(from("bridge.connect").run({})).rejects.toThrow(/token/);
+		await expect(from("bridge.connect").run({})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/token/),
+		});
 	});
 
 	it("按名字或 id 挑得到接入;挑了没有的 → 明说", async () => {
 		settings = { links: [{ ...LINK, id: "other", name: "机房那台" }, LINK] };
 		const out = await from("bridge.connect").run({ link: "家里那台 koishi" });
-		expect(out.summary).toContain("家里那台 koishi");
-		await expect(from("bridge.connect").run({ link: "没有这条" })).rejects.toThrow(/没有这条接入/);
+		expect(out).toMatchObject({ ok: true, summary: expect.stringContaining("家里那台 koishi") });
+		await expect(from("bridge.connect").run({ link: "没有这条" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/没有这条接入/),
+		});
 	});
 });
 
@@ -207,11 +223,15 @@ describe("桥驮一条消息上来", () => {
 		const inbound = await nextFrame("inbound");
 		const userId = (inbound.message as { userId: string }).userId;
 		expect(userId).not.toBe(selfId);
-		expect(out.summary).toContain(userId);
+		expect(out).toMatchObject({ ok: true, summary: expect.stringContaining(userId) });
 	});
 
-	it("还没假装连上就驮 → 说清楚先按上面那条", () => {
-		// 同步抛 —— 注册表那头 `await def.run(...)`,对面板来说与 reject 一样。
-		expect(() => from("bridge.inbound").run({ text: "帮助" })).toThrow(/没连/);
+	it("还没假装连上就驮 → 说清楚先按上面那条", async () => {
+		// 同步回失败结果 —— 注册表无须靠异常猜「还没连上」。
+		expect(from("bridge.inbound").run({ text: "帮助" })).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/没连/),
+		});
 	});
 });

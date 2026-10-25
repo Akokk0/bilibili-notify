@@ -1,3 +1,4 @@
+import { ok } from "@bilibili-notify/internal";
 import type { CaptureGate } from "../capture.js";
 import type { DevScenarioDef } from "../registry.js";
 
@@ -15,7 +16,7 @@ export function pushCaptureScenario(gate: CaptureGate): DevScenarioDef {
 		params: [],
 		run() {
 			gate.enable();
-			return { summary: "截流已开:从现在起推送只进列表,不出网。" };
+			return ok({ summary: "截流已开:从现在起推送只进列表,不出网。" });
 		},
 		active() {
 			return gate.enabled()

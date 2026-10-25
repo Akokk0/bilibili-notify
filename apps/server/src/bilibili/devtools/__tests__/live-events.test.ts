@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DevParamError } from "../../../devtools/registry.js";
 import { GuardLevel, type LiveEvent } from "../../live/protocol/events.js";
 import type { SubPick } from "../live.js";
 import { liveEventScenarios } from "../live-events.js";
@@ -64,7 +63,7 @@ describe("直播事件场景", () => {
 		expect(new Set(danmakus.map((e) => e.user.uid)).size).toBe(8);
 		expect(new Set(danmakus.map((e) => e.content)).size).toBeGreaterThanOrEqual(50);
 		expect(danmakus.every((e) => typeof e.timestamp === "number")).toBe(true);
-		expect(res.summary).toContain("60");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("60") });
 	});
 
 	it("弹幕批量:给了 uid 就全由这一位发 —— 拿来试特别关注的弹幕推送", async () => {
@@ -132,8 +131,9 @@ describe("直播事件场景", () => {
 
 	it("房间没连上 → 参数错误", async () => {
 		const { reg } = setup();
-		await expect(reg.run("bilibili.live.superchat", { sub: "s3" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("bilibili.live.superchat", { sub: "s3" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 });

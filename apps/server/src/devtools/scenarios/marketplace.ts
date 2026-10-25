@@ -1,5 +1,6 @@
+import { fail, ok } from "@bilibili-notify/internal";
 import type { InjectableMarketplace } from "../marketplace-injection.js";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../registry.js";
 
 /**
  * 「拓展有更新」—— 已装卡片上的「有新版 vX · 更新」一键造出来,而且按得下去。
@@ -31,19 +32,20 @@ export function marketplaceUpdateScenario(injectable: InjectableMarketplace): De
 		],
 		run(params) {
 			const id = String(params.ext ?? "").trim();
-			if (id === "") throw new DevParamError("要给一个拓展 id");
+			if (id === "") return fail("invalid", "要给一个拓展 id");
 			// 没装的造了也看不见:「有新版」那颗钮长在已装卡片上,市场那一节又把可更新的滤掉了。
 			if (!injectable.installed(id)) {
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					`${id} 没装 —— 「有新版」长在已装卡片上,先装上它(拓展组「装一个仓里的拓展」或从市场装)`,
 				);
 			}
 			const seconds = typeof params.download === "number" ? params.download : 2;
 			injectable.inject(id, seconds * 1000);
 			const version = injectable.injected()?.version;
-			return {
+			return ok({
 				summary: `${id} 的卡上现在有「有新版 v${version} · 更新」;按下去假装装成,盘上一个字节都不动`,
-			};
+			});
 		},
 		active() {
 			const now = injectable.injected();

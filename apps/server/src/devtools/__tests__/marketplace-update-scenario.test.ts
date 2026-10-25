@@ -18,7 +18,7 @@ import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createMarketplace, type Marketplace } from "../../extensions/marketplace.js";
 import { type InstalledExtension, injectableMarketplace } from "../marketplace-injection.js";
-import { createDevRegistry, DevParamError } from "../registry.js";
+import { createDevRegistry } from "../registry.js";
 import { marketplaceUpdateScenario } from "../scenarios/marketplace.js";
 
 function entry(over: Partial<MarketplaceEntryDTO> & { id: string }): MarketplaceEntryDTO {
@@ -116,9 +116,10 @@ describe("ext.updatable · 列表", () => {
 			},
 			OTHER,
 		]);
-		expect(res.active).toEqual([
-			{ scenarioId: "ext.updatable", label: "拓展有更新 → bridge v1.2.4" },
-		]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "ext.updatable", label: "拓展有更新 → bridge v1.2.4" }],
+		});
 	});
 
 	it.each([
@@ -268,15 +269,21 @@ describe("ext.updatable · 收摊与挡板", () => {
 				[{ id: "bridge", version: "1.2.3" }],
 			);
 			await reg.run("ext.updatable", { ext: "bridge", download: 0 });
-			expect(await reg.reset(id)).toEqual([]);
+			expect(await reg.reset(id)).toMatchObject({ ok: true, active: [] });
 			expect((await market.list()).extensions).toEqual([BRIDGE_ELSEWHERE, OTHER]);
 		}
 	});
 
 	it("没装的 id / 空 id:当场拒,什么都不注入", async () => {
 		const { reg, market } = setup([BRIDGE_ELSEWHERE], [{ id: "bridge", version: "1.2.3" }]);
-		await expect(reg.run("ext.updatable", { ext: "ghost" })).rejects.toBeInstanceOf(DevParamError);
-		await expect(reg.run("ext.updatable", { ext: " " })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("ext.updatable", { ext: "ghost" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		await expect(reg.run("ext.updatable", { ext: " " })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		expect(reg.active()).toEqual([]);
 		expect((await market.list()).extensions).toEqual([BRIDGE_ELSEWHERE]);
 	});

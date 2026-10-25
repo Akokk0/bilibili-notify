@@ -1,5 +1,6 @@
+import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { DevParamError, type DevRegistry, DevScenarioNotFound } from "../registry.js";
+import type { DevRegistry } from "../registry.js";
 import { createDevRoute } from "../route.js";
 
 /**
@@ -10,9 +11,9 @@ import { createDevRoute } from "../route.js";
 function fakeRegistry(overrides: Partial<DevRegistry> = {}): DevRegistry {
 	return {
 		list: () => [{ id: "a", group: "state", title: "A", params: [] }],
-		run: vi.fn(async () => ({ active: [] })),
+		run: vi.fn(async () => ok({ active: [] })),
 		active: () => [{ scenarioId: "a", label: "假的 A" }],
-		reset: vi.fn(async () => []),
+		reset: vi.fn(async () => ok({ active: [] })),
 		...overrides,
 	};
 }
@@ -29,7 +30,7 @@ describe("dev 路由", () => {
 	});
 
 	it("POST /run/:id 把 params 交给注册表,回执原样交出", async () => {
-		const run = vi.fn(async () => ({ summary: "跑了", active: [] }));
+		const run = vi.fn(async () => ok({ summary: "跑了", active: [] }));
 		const app = createDevRoute({ registry: fakeRegistry({ run }) });
 		const res = await app.request("/run/a", {
 			method: "POST",
@@ -42,7 +43,7 @@ describe("dev 路由", () => {
 	});
 
 	it("POST /run/:id 没有 body 也行 —— 全按默认值", async () => {
-		const run = vi.fn(async () => ({ active: [] }));
+		const run = vi.fn(async () => ok({ active: [] }));
 		const app = createDevRoute({ registry: fakeRegistry({ run }) });
 		const res = await app.request("/run/a", { method: "POST" });
 		expect(res.status).toBe(200);
@@ -53,8 +54,8 @@ describe("dev 路由", () => {
 		const app = createDevRoute({
 			registry: fakeRegistry({
 				run: async (id) => {
-					if (id === "zzz") throw new DevScenarioNotFound(id);
-					throw new DevParamError("相位没有「nope」这一档");
+					if (id === "zzz") return fail("not_found", `没有这个场景:${id}`);
+					return fail("invalid", "相位没有「nope」这一档");
 				},
 			}),
 		});
@@ -71,7 +72,7 @@ describe("dev 路由", () => {
 	});
 
 	it("params 不是对象 → 400,不交给注册表", async () => {
-		const run = vi.fn(async () => ({ active: [] }));
+		const run = vi.fn(async () => ok({ active: [] }));
 		const app = createDevRoute({ registry: fakeRegistry({ run }) });
 		const res = await app.request("/run/a", {
 			method: "POST",
@@ -85,7 +86,7 @@ describe("dev 路由", () => {
 
 	it("POST /reset 全收、POST /reset/:id 只收那一个;回收完的生效表交出", async () => {
 		const reset = vi.fn(async (id?: string) =>
-			id === undefined ? [] : [{ scenarioId: "b", label: "B" }],
+			ok({ active: id === undefined ? [] : [{ scenarioId: "b", label: "B" }] }),
 		);
 		const app = createDevRoute({ registry: fakeRegistry({ reset }) });
 
@@ -101,9 +102,7 @@ describe("dev 路由", () => {
 	it("POST /reset/:id 没这个场景 → 404", async () => {
 		const app = createDevRoute({
 			registry: fakeRegistry({
-				reset: (id) => {
-					throw new DevScenarioNotFound(id ?? "?");
-				},
+				reset: async (id) => fail("not_found", `没有这个场景:${id ?? "?"}`),
 			}),
 		});
 		const res = await app.request("/reset/zzz", { method: "POST" });

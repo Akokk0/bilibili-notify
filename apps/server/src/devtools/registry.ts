@@ -5,6 +5,7 @@ import type {
 	DevRunResponse,
 	DevScenario,
 } from "@bilibili-notify/contract";
+import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal";
 
 /**
  * devtools 的中央注册表(服务端这半)。
@@ -17,12 +18,9 @@ import type {
  * 就会拿到 `undefined` 往下传。`sub` / `target` / `adapter` 三种**不在这里补**——默认值
  * 是「第一个启用的订阅」这类要查配置的事,归场景自己。
  */
-export interface DevRunOutcome {
-	summary?: string;
-}
 
 export interface DevScenarioDef extends DevScenario {
-	run(params: DevParamValues): Promise<DevRunOutcome> | DevRunOutcome;
+	run(params: DevParamValues): Result<{ summary?: string }> | Promise<Result<{ summary?: string }>>;
 	/** 状态类场景:现在生效着的那条注入,没有就 null。事件类不写。 */
 	active?(): DevInjection | null;
 	/**
@@ -34,30 +32,15 @@ export interface DevScenarioDef extends DevScenario {
 
 export interface DevRegistry {
 	list(): DevScenario[];
-	run(id: string, params: DevParamValues): Promise<DevRunResponse>;
+	run(id: string, params: DevParamValues): Promise<Result<DevRunResponse>>;
 	active(): DevInjection[];
 	/** 收摊:给 id 只收那一个,不给全收。回收完之后的生效表。 */
-	reset(id?: string): Promise<DevInjection[]>;
+	reset(id?: string): Promise<Result<{ active: DevInjection[] }>>;
 }
 
-export class DevScenarioNotFound extends Error {
-	constructor(id: string) {
-		super(`没有这个场景:${id}`);
-		this.name = "DevScenarioNotFound";
-	}
-}
-
-export class DevParamError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "DevParamError";
-	}
-}
-
-/** 场景要用的口是后建的、现取的:还没起来就当参数错拒掉,别让一个 undefined 往下传。 */
-export function need<T>(value: T | null | undefined, what: string): T {
-	if (value === null || value === undefined) throw new DevParamError(`${what}还没起来`);
-	return value;
+/** 场景要用的口是后建的、现取的:还没起来就当参数错回结果,别让一个 undefined 往下传。 */
+export function notReady(what: string): Failure {
+	return fail("invalid", `${what}还没起来`);
 }
 
 /** 把声明从 def 里剥出来 —— 函数不能过 JSON,而且面板也不该拿到。 */
@@ -73,43 +56,55 @@ function declarationOf(def: DevScenarioDef): DevScenario {
 function coerce(
 	field: DevParamField,
 	given: string | number | undefined,
-): string | number | undefined {
+): Result<{ value: string | number | undefined }> {
+	let value: string | number | undefined;
 	switch (field.kind) {
 		case "sub":
 		case "target":
 		case "connection":
-			return given === undefined ? undefined : String(given);
+			value = given === undefined ? undefined : String(given);
+			break;
 		case "text":
-			return given === undefined ? field.default : String(given);
+			value = given === undefined ? field.default : String(given);
+			break;
 		case "enum": {
-			const value = given === undefined ? field.default : String(given);
+			value = given === undefined ? field.default : String(given);
 			if (!field.options.some((o) => o.value === value)) {
-				throw new DevParamError(`${field.label}(${field.key})没有「${value}」这一档`);
+				return fail("invalid", `${field.label}(${field.key})没有「${value}」这一档`);
 			}
-			return value;
+			break;
 		}
 		case "number": {
-			if (given === undefined) return field.default;
+			if (given === undefined) {
+				value = field.default;
+				break;
+			}
 			const n = typeof given === "number" ? given : Number(given);
-			if (!Number.isFinite(n)) throw new DevParamError(`${field.label}(${field.key})要是个数`);
+			if (!Number.isFinite(n)) return fail("invalid", `${field.label}(${field.key})要是个数`);
 			if (field.min !== undefined && n < field.min) {
-				throw new DevParamError(`${field.label}(${field.key})最小 ${field.min}`);
+				return fail("invalid", `${field.label}(${field.key})最小 ${field.min}`);
 			}
 			if (field.max !== undefined && n > field.max) {
-				throw new DevParamError(`${field.label}(${field.key})最大 ${field.max}`);
+				return fail("invalid", `${field.label}(${field.key})最大 ${field.max}`);
 			}
-			return n;
+			value = n;
+			break;
 		}
 	}
+	return ok({ value });
 }
 
-function fillParams(fields: DevParamField[], given: DevParamValues): DevParamValues {
+function fillParams(
+	fields: DevParamField[],
+	given: DevParamValues,
+): Result<{ values: DevParamValues }> {
 	const out: DevParamValues = {};
 	for (const field of fields) {
-		const value = coerce(field, given[field.key]);
-		if (value !== undefined) out[field.key] = value;
+		const coerced = coerce(field, given[field.key]);
+		if (!coerced.ok) return coerced;
+		if (coerced.value !== undefined) out[field.key] = coerced.value;
 	}
-	return out;
+	return ok({ values: out });
 }
 
 export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry {
@@ -119,12 +114,6 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 		byId.set(def.id, def);
 	}
 	const declarations = [...byId.values()].map(declarationOf);
-
-	function must(id: string): DevScenarioDef {
-		const def = byId.get(id);
-		if (!def) throw new DevScenarioNotFound(id);
-		return def;
-	}
 
 	function active(): DevInjection[] {
 		const out: DevInjection[] = [];
@@ -140,11 +129,15 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 		// 二十多个对象,只是在给轮询多做无用功。
 		list: () => declarations,
 		async run(id, params) {
-			const def = must(id);
-			const outcome = await def.run(fillParams(def.params, params));
+			const def = byId.get(id);
+			if (!def) return fail("not_found", `没有这个场景:${id}`);
+			const filled = fillParams(def.params, params);
+			if (!filled.ok) return filled;
+			const outcome = await def.run(filled.values);
+			if (!outcome.ok) return outcome;
 			const res: DevRunResponse = { active: active() };
 			if (outcome.summary !== undefined) res.summary = outcome.summary;
-			return res;
+			return ok(res);
 		},
 		active,
 		async reset(id) {
@@ -156,9 +149,11 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 				const failed = results.find((r) => r.status === "rejected");
 				if (failed?.status === "rejected") throw failed.reason;
 			} else {
-				await must(id).reset?.();
+				const def = byId.get(id);
+				if (!def) return fail("not_found", `没有这个场景:${id}`);
+				await def.reset?.();
 			}
-			return active();
+			return ok({ active: active() });
 		},
 	};
 }

@@ -7,7 +7,7 @@ import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { createCapabilityInjector } from "../capability-injection.js";
-import { createDevRegistry, DevParamError } from "../registry.js";
+import { createDevRegistry } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";
 
 /**
@@ -128,9 +128,10 @@ describe("connection.capability", () => {
 		expect(ob.capabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
 		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
 		expect(ob.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
-		expect(res.active).toEqual([
-			{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" },
-		]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" }],
+		});
 	});
 
 	it("注入只换小程序卡这一格:atAll / inbound 沿用方言原本的回答", async () => {
@@ -161,9 +162,10 @@ describe("connection.capability", () => {
 		const { reg, ob } = setup();
 		await reg.run("connection.capability", { state: "supported" });
 		expect(ob.capabilities?.(OB)?.nativeShare.state).toBe("supported");
-		await expect(reg.run("connection.capability", { connection: "ad-wh" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("connection.capability", { connection: "ad-wh" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 
 	it("有能力概念的平台是问方言问出来的,不是写死的一份名单", async () => {
@@ -189,7 +191,7 @@ describe("connection.capability", () => {
 	it("收摊回真", async () => {
 		const { reg, ob } = setup();
 		await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
-		expect(await reg.reset("connection.capability")).toEqual([]);
+		expect(await reg.reset("connection.capability")).toMatchObject({ ok: true, active: [] });
 		expect(ob.capabilities?.(OB)).toBe(REAL);
 	});
 

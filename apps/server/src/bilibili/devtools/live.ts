@@ -1,6 +1,7 @@
 import type { DevParamValues } from "@bilibili-notify/contract";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
-import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
+import type { DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
 import type { LiveRoomHandle, LiveRooms } from "./live-rooms.js";
 import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
@@ -44,7 +45,7 @@ export interface LiveScenarioDeps extends RoomPickerDeps {
 export function pickRoom(
 	deps: RoomPickerDeps,
 	params: DevParamValues,
-): { sub: SubPick; roomId: number; handle: LiveRoomHandle } {
+): Result<{ sub: SubPick; roomId: number; handle: LiveRoomHandle }> {
 	const wanted = params.sub;
 	const subs = deps.subs();
 	const sub =
@@ -56,20 +57,19 @@ export function pickRoom(
 				})
 			: subs.find((s) => s.id === String(wanted));
 	if (!sub) {
-		throw new DevParamError(
+		return fail(
+			"invalid",
 			wanted === undefined ? "没有一个启用且直播间已连上的订阅" : `没有这个订阅:${wanted}`,
 		);
 	}
 	const resolved = deps.liveRooms()?.roomIdOf(sub.uid);
-	if (!resolved) throw new DevParamError(`${sub.name} 还没解析出房号(没登录 / 刚添加)`);
+	if (!resolved) return fail("invalid", `${sub.name} 还没解析出房号(没登录 / 刚添加)`);
 	const roomId = Number(resolved);
 	const handle = deps.rooms.find(roomId);
 	if (!handle) {
-		throw new DevParamError(
-			`${sub.name} 的直播间 ${roomId} 还没连上(订阅停用 / 还在预检 / 被风控)`,
-		);
+		return fail("invalid", `${sub.name} 的直播间 ${roomId} 还没连上(订阅停用 / 还在预检 / 被风控)`);
 	}
-	return { sub, roomId, handle };
+	return ok({ sub, roomId, handle });
 }
 
 const DEFAULT_TITLE = "devtools 造的一场直播";
@@ -131,14 +131,18 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const api = deps.api();
-			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			if (!api) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const title =
 				typeof params.title === "string" && params.title !== "" ? params.title : DEFAULT_TITLE;
 			fakes.set(roomId, { sub, roomId, title, startedAt: Date.now() });
 			syncOverride(api);
 			handle.inject({ kind: "live-start" });
-			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了开播事件,开播卡走真链路。` };
+			return ok({
+				summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了开播事件,开播卡走真链路。`,
+			});
 		},
 		active() {
 			if (fakes.size === 0) return null;
@@ -160,16 +164,18 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 		params: [{ key: "sub", label: "订阅", kind: "sub" }],
 		run(params) {
 			const api = deps.api();
-			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			if (!api) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			if (fakes.has(roomId)) {
 				endFake(roomId);
-				return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了下播事件,假直播结束。` };
+				return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了下播事件,假直播结束。` });
 			}
 			handle.inject({ kind: "live-end" });
-			return {
+			return ok({
 				summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了下播事件 —— 这个房间没在假直播,结束的是真的那一场的追踪。`,
-			};
+			});
 		},
 	};
 

@@ -1,4 +1,4 @@
-import type { MessageBus } from "@bilibili-notify/internal";
+import { type MessageBus, ok } from "@bilibili-notify/internal";
 import type { DevScenarioDef } from "../registry.js";
 
 /**
@@ -40,7 +40,7 @@ export function busEventScenarios(deps: BusEventDeps): DevScenarioDef[] {
 					? params.message
 					: DEFAULT_MESSAGE;
 			deps.bus.emit("pipeline-error", { source, message });
-			return { summary: `已发射 pipeline-error(${source})。` };
+			return ok({ summary: `已发射 pipeline-error(${source})。` });
 		},
 	};
 

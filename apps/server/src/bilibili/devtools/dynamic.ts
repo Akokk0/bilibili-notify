@@ -1,7 +1,7 @@
 import type { DevParamValues } from "@bilibili-notify/contract";
-import { ok } from "@bilibili-notify/internal";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
-import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
+import type { DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import type { SubPick } from "./live.js";
@@ -254,7 +254,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		});
 	}
 
-	function pickSub(params: DevParamValues): SubPick {
+	function pickSub(params: DevParamValues): Result<{ sub: SubPick }> {
 		const wanted = params.sub;
 		const subs = deps.subs();
 		const sub =
@@ -262,9 +262,9 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				? subs.find((s) => s.enabled)
 				: subs.find((s) => s.id === String(wanted));
 		if (!sub) {
-			throw new DevParamError(wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
+			return fail("invalid", wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
 		}
-		return sub;
+		return ok({ sub });
 	}
 
 	const post: DevScenarioDef = {
@@ -293,11 +293,14 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		],
 		async run(params) {
 			const api = deps.api();
-			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
-			const sub = pickSub(params);
+			if (!api) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
+			const picked = pickSub(params);
+			if (!picked.ok) return picked;
+			const { sub } = picked;
 			const engine = deps.dynamic();
 			if (!engine)
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					"动态引擎还没起来(没登录,或动态那一格设置读不懂),这会儿造了也没人来捡",
 				);
 			const kind = String(params.type ?? "word") as Kind;
@@ -320,11 +323,11 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				pending.splice(pending.indexOf(fake), 1);
 				syncOverride(api);
 			}
-			return { summary: `已替 ${sub.name} 发了一条假动态(${kind}),检测已跑完一轮。` };
+			return ok({ summary: `已替 ${sub.name} 发了一条假动态(${kind}),检测已跑完一轮。` });
 		},
 	};
 
-	const fail: DevScenarioDef = {
+	const failScenario: DevScenarioDef = {
 		id: "dynamic.fail",
 		group: "state",
 		title: "动态拉取报错",
@@ -336,18 +339,18 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const api = deps.api();
-			if (!api) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
+			if (!api) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
 			const code = Number(params.code ?? -352);
 			if (!Number.isInteger(code) || code === 0) {
-				throw new DevParamError("错误码要是个非 0 的整数(0 是成功)");
+				return fail("invalid", "错误码要是个非 0 的整数(0 是成功)");
 			}
 			const rounds = Number(params.rounds ?? 1);
 			if (!Number.isInteger(rounds) || rounds < 1) {
-				throw new DevParamError("轮数要是个不小于 1 的整数");
+				return fail("invalid", "轮数要是个不小于 1 的整数");
 			}
 			failing = { code, remaining: rounds };
 			syncOverride(api);
-			return { summary: `接下来 ${failing.remaining} 轮拉动态会回错误码 ${code}。` };
+			return ok({ summary: `接下来 ${failing.remaining} 轮拉动态会回错误码 ${code}。` });
 		},
 		active() {
 			if (!failing) return null;
@@ -364,5 +367,5 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
-	return [post, fail];
+	return [post, failScenario];
 }

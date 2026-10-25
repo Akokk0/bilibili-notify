@@ -3,13 +3,15 @@ import {
 	type Connection,
 	type ConnectionCapabilities,
 	canReceiveReply,
+	fail,
 	groupAddressOf,
 	type InboundHandlers,
+	ok,
 	type PushTarget,
 	platformOfTarget,
 	RESERVED_INTEGRATION_KEYS,
 } from "@bilibili-notify/internal";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../registry.js";
 
 /**
  * A4:私聊指令 / 群链接 —— 直接调接线层的两个入站口,与 adapter 收到真帧之后调的是同一个
@@ -46,7 +48,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const handler = deps.inbound()?.private;
-			if (!handler) throw new DevParamError("指令分发器还没接上(引擎没起来?)");
+			if (!handler) return fail("invalid", "指令分发器还没接上(引擎没起来?)");
 			// 回复经 `sendToAddress` 回到发指令的那个会话,所以 connectionId 是必需的:取主人那个
 			// 私聊目标所在的连接(平台也按它走,鉴权比的是三坐标)。没有主人目标就没有可模拟的
 			// 来处 —— 明说,不拿空串糊弄过去。
@@ -64,7 +66,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 						)
 				: undefined;
 			if (!master || !masterTarget) {
-				throw new DevParamError("没有主人目标(系统页 · 主人私聊),没法模拟指令");
+				return fail("invalid", "没有主人目标(系统页 · 主人私聊),没法模拟指令");
 			}
 			const given = typeof params.address === "string" ? params.address : "";
 			const address = given !== "" ? given : master.address;
@@ -75,7 +77,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 				{ address, text },
 				{ connectionId: masterTarget.connectionId, platform: master.platform },
 			);
-			return { summary: `已当作 ${address} 私聊了一句「${text}」,回复走真链路。` };
+			return ok({ summary: `已当作 ${address} 私聊了一句「${text}」,回复走真链路。` });
 		},
 	};
 
@@ -101,7 +103,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const handler = deps.inbound()?.group;
-			if (!handler) throw new DevParamError("链接解析还没接上(引擎没起来?)");
+			if (!handler) return fail("invalid", "链接解析还没接上(引擎没起来?)");
 			const connections = deps.connections();
 			const wanted = params.connection;
 			const connection =
@@ -109,12 +111,14 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 					? connections.find((a) => a.enabled && isDirectChat(a))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					wanted === undefined ? "没有启用的聊天平台连接(OneBot / 官机)" : `没有这个连接:${wanted}`,
 				);
 			}
 			if (!isDirectChat(connection)) {
-				throw new DevParamError(
+				return fail(
+					"invalid",
 					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有群这回事`,
 				);
 			}
@@ -130,16 +134,16 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 							)
 							.map((t) => groupAddressOf(t))
 							.find((g): g is string => typeof g === "string" && g !== "");
-			if (!address) throw new DevParamError(`${connection.name} 名下没有群目标,得给一个群号`);
+			if (!address) return fail("invalid", `${connection.name} 名下没有群目标,得给一个群号`);
 			const text =
 				typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_LINK_TEXT;
 			handler(
 				{ address, senderId: FAKE_SENDER, text, sharedLinks: [] },
 				{ connectionId: connection.id, platform: connection.platform },
 			);
-			return {
+			return ok({
 				summary: `已当作 ${connection.name} 的群 ${address} 里有人说了「${text}」,回卡回到那个群。`,
-			};
+			});
 		},
 	};
 

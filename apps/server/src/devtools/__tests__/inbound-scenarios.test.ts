@@ -1,6 +1,6 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createDevRegistry, DevParamError } from "../registry.js";
+import { createDevRegistry } from "../registry.js";
 import { inboundScenarios } from "../scenarios/inbound.js";
 
 /**
@@ -119,7 +119,7 @@ describe("inbound.command", () => {
 			{ address: "10001", text: "/status" },
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);
-		expect(res.summary).toContain("/status");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("/status") });
 	});
 
 	it("指定 address 就用给的 —— 拿来验「不是主人就不理」", async () => {
@@ -166,20 +166,32 @@ describe("inbound.command", () => {
 	it("没有主人目标 → 明确报错,不传空的 connectionId", async () => {
 		// 身份在、目标表里却没有对应的私聊目标(或压根没配主人),都没有可模拟的来处。
 		const noTarget = setup({ targets: [] });
-		await expect(noTarget.reg.run("inbound.command", {})).rejects.toThrow("没有主人目标");
+		await expect(noTarget.reg.run("inbound.command", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("没有主人目标"),
+		});
 		expect(noTarget.priv).not.toHaveBeenCalled();
 		const noMaster = setup({ master: undefined });
-		await expect(noMaster.reg.run("inbound.command", { address: "20002" })).rejects.toThrow(
-			"没有主人目标",
-		);
+		await expect(noMaster.reg.run("inbound.command", { address: "20002" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("没有主人目标"),
+		});
 		expect(noMaster.priv).not.toHaveBeenCalled();
 	});
 
 	it("没配主人又没给 address → 拒;入站口还没接上 → 拒", async () => {
 		const { reg } = setup({ master: undefined });
-		await expect(reg.run("inbound.command", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("inbound.command", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		const off = setup({ inbound: false });
-		await expect(off.reg.run("inbound.command", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(off.reg.run("inbound.command", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 });
 
@@ -195,7 +207,7 @@ describe("inbound.link", () => {
 			}),
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);
-		expect(res.summary).toContain("88888");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("88888") });
 	});
 
 	it("指定连接与群号、正文", async () => {
@@ -209,9 +221,10 @@ describe("inbound.link", () => {
 
 	it("webhook 没有群 → 拒;连接名下没群目标又没给群号 → 拒", async () => {
 		const { reg } = setup();
-		await expect(reg.run("inbound.link", { connection: "ad-web" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("inbound.link", { connection: "ad-web" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		const noGroups = createDevRegistry(
 			inboundScenarios({
 				inbound: () => ({ private: vi.fn(), group: vi.fn() }),
@@ -221,7 +234,11 @@ describe("inbound.link", () => {
 				targets: () => [],
 			}),
 		);
-		await expect(noGroups.run("inbound.link", { connection: "ad-ob" })).rejects.toThrow(/群/);
+		await expect(noGroups.run("inbound.link", { connection: "ad-ob" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/群/),
+		});
 	});
 
 	it("能力里 inbound 是「还不知道」的连接不当聊天入口(默认挑不到它,指名也拒)", async () => {
@@ -235,9 +252,13 @@ describe("inbound.link", () => {
 				: capabilitiesOf(c);
 		// 第一条启用的聊天平台连接 ad-ob 不算了;官机那条停用着 → 没有可用的。
 		const { reg } = setup({ capabilities: unknownInbound });
-		await expect(reg.run("inbound.link", {})).rejects.toBeInstanceOf(DevParamError);
-		await expect(reg.run("inbound.link", { connection: "ad-ob" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("inbound.link", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		await expect(reg.run("inbound.link", { connection: "ad-ob" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 });

@@ -1,4 +1,4 @@
-import type { SourceAuth } from "@bilibili-notify/internal";
+import { ok, type SourceAuth } from "@bilibili-notify/internal";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
@@ -21,15 +21,15 @@ export function loginScenarios(deps: {
 		async run() {
 			const login = deps.login();
 			const auth = deps.auth();
-			if (!login || !auth) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
+			if (!login || !auth) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
 			if (auth.state().status !== "logged-in") {
-				return { summary: "现在没登录着，没有可判失效的会话" };
+				return ok({ summary: "现在没登录着，没有可判失效的会话" });
 			}
 			await login.handleAuthLost();
-			return {
+			return ok({
 				summary:
 					"当前登录已判失效；动态检测会停、直播监听会拆。cookie 罐没动，看完记得按「重新确认登录」。",
-			};
+			});
 		},
 	};
 
@@ -43,7 +43,7 @@ export function loginScenarios(deps: {
 		async run() {
 			const login = deps.login();
 			const auth = deps.auth();
-			if (!login || !auth) return { summary: BILI_SHELLS_NOT_READY_SUMMARY };
+			if (!login || !auth) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
 			await login.reportAccountInfo();
 			const status = auth.state().status;
 			const label =
@@ -58,7 +58,7 @@ export function loginScenarios(deps: {
 								: status === "awaiting-scan"
 									? "等待扫码"
 									: "登录失败";
-			return { summary: `重新确认登录：${label}。` };
+			return ok({ summary: `重新确认登录：${label}。` });
 		},
 	};
 

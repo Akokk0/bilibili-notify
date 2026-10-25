@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
@@ -49,7 +50,7 @@ describe("devtools 挂载", () => {
 		);
 		await runtime.configStore.load();
 		const registry = createDevRegistry([
-			{ id: "a", group: "event", title: "A", params: [], run: () => ({}) },
+			{ id: "a", group: "event", title: "A", params: [], run: () => ok() },
 		]);
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

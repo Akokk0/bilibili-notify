@@ -125,7 +125,7 @@ describe("装", () => {
 		const at = join(installRoot, "bridge");
 		expect((await lstat(at)).isSymbolicLink()).toBe(true);
 		expect(await readlink(at)).toBe(join(repoDir, "bridge", "dist"));
-		expect(out.summary).toContain("bridge");
+		expect(out).toMatchObject({ ok: true, summary: expect.stringContaining("bridge") });
 	});
 
 	/**
@@ -141,8 +141,8 @@ describe("装", () => {
 			},
 		}).run({ ext: "bridge" });
 		expect(rescanned).toBe(1);
-		expect(out.summary).toMatch(/已装上/);
-		expect(out.summary).not.toMatch(/重启/);
+		expect(out).toMatchObject({ ok: true, summary: expect.stringMatching(/已装上/) });
+		expect(out).not.toMatchObject({ summary: expect.stringMatching(/重启/) });
 	});
 
 	/**
@@ -153,13 +153,17 @@ describe("装", () => {
 		await plantRepo("bridge", true);
 		const out = await must("ext.install", { down: true }).run({ ext: "bridge" });
 		expect((await lstat(join(installRoot, "bridge"))).isSymbolicLink()).toBe(true);
-		expect(out.summary).toMatch(/重启/);
+		expect(out).toMatchObject({ ok: true, summary: expect.stringMatching(/重启/) });
 	});
 
 	/** 装的是**构建产物**:装载器只认 `index.mjs`,链一个没 build 的目录进去等于装了个空壳。 */
 	it("没 build → 明说要先构建,而且一条链都不建", async () => {
 		await plantRepo("bridge", false);
-		await expect(must("ext.install").run({ ext: "bridge" })).rejects.toThrow(/build/);
+		await expect(must("ext.install").run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/build/),
+		});
 		await expect(lstat(join(installRoot, "bridge"))).rejects.toThrow();
 	});
 
@@ -167,7 +171,7 @@ describe("装", () => {
 		await plantRepo("bridge", true);
 		await must("ext.install").run({ ext: "bridge" });
 		const again = await must("ext.install").run({ ext: "bridge" });
-		expect(again.summary).toMatch(/早就装着/);
+		expect(again).toMatchObject({ ok: true, summary: expect.stringMatching(/早就装着/) });
 	});
 
 	/** 🔴 那可能是主人手放的包 —— devtools 不许覆盖,更不许删。 */
@@ -175,7 +179,11 @@ describe("装", () => {
 		await plantRepo("bridge", true);
 		await mkdir(join(installRoot, "bridge"), { recursive: true });
 		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 主人手放的");
-		await expect(must("ext.install").run({ ext: "bridge" })).rejects.toThrow(/真目录/);
+		await expect(must("ext.install").run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/真目录/),
+		});
 		expect((await lstat(join(installRoot, "bridge"))).isDirectory()).toBe(true);
 	});
 });
@@ -191,7 +199,7 @@ describe("卸", () => {
 		rescanned = 0;
 		const out = await must("ext.uninstall", { rescan }).run({ ext: "bridge" });
 		expect(rescanned).toBe(1);
-		expect(out.summary).not.toMatch(/重启/);
+		expect(out).not.toMatchObject({ summary: expect.stringMatching(/重启/) });
 	});
 
 	it("删掉自己链进去的那条,仓里那份一根汗毛都不少", async () => {
@@ -207,13 +215,21 @@ describe("卸", () => {
 		await plantRepo("bridge", true);
 		await mkdir(join(installRoot, "bridge"), { recursive: true });
 		await writeFile(join(installRoot, "bridge", "index.mjs"), "// 主人手放的");
-		await expect(must("ext.uninstall").run({ ext: "bridge" })).rejects.toThrow(/真目录/);
+		await expect(must("ext.uninstall").run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/真目录/),
+		});
 		expect((await lstat(join(installRoot, "bridge", "index.mjs"))).isFile()).toBe(true);
 	});
 
 	it("压根没装 → 说没装,不装作卸过了", async () => {
 		await plantRepo("bridge", true);
-		await expect(must("ext.uninstall").run({ ext: "bridge" })).rejects.toThrow(/没装/);
+		await expect(must("ext.uninstall").run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/没装/),
+		});
 	});
 });
 
@@ -227,7 +243,7 @@ describe("重载", () => {
 			},
 		}).run({ ext: "bridge" });
 		expect(seen).toEqual(["bridge"]);
-		expect(out.summary).toContain("bridge");
+		expect(out).toMatchObject({ ok: true, summary: expect.stringContaining("bridge") });
 	});
 
 	/** 「它关着」「没这个拓展」都是装载器判的 —— 那句话要原样到面板上,别吞成 500。 */
@@ -239,14 +255,20 @@ describe("重载", () => {
 					throw new Error("bridge 的开关关着");
 				},
 			}).run({ ext: "bridge" }),
-		).rejects.toThrow(/开关关着/);
+		).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/开关关着/),
+		});
 	});
 
 	it("装载器还没起来 → 说清楚,不是崩一个 500", async () => {
 		await plantRepo("bridge", true);
-		await expect(must("ext.reload", { down: true }).run({ ext: "bridge" })).rejects.toThrow(
-			/还没起来/,
-		);
+		await expect(must("ext.reload", { down: true }).run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/还没起来/),
+		});
 	});
 });
 
@@ -319,7 +341,11 @@ describe("改完自动重载", () => {
 
 	it("没装进来的拓展盯不了 —— 说清楚先装", async () => {
 		await plantRepo("bridge", true);
-		await expect(must("ext.watch").run({ ext: "bridge" })).rejects.toThrow(/装/);
+		await expect(must("ext.watch").run({ ext: "bridge" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringMatching(/装/),
+		});
 	});
 });
 

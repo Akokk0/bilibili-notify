@@ -1,8 +1,8 @@
 /**
  * devtools API(`/api/dev`)。**只在开发版载荷上挂载**(见 `devtools/index.ts` 那道门)。
- * 判断全在注册表 —— 这里只做 wire,外加把三种失败翻成标准码(经 `respondFailure`,状态码从码推):
- * 没这个场景 `not_found`(404)、参数不合法 `invalid`(400)、场景自己抛了交给 app 级 `onError`
- * 变 `unavailable`(503)。
+ * 判断全在注册表 —— 这里只做 wire,把结果失败交给 `respondFailure`,状态码从码推:
+ * 没这个场景 `not_found`(404)、参数不合法 `invalid`(400)、场景自己真抛了交给 app 级
+ * `onError` 变 `unavailable`(503)。
  */
 
 import type {
@@ -16,7 +16,7 @@ import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { respondFailure } from "../routes/respond-failure.js";
-import { DevParamError, type DevRegistry, DevScenarioNotFound } from "./registry.js";
+import type { DevRegistry } from "./registry.js";
 
 /** 请求体:`params` 是 key → 字符串或数;没 body 就全按默认值。 */
 const RunBody = z.object({
@@ -56,15 +56,11 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 		if (!parsed.success) {
 			return respondFailure(c, fail("invalid", "params 要是「参数名 → 字符串或数字」的对象"));
 		}
-		try {
-			const body: DevRunResponse = await registry.run(c.req.param("id"), parsed.data.params ?? {});
-			return c.json(body);
-		} catch (err) {
-			if (err instanceof DevScenarioNotFound)
-				return respondFailure(c, fail("not_found", err.message));
-			if (err instanceof DevParamError) return respondFailure(c, fail("invalid", err.message));
-			throw err;
-		}
+		const result = await registry.run(c.req.param("id"), parsed.data.params ?? {});
+		if (!result.ok) return respondFailure(c, result);
+		const body: DevRunResponse = { active: result.active };
+		if (result.summary !== undefined) body.summary = result.summary;
+		return c.json(body);
 	});
 
 	if (captures) {
@@ -79,15 +75,15 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 		});
 	}
 
-	app.post("/reset", async (c) => c.json({ active: await registry.reset() }));
+	app.post("/reset", async (c) => {
+		const result = await registry.reset();
+		if (!result.ok) return respondFailure(c, result);
+		return c.json({ active: result.active });
+	});
 	app.post("/reset/:id", async (c) => {
-		try {
-			return c.json({ active: await registry.reset(c.req.param("id")) });
-		} catch (err) {
-			if (err instanceof DevScenarioNotFound)
-				return respondFailure(c, fail("not_found", err.message));
-			throw err;
-		}
+		const result = await registry.reset(c.req.param("id"));
+		if (!result.ok) return respondFailure(c, result);
+		return c.json({ active: result.active });
 	});
 
 	return app;

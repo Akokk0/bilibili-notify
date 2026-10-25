@@ -1,7 +1,6 @@
 import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
-import { DevParamError } from "../../../devtools/registry.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
 import { dynamicScenarios } from "../dynamic.js";
@@ -153,14 +152,17 @@ describe("bilibili.dynamic.fail", () => {
 
 	it.each([0, 1.5])("错误码 %s 不是一个错误码 → 拒", async (code) => {
 		const { reg, api } = setup();
-		await expect(reg.run(ID, { code })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run(ID, { code })).resolves.toMatchObject({ ok: false, code: "invalid" });
 		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 
 	// 轮数不是正整数的话「还剩几轮」永远减不到头,盖板摘不掉。
 	it.each([0, -1, 1.5, "abc"])("轮数 %s 不是一个轮数 → 拒", async (rounds) => {
 		const { reg, api } = setup();
-		await expect(reg.run(ID, { code: -352, rounds })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run(ID, { code: -352, rounds })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		expect(codeOf(await api.fetchAllDynamic())).toBe(0);
 	});
 

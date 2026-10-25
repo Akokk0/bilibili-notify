@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDevClock } from "../clock.js";
-import { createDevRegistry, DevParamError } from "../registry.js";
+import { createDevRegistry } from "../registry.js";
 import { timerScenarios } from "../scenarios/timers.js";
 
 /**
@@ -57,9 +57,10 @@ describe("push.quiet-clock", () => {
 		const at = clock.now();
 		expect([at.getHours(), at.getMinutes()]).toEqual([3, 15]);
 		expect(at.getDate()).toBe(6);
-		expect(res.active).toEqual([
-			{ scenarioId: "push.quiet-clock", label: "免扰时钟 → 当作现在是 03:15" },
-		]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "push.quiet-clock", label: "免扰时钟 → 当作现在是 03:15" }],
+		});
 
 		reg.reset("push.quiet-clock");
 		expect(clock.now().getHours()).toBe(15);
@@ -67,12 +68,16 @@ describe("push.quiet-clock", () => {
 
 	it("时间格式不对就拒", async () => {
 		const { reg } = setup();
-		await expect(reg.run("push.quiet-clock", { time: "3点" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
-		await expect(reg.run("push.quiet-clock", { time: "25:00" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("push.quiet-clock", { time: "3点" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "时间要写成 HH:mm,如 03:00",
+		});
+		await expect(reg.run("push.quiet-clock", { time: "25:00" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "时间要写成 HH:mm,如 03:00",
+		});
 	});
 });
 
@@ -81,7 +86,10 @@ describe("push.mute", () => {
 		const { reg, mute } = setup();
 		const res = await reg.run("push.mute", { minutes: 10 });
 		expect(mute.muteFor).toHaveBeenCalledWith(600_000);
-		expect(res.active).toEqual([{ scenarioId: "push.mute", label: "静音中 → 到 15:40" }]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "push.mute", label: "静音中 → 到 15:40" }],
+		});
 
 		await reg.reset("push.mute");
 		expect(mute.muteFor).toHaveBeenLastCalledWith(0);
@@ -122,25 +130,44 @@ describe("push.mute", () => {
 
 	it("引擎还没起来 → 拒", async () => {
 		const { reg } = setup({ mute: () => undefined });
-		await expect(reg.run("push.mute", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("push.mute", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "推送引擎还没起来",
+		});
 	});
 });
 
 describe("现在就跑", () => {
 	it("chrome.idle-now:关了 / 没得关 两种回执", async () => {
 		const { reg, closeIdleNow } = setup();
-		expect((await reg.run("chrome.idle-now", {})).summary).toMatch(/已关/);
+		expect(await reg.run("chrome.idle-now", {})).toMatchObject({
+			ok: true,
+			summary: expect.stringMatching(/已关/),
+		});
 		closeIdleNow.mockResolvedValueOnce(false);
-		expect((await reg.run("chrome.idle-now", {})).summary).toMatch(/没有|不动/);
+		expect(await reg.run("chrome.idle-now", {})).toMatchObject({
+			ok: true,
+			summary: expect.stringMatching(/没有|不动/),
+		});
 		const off = setup({ puppeteer: () => null });
-		await expect(off.reg.run("chrome.idle-now", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(off.reg.run("chrome.idle-now", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 	});
 
 	it("live.repush-now:按订阅 id 调场次的 tickNow", async () => {
 		const { reg, tickNow } = setup();
-		expect((await reg.run("live.repush-now", {})).summary).toMatch(/甲/);
+		expect(await reg.run("live.repush-now", {})).toMatchObject({
+			ok: true,
+			summary: expect.stringMatching(/甲/),
+		});
 		expect(tickNow).toHaveBeenCalledWith("s1");
-		expect((await reg.run("live.repush-now", { sub: "s2" })).summary).toMatch(/没在播|没监听/);
+		expect(await reg.run("live.repush-now", { sub: "s2" })).toMatchObject({
+			ok: true,
+			summary: expect.stringMatching(/没在播|没监听/),
+		});
 	});
 
 	it("profiles.refresh-now:调资料刷新把手的 pollNow", async () => {

@@ -82,7 +82,7 @@ describe("bilibili.auth.login-state", () => {
 		expect(reg.active()).toEqual([
 			{ scenarioId: "bilibili.auth.login-state", label: "登录状态 → 等待扫码" },
 		]);
-		expect(await reg.reset("bilibili.auth.login-state")).toEqual([]);
+		expect(await reg.reset("bilibili.auth.login-state")).toMatchObject({ ok: true, active: [] });
 		expect(state()).toBe(REAL);
 		expect(account()).toEqual({ name: "真的" });
 		expect(reports.at(-1)).toEqual({ sourceKey: "bilibili", state: REAL });

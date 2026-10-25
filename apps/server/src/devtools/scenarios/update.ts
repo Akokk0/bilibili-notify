@@ -1,4 +1,5 @@
 import type { UpdateErrorReason, UpdateState } from "@bilibili-notify/contract";
+import { ok } from "@bilibili-notify/internal";
 import { RELEASES_PAGE_URL, releaseUrlOf } from "../../update/trusted-keys.js";
 import type { DevScenarioDef } from "../registry.js";
 import type { InjectableUpdateService } from "../update-injection.js";
@@ -125,7 +126,7 @@ export function updateStateScenario(injectable: InjectableUpdateService): DevSce
 		],
 		run(params) {
 			injectable.inject(buildState(params as Params));
-			return {};
+			return ok();
 		},
 		active() {
 			const state = injectable.injected();

@@ -3,8 +3,9 @@ import { access, lstat, realpath, rm, symlink } from "node:fs/promises";
 import { platform } from "node:os";
 import { join } from "node:path";
 import type { DevParamField } from "@bilibili-notify/contract";
+import { fail, ok } from "@bilibili-notify/internal";
 import { EXTENSION_ENTRY_FILE, EXTENSION_MANIFEST_FILE } from "../../extensions/discover.js";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../registry.js";
 
 /**
  * 开发版怎么装拓展。
@@ -86,28 +87,31 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 				const dist = distOf(id);
 				// 装的是**构建产物**,不是源码目录 —— 装载器只认 index.mjs(与市场下载的同形)。
 				if (!(await exists(join(dist, EXTENSION_ENTRY_FILE)))) {
-					throw new DevParamError(
+					return fail(
+						"invalid",
 						`${id} 还没构建:${dist} 里没有 ${EXTENSION_ENTRY_FILE}。先跑 vp run -F <它的包名> build`,
 					);
 				}
 				const at = installedAt(id);
 				const already = await lstat(at).catch(() => undefined);
 				if (already?.isSymbolicLink()) {
-					return { summary: `${id} 早就装着了(链到 ${dist})` };
+					return ok({ summary: `${id} 早就装着了(链到 ${dist})` });
 				}
 				if (already) {
 					// 真目录多半是主人手放的那份包 —— devtools 不动它,不然就把人家的东西删了。
-					throw new DevParamError(`${at} 已经有一个真目录了(手放的?)—— devtools 不碰它`);
+					return fail("invalid", `${at} 已经有一个真目录了(手放的?)—— devtools 不碰它`);
 				}
 				await symlink(dist, at, platform() === "win32" ? "junction" : "dir");
 				// 链建完了才叫装载器去看 —— 反过来的话它扫的是装之前那一眼,什么都不会变。
 				const loaded = input.extensions();
 				if (!loaded) {
 					// devtools 比装载器先建起来。这一次它是真要等重启,别说成「已生效」。
-					return { summary: `已装 ${id} → ${dist};装载器还没起来,**重启一次**它才出现在拓展页` };
+					return ok({
+						summary: `已装 ${id} → ${dist};装载器还没起来,**重启一次**它才出现在拓展页`,
+					});
 				}
 				await loaded.rescan();
-				return { summary: `已装上 ${id} → ${dist};拓展页上当场就有(开关还得自己拨)` };
+				return ok({ summary: `已装上 ${id} → ${dist};拓展页上当场就有(开关还得自己拨)` });
 			},
 		},
 		{
@@ -121,16 +125,16 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 				const id = String(params.ext);
 				const at = installedAt(id);
 				const st = await lstat(at).catch(() => undefined);
-				if (!st) throw new DevParamError(`${id} 没装在 ${input.installRoot} 里`);
+				if (!st) return fail("invalid", `${id} 没装在 ${input.installRoot} 里`);
 				if (!st.isSymbolicLink()) {
-					throw new DevParamError(`${at} 是个真目录,不是 devtools 链进去的 —— 要删自己动手`);
+					return fail("invalid", `${at} 是个真目录,不是 devtools 链进去的 —— 要删自己动手`);
 				}
 				await rm(at);
 				const loaded = input.extensions();
 				// 收摊要走装载器:光删掉软链的话,它注册的定时器与端点还在这个进程里跑着。
-				if (!loaded) return { summary: `已卸 ${id};装载器还没起来,**重启一次**它才消失` };
+				if (!loaded) return ok({ summary: `已卸 ${id};装载器还没起来,**重启一次**它才消失` });
 				await loaded.rescan();
-				return { summary: `已卸 ${id};它注册的东西当场收摊,拓展页上也没了` };
+				return ok({ summary: `已卸 ${id};它注册的东西当场收摊,拓展页上也没了` });
 			},
 		},
 		{
@@ -143,12 +147,14 @@ export function extensionScenarios(input: ExtensionScenariosInput): DevScenarioD
 			async run(params) {
 				const id = String(params.ext);
 				const loaded = input.extensions();
-				if (!loaded) throw new DevParamError("装载器还没起来");
+				if (!loaded) return fail("invalid", "装载器还没起来");
 				// 装不起来 / 开关关着 / 没这个 id,加载器自己会说清楚是哪一种。
-				await loaded.reload(id).catch((err: Error) => {
-					throw new DevParamError(err.message);
-				});
-				return { summary: `已按新代码重跑 ${id} 的 activate` };
+				try {
+					await loaded.reload(id);
+				} catch (err) {
+					return fail("invalid", (err as Error).message);
+				}
+				return ok({ summary: `已按新代码重跑 ${id} 的 activate` });
 			},
 		},
 		watchScenario(input, pick, installedAt),
@@ -197,7 +203,7 @@ function watchScenario(
 			const at = installedAt(id);
 			// 盯的是**软链指过去的那个真目录** —— 盯软链本身,重建时看不到里头的变化。
 			const dir = await realpath(at).catch(() => undefined);
-			if (!dir) throw new DevParamError(`${id} 还没装进来 —— 先按「装一个仓里的拓展」`);
+			if (!dir) return fail("invalid", `${id} 还没装进来 —— 先按「装一个仓里的拓展」`);
 
 			stop();
 			const state: WatchState = { id, stop: () => {}, reloads: 0 };
@@ -233,7 +239,7 @@ function watchScenario(
 			}
 
 			live = state;
-			return { summary: `盯上了 ${dir};改完自动重载(记得 vp pack -w 开着)` };
+			return ok({ summary: `盯上了 ${dir};改完自动重载(记得 vp pack -w 开着)` });
 		},
 		active() {
 			if (!live) return null;

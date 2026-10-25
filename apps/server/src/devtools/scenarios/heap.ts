@@ -1,3 +1,4 @@
+import { ok } from "@bilibili-notify/internal";
 import type { HeapInjectorHandle } from "../heap-injection.js";
 import type { DevScenarioDef } from "../registry.js";
 
@@ -35,7 +36,7 @@ export function heapPressureScenario(deps: HeapScenarioDeps): DevScenarioDef {
 		run(params) {
 			const raw = typeof params.ratio === "number" ? params.ratio : DEFAULT_RATIO;
 			deps.heap.inject(raw / 100);
-			return {};
+			return ok();
 		},
 		active() {
 			const ratio = deps.heap.injected();

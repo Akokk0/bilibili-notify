@@ -19,7 +19,7 @@ const DEVTOOLS_DIRS = [
  *
  * 两项目录:核心的 `src/devtools/` 与 B 站的 `src/bilibili/devtools/`,各有各的桩(签名不同)。
  * 「importer 在 devtools 内」要**两个目录都算**:`bilibili/devtools/*` 引用核心
- * `devtools/registry.js` 这类内部引用不能被误换成桩,否则类型与 `DevParamError` 一起没了。
+ * `devtools/registry.js` 这类内部引用不能被误换成桩,否则场景类型与整张注册表一起没了。
  *
  * 按**解析后的路径**判、不按写法判:`./devtools/index.js` 也好、日后谁写个别的相对路径也好,
  * 只要落进这两个目录就换。构建后 scripts/check-no-devtools.mjs 会再 grep 一遍产物。

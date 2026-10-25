@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { DevParamError } from "../../../devtools/registry.js";
 import type { SubPick } from "../live.js";
 import { biliTimerScenarios } from "../timers.js";
 import { biliRegistry } from "./support/registry.js";
@@ -38,7 +37,11 @@ describe("B 站的现在就跑", () => {
 
 	it("引擎还没起来 → 拒", async () => {
 		const { reg } = setup({ dynamic: () => undefined });
-		await expect(reg.run("bilibili.dynamic.detect-now", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("bilibili.dynamic.detect-now", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "动态引擎还没起来",
+		});
 	});
 
 	it("两个都在定时组", () => {

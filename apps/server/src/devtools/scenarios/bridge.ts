@@ -16,7 +16,7 @@
 
 import { type ChatIdentity, fail, ok, type Result } from "@bilibili-notify/internal";
 import { createFakeBridge, type FakeBridge, type FakeBridgeBot } from "../fake-bridge.js";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../registry.js";
 
 /** 桥那个拓展的 id。挂载点 `/ext/<id>` 与设置住在哪一格都按它认。 */
 const BRIDGE_EXTENSION_ID = "bridge";
@@ -140,33 +140,32 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 	}
 
 	/** 哪条接入。空 = 第一条;给了按 id 或名字认。 */
-	function pick(wanted: string | number | undefined): BridgeLink {
+	function pick(wanted: string | number | undefined): Result<{ link: BridgeLink }> {
 		const all = links();
 		if (wanted === undefined || wanted === "") {
 			const found = all[0];
 			if (!found) {
-				throw new DevParamError(
-					"还没有桥接入 —— 先去拓展页 · 机器人框架桥接建一条(它会生成 token)",
-				);
+				return fail("invalid", "还没有桥接入 —— 先去拓展页 · 机器人框架桥接建一条(它会生成 token)");
 			}
-			return found;
+			return ok({ link: found });
 		}
 		const key = String(wanted);
 		const found = all.find((link) => link.id === key || link.name === key);
-		if (!found) throw new DevParamError(`没有这条接入:${key}`);
-		return found;
+		if (!found) return fail("invalid", `没有这条接入:${key}`);
+		return ok({ link: found });
 	}
 
 	/**
 	 * 空 token 是合法可存的(脱敏备份把它抹成空串),但**永远连不上**,所以在这儿就说清楚。
 	 */
-	function tokenOf(link: BridgeLink): string {
+	function tokenOf(link: BridgeLink): Result<{ token: string }> {
 		if (link.token === "") {
-			throw new DevParamError(
+			return fail(
+				"invalid",
 				`${link.name} 的 token 是空的 —— 去拓展页给它重新生成一把(脱敏备份恢复回来的就是空的)`,
 			);
 		}
-		return link.token;
+		return ok({ token: link.token });
 	}
 
 	const connect: DevScenarioDef = {
@@ -187,11 +186,15 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			},
 		],
 		async run(params) {
-			const link = pick(params.link);
-			const token = tokenOf(link);
+			const picked = pick(params.link);
+			if (!picked.ok) return picked;
+			const { link } = picked;
+			const tokenResult = tokenOf(link);
+			if (!tokenResult.ok) return tokenResult;
+			const { token } = tokenResult;
 			const address = deps.address();
 			// 端口是 `serve()` 之后才有的。没有就是还没起监听 —— 说清楚,别去连一个 undefined。
-			if (!address) throw new DevParamError("HTTP 服务还没起来,等一下再按");
+			if (!address) return fail("invalid", "HTTP 服务还没起来,等一下再按");
 
 			const platform = text(params.platform, "onebot");
 			// 握手那份名单是「还没探能力」的样子 —— 真插件也是这个次序:先报名单,探完
@@ -229,18 +232,18 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 			} catch (err) {
 				bridge.dispose();
 				// 401 / 404 / 503 的分档在这句话里 —— 它是主人手里唯一的线索。
-				throw new DevParamError(`连不上:${(err as Error).message}`);
+				return fail("invalid", `连不上:${(err as Error).message}`);
 			}
 			// 握完手才推带能力那份 —— 面板上于是看得见「矩阵从一片『还不知道』换成真答案」
 			// 那一跳,而那一跳靠的是拓展喊 `statusChanged()`,不是主人切页重取。
 			bridge.pushBots(probed);
 			live = { bridge, connectionName: link.name, bots: probed };
-			return {
+			return ok({
 				summary:
 					`已假装一条桥连上 ${link.name},报了 1 个 ${platform} 的 bot(带平台图标);` +
 					`能力表跟着握手后的第二份名单快照报上来,跟真插件探完能力一个次序。` +
 					(failReason === "" ? "推过来的都回成功。" : `推过来的都回失败:${failReason}。`),
-			};
+			});
 		},
 		active() {
 			if (!live?.bridge.connected()) return null;
@@ -265,30 +268,30 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			if (!live?.bridge.connected()) {
-				throw new DevParamError("假桥还没连上 —— 先按「假装一条桥连上来」");
+				return fail("invalid", "假桥还没连上 —— 先按「假装一条桥连上来」");
 			}
 			const master = deps.commands().master;
 			const scope = String(params.scope ?? "private");
 			const given = text(params.from, "");
 			if (scope === "group") {
-				if (given === "") throw new DevParamError("群消息得给一个群号");
+				if (given === "") return fail("invalid", "群消息得给一个群号");
 				const body = text(params.text, DEFAULT_GROUP_TEXT);
 				const userId = master?.address ?? DEFAULT_GROUP_SENDER;
 				live.bridge.sendInbound({ scope: "group", groupId: given, userId, text: body });
 				// 发信人写进摘要:群里那条是谁说的决定了链接解析认不认它(自己贴的不解析),
 				// 不说的话「驮上去了却什么都没发生」查不出是这个原因。
-				return {
+				return ok({
 					summary: `已让假桥驮上来一条群 ${given} 的消息(发信人 ${userId}):「${body}」,回卡回到那个群。`,
-				};
+				});
 			}
 			const userId = given !== "" ? given : master?.address;
 			if (!userId) {
-				throw new DevParamError("没配主人(系统页 · 主人私聊),得给一个发信人");
+				return fail("invalid", "没配主人(系统页 · 主人私聊),得给一个发信人");
 			}
 			// 前缀现取 —— 系统页上随时能改,烤进声明表的话按它跑一次分发器根本不认。
 			const body = text(params.text, `${deps.commands().prefix}help`);
 			live.bridge.sendInbound({ scope: "private", userId, text: body });
-			return { summary: `已让假桥驮上来一条 ${userId} 的私聊:「${body}」,回复走真链路。` };
+			return ok({ summary: `已让假桥驮上来一条 ${userId} 的私聊:「${body}」,回复走真链路。` });
 		},
 	};
 

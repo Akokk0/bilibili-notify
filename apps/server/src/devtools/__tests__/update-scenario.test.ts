@@ -74,7 +74,10 @@ describe("update.state 场景", () => {
 				notes: "假的",
 			},
 		});
-		expect(res.active).toEqual([{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }]);
+		expect(res).toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
+		});
 	});
 
 	it("error:归因照给,checkedAt 是时间戳,helpUrl 指向发布页", async () => {
@@ -108,7 +111,7 @@ describe("update.state 场景", () => {
 	it("收摊后回到真状态", async () => {
 		const { reg, service } = setup();
 		await reg.run("update.state", { phase: "idle" });
-		expect(await reg.reset("update.state")).toEqual([]);
+		expect(await reg.reset("update.state")).toMatchObject({ ok: true, active: [] });
 		expect(service.getStatus()).toEqual(REAL);
 	});
 });

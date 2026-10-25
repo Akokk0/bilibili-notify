@@ -1,8 +1,9 @@
+import { fail, ok } from "@bilibili-notify/internal";
 import type { LiveSessionEngine } from "../../live/live-sessions.js";
 import type { MuteState } from "../../runtime/mute-state.js";
 import type { ProfileRefreshHandle } from "../../runtime/profile-refresh.js";
 import type { DevClock } from "../clock.js";
-import { DevParamError, type DevScenarioDef, need } from "../registry.js";
+import { type DevScenarioDef, notReady } from "../registry.js";
 
 /**
  * 定时组(中立的四条):免扰时钟、静音、Chrome 空闲关、直播复推提前到期。
@@ -37,9 +38,9 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 			const m = /^(\d{1,2}):(\d{2})$/.exec(String(params.time ?? ""));
 			const hour = m ? Number(m[1]) : Number.NaN;
 			const minute = m ? Number(m[2]) : Number.NaN;
-			if (!m || hour > 23 || minute > 59) throw new DevParamError("时间要写成 HH:mm,如 03:00");
+			if (!m || hour > 23 || minute > 59) return fail("invalid", "时间要写成 HH:mm,如 03:00");
 			deps.clock.pretend(hour, minute);
-			return { summary: `免扰判定现在当作是 ${deps.clock.pretended()}。` };
+			return ok({ summary: `免扰判定现在当作是 ${deps.clock.pretended()}。` });
 		},
 		active() {
 			const t = deps.clock.pretended();
@@ -68,11 +69,12 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		desc: "走真的 /mute:静音 N 分钟(写进配置的 mutedUntil),订阅推送一条都不发(记进推送历史、可以补发)、主人私聊照发。收摊 = 解除 —— 但只解除从这儿按出来的那次;主人自己 /mute 的不碰。",
 		params: [{ key: "minutes", label: "分钟", kind: "number", default: 10, min: 1, max: 1440 }],
 		async run(params) {
-			const state = need(deps.mute(), "推送引擎");
+			const state = deps.mute();
+			if (!state) return notReady("推送引擎");
 			const minutes = typeof params.minutes === "number" ? params.minutes : 10;
 			const until = await state.muteFor(minutes * 60_000);
 			mutedByDevtools = until;
-			return { summary: `已静音到 ${hhmm(until)}。` };
+			return ok({ summary: `已静音到 ${hhmm(until)}。` });
 		},
 		active() {
 			const state = deps.mute();
@@ -100,13 +102,14 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		desc: "把「渲染空闲 N 秒后关 chromium」提前到现在。正在渲染或压根没起浏览器就不动。下次渲染自动重启。",
 		params: [],
 		async run() {
-			const p = need(deps.puppeteer(), "渲染器");
+			const p = deps.puppeteer();
+			if (!p) return notReady("渲染器");
 			const closed = await p.closeIdleNow();
-			return {
+			return ok({
 				summary: closed
 					? "已关掉空闲的浏览器,下次渲染自动重启。"
 					: "没有可关的:正在渲染,或浏览器本来就没起。",
-			};
+			});
 		},
 	};
 
@@ -118,8 +121,10 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		desc: "立刻经各来源刷新一轮订阅资料,不等 cron。上一轮还在跑就跳过。",
 		params: [],
 		async run() {
-			const ran = await need(deps.profileRefresh(), "资料刷新").pollNow();
-			return { summary: ran ? "资料刷新跑完一轮。" : "上一轮还在跑,这次跳过。" };
+			const profileRefresh = deps.profileRefresh();
+			if (!profileRefresh) return notReady("资料刷新");
+			const ran = await profileRefresh.pollNow();
+			return ok({ summary: ran ? "资料刷新跑完一轮。" : "上一轮还在跑,这次跳过。" });
 		},
 	};
 
@@ -131,7 +136,8 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		desc: "把这位 UP「正在直播」的周期复推提前到现在(走的就是定时器到点那一次)。得在(假)直播中。",
 		params: [{ key: "sub", label: "订阅", kind: "sub" }],
 		async run(params) {
-			const engine = need(deps.session?.(), "直播场次");
+			const engine = deps.session?.();
+			if (!engine) return notReady("直播场次");
 			const subs = deps.subscriptions?.() ?? [];
 			const wanted = params.sub;
 			const sub =
@@ -139,14 +145,14 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 					? subs.find((candidate) => candidate.enabled)
 					: subs.find((candidate) => candidate.id === String(wanted));
 			if (!sub) {
-				throw new DevParamError(wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
+				return fail("invalid", wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
 			}
 			const ran = await engine.tickNow(sub.id);
-			return {
+			return ok({
 				summary: ran
 					? `已替 ${sub.name} 复推了一次「正在直播」。`
 					: `${sub.name} 没在播(或没监听),复推没跑。`,
-			};
+			});
 		},
 	};
 

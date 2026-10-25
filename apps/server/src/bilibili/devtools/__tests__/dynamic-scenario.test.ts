@@ -1,7 +1,6 @@
 import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
-import { DevParamError } from "../../../devtools/registry.js";
 import type { Api } from "../../api/index.js";
 import { dynamicScenarios } from "../dynamic.js";
 import type { SubPick } from "../live.js";
@@ -108,7 +107,7 @@ describe("bilibili.dynamic.post", () => {
 		});
 
 		expect(detectNow).toHaveBeenCalledOnce();
-		expect(res.summary).toContain("甲");
+		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("甲") });
 
 		const feed = seen();
 		expect(itemsOf(feed).map((i) => i.id_str)).toEqual([expect.stringMatching(/^dev-/), "real-1"]);
@@ -208,14 +207,18 @@ describe("bilibili.dynamic.post", () => {
 	it("sub 省略取第一个启用的;停用的也能指定;没这个订阅就拒", async () => {
 		const { reg } = setup();
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
+			ok: true,
 			summary: expect.stringContaining("甲"),
 		});
 		await expect(reg.run("bilibili.dynamic.post", { sub: "s2" })).resolves.toMatchObject({
+			ok: true,
 			summary: expect.stringContaining("乙"),
 		});
-		await expect(reg.run("bilibili.dynamic.post", { sub: "zzz" })).rejects.toBeInstanceOf(
-			DevParamError,
-		);
+		await expect(reg.run("bilibili.dynamic.post", { sub: "zzz" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "没有这个订阅:zzz",
+		});
 	});
 
 	it("引擎还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
@@ -228,7 +231,10 @@ describe("bilibili.dynamic.post", () => {
 				profileAvatars: () => undefined,
 			}),
 		);
-		await expect(reg.run("bilibili.dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
 		expect(itemsOf(await api.api.fetchAllDynamic()).map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 });

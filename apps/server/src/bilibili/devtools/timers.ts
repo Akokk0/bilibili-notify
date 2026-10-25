@@ -1,4 +1,5 @@
-import { type DevScenarioDef, need } from "../../devtools/registry.js";
+import { ok } from "@bilibili-notify/internal";
+import { type DevScenarioDef, notReady } from "../../devtools/registry.js";
 import type { SubPick } from "./live.js";
 
 /**
@@ -24,8 +25,10 @@ export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
 		desc: "立刻跑一轮动态检测(拉真 feed),不等 cron。",
 		params: [],
 		async run() {
-			await need(deps.dynamic(), "动态引擎").detectNow();
-			return { summary: "动态检测跑完一轮。" };
+			const dynamic = deps.dynamic();
+			if (!dynamic) return notReady("动态引擎");
+			await dynamic.detectNow();
+			return ok({ summary: "动态检测跑完一轮。" });
 		},
 	};
 
@@ -37,8 +40,10 @@ export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
 		desc: "立刻查一次登录是否还有效(真打 getMyselfInfo),不等定时器。没登录就跳过。",
 		params: [],
 		async run() {
-			const ran = await need(deps.healthCheck(), "登录系统").healthCheckNow();
-			return { summary: ran ? "心跳查完一次,结果看顶栏。" : "没登录 / 扫码中,心跳不查。" };
+			const healthCheck = deps.healthCheck();
+			if (!healthCheck) return notReady("登录系统");
+			const ran = await healthCheck.healthCheckNow();
+			return ok({ summary: ran ? "心跳查完一次,结果看顶栏。" : "没登录 / 扫码中,心跳不查。" });
 		},
 	};
 

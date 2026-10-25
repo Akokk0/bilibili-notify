@@ -1,4 +1,5 @@
-import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
+import { fail, ok } from "@bilibili-notify/internal";
+import type { DevScenarioDef } from "../../devtools/registry.js";
 import { GuardLevel, type LiveUser } from "../live/protocol/events.js";
 import { pickRoom, type RoomPickerDeps } from "./live.js";
 
@@ -107,11 +108,13 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			{ key: "uid", label: "指定发言人 uid(可空)", kind: "text", default: "" },
 		],
 		run(params) {
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const count = num(params.count, 60);
 			const senders = num(params.senders, 8);
 			const fixedUid = str(params.uid, "");
-			if (fixedUid !== "" && !/^\d+$/.test(fixedUid)) throw new DevParamError("uid 得是数字");
+			if (fixedUid !== "" && !/^\d+$/.test(fixedUid)) return fail("invalid", "uid 得是数字");
 			const now = Date.now();
 			for (let i = 0; i < count; i++) {
 				const user =
@@ -122,7 +125,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				handle.inject({ kind: "danmu", content, user, timestamp: now + i });
 			}
 			const who = fixedUid === "" ? `${Math.min(senders, count)} 位假观众` : `uid ${fixedUid}`;
-			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 ${count} 条弹幕(${who})。` };
+			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 ${count} 条弹幕(${who})。` });
 		},
 	};
 
@@ -139,7 +142,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			{ key: "uname", label: "发言人", kind: "text", default: "醒目留言测试员" },
 		],
 		run(params) {
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const price = num(params.price, 30);
 			handle.inject({
 				kind: "superchat",
@@ -149,7 +154,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				id: Date.now(),
 				durationSec: price >= 100 ? 300 : 60,
 			});
-			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条 ${price} 元的 SC。` };
+			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条 ${price} 元的 SC。` });
 		},
 	};
 
@@ -181,9 +186,11 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			{ key: "uname", label: "上舰的人", kind: "text", default: "上舰测试员" },
 		],
 		run(params) {
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const g = GUARD[str(params.level, "captain")] ?? GUARD.captain;
-			if (!g) throw new DevParamError("等级不认识");
+			if (!g) return fail("invalid", "等级不认识");
 			const now = Math.floor(Date.now() / 1000);
 			handle.inject({
 				kind: "guard-buy",
@@ -195,7 +202,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				startTime: now,
 				endTime: now + 30 * 86_400,
 			});
-			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条开通${g.name}。` };
+			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条开通${g.name}。` });
 		},
 	};
 
@@ -212,7 +219,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			{ key: "uname", label: "送礼的人", kind: "text", default: "送礼测试员" },
 		],
 		run(params) {
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const n = num(params.num, 1);
 			handle.inject({
 				kind: "gift",
@@ -223,9 +232,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				price: 5_000,
 				num: n,
 			});
-			return {
+			return ok({
 				summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 ${n} 个${str(params.name, "小心心")}。`,
-			};
+			});
 		},
 	};
 
@@ -241,19 +250,21 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			{ key: "uname", label: "昵称", kind: "text", default: "进场测试员" },
 		],
 		run(params) {
-			const { sub, roomId, handle } = pickRoom(deps, params);
+			const picked = pickRoom(deps, params);
+			if (!picked.ok) return picked;
+			const { sub, roomId, handle } = picked;
 			const given = str(params.uid, "");
 			const uid = given !== "" ? given : (sub.specialViewers?.[0] ?? "");
 			if (uid === "") {
-				throw new DevParamError(`${sub.name} 没配特别关注,得给一个 uid`);
+				return fail("invalid", `${sub.name} 没配特别关注,得给一个 uid`);
 			}
-			if (!/^\d+$/.test(uid)) throw new DevParamError("uid 得是数字");
+			if (!/^\d+$/.test(uid)) return fail("invalid", "uid 得是数字");
 			handle.inject({
 				kind: "user-action",
 				action: "enter",
 				user: { uid: Number(uid), name: str(params.uname, "进场测试员") },
 			});
-			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 uid ${uid} 的进场。` };
+			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 uid ${uid} 的进场。` });
 		},
 	};
 
