@@ -14,8 +14,8 @@ import { readFile } from "node:fs/promises";
 import type {
 	CreatorProfileReport,
 	ExtensionBlock,
-	ExtensionRichText,
 	ExtensionView,
+	ExtensionViewText,
 	LiveDetails,
 	LiveSignalReport,
 	PostReport,
@@ -95,11 +95,17 @@ function isHarmlessUrl(url: string | undefined): boolean {
 
 const isCount = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
 
-function plain(text: ExtensionRichText): string {
+function plain(text: ExtensionViewText): string {
 	if (typeof text === "string") return text;
 	return text
-		.map((run) =>
-			typeof run === "string" ? run : "b" in run ? run.b : "mono" in run ? run.mono : "",
+		.map((segment) =>
+			typeof segment === "string"
+				? segment
+				: "b" in segment
+					? segment.b
+					: "mono" in segment
+						? segment.mono
+						: "",
 		)
 		.join("");
 }

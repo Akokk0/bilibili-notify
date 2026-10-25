@@ -1,8 +1,8 @@
 import type {
 	ExtensionItemView,
-	ExtensionRichRun,
 	ExtensionTableCell,
 	ExtensionView,
+	ExtensionViewTextSegment,
 } from "@bilibili-notify/extension";
 import {
 	BRIDGE_CAPABILITIES,
@@ -60,7 +60,7 @@ const VIEW_LIMITS = {
 	/** 一张表的行数。 */
 	tableRows: 200,
 	/** 一段字(副标题)里的每一片。 */
-	richRun: 2000,
+	viewTextSegment: 2000,
 } as const;
 
 /** 超长就截,末尾换一个省略号。不把代理对劈成半个 —— 半个 emoji 画出来是一个问号方块。 */
@@ -73,8 +73,10 @@ function clip(text: string, max: number): string {
 }
 
 /** 片段之间的分隔 —— 今天副标题就是拿 ` · ` 拼的。 */
-function joined(parts: readonly (ExtensionRichRun | undefined)[]): ExtensionRichRun[] {
-	const present = parts.filter((part): part is ExtensionRichRun => part !== undefined);
+function joined(
+	parts: readonly (ExtensionViewTextSegment | undefined)[],
+): ExtensionViewTextSegment[] {
+	const present = parts.filter((part): part is ExtensionViewTextSegment => part !== undefined);
 	return present.flatMap((part, i) => (i === 0 ? [part] : [" · ", part]));
 }
 
@@ -140,10 +142,10 @@ function connectedItem(
 		status: mismatched ? { tone: "warn", text: "连上了,但对不上" } : { tone: "ok", text: "已连接" },
 		pill: mismatched ? `配置:${link.bridgeKind}` : link.bridgeKind,
 		subtitle: joined([
-			nameAndVersion ? clip(nameAndVersion, VIEW_LIMITS.richRun) : undefined,
+			nameAndVersion ? clip(nameAndVersion, VIEW_LIMITS.viewTextSegment) : undefined,
 			{ time: session.connectedAt, suffix: "连上" },
 			session.remoteAddress
-				? clip(`来自 ${session.remoteAddress}`, VIEW_LIMITS.richRun)
+				? clip(`来自 ${session.remoteAddress}`, VIEW_LIMITS.viewTextSegment)
 				: undefined,
 		]),
 		buttons: mismatched

@@ -201,7 +201,7 @@ export interface ExtensionView {
 /** 拓展列表页那一行。 */
 export interface ExtensionViewSummary {
 	tone?: ExtensionTone;
-	text: ExtensionRichText;
+	text: ExtensionViewText;
 }
 
 /** 状态的语气,同时决定卡角那团颜色。 */
@@ -211,8 +211,8 @@ export type ExtensionTone = "ok" | "warn" | "error" | "off";
  * 一段字:一个字符串,或者一串片段。片段只有五种 —— 字、加粗、等宽、一个时刻(浏览器按
  * 「N 分钟前」画,`suffix` 接在后面)、BN 在浏览器里现算的地址。
  */
-export type ExtensionRichText = string | readonly ExtensionRichRun[];
-export type ExtensionRichRun =
+export type ExtensionViewText = string | readonly ExtensionViewTextSegment[];
+export type ExtensionViewTextSegment =
 	| string
 	| { b: string }
 	| { mono: string }
@@ -234,7 +234,7 @@ export type ExtensionButton =
 export interface ExtensionItemView {
 	status?: { tone: ExtensionTone; text: string };
 	pill?: string;
-	subtitle?: ExtensionRichText;
+	subtitle?: ExtensionViewText;
 	buttons?: readonly ExtensionButton[];
 	/** 画在 BN 画的字段行(token 行这种)上面的积木。 */
 	lead?: readonly ExtensionBlock[];
@@ -261,28 +261,28 @@ export type ExtensionTableCell =
 export type ExtensionBlock =
 	| {
 			type: "keyValue";
-			items: readonly { label: string; value: ExtensionRichText; tone?: ExtensionTone }[];
+			items: readonly { label: string; value: ExtensionViewText; tone?: ExtensionTone }[];
 	  }
 	| {
 			type: "table";
 			title?: string;
 			count?: boolean;
-			empty?: ExtensionRichText;
+			empty?: ExtensionViewText;
 			columns: readonly ExtensionTableColumn[];
 			rows: readonly (readonly ExtensionTableCell[])[];
 	  }
 	| {
 			type: "notice";
 			tone: "info" | "warn" | "error";
-			text: ExtensionRichText;
+			text: ExtensionViewText;
 			button?: ExtensionButton;
 	  }
 	| {
 			type: "copy";
 			label: string;
 			value: string | { host: "extensionUrl" };
-			note?: ExtensionRichText;
+			note?: ExtensionViewText;
 	  }
 	/** `image` 是 {@link ExtensionView.images} 里的键。 */
-	| { type: "qr"; image: string; caption?: ExtensionRichText }
+	| { type: "qr"; image: string; caption?: ExtensionViewText }
 	| { type: "button"; button: ExtensionButton };

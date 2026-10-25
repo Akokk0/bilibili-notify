@@ -58,10 +58,10 @@ import {
 	SecretChip,
 	TriStateLegend,
 } from "./parts";
-import { RichText } from "./rich-text";
 import { maskedOf, newHexSecret } from "./secret";
 import { type SettingsWrite, useExtensionSettings, useSettingsWrite } from "./settings-query";
 import { isNotFound, isRunning, liveViewOf, useExtensionView } from "./view-query";
+import { ViewText } from "./view-text";
 
 /**
  * 视图此刻作不作数。
@@ -569,7 +569,7 @@ function ListCard({
 				subtitle={
 					itemView?.subtitle ? (
 						<span className="text-bn-text-tertiary">
-							<RichText text={itemView.subtitle} extensionId={extensionId} />
+							<ViewText text={itemView.subtitle} extensionId={extensionId} />
 						</span>
 					) : undefined
 				}

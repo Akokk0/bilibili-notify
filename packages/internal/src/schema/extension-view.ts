@@ -29,7 +29,7 @@ import { ActionNameSchema, ExtensionImageSchema, FieldKeySchema } from "./extens
 export const EXTENSION_VIEW_MAX_BYTES = 256 * 1024;
 
 /** 一段字里的一片 —— 只有这五种(决策 28)。没有表达式、没有 HTML。 */
-const RichRunSchema = z.union([
+const ViewTextSegmentSchema = z.union([
 	z.string().max(2000),
 	z.strictObject({ b: z.string().max(2000) }),
 	z.strictObject({ mono: z.string().max(2000) }),
@@ -46,9 +46,9 @@ const RichRunSchema = z.union([
 ]);
 
 /** 一段字:一个字符串,或者一串片段。 */
-export const RichTextSchema = z.union([
+export const ExtensionViewTextSchema = z.union([
 	z.string().max(2000),
-	z.array(RichRunSchema).max(64).readonly(),
+	z.array(ViewTextSegmentSchema).max(64).readonly(),
 ]);
 
 /** 状态的语气 —— 同时决定卡角那团颜色。 */
@@ -145,7 +145,7 @@ const TableSchema = z
 		/** 标题旁边带一个行数。 */
 		count: z.boolean().optional(),
 		/** 一行都没有时那句话。 */
-		empty: RichTextSchema.optional(),
+		empty: ExtensionViewTextSchema.optional(),
 		columns: z.array(ColumnSchema).min(1).max(12).readonly(),
 		rows: z.array(z.array(ExtensionTableCellSchema).readonly()).max(200).readonly(),
 	})
@@ -180,7 +180,7 @@ export const ExtensionBlockSchema = z.discriminatedUnion("type", [
 			.array(
 				z.strictObject({
 					label: z.string().min(1).max(24),
-					value: RichTextSchema,
+					value: ExtensionViewTextSchema,
 					tone: ToneSchema.optional(),
 				}),
 			)
@@ -192,20 +192,20 @@ export const ExtensionBlockSchema = z.discriminatedUnion("type", [
 	z.strictObject({
 		type: z.literal("notice"),
 		tone: z.enum(["info", "warn", "error"]),
-		text: RichTextSchema,
+		text: ExtensionViewTextSchema,
 		button: ExtensionButtonSchema.optional(),
 	}),
 	z.strictObject({
 		type: z.literal("copy"),
 		label: z.string().min(1).max(24),
 		value: z.union([z.string().max(2000), z.strictObject({ host: z.literal("extensionUrl") })]),
-		note: RichTextSchema.optional(),
+		note: ExtensionViewTextSchema.optional(),
 	}),
 	/** 二维码 —— 拓展生成好的图片(B 站登录那张就是这么交的),BN 只画。`image` 是字典里的键。 */
 	z.strictObject({
 		type: z.literal("qr"),
 		image: ViewImageKeySchema,
-		caption: RichTextSchema.optional(),
+		caption: ExtensionViewTextSchema.optional(),
 	}),
 	/** 一颗单独的按钮。按钮自己带 `kind`,所以包一层,不和积木的 `type` 摊在一处(决策 39)。 */
 	z.strictObject({ type: z.literal("button"), button: ExtensionButtonSchema }),
@@ -233,7 +233,7 @@ export const ExtensionItemViewSchema = z.strictObject({
 	status: z.strictObject({ tone: ToneSchema, text: z.string().min(1).max(40) }).optional(),
 	/** 标题旁的小药丸。 */
 	pill: z.string().min(1).max(32).optional(),
-	subtitle: RichTextSchema.optional(),
+	subtitle: ExtensionViewTextSchema.optional(),
 	/** 卡头右边的按钮,排在 BN 自己的「编辑 / 停用 / 删除」前面。 */
 	buttons: z.array(ExtensionButtonSchema).max(4).readonly().optional(),
 	/** 画在 BN 画的字段行(token 行这种)**上面**的积木 —— 要人先看见的提示放这儿。 */
@@ -245,7 +245,7 @@ export const ExtensionItemViewSchema = z.strictObject({
 /** 拓展列表页那一行(今天那句「N 个 bot 在线」是面板里专为桥写的)。 */
 export const ExtensionViewSummarySchema = z.strictObject({
 	tone: ToneSchema.optional(),
-	text: RichTextSchema,
+	text: ExtensionViewTextSchema,
 });
 
 /** 页上最多几块。多出来的宿主不画,换一条提示说清少画了几块。 */

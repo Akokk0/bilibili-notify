@@ -288,11 +288,11 @@ describe("bridgeView", () => {
 			const view = item([link()], {
 				a1: session({ name: long(3000), version: long(3000, "1"), remoteAddress: long(3000, "a") }),
 			});
-			const runs = view?.subtitle;
-			if (!Array.isArray(runs)) throw new Error("副标题应该是一串片段");
-			const strings = runs.filter((run): run is string => typeof run === "string");
-			for (const run of strings) expect(run.length).toBeLessThanOrEqual(2000);
-			expect(strings.filter((run) => run.endsWith("…"))).toHaveLength(2);
+			const segments = view?.subtitle;
+			if (!Array.isArray(segments)) throw new Error("副标题应该是一串片段");
+			const strings = segments.filter((segment): segment is string => typeof segment === "string");
+			for (const segment of strings) expect(segment.length).toBeLessThanOrEqual(2000);
+			expect(strings.filter((segment) => segment.endsWith("…"))).toHaveLength(2);
 		});
 
 		it("201 个 bot:表里画 200 行,表下面说一句还有 1 个没列;列表页那句照旧按全数", () => {

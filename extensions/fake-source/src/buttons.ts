@@ -1,7 +1,7 @@
 import type {
 	ExtensionBlock,
 	ExtensionContext,
-	ExtensionRichText,
+	ExtensionViewText,
 	Identity,
 	LiveStatusResult,
 	SourceContext,
@@ -134,7 +134,7 @@ export function wireReportButtons(
 	 */
 	const liveOf = new Map<string, FakeLiveSession>();
 	/** 上一下按了什么、结果如何 —— 页上那一行。 */
-	let lastPress: { tone: "info" | "warn" | "error"; text: ExtensionRichText } | undefined;
+	let lastPress: { tone: "info" | "warn" | "error"; text: ExtensionViewText } | undefined;
 
 	function on(button: ReportButton, prepare: Prepare, options: PressOptions = {}): void {
 		ctx.onAction(button.action, async (signal) => {

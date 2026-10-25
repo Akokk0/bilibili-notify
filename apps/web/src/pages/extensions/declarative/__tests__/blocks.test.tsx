@@ -77,7 +77,7 @@ afterEach(() => {
 });
 
 describe("keyValue", () => {
-	it("一格一对:名字在上、值在下,值是富文本", () => {
+	it("一格一对:名字在上、值在下,值是视图那段字", () => {
 		renderBlocks([
 			{
 				type: "keyValue",

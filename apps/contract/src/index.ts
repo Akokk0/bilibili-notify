@@ -22,8 +22,6 @@ export type {
 	ExtensionField,
 	ExtensionItemView,
 	ExtensionListField,
-	ExtensionRichRun,
-	ExtensionRichText,
 	ExtensionScalarField,
 	ExtensionSubscriptionView,
 	ExtensionTableCell,
@@ -31,6 +29,8 @@ export type {
 	ExtensionTone,
 	ExtensionView,
 	ExtensionViewSummary,
+	ExtensionViewText,
+	ExtensionViewTextSegment,
 	PlatformAdapterDescriptor,
 } from "@bilibili-notify/internal/extension/wire";
 export * from "./card-skin";

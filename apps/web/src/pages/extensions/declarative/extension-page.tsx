@@ -8,9 +8,9 @@ import { ErrorNote, HintNote, Icon, StatusDot, WarnNote } from "@bilibili-notify
 import { reasonOf } from "../shared";
 import { PageBlocks, TONE_DOT } from "./blocks";
 import { ListSection } from "./list-section";
-import { RichText } from "./rich-text";
 import { SettingsForm } from "./settings-form";
 import { isNotFound, isRunning, liveViewOf, useExtensionView } from "./view-query";
+import { ViewText } from "./view-text";
 
 /**
  * v2 拓展那一页里「照声明画」的几块(ADR-0019 决策 19 / 25):头卡正文(页级积木)、「配置」
@@ -170,7 +170,7 @@ export function ExtensionSummary({
 			<div className="flex items-center gap-1.5">
 				{summary.tone ? <StatusDot kind={TONE_DOT[summary.tone]} /> : null}
 				<span className="text-bn-xs text-bn-text-secondary">
-					<RichText text={summary.text} extensionId={ext.id} />
+					<ViewText text={summary.text} extensionId={ext.id} />
 				</span>
 			</div>
 		</>

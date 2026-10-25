@@ -96,7 +96,7 @@ afterEach(() => {
 });
 
 describe("列表卡上的 summary", () => {
-	it("订阅源也有那一行:点 + 富文本", async () => {
+	it("订阅源也有那一行:点 + 视图那段字", async () => {
 		renderPage([DOUYIN], {
 			douyin: { summary: { tone: "ok", text: [{ b: "12" }, " 位作者在看"] } },
 		});

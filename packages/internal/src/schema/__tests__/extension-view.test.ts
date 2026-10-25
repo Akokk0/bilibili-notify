@@ -180,7 +180,7 @@ describe("ExtensionViewSchema —— 拒", () => {
 		issues({ extra: true });
 	});
 
-	it("富文本只有五种片段 —— 带 HTML 的对象、别的键都拒", () => {
+	it("视图那段字只有五种片段 —— 带 HTML 的对象、别的键都拒", () => {
 		issues({ summary: { text: [{ html: "<b>x</b>" }] } });
 		issues({ summary: { text: [{ b: "x", mono: "y" }] } });
 		issues({ summary: { text: [{ host: "publicUrl" }] } });

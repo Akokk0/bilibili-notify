@@ -2,11 +2,11 @@ import type {
 	ExtensionBlock,
 	ExtensionButton,
 	ExtensionPanelBlock,
-	ExtensionRichText,
 	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionViewFault,
+	ExtensionViewText,
 	Result,
 } from "@bilibili-notify/contract";
 import {
@@ -31,8 +31,8 @@ import { reasonOf } from "../shared";
 import { extensionAddress } from "./address";
 import { safeImage } from "./image";
 import { CopyControl, TriStateLegend } from "./parts";
-import { RichText } from "./rich-text";
 import { extensionStatusKey } from "./view-query";
+import { ViewText } from "./view-text";
 
 /**
  * 拓展交来的积木怎么画(ADR-0019 决策 20 / 27)—— 一组**封闭的**积木,拓展只说「画什么」。
@@ -286,7 +286,7 @@ function KeyValueBlock({
 					>
 						{item.tone ? <StatusDot kind={TONE_DOT[item.tone]} /> : null}
 						<span className="min-w-0 truncate">
-							<RichText text={item.value} extensionId={extensionId} />
+							<ViewText text={item.value} extensionId={extensionId} />
 						</span>
 					</dd>
 				</div>
@@ -374,7 +374,7 @@ function TableBlock({
 			{rows.length === 0 ? (
 				empty ? (
 					<span className="text-bn-xs text-bn-text-tertiary">
-						<RichText text={empty} extensionId={extensionId} />
+						<ViewText text={empty} extensionId={extensionId} />
 					</span>
 				) : null
 			) : (
@@ -492,22 +492,22 @@ function NoticeBlock({
 				className={trailing ? "flex items-center gap-[9px] leading-[1.65]" : "leading-[1.65]"}
 			>
 				{withTrailing(
-					<RichText text={text} extensionId={extensionId} monoClassName="text-bn-text-secondary" />,
+					<ViewText text={text} extensionId={extensionId} monoClassName="text-bn-text-secondary" />,
 				)}
 			</HintNote>
 		) : tone === "warn" ? (
 			<WarnNote size="sm" icon={<Icon.warning size={15} />} className="leading-[1.7]">
 				{trailing ? (
 					<div className="flex gap-[9px]">
-						{withTrailing(<RichText text={text} extensionId={extensionId} />)}
+						{withTrailing(<ViewText text={text} extensionId={extensionId} />)}
 					</div>
 				) : (
-					<RichText text={text} extensionId={extensionId} />
+					<ViewText text={text} extensionId={extensionId} />
 				)}
 			</WarnNote>
 		) : (
 			<ErrorNote size="sm" className={trailing ? "flex items-center gap-[9px]" : undefined}>
-				{withTrailing(<RichText text={text} extensionId={extensionId} />)}
+				{withTrailing(<ViewText text={text} extensionId={extensionId} />)}
 			</ErrorNote>
 		);
 	// 按钮没成的原因摆在提示条**底下**,不塞进提示条肚子里 —— 黄盒里再套一个红盒读不成话。
@@ -530,7 +530,7 @@ function CopyBlock({
 }: {
 	label: string;
 	value: string;
-	note?: ExtensionRichText;
+	note?: ExtensionViewText;
 	extensionId: string;
 }) {
 	return (
@@ -544,7 +544,7 @@ function CopyBlock({
 				<>
 					<span className="h-4 w-px bg-bn-border-subtle" />
 					<span className="text-bn-xs text-bn-text-tertiary">
-						<RichText
+						<ViewText
 							text={note}
 							extensionId={extensionId}
 							boldClassName="text-bn-text-secondary"
@@ -572,7 +572,7 @@ function QrBlock({
 		<QrPanel src={imageOf(images, image)} alt="二维码">
 			{caption ? (
 				<div className="text-bn-sm text-bn-text-secondary">
-					<RichText text={caption} extensionId={extensionId} />
+					<ViewText text={caption} extensionId={extensionId} />
 				</div>
 			) : null}
 		</QrPanel>
