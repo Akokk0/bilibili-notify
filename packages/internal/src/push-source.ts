@@ -10,7 +10,6 @@
 
 import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
-import type { Result } from "./constants";
 import type {
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -18,12 +17,13 @@ import type {
 	IntegrationContext,
 	NotificationPayload,
 } from "./platform";
+import type { PushTargetScope } from "./push-target";
+import type { Result } from "./result";
 import type {
 	ChatIdentity,
 	Connection,
 	DestinationRef,
 	PlatformDescriptor,
-	PushTargetScope,
 } from "./schema/targets";
 
 /**

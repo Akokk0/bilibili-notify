@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { EMPTY_AI_PROVIDER_PROFILE, resolveAIProfile } from "../../constants";
+import { EMPTY_AI_PROVIDER_PROFILE, resolveAIProfile } from "../../ai";
 import { AIProviderProfileSchema, AISettingsSchema } from "../common";
 
 /** 当代形状的骨架(桶里写明 `provider`、指针叫 `activeProfile`);`over` 覆盖各条测试关心的那几项。 */

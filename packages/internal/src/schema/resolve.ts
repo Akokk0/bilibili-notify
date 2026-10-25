@@ -1,17 +1,17 @@
 import {
+	type ActivePersonaShape,
+	type AIBuiltinPresetShape,
+	presetsOf,
+	resolveActivePersona,
+} from "../ai";
+import {
 	type BuiltinTemplates,
 	type EffectiveMembershipTemplate,
 	type EffectiveTemplates,
 	withMembershipDefaults,
 	withTemplateDefaults,
 } from "../builtin-texts";
-import {
-	type ActivePersonaShape,
-	type AIBuiltinPresetShape,
-	type Identity,
-	presetsOf,
-	resolveActivePersona,
-} from "../constants";
+import type { Identity } from "../identity";
 import type {
 	AISettings,
 	CardsSettings,

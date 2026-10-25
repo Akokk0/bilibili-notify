@@ -66,7 +66,7 @@ import {
  * 抓不到的(靠审查与别的守卫):
  * - 别名传了两层以上、或经函数返回值、对象字段转手的。
  * - 把整个连接传进去、在 `platforms/` 以外的别的白名单目录里判的。
- * - 按 `adapterKey` 比字面量(`adapterKey === "webhook"`,今天核心 1 处,就在 `constants.ts` 的 `isWebhookPlatform` 里,
+ * - 按 `adapterKey` 比字面量(`adapterKey === "webhook"`,今天核心 1 处,就在 `platform-registry.ts` 的 `isWebhookPlatform` 里,
  *   与平台表同归宿;**面板今天另有 5 处**,不在上面那张 23 处的表里:`Targets.tsx:147`(`a.adapterKey === "onebot"`)、
  *   `:153`(`"qq-official"`)、`link-preview-settings.tsx:250`(`a.adapterKey === "onebot"`)、`types/connection-credentials.ts:46` 与
  *   `types/connection-fields.ts:479`(两个 `switch (connection.adapterKey)`)。同一种越界的另一个写法,定案没点它,本片不加;
@@ -153,7 +153,7 @@ const EQUALITY = new Set([
  */
 export const RATCHET = {
 	// 平台表自己:`PLATFORM_REGISTRY[platform]` 当下标一处,`isWebhookPlatform` 与 `addressNounFor` 里各一次 `platformDescriptor(platform)`。
-	"packages/internal/src/constants.ts": 3,
+	"packages/internal/src/platform-registry.ts": 3,
 };
 
 /**

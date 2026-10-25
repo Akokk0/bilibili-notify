@@ -7,7 +7,7 @@
  * 不许引入 zod 或 schema;值级 import 只有同样零依赖的 `i18n.ts` 与 JSON。
  */
 
-import type { AIPersonaShape } from "./constants";
+import type { AIPersonaShape } from "./ai";
 import { DEFAULT_LOCALE, type Dict, type Locale, mergeDict } from "./i18n";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";

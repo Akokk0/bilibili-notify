@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { HISTORY_RETENTION_DAY_OPTIONS } from "../../constants";
+import { HISTORY_RETENTION_DAY_OPTIONS } from "../../history";
 import { GlobalConfigSchema, HistorySettingsSchema, makeDefaultGlobalConfig } from "../globals";
 
 describe("history.retentionDays", () => {

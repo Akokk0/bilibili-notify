@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY, WEBHOOK_PLATFORMS } from "../constants";
+import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY, WEBHOOK_PLATFORMS } from "../platform-registry";
 import { PlatformSnapshotSchema } from "../schema/targets";
 
 const platformsWhere = (pick: (p: (typeof CONNECTION_PLATFORMS)[number]) => boolean) =>

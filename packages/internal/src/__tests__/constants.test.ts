@@ -6,18 +6,17 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { builtinPresetsFor } from "../builtin-texts";
 import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
 	aiProfileAt,
-	CONNECTION_PLATFORMS,
 	EMPTY_AI_PROVIDER_PROFILE,
-	platformDescriptor,
 	providerMeta,
 	resolveAIProfile,
-} from "../constants";
+} from "../ai";
+import { builtinPresetsFor } from "../builtin-texts";
 import { DEFAULT_LOCALE } from "../i18n";
+import { CONNECTION_PLATFORMS, platformDescriptor } from "../platform-registry";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	it("DeepSeek 不声称支持看图 —— 官方接口里一个视觉模型都没有", () => {

@@ -1,21 +1,20 @@
 import { z } from "zod";
+import { neutralPlatformDescriptor } from "../platform-descriptor";
 import {
-	isPrivateTarget,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+	WEBHOOK_PLATFORMS,
+} from "../platform-registry";
+import {
+	isPrivateTarget,
 	PUSH_TARGET_KINDS,
 	PUSH_TARGET_SCOPES,
 	platformOfTarget,
-	WEBHOOK_PLATFORMS,
-} from "../constants.js";
-import { neutralPlatformDescriptor } from "../platform-descriptor";
+} from "../push-target";
 import { markBackupOnly, markSecret } from "./secret";
 
-// 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
-// 别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
-export type { PushTargetKind, PushTargetScope } from "../constants.js";
-// 函数本体住零依赖的 constants(面板运行时要用);这里只转出,让老的引用路径不变。
-export { platformOfTarget } from "../constants.js";
+// 会话种类、目标形态、连接器这三个词表的本体在零依赖的 `push-target.ts` / `platform-registry.ts`
+// —— 类型从那边导,别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
 
 /**
  * 平台名 —— 开放词表,只要求非空。连接上的 `platform` 就是它(推送目标上没有平台这一格:

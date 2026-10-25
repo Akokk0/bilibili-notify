@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { resolveChatThinkingLevel } from "../../constants";
+import { resolveChatThinkingLevel } from "../../ai";
 import { AISettingsSchema } from "../common";
 
 const BASE = {

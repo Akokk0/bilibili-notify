@@ -6,7 +6,7 @@
  * (`constants-imports.test.ts` 钉着)。
  */
 
-import type { FeatureKey } from "./constants";
+import type { FeatureKey } from "./features";
 
 /** 直播类的五把主开关 —— 任一开着,这条订阅就要监听直播间。 */
 export const LIVE_ROOM_CREATOR_KEYS = [

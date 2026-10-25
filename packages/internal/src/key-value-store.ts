@@ -1,4 +1,4 @@
-import type { Result } from "./constants";
+import type { Result } from "./result";
 
 /** 能原样进出 JSON 的值。数字只收有限数;对象只收普通对象。 */
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };

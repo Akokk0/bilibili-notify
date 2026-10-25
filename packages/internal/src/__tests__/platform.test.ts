@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fail } from "../constants.js";
 import { type DeliveryResult, isReachabilityEvidence } from "../platform.js";
+import { fail } from "../result.js";
 
 /**
  * 投递结果同时被两处读:一处是「这条推送成没成」(历史那行),另一处是「这个目标还通不通」

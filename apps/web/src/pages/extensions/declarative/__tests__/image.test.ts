@@ -1,12 +1,12 @@
 /**
  * 拓展交来的图在画之前,出口自己再认一次(ADR-0019 决策 31)。判据与宿主那道门**同一份**
- * (`@bilibili-notify/internal/constants`):只收图片的 base64 data URL,且不超过那个字数。
+ * (`@bilibili-notify/internal/extension/wire`):只收图片的 base64 data URL,且不超过那个字数。
  */
 
 import {
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
-} from "@bilibili-notify/internal/constants";
+} from "@bilibili-notify/internal/extension/wire";
 import { describe, expect, it } from "vite-plus/test";
 import { safeImage } from "../image";
 

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../../constants";
+import { EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../../features";
 import { FeatureFlagsPartialSchema, FeatureFlagsSchema } from "../common";
 import { makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";

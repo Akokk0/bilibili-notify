@@ -15,8 +15,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import * as constants from "../../constants";
-import * as root from "../../index";
+import * as wire from "../../extension/wire";
 import {
 	ActionNameSchema,
 	apiVersionAccepted,
@@ -550,7 +549,7 @@ describe("v3 的订阅与推送外观", () => {
 		const icons = [
 			"https://example.invalid/icon.png",
 			'<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>',
-			`data:image/png;base64,${"A".repeat(constants.EXTENSION_IMAGE_MAX_CHARS)}`,
+			`data:image/png;base64,${"A".repeat(wire.EXTENSION_IMAGE_MAX_CHARS)}`,
 		];
 		for (const icon of icons) {
 			unreadable(sub({ icon }));
@@ -831,18 +830,15 @@ describe("v3 的选项图标", () => {
 });
 
 /**
- * 面板也要这几样判据(列表项的保留键、图片那道门),而它只能从零依赖的 `/constants` 拿值 ——
- * 所以本体住那边、清单的 schema 从那边引。根入口照旧拿得到,而且是**同一份**:各写一份的话,
- * 改了一边,另一边静默漂开。
+ * 面板也要这几样判据(列表项的保留键、图片那道门),而它只能从零依赖的
+ * `@bilibili-notify/internal/extension/wire` 拿值 —— 所以本体住那边、清单的 schema 从那边引。
+ * 两边拿的必须是**同一份**:各写一份的话,改了一边,另一边静默漂开。
  */
-describe("搬进 /constants 的拓展判据", () => {
-	it("/constants 拿得到;根入口照旧拿得到,而且是同一份", () => {
-		expect(constants.LIST_ITEM_ID_KEY).toBe("id");
-		expect(constants.EXTENSION_IMAGE_MAX_CHARS).toBe(32 * 1024);
-		expect(constants.EXTENSION_IMAGE_DATA_URL_RE).toBeInstanceOf(RegExp);
-		expect(root.LIST_ITEM_ID_KEY).toBe(constants.LIST_ITEM_ID_KEY);
-		expect(root.EXTENSION_IMAGE_MAX_CHARS).toBe(constants.EXTENSION_IMAGE_MAX_CHARS);
-		expect(root.EXTENSION_IMAGE_DATA_URL_RE).toBe(constants.EXTENSION_IMAGE_DATA_URL_RE);
+describe("extension/wire 的拓展判据", () => {
+	it("只从拓展 wire 子路径拿值", () => {
+		expect(wire.LIST_ITEM_ID_KEY).toBe("id");
+		expect(wire.EXTENSION_IMAGE_MAX_CHARS).toBe(32 * 1024);
+		expect(wire.EXTENSION_IMAGE_DATA_URL_RE).toBeInstanceOf(RegExp);
 	});
 
 	it("面板拿那条正则判出来的,与清单收不收是同一个答案", () => {
@@ -861,7 +857,7 @@ describe("搬进 /constants 的拓展判据", () => {
 			"https://example.invalid/logo.png",
 		]) {
 			const accepted = parseExtensionManifest(enumWith(icon)).ok;
-			expect(constants.EXTENSION_IMAGE_DATA_URL_RE.test(icon), icon).toBe(accepted);
+			expect(wire.EXTENSION_IMAGE_DATA_URL_RE.test(icon), icon).toBe(accepted);
 		}
 	});
 });

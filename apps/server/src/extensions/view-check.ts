@@ -24,8 +24,8 @@ import {
 	formatZodIssues,
 	imageMissing,
 	isSecretField,
-	LIST_ITEM_ID_KEY,
 } from "@bilibili-notify/internal";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodError } from "zod";
 
 /**

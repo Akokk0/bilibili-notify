@@ -6,11 +6,11 @@ import {
 	type Issue,
 	isSecretField,
 	issuesFromZod,
-	LIST_ITEM_ID_KEY,
 	maskCell,
 	settingsFieldSchema,
 	settingsListItemSchema,
 } from "@bilibili-notify/internal";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodError, ZodType } from "zod";
 import type { ConfigStore } from "../config/store.js";
 

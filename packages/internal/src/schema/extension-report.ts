@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FAILURE_CODES, type Failure, type FailureCode, fail, type Issue, ok } from "../constants";
+import { FAILURE_CODES, type Failure, type FailureCode, fail, type Issue, ok } from "../result";
 import { ImageRefSchema } from "./history";
 import { EXTERNAL_ID_MAX } from "./subscriptions";
 

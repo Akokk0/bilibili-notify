@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { LINK_REPLY_FORMS } from "../../constants";
+import { LINK_REPLY_FORMS } from "../../link-preview";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema, linkPreviewFor } from "../link-preview";
 

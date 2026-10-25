@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { FEATURE_KEYS } from "../../constants";
+import { FEATURE_KEYS } from "../../features";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 

@@ -4,7 +4,7 @@
  * 拓展从 `@bilibili-notify/extension` 拿(那里转出一道),面板经 `@bilibili-notify/contract` 拿。
  */
 
-import type { Result } from "./constants";
+import type { Result } from "./result";
 
 /**
  * 面板左栏的五组。`web` 是浏览器里跑的那半,其余四组都在服务端。

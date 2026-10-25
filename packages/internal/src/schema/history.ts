@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { FAILURE_CODES, type FailureCode, IMAGE_REF_PATTERN, PUSH_STATUSES } from "../constants";
+import { PUSH_STATUSES } from "../history";
+import { IMAGE_REF_PATTERN } from "../image-ref";
 import { PostFilterReason } from "../post";
+import { FAILURE_CODES, type FailureCode } from "../result";
 import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 

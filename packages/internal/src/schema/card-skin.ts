@@ -40,63 +40,19 @@ export const CARD_DATA_VERSION = 2;
 // ---- 卡种 -------------------------------------------------------------------
 
 import {
-	CARD_KIND_NAMES,
 	CARD_KINDS,
-	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
-	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KNOB_KEY_RE,
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
-	CARD_SKIN_RANK_ATTR,
-	CARD_SKIN_RANK_GUIDE,
-	CARD_SKIN_RANKED_KINDS,
-	CARD_SKIN_SELF_HOOK,
-	CARD_SKIN_UPLOAD_PREFIX,
-	type CardKind,
-	type CardSkinBuiltinBlock,
-	type CardSkinField,
-	type CardSkinFieldType,
-	type CardSkinFrameHook,
-	type CardSkinGrid,
-	type CardSkinKnobUnit,
 	cardSkinBytes,
 	DIVIDER_TYPE,
-	effectiveCardSkinKnobs,
-	type PreviewScene,
-	parseCardSkinFontKnobValue,
-	parseCardSkinImageKnobValue,
-	resolvePreviewScene,
-	rowMapOf,
-} from "../constants.js";
-
-export type { CardKind, CardSkinGrid, PreviewScene };
-// 七种卡与预览场景表都住零依赖的 `constants.ts`:面板(apps/web)要拿它们画那排卡种 tab
-// 与那排场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
-// (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端与出图端照旧从
-// 根入口拿。
-export { CARD_KIND_NAMES, CARD_KINDS, CARD_PREVIEW_SCENES, resolvePreviewScene, rowMapOf };
+} from "../card-skin";
 export const CardKindSchema = z.enum(CARD_KINDS);
 
-export type { CardSkinBuiltinBlock };
-// 上限与内置块目录同样住 `constants.ts`(理由同上:编辑器要照它们画控件与块名)。
-export { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS, cardSkinBytes };
-
 // ---- 挂点 -------------------------------------------------------------------
-
-export type { CardSkinFrameHook };
-// 挂点名住零依赖的 `constants.ts`(理由同块目录:编辑器要照它们给作者列「这块能挂哪些
-// 选择器」,而从根入口取值会把 zod 拽进前端 bundle)。这里原样再导出。
-// 档位属性(㉔d)同住那里:出图器写它、编辑器与 AI 的说明读它。
-export {
-	CARD_SKIN_FRAME_HOOKS,
-	CARD_SKIN_RANK_ATTR,
-	CARD_SKIN_RANK_GUIDE,
-	CARD_SKIN_RANKED_KINDS,
-	CARD_SKIN_SELF_HOOK,
-};
 
 // ---- 变量 -------------------------------------------------------------------
 
@@ -411,16 +367,6 @@ export function cardSkinKnobCss(knob: CardSkinKnob, value: unknown): string | nu
 	}
 }
 
-// 这两个解析器与那个前缀住零依赖的 `constants.ts`(理由同块目录:面板要拿它们把旋钮值
-// 与字体 / 图廊选择器来回翻,而从根入口取值会把 zod 拽进前端 bundle)。两层覆盖的合并
-// 同理(面板要拿它算 per-UP 那侧「跟随全局」时的起始位置)。原样再导出。
-export {
-	CARD_SKIN_UPLOAD_PREFIX,
-	effectiveCardSkinKnobs,
-	parseCardSkinFontKnobValue,
-	parseCardSkinImageKnobValue,
-};
-
 /**
  * 皮肤声明的旋钮 + 用户覆盖 → 注在外框上的那串自定义属性。
  * 没覆盖的旋钮**不出现**(`default` 不注入,见 {@link CARD_SKIN_KNOB_LIMITS} 的说明)。
@@ -440,12 +386,6 @@ export function cardSkinKnobDeclarations(
 }
 
 // ---- 数据契约 ----------------------------------------------------------------
-
-export type { CardSkinField, CardSkinFieldType, CardSkinKnobUnit };
-// 字段表住零依赖的 `constants.ts`(理由同块目录与挂点:编辑器要照它画 `showIf` 的候选
-// 与自定义块里能写的占位符)。旋钮那三样同理 —— 编辑器要照上限画「还能加几枚」、照 key
-// 的正则当场判合不合法、照单位表画那个下拉。这里原样再导出。
-export { CARD_SKIN_FIELDS, CARD_SKIN_KNOB_KEY_RE, CARD_SKIN_KNOB_LIMITS, CARD_SKIN_KNOB_UNITS };
 
 const FIELD_PATH_RE = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
 

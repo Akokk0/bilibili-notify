@@ -11,7 +11,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { countsAsDelivery, countsAsFailure, FEATURE_KEYS, PUSH_STATUSES } from "../../constants.js";
+import { FEATURE_KEYS } from "../../features.js";
+import { countsAsDelivery, countsAsFailure, PUSH_STATUSES } from "../../history.js";
 import { PostFilterReason } from "../../post.js";
 import { HistoryEntrySchema, HistoryMessageResultSchema } from "../history.js";
 

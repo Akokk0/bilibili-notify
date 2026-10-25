@@ -1,8 +1,8 @@
 /**
- * 零依赖子路径的源文件(`constants.ts`、`format.ts`)**只许有 type import** —— 这条以前只是
+ * 零依赖子路径的源文件(各领域文件、`format.ts`)**只许有 type import** —— 这条以前只是
  * 文件头上的一句话。
  *
- * 它们经 `@bilibili-notify/internal/constants`、`/format` 子路径**直供浏览器端运行时消费**,所以一条
+ * 它们经各自的领域子路径或 `@bilibili-notify/internal/format` **直供浏览器端运行时消费**,所以一条
  * 值级 import 就能把 zod(以及它拽着的整张 schema 图)拉进前端 bundle。症状不是报错,
  * 是**产物悄悄胖一圈**,而门禁全绿。
  *
@@ -25,6 +25,19 @@ import { describe, expect, it } from "vite-plus/test";
 // `builtin-texts.ts` 经 `/builtin-texts` 子路径供面板与服务端共用出厂文案(3b-12,ADR-0037 决策 10、11),同一条纪律。
 const ZERO_DEP_SOURCES = [
 	"constants.ts",
+	"result.ts",
+	"identity.ts",
+	"features.ts",
+	"push-target.ts",
+	"platform-registry.ts",
+	"ai.ts",
+	"card-skin.ts",
+	"history.ts",
+	"link-preview.ts",
+	"update.ts",
+	"image-ref.ts",
+	"source.ts",
+	"extension/wire.ts",
 	"format.ts",
 	"bilibili-guard.ts",
 	"live-monitor.ts",

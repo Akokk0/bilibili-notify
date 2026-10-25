@@ -7,7 +7,7 @@
  */
 
 import type { EffectiveMembershipTemplate } from "./builtin-texts";
-import type { ImageRef } from "./constants";
+import type { ImageRef } from "./image-ref";
 import type { PostImage } from "./post";
 import type { MembershipTemplateEntry } from "./schema/common";
 

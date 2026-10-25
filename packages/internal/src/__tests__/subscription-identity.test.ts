@@ -11,7 +11,7 @@ import {
 	RESERVED_INTEGRATION_KEYS,
 	sameIdentity,
 	subscriptionIdentityOf,
-} from "../constants";
+} from "../identity";
 import { ExtensionIdSchema } from "../schema/extension-manifest";
 import { makeEmptySubscription, SubscriptionSchema } from "../schema/subscriptions";
 

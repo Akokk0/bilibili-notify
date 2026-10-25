@@ -17,7 +17,7 @@ import {
 	extensionColorSeed,
 	identityColor,
 	UP_COLORS,
-} from "../constants";
+} from "../identity";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {

@@ -9,7 +9,7 @@
  * 宿主自己才用得上的口(拦内网的 `addressCheck`、cookie 罐、销毁连接池)不在这里:拓展看不到。
  */
 
-import type { Result } from "./constants";
+import type { Result } from "./result";
 
 /** 即将发出的一跳(含第一次请求)。 */
 export interface Hop {

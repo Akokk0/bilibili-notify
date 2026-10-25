@@ -18,9 +18,10 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "../../ai";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { resolve } from "../resolve";
-import { ROAST_MAX_DAYS, ROAST_MIN_DAYS, RoastScheduleSchema } from "../roast-schedule";
+import { RoastScheduleSchema } from "../roast-schedule";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 describe("RoastScheduleSchema", () => {

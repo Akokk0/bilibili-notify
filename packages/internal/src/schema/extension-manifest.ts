@@ -1,20 +1,13 @@
 import { z } from "zod";
 import {
-	CREATOR_SEARCH_INPUTS,
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
-	EXTENSION_SOURCE_FEATURES,
 	LIST_ITEM_ID_KEY,
-	RESERVED_EXTENSION_IDS,
-} from "../constants";
+} from "../extension/wire";
+import { EXTENSION_SOURCE_FEATURES } from "../features";
+import { RESERVED_EXTENSION_IDS } from "../identity";
+import { CREATOR_SEARCH_INPUTS } from "../source";
 import { checkUserRegex } from "../util/regex-safety";
-
-// 本体住零依赖的 constants(面板经 /constants 拿值),这里给根入口补一条路 —— 两路一值。
-export {
-	EXTENSION_IMAGE_DATA_URL_RE,
-	EXTENSION_IMAGE_MAX_CHARS,
-	LIST_ITEM_ID_KEY,
-} from "../constants";
 
 /**
  * 宿主认的契约:**档位区间** `[min, current]`(ADR-0019 决策 18)+ 档位下面的**契约小号**

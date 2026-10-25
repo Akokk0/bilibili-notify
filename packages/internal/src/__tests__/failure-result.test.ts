@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { FAILURE_CODES, type Failure, fail, issuesFromZod, ok, type Result } from "../constants";
+import { FAILURE_CODES, type Failure, fail, issuesFromZod, ok, type Result } from "../result";
 
 describe("标准码表", () => {
 	it("十一个码、按文档的顺序,各带「自动重试」那一列", () => {

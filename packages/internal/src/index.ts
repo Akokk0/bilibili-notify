@@ -1,93 +1,19 @@
-// AI 服务商注册表。本体在零依赖的 constants(设置页经 /constants 子路径消费),
-// 这里给后端消费者补一条根入口的路 —— 与 FEATURE_KEYS 同样的两路一值。
-// 失败规矩的零件(ADR-0026)。本体在零依赖的 constants(面板经 /constants 子路径消费),
-// 这里给后端补一条根入口的路。
+/**
+ * internal 的根入口 —— 领域值的本体都在各领域文件,这里只放转出语句。
+ */
 
+export * from "./ai";
 export * from "./ai-tool";
 export * from "./auth-state";
 export * from "./bilibili-guard";
-export {
-	type ActivePersonaShape,
-	AI_PROVIDER_IDS,
-	AI_PROVIDERS,
-	type AIBuiltinPresetShape,
-	type AIPersonaShape,
-	type AIPresetShape,
-	type AIProviderId,
-	type AIProviderMeta,
-	type AIProviderProfileShape,
-	API_FLAVOR_IDS,
-	type APIFlavorId,
-	addressNounFor,
-	aiProfileAt,
-	BILIBILI_SOURCE_KEY,
-	CONNECTION_PLATFORMS,
-	type ConnectionPlatform,
-	CREATOR_SEARCH_INPUTS,
-	type CreatorSearchInput,
-	canReceiveReply,
-	colorFromSeed,
-	countsAsDelivery,
-	countsAsFailure,
-	DEFAULT_HISTORY_RETENTION_DAYS,
-	DEFAULT_ROAST_SCHEDULE,
-	DIVIDER_TYPE,
-	EMPTY_AI_PROVIDER_PROFILE,
-	EXTENSION_SOURCE_FEATURES,
-	extensionColorSeed,
-	FAILURE_CODES,
-	type Failure,
-	type FailureCode,
-	fail,
-	HISTORY_RETENTION_DAY_OPTIONS,
-	type HistoryRetentionDays,
-	type Identity,
-	IMAGE_REF_EXTENSIONS,
-	IMAGE_REF_PATTERN,
-	type ImageRef,
-	type Issue,
-	identityColor,
-	isMirrorPrefix,
-	isPrivateTarget,
-	issuesFromZod,
-	isTargetPaused,
-	isWebhookPlatform,
-	LINK_LIMITS,
-	LINK_REPLY_FORMS,
-	type LinkLimits,
-	type LinkReplyForm,
-	listsForLinkPreview,
-	MIRROR_PREFIX_RE,
-	ok,
-	PLATFORM_REGISTRY,
-	PUSH_STATUSES,
-	platformDescriptor,
-	presetsOf,
-	providerMeta,
-	RESERVED_EXTENSION_IDS,
-	RESERVED_INTEGRATION_KEYS,
-	type Result,
-	resolveActivePersona,
-	resolveAIProfile,
-	resolveChatThinkingLevel,
-	type SourceKey,
-	sameIdentity,
-	shouldSendAtAll,
-	subscriptionIdentityOf,
-	THINKING_LEVELS,
-	type ThinkingLevel,
-	UP_COLORS,
-	WEB_SEARCH_BACKEND_IDS,
-	WEB_SEARCH_BACKENDS,
-	WEBHOOK_PLATFORMS,
-	type WebhookPlatform,
-	type WebSearchBackendId,
-	type WebSearchBackendMeta,
-	webSearchBackendMeta,
-} from "./constants";
+export * from "./card-skin";
 export * from "./devtools";
+export * from "./features";
 export * from "./format";
+export * from "./history";
 export * from "./http";
+export * from "./identity";
+export * from "./image-ref";
 export * from "./key-value-store";
 export * from "./link-preview";
 export * from "./live";
@@ -95,6 +21,7 @@ export * from "./live-monitor";
 export * from "./membership";
 export * from "./platform";
 export * from "./platform-descriptor";
+export * from "./platform-registry";
 export * from "./post";
 export * from "./problem";
 /**
@@ -113,7 +40,10 @@ export {
 	type PlatformAdapterContext,
 	type ProbeResult,
 } from "./push-source";
+export * from "./push-target";
+export * from "./result";
 export * from "./schema";
 export * from "./source";
 export * from "./timezone";
+export * from "./update";
 export * from "./util";

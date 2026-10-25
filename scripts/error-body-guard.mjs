@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FAILURE_CODES } from "../packages/internal/src/constants.ts";
+import { FAILURE_CODES } from "../packages/internal/src/result.ts";
 
 /**
  * 守卫「错误体」(ADR-0026 决策 6,记账式,仿守卫 2 —— 见 network-guard.mjs):vitest 运行里,

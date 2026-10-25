@@ -3,7 +3,7 @@ import type {
 	ExtensionScalarField,
 	ExtensionSettingsResponse,
 } from "@bilibili-notify/contract";
-import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/constants";
+import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import { ApiError } from "../../../services/api";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";

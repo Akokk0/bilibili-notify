@@ -5,7 +5,8 @@
  * 只有取段函数(`postText`)住在服务端的 `posts/`。
  */
 
-import type { Identity, ImageRef } from "./constants";
+import type { Identity } from "./identity";
+import type { ImageRef } from "./image-ref";
 
 /** 出卡认 `ref`;`url` 给「查看原图」;抓不到图库的图(B 站抓图失败)时出卡仍靠它画。 */
 export interface PostImage {

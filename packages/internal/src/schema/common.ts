@@ -1,22 +1,10 @@
 import { z } from "zod";
-import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
+import { AI_PROVIDER_IDS, API_FLAVOR_IDS, THINKING_LEVELS, WEB_SEARCH_BACKEND_IDS } from "../ai";
+import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../features";
 import { checkUserRegex } from "../util/regex-safety";
 import { AiWritingSettingsSchema } from "./ai-writing";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { markBackupOnly, markSecret } from "./secret";
-
-export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
-
-// 值与类型的单一来源在 ../constants(零依赖,供前端经 /constants 子路径运行时消费);
-// 这里重导出维持根入口的既有 API 面,后端消费者无感。
-import {
-	AI_PROVIDER_IDS,
-	API_FLAVOR_IDS,
-	THINKING_LEVELS,
-	WEB_SEARCH_BACKEND_IDS,
-} from "../constants";
-
-export { DEFAULT_FEATURE_FLAGS, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
 
 /** blockRegex/allowRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
@@ -24,11 +12,11 @@ const UserRegexString = z.string().superRefine((src, ctx) => {
 	if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
 });
 
-/** 全部可订阅的特性键(键列表本体在 ../constants)。 */
+/** 全部可订阅的特性键(键列表本体在 ../features)。 */
 export const FeatureKeySchema = z.enum(FEATURE_KEYS);
 
 /**
- * 四把附加项的开关(ADR-0016)。键表与出厂值的本体在 `../constants` 的 `PUSH_EXTRAS` ——
+ * 四把附加项的开关(ADR-0016)。键表与出厂值的本体在 `../features` 的 `PUSH_EXTRAS` ——
  * 这里只把它翻成 schema,加一把附加项不用改这儿。
  *
  * 四把都必填:这是**全局**那一层。per-UP 覆盖用它的 `.partial()`(见下面的

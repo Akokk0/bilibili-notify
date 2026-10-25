@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { chatIdentityOf, type PushTarget, platformOfTarget } from "../targets.js";
+import { platformOfTarget } from "../../push-target.js";
+import { chatIdentityOf, type PushTarget } from "../targets.js";
 
 const CONN_A = "11111111-1111-4111-8111-111111111111";
 const CONN_B = "22222222-2222-4222-8222-222222222222";

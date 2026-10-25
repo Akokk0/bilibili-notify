@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { isTargetPaused } from "../constants";
+import { isTargetPaused } from "../push-target";
 
 const connections = [
 	{ id: "a-on", enabled: true },

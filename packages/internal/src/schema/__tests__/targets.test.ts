@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { WEBHOOK_PLATFORMS } from "../../constants";
+import { WEBHOOK_PLATFORMS } from "../../platform-registry";
 import {
 	CONNECTION_PROBE_STATUSES,
 	ConnectionSchema,

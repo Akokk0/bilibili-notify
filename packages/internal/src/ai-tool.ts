@@ -1,4 +1,4 @@
-import type { Result } from "./constants";
+import type { Result } from "./result";
 
 /**
  * 注入工具的**富返回值** —— 除了回灌给模型的文本,还能顺带收窄接下来的工具面。

@@ -1,11 +1,14 @@
 import type { AiToolProvider } from "./ai-tool";
 import type { AuthState } from "./auth-state";
-import type { FeatureKey, Identity, ImageRef, Result } from "./constants";
+import type { FeatureKey } from "./features";
+import type { Identity } from "./identity";
+import type { ImageRef } from "./image-ref";
 import type { LinkResolver } from "./link-preview";
 import type { LiveInteractionReport, LiveSignalReport, LiveStatusResult } from "./live";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
+import type { Result } from "./result";
 
 /** 来源的自我介绍。这里只放已经有读者的格子。 */
 export interface SourceDescriptor {
@@ -146,6 +149,10 @@ export interface CreatorProfileReport {
 	/** 粉丝团名;只有有粉丝团的平台才给。 */
 	fanClubName?: string;
 }
+
+/** 订阅源搜人输入框接受的输入种类;提示句以后按这份声明拼,不让来源自己写一句。 */
+export const CREATOR_SEARCH_INPUTS = ["id", "link", "name"] as const;
+export type CreatorSearchInput = (typeof CREATOR_SEARCH_INPUTS)[number];
 
 /**
  * `searchCreators` 交的一个候选(最多 10 个)。`externalId` 就是选中后新建订阅用的外部 id;

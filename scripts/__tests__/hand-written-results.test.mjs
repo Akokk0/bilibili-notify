@@ -26,7 +26,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** 白名单:整个文件放行,写明理由。 */
 export const ALLOWLIST = {
-	"packages/internal/src/constants.ts": "ok() / fail() 的定义",
+	"packages/internal/src/result.ts": "ok() / fail() 的定义",
 };
 
 /**

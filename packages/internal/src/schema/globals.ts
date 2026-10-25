@@ -1,11 +1,10 @@
 import { z } from "zod";
-import {
-	DEFAULT_HISTORY_RETENTION_DAYS,
-	HISTORY_RETENTION_DAY_OPTIONS,
-	MIRROR_PREFIX_RE,
-} from "../constants";
+import { DEFAULT_ROAST_SCHEDULE } from "../ai";
+import { DEFAULT_FEATURE_FLAGS } from "../features";
+import { DEFAULT_HISTORY_RETENTION_DAYS, HISTORY_RETENTION_DAY_OPTIONS } from "../history";
 import { LOCALES, VOICES } from "../i18n";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
+import { MIRROR_PREFIX_RE } from "../update";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
@@ -15,7 +14,6 @@ import {
 	CardsSettingsSchema,
 	ContentFiltersSchema,
 	DEFAULT_CONTENT_FILTERS,
-	DEFAULT_FEATURE_FLAGS,
 	DEFAULT_IMAGE_GROUP,
 	DEFAULT_LIVE_START,
 	DEFAULT_LIVE_STREAMING,
@@ -34,7 +32,7 @@ import {
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema } from "./link-preview";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
-import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
+import { RoastScheduleSchema } from "./roast-schedule";
 import { markBackupOnly, markSecret } from "./secret";
 
 /** 启动时注入、运行时只读的引导配置。 */

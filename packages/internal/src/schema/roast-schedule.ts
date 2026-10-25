@@ -1,11 +1,5 @@
 import { z } from "zod";
-import {
-	DEFAULT_ROAST_CRON,
-	DEFAULT_ROAST_DAYS,
-	DEFAULT_ROAST_SCHEDULE,
-	ROAST_MAX_DAYS,
-	ROAST_MIN_DAYS,
-} from "../constants";
+import { DEFAULT_ROAST_CRON, DEFAULT_ROAST_DAYS, ROAST_MAX_DAYS, ROAST_MIN_DAYS } from "../ai";
 
 /**
  * 锐评定时推送的调度配置 —— 榜单周报与单人锐评共用同一副形状。
@@ -16,16 +10,8 @@ import {
  * 雷同一串本来不存在的问题。
  */
 
-// 边界与默认值本体住在 zero-dep 的 `../constants` —— 配置页要拿它们做输入提示,
+// 边界与默认值本体住在 zero-dep 的 `../ai` —— 配置页要拿它们做输入提示,
 // 而 `apps/web` 不能把 zod 拉进浏览器 bundle,从这个文件 import 就会。这里只 re-export。
-export {
-	DEFAULT_ROAST_CRON,
-	DEFAULT_ROAST_DAYS,
-	DEFAULT_ROAST_SCHEDULE,
-	ROAST_MAX_DAYS,
-	ROAST_MIN_DAYS,
-};
-
 export const RoastScheduleSchema = z.object({
 	/**
 	 * 总开关。**默认必须是 false** —— 存量用户升级上来,不该有任何东西开始自己

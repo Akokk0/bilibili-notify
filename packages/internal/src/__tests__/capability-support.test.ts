@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { canReceiveReply, listsForLinkPreview, shouldSendAtAll } from "../constants";
+import { canReceiveReply, listsForLinkPreview, shouldSendAtAll } from "../push-target";
 
 type Support = { state: "supported" | "unsupported" | "unknown" } | undefined;
 

@@ -1,5 +1,5 @@
 /**
- * 卡种中文名**只许住在 `constants.ts` 一处**(㉔f)。
+ * 卡种中文名**只许住在 `card-skin.ts` 一处**(㉔f)。
  *
  * 从前五处各写一份(`CARD_KIND_NAMES`、皮肤编辑器顶栏、回落告警、卡片页两张表、测试推送图说),加第八种卡时
  * 总有一边漏掉,漏掉的那边是静默的 —— 类型、测试、构建都绿,面板上就是少一个名字或者名字对不上。
@@ -21,9 +21,9 @@ import {
 	CARD_KIND_SHORT_NAMES,
 	CARD_KINDS,
 	CARD_SKIN_BUILTIN_BLOCKS,
-} from "../constants";
+} from "../card-skin";
 
-const OWNER = "packages/internal/src/constants.ts";
+const OWNER = "packages/internal/src/card-skin.ts";
 
 /**
  * 不会跟别的概念撞字的名字(全名、事件名:「直播卡」「SC 提醒」)—— 卡种键配上其中任何一个,单独一条就算抄了。
@@ -105,7 +105,7 @@ describe("卡种中文名的表", () => {
 });
 
 describe("同一个概念同一个名字", () => {
-	// 验红:把 constants.ts 里直播卡 creatorName 块的 label 改回「主播名」,这条红。
+	// 验红:把 card-skin.ts 里直播卡 creatorName 块的 label 改回「主播名」,这条红。
 	it("直播卡与动态卡的 creatorName 块都叫「创作者名」(核心里的词是 creator,不是主播)", () => {
 		expect(CARD_SKIN_BUILTIN_BLOCKS.live.creatorName?.label).toBe("创作者名");
 		expect(CARD_SKIN_BUILTIN_BLOCKS.post.creatorName?.label).toBe("创作者名");
@@ -148,7 +148,7 @@ describe("判据本身(样例)", () => {
 });
 
 describe("全仓:别处不许再抄一份", () => {
-	it("除 constants.ts 外,没有哪份源码里再写「卡种键 → 卡种中文名」(成表,或单条用了不撞字的全名 / 事件名)", () => {
+	it("除 card-skin.ts 外,没有哪份源码里再写「卡种键 → 卡种中文名」(成表,或单条用了不撞字的全名 / 事件名)", () => {
 		const files = listSources(srcRoots()).filter((f) => f !== OWNER);
 		const offenders = files.flatMap((file) => {
 			const keys = kindNameEntries(file);
@@ -157,7 +157,7 @@ describe("全仓:别处不许再抄一份", () => {
 				? [`${file}: ${[...new Set([...keys, ...strong])].join(" / ")}`]
 				: [];
 		});
-		expect(offenders, "卡种中文名只许写在 constants.ts;别处用 CARD_KIND_* 三张表").toEqual([]);
+		expect(offenders, "卡种中文名只许写在 card-skin.ts;别处用 CARD_KIND_* 三张表").toEqual([]);
 	});
 
 	it("扫得到东西(免得目录写错、一份文件都没扫就绿)", () => {

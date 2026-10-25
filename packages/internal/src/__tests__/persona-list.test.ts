@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { presetsOf, resolveActivePersona } from "../ai";
 import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "../builtin-texts";
-import { presetsOf, resolveActivePersona } from "../constants";
 import zhCN from "../locales/zh-CN.json";
 
 const zh = builtinPresetsFor("zh-CN");

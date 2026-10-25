@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LINK_REPLY_FORMS, type LinkReplyForm } from "../constants";
+import { LINK_REPLY_FORMS, type LinkReplyForm } from "../link-preview";
 
 /**
  * 链接预览(独立端专有):群里有人贴视频链接,机器人自动回一张预览。五格:

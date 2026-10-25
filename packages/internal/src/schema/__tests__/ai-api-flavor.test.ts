@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { API_FLAVOR_IDS, canProfileThink, providerMeta } from "../../constants";
+import { API_FLAVOR_IDS, canProfileThink, providerMeta } from "../../ai";
 import { AISettingsSchema } from "../common";
 
 const BASE = {

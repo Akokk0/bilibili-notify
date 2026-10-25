@@ -1,27 +1,25 @@
 import { z } from "zod";
+import { DEFAULT_ROAST_SCHEDULE } from "../ai";
 // `extrasRecord` 直接从零依赖的词表取:它是内部工具,没必要跟着 EXTRA_KEYS 那批
 // 一起经 ./common 重导出去撑大根入口的 API 面。
-import { extrasRecord, IMAGE_REF_PATTERN } from "../constants";
+import { EXTRA_KEYS, extrasRecord, FEATURE_KEYS, type FeatureKey, PUSH_EXTRAS } from "../features";
+import { IMAGE_REF_PATTERN } from "../image-ref";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
 	CardsOverridesSchema,
 	ContentFiltersPartialSchema,
-	EXTRA_KEYS,
-	FEATURE_KEYS,
 	FeatureFlagsPartialSchema,
-	type FeatureKey,
 	ImageGroupSettingsPartialSchema,
 	LiveStartSettingsPartialSchema,
 	LiveStreamingSettingsPartialSchema,
 	MembershipSettingsPartialSchema,
-	PUSH_EXTRAS,
 	ScheduleConfigPartialSchema,
 	SuperchatSettingsPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
 import { ID_SEGMENT, isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { MessageLayoutSchema } from "./message-layout";
-import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
+import { RoastScheduleSchema } from "./roast-schedule";
 
 /**
  * 路由：每个特性 → PushTarget.id[]。空数组 = 该特性不推。

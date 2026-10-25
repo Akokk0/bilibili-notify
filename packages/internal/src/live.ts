@@ -6,7 +6,7 @@
  * 图一律是图库引用({@link PostImage}),来源先存进图库再交。
  */
 
-import type { Identity } from "./constants";
+import type { Identity } from "./identity";
 import type {
 	MembershipEvent,
 	SuperchatEvent,
