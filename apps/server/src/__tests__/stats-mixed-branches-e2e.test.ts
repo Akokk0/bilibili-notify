@@ -648,7 +648,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			outcome: { kind: "sent", mode: "image", sent: 1, skipped: [], failed: [] },
 		});
 
-		const solo = aiCalls.filter((c) => c.user.includes("一位创作者"));
+		const solo = aiCalls.filter((c) => c.user.includes("一位假主播"));
 		expect(solo).toHaveLength(1);
 		const data = JSON.parse(solo[0]?.user.split("\n")[1] ?? "{}") as Record<string, unknown>;
 		expect(data).toMatchObject({

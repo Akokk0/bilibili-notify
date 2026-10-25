@@ -270,8 +270,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 
 		const [first, second] = hooksFor("a");
 		for (const [hook, template, n] of [
-			// 假源不声明作品叫法 → `{postNoun}` 缺省「作品」。
-			[first, "发布了一条作品", 1],
+			[first, "发布了一条假帖", 1],
 			[second, "发布了新视频", 2],
 		] as const) {
 			// 默认版式:卡片 + 文案 + 链接合成一条;链接是事件的 url(决策 77),文案的 {name} 取资料名。
