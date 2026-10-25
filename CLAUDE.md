@@ -43,7 +43,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - **写前端 UI 前先查组件清单**:`packages/ui`(`@bilibili-notify/ui`)是纯展示基础件库,给 web / desktop 写任何 UI **之前必须先读 `packages/ui/README.md` 的组件清单**——清单里有的组件不许重写。新增纯展示件(零业务依赖)进库并**同步更新清单**;缠 api/store/react-query 的留在 `apps/web/src/components`。库是源码直出(exports 指 src,无构建步),消费方入口 CSS 要 `@import "@bilibili-notify/ui/theme.css"` + `@source` 库的 src。
 
-- **拓展只从一扇门拿 BN 的东西**:`extensions/<id>/` 底下第三方随便用,但我们自己的东西**只准从 `@bilibili-notify/extension` 进** —— 那个包列出来的就是契约的全部,直接依赖 `internal` 等于把契约放宽成「整个域模型」。反方向也一样:**核心不 import 拓展**。两条都由 `apps/server/src/extensions/__tests__/extension-import-boundary.test.ts` 真扫目录钉着,越界是静默的(类型、测试、构建全绿)。
+- **拓展只从一扇门拿 BN 的东西**:`extensions/<id>/` 底下第三方随便用,但我们自己的东西**只准从 `@bilibili-notify/extension` 进** —— 那个包列出来的就是契约的全部,直接依赖 `internal` 等于把契约放宽成「整个域模型」。反方向也一样:**核心既不 import 拓展,也不 import 那扇门**。东西都定义在 `internal`,门只负责把它们转给拓展。两条都由 `extension-import-boundary.test.ts` 钉着,越界是静默的(类型、测试、构建全绿)。
 
 - **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。类型增强(`declare module "x"`)也算 —— 解析不到就静默变成孤立声明。pnpm 是 isolated 布局,幻影依赖直接解析不到,不会像 hoisted 年代那样碰巧能跑。
 - **MessageBus**:`apps/server/src/runtime/message-bus.ts` 是唯一事件通道,绝不写 bus 与任何别的事件通道之间的转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。

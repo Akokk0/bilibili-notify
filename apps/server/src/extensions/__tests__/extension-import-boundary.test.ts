@@ -15,14 +15,25 @@
  * 判据写成纯函数 + 样例,是因为**判据本身也会写错**:一条永远判 OK 的规则跟没有一样。
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { importsOf, listSources, parseSource } from "../../../../../scripts/source-scan.mjs";
+import { importsOf, listSources, parseSource, ts } from "../../../../../scripts/source-scan.mjs";
 
-/** 宿主给拓展的那一面。ctx 从这儿拿,不从核心里掏。 */
+/** 拓展拿契约的那一扇门。本体与 wire 形状都住 `@bilibili-notify/internal`。 */
 const EXTENSION_PACKAGE = "@bilibili-notify/extension";
+const EXTENSION_PACKAGE_DIR = "packages/extension";
+const EXTENSION_SOURCE_ROOT = `${EXTENSION_PACKAGE_DIR}/src`;
+const EXTENSION_ENTRY = `${EXTENSION_SOURCE_ROOT}/index.ts`;
+const INTERNAL_PACKAGE = "@bilibili-notify/internal";
+const EXTENSION_VALUES = new Set(["fail", "neutralPlatformDescriptor", "ok"]);
+
+const isExtensionPackage = (specifier: string) =>
+	specifier === EXTENSION_PACKAGE || specifier.startsWith(`${EXTENSION_PACKAGE}-`);
+
+const isExtensionSurface = (specifier: string) =>
+	isExtensionPackage(specifier) || specifier.startsWith(`${EXTENSION_PACKAGE}/`);
 
 export interface BoundaryViolation {
 	specifier: string;
@@ -170,23 +181,23 @@ describe("仓里的拓展没有越界", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 反方向:核心不 import 拓展                                                 */
+/* 反方向:核心不 import 拓展,也不 import 门                                 */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 🔴 **另一条边:核心不 import 拓展。**
+ * 🔴 **另一条边:核心不 import 拓展,也不 import 门。**
  *
  * 上半场只扫了「拓展够不够得到核心」,而那条规矩是**两条边**:核心伸手进
- * `extensions/` 同样致命,而且更隐蔽 ——
+ * `extensions/` 或依赖契约门同样致命,而且更隐蔽 ——
  *
  * - **拓展是装进来的,本体一个都不带**(ADR-0012)。核心 import 它等于把一个可选的、
  *   随时会被卸载 / 换版本的东西编进主程序:那个目录在主人机器上根本不存在。
- * - **它把契约变成双向的。** 契约只有一扇门(`@bilibili-notify/extension`),核心直接
- *   够到某个拓展的内部,等于宣布「桥的那个文件也是契约」—— 而那个拓展有自己的发版节奏。
+ * - **门是给拓展的出口,不是核心的入口。** 东西都定义在 `@bilibili-notify/internal`,
+ *   门只负责把它们转给拓展;核心直接够到某个拓展的内部,也等于宣布「桥的那个文件也是契约」—— 而那个拓展有自己的发版节奏。
  * - **越界照样是静默的**:仓里有源码、tsc 编得过、测试全绿,只有真机上那份没有仓库源码
  *   的载荷会炸,或者更糟:装的那一版和编进去的那一份不是同一版。
  */
-export function reachesIntoExtensions(
+export function crossesExtensionBoundary(
 	specifier: string,
 	/** 写这行的文件所在目录,**绝对路径**。 */
 	fromDir: string,
@@ -199,27 +210,29 @@ export function reachesIntoExtensions(
 		const resolved = resolve(fromDir, specifier);
 		return resolved === extensionsRoot || resolved.startsWith(`${extensionsRoot}${sep}`);
 	}
-	// 拓展都是 workspace 包(`@bilibili-notify/extension-<id>`)。⚠️ 那扇门本身叫
-	// `@bilibili-notify/extension`,不带横杠 —— 核心当然要 import 它。
-	return specifier.startsWith(`${EXTENSION_PACKAGE}-`);
+	// 拓展都是 workspace 包(`@bilibili-notify/extension-<id>`);门本身及其子路径是拓展
+	// 契约的出口。核心两样都不碰。
+	return isExtensionSurface(specifier);
 }
 
 describe("核心越界判据", () => {
 	const root = `${sep}repo${sep}extensions`;
 	const from = `${sep}repo${sep}apps${sep}server${sep}src`;
 
-	it("放行:宿主自己那个 src/extensions/(装载器住那儿),以及那扇门本身", () => {
-		expect(reachesIntoExtensions("./extensions/loader.js", from, root)).toBe(false);
-		expect(reachesIntoExtensions("../extensions/mount.js", from, root)).toBe(false);
-		expect(reachesIntoExtensions(EXTENSION_PACKAGE, from, root)).toBe(false);
-		expect(reachesIntoExtensions("@bilibili-notify/internal", from, root)).toBe(false);
+	it("放行:宿主自己那个 src/extensions/(装载器住那儿)与 internal", () => {
+		expect(crossesExtensionBoundary("./extensions/loader.js", from, root)).toBe(false);
+		expect(crossesExtensionBoundary("../extensions/mount.js", from, root)).toBe(false);
+		expect(crossesExtensionBoundary(INTERNAL_PACKAGE, from, root)).toBe(false);
+		expect(crossesExtensionBoundary(`${INTERNAL_PACKAGE}/extension`, from, root)).toBe(false);
 	});
 
-	it("判红:爬到仓根的 extensions/ 里,或者依赖某个拓展的包", () => {
-		expect(reachesIntoExtensions("../../../extensions/bridge/src/protocol.js", from, root)).toBe(
+	it("判红:爬到仓根的 extensions/、依赖拓展包,或者碰契约门", () => {
+		expect(crossesExtensionBoundary("../../../extensions/bridge/src/protocol.js", from, root)).toBe(
 			true,
 		);
-		expect(reachesIntoExtensions("@bilibili-notify/extension-bridge", from, root)).toBe(true);
+		expect(crossesExtensionBoundary("@bilibili-notify/extension-bridge", from, root)).toBe(true);
+		expect(crossesExtensionBoundary(EXTENSION_PACKAGE, from, root)).toBe(true);
+		expect(crossesExtensionBoundary(`${EXTENSION_PACKAGE}/wire`, from, root)).toBe(true);
 	});
 });
 
@@ -231,21 +244,24 @@ function coreSourceRoots(): string[] {
 	const roots: string[] = [];
 	for (const group of ["apps", "packages"]) {
 		for (const entry of readdirSync(join(REPO_ROOT, group), { withFileTypes: true })) {
+			const root = `${group}/${entry.name}/src`;
+			if (root === EXTENSION_SOURCE_ROOT) continue;
 			// 没有 src/ 的(桌面壳那种)跳过。
-			if (entry.isDirectory() && existsSync(join(REPO_ROOT, group, entry.name, "src"))) {
-				roots.push(`${group}/${entry.name}/src`);
+			if (entry.isDirectory() && existsSync(join(REPO_ROOT, root))) {
+				roots.push(root);
 			}
 		}
 	}
 	return roots;
 }
 
-describe("核心没有伸手进拓展", () => {
-	it("apps/**/src 与 packages/**/src 里没有一条 import 够到 extensions/", () => {
+describe("核心不碰拓展与契约门", () => {
+	it("apps/**/src 与 packages/**/src 里没有一条 import 够到拓展或门", () => {
 		const extensionsRoot = join(REPO_ROOT, "extensions");
 		const roots = coreSourceRoots();
 		// 一个源码根都没扫到 = 这条守卫在空转,那比没有还糟。
 		expect(roots.length).toBeGreaterThan(0);
+		expect(roots).not.toContain(EXTENSION_SOURCE_ROOT);
 
 		// 连测试文件一起扫,范围同迁移之前。
 		const files = listSources(roots, { tests: true });
@@ -255,10 +271,160 @@ describe("核心没有伸手进拓展", () => {
 		for (const file of files) {
 			const fromDir = dirname(join(REPO_ROOT, file));
 			for (const ref of importsOf(parseSource(file))) {
-				if (!reachesIntoExtensions(ref.specifier, fromDir, extensionsRoot)) continue;
+				if (!crossesExtensionBoundary(ref.specifier, fromDir, extensionsRoot)) continue;
 				violations.push(`${file}:${ref.line}: ${ref.specifier}`);
 			}
 		}
 		expect(violations).toEqual([]);
+	});
+});
+
+const DEPENDENCY_FIELDS = [
+	"dependencies",
+	"devDependencies",
+	"peerDependencies",
+	"optionalDependencies",
+] as const;
+
+/** 只扫 import 拦不住依赖还声明着;pnpm 照样会把门连进宿主。 */
+function forbiddenExtensionDependencies(manifest: Record<string, unknown>): string[] {
+	return DEPENDENCY_FIELDS.flatMap((field) => {
+		const dependencies = manifest[field];
+		if (dependencies === null || typeof dependencies !== "object" || Array.isArray(dependencies)) {
+			return [];
+		}
+		return Object.keys(dependencies).filter(isExtensionPackage);
+	});
+}
+
+function workspacePackageManifests(): string[] {
+	const manifests: string[] = [];
+	for (const group of ["apps", "packages"]) {
+		for (const entry of readdirSync(join(REPO_ROOT, group), { withFileTypes: true })) {
+			const packageDir = `${group}/${entry.name}`;
+			if (!entry.isDirectory() || packageDir === EXTENSION_PACKAGE_DIR) continue;
+			const manifest = `${packageDir}/package.json`;
+			if (existsSync(join(REPO_ROOT, manifest))) manifests.push(manifest);
+		}
+	}
+	return manifests.sort();
+}
+
+describe("宿主与别的包不声明拓展依赖", () => {
+	it("只扫 import 拦不住依赖还声明着,pnpm 照样会把门连进来", () => {
+		expect(
+			forbiddenExtensionDependencies({
+				dependencies: { [EXTENSION_PACKAGE]: "workspace:*" },
+				devDependencies: { "@bilibili-notify/extension-bridge": "workspace:*" },
+				peerDependencies: { [EXTENSION_PACKAGE]: "workspace:*" },
+				optionalDependencies: { "@bilibili-notify/extension-source": "workspace:*" },
+			}),
+		).toEqual([
+			EXTENSION_PACKAGE,
+			"@bilibili-notify/extension-bridge",
+			EXTENSION_PACKAGE,
+			"@bilibili-notify/extension-source",
+		]);
+		expect(
+			forbiddenExtensionDependencies({
+				dependencies: { [INTERNAL_PACKAGE]: "workspace:*" },
+			}),
+		).toEqual([]);
+	});
+
+	it("apps/* 与 packages/* 的四类依赖里都没有门或拓展包", () => {
+		const manifests = workspacePackageManifests();
+		expect(manifests.length).toBeGreaterThan(0);
+		expect(manifests).not.toContain(`${EXTENSION_PACKAGE_DIR}/package.json`);
+
+		const violations = manifests.flatMap((path) => {
+			const manifest = JSON.parse(readFileSync(join(REPO_ROOT, path), "utf8")) as Record<
+				string,
+				unknown
+			>;
+			return forbiddenExtensionDependencies(manifest).map((name) => `${path}: ${name}`);
+		});
+		expect(violations).toEqual([]);
+	});
+});
+
+const isInternalSpecifier = (specifier: string) =>
+	specifier === INTERNAL_PACKAGE || specifier.startsWith(`${INTERNAL_PACKAGE}/`);
+
+const SOURCE_FILE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+function sourceFilesUnder(relDir: string): string[] {
+	const files: string[] = [];
+	for (const entry of readdirSync(join(REPO_ROOT, relDir), { withFileTypes: true })) {
+		const rel = `${relDir}/${entry.name}`;
+		if (entry.isDirectory()) {
+			if (entry.name !== "__tests__") files.push(...sourceFilesUnder(rel));
+		} else if (entry.isFile() && SOURCE_FILE.test(entry.name)) {
+			files.push(rel);
+		}
+	}
+	return files.sort();
+}
+
+function extensionDoorProblems(source: ReturnType<typeof parseSource>): string[] {
+	const { ast } = source;
+	const lineOf = (node: ts.Node) => ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1;
+	return ast.statements.flatMap((statement) => {
+		const line = lineOf(statement);
+		if (
+			!ts.isExportDeclaration(statement) ||
+			statement.moduleSpecifier === undefined ||
+			!statement.exportClause ||
+			!ts.isNamedExports(statement.exportClause)
+		) {
+			return [`${source.path}:${line} 不是带说明符的具名 export-from`];
+		}
+
+		const specifier = ts.isStringLiteral(statement.moduleSpecifier)
+			? statement.moduleSpecifier.text
+			: "";
+		if (!isInternalSpecifier(specifier)) {
+			return [`${source.path}:${line} 说明符不指向 internal: ${specifier}`];
+		}
+
+		if (statement.isTypeOnly) return [];
+		return statement.exportClause.elements.flatMap((element) => {
+			if (element.isTypeOnly) return [];
+			const sourceName = element.propertyName?.text ?? element.name.text;
+			if (sourceName === element.name.text && EXTENSION_VALUES.has(sourceName)) return [];
+			return [`${source.path}:${line} 值级转出只许 ok / fail / neutralPlatformDescriptor`];
+		});
+	});
+}
+
+describe("契约门只转出", () => {
+	const problems = (text: string) => extensionDoorProblems(parseSource(EXTENSION_ENTRY, text));
+
+	it("放行:指向 internal 的类型转出与三个纯函数", () => {
+		expect(
+			problems(
+				[
+					`export type { ExtensionContext } from "${INTERNAL_PACKAGE}/extension";`,
+					`export { type Result } from "${INTERNAL_PACKAGE}";`,
+					`export { ok, fail } from "${INTERNAL_PACKAGE}/result";`,
+					`export { neutralPlatformDescriptor } from "${INTERNAL_PACKAGE}/platform-descriptor";`,
+				].join("\n"),
+			),
+		).toEqual([]);
+	});
+
+	it("判红:本地声明、import、export *、别的说明符与第四个值", () => {
+		expect(problems("export interface X {}")).toHaveLength(1);
+		expect(problems(`import { z } from "zod";`)).toHaveLength(1);
+		expect(problems(`export * from "${INTERNAL_PACKAGE}";`)).toHaveLength(1);
+		expect(problems(`export type { ExtensionContext } from "./extension";`)).toHaveLength(1);
+		expect(problems(`export { Result } from "${INTERNAL_PACKAGE}";`)).toHaveLength(1);
+	});
+
+	it("src/ 里除测试外只有 index.ts,且入口没有越出转出规则", () => {
+		expect(sourceFilesUnder(EXTENSION_SOURCE_ROOT)).toEqual([EXTENSION_ENTRY]);
+		const source = parseSource(EXTENSION_ENTRY);
+		expect(source.ast.statements.length).toBeGreaterThan(0);
+		expect(extensionDoorProblems(source)).toEqual([]);
 	});
 });
