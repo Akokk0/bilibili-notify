@@ -10,7 +10,8 @@
 
 ### Changed
 
-- 协议 1.5：失败回执改带 `code` / `message` / `upstreamCode?`，`error` 帧补 `code`；老插件照常能用，只带 `err` 的旧回执仍收下并记成「原因不明」
+- 这一版要 BN 1.0 起(拓展契约第 3 版),0.12 装不了;1.0 alpha 期间只进预发布档
+- 协议 1.5:失败回执改带 `code` / `message` / `upstreamCode?`,`error` 帧补 `code`;老插件照常能用,只带 `err` 的旧回执仍收下并记成「原因不明」
 - 插件那一侧:AstrBot 的也有了 —— `astrbot_plugin_bilibili_notify_bridge`(AstrBot 4.14.7 起,仓库 <https://github.com/Akokk0/astrbot_plugin_bilibili_notify_bridge>),建接入时挑 AstrBot 那一档就好。0.0.1 里「AstrBot 这一档面板上选得到,但插件还没写」那句作废
 
 ---
