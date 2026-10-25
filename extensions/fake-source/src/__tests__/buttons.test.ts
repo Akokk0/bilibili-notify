@@ -14,12 +14,12 @@ import { readFile } from "node:fs/promises";
 import type {
 	CreatorProfileReport,
 	ExtensionBlock,
+	ExtensionLiveDetails,
+	ExtensionLiveSignalReport,
+	ExtensionPostReport,
+	ExtensionRichTextSegment,
 	ExtensionView,
 	ExtensionViewText,
-	LiveDetails,
-	LiveSignalReport,
-	PostReport,
-	RichTextSegment,
 } from "@bilibili-notify/extension";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -69,12 +69,12 @@ function valuesOf<T>(reports: readonly HeardReport[], kind: HeardKind): T[] {
 }
 
 /** 直播信号里某一种(`start` / `status` / `end`),按先后。 */
-function signalsOf<K extends LiveSignalReport["kind"]>(
+function signalsOf<K extends ExtensionLiveSignalReport["kind"]>(
 	reports: readonly HeardReport[],
 	kind: K,
-): Extract<LiveSignalReport, { kind: K }>[] {
-	return valuesOf<LiveSignalReport>(reports, "live").filter(
-		(v): v is Extract<LiveSignalReport, { kind: K }> => v.kind === kind,
+): Extract<ExtensionLiveSignalReport, { kind: K }>[] {
+	return valuesOf<ExtensionLiveSignalReport>(reports, "live").filter(
+		(v): v is Extract<ExtensionLiveSignalReport, { kind: K }> => v.kind === kind,
 	);
 }
 
@@ -324,7 +324,7 @@ describe("报一条五种正文片段的作品", () => {
 		const fake = bootFakeSource(PEOPLE);
 		await fake.press("report.richPost");
 		const heard = fake.reports();
-		const reports = valuesOf<PostReport>(heard, "post");
+		const reports = valuesOf<ExtensionPostReport>(heard, "post");
 
 		expect(heard.map((report) => [report.kind, report.externalId])).toEqual([
 			["post", "person-a"],
@@ -338,18 +338,19 @@ describe("报一条五种正文片段的作品", () => {
 			expect(segments.map((segment) => segment.text).join("")).toBe(report.post.text);
 
 			const mention = segments.find(
-				(segment): segment is Extract<RichTextSegment, { kind: "mention" }> =>
+				(segment): segment is Extract<ExtensionRichTextSegment, { kind: "mention" }> =>
 					segment.kind === "mention",
 			);
 			const topic = segments.find(
-				(segment): segment is Extract<RichTextSegment, { kind: "topic" }> =>
+				(segment): segment is Extract<ExtensionRichTextSegment, { kind: "topic" }> =>
 					segment.kind === "topic",
 			);
 			const link = segments.find(
-				(segment): segment is Extract<RichTextSegment, { kind: "link" }> => segment.kind === "link",
+				(segment): segment is Extract<ExtensionRichTextSegment, { kind: "link" }> =>
+					segment.kind === "link",
 			);
 			const emoji = segments.find(
-				(segment): segment is Extract<RichTextSegment, { kind: "emoji" }> =>
+				(segment): segment is Extract<ExtensionRichTextSegment, { kind: "emoji" }> =>
 					segment.kind === "emoji",
 			);
 
@@ -379,7 +380,7 @@ describe("报一条作品", () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const [first, second] = valuesOf<PostReport>(fake.reports(), "post");
+		const [first, second] = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 
 		expect(first?.post.topic).toBe("假话题");
 		expect(first?.post.text).toContain("#假话题");
@@ -393,7 +394,7 @@ describe("报一条作品", () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		for (const report of valuesOf<PostReport>(fake.reports(), "post")) {
+		for (const report of valuesOf<ExtensionPostReport>(fake.reports(), "post")) {
 			const segments = report.post.richText ?? [];
 			expect(segments.map((one) => one.text).join("")).toBe(report.post.text);
 			expect(segments.at(-1)).toMatchObject({
@@ -408,7 +409,7 @@ describe("报一条作品", () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const [first, second] = valuesOf<PostReport>(fake.reports(), "post");
+		const [first, second] = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 
 		expect(first?.post.publishedAt).toBe(T_ISO);
 		expect(first?.post.text).toEqual(expect.any(String));
@@ -440,7 +441,7 @@ describe("报一条作品", () => {
 		const fake = bootFakeSource(PEOPLE);
 		await fake.press("report.post");
 		await fake.press("report.post");
-		const posts = valuesOf<PostReport>(fake.reports(), "post");
+		const posts = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 		expect(posts).toHaveLength(4);
 		const [a1, b1, a2] = posts;
 		for (const [post, n] of [
@@ -460,7 +461,7 @@ describe("报一条作品", () => {
 		await fake.press("report.post");
 		fake.changeSubscriptions([sub("person-a", true)]);
 		await fake.press("report.post");
-		const [post] = valuesOf<PostReport>(fake.reports(), "post");
+		const [post] = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 		expect(mentions(post?.postId, 1)).toBe(true);
 	});
 });
@@ -470,7 +471,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.liveStart");
 		const [start] = signalsOf(fake.reports(), "start");
-		const d = start?.details as LiveDetails;
+		const d = start?.details as ExtensionLiveDetails;
 		expect(start?.startedAt).toBe(T_ISO);
 		expect(isHarmlessUrl(d.url)).toBe(true);
 		expect(mentions(d.title, 1)).toBe(true);
@@ -535,7 +536,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		const [status] = signalsOf(fake.reports(), "status");
 		expect(status?.isLive).toBe(true);
 		expect(status?.startedAt).toBe(T_ISO);
-		const d = status?.details as LiveDetails;
+		const d = status?.details as ExtensionLiveDetails;
 		expect(d.currentViewers).toBeGreaterThan(0);
 		expect(d.totalViewers).toBeGreaterThan(d.currentViewers ?? Number.POSITIVE_INFINITY);
 	});
@@ -668,7 +669,7 @@ describe("两颗报坏的", () => {
 	it("带坏图的作品:三张图,第二张是个不合形状的引用,另外两张是图库里的 png", async () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.badImage");
-		const [post] = valuesOf<PostReport>(fake.reports(), "post");
+		const [post] = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 		const images = post?.post.images ?? [];
 		expect(images).toHaveLength(3);
 		expect(isPng(fake.imageBytes(images[0]))).toBe(true);
@@ -692,7 +693,7 @@ describe("两颗报坏的", () => {
 	it("多一格的作品:作品里多带一格宿主不认识的字段;上报没有返回值,动作照样成", async () => {
 		const fake = bootFakeSource([sub("person-a", true)]);
 		await fake.press("report.extraField");
-		const [report] = valuesOf<PostReport>(fake.reports(), "post");
+		const [report] = valuesOf<ExtensionPostReport>(fake.reports(), "post");
 		const extra = Object.keys(report?.post ?? {}).filter((key) => !POST_KEYS.includes(key));
 		expect(extra).toEqual(["danmaku"]);
 	});

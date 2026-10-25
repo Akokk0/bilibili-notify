@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import type {
 	CreatorProfileReport,
+	ExtensionLiveDetails,
+	ExtensionPostReport,
+	ExtensionRichText,
+	ExtensionSourceContext,
 	ImageRef,
-	LiveDetails,
-	PostReport,
-	RichText,
-	SourceContext,
 } from "@bilibili-notify/extension";
 import { FAKE_AVATARS, FAKE_PROFILE_AVATARS } from "./avatars.js";
 
@@ -34,7 +34,7 @@ export type StorePicture = (bytes: Uint8Array) => Promise<ImageRef>;
 
 /** 用来源上下文的 `storeImage` 造一个 {@link StorePicture};`signal` 中止时存图跟着停。 */
 export function pictureStore(
-	ctx: Pick<SourceContext, "storeImage">,
+	ctx: Pick<ExtensionSourceContext, "storeImage">,
 	signal?: AbortSignal,
 ): StorePicture {
 	return async (bytes) => {
@@ -64,7 +64,7 @@ function isoAt(ms: number): string {
  * 正文末尾那个 `#话题` 片段化:前面是文字、末尾是话题片段(`text` 带 `#`,`name` 不带),片段拼起来正好
  * 等于正文。宿主据此给话题上色(第 3 版里话题上色靠 `richText`,不再由宿主从正文里找 `#`)。
  */
-function withTrailingTopic(text: string, name: string): RichText {
+function withTrailingTopic(text: string, name: string): ExtensionRichText {
 	const tag = `#${name}`;
 	const at = text.lastIndexOf(tag);
 	return [
@@ -110,7 +110,7 @@ export async function fakePost(
 	n: number,
 	now: number,
 	store: StorePicture,
-): Promise<PostReport> {
+): Promise<ExtensionPostReport> {
 	const base = postBase(externalId, n);
 	if (n % 2 === 1) {
 		const text = PICTURE_POST_TEXTS[((n - 1) / 2) % PICTURE_POST_TEXTS.length]?.(n) as string;
@@ -159,10 +159,10 @@ export async function fakeRichPost(
 	n: number,
 	now: number,
 	store: StorePicture,
-): Promise<PostReport> {
+): Promise<ExtensionPostReport> {
 	const icon = await store(pictureAt(n));
 	const emoji = await store(pictureAt(n + 1));
-	const richText: RichText = [
+	const richText: ExtensionRichText = [
 		{ kind: "text", text: `第 ${n} 条五种片段：` },
 		{ kind: "mention", text: "@假朋友", userId: `fake-user-${tagOf(externalId)}` },
 		{ kind: "text", text: " 在 " },
@@ -203,7 +203,7 @@ export async function fakePostWithBadImage(
 	n: number,
 	now: number,
 	store: StorePicture,
-): Promise<PostReport> {
+): Promise<ExtensionPostReport> {
 	return {
 		...postBase(externalId, n),
 		post: {
@@ -222,7 +222,7 @@ export function fakePostWithExtraField(
 	externalId: string,
 	n: number,
 	now: number,
-): PostReport & { post: { danmaku: number } } {
+): ExtensionPostReport & { post: { danmaku: number } } {
 	return {
 		...postBase(externalId, n),
 		post: {
@@ -258,7 +258,7 @@ export async function fakeLiveDetails(
 	externalId: string,
 	session: FakeLiveSession,
 	store: StorePicture,
-): Promise<LiveDetails> {
+): Promise<ExtensionLiveDetails> {
 	return {
 		url: fakeLiveUrl(externalId),
 		title: `假直播 · 第 ${session.n} 场`,

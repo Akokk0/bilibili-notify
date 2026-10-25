@@ -1,10 +1,10 @@
 import type {
 	ExtensionBlock,
 	ExtensionContext,
+	ExtensionLiveStatusResult,
+	ExtensionSourceContext,
 	ExtensionViewText,
 	Identity,
-	LiveStatusResult,
-	SourceContext,
 	SourceSubscriptionView,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
@@ -98,7 +98,7 @@ function isoAt(ms: number): string {
  */
 type Prepare = (
 	now: number,
-	source: SourceContext,
+	source: ExtensionSourceContext,
 ) => {
 	each: (externalId: string, store: StorePicture) => Promise<void>;
 	note: string;
@@ -122,12 +122,12 @@ function openPeople(people: readonly SourceSubscriptionView[]): string[] {
  */
 export function wireReportButtons(
 	ctx: ExtensionContext,
-	running: () => SourceContext | undefined,
+	running: () => ExtensionSourceContext | undefined,
 	profiles: ReturnType<typeof createFakeProfiles>,
 	adapter: Pick<FakeAdapter, "context">,
 ): {
 	blocks(): ExtensionBlock[];
-	liveStatusOf(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
+	liveStatusOf(identity: Identity, signal: AbortSignal): Promise<ExtensionLiveStatusResult>;
 } {
 	let postSeq = 0;
 	let liveSeq = 0;

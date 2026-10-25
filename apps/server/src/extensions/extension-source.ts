@@ -37,7 +37,8 @@ import {
 	truncateText,
 } from "@bilibili-notify/internal";
 import type {
-	SourceContext as ExtensionSourceContext,
+	ExtensionLiveDetails,
+	ExtensionSourceContext,
 	SourceDef,
 } from "@bilibili-notify/internal/extension";
 import { t } from "../i18n/index.js";
@@ -644,7 +645,3 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			: {}),
 	};
 }
-
-type ExtensionLiveDetails = NonNullable<
-	Extract<ExtensionReportValue<"live">, { kind: "start" }>["details"]
->;

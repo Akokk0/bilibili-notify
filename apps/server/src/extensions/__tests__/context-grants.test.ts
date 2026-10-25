@@ -22,7 +22,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { neutralPlatformSnapshot, ok } from "@bilibili-notify/internal";
 import type {
-	SourceContext as ExtensionSourceContext,
+	ExtensionSourceContext,
 	PlatformAdapterDef,
 } from "@bilibili-notify/internal/extension";
 import type { ExtensionView } from "@bilibili-notify/internal/extension/wire";

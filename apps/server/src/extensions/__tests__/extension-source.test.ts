@@ -18,9 +18,9 @@ import {
 	type SourceContext,
 } from "@bilibili-notify/internal";
 import type {
-	LiveSignalReport as ExtensionLiveSignalReport,
-	PostReport as ExtensionPostReport,
-	SourceContext as ExtensionSourceContext,
+	ExtensionLiveSignalReport,
+	ExtensionPostReport,
+	ExtensionSourceContext,
 	SourceDef,
 } from "@bilibili-notify/internal/extension";
 import { describe, expect, it, vi } from "vite-plus/test";

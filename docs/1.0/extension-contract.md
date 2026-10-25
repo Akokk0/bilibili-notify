@@ -46,7 +46,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 2. **拓展特有的窄面**：v2 已有的照留 —— 可回收定时器、`mount`、`onUpgrade`、`publishView`、`statusChanged`、面板动作 `onAction`，以及 `id` / `hostApiVersion` / `hostVersion`；1.0 新加 `i18n`（`ExtensionI18n`，见「译文与 `ctx.i18n`」）。
 3. **登记方法**：`registerSource`、`registerPlatformAdapter`（见各节）。
 
-订阅侧特有的（名单、`report*`）属于 `SourceContext`，推送侧特有的（`inbound`、自己的连接等）属于 `PlatformAdapterContext`，都不在 `IntegrationContext` 里。这两份特有的和内置的一样，经所登记实现的 `start(ctx)` 递进来（def 里的 `start` 拿到的就是 `SourceContext` / `PlatformAdapterContext`）；登记交回的把手只管注销，不再像 v2 那样挂上报方法（ADR-0025 决策 1）。
+订阅侧特有的（名单、`report*`）属于 `ExtensionSourceContext`，推送侧特有的（`inbound`、自己的连接等）属于 `PlatformAdapterContext`，都不在 `IntegrationContext` 里。这两份特有的和内置的一样，经所登记实现的 `start(ctx)` 递进来（def 里的 `start` 拿到的就是 `ExtensionSourceContext` / `PlatformAdapterContext`）；登记交回的把手只管注销，不再像 v2 那样挂上报方法（ADR-0025 决策 1）。
 
 ⛔ **`bus` 永远不在 ctx 里**：拓展的事件由宿主转进 MessageBus，拓展伪造不了核心事件。
 
@@ -70,7 +70,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 
 | 成员 | 变化 | 规矩 |
 | --- | --- | --- |
-| `subscriptions()` / `onSubscriptionsChanged` | 改形状（`SourceContext` 特有） | 条目从 `{ id, externalId, enabled }` 改成 `SourceSubscriptionView { externalId, features }`：只列启用中的订阅、不带订阅 id，`features` 是这个人开着的特性；同一人遗留的重复订阅合成一条、`features` 取并集。拓展只上报名单里的人；开着哪些特性决定它干哪些活，关着的就不查 |
+| `subscriptions()` / `onSubscriptionsChanged` | 改形状（`ExtensionSourceContext` 特有） | 条目从 `{ id, externalId, enabled }` 改成 `SourceSubscriptionView { externalId, features }`：只列启用中的订阅、不带订阅 id，`features` 是这个人开着的特性；同一人遗留的重复订阅合成一条、`features` 取并集。拓展只上报名单里的人；开着哪些特性决定它干哪些活，关着的就不查 |
 | `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（`adapter`、`configSchema`、`listBots`） | 改 | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`，成员见「推送：平台适配器」 🔗 现状（3b-44，10-25）：三个新名已落；`PlatformAdapterDef` 已摊平、自带 `settingsSchema`，`PlatformAdapterHandle` 只剩 `dispose()` |
 | `settings` 交回的 `ExtensionSettings<T>`（`get(): T \| undefined`） | 并成一个 | 删掉，与内置集成共用 `SettingsReader<T>`（`get()` 回 `Result<{ settings: T }>`、不抛）。读不懂的拓展仍不起（ADR-0019 决策 36 不变） |
 | `publishStatus`（v1 老口）、`LegacyPushExtensionDef` | 删 | 随 v1 退路一起删。🔗 现状（3b-03，10-13）：`publishStatus` 与 `LegacyPushExtensionDef` 已随第 1 版删掉 |
@@ -177,7 +177,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 | `Source` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
-| `start(ctx)` / `stop()` | def 里的 `start` 拿到 `SourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
+| `start(ctx)` / `stop()` | def 里的 `start` 拿到 `ExtensionSourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
 | `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了<br>🔗 现状（3b-44，10-25）：订阅段已摊平，清单与视图已收 `supportedFeatures`、`searchAccepts`、`creatorNoun`、`icon`；`featureHints` 按主人 10-25 定随第 4 期读者一起收 |
 | `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`）<br>🔗 现状（3b-42，10-24）：面板 `GET /api/ext/:id/lookup` 已改经引擎的 `searchCreators`，与取资料、查直播状态共用同一来源的串行闸；回应是 `CreatorCandidateView`，头像读回 data URL，路径不改名（N01 第 4 期）。拓展没实现 `fetchProfile` 时宿主补一个回 `unsupported` 的<br>🔗 现状（3b-44，10-25）：`lookupPlaceholder` 已删，`searchAccepts` 已随清单与视图下发；拓展支先统一用 `GENERIC_LOOKUP_PLACEHOLDER`，按它拼提示句的叫法函数随第 4 期 |
 | `fetchProfile` | 可选；不实现就靠主动报资料。返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；整轮要不要刹车由拓展自己定 | 宿主适配补齐 |
@@ -206,7 +206,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 ### 上报
 
-上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。🔗 现状（3b-42，10-24）：第 3 版上报已落。拓展这一侧的 `SourceContext` 是核心那份去掉 `reportLiveInteraction` / `registerLinkResolver` / `registerAiToolProvider`；进门 zod 在 `packages/internal/src/schema/extension-report.ts`。外来数据只在 `extensions/extension-source.ts` 的 `createExtensionSource` 收：外部 id → 清单声明的种类 → 形状；毫秒 → ISO；图库引用读回字节补宽高与动图标记；作者缺名按资料名 → 身份标签补；下播缺 `endedAt` 取到达时刻；每个来源一条串行队，置停后队里还没交的丢、记 debug。视频作品不再由宿主写「投稿了视频」（主人 10-24）。🔗 现状（3b-49，10-25 主人改判；原为整数毫秒）：上报时刻已改成带时区的 ISO，和核心一样；宿主进门只统一成 UTC。
+上报表是核心 `Post` / `LiveDetails` 的窄化推导：`ExtensionPostReport` / `ExtensionLiveDetails`；进门转成 `Post` 的收件口在服务端 `extensions/`。🔗 现状（3b-42，10-24）：第 3 版上报已落。拓展这一侧的 `ExtensionSourceContext` 从核心 `SourceContext` 白名单挑成员，只替换作品与直播两种上报的参数，`reportLiveInteraction` / `registerLinkResolver` / `registerAiToolProvider` 不开放；进门 zod 在 `packages/internal/src/schema/extension-report.ts`。外来数据只在 `extensions/extension-source.ts` 的 `createExtensionSource` 收：外部 id → 清单声明的种类 → 形状；图库引用读回字节补宽高与动图标记；作者缺名按资料名 → 身份标签补；下播缺 `endedAt` 取到达时刻；每个来源一条串行队，置停后队里还没交的丢、记 debug。视频作品不再由宿主写「投稿了视频」（主人 10-24）。🔗 现状（3b-49，10-25 主人改判；原为整数毫秒）：上报时刻已改成带时区的 ISO，和核心一样；宿主进门只统一成 UTC。
 
 附加块 `attachment` 这版不对拓展开：ADR-0021 决策 38 的开放清单没有它，v3 的上报 schema 也就没有这一格（照「多交一格宿主不认识的，整条拒」处理）。
 
@@ -221,7 +221,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 | 直播状态 `live` | `isLive` |
 | 资料 `fans` | `followers`；资料补 `bio` |
 | 作品 `topics[]` | `topic` |
-| 作品上的 `id` / `url` | 挪到 `PostReport` 信封上：`postId` / `url` |
+| 作品上的 `id` / `url` | 挪到 `ExtensionPostReport` 信封上：`postId` / `url` |
 | 表格积木 `count` | `showCount` |
 
 正文：拓展必交纯文本 `text`，可选交片段列表 `richText`（09-27 拍板，推翻 09-26 精简时无声改成的「交完整片段」，也不是 Q3 原来的「只交纯文本」）。`text` 只放正文，标题、视频标题、转发的原作品各有自己的位置（ADR-0028 决策 1）。契约只开放五种片段：文字、@人、话题、链接、表情，是中立 `RichText` 的子集，宿主一对一转成中立片段；中立片段以后加种类不影响契约，开放新种类是一次明确的加宽。选片段不选「纯文本 + 位置」：各平台的位置单位互不兼容（Bluesky UTF-8 字节、Telegram / YouTube UTF-16、X 码点），片段让作者按自己平台的单位切，调研见施工记录。`text` 是用户在平台上看到的字，平台私有标记（小红书 `#x[话题]#`、Discord `<@id>`、X 的 `&amp;` 转义）由拓展剥掉。片段字段与中立 `RichText` 完全相同（见 data-model「正文片段」）：`mention` 的 `userId` 可选，`link` 带 `url` 与可选图标，图标和表情图都先用 `ctx.storeImage` / `ctx.fetchImage` 存成 `ImageRef`。
@@ -234,12 +234,12 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 图没有差异：和 B 站一样，先用 `ctx.fetchImage` / `ctx.storeImage` 存进图库，上报里只交 `ImageRef`。
 
-上报方法与 `SourceContext` 同名同形，**一律返回 `void`**（v2 返回 Promise、被拒时 reject）：
+上报方法在 `ExtensionSourceContext` 上，**一律返回 `void`**（v2 返回 Promise、被拒时 reject）：
 
 | v2 的把手方法 | v3 | 进核心后 |
 | --- | --- | --- |
-| `reportPost(externalId, post)` | `reportPost(externalId, PostReport): void` | 核心按身份展开成每条订阅一份 `PostEvent` → `post-detected` |
-| `reportLiveStart` / `reportLiveEnd` / `reportLiveStatus` | 合成 `reportLive(externalId, LiveSignalReport): void`（`start` / `status` / `end`） | 展开成 `LiveSignal`，喂场次引擎 |
+| `reportPost(externalId, post)` | `reportPost(externalId, ExtensionPostReport): void` | 核心按身份展开成每条订阅一份 `PostEvent` → `post-detected` |
+| `reportLiveStart` / `reportLiveEnd` / `reportLiveStatus` | 合成 `reportLive(externalId, ExtensionLiveSignalReport): void`（`start` / `status` / `end`） | 展开成 `LiveSignal`，喂场次引擎 |
 | `reportProfile(externalId, profile)` | `reportProfile(externalId, CreatorProfileReport): void` | 资料缓存 |
 
 上报种类（原 `SubscriptionReportKind` 五种）收成 `post` / `live` / `profile`。
@@ -262,7 +262,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 // IntegrationContext（activate 拿到的）：不带对象
 ctx.reportProblem({ code, message, notify?: boolean, recoveryMessage?: string }): void;
 ctx.resolveProblem({ code, notify?: boolean }): void;
-// SourceContext（订阅源的 start 拿到的）在上面加 externalId?
+// ExtensionSourceContext（订阅源的 start 拿到的）在上面加 externalId?
 ctx.reportProblem({ externalId?, code, message, notify?, recoveryMessage? }): void;
 ctx.resolveProblem({ externalId?, code, notify? }): void;
 // PlatformAdapterContext（平台适配器的 start 拿到的）在上面加 connectionId?

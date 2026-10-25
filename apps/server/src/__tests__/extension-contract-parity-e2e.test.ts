@@ -45,7 +45,7 @@ import type {
 	Source,
 } from "@bilibili-notify/internal";
 import type {
-	SourceContext as ExtensionSourceContext,
+	ExtensionSourceContext,
 	PlatformAdapterDef,
 } from "@bilibili-notify/internal/extension";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";

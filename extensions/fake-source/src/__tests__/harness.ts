@@ -6,16 +6,16 @@ import type {
 	CreatorProfileReport,
 	ExtensionContext,
 	ExtensionI18n,
+	ExtensionLiveStatusResult,
+	ExtensionSourceContext,
 	ExtensionView,
 	Identity,
 	ImageRef,
 	InboundMeta,
 	InboundPrivateMessage,
-	LiveStatusResult,
 	PlatformAdapterContext,
 	PlatformAdapterDef,
 	Result,
-	SourceContext,
 	SourceDef,
 	SourceHealth,
 	SourceSubscriptionView,
@@ -226,7 +226,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 			stored.set(ref, bytes);
 			return { ok: true, ref };
 		},
-	} as unknown as SourceContext;
+	} as unknown as ExtensionSourceContext;
 
 	const ctx = {
 		id: "fake-source",
@@ -302,7 +302,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		fetchLiveStatus(
 			identity: Identity,
 			signal: AbortSignal = new AbortController().signal,
-		): Promise<LiveStatusResult> {
+		): Promise<ExtensionLiveStatusResult> {
 			const fetchLiveStatus = def().fetchLiveStatus;
 			if (!fetchLiveStatus) throw new Error("假源没实现 fetchLiveStatus");
 			return Promise.resolve(fetchLiveStatus(identity, signal));

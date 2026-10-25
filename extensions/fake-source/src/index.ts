@@ -9,8 +9,8 @@
 
 import type {
 	ExtensionContext,
+	ExtensionSourceContext,
 	Identity,
-	SourceContext,
 	SourceDef,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
@@ -28,7 +28,7 @@ const MISSING_PROFILE_EXTERNAL_ID = "fake-0000000000000000-z";
 
 export function activate(ctx: ExtensionContext): void {
 	/** `start` 拿到的来源上下文;`stop` 之后清掉。按钮、解析门、视图都从这里取名单与上报口。 */
-	let running: SourceContext | undefined;
+	let running: ExtensionSourceContext | undefined;
 	const profiles = createFakeProfiles();
 	// 连接名单一变就喊一声,面板重取视图。
 	const adapter = createFakeAdapter({ changed: () => ctx.statusChanged() });
@@ -44,7 +44,7 @@ export function activate(ctx: ExtensionContext): void {
 	);
 
 	const def = {
-		start(source: SourceContext) {
+		start(source: ExtensionSourceContext) {
 			running = source;
 			// 订阅一动就喊一声,面板当场重取视图 —— 不然加完一条,切回拓展页那个数还是旧的。
 			source.onSubscriptionsChanged(() => ctx.statusChanged());

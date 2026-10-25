@@ -2,7 +2,7 @@
  * 拓展契约里 ctx、handler 那一层的本体。
  *
  * 只放类型:门(`@bilibili-notify/extension`)逐个转出给拓展,宿主从
- * `@bilibili-notify/internal/extension` 取。根入口不转它 —— 这里和核心有同名的域类型。
+ * `@bilibili-notify/internal/extension` 取。根入口不转它 —— 这里从核心域模型推导出的窄面。
  */
 
 import type { IncomingMessage } from "node:http";
@@ -11,7 +11,14 @@ import type { ZodType } from "zod";
 import type { TextValues } from "../i18n";
 import type { Identity } from "../identity";
 import type { ImageRef } from "../image-ref";
+import type { LiveDetails, LiveSignalReport, LiveStatusResult } from "../live";
 import type { Disposable, IntegrationContext, Logger, SettingsReader } from "../platform";
+import type {
+	PostReport as CorePostReport,
+	RichTextSegment as CoreRichTextSegment,
+	Creator,
+	Post,
+} from "../post";
 import type { PlatformAdapter } from "../push-source";
 import type { FailureCode, Result } from "../result";
 import type {
@@ -21,6 +28,8 @@ import type {
 	SourceHealth,
 } from "../source";
 import type { ExtensionView } from "./wire";
+
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -58,9 +67,19 @@ export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
  *
  * `listAddressCandidates` 与 `connectionAuth` 不对拓展开放(ADR-0024 决策 11),类型里排除,宿主运行时也会摘掉。
  */
-export type PlatformAdapterDef = Omit<
-	PlatformAdapter,
-	"adapterKey" | "listAddressCandidates" | "connectionAuth"
+export type PlatformAdapterDef = Simplify<
+	Pick<
+		PlatformAdapter,
+		| "probe"
+		| "start"
+		| "stop"
+		| "isAvailable"
+		| "send"
+		| "capabilities"
+		| "probeCapabilities"
+		| "settingsSchema"
+		| "listConnectionCandidates"
+	>
 >;
 
 /** 注册完一个平台适配器之后拿到的把手。 */
@@ -70,130 +89,136 @@ export interface PlatformAdapterHandle {
 }
 
 /**
- * 上报卡上的创作者。这里只开放名字与图库引用;没有带的那一样由宿主按订阅资料补。
+ * 从核心 `Creator` 只挑拓展能交的 `name` / `avatar`,并把两者都放宽为可缺;`isPremium` 不开放。
+ * 没有带的那一样由宿主按订阅资料补。
  */
-export interface SubscriptionCreator {
-	/** 1–128 字。 */
-	name?: string;
-	/** 图库引用;不是平台图片地址。 */
-	avatar?: ImageRef;
-}
-
-/** 正文片段与中立 `RichText` 同形,契约只开放这五种。 */
-export type RichTextSegment =
-	| { kind: "text"; text: string }
-	| { kind: "mention"; text: string; userId?: string }
-	| { kind: "topic"; text: string; name: string }
-	| { kind: "link"; text: string; url: string; icon?: ImageRef }
-	| { kind: "emoji"; text: string; image?: ImageRef };
-
-/** 作品正文的片段列表;片段的 `text` 拼起来必须等于正文 `text`。 */
-export type RichText = RichTextSegment[];
+export type SubscriptionCreator = Simplify<
+	Pick<Creator, "avatar"> & {
+		/** 1–128 字。 */
+		name?: Creator["name"];
+	}
+>;
 
 /**
- * 来源交的一条作品。作品 id 与地址在信封上,内容在中立 `Post` 的同名位置。
- *
- * 不开放标题、文章、转发、附加块、锁、提醒、会员标记等格。图一律交图库引用;
- * `publishedAt` 是带时区的 ISO 8601 时刻。
+ * 从核心 `RichTextSegment` 只挑当前开放的五个 `kind`;以后核心加片段种类,拓展这边不会跟着开放。
  */
-export interface PostReport {
-	/** 平台自己的作品 id。 */
-	postId: string;
-	/** 作品地址。 */
-	url: string;
-	post: {
-		/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
+export type ExtensionRichTextSegment = Extract<
+	CoreRichTextSegment,
+	{ kind: "text" | "mention" | "topic" | "link" | "emoji" }
+>;
+
+/**
+ * 从核心 `RichText` 的片段类型推导,保留五个开放片段组成的可变数组;片段的 `text` 拼起来必须等于正文 `text`。
+ */
+export type ExtensionRichText = ExtensionRichTextSegment[];
+
+/**
+ * 从核心 `PostReport` / `Post` 推导作品上报:只挑拓展开放的格,并覆盖图库引用、可缺作者与可缺视频格。
+ * 不开放标题、文章、转发、附加块、锁、提醒、会员标记等格;`publishedAt` 是带时区的 ISO 8601 时刻。
+ */
+export type ExtensionPostReport = Simplify<
+	Pick<CorePostReport, "postId" | "url"> & {
+		post: Simplify<
+			Pick<Post, "publishedAt" | "text" | "topic" | "stats"> & {
+				/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
+				creator?: SubscriptionCreator;
+				/** 正文片段;给了就要与 `text` 对得上。 */
+				richText?: ExtensionRichText;
+				/** 作品图,图库引用。 */
+				images?: ImageRef[];
+				video?: Simplify<
+					Pick<NonNullable<Post["video"]>, "durationSec" | "views"> & {
+						cover?: ImageRef;
+						title?: string;
+						description?: string;
+					}
+				>;
+			}
+		>;
+	}
+>;
+
+/**
+ * 从核心 `LiveDetails` 推导直播详情:只挑拓展开放的格,并把作者换成可缺的 {@link SubscriptionCreator}、
+ * 封面换成图库引用。
+ */
+export type ExtensionLiveDetails = Simplify<
+	Pick<
+		LiveDetails,
+		"title" | "category" | "url" | "currentViewers" | "totalViewers" | "likes" | "description"
+	> & {
 		creator?: SubscriptionCreator;
-		/** 带时区的 ISO 8601 发布时刻。 */
-		publishedAt: string;
-		/** 正文,必交。 */
-		text: string;
-		/** 正文片段;给了就要与 `text` 对得上。 */
-		richText?: RichText;
-		/** 作品图,图库引用。 */
-		images?: ImageRef[];
-		/** 话题名,不带 `#`;第一个上卡。 */
-		topic?: string;
-		video?: {
-			cover?: ImageRef;
-			title?: string;
-			description?: string;
-			/** 时长,秒。 */
-			durationSec?: number;
-			views?: number;
-		};
-		stats?: {
-			likes?: number;
-			comments?: number;
-			shares?: number;
-		};
-	};
-}
+		cover?: ImageRef;
+	}
+>;
 
 /**
- * 一场直播的内容;与核心的 `LiveDetails` 同义同名。差别只在拓展这一侧:`cover` 是图库引用,
- * `creator` 是 {@link SubscriptionCreator}。
+ * 从核心 `LiveSignalReport` 的三种 `kind` 分支推导,并把 `details` 换成拓展版;
+ * 下播支额外放宽 `endedAt` 为可缺(不交时宿主取到达那一刻)。来源推送式上报的一场直播变化;
+ * 时刻都是带时区的 ISO 8601。
  */
-export interface LiveDetails {
-	creator?: SubscriptionCreator;
-	title?: string;
-	cover?: ImageRef;
-	category?: string;
-	url?: string;
-	/** 此刻在线人数。 */
-	currentViewers?: number;
-	/** 本场累计观看人数。 */
-	totalViewers?: number;
-	likes?: number;
-	description?: string;
-}
+export type ExtensionLiveSignalReport = Simplify<
+	| (Pick<Extract<LiveSignalReport, { kind: "start" }>, "kind" | "startedAt"> & {
+			details: ExtensionLiveDetails;
+	  })
+	| (Pick<Extract<LiveSignalReport, { kind: "status" }>, "kind" | "isLive" | "startedAt"> & {
+			details: ExtensionLiveDetails;
+	  })
+	| (Pick<Extract<LiveSignalReport, { kind: "end" }>, "kind" | "startedAt"> & {
+			endedAt?: Extract<LiveSignalReport, { kind: "end" }>["endedAt"];
+			details?: ExtensionLiveDetails;
+	  })
+>;
 
 /**
- * 来源推送式上报的一场直播变化。时刻都是带时区的 ISO 8601;下播可以不交 `endedAt`,宿主取到达那一刻。
+ * 从核心 `LiveStatusResult` 的三个分支推导,并把在播详情换成拓展版、失败码收紧成标准 `FailureCode`;
+ * 离线条整支取核心形状。来源拉取式直播状态;失败回标准结果形状,不抛。
  */
-export type LiveSignalReport =
-	| { kind: "start"; startedAt?: string; details: LiveDetails }
-	| { kind: "status"; isLive: boolean; startedAt?: string; details: LiveDetails }
-	| {
-			kind: "end";
-			endedAt?: string;
-			startedAt?: string;
-			details?: LiveDetails;
-	  };
+export type ExtensionLiveStatusResult = Simplify<
+	| (Pick<Extract<LiveStatusResult, { kind: "live" }>, "ok" | "kind" | "startedAt"> & {
+			details: ExtensionLiveDetails;
+	  })
+	| Extract<LiveStatusResult, { kind: "offline" }>
+	| (Pick<Extract<LiveStatusResult, { ok: false }>, "ok" | "message"> & {
+			code: FailureCode;
+	  })
+>;
 
 /**
- * 来源拉取式直播状态。时刻都是带时区的 ISO 8601;失败回标准结果形状,不抛。
+ * 从核心 `SourceContext` 白名单挑出拓展当前开放的成员,并覆盖两种上报的参数为拓展版;
+ * 互动上报与两个登记口不开放。与核心那一份同一套名单、请求与收尾口,只开放作品、直播、资料三种
+ * 上报;上报返回 `void`,被拒也不回话(`reportProfile` 同样:停用的订阅不收)。
  */
-export type LiveStatusResult =
-	| { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
-	| { ok: true; kind: "offline" }
-	| { ok: false; code: FailureCode; message: string };
+export type ExtensionSourceContext = Simplify<
+	Pick<
+		CoreSourceContext,
+		| "subscriptions"
+		| "onSubscriptionsChanged"
+		| "reportProfile"
+		| "reportProblem"
+		| "resolveProblem"
+		| "logger"
+		| "signal"
+		| "onDispose"
+		| "state"
+		| "secrets"
+		| "redact"
+		| "settings"
+		| "http"
+		| "fetchImage"
+		| "storeImage"
+	> & {
+		/** 交一条作品。没有返回值;图和时刻按拓展契约交。 */
+		reportPost(externalId: string, report: ExtensionPostReport): void;
+		/** 交一条直播信号。没有返回值;`status` 不触发推送。 */
+		reportLive(externalId: string, report: ExtensionLiveSignalReport): void;
+	}
+>;
 
 /** 注册完一个订阅源之后拿到的唯一把手:注销这个来源。 */
 export interface SourceHandle {
 	/** 注销来源;幂等,调用后来源不再上报。 */
 	dispose(): void;
-}
-
-/**
- * 拓展拿到的订阅源上下文:与核心那一份同一套名单、请求与收尾口,
- * 只开放作品、直播、资料三种上报。上报返回 `void`,被拒也不回话。
- */
-export interface SourceContext
-	extends Omit<
-		CoreSourceContext,
-		| "reportPost"
-		| "reportLive"
-		| "reportLiveInteraction"
-		| "registerLinkResolver"
-		| "registerAiToolProvider"
-	> {
-	/** 交一条作品。没有返回值;图和时刻按拓展契约交。 */
-	reportPost(externalId: string, report: PostReport): void;
-	/** 交一条直播信号。没有返回值;`status` 不触发推送。 */
-	reportLive(externalId: string, report: LiveSignalReport): void;
-	/** 交一份创作者资料。没有返回值;停用的订阅不收。 */
-	reportProfile(externalId: string, report: CreatorProfileReport): void;
 }
 
 /**
@@ -204,7 +229,7 @@ export interface SourceDef {
 	 * 启动来源。拿到名单与三种上报口;这里可以同步返回,也可以回 Promise。
 	 * `stop()` 之后不许再上报。
 	 */
-	start(ctx: SourceContext): void | Promise<void>;
+	start(ctx: ExtensionSourceContext): void | Promise<void>;
 	/** 停下来源。宿主先叫它,再中止 `ctx.signal` 并跑收尾钩子。 */
 	stop(): void | Promise<void>;
 	/**
@@ -224,7 +249,7 @@ export interface SourceDef {
 	 * 此刻这个人在不在播,时刻按带时区的 ISO 8601 交。声明了周期直播必须实现它,否则拓展装不上。
 	 * 不实现就只靠 `ctx.reportLive` 推送式上报。
 	 */
-	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
+	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<ExtensionLiveStatusResult>;
 	/** 此刻的健康状况,同步、不出网。不交就不占状态行。 */
 	health?(): SourceHealth;
 }
@@ -315,7 +340,7 @@ export interface ExtensionContext extends IntegrationContext {
 	 * 注册这个拓展的订阅源(第 3 版形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
 	 *
 	 * 清单得开了 `contributes.subscription`,否则抛。`def.start(ctx)` 拿到与核心来源同一套的上下文
-	 * ({@link SourceContext}),三种上报都在 `ctx` 上;交回的把手只管注销。
+	 * ({@link ExtensionSourceContext}),三种上报都在 `ctx` 上;交回的把手只管注销。
 	 *
 	 * 🔴 登记是**异步**的:这里同步交回把手,宿主在后台等 `start` 落定;`start` 抛了,这一次加载就失败
 	 * (原因进拓展列表),与推送源的 `start` 抛了同一个结局。停用 / 卸载时宿主替它撤登记
