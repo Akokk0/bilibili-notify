@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -71,7 +71,7 @@ import type { LiveTable, LiveTableEntry } from "../../live/live-table.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
-import { CARD_BG_DIR } from "../card-assets.js";
+import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { dataPath } from "../roots.js";
 import type { NodeServiceContext } from "../service-context.js";
@@ -1426,6 +1426,113 @@ describe("createEngines — 来源周期核对", () => {
 	});
 });
 
+/**
+ * 直播那块搬进工厂前的接线刻画:每一条都从 `createEngines` 交出的公开成员、来源上下文或
+ * 总线事件观察,断了就由这里变红。
+ */
+describe("createEngines — 直播接线刻画", () => {
+	const START = "2026-10-25T08:00:00.000Z";
+
+	it("globals 改 wordcloudStopWords:在播收集器从下一句起使用新停用词", async () => {
+		const sub = biliSubOf("57", "sub-57");
+		const c = setup({
+			subs: [sub],
+			liveTable: memoryLiveTable(),
+		});
+		active = c;
+		await c.sourceReady;
+		c.source.ctx?.reportLive("57", { kind: "start", startedAt: START, details: {} });
+
+		patchGlobals(c, (g) => {
+			g.defaults.templates.wordcloudStopWords = "刷屏";
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		c.source.ctx?.reportLiveInteraction("57", {
+			kind: "viewerChat",
+			viewer: { id: "viewer-1", name: "甲" },
+			text: "刷屏主播",
+		});
+
+		expect(c.runtime.viewerChatStats()).toEqual({ subscriptions: 1, words: 1, senders: 1 });
+	});
+
+	it("viewerChatStats():给了在播表时报收集器规模,没给时报零", async () => {
+		const withoutLive = setup();
+		expect(withoutLive.runtime.viewerChatStats()).toEqual({
+			subscriptions: 0,
+			words: 0,
+			senders: 0,
+		});
+		await withoutLive.runtime.dispose();
+
+		const sub = biliSubOf("57", "sub-57");
+		const c = setup({
+			subs: [sub],
+			liveTable: memoryLiveTable(),
+		});
+		active = c;
+		await c.sourceReady;
+		c.source.ctx?.reportLive("57", { kind: "start", startedAt: START, details: {} });
+		c.source.ctx?.reportLiveInteraction("57", {
+			kind: "viewerChat",
+			viewer: { id: "viewer-1", name: "甲" },
+			text: "主播好厉害",
+		});
+		expect(c.runtime.viewerChatStats()).toEqual({ subscriptions: 1, words: 2, senders: 1 });
+	});
+
+	it("tickLiveSessionNow():把这条订阅当前的场次核对转给场次引擎", async () => {
+		const sub = biliSubOf("57", "sub-57");
+		sub.enabled = false;
+		const fetchLiveStatus = vi.fn(async () => ({
+			ok: true as const,
+			kind: "live" as const,
+			details: { title: "刚才那场" },
+		}));
+		const c = setup({
+			subs: [sub],
+			liveTable: memoryLiveTable(),
+			fetchLiveStatus,
+		});
+		active = c;
+		await c.sourceReady;
+		sub.enabled = true;
+		c.source.ctx?.reportLive("57", { kind: "start", startedAt: START, details: {} });
+
+		await expect(c.runtime.tickLiveSessionNow(sub.id)).resolves.toBe(true);
+		expect(fetchLiveStatus).toHaveBeenCalledTimes(1);
+	});
+
+	it("没给在播表:来源报直播信号和互动各记一条 error 后丢弃,不抛", async () => {
+		const sub = biliSubOf("57", "sub-57");
+		const c = setup({ subs: [sub] });
+		active = c;
+		await c.sourceReady;
+		const changes: unknown[] = [];
+		c.bus.on("live-session-changed", (change) => changes.push(change));
+		const errors = subsystemCtx(c, "live", "core").logger.error;
+		errors.mockClear();
+
+		expect(() => {
+			c.source.ctx?.reportLive("57", { kind: "start", startedAt: START, details: {} });
+		}).not.toThrow();
+		expect(() => {
+			c.source.ctx?.reportLiveInteraction("57", {
+				kind: "viewerChat",
+				viewer: { id: "viewer-1", name: "甲" },
+				text: "主播好厉害",
+			});
+		}).not.toThrow();
+
+		expect(changes).toEqual([]);
+		expect(errors).toHaveBeenCalledTimes(2);
+		expect(errors.mock.calls.map(([message]) => message)).toEqual([
+			"[engines] 没有场次引擎,bilibili 报的直播 start 丢弃",
+			"[engines] 没有直播互动入口,订阅 sub-57 的直播互动 viewerChat 丢弃",
+		]);
+	});
+});
+
 // 「直播就绪」:至少一个启用的 B 站订阅 `needsLiveMonitor` 为真(ADR-0027 决策 1:只看折好的开关与特别关注,
 // 不看有没有推送目标)。判定本身只此一份,住 internal;这里钉的是 getModuleState 用的是它。
 describe("createEngines — getModuleState.live", () => {
@@ -2487,6 +2594,34 @@ describe("createEngines — 背景轮换游标落盘", () => {
 		await c.runtime.dispose();
 		active = null;
 		await expect(readdir(dataDir)).resolves.toEqual(["library"]);
+	});
+
+	it("推进过就在 dispose 时落盘", async () => {
+		const sub = biliSubOf("57", "sub-57");
+		const g = makeDefaultGlobalConfig();
+		g.defaults.cards.liveCoverImageIds = ids.slice(0, 2);
+		const c = setup({
+			dataDir,
+			globals: g,
+			subs: [sub],
+			liveTable: memoryLiveTable(),
+		});
+		active = c;
+		await c.sourceReady;
+		c.source.ctx?.reportLive("57", {
+			kind: "start",
+			startedAt: "2026-10-25T08:00:00.000Z",
+			details: { url: "https://live.bilibili.com/57" },
+		});
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
+		await settleTracked(c);
+
+		await c.runtime.dispose();
+		active = null;
+		const persisted: unknown = JSON.parse(
+			await readFile(dataPath(dataDir, ...CARD_BG_CURSORS_FILE), "utf8"),
+		);
+		expect(persisted).toEqual({ "bilibili:57:live-cover": 1 });
 	});
 });
 
