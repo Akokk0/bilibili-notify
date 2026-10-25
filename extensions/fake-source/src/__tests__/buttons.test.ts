@@ -24,6 +24,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	bootFakeSource,
+	fakeConnection,
 	type HarnessSub,
 	type HeardKind,
 	type HeardReport,
@@ -120,8 +121,8 @@ function actionButtons(view: ExtensionView): { label: string; action: string }[]
 	return out;
 }
 
-describe("十颗按钮", () => {
-	it("页上有八颗正常的、两颗报坏的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
+describe("十二颗按钮", () => {
+	it("页上有八颗正常的、两颗报坏的、两颗入站的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
 		const buttons = actionButtons(bootFakeSource(PEOPLE).view());
 		expect(buttons.map((b) => b.label)).toEqual([
 			"报一条作品",
@@ -134,6 +135,8 @@ describe("十颗按钮", () => {
 			"清问题",
 			"报一条带坏图的作品",
 			"报一条多一格的作品",
+			"发一条入站私聊 /status",
+			"发一条冒名连接的入站私聊",
 		]);
 		const declared = await manifestActions();
 		for (const { action } of buttons) expect(declared).toContain(action);
@@ -170,10 +173,12 @@ describe("作用于谁", () => {
 		]);
 	});
 
-	it("没有开着的订阅:十颗都不向人报;作品等按钮说一句「还没有开着的订阅」,问题按钮仍报拓展与来源", async () => {
+	it("没有开着的订阅:十颗上报按钮都不向人报;作品等按钮说一句「还没有开着的订阅」,问题按钮仍报拓展与来源", async () => {
 		const fake = bootFakeSource([sub("person-c", false)]);
 		const before = fake.statusChanges();
-		for (const { action } of actionButtons(fake.view())) await fake.press(action);
+		for (const { action } of actionButtons(fake.view())) {
+			if (!action.startsWith("inbound.")) await fake.press(action);
+		}
 		expect(fake.reports()).toEqual([]);
 		expect(fake.problemCalls().map((call) => [call.layer, call.action, call.value.code])).toEqual([
 			["extension", "report", "fake_extension_problem"],
@@ -704,5 +709,75 @@ describe("可复现", () => {
 			return fake.reports();
 		};
 		expect(await run()).toEqual(await run());
+	});
+});
+
+describe("适配器那一层", () => {
+	const FROM = "owner-1";
+	const CHAT = fakeConnection("11111111-1111-4111-8111-111111111111", {
+		settings: { atAll: false, inboundFrom: FROM },
+	});
+	const CLOSED = fakeConnection("22222222-2222-4222-8222-222222222222", {
+		enabled: false,
+		settings: { atAll: false, inboundFrom: FROM },
+	});
+	const SILENT = fakeConnection("33333333-3333-4333-8333-333333333333");
+
+	it("入站私聊:只对开着、填了入站发送者的连接交 /status,发送者是那个地址", async () => {
+		const fake = bootFakeSource([], { connections: [CHAT, CLOSED, SILENT] });
+		await fake.press("inbound.private");
+
+		expect(fake.inbound()).toEqual([
+			{ msg: { address: FROM, text: "/status" }, meta: { connectionId: CHAT.id } },
+		]);
+		const notice = noticesOf(fake.view()).find((n) => plain(n.text).includes("入站私聊"));
+		expect(plain(notice?.text ?? "")).toContain("1 条");
+	});
+
+	it("入站私聊:没有可发的连接就说一句,什么都不交", async () => {
+		const fake = bootFakeSource([], { connections: [SILENT] });
+		await fake.press("inbound.private");
+
+		expect(fake.inbound()).toEqual([]);
+		const warn = noticesOf(fake.view()).find((n) => n.tone === "warn");
+		expect(plain(warn?.text ?? "")).toContain("什么都没发");
+	});
+
+	it("冒名入站:拿一个写死的、不存在的连接 id 交同一条私聊", async () => {
+		const fake = bootFakeSource([], { connections: [CHAT] });
+		await fake.press("inbound.forged");
+
+		const heard = fake.inbound();
+		expect(heard).toHaveLength(1);
+		expect(heard[0]?.msg.text).toBe("/status");
+		expect(heard[0]?.meta.connectionId).not.toBe(CHAT.id);
+		expect(fake.setConnectionIds()).not.toContain(heard[0]?.meta.connectionId);
+	});
+
+	it("适配器没在跑:两颗入站按钮照现有按钮回「没在跑」,什么都不交", async () => {
+		const fake = bootFakeSource([], { connections: [CHAT] });
+		await fake.stopAdapter();
+
+		await expect(fake.press("inbound.private")).rejects.toThrow(/没在跑/);
+		await expect(fake.press("inbound.forged")).rejects.toThrow(/没在跑/);
+		expect(fake.inbound()).toEqual([]);
+	});
+
+	it("报 / 清问题多第四样:对每条归我的连接经适配器上下文带 connectionId 报 / 清,不私聊", async () => {
+		const fake = bootFakeSource([sub("person-a", true)], { connections: [CHAT, CLOSED] });
+		await fake.press("report.problem");
+		await fake.press("resolve.problem");
+
+		const adapterCalls = fake.problemCalls().filter((call) => call.layer === "adapter");
+		expect(
+			adapterCalls.map((call) => [call.action, call.value.connectionId, call.value.code]),
+		).toEqual([
+			["report", CHAT.id, "fake_connection_problem"],
+			["report", CLOSED.id, "fake_connection_problem"],
+			["resolve", CHAT.id, "fake_connection_problem"],
+			["resolve", CLOSED.id, "fake_connection_problem"],
+		]);
+		for (const call of adapterCalls) expect(call.value.notify).toBeUndefined();
+		expect(adapterCalls[0]?.value.message).toBeTruthy();
 	});
 });

@@ -1,6 +1,7 @@
 {
 	"health.summary#one": "在跑 · 管着 {count} 个人",
 	"health.summary#other": "在跑 · 管着 {count} 个人",
+	"problem.connection": "这条假连接暂时无法投递，假平台这一侧会继续尝试。",
 	"problem.creator": "这位创作者的作品暂时无法更新，假源这一侧会继续尝试。",
 	"problem.extension": "假源拓展暂时无法处理订阅更新，假源这一侧会继续尝试。",
 	"problem.recovery": "假源拓展已恢复，订阅数据可以继续更新。",
@@ -16,6 +17,21 @@
 				"postNoun": "假帖",
 				"creatorNoun": "假主播",
 				"externalIdNoun": "假号"
+			},
+			"push": {
+				"label": "假平台",
+				"shortLabel": "假",
+				"settingsFields": {
+					"atAll": {
+						"label": "支持 @全体",
+						"description": "打开后,这条连接对外说自己能单发 @全体(用来演推送路由的 @全体 那一支)。"
+					},
+					"inboundFrom": {
+						"label": "入站发送者",
+						"description": "填了,页上的入站按钮会以这个地址向女仆发一条私聊 /status,这条连接也就对外说自己收得到回复;留空就是收不到。",
+						"placeholder": "owner-address"
+					}
+				}
 			}
 		}
 	}

@@ -546,6 +546,9 @@ importers:
       '@bilibili-notify/extension':
         specifier: workspace:*
         version: link:../../packages/extension
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/ai:
     dependencies:

@@ -24,7 +24,8 @@ const copyPackageFiles = {
 
 /**
  * 假源的自包含构建,配方同桥:装载器拿 `import()` 直接吃盘上的 `index.mjs`,旁边没有
- * node_modules,所以一切都得内联(它眼下只用 node 内置,`@bilibili-notify/extension` 只取类型)。
+ * node_modules,所以一切都得内联(`@bilibili-notify/extension` 的运行时值与适配器 schema 用的 zod 都在内)。
+ * 内联出来的 zod 与宿主那份不是同一个实例,同桥,宿主那头问形状、不问 `instanceof`。
  */
 export default defineConfig({
 	pack: {
@@ -37,7 +38,7 @@ export default defineConfig({
 		target: "node24",
 		sourcemap: false,
 		deps: {
-			alwaysBundle: [/^@bilibili-notify\//],
+			alwaysBundle: [/^@bilibili-notify\//, /^zod(\/|$)/],
 			onlyBundle: false,
 		},
 		plugins: [copyPackageFiles],

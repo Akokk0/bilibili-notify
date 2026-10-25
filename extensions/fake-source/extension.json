@@ -14,10 +14,35 @@
 		"report.problem",
 		"resolve.problem",
 		"report.badImage",
-		"report.extraField"
+		"report.extraField",
+		"inbound.private",
+		"inbound.forged"
 	],
 	"icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5l-5.1-10.1a2 2 0 0 1-.2-.9V2\"/><path d=\"M8.5 2h7\"/><path d=\"M7 16h10\"/></svg>",
 	"contributes": {
+		"push": {
+			"label": "假平台",
+			"shortLabel": "假",
+			"color": "#7c3aed",
+			"icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMGQ5NDg4IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEwIDJ2Ny41YTIgMiAwIDAgMS0uMi45TDQuNyAyMC41YTEgMSAwIDAgMCAuOSAxLjVoMTIuOGExIDEgMCAwIDAgLjktMS41bC01LjEtMTAuMWEyIDIgMCAwIDEtLjItLjlWMiIvPjxwYXRoIGQ9Ik04LjUgMmg3Ii8+PHBhdGggZD0iTTcgMTZoMTAiLz48L3N2Zz4=",
+			"settingsFields": [
+				{
+					"key": "atAll",
+					"type": "boolean",
+					"label": "支持 @全体",
+					"description": "打开后,这条连接对外说自己能单发 @全体(用来演推送路由的 @全体 那一支)。",
+					"default": false
+				},
+				{
+					"key": "inboundFrom",
+					"type": "string",
+					"label": "入站发送者",
+					"description": "填了,页上的入站按钮会以这个地址向女仆发一条私聊 /status,这条连接也就对外说自己收得到回复;留空就是收不到。",
+					"placeholder": "owner-address",
+					"default": ""
+				}
+			]
+		},
 		"subscription": {
 			"label": "假源",
 			"shortLabel": "假",

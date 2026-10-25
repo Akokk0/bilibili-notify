@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
+	Connection,
 	CreatorCandidate,
 	CreatorProfileReport,
 	ExtensionContext,
@@ -8,13 +9,18 @@ import type {
 	ExtensionView,
 	Identity,
 	ImageRef,
+	InboundMeta,
+	InboundPrivateMessage,
 	LiveStatusResult,
+	PlatformAdapterContext,
+	PlatformAdapterDef,
 	Result,
 	SourceContext,
 	SourceDef,
 	SourceHealth,
 	SourceSubscriptionView,
 } from "@bilibili-notify/extension";
+import { neutralPlatformDescriptor } from "@bilibili-notify/extension";
 import { activate } from "../index.js";
 
 /** 三种上报的种类名 —— 与宿主那张表同一套词。 */
@@ -27,12 +33,13 @@ export interface HeardReport {
 	value: unknown;
 }
 
-/** 集成上下文与来源上下文各自报 / 清问题的那一下。 */
+/** 集成上下文、来源上下文与适配器上下文各自报 / 清问题的那一下。 */
 export interface ProblemCall {
-	layer: "extension" | "source";
+	layer: "extension" | "source" | "adapter";
 	action: "report" | "resolve";
 	value: {
 		externalId?: string;
+		connectionId?: string;
 		code: string;
 		message?: string;
 		notify?: boolean;
@@ -47,10 +54,80 @@ export interface HarnessSub {
 }
 
 export interface BootOptions {
+	/** 开机时适配器上下文里已有的连接。 */
+	connections?: readonly Connection[];
 	/** 演图库那头存不下:回一句原因就把这次 `storeImage` 回成 `invalid` 失败,回 `undefined` 就存下。 */
 	refuseStore?: (bytes: Uint8Array) => string | undefined;
 	/** 演图库那头慢:第 `index` 次(从 0 数)存图交回一个 Promise 就先等它(测两颗按钮交错着跑)。 */
 	holdStore?: (index: number) => Promise<void> | undefined;
+}
+
+/** 适配器上下文收到的一条入站私聊。 */
+export interface HeardInbound {
+	msg: InboundPrivateMessage;
+	meta: Pick<InboundMeta, "connectionId">;
+}
+
+/** 测试摆的一条假连接:归假源的适配器,默认开着、`fake-chat`、两格设置取默认。 */
+export function fakeConnection(
+	id: string,
+	over: Partial<Pick<Connection, "platform" | "enabled" | "settings">> = {},
+): Connection {
+	const platform = over.platform ?? "fake-chat";
+	const { platform: _platform, ...platformSnapshot } = neutralPlatformDescriptor(platform);
+	return {
+		id,
+		name: `连接 ${id}`,
+		enabled: true,
+		adapterKey: "fake-source",
+		platform,
+		settings: { atAll: false, inboundFrom: "" },
+		platformSnapshot,
+		...over,
+	};
+}
+
+/**
+ * 手搭的适配器上下文:连接名单由测试摆,`setConnections` 模拟宿主「连接动过了」那一声;
+ * 交上来的入站与问题上报原样攒着。
+ */
+export function fakeAdapterContext(
+	initial: readonly Connection[] = [],
+	onProblem: (call: ProblemCall) => void = () => {},
+) {
+	let connections = [...initial];
+	const listeners = new Set<() => void>();
+	const inbound: HeardInbound[] = [];
+	const ctx = {
+		connections: () => connections,
+		onConnectionsChanged(fn: () => void) {
+			listeners.add(fn);
+			return {
+				dispose() {
+					listeners.delete(fn);
+				},
+			};
+		},
+		reportProblem: (value: ProblemCall["value"]) =>
+			onProblem({ layer: "adapter", action: "report", value }),
+		resolveProblem: (value: ProblemCall["value"]) =>
+			onProblem({ layer: "adapter", action: "resolve", value }),
+		inbound: {
+			private: (msg: InboundPrivateMessage, meta: Pick<InboundMeta, "connectionId">) => {
+				inbound.push({ msg, meta });
+			},
+			group: () => {},
+		},
+	} as unknown as PlatformAdapterContext;
+	return {
+		ctx,
+		setConnections(next: readonly Connection[]) {
+			connections = [...next];
+			for (const fn of [...listeners]) fn();
+		},
+		inbound: () => [...inbound],
+		listenerCount: () => listeners.size,
+	};
 }
 
 type ActionHandler = (signal: AbortSignal) => void | Promise<void>;
@@ -90,6 +167,8 @@ const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOptions = {}) {
 	let subs = [...initial];
 	let source: SourceDef | undefined;
+	let adapterDef: PlatformAdapterDef | undefined;
+	const adapterCtx = fakeAdapterContext(opts.connections, (call) => problemCalls.push(call));
 	let view: (() => ExtensionView) | undefined;
 	const listeners: (() => void)[] = [];
 	const actions = new Map<string, ActionHandler>();
@@ -162,6 +241,15 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 			void def.start(sourceCtx);
 			return noop;
 		},
+		registerPlatformAdapter(def: PlatformAdapterDef) {
+			adapterDef = def;
+			void def.start(adapterCtx.ctx);
+			return {
+				dispose() {
+					void def.stop();
+				},
+			};
+		},
 		publishView(fn: () => ExtensionView) {
 			view = fn;
 		},
@@ -176,6 +264,11 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 	} as unknown as ExtensionContext;
 
 	activate(ctx);
+
+	const adapter = (): PlatformAdapterDef => {
+		if (!adapterDef) throw new Error("假源没注册平台适配器");
+		return adapterDef;
+	};
 
 	const def = (): SourceDef => {
 		if (!source) throw new Error("假源没注册订阅源");
@@ -223,6 +316,20 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		/** 宿主收摊:先叫来源的 `stop()`。 */
 		async stop(): Promise<void> {
 			await def().stop();
+		},
+		/** 注册上去的适配器定义(运行时的原样,含故意塞的不开的成员)。 */
+		adapter,
+		/** 摆新的连接名单并喊一声「连接动过了」。 */
+		setConnections: adapterCtx.setConnections,
+		/** 适配器上下文里此刻的连接 id。 */
+		setConnectionIds: () => adapterCtx.ctx.connections().map((one) => one.id),
+		/** 适配器上下文收到的入站私聊。 */
+		inbound: adapterCtx.inbound,
+		/** 适配器此刻订着几个「连接动过了」。 */
+		connectionListeners: adapterCtx.listenerCount,
+		/** 宿主收摊适配器:`stop()`。 */
+		async stopAdapter(): Promise<void> {
+			await adapter().stop();
 		},
 		/** 来源定义里登了哪些成员。 */
 		members: () => Object.keys(def()).sort(),

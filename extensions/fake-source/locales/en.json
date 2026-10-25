@@ -1,6 +1,7 @@
 {
 	"health.summary#one": "Running · watching {count} person",
 	"health.summary#other": "Running · watching {count} people",
+	"problem.connection": "This fake connection cannot deliver right now. The fake platform will keep trying.",
 	"problem.creator": "This creator's posts cannot update right now. The fake source will keep trying.",
 	"problem.extension": "The fake extension cannot update subscriptions right now. The fake source will keep trying.",
 	"problem.recovery": "The fake extension recovered. Subscription data can update again.",
@@ -17,6 +18,21 @@
 				"postNoun": "mock",
 				"creatorNoun": "faker",
 				"externalIdNoun": "Fake ID"
+			},
+			"push": {
+				"label": "Fake platform",
+				"shortLabel": "Fake",
+				"settingsFields": {
+					"atAll": {
+						"label": "Supports @everyone",
+						"description": "When on, this connection says it can send a single @everyone (plays the @everyone branch of push routing)."
+					},
+					"inboundFrom": {
+						"label": "Inbound sender",
+						"description": "When filled, the inbound buttons on the page send a private /status as this address, and the connection says it can receive replies; empty means it cannot.",
+						"placeholder": "owner-address"
+					}
+				}
 			}
 		}
 	}

@@ -14,10 +14,11 @@ import type {
 	SourceDef,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
+import { createFakeAdapter } from "./adapter.js";
 import { wireReportButtons } from "./buttons.js";
 import { fakeSearchCreators } from "./lookup.js";
 import { createFakeProfiles, fakeFetchedProfile, pictureStore } from "./reports.js";
-import { fakeSourceView } from "./view.js";
+import { fakeAdapterBlocks, fakeSourceView } from "./view.js";
 
 /**
  * 合 `externalIdRegex`,但解析门永远不会现编出这个尾巴:`fetchProfile` 拿它演「平台上这个人没了」,
@@ -29,9 +30,18 @@ export function activate(ctx: ExtensionContext): void {
 	/** `start` 拿到的来源上下文;`stop` 之后清掉。按钮、解析门、视图都从这里取名单与上报口。 */
 	let running: SourceContext | undefined;
 	const profiles = createFakeProfiles();
-	const buttons = wireReportButtons(ctx, () => running, profiles);
-	// 视图是现取的:订阅名单每次现读,不缓存。
-	ctx.publishView(() => fakeSourceView(running?.subscriptions() ?? [], ctx.i18n, buttons.blocks()));
+	// 连接名单一变就喊一声,面板重取视图。
+	const adapter = createFakeAdapter({ changed: () => ctx.statusChanged() });
+	const buttons = wireReportButtons(ctx, () => running, profiles, adapter);
+	// 视图是现取的:订阅名单、连接名单、发送账每次现读,不缓存。
+	ctx.publishView(() =>
+		fakeSourceView(
+			running?.subscriptions() ?? [],
+			ctx.i18n,
+			buttons.blocks(),
+			fakeAdapterBlocks(adapter.connectionCount(), adapter.sent()),
+		),
+	);
 
 	const def = {
 		start(source: SourceContext) {
@@ -90,4 +100,6 @@ export function activate(ctx: ExtensionContext): void {
 	};
 	// 故意的:把不开的成员塞进注册对象,给宿主成员表把它们摘掉。
 	ctx.registerSource(def as unknown as SourceDef);
+	// 平台适配器:`start` 不建连接、不出网、不起定时器,装上它不拖慢别的任何一条路。
+	ctx.registerPlatformAdapter(adapter.def);
 }

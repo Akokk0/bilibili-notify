@@ -8,6 +8,7 @@ import type {
 	SourceSubscriptionView,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
+import { type FakeAdapter, settingsOf } from "./adapter.js";
 import {
 	type createFakeProfiles,
 	type FakeLiveSession,
@@ -54,6 +55,24 @@ const REPORT_PROBLEM: ReportButton = { action: "report.problem", label: "报问�
 const RESOLVE_PROBLEM: ReportButton = { action: "resolve.problem", label: "清问题" };
 const BAD_IMAGE: ReportButton = { action: "report.badImage", label: "报一条带坏图的作品" };
 const EXTRA_FIELD: ReportButton = { action: "report.extraField", label: "报一条多一格的作品" };
+const INBOUND_PRIVATE: ReportButton = {
+	action: "inbound.private",
+	label: "发一条入站私聊 /status",
+};
+const INBOUND_FORGED: ReportButton = {
+	action: "inbound.forged",
+	label: "发一条冒名连接的入站私聊",
+};
+
+/** 适配器的问题上报用的 code:独立的一个,不私聊。 */
+const CONNECTION_PROBLEM_CODE = "fake_connection_problem";
+/** 入站按钮交的那句话。 */
+const INBOUND_TEXT = "/status";
+/** 一个写死的、不存在的连接 id:宿主应丢掉这条入站并记一行。 */
+const FORGED_CONNECTION_ID = "00000000-0000-4000-8000-00000000f0f0";
+
+/** 适配器没在跑时入站按钮回的那句话。 */
+const ADAPTER_NOT_RUNNING = "适配器没在跑(还没起来,或者已经停下了),什么都没发";
 
 /**
  * 报直播状态每按一次,此刻在线涨这么多;开播时就是这个数。
@@ -93,13 +112,14 @@ function openPeople(people: readonly SourceSubscriptionView[]): string[] {
 }
 
 /**
- * 接上十颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
+ * 接上十二颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
  * `running()` 回此刻在跑的那份来源上下文,没在跑是 `undefined`。
  */
 export function wireReportButtons(
 	ctx: ExtensionContext,
 	running: () => SourceContext | undefined,
 	profiles: ReturnType<typeof createFakeProfiles>,
+	adapter: Pick<FakeAdapter, "context">,
 ): {
 	blocks(): ExtensionBlock[];
 	liveStatusOf(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
@@ -246,6 +266,15 @@ export function wireReportButtons(
 				code: "fake_source_problem",
 				message: ctx.i18n.t("problem.source"),
 			});
+			// 第四样:适配器那份 ctx 对每条归我的连接带 `connectionId` 报(两口的拓展两边各从自己那份 ctx 报)。
+			const adapterCtx = adapter.context();
+			for (const connection of adapterCtx?.connections() ?? []) {
+				adapterCtx?.reportProblem({
+					connectionId: connection.id,
+					code: CONNECTION_PROBLEM_CODE,
+					message: ctx.i18n.t("problem.connection"),
+				});
+			}
 			return {
 				each: async (externalId) => {
 					running()?.reportProblem({
@@ -254,7 +283,7 @@ export function wireReportButtons(
 						message: ctx.i18n.t("problem.creator"),
 					});
 				},
-				note: "拓展、来源和每个人的三层问题",
+				note: "拓展、来源、每条连接和每个人的四层问题",
 			};
 		},
 		{ allowNoPeople: true },
@@ -265,6 +294,10 @@ export function wireReportButtons(
 		(_now, source) => {
 			ctx.resolveProblem({ code: "fake_extension_problem", notify: true });
 			source.resolveProblem({ code: "fake_source_problem" });
+			const adapterCtx = adapter.context();
+			for (const connection of adapterCtx?.connections() ?? []) {
+				adapterCtx?.resolveProblem({ connectionId: connection.id, code: CONNECTION_PROBLEM_CODE });
+			}
 			return {
 				each: async (externalId) => {
 					running()?.resolveProblem({
@@ -272,7 +305,7 @@ export function wireReportButtons(
 						code: "fake_creator_problem",
 					});
 				},
-				note: "拓展、来源和每个人的三层问题",
+				note: "拓展、来源、每条连接和每个人的四层问题",
 			};
 		},
 		{ allowNoPeople: true, personVerb: "清了" },
@@ -332,6 +365,68 @@ export function wireReportButtons(
 		};
 	});
 
+	/**
+	 * 入站按钮:不依赖来源和订阅,只要适配器在跑。`send` 交一个函数,拿适配器上下文做事、回页上那句
+	 * 括号里的话(没事可做就回 `undefined`,页上说一句「没有可发的」)。
+	 */
+	function onInbound(
+		b: ReportButton,
+		run: (adapterCtx: NonNullable<ReturnType<FakeAdapter["context"]>>) => string | undefined,
+		nothing: string,
+	): void {
+		ctx.onAction(b.action, (signal) => {
+			signal.throwIfAborted();
+			const at = Date.now();
+			const adapterCtx = adapter.context();
+			if (!adapterCtx) {
+				lastPress = {
+					tone: "error",
+					text: [{ b: b.label }, `:${ADAPTER_NOT_RUNNING} · `, { time: at }],
+				};
+				ctx.statusChanged();
+				throw new Error(ADAPTER_NOT_RUNNING);
+			}
+			const note = run(adapterCtx);
+			lastPress =
+				note === undefined
+					? { tone: "warn", text: [{ b: b.label }, `:${nothing} · `, { time: at }] }
+					: { tone: "info", text: [{ b: b.label }, `:${note} · `, { time: at }] };
+			ctx.statusChanged();
+		});
+	}
+
+	// 对每条「归我、开着、`inboundFrom` 非空」的连接,以那个地址交一条私聊 `/status`。
+	onInbound(
+		INBOUND_PRIVATE,
+		(adapterCtx) => {
+			let sent = 0;
+			for (const connection of adapterCtx.connections()) {
+				const from = settingsOf(connection).inboundFrom;
+				if (!connection.enabled || from === "") continue;
+				adapterCtx.inbound.private(
+					{ address: from, text: INBOUND_TEXT },
+					{ connectionId: connection.id },
+				);
+				sent += 1;
+			}
+			return sent === 0 ? undefined : `交了 ${sent} 条私聊`;
+		},
+		"没有开着且填了入站发送者的连接,什么都没发",
+	);
+
+	// 拿一个不存在的连接 id 交同一条私聊:宿主应丢掉并记一行,不会有任何回复。
+	onInbound(
+		INBOUND_FORGED,
+		(adapterCtx) => {
+			adapterCtx.inbound.private(
+				{ address: "forged-sender", text: INBOUND_TEXT },
+				{ connectionId: FORGED_CONNECTION_ID },
+			);
+			return "交了 1 条冒名的私聊,BN 应丢掉并记一行";
+		},
+		"",
+	);
+
 	const button = (b: ReportButton): ExtensionBlock => ({
 		type: "button",
 		button: { kind: "action", label: b.label, action: b.action },
@@ -357,6 +452,8 @@ export function wireReportButtons(
 				button(RESOLVE_PROBLEM),
 				explained(BAD_IMAGE, "第 2 张图交一个不合形状的引用 —— BN 应只丢那一格、其余照收"),
 				explained(EXTRA_FIELD, "多带一格 BN 不认识的「弹幕数」—— BN 应整条拒"),
+				button(INBOUND_PRIVATE),
+				explained(INBOUND_FORGED, "拿一个不存在的连接 id 交入站 —— BN 应丢掉并记一行"),
 			];
 			if (lastPress) blocks.push({ type: "notice", ...lastPress });
 			return blocks;
