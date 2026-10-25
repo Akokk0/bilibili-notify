@@ -111,7 +111,7 @@ describe("registerBuiltinSource", () => {
 		const { options, enqueue } = setup(source);
 		enqueue.mockImplementation(() => order.push("enqueue"));
 		const handle = await registerBuiltinSource(options);
-		handle.dispose();
+		await handle.dispose();
 		expect(order).toEqual(["stop", "enqueue"]);
 		source.started[0]?.reportPost("1", {
 			postId: "later",
@@ -119,6 +119,43 @@ describe("registerBuiltinSource", () => {
 			post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "x" },
 		});
 		expect(order).toEqual(["stop", "enqueue"]);
+	});
+
+	// 验红:`registry.ts` 的把手不等 stop,或 `builtin-sources.ts` 的把手不等 `registration.dispose()` 就收上下文,
+	// 途中那一报被丢,这条红。
+	it("stop 是异步的:stop 途中报的作品与问题照收;stop 落定之后才收上下文,之后再报才丢", async () => {
+		const source = makeSource();
+		let finishStop = () => {};
+		const gate = new Promise<void>((resolve) => {
+			finishStop = resolve;
+		});
+		source.stop = vi.fn(async () => {
+			await gate;
+		});
+		const { options, enqueue, problems } = setup(source);
+		const handle = await registerBuiltinSource(options);
+		const done = handle.dispose();
+		const report = (postId: string) =>
+			source.started[0]?.reportPost("1", {
+				postId,
+				url: "u",
+				post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "x" },
+			});
+		// 登记已撤、stop 还在路上:上下文还开着(隔一拍再报:不等 stop 的实现这时上下文已经收了)。
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		report("mid-stop");
+		source.started[0]?.reportProblem({ code: "mid_stop", message: "stop 途中" });
+		expect(enqueue).toHaveBeenCalledTimes(1);
+		expect(problems.report).toHaveBeenCalledTimes(1);
+		expect(problems.clearReporter).not.toHaveBeenCalled();
+
+		finishStop();
+		await done;
+		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
+		report("after-stop");
+		source.started[0]?.reportProblem({ code: "late", message: "停后" });
+		expect(enqueue).toHaveBeenCalledTimes(1);
+		expect(problems.report).toHaveBeenCalledTimes(1);
 	});
 
 	it("来源在 start 里登的链接解析器:表里按来源的键查得到;来源停下(撤登记)后表里没有", async () => {
@@ -130,7 +167,7 @@ describe("registerBuiltinSource", () => {
 		});
 		const handle = await registerBuiltinSource(options);
 		expect(Array.from(linkResolvers.entries())).toEqual([[SOURCE_KEY, fake]]);
-		handle.dispose();
+		await handle.dispose();
 		expect(Array.from(linkResolvers.entries())).toEqual([]);
 	});
 
@@ -138,7 +175,7 @@ describe("registerBuiltinSource", () => {
 		const source = makeSource();
 		const { options, linkResolvers } = setup(source);
 		const handle = await registerBuiltinSource(options);
-		handle.dispose();
+		await handle.dispose();
 		const late = source.started[0]?.registerLinkResolver(fakeLinkResolver());
 		expect(late).toBeDefined();
 		expect(() => late?.dispose()).not.toThrow();
@@ -170,7 +207,7 @@ describe("registerBuiltinSource", () => {
 		expect(aiToolProviders.tools().map((tool) => tool.definition.function.name)).toEqual([
 			`${SOURCE_KEY.replaceAll(".", "_")}__echo`,
 		]);
-		handle.dispose();
+		await handle.dispose();
 		expect(aiToolProviders.tools()).toEqual([]);
 	});
 
@@ -178,7 +215,7 @@ describe("registerBuiltinSource", () => {
 		const source = makeSource();
 		const { options, aiToolProviders, logger } = setup(source);
 		const handle = await registerBuiltinSource(options);
-		handle.dispose();
+		await handle.dispose();
 		const late = source.started[0]?.registerAiToolProvider(fakeAiToolProvider());
 		expect(late).toBeDefined();
 		expect(() => late?.dispose()).not.toThrow();
@@ -198,7 +235,7 @@ describe("registerBuiltinSource", () => {
 		first?.dispose();
 		ctx?.registerAiToolProvider({ readOnly: [fakeAiTool()] });
 		expect(aiToolProviders.tools()).toHaveLength(1);
-		handle.dispose();
+		await handle.dispose();
 		expect(aiToolProviders.tools()).toEqual([]);
 	});
 
@@ -243,7 +280,7 @@ describe("registerBuiltinSource", () => {
 		problems.clearReporter.mockImplementation(() => void order.push("clear"));
 		const handle = await registerBuiltinSource(options);
 		expect(problems.clearReporter).not.toHaveBeenCalled();
-		handle.dispose();
+		await handle.dispose();
 		expect(problems.clearReporter).toHaveBeenCalledTimes(1);
 		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
 		expect(order).toEqual(["stop", "clear"]);
@@ -334,7 +371,7 @@ describe("registerBuiltinSource · 登录口(Source.auth)", () => {
 		const { options } = setup(authed.source);
 		const handle = await registerBuiltinSource({ ...options, onAuthChanged });
 
-		handle.dispose();
+		await handle.dispose();
 		expect(authed.listeners.size).toBe(0);
 		authed.fire();
 		expect(onAuthChanged).not.toHaveBeenCalled();
@@ -387,7 +424,7 @@ describe("registerBuiltinSource · 登录口(Source.auth)", () => {
 		const handle = await registerBuiltinSource(options);
 		problems.report.mockClear();
 
-		handle.dispose();
+		await handle.dispose();
 
 		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
 		expect(problems.resolve).not.toHaveBeenCalled();

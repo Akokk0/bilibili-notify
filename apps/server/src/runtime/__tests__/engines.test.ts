@@ -714,9 +714,9 @@ beforeEach(() => {
 	H.image.length = 0;
 	active = null;
 });
-afterEach(() => {
+afterEach(async () => {
 	try {
-		active?.runtime.dispose();
+		await active?.runtime.dispose();
 	} catch {
 		/* best-effort */
 	}
@@ -1134,7 +1134,7 @@ describe("createEngines — 作品过滤接线", () => {
 		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		c.source.ctx?.reportPost("sec-uid-1", textReport(sub));
 		await settleTracked(c);
 		expect(detected).toHaveLength(1);
@@ -1424,7 +1424,7 @@ describe("createEngines — 来源周期核对", () => {
 			return intervals.map(([, ms]) => ms).filter((ms) => ms === 60 * 60 * 1000);
 		};
 		expect(await hourly(async () => ({ ok: false, code: "x", message: "x" }))).toEqual([]);
-		active?.runtime.dispose();
+		await active?.runtime.dispose();
 		expect(await hourly()).toEqual([]);
 	});
 });
@@ -1591,7 +1591,7 @@ describe("createEngines — boot wiring", () => {
 		await c.sourceReady;
 		c.source.ctx?.reportProblem({ code: "auth_lost", message: "登录失效", notify: true });
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		active = null;
 		expect(c.problems.list()).toEqual([]);
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
@@ -1678,7 +1678,7 @@ describe("createEngines — boot wiring", () => {
 		for (const fn of [...listeners]) fn();
 		expect(seen).toEqual([{ sourceKey: "bilibili", state }]);
 
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		active = null;
 		expect(listeners.size).toBe(0);
 	});
@@ -1712,7 +1712,7 @@ describe("createEngines — boot wiring", () => {
 			() => "ok",
 			(err: unknown) => String(err),
 		);
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		gate.resolve();
 		expect(await outcome).toContain("已关停");
 		expect(slow.stop).toHaveBeenCalledTimes(1);
@@ -1734,7 +1734,7 @@ describe("createEngines — boot wiring", () => {
 		registration.dispose();
 		expect(extra.stop).toHaveBeenCalledTimes(1);
 		expect(c.sources.get("douyin")).toBeUndefined();
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		expect(extra.stop).toHaveBeenCalledTimes(1);
 	});
 
@@ -2390,9 +2390,65 @@ describe("createEngines — dispose", () => {
 			subscriptionId: sub.id,
 			details: { currentViewers: 2000 },
 		});
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		expect(liveTable.get(sub.id)).toBeUndefined();
 		expect(c.source.stops).toBe(1);
+	});
+
+	// 验红:去掉 engines.ts `dispose` 里等在途收尾的那一行(`await Promise.all(sourceClosings)`),这条红(stop 没落定推送层就停了)。
+	it("关停等来源的 stop 落定再关作品入口:stop 途中来源的上下文仍开着,落定之后才停推送、清问题", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		const gate = deferred();
+		c.source.stop = vi.fn(() => gate.promise);
+		let settled = false;
+		const closing = c.runtime.dispose().then(() => {
+			settled = true;
+		});
+		try {
+			expect(c.source.stop).toHaveBeenCalledTimes(1);
+			// stop 在路上:来源报的问题照收、推送层还没停。
+			c.source.ctx?.reportProblem({ code: "mid_stop", message: "停途中" });
+			expect(c.problems.list().map((p) => p.code)).toEqual(["mid_stop"]);
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(settled).toBe(false);
+			expect(H.push[0].stop).not.toHaveBeenCalled();
+		} finally {
+			gate.resolve();
+		}
+		await closing;
+		expect(H.push[0].stop).toHaveBeenCalledTimes(1);
+		expect(c.problems.list()).toEqual([]);
+		c.source.ctx?.reportProblem({ code: "late", message: "落定之后" });
+		expect(c.problems.list()).toEqual([]);
+	});
+
+	it("拓展先撤了登记、stop 还没落定时关停,也等它落定", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const extra = makeSource();
+		const gate = deferred();
+		extra.stop = vi.fn(() => gate.promise);
+		const registration = await c.runtime.registerSource({
+			sourceKey: "douyin",
+			source: extra,
+			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
+		});
+		// 装载器收摊:自己先撤,把手同步返回,stop 还在路上。
+		registration.dispose();
+		expect(extra.stop).toHaveBeenCalledTimes(1);
+		let settled = false;
+		const closing = c.runtime.dispose().then(() => {
+			settled = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(settled).toBe(false);
+		gate.resolve();
+		await closing;
+		expect(settled).toBe(true);
+		expect(extra.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {
@@ -2401,7 +2457,7 @@ describe("createEngines — dispose", () => {
 		await c.sourceReady;
 		const detected: PostEvent[] = [];
 		c.bus.on("post-detected", (event) => detected.push(event));
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		const errors = c.sourceLogger.error as ReturnType<typeof vi.fn>;
 		errors.mockClear();
 		reportBili("1", bilibiliPost("关停后"), "after");
@@ -2428,12 +2484,12 @@ describe("createEngines — 背景轮换游标落盘", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("没推进过就不写盘(游标不脏)", () => {
+	it("没推进过就不写盘(游标不脏)", async () => {
 		const c = setup({ dataDir });
 		active = c;
-		c.runtime.dispose();
+		await c.runtime.dispose();
 		active = null;
-		return expect(readdir(dataDir)).resolves.toEqual(["library"]);
+		await expect(readdir(dataDir)).resolves.toEqual(["library"]);
 	});
 });
 

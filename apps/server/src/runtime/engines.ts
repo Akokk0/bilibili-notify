@@ -132,6 +132,11 @@ import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 export interface EnginesRuntime extends Disposable {
 	/**
+	 * 关停(幂等,再调交回同一个 promise):逆序撤全部来源登记,等全部在途的收尾(含拓展已经撤了、`stop()` 还没落定的)
+	 * 落定 —— 最多各等 `DISPOSE_TIMEOUT_MS` —— 再关作品入口与其余。
+	 */
+	dispose(): Promise<void>;
+	/**
 	 * 登记一个来源(建它的来源上下文、登记即 start):内置来源与拓展的订阅源走同一个口。交回撤登记的把手
 	 * (先撤登记、触发来源的 `stop`,再收上下文;**幂等**);引擎关停时自己先停掉没撤的,再关作品入口。
 	 * `rejectedProblemLevel`:拓展的来源给 `warn`(被拒的问题上报是拓展自己的 bug),内置的缺省 `error`。
@@ -701,6 +706,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	// 登记过的内置来源的撤销把手(`registerSource`);关停时先于作品入口收。
 	const sourceRegistrations: Disposable[] = [];
+	// 每个把手撤登记之后的收尾(等来源 `stop()` 落定、收上下文)。拓展收摊时自己先撤、把手同步返回而收尾还在路上,
+	// 这时它已不在 `sourceRegistrations` 里,关停靠这一份才等得到它。永不拒。
+	const sourceClosings = new Set<Promise<void>>();
 
 	// ---------- Bus wiring ----------
 	const handles: Disposable[] = [postQueue];
@@ -966,18 +974,23 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	);
 
 	// ---------- Disposal ----------
-	// index.ts shutdown 既显式调 engines.dispose(),又经 runtime.dispose() 跑
-	// serviceCtx.onDispose 钩子(下方 onDispose(dispose))→ 双调。幂等守卫,
-	// 避免对各 engine .stop()/.dispose() 二次调用与重复 warn 噪音。
+	// 关停钩子(下方 onDispose(dispose))与测试都会调到 dispose:幂等守卫,避免对各 engine
+	// .stop()/.dispose() 二次调用与重复 warn 噪音,再调交回同一个 promise。
 	let disposed = false;
-	const dispose = (): void => {
-		if (disposed) return;
+	let disposing: Promise<void> | undefined;
+	const dispose = async (): Promise<void> => {
+		if (disposing) return disposing;
+		disposing = closeAll();
+		return disposing;
+	};
+	const closeAll = async (): Promise<void> => {
 		disposed = true;
 		connectionProbe.dispose();
 		clearInterval(cursorFlushTimer);
 		flushCursors(); // 关停前把未落盘的游标推进写一次,重启续接
 
-		// 来源先停(后登记的先停),再关作品入口:停下之后不许再上报。来源的 `stop()` 必须在同步段里停干净。
+		// 来源先停(后登记的先停),再关作品入口:停下之后不许再上报。各来源的 `stop()` 在这个同步段里全部叫到,
+		// 然后等全部在途的收尾落定(来源的 `stop()` 途中报的作品照收),才往下关作品入口。
 		for (const registration of sourceRegistrations.splice(0).reverse()) {
 			try {
 				registration.dispose();
@@ -985,6 +998,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				log.warn(`[engines] source dispose failed: ${errorMessageOf(e)}`);
 			}
 		}
+		await Promise.all(sourceClosings);
 		for (const h of handles.splice(0)) {
 			try {
 				h.dispose();
@@ -1047,7 +1061,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			});
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
 			if (disposed) {
-				registration.dispose();
+				await registration.dispose();
 				throw new Error("registerSource: 引擎装配已关停,来源登记作废");
 			}
 			// 撤登记幂等:拓展收摊时自己撤,引擎关停再兜底收一遍,第二遍什么都不做。
@@ -1058,7 +1072,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					revoked = true;
 					const at = sourceRegistrations.indexOf(revocable);
 					if (at !== -1) sourceRegistrations.splice(at, 1);
-					registration.dispose();
+					// 收尾记进 `sourceClosings`,关停时等它;把手同步返回、不等(拓展那头发了就不管)。
+					const closing = registration.dispose().catch((e: unknown) => {
+						log.warn(`[engines] source dispose failed: ${errorMessageOf(e)}`);
+					});
+					sourceClosings.add(closing);
+					void closing.then(() => sourceClosings.delete(closing));
 				},
 			};
 			sourceRegistrations.push(revocable);

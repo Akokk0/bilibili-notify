@@ -1,10 +1,10 @@
 import {
 	checkUserRegex,
-	type Disposable,
 	type Source,
 	type SourceAuth,
 	type SourceContext,
 } from "@bilibili-notify/internal";
+import { DISPOSE_TIMEOUT_MS } from "../integrations/context.js";
 import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -39,17 +39,28 @@ export function listLoginSources(views: readonly SourceView[]): SourceLoginView[
 export interface SourceRegistry {
 	/**
 	 * 认领键 → `await source.start(ctx)` → 回一个撤下它的把手。键被占了就抛;`start` 抛了:
-	 * 把键放掉、错原样抛出去(登记失败不留半个)。把手 `dispose`:放键,再调 `source.stop()`
-	 * (不等它,失败只记 warn)。
+	 * 把键放掉、错原样抛出去(登记失败不留半个)。把手 `dispose`:同步放键、同步调 `source.stop()`
+	 * (失败只记 warn),交回的 promise 等 `stop()` 落定才落定(最多等 `DISPOSE_TIMEOUT_MS`,到时记 warn
+	 * 照样落定,永不拒),好让调用方在来源真停下之后再收它的上下文;幂等,再调交回同一个 promise。
 	 */
-	register(sourceKey: string, source: Source, ctx: SourceContext): Promise<Disposable>;
+	register(
+		sourceKey: string,
+		source: Source,
+		ctx: SourceContext,
+	): Promise<{ dispose(): Promise<void> }>;
 	/** 现在谁认领着这个键;没人 = undefined。 */
 	get(sourceKey: string): SourceView | undefined;
 	/** 全部在册的来源,按登记先后(第一个读者是会员档位读口)。 */
 	list(): readonly SourceView[];
 }
 
-export function createSourceRegistry(): SourceRegistry {
+export interface CreateSourceRegistryOptions {
+	/** 把手 `dispose` 最多等 `stop()` 多久;只给测试换,宿主用缺省。 */
+	disposeTimeoutMs?: number;
+}
+
+export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): SourceRegistry {
+	const disposeTimeoutMs = opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS;
 	const table = createRegistry<SourceView>(
 		(key) => `source for key "${key}" is already registered`,
 	);
@@ -132,16 +143,29 @@ export function createSourceRegistry(): SourceRegistry {
 				claim.dispose();
 				throw err;
 			}
-			let removed = false;
+			let disposing: Promise<void> | undefined;
 			return {
 				dispose() {
-					if (removed) return;
-					removed = true;
+					if (disposing) return disposing;
 					claim.dispose();
-					stopQuietly(
+					const stopped = stopQuietly(
 						() => source.stop(),
 						(err) => ctx.logger.warn(`[source] ${sourceKey} stop 失败: ${errorMessageOf(err)}`),
 					);
+					// 来源的 `stop` 一直不落定也不能把收尾拖死:到时限记一行 warn,照常往下。
+					disposing = new Promise<void>((resolve) => {
+						const timer = setTimeout(() => {
+							ctx.logger.warn(
+								`[source] ${sourceKey} stop 超过 ${disposeTimeoutMs}ms 没落定,不再等`,
+							);
+							resolve();
+						}, disposeTimeoutMs);
+						void stopped.then(() => {
+							clearTimeout(timer);
+							resolve();
+						});
+					});
+					return disposing;
 				},
 			};
 		},

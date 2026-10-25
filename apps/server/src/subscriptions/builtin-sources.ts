@@ -1,4 +1,4 @@
-import type { AuthState, Disposable, Source } from "@bilibili-notify/internal";
+import type { AuthState, Source } from "@bilibili-notify/internal";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { watchLoginProblems } from "./login-problems.js";
 import type { SourceRegistry } from "./registry.js";
@@ -18,7 +18,8 @@ export interface RegisterBuiltinSourceOptions
 }
 
 /**
- * 给一个内置来源建上下文并登记(登记即 `start`)。交回的把手:先撤登记(触发 `stop`),再收上下文。
+ * 给一个内置来源建上下文并登记(登记即 `start`)。交回的把手:先撤登记(触发 `stop`)并等它落定,再收上下文
+ * —— `stop` 途中来源报的作品与问题照收,落定之后才丢。
  * 登记失败(键被占、`start` 抛):先收上下文,再把错抛出去。
  *
  * 来源停下之后它报的问题整批清掉(`clearReporter`):这是宿主在清,不是来源说「好了」,所以不会补「已恢复」。
@@ -29,10 +30,10 @@ export interface RegisterBuiltinSourceOptions
  */
 export async function registerBuiltinSource(
 	opts: RegisterBuiltinSourceOptions,
-): Promise<Disposable> {
+): Promise<{ dispose(): Promise<void> }> {
 	const { registry, source, onAuthChanged, ...rest } = opts;
 	const handle = createSourceContext({ ...rest, descriptor: source.descriptor });
-	let registration: Disposable;
+	let registration: { dispose(): Promise<void> };
 	try {
 		registration = await registry.register(opts.sourceKey, source, handle.ctx);
 	} catch (err) {
@@ -54,10 +55,10 @@ export async function registerBuiltinSource(
 			})
 		: undefined;
 	return {
-		dispose() {
+		async dispose() {
 			authSubscription?.dispose();
 			loginWatch?.dispose();
-			registration.dispose();
+			await registration.dispose();
 			handle.dispose();
 			opts.problems.clearReporter(opts.sourceKey);
 		},

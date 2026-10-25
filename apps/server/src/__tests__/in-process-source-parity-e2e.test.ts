@@ -3453,8 +3453,9 @@ describe("进程内对拍:两趟开机", () => {
 	});
 
 	// 验红:包装层里把上下文的收尾钩子挪到 `registerSources` 里登记(晚于引擎的关停钩子),`stop()` 看到 signal 已中止,这条红;
+	// `registry.ts` 的把手不等 `stop()` 落定、或 `engines.ts` 的 `dispose` 不等在途收尾,`stop()` 途中那一报被丢,这条红;
 	// 摘掉 `subscriptions/source-context.ts` 里问题上报停后的守卫(`forEachProblemObject` 的 `if (disposed)`),停后那一报进了问题表,这条红。
-	it("P18 关停次序:stop 恰好一次、被叫的那一刻 signal 还没中止;关完之后 signal 才中止;来源停下之后再上报的问题不进问题表", async () => {
+	it("P18 关停次序:stop 恰好一次、被叫的那一刻 signal 还没中止;stop 途中(异步)报的问题照收;关完之后 signal 才中止;来源停下之后再上报的问题不进问题表", async () => {
 		const generation = await seedGeneration();
 		const base = makeExtensionSubscription({
 			id: SUB.alice,
@@ -3484,6 +3485,18 @@ describe("进程内对拍:两趟开机", () => {
 		});
 		expect(tableOpened("open_problem")).toHaveLength(1);
 
+		// `stop()` 是异步的:引擎已撤了登记、来源还在停的路上(上下文要等 stop 落定才收),这时再报要照收。
+		let midStopReported = false;
+		probe.duringStop = async () => {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			probe.ctx?.reportProblem({
+				externalId: EXT.alice,
+				code: "mid_stop_problem",
+				message: "停途中",
+			});
+			midStopReported = true;
+		};
+
 		// 来源已被引擎停下、上下文已收掉而进程还活着的那一刻(引擎之后、集成上下文收尾之前)再报:
 		// 关完整个服务再报什么都看不到,断言会恒成立。
 		let lateReported = false;
@@ -3502,6 +3515,8 @@ describe("进程内对拍:两趟开机", () => {
 		expect(probe.stopSawAborted).toBe(false);
 		expect(probe.ctx?.signal.aborted).toBe(true);
 
+		expect(midStopReported).toBe(true);
+		expect(tableOpened("mid_stop_problem")).toHaveLength(1);
 		expect(lateReported).toBe(true);
 		expect(tableOpened("late_problem")).toEqual([]);
 		// 作品那一半(停后 `reportPost` 不入队)在这里看不到:作品入口先于集成上下文收尾就已关掉,

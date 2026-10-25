@@ -148,6 +148,8 @@ export interface InProcessProbe {
 	stops: number;
 	/** `stop()` 被叫的那一刻 `ctx.signal` 中止了没有。 */
 	stopSawAborted: boolean | undefined;
+	/** `stop()` 里计数之后要做的事(异步的 stop:测试在这里让来源在停下的路上再上报);不设就是同步停完。 */
+	duringStop: (() => void | Promise<void>) | undefined;
 	rosterAtStart: readonly SourceSubscriptionView[] | undefined;
 	/** 每次「名单可能变了」的回调里现读的名单。 */
 	rosterChanges: Array<readonly SourceSubscriptionView[]>;
@@ -279,6 +281,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		starts: 0,
 		stops: 0,
 		stopSawAborted: undefined,
+		duringStop: undefined,
 		rosterAtStart: undefined,
 		rosterChanges: [],
 		settings: undefined,
@@ -459,6 +462,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		async stop() {
 			probe.stops += 1;
 			probe.stopSawAborted = probe.ctx?.signal.aborted;
+			await probe.duringStop?.();
 		},
 	};
 	return { source, probe };

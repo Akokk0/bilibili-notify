@@ -202,6 +202,46 @@ describe("createSourceRegistry", () => {
 		expect(next.stops).toBe(0);
 	});
 
+	// 验红:registry.ts 的把手 `dispose` 不等 stop(直接交回 `Promise.resolve()`),这条红。
+	it("把手 dispose 同步放键、同步调 stop;交回的 promise 在 stop 落定之后才落定,再调交回同一个", async () => {
+		const registry = createSourceRegistry();
+		const source = makeSource();
+		let finishStop = () => {};
+		source.stop = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finishStop = resolve;
+				}),
+		);
+		const handle = await registry.register(SOURCE_KEY, source, ctxOf().ctx);
+		const done = handle.dispose();
+		expect(registry.get(SOURCE_KEY)).toBeUndefined();
+		expect(source.stop).toHaveBeenCalledTimes(1);
+		expect(handle.dispose()).toBe(done);
+		expect(source.stop).toHaveBeenCalledTimes(1);
+		let settled = false;
+		void done.then(() => {
+			settled = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(settled).toBe(false);
+		finishStop();
+		await done;
+		expect(settled).toBe(true);
+	});
+
+	// 验红:去掉把手里的超时(只等 stopped),stop 一直不落定时这条一直等、超时失败。
+	it("stop 一直不落定:到时限照样落定,并记一行 warn", async () => {
+		const registry = createSourceRegistry({ disposeTimeoutMs: 20 });
+		const source = makeSource();
+		source.stop = vi.fn(() => new Promise<void>(() => {}));
+		const { ctx, logger } = ctxOf();
+		const handle = await registry.register(SOURCE_KEY, source, ctx);
+		await handle.dispose();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(logger.warn.mock.calls[0]?.[0]).toContain(`[source] ${SOURCE_KEY} stop 超过 20ms`);
+	});
+
 	it("stop 失败只记一行 warn,不往外抛(同步抛与异步拒绝都一样)", async () => {
 		const registry = createSourceRegistry();
 		for (const stop of [
