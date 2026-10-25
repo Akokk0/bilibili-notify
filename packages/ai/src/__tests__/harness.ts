@@ -68,7 +68,7 @@ export function aiConfig(over: Partial<CommentaryGeneratorConfig> = {}): Comment
 		apiKey: "sk-test",
 		baseURL: "https://api.test/v1",
 		model: "gpt-test",
-		persona: { preset: "assistant" },
+		persona: {},
 		dynamicPrompt: "DYN",
 		liveSummaryPrompt: "LIVE",
 		maxHistory: 5,

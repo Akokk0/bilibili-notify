@@ -39,7 +39,6 @@ vi.mock("../tools", () => ({
 }));
 
 const PERSONA = {
-	preset: "maid" as const,
 	name: "伦伦酱",
 	addressUser: "主人",
 	addressSelf: "小的",
@@ -84,12 +83,12 @@ describe("buildSystemPrompt 的 withPersona", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * 这个文件测的是「关掉人格之后还剩什么」,所以人设**必须**是自家那条 custom;
+ * 这个文件测的是「关掉人格之后还剩什么」,所以人设**必须**是主人自己配的那条;
  * 场景提示词留空,免得断言把场景那两段也算进来。其余吃公共底。
  */
 function makeGen(): CommentaryGenerator {
 	return baseGen({
-		persona: { preset: "custom", customBase: "你是一个超级元气的助手!" },
+		persona: { customBase: "你是一个超级元气的助手!" },
 		dynamicPrompt: "",
 		liveSummaryPrompt: "",
 	});

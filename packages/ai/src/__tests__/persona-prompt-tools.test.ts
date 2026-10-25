@@ -48,28 +48,29 @@ const TOOL_LAW = "必须调用对应工具";
 const NO_TOOL_RULE = "就眼前给到的内容直接作答";
 /** 「改订阅这件事我做不到」的特征串 —— 工具表是只读的,不许承诺写。 */
 const NO_WRITE_RULE = "你没有这个能力";
+const CUSTOM_BASE = "你是一个超级元气的助手!";
 
 describe("buildSystemPrompt — 工具铁律的作用域", () => {
 	it("默认不带工具铁律 —— 缺省必须落在「没有工具」那一侧", () => {
 		// 方向和 allowMarkdown 一致:漏传的调用方拿到的是**没有工具**这个更安全的默认。
 		// 反过来(默认带铁律)就是这次的 bug:锐评那条路谁也没想起来要关掉它。
-		expect(buildSystemPrompt({ preset: "assistant" })).not.toContain(TOOL_LAW);
+		expect(buildSystemPrompt({})).not.toContain(TOOL_LAW);
 	});
 
 	it("默认那一档只讲本次任务范围", () => {
 		// 光把铁律摘掉不够:模型仍然知道自己「负责帮用户关注 UP 主」,照样会自作主张说
 		// 要去看订阅列表。但堵这条路不必**提到工具** —— 说「你没有工具」反而是主动把这
 		// 个概念塞进上下文,而这条路的请求里压根没挂 tools。正面说清这次要干什么即可。
-		const p = buildSystemPrompt({ preset: "assistant" });
+		const p = buildSystemPrompt({});
 		expect(p).toContain(NO_TOOL_RULE);
 	});
 
 	it("默认那一档**一个「工具」字都不提** —— 别把不存在的东西请进上下文", () => {
-		expect(buildSystemPrompt({ preset: "assistant" })).not.toMatch(/工具/);
+		expect(buildSystemPrompt({})).not.toMatch(/工具/);
 	});
 
 	it("withTools 时铁律回来,防编造那条也在", () => {
-		const p = buildSystemPrompt({ preset: "assistant", withTools: true });
+		const p = buildSystemPrompt({ withTools: true });
 		expect(p).toContain(TOOL_LAW);
 		expect(p).toContain("严禁在未调用工具的情况下编造或猜测结果");
 		expect(p).not.toContain(NO_TOOL_RULE);
@@ -85,14 +86,17 @@ describe("buildSystemPrompt — 工具铁律的作用域", () => {
 	 * 什么也没发生。
 	 */
 	it("withTools 那一档不许承诺能改订阅 —— 工具表是只读的", () => {
-		const p = buildSystemPrompt({ preset: "assistant", withTools: true });
+		const p = buildSystemPrompt({ withTools: true });
 		expect(p).toContain(NO_WRITE_RULE);
 		expect(p).not.toContain("权限不足");
 	});
 
 	it("两档只差这一段 —— 人格、职责、纯文本约束都不许被顺手带走", () => {
-		const noTools = buildSystemPrompt({ preset: "assistant" }).split("\n");
-		const withTools = buildSystemPrompt({ preset: "assistant", withTools: true }).split("\n");
+		const noTools = buildSystemPrompt({ customBase: CUSTOM_BASE }).split("\n");
+		const withTools = buildSystemPrompt({
+			customBase: CUSTOM_BASE,
+			withTools: true,
+		}).split("\n");
 		// 除了各自那一条规则,其余每一行都该在对面找得到。
 		const onlyNo = noTools.filter((l) => !withTools.includes(l));
 		const onlyWith = withTools.filter((l) => !noTools.includes(l));
@@ -101,7 +105,7 @@ describe("buildSystemPrompt — 工具铁律的作用域", () => {
 	});
 
 	it("custom 人格照样吃这两档 —— 报障者正是拿内置改的", () => {
-		const opts = { preset: "custom" as const, customBase: "你是一个超级元气的助手!" };
+		const opts = { customBase: CUSTOM_BASE };
 		expect(buildSystemPrompt(opts)).not.toContain(TOOL_LAW);
 		expect(buildSystemPrompt({ ...opts, withTools: true })).toContain(TOOL_LAW);
 		// 人格本身两档都在。
@@ -114,13 +118,13 @@ describe("buildSystemPrompt — 工具铁律的作用域", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * 报障者用的是内置「元气少女」改的 —— 人设库条目下发到引擎时 preset 恒为
- * "custom"、内容进 customBase(见 apps/server/src/runtime/ai-config.ts)。
+ * 报障者用的是内置「元气少女」改的 —— 人设库条目下发到引擎时内容进 customBase
+ * (见 apps/server/src/runtime/ai-config.ts)。
  * 场景提示词取两个好认的哨兵串,断言靠它们分辨这一段有没有拼进去。
  */
 function makeGen(): CommentaryGenerator {
 	return baseGen({
-		persona: { preset: "custom", customBase: "你是一个超级元气的助手，充满活力！" },
+		persona: { customBase: "你是一个超级元气的助手，充满活力！" },
 		dynamicPrompt: "DYN_SCENE_PROMPT",
 		liveSummaryPrompt: "LIVE_SCENE_PROMPT",
 	});
@@ -163,8 +167,8 @@ describe("buildSystemPrompt — 核心身份不把推送说成她的活", () => 
 	// 推送是系统按订阅发的。身份里写「你的工作是第一时间通知用户」,聊天里主人一句
 	// 「XX 开播了叫我」,她就会答应「好的我第一时间通知你」—— 同 NO_WRITE_RULE 那类
 	// 空头承诺:她没有发推送的手,订阅也只有主人自己改得了。
-	it.each(["assistant", "maid"] as const)("%s:推送归系统,她管点评、总结与答疑", (preset) => {
-		const p = buildSystemPrompt({ preset });
+	it("推送归系统,她管点评、总结与答疑", () => {
+		const p = buildSystemPrompt({});
 		expect(p).toContain("系统会第一时间推送");
 		expect(p).not.toContain("通知用户");
 	});

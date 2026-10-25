@@ -378,7 +378,7 @@ export const RATCHET = {
 	"apps/web/src/utils/groupDiffs.ts": 18,
 	"packages/ai/src/commentary-generator.ts": 50, // 含给模型的提示词(决策 11 不翻)
 	"packages/ai/src/extra-params.ts": 2,
-	"packages/ai/src/persona-presets.ts": 44,
+	"packages/ai/src/persona-presets.ts": 11,
 	"packages/ai/src/provider-probe.ts": 15,
 	"packages/ai/src/tool-label-texts.ts": 8,
 	"packages/ai/src/tools.ts": 50, // 含给模型的话(决策 11 不翻),与给人看的话混放

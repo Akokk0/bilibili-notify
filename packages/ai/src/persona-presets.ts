@@ -1,67 +1,5 @@
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
 
-export type PersonaKey = "assistant" | "maid" | "tsundere" | "commentator" | "critic" | "custom";
-
-/** 每个预设提供的字段默认值，用于填充用户未指定的项 */
-export interface PersonaPresetDefaults {
-	/** 基础角色描述 */
-	baseDescription: string;
-	/** AI 默认名字 */
-	defaultName?: string;
-	/** 称呼用户的方式 */
-	addressUser?: string;
-	/** AI 的自称 */
-	addressSelf?: string;
-	/** 性格特点标签列表 */
-	traits?: string[];
-	/** 常用口头禅 */
-	catchphrase?: string;
-}
-
-export const PERSONA_PRESETS: Record<Exclude<PersonaKey, "custom">, PersonaPresetDefaults> = {
-	assistant: {
-		baseDescription: "你是一个专业简洁的 AI 助理，以提供准确、有价值的信息为首要目标。",
-		addressSelf: "我",
-		traits: ["专注", "逻辑清晰", "不废话"],
-	},
-
-	maid: {
-		baseDescription: "你是一个温柔体贴的女仆，以侍奉主人为己任，用心完成每一项任务。",
-		defaultName: "梦梦",
-		addressUser: "主人",
-		addressSelf: "女仆",
-		traits: ["温柔", "体贴", "略带撒娇", "认真负责"],
-		catchphrase: "请放心交给女仆吧～",
-	},
-
-	tsundere: {
-		baseDescription:
-			"你是一个傲娇角色，表面上嫌弃对方，实际上非常认真负责，但绝对不会承认自己在认真做事。",
-		addressSelf: "本大小姐",
-		traits: ["傲娇", "外冷内热", "嘴硬心软", "不愿承认在努力"],
-		catchphrase: "才、才不是专门为你做的呢！",
-	},
-
-	commentator: {
-		baseDescription:
-			"你是一个幽默活泼的弹幕解说员，说话接地气，善于用各种梗和网络用语进行点评，偶尔自带吐槽。",
-		addressSelf: "我",
-		traits: ["活泼", "幽默", "爱吐槽", "充满网感"],
-	},
-
-	critic: {
-		baseDescription:
-			"你是一位专业的内容评论家，文笔犀利，善于发现关键信息，评论简短但有观点有态度。",
-		addressSelf: "我",
-		traits: ["犀利", "理性", "有独立见解", "不说废话"],
-	},
-};
-
-export function getPresetDefaults(key: PersonaKey): PersonaPresetDefaults | null {
-	if (key === "custom") return null;
-	return PERSONA_PRESETS[key];
-}
-
 /**
  * 「只用纯文本」——**只发给不渲染 Markdown 的那些去处**。
  *
@@ -124,11 +62,10 @@ const NO_PERSONA_TONE = `回答保持中立、简洁、就事论事，不要给�
 
 /**
  * 将人格配置字段拼装为 system prompt。
- * 用户显式指定的字段优先，未指定时使用预设默认值。
+ * 人格内容只取调用方传入的字段。
  */
 
 export function buildSystemPrompt(params: {
-	preset: PersonaKey;
 	/** 这次涉及的来源叫法,由服务端现取。 */
 	nouns: PromptNouns;
 	name?: string;
@@ -165,7 +102,6 @@ export function buildSystemPrompt(params: {
 	 */
 	withPersona?: boolean;
 }): string {
-	const defaults = getPresetDefaults(params.preset);
 	const withPersona = params.withPersona ?? true;
 	const parts: string[] = [
 		[
@@ -180,36 +116,28 @@ export function buildSystemPrompt(params: {
 	if (!withPersona) return renderPromptNouns(parts.join("\n"), params.nouns);
 
 	// 人格描述
-	if (params.preset === "custom" || !defaults) {
-		if (params.customBase) parts.push(params.customBase);
-	} else {
-		parts.push(defaults.baseDescription);
-	}
+	if (params.customBase) parts.push(params.customBase);
 
 	// 名字
-	const name = params.name ?? defaults?.defaultName;
-	if (name) parts.push(`你的名字是「${name}」。`);
+	if (params.name) parts.push(`你的名字是「${params.name}」。`);
 
 	// 称呼用户
-	const addressUser = params.addressUser ?? defaults?.addressUser;
-	if (addressUser) parts.push(`称呼用户为「${addressUser}」。`);
+	if (params.addressUser) parts.push(`称呼用户为「${params.addressUser}」。`);
 
 	// 自称
-	const addressSelf = params.addressSelf ?? defaults?.addressSelf;
-	if (addressSelf) parts.push(`你的自称是「${addressSelf}」。`);
+	if (params.addressSelf) parts.push(`你的自称是「${params.addressSelf}」。`);
 
-	// 性格特点：用户输入逗号分隔字符串，预设使用数组
+	// 性格特点：调用方输入逗号分隔字符串。
 	const traitList = params.traits
 		? params.traits
 				.split(",")
 				.map((t) => t.trim())
 				.filter(Boolean)
-		: (defaults?.traits ?? []);
+		: [];
 	if (traitList.length > 0) parts.push(`你的性格特点：${traitList.join("、")}。`);
 
 	// 口头禅
-	const catchphrase = params.catchphrase ?? defaults?.catchphrase;
-	if (catchphrase) parts.push(`常用口头禅：「${catchphrase}」。`);
+	if (params.catchphrase) parts.push(`常用口头禅：「${params.catchphrase}」。`);
 
 	// 额外追加内容
 	if (params.extraPrompt) parts.push(params.extraPrompt);

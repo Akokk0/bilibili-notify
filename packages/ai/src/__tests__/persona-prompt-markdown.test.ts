@@ -25,20 +25,18 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 	it("默认带着「只用纯文本」—— 缺省必须落在保守那一侧", () => {
 		// 缺省值的方向是要紧的:漏传参数的调用方会得到**推送**该有的行为,
 		// 而不是把 Markdown 泄进 QQ。
-		expect(buildSystemPrompt({ preset: "assistant" })).toContain(PLAIN_TEXT_RULE);
+		expect(buildSystemPrompt({})).toContain(PLAIN_TEXT_RULE);
 	});
 
 	it("allowMarkdown 时那条约束整个消失", () => {
-		expect(buildSystemPrompt({ preset: "assistant", allowMarkdown: true })).not.toContain(
-			PLAIN_TEXT_RULE,
-		);
+		expect(buildSystemPrompt({ allowMarkdown: true })).not.toContain(PLAIN_TEXT_RULE);
 	});
 
 	it("allowMarkdown 只摘掉那一条,人格与工具铁律一个字不动", () => {
 		// 两边都带 withTools —— 工具铁律现在按调用方分档(挂了工具才发,见
 		// persona-prompt-tools.test.ts),这一条要验的是**在同一档里**
 		// allowMarkdown 只摘纯文本那一行,所以两边的档位必须对齐才比得出来。
-		const opts = { preset: "assistant" as const, withTools: true };
+		const opts = { customBase: "你是一个超级元气的助手!", withTools: true };
 		const plain = buildSystemPrompt(opts);
 		const md = buildSystemPrompt({ ...opts, allowMarkdown: true });
 		// 「必须调用工具才能声称操作成功」那条铁律绝不能被顺手带走。
@@ -54,8 +52,8 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 	});
 
 	it("不带工具那一档也一样 —— allowMarkdown 同样只摘那一行", () => {
-		const plain = buildSystemPrompt({ preset: "assistant" });
-		const md = buildSystemPrompt({ preset: "assistant", allowMarkdown: true });
+		const plain = buildSystemPrompt({});
+		const md = buildSystemPrompt({ allowMarkdown: true });
 		const removed = plain.split("\n").filter((l) => !md.split("\n").includes(l));
 		expect(removed).toHaveLength(1);
 		expect(removed[0]).toContain(PLAIN_TEXT_RULE);
@@ -66,7 +64,7 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 	it("那条约束留在**原来的位置** —— 推送侧的提示词顺序不许变", () => {
 		// 摘除做法很容易顺手写成「拼在整段末尾」,那样推送侧看到的顺序就变了。
 		// 收件人是主人的群,「行为不变」得是字面意义上的不变。
-		const plain = buildSystemPrompt({ preset: "assistant" });
+		const plain = buildSystemPrompt({});
 		const lines = plain.split("\n");
 		const ruleAt = lines.findIndex((l) => l.includes(PLAIN_TEXT_RULE));
 		const dutyAt = lines.findIndex((l) => l.includes("你的工作是帮用户关注"));
@@ -79,8 +77,8 @@ describe("buildSystemPrompt — allowMarkdown", () => {
 		expect(ruleAt).toBeLessThan(ruleBlockAt);
 	});
 
-	it("custom 预设下同样管用 —— 自定义人格也吃这段共用开头", () => {
-		const opts = { preset: "custom" as const, customBase: "你是一只猫。" };
+	it("自定义人格同样管用 —— 也吃这段共用开头", () => {
+		const opts = { customBase: "你是一只猫。" };
 		expect(buildSystemPrompt(opts)).toContain(PLAIN_TEXT_RULE);
 		expect(buildSystemPrompt({ ...opts, allowMarkdown: true })).not.toContain(PLAIN_TEXT_RULE);
 		// 自定义人格本身不受影响。

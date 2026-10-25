@@ -15,8 +15,7 @@
  *
  * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,引擎的
  * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名,
- * 在这里做一次性翻译,引擎层不感知差异。`preset` 恒 `"custom"` —— 人格已在上游
- * 折叠成具体内容,引擎不必再走一次 preset 查表。
+ * 在这里做一次性翻译,引擎层不感知差异。
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
@@ -45,7 +44,6 @@ export function toGeneratorConfig(ai: AISettings, builtins: readonly AIBuiltinPr
 		baseURL: p.baseUrl,
 		model: p.model,
 		persona: {
-			preset: "custom" as const,
 			name: active.persona.name,
 			addressUser: active.persona.addressUser,
 			addressSelf: active.persona.addressSelf,
@@ -92,7 +90,6 @@ export function resolveAiOverride(
 function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
 	return {
 		persona: {
-			preset: "custom" as const,
 			name: active.persona.name,
 			addressUser: active.persona.addressUser,
 			addressSelf: active.persona.addressSelf,

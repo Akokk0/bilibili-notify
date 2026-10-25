@@ -10,7 +10,6 @@ import {
 } from "@bilibili-notify/internal";
 import type OpenAI from "openai";
 import { mergeExtraParams, parseExtraParams } from "./extra-params";
-import type { PersonaKey } from "./persona-presets";
 import { buildSystemPrompt } from "./persona-presets";
 import { type PromptNouns, renderPromptNouns } from "./prompt-nouns";
 import { buildProviderParams } from "./providers";
@@ -225,9 +224,7 @@ const TOOL_IMAGE_NOTE = "(以下是上面工具调用交回的图,不是主人�
 
 /** 平台中立的人格配置。 */
 export interface PersonaConfig {
-	/** 基础人格预设 */
-	preset: PersonaKey;
-	/** AI 名字，留空则跟随预设默认值 */
+	/** AI 名字 */
 	name?: string;
 	/** 称呼用户的方式 */
 	addressUser?: string;
@@ -237,9 +234,9 @@ export interface PersonaConfig {
 	traits?: string;
 	/** 口头禅 */
 	catchphrase?: string;
-	/** preset 为 custom 时的基础描述 */
+	/** 基础人格描述 */
 	customBase?: string;
-	/** 追加到任何预设末尾的额外提示词（高级） */
+	/** 追加到人格提示词末尾的额外提示词（高级） */
 	extraPrompt?: string;
 }
 
@@ -585,9 +582,9 @@ export class CommentaryGenerator implements CommentaryProvider {
 	/** 替换运行时配置(宿主在 dashboard 编辑后调用)。 */
 	updateConfig(config: CommentaryGeneratorConfig): void {
 		this.config = config;
-		const { preset, name, traits } = config.persona;
+		const { name, traits } = config.persona;
 		this.logger.info(
-			`[update] 人格预设：${preset}，名字：${name ?? "(默认)"}，模型：${config.model}，性格：${traits ?? "(默认)"}`,
+			`[update] 名字：${name ?? "(默认)"}，模型：${config.model}，性格：${traits ?? "(默认)"}`,
 		);
 		// 不传参 = 无场景、未挂工具那一版;聊天那条路发出去的会多一段工具铁律。
 		this.logger.debug(`[update] 新系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
@@ -598,8 +595,7 @@ export class CommentaryGenerator implements CommentaryProvider {
 	 * 没有会话),所以没有配对的 `stop()` —— 宿主扔掉引用即可。
 	 */
 	start(): void {
-		const { preset } = this.config.persona;
-		this.logger.info(`[start] 人格预设：${preset}，模型：${this.config.model}`);
+		this.logger.info(`[start] 模型：${this.config.model}`);
 		this.logger.debug(`[start] 系统提示词（无场景 · 未挂工具）：\n${this.getSystemPrompt()}`);
 	}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildSystemPrompt, PERSONA_PRESETS } from "../persona-presets";
+import { buildSystemPrompt } from "../persona-presets";
 
 const BILI_NOUNS = { creatorNoun: "UP主", postNoun: "动态", sources: "B 站" };
 const NEUTRAL_NOUNS = { creatorNoun: "创作者", postNoun: "作品", sources: "各平台" };
@@ -7,7 +7,6 @@ const NEUTRAL_NOUNS = { creatorNoun: "创作者", postNoun: "作品", sources: "
 describe("buildSystemPrompt —— 人格按这次涉及的来源叫", () => {
 	it("一个来源时用它的平台与叫法", () => {
 		const prompt = buildSystemPrompt({
-			preset: "assistant",
 			withTools: true,
 			nouns: BILI_NOUNS,
 		});
@@ -19,20 +18,15 @@ describe("buildSystemPrompt —— 人格按这次涉及的来源叫", () => {
 	});
 
 	it("混着多个来源时用中性叫法，不露平台专名", () => {
-		const prompt = buildSystemPrompt({ preset: "assistant", nouns: NEUTRAL_NOUNS });
+		const prompt = buildSystemPrompt({ nouns: NEUTRAL_NOUNS });
 
 		expect(prompt).toContain("各平台上的创作者");
 		expect(prompt).toContain("新作品");
 		expect(prompt).not.toMatch(/UP|B 站/);
 	});
 
-	it("解说员预设只说风格，不绑定平台", () => {
-		expect(PERSONA_PRESETS.commentator.baseDescription).not.toContain("B 站");
-	});
-
 	it("人格字段里的叫法也按来源填，未知花括号原样保留", () => {
 		const prompt = buildSystemPrompt({
-			preset: "custom",
 			nouns: BILI_NOUNS,
 			customBase: "盯{creatorNoun}的{postNoun}。保留{未知}。",
 			extraPrompt: "提醒{creatorNoun}。",
