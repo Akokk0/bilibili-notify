@@ -44,7 +44,6 @@ import type {
 	TargetReachability,
 } from "@bilibili-notify/internal";
 import {
-	aiWritingNeeded,
 	isReachabilityEvidence,
 	needsLiveMonitor,
 	resolve,
@@ -62,15 +61,8 @@ import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import { resolveLinkPreviewPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
-import { createLiveInteractions, type LiveInteractions } from "../live/live-interactions.js";
-import { bindLivePush } from "../live/live-push.js";
-import { createLiveSessionEngine, type LiveSessionEngine } from "../live/live-sessions.js";
-import { liveSettingsOf, rotateLiveCover } from "../live/live-settings.js";
+import { createLiveRuntime } from "../live/live-runtime.js";
 import type { LiveTable } from "../live/live-table.js";
-import { LiveSummaryRequester } from "../live/recap/live-summary-requester.js";
-import { mergeStopWords } from "../live/recap/stop-words.js";
-import { ViewerChatCollector } from "../live/recap/viewer-chat-collector.js";
-import { WordcloudGenerator } from "../live/recap/wordcloud-generator.js";
 import { createCardFailureTracker } from "../posts/deliver-post.js";
 import { createPostQueue } from "../posts/post-queue.js";
 import { makePostSettingsReader } from "../posts/post-settings.js";
@@ -84,11 +76,7 @@ import {
 	type RegisterBuiltinSourceOptions,
 	registerBuiltinSource,
 } from "../subscriptions/builtin-sources.js";
-import {
-	createSourceGates,
-	fetchSourceLiveStatus,
-	fetchSourceProfile,
-} from "../subscriptions/call-source.js";
+import { createSourceGates, fetchSourceProfile } from "../subscriptions/call-source.js";
 import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { searchSourceCreators } from "../subscriptions/search-source-creators.js";
@@ -644,124 +632,29 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、特性键映射)。最新状态从在播表取,
 	// 出卡的渲染器现取(热换、关了出图时不出卡)。
 	const liveTable = opts.liveTable;
-	/** 订阅来源的场次;统计页经 `liveSession` 读它。 */
-	let liveSessionEngine: LiveSessionEngine | undefined;
-	/** 来源报上来的观众互动(特别弹幕、特别进场……)的入口;和场次引擎同生同灭。 */
-	let liveInteractionEngine: LiveInteractions | undefined;
-	let viewerChats: ViewerChatCollector | undefined;
-	/** 核心下播回顾的总结请求器;AI 实例热换时要跟着换引用。 */
-	let liveSummaryRequester: LiveSummaryRequester | undefined;
-	if (liveTable) {
-		// `liveTable` 在这里是写口:场次引擎先写表、再改场次,表自己不听上报。
-		const liveSessions = createLiveSessionEngine({
-			bus: opts.bus,
-			logger: coreLiveCtx.logger,
-			table: liveTable,
-			subscription: (id) => opts.subscriptionStore.findById(id),
-			sourceStatus,
-			fans: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.followers,
-			settings: (sub) => liveSettingsOf(sub, globals()),
-			timers: coreLiveCtx,
-			// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。
-			liveStatus: {
-				has: hasLiveStatus,
-				fetch: (identity, signal) =>
-					fetchSourceLiveStatus(
-						{ sources: opts.sources, logger: coreLiveCtx.logger, gates: sourceGates },
-						identity,
-						signal,
-					),
-			},
-			subscriptions: () => opts.subscriptionStore.list(),
-			// 要不要监听直播:internal 里那份唯一判定(折好的开关 ∧ 特别关注名单)。
-			wantsLive: (sub) =>
-				needsLiveMonitor({
-					features: resolve(sub, globals().defaults).features,
-					specialViewers: sub.specialViewers,
-				}),
-		});
-		handles.push(liveSessions);
-		liveSessionEngine = liveSessions;
-		// 核心回顾的一份收集器与两个生产者:场次开始登记、互动记一条、下播卡同步取快照。
-		const wordcloudStopWords = () =>
-			mergeStopWords(globals().defaults.templates.wordcloudStopWords);
-		viewerChats = new ViewerChatCollector(wordcloudStopWords());
-		handles.push(
-			opts.bus.on("config-changed", ({ scope }) => {
-				if (scope === "globals") viewerChats?.setStopwords(wordcloudStopWords());
-			}),
-		);
-		const wordcloudGenerator = new WordcloudGenerator({
-			getImageRenderer: () => imageRenderer,
-			isImageEnabled: () => globals().defaults.cards.enabled,
-			logger: coreLiveCtx.logger,
-		});
-		liveSummaryRequester = new LiveSummaryRequester({
-			commentary,
-			isAiEnabled: () => {
-				const g = globals();
-				return g.ai.enabled && aiWritingNeeded(g.ai.writing.liveSummary, targetIds());
-			},
-			isWebSearchEnabled: () => globals().ai.search.engines.live,
-			logger: coreLiveCtx.logger,
-		});
-		const summaryRequester = liveSummaryRequester;
-		handles.push(
-			bindLivePush({
+	const live = liveTable
+		? createLiveRuntime({
 				bus: opts.bus,
-				logger: coreLiveCtx.logger,
 				serviceCtx: coreLiveCtx,
-				sessions: liveSessions,
 				table: liveTable,
-				subscription: (id) => opts.subscriptionStore.findById(id),
-				profile: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile,
-				identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-				settings: (sub) => liveSettingsOf(sub, globals()),
-				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
-				liveCover: (sub, settings) => {
-					const identity = subscriptionIdentityOf(sub);
-					return rotateLiveCover(
-						settings.liveCoverImageIds,
-						globals().defaults.cards.liveCoverImageIds,
-						pickExistingCardBg,
-						`${identity.sourceKey}:${identity.externalId}:live-cover`,
-					);
-				},
+				subscriptionStore: opts.subscriptionStore,
+				subscriptionStateStore: opts.subscriptionStateStore,
+				sources: opts.sources,
+				sourceGates,
+				hasLiveStatus,
 				sourceStatus,
-				avatarRef: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.avatar,
-				recap: {
-					collector: viewerChats,
-					wordcloud: wordcloudGenerator,
-					summary: summaryRequester,
-				},
+				labelDeps,
+				globals,
+				targetIds,
+				commentary,
+				imageRenderer: () => imageRenderer,
+				pickExistingCardBg,
+				imageFetcher: opts.imageFetcher,
+				readImage: opts.readImage,
 				sendFor: (id) => boundLivePush(push, id),
-				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
-			}),
-		);
-		// 来源报上来的观众互动(R4 甲):特别弹幕、特别进场、醒目留言按这条订阅现折的设置判,发送绑到这条订阅上;
-		// 下播回顾的弹幕收集归核心这一份(场次开了登记、结束清掉)。
-		const interactions = createLiveInteractions({
-			logger: coreLiveCtx.logger,
-			subscription: (id) => opts.subscriptionStore.findById(id),
-			settings: (sub) => liveSettingsOf(sub, globals()),
-			sourceStatus,
-			table: liveTable,
-			profileName: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.name,
-			identityLabel: (identity) => subscriptionIdentityLabelOf(identity, labelDeps),
-			profileAvatar: (id) => opts.subscriptionStateStore.get(id)?.cachedProfile?.avatar,
-			source: (sourceKey) => opts.sources.get(sourceKey),
-			gates: sourceGates,
-			renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
-			fetchImage: (url) => opts.imageFetcher.fetchImage(url),
-			readImage: opts.readImage,
-			sendFor: (id) => boundLivePush(push, id),
-			sessions: liveSessions,
-			collector: viewerChats,
-			serviceCtx: coreLiveCtx,
-		});
-		handles.push(interactions);
-		liveInteractionEngine = interactions;
-	}
+			})
+		: undefined;
+	if (live) handles.push(live);
 
 	// 订阅删了:关于它的问题跟着清(宿主在清,不补「已恢复」)。表是总线的消费者,不是转发器 ——
 	// `problems-changed` 不会再翻回 `subscription-changed`。
@@ -867,7 +760,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				}
 				if (aiChanged) {
 					commentary = reloadCommentary(commentary, aiDeps);
-					liveSummaryRequester?.setCommentary(commentary);
+					live?.setCommentary(commentary);
 				}
 				// 作品来源的名单(全局作品开关一翻要重算)不在这里:来源上下文自己听 `config-changed` 的 globals 一档
 				// (`subscriptions/source-context.ts`),名单每次现算,来源自己对比。
@@ -942,22 +835,22 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				enqueue: (event) => postQueue.enqueue(event),
 				// 没接拓展订阅的直播(没有场次引擎)时来源报直播是接线漏了:丢弃并记 error,不静默吞。
 				liveSignals: (signal) => {
-					if (!liveSessionEngine) {
+					if (!live) {
 						coreLiveCtx.logger.error(
 							`[engines] 没有场次引擎,${signal.identity.sourceKey} 报的直播 ${signal.kind} 丢弃`,
 						);
 						return;
 					}
-					liveSessionEngine.apply(signal);
+					live.applySignal(signal);
 				},
 				liveInteractions: (subscriptionId, report) => {
-					if (!liveInteractionEngine) {
+					if (!live) {
 						coreLiveCtx.logger.error(
 							`[engines] 没有直播互动入口,订阅 ${subscriptionId} 的直播互动 ${report.kind} 丢弃`,
 						);
 						return;
 					}
-					liveInteractionEngine.apply(subscriptionId, report);
+					live.applyInteraction(subscriptionId, report);
 				},
 				profiles: (subscriptionIds, report) => opts.profileReports.report(subscriptionIds, report),
 				problems: opts.problems,
@@ -985,7 +878,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			};
 			sourceRegistrations.push(revocable);
 			// 重启之后来源登记完:它名下要监听、手里没场次的订阅问一次,在播就认出一场(来源没实现拉取式则什么都不做)。
-			liveSessionEngine?.pollUnseen(entry.sourceKey);
+			live?.pollUnseen(entry.sourceKey);
 			return revocable;
 		},
 		fallbackCreatorName: (identity) =>
@@ -1013,7 +906,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 		setCommentary(next) {
 			commentary = next;
-			liveSummaryRequester?.setCommentary(next);
+			live?.setCommentary(next);
 		},
 		setImageRenderer(next) {
 			imageRenderer = next;
@@ -1022,10 +915,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		get imageRenderer() {
 			return imageRenderer;
 		},
-		viewerChatStats: () => viewerChats?.stats() ?? { subscriptions: 0, words: 0, senders: 0 },
-		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
+		viewerChatStats: () => live?.viewerChatStats() ?? { subscriptions: 0, words: 0, senders: 0 },
+		liveSession: (subscriptionId: string) => live?.session(subscriptionId),
 		tickLiveSessionNow: (subscriptionId: string) =>
-			liveSessionEngine?.tickNow(subscriptionId) ?? Promise.resolve(false),
+			live?.tickNow(subscriptionId) ?? Promise.resolve(false),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		extensionPostNoun: (extensionId: string) => opts.extensionPostNoun?.(extensionId),
 		probeConnection: (connectionId: string) =>
