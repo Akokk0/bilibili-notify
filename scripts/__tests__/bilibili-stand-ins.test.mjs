@@ -56,6 +56,8 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
+	// 3b-47(主人 10-25 批 R1、R2):`builtins.bilibili` 的 `api` / `fetchImage` 两处;第 4 期两处读者与宿主抓图口落地时消。
+	"apps/server/src/index.ts": 2,
 	"apps/server/src/routes/cards.ts": 7,
 	"apps/server/src/routes/subscriptions.ts": 5,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。

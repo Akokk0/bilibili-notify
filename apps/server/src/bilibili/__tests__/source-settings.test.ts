@@ -35,6 +35,12 @@ import type { Api } from "../api/index.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
 import { settingsSegment } from "../settings.js";
 import { createBiliSource } from "../source.js";
+import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
+
+// 登录那一套换成假系统(`deps.context` 带着它,见 `support/fake-login-system.ts`):这里钉的是来源读设置、起停引擎与心跳。
+vi.mock("../auth/index.js", () => ({
+	createAuthSystem: (o: { context: { login: unknown } }) => o.context.login,
+}));
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; isActive: boolean; stopCount: number }> = [];
@@ -115,12 +121,22 @@ async function boot() {
 	table.subscribe((c) => changes.push(c));
 	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	const world = makeWorld([makeSub("sub-1", "1")]);
-	const source = createBiliSource({
+	const login = fakeLoginSystem({
 		api: {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 			fetchRelations: async () => ok({ data: { "1": { attribute: 2 } } }),
 		} as unknown as Api,
-		loginCheck: { setHealthCheckMs },
+		auth: {
+			beginLogin: async () => ok(),
+			logout: async () => ok(),
+			// 已登录:这组测的是设置问题,别让宿主的登录问题(auth_lost)混进表里
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+			onChange: () => ({ dispose() {} }),
+		},
+		setHealthCheckMs,
+	});
+	const source = createBiliSource({
+		...fakeLoginDeps(login, logger),
 		locale,
 		setTimeout: () => ({ dispose() {} }),
 		liveContext: {
@@ -131,14 +147,6 @@ async function boot() {
 			onDispose: () => {},
 			track: () => {},
 		},
-		auth: {
-			beginLogin: async () => ok(),
-			logout: async () => ok(),
-			// 已登录:这组测的是设置问题,别让宿主的登录问题(auth_lost)混进表里
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-			onChange: () => ({ dispose() {} }),
-		},
-		logger,
 	});
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),

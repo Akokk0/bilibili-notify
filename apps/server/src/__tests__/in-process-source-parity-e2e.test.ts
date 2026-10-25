@@ -921,9 +921,11 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const own = await api(`/api/sources/${IN_PROCESS_KEY}/auth`);
 		expect(own.status).toBe(200);
 		expect(await own.json()).toEqual({ state: { status: "logged-out" } });
-		// 并排在册的 B 站:它的登录口同样问得到(不回 unavailable)。
+		// 并排在册的 B 站:它的登录口同样问得到(不回 unavailable),而且登记即 start 落定时登录已经恢复完
+		// (测试数据目录里没有 cookie:是「未登录」,不是还在「确认中」)。
 		const bili = await api("/api/sources/bilibili/auth");
 		expect(bili.status).toBe(200);
+		expect(await bili.json()).toEqual({ state: { status: "logged-out" } });
 		drove("P01");
 	});
 

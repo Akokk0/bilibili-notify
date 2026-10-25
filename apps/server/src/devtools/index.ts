@@ -39,9 +39,6 @@ import { timerScenarios } from "./scenarios/timers.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
 
-// 入口文件(`src/index.ts`)只许从这一处引 devtools —— 这一样也经这里出去,构建时整张换成桩。
-export { overridableApi } from "./api-overrides.js";
-
 /**
  * devtools 的组装点 + 那道门。
  *

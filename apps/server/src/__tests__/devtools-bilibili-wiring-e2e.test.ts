@@ -1,8 +1,8 @@
 /**
  * 🔴 **B 站场景经登记表进来之后,入口接的 Proxy 仍是路由拿到的那一份。**
  *
- * 零件(登记表、B 站场景、`overridableApi`)各自的测试全绿,证明不了 `src/index.ts` 真把**同一个**
- * 套了壳的登录口既交给 B 站那组场景去盖方法、又交给来源挂上让路由去读 —— 接线剪断哪一头,场景「跑成功了」
+ * 零件(登记表、B 站场景、`overridableApi`)各自的测试全绿,证明不了 `compose.ts` 真把 B 站 devtools 建的开发壳钩子
+ * 递给了来源,让**同一个**套了壳的登录口既被 B 站那组场景盖方法、又被来源挂上让路由去读 —— 接线剪断哪一头,场景「跑成功了」
  * 而面板顶栏纹丝不动,没有任何别的门禁会红。所以这条起一台真 BN,从「面板按钮」一路按到
  * `GET /api/sources/bilibili/auth`,断言落在 `state.status` 上。
  */
@@ -66,8 +66,8 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 		return ((await res.json()) as { state: { status: string } }).state.status;
 	}
 
-	// 验红:删掉 `compose.ts` 里递给 `createBiliSource` 的那一行 `auth: deps.sourceAuth`(或入口里递 `sourceAuth` 的那一行),
-	// 这条红 —— 回的是 400 unsupported,而各零件的测试一条都不红。
+	// 验红:`bilibili/source.ts` 里 `Source.auth` 不挂登录口(`auth: shellAuth` 去掉),这条红 —— 回的是 400 unsupported,
+	// 而各零件的测试一条都不红。
 	it("真入口起来之后,GET /api/sources/bilibili/auth 回 200 与一个合法的状态", async () => {
 		const res = await fetch(`${base}/api/sources/bilibili/auth`);
 		expect(res.status).toBe(200);

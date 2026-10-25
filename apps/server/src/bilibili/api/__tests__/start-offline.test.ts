@@ -7,7 +7,7 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  *
  * 预取是插件年代带过来的,且 start() 会 await 它 —— 开机那一刻连不上 api.bilibili.com
  * (断网、B 站故障、所在网络屏蔽 B 站,或 ticket 接口回了风控码)时 start() 抛错,
- * createAuthSystem 把它当致命错误,整台 BN 起不来。WBI 签名在 key 为空时本来就会现取
+ * 登录系统的 start() 把它当致命错误、B 站来源的 start() 跟着抛,整台 BN 起不来。WBI 签名在 key 为空时本来就会现取
  * ticket(getWbi,带在途去重),预取省不下什么。
  *
  * 测试运行里连外网会被根 setup 的守卫拦下(scripts/network-guard.mjs),所以 start()

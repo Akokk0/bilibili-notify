@@ -56,7 +56,7 @@ describe("devtools 只活在源码里", () => {
 	});
 
 	it.each([
-		["devtools", ["createDevtools", "overridableApi"]],
+		["devtools", ["createDevtools"]],
 		["bilibili/devtools", ["createBiliDevtools"]],
 	])("构建时顶替入口的桩确实在(%s),导出与真的那份同名", (dir, names) => {
 		const stub = readFileSync(join(SRC, dir, "stub.ts"), "utf8");

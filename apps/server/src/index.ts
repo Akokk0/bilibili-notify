@@ -24,7 +24,6 @@ import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
-import { type AuthSystem, createAuthSystem } from "./bilibili/auth/index.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
@@ -32,7 +31,7 @@ import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "./comp
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { payloadDirOf, type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
-import { createDevtools, overridableApi } from "./devtools/index.js";
+import { createDevtools } from "./devtools/index.js";
 import { manifestSubscriptionView } from "./extensions/context.js";
 import { extensionsRootIn } from "./extensions/discover.js";
 import {
@@ -248,7 +247,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	// 主人要求的新代没开成的原因(已经记进原来那一代的提示清单);logger 这会儿还没建,下面再记日志。
 	const generationFailure = declined ?? opened.failure;
 	let runtime: AppRuntime | undefined;
-	let authSystem: AuthSystem | undefined;
 	let puppeteer: PuppeteerAdapter | null = null;
 	let subBinding: ReturnType<typeof bindSubscriptionStore> | undefined;
 	let engines: ReturnType<typeof createEngines> | undefined;
@@ -604,27 +602,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subscriptionStateStore.load();
 
-		// 各内置集成读自己设置的读法:造一次,递给造集成上下文的两处(登录系统、内置适配器);键由各集成自己挑。
+		// 各内置集成读自己设置的读法:造一次,递给造集成上下文的两处(B 站、内置适配器);键由各集成自己挑。
 		const settingsOf = settingsReaderOptionsOf(runtime.configStore);
-
-		// Stage 2.4: assemble the auth stack (integration stores → Api → LoginFlow). Bus
-		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
-		try {
-			authSystem = await createAuthSystem({
-				serviceCtx: runtime.serviceCtx,
-				integrationStore: runtime.integrationStore,
-				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
-				accountImages: runtime.accountImages,
-				transitImages: runtime.transitImages,
-				problems: runtime.problems,
-				settingsOf,
-			});
-		} catch (err) {
-			// Fatal: without the integration stores / Api the dashboard can't function.
-			log.error("auth system init failed", err);
-			throw err;
-		}
-		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
@@ -661,7 +640,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//      (`builtins.registerAdapters`).
 		//   3. createEngines() builds Dispatcher → PushRouter → neutral live layers and registers
 		//      serviceCtx.onDispose for graceful shutdown; the built-in post source is registered
-		//      right after it (`builtins.registerSources`).
+		//      right after it (`builtins.registerSources`: opens the bilibili context, builds the
+		//      source, and its `start` brings the login up — the context's close hook was registered
+		//      in `composeBuiltinIntegrations`, before the engines, so it runs after them on shutdown).
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
@@ -753,30 +734,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 真 adapter / 真 api 一行不动。
 		// `subBinding` 是个会在关停时清掉的 let,闭包里收不窄;先把 store 取出来。
 		const subStore = subBinding.store;
-		// 🚧 过渡接线:壳留在入口(核心 `devtools/index.js` 按 `devtools-isolation` 只许入口引;
-		// 引擎、路由也要它们的 `.api`)。B 站那组场景要往引擎的 `api` 与路由的登录系统上盖方法,
-		// 所以这两层 Proxy 在这里建,引擎与路由拿的是它们的 `.api`;生产里 `overridableApi` 是桩,
-		// 原样透传。B 站那组场景的认领在 `compose.ts`。
-		const devApi = overridableApi(authSystem.api);
-		const devAuth = overridableApi(authSystem.auth);
+		// B 站那一套(上下文、登录系统、来源)由 `compose.ts` 在 `registerSources` 里造,登录由来源自己起、停;
+		// B 站 `Api` 的两层开发壳也在那一头建(B 站 devtools 的入口),入口不碰 `bilibili/` 下的任何东西。
+		// B 站那组场景的认领在 `compose.ts`。
 		const builtins = composeBuiltinIntegrations({
-			api: devApi,
-			auth: devAuth,
 			locale: localeReader,
-			integration: authSystem.integration,
-			// 来源挂的是壳的 `.api`(登记表与 `/api/sources/:sourceKey/auth` 读到的就是它,开发场景才盖得到);
-			// 统计与引擎装配读的是真对象。
-			sourceAuth: devAuth.api,
 			bus: runtime.bus,
-			setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms),
 			subscriptions: subStore,
 			subscriptionState: runtime.subscriptionStateStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
-			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
-			healthCheck: () =>
-				authSystem && {
-					healthCheckNow: () => authSystem?.healthCheckNow() ?? Promise.resolve(false),
-				},
+			accountImages: runtime.accountImages,
 			// 三个内置适配器在 `compose.ts` 里造(核心只有它能 import `platforms/`)。入站出口是上面留好的
 			// 可后填引用,现转。
 			serviceCtx: runtime.serviceCtx,
@@ -908,7 +875,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			profileReports: runtime.profileReports,
 			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)
 			// 抓进图库。引用方是「集成在途」,图靠宽限期活到卡片画完。
-			imageFetcher: authSystem.integration,
+			// 来源的 B 站上下文要到 `registerSources` 才开,晚于这里:递一个现取的包装,上下文没开 / 已收时回 `unavailable`。
+			imageFetcher: { fetchImage: (url, options) => builtins.bilibili.fetchImage(url, options) },
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// AI 点评看只有图库引用的图(拓展作品)时核心要量字节数,读口回字节与类型。
 			readImage: (ref) => runtime.imageStore.read(ref),
@@ -1230,13 +1198,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
-		const backupService = authSystem
-			? createBackupService({
-					configStore: runtime.configStore,
-					integrationSecrets: runtime.integrationStore,
-					connectionSecrets,
-				})
-			: undefined;
+		const backupService = createBackupService({
+			configStore: runtime.configStore,
+			integrationSecrets: runtime.integrationStore,
+			connectionSecrets,
+		});
 
 		// 拓展装载。**在 createApp 之前**:总入口要随 app 一起挂上,而拓展在 `activate`
 		// 里注册的路由是往那张活表里写的,先后都行 —— 但名单要在路由建起来时就拿得到。
@@ -1343,9 +1309,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		};
 		const app = createApp(runtime, {
 			...appShell,
-			// 显式给一份:`authSystem.api` 是数据属性,取出来的是没装饰过的那个,卡片预览
-			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
-			api: devApi.api,
+			// 来源造好的那一个 `Api`(开发版是套过壳的,卡片预览与旧搜人吃得到 devtools 的覆盖);第 4 期两处读者改口时消。
+			api: builtins.bilibili.api() ?? null,
 			backupService,
 			connectionSecrets,
 			cardSkins: {

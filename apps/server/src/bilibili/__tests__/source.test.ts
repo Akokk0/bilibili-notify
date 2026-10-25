@@ -43,6 +43,7 @@ import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
 import { BILI_SOURCE_DESCRIPTOR, createBiliSource } from "../source.js";
+import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{
@@ -81,6 +82,11 @@ const roomsMock = vi.hoisted(() => ({
 vi.mock("cron", async (importOriginal) => ({
 	...(await importOriginal<typeof import("cron")>()),
 	CronJob: cronMock.FakeCronJob,
+}));
+// 登录那一套(真的状态机、罐子、存储)在 `auth/__tests__` 与 `compose.test.ts` 钉着:这里的来源单测换成假系统,
+// `deps.context` 带着它(见 `support/fake-login-system.ts`)。
+vi.mock("../auth/index.js", () => ({
+	createAuthSystem: (o: { context: { login: unknown } }) => o.context.login,
 }));
 vi.mock("../live/session/bili-live-rooms.js", () => ({
 	BiliLiveRooms: class {
@@ -177,6 +183,15 @@ function makeDeps(
 		over.fetchRelations ?? (async (_uids: string[]) => ok({ data: null })),
 	);
 	const follow = vi.fn(over.follow ?? (async (_uid: string) => ok()));
+	const login = fakeLoginSystem({
+		api: {
+			fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED),
+			fetchRelations,
+			follow,
+		} as unknown as Api,
+		auth: over.auth ?? FAKE_AUTH,
+		setHealthCheckMs,
+	});
 	const liveContext = {
 		logger,
 		signal: new AbortController().signal,
@@ -188,18 +203,14 @@ function makeDeps(
 	return {
 		config,
 		setHealthCheckMs,
+		/** 假登录系统(来源造出来的就是它);要换 `api` 的用例在造来源之前改 `login.api`。 */
+		login,
+		logger,
 		deps: {
-			logger,
-			api: {
-				fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED),
-				fetchRelations,
-				follow,
-			} as unknown as Api,
-			loginCheck: { setHealthCheckMs },
+			...fakeLoginDeps(login, logger),
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
 			liveContext,
-			auth: over.auth ?? FAKE_AUTH,
 			...(over.now ? { now: over.now } : {}),
 		},
 		fetchRelations,
@@ -218,7 +229,7 @@ async function bootProblemTable(
 	});
 	const source = createBiliSource(made.deps);
 	const world = makeWorld([makeSub("sub-1", "1")]);
-	const table = createProblemTable({ logger: made.deps.logger });
+	const table = createProblemTable({ logger: made.logger });
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
@@ -229,7 +240,7 @@ async function bootProblemTable(
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
 		bus: world.bus,
-		logger: made.deps.logger,
+		logger: made.logger,
 		enqueue: () => {},
 		liveSignals: () => {},
 		liveInteractions: () => {},
@@ -454,11 +465,11 @@ describe("createBiliSource", () => {
 	});
 
 	it("start 之后 B 站来源的 fetchProfile 接在同一个 API 与资料状态上", async () => {
-		const { deps } = makeDeps();
+		const { deps, login } = makeDeps();
 		const fetchUserCard = vi.fn(async () =>
 			ok({ data: { card: { name: "阿甲", face: "", sign: "", fans: 7 } } }),
 		);
-		deps.api = { ...deps.api, fetchUserCard } as unknown as Api;
+		login.api = { ...login.api, fetchUserCard } as unknown as Api;
 		const source = createBiliSource(deps);
 		const { ctx, state } = makeCtx([{ externalId: "1" }]);
 		await source.start(ctx);
@@ -475,9 +486,9 @@ describe("createBiliSource", () => {
 	});
 
 	it("ctx.state 预置房号时,来源的直播把手直接读它,不请求用户信息", async () => {
-		const { deps } = makeDeps();
+		const { deps, login } = makeDeps();
 		const fetchUserInfo = vi.fn();
-		deps.api = { ...deps.api, fetchUserInfo } as unknown as Api;
+		login.api = { ...login.api, fetchUserInfo } as unknown as Api;
 		const source = createBiliSource(deps);
 		const { ctx, state } = makeCtx([{ externalId: "42", monitorsLive: true }]);
 		await state.set("room:42", "5050");
@@ -839,7 +850,7 @@ describe("createBiliSource", () => {
 	// 验红:去掉 `start` 里 catch 那段清理(`stopEngine()` / `setHealthCheckMs(0)` / 摘把手 / `started = false`),这条红
 	// (cron 一直开着、心跳一直挂着、再 start 抛「already started」,而登记表不会替来源收拾)。
 	it("start 半路抛了(动态已起、登录检查那一步炸了):来源自己什么都没留下,能重来", async () => {
-		const { deps, config, setHealthCheckMs } = makeDeps();
+		const { deps, config, setHealthCheckMs, login } = makeDeps();
 		const source = createBiliSource(deps);
 		const { ctx, watchDisposed } = makeCtx([{ externalId: "1", post: true }], config);
 		// 动态引擎已 start(cron 起来了),再抛:模拟登录检查那一步的口炸了。
@@ -847,6 +858,8 @@ describe("createBiliSource", () => {
 			throw new Error("挂心跳炸了");
 		});
 		await expect(source.start(ctx)).rejects.toThrow("挂心跳炸了");
+		// 登录也跟着停(来源的 start 抛了,登记表不会替它停登录)。
+		expect(login.stop).toHaveBeenCalledTimes(1);
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(source.dynamic()).toBeUndefined();
 		expect(watchDisposed).toHaveBeenCalledTimes(3);
@@ -995,11 +1008,11 @@ describe("B 站来源 · health()(给 status 指令的那一行)", () => {
 		await source.stop();
 	});
 
-	// 验红:`health()` 里再读 `deps.auth.state()` 拼进半句登录,这条红。
+	// 验红:`health()` 里再读登录口的 `state()` 拼进半句登录,这条红。
 	it("没登录时这一行不变:health() 不额外读登录态(登录由 status 的「登录」一行说)", async () => {
-		const made = makeDeps();
 		const state = vi.fn(() => ({ status: "logged-out" as const }));
-		const source = createBiliSource({ ...made.deps, auth: { ...FAKE_AUTH, state } });
+		const made = makeDeps({ auth: { ...FAKE_AUTH, state } });
+		const source = createBiliSource(made.deps);
 		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
 		const readsAtStart = state.mock.calls.length;
 		expect(source.health?.()).toEqual({ summary: "还没抓过" });
@@ -1303,5 +1316,119 @@ describe("createBiliSource — 关注同步", () => {
 		await first.promise;
 		expect(follow).toHaveBeenCalledTimes(1);
 		expect(follow).not.toHaveBeenCalledWith("2");
+	});
+});
+
+describe("createBiliSource — 登录那一套归来源:造一次、start 第一步起、stop 最后一步停", () => {
+	const REAL_AUTH_MARK = { ...FAKE_AUTH } as Required<SourceAuth>;
+
+	it("构造时 Source.auth 就在(登记表在 start 之前就抄它),就是登录系统交出的登录口", () => {
+		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
+		const source = createBiliSource(deps);
+		expect(source.auth).toBe(REAL_AUTH_MARK);
+		expect(login.start).not.toHaveBeenCalled();
+	});
+
+	// 验红:去掉 `start` 里的 `await login.start()`(或挪到引擎起来之后),这条红(引擎在登录落定之前就起了)。
+	it("start 第一步是起登录:它落定之前引擎一个都不起,落定之后才起", async () => {
+		const { deps, login } = makeDeps();
+		const gate = deferred<void>();
+		login.start.mockImplementationOnce(() => gate.promise);
+		const source = createBiliSource(deps);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+
+		const starting = source.start(ctx);
+		await Promise.resolve();
+		expect(login.start).toHaveBeenCalledTimes(1);
+		expect(cronMock.instances).toHaveLength(0);
+		expect(roomsMock.instances).toHaveLength(0);
+
+		gate.resolve();
+		await starting;
+		expect(cronMock.instances).toHaveLength(1);
+		expect(roomsMock.instances).toHaveLength(1);
+		await source.stop();
+	});
+
+	it("登录起不来:start 抛出登录的错、登录被停、来源什么都没留下,再 start 能成", async () => {
+		const { deps, login } = makeDeps();
+		login.start.mockRejectedValueOnce(new Error("登录起不来"));
+		const source = createBiliSource(deps);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+
+		await expect(source.start(ctx)).rejects.toThrow("登录起不来");
+		expect(login.stop).toHaveBeenCalledTimes(1);
+		expect(cronMock.instances).toHaveLength(0);
+		expect(source.dynamic()).toBeUndefined();
+		expect(source.login()).toBeUndefined();
+
+		await source.start(ctx);
+		expect(source.dynamic()?.isActive).toBe(true);
+		await source.stop();
+	});
+
+	// 验红:去掉 `stop` 末尾的 `login.stop()`,或把它挪到引擎停之前,这条红。
+	it("stop 的同步段里先停干净自己的活(心跳摘掉、引擎停掉),最后才停登录", async () => {
+		const { deps, login, setHealthCheckMs } = makeDeps();
+		const source = createBiliSource(deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		let engineActiveWhenLoginStopped: boolean | undefined;
+		login.stop.mockImplementation(() => {
+			engineActiveWhenLoginStopped = cronMock.instances[0]?.isActive;
+		});
+
+		const stopping = source.stop();
+
+		// 同步段:不用等 promise,登录已经停了、引擎已经不在。
+		expect(login.stop).toHaveBeenCalledTimes(1);
+		expect(engineActiveWhenLoginStopped).toBe(false);
+		expect(setHealthCheckMs.mock.invocationCallOrder.at(-1)).toBeLessThan(
+			login.stop.mock.invocationCallOrder[0] ?? 0,
+		);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
+		await stopping;
+	});
+
+	it("两个引擎读登录系统交出的原始登录口,Source.auth 读套过壳的;Api 一律是壳(开发壳钩子)", async () => {
+		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
+		const shellAuth = { ...REAL_AUTH_MARK } as Required<SourceAuth>;
+		const shellApi = { fetchAllDynamic: async () => EMPTY_FEED } as unknown as Api;
+		const devShells = {
+			api: vi.fn((_real: Api) => shellApi),
+			auth: vi.fn((_real: Required<SourceAuth>) => shellAuth),
+		};
+		const source = createBiliSource({ ...deps, devShells });
+		expect(devShells.api).toHaveBeenCalledWith(login.api);
+		expect(devShells.auth).toHaveBeenCalledWith(REAL_AUTH_MARK);
+		expect(source.auth).toBe(shellAuth);
+		expect(source.api()).toBe(shellApi);
+
+		await source.start(makeCtx([{ externalId: "1", monitorsLive: true }]).ctx);
+
+		const opts = roomsMock.instances[0]?.opts as unknown as { auth: unknown; api: unknown };
+		expect(opts.auth).toBe(REAL_AUTH_MARK);
+		expect(opts.api).toBe(shellApi);
+		await source.stop();
+	});
+
+	it("不传开发壳钩子(生产):Api 与 Source.auth 都是登录系统造的原样", () => {
+		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
+		const source = createBiliSource(deps);
+		expect(source.api()).toBe(login.api);
+		expect(source.auth).toBe(REAL_AUTH_MARK);
+	});
+
+	it("login() 把手:start 前与 stop 后是 undefined,运行中把 healthCheckNow 原样转给登录系统", async () => {
+		const { deps, login } = makeDeps();
+		login.healthCheckNow.mockResolvedValue(false);
+		const source = createBiliSource(deps);
+		expect(source.login()).toBeUndefined();
+
+		await source.start(makeCtx().ctx);
+		await expect(source.login()?.healthCheckNow()).resolves.toBe(false);
+		expect(login.healthCheckNow).toHaveBeenCalledTimes(1);
+
+		await source.stop();
+		expect(source.login()).toBeUndefined();
 	});
 });

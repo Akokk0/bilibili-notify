@@ -61,10 +61,10 @@ export const INTEGRATION_DIRS = ["apps/server/src/bilibili", "apps/server/src/pl
  * 同一个名字在导出类型里出现几次记几处(`BiliDevtoolsDeps["api"]` 一次)。
  */
 export const EXPORTED_TYPE_LEDGER = {
-	BiliDevtoolsDeps: {
-		limit: 3,
+	Api: {
+		limit: 1,
 		until:
-			"开发场景今天仍直接用引擎、套了壳的 Api / 登录系统(api、auth、live、healthCheck 四个过渡句柄);3b 场景改成只经 B 站自己的上下文时消",
+			"`BuiltinIntegrations.bilibili.api()` 的返回类型,给入口递 `createApp`(卡片真实预览与旧搜人);卡片真实预览与旧搜人(第 4 期)改口时消",
 	},
 	DevtoolsProviderRegistry: {
 		limit: 1,
@@ -73,8 +73,12 @@ export const EXPORTED_TYPE_LEDGER = {
 	},
 };
 
-/** ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。 */
-export const BILIBILI_MEMBERS = [];
+/**
+ * ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。
+ * `api` 给第 4 期两处读者(卡片真实预览、旧搜人,经入口递 `createApp`);`fetchImage` 给核心抓会员自定义图
+ * (入口递 `createEngines` 的 `imageFetcher`;宿主自己的抓图口另记以后再说)。主人 10-25 批。
+ */
+export const BILIBILI_MEMBERS = ["api", "fetchImage"];
 
 /** ④ 的范围与不扫的目录。 */
 export const SLOT_ROOTS = ["apps/server/src"];
@@ -87,12 +91,11 @@ export const SLOT_SKIP_DIRS = [
 
 /**
  * ④ 的棘轮:文件 → `api` 槽位的处数。只许降不许涨:一个读者消失就当场调低,清零了整行删掉。
- * 今天里面全是 B 站接口客户端的槽位或开发壳的杂音:`index.ts` 的 `devAuth.api` 是套了壳的登录口、不是接口客户端,
- * 不为它加例外(它同样是「B 站的东西经入口递出去」,随登录装配一起走,3b)。
+ * 今天里面全是 B 站接口客户端的槽位(第 4 期两处读者):`index.ts` 只剩交给 `createApp` 的那一处。
  */
 export const API_SLOT_RATCHET = {
 	"apps/server/src/app.ts": 4, // 卡片预览与旧搜人的 `api`;第 4 期两处读者改口时消
-	"apps/server/src/index.ts": 5, // 登录装配的产物经入口递出去(套壳、引擎、createApp);含 `devAuth.api` 杂音;3b 登录装配进集成时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)。3b-47 删 `EnginesRuntime.api`(7 → 5)
+	"apps/server/src/index.ts": 2, // 只剩 `builtins.bilibili.api()` 递给 `createApp`(第 4 期两处读者);第 4 期卡片真实预览与旧搜人改口时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)。3b-47 删 `EnginesRuntime.api`(7 → 5);3b-47 登录装配进 B 站来源,套壳、引擎、`authSystem.api` 都出了入口(5 → 2)
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
 	"apps/server/src/routes/subscriptions.ts": 2, // 旧搜人两口;第 4 期消。3b-25 新建订阅不再当场关注(3 → 2)
 };
@@ -1007,7 +1010,8 @@ describe("入口咽喉:compose.ts 的导出面", () => {
 		const bindings = integrationBindings(COMPOSE_FILE, source);
 		expect(bindings.size).toBeGreaterThan(0);
 		expect([...bindings.values()].some((b) => !b.typeOnly)).toBe(true);
-		expect(bilibiliMembersOf(source)).toBeUndefined();
+		// 3b-47 起 `BuiltinIntegrations.bilibili` 这一格在了(`api` / `fetchImage`):找得到、是字面量写法。
+		expect(Array.isArray(bilibiliMembersOf(source))).toBe(true);
 	});
 
 	it("① 导出类型里的集成类型:实数与记账一致", () => {

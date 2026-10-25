@@ -37,6 +37,8 @@ vi.mock("../bilibili/source.js", async (importOriginal) => {
 				fake.stops += 1;
 			},
 			dynamic: () => undefined,
+			// 入口把 `builtins.bilibili.api()`(来源造好的 `Api`)交给 `createApp`;假来源没有。
+			api: () => undefined,
 		}),
 	};
 });

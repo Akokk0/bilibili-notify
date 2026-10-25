@@ -59,9 +59,9 @@ export const BOUNDARIES = [
 		// (3b,随来源 `fetchProfile`)、卡片真实预览与
 		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨,3b 末清零。
 		// 3b-25:关注同步搬进 B 站来源,`runtime/follow-sync.ts` 与 `routes/subscriptions.ts`(新建时当场关注)两行清零删掉。
+		// 3b-47:登录装配搬进 B 站来源(`compose.ts` 开上下文、来源自己造 / 起 / 停登录),入口那一行(`bilibili/auth/index.js`)清零删掉。
 		ratchet: {
 			"apps/server/src/app.ts": 1,
-			"apps/server/src/index.ts": 1,
 			"apps/server/src/routes/cards.ts": 4,
 			// 3b-47:旧搜人改从 createApp 的选项拿 `Api`(主人 10-25 定直接引类型、不借卡片路由的),第 4 期旧搜人改口时消。
 			"apps/server/src/routes/subscriptions.ts": 1,

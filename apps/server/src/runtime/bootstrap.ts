@@ -201,14 +201,15 @@ export interface AppRuntime {
 	/**
 	 * Engine layer: PushRouter + DynamicPoller + LiveEngine + Dispatcher.
 	 *
-	 * `null` until {@link attachEngines} is called. The auth system has to come
-	 * up first (engines need a started Api), so the bootstrap split is:
+	 * `null` until {@link attachEngines} is called. The login system is no longer a boot
+	 * step of its own: the bilibili source builds, starts and stops it, so the bootstrap split is:
 	 *
 	 *   1. createAppRuntime(bootstrap) — produces ConfigStore + HistoryStore
 	 *   2. keyProvider.getKey() — eagerly loads/creates the at-rest secrets key
 	 *   3. configStore.load()
-	 *   4. createAuthSystem(...) — produces Api
-	 *   5. attachEngines(runtime, { api, adapters }) — fills `engines`
+	 *   4. createEngines(...) — then `builtins.registerSources(engines)` opens the bilibili
+	 *      context and registers the bilibili source (its `start` brings the login up)
+	 *   5. attachEngines(runtime, engines) — fills `engines`
 	 *   6. createApp(runtime, ...) — mounts routes
 	 */
 	engines: EnginesRuntime | null;

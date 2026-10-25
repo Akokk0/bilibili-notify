@@ -7,7 +7,6 @@ import {
 	type Identity,
 	type ImageRef,
 	type LiveStatusResult,
-	type Logger,
 	type MembershipTier,
 	ok,
 	type Result,
@@ -19,9 +18,12 @@ import {
 	type SourceHealth,
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
+import type { ImageWriter } from "../images/image-store.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { createBiliAiToolProvider } from "./ai-tools.js";
 import type { Api } from "./api/index.js";
+import { createAuthSystem } from "./auth/index.js";
+import type { BiliContext } from "./context.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
 import { watchFollows } from "./follow-sync.js";
@@ -38,18 +40,22 @@ import { searchBiliCreators } from "./search-creators.js";
 import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
 
 export interface BiliSourceDeps {
-	api: Api;
+	/** B 站的上下文(存储已开、罐子与请求客户端已建好):登录系统建在它之上。它的收尾归造它的一方(`compose.ts`)。 */
+	context: BiliContext;
+	/** B 站那一格的宿主上下文(日志器与等级跟 B 站):登录系统与分层上报器的日志器、定时器都从它来。 */
+	serviceCtx: ServiceContext;
+	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
+	accountImages: ImageWriter;
+	/**
+	 * 开发壳(只开发版有):登录系统造好之后,把真的 `Api` / 登录口递进来、换回套了 Proxy 的那一份当来源自己用的
+	 * (`Source.auth`、关注同步、分层上报器读套过壳的登录口;两个引擎读原始的)。生产里不传,原样用真的。
+	 */
+	devShells?: {
+		api(real: Api): Api;
+		auth(real: Required<SourceAuth>): Required<SourceAuth>;
+	};
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
-	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
-	auth: SourceAuth;
-	/** 分层上报器用的日志器(与 B 站其它日志同一格,标签仍是 `bilibili`)。 */
-	logger: Logger;
-	/**
-	 * 定时的登录检查(心跳)的开关(`AuthSystem.setHealthCheckMs`):`start` 里按设置挂上 / 停下,`stop` 里停掉。
-	 * 登录系统自己不认识设置;`ms <= 0` 等于不挂。
-	 */
-	loginCheck: { setHealthCheckMs(ms: number): void };
 	/** 语言读口:`start` 里订,语言变了把读不懂的设置问题按新语言再报一遍。 */
 	locale: Pick<LocaleReader, "onChange">;
 	/** 直播那一路的宿主上下文(日志标签仍是 `live`)。 */
@@ -59,6 +65,10 @@ export interface BiliSourceDeps {
 }
 
 export interface BiliSource extends Source {
+	/** 来源造好的 `Api`(开发版是套过壳的那一个,与来源自己、开发场景用的同一个对象):核心里第 4 期两处读者经 `compose.ts` 拿它。 */
+	api(): Api;
+	/** 登录系统的开发把手;没 start 或已 stop 时是 undefined。开发场景「登录心跳」读它。 */
+	login(): { healthCheckNow(): Promise<boolean> } | undefined;
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
 	/** 直播房号;没 start 或已 stop 时是 undefined。开发场景挑房间读它。 */
@@ -121,6 +131,16 @@ function copyBiliDescriptor(): SourceDescriptor {
 }
 
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
+	// 登录这一套(Api、LoginFlow、登录口)造在这里、不出网:`Source.auth` 登记那一刻就要在,登记表在 `start` 之前就抄它。
+	// 起(`start` 的第一步)与停(`stop` 的最后一步)也归来源。
+	const login = createAuthSystem({
+		serviceCtx: deps.serviceCtx,
+		context: deps.context,
+		accountImages: deps.accountImages,
+	});
+	const biliApi = deps.devShells?.api(login.api) ?? login.api;
+	// 套过壳的登录口:`Source.auth`、关注同步、分层上报器读它;两个引擎读 `login.auth`(原始的)。
+	const shellAuth = deps.devShells?.auth(login.auth) ?? login.auth;
 	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
 	let problems: ProblemLayers | undefined;
@@ -190,7 +210,9 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 
 	return {
 		descriptor,
-		auth: deps.auth,
+		auth: shellAuth,
+		api: () => biliApi,
+		login: () => (started ? { healthCheckNow: () => login.healthCheckNow() } : undefined),
 		dynamic: () => engine,
 		liveRooms: () =>
 			roomIds === undefined
@@ -261,7 +283,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			return rooms.fetchLiveStatus(identity, signal);
 		},
 		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。
-		searchCreators: (query) => searchBiliCreators(deps.api, query),
+		searchCreators: (query) => searchBiliCreators(biliApi, query),
 		health(): SourceHealth {
 			// 「动态停着」优先:最需要主人动手的一条,而且这时引擎不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
 			if (dynamicStopped) return { summary: HEALTH_TEXTS.dynamicStopped };
@@ -273,20 +295,23 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			if (started) throw new Error("bilibili source is already started");
 			started = true;
 			sourceCtx = ctx;
-			const layers = createProblemLayers({
-				auth: deps.auth,
-				locale: deps.locale,
-				logger: deps.logger,
-			});
-			problems = layers;
 			const mine: Disposable[] = [];
 			const stopEngine = (): void => {
 				engine?.stop();
 				engine = undefined;
 			};
 			try {
+				// 第一步:起登录(落定时登录已恢复,状态是已登录 / 未登录,或开机探活连不上时停在确认中)。
+				// 排在分层上报器与两个引擎之前:它们订登录变化时,开机那一跳已经过去。
+				await login.start();
+				const layers = createProblemLayers({
+					auth: shellAuth,
+					locale: deps.locale,
+					logger: deps.serviceCtx.logger,
+				});
+				problems = layers;
 				roomIds = createRoomIds({
-					api: deps.api,
+					api: biliApi,
 					state: ctx.state,
 					subscriptions: () => ctx.subscriptions(),
 					setTimeout: deps.setTimeout,
@@ -294,8 +319,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					logger: ctx.logger,
 				});
 				rooms = new BiliLiveRooms({
-					api: deps.api,
-					auth: deps.auth,
+					api: biliApi,
+					auth: login.auth,
 					liveContext: deps.liveContext,
 					roomIds,
 					rememberFanClubName: (externalId, name) => {
@@ -307,7 +332,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					},
 				});
 				viewerAvatars = createViewerAvatarFetcher({
-					api: deps.api,
+					api: biliApi,
 					images: {
 						fetchImage: (url, options) => ctx.fetchImage(url, options),
 					},
@@ -335,8 +360,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						const made = new DynamicPoller({
 							logger: ctx.logger,
 							setTimeout: deps.setTimeout,
-							auth: deps.auth,
-							api: deps.api,
+							auth: login.auth,
+							api: biliApi,
 							problems: layers,
 							fetchImage: ctx.fetchImage,
 							reportPost: (externalId, report) => ctx.reportPost(externalId, report),
@@ -374,12 +399,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				const applyLoginCheck = (): void => {
 					const read = loginCheckSettings.get();
 					if (read.ok) {
-						deps.loginCheck.setHealthCheckMs(read.settings.healthCheckMinutes * 60_000);
+						login.setHealthCheckMs(read.settings.healthCheckMinutes * 60_000);
 						loginCheckWording = undefined;
 						ctx.resolveProblem({ code: LOGIN_CHECK_PROBLEM, notify: false });
 						return;
 					}
-					deps.loginCheck.setHealthCheckMs(0);
+					login.setHealthCheckMs(0);
 					ctx.logger.warn(
 						`[settings] 登录检查(${LOGIN_CHECK_CELL.key})读不懂,定时的登录检查先停着: ${read.issues?.[0]?.message ?? read.message}`,
 					);
@@ -415,7 +440,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				};
 
 				profileFetcher = createProfileFetcher({
-					api: deps.api,
+					api: biliApi,
 					problems: layers,
 					state: ctx.state,
 					subscriptions: () => ctx.subscriptions(),
@@ -435,8 +460,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				);
 				mine.push(
 					watchFollows({
-						api: deps.api,
-						auth: deps.auth,
+						api: biliApi,
+						auth: shellAuth,
 						subscriptions: () => ctx.subscriptions(),
 						onSubscriptionsChanged: (fn) => ctx.onSubscriptionsChanged(fn),
 						problems: layers,
@@ -449,13 +474,13 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					ctx.registerLinkResolver(
 						createBiliLinkResolver({
 							label: descriptor.label,
-							api: deps.api,
+							api: biliApi,
 							fetchImage: ctx.fetchImage,
 							logger: ctx.logger,
 						}),
 					),
 				);
-				mine.push(ctx.registerAiToolProvider(createBiliAiToolProvider({ api: deps.api })));
+				mine.push(ctx.registerAiToolProvider(createBiliAiToolProvider({ api: biliApi })));
 				applyDynamic();
 				rooms.start(ctx, ctx.subscriptions());
 				mine.push(dynamicSettings.onChange(guarded(ctx, "动态", applyDynamic)));
@@ -476,9 +501,10 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				rooms = undefined;
 				stopEngine();
 				dynamicStopped = false;
-				deps.loginCheck.setHealthCheckMs(0);
-				layers.dispose();
+				login.setHealthCheckMs(0);
+				problems?.dispose();
 				problems = undefined;
+				login.stop();
 				started = false;
 				sourceCtx = undefined;
 				roomIds = undefined;
@@ -488,6 +514,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			}
 		},
 		// 登记表撤登记会等 `stop()` 落定(最多 30 秒),之后才收来源上下文;引擎也等来源停完再关作品入口。
+		// 同步段把自己的活停干净,最后停登录(作废在途的续期);最后一次存盘与关存储把手是 `compose.ts` 收上下文时的事,
+		// 那一步晚于引擎、也就晚于这里。
 		stop() {
 			// 第一步先摘:引擎收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
 			problems?.detach();
@@ -499,7 +527,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			engine?.stop();
 			engine = undefined;
 			dynamicStopped = false;
-			deps.loginCheck.setHealthCheckMs(0);
+			login.setHealthCheckMs(0);
 			started = false;
 			sourceCtx = undefined;
 			roomIds = undefined;
@@ -508,6 +536,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			guardFetch = undefined;
 			problems?.dispose();
 			problems = undefined;
+			login.stop();
 			return Promise.resolve();
 		},
 	};

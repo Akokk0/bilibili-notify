@@ -526,7 +526,7 @@ export function currentProbe(): InProcessProbe {
  * 之外加两样 —— 设置段后面追加假来源的一段;`registerSources` 里真的登记完之后,对假来源调**同一个**
  * `engines.registerSource`。
  *
- * 测试用组装要自己做三件事(内置来源的那几件在 `compose.ts` / 登录装配里,这里照做):
+ * 测试用组装要自己做三件事(内置来源的那几件在 `compose.ts` / B 站来源里,这里照做):
  * 1. 设置段(上面);
  * 2. 集成上下文:`integrationStore.open(键)` + `openIntegration`(请求客户端、上下文与收尾挂在一起;存储是异步开的,
  *    所以在 `registerSources` 里);

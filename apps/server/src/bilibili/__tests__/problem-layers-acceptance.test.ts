@@ -37,10 +37,16 @@ import {
 	LOGIN_MISSING_TEXT,
 	LOGIN_RECOVERED_TEXT,
 } from "./problem-pipeline.js";
+import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
 const EXPIRED: AuthState = { status: "expired", message: "失效" };
 const OUT: AuthState = { status: "logged-out" };
+
+// 登录那一套换成假系统(`deps.context` 带着它,见 `support/fake-login-system.ts`):状态由下面的 `makeAuth` 拨。
+vi.mock("../auth/index.js", () => ({
+	createAuthSystem: (o: { context: { login: unknown } }) => o.context.login,
+}));
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -97,13 +103,16 @@ async function boot(
 		},
 		logger,
 	});
-	const source = createBiliSource({
+	const login = fakeLoginSystem({
 		api: {
 			fetchAllDynamic,
 			fetchRelations: async () => ok({ data: null }),
 			follow: async () => ok(),
 		} as unknown as Api,
-		loginCheck: { setHealthCheckMs: () => {} },
+		auth: authed.auth,
+	});
+	const source = createBiliSource({
+		...fakeLoginDeps(login, logger),
 		locale: fixedLocale(),
 		setTimeout: () => ({ dispose() {} }),
 		liveContext: {
@@ -114,8 +123,6 @@ async function boot(
 			onDispose: () => {},
 			track: () => {},
 		},
-		auth: authed.auth,
-		logger,
 	});
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),

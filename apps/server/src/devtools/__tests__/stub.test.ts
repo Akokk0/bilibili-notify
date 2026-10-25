@@ -15,12 +15,4 @@ describe("devtools 空桩", () => {
 	it("createDevtools 恒回 null", () => {
 		expect(stub.createDevtools({} as never)).toBeNull();
 	});
-
-	it("overridableApi 原样透传:交回去的就是真对象,盖不上任何方法", () => {
-		const target = { ping: () => "pong" };
-		const dev = stub.overridableApi(target);
-		expect(dev.api).toBe(target);
-		dev.override("ping", () => "盖上了");
-		expect(dev.api.ping()).toBe("pong");
-	});
 });

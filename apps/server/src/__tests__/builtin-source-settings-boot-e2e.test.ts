@@ -3,12 +3,12 @@
  *
  * 配置仓怎么读坏文件、把手怎么变了才叫、来源怎么停与起,各有直测;要真能「坏着开机 → 经面板的设置口存对 →
  * 当场起来」,还得 `engines.registerSource` 把读口与通知口接上、设置路由把 `bilibili` 键认成集成的补丁(配置仓全量图里
- * 这个键一直在),入口把登录检查的口递给 `compose.ts`。剪断任何一处,零件测试全绿而这条红。
+ * 这个键一直在)。剪断任何一处,零件测试全绿而这条红。
  *
  * 走真入口、真 `compose.ts`、真登记表、真来源与真动态引擎(没有订阅,不起 cron、不连网);坏文件怎么摆照
  * `extension-broken-settings-boot-e2e.test.ts`:先空启动一趟让数据代就位,再改写在用那一代里的设置文件,再起第二趟。
- * 入口那一行 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 也在这里钉着:用的是真登录系统,探的是
- * `LoginFlow.prototype.setHealthCheckMs`,把入口那一行剪成空操作,「间隔按盘上的值挂上」几条都红(心跳本身不会真探活)。
+ * 来源 `start` 里把登录检查的间隔经登录系统挂上,也在这里钉着:用的是真登录系统,探的是
+ * `LoginFlow.prototype.setHealthCheckMs`,把 `bilibili/source.ts` 里那一跳剪成空操作,「间隔按盘上的值挂上」几条都红(心跳本身不会真探活)。
  * 它证明不了的:「没有私聊」在 `source-settings.test.ts` 钉(问题条目不带 notify)。
  */
 

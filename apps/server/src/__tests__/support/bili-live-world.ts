@@ -35,6 +35,10 @@ import {
 import { vi } from "vite-plus/test";
 import { z } from "zod";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
+import {
+	fakeLoginDeps,
+	fakeLoginSystem,
+} from "../../bilibili/__tests__/support/fake-login-system.js";
 import type { Api } from "../../bilibili/api/index.js";
 import { encodePacket, WsOp } from "../../bilibili/live/protocol/codec.js";
 import { createBiliSource } from "../../bilibili/source.js";
@@ -460,12 +464,11 @@ export async function bootBiliLiveWorld(
 			put: async () => ok({ ref: FETCHED_IMAGE_REF }),
 		},
 	});
+	// 登录那一套换成假系统(调用方的 `vi.mock("../bilibili/auth/index.js")` 从 `deps.context` 取它);假 `api` / 登录口照旧。
+	const login = fakeLoginSystem({ api: api as unknown as Api, auth: sourceAuth });
 	const source = createBiliSource({
-		api: api as unknown as Api,
+		...fakeLoginDeps(login, serviceCtx.forSubsystem("bilibili", "bilibili").logger),
 		setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
-		auth: sourceAuth,
-		logger: serviceCtx.forSubsystem("bilibili", "bilibili").logger,
-		loginCheck: { setHealthCheckMs: () => {} },
 		locale: fixedLocale(),
 		liveContext: serviceCtx.forSubsystem("live", "bilibili"),
 	});

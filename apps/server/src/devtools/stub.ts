@@ -1,4 +1,3 @@
-import type { OverridableApi } from "./api-overrides.js";
 import type { CreateDevtoolsInput, Devtools } from "./index.js";
 
 /**
@@ -9,13 +8,8 @@ import type { CreateDevtoolsInput, Devtools } from "./index.js";
  * 这段代码。devtools 只在 tsx 直跑源码时存在,那时这个桩不参与。
  *
  * 导出与真的那份**同名同形**,index.ts 那边一行不用改:`createDevtools` 恒回 null
- * (登记回调一次都不会被调),`overridableApi` 原样透传(盖不上任何方法)。类型从别处拿的都是 `import type`,
- * 擦掉之后不会把真模块牵进来。
+ * (登记回调一次都不会被调)。类型从别处拿的都是 `import type`,擦掉之后不会把真模块牵进来。
  */
 export function createDevtools(_input: CreateDevtoolsInput): Devtools | null {
 	return null;
-}
-
-export function overridableApi<T extends object>(real: T): OverridableApi<T> {
-	return { api: real, override() {}, clear() {}, clearAll() {} };
 }

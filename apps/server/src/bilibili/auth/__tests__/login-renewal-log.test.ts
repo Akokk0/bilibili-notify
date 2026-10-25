@@ -21,16 +21,7 @@ import { readIntegrationSecretsFile } from "../../../integration-store/files.js"
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
 import type { BiliContext } from "../../context.js";
-import {
-	type CreateAuthSystemOptions,
-	createAuthSystem as createAuthSystemWith,
-} from "../index.js";
-import { testAuthDeps } from "./support/auth-deps.js";
-
-/** 测试里不关心配置仓与图库:统一补上替身。 */
-const createAuthSystem = (
-	o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages" | "problems" | "settingsOf">,
-) => createAuthSystemWith({ ...testAuthDeps(), ...o });
+import { startAuthSystem } from "./support/auth-deps.js";
 
 interface RefreshCallbacks {
 	onCookiesRefreshed?: () => Promise<void> | void;
@@ -101,7 +92,7 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 			logger: ctx.logger,
 			redactor: createValueRedactor(),
 		});
-		const auth = await createAuthSystem({
+		const auth = await startAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: ctx,
 			integrationStore,

@@ -20,16 +20,7 @@ import { inertTransitImages } from "../../../__tests__/support/integration-io.js
 import { createSecretStore } from "../../../config/secret-store.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import { createValueRedactor } from "../../../logs/value-redactor.js";
-import {
-	type CreateAuthSystemOptions,
-	createAuthSystem as createAuthSystemWith,
-} from "../index.js";
-import { testAuthDeps } from "./support/auth-deps.js";
-
-/** 测试里不关心配置仓与图库:统一补上替身。 */
-const createAuthSystem = (
-	o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages" | "problems" | "settingsOf">,
-) => createAuthSystemWith({ ...testAuthDeps(), ...o });
+import { startAuthSystem } from "./support/auth-deps.js";
 
 // 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
 vi.mock("../login-flow.js", () => ({
@@ -96,7 +87,7 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 			logger: ctx.logger,
 			redactor: createValueRedactor(),
 		});
-		const auth = await createAuthSystem({
+		const auth = await startAuthSystem({
 			transitImages: inertTransitImages,
 			serviceCtx: ctx,
 			integrationStore,

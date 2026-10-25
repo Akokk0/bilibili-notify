@@ -26,6 +26,12 @@ import {
 	bootBiliLiveWorld,
 } from "./support/bili-live-world.js";
 
+// 登录那一套换成假系统(世界里 `createBiliSource` 的 `deps.context` 带着它,见 `support/bili-live-world.ts`):
+// 这批钉的是直播链路,登录的真实现在 `auth/__tests__` 与 `compose.test.ts` 钉着。
+vi.mock("../bilibili/auth/index.js", () => ({
+	createAuthSystem: (o: { context: { login: unknown } }) => o.context.login,
+}));
+
 type World = Awaited<ReturnType<typeof bootBiliLiveWorld>>;
 type ViewerChange = {
 	subscriptionId: string;
