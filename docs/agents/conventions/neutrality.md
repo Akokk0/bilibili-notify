@@ -76,7 +76,7 @@ if (adapter.capabilities.atAll) addAtAll(msg);
 | 静态扫描 | `.platform` 决定棘轮 | 核心读 `.platform` 做决定。🔗 3a-41 已开：`scripts/__tests__/platform-decisions.test.mjs`，平台值流到比字面量、`switch`、查表、喂函数、在平台值上调任何方法这几种会分叉的位置才算，`platform ?? x` / `platform || x` 这类带兜底的也看穿，两个平台值比相等（平台对平台，两边都得是从对象上读出来的）与问有没有不算；面板另记一张表；已知会漏过去与会误中的写法列在守卫文件头，判据不再逐个改 | 3a 棘轮开，3b 末清零 |
 | 静态扫描 | 事件载荷 | 总线载荷类型递归检查：不许有 `uid` 键、`Bili*` 类型，平台原始值不许以裸 `string` 进载荷 | 1④ |
 | 对拍 | 守卫 21b | 测试 compose 里登记一个假来源与 `AiToolProvider`，断言内容。🔗 3a-42 已落（10-12）：`apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`，夹具 `apps/server/src/__tests__/support/in-process-source.ts`（假来源键 `acme.inprocess`，经真入口与真 `compose.ts`，与真 B 站来源并排在册）。接口上今天没有的成员列在同一个文件的「这版不开」名单里（`PARITY_ROWS` 里 `checked: false` 的行，每行必须写等哪一期与理由）；`AiToolProvider` 的登记与撤销已转成 P42。当前 `PARITY_ROWS` 共 50 行（P01–P42 对拍，另 8 行不开）。**给 `Source` / `SourceContext` / `SourceDescriptor` / `SourceAuth` 加一个成员，那个文件类型检查就过不去，必须来补一行（指向管着它的对拍行）**。夹具不许 import `bilibili/`、不许写 B 站的键常量与字面量，有一条用例钉着 | 3a 检查点验收 |
-| 对拍 | 守卫 21a、推送守卫③ | 假源拓展经契约 v3、假适配器逐成员走一遍 | 3b |
+| 对拍 | 守卫 21a、推送守卫③ | 假源拓展经契约 v3、假适配器逐成员走一遍。🔗 3b-46 已落（10-25）：两道同住 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts`，装仓里 `extensions/fake-source/` 的构建产物（假适配器是它的推送口 `src/adapter.ts`），开机后才拨开、经公开口驱动、零外连。六张行表共 47 行（`Source`、清单订阅段、拓展来源上下文、`PlatformAdapter`、清单推送段、适配器上下文），每行写走通 / 另一份 e2e 管着 / 不开（带理由与证据）/ 宿主填。**给这六样里任何一样加一个成员，那个文件类型检查就过不去，必须来补一行**；开放的来源成员要与 `extensions/extension-source.ts` 的 `SOURCE_DEF_MEMBERS` 对得上 | 3b |
 
 词表抓不到语义后门（比如照搬 `video | lottery` 图标枚举，一个 B 站词都没有），只有对拍够得着。
 

@@ -100,7 +100,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 ### 清单 `contributes.subscription`（决策 5 / 16 / 51）
 
-schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v3 开得了。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例）。
+schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v3 开得了。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
 
 - 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译；面板第 4 期才画）、`postNoun?`（「作品」；不给时面板的特性标签叫「动态」，核心拼 AI 提示词时叫「作品」—— 提示词那一处原先也叫「动态」，3a-42 改了）、`creatorNoun?`（平台管创作者叫什么）、`externalIdNoun?`（平台管外部 id 叫什么）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；面板拓展支先用通用提示，按它拼句随第 4 期）。
 - `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。这一版还不收 `featureHints?`，随第 4 期读者一起收。
