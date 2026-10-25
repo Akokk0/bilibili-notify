@@ -13,7 +13,7 @@
 | 项 | 1.0 |
 | --- | --- |
 | 契约版本 | v3 |
-| 宿主认的最低版本 | 3 —— v1、v2 的退路删掉（`legacy-v1.ts` 连同过时注释一起删）。🔗 现状（3b-03，10-13）：第 1 版的退路已删，第 1 版清单现在被判「版本太旧、不兼容」；最低版本眼下是 2，抬到 3 在 3b-44 |
+| 宿主认的最低版本 | 3 —— v1、v2 的退路删掉（`legacy-v1.ts` 连同过时注释一起删）。🔗 现状（3b-03，10-13）：第 1 版的退路已删，第 1 版清单现在被判「版本太旧、不兼容」；最低版本眼下是 2，抬到 3 在 3b-44 🔗 现状（3b-44，10-25）：`EXTENSION_API_RANGE` 已是 `{ min: 3, current: 3 }`，第 1、2 版清单都判「版本太旧、不兼容」 |
 | v2 拓展 | 装不上：按现成机制不加载、说清楚原因（「这个拓展是给旧契约写的，请更新」），不会加载后再炸；数据迁移时照拷，列进升级后的首访页，给一键更新 |
 | 以后加口 | 清单里多一个可选键，不抬大版本 |
 
@@ -71,7 +71,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | 成员 | 变化 | 规矩 |
 | --- | --- | --- |
 | `subscriptions()` / `onSubscriptionsChanged` | 改形状（`SourceContext` 特有） | 条目从 `{ id, externalId, enabled }` 改成 `SourceSubscriptionView { externalId, features }`：只列启用中的订阅、不带订阅 id，`features` 是这个人开着的特性；同一人遗留的重复订阅合成一条、`features` 取并集。拓展只上报名单里的人；开着哪些特性决定它干哪些活，关着的就不查 |
-| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（`adapter`、`configSchema`、`listBots`） | 改 | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`，成员见「推送：平台适配器」 |
+| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（`adapter`、`configSchema`、`listBots`） | 改 | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`，成员见「推送：平台适配器」 🔗 现状（3b-44，10-25）：三个新名已落；`PlatformAdapterDef` 已摊平、自带 `settingsSchema`，`PlatformAdapterHandle` 只剩 `dispose()` |
 | `settings` 交回的 `ExtensionSettings<T>`（`get(): T \| undefined`） | 并成一个 | 删掉，与内置集成共用 `SettingsReader<T>`（`get()` 回 `Result<{ settings: T }>`、不抛）。读不懂的拓展仍不起（ADR-0019 决策 36 不变） |
 | `publishStatus`（v1 老口）、`LegacyPushExtensionDef` | 删 | 随 v1 退路一起删。🔗 现状（3b-03，10-13）：`publishStatus` 与 `LegacyPushExtensionDef` 已随第 1 版删掉 |
 | 积木 `qrLogin` | 删 | 从没实现；登录走系统账号（`SourceAuth`） |
@@ -173,13 +173,13 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 ### 拓展这一侧交什么
 
-宿主把拓展的订阅源转成一份 `Source`。注册口沿用 `registerSource(def: SourceDef): SourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。🔗 现状（3b-42，10-24）：已落成 `registerSource` / `SourceDef` / `SourceHandle { dispose }`；`ctx.registerSource` 同步交回把手，登记在后台异步完成，装载器等 `start` 落定，`start` 抛了就是这次加载失败。推送口的改名在 3b-44，两侧名字到那时才对称。
+宿主把拓展的订阅源转成一份 `Source`。注册口沿用 `registerSource(def: SourceDef): SourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。🔗 现状（3b-42，10-24）：已落成 `registerSource` / `SourceDef` / `SourceHandle { dispose }`；`ctx.registerSource` 同步交回把手，登记在后台异步完成，装载器等 `start` 落定，`start` 抛了就是这次加载失败。推送口的改名在 3b-44，两侧名字到那时才对称。🔗 现状（3b-44，10-25）：推送口的新名已落，两侧的 def 与只带 `dispose()` 的把手已对称。
 
 | `Source` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
 | `start(ctx)` / `stop()` | def 里的 `start` 拿到 `SourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
-| `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了 |
-| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`）<br>🔗 现状（3b-42，10-24）：面板 `GET /api/ext/:id/lookup` 已改经引擎的 `searchCreators`，与取资料、查直播状态共用同一来源的串行闸；回应是 `CreatorCandidateView`，头像读回 data URL，路径不改名（N01 第 4 期）。拓展没实现 `fetchProfile` 时宿主补一个回 `unsupported` 的 |
+| `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了<br>🔗 现状（3b-44，10-25）：订阅段已摊平，清单与视图已收 `supportedFeatures`、`searchAccepts`、`creatorNoun`、`icon`；`featureHints` 按主人 10-25 定随第 4 期读者一起收 |
+| `searchCreators` | 现有的解析门 `lookup(query, signal)` 改名，返回结果形状（失败不再靠抛）；`lookupPlaceholder` 删掉，改成声明式的 `searchAccepts`（提示句由核心拼）。候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`（原 `{ id, avatar: data URL, fans }`），最多 10 个 | 定了（按 id 取人用 `fetchProfile`，没有 `lookupCreator`）<br>🔗 现状（3b-42，10-24）：面板 `GET /api/ext/:id/lookup` 已改经引擎的 `searchCreators`，与取资料、查直播状态共用同一来源的串行闸；回应是 `CreatorCandidateView`，头像读回 data URL，路径不改名（N01 第 4 期）。拓展没实现 `fetchProfile` 时宿主补一个回 `unsupported` 的<br>🔗 现状（3b-44，10-25）：`lookupPlaceholder` 已删，`searchAccepts` 已随清单与视图下发；拓展支先统一用 `GENERIC_LOOKUP_PLACEHOLDER`，按它拼提示句的叫法函数随第 4 期 |
 | `fetchProfile` | 可选；不实现就靠主动报资料。返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；整轮要不要刹车由拓展自己定 | 宿主适配补齐 |
 | `fetchLiveStatus`、`fetchPreview`、`health`、`auth` | 可选；`health()` 只交一行字 `{ summary }`，给健康卡与 `status` 指令 | 形状同中立接口<br>🔗 现状（3b-42，10-24）：主人 10-24 定 `auth` 这一版不对拓展开（类型排除、运行时带了也不认），等第一个要登录的拓展；`health()` 当外来数据收：只收同步对象的字符串 `summary`，空白收成一行，按 `SOURCE_HEALTH_SUMMARY_MAX_CHARS`（120）截断且不劈代理对，坏了就显示「状态读不到」，同一原因只 warn 一次 |
 | `liveInteractions` | 不开 | 这版不开醒目留言、会员、特别弹幕、特别进场等事件 |
@@ -187,7 +187,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 描述符里 09-28 新加的几格：
 
 - `externalIdNoun?`：这个平台管外部 id 叫什么（B 站「UID」）。身份标签写「{externalIdNoun} {externalId}」，没声明就写「{label} · {externalId}」；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：宿主已认这一格并用于服务端显示；拓展清单仍不收。🔗 10-23（主人定）：清单收这一格随 3b-42 一起做。🔗 现状（3b-42，10-24）：拓展清单已收这一格，与 `postNoun` 同尺子；`postNoun` / `externalIdNoun` 纯空白都拒。
-- `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。
+- `icon?`：平台图标，与推送侧 `PlatformDescriptor` 对齐。清单里没有图库，这一格在清单里怎么写，施工时定。🔗 现状（3b-44，10-25）：清单里写图片 data URL，判据与设置项选项图标相同（`EXTENSION_IMAGE_DATA_URL_RE` / `EXTENSION_IMAGE_MAX_CHARS`），不可译；面板本片不读
 - `externalIdRegex?`（10-15 主人定，3b-58）：外部 id 长什么样，写正则的源码字符串，宿主按整串匹配，核新建订阅的外部 id 与特别关注名单的 id。可以不写（只做中立校验）。写在清单订阅源那一段的 `display` 里（与 `postNoun` 同处）。编译不过（或疑似灾难性回溯）的正则让清单校验不过、拓展装不上；正则源码最长 200 字（同内容过滤的 `blockRegex`），被核的值最长 256 字（同外部 id 本身的上限）。
 - `creatorNoun` 与 contract 里的叫法函数 3b 造（面板上的叫法仍第 4 期）。🔗 现状（3b-35，10-24）：描述符的 `creatorNoun` 与叫法函数已落，清单收 `creatorNoun` 仍随清单那几片。
 - `searchCreators` 3b 造、B 站实现、只给 AI 的搜人工具用；`GET /api/sources/:sourceKey/creators` 与面板仍第 4 期。
@@ -198,7 +198,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 没有「新建 / 启用订阅」钩子：拓展要在订阅变化时做事，一律用 `onSubscriptionsChanged`，自己对比新旧名单。
 
-**能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。🔗 现状（3b-42，10-24）：清单 v2 先按 `events` 推出周期直播，声明了却没实现 `fetchLiveStatus` 就在登记时拒、这次加载失败；推送侧的周期计时与 `skipped` 出入已删（主人 10-24 R3）；3b-44 换读 `supportedFeatures`。
+**能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。🔗 现状（3b-42，10-24）：清单 v2 先按 `events` 推出周期直播，声明了却没实现 `fetchLiveStatus` 就在登记时拒、这次加载失败；推送侧的周期计时与 `skipped` 出入已删（主人 10-24 R3）；3b-44 换读 `supportedFeatures`。🔗 现状（3b-44，10-25）：清单已换读 `supportedFeatures`，声明 `liveStreaming` 必须同时声明开播与下播；没声明 `liveStreaming` 的不再有周期直播。
 
 `signal` 的规矩照旧：超时（`TimeoutError`，宿主已回了面板「超时」）与拓展停用 / 收摊（`AbortError`）两种时候中止，手上的请求要接着它停。
 
@@ -295,7 +295,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 
 | 成员 | 必备？ | 这一版对拓展 | 要点 |
 | --- | --- | --- | --- |
-| `descriptor { label, shortLabel, color, icon, settingsFields }` | 是 | 开（条件显示与键值表字段不开） | 静态，写在清单 `contributes.push`，见下。第 3 版契约的适配器**不带描述这一格**：适配器自己的「脸」这一期不造，拓展的描述以清单为准、由宿主填；内置的随第 4 期 |
+| `descriptor { label, shortLabel, color, icon, settingsFields }` | 是 | 开（条件显示与键值表字段不开） | 静态，写在清单 `contributes.push`，见下。第 3 版契约的适配器**不带描述这一格**：适配器自己的「脸」这一期不造，拓展的描述以清单为准、由宿主填；内置的随第 4 期 🔗 现状（3b-44，10-25）：清单段已形成 `PlatformAdapterDescriptor` 下发；适配器 def 带 `descriptor` 会在登记时被拒 |
 | `settingsSchema` | 是 | 开 | 连接设置的 zod；与清单的 `settingsFields` 逐格对表（键、类型、默认值），对不上登记当场抛 |
 | `start(ctx)` / `stop()` | 是 | 开 | 取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到 |
 | `send` | 是 | 开 | 返回结果形状、带标准码；只有 `TargetDispatcher` 调它 |
@@ -308,7 +308,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 
 对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
 
-**清单 `contributes.push`**：键名不变，装适配器的描述 —— 原来 `display` 里的 `label`、`shortLabel`、`color`，加上 `icon`；连接配置项 `connection.fields` 改叫 `settingsFields`。`display` 这一层要不要照订阅口摊平、`icon` 在清单里怎么写（清单里没有图库），施工时定。
+**清单 `contributes.push`**：键名不变，装适配器的描述 —— 原来 `display` 里的 `label`、`shortLabel`、`color`，加上 `icon`；连接配置项 `connection.fields` 改叫 `settingsFields`。`display` 这一层要不要照订阅口摊平、`icon` 在清单里怎么写（清单里没有图库），施工时定。🔗 现状（3b-44，10-25）：现已摊平成 `{ label, shortLabel, color, icon?, settingsFields? }`，`display` 已删，`settingsFields` 缺省按空表读。
 
 ### 新建连接
 
@@ -420,7 +420,7 @@ interface ExtensionI18n {
 | 市场挑版 `pickPerId` | ✅ 3b-04：改成「在当前 BN 装得了的版本里取最高」 |
 | 索引规则 | ✅ 3b-04：从「每个 id 一条正式 + 一条预发布」放宽为「每个 id 每个契约版本各留最新一条正式 + 一条预发布」，过渡期里旧契约与新契约的 BN 各挑自己装得了的 |
 | 官方索引地址 | ✅ 3b-04：新版 BN 读新的滚动 release `extensions` 上的 `marketplace.json`，用 1.0 的新规矩；旧 release `extension-marketplace` 上那份留给 0.12、从此不动。新 release 不播种，第一次真发拓展时才出现。格式不顺手改：`issuedAt` 仍是秒（进门换 ISO）、`apiVersion` / `apiRevision` 不改名。索引里给人看的字这一期不分语言 |
-| 桥 | 与 1.0 同批迁到 v3；1.0 alpha 期间 v3 的桥只进预发布档 |
+| 桥 | 与 1.0 同批迁到 v3；1.0 alpha 期间 v3 的桥只进预发布档 🔗 现状（3b-44，10-25）：桥已迁到第 3 版，版本为 `0.1.0-alpha.1`、只进预发布档；第一次真发仍由主人打 tag |
 | 已装的 v2 拓展 | 迁移时拷进新数据代；升级后第一次打开面板的询问页列出「因契约版本不收」的拓展，给一键更新；**不在开机时静默替换** |
 | 桥协议线上帧 | alpha 期间不改，1.0.0 之前按两步改完；在那之前内部改名只改到桥的适配器，有快照守卫钉着。要改的见下面的两步改名清单 |
 | 桥回执 `result` 帧的 `err` | 进门翻成 `{ code: "unknown", message }`：冻结格式说不清原因，不猜标准码。🔗 现状（3b-44，10-25）：BN 已认 1.5 的 `code` / `message` / `upstreamCode`，只带 `err` 的旧回执仍翻成 `unknown`。 |

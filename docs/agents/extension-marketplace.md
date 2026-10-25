@@ -28,7 +28,7 @@
       "name": "抖音订阅",
       "description": "一句话",
       "version": "1.0.0",          // semver(不收 `+build` 元数据);每个 id 每档、每个契约版本只列最新那一版
-      "apiVersion": 2,             // 落在 BN 的 EXTENSION_API_RANGE 区间里才能装
+      "apiVersion": 3,             // 落在 BN 的 EXTENSION_API_RANGE 区间里才能装
       "apiRevision": 0,            // 可选,缺省 0:要的契约小号(抄清单里那格),比 BN 的高也装不了(ADR-0019 决策 59)
       "prerelease": false,         // 可选:true 的那条是预发布档,只有预发布渠道挑得到;必须与版本号对得上(带 - 的才标 true)
       "package": { "url": "https://…/douyin-1.0.0.zip", "sha256": "<64 位小写 hex>", "size": 123456 },

@@ -452,7 +452,7 @@ type PostPushPart = "post" | "post-images";
 | --- | --- |
 | `post` / `atAllPost` | 作品推送与它的 @全体 |
 | `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
-| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关（⑬d 已落后半：拓展声明了开播与下播两种事件，`featuresForEvents`，面板与服务端同一份；`has.liveStatus` 那半随 3a） |
+| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关（⑬d 已落后半：拓展声明了开播与下播两种事件，`featuresForEvents`，面板与服务端同一份；`has.liveStatus` 那半随 3a） 🔗 现状（3b-44，10-25）：这条规则已挪进清单校验，`liveStreaming` 必须同时声明开播与下播，且声明它才要求 `fetchLiveStatus`；`featuresForEvents` 已删 |
 | `liveEnd` | 下播 |
 | `membership` / `superchat` / `viewerChat` / `viewerEnter` | 核心中立特性；`viewerChat` / `viewerEnter` 是「特别关注名单上的人发言 / 进场」（原 `specialDanmaku` / `specialUserEnter`），触发看名单条目的 `features` |
 | `wordcloud` / `liveSummary` | 下播的附加项（`EXTRA_KEYS`，来源用 `supportedExtras` 声明），不单独成历史行 |
@@ -730,8 +730,8 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | --- | --- |
 | 暂定名 `fetchLiveStreaming` | `fetchLiveStatus` |
 | `SubscriptionSource`（09-27 定过把 `Source` 改成它，10-10 主人改回）；拓展契约的 `registerSubscriptionSource` / `SubscriptionSourceDef` / `SubscriptionSourceHandle` | `Source`；`registerSource` / `SourceDef` / `SourceHandle`（契约这三个随第 3 版在 3b 改，在那之前代码里仍是旧名）🔗 现状（3b-42，10-24）：三个新名已落成 |
-| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（字段 `adapter`、`configSchema`）；`AdapterRegistry`；适配器的 `reconcile` / `dispose` | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`（内置与拓展同一个：适配器 + 描述 + `settingsSchema`）；`PlatformAdapterRegistry`；`start(ctx)` / `stop()`（登记即 `start`）。`PlatformAdapter` 这个名字不变，目录仍叫 `platforms/`，登记表与分发挪到 `push/`；拆出来的两半 `PlatformDialect` / `Connector` 的新名施工时定 |
-| 拓展的 `ExtensionPushView`（`display` + `connectionFields`）；v1 的 `configFields` | `PlatformAdapterDescriptor { label, shortLabel, color, icon, settingsFields }`；`settingsFields`（v1 退路删掉） |
+| `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（字段 `adapter`、`configSchema`）；`AdapterRegistry`；适配器的 `reconcile` / `dispose` | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`（内置与拓展同一个：适配器 + 描述 + `settingsSchema`）；`PlatformAdapterRegistry`；`start(ctx)` / `stop()`（登记即 `start`）。`PlatformAdapter` 这个名字不变，目录仍叫 `platforms/`，登记表与分发挪到 `push/`；拆出来的两半 `PlatformDialect` / `Connector` 的新名施工时定 🔗 现状（3b-44，10-25）：新名字与 `PlatformAdapterRegistry` 已落，`PlatformAdapterDef` 已摊平并自带 `settingsSchema`，把手只剩 `dispose()`；桥从 `start(ctx)` 拿到的适配器上下文读自己的连接 |
+| 拓展的 `ExtensionPushView`（`display` + `connectionFields`）；v1 的 `configFields` | `PlatformAdapterDescriptor { label, shortLabel, color, icon, settingsFields }`；`settingsFields`（v1 退路删掉） 🔗 现状（3b-44，10-25）：wire 已改成摊平的 `PlatformAdapterDescriptor`，`ExtensionPushView`、`ExtensionDisplay` 与 `connectionFields` 已删 |
 | `CONNECTION_PLATFORMS` / `ConnectionPlatform`、`PLATFORM_REGISTRY` | 删掉：平台信息由适配器的候选给，连接上存 `platformSnapshot` |
 | `NotificationSink`、多路分发 `MultiplexSink` | `TargetDispatcher` |
 | `BilibiliPush` / `bilibili-push.ts` / `BilibiliPushOptions` | `PushRouter` / `push-router.ts` / `PushRouterOptions` |
@@ -762,14 +762,14 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | --- | --- |
 | `Identity` 判别联合 `{ kind, uid }` / `{ kind, extensionId, externalId }`；`SourceKey` 的 `ext:<id>`；`sourceKeyOf` | `{ sourceKey, externalId }`；`bilibili` 或拓展 id，不加前缀；读 `identity.sourceKey` |
 | `SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription`；`EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX` | 删掉，按 `sourceKey` 判；`EXTERNAL_ID_MAX` |
-| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchAccepts`（提示句改由核心拼）；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 |
+| 拓展契约 `lookup` / `lookupPlaceholder`；草案的 `lookupCreator`；`/api/subs/search` 与 `/api/subs/lookup`；候选 `ExtensionSubscriptionCandidate{ id, avatar, fans }`、面板 `UpProfileLookup` / `SearchResponse` | `searchCreators`（返回结果形状）/ `searchAccepts`（提示句改由核心拼）；删掉（用 `fetchProfile`）；`GET /api/sources/:sourceKey/creators?q=`；`CreatorCandidate`，面板本地类型删掉 🔗 现状（3b-44，10-25）：`lookupPlaceholder` 已删，`searchAccepts` 已随清单与视图下发；面板拓展支先统一用通用提示，按 `searchAccepts` 拼句的叫法函数随第 4 期 |
 | `fetchProfile` 查无此人回 `null` | 返回结果形状：`not_found` 记成 `creator_not_found` 问题，其余当暂时失败 |
 | `ExtensionOwnSubscription{ id, externalId, enabled }` | `SourceSubscriptionView{ externalId, features, monitorsLive }`（从订阅现算、给来源看的只读形状；只列启用中，同一人的 `monitorsLive` 取或） |
 | `reportSubscriptionsChanged` | 删掉（关注同步是 BN → B 站单向） |
 | `PostEvent.id`；`reportPost(externalId, SubscriptionPost)`、`reportLiveStart` / `End` / `Status`；上报种类五种 | `postId`；`reportPost(externalId, PostReport)`、`reportLive(externalId, LiveSignalReport)`；收成 `post` / `live` / `profile` |
 | `ctx.report("problem" / "problem-resolved")` 与 `level`；`SubscriptionState.problem` | `reportProblem` / `resolveProblem` 与 `notify?: boolean`；问题表 `Problem`，全在内存，订阅运行态不再存 |
 | `SourceAuth.secrets{ export, import, redactPatterns }` | 删掉；临时凭据用 `ctx.redact(value)` |
-| `descriptor.features` / `extras`；清单 `display{ … }` + `events` | `supportedFeatures` / `supportedExtras`；摊平成 descriptor 同名字段，删 `SUBSCRIPTION_EVENT_FEATURES` |
+| `descriptor.features` / `extras`；清单 `display{ … }` + `events` | `supportedFeatures` / `supportedExtras`；摊平成 descriptor 同名字段，删 `SUBSCRIPTION_EVENT_FEATURES` 🔗 现状（3b-44，10-25）：清单订阅段与 wire 视图都已摊平并改读 `supportedFeatures`，`display`、`events` 与事件对照表已删 |
 | `ExtensionDTO.reportProblems` 这一族 | `InstalledExtensionView.reportDiscrepancies` / `ReportDiscrepancyView` / `extension-report-discrepancies-changed`（上报出入：整条拒、丢了几格、这一轮没推都记在这；10-09 主人把原定的 `Rejection` 换成 `Discrepancy`，因为「被拒」只对其中一种；每个集成一张，与问题表分开） |
 | `LiveStatusResult.state`、`"ended"`、`reason` | 结果形状：成功 `ok: true` + `kind`（`"live"` / `"offline"`），失败 `ok: false` + `code` + `message` |
 | `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`（只交 `SourceHealth { summary }` 一行字）；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
@@ -788,7 +788,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `retryOf` / `HistoryRetryMessage`（人工重推） | `repushOf` / `HistoryRepushMessage` |
 | 连接 `testStatus`（`ConnectionTestStatus`）；`ProbeResult.ok: boolean \| null`；目标 `testStatus.lastCheckedAt`（只在通断翻转时写） | `probeState`（对象，类型 `ConnectionProbeState`）；三态 `status`；`reachability.changedAt` |
 | 连接的 `kind`（`direct` / `extension`）、`connector`、`extensionId`；连接的 `config` | 删掉，分发键并成 `adapterKey`；`settings`（OneBot 的 `transport` 留在里面，是它私有的设置） |
-| `OnebotConnectionConfig` / `WebhookConnectionConfig` / `QQOfficialConnectionConfig`、桥的 `BridgeConnectionConfig` | `…ConnectionSettings`，随各自的适配器搬出 `internal` |
+| `OnebotConnectionConfig` / `WebhookConnectionConfig` / `QQOfficialConnectionConfig`、桥的 `BridgeConnectionConfig` | `…ConnectionSettings`，随各自的适配器搬出 `internal` 🔗 现状（3b-44，10-25）：桥的旧名已改成 `BridgeConnectionSettings` |
 | endpoint 目标的 `scope: "channel"`；目标的 `platform` | 删掉（通用 webhook 对外 JSON 照写常量）；删掉（经 `connectionId` 从连接取） |
 | `PlatformDescriptor.tint`、`inbound`、`atAll`、`connectors` | `color`；挪成适配器的运行期能力；删掉 |
 | `POST /api/connections/:id/test`；`/api/push/test`；`TestResponse` 与 `TestPushResponse` | `/probe`；`/api/targets/:id/test`；合成一个 |
@@ -848,7 +848,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `StorageManager` / `StorageManagerOptions` | 删掉（B 站 cookie 改走 `ctx.secrets`） |
 | `SubscriptionStore`（`packages/subscription`，不存盘的内存镜像）；`WsTicketStore`（内存里的一次性票）、桥的 `BridgeBlobStore`（内存里取过即焚的图） | `SubscriptionCache`；`WsTicketIssuer`；`BridgeBlobCache` |
 | `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>` / `createRegistry`，住 `integrations/registry.ts`（3a-08 已落；`entries()` 等第一个调用方出现再补，见 [architecture.md](./architecture.md)「接口族与登记表」） |
-| 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 |
+| 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 🔗 现状（3b-44，10-25）：`ExtensionSubscriptionView` 已摊平并改读 `supportedFeatures`，名字暂留；并进 `SourceDescriptor` 再删除这一步随第 4 期的 `/api/sources` |
 | 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`（⑭c 已删：只剩自定义 UA 一格，随 UA 一起删了）、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
 | 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |
 | dynamic 的 `DynamicEngineConfig`、`DynamicFilterConfig`、`WorkDeliveryConfig`、`DeliverWorkArgs`、`WorkDeliveryOutcome`、`DynamicTimelineManager`、`SubManagerView` | 随包消失：`deliverPost` 的 `…Options`、`PostSettings`；过滤进核心的 `ContentFilters` |

@@ -67,7 +67,7 @@
 
 **把推送钉到一条订阅上**的两件也在 `engines.ts`：`boundPostPush(push, subscriptionId)` 回 `deliverPost` 的依赖 `push` 要的那个推送口（锚点 → `Push`，段 → 载荷、特性恒为 `post`）；`boundLivePush(push, subscriptionId)` 回 `pushLiveNotify` 要的 `LiveNotifySend`（特性键与 @全体 照 `livePushHead`）。B 站动态与拓展作品都经 `PostQueue` 的装配调 `boundPostPush`；B 站与拓展直播共用 `bindLivePush` / `sendFor(id)`。
 
-拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。事件种类到特性键的映射是 `SUBSCRIPTION_EVENT_FEATURES`（`packages/internal/src/constants.ts`：`post → post`、`liveStart → liveStart`、`liveEnd → liveEnd`）；拓展订阅能有哪些特性看 `featuresForEvents`（同文件）：照这张表映射，声明了开播与下播两种事件的再加一把 `liveStreaming`，面板与服务端用同一份。
+拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。拓展订阅能有哪些特性直接看清单与视图里的 `supportedFeatures`（`post` / `liveStart` / `liveStreaming` / `liveEnd`）；声明 `liveStreaming` 要同时声明开播与下播，面板与服务端用同一份。`SUBSCRIPTION_EVENT_FEATURES` / `featuresForEvents` 已删。
 
 ### ③ 路由与闸
 

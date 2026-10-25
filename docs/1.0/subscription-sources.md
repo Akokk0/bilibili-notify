@@ -60,7 +60,7 @@ interface SourceDescriptor {
   creatorNoun?: string;            // 这个平台管创作者叫什么；缺省「创作者」，B 站「UP主」
   externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」（🔗 10-23（3b-24）已落，宿主已认；拓展清单仍未收）
   externalIdRegex?: string;        // 外部 id 长什么样（正则源码，整串匹配）；核心核订阅身份与特别关注名单的 id；B 站纯数字；不声明只做中立校验
-  searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」
+  searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」 🔗 现状（3b-44，10-25）：拓展清单已收这一格并随视图下发；面板拓展支暂用通用提示，叫法函数随第 4 期
   supportedFeatures: FeatureKey[]; // 支持哪些特性（开关、规则节按它铺）；订阅上「开没开」才叫 features
   supportedExtras?: ExtraKey[];    // 支持哪些附加项
   featureHints?: Partial<Record<FeatureKey, string>>;   // 特性开关下的小字；唯一允许写自由文字的一格
@@ -82,7 +82,7 @@ interface MembershipTier {
 - `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。🔗 现状（3a-42，10-12）：模板变量 `{postNoun}` 3a 还没做（`posts/deliver-post.ts` 里套作品文案只传 `{name}`）；核心里读来源上报的 `postNoun` 的是拼 AI 提示词那一处（同一个文件），它的缺省原先在代码里还是「动态」，3a-42 对拍查出后改成「作品」，与这里一致（没声明 `postNoun` 的拓展的提示词因此变了，B 站来源自己声明「动态」不变）。面板自己的特性标签另走拓展清单的 `display.postNoun`，这一片没动。🔗 现状（3b-21，2026-10-19）：3b-21 已做（默认作品文案用 `{postNoun}`，来源没声明叫法填「作品」）。🔗 现状（3b-12，10-24）：默认文案与会员体系默认句按当前语言取出厂，设置只存主人改过的文字；改回默认或编辑到与当前默认一字不差都会删键。换语言时没改过的立即跟新语言，不写盘；订阅覆盖仍是主人写的字。「默认文案有更新」只对改过的文字成立：面板输入框显示存的字或当前语言默认，恢复默认时同时清掉账本那一条。
 - 特别关注这项设置只在 `supportedFeatures` 含 `viewerChat` 或 `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`）时露出。
 - `creatorNoun` 与 contract 里的叫法函数这一期（3b）造，提示词里的 `{creatorNoun}` / `{postNoun}` / `{sources}` 按 ADR-0030 决策 3 全做；面板上的叫法仍第 4 期。🔗 现状（3b-35，10-24）：`SourceDescriptor.creatorNoun` 与 `sourceNounsOf` 已落成；中性词按读者递，给人看的取字典 `nouns.*`，给模型的取 `PROMPT_NEUTRAL_NOUNS`，服务端按来源键取叫法走 `sourceNounsFor`。
-- `liveStreaming` 开关只在 `has.liveStatus` 为真（来源提供了 `fetchLiveStatus`，宿主推算、随 `/api/sources` 下发），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd` 时显示。
+- `liveStreaming` 开关只在 `has.liveStatus` 为真（来源提供了 `fetchLiveStatus`，宿主推算、随 `/api/sources` 下发），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd` 时显示。🔗 现状（3b-44，10-25）：第 3 版清单要求声明 `liveStreaming` 时同时声明开播与下播；没声明它就不自动获得周期直播。
 
 ## 面板怎么读描述符
 

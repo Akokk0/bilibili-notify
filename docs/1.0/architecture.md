@@ -393,7 +393,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 17 | 集成不读写文件：`bilibili/` 与 `platforms/`（内置平台适配器也是集成，ADR-0025 决策 1）里出现 `fs`、`node:fs`、`fs/promises` 的 import 就红 |
 | 18 | 保留 id：`bilibili` 与内置平台适配器的键（`onebot`、`qq-official`、`webhook`）`ExtensionIdSchema` 拒收，同拒绝原型名的写法；另加 `core`、`image`、`ai`（核心自己的名字：日志等级的键，`core` 还是设置文件名），它们只在「拓展不许用的 id」那张表 `RESERVED_EXTENSION_IDS` 里，不进内置集成的键表 |
 | 19 | 主人目标必须是私聊目标：`master.targetId` 指向群目标时 schema 校验不过；面板选主人的下拉只列私聊目标。加固（随各项，ADR-0024 决策 14）：PATCH 把主人目标改成群目标直接拒收；`notifyMaster` 发送时复检，不是私聊就拒发（`invalid`） |
-| 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 |
+| 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 🔗 现状（3b-44，10-25）：清单一侧由 `packages/internal/src/schema/__tests__/extension-manifest.test.ts` 钉住取值范围、去重与周期直播要同时带开播和下播；登记一侧由 `apps/server/src/extensions/__tests__/register-source.test.ts` 钉住声明 `liveStreaming` 就必须实现 `fetchLiveStatus` |
 | 22 | 拓展不裸开定时器、不裸挂服务端：扫 `extensions/*/src`（不含测试），出现不经 ctx 的 `setTimeout` / `setInterval`、`createServer`、自己监听端口的 `WebSocketServer`（不带 `noServer`）就红；第三方拓展的打包产物不扫，库自己会用定时器（ADR-0012 决策 11） |
 
 - 守卫 13 的清单 3a-22-2 加了一条：连接改成 `adapterKey` / `settings` / `platformSnapshot`、`testStatus` 两处都不带过来（修订号 40）。
