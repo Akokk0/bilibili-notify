@@ -138,7 +138,7 @@ export default function ExtensionDetail() {
 	const staged = stagedFactsOf(ext);
 	const restart = listed.data?.restart;
 	// 按档位分,不按 id —— 认得某个具体拓展,就是「本体不认得拓展」那条的破口。
-	const declarative = ext.apiVersion === 2;
+	const declarative = ext.apiVersion !== undefined;
 	/*
 	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。看清单里有没有设置项
 	 * (决策 25)。所以一个既没面板又没文档的拓展这里一档都没有,正文整块不画。

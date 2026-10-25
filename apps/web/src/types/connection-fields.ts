@@ -390,7 +390,7 @@ function webhookFields(connection: NewConnection): ConnectionField[] {
 }
 
 /**
- * 拓展连接的表单:拓展交上来的连接配置项(`ExtensionDTO.push.connectionFields`,ADR-0012
+ * 拓展连接的表单:拓展交上来的连接配置项(`ExtensionDTO.push.settingsFields`,ADR-0012
  * 决策 33)一栏翻一栏。字段身份带着拓展 id(`ext.<id>.<key>`),与内置平台的字段不撞。
  * 值就落在 `settings[key]`,这一层不认得任何具体拓展。
  *

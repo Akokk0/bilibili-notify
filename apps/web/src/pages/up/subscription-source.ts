@@ -26,9 +26,11 @@ export type SourceExtension = ExtensionDTO & {
 	subscription: NonNullable<ExtensionDTO["subscription"]>;
 };
 
-// 这几种事件对应 BN 的哪几把特性(决策 4 那张表,外加同时声明开播与下播才有的周期「正在直播」),顺序跟
-// `FEATURE_KEYS` 走 —— 清单里怎么排都不影响弹层上的次序。规则住 internal,服务端与面板用同一份。
-export { featuresForEvents };
+/** 视图声明的特性,顺序跟 `FEATURE_KEYS` 走 —— 清单里怎么排都不影响弹层上的次序。周期「正在直播」服务端已经推好。 */
+function sortedFeaturesOf(view: SourceExtension["subscription"]): FeatureKey[] {
+	const declared: readonly FeatureKey[] = view.supportedFeatures;
+	return FEATURE_KEYS.filter((key) => declared.includes(key));
+}
 
 /** 拓展订阅最多能有的那几把特性 —— 认不出是哪个源报什么的时候(没装 / 清单读不出)按它画。 */
 const EXTENSION_FEATURES_AT_MOST = featuresForEvents(
@@ -48,7 +50,7 @@ export function runningSources(extensions: readonly ExtensionDTO[] | undefined):
 /** 一条拓展订阅是哪个平台的、那个平台能报什么、此刻在不在。 */
 export interface SubscriptionPlatform {
 	/**
-	 * 平台的名字:清单里的 `display.label`;清单没交订阅那一口就退拓展的名字;没装、或拓展列表
+	 * 平台的名字:清单里的 `label`;清单没交订阅那一口就退拓展的名字;没装、或拓展列表
 	 * 没回来时拿不到名字,写拓展 id(决策 10)。
 	 */
 	label: string;
@@ -77,11 +79,11 @@ export function subscriptionPlatformOf(
 	const ext = extensions?.find((one) => one.id === sub.extensionId);
 	const view = ext?.subscription;
 	return {
-		label: view?.display.label ?? ext?.name ?? sub.extensionId,
-		shortLabel: view?.display.shortLabel,
-		color: view?.display.color,
-		postNoun: view?.display.postNoun,
-		features: view ? featuresForEvents(view.events) : EXTENSION_FEATURES_AT_MOST,
+		label: view?.label ?? ext?.name ?? sub.extensionId,
+		shortLabel: view?.shortLabel,
+		color: view?.color,
+		postNoun: view?.postNoun,
+		features: view ? sortedFeaturesOf(view) : EXTENSION_FEATURES_AT_MOST,
 		absent: extensions === undefined ? undefined : !(ext && isExtensionPresent(ext)),
 	};
 }

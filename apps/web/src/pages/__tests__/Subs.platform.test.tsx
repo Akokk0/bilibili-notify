@@ -39,17 +39,15 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 		dir: "/data/extensions/douyin",
 		enabled: true,
 		state: "running",
-		apiVersion: 2,
+		apiVersion: 3,
 		provides: ["subscription"],
 		subscription: {
-			display: {
-				label: "抖音",
-				shortLabel: "抖音",
-				color: "#161823",
-				postNoun: "作品",
-				lookupPlaceholder: "粘主页链接",
-			},
-			events: ["post", "liveStart"],
+			label: "抖音",
+			shortLabel: "抖音",
+			color: "#161823",
+			postNoun: "作品",
+			lookupPlaceholder: "粘主页链接",
+			supportedFeatures: ["post", "liveStart"],
 		},
 		...over,
 	};
@@ -167,8 +165,10 @@ describe("选了订阅源", () => {
 	it("清单没给提示 → 通用说法", async () => {
 		const plain = source();
 		plain.subscription = {
-			display: { label: "抖音", shortLabel: "抖音", color: "#161823" },
-			events: ["post"],
+			label: "抖音",
+			shortLabel: "抖音",
+			color: "#161823",
+			supportedFeatures: ["post"],
 		};
 		extensions = Promise.resolve({ extensions: [plain] });
 		await openNewDialog();
@@ -202,8 +202,10 @@ describe("选了订阅源", () => {
 					id: "kuaishou",
 					name: "快手订阅",
 					subscription: {
-						display: { label: "快手", shortLabel: "快手", color: "#ff4906" },
-						events: ["post"],
+						label: "快手",
+						shortLabel: "快手",
+						color: "#ff4906",
+						supportedFeatures: ["post"],
 					},
 				}),
 			],

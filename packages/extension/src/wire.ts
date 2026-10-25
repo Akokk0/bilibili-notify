@@ -86,64 +86,56 @@ interface ExtensionFieldBase {
 }
 
 /**
- * 一个口在界面上的样子(ADR-0012 决策 46 那三格)。写在清单的 `contributes.<口>.display`。
+ * 一个拓展**推送源那一口**给面板的东西 —— 平台适配器的描述(ADR-0012 决策 33 / 46 那三格外观,
+ * 加要主人填的那几栏):推送目标页照它画新建连接那一排的名字、连接卡上那张脸、以及连接配置项。
  *
- * **就这三格**:作用域、地址名词、能不能 @全体这些都是**bot 所在平台**的事(一条拓展连接
+ * **就这几格**:作用域、地址名词、能不能 @全体这些都是**bot 所在平台**的事(一条拓展连接
  * 就是一个借来的 bot,决策 45),从 bot 报的 `platform` 查注册表,不从这儿来。
+ *
+ * 写在清单里,拓展停着也有(ADR-0019 决策 41)。**有它不等于拓展在场** —— 要在场的看它的运行状态。
  */
-export interface ExtensionDisplay {
+export interface PlatformAdapterDescriptor {
 	/** 全名:新建连接那一排、「经 xxx 借来的」那句。 */
 	label: string;
 	/** 短名:卡片上那个方章。 */
 	shortLabel: string;
 	/** 方章的底色,hex。 */
 	color: string;
+	/** 要主人填的连接配置项;连接是挑出来的那种拓展就是空表。 */
+	settingsFields: readonly ExtensionScalarField[];
 }
 
 /**
- * 一个拓展**推送源那一口**给面板的东西:推送目标页照它画新建连接那一排的名字、连接卡上
- * 那张脸、以及要主人填的那几栏(ADR-0012 决策 33 / 46)。
+ * 一个拓展**订阅源那一口**给面板的东西:平台选择那一排的名字与脸、输入框的提示、配置弹层列
+ * 哪几种特性。来自清单,**拓展停着也有**(ADR-0019 决策 41)—— 停用的拓展名下的订阅照样画得出
+ * 是哪个平台的。**有它不等于拓展在场**:要它在场的(解析门)另看运行状态。
  *
- * 两样一起交、一起有,缺一样面板就画不全。写在清单里,拓展停着也有(ADR-0019 决策 41)。
- * **有它不等于拓展在场** —— 要在场的看它的运行状态。
- */
-export interface ExtensionPushView {
-	display: ExtensionDisplay;
-	connectionFields: readonly ExtensionScalarField[];
-}
-
-/**
- * 订阅源那一口在界面上的样子 —— 清单 `contributes.subscription.display`。比推送源那三格多两格
- * 可选的叫法。
- *
- * 🔴 这是清单那份 zod 的**手写镜像**,两份由宿主那头的类型断言双向严格相等地钉住
+ * 🔴 这是清单订阅段那份 zod 的**手写镜像**(去掉装包那头的 `cardSkin`),由宿主那头的类型断言钉住
  * (`apps/server/src/extensions/subscription-shape-pin.ts`)。
  */
-export interface ExtensionSubscriptionDisplay extends ExtensionDisplay {
+export interface ExtensionSubscriptionView {
+	/** 全名:平台选择那一排的名字。 */
+	label: string;
+	/** 短名:徽章上那个方章。不给就用 `label`。 */
+	shortLabel?: string;
+	/** 方章的底色,hex。不给就退「认不出」那档灰。 */
+	color?: string;
 	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
 	postNoun?: string;
 	/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
 	externalIdNoun?: string;
-	/** 新建订阅时输入框里那句提示(抖音:粘主页链接)。不给就用通用说法(ADR-0019 决策 51)。 */
-	lookupPlaceholder?: string;
 	/** 外部 id 长什么样:正则源码,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立校验。编译不过的让清单读不了。 */
 	externalIdRegex?: string;
-}
-
-/**
- * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到自己的特性。配置弹层只列
- * 这个源报的那几种。镜像 `@bilibili-notify/internal` 的 `SubscriptionEventKind`,同上钉住。
- */
-export type ExtensionSubscriptionEventKind = "post" | "liveStart" | "liveEnd";
-
-/**
- * 一个拓展**订阅源那一口**给面板的东西:平台选择那一排的名字与脸、输入框的提示、配置弹层列
- * 哪几种事件。来自清单,**拓展停着也有**(ADR-0019 决策 41)—— 停用的拓展名下的订阅照样画得出
- * 是哪个平台的。**有它不等于拓展在场**:要它在场的(解析门)另看运行状态。
- */
-export interface ExtensionSubscriptionView {
-	display: ExtensionSubscriptionDisplay;
-	events: readonly ExtensionSubscriptionEventKind[];
+	/** 新建订阅时输入框里那句提示(抖音:粘主页链接)。不给就用通用说法(ADR-0019 决策 51)。 */
+	lookupPlaceholder?: string;
+	/**
+	 * 这个源声明的特性(ADR-0019 决策 4 / 5),配置弹层只列这几种;顺序不保证,面板照 `FEATURE_KEYS` 排。
+	 * `liveStreaming`(周期「正在直播」)是**同时有开播与下播**才有的(⑬d),这个推法由服务端算一次。
+	 *
+	 * 🔴 手写的字面量联合 —— 镜像 `@bilibili-notify/internal` 里 `FeatureKey` 的子集(这个入口不许
+	 * import internal)。
+	 */
+	supportedFeatures: readonly ("post" | "liveStart" | "liveStreaming" | "liveEnd")[];
 }
 
 /**

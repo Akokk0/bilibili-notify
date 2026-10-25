@@ -7,12 +7,11 @@
  * - 只露通用的几节:动态过滤(关键词 / 正则 / 白名单,**四个类型开关也露**:过滤吃 `Post`、类型开关对所有来源生效)、动态消息 /
  *   直播消息的文案、消息版式、推送时段(免扰;报直播时再加推送频率那几格,SC / 上舰阈值不露)、
  *   AI 人格。动态图集(决策 72)、直播总结、上舰提示、特别关注不露。
- * - 源的清单里没声明的事件对应的节也不露(只报作品就不露直播消息)。
+ * - 源没声明的特性对应的节也不露(只报作品就不露直播消息)。
  * - 存得进、清得掉:发出去的 patch 只带 overrides(拓展订阅没有特别关注那一格)。
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import type { SubscriptionEventKind } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -29,18 +28,24 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-function source(events: SubscriptionEventKind[]): ExtensionDTO {
+/** 视图声明的特性(周期「正在直播」服务端已经推好)。 */
+type Declared = NonNullable<ExtensionDTO["subscription"]>["supportedFeatures"];
+
+function source(supportedFeatures: Declared): ExtensionDTO {
 	return {
 		id: "douyin",
 		name: "抖音订阅",
 		dir: "/data/extensions/douyin",
 		enabled: true,
 		state: "running",
-		apiVersion: 2,
+		apiVersion: 3,
 		provides: ["subscription"],
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖音", color: "#161823", postNoun: "作品" },
-			events,
+			label: "抖音",
+			shortLabel: "抖音",
+			color: "#161823",
+			postNoun: "作品",
+			supportedFeatures,
 		},
 	};
 }
@@ -62,7 +67,7 @@ function globals(): GlobalConfig {
 }
 
 let subs: Subscription[];
-let events: SubscriptionEventKind[];
+let features: Declared;
 
 function resetStore(): void {
 	useDraftStore.setState({
@@ -77,12 +82,12 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	subs = [BILI, extSub()];
-	events = ["post"];
+	features = ["post"];
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
 		if (url === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (url === "/api/subscriptions") return Promise.resolve(subs);
-		if (url === "/api/ext") return Promise.resolve({ extensions: [source(events)] });
+		if (url === "/api/ext") return Promise.resolve({ extensions: [source(features)] });
 		return Promise.resolve(globals());
 	});
 	vi.mocked(api.patch).mockResolvedValue({});
@@ -161,7 +166,7 @@ describe("高级规则 × 拓展订阅:露哪几节", () => {
 	});
 
 	it("报作品也报直播:多出直播消息;直播阈值、直播总结、上舰提示、特别关注照样不露", async () => {
-		events = ["post", "liveStart", "liveEnd"];
+		features = ["post", "liveStart", "liveStreaming", "liveEnd"];
 		const { container } = renderRules();
 		await addExtensionTab();
 		await waitFor(() =>
@@ -177,7 +182,7 @@ describe("高级规则 × 拓展订阅:露哪几节", () => {
 	});
 
 	it("只报直播:动态过滤与动态消息不露", async () => {
-		events = ["liveStart", "liveEnd"];
+		features = ["liveStart", "liveStreaming", "liveEnd"];
 		const { container } = renderRules();
 		await addExtensionTab();
 		await waitFor(() =>
@@ -244,7 +249,7 @@ describe("高级规则 × 拓展订阅:编辑器里的格", () => {
 	});
 
 	it("推送时段(报直播):免扰 + 推送频率那几格,仍然没有 SC / 上舰阈值", async () => {
-		events = ["post", "liveStart", "liveEnd"];
+		features = ["post", "liveStart", "liveStreaming", "liveEnd"];
 		const { container } = renderRules();
 		await addExtensionTab();
 		await waitFor(() => expect(railLabels(container)).toContain("直播消息"));

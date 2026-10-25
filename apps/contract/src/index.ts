@@ -18,22 +18,19 @@
 export type {
 	ExtensionBlock,
 	ExtensionButton,
-	ExtensionDisplay,
 	ExtensionField,
 	ExtensionItemView,
 	ExtensionListField,
-	ExtensionPushView,
 	ExtensionRichRun,
 	ExtensionRichText,
 	ExtensionScalarField,
-	ExtensionSubscriptionDisplay,
-	ExtensionSubscriptionEventKind,
 	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionView,
 	ExtensionViewSummary,
+	PlatformAdapterDescriptor,
 } from "@bilibili-notify/extension/wire";
 export * from "./card-skin";
 export * from "./devtools";

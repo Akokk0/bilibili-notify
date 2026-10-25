@@ -469,7 +469,7 @@ function ConnectionEditorModal({
 										}}
 									>
 										<PlatformIcon platform={ext.id} size={13} />
-										{ext.push.display.label}
+										{ext.push.label}
 									</ToneChip>
 								);
 							})}
@@ -490,7 +490,7 @@ function ConnectionEditorModal({
 				{!builtin ? (
 					<SectionBox
 						title="哪个 bot"
-						subtitle={`经 ${extension?.push.display.label ?? value.adapterKey} 借来的,连接就是它`}
+						subtitle={`经 ${extension?.push.label ?? value.adapterKey} 借来的,连接就是它`}
 						accent={tint}
 					>
 						{extension && isExtensionPresent(extension) ? (
@@ -507,12 +507,12 @@ function ConnectionEditorModal({
 				) : null}
 
 				{/* 拓展的字段表可以是空的(桥):连接是挑出来的,没有一栏是人填的,那一节就不画。 */}
-				{!builtin && (extension?.push.connectionFields.length ?? 0) === 0 ? null : (
+				{!builtin && (extension?.push.settingsFields.length ?? 0) === 0 ? null : (
 					<SectionBox
 						title="连接参数"
 						subtitle={
 							!builtin
-								? `${extension?.push.display.label ?? value.adapterKey} 的接入参数`
+								? `${extension?.push.label ?? value.adapterKey} 的接入参数`
 								: value.platform === "onebot"
 									? "OneBot v11 连接信息"
 									: value.platform === "qq-official"
@@ -782,7 +782,7 @@ function absentExtensionOf(
 	if (isBuiltinConnection(connection) || extensions === undefined) return undefined;
 	const ext = extensions.find((one) => one.id === connection.adapterKey);
 	if (ext && isExtensionPresent(ext)) return undefined;
-	return ext?.push?.display.label ?? ext?.name ?? connection.adapterKey;
+	return ext?.push?.label ?? ext?.name ?? connection.adapterKey;
 }
 
 /** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的连接配置项翻。 */
@@ -793,7 +793,7 @@ function editorFields(
 	// 整格是遮挡的没有表单可画,也不许往里加键(见 connection-credentials.ts)。
 	if (settingsAreMasked(connection)) return [];
 	if (!isBuiltinConnection(connection)) {
-		return extension ? extensionConnectionFields(connection, extension.push.connectionFields) : [];
+		return extension ? extensionConnectionFields(connection, extension.push.settingsFields) : [];
 	}
 	return connectionFields(connection);
 }

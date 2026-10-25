@@ -1,15 +1,15 @@
 /**
  * 订阅源拓展在订阅页上的样子(ADR-0019 决策 4 / 5 / 10 / 41)。
  *
- * - 事件 → 特性走 internal 那一张表:`post → post`、`liveStart → liveStart`、`liveEnd → liveEnd`,
- *   顺序跟 FEATURE_KEYS 走,不跟清单里写的顺序走;同时声明了开播与下播,再多一把周期「正在直播」(`liveStreaming`)。
+ * - 特性照视图的 `supportedFeatures` 列(周期「正在直播」服务端已经推好),顺序跟 FEATURE_KEYS 走,
+ *   不跟清单里写的顺序走。
  * - 平台选择只列**在跑**的订阅源;外观照清单给、停着也有,但「在不在场」另看 `state`。
  * - 拓展列表没回来时不下「没开」的结论;没装时拿不到名字就写拓展 id。
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { featuresForEvents, runningSources, subscriptionPlatformOf } from "../subscription-source";
+import { runningSources, subscriptionPlatformOf } from "../subscription-source";
 
 function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 	return {
@@ -18,11 +18,14 @@ function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 		dir: "/data/extensions/douyin",
 		enabled: true,
 		state: "running",
-		apiVersion: 2,
+		apiVersion: 3,
 		provides: ["subscription"],
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖", color: "#161823", postNoun: "作品" },
-			events: ["liveStart", "post"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#161823",
+			postNoun: "作品",
+			supportedFeatures: ["post", "liveStart"],
 		},
 		...over,
 	};
@@ -32,25 +35,6 @@ function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 function sub(extensionId = "douyin"): { extensionId: string } {
 	return { extensionId };
 }
-
-describe("事件 → 特性", () => {
-	it("按决策 4 那张表映射,顺序跟 FEATURE_KEYS 走", () => {
-		expect(featuresForEvents(["liveEnd", "post"])).toEqual(["post", "liveEnd"]);
-		expect(featuresForEvents(["liveStart"])).toEqual(["liveStart"]);
-		expect(featuresForEvents(["post", "liveStart", "liveEnd"])).toEqual([
-			"post",
-			"liveStart",
-			"liveStreaming",
-			"liveEnd",
-		]);
-	});
-
-	it("周期「正在直播」:同时声明开播与下播才有,只声明其中一种没有", () => {
-		expect(featuresForEvents(["liveStart", "liveEnd"])).toContain("liveStreaming");
-		expect(featuresForEvents(["liveStart", "post"])).not.toContain("liveStreaming");
-		expect(featuresForEvents(["liveEnd"])).not.toContain("liveStreaming");
-	});
-});
 
 describe("平台选择那一排", () => {
 	it("只列在跑、且开了订阅那一口的拓展", () => {
@@ -80,17 +64,37 @@ describe("一条拓展订阅的平台", () => {
 		expect(p.features).toEqual(["post", "liveStart"]);
 	});
 
-	it("清单声明了开播与下播:这个平台多一把「正在直播」;只声明开播的不多", () => {
+	it("视图声明了 liveStreaming:这个平台多一把「正在直播」;没声明的不多", () => {
 		const both = subscriptionPlatformOf(sub(), [
 			ext({
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#161823" },
-					events: ["post", "liveStart", "liveEnd"],
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#161823",
+					supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 				},
 			}),
 		]);
 		expect(both.features).toEqual(["post", "liveStart", "liveStreaming", "liveEnd"]);
 		expect(subscriptionPlatformOf(sub(), [ext()]).features).not.toContain("liveStreaming");
+	});
+
+	it("特性顺序跟 FEATURE_KEYS 走,不跟视图里写的顺序走", () => {
+		const p = subscriptionPlatformOf(sub(), [
+			ext({
+				subscription: { label: "抖音", supportedFeatures: ["liveEnd", "post", "liveStart"] },
+			}),
+		]);
+		expect(p.features).toEqual(["post", "liveStart", "liveEnd"]);
+	});
+
+	it("视图没给 shortLabel / color:照样画得出,徽章退回 label 与认不出那档灰", () => {
+		const p = subscriptionPlatformOf(sub(), [
+			ext({ subscription: { label: "抖音", supportedFeatures: ["post"] } }),
+		]);
+		expect(p.label).toBe("抖音");
+		expect(p.shortLabel).toBeUndefined();
+		expect(p.color).toBeUndefined();
 	});
 
 	it("停着:外观照样有(决策 41),但算不在场", () => {

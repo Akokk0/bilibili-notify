@@ -900,11 +900,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				const entry = loadedExtensions?.list().find((one) => one.id === id);
 				if (!entry) return undefined;
 				const view = entry.manifest && manifestSubscriptionView(entry.manifest);
-				return view?.display.label ?? entryIdentity(entry)?.name;
+				return view?.label ?? entryIdentity(entry)?.name;
 			},
 			extensionPostNoun: (id) => {
 				const entry = loadedExtensions?.list().find((one) => one.id === id);
-				return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
+				return entry?.manifest && manifestSubscriptionView(entry.manifest)?.postNoun;
 			},
 			// 来源经 `ctx.reportProfile` 报的资料的收口(递给来源上下文的 `profiles`)。
 			profileReports: runtime.profileReports,

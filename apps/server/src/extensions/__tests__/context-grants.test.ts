@@ -351,7 +351,7 @@ describe("按清单注册平台适配器", () => {
 		const h = harness({ manifest });
 		h.ctx.registerPlatformAdapter(v2Def());
 		// 面板拿到的外观与字段表就是清单这一份(路由下发走的同一个函数)。
-		expect(manifestPushView(manifest)).toEqual({ display: DISPLAY, connectionFields: V2_FIELDS });
+		expect(manifestPushView(manifest)).toEqual({ ...DISPLAY, settingsFields: V2_FIELDS });
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
@@ -360,7 +360,7 @@ describe("按清单注册平台适配器", () => {
 		const h = harness({ manifest });
 		h.ctx.registerPlatformAdapter(v2Def());
 		expect(h.adapters.list()).toHaveLength(1);
-		expect(manifestPushView(manifest)?.connectionFields).toEqual([]);
+		expect(manifestPushView(manifest)?.settingsFields).toEqual([]);
 	});
 
 	it("代码里还交外观 / 字段表(按第 1 版的写法)—— 抛:两份声明会打架,以清单为准", () => {
@@ -869,7 +869,7 @@ describe("注册平台适配器", () => {
 	 * (`platform-meta.tsx` 里就躺过这么一行,躺了整整一片)。
 	 */
 	it("清单里的外观面板读得到 —— 要拿它画那张脸", () => {
-		expect(manifestPushView(PUSH_MANIFEST)?.display).toMatchObject({ shortLabel: "桥" });
+		expect(manifestPushView(PUSH_MANIFEST)).toMatchObject({ shortLabel: "桥" });
 	});
 
 	it("没开推送源那一口的清单没有外观,而不是一份空壳;没注册的拓展登记表里也没有它", () => {
@@ -886,7 +886,7 @@ describe("注册平台适配器", () => {
 	 * 从没拿到过,于是推送目标页建不出拓展连接。同一族的洞:收下就扔,门禁全绿。
 	 */
 	it("清单里的字段表面板读得到 —— 照它画新建连接的表单", () => {
-		expect(manifestPushView(PUSH_MANIFEST)?.connectionFields.map((f) => f.key)).toEqual([
+		expect(manifestPushView(PUSH_MANIFEST)?.settingsFields.map((f) => f.key)).toEqual([
 			"token",
 			"bridgeKind",
 		]);

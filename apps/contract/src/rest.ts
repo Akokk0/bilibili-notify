@@ -6,8 +6,8 @@
 
 import type {
 	ExtensionField,
-	ExtensionPushView,
 	ExtensionSubscriptionView,
+	PlatformAdapterDescriptor,
 } from "@bilibili-notify/extension/wire";
 import type {
 	AddressCandidate,
@@ -141,15 +141,15 @@ export interface ExtensionDTO {
 	 */
 	apiVersion?: number;
 	/**
-	 * 推送源那一口:外观 + 连接配置项(ADR-0012 决策 33 / 46)。面板拿外观给这一档画脸(推送目标卡上
-	 * 的短名与标识色,不许再手抄一份),照连接配置项画「新建连接」的表单。
+	 * 推送源那一口:平台适配器的描述 —— 外观 + 连接配置项(ADR-0012 决策 33 / 46)。面板拿外观给这一档画脸
+	 * (推送目标卡上的短名与标识色,不许再手抄一份),照 `settingsFields` 画「新建连接」的表单。
 	 *
 	 * **照清单给,没在跑的也有**(ADR-0019 决策 41)—— 拓展停了,它借来的连接照样画得出脸。
 	 * 所以「有这一格」**不等于**拓展在场:要它在场的(新建它的连接、挑 bot)另看 `state`。
 	 */
-	push?: ExtensionPushView;
+	push?: PlatformAdapterDescriptor;
 	/**
-	 * 订阅源那一口:外观(平台选择那一排的名字与脸、输入框的提示)+ 会报哪几种事件(配置弹层只列
+	 * 订阅源那一口:外观(平台选择那一排的名字与脸、输入框的提示)+ 声明的特性(配置弹层只列
 	 * 这几种)。**照清单给,没在跑的也有**(ADR-0019 决策 41)—— 拓展停了,它名下的订阅照样画得出
 	 * 是哪个平台的。「有这一格」**不等于**解析门问得到 —— 要它在场的另看 `state`。
 	 */

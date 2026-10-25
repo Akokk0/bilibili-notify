@@ -137,7 +137,7 @@ function ExtensionCard({
 }) {
 	const meta = EXTENSION_STATE_META[ext.state];
 	const pushes = (ext.provides ?? []).includes("push");
-	const declarative = ext.apiVersion === 2;
+	const declarative = ext.apiVersion !== undefined;
 	return (
 		<GlassBox
 			className="h-full"

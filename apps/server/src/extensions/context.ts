@@ -2,10 +2,10 @@ import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
 import type {
 	ExtensionContext,
 	ExtensionI18n,
-	ExtensionPushView,
 	ExtensionSubscriptionView,
 	ExtensionView,
 	PlatformAdapterDef,
+	PlatformAdapterDescriptor,
 	PlatformAdapterHandle,
 	SettingsReader,
 	SourceDef,
@@ -15,6 +15,7 @@ import {
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
+	type FeatureKey,
 	fail,
 	featuresForEvents,
 	type Identity,
@@ -61,8 +62,8 @@ import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view
  */
 export type {
 	ExtensionContext,
-	ExtensionPushView,
 	PlatformAdapterDef,
+	PlatformAdapterDescriptor,
 	PlatformAdapterHandle,
 	SourceDef,
 	SourceHandle,
@@ -138,13 +139,22 @@ const STATUS_KEY = "status";
  * 注册推送源时与拓展列表下发时**共用这一份翻译** —— 停着的拓展列表照清单给,跑着的照注册时收下的给,
  * 两处各写一遍的话,哪天清单多一格,两边就说成两种样子。
  */
-export function manifestPushView(manifest: ExtensionManifest): ExtensionPushView | undefined {
+export function manifestPushView(
+	manifest: ExtensionManifest,
+): PlatformAdapterDescriptor | undefined {
 	const push = manifest.contributes.push;
-	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
+	return push && { ...push.display, settingsFields: push.connection?.fields ?? [] };
+}
+
+/** `featuresForEvents` 返回整把特性键;清单的事件只推得出这四种,收窄给视图的类型(第 3 版清单换成直接声明)。 */
+function isViewFeature(
+	key: FeatureKey,
+): key is ExtensionSubscriptionView["supportedFeatures"][number] {
+	return key === "post" || key === "liveStart" || key === "liveStreaming" || key === "liveEnd";
 }
 
 /**
- * 清单里订阅源那一口给面板的东西:外观 + 会报哪几种事件(ADR-0019 决策 41)。没开这一口就是
+ * 清单里订阅源那一口给面板的东西:外观 + 声明的特性(ADR-0019 决策 41;周期「正在直播」在这里推一次)。没开这一口就是
  * `undefined`。
  *
  * 只从清单来、不问代码:停用的拓展名下的订阅照样画得出是哪个平台的(决策 10 的置灰)。自带皮肤的
@@ -154,7 +164,12 @@ export function manifestSubscriptionView(
 	manifest: ExtensionManifest,
 ): ExtensionSubscriptionView | undefined {
 	const subscription = manifest.contributes.subscription;
-	return subscription && { display: subscription.display, events: subscription.events };
+	return (
+		subscription && {
+			...subscription.display,
+			supportedFeatures: featuresForEvents(subscription.events).filter(isViewFeature),
+		}
+	);
 }
 
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
@@ -747,7 +762,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 两份 settings 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			// 连接一律是从候选里挑出来的(settings 由拓展交),所以按「挑出来的」对表。
-			assertConfigFieldsMatchSchema(id, def.settingsSchema, view.connectionFields, {
+			assertConfigFieldsMatchSchema(id, def.settingsSchema, view.settingsFields, {
 				picked: true,
 			});
 			adapterRegistered = true;

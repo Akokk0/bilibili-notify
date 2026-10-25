@@ -303,7 +303,7 @@ function NewSubDialog({
 	const busy = lookup.isPending || search.isPending || extLookup.isPending || pending;
 	const queryDisabled = !trimmed || busy;
 	const queryLabel = source ? "查找" : mode === "uid" ? "查询" : "搜索";
-	const display = source?.subscription.display;
+	const sourceView = source?.subscription;
 	const totalPages = searchData
 		? Math.max(1, Math.ceil(searchData.total / Math.max(1, searchData.pageSize)))
 		: 1;
@@ -315,8 +315,8 @@ function NewSubDialog({
 			bodyClassName="p-5"
 			title="添加 UP 主"
 			description={
-				display
-					? `输入的内容原样交给${display.label}拓展去认,选定后进入配置表单`
+				sourceView
+					? `输入的内容原样交给${sourceView.label}拓展去认,选定后进入配置表单`
 					: "输入纯数字走 UID 精确查询; 输入名字走搜索,选定后进入配置表单"
 			}
 		>
@@ -333,11 +333,11 @@ function NewSubDialog({
 					{sources.map((one) => (
 						<ToneChip
 							key={one.id}
-							tone={one.subscription.display.color}
+							tone={one.subscription.color}
 							active={source?.id === one.id}
 							onClick={() => switchPlatform(one.id)}
 						>
-							{one.subscription.display.label}
+							{one.subscription.label}
 						</ToneChip>
 					))}
 				</div>
@@ -349,8 +349,8 @@ function NewSubDialog({
 					value={input}
 					onChange={handleInputChange}
 					placeholder={
-						display
-							? (display.lookupPlaceholder ?? GENERIC_LOOKUP_PLACEHOLDER)
+						sourceView
+							? (sourceView.lookupPlaceholder ?? GENERIC_LOOKUP_PLACEHOLDER)
 							: "搜索 UID 或 UP 主名字"
 					}
 					icon={<Icon.user size={14} />}

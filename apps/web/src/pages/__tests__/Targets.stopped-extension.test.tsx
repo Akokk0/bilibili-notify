@@ -31,12 +31,14 @@ const STOPPED_BRIDGE: ExtensionsResponse["extensions"][number] = {
 	name: "机器人框架桥接",
 	enabled: false,
 	state: "disabled",
-	apiVersion: 2,
+	apiVersion: 3,
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
 	push: {
-		display: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" },
-		connectionFields: [],
+		label: "机器人框架桥接",
+		shortLabel: "桥接",
+		color: "#a855f7",
+		settingsFields: [],
 	},
 };
 
@@ -148,8 +150,8 @@ describe("停着时改一条它的连接", () => {
 		const dialog = await openEditor({
 			...STOPPED_BRIDGE,
 			push: {
-				display: STOPPED_BRIDGE.push?.display,
-				connectionFields: [{ type: "string", key: "room", label: "房间" }],
+				...STOPPED_BRIDGE.push,
+				settingsFields: [{ type: "string", key: "room", label: "房间" }],
 			},
 		});
 		expect(within(dialog).getByText("连接参数")).toBeTruthy();

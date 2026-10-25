@@ -43,11 +43,14 @@ function douyin(): ExtensionDTO {
 		dir: "/data/extensions/douyin",
 		enabled: true,
 		state: "running",
-		apiVersion: 2,
+		apiVersion: 3,
 		provides: ["subscription"],
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖音", color: "#161823", postNoun: "作品" },
-			events: ["post", "liveStart"],
+			label: "抖音",
+			shortLabel: "抖音",
+			color: "#161823",
+			postNoun: "作品",
+			supportedFeatures: ["post", "liveStart"],
 		},
 	};
 }

@@ -6,7 +6,7 @@
  * - 开关与别的特性一样只写 `overrides.features.liveStreaming`,与继承的基线相同就不落 override;
  * - **基线是真正的全局值**:旧的「周期间隔大于 0」迁成全局的 `features.liveStreaming = true`,而面板没有
  *   全局特性开关的界面 —— 弹层得拿调用方给的全局特性当基线,否则继承着全局「开」的订阅显示成关、也关不掉;
- * - 拓展订阅:声明了开播与下播两种事件的源才有这一行(规则在 internal 的 `featuresForEvents`)。
+ * - 拓展订阅:视图声明了 `liveStreaming` 的源才有这一行(开播 + 下播才声明的规则服务端算一次)。
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
@@ -110,7 +110,7 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 			dir: "/data/extensions/douyin",
 			enabled: true,
 			state: "running",
-			apiVersion: 2,
+			apiVersion: 3,
 			provides: ["subscription"],
 			subscription,
 		};
@@ -120,11 +120,13 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 		return makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" });
 	}
 
-	it("声明了开播与下播 → 露「直播中」(小字照样是那句)", () => {
+	it("视图声明了 liveStreaming → 露「直播中」(小字照样是那句)", () => {
 		const platform = subscriptionPlatformOf({ extensionId: "douyin" }, [
 			source({
-				display: { label: "抖音", shortLabel: "抖", color: "#161823" },
-				events: ["post", "liveStart", "liveEnd"],
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#161823",
+				supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 			}),
 		]);
 		renderDialog(extSub(), { platform });
@@ -132,11 +134,13 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 		expect(screen.getByText("开播后每隔几小时再提醒一次")).toBeTruthy();
 	});
 
-	it("只声明了开播 → 不露:没有下播事件收这一场,周期推送一开就没有尽头", () => {
+	it("只声明了开播、没有 liveStreaming → 不露:没有下播事件收这一场,周期推送一开就没有尽头", () => {
 		const platform = subscriptionPlatformOf({ extensionId: "douyin" }, [
 			source({
-				display: { label: "抖音", shortLabel: "抖", color: "#161823" },
-				events: ["post", "liveStart"],
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#161823",
+				supportedFeatures: ["post", "liveStart"],
 			}),
 		]);
 		renderDialog(extSub(), { platform });

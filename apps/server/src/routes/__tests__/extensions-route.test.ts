@@ -541,8 +541,8 @@ describe("GET /api/ext", () => {
 			await boot({ entries: [bridge, douyin] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "bridge")?.push).toEqual({
-			display,
-			connectionFields: fields,
+			...display,
+			settingsFields: fields,
 		});
 		expect(body.extensions.find((e) => e.id === "douyin")?.push).toBeUndefined();
 	});
@@ -594,10 +594,41 @@ describe("GET /api/ext", () => {
 			await boot({ entries: [douyin, bridge] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "douyin")?.subscription).toEqual({
-			display,
-			events: ["post", "liveStart"],
+			...display,
+			supportedFeatures: ["post", "liveStart"],
 		});
 		expect(body.extensions.find((e) => e.id === "bridge")?.subscription).toBeUndefined();
+	});
+
+	/** 周期「正在直播」的推法(开播 + 下播才有)在服务端算一次,面板直接照 `supportedFeatures` 列。 */
+	it("订阅源同时声明开播与下播 → supportedFeatures 多一把 liveStreaming,按特性次序", async () => {
+		const live: ExtensionEntry = {
+			id: "live",
+			dir: "/data/extensions/live",
+			state: "disabled",
+			manifest: {
+				id: "live",
+				name: "直播订阅",
+				description: "一句话说明",
+				version: "0.1.0",
+				apiVersion: 2,
+				contributes: {
+					subscription: {
+						display: { label: "某直播", shortLabel: "播", color: "#123456" },
+						events: ["liveEnd", "post", "liveStart"],
+					},
+				},
+			},
+		};
+		const body = (await (
+			await boot({ entries: [live] }).request("/")
+		).json()) as ExtensionsResponse;
+		expect(body.extensions[0]?.subscription?.supportedFeatures).toEqual([
+			"post",
+			"liveStart",
+			"liveStreaming",
+			"liveEnd",
+		]);
 	});
 
 	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */
@@ -620,7 +651,7 @@ describe("GET /api/ext", () => {
 		const body = (await (
 			await boot({ entries: [bridge] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push?.connectionFields).toEqual([]);
+		expect(body.extensions[0]?.push?.settingsFields).toEqual([]);
 	});
 
 	it("清单读不出来的那条没有推送源那一口", async () => {

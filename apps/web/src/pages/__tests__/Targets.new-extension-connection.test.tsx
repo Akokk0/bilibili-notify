@@ -33,13 +33,11 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
 	push: {
-		display: {
-			label: "机器人框架桥接",
-			shortLabel: "桥接",
-			color: "#a855f7",
-		},
+		label: "机器人框架桥接",
+		shortLabel: "桥接",
+		color: "#a855f7",
 		// 桥的连接配置项是空的:连接是挑出来的,没有一栏是人填的。
-		connectionFields: [],
+		settingsFields: [],
 	},
 };
 

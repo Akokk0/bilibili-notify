@@ -108,22 +108,19 @@ export { neutralPlatformDescriptor } from "@bilibili-notify/internal/platform-de
 export type {
 	ExtensionBlock,
 	ExtensionButton,
-	ExtensionDisplay,
 	ExtensionField,
 	ExtensionItemView,
 	ExtensionListField,
-	ExtensionPushView,
 	ExtensionRichRun,
 	ExtensionRichText,
 	ExtensionScalarField,
-	ExtensionSubscriptionDisplay,
-	ExtensionSubscriptionEventKind,
 	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,
 	ExtensionView,
 	ExtensionViewSummary,
+	PlatformAdapterDescriptor,
 } from "./wire";
 
 import type { IncomingMessage } from "node:http";

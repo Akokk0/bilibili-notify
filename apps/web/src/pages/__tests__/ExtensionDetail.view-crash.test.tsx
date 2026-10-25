@@ -53,7 +53,7 @@ const DOUYIN: ExtensionDTO = {
 	name: "抖音订阅",
 	description: "盯着抖音作者的新作品与开播。",
 	version: "0.1.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	provides: ["subscription"],
 	settings: {
 		fields: [{ key: "interval", type: "number", label: "检查间隔", min: 30, max: 600 }],

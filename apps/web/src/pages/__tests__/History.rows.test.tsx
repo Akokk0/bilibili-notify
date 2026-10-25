@@ -434,11 +434,13 @@ const DOUYIN = {
 	dir: "/data/extensions/douyin",
 	enabled: true,
 	state: "running",
-	apiVersion: 2,
+	apiVersion: 3,
 	provides: ["subscription"],
 	subscription: {
-		display: { label: "抖音", shortLabel: "抖", color: "#161823" },
-		events: ["post", "liveStart", "liveEnd"],
+		label: "抖音",
+		shortLabel: "抖",
+		color: "#161823",
+		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
 } as ExtensionDTO;
 

@@ -12,8 +12,7 @@
 import type {
 	CreatorCandidate,
 	CreatorProfileReport,
-	ExtensionSubscriptionDisplay,
-	ExtensionSubscriptionEventKind,
+	ExtensionSubscriptionView,
 	LiveDetails,
 	LiveSignalReport,
 	LiveStatusResult,
@@ -28,7 +27,6 @@ import type {
 	ExtensionManifestV2,
 	ExtensionPostReportSchema,
 	ExtensionSourceHealthSchema,
-	SubscriptionEventKind,
 } from "@bilibili-notify/internal";
 import type { z } from "zod";
 import type { Equals, Pinned } from "./view-shape-pin.js";
@@ -36,14 +34,33 @@ import type { Equals, Pinned } from "./view-shape-pin.js";
 /** 清单里订阅源那一段。 */
 type ManifestSubscription = NonNullable<ExtensionManifestV2["contributes"]["subscription"]>;
 
+/** 视图摊平了 `display`,`shortLabel` / `color` 在视图上可缺(清单第 2 版里是必填,下一步清单也放宽)。 */
+type DisplayKeys = Exclude<keyof ManifestSubscription["display"], "shortLabel" | "color">;
+
+/** 外观里**除了**两个可缺的格:逐格严格相等。 */
 export type SubscriptionDisplayPinned = Pinned<
-	Equals<ManifestSubscription["display"], ExtensionSubscriptionDisplay>
+	Equals<
+		Pick<ManifestSubscription["display"], DisplayKeys>,
+		Pick<ExtensionSubscriptionView, DisplayKeys>
+	>
 >;
-export type SubscriptionEventKindPinned = Pinned<
-	Equals<SubscriptionEventKind, ExtensionSubscriptionEventKind>
+/** 那两个可缺的格:清单给的必填值赋得进视图,视图上没有多出来的外观格。 */
+export type SubscriptionDisplayOptionalPinned = Pinned<
+	ManifestSubscription["display"] extends Omit<ExtensionSubscriptionView, "supportedFeatures">
+		? Exclude<
+				keyof ExtensionSubscriptionView,
+				DisplayKeys | "shortLabel" | "color" | "supportedFeatures"
+			> extends never
+			? true
+			: false
+		: false
 >;
+/** 清单的事件种类 = 视图的特性去掉服务端推出来的 `liveStreaming`。 */
 export type SubscriptionEventsPinned = Pinned<
-	Equals<ManifestSubscription["events"][number], ExtensionSubscriptionEventKind>
+	Equals<
+		ManifestSubscription["events"][number],
+		Exclude<ExtensionSubscriptionView["supportedFeatures"][number], "liveStreaming">
+	>
 >;
 // ---- Version 3 reports and read results ---------------------------------------------------
 

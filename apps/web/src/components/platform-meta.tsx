@@ -9,7 +9,7 @@
  * 平台选择器那一排写的才是全名(「飞书机器人」)。
  *
  * 🔴 **拓展那一档不在注册表里,也不许在这儿手抄** —— 它的短名与标识色是拓展自己报的
- * (`ExtensionDTO.push.display`:写在清单里),经 `/api/ext` 下来。
+ * (`ExtensionDTO.push`:写在清单里),经 `/api/ext` 下来。
  * 这里一度躺着一行手抄的桥接粉紫,它的毛病不是丑,是**会跟拓展报的悄悄漂开**:改了
  * 拓展、面板还是旧色,而类型、测试、门禁全绿,只有真机上眼睛看得出来。
  */
@@ -43,9 +43,9 @@ export function buildPlatformTable(
 ): (platform: string) => PlatformMeta | undefined {
 	const table: Record<string, PlatformMeta> = { ...BUILT_IN };
 	for (const ext of extensions) {
-		const display = ext.push?.display;
+		const push = ext.push;
 		// 图标是清单里那段 SVG(服务端过过白名单,决策 20)—— 没有就退首字方章。
-		if (display) table[ext.id] = { tint: display.color, label: display.shortLabel, svg: ext.icon };
+		if (push) table[ext.id] = { tint: push.color, label: push.shortLabel, svg: ext.icon };
 	}
 	return (platform: string) => table[platform];
 }

@@ -28,7 +28,7 @@ export function ReportDiscrepanciesBox({
 	const problemLabel = t("extension.reportDiscrepancies.kindProblem");
 	const discrepancies = ext.reportDiscrepancies ?? [];
 	if (discrepancies.length === 0) return null;
-	const postNoun = ext.subscription?.display.postNoun;
+	const postNoun = ext.subscription?.postNoun;
 	return (
 		<section aria-label="上报出入">
 			<GlassBox
