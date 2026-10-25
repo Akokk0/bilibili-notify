@@ -357,6 +357,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 
     理由：核心 devtools 里写死桥的协议帧，是核心为某一个拓展开的特例。搬过去以后，核心 devtools 不认识任何一家来源。
     🔗 **2026-09-28**：场景叫 `DevScenarioDef`，id 由宿主加前缀，参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2）。
+    🔗 **现状（3b-45，10-25）**：开发入口固定为拓展包根目录的 `devtools.mjs`，清单 `"devtools": {}` 只开口、不带路径；宿主只在开发版、拓展 `activate` 成功后调用同步导出的 `devtools(ctx)`，以拓展 id 认领并把场景 id 加前缀，停用、卸载、重载或关机即撤。场景族住 `packages/internal/src/devtools.ts`；`ExtensionDevtoolsContext` 住拓展包，比 `ExtensionContext` 只多一个现取的 `mountUrl()`。拓展参数这一版只收 `text` / `number` / `enum`。开发入口不进发行包，打包与装包白名单都不收。市场场景不预设任何拓展，默认空，要手填已装拓展 id。
 55. **全仓的包版本统一为 `0.0.0-dev`（Q16）**。
 
 ### 09-27 字段名专项审查补的结构决策

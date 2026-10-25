@@ -750,7 +750,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `PushLike`、`SubItemView`（动态、直播、AI 各一份） | 各合成一份；推送出口收成 `broadcast(subscriptionId, messages, feature)`；`SubItemView` 由 internal 的「生效特性」解析器产出 |
 | 拓展积木 `qrLogin` | 删掉 |
 | `CommandSpec`；B 站自带的 `login` 指令 | `CommandDef`（字段不变）；核心的通用指令 `login [来源]`；1.0 不造 `CommandProvider` |
-| contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`） |
+| contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`）。🔗 现状（3b-45，10-25）：`DevScenarioDescriptor` 及场景族住 `packages/internal/src/devtools.ts`，`@bilibili-notify/extension` 与 contract 都只转类型，不另造一份 |
 | AI 工具参数 `uid`；内置技能 `find-up` / `up-pk` | `creator`（「来源键:外部 id」）；`find-creator` / `creator-pk`，旧名留别名 |
 | 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef`；被会话引用的逐张复制进去，孤儿不搬。🔗 修订：0.x 的女仆对话与聊天附件不迁（见 [data-and-migration.md](./data-and-migration.md)），这一行只管 1.0 新产生的附件 |
 | 特别关注名单 `specialUsers`（盘上的 0.x 形状 `{ uid, kinds, template? }`）、特性键 `specialDanmaku` / `specialUserEnter`；条目上的死格 `template` | `specialViewers`（条目 `SpecialViewer { id, note?, features }`，比对文件 `live/special-viewers.ts`）、`viewerChat` / `viewerEnter`；`template` 退役。迁移专门有测试钉老键上的名单一个不少 |

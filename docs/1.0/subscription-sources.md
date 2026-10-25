@@ -475,6 +475,8 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - `run` 返回 `{ ok: true, summary? }` 或失败：参数不合法回 `invalid`，场景找不到回 `not_found`；原来那两个异常类（`DevParamError`、`DevScenarioNotFound`）删掉。`active` / `reset` 不变。
 - 场景只用自己集成的 ctx 做事（B 站「造一条新动态」就调 `ctx.reportPost`），核心的句柄不交出去；B 站现在直捅引擎的场景，搬家时改。
 
+🔗 现状（3b-45，10-25）：纯声明叫 `DevScenarioDescriptor`，这一族与 `DevtoolsProvider` 的本体住 `packages/internal/src/devtools.ts`；`@bilibili-notify/extension` 转出给拓展，contract 只借给面板。拓展只在开发版 `devtools.mjs` 的开发入口登记 provider，登记与撤销随拓展起停，场景 id 由宿主加 `<拓展 id>.`，撞核心场景即拒。
+
 ## B 站怎么实现
 
 `apps/server/src/bilibili/` 放 B 站的全部：

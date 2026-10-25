@@ -6,7 +6,7 @@
 
 ## 一句话
 
-**拓展只从 `@bilibili-notify/extension` 这一扇门拿 BN 的东西**，宿主把它交的东西转成和 B 站、内置平台同一组中立接口。契约是中立接口族的**子集**：1.0 开 `subscription`、`push`、`devtools` 三口；`activate(ctx)` 拿到它的 `IntegrationContext`（日志、`state`、`secrets`、`redact`、`settings`、`http`、`fetchImage`、`storeImage`、问题上报、`signal`、`onDispose`）加各登记方法。**拓展只认人、不认订阅**：上报只带 externalId，BN 内部的订阅 id 拓展看不到。**请求回结果，上报不回话**：存状态、存凭据、取图返回结果形状；上报一律 `void`，被拒记在宿主那边。
+**拓展只从 `@bilibili-notify/extension` 这一扇门拿 BN 的东西**，宿主把它交的东西转成和 B 站、内置平台同一组中立接口。契约是中立接口族的**子集**：1.0 开 `subscription`、`push`、`devtools` 三口；`activate(ctx)` 拿到它的 `IntegrationContext`（日志、`state`、`secrets`、`redact`、`settings`、`http`、`fetchImage`、`storeImage`、问题上报、`signal`、`onDispose`）加各登记方法。**拓展只认人、不认订阅**：上报只带 externalId，BN 内部的订阅 id 拓展看不到。**请求回结果，上报不回话**：存状态、存凭据、取图返回结果形状；上报一律 `void`，被拒记在宿主那边。🔗 现状（3b-45，10-25）：`devtools` 只表示开发版可以来找固定入口，不算进 `provides`，也不算「至少开一口」；单开这一口的拓展在发行版里不做事。
 
 ## 版本
 
@@ -27,7 +27,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | --- | --- | --- |
 | `subscription` | `subscriptionSources`（键就是拓展 id，不加前缀） | 开 |
 | `push` | 平台适配器登记表 `PlatformAdapterRegistry`（键就是拓展 id，也就是连接上的 `adapterKey`） | 开。与内置的 OneBot、QQ 官方机器人、webhook 同一个接口、同一张表 |
-| `devtools` | `devtoolsProviders` | 开。独立入口文件，宿主只在开发版 `import()` 它 |
+| `devtools` | `devtoolsProviders` | 开。独立入口文件，宿主只在开发版 `import()` 它。🔗 现状（3b-45，10-25）：清单只写 `"devtools": {}` 开口，文件名固定为 `devtools.mjs`，不能指定路径；入口不进发行包，打包与装包两道白名单都拒收 |
 | `linkResolver` | `linkResolvers` | 暂不开，写抖音拓展时再定 |
 | `commands` | —— | 暂不开。1.0 不造 `CommandProvider` 登记表：`login` 改成核心的通用指令后没有实现者；等第一个要自带指令的拓展，连同重名规矩一起定 |
 | `aiTools` | `aiToolProviders` | 暂不开，写抖音拓展时再定 |
@@ -484,6 +484,8 @@ interface ExtensionI18n {
 - **`run` 返回结果形状** `{ ok: true, summary? } | { ok: false, code, message }`：参数不合法回 `invalid`，场景找不到回 `not_found`；原来那两个异常类删掉。`active` / `reset` 不变。
 - **场景只用自己集成的 ctx 做事**（造一条作品就调自己的 `reportPost`），核心的句柄不交出去。
 - 核心 devtools 不认识任何一家来源。桥的假桥与场景搬进 `extensions/bridge/` 自己的开发入口，直接用桥自己的 `contract.ts`，不再在核心手抄协议帧。
+
+🔗 现状（3b-45，10-25）：入口文件名固定为 `devtools.mjs`，清单 `"devtools": {}` 只开口、不带路径（ADR-0012 决策 35 ⛔）；入口同步导出 `devtools(ctx)`，开发上下文在 `ExtensionContext` 上多一个现取的 `mountUrl()`。拓展已经交回的不带前缀场景由宿主按拓展 id 认领、加前缀，场景表随拓展起停增减；场景 id 撞核心场景会被拒。拓展参数这一版只收 `text` / `number` / `enum`，挑自己连接的种类与 `creator` 种类等第一个使用者出现再造。开发入口不进发行包，打包与装包两道白名单都不收。核心 devtools 不认识任何拓展；「拓展有更新」的拓展 id 默认空，要手填已装的拓展 id。
 
 ## 从 v2 过渡
 

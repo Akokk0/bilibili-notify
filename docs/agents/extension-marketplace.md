@@ -69,7 +69,7 @@
 
 作者要做的只有两件事,任何 https 静态托管都行(GitHub Release / Pages / 对象存储):
 
-1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明;带译文时包里也要有 `locales/<语言码>.json`)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这些之外的文件装载那头一律拒收。
+1. 把拓展包(`vp pack` 出来的 `dist/`,打成 zip:必须含 `extension.json` + `index.mjs`,**建议带上 `README.md` 与 `CHANGELOG.md`**,各 ≤ 512KB —— BN 会把它们画在拓展详情页上,不带就是一页没有说明;带译文时包里也要有 `locales/<语言码>.json`)放到一个 https 地址,算出 sha256 与字节数。清单里的 `id` 必须是 `<你的命名空间>.<名字>`。除这些之外的文件装载那头一律拒收;开发入口 `devtools.mjs` 不进包,装包会拒。
 2. 放一份 `marketplace.json`(上面那个形状,`namespace` 写你的命名空间),`package.url` 指向那个 zip。
 
 用户在 BN 拓展页 →「源」→ 填 `marketplace.json` 的地址(名字不用起,索引自己带)。BN 不审核源里的东西,装之前会再提醒一次。同一个命名空间在一台 BN 上只能由一个源占;想冒充官方(列一个不带点的 id)整个源会被拒。
