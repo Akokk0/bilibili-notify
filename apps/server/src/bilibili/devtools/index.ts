@@ -8,6 +8,7 @@ import { type DynamicPollerLike, dynamicScenarios } from "./dynamic.js";
 import { liveScenarios, type SubPick } from "./live.js";
 import { liveEventScenarios } from "./live-events.js";
 import { createLiveRooms } from "./live-rooms.js";
+import { loginScenarios } from "./login.js";
 import { loginStateScenario } from "./login-state.js";
 import { biliTimerScenarios } from "./timers.js";
 
@@ -36,8 +37,16 @@ export interface BiliDevtoolsDeps {
 	liveRooms: () => { roomIdOf(externalId: string): string | undefined } | undefined;
 	/** 来源自己的资料状态;假动态借作者头像时现取。 */
 	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
-	/** 来源的登录把手(`BiliSource.login()`),现取;登录心跳「现在就跑」用它。 */
-	login: () => { healthCheckNow(): Promise<boolean> } | undefined;
+	/** 来源的登录把手(`BiliSource.login()`),现取;心跳、失效与重新确认三个场景用它。 */
+	login: () =>
+		| {
+				healthCheckNow(): Promise<boolean>;
+				handleAuthLost(): Promise<void>;
+				reportAccountInfo(): Promise<void>;
+		  }
+		| undefined;
+	/** 来源自己的登录口(`Source.auth`),现取;真登录场景按它判断当前状态。 */
+	auth: () => Pick<Required<SourceAuth>, "state"> | undefined;
 }
 
 /**
@@ -68,6 +77,7 @@ export function createBiliDevtools(deps: BiliDevtoolsDeps): {
 					profileAvatars: deps.profileAvatars,
 				}),
 				loginStateScenario({ auth: authOf, bus: deps.bus }),
+				...loginScenarios({ auth: deps.auth, login: deps.login }),
 				...biliTimerScenarios({
 					subs: deps.subs,
 					dynamic: deps.dynamic,

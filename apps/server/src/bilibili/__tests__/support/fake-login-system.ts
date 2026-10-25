@@ -19,6 +19,8 @@ export interface FakeLoginSystem extends AuthSystem {
 	start: Mock<() => Promise<void>>;
 	stop: Mock<() => void>;
 	healthCheckNow: Mock<() => Promise<boolean>>;
+	handleAuthLost: Mock<() => Promise<void>>;
+	reportAccountInfo: Mock<() => Promise<void>>;
 	setHealthCheckMs: Mock<(ms: number) => void>;
 }
 
@@ -33,6 +35,8 @@ export function fakeLoginSystem(parts: {
 		start: vi.fn(async () => {}),
 		stop: vi.fn(),
 		healthCheckNow: vi.fn(async () => true),
+		handleAuthLost: vi.fn(async () => {}),
+		reportAccountInfo: vi.fn(async () => {}),
 		setHealthCheckMs: parts.setHealthCheckMs ?? vi.fn(),
 	};
 }

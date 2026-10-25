@@ -67,8 +67,14 @@ export interface BiliSourceDeps {
 export interface BiliSource extends Source {
 	/** 来源造好的 `Api`(开发版是套过壳的那一个,与来源自己、开发场景用的同一个对象):核心里第 4 期两处读者经 `compose.ts` 拿它。 */
 	api(): Api;
-	/** 登录系统的开发把手;没 start 或已 stop 时是 undefined。开发场景「登录心跳」读它。 */
-	login(): { healthCheckNow(): Promise<boolean> } | undefined;
+	/** 登录系统的开发把手;没 start 或已 stop 时是 undefined。登录类开发场景读它。 */
+	login():
+		| {
+				healthCheckNow(): Promise<boolean>;
+				handleAuthLost(): Promise<void>;
+				reportAccountInfo(): Promise<void>;
+		  }
+		| undefined;
 	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
 	/** 直播房号;没 start 或已 stop 时是 undefined。开发场景挑房间读它。 */
@@ -212,7 +218,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		descriptor,
 		auth: shellAuth,
 		api: () => biliApi,
-		login: () => (started ? { healthCheckNow: () => login.healthCheckNow() } : undefined),
+		login: () =>
+			started
+				? {
+						healthCheckNow: () => login.healthCheckNow(),
+						handleAuthLost: () => login.handleAuthLost(),
+						reportAccountInfo: () => login.reportAccountInfo(),
+					}
+				: undefined,
 		dynamic: () => engine,
 		liveRooms: () =>
 			roomIds === undefined

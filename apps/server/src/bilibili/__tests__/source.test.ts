@@ -1418,7 +1418,7 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 		expect(source.auth).toBe(REAL_AUTH_MARK);
 	});
 
-	it("login() 把手:start 前与 stop 后是 undefined,运行中把 healthCheckNow 原样转给登录系统", async () => {
+	it("login() 把手:start 前与 stop 后是 undefined,运行中把三个登录口原样转给登录系统", async () => {
 		const { deps, login } = makeDeps();
 		login.healthCheckNow.mockResolvedValue(false);
 		const source = createBiliSource(deps);
@@ -1426,7 +1426,11 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 
 		await source.start(makeCtx().ctx);
 		await expect(source.login()?.healthCheckNow()).resolves.toBe(false);
+		await source.login()?.handleAuthLost();
+		await source.login()?.reportAccountInfo();
 		expect(login.healthCheckNow).toHaveBeenCalledTimes(1);
+		expect(login.handleAuthLost).toHaveBeenCalledTimes(1);
+		expect(login.reportAccountInfo).toHaveBeenCalledTimes(1);
 
 		await source.stop();
 		expect(source.login()).toBeUndefined();

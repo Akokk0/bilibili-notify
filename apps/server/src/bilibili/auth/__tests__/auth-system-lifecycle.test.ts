@@ -362,6 +362,43 @@ describe("恢复备份之后与登出", () => {
 		await w.store.close();
 	});
 
+	it("handleAuthLost 判失效但留下 cookie;reportAccountInfo 拿现成 cookie 再探后回到已登录", async () => {
+		const w = world();
+		await w.seed({ cookies: C0, token: "T0" });
+		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+		vi.mocked(LoginFlow.prototype.reportAccountInfo).mockRestore();
+		vi.mocked(LoginFlow.prototype.reportLoggedOut).mockRestore();
+		vi.spyOn(Api.prototype, "fetchMyselfInfo").mockResolvedValue({
+			code: 0,
+			data: { mid: 42, uname: "n", face: "" },
+		});
+		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue(
+			ok({ data: { card: { name: "n", face: "" } } }) as never,
+		);
+		const auth = await startAuthSystem({
+			transitImages: inertTransitImages,
+			serviceCtx: w.host.serviceCtx,
+			integrationStore: w.store,
+		});
+		expect(auth.auth.state().status).toBe("logged-in");
+		const cookies = auth.api.getCookiesJson();
+
+		await auth.handleAuthLost();
+
+		expect(auth.auth.state()).toEqual({
+			status: "expired",
+			message: "账号登录已失效，请重新扫码登录",
+		});
+		expect(auth.api.getCookiesJson()).toBe(cookies);
+
+		await auth.reportAccountInfo();
+
+		expect(auth.auth.state()).toMatchObject({ status: "logged-in" });
+		expect(auth.api.getCookiesJson()).toBe(cookies);
+		await auth.dispose();
+		await w.store.close();
+	});
+
 	it("auth 口的 state() / account() 读的就是登录流程的对外状态;onChange 的订阅者在状态变时被叫", async () => {
 		const w = world();
 		const auth = await startAuthSystem({

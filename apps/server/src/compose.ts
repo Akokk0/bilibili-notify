@@ -187,6 +187,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				liveRooms: () => source?.liveRooms(),
 				profileAvatars: () => source?.profileAvatars(),
 				login: () => source?.login(),
+				auth: () => source?.auth,
 			});
 			devShells = made.devShells;
 			providers.claim(BILIBILI_SOURCE_KEY, made.provider);

@@ -44,6 +44,10 @@ export interface AuthSystem {
 	stop(): void;
 	/** 把健康检查提前到现在(开发场景「登录心跳」);没登录 / 扫码中跳过、回 false。 */
 	healthCheckNow(): Promise<boolean>;
+	/** 把当前会话判为失效(开发场景「登录失效」);不清 cookie 罐,没有会话时什么都不做。 */
+	handleAuthLost(): Promise<void>;
+	/** 拿罐里现成的 cookie 再探一次账号(开发场景「重新确认登录」);有效就回到已登录。 */
+	reportAccountInfo(): Promise<void>;
 	/**
 	 * 定时的登录检查(心跳)的间隔,毫秒;`<= 0` 是停掉、之后任何登录路径(扫码成功、恢复备份、登录恢复)都不会再把它挂起来。
 	 * 登录系统自己不读设置:B 站来源 `start` 里读了 B 站设置、经这一口挂上或停下。起步是停着的。
@@ -174,6 +178,8 @@ export function createAuthSystem(opts: CreateAuthSystemOptions): AuthSystem {
 		},
 		stop,
 		healthCheckNow: () => flowFinal.healthCheckNow(),
+		handleAuthLost: () => flowFinal.handleAuthLost(),
+		reportAccountInfo: () => flowFinal.reportAccountInfo(),
 		setHealthCheckMs: (ms) => flowFinal.setHealthCheckMs(ms),
 	};
 }

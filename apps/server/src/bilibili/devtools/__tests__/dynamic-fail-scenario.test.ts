@@ -76,6 +76,7 @@ describe("bilibili.dynamic.fail", () => {
 		expect(decl?.desc).toContain("-101");
 		expect(decl?.desc).toContain("不会");
 		expect(decl?.desc).toContain("登录状态");
+		expect(decl?.desc).toContain("先按「登录失效」再按「重新确认登录」");
 	});
 
 	it("跑一下:下一次拉动态回指定的错误码,再下一次回真的", async () => {

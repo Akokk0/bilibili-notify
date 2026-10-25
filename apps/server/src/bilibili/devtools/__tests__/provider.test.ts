@@ -8,7 +8,7 @@ import { fakeAuth } from "./support/fake-auth.js";
 import { biliRegistry } from "./support/registry.js";
 
 /**
- * B 站交给 devtools 的那一包(`DevtoolsProvider`):九个场景 + 两个定时、登录状态,
+ * B 站交给 devtools 的那一包(`DevtoolsProvider`):九个场景 + 两个定时、登录状态与两个真登录场景,
  * 汇进登记表后 id 都带 `bilibili.` 前缀。
  */
 
@@ -20,6 +20,7 @@ function deps(): BiliDevtoolsDeps {
 		liveRooms: () => undefined,
 		profileAvatars: () => undefined,
 		login: () => undefined,
+		auth: () => undefined,
 	};
 }
 
@@ -29,7 +30,7 @@ afterEach(() => {
 });
 
 describe("createBiliDevtools", () => {
-	it("交出 B 站那十二个场景,id 不带前缀(前缀由宿主加)", () => {
+	it("交出 B 站那十四个场景,id 不带前缀(前缀由宿主加)", () => {
 		const ids = createBiliDevtools(deps()).provider.scenarios.map((s) => s.id);
 		expect(ids).toEqual([
 			"live.start",
@@ -42,6 +43,8 @@ describe("createBiliDevtools", () => {
 			"dynamic.post",
 			"dynamic.fail",
 			"auth.login-state",
+			"auth.lost",
+			"auth.recheck",
 			"dynamic.detect-now",
 			"auth.health-now",
 		]);
@@ -51,7 +54,7 @@ describe("createBiliDevtools", () => {
 		const providers = createDevtoolsProviderRegistry();
 		providers.claim("bilibili", createBiliDevtools(deps()).provider);
 		const ids = providers.scenarios().map((s) => s.id);
-		expect(ids).toHaveLength(12);
+		expect(ids).toHaveLength(14);
 		expect(ids.every((id) => id.startsWith("bilibili."))).toBe(true);
 		expect(ids).toContain("bilibili.live.danmaku");
 	});
