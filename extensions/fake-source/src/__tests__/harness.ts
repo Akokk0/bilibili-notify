@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type {
 	CreatorCandidate,
+	CreatorProfileReport,
 	ExtensionContext,
 	ExtensionI18n,
 	ExtensionView,
@@ -11,6 +12,7 @@ import type {
 	Result,
 	SourceContext,
 	SourceDef,
+	SourceHealth,
 	SourceSubscriptionView,
 } from "@bilibili-notify/extension";
 import { activate } from "../index.js";
@@ -169,6 +171,15 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 			if (!found.ok) throw new Error(`搜人失败:${found.message}`);
 			return found.candidates;
 		},
+		/** 拉取式资料。 */
+		fetchProfile(
+			identity: Identity,
+			signal: AbortSignal = new AbortController().signal,
+		): Promise<Result<CreatorProfileReport>> {
+			const fetchProfile = def().fetchProfile;
+			if (!fetchProfile) throw new Error("假源没实现 fetchProfile");
+			return fetchProfile(identity, signal);
+		},
 		/** 拉取式直播状态。 */
 		fetchLiveStatus(
 			identity: Identity,
@@ -177,6 +188,12 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 			const fetchLiveStatus = def().fetchLiveStatus;
 			if (!fetchLiveStatus) throw new Error("假源没实现 fetchLiveStatus");
 			return Promise.resolve(fetchLiveStatus(identity, signal));
+		},
+		/** 来源自报的一行健康状况。 */
+		health(): SourceHealth {
+			const health = def().health;
+			if (!health) throw new Error("假源没实现 health");
+			return health();
 		},
 		/** 宿主收摊:先叫来源的 `stop()`。 */
 		async stop(): Promise<void> {

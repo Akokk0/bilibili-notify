@@ -1,4 +1,6 @@
 {
+	"health.summary#one": "Running · watching {count} person",
+	"health.summary#other": "Running · watching {count} people",
 	"view.summary#one": "{count} subscription",
 	"view.summary#other": "{count} subscriptions",
 	"view.notice": "A development-only fake source with no platform behind it: it makes up candidates from what you type when creating a subscription, and typing empty / slow / bad / messy plays one kind of failure each. The buttons below report to every enabled subscription at once.",

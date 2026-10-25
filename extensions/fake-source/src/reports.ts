@@ -241,3 +241,35 @@ export async function fakeProfile(
 		avatar: await store(PROFILE_PICTURES[(n - 1) % PROFILE_PICTURES.length] as Uint8Array),
 	};
 }
+
+/**
+ * 按钮每次按下的资料版次,以及每个人最后报出去的那一份。按钮与拉取式资料共用这一份:
+ * `fetchProfile` 对报过的人必须交回宿主已经收下的同一个对象,没报过的才现编拉取版。
+ */
+export function createFakeProfiles() {
+	let version = 0;
+	const reported = new Map<string, CreatorProfileReport>();
+	return {
+		nextVersion(): number {
+			return ++version;
+		},
+		record(externalId: string, profile: CreatorProfileReport): void {
+			reported.set(externalId, profile);
+		},
+		reported(externalId: string): CreatorProfileReport | undefined {
+			return reported.get(externalId);
+		},
+	};
+}
+
+/** 没被资料按钮报过的人现编一份确定的拉取版,名字与按钮的「第 N 版」一眼分得开。 */
+export async function fakeFetchedProfile(
+	externalId: string,
+	store: StorePicture,
+): Promise<CreatorProfileReport> {
+	return {
+		name: `假名字 · 拉取版(${tagOf(externalId).slice(0, 4)})`,
+		followers: 0,
+		avatar: await store(PROFILE_PICTURES[0] as Uint8Array),
+	};
+}

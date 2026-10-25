@@ -7,22 +7,34 @@
  * **正式的注册口**(`ctx.registerSource`),与以后的抖音拓展同一条路,不在核心里手写第二份。
  */
 
-import type { ExtensionContext, SourceContext } from "@bilibili-notify/extension";
-import { fail } from "@bilibili-notify/extension";
+import type {
+	ExtensionContext,
+	Identity,
+	SourceContext,
+	SourceDef,
+} from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { wireReportButtons } from "./buttons.js";
 import { fakeSearchCreators } from "./lookup.js";
-import { pictureStore } from "./reports.js";
+import { createFakeProfiles, fakeFetchedProfile, pictureStore } from "./reports.js";
 import { fakeSourceView } from "./view.js";
+
+/**
+ * 合 `externalIdRegex`,但解析门永远不会现编出这个尾巴:`fetchProfile` 拿它演「平台上这个人没了」,
+ * 宿主据此把订阅的问题记成 `creator_not_found`。
+ */
+const MISSING_PROFILE_EXTERNAL_ID = "fake-0000000000000000-z";
 
 export function activate(ctx: ExtensionContext): void {
 	/** `start` 拿到的来源上下文;`stop` 之后清掉。按钮、解析门、视图都从这里取名单与上报口。 */
 	let running: SourceContext | undefined;
-	const buttons = wireReportButtons(ctx, () => running);
+	const profiles = createFakeProfiles();
+	const buttons = wireReportButtons(ctx, () => running, profiles);
 	// 视图是现取的:订阅名单每次现读,不缓存。
 	ctx.publishView(() => fakeSourceView(running?.subscriptions() ?? [], ctx.i18n, buttons.blocks()));
 
-	ctx.registerSource({
-		start(source) {
+	const def = {
+		start(source: SourceContext) {
 			running = source;
 			// 订阅一动就喊一声,面板当场重取视图 —— 不然加完一条,切回拓展页那个数还是旧的。
 			source.onSubscriptionsChanged(() => ctx.statusChanged());
@@ -31,13 +43,51 @@ export function activate(ctx: ExtensionContext): void {
 			running = undefined;
 			ctx.statusChanged();
 		},
-		searchCreators(query, signal) {
+		searchCreators(query: string, signal: AbortSignal) {
 			const source = running;
 			if (!source) {
 				return Promise.resolve(fail("unavailable", "来源没在跑(还没起来,或者已经停下了)"));
 			}
 			return fakeSearchCreators(pictureStore(source, signal), query, signal);
 		},
+		async fetchProfile(identity: Identity, signal: AbortSignal) {
+			if (identity.externalId === MISSING_PROFILE_EXTERNAL_ID) {
+				return fail("not_found", "假平台上没有这个人");
+			}
+			const source = running;
+			if (!source) {
+				return fail("unavailable", "来源没在跑(还没起来,或者已经停下了)");
+			}
+			const reported = profiles.reported(identity.externalId);
+			if (reported) return ok(reported);
+			try {
+				signal.throwIfAborted();
+				const profile = await fakeFetchedProfile(identity.externalId, pictureStore(source, signal));
+				signal.throwIfAborted();
+				return ok(profile);
+			} catch (err) {
+				return fail("unavailable", (err as Error).message);
+			}
+		},
 		fetchLiveStatus: buttons.liveStatusOf,
-	});
+		// 故意的:auth 与 liveInteractions 这一版不对拓展开放,交上去让守卫证明宿主会摘掉。
+		auth: {
+			beginLogin: async () => ok(),
+			logout: async () => ok(),
+			state: () => ({ status: "logged-in" }),
+			onChange: () => ({ dispose() {} }),
+		},
+		liveInteractions: {
+			fetchViewerAvatar: async () =>
+				fail("unsupported", "fake source does not support live interactions"),
+			fetchTierIcon: async () =>
+				fail("unsupported", "fake source does not support live interactions"),
+		},
+		health() {
+			const people = new Set(running?.subscriptions().map((one) => one.externalId) ?? []);
+			return { summary: ctx.i18n.t("health.summary", { count: people.size }) };
+		},
+	};
+	// 故意的:把不开的成员塞进注册对象,给宿主成员表把它们摘掉。
+	ctx.registerSource(def as unknown as SourceDef);
 }

@@ -172,7 +172,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 
 		// 首页粉丝面板(决策 8):甲有了粉丝时序,那一行进 `GET /api/stats/followers` —— 键是订阅 id、带身份;当前数是最近报的
 		// 资料(2222),起点是时序的第一条(1111);24h / 7d 之前还没有样本。停用的乙不上。样本是记录器排队写的,
-		// 所以按 devtools 的「资料刷新现在就跑」、等它读到。
+		// 所以按 devtools 的「资料刷新现在就跑」、等它读到。每按一次也真拉一次假源的 `fetchProfile`(见下面粉丝时序那条)。
 		await vi.waitFor(
 			async () => {
 				const polled = await api("/api/dev/run/profiles.refresh-now", {
@@ -235,9 +235,15 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			expect(Object.keys(row).filter((key) => !allowed.includes(key))).toEqual([]);
 		}
 
-		// 两份资料是紧挨着报的,不密过 B 站粉丝轮询(默认每 10 分钟):只留先到的那份。
-		expect(await lines(...FOLLOWERS_DIR, `${ON}.jsonl`)).toEqual([
-			{ sampledAt: expect.any(String), followers: 1111 },
+		// 两份资料是紧挨着报的,上报那条路按资料刷新间隔稀释:只留先到的那份(1111)。上面每按一次「资料刷新现在就跑」
+		// 都真拉一次假源的 `fetchProfile`(报过的人交最后报的那一版,2222),拉取那条路一轮一条、不稀释
+		// (`stats/recorder.ts`),所以后面按了几次就跟着几行 2222。
+		const followers = (await lines(...FOLLOWERS_DIR, `${ON}.jsonl`)) ?? [];
+		expect(followers[0]).toEqual({ sampledAt: expect.any(String), followers: 1111 });
+		expect(followers.length).toBeGreaterThan(1);
+		expect(followers.map((row) => row.followers)).toEqual([
+			1111,
+			...Array.from({ length: followers.length - 1 }, () => 2222),
 		]);
 
 		// 六条上报都在同一个小时里(跨整点的几毫秒之差留给测试之外):作品、直播、粉丝三项各一行,每行正好一个整点小时。

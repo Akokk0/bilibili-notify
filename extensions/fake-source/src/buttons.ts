@@ -9,6 +9,7 @@ import type {
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
 import {
+	type createFakeProfiles,
 	type FakeLiveSession,
 	fakeLiveDetails,
 	fakeLiveUrl,
@@ -80,13 +81,13 @@ function openPeople(people: readonly SourceSubscriptionView[]): string[] {
 export function wireReportButtons(
 	ctx: ExtensionContext,
 	running: () => SourceContext | undefined,
+	profiles: ReturnType<typeof createFakeProfiles>,
 ): {
 	blocks(): ExtensionBlock[];
 	liveStatusOf(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
 } {
 	let postSeq = 0;
 	let liveSeq = 0;
-	let profileSeq = 0;
 	/** 假源手里正在播的那一场;下播后清掉。 */
 	let live: FakeLiveSession | undefined;
 	/**
@@ -221,10 +222,15 @@ export function wireReportButtons(
 	});
 
 	on(PROFILE, () => {
-		const n = ++profileSeq;
+		const n = profiles.nextVersion();
 		return {
-			each: async (externalId, store) =>
-				running()?.reportProfile(externalId, await fakeProfile(externalId, n, store)),
+			each: async (externalId, store) => {
+				const profile = await fakeProfile(externalId, n, store);
+				const source = running();
+				if (!source) return;
+				source.reportProfile(externalId, profile);
+				profiles.record(externalId, profile);
+			},
 			note: `第 ${n} 版`,
 		};
 	});

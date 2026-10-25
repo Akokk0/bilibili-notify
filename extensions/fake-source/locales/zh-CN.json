@@ -1,4 +1,6 @@
 {
+	"health.summary#one": "在跑 · 管着 {count} 个人",
+	"health.summary#other": "在跑 · 管着 {count} 个人",
 	"view.summary#other": "{count} 条订阅",
 	"view.notice": "开发用的假源,背后什么平台都没连:新建订阅时按你输入的字现编候选,输 空 / 慢 / 坏 / 乱 各演一种失败;下面的按钮一次报给名下所有开着的订阅。",
 	"$manifest": {
