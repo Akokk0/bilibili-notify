@@ -106,7 +106,7 @@ describe("createDevtools", () => {
 		expect(provide).toHaveBeenCalledOnce();
 	});
 
-	/** 登记表接线:剪断 `providers.scenarios()` 那一行,这条就红(别家登记的场景进不了注册表)。 */
+	/** 登记表接线:建组合注册表时不传 `providers`,这条就红(别家登记的场景进不了注册表)。 */
 	it("登记表里各家交的场景汇进注册表,id 带来源前缀", async () => {
 		const run = vi.fn(() => ok({ summary: "跑了" }));
 		const dev = createDevtools({

@@ -40,6 +40,14 @@ describe("devtoolsProviders", () => {
 		expect(providers.scenarios()).toEqual([]);
 	});
 
+	it("认领的完整 id 撞核心场景时抛,并且不占来源 id", () => {
+		const providers = createDevtoolsProviderRegistry(["update.state"]);
+
+		expect(() => providers.claim("update", { scenarios: [def("state")] })).toThrow(/update\.state/);
+		expect(providers.scenarios()).toEqual([]);
+		expect(() => providers.claim("update", { scenarios: [def("other")] })).not.toThrow();
+	});
+
 	it("同一个来源 id 不能被两家认领;撤下之后可以重来", () => {
 		const providers = createDevtoolsProviderRegistry();
 		const first = providers.claim("bilibili", { scenarios: [def("a")] });

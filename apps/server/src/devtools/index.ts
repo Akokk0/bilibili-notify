@@ -141,8 +141,6 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	// 开发版。所以再要一道构建产物身上不可能成立的:跑在源码上。
 	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
 	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
-	const providers = createDevtoolsProviderRegistry();
-	input.provide(providers);
 	const update = injectableUpdateService(input.updateService);
 	// 装着哪一版**现取**(装载器比 devtools 后起来,名单也会变),读法与市场自己那份同一把尺子。
 	const market = injectableMarketplace(
@@ -175,11 +173,9 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			return deleted;
 		},
 	};
-	const registry = createDevRegistry([
+	const coreDefs = [
 		updateStateScenario(update),
 		pushCaptureScenario(gate),
-		// 各家集成自带的场景(B 站……),id 已由登记表加好来源前缀。
-		...providers.scenarios(),
 		...inboundScenarios({
 			inbound: input.inbound,
 			commands: input.commands,
@@ -222,7 +218,10 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			subscriptions: input.subscriptions ?? (() => []),
 			session: input.session ?? (() => undefined),
 		}),
-	]);
+	];
+	const providers = createDevtoolsProviderRegistry(coreDefs.map((def) => def.id));
+	input.provide(providers);
+	const registry = createDevRegistry(coreDefs, providers);
 	return {
 		registry,
 		route: createDevRoute({ registry, captures }),

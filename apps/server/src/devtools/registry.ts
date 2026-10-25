@@ -10,6 +10,7 @@ import {
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
+import type { DevtoolsProviderRegistry } from "./providers.js";
 
 export type { DevScenarioDef } from "@bilibili-notify/internal";
 
@@ -107,17 +108,23 @@ function fillParams(
 	return ok({ values: out });
 }
 
-export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry {
+export function createDevRegistry(
+	defs: readonly DevScenarioDef[],
+	providers?: Pick<DevtoolsProviderRegistry, "scenarios">,
+): DevRegistry {
 	const byId = new Map<string, DevScenarioDef>();
 	for (const def of defs) {
 		if (byId.has(def.id)) throw new Error(`devtools 场景 id 撞了:${def.id}`);
 		byId.set(def.id, def);
 	}
 	const declarations = [...byId.values()].map(declarationOf);
+	const providerDefs = () => providers?.scenarios() ?? [];
+	const findDef = (id: string) =>
+		byId.get(id) ?? providerDefs().find((candidate) => candidate.id === id);
 
 	function active(): DevInjection[] {
 		const out: DevInjection[] = [];
-		for (const def of byId.values()) {
+		for (const def of [...byId.values(), ...providerDefs()]) {
 			const injection = def.active?.();
 			if (injection) out.push(injection);
 		}
@@ -125,11 +132,13 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 	}
 
 	return {
-		// 声明是静态的(参数表、默认值都在建表时定型),建一次就够 —— 每次 GET 都重新剥一遍
-		// 二十多个对象,只是在给轮询多做无用功。
-		list: () => declarations,
+		// 核心声明建一次就够;provider 会随拓展起停增减,每次 GET 都现取、现剥。
+		list: () =>
+			providers === undefined
+				? declarations
+				: [...declarations, ...providerDefs().map(declarationOf)],
 		async run(id, params) {
-			const def = byId.get(id);
+			const def = findDef(id);
 			if (!def) return fail("not_found", `没有这个场景:${id}`);
 			const filled = fillParams(def.params, params);
 			if (!filled.ok) return filled;
@@ -141,15 +150,14 @@ export function createDevRegistry(defs: readonly DevScenarioDef[]): DevRegistry 
 		},
 		active,
 		async reset(id) {
+			const current = [...byId.values(), ...providerDefs()];
 			if (id === undefined) {
 				// 一条收摊失败不该让别的收不成 —— 但失败要报出去,所以先全跑再一起看结果。
-				const results = await Promise.allSettled(
-					[...byId.values()].map(async (def) => def.reset?.()),
-				);
+				const results = await Promise.allSettled(current.map(async (def) => def.reset?.()));
 				const failed = results.find((r) => r.status === "rejected");
 				if (failed?.status === "rejected") throw failed.reason;
 			} else {
-				const def = byId.get(id);
+				const def = current.find((candidate) => candidate.id === id);
 				if (!def) return fail("not_found", `没有这个场景:${id}`);
 				await def.reset?.();
 			}

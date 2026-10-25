@@ -1,5 +1,6 @@
 import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { createDevtoolsProviderRegistry } from "../providers.js";
 import { createDevRegistry, type DevScenarioDef } from "../registry.js";
 
 /**
@@ -43,6 +44,69 @@ describe("createDevRegistry", () => {
 
 	it("同 id 注册两次直接拒绝 —— 两半合一份,撞名只会静默盖掉一个", () => {
 		expect(() => createDevRegistry([def({ id: "a" }), def({ id: "a" })])).toThrow(/a/);
+	});
+
+	it("建表之后认领的 provider 场景会出现在 list() 里,也能立刻 run()", async () => {
+		const providers = createDevtoolsProviderRegistry();
+		const reg = createDevRegistry([], providers);
+		const run = vi.fn(async () => ok({ summary: "后到的也能跑" }));
+
+		providers.claim("demo", { scenarios: [def({ id: "late", run })] });
+
+		expect(reg.list()).toContainEqual({
+			id: "demo.late",
+			group: "state",
+			title: "一号",
+			params: [],
+		});
+		await expect(reg.run("demo.late", {})).resolves.toMatchObject({
+			ok: true,
+			summary: "后到的也能跑",
+		});
+		expect(run).toHaveBeenCalledOnce();
+	});
+
+	it("provider 撤下后,list() / run() / reset() / active() 同时不再认它", async () => {
+		const providers = createDevtoolsProviderRegistry();
+		let on = false;
+		const claim = providers.claim("demo", {
+			scenarios: [
+				def({
+					id: "effect",
+					run: () => {
+						on = true;
+						return ok();
+					},
+					active: () => (on ? { scenarioId: "demo.effect", label: "后到的" } : null),
+					reset: () => {
+						on = false;
+					},
+				}),
+			],
+		});
+		const reg = createDevRegistry([], providers);
+
+		await expect(reg.run("demo.effect", {})).resolves.toMatchObject({
+			ok: true,
+			active: [{ scenarioId: "demo.effect", label: "后到的" }],
+		});
+		expect(reg.active()).toEqual([{ scenarioId: "demo.effect", label: "后到的" }]);
+		await expect(reg.reset("demo.effect")).resolves.toMatchObject({ ok: true, active: [] });
+		expect(on).toBe(false);
+		await reg.run("demo.effect", {});
+
+		claim.dispose();
+
+		expect(reg.list()).toEqual([]);
+		expect(reg.active()).toEqual([]);
+		await expect(reg.run("demo.effect", {})).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+		});
+		await expect(reg.reset("demo.effect")).resolves.toMatchObject({
+			ok: false,
+			code: "not_found",
+		});
 	});
 
 	it("run() 按 schema 补默认值:enum / number / text 各一档", async () => {
