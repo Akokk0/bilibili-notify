@@ -3,7 +3,7 @@
  *
  * 拓展(经 `@bilibili-notify/extension` 转出)与宿主共用这一份 —— 桥借来的 bot 平台是开放词表,
  * 候选里的描述自己造一份,不必抄一份取值。住零依赖的子路径是因为门不能连带 zod:这个文件只许
- * `import type`(`constants-imports.test.ts` 钉着)。
+ * `import type`(`scripts/__tests__/internal-package.test.mjs` 钉着)。
  */
 
 import type { PlatformDescriptor } from "./schema/targets";

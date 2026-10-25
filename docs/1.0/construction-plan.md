@@ -434,10 +434,10 @@
 | 重启能力的预检 `RestartAbility` 不能重启时还是 `{ can: false, reason }`（`source-run` / `unsupervised`）：按 ADR-0026 决策 2 改成 `code` + `message`，系统页与拓展页读它的地方同期跟上（10-03 ⑱a 施工中发现，主人定归期） | 第 4 期 |
 | 原生分享：解析器交中立描述，由 OneBot 适配器去签。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表（ADR-0029 决策 2）；重推原件里小程序卡那一种的迁移随之（10-03 从 ⑱ 挪来） | 3b |
 | 测试助手重复：scripts 6 处各算 repoRoot、internal 三份 BASE AI 夹具、面板 UpDialog 三份 renderDialog 与造目标、`extSub` 与 `makeExtSub` 重复、backup 两份 pickFile | 各区重写那期合并，没重写到的归 5 |
-| 还在用正则扫 TS 源码的守卫迁上 AST 共用工具（09-29 定的规矩，见 architecture「守卫」开头）：devtools 隔离（服务端、面板各一份）、`constants-imports.test.ts`、`index-background-work-tracked.test.ts`（今天只钉形状）、面板 `walk.ts` / `blankComments` 的 13 个消费方与颜色 token 等处的内联剥注释、`font-reader-singleton`、`tour-anchors-exist`、`asset-dir`；碰到哪道先迁哪道 | 5（守卫补齐） |
+| 还在用正则扫 TS 源码的守卫迁上 AST 共用工具（09-29 定的规矩，见 architecture「守卫」开头）：devtools 隔离（服务端、面板各一份）、`constants-imports.test.ts`、`index-background-work-tracked.test.ts`（今天只钉形状）、面板 `walk.ts` / `blankComments` 的 13 个消费方与颜色 token 等处的内联剥注释、`font-reader-singleton`、`tour-anchors-exist`、`asset-dir`；碰到哪道先迁哪道。🔗 现状（3b-49，10-25）：`constants-imports.test.ts` 已由 `scripts/__tests__/internal-package.test.mjs` 取代，用 `source-scan.mjs` 的语法树判 | 5（守卫补齐） |
 | 统计的 `/overview` 被定时锐评与手动锐评**在进程内当 HTTP 请求打**（`statsRoute.request("/overview")`），为此统计子路由自挂了一份出错处理（④b 第 4 组）：把取数抽成函数、两处直接调，子路由的那份出错处理随之删掉 | ✅ 已落（㉖e，10-06） |
 | knip 报的 3 个老的未使用文件（`devtools/stub.ts`、两个 shape-pin；knip 不在 CI） | 5 |
-| `constants-imports.test.ts` 按行判，多行 `export {…} from "zod"` 会漏；`UpDialog.test.tsx` 没有 JSX，应是 `.ts`；network-guard 夹具路径写了两处 | 5（守卫补齐） |
+| `constants-imports.test.ts` 按行判，多行 `export {…} from "zod"` 会漏（🔗 3b-49，10-25：已由 `scripts/__tests__/internal-package.test.mjs` 取代，多行写法认得出）；`UpDialog.test.tsx` 没有 JSX，应是 `.ts`；network-guard 夹具路径写了两处 | 5（守卫补齐） |
 | 设置页的 AI 连通测试从 `routes/globals.ts` 挪进 `packages/ai`（出网点名表不给路由开白名单） | ✅ 3b-02 已落（10-13）：搬之前它在 `routes/settings.ts`，现在是 `packages/ai` 的 `probeAiProvider` |
 | 面板自己另有一份 `LoginSnapshot`（`status` 收窄成 `BiliLoginStatusValue`），和核心那份（`status: number`）对不上，留下 ④c 唯一一处对 WS `data` 的类型断言（`useAuthChannel`）。登录状态中立化（`subscription-auth-changed`、`AuthState`）时面板改吃核心那份，断言与面板那份类型一起删掉 | ✅ 3a-29 B 站半已落（面板的 `types/auth.ts` 删了，`useAuthChannel` 用 `isWsEvent` 按事件表定型，没有类型断言了） |
 | 桥协议的失败统一成结果形状（ADR-0026 决策 7）BN 那半：`result` 帧认 `code` + `message` + `upstreamCode?`，只带 `err` 的旧回执进门翻成 `unknown`；`error` 帧补 `code`；协议升 minor 并记进 PROTOCOL.md 的版本表；投递结果接住 `code`；假桥改发新形状（`fail()` 展开），「结果不手写」棘轮里假桥那两格随之删掉。🔗 现状（3b-44，10-25）：BN 那半已落，假桥回执也是结果形状了。 | 3b（随桥迁 v3 与假桥搬家） |

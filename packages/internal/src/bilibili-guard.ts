@@ -6,7 +6,7 @@
  * (`descriptor.membershipPrograms`),由 `/api/sources` 下发。
  *
  * 🔴 **一条值级 import 都不许有**(只许 `import type`):㉓e 起面板要读它,同 `format.ts` 的纪律
- * (`constants-imports.test.ts` 钉着)。
+ * (`scripts/__tests__/internal-package.test.mjs` 钉着)。
  */
 
 import type { MembershipProgram, MembershipTier } from "./membership";

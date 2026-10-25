@@ -3,7 +3,7 @@
  * 2026-10-02 主人定口径)。卡片、推送文字、面板、`/status` 都走这里,守卫 4 钉着别处不许再有同名定义。
  *
  * 🔴 **一条值级 import 都不许有**:它经 `@bilibili-notify/internal/format` 子路径直供浏览器端,
- * 和零依赖领域子路径同一条纪律(`constants-imports.test.ts` 一起扫)。
+ * 和零依赖领域子路径同一条纪律(`scripts/__tests__/internal-package.test.mjs` 一起扫)。
  */
 
 export interface FormatCountOptions {

@@ -3,7 +3,7 @@
  *
  * 零依赖子路径,面板与服务端各 new 自己的 store,拓展(3b-43)也能 new 自己的。
  * 这里**不读任何 JSON、不认具体有几种语言**(`LOCALES` 只是第一版的闭集,store 只认普通 string),
- * 译文由两端各自打进包再交进来 —— 所以本文件不许引入任何值(`constants-imports.test.ts` 钉着)。
+ * 译文由两端各自打进包再交进来 —— 所以本文件不许引入任何值(`scripts/__tests__/internal-package.test.mjs` 钉着)。
  */
 
 /** 第一版的四种语言(ADR-0037 决策 2),BCP 47 写法;两端的译文表 `satisfies Record<Locale, …>`。 */
