@@ -72,12 +72,17 @@ const BRIDGE_ELSEWHERE = entry({
 const OTHER = entry({ id: "other", version: "2.0.0" });
 
 describe("ext.updatable · 列表", () => {
-	it("声明:拓展组、拓展 id(默认 bridge)与假装下载几秒(默认 2)", () => {
+	it("声明:拓展组、拓展 id(默认留空)与假装下载几秒(默认 2)", () => {
 		const { reg } = setup([], []);
 		const [decl] = reg.list();
 		expect(decl).toMatchObject({ id: "ext.updatable", group: "ext", title: "拓展有更新" });
 		expect(decl?.params).toEqual([
-			expect.objectContaining({ key: "ext", kind: "text", default: "bridge" }),
+			expect.objectContaining({
+				key: "ext",
+				kind: "text",
+				default: "",
+				placeholder: "已装的拓展 id",
+			}),
 			expect.objectContaining({ key: "download", kind: "number", default: 2 }),
 		]);
 	});
