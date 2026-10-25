@@ -49,7 +49,6 @@ function makeDeps(opts: StubOpts = {}) {
 		},
 		runtime: {
 			engines: {
-				api: {},
 				liveSession: (id: string) =>
 					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},

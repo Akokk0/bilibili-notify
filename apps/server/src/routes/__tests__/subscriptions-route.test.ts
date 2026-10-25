@@ -99,7 +99,7 @@ function makeHarness(opts?: {
 		return { ok: true as const };
 	});
 
-	const engines = enginesMode === "null" ? null : { api: { follow } };
+	const engines = enginesMode === "null" ? null : {};
 
 	const deps = {
 		store: {
@@ -123,7 +123,7 @@ function makeHarness(opts?: {
 	} as unknown as RouteDeps;
 
 	return {
-		app: createSubscriptionsRoute(deps),
+		app: createSubscriptionsRoute(deps, { api: null }),
 		getSubscriptions,
 		upsertSubscription,
 		patchSubscription,
@@ -392,14 +392,17 @@ describe("/api/subscriptions PATCH — 响应同样 join", () => {
 	});
 
 	it("DELETE 没这条订阅 → 404 not_found", async () => {
-		const app = createSubscriptionsRoute({
-			store: { getSubscriptions: () => [], deleteSubscription: async () => false },
-			runtime: {
-				serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-				subscriptionStateStore: { get: () => undefined },
-				engines: null,
-			},
-		} as unknown as RouteDeps);
+		const app = createSubscriptionsRoute(
+			{
+				store: { getSubscriptions: () => [], deleteSubscription: async () => false },
+				runtime: {
+					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
+					subscriptionStateStore: { get: () => undefined },
+					engines: null,
+				},
+			} as unknown as RouteDeps,
+			{ api: null },
+		);
 		const res = await app.request("/ghost", { method: "DELETE" });
 		expect(res.status).toBe(404);
 		expect(await res.json()).toEqual({ code: "not_found", message: "没有这条订阅" });
@@ -513,6 +516,7 @@ describe("/api/subscriptions × 拓展订阅", () => {
 				},
 			} as unknown as RouteDeps,
 			{
+				api: null,
 				extensions: () => [
 					{
 						id: "douyin",

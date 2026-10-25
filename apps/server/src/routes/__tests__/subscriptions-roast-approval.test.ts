@@ -222,7 +222,7 @@ function routeWith(
 				opts.engines === false || !inbound ? null : { connectionCapabilities: inboundOf(inbound) },
 		},
 	} as unknown as RouteDeps;
-	return { app: createSubscriptionsRoute(deps), patchSubscription };
+	return { app: createSubscriptionsRoute(deps, { api: null }), patchSubscription };
 }
 
 const SUPPORTED = { state: "supported", checkedAt: 1 } as const;

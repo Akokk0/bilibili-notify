@@ -489,7 +489,6 @@ function setup(opts?: {
 		configStore?: Record<string, unknown>;
 		historyStore?: unknown;
 		subscriptionStateStore?: Record<string, unknown>;
-		api?: Record<string, unknown>;
 	};
 }): Ctx {
 	const serviceCtx = makeServiceCtx();
@@ -503,7 +502,6 @@ function setup(opts?: {
 		opts?.overrides?.configStore,
 	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
-	const api = opts?.overrides?.api;
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
 	const source = makeSource();
@@ -525,7 +523,6 @@ function setup(opts?: {
 		dataRoot: opts?.dataDir ?? join(tmpdir(), "bn-engines-test-no-such-dir"),
 		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
 		loadFontFace: async () => "",
-		api: api as any,
 		configStore: configStore as unknown as ConfigStore,
 		historyStore: (opts?.overrides?.historyStore ?? { record: vi.fn(async () => {}) }) as any,
 		subscriptionStore: {

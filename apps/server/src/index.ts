@@ -884,7 +884,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			dataRoot: runtime.dataRoot,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
 			loadFontFace: runtime.loadFontFace,
-			api: devApi.api,
 			quietHoursNow: devtools?.quietHoursNow,
 			// 女仆读作品与统计的口:统计仓、总开关(缓存读口)、统计总览读口(同面板、锐评的那一个,下面才建,所以现取)。
 			creatorStats: createCreatorStatsReader({

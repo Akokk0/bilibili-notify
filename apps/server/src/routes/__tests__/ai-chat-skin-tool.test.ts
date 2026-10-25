@@ -81,7 +81,7 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 			conversationStore,
 			imageStore,
 			chatImages,
-			engines: { api: {}, commentary: { chatStatelessStream, generateRaw } },
+			engines: { commentary: { chatStatelessStream, generateRaw } },
 		},
 	} as unknown as RouteDeps;
 	const skinStore = new SkinStore({ skinsDir: join(dataDir, "skins") });

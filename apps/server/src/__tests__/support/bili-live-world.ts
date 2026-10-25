@@ -391,7 +391,6 @@ export async function bootBiliLiveWorld(
 		serviceCtx,
 		dataRoot: join(tmpdir(), "bn-bili-live-e2e-no-such-dir"),
 		loadFontFace: async () => "",
-		api: api as unknown as Api,
 		configStore: {
 			// 真的配置仓每次给一份深拷贝;引擎靠「上一份 vs 这一份」diff 出改了哪段,同一个引用的话改设置就看不出变化。
 			getGlobals: () => structuredClone(globals),

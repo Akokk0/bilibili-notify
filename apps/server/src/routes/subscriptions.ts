@@ -14,6 +14,7 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
+import type { Api } from "../bilibili/api/index.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
@@ -35,7 +36,13 @@ const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成�
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
 // SubscriptionStateStore join 回来的外置运行时字段。
 
+/**
+ * `api` 与卡片预览共用同一份 B 站客户端:旧搜人的 `/search`、`/lookup` 也走它;
+ * `null` = 还没就绪,两个旧搜人口回 not-ready。
+ */
 export interface SubsRouteOptions {
+	/** 旧搜人的 B 站客户端(与卡片预览是同一个);`null` = 还没就绪。 */
+	api: Api | null;
 	/**
 	 * 装了哪些拓展(装载器那份名单,**现取** —— 面板刚装上的也算)。新建拓展订阅时核「它是不是
 	 * 订阅源」。不给 = 一个都没装:新建拓展订阅一律 400。
@@ -91,9 +98,11 @@ const CreateProfileBodySchema = z.object({
  * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
  * `upstreamCode`,不占 `code`(风控 / 未登录的分类留到 3a 的 `searchCreators`,这里不扩大)。
  */
-export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): Hono {
+export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
+	// 旧搜人的客户端在建路由时就定了(入口建 app 时递进来),两个口共用这一份。
+	const api = opts.api;
 
 	/**
 	 * 这个来源声明的外部 id 格式从哪儿来:登记表里的来源取它的描述符;没在登记的拓展取清单里订阅源
@@ -266,10 +275,11 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const page =
 			Number.isFinite(pageParam) && pageParam >= 1 ? Math.min(Math.floor(pageParam), 200) : 1;
 		if (!q) return respondFailure(c, fail("invalid", "搜索关键词不能为空"));
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
+		if (!deps.runtime.engines || api === null) {
+			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
+		}
 		try {
-			const res = await engines.api.searchByType("bili_user", q, {
+			const res = await api.searchByType("bili_user", q, {
 				page,
 				pageSize: 5,
 			});
@@ -313,10 +323,11 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (!uid || !/^\d+$/.test(uid)) {
 			return respondFailure(c, fail("invalid", "uid 必须是纯数字 UID"));
 		}
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
+		if (!deps.runtime.engines || api === null) {
+			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
+		}
 		try {
-			const res = await engines.api.fetchUserCard(uid);
+			const res = await api.fetchUserCard(uid);
 			if (!res.ok || !res.data?.card) {
 				// 现在的意思照旧:B 站回了非 0 就当「查无此人」(风控 / 未登录也在里头 —— 分类是 3a 的
 				// `searchCreators` 的事)。B 站的数字码只放 upstreamCode。

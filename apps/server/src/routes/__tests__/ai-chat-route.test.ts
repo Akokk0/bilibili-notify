@@ -139,7 +139,6 @@ async function makeDeps(opts: StubOpts = {}) {
 			engines: opts.noEngines
 				? null
 				: {
-						api: {},
 						commentary: opts.noCommentary
 							? null
 							: new (class {

@@ -127,7 +127,6 @@ function makeScheduler(
 	const deps = {
 		runtime: {
 			engines: {
-				api: {},
 				extensionPlatformLabel: (id: string) => (id === "douyin" ? "抖音" : undefined),
 				imageRenderer: null,
 				push: {},

@@ -18,16 +18,19 @@ interface Api {
 	searchByType?: (type: string, q: string, opts: unknown) => Promise<unknown>;
 }
 
-function makeApp(api: Api | null) {
+function makeApp(api: Api | null, enginesPresent = api !== null) {
 	const warn = vi.fn();
-	const app = createSubscriptionsRoute({
-		store: { getSubscriptions: () => [] },
-		runtime: {
-			serviceCtx: { logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
-			subscriptionStateStore: { get: () => undefined },
-			engines: api ? { api } : null,
-		},
-	} as unknown as RouteDeps);
+	const app = createSubscriptionsRoute(
+		{
+			store: { getSubscriptions: () => [] },
+			runtime: {
+				serviceCtx: { logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
+				subscriptionStateStore: { get: () => undefined },
+				engines: enginesPresent ? {} : null,
+			},
+		} as unknown as RouteDeps,
+		{ api: api as never },
+	);
 	return { app, warn };
 }
 
@@ -178,5 +181,56 @@ describe("GET /api/subscriptions/search", () => {
 			results: [{ uid: "7", name: "阿婆", avatar: "https://x/a.png", fans: 3 }],
 			total: 1,
 		});
+	});
+});
+
+describe("查人路由的 api 选项", () => {
+	it("选项给了 api 时,lookup 与 search 都走它", async () => {
+		const { app } = makeApp(
+			{
+				fetchUserCard: async () => CARD,
+				searchByType: async () =>
+					ok({
+						data: {
+							numResults: 1,
+							result: [
+								{ mid: 7, uname: '<em class="keyword">阿</em>婆', upic: "//x/a.png", fans: 3 },
+							],
+						},
+					}),
+			},
+			true,
+		);
+
+		const [lookup, search] = await Promise.all([
+			app.request("/lookup?uid=12345"),
+			app.request("/search?q=阿婆"),
+		]);
+
+		expect(lookup.status).toBe(200);
+		expect(await lookup.json()).toMatchObject({ uid: "12345", name: "测试UP" });
+		expect(search.status).toBe(200);
+		expect(await search.json()).toMatchObject({
+			results: [{ uid: "7", name: "阿婆", avatar: "https://x/a.png", fans: 3 }],
+			total: 1,
+		});
+	});
+
+	it("选项里 api 为 null 时,lookup 与 search 都回 not-ready", async () => {
+		const { app } = makeApp(null, true);
+
+		const [lookup, search] = await Promise.all([
+			app.request("/lookup?uid=12345"),
+			app.request("/search?q=abc"),
+		]);
+		const notReady = {
+			code: "unavailable",
+			message: "B 站 API 尚未就绪，请等登录完成或稍后再试",
+		};
+
+		expect(lookup.status).toBe(503);
+		expect(await lookup.json()).toEqual(notReady);
+		expect(search.status).toBe(503);
+		expect(await search.json()).toEqual(notReady);
 	});
 });

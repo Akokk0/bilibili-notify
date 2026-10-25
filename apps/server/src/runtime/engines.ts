@@ -69,7 +69,6 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { CreatorStatsReader } from "../ai/creator-stats.js";
 import { attachReadOnlyTools, type LiveNowReader } from "../ai/read-only-tools.js";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
-import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
@@ -180,8 +179,6 @@ export interface EnginesRuntime extends Disposable {
 	setCommentary(commentary: CommentaryGenerator | null): void;
 	/** 只给测试世界挂假出图器用。 */
 	setImageRenderer(renderer: ImageRenderer | null): void;
-	/** Started Api; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
-	readonly api: Api;
 	/**
 	 * 推送用的卡片渲染器,`null` = 没有 puppeteer(未装 / 未配 Chrome)。
 	 *
@@ -276,7 +273,6 @@ export interface CreateEnginesOptions {
 	 * 缓存里留的就是那条几十兆的 `@font-face`,建两个就在堆里存两遍。
 	 */
 	loadFontFace: (id: string) => Promise<string>;
-	api: Api;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
@@ -1115,7 +1111,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		setImageRenderer(next) {
 			imageRenderer = next;
 		},
-		api: opts.api,
 		// getter:`imageRenderer` 是个会被热切换重新赋值的 let,取值必须每次现读。
 		get imageRenderer() {
 			return imageRenderer;

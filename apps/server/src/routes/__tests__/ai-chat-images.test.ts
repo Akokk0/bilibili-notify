@@ -103,7 +103,6 @@ async function makeDeps(
 			imageStore,
 			chatImages,
 			engines: {
-				api: {},
 				commentary: new (class {
 					chatStatelessStream = chatStatelessStream;
 					summarizeTitle = vi.fn(async () => "标题");

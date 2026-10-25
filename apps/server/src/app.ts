@@ -71,8 +71,8 @@ interface BasicAuthCredentials {
 
 export interface CreateAppOptions {
 	/**
-	 * 卡片预览用的 B 站 API 客户端。要让预览也吃到 devtools 的覆盖(它把 api 包了一层 Proxy 按方法覆盖),
-	 * 就得显式传进来;省略就是没有(预览走不联网的假数据)。
+	 * 卡片预览与旧搜人用的 B 站 API 客户端。要让它们吃到 devtools 的覆盖(它把 api 包了一层 Proxy
+	 * 按方法覆盖),就得显式传进来;省略就是没有(预览走不联网的假数据,旧搜人回 not-ready)。
 	 */
 	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
@@ -295,6 +295,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	};
 	// 会员档位读口:每次现读来源登记表。
 	const tiers = createMembershipTierReader(runtime.sourceRegistry);
+	const api = options.api ?? null;
 
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
 		app.route("/api/health", createHealthRoute(deps));
@@ -303,7 +304,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		app.route(
 			"/api/subscriptions",
 			// 新建拓展订阅要核「它是不是装着的订阅源」—— 与拓展页同一份名单,现取。
-			createSubscriptionsRoute(deps, { extensions: () => options.extensions?.loaded() ?? [] }),
+			createSubscriptionsRoute(deps, { api, extensions: () => options.extensions?.loaded() ?? [] }),
 		);
 		app.route("/api/connections", createConnectionsRoute(deps));
 		app.route("/api/targets", createTargetsRoute(deps));
@@ -414,7 +415,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			createCardsRoute({
 				deps,
 				puppeteer: options.puppeteer ?? null,
-				api: options.api ?? null,
+				api,
 				persistChromeSource: options.persistChromeSource,
 				onPuppeteerEnabled: options.onPuppeteerEnabled,
 				chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,
