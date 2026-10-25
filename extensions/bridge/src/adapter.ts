@@ -17,7 +17,6 @@ import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
-	ExtensionConnectionView,
 	NotificationPayload,
 	PayloadSegment,
 	PlatformAdapter,
@@ -27,7 +26,7 @@ import type {
 } from "@bilibili-notify/extension";
 import { fail, neutralPlatformDescriptor, ok } from "@bilibili-notify/extension";
 import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
-import type { BridgeConnectionConfig } from "./config.js";
+import { type BridgeConnectionSettings, BridgeConnectionSettingsSchema } from "./config.js";
 import {
 	BRIDGE_CLOSE_CODES,
 	type BridgeBot,
@@ -36,22 +35,15 @@ import {
 	type BridgeMessage,
 	type BridgeSegment,
 } from "./contract.js";
-import { type BridgeInboundSource, routeBridgeInbound } from "./inbound.js";
+import { routeBridgeInbound } from "./inbound.js";
 import { stripMarkdown } from "./markdown.js";
 import { platformIcon } from "./platform-icons.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "./server.js";
 import type { BridgeLink } from "./settings.js";
 
-/** 一条桥连接(一个借来的 bot)—— 宿主已经拿本拓展那份 zod 把 config 解好了(决策 30)。 */
-type BridgeConnection = ExtensionConnectionView<BridgeConnectionConfig>;
-
 export interface BridgeAdapterOptions {
 	server: BridgeServer;
-	/**
-	 * 属于自己的连接,**现读**。别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」。
-	 */
-	connections(): readonly BridgeConnection[];
-	/** 接入名单(设置里那份),**现读**,理由同上。 */
+	/** 接入名单(设置里那份),**现读**。别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」。 */
 	links(): readonly BridgeLink[];
 	/**
 	 * 宿主分配给本拓展的挂载前缀(`ctx.mount()` 的返回值,形如 `/ext/bridge`)。
@@ -80,7 +72,7 @@ type PlainText = (text: string) => string;
 type SessionDestination = Extract<DestinationRef, { kind: "session" }>;
 
 type Located = Result<{
-	connection: BridgeConnection;
+	connection: Connection;
 	link: BridgeLink;
 	session: BridgeSession;
 	bot: BridgeBot;
@@ -170,12 +162,12 @@ function toBridgeMessage(
 /**
  * 桥的 adapter:契约上的 {@link PlatformAdapter},外加桥自己用的两个口:
  * - `reconcile()` —— 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
- * - `deliverInbound()` —— 端点收到入站帧、`index.ts` 查出它归哪条连接之后,经适配器存下的 `ctx.inbound` 交给宿主
- *   (入站口只在 `start(ctx)` 里拿得到;映射仍是 `routeBridgeInbound` 那个纯函数)。
+ * - `deliverInbound()` —— 端点收到入站帧后,按适配器存下的 `ctx.connections()` 找连接,再经 `ctx.inbound`
+ *   交给宿主(连接与入站口只在 `start(ctx)` 里拿得到;映射仍是 `routeBridgeInbound` 那个纯函数)。
  */
-export type BridgeAdapter = Omit<PlatformAdapter, "settingsSchema"> & {
+export type BridgeAdapter = Omit<PlatformAdapter, "adapterKey"> & {
 	reconcile(): void;
-	deliverInbound(frame: BridgeInboundFrame, source: BridgeInboundSource): void;
+	deliverInbound(session: BridgeSession, frame: BridgeInboundFrame): void;
 };
 
 export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
@@ -191,6 +183,18 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	 * token 继续收推送,而面板上一切正常。
 	 */
 	const lastTokens = new Map<string, string>(opts.links().map((link) => [link.id, link.token]));
+	/** `start(ctx)` 递进来的完整上下文;登记前还没有连接可读。 */
+	let adapterContext: PlatformAdapterContext | undefined;
+
+	function connections(): readonly Connection[] {
+		return adapterContext?.connections() ?? [];
+	}
+
+	/** `Connection.settings` 在核心是 `unknown`;这里用本拓展自己的 zod 收窄,解不过的按没有。 */
+	function settingsOf(connection: Connection): BridgeConnectionSettings | undefined {
+		const parsed = BridgeConnectionSettingsSchema.safeParse(connection.settings);
+		return parsed.success ? parsed.data : undefined;
+	}
 
 	/**
 	 * 「这条连接现在通到哪个 bot」—— `isAvailable` / `send` / `probe` / `capabilities` 共用
@@ -200,20 +204,21 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	 * 不看名单就发,等于把推送扔进黑洞再等 30 秒超时,用户看到的是「发了一半才失败」。
 	 */
 	function locate(connection: Connection): Located {
-		// 从**自己那份名单**里找,而不是自己去 parse 一条来路不明的连接:宿主只把属于这个
-		// 拓展、且 config 解得出形状的那些交过来(决策 30)。找不到就不是我的活。
-		const mine = opts.connections().find((candidate) => candidate.id === connection.id);
+		// 从**自己那份名单**里找,而不是自己相信一条来路不明的连接。宿主会按拓展 id 筛,
+		// 这里再核 settings 的形状(决策 30)。找不到就不是我的活。
+		const mine = connections().find((candidate) => candidate.id === connection.id);
+		const settings = mine && settingsOf(mine);
 		//
 		// 失败的码(ADR-0026):不是我的连接是输入不对;接入删了是「不存在」;被主人停用的要去把开关
 		// 打开,等是等不好的;没连着、bot 暂时不在名单上,等它连回来就好。
-		if (!mine) return fail("invalid", "不是桥连接");
-		const link = opts.links().find((candidate) => candidate.id === mine.config.link);
+		if (!mine || !settings) return fail("invalid", "不是桥连接");
+		const link = opts.links().find((candidate) => candidate.id === settings.link);
 		if (!link) return fail("not_found", "这条连接绑的那条接入已经删了");
 		if (!link.enabled) return fail("not_configured", `接入「${link.name}」已停用`);
 		const session = server.getSession(link.id);
 		if (!session) return fail("unavailable", `接入「${link.name}」没连着`);
-		const bot = session.bots.find((candidate) => candidate.botId === mine.config.botId);
-		if (!bot) return fail("unavailable", `桥上现在没有这个 bot(${mine.config.botId})`);
+		const bot = session.bots.find((candidate) => candidate.botId === settings.botId);
+		if (!bot) return fail("unavailable", `桥上现在没有这个 bot(${settings.botId})`);
 		return ok({ connection: mine, link, session, bot });
 	}
 
@@ -293,19 +298,33 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		for (const [id, link] of links) lastTokens.set(id, link.token);
 	}
 
-	/** `start(ctx)` 时存下的入站口;桥是自己连过来的,登记(= `start`)早于第一帧。 */
-	let inbound: PlatformAdapterContext["inbound"] | undefined;
-
 	return {
 		reconcile,
 
-		deliverInbound(frame, source) {
-			if (!inbound) return;
-			routeBridgeInbound(frame, source, inbound);
+		deliverInbound(session, frame) {
+			const ctx = adapterContext;
+			if (!ctx) return;
+			// 停用的也算绑过 —— 「绑没绑过」与「收不收它的消息」是两问,后者下面按 `enabled` 再判一次。
+			const bound = connections().find((candidate) => {
+				const settings = settingsOf(candidate);
+				return settings?.link === session.linkId && settings.botId === frame.botId;
+			});
+			// 只有绑成了连接的 bot 收到的消息才归 BN:没绑的 bot 在 BN 眼里不存在,它收到
+			// 的指令也没有一条连接能拿来回。记 debug 不记 warn —— 桥驮上来的每条都会经这儿。
+			if (!bound) {
+				ctx.logger.debug(`${session.linkId} 上的 ${frame.botId} 没绑成连接,这条消息不收`);
+				return;
+			}
+			// 停用的连接**进也不收**:只拦出的那一半的话,指令照跑、链接照解析、图照渲染,
+			// 一路走到要发回去那步才失败。停用的意思是「这个 bot 现在跟 BN 没关系」。
+			if (!bound.enabled) {
+				ctx.logger.debug(`连接「${bound.name}」已停用,${frame.botId} 这条消息不收`);
+				return;
+			}
+			routeBridgeInbound(frame, { connectionId: bound.id, bots: session.bots }, ctx.inbound);
 		},
 
-		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
-		adapterKey: "",
+		settingsSchema: BridgeConnectionSettingsSchema,
 
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			return resolve(connection, destination).ok;
@@ -352,7 +371,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		 * 登记那一刻还没有会话可踢;`lastTokens` 在建 adapter 时已用当前名单打底。
 		 */
 		start(ctx: PlatformAdapterContext): void {
-			inbound = ctx.inbound;
+			adapterContext = ctx;
 			ctx.onConnectionsChanged(() => reconcile());
 		},
 
@@ -385,9 +404,11 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 			// 查表建**一次**。`connections()` 是现读的深拷贝,逐个 bot 去查等于把整张连接表
 			// 拷一遍又一遍。键里那个 `\0` 是分隔符 —— `botId` 是开放字符串(平台自己定的),
 			// 拿冒号拼会和 `telegram:12345` 这种撞上。
-			const boundTo = new Map(
-				opts.connections().map((c) => [`${c.config.link}\0${c.config.botId}`, c.id]),
-			);
+			const boundTo = new Map<string, string>();
+			for (const connection of connections()) {
+				const settings = settingsOf(connection);
+				if (settings) boundTo.set(`${settings.link}\0${settings.botId}`, connection.id);
+			}
 			return opts.links().flatMap((link) => {
 				const session = server.getSession(link.id);
 				if (!session) return [];

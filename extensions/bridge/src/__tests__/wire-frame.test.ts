@@ -15,13 +15,12 @@
 
 import type {
 	Connection,
-	ExtensionConnectionView,
 	NotificationPayload,
+	PlatformAdapterContext,
 	PushTarget,
 } from "@bilibili-notify/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createBridgeAdapter } from "../adapter.js";
-import type { BridgeConnectionConfig } from "../config.js";
 import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../server.js";
 import type { BridgeLink } from "../settings.js";
 
@@ -37,11 +36,21 @@ const link: BridgeLink = {
 	bridgeKind: "koishi",
 };
 
-const view: ExtensionConnectionView<BridgeConnectionConfig> = {
+const view: Connection = {
 	id: CONNECTION_ID,
 	name: "电报那个 bot",
 	enabled: true,
-	config: { link: LINK_ID, botId: "b1" },
+	adapterKey: "bridge",
+	platform: "telegram",
+	settings: { link: LINK_ID, botId: "b1" },
+	platformSnapshot: {
+		label: "telegram",
+		shortLabel: "telegram",
+		color: "#94a3b8",
+		targetKind: "session",
+		scopes: ["group", "private", "channel"],
+		addressNouns: {},
+	},
 };
 
 const connection = {
@@ -108,7 +117,6 @@ function harness(markdown: "supported" | "unknown" = "supported") {
 	} as unknown as BridgeServer;
 	const adapter = createBridgeAdapter({
 		server,
-		connections: () => [view],
 		links: () => [link],
 		mountPath: "/ext/bridge",
 		blobs: {
@@ -119,6 +127,10 @@ function harness(markdown: "supported" | "unknown" = "supported") {
 			},
 		},
 	});
+	adapter.start({
+		connections: () => [view],
+		onConnectionsChanged: () => ({ dispose() {} }),
+	} as unknown as PlatformAdapterContext);
 	return {
 		/** 发一条,返回线上会看到的那份请求(JSON 往返过一遍)。 */
 		async sent(payload: NotificationPayload) {

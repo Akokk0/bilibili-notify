@@ -1,11 +1,12 @@
 import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
 import type {
-	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionI18n,
 	ExtensionPushView,
 	ExtensionSubscriptionView,
 	ExtensionView,
+	PlatformAdapterDef,
+	PlatformAdapterHandle,
 	SettingsReader,
 	SourceDef,
 } from "@bilibili-notify/extension";
@@ -20,7 +21,6 @@ import {
 	type InboundHandlers,
 	type Issue,
 	type Logger,
-	manifestProvides,
 	ok,
 	type PlatformAdapter,
 	type Result,
@@ -60,11 +60,10 @@ import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view
  * 谁来造 ctx、谁来收摊。
  */
 export type {
-	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionPushView,
-	PushExtensionDef,
-	PushSourceHandle,
+	PlatformAdapterDef,
+	PlatformAdapterHandle,
 	SourceDef,
 	SourceHandle,
 } from "@bilibili-notify/extension";
@@ -361,7 +360,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	/** `publishView` 交的回调 —— 每问一次叫一次,核过再下发。 */
 	let viewFn: (() => ExtensionView) | undefined;
-	let pushSourceRegistered = false;
+	let adapterRegistered = false;
 	/**
 	 * 清单声明过的动作名(决策 42:清单里只有名字的一串);清单里没有 `actions` 这一段就是
 	 * `undefined`。建成 Set 查:名字是拓展与面板给的,拿普通对象按下标查会顺着原型链把
@@ -391,26 +390,31 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		onFire: () => opts.onStatusChanged?.(),
 	});
 
-	/** 属于这个拓展、且 settings 解得出来的那些。解不出的当它不存在并记一行。 */
-	function ownConnections<TConfig>(
-		schema: ZodType<TConfig>,
-	): readonly ExtensionConnectionView<TConfig>[] {
-		const views: ExtensionConnectionView<TConfig>[] = [];
-		for (const connection of opts.connections()) {
-			if (connection.adapterKey !== id) continue;
-			const parsed = schema.safeParse(connection.settings);
-			if (!parsed.success) {
-				logger.warn(`连接 ${connection.id} 的配置形状不对,这一条不交给它:${parsed.error.message}`);
-				continue;
+	/**
+	 * 平台适配器那一口的 def:六个行为成员与自己的设置 schema 一次交齐。第三方 JS 不受类型约束,缺了不能等
+	 * 登记表或派发器运行时才炸成「不是函数」(ADR-0024 决策 4 / 11)。
+	 */
+	function assertPlatformAdapterDef(def: PlatformAdapterDef): void {
+		for (const member of [
+			"start",
+			"stop",
+			"send",
+			"isAvailable",
+			"probe",
+			"listConnectionCandidates",
+		] as const) {
+			if (typeof def?.[member] !== "function") {
+				throw new Error(`extension ${id}: a platform adapter needs ${member}()`);
 			}
-			views.push({
-				id: connection.id,
-				name: connection.name,
-				enabled: connection.enabled,
-				config: parsed.data,
-			});
 		}
-		return views;
+		if (typeof def.settingsSchema?.safeParse !== "function") {
+			throw new Error(`extension ${id}: a platform adapter needs settingsSchema with safeParse()`);
+		}
+		if ("descriptor" in def) {
+			throw new Error(
+				`extension ${id}: the platform adapter descriptor belongs in contributes.push, not in code`,
+			);
+		}
 	}
 
 	/**
@@ -583,28 +587,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	);
 
 	/**
-	 * 推送源那一口给面板的东西从哪来 —— 先核对清单开没开这一口,再取:只认清单。
-	 *
-	 * 🔴 「注册的口 ⊆ 清单开的口」:不核的话,一个声明成订阅源的拓展照样能挂一个出口上来,
-	 * 面板按清单把它归在订阅那一栏,推送目标页却凭空多出一档。
-	 */
-	function pushViewOf(
-		def: Parameters<ExtensionContext["registerPushSource"]>[0],
-	): ExtensionPushView {
-		const { manifest } = opts;
-		if (!manifestProvides(manifest).includes("push")) {
-			throw new Error(`extension ${id}: 清单里没开推送源那一口(contributes.push),不能注册推送源`);
-		}
-		if ("descriptor" in def || "configFields" in def) {
-			throw new Error(
-				`extension ${id}: 外观与连接配置项写在清单的 contributes.push 里,代码里别再交 —— 两份会打架`,
-			);
-		}
-		// 上面核对过开了这一口,这里一定有。
-		return manifestPushView(manifest) as ExtensionPushView;
-	}
-
-	/**
 	 * 设置项的两份声明(清单一份、`ctx.settings(schema)` 交一份 zod)在拿设置的那一刻对表,
 	 * 每份 schema 对一次。
 	 */
@@ -745,70 +727,61 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			integration.track(handle);
 			return handle.prefix;
 		},
-		registerPushSource(def) {
+		registerPlatformAdapter(def) {
 			if (integration.disposed) {
-				integration.refuse("registerPushSource");
+				integration.refuse("registerPlatformAdapter");
 				throw new Error(`extension ${id} is already unloaded`);
 			}
-			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
-			// 第三方 JS 不受类型约束:按旧契约打的适配器没有 start / stop,登记表一调就是一句「不是函数」。
-			if (typeof def.adapter?.start !== "function" || typeof def.adapter?.stop !== "function") {
+			if (adapterRegistered) {
+				throw new Error(`extension ${id} already registered a platform adapter`);
+			}
+			// 🔴 「注册的口 ⊆ 清单开的口」:不核的话,一个声明成订阅源的拓展照样能挂一个出口上来,
+			// 面板按清单把它归在订阅那一栏,推送目标页却凭空多出一档。
+			const view = manifestPushView(opts.manifest);
+			if (!view) {
 				throw new Error(
-					`extension ${id}: 推送源的适配器要有 start(ctx) 与 stop() —— 这个拓展是按旧的契约打的,要换成配这一版 BN 的包`,
+					`extension ${id}: manifest has no contributes.push, cannot register a platform adapter`,
 				);
 			}
-			// 候选口是必备成员(ADR-0024 决策 4):新建连接只能从候选里挑。旧的拓展拿 `listBots` 交 bot,
-			// 现在要换成适配器的 `listConnectionCandidates`。
-			if (typeof def.adapter.listConnectionCandidates !== "function") {
-				throw new Error(
-					`extension ${id}: 推送源的适配器要有 listConnectionCandidates(signal) —— 新建连接从它列出的候选里挑(旧契约的 listBots 换成它)`,
-				);
-			}
-			const view = pushViewOf(def);
-			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
+			assertPlatformAdapterDef(def);
+			// 两份 settings 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			// 连接一律是从候选里挑出来的(settings 由拓展交),所以按「挑出来的」对表。
-			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, { picked: true });
-			pushSourceRegistered = true;
+			assertConfigFieldsMatchSchema(id, def.settingsSchema, view.connectionFields, {
+				picked: true,
+			});
+			adapterRegistered = true;
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
-			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
 			// 🔴 这一版不对拓展开放的成员(ADR-0024 决策 11)带了也不认:契约的类型已经排除它们,但第三方 JS 不受
 			// 类型约束,原样展开的话带了就是活的 —— 没开放的口子先被人用上,以后就改不动它的形状。
 			// 按成员表取、方法 bind 回拓展交上来的那个实例:拓展拿 class 写适配器(方法在原型上)是最常见的写法,
 			// 展开会把原型上的方法整个丢掉。
-			const adapter: PlatformAdapter = {
-				...pickAdapterMembers(def.adapter, ["listAddressCandidates", "connectionAuth"]),
+			const adapter = {
+				...pickAdapterMembers(def, ["listAddressCandidates", "connectionAuth"]),
 				adapterKey: id,
-				settingsSchema: def.configSchema,
-			} as PlatformAdapter;
-			// 登记即 `start`。适配器拿到的上下文与交回给拓展的把手**不同形**:这里的 `ctx.connections()` 按
-			// `adapterKey` 筛、`settings` 按 `configSchema` 解过、解不过的隔离;把手的 `connections()`
-			// 回的是 `{ id, name, enabled, config }` 的视图(契约的字段名不在这一片改)。
-			integration.track(
-				adapters.register(
-					adapter,
-					createPlatformAdapterContext({
-						integration: integration.ctx,
-						adapterKey: id,
-						label: manifestName,
-						settingsSchema: def.configSchema,
-						connections: opts.connections,
-						...(opts.connection ? { connection: opts.connection } : {}),
-						inbound: opts.inbound,
-						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
-						problems: opts.problems,
-						rejectedProblemLevel: "warn",
-						onRejectedProblem: recordRejectedProblem,
-					}),
-				),
+				settingsSchema: def.settingsSchema,
+			} satisfies PlatformAdapter;
+			// 登记即 `start`。适配器只从上下文读自己的连接与入站,登记交回的把手只负责注销。
+			const registration = adapters.register(
+				adapter,
+				createPlatformAdapterContext({
+					integration: integration.ctx,
+					adapterKey: id,
+					label: manifestName,
+					settingsSchema: def.settingsSchema,
+					connections: opts.connections,
+					...(opts.connection ? { connection: opts.connection } : {}),
+					inbound: opts.inbound,
+					onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
+					problems: opts.problems,
+					rejectedProblemLevel: "warn",
+					onRejectedProblem: recordRejectedProblem,
+				}),
 			);
+			integration.track(registration);
 			return {
-				connections: () => ownConnections(def.configSchema),
-				onConnectionsChanged: (fn) => {
-					if (integration.disposed) return integration.refuse("onConnectionsChanged");
-					return integration.track(opts.onConnectionsChanged(fn));
-				},
-			};
+				dispose: () => registration.dispose(),
+			} satisfies PlatformAdapterHandle;
 		},
 		registerSource(def) {
 			if (integration.disposed) {

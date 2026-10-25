@@ -463,15 +463,14 @@ describe("拓展声明的密钥字段", () => {
 				activate(ctx: ExtensionContext) {
 					// 清单声明了设置项,就得交校验它们的 zod(ADR-0019 决策 35),不然按加载失败算。
 					ctx.settings(z.object({ cookie: z.string().optional() }));
-					ctx.registerPushSource({
-						adapter: {
-							adapterKey: "",
-							isAvailable: () => true,
-							listConnectionCandidates: async () => [],
-							start() {},
-							stop() {},
-						} as never,
-						configSchema: z.object({ token: z.string() }),
+					ctx.registerPlatformAdapter({
+						isAvailable: () => true,
+						listConnectionCandidates: async () => [],
+						probe: async () => ({ ok: true, latencyMs: 1 }),
+						send: async () => ({ ok: true, latencyMs: 1 }),
+						settingsSchema: z.object({ token: z.string() }),
+						start() {},
+						stop() {},
 					});
 				},
 			}),

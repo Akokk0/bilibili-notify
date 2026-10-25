@@ -259,26 +259,22 @@ describe("拓展", () => {
 				await ctx.state.set("fromActivate", seen.activations),
 				await ctx.secrets.set("tokenA", `a${seen.activations}`),
 			);
-			ctx.registerPushSource({
-				adapter: {
-					adapterKey: "ignored",
-					isAvailable: () => true,
-					send: async () => ({ ok: true, latencyMs: 1 }),
-					probe: async () => ({ ok: true, latencyMs: 1 }),
-					listConnectionCandidates: async () => [],
-					start(adapterCtx) {
-						seen.sameObjects.push(
-							adapterCtx.state === activateCtx?.state &&
-								adapterCtx.secrets === activateCtx?.secrets,
-						);
-						startWrites.push(
-							adapterCtx.state.set("fromStart", true),
-							adapterCtx.secrets.set("tokenB", "b"),
-						);
-					},
-					stop() {},
+			ctx.registerPlatformAdapter({
+				isAvailable: () => true,
+				send: async () => ({ ok: true, latencyMs: 1 }),
+				probe: async () => ({ ok: true, latencyMs: 1 }),
+				listConnectionCandidates: async () => [],
+				settingsSchema: z.object({}),
+				start(adapterCtx) {
+					seen.sameObjects.push(
+						adapterCtx.state === activateCtx?.state && adapterCtx.secrets === activateCtx?.secrets,
+					);
+					startWrites.push(
+						adapterCtx.state.set("fromStart", true),
+						adapterCtx.secrets.set("tokenB", "b"),
+					);
 				},
-				configSchema: z.object({}),
+				stop() {},
 			});
 		}
 		const loaded = await loadExtensions({

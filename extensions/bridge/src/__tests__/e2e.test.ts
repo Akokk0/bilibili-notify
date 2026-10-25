@@ -23,7 +23,6 @@ import type { AddressInfo } from "node:net";
 import type {
 	Connection,
 	Disposable,
-	ExtensionConnectionView,
 	ExtensionContext,
 	ExtensionFetchHandler,
 	ExtensionItemView,
@@ -31,8 +30,8 @@ import type {
 	ExtensionUpgradeHandler,
 	ExtensionView,
 	PlatformAdapter,
-	PushExtensionDef,
-	PushSourceHandle,
+	PlatformAdapterDef,
+	PlatformAdapterHandle,
 	PushTarget,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
@@ -126,7 +125,6 @@ function hostFor(
 	let fetchHandler: ExtensionFetchHandler | undefined;
 	let upgradeHandler: ExtensionUpgradeHandler | undefined;
 	let adapter: PlatformAdapter | undefined;
-	let pushSource: PushExtensionDef<unknown> | undefined;
 	let statusOf: (() => unknown) | undefined;
 	let statusChanges = 0;
 	/** 喂回核心的入站消息 —— 「该不该收」那道闸只在这儿看得出来。 */
@@ -158,7 +156,7 @@ function hostFor(
 
 	const ctx: ExtensionContext = {
 		id: EXTENSION_ID,
-		hostApiVersion: 2,
+		hostApiVersion: 3,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
 		// 桥不取字(留给后续),这里只为过类型:键回键本身,语言一直是简中。
@@ -185,10 +183,9 @@ function hostFor(
 			fetchHandler = handler;
 			return MOUNT_PREFIX;
 		},
-		registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig> {
+		registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle {
 			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。
-			adapter = { ...def.adapter, adapterKey: EXTENSION_ID, settingsSchema: def.configSchema };
-			pushSource = def as PushExtensionDef<unknown>;
+			adapter = { ...def, adapterKey: EXTENSION_ID };
 			// 登记即 `start`:适配器上下文里的 `inbound` 是桥交入站的唯一出口。替身不核归属、不补平台,
 			// 原样记下桥交来的东西(含 meta —— 桥只该报 `connectionId`)。
 			adapter.start({
@@ -205,24 +202,19 @@ function hostFor(
 				storeImage: ctx.storeImage,
 				reportProblem() {},
 				resolveProblem() {},
-				connections: () => connections(),
+				connections: () =>
+					connections().flatMap((connection) => {
+						if (connection.adapterKey !== EXTENSION_ID) return [];
+						const parsed = def.settingsSchema.safeParse(connection.settings);
+						return parsed.success ? [{ ...connection, settings: parsed.data }] : [];
+					}),
 				onConnectionsChanged: () => ({ dispose() {} }),
 				inbound: {
 					private: (msg, meta) => inboundCalls.push({ route: "private", msg, meta }),
 					group: (msg, meta) => inboundCalls.push({ route: "group", msg, meta }),
 				},
 			});
-			return {
-				// 宿主拿**拓展自己那份 zod** 解 config,解不出的那条根本不交给它(决策 30)。
-				connections: (): readonly ExtensionConnectionView<TConfig>[] =>
-					connections().map((connection) => ({
-						id: connection.id,
-						name: connection.name,
-						enabled: connection.enabled,
-						config: def.configSchema.parse(connection.settings),
-					})),
-				onConnectionsChanged: () => ({ dispose() {} }),
-			};
+			return { dispose() {} };
 		},
 		registerSource() {
 			throw new Error("桥的清单没开 contributes.subscription,不该注册订阅源");
@@ -257,12 +249,8 @@ function hostFor(
 
 	return {
 		ctx,
-		pushSource: () => {
-			if (!pushSource) throw new Error("拓展没注册推送源");
-			return pushSource;
-		},
 		adapter: () => {
-			if (!adapter) throw new Error("拓展没注册推送源");
+			if (!adapter) throw new Error("拓展没注册平台适配器");
 			return adapter;
 		},
 		status: () => statusOf?.(),

@@ -2,11 +2,11 @@
  * `@bilibili-notify/extension` —— **宿主给拓展的那一面**。
  *
  * 拓展住在仓里的 `extensions/<id>/`(ADR-0012 决策 4),写的是 TypeScript,所以它需要
- * 「ctx 上有哪几格」「一个推送源要交哪几样」这些类型。它们必须住在一个**双方都够得到的
+ * 「ctx 上有哪几格」「一个平台适配器要交哪几样」这些类型。它们必须住在一个**双方都够得到的
  * 公共包**里:放核心里的话,拓展得反过来依赖宿主应用,那条边是反的。
  *
  * 🔴 **拓展只从这一个包拿 BN 的东西。** 它自己那一面(ctx、挂载点、upgrade、表单字段表)
- * 定义在这里;推送源契约与 adapter 签名要用的域类型定义在 `@bilibili-notify/internal`
+ * 定义在这里;平台适配器契约与 adapter 签名要用的域类型定义在 `@bilibili-notify/internal`
  * (那是**核心也在实现**的业务词汇),由这里**转出一道** —— 拓展不直接依赖 internal。
  *
  * 为什么转一道而不是让拓展自己去拿:`internal` 导出的是**整个域模型**(globals、
@@ -69,7 +69,7 @@ export type {
 	NotificationPayload,
 	PayloadSegment,
 	/**
-	 * 推送源契约 —— 一个出口长什么样。核心的 onebot / 官机 / webhook 与每个推送拓展实现的
+	 * 平台适配器契约 —— 一个出口长什么样。核心的 onebot / 官机 / webhook 与每个推送拓展实现的
 	 * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
 	 */
 	PlatformAdapter,
@@ -173,46 +173,25 @@ export interface ExtensionUpgrade {
 export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
 
 /**
- * 一个推送源 —— **代码那一半**:行为与校验,一次交齐。
+ * 平台适配器交给宿主的整个定义:行为与自己的设置 schema 一起登记。
  *
- * 外观(`display`)与连接配置项(`connection.fields`)是静态数据,写在清单的
- * `contributes.push` 里(ADR-0019 决策 16),宿主读清单拿;代码里别再交一份 —— 两份声明
- * 会打架,宿主注册那一刻就会抛。清单里没开 `contributes.push` 的拓展注册不了推送源。
+ * 描述(外观与连接配置项)是静态数据,写在清单的 `contributes.push` 里(ADR-0019 决策 16),宿主读清单拿;
+ * 代码里别再交一份 —— 两份声明会打架,宿主注册那一刻就会抛。`adapterKey` 由宿主按拓展 id 填。
+ *
+ * `settingsSchema` 是连接设置的校验:宿主拿它解连接,解不出的那条只隔离、不交给适配器;注册那一刻还拿它
+ * 与清单里的连接配置项逐格对表(键、类型、默认值),对不上直接抛(ADR-0019 决策 17)。
+ *
+ * `listAddressCandidates` 与 `connectionAuth` 不对拓展开放(ADR-0024 决策 11),类型里排除,宿主运行时也会摘掉。
  */
-export interface PushExtensionDef<TConfig> {
-	/**
-	 * 行为。⚠️ 它自报的 `adapterKey` **会被宿主覆盖**成这个拓展的 id;`settingsSchema` 由宿主拿
-	 * `configSchema` 填,所以这里不用(也不能)自己交。`listAddressCandidates` 与 `connectionAuth`
-	 * 不对拓展开放(ADR-0024 决策 11),类型上排除。
-	 */
-	adapter: Omit<PlatformAdapter, "settingsSchema" | "listAddressCandidates" | "connectionAuth">;
-	/**
-	 * config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展;注册那一刻还拿它与清单里的
-	 * 连接配置项逐格对表(键、类型、默认值),对不上直接抛(ADR-0019 决策 17)。
-	 */
-	configSchema: ZodType<TConfig>;
-}
+export type PlatformAdapterDef = Omit<
+	PlatformAdapter,
+	"adapterKey" | "listAddressCandidates" | "connectionAuth"
+>;
 
-/** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */
-export interface ExtensionConnectionView<TConfig> {
-	id: string;
-	name: string;
-	/** 主人有没有停用这条。**停用的也在名单里** —— 拓展要拿它答「这条为什么发不出去」。 */
-	enabled: boolean;
-	config: TConfig;
-}
-
-/** 注册完一个推送源之后拿到的把手。 */
-export interface PushSourceHandle<TConfig> {
-	/**
-	 * 属于自己的连接,**现读**。
-	 *
-	 * 别缓存 —— 缓存与真相会漂,症状是「面板上停用了它还连着」,而且没人报错。变更通知是
-	 * 用来**做动作**的(踢会话),不是用来刷缓存的。
-	 */
-	connections(): readonly ExtensionConnectionView<TConfig>[];
-	/** 配置动过了。卸载时自动摘掉。 */
-	onConnectionsChanged(fn: () => void): Disposable;
+/** 注册完一个平台适配器之后拿到的把手。 */
+export interface PlatformAdapterHandle {
+	/** 注销适配器;幂等,调用后不再接收消息,也不再发送。 */
+	dispose(): void;
 }
 
 /**
@@ -447,14 +426,16 @@ export interface ExtensionContext extends IntegrationContext {
 	 */
 	mount(handler: ExtensionFetchHandler): string;
 	/**
-	 * 注册这个拓展的推送源 —— 一个拓展只有一个(决策 28),再注册一次会抛。
+	 * 注册这个拓展的平台适配器 —— 一个拓展只有一个(决策 28),再注册一次会抛。
 	 *
-	 * **分发键由宿主按 id 填**,`adapter.adapterKey` 自报的那份会被覆盖:自报的话,一个
-	 * 拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走。归属是宿主的判断。
+	 * 清单得开 `contributes.push`,否则抛。`def.start(ctx)` 拿到与核心平台适配器同一套的上下文
+	 * ({@link PlatformAdapterContext}),自己的连接与入站都从那里取;交回的把手只管注销。
 	 *
-	 * 清单没开推送源那一口(`contributes.push`)会抛。
+	 * **分发键由宿主按拓展 id 填**:自报的话,一个拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走,
+	 * 归属是宿主的判断。描述写在清单的 `contributes.push` 里。停用 / 卸载时宿主替它撤登记
+	 * (先叫 `stop()`,再中止 `ctx.signal`);把手的 `dispose()` 幂等。
 	 */
-	registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig>;
+	registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle;
 	/**
 	 * 注册这个拓展的订阅源(第 3 版形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
 	 *

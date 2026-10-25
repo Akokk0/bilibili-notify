@@ -13,16 +13,10 @@
  * 没有 `botId`。接入(token)住设置里,adapter 现读那份名单。
  */
 
-import type {
-	Connection,
-	ExtensionConnectionView,
-	NotificationPayload,
-	PushTarget,
-} from "@bilibili-notify/extension";
+import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createBridgeAdapter } from "../adapter.js";
-import type { BridgeConnectionConfig } from "../config.js";
 import type { BridgeCapabilityReport } from "../contract.js";
 import type {
 	BridgePingResult,
@@ -36,6 +30,7 @@ import { memoryKeyValueStore } from "./memory-key-value-store.js";
 
 const LINK_ID = "link-home";
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SECOND_CONNECTION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 function link(over: Partial<BridgeLink> = {}): BridgeLink {
 	return {
@@ -44,19 +39,6 @@ function link(over: Partial<BridgeLink> = {}): BridgeLink {
 		enabled: true,
 		token: "t0ken",
 		bridgeKind: "koishi",
-		...over,
-	};
-}
-
-/** 宿主交给拓展的那份连接视图 —— config 已经过本拓展那份 zod:接入 + bot。 */
-type View = ExtensionConnectionView<BridgeConnectionConfig>;
-
-function view(over: Partial<View> = {}): View {
-	return {
-		id: CONNECTION_ID,
-		name: "电报那个 bot",
-		enabled: true,
-		config: { link: LINK_ID, botId: "b1" },
 		...over,
 	};
 }
@@ -131,7 +113,7 @@ interface Harness {
 	published: { mime: string; bytes: number }[];
 	lastRequest(): BridgeSendRequest;
 	/** 宿主交给它的那份连接名单。 */
-	setConnections(list: View[]): void;
+	setConnections(list: Connection[]): void;
 	/** 设置里那份接入名单 —— 换掉它再 `reconcile()` 就是「接入动了」。 */
 	setLinks(list: BridgeLink[]): void;
 	/** 宿主叫一声「连接配置动了」—— 触发 `start(ctx)` 里经 `ctx.onConnectionsChanged` 登记的回调。 */
@@ -158,11 +140,10 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 		sessionCount: live ? 1 : 0,
 		dispose() {},
 	} as unknown as BridgeServer;
-	let connections: View[] = [view()];
+	let connections: Connection[] = [connection()];
 	let links: BridgeLink[] = [link()];
 	const adapter = createBridgeAdapter({
 		server,
-		connections: () => connections,
 		links: () => links,
 		mountPath: "/ext/bridge",
 		blobs: {
@@ -172,7 +153,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			},
 		},
 	});
-	// 宿主登记它时递的上下文:桥只用得着「订连接变更」这一格,其余不碰。
+	// 宿主登记它时递的上下文:连接与入站都从这里进来。
 	const listeners = new Set<() => void>();
 	const noop = () => {};
 	const start = () =>
@@ -196,7 +177,7 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			storeImage: async () => fail("unavailable", "桥的测试不联网"),
 			reportProblem: noop,
 			resolveProblem: noop,
-			connections: () => [],
+			connections: () => connections,
 			inbound: { private: noop, group: noop },
 			onConnectionsChanged(fn) {
 				listeners.add(fn);
@@ -231,8 +212,48 @@ describe("桥 adapter", () => {
 	 * 自报的话,一个拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走 —— 归属是宿主的
 	 * 判断,不是拓展的声明。覆盖那一步的守卫在 `extensions/__tests__/context-grants.test.ts`。
 	 */
-	it("自己**不报**分发键 —— 报了也会被宿主覆盖掉", () => {
-		expect(harness().adapter.adapterKey).toBe("");
+	it("代码里**不报**分发键 —— 宿主登记时按拓展 id 填", () => {
+		expect("adapterKey" in harness().adapter).toBe(false);
+	});
+
+	/**
+	 * 适配器从 `start(ctx).connections()` 现读宿主交来的连接。两条连接各绑一个 bot 时,
+	 * 候选必须分别带出自己的连接 id,不能只看接入把一个 id 发给整排 bot。
+	 */
+	it("两条已绑连接经 start(ctx) 交进来 → 对应候选各带自己的 boundConnectionId", async () => {
+		const base = session();
+		const [firstBot] = base.bots;
+		if (!firstBot) throw new Error("测试会话缺 bot");
+		const h = harness(
+			session({
+				bots: [
+					...base.bots,
+					{
+						...firstBot,
+						botId: "b2",
+						name: "第二个 bot",
+					},
+				],
+			}),
+		);
+		h.setConnections([
+			connection(),
+			connection({
+				id: SECOND_CONNECTION_ID,
+				name: "第二个连接",
+				settings: { link: LINK_ID, botId: "b2" },
+			}),
+		]);
+		const candidates = await h.adapter.listConnectionCandidates(new AbortController().signal);
+		expect(
+			candidates.map((candidate) => ({
+				settings: candidate.settings,
+				boundConnectionId: candidate.boundConnectionId,
+			})),
+		).toEqual([
+			{ settings: { link: LINK_ID, botId: "b1" }, boundConnectionId: CONNECTION_ID },
+			{ settings: { link: LINK_ID, botId: "b2" }, boundConnectionId: SECOND_CONNECTION_ID },
+		]);
 	});
 
 	// ---- 发得出去吗 --------------------------------------------------------
@@ -249,7 +270,7 @@ describe("桥 adapter", () => {
 
 	it("**bot 不在名单里 → 不可发**(接入还在,是那个 bot 掉了)", () => {
 		const h = harness();
-		h.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		h.setConnections([connection({ settings: { link: LINK_ID, botId: "没这个" } })]);
 		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
 	});
 
@@ -287,7 +308,7 @@ describe("桥 adapter", () => {
 			code: "unavailable",
 		});
 		const noBot = harness();
-		noBot.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		noBot.setConnections([connection({ settings: { link: LINK_ID, botId: "没这个" } })]);
 		expect(await noBot.adapter.send(connection(), target(), text)).toMatchObject({
 			ok: false,
 			code: "unavailable",
@@ -301,7 +322,7 @@ describe("桥 adapter", () => {
 
 	it("发之前先问一遍 —— bot 不在名单就**一帧都不发**,别扔进黑洞等超时", async () => {
 		const h = harness();
-		h.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		h.setConnections([connection({ settings: { link: LINK_ID, botId: "没这个" } })]);
 		const result = await h.adapter.send(connection(), target(), { kind: "text", text: "喵" });
 		expect(result.ok).toBe(false);
 		expect(h.send).not.toHaveBeenCalled();

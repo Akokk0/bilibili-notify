@@ -507,4 +507,4 @@ BN 侧就是这么做的，所以你可以放心先发新帧。
 | 帧校验 / 版本判定 / 能力归一 | `src/protocol.ts` |
 | WS 端点：鉴权 / 握手 / 心跳 / 回执关联 | `src/server.ts` |
 | `inbound` → BN 内部的入站形状 | `src/inbound.ts` |
-| 推送 → `send` 帧（桥注册的推送源 adapter） | `src/adapter.ts` |
+| 推送 → `send` 帧（桥登记的平台适配器） | `src/adapter.ts` |

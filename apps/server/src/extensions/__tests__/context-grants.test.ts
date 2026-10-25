@@ -13,6 +13,7 @@ import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import type {
 	SourceContext as ExtensionSourceContext,
 	ExtensionView,
+	PlatformAdapterDef,
 } from "@bilibili-notify/extension";
 import type {
 	Connection,
@@ -202,17 +203,20 @@ function harness(
 
 function fakeAdapter(): PlatformAdapter {
 	return {
-		adapterKey: "谁都不是",
+		settingsSchema: CONFIG,
 		isAvailable: () => true,
 		listConnectionCandidates: async () => [],
+		probe: async () => ok({ latencyMs: 1 }),
+		send: async () => ok({ latencyMs: 1 }),
 		start() {},
 		stop() {},
 	} as unknown as PlatformAdapter;
 }
 
 /** 代码那一半:行为与 zod。外观与连接配置项住清单(ADR-0019 决策 16 / 17)。 */
-function def() {
-	return { adapter: fakeAdapter(), configSchema: CONFIG };
+function def(): PlatformAdapterDef {
+	const { adapterKey: _adapterKey, ...flat } = fakeAdapter();
+	return flat;
 }
 
 /**
@@ -220,7 +224,7 @@ function def() {
  * **注册的口必须是清单开了的口** —— 今天「声明订阅却去注册推送」没人拦,面板按清单把它归在
  * 订阅那一栏,推送目标页却多出一档。
  */
-describe("按清单注册推送源", () => {
+describe("按清单注册平台适配器", () => {
 	function v2(over: Record<string, unknown> = {}): ExtensionManifest {
 		return {
 			id: "bridge",
@@ -234,18 +238,19 @@ describe("按清单注册推送源", () => {
 	}
 	const v2Def = def;
 
-	it("按旧契约打的适配器(只有 reconcile、没有 start / stop)—— 抛一句看得懂的话,不留半截状态", () => {
+	it("按旧契约打的适配器(没有 start / stop)—— 抛一句看得懂的话,不留半截状态", () => {
 		const h = harness();
+		const { start: _start, stop: _stop, ...withoutLifecycle } = def();
 		const legacy = {
-			...def(),
-			adapter: { adapterKey: "x", isAvailable: () => true, reconcile() {} },
+			...withoutLifecycle,
+			reconcile() {},
 		};
-		expect(() => h.ctx.registerPushSource(legacy as unknown as ReturnType<typeof def>)).toThrow(
-			/按旧的契约打的/,
+		expect(() => h.ctx.registerPlatformAdapter(legacy as unknown as PlatformAdapterDef)).toThrow(
+			/needs start\(\)/,
 		);
 		expect(h.adapters.list()).toEqual([]);
 		// 没留半截状态:同一个上下文还能再登记合规的。
-		h.ctx.registerPushSource(def());
+		h.ctx.registerPlatformAdapter(def());
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
@@ -258,7 +263,7 @@ describe("按清单注册推送源", () => {
 			],
 		});
 		const start = vi.fn();
-		h.ctx.registerPushSource({ ...def(), adapter: { ...fakeAdapter(), start } as PlatformAdapter });
+		h.ctx.registerPlatformAdapter({ ...def(), start });
 		expect(start).toHaveBeenCalledTimes(1);
 		const adapterCtx = start.mock.calls[0]?.[0] as {
 			connections: () => readonly Connection[];
@@ -278,7 +283,7 @@ describe("按清单注册推送源", () => {
 			listAddressCandidates: vi.fn(),
 			connectionAuth: { begin: vi.fn(), state: vi.fn(), takeDraft: vi.fn() },
 		} as unknown as PlatformAdapter;
-		h.ctx.registerPushSource({ ...def(), adapter: smuggled });
+		h.ctx.registerPlatformAdapter(smuggled);
 		const [registered] = h.adapters.list();
 		expect(registered?.adapterKey).toBe("bridge");
 		// 正对照:没被排除的可选成员原样在。
@@ -289,14 +294,17 @@ describe("按清单注册推送源", () => {
 	});
 
 	// 验红:把 context.ts 里拓展适配器的组装换回 `...offered` 展开,这条红(原型上的 start / stop 没带过去)。
-	it("推送源的适配器是 class 实例:start / stop / probe 都调得到,读得到实例状态", async () => {
+	it("class 写的平台适配器:方法与 settingsSchema 都 bind 回实例", async () => {
 		const h = harness();
 		class Classy {
-			readonly adapterKey = "谁都不是";
+			readonly settingsSchema = CONFIG;
 			started = 0;
 			stopped = 0;
 			isAvailable() {
 				return true;
+			}
+			async send() {
+				return ok({ latencyMs: this.started });
 			}
 			start() {
 				this.started += 1;
@@ -312,7 +320,7 @@ describe("按清单注册推送源", () => {
 			}
 		}
 		const inst = new Classy();
-		h.ctx.registerPushSource({ ...def(), adapter: inst as unknown as PlatformAdapter });
+		h.ctx.registerPlatformAdapter(inst);
 		expect(inst.started).toBe(1);
 		const [registered] = h.adapters.list();
 		expect(await registered?.probe(connection())).toEqual({ ok: true, latencyMs: 1 });
@@ -324,14 +332,11 @@ describe("按清单注册推送源", () => {
 		const h = harness();
 		const changed = vi.fn();
 		const stop = vi.fn();
-		h.ctx.registerPushSource({
+		h.ctx.registerPlatformAdapter({
 			...def(),
-			adapter: {
-				...fakeAdapter(),
-				start: (c: { onConnectionsChanged: (fn: () => void) => Disposable }) =>
-					void c.onConnectionsChanged(changed),
-				stop,
-			} as unknown as PlatformAdapter,
+			start: (c: { onConnectionsChanged: (fn: () => void) => Disposable }) =>
+				void c.onConnectionsChanged(changed),
+			stop,
 		});
 		h.setConnections([connection()]);
 		expect(changed).toHaveBeenCalledTimes(1);
@@ -344,7 +349,7 @@ describe("按清单注册推送源", () => {
 	it("v2:外观与连接配置项取自清单,代码只交行为与 zod", () => {
 		const manifest = v2();
 		const h = harness({ manifest });
-		h.ctx.registerPushSource(v2Def());
+		h.ctx.registerPlatformAdapter(v2Def());
 		// 面板拿到的外观与字段表就是清单这一份(路由下发走的同一个函数)。
 		expect(manifestPushView(manifest)).toEqual({ display: DISPLAY, connectionFields: V2_FIELDS });
 		expect(h.adapters.list()).toHaveLength(1);
@@ -353,7 +358,7 @@ describe("按清单注册推送源", () => {
 	it("v2 的清单没写 connection:连接是挑出来的那种,连接配置项就是空表", () => {
 		const manifest = v2({ contributes: { push: { display: DISPLAY } } });
 		const h = harness({ manifest });
-		h.ctx.registerPushSource(v2Def());
+		h.ctx.registerPlatformAdapter(v2Def());
 		expect(h.adapters.list()).toHaveLength(1);
 		expect(manifestPushView(manifest)?.connectionFields).toEqual([]);
 	});
@@ -365,7 +370,7 @@ describe("按清单注册推送源", () => {
 			descriptor: { label: "桥接", shortLabel: "桥", tint: "#a855f7" },
 			configFields: [],
 		};
-		expect(() => h.ctx.registerPushSource(old as unknown as ReturnType<typeof def>)).toThrow(
+		expect(() => h.ctx.registerPlatformAdapter(old as unknown as PlatformAdapterDef)).toThrow(
 			/contributes\.push/,
 		);
 		expect(h.adapters.list()).toEqual([]);
@@ -384,14 +389,34 @@ describe("按清单注册推送源", () => {
 				},
 			}),
 		});
-		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/"bridgeKind"/);
+		expect(() => h.ctx.registerPlatformAdapter(v2Def())).toThrow(/"bridgeKind"/);
 	});
 
 	it("清单只开了订阅源 —— 注册推送源当场抛,出口一个都不进表", () => {
 		const h = harness({
 			manifest: v2({ contributes: { subscription: { display: DISPLAY, events: ["post"] } } }),
 		});
-		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/contributes\.push/);
+		expect(() => h.ctx.registerPlatformAdapter(v2Def())).toThrow(/contributes\.push/);
+		expect(h.adapters.list()).toEqual([]);
+	});
+
+	it("注册交回的把手只有幂等的 dispose,撤掉后登记表里没有它", () => {
+		const h = harness();
+		const handle = h.ctx.registerPlatformAdapter(def());
+		expect(Object.keys(handle)).toEqual(["dispose"]);
+		handle.dispose();
+		handle.dispose();
+		expect(h.adapters.list()).toEqual([]);
+	});
+
+	it.each([
+		["settingsSchema", { settingsSchema: undefined }, /settingsSchema/],
+		["send", { send: undefined }, /send\(\)/],
+	] as const)("缺 %s → 注册当场抛,原因点名", (_name, over, message) => {
+		const h = harness();
+		expect(() =>
+			h.ctx.registerPlatformAdapter({ ...def(), ...over } as unknown as PlatformAdapterDef),
+		).toThrow(message);
 		expect(h.adapters.list()).toEqual([]);
 	});
 
@@ -795,10 +820,10 @@ describe("动作", () => {
 	});
 });
 
-describe("注册推送源", () => {
+describe("注册平台适配器", () => {
 	it("分发键由宿主按 id 填 —— 拓展自报的那份被覆盖掉", () => {
 		const h = harness();
-		h.ctx.registerPushSource(def());
+		h.ctx.registerPlatformAdapter(def());
 		const registered = h.adapters.list()[0];
 		expect(registered?.adapterKey).toBe("bridge");
 		expect(adapterForConnection(h.adapters.list(), connection())).toBe(registered);
@@ -806,7 +831,7 @@ describe("注册推送源", () => {
 
 	it("卸载之后出口就没了", async () => {
 		const h = harness();
-		h.ctx.registerPushSource(def());
+		h.ctx.registerPlatformAdapter(def());
 		await h.runtime.dispose();
 		expect(h.adapters.list()).toEqual([]);
 	});
@@ -823,7 +848,7 @@ describe("注册推送源", () => {
 				},
 			},
 		});
-		expect(() => h.ctx.registerPushSource(def())).toThrow(/"nope"/);
+		expect(() => h.ctx.registerPlatformAdapter(def())).toThrow(/"nope"/);
 	});
 
 	// 连接一律是从候选里挑出来的,settings 由拓展交(R4):zod 的必填键不在字段表里是常态,不再在加载时拦;
@@ -835,7 +860,7 @@ describe("注册推送源", () => {
 				contributes: { push: { display: DISPLAY, connection: { fields: [] } } },
 			},
 		});
-		expect(() => h.ctx.registerPushSource(def())).not.toThrow();
+		expect(() => h.ctx.registerPlatformAdapter(def())).not.toThrow();
 	});
 
 	/**
@@ -871,28 +896,41 @@ describe("注册推送源", () => {
 	 * 候选口是适配器的必备成员(ADR-0024 决策 4):哪些平台、哪些 bot 能借来当连接,只有适配器知道。
 	 * 第三方 JS 不受类型约束,没给的当场拒,话里说清缺的是什么。
 	 */
-	// 验红:去掉 `registerPushSource` 里对 `listConnectionCandidates` 的那道检查,这条红。
-	it("推送源的适配器没有 listConnectionCandidates → 注册当场抛,话里说清,不留半截状态", () => {
+	// 验红:去掉 `assertPlatformAdapterDef` 里对 `listConnectionCandidates` 的那道检查,这条红。
+	it("平台适配器没有 listConnectionCandidates → 注册当场抛,话里说清,不留半截状态", () => {
 		const h = harness();
-		const { listConnectionCandidates: _omitted, ...bare } = fakeAdapter();
-		expect(() =>
-			h.ctx.registerPushSource({ ...def(), adapter: bare as unknown as PlatformAdapter }),
-		).toThrow(/listConnectionCandidates/);
+		const { listConnectionCandidates: _omitted, ...bare } = def();
+		expect(() => h.ctx.registerPlatformAdapter(bare as PlatformAdapterDef)).toThrow(
+			/listConnectionCandidates/,
+		);
 		expect(h.adapters.list()).toEqual([]);
 		// 没留半截状态:同一个上下文还能再登记合规的。
-		h.ctx.registerPushSource(def());
+		h.ctx.registerPlatformAdapter(def());
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
 	it("注册两次 → 抛。一个拓展一个推送源(决策 28)", () => {
 		const h = harness();
-		h.ctx.registerPushSource(def());
-		expect(() => h.ctx.registerPushSource(def())).toThrow();
+		h.ctx.registerPlatformAdapter(def());
+		expect(() => h.ctx.registerPlatformAdapter(def())).toThrow();
 	});
 });
 
 describe("读到属于自己的连接", () => {
-	it("只给自己的那些,config 已经过自己那份 zod", () => {
+	function connected(over: Parameters<typeof harness>[0] = {}) {
+		const h = harness(over);
+		let adapterCtx: PlatformAdapterContext | undefined;
+		h.ctx.registerPlatformAdapter({
+			...def(),
+			start(ctx) {
+				adapterCtx = ctx;
+			},
+		});
+		if (!adapterCtx) throw new Error("适配器没 start");
+		return { h, adapterCtx };
+	}
+
+	it("只给自己的那些,settings 已经过自己那份 zod", () => {
 		const h = harness({
 			connections: [
 				connection(),
@@ -906,38 +944,44 @@ describe("读到属于自己的连接", () => {
 				} as Connection,
 			],
 		});
-		const source = h.ctx.registerPushSource(def());
-		const mine = source.connections();
+		let adapterCtx: PlatformAdapterContext | undefined;
+		h.ctx.registerPlatformAdapter({
+			...def(),
+			start(ctx) {
+				adapterCtx = ctx;
+			},
+		});
+		const mine = adapterCtx?.connections() ?? [];
 		expect(mine.map((c) => c.id)).toEqual(["c1"]);
-		expect(mine[0]?.config.token).toBe("t0ken");
+		expect(mine[0]?.settings).toEqual({ token: "t0ken", bridgeKind: "koishi" });
 	});
 
 	it("**给全部,不只给启用的** —— 桥要认得出停用那条的 token 才能回 503 而不是 401", () => {
-		const h = harness({ connections: [connection({ enabled: false })] });
-		const source = h.ctx.registerPushSource(def());
-		expect(source.connections()).toEqual([expect.objectContaining({ id: "c1", enabled: false })]);
+		const { adapterCtx } = connected({ connections: [connection({ enabled: false })] });
+		expect(adapterCtx.connections()).toEqual([
+			expect.objectContaining({ id: "c1", enabled: false }),
+		]);
 	});
 
-	it("config 形状不对的那条**根本不出现**,而且留一行", () => {
-		const h = harness({ connections: [connection({ settings: { token: 42 } })] });
-		const source = h.ctx.registerPushSource(def());
-		expect(source.connections()).toEqual([]);
+	it("settings 形状不对的那条**根本不出现**,而且留一行", () => {
+		const { h, adapterCtx } = connected({
+			connections: [connection({ settings: { token: 42 } })],
+		});
+		expect(adapterCtx.connections()).toEqual([]);
 		expect(h.lines.some((l) => l.startsWith("warn") && l.includes("c1"))).toBe(true);
 	});
 
 	it("是**现读**不是快照 —— 配置变了下一次问就是新的", () => {
-		const h = harness();
-		const source = h.ctx.registerPushSource(def());
-		expect(source.connections()).toHaveLength(1);
+		const { h, adapterCtx } = connected();
+		expect(adapterCtx.connections()).toHaveLength(1);
 		h.setConnections([]);
-		expect(source.connections()).toEqual([]);
+		expect(adapterCtx.connections()).toEqual([]);
 	});
 
 	it("变更通知叫得到,卸载之后不再叫", async () => {
-		const h = harness();
-		const source = h.ctx.registerPushSource(def());
+		const { h, adapterCtx } = connected();
 		let calls = 0;
-		source.onConnectionsChanged(() => {
+		adapterCtx.onConnectionsChanged(() => {
 			calls++;
 		});
 		h.setConnections([connection()]);
@@ -957,14 +1001,11 @@ describe("喂入站(经适配器上下文)", () => {
 	function connected() {
 		const h = harness();
 		let adapterCtx: PlatformAdapterContext | undefined;
-		h.ctx.registerPushSource({
+		h.ctx.registerPlatformAdapter({
 			...def(),
-			adapter: {
-				...fakeAdapter(),
-				start: (c: PlatformAdapterContext) => {
-					adapterCtx = c;
-				},
-			} as unknown as PlatformAdapter,
+			start: (c: PlatformAdapterContext) => {
+				adapterCtx = c;
+			},
 		});
 		if (!adapterCtx) throw new Error("适配器没 start");
 		return { h, inbound: adapterCtx.inbound };
@@ -1279,17 +1320,14 @@ describe("读自己的设置", () => {
 	 * 记「设置读不了」),不是集成上下文里另有的通用读手。通用读手见到坏设置只会回 `invalid`,不抛、也不记。
 	 */
 	// 验红:`adapter-context.ts` 里 `settings` 不转发 `integration.settings`(换成另造一份通用的),这条红。
-	it("推送源 start(ctx).settings 与 activate(ctx).settings 是同一份实现:交坏设置时两边一样当场抛、一样记「设置读不了」", () => {
+	it("平台适配器 start(ctx).settings 与 activate(ctx).settings 是同一份实现:交坏设置时两边一样当场抛、一样记「设置读不了」", () => {
 		const h = boot({ settings: { links: "not-a-list" } });
 		let startCtx: { settings: typeof h.ctx.settings } | undefined;
-		h.ctx.registerPushSource({
-			adapter: {
-				...fakeAdapter(),
-				start(ctx: { settings: typeof h.ctx.settings }) {
-					startCtx = ctx;
-				},
-			} as unknown as PlatformAdapter,
-			configSchema: CONFIG,
+		h.ctx.registerPlatformAdapter({
+			...def(),
+			start(ctx: { settings: typeof h.ctx.settings }) {
+				startCtx = ctx;
+			},
 		});
 		expect(startCtx).toBeDefined();
 		expect(() => startCtx?.settings(LINKS)).toThrow(/「links」/);
