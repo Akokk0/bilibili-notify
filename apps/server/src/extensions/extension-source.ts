@@ -104,7 +104,7 @@ export interface CreateExtensionSourceOptions {
  * 开放给拓展的 `SourceDef` 成员。`satisfies Record<keyof SourceDef, boolean>` 把「接口多一个成员,这里要记得
  * 表态」变成编译错。
  */
-const SOURCE_DEF_MEMBERS = {
+export const SOURCE_DEF_MEMBERS = {
 	start: true,
 	stop: true,
 	searchCreators: true,
