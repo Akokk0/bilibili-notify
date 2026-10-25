@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
@@ -24,12 +24,10 @@ beforeAll(async () => {
 		env: { ...process.env },
 		timeout: 180_000,
 	});
-	// 拓展**不进载荷**;构建它是为了底下那条「手放进 <dataDir> 就能跑」的用例。
-	await execFileAsync("vp", ["run", "-F", "./extensions/*", "build"], {
-		cwd: repoRoot,
-		env: { ...process.env },
-		timeout: 180_000,
-	});
+	// 🔴 拓展**不在这里构建**,吃门禁先构建好的 `extensions/*/dist`(CI 的 build 在 test 之前,同
+	// `apps/server/src/__tests__/support/install-repo-extension.ts`)。在这里重打一遍会**原地**清掉再重写
+	// 那几份产物,而别的测试文件正软链着它们并行开机 —— 撞上那几毫秒,桥起来了而 `devtools.mjs` 还不在,
+	// 场景表里就没有 `bridge.*`(devtools-fake-bridge-e2e 满载时回 404 就是这么来的)。
 	await execFileAsync(process.execPath, [assembleScript], {
 		cwd: repoRoot,
 		env: { ...process.env },
@@ -270,13 +268,16 @@ describe("拓展不进载荷,手放进在用的那一代就能跑", () => {
 				...(await readdir(generationsDir)).filter((name) => /^\d+$/.test(name)).map(Number),
 			);
 			const generationDir = join(generationsDir, String(seq));
-			await cp(
-				join(repoRoot, "extensions", "bridge", "dist"),
-				join(generationDir, "extensions", "bridge"),
-				{
-					recursive: true,
-				},
-			);
+			const bridgeDist = join(repoRoot, "extensions", "bridge", "dist");
+			// 没构建过就抛、不静默跳过:这条正是「手放进去的那份能跑」的守卫。
+			await access(join(bridgeDist, "index.mjs")).catch(() => {
+				throw new Error(
+					`桥还没构建:${bridgeDist} 里没有 index.mjs。先跑 vp run -F @bilibili-notify/extension-bridge build`,
+				);
+			});
+			await cp(bridgeDist, join(generationDir, "extensions", "bridge"), {
+				recursive: true,
+			});
 			// 核心设置文件在 config/settings/core.json(.mjs 导不了 TS 里的 CORE_SETTINGS_FILE,写字面量)。
 			const corePath = join(generationDir, "config", "settings", "core.json");
 			const core = JSON.parse(await readFile(corePath, "utf8"));
