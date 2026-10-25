@@ -11,6 +11,8 @@
 		"report.liveEnd",
 		"report.profile",
 		"report.liveStatus",
+		"report.problem",
+		"resolve.problem",
 		"report.badImage",
 		"report.extraField"
 	],

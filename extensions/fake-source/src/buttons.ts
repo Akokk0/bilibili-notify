@@ -50,6 +50,8 @@ const LIVE_START: ReportButton = { action: "report.liveStart", label: "开播" }
 const LIVE_END: ReportButton = { action: "report.liveEnd", label: "下播" };
 const PROFILE: ReportButton = { action: "report.profile", label: "报资料" };
 const LIVE_STATUS: ReportButton = { action: "report.liveStatus", label: "报直播状态" };
+const REPORT_PROBLEM: ReportButton = { action: "report.problem", label: "报问题" };
+const RESOLVE_PROBLEM: ReportButton = { action: "resolve.problem", label: "清问题" };
 const BAD_IMAGE: ReportButton = { action: "report.badImage", label: "报一条带坏图的作品" };
 const EXTRA_FIELD: ReportButton = { action: "report.extraField", label: "报一条多一格的作品" };
 
@@ -66,13 +68,24 @@ const TOTAL_VIEWERS_STEP = VIEWERS_STEP * 10;
 const NOT_RUNNING = "来源没在跑(还没起来,或者已经停下了),什么都没报";
 
 /**
- * 按一下要做的事:`each` 给每个开着的人报一次,`note` 是报完之后页上那行字的括号里那句。**只在有人可报时
- * 才叫** —— 序号与直播那一场都在这里往前走。`each` 里要存图(异步),报上去是同步的、没有返回值。
+ * 按一下要做的事:`each` 给每个开着的人报一次,`note` 是报完之后页上那行字的括号里那句。除允许空名单的
+ * 问题按钮外,**只在有人可报时才叫** —— 序号与直播那一场都在这里往前走。`each` 里要存图(异步),
+ * 报上去是同步的、没有返回值。
  */
-type Prepare = (now: number) => {
+type Prepare = (
+	now: number,
+	source: SourceContext,
+) => {
 	each: (externalId: string, store: StorePicture) => Promise<void>;
 	note: string;
 };
+
+interface PressOptions {
+	/** 拓展级与来源级的问题不依赖名单;没有开着的人时两颗问题按钮也要照报 / 照清。 */
+	allowNoPeople?: boolean;
+	/** 页上结果句在人数前用哪个动作。 */
+	personVerb?: string;
+}
 
 /** 开着的订阅指向的人,按先出现的次序、每人一次(名单本来就只列启用中的)。 */
 function openPeople(people: readonly SourceSubscriptionView[]): string[] {
@@ -80,7 +93,7 @@ function openPeople(people: readonly SourceSubscriptionView[]): string[] {
 }
 
 /**
- * 接上八颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
+ * 接上十颗按钮,交回页上那几块积木(按钮 + 上一下的结果)与拉取式直播状态。视图每取一次叫一次 `blocks()`。
  * `running()` 回此刻在跑的那份来源上下文,没在跑是 `undefined`。
  */
 export function wireReportButtons(
@@ -103,7 +116,7 @@ export function wireReportButtons(
 	/** 上一下按了什么、结果如何 —— 页上那一行。 */
 	let lastPress: { tone: "info" | "warn" | "error"; text: ExtensionRichText } | undefined;
 
-	function on(button: ReportButton, prepare: Prepare): void {
+	function on(button: ReportButton, prepare: Prepare, options: PressOptions = {}): void {
 		ctx.onAction(button.action, async (signal) => {
 			signal.throwIfAborted();
 			const source = running();
@@ -117,7 +130,7 @@ export function wireReportButtons(
 				throw new Error(NOT_RUNNING);
 			}
 			const people = openPeople(source.subscriptions());
-			if (people.length === 0) {
+			if (people.length === 0 && !options.allowNoPeople) {
 				lastPress = {
 					tone: "warn",
 					text: [{ b: button.label }, ":还没有开着的订阅,什么都没报 · ", { time: at }],
@@ -125,7 +138,7 @@ export function wireReportButtons(
 				ctx.statusChanged();
 				return;
 			}
-			const { each, note } = prepare(at);
+			const { each, note } = prepare(at, source);
 			const store = pictureStore(source, signal);
 			const failures: string[] = [];
 			for (const externalId of people) {
@@ -140,7 +153,11 @@ export function wireReportButtons(
 				failures.length === 0
 					? {
 							tone: "info",
-							text: [{ b: button.label }, `:报给了 ${people.length} 个人(${note})· `, { time: at }],
+							text: [
+								{ b: button.label },
+								`:${options.personVerb ?? "报给了"} ${people.length} 个人(${note})· `,
+								{ time: at },
+							],
 						}
 					: {
 							tone: "error",
@@ -215,6 +232,51 @@ export function wireReportButtons(
 			note: `第 ${session.n} 场 · 在线 ${session.viewers} · 累计 ${session.totalViewers}`,
 		};
 	});
+
+	on(
+		REPORT_PROBLEM,
+		(_now, source) => {
+			ctx.reportProblem({
+				code: "fake_extension_problem",
+				message: ctx.i18n.t("problem.extension"),
+				notify: true,
+				recoveryMessage: ctx.i18n.t("problem.recovery"),
+			});
+			source.reportProblem({
+				code: "fake_source_problem",
+				message: ctx.i18n.t("problem.source"),
+			});
+			return {
+				each: async (externalId) => {
+					running()?.reportProblem({
+						externalId,
+						code: "fake_creator_problem",
+						message: ctx.i18n.t("problem.creator"),
+					});
+				},
+				note: "拓展、来源和每个人的三层问题",
+			};
+		},
+		{ allowNoPeople: true },
+	);
+
+	on(
+		RESOLVE_PROBLEM,
+		(_now, source) => {
+			ctx.resolveProblem({ code: "fake_extension_problem", notify: true });
+			source.resolveProblem({ code: "fake_source_problem" });
+			return {
+				each: async (externalId) => {
+					running()?.resolveProblem({
+						externalId,
+						code: "fake_creator_problem",
+					});
+				},
+				note: "拓展、来源和每个人的三层问题",
+			};
+		},
+		{ allowNoPeople: true, personVerb: "清了" },
+	);
 
 	on(LIVE_END, () => {
 		const session = live && { ...live };
@@ -291,6 +353,8 @@ export function wireReportButtons(
 				button(LIVE_END),
 				button(PROFILE),
 				button(LIVE_STATUS),
+				button(REPORT_PROBLEM),
+				button(RESOLVE_PROBLEM),
 				explained(BAD_IMAGE, "第 2 张图交一个不合形状的引用 —— BN 应只丢那一格、其余照收"),
 				explained(EXTRA_FIELD, "多带一格 BN 不认识的「弹幕数」—— BN 应整条拒"),
 			];

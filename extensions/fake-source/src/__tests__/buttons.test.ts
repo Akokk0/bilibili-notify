@@ -120,8 +120,8 @@ function actionButtons(view: ExtensionView): { label: string; action: string }[]
 	return out;
 }
 
-describe("八颗按钮", () => {
-	it("页上有六颗正常的、两颗报坏的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
+describe("十颗按钮", () => {
+	it("页上有八颗正常的、两颗报坏的,文案照定的;每颗的动作都在清单的 actions 里", async () => {
 		const buttons = actionButtons(bootFakeSource(PEOPLE).view());
 		expect(buttons.map((b) => b.label)).toEqual([
 			"报一条作品",
@@ -130,6 +130,8 @@ describe("八颗按钮", () => {
 			"下播",
 			"报资料",
 			"报直播状态",
+			"报问题",
+			"清问题",
 			"报一条带坏图的作品",
 			"报一条多一格的作品",
 		]);
@@ -168,11 +170,17 @@ describe("作用于谁", () => {
 		]);
 	});
 
-	it("没有开着的订阅:八颗按哪颗都不报,页上说一句「还没有开着的订阅」,并喊面板重取", async () => {
+	it("没有开着的订阅:十颗都不向人报;作品等按钮说一句「还没有开着的订阅」,问题按钮仍报拓展与来源", async () => {
 		const fake = bootFakeSource([sub("person-c", false)]);
 		const before = fake.statusChanges();
 		for (const { action } of actionButtons(fake.view())) await fake.press(action);
 		expect(fake.reports()).toEqual([]);
+		expect(fake.problemCalls().map((call) => [call.layer, call.action, call.value.code])).toEqual([
+			["extension", "report", "fake_extension_problem"],
+			["source", "report", "fake_source_problem"],
+			["extension", "resolve", "fake_extension_problem"],
+			["source", "resolve", "fake_source_problem"],
+		]);
 		expect(fake.statusChanges()).toBeGreaterThan(before);
 		const warn = noticesOf(fake.view()).find((n) => n.tone === "warn");
 		expect(plain(warn?.text ?? "")).toContain("还没有开着的订阅");
@@ -207,6 +215,95 @@ describe("作用于谁", () => {
 		expect(fake.reports()).toEqual([]);
 		const error = noticesOf(fake.view()).find((n) => n.tone === "error");
 		expect(plain(error?.text ?? "")).toContain("来源没在跑");
+	});
+});
+
+describe("报问题", () => {
+	it("按一次报三层:拓展级私聊并带恢复句,来源级不带人,每个开着的人各报一条", async () => {
+		const fake = bootFakeSource(PEOPLE);
+		await fake.press("report.problem");
+
+		expect(fake.problemCalls()).toEqual([
+			{
+				layer: "extension",
+				action: "report",
+				value: {
+					code: "fake_extension_problem",
+					message: "假源拓展暂时无法处理订阅更新，假源这一侧会继续尝试。",
+					notify: true,
+					recoveryMessage: "假源拓展已恢复，订阅数据可以继续更新。",
+				},
+			},
+			{
+				layer: "source",
+				action: "report",
+				value: {
+					code: "fake_source_problem",
+					message: "假源暂时无法读取订阅数据，假源这一侧会继续尝试。",
+				},
+			},
+			{
+				layer: "source",
+				action: "report",
+				value: {
+					externalId: "person-a",
+					code: "fake_creator_problem",
+					message: "这位创作者的作品暂时无法更新，假源这一侧会继续尝试。",
+				},
+			},
+			{
+				layer: "source",
+				action: "report",
+				value: {
+					externalId: "person-b",
+					code: "fake_creator_problem",
+					message: "这位创作者的作品暂时无法更新，假源这一侧会继续尝试。",
+				},
+			},
+		]);
+	});
+
+	it("来源没在跑:两颗问题按钮都照现有按钮回「来源没在跑」,三层一个都不报", async () => {
+		const fake = bootFakeSource(PEOPLE);
+		await fake.stop();
+
+		await expect(fake.press("report.problem")).rejects.toThrow(/来源没在跑/);
+		await expect(fake.press("resolve.problem")).rejects.toThrow(/来源没在跑/);
+		expect(fake.problemCalls()).toEqual([]);
+	});
+});
+
+describe("清问题", () => {
+	it("按一次清三层:拓展级仍通知并补恢复,来源级与每个开着的人都不私聊", async () => {
+		const fake = bootFakeSource(PEOPLE);
+		await fake.press("report.problem");
+		await fake.press("resolve.problem");
+
+		expect(fake.problemCalls().filter((call) => call.action === "resolve")).toEqual([
+			{
+				layer: "extension",
+				action: "resolve",
+				value: {
+					code: "fake_extension_problem",
+					notify: true,
+				},
+			},
+			{
+				layer: "source",
+				action: "resolve",
+				value: { code: "fake_source_problem" },
+			},
+			{
+				layer: "source",
+				action: "resolve",
+				value: { externalId: "person-a", code: "fake_creator_problem" },
+			},
+			{
+				layer: "source",
+				action: "resolve",
+				value: { externalId: "person-b", code: "fake_creator_problem" },
+			},
+		]);
 	});
 });
 

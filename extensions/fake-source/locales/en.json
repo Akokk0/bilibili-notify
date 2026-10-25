@@ -1,6 +1,10 @@
 {
 	"health.summary#one": "Running · watching {count} person",
 	"health.summary#other": "Running · watching {count} people",
+	"problem.creator": "This creator's posts cannot update right now. The fake source will keep trying.",
+	"problem.extension": "The fake extension cannot update subscriptions right now. The fake source will keep trying.",
+	"problem.recovery": "The fake extension recovered. Subscription data can update again.",
+	"problem.source": "The fake source cannot read subscription data right now. It will keep trying.",
 	"view.summary#one": "{count} subscription",
 	"view.summary#other": "{count} subscriptions",
 	"view.notice": "A development-only fake source with no platform behind it: it makes up candidates from what you type when creating a subscription, and typing empty / slow / bad / messy plays one kind of failure each. The buttons below report to every enabled subscription at once.",

@@ -27,6 +27,19 @@ export interface HeardReport {
 	value: unknown;
 }
 
+/** 集成上下文与来源上下文各自报 / 清问题的那一下。 */
+export interface ProblemCall {
+	layer: "extension" | "source";
+	action: "report" | "resolve";
+	value: {
+		externalId?: string;
+		code: string;
+		message?: string;
+		notify?: boolean;
+		recoveryMessage?: string;
+	};
+}
+
 /** 测试摆的一条订阅:假源只认外部 id 与开没开着(宿主的名单只列开着的,同一个人合成一条)。 */
 export interface HarnessSub {
 	externalId: string;
@@ -81,6 +94,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 	const listeners: (() => void)[] = [];
 	const actions = new Map<string, ActionHandler>();
 	const heard: HeardReport[] = [];
+	const problemCalls: ProblemCall[] = [];
 	/** 图库里存下的图:引用 → 字节。 */
 	const stored = new Map<ImageRef, Uint8Array>();
 	let storeCalls = 0;
@@ -101,6 +115,15 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		heard.push({ kind, externalId, value });
 	};
 
+	const problemReporter = (layer: ProblemCall["layer"]) => ({
+		reportProblem(value: ProblemCall["value"]) {
+			problemCalls.push({ layer, action: "report", value });
+		},
+		resolveProblem(value: ProblemCall["value"]) {
+			problemCalls.push({ layer, action: "resolve", value });
+		},
+	});
+
 	const sourceCtx = {
 		subscriptions: roster,
 		onSubscriptionsChanged(fn: () => void) {
@@ -110,6 +133,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		reportPost: reporter("post"),
 		reportLive: reporter("live"),
 		reportProfile: reporter("profile"),
+		...problemReporter("source"),
 		async storeImage(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>> {
 			const index = storeCalls++;
 			await opts.holdStore?.(index);
@@ -132,6 +156,7 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		setInterval: () => noop,
 		onDispose() {},
 		i18n: zhCNI18n(),
+		...problemReporter("extension"),
 		registerSource(def: SourceDef) {
 			source = def;
 			void def.start(sourceCtx);
@@ -220,6 +245,8 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 		actionNames: () => [...actions.keys()],
 		/** 宿主收下的上报,按报的先后。 */
 		reports: () => [...heard],
+		/** 集成上下文与来源上下文报 / 清问题的先后。 */
+		problemCalls: () => [...problemCalls],
 		/** 图库里某个引用对应的字节;没有就是 `undefined`。 */
 		imageBytes: (ref: unknown): Uint8Array | undefined =>
 			typeof ref === "string" ? stored.get(ref) : undefined,
