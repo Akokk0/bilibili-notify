@@ -190,7 +190,7 @@ function connectorOf(entry: Record<string, unknown>): string | undefined {
  *    被订阅的路由表引用着,换了种子等于把主人配好的路由指到一个不存在的目标上。
  * ③ `platform: "webhook"` 降格 —— 但目标自己不知道是飞书还是钉钉,**跟着它那条连接走**。
  *    连接找不到(备份只导了 targets 这一段、或者引用悬空)就落 `generic`;托管目标是
- *    连接的派生物,加载时 `syncManagedWebhookTargets` 会照着连接重算,落错也自愈。
+ *    连接的派生物,加载时 `syncManagedEndpointTargets` 会照着连接重算,落错也自愈。
  * ④ 「这是个会话还是个单向终点」从 `platform` 提上来成 `kind`。老盘上这个判断处处写成
  *    `platform === "webhook"`,降格后那些比较会**静默恒假**,所以判据必须搬轴。
  * ⑤ 每平台一套的 `session` 收成一格 `address`(+ 官机频道的 `parentAddress`)。

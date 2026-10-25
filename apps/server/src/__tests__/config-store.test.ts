@@ -154,7 +154,7 @@ function makeWebhookTarget(
 	};
 }
 
-function managedWebhookTargetId(connectionId: string): string {
+function managedEndpointTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
@@ -603,7 +603,7 @@ describe("ConfigStore", () => {
 		const targets = store.getTargets();
 		expect(targets).toHaveLength(1);
 		expect(targets[0]).toMatchObject({
-			id: managedWebhookTargetId(connection.id),
+			id: managedEndpointTargetId(connection.id),
 			name: connection.name,
 			connectionId: connection.id,
 			kind: "endpoint",
@@ -653,7 +653,7 @@ describe("ConfigStore", () => {
 		await store2.load();
 		expect(store2.getTargets()).toEqual([
 			expect.objectContaining({
-				id: managedWebhookTargetId(connection.id),
+				id: managedEndpointTargetId(connection.id),
 				connectionId: connection.id,
 				managedBy: "connection",
 			}),
@@ -703,7 +703,7 @@ describe("ConfigStore", () => {
 
 		const target = store.getTargets()[0];
 		expect(target).toMatchObject({
-			id: managedWebhookTargetId(connection.id),
+			id: managedEndpointTargetId(connection.id),
 			name: "飞书 Webhook",
 			enabled: false,
 			managedBy: "connection",
@@ -911,6 +911,7 @@ describe("ConfigStore", () => {
 		await expect(store.upsertTarget(manual)).rejects.toMatchObject({
 			name: "ConfigValidationError",
 			code: "invalid",
+			message: "端点目标由它的连接自动创建，不能手动新建",
 		});
 		expect(store.getTargets()).toHaveLength(1);
 	});
@@ -921,7 +922,7 @@ describe("ConfigStore", () => {
 		// 没有回滚的:炸在 targets 这步时 globals / 订阅 / adapters 已经落盘,配置变成半新
 		// 半旧,订阅里还引用着从未创建的 target id,而原状态已被覆盖。
 		//
-		// 托管 target 的 id 不能靠「导出时丢掉、恢复时重建」绕过去:makeManagedWebhookTarget
+		// 托管 target 的 id 不能靠「导出时丢掉、恢复时重建」绕过去:makeManagedEndpointTarget
 		// 取的是 `existing?.id ?? 确定性id`,老记录会永远保留自己那个非确定性 id,重建就换了
 		// 身份,订阅 routing 当场断。
 		const connection = makeWebhookConnection();
@@ -948,7 +949,7 @@ describe("ConfigStore", () => {
 		await store.upsertConnection(connection);
 
 		const managedId = store.getTargets()[0]?.id;
-		expect(managedId).toBe(managedWebhookTargetId(connection.id));
+		expect(managedId).toBe(managedEndpointTargetId(connection.id));
 
 		await store.upsertTarget(
 			makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" }) as PushTarget,
@@ -986,7 +987,7 @@ describe("ConfigStore", () => {
 	it("端到端:含 webhook 连接的备份,导出后能在一台干净机器上恢复回来", async () => {
 		// 这条住在这里,是因为真 ConfigStore 的夹具只有这个文件有 —— 而 backup-service
 		// 那边用的是替身,替身把 upsertTarget 打成空函数,正是它把这个 bug 整个盖住了。
-		// 源机器刻意造成「老装机」:托管 target 带的是**非确定性 id**(makeManagedWebhookTarget
+		// 源机器刻意造成「老装机」:托管 target 带的是**非确定性 id**(makeManagedEndpointTarget
 		// 取 `existing?.id ?? 确定性id`,老记录会一直保留自己的)。这一步是承重的 —— 否则
 		// 「把备份里的 target 恢复回来」和「照 adapter 重新生成一个」会得到同一个 id,测试
 		// 分不出这两件事,也就钉不住任何东西。
@@ -1013,7 +1014,7 @@ describe("ConfigStore", () => {
 		await source.load();
 		const managedId = source.getTargets()[0]?.id;
 		expect(managedId).toBe(legacyId);
-		expect(managedId).not.toBe(managedWebhookTargetId(connection.id));
+		expect(managedId).not.toBe(managedEndpointTargetId(connection.id));
 
 		const noSecrets = fakeIntegrationSecrets();
 		const env = await createBackupService({
@@ -1049,7 +1050,7 @@ describe("ConfigStore", () => {
 	 * 🔴 只勾了 targets 那一段导出的老备份:v1 的 `platform: "webhook"` 得跟着**它那条
 	 * 连接**降格成飞书 / 钉钉,而连接不在这份备份里 —— 迁移那一步于是查不到表,整份目标
 	 * 落成 `generic`,落地时被 `assertTargetOwner` 判「平台对不上」**整份拒掉**
-	 * (`syncManagedWebhookTargets` 救不回来:它排在那道校验之后)。
+	 * (`syncManagedEndpointTargets` 救不回来:它排在那道校验之后)。
 	 *
 	 * 备份没有的那一段,拿**现在盘上那份**补位。
 	 */

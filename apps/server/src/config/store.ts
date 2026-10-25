@@ -684,17 +684,17 @@ const hasManagedTarget = (c: Connection): boolean => c.platformSnapshot.targetKi
 
 /**
  * 托管目标的 id。**种子里那个 `adapter` 是冻住的**,别顺着改名一起改:它算出来的 uuid
- * 已经落在主人盘上,订阅的路由表按 id 引用着它 —— 换种子等于给每条 webhook 连接凭空
+ * 已经落在主人盘上,订阅的路由表按 id 引用着它 —— 换种子等于给每条端点连接凭空
  * 换一张目标,主人配好的路由指向一个不存在的 id,而且不报错。
  */
-function managedWebhookTargetId(connectionId: string): string {
+function managedEndpointTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
-function makeManagedWebhookTarget(connection: Connection, existing?: PushTarget): PushTarget {
+function makeManagedEndpointTarget(connection: Connection, existing?: PushTarget): PushTarget {
 	return {
-		id: existing?.id ?? managedWebhookTargetId(connection.id),
-		name: connection.name || "Webhook",
+		id: existing?.id ?? managedEndpointTargetId(connection.id),
+		name: connection.name,
 		connectionId: connection.id,
 		kind: "endpoint",
 		enabled: connection.enabled,
@@ -703,13 +703,13 @@ function makeManagedWebhookTarget(connection: Connection, existing?: PushTarget)
 	};
 }
 
-function syncManagedWebhookTarget(
+function syncManagedEndpointTarget(
 	connection: Connection,
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
 	const existing = owned.find((t) => t.managedBy === "connection") ?? owned[0];
-	const desired = makeManagedWebhookTarget(connection, existing);
+	const desired = makeManagedEndpointTarget(connection, existing);
 	if (!existing) return { next: [...targets, desired], changed: true, aliases: new Map() };
 
 	const aliases = new Map<string, string>();
@@ -731,7 +731,7 @@ function syncManagedWebhookTarget(
 	return { next, changed, aliases };
 }
 
-function syncManagedWebhookTargets(
+function syncManagedEndpointTargets(
 	connections: readonly Connection[],
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
@@ -740,7 +740,7 @@ function syncManagedWebhookTargets(
 	const aliases = new Map<string, string>();
 	for (const connection of connections) {
 		if (!hasManagedTarget(connection)) continue;
-		const r = syncManagedWebhookTarget(connection, next);
+		const r = syncManagedEndpointTarget(connection, next);
 		next = r.next;
 		changed ||= r.changed;
 		for (const [from, to] of r.aliases) aliases.set(from, to);
@@ -1301,7 +1301,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			return r.data;
 		});
-		const synced = syncManagedWebhookTargets(this.connections, targets);
+		const synced = syncManagedEndpointTargets(this.connections, targets);
 		this.targets = synced.next;
 		this.meta.targets.exists = true;
 		this.meta.targets.lastUpdatedAt = existed ? null : new Date().toISOString();
@@ -1707,17 +1707,17 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * 一条连接落盘之后的**连带账**:托管的 webhook 目标跟着同步、目标换 id 时订阅里的
+	 * 一条连接落盘之后的**连带账**:托管的端点目标跟着同步、目标换 id 时订阅里的
 	 * 引用跟着改写,最后按「这一轮到底动了哪几个分区」发事件。
 	 *
 	 * upsert 与 patch 共用这一份 —— 两处各抄一遍的话,加一个连带分区时总会漏掉一边,
 	 * 而症状是「改连接时同步了、打补丁时没同步」这种只有真机才露馅的分叉。
 	 */
-	private async syncWebhookSideEffects(connection: Connection): Promise<void> {
+	private async syncEndpointSideEffects(connection: Connection): Promise<void> {
 		let targetAliases = new Map<string, string>();
 		const targetsChanged = hasManagedTarget(connection)
 			? await this.runScoped("targets", async () => {
-					const synced = syncManagedWebhookTarget(connection, this.targets);
+					const synced = syncManagedEndpointTarget(connection, this.targets);
 					targetAliases = synced.aliases;
 					if (!synced.changed) return false;
 					await atomicWriteJson(this.path("targets"), synced.next);
@@ -1791,7 +1791,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("connections");
 			return connection;
 		});
-		await this.syncWebhookSideEffects(saved);
+		await this.syncEndpointSideEffects(saved);
 	}
 
 	async patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection> {
@@ -1824,7 +1824,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("connections");
 			return connection;
 		});
-		await this.syncWebhookSideEffects(result);
+		await this.syncEndpointSideEffects(result);
 		return deepClone(result);
 	}
 
@@ -1914,22 +1914,19 @@ class NodeConfigStore implements ConfigStore {
 			}
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
-			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
+			// 光看形态会把它一起挡掉,任何含托管端点目标的备份都恢复不了(而恢复是逐条 await
 			// 的,炸在这一步时 globals / 订阅 / 连接已经落盘,配置只剩半新半旧)。
 			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "connection") {
-				throw ConfigValidationError.invalid(
-					"targets",
-					"webhook 目标由它的连接自动创建，不能手动新建",
-				);
+				throw ConfigValidationError.invalid("targets", "端点目标由它的连接自动创建，不能手动新建");
 			}
 			let next = upsertById(this.targets, parsed.data);
-			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedWebhookTarget 取的是
+			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedEndpointTarget 取的是
 			// `existing?.id ?? 确定性id`,老记录会一直保留自己的 id),与该连接名下当前那条
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
 			const owner = this.connections.find((a) => a.id === parsed.data.connectionId);
 			if (owner && hasManagedTarget(owner)) {
-				const synced = syncManagedWebhookTarget(owner, next);
+				const synced = syncManagedEndpointTarget(owner, next);
 				next = synced.next;
 				targetAliases = synced.aliases;
 			}
@@ -2033,7 +2030,7 @@ class NodeConfigStore implements ConfigStore {
 	 * 整体替换若干配置分区 —— **恢复备份与一次性迁移走这条路**,别再伪装成一串用户编辑。
 	 *
 	 * 逐条 upsert/delete 的老写法有两处治不好的病:
-	 * ① 它会撞上专为用户设的守卫(webhook 目标不许手工创建),而恢复送回来的恰恰是系统
+	 * ① 它会撞上专为用户设的守卫(端点目标不许手工创建),而恢复送回来的恰恰是系统
 	 *    自己生成的那条;
 	 * ② 中途失败时前面的分区**已经落盘**,配置只剩半新半旧 —— 订阅引用着从未创建的
 	 *    target id,而原状态已被覆盖,用户连退回去都做不到。
@@ -2089,7 +2086,7 @@ class NodeConfigStore implements ConfigStore {
 			// 目标不再自带平台,连接的平台与目标的归属得靠这里守:一条统一的规矩,见函数注释。
 			assertRetainedTargetsKeepOwner(this.targets, effTargets, this.connections, effConnections);
 			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
-			const synced = syncManagedWebhookTargets(effConnections, effTargets);
+			const synced = syncManagedEndpointTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 			assertNoNewIdentityDuplicate(this.subscriptions, replaced.next);
 			assertKnownTags(replaced.next, effTags);

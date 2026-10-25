@@ -46,7 +46,6 @@ import {
  * 抓不到的(靠审查与别的守卫):
  * - 中文叫法:`飞书`、`钉钉`、`企业微信`、`官机`、`小程序卡`(归第 4 期的中文叫法棘轮)。
  * - 自由文本里后面不跟大写字母的 `QQ` / `qq`:平台表的两个标签 `"QQ 官方机器人"`、`"QQ官方"`;`qq.com` 这类域名也在此列。
- * - `webhook` 一族:`config/store.ts` 里托管 webhook 目标那套「核心认识 webhook 这一种适配器」的逻辑(归推送守卫③)。
  * - 换了名字的同一个东西:把 `miniAppCard` 改叫 `shareCard`、把 `onebot` 存进变量再比(归 `.platform` 决定棘轮与推送守卫③)。
  * - 复数与变体:`transports`、`guilds`、`openids`、`groupIds`、`userIds`;分开写的 `open id`、`user id`。
  * - 名字后面粘数字或紧凑写法切不出段:`qqbot`、`QQbot`(标识符,切不出 `qq` 段)、`"qq-bot"`、`"qq:123"`;

@@ -77,8 +77,8 @@ function makeOnebotConnection(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-/** 托管 webhook 目标的 id 种子 —— 落在盘上、被订阅的路由表引用着,不许跟着改名。 */
-function managedWebhookTargetId(connectionId: string): string {
+/** 托管端点目标的 id 种子 —— 落在盘上、被订阅的路由表引用着,不许跟着改名。 */
+function managedEndpointTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
@@ -229,7 +229,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 
 		it("老 webhook 目标迁成 endpoint —— 托管同步认的是形态,迁错就会重造一张", async () => {
 			const connection = makeWebhookConnection();
-			const legacyId = managedWebhookTargetId(connection.id);
+			const legacyId = managedEndpointTargetId(connection.id);
 			const legacyTarget = {
 				id: legacyId,
 				name: connection.name,

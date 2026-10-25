@@ -178,7 +178,7 @@ function targetSessionSummary(target: PushTarget, platform: string | undefined):
 	return target.address ? `→ ${noun} ${target.address}` : `→ 未指定${noun}`;
 }
 
-function managedWebhookTargetForConnection(
+function managedEndpointTargetForConnection(
 	connection: Connection,
 	targets: readonly PushTarget[],
 ): PushTarget | undefined {
@@ -1577,8 +1577,8 @@ export default function Targets() {
 	const selectedTargets = selectedConnection
 		? targets.filter((t) => t.connectionId === selectedConnection.id)
 		: [];
-	const selectedManagedWebhookTarget = selectedConnection
-		? managedWebhookTargetForConnection(selectedConnection, targets)
+	const selectedManagedEndpointTarget = selectedConnection
+		? managedEndpointTargetForConnection(selectedConnection, targets)
 		: undefined;
 
 	const showToast = (msg: string, ok = true): void => {
@@ -1680,7 +1680,7 @@ export default function Targets() {
 
 	async function testConnection(a: Connection): Promise<void> {
 		if (isEndpointConnection(a)) {
-			const target = managedWebhookTargetForConnection(a, targets);
+			const target = managedEndpointTargetForConnection(a, targets);
 			if (!target) {
 				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
 				return;
@@ -1819,15 +1819,15 @@ export default function Targets() {
 	}
 
 	const selectedConnectionStatus =
-		selectedConnection && isEndpointConnection(selectedConnection) && selectedManagedWebhookTarget
-			? targetStatusFor(selectedManagedWebhookTarget)
+		selectedConnection && isEndpointConnection(selectedConnection) && selectedManagedEndpointTarget
+			? targetStatusFor(selectedManagedEndpointTarget)
 			: selectedConnection
 				? connectionStatusFor(selectedConnection)
 				: "pending";
 	// webhook 一族的连接头上说的是它那张托管目标的通断,别的说连接自己的探测。
 	const selectedConnectionLink: LinkState =
 		selectedConnection && isEndpointConnection(selectedConnection)
-			? targetReachabilityOf(selectedManagedWebhookTarget ?? {})
+			? targetReachabilityOf(selectedManagedEndpointTarget ?? {})
 			: selectedConnection
 				? connectionProbeOf(selectedConnection)
 				: { status: "pending" };
@@ -2022,15 +2022,15 @@ export default function Targets() {
 										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
 											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
 										</div>
-										{selectedManagedWebhookTarget ? (
+										{selectedManagedEndpointTarget ? (
 											<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 												<TargetCard
-													target={selectedManagedWebhookTarget}
+													target={selectedManagedEndpointTarget}
 													connection={selectedConnection}
 													onEdit={() => {}}
 													onDelete={() => {}}
-													onTest={() => testTarget(selectedManagedWebhookTarget)}
-													testing={targetTesting[selectedManagedWebhookTarget.id]}
+													onTest={() => testTarget(selectedManagedEndpointTarget)}
+													testing={targetTesting[selectedManagedEndpointTarget.id]}
 													readOnly
 												/>
 											</div>

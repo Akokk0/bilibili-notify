@@ -129,7 +129,7 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		];
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
 
-		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedWebhookTargetId`,那个种子是
+		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedEndpointTargetId`,那个种子是
 		// 冻住的),所以草稿里那份目标快照在连接建出来之前就写得出来;下面建好连接之后再核一遍对不对得上。
 		webhookTarget = deterministicUuid(`push-target:webhook-adapter:${WEBHOOK}`);
 		const now = Date.now();

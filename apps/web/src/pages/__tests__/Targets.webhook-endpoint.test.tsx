@@ -8,7 +8,7 @@
  * 「连接器」(平台改由原先的 provider 承担:飞书 / 钉钉 / 企业微信 / 未指明)。降格之后
  * `target.platform` 不再等于 `"webhook"`,页面里那几处 `=== "webhook"` 会**静默恒假**:
  *
- * - `managedWebhookTargetForConnection` 认不出自己那张托管目标 → 托管卡从界面消失,
+ * - `managedEndpointTargetForConnection` 认不出自己那张托管目标 → 托管卡从界面消失,
  *   只剩一句「保存 Webhook 后系统会自动创建默认投递目标」的空态;
  * - `targetSessionSummary` 末尾那个**兜底 return** 会把「不是 onebot、不是官机」的目标
  *   一律标成「→ webhook 终点」—— 将来接进来的 telegram 目标会被标错平台。
