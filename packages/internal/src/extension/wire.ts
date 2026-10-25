@@ -216,7 +216,7 @@ export type ExtensionViewTextSegment =
 	| string
 	| { b: string }
 	| { mono: string }
-	| { time: number; suffix?: string }
+	| { time: string; suffix?: string }
 	| { host: "extensionUrl" };
 
 /**

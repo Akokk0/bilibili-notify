@@ -18,8 +18,6 @@ export const SUBSCRIPTION_REPORT_NAME_MAX = 128;
 /** 链接的字数上限。 */
 export const SUBSCRIPTION_REPORT_URL_MAX = 2048;
 
-const TIME_MIN = Date.UTC(2000, 0, 1);
-const TIME_MAX = 8_640_000_000_000_000;
 const CREATOR_CANDIDATES_MAX = 10;
 const TOPIC_MAX = 64;
 const BIO_MAX = SUBSCRIPTION_REPORT_TEXT_MAX;
@@ -29,7 +27,7 @@ const NameSchema = z.string().min(1).max(SUBSCRIPTION_REPORT_NAME_MAX);
 const UrlSchema = z
 	.url({ protocol: /^https?$/, error: "invalid-url" })
 	.max(SUBSCRIPTION_REPORT_URL_MAX);
-const TimeSchema = z.number().int().min(TIME_MIN).max(TIME_MAX);
+const TimeSchema = z.iso.datetime({ offset: true });
 const CountSchema = z.number().int().nonnegative();
 
 function stripTopic(value: string): string {

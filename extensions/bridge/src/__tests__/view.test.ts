@@ -69,7 +69,7 @@ describe("bridgeView", () => {
 		expect(view?.subtitle).toEqual([
 			"客厅那台 koishi v0.1.0",
 			" · ",
-			{ time: 1_790_061_520_000, suffix: "连上" },
+			{ time: "2026-09-22T07:18:40.000Z", suffix: "连上" },
 			" · ",
 			"来自 192.168.1.5",
 		]);

@@ -72,6 +72,11 @@ function clip(text: string, max: number): string {
 	return `${head}…`;
 }
 
+/** 桥内部仍按毫秒记连上时刻,交给面板的视图片段才换 ISO。 */
+function isoAt(ms: number): string {
+	return new Date(ms).toISOString();
+}
+
 /** 片段之间的分隔 —— 今天副标题就是拿 ` · ` 拼的。 */
 function joined(
 	parts: readonly (ExtensionViewTextSegment | undefined)[],
@@ -143,7 +148,7 @@ function connectedItem(
 		pill: mismatched ? `配置:${link.bridgeKind}` : link.bridgeKind,
 		subtitle: joined([
 			nameAndVersion ? clip(nameAndVersion, VIEW_LIMITS.viewTextSegment) : undefined,
-			{ time: session.connectedAt, suffix: "连上" },
+			{ time: isoAt(session.connectedAt), suffix: "连上" },
 			session.remoteAddress
 				? clip(`来自 ${session.remoteAddress}`, VIEW_LIMITS.viewTextSegment)
 				: undefined,

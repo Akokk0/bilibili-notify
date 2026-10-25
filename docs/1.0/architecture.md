@@ -418,7 +418,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - **日志行格式**（`msg`、`ts` 等）：logs 跨代共享、冻住的桌面壳写死了目录。
 - **通用 webhook 发出的 JSON**（`forward`、`ts` 等）：读它的是用户自己的接收端，永远不改；`private` 那一格写死 `false`。
 - **桥协议的线上帧**（`forward`、`desc`、`picUrl`、能力名 `forward`、`miniAppCard`，载荷种类 `miniapp-card`，入站的 `miniAppCardLinks` 等）：alpha 期间不改，1.0.0 之前按两步改完（09-27 拍板，09-28 补上入站那一格）。已发布的插件在读，握手只比主版本，所以在那之前内部改名只改到桥的适配器。两步按方向分：BN 发出去的格，先发一版插件同时认新旧字段，等大家升上去 BN 再切；插件发进来的格（入站的 `miniAppCardLinks`）反过来，BN 先同时认新旧两种写法，插件再改发新的（ADR-0029 决策 2）。改完之后适配器里的新旧映射整个删掉；改成什么名字见 [construction-plan.md](./construction-plan.md)。
-- 拓展契约里的毫秒时刻、签名清单的 `issuedAt`（秒）：已发出的格式，进门换 ISO。
+- 拓展契约里的毫秒时刻、签名清单的 `issuedAt`（秒）：已发出的格式，进门换 ISO。🔗 现状（3b-49，10-25）：拓展交来的时刻已改成带时区的 ISO（主人改判，见 ADR-0019 决策 62 下 3b-49 的 🔗）；签名清单的 `issuedAt`（秒）照旧。
 - 已经拍板不动的：import 后缀两套并存；`FRAMES.live` 与 `FRAMES.wordcloud` 不合并；`skin.json` 与 `default.json` 双文件；锐评分数由模型打；`apps/contract` 放在 `apps/` 下。
 - 全仓包版本统一 `0.0.0-dev` 是施工项、不是「不动」：现在只有 ui 与 `apps/*` 是 `0.0.0-dev`，其余包排在第 5 期统一（见 [construction-plan.md](./construction-plan.md)）。
 - ⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本）。

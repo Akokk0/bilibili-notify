@@ -86,6 +86,11 @@ const TOTAL_VIEWERS_STEP = VIEWERS_STEP * 10;
 /** 来源没在跑时按钮回的那句话。 */
 const NOT_RUNNING = "来源没在跑(还没起来,或者已经停下了),什么都没报";
 
+/** 内部仍按毫秒记开播与按钮时刻,交给宿主的入口才换成带时区 ISO。 */
+function isoAt(ms: number): string {
+	return new Date(ms).toISOString();
+}
+
 /**
  * 按一下要做的事:`each` 给每个开着的人报一次,`note` 是报完之后页上那行字的括号里那句。除允许空名单的
  * 问题按钮外,**只在有人可报时才叫** —— 序号与直播那一场都在这里往前走。`each` 里要存图(异步),
@@ -144,7 +149,7 @@ export function wireReportButtons(
 			if (!source) {
 				lastPress = {
 					tone: "error",
-					text: [{ b: button.label }, `:${NOT_RUNNING} · `, { time: at }],
+					text: [{ b: button.label }, `:${NOT_RUNNING} · `, { time: isoAt(at) }],
 				};
 				ctx.statusChanged();
 				throw new Error(NOT_RUNNING);
@@ -153,7 +158,7 @@ export function wireReportButtons(
 			if (people.length === 0 && !options.allowNoPeople) {
 				lastPress = {
 					tone: "warn",
-					text: [{ b: button.label }, ":还没有开着的订阅,什么都没报 · ", { time: at }],
+					text: [{ b: button.label }, ":还没有开着的订阅,什么都没报 · ", { time: isoAt(at) }],
 				};
 				ctx.statusChanged();
 				return;
@@ -176,7 +181,7 @@ export function wireReportButtons(
 							text: [
 								{ b: button.label },
 								`:${options.personVerb ?? "报给了"} ${people.length} 个人(${note})· `,
-								{ time: at },
+								{ time: isoAt(at) },
 							],
 						}
 					: {
@@ -184,7 +189,7 @@ export function wireReportButtons(
 							text: [
 								{ b: button.label },
 								`:${people.length} 个人里 ${failures.length} 个没报成(原因在按钮底下)· `,
-								{ time: at },
+								{ time: isoAt(at) },
 							],
 						};
 			ctx.statusChanged();
@@ -224,7 +229,7 @@ export function wireReportButtons(
 				liveOf.set(externalId, session);
 				running()?.reportLive(externalId, {
 					kind: "start",
-					startedAt: session.startedAt,
+					startedAt: isoAt(session.startedAt),
 					details: await fakeLiveDetails(externalId, session, store),
 				});
 			},
@@ -245,7 +250,7 @@ export function wireReportButtons(
 				running()?.reportLive(externalId, {
 					kind: "status",
 					isLive: true,
-					startedAt: session.startedAt,
+					startedAt: isoAt(session.startedAt),
 					details: await fakeLiveDetails(externalId, session, store),
 				});
 			},
@@ -320,7 +325,7 @@ export function wireReportButtons(
 				// 开播时刻补上 —— BN 中途重启过的话,它靠这一格算这场播了多久(决策 56)。
 				running()?.reportLive(externalId, {
 					kind: "end",
-					...(session ? { startedAt: session.startedAt } : {}),
+					...(session ? { startedAt: isoAt(session.startedAt) } : {}),
 					details: session
 						? await fakeLiveDetails(externalId, session, store)
 						: { url: fakeLiveUrl(externalId) },
@@ -381,7 +386,7 @@ export function wireReportButtons(
 			if (!adapterCtx) {
 				lastPress = {
 					tone: "error",
-					text: [{ b: b.label }, `:${ADAPTER_NOT_RUNNING} · `, { time: at }],
+					text: [{ b: b.label }, `:${ADAPTER_NOT_RUNNING} · `, { time: isoAt(at) }],
 				};
 				ctx.statusChanged();
 				throw new Error(ADAPTER_NOT_RUNNING);
@@ -389,8 +394,11 @@ export function wireReportButtons(
 			const note = run(adapterCtx);
 			lastPress =
 				note === undefined
-					? { tone: "warn", text: [{ b: b.label }, `:${nothing} · `, { time: at }] }
-					: { tone: "info", text: [{ b: b.label }, `:${note} · `, { time: at }] };
+					? {
+							tone: "warn",
+							text: [{ b: b.label }, `:${nothing} · `, { time: isoAt(at) }],
+						}
+					: { tone: "info", text: [{ b: b.label }, `:${note} · `, { time: isoAt(at) }] };
 			ctx.statusChanged();
 		});
 	}
@@ -468,7 +476,7 @@ export function wireReportButtons(
 			try {
 				return ok({
 					kind: "live" as const,
-					startedAt: session.startedAt,
+					startedAt: isoAt(session.startedAt),
 					details: await fakeLiveDetails(
 						identity.externalId,
 						session,

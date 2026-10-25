@@ -8,7 +8,8 @@ import {
 	SUBSCRIPTION_REPORT_TITLE_MAX,
 } from "../extension-report";
 
-const T = Date.UTC(2026, 8, 23, 12, 0, 0);
+const T = "2026-09-23T12:00:00.000Z";
+const T_OFFSET = "2026-09-23T20:00:00+08:00";
 const IMAGE = `${"a".repeat(64)}.png`;
 const URL = "https://example.com/post/1";
 const POST = {
@@ -54,12 +55,12 @@ describe("post report", () => {
 		});
 	});
 
-	it("accepts every open post field with image refs and milliseconds", () => {
+	it("accepts every open post field with image refs and an offset ISO timestamp", () => {
 		const full = {
 			...POST,
 			post: {
 				creator: { name: "creator", avatar: IMAGE },
-				publishedAt: T,
+				publishedAt: T_OFFSET,
 				topic: "topic",
 				text: "body",
 				images: [IMAGE],
@@ -113,14 +114,17 @@ describe("post report", () => {
 			expect.objectContaining({ path: ["post", "text"], code: "type" }),
 		);
 		expect(
-			rejected("post", { ...POST, post: { ...POST.post, publishedAt: Math.floor(T / 1000) } }),
-		).toContainEqual(
-			expect.objectContaining({
-				path: ["post", "publishedAt"],
-				code: "below-min",
-				limit: Date.UTC(2000, 0, 1),
+			rejected("post", {
+				...POST,
+				post: { ...POST.post, publishedAt: "2026-10-25T12:00:00" },
 			}),
-		);
+		).toContainEqual(expect.objectContaining({ path: ["post", "publishedAt"], code: "invalid" }));
+		expect(
+			rejected("post", {
+				...POST,
+				post: { ...POST.post, publishedAt: Date.parse(T) },
+			}),
+		).toContainEqual(expect.objectContaining({ path: ["post", "publishedAt"], code: "type" }));
 	});
 
 	it("drops an invalid optional cell without losing its valid siblings", () => {
@@ -297,7 +301,7 @@ describe("post report", () => {
 });
 
 describe("live reports", () => {
-	it("accepts start, status, and end with millisecond timestamps", () => {
+	it("accepts start, status, and end with ISO timestamps", () => {
 		const details = {
 			creator: { name: "creator", avatar: IMAGE },
 			title: "live",
@@ -311,8 +315,8 @@ describe("live reports", () => {
 		};
 		const reports = [
 			{ kind: "start" as const, startedAt: T, details },
-			{ kind: "status" as const, isLive: true, startedAt: T, details },
-			{ kind: "end" as const, endedAt: T, startedAt: T, details },
+			{ kind: "status" as const, isLive: true, startedAt: T_OFFSET, details },
+			{ kind: "end" as const, endedAt: T, startedAt: T_OFFSET, details },
 		];
 		for (const report of reports) {
 			expect(checkExtensionReport("live", report)).toEqual({
@@ -466,7 +470,7 @@ describe("live status result", () => {
 		}
 	});
 
-	it("rejects malformed branches and a non-millisecond timestamp", () => {
+	it("rejects malformed branches and timestamps without a timezone", () => {
 		expect(
 			ExtensionLiveStatusResultSchema.safeParse({ ok: true, kind: "offline", details: {} }).success,
 		).toBe(false);
@@ -474,7 +478,15 @@ describe("live status result", () => {
 			ExtensionLiveStatusResultSchema.safeParse({
 				ok: true,
 				kind: "live",
-				startedAt: Math.floor(T / 1000),
+				startedAt: "2026-10-25T12:00:00",
+				details: {},
+			}).success,
+		).toBe(false);
+		expect(
+			ExtensionLiveStatusResultSchema.safeParse({
+				ok: true,
+				kind: "live",
+				startedAt: Date.parse(T),
 				details: {},
 			}).success,
 		).toBe(false);

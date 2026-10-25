@@ -338,7 +338,7 @@ describe("ctx.registerSource:登记", () => {
 		handed?.reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: Date.UTC(2026, 8, 23, 12), text: "x" },
+			post: { publishedAt: "2026-09-23T12:00:00.000Z", text: "x" },
 		});
 		// 上报排在来源自己的串行队里(翻作品要读图库),等一拍。
 		await new Promise((resolve) => setTimeout(resolve, 0));

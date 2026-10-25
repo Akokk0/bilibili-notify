@@ -55,14 +55,17 @@ const T_ISO = new Date(T).toISOString();
 /** 乙那一场:一小时前。断流之后平台报的是一个新的开播时刻(晚一分钟)—— 接续的话开始帧不换。 */
 const T2 = Date.now() - 3_600_000;
 const T2_ISO = new Date(T2).toISOString();
+/** 拓展交出去的时刻:带 +08:00 偏移的 ISO(同一刻);宿主落盘 / 回给面板的统一是 Z 结尾的 UTC。 */
+const wire8 = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString().replace("Z", "+08:00");
 
 /**
  * 甲:开播时累计观看 5000;重启之后报的在播状态只带 300(平台这回少报了)。读的时候这一场的峰值要留 5000。
  * 乙:第一次开播累计 700,断流后再开播 900。
  */
 const FIXTURE_CODE = `
-const T = ${T};
+const T = ${JSON.stringify(wire8(T))};
 const T2 = ${T2};
+const wire8 = (ms) => new Date(ms + 8 * 3600000).toISOString().replace("Z", "+08:00");
 const URL = "https://live.restart-probe.invalid/1";
 export function activate(ctx) {
 	let source;
@@ -75,7 +78,7 @@ export function activate(ctx) {
 	const id = ${JSON.stringify(SUB.identity.externalId)};
 	const flicker = ${JSON.stringify(FLICKER.identity.externalId)};
 	ctx.onAction("report.post", () =>
-		source.reportPost(id, { postId: "restart-post-1", url: URL, post: { publishedAt: Date.now(), text: "推送关着也记" } }),
+		source.reportPost(id, { postId: "restart-post-1", url: URL, post: { publishedAt: new Date().toISOString(), text: "推送关着也记" } }),
 	);
 	ctx.onAction("report.liveStart", () =>
 		source.reportLive(id, { kind: "start", startedAt: T, details: { url: URL, title: "开播了", currentViewers: 50, totalViewers: 5000 } }),
@@ -83,13 +86,13 @@ export function activate(ctx) {
 	ctx.onAction("report.liveStatus", () =>
 		source.reportLive(id, { kind: "status", isLive: true, startedAt: T, details: { url: URL, title: "还在播", currentViewers: 30, totalViewers: 300 } }),
 	);
-	ctx.onAction("report.liveEnd", () => source.reportLive(id, { kind: "end", endedAt: Date.now(), details: { url: URL } }));
+	ctx.onAction("report.liveEnd", () => source.reportLive(id, { kind: "end", endedAt: new Date().toISOString(), details: { url: URL } }));
 	let starts = 0;
 	ctx.onAction("report.flickerStart", () => {
 		starts += 1;
 		return source.reportLive(flicker, {
 			kind: "start",
-			startedAt: T2 + (starts - 1) * 60000,
+			startedAt: wire8(T2 + (starts - 1) * 60000),
 			details: {
 				url: URL,
 				title: "断流探针",
@@ -98,7 +101,7 @@ export function activate(ctx) {
 			},
 		});
 	});
-	ctx.onAction("report.flickerEnd", () => source.reportLive(flicker, { kind: "end", endedAt: Date.now(), details: { url: URL } }));
+	ctx.onAction("report.flickerEnd", () => source.reportLive(flicker, { kind: "end", endedAt: new Date().toISOString(), details: { url: URL } }));
 }
 `;
 

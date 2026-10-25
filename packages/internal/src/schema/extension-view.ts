@@ -34,10 +34,10 @@ const ViewTextSegmentSchema = z.union([
 	z.strictObject({ b: z.string().max(2000) }),
 	z.strictObject({ mono: z.string().max(2000) }),
 	/**
-	 * 一个时刻(毫秒),浏览器按「N 分钟前」画 —— 服务端算好的相对时间发到面板就冻住了。
+	 * 一个带时区的 ISO 8601 时刻,浏览器按「N 分钟前」画 —— 服务端算好的相对时间发到面板就冻住了。
 	 * `suffix` 接在后面(「连上」→「12 分钟前连上」)。
 	 */
-	z.strictObject({ time: z.number().int().nonnegative(), suffix: z.string().max(40).optional() }),
+	z.strictObject({ time: z.iso.datetime({ offset: true }), suffix: z.string().max(40).optional() }),
 	/**
 	 * BN **在浏览器里**现算的地址:`ws(s)://<地址栏的 host>/ext/<id>`。服务端不知道外面经哪个
 	 * 地址访问它,而那正是桥那台机器要填的。

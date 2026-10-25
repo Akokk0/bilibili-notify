@@ -206,7 +206,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 ### 上报
 
-上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。🔗 现状（3b-42，10-24）：第 3 版上报已落。拓展这一侧的 `SourceContext` 是核心那份去掉 `reportLiveInteraction` / `registerLinkResolver` / `registerAiToolProvider`；进门 zod 在 `packages/internal/src/schema/extension-report.ts`。外来数据只在 `extensions/extension-source.ts` 的 `createExtensionSource` 收：外部 id → 清单声明的种类 → 形状；毫秒 → ISO；图库引用读回字节补宽高与动图标记；作者缺名按资料名 → 身份标签补；下播缺 `endedAt` 取到达时刻；每个来源一条串行队，置停后队里还没交的丢、记 debug。视频作品不再由宿主写「投稿了视频」（主人 10-24）。
+上报表就是 `Post` / `LiveDetails` 的上报版，**同义同名**；进门转成 `Post` 的收件口在服务端 `extensions/`。🔗 现状（3b-42，10-24）：第 3 版上报已落。拓展这一侧的 `SourceContext` 是核心那份去掉 `reportLiveInteraction` / `registerLinkResolver` / `registerAiToolProvider`；进门 zod 在 `packages/internal/src/schema/extension-report.ts`。外来数据只在 `extensions/extension-source.ts` 的 `createExtensionSource` 收：外部 id → 清单声明的种类 → 形状；毫秒 → ISO；图库引用读回字节补宽高与动图标记；作者缺名按资料名 → 身份标签补；下播缺 `endedAt` 取到达时刻；每个来源一条串行队，置停后队里还没交的丢、记 debug。视频作品不再由宿主写「投稿了视频」（主人 10-24）。🔗 现状（3b-49，10-25 主人改判；原为整数毫秒）：上报时刻已改成带时区的 ISO，和核心一样；宿主进门只统一成 UTC。
 
 附加块 `attachment` 这版不对拓展开：ADR-0021 决策 38 的开放清单没有它，v3 的上报 schema 也就没有这一格（照「多交一格宿主不认识的，整条拒」处理）。
 
@@ -226,11 +226,11 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 正文：拓展必交纯文本 `text`，可选交片段列表 `richText`（09-27 拍板，推翻 09-26 精简时无声改成的「交完整片段」，也不是 Q3 原来的「只交纯文本」）。`text` 只放正文，标题、视频标题、转发的原作品各有自己的位置（ADR-0028 决策 1）。契约只开放五种片段：文字、@人、话题、链接、表情，是中立 `RichText` 的子集，宿主一对一转成中立片段；中立片段以后加种类不影响契约，开放新种类是一次明确的加宽。选片段不选「纯文本 + 位置」：各平台的位置单位互不兼容（Bluesky UTF-8 字节、Telegram / YouTube UTF-16、X 码点），片段让作者按自己平台的单位切，调研见施工记录。`text` 是用户在平台上看到的字，平台私有标记（小红书 `#x[话题]#`、Discord `<@id>`、X 的 `&amp;` 转义）由拓展剥掉。片段字段与中立 `RichText` 完全相同（见 data-model「正文片段」）：`mention` 的 `userId` 可选，`link` 带 `url` 与可选图标，图标和表情图都先用 `ctx.storeImage` / `ctx.fetchImage` 存成 `ImageRef`。
 
-只留一处传输差异，在进门处换掉：
+时刻与核心同为带时区的 ISO，进门只统一 UTC（3b-49，10-25 主人改判；原为拓展交整数毫秒、进门换 ISO）：
 
-| 差异 | 拓展交 | 宿主换成 |
+| 处理 | 拓展交 | 宿主换成 |
 | --- | --- | --- |
-| 时刻 | 毫秒时间戳 | ISO 字符串 |
+| 时刻 | 带时区的 ISO 8601 | `Z` 结尾的 UTC ISO |
 
 图没有差异：和 B 站一样，先用 `ctx.fetchImage` / `ctx.storeImage` 存进图库，上报里只交 `ImageRef`。
 

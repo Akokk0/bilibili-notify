@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { ViewText } from "../view-text";
 
 const NOW = Date.UTC(2026, 8, 22, 12, 0, 0);
+const NOW_ISO = "2026-09-22T12:00:00.000Z";
 
 let hidden = false;
 
@@ -49,7 +50,7 @@ afterEach(() => {
 describe("视图那段字里的时刻会走", () => {
 	it("过了一分钟,「刚刚」变成「1 分钟前」", () => {
 		const { container } = render(
-			<ViewText text={[{ time: NOW, suffix: "连上" }]} extensionId="bridge" />,
+			<ViewText text={[{ time: NOW_ISO, suffix: "连上" }]} extensionId="bridge" />,
 		);
 		expect(container.textContent).toBe("刚刚连上");
 		advance(60_000);
@@ -61,9 +62,15 @@ describe("视图那段字里的时刻会走", () => {
 	it("页上几处时刻共用一个节拍", () => {
 		render(
 			<>
-				<ViewText text={[{ time: NOW, suffix: "连上" }]} extensionId="bridge" />
-				<ViewText text={["上次 ", { time: NOW - 5_000, suffix: "检查" }]} extensionId="douyin" />
-				<ViewText text={[{ time: NOW - 60_000, suffix: "连上" }]} extensionId="bridge" />
+				<ViewText text={[{ time: NOW_ISO, suffix: "连上" }]} extensionId="bridge" />
+				<ViewText
+					text={["上次 ", { time: "2026-09-22T11:59:55.000Z", suffix: "检查" }]}
+					extensionId="douyin"
+				/>
+				<ViewText
+					text={[{ time: "2026-09-22T11:59:00.000Z", suffix: "连上" }]}
+					extensionId="bridge"
+				/>
 			</>,
 		);
 		expect(vi.getTimerCount()).toBe(1);
@@ -76,7 +83,7 @@ describe("视图那段字里的时刻会走", () => {
 
 	it("页面藏在后台时不走;回到前台当场补上", () => {
 		const { container } = render(
-			<ViewText text={[{ time: NOW, suffix: "连上" }]} extensionId="bridge" />,
+			<ViewText text={[{ time: NOW_ISO, suffix: "连上" }]} extensionId="bridge" />,
 		);
 		setHidden(true);
 		expect(vi.getTimerCount()).toBe(0);
@@ -92,7 +99,7 @@ describe("视图那段字里的时刻会走", () => {
 
 	it("卸载时清掉定时器", () => {
 		const { unmount } = render(
-			<ViewText text={[{ time: NOW, suffix: "连上" }]} extensionId="bridge" />,
+			<ViewText text={[{ time: NOW_ISO, suffix: "连上" }]} extensionId="bridge" />,
 		);
 		expect(vi.getTimerCount()).toBe(1);
 		unmount();

@@ -3,7 +3,7 @@
  *
  * 钉在公开口上:造出来的核心 `Source` 的 `start` / `searchCreators` / `fetchProfile` / `fetchLiveStatus` / `stop`,
  * 以及 `start` 时递给拓展的那面 ctx 上的三种上报。核心那一份上下文换成一个只记「收到了什么」的替身 ——
- * 这里要看的是递过去的东西长什么样(毫秒 → ISO、图库引用 → `PostImage`、名字补链),不是核心怎么展开订阅。
+ * 这里要看的是递过去的东西长什么样(ISO → 统一成 UTC、图库引用 → `PostImage`、名字补链),不是核心怎么展开订阅。
  *
  * 期望值都是手写的字面量(时刻的 ISO 串、拒收原因里点名的格),不拿实现的换算式去算。
  */
@@ -31,9 +31,8 @@ import { createExtensionSource, type ExtensionSourceDiscrepancy } from "../exten
 
 const REF = `${"a".repeat(64)}.png`;
 const REF_B = `${"b".repeat(64)}.jpg`;
-/** 2026-09-23 12:00:00 UTC。 */
-const T = Date.UTC(2026, 8, 23, 12);
 const T_ISO = "2026-09-23T12:00:00.000Z";
+const T_OFFSET = "2026-09-23T20:00:00+08:00";
 /** 下播没交 `endedAt` 时取的「到达那一刻」。 */
 const ARRIVED = Date.UTC(2026, 8, 23, 14);
 const ARRIVED_ISO = "2026-09-23T14:00:00.000Z";
@@ -373,13 +372,13 @@ describe("createExtensionSource:健康状态按外来数据收", () => {
 });
 
 describe("createExtensionSource:作品上报", () => {
-	it("毫秒 → ISO,图库引用换成 PostImage,话题与视频与互动数照搬,缺名补链", async () => {
+	it("带时区的 ISO 统一成 UTC Z,图库引用换成 PostImage,话题与视频与互动数照搬,缺名补链", async () => {
 		const made = await make();
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
 			post: {
-				publishedAt: T,
+				publishedAt: T_OFFSET,
 				text: "今天去海边",
 				images: [REF, REF_B],
 				topic: "旅行",
@@ -421,7 +420,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x", creator: { name: "小明", avatar: REF } },
+			post: { publishedAt: T_ISO, text: "x", creator: { name: "小明", avatar: REF } },
 		});
 		await made.idle();
 		expect(made.core.posts[0]?.[1].post.creator).toEqual({ name: "小明", avatar: REF });
@@ -432,7 +431,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x", creator: { avatar: REF } },
+			post: { publishedAt: T_ISO, text: "x", creator: { avatar: REF } },
 		});
 		await made.idle();
 		expect(made.core.posts[0]?.[1].post.creator).toEqual({ name: "资料名-u1", avatar: REF });
@@ -444,7 +443,7 @@ describe("createExtensionSource:作品上报", () => {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
 			post: {
-				publishedAt: T,
+				publishedAt: T_ISO,
 				text: "甲\r\n乙",
 				richText: [{ kind: "text", text: "对不上" }],
 			},
@@ -453,7 +452,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p2",
 			url: "https://douyin.invalid/p2",
-			post: { publishedAt: T, text: "  \n " },
+			post: { publishedAt: T_ISO, text: "  \n " },
 		});
 		await made.idle();
 		const [first, second] = made.core.posts.map(([, report]) => report.post);
@@ -468,7 +467,7 @@ describe("createExtensionSource:作品上报", () => {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
 			post: {
-				publishedAt: T,
+				publishedAt: T_ISO,
 				text: "去#旅行#吧",
 				richText: [
 					{ kind: "text", text: "去" },
@@ -486,7 +485,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x" },
+			post: { publishedAt: T_ISO, text: "x" },
 		});
 		await made.idle();
 		expect(made.core.posts).toEqual([]);
@@ -505,7 +504,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x", title: "不开放的格" },
+			post: { publishedAt: T_ISO, text: "x", title: "不开放的格" },
 		} as unknown as ExtensionPostReport);
 		await made.idle();
 		expect(made.core.posts).toEqual([]);
@@ -519,7 +518,7 @@ describe("createExtensionSource:作品上报", () => {
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x", stats: { likes: -1, comments: 5 } },
+			post: { publishedAt: T_ISO, text: "x", stats: { likes: -1, comments: 5 } },
 		});
 		await made.idle();
 		expect(made.core.posts[0]?.[1].post.stats).toEqual({ comments: 5 });
@@ -528,12 +527,12 @@ describe("createExtensionSource:作品上报", () => {
 		expect(made.discrepancies[0]?.reasons.join("")).toContain("post.stats.likes");
 	});
 
-	it("时刻早于 2000 年(多半把秒当毫秒交了):整条拒", async () => {
+	it("不带时区的时刻:整条拒", async () => {
 		const made = await make();
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: 1_790_000_000, text: "x" },
+			post: { publishedAt: "2026-10-25T12:00:00", text: "x" },
 		});
 		await made.idle();
 		expect(made.core.posts).toEqual([]);
@@ -546,7 +545,7 @@ describe("createExtensionSource:作品上报", () => {
 		const report: ExtensionPostReport = {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
-			post: { publishedAt: T, text: "x" },
+			post: { publishedAt: T_ISO, text: "x" },
 		};
 		made.ext().reportPost("", report);
 		await made.idle();
@@ -568,7 +567,7 @@ describe("createExtensionSource:作品图的宽高与动图标记", () => {
 	const post = (images: string[], video?: { cover: string }) => ({
 		postId: "p1",
 		url: "https://douyin.invalid/p1",
-		post: { publishedAt: T, text: "x", images, ...(video ? { video } : {}) },
+		post: { publishedAt: T_ISO, text: "x", images, ...(video ? { video } : {}) },
 	});
 	const stored = (bytes: Uint8Array): Stored => ({ bytes: Buffer.from(bytes), mime: "image/png" });
 
@@ -693,11 +692,11 @@ describe("createExtensionSource:作品图的宽高与动图标记", () => {
 });
 
 describe("createExtensionSource:直播上报", () => {
-	it("开播:毫秒 → ISO,封面与作者头像换成引用,现在在线 / 累计观看照搬", async () => {
+	it("开播:ISO 统一成 UTC Z,封面与作者头像换成引用,现在在线 / 累计观看照搬", async () => {
 		const made = await make();
 		made.ext().reportLive("u1", {
 			kind: "start",
-			startedAt: T,
+			startedAt: T_ISO,
 			details: {
 				title: "开播了",
 				cover: REF,
@@ -731,16 +730,20 @@ describe("createExtensionSource:直播上报", () => {
 
 	it("直播状态:isLive 与开播时刻照搬;没交 details 内容也收(空对象)", async () => {
 		const made = await make();
-		made.ext().reportLive("u1", { kind: "status", isLive: true, startedAt: T, details: {} });
+		made.ext().reportLive("u1", { kind: "status", isLive: true, startedAt: T_ISO, details: {} });
 		await made.idle();
 		expect(made.core.lives).toEqual([
 			["u1", { kind: "status", isLive: true, startedAt: T_ISO, details: {} }],
 		]);
 	});
 
-	it("下播交了 endedAt:毫秒 → ISO", async () => {
+	it("下播交了 endedAt:ISO 统一成 UTC Z", async () => {
 		const made = await make();
-		made.ext().reportLive("u1", { kind: "end", endedAt: T, startedAt: T - 3_600_000 });
+		made.ext().reportLive("u1", {
+			kind: "end",
+			endedAt: T_OFFSET,
+			startedAt: "2026-09-23T11:00:00.000Z",
+		});
 		await made.idle();
 		expect(made.core.lives[0]?.[1]).toEqual({
 			kind: "end",
@@ -977,12 +980,12 @@ describe("createExtensionSource:拉取式直播状态", () => {
 		expect(made.source.fetchLiveStatus).toBeUndefined();
 	});
 
-	it("在播:毫秒 → ISO,封面换引用", async () => {
+	it("在播:ISO 统一成 UTC Z,封面换引用", async () => {
 		const made = await make({
 			fetchLiveStatus: async () => ({
 				ok: true,
 				kind: "live",
-				startedAt: T,
+				startedAt: T_ISO,
 				details: { title: "在播", cover: REF },
 			}),
 		});
@@ -1018,7 +1021,12 @@ describe("createExtensionSource:拉取式直播状态", () => {
 
 	it("结果坏了:回失败 invalid,不抛", async () => {
 		const made = await make({
-			fetchLiveStatus: async () => ({ ok: true, kind: "live", startedAt: 5, details: {} }),
+			fetchLiveStatus: async () => ({
+				ok: true,
+				kind: "live",
+				startedAt: "2026-10-25T12:00:00",
+				details: {},
+			}),
 		});
 		const result = await made.source.fetchLiveStatus?.(
 			{ sourceKey: "douyin", externalId: "u1" },

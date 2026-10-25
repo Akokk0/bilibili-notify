@@ -94,7 +94,7 @@ export type RichText = RichTextSegment[];
  * 来源交的一条作品。作品 id 与地址在信封上,内容在中立 `Post` 的同名位置。
  *
  * 不开放标题、文章、转发、附加块、锁、提醒、会员标记等格。图一律交图库引用;
- * `publishedAt` 是毫秒时间戳,宿主进门时换成 ISO。
+ * `publishedAt` 是带时区的 ISO 8601 时刻。
  */
 export interface PostReport {
 	/** 平台自己的作品 id。 */
@@ -104,8 +104,8 @@ export interface PostReport {
 	post: {
 		/** 出卡优先用这里的创作者;缺的格由订阅资料补。 */
 		creator?: SubscriptionCreator;
-		/** 发布时刻,毫秒。 */
-		publishedAt: number;
+		/** 带时区的 ISO 8601 发布时刻。 */
+		publishedAt: string;
 		/** 正文,必交。 */
 		text: string;
 		/** 正文片段;给了就要与 `text` 对得上。 */
@@ -149,23 +149,23 @@ export interface LiveDetails {
 }
 
 /**
- * 来源推送式上报的一场直播变化。时刻都是毫秒;下播可以不交 `endedAt`,宿主取到达那一刻。
+ * 来源推送式上报的一场直播变化。时刻都是带时区的 ISO 8601;下播可以不交 `endedAt`,宿主取到达那一刻。
  */
 export type LiveSignalReport =
-	| { kind: "start"; startedAt?: number; details: LiveDetails }
-	| { kind: "status"; isLive: boolean; startedAt?: number; details: LiveDetails }
+	| { kind: "start"; startedAt?: string; details: LiveDetails }
+	| { kind: "status"; isLive: boolean; startedAt?: string; details: LiveDetails }
 	| {
 			kind: "end";
-			endedAt?: number;
-			startedAt?: number;
+			endedAt?: string;
+			startedAt?: string;
 			details?: LiveDetails;
 	  };
 
 /**
- * 来源拉取式直播状态。时刻都是毫秒;失败回标准结果形状,不抛。
+ * 来源拉取式直播状态。时刻都是带时区的 ISO 8601;失败回标准结果形状,不抛。
  */
 export type LiveStatusResult =
-	| { ok: true; kind: "live"; startedAt?: number; details: LiveDetails }
+	| { ok: true; kind: "live"; startedAt?: string; details: LiveDetails }
 	| { ok: true; kind: "offline" }
 	| { ok: false; code: FailureCode; message: string };
 
@@ -221,7 +221,7 @@ export interface SourceDef {
 	 */
 	fetchProfile?(identity: Identity, signal: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	/**
-	 * 此刻这个人在不在播,时刻按毫秒交。声明了周期直播必须实现它,否则拓展装不上。
+	 * 此刻这个人在不在播,时刻按带时区的 ISO 8601 交。声明了周期直播必须实现它,否则拓展装不上。
 	 * 不实现就只靠 `ctx.reportLive` 推送式上报。
 	 */
 	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;

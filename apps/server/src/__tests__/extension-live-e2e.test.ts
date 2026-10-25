@@ -30,10 +30,12 @@ const SUB = makeExtensionSubscription({
 	enabled: true,
 });
 const T = Date.UTC(2026, 8, 23, 12);
+/** 拓展交出去的时刻:带 +08:00 偏移的 ISO(同一刻);宿主落盘 / 回给面板的统一是 Z 结尾的 UTC。 */
+const wire8 = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString().replace("Z", "+08:00");
 
 /** 每个动作真调一次 `handle.report*`,把它的 Promise 原样交回 —— 拒掉的原因就是面板收到的原话。 */
 const FIXTURE_CODE = `
-const T = ${T};
+const T = ${JSON.stringify(wire8(T))};
 const URL = "https://live.douyin.com/1";
 export function activate(ctx) {
 	let source;

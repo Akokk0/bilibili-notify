@@ -665,7 +665,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 - **计数排版只有一份** `formatCount`（internal），带正负号的变体也在里面。口径照搬卡片现有的：万和亿都一位小数、保留「.0」、万以下不加千分位；统计表「百万以上取整」是同一函数的紧凑档。统计图轴刻度另有 `formatAxisTick`。统一后看得见的变化（主人已知）：首页的亿从两位小数变一位，万以下去掉千分位（「9,500」→「9500」），统计表「1万」→「1.0万」；统计表和六处内联写法原来没有亿档（3 亿粉写成「30000.0万」），跟着修掉。
 - **直播人数传精确数**。B 站存 WATCHED_CHANGE 帧里的 num；「1.2万」的解析只在迁移模块。文字模板的 `{watched}` 缺数时，文字渲染器在出口印「暂未获取到」。缺数就缺键：卡上那一格不画，面板照旧显示「—」，`currentViewers` 不再 `?? 0`（现在缺了会印「人气：0」）。「暂未获取到」只在文字渲染器出口印，不再写回直播数据（现在会写回，下播卡可能印出「累计观看人数：暂未获取到」）。
 - **时长只有一种写法** `formatDuration(start, end)`，写成「2小时13分5秒」；文字与卡片、B 站与拓展、有没有配 Chrome 都走它。按秒数排时钟格式的另叫 `formatClock`。⑪ 已落（10-02）：卡片与文字、B 站与拓展都走 internal 的 `formatDuration`；`packages/live` 那份不带秒的兜底与 `getTimeDifference` 钩子已删，B 站的 `live_time` 一律经 `biliLiveTimeToIso` 按北京时间换成 ISO 再算。原先那份兜底按服务所在的时区读北京时间，跑在 UTC 的 Docker 里没开卡片渲染时会写成「-47分钟」；`live_time` 为空时以此刻代替的那句也改成按北京时间拼。B 站 `live_time` 的解析还有两份（`packages/image` 的 `parseBiliLiveTime`、`packages/live` 的 `biliLiveTimeToIso`），3a 搬进 `bilibili/` 时合一。
-- **进门换 ISO**：拓展契约的毫秒时刻、签名清单的秒、B 站不带时区的 `live_time`（北京时间），都在进门处换成 ISO。
+- **进门换 ISO**：拓展契约的毫秒时刻、签名清单的秒、B 站不带时区的 `live_time`（北京时间），都在进门处换成 ISO。🔗 现状（3b-49，10-25）：拓展交来的时刻已改成带时区的 ISO（主人改判，见 ADR-0019 决策 62 下 3b-49 的 🔗）；签名清单的秒、B 站的 `live_time` 照旧。
 - 要算时间差的地方，在用的那一刻 `Date.parse`，wire 与盘上只存 ISO。现在存毫秒、要改的 wire 字段（施工清单）：皮肤 `updatedAt`、资源采样 `ts`、市场 `fetchedAt`、更新状态的 4 个 `checkedAt`；在播列表里 B 站行的 `startedAt` 是原样抄来的 `live_time`、拓展行是 ISO，同名不同格式。
 - **不知道就缺键**：外部数据不知道就不写这个键（`muteEndsAt: 0`、内置皮肤的 `updatedAt: 0` 也改成缺键）。只有位置固定的格子（数组、表格）用 `null`。出口不受约束：给皮肤的排好版文字缺了就是空串。头像、bio 都是可选，渲染器缺了显示首字。这条不加守卫，靠审查。
 

@@ -49,12 +49,15 @@ describe("ViewText", () => {
 	});
 
 	/**
-	 * 🔴 时刻在浏览器里算:服务端交的是毫秒数,面板照「现在」画。十二分钟前的那一刻,
+	 * 🔴 时刻在浏览器里算:服务端交的是 ISO 串,面板照「现在」画。十二分钟前的那一刻,
 	 * 接上 suffix 就是「12 分钟前连上」。
 	 */
 	it("时刻画成相对时间,后面接 suffix", () => {
 		const { container } = render(
-			<ViewText text={[{ time: NOW - 12 * 60_000, suffix: "连上" }]} extensionId="bridge" />,
+			<ViewText
+				text={[{ time: "2026-09-22T11:48:00.000Z", suffix: "连上" }]}
+				extensionId="bridge"
+			/>,
 		);
 		expect(container.textContent).toBe("12 分钟前连上");
 	});
@@ -65,15 +68,18 @@ describe("ViewText", () => {
 	 */
 	it("一分钟以内的时刻说「刚刚」", () => {
 		const { container } = render(
-			<ViewText text={[{ time: NOW - 5_000, suffix: "连上" }]} extensionId="bridge" />,
+			<ViewText
+				text={[{ time: "2026-09-22T11:59:55.000Z", suffix: "连上" }]}
+				extensionId="bridge"
+			/>,
 		);
 		expect(container.textContent).toBe("刚刚连上");
 	});
 
-	/** 时刻越过 Date 能表示的范围(宿主只卡了下限)也不许把整段字带走。 */
-	it("离谱的时刻不炸", () => {
+	/** 宿主校验过,但面板比服务端旧时仍可能收到解析不出的时刻:不许把整段字带走。 */
+	it("解析不出的时刻不炸", () => {
 		const { container } = render(
-			<ViewText text={["上次 ", { time: 9e18, suffix: "检查" }]} extensionId="douyin" />,
+			<ViewText text={["上次 ", { time: "not-a-date", suffix: "检查" }]} extensionId="douyin" />,
 		);
 		expect(container.textContent).toContain("上次 ");
 		expect(container.textContent).toContain("检查");
@@ -81,7 +87,7 @@ describe("ViewText", () => {
 
 	it("时刻没有 suffix 就只画时间", () => {
 		const { container } = render(
-			<ViewText text={["上次检查 ", { time: NOW - 3 * 3_600_000 }]} extensionId="douyin" />,
+			<ViewText text={["上次检查 ", { time: "2026-09-22T09:00:00.000Z" }]} extensionId="douyin" />,
 		);
 		expect(container.textContent).toBe("上次检查 3 小时前");
 	});

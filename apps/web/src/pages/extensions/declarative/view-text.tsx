@@ -61,7 +61,7 @@ function Segment({
 	if ("b" in segment) return <strong className={`font-bold ${bold ?? ""}`}>{segment.b}</strong>;
 	if ("mono" in segment) return <span className={`font-mono ${mono ?? ""}`}>{segment.mono}</span>;
 	if ("time" in segment) {
-		// 宿主只卡了「非负整数」,没卡上限:越过 Date 能表示的范围时 `toISOString()` 会抛,
+		// 宿主只放带时区的 ISO 进来,但面板这一层不重核:真遇上解析不出的串,`toISOString()` 会抛,
 		// 一片时间把整页带走不值当 —— 那一格就不给机器可读的时刻。
 		const at = new Date(segment.time);
 		return (

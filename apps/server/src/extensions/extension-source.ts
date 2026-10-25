@@ -52,10 +52,10 @@ import { errorMessageOf } from "../util/error-message.js";
  *
  * 🔴 **拓展交回的一切都当外来数据,只在这一处收**(三种上报、搜人候选、取资料、拉取式直播状态):
  * 核心的 `createSourceContext` 不为拓展加分支。收的规矩在 `@bilibili-notify/internal` 的
- * `schema/extension-report.ts`(多一格整条拒、认识的选填格坏了只丢那一格、时刻毫秒……),这里管:
+ * `schema/extension-report.ts`(多一格整条拒、认识的选填格坏了只丢那一格、时刻是带时区的 ISO……),这里管:
  *
  * - **上报**:先核外部 id → 再核清单声明的种类 → 再核形状;被拒、丢格都记进拓展的「上报出入」(再由宿主打 warn),
- *   拓展自己不知道(上报没有返回值);然后毫秒 → ISO、图库引用 → `PostImage`、作者名缺了按「资料名 → 身份标签」
+ *   拓展自己不知道(上报没有返回值);然后把 ISO 统一成 UTC Z、图库引用 → `PostImage`、作者名缺了按「资料名 → 身份标签」
  *   补、下播没交 `endedAt` 取到达那一刻,再交核心那一份 ctx;
  * - **读口**(搜人、取资料、拉取式直播状态):抛了回失败(原话进 `message`),形状坏了回 `invalid`、点名哪一格,不抛。
  *
@@ -139,9 +139,12 @@ export function externalIdPreview(raw: unknown): string {
 	return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
 }
 
-/** 毫秒 → ISO。进门那一道已经核过是区间内的整数,这里只管换。 */
-function isoOf(ms: number): string {
-	return new Date(ms).toISOString();
+/**
+ * 统一成以 `Z` 结尾的 UTC ISO。拓展可以用任意合法偏移交时刻,但核心按字符串排序 / 比较时,
+ * 不同的 `+08:00` 之类偏移会让同一时刻看起来不同;到达时钟仍走这里换成同样的出口。
+ */
+function utcIsoOf(timestamp: string | number): string {
+	return new Date(timestamp).toISOString();
 }
 
 /** 路径 → 给人看的格名:`post.stats.likes`、`images[3]`;落在根上的叫「整条上报」。 */
@@ -403,7 +406,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		const text = reported.text.replace(/\r\n?/g, "\n");
 		const post: Post = {
 			creator: creatorFromExtension(externalId, reported.creator),
-			publishedAt: isoOf(reported.publishedAt),
+			publishedAt: utcIsoOf(reported.publishedAt),
 			text: text.trim() === "" ? "" : text,
 		};
 		if (reported.topic !== undefined) post.topic = reported.topic;
@@ -455,7 +458,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		value: ExtensionReportValue<"live">,
 		arrivedAt: number,
 	): LiveSignalReport {
-		const startedAt = value.startedAt === undefined ? {} : { startedAt: isoOf(value.startedAt) };
+		const startedAt = value.startedAt === undefined ? {} : { startedAt: utcIsoOf(value.startedAt) };
 		switch (value.kind) {
 			case "start":
 				return {
@@ -474,7 +477,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 				return {
 					kind: "end",
 					// 下播的时刻是上报到达的那一刻(拓展没交时);断流接续的等待与时长都从它算。
-					endedAt: isoOf(value.endedAt ?? arrivedAt),
+					endedAt: utcIsoOf(value.endedAt ?? arrivedAt),
 					...startedAt,
 					...(value.details === undefined
 						? {}
@@ -632,7 +635,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 						if (result.kind === "offline") return ok({ kind: "offline" as const });
 						return ok({
 							kind: "live" as const,
-							...(result.startedAt === undefined ? {} : { startedAt: isoOf(result.startedAt) }),
+							...(result.startedAt === undefined ? {} : { startedAt: utcIsoOf(result.startedAt) }),
 							// 作者名缺了同样按「资料名 → 身份标签」补(外部 id 取自被问的身份)。
 							details: liveDetailsFromExtension(identity.externalId, result.details),
 						});

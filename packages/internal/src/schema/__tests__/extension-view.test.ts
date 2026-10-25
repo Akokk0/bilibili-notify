@@ -45,7 +45,7 @@ const BRIDGE_VIEW = {
 				pill: "配置:koishi",
 				subtitle: [
 					"AstrBot v4.3.1 · ",
-					{ time: 1790061520000, suffix: "连上" },
+					{ time: "2026-09-23T12:00:00.000Z", suffix: "连上" },
 					" · 来自 192.168.1.8",
 				],
 				buttons: [{ kind: "set", label: "改成 AstrBot", set: { bridgeKind: "astrbot" } }],
@@ -125,7 +125,7 @@ describe("ExtensionViewSchema —— 收下", () => {
 						type: "keyValue",
 						items: [
 							{ label: "登录", value: "cookie 有效", tone: "ok" },
-							{ label: "上次检查", value: [{ time: 1790061400000 }] },
+							{ label: "上次检查", value: [{ time: "2026-09-23T19:56:40+08:00" }] },
 						],
 					},
 					{
@@ -180,11 +180,12 @@ describe("ExtensionViewSchema —— 拒", () => {
 		issues({ extra: true });
 	});
 
-	it("视图那段字只有五种片段 —— 带 HTML 的对象、别的键都拒", () => {
+	it("视图那段字只有五种片段 —— 时刻只收带时区的 ISO,别的对象都拒", () => {
 		issues({ summary: { text: [{ html: "<b>x</b>" }] } });
 		issues({ summary: { text: [{ b: "x", mono: "y" }] } });
 		issues({ summary: { text: [{ host: "publicUrl" }] } });
-		issues({ summary: { text: [{ time: -1 }] } });
+		issues({ summary: { text: [{ time: "2026-10-25T12:00:00" }] } });
+		issues({ summary: { text: [{ time: 1_790_061_520_000 }] } });
 	});
 
 	/**

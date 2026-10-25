@@ -5,7 +5,7 @@
  * 而首页、历史、订阅页上什么都没有,没人报错。
  *
  * 所以装一个真的最小订阅源拓展进装载根(测试里写出来的 `index.mjs`,不是仓里的拓展包)、起一台真 BN:
- * 面板按它的动作钮报 —— 一条作品(进推送截流,恰好一条)、一条开播(在播表里有它,开播时刻是毫秒换来的 ISO)、
+ * 面板按它的动作钮报 —— 一条作品(进推送截流,恰好一条)、一条开播(在播表里有它,开播时刻统一成 UTC ISO)、
  * 一条资料(订阅页的资料缓存变了)、一条多了一格的坏作品(上报出入多一条拒收)。另一个拓展的 `start` 抛了:
  * 它在拓展列表里是加载失败,原因在。
  */
@@ -36,6 +36,8 @@ const SUB_ID = "e3000000-0000-4000-8000-000000000001";
 const CONNECTION_ID = "e3000000-0000-4000-8000-00000000c001";
 const TARGET_ID = "e3000000-0000-4000-8000-00000000d001";
 const STARTED_AT = Date.UTC(2026, 8, 23, 12);
+/** 拓展交出去的写法:带 +08:00 偏移的 ISO(与 STARTED_AT 同一刻)。 */
+const STARTED_AT_WIRE = "2026-09-23T20:00:00+08:00";
 
 /** 每个动作真调一次 `ctx` 上的上报方法;`source` 是 `start` 时拿到的那面上下文。 */
 const PROBE_CODE = `
@@ -49,27 +51,27 @@ export function activate(ctx) {
 		// 清单声明了 liveStreaming,登记时核要交(周期「正在直播」只经核心问来源)。
 		fetchLiveStatus: async (identity) =>
 			identity.externalId === ${JSON.stringify(PULLED)}
-				? { ok: true, kind: "live", startedAt: ${STARTED_AT}, details: { title: "问到的标题" } }
+				? { ok: true, kind: "live", startedAt: ${JSON.stringify(STARTED_AT_WIRE)}, details: { title: "问到的标题" } }
 				: { ok: true, kind: "offline" },
 	});
 	ctx.onAction("report.post", () =>
 		source.reportPost(ID, {
 			postId: "p1",
 			url: "https://probe.invalid/p1",
-			post: { publishedAt: ${STARTED_AT}, text: "今天去海边" },
+			post: { publishedAt: ${JSON.stringify(STARTED_AT_WIRE)}, text: "今天去海边" },
 		}),
 	);
 	ctx.onAction("report.badPost", () =>
 		source.reportPost(ID, {
 			postId: "p2",
 			url: "https://probe.invalid/p2",
-			post: { publishedAt: ${STARTED_AT}, text: "多了一格", title: "不开放的格" },
+			post: { publishedAt: ${JSON.stringify(STARTED_AT_WIRE)}, text: "多了一格", title: "不开放的格" },
 		}),
 	);
 	ctx.onAction("report.liveStart", () =>
 		source.reportLive(ID, {
 			kind: "start",
-			startedAt: ${STARTED_AT},
+			startedAt: ${JSON.stringify(STARTED_AT_WIRE)},
 			details: { title: "开播了", category: "聊天", totalViewers: 70 },
 		}),
 	);
@@ -279,7 +281,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		expect(entries[0]?.text).toContain("探针 · probe-user-1");
 	}, 15_000);
 
-	it("报一条开播:在播表里有它,标题、分区、累计观看照搬,开播时刻是毫秒换成的 ISO", async () => {
+	it("报一条开播:在播表里有它,标题、分区、累计观看照搬,开播时刻统一成 UTC ISO", async () => {
 		await press("report.liveStart");
 		const res = await okRes(await api("/api/live/listening"));
 		const entries = ((await res.json()) as LiveListeningEntry[]).filter(
@@ -300,7 +302,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 
 	// 接线的钉子(不推时间):订阅进了监听,核心对「要监听直播、手里没场次」的订阅调来源的 `fetchLiveStatus`,
 	// 在播就认出一场 —— 拓展一次 `reportLive` 都没调。去掉 `extension-source.ts` 里放 `fetchLiveStatus` 的那一格,这条红。
-	it("拉取式认出一场:探针的 fetchLiveStatus 回在播、从不 reportLive → 在播表里有这一场,开播时刻是 ISO", async () => {
+	it("拉取式认出一场:探针的 fetchLiveStatus 回在播、从不 reportLive → 在播表里有这一场,开播时刻统一成 UTC ISO", async () => {
 		const sub = makeExtensionSubscription({
 			id: PULLED_SUB_ID,
 			extensionId: PROBE,

@@ -53,7 +53,7 @@ const SUB = makeExtensionSubscription({
  * 第 3 版拓展:图先 `storeImage` 存成引用,上报在来源上下文上交、没有返回值。
  */
 const FIXTURE_CODE = `
-const T = Date.UTC(2026, 8, 23, 12);
+const T = "2026-09-23T20:00:00+08:00";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const PERSON = ${JSON.stringify(PERSON)};
 export function activate(ctx) {

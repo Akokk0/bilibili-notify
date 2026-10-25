@@ -115,7 +115,10 @@ function viewOf(item: ExtensionItemView): ExtensionPanelView {
 const CONNECTED_ITEM: ExtensionItemView = {
 	status: { tone: "ok", text: "已连接" },
 	pill: "koishi",
-	subtitle: ["客厅那台 koishi v0.1.0 · ", { time: Date.now() - 12 * 60_000, suffix: "连上" }],
+	subtitle: [
+		"客厅那台 koishi v0.1.0 · ",
+		{ time: new Date(Date.now() - 12 * 60_000).toISOString(), suffix: "连上" },
+	],
 	lead: [{ type: "notice", tone: "warn", text: "这条接入配的是 koishi,连进来的却自报 astrbot。" }],
 	blocks: [
 		{

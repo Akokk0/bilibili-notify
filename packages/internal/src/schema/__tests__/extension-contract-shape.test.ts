@@ -48,12 +48,12 @@ interface ContractRow {
 const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v3", schema: ExtensionManifestV3Schema, digest: "933caf5c69804379" },
 	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "6658c08ec03129ea" },
-	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
-	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "2ae99df5a25fd825" },
+	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
+	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "3044da60c4959f2c" },
 	{
 		name: "上报:直播信号",
 		schema: ExtensionLiveSignalReportSchema,
-		digest: "4f0e25af3fecf0e7",
+		digest: "37c9d966e31bf4fd",
 	},
 	{
 		name: "上报:资料",
@@ -68,7 +68,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{
 		name: "直播拉取结果",
 		schema: ExtensionLiveStatusResultSchema,
-		digest: "11b4fae69993e7d1",
+		digest: "dfd0b3120f0f9f13",
 	},
 	{
 		name: "来源健康",

@@ -55,6 +55,11 @@ function tagOf(externalId: string): string {
 	return createHash("sha256").update(externalId).digest("hex").slice(0, 12);
 }
 
+/** 内部仍按毫秒记时刻,交给宿主的入口才换成本地契约要的带时区 ISO。 */
+function isoAt(ms: number): string {
+	return new Date(ms).toISOString();
+}
+
 /**
  * 正文末尾那个 `#话题` 片段化:前面是文字、末尾是话题片段(`text` 带 `#`,`name` 不带),片段拼起来正好
  * 等于正文。宿主据此给话题上色(第 3 版里话题上色靠 `richText`,不再由宿主从正文里找 `#`)。
@@ -112,7 +117,7 @@ export async function fakePost(
 		return {
 			...base,
 			post: {
-				publishedAt: now,
+				publishedAt: isoAt(now),
 				text,
 				richText: withTrailingTopic(text, "假话题"),
 				images: [
@@ -129,7 +134,7 @@ export async function fakePost(
 	return {
 		...base,
 		post: {
-			publishedAt: now,
+			publishedAt: isoAt(now),
 			text,
 			richText: withTrailingTopic(text, "城市散步"),
 			topic: "城市散步",
@@ -176,7 +181,7 @@ export async function fakeRichPost(
 	return {
 		...postBase(externalId, n),
 		post: {
-			publishedAt: now,
+			publishedAt: isoAt(now),
 			text: richText.map((segment) => segment.text).join(""),
 			richText,
 			topic: "假话题",
@@ -202,7 +207,7 @@ export async function fakePostWithBadImage(
 	return {
 		...postBase(externalId, n),
 		post: {
-			publishedAt: now,
+			publishedAt: isoAt(now),
 			text: `第 ${n} 条：随手拍了三张，第二张好像传坏了`,
 			images: [await store(pictureAt(n)), BAD_IMAGE_REF, await store(pictureAt(n + 1))],
 		},
@@ -221,7 +226,7 @@ export function fakePostWithExtraField(
 	return {
 		...postBase(externalId, n),
 		post: {
-			publishedAt: now,
+			publishedAt: isoAt(now),
 			text: `假源的第 ${n} 条作品:多带了一格「弹幕数」—— BN 不认识,应整条拒。`,
 			danmaku: n * 12,
 		},

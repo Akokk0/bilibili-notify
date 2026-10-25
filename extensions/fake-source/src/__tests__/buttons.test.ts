@@ -32,6 +32,7 @@ import {
 } from "./harness.js";
 
 const T = Date.UTC(2026, 8, 23, 12);
+const T_ISO = "2026-09-23T12:00:00.000Z";
 
 beforeEach(() => {
 	// 只假 Date:时刻要钉死才比得了「可复现」,定时器与 Promise 照走真的。
@@ -409,7 +410,7 @@ describe("报一条作品", () => {
 		await fake.press("report.post");
 		const [first, second] = valuesOf<PostReport>(fake.reports(), "post");
 
-		expect(first?.post.publishedAt).toBe(T);
+		expect(first?.post.publishedAt).toBe(T_ISO);
 		expect(first?.post.text).toEqual(expect.any(String));
 		expect(first?.post.images).toHaveLength(3);
 		for (const ref of first?.post.images ?? []) {
@@ -470,7 +471,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		await fake.press("report.liveStart");
 		const [start] = signalsOf(fake.reports(), "start");
 		const d = start?.details as LiveDetails;
-		expect(start?.startedAt).toBe(T);
+		expect(start?.startedAt).toBe(T_ISO);
 		expect(isHarmlessUrl(d.url)).toBe(true);
 		expect(mentions(d.title, 1)).toBe(true);
 		expect(d.cover).toMatch(IMAGE_REF_PATTERN);
@@ -499,7 +500,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		expect(s2?.details.currentViewers).toBeGreaterThan(s1?.details.currentViewers ?? inf);
 		expect(s1?.details.totalViewers).toBeGreaterThan(start?.details.totalViewers ?? inf);
 		expect(s2?.details.totalViewers).toBeGreaterThan(s1?.details.totalViewers ?? inf);
-		expect([s1?.startedAt, s2?.startedAt]).toEqual([T, T]);
+		expect([s1?.startedAt, s2?.startedAt]).toEqual([T_ISO, T_ISO]);
 		expect([s1?.details.url, s2?.details.url]).toEqual([start?.details.url, start?.details.url]);
 		expect(mentions(s2?.details.title, 1)).toBe(true);
 	});
@@ -533,7 +534,7 @@ describe("开播 / 报直播状态 / 下播", () => {
 		await fake.press("report.liveStatus");
 		const [status] = signalsOf(fake.reports(), "status");
 		expect(status?.isLive).toBe(true);
-		expect(status?.startedAt).toBe(T);
+		expect(status?.startedAt).toBe(T_ISO);
 		const d = status?.details as LiveDetails;
 		expect(d.currentViewers).toBeGreaterThan(0);
 		expect(d.totalViewers).toBeGreaterThan(d.currentViewers ?? Number.POSITIVE_INFINITY);
@@ -550,8 +551,8 @@ describe("开播 / 报直播状态 / 下播", () => {
 		const [end] = signalsOf(fake.reports(), "end");
 		const [again] = signalsOf(fake.reports(), "status");
 		expect(end?.details?.url).toBe(start?.details.url);
-		expect(end?.startedAt).toBe(T);
-		expect(again?.startedAt).toBe(T + 7_200_000);
+		expect(end?.startedAt).toBe(T_ISO);
+		expect(again?.startedAt).toBe("2026-09-23T14:00:00.000Z");
 		expect(mentions(again?.details.title, 2)).toBe(true);
 	});
 });
@@ -571,7 +572,7 @@ describe("拉取式直播状态(fetchLiveStatus)", () => {
 		const fake = bootFakeSource([sub("person-a", true), sub("person-b", true)]);
 		await fake.press("report.liveStart");
 		const first = await fake.fetchLiveStatus(A);
-		expect(first).toMatchObject({ ok: true, kind: "live", startedAt: T });
+		expect(first).toMatchObject({ ok: true, kind: "live", startedAt: T_ISO });
 		if (!first.ok || first.kind !== "live") throw new Error("应该在播");
 		expect(mentions(first.details.title, 1)).toBe(true);
 		expect(first.details.cover).toMatch(IMAGE_REF_PATTERN);
