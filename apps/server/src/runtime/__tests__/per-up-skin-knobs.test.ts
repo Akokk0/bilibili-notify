@@ -10,7 +10,7 @@
  * 2. 一路走到真渲染器:拓展订阅的开播卡上,这位 UP 选的**字体文件与壁纸**真读了盘、进了 HTML ——
  *    这两档「别的旋钮都生效、唯独它俩静静不动」栽过一回(2026-09-19)。
  *
- * 验红:把 `live-settings.ts` 里 `liveSettingsOf` / `engines.ts` 里 `postSettingsOf` 递 `cardSkinKnobs` 那一句
+ * 验红:把 `live-settings.ts` 里 `liveSettingsOf` / `posts/post-settings.ts` 里 `postSettingsOf` 递 `cardSkinKnobs` 那一句
  * 任删一句,对应的用例红;删 `live-push.ts` 递它那一句,最后一条红。
  */
 
@@ -28,7 +28,7 @@ import { bindLivePush } from "../../live/live-push.js";
 import { createLiveSessionEngine } from "../../live/live-sessions.js";
 import { liveSettingsOf } from "../../live/live-settings.js";
 import { createLiveTable } from "../../live/live-table.js";
-import { postSettingsOf } from "../engines.js";
+import { postSettingsOf } from "../../posts/post-settings.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
 const PER_UP = {

@@ -196,8 +196,10 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 });
 
 // SUT must be imported AFTER the vi.mock calls register.
-const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll, boundLivePush, postSettingsOf } =
-	await import("../engines.js");
+const { createEngines, liveTypeToFeature, liveTypeAllowsAtAll, boundLivePush } = await import(
+	"../engines.js"
+);
+const { postSettingsOf } = await import("../../posts/post-settings.js");
 
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
 // adapter helpers MUST stay byte-consistent across ends (same business core,

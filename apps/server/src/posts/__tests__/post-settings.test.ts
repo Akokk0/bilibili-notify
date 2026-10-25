@@ -18,7 +18,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { makePostSettingsReader, postSettingsOf } from "../engines.js";
+import { makePostSettingsReader, postSettingsOf } from "../post-settings.js";
 
 const biliSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	...makeEmptySubscription({
