@@ -26,7 +26,7 @@ import { WebSocket } from "ws";
  * 光靠握手发现不了漂:判定只看 `major`,minor 停在几年前照样连得上,于是假桥会一直
  * 冒充一个老桥、而新加的那几格永远走不到。
  */
-export const PROTOCOL = { major: 1, minor: 4 } as const;
+export const PROTOCOL = { major: 1, minor: 5 } as const;
 
 /** 桥借给 BN 的一个 bot。能力表**键值都开放** —— 桥少报的按 `unknown` 算,由 BN 归一。 */
 export interface FakeBridgeBot {

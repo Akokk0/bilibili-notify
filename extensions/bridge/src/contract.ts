@@ -28,7 +28,7 @@
  * 给插件作者看的规范在 `../PROTOCOL.md`。
  */
 
-import type { PushTargetScope } from "@bilibili-notify/extension";
+import type { FailureCode, PushTargetScope } from "@bilibili-notify/extension";
 
 // ---------------------------------------------------------------------------
 // 协议版本
@@ -44,7 +44,7 @@ export interface BridgeProtocolVersion {
  * 谁大谁小都不管。所以:加可选字段 / 加新帧类型 → 只升 minor;改已有字段的含义或
  * 删字段 → 升 major(那会把所有旧插件挡在门外,是刻意的)。
  */
-export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 4 };
+export const BRIDGE_PROTOCOL_VERSION: BridgeProtocolVersion = { major: 1, minor: 5 };
 
 /** 桥的种类。**BN 侧处理完全相同**,这一格只用来显示与排障。 */
 export const BRIDGE_KINDS = ["koishi", "astrbot"] as const;
@@ -271,6 +271,13 @@ export interface BridgeResultFrame {
 	type: "result";
 	id: string;
 	ok: boolean;
+	/** 标准失败码。1.5 起的写法;不认识的值由 BN 按 `unknown` 记。 */
+	code?: string;
+	/** 给人看的失败原话。1.5 起与 `code` 一起带。 */
+	message?: string;
+	/** 上游平台自己的码,不占标准码 `code`。 */
+	upstreamCode?: number | string;
+	/** 1.4 及更早的写法,BN 照认;1.5 起过渡期请与 `message` 同带。 */
 	err?: string;
 }
 
@@ -358,6 +365,7 @@ export interface BridgePingFrame {
 /** 出错但还不至于断连(比如一条 `send` 引用了不存在的 bot)。断连一律走 close code。 */
 export interface BridgeErrorFrame {
 	type: "error";
+	code: FailureCode;
 	message: string;
 }
 

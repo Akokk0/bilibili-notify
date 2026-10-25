@@ -199,7 +199,7 @@ type PushTarget =
 - `DeliveryResult`（`send` 的结果）与 `ProbeResult`（`probe` 的结果）改成这个形状，`err` 删掉。平台自己的码（OneBot 的 retcode、QQ 的错误码、HTTP 状态）放 `upstreamCode`，不占 `code`；各平台的码翻成哪个标准码，施工时逐个适配器定。附带的 `latencyMs` 与截流标记 `isSynthetic`（原 `synthetic`）照留。
 - `ProbeResult` 原来的 `ok: null`（这个适配器没有探测协议），按码表是 `unsupported`。
 - 适配器抛错算 bug：宿主在边界接住，按 `unavailable` 处理并记错误日志。
-- 桥的回执进门时翻成结果形状；说不清原因的记 `unknown`。协议统一后插件直接回结果形状，只带 `err` 的旧写法才要翻（ADR-0026 决策 7）。
+- 桥的回执进门时翻成结果形状；说不清原因的记 `unknown`。协议统一后插件直接回结果形状，只带 `err` 的旧写法才要翻（ADR-0026 决策 7）。🔗 现状（3b-44，10-25）：桥已收 1.5 的 `code` / `message` / `upstreamCode`；只带 `err` 的旧回执仍记 `unknown`。
 - 连接上的探测状态叫 `probeState`（原 `testStatus`），是对象，三态取值在它的 `status` 里；只有宿主写。不迁移，开机重探。路由 `/api/connections/:id/probe`（原 `/test`）。
 - 目标的可达性记在 `reachability.changedAt`（原 `testStatus.lastCheckedAt`，只在通断翻转时写）。
 

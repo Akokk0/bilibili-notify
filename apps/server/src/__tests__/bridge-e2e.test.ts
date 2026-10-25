@@ -383,6 +383,29 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		});
 	});
 
+	it("桥回 1.5 写法的失败:码、原话、平台码一路到推送结果", async () => {
+		await handshake();
+		if (!client) throw new Error("unreachable");
+
+		const pushed = testPush();
+		const frame = await client.next();
+		client.send({
+			type: "result",
+			id: frame.id,
+			ok: false,
+			code: "not_found",
+			message: "telegram 说这个群不存在",
+			upstreamCode: 1400,
+		});
+
+		expect(await (await pushed).json()).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "telegram 说这个群不存在",
+			upstreamCode: 1400,
+		});
+	});
+
 	/**
 	 * 🔴 **拨开关即热装卸**(ADR-0012 决策 10),整条线走一遍:
 	 * `PATCH /api/settings` → 落盘 → `config-changed` → 装载器 `sync()` → 拓展被收回。

@@ -26,6 +26,7 @@ import {
 	normalizeBridgeBotIcon,
 	normalizeBridgeCapabilities,
 	parseBridgeFrame,
+	sendResultFromReceipt,
 } from "../protocol.js";
 
 function helloFrame(over: Record<string, unknown> = {}) {
@@ -239,10 +240,40 @@ describe("parseBridgeFrame", () => {
 		if (!okFrame.ok || okFrame.frame.type !== "result") return;
 		expect(okFrame.frame).toEqual({ type: "result", id: "r1", ok: true });
 
-		const failed = parseBridgeFrame({ type: "result", id: "r2", ok: false, err: "bot 掉线了" });
+		const failed = parseBridgeFrame({
+			type: "result",
+			id: "r2",
+			ok: false,
+			code: "rate_limited",
+			message: "发得太快了",
+			upstreamCode: 22009,
+			err: "bot 掉线了",
+		});
 		expect(failed.ok).toBe(true);
 		if (!failed.ok || failed.frame.type !== "result") return;
-		expect(failed.frame.err).toBe("bot 掉线了");
+		expect(failed.frame).toEqual({
+			type: "result",
+			id: "r2",
+			ok: false,
+			code: "rate_limited",
+			message: "发得太快了",
+			upstreamCode: 22009,
+			err: "bot 掉线了",
+		});
+	});
+
+	it("result 帧的新字段类型不对 → invalid,消息里点得出是哪一格", () => {
+		const cases = [
+			[{ code: 5 }, "code"],
+			[{ message: false }, "message"],
+			[{ upstreamCode: {} }, "upstreamCode"],
+		] as const;
+		for (const [field, path] of cases) {
+			const parsed = parseBridgeFrame({ type: "result", id: "r3", ok: false, ...field });
+			expect(parsed).toMatchObject({ ok: false, code: "invalid" });
+			if (parsed.ok || parsed.code !== "invalid") continue;
+			expect(parsed.message).toContain(path);
+		}
 	});
 
 	it("pong 帧", () => {
@@ -264,6 +295,73 @@ describe("isBridgeProtocolCompatible", () => {
 		const { major } = BRIDGE_PROTOCOL_VERSION;
 		expect(isBridgeProtocolCompatible({ major: major + 1, minor: 0 })).toBe(false);
 		expect(isBridgeProtocolCompatible({ major: major - 1, minor: 0 })).toBe(false);
+	});
+});
+
+describe("sendResultFromReceipt", () => {
+	it("把新旧回执翻成发送结果", () => {
+		const cases = [
+			{
+				name: "1.5 新写法按码、原话与平台码原样结算",
+				receipt: {
+					type: "result",
+					id: "r1",
+					ok: false,
+					code: "rate_limited",
+					message: "发得太快了",
+					upstreamCode: 22009,
+					err: "旧客户端的同一句话",
+				},
+				expected: {
+					ok: false,
+					code: "rate_limited",
+					message: "发得太快了",
+					upstreamCode: 22009,
+				},
+			},
+			{
+				name: "认不得的码记 unknown,平台码仍原样带",
+				receipt: {
+					type: "result",
+					id: "r2",
+					ok: false,
+					code: "future_code",
+					message: "未来插件的新说法",
+					upstreamCode: "E-42",
+				},
+				expected: {
+					ok: false,
+					code: "unknown",
+					message: "未来插件的新说法",
+					upstreamCode: "E-42",
+				},
+			},
+			{
+				name: "只带 err 的旧回执记 unknown",
+				receipt: { type: "result", id: "r3", ok: false, err: "bot 掉线了" },
+				expected: { ok: false, code: "unknown", message: "bot 掉线了" },
+			},
+			{
+				name: "失败却什么都没给时补一句原话",
+				receipt: { type: "result", id: "r4", ok: false },
+				expected: { ok: false, code: "unknown", message: "桥回了失败,没说原因" },
+			},
+			{
+				name: "成功帧带了失败附加格也只回 ok",
+				receipt: {
+					type: "result",
+					id: "r5",
+					ok: true,
+					code: "not_found",
+					message: "不该出现",
+					upstreamCode: 404,
+				},
+				expected: { ok: true },
+			},
+		] as const;
+		for (const { name, receipt, expected } of cases) {
+			expect(sendResultFromReceipt(receipt), name).toEqual(expected);
+		}
 	});
 });
 

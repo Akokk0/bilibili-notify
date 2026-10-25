@@ -10,7 +10,7 @@
  * 单边演进;后者反了,一条畸形帧被当成正常帧喂进 BN 内部。
  */
 
-import type { Result } from "@bilibili-notify/extension";
+import type { FailureCode, Result } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
 import { z } from "zod";
 import {
@@ -23,6 +23,7 @@ import {
 	type BridgeCapabilityState,
 	type BridgeCapabilityWire,
 	type BridgeProtocolVersion,
+	type BridgeResultFrame,
 	type BridgeToServerFrame,
 } from "./contract.js";
 
@@ -122,6 +123,9 @@ const ResultFrameSchema = z.object({
 	type: z.literal("result"),
 	id: z.string().min(1),
 	ok: z.boolean(),
+	code: z.string().optional(),
+	message: z.string().optional(),
+	upstreamCode: z.union([z.string(), z.number()]).optional(),
 	err: z.string().optional(),
 });
 
@@ -186,6 +190,43 @@ export function parseBridgeFrame(raw: unknown): BridgeFrameParseResult {
 		return fail("invalid", describeIssues(parsed.error));
 	}
 	return ok({ frame: parsed.data });
+}
+
+// 同名的正本住在 internal;拓展只拿到 `FailureCode` 类型,运行时不能从核心借这张表。
+// 两边由 `BRIDGE_FAILURE_CODES_ALIGNED` 双向钉住:任何一边加码而另一边没跟上,类型检查当场红。
+const FAILURE_CODES = [
+	"not_found",
+	"invalid",
+	"unauthorized",
+	"rate_limited",
+	"unavailable",
+	"not_configured",
+	"timeout",
+	"unsupported",
+	"conflict",
+	"indeterminate",
+	"unknown",
+] as const satisfies readonly FailureCode[];
+
+type UncoveredFailureCode = Exclude<FailureCode, (typeof FAILURE_CODES)[number]>;
+export const BRIDGE_FAILURE_CODES_ALIGNED: UncoveredFailureCode extends never ? true : never = true;
+
+const KNOWN_FAILURE_CODES: ReadonlySet<string> = new Set(FAILURE_CODES);
+
+/**
+ * 把一个 `send` 回执翻成桥统一的发送结果。新写法按标准码结算;认不得的码记 `unknown`,
+ * 只带 `err` 的旧回执也记 `unknown`,都保留原来的话给主人看。
+ */
+export function sendResultFromReceipt(frame: BridgeResultFrame): Result {
+	if (frame.ok) return ok();
+	const code: FailureCode =
+		frame.code !== undefined && KNOWN_FAILURE_CODES.has(frame.code)
+			? (frame.code as FailureCode)
+			: "unknown";
+	const message = frame.message ?? frame.err ?? "桥回了失败,没说原因";
+	return frame.upstreamCode === undefined
+		? fail(code, message)
+		: fail(code, message, { upstreamCode: frame.upstreamCode });
 }
 
 // ---------------------------------------------------------------------------

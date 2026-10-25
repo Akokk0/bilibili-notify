@@ -51,6 +51,7 @@ import {
 	normalizeBridgeBotIcon,
 	normalizeBridgeCapabilities,
 	parseBridgeFrame,
+	sendResultFromReceipt,
 } from "./protocol.js";
 
 /** 服务端多久催桥说一次话。ping 本身不是判据,见 {@link DEFAULT_BRIDGE_HEARTBEAT_TIMEOUT_MS}。 */
@@ -150,8 +151,8 @@ export type BridgeSendRequest = Omit<BridgeSendFrame, "type" | "id">;
  * 一次投递的结果(ADR-0026 的结果形状)。**永远不抛** —— 上面那层要的是投递结果,不是异常。
  *
  * 失败的码:桥没连着 `unavailable`;帧发出去之后没等到回执、或桥中途断了 `indeterminate`
- * (插件可能已经把消息送出去了);插件回了失败 `unknown` —— 线上的回执只带一句 `err`,
- * 说不清是哪一种(协议的回执改成结果形状在 ADR-0026 决策 7,不在这一期)。
+ * (插件可能已经把消息送出去了);插件回了失败时按 1.5 的 `code` 结算,认不得的码与只带
+ * `err` 的旧回执记 `unknown`。
  */
 export type BridgeSendResult = Result;
 
@@ -512,10 +513,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			case "result": {
 				// 结算不了的:超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
 				// 断连不合适;而已经结算过的那条投递也不该被翻案。
-				// 线上的回执只带 `err`(协议帧这一期不动):失败的在这里翻成结果形状,说不清原因,记 `unknown`。
-				const outcome: BridgeSendResult = frame.ok
-					? ok()
-					: fail("unknown", frame.err || "桥回了失败,没说原因");
+				const outcome = sendResultFromReceipt(frame);
 				if (!conn.pending.settle(frame.id, outcome))
 					log.debug(`bridge ${conn.linkId} sent a result for an unknown id`);
 				break;

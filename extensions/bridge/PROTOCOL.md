@@ -69,7 +69,7 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 | 加一个可选字段、加一种新帧类型、能力表加一项 | 升 `minor` |
 | 改已有字段的含义、删字段、改判别子取值 | 升 `major` |
 
-当前：**`1.4`**。
+当前：**`1.5`**。
 
 | 版本 | 加了什么 |
 |---|---|
@@ -77,6 +77,7 @@ token 在 BN 的**拓展页**里生成，一条桥接入一个。
 | `1.2` | bot 加可选 `icon`：平台图标（§5.2） |
 | `1.3` | `ping` 加可选 `id`，`pong` 原样回（§5.5）：面板「测试」量真实往返 |
 | `1.4` | 群入站消息加可选 `cardLinks` / `miniAppCardLinks`（§5.3）：卡里的链接单独放，别拼进 `text` |
+| `1.5` | `result` 失败回执加可选 `code` / `message` / `upstreamCode`；`error` 帧加 `code`（§5.4、§6.4） |
 
 ---
 
@@ -214,11 +215,34 @@ AstrBot 上轮询 `get_insts()` 比对仍是唯一**完整**的那条路，钩�
 
 ```jsonc
 { "type": "result", "id": "…", "ok": true }
-{ "type": "result", "id": "…", "ok": false, "err": "bot 掉线了" }
+{ "type": "result", "id": "…", "ok": false, "code": "unavailable", "message": "bot 掉线了" }
+{ "type": "result", "id": "…", "ok": false, "code": "rate_limited", "message": "太频繁了", "upstreamCode": 22009 }
 ```
 
 `id` 从对应的 `send` 帧原样带回。**每条 `send` 都要回一条 `result`** —— 失败也要回，
-BN 拿它写推送历史。`err` 直接展示给用户，请写人话。
+BN 拿它写推送历史。失败回执是 `{ type, id, ok: false, code, message, upstreamCode? }`：
+
+- `code` 只取下面的标准码。认不得的码 BN 记成 `unknown`。
+- `message` 直接展示给用户，请写人话。
+- `upstreamCode` 放平台自己的码（OneBot retcode、QQ 错误码等），不占 `code`，可以是数字或字符串。
+- **说不准对面收没收到时填 `indeterminate`**：消息可能已经发出去，绝不能让人当成可安全重试的失败。
+
+| `code` | 含义 | 自动重试 |
+|---|---|---|
+| `not_found` | 要的东西不存在 | 否 |
+| `invalid` | 输入或形状不对 | 否 |
+| `unauthorized` | 没登录或凭据失效 | 否 |
+| `rate_limited` | 被限流或风控 | 稍后 |
+| `unavailable` | 对端或本地暂时不可用 | 稍后 |
+| `not_configured` | 要主人先配好某样东西 | 否 |
+| `timeout` | 超时 | 稍后 |
+| `unsupported` | 对端不支持这项操作 | 否 |
+| `conflict` | 与当前状态冲突 | 看场合 |
+| `indeterminate` | 结果不明，可能已经成功 | 绝不 |
+| `unknown` | 原因不明、只有原话 | 否 |
+
+**1.4 及更早只带 `err` 的旧回执 BN 照认**，进门时记成 `unknown`。为了让 1.4 及更早的 BN
+读得到原因，过渡期请同时带 `err`（与 `message` 同一句）。
 
 **BN 最多等 30 秒**，超时那条就按失败记账了。晚到的回执 BN 会忽略（不会断你），但那条
 推送不会被翻案 —— 图下载得慢也请尽量在窗口内回一个结果，别让用户看到一条假的失败。
@@ -314,10 +338,11 @@ BN 拿 `pong.id` 配对，量面板上那颗「测试」按钮那一趟的真实
 ### 6.4 `error`
 
 ```jsonc
-{ "type": "error", "message": "…" }
+{ "type": "error", "code": "unavailable", "message": "…" }
 ```
 
-出错了但连接还留着（比如一条 `send` 引用了不存在的 bot）。记日志即可。断连一律走 close code。
+出错了但连接还留着（比如一条 `send` 引用了不存在的 bot）。`code` 取 §5.4 的标准码，
+`message` 写人话。记日志即可。断连一律走 close code。
 
 ---
 
@@ -491,7 +516,7 @@ BN 侧就是这么做的，所以你可以放心先发新帧。
 - [ ] 连上立刻发 `hello`（协议版本 + 桥类型 + 全量 bot 名单 + 每个 bot 的能力表）
 - [ ] 收 `welcome`，记下 `inbound` 订阅
 - [ ] 收 `ping` 回 `pong`（`ping` 带 `id` 就原样回）
-- [ ] 收 `send` → 下载图 → 用 `botId` 指定的 bot 发出去 → 回 `result`
+- [ ] 收 `send` → 下载图 → 用 `botId` 指定的 bot 发出去 → 回 `result`（失败带 `code` + `message`）
 - [ ] bot 名单变了 → 发 `bots` 全量快照
 - [ ] 按订阅回传 `inbound`（记得排掉 bot 自己发的；卡里的链接放 `cardLinks` / `miniAppCardLinks`，别拼进 `text`）
 - [ ] 断线退避重连；`4001` / `4002` / `4003` / `4004` / `4005` / `4006` 不重连

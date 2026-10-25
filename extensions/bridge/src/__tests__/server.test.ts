@@ -777,6 +777,26 @@ describe("/bridge 端点", () => {
 		expect(await pending).toEqual({ ok: false, code: "unknown", message: "bot 掉线了" });
 	});
 
+	it("1.5 回执的标准码、原话与平台码原样结算", async () => {
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		const frame = await p.next();
+		p.send({
+			type: "result",
+			id: frame.id,
+			ok: false,
+			code: "not_found",
+			message: "telegram 说这个群不存在",
+			upstreamCode: 1400,
+		});
+		expect(await pending).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "telegram 说这个群不存在",
+			upstreamCode: 1400,
+		});
+	});
+
 	it("回执报失败却一个字都没给 → 仍是 unknown,补一句能读的话", async () => {
 		const p = await handshaken();
 		const pending = server.send(CONNECTION_ID, sendRequest);
