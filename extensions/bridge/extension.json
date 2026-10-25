@@ -78,6 +78,7 @@
 			"label": "机器人框架桥接",
 			"shortLabel": "桥接",
 			"color": "#a855f7"
-		}
+		},
+		"devtools": {}
 	}
 }
