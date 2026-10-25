@@ -13,8 +13,8 @@
  *   不会静默换成 `{}` 而对形状失明。
  * - ⚠️ **`refine` / `superRefine` 里的规矩进不了 JSON Schema**,这条看不见 —— 放宽那些(老 BN 会拒、
  *   新 BN 收)同样要抬小号,改的时候自己想一遍。
- * - 拓展一侧的 TS 类型由 `apps/server/src/extensions/*-shape-pin.ts` 与这几份 zod 双向钉着,所以钉住
- *   zod 就间接钉住了类型。ctx 多一个方法是纯 TS、没有 zod,不在这里。
+ * - 拓展一侧的 TS 类型由 `extension/*-shape-pin.ts` 与这几份 zod 双向钉着,所以钉住 zod 就间接
+ *   钉住了类型。ctx 多一个方法是纯 TS、没有 zod,不在这里。
  */
 
 import { createHash } from "node:crypto";

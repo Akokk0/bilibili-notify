@@ -1,11 +1,9 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import type { ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 import type { Disposable } from "@bilibili-notify/internal";
+import type { ExtensionUpgradeHandler } from "@bilibili-notify/internal/extension";
 import { createRegistry } from "../integrations/registry.js";
 import { EXTENSION_MOUNT_PREFIX, extensionMountPrefix } from "./mount.js";
-
-export type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 
 export interface ExtensionUpgrades {
 	/** 认领 `/ext/<id>` 底下的 upgrade。同一个 id 已经有主人时抛。 */

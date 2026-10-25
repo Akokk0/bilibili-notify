@@ -6,8 +6,8 @@ import type {
 	MessageBus,
 	PushTarget,
 } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { Hono } from "hono";
-import type { ExtensionContext } from "../extensions/context.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";

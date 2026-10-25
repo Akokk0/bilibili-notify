@@ -4,11 +4,6 @@ import type {
 	ExtensionPanelView,
 	ExtensionViewFault,
 } from "@bilibili-notify/contract";
-import type {
-	ExtensionBlock,
-	ExtensionButton,
-	ExtensionItemView,
-} from "@bilibili-notify/extension";
 import {
 	blockButtons,
 	blockImageRefs,
@@ -25,6 +20,11 @@ import {
 	imageMissing,
 	isSecretField,
 } from "@bilibili-notify/internal";
+import type {
+	ExtensionBlock,
+	ExtensionButton,
+	ExtensionItemView,
+} from "@bilibili-notify/internal/extension/wire";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodError } from "zod";
 

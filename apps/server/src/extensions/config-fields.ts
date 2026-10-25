@@ -1,4 +1,4 @@
-import type { ExtensionField } from "@bilibili-notify/extension";
+import type { ExtensionField } from "@bilibili-notify/internal/extension/wire";
 import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodType } from "zod";
 

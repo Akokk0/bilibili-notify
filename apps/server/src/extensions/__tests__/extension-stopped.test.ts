@@ -9,8 +9,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SourceDef } from "@bilibili-notify/extension";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { ExtensionContext, SourceDef } from "@bilibili-notify/internal/extension";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";
@@ -18,7 +18,6 @@ import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
-import type { ExtensionContext } from "../context.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";

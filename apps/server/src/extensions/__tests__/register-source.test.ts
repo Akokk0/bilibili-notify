@@ -12,10 +12,6 @@
  */
 
 import type {
-	SourceContext as ExtensionSourceContext,
-	SourceDef,
-} from "@bilibili-notify/extension";
-import type {
 	Disposable,
 	ExtensionManifest,
 	Logger,
@@ -23,6 +19,10 @@ import type {
 	ServiceContext,
 	SourceContext,
 } from "@bilibili-notify/internal";
+import type {
+	SourceContext as ExtensionSourceContext,
+	SourceDef,
+} from "@bilibili-notify/internal/extension";
 import { describe, expect, it } from "vite-plus/test";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";

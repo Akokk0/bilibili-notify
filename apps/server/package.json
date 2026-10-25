@@ -15,7 +15,6 @@
 	"dependencies": {
 		"@bilibili-notify/ai": "workspace:*",
 		"@bilibili-notify/contract": "workspace:*",
-		"@bilibili-notify/extension": "workspace:*",
 		"@bilibili-notify/http": "workspace:*",
 		"@bilibili-notify/image": "workspace:*",
 		"@bilibili-notify/internal": "workspace:*",

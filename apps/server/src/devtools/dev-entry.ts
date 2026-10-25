@@ -2,9 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ExtensionDevtoolsContext } from "@bilibili-notify/extension";
 import type { DevtoolsProvider, Logger } from "@bilibili-notify/internal";
-import type { ExtensionContext } from "../extensions/context.js";
+import type {
+	ExtensionContext,
+	ExtensionDevtoolsContext,
+} from "@bilibili-notify/internal/extension";
 import { EXTENSION_DEVTOOLS_ENTRY_FILE } from "../extensions/discover.js";
 import { extensionMountPrefix } from "../extensions/mount.js";
 import { errorMessageOf } from "../util/error-message.js";

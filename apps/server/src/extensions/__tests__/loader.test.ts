@@ -22,6 +22,7 @@ import {
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocketServer } from "ws";
@@ -36,7 +37,6 @@ import type { IntegrationStoreHandle } from "../../integration-store/store.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
-import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";

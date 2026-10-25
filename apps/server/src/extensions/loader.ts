@@ -15,6 +15,7 @@ import {
 	manifestSecretKeys,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
@@ -27,7 +28,6 @@ import {
 	type ActionOutcome,
 	type CreateExtensionContextOptions,
 	createExtensionContext,
-	type ExtensionContext,
 	type ExtensionRuntime,
 	type ReportDiscrepancy,
 } from "./context.js";

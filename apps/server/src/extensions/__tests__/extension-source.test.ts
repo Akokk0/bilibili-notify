@@ -8,12 +8,6 @@
  * 期望值都是手写的字面量(时刻的 ISO 串、拒收原因里点名的格),不拿实现的换算式去算。
  */
 
-import type {
-	LiveSignalReport as ExtensionLiveSignalReport,
-	PostReport as ExtensionPostReport,
-	SourceContext as ExtensionSourceContext,
-	SourceDef,
-} from "@bilibili-notify/extension";
 import {
 	type CreatorProfileReport,
 	type ExtensionManifest,
@@ -23,6 +17,12 @@ import {
 	parseExtensionManifest,
 	type SourceContext,
 } from "@bilibili-notify/internal";
+import type {
+	LiveSignalReport as ExtensionLiveSignalReport,
+	PostReport as ExtensionPostReport,
+	SourceContext as ExtensionSourceContext,
+	SourceDef,
+} from "@bilibili-notify/internal/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { readSourceHealth } from "../../runtime/status-command.js";
 import { subscriptionIdentityLabelOf } from "../../subscriptions/platform-label.js";

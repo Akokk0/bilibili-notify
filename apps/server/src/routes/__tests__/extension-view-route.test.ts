@@ -7,13 +7,13 @@
  */
 
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
-import type { ExtensionView } from "@bilibili-notify/extension";
 import type {
 	ExtensionManifest,
 	GlobalConfig,
 	Logger,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import type { ExtensionView } from "@bilibili-notify/internal/extension/wire";
 import { describe, expect, it } from "vite-plus/test";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";
 import { ignoredProblems } from "../../__tests__/support/ignored-problems.js";

@@ -16,9 +16,9 @@ import { ActionNameSchema, ExtensionImageSchema, FieldKeySchema } from "./extens
  * 键是不是声明过的列表、项还在不在、「改设置」改的格合不合那一格的声明)与整份的字节上限也在
  * 那头 —— 这里只有不看清单就判得了的。
  *
- * 🔴 `@bilibili-notify/extension` 的 `wire.ts` 有一份手写镜像(拓展与面板认的是它),两份由宿主
- * 那头的类型断言**双向严格相等**地钉住(`apps/server/src/extensions/view-shape-pin.ts`)——
- * 这里改一格,那边不跟着改就过不了类型检查。数组与字典标 `.readonly()` 是为了对上那份的 `readonly`。
+ * 🔴 同一包 `extension/wire.ts` 有一份手写镜像(拓展与面板认的是它),两份由
+ * `extension/view-shape-pin.ts` 的类型断言**双向严格相等**地钉住 —— 这里改一格,那边不跟着改
+ * 就过不了类型检查。数组与字典标 `.readonly()` 是为了对上那份的 `readonly`。
  */
 
 /**

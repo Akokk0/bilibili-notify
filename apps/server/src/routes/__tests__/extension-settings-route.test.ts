@@ -22,6 +22,7 @@ import type {
 	ExtensionSettingsWriteResponse,
 } from "@bilibili-notify/contract";
 import type { ServiceContext } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
@@ -33,7 +34,6 @@ import { createApp, createCardSkinStore } from "../../app.js";
 import { settingsSegment } from "../../bilibili/settings.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { extensionSettingsFile } from "../../config/store.js";
-import type { ExtensionContext } from "../../extensions/context.js";
 import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";

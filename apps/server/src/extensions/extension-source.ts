@@ -1,8 +1,4 @@
 import { displayNameOf } from "@bilibili-notify/contract";
-import type {
-	SourceContext as ExtensionSourceContext,
-	SourceDef,
-} from "@bilibili-notify/extension";
 import {
 	type Creator,
 	type CreatorCandidate,
@@ -40,6 +36,10 @@ import {
 	sniffImageFormat,
 	truncateText,
 } from "@bilibili-notify/internal";
+import type {
+	SourceContext as ExtensionSourceContext,
+	SourceDef,
+} from "@bilibili-notify/internal/extension";
 import { t } from "../i18n/index.js";
 import type { ImageStore } from "../images/image-store.js";
 import { pickBoundMembers } from "../util/bound-members.js";

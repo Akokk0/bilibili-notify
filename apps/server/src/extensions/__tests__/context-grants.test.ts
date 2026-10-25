@@ -11,11 +11,6 @@ import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
 import type {
-	SourceContext as ExtensionSourceContext,
-	ExtensionView,
-	PlatformAdapterDef,
-} from "@bilibili-notify/extension";
-import type {
 	Connection,
 	Disposable,
 	ExtensionManifest,
@@ -26,6 +21,11 @@ import type {
 	SourceContext,
 } from "@bilibili-notify/internal";
 import { neutralPlatformSnapshot, ok } from "@bilibili-notify/internal";
+import type {
+	SourceContext as ExtensionSourceContext,
+	PlatformAdapterDef,
+} from "@bilibili-notify/internal/extension";
+import type { ExtensionView } from "@bilibili-notify/internal/extension/wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { noExtensionI18n } from "../../__tests__/support/extension-locales.js";

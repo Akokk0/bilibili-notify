@@ -37,10 +37,6 @@ import type {
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
 import type {
-	SourceContext as ExtensionSourceContext,
-	PlatformAdapterDef,
-} from "@bilibili-notify/extension";
-import type {
 	ExtensionManifest,
 	IntegrationContext,
 	PlatformAdapter,
@@ -48,6 +44,10 @@ import type {
 	PostEvent,
 	Source,
 } from "@bilibili-notify/internal";
+import type {
+	SourceContext as ExtensionSourceContext,
+	PlatformAdapterDef,
+} from "@bilibili-notify/internal/extension";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { SOURCE_DEF_MEMBERS } from "../extensions/extension-source.js";
 import { isValidImageRef } from "../images/image-store.js";

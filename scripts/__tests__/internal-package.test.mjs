@@ -56,9 +56,14 @@ const SUBPATHS = [
 		why: "面板与 contract 取卡片皮肤契约",
 	},
 	{
+		subpath: "./extension",
+		source: "src/extension/index.ts",
+		why: "门与宿主取拓展契约的类型",
+	},
+	{
 		subpath: "./extension/wire",
 		source: "src/extension/wire.ts",
-		why: "拓展交给面板画的判据与纯结构类型",
+		why: "拓展交给面板画的形状与判据",
 	},
 	{
 		subpath: "./features",

@@ -1,11 +1,10 @@
 import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
-import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 import { fail, type Logger } from "@bilibili-notify/internal";
+import type { ExtensionFetchHandler } from "@bilibili-notify/internal/extension";
 import { type Context, Hono } from "hono";
 import { createRegistry } from "../integrations/registry.js";
 import { respondFailure } from "../routes/respond-failure.js";
 
-export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 /**
  * 所有拓展的挂载根 —— 一条总入口 `/ext/:id/*`,后面按 id 查活的路由表。
  *

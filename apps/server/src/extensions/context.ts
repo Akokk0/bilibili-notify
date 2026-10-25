@@ -1,15 +1,4 @@
 import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
-import type {
-	ExtensionContext,
-	ExtensionI18n,
-	ExtensionSubscriptionView,
-	ExtensionView,
-	PlatformAdapterDef,
-	PlatformAdapterDescriptor,
-	PlatformAdapterHandle,
-	SettingsReader,
-	SourceDef,
-} from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
@@ -24,7 +13,20 @@ import {
 	type PlatformAdapter,
 	type Result,
 	type ServiceContext,
+	type SettingsReader,
 } from "@bilibili-notify/internal";
+import type {
+	ExtensionContext,
+	ExtensionI18n,
+	PlatformAdapterDef,
+	PlatformAdapterHandle,
+	SourceDef,
+} from "@bilibili-notify/internal/extension";
+import type {
+	ExtensionSubscriptionView,
+	ExtensionView,
+	PlatformAdapterDescriptor,
+} from "@bilibili-notify/internal/extension/wire";
 import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
@@ -54,18 +56,9 @@ import type { ExtensionUpgrades } from "./upgrade.js";
 import { checkExtensionView, faultedExtensionView, type ViewCheck } from "./view-check.js";
 
 /**
- * ⚠️ **交给拓展的那一面住 `@bilibili-notify/extension`**,不在这里 —— 拓展与宿主都要
- * 认得它,所以它得在一个双方都够得到的公共包里(见那个包的文件头)。这里只有**宿主这一侧**:
- * 谁来造 ctx、谁来收摊。
+ * 拓展契约的本体住 `@bilibili-notify/internal/extension` 与 `/extension/wire`;
+ * 这里只有宿主这一侧:谁来造 ctx、谁来收摊。
  */
-export type {
-	ExtensionContext,
-	PlatformAdapterDef,
-	PlatformAdapterDescriptor,
-	PlatformAdapterHandle,
-	SourceDef,
-	SourceHandle,
-} from "@bilibili-notify/extension";
 
 /**
  * 跑一个动作的结果。失败各有各的码与原话(规矩见 docs/agents/conventions/failure-results.md),

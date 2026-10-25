@@ -287,9 +287,6 @@ importers:
 
   apps/contract:
     dependencies:
-      '@bilibili-notify/extension':
-        specifier: workspace:*
-        version: link:../../packages/extension
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../../packages/internal
@@ -345,9 +342,6 @@ importers:
       '@bilibili-notify/contract':
         specifier: workspace:*
         version: link:../contract
-      '@bilibili-notify/extension':
-        specifier: workspace:*
-        version: link:../../packages/extension
       '@bilibili-notify/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -564,9 +558,6 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:*
         version: link:../internal
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   packages/http:
     dependencies:

@@ -9,7 +9,6 @@
 import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionContext } from "@bilibili-notify/extension";
 import {
 	type Connection,
 	type Disposable,
@@ -19,6 +18,7 @@ import {
 	type PlatformAdapterContext,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
+import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";

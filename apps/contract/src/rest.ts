@@ -5,11 +5,6 @@
  */
 
 import type {
-	ExtensionField,
-	ExtensionSubscriptionView,
-	PlatformAdapterDescriptor,
-} from "@bilibili-notify/extension/wire";
-import type {
 	AddressCandidate,
 	AIProviderProfile,
 	AISettings,
@@ -39,6 +34,11 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import type {
+	ExtensionField,
+	ExtensionSubscriptionView,
+	PlatformAdapterDescriptor,
+} from "@bilibili-notify/internal/extension/wire";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
 

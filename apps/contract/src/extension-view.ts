@@ -2,7 +2,7 @@ import type {
 	ExtensionBlock,
 	ExtensionItemView,
 	ExtensionViewSummary,
-} from "@bilibili-notify/extension/wire";
+} from "@bilibili-notify/internal/extension/wire";
 
 /**
  * `GET /api/ext/:id/status` 交给面板的那份视图(v2)—— 拓展交的 `ExtensionView` **宿主核过
