@@ -14,7 +14,7 @@
  * ⚠️ 帧在 `../fake-bridge.ts` 里手写(核心 import 不到拓展),那笔账记在 ADR-0012 决策 42。
  */
 
-import type { ChatIdentity } from "@bilibili-notify/internal";
+import { type ChatIdentity, fail, ok, type Result } from "@bilibili-notify/internal";
 import { createFakeBridge, type FakeBridge, type FakeBridgeBot } from "../fake-bridge.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
@@ -108,7 +108,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 	/** 眼下假装着的那一条。两条场景共用 —— 驮消息得先有条连着的桥。 */
 	let live: { bridge: FakeBridge; connectionName: string; bots: FakeBridgeBot[] } | undefined;
 	/** 回执现读:面板上把它拨到「失败」,下一条推送就带着那句理由回去。 */
-	let receipt: { ok: boolean; err?: string } = { ok: true };
+	let receipt: Result = ok();
 
 	function teardown(): void {
 		live?.bridge.dispose();
@@ -209,8 +209,8 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 				...bot,
 				capabilities: capabilitiesOf(String(params.caps ?? "mixed")),
 			}));
-			const fail = text(params.fail, "");
-			receipt = fail === "" ? { ok: true } : { ok: false, err: fail };
+			const failReason = text(params.fail, "");
+			receipt = failReason === "" ? ok() : fail("unknown", failReason);
 
 			// 再按一次 = 换一条新的(参数可能改了)。先把老的断掉,否则「同 token 新的赢」
 			// 会由 BN 那头替我们断,而那一路上面板会闪一下「掉线又上线」。
@@ -239,7 +239,7 @@ export function bridgeScenarios(deps: BridgeScenarioDeps): DevScenarioDef[] {
 				summary:
 					`已假装一条桥连上 ${link.name},报了 1 个 ${platform} 的 bot(带平台图标);` +
 					`能力表跟着握手后的第二份名单快照报上来,跟真插件探完能力一个次序。` +
-					(fail === "" ? "推过来的都回成功。" : `推过来的都回失败:${fail}。`),
+					(failReason === "" ? "推过来的都回成功。" : `推过来的都回失败:${failReason}。`),
 			};
 		},
 		active() {

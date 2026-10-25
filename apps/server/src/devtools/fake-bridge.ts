@@ -17,6 +17,7 @@
  * 也没了,重连没有对象。断了就是断了,场景那头如实显示。
  */
 
+import { fail, type Result } from "@bilibili-notify/internal";
 import { WebSocket } from "ws";
 
 /**
@@ -59,10 +60,7 @@ export type FakeBridgeInbound =
 			miniAppCardLinks?: string[];
 	  };
 
-export interface FakeBridgeReceipt {
-	ok: boolean;
-	err?: string;
-}
+export type FakeBridgeReceipt = Result;
 
 export interface FakeBridgeOptions {
 	/** `ws://127.0.0.1:<port>/ext/<拓展 id>`。 */
@@ -124,7 +122,7 @@ export function createFakeBridge(opts: FakeBridgeOptions): FakeBridge {
 	// 这条 promise 也会被拒。
 	ready.catch(() => {});
 
-	function fail(err: Error): void {
+	function rejectReady(err: Error): void {
 		settle?.reject(err);
 		settle = undefined;
 	}
@@ -144,22 +142,18 @@ export function createFakeBridge(opts: FakeBridgeOptions): FakeBridge {
 		for (const url of imageUrlsIn(frame.message)) {
 			// 图要自己下载(协议 §9)。取不到就如实回失败 —— 静默发一条没有图的消息
 			// 才是最难查的那种坏,而这一步顺带把取图口真的走了一遍。
-			const err = await fetchImage(url);
-			if (err) {
-				log(err);
-				send({ type: "result", id, ok: false, err });
+			const message = await fetchImage(url);
+			if (message) {
+				log(message);
+				send({ type: "result", id, ...fail("unavailable", message) });
 				return;
 			}
 		}
 		const receipt = opts.receipt();
 		log(
-			`收到一条给 ${String(frame.botId)} 的消息 —— ${receipt.ok ? "回成功" : `回失败:${receipt.err ?? ""}`}`,
+			`收到一条给 ${String(frame.botId)} 的消息 —— ${receipt.ok ? "回成功" : `回失败:${receipt.message}`}`,
 		);
-		send(
-			receipt.ok
-				? { type: "result", id, ok: true }
-				: { type: "result", id, ok: false, err: receipt.err ?? "假桥说不行" },
-		);
+		send({ type: "result", id, ...receipt });
 	}
 
 	async function fetchImage(url: string): Promise<string | undefined> {
@@ -214,13 +208,13 @@ export function createFakeBridge(opts: FakeBridgeOptions): FakeBridge {
 
 	socket.on("unexpected-response", (_req, res) => {
 		// upgrade 被拒。状态码就是最有用的那句话:401 token 不对,404 桥没在跑,503 接入停用了。
-		fail(new Error(`BN 不给开这条连接:HTTP ${res.statusCode ?? 0}`));
+		rejectReady(new Error(`BN 不给开这条连接:HTTP ${res.statusCode ?? 0}`));
 		socket.terminate();
 	});
-	socket.on("error", (err: Error) => fail(new Error(`连不上:${err.message}`)));
+	socket.on("error", (err: Error) => rejectReady(new Error(`连不上:${err.message}`)));
 	socket.on("close", (code: number) => {
 		shook = false;
-		fail(new Error(`还没握上手就断了(${code})`));
+		rejectReady(new Error(`还没握上手就断了(${code})`));
 		log(`断了(${code})`);
 	});
 

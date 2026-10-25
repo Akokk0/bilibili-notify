@@ -41,15 +41,12 @@ export const ALLOWLIST = {
  *   订阅源上报、拓展设置、指令参数):更新的 kebab `reason` 改 snake 码(决策 3),其余改 `code` + `message`。
  * - 面板:登录的 `{ ok, kind, message }` 与 devtools 的几处。
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
- * - devtools 假桥发的 `result` 帧:3b 桥协议的回执统一成结果形状后改用 `fail()` 展开(ADR-0026 决策 7)。
  */
 export const RATCHET = {
 	"apps/server/src/card-skins/ai-css.ts": 7,
 	"apps/server/src/card-skins/html-sanitizer.ts": 5,
 	"apps/server/src/card-skins/package.ts": 6,
 	"apps/server/src/card-skins/preview-html.ts": 2,
-	"apps/server/src/devtools/fake-bridge.ts": 3,
-	"apps/server/src/devtools/scenarios/bridge.ts": 3,
 	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/extensions/settings-io.ts": 8,
 	"apps/server/src/maid-skills/parse.ts": 8,

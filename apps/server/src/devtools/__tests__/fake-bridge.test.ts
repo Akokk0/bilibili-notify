@@ -8,6 +8,7 @@
 
 import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type WebSocket, WebSocketServer } from "ws";
 import { createFakeBridge, type FakeBridge, PROTOCOL } from "../fake-bridge.js";
@@ -101,7 +102,7 @@ function fake(over: Partial<Parameters<typeof createFakeBridge>[0]> = {}): FakeB
 				capabilities: { atAll: "supported", markdown: "unsupported" },
 			},
 		],
-		receipt: () => ({ ok: true }),
+		receipt: () => ok(),
 		...over,
 	});
 }
@@ -165,8 +166,8 @@ describe("连着的时候", () => {
 	});
 
 	it("收到 send 就回执,回什么由 receipt 现说", async () => {
-		let receipt: { ok: boolean; err?: string } = { ok: true };
-		bridge = fake({ receipt: () => receipt as { ok: true } });
+		let receipt: Result = ok();
+		bridge = fake({ receipt: () => receipt });
 		await bridge.ready();
 
 		send(sockets[0] as WebSocket, {
@@ -179,7 +180,7 @@ describe("连着的时候", () => {
 		});
 		expect(await nextFrame("result")).toEqual({ type: "result", id: "s-1", ok: true });
 
-		receipt = { ok: false, err: "群被禁言了" };
+		receipt = fail("unknown", "群被禁言了");
 		frames.length = 0;
 		send(sockets[0] as WebSocket, {
 			type: "send",
@@ -193,7 +194,8 @@ describe("连着的时候", () => {
 			type: "result",
 			id: "s-2",
 			ok: false,
-			err: "群被禁言了",
+			code: "unknown",
+			message: "群被禁言了",
 		});
 	});
 
