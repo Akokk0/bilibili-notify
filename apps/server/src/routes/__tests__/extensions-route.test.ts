@@ -15,6 +15,7 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	type CreatorCandidate,
+	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	fail,
 	type GlobalConfig,
@@ -217,8 +218,8 @@ async function plant(id: string, word: string, version = "1.0.0"): Promise<void>
 			name: `${id} 拓展`,
 			description: "测试用",
 			version,
-			apiVersion: 2,
-			contributes: { push: { display: PUSH_DISPLAY } },
+			apiVersion: 3,
+			contributes: { push: { ...PUSH_DISPLAY } },
 		}),
 	);
 	await writeFile(
@@ -236,8 +237,8 @@ function pack(over: Record<string, unknown> = {}): Blob {
 				name: "机器人框架桥接",
 				description: "测试用",
 				version: "1.1.0",
-				apiVersion: 2,
-				contributes: { push: { display: PUSH_DISPLAY } },
+				apiVersion: 3,
+				contributes: { push: { ...PUSH_DISPLAY } },
 				...over,
 			}),
 		),
@@ -277,8 +278,8 @@ function running(id: string): ExtensionEntry {
 			name: `${id} 拓展`,
 			description: "一句话说明",
 			version: "1.0.0",
-			apiVersion: 2,
-			contributes: { push: { display: PUSH_DISPLAY } },
+			apiVersion: 3,
+			contributes: { push: { ...PUSH_DISPLAY } },
 		},
 	};
 }
@@ -288,16 +289,14 @@ const REPORTING_SOURCE_MANIFEST = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	contributes: {
 		subscription: {
-			display: {
-				label: "抖音",
-				shortLabel: "抖",
-				color: "#111111",
-				postNoun: "作品",
-			},
-			events: ["post"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#111111",
+			postNoun: "作品",
+			supportedFeatures: ["post"],
 		},
 	},
 } as const satisfies ExtensionManifest;
@@ -393,8 +392,8 @@ describe("GET /api/ext", () => {
 		expect(bridge?.provides).toEqual(["push"]);
 	});
 
-	/** v2 清单不再单写 provides(ADR-0019 决策 16),面板要的那一格由 contributes 推出来。 */
-	it("v2 拓展开哪一口由清单的 contributes 推出来", async () => {
+	/** 清单不再单写 provides(ADR-0019 决策 16),面板要的那一格由 contributes 推出来。 */
+	it("拓展开哪一口由清单的 contributes 推出来", async () => {
 		const douyin: ExtensionEntry = {
 			id: "douyin",
 			dir: "/data/extensions/douyin",
@@ -404,11 +403,13 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
 					subscription: {
-						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-						events: ["post"],
+						label: "抖音",
+						shortLabel: "抖",
+						color: "#fe2c55",
+						supportedFeatures: ["post"],
 					},
 				},
 			},
@@ -436,12 +437,14 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				settings: { fields: fields as never },
 				contributes: {
 					subscription: {
-						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-						events: ["post"],
+						label: "抖音",
+						shortLabel: "抖",
+						color: "#fe2c55",
+						supportedFeatures: ["post"],
 					},
 				},
 			},
@@ -451,8 +454,12 @@ describe("GET /api/ext", () => {
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "douyin")?.settings).toEqual({ fields });
 		expect(body.extensions.find((e) => e.id === "bridge")?.settings).toBeUndefined();
-		expect(body.extensions.find((e) => e.id === "douyin")?.apiVersion).toBe(2);
-		expect(body.extensions.find((e) => e.id === "bridge")?.apiVersion).toBe(2);
+		expect(body.extensions.find((e) => e.id === "douyin")?.apiVersion).toBe(
+			EXTENSION_API_RANGE.current,
+		);
+		expect(body.extensions.find((e) => e.id === "bridge")?.apiVersion).toBe(
+			EXTENSION_API_RANGE.current,
+		);
 	});
 
 	it("版本不合的拓展照样有名字与版本 —— 格式不认识,身份那几格也读得出来", async () => {
@@ -499,11 +506,11 @@ describe("GET /api/ext", () => {
 	});
 
 	/**
-	 * 🔴 ADR-0019 决策 41:v2 的外观与连接配置项写在清单里,**跑没跑都交给面板**。只从跑着的
+	 * 🔴 ADR-0019 决策 41:外观与连接配置项写在清单里,**跑没跑都交给面板**。只从跑着的
 	 * 代码拿的话,拓展一停,它借来的连接在推送目标页就退成灰方章 —— 而清单搬出代码的初衷
-	 * 就是不跑代码也知道。这里不给 `push` 的假口子:v2 那一份不该去问代码。
+	 * 就是不跑代码也知道。这里不给 `push` 的假口子:清单那一份不该去问代码。
 	 */
-	it("停着的 v2 照清单交出推送源那一口(外观 + 连接配置项);只开订阅那口的没有", async () => {
+	it("停着的拓展照清单交出推送源那一口(外观 + 设置字段);只开订阅那口的没有", async () => {
 		const display = { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" };
 		const fields = [{ type: "string", key: "room", label: "房间" }];
 		const bridge: ExtensionEntry = {
@@ -515,8 +522,8 @@ describe("GET /api/ext", () => {
 				name: "机器人框架桥接",
 				description: "一句话说明",
 				version: "0.0.1",
-				apiVersion: 2,
-				contributes: { push: { display, connection: { fields: fields as never } } },
+				apiVersion: 3,
+				contributes: { push: { ...display, settingsFields: fields as never } },
 			},
 		};
 		const douyin: ExtensionEntry = {
@@ -528,11 +535,13 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
 					subscription: {
-						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-						events: ["post"],
+						label: "抖音",
+						shortLabel: "抖",
+						color: "#fe2c55",
+						supportedFeatures: ["post"],
 					},
 				},
 			},
@@ -552,7 +561,7 @@ describe("GET /api/ext", () => {
 	 * 清单里,**跑没跑都交给面板** —— 拓展停了,它名下的订阅照样画得出是哪个平台的(决策 10 的
 	 * 置灰)。自带皮肤的包内路径不下发:那是装包那头的事。
 	 */
-	it("停着的 v2 照清单交出订阅源那一口(外观 + 事件);只开推送那口的没有", async () => {
+	it("停着的拓展照清单交出订阅源那一口(外观 + 支持的特性);只开推送那口的没有", async () => {
 		const display = {
 			label: "抖音",
 			shortLabel: "抖",
@@ -569,9 +578,13 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
-					subscription: { display, events: ["post", "liveStart"], cardSkin: "card-skin" },
+					subscription: {
+						...display,
+						supportedFeatures: ["post", "liveStart"],
+						cardSkin: "card-skin",
+					},
 				},
 			},
 		};
@@ -584,9 +597,9 @@ describe("GET /api/ext", () => {
 				name: "机器人框架桥接",
 				description: "一句话说明",
 				version: "0.0.1",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
-					push: { display: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" } },
+					push: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" },
 				},
 			},
 		};
@@ -611,11 +624,13 @@ describe("GET /api/ext", () => {
 				name: "直播订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
 					subscription: {
-						display: { label: "某直播", shortLabel: "播", color: "#123456" },
-						events: ["liveEnd", "post", "liveStart"],
+						label: "某直播",
+						shortLabel: "播",
+						color: "#123456",
+						supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 					},
 				},
 			},
@@ -632,7 +647,7 @@ describe("GET /api/ext", () => {
 	});
 
 	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */
-	it("停着的 v2 没写连接配置项 → 空表", async () => {
+	it("停着的拓展没写设置字段 → 空表", async () => {
 		const bridge: ExtensionEntry = {
 			id: "bridge",
 			dir: "/data/extensions/bridge",
@@ -642,9 +657,9 @@ describe("GET /api/ext", () => {
 				name: "机器人框架桥接",
 				description: "一句话说明",
 				version: "0.0.1",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
-					push: { display: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" } },
+					push: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" },
 				},
 			},
 		};
@@ -1648,8 +1663,8 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 2,
-					contributes: { push: { display: PUSH_DISPLAY } },
+					apiVersion: 3,
+					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),
@@ -1675,8 +1690,8 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 2,
-					contributes: { push: { display: PUSH_DISPLAY } },
+					apiVersion: 3,
+					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),
@@ -2063,8 +2078,8 @@ describe("拓展的译文", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 2,
-					contributes: { push: { display: PUSH_DISPLAY } },
+					apiVersion: 3,
+					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),

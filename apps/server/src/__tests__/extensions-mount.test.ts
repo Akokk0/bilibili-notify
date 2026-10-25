@@ -241,11 +241,13 @@ describe("面板上传装拓展的接线", () => {
 					name: "抖音订阅源",
 					description: "测试用",
 					version: "0.2.0",
-					apiVersion: 2,
+					apiVersion: 3,
 					contributes: {
 						subscription: {
-							display: { label: "测试", shortLabel: "测", color: "#000000" },
-							events: ["post"],
+							label: "测试",
+							shortLabel: "测",
+							color: "#000000",
+							supportedFeatures: ["post"],
 						},
 					},
 				}),

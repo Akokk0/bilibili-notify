@@ -256,7 +256,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 				name: "重启探针",
 				description: "按动作钮报同一场直播",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				actions: [
 					"report.post",
 					"report.liveStart",
@@ -267,8 +267,10 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 				],
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["post", "liveStart", "liveEnd"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 					},
 				},
 			}),

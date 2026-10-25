@@ -5,7 +5,7 @@
  * 写进资料缓存、把头像存进图库(资料里放引用),`GET /api/subscriptions` 才读得到。中间任意一处漏接(bus 上没人听、bootstrap
  * 没起那个监听),拓展那头照样 resolve、订阅页永远是新建那一刻的样子,而没人报错。
  *
- * 所以装一个真的 v2 小拓展、起一台真 BN:订阅经面板那条路新建(带着解析门候选的头像),之后按拓展的
+ * 所以装一个真的 v3 小拓展、起一台真 BN:订阅经面板那条路新建(带着解析门候选的头像),之后按拓展的
  * 动作钮报资料,全程只读面板读的那一口。bus 在这里只**旁听**(包一层真的那个,不换掉它)。
  */
 
@@ -173,12 +173,14 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 				name: "资料探针",
 				description: "按一下动作钮报一次资料",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				actions: ["profile.full", "profile.sameAvatar", "profile.nameOnly", "profile.nextAvatar"],
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["post"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["post"],
 					},
 				},
 			}),

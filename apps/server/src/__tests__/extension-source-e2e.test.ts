@@ -46,7 +46,7 @@ export function activate(ctx) {
 		start(c) { source = c; },
 		stop() {},
 		searchCreators: async () => ({ ok: true, candidates: [] }),
-		// 清单声明了开播 + 下播,登记时核要交(周期「正在直播」只经核心问来源)。
+		// 清单声明了 liveStreaming,登记时核要交(周期「正在直播」只经核心问来源)。
 		fetchLiveStatus: async (identity) =>
 			identity.externalId === ${JSON.stringify(PULLED)}
 				? { ok: true, kind: "live", startedAt: ${STARTED_AT}, details: { title: "问到的标题" } }
@@ -165,13 +165,13 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		globals.extensions = { [PROBE]: { enabled: true }, [BROKEN]: { enabled: true } };
 		await writeFile(globalsPath, JSON.stringify(globals));
 
-		for (const [id, name, code, actions, events] of [
+		for (const [id, name, code, actions, supportedFeatures] of [
 			[
 				PROBE,
 				"来源探针",
 				PROBE_CODE,
 				["report.post", "report.badPost", "report.liveStart", "report.profile"],
-				["post", "liveStart", "liveEnd"],
+				["post", "liveStart", "liveStreaming", "liveEnd"],
 			],
 			[BROKEN, "起不来的来源", BROKEN_CODE, undefined, ["post"]],
 		] as const) {
@@ -184,12 +184,14 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 					name,
 					description: "测试用",
 					version: "0.1.0",
-					apiVersion: 2,
+					apiVersion: 3,
 					...(actions ? { actions } : {}),
 					contributes: {
 						subscription: {
-							display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-							events,
+							label: "探针",
+							shortLabel: "探",
+							color: "#3366ff",
+							supportedFeatures,
 						},
 					},
 				}),

@@ -75,7 +75,7 @@ export function activate(ctx: ExtensionContext): void {
 	ctx.onUpgrade(server.upgrade);
 
 	const adapter = createBridgeAdapter({ server, links, mountPath, blobs });
-	// 面板上这一档叫什么、什么颜色,写在清单的 `contributes.push.display` 里(ADR-0019 决策 16);
+	// 面板上这一档叫什么、什么颜色,写在清单摊平的 `contributes.push` 里(ADR-0019 决策 16);
 	// 适配器自己的 settings schema 随适配器一起登记,连接与入站由宿主经 `start(ctx)` 递进来。
 	ctx.registerPlatformAdapter(adapter);
 	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时才经 `ctx` 叫它对账,

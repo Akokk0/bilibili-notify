@@ -15,9 +15,7 @@ import {
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
-	type FeatureKey,
 	fail,
-	featuresForEvents,
 	type Identity,
 	type InboundHandlers,
 	type Issue,
@@ -143,14 +141,7 @@ export function manifestPushView(
 	manifest: ExtensionManifest,
 ): PlatformAdapterDescriptor | undefined {
 	const push = manifest.contributes.push;
-	return push && { ...push.display, settingsFields: push.connection?.fields ?? [] };
-}
-
-/** `featuresForEvents` 返回整把特性键;清单的事件只推得出这四种,收窄给视图的类型(第 3 版清单换成直接声明)。 */
-function isViewFeature(
-	key: FeatureKey,
-): key is ExtensionSubscriptionView["supportedFeatures"][number] {
-	return key === "post" || key === "liveStart" || key === "liveStreaming" || key === "liveEnd";
+	return push && { ...push, settingsFields: push.settingsFields ?? [] };
 }
 
 /**
@@ -164,12 +155,9 @@ export function manifestSubscriptionView(
 	manifest: ExtensionManifest,
 ): ExtensionSubscriptionView | undefined {
 	const subscription = manifest.contributes.subscription;
-	return (
-		subscription && {
-			...subscription.display,
-			supportedFeatures: featuresForEvents(subscription.events).filter(isViewFeature),
-		}
-	);
+	if (!subscription) return undefined;
+	const { cardSkin: _cardSkin, ...view } = subscription;
+	return view;
 }
 
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */
@@ -436,10 +424,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 第 3 版订阅源那一口:清单得开了 `contributes.subscription`(「注册的口 ⊆ 清单开的口」),
 	 * 必交 `start` / `stop` / `searchCreators` —— 第三方 JS 不受类型约束,缺了的话每一次叫到都是一句「不是函数」。
 	 *
-	 * 清单声明了周期直播(`featuresForEvents` 推得出 `liveStreaming`,即开播 + 下播都声明了)就必须交 `fetchLiveStatus`:
+	 * 清单显式声明了周期直播(`supportedFeatures` 含 `liveStreaming`)就必须交 `fetchLiveStatus`:
 	 * 周期「正在直播」只由核心按每一场的开播时刻计时、调来源的拉取式状态(ADR-0021 决策 27、38),推送这头没有
 	 * 自己的计时,缺了就是声明了却永远不会推。不合就抛,这次加载失败。
-	 * 清单第 3 版(`supportedFeatures`)落地前按 `events` 推;3b-44 换成读 `supportedFeatures`,换的就是这一处。
 	 */
 	function assertSourceDef(def: SourceDef): void {
 		if (!opts.manifest.contributes.subscription) {
@@ -452,13 +439,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				throw new Error(`extension ${id}: a source needs ${member}()`);
 			}
 		}
-		const declared = opts.manifest.contributes.subscription.events;
-		if (
-			featuresForEvents(declared).includes("liveStreaming") &&
-			typeof def.fetchLiveStatus !== "function"
-		) {
+		const declared = opts.manifest.contributes.subscription.supportedFeatures;
+		if (declared.includes("liveStreaming") && typeof def.fetchLiveStatus !== "function") {
 			throw new Error(
-				`extension ${id}: the manifest declares periodic live streaming (liveStart and liveEnd events), so the source needs fetchLiveStatus()`,
+				`extension ${id}: contributes.subscription.supportedFeatures includes liveStreaming, so the source needs fetchLiveStatus()`,
 			);
 		}
 	}

@@ -409,7 +409,7 @@ export const RATCHET = {
 	"packages/internal/src/schema/card-skin.ts": 48,
 	"packages/internal/src/schema/commands.ts": 3,
 	"packages/internal/src/schema/common.ts": 3,
-	"packages/internal/src/schema/extension-manifest.ts": 34,
+	"packages/internal/src/schema/extension-manifest.ts": 33,
 	"packages/internal/src/schema/extension-marketplace.ts": 9,
 	"packages/internal/src/schema/extension-subscription.ts": 2,
 	"packages/internal/src/schema/extension-view.ts": 7,

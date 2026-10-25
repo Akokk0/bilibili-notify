@@ -54,8 +54,8 @@ function pack(id: string, version: string, docs: Record<string, string> = {}): U
 				name: `拓展 ${id}`,
 				description: "测试用",
 				version,
-				apiVersion: 2,
-				contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+				apiVersion: EXTENSION_API_RANGE.current,
+				contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 			}),
 		),
 		"index.mjs": strToU8("export default { activate() {} };"),
@@ -74,7 +74,7 @@ function entry(
 		name: `拓展 ${id}`,
 		description: "一句话",
 		version,
-		apiVersion: 2,
+		apiVersion: EXTENSION_API_RANGE.current,
 		package: { url, sha256: sha256(zip), size: zip.byteLength },
 		releaseUrl: "https://github.com/Akokk0/bilibili-notify/releases/tag/x",
 		...over,
@@ -380,20 +380,21 @@ describe("list():官方源", () => {
 	});
 
 	it("低于宿主最低档 → 同样 incompatible;真去装会说「这个拓展太旧」而不是叫主人升级 BN", async () => {
+		const tooOld = EXTENSION_API_RANGE.min - 1;
 		serve({
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
-				official({ extensions: [entry("bridge", "0.0.2", bridgeZip, { apiVersion: 1 })] }),
+				official({ extensions: [entry("bridge", "0.0.2", bridgeZip, { apiVersion: tooOld })] }),
 			),
 		});
-		const h = harness({ hostApiRange: { min: 2, current: 3, revision: 0 } });
+		const h = harness();
 		expect((await h.marketplace.list()).extensions[0]).toMatchObject({ state: "incompatible" });
 		const outcome = await h.marketplace.install("official", "bridge");
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) {
 			expect(outcome.code).toBe("unsupported");
 			expect(outcome.message).not.toContain("升级 BN");
-			expect(outcome.message).toContain("v1");
+			expect(outcome.message).toContain(`v${tooOld}`);
 		}
 	});
 });
@@ -578,61 +579,73 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
 describe("list():同一个 id 多个契约版本", () => {
 	const V3_ZIP_URL =
 		"https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-0.1.0.zip";
-	const v3Zip = pack("bridge", "0.1.0");
-	const v2Entry = () => entry("bridge", "0.0.1", oldBridgeZip, { apiVersion: 2 });
-	const v3Entry = () => entry("bridge", "0.1.0", v3Zip, { apiVersion: 3 }, V3_ZIP_URL);
-	const body = () => envelope(key.privateKey, official({ extensions: [v2Entry(), v3Entry()] }));
+	const current = EXTENSION_API_RANGE.current;
+	const previous = EXTENSION_API_RANGE.min - 1;
+	const currentZip = pack("bridge", "0.1.0");
+	const previousEntry = () => entry("bridge", "0.0.1", oldBridgeZip, { apiVersion: previous });
+	const currentEntry = () =>
+		entry("bridge", "0.1.0", currentZip, { apiVersion: current }, V3_ZIP_URL);
+	const body = () =>
+		envelope(key.privateKey, official({ extensions: [previousEntry(), currentEntry()] }));
 	const only = (range: ExtensionApiRange) => harness({ hostApiRange: range });
 
-	it("只收第 2 版契约的 BN 挑到 0.0.1(可装),只收第 3 版的挑到 0.1.0(可装)", async () => {
+	it("只收旧档的 BN 挑到 0.0.1(可装),只收当前档的挑到 0.1.0(可装)", async () => {
 		serve({ [OFFICIAL_URL]: body() });
-		expect((await only({ min: 2, current: 2, revision: 0 }).marketplace.list()).extensions).toEqual(
-			[expect.objectContaining({ version: "0.0.1", state: "installable" })],
-		);
-		expect((await only({ min: 3, current: 3, revision: 0 }).marketplace.list()).extensions).toEqual(
-			[expect.objectContaining({ version: "0.1.0", state: "installable" })],
-		);
+		expect(
+			(await only({ min: previous, current: previous, revision: 0 }).marketplace.list()).extensions,
+		).toEqual([expect.objectContaining({ version: "0.0.1", state: "installable" })]);
+		expect(
+			(await only({ min: current, current, revision: 0 }).marketplace.list()).extensions,
+		).toEqual([expect.objectContaining({ version: "0.1.0", state: "installable" })]);
 	});
 
 	it("两版都收的 BN 取版本最高的那条", async () => {
 		serve({ [OFFICIAL_URL]: body() });
-		expect((await only({ min: 2, current: 3, revision: 0 }).marketplace.list()).extensions).toEqual(
-			[expect.objectContaining({ version: "0.1.0" })],
-		);
+		expect(
+			(await only({ min: previous, current, revision: 0 }).marketplace.list()).extensions,
+		).toEqual([expect.objectContaining({ version: "0.1.0" })]);
 	});
 
 	it("一条都装不了:仍画一张灰卡,是版本最高的那条", async () => {
 		serve({ [OFFICIAL_URL]: body() });
-		expect((await only({ min: 1, current: 1, revision: 0 }).marketplace.list()).extensions).toEqual(
-			[expect.objectContaining({ version: "0.1.0", state: "incompatible" })],
-		);
+		const future = current + 1;
+		expect(
+			(await only({ min: future, current: future, revision: 0 }).marketplace.list()).extensions,
+		).toEqual([expect.objectContaining({ version: "0.1.0", state: "incompatible" })]);
 	});
 
 	it("install() 装的是这台 BN 装得了的那条", async () => {
-		serve({ [OFFICIAL_URL]: body(), [ZIP_URL]: oldBridgeZip, [V3_ZIP_URL]: v3Zip });
+		serve({ [OFFICIAL_URL]: body(), [ZIP_URL]: oldBridgeZip, [V3_ZIP_URL]: currentZip });
 		expect(
-			await only({ min: 2, current: 2, revision: 0 }).marketplace.install("official", "bridge"),
+			await only({
+				min: previous,
+				current: previous,
+				revision: 0,
+			}).marketplace.install("official", "bridge"),
 		).toMatchObject({ ok: true, version: "0.0.1" });
 		expect(
-			await only({ min: 3, current: 3, revision: 0 }).marketplace.install("official", "bridge"),
+			await only({ min: current, current, revision: 0 }).marketplace.install("official", "bridge"),
 		).toMatchObject({ ok: true, version: "0.1.0" });
 	});
 
-	it("预发布渠道也只在装得了的里头挑:v3 的 alpha 不顶掉 v2 BN 的正式版", async () => {
-		const alphaV3 = entry(
+	it("预发布渠道也只在装得了的里头挑:当前档 alpha 不顶掉旧档 BN 的正式版", async () => {
+		const alphaCurrent = entry(
 			"bridge",
 			"0.2.0-alpha.1",
 			alphaZip,
-			{ prerelease: true, apiVersion: 3 },
+			{ prerelease: true, apiVersion: current },
 			ALPHA_ZIP_URL,
 		);
 		serve({
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
-				official({ extensions: [v2Entry(), v3Entry(), alphaV3] }),
+				official({ extensions: [previousEntry(), currentEntry(), alphaCurrent] }),
 			),
 		});
-		const h = harness({ prerelease: true, hostApiRange: { min: 2, current: 2, revision: 0 } });
+		const h = harness({
+			prerelease: true,
+			hostApiRange: { min: previous, current: previous, revision: 0 },
+		});
 		expect((await h.marketplace.list()).extensions).toEqual([
 			expect.objectContaining({ version: "0.0.1", state: "installable" }),
 		]);

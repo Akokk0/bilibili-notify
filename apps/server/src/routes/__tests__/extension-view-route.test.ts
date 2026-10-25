@@ -32,7 +32,7 @@ const MANIFEST = {
 	name: "抖音",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{
@@ -44,7 +44,7 @@ const MANIFEST = {
 			},
 		],
 	},
-	contributes: { push: { display: { label: "抖音", shortLabel: "抖", color: "#111111" } } },
+	contributes: { push: { label: "抖音", shortLabel: "抖", color: "#111111" } },
 } as unknown as ExtensionManifest;
 
 const SILENT: Logger = { info() {}, warn() {}, error() {}, debug() {} };

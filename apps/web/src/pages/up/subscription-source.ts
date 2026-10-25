@@ -6,11 +6,7 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import type { SubscriptionEventKind } from "@bilibili-notify/internal";
-import {
-	featuresForEvents,
-	SUBSCRIPTION_EVENT_FEATURES,
-} from "@bilibili-notify/internal/constants";
+import { EXTENSION_SOURCE_FEATURES } from "@bilibili-notify/internal/constants";
 import { isExtensionPresent } from "../../hooks/useExtensions";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -33,9 +29,7 @@ function sortedFeaturesOf(view: SourceExtension["subscription"]): FeatureKey[] {
 }
 
 /** 拓展订阅最多能有的那几把特性 —— 认不出是哪个源报什么的时候(没装 / 清单读不出)按它画。 */
-const EXTENSION_FEATURES_AT_MOST = featuresForEvents(
-	Object.keys(SUBSCRIPTION_EVENT_FEATURES) as SubscriptionEventKind[],
-);
+const EXTENSION_FEATURES_AT_MOST = EXTENSION_SOURCE_FEATURES;
 
 /**
  * 新建订阅时平台选择那一排:**只列在跑的**(决策 10)—— 解析门要拓展本人在,停着的列出来

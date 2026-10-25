@@ -10,7 +10,6 @@
  * schema/common.ts 反向引用这里(`z.enum(FEATURE_KEYS)`)并从根入口重导出,后端消费者
  * (server)照旧从根入口拿 —— 两条路径同一份值。
  */
-import type { SubscriptionEventKind } from "./schema/extension-manifest.js";
 import type { PlatformSnapshot, PushTarget } from "./schema/targets.js";
 
 /**
@@ -32,6 +31,14 @@ export const FEATURE_KEYS = [
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
+
+/** 第 3 版拓展订阅源能声明的特性;顺序与 {@link FEATURE_KEYS} 一致。 */
+export const EXTENSION_SOURCE_FEATURES = [
+	"post",
+	"liveStart",
+	"liveStreaming",
+	"liveEnd",
+] as const satisfies readonly FeatureKey[];
 
 /**
  * 按 {@link FEATURE_KEYS} 摊一张「每把特性一格」的表 —— 和 {@link extrasRecord} 同一个安排:`Object.fromEntries`
@@ -1025,33 +1032,6 @@ export function identityColor(identity: Identity): string {
 	return identity.sourceKey === BILIBILI_SOURCE_KEY
 		? colorFromSeed(identity.externalId)
 		: colorFromSeed(extensionColorSeed(identity.sourceKey, identity.externalId));
-}
-
-/**
- * 订阅源报的事件种类 → BN 自己的特性键(ADR-0019 决策 4)。拓展只说中立名,映射归 BN:配置
- * 弹层照它只列这个源报的那几种(决策 5),推送链收到事件时照它找路由。
- *
- * `satisfies` 两头都钉着:清单那边多一种事件、这里没跟上,编译不过;写错一个特性键,同样编译
- * 不过。住零依赖模块是因为面板也要它(见文件头)。
- */
-export const SUBSCRIPTION_EVENT_FEATURES = {
-	post: "post",
-	liveStart: "liveStart",
-	liveEnd: "liveEnd",
-} as const satisfies Record<SubscriptionEventKind, FeatureKey>;
-
-/**
- * 一个订阅源声明了这几种事件,它那条订阅能有哪几把特性(ADR-0019 决策 4 / 5),顺序跟 {@link FEATURE_KEYS} 走。
- * 面板据它决定弹层上列哪几行。
- *
- * 一对一的三种照 {@link SUBSCRIPTION_EVENT_FEATURES};`liveStreaming`(周期「正在直播」)不是一种事件,它的规则是
- * **同时声明了开播与下播才有**(⑬d)—— 只报开播的源没有下播事件把这一场收掉。文档规则里另有「来源能查在播状态」
- * (`has.liveStatus`)那半,随 3a,这里还没有。
- */
-export function featuresForEvents(events: readonly SubscriptionEventKind[]): FeatureKey[] {
-	const wanted = new Set<FeatureKey>(events.map((e) => SUBSCRIPTION_EVENT_FEATURES[e]));
-	if (events.includes("liveStart") && events.includes("liveEnd")) wanted.add("liveStreaming");
-	return FEATURE_KEYS.filter((k) => wanted.has(k));
 }
 
 // ---- 图库引用(ADR-0022 决策 9)--------------------------------------------------------

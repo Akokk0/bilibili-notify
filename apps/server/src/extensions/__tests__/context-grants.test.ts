@@ -81,8 +81,8 @@ const PUSH_MANIFEST: ExtensionManifest = {
 	name: "机器人框架桥接",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
-	contributes: { push: { display: DISPLAY, connection: { fields: V2_FIELDS } } },
+	apiVersion: 3,
+	contributes: { push: { ...DISPLAY, settingsFields: V2_FIELDS } },
 };
 
 function harness(
@@ -225,14 +225,14 @@ function def(): PlatformAdapterDef {
  * 订阅那一栏,推送目标页却多出一档。
  */
 describe("按清单注册平台适配器", () => {
-	function v2(over: Record<string, unknown> = {}): ExtensionManifest {
+	function manifestOf(over: Record<string, unknown> = {}): ExtensionManifest {
 		return {
 			id: "bridge",
 			name: "机器人框架桥接",
 			description: "测试用",
 			version: "2.0.0",
-			apiVersion: 2,
-			contributes: { push: { display: DISPLAY, connection: { fields: V2_FIELDS } } },
+			apiVersion: 3,
+			contributes: { push: { ...DISPLAY, settingsFields: V2_FIELDS } },
 			...over,
 		} as ExtensionManifest;
 	}
@@ -346,8 +346,8 @@ describe("按清单注册平台适配器", () => {
 		expect(changed).toHaveBeenCalledTimes(1);
 	});
 
-	it("v2:外观与连接配置项取自清单,代码只交行为与 zod", () => {
-		const manifest = v2();
+	it("外观与连接配置项取自清单,代码只交行为与 zod", () => {
+		const manifest = manifestOf();
 		const h = harness({ manifest });
 		h.ctx.registerPlatformAdapter(v2Def());
 		// 面板拿到的外观与字段表就是清单这一份(路由下发走的同一个函数)。
@@ -355,8 +355,8 @@ describe("按清单注册平台适配器", () => {
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
-	it("v2 的清单没写 connection:连接是挑出来的那种,连接配置项就是空表", () => {
-		const manifest = v2({ contributes: { push: { display: DISPLAY } } });
+	it("清单没写 settingsFields:连接是挑出来的那种,连接配置项就是空表", () => {
+		const manifest = manifestOf({ contributes: { push: { ...DISPLAY } } });
 		const h = harness({ manifest });
 		h.ctx.registerPlatformAdapter(v2Def());
 		expect(h.adapters.list()).toHaveLength(1);
@@ -364,7 +364,7 @@ describe("按清单注册平台适配器", () => {
 	});
 
 	it("代码里还交外观 / 字段表(按第 1 版的写法)—— 抛:两份声明会打架,以清单为准", () => {
-		const h = harness({ manifest: v2() });
+		const h = harness({ manifest: manifestOf() });
 		const old = {
 			...def(),
 			descriptor: { label: "桥接", shortLabel: "桥", tint: "#a855f7" },
@@ -376,15 +376,16 @@ describe("按清单注册平台适配器", () => {
 		expect(h.adapters.list()).toEqual([]);
 	});
 
-	it("v2 清单里的连接配置项与代码的 zod 对不上 —— 抛,点名那一格", () => {
+	it("清单里的连接配置项与代码的 zod 对不上 —— 抛,点名那一格", () => {
 		const h = harness({
-			manifest: v2({
+			manifest: manifestOf({
 				contributes: {
 					push: {
-						display: DISPLAY,
-						connection: {
-							fields: [V2_FIELDS[0], { type: "string", key: "bridgeKind", label: "哪一种桥" }],
-						},
+						...DISPLAY,
+						settingsFields: [
+							V2_FIELDS[0],
+							{ type: "string", key: "bridgeKind", label: "哪一种桥" },
+						],
 					},
 				},
 			}),
@@ -394,7 +395,9 @@ describe("按清单注册平台适配器", () => {
 
 	it("清单只开了订阅源 —— 注册推送源当场抛,出口一个都不进表", () => {
 		const h = harness({
-			manifest: v2({ contributes: { subscription: { display: DISPLAY, events: ["post"] } } }),
+			manifest: manifestOf({
+				contributes: { subscription: { ...DISPLAY, supportedFeatures: ["post"] } },
+			}),
 		});
 		expect(() => h.ctx.registerPlatformAdapter(v2Def())).toThrow(/contributes\.push/);
 		expect(h.adapters.list()).toEqual([]);
@@ -421,7 +424,7 @@ describe("按清单注册平台适配器", () => {
 	});
 
 	/**
-	 * v2 的设置项也是两份声明(清单一份、`ctx.settings(schema)` 交一份 zod),一样在拿设置的
+	 * 清单的设置项也是两份声明(清单一份、`ctx.settings(schema)` 交一份 zod),一样在拿设置的
 	 * 那一刻对表。
 	 */
 	describe("设置项对表", () => {
@@ -436,7 +439,10 @@ describe("按清单注册平台适配器", () => {
 		});
 
 		it("对得上 —— 照常拿得到设置", () => {
-			const h = harness({ manifest: v2(fields({ default: 60 })), settings: { cookie: "c" } });
+			const h = harness({
+				manifest: manifestOf(fields({ default: 60 })),
+				settings: { cookie: "c" },
+			});
 			expect(h.ctx.settings(SETTINGS).get()).toEqual({
 				ok: true,
 				settings: { cookie: "c", interval: 60 },
@@ -444,12 +450,12 @@ describe("按清单注册平台适配器", () => {
 		});
 
 		it("对不上 —— 拿设置那一刻就抛,点名那一格", () => {
-			const h = harness({ manifest: v2(fields({ default: 30 })) });
+			const h = harness({ manifest: manifestOf(fields({ default: 30 })) });
 			expect(() => h.ctx.settings(SETTINGS)).toThrow(/"interval"/);
 		});
 
 		it("清单一栏设置都没声明,而 zod 有必填键 —— 抛(面板上根本没地方填)", () => {
-			const h = harness({ manifest: v2() });
+			const h = harness({ manifest: manifestOf() });
 			expect(() => h.ctx.settings(SETTINGS)).toThrow(/"cookie"/);
 		});
 	});
@@ -475,7 +481,7 @@ describe("交给面板的视图", () => {
 				},
 			],
 		},
-		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
+		contributes: { push: { label: "桥", shortLabel: "桥", color: "#a855f7" } },
 	} as unknown as ExtensionManifest;
 	const SETTINGS = { links: [{ id: "a", name: "家里那台" }] };
 
@@ -596,7 +602,7 @@ describe("动作", () => {
 	const V2: ExtensionManifest = {
 		...PUSH_MANIFEST,
 		actions: ["poll.now", "login.start"],
-		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
+		contributes: { push: { label: "桥", shortLabel: "桥", color: "#a855f7" } },
 	} as unknown as ExtensionManifest;
 
 	it("声明了、接了 —— 跑得到", async () => {
@@ -842,8 +848,8 @@ describe("注册平台适配器", () => {
 				...PUSH_MANIFEST,
 				contributes: {
 					push: {
-						display: DISPLAY,
-						connection: { fields: [{ type: "string", key: "nope", label: "?" }] },
+						...DISPLAY,
+						settingsFields: [{ type: "string", key: "nope", label: "?" }],
 					},
 				},
 			},
@@ -857,7 +863,7 @@ describe("注册平台适配器", () => {
 		const h = harness({
 			manifest: {
 				...PUSH_MANIFEST,
-				contributes: { push: { display: DISPLAY, connection: { fields: [] } } },
+				contributes: { push: { ...DISPLAY, settingsFields: [] } },
 			},
 		});
 		expect(() => h.ctx.registerPlatformAdapter(def())).not.toThrow();
@@ -875,7 +881,7 @@ describe("注册平台适配器", () => {
 	it("没开推送源那一口的清单没有外观,而不是一份空壳;没注册的拓展登记表里也没有它", () => {
 		const manifest = {
 			...PUSH_MANIFEST,
-			contributes: { subscription: { display: DISPLAY, events: ["post"] } },
+			contributes: { subscription: { ...DISPLAY, supportedFeatures: ["post"] } },
 		} as unknown as ExtensionManifest;
 		expect(manifestPushView(manifest)).toBeUndefined();
 		expect(harness({ manifest }).adapters.list()).toEqual([]);
@@ -1149,8 +1155,10 @@ describe("statusChanged 合并", () => {
 				...PUSH_MANIFEST,
 				contributes: {
 					subscription: {
-						display: { label: "抖", shortLabel: "抖", color: "#161823" },
-						events: ["post"],
+						label: "抖",
+						shortLabel: "抖",
+						color: "#161823",
+						supportedFeatures: ["post"],
 					},
 				},
 			} as unknown as ExtensionManifest,

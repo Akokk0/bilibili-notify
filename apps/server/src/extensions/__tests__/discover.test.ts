@@ -27,24 +27,26 @@ function manifest(over: Record<string, unknown> = {}): Record<string, unknown> {
 		name: "机器人框架桥接",
 		description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
 		version: "1.0.0",
-		apiVersion: 2,
-		contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+		apiVersion: EXTENSION_API_RANGE.current,
+		contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 		...over,
 	};
 }
 
-/** 一份 v2 清单(ADR-0019 决策 16):静态声明全住清单。 */
-function manifestV2(over: Record<string, unknown> = {}): Record<string, unknown> {
+/** 一份订阅源清单(ADR-0019 决策 16):静态声明全住清单。 */
+function manifestSubscription(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "douyin",
 		name: "抖音订阅",
 		description: "盯着抖音作者的新作品与开播。",
 		version: "0.1.0",
-		apiVersion: 2,
+		apiVersion: EXTENSION_API_RANGE.current,
 		contributes: {
 			subscription: {
-				display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-				events: ["post"],
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#fe2c55",
+				supportedFeatures: ["post"],
 			},
 		},
 		...over,
@@ -128,11 +130,11 @@ describe("readExtensionDir", () => {
 		expect(r.detail).toContain("not-bridge");
 	});
 
-	it("v2 清单 → ready(宿主认的是一个区间,不再只认一档)", async () => {
-		const r = await readExtensionDir(await plant("douyin", manifestV2()));
+	it("当前档的清单 → ready", async () => {
+		const r = await readExtensionDir(await plant("douyin", manifestSubscription()));
 		expect(r.state).toBe("ready");
 		if (r.state !== "ready") throw new Error("unreachable");
-		expect(r.manifest.apiVersion).toBe(2);
+		expect(r.manifest.apiVersion).toBe(EXTENSION_API_RANGE.current);
 	});
 
 	it("为更新的宿主写的 → incompatible,列得出来、带得上原因", async () => {
@@ -149,12 +151,12 @@ describe("readExtensionDir", () => {
 	});
 
 	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59)—— 与档位不合同一条路。 */
-	it("要更高契约小号的 v2 清单 → incompatible,记下要几号", async () => {
+	it("要更高契约小号的清单 → incompatible,记下要几号", async () => {
 		const apiRevision = EXTENSION_API_RANGE.revision + 1;
-		const r = await readExtensionDir(await plant("douyin", manifestV2({ apiRevision })));
+		const r = await readExtensionDir(await plant("douyin", manifestSubscription({ apiRevision })));
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toEqual({ apiVersion: 2, apiRevision });
+		expect(r.requires).toEqual({ apiVersion: EXTENSION_API_RANGE.current, apiRevision });
 		expect(r.range).toEqual(EXTENSION_API_RANGE);
 		expect(r.identity.name).toBe("抖音订阅");
 	});
@@ -181,32 +183,32 @@ describe("readExtensionDir", () => {
 	});
 
 	it("低于宿主最低档的 → 同样 incompatible(抬过最低档之后,老拓展停在门外)", async () => {
-		const r = await readExtensionDir(await plant("bridge", manifest()), {
-			hostApiRange: { min: 3, current: 3, revision: 0 },
-		});
+		const tooOld = EXTENSION_API_RANGE.min - 1;
+		const r = await readExtensionDir(await plant("bridge", manifest({ apiVersion: tooOld })));
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toEqual({ apiVersion: 2 });
+		expect(r.requires).toEqual({ apiVersion: tooOld });
 	});
 
-	/** 第 1 版的退路已删:盘上还留着的第 1 版拓展落到「版本太旧」,而不是加载或读不了。 */
-	it("第 1 版的清单 → incompatible,原因说「换它的新版」", async () => {
+	/** 低于最低档的退路已删:盘上还留着的老拓展落到「版本太旧」,而不是加载或读不了。 */
+	it("低于最低档的清单 → incompatible,原因说「换它的新版」", async () => {
+		const tooOld = EXTENSION_API_RANGE.min - 1;
 		const r = await readExtensionDir(
 			await plant("bridge", {
 				id: "bridge",
 				name: "机器人框架桥接",
 				description: "老格式。",
 				version: "0.0.1",
-				apiVersion: 1,
+				apiVersion: tooOld,
 				provides: ["push"],
 			}),
 		);
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toEqual({ apiVersion: 1 });
+		expect(r.requires).toEqual({ apiVersion: tooOld });
 		expect(r.identity).toMatchObject({ id: "bridge", version: "0.0.1" });
 		expect(apiVersionMismatch(r.requires, r.range)).toBe(
-			"它是给宿主契约 v1 写的,这一版 BN 只认 v2 —— 换它的新版",
+			`它是给宿主契约 v${tooOld} 写的,这一版 BN 只认 v${EXTENSION_API_RANGE.current} —— 换它的新版`,
 		);
 	});
 
@@ -236,11 +238,11 @@ describe("readExtensionDir", () => {
 	 * 选项图标是图片 data URL,面板当 `<img>` 画(ADR-0019 决策 31)—— 它不进 SVG 白名单,
 	 * 原样留着;塞一段 SVG 标记进来的清单在格式那一步就读不了。
 	 */
-	it("v2 设置项的选项图标:图片 data URL 原样留着;SVG 标记 —— 清单读不了", async () => {
+	it("设置项的选项图标:图片 data URL 原样留着;SVG 标记 —— 清单读不了", async () => {
 		const png =
 			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 		const withIcon = (icon: string) =>
-			manifestV2({
+			manifestSubscription({
 				settings: {
 					fields: [
 						{
@@ -253,7 +255,7 @@ describe("readExtensionDir", () => {
 				},
 			});
 		const r = await readExtensionDir(await plant("douyin", withIcon(png)));
-		if (r.state !== "ready" || r.manifest.apiVersion !== 2) throw new Error("unreachable");
+		if (r.state !== "ready") throw new Error("unreachable");
 		expect(r.manifest.settings?.fields[0]).toMatchObject({ options: [{ icon: png }] });
 
 		const bad = await readExtensionDir(

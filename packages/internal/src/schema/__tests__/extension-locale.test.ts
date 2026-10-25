@@ -26,7 +26,7 @@ const MANIFEST = manifestOf({
 	name: "示例拓展",
 	description: "盯着一件事的示例。",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{ key: "token", type: "string", label: "令牌" },
@@ -60,18 +60,18 @@ const MANIFEST = manifestOf({
 	},
 	contributes: {
 		push: {
-			display: { label: "推送", shortLabel: "推", color: "#fe2c55" },
-			connection: { fields: [{ key: "apiKey", type: "string", label: "密钥" }] },
+			label: "推送",
+			shortLabel: "推",
+			color: "#fe2c55",
+			settingsFields: [{ key: "apiKey", type: "string", label: "密钥" }],
 		},
 		subscription: {
-			display: {
-				label: "订阅",
-				shortLabel: "订",
-				color: "#fe2c55",
-				postNoun: "作品",
-				lookupPlaceholder: "UID 或名字",
-			},
-			events: ["post"],
+			label: "订阅",
+			shortLabel: "订",
+			color: "#fe2c55",
+			postNoun: "作品",
+			lookupPlaceholder: "UID 或名字",
+			supportedFeatures: ["post"],
 		},
 	},
 });
@@ -179,16 +179,15 @@ describe("清单那层（$manifest）", () => {
 				},
 				contributes: {
 					push: {
-						display: { label: "Push", shortLabel: "Pu" },
-						connection: { fields: { apiKey: { label: "API key" } } },
+						label: "Push",
+						shortLabel: "Pu",
+						settingsFields: { apiKey: { label: "API key" } },
 					},
 					subscription: {
-						display: {
-							label: "Subscription",
-							shortLabel: "Su",
-							postNoun: "post",
-							lookupPlaceholder: "UID or name",
-						},
+						label: "Subscription",
+						shortLabel: "Su",
+						postNoun: "post",
+						lookupPlaceholder: "UID or name",
 					},
 				},
 			},
@@ -226,16 +225,15 @@ describe("清单那层（$manifest）", () => {
 			},
 			contributes: {
 				push: {
-					display: { label: "Push", shortLabel: "Pu" },
-					connection: { fields: { apiKey: { label: "API key" } } },
+					label: "Push",
+					shortLabel: "Pu",
+					settingsFields: { apiKey: { label: "API key" } },
 				},
 				subscription: {
-					display: {
-						label: "Subscription",
-						shortLabel: "Su",
-						postNoun: "post",
-						lookupPlaceholder: "UID or name",
-					},
+					label: "Subscription",
+					shortLabel: "Su",
+					postNoun: "post",
+					lookupPlaceholder: "UID or name",
 				},
 			},
 		});
@@ -255,8 +253,8 @@ describe("清单那层（$manifest）", () => {
 					},
 				},
 				contributes: {
-					push: { display: { color: "#000000" } },
-					subscription: { display: { color: "#000000" } },
+					push: { color: "#000000" },
+					subscription: { color: "#000000" },
 				},
 				extra: "没有这个键",
 			},
@@ -276,11 +274,11 @@ describe("清单那层（$manifest）", () => {
 				code: "unknown-entry",
 			},
 			{
-				path: ["$manifest", "contributes", "push", "display", "color"],
+				path: ["$manifest", "contributes", "push", "color"],
 				code: "untranslatable-entry",
 			},
 			{
-				path: ["$manifest", "contributes", "subscription", "display", "color"],
+				path: ["$manifest", "contributes", "subscription", "color"],
 				code: "untranslatable-entry",
 			},
 			{ path: ["$manifest", "extra"], code: "unknown-entry" },
@@ -291,16 +289,33 @@ describe("清单那层（$manifest）", () => {
 		const parsed = parse({
 			$manifest: {
 				contributes: {
-					subscription: { display: { externalIdNoun: "account" } },
+					subscription: { externalIdNoun: "account" },
 				},
 			},
 		});
 		expect(parsed.issues).toEqual([]);
 		expect(parsed.manifest).toEqual({
 			contributes: {
-				subscription: { display: { externalIdNoun: "account" } },
+				subscription: { externalIdNoun: "account" },
 			},
 		});
+	});
+
+	it("旧的第 2 版嵌套 display 不再收，记 unknown-entry", () => {
+		const parsed = parse({
+			$manifest: {
+				contributes: {
+					subscription: { display: { label: "旧形状" } },
+				},
+			},
+		});
+		expect(parsed.manifest).toEqual({});
+		expect(parsed.issues).toEqual([
+			{
+				path: ["$manifest", "contributes", "subscription", "display"],
+				code: "unknown-entry",
+			},
+		]);
 	});
 
 	it("超过清单那一格自己的长度上限的丢掉并记一条问题，别的照盖", () => {
@@ -308,20 +323,20 @@ describe("清单那层（$manifest）", () => {
 			$manifest: {
 				name: "好名字",
 				contributes: {
-					push: { display: { label: "推送", shortLabel: "九个字九个字九个字" } },
+					push: { label: "推送", shortLabel: "九个字九个字九个字" },
 				},
 			},
 		});
 
 		expect(parsed.issues).toEqual([
 			{
-				path: ["$manifest", "contributes", "push", "display", "shortLabel"],
+				path: ["$manifest", "contributes", "push", "shortLabel"],
 				code: "too-long",
 			},
 		]);
 		expect(parsed.manifest).toEqual({
 			name: "好名字",
-			contributes: { push: { display: { label: "推送" } } },
+			contributes: { push: { label: "推送" } },
 		});
 	});
 

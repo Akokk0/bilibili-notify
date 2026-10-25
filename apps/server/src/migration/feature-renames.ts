@@ -54,7 +54,7 @@ import type {
 //
 // 五张表都写成 `satisfies Record<0.x 的键类型, 1.0 的键类型>`:0.x 的哪个键漏了去向、或去向不是 1.0 的活键,
 // 编译不过。没改名的键也写出来(恒等),这样「漏了」和「没改」分得开。参照 `zero-generation.ts` 的
-// `ZERO_GENERATION_MOVES` 与 internal `constants.ts` 的 `SUBSCRIPTION_EVENT_FEATURES`。
+// `ZERO_GENERATION_MOVES`。
 // 过滤键与文案键两张表的键类型是「0.x 的键去掉搬家的」(`Exclude<…, ZeroMoved…>`):搬走的键去向在 `membership-moves.ts`,
 // 不是 1.0 `ContentFilters` / `TemplateBundle` 里的键,硬塞进表里只能靠类型断言糊过去 —— 这里不糊。
 

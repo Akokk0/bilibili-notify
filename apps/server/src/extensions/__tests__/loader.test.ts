@@ -92,8 +92,8 @@ async function plant(id: string, code: string, over: Record<string, unknown> = {
 			name: id,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 2,
-			contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+			apiVersion: 3,
+			contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 			...over,
 		}),
 	);
@@ -368,7 +368,9 @@ describe("加载拓展", () => {
 		expect(bridge?.state).toBe("incompatible");
 		expect(imported).toEqual([]);
 		expect(bridge?.identity?.id).toBe("bridge");
-		expect(bridge?.detail).toBe("它是给宿主契约 v1 写的,这一版 BN 只认 v2 —— 换它的新版");
+		expect(bridge?.detail).toBe(
+			`它是给宿主契约 v1 写的,这一版 BN 只认 v${EXTENSION_API_RANGE.current} —— 换它的新版`,
+		);
 		await loaded.dispose();
 	});
 
@@ -376,13 +378,15 @@ describe("加载拓展", () => {
 	it("要更高契约小号的拓展 → 不 import,原因写清要几号、BN 是几号、先升级 BN", async () => {
 		const wants = EXTENSION_API_RANGE.revision + 1;
 		await plant("douyin", HEALTHY, {
-			apiVersion: 2,
+			apiVersion: 3,
 			apiRevision: wants,
 			provides: undefined,
 			contributes: {
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-					events: ["post"],
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#fe2c55",
+					supportedFeatures: ["post"],
 				},
 			},
 		});
@@ -407,18 +411,20 @@ describe("加载拓展", () => {
 
 describe("拓展声明的密钥字段", () => {
 	/**
-	 * v2 的密钥声明在**清单**里(ADR-0019 决策 17):没跑起来的也读得到,备份就能只抹那几格,
+	 * 密钥声明在**清单**里(ADR-0019 决策 17):没跑起来的也读得到,备份就能只抹那几格,
 	 * 而不是整片当密钥 —— 「装好还没启用、先把 cookie 填了」正是最常见的那一刻。
 	 */
-	it("v2 拓展没在跑也交得出密钥键 —— 照清单读,不等代码注册", async () => {
+	it("拓展没在跑也交得出密钥键 —— 照清单读,不等代码注册", async () => {
 		await plant("douyin", HEALTHY, {
-			apiVersion: 2,
+			apiVersion: 3,
 			provides: undefined,
 			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
 			contributes: {
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-					events: ["post"],
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#fe2c55",
+					supportedFeatures: ["post"],
 				},
 			},
 		});
@@ -432,20 +438,22 @@ describe("拓展声明的密钥字段", () => {
 	});
 
 	/**
-	 * 跑着的 v2 两边都答得出:代码那份只有连接配置项里的密钥,清单那份还带着设置项里的。
+	 * 跑着的拓展两边都答得出:代码那份只有连接配置项里的密钥,清单那份还带着设置项里的。
 	 * 清单说了算 —— 让代码那份盖过去的话,设置里的 cookie 就原样进备份。
 	 */
-	it("v2 跑着时照清单那份(连设置项里的也算),不被代码交的那份盖掉", async () => {
+	it("跑着时照清单那份(连设置项里的也算),不被代码交的那份盖掉", async () => {
 		await plant("douyin", "export function activate() {}", {
-			apiVersion: 2,
+			apiVersion: 3,
 			provides: undefined,
 			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
 			contributes: {
 				push: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-					connection: {
-						fields: [{ key: "token", type: "string", label: "令牌", secret: true, required: true }],
-					},
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#fe2c55",
+					settingsFields: [
+						{ key: "token", type: "string", label: "令牌", secret: true, required: true },
+					],
 				},
 			},
 		});
@@ -1204,8 +1212,8 @@ describe("重扫(装 / 卸不必重启)", () => {
 					name: "bridge",
 					description: "测试用",
 					version: "1.0.0",
-					apiVersion: 2,
-					contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+					apiVersion: 3,
+					contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 				}),
 			);
 			halfWritten();

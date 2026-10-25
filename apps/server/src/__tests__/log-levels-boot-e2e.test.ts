@@ -144,8 +144,8 @@ describe("日志等级表接在开机路径上", () => {
 				name: "日志探针",
 				description: "测试用",
 				version: "1.0.0",
-				apiVersion: 2,
-				contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+				apiVersion: 3,
+				contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 			}),
 		);
 		// 把拓展拿到的 ctx.logger 留在全局上,好在测试里往里写。

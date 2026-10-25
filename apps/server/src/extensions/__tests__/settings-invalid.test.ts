@@ -36,13 +36,13 @@ import { type LoadedExtensions, loadExtensions } from "../loader.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
-/** 照清单 v2 写的一个订阅源:一格间隔、一格接入列表(标题是名字)。 */
+/** 照清单 v3 写的一个订阅源:一格间隔、一格接入列表(标题是名字)。 */
 const MANIFEST = {
 	id: "douyin",
 	name: "抖音订阅",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{ key: "interval", type: "number", label: "间隔", min: 30, max: 600, default: 60 },
@@ -61,8 +61,10 @@ const MANIFEST = {
 	},
 	contributes: {
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-			events: ["post"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
+			supportedFeatures: ["post"],
 		},
 	},
 };
@@ -297,7 +299,7 @@ describe("开机时存着的设置就过不了它自己的 zod", () => {
 });
 
 describe("清单声明了设置项,activate 里就得交 zod(决策 35)", () => {
-	it("v2 一份都没交 → 按加载失败算,说清要调 ctx.settings(schema)", async () => {
+	it("清单有设置项但一份都没交 → 按加载失败算,说清要调 ctx.settings(schema)", async () => {
 		const h = await boot({ activate: (ctx) => void ctx.setInterval(() => {}, 1000) });
 		expect(h.entry()?.state).toBe("failed");
 		expect(h.entry()?.detail).toContain("ctx.settings(schema)");
@@ -305,7 +307,7 @@ describe("清单声明了设置项,activate 里就得交 zod(决策 35)", () => 
 		await h.loaded.dispose();
 	});
 
-	it("v2 清单里没声明设置项 → 不交也照常跑", async () => {
+	it("清单里没声明设置项 → 不交也照常跑", async () => {
 		const { settings: _dropped, ...bare } = MANIFEST;
 		const h = await boot({ manifest: bare, activate: () => {} });
 		expect(h.entry()?.state).toBe("running");

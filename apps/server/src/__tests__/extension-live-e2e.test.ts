@@ -112,12 +112,14 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 				name: "在播探针",
 				description: "按一下动作钮报一条直播",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				actions: ["report.liveStart", "report.liveEnd", "report.liveStatus"],
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["liveStart", "liveEnd"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["liveStart", "liveStreaming", "liveEnd"],
 					},
 				},
 			}),

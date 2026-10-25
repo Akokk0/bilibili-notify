@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
+	EXTENSION_SOURCE_FEATURES,
 	LIST_ITEM_ID_KEY,
 	RESERVED_EXTENSION_IDS,
 } from "../constants";
@@ -29,8 +30,8 @@ export {
  *   要过高小号的拓展就会被新 BN 错拒。
  * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
  *
- * 现在:只认 v2(把静态声明搬进清单的那份),v2 还没发版,里面现有的一切都算 0 号。第 1 版
- * (外观与配置项写在代码里)的退路已删,它的清单走「版本太旧」那条不兼容的路。
+ * 现在:只认 v3(第 3 版清单),里面的现有能力都算 0 号。第 1、2 版的退路已删,它们的清单
+ * 走「版本太旧」那条不兼容的路。
  */
 export interface ExtensionApiRange {
 	readonly min: number;
@@ -38,8 +39,8 @@ export interface ExtensionApiRange {
 	readonly revision: number;
 }
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
-	min: 2,
-	current: 2,
+	min: 3,
+	current: 3,
 	revision: 0,
 });
 
@@ -68,7 +69,7 @@ export function apiVersionAccepted(
 	return tierAccepted(requires.apiVersion, range) && (requires.apiRevision ?? 0) <= range.revision;
 }
 
-/** 契约小号那一格:非负整数。清单 v2 与市场索引共用这一条。 */
+/** 契约小号那一格:非负整数。清单 v3 与市场索引共用这一条。 */
 export const ApiRevisionSchema = z.number().int().nonnegative();
 
 /**
@@ -211,7 +212,7 @@ export const ExtensionVersionSchema = z.string().regex(
  * **它要在代码跑起来之前就把话说全**:面板列出「装了但没启用」的拓展、执行之前判兼容、
  * 失败记账拿得到身份,这三件事都发生在 `import()` 之前(ADR-0012 决策 8)。所以清单里不放
  * 任何「要跑一下才知道」的东西 —— 而表单声明、外观、开哪一口**是静态数据**,从来不属于
- * 那一类:v2 把它们全搬进了清单(ADR-0019 决策 16),代码那边只剩行为与 zod 校验。
+ * 那一类:v3 把它们全搬进了清单(ADR-0019 决策 16),代码那边只剩行为与 zod 校验。
  *
  * 读法固定是**先单读 `apiVersion`,再按那一档的格式校验其余**({@link parseExtensionManifest})
  * —— 以后格式再变,旧宿主说的是「版本不合」,而不是「清单读不了」。
@@ -240,7 +241,7 @@ const identityShape = {
 const ExtensionIdentitySchema = z.object(identityShape);
 export type ExtensionIdentity = z.infer<typeof ExtensionIdentitySchema>;
 
-// ---- v2 的积木 -----------------------------------------------------------------------
+// ---- v3 的积木 -----------------------------------------------------------------------
 
 /**
  * 设置项的键 —— 值落在 `settings[key]` / `config[key]`,面板还拿它拼表单路径。
@@ -487,10 +488,6 @@ export type ExtensionManifestField = z.infer<typeof FieldSchema>;
 const SettingsSchema = z.strictObject({
 	fields: z.array(FieldSchema).max(64).superRefine(checkFieldList),
 });
-const ConnectionSchema = z.strictObject({
-	fields: z.array(ScalarFieldSchema).max(64).superRefine(checkFieldList),
-});
-
 /**
  * 颜色进样式,而清单来自第三方 —— 只收 hex,别的写法(`url(...)`、带分号的)一律拒。
  */
@@ -506,44 +503,35 @@ const displayShape = {
 	shortLabel: z.string().min(1).max(EXTENSION_SHORT_LABEL_MAX_CHARS),
 	color: HexColorSchema,
 };
-const PushDisplaySchema = z.strictObject(displayShape);
 const ShortNounSchema = z
 	.string()
 	.min(1)
 	.max(EXTENSION_SHORT_LABEL_MAX_CHARS)
 	.refine((value) => value.trim() !== "");
-const SubscriptionDisplaySchema = z.strictObject({
-	...displayShape,
-	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
-	postNoun: ShortNounSchema.optional(),
-	/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
-	externalIdNoun: ShortNounSchema.optional(),
-	/**
-	 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
-	 * 链接」。不给就用通用说法。
-	 */
-	lookupPlaceholder: z.string().min(1).max(EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS).optional(),
-	/**
-	 * 外部 id 长什么样(3b-58):正则的源码字符串,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立
-	 * 校验。编译不过 / 超长 / 疑似灾难性回溯的在这里就拒 —— 清单读不了、拓展装不上,不留到每次
-	 * 新建订阅时才炸(长度上限与疑似回溯的判法同内容过滤的 blockRegex,同一道 `checkUserRegex`)。
-	 */
-	externalIdRegex: z
-		.string()
-		.min(1)
-		.superRefine((src, ctx) => {
-			const r = checkUserRegex(src);
-			if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
-		})
-		.optional(),
-});
-
 /**
- * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到
- * 特性键 `post / liveStart / liveEnd`(`SUBSCRIPTION_EVENT_FEATURES`)。配置弹层只列这个源报的那几种。
+ * 订阅源声明的特性(ADR-0019 决策 4 / 5):配置弹层只列这几种,上报没声明的那一种宿主不收。
+ *
+ * 周期「正在直播」(`liveStreaming`)要**同时声明开播与下播**(⑬d):只报开播的源没有下播事件把这一场
+ * 收掉。声明了它还得实现 `fetchLiveStatus`,那一条在登记时核(宿主的 `assertSourceDef`)。
  */
-export const SUBSCRIPTION_EVENT_KINDS = ["post", "liveStart", "liveEnd"] as const;
-export type SubscriptionEventKind = (typeof SUBSCRIPTION_EVENT_KINDS)[number];
+const SupportedFeaturesSchema = z
+	.array(z.enum(EXTENSION_SOURCE_FEATURES))
+	.min(1)
+	.refine(
+		(features) => new Set(features).size === features.length,
+		"supportedFeatures must not repeat a feature",
+	)
+	.superRefine((features, ctx) => {
+		if (
+			features.includes("liveStreaming") &&
+			(!features.includes("liveStart") || !features.includes("liveEnd"))
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message: "liveStreaming also requires liveStart and liveEnd",
+			});
+		}
+	});
 
 /**
  * 包内路径:相对拓展根、不带 `./`、不许 `..` —— 每一段都得以字母或数字开头,
@@ -562,18 +550,40 @@ const ContributesSchema = z
 	.strictObject({
 		push: z
 			.strictObject({
-				display: PushDisplaySchema,
+				...displayShape,
 				/** 主人新建连接时要填的那几栏。桥那种「连接是挑出来的」可以不写。 */
-				connection: ConnectionSchema.optional(),
+				settingsFields: z.array(ScalarFieldSchema).max(64).superRefine(checkFieldList).optional(),
 			})
 			.optional(),
 		subscription: z
 			.strictObject({
-				display: SubscriptionDisplaySchema,
-				events: z
-					.array(z.enum(SUBSCRIPTION_EVENT_KINDS))
+				...displayShape,
+				shortLabel: displayShape.shortLabel.optional(),
+				color: displayShape.color.optional(),
+				/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
+				postNoun: ShortNounSchema.optional(),
+				/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
+				externalIdNoun: ShortNounSchema.optional(),
+				/**
+				 * 新建订阅时输入框里那句提示(ADR-0019 决策 51):B 站是「UID 或名字」,抖音大概是「粘主页
+				 * 链接」。不给就用通用说法。
+				 */
+				lookupPlaceholder: z.string().min(1).max(EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS).optional(),
+				/**
+				 * 外部 id 长什么样(3b-58):正则的源码字符串,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立
+				 * 校验。编译不过 / 超长 / 疑似灾难性回溯的在这里就拒 —— 清单读不了、拓展装不上,不留到每次
+				 * 新建订阅时才炸(长度上限与疑似回溯的判法同内容过滤的 blockRegex,同一道 `checkUserRegex`)。
+				 */
+				externalIdRegex: z
+					.string()
 					.min(1)
-					.refine((events) => new Set(events).size === events.length, "事件种类写重复了"),
+					.superRefine((src, ctx) => {
+						const r = checkUserRegex(src);
+						if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
+					})
+					.optional(),
+				/** 这个源能报的几种特性,见 {@link SupportedFeaturesSchema}。 */
+				supportedFeatures: SupportedFeaturesSchema,
 				/** 自带的卡片皮肤目录(ADR-0019 决策 13)。 */
 				cardSkin: PackagePathSchema.optional(),
 			})
@@ -599,7 +609,7 @@ export const ActionNameSchema = z
 	.refine((name) => !isPrototypeName(name), prototypeNameMessage("动作名"));
 
 /**
- * v2:静态声明全住清单(ADR-0019 决策 16)。
+ * v3:静态声明全住清单(ADR-0019 决策 16)。
  *
  * **严格**:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明 ——
  * 面板上少了一栏,没人报错。格式要长新东西,跟着抬 {@link EXTENSION_API_RANGE} 的 `revision`
@@ -608,11 +618,11 @@ export const ActionNameSchema = z
  * 导出只为给契约形状的守卫登记(`extension-contract-shape.test.ts`);读清单一律走
  * {@link parseExtensionManifest}。
  */
-export const ExtensionManifestV2Schema = z.strictObject({
+export const ExtensionManifestV3Schema = z.strictObject({
 	/** 编辑器补全用,宿主不读。 */
 	$schema: z.string().optional(),
 	...identityShape,
-	apiVersion: z.literal(2),
+	apiVersion: z.literal(3),
 	/** 要的契约小号(ADR-0019 决策 59)。不写 = 0。 */
 	apiRevision: ApiRevisionSchema.optional(),
 	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
@@ -638,14 +648,14 @@ export const ExtensionManifestV2Schema = z.strictObject({
 	/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
 	contributes: ContributesSchema,
 });
-export type ExtensionManifestV2 = z.infer<typeof ExtensionManifestV2Schema>;
+export type ExtensionManifestV3 = z.infer<typeof ExtensionManifestV3Schema>;
 
-/** 宿主现在读得了的清单(区间里只剩 v2 一档)。 */
-export type ExtensionManifest = ExtensionManifestV2;
+/** 宿主现在读得了的清单(区间里只剩 v3 一档)。 */
+export type ExtensionManifest = ExtensionManifestV3;
 
 /** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */
 const MANIFEST_SCHEMAS: Readonly<Record<number, z.ZodType<ExtensionManifest>>> = {
-	2: ExtensionManifestV2Schema,
+	3: ExtensionManifestV3Schema,
 };
 
 /** 只读这一格 —— 其余部分长什么样要看它。 */
@@ -750,7 +760,7 @@ export function manifestSecretKeys(manifest: ExtensionManifest): string[] {
 		}
 	};
 	collect(manifest.settings?.fields ?? []);
-	collect(manifest.contributes.push?.connection?.fields ?? []);
+	collect(manifest.contributes.push?.settingsFields ?? []);
 	return [...keys].sort();
 }
 

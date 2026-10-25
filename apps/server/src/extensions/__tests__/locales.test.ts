@@ -27,7 +27,7 @@ const MANIFEST: ExtensionManifest = {
 	name: "原名",
 	description: "原说明",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{ key: "token", type: "string", label: "原令牌", description: "原令牌说明" },
@@ -43,7 +43,7 @@ const MANIFEST: ExtensionManifest = {
 		],
 	},
 	contributes: {
-		push: { display: { label: "原推送", shortLabel: "原", color: "#000000" } },
+		push: { label: "原推送", shortLabel: "原", color: "#000000" },
 	},
 };
 
@@ -171,7 +171,7 @@ describe("盖清单", () => {
 						kind: { label: "Kind", options: { "qq.official": { label: "QQ official" } } },
 					},
 				},
-				contributes: { push: { display: { shortLabel: "D" } } },
+				contributes: { push: { shortLabel: "D" } },
 			},
 		});
 		const locales = await readExtensionLocales(dir, MANIFEST);
@@ -187,9 +187,9 @@ describe("盖清单", () => {
 			"QQ official",
 			"原平实",
 		]);
-		expect(out.contributes.push?.display.shortLabel).toBe("D");
+		expect(out.contributes.push?.shortLabel).toBe("D");
 		// 不可译的格不动
-		expect(out.contributes.push?.display.color).toBe("#000000");
+		expect(out.contributes.push?.color).toBe("#000000");
 		// 原对象没被改
 		expect(MANIFEST.name).toBe("原名");
 	});
@@ -211,25 +211,23 @@ describe("盖清单", () => {
 			contributes: {
 				...MANIFEST.contributes,
 				subscription: {
-					display: {
-						label: "订阅",
-						shortLabel: "订",
-						color: "#fe2c55",
-						externalIdNoun: "账号",
-					},
-					events: ["post" as const],
+					label: "订阅",
+					shortLabel: "订",
+					color: "#fe2c55",
+					externalIdNoun: "账号",
+					supportedFeatures: ["post" as const],
 				},
 			},
 		} as ExtensionManifest;
 		await put("en.json", {
 			$manifest: {
-				contributes: { subscription: { display: { externalIdNoun: "account" } } },
+				contributes: { subscription: { externalIdNoun: "account" } },
 			},
 		});
 		const locales = await readExtensionLocales(dir, manifest);
 		expect(locales.issues).toEqual([]);
-		expect(
-			localizeManifest(manifest, locales, "en").contributes.subscription?.display.externalIdNoun,
-		).toBe("account");
+		expect(localizeManifest(manifest, locales, "en").contributes.subscription?.externalIdNoun).toBe(
+			"account",
+		);
 	});
 });

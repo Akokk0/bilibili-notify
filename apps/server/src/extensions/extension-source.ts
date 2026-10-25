@@ -242,8 +242,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	if (!subscription) {
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
-	const declared: ReadonlySet<string> = new Set(subscription.events);
-	const { label, postNoun, externalIdNoun, externalIdRegex } = subscription.display;
+	const declared: ReadonlySet<string> = new Set(subscription.supportedFeatures);
+	const { label, postNoun, externalIdNoun, externalIdRegex } = subscription;
 	const descriptor: SourceDescriptor = {
 		label,
 		...(postNoun === undefined ? {} : { postNoun }),
@@ -301,18 +301,20 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 	function undeclaredReason(kind: ExtensionReportKind, raw: unknown): string | undefined {
 		if (kind === "profile") return undefined;
 		if (kind === "post") {
-			return declared.has("post") ? undefined : t("extension.report.undeclared", { event: "post" });
+			return declared.has("post")
+				? undefined
+				: t("extension.report.undeclared", { feature: "post" });
 		}
 		const signal = isRecord(raw) ? raw.kind : undefined;
 		if (signal === "start") {
 			return declared.has("liveStart")
 				? undefined
-				: t("extension.report.undeclared", { event: "liveStart" });
+				: t("extension.report.undeclared", { feature: "liveStart" });
 		}
 		if (signal === "end") {
 			return declared.has("liveEnd")
 				? undefined
-				: t("extension.report.undeclared", { event: "liveEnd" });
+				: t("extension.report.undeclared", { feature: "liveEnd" });
 		}
 		if (signal === "status") {
 			return declared.has("liveStart") || declared.has("liveEnd")

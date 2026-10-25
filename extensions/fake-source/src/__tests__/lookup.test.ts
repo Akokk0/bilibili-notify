@@ -105,7 +105,7 @@ describe("四个魔法词", () => {
 		const manifest = JSON.parse(
 			await readFile(new URL("../../extension.json", import.meta.url), "utf8"),
 		);
-		const placeholder: string = manifest.contributes.subscription.display.lookupPlaceholder;
+		const placeholder: string = manifest.contributes.subscription.lookupPlaceholder;
 		expect(placeholder.length).toBeLessThanOrEqual(40);
 		for (const word of ["空", "慢", "坏", "乱"]) expect(placeholder).toContain(word);
 	});

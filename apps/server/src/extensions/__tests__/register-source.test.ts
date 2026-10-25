@@ -44,11 +44,13 @@ const SOURCE_MANIFEST: ExtensionManifest = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	contributes: {
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-			events: ["post", "liveStart", "liveEnd"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
+			supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 		},
 	},
 };
@@ -58,9 +60,27 @@ const PUSH_ONLY_MANIFEST: ExtensionManifest = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
-	contributes: { push: { display: { label: "抖", shortLabel: "抖", color: "#fe2c55" } } },
+	apiVersion: 3,
+	contributes: { push: { label: "抖", shortLabel: "抖", color: "#fe2c55" } },
 };
+
+function sourceManifest(
+	supportedFeatures: readonly ("post" | "liveStart" | "liveStreaming" | "liveEnd")[],
+): ExtensionManifest {
+	return {
+		id: "douyin",
+		name: "抖音拓展",
+		description: "测试用",
+		version: "1.0.0",
+		apiVersion: 3,
+		contributes: {
+			subscription: {
+				label: "抖音",
+				supportedFeatures,
+			},
+		},
+	} as unknown as ExtensionManifest;
+}
 
 type RegisterEntry = Parameters<EnginesRuntime["registerSource"]>[0];
 
@@ -207,14 +227,29 @@ describe("ctx.registerSource:登记前的规矩", () => {
 				...SOURCE_MANIFEST,
 				contributes: {
 					subscription: {
-						display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-						events: ["post", "liveStart"],
+						label: "抖音",
+						shortLabel: "抖",
+						color: "#fe2c55",
+						supportedFeatures: ["post", "liveStart"],
 					},
 				},
 			},
 		});
 		h.ctx.registerSource(def({ fetchLiveStatus: undefined }));
 		expect(h.record.entries).toHaveLength(1);
+	});
+
+	it("只在 supportedFeatures 声明 liveStreaming 才要求 fetchLiveStatus", () => {
+		const periodic = harness({
+			manifest: sourceManifest(["post", "liveStart", "liveStreaming", "liveEnd"]),
+		});
+		expect(() => periodic.ctx.registerSource(def({ fetchLiveStatus: undefined }))).toThrow(
+			/fetchLiveStatus/,
+		);
+
+		const eventOnly = harness({ manifest: sourceManifest(["post", "liveStart", "liveEnd"]) });
+		expect(() => eventOnly.ctx.registerSource(def({ fetchLiveStatus: undefined }))).not.toThrow();
+		expect(eventOnly.record.entries).toHaveLength(1);
 	});
 
 	it("宿主没接来源登记表:抛(写清是宿主没接,而不是拓展写错)", () => {

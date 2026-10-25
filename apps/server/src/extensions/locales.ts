@@ -217,7 +217,7 @@ function localizeFields<F extends ExtensionManifestField>(
 	);
 }
 
-/** 外观里给人看的四格(推送口只有前两格)。 */
+/** 外观里给人看的五格(推送口只有前两格)。 */
 interface DisplayTranslation {
 	label?: string;
 	shortLabel?: string;
@@ -235,7 +235,7 @@ const DISPLAY_TEXT_KEYS = [
 ] as const;
 
 /** 外观里几格给人看的字:链上有就用,没有留原字(原清单没写的可选格,译文给了也一并盖上)。 */
-function localizeDisplay<D extends { label: string; shortLabel: string }>(
+function localizeDisplay<D extends { label: string }>(
 	display: D,
 	layers: Layers<DisplayTranslation>,
 ): D {
@@ -278,20 +278,16 @@ export function localizeManifest(
 		...(push
 			? {
 					push: {
-						...push,
-						display: localizeDisplay(
-							push.display,
-							layers.map((layer) => layer.contributes?.push?.display),
+						...localizeDisplay(
+							push,
+							layers.map((layer) => layer.contributes?.push),
 						),
-						...(push.connection
+						...(push.settingsFields
 							? {
-									connection: {
-										...push.connection,
-										fields: localizeFields(
-											push.connection.fields,
-											layers.map((layer) => layer.contributes?.push?.connection?.fields),
-										),
-									},
+									settingsFields: localizeFields(
+										push.settingsFields,
+										layers.map((layer) => layer.contributes?.push?.settingsFields),
+									),
 								}
 							: {}),
 					},
@@ -300,10 +296,9 @@ export function localizeManifest(
 		...(subscription
 			? {
 					subscription: {
-						...subscription,
-						display: localizeDisplay(
-							subscription.display,
-							layers.map((layer) => layer.contributes?.subscription?.display),
+						...localizeDisplay(
+							subscription,
+							layers.map((layer) => layer.contributes?.subscription),
 						),
 					},
 				}

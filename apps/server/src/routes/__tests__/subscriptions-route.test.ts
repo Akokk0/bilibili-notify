@@ -523,11 +523,13 @@ describe("/api/subscriptions × 拓展订阅", () => {
 							name: "抖音订阅",
 							description: "测试用",
 							version: "0.1.0",
-							apiVersion: 2,
+							apiVersion: 3,
 							contributes: {
 								subscription: {
-									display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-									events: ["post"],
+									label: "抖音",
+									shortLabel: "抖",
+									color: "#fe2c55",
+									supportedFeatures: ["post"],
 								},
 							},
 						},

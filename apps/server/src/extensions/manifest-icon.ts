@@ -141,7 +141,7 @@ export function safeExtensionIcon(icon: string | undefined): string | undefined 
 
 /**
  * 清单里会**以内联标记**进 DOM 的图标过一遍 —— 只有拓展自己那一枚(它要吃 `currentColor`,
- * 所以只能内联)。v2 设置项里选项的图标是图片 data URL,面板当 `<img>` 画(ADR-0019 决策 31),
+ * 所以只能内联)。v3 设置项里选项的图标是图片 data URL,面板当 `<img>` 画(ADR-0019 决策 31),
  * 清单格式那一步已经把它限定成图片,不在这道门里。
  */
 export function safeManifestIcons(manifest: ExtensionManifest): ExtensionManifest {

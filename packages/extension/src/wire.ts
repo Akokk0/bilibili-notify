@@ -111,7 +111,7 @@ export interface PlatformAdapterDescriptor {
  * 是哪个平台的。**有它不等于拓展在场**:要它在场的(解析门)另看运行状态。
  *
  * 🔴 这是清单订阅段那份 zod 的**手写镜像**(去掉装包那头的 `cardSkin`),由宿主那头的类型断言钉住
- * (`apps/server/src/extensions/subscription-shape-pin.ts`)。
+ * (`apps/server/src/extensions/manifest-shape-pin.ts`)。
  */
 export interface ExtensionSubscriptionView {
 	/** 全名:平台选择那一排的名字。 */

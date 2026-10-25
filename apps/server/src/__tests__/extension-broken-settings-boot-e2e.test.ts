@@ -27,11 +27,13 @@ function manifestOf(id: string): string {
 		name: id,
 		description: "测试用",
 		version: "0.1.0",
-		apiVersion: 2,
+		apiVersion: 3,
 		contributes: {
 			subscription: {
-				display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-				events: ["post"],
+				label: "探针",
+				shortLabel: "探",
+				color: "#3366ff",
+				supportedFeatures: ["post"],
 			},
 		},
 	});

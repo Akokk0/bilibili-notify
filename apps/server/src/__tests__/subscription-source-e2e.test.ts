@@ -132,11 +132,13 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 				name: "订阅源探针",
 				description: "把自己读到的订阅从解析门念出来",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["post"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["post"],
 					},
 				},
 			}),

@@ -7,7 +7,7 @@
  * 这里的每一条新建都会被判成「没装」。删订阅走真的那条路:DELETE → config-changed → 开机那一步的孤儿清理
  * (`pruneOrphanSubscriptionState`)丢掉资料缓存里的这一条 → 头像不再有人引用 → 图库清扫收走。
  *
- *  - 宿主核 `extensionId`:装着、v2、清单开了订阅源那一口;**没在跑也行**(订阅是数据,决策 10)。
+ *  - 宿主核 `extensionId`:装着、清单开了订阅源那一口;**没在跑也行**(订阅是数据,决策 10)。
  *  - 同一个身份(来源 + 外部 id 两格都相等)只许一条(决策 50:身份判重)→ 409。
  *  - 候选带来的资料(名字 / 头像 / 粉丝)种进资料缓存:请求里头像是 `cachedProfile.avatarUrl`(位图 data URL,
  *    它是个网址),存进图库后资料里是图库引用 `avatar`。
@@ -61,18 +61,21 @@ function sourceEntry(
 			name: `${id} 订阅源`,
 			description: "一句话说明",
 			version: "0.1.0",
-			apiVersion: 2,
+			apiVersion: 3,
 			contributes: {
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55", ...display },
-					events: ["post"],
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#fe2c55",
+					...display,
+					supportedFeatures: ["post"],
 				},
 			},
 		},
 	};
 }
 
-/** v2,只开了推送那一口。 */
+/** 只开了推送那一口。 */
 const PUSH_ONLY: ExtensionEntry = {
 	id: "pusher",
 	dir: "/data/extensions/pusher",
@@ -82,8 +85,8 @@ const PUSH_ONLY: ExtensionEntry = {
 		name: "只推送",
 		description: "一句话说明",
 		version: "0.1.0",
-		apiVersion: 2,
-		contributes: { push: { display: { label: "推", shortLabel: "推", color: "#123456" } } },
+		apiVersion: 3,
+		contributes: { push: { label: "推", shortLabel: "推", color: "#123456" } },
 	},
 };
 

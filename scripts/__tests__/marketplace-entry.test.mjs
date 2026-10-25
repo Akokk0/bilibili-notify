@@ -13,7 +13,7 @@ const manifest = {
 	name: "机器人框架桥接",
 	description: "把 koishi / AstrBot 里配好的机器人借给 BN 用。",
 	version: "0.0.2",
-	apiVersion: 1,
+	apiVersion: 3,
 	provides: ["push"],
 };
 
@@ -46,8 +46,8 @@ describe("marketplaceEntryOf", () => {
 
 	/** 契约小号(ADR-0019 决策 59):市场按「档位 + 小号」标灰,索引里就得有这一格。 */
 	it("清单写了 apiRevision 就抄进条目;没写就不带这一格", () => {
-		const entry = marketplaceEntryOf({ ...manifest, apiVersion: 2, apiRevision: 1 }, release);
-		expect(entry).toMatchObject({ apiVersion: 2, apiRevision: 1 });
+		const entry = marketplaceEntryOf({ ...manifest, apiVersion: 3, apiRevision: 1 }, release);
+		expect(entry).toMatchObject({ apiVersion: 3, apiRevision: 1 });
 		expect(() => assertEntryShape(entry)).not.toThrow();
 		expect("apiRevision" in JSON.parse(JSON.stringify(marketplaceEntryOf(manifest, release)))).toBe(
 			false,

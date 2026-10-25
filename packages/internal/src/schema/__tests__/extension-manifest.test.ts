@@ -8,7 +8,7 @@
  *
  * 所以这份 schema 校验的是**一段谁都没执行过的 JSON**,它必须自己把话说全。
  *
- * 清单的格式按档位分(ADR-0019 决策 16 / 18):v2 把静态声明全搬进清单(`settings` /
+ * 清单的格式按档位分(ADR-0019 决策 16 / 18):v3 把静态声明全搬进清单(`settings` /
  * `actions` / `contributes`)。宿主认一个区间,**先单读 `apiVersion`,再按那一档的格式
  * 校验其余**。第 1 版(声明写在代码里、清单只报 `provides`)的退路已删,它的清单现在是
  * 「版本太旧、不兼容」。
@@ -50,26 +50,36 @@ const DISPLAY = { label: "抖音", shortLabel: "抖", color: "#fe2c55" };
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-function v2(over: Record<string, unknown> = {}): Record<string, unknown> {
+function v3(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "demo-ext",
 		name: "抖音订阅",
 		description: "盯着抖音作者的新作品与开播。",
 		version: "0.1.0",
-		apiVersion: 2,
-		contributes: { subscription: { display: DISPLAY, events: ["post"] } },
+		apiVersion: 3,
+		contributes: { subscription: { ...DISPLAY, supportedFeatures: ["post"] } },
 		...over,
 	};
 }
 
 /** 只改 `contributes.subscription` 里的几格。 */
 function sub(over: Record<string, unknown>): Record<string, unknown> {
-	return v2({ contributes: { subscription: { display: DISPLAY, events: ["post"], ...over } } });
+	const { display, ...fields } = over;
+	return v3({
+		contributes: {
+			subscription: {
+				...DISPLAY,
+				supportedFeatures: ["post"],
+				...(typeof display === "object" && display !== null ? display : {}),
+				...fields,
+			},
+		},
+	});
 }
 
 /** 只摆一格设置项。 */
 function withField(field: Record<string, unknown>): Record<string, unknown> {
-	return v2({ settings: { fields: [field] } });
+	return v3({ settings: { fields: [field] } });
 }
 
 function ok(raw: unknown, range?: ExtensionApiRange): ExtensionManifest {
@@ -98,8 +108,8 @@ function incompatible(
 }
 
 describe("parseExtensionManifest —— 档位区间", () => {
-	it("宿主这一版只认 v2(第 1 版的退路已删),契约小号是 0(v2 还没发版,里面现有的一切都算 0 号)", () => {
-		expect(EXTENSION_API_RANGE).toEqual({ min: 2, current: 2, revision: 0 });
+	it("宿主这一版只认 v3(第 2 版的退路已删),契约小号是 0", () => {
+		expect(EXTENSION_API_RANGE).toEqual({ min: 3, current: 3, revision: 0 });
 	});
 
 	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
@@ -124,18 +134,18 @@ describe("parseExtensionManifest —— 档位区间", () => {
 		expect(apiVersionAccepted({ apiVersion: 3, apiRevision: 0 }, range)).toBe(false);
 	});
 
-	it("v2 最小清单:开哪一口由 contributes 的键推出来,不再单写 provides", () => {
-		const m = ok(v2());
-		expect(m.apiVersion).toBe(2);
+	it("v3 最小清单:开哪一口由 contributes 的键推出来,不再单写 provides", () => {
+		const m = ok(v3());
+		expect(m.apiVersion).toBe(3);
 		expect(manifestProvides(m)).toEqual(["subscription"]);
 	});
 
-	it("v2 两口都开时,推出来的次序是固定的(push 在前),不随清单里的键序走", () => {
+	it("v3 两口都开时,推出来的次序是固定的(push 在前),不随清单里的键序走", () => {
 		const m = ok(
-			v2({
+			v3({
 				contributes: {
-					subscription: { display: DISPLAY, events: ["post"] },
-					push: { display: DISPLAY },
+					subscription: { ...DISPLAY, supportedFeatures: ["post"] },
+					push: DISPLAY,
 				},
 			}),
 		);
@@ -151,7 +161,7 @@ describe("parseExtensionManifest —— 档位区间", () => {
 			description: "盯着抖音作者的新作品与开播。",
 			version: "0.1.0",
 			icon: '<svg viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
-			apiVersion: 2,
+			apiVersion: 3,
 			settings: {
 				fields: [
 					{
@@ -167,31 +177,129 @@ describe("parseExtensionManifest —— 档位区间", () => {
 			actions: ["login.start"],
 			contributes: {
 				subscription: {
-					display: { label: "抖音", shortLabel: "抖", color: "#fe2c55", postNoun: "作品" },
-					events: ["post", "liveStart", "liveEnd"],
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#fe2c55",
+					postNoun: "作品",
+					supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 					cardSkin: "card-skin",
 				},
 			},
 		});
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
 		expect(m.settings?.fields[0]).toMatchObject({ key: "cookie", type: "string", secret: true });
-		expect(m.contributes.subscription?.display.postNoun).toBe("作品");
+		expect(m.contributes.subscription?.postNoun).toBe("作品");
 	});
 
-	it("推送源那一段:外观 + 连接配置项;桥那种「连接是挑出来的」可以不写 connection", () => {
+	it("推送源那一段:外观与连接配置项摊平;桥那种「连接是挑出来的」可以不写 settingsFields", () => {
 		const withConnection = ok(
-			v2({
+			v3({
 				contributes: {
 					push: {
-						display: DISPLAY,
-						connection: { fields: [{ key: "endpoint", type: "string", label: "地址" }] },
+						...DISPLAY,
+						settingsFields: [{ key: "endpoint", type: "string", label: "地址" }],
 					},
 				},
 			}),
 		);
-		if (withConnection.apiVersion !== 2) throw new Error("应该是 v2");
-		expect(withConnection.contributes.push?.connection?.fields).toHaveLength(1);
-		expect(() => ok(v2({ contributes: { push: { display: DISPLAY } } }))).not.toThrow();
+		expect(withConnection.contributes.push?.settingsFields).toHaveLength(1);
+		expect(() => ok(v3({ contributes: { push: DISPLAY } }))).not.toThrow();
+	});
+});
+
+describe("parseExtensionManifest —— 第 3 版清单", () => {
+	it("第 2 版清单不兼容,回它要的档位与身份", () => {
+		const r = incompatible(v3({ apiVersion: 2 }));
+		expect(r.requires).toEqual({ apiVersion: 2 });
+		expect(r.identity).toMatchObject({ id: "demo-ext", version: "0.1.0" });
+	});
+
+	it("订阅段摊平,清单可同时开订阅与推送两口", () => {
+		const m = ok(
+			v3({
+				contributes: {
+					subscription: {
+						...DISPLAY,
+						supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
+					},
+					push: { label: "抖音推送", shortLabel: "推", color: "#fe2c55" },
+				},
+			}),
+		);
+		expect(m.apiVersion).toBe(3);
+		expect(m.contributes.subscription?.label).toBe("抖音");
+		expect(m.contributes.subscription?.supportedFeatures).toEqual([
+			"post",
+			"liveStart",
+			"liveStreaming",
+			"liveEnd",
+		]);
+		expect(manifestProvides(m)).toEqual(["push", "subscription"]);
+	});
+
+	it("旧的嵌套 display / events / connection 读不了,并点名旧格", () => {
+		const issues = unreadable(
+			v3({
+				contributes: {
+					subscription: {
+						display: DISPLAY,
+						events: ["post"],
+					},
+					push: {
+						display: DISPLAY,
+						connection: { fields: [] },
+					},
+				},
+			}),
+		).join("\n");
+		for (const [path, field] of [
+			["contributes.subscription", "display"],
+			["contributes.subscription", "events"],
+			["contributes.push", "display"],
+			["contributes.push", "connection"],
+		]) {
+			const line = issues.split("\n").find((one) => one.startsWith(`${path}:`));
+			expect(line).toContain(`"${field}"`);
+		}
+	});
+
+	it.each([
+		["未知特性", ["viewerChat"], "supportedFeatures"],
+		["重复特性", ["post", "post"], "supportedFeatures"],
+		["周期直播缺开播", ["liveStreaming", "liveEnd"], "supportedFeatures"],
+		["周期直播缺下播", ["liveStreaming", "liveStart"], "supportedFeatures"],
+		["空特性表", [], "supportedFeatures"],
+	])("%s 读不了并点名 supportedFeatures", (_label, supportedFeatures, path) => {
+		const issues = unreadable(
+			v3({ contributes: { subscription: { ...DISPLAY, supportedFeatures } } }),
+		).join("\n");
+		expect(issues).toContain(path);
+	});
+
+	it("订阅段短名与颜色可缺;推送段的仍必填", () => {
+		expect(() =>
+			ok(v3({ contributes: { subscription: { label: "抖音", supportedFeatures: ["post"] } } })),
+		).not.toThrow();
+		unreadable(v3({ contributes: { push: { label: "抖音推送", color: "#fe2c55" } } }));
+	});
+
+	it("清单密钥键从推送段摊平的 settingsFields 收", () => {
+		const m = ok(
+			v3({
+				contributes: {
+					push: {
+						label: "抖音推送",
+						shortLabel: "推",
+						color: "#fe2c55",
+						settingsFields: [
+							{ key: "apiKey", type: "string", label: "密钥", secret: true },
+							{ key: "token", type: "string", label: "令牌", generate: true },
+						],
+					},
+				},
+			}),
+		);
+		expect(manifestSecretKeys(m)).toEqual(["apiKey", "token"]);
 	});
 });
 
@@ -204,14 +312,14 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 		const r = incompatible({
 			id: "future",
 			name: "未来的拓展",
-			description: "用的是 v3 的格式。",
+			description: "用的是 v4 的格式。",
 			version: "3.0.0",
-			apiVersion: 3,
+			apiVersion: 4,
 			contributes: { chat: { whatever: true } },
 			somethingNew: [1, 2, 3],
 		});
 		// 档位不合时不读小号 —— 那一档的格式我们可能根本不认识。
-		expect(r.requires).toEqual({ apiVersion: 3 });
+		expect(r.requires).toEqual({ apiVersion: 4 });
 		// 身份那几格**所有档位都读得出来** —— 面板照样能写出「××× 3.0.0 要更新的 BN」。
 		expect(r.identity).toMatchObject({ id: "future", name: "未来的拓展", version: "3.0.0" });
 	});
@@ -234,7 +342,7 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 	});
 
 	it("版本不合、身份那几格也坏了:读不了(那几格在哪一档都是坏的)", () => {
-		const issues = unreadable({ ...v2({ apiVersion: 9 }), id: "Bad Id" });
+		const issues = unreadable({ ...v3({ apiVersion: 9 }), id: "Bad Id" });
 		expect(issues.join("\n")).toContain("id");
 	});
 
@@ -244,7 +352,7 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 		["不是数", "2"],
 		["零", 0],
 	])("apiVersion %s —— 读不了,而且点名是 apiVersion", (_label, apiVersion) => {
-		const issues = unreadable(v2({ apiVersion }));
+		const issues = unreadable(v3({ apiVersion }));
 		expect(issues.join("\n")).toContain("apiVersion");
 	});
 
@@ -259,16 +367,16 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
  * BN 不够就与「档位不合」走同一条路 —— 装不上、不起、市场标灰。
  */
 describe("parseExtensionManifest —— 契约小号", () => {
-	const HOST = { min: 2, current: 2, revision: 0 };
+	const HOST = { min: 3, current: 3, revision: 0 };
 
-	it("v2 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
-		expect(ok(v2(), HOST).apiVersion).toBe(2);
-		expect(ok(v2({ apiRevision: 0 }), HOST).apiVersion).toBe(2);
+	it("v3 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
+		expect(ok(v3(), HOST).apiVersion).toBe(3);
+		expect(ok(v3({ apiRevision: 0 }), HOST).apiVersion).toBe(3);
 	});
 
 	it("要的小号比 BN 的高 → 不兼容(不是读不了),身份照样读得出", () => {
-		const r = incompatible(v2({ apiRevision: 1 }), HOST);
-		expect(r.requires).toEqual({ apiVersion: 2, apiRevision: 1 });
+		const r = incompatible(v3({ apiRevision: 1 }), HOST);
+		expect(r.requires).toEqual({ apiVersion: 3, apiRevision: 1 });
 		expect(r.identity).toMatchObject({ id: "demo-ext", version: "0.1.0" });
 	});
 
@@ -277,12 +385,12 @@ describe("parseExtensionManifest —— 契约小号", () => {
 	 * 格式挑出一串「不认识的键」,而真正的原因只有一条。
 	 */
 	it("小号高、其余有我们不认识的格 → 仍是不兼容", () => {
-		const r = incompatible(v2({ apiRevision: 1, contributes: { chat: {} }, brandNew: true }), HOST);
-		expect(r.requires).toEqual({ apiVersion: 2, apiRevision: 1 });
+		const r = incompatible(v3({ apiRevision: 1, contributes: { chat: {} }, brandNew: true }), HOST);
+		expect(r.requires).toEqual({ apiVersion: 3, apiRevision: 1 });
 	});
 
 	it("BN 的小号够就收", () => {
-		expect(ok(v2({ apiRevision: 3 }), { ...HOST, revision: 3 }).apiVersion).toBe(2);
+		expect(ok(v3({ apiRevision: 3 }), { ...HOST, revision: 3 }).apiVersion).toBe(3);
 	});
 
 	it.each([
@@ -291,7 +399,7 @@ describe("parseExtensionManifest —— 契约小号", () => {
 		["不是数", "1"],
 		["null", null],
 	])("apiRevision %s —— 读不了,而且点名是 apiRevision", (_label, apiRevision) => {
-		const issues = unreadable(v2({ apiRevision }), HOST);
+		const issues = unreadable(v3({ apiRevision }), HOST);
 		expect(issues.join("\n")).toContain("apiRevision");
 	});
 });
@@ -304,7 +412,7 @@ describe("parseExtensionManifest —— 契约小号", () => {
  * 而且必须**在清单校验这一步**拦住 —— 放过去之后每一处都得自己防一遍。
  */
 describe("身份那几格", () => {
-	const build = v2;
+	const build = v3;
 
 	it.each(["demo-ext", "douyin-source", "x2"])("id %s —— 收下", (id) => {
 		expect(ok(build({ id })).id).toBe(id);
@@ -347,20 +455,20 @@ describe("身份那几格", () => {
 });
 
 /**
- * v2 是**严格**的:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明
+ * v3 是**严格**的:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明
  * —— 面板上少了一栏,没人报错。格式要长新东西,跟着升 apiVersion(区间就是干这个的)。
  */
-describe("v2:严格", () => {
+describe("v3:严格", () => {
 	it("顶层多一个键 —— 读不了,而且点名那个键", () => {
-		expect(unreadable(v2({ setings: { fields: [] } })).join("\n")).toContain("setings");
+		expect(unreadable(v3({ setings: { fields: [] } })).join("\n")).toContain("setings");
 	});
 
-	it("v2 里还写 provides —— 读不了:它由 contributes 推出来,两处写会打架", () => {
-		expect(unreadable(v2({ provides: ["push"] })).join("\n")).toContain("provides");
+	it("v3 里还写 provides —— 读不了:它由 contributes 推出来,两处写会打架", () => {
+		expect(unreadable(v3({ provides: ["push"] })).join("\n")).toContain("provides");
 	});
 
 	it("`$schema` 是唯一额外允许的键(编辑器补全用)", () => {
-		expect(() => ok(v2({ $schema: "./extension.schema.json" }))).not.toThrow();
+		expect(() => ok(v3({ $schema: "./extension.schema.json" }))).not.toThrow();
 	});
 
 	it("设置项里多一个键 —— 读不了", () => {
@@ -368,15 +476,15 @@ describe("v2:严格", () => {
 	});
 
 	it("contributes 一口都不开 —— 读不了", () => {
-		unreadable(v2({ contributes: {} }));
+		unreadable(v3({ contributes: {} }));
 	});
 
 	it("contributes 里开一个不存在的口 —— 读不了", () => {
-		unreadable(v2({ contributes: { chat: { display: DISPLAY } } }));
+		unreadable(v3({ contributes: { chat: DISPLAY } }));
 	});
 });
 
-describe("v2 的外观(display)", () => {
+describe("v3 的订阅与推送外观", () => {
 	it.each(["#fe2c55", "#FE2C55", "#abc"])("color %s —— 收下", (color) => {
 		expect(() => ok(sub({ display: { ...DISPLAY, color } }))).not.toThrow();
 	});
@@ -395,20 +503,19 @@ describe("v2 的外观(display)", () => {
 
 	it("postNoun 只有订阅源那段有 —— 推送源的外观写它读不了", () => {
 		expect(() => ok(sub({ display: { ...DISPLAY, postNoun: "作品" } }))).not.toThrow();
-		unreadable(v2({ contributes: { push: { display: { ...DISPLAY, postNoun: "作品" } } } }));
+		unreadable(v3({ contributes: { push: { ...DISPLAY, postNoun: "作品" } } }));
 	});
 
 	it("externalIdNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
 		const withNoun = ok(sub({ display: { ...DISPLAY, externalIdNoun: "账号" } }));
-		if (withNoun.apiVersion !== 2) throw new Error("应该是 v2");
-		expect(withNoun.contributes.subscription?.display.externalIdNoun).toBe("账号");
+		expect(withNoun.contributes.subscription?.externalIdNoun).toBe("账号");
 
 		expect(() =>
 			ok(sub({ display: { ...DISPLAY, externalIdNoun: "字".repeat(8) } })),
 		).not.toThrow();
 		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: "字".repeat(9) } }));
 		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: " \n\t " } }));
-		unreadable(v2({ contributes: { push: { display: { ...DISPLAY, externalIdNoun: "账号" } } } }));
+		unreadable(v3({ contributes: { push: { ...DISPLAY, externalIdNoun: "账号" } } }));
 	});
 
 	/**
@@ -417,8 +524,8 @@ describe("v2 的外观(display)", () => {
 	 */
 	it("lookupPlaceholder:订阅源那段可选一句,1 到 40 字", () => {
 		const m = ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "粘抖音主页链接" } }));
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
-		expect(m.contributes.subscription?.display.lookupPlaceholder).toBe("粘抖音主页链接");
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		expect(m.contributes.subscription?.lookupPlaceholder).toBe("粘抖音主页链接");
 		expect(() =>
 			ok(sub({ display: { ...DISPLAY, lookupPlaceholder: "字".repeat(40) } })),
 		).not.toThrow();
@@ -427,9 +534,7 @@ describe("v2 的外观(display)", () => {
 	});
 
 	it("lookupPlaceholder 只有订阅源那段有 —— 推送源没有「新建订阅」那个输入框", () => {
-		unreadable(
-			v2({ contributes: { push: { display: { ...DISPLAY, lookupPlaceholder: "粘链接" } } } }),
-		);
+		unreadable(v3({ contributes: { push: { ...DISPLAY, lookupPlaceholder: "粘链接" } } }));
 	});
 
 	/**
@@ -438,8 +543,8 @@ describe("v2 的外观(display)", () => {
 	 */
 	it("externalIdRegex:订阅源那段可选一条正则源码;合法的过", () => {
 		const m = ok(sub({ display: { ...DISPLAY, externalIdRegex: "^MS4w[\\w-]+$" } }));
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
-		expect(m.contributes.subscription?.display.externalIdRegex).toBe("^MS4w[\\w-]+$");
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		expect(m.contributes.subscription?.externalIdRegex).toBe("^MS4w[\\w-]+$");
 		expect(() => ok(sub({ display: { ...DISPLAY, externalIdRegex: "\\d+" } }))).not.toThrow();
 	});
 
@@ -455,17 +560,24 @@ describe("v2 的外观(display)", () => {
 	});
 
 	it("externalIdRegex 只有订阅源那段有 —— 推送源没有外部 id", () => {
-		unreadable(
-			v2({ contributes: { push: { display: { ...DISPLAY, externalIdRegex: "^\\d+$" } } } }),
-		);
+		unreadable(v3({ contributes: { push: { ...DISPLAY, externalIdRegex: "^\\d+$" } } }));
 	});
 });
 
-describe("v2 的订阅源段", () => {
-	it("events 至少一种、只能是那三种、不能重复", () => {
-		unreadable(sub({ events: [] }));
-		unreadable(sub({ events: ["post", "gift"] }));
-		unreadable(sub({ events: ["post", "post"] }));
+describe("v3 的订阅源段", () => {
+	it("supportedFeatures 至少一种、只能是那四种、不能重复", () => {
+		unreadable(sub({ supportedFeatures: [] }));
+		unreadable(sub({ supportedFeatures: ["post", "gift"] }));
+		unreadable(sub({ supportedFeatures: ["post", "post"] }));
+	});
+
+	it("声明周期直播必须同时声明开播与下播", () => {
+		unreadable(sub({ supportedFeatures: ["liveStreaming"] }));
+		unreadable(sub({ supportedFeatures: ["liveStreaming", "liveStart"] }));
+		unreadable(sub({ supportedFeatures: ["liveStreaming", "liveEnd"] }));
+		expect(() =>
+			ok(sub({ supportedFeatures: ["liveStreaming", "liveStart", "liveEnd"] })),
+		).not.toThrow();
 	});
 
 	/** 包内路径一律相对拓展根、不带 `./`、不许 `..`(ADR-0019 决策 16)。 */
@@ -484,7 +596,7 @@ describe("v2 的订阅源段", () => {
 /**
  * 设置项按**数据类型**分,不按控件分(ADR-0019 决策 17),与 zod 一一对应。
  */
-describe("v2 的设置项", () => {
+describe("v3 的设置项", () => {
 	it.each([
 		{ key: "cookie", type: "string", label: "Cookie", secret: true, multiline: true },
 		{ key: "token", type: "string", label: "Token", secret: true, generate: true, monospace: true },
@@ -513,7 +625,7 @@ describe("v2 的设置项", () => {
 		},
 	])("$type —— 收下", (field) => {
 		const m = ok(withField(field));
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
 		expect(m.settings?.fields[0]).toMatchObject(field);
 	});
 
@@ -540,7 +652,7 @@ describe("v2 的设置项", () => {
 
 	it("同一张表里 key 重复 —— 读不了(哪一栏说了算没有答案)", () => {
 		const issues = unreadable(
-			v2({
+			v3({
 				settings: {
 					fields: [
 						{ key: "a", type: "string", label: "A" },
@@ -626,11 +738,11 @@ describe("v2 的设置项", () => {
 
 	it("连接配置项与设置项是同一种形状", () => {
 		unreadable(
-			v2({
+			v3({
 				contributes: {
 					push: {
-						display: DISPLAY,
-						connection: { fields: [{ key: "a", type: "text", label: "A" }] },
+						...DISPLAY,
+						settingsFields: [{ key: "a", type: "text", label: "A" }],
 					},
 				},
 			}),
@@ -642,7 +754,7 @@ describe("v2 的设置项", () => {
  * 选项图标是**图片 data URL**,一律当 `<img>` 画(ADR-0019 决策 31):`<img>` 里的 SVG 不跑脚本、
  * 拉不进外部资源,所以不用过 SVG 白名单。规矩与桥协议里 bot 图标那条相同。
  */
-describe("v2 的选项图标", () => {
+describe("v3 的选项图标", () => {
 	const enumWith = (icon: unknown) =>
 		withField({ key: "a", type: "enum", label: "A", options: [{ value: "x", label: "X", icon }] });
 
@@ -706,7 +818,7 @@ describe("搬进 /constants 的拓展判据", () => {
  * 列表设置项自己声明怎么画成卡(ADR-0019 决策 29)。引用的格必须真在项里、类型也对得上 ——
  * 指歪了的话,面板上那张卡就少一块而没人报错。
  */
-describe("v2 的列表声明", () => {
+describe("v3 的列表声明", () => {
 	const ITEM = [
 		{ key: "name", type: "string", label: "名字", required: true },
 		{
@@ -743,7 +855,7 @@ describe("v2 的列表声明", () => {
 				removeWarning: "那一头的插件会连不上,从它借来的 bot 建的连接也会发不出去。",
 			}),
 		);
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
 		expect(m.settings?.fields[0]).toMatchObject({ title: "name", mark: "kind", toggle: "enabled" });
 	});
 
@@ -812,7 +924,7 @@ describe("v2 的列表声明", () => {
 describe("manifestSecretKeys", () => {
 	it("设置项、列表项、连接配置项里标了 secret 的键都算,去重", () => {
 		const m = ok(
-			v2({
+			v3({
 				settings: {
 					fields: [
 						{ key: "cookie", type: "string", label: "Cookie", secret: true },
@@ -831,13 +943,11 @@ describe("manifestSecretKeys", () => {
 				},
 				contributes: {
 					push: {
-						display: DISPLAY,
-						connection: {
-							fields: [
-								{ key: "botKey", type: "string", label: "密钥", secret: true },
-								{ key: "token", type: "string", label: "token", secret: true },
-							],
-						},
+						...DISPLAY,
+						settingsFields: [
+							{ key: "botKey", type: "string", label: "密钥", secret: true },
+							{ key: "token", type: "string", label: "token", secret: true },
+						],
 					},
 				},
 			}),
@@ -851,7 +961,7 @@ describe("manifestSecretKeys", () => {
 	 */
 	it("generate 的格没标 secret 也算密钥 —— 设置项、列表项里都算", () => {
 		const m = ok(
-			v2({
+			v3({
 				settings: {
 					fields: [
 						{ key: "apiKey", type: "string", label: "Key", generate: true },
@@ -872,8 +982,8 @@ describe("manifestSecretKeys", () => {
 		expect(manifestSecretKeys(m)).toEqual(["apiKey", "token"]);
 	});
 
-	it("v2 一格密钥都没声明 —— 空表", () => {
-		expect(manifestSecretKeys(ok(v2()))).toEqual([]);
+	it("v3 一格密钥都没声明 —— 空表", () => {
+		expect(manifestSecretKeys(ok(v3()))).toEqual([]);
 	});
 });
 
@@ -884,7 +994,7 @@ describe("manifestSecretKeys", () => {
 describe("settingsValueSchema", () => {
 	const FIELDS = (() => {
 		const m = ok(
-			v2({
+			v3({
 				settings: {
 					fields: [
 						{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
@@ -913,7 +1023,7 @@ describe("settingsValueSchema", () => {
 				},
 			}),
 		);
-		if (m.apiVersion !== 2 || !m.settings) throw new Error("应该是带设置的 v2");
+		if (m.apiVersion !== 3 || !m.settings) throw new Error("应该是带设置的 v3");
 		return m.settings.fields;
 	})();
 	const accepts = (value: unknown) => settingsValueSchema(FIELDS).safeParse(value).success;
@@ -965,7 +1075,7 @@ describe("settingsValueSchema", () => {
 		const m = ok(
 			withField({ key: "interval", type: "number", label: "间隔", required: true, default: 60 }),
 		);
-		if (m.apiVersion !== 2 || !m.settings) throw new Error("应该是带设置的 v2");
+		if (m.apiVersion !== 3 || !m.settings) throw new Error("应该是带设置的 v3");
 		expect(settingsValueSchema(m.settings.fields).safeParse({}).success).toBe(true);
 		expect(settingsValueSchema(m.settings.fields).safeParse({ interval: "60" }).success).toBe(
 			false,
@@ -981,21 +1091,21 @@ describe("settingsValueSchema", () => {
  * 清单的 `actions` 只是**动作名的一串**(ADR-0019 决策 42):按钮上的字只认视图里那一份,从前每项
  * 带的 `label` / `description` 从没被读过 —— 两份字,改了一份另一份静默作废。
  */
-describe("v2 的动作", () => {
+describe("v3 的动作", () => {
 	it("只有名字的一串 —— 收下,原样留着", () => {
-		const m = ok(v2({ actions: ["login.start", "refresh"] }));
-		if (m.apiVersion !== 2) throw new Error("应该是 v2");
+		const m = ok(v3({ actions: ["login.start", "refresh"] }));
+		if (m.apiVersion !== 3) throw new Error("应该是 v3");
 		expect(m.actions).toEqual(["login.start", "refresh"]);
 	});
 
 	it.each(["login.start", "refresh", "login.qrCode"])("%s —— 收下", (name) => {
-		expect(() => ok(v2({ actions: [name] }))).not.toThrow();
+		expect(() => ok(v3({ actions: [name] }))).not.toThrow();
 	});
 
 	it.each(["", "Login", "login..start", ".login", "login.", "login/start", "login-start"])(
 		"%s —— 拒(动作名要进 URL:/api/ext/:id/actions/:name)",
 		(name) => {
-			unreadable(v2({ actions: [name] }));
+			unreadable(v3({ actions: [name] }));
 		},
 	);
 
@@ -1003,20 +1113,20 @@ describe("v2 的动作", () => {
 		"%s(Object.prototype 上的名字)—— 拒:动作按名字查表,没声明的也会被当成声明了",
 		(name) => {
 			expect(ActionNameSchema.safeParse(name).success).toBe(false);
-			expect(unreadable(v2({ actions: [name] })).join("\n")).toMatch(/原型/);
+			expect(unreadable(v3({ actions: [name] })).join("\n")).toMatch(/原型/);
 		},
 	);
 
 	/** 重名:第二个是笔误还是本意,宿主猜不了 —— 点名是哪个名字、第几个。 */
 	it("重名 —— 拒,点名那一个", () => {
-		const issues = unreadable(v2({ actions: ["refresh", "login.start", "refresh"] }));
+		const issues = unreadable(v3({ actions: ["refresh", "login.start", "refresh"] }));
 		expect(issues.join("\n")).toMatch(/actions\.2.*refresh/);
 	});
 
-	/** 旧形状(名字 → { label, description } 的表)v2 还没发出去,不留退路(决策 46)。 */
+	/** 旧形状(名字 → { label, description } 的表)v3 还没发出去,不留退路(决策 46)。 */
 	it("旧形状(带 label 的表)—— 拒", () => {
-		unreadable(v2({ actions: { refresh: { label: "刷新" } } }));
-		unreadable(v2({ actions: {} }));
+		unreadable(v3({ actions: { refresh: { label: "刷新" } } }));
+		unreadable(v3({ actions: {} }));
 	});
 });
 
@@ -1046,7 +1156,7 @@ describe("拓展 id 的命名空间", () => {
 		const parsed = ExtensionIdSchema.safeParse("constructor");
 		expect(parsed.success).toBe(false);
 		expect(parsed.error?.issues.map((issue) => issue.message).join("\n")).toMatch(/原型/);
-		unreadable(v2({ id: "constructor" }));
+		unreadable(v3({ id: "constructor" }));
 	});
 
 	it("extensionNamespaceOf:有点的取点前那段,没点的是官方(undefined)", () => {

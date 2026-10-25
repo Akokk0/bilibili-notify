@@ -3,7 +3,7 @@
  *
  * 路由那层的测试(`routes/__tests__/subscriptions-extension-create.test.ts`)自己递拓展名单、自己搭订阅仓
  * 那座桥,图库清扫也是自己调;这里起一台真 BN,钉住 `index.ts` 那几根线:
- *  - 新建订阅认的是**装载器真的那份名单**:一个装着、没开的 v2 订阅源(不要求在跑);头像进图库,读口取得回来。
+ *  - 新建订阅认的是**装载器真的那份名单**:一个装着、没开的 v3 订阅源(不要求在跑);头像进图库,读口取得回来。
  *  - 删订阅时 ProfileRefresh 听 `subscription-changed` 丢掉资料缓存里的这一条;头像这时**不会**被直接删,
  *    它不再有人引用,等下一轮图库清扫 —— 停机期间删掉的订阅也一样,下次开机那一轮收走
  *    (`startHistoryRetention` 把图库交给清扫、资料缓存登记成引用方,这两处接线漏了的话,头像要么永远留着、
@@ -74,7 +74,7 @@ describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅�
 		});
 	}
 
-	/** 装一个 v2 订阅源(开关没拨,没在跑)。 */
+	/** 装一个 v3 订阅源(开关没拨,没在跑)。 */
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-sub-avatar-e2e-"));
 		// 开机前先开好一代,摆的东西都进这一代(ADR-0022)。
@@ -90,11 +90,13 @@ describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅�
 				name: "头像探针",
 				description: "只为了是个订阅源",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["post"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["post"],
 					},
 				},
 			}),

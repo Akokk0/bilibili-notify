@@ -80,7 +80,7 @@ const CreateProfileBodySchema = z.object({
  * Keeps the server stateless about defaults.
  *
  * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建拓展的订阅**(`identity.sourceKey`
- * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v2 订阅源(不要求在跑,
+ * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v3 订阅源(不要求在跑,
  * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
  * 头像存进图库(决策 49)。**新建订阅**(两种来源都是)先按来源描述符声明的格式核外部 id(`externalIdRegex`,
  * 见 `subscriptions/external-id.ts`);B 站声明的是纯数字 uid。已经存在的订阅可以整份 POST 回来改
@@ -96,15 +96,15 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	const log = deps.runtime.serviceCtx.logger;
 
 	/**
-	 * 这个来源声明的外部 id 格式从哪儿来:在来源登记表里的(B 站、进程内的来源)取它的描述符;拓展来源不进
-	 * 登记表,取清单里订阅源那一段的外观(同样有 `label` 与 `externalIdRegex`)。认不出的来源返回
+	 * 这个来源声明的外部 id 格式从哪儿来:登记表里的来源取它的描述符;没在登记的拓展取清单里订阅源
+	 * 那一段(同样有 `label` 与 `externalIdRegex`)。认不出的来源返回
 	 * `undefined`,不替它核 —— 装没装、是不是订阅源由 {@link createExtensionSubscription} 的闸回话。
 	 */
 	function externalIdSpecOf(sourceKey: string): ExternalIdSpec | undefined {
 		const registered = deps.runtime.sourceRegistry.get(sourceKey);
 		if (registered) return registered.descriptor;
 		const entry = opts.extensions?.().find((one) => one.id === sourceKey);
-		return entry?.manifest?.contributes.subscription?.display;
+		return entry?.manifest?.contributes.subscription;
 	}
 
 	/** 这条订阅盘上已有的特别关注名单 id(没有这条订阅就是空)。 */
@@ -452,7 +452,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 }
 
 /**
- * 这个拓展能不能挂订阅:装着、v2、清单开了订阅源那一口(`contributes.subscription`)。**不要求在跑**
+ * 这个拓展能不能挂订阅:装着、清单能读、开了订阅源那一口(`contributes.subscription`)。**不要求在跑**
  * —— 订阅是数据,停着的拓展名下的订阅照样留着、开回来就恢复(决策 10)。能挂回 `undefined`,
  * 不能就回那句点名的原因。
  */

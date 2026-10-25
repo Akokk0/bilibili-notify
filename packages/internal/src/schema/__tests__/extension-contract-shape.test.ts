@@ -21,7 +21,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ExtensionLocaleFileSchema } from "../extension-locale";
-import { EXTENSION_API_RANGE, ExtensionManifestV2Schema } from "../extension-manifest";
+import { EXTENSION_API_RANGE, ExtensionManifestV3Schema } from "../extension-manifest";
 import {
 	ExtensionCreatorCandidatesSchema,
 	ExtensionCreatorProfileReportSchema,
@@ -46,32 +46,32 @@ interface ContractRow {
  * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、搜人候选、视图、上报与读取结果。
  */
 const CONTRACT: readonly ContractRow[] = [
-	{ name: "清单 v2", schema: ExtensionManifestV2Schema, digest: "9624d5cfcf3e819d" },
-	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "771f3c5d3ef647c8" },
+	{ name: "清单 v3", schema: ExtensionManifestV3Schema, digest: "6f462b9bfdc9ab6c" },
+	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "529b17710552550b" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "7333cbc5ca440d8e" },
-	{ name: "第 3 版上报:作品", schema: ExtensionPostReportSchema, digest: "2ae99df5a25fd825" },
+	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "2ae99df5a25fd825" },
 	{
-		name: "第 3 版上报:直播信号",
+		name: "上报:直播信号",
 		schema: ExtensionLiveSignalReportSchema,
 		digest: "4f0e25af3fecf0e7",
 	},
 	{
-		name: "第 3 版上报:资料",
+		name: "上报:资料",
 		schema: ExtensionCreatorProfileReportSchema,
 		digest: "32cd1648903b01ea",
 	},
 	{
-		name: "第 3 版搜人候选",
+		name: "搜人候选",
 		schema: ExtensionCreatorCandidatesSchema,
 		digest: "9496a7928db50e24",
 	},
 	{
-		name: "第 3 版直播拉取结果",
+		name: "直播拉取结果",
 		schema: ExtensionLiveStatusResultSchema,
 		digest: "11b4fae69993e7d1",
 	},
 	{
-		name: "第 3 版来源健康",
+		name: "来源健康",
 		schema: ExtensionSourceHealthSchema,
 		digest: "43d728077867a532",
 	},

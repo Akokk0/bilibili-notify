@@ -92,30 +92,18 @@ const ManifestTranslationSchema = z.strictObject({
 		.strictObject({
 			push: z
 				.strictObject({
-					display: z
-						.strictObject({
-							label: DisplayLabelSchema.optional(),
-							shortLabel: ShortLabelSchema.optional(),
-						})
-						.optional(),
-					connection: z
-						.strictObject({
-							fields: z.record(z.string(), ScalarFieldTranslationSchema).optional(),
-						})
-						.optional(),
+					label: DisplayLabelSchema.optional(),
+					shortLabel: ShortLabelSchema.optional(),
+					settingsFields: z.record(z.string(), ScalarFieldTranslationSchema).optional(),
 				})
 				.optional(),
 			subscription: z
 				.strictObject({
-					display: z
-						.strictObject({
-							label: DisplayLabelSchema.optional(),
-							shortLabel: ShortLabelSchema.optional(),
-							postNoun: ShortLabelSchema.optional(),
-							externalIdNoun: ShortLabelSchema.optional(),
-							lookupPlaceholder: LookupPlaceholderSchema.optional(),
-						})
-						.optional(),
+					label: DisplayLabelSchema.optional(),
+					shortLabel: ShortLabelSchema.optional(),
+					postNoun: ShortLabelSchema.optional(),
+					externalIdNoun: ShortLabelSchema.optional(),
+					lookupPlaceholder: LookupPlaceholderSchema.optional(),
 				})
 				.optional(),
 		})
@@ -166,16 +154,17 @@ interface DisplayTranslation {
 	lookupPlaceholder?: string;
 }
 
+interface PushTranslation extends DisplayTranslation {
+	settingsFields?: Record<string, FieldTranslation>;
+}
+
 interface ManifestTranslation {
 	name?: string;
 	description?: string;
 	settings?: { fields?: Record<string, FieldTranslation> };
 	contributes?: {
-		push?: {
-			display?: DisplayTranslation;
-			connection?: { fields?: Record<string, FieldTranslation> };
-		};
-		subscription?: { display?: DisplayTranslation };
+		push?: PushTranslation;
+		subscription?: DisplayTranslation;
 	};
 }
 
@@ -405,76 +394,34 @@ function fieldOf(
 	return nonEmptyObject(out) ? out : undefined;
 }
 
-function displayOf(
-	source: unknown,
-	kind: "push" | "subscription",
+/** 两口外观里给人看的几格:推送口只有名字两格,订阅口多三格叫法与提示。 */
+const PUSH_TEXT_KEYS: ReadonlySet<string> = new Set(["label", "shortLabel"]);
+const SUBSCRIPTION_TEXT_KEYS: ReadonlySet<string> = new Set([
+	...PUSH_TEXT_KEYS,
+	"postNoun",
+	"externalIdNoun",
+	"lookupPlaceholder",
+]);
+
+/** 外观里一格给人看的字:长度上限照清单那一侧,叫法那两格纯空白也拒(同一把尺子)。 */
+function putDisplayText(
+	out: object,
+	source: Record<string, unknown>,
+	key: string,
 	path: Path,
 	issues: ExtensionLocaleIssue[],
-): DisplayTranslation | undefined {
-	if (!isRecord(source)) {
-		issues.push({ path, code: "invalid-text" });
-		return undefined;
-	}
-
-	const translatable = new Set(["label", "shortLabel"]);
-	const untranslatable = new Set(["color"]);
-	if (kind === "subscription") {
-		translatable.add("postNoun");
-		translatable.add("externalIdNoun");
-		translatable.add("lookupPlaceholder");
-		untranslatable.add("externalIdRegex");
-	}
-
-	const out: DisplayTranslation = {};
-	for (const key of Object.keys(source)) {
-		const here = [...path, key];
-		if (!translatable.has(key)) {
-			issues.push({
-				path: here,
-				code: untranslatable.has(key) ? "untranslatable-entry" : "unknown-entry",
-			});
-			continue;
-		}
-		const max =
-			key === "label"
-				? EXTENSION_DISPLAY_LABEL_MAX_CHARS
-				: key === "lookupPlaceholder"
-					? EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS
-					: EXTENSION_SHORT_LABEL_MAX_CHARS;
-		const text = textOf(source, key, path, issues, {
-			max,
-			nonBlank: key === "postNoun" || key === "externalIdNoun",
-		});
-		if (text !== undefined) put(out, key, text);
-	}
-	return nonEmptyObject(out) ? out : undefined;
-}
-
-function connectionOf(
-	source: unknown,
-	manifest: ExtensionManifest,
-	path: Path,
-	issues: ExtensionLocaleIssue[],
-): { fields?: Record<string, FieldTranslation> } | undefined {
-	if (!isRecord(source)) {
-		issues.push({ path, code: "invalid-text" });
-		return undefined;
-	}
-	const out: { fields?: Record<string, FieldTranslation> } = {};
-	for (const key of Object.keys(source)) {
-		if (key !== "fields") {
-			issues.push({ path: [...path, key], code: "unknown-entry" });
-			continue;
-		}
-		const fields = fieldsOf(
-			source[key],
-			manifest.contributes.push?.connection?.fields ?? [],
-			[...path, key],
-			issues,
-		);
-		if (fields !== undefined) out.fields = fields;
-	}
-	return out.fields === undefined ? undefined : out;
+): void {
+	const max =
+		key === "label"
+			? EXTENSION_DISPLAY_LABEL_MAX_CHARS
+			: key === "lookupPlaceholder"
+				? EXTENSION_LOOKUP_PLACEHOLDER_MAX_CHARS
+				: EXTENSION_SHORT_LABEL_MAX_CHARS;
+	const text = textOf(source, key, path, issues, {
+		max,
+		nonBlank: key === "postNoun" || key === "externalIdNoun",
+	});
+	if (text !== undefined) put(out, key, text);
 }
 
 function pushOf(
@@ -490,16 +437,18 @@ function pushOf(
 	const out: NonNullable<NonNullable<ManifestTranslation["contributes"]>["push"]> = {};
 	for (const key of Object.keys(source)) {
 		const here = [...path, key];
-		if (key === "display") {
-			const display = displayOf(source[key], "push", here, issues);
-			if (display !== undefined) out.display = display;
-		} else if (key === "connection") {
-			if (manifest.contributes.push?.connection === undefined) {
-				issues.push({ path: here, code: "unknown-entry" });
-				continue;
-			}
-			const connection = connectionOf(source[key], manifest, here, issues);
-			if (connection !== undefined) out.connection = connection;
+		if (PUSH_TEXT_KEYS.has(key)) {
+			putDisplayText(out, source, key, path, issues);
+		} else if (key === "settingsFields") {
+			const fields = fieldsOf(
+				source[key],
+				manifest.contributes.push?.settingsFields ?? [],
+				here,
+				issues,
+			);
+			if (fields !== undefined) out.settingsFields = fields;
+		} else if (key === "color") {
+			issues.push({ path: here, code: "untranslatable-entry" });
 		} else {
 			issues.push({ path: here, code: "unknown-entry" });
 		}
@@ -519,10 +468,14 @@ function subscriptionOf(
 	const out: NonNullable<NonNullable<ManifestTranslation["contributes"]>["subscription"]> = {};
 	for (const key of Object.keys(source)) {
 		const here = [...path, key];
-		if (key === "display") {
-			const display = displayOf(source[key], "subscription", here, issues);
-			if (display !== undefined) out.display = display;
-		} else if (key === "events" || key === "cardSkin") {
+		if (SUBSCRIPTION_TEXT_KEYS.has(key)) {
+			putDisplayText(out, source, key, path, issues);
+		} else if (
+			key === "color" ||
+			key === "externalIdRegex" ||
+			key === "supportedFeatures" ||
+			key === "cardSkin"
+		) {
 			issues.push({ path: here, code: "untranslatable-entry" });
 		} else {
 			issues.push({ path: here, code: "unknown-entry" });

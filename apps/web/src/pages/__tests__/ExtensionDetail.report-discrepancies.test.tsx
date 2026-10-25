@@ -144,7 +144,7 @@ describe("拓展详情页:上报出入", () => {
 				externalId: "sec-1",
 				subscriptionIds: ["s1"],
 				outcome: "rejected",
-				reasons: ["清单 contributes.subscription.events 里没声明 liveEnd,BN 不收这一种"],
+				reasons: ["清单 contributes.subscription.supportedFeatures 里没声明 liveEnd,BN 不收这一种"],
 			},
 		];
 		renderDetail();

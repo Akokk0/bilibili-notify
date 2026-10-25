@@ -5,7 +5,7 @@
  * `index.ts` 把它接进记录、`app.ts` 把记录递给拓展列表那一口,面板才看得见。任意一处漏接,日志里照样
  * 有那一行、类型与单元测试全绿,而主人看见「卡片少了一张图」永远不知道为什么。
  *
- * 所以装一个真的 v2 小拓展、起一台真 BN:按它的动作钮报一条丢格的、一条没声明的,读面板读的那一口。
+ * 所以装一个真的 v3 小拓展、起一台真 BN:按它的动作钮报一条丢格的、一条没声明的,读面板读的那一口。
  * bus 在这里只**旁听**(包一层真的那个,不换掉它),看面板有没有被叫去重取 —— 叫的是上报出入自己那一声,
  * 不是「拓展的视图变了」。
  */
@@ -123,12 +123,14 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 				name: "问题探针",
 				description: "按一下动作钮报一条坏的",
 				version: "0.1.0",
-				apiVersion: 2,
+				apiVersion: 3,
 				actions: ["report.dropped", "report.undeclared"],
 				contributes: {
 					subscription: {
-						display: { label: "探针", shortLabel: "探", color: "#3366ff" },
-						events: ["post"],
+						label: "探针",
+						shortLabel: "探",
+						color: "#3366ff",
+						supportedFeatures: ["post"],
 					},
 				},
 			}),

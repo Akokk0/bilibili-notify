@@ -30,7 +30,7 @@ const V2: ExtensionManifest = {
 	name: "抖音订阅",
 	description: "测试用",
 	version: "0.1.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
@@ -39,8 +39,10 @@ const V2: ExtensionManifest = {
 	},
 	contributes: {
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-			events: ["post"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
+			supportedFeatures: ["post"],
 		},
 	},
 };

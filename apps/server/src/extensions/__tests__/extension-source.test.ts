@@ -39,7 +39,7 @@ const ARRIVED = Date.UTC(2026, 8, 23, 14);
 const ARRIVED_ISO = "2026-09-23T14:00:00.000Z";
 
 function manifestOf(
-	events: string[] = ["post", "liveStart", "liveEnd"],
+	supportedFeatures: string[] = ["post", "liveStart", "liveEnd"],
 	externalIdNoun?: string,
 ): ExtensionManifest {
 	const read = parseExtensionManifest({
@@ -47,18 +47,16 @@ function manifestOf(
 		name: "抖音拓展",
 		description: "测试用",
 		version: "0.1.0",
-		apiVersion: 2,
+		apiVersion: 3,
 		contributes: {
 			subscription: {
-				display: {
-					label: "抖音",
-					shortLabel: "抖",
-					color: "#fe2c55",
-					postNoun: "作品",
-					externalIdRegex: "[a-z0-9-]+",
-					...(externalIdNoun === undefined ? {} : { externalIdNoun }),
-				},
-				events,
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#fe2c55",
+				postNoun: "作品",
+				externalIdRegex: "[a-z0-9-]+",
+				...(externalIdNoun === undefined ? {} : { externalIdNoun }),
+				supportedFeatures,
 			},
 		},
 	});
@@ -145,7 +143,7 @@ type Stored = { bytes: Buffer; mime: string } | undefined;
 async function make(
 	def: Partial<SourceDef> & Record<string, unknown> = {},
 	opts: {
-		events?: string[];
+		supportedFeatures?: string[];
 		images?: (ref: string) => Promise<Stored> | Stored;
 		start?: boolean;
 		externalIdNoun?: string;
@@ -164,7 +162,7 @@ async function make(
 	} as unknown as SourceDef;
 	const source = createExtensionSource({
 		id: "douyin",
-		manifest: manifestOf(opts.events, opts.externalIdNoun),
+		manifest: manifestOf(opts.supportedFeatures, opts.externalIdNoun),
 		def: full,
 		logger,
 		images: { read: async (ref) => opts.images?.(ref) },
@@ -476,7 +474,7 @@ describe("createExtensionSource:作品上报", () => {
 	});
 
 	it("清单没声明 post:整条拒,进出入表,核心那头什么都没收到", async () => {
-		const made = await make({}, { events: ["liveStart", "liveEnd"] });
+		const made = await make({}, { supportedFeatures: ["liveStart", "liveEnd"] });
 		made.ext().reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
@@ -751,7 +749,7 @@ describe("createExtensionSource:直播上报", () => {
 	});
 
 	it("清单只声明了开播:下播整条拒;直播状态要开播或下播其一,收", async () => {
-		const made = await make({}, { events: ["post", "liveStart"] });
+		const made = await make({}, { supportedFeatures: ["post", "liveStart"] });
 		made.ext().reportLive("u1", { kind: "end" });
 		await made.idle();
 		made.ext().reportLive("u1", { kind: "status", isLive: false, details: {} });
@@ -763,7 +761,7 @@ describe("createExtensionSource:直播上报", () => {
 	});
 
 	it("清单什么直播事件都没声明:直播状态也拒,原因点名 liveStart 与 liveEnd", async () => {
-		const made = await make({}, { events: ["post"] });
+		const made = await make({}, { supportedFeatures: ["post"] });
 		made.ext().reportLive("u1", { kind: "status", isLive: true, details: {} });
 		await made.idle();
 		expect(made.core.lives).toEqual([]);
@@ -783,7 +781,7 @@ describe("createExtensionSource:直播上报", () => {
 
 describe("createExtensionSource:资料上报", () => {
 	it("资料总收(不看清单声明),原样交核心", async () => {
-		const made = await make({}, { events: ["post"] });
+		const made = await make({}, { supportedFeatures: ["post"] });
 		made.ext().reportProfile("u1", { name: "小明", avatar: REF, followers: 12, bio: "简介" });
 		await made.idle();
 		expect(made.core.profiles).toEqual([

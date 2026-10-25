@@ -65,8 +65,8 @@ async function plantManifest(id: string): Promise<void> {
 			name: "桥",
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 2,
-			contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
+			apiVersion: 3,
+			contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 		}),
 	);
 }

@@ -51,7 +51,7 @@ const DOUYIN = {
 	name: "抖音订阅",
 	description: "测试用",
 	version: "0.1.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	settings: {
 		fields: [
 			{ key: "cookie", type: "string", label: "Cookie", secret: true },
@@ -80,8 +80,10 @@ const DOUYIN = {
 	},
 	contributes: {
 		subscription: {
-			display: { label: "抖音", shortLabel: "抖", color: "#fe2c55" },
-			events: ["post"],
+			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
+			supportedFeatures: ["post"],
 		},
 	},
 };
@@ -124,7 +126,7 @@ const BARE_V2 = {
 	name: "没设置项",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 2,
+	apiVersion: 3,
 	contributes: DOUYIN.contributes,
 };
 
