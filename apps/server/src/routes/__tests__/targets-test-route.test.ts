@@ -12,11 +12,11 @@ import type { RouteDeps } from "../types.js";
 
 const TARGET_ID = "33333333-3333-4333-8333-333333333333";
 
-function makeApp(opts: { engines?: boolean; targets?: unknown[]; sendToTarget?: unknown } = {}) {
+function makeApp(opts: { pipeline?: boolean; targets?: unknown[]; sendToTarget?: unknown } = {}) {
 	const sendToTarget = vi.fn(async () => opts.sendToTarget ?? { ok: true, latencyMs: 7 });
 	const app = createTargetsRoute({
 		runtime: {
-			engines: opts.engines === false ? null : { push: { sendToTarget } },
+			pipeline: opts.pipeline === false ? null : { push: { sendToTarget } },
 			serviceCtx: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } },
 		},
 		store: { getTargets: () => opts.targets ?? [{ id: TARGET_ID }] },
@@ -70,8 +70,8 @@ describe("POST /api/targets/:id/test 请求级失败(非 2xx 的错误体)", () 
 		expect(await res.json()).toMatchObject({ code: "invalid" });
 	});
 
-	it("引擎还没起 → 503 unavailable", async () => {
-		const { app } = makeApp({ engines: false });
+	it("推送链路还没起 → 503 unavailable", async () => {
+		const { app } = makeApp({ pipeline: false });
 		const res = await post(app);
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({

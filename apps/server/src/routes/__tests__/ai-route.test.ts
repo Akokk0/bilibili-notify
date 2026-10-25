@@ -132,7 +132,7 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 						logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 					}),
 				},
-				engines: { push: { sendToTarget } },
+				pipeline: { push: { sendToTarget } },
 			},
 			store: {
 				getTargets: () => [{ id: TARGET_ID, name: "我的私聊", platform: "onebot" }],
@@ -314,9 +314,9 @@ describe("POST /api/ai/test", () => {
 		expect(sendToTarget).not.toHaveBeenCalled();
 	});
 
-	it("engines 未挂载 → 503 unavailable,不问 AI", async () => {
+	it("pipeline 未挂载 → 503 unavailable,不问 AI", async () => {
 		const { deps, sendToTarget } = makeDeps();
-		(deps.runtime as { engines?: unknown }).engines = undefined;
+		(deps.runtime as { pipeline?: unknown }).pipeline = undefined;
 		const app = createAiRoute(deps);
 
 		const res = await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi() });

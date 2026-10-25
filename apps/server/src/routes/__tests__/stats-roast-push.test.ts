@@ -35,8 +35,8 @@ const SOLO = {
 };
 
 interface StubOpts {
-	/** 引擎还没挂上(启动早期 / 没登录)。 */
-	noEngines?: boolean;
+	/** 推送链路还没挂上(启动早期 / 没登录)。 */
+	noPipeline?: boolean;
 	/** 有没有 puppeteer(未装 Chrome 时为 null)。 */
 	renderer?: boolean;
 	/** 全局图片渲染总开关。 */
@@ -98,7 +98,7 @@ function makeDeps(opts: StubOpts = {}) {
 			getConnections: () => [{ id: ADAPTER, enabled: true }],
 		},
 		runtime: {
-			engines: opts.noEngines
+			pipeline: opts.noPipeline
 				? null
 				: {
 						push: { sendToTarget },
@@ -297,8 +297,8 @@ describe("POST /roast/push — 名称与配色由服务端 join", () => {
 });
 
 describe("POST /roast/push — 诚实失败", () => {
-	it("引擎还没挂上 → 503 unavailable,不碰推送管线", async () => {
-		const { deps } = makeDeps({ noEngines: true });
+	it("推送链路还没挂上 → 503 unavailable,不碰推送管线", async () => {
+		const { deps } = makeDeps({ noPipeline: true });
 		const res = await push(createStatsRoute(deps), boardBody());
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as any;

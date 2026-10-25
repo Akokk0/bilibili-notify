@@ -327,7 +327,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		for (const url of pngs) {
 			const bytes = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
 			const ref = `${createHash("sha256").update(bytes).digest("hex")}.png`;
-			// 验红:删掉 index.ts 里传给 createEngines 的 `resolveImageRef`,卡上的图退成占位、上面的数量不够;
+			// 验红:删掉 index.ts 里传给 createPipelineRuntime 的 `resolveImageRef`,卡上的图退成占位、上面的数量不够;
 			// 假源改成直接交字节(不经 storeImage),宿主拒收那一格,卡上的图不够、这里也 404。
 			const stored = await api(`/api/images/${ref}`);
 			expect(stored.status, ref).toBe(200);

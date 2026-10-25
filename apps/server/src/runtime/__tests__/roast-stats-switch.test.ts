@@ -90,7 +90,7 @@ function makeDeps(statsEnabled: boolean) {
 		globals,
 		deps: {
 			runtime: {
-				engines: { api: {}, imageRenderer: null, push: {} },
+				pipeline: { api: {}, imageRenderer: null, push: {} },
 				serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: vi.fn() },
 				subscriptionStateStore: { get: () => undefined },
 				// 「平台」一列读来源登记表的 label。

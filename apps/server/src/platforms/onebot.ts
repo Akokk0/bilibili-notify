@@ -925,7 +925,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		nativeShareSupport.clear();
 		capabilityFingerprints.clear();
 	}
-	// 兜底:即便 engines.dispose 没显式调到,serviceCtx 结束时也关干净。
+	// 兜底:即便 pipeline.dispose 没显式调到,serviceCtx 结束时也关干净。
 	serviceCtx.onDispose(disposeAll, "stop");
 
 	/**

@@ -148,7 +148,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 		//
 		// 在播只看场次引擎手里有没有这一场:两种来源都从同一个中立口认。
 		const isLive = (sub: Subscription): boolean =>
-			deps.runtime.engines?.liveSession(sub.id) !== undefined;
+			deps.runtime.pipeline?.liveSession(sub.id) !== undefined;
 		// 此刻的粉丝数取资料缓存:在册来源每轮刷新都会写,拓展每报一次也会合并;停用的曲线停了,
 		// 右端点不该再往前走。没有就回退到样本末值(见成行那里)。
 		const currentFans = (sub: Subscription): number | undefined =>
@@ -395,12 +395,12 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	 * 开着图片渲染就推卡片图,否则推文字;渲染路上任何一步出问题都**降级成文字**
 	 * 而不是整条失败 —— 一份已经生成好的周报,不该因为服务器上没装 Chrome 就发不出去。
 	 *
-	 * 试一次、回报结果:请求本身不成(引擎没起、体不对、没这个目标、目标已停用)是非 2xx 的错误体;
+	 * 试一次、回报结果:请求本身不成(推送链路没起、体不对、没这个目标、目标已停用)是非 2xx 的错误体;
 	 * 请求没问题、可是一个目标都没送到,照旧回 200 + `Result`(`message` 是投递那头给的原话)。
 	 */
 	app.post("/roast/push", async (c) => {
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 
 		const parsed = RoastPushSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {

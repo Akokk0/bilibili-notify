@@ -67,8 +67,8 @@ describe("createAppRuntime", () => {
 	 * 而这个 dataDir 里一条订阅都没有,所以它据实拒绝,理由正是「路由里没有这个目标」。
 	 * 换掉任何一头(桩住的 store、写死的 routedTargets)这条都会变。
 	 *
-	 * ⚠️ **没钉到的那一跳**:`send` 里 `engines.push.sendToTarget` 那一句 —— 这里没有
-	 * 推送引擎(它是后挂的),造一套出来的代价远大于这条守卫的价值。runner 自己那份
+	 * ⚠️ **没钉到的那一跳**:`send` 里 `pipeline.push.sendToTarget` 那一句 —— 这里没有
+	 * 推送链路(它是后挂的),造一套出来的代价远大于这条守卫的价值。runner 自己那份
 	 * 测试把发送语义全覆盖了,这里只证明它被装进了 runtime、接的是真配置。
 	 */
 	it("repushRunner 接的是真历史仓与真配置", async () => {

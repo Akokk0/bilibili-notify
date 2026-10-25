@@ -2,7 +2,7 @@
  * 🔴 **守卫 21b:进程内对拍 —— 一个不是 B 站的来源,照内置那条路登记之后,核心给它的待遇与给 B 站的一样。**
  *
  * 假来源(`support/in-process-source.ts`,键 `acme.inprocess`)只实现中立的 `Source`,经真入口、真 `compose.ts`
- * (`vi.mock` 包一层:真 B 站来源照常并排登记,之外对假来源调同一个 `engines.registerSource`)、真登记表、真来源上下文
+ * (`vi.mock` 包一层:真 B 站来源照常并排登记,之外对假来源调同一个 `pipeline.registerSource`)、真登记表、真来源上下文
  * 走完整条链:名单、作品、过滤、出卡、推送、历史、统计、问题、设置、健康、登录口、存储、关停。
  * 核心里每一处按 B 站键分岔的地方因此都走另一支 —— 对拍测的就是那一支。
  *
@@ -136,7 +136,7 @@ vi.mock("../runtime/puppeteer.js", async (importOriginal) => {
 	};
 });
 
-// 照内置那条路登记:真 compose 照跑(真 B 站来源并排在册),包装层再对假来源调同一个 `engines.registerSource`。
+// 照内置那条路登记:真 compose 照跑(真 B 站来源并排在册),包装层再对假来源调同一个 `pipeline.registerSource`。
 vi.mock("../compose.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../compose.js")>();
 	const support = await import("./support/in-process-source.js");
@@ -996,7 +996,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P03");
 	});
 
-	// 验红:`engines.ts` 的 `registerSource` 里不递 `enqueue`,这条红(没有任何作品到得了推送)。
+	// 验红:`pipeline.ts` 的 `registerSource` 里不递 `enqueue`,这条红(没有任何作品到得了推送)。
 	it("P04 作品到推送:报一条纯文字作品 → 截流记录恰好一条,目标是这条订阅路由的目标,正文是模板插值后的字、带链接", async () => {
 		await clearCaptures();
 		currentProbe().ctx?.reportPost(EXT.alice, textReport("p04", "小爱", "今天天气不错"));
@@ -1377,7 +1377,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P10");
 	});
 
-	// 验红:`runtime/engines.ts` 不给生成器接叫法,或 `deliver-post.ts` 不递这条订阅,这句系统提示词里没有「博主」。
+	// 验红:`runtime/pipeline.ts` 不给生成器接叫法,或 `deliver-post.ts` 不递这条订阅,这句系统提示词里没有「博主」。
 	it("P44 提示词里的叫法:推送点评按这条订阅取创作者叫法,不混平台词", async () => {
 		await patchSettings({ ai: { enabled: true } });
 		try {
@@ -1458,7 +1458,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P11");
 	});
 
-	// 验红:`engines.ts` 里不把问题表递给通知器(`table:` 换成一张永远空的),第一段红。
+	// 验红:`pipeline.ts` 里不把问题表递给通知器(`table:` 换成一张永远空的),第一段红。
 	it("P12 问题的私聊与恢复句:notify 的问题私聊主人一条(报的那句由宿主加上来源名的引子);清掉时发它自带的恢复句(同样加引子)", async () => {
 		const probe = currentProbe();
 		await clearCaptures();
@@ -1631,7 +1631,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		};
 	}
 
-	// 验红:`engines.ts` 里不递 `onAuthChanged`,WS 上收不到帧,第三段红;路由换成只回 `state` 不回 `account`,第一段红。
+	// 验红:`pipeline.ts` 里不递 `onAuthChanged`,WS 上收不到帧,第三段红;路由换成只回 `state` 不回 `account`,第一段红。
 	it("P16 登录口:GET 逐格挑、POST 进 awaiting-scan 再 POST 回 conflict、DELETE 回 logged-out;状态一变 WS 的 auth 频道收到帧", async () => {
 		const probe = currentProbe();
 		const watch = await watchFrames("auth");
@@ -1827,7 +1827,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P20");
 	});
 
-	// 验红:`engines.ts` 里 attachReadOnlyTools 的 `platformLabel` 改回只问拓展装载器(假源不是拓展,装载器回 undefined),
+	// 验红:`pipeline.ts` 里 attachReadOnlyTools 的 `platformLabel` 改回只问拓展装载器(假源不是拓展,装载器回 undefined),
 	// 视图里的平台名退成键名 `acme.inprocess`,这条红。
 	it("P25 女仆订阅视图:订阅带着 creator(来源键:外部 id),平台名取登记表里描述符的叫法", async () => {
 		const { seen } = await askMaid({ name: "list_subscriptions", args: {} });
@@ -1952,7 +1952,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	});
 
 	// 验红:`routes/live.ts` 不按订阅仓补身份,或在播表里把同一订阅列两次,「恰好一行」那段红;
-	// `source-context.ts` 里 `reportLive` 的展开只取第一条订阅、或 `engines.ts` 不递 `liveSignals`,开播卡那段红。
+	// `source-context.ts` 里 `reportLive` 的展开只取第一条订阅、或 `pipeline.ts` 不递 `liveSignals`,开播卡那段红。
 	it("P29 reportLive:开播、状态、下播进场次,推开播与下播卡,断流接续同一场,在播列表里恰好一行(按订阅 id 认)", async () => {
 		const probe = currentProbe();
 		const TITLE = "开播标题P29";
@@ -2725,9 +2725,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P37");
 	});
 
-	// 验红:`engines.ts` 递给女仆的取标签口改成只回外部 id,女仆那一段第一处红(没有「对拍源 · …」);
+	// 验红:`pipeline.ts` 递给女仆的取标签口改成只回外部 id,女仆那一段第一处红(没有「对拍源 · …」);
 	// contract 的 `subscriptionIdentityLabel` 不看 noun,第二处红(没有「号 …」);
-	// `engines.ts` 给 `bindLivePush` 的 `identityLabel` 换成只回外部 id,直播那一段红。
+	// `pipeline.ts` 给 `bindLivePush` 的 `identityLabel` 换成只回外部 id,直播那一段红。
 	// 没资料名的订阅:开机首轮资料刷新把启用着的都拉出了名字,所以先让来源查不到资料,再启用停着的 carol;
 	// 收尾复原(P30 之后 carol 是停用的,别的行不依赖她此刻的状态)。
 	it("P38 身份标签:没资料名的订阅,女仆订阅视图与开播卡文字里的名字是「平台名 · 外部 id」;描述符声明了 externalIdNoun 就是「叫法 外部 id」", async () => {
@@ -3455,7 +3455,7 @@ describe("进程内对拍:两趟开机", () => {
 	});
 
 	// 验红:包装层里把上下文的收尾钩子挪到 `registerSources` 里登记(晚于引擎的关停钩子),`stop()` 看到 signal 已中止,这条红;
-	// `registry.ts` 的把手不等 `stop()` 落定、或 `engines.ts` 的 `dispose` 不等在途收尾,`stop()` 途中那一报被丢,这条红;
+	// `registry.ts` 的把手不等 `stop()` 落定、或 `pipeline.ts` 的 `dispose` 不等在途收尾,`stop()` 途中那一报被丢,这条红;
 	// 摘掉 `subscriptions/source-context.ts` 里问题上报停后的守卫(`forEachProblemObject` 的 `if (disposed)`),停后那一报进了问题表,这条红。
 	it("P18 关停次序:stop 恰好一次、被叫的那一刻 signal 还没中止;stop 途中(异步)报的问题照收;关完之后 signal 才中止;来源停下之后再上报的问题不进问题表", async () => {
 		const generation = await seedGeneration();

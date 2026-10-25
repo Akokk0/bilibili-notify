@@ -79,10 +79,10 @@ export interface CreateAppOptions {
 	backupService?: BackupService;
 	/**
 	 * 卡片皮肤库(ADR-0014)。**必填,而且必须与出图那头是同一家店** —— 面板、出图
-	 * (engines 的 ImageRenderer)、卡片预览三处问的都是它。
+	 * (pipeline 的 ImageRenderer)、卡片预览三处问的都是它。
 	 *
 	 * ⚠️ **从前它是可选的,缺省时自建一家读同一个目录的店** —— 那正是这段话说绝不能
-	 * 发生的拓扑:面板装得进、列得出,而出图那头拿的仍是宿主传给引擎的那一家,于是
+	 * 发生的拓扑:面板装得进、列得出,而出图那头拿的仍是宿主传给推送链路的那一家,于是
 	 * 「装了新皮肤、推送不变」,**且症状完全静默**。生产侧一直传了,所以没出过真事故;
 	 * 2026-09-20 主人拍板改成必填,把那个口子焊死。没有店可传的宿主用
 	 * {@link createCardSkinStore} 按 `<dataRoot>` 约定开一家。
@@ -383,9 +383,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				// 解析门:拓展的来源在册的经登记表问,头像引用从图库读回。
 				sources: deps.runtime.sourceRegistry,
 				images: deps.runtime.imageStore,
-				// 热读:engines 是后挂的;搜人走引擎那道共用的来源串行闸。
+				// 热读:pipeline 是后挂的;搜人走推送链路那道共用的来源串行闸。
 				searchCreators: async (sourceKey, query) =>
-					deps.runtime.engines?.searchCreators(sourceKey, query),
+					deps.runtime.pipeline?.searchCreators(sourceKey, query),
 				settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
 				reportDiscrepancies: options.extensions?.reportDiscrepancies,
 				// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。
@@ -402,8 +402,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			"/api/dashboard/skins",
 			createDashboardSkinsRoute({
 				skinStore,
-				// 热读:engines 是后挂的,`/:id/ai` 每次现取,不做快照。
-				commentary: () => runtime.engines?.commentary ?? null,
+				// 热读:pipeline 是后挂的,`/:id/ai` 每次现取,不做快照。
+				commentary: () => runtime.pipeline?.commentary ?? null,
 			}),
 		);
 		// `/api/cards` 与 `/api/cards/skins` 共一个前缀、各管各的口:`POST /api/cards/skins/:id/screenshot`
@@ -436,8 +436,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				logger: runtime.serviceCtx.logger,
 				fallbacks: options.cardSkins.fallbacks,
 				clearFallbacks: options.cardSkins.clearFallbacks,
-				// 同 dashboard 皮肤库:热读,engines 是后挂的。
-				commentary: () => runtime.engines?.commentary ?? null,
+				// 同 dashboard 皮肤库:热读,pipeline 是后挂的。
+				commentary: () => runtime.pipeline?.commentary ?? null,
 				// 会员卡示例用的档:读口每次现读来源登记表,来源后登记也读得到。
 				membershipTier: () => tiers.lowest(),
 			}),
@@ -478,8 +478,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 }
 
 /**
- * 开机那一段的 app:listen 之后、数据与引擎起来之前由它应答(ADR-0022 决策 2)。健康检查照答
- * (引擎还没起,模块全是 false),别的 `/api/*` 与拓展挂载点一律 503 `unavailable`;面板照常
+ * 开机那一段的 app:listen 之后、数据与推送链路起来之前由它应答(ADR-0022 决策 2)。健康检查照答
+ * (推送链路还没起,模块全是 false),别的 `/api/*` 与拓展挂载点一律 503 `unavailable`;面板照常
  * 加载、照常能登录。数据段做完,index.ts 把请求切到 {@link createApp} 建的完整 app。
  */
 export function createStartupApp(

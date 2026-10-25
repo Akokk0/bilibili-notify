@@ -30,7 +30,7 @@ import { checkApprovalReachable } from "./roast-approval-guard.js";
 import { createSubscriptionTagsRoute } from "./subscription-tags.js";
 import type { RouteDeps } from "./types.js";
 
-/** B 站接口没就绪(启动中 / 没登录,引擎还没挂上)时,查人的两个接口回的那一句。 */
+/** B 站接口没就绪(启动中 / 没登录,推送链路还没挂上)时,查人的两个接口回的那一句。 */
 const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成或稍后再试";
 
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
@@ -275,7 +275,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const page =
 			Number.isFinite(pageParam) && pageParam >= 1 ? Math.min(Math.floor(pageParam), 200) : 1;
 		if (!q) return respondFailure(c, fail("invalid", "搜索关键词不能为空"));
-		if (!deps.runtime.engines || api === null) {
+		if (!deps.runtime.pipeline || api === null) {
 			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		}
 		try {
@@ -323,7 +323,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (!uid || !/^\d+$/.test(uid)) {
 			return respondFailure(c, fail("invalid", "uid 必须是纯数字 UID"));
 		}
-		if (!deps.runtime.engines || api === null) {
+		if (!deps.runtime.pipeline || api === null) {
 			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		}
 		try {
@@ -426,9 +426,9 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				masterTargetId: deps.store.getGlobals().master.targetId,
 				targets: deps.store.getTargets(),
 				connections: deps.store.getConnections(),
-				// 引擎还没起来时取不到能力,按「还不知道」算。
+				// 推送链路还没起来时取不到能力,按「还不知道」算。
 				capabilitiesOf: (connectionId) =>
-					deps.runtime.engines?.connectionCapabilities(connectionId),
+					deps.runtime.pipeline?.connectionCapabilities(connectionId),
 			});
 			if (!gate.ok) return respondFailure(c, gate);
 		}

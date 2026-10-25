@@ -84,7 +84,7 @@ async function depsWithPointer(pointer: string): Promise<RoastGenDeps> {
 	};
 	return {
 		runtime: {
-			engines: { extensionPlatformLabel: () => undefined },
+			pipeline: { extensionPlatformLabel: () => undefined },
 			serviceCtx,
 			subscriptionStateStore: { get: () => ({ cachedProfile: undefined }) },
 			sourceRegistry: {

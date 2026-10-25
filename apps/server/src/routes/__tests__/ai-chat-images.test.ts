@@ -102,7 +102,7 @@ async function makeDeps(
 			conversationStore,
 			imageStore,
 			chatImages,
-			engines: {
+			pipeline: {
 				commentary: new (class {
 					chatStatelessStream = chatStatelessStream;
 					summarizeTitle = vi.fn(async () => "标题");

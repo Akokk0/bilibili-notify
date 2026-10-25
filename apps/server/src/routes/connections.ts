@@ -36,7 +36,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	/** 下发前密钥格打码(`secret` 标记);盘上与引擎里仍是明文。 */
+	/** 下发前密钥格打码(`secret` 标记);盘上与推送链路里仍是明文。 */
 	const viewsOf = (): ConnectionView[] =>
 		deps.store.getConnections().map((c) => connectionView(c, deps.connectionSecrets));
 
@@ -46,14 +46,14 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	 * 连接能力快照(@全体 / 收不收得到回复 / 小程序卡三项),连接 id → 这条连接的能力。
 	 * **直连与拓展连接都列**:一条连接就是一个 bot(ADR-0012 决策 45),能力由它的适配器按连接答。
 	 * 适配器给不出能力的连接(没有适配器管、适配器没实现)不列,面板按「还不知道」算;
-	 * 引擎还没起来时是空表 —— 同样显示成「还不知道」,不算错。
+	 * 推送链路还没起来时是空表 —— 同样显示成「还不知道」,不算错。
 	 */
 	app.get("/capabilities", (c) => {
-		const engines = deps.runtime.engines;
+		const pipeline = deps.runtime.pipeline;
 		const out: ConnectionCapabilitiesMap = {};
-		if (engines) {
+		if (pipeline) {
 			for (const connection of deps.store.getConnections()) {
-				const caps = engines.connectionCapabilities(connection.id);
+				const caps = pipeline.connectionCapabilities(connection.id);
 				if (caps) out[connection.id] = caps;
 			}
 		}
@@ -74,9 +74,9 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 				}),
 			);
 		}
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
-		const result = await engines.listAddressCandidates(
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const result = await pipeline.listAddressCandidates(
 			c.req.param("id"),
 			scope.data,
 			c.req.raw.signal,
@@ -154,11 +154,11 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
 		if (!connection) return respondFailure(c, fail("not_found", "没有这条连接"));
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
-		// 探测结果写进连接的 probeState、问题表的清理,都由引擎的手动探测一并做了
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		// 探测结果写进连接的 probeState、问题表的清理,都由推送链路的手动探测一并做了
 		// (面板的状态圆点不必等一分钟一轮的周期探测)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
-		const result = await engines.probeConnection(id);
+		const result = await pipeline.probeConnection(id);
 		return c.json<ConnectionTestResponse>(testResultOfProbe(result));
 	});
 

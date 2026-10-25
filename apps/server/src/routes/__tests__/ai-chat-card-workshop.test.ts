@@ -103,7 +103,7 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 			dataRoot: dataDir,
 			serviceCtx: { logger },
 			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
-			engines: { commentary: { chatStatelessStream } },
+			pipeline: { commentary: { chatStatelessStream } },
 			sourceRegistry: {
 				get: (key: string) => (descriptors[key] ? { descriptor: descriptors[key] } : undefined),
 				list: () => Object.keys(descriptors).map((sourceKey) => ({ sourceKey })),

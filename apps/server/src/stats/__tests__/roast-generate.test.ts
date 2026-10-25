@@ -106,7 +106,7 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 	);
 	return {
 		runtime: {
-			engines: {
+			pipeline: {
 				extensionPlatformLabel: (id: string) => PLATFORM_LABELS[id],
 				extensionPostNoun: () => undefined,
 			},
@@ -152,7 +152,7 @@ const overviewFails = async () => null;
 describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () => {
 	it("引擎没起来 → unavailable(等一会儿就好)", async () => {
 		const deps = makeDeps(["1", "2"]);
-		(deps.runtime as { engines: unknown }).engines = null;
+		(deps.runtime as { pipeline: unknown }).pipeline = null;
 		const r = await generateBoardRoast(deps, {
 			days: 7,
 			tz: 0,
@@ -279,7 +279,7 @@ describe("失败一律是标准码表里的码,话不空 —— 路由的错误�
 	/** 把每一种失败都逼出来一次:靠输入造,不靠手写失败对象(手写的话就测不到产生失败的那一处)。 */
 	async function everyFailure() {
 		const asOffline = (deps: RoastGenDeps) => {
-			(deps.runtime as { engines: unknown }).engines = null;
+			(deps.runtime as { pipeline: unknown }).pipeline = null;
 			return deps;
 		};
 		const args = { days: 7, tz: 0 };

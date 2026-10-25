@@ -255,7 +255,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	it("注水后键序仍是 zod 规范形态 — 只改无关字段不该让 ai 被误判成变了", async () => {
 		// 回归守护。密钥落盘时若是 `delete` 掉那个键,load() 读回时键不存在 →
 		// 注水的 spread 把它当**新键追加到对象末尾**,键序就偏离了 zod parse 的声明
-		// 顺序。而 engines.ts 的 config-changed diff 用 JSON.stringify 逐 section
+		// 顺序。而 pipeline.ts 的 config-changed diff 用 JSON.stringify 逐 section
 		// 比较(键序敏感),于是重启后第一次改**任何** globals 字段(哪怕只是
 		// profileRefreshCron),ai 都会被误判成「变了」→ 白白热重载一次 AI 实例 +
 		// 刷两条日志。只有「配了 AI + 启用加密 + 重启后首次变更」三者同时满足才触发,
@@ -274,7 +274,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store2 = mkStore(mkSecretStore());
 		await store2.load();
 
-		const prev = store2.getGlobals(); // engines 的 initialGlobals / prevGlobals 初值
+		const prev = store2.getGlobals(); // pipeline 的 initialGlobals / prevGlobals 初值
 		// 正对照:注水回来的 key 确实在内存里(下面比的不是两份空 ai)
 		expect(prev.ai.providers.deepseek?.apiKey).toBe("sk-x");
 		await store2.patchGlobals({ profileRefreshCron: "*/9 * * * *" });

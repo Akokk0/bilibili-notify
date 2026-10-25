@@ -12,8 +12,8 @@ export function promptNounsOf(
 			keys,
 			{
 				sources: deps.runtime.sourceRegistry,
-				extensionPlatformLabel: (id) => deps.runtime.engines?.extensionPlatformLabel(id),
-				extensionPostNoun: (id) => deps.runtime.engines?.extensionPostNoun(id),
+				extensionPlatformLabel: (id) => deps.runtime.pipeline?.extensionPlatformLabel(id),
+				extensionPostNoun: (id) => deps.runtime.pipeline?.extensionPostNoun(id),
 				subscriptions: () => deps.store.getSubscriptions(),
 			},
 			PROMPT_NEUTRAL_NOUNS,

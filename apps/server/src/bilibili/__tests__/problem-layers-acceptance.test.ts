@@ -32,11 +32,7 @@ import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
 import { createBiliSource } from "../source.js";
-import {
-	LOGIN_EXPIRED_TEXT,
-	LOGIN_MISSING_TEXT,
-	LOGIN_RECOVERED_TEXT,
-} from "./problem-pipeline.js";
+import { LOGIN_EXPIRED_TEXT, LOGIN_MISSING_TEXT, LOGIN_RECOVERED_TEXT } from "./problem-harness.js";
 import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };

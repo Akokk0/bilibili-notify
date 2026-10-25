@@ -1,7 +1,7 @@
 /**
  * `ctx.registerSource(def)`(第 3 版订阅源的注册口):宿主这一侧的规矩。
  *
- * 钉在 `createExtensionContext` 上,宿主注入的「登进来源登记表」换成一个记账的替身(真的那个是引擎的
+ * 钉在 `createExtensionContext` 上,宿主注入的「登进来源登记表」换成一个记账的替身(真的那个是推送链路的
  * `registerSource`,从真入口的接线钉在 `__tests__/extension-source-e2e.test.ts`)。每一格都带着一条
  * **宿主不信拓展的自述**的规矩:
  *
@@ -30,7 +30,7 @@ import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
-import type { EnginesRuntime } from "../../runtime/engines.js";
+import type { PipelineRuntime } from "../../runtime/pipeline.js";
 import {
 	type CreateExtensionContextOptions,
 	createExtensionContext,
@@ -82,7 +82,7 @@ function sourceManifest(
 	} as unknown as ExtensionManifest;
 }
 
-type RegisterEntry = Parameters<EnginesRuntime["registerSource"]>[0];
+type RegisterEntry = Parameters<PipelineRuntime["registerSource"]>[0];
 
 function harness(
 	opts: {
@@ -156,7 +156,7 @@ interface HostRecord {
 	started: string[];
 }
 
-/** 引擎那头的替身:登记即 `start`(核心 ctx 换成只记作品的),撤登记叫来源的 `stop`,幂等。 */
+/** 推送链路那头的替身:登记即 `start`(核心 ctx 换成只记作品的),撤登记叫来源的 `stop`,幂等。 */
 async function defaultHost(entry: RegisterEntry, record: HostRecord): Promise<Disposable> {
 	const core = {
 		logger: entry.logger,

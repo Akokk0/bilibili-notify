@@ -1,7 +1,7 @@
 /**
  * CSS 框旁那颗「请女仆帮忙写」按不按得动(ADR-0015 决策 10 与它的 🔗)。
  *
- * 判据与服务端建 AI 实例那一条同源(`runtime/engines.ts` 的 `!p.apiKey || !p.baseUrl`):
+ * 判据与服务端建 AI 实例那一条同源(`runtime/pipeline.ts` 的 `!p.apiKey || !p.baseUrl`):
  * 当前实例的 key 与地址都填了。GET 回来的 key 是遮挡(`{ masked }`),没配是空串:「有值 = 配了」照常成立。
  * 「智能女仆」总开关不管这颗钮 —— 那是聊天的闸,dashboard 的「让女仆改」也不看它。
  *

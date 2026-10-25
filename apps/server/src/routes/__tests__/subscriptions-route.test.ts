@@ -47,7 +47,7 @@ interface Harness {
 function makeHarness(opts?: {
 	subs?: unknown[];
 	rtRecord?: Record<string, unknown>;
-	engines?: "ok" | "null";
+	pipeline?: "ok" | "null";
 	/** 单条资料刷新引擎:ok=写一份假资料;null=引擎没起;fail=照常返回但不写;throw=刷新失败。 */
 	profileRefresh?: "ok" | "null" | "fail" | "throw";
 	/** follow() 的结果:ok=已关注成功;already=22014 已关注过;fail=业务码失败;throw=网络炸。 */
@@ -59,7 +59,7 @@ function makeHarness(opts?: {
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
 	const rtRecord = { ...opts?.rtRecord };
-	const enginesMode = opts?.engines ?? "ok";
+	const enginesMode = opts?.pipeline ?? "ok";
 	const refreshMode = opts?.profileRefresh ?? "ok";
 
 	// 新建:存储里原本没有这条,upsert 之后才有(POST 靠这个分辨「新建」与「整份回来改」)。
@@ -99,7 +99,7 @@ function makeHarness(opts?: {
 		return { ok: true as const };
 	});
 
-	const engines = enginesMode === "null" ? null : {};
+	const pipeline = enginesMode === "null" ? null : {};
 
 	const deps = {
 		store: {
@@ -117,7 +117,7 @@ function makeHarness(opts?: {
 				get: (key: string) =>
 					key === SUB.identity.sourceKey ? { descriptor: BILI_SOURCE_DESCRIPTOR } : undefined,
 			},
-			engines,
+			pipeline,
 			profileRefresh: refreshMode === "null" ? null : { refreshSubscription },
 		},
 	} as unknown as RouteDeps;
@@ -398,7 +398,7 @@ describe("/api/subscriptions PATCH — 响应同样 join", () => {
 				runtime: {
 					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 					subscriptionStateStore: { get: () => undefined },
-					engines: null,
+					pipeline: null,
 				},
 			} as unknown as RouteDeps,
 			{ api: null },
@@ -512,7 +512,7 @@ describe("/api/subscriptions × 拓展订阅", () => {
 					serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 					subscriptionStateStore: { get: () => undefined, patch: vi.fn() },
 					sourceRegistry: { get: () => undefined },
-					engines: null,
+					pipeline: null,
 				},
 			} as unknown as RouteDeps,
 			{

@@ -54,7 +54,7 @@ async function row(days: number, tz: number) {
 	const deps = {
 		store: { getSubscriptions: () => [SUB] },
 		runtime: {
-			engines: null,
+			pipeline: null,
 			profileRefresh: { getLastEntries: () => [] },
 			fansStore: createFollowersStore({ dataRoot: dataDir, logger: silent }),
 			statsStore: {

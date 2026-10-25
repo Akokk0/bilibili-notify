@@ -2,9 +2,9 @@
  * 🔴 **入口真的调了内置来源的登记,关停时来源真的被停。**
  *
  * 来源、登记表、宿主、`compose.ts` 各有单元测试,证明不了 `src/index.ts` 真调了
- * `builtins.registerSources(engines)`、`compose.ts` 真调了 `engines.registerSource(...)`、
- * `engines.dispose()` 真收了来源 —— 这三处剪断,类型、构建、单元测试全绿,只是动态从此不拉。
- * 所以这条起一台真服务端(真入口、真 `compose.ts`、真 `createEngines`、真登记表、真来源上下文),
+ * `builtins.registerSources(pipeline)`、`compose.ts` 真调了 `pipeline.registerSource(...)`、
+ * `pipeline.dispose()` 真收了来源 —— 这三处剪断,类型、构建、单元测试全绿,只是动态从此不拉。
+ * 所以这条起一台真服务端(真入口、真 `compose.ts`、真 `createPipelineRuntime`、真登记表、真来源上下文),
  * 只把造 B 站来源的工厂换成假来源(`start` 只记下 ctx、不起 cron、不碰网络)。
  *
  * 它证明不了的只有一件事:**真的** B 站来源起来以后真的在拉、真的在推 —— 真来源一拉就是打 B 站的关注流,
@@ -106,7 +106,7 @@ describe("内置来源的登记接在开机与关停路径上", () => {
 		expect(fake.stops).toBe(1);
 	});
 
-	// 验红:删掉 `engines.ts` 的 `registerSource` 里递 `problems` 的那一行,或 `app.ts` 里挂 `/api/problems` 的那一行,这条红。
+	// 验红:删掉 `pipeline.ts` 的 `registerSource` 里递 `problems` 的那一行,或 `app.ts` 里挂 `/api/problems` 的那一行,这条红。
 	it("来源在 start 之后报的问题,经 GET /api/problems 读得到", async () => {
 		const port = await findFreePort();
 		handle = await startServer({

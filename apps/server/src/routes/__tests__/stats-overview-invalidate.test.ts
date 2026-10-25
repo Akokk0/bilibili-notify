@@ -18,7 +18,7 @@ function makeDeps(listSamplesSince: (...args: unknown[]) => Promise<unknown[]>) 
 				listLiveSessions: async () => [],
 				listRecording: async () => [],
 			},
-			engines: null,
+			pipeline: null,
 			profileRefresh: null,
 			subscriptionStateStore: { get: () => undefined },
 		},

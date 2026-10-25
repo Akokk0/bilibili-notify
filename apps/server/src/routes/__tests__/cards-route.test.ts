@@ -425,7 +425,7 @@ describe("cards route — GET /chrome(探测本机 Chrome)", () => {
 });
 
 describe("cards route — POST /renderer(热启用渲染)", () => {
-	function depsWithEngines(
+	function depsWithPipeline(
 		enableImageRendering: ReturnType<typeof vi.fn>,
 		swapImageRendering: ReturnType<typeof vi.fn> = vi.fn(),
 	): RouteDeps {
@@ -434,19 +434,19 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
-				engines: { enableImageRendering, swapImageRendering },
+				pipeline: { enableImageRendering, swapImageRendering },
 			},
 		} as unknown as RouteDeps;
 	}
 
-	it("POST /renderer: 构造 puppeteer + 热启用引擎 + 写回配置 + 通知", async () => {
+	it("POST /renderer: 构造 puppeteer + 热启用推送链路 + 写回配置 + 通知", async () => {
 		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
 		const persistChromeSource = vi.fn(async () => {});
 		const onPuppeteerEnabled = vi.fn();
 		const app = createCardsRoute({
-			deps: depsWithEngines(enableImageRendering),
+			deps: depsWithPipeline(enableImageRendering),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
@@ -477,7 +477,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		const persistChromeSource = vi.fn(async () => {});
 		const onPuppeteerEnabled = vi.fn();
 		const app = createCardsRoute({
-			deps: depsWithEngines(enableImageRendering),
+			deps: depsWithPipeline(enableImageRendering),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
@@ -511,7 +511,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		const enableImageRendering = vi.fn(() => true);
 		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
-			deps: depsWithEngines(enableImageRendering),
+			deps: depsWithPipeline(enableImageRendering),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
@@ -547,7 +547,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		const persistChromeSource = vi.fn(async () => {});
 		const onPuppeteerEnabled = vi.fn();
 		const app = createCardsRoute({
-			deps: depsWithEngines(enableImageRendering, swapImageRendering),
+			deps: depsWithPipeline(enableImageRendering, swapImageRendering),
 			puppeteer: oldPup,
 			initialChromeSource: { chromePath: "/usr/bin/chromium" },
 			api: null,
@@ -587,7 +587,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		} as unknown as PuppeteerAdapter;
 		const swapImageRendering = vi.fn();
 		const app = createCardsRoute({
-			deps: depsWithEngines(
+			deps: depsWithPipeline(
 				vi.fn(() => false),
 				swapImageRendering,
 			),
@@ -613,7 +613,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		const createPuppeteer = vi.fn();
 		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
-			deps: depsWithEngines(
+			deps: depsWithPipeline(
 				vi.fn(() => false),
 				vi.fn(),
 			),
@@ -649,7 +649,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 			throw new Error("EACCES: permission denied");
 		});
 		const app = createCardsRoute({
-			deps: depsWithEngines(
+			deps: depsWithPipeline(
 				vi.fn(() => false),
 				swapImageRendering,
 			),
@@ -678,7 +678,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 
 	it("GET /renderer:未启用时 enabled=false source=null;persistable 跟注入走", async () => {
 		const app = createCardsRoute({
-			deps: depsWithEngines(vi.fn()),
+			deps: depsWithPipeline(vi.fn()),
 			puppeteer: null,
 			api: null,
 		});
@@ -691,7 +691,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		const createPuppeteer = vi.fn(() => fakePup);
 		const persistChromeSource = vi.fn(async () => {});
 		const app = createCardsRoute({
-			deps: depsWithEngines(vi.fn(() => false)),
+			deps: depsWithPipeline(vi.fn(() => false)),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
@@ -711,7 +711,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 	it("body 缺 chromePath 与 chromeEndpoint → invalid(400),不构造 puppeteer", async () => {
 		const createPuppeteer = vi.fn();
 		const app = createCardsRoute({
-			deps: depsWithEngines(vi.fn()),
+			deps: depsWithPipeline(vi.fn()),
 			puppeteer: null,
 			api: null,
 			createPuppeteer,
@@ -728,13 +728,13 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 		expect(createPuppeteer).not.toHaveBeenCalled();
 	});
 
-	it("engines 未就绪 → unavailable(503),这是「等一会儿就好」,不是 not_configured", async () => {
+	it("pipeline 未就绪 → unavailable(503),这是「等一会儿就好」,不是 not_configured", async () => {
 		const deps = {
 			runtime: {
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
-				engines: null,
+				pipeline: null,
 			},
 		} as unknown as RouteDeps;
 		const app = createCardsRoute({ deps, puppeteer: null, api: null });
@@ -751,14 +751,14 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 describe("cards route — 热切换后预览渲染器随之失效重建", () => {
 	const STYLE = {};
 
-	function depsWithEnginesAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
+	function depsWithPipelineAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
 		return {
 			runtime: {
 				dataRoot: join(tmpdir(), "bn-test-hotswap-no-such-dir"),
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 				},
-				engines: { enableImageRendering: vi.fn(() => false), swapImageRendering },
+				pipeline: { enableImageRendering: vi.fn(() => false), swapImageRendering },
 			},
 			store: {
 				getGlobals: () => EMPTY_GLOBALS,
@@ -796,7 +796,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		// 探测(page().close())与之后预览渲染复用同一份 fake page,探测调用也计入
 		// pupB.page 调用次数,属预期。
 		const swapImageRendering = vi.fn();
-		const deps = depsWithEnginesAndDataDir(swapImageRendering);
+		const deps = depsWithPipelineAndDataDir(swapImageRendering);
 		const app = createCardsRoute({
 			deps,
 			puppeteer: pupA,
@@ -815,7 +815,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		expect(first.status).toBe(200);
 		expect(pupA.page).toHaveBeenCalledTimes(1);
 
-		// 热切换到 pupB —— 引擎侧的 swapImageRendering 只管推送渲染,不管路由自己缓存
+		// 热切换到 pupB —— 推送链路侧的 swapImageRendering 只管推送渲染,不管路由自己缓存
 		// 的预览 renderer;pupA 在这之后被 dispose,若预览渲染器缓存不失效就会打到
 		// 一个已销毁的 adapter 上。
 		const swap = await app.request("/renderer", {
@@ -2241,10 +2241,10 @@ describe("cards route — /preview 走皮肤", () => {
 		try {
 			const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
 			const d = globalsDeps(DEFAULT_CARD_SKIN_ID) as unknown as {
-				runtime: { engines?: unknown };
+				runtime: { pipeline?: unknown };
 				store: { getTargets?: () => unknown };
 			};
-			d.runtime.engines = { push: { sendToTarget } };
+			d.runtime.pipeline = { push: { sendToTarget } };
 			d.store.getTargets = () => [{ id: TARGET_ID, name: "群一", enabled: true }];
 			const app = createCardsRoute({
 				deps: d as unknown as RouteDeps,
@@ -2709,10 +2709,10 @@ describe("cards route — 画会员卡但没有来源声明会员档位", () => 
 	function setup(sourceRegistry: SourceRegistry) {
 		const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
 		const deps = makeDeps(sourceRegistry) as unknown as {
-			runtime: { engines?: unknown };
+			runtime: { pipeline?: unknown };
 			store: { getTargets?: () => unknown };
 		};
-		deps.runtime.engines = { push: { sendToTarget } };
+		deps.runtime.pipeline = { push: { sendToTarget } };
 		deps.store.getTargets = () => [{ id: TARGET_ID, name: "群一", enabled: true }];
 		const puppeteer = makeFakePuppeteer();
 		let shoot:

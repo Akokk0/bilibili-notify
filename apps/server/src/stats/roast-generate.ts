@@ -100,7 +100,7 @@ function toRoastInput(
 type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["ai"];
 
 /**
- * 锐评的一次性生成器。engines.commentary 那台是常驻的,这里刻意自建(见调用点
+ * 锐评的一次性生成器。pipeline.commentary 那台是常驻的,这里刻意自建(见调用点
  * 注释),所以搜索源也得自己接 —— 常驻那台的接线惠及不到它。
  */
 function makeRoastGenerator(
@@ -134,8 +134,8 @@ export async function generateBoardRoast(
 	deps: RoastGenDeps,
 	opts: { days: number; tz: number; fetchOverview: OverviewFetcher },
 ): Promise<RoastGenResult<StatsRoastResult>> {
-	const engines = deps.runtime.engines;
-	if (!engines) return GEN_FAILURE.notReady();
+	const pipeline = deps.runtime.pipeline;
+	if (!pipeline) return GEN_FAILURE.notReady();
 
 	const globals = deps.store.getGlobals();
 	const aiSettings = globals.ai;
@@ -183,8 +183,8 @@ export async function generateSoloRoast(
 	deps: RoastGenDeps,
 	opts: { subscriptionId: string; days: number; tz: number; fetchOverview: OverviewFetcher },
 ): Promise<RoastGenResult<StatsSoloRoastResult>> {
-	const engines = deps.runtime.engines;
-	if (!engines) return GEN_FAILURE.notReady();
+	const pipeline = deps.runtime.pipeline;
+	if (!pipeline) return GEN_FAILURE.notReady();
 
 	// 先确认这条订阅真的在。不校验的话,任何人构造一个 id 就能让我们拿着
 	// 一份空数据去请求模型 —— 白烧 token,还会渲染出一张查无此人的卡。

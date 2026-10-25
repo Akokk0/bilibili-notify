@@ -8,7 +8,7 @@ import type { ConfigStore } from "../config/store.js";
  *
  * On boot we seed the store from disk; whenever a `config-changed` event
  * fires for the `subscriptions` scope we re-seed via `replaceAll`. The
- * store internally diffs and emits `subscription-changed` so engines can
+ * store internally diffs and emits `subscription-changed` so pipeline can
  * apply incremental ops.
  *
  * The reverse direction (engine state mutations back to disk) goes through

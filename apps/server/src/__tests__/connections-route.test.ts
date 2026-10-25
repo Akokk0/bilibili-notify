@@ -15,13 +15,13 @@ import { snapshotFor } from "./support/connection-snapshot.js";
 
 /**
  * `GET /api/connections/capabilities` —— 面板「连接支持情况」读的那张表。索引一级:
- * 连接 id → 这条连接的能力。直连与拓展连接都列;取不到能力的连接不列;引擎还没起来是空表,不是错。
+ * 连接 id → 这条连接的能力。直连与拓展连接都列;取不到能力的连接不列;推送链路还没起来是空表,不是错。
  */
-function makeDeps(over: { connections?: unknown[]; engines?: unknown }): RouteDeps {
+function makeDeps(over: { connections?: unknown[]; pipeline?: unknown }): RouteDeps {
 	return {
 		runtime: {
 			serviceCtx: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } },
-			engines: over.engines,
+			pipeline: over.pipeline,
 		},
 		store: { getConnections: () => over.connections ?? [] },
 		puppeteer: null,
@@ -49,7 +49,7 @@ describe("connections route — GET /capabilities", () => {
 					{ id: "bot", adapterKey: "bridge", platform: "telegram" },
 					{ id: "qq", adapterKey: "qq-official", platform: "qq-official" },
 				],
-				engines: {
+				pipeline: {
 					connectionCapabilities: (id: string) =>
 						id === "ob" ? direct : id === "bot" ? bridged : undefined,
 				},
@@ -60,7 +60,7 @@ describe("connections route — GET /capabilities", () => {
 		expect(await res.json()).toEqual({ ob: direct, bot: bridged });
 	});
 
-	it("引擎还没起来 → 空表,200", async () => {
+	it("推送链路还没起来 → 空表,200", async () => {
 		const app = createConnectionsRoute(
 			makeDeps({ connections: [{ id: "ob", adapterKey: "onebot", platform: "onebot" }] }),
 		);
@@ -343,16 +343,16 @@ describe("connections route — 写入的失败(真 store)", () => {
 
 /**
  * `POST /:id/probe` —— 探一次连接通不通、回报结果:探到了什么都回 200,体是 `Result<{ latencyMs }>`;
- * 请求本身不成(没这条连接、引擎没起)才是非 2xx。结果写进连接的 `probeState` 由引擎的手动探测做
+ * 请求本身不成(没这条连接、推送链路没起)才是非 2xx。结果写进连接的 `probeState` 由推送链路的手动探测做
  * (`connection-probe-engine.test.ts`),路由只翻形状。
  */
 describe("connections route — POST /:id/probe", () => {
-	function testApp(probe: unknown, opts: { engines?: boolean; known?: boolean } = {}) {
+	function testApp(probe: unknown, opts: { pipeline?: boolean; known?: boolean } = {}) {
 		const recordConnectionProbeState = vi.fn(async () => ({}));
 		const app = createConnectionsRoute({
 			runtime: {
 				serviceCtx: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } },
-				engines: opts.engines === false ? null : { probeConnection: vi.fn(async () => probe) },
+				pipeline: opts.pipeline === false ? null : { probeConnection: vi.fn(async () => probe) },
 			},
 			store: {
 				getConnections: () => (opts.known === false ? [] : [{ id: "c1", adapterKey: "onebot" }]),
@@ -371,8 +371,8 @@ describe("connections route — POST /:id/probe", () => {
 		expect(await res.json()).toEqual({ code: "not_found", message: "没有这条连接" });
 	});
 
-	it("引擎还没起 → 503 unavailable", async () => {
-		const { app } = testApp({ ok: true, latencyMs: 5 }, { engines: false });
+	it("推送链路还没起 → 503 unavailable", async () => {
+		const { app } = testApp({ ok: true, latencyMs: 5 }, { pipeline: false });
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({
@@ -381,7 +381,7 @@ describe("connections route — POST /:id/probe", () => {
 		});
 	});
 
-	it("通 → 200 { ok: true, latencyMs };写 probeState 是引擎手动探测的事,路由自己不写", async () => {
+	it("通 → 200 { ok: true, latencyMs };写 probeState 是推送链路手动探测的事,路由自己不写", async () => {
 		const { app, recordConnectionProbeState } = testApp({ ok: true, latencyMs: 12 });
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);

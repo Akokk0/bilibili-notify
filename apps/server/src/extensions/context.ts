@@ -38,7 +38,7 @@ import {
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
-import type { EnginesRuntime } from "../runtime/engines.js";
+import type { PipelineRuntime } from "../runtime/pipeline.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
@@ -245,12 +245,12 @@ export interface CreateExtensionContextOptions {
 	/** 订阅「连接配置动过了」。⛔ 拿不到 bus —— 宿主替它订,只把结果转给它。 */
 	onConnectionsChanged: (fn: () => void) => Disposable;
 	/**
-	 * 把拓展的订阅源登进来源登记表(引擎的 `registerSource`,登记即 `start`)。不给就是这台宿主没接来源登记表,
+	 * 把拓展的订阅源登进来源登记表(推送链路的 `registerSource`,登记即 `start`)。不给就是这台宿主没接来源登记表,
 	 * 拓展的 `ctx.registerSource` 抛。
 	 */
-	registerSource?: EnginesRuntime["registerSource"];
+	registerSource?: PipelineRuntime["registerSource"];
 	/**
-	 * 事件里没带作者名时补的名字(资料名 → 身份标签,引擎的 `fallbackCreatorName`)。不给就退外部 id。
+	 * 事件里没带作者名时补的名字(资料名 → 身份标签,推送链路的 `fallbackCreatorName`)。不给就退外部 id。
 	 */
 	fallbackCreatorName?: (identity: Identity) => string;
 	/** 图库读口(`ImageStore.read`):拓展作品图按引用读回字节补宽高与动图标记。不给就读不到(只放引用)。 */

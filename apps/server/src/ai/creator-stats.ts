@@ -4,7 +4,7 @@ import { timezoneOffsetMinutes } from "@bilibili-notify/internal";
 import { statsFileKey } from "../stats/file-key.js";
 import type { StatsStore } from "../stats/store.js";
 
-/** 女仆读统计的口(`createEngines` 的 `creatorStats` 选项就是它)。按**订阅 id**认,不认来源。 */
+/** 女仆读统计的口(`createPipelineRuntime` 的 `creatorStats` 选项就是它)。按**订阅 id**认,不认来源。 */
 export interface CreatorStatsReader {
 	/** 数据统计总开关此刻开着没有(每次现问,不留快照)。 */
 	isEnabled(): boolean;

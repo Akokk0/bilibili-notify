@@ -14,7 +14,7 @@
  * 🔴 **惰性建、不预建**。`createAppRuntime` 跑在 `configStore.load()` **之前**,而
  * `load()` 不 emit `config-changed`(它只 `touch` 元数据)。在那一刻先算一张,这张
  * 表就会永远是空的 —— 症状是每一行的重推按钮都灰着,理由写「路由里把它去掉了」,
- * 而配置文件里明明配着。`engines.ts` 那张 linkPolicies 敢预建,是因为引擎整个挂在
+ * 而配置文件里明明配着。`pipeline.ts` 那张 linkPolicies 敢预建,是因为推送链路整个挂在
  * load 之后。
  */
 

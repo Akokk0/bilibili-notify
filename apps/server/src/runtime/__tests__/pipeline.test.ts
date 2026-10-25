@@ -1,10 +1,10 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: vitest mock class 字段/构造器入参故意保留 any,避免重复定义业务实例的窄类型
 /**
- * 单元测试 — `createEngines` 的「无重启热重载」契约(独立端配置流向核心)。
+ * 单元测试 — `createPipelineRuntime` 的「无重启热重载」契约(独立端配置流向核心)。
  *
- * engines.ts 自身构造真实 DynamicPoller / LiveEngine / PushRouter / CommentaryGenerator /
- * ImageRenderer,代价太大且与本测试无关 —— 这里把这 5 个引擎包 `vi.mock` 成 spy class,
- * 用真实 NodeMessageBus 驱动事件,聚焦验证 engines.ts 的 wiring 与热重载分支:
+ * `PushRouter` / `CommentaryGenerator` / `ImageRenderer` 用 `vi.mock` 替身,
+ * 其余按真实接线构造,并用真实 `NodeMessageBus` 驱动事件,聚焦验证 pipeline.ts
+ * 的 wiring 与热重载分支:
  *
  *   boot:           push.start / dynamic.start 拉起;默认 globals 下 AI / image 不构造
  *   config-changed globals:  dynamic+live.updateConfig、push.setMaster 一并热推
@@ -75,7 +75,7 @@ import { createNodeMessageBus } from "../message-bus.js";
 import { dataPath } from "../roots.js";
 import type { NodeServiceContext } from "../service-context.js";
 
-// ---- 引擎包 spy mocks(每次构造把实例塞进 H.<engine>,字段方法均为 vi.fn)----
+// ---- 参与构造的模块 spy mocks(每次构造把实例塞进 H.<component>,字段方法均为 vi.fn)----
 /**
  * 在播表的内存替身:场次引擎写它(`replace` / `merge` / `remove`),别的读它(`get`)。接线测试只关心
  * 「引擎写进去、读的人读得到」,不关心合并窗口那一发(那是 `live-table.test.ts` 的事)。
@@ -142,7 +142,7 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 		start = vi.fn();
 		updateConfig = vi.fn();
 		/**
-		 * 构造后 engines.ts 会立刻 `attachReadOnlyTools` 把只读工具接上。替身少了
+		 * 构造后 pipeline.ts 会立刻 `attachReadOnlyTools` 把只读工具接上。替身少了
 		 * 这个方法会当场抛,而 buildCommentary 的 try/catch 会把它吞成「AI 初始化
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
@@ -150,7 +150,7 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 		setProvidedTools = vi.fn();
 		/** 作品装配的 AI 点评(经 `deps.ai()` 每条现取)。 */
 		comment = vi.fn(async (..._args: unknown[]) => "点评");
-		/** 同上:engines.ts 构造后还会接联网搜索的执行器热读口。 */
+		/** 同上:pipeline.ts 构造后还会接联网搜索的执行器热读口。 */
 		setWebSearchSource = vi.fn();
 		constructor(opts: any) {
 			this.opts = opts;
@@ -195,7 +195,7 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 });
 
 // SUT must be imported AFTER the vi.mock calls register.
-const { createEngines } = await import("../engines.js");
+const { createPipelineRuntime } = await import("../pipeline.js");
 const { postSettingsOf } = await import("../../posts/post-settings.js");
 
 function makeLogger() {
@@ -287,7 +287,7 @@ function makeConfigStore(
 }
 
 interface Ctx {
-	runtime: ReturnType<typeof createEngines>;
+	runtime: ReturnType<typeof createPipelineRuntime>;
 	bus: ReturnType<typeof createNodeMessageBus>;
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
@@ -302,7 +302,7 @@ interface Ctx {
 	/** `registerSource` 的登记项带进去的日志器(来源上下文的 `ctx.logger` 该是它)。 */
 	sourceLogger: ReturnType<typeof makeLogger>;
 	sources: SourceRegistry;
-	/** 递给 `createEngines` 的问题表(真表):来源上下文往里写、通知器听它。 */
+	/** 递给 `createPipelineRuntime` 的问题表(真表):来源上下文往里写、通知器听它。 */
 	problems: ProblemTable;
 }
 
@@ -317,23 +317,23 @@ function setup(opts?: {
 	/** 平台实现(探测 / 能力都问它)。 */
 	platformAdapters?: PlatformAdapter[];
 	/** 开发版的推送截流(接线层给的);不给 = 不传。 */
-	interceptSend?: Parameters<typeof createEngines>[0]["interceptSend"];
+	interceptSend?: Parameters<typeof createPipelineRuntime>[0]["interceptSend"];
 	/** 卡片皮肤那三口(接线层给的);不给 = 这台机器只有内置默认皮肤。 */
-	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
+	cardSkins?: Parameters<typeof createPipelineRuntime>[0]["cardSkins"];
 	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
-	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
+	extensionPlatformLabel?: Parameters<typeof createPipelineRuntime>[0]["extensionPlatformLabel"];
 	/** 拓展清单里作品叫法(接线层给的);不给 = 女仆那份视图退中性叫法。 */
-	extensionPostNoun?: Parameters<typeof createEngines>[0]["extensionPostNoun"];
+	extensionPostNoun?: Parameters<typeof createPipelineRuntime>[0]["extensionPostNoun"];
 	/** 女仆读统计的口(接线层给的);不给 = 女仆的作品 / 统计工具答「没接上」。 */
-	creatorStats?: Parameters<typeof createEngines>[0]["creatorStats"];
+	creatorStats?: Parameters<typeof createPipelineRuntime>[0]["creatorStats"];
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
-	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
+	resolveImageRef?: Parameters<typeof createPipelineRuntime>[0]["resolveImageRef"];
 	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
-	readImage?: Parameters<typeof createEngines>[0]["readImage"];
+	readImage?: Parameters<typeof createPipelineRuntime>[0]["readImage"];
 	/** 直播场次用的在播表;不给 = 不接直播。 */
-	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
+	liveTable?: Parameters<typeof createPipelineRuntime>[0]["liveTable"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
-	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
+	imageFetcher?: Parameters<typeof createPipelineRuntime>[0]["imageFetcher"];
 	/** 登记的假来源是否实现拉取式的 `fetchLiveStatus`;不给 = 没实现。 */
 	fetchLiveStatus?: Source["fetchLiveStatus"];
 	/** 假来源登记在哪个键下;不给 = `bilibili`。 */
@@ -372,7 +372,7 @@ function setup(opts?: {
 	}
 	if (opts?.fetchLiveStatus) source.fetchLiveStatus = opts.fetchLiveStatus;
 	const problems = createProblemTable({ logger: serviceCtx.logger });
-	const runtime = createEngines({
+	const runtime = createPipelineRuntime({
 		sources,
 		linkResolvers: createLinkResolverRegistry(),
 		aiToolProviders: createAiToolProviderRegistry(),
@@ -382,7 +382,7 @@ function setup(opts?: {
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
 		// 轮换故游标不脏、dispose 不写盘(即便写,目标在 tmp 下也无害)。不含任何真实路径/密钥。
-		dataRoot: opts?.dataDir ?? join(tmpdir(), "bn-engines-test-no-such-dir"),
+		dataRoot: opts?.dataDir ?? join(tmpdir(), "bn-pipeline-test-no-such-dir"),
 		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
 		loadFontFace: async () => "",
 		configStore: configStore as unknown as ConfigStore,
@@ -581,9 +581,9 @@ afterEach(async () => {
 	}
 });
 
-describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
+describe("createPipelineRuntime — 卡上主播头像的读口接线(3a-35)", () => {
 	// 作品这头:头像由核心出卡那一刻按订阅 id 现读(`deps.avatar`),引擎不再有头像读口。
-	// 验红:把 engines.ts 里 postQueue 的 `avatar: profileAvatarOf` 去掉(或改成开机取一次),这条红。
+	// 验红:把 pipeline.ts 里 postQueue 的 `avatar: profileAvatarOf` 去掉(或改成开机取一次),这条红。
 	it("B 站作品:出卡器收到的 Post.creator.avatar 是出卡那一刻订阅资料里的头像,资料之后换了值,下一张卡用新的", async () => {
 		let profile: { avatar?: string } = {};
 		const get = vi.fn((_id: string) => ({ cachedProfile: profile }));
@@ -608,10 +608,10 @@ describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
 
 /**
  * 出图连续失败「只提醒一次」的计数全进程一份(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个
- * 渲染器,各记各的话同一次故障会各提醒主人一遍。计数在 createEngines 里建一份,交给作品入口(两条路都经它装配)。
+ * 渲染器,各记各的话同一次故障会各提醒主人一遍。计数在 createPipelineRuntime 里建一份,交给作品入口(两条路都经它装配)。
  * 哪条路换成自己建的一份,类型与别的测试全绿,只有这一条红。
  */
-describe("createEngines — 出图失败计数 B 站与拓展作品共用一份", () => {
+describe("createPipelineRuntime — 出图失败计数 B 站与拓展作品共用一份", () => {
 	it("拓展作品出图失败提醒过之后,B 站作品同一串失败不再提醒;告警的来源是同一个 post-delivery,主人只收到一条私聊", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
@@ -646,7 +646,7 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 });
 
 /** 来源上下文交来的作品图已经是图库引用；引擎要把引用、资料头像和 `resolveImageRef` 接到出图器。 */
-describe("createEngines — 拓展作品的图走图库", () => {
+describe("createPipelineRuntime — 拓展作品的图走图库", () => {
 	const AVATAR_REF = `${"a".repeat(63)}1.png`;
 	const IMAGE_REF = `${"c".repeat(64)}.png`;
 
@@ -717,14 +717,14 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		const resolveImageRef = vi.fn(async () => undefined);
 		const c = setup({ puppeteer: true, resolveImageRef });
 		active = c;
-		// 验红:删掉 engines.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
+		// 验红:删掉 pipeline.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
 		expect(H.image[0].opts.resolveImageRef).toBe(resolveImageRef);
 	});
 
 	it("出图器拿到现取的全局时区:改了设置跟着变", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
-		// 验红:删掉 engines.ts 里 `timezone: () => globals().timezone,` 那一行,这条红。
+		// 验红:删掉 pipeline.ts 里 `timezone: () => globals().timezone,` 那一行,这条红。
 		expect(H.image[0].opts.timezone()).toBe("Asia/Shanghai");
 		patchGlobals(c, (g) => {
 			g.timezone = "America/New_York";
@@ -733,7 +733,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 	});
 
 	// AI 点评看只有图库引用的图(拓展作品)时,核心要量字节数再编成 data URL,读口由接线层给(`runtime.imageStore.read`)。
-	// 验红:把 engines.ts 里 postQueue 的 `readImage: opts.readImage,` 换成恒回 undefined,这条红(点评看不到图)。
+	// 验红:把 pipeline.ts 里 postQueue 的 `readImage: opts.readImage,` 换成恒回 undefined,这条红(点评看不到图)。
 	it("AI 点评看拓展作品只有引用的图:核心经接线层给的 readImage 读出字节,编成 data URL 交给点评", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const aiOn = aiGlobals();
@@ -773,7 +773,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
  * 接线真接上了,所以这里走**真的队列、真的装配**(只假推送层与出卡器),断言到 `PushRouter.push` 的入参;
  * 凡断言「没推」的先等登记进 track 的活落定,旁边有对照。
  */
-describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推送层)", () => {
+describe("createPipelineRuntime — 作品入口接线(B 站引擎 → PostQueue → 推送层)", () => {
 	it("引擎交的作品:按身份查订阅、入口同步发 post-detected(订阅 id、身份、叫法「动态」),随后推送层收到订阅 id + 特性 post + 模板文字与链接", async () => {
 		const sub = biliSubOf("1");
 		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
@@ -875,7 +875,7 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 
 	// 「来源在跑」读口问的是来源登记表:拓展停了,等着的作品不补(决策 61);
 	// B 站来源没登记(或撤了)也不推。
-	// 验红:把 engines.ts 里 `sourceRunning` 改成恒真,这些用例都红。
+	// 验红:把 pipeline.ts 里 `sourceRunning` 改成恒真,这些用例都红。
 	it("来源没在跑:拓展订阅与没登记的 B 站来源的作品都不推;对照:拓展在跑、B 站来源登了就推", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
@@ -947,9 +947,9 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 /**
  * 作品过滤的接线(㉑e,ADR-0021 决策 43):过滤直接吃折好的 `ContentFilters`(配置怎么叫它就怎么叫,从前
  * `dynamicFilterOf` 那层翻译删了),B 站动态引擎与拓展作品**同一份过滤、类型开关对所有来源生效**。
- * 各自的单元测试证明不了 engines 真的把全局 / 按 UP 的过滤递到了两条路上:漏递的症状是该挡的作品照推。
+ * 各自的单元测试证明不了 pipeline 真的把全局 / 按 UP 的过滤递到了两条路上:漏递的症状是该挡的作品照推。
  */
-describe("createEngines — 作品过滤接线", () => {
+describe("createPipelineRuntime — 作品过滤接线", () => {
 	const IMAGE_REF = `${"c".repeat(64)}.png`;
 	const extReport = (_sub: { id: string }, value: Record<string, unknown>): PostReport => ({
 		postId: "p1",
@@ -985,7 +985,7 @@ describe("createEngines — 作品过滤接线", () => {
 		return g;
 	};
 
-	// 验红:把 engines.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
+	// 验红:把 pipeline.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
 	it("dispose 关掉作品入口:关停之后拓展再交的作品不发 post-detected、不推;对照:关停之前交的照推", async () => {
 		const { c, sub } = extSetup();
 		const detected: PostEvent[] = [];
@@ -1000,7 +1000,7 @@ describe("createEngines — 作品过滤接线", () => {
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:把 engines.ts 里 `filter: eff.filters` 换成空规则,这条红(B 站的作品也经同一份折叠)。
+	// 验红:把 pipeline.ts 里 `filter: eff.filters` 换成空规则,这条红(B 站的作品也经同一份折叠)。
 	it("B 站来源交来的作品按全局 defaults.filters 过滤:被挡的不出卡不推,没挡的照推", async () => {
 		const g = globalsWith({ blockKeywords: ["禁词"] });
 		const c = setup({ puppeteer: true, subs: [biliSubOf("1")], globals: g });
@@ -1085,7 +1085,7 @@ describe("createEngines — 作品过滤接线", () => {
 	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态引擎、拓展作品)都经核心入口的 `recordFiltered`
 	 * 都接到历史仓的 `record`:不经推送层,不走事件总线。
 	 *
-	 * 验红:把 engines.ts 里 postQueue 的 `recordFiltered: recordFilteredPost` 换成空函数 → B 站与拓展两条都红。
+	 * 验红:把 pipeline.ts 里 postQueue 的 `recordFiltered: recordFilteredPost` 换成空函数 → B 站与拓展两条都红。
 	 */
 	describe("被过滤的作品留痕", () => {
 		const BILI_SUB = "11111111-1111-4111-8111-111111111111";
@@ -1183,7 +1183,7 @@ describe("createEngines — 作品过滤接线", () => {
  * 周期「正在直播」不在这里 —— 推送这头没有自己的计时器(核心按每一场的开播时刻问来源,见「来源周期核对」)。
  * 剪掉注册那一口没往下传,这里会红。
  */
-describe("createEngines — 拓展直播接上推送", () => {
+describe("createPipelineRuntime — 拓展直播接上推送", () => {
 	it("开播 → 推送层收到按订阅 id 的开播", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
@@ -1215,7 +1215,7 @@ describe("createEngines — 拓展直播接上推送", () => {
  * 来源交来的直播图已经是图库引用;卡输入里只放引用,订阅资料里的头像引用(`cachedProfile.avatar`)也要接到消费者。
  * 出图器收到的第一个参数就是中立的 `LiveCardInput`。
  */
-describe("createEngines — 拓展直播的图走图库", () => {
+describe("createPipelineRuntime — 拓展直播的图走图库", () => {
 	const PROFILE_AVATAR = `${"a".repeat(64)}.png`;
 	const COVER_REF = `${"c".repeat(64)}.png`;
 
@@ -1257,7 +1257,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 	});
 });
 
-describe("createEngines — 来源周期核对", () => {
+describe("createPipelineRuntime — 来源周期核对", () => {
 	const START = "2026-10-20T08:00:00.000Z";
 
 	// 周期「正在直播」只由核心的计时驱动,推送这头不挂自己的:不管来源实现没实现 `fetchLiveStatus`,
@@ -1289,10 +1289,10 @@ describe("createEngines — 来源周期核对", () => {
 });
 
 /**
- * 直播那块搬进工厂前的接线刻画:每一条都从 `createEngines` 交出的公开成员、来源上下文或
+ * 直播那块搬进工厂前的接线刻画:每一条都从 `createPipelineRuntime` 交出的公开成员、来源上下文或
  * 总线事件观察,断了就由这里变红。
  */
-describe("createEngines — 直播接线刻画", () => {
+describe("createPipelineRuntime — 直播接线刻画", () => {
 	const START = "2026-10-25T08:00:00.000Z";
 
 	it("globals 改 wordcloudStopWords:在播收集器从下一句起使用新停用词", async () => {
@@ -1389,15 +1389,15 @@ describe("createEngines — 直播接线刻画", () => {
 		expect(changes).toEqual([]);
 		expect(errors).toHaveBeenCalledTimes(2);
 		expect(errors.mock.calls.map(([message]) => message)).toEqual([
-			"[engines] 没有场次引擎,bilibili 报的直播 start 丢弃",
-			"[engines] 没有直播互动入口,订阅 sub-57 的直播互动 viewerChat 丢弃",
+			"[pipeline] 没有场次引擎,bilibili 报的直播 start 丢弃",
+			"[pipeline] 没有直播互动入口,订阅 sub-57 的直播互动 viewerChat 丢弃",
 		]);
 	});
 });
 
 // 「直播就绪」:至少一个启用的 B 站订阅 `needsLiveMonitor` 为真(ADR-0027 决策 1:只看折好的开关与特别关注,
 // 不看有没有推送目标)。判定本身只此一份,住 internal;这里钉的是 getModuleState 用的是它。
-describe("createEngines — getModuleState.live", () => {
+describe("createPipelineRuntime — getModuleState.live", () => {
 	const TARGET = "10000000-0000-4000-8000-000000000001";
 	const LIVE_OFF = {
 		liveStart: false,
@@ -1515,8 +1515,8 @@ describe("createEngines — getModuleState.live", () => {
 	});
 });
 
-describe("createEngines — boot wiring", () => {
-	it("createEngines 自己不起任何来源:不调 registerSource,来源的 start 一次都没被叫", () => {
+describe("createPipelineRuntime — boot wiring", () => {
+	it("createPipelineRuntime 自己不起任何来源:不调 registerSource,来源的 start 一次都没被叫", () => {
 		const c = setup({ noSource: true });
 		active = c;
 		expect(c.source.start).not.toHaveBeenCalled();
@@ -1541,7 +1541,7 @@ describe("createEngines — boot wiring", () => {
 	// 不再由引擎装配递 —— 那条线的单测在 `integrations/__tests__/settings-reader.test.ts`,从真入口的接线钉在
 	// `__tests__/builtin-source-settings-boot-e2e.test.ts`。
 
-	// 验红:删掉 engines.ts `registerSource` 里递 `problems` 的那一行,这条红。
+	// 验红:删掉 pipeline.ts `registerSource` 里递 `problems` 的那一行,这条红。
 	it("来源上下文的 reportProblem 写进递进去的问题表,报的人是来源键", async () => {
 		const c = setup();
 		active = c;
@@ -1563,7 +1563,7 @@ describe("createEngines — boot wiring", () => {
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:删掉 engines.ts 里 `createProblemNotifier` 那一段,这条红。
+	// 验红:删掉 pipeline.ts 里 `createProblemNotifier` 那一段,这条红。
 	it("问题通知器接着表与 notifyMaster:notify 为真的问题私聊一次", async () => {
 		const c = setup();
 		active = c;
@@ -1580,7 +1580,7 @@ describe("createEngines — boot wiring", () => {
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:删掉 engines.ts 里听 `subscription-changed` 清 `clearSubscription` 的那段,这条红。
+	// 验红:删掉 pipeline.ts 里听 `subscription-changed` 清 `clearSubscription` 的那段,这条红。
 	it("删订阅:表里关于它的问题没了(别的订阅与来源级的还在),且不补「已恢复」", async () => {
 		const gone = makeEmptySubscription({
 			id: "sub-gone",
@@ -1615,7 +1615,7 @@ describe("createEngines — boot wiring", () => {
 		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:去掉 engines.ts `registerSource` 里 `onAuthChanged: …`(或 builtin-sources.ts 里的订阅),这条红。
+	// 验红:去掉 pipeline.ts `registerSource` 里 `onAuthChanged: …`(或 builtin-sources.ts 里的订阅),这条红。
 	it("来源的 auth 叫了 onChange → 总线上一条 subscription-auth-changed(来源键 + 那一刻的 state());dispose 之后摘掉", async () => {
 		const c = setup({ noSource: true });
 		active = c;
@@ -1659,7 +1659,7 @@ describe("createEngines — boot wiring", () => {
 		expect(c.source.ctx?.logger).not.toBe(c.serviceCtx.logger);
 	});
 
-	// 验红:去掉 engines.ts `registerSource` 里 await 之后的 `if (disposed)` 那段,这条红(来源 stop 没被叫、也没抛)。
+	// 验红:去掉 pipeline.ts `registerSource` 里 await 之后的 `if (disposed)` 那段,这条红(来源 stop 没被叫、也没抛)。
 	it("registerSource 途中 dispose():放行后来源被当场 stop 一次,registerSource 抛", async () => {
 		const c = setup({ noSource: true });
 		active = c;
@@ -1680,11 +1680,11 @@ describe("createEngines — boot wiring", () => {
 		);
 		await c.runtime.dispose();
 		gate.resolve();
-		expect(await outcome).toContain("已关停");
+		expect(await outcome).toContain("disposed");
 		expect(slow.stop).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:让 engines.ts `registerSource` 的返回值不撤登记(回一个空把手),这条红(登记表里的来源还在、stop 没被叫)。
+	// 验红:让 pipeline.ts `registerSource` 的返回值不撤登记(回一个空把手),这条红(登记表里的来源还在、stop 没被叫)。
 	it("registerSource 交回撤登记的把手:撤一次来源 stop 一次、登记表里没了;再撤与引擎关停都是空操作", async () => {
 		const c = setup({ noSource: true });
 		active = c;
@@ -1704,7 +1704,7 @@ describe("createEngines — boot wiring", () => {
 		expect(extra.stop).toHaveBeenCalledTimes(1);
 	});
 
-	// 验红:让 engines.ts 的 `searchCreators` 另建一道 `createSourceGates()`(不用共用的 `sourceGates`),这条红
+	// 验红:让 pipeline.ts 的 `searchCreators` 另建一道 `createSourceGates()`(不用共用的 `sourceGates`),这条红
 	// (取资料在搜人还没落定时就被调了)。
 	it("searchCreators 与 fetchProfile 对同一来源排同一道闸:第二个要等第一个落定", async () => {
 		const c = setup({ noSource: true });
@@ -1817,7 +1817,7 @@ describe("createEngines — boot wiring", () => {
 		expect(H.ai[0].setCreatorReader).toHaveBeenCalledTimes(1);
 		expect(H.ai[0].setProvidedTools).toHaveBeenCalledTimes(1);
 		// 只读如今是结构性的(工具表里就没有写工具),由 packages/ai 那道闸盯着;
-		// 这里只钉「engines 确实接了」,免得那行接线被顺手删掉还全绿。
+		// 这里只钉「pipeline 确实接了」,免得那行接线被顺手删掉还全绿。
 		expect(typeof H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions).toBe("function");
 	});
 
@@ -1838,7 +1838,7 @@ describe("createEngines — boot wiring", () => {
 				? ({ sourceKey: key, descriptor: { label: "对拍源" } } as never)
 				: realGet(key);
 		const [item] = H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions();
-		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platformLabel: …` 改成只问 extensionPlatformLabel,这条红。
+		// 验红:把 pipeline.ts 里 attachReadOnlyTools 的 `platformLabel: …` 改成只问 extensionPlatformLabel,这条红。
 		expect(item).toMatchObject({ creator: "acme.inprocess:alice-ext", platform: "对拍源" });
 	});
 
@@ -1850,7 +1850,7 @@ describe("createEngines — boot wiring", () => {
 			extensionPlatformLabel: (id) => (id === "douyin" ? "抖音" : undefined),
 		});
 		active = c;
-		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `platformLabel: …` 里的拓展装载器那一支去掉,平台名退成拓展 id。
+		// 验红:把 pipeline.ts 里 attachReadOnlyTools 的 `platformLabel: …` 里的拓展装载器那一支去掉,平台名退成拓展 id。
 		expect(H.ai[0].setCreatorReader.mock.calls[0][0].subscriptions()[0]?.platform).toBe("抖音");
 	});
 
@@ -1906,7 +1906,7 @@ describe("createEngines — boot wiring", () => {
 		});
 		active = c;
 		const reader = H.ai[0].setCreatorReader.mock.calls[0][0];
-		// 验红:把 engines.ts 里 attachReadOnlyTools 的 `stats: opts.creatorStats` 那一行删掉,这条红(回 unavailable)。
+		// 验红:把 pipeline.ts 里 attachReadOnlyTools 的 `stats: opts.creatorStats` 那一行删掉,这条红(回 unavailable)。
 		expect(await reader.recentPosts("bilibili:1", 5)).toEqual({
 			ok: true,
 			posts: [{ publishedAt: "2026-10-01T00:00:00.000Z", title: "t" }],
@@ -1920,7 +1920,7 @@ describe("createEngines — boot wiring", () => {
 		expect(H.image).toHaveLength(1);
 	});
 
-	// 「接线要有自己的守卫」:三口各自都有测试,证明不了 engines 真的把它们接上了 ——
+	// 「接线要有自己的守卫」:三口各自都有测试,证明不了 pipeline 真的把它们接上了 ——
 	// 漏接的症状是静默的(出图永远用内置默认皮肤,类型 / 测试 / 构建全绿)。
 	it("卡片皮肤那三口原样接到 ImageRenderer 上", () => {
 		const get = vi.fn(() => undefined);
@@ -1929,14 +1929,14 @@ describe("createEngines — boot wiring", () => {
 		const c = setup({ puppeteer: true, cardSkins: { get, asset, onFallback } });
 		active = c;
 		const o = H.image[0].opts;
-		// 验红:把 engines.ts 里那三行 `resolveCardSkin: opts.cardSkins?.get` 删掉,这三条红。
+		// 验红:把 pipeline.ts 里那三行 `resolveCardSkin: opts.cardSkins?.get` 删掉,这三条红。
 		expect(o.resolveCardSkin).toBe(get);
 		expect(o.resolveCardSkinAsset).toBe(asset);
 		expect(o.onCardSkinFallback).toBe(onFallback);
 	});
 });
 
-describe("createEngines — enableImageRendering 运行时热启用", () => {
+describe("createPipelineRuntime — enableImageRendering 运行时热启用", () => {
 	it("幂等:启动即 puppeteer 在位,再调 → 返回 false 且不重复构造", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
@@ -1948,7 +1948,7 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 
 	// 渲染器会被热换,核心装配只能经 `deps.image()` 这个读外层 let 的闭包拿它 —— 按值传就是
 	// 「开机时没有浏览器,之后一直没有卡片」而门禁全绿。走真的队列与真的装配,断言到出卡器与推送层。
-	// 验红:把 engines.ts 里 postQueue 的 `image: () => imageRenderer ?? undefined` 改成按值传
+	// 验红:把 pipeline.ts 里 postQueue 的 `image: () => imageRenderer ?? undefined` 改成按值传
 	// (`const bootImage = imageRenderer ?? undefined; … image: () => bootImage`),这条红。
 	it("热换之后下一条作品用新的渲染器:开机没有 → 热启用后出卡 → 热切换后改用新的那个 → 都不回头用旧的", async () => {
 		const c = setup({ puppeteer: false, subs: [biliSubOf("1")] });
@@ -1972,7 +1972,7 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 	});
 });
 
-describe("createEngines — config-changed globals 热重载", () => {
+describe("createPipelineRuntime — config-changed globals 热重载", () => {
 	// cron 本身要生效(引擎换节奏)在 `bilibili/__tests__/source.test.ts`。
 
 	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
@@ -2024,7 +2024,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		},
 	});
 
-	// 验红:把 engines.ts 里 `createPostQueue` 的顶层 `logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
+	// 验红:把 pipeline.ts 里 `createPostQueue` 的顶层 `logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("作品队列自己记的日志走 posts/core 那一个(订阅停用 → 不收)", async () => {
 		const sub = makeExtensionSubscription({
 			extensionId: "douyin",
@@ -2045,7 +2045,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `createPostQueue` 的 `deps.logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
+	// 验红:把 pipeline.ts 里 `createPostQueue` 的 `deps.logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("作品装配(deliverPost)记的日志走 posts/core 那一个(被过滤)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
@@ -2066,7 +2066,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `bindLivePush` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
+	// 验红:把 pipeline.ts 里 `bindLivePush` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("拓展直播推送记的日志走 live/core 那一个(BN 起来后收到的状态是在播,接上这一场)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
@@ -2236,9 +2236,9 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 });
 
-describe("createEngines — AI 热重载三态", () => {
+describe("createPipelineRuntime — AI 热重载三态", () => {
 	// AI 实例会被热换,核心装配只能经 `deps.ai()` 这个读外层 let 的闭包拿它。
-	// 验红:把 engines.ts 里 postQueue 的 `ai: () => commentary ?? undefined` 改成按值传(开机取一次),这条红。
+	// 验红:把 pipeline.ts 里 postQueue 的 `ai: () => commentary ?? undefined` 改成按值传(开机取一次),这条红。
 	it("作品的 AI 点评每条现取:开机没配 → 补齐后下一条用新实例 → 清空密钥后不再点评", async () => {
 		const aiOn = aiGlobals();
 		aiOn.ai.enabled = true;
@@ -2299,7 +2299,7 @@ describe("createEngines — AI 热重载三态", () => {
 	});
 });
 
-describe("createEngines — image 配色热更", () => {
+describe("createPipelineRuntime — image 配色热更", () => {
 	it("puppeteer 在位:globals 变更 → imageRenderer.updateConfig 带新样式", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
@@ -2336,7 +2336,7 @@ describe("createEngines — image 配色热更", () => {
 	});
 });
 
-describe("createEngines — dispose", () => {
+describe("createPipelineRuntime — dispose", () => {
 	it("关停先撤来源登记再收场次:在播行出去,来源上下文随登记停掉", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const liveTable = memoryLiveTable();
@@ -2361,7 +2361,7 @@ describe("createEngines — dispose", () => {
 		expect(c.source.stops).toBe(1);
 	});
 
-	// 验红:去掉 engines.ts `dispose` 里等在途收尾的那一行(`await Promise.all(sourceClosings)`),这条红(stop 没落定推送层就停了)。
+	// 验红:去掉 pipeline.ts `dispose` 里等在途收尾的那一行(`await Promise.all(sourceClosings)`),这条红(stop 没落定推送层就停了)。
 	it("关停等来源的 stop 落定再关作品入口:stop 途中来源的上下文仍开着,落定之后才停推送、清问题", async () => {
 		const c = setup();
 		active = c;
@@ -2437,12 +2437,12 @@ describe("createEngines — dispose", () => {
  * 背景轮换游标:每次推送在推送点同步推进,只标脏;落盘由 30 秒的定时器与 dispose 那一次负责。
  * 走存储层的原子写 —— 写到一半被杀,盘上是旧的整份或新的整份,游标不会被半截 JSON 清零。
  */
-describe("createEngines — 背景轮换游标落盘", () => {
+describe("createPipelineRuntime — 背景轮换游标落盘", () => {
 	const ids = ["a", "b", "c"].map((ch) => `${ch.repeat(32)}.png`);
 	let dataDir: string;
 
 	beforeEach(async () => {
-		dataDir = await mkdtemp(join(tmpdir(), "bn-engines-cursors-"));
+		dataDir = await mkdtemp(join(tmpdir(), "bn-pipeline-cursors-"));
 		await mkdir(dataPath(dataDir, ...CARD_BG_DIR), { recursive: true });
 		for (const id of ids) await writeFile(dataPath(dataDir, ...CARD_BG_DIR, id), "x");
 	});
@@ -2493,7 +2493,7 @@ describe("createEngines — 背景轮换游标落盘", () => {
 // 修复:op 翻译层显式 gate enabled。动态那一半:名单只列启用中的订阅
 // (`subscriptions/__tests__/source-subscriptions.test.ts`)与引擎的 `syncSubscriptions`
 // (`bilibili/dynamic/__tests__/dynamic-poller.test.ts`)。
-describe("createEngines — 订阅禁用/启用转译", () => {
+describe("createPipelineRuntime — 订阅禁用/启用转译", () => {
 	function makeSub(uid: string, enabled: boolean): Subscription {
 		const s = makeEmptySubscription({
 			id: `sub-${uid}`,
@@ -2514,7 +2514,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 	});
 });
 
-describe("createEngines — 默认 globals", () => {
+describe("createPipelineRuntime — 默认 globals", () => {
 	it("默认 globals:push 拉起,AI 与 image 不构造", () => {
 		const c = setup();
 		active = c;
@@ -2528,7 +2528,7 @@ describe("createEngines — 默认 globals", () => {
 // 消息版式(messageLayout)— adapter 折叠 / 序列广播映射 / 全局热更
 // ---------------------------------------------------------------------------
 
-describe("createEngines — 消息版式", () => {
+describe("createPipelineRuntime — 消息版式", () => {
 	it("postSettingsOf 折叠 eff.messageLayout 的作品切片", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({
@@ -2575,7 +2575,7 @@ describe("createEngines — 消息版式", () => {
 // 并且随 config-changed 刷新。
 // ---------------------------------------------------------------------------
 
-describe("createEngines — 链接卡的呈现与开关", () => {
+describe("createPipelineRuntime — 链接卡的呈现与开关", () => {
 	it("开关与版式随 config-changed 刷新,不用每条消息整份深拷贝 globals", () => {
 		const c = setup();
 		active = c;
@@ -2678,7 +2678,7 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 });
 
 /** 目标可达性只在通断翻转时写:四格真值表(没记过的那格在「后台写登记进 track」里钉了)。 */
-describe("createEngines — 目标可达性不翻转就不写", () => {
+describe("createPipelineRuntime — 目标可达性不翻转就不写", () => {
 	const TARGET_ID = "22222222-2222-4222-8222-222222222222";
 	const CONNECTION_ID = "33333333-3333-4333-8333-333333333333";
 	const connection = {
@@ -2762,7 +2762,7 @@ describe("createEngines — 目标可达性不翻转就不写", () => {
 	});
 });
 
-describe("createEngines — 连接所在平台的能力", () => {
+describe("createPipelineRuntime — 连接所在平台的能力", () => {
 	const ADAPTER = "11111111-1111-4111-8111-111111111111";
 	const onebot = {
 		id: ADAPTER,
@@ -2883,7 +2883,7 @@ describe("createEngines — 连接所在平台的能力", () => {
  * 「AI 写正文」的读口(ADR-0032):推送层逐目标挑哪份正文,看的是宿主此刻的 `ai.writing`。构造时快照的话,
  * 面板里改了例外要重启才认 —— 而所有推送层的测试都用自己的假读口,这根线只有在这里钉得住。
  */
-describe("createEngines — 推送层的 aiWriting 读口接的是活的全局设置", () => {
+describe("createPipelineRuntime — 推送层的 aiWriting 读口接的是活的全局设置", () => {
 	it("读口回当前的 ai.writing;全局换了新的一份,下一次读到的就是新的", () => {
 		const first = makeDefaultGlobalConfig();
 		first.ai.writing.post = { isOnByDefault: false, byTarget: { "t-1": true } };
@@ -2913,7 +2913,7 @@ describe("createEngines — 推送层的 aiWriting 读口接的是活的全局�
  * 数据就丢了。所以每条用例都是:让那笔写停在半路 → 断言登记进去的这件事此刻还悬着 → 放行 → 断言写已落定。
  * `track` 没接线时登记进来的是空的,`Promise.all([])` 立刻落定,第二句必红。
  */
-describe("createEngines — 后台写登记进 track", () => {
+describe("createPipelineRuntime — 后台写登记进 track", () => {
 	const SUB_ID = "11111111-1111-4111-8111-111111111111";
 	const TARGET_ID = "22222222-2222-4222-8222-222222222222";
 	const CONNECTION_ID = "33333333-3333-4333-8333-333333333333";
@@ -2927,7 +2927,7 @@ describe("createEngines — 后台写登记进 track", () => {
 	}
 
 	it("onSend:历史行登记进 track —— 历史写落盘,它才落定", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "bn-engines-track-"));
+		const dataDir = await mkdtemp(join(tmpdir(), "bn-pipeline-track-"));
 		try {
 			const sub = makeEmptySubscription({
 				id: SUB_ID,
@@ -3065,7 +3065,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			await Promise.all(tracked);
 		});
 
-		// 验红:删掉 engines.ts 里 config-changed:connections 那一档的 `connectionProbe.checkSettings()`,这条红。
+		// 验红:删掉 pipeline.ts 里 config-changed:connections 那一档的 `connectionProbe.checkSettings()`,这条红。
 		it("连接变更时设置不合法的连接当场进问题表,不用等下一轮探测", async () => {
 			const c = setup({
 				connections: [{ ...onebot(CONNECTION_ID), settings: { token: "t" } }],
@@ -3088,7 +3088,7 @@ describe("createEngines — 后台写登记进 track", () => {
 		});
 
 		// 接线的守卫:模块对了、没接上(问题表 / 主人连接 / 适配器在场没递进去)单元测试看不出来。
-		// 验红:删掉 engines.ts 里递给 createConnectionProbeEngine 的 `problems` / `masterConnectionId`,这两条红。
+		// 验红:删掉 pipeline.ts 里递给 createConnectionProbeEngine 的 `problems` / `masterConnectionId`,这两条红。
 		describe("连接断了经问题表私聊主人", () => {
 			const MASTER_TARGET = "55555555-5555-4555-8555-555555555555";
 			afterEach(() => {

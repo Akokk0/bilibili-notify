@@ -55,7 +55,7 @@ function makeDeps() {
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 	const deps = {
 		runtime: {
-			engines: { imageRenderer: null, push: { sendToTarget } },
+			pipeline: { imageRenderer: null, push: { sendToTarget } },
 			serviceCtx: { logger },
 			subscriptionStateStore: { get: () => undefined },
 		},
@@ -96,7 +96,7 @@ describe("deliverRoast — 没送到的带着投递那头的失败", () => {
 
 	it("推送引擎还没起 → unavailable", async () => {
 		const { deps } = makeDeps();
-		(deps.runtime as { engines: unknown }).engines = null;
+		(deps.runtime as { pipeline: unknown }).pipeline = null;
 		const out = await deliverRoast(deps, opts);
 		expect(out.failed).toEqual([
 			{ targetId: T_ON, failure: { ok: false, code: "unavailable", message: "服务尚未就绪" } },
@@ -201,7 +201,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		};
 		const deps = {
 			runtime: {
-				engines: {
+				pipeline: {
 					extensionPlatformLabel: (id: string) => (id === "douyin" ? "抖音" : undefined),
 					imageRenderer: { generateRoastBoardCard, generateRoastSoloCard },
 				},

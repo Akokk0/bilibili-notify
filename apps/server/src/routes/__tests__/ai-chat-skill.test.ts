@@ -80,7 +80,7 @@ async function makeDeps() {
 			dataRoot: dataDir,
 			serviceCtx: { logger },
 			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
-			engines: { commentary: { chatStatelessStream } },
+			pipeline: { commentary: { chatStatelessStream } },
 		},
 	} as unknown as RouteDeps;
 	const skinStore = new SkinStore({ skinsDir: join(dataDir, "skins") });

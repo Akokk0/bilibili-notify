@@ -172,7 +172,7 @@ async function overviewText(root: string, days: number, tz: number): Promise<str
 	const deps = {
 		store: { getSubscriptions: () => SUBS },
 		runtime: {
-			engines: null,
+			pipeline: null,
 			profileRefresh: {
 				getLastEntries: () => [
 					{

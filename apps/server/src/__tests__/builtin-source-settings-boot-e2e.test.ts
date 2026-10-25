@@ -2,7 +2,7 @@
  * 🔴 **B 站设置坏着开机,起得来、坏的那一样没起、问题表里有对应的一条;经真路由把那一格存对,那一样起来、那条没了。**
  *
  * 配置仓怎么读坏文件、把手怎么变了才叫、来源怎么停与起,各有直测;要真能「坏着开机 → 经面板的设置口存对 →
- * 当场起来」,还得 `engines.registerSource` 把读口与通知口接上、设置路由把 `bilibili` 键认成集成的补丁(配置仓全量图里
+ * 当场起来」,还得 `pipeline.registerSource` 把读口与通知口接上、设置路由把 `bilibili` 键认成集成的补丁(配置仓全量图里
  * 这个键一直在)。剪断任何一处,零件测试全绿而这条红。
  *
  * 走真入口、真 `compose.ts`、真登记表、真来源与真动态引擎(没有订阅,不起 cron、不连网);坏文件怎么摆照
@@ -132,7 +132,7 @@ describe("B 站设置坏着开机 e2e:哪格坏停哪样,经真路由存对当�
 			body: JSON.stringify({ bilibili }),
 		});
 
-	// 验红:剪 `engines.registerSource` 里 `settings.read`(接成恒成功的默认值)→ 开机那一幕红(问题表里没有那一条);
+	// 验红:剪 `pipeline.registerSource` 里 `settings.read`(接成恒成功的默认值)→ 开机那一幕红(问题表里没有那一条);
 	// 剪 `onChanged` → 存对之后引擎没起来,红;让全量图在坏格时不带 `bilibili` 键 → PATCH 被当成核心补丁回 200 而盘上没变,红。
 	it("动态那格写成数字:起得来、动态没起、问题表有一条;面板拿到默认值;经真路由存对 → 动态起来、那条没了、文件是新值", async () => {
 		const file = await bootWith(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));

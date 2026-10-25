@@ -1,5 +1,5 @@
 /**
- * B 站直播端到端测试的世界:**真的** `createEngines`(真直播引擎、真监听管理、真房间会话、真推送层、真派发器、
+ * B 站直播端到端测试的世界:**真的** `createPipelineRuntime`(真直播引擎、真监听管理、真房间会话、真推送层、真派发器、
  * 真事件总线、真分层上报器、真服务上下文),假件只有四样 —— 假的 B 站接口对象、假的弹幕连接(帧由真的编解码器
  * 编出来喂进去)、假的出图器(只记入参、交一串认得出的字节)、假的平台适配器(把交出去的载荷按序记下来)。
  *
@@ -47,8 +47,8 @@ import { openIntegration } from "../../integrations/open.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createLiveTable } from "../../live/live-table.js";
 import { createProblemTable } from "../../problems/problem-table.js";
-import { createEngines } from "../../runtime/engines.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { createPipelineRuntime } from "../../runtime/pipeline.js";
 import { createNodeServiceContext } from "../../runtime/service-context.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { fixedLocale } from "../support/fixed-locale.js";
@@ -391,7 +391,7 @@ export async function bootBiliLiveWorld(
 		onChange: () => ({ dispose() {} }),
 	};
 	const liveTable = createLiveTable({ bus });
-	const runtime = createEngines({
+	const runtime = createPipelineRuntime({
 		serviceCtx,
 		dataRoot: join(tmpdir(), "bn-bili-live-e2e-no-such-dir"),
 		loadFontFace: async () => "",
@@ -437,7 +437,7 @@ export async function bootBiliLiveWorld(
 		puppeteer: null,
 	});
 	if (opts.renderer !== false) runtime.setImageRenderer(renderer);
-	// 世界里没有服务商,`createEngines` 自己建出的是 null:假的 AI 点评手动挂上。
+	// 世界里没有服务商,`createPipelineRuntime` 自己建出的是 null:假的 AI 点评手动挂上。
 	if (opts.commentary) {
 		runtime.setCommentary({
 			comment: opts.commentary,

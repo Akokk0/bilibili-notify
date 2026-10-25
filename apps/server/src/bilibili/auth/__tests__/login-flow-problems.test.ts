@@ -17,8 +17,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	LOGIN_EXPIRED_TEXT,
 	LOGIN_MISSING_TEXT,
-	makeProblemPipeline,
-} from "../../__tests__/problem-pipeline.js";
+	makeProblemHarness,
+} from "../../__tests__/problem-harness.js";
 import type { Api } from "../../api/api";
 import { failureFromBili } from "../../error-codes";
 import { watchLoginEdges } from "../../login-edges";
@@ -71,7 +71,7 @@ function makeHarness() {
 		{ state: () => flow.authState(), onChange: (fn) => flow.onChange(fn) },
 		{ onLost: lost, onRestored: vi.fn() },
 	);
-	const pipeline = makeProblemPipeline({
+	const pipeline = makeProblemHarness({
 		state: () => flow.authState(),
 		onChange: (fn) => flow.onChange(fn),
 	});

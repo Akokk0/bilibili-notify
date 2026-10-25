@@ -2,12 +2,12 @@
  * 🔴 **开机迁移接上了,而且跑在写它们的人前面**(ADR-0020 决策 2 的 🔗)。
  *
  * 迁移函数自己的单测证明不了它在真 BN 里被调用、更证明不了顺序:粉丝轮询一起来就按订阅 id
- * 读盘恢复首屏、之后按订阅 id 往里写;统计记录器只在引擎发事件时写,引擎是它唯一的事件来源。
+ * 读盘恢复首屏、之后按订阅 id 往里写;统计记录器只在来源发事件时写,来源是它唯一的事件来源。
  * 迁移若跑在它们后面(或压根没接上),轮询读到的是空文件、写出一份新的 id 文件,老的 uid 文件
  * 再并进来就成了「新的在前、老的在后」—— 读的人按「时间只增不减」扫文件,数全都错,而且没人报错。
  *
- * 所以起一台真 BN,在轮询与引擎被建起来的**那一刻**看一眼盘:老文件必须已经挪到位。订阅是
- * **停用**的 —— 迁移照样要管它(统计页照样列着停用的),而停用的订阅不会让引擎或轮询去连 B 站。
+ * 所以起一台真 BN,在轮询与推送链路被建起来的**那一刻**看一眼盘:老文件必须已经挪到位。订阅是
+ * **停用**的 —— 迁移照样要管它(统计页照样列着停用的),而停用的订阅不会让来源或轮询去连 B 站。
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -26,11 +26,11 @@ const SUB_ID = "5a000000-0000-4000-8000-000000000101";
 const UID = "101";
 const ORPHAN_UID = "999";
 
-/** 轮询 / 引擎被建起来那一刻,盘上老文件与新文件各在不在。 */
+/** 轮询 / 推送链路被建起来那一刻,盘上老文件与新文件各在不在。 */
 const probe = vi.hoisted(() => ({
 	dataDir: "",
 	atPoller: undefined as Record<string, boolean> | undefined,
-	atEngines: undefined as Record<string, boolean> | undefined,
+	atPipeline: undefined as Record<string, boolean> | undefined,
 }));
 
 /**
@@ -73,13 +73,13 @@ vi.mock("../runtime/profile-refresh.js", async (importOriginal) => {
 	};
 });
 
-vi.mock("../runtime/engines.js", async (importOriginal) => {
-	const real = await importOriginal<typeof import("../runtime/engines.js")>();
+vi.mock("../runtime/pipeline.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../runtime/pipeline.js")>();
 	return {
 		...real,
-		createEngines: (opts: Parameters<typeof real.createEngines>[0]) => {
-			probe.atEngines = look();
-			return real.createEngines(opts);
+		createPipelineRuntime: (opts: Parameters<typeof real.createPipelineRuntime>[0]) => {
+			probe.atPipeline = look();
+			return real.createPipelineRuntime(opts);
 		},
 	};
 });
@@ -123,7 +123,7 @@ const FANS_MIGRATED = jsonl(
 	FANS_ROWS.map(({ ts, value }) => ({ sampledAt: ts, followers: value })),
 );
 
-describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就挪到了 <订阅 id>.jsonl", () => {
+describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 推送链路起来之前就挪到了 <订阅 id>.jsonl", () => {
 	let handle: ServerHandle | undefined;
 	let port: number;
 
@@ -177,8 +177,8 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 		expect(probe.atPoller).toEqual(MIGRATED);
 	});
 
-	it("引擎(统计记录器唯一的事件来源)建起来的那一刻也一样", () => {
-		expect(probe.atEngines).toEqual(MIGRATED);
+	it("推送链路(统计记录器唯一的事件来源)建起来的那一刻也一样", () => {
+		expect(probe.atPipeline).toEqual(MIGRATED);
 	});
 
 	it("找不到订阅的 uid 文件留着原名(内容也过一遍新形状的压缩)", async () => {

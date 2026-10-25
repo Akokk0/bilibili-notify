@@ -63,7 +63,7 @@ function setup(current: GlobalConfig) {
 	};
 	const deps = {
 		store,
-		runtime: { serviceCtx: { logger: { error: () => {} } }, engines: undefined },
+		runtime: { serviceCtx: { logger: { error: () => {} } }, pipeline: undefined },
 		puppeteer: null,
 		commands: [],
 	};

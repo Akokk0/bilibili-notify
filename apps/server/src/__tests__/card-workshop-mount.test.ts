@@ -18,7 +18,7 @@ import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
-import type { EnginesRuntime } from "../runtime/engines.js";
+import type { PipelineRuntime } from "../runtime/pipeline.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 
 /** 假 Chrome:截图吐一段固定字节。 */
@@ -74,7 +74,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 				return "好";
 			},
 		);
-		runtime.attachEngines({ commentary: { chatStatelessStream } } as unknown as EnginesRuntime);
+		runtime.attachPipeline({ commentary: { chatStatelessStream } } as unknown as PipelineRuntime);
 
 		const created = await app.request("/api/ai/conversations", {
 			method: "POST",

@@ -3,7 +3,7 @@
  *
  * 假来源只实现中立的 `Source`(键 `acme.inprocess`,**不是** `bilibili`):核心里每一处按 B 站键分岔的地方因此都走
  * 另一支,对拍才测得出「核心是不是真的把内置来源当成一等公民」。它照内置那条路登记 —— `compose.ts` 调的是
- * `engines.registerSource`,这里的包装层调同一个(见 {@link wrapCompose}),所以入口到登记表整条接线都是真的。
+ * `pipeline.registerSource`,这里的包装层调同一个(见 {@link wrapCompose}),所以入口到登记表整条接线都是真的。
  *
  * 🔴 **这个文件与它的使用者不许碰 `bilibili/`**:import 只有中立的 `@bilibili-notify/internal`、`zod`、
  * `integrations/open`,外加两个只取类型的 `compose` / `config/store`。源码里没有 B 站的键常量与那个字面量。
@@ -487,8 +487,8 @@ export const inProcessWorld: {
 	/** 总线上看到的 `problems-changed`(报的人)。 */
 	problemsChanged: string[];
 	/**
-	 * 来源已被引擎停下、来源上下文已收掉,而进程还活着(集成存储与总线都还在)的那一刻要做的事:
-	 * 关停钩子里排在引擎之后、集成上下文收尾之前。测试在这里让已停的来源再上报。
+	 * 来源已被推送链路停下、来源上下文已收掉,而进程还活着(集成存储与总线都还在)的那一刻要做的事:
+	 * 关停钩子里排在推送链路之后、集成上下文收尾之前。测试在这里让已停的来源再上报。
 	 */
 	afterSourceStopped: (() => void | Promise<void>) | undefined;
 } = {
@@ -524,13 +524,13 @@ export function currentProbe(): InProcessProbe {
 /**
  * 包 `compose.ts`(`vi.mock("../compose.js", …)` 的实现体):真模块照常跑(真 B 站来源并排登记),
  * 之外加两样 —— 设置段后面追加假来源的一段;`registerSources` 里真的登记完之后,对假来源调**同一个**
- * `engines.registerSource`。
+ * `pipeline.registerSource`。
  *
  * 测试用组装要自己做三件事(内置来源的那几件在 `compose.ts` / B 站来源里,这里照做):
  * 1. 设置段(上面);
  * 2. 集成上下文:`integrationStore.open(键)` + `openIntegration`(请求客户端、上下文与收尾挂在一起;存储是异步开的,
  *    所以在 `registerSources` 里);
- * 3. 关停次序:上下文的收尾钩子在**这里**(早于 `createEngines`)登记 —— 关停钩子后登记的先跑,所以引擎先停来源,
+ * 3. 关停次序:上下文的收尾钩子在**这里**(早于 `createPipelineRuntime`)登记 —— 关停钩子后登记的先跑,所以推送链路先停来源,
  *    钩子后收上下文;钩子登记晚了,上下文会先于来源的 `stop()` 被中止。
  */
 export function wrapCompose(real: typeof Compose): typeof Compose {
@@ -553,7 +553,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 			const logger = deps.serviceCtx.forSubsystem(IN_PROCESS_KEY, IN_PROCESS_KEY).logger;
 			let opened: { integration: OpenedIntegration; store: { close(): void } } | undefined;
 			deps.serviceCtx.onDispose(async () => {
-				// 此刻引擎已停掉来源、收掉了来源上下文(钩子后登记的先跑),集成上下文还没收。
+				// 此刻推送链路已停掉来源、收掉了来源上下文(钩子后登记的先跑),集成上下文还没收。
 				await inProcessWorld.afterSourceStopped?.();
 				if (!opened) return;
 				const { integration, store } = opened;
@@ -567,8 +567,8 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 			}, "stop");
 			return {
 				...builtins,
-				async registerSources(engines) {
-					await builtins.registerSources(engines);
+				async registerSources(pipeline) {
+					await builtins.registerSources(pipeline);
 					const store = await deps.integrationStore.open(IN_PROCESS_KEY);
 					const integration = await openIntegration({
 						stores: store,
@@ -586,7 +586,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 					opened = { integration, store };
 					const made = createInProcessSource(inProcessWorld.options);
 					inProcessWorld.probes.push(made.probe);
-					await engines.registerSource({
+					await pipeline.registerSource({
 						sourceKey: IN_PROCESS_KEY,
 						source: made.source,
 						integration: integration.handle.ctx,

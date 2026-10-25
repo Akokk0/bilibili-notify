@@ -48,7 +48,7 @@ function makeDeps(opts: StubOpts = {}) {
 			}),
 		},
 		runtime: {
-			engines: {
+			pipeline: {
 				liveSession: (id: string) =>
 					state.liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},

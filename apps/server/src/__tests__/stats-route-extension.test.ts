@@ -51,8 +51,8 @@ interface Fixture {
 	profileFans?: Record<string, number>;
 	/** 此刻有一场在播的拓展订阅(场次模块手里有这一场)。 */
 	liveExt?: Set<string>;
-	/** `false` = 引擎没挂上。 */
-	engines?: boolean;
+	/** `false` = 推送链路没挂上。 */
+	pipeline?: boolean;
 }
 
 function makeDeps(f: Fixture): RouteDeps {
@@ -107,8 +107,8 @@ function makeDeps(f: Fixture): RouteDeps {
 								},
 							},
 			},
-			engines:
-				f.engines === false
+			pipeline:
+				f.pipeline === false
 					? null
 					: {
 							liveSession: (id: string) =>
@@ -382,8 +382,10 @@ describe("拓展行:在播(决策 6)", () => {
 		});
 	});
 
-	it("引擎没挂上 → 拓展行一律不在播,不报错", async () => {
-		const body = await get(makeDeps({ ext: [{ id: E1 }], engines: false, liveExt: new Set([E1]) }));
+	it("推送链路没挂上 → 拓展行一律不在播,不报错", async () => {
+		const body = await get(
+			makeDeps({ ext: [{ id: E1 }], pipeline: false, liveExt: new Set([E1]) }),
+		);
 		expect(rowOf(body, E1).live).toBe(false);
 	});
 });

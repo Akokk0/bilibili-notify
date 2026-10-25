@@ -4,7 +4,7 @@
  * 两类分开:
  * - **请求本身不成 / 前提不满足** → 非 2xx 的错误体 `{ code, message, issues? }`,经 `respondFailure`。
  *   其中最要紧的一对:**没配浏览器是 `not_configured`(409)**(面板据此摆出「一键检测并启用 Chrome」),
- *   **引擎 / 皮肤库还没就绪是 `unavailable`(503)**(等一会儿就好)—— 从前面板靠状态码 503 认,
+ *   **推送链路 / 皮肤库还没就绪是 `unavailable`(503)**(等一会儿就好)—— 从前面板靠状态码 503 认,
  *   两件事混在一个 503 里分不开。
  * - **试了一次、没成**(预览 / 截图 / 测试推送里渲染抛错、投递没被接受)→ **照旧 200**,体是 `Result<…>`
  *   的失败那一支;耗时只在成功那一支,不带假的 `latencyMs: 0`。
@@ -40,14 +40,14 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 });
 
-/** 一份带引擎、带一个推送目标的 deps。`engines: null` = 引擎还没挂上。 */
-function makeDeps(opts: { engines?: unknown } = {}): RouteDeps {
-	const engines = "engines" in opts ? opts.engines : { push: { sendToTarget: vi.fn() } };
+/** 一份带推送链路、带一个推送目标的 deps。`pipeline: null` = 推送链路还没挂上。 */
+function makeDeps(opts: { pipeline?: unknown } = {}): RouteDeps {
+	const pipeline = "pipeline" in opts ? opts.pipeline : { push: { sendToTarget: vi.fn() } };
 	return {
 		runtime: {
 			sourceRegistry: bilibiliLikeSources(),
 			dataRoot: dataDir,
-			engines,
+			pipeline,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
@@ -207,9 +207,9 @@ describe("POST /test", () => {
 		expect(((await res.json()) as any).code).toBe("not_configured");
 	});
 
-	it("引擎还没挂上 → unavailable(503)", async () => {
+	it("推送链路还没挂上 → unavailable(503)", async () => {
 		const app = createCardsRoute({
-			deps: makeDeps({ engines: null }),
+			deps: makeDeps({ pipeline: null }),
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});
@@ -231,7 +231,7 @@ describe("POST /test", () => {
 	it("渲染没成 → 200 + 失败那一支,不带假的 latencyMs,也没往外发", async () => {
 		const sendToTarget = vi.fn();
 		const app = createCardsRoute({
-			deps: makeDeps({ engines: { push: { sendToTarget } } }),
+			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: crashingPuppeteer(),
 			api: null,
 		});
@@ -250,7 +250,7 @@ describe("POST /test", () => {
 	it("送达 → 200 + { ok: true, latencyMs }", async () => {
 		const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 12 }));
 		const app = createCardsRoute({
-			deps: makeDeps({ engines: { push: { sendToTarget } } }),
+			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});
@@ -262,7 +262,7 @@ describe("POST /test", () => {
 	it("没送达 → 200 + 失败那一支,对端的原话进 message,不带 latencyMs", async () => {
 		const sendToTarget = vi.fn(async () => fail("unavailable", "群不存在"));
 		const app = createCardsRoute({
-			deps: makeDeps({ engines: { push: { sendToTarget } } }),
+			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});

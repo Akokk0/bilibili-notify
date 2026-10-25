@@ -120,21 +120,21 @@ function makeFakeSourceCtx(
 	return { ctx, reportPost, fetchImage };
 }
 
-/** 假引擎:`registerSource` 里直接 `await entry.source.start(假 ctx)`,记下每次登记。 */
-function makeFakeEngines(ctx: SourceContext) {
+/** 假推送链路:`registerSource` 里直接 `await entry.source.start(假 ctx)`,记下每次登记。 */
+function makeFakePipeline(ctx: SourceContext) {
 	const registered: Array<{
 		sourceKey: string;
 		source: { stop(): Promise<void> };
 		integration: IntegrationContext;
 		logger: Logger;
 	}> = [];
-	const engines = {
+	const pipeline = {
 		registerSource: vi.fn(async (entry: (typeof registered)[number] & { source: never }) => {
 			registered.push(entry);
 			await (entry.source as { start(ctx: SourceContext): Promise<void> }).start(ctx);
 		}),
 	};
-	return { engines: engines as never, registered, registerSource: engines.registerSource };
+	return { pipeline: pipeline as never, registered, registerSource: pipeline.registerSource };
 }
 
 function compose(
@@ -299,15 +299,15 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 });
 
 describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
-	// 验红:把 `compose.ts` 里收上下文的钩子挪到 `registerSources` 里登记(晚于引擎),这条红(构造时只剩两个适配器的兜底),
+	// 验红:把 `compose.ts` 里收上下文的钩子挪到 `registerSources` 里登记(晚于推送链路),这条红(构造时只剩两个适配器的兜底),
 	// 关停次序那一组也红。
 	it("构造时就在关停的 stop 段登记了收 B 站上下文的钩子(与两个适配器的兜底一起共三个),registerSources 不再多登记", async () => {
 		const { builtins, onDispose } = compose();
 		expect(onDispose).toHaveBeenCalledTimes(3);
 		expect(onDispose.mock.calls.map(([, phase]) => phase)).toEqual(["stop", "stop", "stop"]);
 
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(engines);
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(pipeline);
 		expect(onDispose).toHaveBeenCalledTimes(3);
 		await registered[0]?.source.stop();
 	});
@@ -316,9 +316,9 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 	it("registerSources 之前不开 B 站存储,之后开了;收尾钩子一跑存储把手就关", async () => {
 		const { builtins, integrationStore, runStopHooks } = compose();
 		expect(integrationStore.openKeys()).toEqual([]);
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
 
-		await builtins.registerSources(engines);
+		await builtins.registerSources(pipeline);
 
 		expect(integrationStore.openKeys()).toEqual([BILIBILI_SOURCE_KEY]);
 		await registered[0]?.source.stop();
@@ -330,8 +330,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 	// `forSubsystem("dynamic", …)` 的键换成 `"core"`,这条红。
 	it("日志跟 B 站那一格:登录那一套的行落在(bilibili, bilibili)的日志器上,核心的日志器一行没有;来源登记项带的是 dynamic 那一格", async () => {
 		const { builtins, forSubsystem, subsystems, coreLogger } = compose();
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(engines);
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(pipeline);
 
 		expect(forSubsystem).toHaveBeenCalledWith(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY);
 		const bili = subsystems.get(JSON.stringify([BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY]));
@@ -348,21 +348,21 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 	it("registerSources 按 B 站的键登记了一次,integration 是 B 站自己的上下文(带 cookie 罐的口);调第二次抛", async () => {
 		const { builtins } = compose();
-		const { engines, registered, registerSource } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(engines);
+		const { pipeline, registered, registerSource } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(pipeline);
 		expect(registerSource).toHaveBeenCalledTimes(1);
 		expect(registered[0]?.sourceKey).toBe(BILIBILI_SOURCE_KEY);
 		expect(registered[0]?.integration).toHaveProperty("cookies.jar");
-		await expect(builtins.registerSources(engines)).rejects.toThrow("already registered");
+		await expect(builtins.registerSources(pipeline)).rejects.toThrow("already registered");
 		await registered[0]?.source.stop();
 	});
 
 	// 验红:把 `createBiliSource` 里 `start` 第一步的 `await login.start()` 去掉,这条红(读到 confirming:开机探活还没落定)。
 	it("来源 start 落定时登录已经恢复:没有 cookie 就是已经「未登录」,不是还在「确认中」", async () => {
 		const { builtins } = compose();
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
 
-		await builtins.registerSources(engines);
+		await builtins.registerSources(pipeline);
 
 		const source = registered[0]?.source as unknown as { auth: SourceAuth; stop(): Promise<void> };
 		expect(source.auth.state()).toEqual({ status: "logged-out" });
@@ -375,8 +375,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		const dev = compose();
 		const providers = createDevtoolsProviderRegistry();
 		dev.builtins.provideDevtools(providers);
-		const fakeDev = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await dev.builtins.registerSources(fakeDev.engines);
+		const fakeDev = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await dev.builtins.registerSources(fakeDev.pipeline);
 		const devSource = fakeDev.registered[0]?.source as unknown as {
 			auth: SourceAuth;
 			stop(): Promise<void>;
@@ -388,8 +388,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		await devSource.stop();
 
 		const prod = compose();
-		const fakeProd = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await prod.builtins.registerSources(fakeProd.engines);
+		const fakeProd = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await prod.builtins.registerSources(fakeProd.pipeline);
 		const prodSource = fakeProd.registered[0]?.source as unknown as {
 			auth: SourceAuth;
 			stop(): Promise<void>;
@@ -409,8 +409,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		builtins.provideDevtools(providers);
 		expect(builtins.bilibili.api()).toBeUndefined();
 
-		const fake = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(fake.engines);
+		const fake = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(fake.pipeline);
 
 		const api = builtins.bilibili.api();
 		expect(api).toBeDefined();
@@ -435,8 +435,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 				code: "unavailable",
 			});
 
-			const fake = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-			await builtins.registerSources(fake.engines);
+			const fake = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+			await builtins.registerSources(fake.pipeline);
 			const forwarded = vi
 				.spyOn(fake.registered[0]?.integration as IntegrationContext, "fetchImage")
 				.mockResolvedValue(okResult({ ref: `${"d".repeat(64)}.png` }));
@@ -462,9 +462,9 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		const setHealthCheckMs = vi.spyOn(LoginFlow.prototype, "setHealthCheckMs");
 		spies.push(setHealthCheckMs);
 		const { builtins } = compose();
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx([]).ctx);
 
-		await builtins.registerSources(engines);
+		await builtins.registerSources(pipeline);
 
 		expect(setHealthCheckMs).toHaveBeenCalledTimes(1);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(30 * 60_000);
@@ -484,7 +484,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			const fetchImage = vi.fn(async () => fail("unavailable", "测试不联网"));
 			const { builtins, deps, integrationStore } = compose({ subs: [makeSub("bilibili", "100")] });
 			const { ctx, reportPost } = makeFakeSourceCtx(roster, fetchImage);
-			const fake = makeFakeEngines(ctx);
+			const fake = makeFakePipeline(ctx);
 			const providers = createDevtoolsProviderRegistry();
 			builtins.provideDevtools(providers);
 			const scenario = providers.scenarios().find((s) => s.id === "bilibili.dynamic.post");
@@ -509,7 +509,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 		it("登记之后跑 → 假 ctx 的 reportPost 收到那条假动态", async () => {
 			const { builtins, fake, scenario, reportPost } = setup();
-			await builtins.registerSources(fake.engines);
+			await builtins.registerSources(fake.pipeline);
 			try {
 				await runScenario(scenario);
 				expect(reportPost).toHaveBeenCalledTimes(1);
@@ -521,7 +521,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 		it("来源用的是上下文给的抓图口(带图的动态会去抓图)", async () => {
 			const { builtins, fake, scenario, fetchImage } = setup();
-			await builtins.registerSources(fake.engines);
+			await builtins.registerSources(fake.pipeline);
 			try {
 				await runScenario(scenario, { sub: "bilibili-100", type: "draw" });
 				expect(fetchImage).toHaveBeenCalled();
@@ -535,13 +535,13 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		it("登记抛了:错原样抛出去,上下文先收(存储把手关了),不留半个来源(场景仍报「动态引擎还没起来」),能重来", async () => {
 			const { builtins, fake, scenario, reportPost, integrationStore } = setup();
 			const boom = new Error("登记炸了");
-			const engines = { registerSource: vi.fn().mockRejectedValueOnce(boom) } as never;
-			await expect(builtins.registerSources(engines)).rejects.toBe(boom);
+			const pipeline = { registerSource: vi.fn().mockRejectedValueOnce(boom) } as never;
+			await expect(builtins.registerSources(pipeline)).rejects.toBe(boom);
 			expect(integrationStore.openKeys()).toEqual([]);
 			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
 			// 锚点 = 来源起来那一刻:拨回起点再登记,场景那条假动态才晚于锚点。
 			vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
-			await builtins.registerSources(fake.engines);
+			await builtins.registerSources(fake.pipeline);
 			expect(integrationStore.openKeys()).toEqual([BILIBILI_SOURCE_KEY]);
 			try {
 				await runScenario(scenario);
@@ -571,14 +571,14 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 				summary: "B 站来源还没起来，先等它起来再试",
 			});
 			Object.defineProperty(deps, "setTimeout", { configurable: true, value: original });
-			const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-			await builtins.registerSources(ok.engines);
+			const ok = makeFakePipeline(makeFakeSourceCtx([]).ctx);
+			await builtins.registerSources(ok.pipeline);
 			await ok.registered[0]?.source.stop();
 		});
 
 		it("来源停下后,场景又报「动态引擎还没起来」", async () => {
 			const { builtins, fake, scenario } = setup();
-			await builtins.registerSources(fake.engines);
+			await builtins.registerSources(fake.pipeline);
 			await runScenario(scenario);
 			await fake.registered[0]?.source.stop();
 			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
@@ -598,27 +598,27 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		});
 
 		/**
-		 * 与真入口同一个先后:`compose()` 之后、`registerSources` 之前,「引擎」的关停钩子先登记(`createEngines` 登记的那个:
-		 * 它停来源);compose 的收上下文钩子在构造时就登记了,所以关停时引擎的先跑。
+		 * 与真入口同一个先后:`compose()` 之后、`registerSources` 之前,推送链路的关停钩子先登记(`createPipelineRuntime` 登记的那个:
+		 * 它停来源);compose 的收上下文钩子在构造时就登记了,所以关停时推送链路的先跑。
 		 */
 		function setupShutdown(logger?: Logger) {
 			const w = authWorld(dataDir, logger);
 			const c = compose({ integrationStore: w.store, biliServiceCtx: w.host.serviceCtx });
-			const fake = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+			const fake = makeFakePipeline(makeFakeSourceCtx([]).ctx);
 			c.onDispose(async () => {
 				await (fake.registered[0]?.source as { stop(): Promise<void> } | undefined)?.stop();
 			}, "stop");
 			return { w, c, fake };
 		}
 
-		// 验红:把 `compose.ts` 里收上下文的钩子挪到 `registerSources` 里登记(晚于引擎),这条红(上下文先收、登录后停)。
+		// 验红:把 `compose.ts` 里收上下文的钩子挪到 `registerSources` 里登记(晚于推送链路),这条红(上下文先收、登录后停)。
 		it("续期停在确认之前时关停:盘上还是旧的一对(闸还在,不存中间状态)", async () => {
 			const { w, c, fake } = setupShutdown();
 			await w.seed({ cookies: C0, token: "T0" });
 			const stalled = stallRenewalAtConfirm();
 
 			// 开机顺带触发一次续期(盘上有令牌)。
-			await c.builtins.registerSources(fake.engines);
+			await c.builtins.registerSources(fake.pipeline);
 			const api = c.builtins.bilibili.api();
 			if (!api) throw new Error("来源没造出来");
 			stalled.setJar(w.jarOf(api));
@@ -635,13 +635,13 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			expect(String(disk.get("http.cookies"))).not.toContain("sess1");
 		});
 
-		// 验红:同上(收上下文的钩子晚于引擎登记),这条红(没先停 Api,迟到的链去提交、撞上已关的写道:记 error)。
+		// 验红:同上(收上下文的钩子晚于推送链路登记),这条红(没先停 Api,迟到的链去提交、撞上已关的写道:记 error)。
 		it("停 Api 的收尾排在最后一次存盘之前:关停后迟到的确认回应是「被取代」,不是去撞已关的写道", async () => {
 			const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 			const { w, c, fake } = setupShutdown(logger);
 			await w.seed({ cookies: C0, token: "T0" });
 			const stalled = stallRenewalAtConfirm();
-			await c.builtins.registerSources(fake.engines);
+			await c.builtins.registerSources(fake.pipeline);
 			const api = c.builtins.bilibili.api();
 			if (!api) throw new Error("来源没造出来");
 			stalled.setJar(w.jarOf(api));
@@ -663,7 +663,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		it("没有在途续期、罐子里有没存的变化时关停:最后一次存盘落了,存储把手关了", async () => {
 			const { w, c, fake } = setupShutdown();
 			await w.seed({ cookies: C0 });
-			await c.builtins.registerSources(fake.engines);
+			await c.builtins.registerSources(fake.pipeline);
 			const api = c.builtins.bilibili.api();
 			if (!api) throw new Error("来源没造出来");
 			// 假时钟不推进:攒着的那一下根本没到点。
@@ -682,7 +682,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 		it("收上下文的钩子幂等:关停跑两遍不抛,存储把手只关一次", async () => {
 			const { w, c, fake } = setupShutdown();
-			await c.builtins.registerSources(fake.engines);
+			await c.builtins.registerSources(fake.pipeline);
 
 			await c.runStopHooks();
 			await c.runStopHooks();

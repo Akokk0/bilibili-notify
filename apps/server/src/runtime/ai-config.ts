@@ -1,7 +1,7 @@
 /**
  * `AISettings` → `CommentaryGeneratorConfig` —— **唯一一处翻译**。
  *
- * 三条路都要造这个对象:常驻 generator(`engines.ts`,聊天与推送都用它)、AI 页的
+ * 三条路都要造这个对象:常驻 generator(`pipeline.ts`,聊天与推送都用它)、AI 页的
  * 「试一句」(吃页面草稿)、统计页的锐评与周报。此前它们各写了一份一模一样的映射,
  * 于是「人格该从哪儿读」这件事有三个答案 —— 修好一处另两处照旧,而类型、构建、
  * lint 全绿。合成一处之后,人格语义只能改一次。
@@ -13,9 +13,9 @@
  *   不在设置里、内容按当前语言取,所以调用方要把当前语言的内置人格(`builtinPersonasOf`)传进来;
  *   谁绕开这一处自己翻 `presets`,就是「主人换了人格 / 语言,女仆开口还是原来那位」。
  *
- * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,引擎的
+ * 字段名映射:schema 用面向用户的 `baseRole` / `extraSystemPrompt`,AI 生成器的
  * `PersonaConfig` 沿用 `customBase` / `extraPrompt` 历史命名,
- * 在这里做一次性翻译,引擎层不感知差异。
+ * 在这里做一次性翻译,推送链路不感知差异。
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";

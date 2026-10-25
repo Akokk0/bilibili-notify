@@ -92,7 +92,7 @@ export const SKIN_MODE_SYSTEM_PROMPT = `你是「bilibili-notify」控制面板�
 
 export interface SkinChatToolDeps {
 	skinStore: SkinStore;
-	/** 热读:engines 是后挂的,每次调用现取。null = AI 未配置 / 未就绪。 */
+	/** 热读:pipeline 是后挂的,每次调用现取。null = AI 未配置 / 未就绪。 */
 	generator: () => SkinAiGenerator | null;
 	/**
 	 * 女仆这一轮看得见的那张图,拿来当壁纸。缺省 / null = 没有。

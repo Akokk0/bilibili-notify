@@ -19,7 +19,7 @@ import type { RouteDeps } from "./types.js";
  * (目标 id 从前在请求体里的 `targetId`,ADR-0036 挪进了路径。)
  *
  * 试一次、回报结果(ADR-0026):投递的结果**照旧回 200**,体是 `Result<{ latencyMs }>`(送达带耗时,
- * 没送达带码和原话,不带假的耗时)。请求本身不成 —— 体不对 400、引擎没起 503、没有这个目标 404 ——
+ * 没送达带码和原话,不带假的耗时)。请求本身不成 —— 体不对 400、推送链路没起 503、没有这个目标 404 ——
  * 是非 2xx 的错误体,经 `respondFailure`。
  */
 
@@ -110,8 +110,8 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		}
 
 		const { kind, text } = parsed.data;
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
@@ -121,8 +121,8 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			text: text ?? KIND_TEXTS[kind],
 		};
 		// The push.sendToTarget path goes through the same retry / dispatcher lookup
-		// engines use, so the test exercises real behaviour.
-		const result = await engines.push.sendToTarget(target.id, payload);
+		// pipeline use, so the test exercises real behaviour.
+		const result = await pipeline.push.sendToTarget(target.id, payload);
 		return c.json<TestResponse>(testResultOfDelivery(result));
 	});
 

@@ -146,7 +146,7 @@ function makeDeps(): RouteDeps {
 	return {
 		store: { getSubscriptions: () => SUBS },
 		runtime: {
-			engines: null,
+			pipeline: null,
 			fansStore: createFollowersStore({
 				dataRoot: dataDir,
 				logger: { debug() {}, info() {}, warn() {}, error() {} } as never,

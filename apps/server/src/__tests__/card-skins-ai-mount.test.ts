@@ -1,9 +1,9 @@
 /**
- * 接线守卫:卡片皮肤那口 AI 真的拿得到引擎吗。
+ * 接线守卫:卡片皮肤那口 AI 真的拿得到推送链路里的生成器吗。
  *
  * 🔴 路由自己的测试是直接喂 `commentary` 的,证明不了 app 里那一行真的接上了。少这一行
- * 的症状是**配好了模型也永远被当成没配**(`not_configured`),而两边都不报错。引擎是后挂的,
- * 所以也钉住「热读」:app 装配完才挂上的引擎照样用得上。
+ * 的症状是**配好了模型也永远被当成没配**(`not_configured`),而两边都不报错。推送链路是后挂的,
+ * 所以也钉住「热读」:app 装配完才挂上的推送链路照样用得上。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -16,7 +16,7 @@ import { settingsSegment } from "../bilibili/settings.js";
 import { CARD_SKIN_MANIFEST_FILE } from "../card-skins/package.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
-import type { EnginesRuntime } from "../runtime/engines.js";
+import type { PipelineRuntime } from "../runtime/pipeline.js";
 
 const MANIFEST = {
 	schemaVersion: 2,
@@ -32,7 +32,7 @@ const MANIFEST = {
 	},
 };
 
-describe("/api/cards/skins/:id/ai 的引擎接线", () => {
+describe("/api/cards/skins/:id/ai 的 pipeline 接线", () => {
 	let dataDir: string;
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-card-ai-mount-"));
@@ -41,7 +41,7 @@ describe("/api/cards/skins/:id/ai 的引擎接线", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("引擎没挂 → not_configured(409);app 装配完再挂上 → 用的就是它", async () => {
+	it("推送链路没挂 → not_configured(409);app 装配完再挂上 → 用的就是它", async () => {
 		const bootstrap: BootstrapConfig = {
 			server: { host: "127.0.0.1", port: 8787 },
 			dataDir,
@@ -76,13 +76,13 @@ describe("/api/cards/skins/:id/ai 的引擎接线", () => {
 				}),
 			});
 
-		// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」:那句话本来就是叫主人去接模型,按没配。
+		// `commentary` 回 null 分不出「没配模型」与「推送链路还没挂上」:那句话本来就是叫主人去接模型,按没配。
 		const before = await ask();
 		expect(before.status).toBe(409);
 		expect(((await before.json()) as { code: string }).code).toBe("not_configured");
 
 		const generateRaw = vi.fn(async () => '[data-bn="self"]{border-radius:16px}');
-		runtime.attachEngines({ commentary: { generateRaw } } as unknown as EnginesRuntime);
+		runtime.attachPipeline({ commentary: { generateRaw } } as unknown as PipelineRuntime);
 		const res = await ask();
 		expect(res.status).toBe(200);
 		expect(await res.text()).toContain("event: done");
@@ -95,7 +95,7 @@ describe("/api/cards/skins/:id/ai 的引擎接线", () => {
  * **`createApp` 用的必须是传进去的那一家店**(2026-09-20 主人拍板把 `cardSkins` 改必填)。
  *
  * 从前这个选项是可选的,缺省时 `createApp` 会自建一家**读同一个目录**的店。那样面板装得进、
- * 列得出,而出图那头拿的仍是宿主传给引擎的那一家 —— 「装了新皮肤、推送不变」,**症状完全
+ * 列得出,而出图那头拿的仍是宿主传给推送链路的那一家 —— 「装了新皮肤、推送不变」,**症状完全
  * 静默**(装包 201、出图一个像素不变)。必填只挡住「忘了传」,挡不住「传了却不用」,所以这条
  * 钉的是后半句。
  *

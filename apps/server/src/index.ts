@@ -75,7 +75,6 @@ import {
 	effectiveAliases,
 } from "./runtime/command-dispatcher.js";
 import { renderHelp } from "./runtime/command-help.js";
-import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import {
 	listGenerationUsage,
@@ -96,6 +95,7 @@ import { bindLogLevels } from "./runtime/log-levels.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
+import { createPipelineRuntime } from "./runtime/pipeline.js";
 import { browserSubtreeRss } from "./runtime/process-tree.js";
 import { createProfileCacheWriter } from "./runtime/profile-cache.js";
 import { startProfileRefresh } from "./runtime/profile-refresh.js";
@@ -249,7 +249,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	let runtime: AppRuntime | undefined;
 	let puppeteer: PuppeteerAdapter | null = null;
 	let subBinding: ReturnType<typeof bindSubscriptionStore> | undefined;
-	let engines: ReturnType<typeof createEngines> | undefined;
+	let pipeline: ReturnType<typeof createPipelineRuntime> | undefined;
 	let cardSkinStore: CardSkinStore | undefined;
 	let wsTicketStore: ReturnType<typeof createWsTicketStore> | null | undefined;
 	let server: ServerType | undefined;
@@ -432,7 +432,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				})
 			: undefined;
 
-		// 开机先 listen,再读数据(ADR-0022 决策 2 与它下面的 🔗):数据与引擎起来之前由开机那一段的
+		// 开机先 listen,再读数据(ADR-0022 决策 2 与它下面的 🔗):数据与推送链路起来之前由开机那一段的
 		// app 应答 —— 健康检查照答,别的接口 503 `unavailable`,鉴权闸与完整的 app 是同一套。桌面壳 30 秒
 		// 等的就是健康检查;启动入口本身仍等全部起来才返回,数据段抛错时 boot.mjs 还能当场退回预装的那一版。
 		const appShell = {
@@ -547,20 +547,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// SecretStore.save() is first needed (e.g. changing a setting that holds a secret), making
 		// the normal "主密钥加载成功" log look like it was caused by that setting.
 		await runtime.keyProvider.getKey();
-		// 运行记录从这一刻算起:数据那一代已经就位,引擎还没起(ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。
+		// 运行记录从这一刻算起:数据那一代已经就位,推送链路还没起(ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。
 		runtime.uptimeRecorder.start();
 		// Load on-disk runtime config (config/settings/core.json, config/subscriptions.json, config/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
 		await runtime.configStore.load();
 		// 日志等级表接到上下文上(当场推一次、之后 `level` / `levels` 变了再推):放在配置读完之后,
-		// 之后造的日志器(登录系统、引擎装配)起步就是设置里那一格。
+		// 之后造的日志器(登录系统、推送链路装配)起步就是设置里那一格。
 		const logLevels = bindLogLevels({
 			serviceCtx: runtime.serviceCtx,
 			configStore: runtime.configStore,
 		});
 		runtime.serviceCtx.onDispose(() => logLevels.dispose(), "stop");
-		// 语言与口吻两项设置接到字典 store 上(当场推一次、之后核心设置变了再推):同样早于登录系统与引擎。
+		// 语言与口吻两项设置接到字典 store 上(当场推一次、之后核心设置变了再推):同样早于登录系统与推送链路。
 		const textSettings = bindTextSettings({
 			set: (change) => i18n.set(change),
 			configStore: runtime.configStore,
@@ -607,7 +607,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
-		// OR engine card render), not at boot. Built before createEngines so live +
+		// OR engine card render), not at boot. Built before createPipelineRuntime so live +
 		// dynamic can share the same ImageRenderer instance as /api/cards/preview.
 		const chromeIdleTimeoutMs =
 			bootstrap.chromeIdleSeconds === undefined ? undefined : bootstrap.chromeIdleSeconds * 1000;
@@ -636,13 +636,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//   1. SubscriptionStore binding mirrors the file-backed config into an
 		//      in-memory store + emits subscription-changed on diffs.
 		//   2. The built-in platform adapters are constructed inside `composeBuiltinIntegrations`
-		//      and registered (registration starts them) just before the engines
+		//      and registered (registration starts them) just before the pipeline
 		//      (`builtins.registerAdapters`).
-		//   3. createEngines() builds Dispatcher → PushRouter → neutral live layers and registers
+		//   3. createPipelineRuntime() builds Dispatcher → PushRouter → neutral live layers and registers
 		//      serviceCtx.onDispose for graceful shutdown; the built-in post source is registered
 		//      right after it (`builtins.registerSources`: opens the bilibili context, builds the
 		//      source, and its `start` brings the login up — the context's close hook was registered
-		//      in `composeBuiltinIntegrations`, before the engines, so it runs after them on shutdown).
+		//      in `composeBuiltinIntegrations`, before the pipeline, so it runs after them on shutdown).
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
@@ -651,7 +651,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		await pruneOrphanSubscriptionState(runtime.subscriptionStateStore, subBinding.store);
 		// 拓展订阅的头像在图库里、资料缓存里放引用(ADR-0019 决策 49):资料条目丢了,头像就不再有人引用,
 		// 由图库清扫收走,这里不用另外扫头像。头像不进备份(与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
-		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
+		// 入站的转发口。指令处理器要等 pipeline / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
 		//
 		// 两个 adapter 都在自己那层把帧归一化成平台中立的形状,汇合点是同一个。
@@ -696,7 +696,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			readSettings: () => runtime.configStore.getGlobals().update,
 			serviceCtx: runtime.serviceCtx,
 		});
-		// 出口住在一张**活的注册表**里:内置这几个在 `createEngines` 之前登记(登记即 `start`,见下),
+		// 出口住在一张**活的注册表**里:内置这几个在 `createPipelineRuntime` 之前登记(登记即 `start`,见下),
 		// 拓展注册进来的后到、拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
 		// 表在 `createAppRuntime` 里就建好了(配置仓保存连接时要按在场适配器的规则验 settings),这里只登记。
 		const adapterRegistry = runtime.adapterRegistry;
@@ -705,7 +705,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const onConnectionsChanged = (fn: () => void): Disposable =>
 			runtime.bus.on("config-changed", ({ scope }) => {
 				if (scope !== "connections") return;
-				// 总线是普通的事件发射器:一个回调同步抛了,排在它后面的监听(引擎刷新链接策略那个)会被跳过。
+				// 总线是普通的事件发射器:一个回调同步抛了,排在它后面的监听(推送链路刷新链接策略那个)会被跳过。
 				try {
 					fn();
 				} catch (err) {
@@ -781,7 +781,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 那格常是 `0.0.0.0`(监听通配),拿它当目的地连不上。
 			address: () => (listeningPort ? `127.0.0.1:${listeningPort}` : undefined),
 			historyStore: runtime.historyStore,
-			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
+			// 下面几样都是推送链路建好之后才有的,现取 —— devtools 建得比推送链路早。
 			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),
 			commands: () => ({
 				prefix: runtime.configStore.getGlobals().commands.prefix,
@@ -792,7 +792,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
 			puppeteer: () => puppeteer,
-			mute: () => engines?.muteState,
+			mute: () => pipeline?.muteState,
 			profileRefresh: () => runtime.profileRefresh ?? undefined,
 			subscriptions: () =>
 				subStore.list().map((sub) => ({
@@ -803,21 +803,21 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						subscriptionIdentityOf(sub).externalId,
 				})),
 			session: () =>
-				engines && {
+				pipeline && {
 					tickNow: (subscriptionId: string) =>
-						engines?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
+						pipeline?.tickLiveSessionNow(subscriptionId) ?? Promise.resolve(false),
 				},
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? adapterRegistry;
 
 		// ---------- 卡片皮肤库(ADR-0014)----------
-		// **全进程唯一一家店**:出图(engines 的 ImageRenderer)、面板的皮肤库路由、卡片
+		// **全进程唯一一家店**:出图(pipeline 的 ImageRenderer)、面板的皮肤库路由、卡片
 		// 预览三处问的都是它。各建一家的话,面板装了新皮肤而推送还在用开机那一刻的索引,
 		// 症状还是静默的(装包成功、出图不变)。
 		//
 		// 顺序是:`configStore.load()`(上面早就跑过)→ 建店 + `init()` 读盘 → 才把 `get`
-		// 交给引擎。(开机一次性的「旧版式 → 皮肤」迁移已整个退役,见 ADR-0014 决策 17
+		// 交给推送链路。(开机一次性的「旧版式 → 皮肤」迁移已整个退役,见 ADR-0014 决策 17
 		// 的 2026-09-18 🔗:没选过皮肤的一律用出厂默认。)
 		//
 		// ⚠️ 走 `ensureReady()` 而不是裸 `init()`:`ensureReady` 是 `this.ready ??= this.init()`,
@@ -834,19 +834,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 拓展详情页的「上报出入」(ADR-0019 决策 60):ctx 那个出口与拓展直播的计时器(周期推送跳过的那一轮,
 		// 决策 61)写进来,拓展列表那一口读出去。只在内存。记了新的 → bus → WS `state` 频道 → 面板让拓展表
-		// 失效(按拓展合并过)。建在引擎之前:引擎里的计时器也往里记。
+		// 失效(按拓展合并过)。建在推送链路之前:推送链路里的计时器也往里记。
 		const reportDiscrepancies = createReportDiscrepancyTable({
 			onChanged: (id) =>
 				runtime.bus.emit("extension-report-discrepancies-changed", { extensionId: id }),
 		});
 		runtime.serviceCtx.onDispose(() => reportDiscrepancies.dispose(), "stop");
 
-		// 内置适配器登记即启动 —— 就在 `createEngines` 之前,启动时刻与从前引擎开机对账那一刻一致。
-		// 关停钩子也登记在引擎之前:同一段里后登记的先跑,引擎先收、适配器后停。
+		// 内置适配器登记即启动 —— 就在 `createPipelineRuntime` 之前,启动时刻与从前引擎开机对账那一刻一致。
+		// 关停钩子也登记在推送链路之前:同一段里后登记的先跑,推送链路先收、适配器后停。
 		const builtinAdapters = await builtins.registerAdapters();
 		runtime.serviceCtx.onDispose(() => builtinAdapters.dispose(), "stop");
 
-		engines = createEngines({
+		pipeline = createPipelineRuntime({
 			serviceCtx: runtime.serviceCtx,
 			dataRoot: runtime.dataRoot,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
@@ -860,7 +860,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				overview: (days, tzOffsetMin) => statsOverview(days, tzOffsetMin),
 			}),
 			// 女仆查订阅时拓展订阅的平台名(ADR-0019 决策 64):清单里订阅源的叫法 → 拓展名。装载器比
-			// 引擎晚一步建起来,所以现取;取不到就交 undefined,视图退拓展 id(同面板,决策 10)。
+			// 推送链路晚一步建起来,所以现取;取不到就交 undefined,视图退拓展 id(同面板,决策 10)。
 			extensionPlatformLabel: (id) => {
 				const entry = loadedExtensions?.list().find((one) => one.id === id);
 				if (!entry) return undefined;
@@ -901,12 +901,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			aiToolProviders: runtime.aiToolProviders,
 			problems: runtime.problems,
 		});
-		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时引擎自己先停它再关作品入口。
-		await builtins.registerSources(engines);
-		runtime.attachEngines(engines);
+		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时推送链路自己先停它再关作品入口。
+		await builtins.registerSources(pipeline);
+		runtime.attachPipeline(pipeline);
 
 		// 资源采样:概览页「系统资源」卡的数据源,也是内存自检那行日志的出处。
-		// 挂在 engines 之后,好把弹幕收集器的规模一起报出来 —— 那是引擎里唯一
+		// 挂在 pipeline 之后,好把弹幕收集器的规模一起报出来 —— 那是直播一侧唯一
 		// 一处随「弹幕量 × 在播时长」无界增长的结构,堆涨时第一个该看它。
 		resourceMonitor = startResourceMonitor({
 			serviceCtx: runtime.serviceCtx,
@@ -922,7 +922,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			memoryLogEnabled: () => runtime.configStore.getGlobals().logging.memoryLog.enabled,
 			probes: [
 				() => {
-					const s = engines?.viewerChatStats();
+					const s = pipeline?.viewerChatStats();
 					return s ? `弹幕 ${s.subscriptions} 房/${s.words} 词/${s.senders} 人` : "";
 				},
 			],
@@ -991,7 +991,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			profileCache,
 			problems: runtime.problems,
 			sources: runtime.sourceRegistry,
-			fetchProfile: engines.fetchProfile,
+			fetchProfile: pipeline.fetchProfile,
 			serviceCtx: runtime.serviceCtx,
 			isStatsEnabled: runtime.isStatsEnabled,
 		});
@@ -1001,7 +1001,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
-		// (engines 上面刚建好,统计的取数函数在下面先建、交给 createApp 共用)。
+		// (pipeline 上面刚建好,统计的取数函数在下面先建、交给 createApp 共用)。
 		const roastDrafts = createRoastDraftStore({ dataRoot: runtime.dataRoot, logger: log });
 		await roastDrafts.load();
 		runtime.serviceCtx.onDispose(() => roastDrafts.close(), "flush");
@@ -1010,7 +1010,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const statsOverview = createStatsOverview({ runtime, store: runtime.configStore });
 		/** 服务端主动私聊主人(定时锐评、过期提醒)。发不出去由调用方各自兜住(不让它拖垮流程)。 */
 		const tellMasterPayload = async (payload: string | NotificationPayload): Promise<void> => {
-			const r = await engines?.push.notifyMaster(payload);
+			const r = await pipeline?.push.notifyMaster(payload);
 			if (r && !r.ok) log.warn(`[master] 通知主人没送到: ${r.message}`);
 		};
 		// 审批预览要发的是渲染好的那一份(出图就发图),所以另有 payload 版;文字版只是它的字符串入参。
@@ -1064,8 +1064,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				},
 			}),
 		);
-		// 静音的闸装在 push 里(见 engines.ts),这里只是改状态的入口。
-		commands.push(createMuteCommand({ muteState: engines.muteState }));
+		// 静音的闸装在 push 里(见 pipeline.ts),这里只是改状态的入口。
+		commands.push(createMuteCommand({ muteState: pipeline.muteState }));
 		commands.push(
 			createStatusCommand({
 				probe: () => ({
@@ -1080,7 +1080,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						// **没探测过 / 探不了 ≠ 断了**。webhook 这类平台压根不支持探测,probeState 是
 						// 没有或 `unsupported`;当成断线的话主人会永远看见一条假报警。
 						.map((a) => ({ name: a.name, ok: a.probeState?.status !== "unreachable" })),
-					mutedUntil: engines?.muteState.mutedUntil() ?? 0,
+					mutedUntil: pipeline?.muteState.mutedUntil() ?? 0,
 				}),
 			}),
 		);
@@ -1099,14 +1099,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			}),
 		);
 
-		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
-		const runtimeEngines = engines;
+		// `pipeline` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
+		const readyPipeline = pipeline;
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,
 			masterIdentity,
 			// 指令的回话回到发指令的那个私聊(来的那条连接 + 发信人),不是主人目标那条。
 			sendToAddress: (connectionId, session, payload) =>
-				runtimeEngines.sendToAddress(connectionId, session, payload),
+				readyPipeline.sendToAddress(connectionId, session, payload),
 			config: () => runtime.configStore.getGlobals().commands,
 			commands,
 			// 审批的 y/n 作为第二道门 —— 有待审草稿时才认,没有时它只是个普通字母。
@@ -1117,20 +1117,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 经派发器的 `sendToAddress` 直接发(群不必配成推送目标,主人定的:机器人在的所有群都算)。
 		const linkPreviewer = createLinkPreviewer({
 			logger: log,
-			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
-			settings: () => runtimeEngines.linkPreview(),
-			policyFor: (key) => runtimeEngines.linkPolicyFor(key),
+			// 开关与呈现都从推送链路拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
+			settings: () => readyPipeline.linkPreview(),
+			policyFor: (key) => readyPipeline.linkPolicyFor(key),
 			// 认哪些链接、怎么查都归各集成登记的解析器(B 站的在它的来源里);封面也由解析器抓进图库。
 			linkResolvers: runtime.linkResolvers,
 			signal: runtime.serviceCtx.signal,
-			renderer: () => runtimeEngines.imageRenderer,
-			presentation: () => runtimeEngines.linkCardPresentation(),
+			renderer: () => readyPipeline.imageRenderer,
+			presentation: () => readyPipeline.linkCardPresentation(),
 			// 能力走 dispatcher 那条连接寻址(健康探测与 /api/connections/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
-			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
+			capabilities: ({ connectionId }) => readyPipeline.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>
-				runtimeEngines.probeConnectionCapabilities(connectionId),
-			send: createLinkReplySender(runtimeEngines),
+				readyPipeline.probeConnectionCapabilities(connectionId),
+			send: createLinkReplySender(readyPipeline),
 		});
 
 		// adapter 们交出来的是同一个形状:私聊进指令分发,群进链接解析。「从哪儿来」全在
@@ -1236,8 +1236,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
 			onConnectionsChanged,
 			// 拓展的订阅源(第 3 版)登进来源登记表:登记即 `start`,异步;作者名缺了按资料名 → 身份标签补。
-			registerSource: (entry) => runtimeEngines.registerSource(entry),
-			fallbackCreatorName: (identity) => runtimeEngines.fallbackCreatorName(identity),
+			registerSource: (entry) => readyPipeline.registerSource(entry),
+			fallbackCreatorName: (identity) => readyPipeline.fallbackCreatorName(identity),
 			images: runtime.imageStore,
 			// 「上报出入」的关联栏:按来源身份取全部订阅 id,停用的也算。
 			subscriptionIdsOf: (identity) =>

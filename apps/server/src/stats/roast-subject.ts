@@ -26,7 +26,7 @@ export type RoastSubjectDeps = Pick<RouteDeps, "runtime">;
 function platformDeps(deps: RoastSubjectDeps): PlatformLabelDeps {
 	return {
 		sources: deps.runtime.sourceRegistry,
-		extensionPlatformLabel: (id) => deps.runtime.engines?.extensionPlatformLabel(id),
+		extensionPlatformLabel: (id) => deps.runtime.pipeline?.extensionPlatformLabel(id),
 	};
 }
 
@@ -42,7 +42,7 @@ export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): str
 
 /**
  * 「平台」那一列(决策 12):在来源登记表里的来源(B 站、以后别的内置来源)写它描述符的 `label`;不在登记表里的
- * (拓展)写它清单里订阅源的平台名(引擎现取,同女仆查订阅那份视图),取不到(拓展卸了、引擎还没起来)写拓展 id ——
+ * (拓展)写它清单里订阅源的平台名(推送链路现取,同女仆查订阅那份视图),取不到(拓展卸了、推送链路还没起来)写拓展 id ——
  * 同面板(ADR-0019 决策 10)。
  */
 export function roastPlatformLabel(deps: RoastSubjectDeps, identity: Identity): string {

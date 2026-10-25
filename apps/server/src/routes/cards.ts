@@ -337,7 +337,7 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
  * 🪦 2026-09-20 从四层收成一层。从前它还扫 `cardStyle.fontAsset` 的四个位置(全局基准 /
  * 全局 per-kind / UP 基准 / UP per-kind),那在字体还由卡片页管的时候是对的。今天那条路
  * **一个读者都没有**:全局那份在字体退役成旋钮时就断了,per-UP 与 per-kind 两层
- * 2026-09-20 一并摘掉(`runtime/engines.ts` 里那个映射函数 `cardStyleToColorOptions` 后来整个删了)。
+ * 2026-09-20 一并摘掉(`runtime/pipeline.ts` 里那个映射函数 `cardStyleToColorOptions` 后来整个删了)。
  *
  * 继续扫它的后果是**凭一个不生效的引用拦住删除**:409 说「UP 12345 还在用」,而主人去
  * 面板上找,既找不到那个设置(入口早删了)、那款字体也根本没出现在卡上 —— 「换掉再删」
@@ -438,7 +438,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}));
 
 	// 一键热启用/热切换卡片渲染 —— dashboard 探测到本地 Chrome、或填入远程端点后
-	// 调用:运行时构造 puppeteer、注入已跑的 live/dynamic 引擎、写回浏览器来源持久化,
+	// 调用:运行时构造 puppeteer、注入已跑的直播与作品路径、写回浏览器来源持久化,
 	// 全程不重启。已启用时:同源 → alreadyEnabled 幂等;异源 → 先探测新浏览器,通了
 	// 才 swap 并 dispose 旧 adapter(别把能用的配置换成坏的)。
 	app.post("/renderer", async (c) => {
@@ -452,8 +452,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				}),
 			);
 		}
-		const engines = opts.deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = opts.deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const source = parsed.data;
 		// 热切换 = 路由已握有在用 adapter;同源直接幂等返回,连 adapter 都不构造。
 		const replacing = currentPuppeteer !== null;
@@ -478,11 +478,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}
 		}
 		if (replacing) {
-			engines.swapImageRendering(pup);
+			pipeline.swapImageRendering(pup);
 		} else {
-			const enabled = engines.enableImageRendering(pup);
+			const enabled = pipeline.enableImageRendering(pup);
 			if (!enabled) {
-				// 引擎侧已有渲染器但路由不知情(理论不该发生的接线错位):保持旧行为,
+				// 推送链路侧已有渲染器但路由不知情(理论不该发生的接线错位):保持旧行为,
 				// 释放多余 adapter。
 				await pup.dispose();
 				return c.json(ok({ alreadyEnabled: true }));
@@ -728,7 +728,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				resolveFontFace: loadFontFace,
 				// 卡上的时间按全局时区排(与推送同一个现取口):预览与真推送画出来一个样。
 				timezone: () => opts.deps.store.getGlobals().timezone,
-				// 图库引用 → data URL:与推送出图(runtime/engines.ts)同一个解析口,预览里带引用的图才不会
+				// 图库引用 → data URL:与推送出图(runtime/pipeline.ts)同一个解析口,预览里带引用的图才不会
 				// 画成占位、与真推送分家。
 				resolveImageRef: imageRefDataUrl(opts.deps.runtime.imageStore),
 				// 皮肤:与推送出图问的是同一家店(app.ts 传进来的那一个实例)。
@@ -736,7 +736,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				resolveCardSkinAsset: async (skinId, name) =>
 					opts.cardSkins ? await readCardSkinAssetDataUrl(opts.cardSkins, skinId, name) : undefined,
 				// 预览:每来一次请求就热更一次样式,打 info 会刷屏且像"已保存"。真正生效的
-				// INFO 由推送渲染器(runtime/engines.ts)在 config-changed 后打。
+				// INFO 由推送渲染器(runtime/pipeline.ts)在 config-changed 后打。
 				quietConfigUpdates: true,
 			});
 			imageRendererPuppeteer = currentPuppeteer;
@@ -1158,8 +1158,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const { targetId, kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
 
 		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
-		const engines = opts.deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = opts.deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const target = opts.deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
 
@@ -1186,7 +1186,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 配一句图说,顶替纯图片在 QQ 富媒体消息里的占位空格(否则图片下方一段空白)。
 			caption: testPushCaption(kind),
 		};
-		const result = await engines.push.sendToTarget(target.id, payload);
+		const result = await pipeline.push.sendToTarget(target.id, payload);
 		return c.json<TestPushResponse>(testResultOfDelivery(result));
 	});
 

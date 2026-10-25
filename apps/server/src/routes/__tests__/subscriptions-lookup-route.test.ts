@@ -18,7 +18,7 @@ interface Api {
 	searchByType?: (type: string, q: string, opts: unknown) => Promise<unknown>;
 }
 
-function makeApp(api: Api | null, enginesPresent = api !== null) {
+function makeApp(api: Api | null, pipelinePresent = api !== null) {
 	const warn = vi.fn();
 	const app = createSubscriptionsRoute(
 		{
@@ -26,7 +26,7 @@ function makeApp(api: Api | null, enginesPresent = api !== null) {
 			runtime: {
 				serviceCtx: { logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 				subscriptionStateStore: { get: () => undefined },
-				engines: enginesPresent ? {} : null,
+				pipeline: pipelinePresent ? {} : null,
 			},
 		} as unknown as RouteDeps,
 		{ api: api as never },

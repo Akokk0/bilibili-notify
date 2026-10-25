@@ -65,7 +65,7 @@ function makeDeps(f: Fixture): RouteDeps {
 				listRecording: async (key: string) =>
 					f.recording?.[uidOf(key)] ?? (f.recording ? [] : ALWAYS),
 			},
-			engines: f.liveSubscriptions
+			pipeline: f.liveSubscriptions
 				? {
 						liveSession: (id: string) =>
 							f.liveSubscriptions?.includes(id) ? { subscriptionId: id } : undefined,
@@ -525,7 +525,7 @@ describe("POST /api/stats/roast/:subscriptionId — 单 UP 锐评", () => {
 	/** AI 没启用时的 deps —— 只用来验「路由认不认这条订阅」这一段前置检查。 */
 	const withAi = (enabled: boolean, f: Fixture): RouteDeps => {
 		const deps = makeDeps(f);
-		(deps.runtime as unknown as { engines: unknown }).engines = { api: {} };
+		(deps.runtime as unknown as { pipeline: unknown }).pipeline = { api: {} };
 		(deps.store as unknown as { getGlobals: unknown }).getGlobals = () => ({
 			ai: { enabled },
 			stats: { enabled: true },

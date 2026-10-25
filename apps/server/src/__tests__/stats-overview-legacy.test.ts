@@ -74,7 +74,7 @@ function makeDeps(dataDir: string, uids: string[], liveSubscriptionIds: string[]
 		runtime: {
 			fansStore: createFollowersStore({ dataRoot: dataDir, logger }),
 			statsStore: createStatsStore({ dataRoot: dataDir, logger }),
-			engines: {
+			pipeline: {
 				liveSession: (id: string) =>
 					liveSubscriptionIds.includes(id) ? { subscriptionId: id } : undefined,
 			},

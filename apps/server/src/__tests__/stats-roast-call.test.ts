@@ -128,7 +128,7 @@ function makeDeps(
 				listLiveSessions: async () => [],
 				listRecording: async () => [],
 			},
-			engines: {
+			pipeline: {
 				liveSession: () => undefined,
 				extensionPlatformLabel: () => "抖音",
 				extensionPostNoun: () => undefined,
@@ -221,7 +221,7 @@ describe("锐评带谁的人格", () => {
 	it("没配 per-UP 人格时递 undefined,而不是把当时的全局值折进来", async () => {
 		// undefined 与「折进全局值」**不是一回事**:留 undefined 时 CommentaryGenerator
 		// 内部走 `?? this.config` 兜底,主人改了全局人格立刻生效;折进来则把当时的
-		// 全局值冻成了这次调用的 per-UP 值。engines.ts 的 aiOverride 也是这条纪律。
+		// 全局值冻成了这次调用的 per-UP 值。pipeline.ts 的 aiOverride 也是这条纪律。
 		const deps = makeDeps([makeSub("s1", "1")]);
 		await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(comment.mock.calls[0]?.[3]).toBeUndefined();
@@ -307,7 +307,7 @@ describe("锐评生成的响应形状", () => {
 
 	it("引擎还没起 → 503 unavailable", async () => {
 		const deps = makeDeps([makeSub("s1", "1")]);
-		(deps.runtime as unknown as { engines: unknown }).engines = null;
+		(deps.runtime as unknown as { pipeline: unknown }).pipeline = null;
 		const res = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(((await res.json()) as { code: string }).code).toBe("unavailable");

@@ -76,7 +76,7 @@ import { ConfigValidationError } from "./validation-error.js";
  * Secrets layer: when a `SecretStore` is injected, the AI apiKey is lifted out
  * of `config/settings/core.json` into `<dataRoot>/secrets/config-secrets.enc` (AES-256-GCM via
  * the shared `KeyProvider`) on first `load()`; the on-disk globals are scrubbed
- * while `this.globals` keeps the real value so engines/routes see it unchanged.
+ * while `this.globals` keeps the real value so pipeline/routes see it unchanged.
  * Cookie/WBI secrets stay inside `@bilibili-notify/storage`, sharing the same
  * `KeyProvider` (one passphrase, one salt). With no `SecretStore` the legacy
  * plaintext-in-globals path is preserved for tests/back-compat.
@@ -363,7 +363,7 @@ async function copyFileAtomic(from: string, to: string): Promise<void> {
 
 /**
  * 落盘前把全部 AI 密钥(每家两把,加搜索后端的)抠成空串,回一份深拷贝。`settings/core.json` **不加密**,漏掉任何
- * 一把就是明文躺在盘上。内存里的 `this.globals` 留着真值(引擎经 getGlobals 读),只有盘上那份被抠掉。
+ * 一把就是明文躺在盘上。内存里的 `this.globals` 留着真值(推送链路经 getGlobals 读),只有盘上那份被抠掉。
  * 具体规则见 `./ai-secrets.ts#stripAiSecrets`。
  */
 function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
@@ -1068,7 +1068,7 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * 读出加密袋,把盘上出现的明文 key 抬进去、抹掉盘上那份,再把袋里的 key 注回内存里的 globals(引擎与路由
+	 * 读出加密袋,把盘上出现的明文 key 抬进去、抹掉盘上那份,再把袋里的 key 注回内存里的 globals(推送链路与路由
 	 * 照旧读 `providers.<id>.apiKey`)。没有 SecretStore 时什么都不做(只有测试走这条)。
 	 */
 	private async hydrateSecrets(): Promise<void> {
@@ -1091,12 +1091,12 @@ class NodeConfigStore implements ConfigStore {
 				"[secrets] 已把明文 apiKey 从 settings/core.json 迁移进加密 secrets 文件",
 			);
 		}
-		// Hydrate in-memory (engines/routes keep reading ai.apiKey).
+		// Hydrate in-memory (pipeline/routes keep reading ai.apiKey).
 		//
 		// 末尾重新过一遍 schema,保证 globals 是 zod parse 的**规范形态**(键序也算)。
 		// `stripAiSecrets` 落盘时把 apiKey 抠成**空串**、不是删掉那个键(见 `ai-secrets.ts`),
 		// 所以读回的对象里键还在原位,`applyAiSecrets` 的 spread 只覆盖值、不会把它追加到末尾。
-		// 这一遍 parse 是兜底:`engines.ts` 的 config-changed diff 拿 `JSON.stringify` 逐 section
+		// 这一遍 parse 是兜底:`pipeline.ts` 的 config-changed diff 拿 `JSON.stringify` 逐 section
 		// 比相等(键序敏感),依赖「globals 永远是 zod parse 的规范形态」这一不变式 —— 万一哪天
 		// 键序偏了,重启后第一次改**任何** globals 字段(哪怕只是 profileRefreshCron),`ai`
 		// 都会被误判成「变了」,白白热重载一次 AI 实例并刷两条日志。
@@ -1400,7 +1400,7 @@ class NodeConfigStore implements ConfigStore {
 	/**
 	 * Persist a validated GlobalConfig. With a SecretStore the apiKey is routed
 	 * into the encrypted bag and scrubbed from the on-disk settings/core.json; the
-	 * in-memory copy keeps the real value so engines/routes are unaffected.
+	 * in-memory copy keeps the real value so pipeline/routes are unaffected.
 	 */
 	private async writeGlobals(
 		g: GlobalConfig,

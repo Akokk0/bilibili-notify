@@ -21,7 +21,7 @@ import {
 import { referencedAssets } from "./package.js";
 import { parseSkinManifest, SKIN_FONT_FILE_RE, WALLPAPER_IMAGE_RE } from "./schema.js";
 
-/** 单次调用里 AI 生成器的最小面;engines.commentary 的 generateRaw 即是。 */
+/** 单次调用里 AI 生成器的最小面;pipeline.commentary 的 generateRaw 即是。 */
 export interface SkinAiGenerator {
 	/**
 	 * `onProgress` 收「已经吐了多少字符」。这一趟要几分钟,而调用它的工具轮不产生

@@ -3,7 +3,7 @@
  *
  * 游标按 scopeKey 独立计数,值为「下次取用的序号」(取模列表长度);列表长度变化时取模天然
  * 安全。snapshot 暴露给上层做 fs 持久化 —— 独立端重启后用上次 snapshot 续接,不归零。
- * 纯逻辑、无 IO:持久化的读写由调用方(engines 装配处)包在 fs + 定时 flush 外层。
+ * 纯逻辑、无 IO:持久化的读写由调用方(pipeline 装配处)包在 fs + 定时 flush 外层。
  */
 
 import type { PickLiveCover } from "../live/live-types.js";

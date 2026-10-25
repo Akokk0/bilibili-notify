@@ -32,7 +32,7 @@ function depsWith(
 				get: (key: string) =>
 					descriptors[key] === undefined ? undefined : { descriptor: descriptors[key] },
 			},
-			engines: { extensionPlatformLabel: (id: string) => extensionLabels[id] },
+			pipeline: { extensionPlatformLabel: (id: string) => extensionLabels[id] },
 		},
 	} as unknown as RoastSubjectDeps;
 }
@@ -89,7 +89,7 @@ function platformDeps(
 				get: (key: string) =>
 					labels[key] === undefined ? undefined : { descriptor: { label: labels[key] } },
 			},
-			engines: { extensionPlatformLabel: (id: string) => extensionLabels[id] },
+			pipeline: { extensionPlatformLabel: (id: string) => extensionLabels[id] },
 		},
 	} as unknown as RoastSubjectDeps;
 }

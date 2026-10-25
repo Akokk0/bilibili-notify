@@ -79,19 +79,19 @@ const startedAtMs = Date.now();
 export const STARTED_AT = new Date(startedAtMs).toISOString();
 
 /**
- * 短版健康回应。开机那一段(数据与引擎还没起来,`engines` 是空的)与完整的 app 答的是同一份,
+ * 短版健康回应。开机那一段(数据与推送链路还没起来,`pipeline` 是空的)与完整的 app 答的是同一份,
  * 只是那时模块全是 false。
  */
-export function healthResponseOf(runtime: Pick<AppRuntime, "engines">): HealthResponse {
-	const engines = runtime.engines;
+export function healthResponseOf(runtime: Pick<AppRuntime, "pipeline">): HealthResponse {
+	const pipeline = runtime.pipeline;
 	return {
 		status: "ok",
 		version: APP_VERSION,
 		moduleVersions: MODULE_VERSIONS,
 		uptime: Math.floor((Date.now() - startedAtMs) / 1000),
 		startedAt: STARTED_AT,
-		modules: engines
-			? engines.getModuleState()
+		modules: pipeline
+			? pipeline.getModuleState()
 			: { dynamic: false, live: false, image: false, ai: false },
 	};
 }

@@ -111,11 +111,11 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 let dataDir: string;
 
 interface StubOpts {
-	/** engines 尚未 attach(启动早期)。 */
-	noEngines?: boolean;
+	/** pipeline 尚未 attach(启动早期)。 */
+	noPipeline?: boolean;
 	/** 全局 AI 总开关。 */
 	aiEnabled?: boolean;
-	/** baseUrl / apiKey 没填齐时 engines.commentary 就是 null。 */
+	/** baseUrl / apiKey 没填齐时 pipeline.commentary 就是 null。 */
 	noCommentary?: boolean;
 	/** 追加进 `ai` 的字段(activeProfile / providers / chat …)。 */
 	aiConfig?: Record<string, unknown>;
@@ -136,7 +136,7 @@ async function makeDeps(opts: StubOpts = {}) {
 		runtime: {
 			serviceCtx: { logger },
 			conversationStore,
-			engines: opts.noEngines
+			pipeline: opts.noPipeline
 				? null
 				: {
 						commentary: opts.noCommentary
@@ -891,8 +891,8 @@ describe("POST /conversations/:id/title — AI 起标题", () => {
 		expect(body.message).toMatch(/baseUrl|apiKey/i);
 	});
 
-	it("engines 还没起来 → 503 unavailable", async () => {
-		const { deps } = await makeDeps({ noEngines: true });
+	it("pipeline 还没起来 → 503 unavailable", async () => {
+		const { deps } = await makeDeps({ noPipeline: true });
 		const res = await retitle(createAiRoute(deps), "任意 id");
 		expect(res.status).toBe(503);
 		expect((await readJson(res)).code).toBe("unavailable");
@@ -900,10 +900,10 @@ describe("POST /conversations/:id/title — AI 起标题", () => {
 });
 
 describe("POST /conversations/:id/chat — 前置条件", () => {
-	it("engines 还没起来 → 503,让人知道是「等一下」而不是「坏了」", async () => {
-		const { deps } = await makeDeps({ noEngines: true });
+	it("pipeline 还没起来 → 503,让人知道是「等一下」而不是「坏了」", async () => {
+		const { deps } = await makeDeps({ noPipeline: true });
 		const app = createAiRoute(deps);
-		// 会话存储不依赖 engines,建会话仍然应该成功。
+		// 会话存储不依赖 pipeline,建会话仍然应该成功。
 		const id = (await readJson(await createConv(app))).conversation.id;
 		const res = await chat(app, id, { message: "在吗" });
 		expect(res.status).toBe(503);

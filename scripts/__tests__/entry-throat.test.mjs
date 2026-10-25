@@ -28,7 +28,7 @@ import {
  *    或作导出常量数组的元素(设置登记)。指向集成目录的 `export … from` 一律不许;
  *    没有 `from` 的 `export { … }` / `export type { … }` 里是集成的绑定(含只作类型的)或上述本地别名也不许。上限 0。
  * ③ `BuiltinIntegrations.bilibili` 这一格的成员名集合必须正好等于名单,多了红、少了而名单没跟着改也红。
- * ④ 核心里名字正好是 `api` 的槽位按文件记数(棘轮):`engines.api` 这一片不删,守卫钉住读者名单只降。
+ * ④ 核心里名字正好是 `api` 的槽位按文件记数(棘轮):守卫钉住现有读者名单只降。
  *
  * 判据按**解析后的路径**认「集成的东西」(与 `import-boundaries` 同一个办法),用 `source-scan` 的语法树,
  * 注释、字符串里的字样天生不是节点。不扫测试。
@@ -76,7 +76,7 @@ export const EXPORTED_TYPE_LEDGER = {
 /**
  * ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。
  * `api` 给第 4 期两处读者(卡片真实预览、旧搜人,经入口递 `createApp`);`fetchImage` 给核心抓会员自定义图
- * (入口递 `createEngines` 的 `imageFetcher`;宿主自己的抓图口另记以后再说)。主人 10-25 批。
+ * (入口递 `createPipelineRuntime` 的 `imageFetcher`;宿主自己的抓图口另记以后再说)。主人 10-25 批。
  */
 export const BILIBILI_MEMBERS = ["api", "fetchImage"];
 

@@ -1,7 +1,7 @@
 /**
  * 🔴 **B 站直播端到端钉住**(3b-13 / 3b-22)。
  *
- * 走的是真的 `createEngines` + 真 `createBiliSource`:弹幕帧(真编解码器编的)→ 真协议解析 → 真房间会话 → 真核心场次 → 真推送层 →
+ * 走的是真的 `createPipelineRuntime` + 真 `createBiliSource`:弹幕帧(真编解码器编的)→ 真协议解析 → 真房间会话 → 真核心场次 → 真推送层 →
  * 真派发器 → 假平台。假件只有 B 站接口对象、弹幕连接、出图器、平台适配器四样(见 `support/bili-live-world.ts`)。
  * 断言只落在对外的结果上:推出去的内容与次序、总线上的事件与载荷、问题表里的条目、面板「正在直播」那一栏、
  * 交给出图器的输入。
@@ -380,7 +380,7 @@ describe("直播总结按目标挑 AI 版或模板(ADR-0032)", () => {
 	});
 });
 
-// 验红:`runtime/engines.ts` 里直播引擎的 `isAiEnabled` 读口
+// 验红:`runtime/pipeline.ts` 里直播引擎的 `isAiEnabled` 读口
 // - 接成常量 true / 只看 `g.ai.enabled` → 「默认关」「悬空例外」「读口现取」「目标删了」几条红;
 // - `aiWritingNeeded` 的第二参改成 `Object.keys(byTarget)`(不核现存)→ 「悬空例外」红;
 // - 在构造时算一次缓存起来 → 「读口现取」「目标删了」红。
@@ -968,7 +968,7 @@ describe("特别关注的弹幕", () => {
 
 	// 新判据看开关,所以开关变了监听要跟着变:全局默认改 → `config-changed` 给所有订阅重发 update op;订阅自己改 →
 	// `subscription-changed`。两条路共用 update op,里面带着 `viewerChat` / `viewerEnter` 两格开关。
-	// 验红(`engines.ts` 的 update op):去掉 `viewerChat: view.viewerChat` 那一格 → 开关翻了监听不动,这两条红。
+	// 验红(`pipeline.ts` 的 update op):去掉 `viewerChat: view.viewerChat` 那一格 → 开关翻了监听不动,这两条红。
 	it("全局默认把 viewerChat 从关改开:名单上有人带它的订阅补开监听;改回关则拆掉", async () => {
 		const w = await boot({ specialViewers: [{ id: "777", features: ["viewerChat"] }] });
 		expect(w.connections()).toEqual({ opened: 0, open: 0 });

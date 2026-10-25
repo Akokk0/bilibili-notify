@@ -182,12 +182,12 @@ describe("checkApprovalReachable", () => {
 
 /**
  * 走完整 PATCH 路径 —— 光有纯函数不算数,得确认路由真的问过它。
- * `inbound` 是主人目标那条连接 c1 的 inbound 能力,经 `engines.connectionCapabilities` 取;
- * `null` = 没配主人目标;`engines: false` = 引擎还没起来。
+ * `inbound` 是主人目标那条连接 c1 的 inbound 能力,经 `pipeline.connectionCapabilities` 取;
+ * `null` = 没配主人目标;`pipeline: false` = 引擎还没起来。
  */
 function routeWith(
 	inbound: ConnectionCapabilities["inbound"] | null,
-	opts: { engines?: boolean } = {},
+	opts: { pipeline?: boolean } = {},
 ) {
 	// 放行时路由要把改完的订阅回成 DTO,所以替身得回一条有身份的订阅,不能是 `{}`。
 	const patchSubscription = vi.fn(async () => ({
@@ -218,8 +218,8 @@ function routeWith(
 			serviceCtx: { logger: { warn() {}, error() {}, info() {}, debug() {} } },
 			subscriptionStateStore: { get: () => undefined },
 			problems: { list: () => [] },
-			engines:
-				opts.engines === false || !inbound ? null : { connectionCapabilities: inboundOf(inbound) },
+			pipeline:
+				opts.pipeline === false || !inbound ? null : { connectionCapabilities: inboundOf(inbound) },
 		},
 	} as unknown as RouteDeps;
 	return { app: createSubscriptionsRoute(deps, { api: null }), patchSubscription };
@@ -259,7 +259,7 @@ describe("PATCH /api/subscriptions/:id — per-UP 审批闸", () => {
 	});
 
 	it("引擎还没起来(取不到能力)→ 按还不知道算,409 拦下", async () => {
-		const { app, patchSubscription } = routeWith(SUPPORTED, { engines: false });
+		const { app, patchSubscription } = routeWith(SUPPORTED, { pipeline: false });
 		const res = await app.request(
 			"/s1",
 			patchRoast({ roastSchedule: { approval: true } }) as RequestInit,

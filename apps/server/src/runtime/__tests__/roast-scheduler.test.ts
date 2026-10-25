@@ -126,7 +126,7 @@ function makeScheduler(
 	tellMasterPayload = vi.fn(async () => {});
 	const deps = {
 		runtime: {
-			engines: {
+			pipeline: {
 				extensionPlatformLabel: (id: string) => (id === "douyin" ? "抖音" : undefined),
 				imageRenderer: null,
 				push: {},

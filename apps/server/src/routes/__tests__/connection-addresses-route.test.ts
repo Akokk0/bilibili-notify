@@ -19,9 +19,9 @@ import type { RouteDeps } from "../types.js";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
-function depsOf(engines: unknown): RouteDeps {
+function depsOf(pipeline: unknown): RouteDeps {
 	return {
-		runtime: { serviceCtx: { logger }, engines },
+		runtime: { serviceCtx: { logger }, pipeline },
 		store: { getConnections: () => [] },
 		puppeteer: null,
 		wsTicketStore: null,

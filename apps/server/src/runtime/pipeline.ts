@@ -1,19 +1,13 @@
 /**
- * Server-side engine wiring: neutral live sessions / push plus the dynamic source adapters,
- * driven by the file-backed ConfigStore + TargetDispatcher.
+ * Server-side push-pipeline wiring: target dispatch, push routing, post delivery,
+ * live runtime, connection probing and their lifecycle, from source registration
+ * through history.
  *
- * Construction order:
- *
- *   1. Bind SubscriptionStore to ConfigStore
- *   2. Build TargetDispatcher (subscribers: HistoryStore via onDelivery)
- *   3. Construct PushRouter({ dispatcher, store, master })
- *   4. Optionally construct CommentaryGenerator (when apiKey + baseUrl set; the
- *      `enabled` flag is enforced at engine-config gating layer in step 5/6)
- *   5. Wire the neutral live session, interaction and push layers
- *   6. Sources register later and report through their source contexts
- *
- * Engine-stop is registered with serviceCtx.onDispose; the runtime's dispose()
- * propagates correctly.
+ * AI assembly lives in `ai/commentary.ts`, live assembly in `live/live-runtime.ts`,
+ * post settings in `posts/post-settings.ts`, and adapter mapping in
+ * `push/bound-push.ts`. Sources register after construction and report through
+ * their source contexts. Shutdown is registered with `serviceCtx.onDispose`, and
+ * `dispose()` drains in-flight work.
  */
 
 import { readFileSync } from "node:fs";
@@ -100,7 +94,7 @@ import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
-export interface EnginesRuntime extends Disposable {
+export interface PipelineRuntime extends Disposable {
 	/**
 	 * 关停(幂等,再调交回同一个 promise):逆序撤全部来源登记,等全部在途的收尾(含拓展已经撤了、`stop()` 还没落定的)
 	 * 落定 —— 最多各等 `DISPOSE_TIMEOUT_MS` —— 再关作品入口与其余。
@@ -134,7 +128,6 @@ export interface EnginesRuntime extends Disposable {
 	 * 这里暴露出来是给指令与面板改状态用的。
 	 */
 	readonly muteState: MuteState;
-	readonly subscriptionStore: SubscriptionStore;
 	/** 经同一来源串行闸取资料:资料刷新与女仆回落共用这一口。 */
 	fetchProfile(identity: Identity, signal?: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	/**
@@ -171,7 +164,7 @@ export interface EnginesRuntime extends Disposable {
 	tickLiveSessionNow(subscriptionId: string): Promise<boolean>;
 	/**
 	 * 拓展订阅的平台名(清单里订阅源的叫法 → 拓展名),每次现取 —— 与女仆查订阅那份视图同一口
-	 * ({@link CreateEnginesOptions.extensionPlatformLabel})。锐评的「平台」一列用它(ADR-0020 决策 12)。
+	 * ({@link PipelineRuntimeOptions.extensionPlatformLabel})。锐评的「平台」一列用它(ADR-0020 决策 12)。
 	 * 取不到(没接 / 没装 / 开机途中)是 `undefined`,调用方退拓展 id。
 	 */
 	extensionPlatformLabel(extensionId: string): string | undefined;
@@ -214,24 +207,24 @@ export interface EnginesRuntime extends Disposable {
 	getModuleState(): ModuleState;
 	/**
 	 * Runtime hot-enable of card image rendering. When the server booted without
-	 * a chromePath the engines run text-only; once the operator detects/sets a
+	 * a chromePath the pipeline run text-only; once the operator detects/sets a
 	 * Chrome binary in the dashboard, this constructs + starts a shared
-	 * ImageRenderer and wires it into the live + dynamic engines WITHOUT a
+	 * ImageRenderer and wires it into the live + post paths WITHOUT a
 	 * restart. Idempotent: returns false if rendering was already enabled.
 	 */
 	enableImageRendering(puppeteer: PuppeteerLike): boolean;
 	/**
 	 * Hot-swap the browser behind card rendering (dashboard changed chromePath /
 	 * chromeEndpoint). Rebuilds the ImageRenderer on the new adapter and rewires
-	 * both engines; also usable as a first enable. Disposing the previous
-	 * adapter is the caller's job — engines never own the adapter lifecycle.
+	 * both paths; also usable as a first enable. Disposing the previous
+	 * adapter is the caller's job — the pipeline never owns the adapter lifecycle.
 	 */
 	swapImageRendering(puppeteer: PuppeteerLike): void;
 }
-export interface CreateEnginesOptions {
+export interface PipelineRuntimeOptions {
 	/**
-	 * NodeServiceContext (not the platform-neutral ServiceContext) — engines.ts
-	 * uses `forSubsystem(name, levelKey)` to give each engine its own pino instance
+	 * NodeServiceContext (not the platform-neutral ServiceContext) — pipeline.ts
+	 * uses `forSubsystem(name, levelKey)` to give each subsystem its own pino instance
 	 * whose level follows the `levelKey` slot of the log-level table
 	 * (`bindLogLevels` pushes it). The server runtime constructs the parent
 	 * context once at boot.
@@ -248,7 +241,7 @@ export interface CreateEnginesOptions {
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
 	/**
-	 * Display-cache source for uname/uavatar (history snapshot + engine sub
+	 * Display-cache source for uname/uavatar (history snapshot + source sub
 	 * views). cachedProfile was externalized out of `Subscription`, so the
 	 * config subs from subscriptionStore no longer carry it — read it here.
 	 */
@@ -268,10 +261,10 @@ export interface CreateEnginesOptions {
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
 	interceptSend?: SendInterceptHandler;
 	/**
-	 * Optional puppeteer adapter. When provided the engines spin up a shared
+	 * Optional puppeteer adapter. When provided the pipeline spin up a shared
 	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
 	 * falling back to plain text. When null (no BN_CHROME_PATH), pushes go out
-	 * as the engines' text-only fallback path.
+	 * as the pipeline' text-only fallback path.
 	 */
 	puppeteer?: PuppeteerLike | null;
 	/**
@@ -309,7 +302,7 @@ export interface CreateEnginesOptions {
 	 */
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	/**
-	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
+	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— pipeline 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
 	 */
 	cardSkins?: {
@@ -322,7 +315,7 @@ export interface CreateEnginesOptions {
 	};
 }
 
-export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
+export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRuntime {
 	const log = opts.serviceCtx.logger;
 	// 各子上下文只交「标签」与「跟哪一格」,等级表由 `bindLogLevels`(入口,配置读完之后)整张推、热更也在那边。
 	// 一行日志是谁的代码打的就跟谁那一格:作品队列、拓展作品的接入、替拓展跑的直播场次与推送是核心的代码,跟 `core`;
@@ -515,7 +508,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// runtime via enableImageRendering() when the operator auto-detects Chrome in
 	// the dashboard (no restart). `cardStyle.enabled` is enforced inside
 	// DynamicPoller via the `imageEnabled` config field; when false
-	// the engines bypass the renderer and emit text-only payloads, so we keep the
+	// the pipeline bypass the renderer and emit text-only payloads, so we keep the
 	// instance alive rather than hot-swapping on the user toggling the switch.
 	let imageRenderer: ImageRenderer | null = null;
 	// 字体读取口由 runtime 建好传进来,**全进程只有那一个** —— 从前这儿自建一个、
@@ -568,7 +561,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			atomicWriteJsonSync(cursorFile, cardBgRotator.snapshot());
 			cardBgRotator.clearDirty();
 		} catch (e) {
-			log.warn(`[engines] 背景轮换游标落盘失败: ${String(e)}`);
+			log.warn(`[pipeline] 背景轮换游标落盘失败: ${String(e)}`);
 		}
 	};
 	const cursorFlushTimer = setInterval(flushCursors, 30_000);
@@ -770,7 +763,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	);
 
 	// ---------- Disposal ----------
-	// 关停钩子(下方 onDispose(dispose))与测试都会调到 dispose:幂等守卫,避免对各 engine
+	// 关停钩子(下方 onDispose(dispose))与测试都会调到 dispose:幂等守卫,避免对各运行时部件
 	// .stop()/.dispose() 二次调用与重复 warn 噪音,再调交回同一个 promise。
 	let disposed = false;
 	let disposing: Promise<void> | undefined;
@@ -791,7 +784,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			try {
 				registration.dispose();
 			} catch (e) {
-				log.warn(`[engines] source dispose failed: ${errorMessageOf(e)}`);
+				log.warn(`[pipeline] source dispose failed: ${errorMessageOf(e)}`);
 			}
 		}
 		await Promise.all(sourceClosings);
@@ -805,17 +798,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		try {
 			push.stop();
 		} catch (e) {
-			log.warn(`[engines] push.stop failed: ${String(e)}`);
+			log.warn(`[pipeline] push.stop failed: ${String(e)}`);
 		}
 		try {
 			masterNotifier.dispose();
 		} catch (e) {
-			log.warn(`[engines] masterNotifier.dispose failed: ${String(e)}`);
+			log.warn(`[pipeline] masterNotifier.dispose failed: ${String(e)}`);
 		}
 		try {
 			problemNotifier.dispose();
 		} catch (e) {
-			log.warn(`[engines] problemNotifier.dispose failed: ${String(e)}`);
+			log.warn(`[pipeline] problemNotifier.dispose failed: ${String(e)}`);
 		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
@@ -837,7 +830,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				liveSignals: (signal) => {
 					if (!live) {
 						coreLiveCtx.logger.error(
-							`[engines] 没有场次引擎,${signal.identity.sourceKey} 报的直播 ${signal.kind} 丢弃`,
+							`[pipeline] 没有场次引擎,${signal.identity.sourceKey} 报的直播 ${signal.kind} 丢弃`,
 						);
 						return;
 					}
@@ -846,7 +839,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				liveInteractions: (subscriptionId, report) => {
 					if (!live) {
 						coreLiveCtx.logger.error(
-							`[engines] 没有直播互动入口,订阅 ${subscriptionId} 的直播互动 ${report.kind} 丢弃`,
+							`[pipeline] 没有直播互动入口,订阅 ${subscriptionId} 的直播互动 ${report.kind} 丢弃`,
 						);
 						return;
 					}
@@ -858,7 +851,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
 			if (disposed) {
 				await registration.dispose();
-				throw new Error("registerSource: 引擎装配已关停,来源登记作废");
+				throw new Error("registerSource: the pipeline is disposed; the registration is dropped");
 			}
 			// 撤登记幂等:拓展收摊时自己撤,引擎关停再兜底收一遍,第二遍什么都不做。
 			let revoked = false;
@@ -870,7 +863,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					if (at !== -1) sourceRegistrations.splice(at, 1);
 					// 收尾记进 `sourceClosings`,关停时等它;把手同步返回、不等(拓展那头发了就不管)。
 					const closing = registration.dispose().catch((e: unknown) => {
-						log.warn(`[engines] source dispose failed: ${errorMessageOf(e)}`);
+						log.warn(`[pipeline] source dispose failed: ${errorMessageOf(e)}`);
 					});
 					sourceClosings.add(closing);
 					void closing.then(() => sourceClosings.delete(closing));
@@ -893,7 +886,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			),
 		push,
 		muteState,
-		subscriptionStore: opts.subscriptionStore,
 		fetchProfile,
 		searchCreators,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。

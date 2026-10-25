@@ -100,7 +100,7 @@ describe("MODULE_VERSIONS — 与 workspace 核心包版本一致", () => {
  */
 describe("GET /api/health — 回应的格子", () => {
 	it("恰好是契约里那几格", async () => {
-		const app = createHealthRoute({ runtime: { engines: undefined } } as unknown as RouteDeps);
+		const app = createHealthRoute({ runtime: { pipeline: undefined } } as unknown as RouteDeps);
 		const body = (await (await app.request("/")).json()) as Record<string, unknown>;
 		expect(Object.keys(body).sort()).toEqual([
 			"moduleVersions",

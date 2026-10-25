@@ -1,5 +1,5 @@
 import type { DeliveryResult, NotificationPayload } from "@bilibili-notify/internal";
-import type { EnginesRuntime } from "../runtime/engines.js";
+import type { PipelineRuntime } from "../runtime/pipeline.js";
 import type { LinkReplyDestination } from "./link-previewer.js";
 
 /**
@@ -10,8 +10,8 @@ import type { LinkReplyDestination } from "./link-previewer.js";
  * 都在派发器那头收成结果形状,这里不再自己查连接、找适配器。
  */
 export function createLinkReplySender(
-	engines: Pick<EnginesRuntime, "sendToAddress">,
+	pipeline: Pick<PipelineRuntime, "sendToAddress">,
 ): (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult> {
 	return ({ connectionId, address }, payload) =>
-		engines.sendToAddress(connectionId, { scope: "group", address }, payload);
+		pipeline.sendToAddress(connectionId, { scope: "group", address }, payload);
 }

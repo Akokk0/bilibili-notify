@@ -8,7 +8,7 @@ import { createCardsRoute } from "../cards.js";
 import type { RouteDeps } from "../types.js";
 
 /**
- * 预览路由的出卡器要接得上图库解析口(3a-05;生产那条在 `runtime/engines.ts`)。
+ * 预览路由的出卡器要接得上图库解析口(3a-05;生产那条在 `runtime/pipeline.ts`)。
  *
  * 上舰预览的徽章是来源描述符里的图库引用 (`tier.icon.ref`),
  * 走 `POST /preview` 这扇公开的门、真的路由造的真出卡器。

@@ -18,8 +18,8 @@ import { createProblemTable } from "../../problems/problem-table.js";
 import { watchLoginProblems } from "../../subscriptions/login-problems.js";
 import { createProblemLayers } from "../problem-layers.js";
 
-export const PIPELINE_REPORTER = "bilibili";
-const PIPELINE_LABEL = "B 站";
+export const HARNESS_REPORTER = "bilibili";
+const HARNESS_LABEL = "B 站";
 
 /** 宿主看登录状态报的三句(宿主写的整句,私聊时不加引子);来源键 `bilibili`、来源名「B 站」。 */
 export const LOGIN_EXPIRED_TEXT =
@@ -32,7 +32,7 @@ export function makeQuietLogger(): Logger {
 	return { debug() {}, info() {}, warn() {}, error() {} };
 }
 
-export function makeProblemPipeline(
+export function makeProblemHarness(
 	auth: Pick<SourceAuth, "state" | "onChange">,
 	notifyImpl?: (text: string) => Promise<DeliveryResult>,
 ) {
@@ -56,8 +56,8 @@ export function makeProblemPipeline(
 	// 登录问题归宿主:造法同真接线(`registerBuiltinSource`)—— 读现状 + 订 `onChange`,宿主写的整句,不盖写者
 	watchLoginProblems({
 		auth,
-		sourceKey: PIPELINE_REPORTER,
-		label: PIPELINE_LABEL,
+		sourceKey: HARNESS_REPORTER,
+		label: HARNESS_LABEL,
 		problems: table,
 		logger,
 	});
@@ -65,7 +65,7 @@ export function makeProblemPipeline(
 	const ctx: Pick<SourceContext, "reportProblem" | "resolveProblem"> = {
 		reportProblem: (problem) =>
 			table.report({
-				reporter: PIPELINE_REPORTER,
+				reporter: HARNESS_REPORTER,
 				code: problem.code,
 				message: problem.message,
 				...(problem.notify === undefined ? {} : { notify: problem.notify }),
@@ -75,7 +75,7 @@ export function makeProblemPipeline(
 			}),
 		resolveProblem: (problem) =>
 			table.resolve(
-				{ reporter: PIPELINE_REPORTER, code: problem.code },
+				{ reporter: HARNESS_REPORTER, code: problem.code },
 				problem.notify === undefined ? undefined : { notify: problem.notify },
 			),
 	};

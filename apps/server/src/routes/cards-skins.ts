@@ -97,7 +97,7 @@ export function createCardsSkinsRoute(deps: {
 	fallbacks?: () => CardSkinFallback[];
 	/** 面板上那句「知道了」:账本是一次性痕迹,看过就该翻篇(见 `card-skins/fallbacks.ts`)。 */
 	clearFallbacks?: () => void;
-	/** AI 引擎,**热读**:engines 是后挂的,每次现取。`null` = 没配模型。 */
+	/** AI 生成器,**热读**:pipeline 是后挂的,每次现取。`null` = 没配模型。 */
 	commentary?: () => Pick<CommentaryGenerator, "generateRaw"> | null;
 	/** 会员卡示例用的那一档(最低一档),**热读**:来源登记表是后挂的,每次现取。 */
 	membershipTier: () => MembershipTier | undefined;
@@ -340,7 +340,7 @@ export function createCardsSkinsRoute(deps: {
 		}
 		const engine = deps.commentary?.() ?? null;
 		if (!engine) {
-			// `commentary` 回 null 分不出「没配模型」与「引擎还没挂上」;那句话本来就是叫主人去接模型,按没配。
+			// `commentary` 回 null 分不出「没配模型」与「推送链路还没挂上」;那句话本来就是叫主人去接模型,按没配。
 			return respondFailure(
 				c,
 				fail("not_configured", "还没配好模型 —— 先到「智能女仆」页接好模型"),

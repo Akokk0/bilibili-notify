@@ -617,7 +617,7 @@ interface PluginCell {
  * 每格读哪个覆盖键。
  *
  * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logging.levels.core` 走
- * (`runtime/engines.ts`),而引擎之外的每一条日志(push / sink / master 私聊 /
+ * (`runtime/pipeline.ts`),而推送链路之外的每一条日志(push / sink / master 私聊 /
  * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
  *
  * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。

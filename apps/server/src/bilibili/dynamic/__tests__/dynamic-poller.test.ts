@@ -28,7 +28,7 @@ import {
 import { Settings } from "luxon";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fixedLocale } from "../../../__tests__/support/fixed-locale.js";
-import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
+import { makeProblemHarness } from "../../__tests__/problem-harness.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
 import { createProblemLayers, type ProblemLayers } from "../../problem-layers";
@@ -1956,7 +1956,7 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
 
 	function makeWorld() {
-		const pipeline = makeProblemPipeline({ state: () => IN, onChange: () => ({ dispose() {} }) });
+		const pipeline = makeProblemHarness({ state: () => IN, onChange: () => ({ dispose() {} }) });
 		const b = makeEngine({ ...oneSub, problems: pipeline.layers });
 		seed(b.engine, "1", 0);
 		return { ...pipeline, b };

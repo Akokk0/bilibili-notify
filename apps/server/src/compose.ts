@@ -4,8 +4,8 @@
  * 今天它做三件事:认领 B 站那组开发场景(`provideDevtools`);开 B 站的上下文、造 B 站来源并登记(`registerSources`,
  * 登记即启动;登录那一套由来源自己造、起、停);造三个内置平台适配器(OneBot / QQ 官方机器人 / webhook)并登记
  * (`registerAdapters`,登记即启动)。`status` 指令的「上次抓取」不从这里取:它读登记表里各来源自己说的那一行
- * (`Source.health()`)。B 站的上下文只开一次、寿命与来源一致,收尾钩子在构造时就登记在关停的 `stop` 段(早于引擎
- * 登记,于是晚于引擎跑:来源先停完、登录先停,再最后一次存盘、再关存储把手);适配器各有各的存储与上下文,
+ * (`Source.health()`)。B 站的上下文只开一次、寿命与来源一致,收尾钩子在构造时就登记在关停的 `stop` 段(早于推送链路
+ * 登记,于是晚于推送链路跑:来源先停完、登录先停,再最后一次存盘、再关存储把手);适配器各有各的存储与上下文,
  * 由 `registerBuiltinAdapters` 按适配器键开。
  *
  * 核心里只有这个文件能 import `platforms/`(`scripts/__tests__/import-boundaries.test.mjs` 钉着);
@@ -48,7 +48,7 @@ import {
 	registerBuiltinAdapters,
 } from "./push/builtin-adapters.js";
 import type { PlatformAdapterRegistry } from "./push/registry.js";
-import type { EnginesRuntime } from "./runtime/engines.js";
+import type { PipelineRuntime } from "./runtime/pipeline.js";
 import type { NodeServiceContext } from "./runtime/service-context.js";
 import type { SubscriptionStateStore } from "./runtime/subscription-state-store.js";
 
@@ -82,7 +82,7 @@ export interface BuiltinIntegrationsDeps {
 	/** 图库「集成在途」那一家的写口(`AppRuntime.transitImages`):内置适配器与假来源的 `ctx.fetchImage` / `ctx.storeImage` 经它。 */
 	transitImages: Pick<ImageWriter, "put">;
 	/**
-	 * 入站两路出口(下一层)。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。
+	 * 入站两路出口(下一层)。指令处理器要等推送链路与调度器建好才有,所以是入口先留好的可后填引用,现转。
 	 * 各适配器经自己的 `ctx.inbound` 交来,宿主核过归属、补上平台后才到这里。
 	 */
 	inbound: Required<InboundHandlers>;
@@ -106,21 +106,21 @@ export interface BuiltinIntegrations {
 	/** `createDevtools` 的 `provide` 回调里调:过了开发版那两道门才会走到,把 B 站那组场景按来源键认领进去。 */
 	provideDevtools(providers: Pick<DevtoolsProviderRegistry, "claim">): void;
 	/**
-	 * 引擎建好之后调一次:开 B 站的上下文、造 B 站来源并登记(登记即 start,登录在它的 start 里起)。调第二次就抛;
+	 * 推送链路建好之后调一次:开 B 站的上下文、造 B 站来源并登记(登记即 start,登录在它的 start 里起)。调第二次就抛;
 	 * 造来源或登记任一步抛了,先收上下文再原样抛。
 	 */
-	registerSources(engines: Pick<EnginesRuntime, "registerSource">): Promise<void>;
+	registerSources(pipeline: Pick<PipelineRuntime, "registerSource">): Promise<void>;
 	/**
 	 * B 站那一格(第 4 期两处读者与核心抓会员自定义图借用,改口时消):`api()` 是来源造好的那一个(开发版是套过壳的,
 	 * 与来源、开发场景用的同一个对象),来源还没造时是 undefined;`fetchImage` 现取,B 站上下文开着就转给它的
-	 * `ctx.fetchImage`,没开或已收就回 `unavailable` 的失败(入口在 `createEngines` 时就要递它,早于上下文开)。
+	 * `ctx.fetchImage`,没开或已收就回 `unavailable` 的失败(入口在 `createPipelineRuntime` 时就要递它,早于上下文开)。
 	 */
 	bilibili: {
 		api(): Api | undefined;
 		fetchImage: IntegrationContext["fetchImage"];
 	};
 	/**
-	 * `createEngines` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
+	 * `createPipelineRuntime` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
 	 * 交回的 `dispose` 由调用方挂到关停钩子上(逐个撤登记再关存储;幂等)。登记途中任一个抛了,已登记的先收回,
 	 * 错原样抛出去。一次性:调第二次就抛,登记途中抛了也不复位(不给重来)。
 	 */
@@ -132,7 +132,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 	const biliServiceCtx = deps.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY);
 	let source: BiliSource | undefined;
 	// 开着的 B 站上下文(`registerSources` 里开);收尾钩子在这里就登记:关停的 `stop` 段里后登记的先跑,
-	// 登记在 `createEngines` 之前,所以引擎先停来源(登录随之停、续期作废),这里再做最后一次存盘、关存储把手。
+	// 登记在 `createPipelineRuntime` 之前,所以推送链路先停来源(登录随之停、续期作废),这里再做最后一次存盘、关存储把手。
 	let biliContext: BiliContextHandle | undefined;
 	// 开发壳(`provideDevtools` 记下,开发版才有):来源造好登录系统之后拿它换成套过壳的 `Api` / 登录口。
 	let devShells: ReturnType<typeof createBiliDevtools>["devShells"] | undefined;
@@ -192,7 +192,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			devShells = made.devShells;
 			providers.claim(BILIBILI_SOURCE_KEY, made.provider);
 		},
-		async registerSources(engines) {
+		async registerSources(pipeline) {
 			if (registering) throw new Error("builtin sources are already registered");
 			registering = true;
 			let opened: BiliContextHandle | undefined;
@@ -215,7 +215,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					liveContext: deps.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY),
 				});
 				source = made;
-				await engines.registerSource({
+				await pipeline.registerSource({
 					sourceKey: BILIBILI_SOURCE_KEY,
 					source: made,
 					integration: opened.ctx,

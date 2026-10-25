@@ -178,7 +178,7 @@ export async function buildRoastPayload(
 	const upMeta = await makeUpMeta(deps, mentionedIds(opts.kind, opts.result));
 	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
 
-	const renderer = deps.runtime.engines?.imageRenderer ?? null;
+	const renderer = deps.runtime.pipeline?.imageRenderer ?? null;
 	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cards.enabled;
 	if (!imageWanted || !renderer) return { mode: "text", payload: { kind: "text", text }, text };
 
@@ -218,7 +218,7 @@ export async function deliverRoast(
 		targetIds: readonly string[];
 	},
 ): Promise<DeliverOutcome> {
-	const engines = deps.runtime.engines;
+	const pipeline = deps.runtime.pipeline;
 	const { mode, payload, text } = await buildRoastPayload(deps, opts);
 
 	const targetsById = new Map(deps.store.getTargets().map((t) => [t.id, t]));
@@ -232,12 +232,12 @@ export async function deliverRoast(
 			skipped.push(targetId);
 			continue;
 		}
-		if (!engines) {
+		if (!pipeline) {
 			failed.push({ targetId, failure: fail("unavailable", "服务尚未就绪") });
 			continue;
 		}
 		try {
-			const delivery = await engines.push.sendToTarget(targetId, payload);
+			const delivery = await pipeline.push.sendToTarget(targetId, payload);
 			if (delivery.ok) sent.push(targetId);
 			else failed.push({ targetId, failure: delivery });
 		} catch (err) {

@@ -78,8 +78,8 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 			puppeteer: deps.puppeteer,
 			targets: deps.store.getTargets(),
 			connections: deps.store.getConnections(),
-			// 引擎还没起来时取不到能力,按「还不知道」算。
-			capabilitiesOf: (id) => deps.runtime.engines?.connectionCapabilities(id),
+			// 推送链路还没起来时取不到能力,按「还不知道」算。
+			capabilitiesOf: (id) => deps.runtime.pipeline?.connectionCapabilities(id),
 		});
 		if (!enableCheck.ok) return respondFailure(c, enableCheck);
 		try {

@@ -150,8 +150,8 @@ export function createAiRoute(
 		}
 		const { targetId, message, ai } = parsed.data;
 
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const target = deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
 
@@ -181,7 +181,7 @@ export function createAiRoute(
 		}
 
 		const payload: NotificationPayload = { kind: "text", text: reply };
-		const result = await engines.push.sendToTarget(target.id, payload);
+		const result = await pipeline.push.sendToTarget(target.id, payload);
 		const delivered = testResultOfDelivery(result);
 		return c.json<AiTestPushResponse>(
 			delivered.ok ? ok({ latencyMs: delivered.latencyMs, reply }) : delivered,
@@ -200,7 +200,7 @@ export function createAiRoute(
 	});
 
 	app.post("/conversations", async (c) => {
-		// 刻意**不**依赖 engines / AI 配置:主人在还没配好 key 的时候点「新对话」,
+		// 刻意**不**依赖 pipeline / AI 配置:主人在还没配好 key 的时候点「新对话」,
 		// 该看到一个空会话和一句「去把 key 填上」,而不是一个建不出来的按钮。
 		//
 		// 面孔(模式 / 人格)只在**这一刻**收 —— 之后没有任何接口能改它。「锁定」
@@ -263,9 +263,9 @@ export function createAiRoute(
 	 * 不值得为一个装饰弹红字,尤其余额不足那会儿主人正为聊天本身发愁。
 	 */
 	app.post("/conversations/:id/title", async (c) => {
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
-		const commentary = engines.commentary;
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const commentary = pipeline.commentary;
 		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
 
 		const conv = await store().get(c.req.param("id"));
@@ -331,12 +331,12 @@ export function createAiRoute(
 		}
 		const message = parsed.data.message.trim();
 
-		const engines = deps.runtime.engines;
-		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const pipeline = deps.runtime.pipeline;
+		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		if (!deps.store.getGlobals().ai.enabled) {
 			return respondFailure(c, fail("not_configured", AI_DISABLED_MESSAGE));
 		}
-		const commentary = engines.commentary;
+		const commentary = pipeline.commentary;
 		if (!commentary) return respondFailure(c, fail("not_configured", AI_KEY_MISSING_MESSAGE));
 
 		const conv = await store().get(c.req.param("id"));
@@ -427,8 +427,8 @@ export function createAiRoute(
 			skinMode && !cardMode && opts?.skinStore
 				? createSkinChatTools({
 						skinStore: opts.skinStore,
-						// 热读同 `/api/dashboard/skins/:id/ai`:engines 是后挂的,别做快照。
-						generator: () => deps.runtime.engines?.commentary ?? null,
+						// 热读同 `/api/dashboard/skins/:id/ai`:pipeline 是后挂的,别做快照。
+						generator: () => deps.runtime.pipeline?.commentary ?? null,
 						/**
 						 * 壁纸的来源:主人这一问贴的图;**这一问空手就用捎来的那张** —— 跟
 						 * 喂给视觉模型的是同一批。女仆看得见的图她就得做得出壁纸,否则主人
@@ -571,13 +571,13 @@ export function createAiRoute(
 					});
 				}
 
-				// 思考流的账本。分片原样拼接 —— 引擎那边多轮(工具轮)的思考也走同一个
+				// 思考流的账本。分片原样拼接 —— AI 生成器那边多轮(工具轮)的思考也走同一个
 				// 回调,这里不感知轮次边界。
 				let reasoning = "";
 
 				let reply: string;
 				try {
-					// 聊天的思考设置与引擎(点评/总结)分了家。开关是会话级的,按消息走
+					// 聊天的思考设置与 AI 生成器(点评/总结)分了家。开关是会话级的,按消息走
 					// 请求体,不带 = 关(配置里已经没有它的位置);等级始终从配置读。
 					reply = await commentary.chatStatelessStream(history, {
 						imageUrls: visible.length > 0 ? visible.map((v) => v.url) : undefined,
