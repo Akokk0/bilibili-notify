@@ -4,14 +4,15 @@ import {
 	type Identity,
 	type LiveDetails,
 	type LiveStatusResult,
-	type MessageBus,
 	ok,
 	type ServiceContext,
+	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import type { Api } from "../../api/index.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
+import { watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
 import type { RoomIds } from "../room-ids.js";
@@ -29,7 +30,7 @@ export class BiliLiveRooms implements Disposable {
 	constructor(
 		private readonly opts: {
 			api: Api;
-			bus: MessageBus;
+			auth: Pick<SourceAuth, "state" | "onChange">;
 			liveContext: ServiceContext;
 			roomIds: RoomIds;
 			rememberFanClubName(externalId: string, name: string): void;
@@ -59,15 +60,15 @@ export class BiliLiveRooms implements Disposable {
 			}),
 		);
 		this.handles.push(
-			this.opts.bus.on("auth-lost", () => {
-				ctx.logger.warn("[auth] 账号登录已失效，直播间监听已全部关闭（待 auth-restored 重建）");
-				this.listener?.teardown();
-			}),
-		);
-		this.handles.push(
-			this.opts.bus.on("auth-restored", () => {
-				ctx.logger.info("[auth] 账号登录已恢复，正在重建直播间监听");
-				void this.listener?.sync(this.sourceCtx?.subscriptions() ?? []);
+			watchLoginEdges(this.opts.auth, {
+				onLost: () => {
+					ctx.logger.warn("[auth] 账号登录已失效，直播间监听已全部关闭（登录恢复后重建）");
+					this.listener?.teardown();
+				},
+				onRestored: () => {
+					ctx.logger.info("[auth] 账号登录已恢复，正在重建直播间监听");
+					void this.listener?.sync(this.sourceCtx?.subscriptions() ?? []);
+				},
 			}),
 		);
 	}

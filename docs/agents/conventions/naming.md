@@ -120,6 +120,7 @@
 | cookie 罐 | `CookieJar`；一条 cookie 的数据形状 `Cookie` | `CookieStore`（`Store` 只指存盘的仓库）、`BACookie`、`BiliCookieJar` |
 | 浏览器身份（UA 与 `sec-ch-ua` 那一套，一起生成、永远配套） | `BrowserIdentity` | 单独设一个 `userAgent`（ADR-0025 决策 7） |
 | 一族请求撞持续风控后先不出网、到期只放一个调用去试探、其余合流等它（一族共用的那种；一条路自己歇一会儿的不叫它） | `breaker`（`WbiBreaker`、`createWbiBreaker`；中文「熔断」；10-24 主人定） | `gate` /「闸」（推送链路里指「路由与闸」）、`circuit` |
+| 来源登录口的两种跳变：从已登录进了 `expired` / `logged-out`（掉了），或从那里回到已登录（回来了）；扫码中、确认中、出错都不算 | `edge`（中文「边」；`watchLoginEdges`，回调 `onLost` / `onRestored`；10-25 主人定） | — |
 
 ## 不管的
 

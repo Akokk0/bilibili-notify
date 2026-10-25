@@ -2,11 +2,11 @@ import type {
 	Disposable,
 	Failure,
 	Logger,
-	MessageBus,
 	Post,
 	PostReport,
 	Result,
 	ServiceContext,
+	SourceAuth,
 	SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
@@ -14,6 +14,7 @@ import { DateTime } from "luxon";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps, runLimited } from "../images";
+import { watchLoginEdges } from "../login-edges.js";
 import type { ProblemLayers } from "../problem-layers";
 import { PROBLEM_TEXTS } from "../problem-texts";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
@@ -131,7 +132,7 @@ export interface DynamicPollerOptions {
 	logger: Logger;
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
-	bus: MessageBus;
+	auth: Pick<SourceAuth, "state" | "onChange">;
 	api: Api;
 	/**
 	 * 分层上报器(`bilibili/problem-layers.ts`):拉动态撞风控、别的错误码都经它报给问题表,拉成功与停下时清。
@@ -169,13 +170,13 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
 /**
  * 平台中立的动态轮询与生产核心。
  *
- * - 不依赖任何宿主框架;宿主(B 站来源,`bilibili/source.ts`)提供 logger / setTimeout / MessageBus / 分层上报器 /
+ * - 不依赖任何宿主框架;宿主(B 站来源,`bilibili/source.ts`)提供 logger / setTimeout / 登录口 / 分层上报器 /
  *   reportPost / 名单(`subscriptions`)。名单是引擎唯一的订阅输入:启停与「名单可能变了」都由来源调进来。
  * - 只管生产:拉 feed、判新、翻成中立作品、抓图、交给核心入口。怎么消费(过滤、出卡、点评、推送、图集)不归它。
  */
 export class DynamicPoller {
 	private readonly setTimeout: ServiceContext["setTimeout"];
-	private readonly bus: MessageBus;
+	private readonly auth: Pick<SourceAuth, "state" | "onChange">;
 	private readonly api: Api;
 	private readonly problems: DynamicPollerOptions["problems"];
 	private readonly fetchImage: ImagesDeps["images"]["fetchImage"];
@@ -221,12 +222,12 @@ export class DynamicPoller {
 	 * 问状态的场合。
 	 */
 	private lastSuccessfulFetchAt?: number;
-	private readonly busHandles: Disposable[] = [];
+	private authWatch?: Disposable;
 
 	constructor(opts: DynamicPollerOptions) {
 		this.logger = opts.logger;
 		this.setTimeout = opts.setTimeout;
-		this.bus = opts.bus;
+		this.auth = opts.auth;
 		this.api = opts.api;
 		this.problems = opts.problems;
 		this.fetchImage = opts.fetchImage;
@@ -242,27 +243,25 @@ export class DynamicPoller {
 		this.logger.info("[start] 动态引擎启动，立即启动检测");
 		this.restartDetector();
 
-		// 名单变动由来源经 `syncSubscriptions()` 通知;引擎自己只在 auth-restored 时重建检测器。
-		this.busHandles.push(
-			this.bus.on("auth-restored", () => {
+		// 名单变动由来源经 `syncSubscriptions()` 通知;引擎自己只在登录恢复时重建检测器。
+		this.authWatch = watchLoginEdges(this.auth, {
+			onRestored: () => {
 				this.authLost = false;
 				// 前缀与 auth-lost 那条、以及直播引擎的同一对日志统一成 [auth]:
 				// 这是登录生命周期事件,不是检测器自己的事。
 				this.logger.info("[auth] 账号登录已恢复，正在重启动态检测");
 				this.restartDetector();
-			}),
-		);
+			},
 
-		// 与直播引擎的 `auth-lost` → `teardown()` 对称。此前动态这边没接,cron 照跑到
-		// 下一轮自己撞上 -101 —— 主人于是先收到一条「账号登录已失效」,过一会儿又收到
-		// 一条听着像新故障的「账号未登录」,而那一轮请求本来就注定失败。
-		this.busHandles.push(
-			this.bus.on("auth-lost", () => {
+			// 与直播引擎的掉线 → `teardown()` 对称。此前动态这边没接,cron 照跑到
+			// 下一轮自己撞上 -101 —— 主人于是先收到一条「账号登录已失效」,过一会儿又收到
+			// 一条听着像新故障的「账号未登录」,而那一轮请求本来就注定失败。
+			onLost: () => {
 				this.authLost = true;
 				this.suspendDetector();
-				this.logger.warn("[auth] 账号登录已失效，动态检测已暂停（待 auth-restored 重启）");
-			}),
-		);
+				this.logger.warn("[auth] 账号登录已失效，动态检测已暂停（登录恢复后重启）");
+			},
+		});
 	}
 
 	/** 停止钩子。停止 cron、释放事件订阅。 */
@@ -288,10 +287,8 @@ export class DynamicPoller {
 		this.releaseDetectLock();
 		// 表清空:关停那一刻还在抓图的那条动态过不了交出前的重校,不会在停下之后再上报。
 		this.postAnchors = new Map();
-		while (this.busHandles.length > 0) {
-			const h = this.busHandles.pop();
-			h?.dispose();
-		}
+		this.authWatch?.dispose();
+		this.authWatch = undefined;
 	}
 
 	/**
@@ -685,11 +682,11 @@ export class DynamicPoller {
 		this.dynamicJob = undefined;
 		switch (code) {
 			case "unauthorized": {
-				// 真鉴权失效:停 cron,靠 auth-restored 重启(不退避盲重试 ——
+				// 真鉴权失效:停 cron,靠登录恢复重启(不退避盲重试 ——
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
 				// interceptor 单点广播。要不要告诉主人登录失效,由宿主看登录状态决定,
 				// 这里不再发告警。
-				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
+				this.logger.error("[api] 账号未登录，动态检测已停止（登录恢复后重启）");
 				this.authLost = true;
 				// -101 既不是风控拦截、也换了一种性质的失败:这一路之前报过的风控与请求失败不再适用
 				// (不是风控解除,不对主人说「风控已解除」)。通常登录一失效未登录层就已经把它们抹了,

@@ -1,6 +1,7 @@
 import {
 	fail,
 	ok,
+	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
@@ -54,7 +55,11 @@ function harness() {
 	const state = memoryKeyValueStores("state", { [`room:${EXTERNAL_ID}`]: ROOM_ID }).store;
 	const profileStates = new Map<string, { fanClubName: string }>();
 	const fetched: string[] = [];
-	const busHandlers = new Map<string, Array<() => void>>();
+	let authState: ReturnType<SourceAuth["state"]> = {
+		status: "logged-in",
+		loggedInAt: "2026-10-25T00:00:00.000Z",
+	};
+	const authListeners = new Set<() => void>();
 
 	const api = {
 		fetchLiveRoomInfoStreamKey: async () => preflight,
@@ -166,19 +171,13 @@ function harness() {
 
 	const rooms = new BiliLiveRooms({
 		api: api as never,
-		bus: {
-			on: (event: string, fn: () => void) => {
-				busHandlers.set(event, [...(busHandlers.get(event) ?? []), fn]);
-				return {
-					dispose: () => {
-						busHandlers.set(
-							event,
-							(busHandlers.get(event) ?? []).filter((candidate) => candidate !== fn),
-						);
-					},
-				};
+		auth: {
+			state: () => authState,
+			onChange(fn) {
+				authListeners.add(fn);
+				return { dispose: () => void authListeners.delete(fn) };
 			},
-		} as never,
+		},
 		liveContext,
 		roomIds,
 		rememberFanClubName: (externalId, name) =>
@@ -200,8 +199,13 @@ function harness() {
 		setSubscriptions(value: SourceSubscriptionView[]) {
 			subscriptions = value;
 		},
-		emitBus(event: string) {
-			for (const fn of busHandlers.get(event) ?? []) fn();
+		loseLogin() {
+			authState = { status: "expired", message: "账号登录已失效" };
+			for (const fn of [...authListeners]) fn();
+		},
+		restoreLogin() {
+			authState = { status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" };
+			for (const fn of [...authListeners]) fn();
 		},
 		setOnline(value: boolean) {
 			online = value;
@@ -511,7 +515,7 @@ describe("BiliLiveRooms", () => {
 		expect(h.sockets).toHaveLength(2);
 		expect(h.sockets.every((socket) => !socket.closed)).toBe(true);
 
-		h.emitBus("auth-lost");
+		h.loseLogin();
 		await settle();
 		expect(h.sockets.every((socket) => socket.closed)).toBe(true);
 		h.rooms.stop();
@@ -529,9 +533,9 @@ describe("BiliLiveRooms", () => {
 			{ externalId: "u2", features: new Set(["liveStart"]), monitorsLive: true },
 		]);
 		await h.start();
-		h.emitBus("auth-lost");
+		h.loseLogin();
 		await settle();
-		h.emitBus("auth-restored");
+		h.restoreLogin();
 		await settle();
 		expect(h.sockets).toHaveLength(4);
 		expect(h.sockets.slice(2).every((socket) => !socket.closed)).toBe(true);

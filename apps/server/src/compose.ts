@@ -199,7 +199,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			try {
 				const made = createBiliSource({
 					api: deps.api.api,
-					bus: deps.bus,
 					problems,
 					loginCheck: { setHealthCheckMs: (ms) => deps.setHealthCheckMs(ms) },
 					setTimeout: deps.setTimeout,

@@ -100,7 +100,6 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			fetchRelations: async () => ok({ data: null }),
 			follow: async () => ok(),
 		} as unknown as Api,
-		bus: world.bus,
 		loginCheck: { setHealthCheckMs: () => {} },
 		locale: fixedLocale(),
 		setTimeout: () => ({ dispose() {} }),

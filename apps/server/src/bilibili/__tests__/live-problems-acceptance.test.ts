@@ -116,7 +116,10 @@ function makeWorld(
 	} as unknown as SourceContext;
 	const rooms = new BiliLiveRooms({
 		api: api as unknown as Api,
-		bus: { on: () => ({ dispose() {} }) } as never,
+		auth: {
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+			onChange: () => ({ dispose() {} }),
+		},
 		liveContext: liveContext as ServiceContext,
 		roomIds: {
 			get: (externalId) => (externalId === EXTERNAL_ID ? ROOM_ID : undefined),

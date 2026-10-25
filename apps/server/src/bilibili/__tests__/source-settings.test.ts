@@ -120,7 +120,6 @@ async function boot() {
 		api: {
 			fetchAllDynamic: async () => ok({ data: { items: [] } }),
 		} as unknown as Api,
-		bus: world.bus,
 		loginCheck: { setHealthCheckMs },
 		locale,
 		setTimeout: () => ({ dispose() {} }),

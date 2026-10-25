@@ -203,7 +203,6 @@ function makeDeps(
 				fetchRelations,
 				follow,
 			} as unknown as Api,
-			bus: makeWorld().bus,
 			loginCheck: { setHealthCheckMs },
 			locale: fixedLocale(),
 			setTimeout: () => ({ dispose() {} }),
@@ -970,7 +969,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 				data: { ...EMPTY_FEED.data, items: feedItems },
 			}),
 		});
-		const source = createBiliSource({ ...deps, bus: world.bus });
+		const source = createBiliSource(deps);
 		const enqueue = vi.fn<(event: { subscriptionId: string; postId: string }) => void>();
 		const logger = makeLogger();
 		const integration = {

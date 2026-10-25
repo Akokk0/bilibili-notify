@@ -1,0 +1,198 @@
+import {
+	type Disposable,
+	type MessageBus,
+	ok,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
+import { describe, expect, it, vi } from "vite-plus/test";
+import type { Api } from "../../api/api.js";
+import { watchLoginEdges } from "../../login-edges.js";
+import { LoginFlow } from "../login-flow.js";
+
+const LOGGED_IN_EVENT = "auth-restored";
+const LOGGED_OUT_EVENT = "auth-lost";
+
+interface FakeTimer extends Disposable {
+	fire(): void;
+}
+
+function makeServiceContext() {
+	const timeouts: FakeTimer[] = [];
+	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	const serviceCtx: ServiceContext = {
+		logger,
+		setInterval: () => ({ dispose() {} }),
+		setTimeout(fn) {
+			const timer: FakeTimer = { dispose: vi.fn(), fire: fn };
+			timeouts.push(timer);
+			return timer;
+		},
+		onDispose() {},
+		signal: new AbortController().signal,
+		track() {},
+	};
+	return { serviceCtx, timeouts };
+}
+
+function makeApi() {
+	const api = {
+		fetchMyselfInfo: vi.fn(),
+		fetchUserCard: vi.fn(),
+		fetchLoginQrCode: vi.fn(),
+		fetchLoginStatus: vi.fn(),
+		getCookiesJson: vi.fn(() => '[{"key":"SESSDATA","value":"x"}]'),
+		commitScannedLogin: vi.fn(async () => ok()),
+		holdLoginSaves: vi.fn(() => ({ dispose() {} })),
+		loginGeneration: 0,
+	};
+	return api;
+}
+
+function harness() {
+	const api = makeApi();
+	const busEvents: string[] = [];
+	const bus: MessageBus = {
+		emit(event, ..._payload) {
+			if (event === LOGGED_IN_EVENT || event === LOGGED_OUT_EVENT) busEvents.push(event);
+		},
+		on() {
+			return { dispose() {} };
+		},
+	};
+	const { serviceCtx, timeouts } = makeServiceContext();
+	const flow = new LoginFlow({
+		serviceCtx,
+		api: api as unknown as Api,
+		bus,
+		healthCheckMs: 0,
+	});
+	const watchEvents: string[] = [];
+	const watch = watchLoginEdges(
+		{
+			state: () => flow.authState(),
+			onChange: (fn) => flow.onChange(fn),
+		},
+		{
+			onLost: () => void watchEvents.push(LOGGED_OUT_EVENT),
+			onRestored: () => void watchEvents.push(LOGGED_IN_EVENT),
+		},
+	);
+
+	async function signIn(): Promise<void> {
+		api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		api.fetchUserCard.mockResolvedValueOnce(
+			ok({ data: { card: { mid: "42", name: "n", face: "" } } }),
+		);
+		await flow.reportAccountInfo();
+	}
+
+	async function openQr(): Promise<void> {
+		api.fetchLoginQrCode.mockResolvedValueOnce(
+			ok({ data: { url: "https://qr", qrcode_key: "key" } }),
+		);
+		await flow.beginLogin(async () => "data:image/png;base64,AA==");
+	}
+
+	return {
+		api,
+		busEvents,
+		flow,
+		signIn,
+		openQr,
+		timeouts,
+		watchEvents,
+		dispose() {
+			watch.dispose();
+			flow.stop();
+		},
+	};
+}
+
+describe("watchLoginEdges 对照 auth-lost / auth-restored 总线边", () => {
+	it("开机未登录，之后登上：两边都是 restored 一次", async () => {
+		const h = harness();
+		h.flow.reportLoggedOut("notLogin");
+		h.busEvents.length = 0;
+		h.watchEvents.length = 0;
+
+		await h.signIn();
+
+		expect(h.busEvents).toEqual([LOGGED_IN_EVENT]);
+		expect(h.watchEvents).toEqual(h.busEvents);
+		h.dispose();
+	});
+
+	it("运行中掉线再重登：两边都是 lost、restored 各一次", async () => {
+		const h = harness();
+		await h.signIn();
+		h.busEvents.length = 0;
+		h.watchEvents.length = 0;
+
+		await h.flow.handleAuthLost();
+		await h.signIn();
+
+		expect(h.busEvents).toEqual([LOGGED_OUT_EVENT, LOGGED_IN_EVENT]);
+		expect(h.watchEvents).toEqual(h.busEvents);
+		h.dispose();
+	});
+
+	it("手动退出登录：两边都是 lost 一次，重复退出不多发", async () => {
+		const h = harness();
+		await h.signIn();
+		h.busEvents.length = 0;
+		h.watchEvents.length = 0;
+
+		h.flow.reportLoggedOut("notLogin");
+		h.flow.reportLoggedOut("notLogin");
+
+		expect(h.busEvents).toEqual([LOGGED_OUT_EVENT]);
+		expect(h.watchEvents).toEqual(h.busEvents);
+		h.dispose();
+	});
+
+	it("已登录时重扫、不扫等超时再心跳回来：两边都没有登录边", async () => {
+		const h = harness();
+		await h.signIn();
+		h.busEvents.length = 0;
+		h.watchEvents.length = 0;
+
+		await h.openQr();
+		h.timeouts.at(-1)?.fire();
+		await h.signIn();
+
+		expect(h.busEvents).toEqual([]);
+		expect(h.watchEvents).toEqual(h.busEvents);
+		h.dispose();
+	});
+
+	it("重扫途中撞 -101 再登上：两边都是没有 lost、restored 一次", async () => {
+		const h = harness();
+		await h.signIn();
+		h.busEvents.length = 0;
+		h.watchEvents.length = 0;
+
+		await h.openQr();
+		await h.flow.handleAuthLost();
+		await h.signIn();
+
+		expect(h.busEvents).toEqual([LOGGED_IN_EVENT]);
+		expect(h.watchEvents).toEqual(h.busEvents);
+		h.dispose();
+	});
+
+	it("开机停在 confirming 后心跳成功：总线没有边，新监听 restored 一次（有意不同）", async () => {
+		const h = harness();
+		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("network down"));
+		await h.flow.reportAccountInfo();
+
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce(
+			ok({ data: { card: { mid: "42", name: "n", face: "" } } }),
+		);
+		await h.flow.healthCheckNow();
+
+		expect(h.busEvents).toEqual([]);
+		expect(h.watchEvents).toEqual([LOGGED_IN_EVENT]);
+		h.dispose();
+	});
+});

@@ -8,7 +8,6 @@ import {
 	type ImageRef,
 	type LiveStatusResult,
 	type MembershipTier,
-	type MessageBus,
 	ok,
 	type Result,
 	type ServiceContext,
@@ -39,8 +38,6 @@ import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./setti
 
 export interface BiliSourceDeps {
 	api: Api;
-	/** 引擎自己还在听 auth-restored / auth-lost(登录生命周期的事件,随 3b 直播并进来源时再收)。 */
-	bus: MessageBus;
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
@@ -289,7 +286,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			});
 			rooms = new BiliLiveRooms({
 				api: deps.api,
-				bus: deps.bus,
+				auth: deps.auth,
 				liveContext: deps.liveContext,
 				roomIds,
 				rememberFanClubName: (externalId, name) => {
@@ -334,7 +331,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					const made = new DynamicPoller({
 						logger: ctx.logger,
 						setTimeout: deps.setTimeout,
-						bus: deps.bus,
+						auth: deps.auth,
 						api: deps.api,
 						problems: deps.problems,
 						fetchImage: ctx.fetchImage,

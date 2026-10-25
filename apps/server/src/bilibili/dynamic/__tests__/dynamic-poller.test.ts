@@ -17,12 +17,12 @@
 import {
 	type FeatureKey,
 	type ImageRef,
-	type MessageBus,
 	ok,
 	type Post,
 	type PostReport,
 	type Result,
 	type ServiceContext,
+	type SourceAuth,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
@@ -175,30 +175,34 @@ function makeThrowingLayers() {
 	return layers;
 }
 
-function makeBus(): {
-	bus: MessageBus;
+function makeAuth(): {
+	auth: Pick<SourceAuth, "state" | "onChange">;
 	emits: Array<{ event: string; payload: unknown }>;
-	trigger: (event: string, payload?: unknown) => void;
+	loseLogin: () => void;
+	restoreLogin: () => void;
 } {
 	const emits: Array<{ event: string; payload: unknown }> = [];
-	const handlers = new Map<string, Array<(payload?: unknown) => void>>();
-	const bus = {
-		emit: (event: string, payload?: unknown) => {
-			emits.push({ event, payload });
+	let state: ReturnType<SourceAuth["state"]> = {
+		status: "logged-in",
+		loggedInAt: "2026-10-25T00:00:00.000Z",
+	};
+	const listeners = new Set<() => void>();
+	const set = (next: ReturnType<SourceAuth["state"]>) => {
+		state = next;
+		for (const fn of [...listeners]) fn();
+	};
+	const auth = {
+		state: () => state,
+		onChange(fn: () => void) {
+			listeners.add(fn);
+			return { dispose: () => void listeners.delete(fn) };
 		},
-		on: (event: string, handler: (payload?: unknown) => void) => {
-			const arr = handlers.get(event) ?? [];
-			arr.push(handler);
-			handlers.set(event, arr);
-			return { dispose: () => {} };
-		},
-	} as unknown as MessageBus;
+	};
 	return {
-		bus,
+		auth,
 		emits,
-		trigger: (event, payload) => {
-			for (const h of handlers.get(event) ?? []) h(payload);
-		},
+		loseLogin: () => set({ status: "expired", message: "账号登录已失效" }),
+		restoreLogin: () => set({ status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" }),
 	};
 }
 
@@ -287,7 +291,8 @@ interface EngineBag {
 	/** 假的分层上报器(四个方法都是 spy);要真件的用例经 `makeEngine({ problems })` 换。 */
 	problems: ReturnType<typeof makeFakeProblems>;
 	emits: Array<{ event: string; payload: unknown }>;
-	trigger: (event: string, payload?: unknown) => void;
+	loseLogin: () => void;
+	restoreLogin: () => void;
 	/** 换名单(`ctx.subscriptions()` 此后回新的);要让引擎知道,再调 `engine.syncSubscriptions()`。 */
 	setRoster: (subs: Roster | null) => void;
 	/** 注入给引擎的抓图口(`fetchImage` 选项):每个地址回一个以它命名的引用,测试数调用。 */
@@ -308,7 +313,7 @@ function makeEngine(
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
-	const { bus, emits, trigger } = makeBus();
+	const { auth, emits, loseLogin, restoreLogin } = makeAuth();
 	let roster = rosterOf(over.subs);
 	const fetchAllDynamic = vi.fn();
 	const api = { fetchAllDynamic } as unknown as Api;
@@ -323,7 +328,7 @@ function makeEngine(
 	const engine = new DynamicPoller({
 		logger: ctx.logger,
 		setTimeout: ctx.setTimeout,
-		bus,
+		auth,
 		api,
 		problems,
 		fetchImage,
@@ -340,7 +345,8 @@ function makeEngine(
 		fetchAllDynamic,
 		problems,
 		emits,
-		trigger,
+		loseLogin,
+		restoreLogin,
 		setRoster: (subs) => {
 			roster = rosterOf(subs);
 		},
@@ -694,14 +700,14 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		b.engine.start();
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 
-		b.trigger("auth-lost");
+		b.loseLogin();
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 	});
 
 	it("-101 一律不发组件告警:不管有没有先收到 auth-lost(冷启动 cookie 过期也是)", async () => {
 		const withLost = makeEngine(oneSub);
 		withLost.engine.start();
-		withLost.trigger("auth-lost");
+		withLost.loseLogin();
 		withLost.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(withLost.engine, "1", 0);
 		await detect(withLost.engine);
@@ -720,7 +726,7 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 		// 于是 auth-lost 停掉 cron 之后,随便一次订阅增删都会立刻把它重新建起来。
 		const b = makeEngine(oneSub);
 		b.engine.start();
-		b.trigger("auth-lost");
+		b.loseLogin();
 		const after = cronMock.instances.length;
 
 		b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
@@ -732,9 +738,9 @@ describe("DynamicPoller — 登录失效时的 cron", () => {
 	it("auth-restored 之后才重新开跑", () => {
 		const b = makeEngine(oneSub);
 		b.engine.start();
-		b.trigger("auth-lost");
+		b.loseLogin();
 
-		b.trigger("auth-restored");
+		b.restoreLogin();
 
 		expect(cronMock.instances.at(-1)?.isActive).toBe(true);
 	});
@@ -1430,7 +1436,7 @@ describe("DynamicPoller — 名单在 detectDynamics 抓图的 await 期间变�
 		});
 
 		it("整份名单被重建(restartDetector,如登录恢复后重启检测)→ 照常交", async () => {
-			const b = await withDuringFetch((x) => x.trigger("auth-restored"));
+			const b = await withDuringFetch((x) => x.restoreLogin());
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
 		});
 
@@ -1505,8 +1511,9 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(0);
 
+		b.loseLogin();
 		b.setRoster({ "1": { uid: "1", post: true } });
-		b.trigger("auth-restored");
+		b.restoreLogin();
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 	});
@@ -1515,8 +1522,9 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		b.engine.start();
 		expect(priv(b.engine).postAnchors.has("1")).toBe(true);
+		b.loseLogin();
 		b.setRoster({});
-		b.trigger("auth-restored");
+		b.restoreLogin();
 		expect(priv(b.engine).postAnchors.size).toBe(0);
 	});
 
@@ -1540,7 +1548,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 				timers.push(fn);
 				return { dispose() {} };
 			},
-			bus: makeBus().bus,
+			auth: makeAuth().auth,
 			api: { fetchAllDynamic: vi.fn(async () => resp([], -352, "risk")) } as unknown as Api,
 			problems: makeFakeProblems(),
 			fetchImage: vi.fn(),
@@ -1697,7 +1705,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 	it("对照:登录失效时改 cron → 不把 job 提前拉起来", () => {
 		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		b.engine.start();
-		b.trigger("auth-lost");
+		b.loseLogin();
 		const before = cronMock.instances.length;
 
 		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });

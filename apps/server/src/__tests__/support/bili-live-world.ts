@@ -465,7 +465,6 @@ export async function bootBiliLiveWorld(
 	});
 	const source = createBiliSource({
 		api: api as unknown as Api,
-		bus,
 		setTimeout: (fn, ms) => serviceCtx.setTimeout(fn, ms),
 		auth: sourceAuth,
 		problems: recording.layers,
