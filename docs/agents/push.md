@@ -1,12 +1,12 @@
 # 推送链路参考
 
-一条推送从引擎产出到落进历史要过六段。这份文档是那张图与各段的**边界**。
+一条推送从来源与装配产出到落进历史要过六段。这份文档是那张图与各段的**边界**。
 
 **「为什么这么定」不在这儿** —— 数据模型在 [ADR-0011](../adr/0011-push-data-model.md)，附加项（@全体 / 词云 / AI 总结）在 [ADR-0016](../adr/0016-push-extras.md)，桥接那一档在 [ADR-0009](../adr/0009-bot-framework-bridge.md)，人工重推在 [ADR-0017](../adr/0017-manual-repush.md)，订阅源、身份与中立装配在 [ADR-0019](../adr/0019-subscription-source-opening.md)。「这个参数为什么是这个数、这个坑是在哪儿踩的」在代码注释里，离出事地点最近。这儿只画图。订阅本身（两支、两种键、资料、上报）见 [subscriptions.md](./subscriptions.md)。
 
 ## 一句话
 
-**总开关管引擎，推送路由管发给谁，dispatcher 管怎么送达。** 三把刀各切各的，谁都不许越界。
+**总开关管来源与装配，推送路由管发给谁，dispatcher 管怎么送达。** 三把刀各切各的，谁都不许越界。
 
 **B 站也只是一个来源**（ADR-0019 决策 65）：① 里分**来源层**（B 站的动态、B 站来源里的直播间连接、拓展上报的翻译：拉数据或收上报、翻译，各管各的）与**中立装配**（作品：过滤 → 出卡 → 点评 → 按版式分组 → 交给绑到订阅上的发送，谁来都走同一段）；**作品这一头来源只生产**：翻成中立的 `PostEvent`、图在交出之前就抓好 / 写好，然后交给核心的一个入口（`posts/post-queue.ts` 的 `PostQueue.enqueue`，同步、没有返回值），过滤与后面所有步骤都是核心的事，来源不看结果。②–⑥ 对任何来源都是同一条链，按订阅 id 走。拓展订阅的**作品**（`extensions/extension-source.ts`，上报经 `createExtensionSource` 翻成中立形状后交核心来源上下文，再由它交同一个入口、同一段装配）与**直播**（`live/live-push.ts`，与 B 站直播同一个 `pushLiveNotify`）都已接上；直播「什么时候推」由核心 `LiveSessionEngine` / `bindLivePush` 决定（决策 57 / 58 / 61 / 67）；这一场从哪开始、到哪结束（含断流接续）也在 `live/live-sessions.ts`（`LiveSessionEngine`，3b-20 起住核心的 `live/`），推送与统计共用（ADR-0020 决策 6）—— 推送开关只管推不推，不管这一场在不在。
 
@@ -14,22 +14,22 @@
 
 | 段 | 住哪 | 干什么 |
 |---|---|---|
-| ① 引擎 | `apps/server/src/bilibili/dynamic` · `apps/server/src/bilibili/live/session` · `apps/server/src/posts` · `apps/server/src/live` | 来源层把平台数据翻成中立输入（作品：只生产，交给 `PostQueue`；直播交 `reportLive` / `reportLiveInteraction`）；中立装配过滤（作品）、管场次、出卡、分组、交给绑到订阅上的发送 |
-| ② 适配 | `apps/server/src/push/bound-push.ts` | 把引擎的枚举翻成推送的词；B 站那条边把 uid 翻成订阅（作品：引擎交的 uid 在这里换成订阅、入队）；把装配交来的一次推送（锚点）翻成推送层的 `Push` |
+| ① 来源与装配 | `apps/server/src/bilibili/dynamic` · `apps/server/src/bilibili/live/session` · `apps/server/src/posts` · `apps/server/src/live` | 来源层把平台数据翻成中立输入（作品：只生产，交给 `PostQueue`；直播交 `reportLive` / `reportLiveInteraction`）；中立装配过滤（作品）、管场次、出卡、分组、交给绑到订阅上的发送 |
+| ② 适配 | `apps/server/src/push/bound-push.ts` | 把来源与装配的枚举翻成推送的词；B 站那条边把 uid 翻成订阅（作品：来源与装配交的 uid 在这里换成订阅、入队）；把装配交来的一次推送（锚点）翻成推送层的 `Push` |
 | ③ 路由与闸 | `packages/push` · `PushRouter.push(push)` | 交进来时判一次（订阅、总开关、静音、免扰）+ 每个锚点选目标 |
 | ④ 发送 | 同上 · `sendAnchor` → `sendBatch` → `sendSequence` → `sendToTarget` | 按锚点先后、分条、重试、@全体 分流；被静音 / 免扰挡下的只记不发 |
 | ⑤ 投递 | `apps/server/src/push/target-dispatcher.ts` | 按连接找 adapter，真发出去 |
 | ⑥ 历史 | `onSend` → `runtime/push-history.ts` → `history/store.ts` | 一行 = 一次推送 × 一个目标 |
 
-### ① 引擎 —— 只认总开关
+### ① 来源与装配 —— 只认总开关
 
 直播那头 `ListenerManager`（`apps/server/src/bilibili/live/session/listener-manager.ts`）只给名单里 `monitorsLive` 为真的人开连接，动态那头的推送名单只收名单里 `features` 含 `post` 的人（名单由来源上下文给，见 [subscriptions.md](./subscriptions.md)「来源登记表与名单」）；当年按目标拦的 `hasTargets` 已删。渲不渲图、开不开 WS、攒不攒弹幕，全在这一层定；**一个目标都没配也照渲照发**，发不出去是下游的事。
 
-直播与动态来源拿的都是 `SourceSubscriptionView { externalId, features, monitorsLive }`，3a-28 起原先那套订阅视图与订阅操作词表在动态这一侧已删：作品设置不在引擎里，核心每条作品现折。这个扁平形状是刻意的：`apps/server/src/bilibili/live/session` 因此不可能知道 @全体 存在（ADR-0016 决策 6）。
+直播与动态来源拿的都是 `SourceSubscriptionView { externalId, features, monitorsLive }`，3a-28 起原先那套订阅视图与订阅操作词表在动态这一侧已删：作品设置不在来源里，核心每条作品现折。这个扁平形状是刻意的：`apps/server/src/bilibili/live/session` 因此不可能知道 @全体 存在（ADR-0016 决策 6）。
 
 **来源层**（各管各的，决策 65）：
 
-- B 站动态：`DynamicPoller.detectDynamics`（`apps/server/src/bilibili/dynamic/dynamic-poller.ts`）**只生产**：拉 feed → 错误码与恢复处理 → 逐条认 uid、过**时间线闸**（`isDue`：锚点在、且仍早于这条的发布时间）→ 开播伪动态（`DYNAMIC_TYPE_LIVE_RCMD`）**按类型**跳过、锚点照推进（从前靠出卡时抛错再认错误文案，关了出图或版式藏起卡片时它就被当普通动态推出去、和直播引擎的开播撞车；开播预约 `DYNAMIC_TYPE_LIVE` 不在此列，照常交）→ 不在引擎的表里的人（没订阅、停用、作品开关关着，连全局作品开关关掉也算）：根本没有锚点，循环开头就跳过，不翻译、不抓图、不交；作品开关再打开时进表，锚点从那一刻（现在）起算，关着期间发的动态不补推 → `postFromDynamic` 把原始动态翻成中立的 `Post`（**翻译只做一次**；抛错 = 这一条记 warn 跳过）→ 把 `publishedAt` 覆写成引擎自己算好的发布时间（它有 `pub_time` 文字兜底，翻译里只有 `pub_ts`、缺了落在纪元）→ **`fetchPostImages` 抓图**（交出之前就抓好：被过滤的、关了出图的动态也抓；外层作者头像不在这一步填，核心出卡时按订阅资料补）→ 抓图的 `await` 之后**重校**一次（这个人还在表里、锚点还在且仍早于这条；`isDue` 与循环开头共用，不用对象身份），不过就不交 → `reportPost(uid, { postId, url, post })`，没有返回值。**生产这一段按创作者分组并行**：一轮里的闸先逐条判完，越过闸的按 uid 分组；同一位创作者的几条仍一条接一条生产（交出的先后照动态流的次序），不同创作者的链同时跑、最多 4 条（`POST_PRODUCE_CONCURRENCY`；每条作品内部已最多同时抓 3 张图，上限防着叠起来无限放大对图床的并发）——所以一位的图抓得慢不再堵住别人的作品。一轮仍是所有链都跑完才算结束（最慢的那位决定这一轮多久），锚点在那之后才一次性单调回写。接线在来源上下文（`subscriptions/source-context.ts` 的 `reportPost`）：按身份 `listByIdentity` 取全部订阅，逐条补上描述符里的 `postNoun`（B 站是「动态」），各交一份给 `PostQueue.enqueue`。**每条越过时间线闸的动态恰好前移一次锚点**，不论后面成没成；引擎不等装配、不看结果、**不重试**，过滤、出卡、点评、推送、图集、留痕、「还订阅着吗」的回问都是核心的事（见「中立装配」）。从前有一条「主卡发送抛错 → `markFail`、锚点不前移、下一轮再来」，生产里从来走不到（推送层发送失败不抛，`boundPostPush` 也不看返回值），已随这一片删掉。
+- B 站动态：`DynamicPoller.detectDynamics`（`apps/server/src/bilibili/dynamic/dynamic-poller.ts`）**只生产**：拉 feed → 错误码与恢复处理 → 逐条认 uid、过**时间线闸**（`isDue`：锚点在、且仍早于这条的发布时间）→ 开播伪动态（`DYNAMIC_TYPE_LIVE_RCMD`）**按类型**跳过、锚点照推进（从前靠出卡时抛错再认错误文案，关了出图或版式藏起卡片时它就被当普通动态推出去、和场次引擎的开播撞车；开播预约 `DYNAMIC_TYPE_LIVE` 不在此列，照常交）→ 不在动态轮询的表里的人（没订阅、停用、作品开关关着，连全局作品开关关掉也算）：根本没有锚点，循环开头就跳过，不翻译、不抓图、不交；作品开关再打开时进表，锚点从那一刻（现在）起算，关着期间发的动态不补推 → `postFromDynamic` 把原始动态翻成中立的 `Post`（**翻译只做一次**；抛错 = 这一条记 warn 跳过）→ 把 `publishedAt` 覆写成动态轮询自己算好的发布时间（它有 `pub_time` 文字兜底，翻译里只有 `pub_ts`、缺了落在纪元）→ **`fetchPostImages` 抓图**（交出之前就抓好：被过滤的、关了出图的动态也抓；外层作者头像不在这一步填，核心出卡时按订阅资料补）→ 抓图的 `await` 之后**重校**一次（这个人还在表里、锚点还在且仍早于这条；`isDue` 与循环开头共用，不用对象身份），不过就不交 → `reportPost(uid, { postId, url, post })`，没有返回值。**生产这一段按创作者分组并行**：一轮里的闸先逐条判完，越过闸的按 uid 分组；同一位创作者的几条仍一条接一条生产（交出的先后照动态流的次序），不同创作者的链同时跑、最多 4 条（`POST_PRODUCE_CONCURRENCY`；每条作品内部已最多同时抓 3 张图，上限防着叠起来无限放大对图床的并发）——所以一位的图抓得慢不再堵住别人的作品。一轮仍是所有链都跑完才算结束（最慢的那位决定这一轮多久），锚点在那之后才一次性单调回写。接线在来源上下文（`subscriptions/source-context.ts` 的 `reportPost`）：按身份 `listByIdentity` 取全部订阅，逐条补上描述符里的 `postNoun`（B 站是「动态」），各交一份给 `PostQueue.enqueue`。**每条越过时间线闸的动态恰好前移一次锚点**，不论后面成没成；来源不等装配、不看结果、**不重试**，过滤、出卡、点评、推送、图集、留痕、「还订阅着吗」的回问都是核心的事（见「中立装配」）。从前有一条「主卡发送抛错 → `markFail`、锚点不前移、下一轮再来」，生产里从来走不到（推送层发送失败不抛，`boundPostPush` 也不看返回值），已随这一片删掉。
 - 拓展作品：拓展在 `activate(ctx)` 里经 `ctx.registerSource(def)` 交出 `SourceDef`，宿主用 `createExtensionSource`（`apps/server/src/extensions/extension-source.ts`）把它包成核心 `Source`。拓展调 `reportPost` 后，这个来源的串行队逐条核外部 id、清单声明的种类与上报形状，再把图库引用读回字节补宽高与动图标记、按「事件名 → 资料名 → 身份标签」补作者名，翻成中立的 `PostReport` 交核心 `SourceContext.reportPost`；后者按身份展开成每条订阅的 `PostEvent`，补上清单里的 `postNoun`，交 `PostQueue.enqueue`。图片和头像都由拓展先用 `ctx.storeImage` 存进图库，上报只带引用。订阅在不在、启用没有、作品开关与来源在不在跑的预检和回问，过滤，留痕，出卡都不在这里。不判新、不去重；坏的可选格丢掉、整条拒与丢格都记进「上报出入」，翻译途中意外抛错只记错误日志、**不重试**、这条不入队（决策 53 / 77）。
 - B 站直播：`BiliLiveRooms` / `RoomSession`（`apps/server/src/bilibili/live/session/`）管弹幕 WS、房间接口、预检、心跳与重连，把帧翻成 `source.reportLive` / `source.reportLiveInteraction`。核心 `LiveSessionEngine` 管每一场的开播 / 下播、周期「正在直播」（`liveStreaming` 开着才推，间隔 `streamingIntervalHours`）、重启补报、断流接续与下播回顾；`bindLivePush` 出开播 / 直播中 / 下播卡。卡输入由核心 `apps/server/src/live/live-card-input.ts` 的 `liveCardInputFromDetails` 翻成 `LiveCardInput`。封面在 B 站来源里经 `ctx.fetchImage` 存进图库，详情里只带引用；主播头像按订阅 id 读资料缓存的 `cachedProfile.avatar`（没有就缺键），出卡时零网络；人数**只收精确数、缺了就缺键**（人气读房间接口的 `online`，不补 0；点赞没收到点赞帧就没有这一格；累计观看是 `WATCHED_CHANGE` 帧的精确数 `num`〔㉒d〕，一帧没收到就没有这一格、下播卡不画）。**观看人数一路是精确数**：`RoomSession` 取 `ev.num`，核心场次记下 `totalViewers`，过渡输出 `live/live-runtime.ts` 再发 `live-viewers-changed`，在播快照 `viewers` 也是它；「暂未获取到」不再写回直播数据（从前写回，下播卡会印出「累计观看人数：暂未获取到」），文字模板的 `{watched}` 缺数时由文字渲染器 `renderLiveText` 在出口印这一句、有数走 `formatCount`（B 站与拓展同一条路）。开播时刻经 `liveTimeToIso`（`live_time` 的唯一一份解析）转成 ISO。下播的词云与 AI 总结由核心 `apps/server/src/live/recap/recap-anchors.ts` 的 `recapAnchors` 排在卡片后面：弹幕快照同步取、两样各自开始做；总结锚点交两份正文，`messages` 是模板那份，`aiMessages` 是 AI 那份，由推送层逐目标挑。串行闸只包到本体发完，附加项在推送层后台按「词云 → 总结」的先后发。醒目留言、上舰、特别弹幕与特别进场现在都经 `live/live-interactions.ts`：B 站 `RoomSession` 只把帧翻成中立 `reportLiveInteraction`；核心按订阅现折 `LiveSettings` 过门槛，确定要出卡时才取徽章与观众头像，再经 `pushSuperchat` / `pushMembership` / `pushViewerChat` / `pushViewerEnter` 出卡。发出去的是中立的消息段，**图一律是取回来的字节、不是网址**；图取不到只发文字并记一条带原因的警告，醒目留言与会员可用来源交的 `fallbackText`。头像仍**只在确定要出卡时**才取，取不到只是没有观众头像、卡照出；B 站的上舰观众头像仍经 `ViewerAvatarFetcher`，撞限流〔`rate_limited`〕后冷却 5 分钟：期间所有直播间的上舰卡都不再查、没有观众头像、卡照出；进冷却记一条 warn，不进问题表、不私聊；冷却由 B 站来源（`bilibili/source.ts`）里的那一个 `viewerAvatars` 持有，全来源共用。别的失败（没登录、表外码、回应形状不对、没给地址）只是这一张卡没有头像，不进冷却。面板卡片页的预览请求体里，SC 金额叫 `content.amount`、上舰那一档叫 `content.tierKey`（档的 key，服务端在档位表里找，认不出回 400）。
 - 拓展直播：拓展用 `reportLive` 交开播 / 直播状态 / 下播三种信号；`createExtensionSource`（`apps/server/src/extensions/extension-source.ts`）核形状并翻成只带图库引用的中立 `LiveSignalReport`，封面与头像已由拓展经 `ctx.storeImage` 存好。信号经核心 `SourceContext.reportLive` 按身份展开后进 `LiveSessionEngine`；`bindLivePush`（`apps/server/src/live/live-push.ts`）出卡时用 `live/live-card-input.ts` 的 `liveCardInputFromDetails` 把详情翻成 `LiveCardInput`，头像事件带的优先、没带的用订阅资料里的引用（都没有就没有头像，头像块收起），开播时刻转 ISO，人数报了才有。`liveImages` 是图库的一家引用方，名单是**在播表里此刻那些行的封面与事件头像**——直播可以播过 24 小时，周期卡几小时后还要用封面，不能像作品那样只靠宽限期。
@@ -50,14 +50,14 @@
 
 ### ② 适配 —— 唯一同时懂两套词的地方
 
-引擎说 `LivePushType`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出两样（`livePushHead`）：
+来源与装配说 `LivePushType`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出两样（`livePushHead`）：
 
 | 函数 | 产出 | 管什么 |
 |---|---|---|
 | `liveTypeToFeature` | `FeatureKey` | 开关与路由 |
 | `liveTypeAllowsAtAll` | `boolean` | 允不允许 @全体（不允许就给这次推送带 `allowAtAll: false`） |
 
-附加项不靠推送类型认：引擎交来的锚点自己带着附加项的键（`LivePushAnchor.extra`，词云 `wordcloud`、总结 `liveSummary`），`toPushAnchors` 把角色与键原样带过去、内容（现成的或约定，`messages` 与有才带的 `aiMessages`）逐条翻成载荷。`LivePushType` 里原先给词云 / 总结用的 5、10 两档已删。
+附加项不靠推送类型认：来源与装配交来的锚点自己带着附加项的键（`LivePushAnchor.extra`，词云 `wordcloud`、总结 `liveSummary`），`toPushAnchors` 把角色与键原样带过去、内容（现成的或约定，`messages` 与有才带的 `aiMessages`）逐条翻成载荷。`LivePushType` 里原先给词云 / 总结用的 5、10 两档已删。
 
 历史行记的就是特性键（⑬f 起没有单独的推送种类）：开播（3）→ `liveStart`、可以 @全体；重启补报（`CatchUp`，11）→ `liveStart`、不 @全体，卡与文字仍是「正在直播」那一套；周期「正在直播」（0）→ `liveStreaming`、不 @全体。⚠️ **本体那个锚点不带附加项的键** —— 带上键的话整张卡会被那张附加项三态表收窄掉。
 
@@ -71,7 +71,7 @@
 
 ### ③ 路由与闸
 
-一次推送整个交给 `PushRouter.push(push)`：`Push = { subscriptionId, feature, allowAtAll?, anchors }`，`anchors` 是按顺序排好的锚点（`PushAnchor = { role, extra?, messages }`：本体至多一个且排第一个，其余是附加项；`messages` 是现成的一串载荷或一个约定）。3b 起（ADR-0032 决策 2）锚点上多一格可选的 AI 版 `aiMessages`（`PushAnchor`、`PostPushAnchor` 与引擎侧的 `LivePushAnchor` 各一格，形状同 `messages`；直播这边只有下播总结会带），推送层用 `PushRouterOptions.aiWriting: () => AiWritingSettings`（必填，每个锚点发出时现取）自己现取 `ai.writing`，推导某个目标用哪一份正文：`sendAnchor` 在收窄出目标之后逐目标挑，本体且特性是 `post` 看 `writing.post`，带 `liveSummary` 键的附加项看 `writing.liveSummary`，别的锚点没有 AI 版这回事；例外（`byTarget`）写了听例外，没写跟默认行（`aiWritingFor`）。「谁收」（路由、闸、附加项三态表）与「用哪份字」是两个维度，互不干涉。`aiMessages` 没给、约定被拒绝、结果为空，都当没有 AI 版，所有目标收 `messages`（锚点不跳过；`messages` 自己为空或被拒绝才跳过）。被静音挡下的行、无目标那一行（记「默认那一份」，只看默认行）、@全体 分支（`sendBatch` / `sendAtAllThenCard` 按目标取载荷，先不 @ 的组、后 @ 的组的次序不变）都按各自目标的那份；历史一行一目标，存的就是它实际收到的那份，重推照它发。装配那头（`deliverPost`）模板正文恒备，AI 总开关开着且 `writing.post` 默认开或任一现存目标的例外开才去点评，点评回来是空串 / 只有空白算没写出来；这道生成门折在 `postSettingsOf` 的 `aiEnabled` 里（`makePostSettingsReader` 递进现存目标 id 的读口，悬空的例外 id 不算开着）。它全仓只有 `boundPostPush`（B 站动态、拓展作品）与 `boundLivePush`（B 站、拓展直播）两类调用点。
+一次推送整个交给 `PushRouter.push(push)`：`Push = { subscriptionId, feature, allowAtAll?, anchors }`，`anchors` 是按顺序排好的锚点（`PushAnchor = { role, extra?, messages }`：本体至多一个且排第一个，其余是附加项；`messages` 是现成的一串载荷或一个约定）。3b 起（ADR-0032 决策 2）锚点上多一格可选的 AI 版 `aiMessages`（`PushAnchor`、`PostPushAnchor` 与装配侧的 `LivePushAnchor` 各一格，形状同 `messages`；直播这边只有下播总结会带），推送层用 `PushRouterOptions.aiWriting: () => AiWritingSettings`（必填，每个锚点发出时现取）自己现取 `ai.writing`，推导某个目标用哪一份正文：`sendAnchor` 在收窄出目标之后逐目标挑，本体且特性是 `post` 看 `writing.post`，带 `liveSummary` 键的附加项看 `writing.liveSummary`，别的锚点没有 AI 版这回事；例外（`byTarget`）写了听例外，没写跟默认行（`aiWritingFor`）。「谁收」（路由、闸、附加项三态表）与「用哪份字」是两个维度，互不干涉。`aiMessages` 没给、约定被拒绝、结果为空，都当没有 AI 版，所有目标收 `messages`（锚点不跳过；`messages` 自己为空或被拒绝才跳过）。被静音挡下的行、无目标那一行（记「默认那一份」，只看默认行）、@全体 分支（`sendBatch` / `sendAtAllThenCard` 按目标取载荷，先不 @ 的组、后 @ 的组的次序不变）都按各自目标的那份；历史一行一目标，存的就是它实际收到的那份，重推照它发。装配那头（`deliverPost`）模板正文恒备，AI 总开关开着且 `writing.post` 默认开或任一现存目标的例外开才去点评，点评回来是空串 / 只有空白算没写出来；这道生成门折在 `postSettingsOf` 的 `aiEnabled` 里（`makePostSettingsReader` 递进现存目标 id 的读口，悬空的例外 id 不算开着）。它全仓只有 `boundPostPush`（B 站动态、拓展作品）与 `boundLivePush`（B 站、拓展直播）两类调用点。
 
 **交进来那一刻判一次**（订阅在不在、总开关、全局静音、免扰时段），裁决管整次推送，之后的锚点不再看这四样。**锚点按先后发**：内容各做各的，前一个锚点对它该发的目标都有了结果才发后一个，空的跳过，约定被拒绝记一条警告并跳过；`push()` 在本体发完时返回，其后的锚点在后台接着发（经 `serviceCtx.track` 登记，关停等它们）。每个锚点发出时现查订阅的路由与附加项表（`sendAnchor`）。routing 查找只有 2 处（每个锚点一次、重试前复检一次），**都按订阅 id**（`store.findById`）：同一个 UP 的两条订阅各推各的路由，拓展订阅（没有 uid）也找得到。推送层不分订阅是哪一支 —— 只有日志里那一截 `subscriptionLabel`（B 站 `uid=…`、拓展 `<拓展 id>:<外部 id>`）按支写。
 
@@ -141,17 +141,17 @@
 
 **`targetId` 为空的行有两种，分哪一种看 `status`，不看 `targetId`**：无目标行（`no-targets`）与被过滤的行（`filtered`）。面板的「去配置」小卡只给前一种；补发两种都不给、理由不同；首页「最近推送」不列后一种。
 
-**被过滤的作品留痕**（ADR-0021 决策 34 的 🔗）：过滤挡下一条作品，历史里记一行 `filtered` —— **一条订阅一行**（不按目标拆）、`targetId: null`、`feature: "post"`、自己的 `pushId`（不对应任何推送）、行上 `filteredBy`（六种 `PostFilterReason`，词表在 `packages/internal/src/post.ts`）、一条 `role: "main"` 的文字（摘要 + 换行 + 原帖地址，没有 `result` 也没有 `isSilenced`）。只留痕：不出卡、不调 AI、不存重推原件，不能补发（图在来源交出之前就抓好 / 写好了，被过滤的作品也一样，3a-27 起）；不算推送也不算失败（`countsAsDelivery` / `countsAsFailure` 都是假）；写一次就完，不和别的行合并、不进历史仓的 `open` 表、之后不追加。它**不经推送层、不走事件总线**：过滤在核心里（`deliverPost` 第二步），B 站与拓展作品是同一处：挡下时经装配依赖 `recordFiltered` 交出 `FilteredPost { subscriptionId, filteredBy, text, url }`（`text` 是 `postText(post, "plain")` 整条、没截过，`url` 是信封上的作品地址 —— 视频动态是视频页，从前 B 站留痕用的是另算的动态页）。`pipeline.ts` 把 `recordFiltered` 接到 `runtime/push-history.ts` 的 `historyRecordFromFilteredPost`：身份与名字 / 头像快照的取法同 `historyRecordFromSend`，摘要在这儿截（`POST_SUMMARY_MAX_CHARS`，按字符），查不到订阅不记。行落下后照发 `history-recorded`，面板不为它弹小卡。被过滤的作品只留这一行，不往任何目标发东西（从前引擎里有一句「某某发了一条被屏蔽的作品」的提醒，10-08 删了；它从来没有设置项，面板上也没有过开关）。
+**被过滤的作品留痕**（ADR-0021 决策 34 的 🔗）：过滤挡下一条作品，历史里记一行 `filtered` —— **一条订阅一行**（不按目标拆）、`targetId: null`、`feature: "post"`、自己的 `pushId`（不对应任何推送）、行上 `filteredBy`（六种 `PostFilterReason`，词表在 `packages/internal/src/post.ts`）、一条 `role: "main"` 的文字（摘要 + 换行 + 原帖地址，没有 `result` 也没有 `isSilenced`）。只留痕：不出卡、不调 AI、不存重推原件，不能补发（图在来源交出之前就抓好 / 写好了，被过滤的作品也一样，3a-27 起）；不算推送也不算失败（`countsAsDelivery` / `countsAsFailure` 都是假）；写一次就完，不和别的行合并、不进历史仓的 `open` 表、之后不追加。它**不经推送层、不走事件总线**：过滤在核心里（`deliverPost` 第二步），B 站与拓展作品是同一处：挡下时经装配依赖 `recordFiltered` 交出 `FilteredPost { subscriptionId, filteredBy, text, url }`（`text` 是 `postText(post, "plain")` 整条、没截过，`url` 是信封上的作品地址 —— 视频动态是视频页，从前 B 站留痕用的是另算的动态页）。`pipeline.ts` 把 `recordFiltered` 接到 `runtime/push-history.ts` 的 `historyRecordFromFilteredPost`：身份与名字 / 头像快照的取法同 `historyRecordFromSend`，摘要在这儿截（`POST_SUMMARY_MAX_CHARS`，按字符），查不到订阅不记。行落下后照发 `history-recorded`，面板不为它弹小卡。被过滤的作品只留这一行，不往任何目标发东西（从前装配里有一句「某某发了一条被屏蔽的作品」的提醒，10-08 删了；它从来没有设置项，面板上也没有过开关）。
 
 静音期间的落盘量：凡是走这条链的推送（作品、开播 / 正在直播 / 补报 / 下播与它的词云、总结、上舰、醒目留言、特别弹幕、特别进场，以及拓展的作品与直播）在静音或免扰里每条都会落行、存原件，卡片图进图库；文字不设上限，图与原件按保留天数清。
 
 ## 附加项：生产与推送是两个问题
 
-**@全体 没有「生产」这一步** —— payload 是发的时候现拼的，零成本，所以它只有「推不推」。词云 / AI 总结有三道，全在引擎侧、全看折叠值、**不看这次推送的路由**（总结的 AI 那份要不要做另算，见第 3 道）：
+**@全体 没有「生产」这一步** —— payload 是发的时候现拼的，零成本，所以它只有「推不推」。词云 / AI 总结有三道，全在装配侧、全看折叠值、**不看这次推送的路由**（总结的 AI 那份要不要做另算，见第 3 道）：
 
 1. **攒不攒弹幕**（开播那一刻）：下播开着且两个附加项至少一个开着。
 2. **要不要算**（下播那一刻）：下播总开关 + 各自那把键。
-3. **算出来了吗**：生产者自己会弃权 —— 词云在热词不足 / 出图关着 / 渲染失败时回 `undefined`；总结只在发言人数不足时回 `undefined`（**AI 关着或失败会回落到模板，不算弃权**）。总结的模板那份恒做；AI 那份做不做是宿主折好的一个布尔读口 `isAiEnabled`（`live/live-runtime.ts` 每次下播现算）：AI 总开关开着，且 `ai.writing.liveSummary` 默认开或任一**现存**目标（含停用的，`targetIds` 与作品那份共用）的例外开 —— 悬空的例外 id 不算，引擎自己不看目标。生成失败或回空串由推送层让所有目标回落模板。
+3. **算出来了吗**：生产者自己会弃权 —— 词云在热词不足 / 出图关着 / 渲染失败时回 `undefined`；总结只在发言人数不足时回 `undefined`（**AI 关着或失败会回落到模板，不算弃权**）。总结的模板那份恒做；AI 那份做不做是宿主折好的一个布尔读口 `isAiEnabled`（`live/live-runtime.ts` 每次下播现算）：AI 总开关开着，且 `ai.writing.liveSummary` 默认开或任一**现存**目标（含停用的，`targetIds` 与作品那份共用）的例外开 —— 悬空的例外 id 不算，装配自己不看目标。生成失败或回空串由推送层让所有目标回落模板。
 
 产出是 `undefined` 的那个锚点**直接跳过**（约定给了 `undefined`）。这跟「附加项收窄成空」那道闸看起来一样（都没消息、都不落行），但成因相反：一个是**没东西可发**，一个是**有东西没人要**。排查先看日志是 `[wordcloud] 热词不足` 还是 `附加项 wordcloud 无人订阅`。
 
@@ -169,7 +169,7 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 
 ## 边界：谁不许知道什么
 
-- **引擎不许知道目标。** 词云照渲、AI 照问，发不发是推送层的事。认下的代价：把某个附加项的所有目标都关掉却留着总开关时，那次 AI 调用照花钱。
+- **装配不许知道目标。** 词云照渲、AI 照问，发不发是推送层的事。认下的代价：把某个附加项的所有目标都关掉却留着总开关时，那次 AI 调用照花钱。
 - **`apps/server/src/bilibili/live` / `apps/server/src/bilibili/dynamic` 不许知道 @全体。** 今天靠「特性是个裸布尔」天然挡住。
 - **中立装配不许认身份、不许读平台原始数据。** `deliverPost` / `pushLiveNotify` / 两个中立出卡入口只吃中立形状，uid 或订阅 id 由调用方绑进发送与设置（作品的「还订阅着吗」回问是 `deliverPost` 自己经设置读口再问一次）。一段步骤两个来源共用 —— B 站那条以后加了什么，拓展那条自动有；往来源那头另加一步，另一边就静默漏掉（决策 66）。
 - **推送层不许知道平台。** 它只认订阅 id 与 `targetId`，翻译成投递是 dispatcher 的事；订阅是哪一支它也不看（只有日志那一截按支写）。

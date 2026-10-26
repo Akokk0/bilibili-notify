@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:按 ADR-0024 决策 1,这个闭集与平台表 `PLATFORM_REGISTRY`、三份连接设置规则都要搬出 `internal`、由适配器自带 —— 内置的 OneBot / QQ 官方机器人 / webhook 与拓展已经是同一个 `PlatformAdapter` 接口、同一张登记表,连接的形状是 `{ adapterKey, platform, settings, platformSnapshot, … }`(决策 7,`kind` / `connector` / `extensionId` 已删,拓展的连接 `adapterKey` 就是拓展 id);闭集、平台表与三份规则眼下还留在 `internal`,只因面板还在读,等第 4 期面板改成按适配器的描述画之后一次搬走删掉,在那之前别往里加。不变的是:**一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(内置的取自挑中的候选,拓展的今天从桥报的 bot 上抄),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。引擎层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:按 ADR-0024 决策 1,这个闭集与平台表 `PLATFORM_REGISTRY`、三份连接设置规则都要搬出 `internal`、由适配器自带 —— 内置的 OneBot / QQ 官方机器人 / webhook 与拓展已经是同一个 `PlatformAdapter` 接口、同一张登记表,连接的形状是 `{ adapterKey, platform, settings, platformSnapshot, … }`(决策 7,`kind` / `connector` / `extensionId` 已删,拓展的连接 `adapterKey` 就是拓展 id);闭集、平台表与三份规则眼下还留在 `internal`,只因面板还在读,等第 4 期面板改成按适配器的描述画之后一次搬走删掉,在那之前别往里加。不变的是:**一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(内置的取自挑中的候选,拓展的今天从桥报的 bot 上抄),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
@@ -63,7 +63,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 - `architecture.md` —— 包清单、独立端模块图、服务依赖图
 - `conventions/` —— 仓库规范:索引 `README.md` + 8 篇(命名:后缀表与词表、失败规矩、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造),每篇带出处与守卫
 - `events.md` —— BusEvents 契约(事件名 → 具名载荷)、MessageBus 语义、WS channel 契约
-- `push.md` —— 推送链路:引擎 → 适配 → 路由与闸 → 发送 → 投递 → 历史;闸的顺序、附加项的「生产 vs 推送」、不走这条链的三条旁路
+- `push.md` —— 推送链路:来源与装配 → 适配 → 路由与闸 → 发送 → 投递 → 历史;闸的顺序、附加项的「生产 vs 推送」、不走这条链的三条旁路
 - `subscriptions.md` —— 订阅:B 站 / 拓展两支与两个文件、身份 vs 订阅 id 两种键、资料与头像、订阅源拓展(清单 / 契约小号 / 解析门 / 上报的丢格与拒收)
 - `build-release.md` —— 工具链、分支模型、Docker 镜像与 tag 方案、桌面产物布局
 - `commands.md` —— 独立端私聊指令:入站链路、指令表、参数模型、可配置项;末尾是群里视频链接自动出卡片的「链接解析」

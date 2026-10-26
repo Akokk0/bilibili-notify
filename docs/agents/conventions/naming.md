@@ -20,7 +20,7 @@
 | 按参数规格解析出来的一组值（用户填进来、解析好的） | `Values` | 当它用的 `Options` |
 | 操作的结果 | `Result` | `Outcome`、`Verdict`，当结果用的 `Check`、`Read`、`Parse`、`Acceptance` |
 | 别人交上来的（上报） | `Report` | 报表类的东西（按装的内容取后缀：设置叫 `Settings`，结果叫 `Result`，算出来的叫 `View`） |
-| 由真源算出来、给某个读者用的只读形状（面板、模板、引擎） | `View` | `DTO` |
+| 由真源算出来、给某个读者用的只读形状（面板、模板、装配） | `View` | `DTO` |
 | 模板吃的输入 / React 组件的属性 | `Input` / `Props` | 当参数包用的 `Input` |
 | 一个接口或外部协议的整个请求体 / 回应体 | `Request` / `Response` | — |
 | 函数或构造的参数包 | `Options` | `Opts`、`Params`、`Args`，当参数包用的 `Config` |
