@@ -212,6 +212,7 @@
     - v2 交视图走专口 `ctx.publishView(() => ExtensionView)`，交来的是 Promise 当场报错。旧口 `publishStatus(() => unknown)` 对 async 回调静默给出一份空视图；v1 照留。
     - `items` 的键必须是声明过的列表项；`set` 只许改这一项声明过的格，不许碰 `id`、密钥与生成的格，值的类型要对得上。
     - wire 里的手写镜像与 zod **双向严格相等**地钉住 —— 单向的结构赋值漏得过「一边多一个可选键」。
+    🔗 现状（3b-49，10-25）：形状钉从 `apps/server/src/extensions/` 搬进 `packages/internal/src/extension/`，和手写镜像、zod 同包；设置字段族从 `ExtensionField` / `ExtensionScalarField` / `ExtensionListField` 改名为 `SettingsField` / `SettingsScalarField` / `SettingsListField`，并把核心从 zod 推出的 `ExtensionManifestField` / `ExtensionManifestListField` 并进它们，后两个旧名删掉；字段族也由单向钉改成双向严格相等。拓展上报类型改成从核心版用 TS 推导并加 `Extension` 前缀：`ExtensionPostReport`、`ExtensionLiveDetails`、`ExtensionLiveSignalReport`、`ExtensionLiveStatusResult`、`ExtensionRichText`、`ExtensionRichTextSegment`、`ExtensionSourceContext`。`Pick` 白名单挑格子，差别明列成覆盖：图交 `ImageRef`，作者可缺，`endedAt` 可缺，失败码收紧成 `FailureCode`，视频各格可缺；`RichText` 用片段种类 `Extract`。拓展版 `SourceContext` 与 `PlatformAdapterDef` 都由 `Omit` 改成 `Pick`，核心往上加成员不会悄悄开放给拓展；作者 `SubscriptionCreator` 也改成从核心 `Creator` 挑两格推出来。视图积木里那段字和帖子正文共用了「RichText」一词，让名改叫 `ExtensionViewText` / `ExtensionViewTextSegment`（片段按词表叫 `Segment`）。进门 zod 仍是运行时那道门，各自推出来的类型与上面的推导类型双向严格相等；字段族那份 zod 推出来的类型不再单独起名，只出现在双向钉里。共享件的归位见 ADR-0021 决策 4 下 3b-49 的 🔗，上报时刻见本份决策 62 下 3b-49 的 🔗。
 
 40. **视图不合规矩时按主人看的单位降级**：页级按块、列表按项、摘要单独。坏块换一条错误提示（点名哪一块、为什么）；坏项那张卡写「状态未知」加同一条提示；摘要坏了不画。（修订决策 20 的「不合规矩的整份不画」）整份不画时，一格超长就让整页连同列表页那一行一起消失，逼得每个拓展抄一份宿主的上限自己截断。
 
@@ -335,6 +336,7 @@
     - 单张图、整条事件的大小与张数上限施工时定（张数先查清抖音图文的上限）。
     - 假源加「报一条作品 / 开播 / 下播 / 报资料 / 报直播状态」几个按钮，开发时拿它造事件。
     🔗 09-23：施工定下的数 —— 时间一律整数毫秒、且不早于 2000 年（交成秒当场报出来）；作品图每条最多 30 张（抖音开放平台「创建图文」一次最多 30 张），单张 ≤ 8 MiB，整条上报的图合计 ≤ 64 MiB；头像约 96 KiB 封顶（按 data URL 的字数上限倒推）。五种上报在总线上是同一个事件，按种类区分；上报问题一条上报记一条，不按格记。
+    🔗 现状（3b-49，10-25）：拓展交来的时刻由整数毫秒改成带时区的 ISO 字符串：上报里的 6 格（作品 `publishedAt`，直播开播、在播、下播三支的 `startedAt` / `endedAt`，拉取式直播状态的 `startedAt`），加上视图那段字（`ExtensionViewTextSegment`）里的时刻片段 `{ time }`，进门一律用 `z.iso.datetime({ offset: true })`；宿主收下后统一换成以 `Z` 结尾的 UTC 写法。「不早于 2000 年」的下限撤掉：它原本用来抓「把秒当毫秒交」，ISO 字符串没有这个错误。这里推翻的是本条里的「时间一律整数毫秒、且不早于 2000 年」；作品图每条最多 30 张、单张 ≤ 8 MiB、整条上报的图合计 ≤ 64 MiB、头像约 96 KiB 这些别的数照旧；核心自己的 `CapabilitySupport.checkedAt` 也照旧是整数毫秒（它是核心类型，不属于拓展交来的时刻）。上报类型的推导见本份决策 39 下 3b-49 的 🔗，相关共享件的归位见 ADR-0021 决策 4 下 3b-49 的 🔗。
     🔗 09-23：假源的上报按钮放在它的页面上、一次作用于名下所有开着的订阅 —— 动作带不了「点的是哪一行」（决策 42），为一个开发工具去扩公开契约不划算；逐行的按钮等真实的拓展需要时，再照那时的需要扩。
 
 ### ④ 装配与推送链动工前补定（09-24）
