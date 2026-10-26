@@ -27,7 +27,12 @@ const NameSchema = z.string().min(1).max(SUBSCRIPTION_REPORT_NAME_MAX);
 const UrlSchema = z
 	.url({ protocol: /^https?$/, error: "invalid-url" })
 	.max(SUBSCRIPTION_REPORT_URL_MAX);
-const TimeSchema = z.iso.datetime({ offset: true });
+/**
+ * 「时刻」那一格:带时区的 ISO(3b-49)。拓展上报用,宿主收拓展适配器交来的能力时刻也用它验 ——
+ * 同一套判据只写一份。
+ */
+export const OffsetIsoTimeSchema = z.iso.datetime({ offset: true });
+const TimeSchema = OffsetIsoTimeSchema;
 const CountSchema = z.number().int().nonnegative();
 
 function stripTopic(value: string): string {

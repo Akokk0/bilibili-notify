@@ -546,16 +546,24 @@ describe("桥 adapter", () => {
 			session({}, { atAll: "supported", inbound: "supported" }),
 		).adapter.capabilities?.(connection());
 		expect(supported).toMatchObject({
-			atAll: { state: "supported", checkedAt: 0 },
-			inbound: { state: "supported", checkedAt: 0 },
+			atAll: { state: "supported", checkedAt: "1970-01-01T00:00:00.000Z" },
+			inbound: { state: "supported", checkedAt: "1970-01-01T00:00:00.000Z" },
 		});
 
 		const unsupported = harness(
 			session({}, { atAll: "unsupported", inbound: "unsupported" }),
 		).adapter.capabilities?.(connection());
 		expect(unsupported).toMatchObject({
-			atAll: { state: "unsupported", reason: expect.stringMatching(/^桥报的/), checkedAt: 0 },
-			inbound: { state: "unsupported", reason: expect.stringMatching(/^桥报的/), checkedAt: 0 },
+			atAll: {
+				state: "unsupported",
+				reason: expect.stringMatching(/^桥报的/),
+				checkedAt: "1970-01-01T00:00:00.000Z",
+			},
+			inbound: {
+				state: "unsupported",
+				reason: expect.stringMatching(/^桥报的/),
+				checkedAt: "1970-01-01T00:00:00.000Z",
+			},
 		});
 
 		const unknown = harness(

@@ -1,6 +1,8 @@
 import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
 import {
+	type CapabilitySupport,
 	type Connection,
+	type ConnectionCapabilities,
 	type Disposable,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
@@ -9,6 +11,7 @@ import {
 	type InboundHandlers,
 	type Issue,
 	type Logger,
+	OffsetIsoTimeSchema,
 	ok,
 	type PlatformAdapter,
 	type PlatformAdapterDescriptor,
@@ -387,6 +390,53 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	});
 
 	/**
+	 * 拓展交来的能力时刻不合格的提醒,按「连接 + 能力格」去重:同一条连接同一格只刷一次;
+	 * 下次交对了就把键清掉(再交坏时还能提醒)。
+	 */
+	const badCapabilityCheckedAt = new Set<string>();
+
+	/**
+	 * 拓展适配器交来的能力时刻进门一律验,判据照 3b-49 的拓展上报:`OffsetIsoTimeSchema`
+	 * (`z.iso.datetime({ offset: true })`);收下后统一成 `Z` 结尾的 UTC(`toISOString()` 的写法)。
+	 * 验不过的那一格当「还不知道」并记一行 warn —— 拓展是第三方 JS,类型管不住它交什么。
+	 */
+	function normalizeCapabilityCheckedAt(
+		connectionId: string,
+		slot: keyof ConnectionCapabilities,
+		support: CapabilitySupport,
+	): CapabilitySupport {
+		if (support.state === "unknown") return support;
+		const parsed = OffsetIsoTimeSchema.safeParse(support.checkedAt);
+		const key = `${connectionId}\u0000${slot}`;
+		if (!parsed.success) {
+			if (!badCapabilityCheckedAt.has(key)) {
+				badCapabilityCheckedAt.add(key);
+				logger.warn(
+					`拓展 ${id} 交来的能力 ${slot}.checkedAt 不是带时区的 ISO(连接 ${connectionId},收到 ${JSON.stringify(support.checkedAt)}),这一格按「还不知道」算`,
+				);
+			}
+			return { state: "unknown" };
+		}
+		badCapabilityCheckedAt.delete(key);
+		return { ...support, checkedAt: new Date(parsed.data).toISOString() };
+	}
+
+	function normalizeCapabilities(
+		connection: Connection,
+		capabilities: ConnectionCapabilities,
+	): ConnectionCapabilities {
+		return {
+			atAll: normalizeCapabilityCheckedAt(connection.id, "atAll", capabilities.atAll),
+			inbound: normalizeCapabilityCheckedAt(connection.id, "inbound", capabilities.inbound),
+			nativeShare: normalizeCapabilityCheckedAt(
+				connection.id,
+				"nativeShare",
+				capabilities.nativeShare,
+			),
+		};
+	}
+
+	/**
 	 * 平台适配器那一口的 def:六个行为成员与自己的设置 schema 一次交齐。第三方 JS 不受类型约束,缺了不能等
 	 * 登记表或派发器运行时才炸成「不是函数」(ADR-0024 决策 4 / 11)。
 	 */
@@ -753,9 +803,28 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				adapterKey: id,
 				settingsSchema: def.settingsSchema,
 			} satisfies PlatformAdapter;
+			// 能力结果里那一格时刻由拓展给:宿主不信自述,出门前先验再统一成 UTC(见 `normalizeCapabilities`)。
+			// 取的是 bind 回拓展实例之后的那两个方法,覆盖时它们在返回值上。
+			const offeredCapabilities = adapter.capabilities;
+			const offeredProbeCapabilities = adapter.probeCapabilities;
+			const checkedAdapter: PlatformAdapter = {
+				...adapter,
+				...(offeredCapabilities
+					? {
+							capabilities: (connection: Connection) =>
+								normalizeCapabilities(connection, offeredCapabilities(connection)),
+						}
+					: {}),
+				...(offeredProbeCapabilities
+					? {
+							probeCapabilities: async (connection: Connection) =>
+								normalizeCapabilities(connection, await offeredProbeCapabilities(connection)),
+						}
+					: {}),
+			};
 			// 登记即 `start`。适配器只从上下文读自己的连接与入站,登记交回的把手只负责注销。
 			const registration = adapters.register(
-				adapter,
+				checkedAdapter,
 				createPlatformAdapterContext({
 					integration: integration.ctx,
 					adapterKey: id,

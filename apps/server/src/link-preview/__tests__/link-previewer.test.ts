@@ -538,7 +538,7 @@ describe("createLinkPreviewer", () => {
 					capabilities: () => ({
 						atAll: { state: "unknown" },
 						inbound: { state: "unknown" },
-						nativeShare: { state: "supported", checkedAt: 1 },
+						nativeShare: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
 					}),
 				});
 				await feedNativeCard(h);
@@ -717,9 +717,9 @@ describe("createLinkPreviewer", () => {
 			inbound: { state: "unknown" },
 			nativeShare:
 				state === "supported"
-					? { state, checkedAt: 1 }
+					? { state, checkedAt: "2026-10-26T00:00:00.000Z" }
 					: state === "unsupported"
-						? { state, reason: "没有接口", checkedAt: 1 }
+						? { state, reason: "没有接口", checkedAt: "2026-10-26T00:00:00.000Z" }
 						: { state },
 		});
 		/** 原生分享载荷:解析器交的中立描述原样装进来,`appId` 一并带着。 */

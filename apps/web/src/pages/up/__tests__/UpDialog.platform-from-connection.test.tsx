@@ -56,8 +56,12 @@ const UNKNOWN = { state: "unknown" } as const;
 function capsWith(atAll: ConnectionCapabilitiesMap[string]["atAll"]): ConnectionCapabilitiesMap {
 	return { [CONN]: { atAll, inbound: UNKNOWN, nativeShare: UNKNOWN } };
 }
-const QQ_CAPS = capsWith({ state: "unsupported", reason: QQ_REASON, checkedAt: 1 });
-const OB_CAPS = capsWith({ state: "supported", checkedAt: 1 });
+const QQ_CAPS = capsWith({
+	state: "unsupported",
+	reason: QQ_REASON,
+	checkedAt: "2026-10-26T00:00:00.000Z",
+});
+const OB_CAPS = capsWith({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
 
 function renderDialog(
 	t: PushTarget,

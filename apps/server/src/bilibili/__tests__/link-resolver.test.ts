@@ -263,7 +263,7 @@ function makeGate(over: Partial<LinkPreviewSettings> = {}, capable = false) {
 	const caps: ConnectionCapabilities = {
 		atAll: { state: "unknown" },
 		inbound: { state: "unknown" },
-		nativeShare: { state: "supported", checkedAt: 1 },
+		nativeShare: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
 	};
 	const parser = createLinkPreviewer({
 		logger: { info() {}, warn() {}, error() {}, debug() {} },

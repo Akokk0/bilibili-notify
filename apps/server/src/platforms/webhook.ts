@@ -77,8 +77,8 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	/** `start(ctx)` 接住的那份客户端;生产里登记即 start,所以只有测试会碰到「还没接住」。 */
 	let http: HttpClient | undefined;
-	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
-	const adapterStartedAt = Date.now();
+	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻(UTC ISO)。 */
+	const adapterStartedAt = new Date().toISOString();
 
 	return {
 		adapterKey: ADAPTER_KEY,

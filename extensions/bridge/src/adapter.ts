@@ -231,12 +231,12 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	}
 
 	/**
-	 * 桥报的一项能力翻成宿主那份三态。三态原样对应,`checkedAt` 取会话建立那一刻 ——
-	 * 能力是握手时报的;不支持时的原因写成「桥报的:这个 bot …」。
+	 * 桥报的一项能力翻成宿主那份三态。三态原样对应,`checkedAt` 取会话建立那一刻(桥内部仍记毫秒,
+	 * 交给宿主时换成带时区的 ISO UTC)—— 能力是握手时报的;不支持时的原因写成「桥报的:这个 bot …」。
 	 */
 	function supportOf(
 		state: BridgeCapabilityState,
-		checkedAt: number,
+		checkedAt: string,
 		unsupportedReason: string,
 	): CapabilitySupport {
 		if (state === "supported") return { state, checkedAt };
@@ -249,7 +249,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	/** 桥报的能力翻成宿主那份:宿主问的三项(@全体、收不收得到回复、小程序卡)都在这儿。 */
 	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
 		const { capabilities } = located.bot;
-		const checkedAt = located.session.connectedAt;
+		const checkedAt = new Date(located.session.connectedAt).toISOString();
 		return {
 			atAll: supportOf(capabilities.atAll, checkedAt, "发不了 @全体"),
 			inbound: supportOf(capabilities.inbound, checkedAt, "收不到主人的回复"),

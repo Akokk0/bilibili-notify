@@ -1016,8 +1016,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
 	const NOT_PROBED: CapabilitySupport = { state: "unknown" };
-	/** `atAll` / `inbound` 是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
-	const adapterStartedAt = Date.now();
+	/** `atAll` / `inbound` 是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻(UTC ISO)。 */
+	const adapterStartedAt = new Date().toISOString();
 
 	function channelOf(connectionId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
 		return cfg.transport === "ws"
@@ -1056,7 +1056,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 别的都是没探出来:连不上、鉴权失败、实现自己的错误码,原因带出去给面板。
 	 */
 	function interpretArkProbe(r: OneBotResponse): CapabilitySupport {
-		const checkedAt = Date.now();
+		const checkedAt = new Date().toISOString();
 		if (isActionMissing(r)) {
 			return { state: "unsupported", reason: "这个 OneBot 实现没有 get_mini_app_ark", checkedAt };
 		}
@@ -1126,7 +1126,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				nativeShareSupport.set(connection.id, {
 					state: "unsupported",
 					reason,
-					checkedAt: Date.now(),
+					checkedAt: new Date().toISOString(),
 				});
 				// 把 action 当路径的实现回的是 HTTP 404:在这里它的意思同样是「没有这个接口」。
 				return fail("unsupported", reason, {
@@ -1142,7 +1142,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 		const data = arkToSegmentData(ark);
 		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
-		nativeShareSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
+		nativeShareSupport.set(connection.id, {
+			state: "supported",
+			checkedAt: new Date().toISOString(),
+		});
 		const built = buildSendActionFromSegments(destination, [{ type: "json", data: { data } }]);
 		if (!built.ok) return built;
 		return dispatch(connection, destination, built, t0);

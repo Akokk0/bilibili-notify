@@ -111,12 +111,12 @@ function destinationOf(destination: DestinationRef): FakeSentEntry["destination"
 	};
 }
 
-/** 「确认支持 / 确认不支持」的两个小构造。 */
+/** 「确认支持 / 确认不支持」的两个小构造 —— `checkedAt` 是带时区的 ISO(UTC)。 */
 function supported() {
-	return { state: "supported" as const, checkedAt: Date.now() };
+	return { state: "supported" as const, checkedAt: new Date().toISOString() };
 }
 function unsupported(reason: string) {
-	return { state: "unsupported" as const, reason, checkedAt: Date.now() };
+	return { state: "unsupported" as const, reason, checkedAt: new Date().toISOString() };
 }
 
 /** 按这条连接的设置答 atAll 与 inbound 两格(`capabilities` 与 `probeCapabilities` 共用)。 */

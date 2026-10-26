@@ -33,12 +33,16 @@ describe("connections route — GET /capabilities", () => {
 	it("按连接 id 一级列出,直连与拓展连接都在;取不到能力的不出现", async () => {
 		const unknown = { state: "unknown" };
 		const direct = {
-			atAll: { state: "supported", checkedAt: 1 },
-			inbound: { state: "supported", checkedAt: 1 },
-			nativeShare: { state: "supported", checkedAt: 1 },
+			atAll: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+			inbound: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+			nativeShare: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
 		};
 		const bridged = {
-			atAll: { state: "unsupported", reason: "桥报的:这个 bot 发不了 @全体", checkedAt: 2 },
+			atAll: {
+				state: "unsupported",
+				reason: "桥报的:这个 bot 发不了 @全体",
+				checkedAt: "2026-10-26T00:01:00.000Z",
+			},
 			inbound: unknown,
 			nativeShare: unknown,
 		};

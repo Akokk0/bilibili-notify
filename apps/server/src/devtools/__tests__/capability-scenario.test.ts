@@ -34,9 +34,9 @@ const WH = {
 	enabled: true,
 } as unknown as Connection;
 const REAL: ConnectionCapabilities = {
-	atAll: { state: "supported", checkedAt: 1 },
-	inbound: { state: "supported", checkedAt: 1 },
-	nativeShare: { state: "unsupported", reason: "1404", checkedAt: 1 },
+	atAll: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+	inbound: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+	nativeShare: { state: "unsupported", reason: "1404", checkedAt: "2026-10-26T00:00:00.000Z" },
 };
 
 function onebot(): PlatformAdapter {
@@ -110,7 +110,10 @@ describe("connection.capability", () => {
 		expect(wrapped.capabilities?.(OB)).toBe(REAL);
 		expect(await wrapped.probeCapabilities?.(OB)).toBe(REAL);
 		expect(await wrapped.probe(OB)).toEqual({ ok: true, latencyMs: 1 });
-		injector.set("ad-ob", { ...REAL, nativeShare: { state: "supported", checkedAt: 2 } });
+		injector.set("ad-ob", {
+			...REAL,
+			nativeShare: { state: "supported", checkedAt: "2026-10-26T00:01:00.000Z" },
+		});
 		expect(wrapped.capabilities?.(OB)?.nativeShare.state).toBe("supported");
 		expect(wrapped.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
 	});

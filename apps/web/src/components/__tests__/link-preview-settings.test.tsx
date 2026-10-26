@@ -84,7 +84,7 @@ const ADAPTERS: Connection[] = [
 ];
 
 const UNKNOWN = { state: "unknown" } as const;
-const SUPPORTED = { state: "supported", checkedAt: 1 } as const;
+const SUPPORTED = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const;
 
 /** 一级索引:连接 id → 这条连接的能力(适配器的回答)。直连与拓展连接都在里面。 */
 const CAPS: ConnectionCapabilitiesMap = {
@@ -95,20 +95,20 @@ const CAPS: ConnectionCapabilitiesMap = {
 		nativeShare: {
 			state: "unsupported",
 			reason: "这个实现没有 get_mini_app_ark",
-			checkedAt: 1,
+			checkedAt: "2026-10-26T00:00:00.000Z",
 		},
 	},
 	// 官机:收得到回复,发不了 @全体 / 小程序卡。
 	[A_QQ]: {
-		atAll: { state: "unsupported", reason: "要特殊权限", checkedAt: 1 },
+		atAll: { state: "unsupported", reason: "要特殊权限", checkedAt: "2026-10-26T00:00:00.000Z" },
 		inbound: SUPPORTED,
-		nativeShare: { state: "unsupported", reason: "没实现", checkedAt: 1 },
+		nativeShare: { state: "unsupported", reason: "没实现", checkedAt: "2026-10-26T00:00:00.000Z" },
 	},
 	// webhook:没有回程。
 	[A_HOOK]: {
 		atAll: SUPPORTED,
-		inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
-		nativeShare: { state: "unsupported", reason: "发不了", checkedAt: 1 },
+		inbound: { state: "unsupported", reason: "没有回程", checkedAt: "2026-10-26T00:00:00.000Z" },
+		nativeShare: { state: "unsupported", reason: "发不了", checkedAt: "2026-10-26T00:00:00.000Z" },
 	},
 };
 
@@ -392,7 +392,7 @@ describe("LinkPreviewSettings", () => {
 
 			it("不支持 → 不列(webhook 直连的会话目标也一样,不看平台名)", () => {
 				withCaps(
-					{ state: "unsupported", reason: "没有回程", checkedAt: 1 },
+					{ state: "unsupported", reason: "没有回程", checkedAt: "2026-10-26T00:00:00.000Z" },
 					ADAPTERS[3] as Connection,
 				);
 				expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();

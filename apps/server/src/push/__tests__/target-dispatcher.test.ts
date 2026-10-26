@@ -510,9 +510,9 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
  */
 describe("createTargetDispatcher — connectionCapabilities / probeConnectionCapabilities", () => {
 	const CAPS: ConnectionCapabilities = {
-		atAll: { state: "supported", checkedAt: 1 },
-		inbound: { state: "supported", checkedAt: 1 },
-		nativeShare: { state: "supported", checkedAt: 1 },
+		atAll: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+		inbound: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+		nativeShare: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
 	};
 
 	it("委派给平台实现的 capabilities / probeCapabilities,把 Connection 递过去", async () => {
@@ -556,7 +556,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
  * 适配器自己翻成别的明确答案(真发收到 1404)照收。重探的节奏(同一条连接 60 秒一次)也归宿主。
  */
 describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () => {
-	const supported = { state: "supported", checkedAt: 1 } as const;
+	const supported = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const;
 	const unknown = { state: "unknown" } as const;
 	const capsOf = (nativeShare: ConnectionCapabilities["nativeShare"]): ConnectionCapabilities => ({
 		atAll: supported,
@@ -602,7 +602,11 @@ describe("createTargetDispatcher — 宿主的能力记忆与重探节奏", () =
 		const { answer, dispatcher } = setup();
 		answer.current = capsOf(supported);
 		await dispatcher.probeConnectionCapabilities("a1");
-		const unsupported = { state: "unsupported", reason: "没有这个接口", checkedAt: 2 } as const;
+		const unsupported = {
+			state: "unsupported",
+			reason: "没有这个接口",
+			checkedAt: "2026-10-26T00:01:00.000Z",
+		} as const;
 		answer.current = capsOf(unsupported);
 		expect(dispatcher.connectionCapabilities("a1")?.nativeShare).toEqual(unsupported);
 		// 翻过去之后「还不知道」不会把它翻回「支持」。
@@ -928,8 +932,12 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
  * 「还不知道」(适配器答还不知道 / 没实现 capabilities / 没有适配器)一律发 —— 发错只是多一条消息。
  */
 describe("createTargetDispatcher — supportsAtAll(问适配器)", () => {
-	const supported = { state: "supported", checkedAt: 1 } as const;
-	const unsupported = { state: "unsupported", reason: "不行", checkedAt: 1 } as const;
+	const supported = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const;
+	const unsupported = {
+		state: "unsupported",
+		reason: "不行",
+		checkedAt: "2026-10-26T00:00:00.000Z",
+	} as const;
 	const unknown = { state: "unknown" } as const;
 	const capsWithAtAll = (atAll: ConnectionCapabilities["atAll"]): ConnectionCapabilities => ({
 		atAll,

@@ -16,9 +16,9 @@ const ADAPTERS = [
 
 /** 照真适配器的回答:onebot / 官机收得到,webhook 不行。 */
 const INBOUND_OF: Record<string, ConnectionCapabilities["inbound"]> = {
-	onebot: { state: "supported", checkedAt: 1 },
-	"qq-official": { state: "supported", checkedAt: 1 },
-	webhook: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
+	onebot: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+	"qq-official": { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+	webhook: { state: "unsupported", reason: "没有回程", checkedAt: "2026-10-26T00:00:00.000Z" },
 };
 function capabilitiesOf(connection: Connection): ConnectionCapabilities | undefined {
 	const inbound = INBOUND_OF[connection.platform];

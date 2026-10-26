@@ -293,6 +293,70 @@ describe("按清单注册平台适配器", () => {
 		expect(registered && "connectionAuth" in registered).toBe(false);
 	});
 
+	/**
+	 * 能力时刻由拓展给(它报自己的握手时刻),宿主不信自述:进门先按 3b-49 那条判据验带时区的
+	 * ISO,收下后统一成 `Z` 结尾的 UTC。验不过的那一格当「还不知道」,并记一行 warn。
+	 */
+	describe("拓展交来的能力 checkedAt", () => {
+		/** 照第三方 JS 的样子交:类型上说不过去的值也照样能进来。 */
+		function registerWithCaps(caps: unknown): ReturnType<typeof harness> {
+			const h = harness();
+			h.ctx.registerPlatformAdapter({
+				...def(),
+				capabilities: () => caps,
+				probeCapabilities: async () => caps,
+			} as unknown as PlatformAdapterDef);
+			return h;
+		}
+
+		it("带时区的 ISO 收下,统一成 Z 结尾的 UTC(capabilities 与 probeCapabilities 都过这道)", async () => {
+			const h = registerWithCaps({
+				atAll: { state: "supported", checkedAt: "2026-10-26T08:00:00+08:00" },
+				inbound: {
+					state: "unsupported",
+					reason: "没有回程",
+					checkedAt: "2026-10-26T08:00:00+08:00",
+				},
+				nativeShare: { state: "unknown" },
+			});
+			const [registered] = h.adapters.list();
+			const expected = {
+				atAll: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+				inbound: {
+					state: "unsupported",
+					reason: "没有回程",
+					checkedAt: "2026-10-26T00:00:00.000Z",
+				},
+				nativeShare: { state: "unknown" },
+			};
+			expect(registered?.capabilities?.(connection())).toEqual(expected);
+			expect(await registered?.probeCapabilities?.(connection())).toEqual(expected);
+			expect(h.lines.filter((line) => line.startsWith("warn "))).toEqual([]);
+		});
+
+		it.each([
+			["数字毫秒", 1793000000000],
+			["不是时刻的字符串", "昨天"],
+		])("交来%s:那一格变「还不知道」,记一行 warn 点名拓展、连接、能力格", (_label, bad) => {
+			const h = registerWithCaps({
+				atAll: { state: "supported", checkedAt: bad },
+				inbound: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+				nativeShare: { state: "unknown" },
+			});
+			const [registered] = h.adapters.list();
+			const caps = registered?.capabilities?.(connection());
+			expect(caps?.atAll).toEqual({ state: "unknown" });
+			// 同一格再问一次不刷屏。
+			registered?.capabilities?.(connection());
+			const warns = h.lines.filter((line) => line.startsWith("warn "));
+			expect(warns).toHaveLength(1);
+			expect(warns[0]).toContain("bridge");
+			expect(warns[0]).toContain("c1");
+			expect(warns[0]).toContain("atAll");
+			expect(warns[0]).toContain(String(bad));
+		});
+	});
+
 	// 验红:把 context.ts 里拓展适配器的组装换回 `...offered` 展开,这条红(原型上的 start / stop 没带过去)。
 	it("class 写的平台适配器:方法与 settingsSchema 都 bind 回实例", async () => {
 		const h = harness();

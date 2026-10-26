@@ -464,10 +464,12 @@ export function isReachabilityEvidence(result: DeliveryResult): boolean {
  * - `supported`:确认支持,`checkedAt` 是确认的时刻。
  * - `unsupported`:确认不支持,`reason` 给人看的一句话,`checkedAt` 是确认的时刻。
  * - `unknown`:还没探出来(没探过、连不上、对面没报),`reason` 可选。
+ *
+ * `checkedAt` 是**带时区的 ISO**;宿主交出来的一律是 `Z` 结尾的 UTC(`toISOString()` 的写法)。
  */
 export type CapabilitySupport =
-	| { state: "supported"; checkedAt: number }
-	| { state: "unsupported"; reason: string; checkedAt: number }
+	| { state: "supported"; checkedAt: string }
+	| { state: "unsupported"; reason: string; checkedAt: string }
 	| { state: "unknown"; reason?: string };
 
 /** 一条连接的能力快照,由这条连接的适配器回答。 */

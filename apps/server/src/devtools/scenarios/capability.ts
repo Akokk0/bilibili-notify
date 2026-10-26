@@ -73,9 +73,12 @@ function build(
 	const keep = { atAll: base?.atAll ?? unknown, inbound: base?.inbound ?? unknown };
 	switch (state) {
 		case "supported":
-			return { ...keep, nativeShare: { state: "supported", checkedAt: Date.now() } };
+			return { ...keep, nativeShare: { state: "supported", checkedAt: new Date().toISOString() } };
 		case "unsupported":
-			return { ...keep, nativeShare: { state: "unsupported", reason, checkedAt: Date.now() } };
+			return {
+				...keep,
+				nativeShare: { state: "unsupported", reason, checkedAt: new Date().toISOString() },
+			};
 		case "unknown":
 			return { ...keep, nativeShare: { state: "unknown" } };
 	}

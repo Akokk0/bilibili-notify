@@ -181,11 +181,11 @@ describe("checkApprovalEnable", () => {
 	const unknown = { state: "unknown" } as const;
 	const inbound = (i: ConnectionCapabilities["inbound"]) => (id: string) =>
 		id === "c1" ? { atAll: unknown, inbound: i, nativeShare: unknown } : undefined;
-	const receives = inbound({ state: "supported", checkedAt: 1 });
+	const receives = inbound({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
 	const noReturnPath = inbound({
 		state: "unsupported",
 		reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
-		checkedAt: 1,
+		checkedAt: "2026-10-26T00:00:00.000Z",
 	});
 	const notKnown = inbound({ state: "unknown" });
 
@@ -266,7 +266,11 @@ describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
 		id === "c1"
 			? {
 					atAll: { state: "unknown" },
-					inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
+					inbound: {
+						state: "unsupported",
+						reason: "没有回程",
+						checkedAt: "2026-10-26T00:00:00.000Z",
+					},
 					nativeShare: { state: "unknown" },
 				}
 			: undefined;

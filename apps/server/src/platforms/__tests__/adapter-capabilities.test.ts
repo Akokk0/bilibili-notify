@@ -54,12 +54,22 @@ function capsOf(adapter: PlatformAdapter, platform: string) {
 	return caps;
 }
 
+/** 带时区、以 UTC `Z` 结尾的 ISO —— 宿主交出的能力时刻一律是这种写法。 */
+const UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function expectUtcIso(value: unknown): void {
+	if (typeof value !== "string") throw new Error(`checkedAt 不是字符串:${String(value)}`);
+	expect(value).toMatch(UTC_ISO);
+	expect(new Date(value).toISOString()).toBe(value);
+}
+
 describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", () => {
 	it("onebot:atAll 支持、inbound 支持", () => {
 		const adapter = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		const caps = capsOf(adapter, "onebot");
 		expect(caps.atAll.state).toBe("supported");
 		expect(caps.inbound.state).toBe("supported");
+		if (caps.atAll.state === "supported") expectUtcIso(caps.atAll.checkedAt);
 		// 小程序卡仍是「没探过 = 还不知道」,这一片不动它。
 		expect(caps.nativeShare.state).toBe("unknown");
 	});
@@ -77,6 +87,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 			reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
 		});
 		expect(caps.inbound.state).toBe("supported");
+		if (caps.inbound.state === "supported") expectUtcIso(caps.inbound.checkedAt);
 		expect(caps.nativeShare.state).toBe("unsupported");
 		expect(caps.nativeShare.state === "unsupported" && caps.nativeShare.reason).toBeTruthy();
 	});
@@ -87,6 +98,7 @@ describe("内置适配器的 atAll / inbound 回答(逐格等于旧平台表)", 
 		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
 			const caps = capsOf(adapter, platform);
 			expect(caps.atAll.state).toBe("supported");
+			if (caps.atAll.state === "supported") expectUtcIso(caps.atAll.checkedAt);
 			expect(caps.inbound).toMatchObject({
 				state: "unsupported",
 				reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",

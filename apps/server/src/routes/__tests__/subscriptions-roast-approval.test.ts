@@ -28,11 +28,11 @@ function inboundOf(inbound: ConnectionCapabilities["inbound"]) {
 	return (id: string): ConnectionCapabilities | undefined =>
 		id === "c1" ? { atAll: UNKNOWN, inbound, nativeShare: UNKNOWN } : undefined;
 }
-const RECEIVES = inboundOf({ state: "supported", checkedAt: 1 });
+const RECEIVES = inboundOf({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
 const NO_RETURN_PATH = inboundOf({
 	state: "unsupported",
 	reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
-	checkedAt: 1,
+	checkedAt: "2026-10-26T00:00:00.000Z",
 });
 const NOT_KNOWN = inboundOf({ state: "unknown", reason: "桥没报这一项" });
 const NOT_KNOWN_NO_REASON = inboundOf({ state: "unknown" });
@@ -225,8 +225,12 @@ function routeWith(
 	return { app: createSubscriptionsRoute(deps, { api: null }), patchSubscription };
 }
 
-const SUPPORTED = { state: "supported", checkedAt: 1 } as const;
-const UNSUPPORTED = { state: "unsupported", reason: "没有回程", checkedAt: 1 } as const;
+const SUPPORTED = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const;
+const UNSUPPORTED = {
+	state: "unsupported",
+	reason: "没有回程",
+	checkedAt: "2026-10-26T00:00:00.000Z",
+} as const;
 
 const patchRoast = (body: unknown) => ({
 	method: "PATCH",

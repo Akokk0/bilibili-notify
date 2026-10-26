@@ -304,7 +304,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 | `isAvailable` | 是 | 开 | |
 | `probe` | 是 | 开 | 宿主每分钟调一次，连续两次探不通算断；适配器自己不报通断（见「问题上报」） |
 | `listConnectionCandidates(signal)` | 是 | 开 | 原 `listBots`，见「新建连接」 |
-| `capabilities` / `probeCapabilities` | 否 | 开 | 新增 `atAll`、`inbound`；原先按平台名判断的改成问能力 |
+| `capabilities` / `probeCapabilities` | 否 | 开 | 新增 `atAll`、`inbound`；原先按平台名判断的改成问能力。有效结论带 `checkedAt`：带时区的 ISO，宿主统一成 UTC |
 | `listAddressCandidates(connection, scope, signal)` | 否 | 不开 | alpha 之后桥帧改名时再看；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
 | `connectionAuth` | 否 | 不开 | 与订阅侧同一个 `AuthState`，结果是一份连接草稿；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
 

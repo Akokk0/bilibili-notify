@@ -2784,9 +2784,10 @@ describe("createPipelineRuntime — 连接所在平台的能力", () => {
 		// 内置平台的 atAll / inbound 是静态的「支持」,只有小程序卡要探;假实现照此,
 		// 「还不知道」才只剩小程序卡这一格(宿主补探看的是任一格还不知道)。
 		const caps = (): ConnectionCapabilities => ({
-			atAll: { state: "supported", checkedAt: 1 },
-			inbound: { state: "supported", checkedAt: 1 },
-			nativeShare: state === "supported" ? { state, checkedAt: 1 } : { state },
+			atAll: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+			inbound: { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" },
+			nativeShare:
+				state === "supported" ? { state, checkedAt: "2026-10-26T00:00:00.000Z" } : { state },
 		});
 		const pa: PlatformAdapter = {
 			adapterKey: "onebot",
@@ -2812,7 +2813,7 @@ describe("createPipelineRuntime — 连接所在平台的能力", () => {
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 		expect(c.runtime.connectionCapabilities(ADAPTER)?.nativeShare).toEqual({
 			state: "supported",
-			checkedAt: 1,
+			checkedAt: "2026-10-26T00:00:00.000Z",
 		});
 		// 已经有答案的不重探:主人点「测试」只做健康探测。
 		await c.runtime.probeConnection(ADAPTER);

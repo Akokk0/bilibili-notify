@@ -52,9 +52,9 @@ function capabilitiesFor(platform: string): ConnectionCapabilitiesMap {
 			? ({
 					state: "unsupported",
 					reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
-					checkedAt: 1,
+					checkedAt: "2026-10-26T00:00:00.000Z",
 				} as const)
-			: ({ state: "supported", checkedAt: 1 } as const);
+			: ({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" } as const);
 	return { "a-1": { atAll, inbound: unknown, nativeShare: unknown } };
 }
 

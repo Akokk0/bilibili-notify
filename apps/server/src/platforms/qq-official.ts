@@ -1257,8 +1257,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	let http: HttpClient | undefined;
 	/** 扫码建连接的任务表归适配器;`stop()` 时清空(没取走的草稿不留)。 */
 	const bindAuth = createQQConnectionAuth({ logger, http: () => http });
-	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
-	const adapterStartedAt = Date.now();
+	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻(UTC ISO)。 */
+	const adapterStartedAt = new Date().toISOString();
 
 	function makeTokenManager(cfg: QQOfficialConnectionSettings, client: HttpClient): QQTokenManager {
 		return createQQTokenManager({

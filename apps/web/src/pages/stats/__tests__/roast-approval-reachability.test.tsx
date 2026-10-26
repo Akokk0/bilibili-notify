@@ -45,11 +45,11 @@ function inboundCaps(
 ): ConnectionCapabilitiesMap {
 	return { [CONN]: { atAll: UNKNOWN, inbound, nativeShare: UNKNOWN } };
 }
-const RECEIVES = inboundCaps({ state: "supported", checkedAt: 1 });
+const RECEIVES = inboundCaps({ state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" });
 const NO_RETURN_PATH = inboundCaps({
 	state: "unsupported",
 	reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
-	checkedAt: 1,
+	checkedAt: "2026-10-26T00:00:00.000Z",
 });
 
 /** `capabilities` 省略 = 能力表这个请求永远不回来(模拟还在加载)。 */

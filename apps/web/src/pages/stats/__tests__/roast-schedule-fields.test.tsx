@@ -105,7 +105,7 @@ describe("useApprovalReachability — 主人目标得是私聊才能开审批", 
 			if (path === "/api/settings") return { master: { targetId: masterTargetId } };
 			// 能力表:这条 onebot 连接收得到主人的回复。
 			if (path === "/api/connections/capabilities") {
-				const supported = { state: "supported", checkedAt: 1 };
+				const supported = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" };
 				return {
 					"11111111-1111-4111-8111-111111111111": {
 						atAll: supported,

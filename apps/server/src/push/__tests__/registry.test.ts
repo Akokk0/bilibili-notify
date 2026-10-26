@@ -316,7 +316,7 @@ class ClassAdapter {
 	}
 	capabilities() {
 		return {
-			atAll: { state: "supported" as const, checkedAt: this.latencyMs },
+			atAll: { state: "supported" as const, checkedAt: "2026-10-26T00:00:00.000Z" },
 			inbound: { state: "unknown" as const },
 			nativeShare: { state: "unknown" as const },
 		};
@@ -331,7 +331,7 @@ describe("adapter 注册表 · class 写的适配器(方法在原型上)", () =>
 		expect(await view?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
 		expect(view?.capabilities?.(extensionConnection("classy"))?.atAll).toEqual({
 			state: "supported",
-			checkedAt: 42,
+			checkedAt: "2026-10-26T00:00:00.000Z",
 		});
 		expect(view?.isAvailable(extensionConnection("classy"), {} as never)).toBe(true);
 		const [full] = sendableAdapters(registry);
