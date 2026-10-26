@@ -13,8 +13,8 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, specialViewers: ["777"] },
-	{ id: "s3", uid: "300", name: "丙", enabled: true },
+	{ id: "s1", externalId: "100", name: "甲", enabled: true, specialViewers: ["777"] },
+	{ id: "s3", externalId: "300", name: "丙", enabled: true },
 ];
 
 function setup() {

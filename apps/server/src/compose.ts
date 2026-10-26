@@ -173,12 +173,12 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 						.list()
 						.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
 						.map((sub) => {
-							const uid = subscriptionIdentityOf(sub).externalId;
+							const externalId = subscriptionIdentityOf(sub).externalId;
 							const runtime = deps.subscriptionState.get(sub.id);
 							return {
 								id: sub.id,
-								uid,
-								name: runtime?.cachedProfile?.name ?? uid,
+								externalId,
+								name: runtime?.cachedProfile?.name ?? externalId,
 								enabled: sub.enabled,
 								specialViewers: sub.specialViewers.map((v) => v.id),
 							};

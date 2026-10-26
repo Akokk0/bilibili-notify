@@ -13,7 +13,7 @@ import { biliRegistry } from "./support/registry.js";
  * 它不经请求客户端的拦截,所以回 `-101` 也**不会**把登录状态变成失效 —— 说明文字要如实写明。
  */
 
-const SUBS: SubPick[] = [{ id: "s1", uid: "100", name: "甲", enabled: true }];
+const SUBS: SubPick[] = [{ id: "s1", externalId: "100", name: "甲", enabled: true }];
 
 class FakeApi {
 	real = vi.fn(

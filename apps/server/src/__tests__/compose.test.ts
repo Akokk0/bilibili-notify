@@ -277,14 +277,14 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 		expect(picked).toEqual([
 			{
 				id: "bilibili-100",
-				uid: "100",
+				externalId: "100",
 				name: "甲",
 				enabled: true,
 				specialViewers: ["777"],
 			},
 			{
 				id: "bilibili-200",
-				uid: "200",
+				externalId: "200",
 				name: "200",
 				enabled: false,
 				specialViewers: [],

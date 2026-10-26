@@ -69,9 +69,9 @@ function author(sub: SubPick, ts: number, pubAction: string, avatar: string) {
 	return {
 		face: avatar,
 		following: true,
-		jump_url: `https://space.bilibili.com/${sub.uid}/dynamic`,
+		jump_url: `https://space.bilibili.com/${sub.externalId}/dynamic`,
 		label: "",
-		mid: Number(sub.uid),
+		mid: Number(sub.externalId),
 		name: sub.name,
 		pub_action: pubAction,
 		pub_action_text: pubAction,
@@ -312,7 +312,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 					text: typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_TEXT,
 					ts: Math.floor(Date.now() / 1000),
 				},
-				deps.profileAvatars()?.avatarUrlOf(sub.uid) ?? FALLBACK_PIC,
+				deps.profileAvatars()?.avatarUrlOf(sub.externalId) ?? FALLBACK_PIC,
 			);
 			pending.push(fake);
 			syncOverride(api);

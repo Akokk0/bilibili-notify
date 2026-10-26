@@ -11,7 +11,7 @@ import { fakeAuth } from "./support/fake-auth.js";
 import { biliRegistry } from "./support/registry.js";
 
 const NOT_READY = "B 站来源还没起来，先等它起来再试";
-const SUBS: SubPick[] = [{ id: "s1", uid: "100", name: "甲", enabled: true }];
+const SUBS: SubPick[] = [{ id: "s1", externalId: "100", name: "甲", enabled: true }];
 
 describe("B 站场景现取开发壳", () => {
 	it("直播:壳没起来时回提示且不塞事件;之后起来再按照常生效", async () => {

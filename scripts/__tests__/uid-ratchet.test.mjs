@@ -25,7 +25,7 @@ import {
  *     带别的字的(日志的 `"uid=" + x`、提示词里的「按 UID 查」)不算:那是日志与文案,不是「拿 uid 当身份」。
  *   - 一个节点一处。
  * - 整目录不扫:`bilibili/`(B 站自己的 uid)、`migration/`(0.x 的形状:按 uid 的文件名)。`platforms/` 不豁免。
- * - 白名单:空。`compose.ts` 不进(开发场景的订阅视图里把 `externalId` 叫成 `uid`,记棘轮,有数比没数好)。
+ * - 白名单:空。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-12 定:清零期是 3b 末,
  *   清不了的几格照记,清零期的字面先不改,3b 收尾时再问。
  *
@@ -64,7 +64,6 @@ export const ADVICE =
  * 行内注释只如实写这一格是什么,不写清零期。
  */
 export const RATCHET = {
-	"apps/server/src/compose.ts": 3, // 开发场景的订阅视图里把 `externalId` 叫成 `uid`
 	"apps/server/src/routes/cards.ts": 33,
 	"apps/server/src/routes/subscriptions.ts": 8,
 };

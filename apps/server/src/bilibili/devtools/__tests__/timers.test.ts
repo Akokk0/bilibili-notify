@@ -8,8 +8,8 @@ import { biliRegistry } from "./support/registry.js";
  */
 
 const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true },
-	{ id: "s2", uid: "200", name: "乙", enabled: false },
+	{ id: "s1", externalId: "100", name: "甲", enabled: true },
+	{ id: "s2", externalId: "200", name: "乙", enabled: false },
 ];
 
 function setup(over: Partial<Parameters<typeof biliTimerScenarios>[0]> = {}) {
