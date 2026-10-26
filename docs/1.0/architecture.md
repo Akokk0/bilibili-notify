@@ -339,6 +339,8 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 
 ### 第二层：静态扫描
 
+🔗 现状（3b-50，10-26）：下表里「3b 末清零」的那几道棘轮，主人 10-26 定按「3b 收尾能清的清零，余下的等第 4 期」收：事件载荷与出网点名表 3b 已清零；守卫 11、uid、`.platform` 决定、推送守卫②与边界表剩下的格子都等第 4 期，各格的原因写在守卫文件的表里。
+
 | 守卫 | 判据 / 范围 | 什么时候红 | 期 |
 | --- | --- | --- | --- |
 | 1 边界表 | 核心目录不许 import 服务端 `bilibili/`，例外只有 `compose.ts`；和现有两条拓展边界、推送守卫① 合成一张「谁不许 import 谁」的边界表。🔗 3a-40 按计数开张（`scripts/__tests__/import-boundaries.test.mjs` 的「核心不许 import 服务端的 `bilibili/`」一行，判据按解析后的路径、`import type` 与动态 import 也算）：例外只有 `compose.ts`，其余文件按文件记越界 import 的条数、两头钉（多了红、记多了也红），今天 10 个文件 19 条（开张时 20 条，设置登记搬进 `compose.ts` 后 `runtime/bootstrap.ts` 2 → 1），全在等新接口，3b 末清零；中立小件当片已搬进 `live/`、`posts/` | 核心文件 import 了 `bilibili/` | 3a |
@@ -403,6 +405,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 19 | 主人目标必须是私聊目标：`master.targetId` 指向群目标时 schema 校验不过；面板选主人的下拉只列私聊目标。加固（随各项，ADR-0024 决策 14）：PATCH 把主人目标改成群目标直接拒收；`notifyMaster` 发送时复检，不是私聊就拒发（`invalid`） |
 | 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 🔗 现状（3b-44，10-25）：清单一侧由 `packages/internal/src/schema/__tests__/extension-manifest.test.ts` 钉住取值范围、去重与周期直播要同时带开播和下播；登记一侧由 `apps/server/src/extensions/__tests__/register-source.test.ts` 钉住声明 `liveStreaming` 就必须实现 `fetchLiveStatus` |
 | 22 | 拓展不裸开定时器、不裸挂服务端：扫 `extensions/*/src`（不含测试），出现不经 ctx 的 `setTimeout` / `setInterval`、`createServer`、自己监听端口的 `WebSocketServer`（不带 `noServer`）就红；第三方拓展的打包产物不扫，库自己会用定时器（ADR-0012 决策 11） |
+| 23 | 集成不自造客户端：`bilibili/`、`platforms/` 与各拓展的 `src`（不含测试）里出现 `new HttpClient(` / `new CookieJar(` 就红（按语法树判，具名导入的别名与属性访问也算），客户端经宿主的共用工厂 `openIntegration` 拿；上限为零、没有白名单（工厂住在 `integrations/`，不在扫描根里）。主人 10-16 定（3b-39 的题）。🔗 3b-50（10-26）已落：`scripts/__tests__/integration-no-own-client.test.mjs` |
 
 - 守卫 13 的清单 3a-22-2 加了一条：连接改成 `adapterKey` / `settings` / `platformSnapshot`、`testStatus` 两处都不带过来（修订号 40）。
 - 推送侧另有两道数据守卫（ADR-0024 决策 9，3a）：改目标的 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
