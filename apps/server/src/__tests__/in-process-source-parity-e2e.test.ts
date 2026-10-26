@@ -164,7 +164,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P47)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P49)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -310,6 +310,17 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		id: "P47",
 		title:
 			"reportProfile：名字、头像（图库引用）、简介、粉丝数、粉丝团名进资料缓存；停用的不收；粉丝样本按刷新间隔稀释；面板那一行当场跟着变",
+		checked: true,
+	},
+	{
+		id: "P48",
+		title: "按订阅的皮肤：假来源作品出图用这条订阅指的皮肤与旋钮，不是全局当前那套",
+		checked: true,
+	},
+	{
+		id: "P49",
+		title:
+			"过滤与点评共用 postText：假来源作品的正文 / 标题 / 视频标题 / 转发原文，过滤吃得到非正文段，AI 输入带齐同一组字段",
 		checked: true,
 	},
 	{
@@ -1951,6 +1962,134 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P28");
 	});
 
+	// 验红:`post-settings.ts` 的 `cardSkin` 忽略订阅覆盖(取全局),出图的 HTML 里是全局皮肤的旋钮色,这条红;
+	// `cardSkinKnobs` 不递给出图器,订阅的旋钮色画不进去,这条也红。
+	it("P48 按订阅的皮肤:假来源作品出图用这条订阅指的皮肤与旋钮,不是全局当前那套", async () => {
+		const duplicate = async (name: string): Promise<string> => {
+			const res = await okRes(await api("/api/cards/skins/default/duplicate", json({ name })));
+			return ((await res.json()) as { id: string }).id;
+		};
+		const subSkin = await duplicate("订阅用皮肤P48");
+		const globalSkin = await duplicate("全局皮肤P48");
+		const SUB_COLOR = "#1a2b3c";
+		const GLOBAL_COLOR = "#c0ffee";
+		try {
+			await okRes(await api("/api/cards/skins/active", json({ id: globalSkin }, "PUT")));
+			await patchSettings({
+				defaults: { cardSkinKnobs: { [globalSkin]: { "gradient-start": GLOBAL_COLOR } } },
+			});
+			await okRes(
+				await api(
+					`/api/subscriptions/${SUB.alice}`,
+					json(
+						{
+							overrides: {
+								cardSkin: subSkin,
+								cardSkinKnobs: { [subSkin]: { "gradient-start": SUB_COLOR } },
+							},
+						},
+						"PATCH",
+					),
+				),
+			);
+			await clearCaptures();
+			const before = renderedHtml.length;
+			currentProbe().ctx?.reportPost(EXT.alice, textReport("p48", "小爱", "按订阅的皮肤P48"));
+			await settledCaptures(1);
+			const html = renderedHtml.slice(before).find((page) => page.includes("按订阅的皮肤P48"));
+			expect(html, "这条作品没画成卡").toBeDefined();
+			expect(html).toContain(SUB_COLOR);
+			expect(html).not.toContain(GLOBAL_COLOR);
+		} finally {
+			await okRes(
+				await api(
+					`/api/subscriptions/${SUB.alice}`,
+					json({ overrides: { cardSkin: null, cardSkinKnobs: null } }, "PATCH"),
+				),
+			);
+			await okRes(await api("/api/cards/skins/active", json({ id: "default" }, "PUT")));
+			await patchSettings({ defaults: { cardSkinKnobs: { [globalSkin]: null } } });
+			for (const id of [subSkin, globalSkin]) {
+				await api(`/api/cards/skins/${id}`, { method: "DELETE" });
+			}
+		}
+		drove("P48");
+	});
+
+	// 验红:`post-filter.ts` 只拿正文过滤(不调 `postText`),标题 / 视频标题 / 转发原文命中的屏蔽词放行,第一段红;
+	// `deliver-post.ts` 的 AI 输入换成只给正文,第二段红。
+	it("P49 过滤与点评共用 postText:假来源作品的正文 / 标题 / 视频标题 / 转发原文,过滤吃得到非正文段,AI 输入带齐同一组字段", async () => {
+		const BODY = "正文标记P49";
+		const TITLE = "标题标记P49";
+		const VIDEO = "视频标记P49";
+		const REPOST = "转发标记P49";
+		const fields = (): Partial<Post> => ({
+			title: TITLE,
+			video: hiddenVideo(VIDEO),
+			repost: {
+				creator: { name: "原作者P49" },
+				publishedAt: "2026-09-30T08:00:00.000Z",
+				text: REPOST,
+			},
+		});
+		const setFilters = async (rules: Partial<typeof NO_FILTERS>) =>
+			okRes(
+				await api(
+					`/api/subscriptions/${SUB.alice}`,
+					json({ overrides: { filters: { ...NO_FILTERS, ...rules } } }, "PATCH"),
+				),
+			);
+		try {
+			// 一拍:屏蔽词各只命中一个非正文段,都被过滤并在历史留痕。
+			for (const [mark, key] of [
+				[TITLE, "title"],
+				[VIDEO, "video"],
+				[REPOST, "repost"],
+			] as const) {
+				await setFilters({ blockKeywords: [mark] });
+				await clearCaptures();
+				const report = textReport(`p49-${key}`, "小爱", BODY, fields());
+				currentProbe().ctx?.reportPost(EXT.alice, report);
+				await vi.waitFor(async () => {
+					const row = (await history()).find((entry) =>
+						entry.messages[0]?.text?.endsWith(report.url),
+					);
+					expect(row, key).toMatchObject({
+						status: "filtered",
+						filteredBy: "blocked-keyword",
+						subscriptionId: SUB.alice,
+					});
+				});
+				await new Promise((resolve) => setTimeout(resolve, 200));
+				expect(await captures(), key).toEqual([]);
+			}
+			// 二拍:不过滤,开 AI,同一组字段在送给模型的那一问里带着各自的标签。
+			await setFilters({});
+			await patchSettings({ ai: { enabled: true } });
+			try {
+				aiAsked.length = 0;
+				await clearCaptures();
+				currentProbe().ctx?.reportPost(EXT.alice, textReport("p49-ai", "小爱", BODY, fields()));
+				await settledCaptures(1);
+				const asked = aiAsked.join("\n");
+				for (const part of [
+					BODY,
+					`标题：${TITLE}`,
+					`视频标题：${VIDEO}`,
+					"转发自 原作者P49",
+					REPOST,
+				]) {
+					expect(asked, part).toContain(part);
+				}
+			} finally {
+				await patchSettings({ ai: { enabled: false } });
+			}
+		} finally {
+			await setFilters({});
+		}
+		drove("P49");
+	});
+
 	// 验红:`routes/live.ts` 不按订阅仓补身份,或在播表里把同一订阅列两次,「恰好一行」那段红;
 	// `source-context.ts` 里 `reportLive` 的展开只取第一条订阅、或 `pipeline.ts` 不递 `liveSignals`,开播卡那段红。
 	it("P29 reportLive:开播、状态、下播进场次,推开播与下播卡,断流接续同一场,在播列表里恰好一行(按订阅 id 认)", async () => {
@@ -3529,17 +3668,17 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 47 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(52);
+	it("PARITY_ROWS:对拍 49 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(54);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 47 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 49 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来)。
+		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
