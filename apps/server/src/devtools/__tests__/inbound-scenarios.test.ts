@@ -202,7 +202,7 @@ describe("inbound.link", () => {
 		expect(group).toHaveBeenCalledWith(
 			expect.objectContaining({
 				address: "88888",
-				text: expect.stringContaining("bilibili.com"),
+				text: expect.stringContaining("example.com"),
 				sharedLinks: [],
 			}),
 			{ connectionId: "ad-ob", platform: "onebot" },
