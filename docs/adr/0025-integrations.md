@@ -1,6 +1,6 @@
 # ADR-0025：集成 —— 上下文、设置、请求客户端、问题与健康
 
-- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**未施工**；归期见 [ADR-0021](0021-neutral-core.md) 决策 60。
+- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**第 2 期 / 3a / 3b 已落一部分**，现状见各决策下的 🔗；余下归第 4 期。
 - **记录方式**：拷问当场落的定案。类型与目录的正本在 [docs/1.0/](../1.0/) 的 subscription-sources、extension-contract、architecture、data-model；本份只写定了什么、为什么、否了什么。
 - **影响面**：新包 `packages/http`；`apps/server` 的装配、拓展宿主、设置加载、问题表、健康路由；`packages/extension`（契约 v3）；`apps/web` 的系统页、问题框、健康卡。
 - **依赖**：[ADR-0021](0021-neutral-core.md)、[ADR-0019](0019-subscription-source-opening.md)（拓展设置与上报）、[ADR-0026](0026-failure-results.md)（失败规矩）。

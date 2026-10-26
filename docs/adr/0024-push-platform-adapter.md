@@ -1,6 +1,6 @@
 # ADR-0024：推送侧中立 —— 内置平台与拓展实现同一个 `PlatformAdapter`
 
-- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**未施工**；归期见 [ADR-0021](0021-neutral-core.md) 决策 60。
+- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**3a / 3b 已落一部分**，现状见各决策下的 🔗；余下归第 4 期。
 - **记录方式**：拷问当场落的定案。类型、目录与迁移条目的正本在 [docs/1.0/](../1.0/) 的 push、data-model、data-and-migration；本份只写定了什么、为什么、否了什么。
 - **影响面**：`packages/internal`（平台表与连接、目标 schema 搬出）、`packages/push`、`apps/server` 的 `platforms/` 与 `push/`、`apps/contract`、`apps/web` 的推送目标页、`extensions/bridge`。
 - **依赖**：[ADR-0021](0021-neutral-core.md)（中立核心）、[ADR-0025](0025-integrations.md)（集成上下文与设置）、[ADR-0026](0026-failure-results.md)（失败规矩）。

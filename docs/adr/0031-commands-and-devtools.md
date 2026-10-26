@@ -1,6 +1,6 @@
 # ADR-0031：指令与 devtools 场景
 
-- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**未施工**。
+- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**3a / 3b 已落一部分**，现状见各决策下的 🔗；余下归第 4 期。
 - **记录方式**：拷问当场落的定案。接口的正本在 [docs/1.0/](../1.0/) 的 subscription-sources；本份只写定了什么、为什么、否了什么。
 - **影响面**：指令框架与各指令、登录指令、devtools 的登记表与场景、`apps/contract` 的 devtools 契约。
 - **依赖**：[ADR-0021](0021-neutral-core.md)、[ADR-0024](0024-push-platform-adapter.md)（`sendToAddress`）、[ADR-0026](0026-failure-results.md)、[ADR-0008](0008-devtools.md)。
