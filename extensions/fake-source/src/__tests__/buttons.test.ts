@@ -354,7 +354,7 @@ describe("报一条五种正文片段的作品", () => {
 					segment.kind === "emoji",
 			);
 
-			expect(mention?.userId).toEqual(expect.any(String));
+			expect(mention?.externalId).toEqual(expect.any(String));
 			expect(topic?.name).toEqual(expect.any(String));
 			expect(isHarmlessUrl(link?.url)).toBe(true);
 			expect(fake.storedRefs()).toContain(link?.icon);

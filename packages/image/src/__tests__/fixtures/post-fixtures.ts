@@ -254,7 +254,7 @@ export const DYNAMIC_SAMPLE_POSTS: Readonly<Record<string, Post>> = {
 			{
 				kind: "mention",
 				text: "@示例剪辑师",
-				userId: "12345",
+				externalId: "12345",
 			},
 			{
 				kind: "text",

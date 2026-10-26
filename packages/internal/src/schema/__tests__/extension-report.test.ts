@@ -224,7 +224,7 @@ describe("post report", () => {
 	it("accepts all five rich text segment kinds", () => {
 		const richText = [
 			{ kind: "text", text: "plain" },
-			{ kind: "mention", text: "@name", userId: "user-1" },
+			{ kind: "mention", text: "@name", externalId: "user-1" },
 			{ kind: "topic", text: "#topic", name: "topic" },
 			{ kind: "link", text: "link", url: "https://example.com", icon: IMAGE },
 			{ kind: "emoji", text: "[doge]", image: IMAGE },
@@ -249,12 +249,12 @@ describe("post report", () => {
 					...POST.post,
 					richText: [
 						{ kind: "text", text: "plain" },
-						{ kind: "mention", text: "@name", userId: 42 },
+						{ kind: "mention", text: "@name", externalId: 42 },
 					],
 				},
 			}),
 		).toContainEqual(
-			expect.objectContaining({ path: ["post", "richText", 1, "userId"], code: "type" }),
+			expect.objectContaining({ path: ["post", "richText", 1, "externalId"], code: "type" }),
 		);
 	});
 

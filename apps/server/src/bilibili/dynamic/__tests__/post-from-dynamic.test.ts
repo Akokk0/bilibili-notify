@@ -183,14 +183,14 @@ describe("富文本节点 → 五种片段", () => {
 		]);
 	});
 
-	it("AT → mention,有 rid 带 userId,没有就不带", () => {
+	it("AT → mention,有 rid 带 externalId,没有就不带", () => {
 		expect(
 			segmentsOf(
 				node("RICH_TEXT_NODE_TYPE_AT", "@甲", { rid: "12345" }),
 				node("RICH_TEXT_NODE_TYPE_AT", "@乙"),
 			),
 		).toEqual([
-			{ kind: "mention", text: "@甲", userId: "12345" },
+			{ kind: "mention", text: "@甲", externalId: "12345" },
 			{ kind: "mention", text: "@乙" },
 		]);
 	});

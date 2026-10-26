@@ -1151,7 +1151,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			const emoji = rich.find((s) => s.kind === "emoji");
 			expect(mention).toMatchObject({
 				text: "@假朋友",
-				userId: expect.stringContaining("fake-user-"),
+				externalId: expect.stringContaining("fake-user-"),
 			});
 			expect(topic).toMatchObject({ text: "#假话题", name: "假话题" });
 			expect(link).toMatchObject({

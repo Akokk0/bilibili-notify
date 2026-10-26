@@ -414,7 +414,7 @@ describe("fetchPostImages 的表情图", () => {
 			richText: [
 				{ kind: "emoji", text: "[doge]", image: kept },
 				{ kind: "emoji", text: "[other]" },
-				{ kind: "mention", text: "@甲", userId: "1" },
+				{ kind: "mention", text: "@甲", externalId: "1" },
 			],
 		});
 

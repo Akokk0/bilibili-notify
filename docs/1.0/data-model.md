@@ -230,7 +230,7 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 - 所有图格（封面、附加块、锁图标）都是 `PostImage`。图由来源先用 `ctx.fetchImage`（有链接）或 `ctx.storeImage`（手里已是字节）存进图库、填 `ref`，上报里只交 `ImageRef`；抓失败（两者都返回结果形状）由来源决定跳过这张，或只给 `url`（卡上画占位）。
 - **正文片段 `RichText`**（09-27 拍板）只有五种，全中立、核心不认识任何平台：
   - `{ kind: "text", text }`：换行留在 `text` 里当 `\n`，不设单独的换行片段；Unicode 表情也在这里。
-  - `{ kind: "mention", text, userId? }`：平台只给昵称时不带 `userId`。
+  - `{ kind: "mention", text, externalId? }`：平台只给昵称时不带 `externalId`。🔗 现状（3b-50，10-26）：字段由 `userId` 改叫 `externalId`，与命名规范「用户 id」一行一致。
   - `{ kind: "topic", text, name }`：`name` 去掉 `#`。
   - `{ kind: "link", text, url, icon?: ImageRef }`：`text` 是来源给的显示文字（B 站节点的 `text`，视频链接就是标题），`url` 是跳转地址（B 站 `jump_url`）；图标由来源存进图库再给引用，核心不留图标枚举。B 站的网页、视频、抽奖、投票、商品节点都翻成链接。
   - `{ kind: "emoji", text, image?: ImageRef }`：`text` 是「[doge]」这种代码，没图时当文字显示。

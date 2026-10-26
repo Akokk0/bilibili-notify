@@ -164,7 +164,7 @@ export async function fakeRichPost(
 	const emoji = await store(pictureAt(n + 1));
 	const richText: ExtensionRichText = [
 		{ kind: "text", text: `第 ${n} 条五种片段：` },
-		{ kind: "mention", text: "@假朋友", userId: `fake-user-${tagOf(externalId)}` },
+		{ kind: "mention", text: "@假朋友", externalId: `fake-user-${tagOf(externalId)}` },
 		{ kind: "text", text: " 在 " },
 		{ kind: "topic", text: "#假话题", name: "假话题" },
 		{ kind: "text", text: " 里看到一个 " },

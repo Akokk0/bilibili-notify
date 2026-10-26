@@ -15,7 +15,7 @@ describe("normalizePost —— 片段的字拼起来必须等于正文", () => {
 				{ kind: "text", text: "看 " },
 				{ kind: "topic", text: "#新歌#", name: "新歌" },
 				{ kind: "text", text: " " },
-				{ kind: "mention", text: "@小明", userId: "42" },
+				{ kind: "mention", text: "@小明", externalId: "42" },
 			],
 		});
 		expect(normalizePost(p)).toBe(p);

@@ -295,8 +295,8 @@ function segmentOf(node: RawNode): RichTextSegment {
 	const text = textOfNode(node);
 	if (node.emoji) return { kind: "emoji", text };
 	if (node.type === TYPE_AT) {
-		const userId = node.rid === undefined || node.rid === "" ? undefined : String(node.rid);
-		return { kind: "mention", text, ...(userId === undefined ? {} : { userId }) };
+		const externalId = node.rid === undefined || node.rid === "" ? undefined : String(node.rid);
+		return { kind: "mention", text, ...(externalId === undefined ? {} : { externalId }) };
 	}
 	if (node.type === TYPE_TOPIC) return { kind: "topic", text, name: text.replace(/^#|#$/g, "") };
 	if (node.type !== undefined && LINK_NODE_TYPES.has(node.type)) {

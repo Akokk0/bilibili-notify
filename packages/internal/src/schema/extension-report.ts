@@ -90,7 +90,7 @@ const ExtensionRichTextSegmentSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("mention"),
 		text: LongTextSchema,
-		userId: ExternalIdSchema.optional(),
+		externalId: ExternalIdSchema.optional(),
 	}),
 	z.strictObject({
 		kind: z.literal("topic"),

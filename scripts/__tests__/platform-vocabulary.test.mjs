@@ -449,8 +449,6 @@ export function scanRepo() {
 export const RATCHET = {
 	"packages/internal/src/identity.ts": 2, // 保留 id `"onebot"` / `"qq-official"`
 	"packages/internal/src/platform-registry.ts": 26, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2
-	"packages/internal/src/post.ts": 1, // 同名不同物:作品正文「@某人」片段的 `userId`,是来源那边的用户,不是推送平台的入站地址
-	"packages/internal/src/schema/extension-report.ts": 1, // 同名不同物:第 3 版上报 schema 里正文「@某人」片段的 `userId`,同上
 	"packages/internal/src/schema/targets.ts": 32, // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)
 };
 

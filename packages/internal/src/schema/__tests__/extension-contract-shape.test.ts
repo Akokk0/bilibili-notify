@@ -49,7 +49,7 @@ const CONTRACT: readonly ContractRow[] = [
 	{ name: "清单 v3", schema: ExtensionManifestV3Schema, digest: "933caf5c69804379" },
 	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "6658c08ec03129ea" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
-	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "3044da60c4959f2c" },
+	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "075ad603af0b2b4c" },
 	{
 		name: "上报:直播信号",
 		schema: ExtensionLiveSignalReportSchema,

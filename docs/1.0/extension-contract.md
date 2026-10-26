@@ -224,7 +224,7 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 | 作品上的 `id` / `url` | 挪到 `ExtensionPostReport` 信封上：`postId` / `url` |
 | 表格积木 `count` | `showCount` |
 
-正文：拓展必交纯文本 `text`，可选交片段列表 `richText`（09-27 拍板，推翻 09-26 精简时无声改成的「交完整片段」，也不是 Q3 原来的「只交纯文本」）。`text` 只放正文，标题、视频标题、转发的原作品各有自己的位置（ADR-0028 决策 1）。契约只开放五种片段：文字、@人、话题、链接、表情，是中立 `RichText` 的子集，宿主一对一转成中立片段；中立片段以后加种类不影响契约，开放新种类是一次明确的加宽。选片段不选「纯文本 + 位置」：各平台的位置单位互不兼容（Bluesky UTF-8 字节、Telegram / YouTube UTF-16、X 码点），片段让作者按自己平台的单位切，调研见施工记录。`text` 是用户在平台上看到的字，平台私有标记（小红书 `#x[话题]#`、Discord `<@id>`、X 的 `&amp;` 转义）由拓展剥掉。片段字段与中立 `RichText` 完全相同（见 data-model「正文片段」）：`mention` 的 `userId` 可选，`link` 带 `url` 与可选图标，图标和表情图都先用 `ctx.storeImage` / `ctx.fetchImage` 存成 `ImageRef`。
+正文：拓展必交纯文本 `text`，可选交片段列表 `richText`（09-27 拍板，推翻 09-26 精简时无声改成的「交完整片段」，也不是 Q3 原来的「只交纯文本」）。`text` 只放正文，标题、视频标题、转发的原作品各有自己的位置（ADR-0028 决策 1）。契约只开放五种片段：文字、@人、话题、链接、表情，是中立 `RichText` 的子集，宿主一对一转成中立片段；中立片段以后加种类不影响契约，开放新种类是一次明确的加宽。选片段不选「纯文本 + 位置」：各平台的位置单位互不兼容（Bluesky UTF-8 字节、Telegram / YouTube UTF-16、X 码点），片段让作者按自己平台的单位切，调研见施工记录。`text` 是用户在平台上看到的字，平台私有标记（小红书 `#x[话题]#`、Discord `<@id>`、X 的 `&amp;` 转义）由拓展剥掉。片段字段与中立 `RichText` 完全相同（见 data-model「正文片段」）：`mention` 的 `externalId` 可选，`link` 带 `url` 与可选图标，图标和表情图都先用 `ctx.storeImage` / `ctx.fetchImage` 存成 `ImageRef`。
 
 时刻与核心同为带时区的 ISO，进门只统一 UTC（3b-49，10-25 主人改判；原为拓展交整数毫秒、进门换 ISO）：
 

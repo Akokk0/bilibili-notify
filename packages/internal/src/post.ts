@@ -29,7 +29,7 @@ export interface Creator {
  */
 export type RichTextSegment =
 	| { kind: "text"; text: string }
-	| { kind: "mention"; text: string; userId?: string }
+	| { kind: "mention"; text: string; externalId?: string }
 	| { kind: "topic"; text: string; name: string }
 	| { kind: "link"; text: string; url: string; icon?: ImageRef }
 	| { kind: "emoji"; text: string; image?: ImageRef };
