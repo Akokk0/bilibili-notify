@@ -29,7 +29,7 @@ import { LoginFlow } from "./login-flow.js";
  *
  * Stop (`stop()`, 同步): stop the flow and the api first (this voids an in-flight refresh), drop the `onRestored`
  * subscription. 最后一次存盘与关存储把手不在这里:那是收 B 站上下文的事(`compose.ts` 在关停的 `stop` 段登记,
- * 晚于引擎跑,所以这一步总排在存盘之前)。
+ * 晚于推送链路跑,所以这一步总排在存盘之前)。
  */
 export interface AuthSystem {
 	readonly api: Api;

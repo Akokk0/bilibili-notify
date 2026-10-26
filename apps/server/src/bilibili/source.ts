@@ -48,7 +48,7 @@ export interface BiliSourceDeps {
 	accountImages: ImageWriter;
 	/**
 	 * 开发壳(只开发版有):登录系统造好之后,把真的 `Api` / 登录口递进来、换回套了 Proxy 的那一份当来源自己用的
-	 * (`Source.auth`、关注同步、分层上报器读套过壳的登录口;两个引擎读原始的)。生产里不传,原样用真的。
+	 * (`Source.auth`、关注同步、分层上报器读套过壳的登录口;动态轮询与直播监听读原始的)。生产里不传,原样用真的。
 	 */
 	devShells?: {
 		api(real: Api): Api;
@@ -75,7 +75,7 @@ export interface BiliSource extends Source {
 				reportAccountInfo(): Promise<void>;
 		  }
 		| undefined;
-	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
+	/** 动态轮询;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicPoller | undefined;
 	/** 直播房号;没 start 或已 stop 时是 undefined。开发场景挑房间读它。 */
 	liveRooms(): { roomIdOf(externalId: string): string | undefined } | undefined;
@@ -83,7 +83,7 @@ export interface BiliSource extends Source {
 	profileAvatars(): { avatarUrlOf(externalId: string): string | undefined } | undefined;
 }
 
-/** 从 B 站设置算动态引擎的配置(启动与热更共用)。 */
+/** 从 B 站设置算动态轮询的配置(启动与热更共用)。 */
 const dynamicConfigOf = (settings: { dynamicCron: string }) => ({
 	dynamicCron: settings.dynamicCron,
 	dynamicVideoUrlToBV: false,
@@ -145,7 +145,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		accountImages: deps.accountImages,
 	});
 	const biliApi = deps.devShells?.api(login.api) ?? login.api;
-	// 套过壳的登录口:`Source.auth`、关注同步、分层上报器读它;两个引擎读 `login.auth`(原始的)。
+	// 套过壳的登录口:`Source.auth`、关注同步、分层上报器读它;动态轮询与直播监听读 `login.auth`(原始的)。
 	const shellAuth = deps.devShells?.auth(login.auth) ?? login.auth;
 	let engine: DynamicPoller | undefined;
 	let handles: Disposable[] = [];
@@ -298,7 +298,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。
 		searchCreators: (query) => searchBiliCreators(biliApi, query),
 		health(): SourceHealth {
-			// 「动态停着」优先:最需要主人动手的一条,而且这时引擎不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
+			// 「动态停着」优先:最需要主人动手的一条,而且这时动态轮询不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
 			if (dynamicStopped) return { summary: HEALTH_TEXTS.dynamicStopped };
 			const at = engine?.lastFetchAt();
 			const ago = at === undefined ? undefined : formatAgo(at, now());
@@ -315,7 +315,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			};
 			try {
 				// 第一步:起登录(落定时登录已恢复,状态是已登录 / 未登录,或开机探活连不上时停在确认中)。
-				// 排在分层上报器与两个引擎之前:它们订登录变化时,开机那一跳已经过去。
+				// 排在分层上报器与动态轮询、直播监听之前:它们订登录变化时,开机那一跳已经过去。
 				await login.start();
 				const layers = createProblemLayers({
 					auth: shellAuth,
@@ -353,11 +353,11 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					now,
 				});
 
-				// 动态那一样,一个函数管起、热更、停三件事。读得懂:引擎不在就造并起,在就热更;读不懂:引擎在就停掉,
+				// 动态那一样,一个函数管起、热更、停三件事。读得懂:动态轮询不在就造并起,在就热更;读不懂:动态轮询在就停掉,
 				// 报一条问题。「先起成功、后清问题」:起来的途中抛了别的错,那一条问题还在表里,下次设置变了再试。
 				const dynamicSettings = ctx.settings(BiliDynamicSettingsSchema);
 				// 读不懂时那一句的取字函数(读得懂就清掉):换语言只把这两条再报一遍,不重跑 apply*
-				// (重跑会热更引擎、重挂心跳计时)。
+				// (重跑会热更动态轮询、重挂心跳计时)。
 				let dynamicWording: (() => string) | undefined;
 				let loginCheckWording: (() => string) | undefined;
 				const reportInvalid = (code: string, wording: () => string, notify: boolean): void => {
@@ -463,7 +463,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					setTimeout: deps.setTimeout,
 				});
 				profileFetcher.syncSubscriptions();
-				// 始终挂一次,转给当下的引擎(动态停着时没有引擎,什么都不做)。
+				// 始终挂一次,转给当下的动态轮询(动态停着时没有动态轮询,什么都不做)。
 				mine.push(
 					ctx.onSubscriptionsChanged(() => {
 						profileFetcher?.syncSubscriptions();
@@ -526,11 +526,11 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				throw err;
 			}
 		},
-		// 登记表撤登记会等 `stop()` 落定(最多 30 秒),之后才收来源上下文;引擎也等来源停完再关作品入口。
+		// 登记表撤登记会等 `stop()` 落定(最多 30 秒),之后才收来源上下文;推送链路也等来源停完再关作品入口。
 		// 同步段把自己的活停干净,最后停登录(作废在途的续期);最后一次存盘与关存储把手是 `compose.ts` 收上下文时的事,
-		// 那一步晚于引擎、也就晚于这里。
+		// 那一步晚于推送链路、也就晚于这里。
 		stop() {
-			// 第一步先摘:引擎收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
+			// 第一步先摘:推送链路收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
 			problems?.detach();
 			rooms?.stop();
 			rooms = undefined;
@@ -556,7 +556,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 }
 
 /**
- * 设置变了才跑的那一半:运行中抛了(造引擎抛了别的错)不许冲回宿主的通知循环,记一行 error,下次设置变了再试。
+ * 设置变了才跑的那一半:运行中抛了(造动态轮询抛了别的错)不许冲回宿主的通知循环,记一行 error,下次设置变了再试。
  * 把手那一层本来就逐个回调接住,这里多记一行点名是哪一样。
  */
 function guarded(ctx: SourceContext, what: string, run: () => void): () => void {

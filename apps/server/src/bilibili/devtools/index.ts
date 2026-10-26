@@ -22,16 +22,16 @@ export type { DevtoolsProviderRegistry } from "../../devtools/providers.js";
  * 整个 `bilibili/devtools/` 随之从产物里消失。场景里写**不带前缀**的 id,`bilibili.` 前缀由
  * 宿主汇总时统一加(`devtools/providers.ts`)。
  *
- * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / 登录口(两层壳在这里建,经 `devShells` 递给 B 站来源
+ * 🚧 过渡接线:场景今天仍直接用动态轮询、用套了 Proxy 的 `Api` / 登录口(两层壳在这里建,经 `devShells` 递给 B 站来源
  * 当它的 `api` 与 `Source.auth`,场景按下时才现取)。登录场景要来源的 `login()` 把手、造动态的场景经壳上盖方法再调
- * `detectNow()` 走的是真引擎,各等各的那一片再删。
+ * `detectNow()` 走的是真动态轮询,各等各的那一片再删。
  */
 export interface BiliDevtoolsDeps {
 	/** 假登录状态从这条总线发(`subscription-auth-changed`)。 */
 	bus: MessageBus;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
-	/** 下面几样都是引擎建好之后才有的,现取(动态引擎的句柄来自 `compose.ts` 造的 B 站来源)。 */
+	/** 下面几样都是动态轮询建好之后才有的,现取(动态轮询的句柄来自 `compose.ts` 造的 B 站来源)。 */
 	dynamic: () => DynamicPollerLike | undefined;
 	/** 来源自己的房号缓存;直播场景挑房间时现取。 */
 	liveRooms: () => { roomIdOf(externalId: string): string | undefined } | undefined;

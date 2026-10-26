@@ -1,7 +1,7 @@
 /**
  * **B 站上舰事件 → 中立的会员事件**(ADR-0021 决策 26 下 2026-10-05 的 🔗,㉓b)。
  *
- * 这一步还没有调用方:直播引擎今天仍直接拿 `guard-buy` 拼文字、出卡(`room-session.ts`),㉓c 接线时换成先翻成
+ * 这一步还没有调用方:直播监听今天仍直接拿 `guard-buy` 拼文字、出卡(`room-session.ts`),㉓c 接线时换成先翻成
  * {@link MembershipEvent} 再交给出卡与文案。档位怎么认(`guard_level` 与 rank 的倒序换算)全在 `guardTierOf`,
  * 这里不重复。
  */

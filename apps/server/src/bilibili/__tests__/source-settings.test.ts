@@ -1,7 +1,7 @@
 /**
  * B 站设置读不懂时,来源里哪一样停、怎么说、改好之后怎么起(主人 10-11 定:哪格坏停哪样)。
  *
- * 接真配置仓(临时目录里的真文件)、真来源上下文、真问题表、真动态引擎(cron 换成惰性的假件),只把登录检查的口换成
+ * 接真配置仓(临时目录里的真文件)、真来源上下文、真问题表、真动态轮询(cron 换成惰性的假件),只把登录检查的口换成
  * spy、B 站的 API 换成空的。坏文件怎么摆:开机之前在盘上放好。最后一组钉两条问题的文案。
  * 「经真路由存对」那一半在 `__tests__/builtin-source-boot-e2e.test.ts`。
  */
@@ -37,7 +37,7 @@ import { settingsSegment } from "../settings.js";
 import { createBiliSource } from "../source.js";
 import { fakeLoginDeps, fakeLoginSystem } from "./support/fake-login-system.js";
 
-// 登录那一套换成假系统(`deps.context` 带着它,见 `support/fake-login-system.ts`):这里钉的是来源读设置、起停引擎与心跳。
+// 登录那一套换成假系统(`deps.context` 带着它,见 `support/fake-login-system.ts`):这里钉的是来源读设置、起停动态轮询与心跳。
 vi.mock("../auth/index.js", () => ({
 	createAuthSystem: (o: { context: { login: unknown } }) => o.context.login,
 }));
@@ -195,7 +195,7 @@ async function boot() {
 const MIN = 60_000;
 
 describe("B 站来源 · 动态那一格读不懂", () => {
-	// 验红:`applyDynamic` 读不懂时照样造引擎(`dynamic()` 就不是 undefined 了)。
+	// 验红:`applyDynamic` 读不懂时照样造动态轮询(`dynamic()` 就不是 undefined 了)。
 	it("写成了数字:start 不抛、动态没起、只有 dynamic_settings_invalid 一条;登录检查按盘上的 45 分钟挂上;上报器接上", async () => {
 		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
 
@@ -267,8 +267,8 @@ describe("B 站来源 · 整个文件读不懂", () => {
 });
 
 describe("B 站来源 · 改好保存当场起来(经配置仓的写口,不用重启)", () => {
-	// 验红:起来之后不清问题;`applyDynamic` 不判引擎在不在(第二次保存会再造一个引擎)。
-	it("动态那格坏着开机 → 存成合法 cron:引擎起来、那一条没了且没有补「已恢复」;再存别的 cron:同一个引擎换节奏", async () => {
+	// 验红:起来之后不清问题;`applyDynamic` 不判动态轮询在不在(第二次保存会再造一个动态轮询)。
+	it("动态那格坏着开机 → 存成合法 cron:动态轮询起来、那一条没了且没有补「已恢复」;再存别的 cron:同一个动态轮询换节奏", async () => {
 		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 30 }));
 		const b = await boot();
 		expect(b.problems()).toEqual([DYNAMIC]);
@@ -400,7 +400,7 @@ describe("B 站来源 · 换语言时把读不懂的那一句再报一遍", () =
 		expect(b.reportCount(LOGIN_CHECK)).toBe(2);
 	});
 
-	it("切语言不重跑 apply*:不碰登录心跳的计时、不造引擎", async () => {
+	it("切语言不重跑 apply*:不碰登录心跳的计时、不造动态轮询", async () => {
 		await place(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
 		const b = await boot();
 		const heartbeatCalls = b.setHealthCheckMs.mock.calls.length;

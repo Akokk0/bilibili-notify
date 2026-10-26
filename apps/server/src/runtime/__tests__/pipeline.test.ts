@@ -15,8 +15,8 @@
  *   config-changed 其它 scope:no-op
  *   AI 启 / 停 / 改:           lazy 构造 + 失效降级 + 已存在时 updateConfig
  *   image 配色热更:            puppeteer 在位时 imageRenderer.updateConfig
- *   subscription-changed:     转译并下发到引擎
- *   dispose():                stop 全引擎 + 解绑 bus(dispose 后 config-changed 不再生效)
+ *   subscription-changed:     转译并下发到动态轮询
+ *   dispose():                stop 动态轮询与直播监听 + 解绑 bus(dispose 后 config-changed 不再生效)
  */
 
 import { randomUUID } from "node:crypto";
@@ -179,7 +179,7 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	return {
 		// 拓展订阅造卡用的常量与纯函数(作品翻 `Post` 的图廊张数),走真的。
 		GALLERY_MAX_IMAGES: actual.GALLERY_MAX_IMAGES,
-		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
+		// 推送链路把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 		ImageRenderer: class {
 			opts: any;
@@ -342,7 +342,7 @@ function setup(opts?: {
 	sourcePostNoun?: string;
 	/** 主来源之外再登记几个来源。 */
 	extraSources?: Array<{ sourceKey: string; source: ReturnType<typeof makeSource> }>;
-	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
+	/** 不给推送链路登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
 	dataDir?: string;
@@ -515,7 +515,7 @@ function aiGlobals(): GlobalConfig {
 	return g;
 }
 
-/** 一条 B 站来的中立作品(引擎翻好、图已抓好的样子)。 */
+/** 一条 B 站来的中立作品(来源翻好、图已抓好的样子)。 */
 const bilibiliPost = (text = "正文", over: Partial<Post> = {}): Post => ({
 	creator: { name: "阿绫" },
 	publishedAt: "2026-10-10T00:00:00.000Z",
@@ -582,7 +582,7 @@ afterEach(async () => {
 });
 
 describe("createPipelineRuntime — 卡上主播头像的读口接线(3a-35)", () => {
-	// 作品这头:头像由核心出卡那一刻按订阅 id 现读(`deps.avatar`),引擎不再有头像读口。
+	// 作品这头:头像由核心出卡那一刻按订阅 id 现读(`deps.avatar`),动态轮询不再有头像读口。
 	// 验红:把 pipeline.ts 里 postQueue 的 `avatar: profileAvatarOf` 去掉(或改成开机取一次),这条红。
 	it("B 站作品:出卡器收到的 Post.creator.avatar 是出卡那一刻订阅资料里的头像,资料之后换了值,下一张卡用新的", async () => {
 		let profile: { avatar?: string } = {};
@@ -645,7 +645,7 @@ describe("createPipelineRuntime — 出图失败计数 B 站与拓展作品共�
 	});
 });
 
-/** 来源上下文交来的作品图已经是图库引用；引擎要把引用、资料头像和 `resolveImageRef` 接到出图器。 */
+/** 来源上下文交来的作品图已经是图库引用；推送链路要把引用、资料头像和 `resolveImageRef` 接到出图器。 */
 describe("createPipelineRuntime — 拓展作品的图走图库", () => {
 	const AVATAR_REF = `${"a".repeat(63)}1.png`;
 	const IMAGE_REF = `${"c".repeat(64)}.png`;
@@ -768,13 +768,13 @@ describe("createPipelineRuntime — 拓展作品的图走图库", () => {
 });
 
 /**
- * **作品入口的接线**:B 站动态引擎的 `reportPost` 选项由接线层给 —— 按身份查出订阅、把引擎交的作品包成信封
+ * **作品入口的接线**:B 站动态轮询的 `reportPost` 选项由接线层给 —— 按身份查出订阅、把动态轮询交的作品包成信封
  * 入队(`createPostQueue`),入口再同步发 `post-detected`、按订阅串行跑装配、交给推送层。零件各自的单元测试证明不了
  * 接线真接上了,所以这里走**真的队列、真的装配**(只假推送层与出卡器),断言到 `PushRouter.push` 的入参;
  * 凡断言「没推」的先等登记进 track 的活落定,旁边有对照。
  */
-describe("createPipelineRuntime — 作品入口接线(B 站引擎 → PostQueue → 推送层)", () => {
-	it("引擎交的作品:按身份查订阅、入口同步发 post-detected(订阅 id、身份、叫法「动态」),随后推送层收到订阅 id + 特性 post + 模板文字与链接", async () => {
+describe("createPipelineRuntime — 作品入口接线(B 站动态轮询 → PostQueue → 推送层)", () => {
+	it("动态轮询交的作品:按身份查订阅、入口同步发 post-detected(订阅 id、身份、叫法「动态」),随后推送层收到订阅 id + 特性 post + 模板文字与链接", async () => {
 		const sub = biliSubOf("1");
 		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
 		active = c;
@@ -946,7 +946,7 @@ describe("createPipelineRuntime — 作品入口接线(B 站引擎 → PostQueue
 
 /**
  * 作品过滤的接线(㉑e,ADR-0021 决策 43):过滤直接吃折好的 `ContentFilters`(配置怎么叫它就怎么叫,从前
- * `dynamicFilterOf` 那层翻译删了),B 站动态引擎与拓展作品**同一份过滤、类型开关对所有来源生效**。
+ * `dynamicFilterOf` 那层翻译删了),B 站动态轮询与拓展作品**同一份过滤、类型开关对所有来源生效**。
  * 各自的单元测试证明不了 pipeline 真的把全局 / 按 UP 的过滤递到了两条路上:漏递的症状是该挡的作品照推。
  */
 describe("createPipelineRuntime — 作品过滤接线", () => {
@@ -1082,7 +1082,7 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 	});
 
 	/**
-	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态引擎、拓展作品)都经核心入口的 `recordFiltered`
+	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态轮询、拓展作品)都经核心入口的 `recordFiltered`
 	 * 都接到历史仓的 `record`:不经推送层,不走事件总线。
 	 *
 	 * 验红:把 pipeline.ts 里 postQueue 的 `recordFiltered: recordFilteredPost` 换成空函数 → B 站与拓展两条都红。
@@ -1090,7 +1090,7 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 	describe("被过滤的作品留痕", () => {
 		const BILI_SUB = "11111111-1111-4111-8111-111111111111";
 
-		it("B 站引擎交来的作品被挡:uid 换成订阅,落一行:身份、名字快照、原因、摘要与链接;不经推送层,登记进 track", async () => {
+		it("B 站动态轮询交来的作品被挡:uid 换成订阅,落一行:身份、名字快照、原因、摘要与链接;不经推送层,登记进 track", async () => {
 			const sub = makeEmptySubscription({
 				id: BILI_SUB,
 				identity: { sourceKey: "bilibili", externalId: "1" },
@@ -1179,7 +1179,7 @@ describe("createPipelineRuntime — 作品过滤接线", () => {
 });
 
 /**
- * 拓展订阅的直播接进引擎(ADR-0019 决策 57 / 61):开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
+ * 拓展订阅的直播接进推送链路(ADR-0019 决策 57 / 61):开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
  * 周期「正在直播」不在这里 —— 推送这头没有自己的计时器(核心按每一场的开播时刻问来源,见「来源周期核对」)。
  * 剪掉注册那一口没往下传,这里会红。
  */
@@ -1538,7 +1538,7 @@ describe("createPipelineRuntime — boot wiring", () => {
 	});
 
 	// 来源读自己集成的设置:读法住集成上下文(`integrations/settings-reader.ts` 的 `settingsReaderOptionsOf`),
-	// 不再由引擎装配递 —— 那条线的单测在 `integrations/__tests__/settings-reader.test.ts`,从真入口的接线钉在
+	// 不再由推送链路装配递 —— 那条线的单测在 `integrations/__tests__/settings-reader.test.ts`,从真入口的接线钉在
 	// `__tests__/builtin-source-settings-boot-e2e.test.ts`。
 
 	// 验红:删掉 pipeline.ts `registerSource` 里递 `problems` 的那一行,这条红。
@@ -1551,7 +1551,7 @@ describe("createPipelineRuntime — boot wiring", () => {
 	});
 
 	// 验红:删掉 builtin-sources.ts 撤登记里的 `clearReporter`,这条红。
-	it("关停引擎撤掉来源登记:它报的问题跟着清空(不补「已恢复」)", async () => {
+	it("关停推送链路撤掉来源登记:它报的问题跟着清空(不补「已恢复」)", async () => {
 		const c = setup();
 		active = c;
 		await c.sourceReady;
@@ -1685,7 +1685,7 @@ describe("createPipelineRuntime — boot wiring", () => {
 	});
 
 	// 验红:让 pipeline.ts `registerSource` 的返回值不撤登记(回一个空把手),这条红(登记表里的来源还在、stop 没被叫)。
-	it("registerSource 交回撤登记的把手:撤一次来源 stop 一次、登记表里没了;再撤与引擎关停都是空操作", async () => {
+	it("registerSource 交回撤登记的把手:撤一次来源 stop 一次、登记表里没了;再撤与推送链路关停都是空操作", async () => {
 		const c = setup({ noSource: true });
 		active = c;
 		const extra = makeSource();
@@ -1973,10 +1973,10 @@ describe("createPipelineRuntime — enableImageRendering 运行时热启用", ()
 });
 
 describe("createPipelineRuntime — config-changed globals 热重载", () => {
-	// cron 本身要生效(引擎换节奏)在 `bilibili/__tests__/source.test.ts`。
+	// cron 本身要生效(动态轮询换节奏)在 `bilibili/__tests__/source.test.ts`。
 
-	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
-	it("改 defaults.imageGroup:不经引擎热更,下一条带图的作品立即多一个图集的附加项锚点", async () => {
+	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经推送链路的热更门(此前 imageGroup 整个漏在门外)。
+	it("改 defaults.imageGroup:不经推送链路热更,下一条带图的作品立即多一个图集的附加项锚点", async () => {
 		const closed = makeDefaultGlobalConfig();
 		closed.defaults.imageGroup = { enabled: false, mergeForward: false };
 		const c = setup({ subs: [biliSubOf("1")], globals: closed });
@@ -2001,7 +2001,7 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 		]);
 	});
 
-	// 日志等级不再由引擎装配推:各子上下文只交(标签,键),等级表由入口的 `bindLogLevels` 整张推
+	// 日志等级不再由推送链路装配推:各子上下文只交(标签,键),等级表由入口的 `bindLogLevels` 整张推
 	// (推的行为在 `log-levels.test.ts` 与 `service-context.test.ts`,接线在 `log-levels-boot-e2e`)。
 	// 一行日志是谁的代码打的就跟谁那一格:这里钉「键」接对了没有 —— 接反了门禁全绿,只有调等级时才露馅。
 	it("子上下文的(标签,键):作品队列与拓展直播跟 core,AI、出图各跟自己的", () => {
@@ -2141,8 +2141,8 @@ describe("createPipelineRuntime — config-changed globals 热重载", () => {
 		expect(c.runtime.commentary).toBeNull();
 	});
 
-	it("改全局 templates.post/postVideo → 不经引擎热更,下一条作品就用新模板(无 per-UP 覆盖的订阅不再用旧模板)", async () => {
-		// 回归:从前引擎快照里留着模板,触发条件漏了 templatesChanged 就一直用旧的;现在每条作品现折。
+	it("改全局 templates.post/postVideo → 不经推送链路热更,下一条作品就用新模板(无 per-UP 覆盖的订阅不再用旧模板)", async () => {
+		// 回归:从前推送链路快照里留着模板,触发条件漏了 templatesChanged 就一直用旧的;现在每条作品现折。
 		const c = setup({ subs: [biliSubOf("1")], globals: TEMPLATE_GLOBALS("旧 {name}") });
 		active = c;
 		reportBili("1", bilibiliPost("正文"), "d1");
@@ -2491,7 +2491,7 @@ describe("createPipelineRuntime — 背景轮换游标落盘", () => {
 // 此前 subscriptionOpsToLive 的 update 分支不看 sub.enabled,把禁用翻译成带
 // live:true 的 update op,LiveEngine(常驻 WS、事件驱动)listener 一直挂着照推。
 // 修复:op 翻译层显式 gate enabled。动态那一半:名单只列启用中的订阅
-// (`subscriptions/__tests__/source-subscriptions.test.ts`)与引擎的 `syncSubscriptions`
+// (`subscriptions/__tests__/source-subscriptions.test.ts`)与动态轮询的 `syncSubscriptions`
 // (`bilibili/dynamic/__tests__/dynamic-poller.test.ts`)。
 describe("createPipelineRuntime — 订阅禁用/启用转译", () => {
 	function makeSub(uid: string, enabled: boolean): Subscription {
@@ -2539,7 +2539,7 @@ describe("createPipelineRuntime — 消息版式", () => {
 	});
 
 	it("作品分条(分条符切两条)→ 经真的队列与装配,PushRouter 收到一次推送,本体那个锚点里是两条 payload", async () => {
-		// 引擎说 uid,入口认订阅 —— 这个 uid 得真有一条订阅,接线才往下交。
+		// 动态轮询说 uid,入口认订阅 —— 这个 uid 得真有一条订阅,接线才往下交。
 		const c = setup({ puppeteer: true, subs: [biliSubOf("1", "s1")] });
 		active = c;
 		patchGlobals(c, (g) => {
@@ -2571,7 +2571,7 @@ describe("createPipelineRuntime — 消息版式", () => {
 // ---------------------------------------------------------------------------
 // 链接卡的呈现
 //
-// 动态卡没有按订阅的样式覆盖(㉔e 起,卡片设置只剩直播封面),链接卡的呈现(皮肤)从引擎拿,
+// 动态卡没有按订阅的样式覆盖(㉔e 起,卡片设置只剩直播封面),链接卡的呈现(皮肤)从推送链路拿,
 // 并且随 config-changed 刷新。
 // ---------------------------------------------------------------------------
 

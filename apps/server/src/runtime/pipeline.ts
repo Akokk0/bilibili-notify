@@ -102,7 +102,7 @@ export interface PipelineRuntime extends Disposable {
 	dispose(): Promise<void>;
 	/**
 	 * 登记一个来源(建它的来源上下文、登记即 start):内置来源与拓展的订阅源走同一个口。交回撤登记的把手
-	 * (先撤登记、触发来源的 `stop`,再收上下文;**幂等**);引擎关停时自己先停掉没撤的,再关作品入口。
+	 * (先撤登记、触发来源的 `stop`,再收上下文;**幂等**);推送链路关停时自己先停掉没撤的,再关作品入口。
 	 * `rejectedProblemLevel`:拓展的来源给 `warn`(被拒的问题上报是拓展自己的 bug),内置的缺省 `error`。
 	 */
 	registerSource(
@@ -203,7 +203,7 @@ export interface PipelineRuntime extends Disposable {
 		session: SessionRef,
 		payload: NotificationPayload,
 	): Promise<DeliveryResult>;
-	/** 各引擎模块开没开,`/api/health` 的 `modules` 那一格。 */
+	/** 各功能模块开没开,`/api/health` 的 `modules` 那一格。 */
 	getModuleState(): ModuleState;
 	/**
 	 * Runtime hot-enable of card image rendering. When the server booted without
@@ -273,7 +273,7 @@ export interface PipelineRuntimeOptions {
 	 */
 	quietHoursNow?: () => Date;
 	/**
-	 * 拓展订阅的平台名,女仆查订阅那份视图用(ADR-0019 决策 64)。每次现取 —— 拓展装载器比引擎
+	 * 拓展订阅的平台名,女仆查订阅那份视图用(ADR-0019 决策 64)。每次现取 —— 拓展装载器比推送链路
 	 * 晚建起来,装卸也随时发生。取不到(没接 / 没装 / 开机途中)交 `undefined`,视图退拓展 id。
 	 */
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
@@ -286,7 +286,7 @@ export interface PipelineRuntimeOptions {
 	creatorStats?: CreatorStatsReader;
 	/**
 	 * 出图器的「图库引用 → 可画的地址」解析口(`imageRefDataUrl(runtime.imageStore)`):作品卡里的配图、封面、
-	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的引擎时)。
+	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的推送链路时)。
 	 */
 	resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
 	/**
@@ -303,7 +303,7 @@ export interface PipelineRuntimeOptions {
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— pipeline 不认识
-	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
+	 * 皮肤库,店也不认识推送链路,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
 	 */
 	cardSkins?: {
 		/** 皮肤 id → 清单;取不到 → 渲染器回落默认皮肤。 */
@@ -544,7 +544,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	// ---------- 背景图轮换游标(每次推送轮换 + fs 持久化)----------
 	// 游标按 `uid:kind` 独立,落盘 `<dataRoot>/runtime/card-bg-cursors.json`,重启续接不归零。
 	// pick 在推送点(room-session / DynamicPoller)同步推进;脏标记驱动定时 flush,避免每
-	// 推送写盘。注入给两个引擎。
+	// 推送写盘。注入给动态轮询与直播监听。
 	const cursorFile = dataPath(opts.dataRoot, ...CARD_BG_CURSORS_FILE);
 	const loadCursors = (): Record<string, number> => {
 		try {
@@ -572,7 +572,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	const pickExistingCardBg = makeExistingCardBgPicker(opts.dataRoot, cardBgRotator.pick);
 
 	// ---------- 作品来源 ----------
-	// 来源只管生产(B 站的是动态引擎:拉 feed、判新、翻译、抓图),作品经来源上下文交给核心入口 `postQueue`;
+	// 来源只管生产(B 站的是动态轮询:拉 feed、判新、翻译、抓图),作品经来源上下文交给核心入口 `postQueue`;
 	// 过滤、出卡、点评、推送、图集都在核心里。来源由 `registerSource` 登记并启动(调它的是 `compose.ts`)。
 	// 出图连续失败「只提醒一次」的计数(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个渲染器,
 	// **全进程一份**,两条路各记各的话同一次故障会各提醒一遍。
@@ -700,7 +700,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			if (scope === "connections") {
 				linkPolicies = linkPoliciesOf();
 				// 有状态 adapter(OneBot ws / ws-reverse)自己订了这一档、自己对账(登记即 `start(ctx)`,
-				// 见 `push/builtin-adapters.ts`),引擎不替它们对账。
+				// 见 `push/builtin-adapters.ts`),推送链路不替它们对账。
 				//
 				// 刻意不在这里触发连接探测:probe 经 recordConnectionProbeState 写回
 				// probeState 会再 emit config-changed:connections → 死循环。adapter
@@ -853,7 +853,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 				await registration.dispose();
 				throw new Error("registerSource: the pipeline is disposed; the registration is dropped");
 			}
-			// 撤登记幂等:拓展收摊时自己撤,引擎关停再兜底收一遍,第二遍什么都不做。
+			// 撤登记幂等:拓展收摊时自己撤,推送链路关停再兜底收一遍,第二遍什么都不做。
 			let revoked = false;
 			const revocable: Disposable = {
 				dispose() {
@@ -954,8 +954,8 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			return true;
 		},
 		// 热切换浏览器来源(dashboard 改 chromePath / chromeEndpoint):无条件重建
-		// renderer 并重新注入两个引擎。旧 adapter 的 dispose 由调用方(cards 路由)
-		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
+		// renderer 并重新注入动态轮询与直播监听。旧 adapter 的 dispose 由调用方(cards 路由)
+		// 负责 —— 推送链路各层不持有 adapter,只消费 renderer。
 		swapImageRendering: (pup: PuppeteerLike): void => {
 			imageRenderer = buildImageRenderer(pup);
 		},

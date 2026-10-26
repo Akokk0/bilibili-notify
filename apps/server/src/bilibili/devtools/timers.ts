@@ -5,13 +5,13 @@ import type { SubPick } from "./live.js";
 /**
  * B 站的两个「现在就跑」:把定时器到点要做的事提前调一次,定时器本身不动。
  *
- * 每个调的都是引擎自己暴露的那一个口(`detectNow` / `healthCheckNow`),不是另写一条路。
+ * 每个调的都是动态轮询自己暴露的那一个口(`detectNow` / `healthCheckNow`),不是另写一条路。
  * 中立场景(含资料刷新与直播复推)留在核心
  * `devtools/scenarios/timers.ts`。
  */
 export interface BiliTimerDeps {
 	subs: () => SubPick[];
-	/** 下面几样都是引擎建好之后才有的,现取。 */
+	/** 下面几样都是动态轮询建好之后才有的,现取。 */
 	dynamic: () => { detectNow(): Promise<void> } | undefined;
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
@@ -26,7 +26,7 @@ export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
 		params: [],
 		async run() {
 			const dynamic = deps.dynamic();
-			if (!dynamic) return notReady("动态引擎");
+			if (!dynamic) return notReady("动态轮询");
 			await dynamic.detectNow();
 			return ok({ summary: "动态检测跑完一轮。" });
 		},

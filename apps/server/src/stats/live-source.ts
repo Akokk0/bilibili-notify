@@ -6,7 +6,7 @@ import type { StatsRecorderCore } from "./recorder.js";
 import type { LiveSessionClose, LiveSessionStart } from "./store.js";
 
 /**
- * 统计的**中立直播监听**(ADR-0020 决策 6 / 17):所有来源的场次都吃核心引擎发的同一份
+ * 统计的**中立直播监听**(ADR-0020 决策 6 / 17):所有来源的场次都吃核心场次引擎发的同一份
  * `live-session-changed`,不再从 B 站形状或拓展形状的事件各翻一支。
  *
  * - 开始,或登录失效 / 重启之后手里没有这一场时再见到 resume / tick / 在播 status,记一场;

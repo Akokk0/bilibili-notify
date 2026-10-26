@@ -101,8 +101,8 @@ type RawNode = {
  * 一条 B 站动态 → 一份 `Post`。
  *
  * 顶层的**开播伪动态**(`DYNAMIC_TYPE_LIVE_RCMD`)抛「直播开播动态，不做处理」:开播走直播卡那条路,
- * 动态引擎在过滤与出卡之前就按类型把顶层的它跳过了(ADR-0019 决策 66),撞到这里的只剩卡片页的真实预览
- * (按序号取某位 UP 的一条动态,可能正好是它)。**转发**里的原动态是它时不抛 —— 引擎跳不掉转发,
+ * 动态轮询在过滤与出卡之前就按类型把顶层的它跳过了(ADR-0019 决策 66),撞到这里的只剩卡片页的真实预览
+ * (按序号取某位 UP 的一条动态,可能正好是它)。**转发**里的原动态是它时不抛 —— 动态轮询跳不掉转发,
  * 抛了整张转发卡都出不来,当一句提示。
  */
 export function postFromDynamic(item: Dynamic): Post {
@@ -138,7 +138,7 @@ export function emojiUrlsOf(item: Dynamic): Map<string, string> {
 }
 
 function translate(item: Dynamic, isRepost: boolean): Post {
-	// 残条(转发的原动态被删,接口只剩 tombstone,整段 modules 缺席)也得翻得过去:引擎现在先翻译再过滤,
+	// 残条(转发的原动态被删,接口只剩 tombstone,整段 modules 缺席)也得翻得过去:动态轮询现在先翻译再过滤,
 	// 翻译抛了就是整条动态没法判。
 	const modules = (item.modules ?? {}) as Loose;
 	const author = modules.module_author ?? {};

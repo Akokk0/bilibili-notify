@@ -579,7 +579,7 @@ export function createAppRuntime(
 		history: historyStore,
 		repush: repushStore,
 		send: async (targetId, payload, routing) => {
-			if (!pipeline) return fail("unavailable", "推送引擎还没起来，稍后再试");
+			if (!pipeline) return fail("unavailable", "推送链路还没起来，稍后再试");
 			return pipeline.push.sendToTarget(targetId, payload, { routing });
 		},
 		routedTargets: (subscriptionId, feature) => targetScope.routedTargets(subscriptionId, feature),

@@ -30,7 +30,7 @@ export const BiliSettingsSchema = z.object({
 });
 export type BiliSettings = z.infer<typeof BiliSettingsSchema>;
 
-/** cron 能不能解析:委托给 `cron` 包的 `CronTime`,与动态引擎、粉丝轮询实际排程用的是同一个解析器。 */
+/** cron 能不能解析:委托给 `cron` 包的 `CronTime`,与动态轮询、粉丝轮询实际排程用的是同一个解析器。 */
 function isParsableCron(expr: string): boolean {
 	try {
 		new CronTime(expr);
@@ -55,8 +55,8 @@ export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
 };
 
 /**
- * 动态那一样读的格:只有 `dynamicCron`,且比读盘 schema 严一道「能解析」(与动态引擎实际排程用的同一个解析器)。
- * 读盘 schema 认一条解析不了的老 cron 是好的(面板照旧显示盘上那串原文),但读它的人不能拿它去造一个不拉的引擎 ——
+ * 动态那一样读的格:只有 `dynamicCron`,且比读盘 schema 严一道「能解析」(与动态轮询实际排程用的同一个解析器)。
+ * 读盘 schema 认一条解析不了的老 cron 是好的(面板照旧显示盘上那串原文),但读它的人不能拿它去造一个不拉的动态轮询 ——
  * 读不过就停动态、问题表里说清。其余格(登录检查那一格)坏没坏,这里看不见。
  */
 export const BiliDynamicSettingsSchema = z.object({

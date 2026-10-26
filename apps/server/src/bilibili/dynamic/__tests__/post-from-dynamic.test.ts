@@ -88,7 +88,7 @@ describe("十份原始夹具 → 出图基准用的 Post 字面量", () => {
 		});
 	}
 
-	it("顶层的开播伪动态抛「直播开播动态，不做处理」(动态引擎在这之前就按类型跳过了它)", () => {
+	it("顶层的开播伪动态抛「直播开播动态，不做处理」(动态轮询在这之前就按类型跳过了它)", () => {
 		expect(() => postFromDynamic(LIVE_RCMD_DYNAMIC)).toThrow("直播开播动态，不做处理");
 	});
 
@@ -735,7 +735,7 @@ describe("「暂时无法渲染」与「原动态不可见」→ notice", () => 
 });
 
 describe("残条(接口缺整段)不抛", () => {
-	/** 引擎现在先翻译再过滤(㉑e):翻译抛了就是整条动态没法判,所以残条必须翻得过去。验红:去掉 `?? {}`,这几条红。 */
+	/** 动态轮询现在先翻译再过滤(㉑e):翻译抛了就是整条动态没法判,所以残条必须翻得过去。验红:去掉 `?? {}`,这几条红。 */
 	it("被转发的原动态是 tombstone(modules 整段缺席):转发照常翻,原作品退成一句提示", () => {
 		const orig = { id_str: "9", type: "DYNAMIC_TYPE_NONE", basic: {} } as unknown as Dynamic;
 		const post = postFromDynamic(raw("DYNAMIC_TYPE_FORWARD", desc(text("转发语")), { orig }));

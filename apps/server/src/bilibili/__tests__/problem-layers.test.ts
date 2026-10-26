@@ -3,7 +3,7 @@
  *   未登录(`auth_lost`,看 `AuthState.status`)> 风控(`risk_controlled`)> 各项请求失败(调用方给 code)。
  *
  * 上报器手里存的是「此刻该在表里的东西」,不是事件流水;接上核心(`attach`)那一刻把它整份报上去,
- * 接上之前记着的因此不会丢。每个方法都不许往外抛:调用点都在引擎的关键控制流上。
+ * 接上之前记着的因此不会丢。每个方法都不许往外抛:调用点都在动态轮询与直播监听的关键控制流上。
  */
 
 import type { AuthState, Disposable, SourceAuth } from "@bilibili-notify/internal";

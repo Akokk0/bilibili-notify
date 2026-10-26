@@ -139,7 +139,7 @@ interface LiveFrame {
 }
 
 export interface StatsStore {
-	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(引擎重放不虚增计数)。 */
+	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(动态轮询重放不虚增计数)。 */
 	appendPost(key: string, event: PostEntry): Promise<void>;
 	/**
 	 * 读回 publishedAt >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。

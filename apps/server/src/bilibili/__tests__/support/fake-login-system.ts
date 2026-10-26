@@ -6,7 +6,7 @@ import type { AuthSystem } from "../../auth/index.js";
 import type { BiliContext } from "../../context.js";
 
 /**
- * 来源单测用的假登录系统:来源的单测关心的是来源自己(引擎怎么起停、设置怎么读、问题怎么报),登录那一套(真的状态机、
+ * 来源单测用的假登录系统:来源的单测关心的是来源自己(动态轮询怎么起停、设置怎么读、问题怎么报),登录那一套(真的状态机、
  * 罐子、存储)在 `auth/__tests__` 与 `__tests__/compose.test.ts` 钉着。假的 `api` / `auth` 由用例给,`start` / `stop` /
  * `setHealthCheckMs` 都是 spy,好看来源有没有按次序调。
  *

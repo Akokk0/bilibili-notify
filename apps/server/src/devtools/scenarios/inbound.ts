@@ -20,7 +20,7 @@ import type { DevScenarioDef } from "../registry.js";
  */
 
 export interface InboundScenarioDeps {
-	/** 入站口是引擎建好之后才接上的,现取;还没接上就 undefined。 */
+	/** 入站口是推送链路建好之后才接上的,现取;还没接上就 undefined。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
 	connections: () => Connection[];
@@ -48,7 +48,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const handler = deps.inbound()?.private;
-			if (!handler) return fail("invalid", "指令分发器还没接上(引擎没起来?)");
+			if (!handler) return fail("invalid", "指令分发器还没接上(推送链路还没起来?)");
 			// 回复经 `sendToAddress` 回到发指令的那个会话,所以 connectionId 是必需的:取主人那个
 			// 私聊目标所在的连接(平台也按它走,鉴权比的是三坐标)。没有主人目标就没有可模拟的
 			// 来处 —— 明说,不拿空串糊弄过去。
@@ -103,7 +103,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		],
 		run(params) {
 			const handler = deps.inbound()?.group;
-			if (!handler) return fail("invalid", "链接解析还没接上(引擎没起来?)");
+			if (!handler) return fail("invalid", "链接解析还没接上(推送链路还没起来?)");
 			const connections = deps.connections();
 			const wanted = params.connection;
 			const connection =

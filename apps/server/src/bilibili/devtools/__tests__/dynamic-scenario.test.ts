@@ -8,7 +8,7 @@ import { biliRegistry } from "./support/registry.js";
 
 /**
  * A3:四类动态 —— 往传给 DynamicPoller 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
- * (真 feed 照拉,假的排在最前),然后立刻让引擎跑一轮检测。守的是形状:渲染器按 `type`
+ * (真 feed 照拉,假的排在最前),然后立刻让动态轮询跑一轮检测。守的是形状:渲染器按 `type`
  * 分发,缺 `module_stat` / `vip` / `major.archive.badge` 这类字段就是一次渲染期 undefined。
  */
 
@@ -43,7 +43,7 @@ function itemsOf(result: Feed) {
 	return result.data.items;
 }
 
-/** 引擎那一轮看到的 feed:假动态只在那一轮里存在,跑完就撤,所以得在 detectNow 里抓。 */
+/** 动态轮询那一轮看到的 feed:假动态只在那一轮里存在,跑完就撤,所以得在 detectNow 里抓。 */
 interface SetupOptions {
 	profileAvatars?: () => { avatarUrlOf(uid: string): string | undefined } | undefined;
 }
@@ -188,7 +188,7 @@ describe("bilibili.dynamic.post", () => {
 		});
 	});
 
-	it("跑完那一轮之后假动态从 feed 里撤掉 —— 引擎已经推进锚点,留着只是脏 feed", async () => {
+	it("跑完那一轮之后假动态从 feed 里撤掉 —— 动态轮询已经推进锚点,留着只是脏 feed", async () => {
 		const { reg, api } = setup();
 		await reg.run("bilibili.dynamic.post", {});
 		// run 里 await 了 detectNow;之后再拉 feed 就该只剩真的。
@@ -221,7 +221,7 @@ describe("bilibili.dynamic.post", () => {
 		});
 	});
 
-	it("引擎还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
+	it("动态轮询还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
 		const api = overridableApi(new FakeApi());
 		const reg = biliRegistry(
 			dynamicScenarios({

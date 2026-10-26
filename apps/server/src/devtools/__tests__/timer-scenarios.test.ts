@@ -128,12 +128,12 @@ describe("push.mute", () => {
 		expect(mute.muteFor).not.toHaveBeenCalled();
 	});
 
-	it("引擎还没起来 → 拒", async () => {
+	it("推送链路还没起来 → 拒", async () => {
 		const { reg } = setup({ mute: () => undefined });
 		await expect(reg.run("push.mute", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
-			message: "推送引擎还没起来",
+			message: "推送链路还没起来",
 		});
 	});
 });

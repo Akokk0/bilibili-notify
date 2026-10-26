@@ -61,7 +61,7 @@ describe("StatsStore — 动态事件", () => {
 		expect(got.map((e) => e.id)).toEqual(["b"]);
 	});
 
-	it("同 id 重复 append → 只保留一条(引擎重放不该虚增投稿数)", async () => {
+	it("同 id 重复 append → 只保留一条(动态轮询重放不该虚增投稿数)", async () => {
 		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
 		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
 		expect(await store.listPosts("1", T(0))).toHaveLength(1);

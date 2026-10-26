@@ -1097,7 +1097,7 @@ export function GuardSection({
 					/>
 				</>
 			) : (
-				<InheritNote>引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)</InheritNote>
+				<InheritNote>默认推送 B 站官方上舰图(舰长 / 提督 / 总督)</InheritNote>
 			)}
 		</GlassBox>
 	);

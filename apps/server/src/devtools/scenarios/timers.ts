@@ -13,7 +13,7 @@ import { type DevScenarioDef, notReady } from "../registry.js";
  */
 export interface TimerScenarioDeps {
 	clock: DevClock;
-	/** 下面几样都是引擎 / 运行时建好之后才有的,现取。 */
+	/** 下面几样都是推送链路 / 运行时建好之后才有的,现取。 */
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
 	profileRefresh: () => Pick<ProfileRefreshHandle, "pollNow"> | undefined;
@@ -70,7 +70,7 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		params: [{ key: "minutes", label: "分钟", kind: "number", default: 10, min: 1, max: 1440 }],
 		async run(params) {
 			const state = deps.mute();
-			if (!state) return notReady("推送引擎");
+			if (!state) return notReady("推送链路");
 			const minutes = typeof params.minutes === "number" ? params.minutes : 10;
 			const until = await state.muteFor(minutes * 60_000);
 			mutedByDevtools = until;

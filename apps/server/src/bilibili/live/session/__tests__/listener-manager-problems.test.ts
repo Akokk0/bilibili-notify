@@ -45,7 +45,7 @@ describe("ListenerManager 的问题清理", () => {
 		);
 	});
 
-	it("disposeAll(引擎停下、登录失效拆会话):全清", async () => {
+	it("disposeAll(直播监听停下、登录失效拆会话):全清", async () => {
 		const h = makeListenerManagerHarness();
 		await h.sync(["u1", "u2"]);
 		h.manager.dispose();

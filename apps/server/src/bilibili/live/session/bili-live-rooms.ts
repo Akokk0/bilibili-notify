@@ -42,7 +42,7 @@ export class BiliLiveRooms implements Disposable {
 	start(ctx: SourceContext, subscriptions: readonly SourceSubscriptionView[]): void {
 		if (this.listener) throw new Error("bilibili live rooms are already started");
 		this.sourceCtx = ctx;
-		ctx.logger.info("[start] 直播引擎启动，正在初始化直播监听...");
+		ctx.logger.info("[start] 直播监听启动，正在连直播间...");
 		this.roomContext = new RoomContext({
 			api: this.opts.api,
 			liveContext: this.opts.liveContext,

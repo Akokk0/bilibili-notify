@@ -530,9 +530,9 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			}
 		});
 
-		// 「现在就跑」要的引擎不再经 `builtins.bilibili.dynamic` 取(那一格随 `Source.health()` 一起没了),
-		// 改经场景那一头观察:报「动态引擎还没起来」= 引擎不在。
-		it("登记抛了:错原样抛出去,上下文先收(存储把手关了),不留半个来源(场景仍报「动态引擎还没起来」),能重来", async () => {
+		// 「现在就跑」要的动态轮询不再经 `builtins.bilibili.dynamic` 取(那一格随 `Source.health()` 一起没了),
+		// 改经场景那一头观察:报「动态轮询还没起来」= 动态轮询不在。
+		it("登记抛了:错原样抛出去,上下文先收(存储把手关了),不留半个来源(场景仍报「动态轮询还没起来」),能重来", async () => {
 			const { builtins, fake, scenario, reportPost, integrationStore } = setup();
 			const boom = new Error("登记炸了");
 			const pipeline = { registerSource: vi.fn().mockRejectedValueOnce(boom) } as never;
@@ -541,7 +541,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await expect(runScenario(scenario)).resolves.toMatchObject({
 				ok: false,
 				code: "invalid",
-				message: expect.stringContaining("动态引擎还没起来"),
+				message: expect.stringContaining("动态轮询还没起来"),
 			});
 			// 锚点 = 来源起来那一刻:拨回起点再登记,场景那条假动态才晚于锚点。
 			vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
@@ -580,7 +580,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await ok.registered[0]?.source.stop();
 		});
 
-		it("来源停下后,场景又报「动态引擎还没起来」", async () => {
+		it("来源停下后,场景又报「动态轮询还没起来」", async () => {
 			const { builtins, fake, scenario } = setup();
 			await builtins.registerSources(fake.pipeline);
 			await runScenario(scenario);
@@ -588,7 +588,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await expect(runScenario(scenario)).resolves.toMatchObject({
 				ok: false,
 				code: "invalid",
-				message: expect.stringContaining("动态引擎还没起来"),
+				message: expect.stringContaining("动态轮询还没起来"),
 			});
 		});
 	});

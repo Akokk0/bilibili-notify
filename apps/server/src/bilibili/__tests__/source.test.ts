@@ -1,8 +1,8 @@
 /**
- * B 站来源:`start(ctx)` 里造并启动动态引擎,`stop()` 里停它。
+ * B 站来源:`start(ctx)` 里造并启动动态轮询,`stop()` 里停它。
  *
- * 引擎用真的 `DynamicPoller`(假 `Api`,全程不外连);cron 换成惰性的假件,好数启停与新节奏。
- * 最后一组是「不用假名单」的端到端:真订阅仓 + 真来源上下文 + 真引擎,停用 / 启用 / 改全局作品开关逐个走一遍。
+ * 动态轮询用真的 `DynamicPoller`(假 `Api`,全程不外连);cron 换成惰性的假件,好数启停与新节奏。
+ * 最后一组是「不用假名单」的端到端:真订阅仓 + 真来源上下文 + 真动态轮询,停用 / 启用 / 改全局作品开关逐个走一遍。
  */
 
 import {
@@ -631,7 +631,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	it("start 后引擎在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、把手都摘了、登录检查停掉", async () => {
+	it("start 后动态轮询在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、把手都摘了、登录检查停掉", async () => {
 		const { deps, config, setHealthCheckMs } = makeDeps();
 		const source = createBiliSource(deps);
 		const { ctx, watchDisposed, disposeContext } = makeCtx(
@@ -650,7 +650,7 @@ describe("createBiliSource", () => {
 		expect(watchDisposed).toHaveBeenCalledTimes(3);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 
-		// stop 之后设置再变(上下文还没收):来源自己的订阅已摘,不会造出新的引擎、也不会再动登录检查。
+		// stop 之后设置再变(上下文还没收):来源自己的订阅已摘,不会造出新的动态轮询、也不会再动登录检查。
 		setHealthCheckMs.mockClear();
 		config.set({ dynamicCron: "*/9 * * * *", healthCheckMinutes: 45 });
 		expect(cronMock.instances).toHaveLength(1);
@@ -662,8 +662,8 @@ describe("createBiliSource", () => {
 		expect(config.listeners()).toBe(0);
 	});
 
-	// 验红:把 `problems?.detach()` 挪到引擎停下之后,这条红(引擎收尾的「不再适用」被当成「已恢复」)。
-	it("start 后风控进表;stop 先摘上报器再停引擎,不补「已恢复」", async () => {
+	// 验红:把 `problems?.detach()` 挪到动态轮询停下之后,这条红(动态轮询收尾的「不再适用」被当成「已恢复」)。
+	it("start 后风控进表;stop 先摘上报器再停动态轮询,不补「已恢复」", async () => {
 		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
 		const { deps } = makeDeps({
 			auth: auth.auth,
@@ -682,9 +682,9 @@ describe("createBiliSource", () => {
 		expect(ctx.resolveProblem).not.toHaveBeenCalled();
 	});
 
-	// 验红:动态那格读不懂时不报这条问题,第一条断言红;把 `layers.attach(ctx)` 挪进引擎起来的那一支,
+	// 验红:动态那格读不懂时不报这条问题,第一条断言红;把 `layers.attach(ctx)` 挪进动态轮询起来的那一支,
 	// 关注失败那条断言红(上报器没接上核心,经它报的问题进不了表)。
-	it("动态那格读不懂、引擎没造:设置问题照样进表,上报器照样接上核心", async () => {
+	it("动态那格读不懂、动态轮询没造:设置问题照样进表,上报器照样接上核心", async () => {
 		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
 		const { deps, config } = makeDeps({
 			auth: auth.auth,
@@ -708,8 +708,8 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	// 验红:把 source.ts 递给引擎的 `problems: layers` 换成别的对象,这条红。
-	it("引擎用的就是来源的那个上报器:拉动态撞 -352 报到它身上", async () => {
+	// 验红:把 source.ts 递给动态轮询的 `problems: layers` 换成别的对象,这条红。
+	it("动态轮询用的就是来源的那个上报器:拉动态撞 -352 报到它身上", async () => {
 		const auth = makeAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
 		const { deps } = makeDeps({
 			auth: auth.auth,
@@ -761,7 +761,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	it("名单变了的回调接到引擎:新增一个开着作品的人就起 cron", async () => {
+	it("名单变了的回调接到动态轮询:新增一个开着作品的人就起 cron", async () => {
 		const { deps } = makeDeps();
 		const source = createBiliSource(deps);
 		const roster: Array<{ externalId: string; post: boolean }> = [];
@@ -775,7 +775,7 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	it("初始 cron 取自 B 站设置;cron 变了引擎换节奏,别的设置变了不动", async () => {
+	it("初始 cron 取自 B 站设置;cron 变了动态轮询换节奏,别的设置变了不动", async () => {
 		const { deps, config } = makeDeps({ cron: "*/3 * * * *" });
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
@@ -793,8 +793,8 @@ describe("createBiliSource", () => {
 	});
 
 	// 运行中由好变坏没有真实路径(写集成段的口都先过格式),这里用假读口造出来:照同一条规矩「哪格坏停哪样」。
-	// 验红:`applyDynamic` 读不懂、引擎在的那一支什么都不做 → 动态不停;`applyLoginCheck` 不传 0 → 心跳不停。
-	it("运行中动态与登录检查那两格从读得懂变成读不懂:引擎被停、dynamic() 回 undefined、报了问题;登录检查收到 0", async () => {
+	// 验红:`applyDynamic` 读不懂、动态轮询在的那一支什么都不做 → 动态不停;`applyLoginCheck` 不传 0 → 心跳不停。
+	it("运行中动态与登录检查那两格从读得懂变成读不懂:动态轮询被停、dynamic() 回 undefined、报了问题;登录检查收到 0", async () => {
 		const { deps, config, setHealthCheckMs } = makeDeps();
 		const source = createBiliSource(deps);
 		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
@@ -813,7 +813,7 @@ describe("createBiliSource", () => {
 	});
 
 	// 验红:把 `applyDynamic` 里的 `ctx.resolveProblem` 挪到 `made.start()` 之前,这条红(起不来也把问题清了)。
-	it("晚起时造引擎抛了别的错:没有往外抛、那一条问题还在、下一次设置变了再试", async () => {
+	it("晚起时造动态轮询抛了别的错:没有往外抛、那一条问题还在、下一次设置变了再试", async () => {
 		const { deps, config } = makeDeps();
 		config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
 		const source = createBiliSource(deps);
@@ -823,7 +823,7 @@ describe("createBiliSource", () => {
 		const resolved = vi.mocked(ctx.resolveProblem);
 		resolved.mockClear();
 
-		// 引擎一起来就读名单:让名单读口炸一次。
+		// 动态轮询一起来就读名单:让名单读口炸一次。
 		const roster = ctx.subscriptions;
 		(ctx as { subscriptions: unknown }).subscriptions = () => {
 			throw new Error("名单炸了");
@@ -839,7 +839,7 @@ describe("createBiliSource", () => {
 			true,
 		);
 
-		// 下一次变化再试:这回名单读得出来,引擎起来、问题清掉。
+		// 下一次变化再试:这回名单读得出来,动态轮询起来、问题清掉。
 		(ctx as { subscriptions: unknown }).subscriptions = roster;
 		config.set({ dynamicCron: "*/9 * * * *" });
 		expect(source.dynamic()?.isActive).toBe(true);
@@ -853,7 +853,7 @@ describe("createBiliSource", () => {
 		const { deps, config, setHealthCheckMs, login } = makeDeps();
 		const source = createBiliSource(deps);
 		const { ctx, watchDisposed } = makeCtx([{ externalId: "1", post: true }], config);
-		// 动态引擎已 start(cron 起来了),再抛:模拟登录检查那一步的口炸了。
+		// 动态轮询已 start(cron 起来了),再抛:模拟登录检查那一步的口炸了。
 		setHealthCheckMs.mockImplementationOnce(() => {
 			throw new Error("挂心跳炸了");
 		});
@@ -865,7 +865,7 @@ describe("createBiliSource", () => {
 		expect(watchDisposed).toHaveBeenCalledTimes(3);
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 		expect(ctx.reportProblem).not.toHaveBeenCalled();
-		// 设置再变:被摘掉的订阅不会造出新的引擎
+		// 设置再变:被摘掉的订阅不会造出新的动态轮询
 		config.set({ dynamicCron: "*/9 * * * *" });
 		expect(cronMock.instances).toHaveLength(1);
 		// 能重来
@@ -931,7 +931,7 @@ describe("createBiliSource", () => {
 
 describe("B 站来源 · health()(给 status 指令的那一行)", () => {
 	const MIN = 60_000;
-	/** 来源 + 一个能拨的时钟;动态引擎的 `lastFetchAt` 取真时钟,所以把假时钟拨到「抓取时刻 + 一段」。 */
+	/** 来源 + 一个能拨的时钟;动态轮询的 `lastFetchAt` 取真时钟,所以把假时钟拨到「抓取时刻 + 一段」。 */
 	function setup(over: Parameters<typeof makeDeps>[0] = {}) {
 		const made = makeDeps(over);
 		let now = Date.now();
@@ -1020,7 +1020,7 @@ describe("B 站来源 · health()(给 status 指令的那一行)", () => {
 		await source.stop();
 	});
 
-	it("没 start / 已 stop → 还没抓过(引擎不在、也不是设置读不懂)", async () => {
+	it("没 start / 已 stop → 还没抓过(动态轮询不在、也不是设置读不懂)", async () => {
 		const { source } = setup();
 		expect(source.health?.()).toEqual({ summary: "还没抓过" });
 		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
@@ -1029,7 +1029,7 @@ describe("B 站来源 · health()(给 status 指令的那一行)", () => {
 	});
 });
 
-describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态引擎)", () => {
+describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态轮询)", () => {
 	const T0 = Date.parse("2026-10-11T00:00:00Z");
 	const at = (sec: number) => Math.floor(T0 / 1000) + sec;
 	const clock = (sec: number) => vi.setSystemTime(new Date(T0 + sec * 1000));
@@ -1329,8 +1329,8 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 		expect(login.start).not.toHaveBeenCalled();
 	});
 
-	// 验红:去掉 `start` 里的 `await login.start()`(或挪到引擎起来之后),这条红(引擎在登录落定之前就起了)。
-	it("start 第一步是起登录:它落定之前引擎一个都不起,落定之后才起", async () => {
+	// 验红:去掉 `start` 里的 `await login.start()`(或挪到动态轮询起来之后),这条红(动态轮询在登录落定之前就起了)。
+	it("start 第一步是起登录:它落定之前动态轮询与直播监听一个都不起,落定之后才起", async () => {
 		const { deps, login } = makeDeps();
 		const gate = deferred<void>();
 		login.start.mockImplementationOnce(() => gate.promise);
@@ -1367,8 +1367,8 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 		await source.stop();
 	});
 
-	// 验红:去掉 `stop` 末尾的 `login.stop()`,或把它挪到引擎停之前,这条红。
-	it("stop 的同步段里先停干净自己的活(心跳摘掉、引擎停掉),最后才停登录", async () => {
+	// 验红:去掉 `stop` 末尾的 `login.stop()`,或把它挪到动态轮询停之前,这条红。
+	it("stop 的同步段里先停干净自己的活(心跳摘掉、动态轮询停掉),最后才停登录", async () => {
 		const { deps, login, setHealthCheckMs } = makeDeps();
 		const source = createBiliSource(deps);
 		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
@@ -1379,7 +1379,7 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 
 		const stopping = source.stop();
 
-		// 同步段:不用等 promise,登录已经停了、引擎已经不在。
+		// 同步段:不用等 promise,登录已经停了、动态轮询已经不在。
 		expect(login.stop).toHaveBeenCalledTimes(1);
 		expect(engineActiveWhenLoginStopped).toBe(false);
 		expect(setHealthCheckMs.mock.invocationCallOrder.at(-1)).toBeLessThan(
@@ -1389,7 +1389,7 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 		await stopping;
 	});
 
-	it("两个引擎读登录系统交出的原始登录口,Source.auth 读套过壳的;Api 一律是壳(开发壳钩子)", async () => {
+	it("动态轮询与直播监听读登录系统交出的原始登录口,Source.auth 读套过壳的;Api 一律是壳(开发壳钩子)", async () => {
 		const { deps, login } = makeDeps({ auth: REAL_AUTH_MARK });
 		const shellAuth = { ...REAL_AUTH_MARK } as Required<SourceAuth>;
 		const shellApi = { fetchAllDynamic: async () => EMPTY_FEED } as unknown as Api;

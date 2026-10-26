@@ -80,7 +80,7 @@ function extRow(e: ExtFixture) {
 	};
 }
 
-/** 装着的拓展清单里的平台名(引擎现取);没装的拓展取不到。 */
+/** 装着的拓展清单里的平台名(推送链路现取);没装的拓展取不到。 */
 const PLATFORM_LABELS: Record<string, string> = { douyin: "抖音" };
 
 /** 测试替身:只填生成路径真正读到的那几个字段,其余靠一次 unknown 断言收口。 */
@@ -150,7 +150,7 @@ const overviewOf = (uids: string[]) => async () =>
 const overviewFails = async () => null;
 
 describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () => {
-	it("引擎没起来 → unavailable(等一会儿就好)", async () => {
+	it("推送链路没起来 → unavailable(等一会儿就好)", async () => {
 		const deps = makeDeps(["1", "2"]);
 		(deps.runtime as { pipeline: unknown }).pipeline = null;
 		const r = await generateBoardRoast(deps, {
@@ -336,7 +336,7 @@ describe("失败一律是标准码表里的码,话不空 —— 路由的错误�
 	it("「没配 / 没开」归 not_configured,「稍后再试」归 unavailable,「查无此人」归 not_found", async () => {
 		const codes = (await everyFailure()).map((f) => (f.ok ? "ok" : f.code));
 		expect(codes).toEqual([
-			"unavailable", // 引擎没起
+			"unavailable", // 推送链路没起
 			"not_configured", // 智能女仆没开
 			"unavailable", // 取数失败
 			"not_configured", // 订阅不够 2 位

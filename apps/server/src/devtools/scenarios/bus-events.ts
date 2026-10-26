@@ -20,13 +20,13 @@ const SOURCES = [
 	{ value: "link-previewer", label: "link-previewer · 链接预览" },
 ];
 
-const DEFAULT_MESSAGE = "devtools 造的一条引擎错误 —— 看主人私聊与右上角告警。";
+const DEFAULT_MESSAGE = "devtools 造的一条推送链路错误 —— 看主人私聊与右上角告警。";
 
 export function busEventScenarios(deps: BusEventDeps): DevScenarioDef[] {
 	const pipelineError: DevScenarioDef = {
 		id: "pipeline.error",
 		group: "event",
-		title: "引擎错误",
+		title: "推送链路错误",
 		icon: "warning",
 		desc: "往总线上发一条 pipeline-error:主人会收到私聊,面板右上角出告警条。",
 		params: [

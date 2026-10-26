@@ -620,12 +620,12 @@ interface PluginCell {
  * (`runtime/pipeline.ts`),而推送链路之外的每一条日志(push / sink / master 私聊 /
  * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
  *
- * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。
+ * 此前这里是一份只认四个功能模块键的写死名单,注释还断言「infra 四件没有槽位」。
  * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
  * 六天后服务端把基础 logger 接到 `logging.levels.core` 上就不成立了,而没有任何东西
  * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
  *
- * 动态与直播两个 B 站引擎共用日志等级表里的一个键(`BILIBILI_SOURCE_KEY`),所以这两格读同一个覆盖。
+ * 动态与直播两个 B 站功能模块共用日志等级表里的一个键(`BILIBILI_SOURCE_KEY`),所以这两格读同一个覆盖。
  */
 const OVERRIDE_KEY: Record<ModuleCellId, string> = {
 	api: "core",
@@ -764,7 +764,7 @@ export function SystemHealthCard({
 		};
 	};
 
-	// Infra → Engine. 这 4 个 infra 包 boot 成功后 100% constructed,所以状态点跟
+	// Infra → 功能模块. 这 4 个 infra 包 boot 成功后 100% constructed,所以状态点跟
 	// reachable 同步;子文案改填业务计数(api 显示登录态,storage 已加载,subscription
 	// / push 分别显示订阅 / 目标数)以增加信息量。
 	const infra: PluginCell[] = [
@@ -773,15 +773,15 @@ export function SystemHealthCard({
 		buildCell("subscription", "订阅 · subscription", true, `${subCount} 个订阅`),
 		buildCell("push", "推送 · push", true, `${targetCount} 个目标`),
 	];
-	const engines: PluginCell[] = [
+	const featureModules: PluginCell[] = [
 		buildCell("dynamic", "动态 · dynamic", dynamicEnabled, dynamicEnabled ? "运行中" : "未启用"),
 		buildCell("live", "直播 · live", liveEnabled, liveEnabled ? "运行中" : "无监听"),
 		buildCell("image", "卡片 · image", imageEnabled, imageEnabled ? "puppeteer 就绪" : "未接入"),
 		buildCell("ai", "AI · ai", aiEnabled, aiEnabled ? "运行中" : "未启用"),
 	];
-	const total = infra.length + engines.length;
+	const total = infra.length + featureModules.length;
 	// 就绪数就是亮着的状态点的个数 —— 它不是第二个真相源,只是把八颗点数成一个数。
-	const ready = [...infra, ...engines].filter((c) => c.enabled).length;
+	const ready = [...infra, ...featureModules].filter((c) => c.enabled).length;
 	const summary = !reachable
 		? "后端失联,状态未知"
 		: ready === total
@@ -862,7 +862,7 @@ export function SystemHealthCard({
 					</div>
 					<div className="grid grid-cols-1 gap-y-3 sm:grid-cols-2 sm:gap-x-7">
 						<ModuleGroup caption="基础设施" cells={infra} />
-						<ModuleGroup caption="引擎" cells={engines} />
+						<ModuleGroup caption="功能模块" cells={featureModules} />
 					</div>
 				</div>
 			</div>

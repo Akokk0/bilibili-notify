@@ -94,7 +94,7 @@ describe("deliverRoast — 没送到的带着投递那头的失败", () => {
 		]);
 	});
 
-	it("推送引擎还没起 → unavailable", async () => {
+	it("推送链路还没起 → unavailable", async () => {
 		const { deps } = makeDeps();
 		(deps.runtime as { pipeline: unknown }).pipeline = null;
 		const out = await deliverRoast(deps, opts);

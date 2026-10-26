@@ -35,12 +35,12 @@ describe("B 站的现在就跑", () => {
 		expect(healthCheckNow).toHaveBeenCalledOnce();
 	});
 
-	it("引擎还没起来 → 拒", async () => {
+	it("动态轮询还没起来 → 拒", async () => {
 		const { reg } = setup({ dynamic: () => undefined });
 		await expect(reg.run("bilibili.dynamic.detect-now", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
-			message: "动态引擎还没起来",
+			message: "动态轮询还没起来",
 		});
 	});
 

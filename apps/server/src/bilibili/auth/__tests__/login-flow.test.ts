@@ -572,7 +572,7 @@ describe("LoginFlow.stop()", () => {
 });
 
 describe("LoginFlow — 冷启动即登录过期,重新登录后必须报告登录恢复", () => {
-	it("启动时 cookie 已失效 → 重新登录后仍报告登录恢复(下游引擎靠它复活)", async () => {
+	it("启动时 cookie 已失效 → 重新登录后仍报告登录恢复(下游动态轮询靠它复活)", async () => {
 		const h = makeFlow();
 		// 冷启动探测:cookie 过期。此时快照还是 LOADING_LOGIN_INFO,不是 LOGGED_IN。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
@@ -584,7 +584,7 @@ describe("LoginFlow — 冷启动即登录过期,重新登录后必须报告登�
 		h.api.fetchUserCard.mockResolvedValueOnce(ok({ data: { card: { mid: "42" } } }));
 		await h.flow.reportAccountInfo();
 
-		// 动态引擎在自己撞上 -101 时就已经停了 cron,并明写「待登录恢复重启」。
+		// 动态轮询在自己撞上 -101 时就已经停了 cron,并明写「待登录恢复重启」。
 		// 它是否看到登录恢复,与登录流当初有没有报告登录失效无关。
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 	});
@@ -1322,7 +1322,7 @@ describe("LoginFlow — 卡片回应形状不对(M1)", () => {
 		await expect(h.flow.reportAccountInfo()).resolves.toBeUndefined();
 
 		expect(rawOf(h.flow).status).toBe("logged-in");
-		// 账号算不出来也照状态通知:引擎听的恢复边不能被吞。
+		// 账号算不出来也照状态通知:动态轮询与直播监听听的恢复边不能被吞。
 		expect(eventsOfKind(h.edges, "restored")).toHaveLength(1);
 		expect(liveHeartbeat(h)).toBeDefined();
 		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("account boom"));

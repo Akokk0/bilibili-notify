@@ -140,7 +140,7 @@ describe("普通互动翻译", () => {
 		expect(h.interactions).toEqual([]);
 	});
 
-	it("引擎已拆除 → 进房不再往外推", async () => {
+	it("直播监听已拆除 → 进房不再往外推", async () => {
 		const h = await listening();
 		h.setDisposed(true);
 		await h.dispatch({

@@ -9,9 +9,9 @@ import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 /**
  * A3:四类动态(文字 / 图文 / 视频 / 专栏,外加转发)。
  *
- * 引擎每轮 cron 拉 `api.fetchAllDynamic()`,按作者 mid 认订阅、按 `pub_ts` 越过锚点就推。这里
- * 把一条假动态**并进**那个结果(真 feed 照拉、假的排最前),然后立刻让引擎跑一轮 —— 渲染、
- * 过滤、AI 点评、推送全是真链路,引擎分不出真假。跑完那一轮就把假的撤掉:锚点已经推过了,
+ * 动态轮询每轮 cron 拉 `api.fetchAllDynamic()`,按作者 mid 认订阅、按 `pub_ts` 越过锚点就推。这里
+ * 把一条假动态**并进**那个结果(真 feed 照拉、假的排最前),然后立刻让动态轮询跑一轮 —— 渲染、
+ * 过滤、AI 点评、推送全是真链路,动态轮询分不出真假。跑完那一轮就把假的撤掉:锚点已经推过了,
  * 留着只是脏 feed。
  *
  * 假动态的 `pub_ts` 是「现在」:锚点因此推进到现在,一条**真的**、发布时间早于此刻但还没被
@@ -31,7 +31,7 @@ export interface DynamicScenarioDeps {
 	api: () => OverridableApi<Pick<Api, "fetchAllDynamic">> | undefined;
 	/** B 站自己的资料状态;假动态的作者头像与图集封面借它。 */
 	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
-	/** 引擎是后建的,现取;还没起来就 undefined。 */
+	/** 动态轮询是后建的,现取;还没起来就 undefined。 */
 	dynamic: () => DynamicPollerLike | undefined;
 }
 
@@ -150,7 +150,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 								desc: "devtools 造的一条视频投稿,封面借了头像。",
 								disable_preview: 0,
 								duration_text: "12:34",
-								// 接口给的是**省协议**的地址(`//www.bilibili.com/...`),引擎照着拼 `https:` + 它。
+								// 接口给的是**省协议**的地址(`//www.bilibili.com/...`),动态轮询照着拼 `https:` + 它。
 								// 写成绝对地址会拼出 `https:https://…`,一条点不开的链接 —— 而链接正是这个场景
 								// 要看的东西之一。
 								jump_url: "//www.bilibili.com/video/BV17x411w7KC",
@@ -240,7 +240,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				// 真接口出错时的样子:请求层把 B 站的码翻成的失败结果(同一个纯函数造),没有 data。
 				return failureFromBili(code, `devtools:模拟的错误码 ${code}`);
 			}
-			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。引擎收到失败会走错误处理,
+			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。动态轮询收到失败会走错误处理,
 			// 那不是这次要看的东西。
 			let feed: Feed;
 			try {
@@ -300,7 +300,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 			if (!engine)
 				return fail(
 					"invalid",
-					"动态引擎还没起来(没登录,或动态那一格设置读不懂),这会儿造了也没人来捡",
+					"动态轮询还没起来(没登录,或动态那一格设置读不懂),这会儿造了也没人来捡",
 				);
 			const kind = String(params.type ?? "word") as Kind;
 			seq += 1;
@@ -331,7 +331,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		group: "state",
 		title: "动态拉取报错",
 		icon: "dyn",
-		desc: "让下一轮(可选:之后连着 N 轮)拉动态的请求返回指定的错误码,看动态引擎的退避、问题表与私聊怎么反应。想立刻看到就再点「动态检测」。盖的只是拉动态这一个请求,不经请求客户端的拦截:回 -101 也不会把登录状态变成失效,只会让动态引擎停着,等登录恢复才重启。要拉起来就先按「登录失效」再按「重新确认登录」。收摊即回真。",
+		desc: "让下一轮(可选:之后连着 N 轮)拉动态的请求返回指定的错误码,看动态轮询的退避、问题表与私聊怎么反应。想立刻看到就再点「动态检测」。盖的只是拉动态这一个请求,不经请求客户端的拦截:回 -101 也不会把登录状态变成失效,只会让动态轮询停着,等登录恢复才重启。要拉起来就先按「登录失效」再按「重新确认登录」。收摊即回真。",
 		params: [
 			{ key: "code", label: "错误码", kind: "number", default: -352 },
 			{ key: "rounds", label: "连着几轮", kind: "number", default: 1, min: 1, max: 50 },

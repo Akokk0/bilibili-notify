@@ -117,7 +117,7 @@ export class LoginFlow {
 	 * 没登出过」(`pollOnce`);登录成立时也让它走,那个例外就认不出来了。
 	 *
 	 * 没有登录代那一半会怎样:心跳带着旧 cookie 发出去 → 主人重扫并确认(或恢复了一份备份)→ 旧心跳回 `-101` →
-	 * 刚成立的登录被判失效、心跳摘掉、引擎拆掉,而罐里的 cookie 是好的,只有重启或再扫一次能回来。
+	 * 刚成立的登录被判失效、心跳摘掉、动态轮询拆掉,而罐里的 cookie 是好的,只有重启或再扫一次能回来。
 	 */
 	private authGeneration = 0;
 	/**
@@ -173,7 +173,7 @@ export class LoginFlow {
 	}
 
 	private changeKey(): string {
-		// 账号算不出来也要按状态比对、照常通知:订阅方里有只认状态的(引擎听登录的边停 / 起),不能因为账号读不出来
+		// 账号算不出来也要按状态比对、照常通知:订阅方里有只认状态的(动态轮询与直播监听听登录的边停 / 起),不能因为账号读不出来
 		// 就把一次登录掉线或恢复整个吞掉。
 		let account: unknown;
 		try {
@@ -362,7 +362,7 @@ export class LoginFlow {
 		this.detachHealthCheck();
 		this.transition({ status: "logged-out", reason: reasonKey });
 		// 进了 logged-out 就要记账,与之前是不是已登录无关 —— 冷启动时 cookie
-		// 已过期的话这里是 checking → logged-out,而引擎照样会自己撞上
+		// 已过期的话这里是 checking → logged-out,而动态轮询照样会自己撞上
 		// -101 并停下等登录恢复。
 		// 作废任何在途探活 —— 它们问的是刚死掉的那个会话,迟到的 code 0 不得
 		// 把状态推回已登录。

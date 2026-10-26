@@ -3,8 +3,8 @@
  * 加错误处理 / 故障恢复 / 生命周期。
  *
  * 过滤、出卡、AI 点评、套模板、装配、推送、图集都是核心的事(`posts/deliver-post.ts`,测试在
- * `posts/__tests__/deliver-post.test.ts`),引擎测试里不再有它们 —— 给引擎一个什么都不做的 `reportPost`,
- * 「被过滤就不推」这类旧断言会全绿(引擎根本不推了),所以那些断言只在核心那头,**不留在这里原样通过**。
+ * `posts/__tests__/deliver-post.test.ts`),动态轮询测试里不再有它们 —— 给动态轮询一个什么都不做的 `reportPost`,
+ * 「被过滤就不推」这类旧断言会全绿(动态轮询根本不推了),所以那些断言只在核心那头,**不留在这里原样通过**。
  *
  * 测试策略:
  *   - `detectDynamics()` 是 private,但它是编排核心。白盒直调 + 直接 seed 私有
@@ -119,7 +119,7 @@ function makeServiceCtx(): {
 	return { ctx, disposers, logs };
 }
 
-/** 引擎要的那四个上报器方法(其余的 `attach` / `detach` 是来源的事)。 */
+/** 动态轮询要的那四个上报器方法(其余的 `attach` / `detach` 是来源的事)。 */
 type FakeProblems = Pick<
 	ProblemLayers,
 	"reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
@@ -154,7 +154,7 @@ function makeRecordingLayers() {
 	return { layers, present: () => [...table.values()] };
 }
 
-/** 真上报器 + 一个一碰就抛的核心:证明上报器把抛错接住,引擎的退避不受影响。 */
+/** 真上报器 + 一个一碰就抛的核心:证明上报器把抛错接住,动态轮询的退避不受影响。 */
 function makeThrowingLayers() {
 	const layers = createProblemLayers({
 		locale: fixedLocale(),
@@ -218,7 +218,7 @@ function makeItem(opts: {
 	drawPicsWithDims?: Array<{ url: string; width: number; height: number }>;
 	/** 真 DYNAMIC_TYPE_DRAW 形态:图在 major.draw.items[].src(非 opus.pics)。 */
 	drawItems?: string[];
-	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算链接 / BV。 */
+	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;动态轮询按此算链接 / BV。 */
 	videoJumpUrl?: string;
 }): Dynamic {
 	const text = opts.text ?? "";
@@ -263,7 +263,7 @@ function makeItem(opts: {
 	} as unknown as Dynamic;
 }
 
-/** 请求层回给引擎的东西:code 0 是成功(铺着 data),非 0 是请求层翻好的失败(标准码 + upstreamCode)。 */
+/** 请求层回给动态轮询的东西:code 0 是成功(铺着 data),非 0 是请求层翻好的失败(标准码 + upstreamCode)。 */
 function resp(
 	items: Dynamic[],
 	code = 0,
@@ -275,7 +275,7 @@ function resp(
 	});
 }
 
-/** 测试里写的订阅视图:引擎只认 uid 与 post(`post` 决定名单里的 features 有没有 post)。 */
+/** 测试里写的订阅视图:动态轮询只认 uid 与 post(`post` 决定名单里的 features 有没有 post)。 */
 type SeedView = { uid: string; post?: boolean };
 type Roster = Record<string, SeedView>;
 const rosterOf = (subs: Roster | null | undefined): SourceSubscriptionView[] =>
@@ -293,11 +293,11 @@ interface EngineBag {
 	emits: Array<{ event: string; payload: unknown }>;
 	loseLogin: () => void;
 	restoreLogin: () => void;
-	/** 换名单(`ctx.subscriptions()` 此后回新的);要让引擎知道,再调 `engine.syncSubscriptions()`。 */
+	/** 换名单(`ctx.subscriptions()` 此后回新的);要让动态轮询知道,再调 `engine.syncSubscriptions()`。 */
 	setRoster: (subs: Roster | null) => void;
-	/** 注入给引擎的抓图口(`fetchImage` 选项):每个地址回一个以它命名的引用,测试数调用。 */
+	/** 注入给动态轮询的抓图口(`fetchImage` 选项):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
-	/** 注入给引擎的核心入口(`reportPost` 选项):引擎交出去的每一条作品。 */
+	/** 注入给动态轮询的核心入口(`reportPost` 选项):动态轮询交出去的每一条作品。 */
 	reportPost: ReturnType<typeof vi.fn<(externalId: string, report: PostReport) => void>>;
 	logs: LogRec[];
 }
@@ -306,7 +306,7 @@ function makeEngine(
 	over: {
 		config?: Partial<import("../dynamic-poller").DynamicPollerConfig>;
 		subs?: Roster | null;
-		/** 引擎交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
+		/** 动态轮询交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
 		reportPost?: (externalId: string, report: PostReport) => void;
 		/** 换成别的上报器(真件);不给 = 四个方法都是 spy 的假件。 */
 		problems?: FakeProblems;
@@ -387,7 +387,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).not.toHaveBeenCalled();
-		// 要不要告诉主人登录失效由问题表的未登录层管(看登录状态),引擎不再发 pipeline-error
+		// 要不要告诉主人登录失效由问题表的未登录层管(看登录状态),动态轮询不再发 pipeline-error
 		expect(b.emits.filter((e) => e.event === "pipeline-error")).toEqual([]);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
@@ -495,7 +495,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
 	});
 
 	/**
-	 * 上报器的方法都不往外抛(核心那头抛了它自己接住),所以引擎里不必再包 try:
+	 * 上报器的方法都不往外抛(核心那头抛了它自己接住),所以动态轮询里不必再包 try:
 	 * `handleApiError` 开头已经 stop 了 job,退避重启全靠末尾那句 `scheduleDetectorRestart`。
 	 * 这里用**真上报器**接一个会抛的核心,证明退避照排。
 	 */
@@ -546,7 +546,7 @@ describe("DynamicPoller.detectDynamics — API 错误处理", () => {
  * 瞬时错误(4101132 这类未知码)会退避 300s 后自动重启检测,日志里三条
  * 「将在 300s 后自动重试」「退避计时到,重启动态检测」「动态检测任务已启动」一应俱全。
  * 清的时机是**下一次真正拉取成功**,不是「重启了检测任务」:重启只是把 cron 挂回去,故障还在的话
- * 下一轮照样失败,那时候说"好了"就是骗人。引擎不再有任何私聊口。
+ * 下一轮照样失败,那时候说"好了"就是骗人。动态轮询不再有任何私聊口。
  */
 describe("DynamicPoller — 故障恢复", () => {
 	it("拉成功:清这一路的风控与请求失败(请求失败是普通的清,会补「已恢复」)", async () => {
@@ -674,7 +674,7 @@ describe("DynamicPoller — 故障恢复", () => {
 		expect(b.reportPost).toHaveBeenCalled();
 	});
 
-	it("引擎 stop():这一路的风控清掉,请求失败用「不再适用」清(不补「已恢复」)", () => {
+	it("动态轮询 stop():这一路的风控清掉,请求失败用「不再适用」清(不补「已恢复」)", () => {
 		const b = makeEngine();
 		b.engine.start();
 		b.problems.resolveRisk.mockClear();
@@ -689,8 +689,8 @@ describe("DynamicPoller — 故障恢复", () => {
 });
 
 /**
- * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等登录恢复。
- * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 pipeline-error。
+ * 登录掉了以后,动态轮询自己的事:停 cron、不许被订阅变动拉回来、等登录恢复。
+ * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),动态轮询不再发 pipeline-error。
  */
 describe("DynamicPoller — 登录失效时的 cron", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
@@ -888,7 +888,7 @@ describe("DynamicPoller.detectDynamics — 时间线 / 订阅过滤", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 交给核心的作品:引擎只管生产
+// 交给核心的作品:动态轮询只管生产
 // ---------------------------------------------------------------------------
 
 /** 一条转发:原作者的头像地址写在原动态的作者模块里。 */
@@ -926,10 +926,10 @@ const emojiItem = (): Dynamic => {
 	return item;
 };
 
-/** 取引擎交出去的第 n 条:`[uid, 作品信封]`。 */
+/** 取动态轮询交出去的第 n 条:`[uid, 作品信封]`。 */
 const reported = (b: EngineBag, n = 0): [string, PostReport] => {
 	const call = b.reportPost.mock.calls[n];
-	if (!call) throw new Error(`引擎没有交出第 ${n + 1} 条作品`);
+	if (!call) throw new Error(`动态轮询没有交出第 ${n + 1} 条作品`);
 	return call;
 };
 
@@ -1013,10 +1013,10 @@ describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 		expect(await urlOf(on, "DYNAMIC_TYPE_AV", "//www.bilibili.com/read/cv1")).toBe("");
 	});
 
-	// 引擎的发布时间有一整套兜底(`pub_ts` 的秒 / 毫秒 / 数字字符串,缺了再读 `pub_time` 的文字),翻译里只有
-	// `author.pub_ts`,缺了落在纪元。统计与卡上的时间都吃交出去的那份,所以引擎交出之前要覆写。
+	// 动态轮询的发布时间有一整套兜底(`pub_ts` 的秒 / 毫秒 / 数字字符串,缺了再读 `pub_time` 的文字),翻译里只有
+	// `author.pub_ts`,缺了落在纪元。统计与卡上的时间都吃交出去的那份,所以动态轮询交出之前要覆写。
 	// 验红:把 dynamic-poller.ts 里覆写 `publishedAt` 那一行去掉,这条红(交出去的是 1970 年)。
-	it("publishedAt 用引擎自己算的发布时间:pub_ts 缺失、靠 pub_time 兜底时,翻译落在 1970,交出去的不是", async () => {
+	it("publishedAt 用动态轮询自己算的发布时间:pub_ts 缺失、靠 pub_time 兜底时,翻译落在 1970,交出去的不是", async () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1, name: "阿绫", text: "兜底" });
 		(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
@@ -1057,7 +1057,7 @@ describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 		expect(url).toBe("https://t.bilibili.com/id-1");
 	});
 
-	it("过滤不是引擎的事:含屏蔽词的动态照样交(核心入口之后再挡)", async () => {
+	it("过滤不是动态轮询的事:含屏蔽词的动态照样交(核心入口之后再挡)", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
@@ -1108,7 +1108,7 @@ describe("DynamicPoller.detectDynamics — 交出之前先把图抓好(决策 3)
 	});
 
 	// 验红:把 `repostAvatarUrlOf(item)` 那一项从 fetchPostImages 的选项里去掉,这条红。
-	it("转发:原作者的头像一起抓(480 宽头像档),交出去的作品里已有 repost.creator.avatar;外层头像不在引擎里填", async () => {
+	it("转发:原作者的头像一起抓(480 宽头像档),交出去的作品里已有 repost.creator.avatar;外层头像不在动态轮询里填", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
 		seed(b.engine, "1", 0);
@@ -1137,7 +1137,7 @@ describe("DynamicPoller.detectDynamics — 交出之前先把图抓好(决策 3)
 		expect(emoji).toHaveProperty("image");
 	});
 
-	it("不管出不出卡、被不被过滤:这些都是核心的事,引擎一律照抓(决策 3,出网变多的代价主人知情)", async () => {
+	it("不管出不出卡、被不被过滤:这些都是核心的事,动态轮询一律照抓(决策 3,出网变多的代价主人知情)", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([
@@ -1386,7 +1386,7 @@ describe("DynamicPoller — 名单在 detectDynamics 抓图的 await 期间变�
 		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 	});
 
-	// 引擎只交 uid,接线按身份**现查**订阅:抓图那几秒里同一个 uid 被「删了再加」的话,现查会找到新加的那条订阅,
+	// 动态轮询只交 uid,接线按身份**现查**订阅:抓图那几秒里同一个 uid 被「删了再加」的话,现查会找到新加的那条订阅,
 	// 核心的回问也过得去(新订阅好端端在),于是一条旧动态被推给新订阅。「删了」与「删了又加回来」时间线锚点都会变
 	// (没了 / 重置成现在),所以抓完图把进门时过的两道闸再过一遍:名单里还有这个 uid、锚点还在且仍早于这条动态。
 	// 验红:把 dynamic-poller.ts 抓图之后那句 `this.stillDue(...)` 的判断去掉,这条与上一条红。
@@ -1458,7 +1458,7 @@ describe("DynamicPoller — 名单在 detectDynamics 抓图的 await 期间变�
 			expect(b.reportPost).not.toHaveBeenCalled();
 		});
 
-		it("抓图期间引擎停下了 → 不交(停下之后不许再上报)", async () => {
+		it("抓图期间动态轮询停下了 → 不交(停下之后不许再上报)", async () => {
 			const b = await withDuringFetch((x) => x.engine.stop());
 			expect(b.reportPost).not.toHaveBeenCalled();
 		});
@@ -1732,14 +1732,14 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// H. 作品只交一次、不交的就不交 —— 统计不在引擎这头记:统计听核心入口发的 `post-detected`
+// H. 作品只交一次、不交的就不交 —— 统计不在动态轮询这头记:统计听核心入口发的 `post-detected`
 // ---------------------------------------------------------------------------
 
-describe("DynamicPoller.detectDynamics — 过闸的才交,引擎自己不发统计事件", () => {
+describe("DynamicPoller.detectDynamics — 过闸的才交,动态轮询自己不发统计事件", () => {
 	const reportedCount = (b: EngineBag) => b.reportPost.mock.calls.length;
 	const postEvents = (b: EngineBag) => b.emits.filter((e) => e.event === "post-detected");
 
-	it("新动态过闸 → 交一次;`post-detected` 是核心入口的事,引擎不发", async () => {
+	it("新动态过闸 → 交一次;`post-detected` 是核心入口的事,动态轮询不发", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_AV" })]),
@@ -1949,7 +1949,7 @@ describe("K. detectNow", () => {
 /**
  * 这一路不再跑了(名单空了 / 检测起不来):它报的风控与拉取失败要清掉 —— 没有「下一次结果」会去清它们,
  * 不清的话风控条目永远挂在表里,还把之后所有直播间的停监压成无声。
- * 清的是「不再适用」,不是风控解除:主人不会听到「风控已解除」。真引擎 + 真上报器 + 真问题表 + 真问题通知器。
+ * 清的是「不再适用」,不是风控解除:主人不会听到「风控已解除」。真动态轮询 + 真上报器 + 真问题表 + 真问题通知器。
  */
 describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 	const IN = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } as const;

@@ -169,7 +169,7 @@ describe("bilibili.dynamic.fail", () => {
 	it("与「发动态」共用同一个 fetchAllDynamic 盖板,谁也不把谁摘掉", async () => {
 		const { reg, api, detectNow } = setup();
 		await reg.run(ID, { code: -352, rounds: 2 });
-		// 发动态那一轮撞上错误码(假动态没并进去,引擎只看到错误),跑完它撤自己的盖板,错误码还剩一轮
+		// 发动态那一轮撞上错误码(假动态没并进去,动态轮询只看到错误),跑完它撤自己的盖板,错误码还剩一轮
 		await reg.run("bilibili.dynamic.post", {});
 		expect(detectNow).toHaveBeenCalledOnce();
 		expect(reg.active()[0]?.label).toContain("1");

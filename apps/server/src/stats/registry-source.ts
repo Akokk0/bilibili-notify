@@ -75,7 +75,7 @@ export function attachRegistryStatsSource(opts: RegistryStatsSourceOptions): Dis
 		// 会被旧场接住,两场并成一场超长直播。
 		//
 		// 不在这里补 end 帧:真实下播时刻我们无从得知,补一个假的比留空更糟。只忘掉中立监听
-		// 手里的这一场,之后引擎再发它的 end 也不写;登录恢复后再观测到同一开播时刻时按状态再认出。
+		// 手里的这一场,之后场次引擎再发它的 end 也不写;登录恢复后再观测到同一开播时刻时按状态再认出。
 		opts.forgetOpenSessions(sourceKey);
 	});
 	return {

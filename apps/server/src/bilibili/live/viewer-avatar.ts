@@ -3,7 +3,7 @@
  *
  * 头像只是卡上的点缀:地址没有、接口失败 / 风控、抓不到都只是**这位观众没有头像**(头像块自己收起),
  * 卡照出、不退成文字、不抛。调用方在**确定要出卡时**才调(没渲染器 / 关了出图 / 被门槛挡掉的一次都不碰网络)。
- * 临时头像用引擎手里现成的抓图服务,引用方是「作品配图」那一家:不新开引用方,靠 24 小时宽限期回收。
+ * 临时头像用推送链路手里现成的抓图服务,引用方是「作品配图」那一家:不新开引用方,靠 24 小时宽限期回收。
  *
  * 风控是账号级的:查头像撞到限流(`rate_limited`)之后,**所有直播间**在冷却期内都不再查,免得在风控期里
  * 还一条上舰敲一次门(3b-18,R1 乙)。冷却不报问题表 —— 头像是点缀,动态与直播预检两路已把风控报给主人。
@@ -35,7 +35,7 @@ export interface ViewerAvatarFetcher {
 	fetch(viewerId: string, upUid: string): Promise<ImageRef | undefined>;
 }
 
-/** 全引擎共用一个(冷却是账号级的状态,放不进自由函数):由 `RoomContext` 构造时建。 */
+/** 全推送链路共用一个(冷却是账号级的状态,放不进自由函数):由 `RoomContext` 构造时建。 */
 export function createViewerAvatarFetcher(deps: ViewerAvatarFetcherDeps): ViewerAvatarFetcher {
 	const now = deps.now ?? Date.now;
 	let cooldownUntil = 0;

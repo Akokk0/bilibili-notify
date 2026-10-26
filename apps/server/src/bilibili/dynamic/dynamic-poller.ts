@@ -118,8 +118,8 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * from its config store. The `logLevel` field is intentionally dropped — the host
  * sets logger level externally via {@link ServiceContext}.
  *
- * 引擎只管生产:轮询节奏与视频链接怎么写是它自己的两样;模板 / 图集 / 出图 / AI / 过滤那些都是核心装配的事
- * (`posts/deliver-post.ts` 的 `PostSettings`,每条作品现折),不再经引擎。
+ * 动态轮询只管生产:轮询节奏与视频链接怎么写是它自己的两样;模板 / 图集 / 出图 / AI / 过滤那些都是核心装配的事
+ * (`posts/deliver-post.ts` 的 `PostSettings`,每条作品现折),不再经动态轮询。
  */
 export interface DynamicPollerConfig {
 	/** 轮询动态的 cron 表达式。 */
@@ -146,7 +146,7 @@ export interface DynamicPollerOptions {
 	fetchImage: ImagesDeps["images"]["fetchImage"];
 	/**
 	 * 把一条作品交给核心的作品入口(`PostQueue`)。**没有返回值**:交完就算,不等装配、不看结果,意外抛错由核心入口自己接住;
-	 * 引擎只负责在交出后把时间线前移。签名就是订阅源上下文里 `ctx.reportPost` 的签名:来源只说「谁(外部 id)发了什么」,
+	 * 动态轮询只负责在交出后把时间线前移。签名就是订阅源上下文里 `ctx.reportPost` 的签名:来源只说「谁(外部 id)发了什么」,
 	 * 订阅由宿主按身份查。必给。
 	 */
 	reportPost: (externalId: string, report: PostReport) => void;
@@ -171,7 +171,7 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
  * 平台中立的动态轮询与生产核心。
  *
  * - 不依赖任何宿主框架;宿主(B 站来源,`bilibili/source.ts`)提供 logger / setTimeout / 登录口 / 分层上报器 /
- *   reportPost / 名单(`subscriptions`)。名单是引擎唯一的订阅输入:启停与「名单可能变了」都由来源调进来。
+ *   reportPost / 名单(`subscriptions`)。名单是动态轮询唯一的订阅输入:启停与「名单可能变了」都由来源调进来。
  * - 只管生产:拉 feed、判新、翻成中立作品、抓图、交给核心入口。怎么消费(过滤、出卡、点评、推送、图集)不归它。
  */
 export class DynamicPoller {
@@ -240,10 +240,10 @@ export class DynamicPoller {
 	start(): void {
 		this.postAnchors = new Map();
 
-		this.logger.info("[start] 动态引擎启动，立即启动检测");
+		this.logger.info("[start] 动态轮询启动，立即启动检测");
 		this.restartDetector();
 
-		// 名单变动由来源经 `syncSubscriptions()` 通知;引擎自己只在登录恢复时重建检测器。
+		// 名单变动由来源经 `syncSubscriptions()` 通知;动态轮询自己只在登录恢复时重建检测器。
 		this.authWatch = watchLoginEdges(this.auth, {
 			onRestored: () => {
 				this.authLost = false;
@@ -399,7 +399,7 @@ export class DynamicPoller {
 	 * 让整个独立端进程在启动期崩溃退出,且不写 pino 日志(catch 在更外层的
 	 * `console.error` 才第一次留痕)——用户报告的"升级后后端起不来,清空数据才恢复"
 	 * 即此:坏值持久化进 globals.json 后,后续每次启动都复现同一次崩溃。捕获后
-	 * 仅跳过本次建 job(动态检测保持关闭态),不放倒整个引擎/进程。
+	 * 仅跳过本次建 job(动态检测保持关闭态),不放倒整个动态轮询/进程。
 	 */
 	private startJob(): void {
 		let job: CronJob;
@@ -639,7 +639,7 @@ export class DynamicPoller {
 			return;
 		}
 		try {
-			// 发布时间用引擎自己算的:它有 pub_time 文字兜底(「3分钟前」「昨天 12:00」),翻译里只有 pub_ts,
+			// 发布时间用动态轮询自己算的:它有 pub_time 文字兜底(「3分钟前」「昨天 12:00」),翻译里只有 pub_ts,
 			// 缺了落在纪元 —— 统计与卡上的时间都吃交出去的这一份(统计取 `post.publishedAt`)。
 			post = { ...post, publishedAt: new Date(postTime * 1000).toISOString() };
 			// 交出之前先把图抓好:核心出卡零网络。被过滤的、关了出图的动态也抓(代价主人知情)。
@@ -649,7 +649,7 @@ export class DynamicPoller {
 				{ images: { fetchImage: this.fetchImage }, logger: this.logger },
 				{ repostAvatarUrl: repostAvatarUrlOf(item), emojiUrls: emojiUrlsOf(item) },
 			);
-			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、关作品开关、停下),或「删了再加」成另一条订阅:引擎只交 uid,
+			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、关作品开关、停下),或「删了再加」成另一条订阅:动态轮询只交 uid,
 			// 接线按身份现查订阅 —— 不重校的话旧动态会被推给新订阅。把进门时的闸再过一遍(锚点还在且仍早于这条动态),
 			// 不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
 			if (!this.isDue(uid, postTime)) {

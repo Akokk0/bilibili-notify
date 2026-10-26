@@ -47,7 +47,7 @@ import { injectableUpdateService } from "./update-injection.js";
  * 镜像里被设上,版本号不能;alpha 也不给 —— 那是发出去给人用的构建。`index.ts` 拿到 null
  * 就什么都不挂,`/api/dev` 404,面板那半(`import.meta.env.DEV` 挡着)也就当它不存在。
  *
- * 注入的高度:**既有边界上套装饰器,引擎与服务本体一行不动**。这里把真服务 / 真 adapter
+ * 注入的高度:**既有边界上套装饰器,来源与服务本体一行不动**。这里把真服务 / 真 adapter
  * 各包一层交回去,`index.ts` 把包好的那份往下传 —— 面板看到的、出网的都从装饰器过,本体照常跑。
  */
 export interface CreateDevtoolsInput {
@@ -95,7 +95,7 @@ export interface CreateDevtoolsInput {
 	 */
 	address: () => string | undefined;
 	targets: () => PushTarget[];
-	/** 引擎错误 / 登录失效 / 登录恢复都从这条总线发。 */
+	/** 推送链路错误 / 登录失效 / 登录恢复都从这条总线发。 */
 	bus: MessageBus;
 	/** 定时组要碰的几个口,都是后建的,现取。 */
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
@@ -119,9 +119,9 @@ export interface Devtools {
 	updateService: UpdateService;
 	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
 	marketplace: Marketplace;
-	/** 交给引擎的那份 —— 包过能力注入的派生表。 */
+	/** 交给推送链路的那份 —— 包过能力注入的派生表。 */
 	adapters: PlatformAdapterRegistry;
-	/** 交给引擎、再递给派发器的截流闸口 —— 三条发送路(含链接回卡、指令回复)共用。 */
+	/** 交给推送链路、再递给派发器的截流闸口 —— 三条发送路(含链接回卡、指令回复)共用。 */
 	interceptSend: SendInterceptHandler;
 	/**
 	 * 交给采样器的堆读数口 —— 真 `process.memoryUsage()` 外面包了一层注入。
@@ -130,7 +130,7 @@ export interface Devtools {
 	 * 一处引 devtools(构建期整棵树靠它换空桩),多开一个 import 就多一条漏进产物的路。
 	 */
 	memoryUsage: () => MemoryUsageSample;
-	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
+	/** 交给推送链路的免扰时钟(单点覆盖)。 */
 	quietHoursNow: () => Date;
 	/** 装载器在拓展跑起来之后调:只给开了 `contributes.devtools` 的那几家挂开发场景。 */
 	attachExtension: (started: { id: string; dir: string; ctx: ExtensionContext }) => Promise<void>;
@@ -181,7 +181,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			inbound: input.inbound,
 			commands: input.commands,
 			connections: input.connectionConfigs,
-			// 眼下有效的能力:真适配器的回答,套上 devtools 注入的假值(同引擎看到的那份)。
+			// 眼下有效的能力:真适配器的回答,套上 devtools 注入的假值(同推送链路看到的那份)。
 			capabilities: (connection) => {
 				const route = routeConnection(input.adapters.list(), connection);
 				return route.ok ? caps.wrap(route.adapter).capabilities?.(route.connection) : undefined;

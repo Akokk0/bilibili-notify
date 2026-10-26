@@ -227,7 +227,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("拦下来那条回的结果标了 isSynthetic —— 它没出网,不能拿去翻目标的可达状态", () => {
-		// 回 ok 是为了让调用链照常跑完(推送引擎、历史那行都当它成了)。但 dispatcher 的
+		// 回 ok 是为了让调用链照常跑完(推送链路、历史那行都当它成了)。但 dispatcher 的
 		// onDelivery 会拿同一个结果去写 target.testStatus —— 那是落盘、还广播
 		// config-changed 的。截流期间把一个发不出去的目标标成绿的,还活得比截流久。
 		const gate = createCaptureGate();
