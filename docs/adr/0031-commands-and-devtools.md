@@ -29,6 +29,7 @@
     - 场景只用自己集成的 ctx 做事（B 站「造一条新动态」就调 `ctx.reportPost`），核心的句柄不交出去。
     - 🔗 10-10（3a-32）已落前四条里的登记方式与 id 前缀：`DevtoolsProvider`、登记表 `devtoolsProviders`（类型 `DevtoolsProviderRegistry`）、宿主加前缀；B 站的场景搬进 `bilibili/devtools/`，只在开发版的门里登记。「只用自己集成的 ctx 做事」还没做：B 站的场景仍直接用引擎与套了壳的接口句柄，句柄由入口建好交给它，等 3a-28 B 站有了上报口再改。核心自己的场景不加前缀（原文没提）。`run` 返回结果形状、`creator` 参数种类也还没做。
     - 🔗 现状（3b-45，10-25）已落：`run` 返回结果形状，`DevParamError` / `DevScenarioNotFound` 删除，过线给面板的纯声明改名 `DevScenarioDescriptor`，场景这一族与 `DevtoolsProvider` 的本体住 `packages/internal/src/devtools.ts`（拓展包与 contract 只转类型）；provider 随拓展起停登记与撤销，拓展场景与核心场景撞完整 id 会被拒。仍未做：`creator` 参数种类、B 站场景只用自己的 ctx、核心场景加前缀。
+    - 🔗 现状（3b-50，10-26）：仍未做的三件——`creator` 参数种类、B 站场景只用自己集成的 ctx、核心场景加前缀——主人定归第 4 期，3b 不做。
 
 ## 取代与修订的旧条款
 
