@@ -57,17 +57,20 @@ export const BOUNDARIES = [
 		// 内容构造口 / 链接卡配色 / 抓图类型)已搬进核心的 `live/`、`posts/`;剩下的都在等新接口:入口登录装配(index)、
 		// 直播引擎宿主(engines 的 `Api` / `LiveEngine` 两条,3b)、关注同步与粉丝轮询
 		// (3b,随来源 `fetchProfile`)、卡片真实预览与
-		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨,3b 末清零。
+		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨;3b 收尾能清的清零,余下的等第 4 期,原因写在行内。
 		// 3b-25:关注同步搬进 B 站来源,`runtime/follow-sync.ts` 与 `routes/subscriptions.ts`(新建时当场关注)两行清零删掉。
 		// 3b-47:登录装配搬进 B 站来源(`compose.ts` 开上下文、来源自己造 / 起 / 停登录),入口那一行(`bilibili/auth/index.js`)清零删掉。
 		ratchet: {
+			// 第 4 期:卡片真实预览与经接口搜人改走来源后消。
 			"apps/server/src/app.ts": 1,
+			// 第 4 期:卡片真实预览与经接口搜人改走来源后消。
 			"apps/server/src/routes/cards.ts": 4,
 			// 3b-47:旧搜人改从 createApp 的选项拿 `Api`(主人 10-25 定直接引类型、不借卡片路由的),第 4 期旧搜人改口时消。
+			// 第 4 期:经接口搜人改走来源后消。
 			"apps/server/src/routes/subscriptions.ts": 1,
 		},
 		reason:
-			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨,3b 末清零",
+			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨;3b 收尾能清的清零,余下的等第 4 期",
 	},
 ];
 

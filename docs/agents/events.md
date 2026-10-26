@@ -6,7 +6,7 @@
 
 规范契约在 `packages/internal/src/platform.ts#BusEvents`:事件名 → 载荷。载荷一律是一个具名对象(没有载荷的是 `undefined`),`bus.emit(事件, 载荷)`、`bus.on(事件, 载荷 => …)`,不用位置参数。独立端把这批事件接到 WS channel(见文末)。
 
-载荷里不许带 B 站的形状(`uid` 键、`Bili*` 类型、平台原始值的裸 string):守卫 `scripts/__tests__/bus-event-payloads.test.mjs` 走类型检查器逐个载荷查,开张时的违规记在它的棘轮表里,3b 末清零。
+载荷里不许带 B 站的形状(`uid` 键、`Bili*` 类型、平台原始值的裸 string):守卫 `scripts/__tests__/bus-event-payloads.test.mjs` 走类型检查器逐个载荷查,开张时的违规记在它的棘轮表里,3b 已清零。
 
 | 事件 | 说明 |
 |---|---|

@@ -37,8 +37,8 @@ import {
  *   B 站专有的通用词,今天空,加一条要主人点头;排除表里的键必须还在生成结果里(不留死条目)。
  *   定案原写三样(导出名、方法名、类型的键),主人 10-12 定只取 snake_case 的类型键。
  *   **生成函数只认属性签名与枚举成员**:以后 B 站的回应若改用 zod 校验,要让它也认对象字面量的键。
- * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-12 定:清零期是 3b 末,
- *   清不了的几格照记,清零期的字面先不改,3b 收尾时再问。
+ * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-26 定:3b 收尾能清的清零,
+ *   余下的等第 4 期;第 4 期的格子在行内写原因。
  *
  * 抓不到的(靠审查与别的守卫):
  * - 不带下划线的 B 站原始字段(`mid`、`uname`、`face`、`aid`、`cid`、`pubdate`、`opus`、`archive`、`pics`)没法自动认,
@@ -219,12 +219,12 @@ export const GENERATED_KEY_EXCLUSIONS = {};
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数:13 个文件 62 处;认正则字面量、手补 `live_room` / `roomid` 之后:14 个文件 73 处)。只许往下调。
- * 行内注释只如实写这一格是什么,不写清零期。
+ * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
-	"apps/server/src/routes/cards.ts": 18, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×1、`roomid`×3(`live_room.roomid` 的读取)
-	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
-	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
+	"apps/server/src/routes/cards.ts": 18, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×1、`roomid`×3(`live_room.roomid` 的读取)。第 4 期:卡片真实预览改走来源、核心不再直接解析 B 站回应后消。
+	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`。第 4 期:经接口搜人改走来源的 `searchCreators` 后消。
+	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`。第 4 期:面板改从来源描述符取会员档(`descriptor.membershipPrograms`)、这份 B 站常量搬进 `apps/server/src/bilibili/` 后消;今天面板 `config/membership-programs.ts` 还直接 import 它。
 };
 
 /** 全小写、带下划线的键:`live_status`、`room_id`;驼峰、带大写、不带下划线的不算。 */

@@ -26,8 +26,8 @@ import {
  *   - 一个节点一处。
  * - 整目录不扫:`bilibili/`(B 站自己的 uid)、`migration/`(0.x 的形状:按 uid 的文件名)。`platforms/` 不豁免。
  * - 白名单:空。
- * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-12 定:清零期是 3b 末,
- *   清不了的几格照记,清零期的字面先不改,3b 收尾时再问。
+ * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-26 定:3b 收尾能清的清零,
+ *   余下的等第 4 期;第 4 期的格子在行内写原因。
  *
  * 抓不到的(靠审查与别的守卫):
  * - 换了名字的同一个东西(`mid`、`userId`、`bid`)。
@@ -61,11 +61,11 @@ export const ADVICE =
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数:15 个文件 212 处)。只许往下调。
- * 行内注释只如实写这一格是什么,不写清零期。
+ * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
-	"apps/server/src/routes/cards.ts": 33,
-	"apps/server/src/routes/subscriptions.ts": 8,
+	"apps/server/src/routes/cards.ts": 33, // 第 4 期:卡片真实预览改走来源、核心不再直接解析 B 站回应后消。
+	"apps/server/src/routes/subscriptions.ts": 8, // 第 4 期:经接口搜人改走来源的 `searchCreators` 后消。
 };
 
 /** 字符串字面量里算 uid 的那几个值(不分大小写)。 */

@@ -60,8 +60,8 @@ import {
  * - 第 4 条为什么是「任何函数」而不是「名字像谓词的函数」:定案怕的就是「中立名谓词,词棘轮看不见」。按名字认谓词
  *   (`is*`、`supports*`)正好漏掉起了别的名字的那种;谓词要按平台分叉,函数体里就得比字面量、`switch` 或查表(第 1~3 条接住,
  *   只要形参还叫 `platform`);形参换了名字躲过去的,由调用处「把平台值传给了一个不在去处表里的函数」接住。两头各堵一半。
- * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-12 定:清零期是 3b 末,
- *   清不了的几格照记,清零期的字面先不改,3b 收尾时再问。
+ * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-26 定:3b 收尾能清的清零,
+ *   余下的等第 4 期;第 4 期的格子在行内写原因。
  *
  * 抓不到的(靠审查与别的守卫):
  * - 别名传了两层以上、或经函数返回值、对象字段转手的。
@@ -149,10 +149,11 @@ const EQUALITY = new Set([
 
 /**
  * 棘轮表(核心):文件 → 命中的上限(开张时的现数)。只许往下调。
- * 行内注释只如实写这一格是什么,不写清零期。
+ * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
 	// 平台表自己:`PLATFORM_REGISTRY[platform]` 当下标一处,`isWebhookPlatform` 与 `addressNounFor` 里各一次 `platformDescriptor(platform)`。
+	// 第 4 期:平台闭集隔离区整个删(ADR-0024 决策 1),平台事实交给各适配器的描述后消。
 	"packages/internal/src/platform-registry.ts": 3,
 };
 
@@ -163,18 +164,21 @@ export const RATCHET = {
  * 语法上认不出是平台对平台),如实记在 `Targets.tsx` 那一格里。
  */
 export const RATCHET_PANEL = {
-	"apps/web/src/components/link-preview-settings.tsx": 1, // `platform === "qq-official"`
-	// `table[platform]` 查表、`lookup(connection.platform)` 喂函数:都是平台徽章的显示。
+	"apps/web/src/components/link-preview-settings.tsx": 1, // `platform === "qq-official"`。第 4 期:面板按适配器描述重画后消。
+	// `table[platform]` 查表、`lookup(connection.platform)` 喂函数:都是平台徽章的显示。第 4 期:面板按适配器描述重画后消。
 	"apps/web/src/components/platform-meta.tsx": 2,
 	// 原 12 处:`platform === "onebot"` / `"qq-official"` 比字面量 6 处(`platform` 与 `value.platform` 各 3)、`platformDescriptor(platform)`、
 	// `targetSessionSummary(target, platform)`、`sessionFieldsHint(value, platform)`、`platformTint(...)`×2 喂函数 5 处(其中 `platformTint` 两处是显示),
 	// 以及 `value.platform === p.value` 1 处:**误伤**(`p.value` 是候选里的平台,平台对平台,语法上认不出)。
 	// 另 6 处是带兜底的平台值(判据看穿 `?? x` / `|| x` 后进表,10-12 主人点头,共 18 处):`addressNounFor(platform ?? "", …)`×3、
 	// `platformTint(platform ?? "")`、`scopesFor(platform ?? "")`、`platformTint(platform || (…))`(这条是显示)。
+	// 第 4 期:面板按适配器描述重画后消。
 	"apps/web/src/pages/Targets.tsx": 18,
 	// `isWebhookPlatform(connection.platform)`、`webhookUrlPlaceholder(platform)`、`webhookSecretHint(platform)`。
+	// 第 4 期:面板按适配器描述重画后消。
 	"apps/web/src/types/connection-fields.ts": 3,
 	// 两个 `switch (platform)`、`PLATFORM_REGISTRY[platform]` 查表、`platform === "onebot"` / `"qq-official"` 比字面量各一处。
+	// 第 4 期:面板按适配器描述重画后消。
 	"apps/web/src/types/domain.ts": 5,
 };
 

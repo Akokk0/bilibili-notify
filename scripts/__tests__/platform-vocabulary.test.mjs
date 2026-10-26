@@ -40,8 +40,8 @@ import {
  * - `transport`、`openid` 是词表里最容易撞上别的意思的两个词(HTTP 传输、OpenID Connect),判据分不开。今天核心里 `transport`
  *   的命中全是 OneBot 连接的「怎么连」判别键、`openid` 全是 QQ 官方机器人的地址叫法;不预先排除,撞上的那天是主人看得见的一次点头。
  * - import 路径也是字符串,照算(`"./platforms/onebot.js"`)。
- * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-12 定:清零期是 3b 末,
- *   清不了的几格(`packages/internal` 的平台表与连接设置规则等)照记,清零期的字面先不改,3b 收尾时再问。
+ * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。主人 10-26 定:3b 收尾能清的清零,
+ *   余下的等第 4 期;第 4 期的格子在行内写原因。
  *
  * 抓不到的(靠审查与别的守卫):
  * - 中文叫法:`飞书`、`钉钉`、`企业微信`、`官机`、`小程序卡`(归第 4 期的中文叫法棘轮)。
@@ -444,12 +444,12 @@ export function scanRepo() {
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数)。只许往下调。
- * 行内注释只如实写这一格是什么,不写清零期。
+ * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
-	"packages/internal/src/identity.ts": 2, // 保留 id `"onebot"` / `"qq-official"`
-	"packages/internal/src/platform-registry.ts": 26, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2
-	"packages/internal/src/schema/targets.ts": 32, // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)
+	"packages/internal/src/identity.ts": 2, // 保留 id `"onebot"` / `"qq-official"`。第 4 期:内置适配器自带键与描述后,保留键由装配根从内置来源与适配器收齐、交给存储与清单校验,核心不再写平台名;这几个值本身永远保留(存储目录、迁移、拓展 id 防撞都要认)。
+	"packages/internal/src/platform-registry.ts": 26, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2。第 4 期:同 `.platform` 核心那格(ADR-0024 决策 1),平台闭集隔离区整个删、平台事实交给各适配器的描述后消。
+	"packages/internal/src/schema/targets.ts": 32, // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)。第 4 期:内置适配器自带设置字段后,核心不再维护 OneBot / QQ 官方的连接设置规则。
 };
 
 /**
