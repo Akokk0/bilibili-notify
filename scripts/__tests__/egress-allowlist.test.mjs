@@ -63,7 +63,8 @@ export const RATCHET = {};
 
 /**
  * 一份源码里的出站原语。
- * 算:`fetch(` / `globalThis.fetch(`、`new WebSocket(`、从 http / https / http2 / net / tls 的
+ * 算:`fetch(` / `globalThis.fetch(`、`new WebSocket(`(全局的,或来自 `ws` 的默认导入 /
+ * 具名 WebSocket / 它的 as 别名的本地名)、从 http / https / http2 / net / tls 的
  * **值导入**拿到的 request / get / connect / createConnection 的调用、`undici` 的值导入。
  * 不算:`x.fetch(`(别的对象的方法)、对象键 `fetch: app.fetch`、`new WebSocketServer(`、
  * `import type`、只拿 `WebSocket` 当类型或读 `WebSocket.OPEN`。
@@ -75,14 +76,30 @@ export function egressCalls(source) {
 	// `import type` 与逐项 `type` 不带值,不算。
 	const namespaces = new Map(); // 本地名 → 模块名(整个模块:默认、命名空间、default as x)
 	const functions = new Map(); // 本地名 → { module, name }(具名拿到的 request / get / …)
+	const wsConstructors = new Set(); // 本地名:来自 "ws" 的默认导入或具名 WebSocket(含 as 别名)
 	for (const statement of source.ast.statements) {
 		if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
 			continue;
 		}
 		const module = statement.moduleSpecifier.text;
 		const clause = statement.importClause;
-		if (!NET_MODULES.has(module) || !clause || clause.phaseModifier === ts.SyntaxKind.TypeKeyword)
+		if (!clause || clause.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
+		if (module === "ws") {
+			// 默认导入、具名 WebSocket、它的 as 别名 `new` 起来都出网。别的具名(WebSocketServer)
+			// 不管;命名空间导入今天不判。
+			if (clause.name) wsConstructors.add(clause.name.text);
+			const bindings = clause.namedBindings;
+			if (bindings && ts.isNamedImports(bindings)) {
+				for (const element of bindings.elements) {
+					if (element.isTypeOnly) continue;
+					if ((element.propertyName ?? element.name).text === "WebSocket") {
+						wsConstructors.add(element.name.text);
+					}
+				}
+			}
 			continue;
+		}
+		if (!NET_MODULES.has(module)) continue;
 		if (clause.name) namespaces.set(clause.name.text, module);
 		const bindings = clause.namedBindings;
 		if (bindings && ts.isNamespaceImport(bindings)) namespaces.set(bindings.name.text, module);
@@ -101,9 +118,9 @@ export function egressCalls(source) {
 	/** 一个节点是哪种出站原语;不是就 null。 */
 	const primitiveOf = (node) => {
 		if (ts.isNewExpression(node)) {
-			return ts.isIdentifier(node.expression) && node.expression.text === "WebSocket"
-				? "new WebSocket"
-				: null;
+			if (!ts.isIdentifier(node.expression)) return null;
+			const name = node.expression.text;
+			return name === "WebSocket" || wsConstructors.has(name) ? "new WebSocket" : null;
 		}
 		if (!ts.isCallExpression(node)) return null;
 		const callee = node.expression;
@@ -163,6 +180,18 @@ describe("出站原语的判据:算", () => {
 			),
 		).toEqual(["new WebSocket"]);
 		expect(primitivesIn(`import WebSocket from "ws";\nnew WebSocket(url);`)).toEqual([
+			"new WebSocket",
+		]);
+	});
+
+	it("ws 的默认导入:new 绑出来的本地名算出网", () => {
+		expect(primitivesIn(`import WsClient from "ws";\nnew WsClient(url);`)).toEqual([
+			"new WebSocket",
+		]);
+	});
+
+	it("ws 的具名 WebSocket 的 as 别名:new 本地名算出网", () => {
+		expect(primitivesIn(`import { WebSocket as RawWs } from "ws";\nnew RawWs(url);`)).toEqual([
 			"new WebSocket",
 		]);
 	});
@@ -268,6 +297,19 @@ describe("出站原语的判据:不算", () => {
 		);
 		expect(primitivesIn(`if (socket.readyState === WebSocket.OPEN) socket.send(x);`)).toEqual([]);
 		expect(primitivesIn(`const ok = ws instanceof WebSocket;`)).toEqual([]);
+	});
+
+	it("ws 的 WebSocket 只当类型用:拿不到值,new 本地名也不算", () => {
+		// 语法上写得出来、运行时不存在:判据不能被 `type` 骗过去。
+		expect(primitivesIn(`import type { WebSocket as RawWs } from "ws";\nnew RawWs(url);`)).toEqual(
+			[],
+		);
+		expect(primitivesIn(`import { type WebSocket as RawWs } from "ws";\nnew RawWs(url);`)).toEqual(
+			[],
+		);
+		expect(primitivesIn(`import { type WebSocket } from "ws";\nlet s: WebSocket | null;`)).toEqual(
+			[],
+		);
 	});
 
 	it("import type 与逐项 type:拿不到值,谈不上调用", () => {
