@@ -37,6 +37,8 @@ export type SessionHarnessOptions = {
 		shouldAbort?: () => boolean,
 	) => Promise<boolean>;
 	master?: () => Promise<{ name?: string; fanClubName?: string }>;
+	/** 抓封面口;不给就立刻回一张现成的引用。要卡住抓图的那一下由用例自己挂闸。 */
+	fetchImage?: (url: string) => Promise<{ ok: true; ref: string }>;
 };
 
 /**
@@ -72,7 +74,8 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		reportLiveInteraction: (externalId: string, report: unknown) => {
 			interactions.push({ externalId, report });
 		},
-		fetchImage: async () => ({ ok: true as const, ref: `${"c".repeat(64)}.webp` }),
+		fetchImage:
+			options.fetchImage ?? (async () => ({ ok: true as const, ref: `${"c".repeat(64)}.webp` })),
 	} as unknown as SourceContext;
 
 	const startLiveRoomListener = vi.fn(

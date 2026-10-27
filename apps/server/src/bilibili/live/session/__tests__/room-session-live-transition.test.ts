@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { LiveRoomPreflightBlockedError } from "../room-helpers.js";
 import { makeSessionHarness } from "./support/room-session.js";
 
 const LIVE_ROOM = {
@@ -36,6 +37,32 @@ describe("bootstrap() 期间到达的下播事件", () => {
 		});
 
 		await h.bootstrap();
+
+		expect(h.reports).toEqual([]);
+		expect(h.reportedLive).toBe(false);
+	});
+
+	it("预检被拦后重连补跑初始房态,期间收到 END → 不翻成在播", async () => {
+		const h = makeSessionHarness();
+		h.startLiveRoomListener.mockRejectedValueOnce(
+			new LiveRoomPreflightBlockedError("B 站返回 code=-352"),
+		);
+		await h.bootstrap();
+		expect(h.timeoutDelays).toEqual([60_000]);
+
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		// 长尾到点后连上,补跑初始房态时正卡在拉房间信息这一下。
+		h.setRoomInfo(async () => {
+			await gate;
+			return LIVE_ROOM;
+		});
+		await h.runTimeouts();
+		await h.dispatch({ kind: "live-end" });
+		release();
+		for (let i = 0; i < 10; i++) await h.settle();
 
 		expect(h.reports).toEqual([]);
 		expect(h.reportedLive).toBe(false);

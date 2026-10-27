@@ -280,6 +280,39 @@ describe("RoomSession 重连成功后的直播状态", () => {
 		expect(h.reportedLive).toBe(false);
 	});
 
+	it("抓封面期间收到 END → 只收口成下播,不再把状态翻回在播", async () => {
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const h = makeSessionHarness({
+			liveStatus: 1,
+			fetchImage: async () => {
+				await gate;
+				return { ok: true as const, ref: `${"c".repeat(64)}.webp` };
+			},
+		});
+		await h.bootstrap();
+		h.reports.length = 0;
+		h.setRoomInfo(async () => ({
+			uid: 1,
+			live_status: 1,
+			live_time: "2026-01-01 10:00:00",
+			keyframe: "https://i0.hdslb.com/bfs/live/keyframe.jpg",
+		}));
+
+		const reconnect = h.dispatch({ kind: "closed" });
+		await h.settle();
+		await h.timeouts[0]?.fn();
+		await h.settle();
+		await h.dispatch({ kind: "live-end" });
+		release();
+		await reconnect;
+		for (let i = 0; i < 10; i++) await h.settle();
+
+		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual(["end"]);
+	});
+
 	it("重连成功但房间已经下播 → 保持 idle,不伪造一次开播", async () => {
 		const h = makeSessionHarness({ liveStatus: 1 });
 		await h.bootstrap();

@@ -48,8 +48,12 @@ export class RoomSession {
 	private bootstrapped = false;
 	private bootstrapInFlight = false;
 	private startingUp = false;
-	private transitioningToLive = false;
-	private endArrivedWhileTransitioning = false;
+	/**
+	 * 单调递增的下播序号:每次收到 `LIVE_END` 就 +1。每条「await 完了要宣布在播」的路在第一个 await
+	 * 之前记下它,最后一个 await 之后再比一次 —— 变了说明这期间来过下播,别再把状态翻回在播。
+	 * 这样以后再加一条要宣布在播的路,不需要记得配对任何开关。
+	 */
+	private liveEndSeq = 0;
 	private cancelled = false;
 	private reconnecting = false;
 	private reconnectAttempts = 0;
@@ -131,24 +135,6 @@ export class RoomSession {
 		this.ctx.problems.resolveRisk(liveRiskPath(this.room.externalId), { notify: false });
 	}
 
-	private beginLiveTransition(dedupeStart = false): void {
-		this.transitioningToLive = true;
-		this.endArrivedWhileTransitioning = false;
-		this.startingUp = dedupeStart;
-	}
-
-	private finishLiveTransition(): boolean {
-		this.transitioningToLive = false;
-		this.startingUp = false;
-		const ended = this.endArrivedWhileTransitioning;
-		this.endArrivedWhileTransitioning = false;
-		return ended;
-	}
-
-	private noteEndDuringTransition(): void {
-		if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
-	}
-
 	private async details(
 		roomInfo: Record<string, unknown>,
 		totalViewers = this.watchedNumber,
@@ -219,13 +205,7 @@ export class RoomSession {
 		this.resolveStopped(ROOM_RESTRICTED_CODE);
 		this.startWatchdog();
 
-		this.beginLiveTransition();
-		let ready = false;
-		try {
-			ready = await this.bootstrapState();
-		} finally {
-			this.finishLiveTransition();
-		}
+		const ready = await this.bootstrapState();
 		if (!ready) {
 			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo());
@@ -234,30 +214,52 @@ export class RoomSession {
 		}
 	}
 
-	private async bootstrapState(): Promise<boolean> {
+	private async bootstrapState(reportEnd = false): Promise<boolean> {
 		this.bootstrapInFlight = true;
 		try {
-			return await this.bootstrapStateInner();
+			return await this.refreshLiveStatus(reportEnd);
 		} finally {
 			this.bootstrapInFlight = false;
 		}
 	}
 
-	private async bootstrapStateInner(): Promise<boolean> {
+	/**
+	 * 拿房间信息核一次在播状态。启动与重连后补跑共用这一条路:
+	 * 在播 → 这期间没来过下播才报 `status`;不在播时,只有 `reportEnd`(重连后核对「刚才还在播的那一场」)
+	 * 才收口成 `end`。启动那一次不收口:这一刻的标记可能是并发的开播事件刚设的,或者是上一场留下的,
+	 * 都不能拿它宣布下播。
+	 * 回 `false` 只有一种情况:拿不到房间信息。
+	 */
+	private async refreshLiveStatus(reportEnd: boolean): Promise<boolean> {
+		const endSeq = this.liveEndSeq;
 		const info = await this.fetchState();
 		if (!info?.uid) return false;
 		this.bootstrapped = true;
 		this.resolveStopped(MONITOR_STOPPED_CODE);
-		if (Number(info.live_status) !== 1) return true;
+		if (Number(info.live_status) !== 1) {
+			if (!reportEnd || !this.ctx.hasReportedLive(this.room.externalId)) return true;
+			this.ctx.markReportedLive(this.room.externalId, false);
+			this.ctx.source.reportLive(this.room.externalId, {
+				kind: "end",
+				endedAt: new Date().toISOString(),
+			});
+			return true;
+		}
 
 		const [details] = await Promise.all([
 			this.details(info, this.watchedNumber, "streaming"),
 			this.rememberFanClub(),
 		]);
-		if (this.finishLiveTransition()) {
-			this.ctx.logger.info(
-				`[live] 直播间 [${this.room.roomId}] 启动期间已收到下播事件，不按在播处理`,
-			);
+		if (this.liveEndSeq !== endSeq) {
+			if (reportEnd) {
+				this.ctx.logger.info(
+					`[conn] 直播间 [${this.room.roomId}] 重连核对期间已收到下播事件，保持下播状态`,
+				);
+			} else {
+				this.ctx.logger.info(
+					`[live] 直播间 [${this.room.roomId}] 启动期间已收到下播事件，不按在播处理`,
+				);
+			}
 			return true;
 		}
 		this.ctx.markReportedLive(this.room.externalId, true);
@@ -405,7 +407,8 @@ export class RoomSession {
 			return;
 		}
 		this.lastLiveStart = now;
-		this.beginLiveTransition(true);
+		this.startingUp = true;
+		const endSeq = this.liveEndSeq;
 		let info: Record<string, unknown> | undefined;
 		let details: LiveDetails | undefined;
 		try {
@@ -416,7 +419,6 @@ export class RoomSession {
 		} finally {
 			this.startingUp = false;
 		}
-		const endedMeanwhile = this.finishLiveTransition();
 		if (!info || !details || !this.alive) {
 			if (!info && this.alive) {
 				this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
@@ -426,7 +428,7 @@ export class RoomSession {
 			}
 			return;
 		}
-		if (endedMeanwhile) {
+		if (this.liveEndSeq !== endSeq) {
 			this.ctx.logger.info(
 				`[live] 直播间 [${this.room.roomId}] 开播准备期间已收到下播事件，放弃本次开播推送`,
 			);
@@ -443,10 +445,8 @@ export class RoomSession {
 
 	private async onLiveEnd(): Promise<void> {
 		const now = Date.now();
-		if (this.transitioningToLive) {
-			this.noteEndDuringTransition();
-			return;
-		}
+		// 先记序号,再看冷却:落在冷却期里的那条也算数(冷却是给重复帧用的,不是给新一场用的)。
+		this.liveEndSeq++;
 		if (now - this.lastLiveEnd < LIVE_EVENT_COOLDOWN) {
 			this.ctx.logger.debug(`[live] 直播间 [${this.room.roomId}] 的下播事件在冷却期内，忽略`);
 			return;
@@ -565,44 +565,17 @@ export class RoomSession {
 			this.startWatchdog();
 			this.reconnectAttempts = 0;
 
-			if (!this.bootstrapped) {
+			// 还没补跑过初始房态、或者已经在播(重连后要核对还在不在播)才多拉一次房间信息;
+			// 没报过在播就不拉,保持 3b-63 压请求量的出发点。
+			if (!this.bootstrapped || this.ctx.hasReportedLive(this.room.externalId)) {
 				if (this.bootstrapInFlight) return;
-				const ready = await this.bootstrapState();
+				const ready = await this.bootstrapState(this.bootstrapped);
 				if (ready) return;
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.room.roomId}] 重连后初始房态拉取失败,回长尾退避重试`,
 				);
 				preflightBlocked = true;
 				continue;
-			}
-			if (this.ctx.hasReportedLive(this.room.externalId)) {
-				const info = await this.fetchState();
-				if (!info) {
-					preflightBlocked = true;
-					continue;
-				}
-				if (Number(info.live_status) === 1) {
-					if (!this.ctx.hasReportedLive(this.room.externalId)) {
-						this.ctx.logger.info(
-							`[conn] 直播间 [${this.room.roomId}] 重连核对期间已收到下播事件，保持下播状态`,
-						);
-						return;
-					}
-					const details = await this.details(info, this.watchedNumber, "streaming");
-					const startedAt = liveTimeToIso(String(info.live_time ?? ""));
-					this.ctx.source.reportLive(this.room.externalId, {
-						kind: "status",
-						isLive: true,
-						...(startedAt === undefined ? {} : { startedAt }),
-						details,
-					});
-					return;
-				}
-				this.ctx.markReportedLive(this.room.externalId, false);
-				this.ctx.source.reportLive(this.room.externalId, {
-					kind: "end",
-					endedAt: new Date().toISOString(),
-				});
 			}
 			return;
 		}
