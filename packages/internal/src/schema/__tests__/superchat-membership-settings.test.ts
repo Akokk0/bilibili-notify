@@ -223,6 +223,58 @@ describe("templates.membership —— 会员文案", () => {
 		expect(t2.membership("guard")).toEqual(guardOverride);
 	});
 
+	it("覆盖了但关着:不换,回全局那份(关 = 继承全局)", () => {
+		const globals = makeDefaultGlobalConfig();
+		const factory = templateDefaultsFor(DEFAULT_LOCALE);
+		globals.defaults.templates.membership.guard = {
+			enabled: true,
+			default: { template: "全局的", imageUrl: "" },
+			tiers: {},
+		};
+		const sub = {
+			...SUB_BASE,
+			overrides: {
+				templates: {
+					membership: {
+						guard: { enabled: false, default: { template: "订阅的", imageUrl: "" }, tiers: {} },
+					},
+				},
+			},
+		};
+
+		expect(resolveTemplates(sub, globals.defaults, factory).membership("guard")).toEqual({
+			enabled: true,
+			default: { template: "全局的", imageUrl: "" },
+			tiers: {},
+		});
+	});
+
+	it("两边都关:还是回全局那份,不把订阅的关着的那份当覆盖", () => {
+		const globals = makeDefaultGlobalConfig();
+		const factory = templateDefaultsFor(DEFAULT_LOCALE);
+		globals.defaults.templates.membership.guard = {
+			enabled: false,
+			default: { template: "全局也是关的", imageUrl: "" },
+			tiers: {},
+		};
+		const sub = {
+			...SUB_BASE,
+			overrides: {
+				templates: {
+					membership: {
+						guard: { enabled: false, default: { template: "订阅的", imageUrl: "" }, tiers: {} },
+					},
+				},
+			},
+		};
+
+		expect(resolveTemplates(sub, globals.defaults, factory).membership("guard")).toEqual({
+			enabled: false,
+			default: { template: "全局也是关的", imageUrl: "" },
+			tiers: {},
+		});
+	});
+
 	it("没有覆盖:整份继承全局", () => {
 		const globals = makeDefaultGlobalConfig();
 		const factory = templateDefaultsFor(DEFAULT_LOCALE);

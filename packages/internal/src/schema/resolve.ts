@@ -98,7 +98,10 @@ function mergeFeatures(
 
 /** 这条订阅生效的文字模板:每格都有字;会员文案按体系 id 现取。 */
 export type ResolvedTemplates = Omit<EffectiveTemplates, "membership"> & {
-	/** 某个会员体系的文案:订阅覆盖了就整份换;缺 `default.template` 取出厂那一句;没有这个体系的条目 = 自定义关着。 */
+	/**
+	 * 某个会员体系的文案:订阅覆盖里这个体系开着才整份换,没覆盖或覆盖了但关着的用全局那份;
+	 * 缺 `default.template` 取出厂那一句;没有这个体系的条目 = 自定义关着。
+	 */
 	membership(programId: string): EffectiveMembershipTemplate;
 };
 
@@ -106,8 +109,9 @@ export type ResolvedTemplates = Omit<EffectiveTemplates, "membership"> & {
  * 这条订阅生效的文字模板:订阅覆盖 → 全局设置 → 出厂(`factory`,调用方按当前语言取)。
  *
  * 设置里只存主人改过的格(ADR-0037 决策 10),所以**读时填、不写盘**:换语言立即生效,盘上不动。
- * 文字一格一格浅合并;会员文案按体系,订阅覆盖哪个体系那个体系整份换成订阅的,没覆盖的还是全局的。
- * 「订阅那份 `enabled` 为真才用订阅的整份、否则用全局的」这条规矩在引擎取文案的那一处,这里只负责把几层摆齐。
+ * 文字一格一格浅合并;会员文案按体系,订阅覆盖里 `enabled` 为真的体系整份换成订阅的,没覆盖或覆盖了
+ * 但关着的用全局那份 —— **关 = 继承全局**,与面板同一个意思。这条规矩住在折叠处,每个取文案的消费方
+ * 拿到的都是同一种结果。
  */
 export function resolveTemplates(
 	sub: Pick<Subscription, "overrides">,
@@ -117,11 +121,12 @@ export function resolveTemplates(
 	const own = sub.overrides.templates;
 	const { membership: _stored, ...text } = defaults.templates;
 	const { membership: _own, ...ownText } = own ?? {};
+	// 关着的覆盖等于没覆盖:整份回落全局那份,别把全局的自定义文案吞掉。体系 id 来自盘上,
+	// 用展开与 fromEntries 定义属性(不走赋值),`__proto__` 这样的键也只是一格普通数据。
+	const enabledOwn = Object.entries(own?.membership ?? {}).filter(([, bundle]) => bundle.enabled);
+	const membershipStored = { ...defaults.templates.membership, ...Object.fromEntries(enabledOwn) };
 	const merged = withTemplateDefaults(
-		{
-			...merge(text, ownText),
-			membership: { ...defaults.templates.membership, ...own?.membership },
-		},
+		{ ...merge(text, ownText), membership: membershipStored },
 		factory,
 	);
 	const fallbackText = factory.membership;

@@ -101,7 +101,7 @@ describe("resolveTemplates", () => {
 		expect(t.liveSummary).toBe(ZH.liveSummary);
 	});
 
-	it("会员·订阅覆盖整份换", () => {
+	it("会员·订阅覆盖开着就整份换", () => {
 		const g = makeDefaultGlobalConfig();
 		g.defaults.templates.membership.guard = {
 			enabled: true,
@@ -114,7 +114,7 @@ describe("resolveTemplates", () => {
 				templates: {
 					membership: {
 						guard: {
-							enabled: false,
+							enabled: true,
 							default: { imageUrl: "a.png" },
 							tiers: { captain: { template: "舰" } },
 						},
@@ -124,7 +124,7 @@ describe("resolveTemplates", () => {
 		};
 		// 整份换成订阅的:订阅里缺的体系默认文字取出厂,不取全局存的
 		expect(resolveTemplates(sub, g.defaults, ZH).membership("guard")).toEqual({
-			enabled: false,
+			enabled: true,
 			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "a.png" },
 			tiers: { captain: { template: "舰" } },
 		});
