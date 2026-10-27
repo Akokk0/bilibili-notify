@@ -45,6 +45,7 @@ import type { ImageStore } from "../images/image-store.js";
 import { pickBoundMembers } from "../util/bound-members.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { catchThenableRejection } from "../util/is-thenable.js";
+import { textPreview } from "../util/text-preview.js";
 
 /**
  * **拓展的订阅源 → 核心的 `Source`**(3b-42):把清单里订阅源那一口的外观(平台名、作品叫法、外部 id 格式)与
@@ -124,12 +125,6 @@ type OpenMembers = Pick<SourceDef, "start" | "stop" | "searchCreators"> &
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
-export function externalIdPreview(raw: unknown): string {
-	if (typeof raw !== "string") return `(${typeof raw})`;
-	return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
 }
 
 /**
@@ -360,8 +355,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		raw: unknown,
 	): { externalId: string; value: ExtensionReportValue<K> } | undefined {
 		const idIssue = externalIdIssue(rawExternalId);
-		const shown =
-			idIssue === undefined ? (rawExternalId as string) : externalIdPreview(rawExternalId);
+		const shown = idIssue === undefined ? (rawExternalId as string) : textPreview(rawExternalId);
 		if (idIssue) return reject(kind, shown, [describeIssue(idIssue)]);
 		const undeclared = undeclaredReason(kind, raw);
 		if (undeclared !== undefined) return reject(kind, shown, [undeclared]);

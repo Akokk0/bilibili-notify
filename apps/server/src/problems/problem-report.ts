@@ -1,5 +1,6 @@
 import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
+import { textPreview } from "../util/text-preview.js";
 
 /**
  * 问题上报的入口解析 —— 集成层、来源层、适配器层共用的一份规矩。
@@ -107,8 +108,8 @@ export function parseProblemResolve(report: unknown): Result<ProblemResolve> {
 }
 
 /**
- * 被拒的上报里的 `code` 念给人听:不是字符串的只说类型,太长的截一段 —— 直接插第三方交来的值会把
- * 日志弄脏(甚至插进 `[object Object]`)。
+ * 被拒的上报里的 `code` 念给人听:先从上报里安全地取出 `code`(第三方交来的可能是个会抛的代理),
+ * 再按 {@link textPreview} 的规矩念。
  */
 export function problemCodePreview(report: unknown): string {
 	let code: unknown;
@@ -117,8 +118,7 @@ export function problemCodePreview(report: unknown): string {
 	} catch {
 		code = undefined;
 	}
-	if (typeof code !== "string") return `(${typeof code})`;
-	return code.length > 64 ? `${code.slice(0, 64)}…` : code;
+	return textPreview(code);
 }
 
 /** 被拒的问题上报给人看的一句话:已停下与形状 / 归属不对分开说。 */
