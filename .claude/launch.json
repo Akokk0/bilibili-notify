@@ -1,0 +1,23 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "dev-apps",
+			"runtimeExecutable": "vp",
+			"runtimeArgs": ["run", "dev:apps"],
+			"port": 5173
+		},
+		{
+			"name": "web",
+			"runtimeExecutable": "vp",
+			"runtimeArgs": ["run", "dev:web"],
+			"port": 5173
+		},
+		{
+			"name": "desktop-launcher",
+			"runtimeExecutable": "vp",
+			"runtimeArgs": ["run", "-F", "@bilibili-notify/desktop", "front:dev"],
+			"port": 1421
+		}
+	]
+}
