@@ -57,9 +57,11 @@ describe("资料刷新代数", () => {
 		const polling = p.handle.pollNow();
 		await vi.waitFor(() => expect(started).toBe(true));
 		cleared = true;
-		await p.handle.reset();
+		// 代数当场 +1,重算排在在途那轮后面;那轮卡在闸上,所以先放闸让它收手,reset 才轮得到。
+		const resetting = p.handle.reset();
 		release();
 		await polling;
+		await resetting;
 
 		expect(p.handle.getLastEntries()).toEqual([
 			{

@@ -1,5 +1,6 @@
 import {
 	type CreatorProfileReport,
+	createSerialQueue,
 	type Disposable,
 	type FollowersRefreshEntry,
 	type Identity,
@@ -72,7 +73,14 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	let disposed = false;
 	let generation = 0;
 	/** 订阅 id → 首页粉丝面板的一行。启用中的两种来源都在这里,停用或删掉的立即撤下。 */
-	let lastBySub = new Map<string, FollowersRefreshEntry>();
+	const lastBySub = new Map<string, FollowersRefreshEntry>();
+	/**
+	 * 重算面板快照只有一条队:整轮、只重算几行、以及 `reset()` 的整轮都排在这里,一次只让一轮算完并提交。
+	 * 否则两轮交错时,后提交的那轮会拿自己算的旧结果盖掉前一轮刚撤掉的行。
+	 */
+	const recompute = createSerialQueue();
+	/** 重算只有这一种任务,所以队列只有这一个键。 */
+	const SNAPSHOT_KEY = "profile-snapshot";
 
 	const enabledSubscriptions = (): Subscription[] =>
 		subscriptionStore.list().filter((sub) => sub.enabled);
@@ -121,36 +129,62 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		};
 	}
 
-	/** 重算整份快照,或只重算指定订阅。算到一半发现代数变了就不覆盖新快照。 */
+	/**
+	 * 重算整份快照,或只重算指定订阅。分两步:
+	 *
+	 * - **计算阶段**只把这次算出来的行攒进局部 Map,不碰 `lastBySub` —— 算的途中删订阅,监听器撤行不受影响。
+	 * - **提交阶段**从第一行起不跨 `await`:逐行现查订阅还在不在、还启不启用,在的才并进 `lastBySub`,
+	 *   不在的当场撤下;整轮再把此刻不在启用列表里的行扫掉(现查,不用开头那份列表)。
+	 *
+	 * 算到一半发现代数变了就不提交。整轮、只算几行与 `reset()` 都排在 {@link recompute} 上,一次只算一轮。
+	 */
 	async function refreshEntries(
 		startedGeneration: number,
 		only?: ReadonlySet<string>,
 		allowReportedWithoutSample = false,
 		includeRegisteredWindows = true,
 	): Promise<boolean> {
-		const nowMs = Date.now();
-		const next = only ? new Map(lastBySub) : new Map<string, FollowersRefreshEntry>();
-		let changed = only === undefined;
-		for (const sub of enabledSubscriptions()) {
-			if (only && !only.has(sub.id)) continue;
-			const sourceKey = subscriptionIdentityOf(sub).sourceKey;
-			const includeWindows = includeRegisteredWindows || !opts.sources.get(sourceKey);
-			const entry = await entryOf(
-				sub,
-				nowMs,
-				allowReportedWithoutSample && opts.sources.get(sourceKey) !== undefined,
-				includeWindows,
-			);
+		return recompute.run(SNAPSHOT_KEY, async () => {
 			if (disposed || generation !== startedGeneration) return false;
-			if (entry) {
-				next.set(sub.id, entry);
-				changed = true;
-			} else if (next.delete(sub.id)) {
-				changed = true;
+			const nowMs = Date.now();
+			/** 这一轮算出来的行;`undefined` = 这条订阅这一轮没有可显示的行。 */
+			const computed = new Map<string, FollowersRefreshEntry | undefined>();
+			for (const sub of enabledSubscriptions()) {
+				if (only && !only.has(sub.id)) continue;
+				const sourceKey = subscriptionIdentityOf(sub).sourceKey;
+				const includeWindows = includeRegisteredWindows || !opts.sources.get(sourceKey);
+				const entry = await entryOf(
+					sub,
+					nowMs,
+					allowReportedWithoutSample && opts.sources.get(sourceKey) !== undefined,
+					includeWindows,
+				);
+				if (disposed || generation !== startedGeneration) return false;
+				computed.set(sub.id, entry);
 			}
-		}
-		lastBySub = next;
-		return changed;
+
+			// 提交阶段:从这一行往下不跨 await,中途删掉的订阅不会在这里又长回来。
+			let changed = only === undefined;
+			for (const [id, entry] of computed) {
+				const keep = subscriptionNow(id)?.enabled === true;
+				if (keep && entry) {
+					lastBySub.set(id, entry);
+					changed = true;
+				} else if (lastBySub.delete(id)) {
+					changed = true;
+				}
+			}
+			if (only === undefined) {
+				// 整轮还要扫掉此刻不在启用列表里的行:算的途中停用 / 删掉的,以及别的路留下、现在已经不该在的。
+				const enabledNow = new Set(enabledSubscriptions().map((sub) => sub.id));
+				for (const id of [...lastBySub.keys()]) {
+					if (enabledNow.has(id)) continue;
+					lastBySub.delete(id);
+					changed = true;
+				}
+			}
+			return changed;
+		});
 	}
 
 	function emitSnapshot(): void {
