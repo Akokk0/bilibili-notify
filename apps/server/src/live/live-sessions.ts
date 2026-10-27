@@ -33,7 +33,9 @@ import type { LiveTable } from "./live-table.js";
  * - **直播状态**:在播、手里又没有这一场 → 认出一场(BN 起来之前、或来源停着的时候就开播了;开播时刻取状态
  *   带的,没带就空着,之后的状态带了再补上)。有这一场 → 把在播表里最新那一份记到这一场上;来源报了另一个
  *   开播时刻(两场之间漏收了下播)→ 上一场按 `superseded` 收掉,再按这一份状态认出新的一场。断流等待里
- *   仍然接续同一场(决策 58)。不在播 → 这一场不动:BN 不拿状态的翻转猜下播(决策 53)。
+ *   仍然接续同一场(决策 58)。接续过的那一场,接续时报的开播时刻也算这一场的(不再按它分场);在播表里的
+ *   开播时刻一律是这一场第一次的,与场次、推送卡、统计说同一个。不在播 → 这一场不动:BN 不拿状态的翻转猜
+ *   下播(决策 53)。
  * - **下播**只由信号触发(决策 53)。断流接续开着(按 UP 折好的 `liveEndGrace` / `liveEndGraceMinutes`)就先
  *   压着,等满了这一场才结束,结束时刻是**信号带的下播时刻**(等的那几分钟不算);没开立刻结束。
  * - **作废**(决策 61):来源停了、订阅停用 / 删了、关机 → 这一场当场结束,等着的下播不再等。
@@ -150,11 +152,17 @@ interface SessionInteractionsState {
 	membershipCounts: Map<string, Map<string, number>>;
 }
 
-/** 场次在这里的样子:比对外多一个断流等待的定时器。 */
+/** 场次在这里的样子:比对外多一个断流等待的定时器、来源此刻对这一场报的开播时刻。 */
 interface SessionState {
 	subscriptionId: string;
 	sourceKey: string;
 	startedAt?: number;
+	/**
+	 * 来源此刻对这一场报的开播时刻(毫秒)。`begin` 时等于 `startedAt`;断流接续时改成接续那份报的,
+	 * 没带就空着(= 下一份带了的直接学,不比)。只用来判「来源报了这一场没见过的开播时刻没有」——
+	 * 场次自己的 `startedAt` 始终是第一次的(决策 58),这一格不进 {@link projectSession}。
+	 */
+	sourceStartedAt?: number;
 	detectedAt: number;
 	followersAtStart?: number;
 	peakTotalViewers?: number;
@@ -312,19 +320,22 @@ function notePeakTotalViewers(session: SessionState, details: LiveDetails | unde
 	}
 }
 
-/** 这一份信号的开播时刻会取代这一场时,交回前后两个毫秒时刻。 */
+/**
+ * 这一份信号报的开播时刻是这一场**没见过的**(来源报了另一个就说明两场之间漏收了下播)时,
+ * 交回前后两个毫秒时刻。这一场没记着来源报的时刻(没有开播时刻、或接续时没带)时不算变了。
+ */
 function changedStartTimes(
 	session: SessionState,
 	reportedStartedAt: number | undefined,
 ): { previous: number; reported: number } | undefined {
 	if (
-		session.startedAt === undefined ||
+		session.sourceStartedAt === undefined ||
 		reportedStartedAt === undefined ||
-		session.startedAt === reportedStartedAt
+		session.sourceStartedAt === reportedStartedAt
 	) {
 		return undefined;
 	}
-	return { previous: session.startedAt, reported: reportedStartedAt };
+	return { previous: session.sourceStartedAt, reported: reportedStartedAt };
 }
 
 const REASON_TEXT: Record<LiveSessionEndReason, string> = {
@@ -404,6 +415,7 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			subscriptionId: id,
 			sourceKey,
 			startedAt,
+			sourceStartedAt: startedAt,
 			detectedAt,
 			followersAtStart: opts.fans(id),
 			lastDetails: opts.table.get(id)?.details,
@@ -545,9 +557,11 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 				startNewSession(id, session.sourceKey, result.details, startedAt, "poll");
 				return;
 			}
-			opts.table.merge(id, session.sourceKey, startedAt, result.details);
+			// 在播表与场次说同一个开播时刻:接续过的那一场,来源此刻报的是重开那次,场次认的是第一次的。
+			opts.table.merge(id, session.sourceKey, session.startedAt ?? startedAt, result.details);
 			session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 			session.startedAt ??= startedAt;
+			session.sourceStartedAt ??= startedAt;
 			notePeakTotalViewers(session, result.details);
 			announce({ kind: "tick", subscriptionId: id, session }, result.details);
 		} else {
@@ -626,8 +640,11 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 		const startedAt = millisOf(signal.startedAt);
 		const current = sessions.get(id);
 		if (current?.pendingEnd) {
-			// 断流接续(决策 58):同一场。取消等待,开播时刻与粉丝基线沿用第一次的。
-			opts.table.replace(id, sourceKey, startedAt, signal.details);
+			// 断流接续(决策 58):同一场。取消等待,开播时刻与粉丝基线沿用第一次的(第一次没记着时补上这份的)。
+			current.startedAt ??= startedAt;
+			// 来源此刻对这一场报的就是这一份的开播时刻;没带就空着,下一份带了的直接学。
+			current.sourceStartedAt = startedAt;
+			opts.table.replace(id, sourceKey, current.startedAt, signal.details);
 			current.pendingEnd.handle.dispose();
 			current.pendingEnd = undefined;
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
@@ -666,13 +683,15 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			startNewSession(id, sourceKey, signal.details, startedAt, "status-signal");
 			return;
 		}
-		opts.table.merge(id, sourceKey, startedAt, signal.details);
+		// 在播表与场次说同一个开播时刻:手里有这一场时用它的(接续过的仍是第一次的)。
+		opts.table.merge(id, sourceKey, current?.startedAt ?? startedAt, signal.details);
 		if (current) {
 			notePeakTotalViewers(current, signal.details);
 			current.lastDetails = opts.table.get(id)?.details ?? current.lastDetails;
 			// 之前没有开播时刻、这一份带了:计时从真开播时刻重新起算。
 			const learnedStartedAt = current.startedAt === undefined && startedAt !== undefined;
 			current.startedAt ??= startedAt;
+			current.sourceStartedAt ??= startedAt;
 			announce(
 				{ kind: "status", subscriptionId: id, isLive: true, session: current },
 				signal.details,
@@ -789,7 +808,11 @@ export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): L
 			if (!isCurrent(session) || session.pendingEnd !== pending) return;
 			if (result?.ok && result.kind === "live") {
 				session.pendingEnd = undefined;
-				opts.table.merge(id, session.sourceKey, millisOf(result.startedAt), result.details);
+				const startedAt = millisOf(result.startedAt);
+				// 接续报的开播时刻记成这一场此刻见到的;场次自己的开播时刻仍是第一次的(决策 58)。
+				session.startedAt ??= startedAt;
+				session.sourceStartedAt = startedAt;
+				opts.table.merge(id, session.sourceKey, session.startedAt, result.details);
 				session.lastDetails = opts.table.get(id)?.details ?? session.lastDetails;
 				notePeakTotalViewers(session, result.details);
 				log.info(`[live-sessions] 订阅 ${id} 断流等待到期,核对发现还在播,接续为同一场`);

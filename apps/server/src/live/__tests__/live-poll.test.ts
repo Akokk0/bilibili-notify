@@ -320,6 +320,35 @@ describe("断流等待到期再核一次", () => {
 		expect(table.get(SUB.id)?.details.title).toBe("还在播");
 	});
 
+	it("接续后下一个核对格报的仍是重开那次的开播时刻:不分场,开播时刻还是第一次的", async () => {
+		settings.liveEndGrace = true;
+		signalStart();
+		sessions.apply({
+			kind: "end",
+			endedAt: new Date(NOW).toISOString(),
+			subscriptionId: SUB.id,
+			identity: SUB.identity,
+		});
+		await vi.advanceTimersByTimeAsync(MINUTE);
+		// 来源重开,报的是重开那一刻的开播时刻;这一场仍是同一场(决策 58)。
+		sessions.apply({
+			kind: "start",
+			subscriptionId: SUB.id,
+			identity: SUB.identity,
+			startedAt: iso(NOW + MINUTE),
+			details: { title: "重新开播" },
+		});
+		expect(kinds()).toEqual(["start", "ending", "resume"]);
+		fetchStatus.mockResolvedValue(liveResult("接着播", NOW + MINUTE));
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+
+		// 下一个核对格报的还是重开那次的开播时刻:这一场见过它,照旧是同一场。
+		expect(kinds()).toEqual(["start", "ending", "resume", "tick"]);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(STARTED));
+		// 在播表与场次说同一个开播时刻(面板与 AI 只读工具读表)。
+		expect(table.get(SUB.id)?.startedAt).toBe(STARTED);
+	});
+
 	it("核到下播(或没取到):这一场结束,原因记 grace-expired", async () => {
 		settings.liveEndGrace = true;
 		signalStart();

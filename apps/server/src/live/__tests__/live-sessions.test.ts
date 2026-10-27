@@ -518,6 +518,38 @@ describe("断流接续(决策 58)", () => {
 			{ kind: "end", reason: "grace-expired", endedAt: iso(T0) },
 		]);
 	});
+
+	it("接续之后再报这一场重开时的开播时刻:不分场,在播表里仍是第一次的", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		liveEnd();
+		// 来源重开报的是重开那次的开播时刻(决策 58:沿用第一次的)。
+		liveStart({ startedAt: T0 + HOUR });
+		liveStatus({ startedAt: T0 + HOUR, totalViewers: 30 });
+
+		expect(summary().map((c) => c.kind)).toEqual(["start", "ending", "resume", "status"]);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(T0 - MINUTE));
+		expect(table.get(SUB.id)?.startedAt).toBe(T0 - MINUTE);
+	});
+
+	it("接续时没带开播时刻、之后的状态带了:学进去,不分场", () => {
+		start();
+		liveStart({ startedAt: T0 - MINUTE });
+		liveEnd();
+		// 接续的开播信号没带开播时刻:这一场对来源此刻报的时刻一无所知,下一份带了的就是它。
+		sessions.apply({
+			subscriptionId: SUB.id,
+			identity: SUB.identity,
+			kind: "start",
+			details: detailsOf({ url: URL, title: "第一场" }),
+		});
+		liveStatus({ startedAt: T0 + HOUR });
+		liveStatus({ startedAt: T0 + HOUR });
+
+		expect(summary().map((c) => c.kind)).toEqual(["start", "ending", "resume", "status", "status"]);
+		expect(sessions.get(SUB.id)?.startedAt).toBe(iso(T0 - MINUTE));
+		expect(table.get(SUB.id)?.startedAt).toBe(T0 - MINUTE);
+	});
 });
 
 // ADR-0020 决策 4:统计记的是「UP 做了什么」,与推送推没推无关。原来场次长在推送计时器里,开播与下播推送
