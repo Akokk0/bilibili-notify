@@ -347,6 +347,26 @@ describe("sendResultFromReceipt", () => {
 				expected: { ok: false, code: "unknown", message: "桥回了失败,没说原因" },
 			},
 			{
+				name: "err 是空串时补一句原话",
+				receipt: { type: "result", id: "r6", ok: false, err: "" },
+				expected: { ok: false, code: "unknown", message: "桥回了失败,没说原因" },
+			},
+			{
+				name: "码认得但 message 是空串时补一句原话,码照旧",
+				receipt: { type: "result", id: "r7", ok: false, code: "unavailable", message: "" },
+				expected: { ok: false, code: "unavailable", message: "桥回了失败,没说原因" },
+			},
+			{
+				name: "message 是空串时退到 err,不吞有内容的那句",
+				receipt: { type: "result", id: "r8", ok: false, message: "", err: "bot 掉线了" },
+				expected: { ok: false, code: "unknown", message: "bot 掉线了" },
+			},
+			{
+				name: "只有空白的话也当没给",
+				receipt: { type: "result", id: "r9", ok: false, message: "  \n ", err: "bot 掉线了" },
+				expected: { ok: false, code: "unknown", message: "bot 掉线了" },
+			},
+			{
 				name: "成功帧带了失败附加格也只回 ok",
 				receipt: {
 					type: "result",

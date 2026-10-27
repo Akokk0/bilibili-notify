@@ -213,9 +213,18 @@ export const BRIDGE_FAILURE_CODES_ALIGNED: UncoveredFailureCode extends never ? 
 
 const KNOWN_FAILURE_CODES: ReadonlySet<string> = new Set(FAILURE_CODES);
 
+/** 按顺序挑第一句非空白的话;判空用 trim,交出去的是原话。 */
+function firstNonBlank(...candidates: (string | undefined)[]): string | undefined {
+	for (const candidate of candidates) {
+		if (candidate !== undefined && candidate.trim() !== "") return candidate;
+	}
+	return undefined;
+}
+
 /**
  * 把一个 `send` 回执翻成桥统一的发送结果。新写法按标准码结算;认不得的码记 `unknown`,
- * 只带 `err` 的旧回执也记 `unknown`,都保留原来的话给主人看。
+ * 只带 `err` 的旧回执也记 `unknown`,都保留原来的话给主人看。空白的当没给 —— 否则失败原因
+ * 会在推送历史里显示成空白,空的 `message` 还会吞掉同帧里有内容的 `err`。
  */
 export function sendResultFromReceipt(frame: BridgeResultFrame): Result {
 	if (frame.ok) return ok();
@@ -223,7 +232,7 @@ export function sendResultFromReceipt(frame: BridgeResultFrame): Result {
 		frame.code !== undefined && KNOWN_FAILURE_CODES.has(frame.code)
 			? (frame.code as FailureCode)
 			: "unknown";
-	const message = frame.message ?? frame.err ?? "桥回了失败,没说原因";
+	const message = firstNonBlank(frame.message, frame.err) ?? "桥回了失败,没说原因";
 	return frame.upstreamCode === undefined
 		? fail(code, message)
 		: fail(code, message, { upstreamCode: frame.upstreamCode });

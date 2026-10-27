@@ -223,7 +223,7 @@ AstrBot 上轮询 `get_insts()` 比对仍是唯一**完整**的那条路，钩�
 BN 拿它写推送历史。失败回执是 `{ type, id, ok: false, code, message, upstreamCode? }`：
 
 - `code` 只取下面的标准码。认不得的码 BN 记成 `unknown`。
-- `message` 直接展示给用户，请写人话。
+- `message` 直接展示给用户，请写人话；空的或只有空白 BN 当没给。
 - `upstreamCode` 放平台自己的码（OneBot retcode、QQ 错误码等），不占 `code`，可以是数字或字符串。
 - **说不准对面收没收到时填 `indeterminate`**：消息可能已经发出去，绝不能让人当成可安全重试的失败。
 

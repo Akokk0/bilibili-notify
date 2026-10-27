@@ -14,6 +14,10 @@
 - 协议 1.5:失败回执改带 `code` / `message` / `upstreamCode?`,`error` 帧补 `code`;老插件照常能用,只带 `err` 的旧回执仍收下并记成「原因不明」
 - 插件那一侧:AstrBot 的也有了 —— `astrbot_plugin_bilibili_notify_bridge`(AstrBot 4.14.7 起,仓库 <https://github.com/Akokk0/astrbot_plugin_bilibili_notify_bridge>),建接入时挑 AstrBot 那一档就好。0.0.1 里「AstrBot 这一档面板上选得到,但插件还没写」那句作废
 
+### Fixed
+
+- 失败回执里 `message` 是空串或只有空白时,BN 接着看 `err`,都没有才用兜底句 —— 失败原因不再显示成空白,同帧里有内容的 `err` 也不会被空的 `message` 吞掉
+
 ---
 
 ## [0.0.1] — 2026-09-11
