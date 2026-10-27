@@ -1,7 +1,6 @@
 import type { SubscriptionCreateRequest, SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
-	type CreatorProfile,
 	type Failure,
 	fail,
 	formatZodIssues,
@@ -219,34 +218,36 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	}
 
 	/**
-	 * 拿面板挑中的那个候选种资料缓存。头像先存进图库(决策 49),资料里只放回来的引用;存不下来
-	 * 就先不带头像,等 ④ 的「报资料更新」再来。
+	 * 拿面板挑中的那个候选种资料缓存,走全进程唯一的资料缓存写口:轮到时还没有资料才种,拓展收到新建通知
+	 * 先报了的不动。头像在要种时才存进图库(决策 49),资料里只放回来的引用;存不下来就先不带头像,
+	 * 等拓展的「报资料更新」再来。
 	 */
 	async function seedExtensionProfile(
 		sub: Subscription,
 		seed: z.infer<typeof CreateProfileSchema>,
 		avatarBytes: Buffer | undefined,
 	): Promise<void> {
-		let avatar: ImageRef | undefined;
-		if (avatarBytes) {
+		const storeAvatar = async (): Promise<ImageRef | undefined> => {
+			if (!avatarBytes) return undefined;
 			try {
 				const stored = await deps.runtime.profileImages.put(avatarBytes);
-				if (stored.ok) avatar = stored.ref;
-				else log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
+				if (stored.ok) return stored.ref;
+				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
 			} catch (err) {
 				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
 			}
-		}
-		const cachedProfile: CreatorProfile = {
-			name: seed.name,
-			// 没有头像就是这一格缺,不写空串。
-			...(avatar === undefined ? {} : { avatar }),
-			// 不知道就不写 —— 写 0 是在面板上印一句假话。
-			...(seed.followers === undefined ? {} : { followers: seed.followers }),
-			refreshedAt: new Date().toISOString(),
+			return undefined;
 		};
 		try {
-			await deps.runtime.subscriptionStateStore.patch(sub.id, { cachedProfile });
+			await deps.runtime.profileCache.seed(sub.id, async () => {
+				const avatar = await storeAvatar();
+				return {
+					name: seed.name,
+					// 没有头像就是这一格缺,不写空串;不知道粉丝数就不写 —— 写 0 是在面板上印一句假话。
+					...(avatar === undefined ? {} : { avatar }),
+					...(seed.followers === undefined ? {} : { followers: seed.followers }),
+				};
+			});
 		} catch (err) {
 			log.warn(`[sub] 拓展订阅 ${sub.id} 的资料缓存没写进去: ${String(err)}`);
 		}

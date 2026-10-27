@@ -12,8 +12,9 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import type { SubscriptionStateStore } from "./subscription-state-store.js";
 
 /**
- * 两条路共用:拓展报的资料更新与以后资料刷新都写这一份缓存、都按同一套口径叫面板。全进程只有一个实例
- * (`AppRuntime.profileCache`),写按订阅 id 串行;提交前现查订阅还在不在,删了的不写。
+ * 两条路共用:拓展报的资料更新与以后资料刷新都写这一份缓存、都按同一套口径叫面板;新建拓展订阅时种资料
+ * 也经这里(`seed`,只在还没有资料时种)。全进程只有一个实例(`AppRuntime.profileCache`),写按订阅 id 串行;
+ * 提交前现查订阅还在不在,删了的不写。
  *
  * - **给了哪格改哪格**:名字 / 头像 / 简介 / 粉丝数 / 粉丝团名没给的保持原样;头像没给就沿用原来那张 ——
  *   沿用也是「抄引用」,先 `keep` 续期,图已经不在了就不留悬空的引用(头像格直接缺)。
@@ -35,6 +36,11 @@ export interface ProfileCacheUpdate {
 export interface ProfileCacheWriter extends Disposable {
 	/** 把这一次并进这条订阅的资料缓存;回「面板看得见的那几格变没变」。 */
 	write(id: string, update: ProfileCacheUpdate): Promise<boolean>;
+	/**
+	 * 新建订阅时种资料:与 {@link write} 排同一条队,轮到时这条订阅还没有资料才种 —— 拓展收到新建通知就先报了的,
+	 * 不动它。`build` 只在要种时才跑(头像在里面存进图库,不种就不存);回种没种。
+	 */
+	seed(id: string, build: () => Promise<ProfileCacheUpdate>): Promise<boolean>;
 	/** 变了的订阅 id 攒进合并窗口,尾沿一起发一次 `subscription-profiles-changed`。 */
 	announce(ids: readonly string[]): void;
 	/** 关停的 flush 段调:等在途与已排队的写完再关门。它往资料缓存仓写,得排在那家 `close()` 之前跑。 */
@@ -137,6 +143,14 @@ export function createProfileCacheWriter(opts: {
 	return {
 		write(id, update) {
 			return writes.run(id, () => commit(id, update));
+		},
+		seed(id, build) {
+			return writes.run(id, async () => {
+				if (opts.subscription(id) === undefined) return false;
+				if (opts.subscriptionState.get(id)?.cachedProfile !== undefined) return false;
+				// 没有旧资料,`commit` 写下的就是 build 给的这几格;订阅在 build 途中被删了它回 false。
+				return commit(id, await build());
+			});
 		},
 		announce,
 		async close() {

@@ -74,12 +74,12 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 | | B 站 | 拓展 |
 |---|---|---|
-| 新建时 | 路由调 `ProfileRefresh.refreshSubscription` 立刻经来源 `fetchProfile` 刷这一条，失败不回滚新建 | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成 `SubscriptionCreateRequest` 的 `cachedProfile { name, avatarUrl?, followers? }`，随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 种资料、头像存进图库 |
+| 新建时 | 路由调 `ProfileRefresh.refreshSubscription` 立刻经来源 `fetchProfile` 刷这一条，失败不回滚新建 | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成 `SubscriptionCreateRequest` 的 `cachedProfile { name, avatarUrl?, followers? }`，随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 经资料缓存写口的 `seed` 种资料：排在同一条队里，轮到时还没有资料才种、头像这时才存进图库；拓展收到新建通知就先报了的不动 |
 | 之后 | `ProfileRefresh` 按 `profileRefreshCron` 经登记表调各来源的 `fetchProfile` 刷新启用中的订阅；B 站每轮取整张用户卡（名字、头像、签名、粉丝数），粉丝牌名从来源自己的 `ctx.state` 带入 | 拓展实现 `fetchProfile` 时也走这条定时刷新；没实现就靠 `ctx.reportProfile` 主动报送。两条来路写同一份资料缓存，资料缓存与时序进同一份 `followers-refreshed` 快照。事件里带的作者只上卡、不改资料（决策 54） |
 | 头像存的是 | `avatar`：抓进图库的引用；头像来源地址与引用记在 B 站自己的 `ctx.state` 的 `profile:<uid>`（`bilibili/profile.ts` 的 `syncProfileAvatar`：480 宽、第一帧、webp 的缩放版，缩放版抓不到不回退原图）。只给订阅名单里的人抓头像、写状态；地址与引用没变就不重抓。核心资料缓存不存 `avatarUrl` | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**缺着 `avatar`**，不写空串。**卡片也读它**：动态与直播出卡时按订阅 id 读 `cachedProfile.avatar`（缺键就是没有），动态外层作者、开播 / 直播中 / 下播、会员、醒目留言卡的主播头像都读这一格，出卡时零网络 |
 | `followers` | 资料刷新来的粉丝数 | 可缺 —— 缺了写 0 就是在面板上印一句「0 粉丝」的假话 |
 
-**资料的落盘**：拉来的资料与 `ctx.reportProfile` 报来的资料共用 `runtime/profile-cache.ts`：给了哪格改哪格（简介 `bio` 给的是空串就缺这一格），头像没给就沿用并 `keep` 续期，`refreshedAt` 每次更新。报来的资料由 `runtime/reported-profiles.ts` 接；宿主在来源上下文按身份只交给启用中的订阅，订阅刚删时报上来的不再种，写入排一条队。面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
+**资料的落盘**：拉来的资料与 `ctx.reportProfile` 报来的资料共用 `runtime/profile-cache.ts`：给了哪格改哪格（简介 `bio` 给的是空串就缺这一格），头像没给就沿用并 `keep` 续期，`refreshedAt` 每次更新。报来的资料由 `runtime/reported-profiles.ts` 接；宿主在来源上下文按身份只交给启用中的订阅，订阅刚删时报上来的不再种，写入排一条队；新建时种资料也排这条队（`seed`）。面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
 
 **拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，没有退首字）。
 

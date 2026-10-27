@@ -245,6 +245,29 @@ describe("新建拓展订阅", () => {
 		expect(await imageFiles()).toEqual([]);
 	});
 
+	it("拓展收到新建通知就先报了资料 → 种资料不盖掉它,候选的头像也不存", async () => {
+		// 真实那一路:订阅落盘 → 拓展收到通知 → `ctx.reportProfile` 经全进程唯一的资料缓存写口写进来。
+		const listening = runtime.bus.on("subscription-changed", ({ ops }) => {
+			if (ops.some((op) => op.kind === "add" && op.sub.id === SUB_ID)) {
+				void runtime.profileCache.write(SUB_ID, { name: "拓展先报的" });
+			}
+		});
+		try {
+			const res = await post({
+				...extSub(),
+				cachedProfile: { name: "候选", avatarUrl: avatarDataUrl("png", PNG_BYTES), followers: 1 },
+			});
+			expect(res.status, await res.clone().text()).toBe(200);
+		} finally {
+			listening.dispose();
+		}
+
+		const profile = runtime.subscriptionStateStore.get(SUB_ID)?.cachedProfile;
+		expect(profile?.name).toBe("拓展先报的");
+		expect(profile && "followers" in profile).toBe(false);
+		expect(await imageFiles()).toEqual([]);
+	});
+
 	it("没带资料 → 只建订阅,不种资料缓存", async () => {
 		expect((await post(extSub())).status).toBe(200);
 		const row = (await listed()).find((s) => s.id === SUB_ID);

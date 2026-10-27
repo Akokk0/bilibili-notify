@@ -213,3 +213,47 @@ describe("profile-cache", () => {
 		expect(announced).toEqual([]);
 	});
 });
+
+describe("profile-cache 新建时种资料(seed)", () => {
+	it("这条订阅还没有资料 → 种下,回 true;build 跑一次", async () => {
+		const build = vi.fn(async () => ({ name: "候选", avatar: OLD_AVATAR, followers: 42 }));
+
+		expect(await writer.seed(A, build)).toBe(true);
+		expect(build).toHaveBeenCalledTimes(1);
+		const profile = subscriptionState.get(A)?.cachedProfile;
+		expect(profile).toMatchObject({ name: "候选", avatar: OLD_AVATAR, followers: 42 });
+		expect(profile?.refreshedAt).toBeTypeOf("string");
+	});
+
+	it("已经有资料(拓展先报了)→ 不动,回 false;build 不跑,头像不存", async () => {
+		await subscriptionState.patch(A, { cachedProfile: { name: "先报的", refreshedAt: "old" } });
+		const build = vi.fn(async () => ({ name: "候选" }));
+
+		expect(await writer.seed(A, build)).toBe(false);
+		expect(build).not.toHaveBeenCalled();
+		expect(subscriptionState.get(A)?.cachedProfile).toEqual({
+			name: "先报的",
+			refreshedAt: "old",
+		});
+	});
+
+	it("排在同一订阅先排进来的写后面:先报的那次写完,种资料看见了就不动", async () => {
+		const reported = writer.write(A, { name: "先报的" });
+		const build = vi.fn(async () => ({ name: "候选" }));
+		const seeded = writer.seed(A, build);
+
+		expect(await reported).toBe(true);
+		expect(await seeded).toBe(false);
+		expect(build).not.toHaveBeenCalled();
+		expect(subscriptionState.get(A)?.cachedProfile?.name).toBe("先报的");
+	});
+
+	it("订阅已经删了 → 不种,build 不跑", async () => {
+		gone.add(A);
+		const build = vi.fn(async () => ({ name: "候选" }));
+
+		expect(await writer.seed(A, build)).toBe(false);
+		expect(build).not.toHaveBeenCalled();
+		expect(subscriptionState.get(A)).toBeUndefined();
+	});
+});
