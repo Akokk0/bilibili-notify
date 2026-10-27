@@ -266,10 +266,26 @@ export function wholeWords(generated = GENERATED_KEYS, exclusions = GENERATED_KE
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const NOT_WORD = "A-Za-z0-9_";
+/**
+ * 按词缓存编好的正则(不带 `g`,`test` 不留状态)。整仓扫描对每个文字节点都要逐词试一遍,现编的话
+ * 一遍扫描要构造上百万个正则,CPU 一忙这一条就撞 5 秒上限。
+ */
+const cachedRegExp = (cache, word, sourceOf) => {
+	let regExp = cache.get(word);
+	if (regExp === undefined) {
+		regExp = new RegExp(sourceOf(escapeRegExp(word)));
+		cache.set(word, regExp);
+	}
+	return regExp;
+};
+const boundaryCache = new Map();
+const leftBoundaryCache = new Map();
 /** 词边界:两边都不是字母、数字、下划线。 */
-const boundaryOf = (word) => new RegExp(`(?<![${NOT_WORD}])${escapeRegExp(word)}(?![${NOT_WORD}])`);
+const boundaryOf = (word) =>
+	cachedRegExp(boundaryCache, word, (escaped) => `(?<![${NOT_WORD}])${escaped}(?![${NOT_WORD}])`);
 /** 左边界:左边不是字母、数字、下划线;右边不限(前缀)。 */
-const leftBoundaryOf = (word) => new RegExp(`(?<![${NOT_WORD}])${escapeRegExp(word)}`);
+const leftBoundaryOf = (word) =>
+	cachedRegExp(leftBoundaryCache, word, (escaped) => `(?<![${NOT_WORD}])${escaped}`);
 
 /** 标识符切段后,段序列里有没有连续含 `word` 切出来的那几段。 */
 function hasSegments(segments, word) {
