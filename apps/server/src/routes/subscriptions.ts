@@ -122,32 +122,39 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		return (stored?.specialViewers ?? []).map((v) => v.id);
 	}
 
-	/** 问题表里关于这条订阅的,按 `since` 先后(ISO 串,字典序即时间序)。 */
-	function problemsAbout(subscriptionId: string): Problem[] {
-		return deps.runtime.problems
-			.list()
-			.filter(
-				(p) =>
-					p.about !== undefined &&
-					"subscriptionId" in p.about &&
-					p.about.subscriptionId === subscriptionId,
-			)
-			.sort((a, b) => (a.since < b.since ? -1 : a.since > b.since ? 1 : 0));
+	/**
+	 * 问题表读一次,按 `about.subscriptionId` 分好组;每组按 `since` 先后(ISO 串,字典序即时间序)。
+	 * 一张表给一次回应用:别按订阅各读一遍、各过滤一遍。
+	 */
+	function problemsBySubscription(): Map<string, Problem[]> {
+		const grouped = new Map<string, Problem[]>();
+		for (const problem of deps.runtime.problems.list()) {
+			const about = problem.about;
+			if (about === undefined || !("subscriptionId" in about)) continue;
+			const group = grouped.get(about.subscriptionId);
+			if (group) group.push(problem);
+			else grouped.set(about.subscriptionId, [problem]);
+		}
+		for (const group of grouped.values()) {
+			group.sort((a, b) => (a.since < b.since ? -1 : a.since > b.since ? 1 : 0));
+		}
+		return grouped;
 	}
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
-	function toDTO(sub: Subscription): SubscriptionDTO {
+	function toDTO(sub: Subscription, problems: Map<string, Problem[]>): SubscriptionDTO {
 		const rt = deps.runtime.subscriptionStateStore.get(sub.id);
 		return {
 			...sub,
 			cachedProfile: rt?.cachedProfile,
-			problems: problemsAbout(sub.id),
+			problems: problems.get(sub.id) ?? [],
 		};
 	}
 
 	/** 整张订阅表的 DTO(GET / POST 的回应)。 */
 	function toDTOs(): SubscriptionDTO[] {
-		return deps.store.getSubscriptions().map((sub) => toDTO(sub));
+		const problems = problemsBySubscription();
+		return deps.store.getSubscriptions().map((sub) => toDTO(sub, problems));
 	}
 
 	/**
@@ -444,7 +451,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, read.body);
-			return c.json(toDTO(next));
+			return c.json(toDTO(next, problemsBySubscription()));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/subscriptions/:id failed", err);

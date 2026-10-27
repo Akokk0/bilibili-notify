@@ -42,6 +42,8 @@ interface Harness {
 	rtPatch: ReturnType<typeof vi.fn>;
 	follow: ReturnType<typeof vi.fn>;
 	refreshSubscription: ReturnType<typeof vi.fn>;
+	/** 问题表的读口:一次请求只该读一次,按订阅分组。 */
+	problemsList: ReturnType<typeof vi.fn>;
 }
 
 function makeHarness(opts?: {
@@ -100,6 +102,7 @@ function makeHarness(opts?: {
 	});
 
 	const pipeline = enginesMode === "null" ? null : {};
+	const problemsList = vi.fn(() => opts?.problems ?? []);
 
 	const deps = {
 		store: {
@@ -111,7 +114,7 @@ function makeHarness(opts?: {
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subscriptionStateStore: { get: rtGet, patch: rtPatch },
-			problems: { list: () => opts?.problems ?? [] },
+			problems: { list: problemsList },
 			// 新建订阅按来源描述符核外部 id:B 站的描述符从登记表来。
 			sourceRegistry: {
 				get: (key: string) =>
@@ -131,6 +134,7 @@ function makeHarness(opts?: {
 		rtPatch,
 		follow,
 		refreshSubscription,
+		problemsList,
 	};
 }
 
@@ -171,6 +175,11 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 describe("/api/subscriptions — 带上挂在订阅上的问题", () => {
 	const OTHER_ID = "22222222-2222-2222-2222-222222222222";
 	const OTHER = { ...SUB, id: OTHER_ID, identity: { sourceKey: "bilibili", externalId: "999" } };
+	const THIRD = {
+		...SUB,
+		id: "33333333-3333-3333-3333-333333333333",
+		identity: { sourceKey: "bilibili", externalId: "888" },
+	};
 	const LATER: Problem = {
 		reporter: "bilibili",
 		about: { subscriptionId: SUB.id },
@@ -207,6 +216,26 @@ describe("/api/subscriptions — 带上挂在订阅上的问题", () => {
 		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
 		expect(body[0]?.problems).toEqual([EARLIER, LATER]);
 		expect(body[1]?.problems).toEqual([ELSEWHERE]);
+	});
+
+	// 每次请求只读一次问题表、按订阅分好组,不按订阅各读一遍(O(S×P) 次拷贝)。验红:回到按条过滤,这条红。
+	it("一次 GET 只读一次问题表;PATCH 的单条回应也走同一张分组表", async () => {
+		const h = makeHarness({
+			subs: [SUB, OTHER, THIRD],
+			problems: [LATER, ELSEWHERE, SOURCE_LEVEL, EARLIER],
+		});
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect(h.problemsList).toHaveBeenCalledTimes(1);
+		expect(body[0]?.problems).toEqual([EARLIER, LATER]);
+		expect(body[1]?.problems).toEqual([ELSEWHERE]);
+		expect(body[2]?.problems).toEqual([]);
+
+		await h.app.request(`/${SUB.id}`, {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ enabled: false }),
+		});
+		expect(h.problemsList).toHaveBeenCalledTimes(2);
 	});
 
 	it("没有问题:problems 是空数组,不是缺着", async () => {
