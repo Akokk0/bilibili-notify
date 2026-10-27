@@ -61,7 +61,6 @@ export class RoomContext {
 	private disposed = false;
 	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	private readonly hostRotation = new Map<string, number>();
-	private readonly reportedLive = new Set<string>();
 
 	constructor(opts: RoomContextOptions) {
 		this.api = opts.api;
@@ -81,15 +80,6 @@ export class RoomContext {
 	dispose(): void {
 		this.disposed = true;
 		this.clearListeners();
-	}
-
-	hasReportedLive(externalId: string): boolean {
-		return this.reportedLive.has(externalId);
-	}
-
-	markReportedLive(externalId: string, live: boolean): void {
-		if (live) this.reportedLive.add(externalId);
-		else this.reportedLive.delete(externalId);
 	}
 
 	async startLiveRoomListener(

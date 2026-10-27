@@ -541,4 +541,76 @@ describe("BiliLiveRooms", () => {
 		expect(h.sockets.slice(2).every((socket) => !socket.closed)).toBe(true);
 		h.rooms.stop();
 	});
+
+	it("登录失效拆掉上一场会话后重新扫码：新会话不在播,UP 再开播照发开播推送", async () => {
+		const h = harness();
+		await h.start();
+		h.setOnline(true);
+		await h.frame(LIVE);
+		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual(["start"]);
+
+		// 在播时登录失效:这一场跟着会话一起结束,但房间里事实上已经下播了。
+		h.loseLogin();
+		await settle();
+		h.setOnline(false);
+		h.restoreLogin();
+		await settle();
+
+		// 新会话核到不在播;UP 再开播不能因为上一场留下的「已报在播」被吞掉。
+		h.setOnline(true);
+		await h.frame(LIVE);
+
+		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual([
+			"start",
+			"start",
+		]);
+		h.rooms.stop();
+	});
+
+	it("登出期间核到在播不写进下一个会话：重新登录后开播照发开播推送", async () => {
+		const h = harness();
+		await h.start();
+		h.loseLogin();
+		await settle();
+
+		// 登出期间没有活着的会话,这一下核到在播只是那一次轮询的答案。
+		h.setOnline(true);
+		await expect(
+			h.rooms.fetchLiveStatus(
+				{ sourceKey: "bilibili", externalId: EXTERNAL_ID },
+				new AbortController().signal,
+			),
+		).resolves.toMatchObject({ ok: true, kind: "live" });
+
+		h.setOnline(false);
+		h.restoreLogin();
+		await settle();
+		h.setOnline(true);
+		await h.frame(LIVE);
+
+		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual(["start"]);
+		h.rooms.stop();
+	});
+
+	it("换了会话的房间还没确认在播时,观看人数帧不报 status", async () => {
+		const h = harness();
+		await h.start();
+		h.setOnline(true);
+		await h.frame(LIVE);
+		h.reports.length = 0;
+
+		h.loseLogin();
+		await settle();
+		h.setOnline(false);
+		h.restoreLogin();
+		await settle();
+
+		await h.frame({ cmd: "WATCHED_CHANGE", data: { num: 10 } });
+		expect(h.reports).toEqual([]);
+
+		h.setOnline(true);
+		await h.frame(LIVE);
+		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual(["start"]);
+		h.rooms.stop();
+	});
 });

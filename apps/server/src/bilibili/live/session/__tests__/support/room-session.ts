@@ -54,7 +54,6 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 	const interactions: Array<{ externalId: string; report: unknown }> = [];
 	const superchatAvatars: Array<{ viewerId: string; url: string }> = [];
 	const problems = (options.problems ?? makeLiveProblems()) as ReturnType<typeof makeLiveProblems>;
-	let reportedLive = false;
 	let handler: ((event: LiveEvent) => void | Promise<void>) | undefined;
 	let disposed = false;
 	let roomInfo = options.roomInfo;
@@ -137,10 +136,6 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		startLiveRoomListener,
 		closeListener,
 		isDisposed: () => disposed,
-		hasReportedLive: () => reportedLive,
-		markReportedLive: (_externalId: string, value: boolean) => {
-			reportedLive = value;
-		},
 		rememberSuperchatAvatar: (viewerId: string, url: string) => {
 			superchatAvatars.push({ viewerId, url });
 		},
@@ -149,6 +144,9 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 		externalId: options.externalId ?? EXTERNAL_ID,
 		roomId: options.roomId ?? ROOM_ID,
 	});
+	/** 「已报在播」现在是会话自己的私有状态;夹具只在断言处读它。 */
+	const reportedLiveOf = (target: RoomSession): boolean =>
+		(target as unknown as { reportedLive: boolean }).reportedLive;
 
 	const settle = async () => {
 		for (let i = 0; i < 8; i++) await Promise.resolve();
@@ -202,10 +200,10 @@ export function makeSessionHarness(options: SessionHarnessOptions = {}) {
 			disposed = value;
 		},
 		setReportedLive(value: boolean) {
-			reportedLive = value;
+			session.noteLiveStatus(value);
 		},
 		get reportedLive() {
-			return reportedLive;
+			return reportedLiveOf(session);
 		},
 	};
 }

@@ -111,13 +111,13 @@ export class BiliLiveRooms implements Disposable {
 			}
 			this.opts.problems.resolveFailure({ externalId, code: LIVE_STATUS_UNAVAILABLE });
 			if (status !== 1) {
-				this.roomContext?.markReportedLive(externalId, false);
+				this.listener?.noteLiveStatus(externalId, false);
 				const offline: LiveStatusResult = ok<{ kind: "offline" }>({ kind: "offline" });
 				return offline;
 			}
 			const details = await this.details(data);
 			const startedAt = liveTimeToIso(data.live_time);
-			this.roomContext?.markReportedLive(externalId, true);
+			this.listener?.noteLiveStatus(externalId, true);
 			const live: LiveStatusResult = ok<{
 				kind: "live";
 				startedAt?: string;

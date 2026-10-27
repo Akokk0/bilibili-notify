@@ -79,7 +79,6 @@ export function makeListenerManagerHarness(
 		},
 		logger: liveContext.logger,
 	});
-	const knownLive = new Set<string>();
 	const ctx = {
 		logger: liveContext.logger,
 		api,
@@ -94,11 +93,6 @@ export function makeListenerManagerHarness(
 		fetchRoomInfo,
 		fetchMasterSnapshot: async () => ({ name: "U", fanClubName: "牌" }),
 		isDisposed: () => false,
-		hasReportedLive: (externalId: string) => knownLive.has(externalId),
-		markReportedLive: (externalId: string, live: boolean) => {
-			if (live) knownLive.add(externalId);
-			else knownLive.delete(externalId);
-		},
 	};
 	const manager = new ListenerManager(ctx as never);
 	const subscription = (externalId: string): SourceSubscriptionView => ({

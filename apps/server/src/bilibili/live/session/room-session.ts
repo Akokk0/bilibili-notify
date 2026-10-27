@@ -49,6 +49,11 @@ export class RoomSession {
 	private bootstrapInFlight = false;
 	private startingUp = false;
 	/**
+	 * 本会话是否已经报过在播。标记属于这一个会话:会话没了(登录失效拆掉、订阅移除、放弃监听)
+	 * 它也就没了,不会像挂在 `RoomContext` 上那样带进下一个会话。
+	 */
+	private reportedLive = false;
+	/**
 	 * 单调递增的下播序号:每次收到 `LIVE_END` 就 +1。每条「await 完了要宣布在播」的路在第一个 await
 	 * 之前记下它,最后一个 await 之后再比一次 —— 变了说明这期间来过下播,别再把状态翻回在播。
 	 * 这样以后再加一条要宣布在播的路,不需要记得配对任何开关。
@@ -71,6 +76,14 @@ export class RoomSession {
 
 	private get alive(): boolean {
 		return !this.cancelled && !this.ctx.isDisposed();
+	}
+
+	/**
+	 * 直播间状态轮询核到的在播 / 不在播,由 `ListenerManager` 转给当前活着的那一个会话。
+	 * 没有活着的会话时这一下就落空 —— 断线期间核到的在播不会写进下一个会话。
+	 */
+	noteLiveStatus(live: boolean): void {
+		this.reportedLive = live;
 	}
 
 	cancel(): void {
@@ -237,8 +250,8 @@ export class RoomSession {
 		this.bootstrapped = true;
 		this.resolveStopped(MONITOR_STOPPED_CODE);
 		if (Number(info.live_status) !== 1) {
-			if (!reportEnd || !this.ctx.hasReportedLive(this.room.externalId)) return true;
-			this.ctx.markReportedLive(this.room.externalId, false);
+			if (!reportEnd || !this.reportedLive) return true;
+			this.reportedLive = false;
 			this.ctx.source.reportLive(this.room.externalId, {
 				kind: "end",
 				endedAt: new Date().toISOString(),
@@ -262,7 +275,7 @@ export class RoomSession {
 			}
 			return true;
 		}
-		this.ctx.markReportedLive(this.room.externalId, true);
+		this.reportedLive = true;
 		this.ctx.source.reportLive(this.room.externalId, {
 			kind: "status",
 			isLive: true,
@@ -383,7 +396,7 @@ export class RoomSession {
 	}
 
 	private reportViewers(viewers: number): void {
-		if (!this.alive || !this.ctx.hasReportedLive(this.room.externalId)) return;
+		if (!this.alive || !this.reportedLive) return;
 		const now = Date.now();
 		if (now - this.lastViewersReportAt < VIEWERS_EMIT_THROTTLE_MS) return;
 		this.lastViewersReportAt = now;
@@ -400,7 +413,7 @@ export class RoomSession {
 			this.ctx.logger.debug(`[live] 直播间 [${this.room.roomId}] 的开播事件在冷却期内，忽略`);
 			return;
 		}
-		if (this.startingUp || this.ctx.hasReportedLive(this.room.externalId)) {
+		if (this.startingUp || this.reportedLive) {
 			this.ctx.logger.debug(
 				`[live] 直播间 [${this.room.roomId}] 已经是开播状态或正在开播准备中，忽略重复的开播事件`,
 			);
@@ -435,7 +448,7 @@ export class RoomSession {
 			return;
 		}
 		const startedAt = liveTimeToIso(String(info.live_time ?? ""));
-		this.ctx.markReportedLive(this.room.externalId, true);
+		this.reportedLive = true;
 		this.ctx.source.reportLive(this.room.externalId, {
 			kind: "start",
 			...(startedAt === undefined ? {} : { startedAt }),
@@ -452,8 +465,8 @@ export class RoomSession {
 			return;
 		}
 		this.lastLiveEnd = now;
-		if (!this.ctx.hasReportedLive(this.room.externalId)) return;
-		this.ctx.markReportedLive(this.room.externalId, false);
+		if (!this.reportedLive) return;
+		this.reportedLive = false;
 		if (this.alive) {
 			this.ctx.source.reportLive(this.room.externalId, {
 				kind: "end",
@@ -567,7 +580,7 @@ export class RoomSession {
 
 			// 还没补跑过初始房态、或者已经在播(重连后要核对还在不在播)才多拉一次房间信息;
 			// 没报过在播就不拉,保持 3b-63 压请求量的出发点。
-			if (!this.bootstrapped || this.ctx.hasReportedLive(this.room.externalId)) {
+			if (!this.bootstrapped || this.reportedLive) {
 				if (this.bootstrapInFlight) return;
 				const ready = await this.bootstrapState(this.bootstrapped);
 				if (ready) return;
@@ -584,8 +597,8 @@ export class RoomSession {
 			`[conn] 直播间 [${this.room.roomId}] ${reasonText}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`,
 		);
 		this.logMonitoringStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp());
-		const wasReportedLive = this.ctx.hasReportedLive(this.room.externalId);
-		this.ctx.markReportedLive(this.room.externalId, false);
+		const wasReportedLive = this.reportedLive;
+		this.reportedLive = false;
 		try {
 			if (wasReportedLive) {
 				this.ctx.source.reportLive(this.room.externalId, {

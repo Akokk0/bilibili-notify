@@ -173,6 +173,14 @@ export class ListenerManager {
 		}, delay);
 	}
 
+	/**
+	 * 「已报在播」跟着会话走:只写给该 UID 当前活着的那一个会话。
+	 * 没有活着的会话(登录失效拆掉、还没重建)就落空 —— 断线期间核到的在播不会带进下一个会话。
+	 */
+	noteLiveStatus(externalId: string, live: boolean): void {
+		this.active.get(externalId)?.session.noteLiveStatus(live);
+	}
+
 	stop(externalId: string): void {
 		this.wanted.delete(externalId);
 		if (this.notFoundRooms.delete(externalId)) {
