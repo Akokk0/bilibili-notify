@@ -26,7 +26,7 @@ import { createLiveInteractions } from "./live-interactions.js";
 import type { LiveNotifySend } from "./live-notify.js";
 import { bindLivePush } from "./live-push.js";
 import { createLiveSessionEngine } from "./live-sessions.js";
-import { liveSettingsOf, rotateLiveCover } from "./live-settings.js";
+import { createLiveSettingsCache, rotateLiveCover } from "./live-settings.js";
 import type { LiveTable } from "./live-table.js";
 import type { PickLiveCover } from "./live-types.js";
 import { LiveSummaryRequester } from "./recap/live-summary-requester.js";
@@ -73,6 +73,13 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 	const liveTable = options.table;
 	const logger = options.serviceCtx.logger;
 
+	// 折好的直播设置只有这一份:场次 / 推送 / 互动共用,别再各写一遍 `(sub) => liveSettingsOf(...)`
+	// (每次都是一份 globals 深拷贝,互动是每条弹幕一次)。globals 变了由缓存自己作废。
+	const liveSettings = createLiveSettingsCache({
+		bus: options.bus,
+		getGlobals: options.globals,
+	});
+
 	// `liveTable` 在这里是写口:场次引擎先写表、再改场次,表自己不听上报。
 	const liveSessions = createLiveSessionEngine({
 		bus: options.bus,
@@ -81,7 +88,7 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 		subscription: (id) => options.subscriptionStore.findById(id),
 		sourceStatus: options.sourceStatus,
 		fans: (id) => options.subscriptionStateStore.get(id)?.cachedProfile?.followers,
-		settings: (sub) => liveSettingsOf(sub, options.globals()),
+		settings: (sub) => liveSettings.of(sub),
 		timers: options.serviceCtx,
 		// 拉取式:来源实现了 `fetchLiveStatus` 就按每一场自己的时钟问它(外壳:超时、抛错收口、同一来源串行)。
 		liveStatus: {
@@ -136,7 +143,7 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 		subscription: (id) => options.subscriptionStore.findById(id),
 		profile: (id) => options.subscriptionStateStore.get(id)?.cachedProfile,
 		identityLabel: (identity) => subscriptionIdentityLabelOf(identity, options.labelDeps),
-		settings: (sub) => liveSettingsOf(sub, options.globals()),
+		settings: (sub) => liveSettings.of(sub),
 		// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
 		liveCover: (sub, settings) => {
 			const identity = subscriptionIdentityOf(sub);
@@ -162,7 +169,7 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 	const interactions = createLiveInteractions({
 		logger,
 		subscription: (id) => options.subscriptionStore.findById(id),
-		settings: (sub) => liveSettingsOf(sub, options.globals()),
+		settings: (sub) => liveSettings.of(sub),
 		sourceStatus: options.sourceStatus,
 		table: liveTable,
 		profileName: (id) => options.subscriptionStateStore.get(id)?.cachedProfile?.name,
@@ -191,7 +198,13 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 		dispose() {
 			if (disposed) return;
 			disposed = true;
-			for (const handle of [liveSessions, stopwordsListener, bindPush, interactions]) {
+			for (const handle of [
+				liveSessions,
+				stopwordsListener,
+				liveSettings,
+				bindPush,
+				interactions,
+			]) {
 				try {
 					handle.dispose();
 				} catch {

@@ -6,9 +6,11 @@
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import {
+	type Disposable,
 	type EffectiveSubscription,
 	type ExtraKey,
 	type GlobalConfig,
+	type MessageBus,
 	type MessageKindLayout,
 	resolve,
 	resolveTemplates,
@@ -199,6 +201,48 @@ export function liveSettingsOf(
 		specialViewerEnter: {
 			specialViewers: sub.specialViewers,
 			template: templates.viewerEnter,
+		},
+	};
+}
+
+/**
+ * 折好的直播设置的**缓存读口**(与 `stats/enabled.ts` 同一个做法)。
+ *
+ * `globals()` 每读一次是整份深拷贝,而 `liveSettingsOf` 还要再折四遍;互动每条弹幕报一次、
+ * 推送每两秒报一份人数,现折是白做 —— 设置只在保存时才变。宿主建一份,场次 / 推送 / 互动
+ * 共用;删掉的订阅随对象回收。
+ */
+export interface LiveSettingsCache extends Disposable {
+	/** 这条订阅此刻折好的设置;同一个订阅对象在 globals 变之前拿到的是同一份。 */
+	of(sub: Subscription): LiveSettings;
+}
+
+/**
+ * 按 **`Subscription` 对象身份**缓存:订阅仓每次改动都整条换新对象(内容没变不换),所以订阅
+ * 改了自然不命中,不用另听 `subscription-changed`。核心设置变了(总线上 `config-changed` 的
+ * `globals`)整张换新 —— 语言与 AI 人格都在 globals 里,没有别的作用域会影响折出来的结果。
+ *
+ * 返回的设置从此在调用方之间共享,**谁都不许就地改它**。
+ */
+export function createLiveSettingsCache(opts: {
+	bus: MessageBus;
+	getGlobals: () => GlobalConfig;
+}): LiveSettingsCache {
+	let bySubscription = new WeakMap<Subscription, LiveSettings>();
+	const subscription = opts.bus.on("config-changed", ({ scope }) => {
+		if (scope === "globals") bySubscription = new WeakMap();
+	});
+	return {
+		of(sub) {
+			let settings = bySubscription.get(sub);
+			if (!settings) {
+				settings = liveSettingsOf(sub, opts.getGlobals());
+				bySubscription.set(sub, settings);
+			}
+			return settings;
+		},
+		dispose() {
+			subscription.dispose();
 		},
 	};
 }

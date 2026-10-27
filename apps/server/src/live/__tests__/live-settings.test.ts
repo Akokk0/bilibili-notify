@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vite-plus/test";
-import { rotateLiveCover } from "../live-settings";
+import { makeDefaultGlobalConfig, makeEmptySubscription } from "@bilibili-notify/internal";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { createLiveSettingsCache, rotateLiveCover } from "../live-settings";
 import type { PickLiveCover } from "../live-types";
 
 /**
@@ -94,5 +96,43 @@ describe("B 站封面轮换游标", () => {
 			"bilibili:u1:live-cover",
 		);
 		expect(calls).toEqual(["bilibili:u1:live-cover"]);
+	});
+});
+
+/**
+ * 折好的直播设置缓存的读口:`(sub) => liveSettingsOf(sub, globals())` 不再每条互动现折一次
+ * (每次都是一份 globals 深拷贝)。按 `Subscription` 对象身份认,`globals` 换了整张作废 ——
+ * 订阅仓每次改动都整条换新对象,所以改了订阅自然不命中。
+ */
+describe("createLiveSettingsCache", () => {
+	it("同一订阅对象读两次只折一次;globals 变了、换了订阅对象才重折", () => {
+		const bus = createNodeMessageBus();
+		const globals = vi.fn(() => makeDefaultGlobalConfig());
+		const cache = createLiveSettingsCache({ bus, getGlobals: globals });
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "acme", externalId: "room-1" },
+		});
+
+		const first = cache.of(sub);
+		expect(cache.of(sub)).toBe(first);
+		expect(globals).toHaveBeenCalledTimes(1);
+
+		bus.emit("config-changed", { scope: "globals" });
+		const afterGlobals = cache.of(sub);
+		expect(afterGlobals).not.toBe(first);
+		expect(globals).toHaveBeenCalledTimes(2);
+
+		// 订阅仓改一条订阅是整条换新对象:同一个 id 的新对象不命中旧缓存。
+		const replacement = { ...sub };
+		cache.of(replacement);
+		expect(globals).toHaveBeenCalledTimes(3);
+
+		// 只有 globals 作用域会影响折出来的直播设置,别的作废事件不重折。
+		bus.emit("config-changed", { scope: "targets" });
+		cache.of(replacement);
+		expect(globals).toHaveBeenCalledTimes(3);
+
+		cache.dispose();
 	});
 });
