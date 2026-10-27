@@ -1,6 +1,6 @@
 /**
  * AI 设置 `defaults.ai` 的 0.x 老形状:扁平的连接字段(→ `providers.custom`)、上一代「一家一桶」与
- * `provider` 指针(→ 实例桶 + `activeProfile`)、手改过的 `persona` 与预设上线前的 `presets: []`(→ 预设 +
+ * `provider` 指针(→ 实例桶 + `activeProfile`)、手改过的 `persona` 与预设上线前的清单(→ 预设 +
  * `activePreset`),以及上提到顶层后拆掉内置人格、只留下主人删过哪几份。⑥c 从 internal 的
  * `AISettingsSchema` preprocess 里原样收进来,前三步的顺序不变。
  */
@@ -101,6 +101,32 @@ function sameShape(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * 0.x 的预设清单,只认非空数组那一种形状;其余一律回 `undefined`。
+ *
+ * 0.12 的 preprocess 把 `presets` **缺键、`null`、非数组、空数组**都当成「预设功能上线前的清单」,
+ * 补满内置四份(`v0.12.0:packages/internal/src/schema/common.ts`)。迁移照 0.12 的意思读,
+ * 两处用它的步骤(人格指针、内置删除清单)因此不会再各写一套判法。
+ */
+function zeroPresetListOf(ai: Record<string, unknown>): unknown[] | undefined {
+	const presets = ai.presets;
+	return Array.isArray(presets) && presets.length > 0 ? presets : undefined;
+}
+
+/**
+ * 人格指针迁移之前,0.x 的清单是不是预设上线前那一份 —— 新步骤靠它区分「四份都在」与「四份都删了」。
+ * `ai` 不在 / 不是对象时回 `false`:那种文件 0.12 直接拒收,不是合法的 0.x 输入。
+ */
+export function zeroAiPresetsWereEmpty(raw: unknown): boolean {
+	if (!isPlainObject(raw)) return false;
+	const ai = isPlainObject(raw.ai)
+		? raw.ai
+		: isPlainObject(raw.defaults) && isPlainObject(raw.defaults.ai)
+			? raw.defaults.ai
+			: undefined;
+	return ai !== undefined && zeroPresetListOf(ai) === undefined;
+}
+
+/**
  * 人格只住在 `presets[]` 里,`activePreset` 指着当前那一份。
  *
  * `DEFAULT_AI.persona` 与 `presets[0]`「温柔女仆」本就是同一份(见 globals.ts 那句
@@ -119,8 +145,9 @@ function sameShape(a: unknown, b: unknown): boolean {
  * 上提到顶层并拆完内置人格之后,再统一删掉这三格。
  */
 function migratePersonaPointer(o: Record<string, unknown>): Record<string, unknown> {
-	const stored = Array.isArray(o.presets) ? (o.presets as Record<string, unknown>[]) : [];
-	// `presets: []` 是预设功能上线**之前**写的 globals.json。迁移不拿运行时的内置文案补齐:
+	const stored = (zeroPresetListOf(o) ?? []) as Record<string, unknown>[];
+	// `presets` 不是非空数组(空数组 / 缺键 / `null` / 别的形状)是预设功能上线**之前**写的 globals.json。
+	// 迁移不拿运行时的内置文案补齐:
 	// 内容会随语言与版本变化,不属于零代输入;内置人格本身也不再把内容存进设置。
 	const presets: Record<string, unknown>[] = [...stored];
 	const persona = o.persona;
@@ -154,8 +181,8 @@ function migratePersonaPointer(o: Record<string, unknown>): Record<string, unkno
  *
  * 0.x 的 `presets` 曾把四份出厂人格连同文案整份存下;1.0 按当前语言现取内容,只记主人删过哪几份。
  * 内置 id 是 0.x 的历史事实,所以按 {@link ZERO_BUILTIN_PRESET_IDS} 认,不读运行时的出厂表。
- * `presetsWereEmpty` 要在人格指针迁移之前取:老配置的空清单表示四份都还在,而指针迁移随后会往里
- * 添一份顶层人格的副本;非空的纯主人清单则确实表示四份内置都删过。
+ * `presetsWereEmpty` 要在人格指针迁移之前取:老配置的空清单(连同缺键 / `null` / 非数组)表示四份都还在,
+ * 而指针迁移随后会往里添一份顶层人格的副本;非空的纯主人清单则确实表示四份内置都删过。
  *
  * 顶层 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 到这一步已经由人格指针迁移抄进主人那份,
  * 可以删掉。`activePreset` 原样保留:指内置的仍按当前语言取,指主人的仍指那一份。

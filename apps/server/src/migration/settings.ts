@@ -32,7 +32,7 @@ import {
 	isPrivateTarget,
 	type PushTarget,
 } from "@bilibili-notify/internal";
-import { migrateAiSettings, removeZeroBuiltinPresets } from "./ai.js";
+import { migrateAiSettings, removeZeroBuiltinPresets, zeroAiPresetsWereEmpty } from "./ai.js";
 import { moveGlobalCards } from "./card-moves.js";
 import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "./core-sections.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
@@ -105,17 +105,6 @@ export function migrateGlobalsToCurrent(raw: unknown): unknown {
 		),
 		presetsWereEmpty,
 	);
-}
-
-/** 人格指针迁移之前,0.x 的清单是不是空数组 —— 新步骤靠它区分「四份都在」与「四份都删了」。 */
-function zeroAiPresetsWereEmpty(raw: unknown): boolean {
-	if (!isPlainObject(raw)) return false;
-	const ai = isPlainObject(raw.ai)
-		? raw.ai
-		: isPlainObject(raw.defaults) && isPlainObject(raw.defaults.ai)
-			? raw.defaults.ai
-			: undefined;
-	return ai !== undefined && Array.isArray(ai.presets) && ai.presets.length === 0;
 }
 
 /** 七档从短到长,换算时往上找最近的一档。 */

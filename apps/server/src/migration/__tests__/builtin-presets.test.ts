@@ -31,6 +31,28 @@ function presets(raw: ReturnType<typeof zeroGlobals>): Obj[] {
 	return raw.defaults.ai.presets;
 }
 
+/** 预设上线前的清单迁移后得到的那份主人副本:文字取自冻住的 0.12 夹具,不拿运行时内置表反算。 */
+function customPersonaFromZeroTop(raw: ReturnType<typeof zeroGlobals>): Obj[] {
+	return [
+		{
+			id: "custom-persona",
+			label: "小绫",
+			persona: structuredClone(raw.defaults.ai.persona),
+			dynamicPrompt:
+				"主人订阅的 UP 主刚刚更新了动态,请用温柔的语气向主人转述核心内容,并补一两句你的看法。",
+			liveSummaryPrompt:
+				"用温柔的语气向主人讲讲直播主要发生了什么(150-200 字),从弹幕和氛围中提炼亮点。",
+		},
+	];
+}
+
+/** 0.x 不会自己写出的三种「预设上线前」清单形状:手改过的 globals.json 才可能有。 */
+const PRE_PRESETS_SHAPES: [string, (ai: Obj) => void][] = [
+	["缺 presets 键", (ai) => delete ai.presets],
+	["presets 是 null", (ai) => (ai.presets = null)],
+	["presets 是非数组对象", (ai) => (ai.presets = {})],
+];
+
 const OWNER_PRESET: Obj = {
 	id: "mine",
 	label: "我的人格",
@@ -102,25 +124,28 @@ describe("0.x 内置人格 → removedBuiltinPresets", () => {
 
 	it("presets 原本为空:不写删除清单,顶层人格造成主人的一份", () => {
 		const raw = zeroGlobals();
-		const persona = structuredClone(raw.defaults.ai.persona);
 		raw.defaults.ai.presets = [];
 
 		const out = migrated(raw);
 
 		expect(out.ai).not.toHaveProperty("removedBuiltinPresets");
-		expect(out.ai.presets).toEqual([
-			{
-				id: "custom-persona",
-				label: "小绫",
-				persona,
-				dynamicPrompt:
-					"主人订阅的 UP 主刚刚更新了动态,请用温柔的语气向主人转述核心内容,并补一两句你的看法。",
-				liveSummaryPrompt:
-					"用温柔的语气向主人讲讲直播主要发生了什么(150-200 字),从弹幕和氛围中提炼亮点。",
-			},
-		]);
+		expect(out.ai.presets).toEqual(customPersonaFromZeroTop(raw));
 		expect(out.ai.activePreset).toBe("custom-persona");
 	});
+
+	it.each(PRE_PRESETS_SHAPES)(
+		"预设上线前的清单(%s):不写删除清单,顶层人格造成主人的一份",
+		(_label, makePrePresets) => {
+			const raw = zeroGlobals();
+			makePrePresets(raw.defaults.ai);
+
+			const out = migrated(raw);
+
+			expect(out.ai).not.toHaveProperty("removedBuiltinPresets");
+			expect(out.ai.presets).toEqual(customPersonaFromZeroTop(raw));
+			expect(out.ai.activePreset).toBe("custom-persona");
+		},
+	);
 
 	it("按 id 认内置:内容换成 0.x 原文之外的句子也照样拆出", () => {
 		const raw = zeroGlobals();
