@@ -108,7 +108,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		});
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
-			...json({ extensions: { [FAKE]: { enabled: true } } }),
+			...json({ core: { extensions: { [FAKE]: { enabled: true } } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		const list = (await (await api("/api/ext")).json()) as ExtensionsResponse;

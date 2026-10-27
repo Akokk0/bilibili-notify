@@ -6,10 +6,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Field, Picker, TInput } from "../../components/forms";
 import { TargetChipPicker } from "../../components/target-chip-picker";
 import { AI_PURPLE } from "../../config/colors";
+import { useCoreSettings } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-
 import { RoastRunNowBox } from "./RoastRunNowBox";
 import { STATS_RANGES } from "./ranges";
 
@@ -99,10 +99,7 @@ export function RoastScheduleCard({
  * 「不支持」与「还不知道」分开说:后者不是这条连接的毛病,别让主人去查自己的配置。
  */
 export function useApprovalReachability(): { canApprove: boolean; hint?: string } {
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),

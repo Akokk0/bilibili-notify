@@ -170,7 +170,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		const res = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { [PROBE]: { enabled } } }),
+			body: JSON.stringify({ core: { extensions: { [PROBE]: { enabled } } } }),
 		});
 		expect(res.status, await res.clone().text()).toBe(200);
 		expect(await probeState()).toBe(enabled ? "running" : "disabled");

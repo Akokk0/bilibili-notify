@@ -71,7 +71,7 @@ function mockApi(
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
-		return Promise.resolve({ history: { retentionDays: 30 } });
+		return Promise.resolve({ core: { history: { retentionDays: 30 } } });
 	});
 }
 

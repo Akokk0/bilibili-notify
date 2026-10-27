@@ -63,7 +63,7 @@ function mockApi(knobs: Record<string, Record<string, unknown>>): void {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);
-		return Promise.resolve(globals);
+		return Promise.resolve({ core: globals });
 	});
 }
 
@@ -107,10 +107,10 @@ async function saveAndRead(): Promise<{ defaults: { cardSkinKnobs: Record<string
 	await waitFor(() => expect(api.patch).toHaveBeenCalled());
 	const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 		string,
-		{ defaults: { cardSkinKnobs: Record<string, unknown> } },
+		{ core: { defaults: { cardSkinKnobs: Record<string, unknown> } } },
 	];
 	expect(url).toBe("/api/settings");
-	return body;
+	return body.core;
 }
 
 beforeEach(() => {

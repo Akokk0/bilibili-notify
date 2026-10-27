@@ -66,7 +66,9 @@ function resetStore(): void {
 
 function mount(g: GlobalConfig) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subscriptions") ? [] : JSON.parse(JSON.stringify(g))),
+		Promise.resolve(
+			url.includes("/api/subscriptions") ? [] : { core: JSON.parse(JSON.stringify(g)) },
+		),
 	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -126,7 +128,7 @@ async function saveAndGetBody(): Promise<{
 	const onSave = useDraftStore.getState().current?.onSave as (() => Promise<void>) | undefined;
 	await onSave?.();
 	expect(api.patch).toHaveBeenCalledWith("/api/settings", expect.anything());
-	return vi.mocked(api.patch).mock.calls.at(-1)?.[1] as never;
+	return (vi.mocked(api.patch).mock.calls.at(-1) as [string, { core: never }])[1].core;
 }
 
 describe("默认文案有更新的小标记", () => {

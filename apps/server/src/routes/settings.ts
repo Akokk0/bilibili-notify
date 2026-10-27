@@ -1,7 +1,9 @@
 import { probeAiProvider } from "@bilibili-notify/ai";
+import type { SettingsResponse } from "@bilibili-notify/contract";
 import { aiProfileAt, fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
+import { t } from "../i18n/index.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 import { checkCommandAliases } from "./command-alias-guard.js";
 import { maskedCellsFailure } from "./masked-cells.js";
@@ -12,12 +14,15 @@ import { globalConfigView } from "./secret-view.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `/api/settings` — read + patch the runtime settings: the core GlobalConfig plus each registered
- * integration's settings under its key (today `bilibili`, ADR-0021 decision 42's 10-01 🔗).
+ * `/api/settings` — read + patch the runtime settings: the core GlobalConfig under `core`, plus each
+ * registered integration's settings under its key (`bilibili` and the three built-in adapters,
+ * ADR-0021 decision 42's 10-01 🔗).
  *
- * - GET: returns a snapshot (core keys at the top level, each integration's settings under its key)
+ * - GET: returns a snapshot `{ core, <integrationKey>… }`
  * - PATCH: accepts a deep-partial JSON body in the same shape, merges, validates, persists —
- *   core and integration parts in one go (all validated before anything is written)
+ *   core and integration parts in one go (all validated before anything is written). Top-level keys
+ *   other than `core` and the registered integration keys are rejected: an old panel (core keys
+ *   flattened at the top level) must not be silently dropped.
  *
  * No PUT (full set) — keep the API surface deliberately small until a UI demands it.
  *
@@ -50,9 +55,11 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 		// Cheap upfront guard: must be an object (not array / scalar).
 		const read = await readJsonObject(c);
 		if (!read.ok) return respondFailure(c, read);
-		// 各集成的设置按登记过的键拆出去,其余是核心那份。集成那份的格式与写入校验(B 站的 cron 能不能解析)
+		// 核心那份在 `core` 下,各集成的设置在登记过的键下。集成那份的格式与写入校验(B 站的 cron 能不能解析)
 		// 都在配置仓按登记的格式做,这里不认得任何一个集成。
-		const { core: body, integrations } = splitSettingsPatch(read.body, deps.store);
+		const split = splitSettingsPatch(read.body, deps.store);
+		if (!split.ok) return respondFailure(c, split);
+		const { core: body, integrations } = split;
 		// 拓展设置有自己的口了(ADR-0019 决策 35),这里一格都不收 —— 老面板(应用内更新那几秒里
 		// 还开着的那一页)会整份写回,得拒掉并说清去哪儿写。先于别的检查:这一发整个作废。
 		const moved = extensionSettingsWriteOf(body);
@@ -90,7 +97,12 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 			});
 			return c.json(publicSettings(next));
 		} catch (err) {
-			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
+			if (err instanceof ConfigValidationError) {
+				// 逐格原因的路径与请求体对得上:配置仓给核心那份的路径相对核心(`globals` 那一档),线上它挂在 `core` 下;
+				// 集成的路径配置仓已经带上了各自的键。
+				const rejected = err.scope === "globals" ? err.under(["core"]) : err;
+				return respondFailure(c, rejected.toFailure());
+			}
 			log.error("PATCH /api/settings failed", err);
 			throw err;
 		}
@@ -129,32 +141,34 @@ function extensionSettingsWriteOf(patch: Record<string, unknown>): string | unde
 }
 
 /**
- * 请求体按登记过的集成键拆开:那几个键的值是各集成那份设置的补丁,其余是核心那份的。集成的键与核心的顶层键
- * 不会撞名(配置仓登记时就拦了)。
+ * 请求体拆成核心那份(`core` 的值)与各集成的(登记过的键的值)。顶层别的键整发拒收:多半是老面板把核心的键平铺在
+ * 顶层写回来,放过去就是回 200 而一个字没写。`core` 不是对象同样拒收。配置仓登记集成时拦了叫 `core` 的键。
  */
 function splitSettingsPatch(
 	body: Record<string, unknown>,
 	store: Pick<ConfigStore, "getAllIntegrationSettings">,
-): { core: Record<string, unknown>; integrations: Record<string, unknown> } {
+): Result<{ core: Record<string, unknown>; integrations: Record<string, unknown> }> {
 	const keys = new Set(Object.keys(store.getAllIntegrationSettings()));
-	const core: Record<string, unknown> = {};
-	const integrations: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(body)) {
-		if (keys.has(key)) integrations[key] = value;
-		else core[key] = value;
+	const unknown = Object.keys(body).filter((key) => key !== "core" && !keys.has(key));
+	if (unknown.length > 0) {
+		return fail("invalid", t("settings.patch.unknownKeys", { keys: unknown.join(", ") }));
 	}
-	return { core, integrations };
+	const { core = {}, ...integrations } = body;
+	if (typeof core !== "object" || core === null || Array.isArray(core)) {
+		return fail("invalid", t("settings.patch.coreNotObject"));
+	}
+	return ok({ core: core as Record<string, unknown>, integrations });
 }
 
 /**
- * 下发给浏览器的那一份:核心的顶层键原样摆着,各集成的设置挂在自己的键下(与 PATCH 收的同一个形状)。今天登记的
+ * 下发给浏览器的那一份:核心那份在 `core` 下,各集成的设置挂在自己的键下(与 PATCH 收的同一个形状)。今天登记的
  * 集成设置里没有密钥;将来有了,按字段表上的 `secret` 标记打码(ADR-0021 决策 44,随 3b)。
  */
-function publicSettings(snapshot: SettingsSnapshot): Record<string, unknown> {
+function publicSettings(snapshot: SettingsSnapshot): SettingsResponse {
 	// 核心那份的密钥换遮挡(`globalConfigView`,按 schema 上的 `secret` 标记)。拓展的设置不在这里面(各在自己的文件里,ADR-0021 决策 42 下
 	// 10-01 的 🔗),核心那份只有它们的开关 —— 拓展设置里的密钥(桥的 token、抖音的 cookie)只从
 	// `/api/ext/:id/settings` 那一口出门,在那儿遮(服务端算头尾,决策 35)。
-	return { ...globalConfigView(snapshot.core), ...snapshot.integrations };
+	return { core: globalConfigView(snapshot.core), ...snapshot.integrations };
 }
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { GlobalsPatch } from "../../types/globals";
+import type { GlobalConfigPatch } from "../../types/globals";
 import System from "../System";
 
 // ── 子节全部换成哑桩:这条测试问的是「哪一格里有什么」,不是各节自己画得对不对 ──
@@ -26,12 +26,12 @@ vi.mock("../../components/commands-settings", () => ({
 		draft,
 		onPatch,
 	}: {
-		draft: { bilibili: { dynamicCron: string } };
-		onPatch: (d: GlobalsPatch) => void;
+		draft: { commands: { prefix: string } };
+		onPatch: (d: GlobalConfigPatch) => void;
 	}) => (
 		<div data-testid="sec-commands">
-			<span data-testid="cron-echo">{draft.bilibili.dynamicCron}</span>
-			<button type="button" onClick={() => onPatch({ bilibili: { dynamicCron: "改过了" } })}>
+			<span data-testid="prefix-echo">{draft.commands.prefix}</span>
+			<button type="button" onClick={() => onPatch({ commands: { prefix: "改过了" } })}>
 				改一下草稿
 			</button>
 		</div>
@@ -78,12 +78,15 @@ const { GLOBALS, FakeApiError } = vi.hoisted(() => {
 	class FakeApiError extends Error {}
 	return {
 		FakeApiError,
-		// `bilibili` 是 B 站自己的设置,`/api/settings` 把它挂在核心设置旁边下发;系统页画「运行」格要读它。
+		// 核心那份在 `core` 下;`bilibili` 是 B 站自己的设置,挂在它旁边下发,系统页画「运行」格要读它。
 		GLOBALS: {
-			logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
-			history: { retentionDays: 30 },
+			core: {
+				logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
+				history: { retentionDays: 30 },
+				master: { targetId: undefined },
+				commands: { enabled: true, prefix: "/", aliases: {} },
+			},
 			bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },
-			master: { targetId: undefined },
 		},
 	};
 });
@@ -174,13 +177,13 @@ describe("系统页的分区导航", () => {
 		renderSystem();
 		await waitForDraft();
 		pickSection("消息");
-		expect(screen.getByTestId("cron-echo").textContent).toBe("0 * * * *");
+		expect(screen.getByTestId("prefix-echo").textContent).toBe("/");
 
 		fireEvent.click(screen.getByRole("button", { name: "改一下草稿" }));
-		expect(screen.getByTestId("cron-echo").textContent).toBe("改过了");
+		expect(screen.getByTestId("prefix-echo").textContent).toBe("改过了");
 
 		pickSection("外观");
 		pickSection("消息");
-		expect(screen.getByTestId("cron-echo").textContent).toBe("改过了");
+		expect(screen.getByTestId("prefix-echo").textContent).toBe("改过了");
 	});
 });

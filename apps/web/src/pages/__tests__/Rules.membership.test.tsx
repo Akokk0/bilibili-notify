@@ -45,7 +45,9 @@ function globalsWith(
 
 function mount(g: GlobalConfig, subs: Subscription[] = []) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subscriptions") ? subs : JSON.parse(JSON.stringify(g))),
+		Promise.resolve(
+			url.includes("/api/subscriptions") ? subs : { core: JSON.parse(JSON.stringify(g)) },
+		),
 	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -81,7 +83,11 @@ async function saveAndGetBody(): Promise<{ defaults: Record<string, unknown> }> 
 	const onSave = useDraftStore.getState().current?.onSave as (() => Promise<void>) | undefined;
 	await onSave?.();
 	expect(api.patch).toHaveBeenCalledWith("/api/settings", expect.anything());
-	return vi.mocked(api.patch).mock.calls.at(-1)?.[1] as { defaults: Record<string, unknown> };
+	const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		string,
+		{ core: { defaults: Record<string, unknown> } },
+	];
+	return body.core;
 }
 
 describe("全局直播门槛:改了 → 保存条亮、PATCH 带着它", () => {

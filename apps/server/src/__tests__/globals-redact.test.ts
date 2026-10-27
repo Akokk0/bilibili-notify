@@ -59,13 +59,13 @@ describe("globals apiKey redact — P0-3", () => {
 		const res = await app.request("/api/settings");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			ai: { providers: Record<string, { apiKey: unknown }> };
+			core: { ai: { providers: Record<string, { apiKey: unknown }> } };
 		};
 		// 正对照:真 key 确实写进了内存里的那份(下面的「不含明文」不是因为夹具被剥空)
 		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe(
 			"sk-secret-real-key",
 		);
-		expect(body.ai.providers.deepseek?.apiKey).toEqual({ masked: "••••••••" });
+		expect(body.core.ai.providers.deepseek?.apiKey).toEqual({ masked: "••••••••" });
 		expect(JSON.stringify(body)).not.toContain("sk-secret-real-key");
 		// 内部 store 仍持真实 key
 		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe(
@@ -88,10 +88,10 @@ describe("globals apiKey redact — P0-3", () => {
 
 		const res = await app.request("/api/settings");
 		const body = (await res.json()) as {
-			ai: { providers: Record<string, { apiKey?: string } | undefined> };
+			core: { ai: { providers: Record<string, { apiKey?: string } | undefined> } };
 		};
 		// 全新配置一家都没添加,连桶都不该有 —— 更谈不上占位。
-		expect(body.ai.providers).toEqual({});
+		expect(body.core.ai.providers).toEqual({});
 
 		await runtime.dispose();
 	});
@@ -117,14 +117,16 @@ describe("globals apiKey redact — P0-3", () => {
 			});
 
 		const bad = await patch({
-			ai: { providers: { deepseek: { apiKey: { masked: "••••••••" }, model: "gpt-4o-mini" } } },
+			core: {
+				ai: { providers: { deepseek: { apiKey: { masked: "••••••••" }, model: "gpt-4o-mini" } } },
+			},
 		});
 		expect(bad.status).toBe(400);
 		// 话里说的是「这是遮挡、不是新值」,不是 zod 的「期望字符串」—— 后者是别的原因也会有的 400。
 		expect(await bad.json()).toMatchObject({
 			code: "invalid",
 			message: expect.stringContaining("遮挡"),
-			issues: [{ path: ["ai", "providers", "deepseek", "apiKey"] }],
+			issues: [{ path: ["core", "ai", "providers", "deepseek", "apiKey"] }],
 		});
 		const ds = () => runtime.configStore.getGlobals().ai.providers.deepseek;
 		// store 内 apiKey 必须仍是原值,整发作废(model 也没落地)—— 这是 P0-3 最危险的回归点
@@ -133,7 +135,9 @@ describe("globals apiKey redact — P0-3", () => {
 
 		// 不带 apiKey 这一格 = 保留已存的,同桶其他字段正常落地
 		const ok = await patch({
-			ai: { providers: { deepseek: { model: "gpt-4o-mini" } } },
+			core: {
+				ai: { providers: { deepseek: { model: "gpt-4o-mini" } } },
+			},
 		});
 		expect(ok.status).toBe(200);
 		expect(ds()?.apiKey).toBe("sk-original-key");
@@ -160,7 +164,9 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				ai: { providers: { deepseek: { apiKey: "sk-brand-new-key" } } },
+				core: {
+					ai: { providers: { deepseek: { apiKey: "sk-brand-new-key" } } },
+				},
 			}),
 		});
 		expect(patchRes.status).toBe(200);
@@ -191,7 +197,9 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				ai: { providers: { deepseek: { apiKey: "" } }, search: { keys: { bocha: "" } } },
+				core: {
+					ai: { providers: { deepseek: { apiKey: "" } }, search: { keys: { bocha: "" } } },
+				},
 			}),
 		});
 		expect(res.status).toBe(200);
@@ -231,7 +239,9 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				ai: { activeProfile: "openrouter", providers: { deepseek: null } },
+				core: {
+					ai: { activeProfile: "openrouter", providers: { deepseek: null } },
+				},
 			}),
 		});
 		expect(patchRes.status).toBe(200);
@@ -248,7 +258,9 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				ai: { providers: { deepseek: { provider: "deepseek", model: "ds-v4" } } },
+				core: {
+					ai: { providers: { deepseek: { provider: "deepseek", model: "ds-v4" } } },
+				},
 			}),
 		});
 		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe("");

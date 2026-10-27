@@ -81,7 +81,7 @@ const draftIsland: WebDevScenario = {
 			pageKey: "devtools",
 			pageLabel: "devtools 假草稿",
 			diff: [
-				{ code: "logging.level", oldValue: "info", newValue: "debug" },
+				{ code: "core.logging.level", oldValue: "info", newValue: "debug" },
 				{ code: "defaults.liveStreaming.streamingIntervalHours", oldValue: 3, newValue: 2 },
 			],
 			onSave: () => {

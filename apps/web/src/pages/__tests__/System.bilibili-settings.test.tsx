@@ -66,12 +66,14 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** 服务端下发的那一份:核心设置的顶层块 + 并排的 `bilibili`(两格都有值)。 */
+/** 服务端下发的那一份:核心那份在 `core` 下 + 并排的 `bilibili`(两格都有值)。 */
 const GLOBALS = {
-	logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
+	core: {
+		logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
+		history: { retentionDays: 30 },
+		master: { targetId: undefined },
+	},
 	bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
-	history: { retentionDays: 30 },
-	master: { targetId: undefined },
 };
 
 function resetStore(): void {
@@ -110,12 +112,18 @@ function inputOf(code: string): HTMLInputElement {
 }
 
 /** 点保存,返回最后一发 `PATCH /api/settings` 的 body。 */
-async function save(): Promise<Record<string, unknown>> {
+async function save(): Promise<{
+	core?: Record<string, unknown>;
+	bilibili?: Record<string, unknown>;
+}> {
 	await act(async () => {
 		await useDraftStore.getState().current?.onSave();
 	});
 	await waitFor(() => expect(api.patch).toHaveBeenCalled());
-	const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, Record<string, unknown>];
+	const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		string,
+		{ core?: Record<string, unknown>; bilibili?: Record<string, unknown> },
+	];
 	expect(url).toBe("/api/settings");
 	return body;
 }
@@ -152,26 +160,26 @@ describe("系统页里 B 站的两格", () => {
 	it.each([
 		["bilibili.dynamicCron", "0 */10 * * * *", "dynamicCron", "0 */10 * * * *"],
 		["bilibili.healthCheckMinutes", "45", "healthCheckMinutes", 45],
-	])("写:改 %s → PATCH 发 { bilibili: { … } },不往 app 底下发", async (code, typed, key, sent) => {
+	])("写:改 %s → PATCH 发 { bilibili: { … } },不碰 core", async (code, typed, key, sent) => {
 		await renderRuntimeSection();
 		fireEvent.change(inputOf(code), { target: { value: typed } });
 
 		const body = await save();
 
 		expect(body.bilibili).toMatchObject({ [key]: sent });
-		expect(body).not.toHaveProperty("logging");
+		expect(body).not.toHaveProperty("core");
 	});
 
 	it("改核心 logging 的一格(日志等级)→ PATCH 里没有 bilibili 块", async () => {
 		await renderRuntimeSection();
-		// 「运行」格里 logging.level 那一行的「调试」档(L4)。
-		const row = document.querySelector(`[data-code="logging.level"]`);
-		if (!row) throw new Error("找不到字段「logging.level」");
+		// 「运行」格里 core.logging.level 那一行的「调试」档(L4)。
+		const row = document.querySelector(`[data-code="core.logging.level"]`);
+		if (!row) throw new Error("找不到字段「core.logging.level」");
 		fireEvent.click(within(row as HTMLElement).getByText("L4 · 调试"));
 
 		const body = await save();
 
-		expect(body).toMatchObject({ logging: { level: "debug" } });
+		expect(body).toMatchObject({ core: { logging: { level: "debug" } } });
 		expect(body).not.toHaveProperty("bilibili");
 	});
 });
@@ -182,8 +190,8 @@ describe("系统页里 B 站的两格", () => {
  */
 describe("系统页里的保留天数", () => {
 	const row = (): HTMLElement => {
-		const el = document.querySelector<HTMLElement>(`[data-code="history.retentionDays"]`);
-		if (!el) throw new Error("找不到字段「history.retentionDays」");
+		const el = document.querySelector<HTMLElement>(`[data-code="core.history.retentionDays"]`);
+		if (!el) throw new Error("找不到字段「core.history.retentionDays」");
 		return el;
 	};
 
@@ -212,13 +220,14 @@ describe("系统页里的保留天数", () => {
 		expect(row().querySelector("input")).toBeNull();
 	});
 
-	it("写:点「7 天」→ PATCH 发 { history: { retentionDays: 7 } },不往 app 底下发", async () => {
+	it("写:点「7 天」→ PATCH 发 { core: { history: { retentionDays: 7 } } },别的块不带", async () => {
 		await renderRuntimeSection();
 		fireEvent.click(within(row()).getByText("7 天"));
 
 		const body = await save();
 
-		expect(body).toMatchObject({ history: { retentionDays: 7 } });
-		expect(body).not.toHaveProperty("logging");
+		expect(body).toMatchObject({ core: { history: { retentionDays: 7 } } });
+		expect(body.core).not.toHaveProperty("logging");
+		expect(body).not.toHaveProperty("bilibili");
 	});
 });

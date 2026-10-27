@@ -544,6 +544,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	}
 	const patchSettings = async (body: unknown) =>
 		okRes(await api("/api/settings", json(body, "PATCH")));
+	/** 改核心设置(挂在 `core` 下);集成的设置挂在各自的键下,走上面那个。 */
+	const patchCore = (core: unknown) => patchSettings({ core });
 
 	async function captures(): Promise<DevCapturedDelivery[]> {
 		const res = await okRes(await api("/api/dev/captures"));
@@ -613,7 +615,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		tools: Array<{ name: string; ok: boolean; label?: string; message?: string }>;
 		requestedTools: string[][];
 	}> {
-		await patchSettings({ ai: { enabled: true } });
+		await patchCore({ ai: { enabled: true } });
 		try {
 			const created = await okRes(await api("/api/ai/conversations", json({})));
 			const { conversation } = (await created.json()) as { conversation: { id: string } };
@@ -649,7 +651,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			};
 		} finally {
 			aiToolScript = null;
-			await patchSettings({ ai: { enabled: false } });
+			await patchCore({ ai: { enabled: false } });
 		}
 	}
 
@@ -824,8 +826,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				"/api/settings",
 				json(
 					{
-						master: { targetId: ID.master },
-						ai: { ...aiSettings(makeDefaultGlobalConfig().ai), enabled: false },
+						core: {
+							master: { targetId: ID.master },
+							ai: { ...aiSettings(makeDefaultGlobalConfig().ai), enabled: false },
+						},
 					},
 					"PATCH",
 				),
@@ -985,7 +989,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		// 另一路:翻全局默认的作品开关(各人的 features 跟着折)。
 		probe.rosterChanges.length = 0;
 		try {
-			await patchSettings({ defaults: { features: { post: false } } });
+			await patchCore({ defaults: { features: { post: false } } });
 			await vi.waitFor(() => expect(probe.rosterChanges.length).toBeGreaterThanOrEqual(1));
 			expect(rosterPostFlags(probe.rosterChanges.at(-1))).toEqual([
 				[EXT.alice, false],
@@ -994,7 +998,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				[EXT.frank, false],
 			]);
 		} finally {
-			await patchSettings({ defaults: { features: { post: true } } });
+			await patchCore({ defaults: { features: { post: true } } });
 		}
 		await vi.waitFor(() =>
 			expect(rosterPostFlags(probe.rosterChanges.at(-1))).toEqual([
@@ -1056,7 +1060,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(await pushedText("p46a")).toContain(factoryText);
 
 			// ② 改过的照存,假来源没声明叫法 → `{postNoun}` 填「作品」。
-			await patchSettings({ defaults: { templates: { post: "自定义 {name} 的{postNoun}" } } });
+			await patchCore({ defaults: { templates: { post: "自定义 {name} 的{postNoun}" } } });
 			await vi.waitFor(async () =>
 				expect(await storedTemplates()).toHaveProperty("post", "自定义 {name} 的{postNoun}"),
 			);
@@ -1065,18 +1069,18 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(custom).not.toContain(factoryText);
 
 			// ③ 发 null 删键:盘上没了,回到出厂那句。
-			await patchSettings({ defaults: { templates: { post: null } } });
+			await patchCore({ defaults: { templates: { post: null } } });
 			await vi.waitFor(async () => expect(await storedTemplates()).not.toHaveProperty("post"));
 			expect(await pushedText("p46c")).toContain(factoryText);
 
 			// ④ 换语言不写盘:英文今天没有出厂文字、拿简体打底,盘上仍没有 post,推出去仍是出厂那句。
-			await patchSettings({ locale: "en" });
+			await patchCore({ locale: "en" });
 			// 等语言落了盘再看:语言与模板在同一份文件里一次写完,换语言时若顺手写了 post,此刻它也在。
 			await vi.waitFor(async () => expect((await storedCore()).locale).toBe("en"));
 			expect(await storedTemplates()).not.toHaveProperty("post");
 			expect(await pushedText("p46d")).toContain(factoryText);
 		} finally {
-			await patchSettings({ locale: null, defaults: { templates: { post: null } } });
+			await patchCore({ locale: null, defaults: { templates: { post: null } } });
 		}
 		drove("P46");
 	});
@@ -1361,7 +1365,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 	// 验红:`source-context.ts` 里不抄 `postNoun`,AI 请求里没有「帖子」,第一段红;`deliver-post.ts` 的缺省改回「动态」,第二段红。
 	it("P10 作品叫法进 AI:描述符声明的叫法进提示词;没声明的缺省叫「作品」", async () => {
-		await patchSettings({ ai: { enabled: true } });
+		await patchCore({ ai: { enabled: true } });
 		try {
 			const probe = currentProbe();
 			probe.descriptor.postNoun = "帖子";
@@ -1383,14 +1387,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(aiAsked.some((asked) => asked.includes("小爱发布了一条作品"))).toBe(true);
 			expect(aiAsked.some((asked) => asked.includes("发布了一条动态"))).toBe(false);
 		} finally {
-			await patchSettings({ ai: { enabled: false } });
+			await patchCore({ ai: { enabled: false } });
 		}
 		drove("P10");
 	});
 
 	// 验红:`runtime/pipeline.ts` 不给生成器接叫法,或 `deliver-post.ts` 不递这条订阅,这句系统提示词里没有「博主」。
 	it("P44 提示词里的叫法:推送点评按这条订阅取创作者叫法,不混平台词", async () => {
-		await patchSettings({ ai: { enabled: true } });
+		await patchCore({ ai: { enabled: true } });
 		try {
 			aiSystems.length = 0;
 			await clearCaptures();
@@ -1404,7 +1408,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(system).not.toContain("UP 主");
 			expect(system).not.toContain("B 站");
 		} finally {
-			await patchSettings({ ai: { enabled: false } });
+			await patchCore({ ai: { enabled: false } });
 		}
 		drove("P44");
 	});
@@ -1811,10 +1815,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		try {
 			expect(emit()).toEqual(["mine-warn", "mine-error", "core-warn", "bili-warn"]);
 
-			await patchSettings({ logging: { levels: { [IN_PROCESS_KEY]: "error" } } });
+			await patchCore({ logging: { levels: { [IN_PROCESS_KEY]: "error" } } });
 			expect(emit()).toEqual(["mine-error", "core-warn", "bili-warn"]);
 
-			await patchSettings({ logging: { levels: { [IN_PROCESS_KEY]: null } } });
+			await patchCore({ logging: { levels: { [IN_PROCESS_KEY]: null } } });
 			expect(emit()).toEqual(["mine-warn", "mine-error", "core-warn", "bili-warn"]);
 		} finally {
 			ctx.setLogHook(previous);
@@ -1941,7 +1945,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const stored = await ctx.storeImage(picture);
 		if (!stored.ok) throw new Error("storeImage 存图失败");
 		// 主模型能看图:服务商要支持看图(deepseek 官方接口不支持,换成自定义档)且开着 enableVision。
-		await patchSettings({
+		await patchCore({
 			ai: { enabled: true, providers: { fake: { provider: "custom", enableVision: true } } },
 		});
 		try {
@@ -1955,7 +1959,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			const asked = aiAsked.join("\n");
 			expect(asked).toContain(`data:image/png;base64,${picture.toString("base64")}`);
 		} finally {
-			await patchSettings({
+			await patchCore({
 				ai: { enabled: false, providers: { fake: { provider: "deepseek", enableVision: false } } },
 			});
 		}
@@ -1975,7 +1979,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const GLOBAL_COLOR = "#c0ffee";
 		try {
 			await okRes(await api("/api/cards/skins/active", json({ id: globalSkin }, "PUT")));
-			await patchSettings({
+			await patchCore({
 				defaults: { cardSkinKnobs: { [globalSkin]: { "gradient-start": GLOBAL_COLOR } } },
 			});
 			await okRes(
@@ -2008,7 +2012,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				),
 			);
 			await okRes(await api("/api/cards/skins/active", json({ id: "default" }, "PUT")));
-			await patchSettings({ defaults: { cardSkinKnobs: { [globalSkin]: null } } });
+			await patchCore({ defaults: { cardSkinKnobs: { [globalSkin]: null } } });
 			for (const id of [subSkin, globalSkin]) {
 				await api(`/api/cards/skins/${id}`, { method: "DELETE" });
 			}
@@ -2065,7 +2069,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			}
 			// 二拍:不过滤,开 AI,同一组字段在送给模型的那一问里带着各自的标签。
 			await setFilters({});
-			await patchSettings({ ai: { enabled: true } });
+			await patchCore({ ai: { enabled: true } });
 			try {
 				aiAsked.length = 0;
 				await clearCaptures();
@@ -2082,7 +2086,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 					expect(asked, part).toContain(part);
 				}
 			} finally {
-				await patchSettings({ ai: { enabled: false } });
+				await patchCore({ ai: { enabled: false } });
 			}
 		} finally {
 			await setFilters({});
@@ -2138,7 +2142,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(await aliceRows()).toEqual([]);
 
 		// 断流接续:开着时下播先等,等待里又开播就是同一场 —— 不再推开播卡,列表里仍是一行。
-		await patchSettings({ defaults: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 1 } } });
+		await patchCore({ defaults: { schedule: { liveEndGrace: true, liveEndGraceMinutes: 1 } } });
 		try {
 			const second = startedAt();
 			probe.reportLive(EXT.alice, { kind: "start", startedAt: second, details: { title: TITLE } });
@@ -2150,7 +2154,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(await livePushes("liveEnd")).toBe(1);
 			expect(await aliceRows()).toHaveLength(1);
 		} finally {
-			await patchSettings({ defaults: { schedule: { liveEndGrace: false } } });
+			await patchCore({ defaults: { schedule: { liveEndGrace: false } } });
 		}
 		// 收尾:关着断流接续时下播当场结束,不留一场在表里。
 		probe.reportLive(EXT.alice, { kind: "end", endedAt: new Date().toISOString() });
@@ -2182,7 +2186,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 		// ① 周期「正在直播」开着、间隔 2 小时:开播时刻是 2 小时少 2 秒前 → 两秒后问一次(不是从挂上那一刻起算,
 		// 否则要等 2 小时),在播 → 推一张「正在直播」卡,卡上是这一次问到的标题。
-		await patchSettings({
+		await patchCore({
 			defaults: { features: { liveStreaming: true }, liveStreaming: { streamingIntervalHours: 2 } },
 		});
 		const htmlBefore = renderedHtml.length;
@@ -2207,7 +2211,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			probe.reportLive(ext, { kind: "end", endedAt: new Date().toISOString() });
 			await waitPushes("liveEnd", 1);
 		} finally {
-			await patchSettings({
+			await patchCore({
 				defaults: {
 					features: { liveStreaming: false },
 					liveStreaming: { streamingIntervalHours: 1 },
@@ -2270,7 +2274,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 		// ⑤ 订阅开始监听时认出已经在播的一场并补报:carol 停用着,启用的那一刻问一次,在播 → 认出一场(在播列表有
 		// 一行),补报开着就补一张「正在直播」卡(推送类型 CatchUp,历史记成开播)。
-		await patchSettings({ defaults: { liveStart: { catchUpOnBoot: true } } });
+		await patchCore({ defaults: { liveStart: { catchUpOnBoot: true } } });
 		try {
 			probe.liveStatusOutcome = {
 				ok: true,
@@ -2286,7 +2290,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			});
 		} finally {
 			await okRes(await api(`/api/subscriptions/${SUB.carol}`, json({ enabled: false }, "PATCH")));
-			await patchSettings({ defaults: { liveStart: { catchUpOnBoot: false } } });
+			await patchCore({ defaults: { liveStart: { catchUpOnBoot: false } } });
 			probe.liveStatusOutcome = { ok: true, kind: "offline" };
 		}
 		drove("P30");
@@ -2307,7 +2311,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const sameNameOtherId = { id: "7002", name: "路人甲" };
 		const sameIdOtherName = { id: SPECIAL_VIEWER, name: "路人乙" };
 
-		await patchSettings({ defaults: { features: { viewerChat: true, viewerEnter: true } } });
+		await patchCore({ defaults: { features: { viewerChat: true, viewerEnter: true } } });
 		try {
 			// 特别弹幕:名单上的 7001 推;同名不同 id 的不推,同 id 换了名字的照推(认的是 id)。
 			probe.reportLiveInteraction(ext, { kind: "viewerChat", viewer, text: "你好呀" });
@@ -2334,7 +2338,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(await pushes("viewerEnter")).toBe(1);
 
 			// 开关与名单都要:名单上有人、这一把开关关着 → 不推;另一把照推。
-			await patchSettings({ defaults: { features: { viewerChat: false } } });
+			await patchCore({ defaults: { features: { viewerChat: false } } });
 			probe.reportLiveInteraction(ext, { kind: "viewerChat", viewer, text: "关着开关" });
 			probe.reportLiveInteraction(ext, { kind: "viewerEnter", viewer });
 			await waitPushes("viewerEnter", 2);
@@ -2345,7 +2349,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			await settle();
 			expect(await livePushCount(SUB.bob, "viewerEnter")).toBe(0);
 		} finally {
-			await patchSettings({ defaults: { features: { viewerChat: false, viewerEnter: false } } });
+			await patchCore({ defaults: { features: { viewerChat: false, viewerEnter: false } } });
 		}
 		drove("P31");
 	}, 60_000);
@@ -2375,7 +2379,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			} as Parameters<typeof probe.reportLiveInteraction>[1]);
 		const htmlOf = (text: string) => renderedHtml.find((page) => page.includes(text));
 
-		await patchSettings({
+		await patchCore({
 			defaults: { features: { superchat: true }, superchat: { minAmount: 30 } },
 		});
 		try {
@@ -2405,7 +2409,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(probe.viewerAvatarAsked).toEqual([`${ext}:42`, `${ext}:42`]);
 
 			// 出不了卡(出图关着):退成一句。来源给了就用来源那句;没给就用核心字典里那句中性的。
-			await patchSettings({ defaults: { cards: { enabled: false } } });
+			await patchCore({ defaults: { cards: { enabled: false } } });
 			superchat({ text: "来源兜底P32", fallbackText: "来源给的兜底P32" });
 			await settledCaptures(3);
 			expect((await captures())[2]).toMatchObject({ kind: "text", text: "来源给的兜底P32" });
@@ -2420,7 +2424,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(await livePushCount(who, "superchat")).toBe(4);
 		} finally {
 			probe.viewerAvatarRef = undefined;
-			await patchSettings({
+			await patchCore({
 				defaults: {
 					features: { superchat: false },
 					superchat: { minAmount: 0 },
@@ -2449,7 +2453,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			} as Parameters<typeof probe.reportLiveInteraction>[1]);
 		const settle = () => new Promise((resolve) => setTimeout(resolve, 500));
 
-		await patchSettings({
+		await patchCore({
 			defaults: {
 				features: { membership: true },
 				membership: { minRank: { [IN_PROCESS_PROGRAM_ID]: 2 } },
@@ -2477,7 +2481,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(probe.tierIconAsked).toEqual([]);
 
 			// 自定义文案 + custom 体系:按体系的门槛、事件带来的档名;没有徽章、不出卡。
-			await patchSettings({
+			await patchCore({
 				defaults: {
 					membership: {
 						minRank: {
@@ -2514,7 +2518,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(probe.tierIconAsked).toEqual([]);
 			expect(await livePushCount(who, "membership")).toBe(2);
 		} finally {
-			await patchSettings({
+			await patchCore({
 				defaults: {
 					features: { membership: false },
 					membership: { minRank: {} },
@@ -2534,7 +2538,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const htmlBefore = renderedHtml.length;
 		const names = ["回顾甲", "回顾乙", "回顾丙", "回顾丁", "回顾戊"];
 
-		await patchSettings({
+		await patchCore({
 			ai: {
 				enabled: true,
 				writing: {
@@ -2594,7 +2598,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(aiAsked.join("\n")).toContain(`粉丝牌名：${ALICE_FAN_CLUB_NAME}`);
 			expect(await livePushCount(who, "liveEnd")).toBeGreaterThanOrEqual(1);
 		} finally {
-			await patchSettings({
+			await patchCore({
 				ai: {
 					enabled: false,
 					writing: {
@@ -2623,7 +2627,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const ext = EXT.alice;
 		const names = ["变量甲", "变量乙", "变量丙", "变量丁", "变量戊"];
 
-		await patchSettings({
+		await patchCore({
 			defaults: {
 				features: {
 					membership: true,
@@ -2707,7 +2711,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			expect(end).toContain("2小时");
 		} finally {
 			probe.liveStatusOutcome = { ok: true, kind: "offline" };
-			await patchSettings({
+			await patchCore({
 				defaults: {
 					features: {
 						membership: false,
@@ -3193,7 +3197,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const claim = probe.aiToolProviderClaim;
 		if (!claim) throw new Error("假来源没有登记 AI 工具提供方");
 		const askWithSkill = async (skill: string) => {
-			await patchSettings({ ai: { enabled: true } });
+			await patchCore({ ai: { enabled: true } });
 			try {
 				const created = await okRes(await api("/api/ai/conversations", json({})));
 				const { conversation } = (await created.json()) as { conversation: { id: string } };
@@ -3205,7 +3209,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				const text = await res.text();
 				return { res, text, system: aiLastSystem };
 			} finally {
-				await patchSettings({ ai: { enabled: false } });
+				await patchCore({ ai: { enabled: false } });
 			}
 		};
 
@@ -3389,7 +3393,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(await captures()).toEqual([]);
 
 		// 开了:回一张图,送去出图的 HTML 里是假解析器交的正文。
-		await patchSettings({
+		await patchCore({
 			linkPreview: { enabled: true, cooldownSec: 60, isOnByDefault: true, replyForm: "image" },
 		});
 		await say("看 https://acme.invalid/link/a1");
@@ -3412,12 +3416,12 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(await captures()).toHaveLength(1);
 
 		// 逐目标关掉:不问、不回;随后放开,冷却没被吃掉,新链接照回。
-		await patchSettings({ linkPreview: { byTarget: { [ID.group]: { isOn: false } } } });
+		await patchCore({ linkPreview: { byTarget: { [ID.group]: { isOn: false } } } });
 		await say("https://acme.invalid/link/a2");
 		await quiet();
 		expect(probe.linkResolves).toHaveLength(2);
 		expect(await captures()).toHaveLength(1);
-		await patchSettings({ linkPreview: { byTarget: { [ID.group]: null } } });
+		await patchCore({ linkPreview: { byTarget: { [ID.group]: null } } });
 
 		// 形式选原生分享、连接能力注成支持:回原生分享,截流里是标题,不出图。
 		await okRes(
@@ -3426,7 +3430,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 				json({ params: { connection: ID.connection, state: "supported" } }),
 			),
 		);
-		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "nativeShare" } });
+		await patchCore({ linkPreview: { isOnByDefault: true, replyForm: "nativeShare" } });
 		const htmlBefore = renderedHtml.length;
 		await clearCaptures();
 		await say("https://acme.invalid/link/a3");
@@ -3440,7 +3444,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(renderedHtml.length).toBe(htmlBefore);
 
 		// 形式改成文字后贴新链接:只回作者名 + 作品文字,截流里是 text,不出图。
-		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "text" } });
+		await patchCore({ linkPreview: { isOnByDefault: true, replyForm: "text" } });
 		await clearCaptures();
 		await say("https://acme.invalid/link/a4");
 		const texted = await settledCaptures(1);
@@ -3463,7 +3467,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			);
 			await quiet();
 		};
-		await patchSettings({ linkPreview: { isOnByDefault: true, replyForm: "image" } });
+		await patchCore({ linkPreview: { isOnByDefault: true, replyForm: "image" } });
 		await feedDirect("控制组 https://acme.invalid/link/a4");
 		const resolvedBeforeStop = probe.linkResolves.length;
 		expect(probe.linkResolves.at(-1)).toBe("https://acme.invalid/link/a4");

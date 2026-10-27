@@ -88,7 +88,7 @@ beforeEach(() => {
 		if (url === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (url === "/api/subscriptions") return Promise.resolve(subs);
 		if (url === "/api/ext") return Promise.resolve({ extensions: [source(features)] });
-		return Promise.resolve(globals());
+		return Promise.resolve({ core: globals() });
 	});
 	vi.mocked(api.patch).mockResolvedValue({});
 });

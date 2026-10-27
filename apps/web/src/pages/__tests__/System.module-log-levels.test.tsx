@@ -70,22 +70,24 @@ import { api } from "../../services/api";
 
 /**
  * `logLevels` 是这份配置里已有的按模块覆盖。`bilibili` 是 B 站自己的设置(动态 cron / UA / 登录心跳间隔),
- * `/api/settings` 把它挂在核心设置的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
+ * `/api/settings` 把它挂在 `core` 的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
  */
 function mockApi(logLevels: Record<string, string>): void {
-	const globals = {
-		logging: {
-			level: "info",
-			levels: logLevels,
-			retentionDays: 7,
-			memoryLog: { enabled: false },
+	const settings = {
+		core: {
+			logging: {
+				level: "info",
+				levels: logLevels,
+				retentionDays: 7,
+				memoryLog: { enabled: false },
+			},
+			history: { retentionDays: 30 },
+			master: { targetId: undefined },
 		},
-		history: { retentionDays: 30 },
 		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
-		master: { targetId: undefined },
 	};
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/settings") return JSON.parse(JSON.stringify(globals));
+		if (url === "/api/settings") return JSON.parse(JSON.stringify(settings));
 		if (url === "/api/connections/capabilities") return {};
 		return [];
 	});
@@ -167,9 +169,9 @@ describe("系统页的按模块日志等级", () => {
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [url, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ logging: { levels: Record<string, unknown> } },
+			{ core: { logging: { levels: Record<string, unknown> } } },
 		];
 		expect(url).toBe("/api/settings");
 		// 键必须在,且为 null。少了这个键,后端 deepMerge 会原样留着旧等级。
@@ -188,9 +190,9 @@ describe("系统页的按模块日志等级", () => {
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ logging: { memoryLog: { enabled: boolean } } },
+			{ core: { logging: { memoryLog: { enabled: boolean } } } },
 		];
 		expect(body.logging.memoryLog.enabled).toBe(true);
 	});
@@ -209,9 +211,9 @@ describe("系统页的按模块日志等级", () => {
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ logging: { levels: Record<string, unknown> } },
+			{ core: { logging: { levels: Record<string, unknown> } } },
 		];
 		expect(body.logging.levels.image).toBeNull();
 		expect(body.logging.levels.ai).toBe("warn");

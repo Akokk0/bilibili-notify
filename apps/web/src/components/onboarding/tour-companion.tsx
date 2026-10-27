@@ -1,12 +1,11 @@
 import { Btn, ErrorNote, Icon, ModalShell, StatusDot } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api } from "../../services/api";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 import { useNavStore } from "../../store/nav";
 import { useOnboardingReopen } from "../../store/onboarding";
-import type { GlobalConfig } from "../../types/globals";
 import { Fireworks, StepDoneBadge } from "./celebration";
 import type { OnboardingStepKey, OnboardingTailKey, OnboardingView } from "./derive";
 import { Spotlight } from "./spotlight";
@@ -153,10 +152,7 @@ export function TourCompanion() {
 	};
 	// 「这台实例已经不用再被自动展开了」的持久标记。落配置不落 localStorage:
 	// 换浏览器/换机器开面板不该再被引导一遍(判据本身也是实例级的)。
-	const globalsQ = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQ = useCoreSettings();
 	// 三态:undefined = 还没问过(弹询问框);false = 要指引;true = 整个导览不渲染
 	const choice = globalsQ.data?.onboarding?.skipped;
 	// 三态是**配置**读出来的,不是「data 有没有值」读出来的:请求失败时 data 同样
@@ -191,8 +187,8 @@ export function TourCompanion() {
 
 	const qc = useQueryClient();
 	const { mutate: markChoice } = useMutation({
-		mutationFn: (skipped: boolean) => api.patch("/api/settings", { onboarding: { skipped } }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+		mutationFn: (skipped: boolean) => patchCoreSettings({ onboarding: { skipped } }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
 	});
 
 	// 系统页「重新开启」:配置那半走 PATCH+invalidate 既有通道,这里接的是「把这台

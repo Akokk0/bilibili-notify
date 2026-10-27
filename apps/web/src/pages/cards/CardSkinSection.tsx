@@ -32,6 +32,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Field, TSelect } from "../../components/forms";
+import { SETTINGS_KEY } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
@@ -105,7 +106,7 @@ export function CardSkinSection() {
 		void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
 		// 启用指针住在 `globals.defaults.cardSkin`,不在店里 —— 删掉正在用的那套,服务端
 		// 会顺手改这个指针,页面上读 globals 的那些地方(预览、灵动岛基线)得跟着重取。
-		void qc.invalidateQueries({ queryKey: ["settings"] });
+		void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 	}
 
 	// 启用那颗钮封在 card-skins-query 里(两个 key 的 invalidate 归它管)——「换上这套」

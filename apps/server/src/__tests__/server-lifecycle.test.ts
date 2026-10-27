@@ -261,7 +261,7 @@ describe("server lifecycle", () => {
 		const patched = await fetch(`${url}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { demo: { enabled: true } } }),
+			body: JSON.stringify({ core: { extensions: { demo: { enabled: true } } } }),
 		});
 		expect(patched.status).toBe(200);
 		// 列表那一口先把开关落实掉(settle)—— 之后旧代码就在跑了。

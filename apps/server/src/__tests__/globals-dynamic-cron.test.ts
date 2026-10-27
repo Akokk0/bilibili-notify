@@ -139,7 +139,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 		});
 
 		const res = await patch(app, {
-			profileRefreshCron: "*/20 * * * *",
+			core: { profileRefreshCron: "*/20 * * * *" },
 			bilibili: { dynamicCron: "not a cron expr" },
 		});
 		expect(res.status).toBe(400);
@@ -160,7 +160,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 		});
 
 		const res = await patch(app, {
-			profileRefreshCron: "*/20 * * * *",
+			core: { profileRefreshCron: "*/20 * * * *" },
 			bilibili: { healthCheckMinutes: 60 },
 		});
 		expect(res.status).toBe(200);

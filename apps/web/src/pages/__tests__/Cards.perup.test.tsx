@@ -79,7 +79,7 @@ beforeEach(() => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([CUSTOMIZED]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
-		return Promise.resolve(GLOBALS);
+		return Promise.resolve({ core: GLOBALS });
 	});
 	// 预览走 puppeteer 路由,测试里给个假数据 URL 即可。
 	vi.mocked(api.post).mockResolvedValue({ ok: true, dataUrl: "data:image/png;base64,xx" });
@@ -254,7 +254,7 @@ describe("Cards per-UP 作用域接线", () => {
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(GLOBALS);
+			return Promise.resolve({ core: GLOBALS });
 		});
 
 		renderCards();
@@ -384,7 +384,7 @@ describe("Cards per-UP 作用域接线", () => {
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(GLOBALS);
+			return Promise.resolve({ core: GLOBALS });
 		});
 
 		const { container } = renderCards();

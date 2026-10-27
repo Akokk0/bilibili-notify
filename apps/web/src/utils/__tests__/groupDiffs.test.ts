@@ -13,7 +13,7 @@ describe("sectionOf", () => {
 	it("已知 code → 字典里的 section", () => {
 		expect(sectionOf("ai.apiKey")).toBe("ai");
 		expect(sectionOf("liveCoverImageIds")).toBe("cardStyle");
-		expect(sectionOf("logging.level")).toBe("logging");
+		expect(sectionOf("core.logging.level")).toBe("logging");
 	});
 
 	// B 站的两格住在它自己的设置里(`bilibili` 块),不在核心的 `logging` 下 —— 字典的 code 跟着搬了家。
@@ -75,7 +75,7 @@ describe("groupDiffsBySection", () => {
 	it("section label 完整(每个 section 的 label 非空)", () => {
 		const out = groupDiffsBySection([
 			D("bilibili.dynamicCron"),
-			D("master.targetId"),
+			D("core.master.targetId"),
 			D("ai.apiKey"),
 			D("persona.name"),
 			D("liveCoverImageIds"),
@@ -90,7 +90,7 @@ describe("groupDiffsBySection", () => {
 			D("connection.platform"),
 			D("settings.transport"),
 			D("session.userId"),
-			D("logging.level"),
+			D("core.logging.level"),
 		]);
 		for (const s of out) {
 			expect(s.label.length).toBeGreaterThan(0);

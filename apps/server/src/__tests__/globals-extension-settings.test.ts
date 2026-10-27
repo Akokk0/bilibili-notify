@@ -99,11 +99,12 @@ describe("/api/settings —— 拓展设置不走这里了", () => {
 			},
 		});
 		const get = () => app.request("/api/settings");
-		const patch = (body: unknown) =>
+		/** 改核心设置(拓展的开关住在核心那份里,`/api/settings` 上挂在 `core` 下)。 */
+		const patch = (core: unknown) =>
 			app.request("/api/settings", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
+				body: JSON.stringify({ core }),
 			});
 		/** 核心设置里那个拓展的一格(只该有开关)。 */
 		const stored = (id: string) => runtime.configStore.getGlobals().extensions[id];
@@ -122,8 +123,8 @@ describe("/api/settings —— 拓展设置不走这里了", () => {
 		expect(res.status).toBe(200);
 		const text = await res.text();
 		expect(text).not.toContain(COOKIE);
-		const body = JSON.parse(text) as { extensions: Record<string, unknown> };
-		expect(body.extensions).toEqual({ douyin: { enabled: true }, bridge: { enabled: false } });
+		const body = JSON.parse(text) as { core: { extensions: Record<string, unknown> } };
+		expect(body.core.extensions).toEqual({ douyin: { enabled: true }, bridge: { enabled: false } });
 		await runtime.dispose();
 	});
 
@@ -135,7 +136,7 @@ describe("/api/settings —— 拓展设置不走这里了", () => {
 		expect(res.status).toBe(200);
 		const text = await res.text();
 		expect(text).not.toContain(COOKIE);
-		expect((JSON.parse(text) as { extensions: unknown }).extensions).toEqual({
+		expect((JSON.parse(text) as { core: { extensions: unknown } }).core.extensions).toEqual({
 			douyin: { enabled: true },
 		});
 		await runtime.dispose();

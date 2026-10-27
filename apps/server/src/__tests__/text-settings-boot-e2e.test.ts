@@ -73,11 +73,12 @@ describe("语言与口吻两项设置接在开机路径上", () => {
 		return port;
 	}
 
-	const patch = async (port: number, body: Record<string, unknown>) => {
+	/** 改核心设置(`/api/settings` 上挂在 `core` 下)。 */
+	const patch = async (port: number, core: Record<string, unknown>) => {
 		const res = await fetch(`http://127.0.0.1:${port}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
+			body: JSON.stringify({ core }),
 		});
 		expect(res.status).toBe(200);
 	};

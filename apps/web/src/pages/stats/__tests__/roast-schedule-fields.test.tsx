@@ -67,7 +67,7 @@ const VALUE: RoastScheduleValue = {
 function renderFields(onChange = vi.fn()) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
 		if (path === "/api/targets") return [target(T_ON, "群 A", true), target(T_OFF, "群 B", false)];
-		if (path === "/api/settings") return { master: {} };
+		if (path === "/api/settings") return { core: { master: {} } };
 		throw new Error(`unexpected GET ${path}`);
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -102,7 +102,7 @@ describe("useApprovalReachability — 主人目标得是私聊才能开审批", 
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			if (path === "/api/targets") return targets;
 			if (path === "/api/connections") return connections;
-			if (path === "/api/settings") return { master: { targetId: masterTargetId } };
+			if (path === "/api/settings") return { core: { master: { targetId: masterTargetId } } };
 			// 能力表:这条 onebot 连接收得到主人的回复。
 			if (path === "/api/connections/capabilities") {
 				const supported = { state: "supported", checkedAt: "2026-10-26T00:00:00.000Z" };

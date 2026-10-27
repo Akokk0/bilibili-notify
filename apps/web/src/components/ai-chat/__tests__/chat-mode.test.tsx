@@ -92,13 +92,15 @@ vi.mock("../../../services/aiChat", async (orig) => {
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async () => ({
-			ai: {
-				activeProfile: "deepseek",
-				providers: { deepseek: { model: "gpt-test" } },
-				persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
-				// 搜索后端配好了,那颗胶囊才画得出来 —— 没有它 SearchControl
-				// 自己就返回 null,断言「它还在」会假绿。
-				search: { backend: "bocha", keys: { bocha: "sk-x" } },
+			core: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { model: "gpt-test" } },
+					persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
+					// 搜索后端配好了,那颗胶囊才画得出来 —— 没有它 SearchControl
+					// 自己就返回 null,断言「它还在」会假绿。
+					search: { backend: "bocha", keys: { bocha: "sk-x" } },
+				},
 			},
 		})),
 	},

@@ -68,11 +68,12 @@ function setup(current: GlobalConfig) {
 		commands: [],
 	};
 	const route = createSettingsRoute(deps as never);
-	const patch = (body: unknown) =>
+	/** 改核心设置(`/api/settings` 上挂在 `core` 下)。 */
+	const patch = (core: unknown) =>
 		route.request("/", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
+			body: JSON.stringify({ core }),
 		});
 	return { probes, patchSettings, patch };
 }

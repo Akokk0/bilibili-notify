@@ -44,6 +44,7 @@ import { GUARD_PROGRAM_ID, membershipTiersOf } from "../config/membership-progra
 import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { ApiError, api } from "../services/api";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -51,7 +52,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "../types/domain";
-import type { CardsSettings, GlobalConfig } from "../types/globals";
+import type { CardsSettings } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
 import { CardSkinPicker, CardSkinSection } from "./cards/CardSkinSection";
@@ -591,10 +592,7 @@ function hasCardCustomization(sub: Subscription): boolean {
 
 export default function Cards() {
 	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
@@ -682,8 +680,7 @@ export default function Cards() {
 			// 每次保存都跑一遍 puppeteer 启动 + chat.completions 探针。草稿里消失的键
 			// 由 buildPatch 自动变成显式 null,不必再逐个记着手写。
 			const base = globalsQuery.data;
-			await api.patch<GlobalConfig>(
-				"/api/settings",
+			await patchCoreSettings(
 				buildPatch(
 					{
 						defaults: {
@@ -709,7 +706,7 @@ export default function Cards() {
 			};
 		},
 		onSuccess: (res) => {
-			void qc.invalidateQueries({ queryKey: ["settings"] });
+			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 			// 旋钮**不进预览 spec** —— 服务端出图时自己从 globals 里读那一层。于是拧完保存,
 			// `["card-preview", spec]` 这个 key 一个字都没变,react-query 端出来的还是保存前
 			// 那张图,看着就是「拧了没反应」。别的卡片设置没这个毛病:它们本来就在 spec 里,

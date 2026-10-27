@@ -480,7 +480,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 	/** 拨开 / 拨关假源,再列一次拓展(那一口先把热装落实掉)。 */
 	async function setEnabled(enabled: boolean) {
 		await okJson(
-			await api("/api/settings", json({ extensions: { [FAKE]: { enabled } } }, "PATCH")),
+			await api("/api/settings", json({ core: { extensions: { [FAKE]: { enabled } } } }, "PATCH")),
 		);
 		return fakeRow();
 	}
@@ -699,7 +699,10 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		await target(ID.emptyGroupA, "甲空群", ID.chatA, "group", "");
 		await target(ID.groupB, "乙群", ID.chatB, "group", "g-b");
 		await okJson(
-			await api("/api/settings", json({ master: { targetId: ID.privateOwner } }, "PATCH")),
+			await api(
+				"/api/settings",
+				json({ core: { master: { targetId: ID.privateOwner } } }, "PATCH"),
+			),
 		);
 
 		// 两条订阅(经解析门的候选;不带资料名,作者名落身份标签)。甲路由到甲群、乙群、端点托管目标、地址为空的群,

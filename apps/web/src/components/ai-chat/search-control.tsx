@@ -1,8 +1,6 @@
-import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { webSearchBackendMeta } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../services/api";
+import { useCoreSettings } from "../../hooks/useSettings";
 import { ComposerPill } from "./composer-pill";
 
 /**
@@ -15,10 +13,7 @@ import { ComposerPill } from "./composer-pill";
  * 不认内容。没配时灰着并指路设置页:点不亮的开关必须说清为什么。
  */
 export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boolean) => void }) {
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	// search 段单独再兜一次:这个组件消费的是网络数据,残缺入参不炸是这一层的

@@ -19,10 +19,10 @@ import {
 	TInput,
 	WarnNote,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
-import { api } from "../../services/api";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 import { newId } from "../../types/domain";
 
 interface SourceRow {
@@ -32,7 +32,7 @@ interface SourceRow {
 	url: string;
 }
 
-function sourcesOf(globals: GlobalConfig | undefined): SourceRow[] {
+function sourcesOf(globals: Pick<GlobalConfig, "marketplace"> | undefined): SourceRow[] {
 	return globals?.marketplace?.sources ?? [];
 }
 
@@ -53,19 +53,15 @@ export function MarketplaceSourcesDialog({
 	onClose: () => void;
 }) {
 	const qc = useQueryClient();
-	const globals = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globals = useCoreSettings();
 	const sources = sourcesOf(globals.data);
 	const [url, setUrl] = useState("");
 	const [problem, setProblem] = useState<string | null>(null);
 
 	const save = useMutation({
-		mutationFn: (next: SourceRow[]) =>
-			api.patch("/api/settings", { marketplace: { sources: next } }),
+		mutationFn: (next: SourceRow[]) => patchCoreSettings({ marketplace: { sources: next } }),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["settings"] });
+			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
 	});

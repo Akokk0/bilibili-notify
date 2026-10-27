@@ -61,7 +61,7 @@ function reachability(
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
 		if (path === "/api/targets") return [target];
 		if (path === "/api/connections") return connections;
-		if (path === "/api/settings") return { master: { targetId: T_MASTER } };
+		if (path === "/api/settings") return { core: { master: { targetId: T_MASTER } } };
 		if (path === "/api/connections/capabilities") {
 			if (capabilities === undefined) return new Promise(() => {});
 			return capabilities;

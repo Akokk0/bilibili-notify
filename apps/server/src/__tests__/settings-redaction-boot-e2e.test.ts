@@ -181,20 +181,22 @@ describe("设置里的机密接在开机路径上", () => {
 			headers: { "content-type": "application/json" },
 			// AI 没开,不触发探活;桶要给整份(新桶没有默认值可补)。
 			body: JSON.stringify({
-				ai: {
-					providers: {
-						deepseek: {
-							provider: "deepseek",
-							apiFlavor: "chat",
-							label: "",
-							apiKey: AI_KEY,
-							baseUrl: "https://FAKE-ai.example/v1",
-							model: "m",
-							enableThinking: false,
-							thinkingLevel: "medium",
-							extraParams: "",
-							enableVision: false,
-							vision: { baseUrl: "", apiKey: "", model: "" },
+				core: {
+					ai: {
+						providers: {
+							deepseek: {
+								provider: "deepseek",
+								apiFlavor: "chat",
+								label: "",
+								apiKey: AI_KEY,
+								baseUrl: "https://FAKE-ai.example/v1",
+								model: "m",
+								enableThinking: false,
+								thinkingLevel: "medium",
+								extraParams: "",
+								enableVision: false,
+								vision: { baseUrl: "", apiKey: "", model: "" },
+							},
 						},
 					},
 				},

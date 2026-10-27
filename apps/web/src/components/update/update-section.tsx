@@ -16,13 +16,13 @@ import {
 	Picker,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { HEALTH_QUERY_KEY } from "../../hooks/useBackendReachable";
 import { useScrollToHash } from "../../hooks/useScrollToHash";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 import { api } from "../../services/api";
-import type { GlobalConfig } from "../../types/globals";
 import { externalLinkClick } from "../../utils/externalLink";
 import { MirrorPicker } from "./mirror-picker";
 import { DEFAULT_RESTART_WAIT, type RestartWait, useRestartStore } from "./restart";
@@ -88,10 +88,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	// 否则同一份状态会被两节各画一遍,而且这一节的措辞讲的是「换到哪一版」。
 	const restart = view?.intent.mode === "restart" ? null : view;
 	const statusQuery = useUpdateStatus();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 
 	const act = useMutation({
 		mutationFn: (path: "check" | "download" | "rollback") =>
@@ -110,8 +107,8 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 			beginRestart({ before: startedAt, target, mode }, restartWait),
 	});
 	const saveSettings = useMutation({
-		mutationFn: (update: Partial<UpdateSettings>) => api.patch("/api/settings", { update }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+		mutationFn: (update: Partial<UpdateSettings>) => patchCoreSettings({ update }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
 	});
 
 	const status = statusQuery.data;

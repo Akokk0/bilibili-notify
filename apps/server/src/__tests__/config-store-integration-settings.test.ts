@@ -16,12 +16,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	type ConfigScope,
-	GlobalConfigSchema,
-	type MessageBus,
-	type ServiceContext,
-} from "@bilibili-notify/internal";
+import type { ConfigScope, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { BUILTIN_INTEGRATION_SETTINGS } from "../compose.js";
@@ -822,13 +817,13 @@ describe("集成设置 — 登记", () => {
 		expect(() => build([pokeSegment, { ...pokeSegment }])).toThrow(/登记了两次/);
 	});
 
-	it("键与核心设置的任何一个顶层键同名 → 构造就抛(/api/settings 把两者摆在同一层)", () => {
-		const coreKeys = Object.keys(GlobalConfigSchema.shape);
-		// 守住「核心顶层键」这张表本身没变空,免得下面的循环空转。
-		expect(coreKeys).toContain("logging");
-		for (const key of coreKeys) {
-			expect(() => build([{ ...otherSegment, key }]), key).toThrow(/撞名/);
-		}
+	it("键叫 `core` → 构造就抛(/api/settings 把核心那份挂在 `core` 下,与各集成的键同一层)", () => {
+		expect(() => build([{ ...otherSegment, key: "core" }])).toThrow(/core/);
+	});
+
+	it("键与核心设置的顶层键同名不再拦:两者不在同一层了", async () => {
+		const store = await open([{ ...otherSegment, key: "logging" }]);
+		expect(store.getAllIntegrationSettings()).toHaveProperty("logging");
 	});
 
 	// 真的内置段清单(compose.ts)登记进来:不撞名,三个适配器的段开机各建一份空文件、读口里各是空对象。

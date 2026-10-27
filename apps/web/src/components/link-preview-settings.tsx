@@ -100,7 +100,7 @@ export function LinkPreviewSettings({
 	connections,
 	capabilities,
 }: {
-	draft: GlobalConfig;
+	draft: Pick<GlobalConfig, "linkPreview">;
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 推送目标表(由页面取数),这里只挑群类的列出来。 */
 	targets: readonly PushTarget[];
@@ -138,7 +138,7 @@ export function LinkPreviewSettings({
 			icon={<Icon.link size={14} />}
 			badge={badge}
 		>
-			<Field code="linkPreview.enabled">
+			<Field code="core.linkPreview.enabled">
 				<Toggle
 					value={cfg.enabled}
 					onChange={(v) => onPatch({ linkPreview: { enabled: v } })}
@@ -146,7 +146,7 @@ export function LinkPreviewSettings({
 				/>
 			</Field>
 
-			<Field code="linkPreview.cooldownSec">
+			<Field code="core.linkPreview.cooldownSec">
 				<TNum
 					value={cfg.cooldownSec}
 					onChange={(v) => onPatch({ linkPreview: { cooldownSec: v } })}
@@ -156,7 +156,7 @@ export function LinkPreviewSettings({
 				/>
 			</Field>
 
-			<Field code="linkPreview.isOnByDefault" full>
+			<Field code="core.linkPreview.isOnByDefault" full>
 				<fieldset
 					aria-label="默认(所有群)"
 					className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 p-0"
@@ -185,7 +185,7 @@ export function LinkPreviewSettings({
 				</fieldset>
 			</Field>
 
-			<Field code="linkPreview.byTarget" full>
+			<Field code="core.linkPreview.byTarget" full>
 				{candidates.length === 0 ? (
 					<EmptyNote size="sm" className="w-full">
 						还没有群类推送目标,先去

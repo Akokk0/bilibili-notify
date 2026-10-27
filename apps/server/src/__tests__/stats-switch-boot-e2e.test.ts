@@ -113,9 +113,9 @@ describe("统计关着:压缩与运行记录照跑 e2e", () => {
 
 		// 前提确实生效:服务端读到的设置里统计是关着的。
 		const settingsRes = await fetch(`${handle.url}/api/settings`);
-		expect(((await settingsRes.json()) as { stats: { enabled: boolean } }).stats.enabled).toBe(
-			false,
-		);
+		expect(
+			((await settingsRes.json()) as { core: { stats: { enabled: boolean } } }).core.stats.enabled,
+		).toBe(false);
 
 		// 压缩:开机那一轮就压(两份都压)。不用 vi.waitFor —— 只拨了 Date,自己轮询。
 		const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

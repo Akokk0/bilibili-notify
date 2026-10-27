@@ -525,7 +525,7 @@ AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sou
 
 ## 配置
 
-主人填的设置按集成分文件，都在 `config/settings/` 下：`core.json`、`bilibili.json`、`extensions/<拓展 id>.json`，一个文件就是一段（ADR-0021 决策 42 下 10-01 的 🔗）。每段的 schema 由那个集成定义。🔗 现状（3b-41 C3，10-17）：三个内置适配器也各登记了一段（`onebot.json`、`qq-official.json`、`webhook.json`），段里没有任何格，开机时配置仓当场建一份 `{}`；它们让 `GET /api/settings` 顶层多三个空对象、备份的 `integrations` 多三个空键。备份版本没有抬：旧备份缺这三个键，恢复时缺的不动，照常能恢复；只有"新版做的备份回到没有这三段的开发版"会被拒，原因是「没有叫「onebot」的集成设置」。拓展的开关归宿主，在 `core.json` 里；拓展的文件只装它自己的设置。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
+主人填的设置按集成分文件，都在 `config/settings/` 下：`core.json`、`bilibili.json`、`extensions/<拓展 id>.json`，一个文件就是一段（ADR-0021 决策 42 下 10-01 的 🔗）。每段的 schema 由那个集成定义。🔗 现状（3b-41 C3，10-17）：三个内置适配器也各登记了一段（`onebot.json`、`qq-official.json`、`webhook.json`），段里没有任何格，开机时配置仓当场建一份 `{}`；它们让 `GET /api/settings` 顶层（`core` 旁边）多三个空对象、备份的 `integrations` 多三个空键。备份版本没有抬：旧备份缺这三个键，恢复时缺的不动，照常能恢复；只有"新版做的备份回到没有这三段的开发版"会被拒，原因是「没有叫「onebot」的集成设置」。拓展的开关归宿主，在 `core.json` 里；拓展的文件只装它自己的设置。`defaults` 只表示「按订阅覆盖时的回退层」：订阅上能覆盖的才放进去，覆盖不了的一律挤出去。
 
 ```ts
 interface Settings {

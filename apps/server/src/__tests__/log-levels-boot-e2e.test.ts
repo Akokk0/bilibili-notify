@@ -116,7 +116,7 @@ describe("日志等级表接在开机路径上", () => {
 			const res = await fetch(`http://127.0.0.1:${port}/api/settings`, {
 				method: "PATCH",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ logging: { levels } }),
+				body: JSON.stringify({ core: { logging: { levels } } }),
 			});
 			expect(res.status).toBe(200);
 		};
@@ -170,11 +170,12 @@ describe("日志等级表接在开机路径上", () => {
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
-		const patch = async (body: Record<string, unknown>) => {
+		/** 改核心设置(`/api/settings` 上挂在 `core` 下)。 */
+		const patch = async (core: Record<string, unknown>) => {
 			const res = await fetch(`http://127.0.0.1:${port}/api/settings`, {
 				method: "PATCH",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify(body),
+				body: JSON.stringify({ core }),
 			});
 			expect(res.status).toBe(200);
 		};

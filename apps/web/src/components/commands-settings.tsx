@@ -45,7 +45,7 @@ export function CommandsSettings({
 	draft,
 	onPatch,
 }: {
-	draft: GlobalConfig;
+	draft: Pick<GlobalConfig, "commands">;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const registry = useQuery({
@@ -107,7 +107,7 @@ export function CommandsSettings({
 			icon={<Icon.chat size={14} />}
 			badge={cfg.enabled ? `前缀 ${cfg.prefix || "(空)"}` : "已关闭"}
 		>
-			<Field code="commands.enabled">
+			<Field code="core.commands.enabled">
 				<Toggle
 					value={cfg.enabled}
 					onChange={(v) => onPatch({ commands: { enabled: v } })}
@@ -115,7 +115,7 @@ export function CommandsSettings({
 				/>
 			</Field>
 
-			<Field code="commands.prefix">
+			<Field code="core.commands.prefix">
 				<TInput
 					value={cfg.prefix}
 					onChange={(v) => onPatch({ commands: { prefix: v } })}
@@ -124,7 +124,7 @@ export function CommandsSettings({
 				/>
 			</Field>
 
-			<Field code="commands.aliases" full>
+			<Field code="core.commands.aliases" full>
 				{registry.isLoading ? (
 					<LoadingBlock variant="inset" label="加载指令表中" />
 				) : registry.error ? (

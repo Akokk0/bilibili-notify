@@ -36,9 +36,9 @@ function globals() {
 function mount() {
 	const g = globals();
 	vi.mocked(api.get).mockImplementation(async (path: string) =>
-		path === "/api/targets" ? [] : JSON.parse(JSON.stringify(g)),
+		path === "/api/targets" ? [] : { core: JSON.parse(JSON.stringify(g)) },
 	);
-	vi.mocked(api.patch).mockImplementation(async () => JSON.parse(JSON.stringify(g)));
+	vi.mocked(api.patch).mockImplementation(async () => ({ core: JSON.parse(JSON.stringify(g)) }));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>

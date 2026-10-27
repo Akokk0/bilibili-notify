@@ -1,4 +1,4 @@
-import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
+import type { ConnectionCapabilitiesMap, SettingsResponse } from "@bilibili-notify/contract";
 import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/history";
 import { isPrivateTarget } from "@bilibili-notify/internal/push-target";
 import {
@@ -38,16 +38,16 @@ import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useSourceAuth } from "../hooks/use-source-auth";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
+import { patchSettings, SETTINGS_KEY, useSettings } from "../hooks/useSettings";
 import { ApiError, api } from "../services/api";
 import { errorTextOf } from "../services/error-text";
 import { BILIBILI_SOURCE_KEY, type Connection, type PushTarget } from "../types/domain";
 import type {
 	GlobalConfig,
 	GlobalConfigPatch,
-	GlobalsPatch,
-	GlobalsResponse,
 	LoggingSettings,
 	LogLevel,
+	SettingsPatch,
 } from "../types/globals";
 import { imageUrl } from "../utils/image-url";
 import { BackupSection } from "./backup/BackupSection";
@@ -147,7 +147,7 @@ const NUM_TO_LOG: Record<LogLevelValue, LogLevel> = {
  * 「拷一份、删掉那个键、整份回传」,而整份回传走的是合并,被删的键当场被合回来
  * (同时有两个以上模块覆盖时尤其明显:只剩一个时删空成 undefined 反而歪打正着)。
  */
-function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
+function deepMerge<T>(base: T, patch: GlobalConfigPatch | SettingsPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
 	for (const k of Object.keys(patch)) {
@@ -177,19 +177,19 @@ function SystemSettingsSection({
 	draft,
 	onPatch,
 }: {
-	draft: GlobalsResponse;
-	onPatch: (delta: GlobalsPatch) => void;
+	draft: SettingsResponse;
+	onPatch: (delta: SettingsPatch) => void;
 }) {
-	const logging = draft.logging;
-	// B 站的两格在它自己的设置里,挂在 `/api/settings` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
-	// 第 4 期起这一节按集成的描述画,这里的形状随之删。
+	// 核心那几格在 `core` 下,B 站的两格在它自己的设置里、挂在 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
+	// 第 4 期起这一节按集成的描述画,B 站那半的形状随之删。
+	const logging = draft.core.logging;
 	const source = draft.bilibili as {
 		dynamicCron: string;
 		healthCheckMinutes: number;
 	};
 
 	const setLogging = <K extends keyof LoggingSettings>(key: K, v: LoggingSettings[K]) => {
-		onPatch({ logging: { [key]: v } as Partial<LoggingSettings> });
+		onPatch({ core: { logging: { [key]: v } as Partial<LoggingSettings> } });
 	};
 	const setSource = <K extends keyof typeof source>(key: K, v: (typeof source)[K]) => {
 		onPatch({ bilibili: { [key]: v } });
@@ -199,7 +199,9 @@ function SystemSettingsSection({
 	// 退回「跟随全局」发显式 null —— 从前是「拷一份、删掉该键、整份回传」,而整份
 	// 回传走合并,被删的键当场合回来:同时有两个以上模块覆盖时就删不掉了。
 	function setModuleLevel(id: string, value: LogLevelValue | null): void {
-		onPatch({ logging: { levels: { [id]: value === null ? null : NUM_TO_LOG[value] } } });
+		onPatch({
+			core: { logging: { levels: { [id]: value === null ? null : NUM_TO_LOG[value] } } },
+		});
 	}
 
 	return (
@@ -214,14 +216,14 @@ function SystemSettingsSection({
 				<TInput value={source.dynamicCron} onChange={(v) => setSource("dynamicCron", v)} mono />
 			</Field>
 
-			<Field code="logging.level">
+			<Field code="core.logging.level">
 				<LogLevelPicker
 					value={LOG_LEVEL_NUM[logging.level]}
 					onChange={(v) => v != null && setLogging("level", NUM_TO_LOG[v])}
 				/>
 			</Field>
 
-			<Field code="logging.levels" full>
+			<Field code="core.logging.levels" full>
 				<div className="grid w-full grid-cols-1 gap-1.5 sm:grid-cols-3">
 					{SYSTEM_MODULES.map((m) => {
 						const current = logging.levels[m.id];
@@ -256,10 +258,10 @@ function SystemSettingsSection({
 			</Field>
 
 			{/* 只许七档:选项个数固定,用段选钮组,不用下拉。 */}
-			<Field code="history.retentionDays">
+			<Field code="core.history.retentionDays">
 				<Picker
-					value={draft.history.retentionDays}
-					onChange={(v) => onPatch({ history: { retentionDays: v } })}
+					value={draft.core.history.retentionDays}
+					onChange={(v) => onPatch({ core: { history: { retentionDays: v } } })}
 					options={HISTORY_RETENTION_DAY_OPTIONS.map((days) => ({
 						value: days,
 						label: `${days} 天`,
@@ -267,10 +269,10 @@ function SystemSettingsSection({
 				/>
 			</Field>
 
-			<Field code="logging.memoryLog.enabled">
+			<Field code="core.logging.memoryLog.enabled">
 				<Toggle
 					value={logging.memoryLog.enabled}
-					onChange={(v) => onPatch({ logging: { memoryLog: { enabled: v } } })}
+					onChange={(v) => onPatch({ core: { logging: { memoryLog: { enabled: v } } } })}
 					ariaLabel="内存自检打印"
 				/>
 			</Field>
@@ -289,7 +291,7 @@ export function MasterSection({
 	targets,
 	onPatch,
 }: {
-	draft: GlobalConfig;
+	draft: Pick<GlobalConfig, "master">;
 	targets: PushTarget[];
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
@@ -314,7 +316,7 @@ export function MasterSection({
 			icon={<Icon.user size={14} />}
 			badge="master"
 		>
-			<Field code="master.targetId">
+			<Field code="core.master.targetId">
 				<TSelect
 					value={master.targetId ?? ""}
 					onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
@@ -376,10 +378,7 @@ export default function System() {
 	if (!scanning && qrDismissed) setQrDismissed(false);
 	const qrModalOpen = scanning && !qrDismissed;
 
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalsResponse>("/api/settings"),
-	});
+	const globalsQuery = useSettings();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -395,28 +394,33 @@ export default function System() {
 		refetchInterval: 30_000,
 	});
 
-	const [draft, setDraft] = useState<GlobalsResponse | null>(null);
+	// 草稿是整份设置(核心那份在 `core` 下、B 站的挂在 `bilibili` 下),字段码也按这个形状写(`core.logging.level`)。
+	const [draft, setDraft] = useState<SettingsResponse | null>(null);
 
 	useEffect(() => {
 		if (globalsQuery.data) setDraft(globalsQuery.data);
 	}, [globalsQuery.data]);
 
-	function patchDraft(delta: GlobalsPatch): void {
+	function patchDraft(delta: SettingsPatch): void {
 		setDraft((d) => (d ? deepMerge(d, delta) : d));
+	}
+	/** 只改核心那份的几张卡(主人目标、指令、链接解析)用它:它们认的是核心那份的形状。 */
+	function patchCoreDraft(delta: GlobalConfigPatch): void {
+		patchDraft({ core: delta });
 	}
 
 	const save = useMutation({
-		mutationFn: async (next: GlobalsResponse) => {
+		mutationFn: async (next: SettingsResponse) => {
 			// 改了哪块发哪块(挑块的规则与理由在 system-save-patch.ts)。草稿是从这份基线长出来
 			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
 			if (!base) throw new Error("配置基线尚未加载,无法保存");
-			await api.patch<GlobalConfig>("/api/settings", buildSystemPatch(next, base));
+			await patchSettings(buildSystemPatch(next, base));
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
 	});
 
-	useDirtyDraft<GlobalsResponse>({
+	useDirtyDraft<SettingsResponse>({
 		pageKey: "system",
 		pageLabel: "Core · 应用",
 		draft,
@@ -561,7 +565,11 @@ export default function System() {
 						) : null}
 
 						{draft ? (
-							<MasterSection draft={draft} targets={targetsQuery.data ?? []} onPatch={patchDraft} />
+							<MasterSection
+								draft={draft.core}
+								targets={targetsQuery.data ?? []}
+								onPatch={patchCoreDraft}
+							/>
 						) : null}
 
 						<details className="rounded-sm border border-bn-border bg-bn-surface-muted p-3 text-bn-sm text-bn-text-secondary">
@@ -585,12 +593,12 @@ export default function System() {
 
 				{section === "messaging" ? (
 					<>
-						{draft ? <CommandsSettings draft={draft} onPatch={patchDraft} /> : null}
+						{draft ? <CommandsSettings draft={draft.core} onPatch={patchCoreDraft} /> : null}
 
 						{draft ? (
 							<LinkPreviewSettings
-								draft={draft}
-								onPatch={patchDraft}
+								draft={draft.core}
+								onPatch={patchCoreDraft}
 								targets={targetsQuery.data ?? []}
 								connections={connectionsQuery.data ?? []}
 								capabilities={capabilitiesQuery.data ?? {}}

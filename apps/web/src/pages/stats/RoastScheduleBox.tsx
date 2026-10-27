@@ -2,6 +2,7 @@ import { buildPatch } from "@bilibili-notify/internal/patch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -15,10 +16,7 @@ import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleField
  */
 export function RoastScheduleBox() {
 	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -37,12 +35,9 @@ export function RoastScheduleBox() {
 			const base = globalsQuery.data?.roastSchedule;
 			// 与基线 diff 而不是整份回传:`targets` 清空时,整份发是「[]」、
 			// buildPatch 才知道这是一次真的清除。
-			await api.patch<GlobalConfig>(
-				"/api/settings",
-				buildPatch({ roastSchedule: next }, { roastSchedule: base }),
-			);
+			await patchCoreSettings(buildPatch({ roastSchedule: next }, { roastSchedule: base }));
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
 	});
 
 	// 保存交给底部那枚草稿灵动岛(与 Rules / Cards / Ai / System 同一套),面板里

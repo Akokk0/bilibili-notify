@@ -105,6 +105,20 @@ export class ConfigValidationError extends Error {
 		);
 	}
 
+	/**
+	 * 同一次拒收,逐格原因的路径前面接上 `prefix`(`/api/settings` 的路由用:核心那份在线上挂在 `core` 下,路径要与
+	 * 请求体对得上)。
+	 * 顶上那句话不动:它的主语已经说了是哪一块。
+	 */
+	under(prefix: readonly (string | number)[]): ConfigValidationError {
+		return new ConfigValidationError(
+			this.scope,
+			this.code,
+			this.message,
+			this.issues.map((i) => ({ ...i, path: [...prefix, ...(i.path ?? [])] })),
+		);
+	}
+
 	/** 回给面板的失败:没有逐格原因就不带 `issues`。 */
 	toFailure(): Failure {
 		return fail(this.code, this.message, this.issues.length > 0 ? { issues: this.issues } : {});

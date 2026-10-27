@@ -40,15 +40,18 @@ describe("ai.writing 经设置路由读写", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
-		const patch = (body: unknown) =>
+		// 读写的都是核心那份(`/api/settings` 上挂在 `core` 下)。
+		const patch = (core: unknown) =>
 			app.request("/api/settings", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
+				body: JSON.stringify({ core }),
 			});
 		const get = async () => {
 			const res = await app.request("/api/settings");
-			return (await res.json()) as { ai: Record<string, unknown> & { writing: unknown } };
+			return (
+				(await res.json()) as { core: { ai: Record<string, unknown> & { writing: unknown } } }
+			).core;
 		};
 		return { runtime, patch, get };
 	}

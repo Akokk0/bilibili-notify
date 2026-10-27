@@ -56,7 +56,7 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subscriptions") ? [CUSTOMIZED] : GLOBALS),
+		Promise.resolve(url.includes("/api/subscriptions") ? [CUSTOMIZED] : { core: GLOBALS }),
 	);
 	vi.mocked(api.patch).mockResolvedValue(CUSTOMIZED);
 });
@@ -83,7 +83,7 @@ describe("高级规则 tab 关闭确认", () => {
 			specialViewers: [{ id: "7", features: ["viewerEnter"] }],
 		};
 		vi.mocked(api.get).mockImplementation((url: string) =>
-			Promise.resolve(url.includes("/api/subscriptions") ? [onlySpecial] : GLOBALS),
+			Promise.resolve(url.includes("/api/subscriptions") ? [onlySpecial] : { core: GLOBALS }),
 		);
 		renderRules();
 		expect(await screen.findByTitle(/移除 .* 的个性化配置/)).toBeTruthy();

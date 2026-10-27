@@ -40,7 +40,7 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
 		if (path === "/api/system/update") return status;
 		if (path === "/api/health") return health.next();
-		return { update: SETTINGS };
+		return { core: { update: SETTINGS } };
 	});
 	// `POST /apply` 的回话:服务端说要换掉的是哪个进程(startedAt)、换到哪(target / mode)。
 	vi.mocked(api.post).mockImplementation(async (path: string) => {
@@ -246,7 +246,9 @@ describe("UpdateSection —— 设置", () => {
 
 		await waitFor(() =>
 			expect(api.patch).toHaveBeenCalledWith("/api/settings", {
-				update: { channel: "prerelease" },
+				core: {
+					update: { channel: "prerelease" },
+				},
 			}),
 		);
 	});
@@ -369,7 +371,7 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 				return status;
 			}
 			if (path === "/api/health") return health.next();
-			return { update: SETTINGS };
+			return { core: { update: SETTINGS } };
 		});
 
 		renderSection("/system#update");

@@ -84,40 +84,40 @@ const GUARD_TIER_LABELS: Record<string, FieldLabel> = Object.fromEntries(
 );
 
 export const FIELD_LABELS = {
-	// ── 通用 / 全局(logging.* 等) ────────────────────────────────────────────────
+	// ── 通用 / 全局(系统页:草稿是整份设置,核心那几格带 `core.`、B 站的带 `bilibili.`) ──────────
 	"bilibili.dynamicCron": {
 		label: "动态检查频率",
 		hint: "cron 表达式 · 默认 30 */2 * * * * (每 2 分钟的第 30 秒,错开整分高峰)",
 		section: "general",
 	},
-	"logging.level": {
+	"core.logging.level": {
 		label: "日志等级（全局）",
 		hint: "未在下方按模块覆盖时的兜底",
 		section: "logging",
 	},
-	"logging.levels": {
+	"core.logging.levels": {
 		label: "按模块覆盖",
-		hint: "留「跟随全局」即用 logging.level；保存后会立即推到对应模块的 pino 实例,无需重启",
+		hint: "留「跟随全局」即用 core.logging.level；保存后会立即推到对应模块的 pino 实例,无需重启",
 		section: "logging",
 	},
 	// 以下 4 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
-	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="logging.levels">)。
-	"logging.levels.core": {
+	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="core.logging.levels">)。
+	"core.logging.levels.core": {
 		label: "日志等级",
 		hint: "只影响 core 模块",
 		section: "logging",
 	},
-	"logging.levels.bilibili": {
+	"core.logging.levels.bilibili": {
 		label: "日志等级",
 		hint: "同时影响 dynamic 与 live 两个模块(B 站的动态与直播共用这一档)",
 		section: "logging",
 	},
-	"logging.levels.image": {
+	"core.logging.levels.image": {
 		label: "日志等级",
 		hint: "只影响 image 模块",
 		section: "logging",
 	},
-	"logging.levels.ai": {
+	"core.logging.levels.ai": {
 		label: "日志等级",
 		hint: "只影响 ai 模块",
 		section: "logging",
@@ -127,62 +127,62 @@ export const FIELD_LABELS = {
 		hint: "每 N 分钟向 B 站探活一次;登录失效会记进问题表并私聊提醒主人",
 		section: "general",
 	},
-	"history.retentionDays": {
+	"core.history.retentionDays": {
 		label: "图片与重推原件保留",
 		hint: "推送记录的文字一直留着;超过天数的那几天,图片和重推用的原件会清掉,那几行就不能再重推了",
 		section: "logging",
 	},
-	"logging.memoryLog.enabled": {
+	"core.logging.memoryLog.enabled": {
 		label: "内存自检打印",
 		hint: "每 10 分钟往日志写一行 [mem](堆用量 / 上限 / RSS / 弹幕规模),给排泄漏留曲线;概览页的系统资源卡不靠它。堆逼近上限的警告始终会响",
 		section: "logging",
 	},
 
 	// ── Master ────────────────────────────────────────────────────────────
-	"master.targetId": {
+	"core.master.targetId": {
 		label: "Master 推送目标",
 		section: "master",
 	},
 
 	// ── 私聊指令 ──────────────────────────────────────────────────────────
-	"commands.enabled": {
+	"core.commands.enabled": {
 		label: "私聊指令",
 		hint: "关掉之后只剩审批的 y/n —— 否则手里那份等审批的周报就再也批不掉了",
 		section: "commands",
 	},
-	"commands.prefix": {
+	"core.commands.prefix": {
 		label: "指令前缀",
 		hint: "可以留空;留空后认不出的话一律当没看见(否则会对你每句聊天都回一句)",
 		section: "commands",
 	},
 	// ── 链接解析 ──────────────────────────────────────────────────────────
-	"linkPreview.enabled": {
+	"core.linkPreview.enabled": {
 		label: "链接解析",
 		hint: "群里有人贴 B 站视频链接就回一张卡,谁贴都算;在哪些群响应、回什么由下面的默认行与按群例外定。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
 		section: "linkPreview",
 	},
-	"linkPreview.cooldownSec": {
+	"core.linkPreview.cooldownSec": {
 		label: "冷却时间",
 		hint: `同一个群里同一个视频多久内只出一次图;0 = 不节流。另有不可调的底线:每个群每分钟最多 ${LINK_LIMITS.groupPerMinute} 张、全局同时最多处理 ${LINK_LIMITS.maxInflight} 张,防换着视频刷`,
 		section: "linkPreview",
 	},
-	"linkPreview.isOnByDefault": {
+	"core.linkPreview.isOnByDefault": {
 		label: "默认(所有群)",
 		hint: "机器人在的所有群默认解不解析、回图片卡、小程序卡还是只回文字;下面没写例外的群都跟这一行。小程序卡要目标所在的 OneBot 实现支持 get_mini_app_ark(目前已知 NapCat),不支持的会回落图片卡",
 		section: "linkPreview",
 	},
 	// 默认行里「回什么」那一格:和「解析」同在一行控件里,字典里分开记,保存时才不落进「其他」。
-	"linkPreview.replyForm": {
+	"core.linkPreview.replyForm": {
 		label: "默认回复形式",
 		hint: "没写例外的群回图片卡、小程序卡还是只回文字",
 		section: "linkPreview",
 	},
-	"linkPreview.byTarget": {
+	"core.linkPreview.byTarget": {
 		label: "按群例外",
 		hint: "从推送目标里列出的群,每格「跟默认」就是不例外;想只在某几群解析,把默认解析关掉、给那几群显式开。已停用的目标不解析,恢复启用后自动生效;目标删掉了这里就不再显示",
 		section: "linkPreview",
 	},
-	"commands.aliases": {
+	"core.commands.aliases": {
 		label: "指令别名",
 		hint: "主名永远有效;别名撞了会在保存时拦下",
 		section: "commands",

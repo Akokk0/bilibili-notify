@@ -104,10 +104,8 @@ async function openPerUp(sub: Subscription): Promise<void> {
 			});
 		}
 		return Promise.resolve({
-			logging: {},
-			master: {},
-			defaults: makeDefaults(),
-		} as unknown as GlobalConfig);
+			core: { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalConfig,
+		});
 	});
 	renderCards();
 	await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));

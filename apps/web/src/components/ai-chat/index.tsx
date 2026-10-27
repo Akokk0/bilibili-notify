@@ -5,7 +5,6 @@ import {
 	type AiConversationDTO,
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
-import type { GlobalConfig } from "@bilibili-notify/internal";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
 import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -14,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSourceAuth } from "../../hooks/use-source-auth";
+import { useCoreSettings } from "../../hooks/useSettings";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
 import {
 	conversationQueryKey,
@@ -26,7 +26,6 @@ import {
 	sendChatMessage,
 	uploadChatImage,
 } from "../../services/aiChat";
-import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import {
 	listMaidSkillsSafe,
@@ -273,10 +272,7 @@ export function ChatPage() {
 		stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_SLACK_PX;
 	};
 
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
 	const ai = globalsQuery.data?.ai;
 	const modelName = ai ? resolveAIProfile(ai).model : undefined;

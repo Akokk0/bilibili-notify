@@ -19,7 +19,11 @@ import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionLookupResponse, HistoryResponse } from "@bilibili-notify/contract";
+import type {
+	ExtensionLookupResponse,
+	ExtensionsResponse,
+	HistoryResponse,
+} from "@bilibili-notify/contract";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
@@ -91,8 +95,9 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 	async function ok(res: Response): Promise<void> {
 		expect(res.status, await res.clone().text()).toBeLessThan(300);
 	}
-	const patchSettings = async (body: unknown) =>
-		ok(await api("/api/settings", json(body, "PATCH")));
+	/** 改核心设置(挂在 `core` 下)。 */
+	const patchCore = async (core: unknown) =>
+		ok(await api("/api/settings", json({ core }, "PATCH")));
 	const hooksFor = (key: "a" | "b") => hooks.filter((h) => h.key === key);
 	const reportPost = async () => ok(await api(`/api/ext/${FAKE}/actions/report.post`, json({})));
 	/** 等两边各收到 `n` 条,再多等一会儿(重复发的会在这段时间里到)。 */
@@ -181,9 +186,13 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
-		await patchSettings({ extensions: { [FAKE]: { enabled: true } } });
+		await patchCore({ extensions: { [FAKE]: { enabled: true } } });
+		// PATCH 在热装载落地之前就回 200;`GET /api/ext` 先等它落定再报状态 —— 不等的话下面问解析门会撞上
+		// 「拓展还没在跑」(机器忙时才撞得上)。
+		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;
+		expect(listed.extensions.find((e) => e.id === FAKE)?.state).toBe("running");
 		// 不出图集:消息就是一条纯文字。AI 开着,服务商指向上面的回环假服务。
-		await patchSettings({
+		await patchCore({
 			defaults: { imageGroup: { enabled: false } },
 			ai: {
 				...makeDefaultGlobalConfig().ai,
@@ -270,7 +279,7 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 	}, 20_000);
 
 	it("默认关、乙写了例外开:只生成一次,乙收到点评、甲收到模板;历史各存各的;重推甲那一行发的是模板", async () => {
-		await patchSettings({
+		await patchCore({
 			ai: { writing: { post: { isOnByDefault: false, byTarget: { [target.b]: true } } } },
 		});
 		// 甲先"收不下"(回 500):它那一行落成失败,稍后好拿来人工重推。
@@ -321,7 +330,7 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 
 	it("默认关、例外只指着已经不存在的目标:不算开着,AI 一次都不调,两边都是模板", async () => {
 		// 乙那条例外删掉(面板发 null),换成一条指着不存在的目标的。
-		await patchSettings({
+		await patchCore({
 			ai: { writing: { post: { byTarget: { [target.b]: null, [GONE_TARGET]: true } } } },
 		});
 		const callsBefore = aiCalls;

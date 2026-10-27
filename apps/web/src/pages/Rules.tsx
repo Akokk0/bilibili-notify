@@ -1,3 +1,4 @@
+import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { presetsOf } from "@bilibili-notify/internal/ai";
 import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
@@ -22,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { useExtensions } from "../hooks/useExtensions";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { api } from "../services/api";
 import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
@@ -230,10 +232,7 @@ export function GlobalDraftBinder({
 
 export default function Rules() {
 	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
@@ -241,7 +240,7 @@ export default function Rules() {
 
 	const [scope, setScope] = useState<Scope>("__global");
 	const [section, setSection] = useState<SectionId>("filter");
-	const [draft, setDraft] = useState<GlobalConfig | null>(null);
+	const [draft, setDraft] = useState<GlobalConfigView | null>(null);
 	// 用户主动通过「添加 UP」加进来,但还没设任何 override 的 sub.id;客户端内存,刷新即清空。
 	const [addedSubIds, setAddedSubIds] = useState<Set<string>>(new Set());
 	// 待确认移除的 per-UP(有实际覆盖项,点 tab 的 x 后先弹确认 dialog 再清空)。
@@ -252,7 +251,7 @@ export default function Rules() {
 	}, [globalsQuery.data]);
 
 	const save = useMutation({
-		mutationFn: async (next: GlobalConfig) => {
+		mutationFn: async (next: GlobalConfigView) => {
 			// Only the scopes this page actually edits — filter / live thresholds /
 			// templates / imageGroup。Posting the full draft would put
 			// `defaults.cards` and `ai` into the body and trigger the
@@ -262,8 +261,7 @@ export default function Rules() {
 			// 但哪天有人往里加一个可选字段,「清空」就会又一次变成「什么都没说」。
 			// 统一走 buildPatch,不给这个坑留复发的机会。
 			const base = globalsQuery.data;
-			await api.patch<GlobalConfig>(
-				"/api/settings",
+			await patchCoreSettings(
 				buildPatch(
 					{
 						defaults: {
@@ -303,7 +301,7 @@ export default function Rules() {
 				),
 			);
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
 	});
 
 	const removeSubCustomization = useMutation({

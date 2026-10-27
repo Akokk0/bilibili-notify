@@ -52,7 +52,9 @@ describe("PATCH /api/settings 的失败", () => {
 				headers: { "Content-Type": "application/json" },
 				body: typeof body === "string" ? body : JSON.stringify(body),
 			});
-		return { runtime, patch };
+		/** 改核心设置(`/api/settings` 上挂在 `core` 下)。 */
+		const patchCore = (core: unknown) => patch({ core });
+		return { runtime, patch, patchCore };
 	}
 
 	it("体不是合法 JSON → 400 invalid", async () => {
@@ -75,8 +77,8 @@ describe("PATCH /api/settings 的失败", () => {
 	});
 
 	it("store 校验不过 → 400 invalid,顶上一句中文 + 逐格 issues,没有 scope", async () => {
-		const { runtime, patch } = await boot();
-		const res = await patch({ master: { targetId: 123 } });
+		const { runtime, patchCore } = await boot();
+		const res = await patchCore({ master: { targetId: 123 } });
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as {
 			code: string;
@@ -85,14 +87,17 @@ describe("PATCH /api/settings 的失败", () => {
 		};
 		expect(body.code).toBe("invalid");
 		expect(body.message).toMatch(/^全局设置有 \d+ 格不合法：master\.targetId：/);
-		expect(body.issues).toEqual([expect.objectContaining({ path: ["master", "targetId"] })]);
+		// 路径与请求体对得上:核心那份挂在 `core` 下。
+		expect(body.issues).toEqual([
+			expect.objectContaining({ path: ["core", "master", "targetId"] }),
+		]);
 		expect(body).not.toHaveProperty("scope");
 		await runtime.dispose();
 	});
 
 	it("指令别名撞名 → 409 conflict,话里点名跟谁撞", async () => {
-		const { runtime, patch } = await boot([{ name: "帮助" }, { name: "静音" }]);
-		const res = await patch({ commands: { aliases: { 帮助: ["静音"] } } });
+		const { runtime, patchCore } = await boot([{ name: "帮助" }, { name: "静音" }]);
+		const res = await patchCore({ commands: { aliases: { 帮助: ["静音"] } } });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("conflict");
@@ -101,9 +106,9 @@ describe("PATCH /api/settings 的失败", () => {
 	});
 
 	it("启用卡片渲染但没配 Chrome → 409 not_configured,话里指路(BN_CHROME_PATH)", async () => {
-		const { runtime, patch } = await boot();
+		const { runtime, patchCore } = await boot();
 		const before = runtime.configStore.getGlobals();
-		const res = await patch({ defaults: { cards: { enabled: true } } });
+		const res = await patchCore({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("not_configured");
@@ -114,13 +119,13 @@ describe("PATCH /api/settings 的失败", () => {
 	});
 
 	it("启用卡片渲染、Chrome 配了但起不来 → 503 unavailable,话里带底层的原因", async () => {
-		const { runtime, patch } = await boot(undefined, {
+		const { runtime, patchCore } = await boot(undefined, {
 			page: async () => {
 				throw new Error("spawn /opt/chrome ENOENT");
 			},
 		});
 		const before = runtime.configStore.getGlobals();
-		const res = await patch({ defaults: { cards: { enabled: true } } });
+		const res = await patchCore({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("unavailable");
@@ -130,17 +135,17 @@ describe("PATCH /api/settings 的失败", () => {
 	});
 
 	it("启用卡片渲染、Chrome 起得来 → 放行(200)", async () => {
-		const { runtime, patch } = await boot(undefined, {
+		const { runtime, patchCore } = await boot(undefined, {
 			page: async () => ({ close: async () => {} }),
 		});
-		const res = await patch({ defaults: { cards: { enabled: true } } });
+		const res = await patchCore({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(200);
 		await runtime.dispose();
 	});
 
 	it("启用 AI 但 key 是空的 → 409 not_configured", async () => {
-		const { runtime, patch } = await boot();
-		const res = await patch({ ai: { enabled: true } });
+		const { runtime, patchCore } = await boot();
+		const res = await patchCore({ ai: { enabled: true } });
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "not_configured",
@@ -150,8 +155,8 @@ describe("PATCH /api/settings 的失败", () => {
 	});
 
 	it("打开审批但没配主人私聊目标 → 409 not_configured", async () => {
-		const { runtime, patch } = await boot();
-		const res = await patch({ roastSchedule: { approval: true } });
+		const { runtime, patchCore } = await boot();
+		const res = await patchCore({ roastSchedule: { approval: true } });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("not_configured");

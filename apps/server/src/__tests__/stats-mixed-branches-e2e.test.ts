@@ -546,7 +546,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			return entries[0];
 		};
 		await ok(
-			await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: false } }) }),
+			await api("/api/settings", {
+				method: "PATCH",
+				...json({ core: { stats: { enabled: false } } }),
+			}),
 		);
 		try {
 			await vi.waitFor(
@@ -562,7 +565,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			);
 		} finally {
 			await ok(
-				await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: true } }) }),
+				await api("/api/settings", {
+					method: "PATCH",
+					...json({ core: { stats: { enabled: true } } }),
+				}),
 			);
 		}
 		await vi.waitFor(async () => expect((await read())?.delta24h).toBe(1172), {
@@ -592,7 +598,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			return { seen: maidSeen.join("\n"), tools };
 		};
 		await ok(
-			await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: false } }) }),
+			await api("/api/settings", {
+				method: "PATCH",
+				...json({ core: { stats: { enabled: false } } }),
+			}),
 		);
 		try {
 			const off = await ask();
@@ -602,7 +611,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			]);
 		} finally {
 			await ok(
-				await api("/api/settings", { method: "PATCH", ...json({ stats: { enabled: true } }) }),
+				await api("/api/settings", {
+					method: "PATCH",
+					...json({ core: { stats: { enabled: true } } }),
+				}),
 			);
 		}
 		const on = await ask();

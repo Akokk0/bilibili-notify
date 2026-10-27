@@ -191,7 +191,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		const res = await fetch(`${base()}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: false } } }),
+			body: JSON.stringify({ core: { extensions: { [FIXTURE_ID]: { enabled: false } } } }),
 		});
 		expect(res.status).toBe(200);
 		expect(await probeState()).toBe("disabled");

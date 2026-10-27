@@ -2,7 +2,7 @@ import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { ErrorNote, Icon, WarnNote } from "@bilibili-notify/ui";
 import { type UseMutationResult, useMutation, useQueryClient } from "@tanstack/react-query";
 import { EXTENSIONS_QUERY_KEY } from "../../hooks/useExtensions";
-import { api } from "../../services/api";
+import { patchCoreSettings, SETTINGS_KEY } from "../../hooks/useSettings";
 import { EXTENSION_STATE_META } from "./state-meta";
 
 /**
@@ -80,10 +80,10 @@ export function useExtensionToggle() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (next: { id: string; enabled: boolean }) =>
-			api.patch("/api/settings", { extensions: { [next.id]: { enabled: next.enabled } } }),
+			patchCoreSettings({ extensions: { [next.id]: { enabled: next.enabled } } }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
-			void qc.invalidateQueries({ queryKey: ["settings"] });
+			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},
 	});
 }

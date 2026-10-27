@@ -253,11 +253,16 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 				),
 			);
 		}
-		await okRes(await api("/api/settings", json({ master: { targetId: ID.master } }, "PATCH")));
+		await okRes(
+			await api("/api/settings", json({ core: { master: { targetId: ID.master } } }, "PATCH")),
+		);
 
 		// —— 假源:两条订阅,甲的作品推到测试群,乙不路由(只给锐评榜单凑够两位)。
 		await okRes(
-			await api("/api/settings", json({ extensions: { [FAKE]: { enabled: true } } }, "PATCH")),
+			await api(
+				"/api/settings",
+				json({ core: { extensions: { [FAKE]: { enabled: true } } } }, "PATCH"),
+			),
 		);
 		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		expect(listed.extensions.find((e) => e.id === FAKE)?.state).toBe("running");
@@ -294,8 +299,10 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 				"/api/settings",
 				json(
 					{
-						ai: { ...aiSettings(ai), enabled: true },
-						roastSchedule: { targets: [ID.group], approval: true },
+						core: {
+							ai: { ...aiSettings(ai), enabled: true },
+							roastSchedule: { targets: [ID.group], approval: true },
+						},
 					},
 					"PATCH",
 				),

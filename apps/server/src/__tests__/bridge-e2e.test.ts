@@ -502,7 +502,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		return fetch(`${handle?.url}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { bridge: { enabled } } }),
+			body: JSON.stringify({ core: { extensions: { bridge: { enabled } } } }),
 		});
 	}
 

@@ -1,11 +1,12 @@
-import type { GlobalConfig, ThinkingLevel } from "@bilibili-notify/internal";
+import type { SettingsResponse } from "@bilibili-notify/contract";
+import type { ThinkingLevel } from "@bilibili-notify/internal";
 import {
 	canProfileThink,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
 } from "@bilibili-notify/internal/ai";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../services/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../../hooks/useSettings";
 
 /**
  * 侧栏设置弹层里的「思考深度」—— `ai.chat.thinkingLevel` 的编辑口。
@@ -30,33 +31,32 @@ const LEVELS: readonly { value: ThinkingLevel; label: string }[] = [
 
 export function ThinkingLevelSetting() {
 	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 
 	const save = useMutation({
 		mutationFn: (level: ThinkingLevel) =>
-			api.patch<GlobalConfig>("/api/settings", {
+			patchCoreSettings({
 				ai: { chat: { thinkingLevel: level } },
 			}),
 		// 点了立刻亮(乐观写缓存),失败退回 —— 弹层里其余几项都是即点即变,
 		// 这一格等一个网络往返才亮会显得「点不动」。
 		onMutate: async (level) => {
-			const prev = qc.getQueryData<GlobalConfig>(["settings"]);
+			// 缓存里是整份回话,核心那份在 `core` 下。
+			const prev = qc.getQueryData<SettingsResponse>(SETTINGS_KEY);
 			if (prev) {
-				qc.setQueryData<GlobalConfig>(["settings"], {
+				const { ai } = prev.core;
+				qc.setQueryData<SettingsResponse>(SETTINGS_KEY, {
 					...prev,
-					ai: { ...prev.ai, chat: { ...prev.ai.chat, thinkingLevel: level } },
+					core: { ...prev.core, ai: { ...ai, chat: { ...ai.chat, thinkingLevel: level } } },
 				});
 			}
 			return { prev };
 		},
 		onError: (_err, _level, ctx) => {
-			if (ctx?.prev) qc.setQueryData(["settings"], ctx.prev);
+			if (ctx?.prev) qc.setQueryData(SETTINGS_KEY, ctx.prev);
 		},
-		// 响应就是 redact 后的新 globals,直接落缓存 —— 不必再 invalidate 白拉一次。
-		onSuccess: (next) => qc.setQueryData(["settings"], next),
+		// 响应就是 redact 后的整份新设置,直接落缓存 —— 不必再 invalidate 白拉一次。
+		onSuccess: (next) => qc.setQueryData(SETTINGS_KEY, next),
 	});
 
 	const ai = globalsQuery.data?.ai;

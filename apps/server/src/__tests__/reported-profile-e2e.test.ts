@@ -205,7 +205,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: true } } }),
+			body: JSON.stringify({ core: { extensions: { [FIXTURE_ID]: { enabled: true } } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		await api("/api/ext");

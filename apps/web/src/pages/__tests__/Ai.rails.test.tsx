@@ -61,9 +61,9 @@ function globalsWith(mutate: (g: Globals) => void): Globals {
 
 function mount(g: Globals) {
 	vi.mocked(api.get).mockImplementation(async (path: string) =>
-		path === "/api/targets" ? [] : JSON.parse(JSON.stringify(g)),
+		path === "/api/targets" ? [] : { core: JSON.parse(JSON.stringify(g)) },
 	);
-	vi.mocked(api.patch).mockImplementation(async () => JSON.parse(JSON.stringify(g)));
+	vi.mocked(api.patch).mockImplementation(async () => ({ core: JSON.parse(JSON.stringify(g)) }));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
@@ -444,12 +444,14 @@ describe("女仆性格左栏", () => {
 			useDraftStore.getState().current?.onSave();
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
 			{
-				ai: {
-					presets?: { id: string; persona: { name: string } }[];
-					removedBuiltinPresets?: unknown;
+				core: {
+					ai: {
+						presets?: { id: string; persona: { name: string } }[];
+						removedBuiltinPresets?: unknown;
+					};
 				};
 			},
 		];
@@ -596,9 +598,9 @@ describe("全局配置 Tab", () => {
 			useDraftStore.getState().current?.onSave();
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ ai: { activePreset?: string; presets?: { persona: { name: string } }[] } },
+			{ core: { ai: { activePreset?: string; presets?: { persona: { name: string } }[] } } },
 		];
 		expect(body.ai.activePreset).toBe("mine");
 		// 选指针不改任何一份的内容。
@@ -764,9 +766,9 @@ describe("内置性格:锁死、可删、可恢复、可另存", () => {
 			useDraftStore.getState().current?.onSave();
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ ai: { removedBuiltinPresets?: string[]; presets?: unknown[] } },
+			{ core: { ai: { removedBuiltinPresets?: string[]; presets?: unknown[] } } },
 		];
 		expect(body.ai.removedBuiltinPresets).toEqual(["tsundere"]);
 		// 内置不落盘:presets 里没有它
@@ -788,9 +790,9 @@ describe("内置性格:锁死、可删、可恢复、可另存", () => {
 			useDraftStore.getState().current?.onSave();
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ ai: { removedBuiltinPresets?: string[] | null } },
+			{ core: { ai: { removedBuiltinPresets?: string[] | null } } },
 		];
 		expect(body.ai.removedBuiltinPresets).toBeNull();
 	});

@@ -140,7 +140,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		// 面板那条路拨开关:拨完紧接着列一次拓展,那一口会先把热装落实掉。
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
-			...json({ extensions: { [FAKE]: { enabled: true } } }),
+			...json({ core: { extensions: { [FAKE]: { enabled: true } } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		expect((await fakeRow())?.state).toBe("running");

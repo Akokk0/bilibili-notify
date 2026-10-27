@@ -39,10 +39,12 @@ vi.mock("../../services/api", () => ({
 			if (url === "/api/sources/bilibili/auth") return H.auth;
 			if (url === "/api/settings") {
 				return {
-					logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
-					history: { retentionDays: 30 },
+					core: {
+						logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
+						history: { retentionDays: 30 },
+						master: { targetId: undefined },
+					},
 					bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },
-					master: { targetId: undefined },
 				};
 			}
 			if (url === "/api/connections/capabilities") return {};

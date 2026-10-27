@@ -1,7 +1,7 @@
 import { Btn, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { SECTION_ACCENT } from "../../config/section-accents";
-import { api } from "../../services/api";
+import { patchCoreSettings, SETTINGS_KEY } from "../../hooks/useSettings";
 import { useOnboardingReopen } from "../../store/onboarding";
 
 /**
@@ -16,9 +16,9 @@ export function OnboardingReopenSection() {
 	const qc = useQueryClient();
 	const reopen = useOnboardingReopen((s) => s.reopen);
 	const { mutate, isPending } = useMutation({
-		mutationFn: () => api.patch("/api/settings", { onboarding: { skipped: false } }),
+		mutationFn: () => patchCoreSettings({ onboarding: { skipped: false } }),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["settings"] });
+			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 			reopen();
 		},
 	});

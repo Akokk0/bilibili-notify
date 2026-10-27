@@ -54,7 +54,7 @@ describe("拓展的译文 e2e:切语言,拓展页的名字与视图文字跟着�
 		const res = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ locale }),
+			body: JSON.stringify({ core: { locale } }),
 		});
 		expect(res.status, await res.clone().text()).toBe(200);
 	}
@@ -99,7 +99,7 @@ describe("拓展的译文 e2e:切语言,拓展页的名字与视图文字跟着�
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { [FAKE]: { enabled: true } } }),
+			body: JSON.stringify({ core: { extensions: { [FAKE]: { enabled: true } } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		// 拨完紧接着列一次拓展,那一口会先把热装落实掉。

@@ -218,7 +218,7 @@ describe("数据代接在开机路径上 e2e", () => {
 		const patched = await fetch(url("/api/settings"), {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ onboarding: { skipped: true } }),
+			body: JSON.stringify({ core: { onboarding: { skipped: true } } }),
 		});
 		expect(patched.status, await patched.clone().text()).toBe(200);
 		await handle.close("test");

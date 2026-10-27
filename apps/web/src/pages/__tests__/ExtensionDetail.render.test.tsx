@@ -119,7 +119,7 @@ const VIEW = shown({
 function renderDetail(id = "bridge") {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return LISTED;
-		if (url === "/api/settings") return GLOBALS;
+		if (url === "/api/settings") return { core: GLOBALS };
 		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/settings` 里已经没有设置那一格。
 		if (url === "/api/ext/bridge/settings") {
 			return { revision: "r1", values: BRIDGE_SETTINGS };
@@ -197,7 +197,9 @@ describe("拓展详情页", () => {
 		fireEvent.click(await screen.findByLabelText("机器人框架桥接"));
 		await waitFor(() =>
 			expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", {
-				extensions: { bridge: { enabled: false } },
+				core: {
+					extensions: { bridge: { enabled: false } },
+				},
 			}),
 		);
 	});
@@ -281,13 +283,13 @@ describe("拓展详情页 —— 设置读不了", () => {
 			}
 			// 设置从哪口读取决于面板那一侧的版本:拓展自己的口(决策 35),或者更早的 globals。
 			if (url === "/api/ext/bridge/settings") return { revision: "r1", values: settings };
-			if (url === "/api/settings") return GLOBALS;
+			if (url === "/api/settings") return { core: GLOBALS };
 			return {};
 		});
 		apiPatchMock.mockImplementation(async (url: string) =>
 			url === "/api/ext/bridge/settings"
 				? { revision: "r2", values: settings, added: [] }
-				: GLOBALS,
+				: { core: GLOBALS },
 		);
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		return render(

@@ -306,7 +306,9 @@ describe("拓展页", () => {
 		// mutate 是异步发起的,同步断言会在请求出门之前就跑完。
 		await waitFor(() =>
 			expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", {
-				extensions: { bridge: { enabled: false } },
+				core: {
+					extensions: { bridge: { enabled: false } },
+				},
 			}),
 		);
 		await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["extensions"] }));

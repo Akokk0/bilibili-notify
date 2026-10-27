@@ -174,7 +174,7 @@ vi.mock("../../../services/api", () => ({
 							],
 							problems: [],
 						}
-					: { ai: G.ai },
+					: { core: { ai: G.ai } },
 		),
 	},
 }));

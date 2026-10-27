@@ -21,6 +21,7 @@ import {
 	type PushFamily,
 } from "../config/push-features";
 import { useExtensions } from "../hooks/useExtensions";
+import { useCoreSettings } from "../hooks/useSettings";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
@@ -30,7 +31,6 @@ import {
 	historyQueryKey,
 } from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
-import type { GlobalConfig } from "../types/globals";
 import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
 import { historyRowAvatarUrl, historyRowColor, isExtensionIdentity } from "../utils/up-display";
@@ -85,10 +85,7 @@ export default function History() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const retentionDays = globalsQuery.data?.history.retentionDays;
 	// 拓展行的平台徽章照已装拓展的清单画(ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
 	const extensionsQuery = useExtensions({ retry: false });

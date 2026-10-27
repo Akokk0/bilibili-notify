@@ -45,17 +45,14 @@ type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> | 
 export type GlobalConfigPatch = DeepPartial<GlobalConfig>;
 
 /**
- * `/api/settings` 下发的那一份:核心设置的顶层键,各集成的设置挂在自己的键下(今天只有 B 站,ADR-0021 决策 42 下
- * 10-01 的 🔗)。集成那几份的形状由各集成定,面板只在画到它的那一处认得(系统页;第 4 期起按集成的描述画)。
- */
-export type GlobalsResponse = GlobalConfig & { readonly [integrationKey: string]: unknown };
-
-/**
  * 智能女仆页的草稿:密钥格要么还是下发的遮挡(没动),要么是字符串(换了新的;空串 = 清空)。
  * 下发的形状(密钥格是遮挡或空串)是 contract 的 {@link AISettingsView}。
  */
 export type AISettingsDraft = AISettingsView<SecretCellDraft>;
 export type AIProviderProfileDraft = AIProviderProfileView<SecretCellDraft>;
 
-/** `/api/settings` 的 PATCH:核心那份的补丁,各集成的补丁挂在自己的键下(与 {@link GlobalsResponse} 同一个形状)。 */
-export type GlobalsPatch = GlobalConfigPatch & { [integrationKey: string]: unknown };
+/**
+ * `/api/settings` 的 PATCH:核心那份的补丁在 `core` 下,各集成的补丁挂在自己的键下(与 contract 的
+ * `SettingsResponse` 同一个形状)。集成那几份的形状由各集成定,面板只在画到它的那一处认得(系统页)。
+ */
+export type SettingsPatch = { core?: GlobalConfigPatch } & { [integrationKey: string]: unknown };

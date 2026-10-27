@@ -47,8 +47,8 @@ function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "response
 }
 
 function mount(g: ReturnType<typeof globalsWith>) {
-	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(g)));
-	vi.mocked(api.patch).mockResolvedValue(JSON.parse(JSON.stringify(g)));
+	vi.mocked(api.get).mockResolvedValue({ core: JSON.parse(JSON.stringify(g)) });
+	vi.mocked(api.patch).mockResolvedValue({ core: JSON.parse(JSON.stringify(g)) });
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
@@ -81,7 +81,9 @@ describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "低" }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
 		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
-			ai: { chat: { thinkingLevel: "low" } },
+			core: {
+				ai: { chat: { thinkingLevel: "low" } },
+			},
 		});
 	});
 

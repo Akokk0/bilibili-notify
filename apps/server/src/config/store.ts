@@ -125,7 +125,10 @@ export interface ConfigSections {
  * 登记。
  */
 export interface IntegrationSettingsSegment<T = unknown> {
-	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/settings` 把它们摆在同一层。 */
+	/**
+	 * 集成的键,也是文件名。不能叫 `core`:`/api/settings` 把核心那份挂在 `core` 下、与各集成的键同一层,
+	 * 核心的文件也正是 `config/settings/core.json`。
+	 */
 	readonly key: string;
 	/**
 	 * 盘上那份的格式,必须是 `z.object`(每个顶层键一格,读盘逐格解析:一格坏了只那一格退默认)且空对象过得了
@@ -177,7 +180,7 @@ export interface ConfigStore {
 	readIntegrationSettings(key: string): Result<{ settings: unknown }>;
 	/**
 	 * 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。**每个登记过的键一直在**:坏格是默认值、
-	 * 整个文件读不懂时整段是默认值 —— 键不在的话面板存这个集成的设置会被当成核心补丁、回 200 而一个字没写。
+	 * 整个文件读不懂时整段是默认值 —— 键不在的话面板存这个集成的设置会被当成没登记的键、整发 400。
 	 */
 	getAllIntegrationSettings(): Record<string, unknown>;
 	/**
@@ -288,7 +291,7 @@ export interface CreateConfigStoreOptions {
 	 * tests and any non-secret-aware caller.
 	 */
 	secretStore?: SecretStore;
-	/** 登记进来的各集成的设置(见 {@link IntegrationSettingsSegment})。键不能重复,也不能和核心设置的顶层键同名。 */
+	/** 登记进来的各集成的设置(见 {@link IntegrationSettingsSegment})。键不能重复,也不能叫 `core`。 */
 	integrationSettings?: readonly IntegrationSettingsSegment[];
 	/**
 	 * 在场的适配器的 `settingsSchema`;不在场回 undefined。现取的闭包(适配器来去,拓展拨一下开关就变)。
@@ -2380,21 +2383,20 @@ function jsonSyntaxMessage(err: SyntaxError): string {
 }
 
 /**
- * 登记进来的集成设置按键排好。键重复、或者和核心设置的顶层键同名(`/api/settings` 把两者摆在同一层),是组装处
- * 写错了,当场抛。
+ * 登记进来的集成设置按键排好。键重复、或者叫 `core`(`/api/settings` 把核心那份挂在 `core` 下、与各集成的键同一层,
+ * 核心的文件也叫 `core.json`),是组装处写错了,当场抛。
  */
 function segmentsByKey(
 	segments: readonly IntegrationSettingsSegment[],
 ): ReadonlyMap<string, IntegrationSettingsSegment> {
-	const coreKeys = new Set(Object.keys(GlobalConfigSchema.shape));
 	const byKey = new Map<string, IntegrationSettingsSegment>();
 	for (const segment of segments) {
 		if (byKey.has(segment.key)) throw new Error(`集成设置「${segment.key}」登记了两次`);
 		if (!segment.schema.safeParse({}).success) {
 			throw new Error(`集成设置「${segment.key}」的格式过不了空对象(每一格都得有默认值或可选)`);
 		}
-		if (coreKeys.has(segment.key)) {
-			throw new Error(`集成设置的键「${segment.key}」和核心设置的顶层键撞名`);
+		if (segment.key === "core") {
+			throw new Error("集成设置的键不能叫「core」:它是核心那份设置的键");
 		}
 		byKey.set(segment.key, segment);
 	}

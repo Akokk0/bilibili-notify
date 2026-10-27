@@ -187,7 +187,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		await ok(
 			await api("/api/settings", {
 				method: "PATCH",
-				...json({ extensions: { [FAKE]: { enabled: true } } }),
+				...json({ core: { extensions: { [FAKE]: { enabled: true } } } }),
 			}),
 		);
 		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;

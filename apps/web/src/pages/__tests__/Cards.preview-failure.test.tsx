@@ -92,7 +92,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
-		return Promise.resolve(GLOBALS);
+		return Promise.resolve({ core: GLOBALS });
 	});
 });
 
@@ -153,7 +153,7 @@ describe("测试推送的结果", () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/targets")) return Promise.resolve([TARGET]);
 			if (url.includes("/api/subscriptions")) return Promise.resolve([]);
-			return Promise.resolve(GLOBALS);
+			return Promise.resolve({ core: GLOBALS });
 		});
 		vi.mocked(api.post).mockImplementation(async (url: string) =>
 			url === "/api/cards/test" ? reply() : { ok: true, dataUrl: "data:image/png;base64,xx" },

@@ -1,8 +1,6 @@
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { api } from "../services/api";
-import type { GlobalConfig } from "../types/globals";
+import { patchCoreSettings, useCoreSettings } from "../hooks/useSettings";
 import { i18n } from "./index";
 import { writeLocalePreference, writeVoicePreference } from "./preference";
 
@@ -16,10 +14,7 @@ import { writeLocalePreference, writeVoicePreference } from "./preference";
  */
 export function useTextSettings(): void {
 	const wrote = useRef(false);
-	const { data } = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const { data } = useCoreSettings();
 
 	useEffect(() => {
 		if (data === undefined) return;
@@ -31,7 +26,7 @@ export function useTextSettings(): void {
 		if (data.locale === undefined && !wrote.current) {
 			wrote.current = true;
 			// 失败就当没写:设置里仍缺这一格,下次登录再试;这里没有该提示用户的事
-			api.patch("/api/settings", { locale }).catch(() => {});
+			patchCoreSettings({ locale }).catch(() => {});
 		}
 	}, [data]);
 }

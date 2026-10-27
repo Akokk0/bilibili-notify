@@ -10,6 +10,7 @@
 
 import type { CardSkinListResponse } from "@bilibili-notify/contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SETTINGS_KEY } from "../../hooks/useSettings";
 import { api } from "../../services/api";
 
 /** 皮肤库列表的 react-query 键。 */
@@ -43,7 +44,7 @@ export function useActivateCardSkin(
 		mutationFn: (id) => api.put<{ ok: boolean }>("/api/cards/skins/active", { id }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
-			void qc.invalidateQueries({ queryKey: ["settings"] });
+			void qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 			opts.onSuccess?.();
 		},
 		onError: (e) => opts.onError?.(String(e.message)),

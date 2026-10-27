@@ -19,7 +19,7 @@
  * 存盘走 PATCH /api/settings { ai: ... }。
  */
 
-import type { GlobalConfigView, SecretCellDraft } from "@bilibili-notify/contract";
+import type { SecretCellDraft } from "@bilibili-notify/contract";
 import {
 	type APIFlavorId,
 	canProfileThink,
@@ -47,7 +47,7 @@ import {
 	TabBar,
 	Toggle,
 } from "@bilibili-notify/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
@@ -56,8 +56,13 @@ import { ProviderPicker } from "../components/provider-picker";
 import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
-import { api } from "../services/api";
-import type { AIPersona, AIProviderProfileDraft, AISettingsDraft } from "../types/globals";
+import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import type {
+	AIPersona,
+	AIProviderProfileDraft,
+	AISettingsDraft,
+	GlobalConfigPatch,
+} from "../types/globals";
 import { MaidSkills } from "./ai/MaidSkills";
 import {
 	addPersona,
@@ -177,10 +182,7 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 
 export default function Ai() {
 	const qc = useQueryClient();
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 
 	const [draft, setDraft] = useState<AISettingsDraft | null>(null);
 	const [tab, setTab] = useState<TopTab>("global");
@@ -207,9 +209,10 @@ export default function Ai() {
 			// buildPatch 变成显式 null,服务端 deepMerge 据此删键。手写 payload 时这些
 			// 消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」→ 删了却没真删。
 			const base = globalsQuery.data;
-			return await api.patch<GlobalConfigView>(
-				"/api/settings",
-				buildPatch({ ai: payload.ai }, { ai: base?.ai }),
+			// 草稿的密钥格类型上还可能是遮挡,但两边都是遮挡(没动)的格 buildPatch 不发,换了的是明文 ——
+			// 发出去的正是核心那份的补丁。
+			return await patchCoreSettings(
+				buildPatch({ ai: payload.ai }, { ai: base?.ai }) as GlobalConfigPatch,
 			);
 		},
 		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
@@ -221,8 +224,8 @@ export default function Ai() {
 		// 永不相等 → 灵动岛**永久 dirty**,反复点保存也消不掉,看起来就是「保存不了」。
 		// (顺手改了 model / 人格反而正常 —— 那些字段不脱敏,数据变了引用就变了。)
 		onSuccess: (next) => {
-			setDraft(next.ai);
-			qc.invalidateQueries({ queryKey: ["settings"] });
+			setDraft(next.core.ai);
+			qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},
 	});
 

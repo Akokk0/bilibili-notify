@@ -1,8 +1,6 @@
-import type { GlobalConfig } from "@bilibili-notify/internal";
 import { canProfileThink, resolveAIProfile } from "@bilibili-notify/internal/ai";
 import { Icon } from "@bilibili-notify/ui";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../services/api";
+import { useCoreSettings } from "../../hooks/useSettings";
 import { ComposerPill } from "./composer-pill";
 
 /**
@@ -18,10 +16,7 @@ import { ComposerPill } from "./composer-pill";
  * 主人只会觉得功能时有时无。
  */
 export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: boolean) => void }) {
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	if (!ai) return null;

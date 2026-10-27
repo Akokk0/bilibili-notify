@@ -69,7 +69,7 @@ function mockApi(sub: Subscription): void {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);
-		return Promise.resolve(globals);
+		return Promise.resolve({ core: globals });
 	});
 	vi.mocked(api.patch).mockResolvedValue(sub);
 }

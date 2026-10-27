@@ -133,7 +133,7 @@ describe("B 站设置坏着开机 e2e:哪格坏停哪样,经真路由存对当�
 		});
 
 	// 验红:剪 `pipeline.registerSource` 里 `settings.read`(接成恒成功的默认值)→ 开机那一幕红(问题表里没有那一条);
-	// 剪 `onChanged` → 存对之后引擎没起来,红;让全量图在坏格时不带 `bilibili` 键 → PATCH 被当成核心补丁回 200 而盘上没变,红。
+	// 剪 `onChanged` → 存对之后引擎没起来,红;让全量图在坏格时不带 `bilibili` 键 → PATCH 被当成没登记的键回 400,红。
 	it("动态那格写成数字:起得来、动态没起、问题表有一条;面板拿到默认值;经真路由存对 → 动态起来、那条没了、文件是新值", async () => {
 		const file = await bootWith(JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }));
 

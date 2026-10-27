@@ -12,6 +12,7 @@ import {
 	extensionSettingsKey,
 	extensionStatusKey,
 } from "./useExtensions";
+import { SETTINGS_KEY } from "./useSettings";
 import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
 
 /**
@@ -49,7 +50,7 @@ import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
  */
 export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	if (isWsEvent(env, "state", "hydrate")) {
-		qc.invalidateQueries({ queryKey: ["settings"] });
+		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
 		// 标签表同样可能在断线期间被别的标签页(或备份恢复)换掉,没有帧会重放。
@@ -107,13 +108,13 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: SUBSCRIPTION_TAGS_QUERY_KEY });
 	} else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
 	else if (scope === "integration-settings") {
-		qc.invalidateQueries({ queryKey: ["settings"] });
+		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		// 拓展的设置各在自己的文件里,改了发的是这一档(ADR-0021 决策 42 下 10-01 的 🔗)。备份恢复、卸载这类不经
 		// 设置口的写只发这一档;不跟着过期的话,这一页照旧画着旧名单,直到下一发拿着旧版本号撞 409。经设置口写的
 		// 那一发会多失效一次 —— 只有开着的那一页真去重读,换一个不漏。
 		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
 	} else if (scope === "globals") {
-		qc.invalidateQueries({ queryKey: ["settings"] });
+		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页
 		// 把拓展关了,只重读 globals 的话,这一页还把它画成「跑着」,状态那一口的 404 被当成「没交
 		// 视图」,卡上一片空白。

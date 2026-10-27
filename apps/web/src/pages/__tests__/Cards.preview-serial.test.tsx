@@ -76,7 +76,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
-		return Promise.resolve(GLOBALS);
+		return Promise.resolve({ core: GLOBALS });
 	});
 });
 

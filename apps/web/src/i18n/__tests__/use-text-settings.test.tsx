@@ -54,7 +54,7 @@ afterEach(() => {
 
 describe("useTextSettings", () => {
 	it("设置里写了 → store 跟着,浏览器记下语言与口吻,不 PATCH", async () => {
-		get.mockResolvedValue({ locale: "en", voice: "plain" } as never);
+		get.mockResolvedValue({ core: { locale: "en", voice: "plain" } } as never);
 		mount();
 		await waitFor(() => expect(i18n.state().locale).toBe("en"));
 		expect(i18n.state().voice).toBe("plain");
@@ -66,7 +66,7 @@ describe("useTextSettings", () => {
 	it("缺口吻 → 规则默认女仆", async () => {
 		// 日文今天没有女仆层,实际口吻看不出来;换到简中才能看到「要的是女仆」
 		i18n.set({ locale: "en", voice: "plain" });
-		get.mockResolvedValue({ locale: "zh-CN" } as never);
+		get.mockResolvedValue({ core: { locale: "zh-CN" } } as never);
 		mount();
 		await waitFor(() => expect(i18n.state().locale).toBe("zh-CN"));
 		expect(i18n.state().voice).toBe("maid");
@@ -74,14 +74,14 @@ describe("useTextSettings", () => {
 
 	it("缺语言 → 保持登录页在用的语言,把它 PATCH 进设置,只写一次", async () => {
 		i18n.set({ locale: "ja" });
-		get.mockResolvedValue({} as never);
+		get.mockResolvedValue({ core: {} } as never);
 		const client = mount();
 		await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-		expect(patch).toHaveBeenCalledWith("/api/settings", { locale: "ja" });
+		expect(patch).toHaveBeenCalledWith("/api/settings", { core: { locale: "ja" } });
 		expect(i18n.state().locale).toBe("ja");
 
 		// 设置又失效重读一次(模拟 WS config-changed;内容要变,否则 react-query 沿用旧引用、副作用不会再跑),仍缺也不再写
-		get.mockResolvedValue({ mutedUntil: 5 } as never);
+		get.mockResolvedValue({ core: { mutedUntil: 5 } } as never);
 		await act(() => client.invalidateQueries({ queryKey: ["settings"] }));
 		await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
 		expect(patch).toHaveBeenCalledTimes(1);
@@ -89,14 +89,14 @@ describe("useTextSettings", () => {
 
 	it("PATCH 失败 → 不写、不抛;重新挂载(下次登录)再试", async () => {
 		i18n.set({ locale: "en" });
-		get.mockResolvedValue({} as never);
+		get.mockResolvedValue({ core: {} } as never);
 		patch.mockRejectedValueOnce(new Error("offline"));
 		mount();
 		await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
 		cleanup();
 		mount();
 		await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
-		expect(patch).toHaveBeenLastCalledWith("/api/settings", { locale: "en" });
+		expect(patch).toHaveBeenLastCalledWith("/api/settings", { core: { locale: "en" } });
 	});
 
 	it("拿不到设置(请求失败)→ store 不动、不 PATCH", async () => {
@@ -111,10 +111,10 @@ describe("useTextSettings", () => {
 	});
 
 	it("设置失效重读后新值生效", async () => {
-		get.mockResolvedValue({ locale: "en", voice: "plain" } as never);
+		get.mockResolvedValue({ core: { locale: "en", voice: "plain" } } as never);
 		const client = mount();
 		await waitFor(() => expect(i18n.state().locale).toBe("en"));
-		get.mockResolvedValue({ locale: "zh-CN", voice: "maid" } as never);
+		get.mockResolvedValue({ core: { locale: "zh-CN", voice: "maid" } } as never);
 		await act(() => client.invalidateQueries({ queryKey: ["settings"] }));
 		await waitFor(() => expect(i18n.state().locale).toBe("zh-CN"));
 		expect(i18n.state().voice).toBe("maid");

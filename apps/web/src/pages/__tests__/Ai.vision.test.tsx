@@ -54,9 +54,9 @@ function globals() {
 function mount() {
 	const g = globals();
 	vi.mocked(api.get).mockImplementation(async (path: string) =>
-		path === "/api/targets" ? [] : JSON.parse(JSON.stringify(g)),
+		path === "/api/targets" ? [] : { core: JSON.parse(JSON.stringify(g)) },
 	);
-	vi.mocked(api.patch).mockImplementation(async () => JSON.parse(JSON.stringify(g)));
+	vi.mocked(api.patch).mockImplementation(async () => ({ core: JSON.parse(JSON.stringify(g)) }));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
@@ -147,18 +147,20 @@ describe("AI 页 · 图片理解", () => {
 		});
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+		const [, { core: body }] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
 			{
-				ai: {
-					providers: Record<
-						string,
-						{
-							apiKey?: string;
-							baseUrl?: string;
-							vision?: { baseUrl?: string; apiKey?: string };
-						}
-					>;
+				core: {
+					ai: {
+						providers: Record<
+							string,
+							{
+								apiKey?: string;
+								baseUrl?: string;
+								vision?: { baseUrl?: string; apiKey?: string };
+							}
+						>;
+					};
 				};
 			},
 		];

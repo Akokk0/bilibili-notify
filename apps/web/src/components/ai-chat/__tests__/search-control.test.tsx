@@ -31,7 +31,7 @@ function mount(
 	bochaKey: string | { masked: string },
 	props: { on: boolean; onToggle: (v: boolean) => void },
 ) {
-	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(bochaKey))));
+	vi.mocked(api.get).mockResolvedValue({ core: JSON.parse(JSON.stringify(globalsWith(bochaKey))) });
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>

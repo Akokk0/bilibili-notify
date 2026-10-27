@@ -318,9 +318,17 @@ export type AISettingsView<S = SecretCellView> = Omit<AISettings, "providers" | 
 	};
 };
 
-/** `GET /api/settings` 的核心那一份(各集成的设置另挂在自己的键下,与 PATCH 收的同一个形状)。 */
+/** `GET /api/settings` 的核心那一份(挂在 `core` 下,见 {@link SettingsResponse})。 */
 export type GlobalConfigView<S = SecretCellView> = Omit<GlobalConfig, "ai"> & {
 	ai: AISettingsView<S>;
+};
+
+/**
+ * `GET /api/settings`(以及 `PATCH` 的回话):核心那份在 `core` 下,各集成的设置挂在自己的键下(`bilibili`、
+ * 三个内置适配器……,形状由各集成定)。`PATCH` 收同一个形状的深层补丁,顶层只认 `core` 与登记过的集成键。
+ */
+export type SettingsResponse = { readonly core: GlobalConfigView } & {
+	readonly [integrationKey: string]: unknown;
 };
 
 /** `GET /api/ext/:id/settings`。 */

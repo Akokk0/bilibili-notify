@@ -28,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
+import { useCoreSettings } from "../hooks/useSettings";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { ApiError, api } from "../services/api";
 import {
@@ -41,7 +42,6 @@ import {
 	type SubscriptionTag,
 	subscriptionIdentityOf,
 } from "../types/domain";
-import type { GlobalConfig } from "../types/globals";
 import { copyToClipboard } from "../utils/clipboard";
 import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
@@ -699,10 +699,7 @@ export default function Subs() {
 	});
 	// 全局特性开关:订阅没覆盖的那几把继承它(卡片胶囊与配置弹层都按它算)。与规则页同一个 ["settings"] 缓存;
 	// 没读到时回落出厂值 —— 面板没有全局特性开关的界面,通常就是出厂值,唯独直播拆键把旧的周期推送迁成了全局开。
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	const globalFeatures = globalsQuery.data?.defaults?.features;
 	// 标签表(ADR-0034):筛选胶囊、卡片角标、挑标签的弹框都读它。没读到时是 `undefined` —— 此时没有标签胶囊可画,
 	// 弹框也不许新建(PUT 整张换,拿不到旧表就建会把表洗空)。

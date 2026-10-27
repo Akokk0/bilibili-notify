@@ -41,6 +41,7 @@ import { useSourceAuth } from "../hooks/use-source-auth";
 import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
+import { useCoreSettings } from "../hooks/useSettings";
 import { api } from "../services/api";
 import {
 	type DailyHistoryCountView,
@@ -66,7 +67,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "../types/domain";
-import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
+import type { ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import {
 	historyRowAvatarUrl,
@@ -907,10 +908,7 @@ export default function Dashboard() {
 		queryKey: HISTORY_DAILY_QUERY_KEY,
 		queryFn: () => api.get<HistoryDailyResponse>(historyDailyPath()),
 	});
-	const globalsQuery = useQuery({
-		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
-	});
+	const globalsQuery = useCoreSettings();
 	// 只在这一页订 `resources`:服务端据此决定还量不量浏览器子树(那一步要起子进程)。
 	const resources = useResourcesChannel();
 

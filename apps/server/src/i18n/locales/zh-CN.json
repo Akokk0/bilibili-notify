@@ -127,5 +127,7 @@
 	"session.credentials.badPassword": "新密码至少 8 位,最长 256 个字。",
 	"session.credentials.legacyEnv": "这台的面板账号写在环境变量 BN_DASHBOARD_USER / BN_DASHBOARD_PASS 里,每次开机都会盖掉配置文件 —— 去掉这两个环境变量(或改用 BN_CONFIG 指定配置文件)之后再在这里改。",
 	"session.credentials.noConfigFile": "没有配置文件可写:这台没设 BN_CONFIG,当前目录下也没有 bn.config.yaml。建一份配置文件(或设 BN_CONFIG)之后再在这里改。",
-	"session.credentials.desktop": "桌面版不用面板账号密码。"
+	"session.credentials.desktop": "桌面版不用面板账号密码。",
+	"settings.patch.unknownKeys": "设置的补丁顶层只认 core 与各集成的键,这一发里多了 {keys} —— 核心的设置要挂在 core 下。这个面板多半是更新之前的旧版,刷新一下再改。",
+	"settings.patch.coreNotObject": "core 要是一个对象(核心设置的补丁)。"
 }

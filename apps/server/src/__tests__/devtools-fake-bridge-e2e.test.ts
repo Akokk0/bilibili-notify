@@ -334,7 +334,7 @@ describe("devtools 的假桥 → 真桥", () => {
 		return fetch(`http://127.0.0.1:${port}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { bridge: { enabled } } }),
+			body: JSON.stringify({ core: { extensions: { bridge: { enabled } } } }),
 		});
 	}
 

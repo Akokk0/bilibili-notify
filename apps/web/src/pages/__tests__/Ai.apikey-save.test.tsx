@@ -74,9 +74,9 @@ afterEach(() => {
 /** 渲染并切到「模型配置」Tab。 */
 async function renderModelTab() {
 	vi.mocked(api.get).mockImplementation(async (path: string) =>
-		path === "/api/targets" ? [] : redactedGlobals(),
+		path === "/api/targets" ? [] : { core: redactedGlobals() },
 	);
-	vi.mocked(api.patch).mockImplementation(async () => redactedGlobals());
+	vi.mocked(api.patch).mockImplementation(async () => ({ core: redactedGlobals() }));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	render(
 		<QueryClientProvider client={qc}>
@@ -92,7 +92,9 @@ const apiKeyRow = () =>
 	document.querySelector('[data-code="ai.providers.deepseek.apiKey"]') as HTMLElement;
 
 type Body = { ai: { providers: Record<string, Record<string, unknown>> } };
-const lastPatchBody = () => vi.mocked(api.patch).mock.calls.at(-1)?.[1] as Body;
+/** 最后一发 PATCH 的核心那份(`/api/settings` 上挂在 `core` 下)。 */
+const lastPatchBody = () =>
+	(vi.mocked(api.patch).mock.calls.at(-1) as [string, { core: Body }])[1].core;
 const save = () =>
 	act(async () => {
 		useDraftStore.getState().current?.onSave();

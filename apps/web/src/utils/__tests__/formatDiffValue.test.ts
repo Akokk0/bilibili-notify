@@ -8,8 +8,8 @@ describe("formatDiffValue", () => {
 	});
 
 	it("boolean → 开启 / 关闭", () => {
-		expect(formatDiffValue("commands.enabled", true)).toEqual({ display: "开启" });
-		expect(formatDiffValue("commands.enabled", false)).toEqual({ display: "关闭" });
+		expect(formatDiffValue("core.commands.enabled", true)).toEqual({ display: "开启" });
+		expect(formatDiffValue("core.commands.enabled", false)).toEqual({ display: "关闭" });
 	});
 
 	it("number → 字符串", () => {
@@ -26,7 +26,7 @@ describe("formatDiffValue", () => {
 	});
 
 	it("空字符串 → 显示双引号(避免 UI 上看不到)", () => {
-		expect(formatDiffValue("master.targetId", "")).toEqual({ display: '""' });
+		expect(formatDiffValue("core.master.targetId", "")).toEqual({ display: '""' });
 	});
 
 	// 判据是 **code 名里带 color**,不是某一个具体字段 —— 卡片渐变色退役后(ADR-0014

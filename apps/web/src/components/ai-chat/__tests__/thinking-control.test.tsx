@@ -50,7 +50,9 @@ function mount(
 	props: { on: boolean; onToggle: (v: boolean) => void },
 	flavor: "chat" | "responses" = "chat",
 ) {
-	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(provider, flavor))));
+	vi.mocked(api.get).mockResolvedValue({
+		core: JSON.parse(JSON.stringify(globalsWith(provider, flavor))),
+	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>

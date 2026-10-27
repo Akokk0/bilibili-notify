@@ -178,7 +178,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		await ok(
 			await api("/api/settings", {
 				method: "PATCH",
-				...json({ extensions: { [FAKE]: { enabled: true } } }),
+				...json({ core: { extensions: { [FAKE]: { enabled: true } } } }),
 			}),
 		);
 		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;

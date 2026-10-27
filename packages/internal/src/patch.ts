@@ -28,10 +28,11 @@
  *
  * ```ts
  * // 只下发本页真正编辑的 scope(下发全量会触发服务端的 enable-check 探针)
- * await api.patch("/api/settings", buildPatch(
+ * // 核心那份的补丁挂在 `core` 下(`/api/settings` 的形状)
+ * await api.patch("/api/settings", { core: buildPatch(
  *   { defaults: { filters: draft.defaults.filters } },
  *   { defaults: { filters: base.defaults.filters } },
- * ));
+ * ) });
  * ```
  */
 

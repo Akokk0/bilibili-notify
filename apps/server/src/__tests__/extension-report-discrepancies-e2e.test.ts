@@ -154,7 +154,7 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: true } } }),
+			body: JSON.stringify({ core: { extensions: { [FIXTURE_ID]: { enabled: true } } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		expect((await probeRow())?.state).toBe("running");

@@ -38,7 +38,7 @@ function mountSidebar() {
 			vision: { baseUrl: "", apiKey: "", model: "" },
 		},
 	};
-	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(g)));
+	vi.mocked(api.get).mockResolvedValue({ core: JSON.parse(JSON.stringify(g)) });
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>

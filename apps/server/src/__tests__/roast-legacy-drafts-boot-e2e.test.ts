@@ -232,7 +232,7 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		await ok(
 			await api("/api/settings", {
 				method: "PATCH",
-				...json({ master: { targetId: MASTER_TARGET } }),
+				...json({ core: { master: { targetId: MASTER_TARGET } } }),
 			}),
 		);
 		const targets = (await (await api("/api/targets")).json()) as Array<{

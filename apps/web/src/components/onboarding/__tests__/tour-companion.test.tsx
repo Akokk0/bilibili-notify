@@ -62,7 +62,7 @@ async function mount(s: Scenario) {
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
 		if (path === "/api/settings") {
 			if (s.globalsError) throw new Error("globals 挂了");
-			return { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } };
+			return { core: { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } } };
 		}
 		return null;
 	});
@@ -142,13 +142,17 @@ describe("TourCompanion 常驻小卡", () => {
 		it("选「我是新用户」→ 记下 false,询问框关,导览展开", async () => {
 			const s: Scenario = { route: "/system", skipped: null };
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				s.skipped = (
+					body as { core: { onboarding: { skipped: boolean } } }
+				).core.onboarding.skipped;
 				return {};
 			});
 			await mount(s);
 			fireEvent.click(await screen.findByRole("button", { name: /我是新用户/ }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: false } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
+					core: { onboarding: { skipped: false } },
+				}),
 			);
 			await screen.findByText("扫码登录 B 站");
 			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
@@ -157,13 +161,17 @@ describe("TourCompanion 常驻小卡", () => {
 		it("选「我是老用户」→ 记下 true,提示系统页可重开,确认后什么都不渲染", async () => {
 			const s: Scenario = { route: "/system", skipped: null };
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				s.skipped = (
+					body as { core: { onboarding: { skipped: boolean } } }
+				).core.onboarding.skipped;
 				return {};
 			});
 			await mount(s);
 			fireEvent.click(await screen.findByRole("button", { name: /我是老用户/ }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
+					core: { onboarding: { skipped: true } },
+				}),
 			);
 			// 教育提示:以后去系统页重开
 			expect(await screen.findByText(/系统/)).toBeTruthy();
@@ -223,14 +231,18 @@ describe("TourCompanion 常驻小卡", () => {
 		it("点「跳过指引」→ 记下 true,导览整个消失", async () => {
 			const s: Scenario = { route: "/system" };
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				s.skipped = (
+					body as { core: { onboarding: { skipped: boolean } } }
+				).core.onboarding.skipped;
 				return {};
 			});
 			await mount(s);
 			await screen.findByText("扫码登录 B 站");
 			fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
+					core: { onboarding: { skipped: true } },
+				}),
 			);
 			await waitFor(() =>
 				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
@@ -250,7 +262,9 @@ describe("TourCompanion 常驻小卡", () => {
 				route: "/system",
 			};
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				s.skipped = (
+					body as { core: { onboarding: { skipped: boolean } } }
+				).core.onboarding.skipped;
 				return {};
 			});
 			await mount(s);
@@ -260,7 +274,9 @@ describe("TourCompanion 常驻小卡", () => {
 				logIn();
 			});
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
+					core: { onboarding: { skipped: true } },
+				}),
 			);
 			// 标记已写、数据已回流,🎉 卡还得站着 —— 别把毕业庆祝掐没
 			expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
@@ -289,7 +305,9 @@ describe("TourCompanion 常驻小卡", () => {
 				route: "/system",
 			};
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-				s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+				s.skipped = (
+					body as { core: { onboarding: { skipped: boolean } } }
+				).core.onboarding.skipped;
 				return {};
 			});
 			const { qc } = await mount(s);
@@ -1010,7 +1028,7 @@ describe("TourCompanion 常驻小卡", () => {
 			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 		};
 		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
-			s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;
+			s.skipped = (body as { core: { onboarding: { skipped: boolean } } }).core.onboarding.skipped;
 			return {};
 		});
 		await mount(s);
@@ -1020,7 +1038,9 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(tail.getAttribute("href")).toBe("/about/guide/render");
 		// 毕业自动关导览(三态语义:true = 整个不渲染),🎉 卡靠活口站到收起为止
 		await waitFor(() =>
-			expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
+			expect(apiPatch).toHaveBeenCalledWith("/api/settings", {
+				core: { onboarding: { skipped: true } },
+			}),
 		);
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		await waitFor(() => expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull());
