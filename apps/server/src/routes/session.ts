@@ -1,11 +1,20 @@
-import { fail, ok } from "@bilibili-notify/internal";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { isSecureRequest } from "../auth/dashboard-auth.js";
 import type { IpRateLimiter } from "../auth/ip-rate-limit.js";
 import { isOriginAllowed, normalizeAllowedOrigins } from "../auth/origin.js";
-import { safeEqual } from "../auth/safe-equal.js";
 import type { SessionCodec, SessionCreds } from "../auth/session.js";
+import { t } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
+
+/** 新密码至少几位(面板改账号密码)。 */
+export const PASSWORD_MIN_CHARS = 8;
+/** 账号与密码最长几个字符。 */
+export const CREDENTIAL_MAX_CHARS = 256;
+
+/** 登录与改账号密码共用的两句。 */
+const RATE_LIMITED = "登录失败次数过多，请稍后再试。";
+const NOT_JSON = "请求体要是 JSON";
 
 /**
  * `/api/session/*` — dashboard session control plane. Mounted **outside** the
@@ -30,10 +39,13 @@ import { respondFailure } from "./respond-failure.js";
  * switched off `unsupported`, a foreign Origin `invalid` (an explicit 403).
  */
 export interface SessionRouteDeps {
-	/** Configured dashboard credentials, or undefined when auth is disabled. */
-	creds: SessionCreds | undefined;
-	/** Session codec — undefined exactly when `creds` is undefined. */
+	/** Session codec(连着此刻配的面板凭据)—— 面板没开登录时是 undefined。 */
 	codec: SessionCodec | undefined;
+	/**
+	 * 面板改账号密码的写口:把新凭据写回配置文件,写不了回失败(旧式部署的环境变量、没有配置文件……)。
+	 * 不给 = 这个部署改不了(`PUT /credentials` 回 `unsupported`)。
+	 */
+	changeCredentials?: (creds: SessionCreds) => Promise<Result>;
 	/** Shared IP limiter guarding the login endpoint. */
 	rateLimiter: IpRateLimiter;
 	/**
@@ -53,7 +65,7 @@ interface LoginBody {
 
 export function createSessionRoute(deps: SessionRouteDeps): Hono {
 	const app = new Hono();
-	const authRequired = !!deps.creds && !!deps.codec;
+	const authRequired = !!deps.codec;
 	const allowedOrigins = normalizeAllowedOrigins(deps.allowedOrigins);
 
 	/** 403 unless the request's Origin clears the (optional) allow-list. */
@@ -75,7 +87,7 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 		const denied = originRejected(c);
 		if (denied) return denied;
 
-		if (!authRequired || !deps.creds || !deps.codec) {
+		if (!deps.codec) {
 			return respondFailure(c, fail("unsupported", "面板没有开登录，用不着登录"));
 		}
 
@@ -83,24 +95,20 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 		const blockedMs = deps.rateLimiter.blocked(ip);
 		if (blockedMs !== null) {
 			c.header("Retry-After", String(Math.ceil(blockedMs / 1000)));
-			return respondFailure(c, fail("rate_limited", "登录失败次数过多，请稍后再试。"));
+			return respondFailure(c, fail("rate_limited", RATE_LIMITED));
 		}
 
 		let body: LoginBody;
 		try {
 			body = (await c.req.json()) as LoginBody;
 		} catch {
-			return respondFailure(c, fail("invalid", "请求体要是 JSON"));
+			return respondFailure(c, fail("invalid", NOT_JSON));
 		}
 		const username = typeof body?.username === "string" ? body.username : "";
 		const password = typeof body?.password === "string" ? body.password : "";
 
-		// Evaluate BOTH sides before combining — `&&` would short-circuit and
-		// skip the password compare on a wrong username, leaking a
-		// username-enumeration timing signal.
-		const userOk = safeEqual(username, deps.creds.username);
-		const passOk = safeEqual(password, deps.creds.password);
-		if (!(userOk && passOk)) {
+		// 账号密码一起按指纹比(常量时间):不会因为账号错了就跳过比密码、漏出「账号对不对」的时差。
+		if (!deps.codec.matches(username, password)) {
 			deps.rateLimiter.fail(ip);
 			return respondFailure(c, fail("unauthorized", "账号或密码错误"), 401);
 		}
@@ -110,6 +118,58 @@ export function createSessionRoute(deps: SessionRouteDeps): Hono {
 			"Set-Cookie",
 			deps.codec.buildSetCookie(deps.codec.sign(), { secure: isSecureRequest(c) }),
 		);
+		return c.json(ok());
+	});
+
+	/**
+	 * 面板改账号密码:要登录着、再报一遍当前密码(会话被人借走也改不了);新凭据经写口写回配置文件,
+	 * 写成了才换 —— 换了以后此前的会话(连这一个)全部失效,回话清掉 cookie,面板回登录框。
+	 */
+	app.put("/credentials", async (c) => {
+		const denied = originRejected(c);
+		if (denied) return denied;
+		const codec = deps.codec;
+		if (!codec || !deps.changeCredentials) {
+			return respondFailure(c, fail("unsupported", t("session.credentials.unsupported")));
+		}
+		if (!codec.verify(codec.readCookie(c.req.header("cookie")))) {
+			return respondFailure(c, fail("unauthorized", t("session.credentials.loginFirst")), 401);
+		}
+
+		const ip = deps.rateLimiter.ip(c);
+		const blockedMs = deps.rateLimiter.blocked(ip);
+		if (blockedMs !== null) {
+			c.header("Retry-After", String(Math.ceil(blockedMs / 1000)));
+			return respondFailure(c, fail("rate_limited", RATE_LIMITED));
+		}
+
+		let body: Record<string, unknown>;
+		try {
+			body = (await c.req.json()) as Record<string, unknown>;
+		} catch {
+			return respondFailure(c, fail("invalid", NOT_JSON));
+		}
+		const current = typeof body?.currentPassword === "string" ? body.currentPassword : "";
+		if (!codec.matches(codec.username(), current)) {
+			deps.rateLimiter.fail(ip);
+			return respondFailure(c, fail("unauthorized", t("session.credentials.wrongPassword")), 401);
+		}
+		deps.rateLimiter.succeed(ip);
+
+		const username = typeof body.username === "string" ? body.username.trim() : "";
+		const password = typeof body.password === "string" ? body.password : "";
+		if (username === "" || username.length > CREDENTIAL_MAX_CHARS) {
+			return respondFailure(c, fail("invalid", t("session.credentials.badUsername")));
+		}
+		if (password.length < PASSWORD_MIN_CHARS || password.length > CREDENTIAL_MAX_CHARS) {
+			return respondFailure(c, fail("invalid", t("session.credentials.badPassword")));
+		}
+
+		const next = { username, password };
+		const written = await deps.changeCredentials(next);
+		if (!written.ok) return respondFailure(c, written);
+		codec.rotate(next);
+		c.header("Set-Cookie", codec.buildClearCookie({ secure: isSecureRequest(c) }));
 		return c.json(ok());
 	});
 

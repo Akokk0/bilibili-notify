@@ -28,8 +28,16 @@ import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
 import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "./compose.js";
-import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
-import { type ChromeSource, persistChromeSource } from "./config/persist.js";
+import {
+	loadBootstrapConfig,
+	resolveConfigPath,
+	resolveCredentialsTarget,
+} from "./config/loader.js";
+import {
+	type ChromeSource,
+	persistChromeSource,
+	persistDashboardCredentials,
+} from "./config/persist.js";
 import { payloadDirOf, type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
 import { manifestSubscriptionView } from "./extensions/context.js";
@@ -433,11 +441,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 开机先 listen,再读数据(ADR-0022 决策 2 与它下面的 🔗):数据与推送链路起来之前由开机那一段的
 		// app 应答 —— 健康检查照答,别的接口 503 `unavailable`,鉴权闸与完整的 app 是同一套。桌面壳 30 秒
 		// 等的就是健康检查;启动入口本身仍等全部起来才返回,数据段抛错时 boot.mjs 还能当场退回预装的那一版。
+		// 面板改账号密码(第 4 期):写到哪每次现问(话按此刻的语言取),写回配置文件后由会话路由换签名器。
+		const changeCredentials = sessionCodec
+			? async (creds: { username: string; password: string }) => {
+					const target = resolveCredentialsTarget({ env });
+					if (!target.ok) return target;
+					await persistDashboardCredentials(target.path, creds);
+					log.info(`[auth] 面板账号已改,写回 ${target.path};此前的登录全部失效`);
+					return ok();
+				}
+			: undefined;
 		const appShell = {
 			staticDir: effectiveWebDistDir,
 			desktopToken,
 			basicAuthCredentials,
 			sessionCodec,
+			...(changeCredentials ? { changeCredentials } : {}),
 			allowedOrigins,
 		};
 		let startupMessage =

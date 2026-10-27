@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import type { CardSkinFallback, RestartAbility } from "@bilibili-notify/contract";
-import { type CardKind, fail, type Logger } from "@bilibili-notify/internal";
+import { type CardKind, fail, type Logger, type Result } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { ZodType } from "zod";
@@ -166,6 +166,11 @@ export interface CreateAppOptions {
 	 * from the runtime key provider (HKDF) + the same credentials.
 	 */
 	sessionCodec?: SessionCodec;
+	/**
+	 * 面板改账号密码的写口(`PUT /api/session/credentials`):把新凭据写回配置文件,写不了回失败。
+	 * 不给 = 这个部署改不了(桌面版、没开登录的)。
+	 */
+	changeCredentials?: (creds: BasicAuthCredentials) => Promise<Result>;
 	/**
 	 * Optional puppeteer-core adapter for /api/cards/preview. When null (no
 	 * BN_CHROME_PATH configured) the cards route still mounts but reports 503
@@ -498,7 +503,12 @@ export function createStartupApp(
 /** 开机两段共用的那几样:鉴权闸、面板静态资源。 */
 export type AppShellOptions = Pick<
 	CreateAppOptions,
-	"staticDir" | "desktopToken" | "basicAuthCredentials" | "sessionCodec" | "allowedOrigins"
+	| "staticDir"
+	| "desktopToken"
+	| "basicAuthCredentials"
+	| "sessionCodec"
+	| "changeCredentials"
+	| "allowedOrigins"
 >;
 
 /**
@@ -571,8 +581,8 @@ function createAppShell(
 	app.route(
 		"/api/session",
 		createSessionRoute({
-			creds: options.basicAuthCredentials,
 			codec: options.sessionCodec,
+			...(options.changeCredentials ? { changeCredentials: options.changeCredentials } : {}),
 			rateLimiter: loginRateLimiter,
 			allowedOrigins: options.allowedOrigins,
 		}),

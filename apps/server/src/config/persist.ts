@@ -28,3 +28,18 @@ export async function persistChromeSource(configPath: string, source: ChromeSour
 	else doc.delete("chromeEndpoint");
 	await atomicWriteFile(configPath, doc.toString(), { mode: 0o600 });
 }
+
+/**
+ * 面板改账号密码时把新凭据写回 bootstrap yaml 的 `auth.basicAuth`(第 4 期)。与 {@link persistChromeSource}
+ * 同一套写法:Document API 保留注释与字段顺序,原子写,mode 0o600。写到哪由调用方定
+ * (`resolveCredentialsTarget`:旧式部署的环境变量、没有配置文件时不写)。
+ */
+export async function persistDashboardCredentials(
+	configPath: string,
+	creds: { username: string; password: string },
+): Promise<void> {
+	const doc = parseDocument(await readFile(configPath, "utf8"));
+	doc.setIn(["auth", "basicAuth", "username"], creds.username);
+	doc.setIn(["auth", "basicAuth", "password"], creds.password);
+	await atomicWriteFile(configPath, doc.toString(), { mode: 0o600 });
+}

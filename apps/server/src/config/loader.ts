@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { atomicWriteFileSync, atomicWriteJsonSync } from "@bilibili-notify/storage";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { shouldRefuseBareAuth } from "../auth/bare-auth-policy.js";
+import { t } from "../i18n/index.js";
 import { stderrLineRedacted } from "../logs/console-fallback.js";
 import { type BootstrapConfig, BootstrapConfigSchema } from "./schema.js";
 import { dropLegacyWebDistDir } from "./web-dist.js";
@@ -99,6 +101,29 @@ export function resolveConfigPath(
 		if (inspectPath(abs) === "file") return abs;
 	}
 	return null;
+}
+
+/**
+ * 面板改账号密码写到哪(第 4 期,construction-plan「面板改账号密码」那条):
+ *
+ *   - 设了 `BN_CONFIG`(Docker 主路径)→ 那份文件:环境变量只在首次开机种一次,之后以文件为准,改了就生效。
+ *   - 没设 `BN_CONFIG` 的旧式部署每次开机按「文件 < 环境变量 < 命令行」合并:环境变量里设了
+ *     `BN_DASHBOARD_USER` / `BN_DASHBOARD_PASS` 就会盖掉文件里的,拒绝并说明;扫不到配置文件也拒绝。
+ *   - 桌面版(`BN_CONFIG_DISABLED`)用 token,不归这里管。
+ *
+ * 话按此刻的语言取,调用方在请求里现问。
+ */
+export function resolveCredentialsTarget(
+	opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {},
+): Result<{ path: string }> {
+	const env = opts.env ?? process.env;
+	if (env.BN_CONFIG_DISABLED === "1") return fail("unsupported", t("session.credentials.desktop"));
+	if (!env.BN_CONFIG && (env.BN_DASHBOARD_USER || env.BN_DASHBOARD_PASS)) {
+		return fail("not_configured", t("session.credentials.legacyEnv"));
+	}
+	const path = resolveConfigPath(opts);
+	if (path === null) return fail("not_configured", t("session.credentials.noConfigFile"));
+	return ok({ path });
 }
 
 // ---------------------------------------------------------------------------

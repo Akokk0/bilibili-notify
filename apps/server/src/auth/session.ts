@@ -57,6 +57,15 @@ export interface SessionCodec {
 	buildClearCookie(opts: { secure: boolean }): string;
 	/** Extract the `bn_session` value out of a raw `Cookie` request header. */
 	readCookie(cookieHeader: string | undefined | null): string | undefined;
+	/** 此刻配着的面板账号(不是机密;改账号密码时拿它核当前密码)。 */
+	username(): string;
+	/** 账号密码对不对:按凭据指纹比,常量时间,明文不留在这里。 */
+	matches(username: string, password: string): boolean;
+	/**
+	 * 换成新凭据(面板改账号密码):指纹折进 HKDF 的 salt,所以换了以后此前签出的会话一律验不过 ——
+	 * 「改了密码各处都要重新登录」,不记任何状态。
+	 */
+	rotate(creds: SessionCreds): void;
 }
 
 export interface CreateSessionCodecOptions {
@@ -78,12 +87,15 @@ export function createSessionCodec(opts: CreateSessionCodecOptions): SessionCode
 	// NUL separator (not ":") so the fingerprint is unambiguous — `a:b`/`c`
 	// and `a`/`b:c` must derive different keys. A NUL byte can't appear in a
 	// realistic username/password.
-	const credFp = createHash("sha256")
-		.update(opts.creds.username, "utf8")
-		.update(Buffer.from([0]))
-		.update(opts.creds.password, "utf8")
-		.digest();
-	const key = Buffer.from(hkdfSync("sha256", opts.keyMaterial, credFp, HKDF_INFO, 32));
+	const fingerprintOf = (creds: SessionCreds): Buffer =>
+		createHash("sha256")
+			.update(creds.username, "utf8")
+			.update(Buffer.from([0]))
+			.update(creds.password, "utf8")
+			.digest();
+	let username = opts.creds.username;
+	let credFp = fingerprintOf(opts.creds);
+	let key = Buffer.from(hkdfSync("sha256", opts.keyMaterial, credFp, HKDF_INFO, 32));
 
 	function mac(payloadB64: string): string {
 		return createHmac("sha256", key).update(payloadB64).digest("base64url");
@@ -150,6 +162,15 @@ export function createSessionCodec(opts: CreateSessionCodecOptions): SessionCode
 		},
 		readCookie(cookieHeader) {
 			return readCookie(cookieHeader, COOKIE_NAME);
+		},
+		username: () => username,
+		matches(user, password) {
+			return timingSafeEqual(fingerprintOf({ username: user, password }), credFp);
+		},
+		rotate(creds) {
+			username = creds.username;
+			credFp = fingerprintOf(creds);
+			key = Buffer.from(hkdfSync("sha256", opts.keyMaterial, credFp, HKDF_INFO, 32));
 		},
 	};
 }

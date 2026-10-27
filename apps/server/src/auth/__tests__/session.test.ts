@@ -94,3 +94,24 @@ describe("session codec", () => {
 		expect(clear).not.toContain("Secure");
 	});
 });
+
+describe("session codec — 比对与换凭据(面板改账号密码,第 4 期)", () => {
+	it("matches:账号密码都对才 true(按凭据指纹比,常量时间)", () => {
+		const c = codec();
+		expect(c.matches("admin", "s3cret")).toBe(true);
+		expect(c.matches("admin", "nope")).toBe(false);
+		expect(c.matches("root", "s3cret")).toBe(false);
+		expect(c.username()).toBe("admin");
+	});
+
+	it("rotate:换了以后旧会话一律失效、新签的照验;比对改认新的", () => {
+		const c = codec();
+		const before = c.sign();
+		c.rotate({ username: "owner", password: "n3w-secret" });
+		expect(c.verify(before)).toBe(false);
+		expect(c.verify(c.sign())).toBe(true);
+		expect(c.matches("owner", "n3w-secret")).toBe(true);
+		expect(c.matches("admin", "s3cret")).toBe(false);
+		expect(c.username()).toBe("owner");
+	});
+});

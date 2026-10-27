@@ -119,5 +119,13 @@
 	"searchCreators.timeout": "{label}的搜人超过 {seconds} 秒没回",
 	"searchCreators.failed": "{label}的搜人出错了，详情在日志里",
 	"restart.cannot.sourceRun": "开发版是 tsx 直跑的:进程退了 tsx watch 只会停在那儿等文件变,没人把它拉起来 —— 随便改一行代码存一下,那本来就是一次重启。",
-	"restart.cannot.unsupervised": "这个进程退了没人拉(既没跑在桌面外壳里,也不在容器里)—— 自己在终端里停掉再起一次。"
+	"restart.cannot.unsupervised": "这个进程退了没人拉(既没跑在桌面外壳里,也不在容器里)—— 自己在终端里停掉再起一次。",
+	"session.credentials.unsupported": "这个部署改不了面板账号密码(没开登录,或账号不归配置文件管)。",
+	"session.credentials.loginFirst": "先登录,再改账号密码。",
+	"session.credentials.wrongPassword": "当前密码不对。",
+	"session.credentials.badUsername": "账号不能是空的,也不能超过 256 个字。",
+	"session.credentials.badPassword": "新密码至少 8 位,最长 256 个字。",
+	"session.credentials.legacyEnv": "这台的面板账号写在环境变量 BN_DASHBOARD_USER / BN_DASHBOARD_PASS 里,每次开机都会盖掉配置文件 —— 去掉这两个环境变量(或改用 BN_CONFIG 指定配置文件)之后再在这里改。",
+	"session.credentials.noConfigFile": "没有配置文件可写:这台没设 BN_CONFIG,当前目录下也没有 bn.config.yaml。建一份配置文件(或设 BN_CONFIG)之后再在这里改。",
+	"session.credentials.desktop": "桌面版不用面板账号密码。"
 }

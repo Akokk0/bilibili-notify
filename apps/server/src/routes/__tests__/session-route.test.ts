@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
+import { fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createDashboardAuth } from "../../auth/dashboard-auth.js";
 import { createIpRateLimiter } from "../../auth/ip-rate-limit.js";
 import { createSessionCodec, type SessionCreds } from "../../auth/session.js";
@@ -13,16 +14,17 @@ function makeApp(opts: {
 	auth: boolean;
 	maxFailures?: number;
 	allowedOrigins?: readonly string[];
+	changeCredentials?: (creds: SessionCreds) => Promise<Result>;
 }) {
 	const codec = opts.auth ? createSessionCodec({ keyMaterial: KEY, creds: CREDS }) : undefined;
 	const app = new Hono();
 	app.route(
 		"/api/session",
 		createSessionRoute({
-			creds: opts.auth ? CREDS : undefined,
 			codec,
 			rateLimiter: createIpRateLimiter({ maxFailures: opts.maxFailures ?? 5 }),
 			allowedOrigins: opts.allowedOrigins,
+			...(opts.changeCredentials ? { changeCredentials: opts.changeCredentials } : {}),
 		}),
 	);
 	if (codec) app.use("/api/*", createDashboardAuth(codec));
@@ -332,5 +334,102 @@ describe("dashboard-auth gate", () => {
 		const app = makeApp({ auth: false });
 		const res = await app.request("/api/probe");
 		expect(res.status).toBe(200);
+	});
+});
+
+describe("session route — PUT /api/session/credentials(面板改账号密码)", () => {
+	const NEW = { username: "owner", password: "n3w-secret" };
+
+	async function login(app: Hono, creds: SessionCreds = CREDS): Promise<string> {
+		const res = await app.request("/api/session/login", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(creds),
+		});
+		expect(res.status).toBe(200);
+		return cookieFrom(res);
+	}
+
+	function change(app: Hono, cookie: string | undefined, body: unknown) {
+		return app.request("/api/session/credentials", {
+			method: "PUT",
+			headers: { "content-type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("登录着、当前密码对 → 写回、清 cookie;旧会话当场失效,新账号登得进", async () => {
+		const written: SessionCreds[] = [];
+		const app = makeApp({
+			auth: true,
+			changeCredentials: async (creds) => {
+				written.push(creds);
+				return ok();
+			},
+		});
+		const cookie = await login(app);
+
+		const res = await change(app, cookie, { currentPassword: "s3cret", ...NEW });
+		expect(res.status, await res.clone().text()).toBe(200);
+		expect(written).toEqual([NEW]);
+		expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+
+		expect((await app.request("/api/probe", { headers: { Cookie: cookie } })).status).toBe(401);
+		const fresh = await login(app, NEW);
+		expect((await app.request("/api/probe", { headers: { Cookie: fresh } })).status).toBe(200);
+	});
+
+	it("没登录 → 401,不写", async () => {
+		const write = vi.fn(async () => ok());
+		const app = makeApp({ auth: true, changeCredentials: write });
+		const res = await change(app, undefined, { currentPassword: "s3cret", ...NEW });
+		expect(res.status).toBe(401);
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	it("当前密码不对 → 401,不写,原来的会话照用", async () => {
+		const write = vi.fn(async () => ok());
+		const app = makeApp({ auth: true, changeCredentials: write });
+		const cookie = await login(app);
+		const res = await change(app, cookie, { currentPassword: "nope", ...NEW });
+		expect(res.status).toBe(401);
+		expect(write).not.toHaveBeenCalled();
+		expect((await app.request("/api/probe", { headers: { Cookie: cookie } })).status).toBe(200);
+	});
+
+	it.each([
+		["账号是空的", { username: "  ", password: "n3w-secret" }],
+		["密码不到 8 位", { username: "owner", password: "short" }],
+	])("%s → 400 invalid,不写", async (_label, next) => {
+		const write = vi.fn(async () => ok());
+		const app = makeApp({ auth: true, changeCredentials: write });
+		const cookie = await login(app);
+		const res = await change(app, cookie, { currentPassword: "s3cret", ...next });
+		expect(res.status).toBe(400);
+		expect((await failureOf(res)).code).toBe("invalid");
+		expect(write).not.toHaveBeenCalled();
+	});
+
+	it("写不了(旧式部署的环境变量、没有配置文件)→ 原样回那条失败,凭据不换", async () => {
+		const app = makeApp({
+			auth: true,
+			changeCredentials: async () => fail("not_configured", "环境变量每次开机都会盖掉"),
+		});
+		const cookie = await login(app);
+		const res = await change(app, cookie, { currentPassword: "s3cret", ...NEW });
+		expect(await failureOf(res)).toEqual({
+			code: "not_configured",
+			message: "环境变量每次开机都会盖掉",
+		});
+		expect((await app.request("/api/probe", { headers: { Cookie: cookie } })).status).toBe(200);
+	});
+
+	it("面板没开登录、或这个部署没接写口 → unsupported", async () => {
+		const noAuth = makeApp({ auth: false });
+		expect((await failureOf(await change(noAuth, undefined, {}))).code).toBe("unsupported");
+		const noWriter = makeApp({ auth: true });
+		const cookie = await login(noWriter);
+		const res = await change(noWriter, cookie, { currentPassword: "s3cret", ...NEW });
+		expect((await failureOf(res)).code).toBe("unsupported");
 	});
 });

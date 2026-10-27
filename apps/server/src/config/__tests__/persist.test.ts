@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parse as parseYaml } from "yaml";
-import { resolveConfigPath } from "../loader";
-import { persistChromeSource } from "../persist";
+import { resolveConfigPath, resolveCredentialsTarget } from "../loader";
+import { persistChromeSource, persistDashboardCredentials } from "../persist";
 
 describe("persistChromeSource", () => {
 	let dir: string;
@@ -107,5 +107,88 @@ describe("resolveConfigPath", () => {
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("persistDashboardCredentials", () => {
+	let dir: string;
+	let cfg: string;
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), "bn-persist-creds-"));
+		cfg = join(dir, "bn.config.yaml");
+	});
+	afterEach(async () => {
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("写进 auth.basicAuth,别的格与注释都留着;文件 0600", async () => {
+		await writeFile(
+			cfg,
+			"# 面板登录\nauth:\n  basicAuth:\n    username: admin # 首启动种的\n    password: old\ndataDir: ./data\n",
+			"utf8",
+		);
+		await persistDashboardCredentials(cfg, { username: "owner", password: "n3w-secret" });
+		const text = await readFile(cfg, "utf8");
+		const parsed = parseYaml(text);
+		expect(parsed.auth.basicAuth).toEqual({ username: "owner", password: "n3w-secret" });
+		expect(parsed.dataDir).toBe("./data");
+		expect(text).toContain("# 面板登录");
+		expect((await stat(cfg)).mode & 0o777).toBe(0o600);
+	});
+
+	it("文件里还没有 auth 那一节 → 补上", async () => {
+		await writeFile(cfg, "dataDir: ./data\n", "utf8");
+		await persistDashboardCredentials(cfg, { username: "owner", password: "n3w-secret" });
+		expect(parseYaml(await readFile(cfg, "utf8")).auth.basicAuth).toEqual({
+			username: "owner",
+			password: "n3w-secret",
+		});
+	});
+});
+
+describe("resolveCredentialsTarget(面板改账号密码写到哪)", () => {
+	let dir: string;
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), "bn-creds-target-"));
+	});
+	afterEach(async () => {
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("设了 BN_CONFIG → 写那份文件(环境变量只在首次开机种一次,之后以文件为准)", () => {
+		const target = resolveCredentialsTarget({
+			env: { BN_CONFIG: "/config/bn.config.yaml", BN_DASHBOARD_USER: "a", BN_DASHBOARD_PASS: "b" },
+			cwd: "/app",
+		});
+		expect(target).toEqual({ ok: true, path: "/config/bn.config.yaml" });
+	});
+
+	it("旧式部署(没设 BN_CONFIG)有配置文件、环境变量没设凭据 → 写那份文件", async () => {
+		const cfg = join(dir, "bn.config.yaml");
+		await writeFile(cfg, "dataDir: ./data\n", "utf8");
+		expect(resolveCredentialsTarget({ env: {}, cwd: dir })).toEqual({ ok: true, path: cfg });
+	});
+
+	it("旧式部署在环境变量里设了凭据 → 拒绝:每次开机环境变量都会盖掉文件里的", async () => {
+		await writeFile(join(dir, "bn.config.yaml"), "dataDir: ./data\n", "utf8");
+		for (const env of [{ BN_DASHBOARD_USER: "a" }, { BN_DASHBOARD_PASS: "b" }]) {
+			const target = resolveCredentialsTarget({ env, cwd: dir });
+			expect(target).toMatchObject({ ok: false, code: "not_configured" });
+			expect(!target.ok && target.message).toContain("BN_DASHBOARD_USER");
+		}
+	});
+
+	it("旧式部署根本没有配置文件 → 拒绝并说明", () => {
+		const target = resolveCredentialsTarget({ env: {}, cwd: dir });
+		expect(target).toMatchObject({ ok: false, code: "not_configured" });
+	});
+
+	it("桌面版(BN_CONFIG_DISABLED)→ 不归这里管", () => {
+		expect(
+			resolveCredentialsTarget({ env: { BN_CONFIG_DISABLED: "1" }, cwd: "/app" }),
+		).toMatchObject({
+			ok: false,
+			code: "unsupported",
+		});
 	});
 });
