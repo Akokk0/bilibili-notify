@@ -3,14 +3,12 @@ import {
 	createSerialQueue,
 	type Disposable,
 	type Logger,
-	type MessageBus,
+	type Subscription,
 } from "@bilibili-notify/internal";
-import type { ImageWriter } from "../images/image-store.js";
 import { statsFileKey } from "../stats/file-key.js";
 import { followersSampleGapMs } from "../stats/followers-sample-gap.js";
 import type { StatsRecorderCore } from "../stats/recorder.js";
-import { createProfileCacheWriter, type ProfileCacheUpdate } from "./profile-cache.js";
-import type { SubscriptionStateStore } from "./subscription-state-store.js";
+import type { ProfileCacheUpdate, ProfileCacheWriter } from "./profile-cache.js";
 
 export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
 
@@ -21,24 +19,27 @@ export { PROFILES_CHANGED_COALESCE_MS } from "./profile-cache.js";
  * - **给了哪格改哪格**:名字 / 资料格没给的保持原样;头像已经是图库引用,来源先存好图再交,这里不收字节。
  *   `refreshedAt` 每次都换 —— 它说的是「资料什么时候报过」。
  * - 停用的订阅不收(ctx 那头已经挡掉)。
- * - 订阅刚删、拓展还没收到通知时报上来的:不再替它种资料、存头像 —— 删订阅那一刻资料缓存已经丢了它,
- *   这时写下去的就是孤儿(头像由图库清扫收走,资料缓存里的条目要等下次开机才扫得掉)。
+ * - 订阅刚删、拓展还没收到通知时报上来的:不再替它种资料、存头像 —— 删订阅那一刻资料缓存已经丢了它;
+ *   writer 提交前现查订阅还在不在(与 `patch` 在同一个同步段),删了的不写,不会留下孤儿条目。
  * - 面板看得见的那几格真变了,才发 `subscription-profiles-changed`(按窗口合并),面板据此重取订阅列表。
  *
- * 处理**排成一条队**:两条资料交错着读改写同一条订阅,后落地的那条会把先落地那条改的格冲回去。
+ * 处理**排成一条队**:两次上报交错着读改写同一条订阅,后落地的那条会把先落地那条改的格冲回去。
+ * 写资料缓存本身走全进程唯一的那个 writer(`AppRuntime.profileCache`),它按订阅 id 串行、并在提交前
+ * 现查订阅还在不在 —— 这里不再自建一个。
+ *
+ * 粉丝样本的规矩:**核订阅在不在与排进记录器的队放在同一个同步段**。删订阅排的 `drop` 因此一定在它
+ * 后面(或者这里先认输),不会出现「删掉的订阅又长出统计文件」。
  *
  * 关停分两步:`dispose()`(stop 段)摘监听、置标记,在途那条的剩余订阅不再处理;`close()`(flush 段)
- * 等在途的那条把头像与资料缓存写完再关门。它往图库与资料缓存仓写,所以它的 `close()` 得排在那两家
+ * 等在途的那条把头像与资料缓存写完再关门。它的 `close()` 等的是共用的 writer 写完,所以得排在那家
  * 的 `close()` **之前**跑 —— 见 `bootstrap.ts` 的登记。
  */
 
 export interface ProfileReportHandlerOptions {
-	bus: MessageBus;
-	subscriptionState: SubscriptionStateStore;
-	/** 图库的续期口(沿用旧头像要先 `keep`;新头像来源已经存好了,这里不再存图)。 */
-	images: Pick<ImageWriter, "keep">;
-	/** 此刻还在的订阅 id(两支都算),**现取**。 */
-	subscriptionIds: () => Iterable<string>;
+	/** 全进程唯一的资料缓存写口(`AppRuntime.profileCache`):资料刷新与这里共用,同一订阅的写按 id 串行。 */
+	profileCache: ProfileCacheWriter;
+	/** 此刻这条订阅还在不在(两支都算),**现查**。 */
+	subscription: (id: string) => Subscription | undefined;
 	/** 统计记录器的两个口:粉丝数按间隔稀释记样本、记「这个小时拉过资料」。统计开关由记录器自己拦。 */
 	recorder: Pick<StatsRecorderCore, "recordActive" | "recordReportedFollowers">;
 	/** 资料刷新的 cron(`globals.profileRefreshCron`,现取):粉丝样本不密过它。 */
@@ -49,8 +50,6 @@ export interface ProfileReportHandlerOptions {
 	 */
 	refreshReportedEntries: (subscriptionIds: readonly string[]) => Promise<void>;
 	logger: Logger;
-	/** 测试用:合并窗口。默认 {@link PROFILES_CHANGED_COALESCE_MS}。 */
-	coalesceMs?: number;
 }
 
 export interface ProfileReportHandler extends Disposable {
@@ -75,58 +74,62 @@ export function createProfileReportHandler(
 	const log = opts.logger;
 	const queue = createSerialQueue();
 	let disposed = false;
-	const cache = createProfileCacheWriter({
-		bus: opts.bus,
-		subscriptionState: opts.subscriptionState,
-		images: opts.images,
-		logger: opts.logger,
-		coalesceMs: opts.coalesceMs,
-	});
 
+	/**
+	 * 逐条写。每条写完之后在**同一个同步段**里现查订阅还在不在(且启用):在就把样本排进记录器的队、
+	 * 再把 id 记进 `written`;不在就当场认输 —— 删订阅排的 `drop` / `prune` 因此一定排在它后面。
+	 */
 	async function writeEach(
 		ids: Iterable<string>,
 		updateOf: (id: string) => ProfileCacheUpdate,
+		onAlive?: (id: string) => void,
 	): Promise<string[]> {
-		const alive = new Set(opts.subscriptionIds());
 		const written: string[] = [];
 		const changed: string[] = [];
 		for (const id of ids) {
 			if (disposed) return written;
-			if (!alive.has(id)) {
-				log.debug(`[sub-profile] 订阅 ${id} 已经不在了,它的资料更新不落盘`);
-				continue;
-			}
 			try {
-				if (await cache.write(id, updateOf(id))) changed.push(id);
-				written.push(id);
+				if (await opts.profileCache.write(id, updateOf(id))) changed.push(id);
 			} catch (err) {
 				log.warn(`[sub-profile] 订阅 ${id} 的资料没写进去: ${String(err)}`);
+				continue;
 			}
+			const sub = opts.subscription(id);
+			if (sub === undefined || !sub.enabled) {
+				log.debug(`[sub-profile] 订阅 ${id} 已经不在了或停用了,这次不记样本`);
+				continue;
+			}
+			onAlive?.(id);
+			written.push(id);
 		}
-		if (!disposed) cache.announce(changed);
+		if (!disposed) opts.profileCache.announce(changed);
 		return written;
 	}
 
 	async function apply(ids: readonly string[], report: CreatorProfileReport): Promise<void> {
-		const written = await writeEach(ids, () => ({
-			name: report.name,
-			...(report.avatar === undefined ? {} : { avatar: report.avatar }),
-			...(report.bio === undefined ? {} : { bio: report.bio }),
-			...(report.followers === undefined ? {} : { followers: report.followers }),
-			...(report.fanClubName === undefined ? {} : { fanClubName: report.fanClubName }),
-		}));
-		if (report.followers !== undefined) {
-			for (const id of written) {
-				const key = statsFileKey({ id });
-				// 这个小时拉资料成功过(不管粉丝样本被不被稀释掉)。
-				opts.recorder.recordActive(key, "followers");
-				opts.recorder.recordReportedFollowers(
-					key,
-					report.followers,
-					followersSampleGapMs(opts.profileRefreshCron()),
-				);
-			}
-		}
+		const followers = report.followers;
+		const written = await writeEach(
+			ids,
+			() => ({
+				name: report.name,
+				...(report.avatar === undefined ? {} : { avatar: report.avatar }),
+				...(report.bio === undefined ? {} : { bio: report.bio }),
+				...(followers === undefined ? {} : { followers }),
+				...(report.fanClubName === undefined ? {} : { fanClubName: report.fanClubName }),
+			}),
+			followers === undefined
+				? undefined
+				: (id) => {
+						const key = statsFileKey({ id });
+						// 这个小时拉资料成功过(不管粉丝样本被不被稀释掉)。
+						opts.recorder.recordActive(key, "followers");
+						opts.recorder.recordReportedFollowers(
+							key,
+							followers,
+							followersSampleGapMs(opts.profileRefreshCron()),
+						);
+					},
+		);
 		if (written.length > 0) await opts.refreshReportedEntries(written);
 	}
 
@@ -140,7 +143,6 @@ export function createProfileReportHandler(
 		close: () => queue.close(),
 		dispose() {
 			disposed = true;
-			cache.dispose();
 		},
 	};
 }

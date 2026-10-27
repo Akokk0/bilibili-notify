@@ -9,7 +9,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger } from "@bilibili-notify/internal";
+import type { Logger, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createProfileCacheWriter, type ProfileCacheWriter } from "../profile-cache.js";
@@ -31,16 +31,20 @@ let subscriptionState: SubscriptionStateStore;
 let keep: ReturnType<typeof vi.fn<(ref: string) => Promise<boolean>>>;
 let writer: ProfileCacheWriter;
 let announced: string[][];
+/** 已经被删掉的订阅;写口提交前现查它。默认谁都在,删订阅的测试把 id 加进来。 */
+let gone: Set<string>;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-profile-cache-"));
 	bus = createNodeMessageBus();
 	subscriptionState = createSubscriptionStateStore({ dataRoot: dataDir, logger: makeLogger() });
 	keep = vi.fn(async () => true);
+	gone = new Set();
 	writer = createProfileCacheWriter({
 		bus,
 		subscriptionState,
 		images: { keep },
+		subscription: (id) => (gone.has(id) ? undefined : ({ id } as Subscription)),
 		logger: makeLogger(),
 		coalesceMs: 30,
 	});
@@ -134,6 +138,58 @@ describe("profile-cache", () => {
 		await writer.write(A, { name: "甲", bio: "旧简介" });
 		await writer.write(A, { bio: "" });
 		expect(subscriptionState.get(A)?.cachedProfile).not.toHaveProperty("bio");
+	});
+
+	it("同一个 writer 的两次 write 交错:后一条不拿前一条的旧资料整份盖回去", async () => {
+		const NEW_AVATAR = `${"c".repeat(64)}.png`;
+		await subscriptionState.patch(A, {
+			cachedProfile: { name: "旧名字", avatar: OLD_AVATAR, refreshedAt: "old" },
+		});
+
+		// 先发的那条没带头像 → 卡在「续期旧头像」;后发的那条带着新头像与粉丝团名。
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		keep.mockImplementation(async () => {
+			await gate;
+			return true;
+		});
+
+		const first = writer.write(A, { name: "拉的" });
+		const second = writer.write(A, { name: "报的", avatar: NEW_AVATAR, fanClubName: "团" });
+		release();
+		await Promise.all([first, second]);
+
+		expect(subscriptionState.get(A)?.cachedProfile).toMatchObject({
+			name: "报的",
+			avatar: NEW_AVATAR,
+			fanClubName: "团",
+		});
+	});
+
+	it("写到一半订阅被删并 prune:放闸后不留孤儿资料", async () => {
+		await subscriptionState.patch(A, {
+			cachedProfile: { name: "甲", avatar: OLD_AVATAR, refreshedAt: "old" },
+		});
+
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		keep.mockImplementation(async () => {
+			await gate;
+			return true;
+		});
+
+		const pending = writer.write(A, { name: "拉的" });
+		await vi.waitFor(() => expect(keep).toHaveBeenCalledWith(OLD_AVATAR));
+		gone.add(A);
+		await subscriptionState.prune([]);
+		release();
+		await pending;
+
+		expect(subscriptionState.get(A)).toBeUndefined();
 	});
 
 	it("窗口里两次 announce 合成一次,同一订阅只出现一次", () => {

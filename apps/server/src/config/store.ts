@@ -193,6 +193,8 @@ export interface ConfigStore {
 	 */
 	extensionSettingsIssue(id: string): Issue | undefined;
 	getSubscriptions(): Subscription[];
+	/** 只拷命中的那一条 —— 资料缓存写口提交前现查订阅还在不在,别拿 getSubscriptions() 再 find。 */
+	getSubscription(id: string): Subscription | undefined;
 	/** 订阅标签表(ADR-0034),按表里的顺序(深拷贝)。 */
 	getSubscriptionTags(): SubscriptionTag[];
 	getConnections(): Connection[];
@@ -1368,6 +1370,11 @@ class NodeConfigStore implements ConfigStore {
 
 	getSubscriptions(): Subscription[] {
 		return deepClone(this.subscriptions);
+	}
+
+	getSubscription(id: string): Subscription | undefined {
+		const hit = this.subscriptions.find((sub) => sub.id === id);
+		return hit ? deepClone(hit) : undefined;
 	}
 
 	getConnections(): Connection[] {

@@ -84,6 +84,7 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 			},
 		} as never,
 		images: { keep: vi.fn(async () => true) },
+		subscription: (id: string) => subscriptions.find((sub) => sub.id === id),
 		logger: logger as never,
 		coalesceMs: 0,
 	});
@@ -165,6 +166,7 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 		bus: opts.bus,
 		subscriptionState: opts.subscriptionStateStore,
 		images: { keep: async () => true },
+		subscription: (id) => opts.subscriptionStore.list().find((sub) => sub.id === id),
 		logger: opts.logger,
 	});
 

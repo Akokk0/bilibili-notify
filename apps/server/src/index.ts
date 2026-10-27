@@ -97,7 +97,6 @@ import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
 import { createPipelineRuntime } from "./runtime/pipeline.js";
 import { browserSubtreeRss } from "./runtime/process-tree.js";
-import { createProfileCacheWriter } from "./runtime/profile-cache.js";
 import { startProfileRefresh } from "./runtime/profile-refresh.js";
 import { createPuppeteerAdapter, type PuppeteerAdapter } from "./runtime/puppeteer.js";
 import { createReportCommand } from "./runtime/report-command.js";
@@ -972,13 +971,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 
 		// 启动资料刷新 — cron 跟 globals.profileRefreshCron;按在册来源拉资料,
-		// 写资料缓存与粉丝时序,再发 `followers-refreshed`。
-		const profileCache = createProfileCacheWriter({
-			bus: runtime.bus,
-			subscriptionState: runtime.subscriptionStateStore,
-			images: runtime.profileImages,
-			logger: log,
-		});
+		// 写资料缓存与粉丝时序,再发 `followers-refreshed`。资料缓存写口是 runtime 上那一个,
+		// 与来源报资料共用(全进程只有一个 writer)。
 		const profileRefresh = startProfileRefresh({
 			bus: runtime.bus,
 			logger: log,
@@ -987,7 +981,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionStateStore: runtime.subscriptionStateStore,
 			fansStore: runtime.fansStore,
 			recorder: runtime.statsRecorder,
-			profileCache,
+			profileCache: runtime.profileCache,
 			problems: runtime.problems,
 			sources: runtime.sourceRegistry,
 			fetchProfile: pipeline.fetchProfile,
@@ -995,7 +989,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			isStatsEnabled: runtime.isStatsEnabled,
 		});
 		runtime.attachProfileRefresh(profileRefresh);
-		runtime.serviceCtx.onDispose(() => profileCache.dispose(), "stop");
 		runtime.serviceCtx.onDispose(() => profileRefresh.dispose(), "stop");
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────

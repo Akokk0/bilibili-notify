@@ -140,6 +140,57 @@ describe("createAppRuntime 的 flush 段", () => {
 		expect(order).toEqual(["recorder-drained", "fans-closed"]);
 	});
 
+	it("资料上报与资料刷新共用 runtime 上同一个 writer:一次变化只发一次 subscription-profiles-changed", async () => {
+		const events: string[][] = [];
+		runtime.bus.on("subscription-profiles-changed", ({ subscriptionIds }) =>
+			events.push([...subscriptionIds]),
+		);
+		// 上报这条路经的必须是 runtime 上那一个 writer(资料刷新在 index.ts 里拿的也是它),
+		// 各建一个实例的话同一条订阅的两次写互盖、一次变化发两次事件。
+		const write = vi.spyOn(runtime.profileCache, "write");
+		runtime.profileReports.report([SUB.id], { name: "甲" });
+
+		await vi.waitFor(() => expect(events).toEqual([[SUB.id]]));
+		expect(write).toHaveBeenCalledWith(SUB.id, expect.objectContaining({ name: "甲" }));
+		// 合并窗口过去之后再等一小会:没有第二个 writer 补发同一批。
+		await new Promise((resolve) => setTimeout(resolve, 350));
+		expect(events).toEqual([[SUB.id]]);
+	});
+
+	it("在途的资料缓存写先走空,资料缓存仓才关门:关停等到它落盘", async () => {
+		// 卡在「续期旧头像」这一步的写还没排进资料缓存仓。writer 的 close 要是没登记进 flush 段,
+		// 仓会先关门,放行之后那一发 patch 被拒、这次资料更新静默丢掉。
+		const OLD_AVATAR = `${"a".repeat(64)}.png`;
+		await runtime.subscriptionStateStore.patch(SUB.id, {
+			cachedProfile: { name: "甲", avatar: OLD_AVATAR, refreshedAt: "t" },
+		});
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		vi.spyOn(runtime.profileImages, "keep").mockImplementation(async () => {
+			await gate;
+			return true;
+		});
+		const writing = runtime.profileCache.write(SUB.id, { name: "乙" });
+		await vi.waitFor(() => expect(runtime.profileImages.keep).toHaveBeenCalledWith(OLD_AVATAR));
+
+		let closed = false;
+		const closing = runtime.dispose().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(closed).toBe(false);
+
+		release();
+		await writing;
+		await closing;
+		const onDisk = JSON.parse(
+			await readFile(join(dataDir, ...SUBSCRIPTION_STATE_FILE), "utf8"),
+		) as Record<string, { cachedProfile?: { name?: string } }>;
+		expect(onDisk[SUB.id]?.cachedProfile?.name).toBe("乙");
+	});
+
 	it("在途的资料更新先走空,图库与资料缓存仓才关门:关停返回时那条资料与它的头像已在盘上", async () => {
 		// 来源上下文先存头像、再交引用;这里让资料缓存那笔写停在闸门口,关停等它落盘后才关仓。
 		const stored = await runtime.profileImages.put(PNG_BYTES);

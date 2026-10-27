@@ -41,6 +41,7 @@ import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
 import type { PipelineRuntime } from "./pipeline.js";
+import { createProfileCacheWriter, type ProfileCacheWriter } from "./profile-cache.js";
 import type { ProfileRefreshHandle } from "./profile-refresh.js";
 import { createProfileReportHandler, type ProfileReportHandler } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
@@ -157,8 +158,14 @@ export interface AppRuntime {
 	 */
 	profileImages: ImageWriter;
 	/**
+	 * 资料缓存的**唯一**写口(全进程一个):资料刷新与资料上报共用。按订阅 id 串行,提交前现查订阅还在不在 ——
+	 * 两条路交错写同一条订阅时后落地的那条不会用旧资料盖回去。关停的 `flush` 段 `close()`。
+	 */
+	profileCache: ProfileCacheWriter;
+	/**
 	 * 来源经 `ctx.reportProfile` 报的资料的收口(`createProfileReportHandler`):`createPipelineRuntime` 把它递给来源上下文的
-	 * `profiles` 选项。写资料缓存、记粉丝样本、写完叫资料刷新(现取 {@link AppRuntime.profileRefresh})重算面板那几行。
+	 * `profiles` 选项。写资料缓存(经 {@link AppRuntime.profileCache})、记粉丝样本、写完叫资料刷新(现取
+	 * {@link AppRuntime.profileRefresh})重算面板那几行。
 	 */
 	profileReports: ProfileReportHandler;
 	/**
@@ -494,14 +501,24 @@ export function createAppRuntime(
 				return avatar === undefined ? [] : [avatar];
 			}),
 	});
-	// 来源经 `ctx.reportProfile` 报的资料(3b-42):不听总线,由推送链路把它递给来源上下文。写同一个资料缓存。
-	// 写完叫资料刷新重算面板那几行 —— 资料刷新在开机更后面才建(`attachProfileRefresh`),所以现取;
-	// 还没建好时面板还没有快照,什么都不用做。
-	const profileReports = createProfileReportHandler({
+	// 资料缓存只有这一个写口:资料刷新(在 `index.ts` 里起)与来源报的资料都经它写,按订阅 id 串行、
+	// 提交前现查订阅还在不在(删订阅排的 prune 因此一定在它之后)。
+	const profileCache = createProfileCacheWriter({
 		bus,
 		subscriptionState: subscriptionStateStore,
 		images: profileImages,
-		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
+		subscription: (id) => configStore.getSubscription(id),
+		logger: serviceCtx.logger,
+	});
+	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
+	// 它先把在途的写走空,那两家才关门;反过来的话在途的写会被拒、这次资料更新就丢了。
+	serviceCtx.onDispose(() => profileCache.close(), "flush");
+	// 来源经 `ctx.reportProfile` 报的资料(3b-42):不听总线,由推送链路把它递给来源上下文。写上面那个资料缓存。
+	// 写完叫资料刷新重算面板那几行 —— 资料刷新在开机更后面才建(`attachProfileRefresh`),所以现取;
+	// 还没建好时面板还没有快照,什么都不用做。
+	const profileReports = createProfileReportHandler({
+		profileCache,
+		subscription: (id) => configStore.getSubscription(id),
 		recorder: statsRecorder,
 		profileRefreshCron: () => configStore.getGlobals().profileRefreshCron,
 		refreshReportedEntries: async (ids) => {
@@ -510,8 +527,8 @@ export function createAppRuntime(
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => profileReports.dispose(), "stop");
-	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
-	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
+	// 🔴 顺序承重:它等的是上面那个 writer 写完在途的那条,所以这条必须登记在 writer 的 close 之后 ——
+	// 同段后登记的先跑,它先把在途的那条写完,writer 与那两家 store 才关门。
 	serviceCtx.onDispose(() => profileReports.close(), "flush");
 	const conversationStore = createConversationStore({
 		dataRoot,
@@ -619,6 +636,7 @@ export function createAppRuntime(
 		imageStore,
 		chatImages,
 		profileImages,
+		profileCache,
 		profileReports,
 		accountImages,
 		postImages,
