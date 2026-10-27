@@ -54,6 +54,11 @@ export interface FollowSyncResult {
 	failed: number;
 	/** 是否走了降级路径(批量查询不可用,只能逐个盲 follow)。 */
 	degraded: boolean;
+	/**
+	 * 这一轮没处理完的外部 id:批量查撞风控 / 未登录时的整批,逐个写撞风控时撞上的与后面没轮到的,
+	 * 撞 `unauthorized` 停下时没轮到的。名单里还开着的,随下一次关注同步一起补。
+	 */
+	pending: string[];
 }
 
 export interface WatchFollowsDeps {
@@ -161,18 +166,33 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 		(externalId) => only === undefined || only.has(externalId),
 	);
 	if (uids.length === 0 || deps.signal?.aborted) {
-		return { checked: 0, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
+		return { checked: 0, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false, pending: [] };
 	}
 
 	const alreadyFollowed = await queryFollowed(deps.api, uids, deps.logger);
 	if (alreadyFollowed === "unauthorized" || alreadyFollowed === "rate_limited") {
-		return { checked: uids.length, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
+		return {
+			checked: uids.length,
+			followed: 0,
+			alreadyFollowed: 0,
+			failed: 0,
+			degraded: false,
+			// 整批都没查成:这一轮一个人都没处理。
+			pending: uids,
+		};
 	}
 	const degraded = alreadyFollowed === null;
 	const interrupted = (): boolean => deps.signal?.aborted === true;
 	if (interrupted()) {
 		deps.logger.info("[follow] 关停中，关注同步到此为止");
-		return { checked: uids.length, followed: 0, alreadyFollowed: 0, failed: 0, degraded };
+		return {
+			checked: uids.length,
+			followed: 0,
+			alreadyFollowed: 0,
+			failed: 0,
+			degraded,
+			pending: [],
+		};
 	}
 
 	// 批量查说已关注的人,清掉上一次可能留下的失败;成功关注后也走同一句。
@@ -190,6 +210,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 			alreadyFollowed: uids.length,
 			failed: 0,
 			degraded,
+			pending: [],
 		};
 	}
 
@@ -200,7 +221,9 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	let followed = 0;
 	let failed = 0;
 	let sent = 0;
-	for (const uid of needFollow) {
+	/** 停在风控 / 未登录上时,撞上的那位与后面没轮到的都欠着。 */
+	let pending: string[] = [];
+	for (const [index, uid] of needFollow.entries()) {
 		if (sent > 0) await sleep(FOLLOW_GAP_MS, deps.signal); // 写接口连发最招风控
 		if (interrupted()) break;
 		const outcome = await ensureFollowed(deps.api, uid);
@@ -210,7 +233,10 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 			resolveFollowFailure(deps.problems, uid);
 			continue;
 		}
-		if (outcome.code === "unauthorized") break;
+		if (outcome.code === "unauthorized") {
+			pending = needFollow.slice(index);
+			break;
+		}
 		failed++;
 		const code = outcome.upstreamCode ?? outcome.code;
 		deps.logger.warn(
@@ -227,6 +253,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 			lasting: true,
 		});
 		if (outcome.code === "rate_limited") {
+			pending = needFollow.slice(index);
 			deps.logger.warn(
 				`[follow] 撞风控，停下这一批，剩下 ${needFollow.length - sent} 位等下次关注同步`,
 			);
@@ -248,6 +275,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 		alreadyFollowed: uids.length - needFollow.length,
 		failed,
 		degraded,
+		pending,
 	};
 }
 
@@ -266,9 +294,15 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 	let disposed = false;
 	let wasLoggedIn = isLoggedIn(deps.auth.state());
 	let targets = new Set(followTargetIds(deps.subscriptions()));
+	/** 撞风控 / 未登录没补上的,还欠着:下一次名单变化带上,全量那一轮之前清空。 */
+	const pending = new Set<string>();
 
 	const run = (only?: ReadonlySet<string>): void => {
 		if (disposed || shutdown.signal.aborted) return;
+		// 全量那一轮(开机、登录恢复)会查所有人:欠账从这一轮重新算。
+		if (only === undefined) pending.clear();
+		// 这一轮 `syncFollows` 会查的人:局部就是 `only`,全量是此刻名单里的全部(同一个同步读口,两边一致)。
+		const queried = only ?? new Set(followTargetIds(deps.subscriptions()));
 		void syncFollows({
 			api: deps.api,
 			subscriptions: deps.subscriptions,
@@ -276,9 +310,15 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 			problems: deps.problems,
 			logger: deps.logger,
 			signal: shutdown.signal,
-		}).catch((err) => {
-			deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
-		});
+		})
+			.then((result) => {
+				// 这一轮查过的不再欠着;这一轮没处理完的记上。
+				for (const externalId of queried) pending.delete(externalId);
+				for (const externalId of result.pending) pending.add(externalId);
+			})
+			.catch((err) => {
+				deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
+			});
 	};
 
 	if (wasLoggedIn) run();
@@ -289,11 +329,16 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 		const added = new Set([...next].filter((externalId) => !targets.has(externalId)));
 		for (const externalId of targets) {
 			if (!next.has(externalId)) {
+				// 离开关注范围的人不再欠着,和清 `follow_failed` 同一处。
+				pending.delete(externalId);
 				deps.problems.resolveFailure({ externalId, code: "follow_failed" }, { notify: false });
 			}
 		}
 		targets = next;
-		if (wasLoggedIn && added.size > 0) run(added);
+		// 新进来的 + 上一轮撞风控 / 未登录欠着的(还在名单里的)。
+		const owed = [...pending].filter((externalId) => next.has(externalId));
+		const toRun = new Set([...added, ...owed]);
+		if (wasLoggedIn && toRun.size > 0) run(toRun);
 	});
 
 	const authWatch = deps.auth.onChange(() => {

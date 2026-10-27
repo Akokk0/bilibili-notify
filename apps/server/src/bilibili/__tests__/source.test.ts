@@ -1241,6 +1241,63 @@ describe("createBiliSource — 关注同步", () => {
 		await source.stop();
 	});
 
+	// 定案许了「剩下的等下一次关注同步」:撞风控那一轮没处理完的人,下一次名单变化要带上。
+	it("撞风控那一轮欠着的人,名单下一次变化时一起补", async () => {
+		const auth = makeAuth(loggedIn);
+		let first = true;
+		const made = makeDeps({
+			auth: auth.auth,
+			fetchRelations: async () => {
+				if (first) {
+					first = false;
+					return fail("rate_limited", "请求过于频繁", { upstreamCode: -352 });
+				}
+				return ok({ data: null });
+			},
+		});
+		const roster = [{ externalId: "1", post: true }];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+		// 等那一轮的收尾把欠着的记下来(结果在 promise 里回来)。
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		roster.push({ externalId: "2", post: true });
+		for (const changed of fake.watchers) changed();
+
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledTimes(2));
+		expect(made.fetchRelations).toHaveBeenLastCalledWith(["1", "2"]);
+		await source.stop();
+	});
+
+	it("撞风控欠着的人,名单变了但没人新进时也补一轮", async () => {
+		const auth = makeAuth(loggedIn);
+		let first = true;
+		const made = makeDeps({
+			auth: auth.auth,
+			fetchRelations: async () => {
+				if (first) {
+					first = false;
+					return fail("rate_limited", "请求过于频繁", { upstreamCode: -352 });
+				}
+				return ok({ data: null });
+			},
+		});
+		const roster = [{ externalId: "1", post: true }];
+		const source = createBiliSource(made.deps);
+		const fake = makeCtx(roster);
+		await source.start(fake.ctx);
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledWith(["1"]));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		for (const changed of fake.watchers) changed();
+
+		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledTimes(2));
+		expect(made.fetchRelations).toHaveBeenLastCalledWith(["1"]);
+		await source.stop();
+	});
+
 	it("作品关掉 → 按不再适用清掉那个人的 follow_failed", async () => {
 		const auth = makeAuth(loggedIn);
 		const made = makeDeps({

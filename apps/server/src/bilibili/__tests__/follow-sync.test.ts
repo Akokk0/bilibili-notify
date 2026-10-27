@@ -120,6 +120,8 @@ describe("syncFollows — 补齐关注", () => {
 		expect(reportFailure).not.toHaveBeenCalled();
 		expect(resolveFailure).not.toHaveBeenCalled();
 		expect(r.degraded).toBe(false);
+		// 这一轮谁都没处理:整批欠着,等登录恢复或下一次名单变化。
+		expect(r.pending).toEqual(UIDS);
 	});
 
 	it("批量查撞风控 → 整批跳过,不降级、不发关注、不碰问题", async () => {
@@ -139,6 +141,7 @@ describe("syncFollows — 补齐关注", () => {
 			alreadyFollowed: 0,
 			failed: 0,
 			degraded: false,
+			pending: UIDS,
 		});
 	});
 
@@ -149,12 +152,14 @@ describe("syncFollows — 补齐关注", () => {
 			followResults: [fail("unauthorized", "账号未登录", { upstreamCode: -101 })],
 		});
 
-		await syncFollows(deps);
+		const r = await syncFollows(deps);
 
 		expect(follow).toHaveBeenCalledTimes(1);
 		expect(follow).toHaveBeenCalledWith("111");
 		expect(reportFailure).not.toHaveBeenCalled();
 		expect(resolveFailure).not.toHaveBeenCalled();
+		// 撞上的与没轮到的都欠着。
+		expect(r.pending).toEqual(["111", "222"]);
 	});
 
 	it("逐个关注撞风控 → 报当前一位失败,后面的不再写", async () => {
@@ -173,6 +178,8 @@ describe("syncFollows — 补齐关注", () => {
 		);
 		expect(r.failed).toBe(1);
 		expect(r.followed).toBe(1);
+		// 撞上的那位与后面没轮到的都欠着,随下一次名单变化一起补。
+		expect(r.pending).toEqual(["222", "333"]);
 	});
 
 	it("批量查询炸了 → 降级为对每个人直接 follow(幂等,不能因为一个优化接口就瘫痪)", async () => {
