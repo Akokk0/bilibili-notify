@@ -6,7 +6,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 
 单 pnpm workspace monorepo:一套平台中立业务核心(`packages/`)+ 一个产品形态 —— **独立 Hono + React Dashboard**(`apps/`),发 Docker 镜像与 macOS / Windows 桌面应用,支持应用内自主升级。
 
-核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。⚠️ **`CONNECTION_PLATFORMS` 不加档**:按 ADR-0024 决策 1,这个闭集与平台表 `PLATFORM_REGISTRY`、三份连接设置规则都要搬出 `internal`、由适配器自带 —— 内置的 OneBot / QQ 官方机器人 / webhook 与拓展已经是同一个 `PlatformAdapter` 接口、同一张登记表,连接的形状是 `{ adapterKey, platform, settings, platformSnapshot, … }`(决策 7,`kind` / `connector` / `extensionId` 已删,拓展的连接 `adapterKey` 就是拓展 id);闭集、平台表与三份规则眼下还留在 `internal`,只因面板还在读,等第 4 期面板改成按适配器的描述画之后一次搬走删掉,在那之前别往里加。不变的是:**一条连接就是一个借来的 bot**,它的 `platform` 是开放字符串(内置的取自挑中的候选,拓展的今天从桥报的 bot 上抄),桥的接入(token)住拓展自己的设置里,不是连接(ADR-0012 决策 45)。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
+核心包**全部 `private`、不发 npm**,独立端经 `workspace:*` 消费;registry 上没有任何包,也不用 changesets。Koishi 插件与 AstrBot 插件不在 dev 上、暂停更新,两端的维护线在 `koishi-astrbot-maintenance` 分支;它们以「薄的适配插件桥接到跑着的独立端」的形式接入,**接入点是 `extensions/bridge/`**(桥接是 BN 的第一个拓展,地址 `ws://<BN>/ext/bridge`,协议见 `extensions/bridge/PROTOCOL.md`,定案见 ADR-0012)。连接与平台闭集正在搬出 `internal`,动 `CONNECTION_PLATFORMS` / `PLATFORM_REGISTRY` / 连接设置规则之前先读 `.claude/rules/connection-platforms.md`。推送链路各层(`apps/server/src/live/`、`apps/server/src/bilibili/dynamic/`、`apps/server/src/bilibili/live/session/`,与 `packages/push` / `packages/image`)只认独立端这一个宿主,不留可选钩子。
 
 ## 工具链与命令
 
@@ -16,7 +16,7 @@ Bilibili-Notify monorepo 的工作指引。详细参考见文末「深入参考�
 vp install
 vp run build           # 全 workspace 拓扑序构建
 vp run typecheck       # 全 workspace tsc --noEmit
-vp test                # vitest,全包;定向跑用 vp test <路径>(别用 vpx vitest:根不声明 vitest,会 dlx 一份野的 runner)
+vp test                # vitest,全包;定向跑用 vp test <路径> --reporter=dot(只出点和汇总)。别用 vpx vitest:根不声明 vitest,会 dlx 一份野的 runner
 vp run check           # Biome lint + format 检查(check:fix 自动修)
 vp run dev:apps        # apps/server + apps/web 并行 dev,顺带 watch 打包仓里的拓展
 vp run -F <pkg> build  # 构建单个包
@@ -41,14 +41,10 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里(第
 
 - **动手前先对仓库规范**:`docs/agents/conventions/`(索引是里面的 `README.md`)—— 命名(后缀表与词表)、失败形状与标准码、中立性、叫法、集成副作用只经 ctx、设置校验、统计收集、没有实现者的接口不造,每条一篇。都是活规范,加条、改条要主人拍板。
 
-- **写前端 UI 前先查组件清单**:`packages/ui`(`@bilibili-notify/ui`)是纯展示基础件库,给 web / desktop 写任何 UI **之前必须先读 `packages/ui/README.md` 的组件清单**——清单里有的组件不许重写。新增纯展示件(零业务依赖)进库并**同步更新清单**;缠 api/store/react-query 的留在 `apps/web/src/components`。库是源码直出(exports 指 src,无构建步),消费方入口 CSS 要 `@import "@bilibili-notify/ui/theme.css"` + `@source` 库的 src。
+- **只管部分目录的硬约束在 `.claude/rules/`**,读到对应目录的文件时自动加载:写 UI 先查组件清单(`ui-components.md`)、拓展只从一扇门拿东西(`extension-door.md`)、server 自包含 bundle 与三种发行形态(`server-bundle.md`)、连接与平台闭集(`connection-platforms.md`)。
 
-- **拓展只从一扇门拿 BN 的东西**:`extensions/<id>/` 底下第三方随便用,但我们自己的东西**只准从 `@bilibili-notify/extension` 进** —— 那个包列出来的就是契约的全部,直接依赖 `internal` 等于把契约放宽成「整个域模型」。反方向也一样:**核心既不 import 拓展,也不 import 那扇门**。东西都定义在 `internal`,门只负责把它们转给拓展。两条都由 `extension-import-boundary.test.ts` 钉着,越界是静默的(类型、测试、构建全绿)。
-
-- **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。类型增强(`declare module "x"`)也算 —— 解析不到就静默变成孤立声明。pnpm 是 isolated 布局,幻影依赖直接解析不到,不会像 hoisted 年代那样碰巧能跑。
+- **依赖卫生**:`src/` 里解析到运行时值(常量 / 类 / 函数)的 import,必须声明进该包 `package.json` 的 `dependencies`;`import type` 不用。类型增强(`declare module "x"`)也算 —— 解析不到就静默变成孤立声明。pnpm 是 isolated 布局,幻影依赖直接解析不到,不会像 hoisted 年代那样碰巧能跑。给 `packages/*` 加运行时第三方依赖(`vp add` 不会读到规则文件)之前,先读 `.claude/rules/server-bundle.md`:有的依赖内联进 bundle 后构建全绿、运行期才炸。
 - **MessageBus**:`apps/server/src/runtime/message-bus.ts` 是唯一事件通道,绝不写 bus 与任何别的事件通道之间的转发器 —— 会自喂死循环爆栈。详见 `docs/agents/events.md`。
-- **server 是自包含 bundle(入口 + hash 分块,旁边没有 node_modules)**:给 `packages/*` 加**新第三方依赖**时,凡是运行时用 `__dirname` / `require.resolve` 去磁盘上读**自己包内文件**的(jieba-wasm 读 `.wasm`;jsdom 读 `xhr-sync-worker.js` 也是这一类,3a 起运行时已不带 jsdom,只剩测试在用),内联进 bundle 后**必炸**,且**构建全绿、只在运行期炸**。要么在 `scripts/assemble-server-bundle.mjs` 里随载荷拷资源并登记进 `scripts/server-bundle-assets.mjs`(装配自检 / 升级载荷 / 桌面资源三处共用那份清单),要么在 `apps/server/vite.config.ts` 的 bundle 配方里外置。加完新依赖务必 `vp run build:update-payload` 走一遍装配自检。
-- **三种发行形态吃同一份载荷**:Docker 镜像、桌面安装包、应用内更新装的都是 `apps/server/dist`(bundle + 装配好的资产)+ web dist,桌面资源目录里**没有 node_modules**。桌面产物的布局只声明在 `apps/desktop/layout.json`,别在别处再抄一份路径。
 
 ## 分支
 
