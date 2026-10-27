@@ -13,6 +13,7 @@ import type { GenerationInfo } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	listGenerationUsage,
+	measureTree,
 	removeGeneration,
 	sweepGenerationLeftovers,
 } from "../generation-usage.js";
@@ -267,22 +268,22 @@ describe("大小", () => {
 		expect(zero?.reclaimableBytes).toBe(5);
 	});
 
-	it("遍历不阻塞事件循环:量一棵大树的同时,定时器照常触发", async () => {
-		const one = await makeGen("1");
-		await makeGen("2");
-		for (let d = 0; d < 20; d++) {
-			const sub = join(one, `d${d}`);
-			await mkdir(sub);
-			await Promise.all(
-				Array.from({ length: 50 }, (_, i) => writeFile(join(sub, `f${i}.bin`), "a")),
-			);
+	it("遍历不阻塞事件循环:量的过程中让出过事件循环(逐层异步读)", async () => {
+		const root = join(host, "tree");
+		for (let d = 0; d < 3; d++) {
+			const sub = join(root, `d${d}`);
+			await mkdir(sub, { recursive: true });
+			// 第一个目录放 STAT_BATCH + 1 = 65 个文件,覆盖分批那条路;其余放 2 个
+			const n = d === 0 ? 65 : 2;
+			await Promise.all(Array.from({ length: n }, (_, i) => writeFile(join(sub, `f${i}`), "a")));
 		}
-		let ticks = 0;
-		const timer = setInterval(() => ticks++, 0);
-		const list = await listGenerationUsage(opts(2, CREATED));
-		clearInterval(timer);
-		expect(list[0]?.sizeBytes).toBeGreaterThanOrEqual(1000);
-		expect(ticks).toBeGreaterThan(0);
+		let yielded = false;
+		setImmediate(() => {
+			yielded = true;
+		});
+		const size = await measureTree(root);
+		expect(size.size).toBe(69);
+		expect(yielded).toBe(true);
 	});
 });
 
