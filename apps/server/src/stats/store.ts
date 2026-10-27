@@ -283,6 +283,88 @@ function liveCloseExtras(parsed: unknown): LiveCloseExtras {
 	return out;
 }
 
+/** 两段计数相加;后一段没报就保留前一段(「没报」不是零)。 */
+function addCount(previous: number | undefined, next: number | undefined): number | undefined {
+	if (next === undefined) return previous;
+	return (previous ?? 0) + next;
+}
+
+/** 两段取最大;后一段没报就保留前一段。 */
+function maxCount(previous: number | undefined, next: number | undefined): number | undefined {
+	if (previous === undefined) return next;
+	if (next === undefined) return previous;
+	return Math.max(previous, next);
+}
+
+/**
+ * 按外来字符串键逐键相加(币种、会员体系 id、档 key)。用 `Map` 累加再转回对象:键是外来数据,
+ * 普通对象上 `constructor` 会读到原型里的函数(与收集器里的两张表同一条规矩)。
+ */
+function addCountMap(
+	previous: Record<string, number> | undefined,
+	next: Record<string, number>,
+): Record<string, number> {
+	const sums = new Map<string, number>(Object.entries(previous ?? {}));
+	for (const [key, count] of Object.entries(next)) {
+		sums.set(key, (sums.get(key) ?? 0) + count);
+	}
+	return Object.fromEntries(sums);
+}
+
+/** 按体系 → 按档逐键相加。 */
+function addMembershipCounts(
+	previous: Record<string, Record<string, number>> | undefined,
+	next: Record<string, Record<string, number>>,
+): Record<string, Record<string, number>> {
+	const programs = new Map<string, Map<string, number>>();
+	for (const [program, tiers] of Object.entries(previous ?? {})) {
+		programs.set(program, new Map(Object.entries(tiers)));
+	}
+	for (const [program, tiers] of Object.entries(next)) {
+		const merged = programs.get(program) ?? new Map<string, number>();
+		for (const [tier, count] of Object.entries(tiers)) {
+			merged.set(tier, (merged.get(tier) ?? 0) + count);
+		}
+		programs.set(program, merged);
+	}
+	return Object.fromEntries(
+		[...programs].map(([program, tiers]) => [program, Object.fromEntries(tiers)]),
+	);
+}
+
+/**
+ * 同一场直播的第二帧(及以后)的下播帧怎么并进已记下的那一场:一场被重启切成几段时,每段各写一帧
+ * end,各段的计数互不重叠,所以 ——
+ *
+ * - `viewerChatCount` / `superchatCount`:相加;
+ * - `superchatTotals`(按币种)、`membershipCounts`(按体系 → 按档):逐键相加;
+ * - `viewerChatSenderCount`:取各段**最大值**。跨段去重没法精确(统计不收观众名单),相加会把两段都
+ *   发过言的人算两次,取最大只会少报;
+ * - `peakTotalViewers`:取最大 —— 它是本场累计观看,只增不减(ADR-0020 决策 7)。接回之后那一段是从
+ *   重新认出这一场才开始取的:平台这回少报了、或压根没报,都不该把前一段已经记下的数拽下去
+ *   (没带的帧本来就不动它);
+ * - `endedAt`:取最后一帧;
+ * - 后一帧没有的格保留前一帧的值(相加语义下本来就对)。
+ */
+function mergeLiveClose(open: LiveSessionEntry, occurredAt: string, parsed: unknown): void {
+	open.endedAt = occurredAt;
+	const extras = liveCloseExtras(parsed);
+	open.viewerChatCount = addCount(open.viewerChatCount, extras.viewerChatCount);
+	open.superchatCount = addCount(open.superchatCount, extras.superchatCount);
+	open.viewerChatSenderCount = maxCount(open.viewerChatSenderCount, extras.viewerChatSenderCount);
+	if (extras.superchatTotals) {
+		open.superchatTotals = addCountMap(open.superchatTotals, extras.superchatTotals);
+	}
+	if (extras.membershipCounts) {
+		open.membershipCounts = addMembershipCounts(open.membershipCounts, extras.membershipCounts);
+	}
+	const peak = isRecord(parsed) ? parsed.peakTotalViewers : undefined;
+	if (typeof peak === "number") {
+		open.peakTotalViewers =
+			open.peakTotalViewers === undefined ? peak : Math.max(open.peakTotalViewers, peak);
+	}
+}
+
 /**
  * 两类文件各住的目录(数据根下的路径段,展开进 `dataPath`)。开机迁移认的也是这两处,别各写一份。
  * 写成元组而不是拼好的串,是为了让第一段能被 `dataPath` 的类型认出是目录表里的键。
@@ -460,6 +542,10 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			// (关服截断一帧、真下播一帧)。曾经只比对「当前敞开的那场」,于是
 			// 「end 之后又来一帧同时刻 start」会凭空开出第二场 —— 线上真出现过,
 			// 一场直播被记成三场。
+			//
+			// 下播帧按顺序并进这一场:重启 / 关服把一场切成几段时每段各写一帧 end,计数与按币种 /
+			// 按体系档的汇总逐键相加,发弹幕人数取各段最大值,峰值取最大,下播时刻取最后一帧 ——
+			// 细则见 {@link mergeLiveClose}。
 			const byStart = new Map<string, LiveSessionEntry>();
 			let open: LiveSessionEntry | undefined;
 			await readLines(liveFile(key), (parsed) => {
@@ -487,16 +573,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 					return;
 				}
 				if (kind !== "end" || !open) return;
-				open.endedAt = occurredAt;
-				Object.assign(open, liveCloseExtras(parsed));
-				// 同一场有几帧 end(关服截断一帧、接回之后真下播一帧)时,峰值取**最大的**:它是本场累计观看,
-				// 只增不减(ADR-0020 决策 7)。接回之后那一段是从重新认出这一场才开始取的 —— 平台这回少报了、
-				// 或压根没报,都不该把前一段已经记下的数拽下去(没带的帧本来就不动它)。
-				const peak = parsed.peakTotalViewers;
-				if (typeof peak === "number") {
-					open.peakTotalViewers =
-						open.peakTotalViewers === undefined ? peak : Math.max(open.peakTotalViewers, peak);
-				}
+				mergeLiveClose(open, occurredAt, parsed);
 				open = undefined;
 			});
 			// 读完仍挂着的那场 = 最后一次观测时它是敞着的,也就是唯一可能在播的那场。

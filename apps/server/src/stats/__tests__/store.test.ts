@@ -545,6 +545,44 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		expect(got).toEqual([{ startedAt: T(9), endedAt: T(13), peakTotalViewers: 12_000 }]);
 	});
 
+	it("同一场被重启切成两段:两帧 end 的互动汇总相加,发弹幕人数取各段最大值", async () => {
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", {
+			endedAt: T(3),
+			viewerChatCount: 2_000,
+			viewerChatSenderCount: 400,
+			superchatCount: 3,
+			superchatTotals: { CNY: 100 },
+			membershipCounts: { guard: { captain: 2 } },
+		});
+		await store.openLiveSession("1", { startedAt: T(1) }); // 重启接回同一场,这一段从零记
+		await store.closeLiveSession("1", {
+			endedAt: T(10),
+			viewerChatCount: 300,
+			viewerChatSenderCount: 120,
+			superchatTotals: { CNY: 30, USD: 5 },
+		});
+		const [got] = await store.listLiveSessions("1", T(0));
+		// 两段互不重叠:计数与按币种的汇总都相加。
+		expect(got?.viewerChatCount).toBe(2_300);
+		expect(got?.superchatCount).toBe(3);
+		expect(got?.superchatTotals).toEqual({ CNY: 130, USD: 5 });
+		// 后一帧没带的会员汇总保留前一帧的。
+		expect(got?.membershipCounts).toEqual({ guard: { captain: 2 } });
+		// 发弹幕人数跨段没法精确去重:取最大值(宁可少报,不把人算两次)。
+		expect(got?.viewerChatSenderCount).toBe(400);
+		expect(got?.endedAt).toBe(T(10));
+	});
+
+	it("币种名是 constructor:跨帧相加仍是数字,不读到原型上的函数", async () => {
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(2), superchatTotals: { constructor: 3 } });
+		await store.openLiveSession("1", { startedAt: T(1) });
+		await store.closeLiveSession("1", { endedAt: T(3), superchatTotals: { constructor: 4 } });
+		const [got] = await store.listLiveSessions("1", T(0));
+		expect(got?.superchatTotals?.constructor).toBe(7);
+	});
+
 	it("接回同一场之后那帧 end 的峰值更小 / 没带 → 留着前一帧更大的(累计观看只增不减)", async () => {
 		await store.openLiveSession("1", { startedAt: T(9) });
 		await store.closeLiveSession("1", { endedAt: T(10), peakTotalViewers: 5_000 }); // 关服截断,记到 5000
