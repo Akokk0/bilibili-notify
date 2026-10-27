@@ -65,15 +65,25 @@ export function createPlatformAdapterContext(
 	/** 连接 id → 最近一次记过的隔离原因。 */
 	const warned = new Map<string, string>();
 
+	/** 一条连接对这个适配器的归属:归我(原始连接一并交出来)、已经从原始表里删掉、还在表里但归别人。 */
+	type ConnectionOwnership =
+		| { kind: "mine"; connection: Connection }
+		| { kind: "removed" }
+		| { kind: "foreign" };
+
 	/**
-	 * 这条连接是不是这个适配器的 —— 是的话把原始连接交出来。**归属的唯一判法**,关于连接的上报与入站
-	 * 共用:按**原始连接表**看 `adapterKey`,设置过不了规则、被隔离不交给适配器的连接仍算自己的。
+	 * 这条连接归不归这个适配器 —— **归属的唯一判法**,关于连接的上报、清与入站共用:按**原始连接表**看
+	 * `adapterKey`,设置过不了规则、被隔离不交给适配器的连接仍算自己的。
+	 *
+	 * 「已经不在表里」与「在表里但归别人」分开交回:上报两种都拒(不能给一条不存在的连接记问题),
+	 * 清只拒后者 —— 连接删了的时候宿主已经清过它名下的一切,再清是空操作。
 	 */
-	function ownedConnection(connectionId: string): Connection | undefined {
+	function ownershipOf(connectionId: string): ConnectionOwnership {
 		const hit = opts.connection
 			? opts.connection(connectionId)
 			: opts.connections().find((c) => c.id === connectionId);
-		return hit && hit.adapterKey === adapterKey ? hit : undefined;
+		if (hit === undefined) return { kind: "removed" };
+		return hit.adapterKey === adapterKey ? { kind: "mine", connection: hit } : { kind: "foreign" };
 	}
 
 	/** 这个适配器停下了没有 —— 关于连接的上报与入站共用这一个判法:停下之后再来的一律丢。 */
@@ -89,20 +99,25 @@ export function createPlatformAdapterContext(
 	}
 
 	/**
-	 * 关于连接的上报的公共一步:已停下、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
+	 * 关于连接的上报 / 清的公共一步:已停下、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
 	 * 形状已经由解析那一步核过(`problems/problem-report.ts`),这里只管归属与「还活着吗」。
+	 *
+	 * `allowRemoved` 就是上报与清的唯一差别:清的时候连接已经从原始表里删掉也放行(空操作、幂等);
+	 * 上报不给这一格 —— 给一条不存在的连接记问题没有意义,照旧拒。
 	 */
 	function acceptConnectionProblem(
 		what: string,
 		code: string,
 		connectionId: string,
+		allowRemoved: boolean,
 		apply: () => void,
 	): void {
+		const ownership = ownershipOf(connectionId);
 		const issue = stopped()
 			? "适配器已停下"
-			: ownedConnection(connectionId) !== undefined
-				? undefined
-				: t("problem.report.connectionNotOwned", { connectionId, adapterKey });
+			: ownership.kind === "foreign" || (ownership.kind === "removed" && !allowRemoved)
+				? t("problem.report.connectionNotOwned", { connectionId, adapterKey })
+				: undefined;
 		if (issue !== undefined) {
 			integration.logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${issue}`);
 			opts.onRejectedProblem?.({
@@ -130,14 +145,17 @@ export function createPlatformAdapterContext(
 			);
 			return;
 		}
-		const connection = ownedConnection(meta.connectionId);
-		if (!connection) {
+		const ownership = ownershipOf(meta.connectionId);
+		if (ownership.kind !== "mine") {
 			integration.logger.warn(
 				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
 			);
 			return;
 		}
-		deliver({ connectionId: connection.id, platform: connection.platform });
+		deliver({
+			connectionId: ownership.connection.id,
+			platform: ownership.connection.platform,
+		});
 	}
 
 	return {
@@ -170,7 +188,7 @@ export function createPlatformAdapterContext(
 				return;
 			}
 			const connectionId = parsed.connectionId;
-			acceptConnectionProblem("报", parsed.code, connectionId, () =>
+			acceptConnectionProblem("报", parsed.code, connectionId, false, () =>
 				opts.problems.report({
 					reporter: adapterKey,
 					writtenBy: opts.label(),
@@ -198,7 +216,7 @@ export function createPlatformAdapterContext(
 				return;
 			}
 			const connectionId = parsed.connectionId;
-			acceptConnectionProblem("清", parsed.code, connectionId, () =>
+			acceptConnectionProblem("清", parsed.code, connectionId, true, () =>
 				opts.problems.resolve(
 					{ reporter: adapterKey, about: { connectionId }, code: parsed.code },
 					parsed.notify === undefined ? undefined : { notify: parsed.notify },

@@ -342,6 +342,32 @@ describe("createPlatformAdapterContext · reportProblem / resolveProblem", () =>
 		]);
 	});
 
+	// R28:删连接时宿主已经清过它名下的一切(`runtime/bootstrap.ts` 的 `clearConnection`);适配器的对账
+	// 再清一下是空操作,不该在日志里落一条假 error,也不该当成「被拒」交给拓展。
+	it("连接已经从原始表里删掉:清放行(幂等)、不记日志、不交 onRejectedProblem", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		let list: Connection[] = [direct("ob1", "onebot"), direct("qq1", "qq-official")];
+		const { ctx, problems } = build("onebot", () => list, undefined, z.unknown(), logger, {
+			onRejectedProblem: (rejection) => rejections.push(rejection),
+		});
+		ctx.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "网关连不上" });
+		expect(problems.list()).toHaveLength(1);
+		list = [direct("qq1", "qq-official")]; // 连接删了:原始表里已经没有 ob1
+		ctx.resolveProblem({ connectionId: "ob1", code: "gateway_down", notify: false });
+		expect(logger.error).not.toHaveBeenCalled();
+		expect(rejections).toEqual([]);
+		expect(problems.list()).toEqual([]);
+	});
+
+	// 放行只给「已经不在原始表里」;仍在表里、只是归别人的连接照旧拒 —— 一个适配器不能替别人清问题。
+	it("清别的适配器名下仍存在的连接:照旧拒绝并记一行 error", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const { ctx } = build("onebot", () => mine, undefined, z.unknown(), logger);
+		ctx.resolveProblem({ connectionId: "qq1", code: "gateway_down", notify: false });
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
 	it("适配器停下之后:带连接的上报被丢,名下的(含连接支)已清", async () => {
 		const logger = { ...silentLogger, error: vi.fn() };
 		const { handle, ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger);

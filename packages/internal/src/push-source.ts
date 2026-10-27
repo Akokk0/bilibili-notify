@@ -222,7 +222,10 @@ export interface PlatformAdapterContext extends IntegrationContext {
 		notify?: boolean;
 		recoveryMessage?: string;
 	}): void;
-	/** 清掉一个问题(同 `reportProblem` 的对象规矩);语义同集成层的 `resolveProblem`。 */
+	/**
+	 * 清掉一个问题(同 `reportProblem` 的对象规矩);语义同集成层的 `resolveProblem`。
+	 * 带 `connectionId` 时,连接已删的,清是空操作、不算被拒(宿主删连接时已经清过它名下的问题)。
+	 */
 	resolveProblem(problem: { connectionId?: string; code: string; notify?: boolean }): void;
 	/**
 	 * 把收到的私聊 / 群消息交给宿主(ADR-0024 决策 12)。适配器只报**是哪条连接**收到的(`connectionId`),
