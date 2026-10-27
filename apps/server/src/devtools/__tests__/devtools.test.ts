@@ -161,7 +161,7 @@ describe("createDevtools · 截流接线", () => {
 		};
 	}
 
-	/** 真派发器接在 devtools 交回去的派生表与截流口上 —— 接线剪断哪一头这里都会红。 */
+	/** 真派发器接在 devtools 交回去的读口与截流口上 —— 接线剪断哪一头这里都会红。 */
 	function setup(registry = registryOf([onebotAdapter()])) {
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({
@@ -177,7 +177,8 @@ describe("createDevtools · 截流接线", () => {
 				getConnection: (id: string) => (id === "ad" ? CONNECTION : undefined),
 				getTargets: () => [TARGET],
 			} as never,
-			adapters: dev.adapters,
+			adapters: registry,
+			injectedCapabilities: dev.injectedCapabilities,
 			interceptSend: dev.interceptSend,
 			logger: LOGGER,
 		});
@@ -185,22 +186,21 @@ describe("createDevtools · 截流接线", () => {
 	}
 
 	/**
-	 * 🔴 交回去的是**派生表**不是拷贝。
+	 * 🔴 devtools 不拷注册表、也不包一层;派发器拿到的就是那张活表。
 	 *
 	 * 拷一份的话,拓展后注册进来的出口在开发版里根本不存在 —— 而生产是好的。那是
-	 * 「本地一跑就不生效、两边都不报错」那类假绿(ADR-0012 决策 29 拿它否掉了
-	 * 「传同一个可变数组」那个方案)。
+	 * 「本地一跑就不生效、两边都不报错」那类假绿(ADR-0012 决策 29)。
 	 */
 	it("createDevtools 之后**才注册**的出口,派发器照样发得到、照样被截流口拦住", async () => {
 		const send = vi.fn(async () => ok({ latencyMs: 1 }));
 		const registry = createPlatformAdapterRegistry();
 		const { dev, dispatcher } = setup(registry);
-		expect(dev.adapters.list()).toEqual([]);
+		expect(registry.list()).toEqual([]);
 
 		// 拓展在 activate 里注册的那一刻 —— 比 devtools 晚得多。
 		registry.register(onebotAdapter(send), fakeAdapterContext().ctx);
 
-		expect(dev.adapters.list()).toHaveLength(1);
+		expect(registry.list()).toHaveLength(1);
 		await dispatcher.send("t", { kind: "text", text: "0" });
 		expect(send).toHaveBeenCalledTimes(1);
 		await dev.registry.run("push.capture", {});

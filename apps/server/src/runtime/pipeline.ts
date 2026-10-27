@@ -260,6 +260,8 @@ export interface PipelineRuntimeOptions {
 	adapters: PlatformAdapterRegistry;
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
 	interceptSend?: SendInterceptHandler;
+	/** 开发版的能力注入读口,原样递给派发器(盖在宿主的能力记忆之上);生产不传。 */
+	injectedCapabilities?: (connectionId: string) => ConnectionCapabilities | undefined;
 	/**
 	 * Optional puppeteer adapter. When provided the pipeline spin up a shared
 	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
@@ -360,6 +362,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 		adapters: opts.adapters,
 		logger: log,
 		interceptSend: opts.interceptSend,
+		injectedCapabilities: opts.injectedCapabilities,
 		onDelivery: (target, _payload, result) => {
 			// 没真出网的投递(devtools 截流)不是可达性证据 —— 写回去会把一个发不出去的目标
 			// 标成绿的,而且落盘、活得比截流本身还久。

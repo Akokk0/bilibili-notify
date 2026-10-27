@@ -14,11 +14,7 @@ import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { adapterForConnection } from "../dispatch.js";
-import {
-	createPlatformAdapterRegistry,
-	deriveAdapterRegistry,
-	sendableAdapters,
-} from "../registry.js";
+import { createPlatformAdapterRegistry, sendableAdapters } from "../registry.js";
 
 function fakeAdapter(adapterKey: string): PlatformAdapter {
 	return {
@@ -149,46 +145,10 @@ describe("adapter 注册表 · 出口咽喉", () => {
 		).toThrow();
 	});
 
-	describe("派生表(devtools 往出口上套能力注入走这里)", () => {
-		const tagged = (view: Omit<PlatformAdapter, "send" | "start" | "stop">) => ({
-			...view,
-			tag: "wrapped",
-		});
-
-		it("后注册的适配器,派生表上看得见,派发器取的完整适配器里也有(带原 send、带包装)", async () => {
-			const base = createPlatformAdapterRegistry();
-			const derived = deriveAdapterRegistry(base, tagged);
-			expect(derived.list()).toEqual([]);
-
-			const late = fakeAdapter("bridge");
-			derived.register(late, fakeAdapterContext().ctx); // 注册转交给原表
-			expect(base.list()).toHaveLength(1);
-
-			expect(derived.list()).toHaveLength(1);
-			expect((derived.list()[0] as unknown as { tag: string }).tag).toBe("wrapped");
-			const [full] = sendableAdapters(derived);
-			expect(await full?.send(extensionConnection("bridge"), {} as never, {} as never)).toEqual({
-				ok: true,
-				latencyMs: 1,
-			});
-			expect((full as unknown as { tag: string }).tag).toBe("wrapped");
-		});
-
-		it("同一个出口两次问到的是同一个对象(视图与完整适配器各自稳定)", () => {
-			const base = registryWith(fakeAdapter("onebot"));
-			const derived = deriveAdapterRegistry(base, tagged);
-			expect(derived.list()[0]).toBe(derived.list()[0]);
-			expect(sendableAdapters(derived)[0]).toBe(sendableAdapters(derived)[0]);
-		});
-
-		it("撤下之后派生表上也没了", () => {
-			const base = createPlatformAdapterRegistry();
-			const derived = deriveAdapterRegistry(base, tagged);
-			const handle = derived.register(fakeAdapter("bridge"), fakeAdapterContext().ctx);
-			handle.dispose();
-			expect(derived.list()).toEqual([]);
-			expect(sendableAdapters(derived)).toEqual([]);
-		});
+	it("同一个出口两次问到的是同一个视图对象(完整适配器同理)", () => {
+		const registry = registryWith(fakeAdapter("onebot"));
+		expect(registry.list()[0]).toBe(registry.list()[0]);
+		expect(sendableAdapters(registry)[0]).toBe(sendableAdapters(registry)[0]);
 	});
 });
 
@@ -285,15 +245,6 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		const [view] = registry.list();
 		for (const name of ["send", "start", "stop"]) expect(name in (view as object)).toBe(false);
 	});
-
-	it("派生表的 register 把 ctx 原样转交", () => {
-		const base = createPlatformAdapterRegistry();
-		const derived = deriveAdapterRegistry(base, (view) => view);
-		const adapter = fakeAdapter("bridge");
-		const { ctx } = fakeAdapterContext();
-		derived.register(adapter, ctx);
-		expect(adapter.start).toHaveBeenCalledWith(ctx);
-	});
 });
 
 /** 拿 class 写的适配器:方法在原型上、读实例状态 —— 第三方拓展最常见的写法。 */
@@ -340,17 +291,6 @@ describe("adapter 注册表 · class 写的适配器(方法在原型上)", () =>
 			latencyMs: 42,
 		});
 	});
-
-	it("派生表上 class 适配器的 send 仍以原实例为 this,包装过的视图也读得到实例状态", async () => {
-		const base = registryWith(new ClassAdapter() as unknown as PlatformAdapter);
-		const derived = deriveAdapterRegistry(base, (view) => view);
-		const [full] = sendableAdapters(derived);
-		expect(await full?.send(extensionConnection("classy"), {} as never, {} as never)).toEqual({
-			ok: true,
-			latencyMs: 42,
-		});
-		expect(await full?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
-	});
 });
 
 describe("adapter 注册表 · onChange", () => {
@@ -375,14 +315,5 @@ describe("adapter 注册表 · onChange", () => {
 		sub.dispose();
 		reg(registry, fakeAdapter("c"));
 		expect(seen).toHaveBeenCalledTimes(2);
-	});
-
-	it("派生表的 onChange 转给原表:原表上登记的,派生表上的订阅也听得到", () => {
-		const base = createPlatformAdapterRegistry();
-		const derived = deriveAdapterRegistry(base, (view) => view);
-		const seen = vi.fn();
-		derived.onChange(seen);
-		reg(base, fakeAdapter("a"));
-		expect(seen).toHaveBeenCalledTimes(1);
 	});
 });

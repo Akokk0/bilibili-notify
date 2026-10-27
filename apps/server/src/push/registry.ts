@@ -11,9 +11,8 @@ import { pickAdapterMembers } from "./adapter-members.js";
  * 推送出口的**活注册表** —— adapter 矩阵的家(ADR-0012 决策 29)。
  *
  * 从前这是一个开机拼好的数组。拓展是后加载的、而且要能被拨开关加载 / 卸载,定死的数组
- * 两件事都干不了:两段式装配(先加载拓展再拼数组)会把「启用 / 停用不重启」作废,而往一个
- * 共享数组里 push 有一颗**只在开发版炸**的雷 —— dev 下拿到的是 devtools 包过一层的**另一
- * 份**,往原数组 push 的话开发版里根本看不见,两边都不报错。
+ * 两件事都干不了:两段式装配(先加载拓展再拼数组)会把「启用 / 停用不重启」作废,而把
+ * 某一刻的结果存下来的消费方,后注册的拓展对它永远不存在 —— 两边都不报错。
  */
 export interface PlatformAdapterRegistry {
 	/**
@@ -136,50 +135,4 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 	};
 	fullListOf.set(registry, () => adapters);
 	return registry;
-}
-
-/**
- * 在一张登记表上**派生**一张:注册转交给原表,`list()` 与派发器拿到的完整适配器都在问的那一刻
- * 按 `decorate` 现包(devtools 往出口上套能力注入就走这里)。
- *
- * 是个视图不是拷贝:拓展后注册进来的出口在派生表上照样看得见 —— 拷一份的话,开发版里它根本不存在,
- * 而生产是好的(ADR-0012 决策 29)。`decorate` 只见得到不含 `send` 的视图;派生出来的完整适配器
- * 用的是原来那个 `send`。包好的按原对象各记一份,同一个出口两次问到的是同一个对象。
- */
-export function deriveAdapterRegistry(
-	base: PlatformAdapterRegistry,
-	decorate: (view: PlatformAdapterView) => PlatformAdapterView,
-): PlatformAdapterRegistry {
-	const decorated = new WeakMap<PlatformAdapterView, PlatformAdapterView>();
-	const decoratedOf = (view: PlatformAdapterView): PlatformAdapterView => {
-		let next = decorated.get(view);
-		if (!next) {
-			next = decorate(view);
-			decorated.set(view, next);
-		}
-		return next;
-	};
-	const sendable = new WeakMap<SendableAdapter, SendableAdapter>();
-	const derived: PlatformAdapterRegistry = {
-		register: (adapter, ctx) => base.register(adapter, ctx),
-		list: () => base.list().map(decoratedOf),
-		onChange: (fn) => base.onChange(fn),
-	};
-	fullListOf.set(derived, () => {
-		// 原表的完整表与视图表是同一时刻从同一个数组出的,顺序一一对应。
-		const views = base.list();
-		return sendableAdapters(base).map((full, i) => {
-			let made = sendable.get(full);
-			if (!made) {
-				const view = views[i];
-				if (!view) throw new Error("adapter registry views out of step with full adapters");
-				// `decorate` 交回的是按成员表取出来的普通对象,展开安全;`send` 绑回原实例:
-				// 脱离实例调,class 写的适配器就读不到自己的状态。
-				made = { ...decoratedOf(view), send: full.send.bind(full) };
-				sendable.set(full, made);
-			}
-			return made;
-		});
-	});
-	return derived;
 }

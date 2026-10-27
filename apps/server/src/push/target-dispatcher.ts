@@ -52,6 +52,11 @@ export interface TargetDispatcherOptions {
 	logger: Logger;
 	/** 开发版的推送截流;生产不传。见 {@link SendInterceptHandler}。 */
 	interceptSend?: SendInterceptHandler;
+	/**
+	 * 开发版的能力注入(devtools):这条连接有假值就整份盖上、**不进能力记忆**,收摊即回真;
+	 * `probeConnectionCapabilities` 也直接交它、不叫适配器(不出网)。生产不传,行为与今天相同。
+	 */
+	injectedCapabilities?: (connectionId: string) => ConnectionCapabilities | undefined;
 	/** Optional hook fired after every send (success or failure). Used by the history store. */
 	onDelivery?: (target: PushTarget, payload: NotificationPayload, result: DeliveryResult) => void;
 }
@@ -154,7 +159,10 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return entry.caps;
 	}
 
-	/** 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、被隔离、适配器没实现 `capabilities` 都是 `undefined`。 */
+	/**
+	 * 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、被隔离、适配器没实现 `capabilities` 都是 `undefined`。
+	 * 真答案照旧并进记忆;devtools 注入了就整份盖上(不进记忆),收摊后读到的仍是真答案。
+	 */
 	function capabilitiesOf(connectionId: string): ConnectionCapabilities | undefined {
 		const stored = findConnection(connectionId);
 		if (!stored) {
@@ -162,9 +170,9 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			return undefined;
 		}
 		const route = routeOf(connectionId);
-		if (!route.ok) return undefined;
-		const fresh = route.adapter.capabilities?.(route.connection);
-		return fresh && remember(stored, fresh);
+		const fresh = route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
+		const answered = fresh && remember(stored, fresh);
+		return opts.injectedCapabilities?.(connectionId) ?? answered;
 	}
 
 	return {
@@ -230,6 +238,9 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		async probeConnectionCapabilities(
 			connectionId: string,
 		): Promise<ConnectionCapabilities | undefined> {
+			// devtools 的假值就是「探过了」:直接交它,不叫适配器(保住「探一次也不出网」)。
+			const injected = opts.injectedCapabilities?.(connectionId);
+			if (injected) return injected;
 			const stored = findConnection(connectionId);
 			if (!stored) {
 				capabilityMemory.delete(connectionId);

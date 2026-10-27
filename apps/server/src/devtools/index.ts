@@ -2,6 +2,7 @@ import { getHeapStatistics } from "node:v8";
 import type {
 	ChatIdentity,
 	Connection,
+	ConnectionCapabilities,
 	InboundHandlers,
 	MessageBus,
 	PushTarget,
@@ -13,7 +14,7 @@ import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
 import type { LiveSessionEngine } from "../live/live-sessions.js";
 import { routeConnection } from "../push/dispatch.js";
-import { deriveAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
+import type { PlatformAdapterRegistry } from "../push/registry.js";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { ProfileRefreshHandle } from "../runtime/profile-refresh.js";
@@ -119,8 +120,8 @@ export interface Devtools {
 	updateService: UpdateService;
 	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
 	marketplace: Marketplace;
-	/** 交给推送链路的那份 —— 包过能力注入的派生表。 */
-	adapters: PlatformAdapterRegistry;
+	/** 交给推送链路、再递给派发器的能力注入读口 —— 盖在宿主的能力记忆之上,收摊即回真。 */
+	injectedCapabilities: (connectionId: string) => ConnectionCapabilities | undefined;
 	/** 交给推送链路、再递给派发器的截流闸口 —— 三条发送路(含链接回卡、指令回复)共用。 */
 	interceptSend: SendInterceptHandler;
 	/**
@@ -181,17 +182,17 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			inbound: input.inbound,
 			commands: input.commands,
 			connections: input.connectionConfigs,
-			// 眼下有效的能力:真适配器的回答,套上 devtools 注入的假值(同推送链路看到的那份)。
+			// 眼下有效的能力:真适配器的回答;注入过就用注入的(与派发器看到的那份同源)。
 			capabilities: (connection) => {
 				const route = routeConnection(input.adapters.list(), connection);
-				return route.ok ? caps.wrap(route.adapter).capabilities?.(route.connection) : undefined;
+				const real = route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
+				return caps.get(connection.id) ?? real;
 			},
 			targets: input.targets,
 		}),
 		...busEventScenarios({ bus: input.bus }),
 		heapPressureScenario({ heap }),
-		// 方言给的是**没包装过**的那份:「哪些平台有能力这回事」是方言自己的事实,
-		// 不该经过装饰器那一层(它今天原样交回没能力的 adapter,但那是它的实现细节)。
+		// 方言给的是登记表视图本身:「哪些平台有能力这回事」是方言自己的事实,不经过注入那一层。
 		capabilityScenario({
 			injector: caps,
 			connections: input.connectionConfigs,
@@ -222,11 +223,9 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		route: createDevRoute({ registry, captures }),
 		updateService: update.service,
 		marketplace: market.marketplace,
-		// 是个**派生表**不是一份拷贝:注册转交给真注册表,包装在问的那一刻现做(见
-		// `deriveAdapterRegistry`)。拷一份的话,拓展后注册进来的出口在开发版里根本不存在 ——
-		// 而那正是「生产好好的、本地一跑就不生效」那类假绿(ADR-0012 决策 29)。
-		// 截流不在这里包适配器:它接在派发器调 `send` 的那一处(`interceptSend`)。
-		adapters: deriveAdapterRegistry(input.adapters, (view) => caps.wrap(view)),
+		// 能力和截流一样接在派发器上,不包适配器:推送链路拿的就是真登记表(拓展后注册照样看得见,
+		// ADR-0012 决策 29),注入读口只在派发器问能力时盖一层、收摊即回真。
+		injectedCapabilities: caps.get,
 		interceptSend: gate.intercept,
 		quietHoursNow: () => clock.now(),
 		memoryUsage: injectedMemoryUsage(

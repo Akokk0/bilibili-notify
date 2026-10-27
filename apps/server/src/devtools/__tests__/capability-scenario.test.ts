@@ -6,15 +6,20 @@ import type {
 import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import type { ConfigStore } from "../../config/store.js";
+import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createCapabilityInjector } from "../capability-injection.js";
 import { createDevRegistry } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";
 
 /**
  * B3:连接能力三态(小程序卡 支持 / 不支持 / 未知)。面板从 `/api/connections/capabilities`
- * 读,那条路最终问的是 `PlatformAdapter.capabilities(adapter)`;探一次走 `probeCapabilities`。
- * 注入 = 两个方法对那个 adapter id 都回假的;没有能力概念的平台(webhook)不碰 —— 面板上
- * 「这个平台不支持」靠的是方法不在。
+ * 读,那条路最终问的是派发器;探一次走 `probeConnectionCapabilities`。
+ *
+ * 注入现在接在派发器的能力记忆**之上**(`injectedCapabilities`):注入期间读到假值、假值不进记忆,
+ * 收摊即回真;`probeConnectionCapabilities` 也直接交假值、不叫适配器。没有能力概念的平台(webhook)
+ * 的场景照旧选不了 —— 面板上「这个平台不支持」靠的是方法不在。
  */
 
 const OB = {
@@ -69,68 +74,36 @@ function webhook(): PlatformAdapter {
 
 function setup() {
 	const injector = createCapabilityInjector();
-	const obDialect = onebot();
-	const whDialect = webhook();
-	const dialects = [obDialect, whDialect];
-	const ob = injector.wrap(obDialect);
-	const wh = injector.wrap(whDialect);
+	const dialects = [onebot(), webhook()];
 	const reg = createDevRegistry([
 		capabilityScenario({ injector, connections: () => [OB, WH], dialects: () => dialects }),
 	]);
-	return { reg, ob, wh };
+	return { reg, injector };
+}
+
+/** 真派发器 + devtools 的注入读口(生产不传的那一格):读口盖在能力记忆之上。 */
+function dispatcherWith(
+	injector: ReturnType<typeof createCapabilityInjector>,
+	dialect: PlatformAdapter,
+	connection: Connection,
+) {
+	return createTargetDispatcher({
+		store: {
+			getConnection: (id: string) => (id === connection.id ? connection : undefined),
+			getTargets: () => [],
+		} as unknown as ConfigStore,
+		adapters: registryOf([dialect]),
+		injectedCapabilities: injector.get,
+		logger: { info() {}, warn() {}, error() {}, debug() {} },
+	});
 }
 
 describe("connection.capability", () => {
-	// 验红:把 `wrap` 换回 `{ ...inner }` 展开,这条红(原型上的方法没带过去)。
-	it("包 class 适配器(方法在原型上、读实例状态),没注入的连接原样问到实例", async () => {
-		class Classy {
-			readonly adapterKey = "onebot";
-			readonly settingsSchema = z.unknown();
-			private readonly caps = REAL;
-			isAvailable() {
-				return true;
-			}
-			async send() {
-				return { ok: true as const, latencyMs: 1 };
-			}
-			async probe() {
-				return { ok: true as const, latencyMs: 1 };
-			}
-			capabilities() {
-				return this.caps;
-			}
-			async probeCapabilities() {
-				return this.caps;
-			}
-			start() {}
-			stop() {}
-		}
-		const injector = createCapabilityInjector();
-		const wrapped = injector.wrap(new Classy() as unknown as PlatformAdapter);
-		expect(wrapped.capabilities?.(OB)).toBe(REAL);
-		expect(await wrapped.probeCapabilities?.(OB)).toBe(REAL);
-		expect(await wrapped.probe(OB)).toEqual({ ok: true, latencyMs: 1 });
-		injector.set("ad-ob", {
-			...REAL,
-			nativeShare: { state: "supported", checkedAt: "2026-10-26T00:01:00.000Z" },
-		});
-		expect(wrapped.capabilities?.(OB)?.nativeShare.state).toBe("supported");
-		expect(wrapped.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
-	});
-
-	it("没注入:原样透传;webhook 照样没有 capabilities 方法", async () => {
-		const { ob, wh } = setup();
-		expect(ob.capabilities?.(OB)).toBe(REAL);
-		expect(await ob.probeCapabilities?.(OB)).toBe(REAL);
-		expect(wh.capabilities).toBeUndefined();
-	});
-
-	it("注入 supported:capabilities 与 probeCapabilities 对那个 id 都回假的,别的 id 不受影响", async () => {
-		const { reg, ob } = setup();
+	it("注入 supported:注入读口对那个连接回假的,别的连接不受影响", async () => {
+		const { reg, injector } = setup();
 		const res = await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
-		expect(ob.capabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
-		expect(await ob.probeCapabilities?.(OB)).toMatchObject({ nativeShare: { state: "supported" } });
-		expect(ob.capabilities?.({ ...OB, id: "other" } as Connection)).toBe(REAL);
+		expect(injector.get("ad-ob")).toMatchObject({ nativeShare: { state: "supported" } });
+		expect(injector.get("other")).toBeUndefined();
 		expect(res).toMatchObject({
 			ok: true,
 			active: [{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" }],
@@ -138,33 +111,33 @@ describe("connection.capability", () => {
 	});
 
 	it("注入只换小程序卡这一格:atAll / inbound 沿用方言原本的回答", async () => {
-		const { reg, ob } = setup();
+		const { reg, injector } = setup();
 		for (const state of ["supported", "unsupported", "unknown"]) {
 			await reg.run("connection.capability", { connection: "ad-ob", state });
-			const caps = ob.capabilities?.(OB);
+			const caps = injector.get("ad-ob");
 			expect(caps?.atAll).toBe(REAL.atAll);
 			expect(caps?.inbound).toBe(REAL.inbound);
 		}
 	});
 
 	it("unsupported 带理由,unknown 可以不带", async () => {
-		const { reg, ob } = setup();
+		const { reg, injector } = setup();
 		await reg.run("connection.capability", {
 			connection: "ad-ob",
 			state: "unsupported",
 			reason: "假装 1404",
 		});
-		expect(ob.capabilities?.(OB)).toMatchObject({
+		expect(injector.get("ad-ob")).toMatchObject({
 			nativeShare: { state: "unsupported", reason: "假装 1404" },
 		});
 		await reg.run("connection.capability", { connection: "ad-ob", state: "unknown" });
-		expect(ob.capabilities?.(OB)?.nativeShare.state).toBe("unknown");
+		expect(injector.get("ad-ob")?.nativeShare.state).toBe("unknown");
 	});
 
 	it("connection 省略取第一个有能力概念的;指到 webhook 就拒", async () => {
-		const { reg, ob } = setup();
+		const { reg, injector } = setup();
 		await reg.run("connection.capability", { state: "supported" });
-		expect(ob.capabilities?.(OB)?.nativeShare.state).toBe("supported");
+		expect(injector.get(OB.id)?.nativeShare.state).toBe("supported");
 		await expect(reg.run("connection.capability", { connection: "ad-wh" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
@@ -186,32 +159,57 @@ describe("connection.capability", () => {
 		const reg = createDevRegistry([
 			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),
 		]);
-		const wrapped = injector.wrap(qq);
 		await reg.run("connection.capability", { state: "supported" });
-		expect(wrapped.capabilities?.(conn)?.nativeShare.state).toBe("supported");
+		expect(injector.get(conn.id)?.nativeShare.state).toBe("supported");
 	});
 
-	it("收摊回真", async () => {
-		const { reg, ob } = setup();
-		await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
+	// 验红:注入包在适配器外面时,假值会被派发器的能力记忆收下,收摊后真适配器回 unknown 也盖不回去。
+	it("注入 supported 后收摊,派发器回到真答案(unknown),假值不进记忆", async () => {
+		const injector = createCapabilityInjector();
+		const dialect: PlatformAdapter = {
+			...onebot(),
+			capabilities: () => ({ ...REAL, nativeShare: { state: "unknown" } }),
+		};
+		const dispatcher = dispatcherWith(injector, dialect, OB);
+		const reg = createDevRegistry([
+			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+		]);
+
+		await reg.run("connection.capability", { connection: OB.id, state: "supported" });
+		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("supported");
+
 		expect(await reg.reset("connection.capability")).toMatchObject({ ok: true, active: [] });
-		expect(ob.capabilities?.(OB)).toBe(REAL);
+		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unknown");
 	});
 
-	it("probeCapabilities 的假结果不打真探测(不出网)", async () => {
+	// 验红:真答案 unsupported 先被记忆收下,注入 unknown 也盖不住它 —— 面板看不到「未探测」。
+	it("真答案 unsupported 的连接上注入 unknown,派发器看得到 unknown", async () => {
+		const injector = createCapabilityInjector();
+		const dialect = onebot(); // 真答案:nativeShare unsupported
+		const dispatcher = dispatcherWith(injector, dialect, OB);
+		const reg = createDevRegistry([
+			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+		]);
+
+		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unsupported");
+
+		await reg.run("connection.capability", { connection: OB.id, state: "unknown" });
+		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unknown");
+	});
+
+	it("probeConnectionCapabilities 的假结果不打真探测(不出网)", async () => {
 		const injector = createCapabilityInjector();
 		const probe = vi.fn(async () => REAL);
-		const wrapped = injector.wrap({ ...onebot(), probeCapabilities: probe });
-		injector.set("ad-ob", { ...REAL, nativeShare: { state: "unknown" } });
-		await wrapped.probeCapabilities?.(OB);
+		const dialect: PlatformAdapter = { ...onebot(), probeCapabilities: probe };
+		const dispatcher = dispatcherWith(injector, dialect, OB);
+		const reg = createDevRegistry([
+			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+		]);
+
+		await reg.run("connection.capability", { connection: OB.id, state: "supported" });
+		expect((await dispatcher.probeConnectionCapabilities(OB.id))?.nativeShare.state).toBe(
+			"supported",
+		);
 		expect(probe).not.toHaveBeenCalled();
-	});
-	it("包装器没碰的可选成员原样带过去 —— 开着 devtools 也不会让那个平台看起来「不支持」某件事", async () => {
-		// 带哪些成员由 push/adapter-members.ts 的成员表定;接口多一个成员那张表编译不过,不会悄悄丢。
-		const injector = createCapabilityInjector();
-		const listConnectionCandidates = vi.fn(async () => []);
-		const wrapped = injector.wrap({ ...onebot(), listConnectionCandidates });
-		await wrapped.listConnectionCandidates?.(new AbortController().signal);
-		expect(listConnectionCandidates).toHaveBeenCalledTimes(1);
 	});
 });

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
-import { createPlatformAdapterRegistry, deriveAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createQQConnectionAuth } from "../qq-bind.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import { encryptLikeTencent } from "./tencent-bind-crypto.js";
@@ -365,17 +365,14 @@ describe("接线", () => {
 		return { adapter };
 	}
 
-	it("适配器上有 connectionAuth;登记表视图与派生表包一层后仍在,且不靠 this 也能调通", async () => {
+	it("适配器上有 connectionAuth;登记表视图上仍在,且不靠 this 也能调通", async () => {
 		const { adapter } = qqAdapter();
 		expect(adapter.connectionAuth).toBeDefined();
 		const base = createPlatformAdapterRegistry();
 		base.register(adapter, fakeAdapterContext().ctx);
 		const view = base.list().find((a) => a.adapterKey === "qq-official");
 		expect(view?.connectionAuth).toBeDefined();
-		const derived = deriveAdapterRegistry(base, (v) => ({ ...v }));
-		const dview = derived.list().find((a) => a.adapterKey === "qq-official");
-		expect(dview?.connectionAuth).toBeDefined();
-		const { begin } = dview?.connectionAuth ?? ({} as ConnectionAuth); // 解构 = 脱离 this
+		const { begin } = view?.connectionAuth ?? ({} as ConnectionAuth); // 解构 = 脱离 this
 		const r = await begin(signal());
 		expect(r).toMatchObject({ ok: true });
 	});

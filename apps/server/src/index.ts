@@ -807,7 +807,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				},
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
-		const adapters = devtools?.adapters ?? adapterRegistry;
 
 		// ---------- 卡片皮肤库(ADR-0014)----------
 		// **全进程唯一一家店**:出图(pipeline 的 ImageRenderer)、面板的皮肤库路由、卡片
@@ -885,9 +884,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionStore: subBinding.store,
 			subscriptionStateStore: runtime.subscriptionStateStore,
 			bus: runtime.bus,
-			adapters,
-			// 开发版的推送截流接在派发器调适配器那一处;生产 `devtools` 是 null,不传。
+			adapters: adapterRegistry,
+			// 开发版的推送截流接在派发器调适配器那一处;能力注入盖在派发器的能力记忆之上。生产 `devtools` 是 null,不传。
 			interceptSend: devtools?.interceptSend,
+			injectedCapabilities: devtools?.injectedCapabilities,
 			puppeteer,
 			cardSkins: {
 				get: (id) => skins.get(id) ?? undefined,
