@@ -16,14 +16,16 @@ import { pickAdapterMembers } from "./adapter-members.js";
  */
 export interface PlatformAdapterRegistry {
 	/**
-	 * 注册一个出口并启动它(`adapter.start(ctx)`),回一个撤下它的把手;把手 `dispose()` 摘掉它、
-	 * 放键,再调 `adapter.stop()`(不等它;抛了 / 失败了用 `ctx.logger.warn` 记一行,不往外抛)。
-	 * `start` 抛了:键与表里那一项撤掉,错原样抛出去 —— 登记失败不留半个适配器。
+	 * 注册一个出口并启动它(`adapter.start(ctx)`),落定后交回一个撤下它的把手;把手 `dispose()`
+	 * 摘掉它、放键,再调 `adapter.stop()`(不等它;抛了 / 失败了用 `ctx.logger.warn` 记一行,不往外抛)。
 	 *
-	 * 它的适配器键得是空的,**占了就抛**:悄悄顶掉等于把别人的连接整个截走
+	 * `start` 是 `void | Promise<void>`:异步的会等它回来才落定。抛了 / 拒了:键与表里那一项撤掉,
+	 * 错原样交回(拒绝),登记成功的通知不发 —— 登记失败不留半个适配器。
+	 *
+	 * 它的适配器键得是空的,**占了就拒**:悄悄顶掉等于把别人的连接整个截走
 	 * (一个拓展要是能声明 `"onebot"`,内置那条连接的推送就全走它了),而两边都不报错。
 	 */
-	register(adapter: PlatformAdapter, ctx: PlatformAdapterContext): Disposable;
+	register(adapter: PlatformAdapter, ctx: PlatformAdapterContext): Promise<Disposable>;
 	/**
 	 * 现在有哪些出口。
 	 *
@@ -107,12 +109,12 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 			listeners.add(fn);
 			return { dispose: () => void listeners.delete(fn) };
 		},
-		register(adapter, ctx) {
+		async register(adapter, ctx) {
 			add(adapter);
 			try {
-				adapter.start(ctx);
+				await adapter.start(ctx);
 			} catch (err) {
-				// 登记失败不留半个适配器:键放掉、表里摘掉,错原样抛出去。
+				// 登记失败不留半个适配器:键放掉、表里摘掉,错原样交回去。
 				remove(adapter);
 				throw err;
 			}

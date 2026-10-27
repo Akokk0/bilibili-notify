@@ -37,9 +37,11 @@ export function builtinAdapterStubs(): PlatformAdapter[] {
 	return real.map((adapter) => ({ ...adapter, start() {}, stop() {} }));
 }
 
-/** 把三个内置适配器的替身登记进这张表;回撤销它们的把手。 */
-export function registerBuiltinAdapterStubs(registry: PlatformAdapterRegistry): Disposable[] {
-	return builtinAdapterStubs().map((adapter) =>
-		registry.register(adapter, fakeAdapterContext().ctx),
+/** 把三个内置适配器的替身登记进这张表(等落定);回撤销它们的把手。 */
+export async function registerBuiltinAdapterStubs(
+	registry: PlatformAdapterRegistry,
+): Promise<Disposable[]> {
+	return Promise.all(
+		builtinAdapterStubs().map((adapter) => registry.register(adapter, fakeAdapterContext().ctx)),
 	);
 }

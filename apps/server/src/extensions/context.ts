@@ -193,7 +193,7 @@ export interface ExtensionRuntime {
 	 * 这个拓展的登记(平台适配器、订阅源)都落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
 	 * 之后等它 —— 有一份失败就回失败(原话带着),这一次加载就失败。什么都没登记就是成功。
 	 */
-	sourceRegistration(): Promise<Result>;
+	registrationsSettled(): Promise<Result>;
 	/** 收回这个拓展注册过的一切。幂等。 */
 	dispose(): Promise<void>;
 }
@@ -397,7 +397,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 拓展的两种登记(平台适配器、订阅源)共用的一条生命周期。登记即 `start`,落定之前拓展可能已经
 	 * 调了把手、或者收摊了;落定之后也可能随时收摊。每份登记记一格:
 	 *
-	 * - `settled`:落定的结果(`sourceRegistration()` 等全部;装载器据此判这次加载成不成);
+	 * - `settled`:落定的结果(`registrationsSettled()` 等全部;装载器据此判这次加载成不成);
 	 * - `revoke`:落定之后才有的撤口(摘表 + 叫 `stop()`),幂等;
 	 * - `revokeRequested`:已经有人要撤(拓展的把手、`onStopping`、名册兜底)。
 	 *
@@ -431,11 +431,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	}
 
 	/**
-	 * 收一份登记。今天平台适配器是同步落定的、订阅源是异步的;R3 之后适配器也会是异步的,所以这里
-	 * 两种都收(`isThenable`),落定后的记账与撤法只有这一处。
+	 * 收一份登记。平台适配器与订阅源的登记都是异步落定的(登记即 `start`,它可以是异步的),
+	 * 这里两种都收(`isThenable`),落定后的记账与撤法只有这一处。
 	 *
-	 * 同步抛的照旧原样抛给调用方(平台适配器今天就是这条路径:装载器按 `activate` 失败处理);
-	 * 异步拒的落成 `settled` 的失败(订阅源今天就是这条路径,装载器等它)。
+	 * 同步抛的照旧原样抛给调用方(交进登记表之前的校验错误就是这条路径:装载器按 `activate` 失败处理);
+	 * 异步拒的落成 `settled` 的失败(登记表 / 来源的 `start` 拒了,装载器等它)。
 	 */
 	function adoptRegistration(
 		what: RegistrationKind,
@@ -1168,7 +1168,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				clearTimeout(timer);
 			}
 		},
-		sourceRegistration: () => registrationsSettled(),
+		registrationsSettled: () => registrationsSettled(),
 		async dispose() {
 			if (integration.disposed) return;
 			// 在跑的动作听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。

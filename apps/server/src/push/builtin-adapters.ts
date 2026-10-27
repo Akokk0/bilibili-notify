@@ -95,7 +95,7 @@ export async function registerBuiltinAdapters(
 				rejectedProblemLevel: "error",
 			});
 			entries.push({
-				registration: opts.registry.register(adapter, ctx),
+				registration: await opts.registry.register(adapter, ctx),
 				// 连接池随适配器收摊:适配器不走关停的守卫那条路,收早了也不掐任何在途的请求。
 				dispose: async () => {
 					try {

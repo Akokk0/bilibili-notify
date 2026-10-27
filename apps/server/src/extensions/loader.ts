@@ -776,11 +776,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			const unreadable = await runtime.verifySettings();
 			if (unreadable !== undefined) return unreadable;
 			if (crashed) throw crashed.err;
-			// 订阅源的登记是后台异步的(登记即 `start`):等它落定,`start` 抛了就是这次加载失败,
-			// 与推送源的 `start` 抛了同一个结局(原因进拓展列表)。放在判设置与 `activate` 的抛之后:
-			// 设置读不了时订阅源的 `start` 多半也是因此抛的,那一笔要记成「设置读不了」而不是加载失败。
-			at.step = "registerSource()";
-			const registered = await runtime.sourceRegistration();
+			// 平台适配器与订阅源的登记都是后台异步的(登记即 `start`,它可以是异步的):等它们落定,
+			// `start` 抛了 / 拒了就是这次加载失败,原话进拓展列表。放在判设置与 `activate` 的抛之后:
+			// 设置读不了时登记的 `start` 多半也是因此抛的,那一笔要记成「设置读不了」而不是加载失败。
+			at.step = "registrationsSettled()";
+			const registered = await runtime.registrationsSettled();
 			if (!registered.ok) throw new Error(registered.message);
 			assertSettingsHanded(manifest, runtime);
 			return undefined;

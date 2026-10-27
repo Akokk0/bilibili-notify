@@ -788,7 +788,7 @@ describe("GET /api/ext:上报出入(ADR-0019 决策 60)", () => {
 			stop() {},
 			searchCreators: async () => ({ ok: true, candidates: [] }),
 		});
-		await runtime.sourceRegistration();
+		await runtime.registrationsSettled();
 		sourceContext()?.reportProblem({
 			externalId: "u1",
 			code: "auth_lost",

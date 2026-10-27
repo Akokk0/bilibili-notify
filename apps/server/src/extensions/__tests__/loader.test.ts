@@ -987,6 +987,43 @@ describe("拨开关即热装卸", () => {
 		expect(imported).toHaveLength(1);
 	});
 
+	it("适配器 start 回的 Promise 拒了 → 这次加载 failed,原话带着,进程没收到 unhandledRejection", async () => {
+		await plant("bridge", HEALTHY);
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			const loaded = await run({
+				host: fakeHost(),
+				mounts: createExtensionMounts({ logger: silentLogger }),
+				importModule: async () => ({
+					activate(ctx: ExtensionContext) {
+						ctx.registerPlatformAdapter({
+							isAvailable: () => true,
+							listConnectionCandidates: async () => [],
+							probe: async () => ({ ok: true, latencyMs: 1 }),
+							send: async () => ({ ok: true, latencyMs: 1 }),
+							settingsSchema: z.object({}),
+							start: async () => {
+								throw new Error("异步起不来");
+							},
+							stop() {},
+						});
+					},
+				}),
+			});
+			const entry = loaded.list()[0];
+			expect(entry?.state).toBe("failed");
+			expect(entry?.detail).toContain("异步起不来");
+			// 等一拍:落下来的拒绝要有人接住,不能冒到进程上。
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(unhandled).toEqual([]);
+			await loaded.dispose();
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
 	it("加载失败的那个,开关不动就不重试 —— 否则每存一次全局设置就烧一次失败记账", async () => {
 		await plant("bad", `export function activate() { throw new Error("炸"); }`);
 		const loaded = await run({

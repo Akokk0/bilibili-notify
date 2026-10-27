@@ -738,7 +738,7 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 	it("登记途中抛了:错原样抛出去、已登记的收回、存储关掉,再调直接拒", async () => {
 		const { builtins, adapterRegistry, integrationStore } = compose();
 		// 先让别人占了 webhook 的键:前两个登记上了,第三个登记抛。
-		const squatter = adapterRegistry.register(
+		const squatter = await adapterRegistry.register(
 			{
 				adapterKey: "webhook",
 				start() {},

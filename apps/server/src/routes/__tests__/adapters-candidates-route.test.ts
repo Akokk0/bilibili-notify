@@ -15,9 +15,9 @@ function logger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
-function appOf(adapters: readonly PlatformAdapter[], log = logger()) {
+async function appOf(adapters: readonly PlatformAdapter[], log = logger()) {
 	const adapterRegistry = createPlatformAdapterRegistry();
-	for (const adapter of adapters) adapterRegistry.register(adapter, fakeAdapterContext().ctx);
+	for (const adapter of adapters) await adapterRegistry.register(adapter, fakeAdapterContext().ctx);
 	const deps = {
 		runtime: { adapterRegistry, serviceCtx: { logger: log } },
 	} as unknown as RouteDeps;
@@ -40,7 +40,7 @@ function extensionAdapter(
 describe("GET /:adapterKey/candidates", () => {
 	// 验红:路由里把候选口换成别的(例如恒回空表),这条红。
 	it("内置 webhook:四个模板候选(飞书、钉钉、企业微信、通用),不带 boundConnectionId", async () => {
-		const { app } = appOf([createWebhookAdapter({ logger: logger() })]);
+		const { app } = await appOf([createWebhookAdapter({ logger: logger() })]);
 		const res = await app.request("/webhook/candidates");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { candidates: ConnectionCandidate[] };
@@ -67,21 +67,21 @@ describe("GET /:adapterKey/candidates", () => {
 			via: "家里那台",
 			boundConnectionId: "c1",
 		};
-		const { app } = appOf([extensionAdapter("bridge", async () => [candidate])]);
+		const { app } = await appOf([extensionAdapter("bridge", async () => [candidate])]);
 		const res = await app.request("/bridge/candidates");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ candidates: [candidate] });
 	});
 
 	it("适配器不在登记表 → 503 unavailable", async () => {
-		const { app } = appOf([]);
+		const { app } = await appOf([]);
 		const res = await app.request("/bridge/candidates");
 		expect(res.status).toBe(503);
 		expect(await res.json()).toMatchObject({ code: "unavailable" });
 	});
 
 	it("候选口抛了 → 503 unavailable,并记一行 error", async () => {
-		const { app, log } = appOf([
+		const { app, log } = await appOf([
 			extensionAdapter("bridge", async () => {
 				throw new Error("桥炸了");
 			}),

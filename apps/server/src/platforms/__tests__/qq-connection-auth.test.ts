@@ -369,7 +369,7 @@ describe("接线", () => {
 		const { adapter } = qqAdapter();
 		expect(adapter.connectionAuth).toBeDefined();
 		const base = createPlatformAdapterRegistry();
-		base.register(adapter, fakeAdapterContext().ctx);
+		await base.register(adapter, fakeAdapterContext().ctx);
 		const view = base.list().find((a) => a.adapterKey === "qq-official");
 		expect(view?.connectionAuth).toBeDefined();
 		const { begin } = view?.connectionAuth ?? ({} as ConnectionAuth); // 解构 = 脱离 this

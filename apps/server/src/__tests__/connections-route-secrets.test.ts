@@ -127,8 +127,8 @@ describe("connections route — 凭据下发打码(真 store)", () => {
 		for (const c of [onebot, webhook, qq, ghost, broken, declared]) {
 			await runtime.configStore.upsertConnection(c as never);
 		}
-		registerBuiltinAdapterStubs(runtime.adapterRegistry);
-		runtime.adapterRegistry.register(
+		await registerBuiltinAdapterStubs(runtime.adapterRegistry);
+		await runtime.adapterRegistry.register(
 			{
 				adapterKey: "fake-ext",
 				settingsSchema: z.object({ botKey: z.string(), note: z.string() }),

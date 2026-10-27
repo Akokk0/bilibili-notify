@@ -26,15 +26,15 @@ function fakeAdapter(adapterKey: string): PlatformAdapter {
 	} as unknown as PlatformAdapter;
 }
 
-/** 登记表上登记一个适配器(上下文用假的)。 */
+/** 登记表上登记一个适配器(上下文用假的);等它落定(异步 `start` 也在内)。 */
 function reg(registry: ReturnType<typeof createPlatformAdapterRegistry>, adapter: PlatformAdapter) {
 	return registry.register(adapter, fakeAdapterContext().ctx);
 }
 
 /** 先登记好这几个的登记表。 */
-function registryWith(...adapters: PlatformAdapter[]) {
+async function registryWith(...adapters: PlatformAdapter[]) {
 	const registry = createPlatformAdapterRegistry();
-	for (const adapter of adapters) reg(registry, adapter);
+	for (const adapter of adapters) await reg(registry, adapter);
 	return registry;
 }
 
@@ -51,30 +51,30 @@ function extensionConnection(extensionId: string): Connection {
 }
 
 describe("adapter 注册表", () => {
-	it("开机那几个照旧,注册进来的也在", () => {
+	it("开机那几个照旧,注册进来的也在", async () => {
 		const builtin = fakeAdapter("onebot");
-		const registry = registryWith(builtin);
+		const registry = await registryWith(builtin);
 		expect(registry.list().map((a) => a.adapterKey)).toEqual(["onebot"]);
 
 		const bridge = fakeAdapter("bridge");
-		reg(registry, bridge);
+		await reg(registry, bridge);
 		expect(registry.list().map((a) => a.adapterKey)).toEqual(["onebot", "bridge"]);
 		expect(sendableAdapters(registry)).toEqual([builtin, bridge]);
 	});
 
-	it("**分发那一刻现问** —— 早就拿到注册表的消费者,下一次问就看得见新注册的", () => {
+	it("**分发那一刻现问** —— 早就拿到注册表的消费者,下一次问就看得见新注册的", async () => {
 		const registry = createPlatformAdapterRegistry();
 		// 消费方只握着注册表,不握着某一次的结果。
 		const route = (connection: Connection) => adapterForConnection(registry.list(), connection);
 		expect(route(extensionConnection("bridge"))).toBeUndefined();
 
-		reg(registry, fakeAdapter("bridge"));
+		await reg(registry, fakeAdapter("bridge"));
 		expect(route(extensionConnection("bridge"))?.adapterKey).toBe("bridge");
 	});
 
-	it("撤下之后就找不到了 —— 卸载一个拓展 = 从表里删一行", () => {
+	it("撤下之后就找不到了 —— 卸载一个拓展 = 从表里删一行", async () => {
 		const registry = createPlatformAdapterRegistry();
-		const handle = reg(registry, fakeAdapter("bridge"));
+		const handle = await reg(registry, fakeAdapter("bridge"));
 		expect(adapterForConnection(registry.list(), extensionConnection("bridge"))).toBeDefined();
 
 		handle.dispose();
@@ -82,28 +82,28 @@ describe("adapter 注册表", () => {
 		expect(registry.list()).toEqual([]);
 	});
 
-	it("键被占了 → 抛。**不许悄悄顶掉** —— 那等于把别人的连接整个截走", () => {
-		const registry = registryWith(fakeAdapter("onebot"));
-		expect(() => reg(registry, fakeAdapter("onebot"))).toThrow(/onebot/);
+	it("键被占了 → 拒。**不许悄悄顶掉** —— 那等于把别人的连接整个截走", async () => {
+		const registry = await registryWith(fakeAdapter("onebot"));
+		await expect(reg(registry, fakeAdapter("onebot"))).rejects.toThrow(/onebot/);
 	});
 
-	it("撤下之后同一个键可以重来 —— 停用再启用走的就是这条", () => {
+	it("撤下之后同一个键可以重来 —— 停用再启用走的就是这条", async () => {
 		const registry = createPlatformAdapterRegistry();
-		reg(registry, fakeAdapter("bridge")).dispose();
+		(await reg(registry, fakeAdapter("bridge"))).dispose();
 		const second = fakeAdapter("bridge");
-		reg(registry, second);
+		await reg(registry, second);
 		expect(sendableAdapters(registry)).toEqual([second]);
 		expect(adapterForConnection(registry.list(), extensionConnection("bridge"))).toBeDefined();
 	});
 
-	it("webhook 键被占了 → 抛 —— 四个 webhook 平台共用这一个键", () => {
-		const registry = registryWith(fakeAdapter("webhook"));
-		expect(() => reg(registry, fakeAdapter("webhook"))).toThrow(/webhook/);
+	it("webhook 键被占了 → 拒 —— 四个 webhook 平台共用这一个键", async () => {
+		const registry = await registryWith(fakeAdapter("webhook"));
+		await expect(reg(registry, fakeAdapter("webhook"))).rejects.toThrow(/webhook/);
 	});
 
-	it("dispose 是幂等的", () => {
+	it("dispose 是幂等的", async () => {
 		const registry = createPlatformAdapterRegistry();
-		const handle = reg(registry, fakeAdapter("bridge"));
+		const handle = await reg(registry, fakeAdapter("bridge"));
 		handle.dispose();
 		expect(() => handle.dispose()).not.toThrow();
 		expect(registry.list()).toEqual([]);
@@ -115,22 +115,22 @@ describe("adapter 注册表", () => {
  * (全仓只许派发器引它,那条由源码扫描守卫钉)。
  */
 describe("adapter 注册表 · 出口咽喉", () => {
-	it("list() 回的元素没有 send —— 类型上没有,运行时也真的没有", () => {
-		const registry = registryWith(fakeAdapter("onebot"));
+	it("list() 回的元素没有 send —— 类型上没有,运行时也真的没有", async () => {
+		const registry = await registryWith(fakeAdapter("onebot"));
 		const [view] = registry.list();
 		expect(view).toBeDefined();
 		expect("send" in (view as object)).toBe(false);
 		expect(view?.adapterKey).toBe("onebot");
 	});
 
-	it("同一个适配器两次 list() 回同一个视图对象", () => {
-		const registry = registryWith(fakeAdapter("onebot"));
+	it("同一个适配器两次 list() 回同一个视图对象", async () => {
+		const registry = await registryWith(fakeAdapter("onebot"));
 		expect(registry.list()[0]).toBe(registry.list()[0]);
 	});
 
-	it("sendableAdapters 回的是带 send 的原适配器", () => {
+	it("sendableAdapters 回的是带 send 的原适配器", async () => {
 		const onebot = fakeAdapter("onebot");
-		const registry = registryWith(onebot);
+		const registry = await registryWith(onebot);
 		expect(sendableAdapters(registry)).toEqual([onebot]);
 		expect(typeof sendableAdapters(registry)[0]?.send).toBe("function");
 	});
@@ -138,15 +138,15 @@ describe("adapter 注册表 · 出口咽喉", () => {
 	it("不是我们造的登记表 → 抛,不静默回空", () => {
 		expect(() =>
 			sendableAdapters({
-				register: () => ({ dispose() {} }),
+				register: async () => ({ dispose() {} }),
 				list: () => [],
 				onChange: () => ({ dispose() {} }),
 			}),
 		).toThrow();
 	});
 
-	it("同一个出口两次问到的是同一个视图对象(完整适配器同理)", () => {
-		const registry = registryWith(fakeAdapter("onebot"));
+	it("同一个出口两次问到的是同一个视图对象(完整适配器同理)", async () => {
+		const registry = await registryWith(fakeAdapter("onebot"));
 		expect(registry.list()[0]).toBe(registry.list()[0]);
 		expect(sendableAdapters(registry)[0]).toBe(sendableAdapters(registry)[0]);
 	});
@@ -154,43 +154,62 @@ describe("adapter 注册表 · 出口咽喉", () => {
 
 /** 登记即启动、注销即停止(ADR-0024 决策 3):启停只归登记表。 */
 describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
-	it("登记即调 start,拿到的就是传进去的那份 ctx", () => {
+	it("登记即调 start,拿到的就是传进去的那份 ctx", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const adapter = fakeAdapter("bridge");
 		const { ctx } = fakeAdapterContext();
-		registry.register(adapter, ctx);
+		await registry.register(adapter, ctx);
 		expect(adapter.start).toHaveBeenCalledTimes(1);
 		expect(adapter.start).toHaveBeenCalledWith(ctx);
 	});
 
-	it("start 抛了 → 原样抛出,键放掉、表里没有它、同一个键能再登记", () => {
+	it("start 抛了 → 原样拒,键放掉、表里没有它、同一个键能再登记", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const broken = fakeAdapter("bridge");
 		const boom = new Error("boom");
 		vi.mocked(broken.start).mockImplementation(() => {
 			throw boom;
 		});
-		expect(() => registry.register(broken, fakeAdapterContext().ctx)).toThrow(boom);
+		await expect(registry.register(broken, fakeAdapterContext().ctx)).rejects.toThrow(boom);
 		expect(registry.list()).toEqual([]);
 		expect(sendableAdapters(registry)).toEqual([]);
 
 		const again = fakeAdapter("bridge");
-		reg(registry, again);
+		await reg(registry, again);
 		expect(again.start).toHaveBeenCalledTimes(1);
 		expect(registry.list().map((a) => a.adapterKey)).toEqual(["bridge"]);
 	});
 
-	it("把手 dispose 调一次 stop,再调不重复", () => {
+	it("start 回一个 reject 的 Promise → 登记失败:原样拒,键放掉、表里没有它、同一个键能再登记", async () => {
+		const registry = createPlatformAdapterRegistry();
+		const seen = vi.fn();
+		registry.onChange(seen);
+		const broken = fakeAdapter("bridge");
+		vi.mocked(broken.start).mockImplementation(() => Promise.reject(new Error("async-boom")));
+		await expect(registry.register(broken, fakeAdapterContext().ctx)).rejects.toThrow("async-boom");
+		expect(registry.list()).toEqual([]);
+		expect(sendableAdapters(registry)).toEqual([]);
+		// 登记失败不发「成功」那一声。
+		expect(seen).not.toHaveBeenCalled();
+
+		const again = fakeAdapter("bridge");
+		await reg(registry, again);
+		expect(again.start).toHaveBeenCalledTimes(1);
+		expect(registry.list().map((a) => a.adapterKey)).toEqual(["bridge"]);
+		expect(seen).toHaveBeenCalledTimes(1);
+	});
+
+	it("把手 dispose 调一次 stop,再调不重复", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const adapter = fakeAdapter("bridge");
-		const handle = reg(registry, adapter);
+		const handle = await reg(registry, adapter);
 		expect(adapter.stop).not.toHaveBeenCalled();
 		handle.dispose();
 		handle.dispose();
 		expect(adapter.stop).toHaveBeenCalledTimes(1);
 	});
 
-	it("stop 同步抛了 → 不往外抛,用 ctx.logger.warn 记一行", () => {
+	it("stop 同步抛了 → 不往外抛,用 ctx.logger.warn 记一行", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const adapter = fakeAdapter("bridge");
 		vi.mocked(adapter.stop).mockImplementation(() => {
@@ -198,7 +217,7 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		});
 		const warn = vi.fn();
 		const { ctx } = fakeAdapterContext([], { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() });
-		const handle = registry.register(adapter, ctx);
+		const handle = await registry.register(adapter, ctx);
 		expect(() => handle.dispose()).not.toThrow();
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(String(warn.mock.calls[0]?.[0])).toContain("sync-fail");
@@ -212,7 +231,7 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		vi.mocked(adapter.stop).mockImplementation(() => Promise.reject(new Error("async-fail")));
 		const warn = vi.fn();
 		const { ctx } = fakeAdapterContext([], { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() });
-		const handle = registry.register(adapter, ctx);
+		const handle = await registry.register(adapter, ctx);
 		expect(() => handle.dispose()).not.toThrow();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(warn).toHaveBeenCalledTimes(1);
@@ -233,15 +252,15 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		);
 		const warn = vi.fn();
 		const { ctx } = fakeAdapterContext([], { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() });
-		const handle = registry.register(adapter, ctx);
+		const handle = await registry.register(adapter, ctx);
 		expect(() => handle.dispose()).not.toThrow();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(String(warn.mock.calls[0]?.[0])).toContain("thenable-fail");
 	});
 
-	it("视图上没有 send / start / stop —— 启停只归登记表,运行时也真的没有", () => {
-		const registry = registryWith(fakeAdapter("onebot"));
+	it("视图上没有 send / start / stop —— 启停只归登记表,运行时也真的没有", async () => {
+		const registry = await registryWith(fakeAdapter("onebot"));
 		const [view] = registry.list();
 		for (const name of ["send", "start", "stop"]) expect(name in (view as object)).toBe(false);
 	});
@@ -277,7 +296,7 @@ class ClassAdapter {
 describe("adapter 注册表 · class 写的适配器(方法在原型上)", () => {
 	// 验红:把 `viewOf` 换回对象展开,这条红(原型上的方法没被带过去,视图上 probe 是 undefined)。
 	it("登记后经视图调 probe / capabilities、经完整适配器调 send,都读得到实例状态", async () => {
-		const registry = registryWith(new ClassAdapter() as unknown as PlatformAdapter);
+		const registry = await registryWith(new ClassAdapter() as unknown as PlatformAdapter);
 		const [view] = registry.list();
 		expect(await view?.probe(extensionConnection("classy"))).toEqual({ ok: true, latencyMs: 42 });
 		expect(view?.capabilities?.(extensionConnection("classy"))?.atAll).toEqual({
@@ -294,11 +313,11 @@ describe("adapter 注册表 · class 写的适配器(方法在原型上)", () =>
 });
 
 describe("adapter 注册表 · onChange", () => {
-	it("登记与撤下各叫一次;start 抛了(登记失败)不叫;dispose 之后不再叫", () => {
+	it("登记与撤下各叫一次;start 抛了(登记失败)不叫;dispose 之后不再叫", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const seen = vi.fn();
 		const sub = registry.onChange(seen);
-		const handle = reg(registry, fakeAdapter("a"));
+		const handle = await reg(registry, fakeAdapter("a"));
 		expect(seen).toHaveBeenCalledTimes(1);
 		handle.dispose();
 		expect(seen).toHaveBeenCalledTimes(2);
@@ -309,11 +328,11 @@ describe("adapter 注册表 · onChange", () => {
 		(broken.start as ReturnType<typeof vi.fn>).mockImplementation(() => {
 			throw new Error("boom");
 		});
-		expect(() => reg(registry, broken)).toThrow("boom");
+		await expect(reg(registry, broken)).rejects.toThrow("boom");
 		expect(seen).toHaveBeenCalledTimes(2);
 
 		sub.dispose();
-		reg(registry, fakeAdapter("c"));
+		await reg(registry, fakeAdapter("c"));
 		expect(seen).toHaveBeenCalledTimes(2);
 	});
 });

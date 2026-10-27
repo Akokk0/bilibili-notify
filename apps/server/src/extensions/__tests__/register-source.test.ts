@@ -280,7 +280,7 @@ describe("ctx.registerSource:登记", () => {
 		expect(h.record.entries[0]?.label?.()).toBe("抖音拓展");
 	});
 
-	it("同步交回把手,登记在后台落定:落定前 sourceRegistration 还没回,落定后回成功", async () => {
+	it("同步交回把手,登记在后台落定:落定前 registrationsSettled 还没回,落定后回成功", async () => {
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -294,7 +294,7 @@ describe("ctx.registerSource:登记", () => {
 		const handle = h.ctx.registerSource(def());
 		expect(typeof handle.dispose).toBe("function");
 		let settled = false;
-		const registration = h.runtime.sourceRegistration().then((result) => {
+		const registration = h.runtime.registrationsSettled().then((result) => {
 			settled = true;
 			return result;
 		});
@@ -304,9 +304,9 @@ describe("ctx.registerSource:登记", () => {
 		expect(await registration).toEqual({ ok: true });
 	});
 
-	it("没登记过 sourceRegistration 回成功(没有来源要等)", async () => {
+	it("没登记过 registrationsSettled 回成功(没有来源要等)", async () => {
 		const h = harness();
-		expect(await h.runtime.sourceRegistration()).toEqual({ ok: true });
+		expect(await h.runtime.registrationsSettled()).toEqual({ ok: true });
 	});
 
 	it("拓展的 start 抛了:登记落定回失败,原话带着(装载器据此判这次加载失败)", async () => {
@@ -316,7 +316,7 @@ describe("ctx.registerSource:登记", () => {
 			},
 		});
 		h.ctx.registerSource(def());
-		const result = await h.runtime.sourceRegistration();
+		const result = await h.runtime.registrationsSettled();
 		expect(result).toMatchObject({ ok: false });
 		expect(result.ok ? "" : result.message).toContain("连不上平台");
 	});
@@ -331,7 +331,7 @@ describe("ctx.registerSource:登记", () => {
 				},
 			}),
 		);
-		await h.runtime.sourceRegistration();
+		await h.runtime.registrationsSettled();
 		handed?.reportPost("u1", {
 			postId: "p1",
 			url: "https://douyin.invalid/p1",
@@ -356,7 +356,7 @@ describe("ctx.registerSource:上报出入", () => {
 				},
 			}),
 		);
-		await h.runtime.sourceRegistration();
+		await h.runtime.registrationsSettled();
 		handed?.reportLive("u1", { kind: "pause" } as never);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(h.discrepancies).toHaveLength(1);
@@ -375,7 +375,7 @@ describe("ctx.registerSource:收摊", () => {
 	it("把手的 dispose 撤登记,幂等", async () => {
 		const h = harness();
 		const handle = h.ctx.registerSource(def());
-		await h.runtime.sourceRegistration();
+		await h.runtime.registrationsSettled();
 		handle.dispose();
 		handle.dispose();
 		expect(h.record.disposed).toBe(1);
@@ -391,7 +391,7 @@ describe("ctx.registerSource:收摊", () => {
 				},
 			}),
 		);
-		await h.runtime.sourceRegistration();
+		await h.runtime.registrationsSettled();
 		await h.runtime.dispose();
 		expect(abortedAtStop).toEqual([false]);
 		expect(h.ctx.signal.aborted).toBe(true);
@@ -417,7 +417,7 @@ describe("ctx.registerSource:收摊", () => {
 		const handle = h.ctx.registerSource(def({ stop: () => void stops.push("stop") }));
 		handle.dispose();
 		release();
-		expect(await h.runtime.sourceRegistration()).toEqual({ ok: true });
+		expect(await h.runtime.registrationsSettled()).toEqual({ ok: true });
 		expect(h.record.disposed).toBe(1);
 		expect(stops).toEqual(["stop"]);
 	});
@@ -437,7 +437,7 @@ describe("ctx.registerSource:收摊", () => {
 		h.ctx.registerSource(def({ stop: () => void stops.push("stop") }));
 		await h.runtime.dispose();
 		release();
-		expect(await h.runtime.sourceRegistration()).toEqual({ ok: true });
+		expect(await h.runtime.registrationsSettled()).toEqual({ ok: true });
 		expect(h.record.disposed).toBe(1);
 		expect(stops).toEqual(["stop"]);
 	});

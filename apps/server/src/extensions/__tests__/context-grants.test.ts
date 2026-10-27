@@ -271,6 +271,20 @@ describe("按清单注册平台适配器", () => {
 		expect(adapterCtx.connections().map((c) => c.id)).toEqual(["mine"]);
 	});
 
+	it("start 回一个 reject 的 Promise → 这次登记失败,原话带着,表里不留它", async () => {
+		const h = harness();
+		h.ctx.registerPlatformAdapter({
+			...def(),
+			start: async () => {
+				throw new Error("boom");
+			},
+		});
+		const result = await h.runtime.registrationsSettled();
+		expect(result).toMatchObject({ ok: false });
+		expect(result.ok ? "" : result.message).toContain("boom");
+		expect(h.adapters.list()).toEqual([]);
+	});
+
 	// 契约的类型把这两个成员排除了,但第三方 JS 不受类型约束:带了也不认,否则「没开放」的口子先被人用上,
 	// 以后就改不动它的形状(ADR-0024 决策 11)。
 	// 验红:把 context.ts 里摘这两个成员的那一句去掉(原样展开),这条红。
@@ -429,6 +443,9 @@ describe("按清单注册平台适配器", () => {
 		h.ctx.onDispose(() => {
 			listedAtHook = h.adapters.list().length;
 		});
+		// 登记是异步的(`register()` 交回 Promise):先等它落定,适配器才算「在跑」——
+		// 在跑的适配器收摊时先叫 `stop()` 再中止 `signal`,这条钉的就是那一段。
+		await h.runtime.registrationsSettled();
 
 		await h.runtime.dispose();
 
@@ -494,12 +511,14 @@ describe("按清单注册平台适配器", () => {
 		expect(h.adapters.list()).toEqual([]);
 	});
 
-	it("注册交回的把手只有幂等的 dispose,撤掉后登记表里没有它", () => {
+	it("注册交回的把手只有幂等的 dispose,撤掉后登记表里没有它", async () => {
 		const h = harness();
 		const handle = h.ctx.registerPlatformAdapter(def());
 		expect(Object.keys(handle)).toEqual(["dispose"]);
 		handle.dispose();
 		handle.dispose();
+		// 登记还没落定时先记下「要撤」,落定那一刻当场撤(见 `adoptRegistration`)。
+		await h.runtime.registrationsSettled();
 		expect(h.adapters.list()).toEqual([]);
 	});
 
@@ -1294,7 +1313,7 @@ describe("statusChanged 合并", () => {
 			stop() {},
 			searchCreators: async () => ok({ candidates: [] }),
 		});
-		await h.runtime.sourceRegistration();
+		await h.runtime.registrationsSettled();
 		// 清单没声明下播:整条拒、记一条上报出入。
 		source?.reportLive("person", { kind: "end", details: { url: "https://live.example.com/1" } });
 		await Promise.resolve();

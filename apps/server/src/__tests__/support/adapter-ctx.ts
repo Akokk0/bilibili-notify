@@ -100,7 +100,7 @@ const driven = new WeakMap<object, FakeAdapterContext>();
  * 之后是「改名单、再触发 `ctx.onConnectionsChanged` 登记的回调」—— 与生产里登记表 / 连接变更的路径一致。
  */
 export function reconcileAdapter(
-	adapter: { start(ctx: PlatformAdapterContext): void },
+	adapter: { start(ctx: PlatformAdapterContext): void | Promise<void> },
 	connections: readonly Connection[],
 	/** 只在第一次(`start`)生效:适配器经 `ctx.inbound` 交的入站消息原样落到这里。 */
 	inbound?: PlatformAdapterContext["inbound"],
@@ -113,12 +113,19 @@ export function reconcileAdapter(
 	}
 	const fake = fakeAdapterContext(connections, undefined, inbound);
 	driven.set(adapter, fake);
-	adapter.start(fake.ctx);
+	void adapter.start(fake.ctx);
 }
 
-/** 登记好这几个适配器(逐个 `register`,上下文用假的)的登记表。键重复会抛,与生产一致。 */
+/**
+ * 登记好这几个适配器(逐个 `register`,上下文用假的)的登记表。
+ *
+ * `register()` 现在交回 Promise,这里**故意不等**:调用它的地方多半是同步的构造器
+ * (`setup()`、`makeRuntime()`),而这些测试适配器的 `start` 都是同步的 —— `add()` 与 `start()`
+ * 在调用的当下就跑完,`list()` 立刻可用,只差落定那一拍(撤口与 `onChange`)。键重复 / `start`
+ * 拒了要断言的用例别用它,直接 `await expect(registry.register(...)).rejects`(见 `registry.test.ts`)。
+ */
 export function registryOf(adapters: readonly PlatformAdapter[]): PlatformAdapterRegistry {
 	const registry = createPlatformAdapterRegistry();
-	for (const adapter of adapters) registry.register(adapter, fakeAdapterContext().ctx);
+	for (const adapter of adapters) void registry.register(adapter, fakeAdapterContext().ctx);
 	return registry;
 }

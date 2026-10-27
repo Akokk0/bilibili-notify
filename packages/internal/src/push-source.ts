@@ -69,9 +69,10 @@ export interface PlatformAdapter {
 	 * 变了就对一次账。对账必须幂等、够便宜(没变就是空操作),且**不许写配置、不许触发探测**
 	 * (会经 `config-changed` 绕回来)。无状态的实现留空。
 	 *
-	 * 抛了算登记失败:登记表把键与表里那一项撤掉,再把错原样抛出去。
+	 * 抛了(或交回的 Promise 拒了)算登记失败:登记表把键与表里那一项撤掉,再把错原样交回去
+	 * (交回 Promise 的以拒绝的形式),登记成功的通知也不会发。异步初始化直接写 `async start()`。
 	 */
-	start(ctx: PlatformAdapterContext): void;
+	start(ctx: PlatformAdapterContext): void | Promise<void>;
 	/**
 	 * 注销即停止 —— 登记表在把适配器摘出表之后调一次。关掉所有连接 / 监听 / 定时器,幂等。
 	 * 回 Promise 时登记表不等它,失败由登记表记一行 warn。

@@ -24,9 +24,9 @@ function logger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
-function appOf(adapters: readonly PlatformAdapter[], log = logger()) {
+async function appOf(adapters: readonly PlatformAdapter[], log = logger()) {
 	const adapterRegistry = createPlatformAdapterRegistry();
-	for (const adapter of adapters) adapterRegistry.register(adapter, fakeAdapterContext().ctx);
+	for (const adapter of adapters) await adapterRegistry.register(adapter, fakeAdapterContext().ctx);
 	const deps = {
 		runtime: { adapterRegistry, serviceCtx: { logger: log } },
 	} as unknown as RouteDeps;
@@ -58,7 +58,7 @@ describe("适配器缺席 / 没有成员", () => {
 	it.each(["begin", "state", "draft"] as const)(
 		"键不在登记表 → %s 回 503 unavailable",
 		async (which) => {
-			const { app } = appOf([]);
+			const { app } = await appOf([]);
 			const res = await request(app, which);
 			expect(res.status).toBe(503);
 			expect(await res.json()).toMatchObject({ code: "unavailable" });
@@ -68,7 +68,7 @@ describe("适配器缺席 / 没有成员", () => {
 	it.each(["begin", "state", "draft"] as const)(
 		"适配器没有 connectionAuth → %s 回 400 unsupported",
 		async (which) => {
-			const { app } = appOf([fakeAdapter("x")]);
+			const { app } = await appOf([fakeAdapter("x")]);
 			const res = await request(app, which);
 			expect(res.status).toBe(400);
 			expect(await res.json()).toMatchObject({ code: "unsupported" });
@@ -84,7 +84,7 @@ describe("适配器回的失败原样按码回", () => {
 		["unavailable", 503],
 	] as const)("%s → %i", async (code, status) => {
 		const failing = async () => fail(code, "话");
-		const { app } = appOf([
+		const { app } = await appOf([
 			fakeAdapter("x", { begin: failing, state: failing, takeDraft: failing }),
 		]);
 		for (const which of ["begin", "state", "draft"] as const) {
@@ -103,14 +103,14 @@ describe("回包逐格挑,不展开适配器的返回值", () => {
 	} as unknown as NonNullable<PlatformAdapter["connectionAuth"]>;
 
 	it("发起:只有 taskId / state / pollIntervalSeconds", async () => {
-		const { app } = appOf([fakeAdapter("x", auth)]);
+		const { app } = await appOf([fakeAdapter("x", auth)]);
 		const res = await request(app, "begin");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ taskId: "t1", state: STATE, pollIntervalSeconds: 2 });
 	});
 
 	it("读状态:回包只有 state 一个键,没有草稿", async () => {
-		const { app } = appOf([fakeAdapter("x", auth)]);
+		const { app } = await appOf([fakeAdapter("x", auth)]);
 		const res = await request(app, "state");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as object;
@@ -119,7 +119,7 @@ describe("回包逐格挑,不展开适配器的返回值", () => {
 	});
 
 	it("取草稿:只有 settings,带 Cache-Control: no-store", async () => {
-		const { app } = appOf([fakeAdapter("x", auth)]);
+		const { app } = await appOf([fakeAdapter("x", auth)]);
 		const res = await request(app, "draft");
 		expect(res.status).toBe(200);
 		expect(res.headers.get("cache-control")).toBe("no-store");
@@ -129,7 +129,7 @@ describe("回包逐格挑,不展开适配器的返回值", () => {
 	it("路径参数与请求的 signal 递给适配器", async () => {
 		const state = vi.fn(async () => ok({ state: STATE }));
 		const takeDraft = vi.fn(async () => ok({ settings: {} }));
-		const { app } = appOf([fakeAdapter("x", { ...auth, state, takeDraft })]);
+		const { app } = await appOf([fakeAdapter("x", { ...auth, state, takeDraft })]);
 		await app.request("/x/auth/a%20b");
 		await app.request("/x/auth/a%20b/draft", { method: "POST" });
 		expect(state).toHaveBeenCalledWith("a b", expect.any(AbortSignal));
@@ -144,7 +144,9 @@ describe("适配器真抛了(算 bug)", () => {
 			const boom = async () => {
 				throw new Error("boom");
 			};
-			const { app, log } = appOf([fakeAdapter("x", { begin: boom, state: boom, takeDraft: boom })]);
+			const { app, log } = await appOf([
+				fakeAdapter("x", { begin: boom, state: boom, takeDraft: boom }),
+			]);
 			const res = await request(app, which);
 			expect(res.status).toBe(503);
 			expect(await res.json()).toMatchObject({ code: "unavailable" });
@@ -178,7 +180,7 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 		vi.unstubAllGlobals();
 	});
 
-	function qqApp() {
+	async function qqApp() {
 		const log = logger();
 		const adapter = createQQOfficialAdapter({
 			logger: log,
@@ -193,12 +195,12 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 			registry: createQQSessionRegistry(),
 			locale: fixedLocale(),
 		});
-		const { app } = appOf([adapter], log);
+		const { app } = await appOf([adapter], log);
 		return { app, log, adapter };
 	}
 
 	it("发起 → 未完成 → 成功(回包没有 appSecret)→ 取草稿拿到两格 → 再取找不到", async () => {
-		const { app, log } = qqApp();
+		const { app, log } = await qqApp();
 		const begun = await app.request("/qq-official/auth", { method: "POST" });
 		expect(begun.status).toBe(200);
 		const { taskId, state, pollIntervalSeconds } = (await begun.json()) as {
@@ -248,7 +250,7 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 	});
 
 	it("没扫完就取草稿 → 409 conflict;上游故障 → 503", async () => {
-		const { app } = qqApp();
+		const { app } = await qqApp();
 		const begun = (await (await app.request("/qq-official/auth", { method: "POST" })).json()) as {
 			taskId: string;
 		};

@@ -198,7 +198,7 @@ describe("createDevtools · 截流接线", () => {
 		expect(registry.list()).toEqual([]);
 
 		// 拓展在 activate 里注册的那一刻 —— 比 devtools 晚得多。
-		registry.register(onebotAdapter(send), fakeAdapterContext().ctx);
+		await registry.register(onebotAdapter(send), fakeAdapterContext().ctx);
 
 		expect(registry.list()).toHaveLength(1);
 		await dispatcher.send("t", { kind: "text", text: "0" });

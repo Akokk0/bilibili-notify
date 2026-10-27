@@ -29,7 +29,7 @@ import type {
 import { fail, platformDescriptor } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import { z } from "zod";
-import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
@@ -116,12 +116,14 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 		expect(dispatcher.isAvailable("t1")).toBe(true);
 	});
 
-	it("同一个键被两个 adapter 声明 → **注册那一步就抛**,轮不到这一层", () => {
+	it("同一个键被两个 adapter 声明 → **注册那一步就拒**,轮不到这一层", async () => {
 		// 从前这里是「warn 一行 + 后者覆盖」。悄悄顶掉意味着推送全走了另一个实现,
 		// 而两边都不报错 —— 现在这道门挪进了注册表,而且从「提醒」变成了「拒绝」。
-		const first = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) });
+		const registry = registryOf([
+			makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) }),
+		]);
 		const second = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => true) });
-		expect(() => registryOf([first, second])).toThrow(/webhook/);
+		await expect(registry.register(second, fakeAdapterContext().ctx)).rejects.toThrow(/webhook/);
 	});
 });
 

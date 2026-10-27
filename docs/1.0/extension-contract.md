@@ -299,7 +299,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 | --- | --- | --- | --- |
 | `descriptor { label, shortLabel, color, icon, settingsFields }` | 是 | 开（条件显示与键值表字段不开） | 静态，写在清单 `contributes.push`，见下。第 3 版契约的适配器**不带描述这一格**：适配器自己的「脸」这一期不造，拓展的描述以清单为准、由宿主填；内置的随第 4 期 🔗 现状（3b-44，10-25）：清单段已形成 `PlatformAdapterDescriptor` 下发；适配器 def 带 `descriptor` 会在登记时被拒 |
 | `settingsSchema` | 是 | 开 | 连接设置的 zod；与清单的 `settingsFields` 逐格对表（键、类型、默认值），对不上登记当场抛 |
-| `start(ctx)` / `stop()` | 是 | 开 | 取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到 |
+| `start(ctx)` / `stop()` | 是 | 开 | 取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到 🔗 现状（10-27，R3）：`start` 已放宽为 `void \| Promise<void>`（与 `SourceDef.start` 对称），异步初始化可以写 `async start()`；拒了算登记失败，适配器不在册、这次加载失败 |
 | `send` | 是 | 开 | 返回结果形状、带标准码；只有 `TargetDispatcher` 调它 |
 | `isAvailable` | 是 | 开 | |
 | `probe` | 是 | 开 | 宿主每分钟调一次，连续两次探不通算断；适配器自己不报通断（见「问题上报」） |

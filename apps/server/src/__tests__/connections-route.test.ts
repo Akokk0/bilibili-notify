@@ -146,7 +146,7 @@ describe("connections route — 写入的失败(真 store)", () => {
 		);
 		await runtime.configStore.load();
 		// 内置三个适配器在场(真 schema、真候选,不连网)—— 配置仓据此验 settings,POST 据此抄快照。
-		registerBuiltinAdapterStubs(runtime.adapterRegistry);
+		await registerBuiltinAdapterStubs(runtime.adapterRegistry);
 		app = createConnectionsRoute({
 			runtime: {
 				serviceCtx: { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } },
@@ -258,7 +258,7 @@ describe("connections route — 写入的失败(真 store)", () => {
 	// 验红:把 `routes/connections.ts` 里抄快照的那句换回中性快照,图标那一格就红。
 	it("POST 挑拓展(桥)的一个候选 → 快照来自候选(带拓展给的图标),不是中性快照", async () => {
 		const icon = `data:image/png;base64,${"A".repeat(32)}`;
-		runtime.adapterRegistry.register(
+		await runtime.adapterRegistry.register(
 			{
 				adapterKey: "fake-ext",
 				settingsSchema: z.object({ token: z.string() }),
