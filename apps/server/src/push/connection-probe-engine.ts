@@ -53,8 +53,10 @@ const SETTINGS_INVALID_CODE = "connection_settings_invalid";
 const NEEDS_OWNER_ACTION_CODES: ReadonlySet<string> = new Set(["not_configured", "not_found"]);
 
 export interface ConnectionProbeEngineOptions {
-	/** 现读连接表,每轮都读最新的。 */
+	/** 现读整张连接表 —— 只留给本来就要全表的 `checkSettings` / `probeAll`,每轮各一次。 */
 	getConnections(): readonly Connection[];
+	/** 现读一条连接(含盘上的 `probeState`):按 id 查的走这里,别拿整表再 find。 */
+	getConnection(connectionId: string): Connection | undefined;
 	/** 探连通与能力用派发器现成的三个口。 */
 	dispatcher: Pick<
 		TargetDispatcher,
@@ -154,9 +156,8 @@ export function createConnectionProbeEngine(
 		return result;
 	}
 
-	/** 盘上此刻的状态:每次现读,不信一轮开头拿的快照。 */
-	const connectionOf = (connectionId: string) =>
-		opts.getConnections().find((c) => c.id === connectionId);
+	/** 盘上此刻的状态:每次现读一条,不信一轮开头拿的快照。 */
+	const connectionOf = (connectionId: string) => opts.getConnection(connectionId);
 	const statusOnDisk = (connectionId: string) => connectionOf(connectionId)?.probeState?.status;
 
 	const outageKey = (connectionId: string, reporter: string) => ({

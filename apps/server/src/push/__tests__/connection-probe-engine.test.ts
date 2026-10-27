@@ -44,6 +44,7 @@ function shown(call: Parameters<ProblemTable["report"]>[0] | undefined) {
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
+const C = "33333333-3333-4333-8333-333333333333";
 
 function connectionOf(id: string, extra: Partial<Connection> = {}): Connection {
 	return {
@@ -91,8 +92,11 @@ function setup(
 	const abort = new AbortController();
 	const tracked: Promise<unknown>[] = [];
 	const log = logger();
+	/** 整表读口:一轮只该被 `checkSettings` 与 `probeAll` 各叫一次。 */
+	const getConnections = vi.fn(() => connections);
 	const engine = createConnectionProbeEngine({
-		getConnections: () => connections,
+		getConnections,
+		getConnection: (id) => connections.find((c) => c.id === id),
 		dispatcher: {
 			probeConnection,
 			connectionCapabilities: () => opts.capabilities,
@@ -119,6 +123,7 @@ function setup(
 		tracked,
 		log,
 		probeConnectionCapabilities,
+		getConnections,
 	};
 }
 
@@ -146,6 +151,15 @@ describe("ConnectionProbeEngine", () => {
 		expect(c.probeConnection).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(1);
 		expect(c.probeConnection).toHaveBeenCalledTimes(2);
+	});
+
+	// 整表深拷是 O(N²):一轮只该在 checkSettings 与 probeAll 各读一次,探每条时走单条口现读。
+	it("开机那一轮只读两次整表:不按条再读", async () => {
+		const c = setup([connectionOf(A), connectionOf(B), connectionOf(C)], {});
+		engine = c.engine;
+		await vi.advanceTimersByTimeAsync(0);
+		expect(c.probeConnection).toHaveBeenCalledTimes(3);
+		expect(c.getConnections).toHaveBeenCalledTimes(2);
 	});
 
 	it("一次不通:不写盘", async () => {

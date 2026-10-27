@@ -660,6 +660,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	// 写回登记进 track:关停等这笔写交进 config 写道。
 	const connectionProbe = createConnectionProbeEngine({
 		getConnections: () => opts.configStore.getConnections(),
+		getConnection: (id) => opts.configStore.getConnection(id),
 		dispatcher,
 		recordProbeState: (id, state) => opts.configStore.recordConnectionProbeState(id, state),
 		problems: opts.problems,
