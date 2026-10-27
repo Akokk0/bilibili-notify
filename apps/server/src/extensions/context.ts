@@ -45,7 +45,7 @@ import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import type { PipelineRuntime } from "../runtime/pipeline.js";
 import { errorMessageOf } from "../util/error-message.js";
-import { catchThenableRejection } from "../util/is-thenable.js";
+import { catchThenableRejection, isThenable } from "../util/is-thenable.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { createExtensionSource } from "./extension-source.js";
@@ -348,6 +348,29 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 	});
 	const logger = integration.ctx.logger;
+
+	/**
+	 * 宿主栈上同步叫到拓展回调的那几处共用的一道闸:语言 / 设置的变更通知、适配器的连接变更、定时器。
+	 * 拓展的回调是第三方代码,同步抛了、或交回一个被拒的 Promise(`() => void` 放得进 async 函数),
+	 * 都只记一行带原话与口名的 error,**绝不沿宿主这一发往外抛** —— 同步的变更通知冒出去会掐断排在
+	 * 后面的监听、把「写设置」那一请求一起带走;定时器冒出去就是 uncaughtException,被拒的 Promise
+	 * 没人接就是 unhandledRejection(进程直接没了)。
+	 * 只包拓展交的回调,不碰宿主那面的簿记(一次性定时器跑完摘登记照走)。
+	 */
+	function wrapHandler(what: string, fn: () => void): () => void {
+		const report = (err: unknown) => {
+			logger.error(`拓展 ${id} 的 ${what} 回调抛了:${errorMessageOf(err)}`);
+		};
+		return () => {
+			try {
+				const result: unknown = fn();
+				// `() => void` 放得进 async 函数:交回被拒的 Promise 也是同一类,宿主那面没人 await 它。
+				if (isThenable(result)) void Promise.resolve(result).catch(report);
+			} catch (err) {
+				report(err);
+			}
+		};
+	}
 
 	/** `publishView` 交的回调 —— 每问一次叫一次,核过再下发。 */
 	let viewFn: (() => ExtensionView) | undefined;
@@ -684,8 +707,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			onChange: (fn: () => void) => {
 				if (integration.disposed) return integration.refuse("settings.onChange");
 				// 每个订阅者只往扇出名单里加一格 —— 「内容变没变」在上面那一处判过了。
-				settingsListeners.add(fn);
-				return integration.track({ dispose: () => settingsListeners.delete(fn) });
+				// 名单里放包过闸的那份,摘的时候也得摘它。
+				const listener = wrapHandler("settings.onChange", fn);
+				settingsListeners.add(listener);
+				return integration.track({ dispose: () => settingsListeners.delete(listener) });
 			},
 		};
 	}
@@ -705,7 +730,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		onChange(fn) {
 			if (integration.disposed) return integration.refuse("i18n.onChange");
-			return integration.track(opts.localeReader.onChange(fn));
+			return integration.track(opts.localeReader.onChange(wrapHandler("i18n.onChange", fn)));
 		},
 	};
 
@@ -729,11 +754,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。
 			let fired = false;
 			let tracked: Disposable | undefined;
+			const run = wrapHandler("setTimeout", fn);
 			const inner = host.setTimeout(() => {
 				fired = true;
 				// 只从名册上摘掉:宿主那只已经跑完,不用再叫它(`fired` 之后 `tracked.dispose()` 不动 `inner`)。
 				tracked?.dispose();
-				fn();
+				run();
 			}, ms);
 			tracked = integration.track({
 				dispose() {
@@ -750,7 +776,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		setInterval: (fn, ms) =>
 			integration.disposed
 				? integration.refuse("setInterval")
-				: integration.track(host.setInterval(fn, ms)),
+				: integration.track(host.setInterval(wrapHandler("setInterval", fn), ms)),
 		mount(handler) {
 			// 卸载之后还来挂:不进表(那才是幽灵端点),但前缀照答 —— 拓展要的只是一段字符串。
 			if (integration.disposed) {
@@ -825,7 +851,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					connections: opts.connections,
 					...(opts.connection ? { connection: opts.connection } : {}),
 					inbound: opts.inbound,
-					onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
+					onConnectionsChanged: (fn) =>
+						integration.track(opts.onConnectionsChanged(wrapHandler("onConnectionsChanged", fn))),
 					problems: opts.problems,
 					rejectedProblemLevel: "warn",
 					onRejectedProblem: recordRejectedProblem,

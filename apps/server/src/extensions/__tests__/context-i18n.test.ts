@@ -5,7 +5,7 @@
  * 收摊之后不再叫、没带译文的拓展照样有这一格。「只换口吻不转」由 `localeReaderOf` 的测试钉着。
  */
 
-import type { ExtensionManifest } from "@bilibili-notify/internal";
+import type { ExtensionManifest, Logger } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	extensionLocalesOf,
@@ -39,6 +39,7 @@ function boot(
 		ReturnType<typeof createProblemTable>,
 		"report" | "resolve" | "clearReporter"
 	> = ignoredProblems,
+	logger: Logger = silentLogger,
 ) {
 	const reader = switchableLocale(initial);
 	const runtime = createExtensionContext({
@@ -46,14 +47,14 @@ function boot(
 		id: "demo",
 		manifest: MANIFEST,
 		host: {
-			logger: silentLogger,
+			logger,
 			setInterval: () => ({ dispose() {} }),
 			setTimeout: () => ({ dispose() {} }),
 			onDispose() {},
 			signal: new AbortController().signal,
 			track: () => {},
 		},
-		loggerOf: () => silentLogger,
+		loggerOf: () => logger,
 		stores: { ...memoryStores(), redact() {} },
 		problems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
@@ -100,6 +101,32 @@ describe("ctx.i18n", () => {
 		expect(calls).toBe(1);
 		expect(i18n.locale()).toBe("en");
 		expect(i18n.t("status.up")).toBe("Connected");
+	});
+
+	/**
+	 * 拓展的回调是第三方代码:它抛了不许沿 `localeReader` → 总线 `config-changed` 冒出去 —— 那一发是
+	 * 同步的,冒出去会掐断排在后面的监听,还会把「写设置」那一请求一起带走。只记一行带原话与口名的
+	 * error,不重抛。
+	 */
+	it("onChange 回调抛了:切换不抛,后面的监听照收,记一行带原话的 error", () => {
+		const lines: string[] = [];
+		const logger: Logger = {
+			info: () => {},
+			warn: () => {},
+			debug: () => {},
+			error: (m) => lines.push(m),
+		};
+		const { i18n, reader } = boot(SAMPLE, "zh-CN", ignoredProblems, logger);
+		const seen: string[] = [];
+		i18n.onChange(() => {
+			throw new Error("boom");
+		});
+		i18n.onChange(() => seen.push("after"));
+
+		expect(() => reader.set("en")).not.toThrow();
+
+		expect(seen).toEqual(["after"]);
+		expect(lines.some((l) => l.includes("i18n.onChange") && l.includes("boom"))).toBe(true);
 	});
 
 	it("报问题时用的写者名按当前语言取清单名:换语言后再报跟着换", () => {

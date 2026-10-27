@@ -159,6 +159,54 @@ describe("拓展 ctx", () => {
 		expect(ticks).toBe(2);
 	});
 
+	/**
+	 * 定时回调是拓展的代码:它抛了在宿主那面就是 uncaughtException(进程直接没了),不能指望拓展自己
+	 * 接住。闸只包拓展交的回调,不碰「一次性跑完就摘」的簿记。
+	 */
+	it("定时回调抛了:不往外抛,记一行带原话与口名的 error", () => {
+		const { host, ctx } = makeRuntime();
+		ctx.setTimeout(() => {
+			throw new Error("timeout-boom");
+		}, 1000);
+		ctx.setInterval(() => {
+			throw new Error("interval-boom");
+		}, 1000);
+
+		expect(() => host.tick()).not.toThrow();
+
+		const errors = host.lines.filter((l) => l.startsWith("error "));
+		expect(errors.some((l) => l.includes("setTimeout") && l.includes("timeout-boom"))).toBe(true);
+		expect(errors.some((l) => l.includes("setInterval") && l.includes("interval-boom"))).toBe(true);
+	});
+
+	/**
+	 * `() => void` 放得进 async 函数,交回的就是一个被拒的 Promise —— 不接住的话和同步抛是同一类:
+	 * 宿主那面没人 await,`index.ts` 的 `unhandledRejection` 处理器会让整台退出。
+	 */
+	it("定时回调交回被拒的 Promise:不留给 unhandledRejection,记一行带原话的 error", async () => {
+		const { host, ctx } = makeRuntime();
+		const unhandled: unknown[] = [];
+		const onUnhandled = (err: unknown) => unhandled.push(err);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			ctx.setTimeout(async () => {
+				throw new Error("async-boom");
+			}, 1000);
+			host.tick();
+			// 让那一发拒绝落地 —— 没接住的话这一拍就会变成 unhandledRejection。
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(unhandled).toEqual([]);
+			expect(
+				host.lines.some(
+					(l) => l.startsWith("error ") && l.includes("setTimeout") && l.includes("async-boom"),
+				),
+			).toBe(true);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
 	it("一次性定时器触发之后自己从登记里放掉 —— 卸载时不再去摘它,手动 dispose 也不出错", async () => {
 		const host = fakeHost();
 		const fires: Array<() => void> = [];

@@ -1061,6 +1061,28 @@ describe("读到属于自己的连接", () => {
 		h.setConnections([connection()]);
 		expect(calls).toBe(1);
 	});
+
+	/**
+	 * 适配器的回调同样是第三方代码:抛了不许沿宿主「连接变了」那一发冒出去掐断排在后面的人。
+	 * 记一行带原话与口名的 error,不重抛。
+	 */
+	it("onConnectionsChanged 回调抛了:通知不抛,后面的照收,记一行带原话的 error", () => {
+		const { h, adapterCtx } = connected();
+		const seen: string[] = [];
+		adapterCtx.onConnectionsChanged(() => {
+			throw new Error("boom");
+		});
+		adapterCtx.onConnectionsChanged(() => seen.push("after"));
+
+		expect(() => h.setConnections([connection()])).not.toThrow();
+
+		expect(seen).toEqual(["after"]);
+		expect(
+			h.lines.some(
+				(l) => l.startsWith("error") && l.includes("onConnectionsChanged") && l.includes("boom"),
+			),
+		).toBe(true);
+	});
 });
 
 /**
@@ -1453,6 +1475,28 @@ describe("读自己的设置", () => {
 		h.ctx.settings(LINKS).onChange(() => seen.push("b"));
 		h.setSettings({ links: [{ id: "a", token: "t" }] });
 		expect(seen).toEqual(["a", "b"]);
+	});
+
+	/**
+	 * 订阅者是第三方代码:它抛了不许沿宿主 `config-changed` 冒出去掐断同一份名单里排在后面的人,
+	 * 也不许把「写设置」那一请求带炸。记一行带原话与口名的 error,不重抛。
+	 */
+	it("settings.onChange 订阅者抛了:落盘不抛,后面的订阅者照收,记一行带原话的 error", () => {
+		const h = boot({ settings: { links: [] } });
+		const seen: string[] = [];
+		h.ctx.settings(LINKS).onChange(() => {
+			throw new Error("boom");
+		});
+		h.ctx.settings(LINKS).onChange(() => seen.push("after"));
+
+		expect(() => h.setSettings({ links: [{ id: "a", token: "t" }] })).not.toThrow();
+
+		expect(seen).toEqual(["after"]);
+		expect(
+			h.lines.some(
+				(l) => l.startsWith("error") && l.includes("settings.onChange") && l.includes("boom"),
+			),
+		).toBe(true);
 	});
 
 	it("变更通知只在**内容真的变了**时叫 —— globals 别处动一下不该踢一遍所有桥;卸载后不再叫", async () => {
