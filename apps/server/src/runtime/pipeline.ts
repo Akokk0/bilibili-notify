@@ -299,8 +299,8 @@ export interface PipelineRuntimeOptions {
 	/** 在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):场次引擎写它,女仆查直播状态也从它答。 */
 	liveTable?: Pick<LiveTable, "get" | "list" | "replace" | "merge" | "remove">;
 	/**
-	 * B 站作品图 / 直播封面的抓图服务(接线层给 B 站集成的上下文:它自己的请求客户端,引用方是「集成在途」):
-	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
+	 * 核心抓图的口(接线层给宿主自己的抓图口 `AppRuntime.imageFetcher`,不借任何集成的客户端):今天只有会员
+	 * 上舰消息的自定义图经它抓进图库。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
 	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	/**

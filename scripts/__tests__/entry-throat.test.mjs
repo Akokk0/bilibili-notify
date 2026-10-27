@@ -75,10 +75,10 @@ export const EXPORTED_TYPE_LEDGER = {
 
 /**
  * ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。
- * `api` 给第 4 期两处读者(卡片真实预览、旧搜人,经入口递 `createApp`);`fetchImage` 给核心抓会员自定义图
- * (入口递 `createPipelineRuntime` 的 `imageFetcher`;宿主自己的抓图口另记以后再说)。主人 10-25 批。
+ * `api` 给第 4 期两处读者(卡片真实预览、旧搜人,经入口递 `createApp`)。主人 10-25 批。
+ * 4-03 删了 `fetchImage`:核心抓会员自定义图改走宿主自己的抓图口(`AppRuntime.imageFetcher`)。
  */
-export const BILIBILI_MEMBERS = ["api", "fetchImage"];
+export const BILIBILI_MEMBERS = ["api"];
 
 /** ④ 的范围与不扫的目录。 */
 export const SLOT_ROOTS = ["apps/server/src"];

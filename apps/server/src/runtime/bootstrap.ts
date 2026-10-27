@@ -1,3 +1,9 @@
+import {
+	CookieJar,
+	type FetchOptions,
+	generateBrowserIdentity,
+	HttpClient,
+} from "@bilibili-notify/http";
 import { buildFontFace } from "@bilibili-notify/image";
 import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
@@ -21,6 +27,7 @@ import { createRepushStore, listRepushImageRefs } from "../history/repush-store.
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { i18n } from "../i18n/index.js";
+import { createImageFetcher, type ImageFetcher } from "../images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
@@ -176,7 +183,13 @@ export interface AppRuntime {
 	/** 作品输入里的图往图库存的口:真实卡片预览也经它抓图。 */
 	postImages: ImageWriter;
 	/**
-	 * 集成往图库存图的口(ADR-0025 决策 8):每个集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 都经它。集成抓到的图是
+	 * 宿主自己的抓图口:核心要抓的图(今天是会员上舰消息的自定义图)经它抓进图库。走 BN 自己的请求客户端
+	 * (空罐子、不带 cookie),不借任何集成的;图存进「集成在途」那一家({@link AppRuntime.transitImages})。
+	 */
+	imageFetcher: Pick<ImageFetcher, "fetchImage">;
+	/**
+	 * 集成往图库存图的口(ADR-0025 决策 8):每个集成上下文的 `ctx.fetchImage` / `ctx.storeImage` 都经它,宿主自己的
+	 * 抓图口({@link AppRuntime.imageFetcher})也是。集成抓到的图是
 	 * **在途数据**:名单恒空(`listRefs` 恒空),图靠清扫的 24 小时宽限期活到被历史行、资料缓存、在播表、登录状态等
 	 * 哪一家引用上;只攥在集成自己手里、没交给宿主的引用,过了宽限期就被收走(契约里写明)。
 	 */
@@ -254,6 +267,8 @@ export interface AppRuntimeDeps {
 	integrationSettings: readonly IntegrationSettingsSegment[];
 	/** 测试用:统计看登记表记「在记」的间隔。生产不传,缺省 1 分钟。 */
 	statsRecordingCheckMs?: number;
+	/** 测试用:宿主抓图口连接之前对地址的检查。生产不传,缺省拦内网(`requirePublicAddress`)。 */
+	imageAddressCheck?: FetchOptions["addressCheck"];
 }
 
 export function createAppRuntime(
@@ -554,6 +569,15 @@ export function createAppRuntime(
 		name: IMAGE_REFERRERS.inTransit,
 		listRefs: async () => [],
 	});
+	// 宿主自己的抓图口:BN 自己的请求不走集成的客户端(集成副作用规范「边界与例外」)—— 集成的客户端带着它的身份与
+	// cookie。罐子是空的,抓图又只外发不摄入,所以永远不带 cookie;图存进在途那一家。客户端攒着连接池,关停时收。
+	const hostHttp = new HttpClient({ jar: new CookieJar(), identity: generateBrowserIdentity() });
+	serviceCtx.onDispose(() => hostHttp.dispose(), "stop");
+	const imageFetcher = createImageFetcher({
+		http: hostHttp,
+		images: transitImages,
+		...(deps.imageAddressCheck ? { addressCheck: deps.imageAddressCheck } : {}),
+	});
 	const logStore = createLogStore({
 		hostRoot,
 		serviceCtx,
@@ -640,6 +664,7 @@ export function createAppRuntime(
 		profileReports,
 		accountImages,
 		postImages,
+		imageFetcher,
 		transitImages,
 		historyImages,
 		conversationStore,

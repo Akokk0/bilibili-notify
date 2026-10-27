@@ -870,10 +870,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 			// 来源经 `ctx.reportProfile` 报的资料的收口(递给来源上下文的 `profiles`)。
 			profileReports: runtime.profileReports,
-			// B 站的作品图与直播封面(3a-34):出卡前经 B 站集成自己的请求客户端(同一套 cookie 与身份)
-			// 抓进图库。引用方是「集成在途」,图靠宽限期活到卡片画完。
-			// 来源的 B 站上下文要到 `registerSources` 才开,晚于这里:递一个现取的包装,上下文没开 / 已收时回 `unavailable`。
-			imageFetcher: { fetchImage: (url, options) => builtins.bilibili.fetchImage(url, options) },
+			// 核心抓会员自定义图走宿主自己的抓图口(BN 自己的请求客户端,不借 B 站集成的)。
+			imageFetcher: runtime.imageFetcher,
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// AI 点评看只有图库引用的图(拓展作品)时核心要量字节数,读口回字节与类型。
 			readImage: (ref) => runtime.imageStore.read(ref),

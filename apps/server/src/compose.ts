@@ -21,9 +21,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type Connection,
 	type Disposable,
-	fail,
 	type InboundHandlers,
-	type IntegrationContext,
 	type Logger,
 	type MessageBus,
 	type ServiceContext,
@@ -111,13 +109,11 @@ export interface BuiltinIntegrations {
 	 */
 	registerSources(pipeline: Pick<PipelineRuntime, "registerSource">): Promise<void>;
 	/**
-	 * B 站那一格(第 4 期两处读者与核心抓会员自定义图借用,改口时消):`api()` 是来源造好的那一个(开发版是套过壳的,
-	 * 与来源、开发场景用的同一个对象),来源还没造时是 undefined;`fetchImage` 现取,B 站上下文开着就转给它的
-	 * `ctx.fetchImage`,没开或已收就回 `unavailable` 的失败(入口在 `createPipelineRuntime` 时就要递它,早于上下文开)。
+	 * B 站那一格(第 4 期两处读者借用,改口时消):`api()` 是来源造好的那一个(开发版是套过壳的,
+	 * 与来源、开发场景用的同一个对象),来源还没造时是 undefined。
 	 */
 	bilibili: {
 		api(): Api | undefined;
-		fetchImage: IntegrationContext["fetchImage"];
 	};
 	/**
 	 * `createPipelineRuntime` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
@@ -233,10 +229,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		},
 		bilibili: {
 			api: () => source?.api(),
-			fetchImage: (url, options) =>
-				biliContext
-					? biliContext.ctx.fetchImage(url, options)
-					: Promise.resolve(fail("unavailable", "bilibili integration is not running")),
 		},
 		async registerAdapters() {
 			if (registeringAdapters) throw new Error("builtin adapters are already registered");

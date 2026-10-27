@@ -425,37 +425,6 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		await fake.registered[0]?.source.stop();
 	});
 
-	describe("bilibili.fetchImage(核心抓会员自定义图借 B 站上下文)", () => {
-		it("上下文没开(registerSources 之前)与已收(收尾钩子跑过)都回 unavailable 失败;开着就转给 B 站上下文的 fetchImage", async () => {
-			const { builtins, runStopHooks } = compose();
-			await expect(
-				builtins.bilibili.fetchImage("https://i0.hdslb.com/a.png"),
-			).resolves.toMatchObject({
-				ok: false,
-				code: "unavailable",
-			});
-
-			const fake = makeFakePipeline(makeFakeSourceCtx([]).ctx);
-			await builtins.registerSources(fake.pipeline);
-			const forwarded = vi
-				.spyOn(fake.registered[0]?.integration as IntegrationContext, "fetchImage")
-				.mockResolvedValue(okResult({ ref: `${"d".repeat(64)}.png` }));
-			const url = "https://i0.hdslb.com/b.png";
-			const options = { headers: { Referer: "https://www.bilibili.com" } };
-			await expect(builtins.bilibili.fetchImage(url, options)).resolves.toEqual(
-				okResult({ ref: `${"d".repeat(64)}.png` }),
-			);
-			expect(forwarded).toHaveBeenCalledWith(url, options);
-
-			await fake.registered[0]?.source.stop();
-			await runStopHooks();
-			await expect(builtins.bilibili.fetchImage(url)).resolves.toMatchObject({
-				ok: false,
-				code: "unavailable",
-			});
-		});
-	});
-
 	// 验红:把 `compose.ts` 递给 `createBiliSource` 的东西里漏掉 `devShells` 之外的 `locale` 之类不红;这条红的是
 	// 「登录检查的口断了」:`start` 里读到的间隔不再经登录系统挂上(`login.setHealthCheckMs` 不被调)。
 	it("来源 start 之后,登录系统收到登录检查的间隔(设置里的分钟数换成毫秒);stop 之后收到 0", async () => {
