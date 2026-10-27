@@ -996,7 +996,7 @@ describe("createExtensionSource:取资料", () => {
 		expect(result).toEqual({ ok: true, name: "小明", followers: 3 });
 	});
 
-	it("结果坏了(多一格):invalid,点名哪一格", async () => {
+	it("结果坏了(多一格):invalid,点名哪一格,记进出入表", async () => {
 		const made = await make({
 			fetchProfile: async () => ({ ok: true, name: "小明", fans: 3 }),
 		});
@@ -1006,6 +1006,24 @@ describe("createExtensionSource:取资料", () => {
 		);
 		expect(result).toMatchObject({ ok: false, code: "invalid" });
 		expect(result.ok ? "" : result.message).toContain("fans");
+		expect(made.discrepancies).toContainEqual(
+			expect.objectContaining({ kind: "profile", externalId: "u1", outcome: "rejected" }),
+		);
+	});
+
+	it("选填格坏了只丢那一格,照收其余,记进出入表", async () => {
+		const made = await make({
+			fetchProfile: async () => ({ ok: true, name: "小明", followers: -1 }),
+		});
+		const result = await made.source.fetchProfile(
+			{ sourceKey: "douyin", externalId: "u1" },
+			new AbortController().signal,
+		);
+		expect(result).toEqual({ ok: true, name: "小明" });
+		expect(made.discrepancies).toContainEqual(
+			expect.objectContaining({ kind: "profile", externalId: "u1", outcome: "dropped" }),
+		);
+		expect(made.discrepancies[0]?.reasons.join("")).toContain("followers");
 	});
 
 	it("拓展抛了:unavailable,原话进 message", async () => {
@@ -1068,20 +1086,44 @@ describe("createExtensionSource:拉取式直播状态", () => {
 		});
 	});
 
-	it("结果坏了:回失败 invalid,不抛", async () => {
+	it("选填格坏了只丢那一格,照收其余,记进出入表", async () => {
 		const made = await make({
 			fetchLiveStatus: async () => ({
 				ok: true,
 				kind: "live",
-				startedAt: "2026-10-25T12:00:00",
-				details: {},
+				startedAt: T_ISO,
+				details: { title: "在播", currentViewers: -1 },
 			}),
 		});
 		const result = await made.source.fetchLiveStatus?.(
 			{ sourceKey: "douyin", externalId: "u1" },
 			new AbortController().signal,
 		);
+		expect(result).toEqual({
+			ok: true,
+			kind: "live",
+			startedAt: T_ISO,
+			details: { title: "在播" },
+		});
+		expect(made.discrepancies).toContainEqual(
+			expect.objectContaining({ kind: "live", externalId: "u1", outcome: "dropped" }),
+		);
+		expect(made.discrepancies[0]?.reasons.join("")).toContain("details.currentViewers");
+	});
+
+	it("结果坏了(必填的失败话是空的):回失败 invalid,不抛,记进出入表", async () => {
+		const made = await make({
+			fetchLiveStatus: async () => ({ ok: false, code: "timeout", message: "" }),
+		});
+		const result = await made.source.fetchLiveStatus?.(
+			{ sourceKey: "douyin", externalId: "u1" },
+			new AbortController().signal,
+		);
 		expect(result).toMatchObject({ ok: false, code: "invalid" });
+		expect(result?.ok === false ? result.message : "").toContain("message");
+		expect(made.discrepancies).toContainEqual(
+			expect.objectContaining({ kind: "live", externalId: "u1", outcome: "rejected" }),
+		);
 	});
 
 	it("拓展抛了:回失败 unavailable", async () => {

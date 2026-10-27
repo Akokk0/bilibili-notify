@@ -144,7 +144,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 | 名下订阅都停用了 | 事件、直播状态与资料都不往下发，也不进首页在播 |
 
 - 上报一律返回 `void`，被拒也不回话。拒与丢格都从**唯一**的出口 `recordDiscrepancy` 走：日志一行 + `onReportDiscrepancy` → `extensions/report-discrepancies.ts`（每个拓展最近 20 条、只在内存、卸载清空）→ `ExtensionDTO.reportDiscrepancies` → 拓展详情页「上报出入」框（决策 60）。种类是 `post` / `live` / `profile` / `problem`；问题上报被拒也进这张表。不私聊主人。
-- 施工定下的数：上报时刻一律是**带时区的 ISO 8601**（宿主进门统一成 `Z` 结尾的 UTC）；图先由来源经 `ctx.storeImage` 存进图库，上报只交 `ImageRef`，作品图最多 30 张；作品正文 / 视频标题超长时截断收下，认识的可选格坏了只丢那一格；话题与富文本按 `extension-report.ts` 的形状核，片段拼起来对不上正文就丢 `richText` 并记进「上报出入」。
+- 施工定下的数：上报时刻一律是**带时区的 ISO 8601**（宿主进门统一成 `Z` 结尾的 UTC）；图先由来源经 `ctx.storeImage` 存进图库，上报只交 `ImageRef`，作品图最多 30 张；作品正文 / 视频标题超长时截断收下，认识的可选格坏了只丢那一格（拉取式直播状态、取资料同一套）；话题与富文本按 `extension-report.ts` 的形状核，片段拼起来对不上正文就丢 `richText` 并记进「上报出入」。
 - 🔴 **判新归拓展，BN 不兜底**（决策 53）：不判新、不按作品 id 去重、不限流，报什么收什么；开机第一轮只记基线不报是拓展自己的事（假源照这条写）。
 - 今天的消费者：
   - 作品推送：`createExtensionSource` 把上报翻成 `PostReport`，再交核心来源上下文的 `reportPost`；后者按身份展开成每条订阅的 `PostEvent` 并交 `PostQueue`（与 B 站动态同一个入口）。入口再判订阅在、启用、作品开关开着、来源在跑，然后跑与 B 站动态同一份 `deliverPost`：`filterPost`（关键词 / 正则 / 白名单加四个类型开关，对拓展作品和 B 站一视同仁）→ 出卡 → 点评 → 回问 → 模板 → 版式 → 推送。推出去之后落历史的拓展行、可以人工重推；途中意外抛错只记日志不重试（决策 77）。细节见 [push.md](./push.md) ①。

@@ -483,6 +483,19 @@ function liveSchemaFor(raw: Record<string, unknown>): z.ZodType | undefined {
 	}
 }
 
+function liveStatusSchemaFor(raw: Record<string, unknown>): z.ZodType | undefined {
+	if (raw.ok === false) return LiveStatusFailureSchema;
+	if (raw.ok !== true) return undefined;
+	switch (raw.kind) {
+		case "live":
+			return LiveStatusLiveSchema;
+		case "offline":
+			return LiveStatusOfflineSchema;
+		default:
+			return undefined;
+	}
+}
+
 function rejected(issues: ExtensionReportIssue[]): ExtensionReportFailure {
 	return fail("invalid", "extension-report-invalid", {
 		issues: issues.map((issue) => ({ ...issue, message: issue.code })),
@@ -497,16 +510,47 @@ function rejected(issues: ExtensionReportIssue[]): ExtensionReportFailure {
 function dropMismatchedRichText<K extends ExtensionReportKind>(
 	kind: K,
 	value: ExtensionReportValue<K>,
-	state: WalkState,
+	dropped: ExtensionReportIssue[],
 ): void {
 	if (kind !== "post") return;
 	const report = value as unknown as ExtensionReportValue<"post">;
 	const { post } = report;
 	if (post.richText === undefined) return;
 	if (post.richText.map((segment) => segment.text).join("") === post.text) return;
-	state.dropped.push(reportIssue(["post", "richText"], "invalid"));
+	dropped.push(reportIssue(["post", "richText"], "invalid"));
 	const { richText: _richText, ...rest } = post;
 	report.post = rest;
+}
+
+/**
+ * 逐格走一遍、整份再核一遍,选填坏了只丢那一格(`dropped`),必填坏了 / 多一格整份拒。
+ * 上报与拉取式两条路共用这一套(3b-50 R25):同一张表推拉宽严必须一致。
+ */
+function checkObject(
+	schema: z.ZodType,
+	raw: unknown,
+): { ok: true; value: unknown; dropped: ExtensionReportIssue[] } | ExtensionReportFailure {
+	if (!isRecord(raw)) {
+		return rejected([reportIssue([], "type")]);
+	}
+	if (!(schema instanceof z.ZodObject)) {
+		return rejected([reportIssue([], "invalid")]);
+	}
+	const state: WalkState = { dropped: [] };
+	const walked = walkObject(schema.shape as Record<string, z.ZodType>, raw, [], state);
+	if (!walked.accepted) return rejected([walked.issue]);
+	const whole = schema.safeParse(walked.value);
+	if (!whole.success) {
+		return rejected(
+			whole.error.issues.map((issue) =>
+				reportIssue(
+					issue.path.map((part) => (typeof part === "symbol" ? String(part) : part)),
+					"invalid",
+				),
+			),
+		);
+	}
+	return ok({ value: whole.data, dropped: state.dropped });
 }
 
 export function checkExtensionReport<K extends ExtensionReportKind>(
@@ -522,30 +566,40 @@ export function checkExtensionReport<K extends ExtensionReportKind>(
 		if (schema === undefined) {
 			return rejected([reportIssue(["kind"], "invalid")]);
 		}
-		const state: WalkState = { dropped: [] };
-		const walked =
-			schema instanceof z.ZodObject
-				? walkObject(schema.shape as Record<string, z.ZodType>, raw, [], state)
-				: undefined;
-		if (walked === undefined || !walked.accepted) {
-			return rejected([walked?.accepted === false ? walked.issue : reportIssue([], "invalid")]);
+		const checked = checkObject(schema, raw);
+		if (!checked.ok) return checked;
+		const value = checked.value as ExtensionReportValue<K>;
+		dropMismatchedRichText(kind, value, checked.dropped);
+		return ok({ value, dropped: checked.dropped });
+	} catch {
+		return rejected([reportIssue([], "invalid")]);
+	}
+}
+
+/**
+ * 拉取式直播状态的形状核对(3b-50 R25):与推送式上报同一套规矩 —— 多一格 / 必填坏了整份拒,
+ * 选填坏了只丢那一格。它核的 `LiveDetailsSchema` 与推送式是同一张表,两条路的宽严必须一致。
+ */
+export function checkExtensionLiveStatus(raw: unknown):
+	| {
+			ok: true;
+			value: z.infer<typeof ExtensionLiveStatusResultSchema>;
+			dropped: ExtensionReportIssue[];
+	  }
+	| ExtensionReportFailure {
+	try {
+		if (!isRecord(raw)) {
+			return rejected([reportIssue([], "type")]);
 		}
-		const whole = schema.safeParse(walked.value);
-		if (!whole.success) {
-			return rejected(
-				whole.error.issues.map((issue) =>
-					reportIssue(
-						issue.path.map((part) => (typeof part === "symbol" ? String(part) : part)),
-						"invalid",
-					),
-				),
-			);
+		const schema = liveStatusSchemaFor(raw);
+		if (schema === undefined) {
+			return rejected([reportIssue(raw.ok === true ? ["kind"] : ["ok"], "invalid")]);
 		}
-		const value = whole.data as ExtensionReportValue<K>;
-		dropMismatchedRichText(kind, value, state);
+		const checked = checkObject(schema, raw);
+		if (!checked.ok) return checked;
 		return ok({
-			value,
-			dropped: state.dropped,
+			value: checked.value as z.infer<typeof ExtensionLiveStatusResultSchema>,
+			dropped: checked.dropped,
 		});
 	} catch {
 		return rejected([reportIssue([], "invalid")]);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+	checkExtensionLiveStatus,
 	checkExtensionReport,
 	ExtensionCreatorCandidatesSchema,
 	ExtensionLiveStatusResultSchema,
@@ -500,6 +501,46 @@ describe("live status result", () => {
 		]) {
 			expect(ExtensionLiveStatusResultSchema.safeParse(report).success).toBe(true);
 		}
+	});
+
+	it("checkExtensionLiveStatus drops a bad optional cell instead of the whole result", () => {
+		const result = checkExtensionLiveStatus({
+			ok: true,
+			kind: "live",
+			startedAt: T,
+			details: { title: "在播", currentViewers: -1 },
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value).toEqual({
+			ok: true,
+			kind: "live",
+			startedAt: T,
+			details: { title: "在播" },
+		});
+		expect(result.dropped).toEqual([
+			{ path: ["details", "currentViewers"], code: "negative", limit: 0 },
+		]);
+	});
+
+	it("checkExtensionLiveStatus rejects a bad ok or kind", () => {
+		const badKind = checkExtensionLiveStatus({ ok: true, kind: "weird", details: {} });
+		expect(badKind.ok).toBe(false);
+		expect(badKind.ok ? [] : badKind.issues).toContainEqual(
+			expect.objectContaining({ path: ["kind"], code: "invalid" }),
+		);
+		const badOk = checkExtensionLiveStatus({ ok: "yes", kind: "offline" });
+		expect(badOk.ok).toBe(false);
+		expect(badOk.ok ? [] : badOk.issues).toContainEqual(
+			expect.objectContaining({ path: ["ok"], code: "invalid" }),
+		);
+	});
+
+	it("checkExtensionLiveStatus rejects the whole result on an unknown field", () => {
+		const result = checkExtensionLiveStatus({ ok: true, kind: "offline", extra: true });
+		expect(result.ok).toBe(false);
+		expect(result.ok ? [] : result.issues).toContainEqual(
+			expect.objectContaining({ path: ["extra"], code: "unknown-field" }),
+		);
 	});
 
 	it("rejects malformed branches and timestamps without a timezone", () => {

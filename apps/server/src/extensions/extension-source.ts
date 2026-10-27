@@ -3,12 +3,11 @@ import {
 	type Creator,
 	type CreatorCandidate,
 	type CreatorProfileReport,
+	checkExtensionLiveStatus,
 	checkExtensionReport,
 	createSerialQueue,
 	EXTERNAL_ID_MAX,
 	ExtensionCreatorCandidatesSchema,
-	ExtensionCreatorProfileReportSchema,
-	ExtensionLiveStatusResultSchema,
 	type ExtensionManifest,
 	type ExtensionReportIssue,
 	type ExtensionReportKind,
@@ -59,7 +58,8 @@ import { catchThenableRejection } from "../util/is-thenable.js";
  * - **上报**:先核外部 id → 再核清单声明的种类 → 再核形状;被拒、丢格都记进拓展的「上报出入」(再由宿主打 warn),
  *   拓展自己不知道(上报没有返回值);然后把 ISO 统一成 UTC Z、图库引用 → `PostImage`、作者名缺了按「资料名 → 身份标签」
  *   补、下播没交 `endedAt` 取到达那一刻,再交核心那一份 ctx;
- * - **读口**(搜人、取资料、拉取式直播状态):抛了回失败(原话进 `message`),形状坏了回 `invalid`、点名哪一格,不抛。
+ * - **读口**(搜人、取资料、拉取式直播状态):抛了回失败(原话进 `message`),形状按上报同一套规矩核 ——
+ *   多一格 / 必填坏了回 `invalid`、点名哪一格,选填坏了丢那一格,拒与丢格都记进出入表,不抛。
  *
  * 开放给拓展的成员由 {@link SOURCE_DEF_MEMBERS} 这张表定:表外的(`auth`、`liveInteractions`、`descriptor`)
  * 带了也不认 —— 契约的宽度是不可逆的,没开放的口子先被人用上就改不动了。
@@ -307,6 +307,21 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		return undefined;
 	}
 
+	/** 收下了、但动了几格:记进出入表。与 `reject` 对称,空的什么都不记。 */
+	function recordDropped(
+		kind: ExtensionReportKind,
+		externalId: string,
+		issues: readonly ExtensionReportIssue[],
+	): void {
+		if (issues.length === 0) return;
+		opts.recordDiscrepancy({
+			kind,
+			externalId,
+			outcome: "dropped",
+			reasons: issues.map(describeIssue),
+		});
+	}
+
 	/** 清单没声明的种类整条拒:`post` 要 `post`;直播的 `start` 要 `liveStart`、`end` 要 `liveEnd`、`status` 要其一;资料总收。 */
 	function undeclaredReason(kind: ExtensionReportKind, raw: unknown): string | undefined {
 		if (kind === "profile") return undefined;
@@ -352,14 +367,7 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		if (undeclared !== undefined) return reject(kind, shown, [undeclared]);
 		const checked = checkExtensionReport(kind, raw);
 		if (!checked.ok) return reject(kind, shown, [checked.issues.map(describeIssue).join(";")]);
-		if (checked.dropped.length > 0) {
-			opts.recordDiscrepancy({
-				kind,
-				externalId: shown,
-				outcome: "dropped",
-				reasons: checked.dropped.map(describeIssue),
-			});
-		}
+		recordDropped(kind, shown, checked.dropped);
 		return { externalId: shown, value: checked.value };
 	}
 
@@ -609,13 +617,16 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			}
 			const read = readResult(raw);
 			if (read.kind === "failure") return read.failure;
-			const parsed = ExtensionCreatorProfileReportSchema.safeParse(read.body);
-			if (!parsed.success) {
-				const detail = formatZodIssues(parsed.error).join(";");
+			const checked = checkExtensionReport("profile", read.body);
+			if (!checked.ok) {
+				const reasons = checked.issues.map(describeIssue);
+				const detail = reasons.join(";");
 				logger.warn(`取资料交回的形状不对: ${detail}`);
+				reject("profile", identity.externalId, reasons);
 				return fail("invalid", t("extension.source.invalidResult", { detail }));
 			}
-			return ok(parsed.data satisfies CreatorProfileReport);
+			recordDropped("profile", identity.externalId, checked.dropped);
+			return ok(checked.value satisfies CreatorProfileReport);
 		},
 		// 拓展实现了才放这一格(核心据此知道它有拉取式,按每一场自己的时钟问)。
 		...(def.fetchLiveStatus
@@ -634,13 +645,16 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 							logger.warn(`拉取直播状态抛了: ${errorMessageOf(err)}`);
 							return fail("unavailable", reasonOf(err));
 						}
-						const parsed = ExtensionLiveStatusResultSchema.safeParse(raw);
-						if (!parsed.success) {
-							const detail = formatZodIssues(parsed.error).join(";");
+						const checked = checkExtensionLiveStatus(raw);
+						if (!checked.ok) {
+							const reasons = checked.issues.map(describeIssue);
+							const detail = reasons.join(";");
 							logger.warn(`拉取直播状态交回的形状不对: ${detail}`);
+							reject("live", identity.externalId, reasons);
 							return fail("invalid", t("extension.source.invalidResult", { detail }));
 						}
-						const result = parsed.data;
+						recordDropped("live", identity.externalId, checked.dropped);
+						const result = checked.value;
 						if (!result.ok) return fail(result.code, result.message);
 						if (result.kind === "offline") return ok({ kind: "offline" as const });
 						return ok({
