@@ -45,6 +45,7 @@ import { t } from "../i18n/index.js";
 import type { ImageStore } from "../images/image-store.js";
 import { pickBoundMembers } from "../util/bound-members.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { catchThenableRejection } from "../util/is-thenable.js";
 
 /**
  * **拓展的订阅源 → 核心的 `Source`**(3b-42):把清单里订阅源那一口的外观(平台名、作品叫法、外部 id 格式)与
@@ -123,15 +124,6 @@ type OpenMembers = Pick<SourceDef, "start" | "stop" | "searchCreators"> &
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
-	try {
-		return typeof (value as { then?: unknown }).then === "function";
-	} catch {
-		return false;
-	}
 }
 
 /** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
@@ -294,9 +286,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		} catch (err) {
 			return refuseHealth(`threw: ${errorMessageOf(err)}`);
 		}
-		if (isThenable(raw)) {
-			// 同步读口不等人;仍接住它后来的拒绝,免得没被处理的 rejection 把宿主带走。
-			Promise.resolve(raw).catch(() => {});
+		if (catchThenableRejection(raw)) {
+			// 同步读口不等人;是 thenable 就接住它日后的拒绝,再拒收。
 			return refuseHealth("must return synchronously, not a Promise or thenable");
 		}
 		if (!isRecord(raw)) return refuseHealth("must return an object");

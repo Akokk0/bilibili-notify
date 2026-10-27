@@ -357,3 +357,27 @@ describe("拓展 ctx · reportProblem / resolveProblem / signal", () => {
 		expect(host.lines.filter((l) => l.startsWith("error "))).toEqual([]);
 	});
 });
+
+/**
+ * `publishView` 要的是同步交回的视图。第三方交回的东西形状再刁,`status()` 也不许把异常抛给面板
+ * (ADR-0019 决策 40:坏的按块降级、`GET /:id/status` 照样 200)。
+ */
+describe("拓展 ctx · publishView 交回的东西", () => {
+	it("交回 then 是会抛的 getter 的对象:status() 不抛,回的是一份降级视图", () => {
+		const { ctx, runtime } = makeRuntime();
+		ctx.publishView(
+			() =>
+				({
+					// biome-ignore lint/suspicious/noThenProperty: 验的就是读 then 时抛错不会把 status() 带走
+					get then() {
+						throw new Error("boom");
+					},
+				}) as never,
+		);
+		let view: unknown;
+		expect(() => {
+			view = runtime.status();
+		}).not.toThrow();
+		expect(view).toMatchObject({ page: [{ fault: { where: "整份视图" } }] });
+	});
+});

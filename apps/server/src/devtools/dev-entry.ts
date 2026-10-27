@@ -10,6 +10,7 @@ import type {
 import { EXTENSION_DEVTOOLS_ENTRY_FILE } from "../extensions/discover.js";
 import { extensionMountPrefix } from "../extensions/mount.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { catchThenableRejection } from "../util/is-thenable.js";
 import type { DevtoolsProviderRegistry } from "./providers.js";
 
 export interface DevEntryAttacherOptions {
@@ -23,13 +24,6 @@ export interface DevEntryAttacherOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		((typeof value === "object" && value !== null) || typeof value === "function") &&
-		typeof (value as { then?: unknown }).then === "function"
-	);
 }
 
 /** 返回第一处不合规的原因;通过就是 undefined。 */
@@ -96,9 +90,8 @@ export function createDevEntryAttacher(options: DevEntryAttacherOptions) {
 			};
 			const ctx: ExtensionDevtoolsContext = { ...started.ctx, mountUrl };
 			const provider = mod.devtools(ctx);
-			if (isThenable(provider)) {
-				// 整包拒在下一行的 warn 里说了;那个 Promise 日后要是 reject,别让它变成没人接的 rejection。
-				void Promise.resolve(provider).catch(() => {});
+			if (catchThenableRejection(provider)) {
+				// 整包拒在下一行的 warn 里说了;那个 Promise 日后要是 reject,上面已经替它接住。
 				logger.warn("devtools() 要同步交回 provider,不能交回 Promise");
 				return;
 			}

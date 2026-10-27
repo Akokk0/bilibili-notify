@@ -45,6 +45,7 @@ import { pickAdapterMembers } from "../push/adapter-members.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import type { PipelineRuntime } from "../runtime/pipeline.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { catchThenableRejection } from "../util/is-thenable.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { createExtensionSource } from "./extension-source.js";
@@ -295,15 +296,6 @@ export interface CreateExtensionContextOptions {
 	hostVersion?: string;
 	/** 收摊钩子一共等多久,见 `DISPOSE_TIMEOUT_MS`(`../integrations/context.ts`)。只有测试会换。 */
 	disposeTimeoutMs?: number;
-}
-
-/** 拓展交回来的是不是一个 Promise(或别的 thenable)—— `publishView` 要的是同步交回的视图。 */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		(typeof value === "object" || typeof value === "function") &&
-		value !== null &&
-		typeof (value as { then?: unknown }).then === "function"
-	);
 }
 
 /**
@@ -976,9 +968,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const message = err instanceof Error ? err.message : String(err);
 			return faultedExtensionView(`publishView 的回调抛了:${message}`, input);
 		}
-		if (isThenable(raw)) {
-			// 🔴 接住它后来的 reject:没人接的 rejection 在 Node 里默认让整个进程退出。
-			Promise.resolve(raw).catch(() => {});
+		if (catchThenableRejection(raw)) {
+			// 🔴 是 thenable 就接住它后来的 reject(没人接的 rejection 会让进程退出),再按「要同步交回」拒收。
 			return faultedExtensionView(
 				"publishView 的回调要同步交回视图,交回的却是一个 Promise(async 回调就是这样)—— BN 不等它,也不把它当成一份空视图;要等的东西先算好存着,变了喊一声 statusChanged()",
 				input,
