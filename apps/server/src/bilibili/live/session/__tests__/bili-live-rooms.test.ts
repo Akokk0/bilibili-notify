@@ -60,6 +60,11 @@ function harness() {
 		loggedInAt: "2026-10-25T00:00:00.000Z",
 	};
 	const authListeners = new Set<() => void>();
+	const subscriptionsChanged = new Set<() => void>();
+	const setAuth = (state: ReturnType<SourceAuth["state"]>) => {
+		authState = state;
+		for (const fn of [...authListeners]) fn();
+	};
 
 	const api = {
 		fetchLiveRoomInfoStreamKey: async () => preflight,
@@ -146,7 +151,10 @@ function harness() {
 		reportLiveInteraction: (externalId: string, report: unknown) => {
 			interactions.push({ externalId, report });
 		},
-		onSubscriptionsChanged: () => ({ dispose() {} }),
+		onSubscriptionsChanged: (fn: () => void) => {
+			subscriptionsChanged.add(fn);
+			return { dispose: () => void subscriptionsChanged.delete(fn) };
+		},
 		subscriptions: () => subscriptions,
 	} as unknown as SourceContext;
 
@@ -199,13 +207,12 @@ function harness() {
 		setSubscriptions(value: SourceSubscriptionView[]) {
 			subscriptions = value;
 		},
+		setAuth,
 		loseLogin() {
-			authState = { status: "expired", message: "账号登录已失效" };
-			for (const fn of [...authListeners]) fn();
+			setAuth({ status: "expired", message: "账号登录已失效" });
 		},
 		restoreLogin() {
-			authState = { status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" };
-			for (const fn of [...authListeners]) fn();
+			setAuth({ status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" });
 		},
 		setOnline(value: boolean) {
 			online = value;
@@ -213,6 +220,11 @@ function harness() {
 		async setRoomId(value: string | undefined, externalId = EXTERNAL_ID) {
 			if (value === undefined) await state.delete(`room:${externalId}`);
 			else await state.set(`room:${externalId}`, value);
+		},
+		async changeSubscriptions(value: SourceSubscriptionView[]) {
+			subscriptions = value;
+			for (const fn of [...subscriptionsChanged]) fn();
+			await settle();
 		},
 		setRoomInfoMode(value: typeof roomInfoMode) {
 			roomInfoMode = value;
@@ -611,6 +623,47 @@ describe("BiliLiveRooms", () => {
 		h.setOnline(true);
 		await h.frame(LIVE);
 		expect(h.reports.map((entry) => (entry.report as { kind: string }).kind)).toEqual(["start"]);
+		h.rooms.stop();
+	});
+
+	it("开机确认中连不上：登录恢复后按名单重开监听", async () => {
+		const h = harness();
+		h.setAuth({ status: "confirming" });
+		h.api.getMyselfInfoCached = (async () => {
+			throw new Error("连不上网");
+		}) as never;
+		await h.start();
+		expect(h.sockets).toHaveLength(0);
+
+		h.api.getMyselfInfoCached = async () => ({ code: 0, data: { mid: 1 } });
+		h.setAuth({ status: "logged-in", loggedInAt: "2026-10-25T00:01:00.000Z" });
+		await settle();
+
+		expect(h.sockets).toHaveLength(1);
+		expect(h.sockets[0]?.closed).toBe(false);
+		h.rooms.stop();
+	});
+
+	it("掉线期间改订阅不起会话：恢复登录后按新名单重开", async () => {
+		const h = harness();
+		await h.setRoomId("5002", "u2");
+		await h.start();
+		expect(h.sockets).toHaveLength(1);
+
+		h.loseLogin();
+		await settle();
+		expect(h.sockets[0]?.closed).toBe(true);
+
+		await h.changeSubscriptions([
+			{ externalId: EXTERNAL_ID, features: new Set(["liveStart"]), monitorsLive: true },
+			{ externalId: "u2", features: new Set(["liveStart"]), monitorsLive: true },
+		]);
+		expect(h.sockets).toHaveLength(1);
+
+		h.restoreLogin();
+		await settle();
+		expect(h.sockets).toHaveLength(3);
+		expect(h.sockets.slice(1).every((socket) => !socket.closed)).toBe(true);
 		h.rooms.stop();
 	});
 });

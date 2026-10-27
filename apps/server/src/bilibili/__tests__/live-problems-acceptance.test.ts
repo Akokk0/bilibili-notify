@@ -1,4 +1,5 @@
 import {
+	type AuthState,
 	type DeliveryResult,
 	fail,
 	ok,
@@ -22,12 +23,35 @@ const GOOD_PREFLIGHT = ok({
 	data: { token: "tok", host_list: [{ host: "h1.example.com", wss_port: 443 }] },
 });
 
+/**
+ * 可变的假登录口。分层上报器与 `BiliLiveRooms` 都订同一个它,构造次序和生产里一样:
+ * 分层上报器先订、`BiliLiveRooms` 后订。
+ */
+function makeMutableAuth(initial: AuthState) {
+	let state = initial;
+	const listeners = new Set<() => void>();
+	return {
+		auth: {
+			state: () => state,
+			onChange(fn: () => void) {
+				listeners.add(fn);
+				return { dispose: () => void listeners.delete(fn) };
+			},
+		},
+		setAuth(next: AuthState) {
+			state = next;
+			for (const fn of [...listeners]) fn();
+		},
+	};
+}
+
 function makeWorld(
 	options: {
 		preflight?: () => Promise<unknown>;
 		myself?: () => Promise<unknown>;
 		roomInfo?: () => Promise<unknown>;
 		resolveRoomId?: () => Promise<Result<{ roomId: string }>>;
+		auth?: ReturnType<typeof makeMutableAuth>;
 	} = {},
 ) {
 	const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -47,12 +71,12 @@ function makeWorld(
 		},
 		logger,
 	});
+	const auth =
+		options.auth ??
+		makeMutableAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" });
 	const layers = createProblemLayers({
 		locale: fixedLocale(),
-		auth: {
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-			onChange: () => ({ dispose() {} }),
-		},
+		auth: auth.auth,
 		logger,
 	});
 	layers.attach({
@@ -112,14 +136,11 @@ function makeWorld(
 		reportLive: (_externalId: string, report: unknown) => void reports.push(report),
 		reportLiveInteraction() {},
 		onSubscriptionsChanged: () => ({ dispose() {} }),
-		subscriptions: () => [],
+		subscriptions: () => [subscription],
 	} as unknown as SourceContext;
 	const rooms = new BiliLiveRooms({
 		api: api as unknown as Api,
-		auth: {
-			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
-			onChange: () => ({ dispose() {} }),
-		},
+		auth: auth.auth,
 		liveContext: liveContext as ServiceContext,
 		roomIds: {
 			get: (externalId) => (externalId === EXTERNAL_ID ? ROOM_ID : undefined),
@@ -149,6 +170,7 @@ function makeWorld(
 		rooms,
 		table,
 		layers,
+		auth,
 		notifyMaster,
 		reports,
 		codes,
@@ -240,6 +262,23 @@ describe("直播问题验收 · B 站这一侧", () => {
 			w.rooms.fetchLiveStatus({ sourceKey: "bilibili", externalId: EXTERNAL_ID }, signal),
 		).resolves.toMatchObject({ ok: true, kind: "offline" });
 		expect(w.codes()).toEqual([]);
+		w.rooms.stop();
+	});
+
+	it("开机时登录已过期、扫码恢复后：直播间重开、不私聊停止监听", async () => {
+		let myself = async () => ({ code: -101 });
+		const auth = makeMutableAuth({ status: "expired", message: "登录已失效" });
+		const w = makeWorld({ auth, myself: () => myself() });
+		w.rooms.start(w.ctx, [w.subscription]);
+		await w.settle();
+		expect(w.api.openDanmakuSocket).toHaveBeenCalledTimes(0);
+
+		myself = async () => ({ code: 0, data: { mid: 1 } });
+		w.auth.setAuth({ status: "logged-in", loggedInAt: "2026-10-11T00:01:00.000Z" });
+		await w.settle();
+
+		expect(w.notifyMaster).not.toHaveBeenCalled();
+		expect(w.api.openDanmakuSocket).toHaveBeenCalledTimes(1);
 		w.rooms.stop();
 	});
 });

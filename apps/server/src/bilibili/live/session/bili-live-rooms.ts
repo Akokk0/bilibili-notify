@@ -12,7 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { Api } from "../../api/index.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
-import { watchLoginEdges } from "../../login-edges.js";
+import { isLoginLost, watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import { liveDetailsFromRoomInfo, liveTimeToIso } from "../live-card-input.js";
 import type { RoomIds } from "../room-ids.js";
@@ -53,10 +53,10 @@ export class BiliLiveRooms implements Disposable {
 			rememberSuperchatAvatar: this.opts.rememberSuperchatAvatar ?? (() => {}),
 		});
 		this.listener = new ListenerManager(this.roomContext);
-		void this.listener.sync(subscriptions);
+		this.syncSessions(subscriptions);
 		this.handles.push(
 			ctx.onSubscriptionsChanged(() => {
-				void this.listener?.sync(this.sourceCtx?.subscriptions() ?? []);
+				this.syncSessions(this.sourceCtx?.subscriptions() ?? []);
 			}),
 		);
 		this.handles.push(
@@ -67,10 +67,21 @@ export class BiliLiveRooms implements Disposable {
 				},
 				onRestored: () => {
 					ctx.logger.info("[auth] 账号登录已恢复，正在重建直播间监听");
-					void this.listener?.sync(this.sourceCtx?.subscriptions() ?? []);
+					// 恢复 = 整批重建:先静默清掉旧会话(连同压着的停止监听问题),再按当前名单重开。
+					this.listener?.teardown();
+					this.syncSessions(this.sourceCtx?.subscriptions() ?? []);
 				},
 			}),
 		);
+	}
+
+	/**
+	 * 登录可用才起会话。开机就是 `expired` / `logged-out`、或者掉线期间改订阅,都等恢复时整批重建 ——
+	 * 不在未登录时起一堆注定死掉、又留在 `active` 里被增量 `sync` 过滤掉的会话。
+	 */
+	private syncSessions(subscriptions: readonly SourceSubscriptionView[]): void {
+		if (isLoginLost(this.opts.auth.state().status)) return;
+		void this.listener?.sync(subscriptions);
 	}
 
 	stop(): void {

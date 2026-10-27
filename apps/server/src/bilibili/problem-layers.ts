@@ -1,6 +1,7 @@
 import type { Logger, SourceAuth, SourceContext } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { errorMessageOf } from "../util/error-message.js";
+import { isLoginLost } from "./login-edges.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
 /**
@@ -201,27 +202,23 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	}
 
 	function applyAuth(status: ReturnType<SourceAuth["state"]>["status"]): void {
-		switch (status) {
-			case "expired":
-			case "logged-out": {
-				if (!loggedOut) {
-					const wasVisible = failuresVisible();
-					eraseRisk();
-					pressDownFailures(wasVisible);
-				}
-				loggedOut = true;
-				return;
+		if (isLoginLost(status)) {
+			if (!loggedOut) {
+				const wasVisible = failuresVisible();
+				eraseRisk();
+				pressDownFailures(wasVisible);
 			}
-			case "logged-in":
-				if (!loggedOut) return;
-				loggedOut = false;
-				// 风控在未登录开着时存不进来,所以这时第三层重新可见
-				revealFailures();
-				return;
-			default:
-				// awaiting-scan / confirming / error:保持上一次的结论
-				return;
+			loggedOut = true;
+			return;
 		}
+		if (status === "logged-in") {
+			if (!loggedOut) return;
+			loggedOut = false;
+			// 风控在未登录开着时存不进来,所以这时第三层重新可见
+			revealFailures();
+			return;
+		}
+		// awaiting-scan / confirming / error:保持上一次的结论
 	}
 
 	function readAuth(): void {

@@ -1,4 +1,9 @@
-import type { Disposable, SourceAuth } from "@bilibili-notify/internal";
+import type { AuthState, Disposable, SourceAuth } from "@bilibili-notify/internal";
+
+/** `expired` / `logged-out` 算掉落;扫码中、确认中、扫码出错都不算(和 `watchLoginEdges` 的边语义一致)。 */
+export function isLoginLost(status: AuthState["status"]): boolean {
+	return status === "expired" || status === "logged-out";
+}
 
 /**
  * 把一个登录口的原始状态变化收成「掉线」与「恢复」两条边。
@@ -25,7 +30,7 @@ export function watchLoginEdges(
 	let needsRestore = !wasLoggedIn;
 	const subscription = auth.onChange(() => {
 		const status = auth.state().status;
-		if (status === "expired" || status === "logged-out") {
+		if (isLoginLost(status)) {
 			needsRestore = true;
 			if (wasLoggedIn) onLost();
 		} else if (status === "logged-in") {
