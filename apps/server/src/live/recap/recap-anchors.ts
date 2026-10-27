@@ -86,7 +86,9 @@ export function recapAnchors(options: RecapOptions, deps: RecapDeps): LivePushAn
 		try {
 			made = deps.summary.generate({
 				sourceKey: options.sourceKey,
-				senderRecord: snapshot.senderRecord,
+				topSenders: snapshot.topSenders,
+				senderCount: snapshot.senderCount,
+				viewerChatCount: snapshot.viewerChatCount,
 				sortedWords,
 				...(options.fanClubName === undefined ? {} : { fanClubName: options.fanClubName }),
 				customLiveSummary: options.summaryTemplate,

@@ -146,7 +146,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 					collector: {
 						snapshot: () => ({
 							sortedWords: [],
-							senderRecord: {},
+							topSenders: [],
 							senderCount: 0,
 							viewerChatCount: 0,
 						}),

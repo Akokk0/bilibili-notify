@@ -9,13 +9,20 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { LIVE_SUMMARY_MIN_SENDERS, LiveSummaryRequester } from "../live-summary-requester";
 
-const SENDERS = Object.fromEntries(
-	Array.from({ length: 6 }, (_, i) => [`观众${i}`, i + 1]),
-) as Record<string, number>;
+/** 6 位观众(1..6 条),收集器交出来的形状:发言最多的五位已按条数降序截好。 */
+const SENDERS: Array<[string, number]> = [
+	["观众5", 6],
+	["观众4", 5],
+	["观众3", 4],
+	["观众2", 3],
+	["观众1", 2],
+];
 
 const PARAMS = {
 	sourceKey: "fake",
-	senderRecord: SENDERS,
+	topSenders: SENDERS,
+	senderCount: 6,
+	viewerChatCount: 21,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
 	fanClubName: "小晨",
 	customLiveSummary: "共{dmc}人，{un1}发了{dc1}条，{fanclub}",
@@ -46,10 +53,9 @@ function setup(
 describe("LiveSummaryRequester.generate", () => {
 	it("发言人数不足:回 undefined,不问 AI", () => {
 		const { requester, comment } = setup();
-		const few = Object.fromEntries(
-			Array.from({ length: LIVE_SUMMARY_MIN_SENDERS - 1 }, (_, i) => [`观众${i}`, 1]),
-		);
-		expect(requester.generate({ ...PARAMS, senderRecord: few })).toBeUndefined();
+		expect(
+			requester.generate({ ...PARAMS, senderCount: LIVE_SUMMARY_MIN_SENDERS - 1 }),
+		).toBeUndefined();
 		expect(comment).not.toHaveBeenCalled();
 	});
 

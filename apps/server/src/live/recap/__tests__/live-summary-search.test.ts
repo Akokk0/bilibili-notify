@@ -7,9 +7,13 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { LiveSummaryRequester } from "../live-summary-requester";
 
-const SENDERS = Object.fromEntries(
-	Array.from({ length: 6 }, (_, i) => [`观众${i}`, i + 1]),
-) as Record<string, number>;
+const SENDERS: Array<[string, number]> = [
+	["观众5", 6],
+	["观众4", 5],
+	["观众3", 4],
+	["观众2", 3],
+	["观众1", 2],
+];
 
 function makeRequester(over: { webSearch?: boolean } = {}) {
 	// 显式标注参数,否则 vi.fn 推出空参元组,.mock.calls[0][3] 会触发 TS2493。
@@ -34,7 +38,9 @@ function makeRequester(over: { webSearch?: boolean } = {}) {
 
 const PARAMS = {
 	sourceKey: "fake",
-	senderRecord: SENDERS,
+	topSenders: SENDERS,
+	senderCount: 6,
+	viewerChatCount: 21,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
 	customLiveSummary: "",
 };

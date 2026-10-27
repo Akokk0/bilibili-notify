@@ -24,6 +24,23 @@ describe("ViewerChatCollector.stats", () => {
 		expect(s.words).toBeGreaterThan(0);
 	});
 
+	it("constructor / toString / __proto__ 当词或观众名:计数仍是数字,__proto__ 的那位不丢", () => {
+		const c = new ViewerChatCollector([]);
+		c.recordViewerChat("100", "constructor", "toString");
+		c.recordViewerChat("100", "constructor", "toString");
+		c.recordViewerChat("100", "hello", "__proto__");
+
+		const s = c.snapshot("100");
+		// 词表与发送者表的键都是外来字符串:不能因为撞上原型上的函数就把计数算成字符串。
+		expect(s.viewerChatCount).toBe(3);
+		expect(s.senderCount).toBe(2);
+		expect(s.sortedWords.every(([, n]) => typeof n === "number")).toBe(true);
+		expect(s.topSenders).toEqual([
+			["toString", 2],
+			["__proto__", 1],
+		]);
+	});
+
 	it("clear 掉的订阅不再计入", () => {
 		const c = new ViewerChatCollector([]);
 		c.recordViewerChat("100", "今天天气不错", "alice");

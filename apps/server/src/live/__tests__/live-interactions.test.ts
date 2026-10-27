@@ -690,7 +690,7 @@ describe("下播回顾的弹幕收集(归核心)", () => {
 		settings = wantsRecap();
 		startSession();
 		chat("999", "路人", "今天这一场真好看");
-		expect(collector.snapshot(SUB.id).senderRecord).toEqual({ 路人: 1 });
+		expect(collector.snapshot(SUB.id).topSenders).toEqual([["路人", 1]]);
 		expect(collector.snapshot(SUB.id).viewerChatCount).toBe(1);
 	});
 
@@ -738,7 +738,7 @@ describe("下播回顾的弹幕收集(归核心)", () => {
 			tier: { rank: 2 },
 		} as LiveInteractionReport);
 		await flush();
-		expect(collector.snapshot(SUB.id).senderRecord).toEqual({ 粉丝: 1 });
+		expect(collector.snapshot(SUB.id).topSenders).toEqual([["粉丝", 1]]);
 		expect(collector.snapshot(SUB.id).viewerChatCount).toBe(1);
 		expect(sent).toEqual([]);
 	});

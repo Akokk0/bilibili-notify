@@ -193,7 +193,7 @@ function start(): void {
 				generate(params) {
 					summaryCalls.push(params);
 					return {
-						template: `总结模板:${Object.keys(params.senderRecord).join(",")}`,
+						template: `总结模板:${params.topSenders.map(([name]) => name).join(",")}`,
 						...(aiMade ? { ai: aiMade } : {}),
 					};
 				},
@@ -452,7 +452,9 @@ describe("下播回顾", () => {
 		expect(summaryCalls).toHaveLength(1);
 		expect(summaryCalls[0]).toMatchObject({
 			sourceKey: EXT,
-			senderRecord: { 这一场的观众: 1 },
+			topSenders: [["这一场的观众", 1]],
+			senderCount: 1,
+			viewerChatCount: 1,
 			fanClubName: "资料里的粉丝团",
 		});
 		expect(summaryCalls[0]?.sortedWords.some(([word]) => word === "recapword")).toBe(true);

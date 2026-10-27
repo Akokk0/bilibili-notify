@@ -62,7 +62,12 @@ export class LiveSummaryRequester {
 	generate(params: {
 		/** 这场直播所属订阅的来源键;提示词叫法只按这一条来源取。 */
 		sourceKey: string;
-		senderRecord: Record<string, number>;
+		/** 发言最多的人(收集器已按条数降序截好前五)。 */
+		topSenders: Array<[string, number]>;
+		/** 发过弹幕的人数(去重人头)。 */
+		senderCount: number;
+		/** 这场收到的弹幕总数。 */
+		viewerChatCount: number;
 		sortedWords: Array<[string, number]>;
 		/** 粉丝团的名字;没有就不带(提示词里整项不写,模板里渲染成空串)。 */
 		fanClubName?: string;
@@ -74,25 +79,27 @@ export class LiveSummaryRequester {
 		 */
 		aiOverride?: CommentaryCallOverride;
 	}): { template: string; ai?: Promise<string | undefined> } | undefined {
-		const { sourceKey, senderRecord, sortedWords, fanClubName, customLiveSummary, aiOverride } =
-			params;
-		const senderCount = Object.keys(senderRecord).length;
+		const {
+			sourceKey,
+			topSenders,
+			senderCount,
+			viewerChatCount,
+			sortedWords,
+			fanClubName,
+			customLiveSummary,
+			aiOverride,
+		} = params;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
 			this.logger.debug(`[summary] 发言人数不足${LIVE_SUMMARY_MIN_SENDERS}位，放弃生成直播总结`);
 			return undefined;
 		}
-
-		const viewerChatCount = Object.values(senderRecord).reduce((sum, val) => sum + val, 0);
-		const top5Senders = Object.entries(senderRecord)
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 5);
 
 		const template = renderLiveSummary({
 			template: customLiveSummary,
 			senderCount,
 			fanClubName,
 			viewerChatCount,
-			topSenders: top5Senders,
+			topSenders,
 		});
 		const commentary = this.commentary;
 		if (!commentary || !this.isAiEnabled()) return { template };
@@ -104,7 +111,7 @@ export class LiveSummaryRequester {
 			...(fanClubName ? [`粉丝牌名：${fanClubName}`] : []),
 			`弹幕总数：${viewerChatCount}`,
 			`热词TOP10：${top10Words.join("、")}`,
-			`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
+			`弹幕排行TOP5：${topSenders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
 		].join("，");
 		// 联网搜索是引擎级开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。
 		const override = this.isWebSearchEnabled() ? { ...aiOverride, webSearch: true } : aiOverride;

@@ -26,7 +26,9 @@ function options(over: Partial<RecapOptions> = {}): RecapOptions {
 function setup(
 	opts: {
 		sortedWords?: Array<[string, number]>;
-		senderRecord?: Record<string, number>;
+		topSenders?: Array<[string, number]>;
+		senderCount?: number;
+		viewerChatCount?: number;
 		image?: Buffer;
 		/** 模板那份;不给 = 请求器回 undefined(人数不够)。 */
 		summary?: string;
@@ -36,9 +38,9 @@ function setup(
 ) {
 	const snapshot = vi.fn((_subscriptionId: string) => ({
 		sortedWords: opts.sortedWords ?? [],
-		senderRecord: opts.senderRecord ?? {},
-		senderCount: 0,
-		viewerChatCount: 0,
+		topSenders: opts.topSenders ?? [],
+		senderCount: opts.senderCount ?? 0,
+		viewerChatCount: opts.viewerChatCount ?? 0,
 	}));
 	const wordcloudGenerate = vi.fn(
 		async (
@@ -202,7 +204,9 @@ describe("recapAnchors", () => {
 	it("交给总结生成器的入参:发言记录、热词、粉丝团名字、模板与 AI 覆盖", async () => {
 		const t = setup({
 			sortedWords: [["精彩", 5]],
-			senderRecord: { 观众甲: 3 },
+			topSenders: [["观众甲", 3]],
+			senderCount: 1,
+			viewerChatCount: 3,
 			summary: "总结",
 		});
 		await settled(
@@ -216,7 +220,9 @@ describe("recapAnchors", () => {
 		);
 		expect(t.summaryGenerate.mock.calls[0]?.[0]).toStrictEqual({
 			sourceKey: "fake",
-			senderRecord: { 观众甲: 3 },
+			topSenders: [["观众甲", 3]],
+			senderCount: 1,
+			viewerChatCount: 3,
 			sortedWords: [["精彩", 5]],
 			fanClubName: "小晨",
 			customLiveSummary: "总结模板",
@@ -225,7 +231,7 @@ describe("recapAnchors", () => {
 	});
 
 	it("没有粉丝团名 → 交给总结请求器的参数里没有 fanClubName 这个键", async () => {
-		const t = setup({ senderRecord: { 观众甲: 3 }, summary: "总结正文" });
+		const t = setup({ topSenders: [["观众甲", 3]], senderCount: 1, summary: "总结正文" });
 		const { fanClubName: _omitted, ...withoutFanClub } = options({
 			extras: { wordcloud: false, liveSummary: true },
 		});

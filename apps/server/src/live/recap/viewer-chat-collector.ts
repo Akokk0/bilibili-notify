@@ -7,8 +7,8 @@ import { cut as jiebaCut } from "jieba-wasm";
  *
  * - `recordViewerChat(subscriptionId, content, username)` segments the danmaku via jieba
  *   and updates both word-frequency and per-user count maps for that subscription.
- * - `snapshot(subscriptionId)` returns the sorted word list + raw sender map for
- *   passing to {@link WordcloudGenerator} / {@link LiveSummaryRequester}.
+ * - `snapshot(subscriptionId)` returns the sorted word list, the top senders list and the
+ *   already-counted totals for passing to {@link WordcloudGenerator} / {@link LiveSummaryRequester}.
  * - `clear(subscriptionId)` is invoked at live-end after the wordcloud + summary have
  *   been dispatched (or the start of a new live session for that subscription).
  *
@@ -17,10 +17,12 @@ import { cut as jiebaCut } from "jieba-wasm";
  * before calling `recordViewerChat`. This keeps the collector zero-config.
  */
 export class ViewerChatCollector {
-	/** subscriptionId → { word: count } */
-	private readonly weightBySubscription = new Map<string, Record<string, number>>();
-	/** subscriptionId → { username: count } */
-	private readonly senderBySubscription = new Map<string, Record<string, number>>();
+	// 两张表都是 `Map`:词与观众名是外来字符串,拿普通对象当查找表会读到
+	// `constructor` / `toString` 这类原型上的函数(`__proto__` 更是整个键被吞掉)。
+	/** subscriptionId → (word → count) */
+	private readonly weightBySubscription = new Map<string, Map<string, number>>();
+	/** subscriptionId → (username → count) */
+	private readonly senderBySubscription = new Map<string, Map<string, number>>();
 
 	private readonly stopwords: Set<string>;
 
@@ -37,10 +39,10 @@ export class ViewerChatCollector {
 	/** Make sure a subscription is being tracked (called when listener starts). */
 	register(subscriptionId: string): void {
 		if (!this.weightBySubscription.has(subscriptionId)) {
-			this.weightBySubscription.set(subscriptionId, {});
+			this.weightBySubscription.set(subscriptionId, new Map());
 		}
 		if (!this.senderBySubscription.has(subscriptionId)) {
-			this.senderBySubscription.set(subscriptionId, {});
+			this.senderBySubscription.set(subscriptionId, new Map());
 		}
 	}
 
@@ -50,41 +52,44 @@ export class ViewerChatCollector {
 	 */
 	recordViewerChat(subscriptionId: string, content: string, username: string): void {
 		this.register(subscriptionId);
-		const wordRecord = this.weightBySubscription.get(subscriptionId);
-		const senderRecord = this.senderBySubscription.get(subscriptionId);
-		if (!wordRecord || !senderRecord) return;
+		const wordCounts = this.weightBySubscription.get(subscriptionId);
+		const senderCounts = this.senderBySubscription.get(subscriptionId);
+		if (!wordCounts || !senderCounts) return;
 
 		jiebaCut(content, true)
 			.filter((word: string) => word.length >= 2 && !this.stopwords.has(word))
 			.forEach((w: string) => {
-				wordRecord[w] = (wordRecord[w] || 0) + 1;
+				wordCounts.set(w, (wordCounts.get(w) ?? 0) + 1);
 			});
-		senderRecord[username] = (senderRecord[username] || 0) + 1;
+		senderCounts.set(username, (senderCounts.get(username) ?? 0) + 1);
 	}
 
 	/**
 	 * Read a sorted snapshot of the current buffer for a subscription.
 	 *
 	 * - `sortedWords`: descending by frequency.
-	 * - `senderRecord`: raw username → count map (consumer decides ordering).
+	 * - `topSenders`: the five most active senders, descending by count (same shape as
+	 *   `renderLiveSummary` / the AI prompt take).
 	 * - `senderCount`: number of distinct usernames.
 	 * - `viewerChatCount`: total danmaku recorded.
 	 */
 	snapshot(subscriptionId: string): {
 		sortedWords: Array<[string, number]>;
-		senderRecord: Record<string, number>;
+		topSenders: Array<[string, number]>;
 		senderCount: number;
 		viewerChatCount: number;
 	} {
-		const weights = this.weightBySubscription.get(subscriptionId) ?? {};
-		const senders = this.senderBySubscription.get(subscriptionId) ?? {};
-		const sortedWords = Object.entries(weights).sort((a, b) => b[1] - a[1]);
-		const senderCount = Object.keys(senders).length;
-		const viewerChatCount = Object.values(senders).reduce((sum, val) => sum + val, 0);
+		const weights = this.weightBySubscription.get(subscriptionId) ?? new Map<string, number>();
+		const senders = this.senderBySubscription.get(subscriptionId) ?? new Map<string, number>();
+		const sortedWords = [...weights].sort((a, b) => b[1] - a[1]);
+		// 排序 / 人数 / 条数都在这里算好交出去,请求器不再自己重算一份。
+		const topSenders = [...senders].sort((a, b) => b[1] - a[1]).slice(0, 5);
+		let viewerChatCount = 0;
+		for (const count of senders.values()) viewerChatCount += count;
 		return {
 			sortedWords,
-			senderRecord: { ...senders },
-			senderCount,
+			topSenders,
+			senderCount: senders.size,
 			viewerChatCount,
 		};
 	}
@@ -101,9 +106,9 @@ export class ViewerChatCollector {
 	 */
 	stats(): { subscriptions: number; words: number; senders: number } {
 		let words = 0;
-		for (const rec of this.weightBySubscription.values()) words += Object.keys(rec).length;
+		for (const rec of this.weightBySubscription.values()) words += rec.size;
 		let senders = 0;
-		for (const rec of this.senderBySubscription.values()) senders += Object.keys(rec).length;
+		for (const rec of this.senderBySubscription.values()) senders += rec.size;
 		return { subscriptions: this.weightBySubscription.size, words, senders };
 	}
 
