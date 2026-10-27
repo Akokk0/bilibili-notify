@@ -410,6 +410,33 @@ describe("按清单注册平台适配器", () => {
 		expect(changed).toHaveBeenCalledTimes(1);
 	});
 
+	/**
+	 * 契约与 ADR-0025 决策 5 许诺的次序是「宿主先叫 `stop()`,再中止 `ctx.signal`、跑收尾钩子」;
+	 * 收尾钩子跑的时候适配器也不该还挂在登记表里 —— 否则派发器照样把推送路由给一个已经停了的拓展。
+	 */
+	it("收摊先叫 stop 再中止 signal;收尾钩子跑时适配器已不在登记表", async () => {
+		const h = harness();
+		let abortedAtStop: boolean | undefined;
+		let listedAtStop: number | undefined;
+		let listedAtHook: number | undefined;
+		h.ctx.registerPlatformAdapter({
+			...def(),
+			stop() {
+				abortedAtStop = h.ctx.signal.aborted;
+				listedAtStop = h.adapters.list().length;
+			},
+		});
+		h.ctx.onDispose(() => {
+			listedAtHook = h.adapters.list().length;
+		});
+
+		await h.runtime.dispose();
+
+		expect(abortedAtStop).toBe(false);
+		expect(listedAtStop).toBe(0);
+		expect(listedAtHook).toBe(0);
+	});
+
 	it("外观与连接配置项取自清单,代码只交行为与 zod", () => {
 		const manifest = manifestOf();
 		const h = harness({ manifest });

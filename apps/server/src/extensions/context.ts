@@ -190,8 +190,8 @@ export interface ExtensionRuntime {
 	 */
 	runAction(name: string, opts?: { timeoutMs?: number }): Promise<ActionOutcome>;
 	/**
-	 * 这个拓展的订阅源(`ctx.registerSource`)登记落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
-	 * 之后等它 —— `start` 抛了回失败(原话带着),这一次加载就失败。没登记过订阅源就是成功。
+	 * 这个拓展的登记(平台适配器、订阅源)都落定了没有:登记是后台异步的(登记即 `start`),装载器在 `activate`
+	 * 之后等它 —— 有一份失败就回失败(原话带着),这一次加载就失败。什么都没登记就是成功。
 	 */
 	sourceRegistration(): Promise<Result>;
 	/** 收回这个拓展注册过的一切。幂等。 */
@@ -336,8 +336,10 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		// 从这一刻起它的上报一概拒(上报上下文先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
 		onStopping() {
-			// 订阅源先撤:拓展的 `stop()` 要赶在 `signal` 中止之前叫到(契约:宿主先叫 stop,再中止 signal 并跑收尾钩子)。
-			revokeSource();
+			// 两种登记(平台适配器、订阅源)一进门就撤:摘表 + 叫 `stop()`,此时 `signal` 还没中止 ——
+			// 契约许诺的正是这段(ADR-0025 决策 5)。每样单独兜底(`revokeRegistration` 里),一样抛了
+			// 不影响撤下一样,后面的 `onDisposed` / 面板通知照跑。
+			for (const slot of registrations) revokeRegistration(slot);
 			try {
 				opts.onDisposed?.();
 			} catch (err) {
@@ -391,12 +393,91 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 */
 	const runningActions = new Map<string, AbortController>();
 	let sourceRegistered = false;
-	/** 订阅源登记落定的结果(`sourceRegistration`);没登记过就是成功。 */
-	let sourceRegistration: Promise<Result> = Promise.resolve(ok());
-	/** 撤掉已登记的订阅源(登记落定后才有);幂等,收摊时 `onStopping` 先叫它。 */
-	let revokeSourceNow: (() => void) | undefined;
-	function revokeSource(): void {
-		revokeSourceNow?.();
+	/**
+	 * 拓展的两种登记(平台适配器、订阅源)共用的一条生命周期。登记即 `start`,落定之前拓展可能已经
+	 * 调了把手、或者收摊了;落定之后也可能随时收摊。每份登记记一格:
+	 *
+	 * - `settled`:落定的结果(`sourceRegistration()` 等全部;装载器据此判这次加载成不成);
+	 * - `revoke`:落定之后才有的撤口(摘表 + 叫 `stop()`),幂等;
+	 * - `revokeRequested`:已经有人要撤(拓展的把手、`onStopping`、名册兜底)。
+	 *
+	 * 落定那一刻看这一格:已请求撤 / 已收摊就当场撤,不留孤儿。收摊时 `onStopping` 先逐个撤
+	 * (此时 `signal` 还没中止),名册里那一份只作兜底。
+	 */
+	type RegistrationKind = "adapter" | "source";
+	interface RegistrationSlot {
+		what: RegistrationKind;
+		settled: Promise<Result>;
+		revoke?: () => void;
+		revokeRequested: boolean;
+	}
+	const registrations: RegistrationSlot[] = [];
+
+	function revokeRegistration(slot: RegistrationSlot): void {
+		slot.revokeRequested = true;
+		const revoke = slot.revoke;
+		// 还没落定:落定那一刻看这一格,当场撤。
+		if (!revoke) return;
+		// 幂等:撤过就把口放掉,名册兜底 / 把手再来都不再叫它第二遍。
+		slot.revoke = undefined;
+		try {
+			revoke();
+		} catch (err) {
+			// 一样抛了不许耽误撤下一样。
+			logger.error(
+				`撤${slot.what === "adapter" ? "平台适配器" : "订阅源"}登记时抛了:${errorMessageOf(err)}`,
+			);
+		}
+	}
+
+	/**
+	 * 收一份登记。今天平台适配器是同步落定的、订阅源是异步的;R3 之后适配器也会是异步的,所以这里
+	 * 两种都收(`isThenable`),落定后的记账与撤法只有这一处。
+	 *
+	 * 同步抛的照旧原样抛给调用方(平台适配器今天就是这条路径:装载器按 `activate` 失败处理);
+	 * 异步拒的落成 `settled` 的失败(订阅源今天就是这条路径,装载器等它)。
+	 */
+	function adoptRegistration(
+		what: RegistrationKind,
+		register: () => Disposable | Promise<Disposable>,
+	): RegistrationSlot {
+		const registered: unknown = register();
+		const slot: RegistrationSlot = {
+			what,
+			settled: Promise.resolve(ok()),
+			revokeRequested: false,
+		};
+		registrations.push(slot);
+		const adopt = (registration: Disposable): Result => {
+			slot.revoke = () => registration.dispose();
+			// 落定那一刻已经要撤(拓展早撤 / 收摊):当场撤。
+			if (slot.revokeRequested || integration.disposed) revokeRegistration(slot);
+			return ok();
+		};
+		const reject = (err: unknown): Result => {
+			logger.warn(
+				`${what === "adapter" ? "平台适配器" : "订阅源"}登记失败: ${errorMessageOf(err)}`,
+			);
+			return fail("unavailable", errorMessageOf(err));
+		};
+		slot.settled = isThenable(registered)
+			? Promise.resolve(registered).then(
+					(registration) => adopt(registration as Disposable),
+					reject,
+				)
+			: Promise.resolve(adopt(registered as Disposable));
+		// 名册里那一份是兜底:`onStopping` 已经先撤过,这里幂等。
+		integration.track({ dispose: () => revokeRegistration(slot) });
+		return slot;
+	}
+
+	/** 全部登记落定的结果:有一份失败就是失败(第一次失败的)。没登记过是成功。 */
+	async function registrationsSettled(): Promise<Result> {
+		for (const slot of [...registrations]) {
+			const settled = await slot.settled;
+			if (!settled.ok) return settled;
+		}
+		return ok();
 	}
 	/** 「面板数据变了」的合并窗口(见 {@link STATUS_CHANGED_COALESCE_MS});整个拓展就这一个键。 */
 	const statusCoalescer = createKeyedCoalescer({
@@ -841,26 +922,27 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					: {}),
 			};
 			// 登记即 `start`。适配器只从上下文读自己的连接与入站,登记交回的把手只负责注销。
-			const registration = adapters.register(
-				checkedAdapter,
-				createPlatformAdapterContext({
-					integration: integration.ctx,
-					adapterKey: id,
-					label: manifestName,
-					settingsSchema: def.settingsSchema,
-					connections: opts.connections,
-					...(opts.connection ? { connection: opts.connection } : {}),
-					inbound: opts.inbound,
-					onConnectionsChanged: (fn) =>
-						integration.track(opts.onConnectionsChanged(wrapHandler("onConnectionsChanged", fn))),
-					problems: opts.problems,
-					rejectedProblemLevel: "warn",
-					onRejectedProblem: recordRejectedProblem,
-				}),
+			const slot = adoptRegistration("adapter", () =>
+				adapters.register(
+					checkedAdapter,
+					createPlatformAdapterContext({
+						integration: integration.ctx,
+						adapterKey: id,
+						label: manifestName,
+						settingsSchema: def.settingsSchema,
+						connections: opts.connections,
+						...(opts.connection ? { connection: opts.connection } : {}),
+						inbound: opts.inbound,
+						onConnectionsChanged: (fn) =>
+							integration.track(opts.onConnectionsChanged(wrapHandler("onConnectionsChanged", fn))),
+						problems: opts.problems,
+						rejectedProblemLevel: "warn",
+						onRejectedProblem: recordRejectedProblem,
+					}),
+				),
 			);
-			integration.track(registration);
 			return {
-				dispose: () => registration.dispose(),
+				dispose: () => revokeRegistration(slot),
 			} satisfies PlatformAdapterHandle;
 		},
 		registerSource(def) {
@@ -868,7 +950,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				integration.refuse("registerSource");
 				throw new Error(`extension ${id} is already unloaded`);
 			}
-			if (!opts.registerSource) {
+			const registerSource = opts.registerSource;
+			if (!registerSource) {
 				throw new Error(`extension ${id}: the host has no source registry wired in`);
 			}
 			// 一个拓展就是一个平台(决策 9);要两个平台的那天再加一格子键。
@@ -891,8 +974,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					opts.fallbackCreatorName?.({ sourceKey: id, externalId }) ?? externalId,
 			});
 			// 登记即 `start`,是异步的:这里同步交回把手,登记在后台落定,装载器在 `activate` 之后等它。
-			sourceRegistration = opts
-				.registerSource({
+			// 落定前拓展就调了把手 / 收摊了,由那一格记着,落定那一刻当场撤。
+			const slot = adoptRegistration("source", () =>
+				registerSource({
 					sourceKey: id,
 					source,
 					integration: integration.ctx,
@@ -901,27 +985,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					onRejectedProblem: recordRejectedProblem,
 					// 问题表的写者名:当前语言的清单名,与集成上下文是同一个函数(3b-51)。
 					label: manifestName,
-				})
-				.then(
-					(registration): Result => {
-						// 登记途中收摊了:当场撤,不留孤儿(撤登记会叫到拓展的 `stop`)。
-						if (integration.disposed) {
-							registration.dispose();
-							return ok();
-						}
-						revokeSourceNow = () => registration.dispose();
-						return ok();
-					},
-					(err: unknown): Result => {
-						logger.warn(`订阅源登记失败: ${errorMessageOf(err)}`);
-						return fail("unavailable", errorMessageOf(err));
-					},
-				);
-			// 收摊时随名册撤(`onStopping` 已经先撤过一次,这里是兜底;撤登记幂等)。
-			integration.track({ dispose: revokeSource });
+				}),
+			);
 			return {
 				dispose() {
-					revokeSource();
+					revokeRegistration(slot);
 				},
 			};
 		},
@@ -1100,7 +1168,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				clearTimeout(timer);
 			}
 		},
-		sourceRegistration: () => sourceRegistration,
+		sourceRegistration: () => registrationsSettled(),
 		async dispose() {
 			if (integration.disposed) return;
 			// 在跑的动作听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。

@@ -398,6 +398,30 @@ describe("ctx.registerSource:收摊", () => {
 		expect(h.record.disposed).toBe(1);
 	});
 
+	/**
+	 * 把手是同步交回的,登记却在后台落定:落定之前拓展调 `dispose()` 也得作数 —— 契约说它幂等,
+	 * 而且「调用后来源不再上报」。落定那一刻发现自己早被请求撤了,就当场撤、把 `stop` 叫到。
+	 */
+	it("登记落定前把手就 dispose:落定后当场撤,stop 被叫一次", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const stops: string[] = [];
+		const h = harness({
+			host: async (entry, record) => {
+				await gate;
+				return defaultHost(entry, record);
+			},
+		});
+		const handle = h.ctx.registerSource(def({ stop: () => void stops.push("stop") }));
+		handle.dispose();
+		release();
+		expect(await h.runtime.sourceRegistration()).toEqual({ ok: true });
+		expect(h.record.disposed).toBe(1);
+		expect(stops).toEqual(["stop"]);
+	});
+
 	it("登记途中收摊:登记落定的那一刻当场撤,不留孤儿", async () => {
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
