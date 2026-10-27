@@ -257,6 +257,27 @@
 
 10-14 主人定：给新版 BN 另开一份官方索引 —— 新的滚动 release `extensions` 上的 `marketplace.json`，旧 release 上那份留给 0.12、从此不动。这一片照这个改完再合回（见切片表 3b-04 那行）。
 
+### 期末代码审查（10-27）
+
+主人对整个 3b（`46e20439a..445dace1a`）跑的一次代码审查：七个审查员按领域读，交回 49 条候选。主人点名处理其中 31 条（前 15 条，加上其余标 high / medium 的 16 条，记作 R1–R31）；标 low 的 18 条这次没碰。31 条逐条由复核员回代码核前提、对 `46e20439a` 的旧行为与这一期的定案：30 条成立，1 条是定案行为。修了的每条都先写红的测试，提交按标题在 `git log --oneline` 里找。
+
+- **主人当场定的三件**：
+  - R1（0.x 的 `defaults.ai` 缺 `presets` 键时，四份内置人格被记成都删过）：只修判定，迁移修订号不抬（仍 52），备份版本不动。0.x 自己写不出这种形状，已按 52 迁过的代不受影响。
+  - R3（拓展平台适配器的 `async start` 拒了没人接，整台 BN 退出）：选甲，契约 `PlatformAdapter.start` 放宽为 `void | Promise<void>`，登记表等它，拒了撤掉、这次加载失败。
+  - R14（关注同步撞风控后跳过的人再没人补）：选乙，欠着的人随下一次名单变化带上之外，再按 `RISK_BACKOFF_STEPS_MS` 自己定时跑一轮，每轮先只发一个读，补全就停。
+- **主会话照已有定案定的（主人可否决）**：R5 断流接续后，在播表与面板上的开播时刻取这一场第一次的（ADR-0019 决策 58）；R7 一场被重启切成几段时，发弹幕人数取各段最大值（统计不收观众名单，只会少报），其余计数相加；R25 拉取式直播状态与取资料丢了格、整份被拒，都记进上报出入（决策 59 / 60）；R22 那道门顺带罩住拓展的定时回调（同类，抛了就是整台退出）。几个内部名字用的都是词表里已有的词：`sourceStartedAt`、`liveEndSeq`、`detectorGeneration`、`isLoginLost`、`pending`、`injectedCapabilities`，`ConfigStore` 照 `getConnection(id)` 对称加了 `getSubscription(id)`。
+- **修了的 30 条**：
+  - 迁移与设置：R1 `fix(migration): treat a missing 0.x persona list as the built-ins still present`；R8 `fix(templates): let a switched-off membership override fall back to the global one`。
+  - B 站直播与动态：R4 + R21 `fix(bilibili): drop a live end that arrives while the room state is being checked`；R6 `fix(bilibili): keep the reported-live mark on the room session it belongs to`；R2 `fix(bilibili): rebuild every live room session when the login comes back`；R20 `fix(bilibili): let a stopped dynamic poller ignore the round still in flight`。
+  - 直播核心、统计与面板：R5 `fix(live): keep a resumed session when the source reports its restart time`；R31 `fix(web): fill in a live row's start time from status and tick frames`；R7 `fix(stats): add up a live session's tallies across its end frames`；R13 `fix(live): count viewer chat words and senders in maps`；R15 `perf(live): fold a subscription's live settings once until the globals change`。
+  - 拓展与桥：R3 `feat(extension)!: let a platform adapter start asynchronously`；R9 `fix(extensions): keep rich text across CRLF and record it when it is dropped`；R10 `fix(bridge): fall back past an empty failure message in a send receipt`；R11 `fix(server): parse a reported problem before it reaches the problem table`（给人看的原因进了服务端字典 `problem.report.issue.*`）；R12 + R23 `fix(extensions): revoke an extension's registrations before its signal aborts`；R22 `fix(extensions): keep an extension's callback errors off the host's stack`；R24 `refactor(server): share one isThenable for the synchronous extension reads`；R25 `fix(extensions): drop only the bad cell of a pulled live status or profile`。
+  - 资料：R16 `fix(runtime): stop a profile refresh from bringing back a deleted subscription`；R17 + R18 `fix(runtime): write the profile cache through one writer, one subscription at a time`。
+  - 推送与关注：R14 `fix(bilibili): carry the people a follow sync could not reach into the next one` 与 `feat(bilibili): retry the follows a sync left pending on the risk backoff steps`；R26 `perf(server): read one connection at a time in the connection probe engine`；R27 `perf(server): list the problems once per subscriptions response`；R28 `fix(push): let an adapter clear a problem on a connection that was deleted`；R29 `refactor(devtools): lay injected capabilities over the dispatcher's memory`（`deriveAdapterRegistry` 随之删掉）。
+  - 清理：R19 `refactor(runtime): ask hasLiveStatus directly for the live module state`；顺带把两份一样的预览收成一份：`refactor(server): share one preview for untrusted text in logs`。
+- **没改的一条**：R30（直播总结锚点上，按例外只收模板版的目标也要等 AI 那份做完）。ADR-0032 决策 2 下 3b-37 的 🔗 定的就是「挑模板的目标也要等 AI 那份做完一起发」；审查员说的「后面的附加项也被拖住」今天不成立（总结是最后一个附加项，在后台发）。要改是改定案的题。
+- **施工中撞出的偶发红**，都派人查了病根，只改测试，没动上限、没放宽断言：`migration/__tests__/zero-generation.test.ts`（每条用例重新迁一次、约 130 次串行 fsync，别的进程一起写盘时一条过了 5 秒；超时后迁移还在写 `1.partial`、收尾同时在删，才冒出 `ENOTEMPTY`）→ `test(migration): migrate the zero generation once for the read-only checks`；`runtime/__tests__/generation-usage.test.ts`（被计时的部分里现造 1000 个文件，原断言连真阻塞都抓不住）→ `test(runtime): check measureTree yields without timing a thousand file writes`；`scripts/__tests__/bilibili-vocabulary.test.mjs`（整仓扫描时每个文字节点都把每个词现编一个正则，一遍上百万个，CPU 一忙就过 5 秒）→ `test(scripts): compile the vocabulary guard's word patterns once`。三处都和这一片的改动无关，是早先就有的隐患。
+- **留着的**：R6 一次 `fetchLiveStatus` 跨过「拆旧会话、建新会话」时仍会写进新会话；R3 适配器异步 `start` 的那段时间里已经在登记表上（与订阅源登记表同一个取舍），登记途中收摊时落定那一刻才撤、此时 `signal` 已中止；R25 拓展回执包装层自己坏掉时的 `invalid` 不记进出入（要改 `readResult` 的形状，牵连搜人）；新建拓展订阅时种资料直接写资料缓存、绕过单一写者（复核顺带看到，改成「只在还没有资料时才种」是行为决定）。
+
 ## 真机
 
 不当硬门槛；3b 收口时主会话给一张十条以内的短清单。

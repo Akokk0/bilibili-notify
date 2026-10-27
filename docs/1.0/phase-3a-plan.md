@@ -716,7 +716,7 @@
 - 3a-17 开工前定的（10-09，主人定，ADR-0024 决策 13 下有 🔗）：「发给谁」收成一个值 `SessionRef { scope, address }`（从会话目标的类型上取，不手抄），签名 `sendToAddress(connectionId, session, payload)`；临时目标搬进派发器内部、适配器接口这一片不动；截流闸搬到派发器这个口。照码表不用问的：连接停用回 `not_configured`，不可达或没有适配器回 `unavailable`。
   - 已落（10-09，`27443da8`）：
     - `TargetDispatcher.sendToAddress`：不进路由、不过闸、不落历史、不重试、不触发投递回调；挡下时打一条 warn。链接回复改走它，接线从 `index.ts` 抽到 `runtime/link-reply.ts`。
-    - 登记表的 `list()` 只给不含 `send` 的视图 `PlatformAdapterView`（运行时也真的没有）；带 `send` 的完整适配器只有 `push/registry.ts` 的 `sendableAdapters` 一个取法，开发版用 `deriveAdapterRegistry` 在原表上派生一张包过能力注入的表。
+    - 登记表的 `list()` 只给不含 `send` 的视图 `PlatformAdapterView`（运行时也真的没有）；带 `send` 的完整适配器只有 `push/registry.ts` 的 `sendableAdapters` 一个取法，开发版用 `deriveAdapterRegistry` 在原表上派生一张包过能力注入的表。🔗 现状（10-27，3b 期末审查 R29）：派生表已删，开发版的能力注入改成派发器上的 `injectedCapabilities` 读口，盖在宿主的能力记忆之上。
     - 截流：派发器在马上要调适配器的那一处问 `interceptSend`（`createEngines` 多一个同名的口，只有开发版传）。主人选的是「包派发器」，落成了「派发器在最后一步问一下」：位置是同一个口，连接不在、适配器不在这些检查在截流开着时照常生效。
     - 守卫 `scripts/__tests__/egress-throat.test.mjs`：除了 `push/target-dispatcher.ts`，谁引 `sendableAdapters` 就红。
   - 行为变了的：链接回复原先不查就发；现在连接停用或不可达时直接不回，只留一条 warn。
