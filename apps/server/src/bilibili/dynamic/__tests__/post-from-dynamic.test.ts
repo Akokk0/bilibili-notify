@@ -698,18 +698,247 @@ describe("充电专属 → locked", () => {
 	});
 });
 
+/** 剧集 / 课程 / 合集动态的 major 块:字段写全(含不读的角标、跳转、编号),让夹具像真的。 */
+const badge = { bg_color: "#FB7299", color: "#FFFFFF", text: "会员专享" };
+const seriesMajor = (over: Record<string, unknown> = {}) => ({
+	major: {
+		type: "MAJOR_TYPE_PGC",
+		pgc: {
+			badge,
+			cover: "http://x.example/pgc.jpg",
+			epid: 1001,
+			jump_url: "//www.bilibili.com/bangumi/play/ep1001",
+			season_id: 2002,
+			stat: { danmaku: "1.2万", play: "34.5万" },
+			sub_type: 1,
+			title: "第3话 夜幕",
+			type: 2,
+			...over,
+		},
+	},
+});
+const courseMajor = (over: Record<string, unknown> = {}) => ({
+	major: {
+		type: "MAJOR_TYPE_COURSES",
+		courses: {
+			badge,
+			cover: "http://x.example/course.jpg",
+			desc: "更新至第10期",
+			id: 3003,
+			jump_url: "//www.bilibili.com/cheese/play/ss3003",
+			sub_title: "共10节",
+			title: "从零学画画",
+			...over,
+		},
+	},
+});
+const collectionMajor = (over: Record<string, unknown> = {}) => ({
+	major: {
+		type: "MAJOR_TYPE_UGC_SEASON",
+		ugc_season: {
+			aid: 4004,
+			badge,
+			cover: "http://x.example/season.jpg",
+			desc: "视频简介",
+			disable_preview: 0,
+			duration_text: "05:20",
+			jump_url: "//www.bilibili.com/video/BV1xx",
+			stat: { danmaku: "1.2万", play: "34.5万" },
+			title: "第一集 开始",
+			...over,
+		},
+	},
+});
+
+describe("剧集 / 课程 / 合集 → 附件的视频卡", () => {
+	it("剧集:label「发布了剧集」,封面 + 分集标题 + 播放弹幕句进视频卡,没有 durationSec", () => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_PGC", seriesMajor(), {}, { type: "AUTHOR_TYPE_PGC", name: "某番剧" }),
+		);
+		expect(post).toEqual({
+			creator: { name: "某番剧", isPremium: false },
+			publishedAt: "2023-11-14T22:13:20.000Z",
+			text: "",
+			label: "发布了剧集",
+			stats: { shares: 1, comments: 2, likes: 3 },
+			attachment: {
+				kind: "video",
+				cover: { url: "http://x.example/pgc.jpg" },
+				title: "第3话 夜幕",
+				subtitle: "34.5万观看 1.2万弹幕",
+			},
+		});
+	});
+
+	it("课程:label「发布了课程」,desc(更新状态)进 subtitle,没有 durationSec,不读 sub_title", () => {
+		const post = postFromDynamic(raw("DYNAMIC_TYPE_COURSES_SEASON", courseMajor()));
+		expect(post).toEqual({
+			creator: { name: "示例UP", isPremium: false },
+			publishedAt: "2023-11-14T22:13:20.000Z",
+			text: "",
+			label: "发布了课程",
+			stats: { shares: 1, comments: 2, likes: 3 },
+			attachment: {
+				kind: "video",
+				cover: { url: "http://x.example/course.jpg" },
+				title: "从零学画画",
+				subtitle: "更新至第10期",
+			},
+		});
+	});
+
+	it("合集:label「更新了合集」,duration_text 成秒,UP 写的字进正文,不读 desc(视频简介)", () => {
+		const post = postFromDynamic(
+			raw(
+				"DYNAMIC_TYPE_UGC_SEASON",
+				{ ...desc(text("更新啦")), ...collectionMajor() },
+				{},
+				{ type: "AUTHOR_TYPE_UGC_SEASON", name: "某合集" },
+			),
+		);
+		expect(post).toEqual({
+			creator: { name: "某合集", isPremium: false },
+			publishedAt: "2023-11-14T22:13:20.000Z",
+			text: "更新啦",
+			richText: [{ kind: "text", text: "更新啦" }],
+			label: "更新了合集",
+			stats: { shares: 1, comments: 2, likes: 3 },
+			attachment: {
+				kind: "video",
+				cover: { url: "http://x.example/season.jpg" },
+				title: "第一集 开始",
+				durationSec: 320,
+				subtitle: "34.5万观看 1.2万弹幕",
+			},
+		});
+	});
+
+	it("边角:播放 / 弹幕缺一个、空串、不是字符串 → 没有 subtitle 键;课程 desc 空、合集时长认不出 → 同样不出 undefined", () => {
+		const videoOf = (
+			type: string,
+			majorOf: (over: Record<string, unknown>) => unknown,
+			over: object,
+		) =>
+			postFromDynamic(
+				raw(type, majorOf(over as Record<string, unknown>) as Record<string, unknown>),
+			).attachment;
+		for (const stat of [
+			{ play: "34.5万" },
+			{ danmaku: "1.2万" },
+			{ play: "", danmaku: "1.2万" },
+			{ play: "34.5万", danmaku: "" },
+			{ play: 345000, danmaku: "1.2万" },
+			{ play: "34.5万", danmaku: null },
+		]) {
+			expect(videoOf("DYNAMIC_TYPE_PGC", seriesMajor, { stat })).toEqual({
+				kind: "video",
+				cover: { url: "http://x.example/pgc.jpg" },
+				title: "第3话 夜幕",
+			});
+			expect(
+				videoOf("DYNAMIC_TYPE_UGC_SEASON", collectionMajor, { stat, duration_text: undefined }),
+			).toEqual({
+				kind: "video",
+				cover: { url: "http://x.example/season.jpg" },
+				title: "第一集 开始",
+			});
+		}
+		for (const duration_text of ["", "16:60", "abc"]) {
+			expect(videoOf("DYNAMIC_TYPE_UGC_SEASON", collectionMajor, { duration_text })).toEqual({
+				kind: "video",
+				cover: { url: "http://x.example/season.jpg" },
+				title: "第一集 开始",
+				subtitle: "34.5万观看 1.2万弹幕",
+			});
+		}
+		for (const desc of ["", undefined, 10]) {
+			expect(videoOf("DYNAMIC_TYPE_COURSES_SEASON", courseMajor, { desc })).toEqual({
+				kind: "video",
+				cover: { url: "http://x.example/course.jpg" },
+				title: "从零学画画",
+			});
+		}
+	});
+
+	it("major 块缺席(没有 / 不是对象):退回今天那句 notice,没有正文也没有附加块", () => {
+		const cases: [string, Record<string, unknown>, string][] = [
+			[
+				"DYNAMIC_TYPE_PGC",
+				{},
+				"示例UP发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看",
+			],
+			[
+				"DYNAMIC_TYPE_PGC",
+				{ major: { type: "MAJOR_TYPE_PGC", pgc: null } },
+				"示例UP发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看",
+			],
+			["DYNAMIC_TYPE_COURSES_SEASON", {}, "示例UP发布了新课程，我暂时无法渲染，请自行查看"],
+			[
+				"DYNAMIC_TYPE_UGC_SEASON",
+				{ major: { type: "MAJOR_TYPE_UGC_SEASON" } },
+				"示例UP更新了合集，我暂时无法渲染，请自行查看",
+			],
+		];
+		for (const [type, moduleDynamic, sentence] of cases) {
+			const post = postFromDynamic(
+				raw(type, {
+					...moduleDynamic,
+					additional: {
+						type: "ADDITIONAL_TYPE_COMMON",
+						common: { head_text: "x", cover: "c", title: "t", desc1: "d" },
+					},
+				}),
+			);
+			expect(post.notice).toBe(sentence);
+			expect(post.text).toBe("");
+			expect(post.label).toBeUndefined();
+			expect(post.attachment).toBeUndefined();
+		}
+	});
+
+	it("被转发的原动态是剧集:内层 repost 带 label 与视频卡", () => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_FORWARD", desc(text("转发语")), {
+				orig: raw("DYNAMIC_TYPE_PGC", seriesMajor(), {}, { name: "某番剧" }),
+			}),
+		);
+		expect(post.text).toBe("转发语");
+		expect(post.repost?.label).toBe("发布了剧集");
+		expect(post.repost?.attachment).toEqual({
+			kind: "video",
+			cover: { url: "http://x.example/pgc.jpg" },
+			title: "第3话 夜幕",
+			subtitle: "34.5万观看 1.2万弹幕",
+		});
+		expect(post.attachment).toBeUndefined();
+	});
+
+	it("同时带附加块(预约卡):视频卡覆盖它", () => {
+		const reserve = {
+			additional: {
+				type: "ADDITIONAL_TYPE_RESERVE",
+				reserve: { title: "直播预约", desc1: { text: "09-20 20:00" } },
+			},
+		};
+		for (const [type, major] of [
+			["DYNAMIC_TYPE_PGC", seriesMajor()],
+			["DYNAMIC_TYPE_COURSES_SEASON", courseMajor()],
+			["DYNAMIC_TYPE_UGC_SEASON", collectionMajor()],
+		] as const) {
+			expect(postFromDynamic(raw(type, { ...major, ...reserve })).attachment?.kind).toBe("video");
+		}
+	});
+});
+
 describe("「暂时无法渲染」与「原动态不可见」→ notice", () => {
 	it.each([
 		["DYNAMIC_TYPE_LIVE", "示例UP发起了直播预约，我暂时无法渲染，请自行查看"],
 		["DYNAMIC_TYPE_MEDIALIST", "示例UP分享了收藏夹，我暂时无法渲染，请自行查看"],
-		["DYNAMIC_TYPE_PGC", "示例UP发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看"],
 		["DYNAMIC_TYPE_MUSIC", "示例UP发行了新歌，我暂时无法渲染，请自行查看"],
 		[
 			"DYNAMIC_TYPE_COMMON_SQUARE",
 			"示例UP发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看",
 		],
-		["DYNAMIC_TYPE_COURSES_SEASON", "示例UP发布了新课程，我暂时无法渲染，请自行查看"],
-		["DYNAMIC_TYPE_UGC_SEASON", "示例UP更新了合集，我暂时无法渲染，请自行查看"],
 		["DYNAMIC_TYPE_NONE", "示例UP发布了一条无效动态"],
 		["DYNAMIC_TYPE_SOMETHING_NEW", "示例UP发布了一条我无法识别的动态，请自行查看"],
 	])("%s → notice,没有正文也没有附加块", (type, sentence) => {

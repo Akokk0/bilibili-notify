@@ -15,6 +15,7 @@
  * - opus 标题:专栏 → `article.title`,别的(带标题的图文)→ `title`;
  * - 图文的图 → `images`(专栏的 → `article.images`);任何 AV archive → `video`(播放 / 弹幕 / 时长先成数字);
  * - 附加块 → `attachment`:预约卡与通用卡 → `card`,商品 → `goods`,引用的 UGC 视频 → `video`;
+ * - 剧集 / 课程 / 合集动态 → `label` + 附件的视频卡(`attachment.kind === "video"`,不进 `video`),覆盖附加块;
  * - 充电专属 → `locked`(`hint` 用作者名拼好);「暂时无法渲染」「原动态不可见」→ `notice`;
  * - 转发 → `repost`(内层不带互动数);互动数 → `stats`。
  *
@@ -35,6 +36,7 @@ import {
 	type RichText,
 	type RichTextSegment,
 } from "@bilibili-notify/internal";
+import { t } from "../../i18n/index.js";
 import { parseClock, parseCount } from "./bili-display-values";
 import type { Dynamic } from "./types";
 
@@ -215,15 +217,33 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 		case DYNAMIC_TYPE_MEDIALIST:
 			return notice(post, `${name}分享了收藏夹，我暂时无法渲染，请自行查看`);
 		case DYNAMIC_TYPE_PGC:
-			return notice(post, `${name}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看`);
+			return withVideoCard(
+				post,
+				mod,
+				seriesCard(mod.major?.pgc),
+				t("bilibili.post.label.series"),
+				`${name}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看`,
+			);
 		case DYNAMIC_TYPE_MUSIC:
 			return notice(post, `${name}发行了新歌，我暂时无法渲染，请自行查看`);
 		case DYNAMIC_TYPE_COMMON_SQUARE:
 			return notice(post, `${name}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看`);
 		case DYNAMIC_TYPE_COURSES_SEASON:
-			return notice(post, `${name}发布了新课程，我暂时无法渲染，请自行查看`);
+			return withVideoCard(
+				post,
+				mod,
+				courseCard(mod.major?.courses),
+				t("bilibili.post.label.course"),
+				`${name}发布了新课程，我暂时无法渲染，请自行查看`,
+			);
 		case DYNAMIC_TYPE_UGC_SEASON:
-			return notice(post, `${name}更新了合集，我暂时无法渲染，请自行查看`);
+			return withVideoCard(
+				post,
+				mod,
+				collectionCard(mod.major?.ugc_season),
+				t("bilibili.post.label.collection"),
+				`${name}更新了合集，我暂时无法渲染，请自行查看`,
+			);
 		case DYNAMIC_TYPE_NONE:
 			return notice(post, `${name}发布了一条无效动态`);
 		case DYNAMIC_TYPE_LIVE_RCMD:
@@ -232,6 +252,25 @@ function translate(item: Dynamic, isRepost: boolean): Post {
 		default:
 			return notice(post, `${name}发布了一条我无法识别的动态，请自行查看`);
 	}
+}
+
+/**
+ * 剧集 / 课程 / 合集这一族:主内容在 major,翻成附件的视频卡(不进 `video`,那个只给 UP 自己的视频)。
+ * UP 自己写的字照常进正文;视频卡覆盖附加块先给的附件(主内容在 major)。major 块缺席(接口降级)则退回 `fallbackNotice`,
+ * 与以前「暂时无法渲染」的行为相同。`label` 由调用处在翻译这一刻取字(键写成字面量,取字守卫才核得到),不在模块顶层定死。
+ */
+function withVideoCard(
+	post: Post,
+	mod: Loose,
+	card: Attachment | undefined,
+	label: string,
+	fallbackNotice: string,
+): Post {
+	if (!card) return notice(post, fallbackNotice);
+	applyBody(post, mod);
+	post.label = label;
+	post.attachment = card;
+	return post;
 }
 
 /** 「我暂时无法渲染」那一类:只有一句 BN 自己说的话;没有可拆的附加内容,清掉以免空块占位。 */
@@ -457,12 +496,73 @@ function goodsOf(goods: Loose): Attachment | undefined {
  * 不拆;时长是接口排好的字,先解析成秒。
  */
 function ugcVideo(ugc: Loose): Attachment {
-	const durationSec = parseClock(ugc.duration);
+	return videoAttachment({
+		cover: ugc.cover,
+		title: ugc.title,
+		durationSec: parseClock(ugc.duration),
+		subtitle: ugc.desc_second ? String(ugc.desc_second) : undefined,
+	});
+}
+
+/** 封面 + 标题 + 时长字 + 灰字 → `video` 附件;标题缺了给 `""`,时长与灰字没有就不带键(不出 undefined)。 */
+function videoAttachment(parts: {
+	cover: string;
+	title?: string;
+	durationSec?: number;
+	subtitle?: string;
+}): Attachment {
 	return {
 		kind: "video",
-		cover: { url: ugc.cover },
-		title: ugc.title ?? "",
-		...(durationSec === undefined ? {} : { durationSec }),
-		...(ugc.desc_second ? { subtitle: String(ugc.desc_second) } : {}),
+		cover: { url: parts.cover },
+		title: parts.title ?? "",
+		...(parts.durationSec === undefined ? {} : { durationSec: parts.durationSec }),
+		...(parts.subtitle === undefined ? {} : { subtitle: parts.subtitle }),
 	};
+}
+
+/**
+ * 播放弹幕句(「34.5万观看 1.2万弹幕」):`stat.play` / `stat.danmaku` 是接口排好的字符串,原样拼进字典句式、
+ * 不解析成数字。两个都是非空字符串才出句,缺一个、空串或不是字符串就没有。
+ */
+function playStatsLine(stat: Loose): string | undefined {
+	const views = stat?.play;
+	const danmaku = stat?.danmaku;
+	if (typeof views !== "string" || views === "" || typeof danmaku !== "string" || danmaku === "") {
+		return undefined;
+	}
+	return t("bilibili.post.videoStats", { views, danmaku });
+}
+
+/**
+ * 合集动态 `major.ugc_season` → 视频卡:封面、视频标题、`duration_text` 解析成秒(认不出就不带)、播放弹幕句。
+ * 不读 `desc`(视频简介);块缺席(不是对象)就没有。
+ */
+function collectionCard(season: Loose): Attachment | undefined {
+	if (typeof season !== "object" || season === null) return undefined;
+	return videoAttachment({
+		cover: season.cover,
+		title: season.title,
+		durationSec: parseClock(season.duration_text),
+		subtitle: playStatsLine(season.stat),
+	});
+}
+
+/**
+ * 课程动态 `major.courses` → 视频卡:封面、标题;`desc`(更新状态,如「更新至第10期」)非空字符串才进 `subtitle`。
+ * 课程没有 `stat`、不给时长;块缺席(不是对象)就没有。
+ */
+function courseCard(courses: Loose): Attachment | undefined {
+	if (typeof courses !== "object" || courses === null) return undefined;
+	const { desc } = courses;
+	return videoAttachment({
+		cover: courses.cover,
+		title: courses.title,
+		subtitle: typeof desc === "string" && desc !== "" ? desc : undefined,
+	});
+}
+
+/** 剧集动态 `major.pgc` → 视频卡:分集标题、封面、播放弹幕句;接口不给时长。块缺席(不是对象)就没有。 */
+function seriesCard(pgc: Loose): Attachment | undefined {
+	if (typeof pgc !== "object" || pgc === null) return undefined;
+	return videoAttachment({ cover: pgc.cover, title: pgc.title, subtitle: playStatsLine(pgc.stat) });
 }

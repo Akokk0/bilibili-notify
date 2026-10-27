@@ -1,6 +1,10 @@
 {
 	"bilibili.aiTools.upTotals": "查看数据概览",
 	"bilibili.aiTools.upVideos": "查看最近视频",
+	"bilibili.post.label.collection": "更新了合集",
+	"bilibili.post.label.course": "发布了课程",
+	"bilibili.post.label.series": "发布了剧集",
+	"bilibili.post.videoStats": "{views}观看 {danmaku}弹幕",
 	"bilibili.problem.dynamicFetchFailed": "拉取动态失败（错误码 {code}），每 5 分钟会自动重试一次",
 	"bilibili.problem.dynamicSettingsInvalid": "{cause}，动态先停着没在拉；登录、登录检查和直播照常",
 	"bilibili.problem.followFailed": "未关注该 UP —— 收不到动态（{reason}）",
