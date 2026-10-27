@@ -100,23 +100,29 @@ function makeServiceCtx(): {
 	ctx: ServiceContext;
 	disposers: Array<() => void | Promise<void>>;
 	logs: LogRec[];
+	/** 排下去的定时器;用例手动触发,不真等时间。 */
+	timers: Array<() => void>;
 } {
 	const disposers: Array<() => void | Promise<void>> = [];
 	const logs: LogRec[] = [];
+	const timers: Array<() => void> = [];
 	const rec = (level: LogRec["level"]) => (msg: unknown) => {
 		logs.push({ level, msg: String(msg) });
 	};
 	const ctx: ServiceContext = {
 		logger: { info: rec("info"), warn: rec("warn"), error: rec("error"), debug: rec("debug") },
 		setInterval: () => ({ dispose() {} }),
-		setTimeout: () => ({ dispose() {} }),
+		setTimeout: (fn) => {
+			timers.push(fn);
+			return { dispose() {} };
+		},
 		onDispose: (fn) => {
 			disposers.push(fn);
 		},
 		signal: new AbortController().signal,
 		track: () => {},
 	};
-	return { ctx, disposers, logs };
+	return { ctx, disposers, logs, timers };
 }
 
 /** 动态轮询要的那四个上报器方法(其余的 `attach` / `detach` 是来源的事)。 */
@@ -300,6 +306,8 @@ interface EngineBag {
 	/** 注入给动态轮询的核心入口(`reportPost` 选项):动态轮询交出去的每一条作品。 */
 	reportPost: ReturnType<typeof vi.fn<(externalId: string, report: PostReport) => void>>;
 	logs: LogRec[];
+	/** 排下去的退避定时器(手动触发)。 */
+	timers: Array<() => void>;
 }
 
 function makeEngine(
@@ -312,7 +320,7 @@ function makeEngine(
 		problems?: FakeProblems;
 	} = {},
 ): EngineBag {
-	const { ctx, logs } = makeServiceCtx();
+	const { ctx, logs, timers } = makeServiceCtx();
 	const { auth, emits, loseLogin, restoreLogin } = makeAuth();
 	let roster = rosterOf(over.subs);
 	const fetchAllDynamic = vi.fn();
@@ -353,6 +361,7 @@ function makeEngine(
 		fetchImage,
 		reportPost,
 		logs,
+		timers,
 	};
 }
 
@@ -1330,12 +1339,12 @@ describe("DynamicPoller.detectDynamics — 按创作者分组并行生产", () =
 		for (const uid of ["1", "2", "3"]) seed(b.engine, uid, 0);
 		// produce 自己吞错;这里直接让它在甲那条上拒绝,验的是并发那一层不把一个拒绝变成整轮失败。
 		const engine = b.engine as unknown as {
-			produce: (item: Dynamic, uid: string, postTime: number) => Promise<void>;
+			produce: (item: Dynamic, uid: string, postTime: number, generation: number) => Promise<void>;
 		};
 		const realProduce = engine.produce.bind(engine);
-		engine.produce = async (item, uid, postTime) => {
+		engine.produce = async (item, uid, postTime, generation) => {
 			if (uid === "1" && postTime === 100) throw new Error("意外炸了");
-			return realProduce(item, uid, postTime);
+			return realProduce(item, uid, postTime, generation);
 		};
 
 		await expect(detect(b.engine)).resolves.toBeUndefined();
@@ -1564,6 +1573,49 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 			expect(cronMock.instances.length).toBe(before + 1);
 			expect(cronMock.instances.at(-1)?.isActive).toBe(true);
 		});
+	});
+
+	it("停下时在途那一轮回风控:不排退避、不再起 cron", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		let release: (value: ReturnType<typeof resp>) => void = () => {};
+		b.fetchAllDynamic.mockReturnValueOnce(
+			new Promise((resolve) => {
+				release = resolve;
+			}),
+		);
+		const round = priv(b.engine).detectDynamics();
+
+		b.engine.stop();
+		release(resp([], -352, "risk"));
+		await round;
+
+		expect(b.problems.reportRisk).not.toHaveBeenCalled();
+		expect(b.timers).toHaveLength(0);
+		const before = cronMock.instances.length;
+		for (const fire of b.timers) fire();
+		expect(cronMock.instances.length).toBe(before);
+	});
+
+	it("掉线时在途那一轮回瞬时错误:退避到点也不在 authLost 下起 cron", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		const before = cronMock.instances.length;
+		let release: (value: ReturnType<typeof resp>) => void = () => {};
+		b.fetchAllDynamic.mockReturnValueOnce(
+			new Promise((resolve) => {
+				release = resolve;
+			}),
+		);
+		const round = priv(b.engine).detectDynamics();
+
+		b.loseLogin();
+		release(resp([], 4101132, "请求数据发生错误"));
+		await round;
+		for (const fire of b.timers) fire();
+
+		expect(cronMock.instances.length).toBe(before);
+		expect(cronMock.instances.at(-1)?.isActive).toBe(false);
 	});
 
 	it("名单里去掉某人再加回来 → 锚点是加回来那一刻,之前发的那条不交(已定 16)", async () => {
@@ -2031,6 +2083,8 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 
 	it("-352 后 dynamicCron 被改成起不来的值、退避到点:同样是「不再跑了」,风控清掉", async () => {
 		const w = makeWorld();
+		// 退避到点重启检测要求这一路还在跑(实际生产里正是如此);没 start 过的实例起 cron 那道门会直接拦下。
+		w.b.engine.start();
 		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(w.b.engine);
 		await settle();

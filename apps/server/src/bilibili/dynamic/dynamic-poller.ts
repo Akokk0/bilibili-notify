@@ -206,6 +206,14 @@ export class DynamicPoller {
 	 */
 	private authLost = false;
 	/**
+	 * 检测器的代:每次拆掉检测器(`stop()` / `suspendDetector()` / `restartDetector()`)就 +1。
+	 * 在途的那一轮开跑时记下当时的代,每个 await 之后再比一次 —— 变了说明这一轮的结果已经不算数:
+	 * 不处理错误、不排退避重启、不交作品。拆锁(`releaseDetectLock`)只能让下一轮进来,管不住在途那一轮。
+	 */
+	private detectorGeneration = 0;
+	/** 这一路还在跑(生命周期内)。`start` 置位、`stop` 复位;起 cron 前必须过这道门。 */
+	private running = false;
+	/**
 	 * 推送名单兼锚点表:作品开关开着的 uid → 「看到哪一刻为止」(秒)。**只有这一张表**:在表里才为它翻译、抓图、交作品;
 	 * 进表那一刻锚点 = 现在,离开(退订、停用、关作品开关、全局作品开关关掉)就删。
 	 *
@@ -239,6 +247,7 @@ export class DynamicPoller {
 	/** 启动钩子。由来源的 `start` 调;名单现读,启动时就能开跑。 */
 	start(): void {
 		this.postAnchors = new Map();
+		this.running = true;
 
 		this.logger.info("[start] 动态轮询启动，立即启动检测");
 		this.restartDetector();
@@ -266,6 +275,9 @@ export class DynamicPoller {
 
 	/** 停止钩子。停止 cron、释放事件订阅。 */
 	stop(): void {
+		// 在途那一轮就此作废:它的错误与作品都不再算数(见 detectorGeneration)。
+		this.running = false;
+		this.detectorGeneration++;
 		// 全停 = lifecycle 结束;下次 start 是全新 episode,风控边沿复位重新武装。
 		// (不在 restartDetector 复位 —— -352 自身退避重启也走那里,复位会
 		// 破坏边沿、每退避周期重刷 error,正是 Q7 要消除的。)
@@ -329,6 +341,8 @@ export class DynamicPoller {
 	 * 只留给 `start`、登录恢复、退避到点三处 —— 名单一动走 {@link syncSubscriptions},别重启 cron(会打乱相位)。
 	 */
 	private restartDetector(): void {
+		// 旧检测器在途的那一轮就此作废:新检测器会重新拉一遍,旧结果再交就算重复。
+		this.detectorGeneration++;
 		// 一次显式启动取代任何待执行的退避重启,避免双重启动。
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
@@ -402,6 +416,9 @@ export class DynamicPoller {
 	 * 仅跳过本次建 job(动态检测保持关闭态),不放倒整个动态轮询/进程。
 	 */
 	private startJob(): void {
+		// 起 cron 的唯一一道门:这一路已经停了,或者登录失效等着恢复,都不起。
+		// reconcileJob / 退避到点 / updateConfig 三条路都从这里过。
+		if (!this.running || this.authLost) return;
 		let job: CronJob;
 		try {
 			job = new CronJob(this.config.dynamicCron, () => void this.runDetectLocked());
@@ -423,13 +440,15 @@ export class DynamicPoller {
 	 * 这里还等着登录恢复把它拉起来。
 	 *
 	 * 挂着的退避重启必须一并作废:`scheduleDetectorRestart` 到点是直接调
-	 * `restartDetector`,绕过 `reconcileJob`,所以 `authLost` 那道门拦不住它 ——
-	 * 上一轮 -352 排下的计时会在五分钟后把 cron 重新建起来,拿一个已经死掉的会话
-	 * 再去撞一次。
+	 * `restartDetector`,绕过 `reconcileJob` —— 上一轮 -352 排下的计时会在五分钟后
+	 * 把 cron 重新建起来,拿一个已经死掉的会话再去撞一次。这里连同在途那一轮一起
+	 * 作废(代 +1),它落定之后也排不出新的退避;起 cron 那一道门在 `startJob`。
 	 *
 	 * 面向运维的那条日志由调用方打(登录失效是 warn,-101 是 error),这里不重复。
 	 */
 	private suspendDetector(): void {
+		// 挂着的退避重启与在途那一轮一起作废:它们到点 / 落定时都不许再把 cron 拉起来。
+		this.detectorGeneration++;
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -448,13 +467,11 @@ export class DynamicPoller {
 			}
 			// 名单空了,这一路不再跑:撞过风控 / 拉取失败而 job 已停着的(退避中)也要清,见 restartDetector
 			this.dropProblems();
-		} else if (!this.dynamicJob?.isActive && !this.detectorRestartTimer && !this.authLost) {
-			// 两个「此刻别启动」的理由,少一个都会让 syncSubscriptions 把 cron 提前拉起来:
-			//
-			// · detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口。提前 startJob
-			//   会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
-			//   scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
-			// · authLost = 登录已经失效,等登录恢复。这时候拉起来只是再撞一次 -101。
+		} else if (!this.dynamicJob?.isActive && !this.detectorRestartTimer) {
+			// detectorRestartTimer 非空 = 正处于 -352/瞬时错误的退避窗口。提前 startJob
+			// 会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
+			// scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
+			// 「登录失效别起」「已经停了别起」两道门收在 startJob 自己身上,所有起 cron 的路共用。
 			this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
 			this.startJob();
 		}
@@ -473,6 +490,11 @@ export class DynamicPoller {
 		this.detectInFlight = null;
 	}
 
+	/** 这一轮的代已经变了(拆过检测器):结果不算数,记一行 debug 丢掉。 */
+	private discardStaleRound(): void {
+		this.logger.debug("[detector] 检测器已停止或重启，本轮结果作废");
+	}
+
 	/**
 	 * 带锁跑一轮。同一时刻只有一轮在跑(此前是 `withLock`,换成握着 promise 是为了让
 	 * `detectNow` 等得到这一轮结束)。异常记日志、锁必释放 —— 锁卡死的症状是 cron tick
@@ -480,12 +502,15 @@ export class DynamicPoller {
 	 */
 	private runDetectLocked(): Promise<void> {
 		if (this.detectInFlight) return this.detectInFlight;
-		const round = this.detectDynamics()
+		let round: Promise<void>;
+		round = this.detectDynamics()
 			.catch((err: unknown) => {
 				this.logger.error(`[detector] 动态检测执行异常：${errorMessageOf(err)}`);
 			})
 			.finally(() => {
-				this.detectInFlight = null;
+				// 只在锁仍然是这一轮时才清:拆过检测器又起了新一轮的话,旧一轮落定不能把新锁清掉,
+				// 否则下一个 tick 就会和在新一轮并跑,可能重复交同一条动态。
+				if (this.detectInFlight === round) this.detectInFlight = null;
 			});
 		this.detectInFlight = round;
 		return round;
@@ -502,14 +527,24 @@ export class DynamicPoller {
 	}
 
 	private async detectDynamics(): Promise<void> {
+		const generation = this.detectorGeneration;
 		this.logger.debug("[detector] 开始获取动态信息");
 
 		let content: Result<{ data: AllDynamicResponse["data"] }>;
 		try {
 			content = await this.api.fetchAllDynamic();
 		} catch (e) {
+			if (this.detectorGeneration !== generation) {
+				this.discardStaleRound();
+				return;
+			}
 			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
 			this.logger.warn(`[api] 获取动态失败：${errorMessageOf(e)}`);
+			return;
+		}
+
+		if (this.detectorGeneration !== generation) {
+			this.discardStaleRound();
 			return;
 		}
 
@@ -582,7 +617,7 @@ export class DynamicPoller {
 			[...pending].map(([uid, entries]) => async () => {
 				for (const { item, postTime } of entries) {
 					try {
-						await this.produce(item, uid, postTime);
+						await this.produce(item, uid, postTime, generation);
 					} catch (e) {
 						this.logger.error(
 							`[detector] 生产动态时意外出错 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
@@ -626,7 +661,12 @@ export class DynamicPoller {
 	 * 生产一条动态:翻成中立作品 → 覆写发布时间 → 抓图 → 重校还轮不轮得到它 → 交给核心入口。
 	 * 任何一步出错只记 warn(翻译失败的动态重试也是同一个结果;入口抛了核心不替来源重放),调用方照常前移锚点。
 	 */
-	private async produce(item: Dynamic, uid: string, postTime: number): Promise<void> {
+	private async produce(
+		item: Dynamic,
+		uid: string,
+		postTime: number,
+		generation: number,
+	): Promise<void> {
 		// 翻译只做一次(ADR-0021 决策 43)。翻译是宽容的、不该抛;真抛了(接口出了没见过的残条)是这条动态本身没法判,
 		// 重试也是同一个结果 —— 记一笔 warn 跳过,别让它卡住这位 UP、也别每一轮把同批更新的动态再处理一遍。
 		let post: Post;
@@ -652,6 +692,11 @@ export class DynamicPoller {
 			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、关作品开关、停下),或「删了再加」成另一条订阅:动态轮询只交 uid,
 			// 接线按身份现查订阅 —— 不重校的话旧动态会被推给新订阅。把进门时的闸再过一遍(锚点还在且仍早于这条动态),
 			// 不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
+			// 抓图那几个 await 期间检测器可能已经被拆掉(停下 / 登录失效 / 重启):旧一轮的结果不再算数。
+			if (this.detectorGeneration !== generation) {
+				this.logger.debug(`[detector] 检测器已停止或重启，放弃交出 UID=${uid} 的这条动态`);
+				return;
+			}
 			if (!this.isDue(uid, postTime)) {
 				this.logger.debug(`[detector] UID=${uid} 在抓图途中已退订/被替换，这条动态不交`);
 				return;
