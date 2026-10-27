@@ -188,7 +188,7 @@ describe("status 指令", () => {
 
 const viewOf = (label: string, health?: SourceView["health"]): SourceView => ({
 	sourceKey: `test.${label}`,
-	descriptor: { label },
+	descriptor: { label, supportedFeatures: ["post"] },
 	searchCreators: noCandidates,
 	fetchProfile: noProfile,
 	...(health ? { health } : {}),
@@ -235,7 +235,7 @@ describe("readSourceHealth —— 取在册来源各自交的一行", () => {
 		const view: SourceView & { tag: string } = {
 			tag: "我",
 			sourceKey: "test.甲",
-			descriptor: { label: "甲" },
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			health() {

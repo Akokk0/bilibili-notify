@@ -74,7 +74,7 @@ describe("createSourceRegistry", () => {
 	it("视图带着来源的 health(调用时 this 仍是来源自己);没交的来源视图上也没有", async () => {
 		const registry = createSourceRegistry();
 		const withHealth: Source = {
-			descriptor: { label: "甲" },
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			start: async () => {},
@@ -94,7 +94,7 @@ describe("createSourceRegistry", () => {
 	it("视图带着来源的 searchCreators(调用时 this 仍是来源自己)", async () => {
 		const registry = createSourceRegistry();
 		const searcher: Source = {
-			descriptor: { label: "甲" },
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
 			fetchProfile: noProfile,
 			start: async () => {},
 			stop: async () => {},
@@ -116,7 +116,7 @@ describe("createSourceRegistry", () => {
 	it("视图带着来源的 fetchProfile(调用时 this 仍是来源自己)", async () => {
 		const registry = createSourceRegistry();
 		const profiler: Source = {
-			descriptor: { label: "甲" },
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			start: async () => {},
 			stop: async () => {},
@@ -141,7 +141,7 @@ describe("createSourceRegistry", () => {
 			onChange: () => ({ dispose() {} }),
 		};
 		const withAuth: Source = {
-			descriptor: { label: "甲" },
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			start: async () => {},
@@ -169,7 +169,7 @@ describe("createSourceRegistry", () => {
 	it("start 抛了:键放掉、错原样抛出去、能重登", async () => {
 		const registry = createSourceRegistry();
 		const broken: Source = {
-			descriptor: { label: "测试" },
+			descriptor: { label: "测试", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			start: () => Promise.reject(new Error("start-boom")),
@@ -252,7 +252,7 @@ describe("createSourceRegistry", () => {
 		]) {
 			const { ctx, logger } = ctxOf();
 			const source: Source = {
-				descriptor: { label: "测试" },
+				descriptor: { label: "测试", supportedFeatures: ["post"] },
 				searchCreators: noCandidates,
 				fetchProfile: noProfile,
 				start: async () => {},

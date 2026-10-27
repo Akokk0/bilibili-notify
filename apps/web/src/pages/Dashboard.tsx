@@ -2,6 +2,7 @@ import type {
 	ExtensionDTO,
 	HealthResponse,
 	LogLevel,
+	SourceEntry,
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
@@ -42,6 +43,7 @@ import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendRe
 import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { useCoreSettings } from "../hooks/useSettings";
+import { useSources } from "../hooks/useSources";
 import { api } from "../services/api";
 import {
 	type DailyHistoryCountView,
@@ -96,6 +98,7 @@ function formatViewers(n: number | undefined): string {
 function liveRowFace(
 	r: LiveListeningEntry,
 	lookup: SubscriptionLookup,
+	sources: readonly SourceEntry[] | undefined,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): {
 	name: string;
@@ -114,7 +117,11 @@ function liveRowFace(
 	if (!isExtensionIdentity(r.identity)) {
 		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(r) };
 	}
-	const platform = subscriptionPlatformOf({ extensionId: r.identity.sourceKey }, extensions);
+	const platform = subscriptionPlatformOf(
+		{ extensionId: r.identity.sourceKey },
+		sources,
+		extensions,
+	);
 	return {
 		...base,
 		name: sub ? displayName(sub) : historyRowIdentity(r, () => platform.label),
@@ -144,12 +151,15 @@ function isLiveMonitored(sub: Subscription, globalFeatures?: FeatureFlagValues):
 export function LiveNowPanel({
 	live,
 	subs,
+	sources,
 	extensions,
 	globalFeatures,
 }: {
 	live: LiveListeningEntry[];
 	subs: Subscription[];
-	/** 装着的拓展 —— 拓展订阅那几行的平台徽章照它的清单画。没回来时徽章退拓展 id。 */
+	/** 来源表 —— 拓展订阅那几行的平台徽章照描述符画(取自清单)。没回来时徽章退拓展名或拓展 id。 */
+	sources?: readonly SourceEntry[];
+	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
 	/** 全局特性开关(`globals.defaults.features`),订阅没覆盖的开关按它折。没回来 = 出厂值。 */
 	globalFeatures?: FeatureFlagValues;
@@ -206,7 +216,12 @@ export function LiveNowPanel({
 				// header 的 「● N 人在播」 Pill 仍显示真实数量。
 				<div className="grid max-h-60 grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-2.5 overflow-hidden">
 					{live.map((r) => {
-						const { name, color, avatar, viewers, platform } = liveRowFace(r, lookup, extensions);
+						const { name, color, avatar, viewers, platform } = liveRowFace(
+							r,
+							lookup,
+							sources,
+							extensions,
+						);
 						// 数据小卡同款视觉语法(淡染色渐变 + 同色细描边),单层直接画在
 						// 区块玻璃上 —— 旧的「渐变包裹 + 白底内层」在行条透明化后会整块露色。
 						return (
@@ -330,12 +345,15 @@ export function TimelinePanel({
 	entries,
 	subs,
 	targets,
+	sources,
 	extensions,
 }: {
 	entries: HistoryEntryView[];
 	subs: Subscription[];
 	targets: PushTarget[];
-	/** 装着的拓展 —— 拓展行对不上名字时写「平台名 · 外部 id」,平台名照它的清单。没回来时写拓展 id。 */
+	/** 来源表 —— 拓展行对不上名字时写「平台名 · 外部 id」,平台名照描述符(取自清单)。没回来时写拓展 id。 */
+	sources?: readonly SourceEntry[];
+	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
 }) {
 	// 历史行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
@@ -347,7 +365,7 @@ export function TimelinePanel({
 		return m;
 	}, [targets]);
 	const platformLabelOf = (extensionId: string) =>
-		subscriptionPlatformOf({ extensionId }, extensions).label;
+		subscriptionPlatformOf({ extensionId }, sources, extensions).label;
 	// 这一栏说的是发出去的推送:被静音 / 免扰挡下的行、被过滤的作品留的行都不算推送,不列(历史页照列),
 	// 也不占这六个位子。
 	const recent = entries
@@ -400,7 +418,7 @@ export function TimelinePanel({
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
 						// B 站行不画。
 						const platform = isExtensionIdentity(h.identity)
-							? subscriptionPlatformOf({ extensionId: h.identity.sourceKey }, extensions)
+							? subscriptionPlatformOf({ extensionId: h.identity.sourceKey }, sources, extensions)
 							: undefined;
 						const tone = familyTone(h.feature);
 						const status = PUSH_STATUS_META[h.status];
@@ -472,6 +490,7 @@ export function TimelinePanel({
 function fansRowFace(
 	e: FollowersRefreshEntry,
 	lookup: SubscriptionLookup,
+	sources: readonly SourceEntry[] | undefined,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
 	const sub = lookup.byId(e.subscriptionId);
@@ -482,7 +501,11 @@ function fansRowFace(
 	if (!isExtensionIdentity(e.identity)) {
 		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(e) };
 	}
-	const platform = subscriptionPlatformOf({ extensionId: e.identity.sourceKey }, extensions);
+	const platform = subscriptionPlatformOf(
+		{ extensionId: e.identity.sourceKey },
+		sources,
+		extensions,
+	);
 	return {
 		...base,
 		name: sub ? displayName(sub) : historyRowIdentity(e, () => platform.label),
@@ -512,10 +535,13 @@ function FansDeltaCol({ label, value }: { label: string; value: number | null })
 
 export function FansPanel({
 	subs,
+	sources,
 	extensions,
 }: {
 	subs: Subscription[];
-	/** 装着的拓展 —— 拓展行的平台徽章照它的清单;没回来时徽章写拓展 id。 */
+	/** 来源表 —— 拓展行的平台徽章照描述符(取自清单);没回来时徽章写拓展名或拓展 id。 */
+	sources?: readonly SourceEntry[];
+	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
 }) {
 	// 不轮询 — 由 usePushEventsChannel 的 `followers-refreshed` 覆盖式刷新缓存。
@@ -561,7 +587,7 @@ export function FansPanel({
 				// 跟同行「正在直播」由 grid row-stretch 拉到等高。
 				<div className="bn-no-scrollbar grid max-h-60 grid-cols-1 gap-2 overflow-y-auto">
 					{sorted.map((e) => {
-						const { name, color, avatar, platform } = fansRowFace(e, lookup, extensions);
+						const { name, color, avatar, platform } = fansRowFace(e, lookup, sources, extensions);
 						return (
 							<div
 								key={e.subscriptionId}
@@ -891,8 +917,9 @@ export default function Dashboard() {
 		// 不再轮询；usePushEventsChannel 监听 WS `live-session-changed`:进表 / 出表就 invalidate 重取,
 		// 在播中的标题 / 分区 / 累计观看随 `live-session-changed` 与 `live-viewers-changed` 就地补。
 	});
-	// 拓展订阅那几行的平台徽章照清单画;只是锦上添花,拿不到就不重试(同订阅页)。
+	// 拓展订阅那几行的平台徽章照来源表画(取自清单);只是锦上添花,拓展列表拿不到就不重试(同订阅页)。
 	const extensionsQuery = useExtensions({ retry: false });
+	const sources = useSources().data?.sources;
 	// Cache is kept fresh by `usePushEventsChannel` (WS push-events → setQueryData),
 	// so KPI / recent list / trend chart update within ~1s without polling.
 	const historyQuery = useQuery({
@@ -945,7 +972,8 @@ export default function Dashboard() {
 						return historyRowIdentity(
 							tipLive,
 							(extensionId) =>
-								subscriptionPlatformOf({ extensionId }, extensionsQuery.data?.extensions).label,
+								subscriptionPlatformOf({ extensionId }, sources, extensionsQuery.data?.extensions)
+									.label,
 						);
 					})()}
 				</b>{" "}
@@ -1016,10 +1044,11 @@ export default function Dashboard() {
 				<LiveNowPanel
 					live={live}
 					subs={subs}
+					sources={sources}
 					extensions={extensionsQuery.data?.extensions}
 					globalFeatures={globalsQuery.data?.defaults?.features}
 				/>
-				<FansPanel subs={subs} extensions={extensionsQuery.data?.extensions} />
+				<FansPanel subs={subs} sources={sources} extensions={extensionsQuery.data?.extensions} />
 			</div>
 
 			{/* AI insight strip */}
@@ -1032,6 +1061,7 @@ export default function Dashboard() {
 					entries={history}
 					subs={subs}
 					targets={targets}
+					sources={sources}
 					extensions={extensionsQuery.data?.extensions}
 				/>
 			</div>

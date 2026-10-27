@@ -2,6 +2,7 @@ import type {
 	ConnectionCapabilitiesMap,
 	CreatorCandidateView,
 	ExtensionLookupResponse,
+	SourceEntry,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
@@ -29,6 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { useCoreSettings } from "../hooks/useSettings";
+import { useSources } from "../hooks/useSources";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { ApiError, api } from "../services/api";
 import {
@@ -47,7 +49,6 @@ import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
 import {
 	runningSources,
-	type SourceExtension,
 	type SubscriptionPlatform,
 	subscriptionPlatformOf,
 } from "./up/subscription-source";
@@ -174,20 +175,23 @@ function NewSubDialog({
 	error,
 	existing,
 	sources,
+	bilibili,
 }: {
 	onSubmit: (profile: UpProfileLookup) => void;
-	onPickCandidate: (source: SourceExtension, candidate: CreatorCandidateView) => void;
+	onPickCandidate: (source: SourceEntry, candidate: CreatorCandidateView) => void;
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
 	/** 已经订阅了的身份。B 站的输入 / 搜索结果与拓展的候选撞上的,标「已订阅」、挑不了。 */
 	existing: ExistingIdentities;
-	/** 此刻在跑的订阅源拓展 —— 空的就不画平台选择。 */
-	sources: readonly SourceExtension[];
+	/** 此刻在跑的订阅源拓展(来源表里的那几行)—— 空的就不画平台选择。 */
+	sources: readonly SourceEntry[];
+	/** 来源表里 B 站那一条的描述符:平台选择那一排的第一颗钮照它画。 */
+	bilibili: SourceEntry["descriptor"] | undefined;
 }) {
 	const [platformId, setPlatformId] = useState(BILI_PLATFORM);
 	// 选中的拓展中途停了(拓展列表刷新后不在里面)就退回 B 站 —— 问一个不在场的解析门只会 404。
-	const source = sources.find((one) => one.id === platformId);
+	const source = sources.find((one) => one.key === platformId);
 	const [candidates, setCandidates] = useState<readonly CreatorCandidateView[] | null>(null);
 	const [input, setInput] = useState("");
 	const [profile, setProfile] = useState<UpProfileLookup | null>(null);
@@ -260,7 +264,7 @@ function NewSubDialog({
 	}
 
 	function switchPlatform(next: string): void {
-		if (next === (source?.id ?? BILI_PLATFORM)) return;
+		if (next === (source?.key ?? BILI_PLATFORM)) return;
 		setPlatformId(next);
 		reset();
 	}
@@ -269,7 +273,7 @@ function NewSubDialog({
 		if (!trimmed) return;
 		if (source) {
 			extLookup.mutate(
-				{ id: source.id, q: trimmed },
+				{ id: source.key, q: trimmed },
 				{
 					onSuccess: (data) => {
 						setCandidates(data.candidates);
@@ -303,7 +307,7 @@ function NewSubDialog({
 	const busy = lookup.isPending || search.isPending || extLookup.isPending || pending;
 	const queryDisabled = !trimmed || busy;
 	const queryLabel = source ? "查找" : mode === "uid" ? "查询" : "搜索";
-	const sourceView = source?.subscription;
+	const sourceView = source?.descriptor;
 	const totalPages = searchData
 		? Math.max(1, Math.ceil(searchData.total / Math.max(1, searchData.pageSize)))
 		: 1;
@@ -321,23 +325,23 @@ function NewSubDialog({
 			}
 		>
 			{sources.length > 0 ? (
-				// 与推送目标页「新建连接」那一排平台同一个样子:名字与标识色都是拓展清单里报的。
+				// 与推送目标页「新建连接」那一排平台同一个样子:名字与标识色都取来源表里的描述符,B 站那颗也是。
 				<div className="mb-3 flex flex-wrap gap-1.5">
 					<ToneChip
-						tone="var(--color-bn-pink)"
+						tone={bilibili?.color}
 						active={!source}
 						onClick={() => switchPlatform(BILI_PLATFORM)}
 					>
-						B 站
+						{bilibili?.label ?? BILIBILI_SOURCE_KEY}
 					</ToneChip>
 					{sources.map((one) => (
 						<ToneChip
-							key={one.id}
-							tone={one.subscription.color}
-							active={source?.id === one.id}
-							onClick={() => switchPlatform(one.id)}
+							key={one.key}
+							tone={one.descriptor.color}
+							active={source?.key === one.key}
+							onClick={() => switchPlatform(one.key)}
 						>
-							{one.subscription.label}
+							{one.descriptor.label}
 						</ToneChip>
 					))}
 				</div>
@@ -370,7 +374,7 @@ function NewSubDialog({
 			{source && candidates ? (
 				<CandidateList
 					candidates={candidates}
-					existing={existing.get(source.id) ?? NO_EXTERNAL_IDS}
+					existing={existing.get(source.key) ?? NO_EXTERNAL_IDS}
 					pending={pending}
 					onPick={(candidate) => onPickCandidate(source, candidate)}
 				/>
@@ -711,12 +715,15 @@ export default function Subs() {
 	const extensionsQuery = useExtensions({ retry: false });
 	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没在跑」的结论。 */
 	const extensions = extensionsQuery.data?.extensions;
-	const sources = useMemo(() => runningSources(extensions), [extensions]);
+	// 来源表:平台的名字、颜色、叫法、特性(「在不在跑」仍看拓展列表)。
+	const sourceTable = useSources().data?.sources;
+	const sources = useMemo(() => runningSources(sourceTable, extensions), [sourceTable, extensions]);
+	const biliDescriptor = sourceTable?.find((one) => one.key === BILIBILI_SOURCE_KEY)?.descriptor;
 	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
 		const { sourceKey } = subscriptionIdentityOf(s);
 		return sourceKey === BILIBILI_SOURCE_KEY
 			? undefined
-			: subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
+			: subscriptionPlatformOf({ extensionId: sourceKey }, sourceTable, extensions);
 	};
 	const existing = useMemo(() => {
 		const out = new Map<SourceKey, Set<string>>();
@@ -957,8 +964,11 @@ export default function Subs() {
 	}
 
 	/** 同 {@link handleNew},草稿的身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
-	function handleNewCandidate(source: SourceExtension, candidate: CreatorCandidateView): void {
-		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.externalId });
+	function handleNewCandidate(source: SourceEntry, candidate: CreatorCandidateView): void {
+		const fresh = makeEmptySubscription({
+			sourceKey: source.key,
+			externalId: candidate.externalId,
+		});
 		setNewDraft({
 			subscription: fresh,
 			cachedProfile: candidateProfile(candidate),
@@ -1193,6 +1203,7 @@ export default function Subs() {
 					error={error}
 					existing={existing}
 					sources={sources}
+					bilibili={biliDescriptor}
 				/>
 			) : null}
 

@@ -11,6 +11,7 @@ import {
 	extensionBotsKey,
 	extensionSettingsKey,
 	extensionStatusKey,
+	invalidateExtensionTables,
 } from "./useExtensions";
 import { SETTINGS_KEY } from "./useSettings";
 import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
@@ -56,9 +57,9 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		// 标签表同样可能在断线期间被别的标签页(或备份恢复)换掉,没有帧会重放。
 		qc.invalidateQueries({ queryKey: SUBSCRIPTION_TAGS_QUERY_KEY });
 		// 连接表与拓展表同样是服务端会改的东西(私聊指令建连接、拓展热装卸),而断线期间
-		// 的那些变化没有帧会重放 —— 漏掉哪张,哪张就一直停在断线那一刻,界面还一切正常。
+		// 的那些变化没有帧会重放 —— 漏掉哪张,哪张就一直停在断线那一刻,界面还一切正常。来源表跟着拓展表走。
 		qc.invalidateQueries({ queryKey: ["connections"] });
-		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+		void invalidateExtensionTables(qc);
 		// 断线期间连上 / 断开的桥没有帧会重放,重连时整个前缀一起失效。
 		qc.invalidateQueries({ queryKey: EXTENSION_STATUS_QUERY_PREFIX });
 		qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
@@ -117,8 +118,8 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: SETTINGS_KEY });
 		// 拓展的开关(`enabled`)住在 globals 里,拓展页 / 详情页吃的却是拓展表那一口:别的标签页
 		// 把拓展关了,只重读 globals 的话,这一页还把它画成「跑着」,状态那一口的 404 被当成「没交
-		// 视图」,卡上一片空白。
-		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+		// 视图」,卡上一片空白。来源表跟着拓展表走(停了的拓展,它的来源那一行没了 `has`)。
+		void invalidateExtensionTables(qc);
 	}
 	// 服务端建 / 改 / 删连接都发这一档(config/store.ts 三处);不接的话别处改了连接,
 	// 这一页要等 staleTime 过去或切页才知道。

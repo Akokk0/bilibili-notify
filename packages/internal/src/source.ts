@@ -10,10 +10,20 @@ import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 import type { Result } from "./result";
 
-/** 来源的自我介绍。这里只放已经有读者的格子。 */
+/**
+ * 来源的自我介绍。这里只放已经有读者的格子;经 `GET /api/sources` 下发给面板(ADR-0027 决策 6),面板只从这里
+ * 拿来源的信息。拓展的取清单订阅那一口的同名字段。`icon` 与 `searchAccepts` 是跟着清单并进来的,面板的读者
+ * (新建订阅的平台图标与搜人提示句)在第 4 期后面。
+ */
 export interface SourceDescriptor {
-	/** 平台名(「B 站」)。`status` 指令的那一行、以后的徽章与平台列都取它。 */
+	/** 平台名(「B 站」)。`status` 指令的那一行、新建订阅的平台选择、徽章与平台列都取它。 */
 	label: string;
+	/** 短名:徽章上那个方章。不给就用 `label`。 */
+	shortLabel?: string;
+	/** 平台的标识色,hex。平台选择那一排与徽章取它;不给就退「认不出」那档灰。 */
+	color?: string;
+	/** 平台图标:图片 data URL。拓展从清单带来;面板第 4 期的新建订阅流程画它,内置的先不填。 */
+	icon?: string;
 	/** 这个平台管创作者叫什么,进提示词 `{creatorNoun}`。 */
 	creatorNoun?: string;
 	/** 这个平台管外部 id 叫什么(「UID」)。身份标签由 contract 的函数拼,描述符里只放词。 */
@@ -25,6 +35,10 @@ export interface SourceDescriptor {
 	 * 外部 id,不在核心里写哪个平台的 id 是什么样。不写 = 只做中立校验(非空、限长)。
 	 */
 	externalIdRegex?: string;
+	/** 搜人输入框收哪几种输入;提示句由核心按这份声明拼,不让来源写句子。不给就是「搜索{creatorNoun}」。 */
+	searchAccepts?: readonly CreatorSearchInput[];
+	/** 支持哪些特性:面板的特性开关只列这几种;订阅上「开没开」才叫 `features`。 */
+	supportedFeatures: readonly FeatureKey[];
 	/** 会员体系:卡片预览按它找档、示例卡取最低一档。没有会员体系的来源不写。 */
 	membershipPrograms?: MembershipProgram[];
 }

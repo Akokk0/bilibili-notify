@@ -51,7 +51,7 @@ async function appOf(sources: Record<string, Pick<Source, "auth"> | undefined>) 
 	for (const [key, partial] of Object.entries(sources)) {
 		if (!partial) continue;
 		const source: Source = {
-			descriptor: { label: "测试" },
+			descriptor: { label: "测试", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			start: async () => {},
@@ -64,7 +64,7 @@ async function appOf(sources: Record<string, Pick<Source, "auth"> | undefined>) 
 	const deps = {
 		runtime: { sourceRegistry: registry, serviceCtx: { logger: log } },
 	} as unknown as RouteDeps;
-	return { app: createSourcesRoute(deps), log, registry };
+	return { app: createSourcesRoute(deps, { extensions: () => [] }), log, registry };
 }
 
 describe("来源缺席 / 没有登录口", () => {

@@ -11,7 +11,7 @@
  *   走;榜单的结果按订阅 id 回指,名字 / 颜色照统计行那一份。
  */
 
-import type { ExtensionDTO, UpStatsRow } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry, UpStatsRow } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -98,7 +98,12 @@ const DOUYIN: ExtensionDTO = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+};
+
+/** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
@@ -111,6 +116,12 @@ function mockApi(rows: UpStatsRow[], subs: Subscription[], extensions: Extension
 		if (path.startsWith("/api/stats/overview")) return Promise.resolve({ days: DAYS, rows });
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
+		// 来源表照装着的拓展列。
+		if (path === "/api/sources") {
+			return Promise.resolve({
+				sources: extensions.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])),
+			});
+		}
 		// 锐评那几张卡要的全局配置 / 推送目标 / 连接:这里不关心,一直等着。
 		return new Promise(() => {});
 	});

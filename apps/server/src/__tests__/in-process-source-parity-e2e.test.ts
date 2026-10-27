@@ -26,6 +26,7 @@ import type {
 	LiveListeningEntry,
 	ProblemsResponse,
 	SourceAuthResponse,
+	SourcesResponse,
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
 import {
@@ -164,7 +165,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P49)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P50)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -324,6 +325,12 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P50",
+		title:
+			"来源表：假来源的描述符经 /api/sources 原样下发（会员体系除外），has 按它实现的可选成员推；B 站并排在表里",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
@@ -340,10 +347,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	},
 	{
 		id: "N09",
-		title: "描述符其余格、规则节按描述符露出",
+		title: "规则节按描述符露出(featureHints、supportedExtras)",
 		checked: false,
 		waitsFor: "第 4 期",
-		reason: "描述符只造了有读者的三格,其余随面板改造",
+		reason: "描述符经来源表下发的那一半已转进 P50;规则页按描述符露节、这两格随面板改造",
 	},
 	{
 		id: "N14",
@@ -375,7 +382,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
  */
 type RowId = `P${number}` | `N${number}`;
 const SOURCE_MEMBERS = {
-	descriptor: ["P10", "P15", "P19"],
+	descriptor: ["P10", "P15", "P19", "P50"],
 	health: ["P15"],
 	start: ["P01"],
 	stop: ["P18"],
@@ -414,6 +421,11 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	externalIdRegex: ["P23"],
 	membershipPrograms: ["P19"],
 	externalIdNoun: ["P38"],
+	shortLabel: ["P50"],
+	color: ["P50"],
+	icon: ["P50"],
+	searchAccepts: ["P50"],
+	supportedFeatures: ["P50"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
 	beginLogin: ["P16"],
@@ -942,6 +954,22 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(bili.status).toBe(200);
 		expect(await bili.json()).toEqual({ state: { status: "logged-out" } });
 		drove("P01");
+	});
+
+	// 验红:`routes/sources.ts` 的 `hasOf` 把 `liveStatus` 写死成 false,这条红;列登记表那一段整个跳过,这条也红。
+	it("P50 来源表:假来源的描述符经 /api/sources 原样下发(会员体系除外),has 按它实现的可选成员推;B 站并排在表里", async () => {
+		const res = await api("/api/sources");
+		expect(res.status).toBe(200);
+		const { sources } = (await res.json()) as SourcesResponse;
+		const { membershipPrograms: _membershipPrograms, ...declared } = currentProbe().descriptor;
+		expect(sources.find((one) => one.key === IN_PROCESS_KEY)).toEqual({
+			key: IN_PROCESS_KEY,
+			descriptor: declared,
+			// 假来源实现了登录口与查直播状态。
+			has: { auth: true, liveStatus: true },
+		});
+		expect(sources.find((one) => one.key === "bilibili")?.descriptor.label).toBe("B 站");
+		drove("P50");
 	});
 
 	/** 名单(现读的)折成「外部 id → 作品开关开没开」,按外部 id 排。 */
@@ -3672,17 +3700,18 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 49 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(54);
+	it("PARITY_ROWS:对拍 50 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(55);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 49 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 50 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
-		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源。
+		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源;
+		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
 				.filter((n) => ![2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))

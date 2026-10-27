@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
  * 推送小卡上「这是谁」那行小字(ADR-0019 决策 73):B 站行照旧「UID xxx」;拓展行的来源键是拓展 id,
- * 写「平台名 · 外部 id」—— 平台名照已装拓展的清单,拓展卸载了取不到就写拓展 id。
+ * 写「平台名 · 外部 id」—— 平台名照来源表(取自已装拓展的清单),拓展卸载了取不到就写拓展 id。
  *
  * 单开一个文件:`toast-shell.test.tsx` 里有假定时器,这里要等拓展清单回来(`findBy*`)。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { type PushEventView, useToastStore } from "../../store/notifications";
 import { ToastShell } from "../toast-shell";
 
-/** 装着的抖音订阅源 —— 平台名照它的清单。 */
+/** 装着的抖音订阅源。 */
 const DOUYIN = {
 	id: "douyin",
 	name: "抖音订阅",
@@ -23,18 +23,24 @@ const DOUYIN = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+} as ExtensionDTO;
+
+/** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
-} as ExtensionDTO;
+};
 
-const installed = vi.hoisted(() => ({ extensions: [] as unknown[] }));
+const installed = vi.hoisted(() => ({ extensions: [] as unknown[], sources: [] as unknown[] }));
 const apiGet = vi.hoisted(() =>
 	vi.fn(async (path: string) => {
 		if (path === "/api/ext") return { extensions: installed.extensions };
+		if (path === "/api/sources") return { sources: installed.sources };
 		return null;
 	}),
 );
@@ -73,6 +79,7 @@ function renderShell() {
 beforeEach(() => {
 	useToastStore.getState().clear();
 	installed.extensions = [DOUYIN];
+	installed.sources = [DOUYIN_SOURCE];
 });
 afterEach(() => {
 	cleanup();
@@ -95,6 +102,7 @@ describe("推送小卡 · 这是谁", () => {
 
 	it("拓展卸载了(清单里没有它)→ 平台名写拓展 id", async () => {
 		installed.extensions = [];
+		installed.sources = [];
 		renderShell();
 		act(() => useToastStore.getState().push(extView()));
 		await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/ext"));

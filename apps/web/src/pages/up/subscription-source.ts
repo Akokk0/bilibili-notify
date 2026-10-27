@@ -2,10 +2,11 @@
  * 订阅源拓展在订阅页上的样子(ADR-0019 决策 4 / 5 / 10 / 41 / 51)—— 平台选择那一排、拓展订阅
  * 那张卡的平台徽章与「没开」、配置弹层只列这个源报的那几种特性,都从这儿取。
  *
- * 纯函数、不碰 api:拓展列表由页面拿(`useExtensions`),这里只翻译。
+ * 纯函数、不碰 api:来源表(`useSources`,名字、颜色、叫法、特性)与拓展列表(`useExtensions`,在不在跑)
+ * 由页面拿,这里只翻译。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { EXTENSION_SOURCE_FEATURES } from "@bilibili-notify/internal/features";
 import { isExtensionPresent } from "../../hooks/useExtensions";
 import {
@@ -17,14 +18,9 @@ import {
 	subscriptionIdentityOf,
 } from "../../types/domain";
 
-/** 开了订阅那一口、交了外观与事件的拓展。 */
-export type SourceExtension = ExtensionDTO & {
-	subscription: NonNullable<ExtensionDTO["subscription"]>;
-};
-
-/** 视图声明的特性,顺序跟 `FEATURE_KEYS` 走 —— 清单里怎么排都不影响弹层上的次序。周期「正在直播」服务端已经推好。 */
-function sortedFeaturesOf(view: SourceExtension["subscription"]): FeatureKey[] {
-	const declared: readonly FeatureKey[] = view.supportedFeatures;
+/** 描述符声明的特性,顺序跟 `FEATURE_KEYS` 走 —— 清单里怎么排都不影响弹层上的次序。 */
+function sortedFeaturesOf(descriptor: SourceEntry["descriptor"]): FeatureKey[] {
+	const declared: readonly FeatureKey[] = descriptor.supportedFeatures;
 	return FEATURE_KEYS.filter((key) => declared.includes(key));
 }
 
@@ -32,19 +28,21 @@ function sortedFeaturesOf(view: SourceExtension["subscription"]): FeatureKey[] {
 const EXTENSION_FEATURES_AT_MOST = EXTENSION_SOURCE_FEATURES;
 
 /**
- * 新建订阅时平台选择那一排:**只列在跑的**(决策 10)—— 解析门要拓展本人在,停着的列出来
- * 也只能问出一个 404。拓展列表没回来就一个都不列,弹窗与今天一模一样。
+ * 新建订阅时平台选择那一排的拓展来源:**只列在跑的**(决策 10)—— 解析门要拓展本人在,停着的列出来
+ * 也只能问出一个 404。来源表或拓展列表没回来就一个都不列,弹窗与今天一模一样。
  */
-export function runningSources(extensions: readonly ExtensionDTO[] | undefined): SourceExtension[] {
-	return (extensions ?? []).filter(
-		(ext): ext is SourceExtension => ext.subscription !== undefined && isExtensionPresent(ext),
-	);
+export function runningSources(
+	sources: readonly SourceEntry[] | undefined,
+	extensions: readonly ExtensionDTO[] | undefined,
+): SourceEntry[] {
+	const present = new Set((extensions ?? []).filter(isExtensionPresent).map((ext) => ext.id));
+	return (sources ?? []).filter((entry) => present.has(entry.key));
 }
 
 /** 一条拓展订阅是哪个平台的、那个平台能报什么、此刻在不在。 */
 export interface SubscriptionPlatform {
 	/**
-	 * 平台的名字:清单里的 `label`;清单没交订阅那一口就退拓展的名字;没装、或拓展列表
+	 * 平台的名字:来源表里描述符的 `label`(取自清单);来源表里没有就退拓展的名字;没装、或两张表
 	 * 没回来时拿不到名字,写拓展 id(决策 10)。
 	 */
 	label: string;
@@ -68,16 +66,17 @@ export interface SubscriptionPlatform {
  */
 export function subscriptionPlatformOf(
 	sub: { extensionId: string },
+	sources: readonly SourceEntry[] | undefined,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): SubscriptionPlatform {
 	const ext = extensions?.find((one) => one.id === sub.extensionId);
-	const view = ext?.subscription;
+	const descriptor = sources?.find((one) => one.key === sub.extensionId)?.descriptor;
 	return {
-		label: view?.label ?? ext?.name ?? sub.extensionId,
-		shortLabel: view?.shortLabel,
-		color: view?.color,
-		postNoun: view?.postNoun,
-		features: view ? sortedFeaturesOf(view) : EXTENSION_FEATURES_AT_MOST,
+		label: descriptor?.label ?? ext?.name ?? sub.extensionId,
+		shortLabel: descriptor?.shortLabel,
+		color: descriptor?.color,
+		postNoun: descriptor?.postNoun,
+		features: descriptor ? sortedFeaturesOf(descriptor) : EXTENSION_FEATURES_AT_MOST,
 		absent: extensions === undefined ? undefined : !(ext && isExtensionPresent(ext)),
 	};
 }

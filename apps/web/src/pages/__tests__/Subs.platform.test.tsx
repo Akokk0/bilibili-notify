@@ -8,9 +8,11 @@
  *   解析门报错时原样摆出服务端那句话。
  * - 挑一个候选 → 同一个配置弹层(新建)→「创建订阅」发一整条拓展订阅 + 用候选预填的资料。
  * - 列表里拓展没在跑的那条订阅置灰、写明「××拓展没在跑」;拓展列表没回来时不下结论。
+ *
+ * 平台的名字、颜色、叫法、特性都取来源表(`/api/sources`,ADR-0027 决策 6),B 站那颗钮也是;「在不在跑」看拓展列表。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -41,17 +43,29 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 		state: "running",
 		apiVersion: 3,
 		provides: ["subscription"],
-		subscription: {
-			label: "抖音",
-			shortLabel: "抖音",
-			color: "#161823",
-			postNoun: "作品",
-			searchAccepts: ["link"],
-			supportedFeatures: ["post", "liveStart"],
-		},
 		...over,
 	};
 }
+
+/** 来源表里 B 站那一条:不是拓展,按登记先后在最前。 */
+const BILI_SOURCE: SourceEntry = {
+	key: "bilibili",
+	descriptor: { label: "B 站", shortLabel: "B", color: "#fb7299", supportedFeatures: ["post"] },
+	has: { auth: true, liveStatus: true },
+};
+
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
+		label: "抖音",
+		shortLabel: "抖音",
+		color: "#161823",
+		postNoun: "作品",
+		searchAccepts: ["link"],
+		supportedFeatures: ["post", "liveStart"],
+	},
+	has: { auth: false, liveStatus: false },
+};
 
 function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
@@ -68,16 +82,19 @@ const BILI: Subscription = {
 
 let subs: Subscription[];
 let extensions: Promise<{ extensions: ExtensionDTO[] }>;
+let sources: SourceEntry[];
 
 beforeEach(() => {
 	subs = [BILI];
 	extensions = Promise.resolve({ extensions: [source()] });
+	sources = [BILI_SOURCE, DOUYIN_SOURCE];
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
 		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path.startsWith("/api/targets")) return Promise.resolve([]);
 		if (path === "/api/ext") return extensions;
+		if (path === "/api/sources") return Promise.resolve({ sources });
 		if (path.startsWith("/api/ext/douyin/lookup")) {
 			return Promise.resolve({
 				candidates: [
@@ -128,6 +145,21 @@ describe("平台选择出不出现", () => {
 		expect(screen.queryByRole("button", { name: "抖音" })).toBeNull();
 	});
 
+	it("B 站那颗钮的名字与颜色取自来源表里 B 站的描述符,不写死", async () => {
+		sources = [
+			{
+				...BILI_SOURCE,
+				descriptor: { ...BILI_SOURCE.descriptor, label: "哔哩哔哩", color: "#123456" },
+			},
+			DOUYIN_SOURCE,
+		];
+		await openNewDialog();
+		const bili = await screen.findByRole("button", { name: "哔哩哔哩" });
+		// 选中那颗的描边色:默认选中的是 B 站。
+		expect(bili.style.getPropertyValue("--bn-tint")).toBe("#123456");
+		expect(screen.queryByRole("button", { name: "B 站" })).toBeNull();
+	});
+
 	it("有在跑的订阅源 → B 站 + 它;拓展先落通用提示,切回 B 站就是今天那一套", async () => {
 		await openNewDialog();
 		expect(await screen.findByRole("button", { name: "B 站" })).toBeTruthy();
@@ -163,15 +195,17 @@ describe("选了订阅源", () => {
 	});
 
 	it("运行时残留的旧占位字不再作数 → 一律落通用说法", async () => {
-		const plain = source();
-		plain.subscription = {
-			label: "抖音",
-			shortLabel: "抖音",
-			color: "#161823",
-			supportedFeatures: ["post"],
+		const plain: SourceEntry = {
+			key: "douyin",
+			descriptor: {
+				label: "抖音",
+				shortLabel: "抖音",
+				color: "#161823",
+				supportedFeatures: ["post"],
+			},
 		};
-		Object.assign(plain.subscription, { lookupPlaceholder: "粘主页链接" });
-		extensions = Promise.resolve({ extensions: [plain] });
+		Object.assign(plain.descriptor, { lookupPlaceholder: "粘主页链接" });
+		sources = [BILI_SOURCE, plain];
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
 		expect(screen.getByPlaceholderText("输入主页链接或账号 id")).toBeTruthy();
@@ -182,6 +216,7 @@ describe("选了订阅源", () => {
 			if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 			if (path === "/api/subscriptions") return Promise.resolve(subs);
 			if (path === "/api/ext") return extensions;
+			if (path === "/api/sources") return Promise.resolve({ sources });
 			if (path.startsWith("/api/ext/douyin/lookup")) {
 				return Promise.reject(new FakeApiError("拓展交回来的候选形状不对:第 1 条缺 name"));
 			}
@@ -199,25 +234,27 @@ describe("选了订阅源", () => {
 	it("查找还没回来就换到另一个源 → 晚到的候选不许挂到新平台名下", async () => {
 		// 挂过去的话,挑中那一个就建出一条「快手的订阅、外部 id 却是抖音的」。
 		extensions = Promise.resolve({
-			extensions: [
-				source(),
-				source({
-					id: "kuaishou",
-					name: "快手订阅",
-					subscription: {
-						label: "快手",
-						shortLabel: "快手",
-						color: "#ff4906",
-						supportedFeatures: ["post"],
-					},
-				}),
-			],
+			extensions: [source(), source({ id: "kuaishou", name: "快手订阅" })],
 		});
+		sources = [
+			BILI_SOURCE,
+			DOUYIN_SOURCE,
+			{
+				key: "kuaishou",
+				descriptor: {
+					label: "快手",
+					shortLabel: "快手",
+					color: "#ff4906",
+					supportedFeatures: ["post"],
+				},
+			},
+		];
 		let answer: (value: unknown) => void = () => {};
 		(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 			if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 			if (path === "/api/subscriptions") return Promise.resolve(subs);
 			if (path === "/api/ext") return extensions;
+			if (path === "/api/sources") return Promise.resolve({ sources });
 			if (path.startsWith("/api/ext/douyin/lookup")) {
 				return new Promise((resolve) => {
 					answer = resolve;

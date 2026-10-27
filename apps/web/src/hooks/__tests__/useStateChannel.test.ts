@@ -3,7 +3,8 @@
  *
  * 守护契约:
  *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subscription-tags"] 与各来源的登录状态 ["source-auth"])
- *   - config-changed scope=globals       → invalidate ["settings"] 与拓展表 ["extensions"](不碰各拓展的设置)
+ *   - config-changed scope=globals       → invalidate ["settings"]、拓展表 ["extensions"] 与跟着它走的来源表 ["sources"]
+ *     (不碰各拓展的设置)
  *   - config-changed scope=integration-settings → invalidate ["settings"](各集成的设置挂在 /api/settings 下发的那一份里)
  *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
  *   - extension-status-changed          → 那个拓展的 status 与 bots
@@ -74,6 +75,8 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"targets",
 				"connections",
 				"extensions",
+				// 来源表跟着拓展表走:拓展的那几行照的是同一份清单。
+				"sources",
 				"extension-status",
 				"extension-bots",
 				"ext-settings",
@@ -144,12 +147,12 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 * 拓展的设置不在 globals 里了(各在自己的文件),`globals` 这一档只管核心设置与拓展的开关:
 	 * 失效 [globals] 与拓展表,**不**再碰拓展设置那一口(设置的写发的是 `integration-settings`)。
 	 */
-	it("config-changed scope=globals:invalidate [globals] 与 [extensions],不碰各拓展的设置", () => {
+	it("config-changed scope=globals:invalidate [globals]、[extensions] 与 [sources],不碰各拓展的设置", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["extensions"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["extensions"], ["sources"]]);
 		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);
 	});
 

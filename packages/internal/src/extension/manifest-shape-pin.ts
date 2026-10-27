@@ -10,6 +10,7 @@
  */
 
 import type { z } from "zod";
+import type { EXTENSION_SOURCE_FEATURES } from "../features";
 import type { PlatformAdapterDescriptor } from "../push-source";
 import type {
 	ExtensionCreatorCandidatesSchema,
@@ -22,7 +23,12 @@ import type {
 	SettingsFieldSchema,
 } from "../schema";
 import type { SettingsField, SettingsScalarField } from "../settings-field";
-import type { CreatorCandidate, CreatorProfileReport, SourceHealth } from "../source";
+import type {
+	CreatorCandidate,
+	CreatorProfileReport,
+	SourceDescriptor,
+	SourceHealth,
+} from "../source";
 import type {
 	ExtensionLiveDetails,
 	ExtensionLiveSignalReport,
@@ -30,7 +36,6 @@ import type {
 	ExtensionPostReport,
 } from "./index";
 import type { Equals, Pinned } from "./view-shape-pin.js";
-import type { ExtensionSubscriptionView } from "./wire";
 
 /** 清单里订阅源那一段。 */
 type ManifestSubscription = NonNullable<ExtensionManifestV3["contributes"]["subscription"]>;
@@ -41,9 +46,24 @@ type ReadonlyArrays<T> = T extends readonly (infer U)[]
 		? { [K in keyof T]: ReadonlyArrays<T[K]> }
 		: T;
 
-/** 清单订阅段去掉装包用的 `cardSkin`,与过 wire 的订阅视图双向严格相等。 */
+/** 清单订阅段去掉装包用的 `cardSkin`:拓展来源的描述符就是它(`manifestSourceDescriptor`)。 */
+type ManifestDescriptor = ReadonlyArrays<Omit<ManifestSubscription, "cardSkin">>;
+/**
+ * 与 `SourceDescriptor` 逐格严格相等,只差两格:清单不收会员体系(1.0 拓展声明不了会员类特性),
+ * 特性另一条钉。描述符加了格、清单没跟上(或反过来),这里就红。
+ */
 export type SubscriptionPinned = Pinned<
-	Equals<ReadonlyArrays<Omit<ManifestSubscription, "cardSkin">>, ExtensionSubscriptionView>
+	Equals<
+		Omit<ManifestDescriptor, "supportedFeatures">,
+		Omit<SourceDescriptor, "membershipPrograms" | "supportedFeatures">
+	>
+>;
+/** 清单能声明的特性是 1.0 开放的那几种(描述符本身收全部特性键)。 */
+export type SubscriptionFeaturesPinned = Pinned<
+	Equals<
+		ManifestDescriptor["supportedFeatures"],
+		readonly (typeof EXTENSION_SOURCE_FEATURES)[number][]
+	>
 >;
 /** 推送段的纯外观逐格严格相等。 */
 export type PushDisplayPinned = Pinned<

@@ -5,9 +5,6 @@
  * `apps/contract` 从这里 `import type` 转给面板。
  */
 
-import type { EXTENSION_SOURCE_FEATURES } from "../features";
-import type { CREATOR_SEARCH_INPUTS } from "../source";
-
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //
 // 清单的 schema(`schema/extension-manifest.ts`)与面板都直接从这里取值,两边拿的是同一份。
@@ -32,46 +29,6 @@ export const EXTENSION_IMAGE_MAX_CHARS = 32 * 1024;
  */
 export const EXTENSION_IMAGE_DATA_URL_RE =
 	/^data:image\/(?:png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/;
-
-/**
- * 一个拓展**订阅源那一口**给面板的东西:平台选择那一排的名字与脸、输入框的提示、配置弹层列
- * 哪几种特性。来自清单,**拓展停着也有**(ADR-0019 决策 41)—— 停用的拓展名下的订阅照样画得出
- * 是哪个平台的。**有它不等于拓展在场**:要它在场的(解析门)另看运行状态。
- *
- * 🔴 这是清单订阅段那份 zod 的**手写镜像**(去掉装包那头的 `cardSkin`),由
- * `manifest-shape-pin.ts` 的类型断言钉住。
- */
-export interface ExtensionSubscriptionView {
-	/** 全名:平台选择那一排的名字。 */
-	label: string;
-	/** 短名:徽章上那个方章。不给就用 `label`。 */
-	shortLabel?: string;
-	/** 方章的底色,hex。不给就退「认不出」那档灰。 */
-	color?: string;
-	/** 平台图标:图片 data URL(面板第 4 期按描述画时当 `<img>` 画,这一版还不读)。 */
-	icon?: string;
-	/** 这个平台管「一条动态」叫什么(抖音:作品)。不给就叫「动态」。 */
-	postNoun?: string;
-	/** 这个平台管创作者叫什么(抖音:博主)。不给就落中性叫法(`sourceNounsOf` 的中性词)。 */
-	creatorNoun?: string;
-	/** 这个平台管外部 id 叫什么(如「账号」)。身份标签用它,不给就写平台名。 */
-	externalIdNoun?: string;
-	/** 外部 id 长什么样:正则源码,宿主按整串匹配,核新建订阅的外部 id。不给就只做中立校验。编译不过的让清单读不了。 */
-	externalIdRegex?: string;
-	/**
-	 * 搜人输入框收哪几种输入。提示句由核心按这份声明拼;第 4 期接上面板叫法函数前先不下发句子。
-	 *
-	 * 与 `CREATOR_SEARCH_INPUTS` 共用同一个联合类型,不再手写一份。
-	 */
-	searchAccepts?: readonly (typeof CREATOR_SEARCH_INPUTS)[number][];
-	/**
-	 * 这个源声明的特性(ADR-0019 决策 4 / 5),配置弹层只列这几种;顺序不保证,面板照 `FEATURE_KEYS` 排。
-	 * `liveStreaming`(周期「正在直播」)是**同时有开播与下播**才有的(⑬d),这个推法由服务端算一次。
-	 *
-	 * 与 `EXTENSION_SOURCE_FEATURES` 共用同一个联合类型,不再手写一份。
-	 */
-	supportedFeatures: readonly (typeof EXTENSION_SOURCE_FEATURES)[number][];
-}
 
 /**
  * 拓展交给面板的「视图」—— v2 的 `ctx.publishView` 交的就是它(ADR-0019 决策 20 / 26–28,09-23

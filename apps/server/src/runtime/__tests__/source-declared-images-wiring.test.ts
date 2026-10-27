@@ -42,6 +42,7 @@ describe("来源声明的图", () => {
 		const ref = await putImage(runtime.transitImages, PNG_BYTES);
 		const descriptor: SourceDescriptor = {
 			label: "测试来源",
+			supportedFeatures: ["post"],
 			membershipPrograms: [
 				{
 					id: "guard",

@@ -11,7 +11,7 @@
  * - 存得进、清得掉:发出去的 patch 只带 overrides(拓展订阅没有特别关注那一格)。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -28,19 +28,24 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** 视图声明的特性(周期「正在直播」服务端已经推好)。 */
-type Declared = NonNullable<ExtensionDTO["subscription"]>["supportedFeatures"];
+/** 描述符声明的特性。 */
+type Declared = SourceEntry["descriptor"]["supportedFeatures"];
 
-function source(supportedFeatures: Declared): ExtensionDTO {
+const DOUYIN: ExtensionDTO = {
+	id: "douyin",
+	name: "抖音订阅",
+	dir: "/data/extensions/douyin",
+	enabled: true,
+	state: "running",
+	apiVersion: 3,
+	provides: ["subscription"],
+};
+
+/** 来源表里抖音那一行(取自清单)。 */
+function source(supportedFeatures: Declared): SourceEntry {
 	return {
-		id: "douyin",
-		name: "抖音订阅",
-		dir: "/data/extensions/douyin",
-		enabled: true,
-		state: "running",
-		apiVersion: 3,
-		provides: ["subscription"],
-		subscription: {
+		key: "douyin",
+		descriptor: {
 			label: "抖音",
 			shortLabel: "抖音",
 			color: "#161823",
@@ -87,7 +92,8 @@ beforeEach(() => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
 		if (url === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (url === "/api/subscriptions") return Promise.resolve(subs);
-		if (url === "/api/ext") return Promise.resolve({ extensions: [source(features)] });
+		if (url === "/api/ext") return Promise.resolve({ extensions: [DOUYIN] });
+		if (url === "/api/sources") return Promise.resolve({ sources: [source(features)] });
 		return Promise.resolve({ core: globals() });
 	});
 	vi.mocked(api.patch).mockResolvedValue({});

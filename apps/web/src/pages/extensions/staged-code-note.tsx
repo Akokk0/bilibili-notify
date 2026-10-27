@@ -23,9 +23,9 @@ import {
 	useRestartStore,
 } from "../../components/update/restart";
 import {
-	EXTENSIONS_QUERY_KEY,
 	extensionBotsKey,
 	extensionStatusKey,
+	invalidateExtensionTables,
 } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { PARAGRAPH_CLS, reasonOf } from "./shared";
@@ -133,7 +133,7 @@ export function StagedCodeNote({
 	const swap = useMutation({
 		mutationFn: () => api.post<{ ok: true }>(`/api/ext/${id}/swap`, {}),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+			void invalidateExtensionTables(qc);
 			void qc.invalidateQueries({ queryKey: extensionStatusKey(id) });
 			void qc.invalidateQueries({ queryKey: extensionBotsKey(id) });
 		},

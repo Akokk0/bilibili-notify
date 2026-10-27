@@ -77,7 +77,8 @@ interface MembershipTier {
 
 - 特性开关、附加项、规则节、平台徽章、CSV 平台列、锐评平台名全从 descriptor 取，逐项对照见下一节。
 - B 站那一行的平台徽章，只在装了第二个订阅源时才画。
-- `icon` 的取值怎么解释（面板图标库里的名字还是一张图；拓展加不了图标库的名字），施工时定。
+- `icon` 的取值怎么解释（面板图标库里的名字还是一张图；拓展加不了图标库的名字），施工时定。🔗 现状（4-12，10-27）：拓展的 `icon` 照清单是图片 data URL，原样随来源表下发；B 站这一格先不填，读者（新建订阅的平台选择画图标）来了再定。
+- 🔗 现状（4-12，10-27）：`SourceDescriptor` 已补 `shortLabel?`、`color?`（hex）、`icon?`、`searchAccepts?`、`supportedFeatures`（必填），拓展的描述符就是清单订阅那一口（去掉 `cardSkin`，`manifestSourceDescriptor`）。B 站填短名「B」、颜色 `#fb7299`、搜人收 `id` / `link` / `name`、特性全列。`supportedExtras` 与 `featureHints` 还没加：`featureHints` 清单与描述符都随规则页按描述符露节那一片一起收（主人 10-27 定，跟读者走）。B 站那颗平台钮的颜色因此从皮肤色改成描述符里的定值，不再跟着皮肤变，和拓展的钮一样（主人 10-27 定）。
 - **外部 id**：身份标签写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」，由一个函数生成（显示名链 `displayNameOf` 的最后一环）；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。🔗 10-23（3b-24）：`subscriptionIdentityLabel` 与 `displayNameOf` 已在 contract 落成，服务端叫法已按描述符拼；面板那一列与「复制 UID」仍归第 4 期。
 - `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。🔗 现状（3a-42，10-12）：模板变量 `{postNoun}` 3a 还没做（`posts/deliver-post.ts` 里套作品文案只传 `{name}`）；核心里读来源上报的 `postNoun` 的是拼 AI 提示词那一处（同一个文件），它的缺省原先在代码里还是「动态」，3a-42 对拍查出后改成「作品」，与这里一致（没声明 `postNoun` 的拓展的提示词因此变了，B 站来源自己声明「动态」不变）。面板自己的特性标签另走拓展清单的 `display.postNoun`，这一片没动。🔗 现状（3b-21，2026-10-19）：3b-21 已做（默认作品文案用 `{postNoun}`，来源没声明叫法填「作品」）。🔗 现状（3b-12，10-24）：默认文案与会员体系默认句按当前语言取出厂，设置只存主人改过的文字；改回默认或编辑到与当前默认一字不差都会删键。换语言时没改过的立即跟新语言，不写盘；订阅覆盖仍是主人写的字。「默认文案有更新」只对改过的文字成立：面板输入框显示存的字或当前语言默认，恢复默认时同时清掉账本那一条。
 - 特别关注这项设置只在 `supportedFeatures` 含 `viewerChat` 或 `viewerEnter`（原 `specialDanmaku` / `specialUserEnter`）时露出。
@@ -93,6 +94,7 @@ interface MembershipTier {
   - `has { auth, liveStatus, preview }`：来源实现了 `auth` / `fetchLiveStatus` / `fetchPreview` 中的哪些，由宿主推算，不让来源自报。
   - `status`：该集成运行状态的取值（内置集成只取 `running` / `failed` / `settings-invalid`，见「健康与运行状态」）。
 - 面板进来拉一次进缓存，订阅按 `identity.sourceKey` 取；`extension-status-changed` 时缓存失效。加载中「不知道」不等于「没有」，按中性默认画。
+- 🔗 现状（4-12，10-27）：列表与面板的 `useSources()` 已落（名字主人 10-27 定）：回 `SourcesResponse { sources: SourceEntry[] }`，`SourceEntry { key, descriptor, has? }`。不是拓展的来源（B 站）取登记时交的描述符、按登记先后在前；拓展一律取装载器那份清单（按当前语言盖好译文，在跑的也不取登记那一刻冻住的那份），停用、没起来的照样列、不带 `has`（= 不知道）。`has` 先只有 `{ auth, liveStatus }`，`preview` 随 `fetchPreview` 一起加；`status` 随运行状态读口；描述符先不带 `membershipPrograms`（档位图标是图库引用，随面板读会员档那一片）。面板缓存键 `["sources"]`，跟拓展表一起失效（装卸、开关、换上新版、重连、globals 变了），不看 `extension-status-changed`（那一帧只说拓展的视图变了）；拓展「在不在跑」仍看拓展表。拓展表 `ExtensionDTO` 上原来的 `subscription` 那一格已删。
 
 **从描述符直接拿**：
 

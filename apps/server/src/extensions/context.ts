@@ -26,10 +26,7 @@ import type {
 	PlatformAdapterHandle,
 	SourceDef,
 } from "@bilibili-notify/internal/extension";
-import type {
-	ExtensionSubscriptionView,
-	ExtensionView,
-} from "@bilibili-notify/internal/extension/wire";
+import type { ExtensionView } from "@bilibili-notify/internal/extension/wire";
 import { type Dict, translate } from "@bilibili-notify/internal/i18n";
 import type { ZodType } from "zod";
 import { t } from "../i18n/index.js";
@@ -139,22 +136,6 @@ export function manifestPushView(
 ): PlatformAdapterDescriptor | undefined {
 	const push = manifest.contributes.push;
 	return push && { ...push, settingsFields: push.settingsFields ?? [] };
-}
-
-/**
- * 清单里订阅源那一口给面板的东西:外观 + 声明的特性(ADR-0019 决策 41;周期「正在直播」在这里推一次)。没开这一口就是
- * `undefined`。
- *
- * 只从清单来、不问代码:停用的拓展名下的订阅照样画得出是哪个平台的(决策 10 的置灰)。自带皮肤的
- * 包内路径(`cardSkin`)不给面板 —— 那是装包那头的事。
- */
-export function manifestSubscriptionView(
-	manifest: ExtensionManifest,
-): ExtensionSubscriptionView | undefined {
-	const subscription = manifest.contributes.subscription;
-	if (!subscription) return undefined;
-	const { cardSkin: _cardSkin, ...view } = subscription;
-	return view;
 }
 
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */

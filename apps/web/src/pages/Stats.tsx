@@ -1,4 +1,4 @@
-import type { ExtensionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry, SubscriptionDTO } from "@bilibili-notify/contract";
 import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import {
 	Avatar,
@@ -17,6 +17,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useExtensions } from "../hooks/useExtensions";
+import { useSources } from "../hooks/useSources";
 import { api } from "../services/api";
 import {
 	activityLevel,
@@ -120,6 +121,7 @@ interface UpMeta {
 function upMetaOf(
 	r: UpStatsRow,
 	sub: Subscription | undefined,
+	sources: readonly SourceEntry[] | undefined,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): UpMeta {
 	const base = {
@@ -134,7 +136,7 @@ function upMetaOf(
 			identity: { label: "UID", id: externalId },
 		};
 	}
-	const platform = subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
+	const platform = subscriptionPlatformOf({ extensionId: sourceKey }, sources, extensions);
 	return {
 		...base,
 		name: sub ? displayName(sub) : externalId,
@@ -484,8 +486,9 @@ export default function Stats() {
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
 	});
-	// 拓展行的平台名与徽章照装着的拓展清单;没回来时写拓展 id。
+	// 拓展行的平台名与徽章照来源表里的描述符(取自装着的拓展清单);没回来时写拓展 id。
 	const extensions = useExtensions({ retry: false }).data?.extensions;
+	const sources = useSources().data?.sources;
 
 	// 两支订阅都列(ADR-0020):行以**订阅 id** 为键,选中、聚焦、配色、名字都按它对 —— 外部 id 恰好等于某个
 	// B 站 uid 时,按 uid 对就会把另一个平台上的另一个人认成那位 B 站 UP。
@@ -495,12 +498,12 @@ export default function Stats() {
 		const lookup = createSubscriptionLookup(subsQuery.data ?? []);
 		const m = new Map<string, UpMeta>();
 		for (const r of statsQuery.data?.rows ?? []) {
-			m.set(r.subscriptionId, upMetaOf(r, lookup.byId(r.subscriptionId), extensions));
+			m.set(r.subscriptionId, upMetaOf(r, lookup.byId(r.subscriptionId), sources, extensions));
 		}
 		return m;
-	}, [statsQuery.data, subsQuery.data, extensions]);
+	}, [statsQuery.data, subsQuery.data, sources, extensions]);
 	const metaOf = (r: UpStatsRow): UpMeta =>
-		meta.get(r.subscriptionId) ?? upMetaOf(r, undefined, extensions);
+		meta.get(r.subscriptionId) ?? upMetaOf(r, undefined, sources, extensions);
 	const axis = useMemo(() => dayAxis(days), [days]);
 	const xLabels = useMemo(() => sparseLabels(axis), [axis]);
 	const totals = useMemo(() => (res ? computeTotals(res) : null), [res]);

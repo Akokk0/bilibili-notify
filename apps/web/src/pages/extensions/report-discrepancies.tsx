@@ -1,5 +1,6 @@
 import type { ExtensionDTO, ReportDiscrepancyView } from "@bilibili-notify/contract";
 import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
+import { useSources } from "../../hooks/useSources";
 import { useT } from "../../i18n";
 import type { Subscription } from "../../types/domain";
 import { displayName } from "../../utils/up-display";
@@ -24,11 +25,13 @@ export function ReportDiscrepanciesBox({
 	subs: readonly Subscription[] | undefined;
 }) {
 	const t = useT();
+	// 作品那一类按这个平台的叫法写(来源表里的描述符,取自清单)。
+	const sources = useSources().data?.sources;
 	const liveLabel = t("extension.reportDiscrepancies.kindLive");
 	const problemLabel = t("extension.reportDiscrepancies.kindProblem");
 	const discrepancies = ext.reportDiscrepancies ?? [];
 	if (discrepancies.length === 0) return null;
-	const postNoun = ext.subscription?.postNoun;
+	const postNoun = sources?.find((one) => one.key === ext.id)?.descriptor.postNoun;
 	return (
 		<section aria-label="上报出入">
 			<GlassBox

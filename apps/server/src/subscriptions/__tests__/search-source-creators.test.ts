@@ -29,14 +29,14 @@ function depsWith(
 						? undefined
 						: {
 								sourceKey: key,
-								descriptor: { label: sources[key].label },
+								descriptor: { label: sources[key].label, supportedFeatures: ["post"] as const },
 								searchCreators: sources[key].searchCreators,
 								fetchProfile: noProfile,
 							},
 				list: () =>
 					Object.entries(sources).map(([key, s]) => ({
 						sourceKey: key,
-						descriptor: { label: s.label },
+						descriptor: { label: s.label, supportedFeatures: ["post"] as const },
 						searchCreators: s.searchCreators,
 						fetchProfile: noProfile,
 					})),

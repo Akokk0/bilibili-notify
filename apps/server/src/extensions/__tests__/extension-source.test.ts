@@ -188,12 +188,15 @@ async function make(
 }
 
 describe("createExtensionSource:成员与描述符", () => {
-	it("描述符取自清单(平台名、作品叫法、外部 id 格式),不取拓展自己交的", async () => {
+	it("描述符取自清单订阅那一口写了的格(平台名、短名、颜色、作品叫法、外部 id 格式、特性),不取拓展自己交的", async () => {
 		const made = await make({ descriptor: { label: "冒充" } });
 		expect(made.source.descriptor).toEqual({
 			label: "抖音",
+			shortLabel: "抖",
+			color: "#fe2c55",
 			postNoun: "作品",
 			externalIdRegex: "[a-z0-9-]+",
+			supportedFeatures: ["post", "liveStart", "liveEnd"],
 		});
 	});
 

@@ -26,7 +26,6 @@ export type {
 	ExtensionBlock,
 	ExtensionButton,
 	ExtensionItemView,
-	ExtensionSubscriptionView,
 	ExtensionTableCell,
 	ExtensionTableColumn,
 	ExtensionTone,

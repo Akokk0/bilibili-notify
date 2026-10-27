@@ -9,7 +9,7 @@
  * - 拓展订阅:视图声明了 `liveStreaming` 的源才有这一行(开播 + 下播才声明的规则服务端算一次)。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -103,17 +103,19 @@ describe("UpDialog · B 站订阅的「直播中」", () => {
 });
 
 describe("UpDialog · 拓展订阅的「直播中」", () => {
-	function source(subscription: NonNullable<ExtensionDTO["subscription"]>): ExtensionDTO {
-		return {
-			id: "douyin",
-			name: "抖音订阅",
-			dir: "/data/extensions/douyin",
-			enabled: true,
-			state: "running",
-			apiVersion: 3,
-			provides: ["subscription"],
-			subscription,
-		};
+	const DOUYIN: ExtensionDTO = {
+		id: "douyin",
+		name: "抖音订阅",
+		dir: "/data/extensions/douyin",
+		enabled: true,
+		state: "running",
+		apiVersion: 3,
+		provides: ["subscription"],
+	};
+
+	/** 来源表里抖音那一行(描述符取自清单)。 */
+	function source(descriptor: SourceEntry["descriptor"]): SourceEntry {
+		return { key: "douyin", descriptor };
 	}
 
 	function extSub(): Subscription {
@@ -121,28 +123,36 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 	}
 
 	it("视图声明了 liveStreaming → 露「直播中」(小字照样是那句)", () => {
-		const platform = subscriptionPlatformOf({ extensionId: "douyin" }, [
-			source({
-				label: "抖音",
-				shortLabel: "抖",
-				color: "#161823",
-				supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
-			}),
-		]);
+		const platform = subscriptionPlatformOf(
+			{ extensionId: "douyin" },
+			[
+				source({
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#161823",
+					supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
+				}),
+			],
+			[DOUYIN],
+		);
 		renderDialog(extSub(), { platform });
 		expect(screen.getByText("直播中")).toBeTruthy();
 		expect(screen.getByText("开播后每隔几小时再提醒一次")).toBeTruthy();
 	});
 
 	it("只声明了开播、没有 liveStreaming → 不露:没有下播事件收这一场,周期推送一开就没有尽头", () => {
-		const platform = subscriptionPlatformOf({ extensionId: "douyin" }, [
-			source({
-				label: "抖音",
-				shortLabel: "抖",
-				color: "#161823",
-				supportedFeatures: ["post", "liveStart"],
-			}),
-		]);
+		const platform = subscriptionPlatformOf(
+			{ extensionId: "douyin" },
+			[
+				source({
+					label: "抖音",
+					shortLabel: "抖",
+					color: "#161823",
+					supportedFeatures: ["post", "liveStart"],
+				}),
+			],
+			[DOUYIN],
+		);
 		renderDialog(extSub(), { platform });
 		expect(screen.queryByText("直播中")).toBeNull();
 	});

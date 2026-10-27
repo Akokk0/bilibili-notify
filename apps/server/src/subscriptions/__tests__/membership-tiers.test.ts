@@ -16,7 +16,7 @@ const viewOf = (...programs: MembershipProgram[]): SourceView => viewOfKey("test
 
 const viewOfKey = (sourceKey: string, ...programs: MembershipProgram[]): SourceView => ({
 	sourceKey,
-	descriptor: { label: "测试", membershipPrograms: programs },
+	descriptor: { label: "测试", supportedFeatures: ["post"], membershipPrograms: programs },
 	searchCreators: noCandidates,
 	fetchProfile: noProfile,
 });
@@ -52,7 +52,7 @@ describe("createMembershipTierReader", () => {
 		const reader = readerOf(
 			{
 				sourceKey: "test.bare",
-				descriptor: { label: "测试" },
+				descriptor: { label: "测试", supportedFeatures: ["post"] },
 				searchCreators: noCandidates,
 				fetchProfile: noProfile,
 			},
@@ -93,14 +93,18 @@ describe("createMembershipTierReader", () => {
 			"first",
 			{
 				...makeSource(),
-				descriptor: { label: "第一个", membershipPrograms: [first] },
+				descriptor: { label: "第一个", supportedFeatures: ["post"], membershipPrograms: [first] },
 			},
 			// biome-ignore lint/suspicious/noExplicitAny: 登记表测试只需要 logger
 			makeIntegration() as any,
 		);
 		const rejected = {
 			...makeSource(),
-			descriptor: { label: "第二个", membershipPrograms: [second] },
+			descriptor: {
+				label: "第二个",
+				supportedFeatures: ["post"] as const,
+				membershipPrograms: [second],
+			},
 		};
 		await expect(
 			registry.register(
@@ -121,7 +125,11 @@ describe("createMembershipTierReader", () => {
 		expect(reader.lowest()).toBeUndefined();
 		const source: Source = {
 			...makeSource(),
-			descriptor: { label: "测试", membershipPrograms: [BILIBILI_GUARD_PROGRAM] },
+			descriptor: {
+				label: "测试",
+				supportedFeatures: ["post"],
+				membershipPrograms: [BILIBILI_GUARD_PROGRAM],
+			},
 		};
 		// biome-ignore lint/suspicious/noExplicitAny: 登记表测试只需要 logger
 		await registry.register("any", source, makeIntegration() as any);

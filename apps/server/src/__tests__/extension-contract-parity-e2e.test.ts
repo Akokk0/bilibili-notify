@@ -34,6 +34,7 @@ import type {
 	HistoryResponse,
 	LiveListeningEntry,
 	ProblemsResponse,
+	SourcesResponse,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
 import type {
@@ -224,7 +225,8 @@ const SOURCE_ROWS = {
 		THIS(TITLE.subscriptionCells),
 		{
 			file: EXTENSION_SOURCE_TEST,
-			title: "描述符取自清单(平台名、作品叫法、外部 id 格式),不取拓展自己交的",
+			title:
+				"描述符取自清单订阅那一口写了的格(平台名、短名、颜色、作品叫法、外部 id 格式、特性),不取拓展自己交的",
 		},
 	),
 	searchCreators: driven(TITLE.searchCreators),
@@ -489,6 +491,12 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		const row = body.extensions.find((e) => e.id === FAKE);
 		if (!row) throw new Error("拓展列表里没有假源");
 		return row;
+	}
+
+	/** 来源表(`/api/sources`)里假源那一条:面板画订阅源那一口的外观取它。 */
+	async function fakeSourceEntry() {
+		const body = await okJson<SourcesResponse>(await api("/api/sources"));
+		return body.sources.find((one) => one.key === FAKE);
 	}
 
 	async function adapterView(): Promise<AdapterView> {
@@ -773,7 +781,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 
 	step(TITLE.subscriptionCells, async () => {
 		const manifest = await manifestOfFake();
-		const face = (await fakeRow()).subscription as Record<string, unknown> | undefined;
+		const face = (await fakeSourceEntry())?.descriptor as Record<string, unknown> | undefined;
 		expect(face).toBeDefined();
 		const written = manifest.contributes.subscription;
 		// 清单写了的格,面板读到的逐格相等(`cardSkin` 是装包那头的事,不下发,清单也没写)。

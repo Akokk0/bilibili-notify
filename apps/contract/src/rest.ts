@@ -33,10 +33,10 @@ import type {
 	Result,
 	SettingsField,
 	SourceAccount,
+	SourceDescriptor,
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
-import type { ExtensionSubscriptionView } from "@bilibili-notify/internal/extension/wire";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
 
@@ -146,12 +146,6 @@ export interface ExtensionDTO {
 	 * 所以「有这一格」**不等于**拓展在场:要它在场的(新建它的连接、挑 bot)另看 `state`。
 	 */
 	push?: PlatformAdapterDescriptor;
-	/**
-	 * 订阅源那一口:外观(平台选择那一排的名字与脸、输入框的提示)+ 声明的特性(配置弹层只列
-	 * 这几种)。**照清单给,没在跑的也有**(ADR-0019 决策 41)—— 拓展停了,它名下的订阅照样画得出
-	 * 是哪个平台的。「有这一格」**不等于**解析门问得到 —— 要它在场的另看 `state`。
-	 */
-	subscription?: ExtensionSubscriptionView;
 	/**
 	 * 清单里声明的设置项(ADR-0019 决策 17 / 30)—— 面板照它画设置表单。**没在跑的也有**:
 	 * 它来自清单,「装好 → 填 → 启用」这个顺序靠它才走得通。
@@ -1281,6 +1275,27 @@ export interface ConnectionAuthDraftResponse {
 }
 
 // ---- /api/sources ------------------------------------------------------------
+
+/**
+ * `GET /api/sources` 里的一条来源(ADR-0027 决策 6):面板只从这里拿来源的信息,加一个来源不用改面板。
+ * 拓展的来源照清单列,停用、没起来的也在。
+ */
+export interface SourceEntry {
+	/** 来源键:订阅的 `identity.sourceKey` 就是它(拓展的来源键是拓展 id)。 */
+	key: string;
+	/** 来源的描述符。会员体系先不下发:档位图标是图库引用,面板读会员档的时候再一起上。 */
+	descriptor: Omit<SourceDescriptor, "membershipPrograms">;
+	/**
+	 * 来源实现了哪些可选能力(登录口、查直播状态),由宿主推算、不让来源自报。拓展停用或没起来时没有这一格:
+	 * 不知道,不是「没有」。
+	 */
+	has?: { auth: boolean; liveStatus: boolean };
+}
+
+/** `GET /api/sources` 响应:不是拓展的来源(B 站)按登记先后在前,拓展的按装载器的次序在后。 */
+export interface SourcesResponse {
+	sources: SourceEntry[];
+}
 
 /**
  * `GET|POST|DELETE /api/sources/:sourceKey/auth` 响应 —— 这个来源此刻的登录状态与登录着的账号。

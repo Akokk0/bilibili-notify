@@ -7,7 +7,7 @@
  * 头像是那条订阅的。起点 / 24h / 7d 三格两支同一个画法。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -35,7 +35,12 @@ const DOUYIN: ExtensionDTO = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+};
+
+/** 来源表里抖音那一行:平台徽章的名字与颜色照它。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
@@ -74,6 +79,11 @@ const EXT_ENTRY: FollowersRefreshEntry = {
 	delta7d: null,
 };
 
+/** 来源表照装着的拓展列:装了抖音订阅源,表里就有它那一行。 */
+function sourcesOf(extensions: ExtensionDTO[] | undefined): SourceEntry[] | undefined {
+	return extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []));
+}
+
 function renderPanel(
 	entries: FollowersRefreshEntry[],
 	subs: Subscription[],
@@ -86,7 +96,7 @@ function renderPanel(
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<FansPanel subs={subs} extensions={extensions} />
+			<FansPanel subs={subs} sources={sourcesOf(extensions)} extensions={extensions} />
 		</QueryClientProvider>,
 	);
 }

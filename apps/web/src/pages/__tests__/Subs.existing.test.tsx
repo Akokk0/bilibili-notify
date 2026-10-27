@@ -11,7 +11,7 @@
  * 的 id,都不算已订阅 —— 那是另一个平台上的另一个人。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -45,15 +45,20 @@ function douyin(): ExtensionDTO {
 		state: "running",
 		apiVersion: 3,
 		provides: ["subscription"],
-		subscription: {
-			label: "抖音",
-			shortLabel: "抖音",
-			color: "#161823",
-			postNoun: "作品",
-			supportedFeatures: ["post", "liveStart"],
-		},
 	};
 }
+
+/** 来源表里抖音那一行(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
+		label: "抖音",
+		shortLabel: "抖音",
+		color: "#161823",
+		postNoun: "作品",
+		supportedFeatures: ["post", "liveStart"],
+	},
+};
 
 let subs: Subscription[];
 let extensions: ExtensionDTO[];
@@ -79,6 +84,12 @@ beforeEach(() => {
 		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
+		// 来源表照装着的拓展列。
+		if (path === "/api/sources") {
+			return Promise.resolve({
+				sources: extensions.flatMap((one) => (one.id === "douyin" ? [DOUYIN_SOURCE] : [])),
+			});
+		}
 		if (path.startsWith("/api/ext/douyin/lookup")) {
 			return Promise.resolve({
 				candidates: [

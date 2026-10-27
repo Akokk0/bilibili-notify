@@ -28,7 +28,7 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { EXTENSIONS_QUERY_KEY, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
+import { invalidateExtensionTables, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
 import { api } from "../../services/api";
 import { EXT_UPDATE_BUTTON, useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
@@ -114,7 +114,7 @@ export function useMarketplaceInstall() {
 			if (kind === "install" && from && mounted.current) {
 				play({ kind: "install", id: res.id, from });
 			}
-			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
+			void invalidateExtensionTables(qc);
 			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
 		onError: (err, _request, started) => {

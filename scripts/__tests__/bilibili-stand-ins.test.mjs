@@ -74,7 +74,9 @@ export const RATCHET = {
 	// 第 4 期系统页与概览页按集成的描述画之后消失。
 	"apps/web/src/pages/Dashboard.tsx": 5,
 	"apps/web/src/pages/Rules.tsx": 6,
-	"apps/web/src/pages/Subs.tsx": 18,
+	// 4-12(主人 10-27 点头,18 → 27):新建订阅的 B 站那颗平台钮改读来源表里 B 站的描述符,按来源键挑出它的地方如实显形
+	// (prop `bilibili`、`biliDescriptor`、`BILIBILI_SOURCE_KEY`)。新建流程按来源走、去掉 `BILI_PLATFORM` 哨兵时一起消。
+	"apps/web/src/pages/Subs.tsx": 27,
 	// 3a-38(主人 10-10 点头,27 → 29):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(引入常量、模块表里用一次)。
 	// 第 4 期系统页按集成的描述画之后消失。
 	"apps/web/src/pages/System.tsx": 5,

@@ -848,7 +848,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `StorageManager` / `StorageManagerOptions` | 删掉（B 站 cookie 改走 `ctx.secrets`） |
 | `SubscriptionStore`（`packages/subscription`，不存盘的内存镜像）；`WsTicketStore`（内存里的一次性票）、桥的 `BridgeBlobStore`（内存里取过即焚的图） | `SubscriptionCache`；`WsTicketIssuer`；`BridgeBlobCache` |
 | `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>` / `createRegistry`，住 `integrations/registry.ts`（3a-08 已落；`entries()` 等第一个调用方出现再补，见 [architecture.md](./architecture.md)「接口族与登记表」） |
-| 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 🔗 现状（3b-44，10-25）：`ExtensionSubscriptionView` 已摊平并改读 `supportedFeatures`，名字暂留；并进 `SourceDescriptor` 再删除这一步随第 4 期的 `/api/sources` |
+| 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 🔗 现状（3b-44，10-25）：`ExtensionSubscriptionView` 已摊平并改读 `supportedFeatures`，名字暂留；并进 `SourceDescriptor` 再删除这一步随第 4 期的 `/api/sources` 🔗 现状（4-12，10-27）：已并进 `SourceDescriptor` 并删掉（连同拓展的门上转出的那一份、`ExtensionDTO.subscription`）；清单订阅段与描述符的逐格相等改由 `manifest-shape-pin.ts` 对着 `SourceDescriptor` 钉 |
 | 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`（⑭c 已删：只剩自定义 UA 一格，随 UA 一起删了）、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
 | 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |
 | dynamic 的 `DynamicEngineConfig`、`DynamicFilterConfig`、`WorkDeliveryConfig`、`DeliverWorkArgs`、`WorkDeliveryOutcome`、`DynamicTimelineManager`、`SubManagerView` | 随包消失：`deliverPost` 的 `…Options`、`PostSettings`；过滤进核心的 `ContentFilters` |

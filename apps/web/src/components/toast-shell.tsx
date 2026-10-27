@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { FEATURE_DESCRIPTORS, PUSH_STATUS_META } from "../config/push-features";
 import { useExtensions } from "../hooks/useExtensions";
+import { useSources } from "../hooks/useSources";
 import { subscriptionPlatformOf } from "../pages/up/subscription-source";
 import {
 	AUTO_DISMISS_MS,
@@ -137,17 +138,18 @@ function ToastCard({ item }: { item: ToastItem }) {
 }
 
 /**
- * 拓展行「这是谁」那行小字:「平台名 · 外部 id」(ADR-0019 决策 73)。平台名照已装拓展的清单;
- * 清单没回来、或拓展卸载了取不到,写拓展 id。单拆一个组件:只有拓展行要去读清单,B 站行不白问一次。
+ * 拓展行「这是谁」那行小字:「平台名 · 外部 id」(ADR-0019 决策 73)。平台名照来源表(取自已装拓展的清单);
+ * 两张表没回来、或拓展卸载了取不到,写拓展 id。单拆一个组件:只有拓展行要去读来源表,B 站行不白问一次。
  */
 function ExtensionRowWho({ view }: { view: PushEventView }) {
 	const extensions = useExtensions({ retry: false }).data?.extensions;
+	const sources = useSources().data?.sources;
 	return (
 		// 外部 id 可以很长(抖音的 sec_uid 七八十个字符),截断而不是把「N 条」胶囊挤出卡外。
 		<span className="min-w-0 truncate">
 			{historyRowIdentity(
 				view,
-				(extensionId) => subscriptionPlatformOf({ extensionId }, extensions).label,
+				(extensionId) => subscriptionPlatformOf({ extensionId }, sources, extensions).label,
 			)}
 		</span>
 	);

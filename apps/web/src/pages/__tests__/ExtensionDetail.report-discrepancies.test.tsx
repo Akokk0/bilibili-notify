@@ -6,7 +6,7 @@
  * 为什么。原因只写进日志的话,主人看见「卡片少了一张图」不会想到去日志里搜。
  */
 
-import type { ExtensionDTO, ReportDiscrepancyView } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ReportDiscrepancyView, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -36,13 +36,6 @@ vi.mock("../../services/api", () => ({
 					version: "0.1.0",
 					apiVersion: 3,
 					provides: ["subscription"],
-					subscription: {
-						label: "抖音",
-						shortLabel: "抖音",
-						color: "#161823",
-						postNoun: "作品",
-						supportedFeatures: ["post", "liveStart"],
-					},
 					dir: "/data/extensions/douyin",
 					enabled: true,
 					state: "running",
@@ -51,6 +44,20 @@ vi.mock("../../services/api", () => ({
 						: {}),
 				};
 				return { extensions: [douyin] };
+			}
+			// 作品那一类的叫法取来源表里的描述符。
+			if (url === "/api/sources") {
+				const douyin: SourceEntry = {
+					key: "douyin",
+					descriptor: {
+						label: "抖音",
+						shortLabel: "抖音",
+						color: "#161823",
+						postNoun: "作品",
+						supportedFeatures: ["post", "liveStart"],
+					},
+				};
+				return { sources: [douyin] };
 			}
 			return {};
 		}),

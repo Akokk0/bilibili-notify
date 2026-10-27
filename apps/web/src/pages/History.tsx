@@ -1,4 +1,4 @@
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -22,6 +22,7 @@ import {
 } from "../config/push-features";
 import { useExtensions } from "../hooks/useExtensions";
 import { useCoreSettings } from "../hooks/useSettings";
+import { useSources } from "../hooks/useSources";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
@@ -87,8 +88,9 @@ export default function History() {
 	});
 	const globalsQuery = useCoreSettings();
 	const retentionDays = globalsQuery.data?.history.retentionDays;
-	// 拓展行的平台徽章照已装拓展的清单画(ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
+	// 拓展行的平台徽章照来源表里的描述符画(取自已装拓展的清单,ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
 	const extensionsQuery = useExtensions({ retry: false });
+	const sources = useSources().data?.sources;
 
 	// 行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
 	// ADR-0019 决策 50 / 73,与服务端重推同一条规矩)—— 删了又重加的 UP,旧行照样按现在那条的名字
@@ -165,6 +167,7 @@ export default function History() {
 					entries={filtered}
 					subs={subs}
 					targetById={targetById}
+					sources={sources}
 					extensions={extensionsQuery.data?.extensions}
 				/>
 			)}
@@ -176,11 +179,13 @@ function HistoryTable({
 	entries,
 	subs,
 	targetById,
+	sources,
 	extensions,
 }: {
 	entries: HistoryEntryView[];
 	subs: SubscriptionLookup;
 	targetById: Map<string, PushTarget>;
+	sources: readonly SourceEntry[] | undefined;
 	extensions: readonly ExtensionDTO[] | undefined;
 }) {
 	return (
@@ -208,6 +213,7 @@ function HistoryTable({
 						entry={e}
 						sub={subs.forRow(e)}
 						target={e.targetId ? targetById.get(e.targetId) : undefined}
+						sources={sources}
 						extensions={extensions}
 						isLast={i === entries.length - 1}
 					/>
@@ -242,12 +248,14 @@ function HistoryRow({
 	entry,
 	sub,
 	target,
+	sources,
 	extensions,
 	isLast,
 }: {
 	entry: HistoryEntryView;
 	sub: Subscription | undefined;
 	target: PushTarget | undefined;
+	sources: readonly SourceEntry[] | undefined;
 	extensions: readonly ExtensionDTO[] | undefined;
 	isLast: boolean;
 }) {
@@ -264,7 +272,7 @@ function HistoryRow({
 	const creatorColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
 	const platform = isExtensionIdentity(entry.identity)
-		? subscriptionPlatformOf({ extensionId: entry.identity.sourceKey }, extensions)
+		? subscriptionPlatformOf({ extensionId: entry.identity.sourceKey }, sources, extensions)
 		: undefined;
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);

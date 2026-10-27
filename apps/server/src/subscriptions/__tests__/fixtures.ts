@@ -128,7 +128,7 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 		void registry.register(
 			`probe-${index}`,
 			{
-				descriptor: { label: "测试", ...descriptor },
+				descriptor: { label: "测试", supportedFeatures: ["post"], ...descriptor },
 				searchCreators: noCandidates,
 				fetchProfile: noProfile,
 				start: async () => {},
@@ -157,7 +157,7 @@ export const bilibiliLikeSources = (
 	void registry.register(
 		SOURCE_KEY,
 		{
-			descriptor: { label: "B 站", membershipPrograms: [program] },
+			descriptor: { label: "B 站", supportedFeatures: ["post"], membershipPrograms: [program] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			liveInteractions: {
@@ -185,7 +185,7 @@ export interface FakeSource extends Source {
 
 export const makeSource = (): FakeSource => {
 	const source: FakeSource = {
-		descriptor: { label: "测试", postNoun: "动态" },
+		descriptor: { label: "测试", supportedFeatures: ["post"], postNoun: "动态" },
 		searchCreators: noCandidates,
 		fetchProfile: noProfile,
 		started: [],

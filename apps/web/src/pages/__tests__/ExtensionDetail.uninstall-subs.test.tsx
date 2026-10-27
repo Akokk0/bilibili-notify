@@ -35,12 +35,6 @@ vi.mock("../../services/api", () => ({
 							version: "0.1.0",
 							apiVersion: 3,
 							provides: ["subscription"],
-							subscription: {
-								label: "抖音",
-								shortLabel: "抖音",
-								color: "#161823",
-								supportedFeatures: ["post"],
-							},
 							dir: "/data/extensions/douyin",
 							enabled: false,
 							state: "disabled",

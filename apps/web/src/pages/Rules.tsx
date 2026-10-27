@@ -24,6 +24,7 @@ import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { useExtensions } from "../hooks/useExtensions";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useSources } from "../hooks/useSources";
 import { api } from "../services/api";
 import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
@@ -405,15 +406,16 @@ export default function Rules() {
 	// 拓展订阅也能按 UP 定制(ADR-0019 决策 64),只是露的节少 —— 见 perUpSectionsFor。
 	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 
-	// 拓展订阅是哪个平台、那个源报得出什么:决定露哪几节、tab 上怎么称呼它。拓展列表没回来
+	// 拓展订阅是哪个平台、那个源报得出什么:决定露哪几节、tab 上怎么称呼它。都照来源表里的描述符;来源表没回来
 	// (还在读 / 读失败)时按拓展订阅最多能有的那几种画,同配置弹层。
 	const extensionsQuery = useExtensions({ retry: false });
 	const extensions = extensionsQuery.data?.extensions;
+	const sources = useSources().data?.sources;
 	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
 		const { sourceKey } = subscriptionIdentityOf(s);
 		return sourceKey === BILIBILI_SOURCE_KEY
 			? undefined
-			: subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
+			: subscriptionPlatformOf({ extensionId: sourceKey }, sources, extensions);
 	};
 	const sectionsOf = (s: Subscription): SectionMeta[] =>
 		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)));
@@ -536,7 +538,9 @@ export default function Rules() {
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
 				overridesCountFor={(s) => overrideKeysOf(s).size + (hasSpecialViewers(s) ? 1 : 0)}
-				platformLabelOf={(extensionId) => subscriptionPlatformOf({ extensionId }, extensions).label}
+				platformLabelOf={(extensionId) =>
+					subscriptionPlatformOf({ extensionId }, sources, extensions).label
+				}
 			/>
 
 			<div className="grid gap-4 xl:grid-bn-rail">

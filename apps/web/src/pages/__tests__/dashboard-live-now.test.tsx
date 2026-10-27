@@ -6,7 +6,7 @@
  * 快照带着的 `subscriptionId` 说的才是这间直播间是替哪一条开的。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { colorFromSeed } from "@bilibili-notify/internal";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -90,7 +90,7 @@ function extSub(id: string, name: string): Subscription {
 	};
 }
 
-/** 装着的抖音订阅源 —— 平台徽章的名字与颜色照它的清单。 */
+/** 装着的抖音订阅源。 */
 const DOUYIN: ExtensionDTO = {
 	id: "douyin",
 	name: "抖音订阅",
@@ -99,7 +99,12 @@ const DOUYIN: ExtensionDTO = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+};
+
+/** 来源表里抖音那一行:平台徽章的名字与颜色照它(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
@@ -117,7 +122,12 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 	) {
 		return render(
 			<MemoryRouter initialEntries={["/"]}>
-				<LiveNowPanel live={live} subs={subs} extensions={extensions} />
+				<LiveNowPanel
+					live={live}
+					subs={subs}
+					sources={extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []))}
+					extensions={extensions}
+				/>
 			</MemoryRouter>,
 		);
 	}

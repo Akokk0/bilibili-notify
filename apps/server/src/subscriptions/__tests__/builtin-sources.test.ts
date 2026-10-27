@@ -252,7 +252,7 @@ describe("registerBuiltinSource", () => {
 	it("start 抛了:抛出去,键放掉,上下文收掉", async () => {
 		const seen: Array<() => void> = [];
 		const broken: Source = {
-			descriptor: { label: "测试" },
+			descriptor: { label: "测试", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			async start(ctx) {
@@ -290,7 +290,7 @@ describe("registerBuiltinSource", () => {
 
 	it("登记失败(start 抛):start 途中报过的也清掉", async () => {
 		const broken: Source = {
-			descriptor: { label: "测试" },
+			descriptor: { label: "测试", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			async start(ctx) {

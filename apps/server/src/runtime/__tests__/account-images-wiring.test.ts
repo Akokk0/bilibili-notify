@@ -58,7 +58,7 @@ async function registerSource(auth?: SourceAuth) {
 	await runtime.sourceRegistry.register(
 		"bilibili",
 		{
-			descriptor: { label: "测试" },
+			descriptor: { label: "测试", supportedFeatures: ["post"] },
 			searchCreators: noCandidates,
 			fetchProfile: noProfile,
 			start: async () => {},

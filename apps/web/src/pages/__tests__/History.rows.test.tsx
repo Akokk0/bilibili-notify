@@ -6,7 +6,7 @@
  * (文案 / 图 / 结果);目标列写目标名。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -71,6 +71,12 @@ function mockApi(
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
+		// 来源表照装着的拓展列。
+		if (path === "/api/sources") {
+			return Promise.resolve({
+				sources: extensions.flatMap((one) => (one.id === "douyin" ? [DOUYIN_SOURCE] : [])),
+			});
+		}
 		return Promise.resolve({ core: { history: { retentionDays: 30 } } });
 	});
 }
@@ -427,7 +433,7 @@ describe("推送历史 · 拓展行", () => {
 	});
 });
 
-/** 装着的抖音订阅源 —— 徽章的短名与颜色照它的清单。 */
+/** 装着的抖音订阅源。 */
 const DOUYIN = {
 	id: "douyin",
 	name: "抖音订阅",
@@ -436,13 +442,18 @@ const DOUYIN = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+} as ExtensionDTO;
+
+/** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
-} as ExtensionDTO;
+};
 
 /**
  * 拓展行带一枚平台徽章(ADR-0019 决策 9「订阅删了也看得出是哪个平台的」),画法同首页「正在直播」:

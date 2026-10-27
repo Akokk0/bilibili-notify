@@ -85,6 +85,20 @@ type ImageReader = Pick<ImageStore, "read">;
 /** 串行队的键:一个来源就这一条。 */
 const REPORT_QUEUE_KEY = "reports";
 
+/**
+ * 清单里订阅源那一口作来源的描述符(ADR-0027 决策 6):登记拓展的来源用它,`/api/sources` 列拓展也用它。
+ * 只从清单来、不问代码 —— 停用的拓展名下的订阅照样画得出是哪个平台的。没开这一口就是 `undefined`。
+ * 自带皮肤的包内路径(`cardSkin`)不进描述符,那是装包那头的事。
+ */
+export function manifestSourceDescriptor(
+	manifest: ExtensionManifest,
+): SourceDescriptor | undefined {
+	const subscription = manifest.contributes.subscription;
+	if (!subscription) return undefined;
+	const { cardSkin: _cardSkin, ...descriptor } = subscription;
+	return descriptor;
+}
+
 export interface CreateExtensionSourceOptions {
 	/** 拓展的 id,也是它的来源键。 */
 	id: string;
@@ -243,19 +257,11 @@ function normalizeNewlines(texts: readonly string[]): string[] {
 export function createExtensionSource(opts: CreateExtensionSourceOptions): Source {
 	const { id, manifest, logger } = opts;
 	const now = opts.now ?? Date.now;
-	const subscription = manifest.contributes.subscription;
-	if (!subscription) {
+	const descriptor = manifestSourceDescriptor(manifest);
+	if (!descriptor) {
 		throw new Error(`extension ${id}: manifest has no contributes.subscription`);
 	}
-	const declared: ReadonlySet<string> = new Set(subscription.supportedFeatures);
-	const { label, postNoun, creatorNoun, externalIdNoun, externalIdRegex } = subscription;
-	const descriptor: SourceDescriptor = {
-		label,
-		...(postNoun === undefined ? {} : { postNoun }),
-		...(creatorNoun === undefined ? {} : { creatorNoun }),
-		...(externalIdNoun === undefined ? {} : { externalIdNoun }),
-		...(externalIdRegex === undefined ? {} : { externalIdRegex }),
-	};
+	const declared: ReadonlySet<string> = new Set(descriptor.supportedFeatures);
 	// 成员按表取、方法 bind 回拓展交上来的那个实例(class 写的方法在原型上、吃 `this`)。
 	const def = pickBoundMembers(opts.def, OPEN_MEMBER_NAMES) as unknown as OpenMembers;
 

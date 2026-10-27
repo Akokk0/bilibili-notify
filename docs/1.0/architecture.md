@@ -149,7 +149,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 - 页面私有的件回到 `pages/<页>/`，`components/` 只放至少两处复用的件。
 - 文件名全部 kebab-case（组件与 hook 也改；要改名的连测试 172 个，其中 52 个只改大小写，得用两步 `git mv`）。
 - 每个接口只在 `services/<域>.ts` 写一次，类型从 contract 取；纯逻辑进 `utils/`，不另开 `lib/`。
-- **来源的信息只从描述符拿**（ADR-0027 决策 6）：`GET /api/sources` 进来拉一次进缓存、`extension-status-changed` 时失效，按 `identity.sourceKey` 取；叫法走 contract 的叫法函数；描述符只装叫法、能力清单与会员档位，不装界面句子；集成的设置字段在登记集成时交，不挂在描述符上（ADR-0025 决策 3），面板从哪个路由拿施工时定。面板代码里不出现 `bilibili`，所有 `isBili` 分叉删掉，档位色表、「UID」「B 站」「UP 主」「舰长 / 提督 / 总督」这些写死的字一并删掉。拓展卸载后遗留的订阅：平台名显示来源键、叫法用中性词、不露特性开关，卡上标「来源没装」。
+- **来源的信息只从描述符拿**（ADR-0027 决策 6）：`GET /api/sources` 进来拉一次进缓存、`extension-status-changed` 时失效，按 `identity.sourceKey` 取；叫法走 contract 的叫法函数；描述符只装叫法、能力清单与会员档位，不装界面句子；集成的设置字段在登记集成时交，不挂在描述符上（ADR-0025 决策 3），面板从哪个路由拿施工时定。面板代码里不出现 `bilibili`，所有 `isBili` 分叉删掉，档位色表、「UID」「B 站」「UP 主」「舰长 / 提督 / 总督」这些写死的字一并删掉。拓展卸载后遗留的订阅：平台名显示来源键、叫法用中性词、不露特性开关，卡上标「来源没装」。🔗 现状（4-12，10-27）：面板的 `useSources()`（`apps/web/src/hooks/useSources.ts`）已落，缓存跟拓展表一起失效（`invalidateExtensionTables`）；平台选择那一排、订阅卡徽章、配置弹层的特性、上报出入那一节的叫法已改读它，其余按描述符画的地方随第 4 期后面几片。
 - **推送连接与目标的表单由适配器的描述驱动**：新建连接走「挑一个候选，再填字段」一条路（`/api/adapters`）；已有连接的脸与目标编辑器读连接上的 `platformSnapshot`，适配器不在场也画得出来（ADR-0024 决策 4、8）。面板代码里不按平台名分叉。
 - **系统页按集成开 tab**（ADR-0025 决策 3）：声明了 `settingsFields` 的内置集成各开一个（今天只有 B 站，tab 名取它的 `label`），用通用的设置表单与对表门；拓展的设置只在拓展页，功能页面放指过去的入口；「运行」tab 只留核心参数。
 - 健康卡（「系统状态 · 各模块」）第 4 期先出设计稿，主人认了再照稿重做。
@@ -306,7 +306,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - 防撞 B 站那种 `{ code, message, data }`：`code` 只装 BN 自己的错误码（字符串、snake_case，如 `not_found`、`unavailable`），永远不装平台的数字；平台的数字码只放 `upstreamCode`（现 `routes/subs.ts` 两处把 B 站的码塞在 `code` 里，契约骨架时改）；平台的原始响应不直接转给面板，一律在来源那层翻成 BN 的形状。主人 09-27 看过嵌套的 `{ error: { code, message } }`，选回平铺。
 - 路由按新名：
   - `/api/subscriptions`、`/api/stats/followers`（10-03 ADR-0036 推翻原定的 `/api/followers`）、`/api/library`。整张路由的新旧对照见 ADR-0036。
-  - `/api/sources`：每个来源一份 `{ key, descriptor, has, status }`，`has { auth, liveStatus, preview }` 由宿主按实现推算、不让来源自报，`status` 是运行状态的取值；拓展停用、失败、设置不合法时照样有描述符。（这个列表仍归第 4 期；`/api/sources` 这个前缀已由下一条的登录口先建，照 `/api/adapters` 的先例。）
+  - `/api/sources`：每个来源一份 `{ key, descriptor, has, status }`，`has { auth, liveStatus, preview }` 由宿主按实现推算、不让来源自报，`status` 是运行状态的取值；拓展停用、失败、设置不合法时照样有描述符。（这个列表仍归第 4 期；`/api/sources` 这个前缀已由下一条的登录口先建，照 `/api/adapters` 的先例。）🔗 现状（4-12，10-27）：列表已落（`routes/sources.ts` 的 `GET /`），先是 `{ key, descriptor, has? }`：`has` 只有 `auth` / `liveStatus`，拓展停用或没起来时没有这一格；`preview` 与 `status` 随各自的读口，描述符先不带会员体系。两张表怎么合、名字与形状见 [subscription-sources.md](./subscription-sources.md)「面板怎么读描述符」。
   - 🔗 3a-29 B 站半已落，来源的登录口三个：`GET /api/sources/:sourceKey/auth`（读，回 `SourceAuthResponse { state, account? }`）、`POST …/auth`（发起扫码；状态是 `awaiting-scan` 时回 `conflict`，`confirming`——包括开机还没向 B 站确认上——放行并换一张新码）、`DELETE …/auth`（退出登录，清掉用 `DELETE`，ADR-0036 决策 2）。路由直接问来源登记表、不持有状态：来源不在回 `unavailable`、没有登录口回 `unsupported`，实现抛了记 error、回 `unavailable`；回包逐格挑，没有 cookie 与令牌；挂在登录闸后面。旧的 `/api/auth/*` 四个口退役，其中「刷新 Cookie」的口直接删、没有后继（主人 10-11 定）。
   - `/api/sources/:sourceKey/creators?q=`（搜人，返回结果形状）。
   - `/api/adapters`：各平台适配器的描述，新建连接时用（这个列表仍归第 4 期）；连接候选的读口归 3b；`listAddressCandidates` 的读口挂在连接底下（`GET /api/connections/:id/addresses`，3a-22 已落）。`connectionAuth` 的三个口 3a-29 已建：`POST /api/adapters/:adapterKey/auth`（发起，回任务号、状态与建议的问询间隔）、`GET /api/adapters/:adapterKey/auth/:taskId`（读状态，不带草稿、不清草稿）、`POST /api/adapters/:adapterKey/auth/:taskId/draft`（取走草稿，取走即清，响应头 `no-store`）；路由直接问适配器登记表、不持有状态。`routes/qq.ts` 已删，`/api/qq/*` 整组退役：QQ 官方机器人的扫码建连接走这三个口，会话地址走连接底下那个口。

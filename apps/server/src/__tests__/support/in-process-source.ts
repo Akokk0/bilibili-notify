@@ -249,6 +249,11 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 } {
 	const descriptor: SourceDescriptor = {
 		label: IN_PROCESS_LABEL,
+		shortLabel: "对",
+		color: "#336699",
+		icon: `data:image/png;base64,${IN_PROCESS_TIER_ICON_BASE64}`,
+		searchAccepts: ["id", "name"],
+		supportedFeatures: ["post", "liveStart", "liveEnd", "membership"],
 		...(options.creatorNoun === undefined ? {} : { creatorNoun: options.creatorNoun }),
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [

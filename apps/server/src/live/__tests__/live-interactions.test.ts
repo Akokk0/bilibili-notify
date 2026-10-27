@@ -187,7 +187,7 @@ beforeEach(() => {
 		identityLabel: () => "测试 · room-1",
 		profileAvatar: () => undefined,
 		source: () => ({
-			descriptor: { label: "测试", membershipPrograms: programs },
+			descriptor: { label: "测试", supportedFeatures: ["post"], membershipPrograms: programs },
 			liveInteractions: {
 				async fetchViewerAvatar() {
 					avatarAsked += 1;
@@ -511,7 +511,7 @@ describe("醒目留言", () => {
 			profileName: () => profileName,
 			identityLabel: () => "测试 · room-1",
 			profileAvatar: () => undefined,
-			source: () => ({ descriptor: { label: "测试" } }),
+			source: () => ({ descriptor: { label: "测试", supportedFeatures: ["post"] } }),
 			gates: createSourceGates(),
 			renderer: () => renderer,
 			readImage: async (ref: ImageRef) => ({ bytes: Buffer.from(ref), mime: "image/png" }),

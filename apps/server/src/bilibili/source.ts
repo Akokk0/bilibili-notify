@@ -2,6 +2,7 @@ import {
 	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
 	type Failure,
+	FEATURE_KEYS,
 	fail,
 	formatAgo,
 	type Identity,
@@ -110,10 +111,15 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
  */
 export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	label: "B 站",
+	shortLabel: "B",
+	color: "#fb7299",
 	creatorNoun: "UP主",
 	externalIdNoun: "UID",
 	postNoun: "动态",
 	externalIdRegex: BILI_EXTERNAL_ID_REGEX,
+	// 纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。
+	searchAccepts: ["id", "link", "name"],
+	supportedFeatures: FEATURE_KEYS,
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 };
 

@@ -52,7 +52,7 @@ const setup = (
 	const handle = createSourceContext({
 		integration: { ...makeIntegration(makeLogger(), settingsHost), ...overrides },
 		sourceKey: SOURCE_KEY,
-		descriptor: { label: "测试", postNoun: "动态" },
+		descriptor: { label: "测试", supportedFeatures: ["post"], postNoun: "动态" },
 		aiToolProviders: createAiToolProviderRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
 		subscriptions: world.store,
@@ -133,7 +133,7 @@ describe("createSourceContext", () => {
 		const handle = createSourceContext({
 			integration: makeIntegration(integrationLogger),
 			sourceKey: SOURCE_KEY,
-			descriptor: { label: "测试", postNoun: "动态" },
+			descriptor: { label: "测试", supportedFeatures: ["post"], postNoun: "动态" },
 			aiToolProviders: createAiToolProviderRegistry(),
 			linkResolvers: createLinkResolverRegistry(),
 			subscriptions: makeWorld().store,

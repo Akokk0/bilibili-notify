@@ -12,16 +12,28 @@
  */
 
 import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
+import { SOURCES_QUERY_KEY } from "./useSources";
 
 export const EXTENSIONS_QUERY_KEY = ["extensions"] as const;
+
+/**
+ * 拓展表过期了,来源表(`/api/sources`)跟着一起过期:来源表里拓展的那几行与拓展表照的是同一份清单,装 / 卸 /
+ * 开关 / 换上新版都一起变。只失效拓展表的话,订阅页的平台名与颜色还停在旧的那一份。
+ */
+export function invalidateExtensionTables(qc: QueryClient): Promise<void> {
+	return Promise.all([
+		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY }),
+		qc.invalidateQueries({ queryKey: SOURCES_QUERY_KEY }),
+	]).then(() => undefined);
+}
 
 /**
  * 这个拓展此刻在不在场 —— 要它本人在的事只给在场的:新建它的连接、挑 bot(`/api/adapters/:adapterKey/candidates`
  * 停着回 503)、订阅页的平台选择与解析门(`/api/ext/:id/lookup` 同理)。
  *
- * ⚠️ 清单里的外观(`push` / `subscription` 那一格)**不看这个**:它照清单给、停着也有(ADR-0019
+ * ⚠️ 清单里的外观(推送那口的 `push`、来源表里订阅源的描述符)**不看这个**:它照清单给、停着也有(ADR-0019
  * 决策 41)。两件事别混 —— 「有外观」当「在场」的话,点进去就是一个问不到的拓展。
  */
 export function isExtensionPresent(ext: ExtensionDTO): boolean {

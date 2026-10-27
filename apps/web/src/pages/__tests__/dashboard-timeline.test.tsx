@@ -6,7 +6,7 @@
  * B 站行「UID xxx」,拓展行「平台名 · 外部 id」—— 平台名照已装拓展的清单,拓展卸载了取不到就写拓展 id。
  */
 
-import type { ExtensionDTO } from "@bilibili-notify/contract";
+import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
@@ -35,7 +35,7 @@ function extRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return row({ identity: { sourceKey: "douyin", externalId: "sec-1" }, ...over });
 }
 
-/** 装着的抖音订阅源 —— 平台名照它的清单。 */
+/** 装着的抖音订阅源。 */
 const DOUYIN: ExtensionDTO = {
 	id: "douyin",
 	name: "抖音订阅",
@@ -44,13 +44,18 @@ const DOUYIN: ExtensionDTO = {
 	state: "running",
 	apiVersion: 3,
 	provides: ["subscription"],
-	subscription: {
+};
+
+/** 来源表里抖音那一行:平台名照它(取自清单)。 */
+const DOUYIN_SOURCE: SourceEntry = {
+	key: "douyin",
+	descriptor: {
 		label: "抖音",
 		shortLabel: "抖",
 		color: "#161823",
 		supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
 	},
-} as ExtensionDTO;
+};
 
 function renderPanel(
 	entries: HistoryEntryView[],
@@ -59,7 +64,13 @@ function renderPanel(
 ) {
 	return render(
 		<MemoryRouter initialEntries={["/"]}>
-			<TimelinePanel entries={entries} subs={subs} targets={[]} extensions={extensions} />
+			<TimelinePanel
+				entries={entries}
+				subs={subs}
+				targets={[]}
+				sources={extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []))}
+				extensions={extensions}
+			/>
 		</MemoryRouter>,
 	);
 }

@@ -40,8 +40,8 @@ import {
 } from "./config/persist.js";
 import { payloadDirOf, type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
 import { createDevtools } from "./devtools/index.js";
-import { manifestSubscriptionView } from "./extensions/context.js";
 import { extensionsRootIn } from "./extensions/discover.js";
+import { manifestSourceDescriptor } from "./extensions/extension-source.js";
 import {
 	EXTENSION_MAX_LOAD_FAILURES,
 	entryIdentity,
@@ -879,12 +879,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			extensionPlatformLabel: (id) => {
 				const entry = loadedExtensions?.list().find((one) => one.id === id);
 				if (!entry) return undefined;
-				const view = entry.manifest && manifestSubscriptionView(entry.manifest);
-				return view?.label ?? entryIdentity(entry)?.name;
+				const descriptor = entry.manifest && manifestSourceDescriptor(entry.manifest);
+				return descriptor?.label ?? entryIdentity(entry)?.name;
 			},
 			extensionPostNoun: (id) => {
 				const entry = loadedExtensions?.list().find((one) => one.id === id);
-				return entry?.manifest && manifestSubscriptionView(entry.manifest)?.postNoun;
+				return entry?.manifest && manifestSourceDescriptor(entry.manifest)?.postNoun;
 			},
 			// 来源经 `ctx.reportProfile` 报的资料的收口(递给来源上下文的 `profiles`)。
 			profileReports: runtime.profileReports,
