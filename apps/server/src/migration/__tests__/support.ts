@@ -63,6 +63,11 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 	let root = "";
 	let zero = "";
 	let target = "";
+	/**
+	 * 进行中的那次迁移。vitest 判超时只是把用例记失败,不会取消函数里的 await 链;删临时根之前
+	 * 先等它落定,否则 `rm` 一边删、迁移一边往新代里写,报 ENOTEMPTY。
+	 */
+	let inflight: Promise<unknown> | undefined;
 
 	beforeEach(async () => {
 		root = await mkdtemp(join(tmpdir(), prefix));
@@ -71,16 +76,21 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 	});
 
 	afterEach(async () => {
+		await inflight?.catch(() => {});
+		inflight = undefined;
 		await rm(root, { recursive: true, force: true });
 	});
 
 	const configPath = (name: string) => join(target, ...CONFIG_DIR, name);
-	const migrate = (options?: { now?: Date }) =>
-		migrateZeroGeneration({
+	const migrate = (options?: { now?: Date }): Promise<ZeroMigrationResult> => {
+		const pending = migrateZeroGeneration({
 			zeroRoot: zero,
 			targetDir: target,
 			now: options?.now ?? SANDBOX_NOW,
 		});
+		inflight = pending;
+		return pending;
+	};
 	const load = async () => {
 		const store = createConfigStore({
 			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir: zero, logLevel: "info" },

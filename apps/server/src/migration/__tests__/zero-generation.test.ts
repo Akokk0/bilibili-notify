@@ -26,12 +26,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import {
 	MIGRATION_REVISION,
 	type MigrationProgress,
 	migrateZeroGeneration,
+	type ZeroMigrationResult,
 	zeroGenerationExists,
 } from "../zero-generation.js";
 
@@ -42,15 +43,10 @@ let target: string;
 /** 迁移里那次历史清扫按这一刻算:夹具的历史都在 2026-09-30,保留 30 天,没有哪一天到期。 */
 const NOW = new Date("2026-10-01T00:00:00.000Z");
 
-beforeEach(async () => {
-	root = await mkdtemp(join(tmpdir(), "bn-zero-generation-"));
-	zero = join(root, "data");
-	target = join(root, "data", "generations", "1.partial");
-});
-
-afterEach(async () => {
-	await rm(root, { recursive: true, force: true });
-});
+/** 一份新的临时根:第 0 代在 `data/`,新代在 `data/generations/1.partial`。 */
+async function makeRoot(): Promise<string> {
+	return mkdtemp(join(tmpdir(), "bn-zero-generation-"));
+}
 
 /** 夹具里 `secrets/master.key` 的那把密钥,与 B 站登录那份固定明文(迁移转进 `secrets/bilibili/secrets.enc`)。 */
 const ZERO_MASTER_KEY = Buffer.from("ab".repeat(32), "hex");
@@ -431,7 +427,8 @@ const REWRITTEN = [
 	"uptime/hours.jsonl",
 ];
 
-async function placeZeroGeneration(): Promise<void> {
+async function placeZeroGeneration(root: string): Promise<void> {
+	const zero = join(root, "data");
 	for (const [path, content] of [
 		...Object.entries(ZERO_FILES),
 		...Object.entries(ZERO_BINARY_FILES),
@@ -477,6 +474,15 @@ async function treeDigest(dir: string): Promise<string> {
 }
 
 describe("zeroGenerationExists", () => {
+	beforeEach(async () => {
+		root = await makeRoot();
+		zero = join(root, "data");
+	});
+
+	afterEach(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+
 	it("空目录、只有宿主的东西 → 没有第 0 代;有 0.x 的一级项 → 有", async () => {
 		await mkdir(zero, { recursive: true });
 		expect(await zeroGenerationExists(zero)).toBe(false);
@@ -489,11 +495,49 @@ describe("zeroGenerationExists", () => {
 });
 
 describe("migrateZeroGeneration", () => {
+	/**
+	 * 进行中的那次迁移。vitest 判超时只是把用例记失败,不会取消函数里的 await 链;删临时根之前
+	 * 先等它落定,否则 `rm` 一边删、迁移一边往 `1.partial/` 里写,报 ENOTEMPTY。
+	 */
+	let inflight: Promise<unknown> | undefined;
+	const migrate = (options: Parameters<typeof migrateZeroGeneration>[0]) => {
+		const pending = migrateZeroGeneration(options);
+		inflight = pending;
+		return pending;
+	};
+	const settle = async () => {
+		await inflight?.catch(() => {});
+		inflight = undefined;
+	};
+
+	// 一次迁移串行做约 130 次 fsync,耗时几乎全看磁盘排队;下面这些断言只关心迁移产出,速度由
+	// `migration-timing.test.ts` 管。所以整棵夹具只摆一次、只迁一次。
+	let report: ZeroMigrationResult;
+	let progress: MigrationProgress[];
+	/** 迁移前的整棵树摘要,给「第 0 代一个字节都没动」用。 */
+	let before: string;
+
+	beforeAll(async () => {
+		root = await makeRoot();
+		zero = join(root, "data");
+		target = join(zero, "generations", "1.partial");
+		await placeZeroGeneration(root);
+		before = await treeDigest(zero);
+		progress = [];
+		report = await migrate({
+			zeroRoot: zero,
+			targetDir: target,
+			now: NOW,
+			onProgress: (p) => progress.push(p),
+		});
+	});
+
+	afterAll(async () => {
+		await settle();
+		await rm(root, { recursive: true, force: true });
+	});
+
 	it("每条 0.x 路径都到了代布局里该去的地方;没被改写的内容不变", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		// 搬过来的,加上改写时从别的文件拆出来的(B 站的设置从核心那份拆出,ADR-0021 决策 42 下 10-01 的 🔗)。
 		const splitOut = [
 			"config/settings/bilibili.json",
@@ -526,10 +570,6 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("连接与目标改写成最新的形状", async () => {
-		await placeZeroGeneration();
-
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		const read = async (name: string) =>
 			JSON.parse(await readFile(join(target, "config", name), "utf8")) as unknown[];
 		expect(await read("connections.json")).toEqual([
@@ -545,10 +585,6 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("历史、统计、锐评草稿改写成最新的形状", async () => {
-		await placeZeroGeneration();
-
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		const lines = async (path: string) =>
 			(await readFile(join(target, path), "utf8")).split("\n").filter(Boolean);
 		const [bad, row] = await lines("history/2026-09-30.jsonl");
@@ -582,10 +618,6 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("界面皮肤改写成最新的形状", async () => {
-		await placeZeroGeneration();
-
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		const read = async (...path: string[]) =>
 			JSON.parse(await readFile(join(target, ...path), "utf8")) as Record<string, unknown>;
 		expect(await read("skins", "dashboard", "active.json")).toEqual({ light: "skin-1" });
@@ -598,10 +630,6 @@ describe("migrateZeroGeneration", () => {
 	it("搬过去的每个文件都是复制出来的另一个文件,没有一个和第 0 代共用", async () => {
 		// 共用一个文件(硬链接)的话,哪边原地写都会改到另一边。1.0 自己全是换名写,可回退到 0.x 以后
 		// 0.x 原地写的那几类(字体清单、封面游标、cookie、皮肤素材、重推原件)会改到新代里。
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
 			const same = (await stat(join(target, to))).ino === (await stat(join(zero, from))).ino;
 			expect(same, `${to} 不该和第 0 代的 ${from} 是同一个文件`).toBe(false);
@@ -620,10 +648,6 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("女仆技能、女仆对话与聊天附件不带过来:新代里没有 maid-skills/ 与 ai/,图库里没有附件;报告里各记一句", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		expect(existsSync(join(target, "maid-skills"))).toBe(false);
 		expect(existsSync(join(target, "ai"))).toBe(false);
 		expect(existsSync(join(target, "images", CHAT_REF))).toBe(false);
@@ -643,10 +667,6 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("资料头像进图库后改资料形状,B 站远端头像丢掉、房号进它自己的状态;孤儿头像不搬", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		expect(report.transfers.filter((t) => t.from.startsWith("avatars/"))).toEqual([
 			{ from: "avatars/sub-2.jpeg", to: `images/${AVATAR_REF}`, method: "copy" },
 		]);
@@ -676,38 +696,52 @@ describe("migrateZeroGeneration", () => {
 		]);
 	});
 
-	it("订阅文件读不到时资料照迁成新形状,房号一个不写", async () => {
-		await placeZeroGeneration();
-		await writeFile(join(zero, "state", "subscriptions.json"), "{ not json");
+	// 这一条要在迁移前把夹具改坏,所以自己摆一棵、自己迁一次;迁移仍在 hook 里跑,受 hookTimeout
+	// 管,和共用那条一样不吃 testTimeout。
+	describe("订阅文件读不到", () => {
+		let ownRoot: string;
+		let ownZero: string;
+		let ownTarget: string;
+		let ownReport: ZeroMigrationResult;
 
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
+		beforeAll(async () => {
+			ownRoot = await makeRoot();
+			ownZero = join(ownRoot, "data");
+			ownTarget = join(ownZero, "generations", "1.partial");
+			await placeZeroGeneration(ownRoot);
+			await writeFile(join(ownZero, "state", "subscriptions.json"), "{ not json");
+			ownReport = await migrate({ zeroRoot: ownZero, targetDir: ownTarget, now: NOW });
+		});
 
-		const runtime = JSON.parse(
-			await readFile(join(target, "runtime", "subscription-state.json"), "utf8"),
-		) as Record<string, { cachedProfile?: Record<string, unknown> }>;
-		expect(runtime["33333333-3333-4333-8333-333333333333"]).toEqual({
-			cachedProfile: {
-				name: "B 站甲",
-				followers: 10,
+		afterAll(async () => {
+			await settle();
+			await rm(ownRoot, { recursive: true, force: true });
+		});
+
+		it("订阅文件读不到时资料照迁成新形状,房号一个不写", async () => {
+			const runtime = JSON.parse(
+				await readFile(join(ownTarget, "runtime", "subscription-state.json"), "utf8"),
+			) as Record<string, { cachedProfile?: Record<string, unknown> }>;
+			expect(runtime["33333333-3333-4333-8333-333333333333"]).toEqual({
+				cachedProfile: {
+					name: "B 站甲",
+					followers: 10,
+					refreshedAt: "2026-09-30T00:00:00.000Z",
+				},
+			});
+			expect(runtime["sub-2"]?.cachedProfile).toMatchObject({
+				name: "抖音乙",
+				avatar: AVATAR_REF,
 				refreshedAt: "2026-09-30T00:00:00.000Z",
-			},
+			});
+			expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("sign");
+			expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("lastRefreshedAt");
+			expect(existsSync(join(ownTarget, "runtime", "bilibili", "state.json"))).toBe(false);
+			expect(ownReport.rewritten).toContain("runtime/subscription-state.json");
 		});
-		expect(runtime["sub-2"]?.cachedProfile).toMatchObject({
-			name: "抖音乙",
-			avatar: AVATAR_REF,
-			refreshedAt: "2026-09-30T00:00:00.000Z",
-		});
-		expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("sign");
-		expect(runtime["sub-2"]?.cachedProfile).not.toHaveProperty("lastRefreshedAt");
-		expect(existsSync(join(target, "runtime", "bilibili", "state.json"))).toBe(false);
-		expect(report.rewritten).toContain("runtime/subscription-state.json");
 	});
 
 	it("历史图:保留期内的行引用着的复制进图库(记在搬过去的里),行里 imageRef 换成 image、远端头像网址丢掉;历史图目录不整个搬,记一句", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		expect(report.transfers.filter((t) => t.from.startsWith("history/img/"))).toEqual([
 			{ from: "history/img/a.png", to: `images/${HISTORY_REF}`, method: "copy" },
 		]);
@@ -729,20 +763,12 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("开发版链进来的拓展:新代里重建同样的一条软链,不拷内容", async () => {
-		await placeZeroGeneration();
-
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		const link = join(target, "extensions", "dev-bridge");
 		expect((await lstat(link)).isSymbolicLink()).toBe(true);
 		expect(await readlink(link)).toBe(join(root, "elsewhere"));
 	});
 
 	it("残留、卡片皮肤、宿主的东西不带过来,都记进报告;认不得的一级项也记;拓展订阅只作输入、也记进报告", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		expect(report.skipped.map((s) => s.path).sort()).toEqual(
 			[
 				"ai",
@@ -768,36 +794,20 @@ describe("migrateZeroGeneration", () => {
 	});
 
 	it("第 0 代一个字节都没动", async () => {
-		await placeZeroGeneration();
-		const before = await treeDigest(zero);
-
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
-
 		expect(await treeDigest(zero)).toBe(before);
 	});
 
 	it("按一级项报进度,最后一次是全部做完", async () => {
-		await placeZeroGeneration();
-		const seen: MigrationProgress[] = [];
-
-		await migrateZeroGeneration({
-			zeroRoot: zero,
-			targetDir: target,
-			now: NOW,
-			onProgress: (progress) => seen.push(progress),
-		});
-
-		expect(seen.length).toBeGreaterThan(2);
-		const last = seen.at(-1);
+		expect(progress.length).toBeGreaterThan(2);
+		const last = progress.at(-1);
 		expect(last?.done).toBe(last?.total);
-		for (const progress of seen) expect(progress.label.length).toBeGreaterThan(0);
-		expect(seen.map((p) => p.done)).toEqual([...seen.map((p) => p.done)].sort((a, b) => a - b));
+		for (const p of progress) expect(p.label.length).toBeGreaterThan(0);
+		expect(progress.map((p) => p.done)).toEqual(
+			[...progress.map((p) => p.done)].sort((a, b) => a - b),
+		);
 	});
 
 	it("产出变了就得抬 MIGRATION_REVISION", async () => {
-		await placeZeroGeneration();
-
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 		const hash = createHash("sha256");
 		for (const t of [...report.transfers].sort((a, b) => a.from.localeCompare(b.from))) {
 			hash.update(`${t.from} -> ${t.to} (${t.method})\n`);
