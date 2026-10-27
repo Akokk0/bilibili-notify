@@ -47,19 +47,24 @@ export interface PushToastSink {
 
 /**
  * 把一份直播详情里面板画的几格就地补到在播快照里 `subscriptionId` 对得上的那一行:只补有的格,
- * `totalViewers` 只收有限数。快照还没拉、或没有这一行就原样不动(下一次失效重取会带上)。
+ * `totalViewers` 只收有限数,`startedAt` 只收解析得出的 ISO(场次的,与快照同一个值)。快照还没拉、
+ * 或没有这一行就原样不动(下一次失效重取会带上)。
  */
 function patchLiveRow(
 	qc: QueryClient,
 	subscriptionId: string,
 	details: { title?: string; category?: string; totalViewers?: number } | undefined,
+	/** 场次的开播时刻(ISO);来源没报就没有。 */
+	startedAt?: string,
 ): void {
-	if (!details) return;
 	const patch: Partial<LiveListeningEntry> = {};
-	if (typeof details.title === "string") patch.title = details.title;
-	if (typeof details.category === "string") patch.category = details.category;
-	if (typeof details.totalViewers === "number" && Number.isFinite(details.totalViewers)) {
+	if (typeof details?.title === "string") patch.title = details.title;
+	if (typeof details?.category === "string") patch.category = details.category;
+	if (typeof details?.totalViewers === "number" && Number.isFinite(details.totalViewers)) {
 		patch.totalViewers = details.totalViewers;
+	}
+	if (typeof startedAt === "string" && Number.isFinite(Date.parse(startedAt))) {
+		patch.startedAt = startedAt;
 	}
 	if (Object.keys(patch).length === 0) return;
 	qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
@@ -78,7 +83,7 @@ function patchLiveRow(
  * 处理 `push-events` 频道的单条 envelope。逻辑大表盘:
  *   - `live-session-changed`      → start / resume / end / unmatched-end / status(下播) → invalidate
  *                                    ["live","listening"];status(在播) 与 tick → 就地补那一行
- *                                    (title / category / totalViewers);ending 不动
+ *                                    (title / category / totalViewers / startedAt);ending 不动
  *   - `live-viewers-changed`      → setQueryData 按订阅 id 补那一行的 totalViewers(不存在则 silent);
  *                                    data 是 `{ subscriptionId, currentViewers?, totalViewers? }`
  *   - `followers-refreshed`            → setQueryData 整体覆盖 ["stats", "followers"];data 是 `{ entries }`
@@ -108,10 +113,20 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 					qc.invalidateQueries({ queryKey: ["live", "listening"] });
 					return;
 				}
-				patchLiveRow(qc, change.subscriptionId, change.session?.lastDetails);
+				patchLiveRow(
+					qc,
+					change.subscriptionId,
+					change.session?.lastDetails,
+					change.session?.startedAt,
+				);
 				return;
 			case "tick":
-				patchLiveRow(qc, change.subscriptionId, change.session?.lastDetails);
+				patchLiveRow(
+					qc,
+					change.subscriptionId,
+					change.session?.lastDetails,
+					change.session?.startedAt,
+				);
 				return;
 			default:
 				return;

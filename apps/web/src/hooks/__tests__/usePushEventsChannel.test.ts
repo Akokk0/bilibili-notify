@@ -4,7 +4,7 @@
  * 子事件的契约:
  *   - live-session-changed → start / resume / end / unmatched-end / status(下播) → invalidate ["live","listening"];
  *                            status(在播) 与 tick → 就地补快照里 subscriptionId 对得上的那一行
- *                            (title / category / totalViewers,只补有的格;没有这一行跳过、不重取);
+ *                            (title / category / totalViewers / startedAt,只补有的格;没有这一行跳过、不重取);
  *                            ending 不动
  *   - live-viewers-changed → setQueryData(["live","listening"]) 按订阅 id 补 totalViewers
  *                            订阅不在快照里 → 静默(返回 old,等下次 invalidate)
@@ -256,6 +256,33 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				);
 				expect(h.qc.getQueryData(LIVE_KEY)).toBe(initial);
 				expect(h.invalidate).not.toHaveBeenCalled();
+			});
+
+			// 来源认出这一场时没报开播时刻、之后才学到:快照那一行还空着,就地补上场次的,
+			// 否则要等下一次失效重取才出现(R31)。
+			it.each(liveFrames)("%s:这一行还没有开播时刻时,补上场次的那个", (_n, mk) => {
+				h.qc.setQueryData(LIVE_KEY, [entry("s1")]);
+				handlePushEnvelope(
+					frame(mk(session({ startedAt: "2026-05-16T01:00:00.000Z" }))),
+					h.qc,
+					h.toast,
+				);
+				expect(h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY)).toEqual([
+					entry("s1", { startedAt: "2026-05-16T01:00:00.000Z" }),
+				]);
+				expect(h.invalidate).not.toHaveBeenCalled();
+			});
+
+			it.each(liveFrames)("%s:开播时刻不是有效时刻:不写,别的格照补", (_n, mk) => {
+				h.qc.setQueryData(LIVE_KEY, [entry("s1")]);
+				handlePushEnvelope(
+					frame(mk(session({ startedAt: "not-a-date", lastDetails: { title: "标题" } }))),
+					h.qc,
+					h.toast,
+				);
+				expect(h.qc.getQueryData<LiveListeningEntry[]>(LIVE_KEY)).toEqual([
+					entry("s1", { title: "标题" }),
+				]);
 			});
 		});
 	});
