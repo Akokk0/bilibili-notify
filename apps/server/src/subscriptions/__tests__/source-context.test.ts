@@ -550,6 +550,19 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		expect(logger.error).not.toHaveBeenCalled();
 	});
 
+	it("报一条缺 message(第三方 JS 交的):丢弃并记 error,onRejectedProblem 收到点名 message 的原因", () => {
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { handle, problems, logger } = setup(
+			[makeSub("a", "1")],
+			{},
+			{ onRejectedProblem: (rejection) => rejections.push(rejection) },
+		);
+		handle.ctx.reportProblem({ code: "x_down" } as never);
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+		expect(rejections).toEqual([{ reason: "问题「x_down」被拒：message 不是字符串" }]);
+	});
+
 	it("给了 onRejectedProblem:带上 externalId 与原因,日志照记", () => {
 		const rejections: Array<{ externalId?: string; reason: string }> = [];
 		const { handle, problems, logger } = setup(

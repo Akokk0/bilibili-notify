@@ -171,7 +171,6 @@ export const RATCHET = {
 	"apps/server/src/platforms/webhook.ts": 8,
 	"apps/server/src/posts/deliver-post.ts": 2,
 	"apps/server/src/posts/post-text.ts": 4,
-	"apps/server/src/problems/problem-report.ts": 4,
 	"apps/server/src/push/adapter-context.ts": 7,
 	"apps/server/src/push/builtin-adapters.ts": 1,
 	"apps/server/src/push/connection-settings.ts": 2,

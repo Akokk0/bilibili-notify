@@ -303,6 +303,18 @@ describe("createPlatformAdapterContext · reportProblem / resolveProblem", () =>
 		expect(logger.error).toHaveBeenCalledTimes(1);
 	});
 
+	it("报一条缺 message(第三方 JS 交的):被拒、不进表,onRejectedProblem 收到点名 message 的原因", () => {
+		const logger = { ...silentLogger, error: vi.fn() };
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { ctx, problems } = build("onebot", () => mine, undefined, z.unknown(), logger, {
+			onRejectedProblem: (rejection) => rejections.push(rejection),
+		});
+		ctx.reportProblem({ connectionId: "ob1", code: "x_down" } as never);
+		expect(problems.list()).toEqual([]);
+		expect(logger.error).toHaveBeenCalledTimes(1);
+		expect(rejections).toEqual([{ reason: "问题「x_down」被拒：message 不是字符串" }]);
+	});
+
 	it("给了 onRejectedProblem:记日志,并把原因交给它", () => {
 		const logger = { ...silentLogger, error: vi.fn() };
 		const rejections: Array<{ externalId?: string; reason: string }> = [];

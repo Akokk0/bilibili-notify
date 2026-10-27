@@ -7,7 +7,13 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import { problemRejectionReason, problemReportIssue } from "../problems/problem-report.js";
+import { t } from "../i18n/index.js";
+import {
+	parseProblemReport,
+	parseProblemResolve,
+	problemCodePreview,
+	problemRejectionReason,
+} from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { resolveSettings, settingsIssueMessage } from "./connection-settings.js";
 
@@ -75,26 +81,32 @@ export function createPlatformAdapterContext(
 		return integration.signal.aborted;
 	}
 
+	/** 形状不对的上报:记一行并按选项把原因交出去;`code` 用安全预览,不直接插第三方交来的值。 */
+	function rejectProblem(what: string, report: unknown, issue: string): void {
+		const code = problemCodePreview(report);
+		integration.logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${issue}`);
+		opts.onRejectedProblem?.({ reason: problemRejectionReason(code, false, issue) });
+	}
+
 	/**
-	 * 关于连接的上报的公共一步:已停下、形状不对、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
+	 * 关于连接的上报的公共一步:已停下、连接不归我的丢弃并按选项记一行,过了关才叫 `apply`。
+	 * 形状已经由解析那一步核过(`problems/problem-report.ts`),这里只管归属与「还活着吗」。
 	 */
 	function acceptConnectionProblem(
 		what: string,
-		problem: { connectionId: string; code: string; message?: string; recoveryMessage?: string },
+		code: string,
+		connectionId: string,
 		apply: () => void,
 	): void {
 		const issue = stopped()
 			? "适配器已停下"
-			: (problemReportIssue(problem) ??
-				(ownedConnection(problem.connectionId) !== undefined
-					? undefined
-					: `连接 ${problem.connectionId} 不是适配器 ${adapterKey} 的`));
+			: ownedConnection(connectionId) !== undefined
+				? undefined
+				: t("problem.report.connectionNotOwned", { connectionId, adapterKey });
 		if (issue !== undefined) {
-			integration.logger[opts.rejectedProblemLevel](
-				`${what}问题 ${problem.code} 被拒(丢弃):${issue}`,
-			);
+			integration.logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${issue}`);
 			opts.onRejectedProblem?.({
-				reason: problemRejectionReason(problem, stopped(), issue),
+				reason: problemRejectionReason(code, stopped(), issue),
 			});
 			return;
 		}
@@ -112,15 +124,16 @@ export function createPlatformAdapterContext(
 		meta: Pick<InboundMeta, "connectionId">,
 		deliver: (meta: InboundMeta) => void,
 	): void {
-		const what = route === "private" ? "私聊" : "群";
 		if (stopped()) {
-			integration.logger.warn(`丢掉一条${what}消息:适配器 ${adapterKey} 已停下`);
+			integration.logger.warn(
+				`丢掉一条${route === "private" ? "私聊" : "群"}消息:适配器 ${adapterKey} 已停下`,
+			);
 			return;
 		}
 		const connection = ownedConnection(meta.connectionId);
 		if (!connection) {
 			integration.logger.warn(
-				`丢掉一条${what}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
+				`丢掉一条${route === "private" ? "私聊" : "群"}消息:连接 ${meta.connectionId} 不是适配器 ${adapterKey} 的`,
 			);
 			return;
 		}
@@ -139,34 +152,56 @@ export function createPlatformAdapterContext(
 		http: integration.http,
 		fetchImage: integration.fetchImage,
 		storeImage: integration.storeImage,
-		reportProblem({ connectionId, ...problem }) {
-			if (connectionId === undefined) {
-				integration.reportProblem(problem);
+		reportProblem(problem) {
+			const parsed = parseProblemReport(problem);
+			if (!parsed.ok) {
+				rejectProblem("报", problem, parsed.message);
 				return;
 			}
-			acceptConnectionProblem("报", { connectionId, ...problem }, () =>
+			if (parsed.connectionId === undefined) {
+				integration.reportProblem({
+					code: parsed.code,
+					message: parsed.message,
+					...(parsed.notify === undefined ? {} : { notify: parsed.notify }),
+					...(parsed.recoveryMessage === undefined
+						? {}
+						: { recoveryMessage: parsed.recoveryMessage }),
+				});
+				return;
+			}
+			const connectionId = parsed.connectionId;
+			acceptConnectionProblem("报", parsed.code, connectionId, () =>
 				opts.problems.report({
 					reporter: adapterKey,
 					writtenBy: opts.label(),
 					about: { connectionId },
-					code: problem.code,
-					message: problem.message,
-					...(problem.notify === undefined ? {} : { notify: problem.notify }),
-					...(problem.recoveryMessage === undefined
+					code: parsed.code,
+					message: parsed.message,
+					...(parsed.notify === undefined ? {} : { notify: parsed.notify }),
+					...(parsed.recoveryMessage === undefined
 						? {}
-						: { recoveryMessage: problem.recoveryMessage }),
+						: { recoveryMessage: parsed.recoveryMessage }),
 				}),
 			);
 		},
-		resolveProblem({ connectionId, ...problem }) {
-			if (connectionId === undefined) {
-				integration.resolveProblem(problem);
+		resolveProblem(problem) {
+			const parsed = parseProblemResolve(problem);
+			if (!parsed.ok) {
+				rejectProblem("清", problem, parsed.message);
 				return;
 			}
-			acceptConnectionProblem("清", { connectionId, ...problem }, () =>
+			if (parsed.connectionId === undefined) {
+				integration.resolveProblem({
+					code: parsed.code,
+					...(parsed.notify === undefined ? {} : { notify: parsed.notify }),
+				});
+				return;
+			}
+			const connectionId = parsed.connectionId;
+			acceptConnectionProblem("清", parsed.code, connectionId, () =>
 				opts.problems.resolve(
-					{ reporter: adapterKey, about: { connectionId }, code: problem.code },
-					problem.notify === undefined ? undefined : { notify: problem.notify },
+					{ reporter: adapterKey, about: { connectionId }, code: parsed.code },
+					parsed.notify === undefined ? undefined : { notify: parsed.notify },
 				),
 			);
 		},

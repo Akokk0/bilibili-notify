@@ -348,6 +348,18 @@ describe("createIntegrationContext · reportProblem / resolveProblem", () => {
 		expect(lines.filter((l) => l.startsWith("error "))).toEqual([]);
 	});
 
+	it("报一条缺 message(第三方 JS 交的):被拒、不进表,onRejectedProblem 收到点名 message 的原因", () => {
+		const rejections: Array<{ externalId?: string; reason: string }> = [];
+		const { handle, lines, problems } = make({
+			onRejectedProblem: (rejection) => rejections.push(rejection),
+			rejectedProblemLevel: "warn",
+		});
+		handle.ctx.reportProblem({ code: "x_down" } as never);
+		expect(problems.list()).toEqual([]);
+		expect(lines.filter((l) => l.startsWith("warn "))).toHaveLength(1);
+		expect(rejections).toEqual([{ reason: "问题「x_down」被拒：message 不是字符串" }]);
+	});
+
 	it("给了 onRejectedProblem:照旧记日志,并把给人看的原因交给它", () => {
 		const rejections: Array<{ externalId?: string; reason: string }> = [];
 		const { handle, lines, problems } = make({

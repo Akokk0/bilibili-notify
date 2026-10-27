@@ -10,13 +10,19 @@ import type {
 	MessageBus,
 	PostEvent,
 	PostReport,
+	Result,
 	SourceContext,
 	SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { AiToolProviderRegistry } from "../ai/tool-provider-registry.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
-import { problemRejectionReason, problemReportIssue } from "../problems/problem-report.js";
+import {
+	parseProblemReport,
+	parseProblemResolve,
+	problemCodePreview,
+	problemRejectionReason,
+} from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
@@ -83,6 +89,13 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	const log = (message: string): void =>
 		opts.rejectedProblemLevel === "warn" ? logger.warn(message) : logger.error(message);
 
+	/** 被拒的上报里带的 externalId:只认字符串 —— 第三方交来的可能是别的,原样交给 `onRejectedProblem` 没有意义。 */
+	function externalIdOf(report: unknown): { externalId?: string } {
+		if (typeof report !== "object" || report === null) return {};
+		const value = (report as { externalId?: unknown }).externalId;
+		return typeof value === "string" ? { externalId: value } : {};
+	}
+
 	const notify = (): void => {
 		for (const fn of [...listeners]) {
 			// 总线是普通发射器,一个回调同步抛了会跳过排在后面的监听:每个回调单独接。
@@ -99,36 +112,42 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	 * 缺省记 error);
 	 * 不带 `externalId` 交一个「来源自己」的对象,带了按身份展开成这个人名下的每一条订阅
 	 * (遗留的同身份重复订阅各算一条;一条都没有就什么都不做)。
+	 * 上报先经 `problems/problem-report.ts` 解析成干净副本,问题表只写副本里的那几格。
 	 */
-	const forEachProblemObject = (
+	const forEachProblemObject = <T extends { externalId?: string; code: string }>(
 		what: string,
-		problem: { externalId?: string; code: string; message?: string; recoveryMessage?: string },
-		visit: (about: { subscriptionId: string } | undefined) => void,
+		report: unknown,
+		parse: (raw: unknown) => Result<T>,
+		visit: (problem: T, about: { subscriptionId: string } | undefined) => void,
 	): void => {
+		const code = problemCodePreview(report);
 		if (disposed) {
-			log(`[source] ${sourceKey} 已停下还在${what}问题 ${problem.code}(丢弃;来源的 bug)`);
+			log(`[source] ${sourceKey} 已停下还在${what}问题 ${code}(丢弃;来源的 bug)`);
 			opts.onRejectedProblem?.({
-				...(problem.externalId === undefined ? {} : { externalId: problem.externalId }),
-				reason: problemRejectionReason(problem, true),
+				...externalIdOf(report),
+				reason: problemRejectionReason(code, true),
 			});
 			return;
 		}
-		const issue = problemReportIssue(problem);
-		if (issue !== undefined) {
+		const problem = parse(report);
+		if (!problem.ok) {
 			log(
-				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;来源的 bug): ${problem.code}(${issue})`,
+				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;来源的 bug): ${code}(${problem.message})`,
 			);
 			opts.onRejectedProblem?.({
-				...(problem.externalId === undefined ? {} : { externalId: problem.externalId }),
-				reason: problemRejectionReason(problem, false, issue),
+				...externalIdOf(report),
+				reason: problemRejectionReason(code, false, problem.message),
 			});
 			return;
 		}
 		if (problem.externalId === undefined) {
-			visit(undefined);
+			visit(problem, undefined);
 			return;
 		}
-		const subs = opts.subscriptions.listByIdentity({ sourceKey, externalId: problem.externalId });
+		const subs = opts.subscriptions.listByIdentity({
+			sourceKey,
+			externalId: problem.externalId,
+		});
 		if (subs.length === 0) {
 			logger.debug(
 				`[source] ${sourceKey}:${problem.externalId} 没有订阅,${what}的问题 ${problem.code} 不收`,
@@ -136,7 +155,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			return;
 		}
 		// 停用着的订阅照记,不在这里筛。
-		for (const sub of subs) visit({ subscriptionId: sub.id });
+		for (const sub of subs) visit(problem, { subscriptionId: sub.id });
 	};
 
 	const watches: Disposable[] = [
@@ -277,25 +296,25 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 			opts.profiles(ids, report);
 		},
 		reportProblem(problem) {
-			forEachProblemObject("报", problem, (about) =>
+			forEachProblemObject("报", problem, parseProblemReport, (report, about) =>
 				opts.problems.report({
 					reporter: sourceKey,
 					writtenBy: opts.label?.() ?? descriptor.label,
 					...(about ? { about } : {}),
-					code: problem.code,
-					message: problem.message,
-					...(problem.notify === undefined ? {} : { notify: problem.notify }),
-					...(problem.recoveryMessage === undefined
+					code: report.code,
+					message: report.message,
+					...(report.notify === undefined ? {} : { notify: report.notify }),
+					...(report.recoveryMessage === undefined
 						? {}
-						: { recoveryMessage: problem.recoveryMessage }),
+						: { recoveryMessage: report.recoveryMessage }),
 				}),
 			);
 		},
 		resolveProblem(problem) {
-			forEachProblemObject("清", problem, (about) =>
+			forEachProblemObject("清", problem, parseProblemResolve, (report, about) =>
 				opts.problems.resolve(
-					{ reporter: sourceKey, ...(about ? { about } : {}), code: problem.code },
-					problem.notify === undefined ? undefined : { notify: problem.notify },
+					{ reporter: sourceKey, ...(about ? { about } : {}), code: report.code },
+					report.notify === undefined ? undefined : { notify: report.notify },
 				),
 			);
 		},

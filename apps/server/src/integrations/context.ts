@@ -4,13 +4,15 @@ import type {
 	IntegrationContext,
 	KeyValueStore,
 	Logger,
+	Result,
 } from "@bilibili-notify/internal";
 import { createImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import {
-	type ProblemReport,
+	parseProblemReport,
+	parseProblemResolve,
+	problemCodePreview,
 	problemRejectionReason,
-	problemReportIssue,
 } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 
@@ -141,19 +143,30 @@ export function createIntegrationContext(
 	}
 
 	/**
-	 * 问题上报的公共一步:已停下、形状不对的丢弃并按选项记一行;过了关就叫 `apply`。
-	 * 校验规矩与来源层共用一份(`problems/problem-report.ts`)。
+	 * 问题上报的公共一步:已停下、形状不对的丢弃并按选项记一行;过了关才叫 `apply`。
+	 * 解析规矩三层共用一份(`problems/problem-report.ts`):先解析出干净副本,问题表只写副本里的那几格。
 	 */
-	function acceptProblem(what: string, problem: ProblemReport, apply: () => void): void {
-		const issue = disposed ? "集成已停下" : problemReportIssue(problem);
-		if (issue !== undefined) {
-			logger[opts.rejectedProblemLevel](`${what}问题 ${problem.code} 被拒(丢弃):${issue}`);
+	function acceptProblem<T extends object>(
+		what: string,
+		report: unknown,
+		parse: (raw: unknown) => Result<T>,
+		apply: (problem: T) => void,
+	): void {
+		const code = problemCodePreview(report);
+		if (disposed) {
+			logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):集成已停下`);
+			opts.onRejectedProblem?.({ reason: problemRejectionReason(code, true) });
+			return;
+		}
+		const parsed = parse(report);
+		if (!parsed.ok) {
+			logger[opts.rejectedProblemLevel](`${what}问题 ${code} 被拒(丢弃):${parsed.message}`);
 			opts.onRejectedProblem?.({
-				reason: problemRejectionReason(problem, disposed, issue),
+				reason: problemRejectionReason(code, false, parsed.message),
 			});
 			return;
 		}
-		apply();
+		apply(parsed);
 	}
 
 	// 抓图 / 存图服务:走这个集成自己的客户端,写进「在途」那一家。拦内网只在这里,`ctx.http` 整体不拦。
@@ -195,24 +208,24 @@ export function createIntegrationContext(
 			opts.redactValues([...redacted]);
 		},
 		reportProblem(problem) {
-			acceptProblem("报", problem, () =>
+			acceptProblem("报", problem, parseProblemReport, (report) =>
 				opts.problems.report({
 					reporter: opts.reporter,
 					writtenBy: opts.label(),
-					code: problem.code,
-					message: problem.message,
-					...(problem.notify === undefined ? {} : { notify: problem.notify }),
-					...(problem.recoveryMessage === undefined
+					code: report.code,
+					message: report.message,
+					...(report.notify === undefined ? {} : { notify: report.notify }),
+					...(report.recoveryMessage === undefined
 						? {}
-						: { recoveryMessage: problem.recoveryMessage }),
+						: { recoveryMessage: report.recoveryMessage }),
 				}),
 			);
 		},
 		resolveProblem(problem) {
-			acceptProblem("清", problem, () =>
+			acceptProblem("清", problem, parseProblemResolve, (report) =>
 				opts.problems.resolve(
-					{ reporter: opts.reporter, code: problem.code },
-					problem.notify === undefined ? undefined : { notify: problem.notify },
+					{ reporter: opts.reporter, code: report.code },
+					report.notify === undefined ? undefined : { notify: report.notify },
 				),
 			);
 		},
