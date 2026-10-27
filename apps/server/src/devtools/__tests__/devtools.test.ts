@@ -33,7 +33,12 @@ const updateService: UpdateService = {
 
 /** 真市场的替身:什么都不列,装只记账 —— 装饰那一层的规矩在 marketplace-update-scenario 里钉。 */
 const REAL_MARKET: Marketplace = {
-	list: async () => ({ available: true, sources: [], extensions: [], fetchedAt: 0 }),
+	list: async () => ({
+		available: true,
+		sources: [],
+		extensions: [],
+		fetchedAt: "2026-10-27T00:00:00.000Z",
+	}),
 	install: async () => fail("unavailable", "真市场的替身不装东西"),
 };
 

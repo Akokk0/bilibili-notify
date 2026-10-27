@@ -155,14 +155,17 @@ export class CardSkinStore {
 
 	/** 内置那份在首位,其余按最近改动排。 */
 	list(): CardSkinSummary[] {
-		const rest: CardSkinSummary[] = [];
+		const rest: Array<{ id: string; manifest: CardSkinManifest; mtimeMs: number }> = [];
 		for (const id of this.pkg.ids()) {
 			const manifest = this.pkg.get(id);
-			const updatedAt = this.pkg.updatedAt(id);
-			if (manifest && updatedAt !== null) rest.push(summary(id, manifest, false, updatedAt));
+			const mtimeMs = this.pkg.updatedAt(id);
+			if (manifest && mtimeMs !== null) rest.push({ id, manifest, mtimeMs });
 		}
-		rest.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-		return [summary(DEFAULT_CARD_SKIN_ID, DEFAULT_CARD_SKIN, true, 0), ...rest];
+		rest.sort((a, b) => b.mtimeMs - a.mtimeMs || a.id.localeCompare(b.id));
+		return [
+			summary(DEFAULT_CARD_SKIN_ID, DEFAULT_CARD_SKIN, true, undefined),
+			...rest.map((one) => summary(one.id, one.manifest, false, one.mtimeMs)),
+		];
 	}
 
 	/**
@@ -436,7 +439,8 @@ function summary(
 	id: string,
 	m: CardSkinManifest,
 	builtin: boolean,
-	updatedAt: number,
+	/** 清单文件的 mtime(毫秒);内置那份不落盘,不给。 */
+	mtimeMs: number | undefined,
 ): CardSkinSummary {
 	return {
 		id,
@@ -444,7 +448,7 @@ function summary(
 		...(m.author !== undefined ? { author: m.author } : {}),
 		...(m.description !== undefined ? { description: m.description } : {}),
 		builtin,
-		updatedAt,
+		...(mtimeMs === undefined ? {} : { updatedAt: new Date(mtimeMs).toISOString() }),
 		...(m.knobs?.length ? { knobs: m.knobs } : {}),
 		kinds: Object.keys(m.cards) as CardKind[],
 	};

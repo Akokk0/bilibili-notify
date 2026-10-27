@@ -240,7 +240,7 @@ describe("DevDock", () => {
 			phase: "available",
 			target: "0.99.0",
 			releaseUrl: "https://example.invalid/v0.99.0",
-			checkedAt: 1,
+			checkedAt: "2026-10-27T00:00:00.000Z",
 			notes: "devtools 造的一版",
 		});
 		const active = [{ scenarioId: "update.state", label: "更新状态 → available 0.99.0" }];

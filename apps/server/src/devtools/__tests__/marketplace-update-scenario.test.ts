@@ -50,7 +50,7 @@ function fakeMarket(entries: MarketplaceEntryDTO[]) {
 			available: true,
 			sources: [{ id: "official", name: "官方源", official: true, ok: true }],
 			extensions: entries.map((one) => ({ ...one })),
-			fetchedAt: 1,
+			fetchedAt: "2026-10-27T00:00:00.000Z",
 		}),
 	);
 	return { list, install };

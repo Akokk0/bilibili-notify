@@ -84,7 +84,7 @@ describe("UpdateSection —— 报错的归因", () => {
 			target: "0.9.0",
 			releaseUrl: "https://x",
 			notes: "修了直播断流误报。",
-			checkedAt: 1,
+			checkedAt: "2026-10-27T00:00:00.000Z",
 		});
 		renderSection();
 
@@ -100,7 +100,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	});
 
 	it("验签失败才是红字 —— 那是唯一可能真有人动了手脚的一条", async () => {
-		serve({ phase: "error", reason: "untrusted", checkedAt: 1 });
+		serve({ phase: "error", reason: "untrusted", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		const alert = await screen.findByRole("alert");
@@ -108,7 +108,12 @@ describe("UpdateSection —— 报错的归因", () => {
 	});
 
 	it("连不上不是红字 —— 代理站抽风被渲染成安全警告,只会训练用户忽略红字", async () => {
-		serve({ phase: "error", reason: "unreachable", helpUrl: "https://x/releases", checkedAt: 1 });
+		serve({
+			phase: "error",
+			reason: "unreachable",
+			helpUrl: "https://x/releases",
+			checkedAt: "2026-10-27T00:00:00.000Z",
+		});
 		renderSection();
 
 		expect(await screen.findByText(/连不上更新服务器/)).toBeTruthy();
@@ -116,7 +121,7 @@ describe("UpdateSection —— 报错的归因", () => {
 	});
 
 	it("清单读不出来时明说是我们的锅,别让用户去查自己的网络", async () => {
-		serve({ phase: "error", reason: "malformed", checkedAt: 1 });
+		serve({ phase: "error", reason: "malformed", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		expect(await screen.findByText(/我们发版时出的岔子/)).toBeTruthy();
@@ -125,7 +130,7 @@ describe("UpdateSection —— 报错的归因", () => {
 
 	it("校验和对不上时要说清『盘上没留东西』", async () => {
 		// 用户最怕的是「装了一半」。这句话省不得 —— 它决定他要不要去手动清理。
-		serve({ phase: "error", reason: "checksum-mismatch", checkedAt: 1 });
+		serve({ phase: "error", reason: "checksum-mismatch", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		expect(await screen.findByText(/盘上没留东西/)).toBeTruthy();
@@ -136,7 +141,7 @@ describe("UpdateSection —— 报错的归因", () => {
 			phase: "error",
 			reason: "download-failed",
 			helpUrl: "https://github.com/o/r/releases/tag/v0.9.0",
-			checkedAt: 1,
+			checkedAt: "2026-10-27T00:00:00.000Z",
 		});
 		renderSection();
 
@@ -147,7 +152,7 @@ describe("UpdateSection —— 报错的归因", () => {
 
 describe("UpdateSection —— 按钮该在什么时候出现", () => {
 	it("没东西可应用时不给「立即重启」按钮 —— 白白重启一次最像功能坏了", async () => {
-		serve({ phase: "up-to-date", checkedAt: 1 });
+		serve({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		await screen.findByText("已是最新");
@@ -166,7 +171,12 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 	});
 
 	it("关掉自动下载时才出现「下载这一版」", async () => {
-		serve({ phase: "available", target: "0.9.0", releaseUrl: "https://x/t", checkedAt: 1 });
+		serve({
+			phase: "available",
+			target: "0.9.0",
+			releaseUrl: "https://x/t",
+			checkedAt: "2026-10-27T00:00:00.000Z",
+		});
 		renderSection();
 
 		expect(await screen.findByRole("button", { name: "下载这一版" })).toBeTruthy();
@@ -174,7 +184,7 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 
 	it("没有可退的版本 → 回退按钮是灰的,而且写明为什么", async () => {
 		// 一颗按了没反应的按钮比一颗灰按钮更让人怀疑整个功能。
-		serve({ phase: "up-to-date", checkedAt: 1 });
+		serve({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
 		renderSection();
 
 		const btn = await screen.findByRole("button", { name: "没有可退的版本" });
@@ -182,7 +192,10 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 	});
 
 	it("有上一版时按钮写出退到哪一版", async () => {
-		serve({ phase: "up-to-date", checkedAt: 1 }, { rollbackTarget: "0.7.0" });
+		serve(
+			{ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" },
+			{ rollbackTarget: "0.7.0" },
+		);
 		renderSection();
 
 		const btn = await screen.findByRole("button", { name: "退回 0.7.0" });
@@ -212,7 +225,7 @@ describe("UpdateSection —— 按钮该在什么时候出现", () => {
 			phase: "needs-image-pull",
 			target: "0.9.0",
 			releaseUrl: "https://x/tag/v0.9.0",
-			checkedAt: 1,
+			checkedAt: "2026-10-27T00:00:00.000Z",
 		});
 		renderSection();
 

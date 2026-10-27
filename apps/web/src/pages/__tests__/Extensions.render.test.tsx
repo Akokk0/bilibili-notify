@@ -28,7 +28,12 @@ vi.mock("../../services/api", () => ({
 }));
 
 /** 市场那一口的默认回答:官方源在、什么都没列 —— 单独一条用例才往里放条目。 */
-const MARKET: MarketplaceResponse = { available: true, fetchedAt: 1, sources: [], extensions: [] };
+const MARKET: MarketplaceResponse = {
+	available: true,
+	fetchedAt: "2026-10-27T00:00:00.000Z",
+	sources: [],
+	extensions: [],
+};
 
 /** 迁到 v2 的桥 —— 卡上「N 条连接」后面那一行由它的视图交(`summary`)。 */
 const BRIDGE: ExtensionsResponse["extensions"][number] = {

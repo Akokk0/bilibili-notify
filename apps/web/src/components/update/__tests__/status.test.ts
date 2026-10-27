@@ -9,13 +9,23 @@ function status(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
 describe("newerVersionOf —— 「有一版比现在新」这件事只在一处判", () => {
 	it("有新版 / 正在下 / 已就绪 / 要新镜像:都算有新版,给版本号", () => {
 		const t = (state: UpdateStatusDTO["state"]) => newerVersionOf(status(state));
-		expect(t({ phase: "available", target: "0.9.0", releaseUrl: "https://x", checkedAt: 1 })).toBe(
-			"0.9.0",
-		);
+		expect(
+			t({
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				checkedAt: "2026-10-27T00:00:00.000Z",
+			}),
+		).toBe("0.9.0");
 		expect(t({ phase: "downloading", target: "0.9.0", releaseUrl: "https://x" })).toBe("0.9.0");
 		expect(t({ phase: "ready", target: "0.9.0", releaseUrl: "https://x" })).toBe("0.9.0");
 		expect(
-			t({ phase: "needs-image-pull", target: "0.9.0", releaseUrl: "https://x", checkedAt: 1 }),
+			t({
+				phase: "needs-image-pull",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				checkedAt: "2026-10-27T00:00:00.000Z",
+			}),
 		).toBe("0.9.0");
 	});
 
@@ -25,10 +35,14 @@ describe("newerVersionOf —— 「有一版比现在新」这件事只在一处
 
 	it("没查过 / 最新 / 关着 / 出错:没有", () => {
 		expect(newerVersionOf(status({ phase: "idle" }))).toBeNull();
-		expect(newerVersionOf(status({ phase: "up-to-date", checkedAt: 1 }))).toBeNull();
+		expect(
+			newerVersionOf(status({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" })),
+		).toBeNull();
 		expect(newerVersionOf(status({ phase: "disabled", reason: "no-keys" }))).toBeNull();
 		expect(
-			newerVersionOf(status({ phase: "error", reason: "unreachable", checkedAt: 1 })),
+			newerVersionOf(
+				status({ phase: "error", reason: "unreachable", checkedAt: "2026-10-27T00:00:00.000Z" }),
+			),
 		).toBeNull();
 	});
 });

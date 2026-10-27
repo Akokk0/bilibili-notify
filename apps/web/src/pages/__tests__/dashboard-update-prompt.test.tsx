@@ -53,7 +53,12 @@ afterEach(() => {
 describe("SystemHealthCard —— 有新版时", () => {
 	it("版本号旁边说一句,「去更新」直达系统页的更新卡片", async () => {
 		renderCard({
-			update: dto({ phase: "available", target: "0.9.0", releaseUrl: "https://x", checkedAt: 1 }),
+			update: dto({
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				checkedAt: "2026-10-27T00:00:00.000Z",
+			}),
 		});
 
 		expect(screen.getByText("有新版 0.9.0")).toBeTruthy();
@@ -68,7 +73,7 @@ describe("SystemHealthCard —— 有新版时", () => {
 	});
 
 	it("已是最新 / 还没查:不催", () => {
-		renderCard({ update: dto({ phase: "up-to-date", checkedAt: 1 }) });
+		renderCard({ update: dto({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" }) });
 		expect(screen.queryByRole("button", { name: "去更新" })).toBeNull();
 		cleanup();
 		renderCard({ update: undefined });
@@ -78,7 +83,12 @@ describe("SystemHealthCard —— 有新版时", () => {
 	it("后端失联时不催 —— 那份状态只是快照,按了也去不了哪", () => {
 		renderCard({
 			reachable: false,
-			update: dto({ phase: "available", target: "0.9.0", releaseUrl: "https://x", checkedAt: 1 }),
+			update: dto({
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				checkedAt: "2026-10-27T00:00:00.000Z",
+			}),
 		});
 		expect(screen.queryByRole("button", { name: "去更新" })).toBeNull();
 	});

@@ -33,8 +33,8 @@ export interface CardSkinSummary {
 	description?: string;
 	/** 内置只读那份(改不了、删不了,只能「复制一份」)。 */
 	builtin: boolean;
-	/** `card-skin.json` 的 mtime(ms);内置那份不落盘,恒 0。 */
-	updatedAt: number;
+	/** `card-skin.json` 的 mtime,带时区的 UTC ISO;内置那份不落盘,没有这一格。 */
+	updatedAt?: string;
 	/**
 	 * 这套皮肤自己声明的旋钮(ADR-0014 决策 16 的 🔗)。面板照它生成控件,所以列表这一趟
 	 * 就带上 —— 每套最多 16 枚,比再跑一趟清单便宜。没声明的皮肤不带这个键。

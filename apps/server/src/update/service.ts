@@ -216,7 +216,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 	}
 
 	function fail(reason: UpdateErrorReason, helpUrl?: string): UpdateStatus {
-		state = { phase: "error", reason, helpUrl, checkedAt: Date.now() };
+		state = { phase: "error", reason, helpUrl, checkedAt: new Date().toISOString() };
 		return status();
 	}
 
@@ -422,7 +422,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 
 		if (decision.kind === "up-to-date") {
 			pending = null;
-			state = { phase: "up-to-date", checkedAt: Date.now() };
+			state = { phase: "up-to-date", checkedAt: new Date().toISOString() };
 			return status();
 		}
 		if (decision.kind === "needs-image-pull") {
@@ -434,7 +434,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				target: decision.target,
 				releaseUrl: manifest.releaseUrl,
 				notes: manifest.notes,
-				checkedAt: Date.now(),
+				checkedAt: new Date().toISOString(),
 			};
 			return status();
 		}
@@ -449,7 +449,7 @@ export function createUpdateService(input: CreateUpdateServiceInput): UpdateServ
 				target: manifest.version,
 				releaseUrl: manifest.releaseUrl,
 				notes: manifest.notes,
-				checkedAt: Date.now(),
+				checkedAt: new Date().toISOString(),
 			};
 			return status();
 		}

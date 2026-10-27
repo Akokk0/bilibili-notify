@@ -38,7 +38,7 @@ const failed = dto({
 	phase: "error",
 	reason: "download-failed",
 	helpUrl: "https://x",
-	checkedAt: 1,
+	checkedAt: "2026-10-27T00:00:00.000Z",
 });
 
 describe("transitionNotice", () => {
@@ -75,10 +75,19 @@ describe("transitionNotice", () => {
 		["还没查 → 正在下载(开面板那张卡由检查钩子发)", dto({ phase: "idle" }), downloading],
 		[
 			"有新版 → 已就绪(用户自己按的下载,系统页看得见)",
-			dto({ phase: "available", target: "0.9.0", releaseUrl: "https://x", checkedAt: 1 }),
+			dto({
+				phase: "available",
+				target: "0.9.0",
+				releaseUrl: "https://x",
+				checkedAt: "2026-10-27T00:00:00.000Z",
+			}),
 			ready,
 		],
-		["已就绪 → 已是最新(撤回)", ready, dto({ phase: "up-to-date", checkedAt: 1 })],
+		[
+			"已就绪 → 已是最新(撤回)",
+			ready,
+			dto({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" }),
+		],
 		["正在下载 → 正在下载(轮询看到同一拍)", downloading, downloading],
 		[
 			"正在下载 → 已排队回退(用户自己按的)",

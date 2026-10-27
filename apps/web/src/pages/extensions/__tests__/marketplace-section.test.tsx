@@ -36,7 +36,7 @@ import {
 
 const MARKET: MarketplaceResponse = {
 	available: true,
-	fetchedAt: 1,
+	fetchedAt: "2026-10-27T00:00:00.000Z",
 	sources: [
 		{ id: "official", name: "BN 官方拓展", official: true, ok: true },
 		{
@@ -454,7 +454,12 @@ describe("拓展市场", () => {
 		});
 		expect(await screen.findByText(/签名验不过/)).toBeTruthy();
 		cleanup();
-		renderSection({ available: false, fetchedAt: 1, sources: [], extensions: [] });
+		renderSection({
+			available: false,
+			fetchedAt: "2026-10-27T00:00:00.000Z",
+			sources: [],
+			extensions: [],
+		});
 		expect(await screen.findByText(/没有官方源/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: /市场源/ })).toBeTruthy();
 	});

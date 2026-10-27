@@ -47,15 +47,21 @@ describe("injectableUpdateService", () => {
 	it("真动作照常转发,假状态留着 —— 打开面板那次自动 check 不该把注入抹掉", async () => {
 		const real = fakeService();
 		const { service, inject, injected } = injectableUpdateService(real);
-		inject({ phase: "up-to-date", checkedAt: 1 });
+		inject({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
 
 		const fromAction = await service.check();
 
 		expect(real.check).toHaveBeenCalledOnce();
 		// 动作的响应也是装饰过的 —— 面板会把它直接写进缓存,回真的就等于把假的冲掉。
-		expect(fromAction.state).toEqual({ phase: "up-to-date", checkedAt: 1 });
-		expect(injected()).toEqual({ phase: "up-to-date", checkedAt: 1 });
-		expect(service.getStatus().state).toEqual({ phase: "up-to-date", checkedAt: 1 });
+		expect(fromAction.state).toEqual({
+			phase: "up-to-date",
+			checkedAt: "2026-10-27T00:00:00.000Z",
+		});
+		expect(injected()).toEqual({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
+		expect(service.getStatus().state).toEqual({
+			phase: "up-to-date",
+			checkedAt: "2026-10-27T00:00:00.000Z",
+		});
 	});
 
 	it("收摊后回到真状态", () => {

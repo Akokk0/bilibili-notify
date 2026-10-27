@@ -542,8 +542,8 @@ export interface MarketplaceResponse {
 	available: boolean;
 	sources: MarketplaceSourceDTO[];
 	extensions: MarketplaceEntryDTO[];
-	/** 索引是什么时候拉的(epoch 毫秒)。 */
-	fetchedAt: number;
+	/** 索引是什么时候拉的,带时区的 UTC ISO。 */
+	fetchedAt: string;
 }
 
 export interface MarketplaceInstallRequest {

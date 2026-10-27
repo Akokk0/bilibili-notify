@@ -26,7 +26,12 @@ vi.mock("../../services/api", () => ({
 	ApiError: class ApiError extends Error {},
 }));
 
-const MARKET: MarketplaceResponse = { available: true, fetchedAt: 1, sources: [], extensions: [] };
+const MARKET: MarketplaceResponse = {
+	available: true,
+	fetchedAt: "2026-10-27T00:00:00.000Z",
+	sources: [],
+	extensions: [],
+};
 
 const DOUYIN: ExtensionDTO = {
 	id: "douyin",

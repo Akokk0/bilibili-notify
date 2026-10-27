@@ -495,7 +495,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			available: deps.official !== undefined,
 			sources: loaded.map((source) => source.view),
 			extensions,
-			fetchedAt: cache?.at ?? now(),
+			fetchedAt: new Date(cache?.at ?? now()).toISOString(),
 		};
 	}
 

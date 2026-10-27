@@ -57,7 +57,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 	const [kind, setKind] = useState<CardKind>(touch.kinds[0] ?? CARD_KINDS[0]);
 
 	const preview = useQuery({
-		queryKey: ["ai-chat", "card-skin-preview", touch.id, kind, skin?.updatedAt ?? 0],
+		queryKey: ["ai-chat", "card-skin-preview", touch.id, kind, skin?.updatedAt ?? ""],
 		queryFn: async () => {
 			const path = `/api/cards/skins/${encodeURIComponent(touch.id)}`;
 			const { manifest } = await api.get<CardSkinManifestResponse>(path);

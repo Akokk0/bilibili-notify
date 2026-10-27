@@ -80,13 +80,15 @@ describe("update.state 场景", () => {
 		});
 	});
 
-	it("error:归因照给,checkedAt 是时间戳,helpUrl 指向发布页", async () => {
+	it("error:归因照给,checkedAt 是 UTC ISO,helpUrl 指向发布页", async () => {
 		const { reg, service } = setup();
 		await reg.run("update.state", { phase: "error", reason: "untrusted" });
 
 		const { state } = service.getStatus();
 		expect(state).toMatchObject({ phase: "error", reason: "untrusted" });
-		expect(state.phase === "error" && typeof state.checkedAt).toBe("number");
+		expect(state.phase === "error" && state.checkedAt).toMatch(
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+		);
 		expect(state.phase === "error" && state.helpUrl).toMatch(/releases$/);
 	});
 
@@ -96,7 +98,9 @@ describe("update.state 场景", () => {
 			await reg.run("update.state", { phase });
 			const { state } = service.getStatus();
 			expect(state.phase).toBe(phase);
-			expect("checkedAt" in state && typeof state.checkedAt).toBe("number");
+			expect("checkedAt" in state && state.checkedAt).toMatch(
+				/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+			);
 		}
 		await reg.run("update.state", { phase: "disabled", disabledReason: "no-keys" });
 		expect(service.getStatus().state).toEqual({ phase: "disabled", reason: "no-keys" });

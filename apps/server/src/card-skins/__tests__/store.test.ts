@@ -98,7 +98,9 @@ describe("install", () => {
 		const list = store.list();
 		expect(list.map((s) => s.id)).toEqual([DEFAULT_CARD_SKIN_ID, id]);
 		expect(list[1]).toMatchObject({ name: "测试卡片皮肤", author: "伦伦酱", builtin: false });
-		expect(list[1]?.updatedAt).toBeGreaterThan(0);
+		// 清单文件的 mtime,带时区的 UTC ISO(ADR-0019 决策 62 下 4-05 的 🔗);内置那份不落盘,没有这一格。
+		expect(list[1]?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+		expect(list[0]).not.toHaveProperty("updatedAt");
 		expect(store.get(id)?.name).toBe("测试卡片皮肤");
 
 		expect(await readdir(join(dir, id))).toEqual(

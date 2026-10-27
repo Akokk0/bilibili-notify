@@ -1535,7 +1535,12 @@ describe("DELETE /api/ext/:id", () => {
 describe("GET /marketplace + POST /marketplace/install", () => {
 	function market() {
 		return {
-			list: vi.fn(async () => ({ available: true, sources: [], extensions: [], fetchedAt: 1 })),
+			list: vi.fn(async () => ({
+				available: true,
+				sources: [],
+				extensions: [],
+				fetchedAt: "2026-10-27T00:00:00.000Z",
+			})),
 			install: vi.fn(
 				async (): Promise<MarketplaceInstallOutcome> => ({
 					ok: true,
@@ -1570,7 +1575,10 @@ describe("GET /marketplace + POST /marketplace/install", () => {
 		const app = boot({ marketplace: m });
 		const res = await app.request("/marketplace");
 		expect(res.status).toBe(200);
-		expect(await res.json()).toMatchObject({ available: true, fetchedAt: 1 });
+		expect(await res.json()).toMatchObject({
+			available: true,
+			fetchedAt: "2026-10-27T00:00:00.000Z",
+		});
 		expect(m.list).toHaveBeenLastCalledWith({ refresh: false });
 		await app.request("/marketplace?refresh=1");
 		expect(m.list).toHaveBeenLastCalledWith({ refresh: true });

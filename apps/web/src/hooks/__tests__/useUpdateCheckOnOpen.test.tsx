@@ -69,7 +69,7 @@ describe("useUpdateCheckOnOpen", () => {
 			phase: "available",
 			target: "0.9.0",
 			releaseUrl: "https://x",
-			checkedAt: 1,
+			checkedAt: "2026-10-27T00:00:00.000Z",
 		});
 		const qc = mount(dto({ phase: "idle" }), after);
 
@@ -94,7 +94,7 @@ describe("useUpdateCheckOnOpen", () => {
 		// 内存态的守卫,守的正是最不需要守的那个窗口:重启之前。
 		mount(
 			{ ...dto({ phase: "idle" }), pinnedVersion: "0.8.0" },
-			dto({ phase: "up-to-date", checkedAt: 1 }),
+			dto({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" }),
 		);
 
 		await flush();
@@ -105,7 +105,7 @@ describe("useUpdateCheckOnOpen", () => {
 	});
 
 	it("已是最新 → 查了,但不打扰", async () => {
-		const after = dto({ phase: "up-to-date", checkedAt: 1 });
+		const after = dto({ phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" });
 		const qc = mount(dto({ phase: "idle" }), after);
 
 		await waitFor(() => expect(qc.getQueryData(UPDATE_QUERY_KEY)).toEqual(after));
@@ -164,7 +164,7 @@ describe("useUpdateCheckOnOpen —— 刷新回来先报重启的结果", () => 
 			currentVersion: version,
 			rollbackTarget: null,
 			pinnedVersion: null,
-			state: { phase: "up-to-date", checkedAt: 1 },
+			state: { phase: "up-to-date", checkedAt: "2026-10-27T00:00:00.000Z" },
 		};
 	}
 
@@ -213,7 +213,7 @@ describe("useUpdateCheckOnOpen —— 通知卡正文", () => {
 				target: "0.9.0",
 				releaseUrl: "https://x",
 				notes: NOTES,
-				checkedAt: 1,
+				checkedAt: "2026-10-27T00:00:00.000Z",
 			},
 			title: "有新版 0.9.0",
 			line: "到系统页下载;什么时候重启换版本由你按。",
@@ -234,7 +234,7 @@ describe("useUpdateCheckOnOpen —— 通知卡正文", () => {
 				target: "0.9.0",
 				releaseUrl: "https://x",
 				notes: NOTES,
-				checkedAt: 1,
+				checkedAt: "2026-10-27T00:00:00.000Z",
 			},
 			title: "0.9.0 需要新镜像",
 			line: "这一版要重新拉镜像 / 下安装包,在线换不了。",

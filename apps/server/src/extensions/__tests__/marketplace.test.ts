@@ -197,6 +197,8 @@ describe("list():官方源", () => {
 		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official()) });
 		const view = await harness().marketplace.list();
 		expect(view.available).toBe(true);
+		// 拉索引的时刻是带时区的 UTC ISO(ADR-0019 决策 62 下 4-05 的 🔗)。
+		expect(view.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 		expect(view.sources).toEqual([
 			expect.objectContaining({ id: "official", official: true, ok: true, name: "BN 官方拓展" }),
 		]);

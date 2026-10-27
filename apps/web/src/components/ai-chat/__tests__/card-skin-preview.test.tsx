@@ -61,7 +61,12 @@ function wrap(node: ReactNode) {
 	return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
 }
 
-const skin = (id: string, name: string) => ({ id, name, builtin: false, updatedAt: 1 });
+const skin = (id: string, name: string) => ({
+	id,
+	name,
+	builtin: false,
+	updatedAt: "2026-10-27T00:00:00.000Z",
+});
 const frames = () => [...document.querySelectorAll("iframe")];
 
 beforeEach(() => {

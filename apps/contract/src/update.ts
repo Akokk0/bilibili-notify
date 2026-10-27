@@ -41,9 +41,9 @@ export type UpdateState =
 	| { phase: "disabled"; reason: "no-keys" | "dev-build" }
 	/** 还没查过。 */
 	| { phase: "idle" }
-	| { phase: "up-to-date"; checkedAt: number }
+	| { phase: "up-to-date"; checkedAt: string }
 	/** 有新版但还没下(关掉了自动下载)。 */
-	| { phase: "available"; target: string; releaseUrl: string; notes?: string; checkedAt: number }
+	| { phase: "available"; target: string; releaseUrl: string; notes?: string; checkedAt: string }
 	| { phase: "downloading"; target: string; releaseUrl: string; notes?: string }
 	/** 已经装进版本目录,**重启就会跑它**。 */
 	| { phase: "ready"; target: string; releaseUrl: string; notes?: string }
@@ -56,12 +56,12 @@ export type UpdateState =
 			target: string;
 			releaseUrl: string;
 			notes?: string;
-			checkedAt: number;
+			checkedAt: string;
 	  }
 	/** 钉子已落,重启就会回到上一版。 */
 	| { phase: "rolled-back"; target: string }
 	/** `helpUrl` 是「下不动就给个链接让用户自己去下」那条兜底出口。 */
-	| { phase: "error"; reason: UpdateErrorReason; helpUrl?: string; checkedAt: number };
+	| { phase: "error"; reason: UpdateErrorReason; helpUrl?: string; checkedAt: string };
 
 /**
  * 这一档按「立即重启并应用」有没有意义。

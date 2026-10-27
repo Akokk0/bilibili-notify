@@ -276,6 +276,10 @@ describe("createUpdateService —— 检查更新", () => {
 		const status = await service.check();
 
 		expect(status.state).toMatchObject({ phase: "available", target: "0.9.0" });
+		// 查的时刻是带时区的 UTC ISO(ADR-0019 决策 62 下 4-05 的 🔗)。
+		expect(status.state.phase === "available" && status.state.checkedAt).toMatch(
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+		);
 		expect(existsSync(join(versionsRoot, "0.9.0"))).toBe(false);
 
 		// 用户自己按下下载,才动手。
