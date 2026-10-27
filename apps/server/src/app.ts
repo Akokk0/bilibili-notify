@@ -132,7 +132,7 @@ export interface CreateAppOptions {
 			root: string;
 			integrationStore: Pick<IntegrationStore, "remove">;
 			changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
-			restartAbility: RestartAbility;
+			restartAbility: () => RestartAbility;
 		};
 		/** 拓展市场(ADR-0013)。没接 → 那两口 404。 */
 		marketplace?: Marketplace;

@@ -319,10 +319,13 @@ describe("新版等着换上", () => {
 	});
 
 	it("这台机器拉不起自己 → 不给「重启 BN」,换成原因", async () => {
-		renderDetail({ ext: STAGED, restart: { can: false, reason: "unsupervised" } });
+		renderDetail({
+			ext: STAGED,
+			restart: { can: false, code: "unsupervised", message: "这个进程退了没人拉" },
+		});
 		const head = await headCard();
 		expect(within(head).queryByRole("button", { name: "重启 BN" })).toBeNull();
-		expect(within(head).getByText(/自己在终端里停掉再起一次/)).toBeTruthy();
+		expect(within(head).getByText("这个进程退了没人拉")).toBeTruthy();
 		expect(within(head).getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 	});
 

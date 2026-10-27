@@ -38,7 +38,7 @@ function boot(
 ) {
 	const requestGeneration = vi.fn(async (_source: GenerationSourceKind) => {});
 	const input: CreateSystemRouteInput = {
-		ability,
+		ability: () => ability,
 		startedAt: STARTED,
 		version: "0.10.1",
 		restart,
@@ -80,7 +80,7 @@ describe("POST /api/system/restart", () => {
 	});
 
 	it("拉不起来的环境 → 400 unsupported,一下都不关", async () => {
-		const { app, restart } = boot({ can: false, reason: "source-run" });
+		const { app, restart } = boot({ can: false, code: "source_run", message: "开发版拉不起自己" });
 
 		const res = await app.request("/restart", { method: "POST" });
 
@@ -91,13 +91,14 @@ describe("POST /api/system/restart", () => {
 	});
 
 	it("拒绝时说清楚是哪一种拉不起来 —— 那句话是面板唯一的线索", async () => {
-		const { app } = boot({ can: false, reason: "unsupervised" });
+		const { app } = boot({ can: false, code: "unsupervised", message: "这个进程退了没人拉" });
 		const body = (await (await app.request("/restart", { method: "POST" })).json()) as {
 			code: string;
 			message: string;
 		};
 		expect(body.code).toBe("unsupported");
-		expect(body.message).toContain("没人");
+		// 话是能力自己带的那句(服务端按当前语言现取),路由原样转,不另写一份。
+		expect(body.message).toBe("这个进程退了没人拉");
 	});
 
 	/**
@@ -204,7 +205,11 @@ describe("POST /api/system/generations", () => {
 	});
 
 	it("拉不起来的环境 → 400 unsupported,标记不写、一下都不关", async () => {
-		const { app, restart, requestGeneration } = boot({ can: false, reason: "unsupervised" });
+		const { app, restart, requestGeneration } = boot({
+			can: false,
+			code: "unsupervised",
+			message: "这个进程退了没人拉",
+		});
 
 		const res = await app.request("/generations", json({ source: "empty" }));
 

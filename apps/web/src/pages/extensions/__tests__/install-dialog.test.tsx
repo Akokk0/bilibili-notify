@@ -28,7 +28,11 @@ import { ExtensionInstallDialog } from "../install-dialog";
 const ROOT = "/srv/bn/generations/3/extensions";
 
 function listed(over: Partial<ExtensionsResponse> = {}): ExtensionsResponse {
-	return { extensions: [], restart: { can: false, reason: "unsupervised" }, ...over };
+	return {
+		extensions: [],
+		restart: { can: false, code: "unsupervised", message: "这个进程退了没人拉" },
+		...over,
+	};
 }
 
 function renderDialog() {

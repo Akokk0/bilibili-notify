@@ -23,10 +23,13 @@ export type RestartAbility =
 	| {
 			can: false;
 			/**
-			 * - `source-run` —— tsx 直跑的开发版:`tsx watch` 只在文件变了才重来,自己退了就是退了。
+			 * 「能不能」的预检保留 `can`,原因用 `code` + `message`(ADR-0026 决策 2):
+			 * - `source_run` —— tsx 直跑的开发版:`tsx watch` 只在文件变了才重来,自己退了就是退了。
 			 * - `unsupervised` —— 直接 `node lib/index.mjs`:退了没人管。
 			 */
-			reason: "source-run" | "unsupervised";
+			code: "source_run" | "unsupervised";
+			/** 拉不起来时那句话,服务端按当前语言给。两种的出路不一样,所以面板原样显示它、不另写一份。 */
+			message: string;
 	  };
 
 /** `POST /api/system/restart` 的回话。**先回话再关自己**,否则用户看到的是网络错误。 */

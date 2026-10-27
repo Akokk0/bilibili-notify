@@ -117,5 +117,7 @@
 	"searchCreators.noSuchSource": "没有叫「{sourceKey}」的订阅来源。在册的来源有：{listing}",
 	"searchCreators.noSourcesListed": "（一个都没有）",
 	"searchCreators.timeout": "{label}的搜人超过 {seconds} 秒没回",
-	"searchCreators.failed": "{label}的搜人出错了，详情在日志里"
+	"searchCreators.failed": "{label}的搜人出错了，详情在日志里",
+	"restart.cannot.sourceRun": "开发版是 tsx 直跑的:进程退了 tsx watch 只会停在那儿等文件变,没人把它拉起来 —— 随便改一行代码存一下,那本来就是一次重启。",
+	"restart.cannot.unsupervised": "这个进程退了没人拉(既没跑在桌面外壳里,也不在容器里)—— 自己在终端里停掉再起一次。"
 }

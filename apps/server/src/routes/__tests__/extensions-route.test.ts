@@ -146,9 +146,9 @@ function boot(
 								await rescan();
 							}
 						}),
-			restartAbility:
+			restartAbility: () =>
 				over.canRestart === false
-					? { can: false, reason: "source-run" }
+					? { can: false, code: "source_run", message: "开发版拉不起自己" }
 					: { can: true, how: "container" },
 		},
 		marketplace: over.marketplace as never,
@@ -920,7 +920,7 @@ describe("POST /api/ext/install", () => {
 		).json()) as ExtensionInstallResponse;
 
 		expect(body.staged).toBe(true);
-		expect(body.restart).toEqual({ can: false, reason: "source-run" });
+		expect(body.restart).toEqual({ can: false, code: "source_run", message: "开发版拉不起自己" });
 		await loader.dispose();
 	});
 
@@ -1097,7 +1097,7 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 		const cannot = (await (
 			await boot({ canRestart: false }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(cannot.restart).toEqual({ can: false, reason: "source-run" });
+		expect(cannot.restart).toEqual({ can: false, code: "source_run", message: "开发版拉不起自己" });
 	});
 
 	/**
@@ -1114,7 +1114,11 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 			status: () => undefined,
 		});
 		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
-		expect(body.restart).toEqual({ can: false, reason: "unsupervised" });
+		expect(body.restart).toEqual({
+			can: false,
+			code: "unsupervised",
+			message: expect.stringContaining("没人拉"),
+		});
 	});
 
 	it("跑着的被盖掉 → 那一行带上盘上那份的版本号,跑的仍是旧的", async () => {

@@ -82,9 +82,10 @@ describe("新版等着换上的那块提示", () => {
 
 	/** 按了回不来(开发版 / 裸跑)就不给按钮 —— 但**要说为什么**;只重载与它无关,照给。 */
 	it("这台机器拉不起自己:不给「重启 BN」,写出原因;「只重载」照给", () => {
-		show({ restart: { can: false, reason: "source-run" } });
+		show({ restart: { can: false, code: "source_run", message: "服务端给的那句为什么" } });
 		expect(screen.queryByRole("button", { name: "重启 BN" })).toBeNull();
-		expect(screen.getByText(/tsx/)).toBeTruthy();
+		// 那句话是服务端按当前语言给的,面板原样显示、不另抄一份。
+		expect(screen.getByText("服务端给的那句为什么")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "只重载这个拓展" })).toBeTruthy();
 	});
 

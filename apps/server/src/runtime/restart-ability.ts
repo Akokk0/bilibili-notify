@@ -11,6 +11,7 @@
 
 import { existsSync } from "node:fs";
 import type { RestartAbility } from "@bilibili-notify/contract";
+import { t } from "../i18n/index.js";
 import { resolveExpectedParent } from "./parent-watch.js";
 
 export interface RestartAbilityInput {
@@ -27,9 +28,18 @@ export function resolveRestartAbility(input: RestartAbilityInput): RestartAbilit
 	// 而且开发版也可能跑在壳里(dev:desktop)—— 判的是有没有人拉,不是哪种构建。
 	if (resolveExpectedParent(input.parentPid) !== null) return { can: true, how: "desktop" };
 	// tsx watch 见子进程退出只会停在那儿等文件变(2026-09-10 实测)。
-	if (input.sourceRun) return { can: false, reason: "source-run" };
+	if (input.sourceRun) return cannotRestart("source_run");
 	if (input.inContainer) return { can: true, how: "container" };
-	return { can: false, reason: "unsupervised" };
+	return cannotRestart("unsupervised");
+}
+
+/** 拉不起来的那一份,话按此刻的语言取(两种的出路不一样,不能合成一句「不支持」)。 */
+export function cannotRestart(
+	code: Extract<RestartAbility, { can: false }>["code"],
+): Extract<RestartAbility, { can: false }> {
+	const message =
+		code === "source_run" ? t("restart.cannot.sourceRun") : t("restart.cannot.unsupervised");
+	return { can: false, code, message };
 }
 
 /**

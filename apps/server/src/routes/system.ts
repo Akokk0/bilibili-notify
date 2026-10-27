@@ -33,8 +33,10 @@ import type { SystemNoticeStore } from "../runtime/system-notices.js";
 import { respondFailure } from "./respond-failure.js";
 
 export interface CreateSystemRouteInput {
-	/** 这台机器上按重启还回不回得来 —— 判据见 `runtime/restart-ability.ts`。 */
-	ability: RestartAbility;
+	/**
+	 * 这台机器上按重启还回不回得来 —— 判据见 `runtime/restart-ability.ts`。每次现问:拉不起来时那句话按此刻的语言取。
+	 */
+	ability: () => RestartAbility;
 	/** 这个进程的启动时刻(与 `/api/health` 同一个值),面板靠它变了认新进程。 */
 	startedAt: string;
 	/** 现在跑的版本。重启后 `boot.mjs` 会重新选版,面板拿它当「该回到哪一版」的期望。 */
@@ -97,13 +99,6 @@ function parseSeq(raw: string): number | undefined {
 	return Number.isSafeInteger(seq) ? seq : undefined;
 }
 
-/** 拉不起来时那句话。**说清是哪一种** —— 面板只有这一条线索,而两种的出路不一样。 */
-function refusal(ability: Extract<RestartAbility, { can: false }>): string {
-	return ability.reason === "source-run"
-		? "开发版是 tsx 直跑的:进程退了 tsx watch 只会停在那儿等文件变,没人把它拉起来。改一行代码就是重启。"
-		: "这个进程退了没人拉(没跑在桌面外壳里,也不在容器里)—— 自己在终端里重开一次吧。";
-}
-
 export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 	const app = new Hono();
 
@@ -132,7 +127,9 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 		// 🔴 按钮藏起来 ≠ 没人发这个请求(旧标签页、curl)。放过去就是把 BN 关了没人拉,
 		// 而那台机器上界面只会显示连不上 —— 最难猜的一种「功能坏了」。
 		// `unsupported`:这台机器不支持重启;`message` 说清是哪一种(面板原样显示)。
-		if (!input.ability.can) return respondFailure(c, fail("unsupported", refusal(input.ability)));
+		const ability = input.ability();
+		// 拒绝时那句话是能力自己带的:说清是哪一种拉不起来 —— 面板只有这一条线索。
+		if (!ability.can) return respondFailure(c, fail("unsupported", ability.message));
 		return respondThenRestart(c);
 	});
 
@@ -160,7 +157,9 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 			);
 		}
 		// 拒绝的几种一律在写标记之前:标记写下了却没重启,下次不知道哪一回开机就开了一代。
-		if (!input.ability.can) return respondFailure(c, fail("unsupported", refusal(input.ability)));
+		const ability = input.ability();
+		// 拒绝时那句话是能力自己带的:说清是哪一种拉不起来 —— 面板只有这一条线索。
+		if (!ability.can) return respondFailure(c, fail("unsupported", ability.message));
 		const { source } = parsed.data;
 		if (source === "zero" && !(await input.zeroGenerationExists())) {
 			return respondFailure(c, fail("not_found", "第 0 代(0.x 的数据)已经不在了,没法从它重新迁移"));

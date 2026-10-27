@@ -30,13 +30,6 @@ import {
 import { api } from "../../services/api";
 import { PARAGRAPH_CLS, reasonOf } from "./shared";
 
-/** 重启回不来的那两档各自的出路不一样,所以不能合成一句「不支持」。 */
-function whyNoButton(reason: "source-run" | "unsupervised"): string {
-	return reason === "source-run"
-		? "开发版是 tsx 直跑的:进程退了 tsx watch 只等文件变,没人把它拉起来 —— 随便改一行代码存一下,那本来就是一次重启。"
-		: "这个进程退了没人拉(既没跑在桌面外壳里,也不在容器里)—— 自己在终端里停掉再起一次。";
-}
-
 /**
  * 那句话。三档说的是三件不同的事实:
  * - 旧的照跑、版本号不同 —— 盘上与跑着的各是哪一版;
@@ -180,7 +173,8 @@ export function StagedCodeNote({
 						) : null
 					}
 				>
-					{restart.can ? "最干净的换法:所有推送与直播监听会断几秒。" : whyNoButton(restart.reason)}
+					{/* 拉不起来时那句话服务端按当前语言给(两种的出路不一样),原样显示。 */}
+					{restart.can ? "最干净的换法:所有推送与直播监听会断几秒。" : restart.message}
 				</Way>
 				<Way
 					action={

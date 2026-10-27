@@ -197,7 +197,7 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 			applyUpdate: async () => {},
 		},
 		system: {
-			ability: { can: true, how: "container" },
+			ability: () => ({ can: true, how: "container" }),
 			startedAt: "2026-10-03T00:00:00.000Z",
 			version: "0.0.0",
 			restart: async () => {},

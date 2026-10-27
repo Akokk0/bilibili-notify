@@ -354,7 +354,7 @@ describe("拓展", () => {
 				root: extRoot(),
 				integrationStore: store,
 				changeDisk: (write) => loaded.changeDisk(write),
-				restartAbility: { can: true, how: "container" },
+				restartAbility: () => ({ can: true, how: "container" }),
 			},
 		});
 		const app = new Hono();

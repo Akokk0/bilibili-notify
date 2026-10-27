@@ -44,6 +44,7 @@ import { t } from "../i18n/index.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { IntegrationStore } from "../integration-store/store.js";
+import { cannotRestart } from "../runtime/restart-ability.js";
 import type { SourceRegistry } from "../subscriptions/registry.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
@@ -145,17 +146,10 @@ export interface ExtensionsRouteOptions {
 		 * 「装了个拓展,面板叫我重启,可我没处按」的由来。
 		 */
 		changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
-		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。 */
-		restartAbility: RestartAbility;
+		/** 真要重启时,这台机器上按下去回不回得来(ADR-0005 决策 22)。每次现问:拉不起来时那句话按此刻的语言取。 */
+		restartAbility: () => RestartAbility;
 	};
 }
-
-/**
- * 没接装载器时「这台机器能不能自己重启」答什么。那种构建一个拓展都列不出来,也就没有哪一行
- * 等着换上,这一格其实没人读;答「拉不起来」是**不会坑人**的那一边 —— 反过来答「能」,哪天
- * 有人读了,按下去就是把 BN 关了而没人拉(ADR-0005 决策 22)。
- */
-const RESTART_UNKNOWN: RestartAbility = { can: false, reason: "unsupervised" };
 
 /**
  * 盖掉 / 装完之后,装载器那一行是不是「新版等着换上」(ADR-0012 决策 47)。
@@ -268,7 +262,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		});
 		const body: ExtensionsResponse = {
 			extensions,
-			restart: opts.install?.restartAbility ?? RESTART_UNKNOWN,
+			// 没接装载器的构建一个拓展都列不出来,这一格其实没人读;答「拉不起来」是**不会坑人**的那一边 ——
+			// 反过来答「能」,哪天有人读了,按下去就是把 BN 关了而没人拉(ADR-0005 决策 22)。
+			restart: opts.install?.restartAbility() ?? cannotRestart("unsupervised"),
 			// 手放拓展的去处:装载器读的那一个根。面板猜不出在用的是哪一代。
 			...(opts.install ? { root: opts.install.root } : {}),
 		};
@@ -322,7 +318,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				: {}),
 			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
-			restart: install.restartAbility,
+			restart: install.restartAbility(),
 		};
 		return c.json(answer);
 	});
@@ -428,7 +424,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			...(outcome.skippedLocales === undefined ? {} : { skippedLocales: outcome.skippedLocales }),
 			// 同上传装包那口:装不碰开关,照实报。
 			enabled: isExtensionEnabled(opts.store.getGlobals(), outcome.id),
-			restart: install.restartAbility,
+			restart: install.restartAbility(),
 		};
 		return c.json(answer);
 	});

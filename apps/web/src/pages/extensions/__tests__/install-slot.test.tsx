@@ -153,13 +153,13 @@ describe("传包装拓展", () => {
 			...OK,
 			staged: true,
 			enabled: true,
-			restart: { can: false, reason: "source-run" },
+			restart: { can: false, code: "source_run", message: "开发版拉不起自己" },
 		});
 		const { container } = renderSlot();
 
 		await pick(container);
 
-		expect(await screen.findByText(/tsx/)).toBeTruthy();
+		expect(await screen.findByText("开发版拉不起自己")).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /重启/ })).toBeNull();
 	});
 

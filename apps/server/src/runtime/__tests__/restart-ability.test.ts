@@ -34,7 +34,8 @@ describe("能不能重启", () => {
 	it("tsx 直跑的开发版 → 不能:tsx watch 只等文件变,进程自己退了就是退了", () => {
 		expect(resolveRestartAbility({ sourceRun: true, inContainer: false })).toEqual({
 			can: false,
-			reason: "source-run",
+			code: "source_run",
+			message: expect.stringContaining("tsx watch"),
 		});
 	});
 
@@ -42,7 +43,8 @@ describe("能不能重启", () => {
 	it("源码跑 + 在容器里 → 还是不能", () => {
 		expect(resolveRestartAbility({ sourceRun: true, inContainer: true })).toEqual({
 			can: false,
-			reason: "source-run",
+			code: "source_run",
+			message: expect.stringContaining("tsx watch"),
 		});
 	});
 
@@ -56,7 +58,8 @@ describe("能不能重启", () => {
 	it("裸 node 跑构建产物 → 退了没人管,不给按钮", () => {
 		expect(resolveRestartAbility({ sourceRun: false, inContainer: false })).toEqual({
 			can: false,
-			reason: "unsupervised",
+			code: "unsupervised",
+			message: expect.stringContaining("没人拉"),
 		});
 	});
 });

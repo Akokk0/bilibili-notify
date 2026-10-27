@@ -296,12 +296,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。devtools 那道门与
 	// 「能不能重启」是同一个事实,算一次两处用。
 	const sourceRun = import.meta.url.endsWith(".ts");
-	// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。
-	const restartAbility = resolveRestartAbility({
-		parentPid: env.BN_PARENT_PID,
-		sourceRun,
-		inContainer: runningInContainer(),
-	});
+	// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。每次现问:
+	// 拉不起来时那句话按此刻的语言取(容器标记只看一次)。
+	const inContainer = runningInContainer();
+	const restartAbility = () =>
+		resolveRestartAbility({ parentPid: env.BN_PARENT_PID, sourceRun, inContainer });
 
 	/**
 	 * 优雅停机 + 退 0,等外面那位把它拉起来 —— 应用更新与「重启一下」共用这一段。
@@ -506,7 +505,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				log.error(
 					`[data] 主人要求开的第 ${generation.seq} 代没开成,原来的第 ${current.seq} 代还在:${message}`,
 				);
-				if (!restartAbility.can) throw error;
+				if (!restartAbility().can) throw error;
 				await stopAndExit("requested generation failed");
 				throw error;
 			}

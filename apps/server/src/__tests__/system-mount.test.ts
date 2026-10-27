@@ -58,7 +58,7 @@ describe("/api/system 挂载", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			system: {
-				ability: { can: true, how: "container" },
+				ability: () => ({ can: true, how: "container" }),
 				startedAt: "2026-09-10T00:00:00.000Z",
 				version: "0.10.1",
 				restart,
@@ -93,7 +93,7 @@ describe("/api/system 挂载", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			system: {
-				ability: { can: true, how: "container" },
+				ability: () => ({ can: true, how: "container" }),
 				startedAt: "2026-09-10T00:00:00.000Z",
 				version: "0.10.1",
 				restart: async () => {},
@@ -140,7 +140,7 @@ describe("/api/system 挂载", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			system: {
-				ability: { can: true, how: "container" },
+				ability: () => ({ can: true, how: "container" }),
 				startedAt: "2026-10-06T00:00:00.000Z",
 				version: "1.0.0",
 				restart: async () => {},

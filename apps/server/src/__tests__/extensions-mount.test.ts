@@ -229,7 +229,7 @@ describe("面板上传装拓展的接线", () => {
 							await rescan();
 						}
 					},
-					restartAbility: { can: true, how: "container" },
+					restartAbility: () => ({ can: true, how: "container" }),
 				},
 			},
 		});
