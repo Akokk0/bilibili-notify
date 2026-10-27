@@ -480,6 +480,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						problems: layers,
 						logger: ctx.logger,
 						signal: ctx.signal,
+						setTimeout: deps.setTimeout,
 					}),
 				);
 				// 群里贴的 B 站视频链接归这个来源认;宿主在来源停下时也会撤,这里记着是为了启动失败时自己收拾。

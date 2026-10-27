@@ -174,6 +174,8 @@ function makeDeps(
 		follow?: (uid: string) => Promise<unknown>;
 		auth?: SourceAuth;
 		now?: () => number;
+		/** 换掉来源手里那个可回收的定时器(关注同步的退避重试用);不给就什么都不挂。 */
+		setTimeout?: (fn: () => void, ms: number) => { dispose(): void };
 	} = {},
 ) {
 	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
@@ -209,7 +211,7 @@ function makeDeps(
 		deps: {
 			...fakeLoginDeps(login, logger),
 			locale: fixedLocale(),
-			setTimeout: () => ({ dispose() {} }),
+			setTimeout: over.setTimeout ?? (() => ({ dispose() {} })),
 			liveContext,
 			...(over.now ? { now: over.now } : {}),
 		},
@@ -1296,6 +1298,154 @@ describe("createBiliSource — 关注同步", () => {
 		await vi.waitFor(() => expect(made.fetchRelations).toHaveBeenCalledTimes(2));
 		expect(made.fetchRelations).toHaveBeenLastCalledWith(["1"]);
 		await source.stop();
+	});
+
+	// 主人 10-27 定（乙）：欠着的非空时，关注同步自己按 `RISK_BACKOFF_STEPS_MS` 的档位再跑一轮。
+	// 只用假定时器，不能用 `vi.waitFor`（它会和假定时器互相等死）。
+	const timerHandoff = (fn: () => void, ms: number): { dispose(): void } => {
+		const handle = setTimeout(fn, ms);
+		return { dispose: () => clearTimeout(handle) };
+	};
+	const settle = async (): Promise<void> => {
+		await vi.advanceTimersByTimeAsync(0);
+	};
+
+	it("撞风控欠着 → 60 秒后自动再查一次,只发一个读、参数是欠着的人", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({
+			auth: auth.auth,
+			setTimeout: timerHandoff,
+			fetchRelations: async () => fail("rate_limited", "请求过于频繁", { upstreamCode: -352 }),
+		});
+		const source = createBiliSource(made.deps);
+		await source.start(
+			makeCtx([
+				{ externalId: "1", post: true },
+				{ externalId: "2", post: true },
+			]).ctx,
+		);
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+		expect(made.follow).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+		expect(made.fetchRelations).toHaveBeenLastCalledWith(["1", "2"]);
+		// 还在风控：重试那一轮也只发这一个读，一个写都不发。
+		expect(made.follow).not.toHaveBeenCalled();
+		await source.stop();
+	});
+
+	it("重试还在风控 → 下一档 5 分钟后", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth(loggedIn);
+		let calls = 0;
+		const made = makeDeps({
+			auth: auth.auth,
+			setTimeout: timerHandoff,
+			fetchRelations: async () => {
+				calls++;
+				return calls <= 2
+					? fail("rate_limited", "请求过于频繁", { upstreamCode: -352 })
+					: ok({ data: null });
+			},
+		});
+		const source = createBiliSource(made.deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+
+		await vi.advanceTimersByTimeAsync(299_999);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(3);
+		await source.stop();
+	});
+
+	it("重试补全 → 不再挂计时器,档位归零", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth(loggedIn);
+		let calls = 0;
+		const made = makeDeps({
+			auth: auth.auth,
+			setTimeout: timerHandoff,
+			fetchRelations: async () => {
+				calls++;
+				return calls === 1 || calls === 3
+					? fail("rate_limited", "请求过于频繁", { upstreamCode: -352 })
+					: ok({ data: null });
+			},
+		});
+		const roster = [{ externalId: "1", post: true }];
+		const fake = makeCtx(roster);
+		const source = createBiliSource(made.deps);
+		await source.start(fake.ctx);
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+		expect(made.follow).toHaveBeenCalledWith("1");
+
+		// 欠账清了:再等多久都不该有下一轮。
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(2);
+
+		// 档位归零:下一次风控从 60 秒重新起算,不是接着上一档的 5 分钟。
+		roster.push({ externalId: "2", post: true });
+		for (const changed of fake.watchers) changed();
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(3);
+
+		await vi.advanceTimersByTimeAsync(59_999);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(3);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(made.fetchRelations).toHaveBeenCalledTimes(4);
+		await source.stop();
+	});
+
+	it("没登录时不重试", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({
+			auth: auth.auth,
+			setTimeout: timerHandoff,
+			fetchRelations: async () => fail("rate_limited", "请求过于频繁", { upstreamCode: -352 }),
+		});
+		const source = createBiliSource(made.deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+
+		auth.set({ status: "logged-out" });
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+		await source.stop();
+	});
+
+	it("dispose 之后不再重试", async () => {
+		vi.useFakeTimers();
+		const auth = makeAuth(loggedIn);
+		const made = makeDeps({
+			auth: auth.auth,
+			setTimeout: timerHandoff,
+			fetchRelations: async () => fail("rate_limited", "请求过于频繁", { upstreamCode: -352 }),
+		});
+		const source = createBiliSource(made.deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await settle();
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
+
+		await source.stop();
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
+
+		expect(made.fetchRelations).toHaveBeenCalledTimes(1);
 	});
 
 	it("作品关掉 → 按不再适用清掉那个人的 follow_failed", async () => {

@@ -2,6 +2,7 @@ import {
 	type Disposable,
 	isLoggedIn,
 	type Logger,
+	type ServiceContext,
 	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
@@ -9,7 +10,7 @@ import {
 import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
-import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "./api/index.js";
+import { ensureFollowed, FOLLOWED_ATTRIBUTES, riskBackoffStepMs } from "./api/index.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 
@@ -69,6 +70,8 @@ export interface WatchFollowsDeps {
 	problems: Pick<ProblemLayers, "reportFailure" | "resolveFailure">;
 	logger: Logger;
 	signal: AbortSignal;
+	/** 欠账的退避重试用;来源上下文的可回收定时口,`dispose` 与来源关停时一起收。 */
+	setTimeout: ServiceContext["setTimeout"];
 }
 
 /** 补关注之间的间隔 —— 写接口连发最招风控。 */
@@ -281,13 +284,26 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 
 /**
  * 来源自己的关注触发器:已登录开机跑全量;登录从「不算登录」变成已登录时全量;
- * 名单变化时只补新进的人,不再适用的人清掉问题。没登录时只更新集合、不发请求。
+ * 名单变化时只补新进的人,不再适用的人清掉问题;撞风控 / 未登录欠着没补上的人,
+ * 按 `RISK_BACKOFF_STEPS_MS` 的档位自己定时再跑一轮(每轮先只发一个读),补全就停、档位归零。
+ * 没登录时只更新集合、不发请求。
  *
- * 关停由这里自己的 controller 负责;它叠在来源的 `signal` 上,`dispose` 时中止在途那一轮。
+ * 关停由这里自己的 controller 负责;它叠在来源的 `signal` 上,`dispose` 时中止在途那一轮并收掉重试计时器。
  */
 export function watchFollows(deps: WatchFollowsDeps): Disposable {
 	const shutdown = new AbortController();
-	const abort = (): void => shutdown.abort();
+	/** 同一时刻最多挂一个重试计时器。 */
+	let retryTimer: Disposable | undefined;
+	/** 当前档位:0 是 60 秒;补全或全量重来后归零。 */
+	let retryAttempt = 0;
+	const cancelRetry = (): void => {
+		retryTimer?.dispose();
+		retryTimer = undefined;
+	};
+	const abort = (): void => {
+		cancelRetry();
+		shutdown.abort();
+	};
 	if (deps.signal.aborted) abort();
 	else deps.signal.addEventListener("abort", abort, { once: true });
 
@@ -296,25 +312,83 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 	let targets = new Set(followTargetIds(deps.subscriptions()));
 	/** 撞风控 / 未登录没补上的,还欠着:下一次名单变化带上,全量那一轮之前清空。 */
 	const pending = new Set<string>();
+	/** 发出去还没落定的那一轮;后面的轮次排在它后面,欠账一次只按一个结果改。 */
+	let chain: Promise<void> = Promise.resolve();
+
+	/** 欠着且还在名单里的;顺手把已经离开名单的从欠账里摘掉。 */
+	const owed = (): string[] => {
+		const next = new Set(followTargetIds(deps.subscriptions()));
+		for (const externalId of pending) {
+			if (!next.has(externalId)) pending.delete(externalId);
+		}
+		return [...pending].filter((externalId) => next.has(externalId));
+	};
+
+	/** 欠账变了之后按同一规矩判断:补全了停、档位归零;还欠着就挂下一档,且只挂一个。 */
+	const scheduleRetry = (): void => {
+		cancelRetry();
+		if (disposed || shutdown.signal.aborted || !isLoggedIn(deps.auth.state())) return;
+		const remaining = owed();
+		if (remaining.length === 0) {
+			retryAttempt = 0;
+			return;
+		}
+		const delay = riskBackoffStepMs(retryAttempt);
+		retryAttempt += 1;
+		deps.logger.info(
+			`[follow] 还欠 ${remaining.length} 位的关注没补上，${Math.round(delay / 60_000)} 分钟后自动再试`,
+		);
+		retryTimer = deps.setTimeout(() => {
+			retryTimer = undefined;
+			if (!isLoggedIn(deps.auth.state())) {
+				// 等的这段时间里登出了:不重试,登录恢复本来就会跑全量。
+				retryAttempt = 0;
+				return;
+			}
+			// 名单在等的这段时间里可能变了:按此刻的欠账再算一次。
+			const due = owed();
+			if (due.length === 0) {
+				retryAttempt = 0;
+				return;
+			}
+			run(new Set(due));
+		}, delay);
+	};
 
 	const run = (only?: ReadonlySet<string>): void => {
 		if (disposed || shutdown.signal.aborted) return;
-		// 全量那一轮(开机、登录恢复)会查所有人:欠账从这一轮重新算。
-		if (only === undefined) pending.clear();
-		// 这一轮 `syncFollows` 会查的人:局部就是 `only`,全量是此刻名单里的全部(同一个同步读口,两边一致)。
-		const queried = only ?? new Set(followTargetIds(deps.subscriptions()));
-		void syncFollows({
-			api: deps.api,
-			subscriptions: deps.subscriptions,
-			...(only === undefined ? {} : { only }),
-			problems: deps.problems,
-			logger: deps.logger,
-			signal: shutdown.signal,
-		})
-			.then((result) => {
-				// 这一轮查过的不再欠着;这一轮没处理完的记上。
-				for (const externalId of queried) pending.delete(externalId);
-				for (const externalId of result.pending) pending.add(externalId);
+		cancelRetry();
+		chain = chain
+			.then(async () => {
+				if (disposed || shutdown.signal.aborted) return;
+				cancelRetry();
+				// 全量那一轮(开机、登录恢复)会查所有人:欠账与档位从这一轮重新算。
+				if (only === undefined) {
+					pending.clear();
+					retryAttempt = 0;
+				}
+				const owedBefore = pending.size;
+				// 这一轮 `syncFollows` 会查的人:局部就是 `only`,全量是此刻名单里的全部(同一个同步读口,两边一致)。
+				const queried = only ?? new Set(followTargetIds(deps.subscriptions()));
+				try {
+					const result = await syncFollows({
+						api: deps.api,
+						subscriptions: deps.subscriptions,
+						...(only === undefined ? {} : { only }),
+						problems: deps.problems,
+						logger: deps.logger,
+						signal: shutdown.signal,
+					});
+					// 这一轮查过的不再欠着;这一轮没处理完的记上。
+					for (const externalId of queried) pending.delete(externalId);
+					for (const externalId of result.pending) pending.add(externalId);
+				} catch (err) {
+					deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
+				}
+				if (owedBefore > 0 && pending.size === 0) {
+					deps.logger.info(`[follow] 重试补全:之前欠着的 ${owedBefore} 位关注都补上了`);
+				}
+				scheduleRetry();
 			})
 			.catch((err) => {
 				deps.logger.warn(`[follow] 关注同步失败: ${errorMessageOf(err)}`);
@@ -336,9 +410,14 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 		}
 		targets = next;
 		// 新进来的 + 上一轮撞风控 / 未登录欠着的(还在名单里的)。
-		const owed = [...pending].filter((externalId) => next.has(externalId));
-		const toRun = new Set([...added, ...owed]);
+		const owedIds = [...pending].filter((externalId) => next.has(externalId));
+		const toRun = new Set([...added, ...owedIds]);
 		if (wasLoggedIn && toRun.size > 0) run(toRun);
+		else if (pending.size === 0) {
+			// 欠着的人全离开名单了:没有要补的了。
+			cancelRetry();
+			retryAttempt = 0;
+		}
 	});
 
 	const authWatch = deps.auth.onChange(() => {
@@ -348,6 +427,11 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 		wasLoggedIn = nowLoggedIn;
 		targets = new Set(followTargetIds(deps.subscriptions()));
 		if (restored) run();
+		else if (!nowLoggedIn) {
+			// 没登录不重试:登录恢复本来就会跑全量。
+			cancelRetry();
+			retryAttempt = 0;
+		}
 	});
 
 	return {
@@ -357,6 +441,7 @@ export function watchFollows(deps: WatchFollowsDeps): Disposable {
 			subscriptionsWatch.dispose();
 			authWatch.dispose();
 			deps.signal.removeEventListener("abort", abort);
+			cancelRetry();
 			shutdown.abort();
 		},
 	};
