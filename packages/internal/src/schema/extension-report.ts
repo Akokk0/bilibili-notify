@@ -489,6 +489,26 @@ function rejected(issues: ExtensionReportIssue[]): ExtensionReportFailure {
 	}) as ExtensionReportFailure;
 }
 
+/**
+ * 片段拼起来必须等于正文(契约原话)。核的是拓展**原样交来**的串:两边各自先换行再比,
+ * 会把「正文是 `\r\n`、片段是 `\n`」这种不合契约的上报放过去,出口的片段也仍带着 `\r`。
+ * 对不上就丢整份 `richText` —— 收件口的 `normalizePost` 本来也会这么丢,在这里丢才进得了出入表。
+ */
+function dropMismatchedRichText<K extends ExtensionReportKind>(
+	kind: K,
+	value: ExtensionReportValue<K>,
+	state: WalkState,
+): void {
+	if (kind !== "post") return;
+	const report = value as unknown as ExtensionReportValue<"post">;
+	const { post } = report;
+	if (post.richText === undefined) return;
+	if (post.richText.map((segment) => segment.text).join("") === post.text) return;
+	state.dropped.push(reportIssue(["post", "richText"], "invalid"));
+	const { richText: _richText, ...rest } = post;
+	report.post = rest;
+}
+
 export function checkExtensionReport<K extends ExtensionReportKind>(
 	kind: K,
 	raw: unknown,
@@ -521,8 +541,10 @@ export function checkExtensionReport<K extends ExtensionReportKind>(
 				),
 			);
 		}
+		const value = whole.data as ExtensionReportValue<K>;
+		dropMismatchedRichText(kind, value, state);
 		return ok({
-			value: whole.data as ExtensionReportValue<K>,
+			value,
 			dropped: state.dropped,
 		});
 	} catch {

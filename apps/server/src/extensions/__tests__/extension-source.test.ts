@@ -459,6 +459,55 @@ describe("createExtensionSource:作品上报", () => {
 		expect(first?.text).toBe("甲\n乙");
 		expect(first?.richText).toBeUndefined();
 		expect(second?.text).toBe("");
+		expect(made.discrepancies).toContainEqual(
+			expect.objectContaining({ kind: "post", outcome: "dropped" }),
+		);
+		expect(made.discrepancies.map((one) => one.reasons.join("")).join("")).toContain(
+			"post.richText",
+		);
+	});
+
+	it("片段带 CRLF、正文也带时,两边一起换行,富文本留下", async () => {
+		const made = await make();
+		made.ext().reportPost("u1", {
+			postId: "p1",
+			url: "https://douyin.invalid/p1",
+			post: {
+				publishedAt: T_ISO,
+				text: "第一行\r\n#旅行#",
+				richText: [
+					{ kind: "text", text: "第一行\r\n" },
+					{ kind: "topic", text: "#旅行#", name: "旅行" },
+				],
+			},
+		});
+		await made.idle();
+		const post = made.core.posts[0]?.[1].post;
+		expect(post?.text).toBe("第一行\n#旅行#");
+		expect(post?.richText).toEqual([
+			{ kind: "text", text: "第一行\n" },
+			{ kind: "topic", text: "#旅行#", name: "旅行" },
+		]);
+	});
+
+	it("CRLF 劈在两段之间:换完再拼等于拼完再换,富文本留下", async () => {
+		const made = await make();
+		made.ext().reportPost("u1", {
+			postId: "p1",
+			url: "https://douyin.invalid/p1",
+			post: {
+				publishedAt: T_ISO,
+				text: "甲\r\n乙",
+				richText: [
+					{ kind: "text", text: "甲\r" },
+					{ kind: "text", text: "\n乙" },
+				],
+			},
+		});
+		await made.idle();
+		const post = made.core.posts[0]?.[1].post;
+		expect(post?.text).toBe("甲\n乙");
+		expect(post?.richText?.map((segment) => segment.text).join("")).toBe("甲\n乙");
 	});
 
 	it("对得上正文的富文本原样带过去", async () => {

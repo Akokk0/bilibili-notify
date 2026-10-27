@@ -239,6 +239,20 @@ function readResult(
 	return { kind: "failure", failure: fail(raw.code, raw.message) };
 }
 
+/**
+ * 换行统一成 `\n`,正文与每个片段的 `text` 用同一套。契约允许作者按自己平台的单位随意切段,
+ * `\r` 落在一段末尾、`\n` 落在下一段开头时,逐段各自换会换出两个换行 —— 先去掉本段开头那个
+ * 与上一段结尾 `\r` 配对的 `\n`,各段换完再拼就恒等于拼完再换。
+ */
+function normalizeNewlines(texts: readonly string[]): string[] {
+	let previousEndedWithCr = false;
+	return texts.map((text) => {
+		const segment = previousEndedWithCr && text.startsWith("\n") ? text.slice(1) : text;
+		previousEndedWithCr = text.endsWith("\r");
+		return segment.replace(/\r\n?/g, "\n");
+	});
+}
+
 export function createExtensionSource(opts: CreateExtensionSourceOptions): Source {
 	const { id, manifest, logger } = opts;
 	const now = opts.now ?? Date.now;
@@ -403,8 +417,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		value: ExtensionReportValue<"post">,
 	): Promise<PostReport> {
 		const reported = value.post;
-		// 换行统一成 `\n`;只有空白的正文是空串,卡上正文块收起。
-		const text = reported.text.replace(/\r\n?/g, "\n");
+		// 换行统一成 `\n`,正文与片段的 `text` 一起做;只有空白的正文是空串,卡上正文块收起。
+		const [text = reported.text] = normalizeNewlines([reported.text]);
 		const post: Post = {
 			creator: creatorFromExtension(externalId, reported.creator),
 			publishedAt: utcIsoOf(reported.publishedAt),
@@ -412,7 +426,11 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 		};
 		if (reported.topic !== undefined) post.topic = reported.topic;
 		if (post.text !== "" && reported.richText !== undefined) {
-			post.richText = reported.richText as RichText;
+			const segmentTexts = normalizeNewlines(reported.richText.map((segment) => segment.text));
+			post.richText = reported.richText.map((segment, index) => ({
+				...segment,
+				text: segmentTexts[index] ?? segment.text,
+			})) as RichText;
 		}
 		if (reported.images !== undefined) {
 			post.images = await Promise.all(reported.images.map(postImageFromRef));

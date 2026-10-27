@@ -229,14 +229,15 @@ describe("post report", () => {
 			{ kind: "link", text: "link", url: "https://example.com", icon: IMAGE },
 			{ kind: "emoji", text: "[doge]", image: IMAGE },
 		];
+		const text = "plain@name#topiclink[doge]";
 		expect(
 			checkExtensionReport("post", {
 				...POST,
-				post: { ...POST.post, richText },
+				post: { ...POST.post, text, richText },
 			}),
 		).toEqual({
 			ok: true,
-			value: { ...POST, post: { ...POST.post, richText } },
+			value: { ...POST, post: { ...POST.post, text, richText } },
 			dropped: [],
 		});
 	});
@@ -256,6 +257,37 @@ describe("post report", () => {
 		).toContainEqual(
 			expect.objectContaining({ path: ["post", "richText", 1, "externalId"], code: "type" }),
 		);
+	});
+
+	it("drops richText whose segments do not join to the body", () => {
+		const result = checkExtensionReport("post", {
+			...POST,
+			post: { ...POST.post, richText: [{ kind: "text", text: "other" }] },
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value.post.richText).toBeUndefined();
+		expect(result.dropped).toContainEqual({ path: ["post", "richText"], code: "invalid" });
+	});
+
+	it("drops richText that stops joining once the body is truncated", () => {
+		const long = "x".repeat(SUBSCRIPTION_REPORT_TEXT_MAX);
+		const result = checkExtensionReport("post", {
+			...POST,
+			post: {
+				...POST.post,
+				text: `${long}y`,
+				richText: [
+					{ kind: "text", text: long },
+					{ kind: "text", text: "y" },
+				],
+			},
+		});
+		if (!result.ok) throw new Error(JSON.stringify(result.issues));
+		expect(result.value.post.richText).toBeUndefined();
+		expect(result.dropped).toEqual([
+			{ path: ["post", "text"], code: "too-long", limit: SUBSCRIPTION_REPORT_TEXT_MAX },
+			{ path: ["post", "richText"], code: "invalid" },
+		]);
 	});
 
 	it("accepts image refs by shape and drops malformed refs", () => {
