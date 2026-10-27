@@ -336,7 +336,10 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 			sourceKey,
 			query,
 		);
-	/** 这个来源实现了 `fetchLiveStatus`(核心据此给它的每一场挂周期核对)。 */
+	/**
+	 * 这个来源实现了 `fetchLiveStatus`(核心据此给它的每一场挂周期核对)。模块状态里「这个来源实现了直播吗」也问它:
+	 * 声明了周期直播的拓展现在必须实现拉取式(登记订阅源时核,不合就加载失败),所以两问口径一致。
+	 */
 	const hasLiveStatus = (sourceKey: string): boolean =>
 		opts.sources.get(sourceKey)?.fetchLiveStatus !== undefined;
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
@@ -347,11 +350,6 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	const sourceStatus = createSourceStatusReader({
 		sources: opts.sources,
 	});
-	/**
-	 * 这个来源实现了直播吗:就是它实现了 `fetchLiveStatus`。声明了周期直播的拓展现在必须实现拉取式(登记订阅源时核,
-	 * 不合就加载失败),所以与今天的模块状态口径一致。
-	 */
-	const sourceHasLive = (sourceKey: string): boolean => hasLiveStatus(sourceKey);
 
 	// ---------- Dispatcher + push ----------
 	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
@@ -500,8 +498,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 		...(opts.creatorStats ? { creatorStats: opts.creatorStats } : {}),
 		aiToolProviders: opts.aiToolProviders,
 	};
-	let commentary: CommentaryGenerator | null = null;
-	commentary = createCommentary(aiDeps);
+	let commentary: CommentaryGenerator | null = createCommentary(aiDeps);
 
 	// ---------- ImageRenderer (optional) ----------
 	// Constructed when puppeteer is wired — at boot if chromePath was set, or at
@@ -939,7 +936,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 						features: resolve(sub, g.defaults).features,
 						specialViewers: sub.specialViewers,
 					}) &&
-					sourceHasLive(subscriptionIdentityOf(sub).sourceKey),
+					hasLiveStatus(subscriptionIdentityOf(sub).sourceKey),
 			);
 			return {
 				dynamic: true,
