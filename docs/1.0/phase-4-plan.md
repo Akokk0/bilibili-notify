@@ -1,0 +1,180 @@
+# 第 4 期计划表：面板按描述画
+
+和 3a / 3b 一样单独一份计划表。总计划见 [construction-plan.md](./construction-plan.md)：那里只留第 4 期的范围一行与指向这里的链接，**各片的进度、开工时定的事、留给后面的尾巴都记在这份文件里**。
+
+## 状态
+
+| 项 | 现状 |
+| --- | --- |
+| 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片 |
+| 已完成 | 11 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11） |
+| 迁移修订号 / 备份版本 | 52 / 22（第 4 期开工前） |
+
+## 出期条件
+
+照 [construction-plan.md](./construction-plan.md) 分期表与「中立性守卫的归期」第 4 期那两格，加上 3b 带过来的余格与多语言那一条：
+
+- B 站替身清零（分期表第 4 行、守卫归期第 4 行）。`identityColor` 的 B 站分支照 Q5 由描述符声明，不进放行名单。
+- 3b 留下的棘轮余格清零（3b 出期条件下的 🔗，主人 10-26 定「余下的等第 4 期」）：守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫②，连同 `import-boundaries`。3b 收尾时的数是守卫 11 三格 20 处、uid 两格 41 处、`.platform` 核心一格 3 处与面板五格 29 处、推送守卫② 三格 60 处。
+- 写死的中文在放行名单外清零（ADR-0037 决策 16；Q1）：面板、服务端、各包与 contract 都算。
+- 中文叫法棘轮开张（4-09 已开；清零归第 5 期）。
+- 守卫 21b「这版不开」里等第 4 期的 N01 / N05 / N09 / N15 转成对拍；N14（面板四页）写明由面板测试钉。
+- 全量门禁全绿。
+
+## 切片表
+
+10-27 开片：五份只读勘察（来源、健康、数据、AI 与文字、守卫与设计稿五路；报告在 `.bn-design/s4-survey-*.md`，不入库）合成下面这张表，关键事实回代码抽查过。**表里的文件数是估的，行号是 10-27 `a37996246` 上的**，各片开工时用到哪条核哪条。
+
+规模：小 ≤ 5 个源文件；中 6–20；大 > 20，或牵涉线上格式与迁移。「盘」写「是」的要抬迁移修订号，备份版本开工时核。单线做，前置就是先后。
+
+**每片通用**（写进每片的施工要点）：
+- 面板 UI 动手前对 `packages/ui/README.md`，缺的纯展示件进库并改清单。
+- 本片碰到的文件里写死的中文收进字典：面板的进面板字典，服务端的进服务端字典，各包与 contract 的进 internal 的包字典（Q1b；4-56 落了之后才有，在那之前碰到的包里的字先留着）。同时写中文女仆层：交互与提示用女仆口吻，标题、导航、栏名、数据名平实（construction-plan「以后再说」，10-11 主人定）。
+- 本片清掉的棘轮格当片下调（写死的中文、B 站替身、中文叫法等）。
+- 多片都会动的热点文件：`apps/contract/src/rest.ts`、`apps/server/src/index.ts`、`Targets.tsx`、`System.tsx`、`Dashboard.tsx`、`Ai.tsx`、`header.tsx`。
+
+| 片 | 做什么 | 文件面 | 前置 | 盘 | 规模 |
+| --- | --- | --- | --- | --- | --- |
+| **甲 服务端小片与结构性前置** | | | | | |
+| 4-01 ✅ | 剧集 / 课程 / 合集三类动态进附件的视频卡（ADR-0028 决策 1）。落成（10-27，`fd342ae18`）：`PGC_UNION` 没做；附件标题不算作品文字 | `apps/server/src/bilibili/dynamic/` 与出卡 | 无 | 否 | 中 |
+| 4-02 ✅ | 新建拓展订阅的种资料改走资料缓存的单一写者，只在没有资料时种（主人 10-27 定，3b 收尾残余）。落成（10-27，`4d0d670cf`）：写口新方法 `seed(id, build)`，`build` 只在要种时跑（头像那时才存） | `routes/subscriptions.ts`、`runtime/profile-cache.ts` | 无 | 否 | 小 |
+| 4-03 ✅ | 宿主自己的抓图口：核心抓会员自定义图不再借 B 站客户端（construction-plan 零碎施工项，原写「第 4 期之前」）。落成（10-27，`cadddf077`）：`AppRuntime.imageFetcher`；浏览器身份每次开机现生成、不落盘；B 站替身 `index.ts` 2 → 1 | `index.ts`、`compose.ts`、抓图接线 | 无 | 否 | 小 |
+| 4-04 ✅ | `RestartAbility` 不能重启的支路改 `code + message`，删面板 `whyNoButton` 那份抄写。落成（10-27，`63d1e0284`）：码 `source_run` / `unsupervised`；两句话合成服务端一份进字典 `restart.cannot.*`（取面板那版措辞）；路由每次现问 | contract、`routes/system.ts`、面板一处 | 无 | 否 | 小 |
+| 4-05 ✅ | 皮肤 `updatedAt`、市场 `fetchedAt`、升级 `checkedAt` 三格改带时区的 ISO（ADR-0019 决策 62 的 🔗）。落成（10-27，`1d0c2403d`）：三格 UTC ISO；内置皮肤不带 `updatedAt`（原来恒为 0） | 3 个 contract、3 个生产者、1 个面板缓存键 | 无 | 否 | 小 |
+| 4-06 ✅ | devtools 剩的三件（ADR-0031 决策 2）。落成（10-28，`e860aaf19`）：ADR-0031 那句例子就地改写成「经 B 站自己的轮询上报」；核心场景以 `core` 认领、id 加 `core.`、描述符加宿主填的 `provider`；`creator` 种类宿主按来源名单核；`sub` / `target` / `connection` 只给核心；适配器挑自己的连接没做（没有使用者）；「进场」uid 改必填；「登录状态」改成替登录口喊变更；替身 `pick-select.tsx` 2 → 0 | `internal/devtools.ts`、`server/devtools/`、`bilibili/devtools/`、`web/devtools/` | 无 | 否 | 中 |
+| 4-07 ✅ | 改面板账号密码·服务端（construction-plan 零碎施工项）。落成（10-27，`7dda68a64`）：`PUT /api/session/credentials`，要报当前密码；新密码 8–256 位、账号去首尾空白后非空；码 `not_configured`（旧式部署 / 没有配置文件）、`unsupported`（桌面）；种子凭据那句日志留给 4-49；残余：已开着的 WS 连接不随改密断开 | `routes/session.ts`、`config/persist.ts`、contract | 无 | 写启动配置，不是数据迁移 | 中 |
+| 4-08 ✅ | `/api/settings` 的核心那份挂到 `core` 下、PATCH 核心路径改 `core.*`（ADR-0036；architecture 写明「随第 4 期」）。落成（10-27，`1bd3bd1b6`）：回 `{ core, bilibili, onebot, … }`，contract 加 `SettingsResponse`；PATCH 顶层只认 `core` 与登记过的集成键，别的 400（`settings.patch.unknownKeys`）；逐格原因的路径与请求体对得上；面板抽 `hooks/useSettings.ts`；系统页字段码改 `core.*` | 服务端 2–3、面板 24 | 无 | 否（只改线上形状） | 中 |
+| 4-09 ✅ | 中文叫法棘轮开张（construction-plan 守卫归期第 4 行）。落成（10-27，`49feee903`）：`scripts/__tests__/chinese-terms.test.mjs`，开张 65 个文件 298 处；日志参数照算；`UID` 只认大写；统计页四个文件按「动态」放行（ADR-0021 决策 50） | `scripts/__tests__/` | 无 | 否 | 小 |
+| ~~4-10~~ | ~~面板字典按区拆文件~~ —— 删掉（10-28 主人定）：它只为让并行的界面片不撞同一个 JSON，第 4 期一直单线，不成立 | | | | |
+| 4-11 ✅ | 设置规则 → 设置项的导出函数，规则只写一份（construction-plan「读设置的写法简化」，10-14 主人定第 4 期）。落成（10-28，`ddf33ecc3`）：`settingsFieldsFromSchema`；加载时的对表搬进 `internal/schema/`；门开构建子路径 `@bilibili-notify/extension/build`，桥与假源的清单设置项由构建导出；详见提交说明 | `packages/internal/src/schema/`、`packages/extension`、桥、假源 | 无 | 否 | 中 |
+| 4-12 ✅ | `GET /api/sources`：每个来源 `{ key, descriptor, has }`，停用 / 启动失败的拓展也列；`SourceDescriptor` 补格；面板 `useSources()`；对拍 N09 的服务端半。落成（10-27，`acb6b6180`）：B 站钮颜色改定值 `#fb7299`、不再跟皮肤（主人定）；`Subs.tsx` 替身 18 → 27（主人点头，随 4-15 去 `BILI_PLATFORM` 哨兵时消）；`featureHints` 挪 4-27、`membershipPrograms` 随 4-26、`has.preview` 随 4-14；拓展描述取装载器那份清单（按当前语言） | `internal/source.ts`、`routes/sources.ts`、B 站与拓展来源、清单 schema、contract、web hook | 无 | 否 | 中 |
+| **乙 服务端读口与机制** | | | | | |
+| 4-56 | 包字典与取字口（Q1b）：internal 新开一份两端共用的包字典（平实版 + 中文女仆层，形状同两端那套）；面板与服务端建字典时合进来，启动时把取字口交给包（ADR-0037 决策 1 那条路）；键的类型从这份 JSON 推，`i18n-dicts` 守卫跟上。只立机制、收一两处当样例，大头归 4-53e | `packages/internal/src/` 新子路径与 `locales/`、两端 `i18n/`、守卫 | 无 | 否 | 中 |
+| 4-13 | 内置适配器自带描述（`PlatformAdapter` 加 `descriptor`）、`GET /api/adapters` 描述列表；内置适配器的问题引子改用描述的 `label`（今天是适配器键）。ADR-0024 决策 1 前半 | `internal/push-source.ts`、`platforms/` 三个、`push/`、`routes/adapters.ts`、contract | 4-11 | 否 | 中 |
+| 4-14 | 卡片真实预览改走 `Source.fetchPreview`（对拍 N05）：请求按 `subscriptionId`，没实现的来源用示例；B 站实现从 `routes/cards.ts` 搬进 `bilibili/`。清 `cards.ts` 五道棘轮与 `Cards.tsx` 替身 | `internal/source.ts`、`bilibili/`、`routes/cards.ts`、contract、`Cards.tsx` | 4-12、4-08；开工时问预览失败回落示例还是报错 | 否 | 大 |
+| 4-15 | 经接口搜人与新建订阅（对拍 N01）：`GET /api/sources/:key/creators`、新建订阅的门问登记表、关旧 `/search` `/lookup`、风控与未登录不再折成 404；面板 `Subs.tsx` 新建流程按来源（去 `BILI_PLATFORM` 哨兵）。捎 3b 审查 R25 留着的那截：拓展回执包装层自己坏掉时的 `invalid` 记进出入（要改 `readResult` 的形状，Q11）。清 `subscriptions.ts` 四道棘轮与 `Subs.tsx` 替身 27 | `routes/{sources,subscriptions}.ts`、`search-source-creators.ts`、contract、`Subs.tsx` | 4-02、4-12、4-08 | 否 | 中 |
+| 4-16 | 入口 `api` 槽拆除：`createApp` 不再收 B 站 `Api`、入口不再递 `builtins.bilibili.api()`。清入口槽、import 边界与替身 `index.ts` 最后 1 | `index.ts`、`app.ts`、`compose.ts` | 4-03、4-14、4-15 | 否 | 小 |
+| 4-17 | 健康短版削成四格、详情口契约化（ADR-0025 决策 12）；`modules` 同提交搬去详情、首页改读详情 | contract、`routes/health.ts`、`Dashboard.tsx` 一处 | 4-08 | 否 | 小 |
+| 4-18 | 运行状态读口（对拍 N15）与健康详情的集成格：`/api/sources` 补 `status`；详情口给核心格、集成格、问题计数、同身份遗留订阅组。运行态由宿主投影（Q3）：内置来源按「在不在册 + `start` 抛没抛」得 running / failed，宿主在登记那一刻记下失败原因；拓展照装载器的八档；灯色再叠问题表；`Source` 不加成员 | `subscriptions/source-status.ts`、`subscriptions/registry.ts`、装载器读口、`routes/{health,sources}.ts`、contract | 4-12、4-17、稿 1 认过的数据清单 | 否 | 中 |
+| 4-19 | 开机段答结构化的搬家阶段与进度（Q6）：开机那一段也放行 `/api/health/details`，带第几步 / 共几步 / 在做哪一步；短版不动、不新开口（今天进度只在 503 的原话里，`createStartupApp` 只答短版） | `index.ts`、`app.ts`、迁移进度、contract | 4-17 | 否 | 小 |
+| 4-20 | 账号模块服务端：`accounts/` 汇总在册来源的登录态与头像、`core.accounts.order`（缺 = 登记顺序）、读写口 | `apps/server/src/accounts/`、settings schema、路由、contract | 4-12、4-08 | 开工时核（推荐不落默认、不抬号，照 3b-10 先例） | 中 |
+| 4-21 | 坏格读口（Q4a）：核心 / 集成 / 拓展设置的「原值与原因」—— 非密钥格回原值 + 原因，密钥格只回原因（照规则上的 `secret` 判；整格里有一格是密钥就整格按密钥，如桥的接入名单带 token）；`getInvalidSettings` 那句禁令改成「密钥格的原文不出门」；连接的逐格原因；备份导出前读的「只给路径」坏格口 | `config/store.ts`、`routes/{settings,extension-settings}.ts`、`secret-view.ts`、备份服务、contract | 无 | 否 | 中 |
+| 4-22 | 订阅坏行隔离（Q4b；主人 10-13 定第 4 期）：坏行原文留在 `subscriptions.json` 原位，配置仓记着、写回时原样带回（同核心设置坏格那套），别的行照常开机；坏行占着的身份，新加订阅时照样算「已经有了」。推送目标文件（今天同样整份拒）本期不捎 | `config/store.ts` 读写订阅那段、`packages/subscription` | 无 | 否（盘上形状不变） | 中 |
+| 4-23 | 素材库的 8 个口从 `/api/cards` 搬 `/api/library`（ADR-0036 决策 1、5），删前查引用照旧；Cards 两个 picker 改调 | 新路由、`routes/cards.ts`、`app.ts`、contract、两个 picker | 4-14 | 否 | 中 |
+| 4-24 | 落盘键 `ai.search.engines` → `search.scenes`，`dynamic` 改叫 `post`（Q7；data-model 已写新键）。读者：服务端动态设置、直播运行时、直播总结、锐评生成，AI 包的点评生成，面板 AI 页与字段标签表 | schema、各读者、`Ai.tsx` 字段、迁移与回放测试 | 无 | **是**（修订号 52 → 53） | 中 |
+| 4-55 | 墙上时间跟全局时区（Q10；construction-plan 零碎施工项「其余服务端墙上时间跟不跟全局时区」那一行列的几处逐个过）：免打扰 `inQuietHours`（连同 `push-router.ts` 的调用与开发版免扰时钟 `devtools/clock.ts`）、私聊静音的 `describeUntil`、`packages/ai/src/tools.ts` 的 `stamp` / 开播于 / 最后活动三处日期改读核心 `timezone`；`roast-scheduler.ts`（锐评窗口按全局时区切、cron 却按服务器时区，Q11）、`profile-refresh.ts`、`dynamic-poller.ts` 三条 `CronJob` 与 `stats/extension-source.ts` 的 `CronTime` 按墙上时刻排的跟、只按间隔跑的不动；开发版 `devtools/scenarios/timers.ts` 的下次触发显示跟上。桌面版不在东八区、改过 `TZ` 的 Docker 用户免打扰会按时差挪一次，发版说明写一句 | `util/quiet-hours.ts`、`push-router.ts`、`runtime/{mute-command,roast-scheduler,profile-refresh}.ts`、`dynamic-poller.ts`、`stats/extension-source.ts`、`packages/ai/src/tools.ts`、两处 devtools | 无 | 否 | 中 |
+| **丙 组件库** | | | | | |
+| 4-25 | 自家下拉：`TSelect` 改 `PopoverShell + MenuItem`、`HourSelect` 与三处手写 `<select>`（`Logs.tsx`、`SkinEditor.tsx`、`RoastPushBox.tsx`）换掉、裸 `<select>` 守卫（ADR-0035 后半） | `packages/ui/src/form-controls.tsx`、README、三处调用、守卫 | 开工时问要不要搜索框、按连接分组还是平铺（ADR-0035） | 否 | 中 |
+| **丁 不等稿的界面片**（不出稿的理由见「设计稿」） | | | | | |
+| 4-26 | 订阅卡 / 详情 / 显示工具按描述符：「UID」改身份标签（`subscriptionIdentityLabel` 面板今天零调用）、复制外部 id、会员档从描述符取（删 `membership-programs.ts` 对 `bilibili-guard` 的直读）。清替身 `UpCard`、`UpDialog`、`subscription-source`、`up-display`、`membership-programs` | `pages/up/`、`utils/up-display.ts`、`config/membership-programs.ts` | 4-12、4-08、4-15 | 否 | 中 |
+| 4-27 | 规则页按 `featureHints` 露节（N09 面板半；清单收 `featureHints` 随这一片）、scope 页签、统计 CSV「UID / 外部 ID」合成一列（ADR-0027 决策 7）、面板三处「动态」兜底改取描述符。清替身 `Rules`、`PerUpEditor`、`sections`、`scope-tabs` | `pages/rules/`、`Rules.tsx`、`scope-tabs.tsx`、`stats/csv.ts`、`Stats.tsx` 一处 | 4-12、4-08 | 否 | 中 |
+| 4-28 | 档位表搬进 `bilibili/`、由描述符下发；`internal/bilibili-guard.ts` 退役（清替身 1、词汇 `hdslb` 1） | `internal/bilibili-guard.ts`、`bilibili/`、出图读者 | 4-26、4-14 | 否 | 小 |
+| 4-29 | 连接 / 目标表单按描述画：内置也读候选、删 `domain.ts` 的 `makeEmptyConnection`（3b-40 留）、平台 / 字段 / scope / 地址称呼由描述与候选驱动、徽章读 `/api/adapters`；服务端「列候选时按平台名刷新 `platformSnapshot`」（ADR-0024 决策 7，3b-40 留）。清面板 `.platform` 五个文件 29 处与 `domain.ts` 替身 | `Targets.tsx`、`types/{domain,connection-fields}.ts`、`platform-meta.tsx`、`link-preview-settings.tsx`、`routes/adapters.ts` | 4-13、4-08 | 否 | 大 |
+| 4-30 | 平台闭集、平台表、三份连接规则搬出 `internal`，删 `./platform-registry` 子路径（冻结的 `migration/zero-platforms.ts` 不动）；保留键在装配根收齐（ADR-0024 决策 1 后半）。清推送守卫②、核心 `.platform` | `internal/{platform-registry,schema/targets,identity}.ts`、`platforms/`、守卫与约 15 个测试 | 4-29 | 否 | 大 |
+| 4-31 | 拓展页一个拓展一张卡、卡上标开了哪几口、页头按口筛选（ADR-0025 决策 13；服务端已下发 `provides`） | `Extensions.tsx` | 无 | 否 | 小 |
+| 4-32 | 目标一律标平台图标 + 连接名（一个计算函数）：目标页、订阅详情、目标胶囊、链接预览、周报胶囊、五个点名下拉（ADR-0035 前半） | 计算函数 + 约 10 个调用点 | 4-25、4-29、4-26 | 否 | 中 |
+| 4-33 | 功能页指向拓展设置的可点击入口（停用 / 失败也能去，ADR-0025 决策 1；今天只有提示字） | `Targets.tsx`、`Subs.tsx` 等 | 4-29、4-15 | 否 | 小 |
+| 4-34 | 日志等级入口：系统页按集成列（来源、三个内置适配器、每个拓展），拓展详情页自己那一格。清 `System.tsx` 替身里日志那几处 | `System.tsx` 那一节、`ExtensionDetail.tsx` | 4-12、4-13、4-43 | 否 | 中 |
+| 4-35 | 首页「不会被监听」计数去掉 B 站限定（判定本体 3b-14 已落） | `Dashboard.tsx` | 4-08 | 否 | 小 |
+| 4-36 | AI 页尾巴：指针没着落时抢默认实例（construction-plan「AI 实例按每一家隔离之后留着的几件」第一件）、工具失败句显示与技能勾选框显示标签（3b-32 留）、「引擎」用户看得见的三处（那一节的副标题、说明里「引擎开关出厂全关」、字段码 `ai.search.engines.*`，Q7） | `pages/ai/model-ops.ts`、`Ai.tsx`、`ai-chat/messages.tsx`、`MaidSkills.tsx` | 4-08、4-24 | 否 | 小 |
+| 4-37 | 跨来源叫法（Q8）：「勤奋 UP」称号与 AI 工具小条进字典，用 `{creatorNoun}` / `{postNoun}` 拼，叫法照 contract 的 `sourceNounsOf`（一个来源用它的，零个 / 多个落中性词）。带创作者的小条按那位的来源（B 站照旧「查看 UP主资料」「查看最近动态」）；「搜索 UP 主」→「搜索创作者」；称号按这张榜涉及的来源，全是 B 站订阅时「勤奋UP主」、混着拓展订阅时「勤奋创作者」（B 站字面从「勤奋 UP」变「勤奋UP主」，主人知情）。提示词里那处不动（决策 11） | `stats/roast*.ts`、`packages/image` 锐评块与图标、`packages/ai/src/tool-label-texts.ts`、面板锐评卡 | 4-56 | 否 | 中 |
+| **戊 等稿的界面片** | | | | | |
+| 4-38 | 健康卡照稿重做：核心一排、集成一排、账号进集成格、运行灯、问题、同身份遗留订阅；`api` 格与过时注释去掉。清 `Dashboard.tsx` 替身 | `Dashboard.tsx`（可拆出健康卡组件） | 稿 1、4-18、4-20 | 否 | 大 |
+| 4-39 | 顶栏问题框：读 `/api/problems` 与 `problems-changed`（面板今天零读者）、问候语后显示问题；撤掉 B 站账号那一行（账号已在健康卡有家）；右上告警改标题与分类（合不合并看稿） | 新 hook 与组件、`header.tsx`、`useStateChannel.ts`、`alert-shell.tsx` | 稿 1、4-38 | 否 | 中 |
+| 4-40 | 账号页与多账号：系统 → 账号按来源列行、拖动排序；头部第一位 + 下拉；AI 对话头像同头部；新手引导登录步按来源生成。清替身 `header`、`ai-chat/index`、`onboarding`、`System.tsx` 账号几处 | `System.tsx` 账号节、`header.tsx`、`ai-chat/`、`onboarding/` | 稿 1、4-20、4-39、4-43 | 否 | 大 |
+| 4-41 | 正在搬家全屏闸：搬完之前只画进度、不挂业务页；搬完统一作废旧查询 | `App.tsx`、`useBackendReachable.ts`、`shell-states.tsx` | 稿 2、4-19 | 否 | 中 |
+| 4-42 | 生命周期提示：首访页（皮肤重做、旧数据留作备份、主人目标重选、不收的拓展、全新开始）、本次更新、开代失败、自愈退回，接已读（服务端齐，面板零消费） | 新页面与提示主机、`App.tsx` 接线 | 稿 2、4-41、4-31 | 否 | 中 |
+| 4-43 | 系统页照稿 3 换骨架：节拆成各自文件、排好入口，内容照搬 | `System.tsx` 拆分 | 稿 3、4-08 | 否 | 中 |
+| 4-44 | B 站设置 tab：通用表单、字段取自 4-11 的导出（登录心跳范围随之与 schema 的 5–180 对上，今天面板是 1–1440）；「换一个身份」按钮与身份重置口（ADR-0025 决策 7） | 系统页新节、服务端重置口、contract | 稿 3、4-43；开工时问「换一个身份」何时生效（今天身份在来源 `start` 时读入） | 否 | 中 |
+| 4-45 | 两种「设置不合法」态（连接的、集成的）与拓展设置坏态：原值与原因；备份导出提示按默认值导出的格；订阅坏行的显示 | `Targets.tsx` 一处、系统页、拓展设置页、备份弹窗 | 稿 3（或稿 1 的问题框）、4-21、4-22、4-29、4-44 | 否 | 中 |
+| 4-46 | 存储占用与旧版本数据：七行用量、可清的几类、图库清扫、逐代列表与删除保护（服务端齐，ADR-0027 决策 17） | 系统页新节与组件 | 稿 3、4-43 | 否 | 中 |
+| 4-47 | 统计总开关与关闭态：关着时统计页只留一段话与开启入口（ADR-0027 决策 9；面板今天零读 `stats.enabled`） | `Stats.tsx`、系统页一格 | 稿 3、4-43、4-27 | 否 | 小 |
+| 4-48 | 语言 / 口吻开关（ADR-0037 决策 3、7；口吻默认维持女仆，Q9）、时区那一格（Q10） | 系统页一节、`i18n/` | 稿 3、4-43、4-55 | 否 | 小 |
+| 4-49 | 改面板账号密码的入口（接 4-07；桌面与不要求登录的不显示）；种子凭据那句日志一起改 | 系统页一节 | 稿 3、4-43 | 否 | 小 |
+| 4-50 | 素材库顶层页与图 / 字体共用的选择器（data-and-migration「素材库与皮肤」） | 新页面、两个 picker 合一、导航 | 稿 4、4-23 | 否 | 大 |
+| 4-51 | AI 页「女仆写正文」一节：picker 切作品 / 直播、默认一行 + 按目标例外；例外表与链接预览共用一个件（ADR-0032；服务端已齐，`Ai.tsx` 零读 `writing`） | `Ai.tsx`、`link-preview-settings.tsx`、新共用件 | 稿 5、4-36、4-29 | 否 | 中 |
+| 4-52 | 订阅标签管理（改名、删除、排序，整表 PUT）与卡上全部标签胶囊（ADR-0034；今天卡上只取第一个） | `pages/up/`、新管理弹框 | 稿 6、4-26 | 否 | 中 |
+| **己 收字与收尾** | | | | | |
+| 4-53a | 收字：卡片页与皮肤编辑器里没有界面片碰到的文件 | `Cards.tsx`、`CardSkinEditor.tsx`、`pages/cards/`、`pages/skins/` 一带 | 无 | 否 | 中 |
+| 4-53b | 收字：面板其余页与配置表（如 `field-labels.ts`） | `apps/web/src/` 其余 | 无 | 否 | 中 |
+| 4-53c | 收字：服务端剩下的字（含迁移里「勤奋 UP」那句报错） | `apps/server/src/` | 无 | 否 | 中 |
+| 4-53d | 收字：出图包的卡片字 | `packages/image/src/` | 4-56 | 否 | 中 |
+| 4-53e | 收字：其余各包与 contract（internal、ai、ui、http、push、storage、contract）。设置校验的报错改成校验发生时才取字（zod 4 的 `error` 写成函数，ADR-0037「仍未决」那条的结论）；加载时就取成常量的字表（如卡种名）改成出字时取（ADR-0037 决策 1）；`ui` 那 26 处用属性传进来还是同样交取字口，施工时定 | `packages/*/src/`、`apps/contract/src/` | 4-56 | 否 | 大 |
+| 4-54 | 收尾：`BILIBILI_SOURCE_KEY` 搬出 `internal`；`identityColor` 的 B 站分支改由描述符声明（Q5：描述符加一格「颜色按外部 id 算」，B 站声明；读者六处，面板显示工具、统计、首页，服务端锐评出图从来源登记表取）；推送路由日志标签不再分 B 站（`push-router.ts`，照规矩直接改）；出期条件逐条核数清零；21b 那四行转对拍；全量门禁 | 散 | 其余全部 | 否 | 中 |
+
+动盘只有 4-24（修订号 52 → 53）；4-20 开工时核要不要抬号。
+
+## 顺序
+
+单线做（10-27 主人定第一波主会话单线做，10-28 定第 4 期一直单线）。照前置排，推荐的先后：
+
+1. 第一波已落：4-01 至 4-09、4-11、4-12（4-10 删掉）。
+2. 4-56 包字典，先立：之后碰到包里文件的片才收得了那里的字。
+3. 服务端读口：4-13 至 4-24、4-55；稿 1 排在 4-18 之前（它定读口要哪些数据）。
+4. 4-25 组件库、不等稿的界面片 4-26 至 4-37。
+5. 稿 2 至稿 6 各排在自己那几片之前，主人认了再照稿写；等稿的界面片 4-38 至 4-52。
+6. 收字 4-53a 至 4-53e，最后 4-54 收尾。
+
+## 定案
+
+片表的 11 题主人 10-28 逐题答完：
+
+- **Q1 写死的中文收到多少**：甲，第 4 期末放行名单外全部清零，包与 contract 也收；4-53 拆五片。问时的现数（4-11 之后）：361 个文件 5325 处 = 面板 137 / 3046、服务端 162 / 1518、各包 62 / 723（internal 397、ai 157、image 112、ui 26、http 20、push 6、storage 5）、contract 2 / 38。
+- **Q1b 包里的话走哪套字典**：甲，internal 的包字典（形状同两端那套，两端合进来，启动时把取字口交给包）。被否：按谁显示分三处放；包只出码、两端各翻（两端共用的约 435 句要抄两份，3b-12 那条 🔗 说过会长歪）。代价：面板包带上只在服务端用的约 300 句。机制拆成 4-56。
+- **Q2 哪些界面出稿**：甲，下面「设计稿」那六份，加不出稿清单；不出稿的做完照 verify-ui 截图给主人看。
+- **Q3 运行状态读口的形状**：甲，宿主投影（见 4-18）。被否：`Source` 加运行态成员（今天没有实现者）。
+- **Q4a 坏格的原值怎么出门**：甲，非密钥格回原值 + 原因，密钥格只回原因（见 4-21）。被否：一律只回路径 + 原因（与五份文档写的「显示原值」不合）。
+- **Q4b 订阅坏行放哪**：甲，留在原文件、写回时原样带回（见 4-22）。被否：挪进隔离文件（多一个文件、占修订号）。
+- **Q5 `identityColor` 的 B 站分支**：乙，描述符声明（见 4-54）。被否：一律「来源键:外部 id」（每位 B 站 UP 颜色全变）；进放行名单。
+- **Q6 搬家进度放哪**：甲，开机段也答详情口（见 4-19）。被否：新开一个口；短版 `status` 加值（违 ADR-0025 决策 12）。
+- **Q7 「引擎」三件的归期**：甲，改键本期做（4-24），用户看得见的三处随 4-36，注释留第 5 期「清扫剩余旧名」。
+- **Q8 跨来源叫法**：甲，按来源取叫法（见 4-37）。被否：「勤奋 UP」当固定梗名进放行名单。
+- **Q9 口吻默认**：维持女仆。不管默认哪种，收字时都要把交互句的女仆版写进女仆层、平实底改写成平实话。
+- **Q10 时区那一格**：甲，露出，其余墙上时间也跟（新开 4-55）。问时推荐从「露出、其余不跟」改成了这一个：面板摆着「时区」、免打扰却不听它会误导人；10-20 R1 甲的原文是「这次不跟」。
+- **Q11 没定归期的残余**：照推荐。R25 留着的那截随 4-15，锐评 cron 随 4-55；其余不进第 4 期：3b 审查修完「留着的」R6 与 R3 两截、`push.md` 的按码退避重试、推送适配器登记表不等 `adapter.stop()`、`integration.dispose` 不等订阅源 `stop`、AI 实例隔离后的后四件、`s3b-review-rest.md` 里标 low 的 18 条。
+
+开工时才问的（只卡一片）：4-14 预览失败回落示例还是报错；4-25 下拉要不要搜索框、按连接分组还是平铺；4-44「换一个身份」写了之后何时生效。
+
+## 设计稿
+
+主仓 `.bn-design/` 里没有能直接用的第 4 期稿（勘察查过：`extensions-v2` 按口分节、与 ADR-0025 决策 13 冲突；综合管理稿是旧探索；皮肤编辑器稿与本期无关）。下面全是新稿，放 `.bn-design/`、不入库，主人认了再照稿写。
+
+| 稿 | 覆盖哪几片 | 出稿时一起看的 |
+| --- | --- | --- |
+| 稿 1 健康卡 + 顶栏问题框 + 账号 | 4-18 的数据清单、4-38、4-39、4-40 | 右上告警与问题框合不合并；集成排的粒度（推送适配器有连接才占格）；账号格怎么画、头部下拉；旧 `api` 格去掉；设置不合法与订阅坏行进不进问题框（construction-plan「和问题框一起设计」） |
+| 稿 2 生命周期 | 4-41、4-42 | 首访必须确认还是可以稍后；四种提示共用一个主机还是分开；搬完怎么进 |
+| 稿 3 系统页重排 | 4-43 至 4-49、4-34、4-47 的开关位置、4-45 的集成坏态 | 系统页今天五节，本期要加 B 站 tab、存储、统计开关、语言 / 口吻、时区、改密码、日志等级 |
+| 稿 4 素材库 | 4-50 | 分类、引用关系怎么显示、删除被拒怎么说 |
+| 稿 5 AI 页「女仆写正文」与共用例外件 | 4-51（4-36 的失败句可顺带看） | 例外件抽到哪一层（链接预览一行两格三态，AI 一行一格布尔） |
+| 稿 6 订阅标签管理 | 4-52 | 管理入口放哪、排序交互 |
+
+不出稿：只换字或改取数据、布局不动的 4-26、4-27、4-29、4-33、4-35、4-36；ADR 已写清版式或组件的 4-31（ADR-0025 决策 13）、4-25 与 4-32（ADR-0035）；4-47 统计页的关闭态。
+
+## 照规矩直接定的 / 从第 4 期销账的
+
+- **日志筛选销账**：等级、来源、正文与参数、日期筛选都在（`Logs.tsx`，客户端筛最近 500 条），分期表那四个字已经做掉。
+- **统一密钥输入框销账**：`packages/ui/src/secret-cell.tsx` 已是正本，7 个调用点；随各页重画复核即可。登录密码与备份 PIN 不是配置密钥，不换。
+- **推送历史保留期面板半销账**：七档选项、过期「图已清理」、禁重推都在（`System.tsx`、`History.tsx`、`routes/history.ts`）。
+- **首页直播监听唯一判定**：判定本体 3b-14 已落、首页文案已用它，只剩 4-35 那个 B 站限定。
+- **候选刷新快照的触发点不提题**：ADR-0024 决策 7 已写「列候选时按平台名刷新」。
+- **内置适配器描述从哪交不提题**：ADR-0024 决策 1 定「适配器自带」，挂 `PlatformAdapter.descriptor`。
+- **卡片预览本期中立化、旧搜人本期关口不提题**：construction-plan 与棘轮行内原因都写明第 4 期。
+- **`accounts/` 与多账号整套在第 4 期**：construction-plan 写明；拆成 4-20（服务端）与 4-40（面板）。
+- **`core.accounts.order` 缺键 = 登记顺序、默认不落盘**：照 3b-10 / `voice` 的先例，开工时核要不要抬号。
+- **同身份遗留订阅组由服务端算**：ADR-0025 决策 12 定健康数据住 `/api/health/details`。
+- **顶栏账号撤出排在健康卡之后**：分期表原文「账号挪到健康卡各集成那一格」，中途不能让账号没地方显示。
+- **备份默认值提示走「只给路径的坏格读口」、下载内容不变**：construction-plan 原文。
+- **素材库做全套**：ADR-0036 定搬口、data-and-migration 定通用选择器；选择器缠 react-query 留 `apps/web`，其中纯展示的网格件进 `packages/ui`。
+- **拓展页以 ADR-0025 决策 13 为正本**：决策原文「取代设计稿 V1 的按口子分节」，V2 稿作废。
+- **AI 实例遗留只做第一件**（4-36）：construction-plan 只把「指针没着落时抢默认实例」排进第 4 期，其余见 Q11。
+- **推送路由日志标签**：`push-router.ts` 改成一律「来源键:外部 id」，只影响日志格式（4-54）。
+- **「引擎」注释归第 5 期**：分期表第 5 行「清扫剩余旧名」。
+- **包字典的机制单拆一片（4-56，主会话 10-28 照 Q1b 拆，可否决）**：每片都要收自己碰到的文件里的字，包里的字要有地方进；机制放在 4-53e 里的话，排在它前面碰到包的片（4-13、4-14、4-37、4-55 等）都收不了。
+
+## 施工记录
+
+各片落成的要点写在切片表那一行；要展开的另起一节记在这里。
+
+## 真机
+
+不当硬门槛；第 4 期收口时主会话给一张十条以内的短清单。
