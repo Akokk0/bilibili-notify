@@ -45,8 +45,6 @@ vi.mock("../bilibili/source.js", async (importOriginal) => {
 			descriptor: { label: "B 站", postNoun: "动态" },
 			async start() {},
 			async stop() {},
-			// 入口把 `builtins.bilibili.api()`(来源造好的 `Api`)交给 `createApp`;假来源没有。
-			api: () => undefined,
 		}),
 	};
 });

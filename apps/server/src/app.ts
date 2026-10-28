@@ -12,7 +12,6 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
-import type { Api } from "./bilibili/api/index.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ActionOutcome } from "./extensions/context.js";
@@ -70,11 +69,6 @@ interface BasicAuthCredentials {
 }
 
 export interface CreateAppOptions {
-	/**
-	 * B 站 API 客户端。4-15 起已经没有读者(卡片预览问来源的 `fetchPreview`,搜人问来源的 `searchCreators`);
-	 * 这一格与入口递它的那一处随 4-16 一起拆。
-	 */
-	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
 	backupService?: BackupService;
 	/**

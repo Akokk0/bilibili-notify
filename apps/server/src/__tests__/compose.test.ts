@@ -364,33 +364,6 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		await prodSource.stop();
 	});
 
-	// 验红:把 `compose.ts` 里 `bilibili.api` 换成总是 undefined(或交真的 `Api` 而不是来源用的那一个),这条红。
-	it("bilibili.api():来源还没造是 undefined;造好之后交来源用的那一个,开发版是套过壳的、盖了的方法它也盖得到", async () => {
-		const fetchAllDynamic = vi
-			.spyOn(Api.prototype, "fetchAllDynamic")
-			.mockResolvedValue(EMPTY_FEED);
-		spies.push(fetchAllDynamic);
-		const { builtins } = compose();
-		const providers = createDevtoolsProviderRegistry();
-		builtins.provideDevtools(providers);
-		expect(builtins.bilibili.api()).toBeUndefined();
-
-		const fake = makeFakePipeline(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(fake.pipeline);
-
-		const api = builtins.bilibili.api();
-		expect(api).toBeDefined();
-		expect(builtins.bilibili.api()).toBe(api);
-		// 场景往壳上盖 fetchAllDynamic(回 -352):经交出来的那个读得到,说明交出来的就是壳、也就是来源与场景共用的那一个;
-		// 盖板用完一次就摘,之后读到的是真的(这里换成了空 feed 的替身)。
-		const scenario = providers.scenarios().find((s) => s.id === "bilibili.dynamic.fail");
-		if (!scenario) throw new Error("没有动态拉取报错的场景");
-		await scenario.run({ code: -352, rounds: 1 } as never);
-		expect(await api?.fetchAllDynamic()).toMatchObject({ ok: false, code: "rate_limited" });
-		expect(await api?.fetchAllDynamic()).toBe(EMPTY_FEED);
-		await fake.registered[0]?.source.stop();
-	});
-
 	// 验红:把 `compose.ts` 递给 `createBiliSource` 的东西里漏掉 `devShells` 之外的 `locale` 之类不红;这条红的是
 	// 「登录检查的口断了」:`start` 里读到的间隔不再经登录系统挂上(`login.setHealthCheckMs` 不被调)。
 	it("来源 start 之后,登录系统收到登录检查的间隔(设置里的分钟数换成毫秒);stop 之后收到 0", async () => {
@@ -557,20 +530,24 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			c.onDispose(async () => {
 				await (fake.registered[0]?.source as { stop(): Promise<void> } | undefined)?.stop();
 			}, "stop");
-			return { w, c, fake };
+			// 登记进假推送链路的那个 B 站来源造好的 `Api`(cookie 罐挂在它身上)。
+			const sourceApi = (): Api => {
+				const source = fake.registered[0]?.source as { api(): Api } | undefined;
+				if (!source) throw new Error("来源没造出来");
+				return source.api();
+			};
+			return { w, c, fake, sourceApi };
 		}
 
 		// 验红:把 `compose.ts` 里收上下文的钩子挪到 `registerSources` 里登记(晚于推送链路),这条红(上下文先收、登录后停)。
 		it("续期停在确认之前时关停:盘上还是旧的一对(闸还在,不存中间状态)", async () => {
-			const { w, c, fake } = setupShutdown();
+			const { w, c, fake, sourceApi } = setupShutdown();
 			await w.seed({ cookies: C0, token: "T0" });
 			const stalled = stallRenewalAtConfirm();
 
 			// 开机顺带触发一次续期(盘上有令牌)。
 			await c.builtins.registerSources(fake.pipeline);
-			const api = c.builtins.bilibili.api();
-			if (!api) throw new Error("来源没造出来");
-			stalled.setJar(w.jarOf(api));
+			stalled.setJar(w.jarOf(sourceApi()));
 			await stalled.reached;
 
 			await c.runStopHooks();
@@ -587,13 +564,11 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		// 验红:同上(收上下文的钩子晚于推送链路登记),这条红(没先停 Api,迟到的链去提交、撞上已关的写道:记 error)。
 		it("停 Api 的收尾排在最后一次存盘之前:关停后迟到的确认回应是「被取代」,不是去撞已关的写道", async () => {
 			const logger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-			const { w, c, fake } = setupShutdown(logger);
+			const { w, c, fake, sourceApi } = setupShutdown(logger);
 			await w.seed({ cookies: C0, token: "T0" });
 			const stalled = stallRenewalAtConfirm();
 			await c.builtins.registerSources(fake.pipeline);
-			const api = c.builtins.bilibili.api();
-			if (!api) throw new Error("来源没造出来");
-			stalled.setJar(w.jarOf(api));
+			stalled.setJar(w.jarOf(sourceApi()));
 			await stalled.reached;
 
 			// 确认回应在关停进行的当口到:Api 必须已经先停了(否则这条链醒来就去提交)。
@@ -610,13 +585,11 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		});
 
 		it("没有在途续期、罐子里有没存的变化时关停:最后一次存盘落了,存储把手关了", async () => {
-			const { w, c, fake } = setupShutdown();
+			const { w, c, fake, sourceApi } = setupShutdown();
 			await w.seed({ cookies: C0 });
 			await c.builtins.registerSources(fake.pipeline);
-			const api = c.builtins.bilibili.api();
-			if (!api) throw new Error("来源没造出来");
 			// 假时钟不推进:攒着的那一下根本没到点。
-			w.jarOf(api).setFromSetCookie(
+			w.jarOf(sourceApi()).setFromSetCookie(
 				"stray=late; Domain=.bilibili.com; Path=/",
 				"https://www.bilibili.com",
 			);

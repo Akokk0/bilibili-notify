@@ -60,13 +60,10 @@ export const BOUNDARIES = [
 		// 旧搜人两口(cards、subscriptions、app,第 4 期)。只降不涨;3b 收尾能清的清零,余下的等第 4 期,原因写在行内。
 		// 3b-25:关注同步搬进 B 站来源,`runtime/follow-sync.ts` 与 `routes/subscriptions.ts`(新建时当场关注)两行清零删掉。
 		// 3b-47:登录装配搬进 B 站来源(`compose.ts` 开上下文、来源自己造 / 起 / 停登录),入口那一行(`bilibili/auth/index.js`)清零删掉。
+		// 4-16:`createApp` 不再收 B 站 `Api`,`app.ts` 那一行清零删掉。
 		ratchet: {
-			// 第 4 期:经接口搜人改走来源后消(4-14 起卡片预览已不用它,只剩旧搜人那一份 `Api`)。
-			"apps/server/src/app.ts": 1,
 			// 4-14 卡片真实预览改走来源(4 → 1);剩下的是醒目留言示例借 B 站价目表,SC 示例做到中立那一片消(主人 10-28 定)。
 			"apps/server/src/routes/cards.ts": 1,
-			// 3b-47:旧搜人改从 createApp 的选项拿 `Api`(主人 10-25 定直接引类型、不借卡片路由的),第 4 期旧搜人改口时消。
-			// 第 4 期:经接口搜人改走来源后消。
 		},
 		reason:
 			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨;3b 收尾能清的清零,余下的等第 4 期",

@@ -25,7 +25,6 @@ import {
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import type { Api } from "./bilibili/api/index.js";
 import { type BiliContextHandle, createBiliContext } from "./bilibili/context.js";
 import { createBiliDevtools, type DevtoolsProviderRegistry } from "./bilibili/devtools/index.js";
 import { settingsSegment } from "./bilibili/settings.js";
@@ -100,13 +99,6 @@ export interface BuiltinIntegrations {
 	 * 造来源或登记任一步抛了,先收上下文再原样抛。
 	 */
 	registerSources(pipeline: Pick<PipelineRuntime, "registerSource">): Promise<void>;
-	/**
-	 * B 站那一格(第 4 期两处读者借用,改口时消):`api()` 是来源造好的那一个(开发版是套过壳的,
-	 * 与来源、开发场景用的同一个对象),来源还没造时是 undefined。
-	 */
-	bilibili: {
-		api(): Api | undefined;
-	};
 	/**
 	 * `createPipelineRuntime` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
 	 * 交回的 `dispose` 由调用方挂到关停钩子上(逐个撤登记再关存储;幂等)。登记途中任一个抛了,已登记的先收回,
@@ -193,9 +185,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				await opened?.dispose();
 				throw err;
 			}
-		},
-		bilibili: {
-			api: () => source?.api(),
 		},
 		async registerAdapters() {
 			if (registeringAdapters) throw new Error("builtin adapters are already registered");

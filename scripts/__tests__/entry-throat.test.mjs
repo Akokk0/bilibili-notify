@@ -61,11 +61,6 @@ export const INTEGRATION_DIRS = ["apps/server/src/bilibili", "apps/server/src/pl
  * 同一个名字在导出类型里出现几次记几处(`BiliDevtoolsDeps["api"]` 一次)。
  */
 export const EXPORTED_TYPE_LEDGER = {
-	Api: {
-		limit: 1,
-		until:
-			"`BuiltinIntegrations.bilibili.api()` 的返回类型,给入口递 `createApp`(卡片真实预览与旧搜人);卡片真实预览与旧搜人(第 4 期)改口时消",
-	},
 	DevtoolsProviderRegistry: {
 		limit: 1,
 		until:
@@ -75,10 +70,11 @@ export const EXPORTED_TYPE_LEDGER = {
 
 /**
  * ③ 的名单:`BuiltinIntegrations.bilibili` 这一格的成员名。清空之后连这一格一起删。
- * `api` 给第 4 期两处读者(卡片真实预览、旧搜人,经入口递 `createApp`)。主人 10-25 批。
  * 4-03 删了 `fetchImage`:核心抓会员自定义图改走宿主自己的抓图口(`AppRuntime.imageFetcher`)。
+ * 4-16 删了 `api`(卡片真实预览与搜人都改问来源,入口不再递 `createApp`),这一格整个删了:
+ * 名单空着,判据就是「`BuiltinIntegrations` 里不许再有 `bilibili` 这一格」。
  */
-export const BILIBILI_MEMBERS = ["api"];
+export const BILIBILI_MEMBERS = [];
 
 /** ④ 的范围与不扫的目录。 */
 export const SLOT_ROOTS = ["apps/server/src"];
@@ -91,12 +87,10 @@ export const SLOT_SKIP_DIRS = [
 
 /**
  * ④ 的棘轮:文件 → `api` 槽位的处数。只许降不许涨:一个读者消失就当场调低,清零了整行删掉。
- * 今天里面全是 B 站接口客户端的槽位(第 4 期两处读者):`index.ts` 只剩交给 `createApp` 的那一处。
+ * 4-16 拆掉最后两个文件(`app.ts` 的 `CreateAppOptions.api`、`index.ts` 递它的 `builtins.bilibili.api()`),表空了:
+ * 表外上限 0,核心里再长出叫 `api` 的槽位就红。
  */
-export const API_SLOT_RATCHET = {
-	"apps/server/src/app.ts": 1, // 只剩 `CreateAppOptions.api` 那一格(没有读者了),4-16 拆。4-14 卡片预览改问来源(4 → 3);4-15 搜人改问来源(3 → 1)
-	"apps/server/src/index.ts": 2, // 只剩 `builtins.bilibili.api()` 递给 `createApp`(第 4 期两处读者);第 4 期卡片真实预览与旧搜人改口时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)。3b-47 删 `EnginesRuntime.api`(7 → 5);3b-47 登录装配进 B 站来源,套壳、引擎、`authSystem.api` 都出了入口(5 → 2)
-};
+export const API_SLOT_RATCHET = {};
 
 // ---------------------------------------------------------------------------
 // 共用:认「集成的东西」
@@ -1008,8 +1002,15 @@ describe("入口咽喉:compose.ts 的导出面", () => {
 		const bindings = integrationBindings(COMPOSE_FILE, source);
 		expect(bindings.size).toBeGreaterThan(0);
 		expect([...bindings.values()].some((b) => !b.typeOnly)).toBe(true);
-		// 3b-47 起 `BuiltinIntegrations.bilibili` 这一格在了(`api` / `fetchImage`):找得到、是字面量写法。
-		expect(Array.isArray(bilibiliMembersOf(source))).toBe(true);
+		// ③ 按 `BuiltinIntegrations` 这个名字找 `bilibili` 那一格(4-16 起整个删了、名单空着):接口改了名,
+		// 「没有这一格」就会空过,所以钉住它还在。
+		expect(
+			source.ast.statements.some(
+				(s) =>
+					(ts.isInterfaceDeclaration(s) || ts.isTypeAliasDeclaration(s)) &&
+					s.name.text === "BuiltinIntegrations",
+			),
+		).toBe(true);
 	});
 
 	it("① 导出类型里的集成类型:实数与记账一致", () => {
