@@ -8,6 +8,7 @@ import { pickBoundMembers } from "../util/bound-members.js";
  */
 const ADAPTER_MEMBERS = {
 	adapterKey: true,
+	descriptor: true,
 	probe: true,
 	start: true,
 	stop: true,

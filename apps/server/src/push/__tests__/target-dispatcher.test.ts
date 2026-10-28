@@ -30,6 +30,7 @@ import { fail, platformDescriptor } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import { z } from "zod";
 import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
@@ -92,6 +93,7 @@ function makePlatformAdapter(
 		adapterKey,
 		// 派发器按它解 settings 再递给适配器;测试里的适配器不挑设置形状。
 		settingsSchema: z.unknown(),
+		descriptor: placeholderDescriptor(),
 		isAvailable: vi.fn(() => true),
 		send: vi.fn(async () => sendResult),
 		probe: vi.fn(async () => probeResult),

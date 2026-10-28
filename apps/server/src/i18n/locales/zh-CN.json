@@ -93,6 +93,8 @@
 	"nouns.creator": "创作者",
 	"nouns.post": "作品",
 	"nouns.sources": "各平台",
+	"onebot.adapter.label": "OneBot v11",
+	"onebot.adapter.shortLabel": "OneBot",
 	"onebot.nativeShare.noPreset": "这个 OneBot 连接不认识应用 {appId}，发不了它的原生分享",
 	"problem.connection.recovered": "连接「{name}」又连上啦～",
 	"problem.connection.settingsInvalid": "连接「{name}」{reason}",
@@ -112,6 +114,8 @@
 	"problem.report.issue.notBoolean": "{cell} 不是布尔",
 	"problem.report.issue.notRecord": "上报不是对象",
 	"problem.report.issue.notString": "{cell} 不是字符串",
+	"qqOfficial.adapter.label": "QQ 官方机器人",
+	"qqOfficial.adapter.shortLabel": "QQ官方",
 	"qqOfficial.gateway.offline": "网关已经连续一分钟没连上（{reason}），群里和私聊的消息暂时收不到；推送不受影响。",
 	"qqOfficial.gateway.offlineNoReason": "网关已经连续一分钟没连上，群里和私聊的消息暂时收不到；推送不受影响。",
 	"searchCreators.noSuchSource": "没有叫「{sourceKey}」的订阅来源。在册的来源有：{listing}",
@@ -129,5 +133,7 @@
 	"session.credentials.noConfigFile": "没有配置文件可写:这台没设 BN_CONFIG,当前目录下也没有 bn.config.yaml。建一份配置文件(或设 BN_CONFIG)之后再在这里改。",
 	"session.credentials.desktop": "桌面版不用面板账号密码。",
 	"settings.patch.unknownKeys": "设置的补丁顶层只认 core 与各集成的键,这一发里多了 {keys} —— 核心的设置要挂在 core 下。这个面板多半是更新之前的旧版,刷新一下再改。",
-	"settings.patch.coreNotObject": "core 要是一个对象(核心设置的补丁)。"
+	"settings.patch.coreNotObject": "core 要是一个对象(核心设置的补丁)。",
+	"webhook.adapter.label": "Webhook",
+	"webhook.adapter.shortLabel": "Webhook"
 }

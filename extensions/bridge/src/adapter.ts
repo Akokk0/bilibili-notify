@@ -164,8 +164,10 @@ function toBridgeMessage(
  * - `reconcile()` —— 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
  * - `deliverInbound()` —— 端点收到入站帧后,按适配器存下的 `ctx.connections()` 找连接,再经 `ctx.inbound`
  *   交给宿主(连接与入站口只在 `start(ctx)` 里拿得到;映射仍是 `routeBridgeInbound` 那个纯函数)。
+ *
+ * 键与描述由宿主填(描述照清单 `contributes.push`),这里不带。
  */
-export type BridgeAdapter = Omit<PlatformAdapter, "adapterKey"> & {
+export type BridgeAdapter = Omit<PlatformAdapter, "adapterKey" | "descriptor"> & {
 	reconcile(): void;
 	deliverInbound(session: BridgeSession, frame: BridgeInboundFrame): void;
 };

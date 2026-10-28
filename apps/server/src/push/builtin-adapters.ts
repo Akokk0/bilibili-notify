@@ -74,7 +74,8 @@ export async function registerBuiltinAdapters(
 				stopReason: "BN 关停",
 				problems: opts.problems,
 				reporter: adapter.adapterKey,
-				label: () => adapter.adapterKey,
+				// 问题里「谁报的」给人看:取描述的全名(报的那一刻按当前语言),报的人仍记适配器键。
+				label: () => adapter.descriptor().label,
 				rejectedProblemLevel: "error",
 				transitImages: opts.transitImages,
 				httpOptions: { setTimeout: opts.setTimeout },
@@ -84,7 +85,7 @@ export async function registerBuiltinAdapters(
 			const ctx = createPlatformAdapterContext({
 				integration: context.ctx,
 				adapterKey: adapter.adapterKey,
-				label: () => adapter.adapterKey,
+				label: () => adapter.descriptor().label,
 				settingsSchema: adapter.settingsSchema,
 				connections: opts.connections,
 				...(opts.connection ? { connection: opts.connection } : {}),

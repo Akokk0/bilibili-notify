@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+	AdaptersResponse,
 	ConnectionCapabilitiesMap,
 	ExtensionLookupResponse,
 	ExtensionsResponse,
@@ -180,6 +181,7 @@ const closed = (reason: string, ...evidence: Evidence[]): Row => ({
 /** 被引用的单测与另一份 e2e(逐字抄它们的 `it` 标题;自检会核文件在、标题在)。 */
 const EXTENSION_SOURCE_TEST = "apps/server/src/extensions/__tests__/extension-source.test.ts";
 const CONTEXT_GRANTS_TEST = "apps/server/src/extensions/__tests__/context-grants.test.ts";
+const CONTEXT_I18N_TEST = "apps/server/src/extensions/__tests__/context-i18n.test.ts";
 const MANIFEST_TEST = "packages/internal/src/schema/__tests__/extension-manifest.test.ts";
 const ROAST_E2E = "apps/server/src/__tests__/extension-roast-e2e.test.ts";
 const ROAST_TITLE =
@@ -301,6 +303,18 @@ const ADAPTER_ROWS = {
 			{ file: CONTEXT_GRANTS_TEST, title: "分发键由宿主按 id 填 —— 拓展自报的那份被覆盖掉" },
 		],
 	},
+	descriptor: closed(
+		"外观以清单为准、由宿主填:描述取自 `contributes.push`、每次读按当前语言盖好译文,拓展自己交的不认(契约「推送」表里 `descriptor` 一行;ADR-0024 决策 3 下 10-14 的 🔗)。",
+		THIS(TITLE.pushCells),
+		{
+			file: CONTEXT_GRANTS_TEST,
+			title: "代码里还交外观 / 字段表(按第 1 版的写法)—— 抛:两份声明会打架,以清单为准",
+		},
+		{
+			file: CONTEXT_I18N_TEST,
+			title: "登记的平台适配器,描述由宿主照清单推送那一口填,每次读按当前语言盖好译文",
+		},
+	),
 	probe: driven(TITLE.probe),
 	start: driven(TITLE.lifecycle),
 	stop: driven(TITLE.lifecycle),
@@ -328,9 +342,10 @@ const ADAPTER_ROWS = {
 	),
 } satisfies Record<keyof PlatformAdapter, Row>;
 
-/** `PlatformAdapterDef` 从 `PlatformAdapter` 上摘掉的三个成员(类型里排除)。 */
+/** `PlatformAdapterDef` 从 `PlatformAdapter` 上摘掉的四个成员(类型里排除)。 */
 const ADAPTER_DEF_OMITTED = [
 	"adapterKey",
+	"descriptor",
 	"listAddressCandidates",
 	"connectionAuth",
 ] as const satisfies readonly Exclude<keyof PlatformAdapter, keyof PlatformAdapterDef>[];
@@ -827,6 +842,10 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		}
 		expect(face?.label).toBe("假平台");
 		drove("PushCell", "label", "shortLabel", "color", "icon", "settingsFields");
+		// 适配器表里那一条也是宿主照清单填的(拓展代码里不交描述):与拓展卡上那格逐格相等。
+		const { adapters } = await okJson<AdaptersResponse>(await api("/api/adapters"));
+		expect(adapters.find((entry) => entry.key === FAKE)?.descriptor).toEqual(face);
+		drove("PlatformAdapter", "descriptor");
 	});
 
 	// ---------------------------------------------------------------------
@@ -1472,15 +1491,15 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(size("Source")).toBe(9);
 			expect(size("SubscriptionCell")).toBe(11);
 			expect(size("SourceContext")).toBe(7);
-			expect(size("PlatformAdapter")).toBe(12);
+			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
-			expect(entries).toHaveLength(47);
+			expect(entries).toHaveLength(48);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 6 行;宿主填 1 行。
+			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 7 行;宿主填 1 行。
 			expect(of("driven")).toHaveLength(39);
 			expect(of("elsewhere")).toHaveLength(1);
-			expect(of("closed")).toHaveLength(6);
+			expect(of("closed")).toHaveLength(7);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(
 				of("closed")
@@ -1489,6 +1508,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			).toEqual(
 				[
 					"PlatformAdapter.connectionAuth",
+					"PlatformAdapter.descriptor",
 					"PlatformAdapter.listAddressCandidates",
 					"Source.auth",
 					"Source.descriptor",
@@ -1498,7 +1518,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			);
 		});
 
-		it("开放的行与宿主那张成员表对得上:来源 = SOURCE_DEF_MEMBERS 里为 true 的,适配器的「不开 / 宿主填」= PlatformAdapterDef 摘掉的三个", () => {
+		it("开放的行与宿主那张成员表对得上:来源 = SOURCE_DEF_MEMBERS 里为 true 的,适配器的「不开 / 宿主填」= PlatformAdapterDef 摘掉的四个", () => {
 			expect(ADAPTER_DEF_OMITTED_IS_COMPLETE).toBe(true);
 			const opened = Object.entries(SOURCE_ROWS)
 				.filter(([, row]) => (row as Row).state === "driven")

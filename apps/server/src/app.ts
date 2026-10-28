@@ -373,7 +373,14 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
 			}),
 		);
-		app.route("/api/adapters", createAdaptersRoute(deps));
+		// 适配器表、新建连接的候选与扫码建连接;拓展的适配器照装载器那张表列。
+		app.route(
+			"/api/adapters",
+			createAdaptersRoute(deps, {
+				extensions: () => options.extensions?.loaded() ?? [],
+				settle: options.extensions?.settle,
+			}),
+		);
 		// 来源表与来源的登录口;无条件挂,来源在不在、有没有登录口由路由现问登记表。拓展的来源照装载器那张表列。
 		app.route(
 			"/api/sources",

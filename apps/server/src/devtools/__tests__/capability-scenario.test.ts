@@ -7,6 +7,7 @@ import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createCapabilityInjector } from "../capability-injection.js";
@@ -48,6 +49,7 @@ function onebot(): PlatformAdapter {
 	return {
 		adapterKey: "onebot",
 		settingsSchema: z.unknown(),
+		descriptor: placeholderDescriptor(),
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => ({ ok: true, latencyMs: 1 }),
@@ -63,6 +65,7 @@ function webhook(): PlatformAdapter {
 	return {
 		adapterKey: "webhook",
 		settingsSchema: z.unknown(),
+		descriptor: placeholderDescriptor(),
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => fail("unsupported", "no probe"),

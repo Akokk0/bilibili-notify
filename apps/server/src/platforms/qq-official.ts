@@ -1438,6 +1438,15 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		adapterKey: ADAPTER_KEY,
 		settingsSchema: QQOfficialConnectionSettingsSchema,
 		connectionAuth: bindAuth.auth,
+		// 脸同平台表 `qq-official` 那一行(这个适配器只连这一个平台);连接配置项随 4-29 和表单一起设计。
+		descriptor() {
+			return {
+				label: t("qqOfficial.adapter.label"),
+				shortLabel: t("qqOfficial.adapter.shortLabel"),
+				color: "#14b8a6",
+				settingsFields: [],
+			};
+		},
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
 			return builtinCandidatesFor("qq-official");

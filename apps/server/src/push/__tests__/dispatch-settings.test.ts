@@ -20,6 +20,7 @@ import type {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import type { ConfigStore } from "../../config/store.js";
@@ -95,6 +96,7 @@ describe("被隔离的连接(settings 过不了适配器的规则)", () => {
 		const adapter: PlatformAdapter = {
 			adapterKey: "webhook",
 			settingsSchema: schema,
+			descriptor: placeholderDescriptor(),
 			isAvailable,
 			send,
 			probe,
@@ -155,6 +157,7 @@ describe("停用排在设置不合法之前", () => {
 		const adapter: PlatformAdapter = {
 			adapterKey: "webhook",
 			settingsSchema: schema,
+			descriptor: placeholderDescriptor(),
 			isAvailable: () => true,
 			send,
 			probe: async () => ({ ok: true as const, latencyMs: 1 }),

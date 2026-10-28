@@ -212,7 +212,9 @@ src/
   config 字段表)、`/api/ext/<id>/status` 面板数据、(新建连接供挑的候选不在这里:在 `/api/adapters/<adapterKey>/candidates`,内置与拓展同一个口)、
   `POST /api/ext/<id>/swap` 只重载这个拓展,吃 dashboard 会话鉴权;`/api/ext/marketplace` 拓展市场的索引与从市场装,见 `extension-marketplace.md`)。代码与配置面一律写全称(`globals.extensions` / `loadExtensions`)。
 - **推送源的分发键由宿主按拓展 id 填**,拓展自报的那份会被覆盖 —— 否则一个拓展声明
-  `"onebot"` 就能把内置连接的推送整个截走。
+  `"onebot"` 就能把内置连接的推送整个截走。描述(`PlatformAdapter.descriptor()`)也由宿主照清单
+  `contributes.push` 填、每次读按当前语言盖好译文;全部适配器(内置三个 + 拓展,停着的也在)的描述列在
+  `GET /api/adapters`(4-13)。
 - **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
   —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
   `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<数据根>/extensions/<id>/`

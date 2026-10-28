@@ -9,6 +9,7 @@ import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import { fakeAdapterContext } from "./support/adapter-ctx.js";
+import { placeholderDescriptor } from "./support/adapter-descriptor.js";
 import { registerBuiltinAdapterStubs } from "./support/builtin-adapter-stubs.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 
@@ -132,6 +133,7 @@ describe("connections route — 凭据下发打码(真 store)", () => {
 			{
 				adapterKey: "fake-ext",
 				settingsSchema: z.object({ botKey: z.string(), note: z.string() }),
+				descriptor: placeholderDescriptor(),
 				isAvailable: () => true,
 				send: async () => ({ ok: true, latencyMs: 1 }),
 				probe: async () => ({ ok: true, latencyMs: 1 }),

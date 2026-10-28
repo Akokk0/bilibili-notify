@@ -24,7 +24,7 @@ import {
 	memoryStoreHandle,
 } from "../../__tests__/support/memory-key-value-store.js";
 import { createValueRedactor } from "../../logs/value-redactor.js";
-import { createProblemTable } from "../../problems/problem-table.js";
+import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
 
@@ -52,6 +52,12 @@ function fakeAdapter(adapterKey: string): FakeAdapter {
 	const fake = {
 		adapterKey,
 		settingsSchema: z.unknown(),
+		descriptor: () => ({
+			label: `${adapterKey} 的全名`,
+			shortLabel: adapterKey,
+			color: "#000000",
+			settingsFields: [],
+		}),
 		seen: [] as string[][],
 		changed: vi.fn() as unknown as () => void,
 		isAvailable: () => true,
@@ -209,6 +215,15 @@ describe("registerBuiltinAdapters", () => {
 		]);
 		await builtin.dispose();
 		expect(problems.list()).toEqual([]);
+	});
+
+	it("适配器报的问题,写者名取描述的全名(私聊引子「刚刚 xxx 报告」用它),不是适配器键", async () => {
+		const { onebot, problems } = await setup();
+		const changes: ProblemChange[] = [];
+		problems.subscribe((change) => changes.push(change));
+		onebot.ctx?.reportProblem({ connectionId: "ob1", code: "gateway_down", message: "连不上" });
+		onebot.ctx?.reportProblem({ code: "adapter_down", message: "整个适配器出事了" });
+		expect(changes.map((c) => c.writtenBy)).toEqual(["onebot 的全名", "onebot 的全名"]);
 	});
 
 	it("适配器的 ctx.redact 经它自己那份存储把手登记(归属是适配器键);撤掉登记之后撤干净", async () => {

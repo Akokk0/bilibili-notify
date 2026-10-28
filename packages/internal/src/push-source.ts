@@ -58,6 +58,14 @@ export interface PlatformAdapter {
 	 */
 	readonly adapterKey: string;
 	/**
+	 * 这个适配器的脸与连接配置项(ADR-0024 决策 3),`GET /api/adapters` 照它列。写成方法:名字是给人看的字,
+	 * 要在出字那一刻按当前语言取(ADR-0037 决策 1),每次读都现调;字段会在宿主造视图时冻住。
+	 *
+	 * 拓展的由宿主照清单 `contributes.push` 填,拓展自己交的不认(ADR-0024 决策 3 下 10-14 的 🔗)。
+	 * 内置三个的 `settingsFields` 随 4-29 和表单一起设计,在那之前是空表。
+	 */
+	descriptor(): PlatformAdapterDescriptor;
+	/**
 	 * Side-effect-free reachability probe. Used by the connection status indicator
 	 * and the auto-poller. Implementations that have no out-of-band ping should
 	 * return `fail("unsupported", …)` so the UI can render "probe unsupported".
@@ -128,8 +136,8 @@ export interface PlatformAdapter {
 
 /**
  * 一个平台适配器给面板的描述(ADR-0012 决策 33 / 46 那三格外观,加要主人填的那几栏):
- * 推送目标页照它画新建连接那一排的名字、连接卡上那张脸、以及连接配置项。中立概念:今天只有拓展交,
- * 内置适配器第 4 期(面板改成按描述画)用同一种(ADR-0024 决策 3)。
+ * 推送目标页照它画新建连接那一排的名字、连接卡上那张脸、以及连接配置项。中立概念:拓展写在清单里,
+ * 内置适配器经 {@link PlatformAdapter.descriptor} 交同一种(ADR-0024 决策 3)。
  *
  * **就这几格**:作用域、地址名词、能不能 @全体这些都是**bot 所在平台**的事(一条拓展连接
  * 就是一个借来的 bot,决策 45),从 bot 报的 `platform` 查注册表,不从这儿来。

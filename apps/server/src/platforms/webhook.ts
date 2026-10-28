@@ -83,6 +83,16 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	return {
 		adapterKey: ADAPTER_KEY,
 		settingsSchema: WebhookConnectionSettingsSchema,
+		// 一个适配器管飞书 / 钉钉 / 企微 / 通用四个平台,脸是「怎么连」的,不借哪个平台的;色同「通用」那档的板岩灰。
+		// 连接配置项随 4-29 和表单一起设计。
+		descriptor() {
+			return {
+				label: t("webhook.adapter.label"),
+				shortLabel: t("webhook.adapter.shortLabel"),
+				color: "#94a3b8",
+				settingsFields: [],
+			};
+		},
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
 			return builtinCandidatesFor("webhook");

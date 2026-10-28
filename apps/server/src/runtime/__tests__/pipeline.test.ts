@@ -52,6 +52,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
@@ -2699,6 +2700,7 @@ describe("createPipelineRuntime — 目标可达性不翻转就不写", () => {
 		const pa: PlatformAdapter = {
 			adapterKey: "onebot",
 			settingsSchema: z.unknown(),
+			descriptor: placeholderDescriptor(),
 			isAvailable: () => true,
 			send: async () => (sendOk ? { ok: true, latencyMs: 7 } : fail("unavailable", "发不出去")),
 			probe: async () => ok({ latencyMs: 1 }),
@@ -2792,6 +2794,7 @@ describe("createPipelineRuntime — 连接所在平台的能力", () => {
 		const pa: PlatformAdapter = {
 			adapterKey: "onebot",
 			settingsSchema: z.unknown(),
+			descriptor: placeholderDescriptor(),
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
@@ -3040,6 +3043,7 @@ describe("createPipelineRuntime — 后台写登记进 track", () => {
 		const okPlatform = (probe: () => Promise<ProbeResult>): PlatformAdapter => ({
 			adapterKey: "onebot",
 			settingsSchema: z.unknown(),
+			descriptor: placeholderDescriptor(),
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe,

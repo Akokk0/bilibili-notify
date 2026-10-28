@@ -878,10 +878,15 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 类型约束,原样展开的话带了就是活的 —— 没开放的口子先被人用上,以后就改不动它的形状。
 			// 按成员表取、方法 bind 回拓展交上来的那个实例:拓展拿 class 写适配器(方法在原型上)是最常见的写法,
 			// 展开会把原型上的方法整个丢掉。
+			// 描述也由宿主填:照清单那一口、每次读时按此刻的语言盖好译文(拓展自己交的上面已经拒了)。
 			const adapter = {
 				...pickAdapterMembers(def, ["listAddressCandidates", "connectionAuth"]),
 				adapterKey: id,
 				settingsSchema: def.settingsSchema,
+				descriptor: () =>
+					manifestPushView(
+						localizeManifest(opts.manifest, opts.locales, opts.localeReader.current()),
+					) ?? view,
 			} satisfies PlatformAdapter;
 			// 能力结果里那一格时刻由拓展给:宿主不信自述,出门前先验再统一成 UTC(见 `normalizeCapabilities`)。
 			// 取的是 bind 回拓展实例之后的那两个方法,覆盖时它们在返回值上。

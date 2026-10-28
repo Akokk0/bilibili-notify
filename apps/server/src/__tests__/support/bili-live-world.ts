@@ -54,6 +54,7 @@ import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { fixedLocale } from "../support/fixed-locale.js";
 import { memoryKeyValueStores, memoryStoreHandle } from "../support/memory-key-value-store.js";
 import { registryOf } from "./adapter-ctx.js";
+import { placeholderDescriptor } from "./adapter-descriptor.js";
 import { snapshotFor } from "./connection-snapshot.js";
 
 /** 这个世界里唯一的那位 UP、他的房间、他的订阅与推送目标。 */
@@ -305,6 +306,7 @@ export async function bootBiliLiveWorld(
 	const adapter: PlatformAdapter = {
 		adapterKey: "onebot",
 		settingsSchema: z.unknown(),
+		descriptor: placeholderDescriptor(),
 		isAvailable: () => true,
 		send: async (_connection, destination, payload) => {
 			const described = describePayload(payload);

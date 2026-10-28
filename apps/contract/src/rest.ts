@@ -101,6 +101,21 @@ export interface ConnectionCandidatesResponse {
 	candidates: ConnectionCandidate[];
 }
 
+/**
+ * `GET /api/adapters` 里的一个平台适配器(ADR-0024 决策 1、3):它的脸与连接配置项。拓展的照清单列,
+ * 停用、没起来的也在 —— 有这一条**不等于**适配器在场。内置三个的 `settingsFields` 随 4-29 补,在那之前是空表。
+ */
+export interface AdapterEntry {
+	/** 适配器键:连接的 `adapterKey` 就是它(拓展的适配器键是拓展 id)。 */
+	key: string;
+	descriptor: PlatformAdapterDescriptor;
+}
+
+/** `GET /api/adapters` 响应:内置的按登记先后在前,拓展的按装载器的次序在后。 */
+export interface AdaptersResponse {
+	adapters: AdapterEntry[];
+}
+
 // ---- /api/extensions ------------------------------------------------------
 
 /**

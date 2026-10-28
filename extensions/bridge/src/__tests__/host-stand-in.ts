@@ -163,8 +163,13 @@ export function hostFor(
 			return MOUNT_PREFIX;
 		},
 		registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle {
-			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。
-			adapter = { ...def, adapterKey: EXTENSION_ID };
+			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。描述真宿主照清单填,
+			// 桥的测试不读它,替身给一份占位。
+			adapter = {
+				...def,
+				adapterKey: EXTENSION_ID,
+				descriptor: () => ({ label: "桥", shortLabel: "桥", color: "#000000", settingsFields: [] }),
+			};
 			// 登记即 `start`:适配器上下文里的 `inbound` 是桥交入站的唯一出口。替身不核归属、不补平台,
 			// 原样记下桥交来的东西(含 meta —— 桥只该报 `connectionId`)。
 			adapter.start({

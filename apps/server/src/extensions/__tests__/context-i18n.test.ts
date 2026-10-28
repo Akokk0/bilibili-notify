@@ -7,6 +7,7 @@
 
 import type { ExtensionManifest, Logger } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import {
 	extensionLocalesOf,
 	noExtensionLocales,
@@ -42,6 +43,7 @@ function boot(
 	logger: Logger = silentLogger,
 ) {
 	const reader = switchableLocale(initial);
+	const adapters = createPlatformAdapterRegistry();
 	const runtime = createExtensionContext({
 		...integrationIo(),
 		id: "demo",
@@ -58,7 +60,7 @@ function boot(
 		stores: { ...memoryStores(), redact() {} },
 		problems,
 		mounts: createExtensionMounts({ logger: silentLogger }),
-		adapters: createPlatformAdapterRegistry(),
+		adapters,
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		settings: () => undefined,
@@ -68,7 +70,7 @@ function boot(
 		locales,
 		localeReader: reader,
 	});
-	return { reader, runtime, i18n: runtime.ctx.i18n };
+	return { reader, runtime, adapters, i18n: runtime.ctx.i18n };
 }
 
 const SAMPLE = extensionLocalesOf({
@@ -143,6 +145,41 @@ describe("ctx.i18n", () => {
 		runtime.ctx.reportProblem({ code: "x_y", message: "second" });
 
 		expect(changes.map((c) => c.writtenBy)).toEqual(["简中名", "English name"]);
+	});
+
+	it("登记的平台适配器,描述由宿主照清单推送那一口填,每次读按当前语言盖好译文", async () => {
+		const locales = noExtensionLocales();
+		locales.files["zh-CN"] = {
+			dict: {},
+			manifest: { contributes: { push: { label: "简中桥", shortLabel: "简" } } },
+			issues: [],
+		};
+		locales.files.en = {
+			dict: {},
+			manifest: { contributes: { push: { label: "Test bridge", shortLabel: "TB" } } },
+			issues: [],
+		};
+		const { runtime, reader, adapters: registry } = boot(locales, "zh-CN");
+		runtime.ctx.registerPlatformAdapter({
+			probe: async () => ({ ok: true, latencyMs: 0 }),
+			start: () => {},
+			stop: () => {},
+			isAvailable: () => true,
+			send: async () => ({ ok: true, latencyMs: 0 }),
+			settingsSchema: z.object({}),
+			listConnectionCandidates: async () => [],
+		});
+		expect(await runtime.registrationsSettled()).toEqual({ ok: true });
+		const adapters = registry.list();
+		expect(adapters.map((adapter) => adapter.descriptor())).toEqual([
+			{ label: "简中桥", shortLabel: "简", color: "#000000", settingsFields: [] },
+		]);
+
+		reader.set("en");
+
+		expect(adapters.map((adapter) => adapter.descriptor())).toEqual([
+			{ label: "Test bridge", shortLabel: "TB", color: "#000000", settingsFields: [] },
+		]);
 	});
 
 	it("收摊之后再换语言,onChange 不再叫", async () => {

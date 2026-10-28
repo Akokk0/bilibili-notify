@@ -3,6 +3,7 @@ import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -205,6 +206,7 @@ describe("createDevtools · 截流接线", () => {
 		return {
 			adapterKey: "onebot",
 			settingsSchema: z.unknown(),
+			descriptor: placeholderDescriptor(),
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),

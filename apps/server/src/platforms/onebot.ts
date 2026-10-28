@@ -1379,6 +1379,15 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	return {
 		adapterKey: ADAPTER_KEY,
 		settingsSchema: OnebotConnectionSettingsSchema,
+		// 脸同平台表 `onebot` 那一行(这个适配器只连这一个平台);连接配置项随 4-29 和表单一起设计。
+		descriptor() {
+			return {
+				label: t("onebot.adapter.label"),
+				shortLabel: t("onebot.adapter.shortLabel"),
+				color: "#3b82f6",
+				settingsFields: [],
+			};
+		},
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
 			return builtinCandidatesFor("onebot");

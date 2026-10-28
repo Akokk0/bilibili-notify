@@ -21,7 +21,7 @@ async function appOf(adapters: readonly PlatformAdapter[], log = logger()) {
 	const deps = {
 		runtime: { adapterRegistry, serviceCtx: { logger: log } },
 	} as unknown as RouteDeps;
-	return { app: createAdaptersRoute(deps), log };
+	return { app: createAdaptersRoute(deps, { extensions: () => [] }), log };
 }
 
 /** 手写的拓展适配器:只有键、启停与候选口。 */

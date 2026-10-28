@@ -3,6 +3,7 @@ import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
@@ -34,6 +35,7 @@ function setup(conn: Connection = connection()) {
 	const adapter: PlatformAdapter = {
 		adapterKey: "onebot",
 		settingsSchema: z.unknown(),
+		descriptor: placeholderDescriptor(),
 		isAvailable: () => true,
 		send,
 		probe: async () => ok({ latencyMs: 1 }),
