@@ -1,13 +1,17 @@
 /**
- * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 经资料刷新引擎拉资料」。
+ * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 新建只种不刷」。
  *
  * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubscriptionStateStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
- * POST 新建后在册来源经资料刷新的单条口拉一次并等它落定;失败 best-effort 不致命;
- * 引擎没起时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
+ * POST 新建不带资料就只建订阅,不当场请来源取(4-15 主人定只种不刷)。GET/POST/PATCH 响应都走同一 toDTO,
+ * 保证前端缓存一致。
  */
 
-import { makeDefaultGlobalConfig, type Problem } from "@bilibili-notify/internal";
+import {
+	makeDefaultGlobalConfig,
+	makeEmptySubscription,
+	type Problem,
+} from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { BILI_SOURCE_DESCRIPTOR } from "../../bilibili/source.js";
@@ -15,16 +19,11 @@ import { ConfigValidationError } from "../../config/store.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
-const SUB = {
-	id: "11111111-1111-1111-1111-111111111111",
+// 整份合规的订阅:新建要先过订阅的形状(所有来源同一道门,4-15)。
+const SUB = makeEmptySubscription({
+	id: "11111111-1111-4111-8111-111111111111",
 	identity: { sourceKey: "bilibili", externalId: "12345" },
-	enabled: true,
-	tagIds: [],
-	routing: {},
-	extras: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
-	overrides: {},
-	specialViewers: [],
-};
+});
 
 const PROFILE = {
 	name: "测试UP",
@@ -126,7 +125,7 @@ function makeHarness(opts?: {
 	} as unknown as RouteDeps;
 
 	return {
-		app: createSubscriptionsRoute(deps, { api: null }),
+		app: createSubscriptionsRoute(deps, {}),
 		getSubscriptions,
 		upsertSubscription,
 		patchSubscription,
@@ -270,10 +269,12 @@ function cachedProfileCalls(h: Harness) {
 	);
 }
 
-describe("/api/subscriptions POST — 新订阅经资料刷新引擎拉资料", () => {
+describe("/api/subscriptions POST — 新建只种不刷", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("新 sub 且引擎就绪 → 等单条刷新拉一次,回应带资料", async () => {
+	// 4-15 主人定只种不刷:没带候选资料就只建订阅,不当场请来源取资料(等来源上报或定时刷新)。
+	// 验红:新建时在册来源照旧请资料刷新取一次,这条红。
+	it("新建不带资料 → 只建订阅,不请资料刷新取资料", async () => {
 		const h = makeHarness({ rtRecord: {}, fresh: true });
 		const res = await h.app.request("/", {
 			method: "POST",
@@ -282,60 +283,7 @@ describe("/api/subscriptions POST — 新订阅经资料刷新引擎拉资料", 
 		});
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.refreshSubscription).toHaveBeenCalledTimes(1);
-		expect(h.refreshSubscription).toHaveBeenCalledWith(SUB.id);
-		expect(cachedProfileCalls(h)).toHaveLength(1);
-		const body = (await res.json()) as Array<Record<string, unknown>>;
-		expect(body[0]?.cachedProfile).toMatchObject({
-			name: PROFILE.name,
-			followers: PROFILE.followers,
-		});
-		expect(body[0]).not.toHaveProperty("state");
-	});
-
-	it("已有资料 → 跳过单条刷新(bounded,不重复拉资料)", async () => {
-		const h = makeHarness({ fresh: true, rtRecord: { [SUB.id]: { cachedProfile: PROFILE } } });
-		const res = await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(res.status).toBe(200);
 		expect(h.refreshSubscription).not.toHaveBeenCalled();
-	});
-
-	it("资料刷新引擎没起 → 跳过,不致命(200)", async () => {
-		const h = makeHarness({ fresh: true, profileRefresh: "null" });
-		const res = await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(res.status).toBe(200);
-		expect(h.refreshSubscription).not.toHaveBeenCalled();
-	});
-
-	it("单条刷新抛错 → best-effort,POST 仍 200、不写资料", async () => {
-		const h = makeHarness({ fresh: true, profileRefresh: "throw" });
-		const res = await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(res.status).toBe(200);
-		expect(h.refreshSubscription).toHaveBeenCalledOnce();
-		expect(cachedProfileCalls(h)).toHaveLength(0);
-	});
-
-	it("来源失败 → 单条刷新照常落定,POST 仍 200、不写资料", async () => {
-		const h = makeHarness({ fresh: true, profileRefresh: "fail" });
-		const res = await h.app.request("/", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(SUB),
-		});
-		expect(res.status).toBe(200);
-		expect(h.refreshSubscription).toHaveBeenCalledOnce();
 		expect(cachedProfileCalls(h)).toHaveLength(0);
 	});
 
@@ -430,7 +378,7 @@ describe("/api/subscriptions PATCH — 响应同样 join", () => {
 					pipeline: null,
 				},
 			} as unknown as RouteDeps,
-			{ api: null },
+			{},
 		);
 		const res = await app.request("/ghost", { method: "DELETE" });
 		expect(res.status).toBe(404);
@@ -545,7 +493,6 @@ describe("/api/subscriptions × 拓展订阅", () => {
 				},
 			} as unknown as RouteDeps,
 			{
-				api: null,
 				extensions: () => [
 					{
 						id: "douyin",

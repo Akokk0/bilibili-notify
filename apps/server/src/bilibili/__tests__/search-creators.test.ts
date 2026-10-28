@@ -78,6 +78,59 @@ describe("searchBiliCreators", () => {
 		expect(out.candidates[0]).toEqual({ externalId: "100", name: "咩栗0", followers: 0 });
 	});
 
+	// 4-15:面板搜人改走来源,候选头像也是图库引用(subscription-sources「候选头像也是图库引用」)。
+	// 验红:把 searchBiliCreators 里抓头像那一步去掉,这条红。
+	it("给了抓图口:候选头像缩放后抓进图库、交引用;抓不到的那个只缺头像,不拖累别人", async () => {
+		const result = [
+			{ mid: 1, uname: "甲", upic: "//i0.hdslb.com/bfs/face/a.jpg" },
+			{ mid: 2, uname: "乙", upic: "//i0.hdslb.com/bfs/face/b.jpg" },
+			{ mid: 3, uname: "丙", upic: "" },
+		];
+		const fetched: Array<{ url: string; headers?: Record<string, string> }> = [];
+		const images = {
+			images: {
+				fetchImage: vi.fn(async (url: string, opts?: { headers?: Record<string, string> }) => {
+					fetched.push({ url, ...(opts?.headers ? { headers: opts.headers } : {}) });
+					return url.includes("/b.jpg")
+						? fail("unavailable", "CDN 挂了")
+						: ok({ ref: `img_${url.includes("/a.jpg") ? "a" : "x"}` as never });
+				}),
+			},
+			logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+		};
+		const out = await searchBiliCreators(
+			asApi(apiOf({ searchByType: ok({ data: { result } }) })),
+			"x",
+			images,
+		);
+		if (!out.ok) throw new Error("应当成功");
+		expect(out.candidates).toEqual([
+			{ externalId: "1", name: "甲", avatar: "img_a" },
+			{ externalId: "2", name: "乙" },
+			{ externalId: "3", name: "丙" },
+		]);
+		// 协议相对的地址补成 https、走头像那一档缩放(抓不到不回退原图)、带站内引用头;没有地址的不抓。
+		expect(fetched.map((one) => one.url).sort()).toEqual([
+			expect.stringMatching(/^https:\/\/i0\.hdslb\.com\/bfs\/face\/a\.jpg@480w/),
+			expect.stringMatching(/^https:\/\/i0\.hdslb\.com\/bfs\/face\/b\.jpg@480w/),
+		]);
+		expect(fetched[0]?.headers).toMatchObject({ Referer: "https://www.bilibili.com/" });
+	});
+
+	it("按 UID 精确查给了抓图口:那一个候选也带头像", async () => {
+		const images = {
+			images: { fetchImage: vi.fn(async () => ok({ ref: "img_f" as never })) },
+			logger: { warn: vi.fn() } as never,
+		};
+		const out = await searchBiliCreators(asApi(apiOf({ fetchUserCard: CARD })), "123", images);
+		expect(out).toEqual({
+			ok: true,
+			candidates: [
+				{ externalId: "123", name: "咩栗", followers: 4567, bio: "你好呀", avatar: "img_f" },
+			],
+		});
+	});
+
 	it("查无此人 / 搜不到 → 成功的空数组(不是失败)", async () => {
 		expect(
 			await searchBiliCreators(

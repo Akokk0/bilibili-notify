@@ -443,6 +443,63 @@ describe("新建拓展订阅", () => {
 	});
 });
 
+/**
+ * 新建订阅只有一道门(4-15,对拍 N01):来源认不认得问来源登记表(在册就认),不在册的再看装没装成订阅源拓展
+ * (停着也行)。从前键不是 `bilibili` 的一律当拓展,在册的内置来源经接口建不出订阅;B 站单走一支、带来的资料
+ * 被剥掉。
+ */
+describe("新建订阅只有一道门:来源问登记表,资料一律由候选种", () => {
+	// 验红:把门改回「键不是 bilibili 就只认装着的拓展」,这条红(回 404「没装」)。
+	it("在册的内置来源(不是拓展)经接口建得出订阅,候选资料照样种进缓存", async () => {
+		await runtime.sourceRegistry.register(
+			"acme.local",
+			{
+				descriptor: { label: "示例平台", supportedFeatures: ["post"] },
+				searchCreators: noCandidates,
+				fetchProfile: noProfile,
+				start: async () => {},
+				stop: async () => {},
+			},
+			{ logger: silentLogger } as never,
+		);
+		const sub = makeEmptySubscription({
+			id: OTHER_ID,
+			identity: { sourceKey: "acme.local", externalId: "a-1" },
+		});
+		const res = await post({ ...sub, cachedProfile: { name: "示例作者", followers: 3 } });
+		expect(res.status).toBe(200);
+		const row = (await listed()).find((s) => s.id === OTHER_ID);
+		expect(row?.cachedProfile).toMatchObject({ name: "示例作者", followers: 3 });
+	});
+
+	// 验红:B 站那一支照旧把 cachedProfile 剥掉,这条红(资料是空的)。
+	it("B 站订阅也由候选种资料:名字、粉丝,头像存进图库", async () => {
+		const bili = makeEmptySubscription({
+			id: OTHER_ID,
+			identity: { sourceKey: "bilibili", externalId: "12345" },
+		});
+		const res = await post({
+			...bili,
+			cachedProfile: { name: "某 UP", followers: 9, avatarUrl: avatarDataUrl("png", PNG_BYTES) },
+		});
+		expect(res.status).toBe(200);
+		const row = (await listed()).find((s) => s.id === OTHER_ID);
+		expect(row?.cachedProfile).toMatchObject({ name: "某 UP", followers: 9 });
+		expect(isValidImageRef(String(row?.cachedProfile?.avatar))).toBe(true);
+	});
+
+	it("既不在册、也没装成拓展的键 → 404,点名是哪个键,一样都不落", async () => {
+		const sub = makeEmptySubscription({
+			id: OTHER_ID,
+			identity: { sourceKey: "nowhere", externalId: "x" },
+		});
+		const res = await post({ ...sub, cachedProfile: { name: "某人" } });
+		expect(res.status).toBe(404);
+		expect(((await res.json()) as { message: string }).message).toContain("nowhere");
+		expect(await listed()).toEqual([]);
+	});
+});
+
 describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () => {
 	const bili = (externalId: unknown, id = OTHER_ID) => ({
 		...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: "1" } }),

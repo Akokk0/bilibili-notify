@@ -189,7 +189,7 @@ export type CreatorSearchInput = (typeof CREATOR_SEARCH_INPUTS)[number];
 
 /**
  * `searchCreators` 交的一个候选(最多 10 个)。`externalId` 就是选中后新建订阅用的外部 id;
- * 头像此刻不带(候选头像抓进图库的事等第一个要显示它的读者,第 4 期面板)。
+ * 头像是图库引用(先 `ctx.fetchImage` 再交),没被订阅用上的由图库按引用清扫;面板的搜人口读回成 data URL。
  */
 export interface CreatorCandidate extends CreatorProfileReport {
 	externalId: string;

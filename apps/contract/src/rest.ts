@@ -249,10 +249,11 @@ export interface CreatorCandidateView {
 }
 
 /**
- * `GET /api/ext/:id/lookup?q=` —— 新建订阅时那个拓展的解析门交回的候选(ADR-0019 决策 11 / 52)。
- * 服务端已经核过形状(最多 10 条……)。一个都认不出是空表,不是 404。
+ * `GET /api/sources/:sourceKey/creators?q=` —— 新建订阅时在那个来源里搜人交回的候选(ADR-0019 决策 11 / 52,
+ * 4-15 起所有来源同一口)。服务端已经核过形状(最多 10 条……)。一个都认不出是空表,不是 404;来源回的失败
+ * (风控 `rate_limited`、没登录 `unauthorized`……)码与话原样。
  */
-export interface ExtensionLookupResponse {
+export interface CreatorsResponse {
 	candidates: readonly CreatorCandidateView[];
 }
 
@@ -599,15 +600,16 @@ interface SubscriptionRuntimeDTO {
 
 /**
  * 新建订阅(`POST /api/subscriptions`,`id` 还不存在)的整个请求体:整条订阅,外加可选的
- * `cachedProfile` —— 放面板从解析门(`GET /api/ext/:id/lookup`)挑中的候选资料。
+ * `cachedProfile` —— 放面板从搜人(`GET /api/sources/:sourceKey/creators`)挑中的候选资料。所有来源同一道门(4-15)。
  *
  * `avatarUrl` 是候选里那个位图 data URL(它是个网址,所以叫 `avatarUrl`),规矩照旧。服务端只收
  * `{ name, avatarUrl?, followers? }`,头像存进图库后资料里换成图库引用 `avatar`、不再带那个 data URL。
- * 宿主先核,都过了才落盘:`identity.sourceKey` 这个拓展得是装着的订阅源(**不要求在跑**,决策 10),
- * 没装是 404 `not_found`,装着但不是订阅源(没开订阅源那一口 / 清单读不出来)是 400
+ * 宿主先核,都过了才落盘:`identity.sourceKey` 在来源登记表里就认;不在册的得是装着的订阅源拓展(**不要求在跑**,
+ * 决策 10),都不是是 404 `not_found`,装着但不是订阅源(没开订阅源那一口 / 清单读不出来)是 400
  * `unsupported`;同一身份已经有了 → 409 `conflict`;资料不合规矩(头像不是 png / jpeg / webp、魔数对不上、
  * 超过 128 KiB……)→ 400 `invalid`,`issues` 点名 `cachedProfile.*`。失败体一律是 {@link ErrorResponse}。
- * 已有的整份 POST 回来(启用开关)照旧,带来的 `cachedProfile` 不收。
+ * 不带 `cachedProfile` 就只建订阅,资料等来源自己报或定时刷新(只种不刷)。已有的整份 POST 回来(启用开关)照旧,
+ * 带来的 `cachedProfile` 不收。
  */
 export type SubscriptionCreateRequest = Subscription & {
 	cachedProfile?: {

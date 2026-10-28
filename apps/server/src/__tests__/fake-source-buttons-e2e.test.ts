@@ -15,8 +15,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	CreatorsResponse,
 	ExtensionDTO,
-	ExtensionLookupResponse,
 	ExtensionsResponse,
 	LiveListeningEntry,
 	SubscriptionDTO,
@@ -146,9 +146,9 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect((await fakeRow())?.state).toBe("running");
 
 		// 面板那条路建订阅:先问解析门,拿候选建。
-		const looked = await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("按钮探针")}`);
+		const looked = await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("按钮探针")}`);
 		expect(looked.status, await looked.clone().text()).toBe(200);
-		const { candidates } = (await looked.json()) as ExtensionLookupResponse;
+		const { candidates } = (await looked.json()) as CreatorsResponse;
 		expect(candidates).toHaveLength(3);
 		const keys = ["a", "b", "c"] as const;
 		for (const [i, key] of keys.entries()) {

@@ -329,8 +329,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				signal,
 			);
 		},
-		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。
-		searchCreators: (query) => searchBiliCreators(biliApi, query),
+		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。起来之后候选头像经上下文抓进图库,
+		// 起来之前(没有上下文)照样能搜、只是不带头像。
+		searchCreators: (query) =>
+			searchBiliCreators(
+				biliApi,
+				query,
+				sourceCtx && { images: { fetchImage: sourceCtx.fetchImage }, logger: sourceCtx.logger },
+			),
 		health(): SourceHealth {
 			// 「动态停着」优先:最需要主人动手的一条,而且这时动态轮询不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
 			if (dynamicStopped) return { summary: HEALTH_TEXTS.dynamicStopped };

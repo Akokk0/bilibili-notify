@@ -20,6 +20,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	CreatorsResponse,
 	DevCapturedDelivery,
 	HistoryEntryView,
 	HistoryResponse,
@@ -28,6 +29,7 @@ import type {
 	SourceAuthResponse,
 	SourcesResponse,
 	StatsOverviewResponse,
+	SubscriptionDTO,
 } from "@bilibili-notify/contract";
 import {
 	fail,
@@ -173,7 +175,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P51)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * 对拍的行(`checked: true`,P01–P52)与「这版不开」的行(`checked: false`,N01–N16 去掉
  * N02、N03、N04、N05、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
@@ -345,12 +347,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
-		id: "N01",
-		title: "经接口(路由与面板)搜人、经接口新建订阅",
-		checked: false,
-		waitsFor: "第 4 期",
-		reason:
-			"拓展的订阅源已登进来源登记表,面板搜人经引擎的 searchCreators;经接口搜人与新建订阅的门问登记表仍归第 4 期",
+		id: "P52",
+		title:
+			"经接口搜人与新建订阅：搜人口把 q 原样交给假来源、候选照回、失败码原样；挑中的候选经接口建成订阅（门问登记表），资料由候选种",
+		checked: true,
 	},
 	{
 		id: "N09",
@@ -394,7 +394,7 @@ const SOURCE_MEMBERS = {
 	start: ["P01"],
 	stop: ["P18"],
 	auth: ["P16"],
-	searchCreators: ["P26"],
+	searchCreators: ["P26", "P52"],
 	fetchProfile: ["P37", "P39"],
 	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
@@ -798,8 +798,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 		dataDir = await mkdtemp(join(tmpdir(), "bn-in-process-parity-e2e-"));
 
-		// —— 先空启动一趟:建连接、目标、主人、AI 的服务商(关着);经接口搜人与新建订阅的门仍归第 4 期(N01),
-		// 所以关掉之后往在用的那一代里直接摆订阅文件,再起第二趟。
+		// —— 先空启动一趟:建连接、目标、主人、AI 的服务商(关着);订阅要开机就在(场景从开机那一刻算),
+		// 所以关掉之后往在用的那一代里直接摆订阅文件,再起第二趟。经接口搜人与新建订阅另在 P52 验。
 		const seedPort = await findFreePort();
 		const seed = await boot(seedPort);
 		const seedApi = (path: string, init?: RequestInit) =>
@@ -3389,12 +3389,13 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	// 放在 P22 之前:P22 末尾把服务端关了。
 	it("P23 外部 id 的格式:来源在描述符里声明,经接口新建订阅时不合格式的被拒(invalid、issues 点名 identity.externalId);合格式的过了这一道;没声明的不替它做主", async () => {
 		const probe = currentProbe();
+		const P23_SUBSCRIPTION_ID = "e2300000-0000-4000-8000-000000000023";
 		const create = async (externalId: string) =>
 			api(
 				"/api/subscriptions",
 				json(
 					makeExtensionSubscription({
-						id: "e2300000-0000-4000-8000-000000000023",
+						id: P23_SUBSCRIPTION_ID,
 						extensionId: IN_PROCESS_KEY,
 						externalId,
 					}),
@@ -3419,14 +3420,19 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			// 整串匹配:前缀合格式、后面多一截也拒。
 			expect((await create("abc1x")).status).toBe(400);
 
-			// 合格式的过了这一道。建成由 subscriptions-extension-create.test.ts 用真的拓展清单钉着;进程内来源
-			// 过不了「装着的拓展」那道闸(新建订阅的下一道),回的是「没装」而不是格式不对,那是 N01 的事。
-			const passed = await failureOf(await create("abc1"));
-			expect(passed.code).toBe("not_found");
+			// 合格式的过了这一道,建成(新建的门问登记表,在册的进程内来源认得;经接口新建另见 P52)。建完删掉,
+			// 不留给后面的用例。
+			const remove = async () =>
+				expect(
+					(await api(`/api/subscriptions/${P23_SUBSCRIPTION_ID}`, { method: "DELETE" })).status,
+				).toBe(204);
+			expect((await create("abc1")).status).toBe(200);
+			await remove();
 
-			// 没声明:核心不替来源做主,同一个 "abc" 不再被格式拦(停在同一道下一闸)。
+			// 没声明:核心不替来源做主,同一个 "abc" 不再被格式拦。
 			probe.descriptor.externalIdRegex = undefined;
-			expect((await failureOf(await create("abc"))).code).toBe("not_found");
+			expect((await create("abc")).status).toBe(200);
+			await remove();
 		} finally {
 			probe.descriptor.externalIdRegex = undefined;
 		}
@@ -3460,6 +3466,55 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	});
 
 	// 验红:`link-previewer.ts` 退回直接用 B 站正则认链接(不问登记表),这条整条红(假解析器从没被问过)。
+	// 验红:`/api/sources/:sourceKey/creators` 把来源的失败一律折成 not_found(旧 `/lookup` 的做法),风控那段红;
+	// 新建订阅的门改回「键不是 bilibili 就只认装着的拓展」,建订阅那段红(404,没有这个来源)。
+	// 放在 P22 之前:P22 末尾把服务端关了。
+	it("P52 经接口搜人与新建订阅:搜人口把 q 原样交给假来源、候选照回、失败码原样;挑中的候选经接口建成订阅、资料由候选种", async () => {
+		const probe = currentProbe();
+		const asked = probe.searches.length;
+		const found = (await (
+			await okRes(
+				await api(`/api/sources/${IN_PROCESS_KEY}/creators?q=${encodeURIComponent("对拍搜人P52")}`),
+			)
+		).json()) as CreatorsResponse;
+		expect(probe.searches.slice(asked)).toEqual(["对拍搜人P52"]);
+		expect(found.candidates).toEqual([
+			{ externalId: "cand-1", name: "候选甲", followers: 11, bio: "候选甲的简介" },
+			{ externalId: "cand-2", name: "候选乙" },
+		]);
+
+		probe.searchOutcome = fail("rate_limited", "对拍风控P52");
+		try {
+			const limited = await api(`/api/sources/${IN_PROCESS_KEY}/creators?q=x`);
+			expect(limited.status).toBe(429);
+			expect(await limited.json()).toEqual({ code: "rate_limited", message: "对拍风控P52" });
+		} finally {
+			probe.searchOutcome = undefined;
+		}
+
+		const [picked] = found.candidates;
+		if (!picked) throw new Error("没有候选");
+		const id = "e5200000-0000-4000-8000-000000000052";
+		const created = await okRes(
+			await api(
+				"/api/subscriptions",
+				json({
+					...makeExtensionSubscription({
+						id,
+						extensionId: IN_PROCESS_KEY,
+						externalId: picked.externalId,
+					}),
+					cachedProfile: { name: picked.name, followers: picked.followers },
+				}),
+			),
+		);
+		const row = ((await created.json()) as SubscriptionDTO[]).find((one) => one.id === id);
+		expect(row?.identity).toEqual({ sourceKey: IN_PROCESS_KEY, externalId: "cand-1" });
+		expect(row?.cachedProfile).toMatchObject({ name: "候选甲", followers: 11 });
+		expect((await api(`/api/subscriptions/${id}`, { method: "DELETE" })).status).toBe(204);
+		drove("P52");
+	});
+
 	it("P22 链接解析器:来源在 start 里登的解析器认领自己的链接 —— 关着不回、开了回一张图、冷却里不回第二张、逐目标关掉不回、能力支持时回原生分享;来源停下后没人再认", async () => {
 		const probe = currentProbe();
 		/** 往测试群贴一句话(必须传 `text`:缺省正文是 B 站链接,会去打真接口)。 */
@@ -3761,15 +3816,16 @@ describe("进程内对拍:清单自己", () => {
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 51 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 52 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
 		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源;
-		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09;N05→P51(4-14)。
+		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09;N05→P51(4-14);
+		// N01→P52(4-15)。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
+				.filter((n) => ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

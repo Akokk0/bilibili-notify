@@ -1,8 +1,6 @@
 import type {
-	CreatorCandidateView,
 	ExtensionDTO,
 	ExtensionInstallResponse,
-	ExtensionLookupResponse,
 	ExtensionsResponse,
 	MarketplaceResponse,
 	ReportDiscrepancyView,
@@ -10,14 +8,12 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	ActionNameSchema,
-	type CreatorCandidate,
 	ExtensionIdSchema,
 	fail,
 	isExtensionEnabled,
 	manifestProvides,
 	ok,
 	RESERVED_EXTENSION_IDS,
-	type Result,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
@@ -37,11 +33,8 @@ import type { LocaleIssue } from "../extensions/locales.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { ReportDiscrepancyTable } from "../extensions/report-discrepancies.js";
 import { t } from "../i18n/index.js";
-import { imageRefDataUrl } from "../images/image-data-url.js";
-import type { ImageStore } from "../images/image-store.js";
 import type { IntegrationStore } from "../integration-store/store.js";
 import { cannotRestart } from "../runtime/restart-ability.js";
-import type { SourceRegistry } from "../subscriptions/registry.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -50,18 +43,6 @@ const MarketplaceInstallRequestSchema = z.object({
 	source: z.string().min(1),
 	id: z.string().min(1),
 });
-
-/** 解析门那句 `q` 最长多少字(去掉首尾空白之后算)。主页链接、id、名字都远到不了。 */
-export const LOOKUP_QUERY_MAX_CHARS = 1024;
-
-/**
- * 解析门的 `q`:首尾空白去掉(粘链接时常带进来),除此之外一个字不动 —— 怎么解读是拓展的事。
- */
-const LookupQuerySchema = z
-	.string({ error: "要给 q:主人在新建订阅的输入框里填的那句" })
-	.trim()
-	.min(1, "q 不能是空的")
-	.max(LOOKUP_QUERY_MAX_CHARS, `q 不能超过 ${LOOKUP_QUERY_MAX_CHARS} 字`);
 
 export interface ExtensionsRouteOptions {
 	store: ConfigStore;
@@ -78,21 +59,6 @@ export interface ExtensionsRouteOptions {
 	 * 一格的话那一口永远 `not_found`。
 	 */
 	runAction?: (id: string, name: string) => Promise<ActionOutcome | undefined>;
-	/**
-	 * 来源登记表:拓展的来源在册的,解析门经它的 `searchCreators` 问(共用超时与串行闸);不在册的
-	 * 就是没装或没跑,回 `not_found`。
-	 */
-	sources?: Pick<SourceRegistry, "get" | "list">;
-	/** 候选头像的图库引用在这里读回字节、拼成 data URL 交给面板;不给 = 候选都不带头像。 */
-	images?: Pick<ImageStore, "read">;
-	/**
-	 * 在来源里搜人(引擎的 `searchCreators`:与女仆搜人、取资料、查直播状态共用同一道来源串行闸)。热读,引擎
-	 * 还没挂上就是 `undefined` —— 按「不在册」那一支走。
-	 */
-	searchCreators?: (
-		sourceKey: string,
-		query: string,
-	) => Promise<Result<{ candidates: CreatorCandidate[] }> | undefined>;
 	/**
 	 * **只重载这个拓展**(装载器的 `swap()`,ADR-0012 决策 47):它没标着「新版等着换上」时
 	 * 抛 {@link ExtensionConflictError},那句话原样交给面板(→ `conflict`)。别的抛错是 bug,交给全局
@@ -214,7 +180,6 @@ function localeIssueText(issue: LocaleIssue): string {
  */
 export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	const app = new Hono();
-	const resolveAvatar = opts.images ? imageRefDataUrl(opts.images) : undefined;
 
 	app.get("/", async (c) => {
 		await opts.settle?.();
@@ -462,58 +427,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (!outcome.ok) return respondFailure(c, outcome);
 		return c.json(ok());
 	});
-
-	/**
-	 * 新建订阅时的解析门(ADR-0019 决策 11 / 52):主人在输入框里填的那句交给这个拓展,回候选。
-	 * 🔴 **只在 `/api/*` 底下**,吃面板会话鉴权 —— 拓展拿它去问平台用的是主人的 cookie,挂到鉴权外
-	 * 就是谁都能借主人的号去平台上查人。
-	 *
-	 * 每种失败各有码与原话(话在来源的 `searchCreators` 里造);两种要分得开:「拓展查询
-	 * 出错」(`unavailable`)是平台那头的事(cookie 过期、被风控),「交回的候选不合规矩」(`invalid`)
-	 * 是拓展的 bug —— 并成一句的话,主人与作者都不知道该找谁。
-	 */
-	app.get("/:id/lookup", async (c) => {
-		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!id.success) return respondFailure(c, fail("invalid", "拓展 id 不合规矩"));
-		const query = LookupQuerySchema.safeParse(c.req.query("q"));
-		if (!query.success) {
-			return respondFailure(c, fail("invalid", query.error.issues[0]?.message ?? "q 不合规矩"));
-		}
-		const view = (candidates: CreatorCandidateView[]) => {
-			const body: ExtensionLookupResponse = { candidates };
-			return c.json(body);
-		};
-		// 登记表里有它的来源:同一来源串行、超时共用 `LOOKUP_TIMEOUT_MS`(都在引擎的搜人口里)。
-		const found = opts.sources?.get(id.data)
-			? await opts.searchCreators?.(id.data, query.data)
-			: undefined;
-		if (found) {
-			// 走到这里的 `invalid` 只会是拓展交回的候选不合规矩(`q` 不合规矩在上面就拦了):请求本身
-			// 没错,是对端交回了不合格的东西,所以显式回 502,不回怪发请求那头的 400。
-			if (!found.ok) return respondFailure(c, found, found.code === "invalid" ? 502 : undefined);
-			return view(await Promise.all(found.candidates.map(candidateView)));
-		}
-		return respondFailure(
-			c,
-			fail("not_found", `拓展 ${id.data} 没在跑,或者它不是订阅源 —— 问不到它的解析门`),
-		);
-	});
-
-	/**
-	 * 核心的候选 → 面板看的候选:头像的图库引用读回字节、拼成 data URL;读不到(引用已被清扫、读盘出错)
-	 * 就缺这一格,一个人的头像坏了不拖累整张候选表。
-	 */
-	async function candidateView(candidate: CreatorCandidate): Promise<CreatorCandidateView> {
-		const avatarUrl =
-			candidate.avatar === undefined ? undefined : await resolveAvatar?.(candidate.avatar);
-		return {
-			externalId: candidate.externalId,
-			name: candidate.name,
-			...(avatarUrl === undefined ? {} : { avatarUrl }),
-			...(candidate.bio === undefined ? {} : { bio: candidate.bio }),
-			...(candidate.followers === undefined ? {} : { followers: candidate.followers }),
-		};
-	}
 
 	/**
 	 * **只重载这个拓展**(ADR-0012 决策 47):收摊 → 按指纹换一个 URL 重新 `import` → 重新

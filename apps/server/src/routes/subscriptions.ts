@@ -1,6 +1,5 @@
 import type { SubscriptionCreateRequest, SubscriptionDTO } from "@bilibili-notify/contract";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Failure,
 	fail,
 	formatZodIssues,
@@ -13,7 +12,6 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import type { Api } from "../bilibili/api/index.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
@@ -22,26 +20,17 @@ import {
 	externalIdRefusal,
 	specialViewerIdRefusal,
 } from "../subscriptions/external-id.js";
-import { stripHtmlTags } from "../util/strip-html-tags.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
 import { createSubscriptionTagsRoute } from "./subscription-tags.js";
 import type { RouteDeps } from "./types.js";
 
-/** B 站接口没就绪(启动中 / 没登录,推送链路还没挂上)时,查人的两个接口回的那一句。 */
-const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成或稍后再试";
-
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
 // SubscriptionStateStore join 回来的外置运行时字段。
 
-/**
- * `api` 与卡片预览共用同一份 B 站客户端:旧搜人的 `/search`、`/lookup` 也走它;
- * `null` = 还没就绪,两个旧搜人口回 not-ready。
- */
+/** 搜人不在这里(在来源那一摊:`GET /api/sources/:sourceKey/creators`)。 */
 export interface SubsRouteOptions {
-	/** 旧搜人的 B 站客户端(与卡片预览是同一个);`null` = 还没就绪。 */
-	api: Api | null;
 	/**
 	 * 装了哪些拓展(装载器那份名单,**现取** —— 面板刚装上的也算)。新建拓展订阅时核「它是不是
 	 * 订阅源」。不给 = 一个都没装:新建拓展订阅一律 400。
@@ -85,28 +74,24 @@ const CreateProfileBodySchema = z.object({
  * `@bilibili-notify/internal` and clients (the dashboard) call that locally.
  * Keeps the server stateless about defaults.
  *
- * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建拓展的订阅**(`identity.sourceKey`
- * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v3 订阅源(不要求在跑,
- * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
- * 头像存进图库(决策 49)。**新建订阅**(两种来源都是)先按来源描述符声明的格式核外部 id(`externalIdRegex`,
- * 见 `subscriptions/external-id.ts`);B 站声明的是纯数字 uid。已经存在的订阅可以整份 POST 回来改
- * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注归 B 站来源在名单变化时做;查 UID / 搜名字
- * 都只对 B 站;资料刷新对所有在登记的来源同一道口。
+ * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建订阅只有一道门**(见
+ * {@link createSubscription},4-15):先按来源描述符声明的格式核外部 id(`externalIdRegex`,见
+ * `subscriptions/external-id.ts`);来源认不认得问来源登记表(在册就认),不在册的得是装着的订阅源拓展(不要求在跑,
+ * ADR-0019 决策 10);同一身份只许一条(决策 50);面板从搜人挑中的候选放进 `cachedProfile` 一起交,头像存进图库
+ * (决策 49)。已经存在的订阅可以整份 POST 回来改(面板的启用开关就是这么发的),身份改不动(store 拒)。搜人在
+ * 来源那一摊(`GET /api/sources/:sourceKey/creators`);关注归来源自己在名单变化时做。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
- * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
- * `upstreamCode`,不占 `code`(风控 / 未登录的分类留到 3a 的 `searchCreators`,这里不扩大)。
+ * (不合规 400、没这一条 404),路由按码回、不嗅文案。
  */
 export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
-	// 旧搜人的客户端在建路由时就定了(入口建 app 时递进来),两个口共用这一份。
-	const api = opts.api;
 
 	/**
 	 * 这个来源声明的外部 id 格式从哪儿来:登记表里的来源取它的描述符;没在登记的拓展取清单里订阅源
 	 * 那一段(同样有 `label` 与 `externalIdRegex`)。认不出的来源返回
-	 * `undefined`,不替它核 —— 装没装、是不是订阅源由 {@link createExtensionSubscription} 的闸回话。
+	 * `undefined`,不替它核 —— 认不认得这个来源由 {@link createSubscription} 的门回话。
 	 */
 	function externalIdSpecOf(sourceKey: string): ExternalIdSpec | undefined {
 		const registered = deps.runtime.sourceRegistry.get(sourceKey);
@@ -157,14 +142,12 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	}
 
 	/**
-	 * 新建一条拓展订阅(ADR-0019 决策 9 / 10 / 49 / 50)。**能核的先全核完再落盘**:订阅的形状 →
-	 * 带来的资料(连头像的魔数)→ 它是不是装着的订阅源;判重在 upsert 里(store 那道闸,B 站来源的也过它)。
-	 * 都过了才把头像存进图库、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败。
+	 * 新建一条订阅(ADR-0019 决策 9 / 10 / 49 / 50;所有来源同一道门,4-15)。**能核的先全核完再落盘**:订阅的
+	 * 形状 → 带来的资料(连头像的魔数)→ 认不认得这个来源;判重在 upsert 里(store 那道闸)。都过了才把头像存进
+	 * 图库、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败。没带资料就只建订阅、不当场去取:
+	 * 等来源自己报或定时刷新(4-15 主人定只种不刷;面板新建一律带候选资料)。
 	 */
-	async function createExtensionSubscription(
-		c: Context,
-		body: Record<string, unknown>,
-	): Promise<Response> {
+	async function createSubscription(c: Context, body: Record<string, unknown>): Promise<Response> {
 		const { cachedProfile: rawProfile, ...subBody } = body;
 		const parsed = SubscriptionSchema.safeParse(subBody);
 		if (!parsed.success) {
@@ -202,27 +185,29 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			avatarBytes = decoded.bytes;
 		}
 
-		const refusal = subscriptionSourceRefusal(identity.sourceKey, opts.extensions?.() ?? []);
-		if (refusal) return respondFailure(c, refusal);
+		if (!deps.runtime.sourceRegistry.get(identity.sourceKey)) {
+			const refusal = subscriptionSourceRefusal(identity.sourceKey, opts.extensions?.() ?? []);
+			if (refusal) return respondFailure(c, refusal);
+		}
 
 		try {
-			// 形状由 schema 核、同一个人订第二条(身份判重)由 store 拒 —— 都在写盘那一层,两种来源同一道。
+			// 形状由 schema 核、同一个人订第二条(身份判重)由 store 拒 —— 都在写盘那一层,所有来源同一道。
 			await deps.store.upsertSubscription(subBody as never);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/subscriptions (extension) failed", err);
+			log.error("POST /api/subscriptions failed", err);
 			throw err;
 		}
-		if (seed) await seedExtensionProfile(sub, seed, avatarBytes);
+		if (seed) await seedProfile(sub, seed, avatarBytes);
 		return c.json(toDTOs(), 200);
 	}
 
 	/**
-	 * 拿面板挑中的那个候选种资料缓存,走全进程唯一的资料缓存写口:轮到时还没有资料才种,拓展收到新建通知
+	 * 拿面板挑中的那个候选种资料缓存,走全进程唯一的资料缓存写口:轮到时还没有资料才种,来源收到新建通知
 	 * 先报了的不动。头像在要种时才存进图库(决策 49),资料里只放回来的引用;存不下来就先不带头像,
-	 * 等拓展的「报资料更新」再来。
+	 * 等来源下一次报资料或资料刷新再来。
 	 */
-	async function seedExtensionProfile(
+	async function seedProfile(
 		sub: Subscription,
 		seed: z.infer<typeof CreateProfileSchema>,
 		avatarBytes: Buffer | undefined,
@@ -232,9 +217,9 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			try {
 				const stored = await deps.runtime.profileImages.put(avatarBytes);
 				if (stored.ok) return stored.ref;
-				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
+				log.warn(`[sub] 订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
 			} catch (err) {
-				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
+				log.warn(`[sub] 订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
 			}
 			return undefined;
 		};
@@ -249,125 +234,22 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				};
 			});
 		} catch (err) {
-			log.warn(`[sub] 拓展订阅 ${sub.id} 的资料缓存没写进去: ${String(err)}`);
+			log.warn(`[sub] 订阅 ${sub.id} 的资料缓存没写进去: ${String(err)}`);
 		}
 	}
 
 	app.get("/", (c) => c.json(toDTOs()));
 
-	// 标签表(ADR-0034):和 `/search`、`/lookup` 一样是这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
+	// 标签表(ADR-0034):这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
 	// 撞不上;挂在 `/:id` 那几条前面,以后真加了也先认它。
 	app.route("/tags", createSubscriptionTagsRoute(deps));
-
-	/**
-	 * Pre-flight UID resolution for the "add UP" dialog. Hits B-station's user
-	 * card endpoint via Api; on success returns the four fields the
-	 * client wants to show in confirmation (and writes back into
-	 * Subscription.cachedProfile when the user clicks add).
-	 *
-	 * Errors are mapped to client-friendly statuses so the dialog can render
-	 * a helpful message instead of a generic 500: 404 means B-station said
-	 * the UID doesn't exist; 503 means we couldn't reach B-station / the
-	 * API client wasn't ready yet.
-	 */
-	/**
-	 * Name-search counterpart to /lookup. Hits B-station's wbi/search/type
-	 * endpoint with `search_type=bili_user`, slices to 5 entries per page so the
-	 * dashboard's "添加 UP" dialog can paginate without overwhelming the UI.
-	 * The response shape mirrors /lookup's per-row payload so the frontend can
-	 * pass either through to onSubmit without translation.
-	 */
-	app.get("/search", async (c) => {
-		const q = c.req.query("q")?.trim();
-		const pageParam = Number(c.req.query("page") ?? 1);
-		const page =
-			Number.isFinite(pageParam) && pageParam >= 1 ? Math.min(Math.floor(pageParam), 200) : 1;
-		if (!q) return respondFailure(c, fail("invalid", "搜索关键词不能为空"));
-		if (!deps.runtime.pipeline || api === null) {
-			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
-		}
-		try {
-			const res = await api.searchByType("bili_user", q, {
-				page,
-				pageSize: 5,
-			});
-			if (!res.ok) {
-				// B 站的话(`message`)是平台的业务说明,可以给人看;它的数字码只放 upstreamCode。
-				const message = res.message || "搜索失败";
-				return respondFailure(
-					c,
-					fail("unavailable", `无法访问 B 站：${message}`, {
-						...(typeof res.upstreamCode === "number" ? { upstreamCode: res.upstreamCode } : {}),
-					}),
-				);
-			}
-			const data = res.data as { result?: unknown[]; numResults?: number } | null | undefined;
-			const raw = (Array.isArray(data?.result) ? data.result : []) as Array<
-				Record<string, unknown>
-			>;
-			const results = raw.slice(0, 5).map((r) => ({
-				uid: String(r.mid),
-				name: stripHtmlTags(String(r.uname ?? "")),
-				avatar: normaliseAvatarUrl(r.upic),
-				sign: typeof r.usign === "string" ? r.usign : "",
-				fans: typeof r.fans === "number" ? r.fans : 0,
-			}));
-			return c.json({
-				results,
-				page,
-				pageSize: 5,
-				total: typeof data?.numResults === "number" ? data.numResults : results.length,
-			});
-		} catch (err) {
-			// 抛出来的是原始报错:原话只进日志,回给面板一句固定的中文。
-			const message = err instanceof Error ? err.message : String(err);
-			log.warn(`/api/subscriptions/search q=${q} failed: ${message}`);
-			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
-		}
-	});
-
-	app.get("/lookup", async (c) => {
-		const uid = c.req.query("uid")?.trim();
-		if (!uid || !/^\d+$/.test(uid)) {
-			return respondFailure(c, fail("invalid", "uid 必须是纯数字 UID"));
-		}
-		if (!deps.runtime.pipeline || api === null) {
-			return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
-		}
-		try {
-			const res = await api.fetchUserCard(uid);
-			if (!res.ok || !res.data?.card) {
-				// 现在的意思照旧:B 站回了非 0 就当「查无此人」(风控 / 未登录也在里头 —— 分类是 3a 的
-				// `searchCreators` 的事)。B 站的数字码只放 upstreamCode。
-				const upstreamCode = res.ok ? 0 : res.upstreamCode;
-				return respondFailure(
-					c,
-					fail("not_found", "未找到该 UP 主，请检查 UID 是否正确", {
-						...(upstreamCode === undefined ? {} : { upstreamCode }),
-					}),
-				);
-			}
-			const card = res.data.card;
-			return c.json({
-				uid: card.mid,
-				name: card.name,
-				avatar: card.face,
-				sign: card.sign,
-				fans: card.fans,
-			});
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			log.warn(`/api/subscriptions/lookup uid=${uid} failed: ${message}`);
-			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
-		}
-	});
 
 	app.post("/", async (c) => {
 		const read = await readJsonBody(c);
 		if (!read.ok) return respondFailure(c, read);
 		const body = read.body;
-		// 新建的订阅按来源分:拓展的走宿主把关的那条路(见 createExtensionSubscription),B 站的先核 uid。
-		// 已有的那条整份 POST 回来改照常走下面 —— 身份改不动由 store 把关,带来的 cachedProfile 被 schema 剥掉。
+		// 新建的走那道门(见 createSubscription);已有的那条整份 POST 回来改照常走下面 —— 身份改不动由 store
+		// 把关,带来的 cachedProfile 被 schema 剥掉。
 		const sourceKey =
 			isPlainObject(body) && isPlainObject(body.identity) ? body.identity.sourceKey : undefined;
 		const exists =
@@ -382,31 +264,15 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			if (listRefusal) return respondFailure(c, listRefusal);
 		}
 		if (isPlainObject(body) && !exists && typeof sourceKey === "string") {
-			// 外部 id 的格式由来源在描述符里声明,两种来源同一道,核在分岔之前。
+			// 外部 id 的格式由来源在描述符里声明,所有来源同一道。
 			const externalId = isPlainObject(body.identity) ? body.identity.externalId : undefined;
 			const refusal = externalIdRefusal(externalIdSpecOf(sourceKey), externalId);
 			if (refusal) return respondFailure(c, refusal);
-			if (sourceKey !== BILIBILI_SOURCE_KEY) return createExtensionSubscription(c, body);
+			return createSubscription(c, body);
 		}
 		try {
 			// upsertSubscription validates via Zod internally
 			await deps.store.upsertSubscription(body as never);
-			const id = (body as { id?: unknown }).id;
-			const created =
-				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
-			if (created) {
-				const createdSource = subscriptionIdentityOf(created).sourceKey;
-				const refresh = deps.runtime.profileRefresh;
-				const hasProfile =
-					deps.runtime.subscriptionStateStore.get(created.id)?.cachedProfile !== undefined;
-				if (!exists && !hasProfile && refresh && deps.runtime.sourceRegistry.get(createdSource)) {
-					try {
-						await refresh.refreshSubscription(created.id);
-					} catch (err) {
-						log.warn(`[sub] profile refresh after create failed id=${created.id}: ${String(err)}`);
-					}
-				}
-			}
 			return c.json(toDTOs(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
@@ -471,8 +337,8 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 }
 
 /**
- * 这个拓展能不能挂订阅:装着、清单能读、开了订阅源那一口(`contributes.subscription`)。**不要求在跑**
- * —— 订阅是数据,停着的拓展名下的订阅照样留着、开回来就恢复(决策 10)。能挂回 `undefined`,
+ * 不在来源登记表里的键能不能挂订阅:得是装着的拓展、清单能读、开了订阅源那一口(`contributes.subscription`)。
+ * **不要求在跑** —— 订阅是数据,停着的拓展名下的订阅照样留着、开回来就恢复(决策 10)。能挂回 `undefined`,
  * 不能就回那句点名的原因。
  */
 function subscriptionSourceRefusal(
@@ -480,7 +346,12 @@ function subscriptionSourceRefusal(
 	entries: readonly ExtensionEntry[],
 ): Failure | undefined {
 	const entry = entries.find((e) => e.id === extensionId);
-	if (!entry) return fail("not_found", `拓展「${extensionId}」没装,建不了它的订阅`);
+	if (!entry) {
+		return fail(
+			"not_found",
+			`没有「${extensionId}」这个来源(不在册,也没装叫这个名字的拓展),建不了它的订阅`,
+		);
+	}
 	const manifest = entry.manifest;
 	if (!manifest) {
 		return fail(
@@ -495,13 +366,6 @@ function subscriptionSourceRefusal(
 		);
 	}
 	return undefined;
-}
-
-/** B-station avatar urls come back protocol-relative (`//…`); coerce to https. */
-function normaliseAvatarUrl(raw: unknown): string {
-	if (typeof raw !== "string" || !raw) return "";
-	if (raw.startsWith("//")) return `https:${raw}`;
-	return raw;
 }
 
 /** 只认真正的对象 —— 数组 / null 不是 patch 片段。 */

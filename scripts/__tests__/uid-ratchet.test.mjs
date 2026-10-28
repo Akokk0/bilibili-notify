@@ -65,7 +65,6 @@ export const ADVICE =
  */
 export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 1, // 4-14 卡片真实预览改走来源(33 → 1);剩下的是醒目留言示例造的 B 站事件 `user.uid`,随 SC 示例做到中立那一片消。
-	"apps/server/src/routes/subscriptions.ts": 8, // 第 4 期:经接口搜人改走来源的 `searchCreators` 后消。
 };
 
 /** 字符串字面量里算 uid 的那几个值(不分大小写)。 */

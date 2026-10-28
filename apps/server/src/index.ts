@@ -1323,7 +1323,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		};
 		const app = createApp(runtime, {
 			...appShell,
-			// 来源造好的那一个 `Api`(开发版是套过壳的,卡片预览与旧搜人吃得到 devtools 的覆盖);第 4 期两处读者改口时消。
+			// 来源造好的那一个 `Api`。4-15 起 `createApp` 里已经没有读者,这一格随 4-16 拆。
 			api: builtins.bilibili.api() ?? null,
 			backupService,
 			connectionSecrets,

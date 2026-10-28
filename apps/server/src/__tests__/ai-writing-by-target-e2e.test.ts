@@ -20,7 +20,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
@@ -241,9 +241,9 @@ describe("AI 写正文按目标选 e2e:同一条作品,不同目标收到不同�
 			target[key] = found.id;
 		}
 
-		const looked = await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("作品探针")}`);
+		const looked = await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("作品探针")}`);
 		await ok(looked);
-		const candidate = ((await looked.json()) as ExtensionLookupResponse).candidates[0];
+		const candidate = ((await looked.json()) as CreatorsResponse).candidates[0];
 		if (!candidate) throw new Error("解析门没交候选");
 		const base = makeExtensionSubscription({
 			id: SUB_ID,

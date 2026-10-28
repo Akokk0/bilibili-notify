@@ -14,14 +14,12 @@ import type {
 	ExtensionsResponse,
 } from "@bilibili-notify/contract";
 import {
-	type CreatorCandidate,
 	EXTENSION_API_RANGE,
 	type ExtensionManifest,
 	fail,
 	type GlobalConfig,
 	ok,
 	RESERVED_EXTENSION_IDS,
-	type Result,
 	type ServiceContext,
 	type SourceContext,
 } from "@bilibili-notify/internal";
@@ -53,12 +51,10 @@ import {
 	type ReportDiscrepancyTable,
 } from "../../extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
-import type { ImageStore } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import type { SourceRegistry, SourceView } from "../../subscriptions/registry.js";
 import { createSourceContext } from "../../subscriptions/source-context.js";
 import { createExtensionsRoute } from "../extensions.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
@@ -97,15 +93,6 @@ function boot(
 		loader?: LoadedExtensions;
 		/** 换掉「在装载器那条队里改盘」那一口 —— 只有要看「写是不是在队里」的用例给。 */
 		changeDisk?: <T>(write: () => Promise<T>) => Promise<T>;
-		/** 来源登记表(判在不在册)。 */
-		sources?: Pick<SourceRegistry, "get" | "list">;
-		/** 引擎的搜人口(在册的来源经它问)。 */
-		searchCreators?: (
-			sourceKey: string,
-			query: string,
-		) => Promise<Result<{ candidates: CreatorCandidate[] }>>;
-		/** 图库(把候选头像的引用读回字节)。 */
-		images?: Pick<ImageStore, "read">;
 		/** 换掉「只重载」那一口 —— 只有要看「装载器拒绝以外的抛错」的用例给。 */
 		swap?: (id: string) => Promise<void>;
 		/** 「上报出入」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
@@ -153,9 +140,6 @@ function boot(
 		},
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
-		...(over.sources ? { sources: over.sources } : {}),
-		...(over.images ? { images: over.images } : {}),
-		...(over.searchCreators ? { searchCreators: over.searchCreators } : {}),
 		reportDiscrepancies: over.reportDiscrepancies,
 		...(over.swap ? { swap: over.swap } : loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
@@ -1825,140 +1809,6 @@ describe("POST /api/ext/:id/actions/:name", () => {
 			"/douyin/actions/toString",
 		);
 		expect(res.status).toBe(400);
-	});
-});
-
-/**
- * 解析门的新口:拓展的来源在登记表里,搜人经 `searchSourceCreators`(共用超时与串行闸),候选的头像引用
- * 由路由从图库读回字节、拼成 data URL 交给面板。
- */
-describe("GET /api/ext/:id/lookup —— 来源登记表那一口", () => {
-	const REF = "img-ref-1";
-	const BYTES = new Uint8Array([1, 2, 3, 4]);
-	const PNG_URL = `data:image/png;base64,${Buffer.from(BYTES).toString("base64")}`;
-
-	/** 在册的 douyin + 引擎的搜人口(测试里就是传进来的这个函数)。 */
-	function withSearch(
-		searchCreators: (
-			sourceKey: string,
-			query: string,
-		) => Promise<Result<{ candidates: CreatorCandidate[] }>>,
-	): { sources: Pick<SourceRegistry, "get" | "list">; searchCreators: typeof searchCreators } {
-		const view = { sourceKey: "douyin", descriptor: { label: "抖音" } } as unknown as SourceView;
-		return {
-			sources: { get: (key) => (key === "douyin" ? view : undefined), list: () => [view] },
-			searchCreators,
-		};
-	}
-
-	const images = (found: boolean): Pick<ImageStore, "read"> => ({
-		read: async () => (found ? { bytes: Buffer.from(BYTES), mime: "image/png" } : undefined),
-	});
-
-	it("一个都认不出 —— 200 加一张空表,不是 404", async () => {
-		const res = await boot({
-			...withSearch(async () => ok({ candidates: [] })),
-			images: images(true),
-		}).request("/douyin/lookup?q=nobody");
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ candidates: [] });
-	});
-
-	/** 粘链接时带进来的首尾空白去掉;除此之外一个字不动 —— 怎么解读是拓展的事。 */
-	it("q 首尾的空白去掉再交给来源,中间的原样", async () => {
-		const search = vi.fn(async () => ok({ candidates: [] }));
-		await boot({ ...withSearch(search), images: images(true) }).request(
-			`/douyin/lookup?q=${encodeURIComponent("  \t抖音 作者 名\n ")}`,
-		);
-		expect(search).toHaveBeenCalledWith("douyin", "抖音 作者 名");
-	});
-
-	it.each<[string, string]>([
-		["没带 q", "/douyin/lookup"],
-		["q 是空串", "/douyin/lookup?q="],
-		["q 只有空白", `/douyin/lookup?q=${encodeURIComponent("   ")}`],
-		["q 超过 1024 字", `/douyin/lookup?q=${"字".repeat(1025)}`],
-		["拓展 id 不合规矩", "/Douyin/lookup?q=x"],
-	])("%s —— 400 invalid,不往下问", async (_label, path) => {
-		const search = vi.fn(async () => ok({ candidates: [] }));
-		const res = await boot({ ...withSearch(search), images: images(true) }).request(path);
-		expect(res.status).toBe(400);
-		expect((await failureOf(res)).code).toBe("invalid");
-		expect(search).not.toHaveBeenCalled();
-	});
-
-	it("q 正好 1024 字 —— 照常问", async () => {
-		const search = vi.fn(async () => ok({ candidates: [] }));
-		const res = await boot({ ...withSearch(search), images: images(true) }).request(
-			`/douyin/lookup?q=${"字".repeat(1024)}`,
-		);
-		expect(res.status).toBe(200);
-		expect(search).toHaveBeenCalledOnce();
-	});
-
-	it.each<[string, Result<{ candidates: CreatorCandidate[] }>, number, string]>([
-		["超时", fail("timeout", "来源超过 15 秒没回"), 504, "timeout"],
-		["来源自己回失败", fail("unavailable", "cookie 过期了"), 503, "unavailable"],
-		["来源回坏形状", fail("invalid", "0.name 不合规矩"), 502, "invalid"],
-	])("%s —— 状态码从标准码推,话原样", async (_label, outcome, status, code) => {
-		const res = await boot({
-			...withSearch(async () => outcome),
-			images: images(true),
-		}).request("/douyin/lookup?q=x");
-		expect(res.status).toBe(status);
-		expect((await failureOf(res)).code).toBe(code);
-	});
-
-	it("在册的来源交带图库引用的候选 —— avatarUrl 是那张图的 data URL,followers 与 externalId 原样", async () => {
-		const search = vi.fn(async () =>
-			ok({
-				candidates: [
-					{ externalId: "sec-1", name: "作者", avatar: REF, bio: "简介", followers: 77 },
-				],
-			}),
-		);
-		const res = await boot({ ...withSearch(search), images: images(true) }).request(
-			"/douyin/lookup?q=x",
-		);
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			candidates: [
-				{ externalId: "sec-1", name: "作者", avatarUrl: PNG_URL, bio: "简介", followers: 77 },
-			],
-		});
-		expect(search).toHaveBeenCalledWith("douyin", "x");
-	});
-
-	it("图库读不到那张图 —— 没有 avatarUrl,其余照回", async () => {
-		const res = await boot({
-			...withSearch(async () =>
-				ok({ candidates: [{ externalId: "sec-1", name: "作者", avatar: REF, followers: 5 }] }),
-			),
-			images: images(false),
-		}).request("/douyin/lookup?q=x");
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
-			candidates: [{ externalId: "sec-1", name: "作者", followers: 5 }],
-		});
-	});
-
-	it("来源回 invalid —— 502,话原样", async () => {
-		const res = await boot({
-			...withSearch(async () => fail("invalid", "拓展交回的候选不合规矩:0.name")),
-			images: images(true),
-		}).request("/douyin/lookup?q=x");
-		expect(res.status).toBe(502);
-		const body = await failureOf(res);
-		expect(body.code).toBe("invalid");
-		expect(body.message).toContain("0.name");
-	});
-
-	it("不在册 —— 404 not_found", async () => {
-		const res = await boot({
-			...withSearch(async () => ok({ candidates: [] })),
-		}).request("/other/lookup?q=x");
-		expect(res.status).toBe(404);
-		expect((await failureOf(res)).code).toBe("not_found");
 	});
 });
 

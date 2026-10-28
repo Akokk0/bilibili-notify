@@ -21,8 +21,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+	CreatorsResponse,
 	DevCapturedDelivery,
-	ExtensionLookupResponse,
 	ExtensionsResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
@@ -267,9 +267,9 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 		const listed = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		expect(listed.extensions.find((e) => e.id === FAKE)?.state).toBe("running");
 		const looked = await okRes(
-			await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("探针")}`),
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("探针")}`),
 		);
-		const { candidates } = (await looked.json()) as ExtensionLookupResponse;
+		const { candidates } = (await looked.json()) as CreatorsResponse;
 		for (const [i, subId] of [ID.subA, ID.subB].entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");

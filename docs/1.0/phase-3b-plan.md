@@ -276,7 +276,7 @@
   - 清理：R19 `refactor(runtime): ask hasLiveStatus directly for the live module state`；顺带把两份一样的预览收成一份：`refactor(server): share one preview for untrusted text in logs`。
 - **没改的一条**：R30（直播总结锚点上，按例外只收模板版的目标也要等 AI 那份做完）。ADR-0032 决策 2 下 3b-37 的 🔗 定的就是「挑模板的目标也要等 AI 那份做完一起发」；审查员说的「后面的附加项也被拖住」今天不成立（总结是最后一个附加项，在后台发）。要改是改定案的题。
 - **施工中撞出的偶发红**，都派人查了病根，只改测试，没动上限、没放宽断言：`migration/__tests__/zero-generation.test.ts`（每条用例重新迁一次、约 130 次串行 fsync，别的进程一起写盘时一条过了 5 秒；超时后迁移还在写 `1.partial`、收尾同时在删，才冒出 `ENOTEMPTY`）→ `test(migration): migrate the zero generation once for the read-only checks`；`runtime/__tests__/generation-usage.test.ts`（被计时的部分里现造 1000 个文件，原断言连真阻塞都抓不住）→ `test(runtime): check measureTree yields without timing a thousand file writes`；`scripts/__tests__/bilibili-vocabulary.test.mjs`（整仓扫描时每个文字节点都把每个词现编一个正则，一遍上百万个，CPU 一忙就过 5 秒）→ `test(scripts): compile the vocabulary guard's word patterns once`。三处都和这一片的改动无关，是早先就有的隐患。
-- **留着的**：R6 一次 `fetchLiveStatus` 跨过「拆旧会话、建新会话」时仍会写进新会话；R3 适配器异步 `start` 的那段时间里已经在登记表上（与订阅源登记表同一个取舍），登记途中收摊时落定那一刻才撤、此时 `signal` 已中止；R25 拓展回执包装层自己坏掉时的 `invalid` 不记进出入（要改 `readResult` 的形状，牵连搜人）；新建拓展订阅时种资料直接写资料缓存、绕过单一写者（复核顺带看到，改成「只在还没有资料时才种」是行为决定）。
+- **留着的**：R6 一次 `fetchLiveStatus` 跨过「拆旧会话、建新会话」时仍会写进新会话；R3 适配器异步 `start` 的那段时间里已经在登记表上（与订阅源登记表同一个取舍），登记途中收摊时落定那一刻才撤、此时 `signal` 已中止；R25 拓展回执包装层自己坏掉时的 `invalid` 不记进出入（要改 `readResult` 的形状，牵连搜人；🔗 现状（4-15，10-28）：`readResult` 交出壳坏了的原因，取资料那一口记进出入，搜人没有人可挂、照旧只回 `invalid`）；新建拓展订阅时种资料直接写资料缓存、绕过单一写者（复核顺带看到，改成「只在还没有资料时才种」是行为决定）。
 
 ## 真机
 

@@ -94,9 +94,8 @@ export const SLOT_SKIP_DIRS = [
  * 今天里面全是 B 站接口客户端的槽位(第 4 期两处读者):`index.ts` 只剩交给 `createApp` 的那一处。
  */
 export const API_SLOT_RATCHET = {
-	"apps/server/src/app.ts": 3, // 旧搜人的 `api`;第 4 期改口时消。4-14 卡片预览改问来源(4 → 3)
+	"apps/server/src/app.ts": 1, // 只剩 `CreateAppOptions.api` 那一格(没有读者了),4-16 拆。4-14 卡片预览改问来源(4 → 3);4-15 搜人改问来源(3 → 1)
 	"apps/server/src/index.ts": 2, // 只剩 `builtins.bilibili.api()` 递给 `createApp`(第 4 期两处读者);第 4 期卡片真实预览与旧搜人改口时消。3b-28 链接预览的门改问登记表(13 → 11);3b-39-6 删抓图服务(11 → 10);3b-24-10b 删粉丝轮询(10 → 7)。3b-47 删 `EnginesRuntime.api`(7 → 5);3b-47 登录装配进 B 站来源,套壳、引擎、`authSystem.api` 都出了入口(5 → 2)
-	"apps/server/src/routes/subscriptions.ts": 2, // 旧搜人两口;第 4 期消。3b-25 新建订阅不再当场关注(3 → 2)
 };
 
 // ---------------------------------------------------------------------------

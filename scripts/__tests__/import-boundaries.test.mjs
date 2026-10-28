@@ -67,7 +67,6 @@ export const BOUNDARIES = [
 			"apps/server/src/routes/cards.ts": 1,
 			// 3b-47:旧搜人改从 createApp 的选项拿 `Api`(主人 10-25 定直接引类型、不借卡片路由的),第 4 期旧搜人改口时消。
 			// 第 4 期:经接口搜人改走来源后消。
-			"apps/server/src/routes/subscriptions.ts": 1,
 		},
 		reason:
 			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨;3b 收尾能清的清零,余下的等第 4 期",

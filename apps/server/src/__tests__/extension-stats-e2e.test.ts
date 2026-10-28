@@ -20,7 +20,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	ExtensionsResponse,
 	FollowersResponse,
 	LiveListeningEntry,
@@ -114,9 +114,9 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		const list = (await (await api("/api/ext")).json()) as ExtensionsResponse;
 		expect(list.extensions.find((e) => e.id === FAKE)?.state).toBe("running");
 
-		const looked = await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("统计探针")}`);
+		const looked = await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("统计探针")}`);
 		expect(looked.status, await looked.clone().text()).toBe(200);
-		const { candidates } = (await looked.json()) as ExtensionLookupResponse;
+		const { candidates } = (await looked.json()) as CreatorsResponse;
 		for (const [i, id] of [ON, OFF].entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");

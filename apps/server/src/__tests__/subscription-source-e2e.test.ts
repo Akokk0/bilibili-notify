@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionLookupResponse } from "@bilibili-notify/contract";
+import type { CreatorsResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
@@ -159,15 +159,15 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	async function lookup(): Promise<ExtensionLookupResponse["candidates"]> {
-		const res = await fetch(`http://127.0.0.1:${port}/api/ext/${FIXTURE_ID}/lookup?q=x`);
-		const body = (await res.json()) as ExtensionLookupResponse;
+	async function lookup(): Promise<CreatorsResponse["candidates"]> {
+		const res = await fetch(`http://127.0.0.1:${port}/api/sources/${FIXTURE_ID}/creators?q=x`);
+		const body = (await res.json()) as CreatorsResponse;
 		expect(res.status, JSON.stringify(body)).toBe(200);
 		return body.candidates;
 	}
 
 	/** 候选按 externalId 排好 —— 名单的次序不是这里要钉的东西。 */
-	function byId(candidates: ExtensionLookupResponse["candidates"]) {
+	function byId(candidates: CreatorsResponse["candidates"]) {
 		return [...candidates].sort((a, b) => a.externalId.localeCompare(b.externalId));
 	}
 

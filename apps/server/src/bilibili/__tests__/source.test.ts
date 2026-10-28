@@ -520,6 +520,34 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
+	// 接线守卫(4-15):搜人的候选头像经 `ctx.fetchImage` 抓进图库。验红:`searchCreators` 不递抓图口,这条红。
+	it("start 之后搜人的候选头像经 ctx.fetchImage 抓进图库;start 前照样能搜,只是不带头像", async () => {
+		const { deps, login } = makeDeps();
+		const fetchUserCard = vi.fn(async () =>
+			ok({
+				data: { card: { mid: "7", name: "阿七", face: "https://i0.hdslb.com/bfs/face/7.jpg" } },
+			}),
+		);
+		login.api = { ...login.api, fetchUserCard } as unknown as Api;
+		const source = createBiliSource(deps);
+		const signal = new AbortController().signal;
+		await expect(source.searchCreators("7", signal)).resolves.toEqual({
+			ok: true,
+			candidates: [{ externalId: "7", name: "阿七" }],
+		});
+
+		const { ctx, fetchImage } = makeCtx([]);
+		await source.start(ctx);
+		fetchImage.mockClear();
+		const found = await source.searchCreators("7", signal);
+		expect(fetchImage).toHaveBeenCalledWith(
+			expect.stringContaining("/bfs/face/7.jpg@480w"),
+			expect.anything(),
+		);
+		expect(found.ok && found.candidates[0]?.avatar).toEqual(expect.any(String));
+		await source.stop();
+	});
+
 	it("ctx.state 预置房号时,来源的直播把手直接读它,不请求用户信息", async () => {
 		const { deps, login } = makeDeps();
 		const fetchUserInfo = vi.fn();

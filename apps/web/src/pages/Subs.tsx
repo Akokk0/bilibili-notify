@@ -1,7 +1,7 @@
 import type {
 	ConnectionCapabilitiesMap,
 	CreatorCandidateView,
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	SourceEntry,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
@@ -241,7 +241,7 @@ function NewSubDialog({
 	 */
 	const extLookup = useMutation({
 		mutationFn: ({ id, q }: { id: string; q: string }) =>
-			api.get<ExtensionLookupResponse>(
+			api.get<CreatorsResponse>(
 				`/api/ext/${encodeURIComponent(id)}/lookup?q=${encodeURIComponent(q)}`,
 			),
 	});

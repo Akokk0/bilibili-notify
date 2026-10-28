@@ -17,7 +17,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
@@ -219,9 +219,9 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 		};
 
 		// 面板那条路建订阅:先问解析门,拿候选建。假源的头一个候选报了粉丝数,第二个没报。
-		const looked = await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("直播探针")}`);
+		const looked = await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("直播探针")}`);
 		await ok(looked);
-		const { candidates } = (await looked.json()) as ExtensionLookupResponse;
+		const { candidates } = (await looked.json()) as CreatorsResponse;
 		for (const [i, key] of KEYS.entries()) {
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");

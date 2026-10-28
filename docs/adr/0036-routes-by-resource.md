@@ -20,7 +20,7 @@
    | 今天 | 1.0 |
    | --- | --- |
    | `/api/globals` | `/api/settings`（施工计划里「到时问主人」的那一题，这次定了） |
-   | `/api/subs`（含 `tags`、`:id/avatar`、`search`、`lookup`；`:id/avatar` 在 ⑳c 退役，头像走 `/api/images/<ref>`） | `/api/subscriptions`（1.0 原定；`search` / `lookup` 在 3a 再并进 `/api/sources/:sourceKey/creators`） |
+   | `/api/subs`（含 `tags`、`:id/avatar`、`search`、`lookup`；`:id/avatar` 在 ⑳c 退役，头像走 `/api/images/<ref>`） | `/api/subscriptions`（1.0 原定；`search` / `lookup` 在 3a 再并进 `/api/sources/:sourceKey/creators`） | 🔗 现状（4-15，10-28）：`search` / `lookup` 与 `/api/ext/:id/lookup` 都删了，搜人只剩 `GET /api/sources/:sourceKey/creators?q=`。
    | `/api/fans` | `/api/stats/followers`（**推翻** 1.0 原定的 `/api/followers`：粉丝样本只喂统计与首页的统计卡） |
    | `/api/maid-skills` | `/api/ai/skills` |
    | `POST /api/ai/test-push` | `POST /api/ai/test` |

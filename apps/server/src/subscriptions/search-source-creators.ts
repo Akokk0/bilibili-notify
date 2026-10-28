@@ -20,8 +20,8 @@ export interface SearchSourceCreatorsDeps {
  *   `timeout`;来源抛了按 `unavailable` 收,原话只进错误日志,回给人的话是固定的一句;
  * - 来源回的失败(风控、没登录……)原样回,不改码不改话。
  *
- * 起名:`search` 对着来源上的成员名;`lookup` 在命名规范里只用在函数名上、指「查一下」这个动作,而且拓展解析门
- * 的 `lookup` 是另一个口(路由那一支),这里不借。女仆的搜人工具用它,第 4 期面板的搜人路由直接复用。
+ * 起名:`search` 对着来源上的成员名;`lookup` 在命名规范里只用在函数名上、指「查一下」这个动作,这里不借。
+ * 女仆的搜人工具与面板的搜人口(`GET /api/sources/:sourceKey/creators`)都经推送链路的 `searchCreators` 用它。
  */
 export async function searchSourceCreators(
 	deps: SearchSourceCreatorsDeps,

@@ -22,7 +22,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryResponse,
 	StatsOverviewResponse,
@@ -211,9 +211,9 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		};
 
 		// 面板那条路建订阅:先问解析门,拿候选建。
-		const looked = await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("作品探针")}`);
+		const looked = await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("作品探针")}`);
 		await ok(looked);
-		const { candidates } = (await looked.json()) as ExtensionLookupResponse;
+		const { candidates } = (await looked.json()) as CreatorsResponse;
 		expect(candidates).toHaveLength(3);
 		for (const [i, key] of KEYS.entries()) {
 			const candidate = candidates[i];

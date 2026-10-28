@@ -71,8 +71,8 @@ interface BasicAuthCredentials {
 
 export interface CreateAppOptions {
 	/**
-	 * 旧搜人用的 B 站 API 客户端(卡片预览 4-14 起改问来源的 `fetchPreview`,不再用它)。要让它吃到 devtools 的
-	 * 覆盖(它把 api 包了一层 Proxy 按方法覆盖),就得显式传进来;省略就是没有(旧搜人回 not-ready)。
+	 * B 站 API 客户端。4-15 起已经没有读者(卡片预览问来源的 `fetchPreview`,搜人问来源的 `searchCreators`);
+	 * 这一格与入口递它的那一处随 4-16 一起拆。
 	 */
 	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
@@ -276,7 +276,7 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/health           — liveness (short)
  *   /api/health/details   — rich snapshot incl. config-scope meta
  *   /api/settings         — GET / PATCH
- *   /api/subscriptions    — GET / POST / PATCH /:id / DELETE /:id(+ tags、search、lookup)
+ *   /api/subscriptions    — GET / POST / PATCH /:id / DELETE /:id(+ tags)
  *   /api/targets          — GET / POST / PATCH /:id / DELETE /:id / POST /:id/test
  *   /api/ai/skills        — 女仆技能(离开 AI 聊天没有意义,下沉在 /api/ai 底下)
  *   /api/cards/skins      — 卡片皮肤库(与出卡同一个前缀;截图口 /:id/screenshot 在 cards 路由里)
@@ -286,6 +286,7 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/system/*         — 日志(一直挂)、更新 / 备份 / 重启与开新代(宿主传了才挂)
  *   /api/sources          — 来源表(GET,每个来源的描述符与能力)
  *   /api/sources/:sourceKey/auth — 来源的登录口(GET 读 / POST 发起扫码 / DELETE 退出)
+ *   /api/sources/:sourceKey/creators — 新建订阅时在这个来源里搜人(GET ?q=)
  *   /api/problems         — 问题表(各集成报上来的「主人该知道的事」,GET 一次给全)
  *   /api/ws/ticket        — 面板 WS 的一次性票(无条件挂)
  */
@@ -301,7 +302,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	};
 	// 会员档位读口:每次现读来源登记表。
 	const tiers = createMembershipTierReader(runtime.sourceRegistry);
-	const api = options.api ?? null;
 
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
 		app.route("/api/health", createHealthRoute(deps));
@@ -310,7 +310,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		app.route(
 			"/api/subscriptions",
 			// 新建拓展订阅要核「它是不是装着的订阅源」—— 与拓展页同一份名单,现取。
-			createSubscriptionsRoute(deps, { api, extensions: () => options.extensions?.loaded() ?? [] }),
+			createSubscriptionsRoute(deps, { extensions: () => options.extensions?.loaded() ?? [] }),
 		);
 		app.route("/api/connections", createConnectionsRoute(deps));
 		app.route("/api/targets", createTargetsRoute(deps));
@@ -387,6 +387,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			createSourcesRoute(deps, {
 				extensions: () => options.extensions?.loaded() ?? [],
 				settle: options.extensions?.settle,
+				// 热读:pipeline 是后挂的;搜人走推送链路那道共用的来源串行闸。候选头像引用从图库读回。
+				searchCreators: async (sourceKey, query) =>
+					deps.runtime.pipeline?.searchCreators(sourceKey, query),
+				images: deps.runtime.imageStore,
 			}),
 		);
 		// 问题表的读口:各集成报上来的问题,一次给全。
@@ -399,12 +403,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				extensions: () => options.extensions?.loaded() ?? [],
 				status: (id) => options.extensions?.status(id),
 				runAction: async (id, name) => options.extensions?.runAction?.(id, name),
-				// 解析门:拓展的来源在册的经登记表问,头像引用从图库读回。
-				sources: deps.runtime.sourceRegistry,
-				images: deps.runtime.imageStore,
-				// 热读:pipeline 是后挂的;搜人走推送链路那道共用的来源串行闸。
-				searchCreators: async (sourceKey, query) =>
-					deps.runtime.pipeline?.searchCreators(sourceKey, query),
 				settingsSchemas: (id) => options.extensions?.settingsSchemas?.(id),
 				reportDiscrepancies: options.extensions?.reportDiscrepancies,
 				// 设置写进去了 → bus → WS `state` 频道一帧 → 面板按 id 失效设置与视图。只带 id:设置里有密钥。

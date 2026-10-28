@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import type {
 	AdaptersResponse,
 	ConnectionCapabilitiesMap,
-	ExtensionLookupResponse,
+	CreatorsResponse,
 	ExtensionsResponse,
 	HistoryEntryView,
 	HistoryResponse,
@@ -649,8 +649,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			"fake-hook",
 		]);
 		// 来源起来了:解析门回候选。
-		const looked = await okJson<ExtensionLookupResponse>(
-			await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent(LOOKUP_QUERY)}`),
+		const looked = await okJson<CreatorsResponse>(
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent(LOOKUP_QUERY)}`),
 		);
 		expect(looked.candidates).toHaveLength(3);
 		expect((await adapterView()).connections).toBe(0);
@@ -675,7 +675,9 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			body: { code: "unavailable" },
 		});
 		expect(
-			await failed(await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent(LOOKUP_QUERY)}`)),
+			await failed(
+				await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent(LOOKUP_QUERY)}`),
+			),
 		).toMatchObject({ status: 404, body: { code: "not_found" } });
 		expect(
 			await okJson<ConnectionCapabilitiesMap>(await api("/api/connections/capabilities")),
@@ -684,8 +686,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		// 再拨开:`start` 里读到已有的三条连接,刚起来那一刻视图就已是 3 条;解析门又回候选。
 		expect((await setEnabled(true)).state).toBe("running");
 		expect((await adapterView()).connections).toBe(3);
-		const again = await okJson<ExtensionLookupResponse>(
-			await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent(LOOKUP_QUERY)}`),
+		const again = await okJson<CreatorsResponse>(
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent(LOOKUP_QUERY)}`),
 		);
 		expect(again.candidates).toHaveLength(3);
 		world.externalA = again.candidates[0]?.externalId ?? "";
@@ -752,8 +754,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 	// ---------------------------------------------------------------------
 
 	step(TITLE.searchCreators, async () => {
-		const got = await okJson<ExtensionLookupResponse>(
-			await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent(LOOKUP_QUERY)}`),
+		const got = await okJson<CreatorsResponse>(
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent(LOOKUP_QUERY)}`),
 		);
 		// 同一句字永远是同一组:id 是摘要的前 16 位加 a / b / c。
 		expect(got.candidates.map((c) => c.externalId)).toEqual([
@@ -767,16 +769,20 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		expect(got.candidates[0]?.name).toBe(LOOKUP_QUERY);
 		// 空:成功的空表。
 		expect(
-			await okJson(await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("空")}`)),
+			await okJson(await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("空")}`)),
 		).toEqual({
 			candidates: [],
 		});
 		// 坏:来源回的失败,码与原话原样交回。
-		const bad = await failed(await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("坏")}`));
+		const bad = await failed(
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("坏")}`),
+		);
 		expect(bad.body).toMatchObject({ code: "unauthorized" });
 		expect(String(bad.body.message)).toContain("cookie 已过期");
 		// 乱:候选不合规矩,整次拒,话点名哪一格。
-		const messy = await failed(await api(`/api/ext/${FAKE}/lookup?q=${encodeURIComponent("乱")}`));
+		const messy = await failed(
+			await api(`/api/sources/${FAKE}/creators?q=${encodeURIComponent("乱")}`),
+		);
 		expect(messy.body).toMatchObject({ code: "invalid" });
 		expect(String(messy.body.message)).toContain("0.avatar");
 		expect(String(messy.body.message)).toContain("1.followers");

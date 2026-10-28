@@ -132,7 +132,7 @@ export interface PipelineRuntime extends Disposable {
 	fetchProfile(identity: Identity, signal?: AbortSignal): Promise<Result<CreatorProfileReport>>;
 	/**
 	 * 在某个来源里搜人(宿主外壳 `searchSourceCreators`):与 `fetchProfile`、查直播状态共用同一道来源串行闸,
-	 * 同一个来源一次只有一个调用在途。女仆的搜人工具与面板的解析门都走这一个,别各自再绑一份。
+	 * 同一个来源一次只有一个调用在途。女仆的搜人工具与面板的搜人口都走这一个,别各自再绑一份。
 	 */
 	searchCreators(
 		sourceKey: string,
