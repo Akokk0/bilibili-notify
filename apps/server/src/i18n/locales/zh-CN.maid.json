@@ -2,5 +2,8 @@
 	"problem.recoveredGeneric": "主人，好消息，之前说的这件事已经恢复啦：{message}",
 	"problem.relay.recovered": "主人，好消息，{name}报告：{message}",
 	"problem.relay.recoveredGeneric": "主人，好消息，{name}之前报告的「{message}」已经恢复啦。",
-	"problem.relay.reported": "主人，刚刚{name}报告：{message}"
+	"problem.relay.reported": "主人，刚刚{name}报告：{message}",
+	"roast.draftExpired": "编号 {id} 的锐评超过 {hours} 小时没有回复，已经作废了～",
+	"startup.migrating": "BN 正在搬家,稍等一下",
+	"startup.starting": "BN 正在启动,稍等一下"
 }

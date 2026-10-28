@@ -54,7 +54,7 @@ import { createReportDiscrepancyTable } from "./extensions/report-discrepancies.
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { bindTextSettings } from "./i18n/bind-settings.js";
-import { i18n } from "./i18n/index.js";
+import { i18n, t } from "./i18n/index.js";
 import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
@@ -111,7 +111,7 @@ import { createReportCommand } from "./runtime/report-command.js";
 import { type ResourceMonitor, startResourceMonitor } from "./runtime/resource-monitor.js";
 import { resolveRestartAbility, runningInContainer } from "./runtime/restart-ability.js";
 import { createRoastCommandHandler } from "./runtime/roast-command.js";
-import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
+import { createRoastDraftStore, DRAFT_TTL_MS } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { dataPath, hostPath } from "./runtime/roots.js";
 import { bindSettingsRedaction } from "./runtime/settings-redaction.js";
@@ -240,11 +240,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	// 要求从第 0 代迁、第 0 代却已经不在了:选代当没要求,接着用原来那一代,告诉主人为什么。
 	const declined =
 		pending && selection.kind === "use"
-			? await recordGenerationFailure(
-					selection.dir,
-					pending.kind,
-					"第 0 代(0.x 的数据)已经不在了,没法从它重新迁移",
-				)
+			? await recordGenerationFailure(selection.dir, pending.kind, t("generations.zeroGone"))
 			: undefined;
 	// 空的一代(新装、全新开始)当场开:什么都不用搬,不必等到 listen 之后。
 	const opened =
@@ -460,11 +456,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			...(changeCredentials ? { changeCredentials } : {}),
 			allowedOrigins,
 		};
-		let startupMessage =
-			generation.kind === "create" ? "BN 正在搬家,稍等一下" : "BN 正在启动,稍等一下";
+		// 开机这一段 503 里的那句话:每个请求现取(出字那一刻按当前语言),所以存的是取字函数、不是字。
+		let startupMessage = (): string =>
+			generation.kind === "create" ? t("startup.migrating") : t("startup.starting");
 		let currentApp = createStartupApp(runtime, {
 			...appShell,
-			message: () => startupMessage,
+			message: () => startupMessage(),
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(
@@ -510,7 +507,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 							targetDir: partialDir,
 							passphrase: bootstrap.cookieEncryptionKey,
 							onProgress: ({ done, total, label }) => {
-								startupMessage = `BN 正在搬家(${done}/${total}):${label}`;
+								startupMessage = () => t("startup.migratingStep", { done, total, label });
 							},
 						});
 					},
@@ -529,7 +526,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				await stopAndExit("requested generation failed");
 				throw error;
 			}
-			startupMessage = "BN 正在启动,稍等一下";
+			startupMessage = () => t("startup.starting");
 			log.info(
 				`[data] 第 ${generation.seq} 代迁好了:搬了 ${report?.transfers.length ?? 0} 个文件,第 0 代原样留着当备份`,
 			);
@@ -1195,7 +1192,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						.sweep()
 						.then(async (dead) => {
 							for (const d of dead) {
-								await tellMaster(`编号 ${d.id} 的锐评超过 48 小时没有回复，已经作废了～`);
+								await tellMaster(
+									t("roast.draftExpired", { id: d.id, hours: DRAFT_TTL_MS / (60 * 60 * 1000) }),
+								);
 							}
 						})
 						.catch((err) => {

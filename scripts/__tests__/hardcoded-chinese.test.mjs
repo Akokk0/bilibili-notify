@@ -130,7 +130,7 @@ export const RATCHET = {
 	"apps/server/src/images/image-referrers.ts": 9,
 	"apps/server/src/images/image-store.ts": 3,
 	"apps/server/src/images/image-writes.ts": 4,
-	"apps/server/src/index.ts": 16,
+	"apps/server/src/index.ts": 10,
 	"apps/server/src/integration-store/files.ts": 3,
 	"apps/server/src/integration-store/key-value-store.ts": 15,
 	"apps/server/src/integration-store/store.ts": 9,
