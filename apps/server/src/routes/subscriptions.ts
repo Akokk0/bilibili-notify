@@ -14,6 +14,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import { t } from "../i18n/index.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import {
 	type ExternalIdSpec,
@@ -43,19 +44,20 @@ export interface SubsRouteOptions {
  *
  * 只收 `name` / `avatarUrl` / `followers`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
  * `avatarUrl` 要么不给(没有头像),要么是位图 data URL(它是个网址,所以叫 `avatarUrl`),魔数另核(见
- * `decodeSubscriptionAvatar`)。服务端把它存进图库,资料里换成图库引用 `avatar`。
+ * `decodeSubscriptionAvatar`)。服务端把它存进图库,资料里换成图库引用 `avatar`。话在出字那一刻取(zod 的
+ * `error` 回调),换了语言不用重建。
  */
 const CreateProfileSchema: z.ZodType<NonNullable<SubscriptionCreateRequest["cachedProfile"]>> =
 	z.object({
 		name: z
-			.string({ error: "名字要是字符串" })
-			.min(1, "名字不能是空串")
-			.max(128, "名字不能超过 128 字"),
-		avatarUrl: z.string({ error: "头像要是字符串" }).optional(),
+			.string({ error: () => t("subscriptions.profile.nameType") })
+			.min(1, { error: () => t("subscriptions.profile.nameBlank") })
+			.max(128, { error: () => t("subscriptions.profile.nameTooLong", { max: 128 }) }),
+		avatarUrl: z.string({ error: () => t("subscriptions.profile.avatarType") }).optional(),
 		followers: z
-			.number({ error: "粉丝数要是数字" })
-			.int("粉丝数要是整数")
-			.nonnegative("粉丝数不能是负的")
+			.number({ error: () => t("subscriptions.profile.followersType") })
+			.int({ error: () => t("subscriptions.profile.followersInteger") })
+			.nonnegative({ error: () => t("subscriptions.profile.followersNegative") })
 			.optional(),
 	});
 const CreateProfileBodySchema = z.object({
@@ -164,9 +166,15 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (!profile.success) {
 			return respondFailure(
 				c,
-				fail("invalid", `随订阅交来的资料不合规：${formatZodIssues(profile.error).join("；")}`, {
-					issues: issuesFromZod(profile.error),
-				}),
+				fail(
+					"invalid",
+					t("subscriptions.create.badProfile", {
+						detail: formatZodIssues(profile.error).join("；"),
+					}),
+					{
+						issues: issuesFromZod(profile.error),
+					},
+				),
 			);
 		}
 		const seed = profile.data.cachedProfile;
@@ -177,7 +185,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			if (!decoded.ok) {
 				return respondFailure(
 					c,
-					fail("invalid", `随订阅交来的头像不合规：${decoded.message}`, {
+					fail("invalid", t("subscriptions.create.badAvatar", { reason: decoded.message }), {
 						issues: [{ path: ["cachedProfile", "avatarUrl"], message: decoded.message }],
 					}),
 				);
@@ -329,7 +337,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	app.delete("/:id", async (c) => {
 		const id = c.req.param("id");
 		const removed = await deps.store.deleteSubscription(id);
-		if (!removed) return respondFailure(c, fail("not_found", "没有这条订阅"));
+		if (!removed) return respondFailure(c, fail("not_found", t("subscriptions.notFound")));
 		return c.body(null, 204);
 	});
 
@@ -347,22 +355,19 @@ function subscriptionSourceRefusal(
 ): Failure | undefined {
 	const entry = entries.find((e) => e.id === extensionId);
 	if (!entry) {
-		return fail(
-			"not_found",
-			`没有「${extensionId}」这个来源(不在册,也没装叫这个名字的拓展),建不了它的订阅`,
-		);
+		return fail("not_found", t("subscriptions.create.unknownSource", { sourceKey: extensionId }));
 	}
 	const manifest = entry.manifest;
 	if (!manifest) {
 		return fail(
 			"unsupported",
-			`拓展「${extensionId}」的清单读不出来(${entry.state}),认不出它是不是订阅源`,
+			t("subscriptions.create.manifestUnreadable", { extensionId, state: entry.state }),
 		);
 	}
 	if (!manifest.contributes.subscription) {
 		return fail(
 			"unsupported",
-			`拓展「${manifest.name}」(${extensionId})的清单没开订阅源这一口(contributes.subscription)`,
+			t("subscriptions.create.notSubscriptionSource", { name: manifest.name, extensionId }),
 		);
 	}
 	return undefined;

@@ -67,14 +67,14 @@ type FilterId = "all" | "enabled" | "disabled";
 
 interface FilterDef {
 	id: FilterId;
-	label: string;
 	matches: (s: Subscription) => boolean;
 }
 
+/** 胶囊上的字在组件里按 `id` 取(画的时候才取,换了语言跟着变)。 */
 const FILTERS: ReadonlyArray<FilterDef> = [
-	{ id: "all", label: "全部", matches: () => true },
-	{ id: "enabled", label: "已启用", matches: (s) => s.enabled },
-	{ id: "disabled", label: "已禁用", matches: (s) => !s.enabled },
+	{ id: "all", matches: () => true },
+	{ id: "enabled", matches: (s) => s.enabled },
+	{ id: "disabled", matches: (s) => !s.enabled },
 ];
 
 /** Sentinel for "show subscriptions with no tags attached"(标签 id 是 uuid,撞不上它). */
@@ -297,6 +297,7 @@ function UpProfileSummary({
 	subscribed: boolean;
 	children: React.ReactNode;
 }) {
+	const t = useT();
 	return (
 		<>
 			{profile.avatar !== undefined ? (
@@ -318,7 +319,7 @@ function UpProfileSummary({
 					) : null}
 					{subscribed ? (
 						<Pill size="sm" subtle color="var(--color-bn-text-tertiary)">
-							已订阅
+							{t("subs.candidate.subscribed")}
 						</Pill>
 					) : null}
 				</div>
@@ -389,7 +390,9 @@ function CandidateList({
 							>
 								{c.followers !== undefined || c.bio ? (
 									<div className="mt-0.5 text-bn-2xs text-bn-text-secondary">
-										{c.followers !== undefined ? fansLabel(c.followers) : null}
+										{c.followers !== undefined
+											? t("subs.candidate.followers", { count: formatCount(c.followers) })
+											: null}
 										{c.bio ? (
 											<span className="ml-2 text-bn-text-tertiary" title={c.bio}>
 												· {truncate(c.bio, 30)}
@@ -427,10 +430,6 @@ interface SubscriptionCreateDraft {
 	cachedProfile: NonNullable<SubscriptionCreateRequest["cachedProfile"]>;
 }
 
-function fansLabel(n: number): string {
-	return `${formatCount(n)} 粉丝`;
-}
-
 function truncate(s: string, max: number): string {
 	return s.length > max ? `${s.slice(0, max)}…` : s;
 }
@@ -444,6 +443,12 @@ function formatApiError(err: unknown): string {
 }
 
 export default function Subs() {
+	const t = useT();
+	const filterLabels: Record<FilterId, string> = {
+		all: t("subs.filter.all"),
+		enabled: t("subs.filter.enabled"),
+		disabled: t("subs.filter.disabled"),
+	};
 	const qc = useQueryClient();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -647,7 +652,7 @@ export default function Subs() {
 		},
 		onError: (_err, _vars, ctx) => {
 			if (ctx?.prev) qc.setQueryData(["subscriptions"], ctx.prev);
-			setError("操作失败,请稍后重试");
+			setError(t("subs.error.saveFailed"));
 		},
 		onSettled: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});
@@ -680,7 +685,13 @@ export default function Subs() {
 		);
 		// allSettled 结果此前被丢弃 → 部分失败完全不可见。上报失败计数。
 		const failed = results.filter((r) => r.status === "rejected").length;
-		if (failed > 0) setError(`批量${on ? "启用" : "停用"}:${failed}/${ids.length} 个订阅操作失败`);
+		if (failed > 0) {
+			setError(
+				on
+					? t("subs.error.bulkEnableFailed", { failed, total: ids.length })
+					: t("subs.error.bulkDisableFailed", { failed, total: ids.length }),
+			);
+		}
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		// 操作完成后清空勾选,与批量删除一致 —— 保留勾选不符合直觉。
 		setSelection(new Set());
@@ -694,7 +705,9 @@ export default function Subs() {
 			(results) => {
 				qc.invalidateQueries({ queryKey: ["subscriptions"] });
 				const failed = results.filter((r) => r.status === "rejected").length;
-				if (failed > 0) setError(`删除:${failed}/${target.ids.length} 个订阅失败`);
+				if (failed > 0) {
+					setError(t("subs.error.deleteFailed", { failed, total: target.ids.length }));
+				}
 				setSelection((sel) => {
 					const next = new Set(sel);
 					for (const id of target.ids) next.delete(id);
@@ -728,7 +741,7 @@ export default function Subs() {
 				<Input
 					value={q}
 					onChange={setQ}
-					placeholder="搜索 UP 主名称或 UID..."
+					placeholder={t("subs.search.placeholder")}
 					icon={<Icon.search size={14} />}
 				/>
 				<div className="flex gap-1 rounded-md border border-bn-border-subtle bg-bn-surface/60 p-1 backdrop-blur-sm">
@@ -746,7 +759,7 @@ export default function Subs() {
 										: "text-bn-text-tertiary hover:text-bn-text-primary"
 								}`}
 							>
-								{f.label}
+								{filterLabels[f.id]}
 								<span
 									className={`text-bn-2xs font-bold ${
 										active ? "text-bn-pink" : "text-bn-text-secondary"
@@ -765,19 +778,19 @@ export default function Subs() {
 					<div
 						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-bn-sm font-semibold text-bn-pink`}
 					>
-						已选 {selection.size} 项
+						{t("subs.selection.count", { count: selection.size })}
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(true)}>
-							批量启用
+							{t("subs.selection.enable")}
 						</Btn>
 						<Btn size="sm" variant="ghost" onClick={() => void bulkSetEnabled(false)}>
-							批量禁用
+							{t("subs.selection.disable")}
 						</Btn>
 						<Btn
 							size="sm"
 							variant="danger"
 							onClick={() => setPendingDelete({ ids: [...selection] })}
 						>
-							批量删除
+							{t("subs.selection.delete")}
 						</Btn>
 					</div>
 				) : null}
@@ -790,7 +803,7 @@ export default function Subs() {
 					icon={<Icon.plus size={12} />}
 					onClick={() => setShowNewDialog(true)}
 				>
-					添加
+					{t("subs.add")}
 				</Btn>
 			</div>
 
@@ -799,9 +812,11 @@ export default function Subs() {
 					{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
 					    只剩 2.1~2.7:1(旁边的胶囊看着清楚,是因为它们挂了 btn、拿到了皮肤给的
 					    实底),secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。 */}
-					<span className="text-bn-xs font-semibold text-bn-text-primary">标签</span>
+					<span className="text-bn-xs font-semibold text-bn-text-primary">
+						{t("subs.tags.title")}
+					</span>
 					<TagChip
-						label="全部"
+						label={t("subs.tags.all")}
 						count={subs.length}
 						active={activeTagFilter === null}
 						onClick={() => setTagFilter(null)}
@@ -817,7 +832,7 @@ export default function Subs() {
 					))}
 					{tagStats.untagged > 0 ? (
 						<TagChip
-							label="无标签"
+							label={t("subs.tags.untagged")}
 							count={tagStats.untagged}
 							active={activeTagFilter === UNTAGGED}
 							onClick={() => setTagFilter(UNTAGGED)}
@@ -830,17 +845,21 @@ export default function Subs() {
 			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
 			{subsQuery.isLoading ? (
-				<LoadingBlock label="正在读取订阅列表" hint="女仆正在点名,看看主人都关注了谁 (｡･ω･｡)ﾉ" />
+				<LoadingBlock label={t("subs.list.loading")} hint={t("subs.list.loadingHint")} />
 			) : null}
 			{subsQuery.error ? (
-				<ErrorNote>加载失败：{String((subsQuery.error as Error).message)}</ErrorNote>
+				<ErrorNote>
+					{t("subs.list.loadFailed", { reason: String((subsQuery.error as Error).message) })}
+				</ErrorNote>
 			) : null}
 			{subsQuery.data &&
 			filtered.length === 0 &&
 			(q.trim() || filterId !== "all" || activeTagFilter) ? (
 				<EmptyNote>
-					<div className="mb-1 text-bn-base font-bold text-bn-text-primary">没有匹配的订阅</div>
-					<div>试试换个关键词或筛选条件</div>
+					<div className="mb-1 text-bn-base font-bold text-bn-text-primary">
+						{t("subs.empty.title")}
+					</div>
+					<div>{t("subs.empty.hint")}</div>
 				</EmptyNote>
 			) : null}
 
@@ -875,8 +894,8 @@ export default function Subs() {
 					// data-tour 与右上「添加」同名 —— 同名实例是等价入口,导览聚光灯一起亮
 					<AddCard
 						data-tour="subs-add"
-						label="添加 UP 主"
-						hint="UID / 名称搜索"
+						label={t("subs.addCard.label")}
+						hint={t("subs.addCard.hint")}
 						className={`${UP_CARD_MIN_H} focus:outline-none focus-visible:ring-2 focus-visible:ring-bn-pink`}
 						onClick={() => setShowNewDialog(true)}
 					/>
@@ -965,7 +984,7 @@ export default function Subs() {
 						menuBiliUid !== undefined
 							? () => {
 									void copyToClipboard(menuBiliUid).then((ok) =>
-										setCopyMsg(ok ? "已复制 UID" : "复制失败,请手动复制"),
+										setCopyMsg(ok ? t("subs.copy.done") : t("subs.copy.failed")),
 									);
 								}
 							: undefined
@@ -992,11 +1011,11 @@ export default function Subs() {
 				<ConfirmDialog
 					title={
 						pendingDelete.ids.length > 1
-							? `删除选中的 ${pendingDelete.ids.length} 个订阅?`
-							: "删除该订阅?"
+							? t("subs.delete.titleMany", { count: pendingDelete.ids.length })
+							: t("subs.delete.titleOne")
 					}
-					message="删除后该订阅的所有推送配置将一并移除,且不可恢复。"
-					confirmLabel="确认删除"
+					message={t("subs.delete.message")}
+					confirmLabel={t("subs.delete.confirm")}
 					danger
 					onConfirm={confirmDelete}
 					onCancel={() => setPendingDelete(null)}

@@ -9,6 +9,15 @@
 	"cards.testPush.delivered": "送到啦 · {ms}ms",
 	"cards.testPush.failed": "主人，没推出去：{reason}",
 	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}",
+	"subs.copy.failed": "主人，没复制上，手动复制一下吧",
+	"subs.delete.message": "主人，删掉以后这条订阅的推送配置会一起清掉，撤不回来哦。",
+	"subs.empty.hint": "主人换个关键词或筛选条件试试～",
+	"subs.error.bulkDisableFailed": "主人，批量停用有 {failed}/{total} 个没成功",
+	"subs.error.bulkEnableFailed": "主人，批量启用有 {failed}/{total} 个没成功",
+	"subs.error.deleteFailed": "主人，有 {failed}/{total} 个订阅没删掉",
+	"subs.error.saveFailed": "主人，没改成功，稍后再试一次吧",
+	"subs.list.loadFailed": "主人，订阅列表没读出来：{reason}",
+	"subs.list.loadingHint": "女仆正在点名，看看主人都关注了谁 (｡･ω･｡)ﾉ",
 	"subs.new.description": "主人输入的内容会原样交给{label}去认，挑中一个就进配置表单啦～",
 	"subs.new.noMatch": "主人，没找到对得上的人呢"
 }

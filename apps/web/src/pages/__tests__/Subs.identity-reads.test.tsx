@@ -65,7 +65,7 @@ async function renderSubs() {
 describe("搜索框按身份里的外部 id 搜", () => {
 	it("输入 B 站订阅的 uid → 只剩它;输入拓展订阅的外部 id(不分大小写)→ 只剩它", async () => {
 		await renderSubs();
-		const input = screen.getByPlaceholderText("搜索 UP 主名称或 UID...");
+		const input = screen.getByPlaceholderText("搜索订阅的名字或 id…");
 
 		fireEvent.change(input, { target: { value: "111" } });
 		expect(screen.getByText("UP甲")).toBeTruthy();

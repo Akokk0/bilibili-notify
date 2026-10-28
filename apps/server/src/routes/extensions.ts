@@ -242,46 +242,53 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * - **装完当场重扫**,于是新拓展立刻出现在这一页;而**盖掉一份跑过的**要如实说「新版等着
 	 *   换上」—— 那份代码已经 import 过,ESM 在这个进程里干净地换不掉(决策 10 / 47)。
 	 */
-	app.post("/install", uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, "拓展包"), async (c) => {
-		const install = opts.install;
-		if (!install) return respondFailure(c, fail("unsupported", "这个构建没接装载器,装不了"));
-		const body = await c.req.parseBody().catch(() => null);
-		const file = body?.file;
-		if (!(file instanceof File)) {
-			return respondFailure(c, fail("invalid", "缺少拓展包文件(multipart 字段 file)"));
-		}
-		const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
-		if (!opened.ok) return respondFailure(c, opened);
+	// 上传超限那句里的「拓展包」在建路由那一刻取字:`uploadBodyLimit` 只收字符串,改成出字时才取随 4-53c(同卡片路由的
+	// 「图片」「字体文件」)。
+	app.post(
+		"/install",
+		uploadBodyLimit(MAX_EXTENSION_PACKAGE_BYTES, t("extensions.route.packageNoun")),
+		async (c) => {
+			const install = opts.install;
+			if (!install)
+				return respondFailure(c, fail("unsupported", t("extensions.route.noLoaderInstall")));
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File)) {
+				return respondFailure(c, fail("invalid", t("extensions.route.missingPackageFile")));
+			}
+			const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
+			if (!opened.ok) return respondFailure(c, opened);
 
-		// 落盘与随后那一遍重扫在装载器的队里是一件事。新装的当场跑起来;盖掉一份跑着的,旧代码
-		// 照跑、那一行标上「等着换上」(装载器不偷偷换跑着的代码,决策 47)。
-		try {
-			await install.changeDisk(() =>
-				installExtensionPackage({ root: install.root, pkg: opened.pkg }),
-			);
-		} catch (err) {
-			// 落盘那头**可预期**的拒绝只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
-			// 别的抛错(磁盘写失败)是 bug 或环境的事,往外抛给全局出错处理。
-			if (err instanceof ExtensionConflictError) return respondFailure(c, err.toFailure());
-			throw err;
-		}
+			// 落盘与随后那一遍重扫在装载器的队里是一件事。新装的当场跑起来;盖掉一份跑着的,旧代码
+			// 照跑、那一行标上「等着换上」(装载器不偷偷换跑着的代码,决策 47)。
+			try {
+				await install.changeDisk(() =>
+					installExtensionPackage({ root: install.root, pkg: opened.pkg }),
+				);
+			} catch (err) {
+				// 落盘那头**可预期**的拒绝只有一种:目标是 devtools 链进来的工作树。那句话要原样给主人。
+				// 别的抛错(磁盘写失败)是 bug 或环境的事,往外抛给全局出错处理。
+				if (err instanceof ExtensionConflictError) return respondFailure(c, err.toFailure());
+				throw err;
+			}
 
-		const answer: ExtensionInstallResponse = {
-			id: opened.pkg.id,
-			name: opened.pkg.manifest.name,
-			version: opened.pkg.manifest.version,
-			staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
-			docs: docsPresence(opened.pkg.docs),
-			// 语言表之外的译文文件没写进盘,告知一声;没有就不带这一格。
-			...(opened.pkg.skippedLocales.length > 0
-				? { skippedLocales: opened.pkg.skippedLocales }
-				: {}),
-			// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
-			enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
-			restart: install.restartAbility(),
-		};
-		return c.json(answer);
-	});
+			const answer: ExtensionInstallResponse = {
+				id: opened.pkg.id,
+				name: opened.pkg.manifest.name,
+				version: opened.pkg.manifest.version,
+				staged: stagedAfterInstall(opts.extensions(), opened.pkg.id),
+				docs: docsPresence(opened.pkg.docs),
+				// 语言表之外的译文文件没写进盘,告知一声;没有就不带这一格。
+				...(opened.pkg.skippedLocales.length > 0
+					? { skippedLocales: opened.pkg.skippedLocales }
+					: {}),
+				// 装这个动作不碰开关 —— 头一回装进来的就是关着的,照实报给面板。
+				enabled: isExtensionEnabled(opts.store.getGlobals(), opened.pkg.id),
+				restart: install.restartAbility(),
+			};
+			return c.json(answer);
+		},
+	);
 
 	/**
 	 * 卸掉一个拓展:抹掉盘上那份(连同重扫)+ **清掉配置里那一格**。不必重启。
@@ -299,7 +306,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.delete("/:id", async (c) => {
 		const install = opts.install;
-		if (!install) return respondFailure(c, fail("unsupported", "这个构建没接装载器,删不了"));
+		if (!install)
+			return respondFailure(c, fail("unsupported", t("extensions.route.noLoaderUninstall")));
 
 		// 目录名正好是保留名字的那一种:它过不了 id 校验、装载不了,面板上是一张「读不了」的卡,也得删得掉。
 		// **只抹拓展目录下那一个文件夹**。保留名字同时是内置集成与核心自己的键:往下那几步按 id 找到的是本体的东西
@@ -314,7 +322,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		}
 
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合法"));
+		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const id = parsed.data;
 
 		const inUse = opts.store
@@ -324,10 +332,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (inUse.length > 0) {
 			return respondFailure(
 				c,
-				fail(
-					"conflict",
-					`还有 ${inUse.length} 条连接在用它 —— 先去推送目标页把它们删掉,再回来卸这个拓展`,
-				),
+				fail("conflict", t("extensions.route.connectionsInUse", { count: inUse.length })),
 			);
 		}
 
@@ -348,7 +353,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (!cleared.ok) {
 			return respondFailure(
 				c,
-				fail(cleared.code, `拓展已经卸了,但它存的状态与密钥没清掉:${cleared.message}`),
+				fail(cleared.code, t("extensions.route.stateNotCleared", { reason: cleared.message })),
 			);
 		}
 		return c.json(ok());
@@ -357,7 +362,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	// 市场那两口要排在 `/:id/*` 前面 —— 路由按注册顺序匹配。
 	app.get("/marketplace", async (c) => {
 		const marketplace = opts.marketplace;
-		if (!marketplace) return respondFailure(c, fail("unsupported", "这个构建没接拓展市场"));
+		if (!marketplace)
+			return respondFailure(c, fail("unsupported", t("extensions.route.noMarketplace")));
 		const refresh = c.req.query("refresh") === "1";
 		const body: MarketplaceResponse = await marketplace.list({ refresh });
 		return c.json(body);
@@ -368,10 +374,11 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		const marketplace = opts.marketplace;
 		const install = opts.install;
 		if (!marketplace || !install) {
-			return respondFailure(c, fail("unsupported", "这个构建没接拓展市场(或装载器),装不了"));
+			return respondFailure(c, fail("unsupported", t("extensions.route.noMarketplaceInstall")));
 		}
 		const parsed = MarketplaceInstallRequestSchema.safeParse(await c.req.json().catch(() => null));
-		if (!parsed.success) return respondFailure(c, fail("invalid", "要给 source 与 id"));
+		if (!parsed.success)
+			return respondFailure(c, fail("invalid", t("extensions.route.marketplaceInstallBody")));
 		const outcome = await marketplace.install(parsed.data.source, parsed.data.id);
 		if (!outcome.ok) return respondFailure(c, outcome);
 		const answer: ExtensionInstallResponse = {
@@ -398,13 +405,17 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	app.get("/:id/docs", async (c) => {
 		const install = opts.install;
 		if (!install) {
-			return respondFailure(c, fail("unsupported", "这个构建没接装载器,读不到拓展的文档"));
+			return respondFailure(c, fail("unsupported", t("extensions.route.noLoaderDocs")));
 		}
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合法"));
+		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const docs = await readExtensionDocs({ root: install.root, id: parsed.data });
 		// 没装 → not_found;装了但两份都没写 → 200 加两个空格子,面板据此整块不画。
-		if (!docs) return respondFailure(c, fail("not_found", `没有装名叫 ${parsed.data} 的拓展`));
+		if (!docs)
+			return respondFailure(
+				c,
+				fail("not_found", t("extensions.route.notInstalled", { id: parsed.data })),
+			);
 		return c.json(docs);
 	});
 
@@ -418,10 +429,14 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
 		const name = ActionNameSchema.safeParse(c.req.param("name"));
 		if (!id.success || !name.success) {
-			return respondFailure(c, fail("invalid", "拓展 id 或动作名不合规矩"));
+			return respondFailure(c, fail("invalid", t("extensions.route.badActionRef")));
 		}
 		const outcome: ActionOutcome | undefined = await opts.runAction?.(id.data, name.data);
-		if (!outcome) return respondFailure(c, fail("not_found", `拓展 ${id.data} 没在跑`));
+		if (!outcome)
+			return respondFailure(
+				c,
+				fail("not_found", t("extensions.route.notRunning", { id: id.data })),
+			);
 		// 同一个动作的上一发还没回来是 `conflict`(决策 42:不排队、不并发),面板据此说「还在跑」,
 		// 不当成失败。
 		if (!outcome.ok) return respondFailure(c, outcome);
@@ -438,10 +453,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 */
 	app.post("/:id/swap", async (c) => {
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
-		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合规矩"));
+		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const id = parsed.data;
 		if (!opts.swap || !opts.extensions().some((entry) => entry.id === id)) {
-			return respondFailure(c, fail("not_found", `没有装名叫 ${id} 的拓展`));
+			return respondFailure(c, fail("not_found", t("extensions.route.notInstalled", { id })));
 		}
 		try {
 			await opts.swap(id);
@@ -479,7 +494,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (status === undefined) {
 			return respondFailure(
 				c,
-				fail("not_found", `拓展 ${c.req.param("id")} 没在跑,或者还没交过面板数据`),
+				fail("not_found", t("extensions.route.noStatus", { id: c.req.param("id") })),
 			);
 		}
 		return c.json(status);
