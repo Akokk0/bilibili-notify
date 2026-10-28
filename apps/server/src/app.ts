@@ -32,7 +32,7 @@ import { createCommandsRoute } from "./routes/commands.js";
 import { createConnectionsRoute } from "./routes/connections.js";
 import { createDashboardSkinsRoute } from "./routes/dashboard-skins.js";
 import { createExtensionsRoute } from "./routes/extensions.js";
-import { createHealthRoute, healthResponseOf } from "./routes/health.js";
+import { createHealthRoute, healthResponse } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
 import { createImagesRoute } from "./routes/images.js";
 import { createLiveRoute } from "./routes/live.js";
@@ -267,8 +267,8 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
 
 /**
  * Build the top-level Hono app. 路径按资源排(ADR-0036):顶层是资源,只属于某个资源的东西才下沉。
- *   /api/health           — liveness (short)
- *   /api/health/details   — rich snapshot incl. config-scope meta
+ *   /api/health           — liveness (short,四格)
+ *   /api/health/details   — 健康卡的数据(各模块开没开、核心包版本、配置分区)
  *   /api/settings         — GET / PATCH
  *   /api/subscriptions    — GET / POST / PATCH /:id / DELETE /:id(+ tags)
  *   /api/targets          — GET / POST / PATCH /:id / DELETE /:id / POST /:id/test
@@ -488,16 +488,16 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 }
 
 /**
- * 开机那一段的 app:listen 之后、数据与推送链路起来之前由它应答(ADR-0022 决策 2)。健康检查照答
- * (推送链路还没起,模块全是 false),别的 `/api/*` 与拓展挂载点一律 503 `unavailable`;面板照常
- * 加载、照常能登录。数据段做完,index.ts 把请求切到 {@link createApp} 建的完整 app。
+ * 开机那一段的 app:listen 之后、数据与推送链路起来之前由它应答(ADR-0022 决策 2)。健康检查(短版)
+ * 照答,别的 `/api/*`(详情口也在内)与拓展挂载点一律 503 `unavailable`;面板照常加载、照常能登录。
+ * 数据段做完,index.ts 把请求切到 {@link createApp} 建的完整 app。
  */
 export function createStartupApp(
 	runtime: AppRuntime,
 	options: AppShellOptions & { message: () => string },
 ): Hono {
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
-		app.get("/api/health", (c) => c.json(healthResponseOf(runtime)));
+		app.get("/api/health", (c) => c.json(healthResponse()));
 		app.all("/api/*", (c) => respondFailure(c, fail("unavailable", options.message())));
 		app.all(`${EXTENSION_MOUNT_PREFIX}/*`, (c) =>
 			respondFailure(c, fail("unavailable", options.message())),

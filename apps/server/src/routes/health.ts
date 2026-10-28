@@ -5,32 +5,16 @@ import { fileURLToPath } from "node:url";
 // 把 version 内联进产物,单文件 bundle 旁没有 node_modules 也能显示真实版本;dev(tsx)/
 // 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
 import aiPkg from "@bilibili-notify/ai/package.json" with { type: "json" };
-import type { HealthResponse } from "@bilibili-notify/contract";
+import type { HealthDetailsResponse, HealthResponse, ModuleState } from "@bilibili-notify/contract";
 import imagePkg from "@bilibili-notify/image/package.json" with { type: "json" };
 import pushPkg from "@bilibili-notify/push/package.json" with { type: "json" };
 import storagePkg from "@bilibili-notify/storage/package.json" with { type: "json" };
 import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
 import { Hono } from "hono";
-import type { ConfigScopeMeta } from "../config/store.js";
-import type { AppRuntime } from "../runtime/bootstrap.js";
 import { findNearestPackageJson } from "../runtime/nearest-package-json.js";
 import type { RouteDeps } from "./types.js";
 
-type ModuleVersions = HealthResponse["moduleVersions"];
-
-/** 第 4 期随健康卡重做(ADR-0025 决策 12),面板现在不读它,所以不进契约。 */
-interface HealthDetailsBody {
-	status: "ok";
-	version: string;
-	moduleVersions: ModuleVersions;
-	uptime: number;
-	startedAt: string;
-	configScopes: {
-		globals: ConfigScopeMeta;
-		subscriptions: ConfigScopeMeta & { count: number };
-		targets: ConfigScopeMeta & { count: number };
-	};
-}
+type ModuleVersions = HealthDetailsResponse["moduleVersions"];
 
 // 顺序与 dashboard 卡片排序保持一致(storage → subscription → push → image → ai)。
 // B 站那三个包(api / dynamic / live)3a 搬进服务端、不再是独立的包,没有自己的版本可报。
@@ -79,42 +63,37 @@ const startedAtMs = Date.now();
 export const STARTED_AT = new Date(startedAtMs).toISOString();
 
 /**
- * 短版健康回应。开机那一段(数据与推送链路还没起来,`pipeline` 是空的)与完整的 app 答的是同一份,
- * 只是那时模块全是 false。
+ * 短版健康回应(ADR-0025 决策 12 的四格)。开机那一段(数据与推送链路还没起来)与完整的 app 答的是
+ * 同一份 —— 四格都不看运行时。
  */
-export function healthResponseOf(runtime: Pick<AppRuntime, "pipeline">): HealthResponse {
-	const pipeline = runtime.pipeline;
+export function healthResponse(): HealthResponse {
 	return {
 		status: "ok",
 		version: APP_VERSION,
-		moduleVersions: MODULE_VERSIONS,
 		uptime: Math.floor((Date.now() - startedAtMs) / 1000),
 		startedAt: STARTED_AT,
-		modules: pipeline
-			? pipeline.getModuleState()
-			: { dynamic: false, live: false, image: false, ai: false },
 	};
 }
 
+/** 推送链路还没挂上时各模块的状态。 */
+const NO_MODULES: ModuleState = { dynamic: false, live: false, image: false, ai: false };
+
 /**
  * Mounts:
- *   GET /api/health           — short shape, used as a liveness probe (unchanged from 2.1)
- *   GET /api/health/details   — richer report drawing on the config store + (later) sinks
+ *   GET /api/health           — 短版四格,存活探测
+ *   GET /api/health/details   — 健康卡的数据:各模块开没开、核心包版本、配置分区
  */
 export function createHealthRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 
-	app.get("/", (c) => c.json(healthResponseOf(deps.runtime)));
+	app.get("/", (c) => c.json(healthResponse()));
 
 	app.get("/details", (c) => {
 		const subs = deps.store.getSubscriptions();
 		const targets = deps.store.getTargets();
-		const body: HealthDetailsBody = {
-			status: "ok",
-			version: APP_VERSION,
+		const body: HealthDetailsResponse = {
 			moduleVersions: MODULE_VERSIONS,
-			uptime: Math.floor((Date.now() - startedAtMs) / 1000),
-			startedAt: STARTED_AT,
+			modules: deps.runtime.pipeline?.getModuleState() ?? NO_MODULES,
 			configScopes: {
 				globals: deps.store.getGlobalsMeta(),
 				subscriptions: { ...deps.store.getSubscriptionsMeta(), count: subs.length },

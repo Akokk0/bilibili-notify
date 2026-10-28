@@ -47,7 +47,7 @@ export interface OnboardingInputs {
 	subsCount: number;
 	connections: readonly ConnectionRow[];
 	targets: readonly TargetRow[];
-	/** `/api/health` 的 modules 快照;还没回来时 undefined → 尾巴按未完成显示。 */
+	/** `/api/health/details` 的 modules 快照;还没回来时 undefined → 尾巴按未完成显示。 */
 	modules: { image: boolean; ai: boolean } | undefined;
 }
 

@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import type { ConfigScopeMeta } from "@bilibili-notify/contract";
 import {
 	type ConfigScope,
 	type Connection,
@@ -92,12 +93,6 @@ import { ConfigValidationError } from "./validation-error.js";
  */
 type DeepPartial<T> =
 	T extends Array<infer _U> ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
-
-/** Per-scope metadata exposed via `/api/health/details`. */
-export interface ConfigScopeMeta {
-	exists: boolean;
-	lastUpdatedAt: string | null;
-}
 
 /**
  * 一次整体替换要写进去的分区。缺席的分区保持不动 —— 「不给」和「给一个空数组」

@@ -41,6 +41,7 @@ import {
 import { useSourceAuth } from "../hooks/use-source-auth";
 import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
+import { useHealthDetails } from "../hooks/useHealthDetails";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
@@ -902,6 +903,8 @@ export default function Dashboard() {
 	const reachable = useBackendReachable();
 
 	const health = useQuery(HEALTH_QUERY_OPTIONS);
+	// 四个模块开没开住详情口(短版只剩四格,ADR-0025 决策 12)。
+	const modules = useHealthDetails().data?.modules;
 	const updateQuery = useUpdateStatus();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
@@ -1078,10 +1081,10 @@ export default function Dashboard() {
 					loggedIn={loggedIn}
 					subCount={subs.length}
 					targetCount={targets.length}
-					dynamicEnabled={health.data?.modules.dynamic ?? loggedIn}
-					liveEnabled={health.data?.modules.live ?? false}
-					imageEnabled={health.data?.modules.image ?? false}
-					aiEnabled={health.data?.modules.ai ?? false}
+					dynamicEnabled={modules?.dynamic ?? loggedIn}
+					liveEnabled={modules?.live ?? false}
+					imageEnabled={modules?.image ?? false}
+					aiEnabled={modules?.ai ?? false}
 					update={updateQuery.data}
 				/>
 				<SystemResourceCard state={resources} reachable={reachable} />

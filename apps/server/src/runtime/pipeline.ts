@@ -203,7 +203,7 @@ export interface PipelineRuntime extends Disposable {
 		session: SessionRef,
 		payload: NotificationPayload,
 	): Promise<DeliveryResult>;
-	/** 各功能模块开没开,`/api/health` 的 `modules` 那一格。 */
+	/** 各功能模块开没开,`/api/health/details` 的 `modules` 那一格。 */
 	getModuleState(): ModuleState;
 	/**
 	 * Runtime hot-enable of card image rendering. When the server booted without

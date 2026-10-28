@@ -5,9 +5,10 @@ import { api } from "../services/api";
 /** `["health"]` 的**单一权威** queryKey(失效、devtools 造状态也认它)。 */
 export const HEALTH_QUERY_KEY = ["health"] as const;
 /**
- * 问 `/api/health` 的整份选项,连 queryFn 一起。App / Dashboard / 导览 / useBackendReachable
- * 四处共享同一个缓存项:选项不一致时 React Query 按挂载序合并 observer,可达性探测行为不确定、
- * 横幅闪烁(Dashboard 曾漏了 `retry: 0`)。所以四处一律直接用这一份,不各写各的。
+ * 问 `/api/health` 的整份选项,连 queryFn 一起。App / Dashboard / useBackendReachable
+ * 三处共享同一个缓存项:选项不一致时 React Query 按挂载序合并 observer,可达性探测行为不确定、
+ * 横幅闪烁(Dashboard 曾漏了 `retry: 0`)。所以三处一律直接用这一份,不各写各的。
+ * 各模块开没开不在这里,在详情口(useHealthDetails)。
  */
 export const HEALTH_QUERY_OPTIONS = queryOptions({
 	queryKey: HEALTH_QUERY_KEY,

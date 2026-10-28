@@ -132,7 +132,8 @@ describe("开机先 listen 再读数据 e2e", () => {
 		expect(health.status).toBe(200);
 		const body = (await health.json()) as HealthResponse;
 		expect(body.status).toBe("ok");
-		expect(body.modules).toEqual({ dynamic: false, live: false, image: false, ai: false });
+		// 开机段答的是同一份短版:四格,不带各模块的状态(那住详情口,开机段还没有)。
+		expect(Object.keys(body).sort()).toEqual(["startedAt", "status", "uptime", "version"]);
 
 		for (const path of ["/api/subscriptions", "/api/health/details", "/ext/bridge/anything"]) {
 			const res = await fetch(url(path));

@@ -32,6 +32,8 @@ interface Scenario {
 	skipped?: boolean | null;
 	/** `/api/settings` 直接失败 —— 代理抖动 / 502 / auth 竞态。 */
 	globalsError?: boolean;
+	/** 详情口 `/api/health/details` 回的模块开关(喂毕业卡的两条尾巴);不传 = 都没开。 */
+	modules?: { image: boolean; ai: boolean };
 }
 
 /** B 站登录状态（`GET /api/sources/bilibili/auth` 回的那一份）：mount 按场景定初值，`logIn()` 中途改成已登录。 */
@@ -58,8 +60,16 @@ async function mount(s: Scenario) {
 		if (path === "/api/subscriptions") return s.subs ?? [];
 		if (path === "/api/connections") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
+		// 短版只有四格(ADR-0025 决策 12);各模块开没开只在详情口。
 		if (path === "/api/health")
-			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
+			return {
+				status: "ok",
+				version: "0.0.0-test",
+				startedAt: "2026-10-28T00:00:00.000Z",
+				uptime: 1,
+			};
+		if (path === "/api/health/details")
+			return { modules: { dynamic: true, live: false, image: false, ai: false, ...s.modules } };
 		if (path === "/api/settings") {
 			if (s.globalsError) throw new Error("globals 挂了");
 			return { core: { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } } };
@@ -207,6 +217,7 @@ describe("TourCompanion 常驻小卡", () => {
 				"/api/connections",
 				"/api/targets",
 				"/api/health",
+				"/api/health/details",
 			]) {
 				expect(apiGet, `${path} 不该被问`).not.toHaveBeenCalledWith(path);
 			}
@@ -1046,25 +1057,46 @@ describe("TourCompanion 常驻小卡", () => {
 		await waitFor(() => expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull());
 		expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 	});
+
+	/**
+	 * 两条尾巴开没开只认详情口(ADR-0025 决策 12):短版只剩四格,没有 `modules`。详情说图片渲染
+	 * 开着,毕业卡就不再列它;AI 没开照旧列着。先认 AI 那条在(尾巴那块确实画出来了),再等图片
+	 * 那条消失 —— 它只会因为详情回来了才消失,读错了地方就一直在。
+	 */
+	it("毕业卡的尾巴读详情口:短版没有 modules 也认得图片渲染开着", async () => {
+		await mount({
+			loggedIn: true,
+			subs: [{ id: "s1" }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
+			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
+			modules: { image: true, ai: false },
+		});
+		expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
+		expect(screen.getByRole("link", { name: /AI 能力/ })).toBeTruthy();
+		await waitFor(() => expect(screen.queryByRole("link", { name: /图片渲染/ })).toBeNull());
+	});
 	describe("判据轮询的启停", () => {
 		/** `/api/subscriptions` 被问了几次 —— 轮询每轮会 invalidate 它。 */
 		const subsCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/subscriptions").length;
-		const healthCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/health").length;
+		const detailsCalls = () =>
+			apiGet.mock.calls.filter(([p]) => p === "/api/health/details").length;
 
 		/**
-		 * health 带的 `modules` 快照喂着毕业卡上的「锦上添花」两条尾巴(图片渲染 / AI)。
-		 * 它曾不在失效名单里 —— 靠 HEALTH_QUERY_OPTIONS 自带的 5s refetchInterval 兜着,
+		 * 详情口带的 `modules` 快照喂着毕业卡上的「锦上添花」两条尾巴(图片渲染 / AI)。
+		 * 它(当年还在短版 health 里)曾不在失效名单里 —— 靠选项自带的 5s refetchInterval 兜着,
 		 * 那边一改选项这里就静静地退回不刷新(2026-08-31 审查)。3.5s 内 5s 那条还没到,
 		 * 所以这条计数只可能来自轮询自己。
 		 */
-		it("轮询把 health 也带上 —— 尾巴的开关状态只从它来", async () => {
+		it("轮询把详情口也带上 —— 尾巴的开关状态只从它来", async () => {
 			vi.useFakeTimers();
 			try {
 				await mount({ route: "/system" });
 				await vi.advanceTimersByTimeAsync(0);
-				const before = healthCalls();
+				const before = detailsCalls();
 				await vi.advanceTimersByTimeAsync(3_500);
-				expect(healthCalls()).toBeGreaterThan(before);
+				expect(detailsCalls()).toBeGreaterThan(before);
 			} finally {
 				vi.useRealTimers();
 			}

@@ -94,21 +94,49 @@ describe("MODULE_VERSIONS — 与 workspace 核心包版本一致", () => {
 });
 
 /**
- * 短版 `/api/health` 线上只有这几格:存活探测(`status`)、应用内更新认新进程(`version`、
- * `startedAt`)、`uptime`,外加第 4 期才搬去 `/details` 的 `moduleVersions` 与 `modules`。
+ * 短版 `/api/health` 线上只有四格(ADR-0025 决策 12):存活探测(`status`)、应用内更新认新进程
+ * (`version`、`startedAt`)、`uptime`。各模块开没开与核心包版本住详情口。
  * 恒为 null 的格子不许回来 —— 面板读到 null 分不清「没有」和「坏了」。
  */
 describe("GET /api/health — 回应的格子", () => {
-	it("恰好是契约里那几格", async () => {
-		const app = createHealthRoute({ runtime: { pipeline: undefined } } as unknown as RouteDeps);
+	it("恰好是契约里那四格", async () => {
+		const app = createHealthRoute({ runtime: { pipeline: null } } as unknown as RouteDeps);
 		const body = (await (await app.request("/")).json()) as Record<string, unknown>;
-		expect(Object.keys(body).sort()).toEqual([
-			"moduleVersions",
-			"modules",
-			"startedAt",
-			"status",
-			"uptime",
-			"version",
-		]);
+		expect(Object.keys(body).sort()).toEqual(["startedAt", "status", "uptime", "version"]);
+	});
+});
+
+describe("GET /api/health/details — 回应的格子", () => {
+	const meta = { exists: true, lastUpdatedAt: "2026-10-28T00:00:00.000Z" };
+	function detailsApp(pipeline: unknown) {
+		const store = {
+			getSubscriptions: () => [{ id: "s1" }, { id: "s2" }],
+			getTargets: () => [{ id: "t1" }],
+			getGlobalsMeta: () => meta,
+			getSubscriptionsMeta: () => meta,
+			getTargetsMeta: () => meta,
+		};
+		return createHealthRoute({ runtime: { pipeline }, store } as unknown as RouteDeps);
+	}
+
+	it("恰好是契约里那几格:各模块开没开、核心包版本、配置分区;短版的四格不重复带", async () => {
+		const modules = { dynamic: true, live: false, image: true, ai: false };
+		const app = detailsApp({ getModuleState: () => modules });
+		const body = (await (await app.request("/details")).json()) as Record<string, unknown>;
+		expect(Object.keys(body).sort()).toEqual(["configScopes", "moduleVersions", "modules"]);
+		expect(body.modules).toEqual(modules);
+		expect(body.moduleVersions).toEqual(MODULE_VERSIONS);
+		expect(body.configScopes).toEqual({
+			globals: meta,
+			subscriptions: { ...meta, count: 2 },
+			targets: { ...meta, count: 1 },
+		});
+	});
+
+	it("推送链路还没挂上:四个模块都是 false", async () => {
+		const body = (await (await detailsApp(null).request("/details")).json()) as {
+			modules: unknown;
+		};
+		expect(body.modules).toEqual({ dynamic: false, live: false, image: false, ai: false });
 	});
 });

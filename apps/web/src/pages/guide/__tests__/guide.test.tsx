@@ -30,8 +30,16 @@ async function mount(path: string) {
 		if (p === "/api/subscriptions") return [{ id: "s1" }];
 		if (p === "/api/connections") return [];
 		if (p === "/api/targets") return [];
+		// 短版只有四格;毕业卡两条尾巴读的模块开关在详情口。
 		if (p === "/api/health")
-			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
+			return {
+				status: "ok",
+				version: "0.0.0-test",
+				startedAt: "2026-10-28T00:00:00.000Z",
+				uptime: 1,
+			};
+		if (p === "/api/health/details")
+			return { modules: { dynamic: true, live: false, image: false, ai: false } };
 		return null;
 	});
 	const { default: About } = await import("../../About");

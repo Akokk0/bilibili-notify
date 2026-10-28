@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../../hooks/use-source-auth";
-import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "../../hooks/useBackendReachable";
+import { HEALTH_DETAILS_QUERY_KEY, useHealthDetails } from "../../hooks/useHealthDetails";
 import { api } from "../../services/api";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -16,9 +16,9 @@ import { useOnboardingInputsOverride } from "./inputs-override";
 const POLL_MS = 3_000;
 
 /**
- * 每轮要失效的 queryKey。**health 也在里面** —— 它带的 `modules` 快照喂着
+ * 每轮要失效的 queryKey。**健康详情也在里面** —— 它带的 `modules` 快照喂着
  * 「锦上添花」两条尾巴(图片渲染 / AI),漏掉它,毕业卡上的尾巴在导览开着的
- * 全程都不会变绿。它自己确实带 `refetchInterval`,但那是 HEALTH_QUERY_OPTIONS
+ * 全程都不会变绿。它自己确实带 `refetchInterval`,但那是 useHealthDetails
  * 的事:那边哪天改了选项,这边就静静地退回不刷新(2026-08-31 审查)。
  * key 用权威常量而不是照抄字面量,同理。
  */
@@ -27,13 +27,13 @@ const POLLED_KEYS: readonly (readonly unknown[])[] = [
 	["subscriptions"],
 	["connections"],
 	["targets"],
-	HEALTH_QUERY_KEY,
+	HEALTH_DETAILS_QUERY_KEY,
 ];
 
 /**
  * 新手进度的数据装配 —— 左缘导览小卡与 /guide 页共用这一份。全部复用站内
- * 既有 queryKey(与对应页面共享缓存);health 整份选项走 HEALTH_QUERY_OPTIONS
- * 单一权威(几处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
+ * 既有 queryKey(与对应页面共享缓存);健康详情与首页同走 useHealthDetails(几处
+ * observer 选项不一致会让轮询节奏不确定,同 useBackendReachable 那条)。
  *
  * `poll`(导览小卡传「小卡正展开着」)= **导览进行中**,每 3s invalidate 全部
  * 判据 query(见 POLLED_KEYS,登录状态 `["source-auth"]` 也在里面,重取的结果直接
@@ -74,16 +74,13 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 		enabled,
 	});
-	const healthQ = useQuery({
-		...HEALTH_QUERY_OPTIONS,
-		enabled,
-	});
+	const detailsQ = useHealthDetails({ enabled });
 
 	// 记住结果:react-query 的结构共享让空转 refetch 不换引用,所以这个 memo
 	// 真的守得住。不记的话每次 render 都是新对象,下游那几个吃 view 的 memo /
 	// effect(步位、完成庆祝)就跟着每 render 跑一遍,memo 形同虚设。
 	const biliLoggedIn = authState?.status === "logged-in";
-	const modules = healthQ.data?.modules;
+	const modules = detailsQ.data?.modules;
 	// devtools 装的假输入优先:判据函数照跑,只是喂的不是真查询。
 	const override = useOnboardingInputsOverride((s) => s.inputs);
 	const view = useMemo(
