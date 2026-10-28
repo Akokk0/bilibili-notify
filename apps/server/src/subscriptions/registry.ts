@@ -97,7 +97,7 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 					);
 				}
 			}
-			const { health, fetchLiveStatus, liveInteractions } = source;
+			const { health, fetchLiveStatus, fetchPreview, liveInteractions } = source;
 			const claim = table.claim(sourceKey, {
 				sourceKey,
 				descriptor: source.descriptor,
@@ -110,6 +110,13 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 				...(fetchLiveStatus
 					? {
 							fetchLiveStatus: (identity, signal) => fetchLiveStatus.call(source, identity, signal),
+						}
+					: {}),
+				// 同 `fetchLiveStatus`:转发时不丢 `this`;没实现就不放这一格(宿主据此推 `has.preview`,预览用示例)。
+				...(fetchPreview
+					? {
+							fetchPreview: (identity, options, signal) =>
+								fetchPreview.call(source, identity, options, signal),
 						}
 					: {}),
 				// 同 `fetchLiveStatus`:转发时不丢 `this`。观众头像与档位图标两个懒取口。

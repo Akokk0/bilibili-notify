@@ -22,6 +22,7 @@ import { CARD_SKIN_UPLOAD_PREFIX, fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FONT_DIR, listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
+import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createCardsRoute } from "../cards.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
@@ -41,6 +42,8 @@ function makeDeps(opts: {
 }): RouteDeps {
 	return {
 		runtime: {
+			// 删前查引用按在册来源给订阅起称呼(身份标签)。
+			sourceRegistry: bilibiliLikeSources(),
 			dataRoot: opts.dataDir,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -70,7 +73,7 @@ function makeDeps(opts: {
 }
 
 function route(deps: RouteDeps) {
-	return createCardsRoute({ deps, puppeteer: null, api: null });
+	return createCardsRoute({ deps, puppeteer: null });
 }
 
 /** 跑一段用完就删临时目录的用例。 */
@@ -266,7 +269,7 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { code: string; message: string };
 			expect(json.code).toBe("conflict");
-			expect(json.message).toContain("UP 12345 · 皮肤「my-skin」");
+			expect(json.message).toContain("B 站 · 12345 · 皮肤「my-skin」");
 			expect((await listFontAssets(dir)).map((f) => f.id)).toEqual([id]);
 		});
 	});

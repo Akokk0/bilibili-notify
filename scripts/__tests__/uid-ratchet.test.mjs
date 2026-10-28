@@ -64,7 +64,7 @@ export const ADVICE =
  * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
-	"apps/server/src/routes/cards.ts": 33, // 第 4 期:卡片真实预览改走来源、核心不再直接解析 B 站回应后消。
+	"apps/server/src/routes/cards.ts": 1, // 4-14 卡片真实预览改走来源(33 → 1);剩下的是醒目留言示例造的 B 站事件 `user.uid`,随 SC 示例做到中立那一片消。
 	"apps/server/src/routes/subscriptions.ts": 8, // 第 4 期:经接口搜人改走来源的 `searchCreators` 后消。
 };
 

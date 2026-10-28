@@ -95,7 +95,7 @@ describe("POST /preview", () => {
 	const body = { kind: "live", style: STYLE };
 
 	it("没配浏览器 → not_configured(409),把该怎么办说出来", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: null, api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: null });
 		const res = await post(app, "/preview", body);
 		expect(res.status).toBe(409);
 		const json = (await res.json()) as any;
@@ -105,7 +105,7 @@ describe("POST /preview", () => {
 	});
 
 	it("请求体不对 → invalid(400),zod 的逐格原因进 issues", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer() });
 		const res = await post(app, "/preview", { kind: "nope", style: STYLE });
 		expect(res.status).toBe(400);
 		const json = (await res.json()) as any;
@@ -114,7 +114,7 @@ describe("POST /preview", () => {
 	});
 
 	it("画出来了 → 200 + { ok: true, dataUrl }", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer() });
 		const res = await post(app, "/preview", body);
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as any;
@@ -123,7 +123,7 @@ describe("POST /preview", () => {
 	});
 
 	it("Chrome 起不来 → 200 + 失败那一支(unavailable),底层原因写进 message", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: crashingPuppeteer(), api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: crashingPuppeteer() });
 		const res = await post(app, "/preview", body);
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
@@ -141,7 +141,6 @@ describe("POST /skins/:id/screenshot", () => {
 		return createCardsRoute({
 			deps: makeDeps(),
 			puppeteer,
-			api: null,
 			cardSkins: withStore
 				? new CardSkinStore({ dir: join(dataDir, ...CARD_SKINS_DIR) })
 				: undefined,
@@ -188,7 +187,7 @@ describe("POST /test", () => {
 	const body = { targetId: TARGET_ID, kind: "live", style: STYLE };
 
 	it("请求体不对 → invalid(400),issues 逐格", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer() });
 		const res = await post(app, "/test", {
 			targetId: "不是 uuid",
 			kind: "live",
@@ -201,7 +200,7 @@ describe("POST /test", () => {
 	});
 
 	it("没配浏览器 → not_configured(409)", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: null, api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: null });
 		const res = await post(app, "/test", body);
 		expect(res.status).toBe(409);
 		expect(((await res.json()) as any).code).toBe("not_configured");
@@ -211,7 +210,6 @@ describe("POST /test", () => {
 		const app = createCardsRoute({
 			deps: makeDeps({ pipeline: null }),
 			puppeteer: workingPuppeteer(),
-			api: null,
 		});
 		const res = await post(app, "/test", body);
 		expect(res.status).toBe(503);
@@ -219,7 +217,7 @@ describe("POST /test", () => {
 	});
 
 	it("没有这个推送目标 → not_found(404)", async () => {
-		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer() });
 		const res = await post(app, "/test", {
 			...body,
 			targetId: "33333333-3333-4333-8333-333333333333",
@@ -233,7 +231,6 @@ describe("POST /test", () => {
 		const app = createCardsRoute({
 			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: crashingPuppeteer(),
-			api: null,
 		});
 		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
@@ -252,7 +249,6 @@ describe("POST /test", () => {
 		const app = createCardsRoute({
 			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: workingPuppeteer(),
-			api: null,
 		});
 		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
@@ -264,7 +260,6 @@ describe("POST /test", () => {
 		const app = createCardsRoute({
 			deps: makeDeps({ pipeline: { push: { sendToTarget } } }),
 			puppeteer: workingPuppeteer(),
-			api: null,
 		});
 		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
@@ -280,7 +275,6 @@ describe("POST /renderer:意外的抛错不回原文", () => {
 		const route = createCardsRoute({
 			deps: makeDeps(),
 			puppeteer: null,
-			api: null,
 			createPuppeteer: () => {
 				throw new Error(secret);
 			},
@@ -299,7 +293,7 @@ describe("POST /renderer:意外的抛错不回原文", () => {
 
 describe("背景图上传与读取", () => {
 	function bgApp() {
-		return createCardsRoute({ deps: makeDeps(), puppeteer: null, api: null });
+		return createCardsRoute({ deps: makeDeps(), puppeteer: null });
 	}
 
 	function uploadPng(app: Pick<Hono, "request">, type = "image/png") {

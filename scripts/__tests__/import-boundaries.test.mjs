@@ -61,10 +61,10 @@ export const BOUNDARIES = [
 		// 3b-25:关注同步搬进 B 站来源,`runtime/follow-sync.ts` 与 `routes/subscriptions.ts`(新建时当场关注)两行清零删掉。
 		// 3b-47:登录装配搬进 B 站来源(`compose.ts` 开上下文、来源自己造 / 起 / 停登录),入口那一行(`bilibili/auth/index.js`)清零删掉。
 		ratchet: {
-			// 第 4 期:卡片真实预览与经接口搜人改走来源后消。
+			// 第 4 期:经接口搜人改走来源后消(4-14 起卡片预览已不用它,只剩旧搜人那一份 `Api`)。
 			"apps/server/src/app.ts": 1,
-			// 第 4 期:卡片真实预览与经接口搜人改走来源后消。
-			"apps/server/src/routes/cards.ts": 4,
+			// 4-14 卡片真实预览改走来源(4 → 1);剩下的是醒目留言示例借 B 站价目表,SC 示例做到中立那一片消(主人 10-28 定)。
+			"apps/server/src/routes/cards.ts": 1,
 			// 3b-47:旧搜人改从 createApp 的选项拿 `Api`(主人 10-25 定直接引类型、不借卡片路由的),第 4 期旧搜人改口时消。
 			// 第 4 期:经接口搜人改走来源后消。
 			"apps/server/src/routes/subscriptions.ts": 1,

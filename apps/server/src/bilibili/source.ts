@@ -10,6 +10,8 @@ import {
 	type LiveStatusResult,
 	type MembershipTier,
 	ok,
+	type PreviewOptions,
+	type PreviewReport,
 	type Result,
 	type ServiceContext,
 	type Source,
@@ -19,6 +21,7 @@ import {
 	type SourceHealth,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -35,6 +38,7 @@ import { createBiliLinkResolver } from "./link-resolver.js";
 import { createRoomIds, type RoomIds } from "./live/room-ids.js";
 import { BiliLiveRooms } from "./live/session/bili-live-rooms.js";
 import { createViewerAvatarFetcher, type ViewerAvatarFetcher } from "./live/viewer-avatar.js";
+import { previewBiliPost } from "./preview.js";
 import { createProblemLayers, type ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { createProfileFetcher } from "./profile.js";
@@ -304,6 +308,26 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				return Promise.resolve(fail("unavailable", "bilibili live rooms are not running"));
 			}
 			return rooms.fetchLiveStatus(identity, signal);
+		},
+		// 卡片页预览:作品取 space 动态列表的第 nth 条,直播取房间信息(在不在播都给);图走上下文的抓图口。
+		fetchPreview(
+			identity: Identity,
+			options: PreviewOptions,
+			signal: AbortSignal,
+		): Promise<Result<PreviewReport>> {
+			const ctx = sourceCtx;
+			if (!ctx) return Promise.resolve(fail("unavailable", t("bilibili.preview.notRunning")));
+			if (options.kind === "live") {
+				return rooms
+					? rooms.fetchPreview(identity, signal)
+					: Promise.resolve(fail("unavailable", t("bilibili.preview.notRunning")));
+			}
+			return previewBiliPost(
+				identity,
+				options.nth,
+				{ api: biliApi, images: { fetchImage: ctx.fetchImage }, logger: ctx.logger },
+				signal,
+			);
 		},
 		// B 站的 api 不收 signal,宿主不等了也只能让这一发自己跑完。
 		searchCreators: (query) => searchBiliCreators(biliApi, query),

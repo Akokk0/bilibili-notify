@@ -120,13 +120,14 @@ describe("GET /api/sources", () => {
 				full: sourceOf({
 					auth: {} as never,
 					fetchLiveStatus: async () => ({ ok: true, status: "offline" }) as never,
+					fetchPreview: async () => ({ ok: false, code: "unavailable", message: "测试用" }),
 				}),
 				bare: sourceOf({}),
 			},
 		});
 		expect(body.sources.map((one) => [one.key, one.has])).toEqual([
-			["full", { auth: true, liveStatus: true }],
-			["bare", { auth: false, liveStatus: false }],
+			["full", { auth: true, liveStatus: true, preview: true }],
+			["bare", { auth: false, liveStatus: false, preview: false }],
 		]);
 	});
 
@@ -151,7 +152,11 @@ describe("GET /api/sources", () => {
 			],
 		});
 		expect(body.sources).toEqual([
-			{ key: "douyin", descriptor: subscription, has: { auth: false, liveStatus: false } },
+			{
+				key: "douyin",
+				descriptor: subscription,
+				has: { auth: false, liveStatus: false, preview: false },
+			},
 			{ key: "kuaishou", descriptor: { label: "快手", supportedFeatures: ["post"] } },
 			{ key: "weibo", descriptor: { label: "微博", supportedFeatures: ["post"] } },
 		]);

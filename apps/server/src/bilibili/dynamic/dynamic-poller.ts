@@ -157,9 +157,9 @@ export interface DynamicPollerOptions {
 
 /**
  * 链接部件的内容(不含任何前缀文案)。视频给视频页(或按设置换成 BV 号,取不到 BV 就没有链接),
- * 别的给动态页。
+ * 别的给动态页。卡片页预览(`bilibili/preview.ts`)也用它。
  */
-function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): string {
+export function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): string {
 	if (!isVideo) return `https://t.bilibili.com/${item.id_str}`;
 	const jumpUrl = item.modules.module_dynamic.major?.archive?.jump_url ?? "";
 	if (!videoUrlToBV) return `https:${jumpUrl}`;

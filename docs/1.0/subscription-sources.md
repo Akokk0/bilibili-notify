@@ -25,8 +25,8 @@ interface Source {
   fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
   liveInteractions?: LiveInteractionReader;     // 出卡时才懒取观众头像与档位图标
   health?(): SourceHealth;                 // 健康卡与 status 指令的一行字
-  fetchPreview?(identity: Identity, kind: "post" | "live", signal: AbortSignal)
-    : Promise<Result<PostReport | LiveCardInput>>;
+  fetchPreview?(identity: Identity, options: PreviewOptions, signal: AbortSignal)
+    : Promise<Result<PreviewReport>>;          // 4-14 落成的形状,见下表那一行的 🔗
 }
 
 interface SourceHealth { summary: string }
@@ -42,7 +42,7 @@ interface SourceHealth { summary: string }
 | `fetchLiveStatus` | 否 | 核心按场次定时调 | 已落（3b-22）：返回结果形状，成功分 `live` / `offline`，失败时核心只跳过这一轮，见「直播」 |
 | `liveInteractions` | 否 | 出卡时 | 已落（3b-22）：类型是 `LiveInteractionReader`；只有 `fetchViewerAvatar` / `fetchTierIcon` 两个懒取口，直播互动本身经 `reportLiveInteraction` 上报 |
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
-| `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
+| `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定。🔗 现状（4-14，10-28）：已落。签名是 `fetchPreview?(identity, options: PreviewOptions, signal): Promise<Result<PreviewReport>>`：`PreviewOptions` 是 `{ kind: "post"; nth }`（1 是最新那条）或 `{ kind: "live" }`；`PreviewReport` 是 `{ kind: "post"; report: PostReport }` 或 `{ kind: "live"; startedAt?; details: LiveDetails }`（草图里的 `LiveCardInput` 住出图包、internal 引不到，换成与 `fetchLiveStatus` 同一份的直播详情）。预览没有副作用：不报问题、不记在播状态。**失败时回落示例并说原因**（主人 10-28 定）：照样画示例卡，回应的 `sampleReason` 带来源的原话；来源没实现、没挑订阅用示例不算失败。拓展这一版不开（主人 10-28 定，同 `auth`）。B 站的实现在 `bilibili/preview.ts`（作品）与 `BiliLiveRooms.fetchPreview`（直播，在不在播都给）。 |
 
 `Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3b-22，10-21）：代码里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`），`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。🔗 现状（3b-24，10-23）：代码里已有 9 个成员，新增了必备的 `fetchProfile`；只剩 `fetchPreview` 归第 4 期。
 
@@ -396,6 +396,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 来源实现了 `fetchPreview`（`/api/sources` 的 `has.preview`）就用真数据，没实现就用示例数据。
 - SC、会员卡的付款人取该来源 `auth.account()`，没有就用示例名字。
 - 「按订阅覆盖」卡片皮肤与旋钮对所有订阅开放。
+- 🔗 现状（4-14，10-28）：服务端已落。请求的 `content` 带 `subscriptionId?` 与 `nth?`（作品第几条），`uid` / `roomId` / `offset` 与 `fallback` 删了；挑了已经没有的订阅回 404。作者名与头像跟真推送同一条链（名字是资料名，作品 / 详情自己没带头像才用订阅资料的）；SC / 上舰卡收的人是那条订阅的名字，付款人 / 新会员是那个来源登录着的账号名，没挑订阅都是示例名（全局不挑订阅时付款人不再是登录的 B 站账号）。`/api/sources` 的 `has` 加了 `preview`。醒目留言示例的档位仍借 B 站的价目表（主人 10-28 定：SC 示例做到中立另起一片）。卡片路由不再收 B 站 `Api`。
 
 ## 横切接口
 

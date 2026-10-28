@@ -173,8 +173,8 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P50)与「这版不开」的行(`checked: false`,N01–N16 去掉
- * N02、N03、N04、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P51)与「这版不开」的行(`checked: false`,N01–N16 去掉
+ * N02、N03、N04、N05、N06、N07、N08、N10、N11、N12、N13、N16,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -339,19 +339,18 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: true,
 	},
 	{
+		id: "P51",
+		title:
+			"卡片预览走来源：挑一条假来源订阅预览作品与直播，假来源交的作品与详情经出卡器画成卡；它回失败时出示例卡、原话进 sampleReason",
+		checked: true,
+	},
+	{
 		id: "N01",
 		title: "经接口(路由与面板)搜人、经接口新建订阅",
 		checked: false,
 		waitsFor: "第 4 期",
 		reason:
 			"拓展的订阅源已登进来源登记表,面板搜人经引擎的 searchCreators;经接口搜人与新建订阅的门问登记表仍归第 4 期",
-	},
-	{
-		id: "N05",
-		title: "fetchPreview、预览走它",
-		checked: false,
-		waitsFor: "第 4 期",
-		reason: "接口上没有 fetchPreview;卡片真实预览仍读 B 站接口",
 	},
 	{
 		id: "N09",
@@ -399,6 +398,7 @@ const SOURCE_MEMBERS = {
 	fetchProfile: ["P37", "P39"],
 	fetchLiveStatus: ["P30", "P36"],
 	liveInteractions: ["P32", "P33"],
+	fetchPreview: ["P51"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
 	logger: ["P20"],
@@ -973,11 +973,57 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)).toEqual({
 			key: IN_PROCESS_KEY,
 			descriptor: declared,
-			// 假来源实现了登录口与查直播状态。
-			has: { auth: true, liveStatus: true },
+			// 假来源实现了登录口、查直播状态与卡片页的真实预览。
+			has: { auth: true, liveStatus: true, preview: true },
 		});
 		expect(sources.find((one) => one.key === "bilibili")?.descriptor.label).toBe("B 站");
 		drove("P50");
+	});
+
+	// 验红:`routes/cards.ts` 不问来源(或不把 nth 交过去),第一段红;来源回失败时不记原因,第三段红。
+	it("P51 卡片预览走来源:挑一条假来源订阅,作品按 nth 问它、直播问它,交的数据经出卡器画成卡;它回失败时出示例卡、原话进 sampleReason", async () => {
+		const probe = currentProbe();
+		const preview = async (body: unknown) => {
+			const res = await api("/api/cards/preview", json(body));
+			expect(res.status).toBe(200);
+			return (await res.json()) as { ok: boolean; dataUrl?: string; sampleReason?: string };
+		};
+		probe.previewOutcome = undefined;
+		probe.previewAsked.length = 0;
+
+		let before = renderedHtml.length;
+		const post = await preview({
+			kind: "post",
+			style: {},
+			content: { subscriptionId: SUB.alice, nth: 2 },
+		});
+		expect(post).toMatchObject({ ok: true });
+		expect(post).not.toHaveProperty("sampleReason");
+		expect(probe.previewAsked.at(-1)).toEqual({
+			externalId: EXT.alice,
+			options: { kind: "post", nth: 2 },
+		});
+		expect(renderedHtml.slice(before).some((page) => page.includes("对拍预览正文P51 第2条"))).toBe(
+			true,
+		);
+
+		before = renderedHtml.length;
+		await preview({ kind: "live", style: {}, content: { subscriptionId: SUB.alice } });
+		expect(probe.previewAsked.at(-1)).toEqual({ externalId: EXT.alice, options: { kind: "live" } });
+		expect(renderedHtml.slice(before).some((page) => page.includes("对拍预览直播P51"))).toBe(true);
+
+		probe.previewOutcome = fail("unavailable", "对拍源这一次预览取不到");
+		try {
+			const sample = await preview({
+				kind: "post",
+				style: {},
+				content: { subscriptionId: SUB.alice },
+			});
+			expect(sample).toMatchObject({ ok: true, sampleReason: "对拍源这一次预览取不到" });
+		} finally {
+			probe.previewOutcome = undefined;
+		}
+		drove("P51");
 	});
 
 	/** 名单(现读的)折成「外部 id → 作品开关开没开」,按外部 id 排。 */
@@ -1793,15 +1839,14 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 	// 验红:`membership-tiers.ts` 不按体系找档(或只读第一个在册来源),假来源的（体系, 档）就认不出、或跨体系串档。
 	it("P19 会员体系读口:按（体系 id, 档 key）认档;乱写的 key、别的体系的 key 回 400;老请求不带体系照旧认", async () => {
-		/** 预览请求故意带一个无关的错(fallback 不是布尔):校验一定会跑,不碰渲染(也就不碰任何网)。 */
+		/** 预览请求故意带一个无关的错(nth 是 0):校验一定会跑,不碰渲染(也就不碰任何网)。 */
 		const preview = async (program: string | undefined, tierKey: string) => {
 			const res = await api(
 				"/api/cards/preview",
 				json({
 					kind: "membership",
 					style: {},
-					content: { ...(program === undefined ? {} : { program }), tierKey },
-					fallback: "不是布尔",
+					content: { ...(program === undefined ? {} : { program }), tierKey, nth: 0 },
 				}),
 			);
 			expect(res.status).toBe(400);
@@ -1813,11 +1858,11 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 			);
 		};
 		const known = await preview(IN_PROCESS_PROGRAM_ID, IN_PROCESS_TIER_KEY);
-		expect(known).toContain("fallback");
+		expect(known).toContain("content.nth");
 		expect(known).not.toContain("content.tierKey");
 
 		const unknown = await preview(IN_PROCESS_PROGRAM_ID, "acme-不存在的档");
-		expect(unknown).toContain("fallback");
+		expect(unknown).toContain("content.nth");
 		expect(unknown).toContain("content.tierKey");
 
 		// 同一个档 key 在别的体系里不算数:档 key 只在体系内唯一。
@@ -3710,21 +3755,21 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 50 行、不开 5 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 51 行、不开 4 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(55);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 50 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 51 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
 		// N06 的登记与撤销→P42、技能可见性→P43、提示词叫法→P44,N06 整行转完;N16→P45;编号不回填(P47 是 3b-42 新加的 reportProfile,没有 N 行转来);P48、P49 是 3b-50 补的「另补项」(按订阅的皮肤、过滤与点评共用取段),同样没有 N 来源;
-		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09。
+		// N09 的服务端一半(描述符经来源表下发)在 4-12 转了 P50,面板一半(规则节按描述符露出)仍是 N09;N05→P51(4-14)。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
+				.filter((n) => ![2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

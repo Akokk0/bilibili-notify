@@ -1,23 +1,17 @@
 /**
- * `POST /api/cards/preview` — render a sample card via puppeteer-core and
- * return base64 PNG. Used by the Cards page's right-side live preview.
+ * `POST /api/cards/preview` —— 卡片页右侧的预览:用 puppeteer-core 画一张卡,回 data URL。
  *
- * Two routing paths per kind, picked by what the request body's `content`
- * field carries:
+ * 画什么,看请求的 `content`:
  *
- *   live + content.roomId  → fetch real LiveRoomResponse + MasterInfo via
- *                            Api, render through ImageRenderer
- *                            (same code path as production push).
- *   post + content.uid     → fetch the user's space dynamic feed,
- *                            pick the offset-th item, render via
- *                            postFromDynamic → ImageRenderer.generatePostCard.
- *   sc   + content.text    → text override on top of the superchat card mock.
- *   guard+ content.text    → text override (= new member name) on the
- *                            membership card mock.
- *   any kind + empty content → falls through to the fabricated mock data
- *                              path (the original behaviour) so the
- *                              gradient picker stays usable without a
- *                              logged-in account.
+ *   作品 / 直播 + `subscriptionId` → 那条订阅的来源实现了 `Source.fetchPreview` 就问它要一份真数据
+ *                                    (作品取最近的第 `nth` 条,直播取直播间此刻的样子),
+ *                                    经出卡器的同一个入口(`ImageRenderer`)画,与真推送一个样;
+ *                                    没实现就用示例。来源回了失败也用示例,回应的 `sampleReason` 带原话;
+ *   作品 / 直播,没挑订阅            → 示例数据(调样式不必登录任何平台);
+ *   醒目留言 / 上舰                   → 示例消息;挑了订阅就把收的人写成那条订阅的名字,付款人 / 新会员取
+ *                                    那个来源登录着的账号名,没有就是示例名。
+ *
+ * 路由不认识任何平台:真数据只经来源登记表问来源(4-14,ADR-0021 决策 59)。
  *
  * not_configured path (409) — when the operator hasn't set BN_CHROME_PATH (or
  * chromePath in yaml) we don't try to launch puppeteer. The route reports the
@@ -31,10 +25,11 @@
  * delivery that wasn't accepted) answers 200 with a `Result`.
  */
 
-import type {
-	CardSkinShotResponse,
-	PreviewResponse,
-	TestPushResponse,
+import {
+	type CardSkinShotResponse,
+	displayNameOf,
+	type PreviewResponse,
+	type TestPushResponse,
 } from "@bilibili-notify/contract";
 import {
 	type CardSkinChoice,
@@ -47,7 +42,6 @@ import {
 	shrinkImageForCssVar,
 } from "@bilibili-notify/image";
 import {
-	BILIBILI_SOURCE_KEY,
 	CARD_KIND_NAMES,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_UPLOAD_PREFIX,
@@ -65,32 +59,24 @@ import {
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
+	type Post,
+	type PreviewOptions,
+	type PreviewReport,
+	type Result,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
-import type { Api } from "../bilibili/api/index.js";
-import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "../bilibili/dynamic/index.js";
-import {
-	fetchAvatar,
-	fetchLiveCover,
-	fetchPostImages,
-	type ImagesDeps,
-	subscribedAvatar,
-} from "../bilibili/images.js";
-import {
-	liveDetailsFromRoomInfo,
-	liveTimeToIso,
-	superchatEventFromLiveEvent,
-} from "../bilibili/live/index.js";
+// 醒目留言的示例档位借 B 站的价目表:SC 示例做到中立另起一片(4-14 主人定,import 边界那一格留这一处)。
+import { superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
+import { t } from "../i18n/index.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
-import { createImageFetcher } from "../images/image-fetcher.js";
 import { liveCardInputFromDetails } from "../live/live-card-input.js";
 import {
 	deleteCardBg,
@@ -116,6 +102,8 @@ import {
 	resolveChromePath,
 } from "../runtime/puppeteer.js";
 import { createMembershipTierReader } from "../subscriptions/membership-tiers.js";
+import { subscriptionIdentityLabelOf } from "../subscriptions/platform-label.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { describeUsers, failureOfChecks } from "../util/failure-text.js";
 import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
 import { testResultOfDelivery } from "./test-result.js";
@@ -130,11 +118,6 @@ export interface CardsRouteOptions {
 	 * 供 GET /renderer 展示与同源幂等判断;未启用时缺省。
 	 */
 	initialChromeSource?: ChromeSource;
-	/**
-	 * Api from authSystem. When null, real-data fetch paths
-	 * (live + dyn with content) return an actionable error.
-	 */
-	api: Api | null;
 	/**
 	 * 探测本机 Chrome 路径(默认 resolveChromePath 扫常见安装位置);注入便于测试。
 	 * 供 GET /chrome 的「自动探测」按钮。
@@ -182,11 +165,10 @@ const StyleSchema = z.object({
 
 const ContentSchema = z
 	.object({
-		// live: roomId triggers a real fetch via Api when present + non-empty.
-		roomId: z.string().optional(),
-		// dyn: uid + offset (1 = newest). offset defaults to 1 when only uid given.
-		uid: z.string().optional(),
-		offset: z.number().int().positive().optional(),
+		// 用哪条订阅的真数据(它的来源实现了 `fetchPreview` 才有);不给就是示例。醒目留言 / 上舰取它的名字。
+		subscriptionId: z.string().min(1).optional(),
+		// 作品卡取最近的第几条(1 = 最新那条);只对作品卡、且挑了订阅时有用。
+		nth: z.number().int().positive().optional(),
 		// sc / guard: text override (sc body / guard new captain uname).
 		text: z.string().optional(),
 		// guard: 档的 key(B 站是 `captain` / `commander` / `governor`)。档 key 只在体系内唯一:带了 `program`
@@ -215,11 +197,6 @@ const PreviewRequestSchema = z.object({
 	/** 预览用哪套皮肤(ADR-0014);缺省 = 全局在用的那套。 */
 	cardSkin: CardSkinIdSchema.optional(),
 	cardSkinKnobs: PreviewKnobDraftSchema,
-	/**
-	 * 真实拉取失败时是否自动回退示例数据。per-UP 作用域自动用该 UP 真实数据预览,失败
-	 * (未开播 / 无动态 / 网络)应静默回退;全局显式输入失败则照常报错告知用户。
-	 */
-	fallback: z.boolean().optional(),
 });
 
 const EnableRenderingSchema = z
@@ -245,7 +222,6 @@ const TestPushRequestSchema = z.object({
 	content: ContentSchema,
 	cardSkin: CardSkinIdSchema.optional(),
 	cardSkinKnobs: PreviewKnobDraftSchema,
-	fallback: z.boolean().optional(),
 });
 
 const RENDER_TIMEOUT_MS = 20_000;
@@ -259,13 +235,11 @@ export function testPushCaption(kind: PreviewKind): string {
 	return `【bilibili-notify 测试推送】${CARD_KIND_NAMES[kind]}`;
 }
 
-/** 引用列表里怎么称呼一条订阅。B 站的写 `UP <uid>`,别的来源用外部 id 指认。 */
-function subscriptionLabel(s: Subscription): string {
-	const identity = subscriptionIdentityOf(s);
-	return identity.sourceKey === BILIBILI_SOURCE_KEY
-		? `UP ${identity.externalId}`
-		: `订阅「${identity.externalId}」`;
-}
+/**
+ * 引用列表里怎么称呼一条订阅:身份标签(平台名与外部 id 叫法按来源现取,B 站是「UID 12345」),主人认得出是哪一个。
+ * 拼法在 contract,路由不认识任何平台(4-14 去掉了这里的 B 站分支)。
+ */
+type SubscriptionLabeler = (s: Subscription) => string;
 
 /**
  * 旋钮覆盖里哪些层还选着某个资产 —— **全局那份**(按皮肤 id)与**每位 UP 那份**
@@ -279,6 +253,7 @@ function knobReferences(
 	globals: GlobalConfig,
 	subs: Subscription[],
 	hit: (value: unknown) => boolean,
+	labelOf: SubscriptionLabeler,
 ): string[] {
 	const refs: string[] = [];
 	const scan = (
@@ -291,7 +266,7 @@ function knobReferences(
 	};
 	scan(globals.defaults.cardSkinKnobs, (skinId) => `皮肤「${skinId}」`);
 	for (const s of subs) {
-		scan(s.overrides.cardSkinKnobs, (skinId) => `${subscriptionLabel(s)} · 皮肤「${skinId}」`);
+		scan(s.overrides.cardSkinKnobs, (skinId) => `${labelOf(s)} · 皮肤「${skinId}」`);
 	}
 	return refs;
 }
@@ -312,19 +287,24 @@ function knobReferences(
  * ⚠️ 漏掉旋钮那一处的后果是**静默的**:删得掉、请求成功,而那套皮肤的清单里留着一个
  * 指向空气的 id,出图时静静回落渐变 —— 主人只会觉得「壁纸自己没了」。
  */
-function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
+function cardBgReferences(
+	globals: GlobalConfig,
+	subs: Subscription[],
+	id: string,
+	labelOf: SubscriptionLabeler,
+): string[] {
 	const inCards = (cards?: { liveCoverImageIds?: string[] }): boolean =>
 		cards?.liveCoverImageIds?.includes(id) ?? false;
 
 	// 旋钮值是「一串 id」(图片旋钮)。
-	const refs = knobReferences(globals, subs, (v) => Array.isArray(v) && v.includes(id));
+	const refs = knobReferences(globals, subs, (v) => Array.isArray(v) && v.includes(id), labelOf);
 	if (inCards(globals.defaults.cards)) {
 		refs.push("全局默认");
 	}
 	// 两支订阅都算(ADR-0019 决策 47):漏看拓展订阅,它引用的图会被当成「没人用」删掉。
 	for (const s of subs) {
 		if (inCards(s.overrides.cards)) {
-			refs.push(subscriptionLabel(s));
+			refs.push(labelOf(s));
 		}
 	}
 	return refs;
@@ -345,9 +325,14 @@ function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: strin
  *
  * 与 {@link cardBgReferences} 不同:那边扫的 `liveCoverImages` 是**还活着**的字段。
  */
-function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
+function fontAssetReferences(
+	globals: GlobalConfig,
+	subs: Subscription[],
+	id: string,
+	labelOf: SubscriptionLabeler,
+): string[] {
 	const asKnob = `${CARD_SKIN_UPLOAD_PREFIX}${id}`;
-	return knobReferences(globals, subs, (v) => v === asKnob);
+	return knobReferences(globals, subs, (v) => v === asKnob, labelOf);
 }
 
 /**
@@ -389,20 +374,78 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		.optional();
 	const previewRequestSchema = PreviewRequestSchema.extend({ content: contentSchema });
 	const testPushRequestSchema = TestPushRequestSchema.extend({ content: contentSchema });
-	// 预览的真实拉取与真推送一样:出卡前把图抓进图库。请求客户端是 B 站接口那个,引用方是 `postImages` 这一家。
-	const imagesDepsOf = (api: Api): ImagesDeps => ({
-		images: createImageFetcher({ http: api.http, images: opts.deps.runtime.postImages }),
-		logger: log,
-	});
+	/** 删前查引用时怎么称呼一条订阅(身份标签,按在册来源现取)。 */
+	const subscriptionLabelOf: SubscriptionLabeler = (s) =>
+		subscriptionIdentityLabelOf(subscriptionIdentityOf(s), {
+			sources: opts.deps.runtime.sourceRegistry,
+		});
 
-	// 预览里那位 UP 若是已订阅的,头像读订阅资料里存好的引用(和真推送一致,零网络)。
-	// 没订阅的(资料里没有他):预览按拉回来的头像地址现抓(见 renderRealLive / renderRealDynamic),抓不到就不画。
-	const subscribedAvatarOf = (uid: string): ImageRef | undefined =>
-		subscribedAvatar(
-			opts.deps.store.getSubscriptions(),
-			(id) => opts.deps.runtime.subscriptionStateStore.get(id)?.cachedProfile,
-			uid,
+	/** 请求里挑的那条订阅;没挑是 `undefined`。挑了却没有这条,由两个口在出卡前回 404。 */
+	function previewSubscriptionOf(content: PreviewContent): Subscription | undefined {
+		const id = content?.subscriptionId;
+		return id === undefined
+			? undefined
+			: opts.deps.store.getSubscriptions().find((sub) => sub.id === id);
+	}
+
+	/** 挑了订阅却没有这条:请求本身不成(404),不画示例顶替 —— 面板拿的订阅表旧了,该刷新。 */
+	function missingSubscription(content: PreviewContent): boolean {
+		return content?.subscriptionId !== undefined && previewSubscriptionOf(content) === undefined;
+	}
+
+	/** 卡上那位创作者的名字:事件名 → 资料名 → 身份标签(与真推送同一条链);没挑订阅是示例名。 */
+	function creatorNameOf(sub: Subscription | undefined, eventName?: string): string | undefined {
+		if (!sub) return undefined;
+		return displayNameOf(
+			{
+				eventName,
+				profileName: opts.deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.name,
+			},
+			subscriptionIdentityLabelOf(subscriptionIdentityOf(sub), {
+				sources: opts.deps.runtime.sourceRegistry,
+			}),
 		);
+	}
+
+	/** 订阅资料里存好的头像引用(与真推送一样出卡这一刻现读、零网络)。 */
+	function profileAvatarOf(sub: Subscription): ImageRef | undefined {
+		return opts.deps.runtime.subscriptionStateStore.get(sub.id)?.cachedProfile?.avatar;
+	}
+
+	/** 付醒目留言的人 / 新会员:挑中那条订阅的来源登录着的账号名;没挑、来源不用登录或没登录是 `undefined`。 */
+	function accountNameOf(sub: Subscription | undefined): string | undefined {
+		if (!sub) return undefined;
+		const source = opts.deps.runtime.sourceRegistry.get(subscriptionIdentityOf(sub).sourceKey);
+		return source?.auth?.account?.()?.name;
+	}
+
+	/** 醒目留言 / 上舰卡上收的那个人:挑中那条订阅的名字,没挑是示例名。 */
+	function receiverNameOf(sub: Subscription | undefined): string {
+		return creatorNameOf(sub) ?? "示例 UP 主";
+	}
+
+	/**
+	 * 问那条订阅的来源要一份真数据。没挑订阅、来源不在册、来源没实现 `fetchPreview` 都是 `undefined`(用示例,
+	 * 不算失败);来源回了失败或交回的不是这一种卡,是失败那一支(原话给面板)。来源「不许抛」,真抛了也按失败收。
+	 */
+	async function realPreviewOf(
+		sub: Subscription | undefined,
+		options: PreviewOptions,
+		signal: AbortSignal,
+	): Promise<Result<PreviewReport> | undefined> {
+		if (!sub) return undefined;
+		const identity = subscriptionIdentityOf(sub);
+		const source = opts.deps.runtime.sourceRegistry.get(identity.sourceKey);
+		if (!source?.fetchPreview) return undefined;
+		try {
+			const got = await source.fetchPreview(identity, options, signal);
+			if (got.ok && got.kind !== options.kind) return fail("invalid", t("cards.preview.wrongKind"));
+			return got;
+		} catch (err) {
+			log.error(`[cards] ${identity.sourceKey} 的 fetchPreview 抛了:${errorMessageOf(err)}`);
+			return fail("unavailable", errorMessageOf(err));
+		}
+	}
 
 	// 自动探测本机 Chrome —— dashboard「自动探测」按钮。未配 chromePath 时一键找到
 	// 本地浏览器,免手填路径;探测不到返回 { path: null }。
@@ -567,6 +610,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
 			id,
+			subscriptionLabelOf,
 		);
 		if (referencedBy.length > 0) {
 			return respondFailure(
@@ -631,6 +675,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
 			id,
+			subscriptionLabelOf,
 		);
 		if (referencedBy.length > 0) {
 			return respondFailure(
@@ -781,79 +826,32 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 	opts.onSkinShot?.(shootSavedSkin);
 
-	// 登录的 B 站账号的名字(缓存快照)。SC / 上舰预览拿它当**发送者**(付 SC 的人、新上舰的人),接收方是订阅的 UP,
-	// 预览里仍是「示例 UP 主」。这两种预览不画头像,所以只取名字,不再为头像多调 `fetchUserCard`。每 5 分钟刷新;
-	// 没登录或调用失败时回 null(曾成功过则沿用旧快照)。
-	const LOGGED_IN_TTL_MS = 5 * 60 * 1000;
-	let loggedInCache: { name: string; ts: number } | null = null;
-	async function getLoggedInAccount(): Promise<{ name: string } | null> {
-		const now = Date.now();
-		if (loggedInCache && now - loggedInCache.ts < LOGGED_IN_TTL_MS) {
-			return { name: loggedInCache.name };
-		}
-		if (opts.api) {
-			try {
-				// 走客户端共享的账号身份缓存(与直播建连同一份;换号/登出自动失效)。
-				const my = await opts.api.getMyselfInfoCached();
-				if (my?.code === 0 && my.data?.mid && my.data.uname) {
-					loggedInCache = { name: my.data.uname, ts: now };
-					return { name: my.data.uname };
-				}
-			} catch (err) {
-				log.warn(`[cards] resolve logged-in account failed: ${(err as Error).message}`);
-			}
-		}
-		// 解析失败 / 未就绪:若曾成功解析过,沿用历史快照(stale-while-error),不让一次
-		// 瞬时失败把 SC / 上舰发送者闪回「示例粉丝」。仅从未成功过才回退示例。
-		if (loggedInCache) {
-			return { name: loggedInCache.name };
-		}
-		return null;
-	}
-
-	// SC / 上舰卡接收方(被 SC / 被上舰的 UP)。per-UP 预览传 content.uid → 实时拉真实
-	// 名字;全局无 uid、或解析失败且 fallback → 退回示例 UP。(这两种预览不画头像,只要名字。)
-	async function resolvePreviewMaster(
-		content: PreviewContent,
-		fallback: boolean,
-	): Promise<{ name: string }> {
-		const uid = content?.uid?.trim();
-		if (uid && opts.api) {
-			try {
-				return await resolveMasterInfo(opts.api, uid);
-			} catch (err) {
-				if (!fallback) throw err;
-				log.info(`[cards] SC / 上舰接收方解析失败,回退示例:${(err as Error).message}`);
-			}
-		}
-		return { name: "示例 UP 主" };
-	}
-
-	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test 共用。失败抛 Error
-	// (消息直接面向用户)。SC / Guard 走 ImageRenderer;live / dyn 有 content 走真实
-	// 拉取,否则虚构 mock 数据。调用方须先确认 currentPuppeteer 存在。
+	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test 共用。渲染失败抛 Error
+	// (消息直接面向用户)。SC / Guard 走 ImageRenderer;作品 / 直播挑了订阅且来源实现了 `fetchPreview`
+	// 就画来源交的真数据,否则(或来源回了失败)画虚构 mock 数据,`sampleReason` 带来源的原话。
+	// 调用方须先确认 currentPuppeteer 存在、挑的订阅在。
 	async function renderPreviewCard(
 		kind: PreviewKind,
 		style: PreviewStyle,
 		content: PreviewContent,
 		/** 请求里指的皮肤(缺省 = 全局在用的那套)与 per-UP 草稿旋钮(全局作用域不给)。 */
 		requested: CardSkinChoice = {},
-		fallback = false,
 		signal: AbortSignal = new AbortController().signal,
-	): Promise<{ buffer: Buffer; mime: string }> {
+	): Promise<{ buffer: Buffer; mime: string; sampleReason?: string }> {
 		const puppeteer = currentPuppeteer;
 		if (!puppeteer) throw new Error("puppeteer 未就绪");
 		// 下面四条出图路子(SC / 上舰 / 真实拉取 / 虚构 mock)都吃这一个 id,走渲染器的那三条
 		// 还带着草稿旋钮(渲染器自己与 config 里的全局那份合并);mock 那条见 `previewKnobValues`。
 		const skinId = previewSkinId(requested.cardSkin);
 		const skin: CardSkinChoice = { cardSkin: skinId, cardSkinKnobs: requested.cardSkinKnobs };
+		const sub = previewSubscriptionOf(content);
 
 		if (kind === "superchat") {
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error("puppeteer 未就绪");
-			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」);接收方 = 该 UP。
-			const me = await getLoggedInAccount();
-			const master = await resolvePreviewMaster(content, fallback);
+			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
+			const payer = accountNameOf(sub);
+			const receiver = receiverNameOf(sub);
 			// 与真推送同一条路:先把一条 B 站的 SC 消息翻成中立事件(档位在那一步按价格算),再出卡。预览造的消息没有
 			// 「挂多久」这一格,按档补一个与 B 站醒目留言一致的时长,好让皮肤作者看得到时长那一块。
 			const event = superchatEventFromLiveEvent(
@@ -861,7 +859,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					kind: "superchat",
 					content: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.amount ?? 30,
-					user: { uid: 0, name: me?.name ?? "示例粉丝" },
+					user: { uid: 0, name: payer ?? "示例粉丝" },
 				},
 				"preview",
 			);
@@ -871,7 +869,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateSuperchatCard(
 				{
 					viewer: { name: event.viewer.name },
-					creator: { name: master.name },
+					creator: { name: receiver },
 					text: event.text,
 					amount: event.amount,
 					currency: event.currency,
@@ -891,10 +889,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			}
 			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error("puppeteer 未就绪");
-			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。接收方 = 该 UP。
-			const me = await getLoggedInAccount();
-			const uname = content?.text?.trim() || me?.name || "示例新舰长";
-			const master = await resolvePreviewMaster(content, fallback);
+			// 新会员 = 挑中那条订阅的来源登录着的账号;显式 text 覆写仍优先。收的人 = 那条订阅。
+			const uname = content?.text?.trim() || accountNameOf(sub) || "示例新舰长";
+			const receiver = receiverNameOf(sub);
 			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
 			// 档的徽章、档色、宣告语都取自那份声明,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
 			const tier =
@@ -931,7 +928,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const buffer = await renderer.generateMembershipCard(
 				{
 					viewer: { name: uname },
-					creator: { name: master.name },
+					creator: { name: receiver },
 					tier: {
 						name: tier.name,
 						rank: tier.rank,
@@ -946,52 +943,47 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
-		// Live + Dyn:有 roomId / uid 走真实拉取。live 优先用显式 roomId,否则按 uid 解析
-		// 房间号(per-UP 自动模式只持有 uid)。fallback=true 时真实拉取失败回退示例数据;
-		// 否则(全局显式输入)把错误原样抛出告知用户。
-		if (kind === "live" && (content?.roomId?.trim() || content?.uid?.trim())) {
-			try {
-				const renderer = await getImageRenderer();
-				if (!renderer) throw new Error("puppeteer 未就绪");
-				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
-				const roomId =
-					content.roomId?.trim() ||
-					(await resolveRoomIdFromUid(opts.api, content.uid?.trim() ?? ""));
-				const buffer = await renderRealLive(
-					opts.api,
-					imagesDepsOf(opts.api),
-					renderer,
-					roomId,
-					style,
+		// 作品 / 直播:挑了订阅、来源实现了 `fetchPreview` 就画它交的真数据(与真推送同一个出卡入口)。
+		// 来源回了失败就落到下面的示例,原话随回应交给面板(4-14 主人定:回落示例并说原因)。
+		let sampleReason: string | undefined;
+		const real = await realPreviewOf(
+			sub,
+			kind === "post" ? { kind: "post", nth: content?.nth ?? 1 } : { kind: "live" },
+			signal,
+		);
+		if (real && !real.ok) sampleReason = real.message;
+		if (sub && real?.ok) {
+			const renderer = await getImageRenderer();
+			if (!renderer) throw new Error("puppeteer 未就绪");
+			if (real.kind === "post") {
+				// 外层作者头像:作品自己没带才用订阅资料里的(与推送出卡同一条);不改来源交的那份。
+				const post = real.report.post;
+				const avatar = post.creator.avatar ?? profileAvatarOf(sub);
+				const forCard: Post =
+					avatar === undefined || avatar === post.creator.avatar
+						? post
+						: { ...post, creator: { ...post.creator, avatar } };
+				return { buffer: await renderer.generatePostCard(forCard, skin), mime: "image/jpeg" };
+			}
+			// 直播:翻成中立的卡片输入(封面与头像本来就是图库引用),恒按「直播中」画 —— 没在播的房间也看得到样子。
+			const startedAt = real.startedAt === undefined ? undefined : Date.parse(real.startedAt);
+			const profileAvatar = profileAvatarOf(sub);
+			const input = liveCardInputFromDetails(real.details, {
+				status: "streaming",
+				...(startedAt === undefined ? {} : { startedAt }),
+				authorName: creatorNameOf(sub, real.details.creator?.name) ?? "",
+				...(profileAvatar === undefined ? {} : { profileAvatar }),
+			});
+			const buffer = await renderer.generateLiveCard(input, {
+				// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 —— 与 mock 预览 / 生产推送
+				// 同一条守卫,否则第一张是幽灵 id 时会静默回退来源的原始封面。
+				liveCoverImage: await firstExistingCardBg(
 					opts.deps.runtime.dataRoot,
-					subscribedAvatarOf,
-					skin,
-				);
-				return { buffer, mime: "image/jpeg" };
-			} catch (err) {
-				if (!fallback) throw err;
-				log.info(`[cards] live 真实渲染失败,回退示例数据:${(err as Error).message}`);
-			}
-		}
-		if (kind === "post" && content?.uid?.trim()) {
-			try {
-				const renderer = await getImageRenderer();
-				if (!renderer) throw new Error("puppeteer 未就绪");
-				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
-				const buffer = await renderRealDynamic(
-					opts.api,
-					imagesDepsOf(opts.api),
-					renderer,
-					content.uid.trim(),
-					content.offset ?? 1,
-					subscribedAvatarOf,
-					skin,
-				);
-				return { buffer, mime: "image/jpeg" };
-			} catch (err) {
-				if (!fallback) throw err;
-				log.info(`[cards] post 真实渲染失败,回退示例数据:${(err as Error).message}`);
-			}
+					style.liveCoverImageIds,
+				),
+				...skin,
+			});
+			return { buffer, mime: "image/jpeg" };
 		}
 		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
 		// (不经 ImageRenderer,未登录也能调色)。直播封面在此解析成 data URL 注入;
@@ -1043,7 +1035,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				? await renderCardWithSkin("live", spec.props, manifest, common)
 				: await renderCardWithSkin("post", spec.props, manifest, common);
 		const buffer = await screenshotHtml(puppeteer, html);
-		return { buffer, mime: "image/png" };
+		return { buffer, mime: "image/png", ...(sampleReason === undefined ? {} : { sampleReason }) };
 	}
 
 	app.post("/preview", async (c) => {
@@ -1057,20 +1049,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		}
 		// 没配浏览器:要主人先去配(面板据 `not_configured` 摆出「一键检测并启用 Chrome」),不是等一会儿就好。
 		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
-		const { kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
+		const { kind, style, content, cardSkin, cardSkinKnobs } = parsed.data;
+		if (missingSubscription(content)) {
+			return respondFailure(c, fail("not_found", t("cards.preview.noSuchSubscription")));
+		}
 		// 「画一张、回报结果」:画出来是 200 + `ok`,画不出来(渲染抛错)是 200 + 失败那一支 ——
 		// 请求本身没毛病,只是这一趟没成。原话进 `message`,主人要照着去查(Chrome 起不来、B 站取数失败……)。
 		try {
-			const { buffer, mime } = await renderPreviewCard(
+			const { buffer, mime, sampleReason } = await renderPreviewCard(
 				kind,
 				style,
 				content,
 				{ cardSkin, cardSkinKnobs },
-				fallback,
 				c.req.raw.signal,
 			);
 			return c.json<PreviewResponse>(
-				ok({ dataUrl: `data:${mime};base64,${buffer.toString("base64")}` }),
+				ok({
+					dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
+					...(sampleReason === undefined ? {} : { sampleReason }),
+				}),
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -1155,23 +1152,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				fail("invalid", "测试推送请求体格式不对", { issues: issuesFromZod(parsed.error) }),
 			);
 		}
-		const { targetId, kind, style, content, cardSkin, cardSkinKnobs, fallback } = parsed.data;
+		const { targetId, kind, style, content, cardSkin, cardSkinKnobs } = parsed.data;
 
 		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
 		const pipeline = opts.deps.runtime.pipeline;
 		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
-		const target = opts.deps.store.getTargets().find((t) => t.id === targetId);
+		const target = opts.deps.store.getTargets().find((each) => each.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
+		if (missingSubscription(content)) {
+			return respondFailure(c, fail("not_found", t("cards.preview.noSuchSubscription")));
+		}
 
 		// 试一次、回报结果(同 `POST /api/targets/:id/test`):渲染没成、投递没成都是 200 + 失败那一支,耗时只在送达那一支。
-		let card: { buffer: Buffer; mime: string };
+		let card: { buffer: Buffer; mime: string; sampleReason?: string };
 		try {
 			card = await renderPreviewCard(
 				kind,
 				style,
 				content,
 				{ cardSkin, cardSkinKnobs },
-				fallback,
 				c.req.raw.signal,
 			);
 		} catch (err) {
@@ -1186,158 +1185,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 配一句图说,顶替纯图片在 QQ 富媒体消息里的占位空格(否则图片下方一段空白)。
 			caption: testPushCaption(kind),
 		};
-		const result = await pipeline.push.sendToTarget(target.id, payload);
-		return c.json<TestPushResponse>(testResultOfDelivery(result));
+		const result = testResultOfDelivery(await pipeline.push.sendToTarget(target.id, payload));
+		// 推出去的是示例卡(来源回了失败):送达了也要说清为什么不是真数据。
+		return c.json<TestPushResponse>(
+			result.ok && card.sampleReason !== undefined
+				? { ...result, sampleReason: card.sampleReason }
+				: result,
+		);
 	});
 
 	return app;
-}
-
-// ── Real-fetch renderers ─────────────────────────────────────────────────────
-
-interface BilibiliEnvelope<T> {
-	code: number;
-	message?: string;
-	msg?: string;
-	data?: T;
-}
-
-/**
- * uid → 真实 UP 名字。SC / 上舰预览的**接收方**(被 SC / 被上舰的 UP):
- * per-UP 预览传该 UP 的 uid,后端实时拉真实资料,免依赖 dashboard 端可能缺失的
- * cachedProfile。走 getMasterInfo(与 live 真实渲染同一接口),失败抛 Error。
- */
-async function resolveMasterInfo(api: Api, uid: string): Promise<{ name: string }> {
-	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
-	const master = (await api.getMasterInfo(uid)) as BilibiliEnvelope<{
-		info: { uname: string };
-	}>;
-	if (master.code !== 0 || !master.data?.info) {
-		throw new Error(`getMasterInfo 失败：${master.message ?? master.msg ?? `code=${master.code}`}`);
-	}
-	return { name: master.data.info.uname };
-}
-
-/**
- * uid → 直播间号。走 `fetchUserInfo(uid)` 的结果 `data.live_room.roomid`(与 B 站来源
- * listener 解析房间号同一路径)。per-UP 自动预览只持有 uid,live 真实拉取前先解析。
- * 未开通直播间 / 解析失败抛 Error;请求本身失败(如撞风控)时话里带上失败码与原因。
- */
-export async function resolveRoomIdFromUid(api: Api, uid: string): Promise<string> {
-	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
-	const message = "该 UP 未开通直播间或无法解析房间号";
-	const result = await api.fetchUserInfo(uid);
-	if (!result.ok) throw new Error(`${message}（${result.code}：${result.message}）`);
-	const roomid = result.data?.live_room?.roomid;
-	const n = Number(roomid);
-	if (!Number.isFinite(n) || n <= 0) throw new Error(message);
-	return String(n);
-}
-
-async function renderRealLive(
-	api: Api,
-	imagesDeps: ImagesDeps,
-	renderer: ImageRenderer,
-	roomId: string,
-	style: PreviewStyle,
-	dataRoot: string,
-	/** 已订阅的 UP 在订阅资料里的头像引用(uid → 引用);不是订阅的给 `undefined`。 */
-	avatarOf: (uid: string) => ImageRef | undefined,
-	skin: CardSkinChoice = {},
-): Promise<Buffer> {
-	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
-
-	const room = (await api.fetchLiveRoomInfo(roomId)) as BilibiliEnvelope<{
-		uid: number;
-		live_status: number;
-		short_id?: number;
-		room_id?: number;
-		[k: string]: unknown;
-	}>;
-	if (room.code !== 0 || !room.data) {
-		throw new Error(`getLiveRoomInfo 失败：${room.message ?? room.msg ?? `code=${room.code}`}`);
-	}
-	const uid = String(room.data.uid);
-	if (!uid || uid === "0") throw new Error("直播间 uid 缺失，可能是无效房间号");
-
-	const master = (await api.getMasterInfo(uid)) as BilibiliEnvelope<{
-		info: { uname: string; face: string };
-		[k: string]: unknown;
-	}>;
-	if (master.code !== 0 || !master.data) {
-		throw new Error(`getMasterInfo 失败：${master.message ?? master.msg ?? `code=${master.code}`}`);
-	}
-
-	// liveStatus 2 (LiveBroadcast) — render the "正在直播" badge regardless of
-	// real status, so a closed room still renders something visible. The
-	// renderer normalises liveStatus internally; using 2 = LiveBroadcast keeps
-	// us aligned with what the periodic ongoing-tick passes in production.
-	// 先翻成中立的输入(与直播引擎的推送同一份翻译),再交给出卡入口。主播头像和真推送一致:已订阅的 UP 读订阅资料里的
-	// 引用(零网络);没订阅的按主播信息里的头像地址
-	// `fetchAvatar` 现抓(头像档),抓不到就不画。
-	// 封面出卡前先抓进图库(3a-34),与直播引擎的推送同一条:预览与真推送画出来一个样。
-	// 已订阅的读资料里的引用;没订阅的按 B 站给的头像地址(回应里的 `face`)现抓,抓不到就不画。
-	const avatarUrl = master.data.info.face;
-	const avatar =
-		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
-	const startedAt = liveTimeToIso(room.data);
-	const input = liveCardInputFromDetails(liveDetailsFromRoomInfo(room.data), {
-		status: "streaming",
-		...(startedAt === undefined ? {} : { startedAt: Date.parse(startedAt) }),
-		authorName: master.data.info.uname,
-		...(avatar === undefined ? {} : { profileAvatar: avatar }),
-	});
-	return renderer.generateLiveCard(await fetchLiveCover(input, imagesDeps), {
-		// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
-		// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
-		// B 站原始封面,即便后面还有张有效图。
-		liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImageIds),
-		...skin,
-	});
-}
-
-async function renderRealDynamic(
-	api: Api,
-	imagesDeps: ImagesDeps,
-	renderer: ImageRenderer,
-	uid: string,
-	offset: number,
-	/** 已订阅的 UP 在订阅资料里的头像引用(uid → 引用);不是订阅的给 `undefined`。 */
-	avatarOf: (uid: string) => ImageRef | undefined,
-	skin: CardSkinChoice = {},
-): Promise<Buffer> {
-	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
-
-	const feed = (await api.fetchUserSpaceDynamic(uid)) as BilibiliEnvelope<{
-		// biome-ignore lint/suspicious/noExplicitAny: Bilibili 动态接口返回原样透传给渲染器
-		items?: any[];
-	}>;
-	if (feed.code !== 0 || !feed.data) {
-		throw new Error(`getUserSpaceDynamic 失败：${feed.message ?? feed.msg ?? `code=${feed.code}`}`);
-	}
-	const items = Array.isArray(feed.data.items) ? feed.data.items : [];
-	if (items.length === 0) throw new Error("该 UP 主暂无动态");
-	const idx = offset - 1; // offset is 1-based
-	if (idx >= items.length) {
-		throw new Error(`动态序号 ${offset} 超出范围（仅有 ${items.length} 条）`);
-	}
-	const item = items[idx];
-	if (!item) throw new Error(`第 ${offset} 条动态为空`);
-
-	// 真实动态:B 站原始数据先翻成中立的 `Post`,再走出卡器的唯一入口(推送与链接预览同一条)。
-	// 配图出卡前先抓进图库(3a-34),与动态引擎的推送同一条:外层作者的头像读订阅资料(没订阅的按作者模块里的地址现抓,抓不到就不画),
-	// 转发的原作者头像按原始动态里的地址现抓,正文表情的图地址也从原始动态读。
-	const avatarUrl = (item.modules?.module_author as { face?: string } | undefined)?.face;
-	const avatar =
-		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
-	return renderer.generatePostCard(
-		await fetchPostImages(postFromDynamic(item), imagesDeps, {
-			avatar,
-			repostAvatarUrl: repostAvatarUrlOf(item),
-			emojiUrls: emojiUrlsOf(item),
-		}),
-		skin,
-	);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────

@@ -5,12 +5,17 @@ import {
 	type LiveDetails,
 	type LiveStatusResult,
 	ok,
+	type PreviewReport,
+	type Result,
 	type ServiceContext,
 	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
+import { t } from "../../../i18n/index.js";
+import { errorMessageOf } from "../../../util/error-message.js";
 import type { Api } from "../../api/index.js";
+import { failureFromBili } from "../../error-codes.js";
 import { IMAGE_REQUEST_HEADERS, scaledImageUrl } from "../../images.js";
 import { isLoginLost, watchLoginEdges } from "../../login-edges.js";
 import { PROBLEM_TEXTS } from "../../problem-texts.js";
@@ -143,6 +148,46 @@ export class BiliLiveRooms implements Disposable {
 			this.sourceCtx.logger.warn(`[live] 房间 [${roomId}] 这一轮取直播状态失败：${String(error)}`);
 			this.reportStatusUnavailable(externalId, roomId);
 			return fail("unavailable", "live status is unavailable");
+		}
+	}
+
+	/**
+	 * 卡片页预览要的直播详情(`Source.fetchPreview` 的直播那一支):与 {@link fetchLiveStatus} 同一份翻译,但在不在播
+	 * 都给(卡上照「正在直播」画),也不报问题、不记在播状态 —— 预览没有副作用。失败的原话会显示在面板上。
+	 */
+	async fetchPreview(identity: Identity, signal: AbortSignal): Promise<Result<PreviewReport>> {
+		if (signal.aborted || !this.sourceCtx) {
+			return fail("unavailable", t("bilibili.preview.notRunning"));
+		}
+		const resolved = await this.opts.roomIds.resolve(identity.externalId);
+		if (!resolved.ok) {
+			return resolved.code === "not_found"
+				? fail("not_found", t("bilibili.preview.noLiveRoom"))
+				: resolved;
+		}
+		try {
+			const response = await this.opts.api.fetchLiveRoomInfo(resolved.roomId);
+			if (signal.aborted) return fail("indeterminate", "live preview request was aborted");
+			if (response.code !== 0) {
+				const message = (response as { message?: unknown }).message;
+				return failureFromBili(
+					response.code,
+					typeof message === "string" && message !== ""
+						? message
+						: t("bilibili.response.codeOnly", { code: response.code }),
+				);
+			}
+			const data = response.data;
+			if (!data) return fail("unavailable", t("bilibili.preview.roomInfoMissing"));
+			const details = await this.details(data);
+			const startedAt = liveTimeToIso(data.live_time);
+			return ok<PreviewReport>({
+				kind: "live",
+				...(startedAt === undefined ? {} : { startedAt }),
+				details,
+			});
+		} catch (error) {
+			return fail("unavailable", errorMessageOf(error));
 		}
 	}
 

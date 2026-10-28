@@ -259,14 +259,16 @@ describe("createExtensionSource:成员与描述符", () => {
 		expect(impl.calls).toEqual(["start", "search:猫", "stop"]);
 	});
 
-	it("不开的成员带了也不认:auth、liveInteractions、descriptor;health 按表收下", async () => {
+	it("不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下", async () => {
 		const made = await make({
 			auth: { state: () => ({ status: "logged-in" }) },
 			liveInteractions: { fetchViewerAvatar: async () => ({ ok: false }) },
 			descriptor: { label: "冒充" },
+			fetchPreview: async () => ({ ok: false, code: "unavailable", message: "冒充" }),
 			health: () => ({ summary: "好着呢" }),
 		});
 		expect(made.source.auth).toBeUndefined();
+		expect(made.source.fetchPreview).toBeUndefined();
 		expect(made.source.liveInteractions).toBeUndefined();
 		expect(made.source.health?.()).toEqual({ summary: "好着呢" });
 		expect(made.source.descriptor.label).toBe("抖音");

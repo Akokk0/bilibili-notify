@@ -25,6 +25,8 @@ import {
 	type LiveStatusResult,
 	ok,
 	type PostEvent,
+	type PreviewOptions,
+	type PreviewReport,
 	type Result,
 	type SettingsReader,
 	type Source,
@@ -191,6 +193,10 @@ export interface InProcessProbe {
 	liveStatusOutcome: LiveStatusResult;
 	/** `fetchLiveStatus` 被问过的外部 id,按先后。 */
 	liveStatusAsked: string[];
+	/** `fetchPreview` 被问过的(外部 id 与要哪一张),按先后。 */
+	previewAsked: Array<{ externalId: string; options: PreviewOptions }>;
+	/** 下一次 `fetchPreview` 回什么;不摆 = 作品回一条固定作品、直播回一份固定详情。回完不清,测试自己摆回去。 */
+	previewOutcome: Result<PreviewReport> | undefined;
 	/** `searchCreators` 收到的 query,按先后。 */
 	searches: string[];
 	/** 下一次 `searchCreators` 回什么;不摆 = 回两个固定候选。回完不清,测试自己摆回去。 */
@@ -301,6 +307,8 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		aiToolProviderClaim: undefined,
 		liveStatusOutcome: { ok: true, kind: "offline" },
 		liveStatusAsked: [],
+		previewAsked: [],
+		previewOutcome: undefined,
 		viewerAvatarAsked: [],
 		viewerAvatarRef: undefined,
 		tierIconAsked: [],
@@ -370,6 +378,25 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 				bio: "现查的来源资料",
 				...(stored.ok ? { avatar: stored.ref } : {}),
 			});
+		},
+		// 卡片页预览:不报问题、不上报,只记被问了什么(预览没有副作用)。
+		async fetchPreview(identity, options) {
+			probe.previewAsked.push({ externalId: identity.externalId, options });
+			if (probe.previewOutcome) return probe.previewOutcome;
+			return options.kind === "live"
+				? ok({ kind: "live" as const, details: { title: "对拍预览直播P51" } })
+				: ok({
+						kind: "post" as const,
+						report: {
+							postId: `preview-${options.nth}`,
+							url: "https://example.invalid/preview",
+							post: {
+								creator: { name: "对拍预览作者" },
+								publishedAt: "2026-10-28T00:00:00.000Z",
+								text: `对拍预览正文P51 第${options.nth}条`,
+							},
+						},
+					});
 		},
 		async fetchLiveStatus(identity) {
 			probe.liveStatusAsked.push(identity.externalId);

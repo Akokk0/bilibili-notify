@@ -238,7 +238,8 @@ const SOURCE_ROWS = {
 		"这一版不开直播互动类特性:1.0 的拓展声明不了会员与直播互动(ADR-0021 决策 38 下 09-28 的 🔗),契约「订阅源」表里 `liveInteractions` 一行写「不开」。核心没有读口能看见拓展塞进来的这一格,证据只有单测(假源在运行时故意塞了它)。",
 		{
 			file: EXTENSION_SOURCE_TEST,
-			title: "不开的成员带了也不认:auth、liveInteractions、descriptor;health 按表收下",
+			title:
+				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
 		},
 		{
 			file: EXTENSION_SOURCE_TEST,
@@ -246,6 +247,14 @@ const SOURCE_ROWS = {
 		},
 	),
 	health: driven(TITLE.health),
+	fetchPreview: closed(
+		"这一版不对拓展开(4-14 主人定:没有真使用者,第一个要真实预览的拓展再开;契约「订阅源」表里 `fetchLiveStatus、fetchPreview、health、auth` 一行的 🔗):SourceDef 里没有这一格、运行时带了也不认,拓展订阅的卡片预览一律用示例。",
+		{
+			file: EXTENSION_SOURCE_TEST,
+			title:
+				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
+		},
+	),
 	start: driven(TITLE.lifecycle),
 	stop: driven(TITLE.lifecycle),
 	auth: closed(
@@ -253,7 +262,8 @@ const SOURCE_ROWS = {
 		THIS(TITLE.closedPorts),
 		{
 			file: EXTENSION_SOURCE_TEST,
-			title: "不开的成员带了也不认:auth、liveInteractions、descriptor;health 按表收下",
+			title:
+				"不开的成员带了也不认:auth、liveInteractions、descriptor、fetchPreview;health 按表收下",
 		},
 	),
 } satisfies Record<keyof Source, Row>;
@@ -1488,18 +1498,18 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 
 		it("六张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
-			expect(size("Source")).toBe(9);
+			expect(size("Source")).toBe(10);
 			expect(size("SubscriptionCell")).toBe(11);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
-			expect(entries).toHaveLength(48);
+			expect(entries).toHaveLength(49);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 7 行;宿主填 1 行。
+			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 8 行;宿主填 1 行。
 			expect(of("driven")).toHaveLength(39);
 			expect(of("elsewhere")).toHaveLength(1);
-			expect(of("closed")).toHaveLength(7);
+			expect(of("closed")).toHaveLength(8);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(
 				of("closed")
@@ -1512,6 +1522,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 					"PlatformAdapter.listAddressCandidates",
 					"Source.auth",
 					"Source.descriptor",
+					"Source.fetchPreview",
 					"Source.liveInteractions",
 					"SubscriptionCell.cardSkin",
 				].sort(),

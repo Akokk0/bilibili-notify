@@ -62,7 +62,6 @@ describe("cards route — 预览出卡器的图库解析口", () => {
 			const app = createCardsRoute({
 				deps: makeDeps(dir),
 				puppeteer: makeFakePuppeteer(),
-				api: null,
 			});
 			const res = await app.request("/preview", {
 				method: "POST",

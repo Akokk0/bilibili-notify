@@ -103,6 +103,14 @@ vi.mock("../live/session/bili-live-rooms.js", () => ({
 		fetchLiveStatus(): Promise<never> {
 			return Promise.reject(new Error("not used"));
 		}
+		/** 直播那一支的预览:回一句能认出来的失败,来源原样交出去就算接上了。 */
+		fetchPreview(identity: { externalId: string }): Promise<unknown> {
+			return Promise.resolve({
+				ok: false,
+				code: "unavailable",
+				message: `假房间预览 ${identity.externalId}`,
+			});
+		}
 	},
 }));
 
@@ -484,6 +492,31 @@ describe("createBiliSource", () => {
 		expect(result).toMatchObject({ ok: true, name: "阿甲", followers: 7 });
 		expect(fetchUserCard).toHaveBeenCalledWith("1");
 		expect(state.get("profile:1")).toEqual({});
+		await source.stop();
+	});
+
+	it("start 之后 fetchPreview 接上:作品取同一个 API 的 space 列表,直播交给直播房间;start 前回 unavailable", async () => {
+		const { deps, login } = makeDeps();
+		const fetchUserSpaceDynamic = vi.fn(async () => ({ code: 0, data: { items: [] } }));
+		login.api = { ...login.api, fetchUserSpaceDynamic } as unknown as Api;
+		const source = createBiliSource(deps);
+		const identity = { sourceKey: "bilibili", externalId: "42" };
+		const signal = new AbortController().signal;
+		await expect(
+			source.fetchPreview?.(identity, { kind: "post", nth: 1 }, signal),
+		).resolves.toMatchObject({ ok: false, code: "unavailable" });
+
+		const { ctx } = makeCtx([{ externalId: "42" }]);
+		await source.start(ctx);
+
+		await expect(
+			source.fetchPreview?.(identity, { kind: "post", nth: 1 }, signal),
+		).resolves.toMatchObject({ ok: false, code: "not_found" });
+		expect(fetchUserSpaceDynamic).toHaveBeenCalledWith("42");
+		await expect(source.fetchPreview?.(identity, { kind: "live" }, signal)).resolves.toMatchObject({
+			ok: false,
+			message: "假房间预览 42",
+		});
 		await source.stop();
 	});
 

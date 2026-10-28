@@ -458,6 +458,53 @@ describe("BiliLiveRooms", () => {
 		h.rooms.stop();
 	});
 
+	it("fetchPreview：不在播也给详情（封面退到直播间封面、没有开播时刻），失败不报问题、不上报", async () => {
+		const h = harness();
+		await h.start();
+		const signal = new AbortController().signal;
+		h.setOnline(false);
+		const reportsBefore = h.reports.length;
+
+		const preview = await h.rooms.fetchPreview(
+			{ sourceKey: "bilibili", externalId: EXTERNAL_ID },
+			signal,
+		);
+		expect(preview).toMatchObject({
+			ok: true,
+			kind: "live",
+			details: { title: "今晚直播", category: "聊天", cover: { ref: COVER_REF } },
+		});
+		expect(preview).not.toHaveProperty("startedAt");
+		// 关键帧是空串(没开播时 B 站就这样):封面拿直播间封面去抓。
+		expect(h.fetched.some((url) => url.startsWith("https://i0.hdslb.com/bfs/live/cover.jpg"))).toBe(
+			true,
+		);
+
+		h.api.fetchLiveRoomInfo = async () => {
+			throw new Error("接口短暂失败");
+		};
+		await expect(
+			h.rooms.fetchPreview({ sourceKey: "bilibili", externalId: EXTERNAL_ID }, signal),
+		).resolves.toEqual({ ok: false, code: "unavailable", message: "接口短暂失败" });
+		expect(h.problems.present()).toEqual([]);
+		expect(h.reports).toHaveLength(reportsBefore);
+		h.rooms.stop();
+	});
+
+	it("fetchPreview：没开通直播间回 not_found，话是给人看的", async () => {
+		const h = harness();
+		await h.start();
+		await h.setRoomId(undefined);
+		h.api.fetchUserInfo = (async () => ok({ data: { live_room: { roomid: 0 } } })) as never;
+		await expect(
+			h.rooms.fetchPreview(
+				{ sourceKey: "bilibili", externalId: EXTERNAL_ID },
+				new AbortController().signal,
+			),
+		).resolves.toEqual({ ok: false, code: "not_found", message: "这位创作者还没开通直播间" });
+		h.rooms.stop();
+	});
+
 	it("开监听时取不到房间信息：报停止监听并关掉连接", async () => {
 		const h = harness();
 		h.setRoomInfoMode("throws");

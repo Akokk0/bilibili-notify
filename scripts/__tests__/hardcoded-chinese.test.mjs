@@ -173,7 +173,7 @@ export const RATCHET = {
 	"apps/server/src/routes/ai-skills.ts": 1,
 	"apps/server/src/routes/ai.ts": 18,
 	"apps/server/src/routes/cards-skins.ts": 23,
-	"apps/server/src/routes/cards.ts": 77,
+	"apps/server/src/routes/cards.ts": 60,
 	"apps/server/src/routes/command-alias-guard.ts": 2,
 	"apps/server/src/routes/connections.ts": 8,
 	"apps/server/src/routes/dashboard-skins.ts": 20,

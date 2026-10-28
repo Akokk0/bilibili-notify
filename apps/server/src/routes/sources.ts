@@ -28,7 +28,11 @@ function wireDescriptorOf(descriptor: SourceDescriptor): SourceEntry["descriptor
 
 /** 来源实现了哪些可选成员,宿主自己看,不让来源自报。 */
 function hasOf(view: SourceView): NonNullable<SourceEntry["has"]> {
-	return { auth: view.auth !== undefined, liveStatus: view.fetchLiveStatus !== undefined };
+	return {
+		auth: view.auth !== undefined,
+		liveStatus: view.fetchLiveStatus !== undefined,
+		preview: view.fetchPreview !== undefined,
+	};
 }
 
 /**

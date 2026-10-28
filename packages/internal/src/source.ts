@@ -4,7 +4,12 @@ import type { FeatureKey } from "./features";
 import type { Identity } from "./identity";
 import type { ImageRef } from "./image-ref";
 import type { LinkResolver } from "./link-preview";
-import type { LiveInteractionReport, LiveSignalReport, LiveStatusResult } from "./live";
+import type {
+	LiveDetails,
+	LiveInteractionReport,
+	LiveSignalReport,
+	LiveStatusResult,
+} from "./live";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -148,6 +153,20 @@ export interface SourceHealth {
 }
 
 /**
+ * 卡片页预览要哪一张(`Source.fetchPreview` 的第二个参数):作品卡取这个人最近的第 `nth` 条(1 是最新那条),
+ * 直播卡取他直播间此刻的样子。
+ */
+export type PreviewOptions = { kind: "post"; nth: number } | { kind: "live" };
+
+/**
+ * 来源为卡片页预览交的一份真数据(`Source.fetchPreview` 成功那一支)。形状与上报同一种,图都已是图库引用:
+ * 作品就是 `reportPost` 交的那份,直播是 `fetchLiveStatus` 在播那一支的开播时刻(带时区的 ISO)与详情。
+ */
+export type PreviewReport =
+	| { kind: "post"; report: PostReport }
+	| { kind: "live"; startedAt?: string; details: LiveDetails };
+
+/**
  * 来源交的一份创作者资料(`fetchProfile` 交的就是它,字段照 `docs/1.0/data-model.md`)。核心把它写进资料缓存;
  * 没给的格沿用缓存里原来的。搜人的候选在它上面加一个 `externalId`。
  */
@@ -228,6 +247,17 @@ export interface Source {
 	 * (宿主不等了)后来源应尽快收手。同一来源串行调用。不实现 = 只靠 `ctx.reportLive` 推送式上报。
 	 */
 	fetchLiveStatus?(identity: Identity, signal: AbortSignal): Promise<LiveStatusResult>;
+	/**
+	 * 卡片页预览要的一份真数据:作品卡取这个人最近的第 `nth` 条,直播卡取他直播间此刻的样子(不在播也给,
+	 * 卡上照「正在直播」画)。图先抓进图库再交引用。不报问题、不改任何状态 —— 预览没有副作用。失败回结果形状、
+	 * 不抛:宿主拿示例卡顶上,原话随回应交给面板。`signal` 中止后应尽快收手。不实现 = 预览一律用示例。
+	 * 拓展这一版不开(4-14 主人定)。
+	 */
+	fetchPreview?(
+		identity: Identity,
+		options: PreviewOptions,
+		signal: AbortSignal,
+	): Promise<Result<PreviewReport>>;
 	/**
 	 * 互动的懒取口。给了,核心就能在确定要出卡时补取观众头像;不给 = 卡照出,只是没有观众头像。
 	 */

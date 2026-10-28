@@ -1028,7 +1028,11 @@ export type ConnectionTestResponse = Result<{ latencyMs: number }>;
  *
  * 请求本身不成(体不对、没配浏览器、引擎没起、没这个目标)是非 2xx 的 {@link ErrorResponse}。
  */
-export type TestPushResponse = Result<{ latencyMs: number }>;
+export type TestPushResponse = Result<{
+	latencyMs: number;
+	/** 推出去的是示例卡、不是真数据:来源取真数据失败的原话(同 {@link PreviewResponse} 的那一格)。 */
+	sampleReason?: string;
+}>;
 
 /**
  * `POST /api/ai/test` 响应:让女仆回一句、真实推给所选目标,试了一次、回报结果,**照旧回 200**,
@@ -1224,13 +1228,15 @@ export interface AiChatReplyResponse {
 }
 
 /**
- * `POST /api/cards/preview` 响应:画一张预览卡,**照旧回 200**,体是 `Result<{ dataUrl }>` ——
+ * `POST /api/cards/preview` 响应:画一张预览卡,**照旧回 200**,体是 `Result<{ dataUrl, sampleReason? }>` ——
  * 画出来是 `{ ok: true, dataUrl }`,画不出来(渲染抛错)是 `{ ok: false, code, message }`。
+ * 挑了订阅、来源却没交出真数据时照样画一张示例卡,`sampleReason` 带来源的原话(4-14:回落示例并说原因);
+ * 来源没实现真实预览、或没挑订阅时用示例不算失败,没有这一格。
  *
  * 请求本身不成是非 2xx 的 {@link ErrorResponse}:体不对 `invalid`,**没配浏览器 `not_configured`**
  * (面板据此摆出「一键检测并启用 Chrome」),引擎没起 `unavailable`。
  */
-export type PreviewResponse = Result<{ dataUrl: string }>;
+export type PreviewResponse = Result<{ dataUrl: string; sampleReason?: string }>;
 
 /** 卡片渲染的浏览器来源(二选一;都在时 endpoint 生效)。 */
 export interface ChromeSourceDTO {
@@ -1301,10 +1307,10 @@ export interface SourceEntry {
 	/** 来源的描述符。会员体系先不下发:档位图标是图库引用,面板读会员档的时候再一起上。 */
 	descriptor: Omit<SourceDescriptor, "membershipPrograms">;
 	/**
-	 * 来源实现了哪些可选能力(登录口、查直播状态),由宿主推算、不让来源自报。拓展停用或没起来时没有这一格:
-	 * 不知道,不是「没有」。
+	 * 来源实现了哪些可选能力(登录口、查直播状态、卡片页的真实预览),由宿主推算、不让来源自报。拓展停用或没起来时
+	 * 没有这一格:不知道,不是「没有」。
 	 */
-	has?: { auth: boolean; liveStatus: boolean };
+	has?: { auth: boolean; liveStatus: boolean; preview: boolean };
 }
 
 /** `GET /api/sources` 响应:不是拓展的来源(B 站)按登记先后在前,拓展的按装载器的次序在后。 */

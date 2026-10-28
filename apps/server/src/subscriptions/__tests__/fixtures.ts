@@ -12,6 +12,7 @@ import {
 	type PostReport,
 	type Result,
 	type Source,
+	type SourceAuth,
 	type SourceContext,
 	type SourceDescriptor,
 	type Subscription,
@@ -140,9 +141,17 @@ export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): S
 	return registry;
 };
 
-/** 登着 B 站那份描述符(大航海三档)的来源登记表;可用测试引用或懒取口替换档图。 */
+/**
+ * 登着 B 站那份描述符(大航海三档)的来源登记表;可用测试引用或懒取口替换档图。卡片预览的用例可以再给它
+ * 一个 `fetchPreview` 与登录着的账号名(`auth.account()` 只答名字)。
+ */
 export const bilibiliLikeSources = (
-	options: { iconRef?: ImageRef; fetchTierIcon?: LiveInteractionReader["fetchTierIcon"] } = {},
+	options: {
+		iconRef?: ImageRef;
+		fetchTierIcon?: LiveInteractionReader["fetchTierIcon"];
+		fetchPreview?: Source["fetchPreview"];
+		accountName?: string;
+	} = {},
 ): SourceRegistry => {
 	const registry = createSourceRegistry();
 	const program = {
@@ -164,6 +173,10 @@ export const bilibiliLikeSources = (
 				fetchViewerAvatar: async () => fail("unavailable", "no viewer avatar"),
 				fetchTierIcon: options.fetchTierIcon ?? (async () => fail("unavailable", "no tier icon")),
 			},
+			...(options.fetchPreview ? { fetchPreview: options.fetchPreview } : {}),
+			...(options.accountName === undefined
+				? {}
+				: { auth: { account: () => ({ name: options.accountName }) } as unknown as SourceAuth }),
 			start: async () => {},
 			stop: async () => {},
 		},

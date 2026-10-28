@@ -131,6 +131,47 @@ describe("createSourceRegistry", () => {
 		).toEqual(ok({ name: "alice" }));
 	});
 
+	// 验红:`registry.ts` 手抄视图时漏掉 `fetchPreview`,这条红(卡片预览就一律只有示例、`has.preview` 也是 false)。
+	it("视图带着来源的 fetchPreview(调用时 this 仍是来源自己);没交的来源视图上也没有", async () => {
+		const registry = createSourceRegistry();
+		const previewer: Source = {
+			descriptor: { label: "甲", supportedFeatures: ["post"] },
+			searchCreators: noCandidates,
+			fetchProfile: noProfile,
+			start: async () => {},
+			stop: async () => {},
+			async fetchPreview(identity, options) {
+				return ok({
+					kind: "post" as const,
+					report: {
+						postId: options.kind === "post" ? String(options.nth) : "live",
+						url: "https://example.com/p",
+						post: {
+							creator: { name: this === previewer ? identity.externalId : "this 丢了" },
+							publishedAt: "2026-10-28T00:00:00.000Z",
+							text: "正文",
+						},
+					},
+				});
+			},
+		};
+		await registry.register("preview", previewer, ctxOf().ctx);
+		await registry.register("without", makeSource(), ctxOf().ctx);
+		const got = await registry
+			.get("preview")
+			?.fetchPreview?.(
+				{ sourceKey: "preview", externalId: "alice" },
+				{ kind: "post", nth: 2 },
+				new AbortController().signal,
+			);
+		expect(got).toMatchObject({
+			ok: true,
+			kind: "post",
+			report: { postId: "2", post: { creator: { name: "alice" } } },
+		});
+		expect(registry.get("without")?.fetchPreview).toBeUndefined();
+	});
+
 	// 验红:`register` 里认领视图时漏掉 `sourceKey`,这条红(`login <键>` 就认不出来源)。
 	it("视图带着登记时认领的键;listLoginSources 只挑带登录口的,键、名字、登录口原样、按登记先后", async () => {
 		const registry = createSourceRegistry();

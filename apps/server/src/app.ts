@@ -71,8 +71,8 @@ interface BasicAuthCredentials {
 
 export interface CreateAppOptions {
 	/**
-	 * 卡片预览与旧搜人用的 B 站 API 客户端。要让它们吃到 devtools 的覆盖(它把 api 包了一层 Proxy
-	 * 按方法覆盖),就得显式传进来;省略就是没有(预览走不联网的假数据,旧搜人回 not-ready)。
+	 * 旧搜人用的 B 站 API 客户端(卡片预览 4-14 起改问来源的 `fetchPreview`,不再用它)。要让它吃到 devtools 的
+	 * 覆盖(它把 api 包了一层 Proxy 按方法覆盖),就得显式传进来;省略就是没有(旧搜人回 not-ready)。
 	 */
 	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
@@ -434,7 +434,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			createCardsRoute({
 				deps,
 				puppeteer: options.puppeteer ?? null,
-				api,
 				persistChromeSource: options.persistChromeSource,
 				onPuppeteerEnabled: options.onPuppeteerEnabled,
 				chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,

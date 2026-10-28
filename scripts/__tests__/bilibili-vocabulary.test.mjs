@@ -222,7 +222,6 @@ export const GENERATED_KEY_EXCLUSIONS = {};
  * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
 export const RATCHET = {
-	"apps/server/src/routes/cards.ts": 18, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×1、`roomid`×3(`live_room.roomid` 的读取)。第 4 期:卡片真实预览改走来源、核心不再直接解析 B 站回应后消。
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`。第 4 期:经接口搜人改走来源的 `searchCreators` 后消。
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`。第 4 期:面板改从来源描述符取会员档(`descriptor.membershipPrograms`)、这份 B 站常量搬进 `apps/server/src/bilibili/` 后消;今天面板 `config/membership-programs.ts` 还直接 import 它。
 };
