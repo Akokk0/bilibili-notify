@@ -87,7 +87,8 @@ const GUARD_TIERS = membershipTiersOf(GUARD_PROGRAM_ID);
 const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	subscriptionId: "",
 	post: { nth: 1 },
-	superchat: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！", amount: 30 },
+	// 留言默认空:服务端画示例留言(一句话只在服务端字典里存一份)。
+	superchat: { text: "", amount: 30 },
 	// membership.text 默认空:挑了订阅时服务端取那个来源登录着的账号名,没挑或没登录才是示例名。
 	membership: { program: GUARD_PROGRAM_ID, text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
 };
@@ -118,13 +119,31 @@ const KIND_LABELS: Record<PreviewKind, { label: string; tone: string; icon: Icon
 	},
 };
 
-/** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */
-const KIND_DESC: Record<PreviewKind, string> = {
-	live: "开播 / 直播中 / 下播",
-	post: "动态 / 视频投稿",
-	superchat: "醒目留言 SC",
-	membership: "舰长 / 提督 / 总督",
-};
+/** 交给取字口当名字占位的记号:取回整句后在它那里切开,名字画成元素。 */
+const NAME_MARK = "\u0000";
+
+/**
+ * 字典里的一整句,把 `{name}` 那一格画成加粗的元素 —— 译文里那一格放在哪都行,句子不拆成前后两截去翻。
+ * `text` 是 `t(键, { name: NAME_MARK })` 取回的那句。
+ */
+function EmphasizedName({
+	text,
+	name,
+	className,
+}: {
+	text: string;
+	name: React.ReactNode;
+	className: string;
+}) {
+	const [before = "", after = ""] = text.split(NAME_MARK);
+	return (
+		<>
+			{before}
+			<b className={className}>{name}</b>
+			{after}
+		</>
+	);
+}
 
 function PreviewImage({
 	kind,
@@ -195,14 +214,16 @@ function PreviewImage({
 		/* `inset` + 自带外壳:这块占的是预览图的位置,底与宽度要跟着预览框走,
 		   `card` 变体那层玻璃会和外面的预览区叠成玻璃叠玻璃。 */
 		<LoadingBlock
-			label="puppeteer 渲染中"
+			label={t("cards.preview.rendering")}
 			variant="inset"
 			className="w-full max-w-95 rounded-bn-card bg-bn-surface/70"
 		/>
 	) : query.error ? (
 		<div className="w-full max-w-95 rounded-xl bg-bn-surface p-4 text-bn-sm">
 			<div className="mb-1 font-bold text-bn-danger-text">{previewErrorTitle(apiErr)}</div>
-			<div className="text-bn-text-secondary">{apiErr?.message ?? "未知错误"}</div>
+			<div className="text-bn-text-secondary">
+				{apiErr?.message ?? t("cards.preview.unknownError")}
+			</div>
 			{previewErrorHint(apiErr?.status) ? (
 				<div className="mt-2 text-bn-xs text-bn-text-tertiary">
 					{previewErrorHint(apiErr?.status)}
@@ -218,7 +239,7 @@ function PreviewImage({
 		<img
 			src={query.data?.dataUrl}
 			srcSet={`${query.data?.dataUrl} 2x`}
-			alt="卡片实时预览"
+			alt={t("cards.preview.imageAlt")}
 			className={
 				frame
 					? "bn-anim-fade-in max-w-full rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.14)]"
@@ -317,8 +338,8 @@ function TestPushCard({
 
 	return (
 		<GlassBox
-			title="预览内容 · 测试推送"
-			subtitle="编辑该类型预览内容,并把当前预览卡片(草稿样式)推送到所选目标"
+			title={t("cards.testPush.title")}
+			subtitle={t("cards.testPush.subtitle")}
 			accent={SECTION_ACCENT.capability}
 			icon={<Icon.bell size={14} />}
 			badge="test"
@@ -340,7 +361,7 @@ function TestPushCard({
 					disabled={targets.length === 0}
 					options={
 						targets.length === 0
-							? [{ value: "", label: "无可用推送目标" }]
+							? [{ value: "", label: t("cards.testPush.noTargets") }]
 							: targets.map((target) => ({ value: target.id, label: target.name }))
 					}
 				/>
@@ -353,15 +374,17 @@ function TestPushCard({
 					onClick={() => push.mutate()}
 					disabled={push.isPending || !targetId}
 				>
-					{push.isPending ? "推送中…" : "测试推送"}
+					{push.isPending ? t("cards.testPush.pushing") : t("cards.testPush.button")}
 				</Btn>
 				{push.isError ? (
 					<div className="mt-2 text-bn-xs text-bn-danger-text">
-						推送失败:{(push.error as ApiError)?.message ?? "未知错误"}
+						{t("cards.testPush.failed", {
+							reason: (push.error as ApiError)?.message ?? t("cards.preview.unknownError"),
+						})}
 					</div>
 				) : push.isSuccess ? (
 					<div className="mt-2 text-bn-xs text-bn-success-text">
-						已送达 · {push.data.latencyMs}ms
+						{t("cards.testPush.delivered", { ms: push.data.latencyMs })}
 						{push.data.sampleReason ? (
 							<div className="text-bn-text-tertiary">
 								{t("cards.testPush.sampleBecause", { reason: push.data.sampleReason })}
@@ -397,17 +420,18 @@ export function PerUpCoverSection({
 	/** 封面图删盘回调,透传给 GalleryPicker(Cards 页借它清扫其他草稿)。 */
 	onAssetDeleted?: (id: string) => void;
 }) {
+	const t = useT();
 	const active = value !== undefined;
 	const toggleOverride = (on: boolean) => {
 		onChange(on ? [...base] : undefined);
 	};
 	return (
 		<GlassBox
-			title="直播封面"
-			subtitle="开 = 该 UP 单独选封面图(替换 B 站房间封面/关键帧,多张每次推送轮换);关 = 跟随全局"
+			title={t("cards.cover.title")}
+			subtitle={t("cards.cover.perSubSubtitle")}
 			accent={KIND_LABELS.live.tone}
 			icon={<Icon.live size={14} />}
-			badge={active ? "单独设置" : "跟随"}
+			badge={active ? t("cards.cover.badgeOwn") : t("cards.cover.badgeInherit")}
 			right={<Toggle value={active} onChange={toggleOverride} />}
 		>
 			{active ? (
@@ -416,15 +440,15 @@ export function PerUpCoverSection({
 						value={value ?? []}
 						onChange={(next) => onChange(next)}
 						onAssetDeleted={onAssetDeleted}
-						emptyHint="未选择(用 B 站直播间原始封面)"
-						singleHint="单张固定封面"
+						emptyHint={t("cards.cover.emptyHint")}
+						singleHint={t("cards.cover.singleHint")}
 					/>
 				</Field>
 			) : (
 				<InheritNote>
 					{base.length > 0
-						? `跟随全局封面(${base.length} 张)`
-						: "跟随全局(未设置,使用 B 站房间封面)"}
+						? t("cards.cover.inheritCount", { count: base.length })
+						: t("cards.cover.inheritNone")}
 				</InheritNote>
 			)}
 		</GlassBox>
@@ -533,6 +557,7 @@ function PreviewContentFields({
 						<TArea
 							value={content.superchat.text}
 							onChange={(v) => setSuperchat({ text: v })}
+							placeholder={t("cards.content.superchatPlaceholder")}
 							rows={3}
 						/>
 					</Field>
@@ -546,7 +571,7 @@ function PreviewContentFields({
 							placeholder="30"
 						/>
 					</Field>
-					<KindHintNote>左侧渐变色对 SC 不生效；SC 卡片背景色由价格档位自动决定。</KindHintNote>
+					<KindHintNote>{t("cards.content.superchatHint")}</KindHintNote>
 				</>
 			) : (
 				<>
@@ -563,20 +588,18 @@ function PreviewContentFields({
 						/>
 					</Field>
 					<Field
-						label="新舰长称呼"
+						label={t("cards.content.memberNameLabel")}
 						code="text"
-						hint="留空时使用当前登录账号的名字（未登录则显示示例新舰长）"
+						hint={t("cards.content.memberNameHint")}
 					>
 						<TArea
 							value={content.membership.text}
 							onChange={(v) => setMembership({ text: v })}
-							placeholder="留空使用登录账号名"
+							placeholder={t("cards.content.memberNamePlaceholder")}
 							rows={2}
 						/>
 					</Field>
-					<KindHintNote>
-						左侧渐变色对上舰不生效；卡片背景色与徽章图由舰长等级自动决定。
-					</KindHintNote>
+					<KindHintNote>{t("cards.content.membershipHint")}</KindHintNote>
 				</>
 			)}
 		</>
@@ -854,8 +877,8 @@ export default function Cards() {
 	useDirtyDraft({
 		pageKey: isGlobalScope ? "cards" : "cards-perup",
 		pageLabel: isGlobalScope
-			? "卡片样式"
-			: `${focusedSub ? displayName(focusedSub) : ""} · 卡片覆盖`,
+			? t("cards.page.label")
+			: t("cards.page.perSubLabel", { name: focusedSub ? displayName(focusedSub) : "" }),
 		draft: isGlobalScope ? globalIslandDraft : perUpIslandDraft,
 		baseline: isGlobalScope ? globalIslandBaseline : perUpIslandBaseline,
 		onSave: async () => {
@@ -881,7 +904,7 @@ export default function Cards() {
 	});
 
 	if (!gCards) {
-		return <LoadingBlock label="加载卡片样式中" />;
+		return <LoadingBlock label={t("cards.page.loading")} />;
 	}
 
 	// 预览请求带的样式:全局 = 全局封面;per-UP = 这位 UP 的封面覆盖(有就用,没有跟随全局)。
@@ -906,6 +929,14 @@ export default function Cards() {
 	const previewSkin = isGlobalScope ? undefined : puSkin;
 	/** 同上:per-UP 那侧的草稿旋钮;全局作用域不传,没拧过也不传(请求体与从前一字不差)。 */
 	const previewKnobs = isGlobalScope || Object.keys(puKnobs).length === 0 ? undefined : puKnobs;
+	/** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */
+	const kindDesc: Record<PreviewKind, string> = {
+		live: t("cards.kind.liveDesc"),
+		post: t("cards.kind.postDesc"),
+		superchat: t("cards.kind.superchatDesc"),
+		membership: t("cards.kind.membershipDesc"),
+	};
+	const scopeName = isGlobalScope ? t("cards.preview.scopeGlobal") : t("cards.preview.scopeSub");
 
 	return (
 		<div className="bn-anim-page-in flex flex-col gap-4">
@@ -914,26 +945,26 @@ export default function Cards() {
 				icon={<Icon.eye size={26} />}
 				title={
 					<>
-						卡片渲染
+						{t("cards.hero.title")}
 						<Pill color="var(--color-bn-purple)" subtle size="sm">
 							image
 						</Pill>
 					</>
 				}
-				subtitle="puppeteer-core 把 Vue/UnoCSS 模板渲染成 PNG;关闭后 push 流程仅发送文本回退。"
+				subtitle={t("cards.hero.subtitle")}
 				right={
 					isGlobalScope ? (
 						<Picker
 							value={gCards.enabled}
 							onChange={(v) => setGCards((d) => (d ? { ...d, enabled: v } : d))}
 							options={[
-								{ value: true, label: "启用", color: "var(--color-bn-purple)" },
-								{ value: false, label: "停用", color: "var(--color-bn-inactive)" },
+								{ value: true, label: t("cards.hero.enable"), color: "var(--color-bn-purple)" },
+								{ value: false, label: t("cards.hero.disable"), color: "var(--color-bn-inactive)" },
 							]}
 						/>
 					) : (
 						<span className="rounded-md border border-bn-border-subtle bg-bn-surface/70 px-2.5 py-1 text-bn-xs text-bn-text-tertiary">
-							总开关在全局作用域
+							{t("cards.hero.switchInGlobal")}
 						</span>
 					)
 				}
@@ -948,13 +979,14 @@ export default function Cards() {
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
 				overridesCountFor={cardOverrideCount}
-				globalHint="此处为全部 UP 的默认卡片样式与皮肤"
+				globalHint={t("cards.scope.globalHint")}
 				perUpHint={(sub) =>
 					sub ? (
-						<>
-							仅作用于 <b className="text-bn-pink">{subscriptionIdentityOf(sub).externalId}</b>
-							,未开启的覆盖继承全局
-						</>
+						<EmphasizedName
+							text={t("cards.scope.perSubHint", { name: NAME_MARK })}
+							name={subscriptionIdentityOf(sub).externalId}
+							className="text-bn-pink"
+						/>
 					) : null
 				}
 			/>
@@ -966,12 +998,12 @@ export default function Cards() {
 			<div className="grid gap-3.5 xl:grid-cols-[220px_440px_minmax(0,1fr)]">
 				{/* RAIL: 全局基准 + 各卡片类型 —— 选中决定编辑的样式 + 预览的卡片种类 */}
 				<SectionNav
-					heading="卡片样式"
+					heading={t("cards.page.label")}
 					items={[
 						{
 							id: "__global",
-							label: "全局",
-							desc: "所有卡片通用样式",
+							label: t("cards.nav.global"),
+							desc: t("cards.nav.globalDesc"),
 							icon: <Icon.edit size={15} />,
 						},
 						...(["live", "post", "superchat", "membership"] as const).map((k) => {
@@ -979,7 +1011,7 @@ export default function Cards() {
 							return {
 								id: k,
 								label: KIND_LABELS[k].label,
-								desc: KIND_DESC[k],
+								desc: kindDesc[k],
 								icon: <Ic size={15} />,
 							};
 						}),
@@ -993,9 +1025,7 @@ export default function Cards() {
 					{/* 字体与背景图 2026-09-14 退役成**皮肤自己的旋钮**(主人拍板);㉔e 又把「按卡种单独
 					    样式」那一层整个撤了(它只剩直播封面一个用途)。这一栏只剩直播封面一个盒子。 */}
 					{!isGlobalTab && kind !== "live" ? (
-						<EmptyNote>
-							这种卡的排版与观感现在整个归皮肤管 —— 去下面的皮肤库挑一套,或者「复制一份」再改。
-						</EmptyNote>
+						<EmptyNote>{t("cards.skin.byCardHint")}</EmptyNote>
 					) : null}
 
 					{/* 卡片皮肤 —— 仅「全局」tab。皮肤是**整套外观**(七种卡一起换),不分卡种,
@@ -1011,11 +1041,11 @@ export default function Cards() {
 						) : (
 							<>
 								<GlassBox
-									title="卡片皮肤"
-									subtitle="这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在全局皮肤库「复制一份」再改"
+									title={t("cards.skin.perSubTitle")}
+									subtitle={t("cards.skin.perSubSubtitle")}
 									accent="var(--color-bn-purple)"
 									icon={<Icon.palette size={14} />}
-									badge={puSkin ? "单独指定" : "跟随全局"}
+									badge={puSkin ? t("cards.skin.badgeOwn") : t("cards.skin.badgeInherit")}
 								>
 									<CardSkinPicker value={puSkin} onChange={setPuSkin} />
 								</GlassBox>
@@ -1039,8 +1069,8 @@ export default function Cards() {
 						kind === "live" &&
 						(isGlobalScope ? (
 							<GlassBox
-								title="直播封面"
-								subtitle="选图替换推送卡的直播间封面(B 站封面/关键帧);多张每次推送轮换;清空恢复 B 站封面"
+								title={t("cards.cover.title")}
+								subtitle={t("cards.cover.globalSubtitle")}
 								accent={KIND_LABELS.live.tone}
 								icon={<Icon.live size={14} />}
 								badge="liveCover"
@@ -1050,8 +1080,8 @@ export default function Cards() {
 										value={gCards.liveCoverImageIds}
 										onChange={(next) => setGCards({ ...gCards, liveCoverImageIds: next })}
 										onAssetDeleted={sweepDeletedAsset}
-										emptyHint="未选择(用 B 站直播间原始封面)"
-										singleHint="单张固定封面"
+										emptyHint={t("cards.cover.emptyHint")}
+										singleHint={t("cards.cover.singleHint")}
 									/>
 								</Field>
 							</GlassBox>
@@ -1090,8 +1120,8 @@ export default function Cards() {
 					{isGlobalTab ? (
 						<>
 							<PreviewHead
-								title={<>卡片全家福 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置</>}
-								note="四种卡片各自生效样式 · puppeteer 真实渲染"
+								title={t("cards.preview.familyTitle", { scope: scopeName })}
+								note={t("cards.preview.familyNote")}
 							/>
 							{/* 一个框装四张卡:2×2 四宫格。固定高度(参考选项卡片满展开时的观感取值,不跟随它),
 							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
@@ -1122,22 +1152,19 @@ export default function Cards() {
 							</div>
 							<div className="rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 text-bn-xs italic text-bn-text-secondary">
 								{isGlobalScope
-									? "四种卡片都用全局在用的皮肤;想单看某张卡,点左侧对应类型标签。"
+									? t("cards.preview.familyGlobalHint")
 									: focusedSub
-										? `${displayName(focusedSub)} 的四种卡片;未覆盖项继承全局,单独调某张卡点左侧类型标签。`
+										? t("cards.preview.familySubHint", { name: displayName(focusedSub) })
 										: ""}
 							</div>
 						</>
 					) : (
 						<>
 							<PreviewHead
-								title={<>卡片预览 · 实时反映{isGlobalScope ? "全局" : "该 UP"}配置</>}
-								note={
-									<>
-										puppeteer 真实渲染 · 渲染宽度
-										{kind === "superchat" ? " 280" : kind === "membership" ? " 430" : " 600"}px
-									</>
-								}
+								title={t("cards.preview.singleTitle", { scope: scopeName })}
+								note={t("cards.preview.renderWidth", {
+									width: kind === "superchat" ? 280 : kind === "membership" ? 430 : 600,
+								})}
 							/>
 							<PreviewImage
 								kind={kind}
@@ -1157,9 +1184,9 @@ export default function Cards() {
 								) : null}
 								<span className="italic text-bn-text-secondary">
 									{isGlobalScope
-										? "全局默认 · 上方切 UP 可单独覆盖"
+										? t("cards.preview.globalFooter")
 										: focusedSub
-											? `仅 ${displayName(focusedSub)} · 未覆盖项继承全局`
+											? t("cards.preview.subFooter", { name: displayName(focusedSub) })
 											: ""}
 								</span>
 							</div>
@@ -1170,15 +1197,16 @@ export default function Cards() {
 
 			{pendingRemoval ? (
 				<ConfirmDialog
-					title="移除该 UP 的卡片定制?"
+					title={t("cards.remove.title")}
 					message={
-						<>
-							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
-							的卡片样式与皮肤覆盖,该 UP 之后跟随全局卡片设置。此操作不可撤销。
-						</>
+						<EmphasizedName
+							text={t("cards.remove.message", { name: NAME_MARK })}
+							name={displayName(pendingRemoval)}
+							className="text-bn-text-primary"
+						/>
 					}
-					confirmLabel="移除"
-					cancelLabel="取消"
+					confirmLabel={t("cards.remove.confirm")}
+					cancelLabel={t("cards.remove.cancel")}
 					danger
 					onConfirm={confirmRemoveSub}
 					onCancel={() => setPendingRemoval(null)}

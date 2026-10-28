@@ -6,8 +6,8 @@
 
 | 项 | 现状 |
 | --- | --- |
-| 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片 |
-| 已完成 | 13 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56、4-13） |
+| 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片；10-28 主人在 4-14 定另起 4-57（醒目留言示例做到中立），共 60 片 |
+| 已完成 | 14 / 60（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56、4-13、4-14） |
 | 迁移修订号 / 备份版本 | 52 / 22（第 4 期开工前） |
 
 ## 出期条件
@@ -51,7 +51,7 @@
 | **乙 服务端读口与机制** | | | | | |
 | 4-56 ✅ | 包字典与取字口（Q1b）：internal 新开一份两端共用的包字典（平实版 + 中文女仆层，形状同两端那套）；面板与服务端建字典时合进来，启动时把取字口交给包（ADR-0037 决策 1 那条路）；键的类型从这份 JSON 推，`i18n-dicts` 守卫跟上。只立机制、收一两处当样例，大头归 4-53e。落成（10-28）：主人定两份字都住 `texts/` 底下 —— 先把出厂文字搬到 `texts/builtin/`（子路径改叫 `@bilibili-notify/internal/texts/builtin`，单独一个提交），包字典是 `@bilibili-notify/internal/texts`（`packageText` / `bindPackageText` / `withPackageDicts` / `PACKAGE_DICTS`，口子的细节见 ADR-0037 决策 6 下 4-56 那条 🔗）；两端的 `DICTS` 不变、建 store 时才垫包字典（两端的接线测试比的是同一个模块对象）；「两端各交一次取字口」改由取字调用守卫数入口文件顶层的那一句来钉（入口文件本来就不扫，放行名单数不到它）；样例收了指令前缀与别名的三句校验报错，写死中文棘轮 `schema/commands.ts` 那一行删掉 | `packages/internal/src/` 新子路径与 `locales/`、两端 `i18n/`、守卫 | 无 | 否 | 中 |
 | 4-13 ✅ | 内置适配器自带描述（`PlatformAdapter` 加 `descriptor`）、`GET /api/adapters` 描述列表；内置适配器的问题引子改用描述的 `label`（今天是适配器键）。ADR-0024 决策 1 前半。落成（10-28）：描述写成必备方法 `descriptor()`（出字那一刻按当前语言取）；内置三个只交脸、不带图标，`settingsFields` 先是空表（主人选甲，随 4-29）；读口回 `{ adapters: [{ key, descriptor }] }`，照 `/api/sources` 合登记表与装载器两张表，不带 `has`；拓展的描述由宿主照清单填。照每片通用那条收了碰到的六个文件的 62 处字（拟稿只数了五个文件 47 处，漏了 `extensions/context.ts` 的 15 处）；两句停下原因（`stopReason`）在登记那一刻取字，改成现取要动 `integrations/context.ts`，留给 4-53c | `internal/push-source.ts`、`platforms/` 三个、`push/`、`routes/adapters.ts`、contract | 4-11 | 否 | 中 |
-| 4-14 | 卡片真实预览改走 `Source.fetchPreview`（对拍 N05）：请求按 `subscriptionId`，没实现的来源用示例；B 站实现从 `routes/cards.ts` 搬进 `bilibili/`。清 `cards.ts` 五道棘轮与 `Cards.tsx` 替身 | `internal/source.ts`、`bilibili/`、`routes/cards.ts`、contract、`Cards.tsx` | 4-12、4-08；开工时问预览失败回落示例还是报错 | 否 | 大 |
+| 4-14 ✅ | 卡片真实预览改走 `Source.fetchPreview`（对拍 N05）：请求按 `subscriptionId`，没实现的来源用示例；B 站实现从 `routes/cards.ts` 搬进 `bilibili/`。清 `cards.ts` 五道棘轮与 `Cards.tsx` 替身。落成（10-28，三个提交）：开工题主人定**回落示例并说原因**（回应 `sampleReason`）、**拓展这一版不开**（同 `auth`）；签名 `fetchPreview(identity, PreviewOptions, signal): Result<PreviewReport>`，直播那一支交与 `fetchLiveStatus` 同一份的详情（`LiveCardInput` 住出图包、internal 引不到）；作品的「第几条」保留、改名 `nth`；SC / 上舰收的人取订阅名、付款人取来源登录口；删前查引用的订阅称呼改用身份标签（「B 站 · uid」）；**SC 示例仍借 B 站价目表**（主人定另起 4-57，import 边界与 uid 各留 1）；面板全局「从订阅里挑一条」、按订阅覆盖对所有订阅开放；收字 138 处（卡片路由 60、卡片页 71、来源路由 6、登记表 1），叫法改中性、交互句写女仆层；**`field-labels.ts` 只换五格**（主人定，整表随 4-53b）；**B 站 `source.ts` / `dynamic-poller.ts` 两个文件留给 4-53c**（主人定，见 4-53c 那行）；verify-ui 真页面看过（挑订阅、回落原因、按订阅列出全部订阅、收字后的页面） | `internal/source.ts`、`bilibili/`、`routes/cards.ts`、contract、`Cards.tsx` | 4-12、4-08；开工时问预览失败回落示例还是报错 | 否 | 大 |
 | 4-15 | 经接口搜人与新建订阅（对拍 N01）：`GET /api/sources/:key/creators`、新建订阅的门问登记表、关旧 `/search` `/lookup`、风控与未登录不再折成 404；面板 `Subs.tsx` 新建流程按来源（去 `BILI_PLATFORM` 哨兵）。捎 3b 审查 R25 留着的那截：拓展回执包装层自己坏掉时的 `invalid` 记进出入（要改 `readResult` 的形状，Q11）。清 `subscriptions.ts` 四道棘轮与 `Subs.tsx` 替身 27 | `routes/{sources,subscriptions}.ts`、`search-source-creators.ts`、contract、`Subs.tsx` | 4-02、4-12、4-08 | 否 | 中 |
 | 4-16 | 入口 `api` 槽拆除：`createApp` 不再收 B 站 `Api`、入口不再递 `builtins.bilibili.api()`。清入口槽、import 边界与替身 `index.ts` 最后 1 | `index.ts`、`app.ts`、`compose.ts` | 4-03、4-14、4-15 | 否 | 小 |
 | 4-17 | 健康短版削成四格、详情口契约化（ADR-0025 决策 12）；`modules` 同提交搬去详情、首页改读详情 | contract、`routes/health.ts`、`Dashboard.tsx` 一处 | 4-08 | 否 | 小 |
@@ -96,10 +96,11 @@
 | 4-52 | 订阅标签管理（改名、删除、排序，整表 PUT）与卡上全部标签胶囊（ADR-0034；今天卡上只取第一个） | `pages/up/`、新管理弹框 | 稿 6、4-26 | 否 | 中 |
 | **己 收字与收尾** | | | | | |
 | 4-53a | 收字：卡片页与皮肤编辑器里没有界面片碰到的文件 | `Cards.tsx`、`CardSkinEditor.tsx`、`pages/cards/`、`pages/skins/` 一带 | 无 | 否 | 中 |
-| 4-53b | 收字：面板其余页与配置表（如 `field-labels.ts`） | `apps/web/src/` 其余 | 无 | 否 | 中 |
-| 4-53c | 收字：服务端剩下的字（含迁移里「勤奋 UP」那句报错） | `apps/server/src/` | 无 | 否 | 中 |
+| 4-53b | 收字：面板其余页与配置表（如 `field-labels.ts`）。4-14 只换了 `field-labels.ts` 的五格（删 `roomId` / `uid` / `offset`、加 `subscriptionId` / `nth`），整表的字仍归这片（主人 10-28 定） | `apps/web/src/` 其余 | 无 | 否 | 中 |
+| 4-53c | 收字：服务端剩下的字（含迁移里「勤奋 UP」那句报错）。另接 4-14 留下的 `bilibili/source.ts` 与 `bilibili/dynamic/dynamic-poller.ts`（主人 10-28 定），先想清三件：B 站描述符的「B 站 / UP主 / 动态」要出字时才取，得把 `Source.descriptor` 改成读时现取（同 4-13 适配器的 `descriptor()`）；中文叫法棘轮放过 `bilibili/` 目录却不放过共用字典里的 `bilibili.*` 键；认 B 站时间文字的「刚刚 / 秒 / 分钟」不是给人看的话、写死中文棘轮却在数 | `apps/server/src/` | 无 | 否 | 中 |
 | 4-53d | 收字：出图包的卡片字 | `packages/image/src/` | 4-56 | 否 | 中 |
 | 4-53e | 收字：其余各包与 contract（internal、ai、ui、http、push、storage、contract）。设置校验的报错改成校验发生时才取字（zod 4 的 `error` 写成函数，ADR-0037「仍未决」那条的结论）；加载时就取成常量的字表（如卡种名）改成出字时取（ADR-0037 决策 1）；`ui` 那 26 处用属性传进来还是同样交取字口，施工时定 | `packages/*/src/`、`apps/contract/src/` | 4-56 | 否 | 大 |
+| 4-57 | 醒目留言示例做到中立：预览的 SC 示例今天借 B 站的价目表（`superchatEventFromLiveEvent` 按金额定档）与照 B 站抄的时长表；要不借任何平台的规矩出档位与时长（4-14 主人定另起一片）。清卡片路由 import 边界与 uid 棘轮各剩的 1 | `routes/cards.ts`、面板 SC 示例字段 | 4-14 | 否 | 小 |
 | 4-54 | 收尾：`BILIBILI_SOURCE_KEY` 搬出 `internal`；`identityColor` 的 B 站分支改由描述符声明（Q5：描述符加一格「颜色按外部 id 算」，B 站声明；读者六处，面板显示工具、统计、首页，服务端锐评出图从来源登记表取）；推送路由日志标签不再分 B 站（`push-router.ts`，照规矩直接改）；出期条件逐条核数清零；21b 那四行转对拍；全量门禁 | 散 | 其余全部 | 否 | 中 |
 
 动盘只有 4-24（修订号 52 → 53）；4-20 开工时核要不要抬号。
@@ -113,7 +114,7 @@
 3. 服务端读口：4-13 至 4-24、4-55；稿 1 排在 4-18 之前（它定读口要哪些数据）。
 4. 4-25 组件库、不等稿的界面片 4-26 至 4-37。
 5. 稿 2 至稿 6 各排在自己那几片之前，主人认了再照稿写；等稿的界面片 4-38 至 4-52。
-6. 收字 4-53a 至 4-53e，最后 4-54 收尾。
+6. 收字 4-53a 至 4-53e、4-57，最后 4-54 收尾。
 
 ## 定案
 

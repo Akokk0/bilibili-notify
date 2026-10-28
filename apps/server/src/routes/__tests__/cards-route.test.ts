@@ -1584,11 +1584,11 @@ describe("cards route — /preview sc/guard 示例消息", () => {
 			await postPreview(app, { kind: "membership", style: STYLE, content: {} });
 			expect(sc.mock.calls[0]?.[0]).toMatchObject({
 				viewer: { name: "示例粉丝" },
-				creator: { name: "示例 UP 主" },
+				creator: { name: "示例创作者" },
 			});
 			expect(guard.mock.calls[0]?.[0]).toMatchObject({
-				viewer: { name: "示例新舰长" },
-				creator: { name: "示例 UP 主" },
+				viewer: { name: "示例新会员" },
+				creator: { name: "示例创作者" },
 			});
 		} finally {
 			sc.mockRestore();

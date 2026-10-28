@@ -204,8 +204,9 @@ const EnableRenderingSchema = z
 		chromePath: z.string().min(1).optional(),
 		chromeEndpoint: z.string().min(1).optional(),
 	})
+	// 报错在校验那一刻才取字(zod 4 的 `error` 写成函数)。
 	.refine((d) => d.chromePath || d.chromeEndpoint, {
-		message: "chromePath 或 chromeEndpoint 至少填一项",
+		error: () => t("cards.renderer.sourceRequired"),
 	});
 
 type PreviewStyle = z.infer<typeof StyleSchema>;
@@ -232,7 +233,7 @@ const RENDER_TIMEOUT_MS = 20_000;
  * 一眼能认出是测试,History 列表也不再落「(无内容)」。
  */
 export function testPushCaption(kind: PreviewKind): string {
-	return `【bilibili-notify 测试推送】${CARD_KIND_NAMES[kind]}`;
+	return t("cards.testPush.caption", { kind: CARD_KIND_NAMES[kind] });
 }
 
 /**
@@ -264,9 +265,11 @@ function knobReferences(
 			if (Object.values(overrides ?? {}).some(hit)) refs.push(label(skinId));
 		}
 	};
-	scan(globals.defaults.cardSkinKnobs, (skinId) => `皮肤「${skinId}」`);
+	scan(globals.defaults.cardSkinKnobs, (skinId) => t("cards.references.skin", { skinId }));
 	for (const s of subs) {
-		scan(s.overrides.cardSkinKnobs, (skinId) => `${labelOf(s)} · 皮肤「${skinId}」`);
+		scan(s.overrides.cardSkinKnobs, (skinId) =>
+			t("cards.references.subscriptionSkin", { subscription: labelOf(s), skinId }),
+		);
 	}
 	return refs;
 }
@@ -299,7 +302,7 @@ function cardBgReferences(
 	// 旋钮值是「一串 id」(图片旋钮)。
 	const refs = knobReferences(globals, subs, (v) => Array.isArray(v) && v.includes(id), labelOf);
 	if (inCards(globals.defaults.cards)) {
-		refs.push("全局默认");
+		refs.push(t("cards.references.globalDefault"));
 	}
 	// 两支订阅都算(ADR-0019 决策 47):漏看拓展订阅,它引用的图会被当成「没人用」删掉。
 	for (const s of subs) {
@@ -339,8 +342,9 @@ function fontAssetReferences(
  * 没配 Chrome 时那句话(`not_configured`)。**三处共用一份** —— 说的是同一件事,分成几份写迟早会漂,
  * 而这句正是主人照着去修的那条路径(「失败的原因不许吞」)。
  */
-const NO_CHROME_HINT =
-	"puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）或 BN_CHROME_ENDPOINT（远程浏览器端点），或 yaml 的 chromePath / chromeEndpoint 字段";
+function noChromeHint(): string {
+	return t("cards.renderer.notConfigured");
+}
 
 /**
  * 「最终效果」的请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套。
@@ -359,7 +363,6 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const tiers = createMembershipTierReader(opts.deps.runtime.sourceRegistry);
 	// 请求体的「认不认得这个档的 key」要读登记表,不能在模块顶层的 schema 里判:在工厂里给两个请求体各套一层。
 	// 报错的说法与形状同从前(`issues` 的路径仍是 content.tierKey)。
-	const tierIssue = "不是档位表里的档";
 	const contentSchema = ContentSchema.unwrap()
 		.superRefine((content, ctx) => {
 			if (content?.tierKey === undefined) return;
@@ -367,7 +370,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				ctx.addIssue({
 					code: "custom",
 					path: ["tierKey"],
-					message: tierIssue,
+					message: t("cards.preview.unknownTier"),
 				});
 			}
 		})
@@ -421,7 +424,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	/** 醒目留言 / 上舰卡上收的那个人:挑中那条订阅的名字,没挑是示例名。 */
 	function receiverNameOf(sub: Subscription | undefined): string {
-		return creatorNameOf(sub) ?? "示例 UP 主";
+		return creatorNameOf(sub) ?? t("cards.sample.creatorName");
 	}
 
 	/**
@@ -490,7 +493,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "chromePath 或 chromeEndpoint 至少填一项", {
+				fail("invalid", t("cards.renderer.sourceRequired"), {
 					issues: issuesFromZod(parsed.error),
 				}),
 			);
@@ -517,7 +520,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				await pup.dispose();
 				const detail = err instanceof Error ? err.message : String(err);
 				log.warn(`[cards] 浏览器探测失败 · ${JSON.stringify(source)}: ${detail}`);
-				return respondFailure(c, fail("unavailable", `浏览器连接失败：${detail}`));
+				return respondFailure(
+					c,
+					fail("unavailable", t("cards.renderer.connectFailed", { detail })),
+				);
 			}
 		}
 		if (replacing) {
@@ -543,10 +549,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		} catch (err) {
 			const detail = err instanceof Error ? err.message : String(err);
 			log.error(`[cards] 浏览器来源持久化失败(切换已生效,旧浏览器未销毁) · ${detail}`);
-			return respondFailure(
-				c,
-				fail("unavailable", `切换已生效,但配置写入失败(重启会退回旧来源)：${detail}`),
-			);
+			return respondFailure(c, fail("unavailable", t("cards.renderer.persistFailed", { detail })));
 		}
 		if (old) {
 			// 旧浏览器关掉(本地)/断开(远程)。若旧 adapter 恰有渲染在飞,那一张会
@@ -566,10 +569,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 图片上传 → 落盘 `<dataRoot>/assets/card-bg/<id>`,返回资产 id 写进皮肤的图旋钮
 	// (或 `cardStyle.liveCoverImages`)。目录名 `card-bg` 是历史,今天这套图廊两家共用。
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
-	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, "图片"), async (c) => {
+	// 超限那句里的名词在建路由时就取了字:`uploadBodyLimit` 收的是字符串,改成现取要动另外六条路由,随 4-53c。
+	app.post("/asset", uploadBodyLimit(MAX_CARD_BG_BYTES, t("cards.upload.imageNoun")), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
-		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
+		if (!(file instanceof File))
+			return respondFailure(c, fail("invalid", t("cards.upload.missingImage")));
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
 			const id = await saveCardBg(opts.deps.runtime.dataRoot, bytes, file.type);
@@ -591,7 +596,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 背景图服务 —— 经 id 正则校验的定向读取(绝不 serveStatic 整个 dataRoot,内有 secrets)。
 	app.get("/asset/:id", async (c) => {
 		const res = await readCardBg(opts.deps.runtime.dataRoot, c.req.param("id"));
-		if (!res) return respondFailure(c, fail("not_found", "背景图不存在"));
+		if (!res) return respondFailure(c, fail("not_found", t("cards.asset.bgNotFound")));
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
@@ -605,7 +610,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 面板拿到 200 照常刷新图廊。
 	app.delete("/asset/:id", async (c) => {
 		const id = c.req.param("id");
-		if (!isValidCardBgId(id)) return respondFailure(c, fail("invalid", "无效的资产 id"));
+		if (!isValidCardBgId(id)) return respondFailure(c, fail("invalid", t("cards.asset.invalidId")));
 		const referencedBy = cardBgReferences(
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
@@ -615,7 +620,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (referencedBy.length > 0) {
 			return respondFailure(
 				c,
-				fail("conflict", `该背景图${describeUsers(referencedBy)}，请先在卡片设置里移除再删除`),
+				fail("conflict", t("cards.asset.bgInUse", { users: describeUsers(referencedBy) })),
 			);
 		}
 		await deleteCardBg(opts.deps.runtime.dataRoot, id);
@@ -631,20 +636,26 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 字体上传 → 落盘 `<dataRoot>/assets/font/<id>`,返回资产 id 写进 cardStyle.fontAsset。
 	// 后缀取自**原始文件名**而不是 mime —— 浏览器给字体的 mime 一塌糊涂(同一个 .ttf 可能
 	// 是 font/ttf、application/x-font-ttf、application/octet-stream 甚至空串)。
-	app.post("/font-asset", uploadBodyLimit(MAX_FONT_ASSET_BYTES, "字体文件"), async (c) => {
-		const body = await c.req.parseBody().catch(() => null);
-		const file = body?.file;
-		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少字体文件"));
-		try {
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			const id = await saveFontAsset(opts.deps.runtime.dataRoot, bytes, file.name);
-			return c.json(ok({ id, name: file.name }));
-		} catch (err) {
-			// 同背景图那条:只接「上传的东西不合规矩」,磁盘的事往上抛。
-			if (err instanceof AssetRejectedError) return respondFailure(c, fail("invalid", err.message));
-			throw err;
-		}
-	});
+	app.post(
+		"/font-asset",
+		uploadBodyLimit(MAX_FONT_ASSET_BYTES, t("cards.upload.fontNoun")),
+		async (c) => {
+			const body = await c.req.parseBody().catch(() => null);
+			const file = body?.file;
+			if (!(file instanceof File))
+				return respondFailure(c, fail("invalid", t("cards.upload.missingFont")));
+			try {
+				const bytes = new Uint8Array(await file.arrayBuffer());
+				const id = await saveFontAsset(opts.deps.runtime.dataRoot, bytes, file.name);
+				return c.json(ok({ id, name: file.name }));
+			} catch (err) {
+				// 同背景图那条:只接「上传的东西不合规矩」,磁盘的事往上抛。
+				if (err instanceof AssetRejectedError)
+					return respondFailure(c, fail("invalid", err.message));
+				throw err;
+			}
+		},
+	);
 
 	// 字体图廊列表 —— 带原始文件名,否则设置页上只剩一串 hex,主人认不出哪个是哪个。
 	app.get("/font-assets", async (c) => {
@@ -656,7 +667,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 设置页拿它做预览:同一款字体在页面上和出图里得是同一款。
 	app.get("/font-asset/:id", async (c) => {
 		const res = await readFontAsset(opts.deps.runtime.dataRoot, c.req.param("id"));
-		if (!res) return respondFailure(c, fail("not_found", "字体不存在"));
+		if (!res) return respondFailure(c, fail("not_found", t("cards.asset.fontNotFound")));
 		return new Response(res.bytes, {
 			headers: {
 				"Content-Type": res.mime,
@@ -670,7 +681,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 用家写进 `message`;删一款本来就不在的算删好了(幂等,同背景图)。
 	app.delete("/font-asset/:id", async (c) => {
 		const id = c.req.param("id");
-		if (!isValidFontAssetId(id)) return respondFailure(c, fail("invalid", "无效的资产 id"));
+		if (!isValidFontAssetId(id))
+			return respondFailure(c, fail("invalid", t("cards.asset.invalidId")));
 		const referencedBy = fontAssetReferences(
 			opts.deps.store.getGlobals(),
 			opts.deps.store.getSubscriptions(),
@@ -680,7 +692,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (referencedBy.length > 0) {
 			return respondFailure(
 				c,
-				fail("conflict", `该字体${describeUsers(referencedBy)}，请先换掉再删除`),
+				fail("conflict", t("cards.asset.fontInUse", { users: describeUsers(referencedBy) })),
 			);
 		}
 		await deleteFontAsset(opts.deps.runtime.dataRoot, id);
@@ -815,7 +827,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const renderer = await getScreenshotRenderer();
 		if (!renderer) return null;
 		const manifest = store.get(skinId);
-		if (!manifest) throw new Error(`皮肤不存在: ${skinId}`);
+		if (!manifest) throw new Error(t("cards.skin.notFound", { skinId }));
 		const membershipTier = tiers.lowest();
 		const gone = membershipTierUnavailable(kind, membershipTier);
 		if (gone) throw new Error(gone.message);
@@ -839,7 +851,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		signal: AbortSignal = new AbortController().signal,
 	): Promise<{ buffer: Buffer; mime: string; sampleReason?: string }> {
 		const puppeteer = currentPuppeteer;
-		if (!puppeteer) throw new Error("puppeteer 未就绪");
+		if (!puppeteer) throw new Error(t("cards.renderer.notReady"));
 		// 下面四条出图路子(SC / 上舰 / 真实拉取 / 虚构 mock)都吃这一个 id,走渲染器的那三条
 		// 还带着草稿旋钮(渲染器自己与 config 里的全局那份合并);mock 那条见 `previewKnobValues`。
 		const skinId = previewSkinId(requested.cardSkin);
@@ -848,7 +860,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 		if (kind === "superchat") {
 			const renderer = await getImageRenderer();
-			if (!renderer) throw new Error("puppeteer 未就绪");
+			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 付款人 = 挑中那条订阅的来源登录着的账号(「我在别人直播间发条 SC 会长啥样」);收的人 = 那条订阅。
 			const payer = accountNameOf(sub);
 			const receiver = receiverNameOf(sub);
@@ -857,9 +869,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const event = superchatEventFromLiveEvent(
 				{
 					kind: "superchat",
-					content: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
+					content: content?.text?.trim() || t("cards.sample.superchatText"),
 					price: content?.amount ?? 30,
-					user: { uid: 0, name: payer ?? "示例粉丝" },
+					user: { uid: 0, name: payer ?? t("cards.sample.viewerName") },
 				},
 				"preview",
 			);
@@ -888,9 +900,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				if (gone) throw new Error(gone.message);
 			}
 			const renderer = await getImageRenderer();
-			if (!renderer) throw new Error("puppeteer 未就绪");
+			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			// 新会员 = 挑中那条订阅的来源登录着的账号;显式 text 覆写仍优先。收的人 = 那条订阅。
-			const uname = content?.text?.trim() || accountNameOf(sub) || "示例新舰长";
+			const uname = content?.text?.trim() || accountNameOf(sub) || t("cards.sample.memberName");
 			const receiver = receiverNameOf(sub);
 			// 请求里的 `program` + `tierKey` 是（体系 id, 档 key),服务端按这一对找档(没带 tierKey = 那个体系最低一档);
 			// 档的徽章、档色、宣告语都取自那份声明,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
@@ -898,7 +910,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				content?.tierKey === undefined
 					? tiers.lowest(content?.program)
 					: tiers.byKey(content.program, content.tierKey);
-			if (!tier) throw new Error(`没有这一档:tierKey=${content?.tierKey}`);
+			if (!tier)
+				throw new Error(t("cards.preview.noSuchTier", { tierKey: content?.tierKey ?? "" }));
 			// 来源描述符里已有图库引用就直接用;缺了才经该来源的懒取口补抓。没有来源声明的会员档
 			// 自然也没有懒取口,预览照出、徽章块自己收起。
 			let icon = tier.icon?.ref === undefined ? undefined : { ref: tier.icon.ref };
@@ -954,7 +967,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (real && !real.ok) sampleReason = real.message;
 		if (sub && real?.ok) {
 			const renderer = await getImageRenderer();
-			if (!renderer) throw new Error("puppeteer 未就绪");
+			if (!renderer) throw new Error(t("cards.renderer.notReady"));
 			if (real.kind === "post") {
 				// 外层作者头像:作品自己没带才用订阅资料里的(与推送出卡同一条);不改来源交的那份。
 				const post = real.report.post;
@@ -1044,11 +1057,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "预览请求体格式不对", { issues: issuesFromZod(parsed.error) }),
+				fail("invalid", t("cards.preview.badRequest"), { issues: issuesFromZod(parsed.error) }),
 			);
 		}
 		// 没配浏览器:要主人先去配(面板据 `not_configured` 摆出「一键检测并启用 Chrome」),不是等一会儿就好。
-		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
+		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", noChromeHint()));
 		const { kind, style, content, cardSkin, cardSkinKnobs } = parsed.data;
 		if (missingSubscription(content)) {
 			return respondFailure(c, fail("not_found", t("cards.preview.noSuchSubscription")));
@@ -1072,7 +1085,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] preview render failed (${kind}): ${msg}`);
-			return c.json<PreviewResponse>(fail("unavailable", `卡片渲染失败：${msg}`));
+			return c.json<PreviewResponse>(
+				fail("unavailable", t("cards.preview.renderFailed", { message: msg })),
+			);
 		}
 	});
 
@@ -1088,20 +1103,21 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	app.post("/skins/:id/screenshot", async (c) => {
 		const skinId = c.req.param("id");
 		if (!CardSkinIdSchema.safeParse(skinId).success) {
-			return respondFailure(c, fail("invalid", "皮肤 id 只准小写字母、数字、连字符"));
+			return respondFailure(c, fail("invalid", t("cards.skinShot.badId")));
 		}
 		const parsed = SkinShotRequestSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "请求体要 { kind, scene?, manifest }", {
+				fail("invalid", t("cards.skinShot.badRequest"), {
 					issues: issuesFromZod(parsed.error),
 				}),
 			);
 		}
-		if (!opts.cardSkins) return respondFailure(c, fail("unavailable", "皮肤库未就绪"));
+		if (!opts.cardSkins)
+			return respondFailure(c, fail("unavailable", t("cards.skinShot.storeNotReady")));
 		const renderer = await getScreenshotRenderer();
-		if (!renderer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
+		if (!renderer) return respondFailure(c, fail("not_configured", noChromeHint()));
 
 		const { kind, scene, manifest } = parsed.data;
 		const membershipTier = tiers.lowest();
@@ -1116,7 +1132,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			membershipTier,
 		});
 		// 草稿没过装包门是请求本身的毛病:400,逐条意见进 `issues`。
-		if (!out.ok) return respondFailure(c, failureOfChecks("invalid", "这版草稿", out.errors));
+		if (!out.ok)
+			return respondFailure(
+				c,
+				failureOfChecks("invalid", t("cards.skinShot.draftNoun"), out.errors),
+			);
 
 		// 同 `/preview`:截不出来是 200 + 失败那一支。
 		try {
@@ -1137,7 +1157,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] skin screenshot render failed (${kind}): ${msg}`);
-			return c.json<CardSkinShotResponse>(fail("unavailable", `卡片截图失败：${msg}`));
+			return c.json<CardSkinShotResponse>(
+				fail("unavailable", t("cards.skinShot.failed", { message: msg })),
+			);
 		}
 	});
 
@@ -1149,16 +1171,16 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "测试推送请求体格式不对", { issues: issuesFromZod(parsed.error) }),
+				fail("invalid", t("cards.testPush.badRequest"), { issues: issuesFromZod(parsed.error) }),
 			);
 		}
 		const { targetId, kind, style, content, cardSkin, cardSkinKnobs } = parsed.data;
 
-		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
+		if (!currentPuppeteer) return respondFailure(c, fail("not_configured", noChromeHint()));
 		const pipeline = opts.deps.runtime.pipeline;
 		if (!pipeline) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const target = opts.deps.store.getTargets().find((each) => each.id === targetId);
-		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
+		if (!target) return respondFailure(c, fail("not_found", t("cards.testPush.noTarget")));
 		if (missingSubscription(content)) {
 			return respondFailure(c, fail("not_found", t("cards.preview.noSuchSubscription")));
 		}
@@ -1176,7 +1198,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			log.warn(`[cards] test render failed (${kind}): ${msg}`);
-			return c.json<TestPushResponse>(fail("unavailable", `卡片渲染失败：${msg}`));
+			return c.json<TestPushResponse>(
+				fail("unavailable", t("cards.preview.renderFailed", { message: msg })),
+			);
 		}
 
 		const payload: NotificationPayload = {
@@ -1216,10 +1240,10 @@ function buildPreviewSpec(
 		return {
 			kind: "live",
 			props: buildLivePreviewProps(coverDataUrl),
-			title: "卡片预览 · 直播",
+			title: t("cards.sample.titleLive"),
 		};
 	}
-	return { kind: "post", props: buildDynamicPreviewProps(), title: "卡片预览 · 动态" };
+	return { kind: "post", props: buildDynamicPreviewProps(), title: t("cards.sample.titlePost") };
 }
 
 const SVG_COVER =
@@ -1246,18 +1270,18 @@ const PREVIEW_SC_DURATION_SEC = [60, 120, 300, 1800, 3600, 7200] as const;
 function buildLivePreviewProps(coverDataUrl?: string): LiveCardView {
 	return {
 		status: "streaming",
-		creatorName: "示例 UP 主",
+		creatorName: t("cards.sample.creatorName"),
 		creatorAvatarUrl: SVG_AVATAR_BLUE,
-		title: "【赛博朋克 2077】资料片实况首播！",
-		category: "游戏",
-		description: "今晚 7 点开始，欢迎围观。这是一段示例直播间简介。",
+		title: t("cards.sample.live.title"),
+		category: t("cards.sample.live.category"),
+		description: t("cards.sample.live.description"),
 		cover: coverDataUrl || SVG_COVER,
 		hasCover: true,
 		time: "2026-05-09 19:00:00",
-		currentViewers: "1.2万",
-		likes: "8.7万",
-		totalViewers: "3.4万",
-		followers: "215万",
+		currentViewers: t("cards.sample.stats.currentViewers"),
+		likes: t("cards.sample.stats.likes"),
+		totalViewers: t("cards.sample.stats.totalViewers"),
+		followers: t("cards.sample.stats.followers"),
 		followersDelta: "+128",
 	};
 }
@@ -1268,7 +1292,7 @@ function buildDynamicPreviewProps(): PostCardView {
 		{
 			style: "font-size:14px;line-height:1.7;color:#444;white-space:pre-line;",
 		},
-		"这是一段示例动态正文。你可以在「卡片预览·样式」里看到改色后的渲染效果。\n第二行用来演示换行和留白。",
+		t("cards.sample.post.text"),
 	);
 	// 附加内容块的示例(预约样式),让用户在预览里看到 attachment 块独立排版的位置。
 	const attachment = h(
@@ -1278,28 +1302,28 @@ function buildDynamicPreviewProps(): PostCardView {
 			h(
 				"div",
 				{ style: "font-size:14px;font-weight:bold;color:#18191C;" },
-				"示例预约 · 新版本直播",
+				t("cards.sample.post.attachmentTitle"),
 			),
 			h(
 				"div",
 				{ style: "font-size:12px;color:#999;margin-top:4px;" },
-				"6月30日 20:00 · 1.2万人预约",
+				t("cards.sample.post.attachmentLine"),
 			),
 		],
 	);
 	// 转发示例:被转发的原作品用同一套版式递归渲染,标签贴在内层作者名后。
 	const repost = {
 		creatorAvatarUrl: SVG_AVATAR_PINK,
-		creatorName: "被转发的 UP 主",
+		creatorName: t("cards.sample.post.repostCreator"),
 		creatorIsPremium: false,
 		time: "2026-05-08 10:30:00",
-		label: "投稿了视频",
+		label: t("cards.sample.post.repostLabel"),
 		isReposted: true as const,
 		topic: undefined,
 		text: h(
 			"div",
 			{ style: "font-size:14px;line-height:1.7;color:#444;" },
-			"这是被转发的原动态正文 —— 内部也跟随同一套版式（块顺序 / 显隐 / 边距）。",
+			t("cards.sample.post.repostText"),
 		),
 		attachment: null,
 		stats: undefined,
@@ -1307,14 +1331,18 @@ function buildDynamicPreviewProps(): PostCardView {
 	return {
 		node: {
 			creatorAvatarUrl: SVG_AVATAR_BLUE,
-			creatorName: "示例 UP 主",
+			creatorName: t("cards.sample.creatorName"),
 			creatorIsPremium: true,
 			time: "2026-05-09 18:24:00",
-			topic: "示例话题",
+			topic: t("cards.sample.post.topic"),
 			text,
 			attachment,
 			repost,
-			stats: { shares: "1.2万", comments: "5,891", likes: "8.7万" },
+			stats: {
+				shares: t("cards.sample.stats.shares"),
+				comments: "5,891",
+				likes: t("cards.sample.stats.likes"),
+			},
 		},
 	};
 }

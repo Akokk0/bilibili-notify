@@ -8,6 +8,7 @@ import {
 import { Hono } from "hono";
 import { manifestSourceDescriptor } from "../extensions/extension-source.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import { t } from "../i18n/index.js";
 import type { SourceView } from "../subscriptions/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { respondFailure } from "./respond-failure.js";
@@ -81,8 +82,8 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 	/** 键 → 来源的登录口;不成立就地回失败。 */
 	function authOf(sourceKey: string): { auth: SourceAuth } | { failure: Failure } {
 		const view = deps.runtime.sourceRegistry.get(sourceKey);
-		if (!view) return { failure: fail("unavailable", "这个来源没在跑") };
-		if (!view.auth) return { failure: fail("unsupported", "这个来源不用登录") };
+		if (!view) return { failure: fail("unavailable", t("sources.notRunning")) };
+		if (!view.auth) return { failure: fail("unsupported", t("sources.auth.unsupported")) };
 		return { auth: view.auth };
 	}
 
@@ -106,7 +107,7 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			return c.json(responseOf(found.auth));
 		} catch (err) {
 			log.error(`GET /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
-			return respondFailure(c, fail("unavailable", "读登录状态出错了，详情在日志里"));
+			return respondFailure(c, fail("unavailable", t("sources.auth.readFailed")));
 		}
 	});
 
@@ -115,14 +116,14 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 		if ("failure" in found) return respondFailure(c, found.failure);
 		try {
 			if (found.auth.state().status === "awaiting-scan") {
-				return respondFailure(c, fail("conflict", "已经有一个扫码登录在进行了，先重置再重新开始"));
+				return respondFailure(c, fail("conflict", t("sources.auth.alreadyScanning")));
 			}
 			const begun = await found.auth.beginLogin();
 			if (!begun.ok) return respondFailure(c, begun);
 			return c.json(responseOf(found.auth));
 		} catch (err) {
 			log.error(`POST /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
-			return respondFailure(c, fail("unavailable", "发起扫码登录失败，详情在日志里"));
+			return respondFailure(c, fail("unavailable", t("sources.auth.beginFailed")));
 		}
 	});
 
@@ -135,7 +136,7 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			return c.json(responseOf(found.auth));
 		} catch (err) {
 			log.error(`DELETE /api/sources/:sourceKey/auth threw: ${errorMessageOf(err)}`);
-			return respondFailure(c, fail("unavailable", "退出登录失败，详情在日志里"));
+			return respondFailure(c, fail("unavailable", t("sources.auth.logoutFailed")));
 		}
 	});
 

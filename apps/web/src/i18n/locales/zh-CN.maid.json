@@ -1,4 +1,12 @@
 {
+	"cards.content.membershipHint": "左侧渐变色管不到会员卡哦，背景色和徽章图是按会员档位自动定的～",
+	"cards.content.superchatHint": "左侧渐变色管不到 SC 哦，SC 卡的背景色是按价格档位自动定的～",
+	"cards.page.loading": "正在读卡片样式，主人稍等～",
+	"cards.preview.rendering": "正在画卡片，主人稍等～",
 	"cards.preview.sampleBecause": "主人，这张先拿示例顶上啦：{reason}",
+	"cards.remove.message": "主人，要清掉 {name} 的卡片样式与皮肤覆盖吗？清了以后它就跟着全局走，撤不回来哦。",
+	"cards.skin.byCardHint": "这种卡的排版与观感现在整个归皮肤管哦 —— 去下面的皮肤库挑一套，或者「复制一份」再改～",
+	"cards.testPush.delivered": "送到啦 · {ms}ms",
+	"cards.testPush.failed": "主人，没推出去：{reason}",
 	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}"
 }

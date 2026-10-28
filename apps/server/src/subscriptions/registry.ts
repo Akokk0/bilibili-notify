@@ -4,6 +4,7 @@ import {
 	type SourceAuth,
 	type SourceContext,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { DISPOSE_TIMEOUT_MS } from "../integrations/context.js";
 import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
@@ -74,7 +75,9 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 			if (externalIdRegex !== undefined) {
 				const checked = checkUserRegex(externalIdRegex);
 				if (!checked.ok) {
-					throw new Error(`source "${sourceKey}" 的 externalIdRegex 不合规: ${checked.reason}`);
+					throw new Error(
+						t("sources.registry.badExternalIdRegex", { sourceKey, reason: checked.reason }),
+					);
 				}
 			}
 			// 会员体系 id 全局唯一(R3 甲,档 key 只在体系内唯一):跟已在册的撞了、或自己这一份里写重了,
