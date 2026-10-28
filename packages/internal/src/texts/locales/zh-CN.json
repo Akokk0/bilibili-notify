@@ -1,0 +1,5 @@
+{
+	"internal.commands.aliasBlank": "别名不能为空或带首尾空格",
+	"internal.commands.prefixBlank": "前缀不能是纯空白",
+	"internal.commands.prefixLeadingSpace": "前缀不能以空白开头"
+}

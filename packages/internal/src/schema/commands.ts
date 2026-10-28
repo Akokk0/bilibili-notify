@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { packageText } from "../texts";
 
 /**
  * 私聊指令的可配置项(独立端专有)。
@@ -19,17 +20,25 @@ export const CommandConfigSchema = z.object({
 	prefix: z
 		.string()
 		// 纯空白的前缀等于一个敲不出来的前缀。空串是合法的(见上),所以这里放行 ""。
-		.refine((s) => s === "" || s.trim() !== "", { message: "前缀不能是纯空白" })
+		.refine((s) => s === "" || s.trim() !== "", {
+			error: () => packageText("internal.commands.prefixBlank"),
+		})
 		// dispatcher 匹配前会先把入站文本 trim 两头 —— 以空白**开头**的前缀
 		// (" /")永远匹配不上,和纯空白同一种「敲不出来」;尾空格(`bn `)照旧合法。
-		.refine((s) => s === s.trimStart(), { message: "前缀不能以空白开头" })
+		.refine((s) => s === s.trimStart(), {
+			error: () => packageText("internal.commands.prefixLeadingSpace"),
+		})
 		.default("/"),
 	aliases: z
 		.record(
 			z.string(),
 			// 别名两头的空白永远匹配不上(入站文本会被 trim),留着只会让主人以为
 			// 自己配好了却怎么敲都不响。空字符串同理。
-			z.array(z.string().refine((s) => s.trim() === s && s.length > 0, "别名不能为空或带首尾空格")),
+			z.array(
+				z.string().refine((s) => s.trim() === s && s.length > 0, {
+					error: () => packageText("internal.commands.aliasBlank"),
+				}),
+			),
 		)
 		.default({}),
 });

@@ -3,7 +3,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { bindPackageText } from "../../texts";
 import { CommandConfigSchema } from "../commands";
+
+/** 第一条拒收的原因。 */
+const reasonOf = (input: unknown): string | undefined =>
+	CommandConfigSchema.safeParse(input).error?.issues[0]?.message;
 
 describe("CommandConfigSchema", () => {
 	it("空对象补出一套能用的默认", () => {
@@ -43,5 +48,23 @@ describe("CommandConfigSchema", () => {
 
 	it("空别名拒绝", () => {
 		expect(() => CommandConfigSchema.parse({ aliases: { mute: [""] } })).toThrow();
+	});
+
+	it("拒收的原因是今天那三句中文", () => {
+		expect(reasonOf({ prefix: "   " })).toBe("前缀不能是纯空白");
+		expect(reasonOf({ prefix: " /" })).toBe("前缀不能以空白开头");
+		expect(reasonOf({ aliases: { mute: [" 静音"] } })).toBe("别名不能为空或带首尾空格");
+	});
+
+	// 规则在加载时就建好了,原因要等校验那一刻才取:两端交了取字口,原因就跟着那一端的语言走
+	it("拒收的原因在校验那一刻取字:交了取字口就走它", () => {
+		const binding = bindPackageText((key) => `译:${key}`);
+		try {
+			expect(reasonOf({ prefix: "   " })).toBe("译:internal.commands.prefixBlank");
+			expect(reasonOf({ prefix: " /" })).toBe("译:internal.commands.prefixLeadingSpace");
+			expect(reasonOf({ aliases: { mute: [""] } })).toBe("译:internal.commands.aliasBlank");
+		} finally {
+			binding.dispose();
+		}
 	});
 });

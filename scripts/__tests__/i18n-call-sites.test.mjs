@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -29,7 +29,10 @@ import {
  *   `useT()` 放在组件的哪一层(条件里、普通函数里、回调里),交给 Biome 的 `useHookAtTopLevel`
  *   (react 域,`biome.json` 里开着,对 `.tsx` 实测会报);这里只查它不在模块顶层。
  *
- * 范围:服务端与面板的源码(不含测试),各端对各端的 zh-CN 译文(平实版与女仆层合起来)。
+ * 范围:服务端与面板的源码(不含测试),各端对各端的 zh-CN 译文(平实版与女仆层合起来;两端的字典垫着
+ * 包字典,所以包字典的句子也算);另有第三家「包」:各包与 contract 的 `src` 里 `packageText(…)` 的调用,
+ * 对包字典(ADR-0037 决策 6 下 10-28 的 🔗)。包里引入包字典入口别的名字(交取字口的那几样)一律认不出 ——
+ * 取字口只由两端交,两端各在建 store 的文件里交一次(`packageBindingsOf` 那条钉着)。
  * 全程走语法树,不建类型检查器:注释里、字符串里的 `t("x")` 天生不是调用节点。
  *
  * 认得哪些写法(其余一律红,见下):
@@ -52,14 +55,26 @@ import {
  *
  * 没认的少见写法:`(function () {…}).call(null)`、`Object.groupBy`、`String.replace` 的回调。
  *
- * 已知的漏:模块顶层调用本文件里一个取字的函数(`const HELP = buildHelp()`)语法上看不出,没有调用图;
+ * 已知的漏:两端的源码直接引入 `packageText` 不在任何一家的范围里(两端该用自己的 `t`);
+ * 模块顶层调用本文件里一个取字的函数(`const HELP = buildHelp()`)语法上看不出,没有调用图;
  * 构造器里 `this.x = t(…)` 不判;`t` 当参数传进别处再调,也看不出;别处直接 `createI18n` 另起一个 store、
  * `apps/desktop/src` 不在范围里。
  */
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** 两端各自的译文入口。`minCalls`:至少扫到几处调用(扫空了比没有还糟);面板从 3b-43 提交 6 起有 2 处(拓展详情页的译文问题标题、装包后的跳过语言文件),3b-31 提交 4 又加了链接预览回复形式的 3 档标签,共 5 处,下限收到 5。 */
+/** 有源码目录的包,加上 contract:第三家「包」的范围。 */
+const PACKAGE_ROOTS = [
+	...readdirSync(join(REPO_ROOT, "packages"))
+		.map((name) => `packages/${name}/src`)
+		.filter((dir) => existsSync(join(REPO_ROOT, dir))),
+	"apps/contract/src",
+].sort();
+
+/** 包字典的目录;两端的字典垫着它(`layeredOnPackages`)。 */
+const PACKAGE_LOCALE_DIR = "packages/internal/src/texts/locales";
+
+/** 两端各自的译文入口,加上包这一家。`minCalls`:至少扫到几处调用(扫空了比没有还糟);面板从 3b-43 提交 6 起有 2 处(拓展详情页的译文问题标题、装包后的跳过语言文件),3b-31 提交 4 又加了链接预览回复形式的 3 档标签,共 5 处,下限收到 5。 */
 export const ENDS = {
 	server: {
 		root: "apps/server/src",
@@ -67,6 +82,7 @@ export const ENDS = {
 		localeDir: "apps/server/src/i18n/locales",
 		valueNames: ["t", "i18n"],
 		minCalls: 1,
+		layeredOnPackages: true,
 	},
 	web: {
 		root: "apps/web/src",
@@ -76,8 +92,22 @@ export const ENDS = {
 		minCalls: 5,
 		// 面板的组件里取字要订阅(useT),直接调 i18n.t 不会在切语言后重画
 		react: true,
+		layeredOnPackages: true,
+	},
+	packages: {
+		roots: PACKAGE_ROOTS,
+		store: "packages/internal/src/texts/index",
+		// 别的包按包名引入,internal 自己按相对路径引入
+		specifiers: ["@bilibili-notify/internal/texts"],
+		localeDir: PACKAGE_LOCALE_DIR,
+		valueNames: ["packageText"],
+		// 4-56 收的样例:指令前缀与别名的三句校验报错
+		minCalls: 3,
 	},
 };
+
+/** 一家的源码目录。 */
+const rootsOf = (end) => end.roots ?? [end.root];
 
 /**
  * 认不出的写法的放行名单:文件 → `{ count, reason }`。开张时为空。
@@ -104,9 +134,11 @@ export function sentencesOf(plain, maid = {}) {
 const readJson = (path) => JSON.parse(readFileSync(join(REPO_ROOT, path), "utf8"));
 
 function loadSentences(end) {
+	const layer = (dir, file) => readJson(`${dir}/${file}`);
+	const under = end.layeredOnPackages ? PACKAGE_LOCALE_DIR : undefined;
 	return sentencesOf(
-		readJson(`${end.localeDir}/zh-CN.json`),
-		readJson(`${end.localeDir}/zh-CN.maid.json`),
+		{ ...(under && layer(under, "zh-CN.json")), ...layer(end.localeDir, "zh-CN.json") },
+		{ ...(under && layer(under, "zh-CN.maid.json")), ...layer(end.localeDir, "zh-CN.maid.json") },
 	);
 }
 
@@ -281,11 +313,12 @@ function insideComponentOrHook(node) {
 const lineOf = (source, node) =>
 	source.ast.getLineAndCharacterOfPosition(node.getStart(source.ast)).line + 1;
 
-const isStorePath = (file, specifier, store) => {
+const isStorePath = (file, specifier, end) => {
+	if (end.specifiers?.includes(specifier)) return true;
 	const resolved = resolveSpecifier(file, specifier);
 	if (resolved === undefined) return false;
 	const bare = stripExt(resolved.replace(/\/+$/, ""));
-	return bare === store || `${bare}/index` === store;
+	return bare === end.store || `${bare}/index` === end.store;
 };
 
 /** 一个源文件 export 出来的名字。 */
@@ -311,6 +344,26 @@ export function exportedNames(source) {
 		}
 	}
 	return names;
+}
+
+/**
+ * 建 store 的文件里,模块顶层的 `bindPackageText(i18n.t)` 有几处(两端各要正好一处:
+ * 忘了交,包里的话永远是简体中文,别的全绿)。
+ */
+export function packageBindingsOf(source) {
+	return source.ast.statements.filter((statement) => {
+		if (!ts.isExpressionStatement(statement)) return false;
+		const call = unwrap(statement.expression);
+		if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return false;
+		if (call.expression.text !== "bindPackageText" || call.arguments.length !== 1) return false;
+		const arg = unwrap(call.arguments[0]);
+		return (
+			ts.isPropertyAccessExpression(arg) &&
+			ts.isIdentifier(arg.expression) &&
+			arg.expression.text === "i18n" &&
+			arg.name.text === "t"
+		);
+	}).length;
 }
 
 /**
@@ -366,18 +419,18 @@ export function analyzeFile(source, end, sentences) {
 
 	// 1. 入口的引入:只认具名的值引入,别的形式都认不出
 	// 入口导出的名字 → 本地名的集合(同一个名字可以引入多次:`import { t as tr, t }`)
-	const localsOf = { t: new Set(), i18n: new Set(), useT: new Set() };
+	const localsOf = { t: new Set(), i18n: new Set(), useT: new Set(), packageText: new Set() };
 	for (const statement of ast.statements) {
 		if (ts.isExportDeclaration(statement) && statement.moduleSpecifier !== undefined) {
 			const specifier = literalKey(statement.moduleSpecifier);
-			if (specifier !== undefined && isStorePath(path, specifier, end.store)) {
+			if (specifier !== undefined && isStorePath(path, specifier, end)) {
 				report("unrecognised", statement, "转出译文入口,下游的取字就追不到了");
 			}
 			continue;
 		}
 		if (!ts.isImportDeclaration(statement)) continue;
 		const specifier = literalKey(statement.moduleSpecifier);
-		if (specifier === undefined || !isStorePath(path, specifier, end.store)) continue;
+		if (specifier === undefined || !isStorePath(path, specifier, end)) continue;
 		const clause = statement.importClause;
 		if (clause === undefined || clause.isTypeOnly) continue;
 		if (clause.name !== undefined) {
@@ -404,7 +457,7 @@ export function analyzeFile(source, end, sentences) {
 	// 动态引入与 require 也追不到
 	for (const ref of importsOf(source)) {
 		if ((ref.kind === "dynamic" || ref.kind === "require") && !ref.typeOnly) {
-			if (isStorePath(path, ref.specifier, end.store)) {
+			if (isStorePath(path, ref.specifier, end)) {
 				findings.push({ code: "unrecognised", line: ref.line, detail: "动态引入译文入口" });
 			}
 		}
@@ -412,7 +465,8 @@ export function analyzeFile(source, end, sentences) {
 
 	const i18nNames = localsOf.i18n;
 	const useTNames = localsOf.useT;
-	const tNames = new Set(localsOf.t);
+	// 包里的 packageText 与两端的 t 是同一种:只认直接调用
+	const tNames = new Set([...localsOf.t, ...localsOf.packageText]);
 
 	// 2. 面板:`const x = useT()` 接住的名字就是取字函数
 	const okDeclarations = new Set();
@@ -1052,6 +1106,55 @@ export function plain() { return new Intl.NumberFormat(i18n.state().locale); }
 		expect([...names].sort()).toEqual(["i18n", "t", "useT"]);
 	});
 
+	describe("包:packageText 的调用", () => {
+		const PKG_FILE = "packages/image/src/blocks/sample.tsx";
+		const PKG_IMPORT = 'import { packageText } from "@bilibili-notify/internal/texts";\n';
+		const pkgOf = (body, imports = PKG_IMPORT, file = PKG_FILE) =>
+			analyzeFile(parseSource(file, imports + body), ENDS.packages, SENTENCES);
+
+		it("经包名引入、经相对路径引入都追得到;函数里的调用干净,zod 报错包成函数也干净", () => {
+			const viaName = pkgOf('export const f = () => packageText("a.greet", { name: "x" });');
+			expect(viaName.findings).toEqual([]);
+			expect(viaName.calls).toBe(1);
+			const viaPath = pkgOf(
+				'export const Rule = z.string().refine(ok, { error: () => packageText("a.plain") });',
+				'import { packageText } from "../texts";\n',
+				"packages/internal/src/schema/sample.ts",
+			);
+			expect(viaPath.findings).toEqual([]);
+			expect(viaPath.calls).toBe(1);
+		});
+
+		it("顶层取字(zod 报错没包成函数)、键不在包字典里、参数对不上,照报", () => {
+			expect(
+				codes(pkgOf('export const Rule = z.string().min(1, packageText("a.plain"));')),
+			).toEqual(["top-level"]);
+			expect(codes(pkgOf('export const f = () => packageText("a.nope");'))).toEqual([
+				"unknown-key",
+			]);
+			expect(codes(pkgOf('export const f = () => packageText("a.greet");'))).toEqual(["values"]);
+		});
+
+		it("包里引入交取字口的那几样是认不出的写法:取字口只由两端交", () => {
+			expect(
+				codes(
+					pkgOf(
+						"export {};",
+						'import { bindPackageText } from "@bilibili-notify/internal/texts";\n',
+					),
+				),
+			).toEqual(["unrecognised"]);
+		});
+	});
+
+	it("packageBindingsOf:只数模块顶层的 bindPackageText(i18n.t)", () => {
+		const count = (text) => packageBindingsOf(parseSource("apps/server/src/i18n/index.ts", text));
+		expect(count("bindPackageText(i18n.t);")).toBe(1);
+		expect(count("export function f() { bindPackageText(i18n.t); }")).toBe(0);
+		expect(count("bindPackageText(t);")).toBe(0);
+		expect(count("bindPackageText(i18n.t); bindPackageText(i18n.t);")).toBe(2);
+	});
+
 	describe("放行名单:按文件的数目,正好相等", () => {
 		const finding = (code) => ({ code, line: 1, detail: "d" });
 		const unrecognised = Array.from({ length: 2 }, () => finding("unrecognised"));
@@ -1091,7 +1194,7 @@ export function plain() { return new Intl.NumberFormat(i18n.state().locale); }
 // 扫全仓
 // ---------------------------------------------------------------------------
 
-/** 两端各自的译文入口文件本身不扫(里面的 `export const t = i18n.t` 就是定义)。 */
+/** 各家的译文入口文件本身不扫(里面的 `export const t = i18n.t` 就是定义)。 */
 const STORE_FILES = Object.values(ENDS).map((end) => `${end.store}.ts`);
 
 /** 真去扫仓库:端 → { files: 文件 → findings, calls }。 */
@@ -1101,7 +1204,7 @@ export function scanRepo() {
 		const sentences = loadSentences(end);
 		const files = {};
 		let calls = 0;
-		for (const file of listSources([end.root])) {
+		for (const file of listSources(rootsOf(end))) {
 			if (STORE_FILES.includes(file)) continue;
 			const analysis = analyzeFile(parseSource(file), end, sentences);
 			calls += analysis.calls;
@@ -1115,10 +1218,12 @@ export function scanRepo() {
 /** 放行名单里属于这一端的文件(按路径前缀分端)。 */
 const allowlistOf = (name) =>
 	Object.fromEntries(
-		Object.entries(ALLOWLIST).filter(([file]) => file.startsWith(`${ENDS[name].root}/`)),
+		Object.entries(ALLOWLIST).filter(([file]) =>
+			rootsOf(ENDS[name]).some((root) => file.startsWith(`${root}/`)),
+		),
 	);
 
-describe("服务端与面板的取字调用", () => {
+describe("服务端、面板与各包的取字调用", () => {
 	const scanned = scanRepo();
 
 	for (const [name, end] of Object.entries(ENDS)) {
@@ -1150,11 +1255,19 @@ describe("服务端与面板的取字调用", () => {
 	it("放行名单里的文件都在某一端的范围里(写错路径的名单项不会静默失效)", () => {
 		for (const file of Object.keys(ALLOWLIST)) {
 			expect(
-				Object.values(ENDS).some((end) => file.startsWith(`${end.root}/`)),
+				Object.values(ENDS).some((end) => rootsOf(end).some((root) => file.startsWith(`${root}/`))),
 				`${file} 不在任何一端的范围里`,
 			).toBe(true);
 		}
 	});
+
+	for (const [name, end] of Object.entries(ENDS)) {
+		if (!end.layeredOnPackages) continue;
+		it(`${name}:建 store 的文件里在模块顶层把取字口交给包,正好一次`, () => {
+			// 忘了交,包里的话永远是简体中文,别的全绿
+			expect(packageBindingsOf(parseSource(`${end.store}.ts`))).toBe(1);
+		});
+	}
 
 	it("两端的译文都读得到、服务端的译文不是空的", () => {
 		expect(loadSentences(ENDS.server).size).toBeGreaterThan(0);

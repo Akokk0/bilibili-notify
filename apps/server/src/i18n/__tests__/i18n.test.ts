@@ -23,6 +23,12 @@ describe("服务端字典 store", () => {
 		expect(i18n.state().locale).toBe("en");
 	});
 
+	it("包字典垫在底下:包里的句子经服务端的 t 也取得到", () => {
+		expect(t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
+		i18n.set({ locale: "en" });
+		expect(t("internal.commands.prefixBlank")).toBe("前缀不能是纯空白");
+	});
+
 	it("中文的女仆层第 4 期才写:现在要女仆口吻也还是底里那句", () => {
 		i18n.set({ voice: "plain" });
 		expect(t("command.report.busy")).toBe("还在跑呢，稍等一下下～");

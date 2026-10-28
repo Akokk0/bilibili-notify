@@ -8,7 +8,7 @@ import { findNodes, listSources, parseSource, srcRootsUnder, ts } from "../sourc
 /**
  * 写死的中文棘轮:服务端、面板与各包的源码里,带汉字的字符串节点只许少、不许多
  * (ADR-0037 决策 16 第四个小点;docs/1.0/architecture.md 第二层静态扫描「写死的中文」那一行)。
- * 给人看的话进字典(服务端 `t`、面板 `useT()`),不再写死在源码里;这道守卫让「还剩多少处」看得见、只往下走,
+ * 给人看的话进字典(服务端 `t`、面板 `useT()`、各包与 contract 的 `packageText`),不再写死在源码里;这道守卫让「还剩多少处」看得见、只往下走,
  * 管到第 4 期结束。
  *
  * - 范围:`apps/server/src`、`apps/web/src`、`apps/contract/src`、`packages/<包>/src`,不含测试、`.d.ts`。
@@ -24,7 +24,7 @@ import { findNodes, listSources, parseSource, srcRootsUnder, ts } from "../sourc
  * - 白名单(整个文件放行):整份都是「永远不翻」的中文 —— 给模型的话(提示词、工具回给模型的话,决策 11)与词云停用词表。
  *   提示词和给人看的字混在一个文件里的,照常记棘轮(行内注释写明),到不了 0。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红,清零了整行删。
- *   **涨了一律红,调格前问主人**(包与 contract 也一样:它们没有字典,新话想进来也要先问)。
+ *   **涨了一律红,调格前问主人**(包与 contract 也一样)。
  *
  * 抓不到的(靠审查与别的守卫):
  * - 先赋给变量再交给日志的(`const m = "坏了"; logger.warn(m);`):字符串在日志调用外面,照算(钉住现状,漏排)。
@@ -66,7 +66,7 @@ export const ALLOWLIST = {
 
 /** 报错后面带的那句:越界怎么办。 */
 export const ADVICE =
-	"若是新写的给人看的话:服务端写进 `apps/server/src/i18n/locales/zh-CN.json` 经 `t(...)` 取,面板写进 `apps/web/src/i18n/locales/zh-CN.json` 经 `useT()` 取;若是包或 contract 里的(没有字典)、给模型的提示词、或这道守卫的判据打不准:去问主人,由主人定是加上限还是改判据,不要自己加,也不要起别的形状躲;数降了就当场把这一格调低,清零了整行删";
+	"若是新写的给人看的话:服务端写进 `apps/server/src/i18n/locales/zh-CN.json` 经 `t(...)` 取,面板写进 `apps/web/src/i18n/locales/zh-CN.json` 经 `useT()` 取,各包与 contract 写进 `packages/internal/src/texts/locales/zh-CN.json`(键用包名开头)经 `packageText(...)` 取;若是给模型的提示词、或这道守卫的判据打不准:去问主人,由主人定是加上限还是改判据,不要自己加,也不要起别的形状躲;数降了就当场把这一格调低,清零了整行删";
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数:365 个文件 5601 处)。只许往下调。行内注释只如实写这一格是什么。
@@ -408,7 +408,6 @@ export const RATCHET = {
 	"packages/internal/src/format.ts": 14,
 	"packages/internal/src/platform-registry.ts": 17,
 	"packages/internal/src/schema/card-skin.ts": 48,
-	"packages/internal/src/schema/commands.ts": 3,
 	"packages/internal/src/schema/common.ts": 3,
 	"packages/internal/src/schema/config-fields.ts": 27,
 	"packages/internal/src/schema/extension-manifest.ts": 33,

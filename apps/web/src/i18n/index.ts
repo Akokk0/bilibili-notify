@@ -6,6 +6,11 @@ import {
 	type Locale,
 	type LocaleDicts,
 } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import { useSyncExternalStore } from "react";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";
@@ -29,12 +34,16 @@ export const DICTS = {
  * 初值是浏览器里记的(没记过:语言按浏览器猜、口吻取规则默认,ADR-0037 决策 7);
  * 登录后 `useTextSettings` 再换成服务端设置里的。
  */
-export const i18n = createI18n<WebTextKey, Locale>({
-	dicts: DICTS,
+export const i18n = createI18n<WebTextKey | PackageTextKey, Locale>({
+	// 包字典垫在底下:组件用 useT() 也取得到包里的句子
+	dicts: withPackageDicts(DICTS),
 	fallback: "zh-CN",
 	locale: readLocalePreference(),
 	voice: readVoicePreference(),
 });
+
+// 包里的话(`packageText`)跟着面板的语言与口吻走(ADR-0037 决策 6 下 10-28 的 🔗)
+bindPackageText(i18n.t);
 
 /** 组件里取字:`const t = useT()`。切语言或口吻后拿到的 `t` 换了引用,已画出来的组件自己重画。 */
 export function useT() {

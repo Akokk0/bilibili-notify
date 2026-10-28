@@ -38,6 +38,7 @@
 		"./result": "./lib/result.mjs",
 		"./template-defaults": "./lib/template-defaults.mjs",
 		"./template-variables": "./lib/template-variables.mjs",
+		"./texts": "./lib/texts/index.mjs",
 		"./texts/builtin": "./lib/texts/builtin/index.mjs",
 		"./update": "./lib/update.mjs",
 		"./package.json": "./package.json"

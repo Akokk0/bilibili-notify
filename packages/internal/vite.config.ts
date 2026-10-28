@@ -24,6 +24,7 @@ export default defineConfig({
 			"src/result.ts",
 			"src/template-defaults.ts",
 			"src/template-variables.ts",
+			"src/texts/index.ts",
 			"src/texts/builtin/index.ts",
 			"src/update.ts",
 		],

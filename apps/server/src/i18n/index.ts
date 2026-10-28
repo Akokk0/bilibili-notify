@@ -6,6 +6,11 @@ import {
 	type Locale,
 	type LocaleDicts,
 } from "@bilibili-notify/internal/i18n";
+import {
+	bindPackageText,
+	type PackageTextKey,
+	withPackageDicts,
+} from "@bilibili-notify/internal/texts";
 import en from "./locales/en.json" with { type: "json" };
 import ja from "./locales/ja.json" with { type: "json" };
 import zhCN from "./locales/zh-CN.json" with { type: "json" };
@@ -27,12 +32,16 @@ export const DICTS = {
 /**
  * 整台一种语言。初值简中 + 女仆:今天写死的话全是女仆口吻,语言与口吻的设置接进来是 3b-10。
  * 出字那一刻读当前那份,所以别在模块顶层调 `t` 后存成常量。
+ * 包字典垫在底下(`withPackageDicts`),`t` 也取得到包里的句子。
  */
-export const i18n = createI18n<ServerTextKey, Locale>({
-	dicts: DICTS,
+export const i18n = createI18n<ServerTextKey | PackageTextKey, Locale>({
+	dicts: withPackageDicts(DICTS),
 	fallback: "zh-CN",
 	locale: "zh-CN",
 	voice: "maid",
 });
 
 export const t = i18n.t;
+
+// 包里的话(`packageText`)跟着服务端的语言与口吻走(ADR-0037 决策 6 下 10-28 的 🔗)
+bindPackageText(i18n.t);

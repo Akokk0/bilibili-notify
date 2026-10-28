@@ -131,6 +131,11 @@ const SUBPATHS = [
 		why: "面板拼提示条、服务端探针取变量名",
 	},
 	{
+		subpath: "./texts",
+		source: "src/texts/index.ts",
+		why: "各包与 contract 取包字典里的话,两端把包字典垫进自己的字典并交出取字口",
+	},
+	{
 		subpath: "./texts/builtin",
 		source: "src/texts/builtin/index.ts",
 		why: "面板与服务端取出厂文案与内置人格",
@@ -257,7 +262,7 @@ function zeroDependencyProblemsInSource(source, allowedSources) {
 			const resolved = resolveSpecifier(source.path, ref.specifier);
 			if (
 				resolved !== undefined &&
-				/^packages\/internal\/src\/(?:[\w-]+\/)*locales\/[\w-]+\.json$/.test(resolved)
+				/^packages\/internal\/src\/(?:[\w-]+\/)*locales\/[\w-]+(?:\.maid)?\.json$/.test(resolved)
 			) {
 				return false;
 			}
@@ -341,6 +346,7 @@ describe("internal 子路径源文件的零依赖纪律", () => {
 		const nested = (text) =>
 			zeroDependencyProblemsFromText("packages/internal/src/texts/builtin/index.ts", text);
 		expect(nested('import zh from "./locales/zh-CN.json";')).toEqual([]);
+		expect(nested('import maid from "./locales/zh-CN.maid.json";')).toEqual([]);
 		expect(nested('import zh from "./dicts/zh-CN.json";')).toHaveLength(1);
 	});
 });

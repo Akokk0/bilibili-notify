@@ -25,7 +25,8 @@ import { parseExtensionManifest } from "../../packages/internal/src/schema/exten
  * 译文文件的键与占位符(ADR-0037 决策 6):各语言的译文之间、女仆层与平实版之间,
  * 键、占位符、带数量的句子得对得上。类型只把键推成 string,推不出占位符与单复数类别,所以由这一道钉着。
  *
- * - 范围:BN 两端的译文目录(服务端、面板)。仓里拓展自带的译文另列一张表(`EXTENSION_LOCALE_DIRS`),
+ * - 范围:BN 自己的译文目录(服务端、面板、internal 的包字典与出厂文字)。包字典垫在两端字典底下,
+ *   所以另查一条「键的第一段」:包字典的键用包名开头,两端的不许(`keyRootProblems`)。仓里拓展自带的译文另列一张表(`EXTENSION_LOCALE_DIRS`),
  *   用宿主读目录时同一份解析查「零问题」,不进 `DICT_DIRS`。
  *   「新开的译文目录不许被静默漏查」由 `findLocalesDirs` 那一条钉着:仓里叫 `locales` 的目录必须等于两张表之和。
  * - 读的是 JSON 不是源码,没有「注释被当成代码」的问题。
@@ -42,8 +43,50 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const DICT_DIRS = [
 	"apps/server/src/i18n/locales",
 	"apps/web/src/i18n/locales",
+	"packages/internal/src/texts/locales",
 	"packages/internal/src/texts/builtin/locales",
 ];
+
+/** 包字典(ADR-0037 决策 6 下 10-28 的 🔗):各包与 contract 的话,两端建字典时垫在底下。 */
+export const PACKAGE_DICT_DIR = "packages/internal/src/texts/locales";
+
+/** 垫着包字典的两端字典。合在一起之后同一个键只能有一处来历,所以两边的键第一段分开。 */
+export const PACKAGE_LAYERED_DIRS = ["apps/server/src/i18n/locales", "apps/web/src/i18n/locales"];
+
+/** 包字典的键第一段是包名。今天有写死中文的包加 contract;别的包开始有话了再加。 */
+export const PACKAGE_KEY_ROOTS = [
+	"internal",
+	"ai",
+	"image",
+	"ui",
+	"http",
+	"push",
+	"storage",
+	"contract",
+];
+
+/**
+ * 键的第一段:包字典的键得用包名开头,垫着它的两端字典的键不许用包名开头(否则合起来分不清
+ * 一句是谁的,同名还会被本端那句盖掉)。回问题清单,空 = 干净。
+ */
+export function keyRootProblems({ packageKeys, endKeys }) {
+	const rootOf = (key) => stemOf(key).split(".")[0];
+	const roots = PACKAGE_KEY_ROOTS.join(" / ");
+	const problems = [];
+	for (const key of new Set(packageKeys)) {
+		if (!PACKAGE_KEY_ROOTS.includes(rootOf(key))) {
+			problems.push(`包字典的键 ${key} 第一段不是包名(${roots})`);
+		}
+	}
+	for (const [dir, keys] of Object.entries(endKeys)) {
+		for (const key of new Set(keys)) {
+			if (PACKAGE_KEY_ROOTS.includes(rootOf(key))) {
+				problems.push(`${dir} 的键 ${key} 第一段是包名:包里的话住包字典,两端的键别用包名开头`);
+			}
+		}
+	}
+	return problems;
+}
 
 /**
  * 仓里拓展自带的译文目录(ADR-0037 决策 14)。**不进 `DICT_DIRS`**:拓展的译文没有女仆层、不要求
@@ -561,6 +604,28 @@ describe("checkDictionaries 的判据(样例)", () => {
 	});
 });
 
+describe("键的第一段(样例)", () => {
+	it("包字典的键第一段得是包名;两端字典的键第一段不许是包名", () => {
+		expect(
+			keyRootProblems({
+				packageKeys: ["internal.commands.prefixBlank", "ai.tool.search", "contract.skin.x"],
+				endKeys: { "apps/server/src/i18n/locales": ["command.framework.failed", "nouns.creator"] },
+			}),
+		).toEqual([]);
+		expect(
+			keyRootProblems({
+				packageKeys: ["commands.prefixBlank", "web.hi"],
+				endKeys: { "apps/web/src/i18n/locales": ["internal.x", "ui.ok", "extension.detail.title"] },
+			}),
+		).toEqual([
+			"包字典的键 commands.prefixBlank 第一段不是包名(internal / ai / image / ui / http / push / storage / contract)",
+			"包字典的键 web.hi 第一段不是包名(internal / ai / image / ui / http / push / storage / contract)",
+			"apps/web/src/i18n/locales 的键 internal.x 第一段是包名:包里的话住包字典,两端的键别用包名开头",
+			"apps/web/src/i18n/locales 的键 ui.ok 第一段是包名:包里的话住包字典,两端的键别用包名开头",
+		]);
+	});
+});
+
 describe("读目录的两个函数(临时目录样例)", () => {
 	const withTree = (build, run) => {
 		const root = mkdtempSync(join(tmpdir(), "i18n-dicts-"));
@@ -667,6 +732,20 @@ describe("BN 的译文目录", () => {
 	it.each(DICT_DIRS)("%s:键、占位符、单复数、女仆层都对得上", (dir) => {
 		const { locales } = loadDictionaryDir(dir);
 		expect(checkDictionaries({ locales })).toEqual([]);
+	});
+
+	it("包字典与垫着它的两端字典,键的第一段各守各的", () => {
+		const keysOf = (dir) =>
+			Object.values(loadDictionaryDir(dir).locales).flatMap((layers) =>
+				Object.values(layers).flatMap((layer) => Object.keys(layer)),
+			);
+		expect(
+			keyRootProblems({
+				packageKeys: keysOf(PACKAGE_DICT_DIR),
+				endKeys: Object.fromEntries(PACKAGE_LAYERED_DIRS.map((dir) => [dir, keysOf(dir)])),
+			}),
+		).toEqual([]);
+		expect(keysOf(PACKAGE_DICT_DIR).length).toBeGreaterThan(0);
 	});
 
 	it("仓里叫 locales 的目录必须等于 DICT_DIRS 加 EXTENSION_LOCALE_DIRS —— 新开的译文目录不许被静默漏查", () => {

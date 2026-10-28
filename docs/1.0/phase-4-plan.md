@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片 |
-| 已完成 | 11 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11） |
+| 已完成 | 12 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56） |
 | 迁移修订号 / 备份版本 | 52 / 22（第 4 期开工前） |
 
 ## 出期条件
@@ -49,7 +49,7 @@
 | 4-11 ✅ | 设置规则 → 设置项的导出函数，规则只写一份（construction-plan「读设置的写法简化」，10-14 主人定第 4 期）。落成（10-28，`ddf33ecc3`）：`settingsFieldsFromSchema`；加载时的对表搬进 `internal/schema/`；门开构建子路径 `@bilibili-notify/extension/build`，桥与假源的清单设置项由构建导出；详见提交说明 | `packages/internal/src/schema/`、`packages/extension`、桥、假源 | 无 | 否 | 中 |
 | 4-12 ✅ | `GET /api/sources`：每个来源 `{ key, descriptor, has }`，停用 / 启动失败的拓展也列；`SourceDescriptor` 补格；面板 `useSources()`；对拍 N09 的服务端半。落成（10-27，`acb6b6180`）：B 站钮颜色改定值 `#fb7299`、不再跟皮肤（主人定）；`Subs.tsx` 替身 18 → 27（主人点头，随 4-15 去 `BILI_PLATFORM` 哨兵时消）；`featureHints` 挪 4-27、`membershipPrograms` 随 4-26、`has.preview` 随 4-14；拓展描述取装载器那份清单（按当前语言） | `internal/source.ts`、`routes/sources.ts`、B 站与拓展来源、清单 schema、contract、web hook | 无 | 否 | 中 |
 | **乙 服务端读口与机制** | | | | | |
-| 4-56 | 包字典与取字口（Q1b）：internal 新开一份两端共用的包字典（平实版 + 中文女仆层，形状同两端那套）；面板与服务端建字典时合进来，启动时把取字口交给包（ADR-0037 决策 1 那条路）；键的类型从这份 JSON 推，`i18n-dicts` 守卫跟上。只立机制、收一两处当样例，大头归 4-53e | `packages/internal/src/` 新子路径与 `locales/`、两端 `i18n/`、守卫 | 无 | 否 | 中 |
+| 4-56 ✅ | 包字典与取字口（Q1b）：internal 新开一份两端共用的包字典（平实版 + 中文女仆层，形状同两端那套）；面板与服务端建字典时合进来，启动时把取字口交给包（ADR-0037 决策 1 那条路）；键的类型从这份 JSON 推，`i18n-dicts` 守卫跟上。只立机制、收一两处当样例，大头归 4-53e。落成（10-28）：主人定两份字都住 `texts/` 底下 —— 先把出厂文字搬到 `texts/builtin/`（子路径改叫 `@bilibili-notify/internal/texts/builtin`，单独一个提交），包字典是 `@bilibili-notify/internal/texts`（`packageText` / `bindPackageText` / `withPackageDicts` / `PACKAGE_DICTS`，口子的细节见 ADR-0037 决策 6 下 4-56 那条 🔗）；两端的 `DICTS` 不变、建 store 时才垫包字典（两端的接线测试比的是同一个模块对象）；「两端各交一次取字口」改由取字调用守卫数入口文件顶层的那一句来钉（入口文件本来就不扫，放行名单数不到它）；样例收了指令前缀与别名的三句校验报错，写死中文棘轮 `schema/commands.ts` 那一行删掉 | `packages/internal/src/` 新子路径与 `locales/`、两端 `i18n/`、守卫 | 无 | 否 | 中 |
 | 4-13 | 内置适配器自带描述（`PlatformAdapter` 加 `descriptor`）、`GET /api/adapters` 描述列表；内置适配器的问题引子改用描述的 `label`（今天是适配器键）。ADR-0024 决策 1 前半 | `internal/push-source.ts`、`platforms/` 三个、`push/`、`routes/adapters.ts`、contract | 4-11 | 否 | 中 |
 | 4-14 | 卡片真实预览改走 `Source.fetchPreview`（对拍 N05）：请求按 `subscriptionId`，没实现的来源用示例；B 站实现从 `routes/cards.ts` 搬进 `bilibili/`。清 `cards.ts` 五道棘轮与 `Cards.tsx` 替身 | `internal/source.ts`、`bilibili/`、`routes/cards.ts`、contract、`Cards.tsx` | 4-12、4-08；开工时问预览失败回落示例还是报错 | 否 | 大 |
 | 4-15 | 经接口搜人与新建订阅（对拍 N01）：`GET /api/sources/:key/creators`、新建订阅的门问登记表、关旧 `/search` `/lookup`、风控与未登录不再折成 404；面板 `Subs.tsx` 新建流程按来源（去 `BILI_PLATFORM` 哨兵）。捎 3b 审查 R25 留着的那截：拓展回执包装层自己坏掉时的 `invalid` 记进出入（要改 `readResult` 的形状，Q11）。清 `subscriptions.ts` 四道棘轮与 `Subs.tsx` 替身 27 | `routes/{sources,subscriptions}.ts`、`search-source-creators.ts`、contract、`Subs.tsx` | 4-02、4-12、4-08 | 否 | 中 |
