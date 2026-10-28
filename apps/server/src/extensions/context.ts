@@ -1,5 +1,6 @@
 import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
 import {
+	assertConfigFieldsMatchSchema,
 	type CapabilitySupport,
 	type Connection,
 	type ConnectionCapabilities,
@@ -44,7 +45,6 @@ import type { PipelineRuntime } from "../runtime/pipeline.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { catchThenableRejection, isThenable } from "../util/is-thenable.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
-import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { createExtensionSource } from "./extension-source.js";
 import { type ExtensionLocales, localizeManifest, runtimeDictOf } from "./locales.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";

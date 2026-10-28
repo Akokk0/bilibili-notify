@@ -8,10 +8,10 @@
  * 没有它的话,症状是「面板上填了保存不了」或者「有个必填项面板上根本没有」。
  */
 
-import type { SettingsField, SettingsScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
-import { assertConfigFieldsMatchSchema } from "../config-fields.js";
+import type { SettingsField, SettingsScalarField } from "../../settings-field";
+import { assertConfigFieldsMatchSchema } from "../config-fields";
 
 const SCHEMA = z.object({
 	token: z.string(),

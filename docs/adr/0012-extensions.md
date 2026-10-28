@@ -66,6 +66,7 @@ BN 的功能面在变宽:接一个新聊天平台要改核心词表、发一次�
 18. 装在 `<dataDir>/extensions/<id>/`,**不能放进 `<dataDir>/versions/`** —— `pruneOldVersions` 只留当前 + 上一版,会主动删掉不在名单里的目录。
 19. **config 两份声明 + 加载时对表**:拓展交一个 zod schema(校验)和一份字段表(表单),宿主在加载时逐格对一遍,对不上**拒绝加载**。它们本来就不是一回事 —— 字段表给人填(label / 控件 / 分组),schema 给机器校验(类型 / 必填 / refine);合成一份要么把字段表逼成一门 DSL,要么让校验退化成只剩类型检查,而真实 config 里有「加速前缀必须 https」「`connector` 必须和 `config.transport` 一致」这种跨字段规则。**两份会漂那笔账由加载期守卫兜住**(同进程,宿主拿得到拓展的 zod)。
     🔗 **2026-09-22 ADR-0019 决策 15–17 改**:给人填的那份(设置项 / 连接配置项)从代码搬进 `extension.json`,zod 仍在代码;表单项按数据类型分,对表连类型与默认值一起对。
+    🔗 **2026-10-28 4-11(落 10-14 主人定的「规则只写一份」)**:官方拓展只写 zod 一份,给人看的那几格挂在规则的 `.meta()` 上(`SettingsFieldMeta`);入口导出 `settingsSchema` / `connectionSettingsSchema`,构建(`@bilibili-notify/extension/build`)照规则把设置项写进 `dist/extension.json`,源码清单里还手写着就构建失败。手写清单的(第三方)照旧两份、加载时照旧对表。对表与导出都住 `packages/internal/src/schema/`(`config-fields.ts` / `settings-fields-from-schema.ts`),读 zod 的是同一套(`zod-def.ts`)。清单形状不变,契约修订号不抬。
 20. **图标跟着拓展走**:清单里带一段 SVG,加载时白名单过滤,失败退回灰方章。让图标进 `packages/ui` 的闭表看似省事,但那会**把拓展的独立发版废掉** —— 新拓展要等主程序发一版才有脸。至于「往页面塞外来 SVG 有 XSS 面」:拓展已经在同进程跑我们签过的任意代码了,再担心它的图标有点滑稽。
 
 ### 两条前提(不是选项)

@@ -294,13 +294,15 @@ export function loadDictionaryDir(dir, root = REPO_ROOT) {
 
 /**
  * 读一个拓展的译文目录,用**宿主读目录时同一份解析**逐份查,返回问题清单(空 = 零问题)。
- * 清单取目录旁边的 `extension.json`;文件名只认语言表里的 `<语言码>.json`(宿主也只读这些)。
+ * 清单取包里那份:旁边有构建产物 `dist/extension.json` 就读它(设置项由构建从规则导出,源码清单里没有),
+ * 否则读目录旁边的 `extension.json`;文件名只认语言表里的 `<语言码>.json`(宿主也只读这些)。
  */
 export function checkExtensionLocaleDir(dir, root = REPO_ROOT) {
 	const problems = [];
 	const absolute = join(root, dir);
 	if (!existsSync(absolute)) return [`${dir} 不存在`];
-	const manifestPath = join(absolute, "..", "extension.json");
+	const built = join(absolute, "..", "dist", "extension.json");
+	const manifestPath = existsSync(built) ? built : join(absolute, "..", "extension.json");
 	if (!existsSync(manifestPath)) return [`${dir} 旁边没有 extension.json`];
 	const read = parseExtensionManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 	if (!read.ok) return [`${dir} 旁边的 extension.json 读不了`];

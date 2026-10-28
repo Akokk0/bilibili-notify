@@ -23,6 +23,7 @@
 		"./builtin-texts": "./lib/builtin-texts.mjs",
 		"./card-skin": "./lib/card-skin.mjs",
 		"./extension": "./lib/extension/index.mjs",
+		"./extension/build": "./lib/extension/build.mjs",
 		"./extension/wire": "./lib/extension/wire.mjs",
 		"./features": "./lib/features.mjs",
 		"./format": "./lib/format.mjs",

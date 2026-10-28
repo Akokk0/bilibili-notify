@@ -2,7 +2,7 @@
  * internal 的公开子路径是一张闭集。
  *
  * 这张表与 `package.json` 的 exports、Vite 的打包入口必须完全相等。子路径是浏览器端的零依赖
- * 门面:多开一条会把内部模块变成公开 API,少开一条会让已有面板在运行时找不到模块。表里每个源
+ * 门面(只给 Node 读的那一类除外,见 `NODE_SUBPATHS`):多开一条会把内部模块变成公开 API,少开一条会让已有面板在运行时找不到模块。表里每个源
  * 文件也只许有 type import,或指向这张表里别的源文件;一条值级 import 就能把 zod 与整张 schema
  * 图拽进前端 bundle,而且构建、类型检查、组件测试都可能全绿。
  *
@@ -149,6 +149,22 @@ const ROOT_ONLY_ZERO_DEPENDENCY_SOURCES = [
 	},
 ];
 
+/**
+ * 只给 Node 读的子路径:拓展根上的构建配置(`vite.config.ts`)经门的 `@bilibili-notify/extension/build` 取它,
+ * 从规则导出清单里的设置项。它要读写文件、调对表与清单格式,天生不零依赖,也永远不进浏览器 ——
+ * 所以只进上面「子路径表」那三条(exports、pack entry、没有重复),不受下面零依赖纪律管;零依赖的条目也
+ * 引不到它(它不在零依赖同伴里)。
+ */
+const NODE_SUBPATHS = [
+	{
+		subpath: "./extension/build",
+		source: "src/extension/build.ts",
+		why: "拓展构建时从规则导出清单里的设置项",
+	},
+];
+
+const ALL_SUBPATHS = [...SUBPATHS, ...NODE_SUBPATHS];
+
 const ZERO_DEPENDENCY_ENTRIES = [...SUBPATHS, ...ROOT_ONLY_ZERO_DEPENDENCY_SOURCES];
 const packageJson = JSON.parse(readFileSync(resolve(repoRoot(), PACKAGE_FILE), "utf8"));
 
@@ -177,27 +193,29 @@ function exportEntries() {
 }
 
 function subpathTableProblems() {
-	const duplicateSubpaths = SUBPATHS.map(({ subpath }) => subpath).filter(
+	const duplicateSubpaths = ALL_SUBPATHS.map(({ subpath }) => subpath).filter(
 		(subpath, index, all) => all.indexOf(subpath) !== index,
 	);
-	const duplicateSources = SUBPATHS.map(({ source }) => source).filter(
+	const duplicateSources = ALL_SUBPATHS.map(({ source }) => source).filter(
 		(source, index, all) => all.indexOf(source) !== index,
 	);
 	return {
 		duplicateSubpaths: sorted(new Set(duplicateSubpaths)),
 		duplicateSources: sorted(new Set(duplicateSources)),
-		missingReasons: SUBPATHS.filter(({ why }) => why.trim() === "").map(({ subpath }) => subpath),
-		missingSources: SUBPATHS.filter(
+		missingReasons: ALL_SUBPATHS.filter(({ why }) => why.trim() === "").map(
+			({ subpath }) => subpath,
+		),
+		missingSources: ALL_SUBPATHS.filter(
 			({ source }) => !existsSync(resolve(repoRoot(), sourcePath(source))),
 		).map(({ source }) => source),
 	};
 }
 
 function packageExportProblems() {
-	const expectedSubpaths = sorted(SUBPATHS.map(({ subpath }) => subpath));
+	const expectedSubpaths = sorted(ALL_SUBPATHS.map(({ subpath }) => subpath));
 	const actualSubpaths = sorted(exportEntries().map(([subpath]) => subpath));
 	const expectedTargets = new Map(
-		SUBPATHS.map(({ subpath, source }) => [
+		ALL_SUBPATHS.map(({ subpath, source }) => [
 			subpath,
 			`./lib/${source.replace(/^src\//, "").replace(/\.ts$/, ".mjs")}`,
 		]),
@@ -216,7 +234,7 @@ function packageExportProblems() {
 }
 
 function viteEntryProblems() {
-	const expected = sorted(["src/index.ts", ...SUBPATHS.map(({ source }) => source)]);
+	const expected = sorted(["src/index.ts", ...ALL_SUBPATHS.map(({ source }) => source)]);
 	const actual = sorted(configEntries());
 	return {
 		missing: expected.filter((entry) => !actual.includes(entry)),

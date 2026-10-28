@@ -23,12 +23,15 @@ function text(value: string): NotificationPayload {
 	return { kind: "text", text: value };
 }
 
-/** 清单 `contributes.push.settingsFields` 原样。 */
+/**
+ * 包里那份清单(`dist/extension.json`)的 `contributes.push.settingsFields` 原样 —— 源码清单里不写它,
+ * 由构建从入口导出的规则导出,所以读构建产物(门禁先构建再跑测试)。
+ */
 async function manifestFields(): Promise<
 	{ key: string; type: string; default?: unknown; label: string }[]
 > {
 	const manifest = JSON.parse(
-		await readFile(new URL("../../extension.json", import.meta.url), "utf8"),
+		await readFile(new URL("../../dist/extension.json", import.meta.url), "utf8"),
 	) as { contributes: { push: { settingsFields: never[] } } };
 	return manifest.contributes.push.settingsFields;
 }
@@ -63,7 +66,7 @@ describe("连接候选", () => {
 });
 
 describe("设置 schema 与清单", () => {
-	it("两格逐格对表:键、类型、默认值", async () => {
+	it("构建从规则导出的两格写进了包里的清单:键、类型、默认值", async () => {
 		const fields = await manifestFields();
 		expect(fields.map((f) => [f.key, f.type, f.default])).toEqual([
 			["atAll", "boolean", false],

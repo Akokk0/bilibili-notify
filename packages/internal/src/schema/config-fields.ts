@@ -1,20 +1,19 @@
-import type { SettingsField } from "@bilibili-notify/internal";
-import { LIST_ITEM_ID_KEY } from "@bilibili-notify/internal/extension/wire";
 import type { ZodType } from "zod";
+import { LIST_ITEM_ID_KEY } from "../extension/wire";
+import type { SettingsField } from "../settings-field";
+import { defOf, enumValuesOf, numberBoundsOf, unwrap, type ZodDef } from "./zod-def";
 
 /**
  * 拓展交上来的两份声明**对不对得上** —— 对不上就拒绝加载(ADR-0012 决策 19 / 33,
  * ADR-0019 决策 17)。连接配置项与设置项都走这一道。
  *
- * 两份不是冗余:设置项给人填,zod 给机器校验。合成一份要么把设置项逼成一门 DSL,要么让
- * 校验退化成只剩类型检查 —— 而真实 config 里有「加速前缀必须 https」这种跨字段规则。
- * 代价是「两份会漂」,这道对表就是那笔账的兜底:**同进程,宿主拿得到拓展的 zod**,所以
- * 漂了当场看得见,而不是等主人在面板上填完保存不上。对的不只是键:设置项按数据类型分、
- * 与 zod 一一对应,所以**类型与默认值一起对**。
+ * 设置项给人填,zod 给机器校验。官方拓展只写 zod 一份,清单里的设置项由构建从规则导出
+ * (`settingsFieldsFromSchema`,经 `@bilibili-notify/extension/build`),天生对得上;手写清单的
+ * (第三方、不用那道构建的)仍是两份,会漂。这道对表就是那笔账的兜底:**同进程,宿主拿得到拓展的 zod**,
+ * 所以漂了当场看得见,而不是等主人在面板上填完保存不上。对的不只是键:设置项按数据类型分、
+ * 与 zod 一一对应,所以**类型与默认值一起对**。构建导出完也过一遍这道,错在构建时就报。
  *
- * 🔴 **判形状不用 `instanceof`。** 拓展会被打成自包含的 `index.mjs`,它那份 zod 是**另一个
- * 实例** —— `instanceof ZodObject` 当场为假,而报出来的错会把人指向完全错误的方向。对象看
- * 有没有 `.shape`,类型读 zod 4 挂在每个 schema 上的 `_zod.def`:不管几份 zod 都成立。
+ * 🔴 **判形状不用 `instanceof`**(见 `zod-def.ts`):对象看有没有 `.shape`,类型读 `_zod.def`。
  *
  * 抛出来的每一条都点名到具体那一格 —— 拓展是我们自己写的,信息给足才修得快。
  */
@@ -62,113 +61,6 @@ function assertNotStrict(
 	);
 }
 
-/** zod 4 挂在每个 schema 上的定义里,对表要读的那几格。 */
-interface ZodDef {
-	type: string;
-	innerType?: unknown;
-	in?: unknown;
-	out?: unknown;
-	/** `z.lazy` 交里面那份 schema 的函数。 */
-	getter?: () => unknown;
-	defaultValue?: unknown;
-	/** `.catch()` 的补值函数 —— `.catch(5)` 也被 zod 包成 `() => 5`。 */
-	catchValue?: (ctx: unknown) => unknown;
-	entries?: Record<string, unknown>;
-	/** `z.literal` 的取值(zod 4 一个字面量可以带几个值)。 */
-	values?: readonly unknown[];
-	/** `z.union` 的每一支。 */
-	options?: readonly unknown[];
-	element?: unknown;
-	shape?: Record<string, unknown>;
-	/** 对象里没声明的键按什么收;strict 对象这一格是 `never`。 */
-	catchall?: unknown;
-	/** 挂在这一层上的检查(`.min()` / `.max()` / `.refine()` …),每一条自己也有 `_zod.def`。 */
-	checks?: readonly unknown[];
-}
-
-function defOf(schema: unknown): ZodDef | undefined {
-	return (schema as { _zod?: { def?: ZodDef } } | undefined)?._zod?.def;
-}
-
-function optinOf(schema: unknown): string | undefined {
-	return (schema as { _zod?: { optin?: string } } | undefined)?._zod?.optin;
-}
-
-/** 剥完包装之后,对表要的那几样。 */
-interface Unwrapped {
-	/** 剥完包装的那一层;认不出(不是 zod 4 造的、包得太深)就没有。 */
-	def?: ZodDef;
-	/**
-	 * 缺了这一格时 zod 补的值:`.default()` 补的,或者 `.catch()` 补的。读值推迟到对表那一刻 ——
-	 * 两种都可以交一个函数,函数是拓展写的,抛了要点名到那一格。
-	 */
-	fill?: { from: "default" | "catch"; read: () => unknown };
-	/** 缺了这一格 zod 收不收 —— 收不下的就是必填。 */
-	optional: boolean;
-}
-
-/**
- * 剥掉包装层,拿到真正的类型;顺路算出缺了这一格时补什么、收不收。
- *
- * 带转换的(`pipe`)按**输入那一侧**对:面板填进去、落盘的是输入,转换是拓展自己的事。
- * 🔴 `z.preprocess(fn, inner)` 也是一根 pipe,但方向反过来:`in` 是 fn(一格 transform)、`out`
- * 才是真类型 —— 一律取 `in` 的话它永远判成 transform、拓展加载不了。所以 `in` 是 transform 的
- * 按 `out` 对(落盘的值先过 fn 再过 `out`,fn 一般只做宽容转换);`.transform()` 照旧按 `in`。
- *
- * `z.lazy` 只是晚一步交出里面那份 schema,调它的 getter 剥开(自己套自己的递归结构由层数封顶兜住)。
- *
- * 🔴 「收不收」**不跑校验**:带异步 refine 的 schema 一被同步解析就抛(同步解析撞上 Promise),
- * 整条对表跟着崩。读的是 zod 4 自己算的 `_zod.optin` —— 对象按键解析时,缺了的键收不收看的就是
- * 它(不是 `"optional"` 的,缺了就报 nonoptional)。只有一处它会说错:preprocess 的入口是个
- * transform,那一格永远说「收」,可缺了的值过完 fn 还是 undefined,`out` 照样不收。所以包装层由
- * 这里自己一层层往里走,到 preprocess 改问 `out`,剥到底才读那一层的 `optin`。
- *
- * `.catch(v)` 缺了这一格时补 v,与 `.default(v)` 同一件事 —— 但它只在里面那层**拒了** undefined 时
- * 才出手:里面可选 / 有默认值时它什么都不补。🔴 套在 `.optional()` 里时也不补:zod 4.4 的 optional
- * 遇上「输入是 undefined、里面走了兜底」会把结果丢回 undefined(`underOptional` 就是记这个)。这是
- * 照 catalog 那版 zod 的行为写的,测试里连 zod 自己的行为一起钉着,升级 zod 改了会先红。
- */
-function unwrap(schema: unknown, depth = 0, underOptional = false): Unwrapped {
-	const def = defOf(schema);
-	// 包装层数封顶:正常的 schema 两三层,转不出来说明读歪了(或者 lazy 自己套自己),当认不出算。
-	if (!def || depth >= 16) return { optional: false };
-	const inner = (next: unknown, optional = underOptional) => unwrap(next, depth + 1, optional);
-	switch (def.type) {
-		case "default":
-		case "prefault":
-			// 缺了就补这个值,里面那几层见不到 undefined —— 所以外层的默认值盖过里层的。
-			return {
-				...inner(def.innerType),
-				fill: { from: "default", read: () => def.defaultValue },
-				optional: true,
-			};
-		case "optional":
-			return { ...inner(def.innerType, true), optional: true };
-		case "catch": {
-			const got = inner(def.innerType);
-			if (got.optional || underOptional) return { ...got, optional: true };
-			// 喂给它的与 zod 缺了这一格时喂的同形:输入是 undefined,里面那层的报错这里没有。
-			const ctx = { value: undefined, input: undefined, issues: [], error: { issues: [] } };
-			return {
-				...got,
-				fill: { from: "catch", read: () => def.catchValue?.(ctx) },
-				optional: true,
-			};
-		}
-		case "nullable":
-		case "readonly":
-			return inner(def.innerType);
-		case "nonoptional":
-			return { ...inner(def.innerType), optional: false };
-		case "pipe":
-			return inner(defOf(def.in)?.type === "transform" ? def.out : def.in);
-		case "lazy":
-			return inner(def.getter?.());
-		default:
-			return { def, optional: optinOf(schema) === "optional" };
-	}
-}
-
 /** 设置项的类型 → zod 那边剥完包装应该是什么。enum 不止一种写法,另由 {@link enumValuesOf} 认。 */
 const ZOD_TYPE_OF: Record<Exclude<SettingsField["type"], "enum">, string> = {
 	string: "string",
@@ -176,68 +68,6 @@ const ZOD_TYPE_OF: Record<Exclude<SettingsField["type"], "enum">, string> = {
 	boolean: "boolean",
 	list: "array",
 };
-
-/**
- * 一组取值在 zod 里的几种写法:`z.enum`、`z.literal`(可以带几个值)、每一支都是这两种之一的
- * `z.union`。认不出是一组取值就回 `undefined`。
- *
- * union 只要有一支不是取值(比如混了一格 `z.string()`),面板就选不全它收的值 —— 不认。
- */
-function enumValuesOf(def: ZodDef): unknown[] | undefined {
-	switch (def.type) {
-		case "enum":
-			return Object.values(def.entries ?? {});
-		case "literal":
-			return [...(def.values ?? [])];
-		case "union": {
-			const all: unknown[] = [];
-			for (const option of def.options ?? []) {
-				const inner = defOf(option);
-				const values = inner ? enumValuesOf(inner) : undefined;
-				if (!values) return undefined;
-				all.push(...values);
-			}
-			return all;
-		}
-		default:
-			return undefined;
-	}
-}
-
-/** 数值的一头边界。 */
-interface Bound {
-	value: number;
-	/** 含端点(`.min()` / `.gte()`)还是不含(`.gt()` / `.positive()`)。 */
-	inclusive: boolean;
-}
-
-/**
- * zod 那边 number 的上下限:`.min()` / `.gte()` / `.gt()` / `.positive()` 这一族在 zod 4 里都是
- * `checks` 里一条 `greater_than`(`value` + `inclusive`),上限那一族是 `less_than`。叠了几道的
- * 取最紧的那道(数一样时不含端点的更紧)。
- *
- * 整数(`z.int()` / `.int()` / `.safe()`)是另一种检查(`number_format`),它带的「安全整数」范围
- * 不算上下限 —— 设置项表达不了它,也用不着。
- */
-function numberBoundsOf(def: ZodDef): { min?: Bound; max?: Bound } {
-	let min: Bound | undefined;
-	let max: Bound | undefined;
-	for (const check of def.checks ?? []) {
-		const c = defOf(check) as { check?: string; value?: unknown; inclusive?: boolean } | undefined;
-		if (typeof c?.value !== "number") continue;
-		const bound = { value: c.value, inclusive: c.inclusive === true };
-		if (c.check === "greater_than") min = tighter(min, bound, 1);
-		else if (c.check === "less_than") max = tighter(max, bound, -1);
-	}
-	return { min, max };
-}
-
-/** 两道同一头的边界里更紧的那道;`dir` 为 1 是下限(大的紧),-1 是上限(小的紧)。 */
-function tighter(a: Bound | undefined, b: Bound, dir: 1 | -1): Bound {
-	if (!a) return b;
-	if (a.value !== b.value) return (b.value - a.value) * dir > 0 ? b : a;
-	return a.inclusive ? b : a;
-}
 
 /** 一张表对一个对象的成员 —— 顶层与列表的每一项是同一套规矩。 */
 function checkFields(

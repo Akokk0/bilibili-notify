@@ -775,7 +775,8 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		contributes: { subscription: Record<string, unknown>; push: Record<string, unknown> };
 	}> {
 		return JSON.parse(
-			await readFile(join(REPO_ROOT, "extensions", FAKE, "extension.json"), "utf8"),
+			// 包里那份(构建从规则导出了连接配置项),不是源码根那份。
+			await readFile(join(REPO_ROOT, "extensions", FAKE, "dist", "extension.json"), "utf8"),
 		);
 	}
 

@@ -20,6 +20,9 @@ import { fakeSearchCreators } from "./lookup.js";
 import { createFakeProfiles, fakeFetchedProfile, pictureStore } from "./reports.js";
 import { fakeAdapterBlocks, fakeSourceView } from "./view.js";
 
+/** 清单里的连接配置项由构建从这份规则导出(`@bilibili-notify/extension/build`)。 */
+export { FakeConnectionSettingsSchema as connectionSettingsSchema } from "./adapter.js";
+
 /**
  * 合 `externalIdRegex`,但解析门永远不会现编出这个尾巴:`fetchProfile` 拿它演「平台上这个人没了」,
  * 宿主据此把订阅的问题记成 `creator_not_found`。

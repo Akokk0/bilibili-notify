@@ -9,6 +9,7 @@ export default defineConfig({
 			"src/builtin-texts.ts",
 			"src/card-skin.ts",
 			"src/extension/index.ts",
+			"src/extension/build.ts",
 			"src/extension/wire.ts",
 			"src/features.ts",
 			"src/format.ts",

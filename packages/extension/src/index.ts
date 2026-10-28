@@ -94,6 +94,8 @@ export type {
 	PushTargetScope,
 	Result,
 	SettingsField,
+	/** 规则上给人看的那几格(`.meta({...})`);官方拓展的构建照它导出清单里的设置项。 */
+	SettingsFieldMeta,
 	SettingsListField,
 	/**
 	 * 一个集成读自己设置的把手。拓展的 `ctx.settings(schema)` 回的就是它(与内置集成同一个口)。

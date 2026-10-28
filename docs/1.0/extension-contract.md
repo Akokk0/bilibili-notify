@@ -298,7 +298,7 @@ ctx.resolveProblem({ connectionId?, code, notify? }): void;
 | 成员 | 必备？ | 这一版对拓展 | 要点 |
 | --- | --- | --- | --- |
 | `descriptor { label, shortLabel, color, icon, settingsFields }` | 是 | 开（条件显示与键值表字段不开） | 静态，写在清单 `contributes.push`，见下。第 3 版契约的适配器**不带描述这一格**：适配器自己的「脸」这一期不造，拓展的描述以清单为准、由宿主填；内置的随第 4 期 🔗 现状（3b-44，10-25）：清单段已形成 `PlatformAdapterDescriptor` 下发；适配器 def 带 `descriptor` 会在登记时被拒 |
-| `settingsSchema` | 是 | 开 | 连接设置的 zod；与清单的 `settingsFields` 逐格对表（键、类型、默认值），对不上登记当场抛 |
+| `settingsSchema` | 是 | 开 | 连接设置的 zod；与清单的 `settingsFields` 逐格对表（键、类型、默认值），对不上登记当场抛。官方拓展的 `settingsFields` 由构建从入口导出的 `connectionSettingsSchema` 导出（见「设置」） |
 | `start(ctx)` / `stop()` | 是 | 开 | 取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到 🔗 现状（10-27，R3）：`start` 已放宽为 `void \| Promise<void>`（与 `SourceDef.start` 对称），异步初始化可以写 `async start()`；拒了算登记失败，适配器不在册、这次加载失败 |
 | `send` | 是 | 开 | 返回结果形状、带标准码；只有 `TargetDispatcher` 调它 |
 | `isAvailable` | 是 | 开 | |
@@ -423,11 +423,12 @@ interface ConnectionCandidate {
 ## 设置
 
 - 清单里声明 `settings.fields`，`activate` 里交一份 zod，两份对不上当场抛。凭据字段标 `secret: true`（与核心 schema 同一写法），面板打码、备份脱敏、日志脱敏都读这个标记。
+- **规则只写一份（官方拓展，4-11）**：清单里的设置项不手写。规则上用 `.meta({...} satisfies SettingsFieldMeta)` 写给人看的那几格（标签、说明、占位字、`secret`、枚举选项的标签与图标、列表的标题格与开关格……；类型、默认值、必填、上下限、枚举的取值读规则本身），写了 `label` 的键才出一栏、顺序照键。入口导出 `settingsSchema`（自己的设置）与 `connectionSettingsSchema`（推送那口的连接设置），`vite.config.ts` 挂 `@bilibili-notify/extension/build` 的 `extensionPackageFiles`，构建照规则写进 `dist/extension.json`，导出完过一遍加载时的对表与清单格式；源码清单里还写着这两段就构建失败。拓展的 `src/` 不许 import 构建子路径（守卫在 `extension-import-boundary.test.ts`）。手写清单的拓展照旧，加载时照旧对表。
 - 读取：`ctx.settings(schema)` 交回 `SettingsReader<T>`（与内置集成同一个），`get()` 现读、回 `Result<{ settings: T }>`、不抛，`onChange(fn)` 在内容真的变了时叫。从没设过的，拿空对象过规则：过得了是成功拿默认值，过不了回 `not_configured`、拓展照跑。每个拿到上下文的集成都在配置仓登记一段（内置适配器也登记），没设过的照这条读；配置仓对根本没登记的键照旧抛（组装漏了是 bug）。🔗 现状（3b-41，10-17）：C1 已落——拓展的 `ctx.settings(规则)` 交回 `SettingsReader<T>`，`ExtensionSettings<T>` 已删；没设过拿 `{}` 过规则，过得了是成功并带默认值、过不了回 `not_configured`；带异步规则、交进来那一刻判不完回 `unavailable`；跑着时被旁路写坏，`get()` 回 `invalid`（带 `issues`）并叫一次 `onChange`，桥在 `links()` 里记着上一份好的名单。C3 已落——三个内置适配器各登记了一段空段。C4 已落——`settings(规则)` 上提到 `IntegrationContext`，一个集成只有一份实现：拓展把自己的（对表清单、记「设置读不了」）交给集成上下文，推送源 `start(ctx).settings` 与 `activate(ctx).settings` 是同一份。
 - 值存在 `config/settings/extensions/<id>.json`，一个拓展一个文件；开关 `extensions.<id>.enabled` 归宿主，在 `config/settings/core.json` 里。
 - **坏了只停这一个拓展，不挡开机**：拓展段校验不过，宿主只停这一个拓展，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`。面板、健康卡与 `status` 指令都读它。
 - **只有 `activate` 期间读设置失败可以抛错中止启动**，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。读不懂的拓展不起，宿主同时替它报一条 `settings_invalid` 进问题表（见「问题上报」；3b-41 C2 已落）。
-- **「读设置的写法简化」不改第 3 版契约的形状**：「规则只写一份、清单字段由打包脚本从规则导出」那一半排到第 4 期，与面板「按描述画」一起做；「规则写在定义里、一行读到」不做。
+- **「读设置的写法简化」不改第 3 版契约的形状**：「规则只写一份、清单字段由打包脚本从规则导出」那一半排到第 4 期，与面板「按描述画」一起做；「规则写在定义里、一行读到」不做。🔗 4-11 已落（10-28）：在构建时导出（不在打 zip 时），线上清单形状不变、修订号不抬，见上一条。
 - 版本号是内容哈希，对不上回 409。
 - 卸载删掉这一段。
 - 拓展的设置只在拓展页；功能页面（推送目标的连接卡、订阅页）放指过去的入口。

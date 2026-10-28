@@ -11,7 +11,7 @@ import {
 } from "./contract.js";
 import { platformIcon } from "./platform-icons.js";
 import type { BridgeSession } from "./server.js";
-import type { BridgeLink } from "./settings.js";
+import { BRIDGE_KIND_FACES, type BridgeLink } from "./settings.js";
 
 /**
  * 桥交给面板的视图(ADR-0019 决策 20 / 26–31)—— 面板照着画,一句桥的字都不认得。
@@ -43,8 +43,8 @@ const TRISTATE: Readonly<Record<BridgeCapabilityState, "yes" | "no" | "unknown">
 	unknown: "unknown",
 };
 
-/** 两种桥在面板上的叫法(「改成 AstrBot」那颗钮)。 */
-const KIND_LABELS: Readonly<Record<string, string>> = { koishi: "koishi", astrbot: "AstrBot" };
+/** 两种桥在面板上的叫法(「改成 AstrBot」那颗钮),与设置里那两个选项同一张表。 */
+const KIND_FACES: Readonly<Record<string, { label: string } | undefined>> = BRIDGE_KIND_FACES;
 
 /**
  * 视图 schema 的上限 —— 照抄 `packages/internal/src/schema/extension-view.ts`。桥只准从
@@ -157,7 +157,7 @@ function connectedItem(
 			? [
 					{
 						kind: "set",
-						label: `改成 ${KIND_LABELS[session.kind] ?? session.kind}`,
+						label: `改成 ${KIND_FACES[session.kind]?.label ?? session.kind}`,
 						set: { bridgeKind: session.kind },
 					},
 				]

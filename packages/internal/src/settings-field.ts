@@ -5,9 +5,9 @@
 
 /**
  * 一格**设置项 / 连接配置项** —— 面板照它画一栏,按**数据类型**分、不按控件分
- * (ADR-0019 决策 17)。拓展把它写在清单里(`settings.fields` /
- * `contributes.push.connection.fields`),与代码里那份 zod
- * 是两份声明,加载时对表。
+ * (ADR-0019 决策 17)。它落在清单里(`settings.fields` / `contributes.push.settingsFields`):
+ * 官方拓展由构建从规则导出(规则上写 {@link SettingsFieldMeta},`settingsFieldsFromSchema`),
+ * 手写清单的与代码里那份 zod 是两份声明。两种都在加载时对表。
  *
  * 🔴 **这是清单那份 schema 的手写镜像**:宿主把清单里读出来的格原样交给面板,所以
  * `SettingsField` 必须与它严格相等 —— `manifest-shape-pin.ts` 的类型检查会替两份钉住。
@@ -87,4 +87,36 @@ interface SettingsFieldBase {
 	label: string;
 	description?: string;
 	required?: boolean;
+}
+
+/**
+ * 规则上给人看的那几格,写在 zod 4 的 `.meta({...})` 里(`z.string().meta({ label: "名字" } satisfies SettingsFieldMeta)`),
+ * 由 `settingsFieldsFromSchema` 与规则本身一起导出成 {@link SettingsField}。**类型、默认值、必填、上下限、
+ * 枚举的取值读规则本身,这里不写第二份。**
+ *
+ * - 写了 `label` 的键才出一栏;不给人填的键(连接里由拓展交的、列表项的 `id`)不写。
+ * - 每一格只用在对应的那一种上(下面按种类分组),写在别的种类上导出时抛。
+ * - meta 写在哪一层都行:`.optional()` / `.default()` 套在外面也读得到。
+ */
+export interface SettingsFieldMeta {
+	label: string;
+	description?: string;
+	// string
+	placeholder?: string;
+	secret?: boolean;
+	multiline?: boolean;
+	monospace?: boolean;
+	generate?: boolean;
+	// number(上下限读规则的 `.min()` / `.max()`)
+	step?: number;
+	unit?: string;
+	// enum:取值 → 这个选项的标签与图标,取值要与规则里的一一对上
+	options?: Readonly<Record<string, { label: string; icon?: string }>>;
+	// list(项里的格读项那份 `z.object` 的 meta)
+	title?: string;
+	itemLabel?: string;
+	mark?: string;
+	toggle?: string;
+	newItemCopy?: SettingsListField["newItemCopy"];
+	removeWarning?: string;
 }

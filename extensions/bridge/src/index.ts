@@ -27,6 +27,13 @@ import { type BridgeLink, BridgeSettingsSchema } from "./settings.js";
 import { resolveBridgeToken } from "./tokens.js";
 import { bridgeView } from "./view.js";
 
+/**
+ * 清单里的设置项由构建从这两份规则导出(`@bilibili-notify/extension/build`):自己的设置 → `settings.fields`,
+ * 连接设置 → `contributes.push.settingsFields`(桥的连接是从 bot 里挑的、没有一栏是人填的,导出来是空的、不写)。
+ */
+export { BridgeConnectionSettingsSchema as connectionSettingsSchema } from "./config.js";
+export { BridgeSettingsSchema as settingsSchema } from "./settings.js";
+
 export function activate(ctx: ExtensionContext): void {
 	const blobs = createBridgeBlobStore({ ctx });
 	ctx.onDispose(() => blobs.dispose());

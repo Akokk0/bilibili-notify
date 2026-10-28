@@ -14,13 +14,35 @@ import type {
 	PlatformAdapterContext,
 	PlatformAdapterDef,
 } from "@bilibili-notify/extension";
-import { fail, neutralPlatformDescriptor, ok } from "@bilibili-notify/extension";
+import {
+	fail,
+	neutralPlatformDescriptor,
+	ok,
+	type SettingsFieldMeta,
+} from "@bilibili-notify/extension";
 import { z } from "zod";
 
-/** 与清单 `contributes.push.settingsFields` 逐格对得上:键、类型、默认值(对不上宿主登记时会抛)。 */
+/**
+ * 连接配置:清单里的 `contributes.push.settingsFields` 由构建从这份规则导出(规则只写一份),
+ * 给人看的那几格写在 `.meta()` 上。
+ */
 export const FakeConnectionSettingsSchema = z.object({
-	atAll: z.boolean().default(false),
-	inboundFrom: z.string().default(""),
+	atAll: z
+		.boolean()
+		.default(false)
+		.meta({
+			label: "支持 @全体",
+			description: "打开后,这条连接对外说自己能单发 @全体(用来演推送路由的 @全体 那一支)。",
+		} satisfies SettingsFieldMeta),
+	inboundFrom: z
+		.string()
+		.default("")
+		.meta({
+			label: "入站发送者",
+			description:
+				"填了,页上的入站按钮会以这个地址向女仆发一条私聊 /status,这条连接也就对外说自己收得到回复;留空就是收不到。",
+			placeholder: "owner-address",
+		} satisfies SettingsFieldMeta),
 });
 export type FakeConnectionSettings = z.infer<typeof FakeConnectionSettingsSchema>;
 

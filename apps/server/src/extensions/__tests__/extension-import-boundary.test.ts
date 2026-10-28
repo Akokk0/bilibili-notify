@@ -26,6 +26,10 @@ const EXTENSION_PACKAGE = "@bilibili-notify/extension";
 const EXTENSION_PACKAGE_DIR = "packages/extension";
 const EXTENSION_SOURCE_ROOT = `${EXTENSION_PACKAGE_DIR}/src`;
 const EXTENSION_ENTRY = `${EXTENSION_SOURCE_ROOT}/index.ts`;
+/** 门的构建子路径(`/build`):只给拓展根上的构建配置用,本体同样住 internal、这里只转出。 */
+const EXTENSION_BUILD_ENTRY = `${EXTENSION_SOURCE_ROOT}/build.ts`;
+const EXTENSION_BUILD_PACKAGE = `${EXTENSION_PACKAGE}/build`;
+const EXTENSION_BUILD_VALUES = new Set(["extensionPackageFiles", "manifestWithSettingsFields"]);
 const INTERNAL_PACKAGE = "@bilibili-notify/internal";
 const EXTENSION_VALUES = new Set(["fail", "neutralPlatformDescriptor", "ok"]);
 
@@ -68,6 +72,16 @@ export function boundaryViolation(specifier: string, fromDir: string): BoundaryV
 
 	// 我们自己的包:只放行那一扇门。别的(`internal` 的整个域模型、`contract` 的 wire、
 	// 宿主应用本身)都不是契约 —— 要哪一格,去那个包里**明确转出来**。
+	// 构建子路径带着宿主的代码(读规则、对表、清单格式):只许拓展根上的构建配置(`vite.config.ts`)用,
+	// `src/` 里 import 它就是把一份宿主代码打进拓展包。
+	if (specifier === EXTENSION_BUILD_PACKAGE) {
+		return fromDir === ""
+			? null
+			: {
+					specifier,
+					why: `${EXTENSION_BUILD_PACKAGE} 只给拓展根上的构建配置用,打进拓展包就是一份宿主代码的拷贝`,
+				};
+	}
 	if (specifier.startsWith("@bilibili-notify/")) {
 		return specifier === EXTENSION_PACKAGE
 			? null
@@ -82,6 +96,13 @@ describe("拓展越界判据", () => {
 		for (const spec of ["zod", "ws", "node:crypto", EXTENSION_PACKAGE]) {
 			expect(boundaryViolation(spec, "src")).toBeNull();
 		}
+	});
+
+	it("构建子路径:拓展根上的构建配置放行,src/ 里判红", () => {
+		expect(boundaryViolation(EXTENSION_BUILD_PACKAGE, "")).toBeNull();
+		expect(boundaryViolation(EXTENSION_BUILD_PACKAGE, "src")?.why).toContain("构建配置");
+		expect(boundaryViolation(EXTENSION_BUILD_PACKAGE, "src/devtools")).not.toBeNull();
+		expect(boundaryViolation(`${EXTENSION_PACKAGE}/lib/index.mjs`, "")).not.toBeNull();
 	});
 
 	it("放行:拓展自己树里的相对路径,爬回自己根目录也算", () => {
@@ -366,7 +387,10 @@ function sourceFilesUnder(relDir: string): string[] {
 	return files.sort();
 }
 
-function extensionDoorProblems(source: ReturnType<typeof parseSource>): string[] {
+function extensionDoorProblems(
+	source: ReturnType<typeof parseSource>,
+	values: ReadonlySet<string> = EXTENSION_VALUES,
+): string[] {
 	const { ast } = source;
 	const lineOf = (node: ts.Node) => ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1;
 	return ast.statements.flatMap((statement) => {
@@ -391,8 +415,8 @@ function extensionDoorProblems(source: ReturnType<typeof parseSource>): string[]
 		return statement.exportClause.elements.flatMap((element) => {
 			if (element.isTypeOnly) return [];
 			const sourceName = element.propertyName?.text ?? element.name.text;
-			if (sourceName === element.name.text && EXTENSION_VALUES.has(sourceName)) return [];
-			return [`${source.path}:${line} 值级转出只许 ok / fail / neutralPlatformDescriptor`];
+			if (sourceName === element.name.text && values.has(sourceName)) return [];
+			return [`${source.path}:${line} 值级转出只许 ${[...values].join(" / ")}`];
 		});
 	});
 }
@@ -421,10 +445,26 @@ describe("契约门只转出", () => {
 		expect(problems(`export { Result } from "${INTERNAL_PACKAGE}";`)).toHaveLength(1);
 	});
 
-	it("src/ 里除测试外只有 index.ts,且入口没有越出转出规则", () => {
-		expect(sourceFilesUnder(EXTENSION_SOURCE_ROOT)).toEqual([EXTENSION_ENTRY]);
-		const source = parseSource(EXTENSION_ENTRY);
-		expect(source.ast.statements.length).toBeGreaterThan(0);
-		expect(extensionDoorProblems(source)).toEqual([]);
+	it("构建子路径同一套:只转出 internal 的,值只许那两个构建用的", () => {
+		const build = (text: string) =>
+			extensionDoorProblems(parseSource(EXTENSION_BUILD_ENTRY, text), EXTENSION_BUILD_VALUES);
+		expect(
+			build(`export { extensionPackageFiles } from "${INTERNAL_PACKAGE}/extension/build";`),
+		).toEqual([]);
+		expect(build(`export { ok } from "${INTERNAL_PACKAGE}/result";`)).toHaveLength(1);
+		expect(build("export function extensionPackageFiles() {}")).toHaveLength(1);
+	});
+
+	it("src/ 里除测试外只有 index.ts 与 build.ts,两个入口都没有越出转出规则", () => {
+		expect(sourceFilesUnder(EXTENSION_SOURCE_ROOT)).toEqual([
+			EXTENSION_BUILD_ENTRY,
+			EXTENSION_ENTRY,
+		]);
+		const entry = parseSource(EXTENSION_ENTRY);
+		expect(entry.ast.statements.length).toBeGreaterThan(0);
+		expect(extensionDoorProblems(entry)).toEqual([]);
+		const build = parseSource(EXTENSION_BUILD_ENTRY);
+		expect(build.ast.statements.length).toBeGreaterThan(0);
+		expect(extensionDoorProblems(build, EXTENSION_BUILD_VALUES)).toEqual([]);
 	});
 });
