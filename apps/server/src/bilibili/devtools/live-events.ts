@@ -1,7 +1,7 @@
 import { fail, ok } from "@bilibili-notify/internal";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import { GuardLevel, type LiveUser } from "../live/protocol/events.js";
-import { pickRoom, type RoomPickerDeps } from "./live.js";
+import { CREATOR_PARAM, pickRoom, type RoomPickerDeps, uidLabel } from "./live.js";
 
 /**
  * A2:弹幕批量 / SC / 上舰 / 礼物 / 进场 —— 往房间的事件漏斗塞 LiveEvent,形状与 blive 解析
@@ -102,7 +102,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		desc: "往房间塞一批弹幕。默认 60 条 / 8 位发言人,刚好越过下播词云(50 个热词)与直播总结(5 位发言人)的门槛;给了 uid 就全由这一位发,拿来试「特别关注的弹幕」推送。房间得在(假)直播中才收。",
 		icon: "chat",
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
+			CREATOR_PARAM,
 			{ key: "count", label: "条数", kind: "number", default: 60, min: 1, max: 500 },
 			{ key: "senders", label: "发言人数", kind: "number", default: 8, min: 1, max: 100 },
 			{ key: "uid", label: "指定发言人 uid(可空)", kind: "text", default: "" },
@@ -110,7 +110,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		run(params) {
 			const picked = pickRoom(deps, params);
 			if (!picked.ok) return picked;
-			const { sub, roomId, handle } = picked;
+			const { externalId, roomId, handle } = picked;
 			const count = num(params.count, 60);
 			const senders = num(params.senders, 8);
 			const fixedUid = str(params.uid, "");
@@ -125,7 +125,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				handle.inject({ kind: "danmu", content, user, timestamp: now + i });
 			}
 			const who = fixedUid === "" ? `${Math.min(senders, count)} 位假观众` : `uid ${fixedUid}`;
-			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 ${count} 条弹幕(${who})。` });
+			return ok({
+				summary: `已向 ${uidLabel(externalId)} 的直播间 ${roomId} 塞了 ${count} 条弹幕(${who})。`,
+			});
 		},
 	};
 
@@ -136,7 +138,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		desc: "塞一条 SC。低于该 UP 的醒目留言金额门槛会被过滤 —— 那正是要验的。",
 		icon: "sc",
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
+			CREATOR_PARAM,
 			{ key: "price", label: "金额(元)", kind: "number", default: 30, min: 1, max: 5000 },
 			{ key: "text", label: "正文", kind: "text", default: "devtools 送来的醒目留言" },
 			{ key: "uname", label: "发言人", kind: "text", default: "醒目留言测试员" },
@@ -144,7 +146,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		run(params) {
 			const picked = pickRoom(deps, params);
 			if (!picked.ok) return picked;
-			const { sub, roomId, handle } = picked;
+			const { externalId, roomId, handle } = picked;
 			const price = num(params.price, 30);
 			handle.inject({
 				kind: "superchat",
@@ -154,7 +156,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				id: Date.now(),
 				durationSec: price >= 100 ? 300 : 60,
 			});
-			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条 ${price} 元的 SC。` });
+			return ok({
+				summary: `已向 ${uidLabel(externalId)} 的直播间 ${roomId} 塞了一条 ${price} 元的 SC。`,
+			});
 		},
 	};
 
@@ -171,7 +175,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		desc: "塞一条大航海开通(GUARD_BUY)。档位低于该 UP 的上舰门槛会被过滤。",
 		icon: "guard",
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
+			CREATOR_PARAM,
 			{
 				key: "level",
 				label: "等级",
@@ -188,7 +192,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		run(params) {
 			const picked = pickRoom(deps, params);
 			if (!picked.ok) return picked;
-			const { sub, roomId, handle } = picked;
+			const { externalId, roomId, handle } = picked;
 			const g = GUARD[str(params.level, "captain")] ?? GUARD.captain;
 			if (!g) return fail("invalid", "等级不认识");
 			const now = Math.floor(Date.now() / 1000);
@@ -202,7 +206,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				startTime: now,
 				endTime: now + 30 * 86_400,
 			});
-			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了一条开通${g.name}。` });
+			return ok({
+				summary: `已向 ${uidLabel(externalId)} 的直播间 ${roomId} 塞了一条开通${g.name}。`,
+			});
 		},
 	};
 
@@ -213,7 +219,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		desc: "塞一条送礼(SEND_GIFT)。业务层今天不消费礼物(只打协议层地基),它只算一次活跃度 —— 拿来验连接看门狗与协议解析。",
 		icon: "gift",
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
+			CREATOR_PARAM,
 			{ key: "name", label: "礼物名", kind: "text", default: "小心心" },
 			{ key: "num", label: "数量", kind: "number", default: 1, min: 1, max: 999 },
 			{ key: "uname", label: "送礼的人", kind: "text", default: "送礼测试员" },
@@ -221,7 +227,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		run(params) {
 			const picked = pickRoom(deps, params);
 			if (!picked.ok) return picked;
-			const { sub, roomId, handle } = picked;
+			const { externalId, roomId, handle } = picked;
 			const n = num(params.num, 1);
 			handle.inject({
 				kind: "gift",
@@ -233,7 +239,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				num: n,
 			});
 			return ok({
-				summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 ${n} 个${str(params.name, "小心心")}。`,
+				summary: `已向 ${uidLabel(externalId)} 的直播间 ${roomId} 塞了 ${n} 个${str(params.name, "小心心")}。`,
 			});
 		},
 	};
@@ -242,21 +248,20 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		id: "live.enter",
 		group: "event",
 		title: "进场",
-		desc: "塞一条观众进场(INTERACT_WORD)。uid 省略时取这位 UP 的第一个特别关注 —— 只有在白名单里、且开着进场提醒,才会推。",
+		desc: "塞一条观众进场(INTERACT_WORD)。uid 要自己填:只有这位 UP 特别关注名单里的人、且开着进场提醒,才会推(特别关注是订阅的配置,B 站这头读不到)。",
 		icon: "user",
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
-			{ key: "uid", label: "进场的 uid(可空)", kind: "text", default: "" },
+			CREATOR_PARAM,
+			{ key: "uid", label: "进场的 uid(特别关注里的)", kind: "text", default: "" },
 			{ key: "uname", label: "昵称", kind: "text", default: "进场测试员" },
 		],
 		run(params) {
 			const picked = pickRoom(deps, params);
 			if (!picked.ok) return picked;
-			const { sub, roomId, handle } = picked;
-			const given = str(params.uid, "");
-			const uid = given !== "" ? given : (sub.specialViewers?.[0] ?? "");
+			const { externalId, roomId, handle } = picked;
+			const uid = str(params.uid, "");
 			if (uid === "") {
-				return fail("invalid", `${sub.name} 没配特别关注,得给一个 uid`);
+				return fail("invalid", "得给一个 uid:填这位 UP 特别关注名单里的人,进场才会推");
 			}
 			if (!/^\d+$/.test(uid)) return fail("invalid", "uid 得是数字");
 			handle.inject({
@@ -264,7 +269,9 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				action: "enter",
 				user: { uid: Number(uid), name: str(params.uname, "进场测试员") },
 			});
-			return ok({ summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 uid ${uid} 的进场。` });
+			return ok({
+				summary: `已向 ${uidLabel(externalId)} 的直播间 ${roomId} 塞了 uid ${uid} 的进场。`,
+			});
 		},
 	};
 

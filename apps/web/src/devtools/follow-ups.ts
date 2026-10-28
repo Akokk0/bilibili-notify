@@ -16,5 +16,5 @@ import { useToastStore } from "../store/notifications";
 export type DevFollowUp = (qc: QueryClient) => Promise<void>;
 
 export const FOLLOW_UPS: Readonly<Record<string, DevFollowUp>> = {
-	"update.state": (qc) => checkUpdateOnOpen(qc, useToastStore.getState().notify),
+	"core.update.state": (qc) => checkUpdateOnOpen(qc, useToastStore.getState().notify),
 };

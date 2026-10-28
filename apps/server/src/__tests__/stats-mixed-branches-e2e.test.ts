@@ -514,7 +514,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await vi.waitFor(
 			async () => {
 				await ok(
-					await api("/api/dev/run/profiles.refresh-now", {
+					await api("/api/dev/run/core.profiles.refresh-now", {
 						method: "POST",
 						...json({ params: {} }),
 					}),
@@ -540,7 +540,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 	it("首页粉丝面板:统计总开关关着时 24h / 7d 空、订阅以来照给;打开后 24h 回来", async () => {
 		const read = async () => {
 			await ok(
-				await api("/api/dev/run/profiles.refresh-now", { method: "POST", ...json({ params: {} }) }),
+				await api("/api/dev/run/core.profiles.refresh-now", {
+					method: "POST",
+					...json({ params: {} }),
+				}),
 			);
 			const { entries } = (await (await api("/api/stats/followers")).json()) as FollowersResponse;
 			return entries[0];
@@ -693,7 +696,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await vi.waitFor(
 			async () => {
 				await ok(
-					await api("/api/dev/run/profiles.refresh-now", {
+					await api("/api/dev/run/core.profiles.refresh-now", {
 						method: "POST",
 						...json({ params: {} }),
 					}),

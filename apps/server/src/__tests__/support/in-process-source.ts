@@ -38,6 +38,7 @@ import type * as Compose from "../../compose.js";
 import type { IntegrationSettingsSegment } from "../../config/store.js";
 import { type OpenedIntegration, openIntegration } from "../../integrations/open.js";
 import { createIntegrationSettings } from "../../integrations/settings-reader.js";
+import type * as Bootstrap from "../../runtime/bootstrap.js";
 
 /** 假来源的键:带命名空间的第三方写法,过得了拓展 id 的形状(集成存储只认保留键或合法拓展 id)。 */
 export const IN_PROCESS_KEY = "acme.inprocess";
@@ -527,6 +528,29 @@ export function currentProbe(): InProcessProbe {
 }
 
 /**
+ * 包 `runtime/bootstrap.ts`(`vi.mock("../runtime/bootstrap.js", …)` 的实现体):真运行时照建,在它的总线上挂几只耳朵,
+ * 记下假来源世界要看的事件。总线是运行时的(组装根不拿它),所以在这里借。
+ */
+export function wrapBootstrap(real: typeof Bootstrap): typeof Bootstrap {
+	return {
+		...real,
+		createAppRuntime(...args) {
+			const runtime = real.createAppRuntime(...args);
+			runtime.bus.on("subscription-auth-changed", (changed) => {
+				inProcessWorld.authChanges.push(changed);
+			});
+			runtime.bus.on("post-detected", (event) => {
+				inProcessWorld.postDetected.push(event);
+			});
+			runtime.bus.on("problems-changed", ({ reporter }) => {
+				inProcessWorld.problemsChanged.push(reporter);
+			});
+			return runtime;
+		},
+	};
+}
+
+/**
  * 包 `compose.ts`(`vi.mock("../compose.js", …)` 的实现体):真模块照常跑(真 B 站来源并排登记),
  * 之外加两样 —— 设置段后面追加假来源的一段;`registerSources` 里真的登记完之后,对假来源调**同一个**
  * `pipeline.registerSource`。
@@ -546,15 +570,6 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 			const builtins = real.composeBuiltinIntegrations(deps);
 			inProcessWorld.serviceCtx = deps.serviceCtx;
 			inProcessWorld.inboundGroup = deps.inbound.group;
-			deps.bus.on("subscription-auth-changed", (changed) => {
-				inProcessWorld.authChanges.push(changed);
-			});
-			deps.bus.on("post-detected", (event) => {
-				inProcessWorld.postDetected.push(event);
-			});
-			deps.bus.on("problems-changed", ({ reporter }) => {
-				inProcessWorld.problemsChanged.push(reporter);
-			});
 			const logger = deps.serviceCtx.forSubsystem(IN_PROCESS_KEY, IN_PROCESS_KEY).logger;
 			let opened: { integration: OpenedIntegration; store: { close(): void } } | undefined;
 			deps.serviceCtx.onDispose(async () => {

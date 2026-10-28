@@ -1,17 +1,16 @@
-import { type AuthState, ok } from "@bilibili-notify/internal";
+import { type AuthState, fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { type OverridableApi, overridableApi } from "../../../devtools/api-overrides.js";
-import { createNodeMessageBus } from "../../../runtime/message-bus.js";
 import type { Api } from "../../api/index.js";
 import { dynamicScenarios } from "../dynamic.js";
-import { liveScenarios, type SubPick } from "../live.js";
+import { liveScenarios } from "../live.js";
 import { createLiveRooms } from "../live-rooms.js";
-import { loginStateScenario } from "../login-state.js";
+import { type AuthShell, createAuthShell, loginStateScenario } from "../login-state.js";
 import { fakeAuth } from "./support/fake-auth.js";
-import { biliRegistry } from "./support/registry.js";
+import { biliRegistry, rosterEntry } from "./support/registry.js";
 
 const NOT_READY = "B 站来源还没起来，先等它起来再试";
-const SUBS: SubPick[] = [{ id: "s1", externalId: "100", name: "甲", enabled: true }];
+const ROSTER = [rosterEntry("100")];
 
 describe("B 站场景现取开发壳", () => {
 	it("直播:壳没起来时回提示且不塞事件;之后起来再按照常生效", async () => {
@@ -25,11 +24,12 @@ describe("B 站场景现取开发壳", () => {
 		});
 		const reg = biliRegistry(
 			liveScenarios({
-				subs: () => SUBS,
+				roster: () => ROSTER,
 				rooms,
 				api: () => api,
 				liveRooms: () => ({ roomIdOf: () => "5050" }),
 			}),
+			ROSTER,
 		);
 
 		await expect(reg.run("bilibili.live.start", {})).resolves.toMatchObject({ summary: NOT_READY });
@@ -62,7 +62,7 @@ describe("B 站场景现取开发壳", () => {
 	});
 
 	it("动态:壳没起来时回提示且不跑检测;之后起来再按照常生效", async () => {
-		let api: OverridableApi<Pick<Api, "fetchAllDynamic">> | undefined;
+		let api: OverridableApi<Pick<Api, "fetchAllDynamic" | "fetchUserCard">> | undefined;
 		let seen: string[] = [];
 		const detectNow = vi.fn(async () => {
 			const result = await api?.api.fetchAllDynamic();
@@ -70,11 +70,12 @@ describe("B 站场景现取开发壳", () => {
 		});
 		const reg = biliRegistry(
 			dynamicScenarios({
-				subs: () => SUBS,
+				roster: () => ROSTER,
 				api: () => api,
 				dynamic: () => ({ detectNow }),
 				profileAvatars: () => undefined,
 			}),
+			ROSTER,
 		);
 
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
@@ -94,6 +95,9 @@ describe("B 站场景现取开发壳", () => {
 					},
 				});
 			},
+			async fetchUserCard(): ReturnType<Api["fetchUserCard"]> {
+				return fail("unavailable", "测试里不拉用户卡");
+			},
 		});
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toBeDefined();
 		expect(detectNow).toHaveBeenCalledOnce();
@@ -102,13 +106,11 @@ describe("B 站场景现取开发壳", () => {
 		expect(seen[1]).toBe("real-1");
 	});
 
-	it("登录状态:壳没起来时回提示且不报状态;之后起来再按照常生效", async () => {
+	it("登录状态:壳没起来时回提示且不喊变更;之后起来再按照常生效", async () => {
 		const real: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
-		let auth: OverridableApi<ReturnType<typeof fakeAuth>> | undefined;
-		const bus = createNodeMessageBus();
-		const reports: Array<{ sourceKey: string; state: AuthState }> = [];
-		bus.on("subscription-auth-changed", (changed) => reports.push(changed));
-		const reg = biliRegistry([loginStateScenario({ auth: () => auth, bus })]);
+		let auth: AuthShell | undefined;
+		const reports: AuthState[] = [];
+		const reg = biliRegistry([loginStateScenario({ auth: () => auth })]);
 
 		await expect(
 			reg.run("bilibili.auth.login-state", {
@@ -118,15 +120,17 @@ describe("B 站场景现取开发壳", () => {
 		).resolves.toMatchObject({ summary: NOT_READY });
 		expect(reports).toEqual([]);
 
-		auth = overridableApi(fakeAuth(real, { name: "真的" }));
+		const shell = createAuthShell(fakeAuth(real, { name: "真的" }));
+		shell.api.onChange(() => reports.push(shell.api.state()));
+		auth = shell;
 		await expect(
 			reg.run("bilibili.auth.login-state", {
 				status: "logged-in",
 				uname: "假账号",
 			}),
 		).resolves.toBeDefined();
-		expect(auth.api.state()).toMatchObject({ status: "logged-in" });
-		expect(auth.api.account()).toEqual({ name: "假账号" });
-		expect(reports).toEqual([{ sourceKey: "bilibili", state: auth.api.state() }]);
+		expect(shell.api.state()).toMatchObject({ status: "logged-in" });
+		expect(shell.api.account()).toEqual({ name: "假账号" });
+		expect(reports).toEqual([shell.api.state()]);
 	});
 });

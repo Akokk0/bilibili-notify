@@ -17,6 +17,7 @@ import {
 	type SourceContext,
 	type SourceDescriptor,
 	type SourceHealth,
+	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import type { ImageWriter } from "../images/image-store.js";
@@ -82,6 +83,8 @@ export interface BiliSource extends Source {
 	liveRooms(): { roomIdOf(externalId: string): string | undefined } | undefined;
 	/** 资料头像网址;没 start 或已 stop 时是 undefined。开发场景造 B 站假动态时读它。 */
 	profileAvatars(): { avatarUrlOf(externalId: string): string | undefined } | undefined;
+	/** 自己的名单(`ctx.subscriptions()` 那一份);没 start 或已 stop 时是 undefined。开发场景挑人读它。 */
+	subscriptions(): readonly SourceSubscriptionView[] | undefined;
 }
 
 /** 从 B 站设置算动态轮询的配置(启动与热更共用)。 */
@@ -239,6 +242,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				: {
 						roomIdOf: (externalId) => roomIds?.get(externalId),
 					},
+		subscriptions: () => sourceCtx?.subscriptions(),
 		profileAvatars: () =>
 			sourceCtx === undefined
 				? undefined

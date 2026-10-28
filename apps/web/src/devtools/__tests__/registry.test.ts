@@ -9,7 +9,7 @@ import { mergeScenarios, type WebDevScenario } from "../registry";
  */
 
 const server: DevScenarioDescriptor[] = [
-	{ id: "update.state", group: "state", title: "更新状态", params: [] },
+	{ id: "core.update.state", group: "state", title: "更新状态", params: [] },
 	{ id: "bilibili.live.start", group: "event", title: "开播", params: [] },
 ];
 
@@ -28,7 +28,7 @@ describe("mergeScenarios", () => {
 
 	it("撞 id 直接炸", () => {
 		expect(() =>
-			mergeScenarios(server, [{ ...web[0], id: "update.state" } as WebDevScenario]),
+			mergeScenarios(server, [{ ...web[0], id: "core.update.state" } as WebDevScenario]),
 		).toThrow(/update\.state/);
 	});
 });

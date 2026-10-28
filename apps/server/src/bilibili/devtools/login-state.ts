@@ -1,27 +1,56 @@
-import {
-	type AuthState,
-	BILIBILI_SOURCE_KEY,
-	type MessageBus,
-	ok,
-	type SourceAuth,
-} from "@bilibili-notify/internal";
-import type { OverridableApi } from "../../devtools/api-overrides.js";
+import { type AuthState, type Disposable, ok, type SourceAuth } from "@bilibili-notify/internal";
+import { type OverridableApi, overridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import { fakeQrDataUrl } from "./fake-qr.js";
 import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
 /**
  * B2:登录状态的假货。面板从两处读登录态:`GET /api/sources/:sourceKey/auth`(来源的 `auth.state()` /
- * `auth.account()`)与 WS auth 频道的 `subscription-auth-changed`(总线上那条事件)。注入 = 两处一起换:
- * `state()` / `account()` 盖掉,再往总线上发一条同样的状态;收摊 = 摘掉,把真状态再发一遍让面板对回去。
+ * `auth.account()`)与 WS auth 频道的 `subscription-auth-changed`。后者是宿主订了登录口的变更通知、来了读一遍
+ * `state()` 发到总线上的;场景拿不到总线(ADR-0031 决策 2「核心的句柄不交出去」),所以注入 = `state()` /
+ * `account()` 盖掉,再替登录口喊一声「变了」(`notifyChanged`),宿主照常转发;收摊 = 摘掉,再喊一声。
  *
- * 只换面板看到的:登录流程本身(轮询 / 健康检查)一行不动,也不会因此判定登录失效。
+ * 宿主订着这条通知的不止总线:登录问题表也订着,所以假「失效」会进问题表并私聊主人(截流开着就拦下),
+ * 收摊即恢复。登录流程本身(轮询 / 健康检查)一行不动。
  * 选项就是 `AuthState` 的六种取值,其中 `confirming` 有两种情况(已扫等手机确认 / 开机没确认),各给一项。
  */
 export interface LoginStateDeps {
-	/** 来源登录口外面的 Proxy:`state` 与 `account` 能盖能摘;来源造好之前取不到。 */
-	auth: () => OverridableApi<Required<SourceAuth>> | undefined;
-	bus: MessageBus;
+	/** 来源登录口的开发壳;来源造好之前取不到。 */
+	auth: () => AuthShell | undefined;
+}
+
+/** 登录口的开发壳:`state` / `account` 能盖能摘;经它订的变更通知都记着,盖完能替登录口喊一声。 */
+export interface AuthShell {
+	/** 交给 B 站来源当 `Source.auth` 的那一份;宿主经它订变更。 */
+	api: Required<SourceAuth>;
+	override: OverridableApi<Required<SourceAuth>>["override"];
+	clear(method: "state" | "account"): void;
+	/** 经壳订了变更的回调挨个叫一遍 —— 宿主那头(总线上的登录事件、登录问题表)跟真的变了一样。 */
+	notifyChanged(): void;
+}
+
+export function createAuthShell(real: Required<SourceAuth>): AuthShell {
+	const shell = overridableApi(real);
+	const listeners = new Set<() => void>();
+	// 订阅照样订到真登录口上(真的变了照常通知),另在这里记一份;撤的时候两边一起撤。
+	shell.override("onChange", (subscribe, fn): Disposable => {
+		listeners.add(fn);
+		const subscription = subscribe(fn);
+		return {
+			dispose() {
+				listeners.delete(fn);
+				subscription.dispose();
+			},
+		};
+	});
+	return {
+		api: shell.api,
+		override: shell.override,
+		clear: (method) => shell.clear(method),
+		notifyChanged() {
+			for (const fn of [...listeners]) fn();
+		},
+	};
 }
 
 type Key =
@@ -92,18 +121,14 @@ async function build(key: Key, uname: string, message: string): Promise<Fake> {
 }
 
 export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
-	let fake: { key: Key; auth: OverridableApi<Required<SourceAuth>> } | null = null;
-
-	const publish = (state: AuthState): void => {
-		deps.bus.emit("subscription-auth-changed", { sourceKey: BILIBILI_SOURCE_KEY, state });
-	};
+	let fake: { key: Key; auth: AuthShell } | null = null;
 
 	return {
 		id: "auth.login-state",
 		group: "state",
 		title: "登录状态",
 		icon: "user",
-		desc: "换掉面板看到的 B 站登录状态(顶栏账号、系统页登录卡、扫码弹窗)。只换面板看到的,登录流程本身不动;收摊即回真。",
+		desc: "换掉 B 站登录口报给宿主的登录状态:顶栏账号、系统页登录卡、扫码弹窗跟着变,登录问题表也跟着反应 —— 假「失效」会进问题表并私聊主人(截流开着就拦下)。登录流程本身不动;收摊即回真。",
 		params: [
 			{ key: "status", label: "状态", kind: "enum", options: STATUSES, default: "awaiting-scan" },
 			{ key: "uname", label: "账号名(已登录时)", kind: "text", default: DEFAULT_UNAME },
@@ -121,7 +146,7 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 			fake = { key, auth };
 			auth.override("state", () => built.state);
 			auth.override("account", () => built.account);
-			publish(built.state);
+			auth.notifyChanged();
 			return ok();
 		},
 		active() {
@@ -135,7 +160,7 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 			fake = null;
 			auth.clear("state");
 			auth.clear("account");
-			publish(auth.api.state());
+			auth.notifyChanged();
 		},
 	};
 }

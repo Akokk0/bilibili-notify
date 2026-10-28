@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
+import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -49,16 +50,18 @@ describe("devtools 挂载", () => {
 			{ integrationSettings: [settingsSegment] },
 		);
 		await runtime.configStore.load();
-		const registry = createDevRegistry([
-			{ id: "a", group: "event", title: "A", params: [], run: () => ok() },
-		]);
+		const registry = createDevRegistry(
+			createDevtoolsProviderRegistry([
+				{ id: "a", group: "event", title: "A", params: [], run: () => ok() },
+			]),
+		);
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			devtools: createDevRoute({ registry }),
 		});
 		const res = await app.request("/api/dev");
 		expect(res.status).toBe(200);
-		expect(await res.json()).toMatchObject({ scenarios: [{ id: "a" }], active: [] });
+		expect(await res.json()).toMatchObject({ scenarios: [{ id: "core.a" }], active: [] });
 		await runtime.dispose();
 	});
 });

@@ -1,6 +1,6 @@
 # ADR-0031：指令与 devtools 场景
 
-- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**3a / 3b 已落一部分**，现状见各决策下的 🔗；余下归第 4 期。
+- **状态**：2026-09-28 `/grill-me` 拍板（一次一题）。**3a / 3b / 第 4 期（4-06）已落**，现状见各决策下的 🔗；余下两件还没有使用者（指令 `ctx` 的 `signal`、推送适配器的场景挑自己的连接），等第一个使用者。
 - **记录方式**：拷问当场落的定案。接口的正本在 [docs/1.0/](../1.0/) 的 subscription-sources；本份只写定了什么、为什么、否了什么。
 - **影响面**：指令框架与各指令、登录指令、devtools 的登记表与场景、`apps/contract` 的 devtools 契约。
 - **依赖**：[ADR-0021](0021-neutral-core.md)、[ADR-0024](0024-push-platform-adapter.md)（`sendToAddress`）、[ADR-0026](0026-failure-results.md)、[ADR-0008](0008-devtools.md)。
@@ -26,10 +26,14 @@
     - 场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），不会撞名，也冒充不了别家。
     - 参数按提供方收窄：来源用新种类 `creator`（值是自己名单里的 `externalId`）；推送适配器只能挑自己的连接；`sub` / `target` 只给核心。
     - `run` 返回结果形状：参数不合法回 `invalid`，场景找不到回 `not_found`；原来那两个异常类删掉。
-    - 场景只用自己集成的 ctx 做事（B 站「造一条新动态」就调 `ctx.reportPost`），核心的句柄不交出去。
+    - 场景只用自己集成的东西做事（B 站「造一条新动态」经 B 站自己的轮询上报），核心的句柄不交出去。
     - 🔗 10-10（3a-32）已落前四条里的登记方式与 id 前缀：`DevtoolsProvider`、登记表 `devtoolsProviders`（类型 `DevtoolsProviderRegistry`）、宿主加前缀；B 站的场景搬进 `bilibili/devtools/`，只在开发版的门里登记。「只用自己集成的 ctx 做事」还没做：B 站的场景仍直接用引擎与套了壳的接口句柄，句柄由入口建好交给它，等 3a-28 B 站有了上报口再改。核心自己的场景不加前缀（原文没提）。`run` 返回结果形状、`creator` 参数种类也还没做。
     - 🔗 现状（3b-45，10-25）已落：`run` 返回结果形状，`DevParamError` / `DevScenarioNotFound` 删除，过线给面板的纯声明改名 `DevScenarioDescriptor`，场景这一族与 `DevtoolsProvider` 的本体住 `packages/internal/src/devtools.ts`（拓展包与 contract 只转类型）；provider 随拓展起停登记与撤销，拓展场景与核心场景撞完整 id 会被拒。仍未做：`creator` 参数种类、B 站场景只用自己的 ctx、核心场景加前缀。
     - 🔗 现状（3b-50，10-26）：仍未做的三件——`creator` 参数种类、B 站场景只用自己集成的 ctx、核心场景加前缀——主人定归第 4 期，3b 不做。
+    - 🔗 现状（4-06，10-28）三件都落了：
+        - **核心场景加前缀 `core.`**：核心的场景建表时就以 `core` 认领（`core` 本是保留的拓展 id），id 是 `core.update.state` 这样；撞名检查只剩「同一家不重名、一个提供方 id 只认领一次」。描述符多一格 `provider`，宿主填 `core` / 来源键 / 拓展 id。
+        - **`creator` 参数种类**：值是那个来源名单（`ctx.subscriptions()` 那一份）里的 externalId；给了不在名单里的宿主回 `invalid`，省略由场景自己挑；面板按 `provider` 只列那个来源启用的订阅、按人去重。种类按提供方收：`sub` / `target` / `connection` 只给核心，别家（B 站与拓展一样）只收 text / number / enum / creator，认领时就拒。「推送适配器只能挑自己的连接」没做：还没有一家适配器的场景要挑连接。
+        - **B 站场景只用自己的东西**：上面那句例子原文是「B 站『造一条新动态』就调 `ctx.reportPost`」，主人 10-28 定改成「经 B 站自己的轮询上报」——注入点留在 B 站自己的边界上（假动态并进拉动态的结果、假直播塞进直播连接），直调会跳过 B 站自己的解析。拿掉的是从核心借的总线、订阅表、订阅运行时状态：`compose.ts` 只递 B 站来源一个把手，名单读来源 `ctx.subscriptions()` 那一份。随之：回执写 UID，假动态卡上的作者名现拉用户卡（拉不到写 UID）；「进场」的 uid 要自己填（特别关注是核心的订阅配置）；「登录状态」不再往总线发，改成替登录口喊一声变更、由宿主照常转发，登录问题表也跟着反应（假「失效」会进问题表并私聊）。
 
 ## 取代与修订的旧条款
 

@@ -25,7 +25,6 @@ import {
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
-import type { Subscription } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeServiceContext } from "../bilibili/api/__tests__/support/make-api.js";
 import { Api } from "../bilibili/api/index.js";
@@ -47,7 +46,6 @@ import {
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import type { LocaleReader } from "../i18n/locale-reader.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
-import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { fixedLocale } from "./support/fixed-locale.js";
 import { ignoredProblems } from "./support/ignored-problems.js";
 import { inertSettingsOf } from "./support/inert-settings.js";
@@ -74,19 +72,6 @@ vi.mock("../bilibili/devtools/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../bilibili/devtools/index.js")>();
 	return { ...actual, createBiliDevtools: vi.fn(actual.createBiliDevtools) };
 });
-
-function makeSub(
-	sourceKey: string,
-	externalId: string,
-	over: { enabled?: boolean; specialViewers?: { id: string }[] } = {},
-): Subscription {
-	return {
-		id: `${sourceKey}-${externalId}`,
-		identity: { sourceKey, externalId },
-		enabled: over.enabled ?? true,
-		specialViewers: over.specialViewers ?? [],
-	} as unknown as Subscription;
-}
 
 const EMPTY_FEED = okResult({
 	data: { has_more: false, items: [], offset: "", update_baseline: "", update_num: 0 },
@@ -139,7 +124,6 @@ function makeFakePipeline(ctx: SourceContext) {
 
 function compose(
 	opts: {
-		subs?: Subscription[];
 		/** 语言读口:不给就是一直不变的;要切语言的用例给 `switchableLocale()`。 */
 		locale?: LocaleReader;
 		/** 入站的下一层:不给就是两个空函数。 */
@@ -152,7 +136,6 @@ function compose(
 		biliServiceCtx?: ServiceContext;
 	} = {},
 ) {
-	const subs = opts.subs ?? [];
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 工厂创建时只往 serviceCtx 挂关停兜底(OneBot、QQ 官方各一个);连接名单是空的,适配器 start 不开监听。
 	// B 站的上下文收尾钩子也在构造时就登记在这里(`stop` 段)。
@@ -182,16 +165,6 @@ function compose(
 	const memoryStore = memoryIntegrationStore();
 	const deps = {
 		locale: opts.locale ?? fixedLocale(),
-		bus: createNodeMessageBus(),
-		subscriptions: { list: () => subs },
-		subscriptionState: {
-			get: (id: string) =>
-				id === "bilibili-100"
-					? ({
-							cachedProfile: { name: "甲", refreshedAt: "2026-10-24T00:00:00.000Z" },
-						} as never)
-					: undefined,
-		},
 		setTimeout: () => ({ dispose() {} }),
 		accountImages: inertAccountImages,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
@@ -264,32 +237,25 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 		expect(ids.every((id) => id.startsWith(`${BILIBILI_SOURCE_KEY}.`))).toBe(true);
 	});
 
-	it("挑订阅只留 B 站订阅,资料状态不走订阅选择", () => {
-		const providers = createDevtoolsProviderRegistry();
-		compose({
-			subs: [
-				makeSub("bilibili", "100", { specialViewers: [{ id: "777" }] }),
-				makeSub("e0000000-0000-4000-8000-000000000001", "x1"),
-				makeSub("bilibili", "200", { enabled: false }),
-			],
-		}).builtins.provideDevtools(providers);
-		const picked = vi.mocked(createBiliDevtools).mock.calls[0]?.[0].subs();
-		expect(picked).toEqual([
-			{
-				id: "bilibili-100",
-				externalId: "100",
-				name: "甲",
-				enabled: true,
-				specialViewers: ["777"],
-			},
-			{
-				id: "bilibili-200",
-				externalId: "200",
-				name: "200",
-				enabled: false,
-				specialViewers: [],
-			},
-		]);
+	// 验红:把 `compose.ts` 递给 `createBiliDevtools` 的东西换回核心的订阅表 / 总线,或 `source` 交的不是登记进去的
+	// 那个来源,这条红。
+	it("开发场景只拿 B 站来源一个把手:来源造好之前取不到;登记之后就是那个来源,名单是它 ctx 那一份", async () => {
+		const { builtins } = compose();
+		builtins.provideDevtools(createDevtoolsProviderRegistry());
+		const handed = vi.mocked(createBiliDevtools).mock.calls[0]?.[0];
+		if (!handed) throw new Error("createBiliDevtools 没被调");
+		expect(Object.keys(handed)).toEqual(["source"]);
+		expect(handed.source()).toBeUndefined();
+
+		const roster = [
+			{ externalId: "100", features: new Set(["post"] as const), monitorsLive: false },
+		];
+		const { pipeline, registered } = makeFakePipeline(makeFakeSourceCtx(roster).ctx);
+		await builtins.registerSources(pipeline);
+
+		expect(handed.source()).toBe(registered[0]?.source);
+		expect(handed.source()?.subscriptions()).toBe(roster);
+		await registered[0]?.source.stop();
 	});
 
 	it("provideDevtools 没被调时,B 站的工厂一次都没被调(门没开的性质)", () => {
@@ -404,7 +370,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			.spyOn(Api.prototype, "fetchAllDynamic")
 			.mockResolvedValue(EMPTY_FEED);
 		spies.push(fetchAllDynamic);
-		const { builtins } = compose({ subs: [makeSub("bilibili", "100")] });
+		const { builtins } = compose();
 		const providers = createDevtoolsProviderRegistry();
 		builtins.provideDevtools(providers);
 		expect(builtins.bilibili.api()).toBeUndefined();
@@ -450,8 +416,14 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-11T00:00:00Z") });
 			const fetchAllDynamic = vi.fn(async () => EMPTY_FEED);
 			spies.push(vi.spyOn(Api.prototype, "fetchAllDynamic").mockImplementation(fetchAllDynamic));
+			// 场景给卡上的作者名现拉一次用户卡;拉不到就写 UID。
+			spies.push(
+				vi
+					.spyOn(Api.prototype, "fetchUserCard")
+					.mockResolvedValue(fail("unavailable", "测试不联网") as never),
+			);
 			const fetchImage = vi.fn(async () => fail("unavailable", "测试不联网"));
-			const { builtins, deps, integrationStore } = compose({ subs: [makeSub("bilibili", "100")] });
+			const { builtins, deps, integrationStore } = compose();
 			const { ctx, reportPost } = makeFakeSourceCtx(roster, fetchImage);
 			const fake = makeFakePipeline(ctx);
 			const providers = createDevtoolsProviderRegistry();
@@ -462,7 +434,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		};
 		const runScenario = async (
 			scenario: ReturnType<typeof setup>["scenario"],
-			params: Record<string, string> = { sub: "bilibili-100" },
+			params: Record<string, string> = { creator: "100" },
 		) => {
 			vi.setSystemTime(new Date("2026-10-11T00:00:10Z"));
 			return scenario.run(params as never);
@@ -492,7 +464,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			const { builtins, fake, scenario, fetchImage } = setup();
 			await builtins.registerSources(fake.pipeline);
 			try {
-				await runScenario(scenario, { sub: "bilibili-100", type: "draw" });
+				await runScenario(scenario, { creator: "100", type: "draw" });
 				expect(fetchImage).toHaveBeenCalled();
 			} finally {
 				await fake.registered[0]?.source.stop();

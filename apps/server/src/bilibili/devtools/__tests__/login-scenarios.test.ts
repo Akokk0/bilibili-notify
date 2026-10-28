@@ -14,18 +14,17 @@ function setup(options?: { login?: boolean; state?: AuthState }) {
 		handleAuthLost: vi.fn(async () => {}),
 		reportAccountInfo: vi.fn(async () => {}),
 	};
-	const deps = {
-		bus: {
-			emit: vi.fn(),
-			on: vi.fn(() => ({ dispose() {} })),
-		},
-		subs: () => [],
-		dynamic: () => undefined,
-		liveRooms: () => undefined,
-		profileAvatars: () => undefined,
-		login: () => (options?.login === false ? undefined : login),
-		auth: () => auth,
-	} as unknown as BiliDevtoolsDeps;
+	const deps: BiliDevtoolsDeps = {
+		source: () =>
+			({
+				subscriptions: () => [],
+				dynamic: () => undefined,
+				liveRooms: () => undefined,
+				profileAvatars: () => undefined,
+				login: () => (options?.login === false ? undefined : login),
+				auth,
+			}) as unknown as ReturnType<BiliDevtoolsDeps["source"]>,
+	};
 	return {
 		login,
 		registry: biliRegistry(createBiliDevtools(deps).provider.scenarios),
@@ -61,15 +60,18 @@ describe("B 站登录失效与重新确认登录", () => {
 				state = { status: "logged-in", loggedInAt: "2026-10-25T01:00:00.000Z" };
 			}),
 		};
-		const deps = {
-			bus: { emit: vi.fn(), on: vi.fn(() => ({ dispose() {} })) },
-			subs: () => [],
-			dynamic: () => undefined,
-			liveRooms: () => undefined,
-			profileAvatars: () => undefined,
-			login: () => login,
-			auth: () => ({ ...auth, state: () => state }),
-		} as unknown as BiliDevtoolsDeps;
+		const deps: BiliDevtoolsDeps = {
+			source: () =>
+				({
+					subscriptions: () => [],
+					dynamic: () => undefined,
+					liveRooms: () => undefined,
+					profileAvatars: () => undefined,
+					login: () => login,
+					// 状态现读:探完之后 `state` 换成了已登录。
+					auth: { ...auth, state: () => state },
+				}) as unknown as ReturnType<BiliDevtoolsDeps["source"]>,
+		};
 		const registry = biliRegistry(createBiliDevtools(deps).provider.scenarios);
 
 		await expect(registry.run("bilibili.auth.recheck", {})).resolves.toMatchObject({

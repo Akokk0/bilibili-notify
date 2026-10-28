@@ -1,9 +1,15 @@
-import { type DevParamValues, fail, ok, type Result } from "@bilibili-notify/internal";
+import {
+	type DevParamValues,
+	fail,
+	ok,
+	type Result,
+	type SourceSubscriptionView,
+} from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
 import type { Api } from "../api/index.js";
 import { failureFromBili } from "../error-codes.js";
-import type { SubPick } from "./live.js";
+import { CREATOR_PARAM, givenCreator, uidLabel } from "./live.js";
 import { BILI_SHELLS_NOT_READY_SUMMARY } from "./shells.js";
 
 /**
@@ -27,8 +33,10 @@ export interface DynamicPollerLike {
 }
 
 export interface DynamicScenarioDeps {
-	subs: () => SubPick[];
-	api: () => OverridableApi<Pick<Api, "fetchAllDynamic">> | undefined;
+	/** B 站自己的名单(`ctx.subscriptions()` 那一份),现读;来源还没起来时是空的。 */
+	roster: () => readonly SourceSubscriptionView[];
+	/** 拉动态那一个盖板位;作者名经 `fetchUserCard` 现拉(名单里只有 UID)。 */
+	api: () => OverridableApi<Pick<Api, "fetchAllDynamic" | "fetchUserCard">> | undefined;
 	/** B 站自己的资料状态;假动态的作者头像与图集封面借它。 */
 	profileAvatars: () => { avatarUrlOf(externalId: string): string | undefined } | undefined;
 	/** 动态轮询是后建的,现取;还没起来就 undefined。 */
@@ -47,7 +55,8 @@ const FALLBACK_PIC = "https://i0.hdslb.com/bfs/face/member/noface.jpg";
 interface FakeInput {
 	id: string;
 	kind: Kind;
-	sub: SubPick;
+	/** 作者:UID 与卡上的名字。 */
+	author: { externalId: string; name: string };
 	text: string;
 	ts: number;
 }
@@ -65,14 +74,14 @@ function pubTime(ts: number): string {
 	return `${d.slice(5, 10)} ${d.slice(11, 16)}`;
 }
 
-function author(sub: SubPick, ts: number, pubAction: string, avatar: string) {
+function author(who: FakeInput["author"], ts: number, pubAction: string, avatar: string) {
 	return {
 		face: avatar,
 		following: true,
-		jump_url: `https://space.bilibili.com/${sub.externalId}/dynamic`,
+		jump_url: `https://space.bilibili.com/${who.externalId}/dynamic`,
 		label: "",
-		mid: Number(sub.externalId),
-		name: sub.name,
+		mid: Number(who.externalId),
+		name: who.name,
 		pub_action: pubAction,
 		pub_action_text: pubAction,
 		pub_location_text: "",
@@ -86,7 +95,7 @@ function author(sub: SubPick, ts: number, pubAction: string, avatar: string) {
 const ZERO_STAT = { comment: { count: 0 }, forward: { count: 0 }, like: { count: 0 } };
 
 function buildFake(input: FakeInput, avatar: string): FeedItem {
-	const { id, kind, sub, text, ts } = input;
+	const { id, kind, author: who, text, ts } = input;
 	const pic = avatar;
 	const base = {
 		basic: { comment_id_str: id, comment_type: 17, rid_str: id },
@@ -99,7 +108,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_WORD",
 				modules: {
-					module_author: author(sub, ts, "", avatar),
+					module_author: author(who, ts, "", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: { desc: richText(text) },
 				},
@@ -109,7 +118,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_DRAW",
 				modules: {
-					module_author: author(sub, ts, "", avatar),
+					module_author: author(who, ts, "", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						major: {
@@ -136,7 +145,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_AV",
 				modules: {
-					module_author: author(sub, ts, "投稿了视频", avatar),
+					module_author: author(who, ts, "投稿了视频", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						desc: richText(text),
@@ -155,7 +164,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 								// 要看的东西之一。
 								jump_url: "//www.bilibili.com/video/BV17x411w7KC",
 								stat: { play: "6.5万", danmaku: "1234" },
-								title: `${sub.name} 的新视频(devtools)`,
+								title: `${who.name} 的新视频(devtools)`,
 								type: 1,
 							},
 						},
@@ -167,7 +176,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_ARTICLE",
 				modules: {
-					module_author: author(sub, ts, "投稿了专栏", avatar),
+					module_author: author(who, ts, "投稿了专栏", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: {
 						major: {
@@ -177,7 +186,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 								jump_url: `https://www.bilibili.com/read/cv${id.replace(/\D/g, "")}`,
 								pics: [{ url: pic, width: 640, height: 360, size: 40, live_url: "" }],
 								summary: richText(text),
-								title: `${sub.name} 的新专栏(devtools)`,
+								title: `${who.name} 的新专栏(devtools)`,
 							},
 						},
 					},
@@ -188,7 +197,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 				...base,
 				type: "DYNAMIC_TYPE_FORWARD",
 				modules: {
-					module_author: author(sub, ts, "转发动态", avatar),
+					module_author: author(who, ts, "转发动态", avatar),
 					module_stat: ZERO_STAT,
 					module_dynamic: { desc: richText(text) },
 				},
@@ -196,7 +205,7 @@ function buildFake(input: FakeInput, avatar: string): FeedItem {
 					{
 						id: `${id}-orig`,
 						kind: "word",
-						sub,
+						author: who,
 						text: "被转发的那条(devtools 造的)。",
 						ts: ts - 3600,
 					},
@@ -253,17 +262,40 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		});
 	}
 
-	function pickSub(params: DevParamValues): Result<{ sub: SubPick }> {
-		const wanted = params.sub;
-		const subs = deps.subs();
-		const sub =
-			wanted === undefined
-				? subs.find((s) => s.enabled)
-				: subs.find((s) => s.id === String(wanted));
-		if (!sub) {
-			return fail("invalid", wanted === undefined ? "没有启用的订阅" : `没有这个订阅:${wanted}`);
+	/**
+	 * 给了 `creator` 就用它(宿主已按名单核过),省略取名单里第一个开着作品的;作品开关关着的人
+	 * 不在动态轮询要推的人里,造了也被跳过,直接拒。
+	 */
+	function pickCreator(params: DevParamValues): Result<{ externalId: string }> {
+		const roster = deps.roster();
+		const given = givenCreator(params);
+		if (given === undefined) {
+			const first = roster.find((view) => view.features.has("post"));
+			return first
+				? ok({ externalId: first.externalId })
+				: fail("invalid", "名单里没有一位开着作品的 UP");
 		}
-		return ok({ sub });
+		const view = roster.find((one) => one.externalId === given);
+		if (!view) return fail("invalid", `${uidLabel(given)} 不在 B 站的名单里`);
+		if (!view.features.has("post")) {
+			return fail("invalid", `${uidLabel(given)} 的作品开关关着,造了也会被动态轮询跳过`);
+		}
+		return ok({ externalId: given });
+	}
+
+	/** 卡上的作者名:经 B 站自己的接口现拉用户卡(名单里只有 UID);拉不到就用 UID。 */
+	async function nameOf(
+		api: OverridableApi<Pick<Api, "fetchUserCard">>,
+		externalId: string,
+	): Promise<string> {
+		try {
+			const card = await api.api.fetchUserCard(externalId);
+			const name = card.ok ? card.data?.card?.name : undefined;
+			if (typeof name === "string" && name.trim() !== "") return name;
+		} catch {
+			// 连不上 / 超时:照样造,名字退回 UID。
+		}
+		return uidLabel(externalId);
 	}
 
 	const post: DevScenarioDef = {
@@ -271,10 +303,10 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		group: "event",
 		title: "发动态",
 		icon: "dyn",
-		desc: "往动态 feed 里并进一条这位 UP 的假动态(文字 / 图文 / 视频 / 专栏 / 转发),然后立刻跑一轮检测 —— 过滤、渲染、AI 点评、推送全是真链路。锚点会推进到现在,统计里也会记一条。",
+		desc: "往动态 feed 里并进一条这位 UP 的假动态(文字 / 图文 / 视频 / 专栏 / 转发),然后立刻跑一轮检测 —— 过滤、渲染、AI 点评、推送全是真链路。作者名现拉一次用户卡(拉不到就写 UID);锚点会推进到现在,统计里也会记一条。",
 		quick: true,
 		params: [
-			{ key: "sub", label: "订阅", kind: "sub" },
+			CREATOR_PARAM,
 			{
 				key: "type",
 				label: "类型",
@@ -293,26 +325,27 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		async run(params) {
 			const api = deps.api();
 			if (!api) return ok({ summary: BILI_SHELLS_NOT_READY_SUMMARY });
-			const picked = pickSub(params);
-			if (!picked.ok) return picked;
-			const { sub } = picked;
 			const engine = deps.dynamic();
 			if (!engine)
 				return fail(
 					"invalid",
 					"动态轮询还没起来(没登录,或动态那一格设置读不懂),这会儿造了也没人来捡",
 				);
+			const picked = pickCreator(params);
+			if (!picked.ok) return picked;
+			const { externalId } = picked;
 			const kind = String(params.type ?? "word") as Kind;
+			const name = await nameOf(api, externalId);
 			seq += 1;
 			const fake = buildFake(
 				{
 					id: `dev-${Date.now()}-${seq}`,
 					kind,
-					sub,
+					author: { externalId, name },
 					text: typeof params.text === "string" && params.text !== "" ? params.text : DEFAULT_TEXT,
 					ts: Math.floor(Date.now() / 1000),
 				},
-				deps.profileAvatars()?.avatarUrlOf(sub.externalId) ?? FALLBACK_PIC,
+				deps.profileAvatars()?.avatarUrlOf(externalId) ?? FALLBACK_PIC,
 			);
 			pending.push(fake);
 			syncOverride(api);
@@ -322,7 +355,7 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 				pending.splice(pending.indexOf(fake), 1);
 				syncOverride(api);
 			}
-			return ok({ summary: `已替 ${sub.name} 发了一条假动态(${kind}),检测已跑完一轮。` });
+			return ok({ summary: `已替 ${name} 发了一条假动态(${kind}),检测已跑完一轮。` });
 		},
 	};
 

@@ -1,11 +1,10 @@
-import { ok } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
 import type { Api } from "../../api/index.js";
 import { failureFromBili } from "../../error-codes.js";
 import { dynamicScenarios } from "../dynamic.js";
-import type { SubPick } from "../live.js";
-import { biliRegistry } from "./support/registry.js";
+import { biliRegistry, rosterEntry } from "./support/registry.js";
 
 /**
  * 让拉动态返回指定错误码(状态类场景):盖的是传给 DynamicPoller 的 `api.fetchAllDynamic()` 那一个请求,
@@ -13,7 +12,7 @@ import { biliRegistry } from "./support/registry.js";
  * 它不经请求客户端的拦截,所以回 `-101` 也**不会**把登录状态变成失效 —— 说明文字要如实写明。
  */
 
-const SUBS: SubPick[] = [{ id: "s1", externalId: "100", name: "甲", enabled: true }];
+const ROSTER = [rosterEntry("100")];
 
 class FakeApi {
 	real = vi.fn(
@@ -31,6 +30,9 @@ class FakeApi {
 	fetchAllDynamic() {
 		return this.real();
 	}
+	async fetchUserCard(): ReturnType<Api["fetchUserCard"]> {
+		return fail("unavailable", "测试里不拉用户卡");
+	}
 }
 
 /** 一次拉动态的结果里的 B 站码:成功是 0,失败是 `upstreamCode`。 */
@@ -46,11 +48,12 @@ function setup() {
 	});
 	const reg = biliRegistry(
 		dynamicScenarios({
-			subs: () => SUBS,
+			roster: () => ROSTER,
 			api: () => api,
 			dynamic: () => ({ detectNow }),
 			profileAvatars: () => undefined,
 		}),
+		ROSTER,
 	);
 	return { reg, api: api.api, raw, detectNow };
 }

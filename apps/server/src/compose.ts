@@ -11,7 +11,7 @@
  * 核心里只有这个文件能 import `platforms/`(`scripts/__tests__/import-boundaries.test.mjs` 钉着);
  * 入口与推送链路只认 `PlatformAdapter` 接口。
  *
- * 「挑订阅」那一段是随开发场景的过渡接线一起留着的。
+ * B 站那组开发场景只拿 B 站来源一个把手(名单、轮询、直播连接、登录都从它身上现取),核心的句柄一样不给(ADR-0031 决策 2)。
  *
  * 带 `devtools/` 的模块说明符在这里只许 B 站 devtools 的入口一个
  * (`devtools-isolation` 钉着,注释里也别加引号写它):构建时它被换成恒空的桩。
@@ -23,11 +23,8 @@ import {
 	type Disposable,
 	type InboundHandlers,
 	type Logger,
-	type MessageBus,
 	type ServiceContext,
-	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import type { Api } from "./bilibili/api/index.js";
 import { type BiliContextHandle, createBiliContext } from "./bilibili/context.js";
 import { createBiliDevtools, type DevtoolsProviderRegistry } from "./bilibili/devtools/index.js";
@@ -48,7 +45,6 @@ import {
 import type { PlatformAdapterRegistry } from "./push/registry.js";
 import type { PipelineRuntime } from "./runtime/pipeline.js";
 import type { NodeServiceContext } from "./runtime/service-context.js";
-import type { SubscriptionStateStore } from "./runtime/subscription-state-store.js";
 
 /**
  * 各内置集成的设置段:建运行时(配置仓)时交进去,段在配置仓构造期定死,所以是模块级常量、不在
@@ -64,10 +60,6 @@ export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[]
 export interface BuiltinIntegrationsDeps {
 	/** 当前语言的读口(入口造一份):内置集成的问题句在语言变了时按新语言重报,递给 B 站来源。 */
 	locale: LocaleReader;
-	bus: MessageBus;
-	/** 开发场景挑订阅用,现读。 */
-	subscriptions: Pick<SubscriptionStore, "list">;
-	subscriptionState: Pick<SubscriptionStateStore, "get">;
 	setTimeout: ServiceContext["setTimeout"];
 	/** 账号头像往图库存图的口(`AppRuntime.accountImages`):B 站来源的登录系统抓头像用。 */
 	accountImages: ImageWriter;
@@ -139,7 +131,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 	}, "stop");
 	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;
-	const dynamic = () => source?.dynamic();
 	// 每个适配器是一个集成:日志行的标签与等级都跟它自己的适配器键(`logging.levels.<适配器键>`)。
 	// 键要等于它登进登记表的 `adapterKey`(工厂要日志器在先、适配器对象在后,只能先写下来;`compose.test.ts` 钉着对得上)。
 	const loggerOf = (key: string): Logger => deps.serviceCtx.forSubsystem(key, key).logger;
@@ -160,31 +151,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 
 	return {
 		provideDevtools(providers) {
-			const made = createBiliDevtools({
-				bus: deps.bus,
-				// 场景挑订阅:配置里的订阅 + 运行时资料缓存。
-				// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
-				subs: () =>
-					deps.subscriptions
-						.list()
-						.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
-						.map((sub) => {
-							const externalId = subscriptionIdentityOf(sub).externalId;
-							const runtime = deps.subscriptionState.get(sub.id);
-							return {
-								id: sub.id,
-								externalId,
-								name: runtime?.cachedProfile?.name ?? externalId,
-								enabled: sub.enabled,
-								specialViewers: sub.specialViewers.map((v) => v.id),
-							};
-						}),
-				dynamic,
-				liveRooms: () => source?.liveRooms(),
-				profileAvatars: () => source?.profileAvatars(),
-				login: () => source?.login(),
-				auth: () => source?.auth,
-			});
+			const made = createBiliDevtools({ source: () => source });
 			devShells = made.devShells;
 			providers.claim(BILIBILI_SOURCE_KEY, made.provider);
 		},

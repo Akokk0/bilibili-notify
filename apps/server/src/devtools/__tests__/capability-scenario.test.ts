@@ -10,8 +10,8 @@ import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createCapabilityInjector } from "../capability-injection.js";
-import { createDevRegistry } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";
+import { coreDevRegistry } from "./support/core-registry.js";
 
 /**
  * B3:连接能力三态(小程序卡 支持 / 不支持 / 未知)。面板从 `/api/connections/capabilities`
@@ -75,7 +75,7 @@ function webhook(): PlatformAdapter {
 function setup() {
 	const injector = createCapabilityInjector();
 	const dialects = [onebot(), webhook()];
-	const reg = createDevRegistry([
+	const reg = coreDevRegistry([
 		capabilityScenario({ injector, connections: () => [OB, WH], dialects: () => dialects }),
 	]);
 	return { reg, injector };
@@ -98,22 +98,25 @@ function dispatcherWith(
 	});
 }
 
-describe("connection.capability", () => {
+describe("core.connection.capability", () => {
 	it("注入 supported:注入读口对那个连接回假的,别的连接不受影响", async () => {
 		const { reg, injector } = setup();
-		const res = await reg.run("connection.capability", { connection: "ad-ob", state: "supported" });
+		const res = await reg.run("core.connection.capability", {
+			connection: "ad-ob",
+			state: "supported",
+		});
 		expect(injector.get("ad-ob")).toMatchObject({ nativeShare: { state: "supported" } });
 		expect(injector.get("other")).toBeUndefined();
 		expect(res).toMatchObject({
 			ok: true,
-			active: [{ scenarioId: "connection.capability", label: "能力 → NapCat 支持小程序卡" }],
+			active: [{ scenarioId: "core.connection.capability", label: "能力 → NapCat 支持小程序卡" }],
 		});
 	});
 
 	it("注入只换小程序卡这一格:atAll / inbound 沿用方言原本的回答", async () => {
 		const { reg, injector } = setup();
 		for (const state of ["supported", "unsupported", "unknown"]) {
-			await reg.run("connection.capability", { connection: "ad-ob", state });
+			await reg.run("core.connection.capability", { connection: "ad-ob", state });
 			const caps = injector.get("ad-ob");
 			expect(caps?.atAll).toBe(REAL.atAll);
 			expect(caps?.inbound).toBe(REAL.inbound);
@@ -122,7 +125,7 @@ describe("connection.capability", () => {
 
 	it("unsupported 带理由,unknown 可以不带", async () => {
 		const { reg, injector } = setup();
-		await reg.run("connection.capability", {
+		await reg.run("core.connection.capability", {
 			connection: "ad-ob",
 			state: "unsupported",
 			reason: "假装 1404",
@@ -130,15 +133,17 @@ describe("connection.capability", () => {
 		expect(injector.get("ad-ob")).toMatchObject({
 			nativeShare: { state: "unsupported", reason: "假装 1404" },
 		});
-		await reg.run("connection.capability", { connection: "ad-ob", state: "unknown" });
+		await reg.run("core.connection.capability", { connection: "ad-ob", state: "unknown" });
 		expect(injector.get("ad-ob")?.nativeShare.state).toBe("unknown");
 	});
 
 	it("connection 省略取第一个有能力概念的;指到 webhook 就拒", async () => {
 		const { reg, injector } = setup();
-		await reg.run("connection.capability", { state: "supported" });
+		await reg.run("core.connection.capability", { state: "supported" });
 		expect(injector.get(OB.id)?.nativeShare.state).toBe("supported");
-		await expect(reg.run("connection.capability", { connection: "ad-wh" })).resolves.toMatchObject({
+		await expect(
+			reg.run("core.connection.capability", { connection: "ad-wh" }),
+		).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
@@ -156,10 +161,10 @@ describe("connection.capability", () => {
 			adapterKey: "qq-official",
 			platform: "qq-official",
 		} as Connection;
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),
 		]);
-		await reg.run("connection.capability", { state: "supported" });
+		await reg.run("core.connection.capability", { state: "supported" });
 		expect(injector.get(conn.id)?.nativeShare.state).toBe("supported");
 	});
 
@@ -171,14 +176,14 @@ describe("connection.capability", () => {
 			capabilities: () => ({ ...REAL, nativeShare: { state: "unknown" } }),
 		};
 		const dispatcher = dispatcherWith(injector, dialect, OB);
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
 		]);
 
-		await reg.run("connection.capability", { connection: OB.id, state: "supported" });
+		await reg.run("core.connection.capability", { connection: OB.id, state: "supported" });
 		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("supported");
 
-		expect(await reg.reset("connection.capability")).toMatchObject({ ok: true, active: [] });
+		expect(await reg.reset("core.connection.capability")).toMatchObject({ ok: true, active: [] });
 		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unknown");
 	});
 
@@ -187,13 +192,13 @@ describe("connection.capability", () => {
 		const injector = createCapabilityInjector();
 		const dialect = onebot(); // 真答案:nativeShare unsupported
 		const dispatcher = dispatcherWith(injector, dialect, OB);
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
 		]);
 
 		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unsupported");
 
-		await reg.run("connection.capability", { connection: OB.id, state: "unknown" });
+		await reg.run("core.connection.capability", { connection: OB.id, state: "unknown" });
 		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unknown");
 	});
 
@@ -202,11 +207,11 @@ describe("connection.capability", () => {
 		const probe = vi.fn(async () => REAL);
 		const dialect: PlatformAdapter = { ...onebot(), probeCapabilities: probe };
 		const dispatcher = dispatcherWith(injector, dialect, OB);
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
 		]);
 
-		await reg.run("connection.capability", { connection: OB.id, state: "supported" });
+		await reg.run("core.connection.capability", { connection: OB.id, state: "supported" });
 		expect((await dispatcher.probeConnectionCapabilities(OB.id))?.nativeShare.state).toBe(
 			"supported",
 		);

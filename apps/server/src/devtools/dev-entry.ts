@@ -36,12 +36,9 @@ function invalidProvider(value: unknown): string | undefined {
 		const id = typeof scenario.id === "string" ? scenario.id : "(没有 id)";
 		if (typeof scenario.run !== "function") return `场景 ${id} 没有 run()`;
 		if (!Array.isArray(scenario.params)) return `场景 ${id} 的 params 不是数组`;
+		// 参数种类(核心以外只收 text / number / enum / creator)由登记表在认领时查,B 站一样受管。
 		for (const param of scenario.params) {
 			if (!isRecord(param)) return `场景 ${id} 有不是对象的参数`;
-			const key = typeof param.key === "string" ? param.key : "(没有 key)";
-			if (param.kind !== "text" && param.kind !== "number" && param.kind !== "enum") {
-				return `场景 ${id} 的参数 ${key} 是 ${String(param.kind)};开发入口只收 text / number / enum`;
-			}
 		}
 	}
 	return undefined;

@@ -1,21 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
 import type { LiveEvent } from "../../live/protocol/events.js";
-import { liveScenarios, type SubPick } from "../live.js";
+import { liveScenarios } from "../live.js";
 import { createLiveRooms } from "../live-rooms.js";
-import { biliRegistry } from "./support/registry.js";
+import { biliRegistry, rosterEntry } from "./support/registry.js";
 
 /**
  * A1:开播 / 下播。往房间的事件漏斗塞 `live-start`,同时让 `fetchLiveRoomInfo` 对那个房间说
  * 「在播」—— room-session 收到开播事件会立刻去拉房间信息,拉到 `live_status: 0` 就当没开;
  * `live_time` 是这一场的身份,得是「现在」而不是上一场的。下播反过来:塞 `live-end`,补丁摘掉。
+ *
+ * 挑人只看 B 站自己的名单(`ctx.subscriptions()` 那一份):300 还没解析出房号,400 的房间没连上,100 连着。
  */
 
-const SUBS: SubPick[] = [
-	{ id: "s1", externalId: "100", name: "甲", enabled: true },
-	{ id: "s2", externalId: "200", name: "乙", enabled: false },
-	{ id: "s3", externalId: "300", name: "丙", enabled: true },
-];
+const ROSTER = [rosterEntry("300"), rosterEntry("400"), rosterEntry("100")];
 
 class FakeApi {
 	async fetchLiveRoomInfo(roomId: string) {
@@ -42,7 +40,7 @@ function setup() {
 	const rooms = createLiveRooms();
 	const roomIds = new Map([
 		["100", "5050"],
-		["200", "6060"],
+		["400", "6060"],
 	]);
 	const events: LiveEvent[] = [];
 	rooms.observe({
@@ -53,11 +51,12 @@ function setup() {
 	const overrides = overridableApi(new FakeApi());
 	const reg = biliRegistry(
 		liveScenarios({
-			subs: () => SUBS,
+			roster: () => ROSTER,
 			rooms,
 			api: () => overrides,
 			liveRooms: () => ({ roomIdOf: (externalId) => roomIds.get(externalId) }),
 		}),
+		ROSTER,
 	);
 	return { reg, events, api: overrides.api };
 }
@@ -71,15 +70,15 @@ afterEach(() => {
 });
 
 describe("live.start / live.end", () => {
-	it("声明:事件组、快捷位、sub + title 两个参数", () => {
+	it("声明:事件组、快捷位、creator + title 两个参数", () => {
 		const { reg } = setup();
 		const decls = reg.list();
 		expect(decls.map((d) => d.id)).toEqual(["bilibili.live.start", "bilibili.live.end"]);
 		expect(decls[0]).toMatchObject({ group: "event", quick: true });
-		expect(decls[0]?.params.map((p) => p.kind)).toEqual(["sub", "text"]);
+		expect(decls[0]?.params.map((p) => p.kind)).toEqual(["creator", "text"]);
 	});
 
-	it("开播:省略 sub 取第一个启用且连着的;塞 live-start;房间信息从此说在播、live_time 是现在(北京时间)", async () => {
+	it("开播:省略 creator 取名单里第一个直播间连着的;塞 live-start;房间信息从此说在播、live_time 是现在(北京时间)", async () => {
 		const { reg, events, api } = setup();
 		const res = await reg.run("bilibili.live.start", {});
 
@@ -96,30 +95,32 @@ describe("live.start / live.end", () => {
 		expect((await api.fetchLiveRoomInfo("7070")).data.live_status).toBe(0);
 		expect(res).toMatchObject({
 			ok: true,
-			active: [{ scenarioId: "bilibili.live.start", label: "假直播中 · 甲" }],
+			active: [{ scenarioId: "bilibili.live.start", label: "假直播中 · UID 100" }],
 		});
 	});
 
-	it("指定 sub 与标题", async () => {
+	it("指定 creator 与标题", async () => {
 		const { reg, api } = setup();
-		await reg.run("bilibili.live.start", { sub: "s1", title: "今晚打老虎" });
+		await reg.run("bilibili.live.start", { creator: "100", title: "今晚打老虎" });
 		expect((await api.fetchLiveRoomInfo("5050")).data.title).toBe("今晚打老虎");
 	});
 
-	it("房间没连上 → 参数错误,说清楚是哪个", async () => {
+	it("房号没解析出来 / 房间没连上 / 不在名单里 → 参数错误,说清楚是哪个", async () => {
 		const { reg } = setup();
-		await expect(reg.run("bilibili.live.start", { sub: "s3" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.live.start", { creator: "300" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
+			message: expect.stringContaining("UID 300"),
 		});
-		await expect(reg.run("bilibili.live.start", { sub: "s2" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.live.start", { creator: "400" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 			message: expect.stringContaining("6060"),
 		});
-		await expect(reg.run("bilibili.live.start", { sub: "nope" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.live.start", { creator: "200" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
+			message: expect.stringContaining("不在名单里"),
 		});
 	});
 

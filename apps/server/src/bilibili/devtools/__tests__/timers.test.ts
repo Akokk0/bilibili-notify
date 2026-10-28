@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { SubPick } from "../live.js";
 import { biliTimerScenarios } from "../timers.js";
 import { biliRegistry } from "./support/registry.js";
 
@@ -7,17 +6,11 @@ import { biliRegistry } from "./support/registry.js";
  * B 站的两个「现在就跑」:动态检测、登录心跳。资料刷新与直播复推在核心定时组。
  */
 
-const SUBS: SubPick[] = [
-	{ id: "s1", externalId: "100", name: "甲", enabled: true },
-	{ id: "s2", externalId: "200", name: "乙", enabled: false },
-];
-
 function setup(over: Partial<Parameters<typeof biliTimerScenarios>[0]> = {}) {
 	const detectNow = vi.fn(async () => {});
 	const healthCheckNow = vi.fn(async () => true);
 	const reg = biliRegistry(
 		biliTimerScenarios({
-			subs: () => SUBS,
 			dynamic: () => ({ detectNow }),
 			healthCheck: () => ({ healthCheckNow }),
 			...over,

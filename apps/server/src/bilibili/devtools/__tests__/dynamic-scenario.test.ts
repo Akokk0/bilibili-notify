@@ -1,21 +1,20 @@
-import { ok } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { overridableApi } from "../../../devtools/api-overrides.js";
 import type { Api } from "../../api/index.js";
 import { dynamicScenarios } from "../dynamic.js";
-import type { SubPick } from "../live.js";
-import { biliRegistry } from "./support/registry.js";
+import { biliRegistry, rosterEntry } from "./support/registry.js";
 
 /**
  * A3:四类动态 —— 往传给 DynamicPoller 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
  * (真 feed 照拉,假的排在最前),然后立刻让动态轮询跑一轮检测。守的是形状:渲染器按 `type`
  * 分发,缺 `module_stat` / `vip` / `major.archive.badge` 这类字段就是一次渲染期 undefined。
+ *
+ * 挑人只看 B 站自己的名单:300 的作品开关关着(造了也被轮询跳过),100 / 200 开着。名字不在名单里,
+ * 经 B 站自己的接口现拉用户卡(100 拉得到「甲」,200 拉不到)。
  */
 
-const SUBS: SubPick[] = [
-	{ id: "s1", externalId: "100", name: "甲", enabled: true },
-	{ id: "s2", externalId: "200", name: "乙", enabled: false },
-];
+const ROSTER = [rosterEntry("300", ["liveStart"]), rosterEntry("100"), rosterEntry("200")];
 
 class FakeApi {
 	real = vi.fn(
@@ -32,6 +31,15 @@ class FakeApi {
 	);
 	fetchAllDynamic() {
 		return this.real();
+	}
+	cards = vi.fn(
+		async (uid: string): ReturnType<Api["fetchUserCard"]> =>
+			uid === "100"
+				? ok({ data: { card: { name: "甲" } } as never })
+				: fail("rate_limited", "风控了"),
+	);
+	fetchUserCard(uid: string) {
+		return this.cards(uid);
 	}
 }
 
@@ -57,11 +65,12 @@ function setup(options: SetupOptions = {}) {
 	});
 	const reg = biliRegistry(
 		dynamicScenarios({
-			subs: () => SUBS,
+			roster: () => ROSTER,
 			api: () => api,
 			dynamic: () => ({ detectNow }),
 			profileAvatars: options.profileAvatars ?? (() => undefined),
 		}),
+		ROSTER,
 	);
 	return {
 		reg,
@@ -101,7 +110,7 @@ describe("bilibili.dynamic.post", () => {
 	it("跑一下:feed 里多出一条假动态排在真的前面、作者是这位 UP、pub_ts 是现在;然后立刻跑一轮检测", async () => {
 		const { reg, detectNow, seen } = setup();
 		const res = await reg.run("bilibili.dynamic.post", {
-			sub: "s1",
+			creator: "100",
 			type: "word",
 			text: "今天也要元气满满",
 		});
@@ -134,14 +143,14 @@ describe("bilibili.dynamic.post", () => {
 				avatarUrlOf: (uid) => (uid === "200" ? "https://i0.hdslb.com/state/200.jpg" : undefined),
 			}),
 		});
-		await fromState.reg.run("bilibili.dynamic.post", { sub: "s2", type: "word" });
+		await fromState.reg.run("bilibili.dynamic.post", { creator: "200", type: "word" });
 		const withState = itemsOf(fromState.seen())[0] as {
 			modules: { module_author: { face: unknown } };
 		};
 		expect(withState.modules.module_author.face).toBe("https://i0.hdslb.com/state/200.jpg");
 
 		const withoutState = setup();
-		await withoutState.reg.run("bilibili.dynamic.post", { sub: "s2", type: "word" });
+		await withoutState.reg.run("bilibili.dynamic.post", { creator: "200", type: "word" });
 		const fallback = itemsOf(withoutState.seen())[0] as {
 			modules: { module_author: { face: unknown } };
 		};
@@ -204,32 +213,53 @@ describe("bilibili.dynamic.post", () => {
 		await expect(api.fetchAllDynamic()).rejects.toThrow("-101");
 	});
 
-	it("sub 省略取第一个启用的;停用的也能指定;没这个订阅就拒", async () => {
-		const { reg } = setup();
+	it("作者名经 B 站自己的接口现拉用户卡;拉不到(失败 / 抛)就用 UID", async () => {
+		const failed = setup();
+		await failed.reg.run("bilibili.dynamic.post", { creator: "200", type: "word" });
+		expect(failed.raw.cards).toHaveBeenCalledWith("200");
+		const fake = itemsOf(failed.seen())[0] as { modules: { module_author: { name: unknown } } };
+		expect(fake.modules.module_author.name).toBe("UID 200");
+
+		const thrown = setup();
+		thrown.raw.cards.mockRejectedValue(new Error("连不上"));
+		await expect(
+			thrown.reg.run("bilibili.dynamic.post", { creator: "100", type: "word" }),
+		).resolves.toMatchObject({ ok: true, summary: expect.stringContaining("UID 100") });
+	});
+
+	it("creator 省略取名单里第一个开着作品的;作品关着的拒;不在名单里宿主就拒", async () => {
+		const { reg, detectNow } = setup();
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
 			ok: true,
 			summary: expect.stringContaining("甲"),
 		});
-		await expect(reg.run("bilibili.dynamic.post", { sub: "s2" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.dynamic.post", { creator: "200" })).resolves.toMatchObject({
 			ok: true,
-			summary: expect.stringContaining("乙"),
+			summary: expect.stringContaining("UID 200"),
 		});
-		await expect(reg.run("bilibili.dynamic.post", { sub: "zzz" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.dynamic.post", { creator: "300" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
-			message: "没有这个订阅:zzz",
+			message: expect.stringContaining("作品"),
 		});
+		await expect(reg.run("bilibili.dynamic.post", { creator: "zzz" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("不在名单里"),
+		});
+		expect(detectNow).toHaveBeenCalledTimes(2);
 	});
 
 	it("动态轮询还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
 		const api = overridableApi(new FakeApi());
 		const reg = biliRegistry(
 			dynamicScenarios({
-				subs: () => SUBS,
+				roster: () => ROSTER,
 				api: () => api,
 				dynamic: () => undefined,
 				profileAvatars: () => undefined,
 			}),
+			ROSTER,
 		);
 		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
 			ok: false,

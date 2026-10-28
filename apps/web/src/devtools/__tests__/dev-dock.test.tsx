@@ -31,7 +31,8 @@ import { useToastStore } from "../../store/notifications";
 import { DevDock } from "../dock";
 
 const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
-	id: "update.state",
+	id: "core.update.state",
+	provider: "core",
 	group: "state",
 	title: "更新状态",
 	desc: "换掉面板看到的更新状态。",
@@ -90,7 +91,7 @@ describe("DevDock", () => {
 	it("有 → 药丸出现;有注入生效时亮呼吸点、念出几项", async () => {
 		vi.mocked(api.get).mockResolvedValue({
 			...STATUS,
-			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
+			active: [{ scenarioId: "core.update.state", label: "更新状态 → ready 0.99.0" }],
 		});
 		renderDock();
 		expect(await screen.findByRole("button", { name: "devtools" })).toBeTruthy();
@@ -103,7 +104,7 @@ describe("DevDock", () => {
 		vi.mocked(api.post).mockImplementation(async (path: string) =>
 			path === "/api/system/update/check"
 				? ready
-				: { active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
+				: { active: [{ scenarioId: "core.update.state", label: "更新状态 → ready 0.99.0" }] },
 		);
 		const { invalidate } = renderDock();
 		const user = userEvent.setup();
@@ -124,12 +125,15 @@ describe("DevDock", () => {
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
 			path === "/api/system/update"
 				? ready
-				: { ...STATUS, active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
+				: {
+						...STATUS,
+						active: [{ scenarioId: "core.update.state", label: "更新状态 → ready 0.99.0" }],
+					},
 		);
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 
 		await waitFor(() =>
-			expect(api.post).toHaveBeenCalledWith("/api/dev/run/update.state", {
+			expect(api.post).toHaveBeenCalledWith("/api/dev/run/core.update.state", {
 				params: { phase: "ready", target: "0.99.0", count: 6 },
 			}),
 		);
@@ -142,7 +146,7 @@ describe("DevDock", () => {
 	it("生效条上的 ✕ 收那一条、「全部收摊」收全部,都打对应的 reset", async () => {
 		vi.mocked(api.get).mockResolvedValue({
 			...STATUS,
-			active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }],
+			active: [{ scenarioId: "core.update.state", label: "更新状态 → ready 0.99.0" }],
 		});
 		vi.mocked(api.post).mockResolvedValue({ active: [] });
 		renderDock();
@@ -152,11 +156,13 @@ describe("DevDock", () => {
 		// 每一步之后 `/api/dev` 都会被重新拉一次,mock 跟着服务端该有的状态走。
 		vi.mocked(api.get).mockResolvedValue(STATUS);
 		await user.click(screen.getByRole("button", { name: "收掉:更新状态 → ready 0.99.0" }));
-		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/dev/reset/update.state", {}));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledWith("/api/dev/reset/core.update.state", {}),
+		);
 		await waitFor(() => expect(screen.queryByText("更新状态 → ready 0.99.0")).toBeNull());
 
 		// 再造一条(走药丸上的快捷位),生效条回来了;然后全收。
-		const idle = { scenarioId: "update.state", label: "更新状态 → idle" };
+		const idle = { scenarioId: "core.update.state", label: "更新状态 → idle" };
 		vi.mocked(api.post).mockResolvedValue({ active: [idle] });
 		vi.mocked(api.get).mockResolvedValue({ ...STATUS, active: [idle] });
 		await user.click(screen.getByRole("button", { name: "更新状态" }));
@@ -183,7 +189,7 @@ describe("DevDock", () => {
 		expect(slot.querySelector("svg path")?.getAttribute("d")).toMatch(/^M12 3v11/);
 		await user.click(slot);
 		await waitFor(() =>
-			expect(api.post).toHaveBeenCalledWith("/api/dev/run/update.state", { params: {} }),
+			expect(api.post).toHaveBeenCalledWith("/api/dev/run/core.update.state", { params: {} }),
 		);
 	});
 
@@ -209,7 +215,7 @@ describe("DevDock", () => {
 
 	it("有注入生效时轮的是 /api/dev/active,不是整张场景表那份 /api/dev", async () => {
 		// 场景表十几 KB 且静态;生效表几十字节且会变。按秒重发前者只是在搬同样的字节。
-		const active = [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }];
+		const active = [{ scenarioId: "core.update.state", label: "更新状态 → ready 0.99.0" }];
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
 			path === "/api/dev/active" ? { active } : { ...STATUS, active },
 		);
@@ -243,7 +249,7 @@ describe("DevDock", () => {
 			checkedAt: "2026-10-27T00:00:00.000Z",
 			notes: "devtools 造的一版",
 		});
-		const active = [{ scenarioId: "update.state", label: "更新状态 → available 0.99.0" }];
+		const active = [{ scenarioId: "core.update.state", label: "更新状态 → available 0.99.0" }];
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
 			path === "/api/system/update" ? injected : { ...STATUS, active },
 		);
@@ -287,23 +293,38 @@ describe("DevDock", () => {
 		expect(api.get).toHaveBeenCalledWith("/api/dev/captures");
 	});
 
-	it("sub / target / connection 三种字段是真选择器:选项来自站内列表,留空 = 服务端默认", async () => {
+	/** 站内订阅表:B 站两条(一条停用)、拓展来源一条,外加一条同一位 B 站 UP 的遗留重复订阅。 */
+	const SUBSCRIPTIONS = [
+		{
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "100" },
+			enabled: true,
+			cachedProfile: { name: "甲" },
+		},
+		{
+			id: "s2",
+			identity: { sourceKey: "bilibili", externalId: "200" },
+			enabled: false,
+		},
+		{
+			id: "s3",
+			identity: { sourceKey: "demo-source", externalId: "x1" },
+			enabled: true,
+			cachedProfile: { name: "乙" },
+		},
+		{
+			id: "s4",
+			identity: { sourceKey: "bilibili", externalId: "100" },
+			enabled: true,
+			cachedProfile: { name: "甲" },
+		},
+	];
+
+	it("sub / target / connection 三种字段是真选择器:选项来自站内列表(订阅不分来源),留空 = 服务端默认", async () => {
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			switch (path) {
 				case "/api/subscriptions":
-					return [
-						{
-							id: "s1",
-							identity: { sourceKey: "bilibili", externalId: "100" },
-							enabled: true,
-							cachedProfile: { name: "甲" },
-						},
-						{
-							id: "s2",
-							identity: { sourceKey: "bilibili", externalId: "200" },
-							enabled: false,
-						},
-					];
+					return SUBSCRIPTIONS;
 				case "/api/targets":
 					return [{ id: "t1", name: "测试群", enabled: true }];
 				case "/api/connections":
@@ -313,9 +334,10 @@ describe("DevDock", () => {
 						...STATUS,
 						scenarios: [
 							{
-								id: "bilibili.live.start",
+								id: "core.live.repush-now",
+								provider: "core",
 								group: "event",
-								title: "开播",
+								title: "复推提前到期",
 								params: [
 									{ key: "sub", label: "订阅", kind: "sub" },
 									{ key: "target", label: "目标", kind: "target" },
@@ -333,11 +355,13 @@ describe("DevDock", () => {
 		await user.click(screen.getByRole("button", { name: /^事件/ }));
 
 		const sub = (await screen.findByRole("combobox", { name: "订阅" })) as HTMLSelectElement;
-		await waitFor(() => expect(sub.options.length).toBe(3));
+		await waitFor(() => expect(sub.options.length).toBe(5));
 		expect([...sub.options].map((o) => o.textContent)).toEqual([
 			"（服务端默认）",
 			"甲 · 100",
 			"200 · 200（停用）",
+			"乙 · x1",
+			"甲 · 100",
 		]);
 		expect(
 			[
@@ -353,13 +377,56 @@ describe("DevDock", () => {
 		// 留空全部不带;选了才带。
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
+			expect(api.post).toHaveBeenCalledWith("/api/dev/run/core.live.repush-now", { params: {} }),
+		);
+		await user.selectOptions(sub, "s3");
+		await user.click(screen.getByRole("button", { name: "跑一下" }));
+		await waitFor(() =>
+			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/core.live.repush-now", {
+				params: { sub: "s3" },
+			}),
+		);
+	});
+
+	it("creator 选择器只列交场景那个来源(provider)启用的人,按人去重,值是 externalId;留空 = 服务端默认", async () => {
+		vi.mocked(api.get).mockImplementation(async (path: string) =>
+			path === "/api/subscriptions"
+				? SUBSCRIPTIONS
+				: {
+						...STATUS,
+						scenarios: [
+							{
+								id: "bilibili.live.start",
+								provider: "bilibili",
+								group: "event",
+								title: "开播",
+								params: [{ key: "creator", label: "UP主", kind: "creator" }],
+							},
+						],
+					},
+		);
+		vi.mocked(api.post).mockResolvedValue({ active: [] });
+		renderDock();
+		const user = userEvent.setup();
+		await user.click(await screen.findByRole("button", { name: "devtools" }));
+		await user.click(screen.getByRole("button", { name: /^事件/ }));
+
+		const creator = (await screen.findByRole("combobox", { name: "UP主" })) as HTMLSelectElement;
+		await waitFor(() => expect(creator.options.length).toBe(2));
+		expect([...creator.options].map((o) => [o.value, o.textContent])).toEqual([
+			["", "（服务端默认）"],
+			["100", "甲 · 100"],
+		]);
+
+		await user.click(screen.getByRole("button", { name: "跑一下" }));
+		await waitFor(() =>
 			expect(api.post).toHaveBeenCalledWith("/api/dev/run/bilibili.live.start", { params: {} }),
 		);
-		await user.selectOptions(sub, "s1");
+		await user.selectOptions(creator, "100");
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/bilibili.live.start", {
-				params: { sub: "s1" },
+				params: { creator: "100" },
 			}),
 		);
 	});

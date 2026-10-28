@@ -175,7 +175,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		// 所以按 devtools 的「资料刷新现在就跑」、等它读到。每按一次也真拉一次假源的 `fetchProfile`(见下面粉丝时序那条)。
 		await vi.waitFor(
 			async () => {
-				const polled = await api("/api/dev/run/profiles.refresh-now", {
+				const polled = await api("/api/dev/run/core.profiles.refresh-now", {
 					method: "POST",
 					...json({ params: {} }),
 				});

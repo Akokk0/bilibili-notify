@@ -1,7 +1,7 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createDevRegistry } from "../registry.js";
 import { inboundScenarios } from "../scenarios/inbound.js";
+import { coreDevRegistry } from "./support/core-registry.js";
 
 /**
  * A4:私聊指令 / 群链接 —— 直接调接线层那两个入站口(`onInboundPrivate` / `onInboundGroup`),
@@ -72,7 +72,7 @@ function setup(
 	const address = "master" in over ? over.master : "10001";
 	// 鉴权换成三坐标之后主人身份带平台 —— 场景得按它挑连接,平台喂错就打不中。
 	const master = address ? { platform: "onebot", address } : undefined;
-	const reg = createDevRegistry(
+	const reg = coreDevRegistry(
 		inboundScenarios({
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
 			commands: over.commands ?? (() => ({ prefix: "/", master })),
@@ -84,10 +84,10 @@ function setup(
 	return { reg, priv, group };
 }
 
-describe("inbound.command", () => {
+describe("core.inbound.command", () => {
 	it("声明:事件组;text 默认留空 —— 前缀不烤进声明里", () => {
 		const { reg } = setup();
-		const decl = reg.list().find((d) => d.id === "inbound.command");
+		const decl = reg.list().find((d) => d.id === "core.inbound.command");
 		// 不占快捷位:药丸上只给最常按的那几个,指令 / 链接进面板点。
 		expect(decl).toMatchObject({ group: "event" });
 		expect(decl?.quick).toBeUndefined();
@@ -104,17 +104,17 @@ describe("inbound.command", () => {
 			commands: () => ({ prefix, master: { platform: "onebot", address: "10001" } }),
 		});
 
-		await reg.run("inbound.command", {});
+		await reg.run("core.inbound.command", {});
 		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: "/help" });
 
 		prefix = ".";
-		await reg.run("inbound.command", {});
+		await reg.run("core.inbound.command", {});
 		expect(priv.mock.calls.at(-1)?.[0]).toMatchObject({ text: ".help" });
 	});
 
 	it("当作主人发一句私聊:address 省略取配置里的主人", async () => {
 		const { reg, priv } = setup();
-		const res = await reg.run("inbound.command", { text: "/status" });
+		const res = await reg.run("core.inbound.command", { text: "/status" });
 		expect(priv).toHaveBeenCalledWith(
 			{ address: "10001", text: "/status" },
 			{ connectionId: "ad-ob", platform: "onebot" },
@@ -124,7 +124,7 @@ describe("inbound.command", () => {
 
 	it("指定 address 就用给的 —— 拿来验「不是主人就不理」", async () => {
 		const { reg, priv } = setup();
-		await reg.run("inbound.command", { address: "20002", text: "/help" });
+		await reg.run("core.inbound.command", { address: "20002", text: "/help" });
 		expect(priv).toHaveBeenCalledWith(
 			{ address: "20002", text: "/help" },
 			{ connectionId: "ad-ob", platform: "onebot" },
@@ -156,7 +156,7 @@ describe("inbound.command", () => {
 				},
 			] as never[],
 		});
-		await reg.run("inbound.command", { text: "/status" });
+		await reg.run("core.inbound.command", { text: "/status" });
 		expect(priv).toHaveBeenCalledWith(
 			{ address: "10001", text: "/status" },
 			{ connectionId: "ad-ob2", platform: "onebot" },
@@ -166,14 +166,16 @@ describe("inbound.command", () => {
 	it("没有主人目标 → 明确报错,不传空的 connectionId", async () => {
 		// 身份在、目标表里却没有对应的私聊目标(或压根没配主人),都没有可模拟的来处。
 		const noTarget = setup({ targets: [] });
-		await expect(noTarget.reg.run("inbound.command", {})).resolves.toMatchObject({
+		await expect(noTarget.reg.run("core.inbound.command", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 			message: expect.stringContaining("没有主人目标"),
 		});
 		expect(noTarget.priv).not.toHaveBeenCalled();
 		const noMaster = setup({ master: undefined });
-		await expect(noMaster.reg.run("inbound.command", { address: "20002" })).resolves.toMatchObject({
+		await expect(
+			noMaster.reg.run("core.inbound.command", { address: "20002" }),
+		).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 			message: expect.stringContaining("没有主人目标"),
@@ -183,22 +185,22 @@ describe("inbound.command", () => {
 
 	it("没配主人又没给 address → 拒;入站口还没接上 → 拒", async () => {
 		const { reg } = setup({ master: undefined });
-		await expect(reg.run("inbound.command", {})).resolves.toMatchObject({
+		await expect(reg.run("core.inbound.command", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
 		const off = setup({ inbound: false });
-		await expect(off.reg.run("inbound.command", {})).resolves.toMatchObject({
+		await expect(off.reg.run("core.inbound.command", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
 	});
 });
 
-describe("inbound.link", () => {
+describe("core.inbound.link", () => {
 	it("默认:第一条启用的聊天平台连接 + 它名下第一个群目标的群地址", async () => {
 		const { reg, group } = setup();
-		const res = await reg.run("inbound.link", {});
+		const res = await reg.run("core.inbound.link", {});
 		expect(group).toHaveBeenCalledWith(
 			expect.objectContaining({
 				address: "88888",
@@ -212,7 +214,7 @@ describe("inbound.link", () => {
 
 	it("指定连接与群号、正文", async () => {
 		const { reg, group } = setup();
-		await reg.run("inbound.link", { connection: "ad-qq", address: "OPENID-9", text: "BV1xx" });
+		await reg.run("core.inbound.link", { connection: "ad-qq", address: "OPENID-9", text: "BV1xx" });
 		expect(group).toHaveBeenCalledWith(
 			expect.objectContaining({ address: "OPENID-9", text: "BV1xx" }),
 			{ connectionId: "ad-qq", platform: "qq-official" },
@@ -221,11 +223,11 @@ describe("inbound.link", () => {
 
 	it("webhook 没有群 → 拒;连接名下没群目标又没给群号 → 拒", async () => {
 		const { reg } = setup();
-		await expect(reg.run("inbound.link", { connection: "ad-web" })).resolves.toMatchObject({
+		await expect(reg.run("core.inbound.link", { connection: "ad-web" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
-		const noGroups = createDevRegistry(
+		const noGroups = coreDevRegistry(
 			inboundScenarios({
 				inbound: () => ({ private: vi.fn(), group: vi.fn() }),
 				commands: () => ({ prefix: "/" }),
@@ -234,11 +236,13 @@ describe("inbound.link", () => {
 				targets: () => [],
 			}),
 		);
-		await expect(noGroups.run("inbound.link", { connection: "ad-ob" })).resolves.toMatchObject({
-			ok: false,
-			code: "invalid",
-			message: expect.stringMatching(/群/),
-		});
+		await expect(noGroups.run("core.inbound.link", { connection: "ad-ob" })).resolves.toMatchObject(
+			{
+				ok: false,
+				code: "invalid",
+				message: expect.stringMatching(/群/),
+			},
+		);
 	});
 
 	it("能力里 inbound 是「还不知道」的连接不当聊天入口(默认挑不到它,指名也拒)", async () => {
@@ -252,11 +256,11 @@ describe("inbound.link", () => {
 				: capabilitiesOf(c);
 		// 第一条启用的聊天平台连接 ad-ob 不算了;官机那条停用着 → 没有可用的。
 		const { reg } = setup({ capabilities: unknownInbound });
-		await expect(reg.run("inbound.link", {})).resolves.toMatchObject({
+		await expect(reg.run("core.inbound.link", {})).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
-		await expect(reg.run("inbound.link", { connection: "ad-ob" })).resolves.toMatchObject({
+		await expect(reg.run("core.inbound.link", { connection: "ad-ob" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});

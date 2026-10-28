@@ -41,14 +41,22 @@
 `packages/internal/src/devtools.ts`;`@bilibili-notify/extension` 转出给拓展,`apps/contract/src/devtools.ts`
 只经 `export type` 借给面板。`run` 返回结果形状 `{ ok: true, summary? } | { ok: false, code, message }`,
 参数不合法回 `invalid`,场景找不到回 `not_found`;`DevParamError` / `DevScenarioNotFound` 已删。参数 **schema 驱动**,
-六种字段:`sub` / `target` / `connection`(面板画
-选择器,值是 id,留空 = 服务端默认)、`number` / `enum` / `text`(自带默认值)。
+七种字段:`sub` / `target` / `connection`(面板画选择器,值是订阅 / 目标 / 连接的 id;**只给核心的场景**)、
+`creator`(交场景那个来源名单里的人,值是 externalId;名单是来源 `ctx.subscriptions()` 那一份,宿主照它核,不在名单里回
+`invalid`;面板按描述符的 `provider` 只列那个来源启用的订阅、按人去重)——这四种留空 = 服务端默认;
+`number` / `enum` / `text`(自带默认值)。种类按提供方收:核心以外(B 站与拓展一样)只收 `text` / `number` / `enum` /
+`creator`,用了别的认领时整包拒(ADR-0031 决策 2)。
+
+场景 id 一律是 `<提供方>.<短名>`:场景里写短名,前缀由登记表加 —— 核心自己的场景建表时就以 `core` 认领
+(`core.update.state`、`core.ext.install`;`core` 是保留的拓展 id,别家认领不到),B 站是 `bilibili.`,拓展是
+`<拓展 id>.`。描述符的 `provider` 一格同样由登记表填。面板那半的 `web.*` 不经登记表。
 
 - 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
   `devtoolsProviders`,登记与撤销可以发生在启动之后,场景表随 provider 增减(B 站的在 `apps/server/src/bilibili/devtools/`,
   由 `compose.ts` 的 `provideDevtools` 认领;
-  B 站 devtools 自己建 `Api` 与登录口那两层开发壳,不再由入口建 `devApi` / `devAuth`;场景按下时才从 B 站来源现取壳、动态轮询与登录心跳把手,
-  `compose.ts` 只经 `BiliDevtoolsDeps` 递总线、订阅和这些现取口。动态轮询句柄不交回入口,来源登记之前取不到时场景说还没起来),
+  B 站 devtools 自己建 `Api` 与登录口那两层开发壳,不再由入口建 `devApi` / `devAuth`;`compose.ts` 只递 B 站来源一个把手
+  (`BiliDevtoolsDeps.source`),场景按下时才从它身上现取名单(`subscriptions()`,就是来源 `ctx.subscriptions()` 那一份)、
+  动态轮询、直播房号与登录把手 —— 核心的总线、订阅表、订阅运行时状态一样不拿。动态轮询句柄不交回入口,来源登记之前取不到时场景说还没起来),
   汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
   两边一起经 `createDevRegistry` 汇总,provider 那半在列举、运行、查生效与收摊时现读,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
@@ -63,7 +71,7 @@
   换装会一直「蓄」到装完(真更新时那是下载),所以更新那一条带两个参数:蓄几秒、结果(装成了 = 光收到卡心
   画圈打勾,没装成 = 光环淡出)。
 
-给核心加一个场景 = 写一个 `DevScenarioDef` 塞进 `createDevtools` 那张表,面板一行不改。
+给核心加一个场景 = 写一个 `DevScenarioDef`(短名)塞进 `createDevtools` 那张表,面板一行不改;它在面板上叫 `core.<短名>`。
 
 ## 拓展的开发入口
 
@@ -74,14 +82,14 @@
 `undefined`。
 
 宿主只在开发版、且拓展已经 `activate` 成功后挂开发入口;入口交回的场景 id 写不带前缀的短名,宿主按拓展 id
-认领、加 `<拓展 id>.`。核心已有同名完整 id 时整份 provider 会被拒。停用、卸载、重载或关机都会经 `ctx.signal`
+认领、加 `<拓展 id>.`。核心的场景前缀是 `core.`,`core` 又是保留的拓展 id,撞不上。停用、卸载、重载或关机都会经 `ctx.signal`
 撤掉 provider;入口自己占着的连接等资源也要听这个信号收尾。开发入口挂不上只记 warn,不改主拓展的运行状态。
 
-拓展场景这一版只收 `text` / `number` / `enum` 三种参数;`sub` / `target` / `connection` 等只留给核心,
-出现别的种类会整包拒并警告。`run` 与核心场景一样回结果,不抛参数异常。
+拓展场景收 `text` / `number` / `enum` / `creator` 四种参数(来源型拓展挑自己名单里的人用 `creator`);`sub` / `target` /
+`connection` 只留给核心,出现别的种类认领时整包拒,开发入口记一行警告。`run` 与核心场景一样回结果,不抛参数异常。
 
-`ext.install` 把仓里构建好的 `dist/` 软链进装载根,所以开发时要先构建出 `index.mjs` 与 `devtools.mjs`;
-`ext.watch`「改完自动重载」两个文件都盯,任一变化就重载拓展并重新挂开发入口。`devtools.mjs` 不进发行包,
+`core.ext.install` 把仓里构建好的 `dist/` 软链进装载根,所以开发时要先构建出 `index.mjs` 与 `devtools.mjs`;
+`core.ext.watch`「改完自动重载」两个文件都盯,任一变化就重载拓展并重新挂开发入口。`devtools.mjs` 不进发行包,
 打包与装包两道白名单都会拒收。
 
 **「拓展」那一组是个例外,它做的是真事**(`scenarios/extensions.ts`):装载器只认
@@ -99,7 +107,7 @@
 ⚠️ **每重载一次漏一份旧模块**(ESM 的模块注册表删不掉,ADR-0012 决策 39),所以它默认关着 ——
 挂成常开等于让它无声地漏。重载失败**不掐监听**:改一行崩一次就得重新点一遍的话,开发循环当场卡死。
 
-同组的 **「拓展有更新」**(`ext.updatable`)不做真事,造的是**假状态**:已装卡片上造出「有新版 vX · 更新」,
+同组的 **「拓展有更新」**(`core.ext.updatable`)不做真事,造的是**假状态**:已装卡片上造出「有新版 vX · 更新」,
 按下去先假装下载几秒(参数,默认 2 秒 —— 一按就成的话,那段一直蓄到装完的换装根本看不见蓄力),再假装装成(见下表)。它进「当前生效」条、归一键收摊,按「更新」装成之后自己撤掉 —— 现实里
 更新完那张卡就不再提示了。参数是**装着的**拓展 id(没装的拒:那颗钮只长在已装卡片上),所以它不跟
 那几条一起「仓里没拓展就整组不出现」。
@@ -110,15 +118,15 @@
 | --- | --- | --- |
 | 更新 9 相 8 归因 | 包 `UpdateService`,只换 `getStatus()` 的 `state`;**真动作不清注入**(面板每次打开都自动 check,清了刷新一下就没了),只在面板收摊 | `update-injection.ts` |
 | 推送截流 | 接在 `TargetDispatcher` 调适配器 `send` 的那一处(`interceptSend`,三条发送路共用):开着就不真发、记摘要、回 ok**并标 `isSynthetic`**(dispatcher 的 `onDelivery` 会拿投递结果去写 `target.reachability` 并落盘,一条没出网的成功不能拿来说「这个目标通」——`isReachabilityEvidence` 挡在那儿);历史照记 delivered 不打标,面板列表是对照,`DELETE /api/dev/captures/history` 按截流时间窗删行(`HistoryStore.deleteRange`) | `capture.ts` |
-| 开播 / 下播 / 弹幕 / SC / 上舰 / 礼物 / 进场 | blive 的 `observeLiveConnections` 观察钩子拿到房间的 `emit`,与真帧同一条回调;假直播期间 `fetchLiveRoomInfo` 对那个房间打补丁(live_status=1、live_time=现在) | `live-rooms.ts`、`scenarios/live*.ts` |
-| 四类动态 | 传给动态轮询的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 动态轮询构造时存下的方法引用也吃得到覆盖),`fetchAllDynamic` 结果最前并进假动态,`DynamicPoller.detectNow()` 立刻跑一轮,跑完撤(动态轮询句柄是 B 站来源的 `dynamic()`,由 `compose.ts` 读它自己造的来源;来源登记之前它是 undefined,场景报「动态轮询还没起来」) | `scenarios/dynamic.ts` |
+| 开播 / 下播 / 弹幕 / SC / 上舰 / 礼物 / 进场 | blive 的 `observeLiveConnections` 观察钩子拿到房间的 `emit`,与真帧同一条回调;假直播期间 `fetchLiveRoomInfo` 对那个房间打补丁(live_status=1、live_time=现在)。挑人用 `creator`,省略 = 名单里第一个直播间连着的;回执写 UID(名字在核心的资料缓存里,场景拿不到);「进场」的 uid 要自己填一位特别关注(特别关注是订阅的配置,B 站读不到) | `live-rooms.ts`、`scenarios/live*.ts` |
+| 四类动态 | 传给动态轮询的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 动态轮询构造时存下的方法引用也吃得到覆盖),`fetchAllDynamic` 结果最前并进假动态,`DynamicPoller.detectNow()` 立刻跑一轮,跑完撤 —— B 站解析、`ctx.reportPost`、推送全是真链路(动态轮询句柄是 B 站来源的 `dynamic()`;来源登记之前它是 undefined,场景报「动态轮询还没起来」)。挑人用 `creator`,省略 = 名单里第一个开着作品的,作品开关关着的拒;卡上的作者名经同一个壳现拉 `fetchUserCard`,拉不到写 UID | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回桥自己的端点(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishView` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。回执是结果形状(协议 1.5)。地址经 `ctx.mountUrl()` 现取,连接与取图都走桥自己的 `ctx.http`;帧与协议版本直接用桥的 `contract.ts`,不再在核心手抄第二份。`src/__tests__/devtools-fake-bridge-e2e.test.ts` 仍把真桥装进装载根让两边真说一次话 | `extensions/bridge/src/devtools/` |
 | 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。拓展 id 默认空,按之前要手填**已装**的拓展 id。装那个 id **先等「假装下载」那几秒、再假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |
 | 动态拉取报错(`bilibili.dynamic.fail`,宿主按来源键加前缀;场景里的 id 是 `dynamic.fail`) | 同一个 `fetchAllDynamic` 盖板位:让下一轮(参数 `rounds` 连着几轮,1 至 50,默认 1)拉动态的请求不发真请求、回请求层会给的失败结果(经 `failureFromBili` 造:参数 `code` 翻成标准码、原码放 `upstreamCode`,没有 `data`;`code` 非 0 整数,默认 `-352`,`-412` / `-799` / `-509` 同样是风控,`-101` 是未登录;非法值回 `invalid`),用完自己摘。**只装弹、不触发检测**:想立刻看到就再点「动态检测」。**与「四类动态」共用盖板位**:场景里一个函数 `syncOverride()` 汇总,错误码优先,谁还要用就留着、都不用了才摘,收摊两边各清各的。盖的只是拉动态这一个请求、不经请求客户端对 `-101` 的拦截,所以**回 `-101` 不会让登录状态变成失效**,动态轮询停 cron 后等 `watchLoginEdges` 的恢复边;要把它拉起来,先按「登录失效」、再按「重新确认登录」。用来看动态轮询的退避、问题表(风控 `risk_controlled`、拉动态失败 `dynamic_fetch_failed`)与风控私聊、恢复句 | `bilibili/devtools/dynamic.ts` |
-| 推送链路错误 | `pipeline.error` 仍直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律),让主人收到私聊、面板右上角出告警 | `scenarios/bus-events.ts` |
+| 推送链路错误 | `core.pipeline.error` 仍直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律),让主人收到私聊、面板右上角出告警 | `scenarios/bus-events.ts` |
 | 登录失效 / 重新确认登录(`bilibili.auth.lost` / `bilibili.auth.recheck`) | 经 B 站来源的 `login()` 把手调登录流程的 `handleAuthLost` / `reportAccountInfo`,真改登录状态:动态检测会停、直播监听会拆,会进问题表、主人会收私聊,恢复时补「已恢复」;cookie 罐不动,所以「重新确认登录」能把它拉回来。没登录时「登录失效」不调、只说没有可判失效的会话;来源还没起来时两个都回「B 站来源还没起来」 | `bilibili/devtools/login.ts` |
-| 登录状态(`AuthState` 的各取值) | 盖来源登录口(`Source.auth`)的 `state()` 与 `account()`,再往总线发同一份 `subscription-auth-changed`;开发壳由 B 站 devtools 自建,登记表里挂的是壳的 `.api`,所以 `GET /api/sources/:sourceKey/auth` 与 WS 帧都读得到注入值,收摊时摘掉并把真状态再发一遍让面板对回去。选项:未登录、等待扫码、正在确认(已扫码等手机确认 / 开机还没向 B 站确认,各一项)、已登录(带账号名)、登录失效、登录失败;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `bilibili/devtools/login-state.ts`、`fake-qr.ts` |
+| 登录状态(`AuthState` 的各取值) | 盖来源登录口(`Source.auth`)的 `state()` 与 `account()`,再替登录口喊一声「变了」(开发壳记着经它订的变更回调,`notifyChanged()` 挨个叫):宿主照常读一遍 `state()`、发 `subscription-auth-changed`,登录问题表也跟着反应(假「失效」进表并私聊,截流开着就拦下)。场景拿不到总线。开发壳由 B 站 devtools 自建,登记表里挂的是壳的 `.api`,所以 `GET /api/sources/:sourceKey/auth` 与 WS 帧都读得到注入值,收摊时摘掉、再喊一声让面板对回去。选项:未登录、等待扫码、正在确认(已扫码等手机确认 / 开机还没向 B 站确认,各一项)、已登录(带账号名)、登录失效、登录失败;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `bilibili/devtools/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。注入接在派发器上(`injectedCapabilities` 读口,生产不传)、盖在宿主的能力记忆之上,收摊回真:注入期间读到假值、假值不进记忆,`probeConnectionCapabilities` 也直接交假值、不叫适配器(不出网) | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`PushRouter.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
 | 堆逼近上限 | 包真 `process.memoryUsage()`,按注入的占比 × 堆上限造 `heapUsed`(顺带把 `heapTotal` 抬到不低于它)。注的是**读数**不是显示值 —— 概览页那两个环的染色、近 5 分钟曲线、服务端「已逼近堆上限」那条 warn 全照真的算一遍。包好的读数由 `createDevtools` 交回去(`index.ts` 只许从 `./devtools/index.js` 引 devtools,多一个 import 就多一条漏进产物的路) | `heap-injection.ts`、`scenarios/heap.ts` |
@@ -135,7 +143,7 @@
   逐个列 key 的话新场景必漏。
 - 靠作废查询看不到的消费点:只在某个**时机**才出手的那种。「有新版」通知卡只在打开面板那次
   自动检查里发(`useUpdateCheckOnOpen`),注入 `available` 之后不刷新页面就没有卡。
-  `apps/web/src/devtools/follow-ups.ts` 按场景 id 登记「跑完后面板要补做的事」,`update.state`
+  `apps/web/src/devtools/follow-ups.ts` 按场景 id 登记「跑完后面板要补做的事」,`core.update.state`
   跑完就地**重放**那次检查(同一个函数、同一条路),卡当场弹。补做失败的红字会说明注入已生效。
 
 ## 真机验过 / 没验过(2026-09-06)

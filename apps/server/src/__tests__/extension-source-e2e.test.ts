@@ -266,7 +266,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 
 	it("报一条作品:进推送截流,恰好一条,发到订阅路由的那个目标", async () => {
 		// 开截流(devtools 的推送截流,接在派发器调适配器 `send` 的那一处,开着不出网)。
-		await okRes(await api("/api/dev/run/push.capture", json({ params: {} })));
+		await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
 		await okRes(await api("/api/dev/captures/clear", { method: "POST" }));
 		await press("report.post");
 		await vi.waitFor(async () => expect((await captures()).length).toBeGreaterThanOrEqual(1), {

@@ -122,6 +122,7 @@ import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
 import { startStatsCompaction } from "./stats/compaction.js";
 import { listLoginSources } from "./subscriptions/registry.js";
+import { sourceSubscriptionViews } from "./subscriptions/source-subscriptions.js";
 import { readReleaseNotes } from "./update/release-notes.js";
 import { readFailedVersions } from "./update/select-version-for-boot.js";
 import { createUpdateService } from "./update/service.js";
@@ -756,9 +757,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// B 站那组场景的认领在 `compose.ts`。
 		const builtins = composeBuiltinIntegrations({
 			locale: localeReader,
-			bus: runtime.bus,
-			subscriptions: subStore,
-			subscriptionState: runtime.subscriptionStateStore,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			accountImages: runtime.accountImages,
 			// 三个内置适配器在 `compose.ts` 里造(核心只有它能 import `platforms/`)。入站出口是上面留好的
@@ -781,6 +779,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
 			// 构建时 `createBiliDevtools` 另有恒空的桩。
 			provide: (devtoolsProviders) => builtins.provideDevtools(devtoolsProviders),
+			// `creator` 参数照来源的名单核:与来源 `ctx.subscriptions()` 同一个算法、同一份订阅表,现读。
+			creators: (sourceKey) =>
+				sourceSubscriptionViews(
+					subStore.list(),
+					sourceKey,
+					runtime.configStore.getGlobals().defaults,
+				).map((view) => view.externalId),
 			payloadVersion,
 			sourceRun,
 			updateService,

@@ -1,6 +1,5 @@
 import { ok } from "@bilibili-notify/internal";
 import { type DevScenarioDef, notReady } from "../../devtools/registry.js";
-import type { SubPick } from "./live.js";
 
 /**
  * B 站的两个「现在就跑」:把定时器到点要做的事提前调一次,定时器本身不动。
@@ -10,7 +9,6 @@ import type { SubPick } from "./live.js";
  * `devtools/scenarios/timers.ts`。
  */
 export interface BiliTimerDeps {
-	subs: () => SubPick[];
 	/** 下面几样都是动态轮询建好之后才有的,现取。 */
 	dynamic: () => { detectNow(): Promise<void> } | undefined;
 	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;

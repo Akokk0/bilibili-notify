@@ -67,7 +67,6 @@ export const RATCHET = {
 	"apps/web/src/components/onboarding/derive.ts": 2,
 	"apps/web/src/components/onboarding/use-onboarding-view.ts": 5,
 	"apps/web/src/components/scope-tabs.tsx": 3,
-	"apps/web/src/devtools/pick-select.tsx": 2,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/pages/Cards.tsx": 2,
 	// 3a-38(主人 10-10 点头,4 → 6):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(动态、直播两行都读它)。

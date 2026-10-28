@@ -1417,7 +1417,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 	step(TITLE.fetchProfile, async () => {
 		// 记号 id(合外部 id 格式、解析门永远现编不出的那个)建一条订阅,让来源对它回 `not_found`。
 		await okJson(await createSubscription(ID.subMissing, MISSING_EXTERNAL_ID, []));
-		await okJson(await api("/api/dev/run/profiles.refresh-now", json({ params: {} })));
+		await okJson(await api("/api/dev/run/core.profiles.refresh-now", json({ params: {} })));
 		// 没被按钮报过资料的人,来源现编一份名字带「拉取版」的。
 		await vi.waitFor(async () => {
 			expect(await nameOf(ID.subA)).toContain("拉取版");
@@ -1445,7 +1445,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(await nameOf(world.subB)).toContain("第 1 版");
 		});
 		// 按钮报过的人,之后核心定时拉取,来源交回的就是宿主已经收下的同一版(不会被「拉取版」盖掉)。
-		await okJson(await api("/api/dev/run/profiles.refresh-now", json({ params: {} })));
+		await okJson(await api("/api/dev/run/core.profiles.refresh-now", json({ params: {} })));
 		expect(await nameOf(ID.subA)).toContain("第 1 版");
 		expect(await nameOf(world.subB)).toContain("第 1 版");
 		drove("SourceContext", "reportProfile");

@@ -48,7 +48,6 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - **新建订阅的路由**（`routes/subscriptions.ts`，`POST` 新建那一支）：身份的来源键不是 `bilibili` 的一律当拓展订阅，只认「装着的清单 v3 订阅源」（`subscriptionSourceRefusal`），不问来源登记表 —— 在册的内置来源经接口仍建不出订阅（3a-42 对拍查出，对拍名单 N01）。来源的 `searchCreators` 已接给女仆的搜人工具与面板 `GET /api/ext/:id/lookup`（经 `PipelineRuntime` 与来源串行闸），`GET /api/sources/:sourceKey/creators` 及面板其余扩展入口仍第 4 期。
 - **统计「这个小时在记」**（`stats/registry-source.ts`）：核心对**所有在册来源**记（`attachRegistryStatsSource`：来源在登记表里，且没有登录口或登录口现读是 `logged-in`（`confirming` 不算），就按每条订阅的 `recordsPosts` / `recordsLive` 记当前小时；挂上时、每 `RECORDING_CHECK_MS`（1 分钟）、`subscription-auth-changed` 时各看一眼）。没有登录口的拓展来源按「在册即在记」算，最多等 1 分钟记上。登录丢了（现读到 `expired` / `logged-out`）时同一模块忘掉那个来源名下的在飞场次，统计不再听 `auth-lost` / `auth-restored`。这里的「来源在跑」额外看登录；作品入口的闸与女仆查直播读 `SourceStatusReader`（在册即在跑），两种说法合成一个读口仍归第 4 期。
 - **`status` 指令的「登录」行**现读来源登记表：每个带登录口（`Source.auth`）的来源各一行（「<label>登录：<状态>」），其余几行（上次抓取一类）是各来源自己说的；`login [来源]` 同样从登记表挑来源，不带词且只有一个就直接扫，有好几个就列出来（3b-06 已落，对拍 P21，原名单 N17）。
-- devtools 场景挑订阅（`compose.ts` 的 `provideDevtools` 里那段 `subs`，3a-28 从入口搬来）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
 反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubscriptionState`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。

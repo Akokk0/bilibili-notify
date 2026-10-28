@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createDevtoolsProviderRegistry } from "../../../devtools/providers.js";
-import { createNodeMessageBus } from "../../../runtime/message-bus.js";
 import type { Api } from "../../api/index.js";
 import { observeLiveConnections } from "../../live/protocol/client.js";
 import { type BiliDevtoolsDeps, createBiliDevtools } from "../index.js";
@@ -12,16 +11,9 @@ import { biliRegistry } from "./support/registry.js";
  * 汇进登记表后 id 都带 `bilibili.` 前缀。
  */
 
+/** 来源还没造好:场景要的东西一样都取不到。 */
 function deps(): BiliDevtoolsDeps {
-	return {
-		bus: createNodeMessageBus(),
-		subs: () => [],
-		dynamic: () => undefined,
-		liveRooms: () => undefined,
-		profileAvatars: () => undefined,
-		login: () => undefined,
-		auth: () => undefined,
-	};
+	return { source: () => undefined };
 }
 
 afterEach(() => {

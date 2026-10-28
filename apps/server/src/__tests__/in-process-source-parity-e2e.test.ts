@@ -141,17 +141,25 @@ vi.mock("../runtime/puppeteer.js", async (importOriginal) => {
 vi.mock("../compose.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../compose.js")>();
 	const support = await import("./support/in-process-source.js");
-	const wrapped = support.wrapCompose(real);
+	return support.wrapCompose(real);
+});
+
+// 总线是运行时的:真运行时照建,在它的总线上挂耳朵(假来源世界那几只由支架挂,直播的两只在这里)。
+vi.mock("../runtime/bootstrap.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../runtime/bootstrap.js")>();
+	const support = await import("./support/in-process-source.js");
+	const wrapped = support.wrapBootstrap(real);
 	return {
 		...wrapped,
-		composeBuiltinIntegrations(deps: Parameters<typeof wrapped.composeBuiltinIntegrations>[0]) {
-			deps.bus.on("live-session-changed", (data) => {
+		createAppRuntime(...args: Parameters<typeof wrapped.createAppRuntime>) {
+			const runtime = wrapped.createAppRuntime(...args);
+			runtime.bus.on("live-session-changed", (data) => {
 				liveBusEvents.push({ event: "live-session-changed", data });
 			});
-			deps.bus.on("live-viewers-changed", (data) => {
+			runtime.bus.on("live-viewers-changed", (data) => {
 				liveBusEvents.push({ event: "live-viewers-changed", data });
 			});
-			return wrapped.composeBuiltinIntegrations(deps);
+			return runtime;
 		},
 	};
 });
@@ -932,7 +940,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		// 配了浏览器才有出卡的渲染器;真正起来的是上面那个假浏览器。
 		handle = await boot(port, { BN_CHROME_PATH: "/fake/chrome" });
 		// 开截流:此后所有往外发的都被拦在派发器调适配器 `send` 的那一处,不出网。
-		await okRes(await api("/api/dev/run/push.capture", json({ params: {} })));
+		await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
 	}, 60_000);
 
 	afterAll(async () => {
@@ -1568,7 +1576,9 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	/** 把状态行读成 `label：summary` 的数组。 */
 	async function statusLines(): Promise<string[]> {
 		await clearCaptures();
-		await okRes(await api("/api/dev/run/inbound.command", json({ params: { text: "/status" } })));
+		await okRes(
+			await api("/api/dev/run/core.inbound.command", json({ params: { text: "/status" } })),
+		);
 		const [reply] = await settledCaptures(1);
 		expect(reply).toMatchObject({ private: true, kind: "text", targetName: `私聊 ${MASTER_USER}` });
 		return (reply?.text ?? "").split("\n");
@@ -1723,7 +1733,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	/** 经真的入站口敲一条私聊指令,等回话到齐(至少 `n` 条),回会话里收到的全部。 */
 	async function sendCommand(text: string, n: number): Promise<DevCapturedDelivery[]> {
 		await clearCaptures();
-		await okRes(await api("/api/dev/run/inbound.command", json({ params: { text } })));
+		await okRes(await api("/api/dev/run/core.inbound.command", json({ params: { text } })));
 		return settledCaptures(n);
 	}
 
@@ -2950,7 +2960,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 
 	/** 经 devtools 立刻跑一轮资料刷新(不等 cron),跑完才回。 */
 	const refreshProfilesNow = async (): Promise<void> => {
-		await okRes(await api("/api/dev/run/profiles.refresh-now", json({ params: {} })));
+		await okRes(await api("/api/dev/run/core.profiles.refresh-now", json({ params: {} })));
 	};
 
 	// 验红:`runtime/profile-refresh.ts` 的一轮跳过在册的非 B 站来源,不调来源,问题那一段第一处红;
@@ -3409,7 +3419,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const probe = currentProbe();
 		/** 往测试群贴一句话(必须传 `text`:缺省正文是 B 站链接,会去打真接口)。 */
 		const say = async (text: string) =>
-			okRes(await api("/api/dev/run/inbound.link", json({ params: { text } })));
+			okRes(await api("/api/dev/run/core.inbound.link", json({ params: { text } })));
 		const quiet = () => new Promise((resolve) => setTimeout(resolve, 400));
 		const htmlWith = (needle: string) => renderedHtml.filter((html) => html.includes(needle));
 		await clearCaptures();
@@ -3454,7 +3464,7 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		// 形式选原生分享、连接能力注成支持:回原生分享,截流里是标题,不出图。
 		await okRes(
 			await api(
-				"/api/dev/run/connection.capability",
+				"/api/dev/run/core.connection.capability",
 				json({ params: { connection: ID.connection, state: "supported" } }),
 			),
 		);
@@ -3752,7 +3762,8 @@ describe("进程内对拍:清单自己", () => {
 		const fixture = parseSource(FIXTURE);
 		const parity = parseSource(THIS_FILE);
 
-		// 夹具的 import 只有这几样:中立的内部包、zod、集成上下文及其读手(造假来源的集成上下文要一份),外加两个只取类型的(组装根、配置仓)。
+		// 夹具的 import 只有这几样:中立的内部包、zod、集成上下文及其读手(造假来源的集成上下文要一份),外加三个只取类型的
+		// (组装根、配置仓、运行时 —— 总线是运行时的,组装根不拿它,夹具包 `createAppRuntime` 在总线上挂耳朵)。
 		const specifiers = importsOf(fixture).map((ref) => ref.specifier);
 		expect(specifiers.sort()).toEqual(
 			[
@@ -3762,6 +3773,7 @@ describe("进程内对拍:清单自己", () => {
 				"../../config/store.js",
 				"../../integrations/open.js",
 				"../../integrations/settings-reader.js",
+				"../../runtime/bootstrap.js",
 			].sort(),
 		);
 		// 夹具与这份对拍文件的任何一个 import 都不解析到 bilibili/ 下。

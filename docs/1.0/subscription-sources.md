@@ -475,9 +475,11 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - 场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），不会撞名，也冒充不了别家。
 - 参数按提供方收窄：来源用新种类 `creator`（值是自己名单里的 `externalId`）；推送适配器只能挑自己的连接；`sub` / `target` 只给核心。
 - `run` 返回 `{ ok: true, summary? }` 或失败：参数不合法回 `invalid`，场景找不到回 `not_found`；原来那两个异常类（`DevParamError`、`DevScenarioNotFound`）删掉。`active` / `reset` 不变。
-- 场景只用自己集成的 ctx 做事（B 站「造一条新动态」就调 `ctx.reportPost`），核心的句柄不交出去；B 站现在直捅引擎的场景，搬家时改。
+- 场景只用自己集成的东西做事（B 站「造一条新动态」经 B 站自己的轮询上报），核心的句柄不交出去。
 
 🔗 现状（3b-45，10-25）：纯声明叫 `DevScenarioDescriptor`，这一族与 `DevtoolsProvider` 的本体住 `packages/internal/src/devtools.ts`；`@bilibili-notify/extension` 转出给拓展，contract 只借给面板。拓展只在开发版 `devtools.mjs` 的开发入口登记 provider，登记与撤销随拓展起停，场景 id 由宿主加 `<拓展 id>.`，撞核心场景即拒。
+
+🔗 现状（4-06，10-28）：核心场景也加前缀（`core.`，建表时就以 `core` 认领），描述符多一格宿主填的 `provider`；`creator` 种类已造，值经宿主按来源名单（`ctx.subscriptions()` 那一份）核过，`sub` / `target` / `connection` 只给核心、别家认领时就拒；推送适配器挑自己连接的种类没造（没有使用者）。B 站场景只拿 B 站来源一个把手，注入点仍在 B 站自己的边界上；那句例子原文是「就调 `ctx.reportPost`」，主人 10-28 改，理由与随之变的几处见 ADR-0031 决策 2 的 🔗。
 
 ## B 站怎么实现
 

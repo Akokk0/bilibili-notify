@@ -22,8 +22,8 @@ export type { DevScenarioDef } from "@bilibili-notify/internal";
  * 各自的装饰器手里(一条真动作就能把假状态顶掉),注册表不另记一份,只问。
  *
  * 参数按 schema 补默认值、挡不合法的,在这一层做:每个场景各写一遍的话,漏写的那个
- * 就会拿到 `undefined` 往下传。`sub` / `target` / `adapter` 三种**不在这里补**——默认值
- * 是「第一个启用的订阅」这类要查配置的事,归场景自己。
+ * 就会拿到 `undefined` 往下传。`sub` / `target` / `connection` / `creator` 四种**不在这里补**——默认值
+ * 是「第一个启用的订阅」这类要查配置的事,归场景自己;`creator` 给了的,这里按那一家的名单核一遍。
  */
 
 export interface DevRegistry {
@@ -47,16 +47,18 @@ function declarationOf(def: DevScenarioDef): DevScenarioDescriptor {
 		title: def.title,
 		params: def.params,
 	};
+	if (def.provider !== undefined) out.provider = def.provider;
 	if (def.desc !== undefined) out.desc = def.desc;
 	if (def.quick !== undefined) out.quick = def.quick;
 	if (def.icon !== undefined) out.icon = def.icon;
 	return out;
 }
 
-/** 一个字段:给的值 → 校验 / 转换;没给 → 默认值;没默认值 → 不出现在结果里。 */
+/** 一个字段:给的值 → 校验 / 转换;没给 → 默认值;没默认值 → 不出现在结果里。`roster` 是这一家的名单。 */
 function coerce(
 	field: DevParamField,
 	given: string | number | undefined,
+	roster: () => readonly string[],
 ): Result<{ value: string | number | undefined }> {
 	let value: string | number | undefined;
 	switch (field.kind) {
@@ -64,6 +66,12 @@ function coerce(
 		case "target":
 		case "connection":
 			value = given === undefined ? undefined : String(given);
+			break;
+		case "creator":
+			value = given === undefined ? undefined : String(given);
+			if (value !== undefined && !roster().includes(value)) {
+				return fail("invalid", `${field.label}(${field.key})不在名单里:${value}`);
+			}
 			break;
 		case "text":
 			value = given === undefined ? field.default : String(given);
@@ -98,33 +106,39 @@ function coerce(
 function fillParams(
 	fields: DevParamField[],
 	given: DevParamValues,
+	roster: () => readonly string[],
 ): Result<{ values: DevParamValues }> {
 	const out: DevParamValues = {};
 	for (const field of fields) {
-		const coerced = coerce(field, given[field.key]);
+		const coerced = coerce(field, given[field.key], roster);
 		if (!coerced.ok) return coerced;
 		if (coerced.value !== undefined) out[field.key] = coerced.value;
 	}
 	return ok({ values: out });
 }
 
+export interface DevRegistryOptions {
+	/**
+	 * 一个来源的名单(`ctx.subscriptions()` 那一份的 externalId),`creator` 参数照它核。不给 = 谁的名单都是空的,
+	 * 给了 `creator` 的一律 `invalid`。
+	 */
+	creators?: (sourceKey: string) => readonly string[];
+}
+
 export function createDevRegistry(
-	defs: readonly DevScenarioDef[],
-	providers?: Pick<DevtoolsProviderRegistry, "scenarios">,
+	providers: Pick<DevtoolsProviderRegistry, "scenarios">,
+	options: DevRegistryOptions = {},
 ): DevRegistry {
-	const byId = new Map<string, DevScenarioDef>();
-	for (const def of defs) {
-		if (byId.has(def.id)) throw new Error(`devtools 场景 id 撞了:${def.id}`);
-		byId.set(def.id, def);
-	}
-	const declarations = [...byId.values()].map(declarationOf);
-	const providerDefs = () => providers?.scenarios() ?? [];
-	const findDef = (id: string) =>
-		byId.get(id) ?? providerDefs().find((candidate) => candidate.id === id);
+	const creators = options.creators ?? (() => []);
+	const findDef = (id: string) => providers.scenarios().find((candidate) => candidate.id === id);
+	// 声明按场景记一份:汇总那一份在认领 / 撤下之间不变,面板列场景时不必每次都重新剥。
+	let listed:
+		| { from: readonly DevScenarioDef[]; declarations: DevScenarioDescriptor[] }
+		| undefined;
 
 	function active(): DevInjection[] {
 		const out: DevInjection[] = [];
-		for (const def of [...byId.values(), ...providerDefs()]) {
+		for (const def of providers.scenarios()) {
 			const injection = def.active?.();
 			if (injection) out.push(injection);
 		}
@@ -132,15 +146,15 @@ export function createDevRegistry(
 	}
 
 	return {
-		// 核心声明建一次就够;provider 会随拓展起停增减,每次 GET 都现取、现剥。
-		list: () =>
-			providers === undefined
-				? declarations
-				: [...declarations, ...providerDefs().map(declarationOf)],
+		list() {
+			const from = providers.scenarios();
+			if (listed?.from !== from) listed = { from, declarations: from.map(declarationOf) };
+			return listed.declarations;
+		},
 		async run(id, params) {
 			const def = findDef(id);
 			if (!def) return fail("not_found", `没有这个场景:${id}`);
-			const filled = fillParams(def.params, params);
+			const filled = fillParams(def.params, params, () => creators(def.provider ?? ""));
 			if (!filled.ok) return filled;
 			const outcome = await def.run(filled.values);
 			if (!outcome.ok) return outcome;
@@ -150,7 +164,7 @@ export function createDevRegistry(
 		},
 		active,
 		async reset(id) {
-			const current = [...byId.values(), ...providerDefs()];
+			const current = providers.scenarios();
 			if (id === undefined) {
 				// 一条收摊失败不该让别的收不成 —— 但失败要报出去,所以先全跑再一起看结果。
 				const results = await Promise.allSettled(current.map(async (def) => def.reset?.()));

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { GuardLevel, type LiveEvent } from "../../live/protocol/events.js";
-import type { SubPick } from "../live.js";
 import { liveEventScenarios } from "../live-events.js";
 import { createLiveRooms } from "../live-rooms.js";
-import { biliRegistry } from "./support/registry.js";
+import { biliRegistry, rosterEntry } from "./support/registry.js";
 
 /**
  * A2:弹幕批量 / SC / 上舰 / 礼物 / 进场 —— 都是往房间的事件漏斗塞 LiveEvent。守的是形状:
@@ -12,10 +11,7 @@ import { biliRegistry } from "./support/registry.js";
  * 总结要 5 位发言人,门槛就是冲这两个数去的)。
  */
 
-const SUBS: SubPick[] = [
-	{ id: "s1", externalId: "100", name: "甲", enabled: true, specialViewers: ["777"] },
-	{ id: "s3", externalId: "300", name: "丙", enabled: true },
-];
+const ROSTER = [rosterEntry("100"), rosterEntry("300")];
 
 function setup() {
 	const rooms = createLiveRooms();
@@ -28,16 +24,17 @@ function setup() {
 	});
 	const reg = biliRegistry(
 		liveEventScenarios({
-			subs: () => SUBS,
+			roster: () => ROSTER,
 			rooms,
 			liveRooms: () => ({ roomIdOf: (externalId) => roomIds.get(externalId) }),
 		}),
+		ROSTER,
 	);
 	return { reg, events };
 }
 
 describe("直播事件场景", () => {
-	it("声明:五个场景都在事件组,都收 sub", () => {
+	it("声明:五个场景都在事件组,都收 creator", () => {
 		const { reg } = setup();
 		const decls = reg.list();
 		expect(decls.map((d) => d.id)).toEqual([
@@ -49,7 +46,7 @@ describe("直播事件场景", () => {
 		]);
 		for (const d of decls) {
 			expect(d.group).toBe("event");
-			expect(d.params[0]).toMatchObject({ key: "sub", kind: "sub" });
+			expect(d.params[0]).toMatchObject({ key: "creator", kind: "creator" });
 		}
 	});
 
@@ -121,17 +118,22 @@ describe("直播事件场景", () => {
 		});
 	});
 
-	it("进场:uid 省略时取这位 UP 的第一个特别关注;给了就用给的", async () => {
+	it("进场:用给的 uid;空着回 invalid —— 特别关注是核心的订阅配置,B 站拿不到,得自己填", async () => {
 		const { reg, events } = setup();
-		await reg.run("bilibili.live.enter", {});
-		expect(events[0]).toMatchObject({ kind: "user-action", action: "enter", user: { uid: 777 } });
 		await reg.run("bilibili.live.enter", { uid: "12345" });
-		expect(events[1]).toMatchObject({ kind: "user-action", user: { uid: 12345 } });
+		expect(events[0]).toMatchObject({ kind: "user-action", action: "enter", user: { uid: 12345 } });
+
+		await expect(reg.run("bilibili.live.enter", {})).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: expect.stringContaining("特别关注"),
+		});
+		expect(events).toHaveLength(1);
 	});
 
 	it("房间没连上 → 参数错误", async () => {
 		const { reg } = setup();
-		await expect(reg.run("bilibili.live.superchat", { sub: "s3" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.live.superchat", { creator: "300" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});

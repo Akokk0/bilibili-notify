@@ -52,7 +52,7 @@ export function devtools(ctx) {
 }
 `);
 		const providers = createDevtoolsProviderRegistry();
-		const registry = createDevRegistry([], providers);
+		const registry = createDevRegistry(providers);
 		let address: string | undefined = "127.0.0.1:4567";
 		const attach = createDevEntryAttacher({ providers, address: () => address });
 		const first = started("demo");
@@ -120,6 +120,30 @@ export function devtools() {
 		expect(warning).toContain(kind);
 	});
 
+	it("参数用了 creator → 挂得上:来源型拓展挑自己名单里的人", async () => {
+		await writeEntry(`
+export function devtools() {
+	return {
+		scenarios: [{
+			id: "post",
+			group: "event",
+			title: "Post",
+			params: [{ key: "creator", label: "Who", kind: "creator" }],
+			run: () => ({ ok: true }),
+		}],
+	};
+}
+`);
+		const providers = createDevtoolsProviderRegistry();
+		const attach = createDevEntryAttacher({ providers, address: () => undefined });
+		const target = started("demo");
+
+		await attach(target.started);
+
+		expect(providers.scenarios().map((s) => s.id)).toEqual(["demo.post"]);
+		expect(target.lines.some((line) => line.startsWith("warn "))).toBe(false);
+	});
+
 	it("文件内容变了 → URL 指纹换掉,再挂拿到新模块", async () => {
 		const scenario = (id: string) => `
 export function devtools() {
@@ -135,7 +159,7 @@ export function devtools() {
 }
 `;
 		const providers = createDevtoolsProviderRegistry();
-		const registry = createDevRegistry([], providers);
+		const registry = createDevRegistry(providers);
 		const attach = createDevEntryAttacher({ providers, address: () => undefined });
 
 		await writeEntry(scenario("first"));

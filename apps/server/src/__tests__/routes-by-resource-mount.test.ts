@@ -24,6 +24,7 @@ import { createSessionCodec } from "../auth/session.js";
 import { createWsTicketStore } from "../auth/ws-ticket.js";
 import type { BackupService } from "../backup/service.js";
 import { settingsSegment } from "../bilibili/settings.js";
+import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
 import { ROUTE_NOT_FOUND_MESSAGE } from "../routes/respond-failure.js";
@@ -212,7 +213,7 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 			},
 		},
 		devtools: createDevRoute({
-			registry: createDevRegistry([]),
+			registry: createDevRegistry(createDevtoolsProviderRegistry()),
 			captures: {
 				status: () => ({}) as never,
 				clear: () => {},

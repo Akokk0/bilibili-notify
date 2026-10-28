@@ -18,8 +18,8 @@ import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createMarketplace, type Marketplace } from "../../extensions/marketplace.js";
 import { type InstalledExtension, injectableMarketplace } from "../marketplace-injection.js";
-import { createDevRegistry } from "../registry.js";
 import { marketplaceUpdateScenario } from "../scenarios/marketplace.js";
+import { coreDevRegistry } from "./support/core-registry.js";
 
 function entry(over: Partial<MarketplaceEntryDTO> & { id: string }): MarketplaceEntryDTO {
 	return {
@@ -59,7 +59,7 @@ function fakeMarket(entries: MarketplaceEntryDTO[]) {
 function setup(entries: MarketplaceEntryDTO[], installed: InstalledExtension[]) {
 	const real = fakeMarket(entries);
 	const injectable = injectableMarketplace(real, () => installed);
-	const reg = createDevRegistry([marketplaceUpdateScenario(injectable)]);
+	const reg = coreDevRegistry([marketplaceUpdateScenario(injectable)]);
 	return { reg, real, market: injectable.marketplace };
 }
 
@@ -75,7 +75,7 @@ describe("ext.updatable · 列表", () => {
 	it("声明:拓展组、拓展 id(默认留空)与假装下载几秒(默认 2)", () => {
 		const { reg } = setup([], []);
 		const [decl] = reg.list();
-		expect(decl).toMatchObject({ id: "ext.updatable", group: "ext", title: "拓展有更新" });
+		expect(decl).toMatchObject({ id: "core.ext.updatable", group: "ext", title: "拓展有更新" });
 		expect(decl?.params).toEqual([
 			expect.objectContaining({
 				key: "ext",
@@ -96,7 +96,7 @@ describe("ext.updatable · 列表", () => {
 			[BRIDGE_ELSEWHERE],
 			[{ id: "bridge", name: "机器人桥", version: "1.2.3" }],
 		);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0.2 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0.2 });
 
 		const started = Date.now();
 		const outcome = await market.install("official", "bridge");
@@ -109,7 +109,7 @@ describe("ext.updatable · 列表", () => {
 			[BRIDGE_ELSEWHERE, OTHER],
 			[{ id: "bridge", name: "机器人桥", version: "1.2.3" }],
 		);
-		const res = await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		const res = await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 		const view = await market.list();
 		expect(view.extensions).toEqual([
@@ -123,7 +123,7 @@ describe("ext.updatable · 列表", () => {
 		]);
 		expect(res).toMatchObject({
 			ok: true,
-			active: [{ scenarioId: "ext.updatable", label: "拓展有更新 → bridge v1.2.4" }],
+			active: [{ scenarioId: "core.ext.updatable", label: "拓展有更新 → bridge v1.2.4" }],
 		});
 	});
 
@@ -138,7 +138,7 @@ describe("ext.updatable · 列表", () => {
 			[BRIDGE_ELSEWHERE],
 			[{ id: "bridge", version: installedVersion }],
 		);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 		const [promoted] = (await market.list()).extensions;
 		expect(promoted?.version).toBe(next);
 		expect(promoted?.prerelease).toBe(next.includes("-"));
@@ -154,7 +154,7 @@ describe("ext.updatable · 列表", () => {
 			installed: { version: "1.2.3", source: "src-3" },
 		});
 		const { reg, market } = setup([BRIDGE_ELSEWHERE, third], [{ id: "bridge", version: "1.2.3" }]);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 		const view = await market.list();
 		expect(view.extensions).toEqual([
@@ -169,7 +169,7 @@ describe("ext.updatable · 列表", () => {
 	 */
 	it("索引里没有这个 id:现造一条官方的 updatable,别的条目不动", async () => {
 		const { reg, market } = setup([OTHER], [{ id: "bridge", name: "机器人桥", version: "0.3.0" }]);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 		const view = await market.list();
 		expect(view.extensions[0]).toEqual(OTHER);
@@ -193,7 +193,7 @@ describe("ext.updatable · 按「更新」", () => {
 			[BRIDGE_ELSEWHERE, OTHER],
 			[{ id: "bridge", name: "机器人桥", version: "1.2.3" }],
 		);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 		const outcome = await market.install("official", "bridge");
 		expect(outcome).toEqual({
@@ -235,8 +235,8 @@ describe("ext.updatable · 按「更新」", () => {
 			const injectable = injectableMarketplace(realMarket, () => [
 				{ id: "bridge", name: "机器人桥", version: "0.3.0" },
 			]);
-			const reg = createDevRegistry([marketplaceUpdateScenario(injectable)]);
-			await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+			const reg = coreDevRegistry([marketplaceUpdateScenario(injectable)]);
+			await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 			const [made] = (await injectable.marketplace.list()).extensions;
 			expect(made).toMatchObject({ source: "official", state: "updatable", version: "0.3.1" });
@@ -257,7 +257,7 @@ describe("ext.updatable · 按「更新」", () => {
 			[BRIDGE_ELSEWHERE, OTHER],
 			[{ id: "bridge", version: "1.2.3" }],
 		);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 
 		const outcome = await market.install("src-3", "other");
 		expect(real.install).toHaveBeenCalledWith("src-3", "other");
@@ -268,12 +268,12 @@ describe("ext.updatable · 按「更新」", () => {
 
 describe("ext.updatable · 收摊与挡板", () => {
 	it("收摊(单收 / 一键全收)之后列表回到真的", async () => {
-		for (const id of ["ext.updatable", undefined]) {
+		for (const id of ["core.ext.updatable", undefined]) {
 			const { reg, market } = setup(
 				[BRIDGE_ELSEWHERE, OTHER],
 				[{ id: "bridge", version: "1.2.3" }],
 			);
-			await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+			await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 			expect(await reg.reset(id)).toMatchObject({ ok: true, active: [] });
 			expect((await market.list()).extensions).toEqual([BRIDGE_ELSEWHERE, OTHER]);
 		}
@@ -281,11 +281,11 @@ describe("ext.updatable · 收摊与挡板", () => {
 
 	it("没装的 id / 空 id:当场拒,什么都不注入", async () => {
 		const { reg, market } = setup([BRIDGE_ELSEWHERE], [{ id: "bridge", version: "1.2.3" }]);
-		await expect(reg.run("ext.updatable", { ext: "ghost" })).resolves.toMatchObject({
+		await expect(reg.run("core.ext.updatable", { ext: "ghost" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
-		await expect(reg.run("ext.updatable", { ext: " " })).resolves.toMatchObject({
+		await expect(reg.run("core.ext.updatable", { ext: " " })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
@@ -298,13 +298,13 @@ describe("ext.updatable · 收摊与挡板", () => {
 		const installed: InstalledExtension[] = [{ id: "bridge", version: "1.2.3" }];
 		const real = fakeMarket([BRIDGE_ELSEWHERE]);
 		const injectable = injectableMarketplace(real, () => installed);
-		const reg = createDevRegistry([marketplaceUpdateScenario(injectable)]);
-		await reg.run("ext.updatable", { ext: "bridge", download: 0 });
+		const reg = coreDevRegistry([marketplaceUpdateScenario(injectable)]);
+		await reg.run("core.ext.updatable", { ext: "bridge", download: 0 });
 		installed.length = 0;
 
 		expect((await injectable.marketplace.list()).extensions).toEqual([BRIDGE_ELSEWHERE]);
 		expect(reg.active()).toEqual([
-			{ scenarioId: "ext.updatable", label: "拓展有更新 → bridge(现在没装,不生效)" },
+			{ scenarioId: "core.ext.updatable", label: "拓展有更新 → bridge(现在没装,不生效)" },
 		]);
 		await injectable.marketplace.install("official", "bridge");
 		expect(real.install).toHaveBeenCalledWith("official", "bridge");

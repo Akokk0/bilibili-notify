@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { createDevRegistry } from "../registry.js";
 import { busEventScenarios } from "../scenarios/bus-events.js";
+import { coreDevRegistry } from "./support/core-registry.js";
 
 /**
  * A5:推送链路错误直接往 MessageBus 上**发射**(不是转发,不碰
@@ -14,21 +14,24 @@ function setup() {
 	bus.on("pipeline-error", ({ source, message }) =>
 		seen.push(["pipeline-error", [source, message]]),
 	);
-	const reg = createDevRegistry(busEventScenarios({ bus }));
+	const reg = coreDevRegistry(busEventScenarios({ bus }));
 	return { reg, seen };
 }
 
 describe("总线事件场景", () => {
 	it("pipeline.error:来源枚举 + 正文,原样发射", async () => {
 		const { reg, seen } = setup();
-		const res = await reg.run("pipeline.error", { source: "post-delivery", message: "假的炸了" });
+		const res = await reg.run("core.pipeline.error", {
+			source: "post-delivery",
+			message: "假的炸了",
+		});
 		expect(seen).toEqual([["pipeline-error", ["post-delivery", "假的炸了"]]]);
 		expect(res).toMatchObject({ ok: true, summary: expect.stringContaining("post-delivery") });
 	});
 
 	it("pipeline.error 默认值:live-engine + 一句看得出是假的话", async () => {
 		const { reg, seen } = setup();
-		await reg.run("pipeline.error", {});
+		await reg.run("core.pipeline.error", {});
 		expect(seen[0]?.[1][0]).toBe("live-engine");
 		expect(String(seen[0]?.[1][1])).toContain("devtools");
 	});

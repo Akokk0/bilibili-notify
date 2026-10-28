@@ -2,6 +2,7 @@ import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createDevtoolsProviderRegistry } from "../providers.js";
 import { createDevRegistry, type DevScenarioDef } from "../registry.js";
+import { coreDevRegistry } from "./support/core-registry.js";
 
 /**
  * devtools 的中央注册表:一张表、两半共用一个形状。这一层管三件事 —— 把声明(纯数据)
@@ -22,7 +23,7 @@ function def(overrides: Partial<DevScenarioDef> = {}): DevScenarioDef {
 
 describe("createDevRegistry", () => {
 	it("list() 只交出声明,不带函数", () => {
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({
 				id: "a",
 				params: [{ key: "n", label: "N", kind: "number", default: 3 }],
@@ -32,7 +33,8 @@ describe("createDevRegistry", () => {
 		]);
 		expect(reg.list()).toEqual([
 			{
-				id: "a",
+				id: "core.a",
+				provider: "core",
 				group: "state",
 				title: "一号",
 				params: [{ key: "n", label: "N", kind: "number", default: 3 }],
@@ -43,18 +45,19 @@ describe("createDevRegistry", () => {
 	});
 
 	it("同 id 注册两次直接拒绝 —— 两半合一份,撞名只会静默盖掉一个", () => {
-		expect(() => createDevRegistry([def({ id: "a" }), def({ id: "a" })])).toThrow(/a/);
+		expect(() => coreDevRegistry([def({ id: "a" }), def({ id: "a" })])).toThrow(/core\.a/);
 	});
 
 	it("建表之后认领的 provider 场景会出现在 list() 里,也能立刻 run()", async () => {
 		const providers = createDevtoolsProviderRegistry();
-		const reg = createDevRegistry([], providers);
+		const reg = createDevRegistry(providers);
 		const run = vi.fn(async () => ok({ summary: "后到的也能跑" }));
 
 		providers.claim("demo", { scenarios: [def({ id: "late", run })] });
 
 		expect(reg.list()).toContainEqual({
 			id: "demo.late",
+			provider: "demo",
 			group: "state",
 			title: "一号",
 			params: [],
@@ -84,7 +87,7 @@ describe("createDevRegistry", () => {
 				}),
 			],
 		});
-		const reg = createDevRegistry([], providers);
+		const reg = createDevRegistry(providers);
 
 		await expect(reg.run("demo.effect", {})).resolves.toMatchObject({
 			ok: true,
@@ -111,7 +114,7 @@ describe("createDevRegistry", () => {
 
 	it("run() 按 schema 补默认值:enum / number / text 各一档", async () => {
 		const run = vi.fn(async () => ok({ summary: "done" }));
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({
 				id: "a",
 				params: [
@@ -129,7 +132,7 @@ describe("createDevRegistry", () => {
 			}),
 		]);
 
-		const res = await reg.run("a", {});
+		const res = await reg.run("core.a", {});
 
 		expect(run).toHaveBeenCalledWith({ phase: "ready", count: 6, target: "0.99.0" });
 		expect(res).toMatchObject({ ok: true, summary: "done" });
@@ -137,7 +140,7 @@ describe("createDevRegistry", () => {
 
 	it("run() 给的值压过默认值;number 收字符串也转成数", async () => {
 		const run = vi.fn(async () => ok());
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({
 				id: "a",
 				params: [
@@ -148,14 +151,14 @@ describe("createDevRegistry", () => {
 			}),
 		]);
 
-		await reg.run("a", { count: "8", target: "1.2.3", stray: "x" });
+		await reg.run("core.a", { count: "8", target: "1.2.3", stray: "x" });
 
 		// 没声明的键丢掉:面板发什么服务端就信什么的话,场景拿到的参数形状就不由 schema 说了算。
 		expect(run).toHaveBeenCalledWith({ count: 8, target: "1.2.3" });
 	});
 
 	it("enum 不在选项里 / number 越界 → invalid", async () => {
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({
 				id: "a",
 				params: [
@@ -171,35 +174,79 @@ describe("createDevRegistry", () => {
 			}),
 		]);
 
-		await expect(reg.run("a", { phase: "nope" })).resolves.toMatchObject({
+		await expect(reg.run("core.a", { phase: "nope" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
-		await expect(reg.run("a", { count: 11 })).resolves.toMatchObject({
+		await expect(reg.run("core.a", { count: 11 })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
-		await expect(reg.run("a", { count: "abc" })).resolves.toMatchObject({
+		await expect(reg.run("core.a", { count: "abc" })).resolves.toMatchObject({
 			ok: false,
 			code: "invalid",
 		});
 	});
 
-	it("sub / target / adapter 不补默认值 —— 省略就省略,交给场景自己在服务端挑", async () => {
+	it("sub / target / connection 不补默认值 —— 省略就省略,交给场景自己在服务端挑", async () => {
 		const run = vi.fn(async () => ok());
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({ id: "a", params: [{ key: "sub", label: "订阅", kind: "sub" }], run }),
 		]);
 
-		await reg.run("a", {});
+		await reg.run("core.a", {});
 		expect(run).toHaveBeenCalledWith({});
 
-		await reg.run("a", { sub: "uid-1" });
+		await reg.run("core.a", { sub: "uid-1" });
 		expect(run).toHaveBeenLastCalledWith({ sub: "uid-1" });
 	});
 
+	it("creator:给的值在那一家的名单里才收,名单按场景的提供方查;省略不补", async () => {
+		const run = vi.fn(async () => ok());
+		const providers = createDevtoolsProviderRegistry();
+		providers.claim("bilibili", {
+			scenarios: [
+				def({ id: "a", params: [{ key: "creator", label: "UP", kind: "creator" }], run }),
+			],
+		});
+		const asked: string[] = [];
+		const reg = createDevRegistry(providers, {
+			creators: (sourceKey) => {
+				asked.push(sourceKey);
+				return sourceKey === "bilibili" ? ["123", "456"] : ["999"];
+			},
+		});
+
+		await reg.run("bilibili.a", { creator: "456" });
+		expect(run).toHaveBeenLastCalledWith({ creator: "456" });
+		expect(asked).toEqual(["bilibili"]);
+
+		await expect(reg.run("bilibili.a", { creator: "999" })).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "UP(creator)不在名单里:999",
+		});
+
+		await reg.run("bilibili.a", {});
+		expect(run).toHaveBeenLastCalledWith({});
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+
+	it("creator:没给名单读口 = 谁的名单都是空的,给了值就 invalid", async () => {
+		const providers = createDevtoolsProviderRegistry();
+		providers.claim("demo", {
+			scenarios: [def({ id: "a", params: [{ key: "creator", label: "UP", kind: "creator" }] })],
+		});
+		await expect(
+			createDevRegistry(providers).run("demo.a", { creator: "1" }),
+		).resolves.toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+	});
+
 	it("没这个场景 → not_found", async () => {
-		const reg = createDevRegistry([def({ id: "a" })]);
+		const reg = coreDevRegistry([def({ id: "a" })]);
 		await expect(reg.run("zzz", {})).resolves.toMatchObject({
 			ok: false,
 			code: "not_found",
@@ -209,7 +256,7 @@ describe("createDevRegistry", () => {
 
 	it("active() 汇总各场景当前生效的注入;run() 回执里也带一份", async () => {
 		let on = false;
-		const reg = createDevRegistry([
+		const reg = coreDevRegistry([
 			def({
 				id: "a",
 				run: async () => {
@@ -226,9 +273,9 @@ describe("createDevRegistry", () => {
 		]);
 
 		expect(reg.active()).toEqual([]);
-		const res = await reg.run("a", {});
-		expect(res).toMatchObject({ ok: true, active: [{ scenarioId: "a", label: "假的 A" }] });
-		expect(reg.active()).toEqual([{ scenarioId: "a", label: "假的 A" }]);
+		const res = await reg.run("core.a", {});
+		expect(res).toMatchObject({ ok: true, active: [{ scenarioId: "core.a", label: "假的 A" }] });
+		expect(reg.active()).toEqual([{ scenarioId: "core.a", label: "假的 A" }]);
 	});
 
 	it("reset(id) 只收那一个;reset() 全收", async () => {
@@ -245,13 +292,13 @@ describe("createDevRegistry", () => {
 					state[id] = false;
 				},
 			});
-		const reg = createDevRegistry([mk("a"), mk("c")]);
-		await reg.run("a", {});
-		await reg.run("c", {});
+		const reg = coreDevRegistry([mk("a"), mk("c")]);
+		await reg.run("core.a", {});
+		await reg.run("core.c", {});
 
-		expect(await reg.reset("a")).toMatchObject({
+		expect(await reg.reset("core.a")).toMatchObject({
 			ok: true,
-			active: [{ scenarioId: "c", label: "c" }],
+			active: [{ scenarioId: "core.c", label: "c" }],
 		});
 		expect(await reg.reset()).toMatchObject({ ok: true, active: [] });
 		await expect(reg.reset("zzz")).resolves.toMatchObject({
@@ -261,9 +308,18 @@ describe("createDevRegistry", () => {
 		});
 	});
 	it("list() 回的是同一份声明表:声明是静态的,轮询不该每次都重新剥一遍", () => {
-		const reg = createDevRegistry([
+		const providers = createDevtoolsProviderRegistry([
 			{ id: "a", group: "state", title: "A", params: [], run: () => ok() },
 		]);
+		const reg = createDevRegistry(providers);
 		expect(reg.list()).toBe(reg.list());
+
+		// 认领 / 撤下之后换一份,再之后又稳住。
+		const before = reg.list();
+		const claim = providers.claim("demo", { scenarios: [def({ id: "b" })] });
+		expect(reg.list()).not.toBe(before);
+		expect(reg.list()).toBe(reg.list());
+		claim.dispose();
+		expect(reg.list().map((s) => s.id)).toEqual(["core.a"]);
 	});
 });

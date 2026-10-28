@@ -1,7 +1,12 @@
 /**
- * `sub` / `target` / `adapter` 三种参数的选择器:从站内既有列表里挑一个,值是它的 id。
- * 第一项恒为「服务端默认」(空串,交上去时被剥掉,服务端按自己的默认值补 —— `sub` 是第一个
- * 启用且直播间连着的订阅)。停用的照列、标「停用」:造事件时偏要挑一个停用的看看是常事。
+ * `sub` / `target` / `connection` / `creator` 四种参数的选择器:从站内既有列表里挑一个。
+ * 第一项恒为「服务端默认」(空串,交上去时被剥掉,服务端按自己的默认值补 —— 直播类是第一个
+ * 直播间连着的)。
+ *
+ * - `sub` / `target` / `connection` 只出现在核心的场景里,值是 id;订阅不分来源全列。停用的照列、标「停用」:
+ *   造事件时偏要挑一个停用的看看是常事。
+ * - `creator` 是交场景那个来源(`provider`)名单里的人,值是 externalId:名单只有启用的、同一个人只算一次,
+ *   所以这里也只列那个来源启用的订阅、按人去重(ADR-0031 决策 2)。
  */
 
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
@@ -9,9 +14,9 @@ import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { TSelect } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
-import { BILIBILI_SOURCE_KEY, subscriptionIdentityOf } from "../types/domain";
+import { subscriptionIdentityOf } from "../types/domain";
 
-export type PickKind = "sub" | "target" | "connection";
+export type PickKind = "sub" | "target" | "connection" | "creator";
 
 interface Option {
 	value: string;
@@ -24,12 +29,18 @@ function disabledTag(enabled: boolean): string {
 	return enabled ? "" : "（停用）";
 }
 
+/** 订阅给人看的那一行:名字 · 外部 id。 */
+function subLabel(sub: SubscriptionDTO): string {
+	const { externalId } = subscriptionIdentityOf(sub);
+	return `${sub.cachedProfile?.name ?? externalId} · ${externalId}`;
+}
+
 /** 与站内各页共用同一套查询键,列表已经在缓存里就不再打请求。 */
-function useOptions(kind: PickKind): Option[] {
+function useOptions(kind: PickKind, provider: string | undefined): Option[] {
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
-		enabled: kind === "sub",
+		enabled: kind === "sub" || kind === "creator",
 	});
 	const targets = useQuery({
 		queryKey: ["targets"],
@@ -43,18 +54,19 @@ function useOptions(kind: PickKind): Option[] {
 	});
 	switch (kind) {
 		case "sub":
-			// 造的是 B 站的直播 / 动态事件,只列 B 站订阅(ADR-0019 决策 12)。
+			return (subs.data ?? []).map((s) => ({
+				value: s.id,
+				label: `${subLabel(s)}${disabledTag(s.enabled)}`,
+			}));
+		case "creator": {
+			const seen = new Set<string>();
 			return (subs.data ?? []).flatMap((s) => {
-				const identity = subscriptionIdentityOf(s);
-				if (identity.sourceKey !== BILIBILI_SOURCE_KEY) return [];
-				const uid = identity.externalId;
-				return [
-					{
-						value: s.id,
-						label: `${s.cachedProfile?.name ?? uid} · ${uid}${disabledTag(s.enabled)}`,
-					},
-				];
+				const { sourceKey, externalId } = subscriptionIdentityOf(s);
+				if (sourceKey !== provider || !s.enabled || seen.has(externalId)) return [];
+				seen.add(externalId);
+				return [{ value: externalId, label: subLabel(s) }];
 			});
+		}
 		case "target":
 			return (targets.data ?? []).map((t) => ({
 				value: t.id,
@@ -70,16 +82,19 @@ function useOptions(kind: PickKind): Option[] {
 
 export function PickSelect({
 	kind,
+	provider,
 	label,
 	value,
 	onChange,
 }: {
 	kind: PickKind;
+	/** 交这个场景的那一家(描述符的 `provider`);`creator` 按它挑来源。 */
+	provider?: string;
 	label: string;
 	value: string;
 	onChange: (v: string) => void;
 }) {
-	const options = useOptions(kind);
+	const options = useOptions(kind, provider);
 	return (
 		<TSelect
 			ariaLabel={label}

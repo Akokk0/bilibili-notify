@@ -323,13 +323,23 @@ function defaultsOf(fields: DevParamField[]): DevParamValues {
 	return out;
 }
 
+/** 从站内列表里挑一个的那几种:留空 = 服务端默认。 */
+function isPick(field: DevParamField): boolean {
+	return (
+		field.kind === "sub" ||
+		field.kind === "target" ||
+		field.kind === "connection" ||
+		field.kind === "creator"
+	);
+}
+
 /** 交给服务端前把「留空」去掉 —— 留空的意思是「用你的默认值」,不是「空串」。 */
 function stripBlank(fields: DevParamField[], values: DevParamValues): DevParamValues {
 	const out: DevParamValues = {};
 	for (const f of fields) {
 		const v = values[f.key];
 		if (v === undefined) continue;
-		if ((f.kind === "sub" || f.kind === "target" || f.kind === "connection") && v === "") continue;
+		if (isPick(f) && v === "") continue;
 		out[f.key] = v;
 	}
 	return out;
@@ -388,6 +398,7 @@ function ScenarioCard({
 						<ParamControl
 							key={f.key}
 							field={f}
+							provider={entry.decl.provider}
 							value={values[f.key]}
 							onChange={(v) => set(f.key, v)}
 						/>
@@ -414,10 +425,13 @@ function ScenarioCard({
  */
 function ParamControl({
 	field,
+	provider,
 	value,
 	onChange,
 }: {
 	field: DevParamField;
+	/** 交这个场景的那一家;`creator` 选择器按它挑来源。 */
+	provider: string | undefined;
 	value: string | number | undefined;
 	onChange: (v: string | number) => void;
 }) {
@@ -457,9 +471,11 @@ function ParamControl({
 		case "sub":
 		case "target":
 		case "connection":
+		case "creator":
 			control = (
 				<PickSelect
 					kind={field.kind}
+					provider={provider}
 					label={field.label}
 					value={String(value ?? "")}
 					onChange={onChange}

@@ -112,4 +112,30 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 		expect(reset.status).toBe(200);
 		expect(await loginStatus()).toBe(real);
 	});
+
+	async function loginProblem(): Promise<boolean> {
+		const res = await fetch(`${base}/api/problems`);
+		expect(res.status).toBe(200);
+		const { problems } = (await res.json()) as { problems: { reporter: string; code: string }[] };
+		return problems.some((p) => p.reporter === "bilibili" && p.code === "auth_lost");
+	}
+
+	// 场景拿不到总线,只替登录口喊一声「变了」;宿主订着这条通知(总线上的登录事件、登录问题表)。
+	// 验红:`login-state.ts` 里盖完不 `notifyChanged()`,或开发壳的 `onChange` 不记订阅,这条红 —— 路由读到的
+	// 状态照样换了(上一条照绿),问题表纹丝不动。
+	it("跑 bilibili.auth.login-state → 宿主订的变更通知被叫到:登录问题表跟着清掉,收摊又回来", async () => {
+		// 测试数据目录里没有 cookie:开机就是「未登录」,问题表里有这一条。
+		expect(await loginStatus()).toBe("logged-out");
+		expect(await loginProblem()).toBe(true);
+
+		await fetch(`${base}/api/dev/run/bilibili.auth.login-state`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ params: { status: "logged-in" } }),
+		});
+		expect(await loginProblem()).toBe(false);
+
+		await fetch(`${base}/api/dev/reset/bilibili.auth.login-state`, { method: "POST" });
+		expect(await loginProblem()).toBe(true);
+	});
 });

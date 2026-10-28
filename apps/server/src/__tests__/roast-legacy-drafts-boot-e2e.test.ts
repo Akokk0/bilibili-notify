@@ -94,7 +94,10 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 	/** 主人在私聊里回一句 —— 与 adapter 收到真帧之后调的是同一个入口(指令分发的第二道门就是审批)。 */
 	async function masterSays(text: string): Promise<void> {
 		await ok(
-			await api("/api/dev/run/inbound.command", { method: "POST", ...json({ params: { text } }) }),
+			await api("/api/dev/run/core.inbound.command", {
+				method: "POST",
+				...json({ params: { text } }),
+			}),
 		);
 	}
 

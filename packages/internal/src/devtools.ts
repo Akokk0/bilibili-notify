@@ -12,16 +12,20 @@ import type { Result } from "./result";
 export type DevScenarioGroup = "event" | "state" | "timer" | "capture" | "web" | "ext";
 
 /**
- * 一个参数字段。六种,面板照 `kind` 画控件:
+ * 一个参数字段。七种,面板照 `kind` 画控件:
  *
  * - `sub` / `target` / `connection` —— 从站内既有列表里挑一个(订阅 / 推送目标 / 连接),
- *   值是它们的 id。**省略时的默认值住服务端**(`sub` = 第一个启用的订阅),面板不猜。
+ *   值是它们的 id。**只给核心的场景**:别家认领时用了就整包拒(ADR-0031 决策 2)。
+ * - `creator` —— 交这个场景的那个来源名单里的一个人,值是他的 `externalId`;名单是来源 `ctx.subscriptions()`
+ *   那一份(启用的、按人去重)。给了不在名单里的,宿主回 `invalid`。
+ * - 上面四种**省略时的默认值住服务端**(场景自己挑,比如第一个启用的订阅),面板不猜。
  * - `number` / `enum` / `text` —— 自带默认值。
  */
 export type DevParamField =
 	| { key: string; label: string; kind: "sub" }
 	| { key: string; label: string; kind: "target" }
 	| { key: string; label: string; kind: "connection" }
+	| { key: string; label: string; kind: "creator" }
 	| { key: string; label: string; kind: "number"; default: number; min?: number; max?: number }
 	| {
 			key: string;
@@ -33,8 +37,16 @@ export type DevParamField =
 	| { key: string; label: string; kind: "text"; default?: string; placeholder?: string };
 
 export interface DevScenarioDescriptor {
-	/** 全局唯一,两半共用一个命名空间(`update.state` / `web.toast-flood`)。 */
+	/**
+	 * 全局唯一,两半共用一个命名空间(`core.update.state` / `bilibili.live.start` / `web.toast-flood`)。
+	 * 服务端那半在场景里写不带前缀的短名,`<提供方>.` 由宿主汇总时加。
+	 */
 	id: string;
+	/**
+	 * 交这个场景的那一家:`core`、来源键或拓展 id。宿主汇总时填,场景里写了也会被盖掉;面板那半的场景没有这一格。
+	 * 面板的 `creator` 选择器按它挑那个来源的人。
+	 */
+	provider?: string;
 	group: DevScenarioGroup;
 	title: string;
 	/** 一句说明:它会造成什么、以及要注意什么(「按重启会真的退出」)。 */
@@ -78,8 +90,8 @@ export interface DevScenarioDef extends DevScenarioDescriptor {
  * 一家集成交给 devtools 的那一包场景。B 站是第一个实现者(`bilibili/devtools/`),拓展经
  * 清单 `contributes.devtools` 的开发入口交它(只在开发版)。
  *
- * 场景里写**不带前缀**的 id:来源前缀由汇总那一处统一加(`providers.scenarios()`),
- * 各家不用知道自己叫什么、也冒充不了别家(ADR-0031 决策 2)。
+ * 场景里写**不带前缀**的 id:提供方前缀由汇总那一处统一加(`providers.scenarios()`),
+ * 各家不用知道自己叫什么、也冒充不了别家(ADR-0031 决策 2)。核心自己的场景也一样,前缀是 `core`。
  */
 export interface DevtoolsProvider {
 	scenarios: DevScenarioDef[];

@@ -82,10 +82,12 @@ export interface CreateDevtoolsInput {
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
 	/**
-	 * 各家集成登记自己的场景(B 站是第一个)。**过了门才调**,调的时候登记表是空的、注册表还没建:
-	 * 门没开,各家的工厂一次都不会被调用。场景 id 的来源前缀与撞名检查在登记那一处做完。
+	 * 各家集成登记自己的场景(B 站是第一个)。**过了门才调**,调的时候登记表里只有核心那一家、注册表还没建:
+	 * 门没开,各家的工厂一次都不会被调用。场景 id 的提供方前缀、撞名与参数种类的检查在登记那一处做完。
 	 */
 	provide: (providers: DevtoolsProviderRegistry) => void;
+	/** 一个来源的名单(`ctx.subscriptions()` 那一份的 externalId),`creator` 参数照它核;现读,订阅会变。 */
+	creators: (sourceKey: string) => readonly string[];
 	/** 入站口(私聊指令 / 群链接)。接线层后接,现取。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
@@ -214,9 +216,10 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			session: input.session ?? (() => undefined),
 		}),
 	];
-	const providers = createDevtoolsProviderRegistry(coreDefs.map((def) => def.id));
+	// 核心的场景也是一家提供方,以 `core` 认领、id 加 `core.`(ADR-0031 决策 2)。
+	const providers = createDevtoolsProviderRegistry(coreDefs);
 	input.provide(providers);
-	const registry = createDevRegistry(coreDefs, providers);
+	const registry = createDevRegistry(providers, { creators: input.creators });
 	const attachExtension = createDevEntryAttacher({ providers, address: input.address });
 	return {
 		registry,

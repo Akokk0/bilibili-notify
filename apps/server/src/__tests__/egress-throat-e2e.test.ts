@@ -370,7 +370,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 			{ timeout: 15_000 },
 		);
 		// 开截流:后面每条用例都在它开着的时候驱动。
-		await okRes(await api("/api/dev/run/push.capture", json({ params: {} })));
+		await okRes(await api("/api/dev/run/core.push.capture", json({ params: {} })));
 	}, 20_000);
 
 	it("订阅广播:假源报一条作品 → 甲只路由到测试群,本体一个锚点,恰好一条", async () => {
@@ -388,7 +388,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 		const hit = await exactlyOneCapture(
 			"notify-master",
 			async () => {
-				await okRes(await api("/api/dev/run/pipeline.error", json({ params: {} })));
+				await okRes(await api("/api/dev/run/core.pipeline.error", json({ params: {} })));
 			},
 			{ async: true },
 		);
@@ -466,7 +466,9 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 		const hit = await exactlyOneCapture(
 			"command-reply",
 			async () => {
-				await okRes(await api("/api/dev/run/inbound.command", json({ params: { text: "/help" } })));
+				await okRes(
+					await api("/api/dev/run/core.inbound.command", json({ params: { text: "/help" } })),
+				);
 			},
 			{ async: true },
 		);

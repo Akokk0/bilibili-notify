@@ -48,6 +48,7 @@ const BARE = {
 	adapters: createPlatformAdapterRegistry(),
 	historyStore: { deleteRange: async () => 0 },
 	provide: () => {},
+	creators: () => [],
 	inbound: () => undefined,
 	commands: () => ({ prefix: "/" }),
 	connectionConfigs: () => [],
@@ -87,8 +88,8 @@ describe("createDevtools", () => {
 		const dev = createDevtools({ ...BARE, payloadVersion: "0.0.0-dev" });
 		if (dev === null) throw new Error("unreachable");
 
-		expect(dev.registry.list().map((s) => s.id)).toContain("update.state");
-		await dev.registry.run("update.state", { phase: "idle" });
+		expect(dev.registry.list().map((s) => s.id)).toContain("core.update.state");
+		await dev.registry.run("core.update.state", { phase: "idle" });
 		expect(dev.updateService.getStatus().state).toEqual({ phase: "idle" });
 		// 真服务没被动过。
 		expect(updateService.getStatus().state).toEqual({ phase: "disabled", reason: "dev-build" });
@@ -130,6 +131,53 @@ describe("createDevtools", () => {
 			ok: true,
 			summary: "跑了",
 		});
+	});
+
+	it("核心自己的场景也带前缀:id 是 core.<短名>、provider 是 core,一个不带前缀的也没有", () => {
+		const dev = createDevtools({ ...BARE, payloadVersion: "0.0.0-dev" });
+		if (dev === null) throw new Error("unreachable");
+
+		const listed = dev.registry.list();
+		expect(listed.length).toBeGreaterThan(0);
+		for (const one of listed) {
+			expect(one.id).toMatch(/^core\./);
+			expect(one.provider).toBe("core");
+		}
+	});
+
+	/** 名单读口接线:建注册表时不把 `creators` 递进去,这条就红(谁的名单都是空的)。 */
+	it("creator 参数照入口给的名单读口核:按场景的提供方问", async () => {
+		const run = vi.fn(() => ok());
+		const asked: string[] = [];
+		const dev = createDevtools({
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+			creators: (sourceKey) => {
+				asked.push(sourceKey);
+				return ["7"];
+			},
+			provide: (providers) =>
+				providers.claim("demo", {
+					scenarios: [
+						{
+							id: "post",
+							group: "event",
+							title: "发作品",
+							params: [{ key: "creator", label: "谁", kind: "creator" }],
+							run,
+						},
+					],
+				}),
+		});
+		if (dev === null) throw new Error("unreachable");
+
+		expect(await dev.registry.run("demo.post", { creator: "7" })).toMatchObject({ ok: true });
+		expect(await dev.registry.run("demo.post", { creator: "8" })).toMatchObject({
+			ok: false,
+			code: "invalid",
+		});
+		expect(asked).toEqual(["demo", "demo"]);
+		expect(run).toHaveBeenCalledOnce();
 	});
 });
 
@@ -208,7 +256,7 @@ describe("createDevtools · 截流接线", () => {
 		expect(registry.list()).toHaveLength(1);
 		await dispatcher.send("t", { kind: "text", text: "0" });
 		expect(send).toHaveBeenCalledTimes(1);
-		await dev.registry.run("push.capture", {});
+		await dev.registry.run("core.push.capture", {});
 		await dispatcher.send("t", { kind: "text", text: "1" });
 		expect(send).toHaveBeenCalledTimes(1);
 	});
@@ -220,10 +268,10 @@ describe("createDevtools · 截流接线", () => {
 		await dispatcher.send("t", { kind: "text", text: "0" });
 		expect(send).toHaveBeenCalledTimes(1);
 
-		const res = await dev.registry.run("push.capture", {});
+		const res = await dev.registry.run("core.push.capture", {});
 		expect(res).toMatchObject({
 			ok: true,
-			active: [{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }],
+			active: [{ scenarioId: "core.push.capture", label: "推送截流中 · 拦下 0 条" }],
 		});
 		await dispatcher.send("t", { kind: "text", text: "a" });
 		await dispatcher.sendToAddress(
@@ -239,14 +287,14 @@ describe("createDevtools · 截流接线", () => {
 		]);
 		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 2 条");
 
-		dev.registry.reset("push.capture");
+		dev.registry.reset("core.push.capture");
 		await dispatcher.send("t", { kind: "text", text: "3" });
 		expect(send).toHaveBeenCalledTimes(2);
 	});
 
 	it("截流开着时结果仍是合成的 ok —— 上游凭 isSynthetic 不写 reachability", async () => {
 		const { dev, dispatcher } = setup();
-		await dev.registry.run("push.capture", {});
+		await dev.registry.run("core.push.capture", {});
 		expect(await dispatcher.send("t", { kind: "text", text: "x" })).toEqual({
 			ok: true,
 			latencyMs: 0,
@@ -259,11 +307,11 @@ describe("createDevtools · 截流接线", () => {
 		try {
 			const { dev, deleteRange } = setup();
 			vi.setSystemTime(new Date("2026-09-06T08:00:00.000Z"));
-			await dev.registry.run("push.capture", {});
+			await dev.registry.run("core.push.capture", {});
 			vi.setSystemTime(new Date("2026-09-06T08:10:00.000Z"));
-			dev.registry.reset("push.capture");
+			dev.registry.reset("core.push.capture");
 			vi.setSystemTime(new Date("2026-09-06T08:20:00.000Z"));
-			await dev.registry.run("push.capture", {});
+			await dev.registry.run("core.push.capture", {});
 			vi.setSystemTime(new Date("2026-09-06T08:25:00.000Z"));
 
 			const deleted = await dev.captures.purgeHistory();
@@ -325,7 +373,7 @@ describe("createDevtools · 市场接线", () => {
 		});
 		if (dev === null) throw new Error("unreachable");
 
-		await dev.registry.run("ext.updatable", { ext: "bridge" });
+		await dev.registry.run("core.ext.updatable", { ext: "bridge" });
 		const [made] = (await dev.marketplace.list()).extensions;
 		expect(made).toMatchObject({ id: "bridge", state: "updatable", version: "0.4.1" });
 		expect(await dev.marketplace.install("official", "bridge")).toMatchObject({
