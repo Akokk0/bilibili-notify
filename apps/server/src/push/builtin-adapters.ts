@@ -5,6 +5,7 @@ import type {
 	Logger,
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import {
 	disposeThenClose,
 	type IntegrationStore,
@@ -71,7 +72,8 @@ export async function registerBuiltinAdapters(
 				stores,
 				logger,
 				settings: createIntegrationSettings({ ...opts.settingsOf(adapter.adapterKey), logger }),
-				stopReason: "BN 关停",
+				// 登记那一刻就取了字:`stopReason` 收的是字符串,改成停下那一刻现取要动集成上下文,随 4-53c。
+				stopReason: t("integration.stopReason.shutdown"),
 				problems: opts.problems,
 				reporter: adapter.adapterKey,
 				// 问题里「谁报的」给人看:取描述的全名(报的那一刻按当前语言),报的人仍记适配器键。

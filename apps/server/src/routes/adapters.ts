@@ -10,6 +10,7 @@ import { type ConnectionAuth, type Failure, fail, type Result } from "@bilibili-
 import { Hono } from "hono";
 import { manifestPushView } from "../extensions/context.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import { t } from "../i18n/index.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
@@ -61,9 +62,9 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 	/** 键 → 适配器的 `connectionAuth`;不成立就地回失败。 */
 	function authOf(adapterKey: string): { auth: ConnectionAuth } | { failure: Failure } {
 		const adapter = deps.runtime.adapterRegistry.list().find((a) => a.adapterKey === adapterKey);
-		if (!adapter) return { failure: fail("unavailable", "这种连接的适配器没在跑") };
+		if (!adapter) return { failure: fail("unavailable", t("adapters.notRunning")) };
 		if (!adapter.connectionAuth) {
-			return { failure: fail("unsupported", "这种连接没有扫码建连接的办法") };
+			return { failure: fail("unsupported", t("adapters.auth.unsupported")) };
 		}
 		return { auth: adapter.connectionAuth };
 	}
@@ -85,7 +86,7 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 	app.get("/:adapterKey/candidates", async (c) => {
 		const adapterKey = c.req.param("adapterKey");
 		const adapter = deps.runtime.adapterRegistry.list().find((a) => a.adapterKey === adapterKey);
-		if (!adapter) return respondFailure(c, fail("unavailable", "这种连接的适配器没在跑"));
+		if (!adapter) return respondFailure(c, fail("unavailable", t("adapters.notRunning")));
 		try {
 			const candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
 			const body: ConnectionCandidatesResponse = { candidates: [...candidates] };

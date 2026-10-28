@@ -103,12 +103,12 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				atAll: { state: "supported", checkedAt: adapterStartedAt },
 				inbound: {
 					state: "unsupported",
-					reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
+					reason: t("webhook.capability.inboundUnsupported"),
 					checkedAt: adapterStartedAt,
 				},
 				nativeShare: {
 					state: "unsupported",
-					reason: "webhook 发不了 QQ 小程序卡",
+					reason: t("webhook.capability.nativeShareUnsupported"),
 					checkedAt: adapterStartedAt,
 				},
 			};
@@ -481,14 +481,16 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 		case "text":
 			return payload.text;
 		case "image":
-			return payload.caption?.trim() || "[图片]";
+			return payload.caption?.trim() || t("webhook.text.image");
 		case "composite": {
 			const text = payload.segments.map(segmentToRobotText).filter(Boolean).join("\n").trim();
-			return text || "[通知]";
+			return text || t("webhook.text.notice");
 		}
 		case "image-group": {
 			const urls = imageGroupUrls(payload.images).map((img) => img.url);
-			return urls.length > 0 ? `图片:\n${urls.join("\n")}` : "[图片]";
+			return urls.length > 0
+				? t("webhook.text.imageLinks", { urls: urls.join("\n") })
+				: t("webhook.text.image");
 		}
 		case "native-share":
 			return `${payload.title}\n${payload.webUrl}`;
@@ -500,11 +502,11 @@ function segmentToRobotText(segment: PayloadSegment): string {
 		case "text":
 			return segment.text;
 		case "image":
-			return "[图片]";
+			return t("webhook.text.image");
 		case "link":
 			return segment.title ? `${segment.title} ${segment.href}` : segment.href;
 		case "at-all":
-			return "@全体成员";
+			return t("webhook.text.atAll");
 	}
 }
 

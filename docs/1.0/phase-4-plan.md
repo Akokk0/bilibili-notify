@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片 |
-| 已完成 | 12 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56） |
+| 已完成 | 13 / 59（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56、4-13） |
 | 迁移修订号 / 备份版本 | 52 / 22（第 4 期开工前） |
 
 ## 出期条件
@@ -50,7 +50,7 @@
 | 4-12 ✅ | `GET /api/sources`：每个来源 `{ key, descriptor, has }`，停用 / 启动失败的拓展也列；`SourceDescriptor` 补格；面板 `useSources()`；对拍 N09 的服务端半。落成（10-27，`acb6b6180`）：B 站钮颜色改定值 `#fb7299`、不再跟皮肤（主人定）；`Subs.tsx` 替身 18 → 27（主人点头，随 4-15 去 `BILI_PLATFORM` 哨兵时消）；`featureHints` 挪 4-27、`membershipPrograms` 随 4-26、`has.preview` 随 4-14；拓展描述取装载器那份清单（按当前语言） | `internal/source.ts`、`routes/sources.ts`、B 站与拓展来源、清单 schema、contract、web hook | 无 | 否 | 中 |
 | **乙 服务端读口与机制** | | | | | |
 | 4-56 ✅ | 包字典与取字口（Q1b）：internal 新开一份两端共用的包字典（平实版 + 中文女仆层，形状同两端那套）；面板与服务端建字典时合进来，启动时把取字口交给包（ADR-0037 决策 1 那条路）；键的类型从这份 JSON 推，`i18n-dicts` 守卫跟上。只立机制、收一两处当样例，大头归 4-53e。落成（10-28）：主人定两份字都住 `texts/` 底下 —— 先把出厂文字搬到 `texts/builtin/`（子路径改叫 `@bilibili-notify/internal/texts/builtin`，单独一个提交），包字典是 `@bilibili-notify/internal/texts`（`packageText` / `bindPackageText` / `withPackageDicts` / `PACKAGE_DICTS`，口子的细节见 ADR-0037 决策 6 下 4-56 那条 🔗）；两端的 `DICTS` 不变、建 store 时才垫包字典（两端的接线测试比的是同一个模块对象）；「两端各交一次取字口」改由取字调用守卫数入口文件顶层的那一句来钉（入口文件本来就不扫，放行名单数不到它）；样例收了指令前缀与别名的三句校验报错，写死中文棘轮 `schema/commands.ts` 那一行删掉 | `packages/internal/src/` 新子路径与 `locales/`、两端 `i18n/`、守卫 | 无 | 否 | 中 |
-| 4-13 | 内置适配器自带描述（`PlatformAdapter` 加 `descriptor`）、`GET /api/adapters` 描述列表；内置适配器的问题引子改用描述的 `label`（今天是适配器键）。ADR-0024 决策 1 前半 | `internal/push-source.ts`、`platforms/` 三个、`push/`、`routes/adapters.ts`、contract | 4-11 | 否 | 中 |
+| 4-13 ✅ | 内置适配器自带描述（`PlatformAdapter` 加 `descriptor`）、`GET /api/adapters` 描述列表；内置适配器的问题引子改用描述的 `label`（今天是适配器键）。ADR-0024 决策 1 前半。落成（10-28）：描述写成必备方法 `descriptor()`（出字那一刻按当前语言取）；内置三个只交脸、不带图标，`settingsFields` 先是空表（主人选甲，随 4-29）；读口回 `{ adapters: [{ key, descriptor }] }`，照 `/api/sources` 合登记表与装载器两张表，不带 `has`；拓展的描述由宿主照清单填。照每片通用那条收了碰到的六个文件的 62 处字（拟稿只数了五个文件 47 处，漏了 `extensions/context.ts` 的 15 处）；两句停下原因（`stopReason`）在登记那一刻取字，改成现取要动 `integrations/context.ts`，留给 4-53c | `internal/push-source.ts`、`platforms/` 三个、`push/`、`routes/adapters.ts`、contract | 4-11 | 否 | 中 |
 | 4-14 | 卡片真实预览改走 `Source.fetchPreview`（对拍 N05）：请求按 `subscriptionId`，没实现的来源用示例；B 站实现从 `routes/cards.ts` 搬进 `bilibili/`。清 `cards.ts` 五道棘轮与 `Cards.tsx` 替身 | `internal/source.ts`、`bilibili/`、`routes/cards.ts`、contract、`Cards.tsx` | 4-12、4-08；开工时问预览失败回落示例还是报错 | 否 | 大 |
 | 4-15 | 经接口搜人与新建订阅（对拍 N01）：`GET /api/sources/:key/creators`、新建订阅的门问登记表、关旧 `/search` `/lookup`、风控与未登录不再折成 404；面板 `Subs.tsx` 新建流程按来源（去 `BILI_PLATFORM` 哨兵）。捎 3b 审查 R25 留着的那截：拓展回执包装层自己坏掉时的 `invalid` 记进出入（要改 `readResult` 的形状，Q11）。清 `subscriptions.ts` 四道棘轮与 `Subs.tsx` 替身 27 | `routes/{sources,subscriptions}.ts`、`search-source-creators.ts`、contract、`Subs.tsx` | 4-02、4-12、4-08 | 否 | 中 |
 | 4-16 | 入口 `api` 槽拆除：`createApp` 不再收 B 站 `Api`、入口不再递 `builtins.bilibili.api()`。清入口槽、import 边界与替身 `index.ts` 最后 1 | `index.ts`、`app.ts`、`compose.ts` | 4-03、4-14、4-15 | 否 | 小 |
@@ -69,7 +69,7 @@
 | 4-26 | 订阅卡 / 详情 / 显示工具按描述符：「UID」改身份标签（`subscriptionIdentityLabel` 面板今天零调用）、复制外部 id、会员档从描述符取（删 `membership-programs.ts` 对 `bilibili-guard` 的直读）。清替身 `UpCard`、`UpDialog`、`subscription-source`、`up-display`、`membership-programs` | `pages/up/`、`utils/up-display.ts`、`config/membership-programs.ts` | 4-12、4-08、4-15 | 否 | 中 |
 | 4-27 | 规则页按 `featureHints` 露节（N09 面板半；清单收 `featureHints` 随这一片）、scope 页签、统计 CSV「UID / 外部 ID」合成一列（ADR-0027 决策 7）、面板三处「动态」兜底改取描述符。清替身 `Rules`、`PerUpEditor`、`sections`、`scope-tabs` | `pages/rules/`、`Rules.tsx`、`scope-tabs.tsx`、`stats/csv.ts`、`Stats.tsx` 一处 | 4-12、4-08 | 否 | 中 |
 | 4-28 | 档位表搬进 `bilibili/`、由描述符下发；`internal/bilibili-guard.ts` 退役（清替身 1、词汇 `hdslb` 1） | `internal/bilibili-guard.ts`、`bilibili/`、出图读者 | 4-26、4-14 | 否 | 小 |
-| 4-29 | 连接 / 目标表单按描述画：内置也读候选、删 `domain.ts` 的 `makeEmptyConnection`（3b-40 留）、平台 / 字段 / scope / 地址称呼由描述与候选驱动、徽章读 `/api/adapters`；服务端「列候选时按平台名刷新 `platformSnapshot`」（ADR-0024 决策 7，3b-40 留）。清面板 `.platform` 五个文件 29 处与 `domain.ts` 替身 | `Targets.tsx`、`types/{domain,connection-fields}.ts`、`platform-meta.tsx`、`link-preview-settings.tsx`、`routes/adapters.ts` | 4-13、4-08 | 否 | 大 |
+| 4-29 | 连接 / 目标表单按描述画：内置也读候选、删 `domain.ts` 的 `makeEmptyConnection`（3b-40 留）、平台 / 字段 / scope / 地址称呼由描述与候选驱动、徽章读 `/api/adapters`；服务端「列候选时按平台名刷新 `platformSnapshot`」（ADR-0024 决策 7，3b-40 留）。清面板 `.platform` 五个文件 29 处与 `domain.ts` 替身。另接 4-13 留下的三件：内置三个适配器的连接配置项（条件显示、键值表、按候选换的占位、字段说明进包字典，ADR-0024 决策 3 下 10-28 的 🔗）、`/api/adapters` 加 `has`（扫码、列地址）、拓展卡上的 `push` 那格改读这里后删掉 | `Targets.tsx`、`types/{domain,connection-fields}.ts`、`platform-meta.tsx`、`link-preview-settings.tsx`、`routes/adapters.ts` | 4-13、4-08 | 否 | 大 |
 | 4-30 | 平台闭集、平台表、三份连接规则搬出 `internal`，删 `./platform-registry` 子路径（冻结的 `migration/zero-platforms.ts` 不动）；保留键在装配根收齐（ADR-0024 决策 1 后半）。清推送守卫②、核心 `.platform` | `internal/{platform-registry,schema/targets,identity}.ts`、`platforms/`、守卫与约 15 个测试 | 4-29 | 否 | 大 |
 | 4-31 | 拓展页一个拓展一张卡、卡上标开了哪几口、页头按口筛选（ADR-0025 决策 13；服务端已下发 `provides`） | `Extensions.tsx` | 无 | 否 | 小 |
 | 4-32 | 目标一律标平台图标 + 连接名（一个计算函数）：目标页、订阅详情、目标胶囊、链接预览、周报胶囊、五个点名下拉（ADR-0035 前半） | 计算函数 + 约 10 个调用点 | 4-25、4-29、4-26 | 否 | 中 |

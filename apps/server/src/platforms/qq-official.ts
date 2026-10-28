@@ -95,7 +95,7 @@ export async function fetchAppAccessToken(
 	const parsed = res.json();
 	if (!parsed.ok) throw new Error(parsed.message);
 	const data = parsed.value as { access_token?: string; expires_in?: number | string };
-	if (!data.access_token) throw new QQTokenError("getAppAccessToken: 响应缺 access_token");
+	if (!data.access_token) throw new QQTokenError(t("qqOfficial.token.missingAccessToken"));
 	const expiresInSec = Number(data.expires_in);
 	return {
 		token: data.access_token,
@@ -572,7 +572,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		try {
 			token = await opts.getToken();
 		} catch (e) {
-			state.lastError = `getToken 失败: ${String(e)}`;
+			state.lastError = t("qqOfficial.token.getFailed", { error: String(e) });
 			logger.warn(`[qq] adapter=${connectionId} ${state.lastError}`);
 			try {
 				ws?.close();
@@ -600,7 +600,11 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 	 * 连接同时担着推送,下游处理里抛个错不该把整条长连带走。每加一路入站都要重述
 	 * 一遍这条规矩,所以只写这一处。
 	 */
-	function deliver<T>(sink: ((msg: T) => void) | undefined, parse: () => T | null, what: string) {
+	function deliver<T>(
+		sink: ((msg: T) => void) | undefined,
+		parse: () => T | null,
+		route: "private" | "group",
+	) {
 		if (!sink) return;
 		const msg = parse();
 		if (!msg) return;
@@ -608,7 +612,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			sink(msg);
 		} catch (err) {
 			logger.warn(
-				`[qq] adapter=${connectionId} 处理入站${what}失败: ${err instanceof Error ? err.message : String(err)}`,
+				`[qq] adapter=${connectionId} 处理入站${route === "private" ? "私聊" : "群消息"}失败: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -637,8 +641,8 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 			const discovered = extractQQDiscoveredSession(eventName, d);
 			if (discovered) opts.onDiscovered(discovered);
 			// 私聊正文另走一路(只有 C2C 认),群消息再一路。
-			deliver(opts.onInboundPrivate, () => extractQQPrivateMessage(eventName, d), "私聊");
-			deliver(opts.onInboundGroup, () => extractQQGroupMessage(eventName, d), "群消息");
+			deliver(opts.onInboundPrivate, () => extractQQPrivateMessage(eventName, d), "private");
+			deliver(opts.onInboundGroup, () => extractQQGroupMessage(eventName, d), "group");
 		}
 	}
 
@@ -691,7 +695,7 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
 		try {
 			url = await opts.resolveGatewayUrl();
 		} catch (e) {
-			state.lastError = `解析网关地址失败: ${String(e)}`;
+			state.lastError = t("qqOfficial.gateway.resolveFailed", { error: String(e) });
 			scheduleReconnect();
 			return;
 		}
@@ -810,7 +814,7 @@ function httpFailure(status: number, message: string, qqCode?: number): Failure 
 
 /** 换 token 没成 → 失败。它发生在任何一条消息发出去之前。 */
 function tokenFailure(e: unknown): Failure {
-	const message = `取 App Access Token 失败: ${String(e)}`;
+	const message = t("qqOfficial.token.fetchFailed", { error: String(e) });
 	if (e instanceof QQTokenError) {
 		// 回了 2xx 却没给 token:回应不是约定的形状。
 		return e.httpStatus === undefined
@@ -926,7 +930,7 @@ export function buildQQMarkdownGallery(
 	return images
 		.map((img) => {
 			const dim = img.width && img.height ? ` #${img.width}px #${img.height}px` : "";
-			return `![图片${dim}](${img.url})`;
+			return `![${t("qqOfficial.markdown.imageAlt")}${dim}](${img.url})`;
 		})
 		.join("\n");
 }
@@ -1092,7 +1096,7 @@ async function qqUploadMedia(
 	if (typeof fileInfo === "string") return ok({ media: { ...data, file_info: fileInfo } });
 	const verdict = interpretQQSend(status, body);
 	// 回了 2xx 却没给 file_info:回应不是约定的形状。
-	return verdict.ok ? fail("invalid", "上传成功但无 file_info") : verdict;
+	return verdict.ok ? fail("invalid", t("qqOfficial.upload.noFileInfo")) : verdict;
 }
 
 interface QQGuildChannel {
@@ -1124,7 +1128,9 @@ export async function fetchQQGuildChannels(
 	const guildsRes = await qqFetch(http, `${base}/users/@me/guilds`, { headers, signal });
 	// 没走通(含路由断开中止了请求)抛错,`listAddressCandidates` 接住记成 unavailable。
 	if (!guildsRes.ok) throw new Error(guildsRes.message);
-	if (!guildsRes.isSuccess) throw new Error(`列频道服务器 HTTP ${guildsRes.status}`);
+	if (!guildsRes.isSuccess) {
+		throw new Error(t("qqOfficial.channels.guildsHttpFailed", { status: guildsRes.status }));
+	}
 	const guildsJson = guildsRes.json();
 	const guilds = (guildsJson.ok ? guildsJson.value : []) as Array<{ id?: string; name?: string }>;
 	const out: QQGuild[] = [];
@@ -1288,7 +1294,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				if (!res.ok) throw new Error(res.message);
 				const parsed = res.json();
 				const body = (parsed.ok ? parsed.value : {}) as { url?: unknown };
-				if (typeof body.url !== "string") throw new Error("getGateway 响应无 url");
+				if (typeof body.url !== "string") throw new Error(t("qqOfficial.gateway.noUrl"));
 				return qqGatewayUrlForHost(body.url, cfg.sandbox);
 			},
 			getToken: () => tm.getToken(),
@@ -1492,7 +1498,10 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				});
 			} catch (e) {
 				logger.warn(`[qq] connection=${connection.id} 列频道失败: ${upstreamMessage(e)}`);
-				return fail("unavailable", `列出频道失败：${upstreamMessage(e)}`);
+				return fail(
+					"unavailable",
+					t("qqOfficial.channels.listFailed", { reason: upstreamMessage(e) }),
+				);
 			}
 		},
 
@@ -1500,14 +1509,14 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			return {
 				atAll: {
 					state: "unsupported",
-					reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
+					reason: t("qqOfficial.capability.atAllUnsupported"),
 					checkedAt: adapterStartedAt,
 				},
 				inbound: { state: "supported", checkedAt: adapterStartedAt },
 				// 没实现原生分享(小程序卡)的发送 = 不支持。
 				nativeShare: {
 					state: "unsupported",
-					reason: "QQ 官方机器人适配器没有实现小程序卡",
+					reason: t("qqOfficial.capability.nativeShareUnsupported"),
 					checkedAt: adapterStartedAt,
 				},
 			};

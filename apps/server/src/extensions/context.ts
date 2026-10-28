@@ -300,7 +300,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	}
 	const integration = createIntegrationContext({
 		logger: opts.loggerOf(id),
-		stopReason: `拓展 ${id} 停用了`,
+		// 建上下文那一刻就取了字:`stopReason` 收的是字符串,改成停下那一刻现取要动集成上下文,随 4-53c。
+		stopReason: t("extension.stopReason.disabled", { id }),
 		state: opts.stores.state,
 		secrets: opts.stores.secrets,
 		problems: opts.problems,
@@ -579,14 +580,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 * 详情页那个框接的就是它。丢格、整条拒都从这里过,别散着写。
 	 */
 	function recordDiscrepancy(discrepancy: Omit<ReportDiscrepancy, "extensionId" | "at">): void {
-		const what =
-			discrepancy.externalId === undefined
-				? discrepancy.kind
-				: `${discrepancy.kind}(外部 id ${discrepancy.externalId})`;
+		const { externalId } = discrepancy;
 		logger.warn(
 			discrepancy.outcome === "rejected"
-				? `上报 ${what} 整条拒了:${discrepancy.reasons.join(";")}`
-				: `上报 ${what} 动了 ${discrepancy.reasons.length} 格:${discrepancy.reasons.join(";")}`,
+				? `上报 ${discrepancy.kind}${externalId === undefined ? "" : `(外部 id ${externalId})`} 整条拒了:${discrepancy.reasons.join(";")}`
+				: `上报 ${discrepancy.kind}${externalId === undefined ? "" : `(外部 id ${externalId})`} 动了 ${discrepancy.reasons.length} 格:${discrepancy.reasons.join(";")}`,
 		);
 		opts.onReportDiscrepancy?.({ ...discrepancy, extensionId: id, at: Date.now() });
 	}
@@ -749,7 +747,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			// 当场抛:拓展不该拿着一份解不开的设置接着往下起。吞了这一抛也作数 —— 记在上面那一格。
 			settingsUnreadable(verdict);
 			throw new ExtensionSettingsUnreadable(
-				`extension ${id}: 存着的设置过不了交进来的这份 zod(${verdict.detail})—— BN 不会起它,面板上是「设置读不了」`,
+				t("extension.settings.unreadable", { id, detail: verdict.detail }),
 			);
 		} else {
 			// 同步判不完(异步 refine):activate 里交的,装载器 activate 之后还会判一次;这里补上
@@ -1011,13 +1009,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return;
 			}
 			if (!declaredActions) {
-				throw new Error(`extension ${id}: 清单里没有 actions,接不了动作 ${name}`);
+				throw new Error(t("extension.action.noActionsDeclared", { id, name }));
 			}
 			if (!declaredActions.has(name)) {
-				throw new Error(`extension ${id}: 清单的 actions 里没有 ${name} —— 先在清单里声明`);
+				throw new Error(t("extension.action.notDeclared", { id, name }));
 			}
 			if (actionHandlers.has(name)) {
-				throw new Error(`extension ${id}: 动作 ${name} 已经接过了`);
+				throw new Error(t("extension.action.alreadyHandled", { id, name }));
 			}
 			actionHandlers.set(name, handler);
 		},
@@ -1047,14 +1045,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			raw = fn();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			return faultedExtensionView(`publishView 的回调抛了:${message}`, input);
+			return faultedExtensionView(t("extension.view.callbackThrew", { message }), input);
 		}
 		if (catchThenableRejection(raw)) {
 			// 🔴 是 thenable 就接住它后来的 reject(没人接的 rejection 会让进程退出),再按「要同步交回」拒收。
-			return faultedExtensionView(
-				"publishView 的回调要同步交回视图,交回的却是一个 Promise(async 回调就是这样)—— BN 不等它,也不把它当成一份空视图;要等的东西先算好存着,变了喊一声 statusChanged()",
-				input,
-			);
+			return faultedExtensionView(t("extension.view.callbackAsync"), input);
 		}
 		return checkExtensionView(raw, input);
 	}
@@ -1095,11 +1090,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		async runAction(name, runOpts = {}) {
 			if (!declaredActions?.has(name)) {
-				return fail("unsupported", `拓展 ${id} 的清单里没有动作 ${name}`);
+				return fail("unsupported", t("extension.action.notInManifest", { id, name }));
 			}
 			// 收摊一开始就把在跑的都叫停了 —— 钩子还没跑完时再起一发,就没人叫停它。
 			const handler = integration.disposed ? undefined : actionHandlers.get(name);
-			if (!handler) return fail("unsupported", `拓展 ${id} 声明了动作 ${name},代码却没接`);
+			if (!handler) return fail("unsupported", t("extension.action.notHandled", { id, name }));
 			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
 			// 不排队、不并发(决策 42):两发一起跑,扫码登录就是两张码、两份轮询抢着存账号;排队的话,
 			// 主人连按三下就在背后多跑两轮。
@@ -1108,8 +1103,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return fail(
 					"conflict",
 					running.signal.aborted
-						? `动作 ${name} 的上一发超过 ${timeoutMs / 1000} 秒没回,已经叫它停下,可它还没停 —— 停下之前不接新的一发`
-						: `动作 ${name} 的上一发还没回来 —— 回来之前不接新的一发`,
+						? t("extension.action.stillStopping", { name, seconds: timeoutMs / 1000 })
+						: t("extension.action.stillRunning", { name }),
 				);
 			}
 			const controller = new AbortController();
@@ -1122,11 +1117,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					// 会多存下一份账号)。TimeoutError 是 `AbortSignal.timeout()` 那个名字,拓展照惯例认得。
 					controller.abort(
 						new DOMException(
-							`动作 ${name} 超过 ${timeoutMs / 1000} 秒没回,BN 不等了`,
+							t("extension.action.abortedTimeout", { name, seconds: timeoutMs / 1000 }),
 							"TimeoutError",
 						),
 					);
-					resolve(fail("timeout", `动作 ${name} 超过 ${timeoutMs / 1000} 秒没回`));
+					resolve(
+						fail("timeout", t("extension.action.timeout", { name, seconds: timeoutMs / 1000 })),
+					);
 				}, timeoutMs);
 			});
 			const run = (async (): Promise<ActionOutcome> => {
@@ -1139,7 +1136,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					// 拓展抛了个没写原话的错时也得给一句:失败的话不许是空的。
 					return fail(
 						"unavailable",
-						message.trim() === "" ? `动作 ${name} 抛了,没留原话` : message,
+						message.trim() === "" ? t("extension.action.threwSilently", { name }) : message,
 					);
 				} finally {
 					unlink();

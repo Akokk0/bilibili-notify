@@ -107,9 +107,6 @@ class IndeterminateActionError extends Error {
 	}
 }
 
-/** 附在「结果未知」失败的原话上,提示用户群里可能已收到、且为何不再重试。 */
-const INDETERMINATE_NOTE = "(动作已发出、结果未知,为免重复送达不再重试)";
-
 /** 合并转发动作 —— NapCat 要逐张下载图片再上传组装,处理时长远超普通消息。 */
 function isForwardAction(action: string): boolean {
 	return action === "send_group_forward_msg" || action === "send_private_forward_msg";
@@ -365,7 +362,12 @@ function onebotNumericAddress(
 	const what = isPrivate ? "private: userId" : "group: groupId";
 	if (!destination.address) return fail("invalid", `${what} missing`);
 	const id = Number(destination.address);
-	if (!Number.isFinite(id)) return fail("invalid", `${what} 非数字 (${destination.address})`);
+	if (!Number.isFinite(id)) {
+		return fail(
+			"invalid",
+			t("onebot.destination.notNumeric", { what, address: destination.address }),
+		);
+	}
 	return ok({ private: isPrivate, id });
 }
 
@@ -388,7 +390,6 @@ function isLikelyNapcatDisconnected(err: string): boolean {
 	const lower = err.toLowerCase();
 	return NAPCAT_DISCONNECT_HINTS.some((h) => lower.includes(h.toLowerCase()));
 }
-const NAPCAT_DISCONNECT_SUFFIX = "(NapCat 可能掉线 / QQ 未登录,请检查 NapCat 状态)";
 
 /** OneBot 11 的「不支持的动作」—— 这个实现没有这个接口。 */
 const RETCODE_ACTION_NOT_FOUND = 1404;
@@ -402,7 +403,9 @@ const RETCODE_ACTION_NOT_FOUND = 1404;
 function interpretResponse(r: OneBotResponse): Result {
 	if (r.status === "ok" && (r.retcode ?? 0) === 0) return ok();
 	const raw = r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}`;
-	const message = isLikelyNapcatDisconnected(raw) ? `${raw} ${NAPCAT_DISCONNECT_SUFFIX}` : raw;
+	const message = isLikelyNapcatDisconnected(raw)
+		? `${raw} ${t("onebot.failure.napcatDisconnected")}`
+		: raw;
 	if (r.httpStatus !== undefined) return httpFailure(r.httpStatus, message);
 	if (r.retcode === RETCODE_ACTION_NOT_FOUND) {
 		return fail("unsupported", message, { upstreamCode: r.retcode });
@@ -428,7 +431,10 @@ function httpFailure(status: number, message: string): Failure {
  */
 function thrownFailure(e: unknown, phase: "sent" | "idempotent"): Failure {
 	if (e instanceof IndeterminateActionError) {
-		if (phase === "sent") return fail("indeterminate", e.message + INDETERMINATE_NOTE);
+		// 附在「结果未知」失败的原话上,提示用户群里可能已收到、且为何不再重试。
+		if (phase === "sent") {
+			return fail("indeterminate", e.message + t("onebot.failure.indeterminateNote"));
+		}
 		return fail(e.isTimeout ? "timeout" : "unavailable", e.message);
 	}
 	return fail("unavailable", upstreamMessage(e));
@@ -465,7 +471,7 @@ async function postOnebotOnce(
 	if (!res.ok) {
 		// 客户端自己的超时:请求已发出、结果未知 —— 与 WS 响应超时同等对待。
 		if (res.code === "timeout") {
-			throw new IndeterminateActionError(`HTTP 请求超时 (${timeoutMs}ms)`, true);
+			throw new IndeterminateActionError(t("onebot.http.timeout", { timeoutMs }), true);
 		}
 		throw new Error(res.message);
 	}
@@ -570,7 +576,9 @@ class WsChannel {
 			const timer = this.serviceCtx.setTimeout(() => {
 				this.pending.delete(echo);
 				// 帧已发出、只是没等到响应 → 结果未知(bot 可能仍在处理并最终发出消息)。
-				reject(new IndeterminateActionError(`ws action ${action} 响应超时 (${timeoutMs}ms)`, true));
+				reject(
+					new IndeterminateActionError(t("onebot.ws.actionTimeout", { action, timeoutMs }), true),
+				);
 			}, timeoutMs);
 			this.pending.set(echo, { resolve, reject, timer });
 			try {
@@ -695,7 +703,7 @@ class ForwardConn {
 			this.lastError = upstreamMessage(err);
 		});
 		ws.on("close", () => {
-			this.channel?.rejectAll(new Error("ws 连接已断开"));
+			this.channel?.rejectAll(new Error(t("onebot.ws.closed")));
 			this.channel = null;
 			this.ws = null;
 			if (!this.closed) this.scheduleReconnect();
@@ -719,7 +727,7 @@ class ForwardConn {
 		this.closed = true;
 		this.reconnectTimer?.dispose();
 		this.reconnectTimer = null;
-		this.channel?.rejectAll(new Error("adapter 已关闭"));
+		this.channel?.rejectAll(new Error(t("onebot.adapterClosed")));
 		this.channel = null;
 		try {
 			this.ws?.close();
@@ -797,7 +805,7 @@ class ReverseListener {
 			);
 		}
 		ws.on("close", () => {
-			channel.rejectAll(new Error("bot 连接已断开"));
+			channel.rejectAll(new Error(t("onebot.reverse.botClosed")));
 			this.bots.delete(entry);
 		});
 		ws.on("error", () => {
@@ -841,7 +849,7 @@ class ReverseListener {
 				`[onebot] 反向 WS 的 token 换了 adapter=${this.connectionId},断开凭旧 token 连入的 ${this.bots.size} 个 bot`,
 			);
 		}
-		this.dropBots("token 已更换", 1008);
+		this.dropBots(t("onebot.reverse.tokenChanged"), 1008);
 	}
 
 	private dropBots(reason: string, code?: number): void {
@@ -857,7 +865,7 @@ class ReverseListener {
 	}
 
 	close(): void {
-		this.dropBots("adapter 已关闭");
+		this.dropBots(t("onebot.adapterClosed"));
 		try {
 			this.wss?.close();
 		} catch {
@@ -1041,7 +1049,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		}
 		const channel = channelOf(connection.id, cfg);
 		if (!channel) {
-			throw new Error(cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)");
+			throw new Error(
+				cfg.transport === "ws" ? t("onebot.ws.notConnected") : t("onebot.reverse.noBot"),
+			);
 		}
 		return channel.call(action, params, timeoutMs);
 	}
@@ -1058,7 +1068,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	function interpretArkProbe(r: OneBotResponse): CapabilitySupport {
 		const checkedAt = new Date().toISOString();
 		if (isActionMissing(r)) {
-			return { state: "unsupported", reason: "这个 OneBot 实现没有 get_mini_app_ark", checkedAt };
+			return { state: "unsupported", reason: t("onebot.nativeShare.noArkAction"), checkedAt };
 		}
 		if (r.retcode === 1400 || (r.status === "ok" && (r.retcode ?? 0) === 0)) {
 			return { state: "supported", checkedAt };
@@ -1122,7 +1132,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				webUrl: share.webUrl,
 			});
 			if (isActionMissing(r)) {
-				const reason = "这个 OneBot 实现没有 get_mini_app_ark,发不了小程序卡";
+				const reason = t("onebot.nativeShare.noArkActionToSend");
 				nativeShareSupport.set(connection.id, {
 					state: "unsupported",
 					reason,
@@ -1141,7 +1151,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			return signFailure(thrownFailure(e, "idempotent"));
 		}
 		const data = arkToSegmentData(ark);
-		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
+		if (data === null) return fail("invalid", t("onebot.nativeShare.signNotArk"));
 		nativeShareSupport.set(connection.id, {
 			state: "supported",
 			checkedAt: new Date().toISOString(),
@@ -1153,7 +1163,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	/** 签卡那一步的失败:码与 `upstreamCode` 照留,原话前面说明是哪一步。 */
 	function signFailure(failure: Failure): Failure {
-		return { ...failure, message: `签小程序卡失败: ${failure.message}` };
+		return {
+			...failure,
+			message: t("onebot.nativeShare.signFailed", { message: failure.message }),
+		};
 	}
 
 	/**
@@ -1260,7 +1273,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (!channel) {
 				last = fail(
 					"unavailable",
-					cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)",
+					cfg.transport === "ws" ? t("onebot.ws.notConnected") : t("onebot.reverse.noBot"),
 				);
 			} else {
 				try {
@@ -1438,19 +1451,24 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (cfg.transport === "ws") {
 				const conn = forwardConns.get(connection.id);
 				const channel = conn?.getChannel() ?? null;
-				if (!channel) return fail("unavailable", conn?.lastError ?? "正向 WS 未连接");
+				if (!channel) return fail("unavailable", conn?.lastError ?? t("onebot.ws.notConnected"));
 				return ask(() => channel.call("get_status", {}, timeoutMs));
 			}
 
 			// ws-reverse
 			const lis = reverseListeners.get(connection.id);
-			if (!lis) return fail("unavailable", "反向 WS 监听未启动");
+			if (!lis) return fail("unavailable", t("onebot.reverse.notListening"));
 			// 端口绑不上(多半被别的进程占着)等是等不好的,得主人去换端口。
 			if (lis.bindError) {
-				return fail("not_configured", `端口 ${lis.port} 绑定失败: ${lis.bindError}`);
+				return fail(
+					"not_configured",
+					t("onebot.reverse.bindFailed", { port: lis.port, error: lis.bindError }),
+				);
 			}
 			const channel = lis.getChannel();
-			if (!channel) return fail("unavailable", `端口 ${lis.port} 已监听,等待 bot 连入`);
+			if (!channel) {
+				return fail("unavailable", t("onebot.reverse.waitingForBot", { port: lis.port }));
+			}
 			return ask(() => channel.call("get_status", {}, timeoutMs));
 		},
 
