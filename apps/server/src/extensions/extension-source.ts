@@ -217,17 +217,18 @@ function reasonOf(err: unknown): string {
 
 /**
  * 读口交回的结果先拆壳:`{ ok: false, code, message }` 按标准失败原样交回(码是标准码、话非空才算数),
- * `{ ok: true, … }` 拆出铺平的内容去过各自的 schema;别的形状都是 `invalid`。
+ * `{ ok: true, … }` 拆出铺平的内容去过各自的 schema;别的形状是壳坏了(`malformed`),交出点名的原因,
+ * 由调用方决定记不记进出入表(有人可挂的记,搜人没有)。
  */
 function readResult(
 	raw: unknown,
-): { kind: "body"; body: Record<string, unknown> } | { kind: "failure"; failure: Failure } {
+):
+	| { kind: "body"; body: Record<string, unknown> }
+	| { kind: "failure"; failure: Failure }
+	| { kind: "malformed"; reasons: string[] } {
 	const bad = (path: string[]) => ({
-		kind: "failure" as const,
-		failure: fail(
-			"invalid",
-			t("extension.source.invalidResult", { detail: describeIssue({ path, code: "invalid" }) }),
-		),
+		kind: "malformed" as const,
+		reasons: [describeIssue({ path, code: "invalid" })],
 	});
 	if (!isRecord(raw)) return bad([]);
 	if (raw.ok === true) {
@@ -238,6 +239,11 @@ function readResult(
 	if (!isFailureCode(raw.code)) return bad(["code"]);
 	if (typeof raw.message !== "string" || raw.message === "") return bad(["message"]);
 	return { kind: "failure", failure: fail(raw.code, raw.message) };
+}
+
+/** 交回的结果形状不对:`invalid`,话里点名哪儿不对。 */
+function invalidResult(reasons: readonly string[]): Failure {
+	return fail("invalid", t("extension.source.invalidResult", { detail: reasons.join(";") }));
 }
 
 /**
@@ -596,6 +602,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			}
 			const read = readResult(raw);
 			if (read.kind === "failure") return read.failure;
+			// 搜人没有哪个人可挂,壳坏了不进出入表,只回点名的 invalid。
+			if (read.kind === "malformed") return invalidResult(read.reasons);
 			const parsed = ExtensionCreatorCandidatesSchema.safeParse(read.body.candidates);
 			if (!parsed.success) {
 				// 🔴 点名哪儿不对:吞成一句「出错了」的话,拓展作者只能对着黑盒猜。
@@ -617,14 +625,15 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			}
 			const read = readResult(raw);
 			if (read.kind === "failure") return read.failure;
-			const checked = checkExtensionReport("profile", read.body);
-			if (!checked.ok) {
-				const reasons = checked.issues.map(describeIssue);
-				const detail = reasons.join(";");
-				logger.warn(`取资料交回的形状不对: ${detail}`);
+			const refuse = (reasons: readonly string[]): Failure => {
+				logger.warn(`取资料交回的形状不对: ${reasons.join(";")}`);
 				reject("profile", identity.externalId, reasons);
-				return fail("invalid", t("extension.source.invalidResult", { detail }));
-			}
+				return invalidResult(reasons);
+			};
+			// 壳坏了与内容坏了同样整份拒、记进出入表:作者在面板上看得到是哪一格。
+			if (read.kind === "malformed") return refuse(read.reasons);
+			const checked = checkExtensionReport("profile", read.body);
+			if (!checked.ok) return refuse(checked.issues.map(describeIssue));
 			recordDropped("profile", identity.externalId, checked.dropped);
 			return ok(checked.value satisfies CreatorProfileReport);
 		},

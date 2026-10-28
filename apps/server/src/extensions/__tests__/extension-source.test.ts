@@ -1016,6 +1016,38 @@ describe("createExtensionSource:取资料", () => {
 		);
 	});
 
+	// 3b 审查 R25 留着的那截(4-15):壳坏了(码不是标准码、失败话空着、根本不是对象)从前直接回 invalid、
+	// 出入表一条不记,拓展作者在面板上看不到。验红:把 fetchProfile 里壳坏了那一支的 `reject` 去掉,这条红。
+	it("壳坏了(失败的码不是标准码 / 不是对象):invalid,同样记进出入表", async () => {
+		const badCode = await make({
+			fetchProfile: (async () => ({
+				ok: false,
+				code: "boom",
+				message: "x",
+			})) as unknown as SourceDef["fetchProfile"],
+		});
+		const result = await badCode.source.fetchProfile(
+			{ sourceKey: "douyin", externalId: "u1" },
+			new AbortController().signal,
+		);
+		expect(result).toMatchObject({ ok: false, code: "invalid" });
+		expect(badCode.discrepancies).toEqual([
+			expect.objectContaining({ kind: "profile", externalId: "u1", outcome: "rejected" }),
+		]);
+		expect(badCode.discrepancies[0]?.reasons.join("")).toContain("code");
+
+		const notObject = await make({
+			fetchProfile: (async () => "没有") as unknown as SourceDef["fetchProfile"],
+		});
+		await notObject.source.fetchProfile(
+			{ sourceKey: "douyin", externalId: "u2" },
+			new AbortController().signal,
+		);
+		expect(notObject.discrepancies).toEqual([
+			expect.objectContaining({ kind: "profile", externalId: "u2", outcome: "rejected" }),
+		]);
+	});
+
 	it("选填格坏了只丢那一格,照收其余,记进出入表", async () => {
 		const made = await make({
 			fetchProfile: async () => ({ ok: true, name: "小明", followers: -1 }),
