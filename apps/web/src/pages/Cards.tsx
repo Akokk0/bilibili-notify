@@ -45,13 +45,9 @@ import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
-import {
-	BILIBILI_SOURCE_KEY,
-	type PushTarget,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../types/domain";
+import { type PushTarget, type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { CardsSettings } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
@@ -72,8 +68,13 @@ interface PreviewStyle {
 }
 
 interface PreviewContent {
-	live: { roomId: string };
-	post: { uid: string; offset: number };
+	/**
+	 * 全局作用域「从订阅里挑一条」挑中的那条订阅(真数据问它的来源要);空串 = 不挑,画示例。
+	 * 按订阅作用域用的是正在改的那一条,不读它。
+	 */
+	subscriptionId: string;
+	/** `nth`:作品卡取最近的第几条(1 = 最新那条);挑了订阅才有用。 */
+	post: { nth: number };
 	/** `amount`:金额(元),随预览请求体发给服务端。 */
 	superchat: { text: string; amount: number };
 	/** `program`:会员体系 id;`tierKey`:那一档在这个体系里的 key。两个一起随预览请求体发给服务端。 */
@@ -84,14 +85,27 @@ interface PreviewContent {
 const GUARD_TIERS = membershipTiersOf(GUARD_PROGRAM_ID);
 
 const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
-	live: { roomId: "" },
-	post: { uid: "", offset: 1 },
+	subscriptionId: "",
+	post: { nth: 1 },
 	superchat: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！", amount: 30 },
-	// membership.text empty by default so the backend falls back to the logged-in
-	// account name (the operator), with "示例新舰长" only kicking in when
-	// nobody is logged in.
+	// membership.text 默认空:挑了订阅时服务端取那个来源登录着的账号名,没挑或没登录才是示例名。
 	membership: { program: GUARD_PROGRAM_ID, text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
 };
+
+/**
+ * 按卡种拼预览 / 测试推送请求的 `content`:挑了订阅就带上它的 id(作品再带第几条),醒目留言 / 上舰另带示例消息。
+ * 没挑订阅时作品与直播一格都不带 —— 服务端画示例。
+ */
+function previewContentOf(
+	kind: PreviewKind,
+	content: PreviewContent,
+	subscriptionId: string | undefined,
+): Record<string, unknown> {
+	const picked = subscriptionId ? { subscriptionId } : {};
+	if (kind === "live") return picked;
+	if (kind === "post") return subscriptionId ? { subscriptionId, nth: content.post.nth } : {};
+	return { ...content[kind], ...picked };
+}
 
 const KIND_LABELS: Record<PreviewKind, { label: string; tone: string; icon: IconName }> = {
 	live: { label: CARD_KIND_EVENT_NAMES.live, tone: PUSH_TONE.live, icon: "live" },
@@ -116,17 +130,14 @@ function PreviewImage({
 	kind,
 	style,
 	content,
-	fallback,
 	cardSkin,
 	cardSkinKnobs,
 	frame = true,
 }: {
 	kind: PreviewKind;
 	style: PreviewStyle;
-	/** 已按 kind 选好的内容载荷(全局 = 可编辑 mock;per-UP = 该 UP 真实数据 id)。 */
+	/** 已按 kind 选好的内容载荷(`previewContentOf`):挑了订阅带它的 id,醒目留言 / 上舰带示例消息。 */
 	content: Record<string, unknown>;
-	/** 真实拉取失败时是否回退示例数据(per-UP 自动模式 = true)。 */
-	fallback: boolean;
 	/**
 	 * 这张卡用哪套皮肤。**不传 = 全局在用的那套**(服务端那边就是这么解释的);只有
 	 * per-UP 单独指了一套时才填,否则「单独指定」的选择器与预览里的卡对不上。
@@ -140,19 +151,20 @@ function PreviewImage({
 	/** 带边框大容器(单卡预览)。false = 裸图缩放填满父格(全家福格子复用)。 */
 	frame?: boolean;
 }) {
-	// 把整份请求(kind/style/content/fallback/cardSkin)合成一个 spec 做**单一**防抖。
-	// 关键:kind / fallback 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
+	const t = useT();
+	// 把整份请求(kind/style/content/cardSkin)合成一个 spec 做**单一**防抖。
+	// 关键:kind 不能直接进 queryKey 而其余走独立防抖 —— 否则切类型时
 	// kind 立刻变、content 防抖没追上,会先用「上一个类型残留的内容」白发一次请求
 	// (per-UP 下还会真去拉一次接口),一次操作打两条日志、跑两次 puppeteer。整体防抖
 	// 后一次变更只触发一次 refetch。TArea / 图廊等控件的高频 onChange 同样收敛。
 	const spec = useMemo(
-		() => ({ kind, style, content, fallback, cardSkin, cardSkinKnobs }),
-		[kind, style, content, fallback, cardSkin, cardSkinKnobs],
+		() => ({ kind, style, content, cardSkin, cardSkinKnobs }),
+		[kind, style, content, cardSkin, cardSkinKnobs],
 	);
 	const [debouncedSpec, setDebouncedSpec] = useState(spec);
 	useEffect(() => {
-		const t = setTimeout(() => setDebouncedSpec(spec), 500);
-		return () => clearTimeout(t);
+		const timer = setTimeout(() => setDebouncedSpec(spec), 500);
+		return () => clearTimeout(timer);
 	}, [spec]);
 
 	const query = useQuery({
@@ -170,7 +182,8 @@ function PreviewImage({
 				// 画不出来是 200 + 失败那一支(`Result`):请求没毛病、这一趟没成。造成 `ApiError`
 				// 是为了让下面按 `code` / `message` 读的地方与非 2xx(如 `not_configured`)走同一条路。
 				if (!res.ok) throw new ApiError(200, res, res.message);
-				return res.dataUrl;
+				// 挑了订阅却画成示例(来源没交出真数据):原因随图一起带回来,不吞(4-14 主人定)。
+				return { dataUrl: res.dataUrl, sampleReason: res.sampleReason };
 			}),
 		retry: false,
 	});
@@ -203,8 +216,8 @@ function PreviewImage({
 		</div>
 	) : (
 		<img
-			src={query.data}
-			srcSet={`${query.data} 2x`}
+			src={query.data?.dataUrl}
+			srcSet={`${query.data?.dataUrl} 2x`}
 			alt="卡片实时预览"
 			className={
 				frame
@@ -214,13 +227,25 @@ function PreviewImage({
 		/>
 	);
 
+	const sampleReason = query.data?.sampleReason;
+	const reasonLine = sampleReason ? (
+		<div className="mt-2 text-center text-bn-xs text-bn-text-tertiary">
+			{t("cards.preview.sampleBecause", { reason: sampleReason })}
+		</div>
+	) : null;
 	// 全家福格子复用裸图模式:不套大边框,缩放填满父格(父格定高 + overflow-hidden)。
 	if (!frame) {
-		return <div className="flex h-full w-full items-center justify-center">{body}</div>;
+		return (
+			<div className="flex h-full w-full flex-col items-center justify-center">
+				{body}
+				{reasonLine}
+			</div>
+		);
 	}
 	return (
-		<div className="relative flex min-h-105 items-center justify-center rounded-bn-card border border-bn-border p-7">
+		<div className="relative flex min-h-105 flex-col items-center justify-center rounded-bn-card border border-bn-border p-7">
 			{body}
+			{reasonLine}
 		</div>
 	);
 }
@@ -234,19 +259,18 @@ function TestPushCard({
 	kind,
 	style,
 	pushContent,
-	fallback,
 	cardSkin,
 	cardSkinKnobs,
 	mockContent,
 	setMockContent,
 	realData,
 	realDataLabel,
+	subscriptions,
 }: {
 	kind: PreviewKind;
 	style: PreviewStyle;
-	/** 已解析的预览/推送内容载荷(全局 = mock;per-UP = 该 UP 真实数据 id)。 */
+	/** 已解析的预览/推送内容载荷(`previewContentOf`,与预览同一份)。 */
 	pushContent: Record<string, unknown>;
-	fallback: boolean;
 	/** 与预览同一份(`previewSkin` / `previewKnobs`):全局作用域不传,per-UP 传这位 UP 的皮肤与草稿旋钮。 */
 	cardSkin?: string;
 	cardSkinKnobs?: CardSkinKnobsBySkin;
@@ -255,20 +279,23 @@ function TestPushCard({
 	setMockContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
 	realData?: boolean;
 	realDataLabel?: string;
+	/** 全局作用域「从订阅里挑一条」的候选。 */
+	subscriptions: readonly Subscription[];
 }) {
+	const t = useT();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 	const targets = useMemo(
-		() => (targetsQuery.data ?? []).filter((t) => t.enabled),
+		() => (targetsQuery.data ?? []).filter((target) => target.enabled),
 		[targetsQuery.data],
 	);
 	const [targetId, setTargetId] = useState("");
 	useEffect(() => {
 		// 目标列表到位后默认选第一个;所选目标被删 / 停用则回退到第一个。
 		const first = targets[0];
-		if (first && !targets.some((t) => t.id === targetId)) setTargetId(first.id);
+		if (first && !targets.some((target) => target.id === targetId)) setTargetId(first.id);
 	}, [targets, targetId]);
 
 	const push = useMutation({
@@ -279,7 +306,6 @@ function TestPushCard({
 				kind,
 				style,
 				content: pushContent,
-				fallback,
 				cardSkin,
 				cardSkinKnobs,
 			});
@@ -303,6 +329,7 @@ function TestPushCard({
 				setContent={setMockContent}
 				realData={realData}
 				realDataLabel={realDataLabel}
+				subscriptions={subscriptions}
 			/>
 			<div className="my-3 border-t border-bn-border-subtle" />
 			<Field code="targetId" full>
@@ -314,7 +341,7 @@ function TestPushCard({
 					options={
 						targets.length === 0
 							? [{ value: "", label: "无可用推送目标" }]
-							: targets.map((t) => ({ value: t.id, label: t.name }))
+							: targets.map((target) => ({ value: target.id, label: target.name }))
 					}
 				/>
 			</Field>
@@ -335,6 +362,11 @@ function TestPushCard({
 				) : push.isSuccess ? (
 					<div className="mt-2 text-bn-xs text-bn-success-text">
 						已送达 · {push.data.latencyMs}ms
+						{push.data.sampleReason ? (
+							<div className="text-bn-text-tertiary">
+								{t("cards.testPush.sampleBecause", { reason: push.data.sampleReason })}
+							</div>
+						) : null}
 					</div>
 				) : null}
 			</div>
@@ -414,10 +446,6 @@ function KindHintNote({ children }: { children: React.ReactNode }) {
 	return <HintNote>{children}</HintNote>;
 }
 
-/** per-UP 作用域没给 `realDataLabel` 时的兜底说明。 */
-const REAL_DATA_FALLBACK =
-	"使用该 UP 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。";
-
 /**
  * 「预览内容」框 —— 卡片类型切换 + 各类型的 mock/真实内容字段。与作用域无关
  * (预览的是哪类卡片、用什么内容,跟改谁的样式独立)。
@@ -428,6 +456,7 @@ function PreviewContentFields({
 	setContent,
 	realData = false,
 	realDataLabel,
+	subscriptions,
 }: {
 	kind: PreviewKind;
 	content: PreviewContent;
@@ -435,9 +464,10 @@ function PreviewContentFields({
 	/** per-UP 作用域:仅类型选择,不提供 mock 内容编辑(用该 UP 真实数据)。 */
 	realData?: boolean;
 	realDataLabel?: string;
+	/** 全局作用域「从订阅里挑一条」的候选。 */
+	subscriptions: readonly Subscription[];
 }) {
-	const setLive = (next: Partial<PreviewContent["live"]>) =>
-		setContent((c) => ({ ...c, live: { ...c.live, ...next } }));
+	const t = useT();
 	const setPost = (next: Partial<PreviewContent["post"]>) =>
 		setContent((c) => ({ ...c, post: { ...c.post, ...next } }));
 	const setSuperchat = (next: Partial<PreviewContent["superchat"]>) =>
@@ -450,62 +480,52 @@ function PreviewContentFields({
 			{/* 卡片类型由左侧「卡片类型」导航选择;此处只显示当前类型的内容字段。 */}
 			{realData ? (
 				kind === "post" ? (
-					// per-UP 动态:仍用该 UP 真实动态,但可选渲染「第几条」(offset)。
+					// per-UP 作品:仍用这条订阅的真实作品,但可选渲染「第几条」。
 					<>
-						<Field code="offset" label="第几条动态">
+						<Field code="nth">
 							<TInput
-								value={String(content.post.offset)}
+								value={String(content.post.nth)}
 								onChange={(v) => {
 									const n = Number.parseInt(v, 10);
-									setPost({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
+									setPost({ nth: Number.isFinite(n) && n > 0 ? n : 1 });
 								}}
 								placeholder="1"
 							/>
 						</Field>
-						<RealDataNote>{realDataLabel ?? REAL_DATA_FALLBACK}</RealDataNote>
+						<RealDataNote>{realDataLabel ?? t("cards.preview.realDataNote")}</RealDataNote>
 					</>
 				) : (
 					<RealDataNote>
 						{kind === "live"
-							? (realDataLabel ?? REAL_DATA_FALLBACK)
-							: "SC / 上舰:接收方为该 UP(真实名字 / 头像),发送者 / 新舰长取当前登录账号;解析失败回退示例。"}
+							? (realDataLabel ?? t("cards.preview.realDataNote"))
+							: t("cards.preview.messageNote")}
 					</RealDataNote>
 				)
-			) : kind === "live" ? (
+			) : kind === "live" || kind === "post" ? (
+				// 全局:从订阅里挑一条(可不挑)。挑了且它的来源能出真实预览,就画真数据;不挑画示例。
 				<>
-					<Field code="roomId">
-						<TInput
-							value={content.live.roomId}
-							onChange={(v) => setLive({ roomId: v })}
-							placeholder="留空则使用示例数据"
+					<Field code="subscriptionId">
+						<TSelect
+							value={content.subscriptionId}
+							onChange={(subscriptionId) => setContent((c) => ({ ...c, subscriptionId }))}
+							options={[
+								{ value: "", label: t("cards.preview.noSubscription") },
+								...subscriptions.map((sub) => ({ value: sub.id, label: displayName(sub) })),
+							]}
 						/>
 					</Field>
-					<RealDataNote>
-						需要后端账号已登录 B 站；填入后将真实拉取该直播间数据并渲染。留空则继续使用示例数据。
-					</RealDataNote>
-				</>
-			) : kind === "post" ? (
-				<>
-					<Field code="uid">
-						<TInput
-							value={content.post.uid}
-							onChange={(v) => setPost({ uid: v })}
-							placeholder="留空则使用示例数据"
-						/>
-					</Field>
-					<Field code="offset">
-						<TInput
-							value={String(content.post.offset)}
-							onChange={(v) => {
-								const n = Number.parseInt(v, 10);
-								setPost({ offset: Number.isFinite(n) && n > 0 ? n : 1 });
-							}}
-							placeholder="1"
-						/>
-					</Field>
-					<RealDataNote>
-						需要后端账号已登录 B 站；填入后将拉取该 UP 的 space 动态列表，按 offset 选取并渲染。
-					</RealDataNote>
+					{kind === "post" && content.subscriptionId ? (
+						<Field code="nth">
+							<TInput
+								value={String(content.post.nth)}
+								onChange={(v) => {
+									const n = Number.parseInt(v, 10);
+									setPost({ nth: Number.isFinite(n) && n > 0 ? n : 1 });
+								}}
+								placeholder="1"
+							/>
+						</Field>
+					) : null}
 				</>
 			) : kind === "superchat" ? (
 				<>
@@ -535,7 +555,11 @@ function PreviewContentFields({
 						<Picker<string>
 							value={content.membership.tierKey}
 							onChange={(tierKey) => setMembership({ tierKey })}
-							options={GUARD_TIERS.map((t) => ({ value: t.key, label: t.name, color: t.color }))}
+							options={GUARD_TIERS.map((tier) => ({
+								value: tier.key,
+								label: tier.name,
+								color: tier.color,
+							}))}
 						/>
 					</Field>
 					<Field
@@ -627,6 +651,7 @@ export default function Cards() {
 	};
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
+	const t = useT();
 	const [activeTab, setActiveTab] = useState<"__global" | PreviewKind>("__global");
 	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
 
@@ -634,14 +659,8 @@ export default function Cards() {
 	// 类型 tab 锁定为该类型;全局 tab 右侧铺四张卡(无单一类型),kind 仅占位。
 	const kind: PreviewKind = isGlobalTab ? "live" : activeTab;
 
-	// 卡片页的按 UP 预览按 uid 取真实数据,第一版只有 B 站订阅(ADR-0019 决策 12)。
-	const allSubs = useMemo(
-		() =>
-			(subsQuery.data ?? []).filter(
-				(s) => subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY,
-			),
-		[subsQuery.data],
-	);
+	// 按订阅覆盖卡片皮肤与旋钮对所有订阅开放(ADR-0021 决策 12):真数据由各自的来源出,来源没有真实预览就画示例。
+	const allSubs = useMemo(() => subsQuery.data ?? [], [subsQuery.data]);
 	const isGlobalScope = scope === "__global";
 	const focusedSub = isGlobalScope ? undefined : allSubs.find((s) => s.id === scope);
 
@@ -822,21 +841,15 @@ export default function Cards() {
 		[seededPuCover, seededPuSkin, seededPuKnobs],
 	);
 
-	// 预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/post 按 uid,后端解析房间号
-	// / 拉动态),失败由 fallback 自动回退示例;superchat/membership 无该 UP 真实数据,沿用固定 mock。
-	// useMemo 稳定引用 —— 否则每次 render 新建对象会不断重置 PreviewImage 的防抖定时器。
-	const previewFallback = !isGlobalScope;
-	const previewContent = useMemo<Record<string, unknown>>(() => {
-		if (isGlobalScope || !focusedSub) return content[kind];
-		// 这里只有 B 站订阅(见 allSubs),身份里的外部 id 就是后端要的 uid。
-		const uid = subscriptionIdentityOf(focusedSub).externalId;
-		if (kind === "live") return { uid };
-		// 动态:用「第几条」选择器的 offset(默认 1),后端按 offset 从该 UP 动态列表取一条。
-		if (kind === "post") return { uid, offset: content.post.offset };
-		// superchat / membership:发送者 / 新舰长由后端取当前登录账号(与全局一致);带上该 UP 的 uid,
-		// 后端据此把卡片**接收方**渲染成真实的该 UP(失败回退示例)。内容沿用固定示例。
-		return { ...content[kind], uid };
-	}, [isGlobalScope, focusedSub, kind, content]);
+	// 预览内容:全局 = 挑的那条订阅(可不挑)+ 可编辑的示例消息;per-UP = 正在改的这条订阅。真数据由服务端问那条订阅的
+	// 来源要,取不到就画示例并说原因。useMemo 稳定引用 —— 否则每次 render 新建对象会不断重置 PreviewImage 的防抖定时器。
+	const previewSubscriptionId = isGlobalScope
+		? content.subscriptionId || undefined
+		: focusedSub?.id;
+	const previewContent = useMemo(
+		() => previewContentOf(kind, content, previewSubscriptionId),
+		[kind, content, previewSubscriptionId],
+	);
 
 	useDirtyDraft({
 		pageKey: isGlobalScope ? "cards" : "cards-perup",
@@ -878,20 +891,11 @@ export default function Cards() {
 			? gCards.liveCoverImageIds
 			: (puCover ?? gCards.liveCoverImageIds),
 	};
-	// 按 kind 求预览内容:全局 = 可编辑 mock;per-UP = 该 UP 真实数据(live/post 按 uid,
-	// post 带「第几条」offset;superchat/membership 带 uid 渲染真实接收方)。
-	const contentFor = (k: PreviewKind): Record<string, unknown> => {
-		if (isGlobalScope || !focusedSub) return content[k];
-		const uid = subscriptionIdentityOf(focusedSub).externalId;
-		if (k === "live") return { uid };
-		if (k === "post") return { uid, offset: content.post.offset };
-		return { ...content[k], uid };
-	};
 	// 全局 tab:右侧四张卡「全家福」,逐类型用同一份生效样式 + 各自内容渲染。
 	const familyPreviews = (["live", "post", "superchat", "membership"] as const).map((fk) => ({
 		fk,
 		style: effStyle,
-		content: contentFor(fk),
+		content: previewContentOf(fk, content, previewSubscriptionId),
 	}));
 
 	/**
@@ -1066,7 +1070,6 @@ export default function Cards() {
 							kind={kind}
 							style={effStyle}
 							pushContent={previewContent}
-							fallback={previewFallback}
 							cardSkin={previewSkin}
 							cardSkinKnobs={previewKnobs}
 							mockContent={content}
@@ -1074,9 +1077,10 @@ export default function Cards() {
 							realData={!isGlobalScope}
 							realDataLabel={
 								focusedSub
-									? `使用 ${displayName(focusedSub)} 的真实数据渲染预览；未开播 / 无动态 / 网络异常时自动回退示例数据。`
+									? t("cards.preview.realDataNoteOf", { name: displayName(focusedSub) })
 									: undefined
 							}
+							subscriptions={allSubs}
 						/>
 					)}
 				</div>
@@ -1106,7 +1110,6 @@ export default function Cards() {
 														kind={fk}
 														style={style}
 														content={fcontent}
-														fallback={previewFallback}
 														cardSkin={previewSkin}
 														cardSkinKnobs={previewKnobs}
 														frame={false}
@@ -1140,7 +1143,6 @@ export default function Cards() {
 								kind={kind}
 								style={effStyle}
 								content={previewContent}
-								fallback={previewFallback}
 								cardSkin={previewSkin}
 								cardSkinKnobs={previewKnobs}
 							/>

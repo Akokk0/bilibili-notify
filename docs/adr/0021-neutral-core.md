@@ -109,6 +109,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - SC、上舰卡的付款人取该来源的 `auth.account()`；
     - 「按 UP 覆盖」对所有订阅开放。
     🔗 **2026-10-28**（4-14 服务端，主人照拟稿批）：`Source.fetchPreview?(identity, { kind: "post"; nth } | { kind: "live" }, signal)` 回 `PreviewReport`（作品即 `PostReport`，直播是与 `fetchLiveStatus` 同一份的开播时刻与详情），B 站实现、卡片路由只问来源登记表、不再收 B 站 `Api`。取真数据失败回落示例并说原因（回应 `sampleReason`，主人定）；拓展这一版不开（主人定，同 `auth`）。SC 示例的档位仍借 B 站价目表，做到中立另起一片（主人定）。形状细节见 `docs/1.0/subscription-sources.md`「预览」。
+    🔗 **2026-10-28**（4-14 面板）：全局作用域的房间号 / uid 输入框换成「从订阅里挑一条」（可不挑），挑了作品卡再出「第几条作品」；按订阅覆盖对所有订阅开放（删了只列 B 站订阅的过滤）；示例卡的回落原因写在预览图下面，测试推送送达了也说推的是示例。
 13. **AI 工具（Q57、Q68）**：
     - `packages/ai` 删掉对 B 站包的 import；
     - 核心提供中立的只读工具：`list_subscriptions`、`get_creator_profile`、`get_creator_posts`、`get_live_status`、`search_creators`；

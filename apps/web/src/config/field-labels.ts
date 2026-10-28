@@ -374,19 +374,15 @@ export const FIELD_LABELS = {
 	},
 
 	// ── 卡片预览(Cards 页样本数据,不真正写回 globals) ───────────────────
-	roomId: {
-		label: "直播间号",
-		hint: "纯数字，例如 5440",
+	// 4-14:真数据改问订阅的来源要(`Source.fetchPreview`),房间号 / uid / 第几条三格退役。这张表的字随 4-53b 收。
+	subscriptionId: {
+		label: "预览用的订阅",
+		hint: "挑一条订阅，它的来源能出真实预览就画真数据；不挑就画示例",
 		section: "cardPreview",
 	},
-	uid: {
-		label: "UP 主 UID",
-		hint: "目标 UP 主的 UID",
-		section: "cardPreview",
-	},
-	offset: {
-		label: "第几条动态",
-		hint: "按 B 站列表顺序取第 N 条(可能含置顶)",
+	nth: {
+		label: "第几条作品",
+		hint: "1 是最新那条",
 		section: "cardPreview",
 	},
 	text: {

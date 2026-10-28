@@ -1,1 +1,4 @@
-{}
+{
+	"cards.preview.sampleBecause": "主人，这张先拿示例顶上啦：{reason}",
+	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}"
+}

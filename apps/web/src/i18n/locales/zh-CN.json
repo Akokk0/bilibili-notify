@@ -1,4 +1,10 @@
 {
+	"cards.preview.messageNote": "醒目留言 / 会员卡：收的人是这条订阅，付钱的人取这个来源登录着的账号，没有就用示例名",
+	"cards.preview.noSubscription": "不挑，用示例",
+	"cards.preview.realDataNote": "用这条订阅的真实数据渲染；取不到时换成示例，原因写在预览下方",
+	"cards.preview.realDataNoteOf": "用 {name} 的真实数据渲染；取不到时换成示例，原因写在预览下方",
+	"cards.preview.sampleBecause": "这张是示例：{reason}",
+	"cards.testPush.sampleBecause": "推出去的是示例卡：{reason}",
 	"extension.detail.localeIssuesTitle": "这个拓展自带的译文有几处没有用上",
 	"extension.install.skippedLocales": "包里这几个语言文件 BN 还不认得，没有写进去，其余照常装上了",
 	"extension.reportDiscrepancies.kindLive": "直播",

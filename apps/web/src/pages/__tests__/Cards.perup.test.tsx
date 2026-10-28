@@ -125,29 +125,28 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 	});
 
-	it("切到 per-UP → 预览改用该 UP 真实数据(uid)+ fallback:true", async () => {
+	it("切到 per-UP → 预览带上这条订阅的 id(真数据由服务端问它的来源要),不再带 fallback", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 
-		// 预览 POST 有 500ms 防抖;等防抖追上后那次「真实数据(uid)+ fallback」请求落地
-		// (默认 kind=live;中间会有 content 尚未追上的过渡请求,故须同时匹配 uid)。
+		// 预览 POST 有 500ms 防抖;等防抖追上后那次带订阅 id 的请求落地
+		// (默认 kind=live;中间会有 content 尚未追上的过渡请求,故须同时匹配订阅 id)。
 		await waitFor(
 			() => {
 				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { fallback?: boolean; content?: { uid?: string } };
-					return (
-						url === "/api/cards/preview" && b?.fallback === true && b.content?.uid === "123456"
-					);
+					const b = body as { content?: { subscriptionId?: string } };
+					return url === "/api/cards/preview" && b.content?.subscriptionId === CUSTOMIZED.id;
 				});
 				expect(call).toBeTruthy();
+				expect(call?.[1]).not.toHaveProperty("fallback");
 			},
 			{ timeout: 2000 },
 		);
 	});
 
-	it("per-UP 的全局 tab 全家福:四种卡各自带该 UP 的 uid(动态另带 offset)", async () => {
+	it("per-UP 的全局 tab 全家福:四种卡各自带这条订阅的 id(作品另带第几条)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
@@ -159,24 +158,24 @@ describe("Cards per-UP 作用域接线", () => {
 					vi
 						.mocked(api.post)
 						.mock.calls.filter(([url, body]) => {
-							const b = body as { kind?: string; fallback?: boolean };
-							return url === "/api/cards/preview" && b?.kind === kind && b.fallback === true;
+							const b = body as { kind?: string };
+							return url === "/api/cards/preview" && b?.kind === kind;
 						})
 						.map(([, body]) => (body as { content: Record<string, unknown> }).content);
 				for (const kind of ["live", "post", "superchat", "membership"]) {
 					expect(
-						contentOf(kind).some((c) => c.uid === "123456"),
+						contentOf(kind).some((c) => c.subscriptionId === CUSTOMIZED.id),
 						kind,
 					).toBe(true);
 				}
-				expect(contentOf("live")).toContainEqual({ uid: "123456" });
-				expect(contentOf("post")).toContainEqual({ uid: "123456", offset: 1 });
+				expect(contentOf("live")).toContainEqual({ subscriptionId: CUSTOMIZED.id });
+				expect(contentOf("post")).toContainEqual({ subscriptionId: CUSTOMIZED.id, nth: 1 });
 			},
 			{ timeout: 2000 },
 		);
 	});
 
-	it("per-UP 切到「直播开播」→ 预览带该 UP 的 uid", async () => {
+	it("per-UP 切到「直播开播」→ 预览带这条订阅的 id", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
@@ -200,8 +199,12 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(
 			() => {
 				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { kind?: string; content?: { uid?: string } };
-					return url === "/api/cards/preview" && b?.kind === "live" && b.content?.uid === "123456";
+					const b = body as { kind?: string; content?: { subscriptionId?: string } };
+					return (
+						url === "/api/cards/preview" &&
+						b?.kind === "live" &&
+						b.content?.subscriptionId === CUSTOMIZED.id
+					);
 				});
 				expect(call).toBeTruthy();
 			},
@@ -217,7 +220,7 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(screen.getByText("123456", { selector: "b" })).toBeTruthy();
 	});
 
-	it("per-UP 切到 SC → 预览带该 UP 的 uid(后端据此渲染真实接收方)", async () => {
+	it("per-UP 切到 SC → 预览带这条订阅的 id(服务端据此把收的人写成它)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
@@ -229,9 +232,11 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(
 			() => {
 				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { kind?: string; content?: { uid?: string } };
+					const b = body as { kind?: string; content?: { subscriptionId?: string } };
 					return (
-						url === "/api/cards/preview" && b?.kind === "superchat" && b.content?.uid === "123456"
+						url === "/api/cards/preview" &&
+						b?.kind === "superchat" &&
+						b.content?.subscriptionId === CUSTOMIZED.id
 					);
 				});
 				expect(call).toBeTruthy();
@@ -313,7 +318,7 @@ describe("Cards per-UP 作用域接线", () => {
 		expect(overrides.cards).toEqual({ liveCoverImageIds: ["per-up-cover"] });
 	});
 
-	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {
+	it("per-UP 作品 → 选「第几条」,nth 进预览请求", async () => {
 		const { container } = renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
 		fireEvent.click(await screen.findByText("UID 123456"));
@@ -322,24 +327,27 @@ describe("Cards per-UP 作用域接线", () => {
 		// 切到动态类型(SectionNav 竖栏 + 横向条两份,取第一个)。
 		fireEvent.click(screen.getAllByRole("button", { name: "动态发布" })[0]);
 
-		// 把「第几条动态」改成 3。
-		const offsetInput = await waitFor(() => {
-			const el = container.querySelector('[data-code="offset"] input');
-			if (!el) throw new Error("offset input not rendered");
+		// 把「第几条作品」改成 3。
+		const nthInput = await waitFor(() => {
+			const el = container.querySelector('[data-code="nth"] input');
+			if (!el) throw new Error("nth input not rendered");
 			return el as HTMLInputElement;
 		});
-		fireEvent.change(offsetInput, { target: { value: "3" } });
+		fireEvent.change(nthInput, { target: { value: "3" } });
 
-		// 防抖后预览 POST 用该 UP 的 uid + 所选 offset(证明不再写死 1)。
+		// 防抖后预览 POST 带这条订阅的 id + 所选第几条(证明不再写死 1)。
 		await waitFor(
 			() => {
 				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
-					const b = body as { kind?: string; content?: { uid?: string; offset?: number } };
+					const b = body as {
+						kind?: string;
+						content?: { subscriptionId?: string; nth?: number };
+					};
 					return (
 						url === "/api/cards/preview" &&
 						b?.kind === "post" &&
-						b.content?.uid === "123456" &&
-						b.content?.offset === 3
+						b.content?.subscriptionId === CUSTOMIZED.id &&
+						b.content?.nth === 3
 					);
 				});
 				expect(call).toBeTruthy();
