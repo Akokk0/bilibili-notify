@@ -3,13 +3,13 @@
  *
  * - 名字、短名、颜色、叫法、特性都取来源表(`/api/sources`)里的描述符;特性顺序跟 FEATURE_KEYS 走,
  *   不跟清单里写的顺序走。
- * - 平台选择只列**在跑**的订阅源;描述符照清单给、停着也有,但「在不在场」另看拓展列表的 `state`。
+ * - 平台选择列在册的全部来源(来源表里带 `has` 的那些,B 站也在其中);停着的拓展来源表里照列、不带 `has`。
  * - 拓展列表没回来时不下「没开」的结论;没装时拿不到名字就写拓展 id。
  */
 
 import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import { runningSources, subscriptionPlatformOf } from "../subscription-source";
+import { registeredSources, subscriptionPlatformOf } from "../subscription-source";
 
 function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 	return {
@@ -44,23 +44,18 @@ function sub(extensionId = "douyin"): { extensionId: string } {
 }
 
 describe("平台选择那一排", () => {
-	it("只列在跑、且来源表里有它(开了订阅那一口)的拓展;不是拓展的来源(B 站)不在这一排", () => {
+	it("列在册的全部来源(带 has 的),先后照来源表;停着的拓展(不带 has)不列", () => {
+		const has = { auth: false, liveStatus: false, preview: false };
 		const sources = [
-			entry({ label: "B 站" }, "bilibili"),
-			entry(),
+			{ ...entry({ label: "B 站" }, "bilibili"), has },
+			{ ...entry(), has },
 			entry({ label: "停着的" }, "stopped"),
 		];
-		const extensions = [
-			ext(),
-			ext({ id: "stopped", state: "disabled" }),
-			ext({ id: "push-only", provides: ["push"] }),
-		];
-		expect(runningSources(sources, extensions).map((e) => e.key)).toEqual(["douyin"]);
+		expect(registeredSources(sources).map((e) => e.key)).toEqual(["bilibili", "douyin"]);
 	});
 
-	it("来源表或拓展列表还没回来 → 一个都不列", () => {
-		expect(runningSources(undefined, [ext()])).toEqual([]);
-		expect(runningSources([entry()], undefined)).toEqual([]);
+	it("来源表还没回来 → 一个都不列", () => {
+		expect(registeredSources(undefined)).toEqual([]);
 	});
 });
 

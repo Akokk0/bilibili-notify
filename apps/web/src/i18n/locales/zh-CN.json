@@ -71,5 +71,19 @@
 	"extension.reportDiscrepancies.kindProblem": "问题",
 	"linkPreview.replyForm.image": "图片卡",
 	"linkPreview.replyForm.nativeShare": "小程序卡",
-	"linkPreview.replyForm.text": "文字"
+	"linkPreview.replyForm.text": "文字",
+	"subs.new.accepts.id": "账号 id",
+	"subs.new.accepts.link": "主页链接",
+	"subs.new.accepts.name": "名字",
+	"subs.new.acceptsList": "{items}或{last}",
+	"subs.new.acceptsSeparator": "、",
+	"subs.new.cancel": "取消",
+	"subs.new.close": "关闭",
+	"subs.new.creatorNoun": "创作者",
+	"subs.new.description": "输入的内容原样交给{label}去认，选定后进入配置表单",
+	"subs.new.noMatch": "没有找到匹配的人",
+	"subs.new.search": "搜索",
+	"subs.new.searchCreator": "搜索{creatorNoun}",
+	"subs.new.searching": "搜索中…",
+	"subs.new.title": "添加订阅"
 }

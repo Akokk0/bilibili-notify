@@ -284,7 +284,7 @@ export const RATCHET = {
 	"apps/web/src/pages/Logs.tsx": 16,
 	"apps/web/src/pages/Rules.tsx": 12,
 	"apps/web/src/pages/Stats.tsx": 77,
-	"apps/web/src/pages/Subs.tsx": 55,
+	"apps/web/src/pages/Subs.tsx": 33,
 	"apps/web/src/pages/System.tsx": 52,
 	"apps/web/src/pages/Targets.tsx": 184,
 	"apps/web/src/pages/ai/MaidSkills.tsx": 28,

@@ -8,6 +8,7 @@
  * 接线各有各的守卫:标签表读出来以后得真的传给卡片与详情弹窗(零件各自的单测证明不了这条线接上了)。
  */
 
+import type { SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -28,6 +29,18 @@ const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
 const MUSIC = { id: "33333333-3333-4333-8333-333333333333", name: "音乐" };
 /** 表的顺序是 杂谈 → 游戏 → 音乐:既不是名字的拼音序(音乐 < 游戏 < 杂谈),也不是各自出现的先后。 */
 const TABLE = [CHAT, GAME, MUSIC];
+
+/** 来源表里在册的 B 站(新建弹窗按它画提示句)。 */
+const BILI_SOURCE: SourceEntry = {
+	key: "bilibili",
+	descriptor: {
+		label: "B 站",
+		externalIdNoun: "UID",
+		searchAccepts: ["id", "link", "name"],
+		supportedFeatures: ["post"],
+	},
+	has: { auth: true, liveStatus: true, preview: true },
+};
 
 function makeSub(uid: string, name: string, tagIds: string[]): Subscription {
 	return {
@@ -84,8 +97,12 @@ function chip(label: string): HTMLElement {
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path === "/api/subscriptions/tags") return Promise.resolve(TABLE);
-		if (path.startsWith("/api/subscriptions/lookup")) {
-			return Promise.resolve({ uid: "999", name: "查到的 999", avatar: "", sign: "", fans: 5 });
+		// 新建弹窗搜人要来源表里在册的来源;只有 B 站一个时不画平台一排。
+		if (path === "/api/sources") return Promise.resolve({ sources: [BILI_SOURCE] });
+		if (path.startsWith("/api/sources/bilibili/creators")) {
+			return Promise.resolve({
+				candidates: [{ externalId: "999", name: "查到的 999", followers: 5 }],
+			});
 		}
 		if (path === "/api/subscriptions") return Promise.resolve([SUB_A, SUB_B, SUB_C]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
@@ -210,14 +227,13 @@ describe("Subs 订阅详情 × 标签", () => {
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext"));
 
 		fireEvent.click(screen.getAllByText("添加")[0] as HTMLElement);
-		await screen.findByText(/选定后进入配置表单/);
+		await screen.findByText(/配置表单/);
 		const search = within(screen.getByRole("dialog"));
-		fireEvent.change(screen.getByPlaceholderText("搜索 UID 或 UP 主名字"), {
+		fireEvent.change(await search.findByPlaceholderText("UID、主页链接或名字"), {
 			target: { value: "999" },
 		});
-		fireEvent.click(search.getByRole("button", { name: "查询" }));
-		await search.findByText("查到的 999");
-		fireEvent.click(search.getByRole("button", { name: "下一步" }));
+		fireEvent.click(search.getByRole("button", { name: "搜索" }));
+		fireEvent.click(await search.findByRole("button", { name: /查到的 999/ }));
 
 		const create = await screen.findByRole("button", { name: "创建订阅" });
 		fireEvent.click(screen.getByRole("button", { name: "编辑标签" }));

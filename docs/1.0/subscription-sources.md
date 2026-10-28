@@ -46,7 +46,7 @@ interface SourceHealth { summary: string }
 
 `Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3b-22，10-21）：代码里 `Source` 今天有 8 个成员（`descriptor`、`start`、`stop`、`searchCreators`、`auth?`、`fetchLiveStatus?`、`liveInteractions?`、`health?`），`fetchProfile`（3b-24）与 `fetchPreview`（第 4 期）接口上还没有；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。🔗 现状（3b-24，10-23）：代码里已有 9 个成员，新增了必备的 `fetchProfile`；只剩 `fetchPreview` 归第 4 期。
 
-新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
+新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。🔗 现状（4-15，10-28）：照这一套落了。平台一排列在册的全部来源（来源表里带 `has` 的，B 站只是其中一颗；只有一个时不画），叫法函数是 contract 的 `creatorSearchHint`（列举的拼法也住面板字典，跟词一起缺句打底）；候选一律是列表、点一行进配置弹层，单个 UID 的预览卡与翻页删了（最多 10 个）。新建时 B 站也由候选种资料；不带资料就只建订阅、不当场刷（主人定只种不刷）。
 
 ## SourceDescriptor
 
@@ -60,7 +60,7 @@ interface SourceDescriptor {
   creatorNoun?: string;            // 这个平台管创作者叫什么；缺省「创作者」，B 站「UP主」
   externalIdNoun?: string;         // 这个平台管外部 id 叫什么；B 站「UID」（🔗 10-23（3b-24）已落，宿主已认；拓展清单仍未收）
   externalIdRegex?: string;        // 外部 id 长什么样（正则源码，整串匹配）；核心核订阅身份与特别关注名单的 id；B 站纯数字；不声明只做中立校验
-  searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」 🔗 现状（3b-44，10-25）：拓展清单已收这一格并随视图下发；面板拓展支暂用通用提示，叫法函数随第 4 期
+  searchAccepts?: ("id" | "link" | "name")[];   // 搜人输入框收哪几种输入；提示句由叫法函数拼，B 站三种都收；缺省「搜索{creatorNoun}」 🔗 现状（3b-44，10-25）：拓展清单已收这一格并随视图下发；面板拓展支暂用通用提示，叫法函数随第 4 期 🔗 现状（4-15，10-28）：叫法函数 `creatorSearchHint` 落了，面板所有来源都按它拼，通用提示删了
   supportedFeatures: FeatureKey[]; // 支持哪些特性（开关、规则节按它铺）；订阅上「开没开」才叫 features
   supportedExtras?: ExtraKey[];    // 支持哪些附加项
   featureHints?: Partial<Record<FeatureKey, string>>;   // 特性开关下的小字；唯一允许写自由文字的一格

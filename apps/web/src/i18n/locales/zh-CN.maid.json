@@ -8,5 +8,7 @@
 	"cards.skin.byCardHint": "这种卡的排版与观感现在整个归皮肤管哦 —— 去下面的皮肤库挑一套，或者「复制一份」再改～",
 	"cards.testPush.delivered": "送到啦 · {ms}ms",
 	"cards.testPush.failed": "主人，没推出去：{reason}",
-	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}"
+	"cards.testPush.sampleBecause": "推出去的是示例卡哦，主人：{reason}",
+	"subs.new.description": "主人输入的内容会原样交给{label}去认，挑中一个就进配置表单啦～",
+	"subs.new.noMatch": "主人，没找到对得上的人呢"
 }

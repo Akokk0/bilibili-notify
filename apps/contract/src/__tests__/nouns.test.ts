@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { displayNameOf, sourceNounsOf, subscriptionIdentityLabel } from "../nouns";
+import {
+	creatorSearchHint,
+	displayNameOf,
+	sourceNounsOf,
+	subscriptionIdentityLabel,
+} from "../nouns";
 
 describe("sourceNounsOf", () => {
 	const neutral = { creatorNoun: "N-creator", postNoun: "N-post", sources: "N-sources" };
@@ -104,5 +109,34 @@ describe("displayNameOf", () => {
 			"资料里的名字",
 		);
 		expect(displayNameOf({ eventName: "", profileName: "  " }, "抖音 · abc")).toBe("抖音 · abc");
+	});
+});
+
+describe("creatorSearchHint", () => {
+	/** 调用方按语言给的几样;拼法用一个看得出顺序的假列举。 */
+	const words = {
+		id: "W-id",
+		link: "W-link",
+		name: "W-name",
+		creatorNoun: "W-creator",
+		list: (parts: readonly string[]) => parts.join("|"),
+		searchCreator: (creatorNoun: string) => `search ${creatorNoun}`,
+	};
+
+	it("按声明的先后拼几种输入;id 那一种用来源自己的外部 id 叫法", () => {
+		expect(
+			creatorSearchHint({ searchAccepts: ["id", "link", "name"], externalIdNoun: "UID" }, words),
+		).toBe("UID|W-link|W-name");
+		expect(creatorSearchHint({ searchAccepts: ["name", "id"] }, words)).toBe("W-name|W-id");
+		expect(creatorSearchHint({ searchAccepts: ["link"], externalIdNoun: "  " }, words)).toBe(
+			"W-link",
+		);
+	});
+
+	it("没声明(或空表)→「搜索{creatorNoun}」:来源有叫法用它的,没有落中性词", () => {
+		expect(creatorSearchHint({ creatorNoun: "主播" }, words)).toBe("search 主播");
+		expect(creatorSearchHint({ searchAccepts: [], creatorNoun: " " }, words)).toBe(
+			"search W-creator",
+		);
 	});
 });

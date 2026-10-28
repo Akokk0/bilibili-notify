@@ -17,8 +17,8 @@ import type { Result } from "./result";
 
 /**
  * 来源的自我介绍。这里只放已经有读者的格子;经 `GET /api/sources` 下发给面板(ADR-0027 决策 6),面板只从这里
- * 拿来源的信息。拓展的取清单订阅那一口的同名字段。`icon` 与 `searchAccepts` 是跟着清单并进来的,面板的读者
- * (新建订阅的平台图标与搜人提示句)在第 4 期后面。
+ * 拿来源的信息。拓展的取清单订阅那一口的同名字段。`icon` 与 `searchAccepts` 是跟着清单并进来的:搜人提示句
+ * 4-15 起由 contract 的 `creatorSearchHint` 按 `searchAccepts` 拼;平台图标的读者还在第 4 期后面。
  */
 export interface SourceDescriptor {
 	/** 平台名(「B 站」)。`status` 指令的那一行、新建订阅的平台选择、徽章与平台列都取它。 */
@@ -183,7 +183,7 @@ export interface CreatorProfileReport {
 	fanClubName?: string;
 }
 
-/** 订阅源搜人输入框接受的输入种类;提示句以后按这份声明拼,不让来源自己写一句。 */
+/** 订阅源搜人输入框接受的输入种类;提示句按这份声明拼(contract 的 `creatorSearchHint`),不让来源自己写一句。 */
 export const CREATOR_SEARCH_INPUTS = ["id", "link", "name"] as const;
 export type CreatorSearchInput = (typeof CREATOR_SEARCH_INPUTS)[number];
 

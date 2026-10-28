@@ -117,7 +117,7 @@ export const RATCHET = {
 	"apps/web/src/pages/History.tsx": 4,
 	"apps/web/src/pages/Rules.tsx": 2,
 	"apps/web/src/pages/Stats.tsx": 10,
-	"apps/web/src/pages/Subs.tsx": 12,
+	"apps/web/src/pages/Subs.tsx": 4,
 	"apps/web/src/pages/System.tsx": 6,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 1,
 	"apps/web/src/pages/backup/BackupSection.tsx": 2,

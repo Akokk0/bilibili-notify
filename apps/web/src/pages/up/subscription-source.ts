@@ -28,15 +28,12 @@ function sortedFeaturesOf(descriptor: SourceEntry["descriptor"]): FeatureKey[] {
 const EXTENSION_FEATURES_AT_MOST = EXTENSION_SOURCE_FEATURES;
 
 /**
- * 新建订阅时平台选择那一排的拓展来源:**只列在跑的**(决策 10)—— 解析门要拓展本人在,停着的列出来
- * 也只能问出一个 404。来源表或拓展列表没回来就一个都不列,弹窗与今天一模一样。
+ * 新建订阅时平台选择那一排:**在册的全部来源**(来源表里带 `has` 的那些,B 站也在其中,4-15)—— 搜人要来源
+ * 本人在册,停着的拓展列出来也只能问出一个 404。来源表的先后照原样(登记表在前、拓展在后)。来源表没回来就
+ * 一个都不列。
  */
-export function runningSources(
-	sources: readonly SourceEntry[] | undefined,
-	extensions: readonly ExtensionDTO[] | undefined,
-): SourceEntry[] {
-	const present = new Set((extensions ?? []).filter(isExtensionPresent).map((ext) => ext.id));
-	return (sources ?? []).filter((entry) => present.has(entry.key));
+export function registeredSources(sources: readonly SourceEntry[] | undefined): SourceEntry[] {
+	return (sources ?? []).filter((entry) => entry.has !== undefined);
 }
 
 /** 一条拓展订阅是哪个平台的、那个平台能报什么、此刻在不在。 */
