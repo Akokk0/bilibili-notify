@@ -21,7 +21,7 @@ description: 改了 apps/web(面板)或 apps/desktop(桌面启动页)的界面�
 
 - 先跑 `dev.sh status`。端口原本就被本仓进程占着(主人自己的 dev)→ 直接复用,收尾**不停它**;被别的程序占着 → 停下来说,别抢。
 - 优先 `preview_start` 按 name 起;读不到 launch.json(见 Gotchas)就用 Bash `run_in_background` 跑 `vp run dev:apps`(日志写 scratchpad),`dev.sh wait` 等就绪,再 `preview_start` 传 `url: http://localhost:5173`。
-- dev 配置默认不开鉴权(`dev.sh wait` 打出的 session 是 `authRequired:false`),不用登录。真弹了登录框,凭据从本机 `apps/server/bn.config.yaml` 的 `auth.basicAuth` 或它引用的环境变量取;不问主人,不写进回报。
+- dev 配置默认不开鉴权(`dev.sh wait` 打出的 session 是 `authRequired:false`),不用登录。真弹了登录框,停下来告诉主人;别去 `apps/server/bn.config.yaml` 或环境变量里找凭据(主人的真数据,不读)。
 - 改了 `packages/*`(`packages/ui` 除外,它直接吃源码)或 `apps/contract`:`dev:apps` 不重建这些包的 `lib/`,先构建再验。
 
 ## 造状态
