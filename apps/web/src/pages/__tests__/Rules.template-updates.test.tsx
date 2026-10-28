@@ -9,9 +9,9 @@
  * 两个动作各自改对了东西、账本不留脏条目。
  */
 
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateFingerprint } from "@bilibili-notify/internal/template-defaults";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

@@ -6,8 +6,8 @@ import {
 	resolveTemplates,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { builtinPersonasOf, resolveAiOverride } from "../runtime/ai-config.js";
 import type { PostSettings } from "./deliver-post.js";
 

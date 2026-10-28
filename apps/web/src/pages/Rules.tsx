@@ -1,6 +1,5 @@
 import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { presetsOf } from "@bilibili-notify/internal/ai";
-import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE, textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
@@ -10,6 +9,7 @@ import {
 	syncTemplatesSeen,
 	templateFingerprint,
 } from "@bilibili-notify/internal/template-defaults";
+import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import {
 	ConfirmDialog,
 	type FieldUpdate,

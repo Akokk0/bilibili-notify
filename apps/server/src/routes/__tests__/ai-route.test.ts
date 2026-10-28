@@ -10,7 +10,7 @@
  */
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";

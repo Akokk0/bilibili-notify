@@ -35,7 +35,7 @@ import {
 	GlobalConfigSchema,
 	LinkPreviewSettingsSchema,
 } from "@bilibili-notify/internal";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
 import { migrateLegacyLinkParsing, renameLinkParsing } from "../link-parsing.js";

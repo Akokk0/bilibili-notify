@@ -1,4 +1,4 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
  * per-UP 编辑器里会员与醒目留言的两处(㉓d):

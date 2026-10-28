@@ -1,4 +1,4 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
  * 复现 bug:per-UP「动态过滤覆盖」与「直播阈值覆盖」曾共享同一个 overrides.filters

@@ -4,12 +4,12 @@
  * delta for /api/settings.
  */
 
+import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
 import {
 	type BuiltinTemplates,
 	type EffectiveMembershipTemplate,
 	withMembershipDefaults,
-} from "@bilibili-notify/internal/builtin-texts";
-import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
+} from "@bilibili-notify/internal/texts/builtin";
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import {

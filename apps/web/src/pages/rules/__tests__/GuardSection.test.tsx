@@ -1,4 +1,4 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
  * 规则页「上舰提示」(全局,㉓d):B 站会员体系 `guard` 的文案 —— 最上面一块是体系默认(文案 + 图片),下面舰长 / 提督 / 总督

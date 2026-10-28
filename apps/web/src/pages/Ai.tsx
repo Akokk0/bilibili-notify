@@ -31,9 +31,9 @@ import {
 	WEB_SEARCH_BACKENDS,
 	webSearchBackendMeta,
 } from "@bilibili-notify/internal/ai";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import {
 	Btn,
 	DraftSecretInput,

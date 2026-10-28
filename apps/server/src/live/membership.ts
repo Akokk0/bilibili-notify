@@ -19,7 +19,7 @@ import {
 	membershipTemplateOf,
 	type Result,
 } from "@bilibili-notify/internal";
-import type { EffectiveMembershipTemplate } from "@bilibili-notify/internal/builtin-texts";
+import type { EffectiveMembershipTemplate } from "@bilibili-notify/internal/texts/builtin";
 import { errorMessageOf } from "../util/error-message";
 import { renderTemplate } from "../util/render-template";
 import { passesMembershipMinRank } from "./interaction-gates";

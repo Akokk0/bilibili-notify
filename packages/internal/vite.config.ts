@@ -6,7 +6,6 @@ export default defineConfig({
 			"src/index.ts",
 			"src/ai.ts",
 			"src/bilibili-guard.ts",
-			"src/builtin-texts.ts",
 			"src/card-skin.ts",
 			"src/extension/index.ts",
 			"src/extension/build.ts",
@@ -25,6 +24,7 @@ export default defineConfig({
 			"src/result.ts",
 			"src/template-defaults.ts",
 			"src/template-variables.ts",
+			"src/texts/builtin/index.ts",
 			"src/update.ts",
 		],
 		// 只出 ESM:消费方(server bundle / tsx dev / web 的 `vp dev`)全是 ESM。web 在

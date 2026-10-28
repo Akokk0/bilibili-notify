@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { presetsOf, resolveActivePersona } from "../ai";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "../builtin-texts";
-import zhCN from "../locales/zh-CN.json";
+import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "../texts/builtin";
+import zhCN from "../texts/builtin/locales/zh-CN.json";
 
 const zh = builtinPresetsFor("zh-CN");
 // 英文只填两个字段,别的靠简体打底 —— 够认出「取的是注入的那份」

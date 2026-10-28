@@ -9,9 +9,9 @@
  */
 
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "@bilibili-notify/internal/template-variables";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {

@@ -46,11 +46,6 @@ const SUBPATHS = [
 		why: "面板、引擎与出图器取 B 站大航海档位",
 	},
 	{
-		subpath: "./builtin-texts",
-		source: "src/builtin-texts.ts",
-		why: "面板与服务端取出厂文案与内置人格",
-	},
-	{
 		subpath: "./card-skin",
 		source: "src/card-skin.ts",
 		why: "面板与 contract 取卡片皮肤契约",
@@ -134,6 +129,11 @@ const SUBPATHS = [
 		subpath: "./template-variables",
 		source: "src/template-variables.ts",
 		why: "面板拼提示条、服务端探针取变量名",
+	},
+	{
+		subpath: "./texts/builtin",
+		source: "src/texts/builtin/index.ts",
+		why: "面板与服务端取出厂文案与内置人格",
 	},
 	{
 		subpath: "./update",
@@ -257,7 +257,7 @@ function zeroDependencyProblemsInSource(source, allowedSources) {
 			const resolved = resolveSpecifier(source.path, ref.specifier);
 			if (
 				resolved !== undefined &&
-				/^packages\/internal\/src\/locales\/[\w-]+\.json$/.test(resolved)
+				/^packages\/internal\/src\/(?:[\w-]+\/)*locales\/[\w-]+\.json$/.test(resolved)
 			) {
 				return false;
 			}
@@ -337,6 +337,11 @@ describe("internal 子路径源文件的零依赖纪律", () => {
 		expect(sample('import { ok } from "./result.js";')).toEqual([]);
 		expect(sample('export { ok } from "./result";')).toEqual([]);
 		expect(sample('import zh from "./locales/zh-CN.json";')).toEqual([]);
+		// 译文目录可以在子目录里(`texts/builtin/locales/`),但得叫 locales
+		const nested = (text) =>
+			zeroDependencyProblemsFromText("packages/internal/src/texts/builtin/index.ts", text);
+		expect(nested('import zh from "./locales/zh-CN.json";')).toEqual([]);
+		expect(nested('import zh from "./dicts/zh-CN.json";')).toHaveLength(1);
 	});
 });
 

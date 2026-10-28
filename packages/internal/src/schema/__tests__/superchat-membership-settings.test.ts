@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { templateDefaultsFor } from "../../builtin-texts";
 import { DEFAULT_LOCALE } from "../../i18n";
+import { templateDefaultsFor } from "../../texts/builtin";
 import { ContentFiltersSchema, MembershipTemplateBundleSchema } from "../common";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { resolve, resolveTemplates } from "../resolve";

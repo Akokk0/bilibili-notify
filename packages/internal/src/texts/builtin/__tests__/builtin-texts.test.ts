@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor, templateDefaultsFor } from "../builtin-texts";
-import { LOCALES } from "../i18n";
+import { LOCALES } from "../../../i18n";
+import { BUILTIN_PRESET_IDS, builtinPresetsFor, templateDefaultsFor } from "..";
 import before from "./fixtures/builtin-texts-before-move.json";
 
 /** 一份只有几条的英文,别的键全靠简体打底。 */

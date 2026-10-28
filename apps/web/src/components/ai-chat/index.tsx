@@ -6,8 +6,8 @@ import {
 	type AiSkinTarget,
 } from "@bilibili-notify/contract";
 import { resolveActivePersona, resolveAIProfile } from "@bilibili-notify/internal/ai";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";

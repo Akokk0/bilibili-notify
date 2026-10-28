@@ -28,8 +28,8 @@ import {
 	resolveSubscriptionPersona,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { textSettingsOf } from "@bilibili-notify/internal/i18n";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 
 /** 此刻(设置里的语言)的内置人格:设置里不存它们的内容,每次按当前语言取。 */
 export function builtinPersonasOf(settings: Parameters<typeof textSettingsOf>[0]) {

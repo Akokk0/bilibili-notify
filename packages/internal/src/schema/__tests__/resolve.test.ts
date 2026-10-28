@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { builtinPresetsFor, templateDefaultsFor } from "../../builtin-texts";
+import { builtinPresetsFor, templateDefaultsFor } from "../../texts/builtin";
 import { DEFAULT_CARD_SKIN_ID } from "../card-skin";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "../message-layout";

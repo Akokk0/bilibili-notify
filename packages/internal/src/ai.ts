@@ -316,7 +316,7 @@ export interface ActivePersonaShape {
 	liveSummaryPrompt: string;
 }
 
-/** 内置人格的形状:两段提示词齐全、带名字。`builtin-texts.ts` 的 `BuiltinPreset` 与它同形。 */
+/** 内置人格的形状:两段提示词齐全、带名字。`texts/builtin/index.ts` 的 `BuiltinPreset` 与它同形。 */
 export interface AIBuiltinPresetShape extends AIPresetShape {
 	label: string;
 	dynamicPrompt: string;

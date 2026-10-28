@@ -13,7 +13,7 @@ import {
 	presetsOf,
 	providerMeta,
 } from "@bilibili-notify/internal/ai";
-import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/builtin-texts";
+import { BUILTIN_PRESET_IDS, type BuiltinPreset } from "@bilibili-notify/internal/texts/builtin";
 import type { AIPersona, AISettingsDraft } from "../../types/globals";
 
 type AIPreset = AISettingsDraft["presets"][number];

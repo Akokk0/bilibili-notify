@@ -1,4 +1,4 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
  * per-UP 编辑器里直播拆键(⑬d)的那几格:周期间隔落在 `overrides.liveStreaming`、启动补报落在

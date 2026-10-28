@@ -1,4 +1,4 @@
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
  * per-UP「AI 人格」—— 这里只负责**挑一份**已有人格。

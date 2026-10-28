@@ -7,9 +7,9 @@
  */
 
 import { interpolate } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
 import { templateFingerprint } from "@bilibili-notify/internal/template-defaults";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	rewriteGlobalLivePlaceholders,

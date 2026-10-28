@@ -9,7 +9,7 @@
  */
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { Icon } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";

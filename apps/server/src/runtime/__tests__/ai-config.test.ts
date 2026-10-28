@@ -6,7 +6,7 @@
  */
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
-import { builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
+import { builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import { toGeneratorConfig } from "../ai-config";
 

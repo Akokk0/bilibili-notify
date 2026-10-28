@@ -20,7 +20,6 @@
 		".": "./lib/index.mjs",
 		"./ai": "./lib/ai.mjs",
 		"./bilibili-guard": "./lib/bilibili-guard.mjs",
-		"./builtin-texts": "./lib/builtin-texts.mjs",
 		"./card-skin": "./lib/card-skin.mjs",
 		"./extension": "./lib/extension/index.mjs",
 		"./extension/build": "./lib/extension/build.mjs",
@@ -39,6 +38,7 @@
 		"./result": "./lib/result.mjs",
 		"./template-defaults": "./lib/template-defaults.mjs",
 		"./template-variables": "./lib/template-variables.mjs",
+		"./texts/builtin": "./lib/texts/builtin/index.mjs",
 		"./update": "./lib/update.mjs",
 		"./package.json": "./package.json"
 	},

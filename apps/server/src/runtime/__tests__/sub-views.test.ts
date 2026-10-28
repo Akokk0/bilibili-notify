@@ -3,7 +3,7 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import { liveSettingsOf } from "../../live/live-settings.js";
 

@@ -6,10 +6,10 @@
  * 这里只放取文案的纯函数 {@link membershipTemplateOf}。3a 建 `posts/` 一类的中立目录时整个搬过去(与 `post.ts` 同批)。
  */
 
-import type { EffectiveMembershipTemplate } from "./builtin-texts";
 import type { ImageRef } from "./image-ref";
 import type { PostImage } from "./post";
 import type { MembershipTemplateEntry } from "./schema/common";
+import type { EffectiveMembershipTemplate } from "./texts/builtin";
 
 /**
  * 一套会员体系:各平台档数不一、有的由主播自定,一个升序数字装不下。体系由来源在

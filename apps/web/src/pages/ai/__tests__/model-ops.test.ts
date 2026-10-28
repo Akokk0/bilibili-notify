@@ -7,8 +7,8 @@
  */
 
 import { type AIProviderId, EMPTY_AI_PROVIDER_PROFILE } from "@bilibili-notify/internal/ai";
-import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/builtin-texts";
 import { buildPatch } from "@bilibili-notify/internal/patch";
+import { BUILTIN_PRESET_IDS, builtinPresetsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import type { AIPersona, AISettings } from "../../../types/globals";
 import {

@@ -8,9 +8,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { type BuiltinDicts, templateDefaultsFor } from "../builtin-texts";
 import { DEFAULT_LOCALE } from "../i18n";
-import zhCN from "../locales/zh-CN.json";
 import {
 	factoryTemplateAt,
 	pendingTemplateUpdates,
@@ -18,6 +16,8 @@ import {
 	syncTemplatesSeen,
 	templateFingerprint,
 } from "../template-defaults";
+import { type BuiltinDicts, templateDefaultsFor } from "../texts/builtin";
+import zhCN from "../texts/builtin/locales/zh-CN.json";
 
 const fp = templateFingerprint;
 

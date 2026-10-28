@@ -12,9 +12,9 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { templateDefaultsFor } from "../../builtin-texts";
 import { DEFAULT_LOCALE } from "../../i18n";
 import { pendingTemplateUpdates } from "../../template-defaults";
+import { templateDefaultsFor } from "../../texts/builtin";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 
 const FACTORY = templateDefaultsFor(DEFAULT_LOCALE);

@@ -16,11 +16,11 @@ import {
 	resolveTemplates,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import { textSettingsOf } from "@bilibili-notify/internal/i18n";
 import {
 	type EffectiveMembershipTemplate,
 	templateDefaultsFor,
-} from "@bilibili-notify/internal/builtin-texts";
-import { textSettingsOf } from "@bilibili-notify/internal/i18n";
+} from "@bilibili-notify/internal/texts/builtin";
 import { builtinPersonasOf, resolveAiOverride } from "../runtime/ai-config.js";
 import type { CustomLiveMsgLike, PickLiveCover, SpecialViewerSettings } from "./live-types";
 

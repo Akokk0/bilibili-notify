@@ -14,9 +14,9 @@ import {
 	providerMeta,
 	resolveAIProfile,
 } from "../ai";
-import { builtinPresetsFor } from "../builtin-texts";
 import { DEFAULT_LOCALE } from "../i18n";
 import { CONNECTION_PLATFORMS, platformDescriptor } from "../platform-registry";
+import { builtinPresetsFor } from "../texts/builtin";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
 	it("DeepSeek 不声称支持看图 —— 官方接口里一个视觉模型都没有", () => {

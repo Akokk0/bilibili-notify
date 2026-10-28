@@ -14,7 +14,7 @@ import {
 	type MessageLayoutSegment,
 	ok,
 } from "@bilibili-notify/internal";
-import type { EffectiveMembershipTemplate as MembershipTemplateBundle } from "@bilibili-notify/internal/builtin-texts";
+import type { EffectiveMembershipTemplate as MembershipTemplateBundle } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { type MembershipDeps, type MembershipOptions, pushMembership } from "../membership";
 

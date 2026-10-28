@@ -4,14 +4,14 @@ import {
 	presetsOf,
 	resolveActivePersona,
 } from "../ai";
+import type { Identity } from "../identity";
 import {
 	type BuiltinTemplates,
 	type EffectiveMembershipTemplate,
 	type EffectiveTemplates,
 	withMembershipDefaults,
 	withTemplateDefaults,
-} from "../builtin-texts";
-import type { Identity } from "../identity";
+} from "../texts/builtin";
 import type {
 	AISettings,
 	CardsSettings,

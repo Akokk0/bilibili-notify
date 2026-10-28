@@ -42,7 +42,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const DICT_DIRS = [
 	"apps/server/src/i18n/locales",
 	"apps/web/src/i18n/locales",
-	"packages/internal/src/locales",
+	"packages/internal/src/texts/builtin/locales",
 ];
 
 /**

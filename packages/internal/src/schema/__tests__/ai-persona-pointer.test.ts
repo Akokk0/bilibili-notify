@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { resolveActivePersona } from "../../ai";
-import { builtinPresetsFor } from "../../builtin-texts";
+import { builtinPresetsFor } from "../../texts/builtin";
 import { AISettingsSchema } from "../common";
 
 const BUILTINS = builtinPresetsFor("zh-CN");

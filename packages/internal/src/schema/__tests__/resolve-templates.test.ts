@@ -4,9 +4,9 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { type BuiltinDicts, templateDefaultsFor, withTemplateDefaults } from "../../builtin-texts";
 import { DEFAULT_LOCALE, type Dict } from "../../i18n";
-import zhCN from "../../locales/zh-CN.json";
+import { type BuiltinDicts, templateDefaultsFor, withTemplateDefaults } from "../../texts/builtin";
+import zhCN from "../../texts/builtin/locales/zh-CN.json";
 import { TemplateBundleSchema } from "../common";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { resolveTemplates } from "../resolve";

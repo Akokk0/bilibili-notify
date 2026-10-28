@@ -9,7 +9,7 @@
  * 在界面上要盯着看才发现得了。
  */
 
-import { BUILTIN_PRESET_IDS } from "@bilibili-notify/internal/builtin-texts";
+import { BUILTIN_PRESET_IDS } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it } from "vite-plus/test";
 import { BUILTIN_PERSONA_ICONS, personaIconKey } from "../persona-icons";
 

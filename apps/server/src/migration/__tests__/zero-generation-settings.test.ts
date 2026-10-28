@@ -24,8 +24,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeEmptySubscription, resolveTemplates } from "@bilibili-notify/internal";
-import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+import { builtinPresetsFor, templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
 import type { BiliSettings } from "../../bilibili/settings.js";

@@ -1,14 +1,14 @@
 /**
  * 出厂文案的读口:推送文字模板的默认与内置人格,按语言取(ADR-0037 决策 10、11)。
  *
- * 零依赖子路径 `@bilibili-notify/internal/builtin-texts`,服务端与面板共用:译文住 `locales/` 的四份 JSON
+ * 零依赖子路径 `@bilibili-notify/internal/texts/builtin`,服务端与面板共用:译文住 `locales/` 的四份 JSON
  * (打包时内联),这里只有取字规矩 —— 本语言有这一键就取本语言,没有拿简体打底。
  * **取原文**:不插值(`{creatorNoun}` 之类留给用到的地方填)、不吃女仆层、不经 `t`。
  * 不许引入 zod 或 schema;值级 import 只有同样零依赖的 `i18n.ts` 与 JSON。
  */
 
-import type { AIPersonaShape } from "./ai";
-import { DEFAULT_LOCALE, type Dict, type Locale, mergeDict } from "./i18n";
+import type { AIPersonaShape } from "../../ai";
+import { DEFAULT_LOCALE, type Dict, type Locale, mergeDict } from "../../i18n";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";
 import zhCN from "./locales/zh-CN.json";

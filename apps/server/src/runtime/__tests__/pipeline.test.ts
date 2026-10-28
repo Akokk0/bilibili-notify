@@ -161,8 +161,8 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 }));
 
 // 英文字典现在是空的:给 en 的内置人格名字戴个前缀,才看得出常驻生成器拿到的是「新语言」的那一份。
-vi.mock("@bilibili-notify/internal/builtin-texts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@bilibili-notify/internal/builtin-texts")>();
+vi.mock("@bilibili-notify/internal/texts/builtin", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/internal/texts/builtin")>();
 	return {
 		...actual,
 		builtinPresetsFor: (...args: Parameters<typeof actual.builtinPresetsFor>) => {

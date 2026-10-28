@@ -7,9 +7,9 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { templateDefaultsFor } from "../builtin-texts";
 import { LOCALES, type Locale, placeholdersOf } from "../i18n";
 import { TEMPLATE_VARIABLES, type TemplateKey } from "../template-variables";
+import { templateDefaultsFor } from "../texts/builtin";
 
 /**
  * 每条有出厂默认的文案。宣告语不是默认文案(由来源的档位表交来),单独留在表里,

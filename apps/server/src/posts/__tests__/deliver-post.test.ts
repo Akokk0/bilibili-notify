@@ -17,8 +17,8 @@ import {
 	type Post,
 	type PostEvent,
 } from "@bilibili-notify/internal";
-import { templateDefaultsFor } from "@bilibili-notify/internal/builtin-texts";
 import { DEFAULT_LOCALE } from "@bilibili-notify/internal/i18n";
+import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	type CardFailureTracker,
