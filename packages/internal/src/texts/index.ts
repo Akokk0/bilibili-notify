@@ -32,8 +32,12 @@ import zhCN from "./locales/zh-CN.json";
 import zhCNMaid from "./locales/zh-CN.maid.json";
 import zhTW from "./locales/zh-TW.json";
 
-/** 包字典的键:从简体中文那份推,写错编译时报。 */
-export type PackageTextKey = DictKey<typeof zhCN>;
+/**
+ * 包字典的键:从简体中文那份推,写错编译时报。经 `PACKAGE_DICTS` 取而不直接写 `typeof zhCN`:
+ * 导出的类型直接引 JSON,产物的类型声明就得带上 TypeScript 给 JSON 生成的 `export =`,
+ * 打包类型的插件每次构建都报一条「CommonJS dts」警告。
+ */
+export type PackageTextKey = DictKey<(typeof PACKAGE_DICTS)["zh-CN"]["plain"]>;
 
 /** 四种语言的包字典。繁体、英文、日文第 5 期才翻,在那之前缺的句子拿简体中文打底。 */
 export const PACKAGE_DICTS = {
