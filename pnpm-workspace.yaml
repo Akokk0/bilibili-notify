@@ -37,7 +37,8 @@ packages:
 # everywhere else. The Dockerfile's own default is the major floating tag, for
 # local `docker build` only: edit it on a major bump
 # (scripts/__tests__/vp-builder-image.test.mjs catches a miss). setup-vp itself
-# is pinned by exact tag (see gate.yml).
+# is pinned by exact tag (see gate.yml). A major bump also moves the
+# `peerDependencyRules` ranges below, which name the core's major.
 # Also: upgrade the global vp CLI FIRST (`vp upgrade`), then edit these
 # declarations — installing a newer vite-plus package with an older CLI has
 # corrupted the lockfile before (biome's entry took on vite-plus's resolution).
@@ -59,6 +60,20 @@ packages:
 overrides:
   "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@1.4.0"
   "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@1.4.0"
+
+# The core alias reports its own version (1.x) to pnpm, not the vite it bundles
+# (8.x), so every consumer with a `vite` peer range sees an unmet peer. Upstream's
+# answer is a blanket `allowAny: [vite]` (vite-plus issue 1021; issue 2806 asks
+# for something stricter). Allowing the core's major for the four consumers we
+# actually have keeps the check alive for anything new: a new vite plugin still
+# warns, and that is the prompt to check it against the bundled vite before
+# adding it here.
+peerDependencyRules:
+  allowedVersions:
+    "vitest>vite": "1"
+    "@vitest/mocker>vite": "1"
+    "@tailwindcss/vite>vite": "1"
+    "@vitejs/plugin-react>vite": "1"
 
 # Shared dependency versions. Every package declares these as `"<dep>": "catalog:"`;
 # the version lives only here, so a bump is one edit and per-package drift (the
