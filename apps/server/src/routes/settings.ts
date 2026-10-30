@@ -1,5 +1,5 @@
 import { probeAiProvider } from "@bilibili-notify/ai";
-import type { SettingsResponse } from "@bilibili-notify/contract";
+import type { InvalidSettingsResponse, SettingsResponse } from "@bilibili-notify/contract";
 import { aiProfileAt, fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
@@ -40,6 +40,23 @@ import type { RouteDeps } from "./types.js";
 export function createSettingsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
+
+	app.get("/invalid", (c) => {
+		c.header("Cache-Control", "no-store");
+		const body: InvalidSettingsResponse = {
+			entries: [
+				...deps.store
+					.getInvalidSettings()
+					.map((entry) => ({ ...entry, path: ["core", ...entry.path] })),
+				...Object.keys(deps.store.getAllIntegrationSettings()).flatMap((key) =>
+					deps.store
+						.getInvalidIntegrationSettings(key)
+						.map((entry) => ({ ...entry, path: [key, ...entry.path] })),
+				),
+			],
+		};
+		return c.json(body);
+	});
 
 	app.get("/", (c) =>
 		c.json(

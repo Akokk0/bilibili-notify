@@ -33,6 +33,7 @@ function envelope(kind: "full" | "sanitized"): BackupEnvelope {
 
 function fakeService(over: Partial<BackupService> = {}): BackupService {
 	return {
+		previewExport: () => ({ defaultedSettings: [] }),
 		exportBackup: vi.fn(async () => envelope("sanitized")),
 		importBackup: vi.fn(async () => ({
 			subscriptions: { upserted: 1, deleted: 0 },
@@ -45,6 +46,16 @@ function fakeService(over: Partial<BackupService> = {}): BackupService {
 		...over,
 	};
 }
+
+it("GET preview contains only defaulted paths and cannot be cached", async () => {
+	const { app } = mounted(
+		fakeService({ previewExport: () => ({ defaultedSettings: [["core", "ai", "search"]] }) }),
+	);
+	const response = await app.request("/api/system/backup/preview");
+	expect(response.status).toBe(200);
+	expect(response.headers.get("cache-control")).toBe("no-store");
+	expect(await response.json()).toEqual({ defaultedSettings: [["core", "ai", "search"]] });
+});
 
 function post(app: ReturnType<typeof createSystemBackupRoute>, path: string, body: unknown) {
 	return app.request(path, {

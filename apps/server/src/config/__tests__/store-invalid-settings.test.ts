@@ -97,7 +97,7 @@ function mkSecretStore(): SecretStore {
 
 interface MkOptions {
 	secret?: SecretStore;
-	onInvalid?: (entries: InvalidSettingEntry[]) => void;
+	onInvalid?: (entries: Pick<InvalidSettingEntry, "path" | "issues">[]) => void;
 	integrations?: IntegrationSettingsSegment[];
 }
 
@@ -246,7 +246,8 @@ describe("带坏格开机", () => {
 			const entries = store.getInvalidSettings();
 			expect(entries.map((e) => e.path)).toEqual([kind.path]);
 			expect(entries[0]?.issues.length).toBeGreaterThan(0);
-			expect(entries[0]?.missing).toBe(kind.missing ?? false);
+			if (entries[0]?.secret) expect(entries[0]).not.toHaveProperty("missing");
+			else expect(entries[0]?.missing).toBe(kind.missing ?? false);
 
 			expect(await readFile(corePath, "utf8")).toBe(before);
 		},
@@ -282,6 +283,31 @@ describe("带坏格开机", () => {
 });
 
 describe("onInvalidSettingsChanged", () => {
+	it("projects public raw values but never a secret-bearing parent cell", async () => {
+		const disk = baseDisk();
+		disk.history = { retentionDays: 45, nested: [null, 7] };
+		disk.ai.search = { keys: { bocha: "private-token", tavily: "" }, backend: 123 };
+		const before = await putDisk(disk);
+		const onInvalid = vi.fn();
+		const store = mkStore({ onInvalid });
+		await store.load();
+		expect(store.getInvalidSettings()).toEqual([
+			expect.objectContaining({
+				path: ["history"],
+				secret: false,
+				raw: disk.history,
+				missing: false,
+			}),
+			expect.objectContaining({ path: ["ai", "search"], secret: true }),
+		]);
+		const secret = store.getInvalidSettings().find((entry) => entry.path[0] === "ai");
+		expect(secret).not.toHaveProperty("raw");
+		expect(secret).not.toHaveProperty("missing");
+		expect(JSON.stringify(secret)).not.toContain("private-token");
+		expect(onInvalid.mock.calls[0]?.[0][0]).not.toHaveProperty("raw");
+		expect(await readFile(corePath, "utf8")).toBe(before);
+	});
+
 	it("load() 末尾有坏格叫一次,带着条目", async () => {
 		const disk = baseDisk();
 		disk.history = "三十天";

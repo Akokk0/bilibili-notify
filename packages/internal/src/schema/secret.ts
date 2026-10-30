@@ -113,7 +113,7 @@ export function hasSecretCells(schema: unknown): boolean {
 		if (WRAPPERS.has(def.type) || def.type === "lazy") return next(innerOf(def));
 		switch (def.type) {
 			case "pipe":
-				return next(def.out);
+				return next(def.in) || next(def.out);
 			case "object":
 				return (
 					Object.values(def.shape as Record<string, unknown>).some(next) ||

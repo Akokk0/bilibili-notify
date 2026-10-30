@@ -7,11 +7,8 @@ import {
 	mapMarked,
 	maskCell,
 } from "@bilibili-notify/internal";
-import {
-	resolveSettings,
-	type SecretCellsReader,
-	secretsUnaskable,
-} from "../push/connection-settings.js";
+import { safeSettingsIssues } from "../config/invalid-settings.js";
+import { type SecretCellsReader, secretsUnaskable } from "../push/connection-settings.js";
 
 /**
  * 下发给浏览器前把密钥格换成 {@link MaskedSecret}(ADR-0021 决策 44)。判据是 schema 上的 `secret` 标记
@@ -61,21 +58,21 @@ function maskDeclared(value: unknown, keys: ReadonlySet<string>): unknown {
  */
 export function connectionView(connection: Connection, lookup: SecretCellsReader): ConnectionView {
 	const schema = lookup.settingsSchemaOf(connection.adapterKey);
-	if (!schema) return { ...connection, settings: maskCell(connection.settings) };
-	const resolved = resolveSettings(schema, connection.settings);
-	if (!resolved.ok) {
+	if (!schema) return { ...connection, settings: maskCell({}) };
+	const resolved = schema.safeParse(connection.settings);
+	if (!resolved.success) {
 		return {
 			...connection,
-			settings: maskCell(connection.settings),
-			settingsIssues: resolved.issues ?? [],
+			settings: maskCell({}),
+			settingsIssues: safeSettingsIssues(resolved.error.issues),
 		};
 	}
 	// 拓展在场但声明的密钥键问不出来:合法也整格遮挡(拓展的 schema 上没有标记)。
 	if (secretsUnaskable(lookup, connection.adapterKey)) {
-		return { ...connection, settings: maskCell(connection.settings) };
+		return { ...connection, settings: maskCell({}) };
 	}
 	const declared = new Set(lookup.declaredSecretKeysOf(connection.adapterKey) ?? []);
-	const marked = mapMarked(schema, resolved.settings, MASK_SETTINGS);
+	const marked = mapMarked(schema, resolved.data, MASK_SETTINGS);
 	return { ...connection, settings: declared.size > 0 ? maskDeclared(marked, declared) : marked };
 }
 

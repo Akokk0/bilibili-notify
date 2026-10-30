@@ -41,6 +41,11 @@ function failureOfBackupError(err: unknown): Failure | null {
 export function createSystemBackupRoute(opts: { service: BackupService }): Hono {
 	const app = new Hono();
 
+	app.get("/preview", (c) => {
+		c.header("Cache-Control", "no-store");
+		return c.json(opts.service.previewExport());
+	});
+
 	app.post("/export", async (c) => {
 		const read = await readJsonObject(c);
 		if (!read.ok) return respondFailure(c, read);

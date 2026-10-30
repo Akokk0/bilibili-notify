@@ -84,6 +84,7 @@ function makeFakeStore(
 	let connections = [...(init.connections ?? [])];
 	let targets: PushTarget[] = [];
 	const store: BackupStore = {
+		getInvalidSettingsPaths: () => [],
 		getGlobals: () => globals,
 		getAllIntegrationSettings: () => integrations,
 		getAllExtensionSettings: () => extensionSettings,
@@ -111,6 +112,32 @@ function makeFakeStore(
 	};
 	return store;
 }
+
+describe("BackupService export preview", () => {
+	it("returns detached paths without consulting original settings", () => {
+		const store = makeFakeStore();
+		const paths = [
+			["core", "ai", "search"],
+			["poke", "count"],
+		];
+		Object.assign(store, { getInvalidSettingsPaths: () => paths });
+		const service = createBackupService({
+			configStore: store,
+			integrationSecrets: fakeIntegrationSecrets(),
+		});
+		expect(service.previewExport()).toEqual({
+			defaultedSettings: [
+				["core", "ai", "search"],
+				["poke", "count"],
+			],
+		});
+		service.previewExport().defaultedSettings[0]?.push("changed");
+		expect(paths).toEqual([
+			["core", "ai", "search"],
+			["poke", "count"],
+		]);
+	});
+});
 
 describe("BackupService × 订阅标签(ADR-0034)", () => {
 	const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };

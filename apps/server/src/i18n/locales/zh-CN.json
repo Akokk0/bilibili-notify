@@ -292,6 +292,12 @@
 	"webhook.text.imageLinks": "图片:\n{urls}",
 	"webhook.text.notice": "[通知]",
 	"accounts.readFailed": "读账号状态出错了，请查看日志",
+	"settings.invalid.type": "值的类型不符合设置规则",
+	"settings.invalid.small": "值小于允许的下限",
+	"settings.invalid.big": "值超过允许的上限",
+	"settings.invalid.format": "值的格式不符合设置规则",
+	"settings.invalid.option": "值不在允许的选项中",
+	"settings.invalid.rule": "值未通过设置规则的检查",
 	"settings.extension.moved": "拓展设置请改用 /api/ext/{id}/settings（按项写、带版本号）。请刷新面板后重试。",
 	"settings.extension.table": "拓展表不能整体替换或清除。开关使用 extensions.<id>.enabled，设置使用 /api/ext/<id>/settings。",
 	"settings.extension.remove": "不能通过 /api/settings 清除拓展 {id} 的整格；卸载请使用 DELETE /api/ext/{id}。",
@@ -310,5 +316,6 @@
 	"backup.invalidKind": "kind 只能是 full 或 sanitized",
 	"backup.invalidMode": "mode 只能是 overwrite 或 merge",
 	"backup.duplicateSubscription": "备份里同一身份有不止一条订阅：{identity}。整份没有恢复。请在原机器删除多余订阅后重新导出。",
-	"backup.integrationNotRunning": "这个集成现在没在运行"
+	"backup.integrationNotRunning": "这个集成现在没在运行",
+	"settings.invalid.validatorFailed": "设置规则暂时无法校验，请稍后重试"
 }

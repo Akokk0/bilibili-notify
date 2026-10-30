@@ -15,6 +15,7 @@ import {
 
 describe("hasSecretCells — classify the entire cell before parsing a bad value", () => {
 	it("finds secrets in wrapped arrays, records and union branches", () => {
+		expect(hasSecretCells(markSecret(z.string()).pipe(z.string()))).toBe(true);
 		expect(
 			hasSecretCells(
 				z.object({ links: z.array(z.object({ token: markSecret(z.string()) })).optional() }),

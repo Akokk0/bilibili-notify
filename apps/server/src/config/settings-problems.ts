@@ -14,7 +14,12 @@
 
 import type { Logger } from "@bilibili-notify/internal";
 import type { ProblemTable } from "../problems/problem-table.js";
-import { type InvalidSettingEntry, instanceIdOfEntry } from "./core-settings.js";
+import {
+	instanceIdOfEntry,
+	type InvalidSettingEntry as StoredInvalidSettingEntry,
+} from "./core-settings.js";
+
+type InvalidSettingEntry = Pick<StoredInvalidSettingEntry, "path" | "issues">;
 
 const KEY = { reporter: "core", code: "settings_invalid" } as const;
 

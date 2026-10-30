@@ -129,7 +129,7 @@ describe("PATCH /api/settings 的失败", () => {
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("unavailable");
-		expect(body.message).toContain("puppeteer 启动失败：spawn /opt/chrome ENOENT");
+		expect(body.message).toContain("主人，puppeteer 没能启动：spawn /opt/chrome ENOENT");
 		expect(runtime.configStore.getGlobals()).toEqual(before);
 		await runtime.dispose();
 	});

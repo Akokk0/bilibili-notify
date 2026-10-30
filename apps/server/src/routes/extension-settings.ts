@@ -2,6 +2,7 @@ import type {
 	ExtensionSettingsIssue,
 	ExtensionSettingsResponse,
 	ExtensionSettingsWriteResponse,
+	InvalidSettingsResponse,
 } from "@bilibili-notify/contract";
 import {
 	ExtensionIdSchema,
@@ -14,6 +15,7 @@ import {
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
+import { extensionInvalidSettings, safeSettingsIssues } from "../config/invalid-settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import {
@@ -27,7 +29,10 @@ import { t } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
 
 export interface ExtensionSettingsRouteOptions {
-	store: Pick<ConfigStore, "getExtensionSettings" | "updateExtensionSettings">;
+	store: Pick<
+		ConfigStore,
+		"getExtensionSettings" | "updateExtensionSettings" | "extensionSettingsIssue"
+	>;
 	/** 装着的那些 —— 清单(设置项声明)从这儿读,**没在跑的也有**(「装好 → 填 → 启用」)。 */
 	extensions: () => readonly ExtensionEntry[];
 	/**
@@ -115,14 +120,51 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		fail("invalid", t("extension.settings.invalid", { count: issues.length }), { issues });
 
 	/** 下发的那一份:密钥遮着,带版本号。GET 与 PATCH 的回应共用这一段,两边不许说成两种样子。 */
-	function view(fields: readonly SettingsField[], stored: unknown) {
-		return { revision: settingsRevision(stored), values: maskSettings(fields, stored) };
+	async function invalidEntries(id: string, fields: readonly SettingsField[], stored: unknown) {
+		if (opts.store.extensionSettingsIssue(id))
+			return [{ path: [], secret: true as const, issues: safeSettingsIssues([{}]) }];
+		try {
+			return await extensionInvalidSettings(fields, opts.settingsSchemas?.(id) ?? [], stored);
+		} catch {
+			throw new Error(t("settings.invalid.validatorFailed"));
+		}
 	}
 
-	app.get("/:id/settings", (c) => {
+	async function view(id: string, fields: readonly SettingsField[], stored: unknown) {
+		const entries = await invalidEntries(id, fields, stored);
+		const values = maskSettings(fields, stored);
+		for (const entry of entries) {
+			if (!entry.secret) continue;
+			if (entry.path.length === 0) return { revision: settingsRevision(stored), values: {} };
+			delete values[String(entry.path[0])];
+		}
+		return { revision: settingsRevision(stored), values };
+	}
+
+	app.get("/:id/settings/invalid", async (c) => {
+		c.header("Cache-Control", "no-store");
 		const target = resolve(c.req.param("id"));
 		if (!target.ok) return respondFailure(c, target);
-		const body: ExtensionSettingsResponse = view(
+		try {
+			const body: InvalidSettingsResponse = {
+				entries: await invalidEntries(
+					target.id,
+					target.fields,
+					opts.store.getExtensionSettings(target.id),
+				),
+			};
+			return c.json(body);
+		} catch {
+			return respondFailure(c, fail("unavailable", t("settings.invalid.validatorFailed")));
+		}
+	});
+
+	app.get("/:id/settings", async (c) => {
+		c.header("Cache-Control", "no-store");
+		const target = resolve(c.req.param("id"));
+		if (!target.ok) return respondFailure(c, target);
+		const body: ExtensionSettingsResponse = await view(
+			target.id,
 			target.fields,
 			opts.store.getExtensionSettings(target.id),
 		);
@@ -193,7 +235,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		if (!committed.ok) return respondFailure(c, conflict());
 		opts.settingsChanged?.(id);
 		const body: ExtensionSettingsWriteResponse = {
-			...view(fields, committed.settings),
+			...(await view(id, fields, committed.settings)),
 			added: applied.added,
 		};
 		return c.json(body);

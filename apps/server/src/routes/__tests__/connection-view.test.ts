@@ -35,6 +35,27 @@ describe("connectionView", () => {
 		expect(JSON.stringify(view)).not.toContain("ABC-SECRET");
 	});
 
+	it.each(["gone", "ext"])(
+		"unknown secret declarations never expose a scalar mask fragment: %s",
+		(adapterKey) => {
+			const view = connectionView(
+				connection(adapterKey, "0123456789abcdef0123456789abcdef"),
+				lookupOf({ ext: z.string() }),
+			);
+			expect(view.settings).toEqual({ masked: "••••••••" });
+		},
+	);
+
+	it("invalid scalar secrets never reveal a mask fragment or custom validator message", () => {
+		const token = "0123456789abcdef0123456789abcdef";
+		const lookup = lookupOf({ webhook: z.string().refine(() => false, `bad: ${token}`) });
+		const view = connectionView(connection("webhook", token), lookup);
+		expect(view.settings).toEqual({ masked: "••••••••" });
+		expect(JSON.stringify(view)).not.toContain(token);
+		expect(JSON.stringify(view)).not.toContain("0123");
+		expect(view.settingsIssues?.[0]?.message).not.toContain("bad:");
+	});
+
 	it("设置不合法 → 整格遮挡 + settingsIssues", () => {
 		const lookup = lookupOf({ ext: z.object({ n: z.number() }) });
 		const view = connectionView(connection("ext", { n: "不是数字", token: "ABC-SECRET" }), lookup);

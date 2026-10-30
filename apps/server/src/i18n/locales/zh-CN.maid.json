@@ -8,6 +8,12 @@
 	"startup.migrating": "BN 正在搬家,稍等一下",
 	"startup.starting": "BN 正在启动,稍等一下",
 	"accounts.readFailed": "主人，读账号状态出错了，请看看日志。",
+	"settings.invalid.type": "主人，值的类型不符合设置规则，请检查这一格。",
+	"settings.invalid.small": "主人，值小于允许的下限，请检查这一格。",
+	"settings.invalid.big": "主人，值超过允许的上限，请检查这一格。",
+	"settings.invalid.format": "主人，值的格式不符合设置规则，请检查这一格。",
+	"settings.invalid.option": "主人，值不在允许的选项中，请检查这一格。",
+	"settings.invalid.rule": "主人，值未通过设置规则的检查，请检查这一格。",
 	"settings.extension.moved": "主人，拓展设置请改用 /api/ext/{id}/settings（按项写、带版本号），请刷新面板再改。",
 	"settings.extension.table": "主人，拓展表不能整张清掉哦。开关请逐个拨，设置请走 /api/ext/<id>/settings。",
 	"settings.extension.remove": "主人，不能在这里清掉拓展 {id} 的整格；卸载请走 DELETE /api/ext/{id}。",
@@ -26,5 +32,6 @@
 	"backup.invalidKind": "主人，kind 只能是 full 或 sanitized。",
 	"backup.invalidMode": "主人，mode 只能是 overwrite 或 merge。",
 	"backup.duplicateSubscription": "主人，备份里同一身份有不止一条订阅：{identity}。女仆没有恢复这份备份，请在原机器删掉多余订阅后重新导出。",
-	"backup.integrationNotRunning": "主人，这个集成现在没在运行。"
+	"backup.integrationNotRunning": "主人，这个集成现在没在运行。",
+	"settings.invalid.validatorFailed": "主人，女仆暂时无法校验这份设置，请稍后再试。"
 }

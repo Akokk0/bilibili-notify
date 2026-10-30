@@ -52,6 +52,7 @@ async function world() {
 function emptyConfigStore(): BackupStore {
 	const globals = makeDefaultGlobalConfig();
 	return {
+		getInvalidSettingsPaths: () => [],
 		getGlobals: () => globals,
 		getAllIntegrationSettings: () => ({}),
 		getAllExtensionSettings: () => ({}),
@@ -147,7 +148,7 @@ describe("备份导出 → 另一个数据根恢复(真存储)", () => {
 
 		expect(result.restoredIntegrations).toEqual(["bilibili"]);
 		expect(result.unrestoredIntegrations).toEqual([
-			{ key: "onebot", message: "这个集成现在没在运行" },
+			{ key: "onebot", message: "主人，这个集成现在没在运行。" },
 		]);
 		expect(dstBili.secrets.get("refreshToken")).toBe("RT-1");
 	});

@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ConfigScopeMeta } from "@bilibili-notify/contract";
+import type { ConfigScopeMeta, InvalidSettingView } from "@bilibili-notify/contract";
 import {
 	type ConfigScope,
 	type Connection,
@@ -60,6 +60,7 @@ import {
 	withRawSettings,
 } from "./core-settings.js";
 import { parseIntegrationCells } from "./integration-settings.js";
+import { invalidSettingView } from "./invalid-settings.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 import { brokenInstanceIdTakenMessage } from "./settings-problems.js";
@@ -162,10 +163,11 @@ export interface ConfigStore {
 	getGlobals(): GlobalConfig;
 	/**
 	 * 核心设置里读盘时被隔离的格(深拷贝):那一格在内存里是默认值,盘上原文在落盘时原样放回。
-	 * 🔴 `raw` 是盘上原文,可能带着主人手写的明文 key —— **不许接到任何路由、日志或备份上**;
-	 * 对外只说路径与原因(问题表那一条已经是这样)。
+	 * 密钥格的原文不出门：只交安全原因。非密钥格可读原值；原文账本独立供原样落盘。
 	 */
-	getInvalidSettings(): InvalidSettingEntry[];
+	getInvalidSettings(): (InvalidSettingView & { path: string[] })[];
+	getInvalidIntegrationSettings(key: string): InvalidSettingView[];
+	getInvalidSettingsPaths(): string[][];
 	/**
 	 * 按键读一个登记过的集成此刻**盘上那一份**(深拷贝、不过 schema:形状归读的人自己那份 zod)。某一格读盘时被隔离的,
 	 * 给的是盘上原文(读的人拿自己那一格的 schema 判);整个文件读不懂(不是合法 JSON、顶层不是对象)回失败,
@@ -297,7 +299,7 @@ export interface CreateConfigStoreOptions {
 	 * 核心设置的坏格表变了:`load()` 末尾有坏格时叫一次,之后每次写让表变了、出了写队列再叫一次(带着整张新表,
 	 * 空表 = 都好了)。仓不认得问题表,组装处把它接过去。回调抛了只记一行 warn,不让已经落盘的写失败。
 	 */
-	onInvalidSettingsChanged?: (entries: InvalidSettingEntry[]) => void;
+	onInvalidSettingsChanged?: (entries: Pick<InvalidSettingEntry, "path" | "issues">[]) => void;
 }
 
 // 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
@@ -899,7 +901,9 @@ class NodeConfigStore implements ConfigStore {
 	private readonly bus: MessageBus;
 	private readonly serviceCtx: ServiceContext;
 	private readonly connectionSettingsSchemaOf: (adapterKey: string) => ZodType | undefined;
-	private readonly onInvalidSettingsChanged?: (entries: InvalidSettingEntry[]) => void;
+	private readonly onInvalidSettingsChanged?: (
+		entries: Pick<InvalidSettingEntry, "path" | "issues">[],
+	) => void;
 	private readonly stateDir: string;
 	private readonly secretStore?: SecretStore;
 	private secretBag: ConfigSecrets = {};
@@ -920,7 +924,8 @@ class NodeConfigStore implements ConfigStore {
 	private readonly integrationSettings = new Map<string, unknown>();
 	/**
 	 * 各集成的设置里读盘时被隔离的格:内存里是默认值、盘上原文落盘时放回,按集成的键。与
-	 * {@link integrationUnreadable} 互斥。`raw` 可能带密钥,不许出仓(读口只在 {@link readIntegrationSettings})。
+	 * {@link integrationUnreadable} 互斥。原文供 {@link readIntegrationSettings} 与原样落盘用；
+	 * 对外经 {@link getInvalidIntegrationSettings} 投影,密钥格的原文不出门。
 	 */
 	private readonly integrationInvalid = new Map<string, InvalidSettingEntry[]>();
 	/** 整个文件读不懂(不是合法 JSON、顶层不是对象)的集成设置,按集成的键;内存里是整段默认值,文件不动。 */
@@ -1326,8 +1331,44 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.globals);
 	}
 
-	getInvalidSettings(): InvalidSettingEntry[] {
-		return deepClone(this.invalidSettings);
+	getInvalidSettings(): (InvalidSettingView & { path: string[] })[] {
+		return this.invalidSettings.map((entry) => {
+			let schema: unknown = GlobalConfigSchema;
+			for (const key of entry.path) {
+				const node = schema as {
+					shape?: Record<string, unknown>;
+					unwrap?: () => unknown;
+					valueType?: unknown;
+				};
+				const unwrapped = node.unwrap ? (node.unwrap() as typeof node) : node;
+				schema = unwrapped.shape?.[key] ?? unwrapped.valueType;
+			}
+			return invalidSettingView(schema, entry);
+		});
+	}
+
+	getInvalidIntegrationSettings(key: string): InvalidSettingView[] {
+		const segment = this.segments.get(key);
+		if (!segment) throw new Error(`Unregistered settings segment: ${key}`);
+		if (this.integrationUnreadable.has(key)) {
+			return [
+				invalidSettingView(undefined, { path: [], issues: [], raw: undefined, missing: false }),
+			];
+		}
+		return (this.integrationInvalid.get(key) ?? []).map((entry) =>
+			invalidSettingView(segment.schema.shape[entry.path[0] ?? ""], entry),
+		);
+	}
+
+	getInvalidSettingsPaths(): string[][] {
+		return [
+			...this.invalidSettings.map((entry) => ["core", ...entry.path]),
+			...Array.from(this.segments.keys()).flatMap((key) =>
+				this.integrationUnreadable.has(key)
+					? [[key]]
+					: (this.integrationInvalid.get(key) ?? []).map((entry) => [key, ...entry.path]),
+			),
+		];
 	}
 
 	readIntegrationSettings(key: string): Result<{ settings: unknown }> {
@@ -1487,7 +1528,9 @@ class NodeConfigStore implements ConfigStore {
 	/** 通知组装处坏格表现在的样子。 */
 	private notifyInvalidSettings(): void {
 		try {
-			this.onInvalidSettingsChanged?.(this.getInvalidSettings());
+			this.onInvalidSettingsChanged?.(
+				this.getInvalidSettings().map(({ path, issues }) => ({ path, issues })),
+			);
 		} catch (err) {
 			this.serviceCtx.logger.warn(`[config] 通知核心设置的坏格表失败: ${errorMessageOf(err)}`);
 		}

@@ -1,3 +1,4 @@
+import type { InvalidSettingsResponse } from "@bilibili-notify/contract";
 /**
  * `/api/settings` 的线上形状(第 4 期 4-08):核心那份挂在 `core` 下,各集成的设置挂在自己的键下,GET 与 PATCH
  * 同一个形状。PATCH 顶层只认 `core` 与登记过的集成键 —— 老面板(核心平铺在顶层)整份写回会被拒,不会被当成
@@ -6,7 +7,7 @@
  * 跑真 app + 真 store。
  */
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -53,6 +54,28 @@ describe("/api/settings 的形状", () => {
 	}
 
 	const coreFile = () => join(dataDir, ...CORE_SETTINGS_FILE);
+
+	it("GET invalid exposes prefixed public raw cells with no-store", async () => {
+		await mkdir(join(coreFile(), ".."), { recursive: true });
+		await writeFile(coreFile(), JSON.stringify({ history: { retentionDays: 45 } }));
+		const { runtime, app } = await boot();
+		try {
+			const response = await app.request("/api/settings/invalid");
+			expect(response.status).toBe(200);
+			expect(response.headers.get("cache-control")).toBe("no-store");
+			expect(((await response.json()) as InvalidSettingsResponse).entries).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						path: ["core", "history"],
+						secret: false,
+						raw: { retentionDays: 45 },
+					}),
+				]),
+			);
+		} finally {
+			await runtime.dispose();
+		}
+	});
 
 	it("GET:顶层只有 `core` 与各集成的键,核心的键都在 `core` 下", async () => {
 		const { runtime, app } = await boot();

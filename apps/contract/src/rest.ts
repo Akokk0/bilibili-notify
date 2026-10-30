@@ -342,6 +342,24 @@ export type SettingsResponse = { readonly core: GlobalConfigView } & {
 	readonly [integrationKey: string]: unknown;
 };
 
+/** A quarantined setting cell. Secret-bearing cells carry no representation of their value. */
+export type InvalidSettingView = {
+	path: (string | number)[];
+	issues: Issue[];
+} & (
+	| { secret: true; raw?: never; missing?: never }
+	| { secret: false; raw: unknown; missing: boolean }
+);
+
+export interface InvalidSettingsResponse {
+	entries: InvalidSettingView[];
+}
+
+/** Paths exported using effective defaults; no original values or validation text. */
+export interface BackupExportPreviewResponse {
+	defaultedSettings: (string | number)[][];
+}
+
 /** `GET /api/ext/:id/settings`。 */
 export interface ExtensionSettingsResponse {
 	/**

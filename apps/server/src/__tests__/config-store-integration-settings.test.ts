@@ -16,9 +16,15 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ConfigScope, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import {
+	type ConfigScope,
+	type MessageBus,
+	markSecret,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { createBackupService } from "../backup/service.js";
 import { BUILTIN_INTEGRATION_SETTINGS } from "../compose.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import {
@@ -30,6 +36,7 @@ import {
 	integrationSettingsFile,
 } from "../config/store.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 
 // ---------------------------------------------------------------------------
 // 测试用的两个小集成
@@ -137,6 +144,43 @@ async function placeFile(path: string, content: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // 读盘
 // ---------------------------------------------------------------------------
+
+describe("safe invalid integration views", () => {
+	it("projects public raw cells, hides nested array secrets, and previews unreadable segments by path only", async () => {
+		const token = "keep-this-token-private";
+		const schema = z.object({
+			count: z.number().default(0),
+			links: z.array(z.object({ token: markSecret(z.string()), n: z.number() })).default([]),
+		});
+		const original = JSON.stringify({ count: "no", links: [{ token, n: "bad" }] });
+		await placeFile(pokeFile(), original);
+		await placeFile(otherFile(), "{broken");
+		const store = await open([{ key: "poke", schema }, otherSegment]);
+		const entries = store.getInvalidIntegrationSettings("poke");
+		expect(entries[0]).toMatchObject({ path: ["count"], raw: "no", secret: false });
+		expect(entries[1]).toMatchObject({ path: ["links"], secret: true });
+		expect(entries[1]).not.toHaveProperty("raw");
+		expect(JSON.stringify(entries)).not.toContain(token);
+		expect(store.getInvalidSettingsPaths()).toEqual([
+			["poke", "count"],
+			["poke", "links"],
+			["other"],
+		]);
+		expect(await readFile(pokeFile(), "utf8")).toBe(original);
+		const backup = createBackupService({
+			configStore: store,
+			integrationSecrets: fakeIntegrationSecrets(),
+		});
+		expect(backup.previewExport()).toEqual({
+			defaultedSettings: [["poke", "count"], ["poke", "links"], ["other"]],
+		});
+		const exported = await backup.exportBackup({ kind: "sanitized" });
+		expect(exported.sections.integrations?.poke).toEqual({ count: 0, links: [] });
+		expect(JSON.stringify(exported)).not.toContain(token);
+		await store.patchSettings({ core: { mutedUntil: 42 } });
+		expect(JSON.parse(await readFile(pokeFile(), "utf8"))).toEqual(JSON.parse(original));
+	});
+});
 
 describe("集成设置 — load", () => {
 	it("文件不存在 → 按格式的默认值建一份 config/settings/<键>.json,内存里也是默认值", async () => {

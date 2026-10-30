@@ -1,4 +1,4 @@
-import type { ImportResult } from "@bilibili-notify/contract";
+import type { BackupExportPreviewResponse, ImportResult } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	GlobalConfig,
@@ -41,6 +41,7 @@ import { redactBackupSections } from "./sanitize.js";
 
 /** The slice of `ConfigStore` the backup service depends on. */
 export interface BackupStore {
+	getInvalidSettingsPaths(): string[][];
 	getGlobals(): GlobalConfig;
 	getAllIntegrationSettings(): Record<string, unknown>;
 	getAllExtensionSettings(): Record<string, unknown>;
@@ -119,6 +120,7 @@ interface ImportOptions {
 // ImportResult 在 @bilibili-notify/contract(web 同源消费)。
 
 export interface BackupService {
+	previewExport(): BackupExportPreviewResponse;
 	exportBackup(opts: ExportOptions): Promise<BackupEnvelope>;
 	importBackup(opts: ImportOptions): Promise<ImportResult>;
 }
@@ -279,5 +281,11 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		return result;
 	}
 
-	return { exportBackup, importBackup };
+	return {
+		exportBackup,
+		importBackup,
+		previewExport: () => ({
+			defaultedSettings: structuredClone(deps.configStore.getInvalidSettingsPaths()),
+		}),
+	};
 }

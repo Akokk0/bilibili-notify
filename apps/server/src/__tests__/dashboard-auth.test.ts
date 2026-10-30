@@ -31,6 +31,40 @@ describe("dashboard cookie auth", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
+	it.each([
+		"/api/settings/invalid",
+		"/api/ext/not-installed/settings/invalid",
+		"/api/system/backup/preview",
+	])("invalid settings readers share cookie and desktop auth: %s", async (path) => {
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
+		await runtime.configStore.load();
+		try {
+			const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
+			const shared = { cardSkins: { store: createCardSkinStore(runtime.dataRoot) } };
+			const app = createApp(runtime, {
+				...shared,
+				basicAuthCredentials: CREDS,
+				sessionCodec: codec,
+			});
+			expect((await app.request(path)).status).toBe(401);
+			expect(
+				(await app.request(path, { headers: { Cookie: `bn_session=${codec.sign()}` } })).status,
+			).not.toBe(401);
+			const desktop = createApp(runtime, { ...shared, desktopToken: "desktop-secret" });
+			expect((await desktop.request(path)).status).toBe(401);
+			expect(
+				(await desktop.request(path, { headers: { "x-bn-desktop-token": "desktop-secret" } }))
+					.status,
+			).not.toBe(401);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	it("auth configured: no cookie → 401 without WWW-Authenticate", async () => {
 		const runtime = createAppRuntime(
 			makeBootstrap(dataDir),

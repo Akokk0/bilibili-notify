@@ -20,6 +20,7 @@ import type {
 	ExtensionSettingsIssue,
 	ExtensionSettingsResponse,
 	ExtensionSettingsWriteResponse,
+	InvalidSettingsResponse,
 } from "@bilibili-notify/contract";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
@@ -178,13 +179,14 @@ async function plant(manifest: { id: string }): Promise<void> {
 async function boot(opts: {
 	running: boolean;
 	settings?: unknown;
+	manifest?: typeof DOUYIN;
 	state?: "running" | "disabled" | "settings-invalid";
 	/** 拓展交的 zod,缺省是 {@link DOUYIN_ZOD}。 */
 	zod?: z.ZodType;
 	/** 开机前就躺在盘上的抖音设置文件原文(可以不是合法 JSON)。 */
 	rawFile?: string;
 }) {
-	await plant(DOUYIN);
+	await plant(opts.manifest ?? DOUYIN);
 	await plant(OLD_V1);
 	await plant(BARE_V2);
 	const rt = createAppRuntime(
@@ -264,6 +266,7 @@ async function boot(opts: {
 	const settingsFrames = () =>
 		frames.filter((frame) => frame.event === "extension-settings-changed");
 	return {
+		app,
 		get,
 		patch,
 		stored,
@@ -297,6 +300,121 @@ async function failureOf(res: Response): Promise<ErrorResponse> {
 	expect(body.message).not.toBe("");
 	return body;
 }
+
+describe("GET /api/ext/:id/settings/invalid", () => {
+	it.each([
+		"wrong",
+		[{ id: "bridge-1", name: "", bridgeKind: "koishi", token: TOKEN, enabled: true }],
+	])("uses the real bridge manifest token declaration for malformed lists: %j", async (links) => {
+		const bridge = JSON.parse(
+			await readFile(
+				new URL("../../../../../extensions/bridge/dist/extension.json", import.meta.url),
+				"utf8",
+			),
+		);
+		const h = await boot({
+			running: false,
+			settings: { links },
+			manifest: { ...bridge, id: "douyin" },
+		});
+		const response = await h.app.request("/api/ext/douyin/settings/invalid");
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as InvalidSettingsResponse;
+		expect(body.entries).toEqual([expect.objectContaining({ path: ["links"], secret: true })]);
+		expect(body.entries[0]).not.toHaveProperty("raw");
+		expect(JSON.stringify(body)).not.toContain(TOKEN);
+		expect(((await (await h.get()).json()) as ExtensionSettingsResponse).values).not.toHaveProperty(
+			"links",
+		);
+	});
+
+	it("keeps async custom validation text out of reasons even for a public bad cell", async () => {
+		const h = await boot({
+			running: true,
+			state: "settings-invalid",
+			settings: { interval: 91 },
+			zod: DOUYIN_ZOD.refine(async () => false, { message: TOKEN, path: ["interval"] }),
+		});
+		const response = await h.app.request("/api/ext/douyin/settings/invalid");
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as InvalidSettingsResponse;
+		expect(body.entries[0]).toMatchObject({ path: ["interval"], raw: 91, secret: false });
+		expect(JSON.stringify(body)).not.toContain(TOKEN);
+	});
+
+	it.each(["public-original", null, ["public"]])(
+		"returns the original malformed root when the extension declares only public settings: %j",
+		async (stored) => {
+			const h = await boot({
+				running: false,
+				settings: stored,
+				manifest: {
+					...DOUYIN,
+					settings: { fields: DOUYIN.settings.fields.filter((field) => field.key === "interval") },
+				},
+			});
+			const response = await h.app.request("/api/ext/douyin/settings/invalid");
+			expect(response.status).toBe(200);
+			const body = (await response.json()) as InvalidSettingsResponse;
+			expect(body.entries).toEqual([
+				expect.objectContaining({ path: [], secret: false, raw: stored, missing: false }),
+			]);
+		},
+	);
+
+	it("validator exceptions return unavailable without their secret-bearing text", async () => {
+		let broken = false;
+		const h = await boot({
+			running: true,
+			settings: { interval: 90 },
+			zod: DOUYIN_ZOD.refine(() => {
+				if (broken) throw new Error(TOKEN);
+				return true;
+			}),
+		});
+		broken = true;
+		const response = await h.app.request("/api/ext/douyin/settings/invalid");
+		expect(response.status).toBe(503);
+		const body = await response.text();
+		expect(JSON.parse(body)).toMatchObject({ code: "unavailable" });
+		expect(body).not.toContain(TOKEN);
+	});
+
+	it("unreadable JSON exposes only a safe root issue", async () => {
+		const h = await boot({
+			running: true,
+			state: "settings-invalid",
+			rawFile: `{broken ${TOKEN}`,
+		});
+		const body = (await (
+			await h.app.request("/api/ext/douyin/settings/invalid")
+		).json()) as InvalidSettingsResponse;
+		expect(body.entries).toEqual([expect.objectContaining({ path: [], secret: true })]);
+		expect(body.entries[0]).not.toHaveProperty("raw");
+		expect(JSON.stringify(body)).not.toContain(TOKEN);
+	});
+
+	it.each(["not-a-list", [{ id: "one", name: "", token: TOKEN, enabled: true }]])(
+		"keeps an entire secret-bearing bridge list private: %j",
+		async (links) => {
+			const h = await boot({ running: false, settings: { interval: "slow", links } });
+			const response = await h.app.request("/api/ext/douyin/settings/invalid");
+			expect(response.status).toBe(200);
+			const body = (await response.json()) as InvalidSettingsResponse;
+			expect(body.entries).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ path: ["interval"], raw: "slow", secret: false }),
+					expect.objectContaining({ path: ["links"], secret: true }),
+				]),
+			);
+			const badList = body.entries.find((entry) => entry.path[0] === "links");
+			expect(badList).not.toHaveProperty("raw");
+			expect(JSON.stringify(body)).not.toContain(TOKEN);
+			const existing = (await (await h.get()).json()) as ExtensionSettingsResponse;
+			expect(existing.values).not.toHaveProperty("links");
+		},
+	);
+});
 
 describe("GET /api/ext/:id/settings", () => {
 	it("密钥不下发原文:不到 24 位整段打点,24 位及以上只露头尾各四位;空串照旧是空串", async () => {
