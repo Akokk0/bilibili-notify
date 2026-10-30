@@ -4,6 +4,7 @@ import {
 	type Issue,
 	isSecretField,
 	type SettingsField,
+	secretMarkOf,
 	settingsValueSchema,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
@@ -59,17 +60,39 @@ export function invalidSettingView(
 		: { ...common, secret: false, raw: structuredClone(entry.raw), missing: entry.missing };
 }
 
-/** Top-level rules of an extension; unknown compositions deliberately fail closed. */
-function cellSchema(schema: ZodType, key: string): unknown {
-	let cursor: unknown = schema;
-	for (let depth = 0; depth < 16; depth++) {
-		const def = (cursor as { _zod?: { def?: Record<string, unknown> } })?._zod?.def;
-		if (!def) return schema;
-		if (def.type === "object") return (def.shape as Record<string, unknown>)[key];
-		cursor = def.innerType ?? (def.type === "pipe" ? def.out : undefined);
-		if (!cursor) return schema;
-	}
-	return schema;
+/** Retain every rule governing a cell, including marks on its ancestors. Never select by value. */
+function cellSchemas(schema: ZodType, key: string): unknown[] {
+	const visit = (node: unknown, ancestors: ReadonlySet<unknown>, depth: number): unknown[] => {
+		const mark = secretMarkOf(node);
+		if (mark && "secret" in mark) return [node];
+		if (depth > 32 || ancestors.has(node)) return [undefined];
+		const def = (node as { _zod?: { def?: Record<string, unknown> } })?._zod?.def;
+		if (!def) return [node];
+		const seen = new Set(ancestors).add(node);
+		const next = (child: unknown) => visit(child, seen, depth + 1);
+		if (def.innerType !== undefined) return next(def.innerType);
+		switch (def.type) {
+			case "pipe":
+				return [...next(def.in), ...next(def.out)];
+			case "union":
+				return (def.options as unknown[]).flatMap(next);
+			case "intersection":
+				return [...next(def.left), ...next(def.right)];
+			case "lazy":
+				return next((def.getter as () => unknown)());
+			case "object": {
+				const shape = def.shape as Record<string, unknown>;
+				if (Object.hasOwn(shape, key)) return [shape[key]];
+				const catchall = def.catchall as { _zod?: { def?: { type?: string } } } | undefined;
+				return catchall && catchall._zod?.def?.type !== "never" ? [catchall] : [];
+			}
+			case "record":
+				return [def.valueType];
+			default:
+				return [node];
+		}
+	};
+	return visit(schema, new Set(), 0);
 }
 
 /** Async refinements remain extension-owned; only safe, top-level cells cross this boundary. */
@@ -101,9 +124,7 @@ export async function extensionInvalidSettings(
 			isSecretField(candidate) ||
 			(candidate.type === "list" && candidate.fields.some(isSecretField));
 		const declaredSecret = key ? field && declaresSecret(field) : fields.some(declaresSecret);
-		const schemasForCell = key
-			? schemas.map((schema) => cellSchema(schema, key)).filter((schema) => schema !== undefined)
-			: schemas;
+		const schemasForCell = key ? schemas.flatMap((schema) => cellSchemas(schema, key)) : schemas;
 		const secret = Boolean(
 			declaredSecret ||
 				(key && !field && schemasForCell.length === 0) ||

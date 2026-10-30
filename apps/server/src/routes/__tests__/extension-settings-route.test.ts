@@ -22,7 +22,7 @@ import type {
 	ExtensionSettingsWriteResponse,
 	InvalidSettingsResponse,
 } from "@bilibili-notify/contract";
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { markSecret, type ServiceContext } from "@bilibili-notify/internal";
 import type { ExtensionContext } from "@bilibili-notify/internal/extension";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
@@ -179,10 +179,11 @@ async function plant(manifest: { id: string }): Promise<void> {
 async function boot(opts: {
 	running: boolean;
 	settings?: unknown;
-	manifest?: typeof DOUYIN;
+	manifest?: { id: string; [key: string]: unknown };
 	state?: "running" | "disabled" | "settings-invalid";
 	/** 拓展交的 zod,缺省是 {@link DOUYIN_ZOD}。 */
 	zod?: z.ZodType;
+	routeSchemas?: readonly z.ZodType[];
 	/** 开机前就躺在盘上的抖音设置文件原文(可以不是合法 JSON)。 */
 	rawFile?: string;
 }) {
@@ -250,7 +251,7 @@ async function boot(opts: {
 			mounts,
 			loaded: () => loader.list(),
 			status: (id) => loader.status(id),
-			settingsSchemas: (id) => loader.settingsSchemas(id),
+			settingsSchemas: (id) => opts.routeSchemas ?? loader.settingsSchemas(id),
 		},
 	});
 	const get = (id = "douyin") => app.request(`/api/ext/${id}/settings`);
@@ -302,6 +303,144 @@ async function failureOf(res: Response): Promise<ErrorResponse> {
 }
 
 describe("GET /api/ext/:id/settings/invalid", () => {
+	it.each(["invalid", "current"])(
+		"keeps pipe input leaf secrets private through the %s GET reader",
+		async (reader) => {
+			const token = "synthetic-private-token";
+			const schema = z
+				.object({ token: markSecret(z.string().min(50)) })
+				.pipe(z.object({ token: z.string() }));
+			const h = await boot({
+				running: false,
+				settings: { token },
+				routeSchemas: [schema],
+				manifest: {
+					...DOUYIN,
+					settings: { fields: [{ key: "token", type: "string", label: "Token" }] },
+				},
+			});
+			const response = await h.app.request(
+				`/api/ext/douyin/settings${reader === "invalid" ? "/invalid" : ""}`,
+			);
+			expect(response.status).toBe(200);
+			const text = await response.text();
+			expect(text).not.toContain(token);
+			if (reader === "invalid") {
+				const body = JSON.parse(text) as InvalidSettingsResponse;
+				expect(body.entries[0]).not.toHaveProperty("raw");
+				expect(body.entries[0]).toMatchObject({ path: ["token"], secret: true });
+			} else {
+				expect((JSON.parse(text) as ExtensionSettingsResponse).values).not.toHaveProperty("token");
+			}
+		},
+	);
+
+	it.each([
+		["root object", () => markSecret(z.object({ token: z.string().min(50) }))],
+		[
+			"root pipe",
+			() =>
+				markSecret(z.object({ token: z.string().min(50) }).pipe(z.object({ token: z.string() }))),
+		],
+		["wrapper", () => markSecret(z.object({ token: z.string().min(50) }).optional())],
+		["inside wrapper", () => markSecret(z.object({ token: z.string().min(50) })).optional()],
+		[
+			"pipe output",
+			() =>
+				z.object({ token: z.string().min(50) }).pipe(z.object({ token: markSecret(z.string()) })),
+		],
+		[
+			"union branch",
+			() =>
+				z
+					.union([z.object({ token: z.string() }), z.object({ token: markSecret(z.string()) })])
+					.superRefine((_, ctx) =>
+						ctx.addIssue({ code: "custom", path: ["token"], message: "invalid" }),
+					),
+		],
+		[
+			"intersection branch",
+			() =>
+				z.intersection(
+					z.object({ token: z.string().min(50) }),
+					z.object({ token: markSecret(z.string()) }),
+				),
+		],
+	])("retains ancestor and branch secret metadata: %s", async (_label, schema) => {
+		const token = "synthetic-private-token";
+		const h = await boot({
+			running: false,
+			settings: { token },
+			routeSchemas: [schema()],
+			manifest: {
+				...DOUYIN,
+				settings: { fields: [{ key: "token", type: "string", label: "Token" }] },
+			},
+		});
+		const response = await h.app.request("/api/ext/douyin/settings/invalid");
+		expect(response.status).toBe(200);
+		const text = await response.text();
+		expect(text).not.toContain(token);
+		const body = JSON.parse(text) as InvalidSettingsResponse;
+		expect(body.entries[0]).not.toHaveProperty("raw");
+		expect(body.entries[0]?.secret).toBe(true);
+		const current = await h.get();
+		expect(current.status).toBe(200);
+		expect(await current.text()).not.toContain(token);
+	});
+
+	it.each([
+		[
+			"public pipe",
+			() => z.object({ token: z.string().min(50) }).pipe(z.object({ token: z.string() })),
+		],
+		[
+			"pipe with secret sibling",
+			() =>
+				z
+					.object({ token: z.string().min(50), privateSibling: markSecret(z.string()).optional() })
+					.pipe(z.object({ token: z.string() })),
+		],
+		[
+			"union with secret siblings",
+			() =>
+				z
+					.union([
+						z.object({ token: z.string(), privateSibling: markSecret(z.string()).optional() }),
+						z.object({ token: z.string(), otherSecret: markSecret(z.string()).optional() }),
+					])
+					.superRefine((_, ctx) =>
+						ctx.addIssue({ code: "custom", path: ["token"], message: "invalid" }),
+					),
+		],
+		[
+			"intersection with secret sibling",
+			() =>
+				z.intersection(
+					z.object({ token: z.string().min(50) }),
+					z.object({ privateSibling: markSecret(z.string()).optional() }),
+				),
+		],
+	])("preserves public raw values without hiding unrelated cells: %s", async (_label, schema) => {
+		const token = "public-original";
+		const h = await boot({
+			running: false,
+			settings: { token },
+			routeSchemas: [schema()],
+			manifest: {
+				...DOUYIN,
+				settings: { fields: [{ key: "token", type: "string", label: "Token" }] },
+			},
+		});
+		const response = await h.app.request("/api/ext/douyin/settings/invalid");
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as InvalidSettingsResponse;
+		expect(body.entries[0]).toMatchObject({ path: ["token"], secret: false, raw: token });
+		const current = await h.get();
+		expect(current.status).toBe(200);
+		expect(((await current.json()) as ExtensionSettingsResponse).values.token).toBe(token);
+	});
+
 	it.each([
 		"wrong",
 		[{ id: "bridge-1", name: "", bridgeKind: "koishi", token: TOKEN, enabled: true }],
