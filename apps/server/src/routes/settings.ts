@@ -125,15 +125,13 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 function extensionSettingsWriteOf(patch: Record<string, unknown>): string | undefined {
 	if (!("extensions" in patch)) return undefined;
 	const table = patch.extensions;
-	const moved = (id: string) =>
-		`拓展设置不再经 /api/settings 写,改走 /api/ext/${id}/settings(按项写、带版本号)—— ` +
-		"这个面板多半是更新之前的旧版,刷新一下再改";
+	const moved = (id: string) => t("settings.extension.moved", { id });
 	if (typeof table !== "object" || table === null || Array.isArray(table)) {
-		return "拓展表不能经 /api/settings 整张替换或清掉 —— 开关逐个拨(extensions.<id>.enabled),设置走 /api/ext/<id>/settings";
+		return t("settings.extension.table");
 	}
 	for (const [id, slot] of Object.entries(table)) {
 		if (slot === null) {
-			return `拓展 ${id} 那一格不能经 /api/settings 整个清掉(连它的设置一起)—— 卸载走 DELETE /api/ext/${id}`;
+			return t("settings.extension.remove", { id });
 		}
 		if (typeof slot === "object" && "settings" in slot) return moved(id);
 	}
@@ -320,10 +318,7 @@ export function shouldRunAiEnableCheck(
 async function checkCardEnable(puppeteer: PuppeteerAdapter | null): Promise<Result> {
 	if (!puppeteer) {
 		// 要主人先去配,等是等不好的。
-		return fail(
-			"not_configured",
-			"chromePath / chromeEndpoint 均未配置，无法启用卡片渲染。请在服务端 yaml 或环境变量（BN_CHROME_PATH 本地浏览器路径 / BN_CHROME_ENDPOINT 远程浏览器端点）中配置后重启。",
-		);
+		return fail("not_configured", t("settings.cards.chromeMissing"));
 	}
 	try {
 		const page = await puppeteer.page();
@@ -337,10 +332,7 @@ async function checkCardEnable(puppeteer: PuppeteerAdapter | null): Promise<Resu
 		// 探活的目的就是告诉主人「为什么起不来」,所以底层的话(err.message)留在 message 里;
 		// 分不清是路径配错还是浏览器一时起不来,按「暂时不可用」回。
 		const detail = err instanceof Error ? err.message : String(err);
-		return fail(
-			"unavailable",
-			`puppeteer 启动失败：${detail}。请确认 chromePath 指向可执行的 Chromium / Chrome 二进制，或 chromeEndpoint 指向可达的远程浏览器。`,
-		);
+		return fail("unavailable", t("settings.cards.chromeFailed", { detail }));
 	}
 }
 

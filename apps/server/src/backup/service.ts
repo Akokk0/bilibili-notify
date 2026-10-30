@@ -9,6 +9,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
 import { describeDuplicate } from "../config/store.js";
+import { t } from "../i18n/index.js";
 import type { IntegrationStore } from "../integration-store/store.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
@@ -65,7 +66,7 @@ export type BackupIntegrationSecrets = Pick<
 >;
 
 /** 备份里有、但这个集成现在没开着(没在运行)时回执里的话。 */
-const NOT_RUNNING_MESSAGE = "这个集成现在没在运行";
+const notRunningMessage = () => t("backup.integrationNotRunning");
 
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
@@ -145,7 +146,7 @@ function assertNoDuplicateInBackup(
 	if (!dup) return;
 	throw new BackupRejectedError(
 		"invalid",
-		`备份里同一个人有不止一条订阅：${describeDuplicate(dup)}。同一个人只能有一条订阅，整份没有恢复 —— 回原来那台机器删掉多余的那条，重新导出再恢复`,
+		t("backup.duplicateSubscription", { identity: describeDuplicate(dup) }),
 	);
 }
 
@@ -253,7 +254,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const result: SecretsRestoreResult = { restoredIntegrations: [], unrestoredIntegrations: [] };
 		for (const key of Object.keys(bags)) {
 			if (deps.integrationSecrets.isOpen(key)) result.restoredIntegrations.push(key);
-			else result.unrestoredIntegrations.push({ key, message: NOT_RUNNING_MESSAGE });
+			else result.unrestoredIntegrations.push({ key, message: notRunningMessage() });
 		}
 		return result;
 	}
@@ -268,7 +269,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const result: SecretsRestoreResult = { restoredIntegrations: [], unrestoredIntegrations: [] };
 		for (const [key, entries] of Object.entries(bags)) {
 			if (!deps.integrationSecrets.isOpen(key)) {
-				result.unrestoredIntegrations.push({ key, message: NOT_RUNNING_MESSAGE });
+				result.unrestoredIntegrations.push({ key, message: notRunningMessage() });
 				continue;
 			}
 			const restored = await deps.integrationSecrets.restoreSecrets(key, entries);

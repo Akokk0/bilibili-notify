@@ -375,7 +375,10 @@ describe("GET /api/ext/:id/settings", () => {
 		const h = await boot({ running: false });
 		const read = await h.get("Bad_ID");
 		expect(read.status).toBe(400);
-		expect(await failureOf(read)).toEqual({ code: "invalid", message: "拓展 id 不合规矩" });
+		expect(await failureOf(read)).toEqual({
+			code: "invalid",
+			message: "主人，这个拓展 id 不合规矩。",
+		});
 		const write = await h.patch(
 			{ revision: "x", ops: [{ op: "set", key: "interval", value: 90 }] },
 			"Bad_ID",
@@ -396,7 +399,7 @@ describe("PATCH /api/ext/:id/settings —— 版本号", () => {
 		const body = await res.json();
 		expect(body).toEqual({
 			code: "conflict",
-			message: "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉",
+			message: "主人，设置在你打开后被改过了，请重新读一遍再改，别盖掉刚保存的内容。",
 		});
 		expect(body).not.toHaveProperty("revision");
 		expect(h.stored()).toEqual({ interval: 90 });
@@ -572,7 +575,7 @@ describe("PATCH /api/ext/:id/settings —— 400 点名到那一格,一个字都
 		const body = await failureOf(res);
 		expect(body.code).toBe("invalid");
 		// message 一句概括;逐条原因(路径 + op)在 issues 里,面板据此标红。
-		expect(body.message).toBe("拓展设置没通过检查（共 1 条）");
+		expect(body.message).toBe("主人，拓展设置没通过检查，共 1 条，请看看对应的格子。");
 		expect(issuesOf(body)).toEqual([expect.objectContaining(expected)]);
 		expect(h.stored()).toEqual(before);
 		expect(h.settingsFrames()).toEqual([]);
@@ -679,8 +682,7 @@ describe("PATCH /api/ext/:id/settings —— 拓展在跑时再过它自己的 z
 		expect(res.status).toBe(503);
 		expect(await failureOf(res)).toEqual({
 			code: "unavailable",
-			message:
-				"拓展 douyin 自己的设置校验抛了(不是「不合规矩」,是它的代码出错):校验里访问了 undefined",
+			message: "主人，拓展 douyin 的设置校验代码出错了：校验里访问了 undefined",
 		});
 		expect(h.stored()).toEqual({ interval: 90 });
 		expect(h.settingsFrames()).toEqual([]);

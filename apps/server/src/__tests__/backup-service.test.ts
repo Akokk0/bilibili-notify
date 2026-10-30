@@ -341,7 +341,7 @@ describe("BackupService", () => {
 
 			expect(result.restoredIntegrations.sort()).toEqual(["bilibili", "onebot"]);
 			expect(result.unrestoredIntegrations).toEqual([
-				{ key: "some-ext", message: "这个集成现在没在运行" },
+				{ key: "some-ext", message: "主人，这个集成现在没在运行。" },
 			]);
 			// 没开着的那一个根本没去叫恢复。
 			expect(target.restoreSecrets).not.toHaveBeenCalledWith("some-ext", expect.anything());
@@ -462,7 +462,7 @@ describe("BackupService", () => {
 		// 演练只按「开着没有」分两堆:开着的会恢复、没开的会没带回来。
 		expect(planned.restoredIntegrations).toEqual(["bilibili"]);
 		expect(planned.unrestoredIntegrations).toEqual([
-			{ key: "onebot", message: "这个集成现在没在运行" },
+			{ key: "onebot", message: "主人，这个集成现在没在运行。" },
 		]);
 		expect(store.replaceSections).not.toHaveBeenCalled();
 		expect(target.restoreSecrets).not.toHaveBeenCalled();

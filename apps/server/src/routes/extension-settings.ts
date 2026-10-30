@@ -23,6 +23,7 @@ import {
 	newExtensionIssues,
 	settingsRevision,
 } from "../extensions/settings-io.js";
+import { t } from "../i18n/index.js";
 import { respondFailure } from "./respond-failure.js";
 
 export interface ExtensionSettingsRouteOptions {
@@ -65,7 +66,7 @@ const PatchSchema = z
 				ctx.addIssue({
 					code: "custom",
 					path: ["ops", i, "value"],
-					message: "set 要带 value(清掉那一格用 null)",
+					message: t("extension.settings.valueRequired"),
 				});
 			}
 		});
@@ -87,16 +88,16 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 	/** 这个 id 有没有一份能照着管的设置声明 —— 没有的每一种都说清为什么。 */
 	function resolve(raw: string): Resolved {
 		const parsed = ExtensionIdSchema.safeParse(raw);
-		if (!parsed.success) return fail("invalid", "拓展 id 不合规矩");
+		if (!parsed.success) return fail("invalid", t("extension.settings.invalidId"));
 		const id = parsed.data;
 		const entry = opts.extensions().find((candidate) => candidate.id === id);
-		if (!entry) return fail("not_found", `没有装名叫 ${id} 的拓展`);
+		if (!entry) return fail("not_found", t("extension.settings.notInstalled", { id }));
 		const { manifest } = entry;
 		if (!manifest) {
-			return fail("not_found", `拓展 ${id} 的清单读不出来(或版本不合),没有能照着管的设置项`);
+			return fail("not_found", t("extension.settings.manifestUnavailable", { id }));
 		}
 		const fields = manifest.settings?.fields ?? [];
-		if (fields.length === 0) return fail("not_found", `拓展 ${id} 的清单里没声明设置项`);
+		if (fields.length === 0) return fail("not_found", t("extension.settings.noFields", { id }));
 		return ok({ id, fields });
 	}
 
@@ -104,15 +105,14 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 	 * 版本号对不上:只说这句话,不带现在的版本号 —— 面板据 `code` 重读一遍(GET 里有现在的)再改,
 	 * 而不是把别人刚写的盖掉。
 	 */
-	const conflict = () =>
-		fail("conflict", "设置在你打开之后被改过了 —— 重新读一遍再改,别把刚写进去的盖掉");
+	const conflict = () => fail("conflict", t("extension.settings.conflict"));
 
 	/**
 	 * 校验不过:`message` 一句概括,逐条原因放 `issues`(每条 `{ path, message, op? }`)—— 面板按
 	 * `path` 逐格标红,`op` 认得出是这次写的第几步惹的。一条也要放:没有 `path` 面板落不到那一格。
 	 */
 	const invalid = (issues: ExtensionSettingsIssue[]) =>
-		fail("invalid", `拓展设置没通过检查（共 ${issues.length} 条）`, { issues });
+		fail("invalid", t("extension.settings.invalid", { count: issues.length }), { issues });
 
 	/** 下发的那一份:密钥遮着,带版本号。GET 与 PATCH 的回应共用这一段,两边不许说成两种样子。 */
 	function view(fields: readonly SettingsField[], stored: unknown) {
@@ -138,9 +138,15 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 			// 请求体本身不成形(面板不会发这样的)。zod 自己的字段不往外甩:只留路径与原话。
 			return respondFailure(
 				c,
-				fail("invalid", `请求体不合规矩：${formatZodIssues(parsed.error).join(";")}`, {
-					issues: issuesFromZod(parsed.error),
-				}),
+				fail(
+					"invalid",
+					t("extension.settings.requestInvalid", {
+						detail: formatZodIssues(parsed.error).join(";"),
+					}),
+					{
+						issues: issuesFromZod(parsed.error),
+					},
+				),
 			);
 		}
 		const { revision, ops } = parsed.data;
@@ -167,10 +173,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 				const reason = err instanceof Error ? err.message : String(err);
 				return respondFailure(
 					c,
-					fail(
-						"unavailable",
-						`拓展 ${id} 自己的设置校验抛了(不是「不合规矩」,是它的代码出错):${reason}`,
-					),
+					fail("unavailable", t("extension.settings.validatorFailed", { id, reason })),
 				);
 			}
 			if (fresh.length > 0) {

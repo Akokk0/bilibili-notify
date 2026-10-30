@@ -5,6 +5,7 @@ import { BACKUP_PIN_REQUIRED_MESSAGE, BackupRejectedError } from "../backup/reje
 import type { ImportMode } from "../backup/restore.js";
 import type { BackupService, SectionSelection } from "../backup/service.js";
 import { ConfigValidationError } from "../config/validation-error.js";
+import { t } from "../i18n/index.js";
 import { readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 
@@ -32,7 +33,7 @@ function failureOfBackupError(err: unknown): Failure | null {
 	if (err instanceof ConfigValidationError) {
 		// 恢复是「先全量校验再一次落地」,校验没过就什么都没写 —— 话里要说清这一点。
 		const { code, message, issues } = err.toFailure();
-		return fail(code, `备份里的配置没通过校验，整份没有恢复：${message}`, issues ? { issues } : {});
+		return fail(code, t("backup.configInvalid", { message }), issues ? { issues } : {});
 	}
 	return null;
 }
@@ -46,7 +47,7 @@ export function createSystemBackupRoute(opts: { service: BackupService }): Hono 
 		const body = read.body as { kind?: unknown; sections?: SectionSelection; pin?: unknown };
 		const kind = body.kind;
 		if (kind !== "full" && kind !== "sanitized") {
-			return respondFailure(c, fail("invalid", "kind 只能是 full 或 sanitized"));
+			return respondFailure(c, fail("invalid", t("backup.invalidKind")));
 		}
 		const pin = typeof body.pin === "string" ? body.pin : undefined;
 		if (kind === "full" && !pin)
@@ -67,7 +68,7 @@ export function createSystemBackupRoute(opts: { service: BackupService }): Hono 
 		const body = read.body as { backup?: unknown; pin?: unknown; mode?: unknown; dryRun?: unknown };
 		const mode = body.mode;
 		if (mode !== "overwrite" && mode !== "merge") {
-			return respondFailure(c, fail("invalid", "mode 只能是 overwrite 或 merge"));
+			return respondFailure(c, fail("invalid", t("backup.invalidMode")));
 		}
 		let envelope: ReturnType<typeof validateBackup>;
 		try {
