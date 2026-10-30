@@ -36,6 +36,6 @@ describe("timezone 在核心设置里", () => {
 		const parsed = GlobalConfigSchema.safeParse(withSettings({ timezone: "Mars/Base" }));
 		expect(parsed.success).toBe(false);
 		const issue = parsed.error?.issues.find((candidate) => candidate.path[0] === "timezone");
-		expect(issue?.message).toBe("不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai");
+		expect(issue?.message).toBe("主人，请填认得的 IANA 时区名，比如 Asia/Shanghai 哦。");
 	});
 });
