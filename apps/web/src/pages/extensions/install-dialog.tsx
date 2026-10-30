@@ -1,5 +1,6 @@
 import { Btn, HintNote, ModalShell, MonoChip, Pill } from "@bilibili-notify/ui";
 import { useExtensions } from "../../hooks/useExtensions";
+import { useT } from "../../i18n";
 import { CopyControl } from "./declarative/parts";
 import { ExtensionInstallSlot } from "./install-slot";
 
@@ -18,23 +19,26 @@ import { ExtensionInstallSlot } from "./install-slot";
  * 那种服务端用的正是老位置。
  */
 export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
+	const t = useT();
 	// 与拓展页同一个键,弹窗是从那一页开的,这一口通常已经在缓存里。
 	const root = useExtensions().data?.root;
 	return (
 		<ModalShell
 			width={540}
 			onCancel={onClose}
-			title="装一个拓展"
-			description="拓展给 BN 接上外面的东西 —— 比如把 koishi / AstrBot 里配好的机器人借过来当推送目标。它们不随 BN 一起发,装不装、装哪个由主人定。"
+			title={t("extensions.dialog.title")}
+			description={t("extensions.dialog.description")}
 			bodyClassName="px-5 pb-4 pt-4"
 		>
 			<div className="flex flex-col gap-3.5">
 				{/* 来路一:就在这儿传上来。新装的是热的 —— 装完当场跑起来,不用重启。 */}
 				<section className="flex flex-col gap-2.5">
 					<div className="flex items-center gap-2">
-						<span className="text-bn-xs font-bold text-bn-text-secondary">① 传一个包上来</span>
+						<span className="text-bn-xs font-bold text-bn-text-secondary">
+							{t("extensions.dialog.upload")}
+						</span>
 						<Pill subtle size="sm" color="var(--color-bn-success)">
-							现在能用
+							{t("extensions.dialog.available")}
 						</Pill>
 					</div>
 					<ExtensionInstallSlot />
@@ -43,40 +47,43 @@ export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
 				{/* 来路二:手放 —— 服务器上更顺手。 */}
 				<section className="flex flex-col gap-2.5 border-t border-bn-border-subtle pt-3.5">
 					<div className="flex items-center gap-2">
-						<span className="text-bn-xs font-bold text-bn-text-secondary">② 自己放进去</span>
+						<span className="text-bn-xs font-bold text-bn-text-secondary">
+							{t("extensions.dialog.manual")}
+						</span>
 						<Pill subtle size="sm" color="var(--color-bn-text-tertiary)">
-							服务器上更顺手
+							{t("extensions.dialog.server")}
 						</Pill>
 					</div>
 					<ol className="ml-4 list-decimal text-bn-xs leading-[1.7] text-bn-text-secondary">
 						<li>
-							拿到拓展包(一个目录,里头是 <span className="font-mono">extension.json</span> 与{" "}
+							{t("extensions.dialog.packageStart")}
+							<span className="font-mono">extension.json</span> {t("extensions.dialog.and")}{" "}
 							<span className="font-mono">index.mjs</span>)
 						</li>
 						{root ? (
 							<li>
-								整个放进下面这个目录里,包的目录名就是拓展 id:
+								{t("extensions.dialog.root")}
 								{/* 不拼 `/<拓展 id>/`:Windows 上这一串是反斜杠分隔的。路径要照抄,不截断。 */}
 								<div className="mt-1 flex items-center gap-1.5">
 									<MonoChip className="min-w-0 flex-1 break-all px-[9px] py-[5px]">{root}</MonoChip>
-									<CopyControl iconOnly label="复制拓展目录" text={root} />
+									<CopyControl iconOnly label={t("extensions.dialog.copyRoot")} text={root} />
 								</div>
 							</li>
 						) : (
 							<li>
-								整个放进{" "}
-								<span className="font-mono">&lt;dataDir&gt;/extensions/&lt;拓展 id&gt;/</span>
+								{t("extensions.dialog.fallbackStart")}{" "}
+								<span className="font-mono">{t("extensions.dialog.fallbackPath")}</span>
 							</li>
 						)}
 						<li>
-							重启 BN 一次 —— 它就出现在列表里,
-							<strong className="text-bn-text-primary">默认是关着的</strong>
-							(从①传上来的不用重启,当场就在)
+							{t("extensions.dialog.restart")}
+							<strong className="text-bn-text-primary">{t("extensions.dialog.disabled")}</strong>
+							{t("extensions.dialog.uploadNoRestart")}
 						</li>
 					</ol>
 					<p className="text-bn-2xs leading-[1.7] text-bn-text-tertiary">
-						目录名要和清单里的 <span className="font-mono">id</span> 一致,对不上会在列表里
-						列出来并说明原因。
+						{t("extensions.dialog.idStart")}
+						<span className="font-mono">id</span> {t("extensions.dialog.idEnd")}
 					</p>
 				</section>
 
@@ -88,18 +95,22 @@ export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
 				 */}
 				{import.meta.env.DEV ? (
 					<HintNote className="leading-[1.7]">
-						开发版不用自己动手:左下角 devtools 的
-						<strong className="text-bn-text-secondary">「拓展」</strong>那一组能把仓里构建好的{" "}
-						<span className="font-mono">dist</span> 装进来(软链,
-						<strong className="text-bn-text-secondary">装完当场就出现在列表里</strong>),
-						还能在改完代码之后<strong className="text-bn-text-secondary">重载</strong>
-						—— 换代码不必重启整个 server。
+						{t("extensions.dialog.devStart")}
+						<strong className="text-bn-text-secondary">{t("extensions.dialog.devGroup")}</strong>
+						{t("extensions.dialog.devBuild")} <span className="font-mono">dist</span>{" "}
+						{t("extensions.dialog.devLink")}
+						<strong className="text-bn-text-secondary">
+							{t("extensions.dialog.devImmediate")}
+						</strong>
+						{t("extensions.dialog.devReloadStart")}
+						<strong className="text-bn-text-secondary">{t("extensions.dialog.devReload")}</strong>
+						{t("extensions.dialog.devReloadEnd")}
 					</HintNote>
 				) : null}
 
 				<div className="flex justify-end pt-1">
 					<Btn variant="outline" size="md" onClick={onClose}>
-						关闭
+						{t("extensions.dialog.close")}
 					</Btn>
 				</div>
 			</div>

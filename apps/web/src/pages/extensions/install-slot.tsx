@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 /**
  * 拓展页上的「传一个包上来装」。
  *
@@ -33,6 +34,7 @@ export function ExtensionInstallSlot({
 	wait = DEFAULT_RESTART_WAIT,
 	className,
 }: ExtensionInstallSlotProps) {
+	const t = useT();
 	const qc = useQueryClient();
 	const [done, setDone] = useState<ExtensionInstallResponse | null>(null);
 	const [errors, setErrors] = useState<string[]>([]);
@@ -60,19 +62,22 @@ export function ExtensionInstallSlot({
 			<AddFileButton
 				accept=".zip,application/zip"
 				uploading={install.isPending}
-				uploadingLabel="正在装…"
+				uploadingLabel={t("extensions.upload.pending")}
 				onFile={(file) => file && install.mutate(file)}
 				// 圆角与 AddCard 同一档:它是一整块「空位」,不是行内那颗药丸。
 				className="flex flex-col justify-center gap-1 rounded-xl px-4 py-5 text-center"
 			>
-				<span className="text-bn-sm font-bold text-bn-text-secondary">传一个拓展包</span>
+				<span className="text-bn-sm font-bold text-bn-text-secondary">
+					{t("extensions.upload.title")}
+				</span>
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					一个 zip,里头是 extension.json 与 index.mjs。
-					<strong className="text-bn-text-secondary">只装信得过的包</strong> —— 它会在 BN 进程里跑。
+					{t("extensions.upload.package")}
+					<strong className="text-bn-text-secondary">{t("extensions.upload.trusted")}</strong>{" "}
+					{t("extensions.upload.code")}
 				</span>
 			</AddFileButton>
 
-			<InstallErrors lead="这个包装不了:" errors={errors} />
+			<InstallErrors lead={t("extensions.upload.failed")} errors={errors} />
 
 			<ExtensionInstallOutcome done={done} wait={wait} />
 		</div>

@@ -9,8 +9,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import Extensions from "../Extensions";
 import { type CardMotion, EXT_UPDATE_BUTTON, useCardMotionStore } from "../extensions/card-motion";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
 const { apiGetMock, apiPatchMock, apiPostMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),

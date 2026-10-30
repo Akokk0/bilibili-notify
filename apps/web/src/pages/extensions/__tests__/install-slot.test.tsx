@@ -23,6 +23,7 @@ vi.mock("../../../services/api", async (importOriginal) => ({
 }));
 
 import { useRestartStore } from "../../../components/update/restart";
+import { i18n } from "../../../i18n";
 import { ApiError, api } from "../../../services/api";
 import { ExtensionInstallSlot } from "../install-slot";
 
@@ -55,6 +56,7 @@ async function pick(container: HTMLElement): Promise<void> {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	useRestartStore.getState().dismiss();
 	vi.mocked(api.get).mockResolvedValue({ version: "0.10.1", startedAt: "OLD" });
 	vi.mocked(api.post).mockResolvedValue({ restarting: true, startedAt: "OLD", version: "0.10.1" });

@@ -21,6 +21,7 @@ vi.mock("../../../services/api", () => ({
 }));
 vi.mock("../../../utils/clipboard", () => ({ copyToClipboard: vi.fn(async () => true) }));
 
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { ExtensionInstallDialog } from "../install-dialog";
@@ -45,6 +46,7 @@ function renderDialog() {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.mocked(api.get).mockResolvedValue(listed({ root: ROOT }));
 });
 
