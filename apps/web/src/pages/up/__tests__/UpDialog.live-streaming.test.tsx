@@ -115,7 +115,7 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 
 	/** 来源表里抖音那一行(描述符取自清单)。 */
 	function source(descriptor: SourceEntry["descriptor"]): SourceEntry {
-		return { key: "douyin", descriptor };
+		return { key: "douyin", status: "running", descriptor };
 	}
 
 	function extSub(): Subscription {

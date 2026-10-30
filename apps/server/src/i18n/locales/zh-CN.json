@@ -1,4 +1,5 @@
 {
+	"health.sourceReadFailed": "状态摘要读取失败",
 	"adapters.auth.unsupported": "这种连接没有扫码建连接的办法",
 	"adapters.notRunning": "这种连接的适配器没在跑",
 	"bilibili.aiTools.upTotals": "查看数据概览",

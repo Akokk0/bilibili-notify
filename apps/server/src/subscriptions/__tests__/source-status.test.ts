@@ -8,6 +8,17 @@ const registerOn = async (registry: ReturnType<typeof createSourceRegistry>) =>
 	registry.register(SOURCE_KEY, makeSource(), makeIntegration() as any);
 
 describe("createSourceStatusReader", () => {
+	it("展示状态读宿主启动结论与拓展八档,未登记且无历史的来源明确未知", async () => {
+		const sources = createSourceRegistry();
+		const reader = createSourceStatusReader({
+			sources,
+			extensions: () => [{ id: "ext-a", state: "settings-invalid" }],
+		});
+		expect(reader.status("missing")).toBe("unknown");
+		expect(reader.status("ext-a")).toBe("settings-invalid");
+		await registerOn(sources);
+		expect(reader.status(SOURCE_KEY)).toBe("running");
+	});
 	it("登了 → 在跑;撤了 → 不在跑", async () => {
 		const sources = createSourceRegistry();
 		const reader = createSourceStatusReader({ sources });

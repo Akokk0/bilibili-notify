@@ -48,6 +48,7 @@ vi.mock("../../services/api", () => ({
 			// 作品那一类的叫法取来源表里的描述符。
 			if (url === "/api/sources") {
 				const douyin: SourceEntry = {
+					status: "running",
 					key: "douyin",
 					descriptor: {
 						label: "抖音",

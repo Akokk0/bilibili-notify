@@ -2,8 +2,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RunningHealthDetailsResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import serverPkg from "../../../package.json" with { type: "json" };
+import type { ExtensionEntry } from "../../extensions/loader.js";
+import { createProblemTable } from "../../problems/problem-table.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
+import { makeIntegration, makeLogger, makeSource } from "../../subscriptions/__tests__/fixtures.js";
+import { createSourceRegistry } from "../../subscriptions/registry.js";
 import { createHealthRoute, MODULE_VERSIONS, resolveAppVersion } from "../health.js";
 import type { RouteDeps } from "../types.js";
 
@@ -108,16 +114,312 @@ describe("GET /api/health — 回应的格子", () => {
 
 describe("GET /api/health/details — 回应的格子", () => {
 	const meta = { exists: true, lastUpdatedAt: "2026-10-28T00:00:00.000Z" };
-	function detailsApp(pipeline: unknown) {
+	function detailsApp(
+		pipeline: unknown,
+		scopeMeta: { exists: boolean; lastUpdatedAt: string | null } = meta,
+		runtimeOverrides: Partial<RouteDeps["runtime"]> = {},
+		storeOverrides: Partial<RouteDeps["store"]> = {},
+	) {
 		const store = {
-			getSubscriptions: () => [{ id: "s1" }, { id: "s2" }],
+			getSubscriptions: () => [
+				{ id: "s1", identity: { sourceKey: "demo", externalId: "1" } },
+				{ id: "s2", identity: { sourceKey: "demo", externalId: "2" } },
+			],
 			getTargets: () => [{ id: "t1" }],
-			getGlobalsMeta: () => meta,
-			getSubscriptionsMeta: () => meta,
-			getTargetsMeta: () => meta,
+			getConnections: () => [],
+			getGlobalsMeta: () => scopeMeta,
+			getSubscriptionsMeta: () => scopeMeta,
+			getTargetsMeta: () => scopeMeta,
+			...storeOverrides,
 		};
-		return createHealthRoute({ runtime: { pipeline }, store } as unknown as RouteDeps);
+		return createHealthRoute({
+			runtime: {
+				pipeline,
+				sourceRegistry: createSourceRegistry(),
+				adapterRegistry: createPlatformAdapterRegistry(),
+				problems: createProblemTable({ logger: makeLogger() }),
+				serviceCtx: { logger: makeLogger() },
+				subscriptionStateStore: { get: () => undefined },
+				...runtimeOverrides,
+			},
+			store,
+		} as unknown as RouteDeps);
 	}
+
+	it("核心固定五格;图片与AI的false只表达未就绪,没有落盘的默认配置仍可运行", async () => {
+		const app = detailsApp(
+			{ getModuleState: () => ({ dynamic: true, live: false, image: false, ai: false }) },
+			{ exists: false, lastUpdatedAt: null },
+		);
+		const body = (await (await app.request("/details")).json()) as RunningHealthDetailsResponse;
+		expect(body.core).toEqual({
+			problemCount: 0,
+			items: [
+				{ key: "storage", status: "running", light: "green", version: MODULE_VERSIONS.storage },
+				{
+					key: "subscription",
+					status: "running",
+					light: "green",
+					version: MODULE_VERSIONS.subscription,
+					count: 2,
+				},
+				{ key: "push", status: "running", light: "green", version: MODULE_VERSIONS.push, count: 1 },
+				{ key: "image", status: "not-ready", light: "gray", version: MODULE_VERSIONS.image },
+				{ key: "ai", status: "not-ready", light: "gray", version: MODULE_VERSIONS.ai },
+			],
+		});
+	});
+
+	it("多口拓展合一格,坏连接仍占格;问题只按reporter计一次,core不分摊,未知reporter仍在总数", async () => {
+		const sourceRegistry = createSourceRegistry();
+		await sourceRegistry.register("dual", makeSource(), makeIntegration() as never);
+		const problems = createProblemTable({ logger: makeLogger() });
+		problems.report({ reporter: "core", code: "settings_invalid", message: "core issue" });
+		problems.report({
+			reporter: "dual",
+			about: { subscriptionId: "s1" },
+			code: "fetch_failed",
+			message: "same text",
+		});
+		problems.report({
+			reporter: "dual",
+			about: { connectionId: "c1" },
+			code: "fetch_failed",
+			message: "same text",
+		});
+		problems.report({ reporter: "gone", code: "fetch_failed", message: "orphan" });
+		const descriptor = { label: "Push", shortLabel: "P", color: "#112233" };
+		const entries: ExtensionEntry[] = [
+			{
+				id: "dual",
+				state: "running",
+				dir: "/unused/dual",
+				manifest: {
+					id: "dual",
+					name: "Dual",
+					contributes: {
+						subscription: { label: "Source", supportedFeatures: ["post"] },
+						push: descriptor,
+					},
+				} as never,
+			},
+			{
+				id: "empty",
+				state: "disabled",
+				dir: "/unused/empty",
+				manifest: { id: "empty", name: "Empty", contributes: { push: descriptor } } as never,
+			},
+			{
+				id: "bad",
+				state: "settings-invalid",
+				dir: "/unused/bad",
+				detail: "invalid settings",
+				manifest: { id: "bad", name: "Bad", contributes: { push: descriptor } } as never,
+			},
+		];
+		const app = createHealthRoute(
+			{
+				runtime: {
+					sourceRegistry,
+					adapterRegistry: createPlatformAdapterRegistry(),
+					problems,
+					pipeline: null,
+					serviceCtx: { logger: makeLogger() },
+					subscriptionStateStore: { get: () => undefined },
+				},
+				store: {
+					getSubscriptions: () => [],
+					getTargets: () => [],
+					getConnections: () => [
+						{ id: "c1", adapterKey: "dual" },
+						{ id: "c2", adapterKey: "bad", settings: {} },
+					],
+					getGlobalsMeta: () => meta,
+					getSubscriptionsMeta: () => meta,
+					getTargetsMeta: () => meta,
+				},
+			} as unknown as RouteDeps,
+			{ extensions: () => entries },
+		);
+		try {
+			const body = (await (await app.request("/details")).json()) as RunningHealthDetailsResponse;
+			expect(body.problemCount).toBe(4);
+			expect(body.core.problemCount).toBe(1);
+			expect(body.core.items.every((item) => !("problemCount" in item))).toBe(true);
+			expect(body.integrations).toHaveLength(2);
+			expect(body.integrations[0]?.descriptor).toMatchObject({
+				label: "Dual",
+				shortLabel: "P",
+				color: "#112233",
+			});
+			expect(body.integrations[0]).toMatchObject({
+				key: "dual",
+				kind: "extension",
+				provides: ["push", "subscription"],
+				sourceKey: "dual",
+				adapterKey: "dual",
+				status: "running",
+				light: "orange",
+				problemCount: 2,
+				connectionCount: 1,
+			});
+			expect(body.integrations[1]).toMatchObject({
+				key: "bad",
+				status: "settings-invalid",
+				light: "red",
+				connectionCount: 1,
+				failure: { code: "unavailable", message: "invalid settings" },
+			});
+		} finally {
+			problems.dispose();
+		}
+	});
+
+	it("内置来源保留启动失败;摘要读取抛错不改运行结论,没有摘要能力就不编摘要", async () => {
+		const sourceRegistry = createSourceRegistry();
+		const broken = makeSource();
+		broken.start.mockImplementation(async () => {
+			throw new Error("cannot start");
+		});
+		await expect(
+			sourceRegistry.register("broken", broken, makeIntegration() as never),
+		).rejects.toThrow("cannot start");
+		const healthy = makeSource();
+		healthy.health = () => {
+			throw new Error("summary unavailable");
+		};
+		await sourceRegistry.register("healthy", healthy, makeIntegration() as never);
+		await sourceRegistry.register("bare", makeSource(), makeIntegration() as never);
+		const body = (await (
+			await detailsApp(null, meta, { sourceRegistry }).request("/details")
+		).json()) as RunningHealthDetailsResponse;
+		expect(body.integrations).toHaveLength(3);
+		expect(body.integrations[0]).toMatchObject({
+			key: "broken",
+			kind: "builtin-source",
+			status: "failed",
+			light: "red",
+			failure: { code: "unavailable", message: "cannot start" },
+		});
+		expect(body.integrations[1]).toMatchObject({
+			key: "healthy",
+			status: "running",
+			light: "green",
+			health: { ok: false, code: "unavailable" },
+		});
+		expect(body.integrations[2]).not.toHaveProperty("health");
+	});
+
+	it("内置适配器有配置连接才占格,描述每次现取", async () => {
+		const adapterRegistry = createPlatformAdapterRegistry();
+		let label = "Initial";
+		for (const adapterKey of ["configured", "empty"])
+			await adapterRegistry.register(
+				{
+					adapterKey,
+					descriptor: () => ({ label, shortLabel: "A", color: "#123456", settingsFields: [] }),
+					start: async () => {},
+					stop: async () => {},
+				} as never,
+				makeIntegration() as never,
+			);
+		const app = detailsApp(
+			null,
+			meta,
+			{ adapterRegistry },
+			{ getConnections: () => [{ id: "c1", adapterKey: "configured", settings: {} }] as never },
+		);
+		label = "Current";
+		const body = (await (await app.request("/details")).json()) as RunningHealthDetailsResponse;
+		expect(body.integrations).toEqual([
+			{
+				key: "configured",
+				kind: "builtin-adapter",
+				descriptor: { label: "Current", shortLabel: "A", color: "#123456" },
+				provides: ["push"],
+				adapterKey: "configured",
+				status: "running",
+				light: "green",
+				problemCount: 0,
+				connectionCount: 1,
+			},
+		]);
+	});
+
+	it("同身份遗留组由服务端计算,不同来源相同外部id不合组,只返回订阅id与已有名字", async () => {
+		const subscriptions = [
+			{ id: "a", identity: { sourceKey: "one", externalId: "42" } },
+			{ id: "b", identity: { sourceKey: "two", externalId: "42" } },
+			{ id: "c", identity: { sourceKey: "one", externalId: "42" } },
+		];
+		const app = detailsApp(
+			null,
+			meta,
+			{
+				subscriptionStateStore: {
+					get: (id: string) => (id === "c" ? { cachedProfile: { name: "Cached" } } : undefined),
+				} as never,
+			},
+			{ getSubscriptions: () => subscriptions as never },
+		);
+		const body = (await (await app.request("/details")).json()) as RunningHealthDetailsResponse;
+		expect(body.identityDuplicates).toEqual([
+			{
+				identity: { sourceKey: "one", externalId: "42" },
+				subscriptionIds: ["a", "c"],
+				name: "Cached",
+			},
+		]);
+		expect(subscriptions.map((sub) => sub.id)).toEqual(["a", "b", "c"]);
+	});
+
+	it.each([
+		["running", "green"],
+		["disabled", "gray"],
+		["staged", "gray"],
+		["failed", "red"],
+		["blocked", "red"],
+		["incompatible", "red"],
+		["unreadable", "red"],
+		["settings-invalid", "red"],
+	] as const)("拓展%s原样下发并映射%s灯;读不出清单时仍保留身份", async (status, light) => {
+		const sourceRegistry = createSourceRegistry();
+		const app = createHealthRoute(
+			{
+				runtime: {
+					sourceRegistry,
+					adapterRegistry: createPlatformAdapterRegistry(),
+					pipeline: null,
+					problems: { list: () => [] },
+					serviceCtx: { logger: makeLogger() },
+					subscriptionStateStore: { get: () => undefined },
+				},
+				store: {
+					getSubscriptions: () => [],
+					getTargets: () => [],
+					getConnections: () => [],
+					getGlobalsMeta: () => meta,
+					getSubscriptionsMeta: () => meta,
+					getTargetsMeta: () => meta,
+				},
+			} as unknown as RouteDeps,
+			{
+				extensions: () => [
+					{
+						id: "unknown-ports",
+						state: status,
+						dir: "/unused",
+						identity: { id: "unknown-ports", name: "Retained" } as never,
+					},
+				],
+			},
+		);
+		const body = (await (await app.request("/details")).json()) as RunningHealthDetailsResponse;
+		expect(body.integrations).toMatchObject([
+			{ key: "unknown-ports", descriptor: { label: "Retained" }, status, light },
+		]);
+		expect(body.integrations[0]).not.toHaveProperty("provides");
+	});
 
 	it("恰好是契约里那几格:各模块开没开、核心包版本、配置分区;短版的四格不重复带", async () => {
 		const modules = { dynamic: true, live: false, image: true, ai: false };
@@ -125,9 +427,13 @@ describe("GET /api/health/details — 回应的格子", () => {
 		const body = (await (await app.request("/details")).json()) as Record<string, unknown>;
 		expect(Object.keys(body).sort()).toEqual([
 			"configScopes",
+			"core",
+			"identityDuplicates",
+			"integrations",
 			"moduleVersions",
 			"modules",
 			"phase",
+			"problemCount",
 		]);
 		expect(body.phase).toBe("running");
 		expect(body.modules).toEqual(modules);

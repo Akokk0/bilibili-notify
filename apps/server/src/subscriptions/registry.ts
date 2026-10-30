@@ -1,5 +1,7 @@
 import {
 	checkUserRegex,
+	type Failure,
+	fail,
 	type Source,
 	type SourceAuth,
 	type SourceContext,
@@ -15,6 +17,14 @@ import { errorMessageOf } from "../util/error-message.js";
  * `sourceKey` 是登记时认领的那个键(`login <来源>` 要认键,所以视图得带着它)。
  */
 export type SourceView = Omit<Source, "start" | "stop"> & { sourceKey: string };
+
+/** 宿主持有的启动结论,失败释放登记键后仍可读取。 */
+export interface SourceRunView {
+	sourceKey: string;
+	descriptor: Source["descriptor"];
+	status: "running" | "failed" | "unknown";
+	failure?: Failure;
+}
 
 /** 带登录口的来源:`login` 指令挑它、`status` 给它出「登录」行。 */
 export interface SourceLoginView {
@@ -48,11 +58,14 @@ export interface SourceRegistry {
 		sourceKey: string,
 		source: Source,
 		ctx: SourceContext,
+		options?: { retainFailure?: boolean },
 	): Promise<{ dispose(): Promise<void> }>;
 	/** 现在谁认领着这个键;没人 = undefined。 */
 	get(sourceKey: string): SourceView | undefined;
 	/** 全部在册的来源,按登记先后(第一个读者是会员档位读口)。 */
 	list(): readonly SourceView[];
+	getRunView(sourceKey: string): SourceRunView | undefined;
+	listRunViews(): readonly SourceRunView[];
 }
 
 export interface CreateSourceRegistryOptions {
@@ -62,13 +75,23 @@ export interface CreateSourceRegistryOptions {
 
 export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): SourceRegistry {
 	const disposeTimeoutMs = opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS;
+	const runs = new Map<string, SourceRunView>();
 	const table = createRegistry<SourceView>(
 		(key) => `source for key "${key}" is already registered`,
 	);
 	return {
 		get: (sourceKey) => table.get(sourceKey),
 		list: () => Array.from(table.entries(), ([, view]) => view),
-		async register(sourceKey, source, ctx) {
+		getRunView: (key) => {
+			const view = runs.get(key);
+			return view && { ...view, ...(view.failure ? { failure: { ...view.failure } } : {}) };
+		},
+		listRunViews: () =>
+			Array.from(runs.values(), (view) => ({
+				...view,
+				...(view.failure ? { failure: { ...view.failure } } : {}),
+			})),
+		async register(sourceKey, source, ctx, options = {}) {
 			// 描述符声明的外部 id 格式先体检(同清单那一半,同一道 `checkUserRegex`):坏正则拖不住新建订阅,
 			// 所以不让这个来源进来。抛法同键被占 —— 在认领、`start` 之前,不留半个。
 			const { externalIdRegex } = source.descriptor;
@@ -147,17 +170,29 @@ export function createSourceRegistry(opts: CreateSourceRegistryOptions = {}): So
 				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。
 				...(health ? { health: () => health.call(source) } : {}),
 			});
+			runs.set(sourceKey, { sourceKey, descriptor: source.descriptor, status: "unknown" });
 			try {
 				await source.start(ctx);
 			} catch (err) {
 				claim.dispose();
+				if (options.retainFailure === false) runs.delete(sourceKey);
+				else {
+					runs.set(sourceKey, {
+						sourceKey,
+						descriptor: source.descriptor,
+						status: "failed",
+						failure: fail("unavailable", errorMessageOf(err)),
+					});
+				}
 				throw err;
 			}
+			runs.set(sourceKey, { sourceKey, descriptor: source.descriptor, status: "running" });
 			let disposing: Promise<void> | undefined;
 			return {
 				dispose() {
 					if (disposing) return disposing;
 					claim.dispose();
+					runs.delete(sourceKey);
 					const stopped = stopQuietly(
 						() => source.stop(),
 						(err) => ctx.logger.warn(`[source] ${sourceKey} stop 失败: ${errorMessageOf(err)}`),

@@ -44,6 +44,7 @@ const DOUYIN: ExtensionDTO = {
 /** 来源表里抖音那一行(取自清单)。 */
 function source(supportedFeatures: Declared): SourceEntry {
 	return {
+		status: "running",
 		key: "douyin",
 		descriptor: {
 			label: "抖音",

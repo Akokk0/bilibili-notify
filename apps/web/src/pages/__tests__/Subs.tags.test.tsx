@@ -32,6 +32,7 @@ const TABLE = [CHAT, GAME, MUSIC];
 
 /** 来源表里在册的 B 站(新建弹窗按它画提示句)。 */
 const BILI_SOURCE: SourceEntry = {
+	status: "running",
 	key: "bilibili",
 	descriptor: {
 		label: "B 站",

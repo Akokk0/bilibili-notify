@@ -1,3 +1,12 @@
+import type {
+	ExtensionProvides,
+	ExtensionRunState,
+	Failure,
+	Identity,
+	Result,
+	SourceDescriptor,
+} from "@bilibili-notify/internal";
+
 /**
  * `GET /api/health` —— 存活探测。面板每 5 秒问一次判断后端通不通,应用内更新与重启靠它
  * 认新进程,桌面外壳与 CI 冒烟只看它回不回 200 / `status`。
@@ -14,6 +23,9 @@ export interface HealthResponse {
 	/** 这个进程的启动时刻(ISO)。换了进程才会变 —— 面板靠它认「真的重启完了」。 */
 	startedAt: string;
 }
+
+/** 宿主确认的运行状态;没有可靠结论时明确未知。 */
+export type SourceRunStatus = ExtensionRunState | "unknown";
 
 /**
  * `GET /api/health/details` —— 健康卡要的数据(ADR-0025 决策 12)。短版那四格不在这里重复带:
@@ -35,6 +47,12 @@ export interface StartupHealthDetailsResponse {
 
 /** 完整 app 接管后的健康详情。 */
 export interface RunningHealthDetailsResponse {
+	/** 核心问题只能可靠归到组头,不分摊给五格。 */
+	core: { items: CoreHealthView[]; problemCount: number };
+	integrations: IntegrationHealthView[];
+	identityDuplicates: IdentityDuplicateView[];
+	/** 包括已无对应集成格的问题;同一次问题表读取的总数。 */
+	problemCount: number;
 	phase: "running";
 	/** 各核心包自己的 `package.json#version`,启动期一次读出。 */
 	moduleVersions: Record<"storage" | "subscription" | "push" | "image" | "ai", string>;
@@ -63,4 +81,37 @@ export interface ModuleState {
 export interface ConfigScopeMeta {
 	exists: boolean;
 	lastUpdatedAt: string | null;
+}
+
+export type HealthLightStatus = "green" | "orange" | "red" | "gray";
+
+export interface CoreHealthView {
+	key: "storage" | "subscription" | "push" | "image" | "ai";
+	status: "running" | "not-ready" | "unknown";
+	light: HealthLightStatus;
+	version: string;
+	count?: number;
+}
+
+export interface IntegrationHealthView {
+	key: string;
+	kind: "builtin-source" | "builtin-adapter" | "extension";
+	descriptor: Pick<SourceDescriptor, "label" | "shortLabel" | "color" | "icon">;
+	/** 清单读不出时缺省,表示未知,不是没有口子。 */
+	provides?: ExtensionProvides[];
+	status: SourceRunStatus;
+	light: HealthLightStatus;
+	problemCount: number;
+	connectionCount: number;
+	sourceKey?: string;
+	adapterKey?: string;
+	/** 摘要读取结果独立于启动状态;没有摘要能力时缺省。 */
+	health?: Result<{ summary: string }>;
+	failure?: Failure;
+}
+
+export interface IdentityDuplicateView {
+	identity: Identity;
+	subscriptionIds: string[];
+	name?: string;
 }

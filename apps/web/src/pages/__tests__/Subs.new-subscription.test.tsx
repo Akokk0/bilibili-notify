@@ -41,6 +41,7 @@ import { api } from "../../services/api";
 const AVATAR = "data:image/png;base64,iVBORw0KGgo=";
 
 const BILI_SOURCE: SourceEntry = {
+	status: "running",
 	key: "bilibili",
 	descriptor: {
 		label: "B 站",
@@ -54,6 +55,7 @@ const BILI_SOURCE: SourceEntry = {
 };
 
 const DOUYIN_SOURCE: SourceEntry = {
+	status: "running",
 	key: "douyin",
 	descriptor: {
 		label: "抖音",
@@ -71,6 +73,7 @@ const NO_EXTRAS = { auth: false, liveStatus: false, preview: false };
 
 /** 装着但没在跑的拓展:来源表里照列,只是不带 `has`。 */
 const STOPPED_SOURCE: SourceEntry = {
+	status: "disabled",
 	key: "kuaishou",
 	descriptor: { label: "快手", color: "#ff4906", supportedFeatures: ["post"] },
 };
@@ -198,7 +201,12 @@ describe("提示句按 searchAccepts 拼", () => {
 				descriptor: { ...STOPPED_SOURCE.descriptor, creatorNoun: "主播" },
 				has: NO_EXTRAS,
 			},
-			{ key: "plain", descriptor: { label: "无名", supportedFeatures: ["post"] }, has: NO_EXTRAS },
+			{
+				key: "plain",
+				status: "running",
+				descriptor: { label: "无名", supportedFeatures: ["post"] },
+				has: NO_EXTRAS,
+			},
 		];
 		const dialog = await openNewDialog();
 		expect(await dialog.findByPlaceholderText("UID、主页链接或名字")).toBeTruthy();

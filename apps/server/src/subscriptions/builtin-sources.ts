@@ -8,6 +8,8 @@ export interface RegisterBuiltinSourceOptions
 	extends Omit<CreateSourceContextOptions, "descriptor" | "problems"> {
 	/** 问题表:来源的上下文往里写;来源停下(撤登记、登记失败)时它报的整批清掉,不补「已恢复」。 */
 	problems: Pick<ProblemTable, "report" | "resolve" | "clearReporter">;
+	/** 内置来源缺省保留启动失败;拓展由装载器持有失败生命周期。 */
+	retainFailure?: boolean;
 	registry: SourceRegistry;
 	source: Source;
 	/**
@@ -31,11 +33,11 @@ export interface RegisterBuiltinSourceOptions
 export async function registerBuiltinSource(
 	opts: RegisterBuiltinSourceOptions,
 ): Promise<{ dispose(): Promise<void> }> {
-	const { registry, source, onAuthChanged, ...rest } = opts;
+	const { registry, source, onAuthChanged, retainFailure, ...rest } = opts;
 	const handle = createSourceContext({ ...rest, descriptor: source.descriptor });
 	let registration: { dispose(): Promise<void> };
 	try {
-		registration = await registry.register(opts.sourceKey, source, handle.ctx);
+		registration = await registry.register(opts.sourceKey, source, handle.ctx, { retainFailure });
 	} catch (err) {
 		handle.dispose();
 		opts.problems.clearReporter(opts.sourceKey);

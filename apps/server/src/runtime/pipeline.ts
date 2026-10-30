@@ -112,6 +112,7 @@ export interface PipelineRuntime extends Disposable {
 			| "source"
 			| "integration"
 			| "logger"
+			| "retainFailure"
 			| "rejectedProblemLevel"
 			| "onRejectedProblem"
 			| "label"

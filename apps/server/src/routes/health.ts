@@ -15,6 +15,12 @@ import pushPkg from "@bilibili-notify/push/package.json" with { type: "json" };
 import storagePkg from "@bilibili-notify/storage/package.json" with { type: "json" };
 import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
 import { Hono } from "hono";
+import type { ExtensionEntry } from "../extensions/loader.js";
+import {
+	coreHealthViews,
+	identityDuplicateViews,
+	integrationHealthViews,
+} from "../runtime/health-details.js";
 import { findNearestPackageJson } from "../runtime/nearest-package-json.js";
 import type { RouteDeps } from "./types.js";
 
@@ -85,20 +91,48 @@ const NO_MODULES: ModuleState = { dynamic: false, live: false, image: false, ai:
 /**
  * Mounts:
  *   GET /api/health           — 短版四格,存活探测
- *   GET /api/health/details   — 运行阶段与健康卡的数据:各模块开没开、核心包版本、配置分区
+ *   GET /api/health/details   — 运行阶段与健康卡的数据:核心与集成格、问题计数、重复身份、模块与配置事实
  */
-export function createHealthRoute(deps: RouteDeps): Hono {
+export function createHealthRoute(
+	deps: RouteDeps,
+	options: { extensions: () => readonly ExtensionEntry[]; settle?: () => Promise<void> } = {
+		extensions: () => [],
+	},
+): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => c.json(healthResponse()));
 
-	app.get("/details", (c) => {
+	app.get("/details", async (c) => {
+		await options.settle?.();
 		const subs = deps.store.getSubscriptions();
 		const targets = deps.store.getTargets();
+		const problems = deps.runtime.problems.list();
+		const modules = deps.runtime.pipeline?.getModuleState() ?? NO_MODULES;
 		const body: RunningHealthDetailsResponse = {
+			problemCount: problems.length,
+			identityDuplicates: identityDuplicateViews(subs, deps.runtime.subscriptionStateStore),
+			integrations: integrationHealthViews({
+				sources: deps.runtime.sourceRegistry,
+				adapters: deps.runtime.adapterRegistry,
+				extensions: options.extensions(),
+				connections: deps.store.getConnections(),
+				problems,
+				logger: deps.runtime.serviceCtx.logger,
+			}),
+			core: {
+				items: coreHealthViews({
+					versions: MODULE_VERSIONS,
+					modules,
+					pipelineReady: deps.runtime.pipeline !== null,
+					subscriptions: subs.length,
+					targets: targets.length,
+				}),
+				problemCount: problems.filter((problem) => problem.reporter === "core").length,
+			},
 			phase: "running",
 			moduleVersions: MODULE_VERSIONS,
-			modules: deps.runtime.pipeline?.getModuleState() ?? NO_MODULES,
+			modules,
 			configScopes: {
 				globals: deps.store.getGlobalsMeta(),
 				subscriptions: { ...deps.store.getSubscriptionsMeta(), count: subs.length },

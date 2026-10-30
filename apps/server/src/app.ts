@@ -303,7 +303,13 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	const tiers = createMembershipTierReader(runtime.sourceRegistry);
 
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
-		app.route("/api/health", createHealthRoute(deps));
+		app.route(
+			"/api/health",
+			createHealthRoute(deps, {
+				extensions: () => options.extensions?.loaded() ?? [],
+				settle: options.extensions?.settle,
+			}),
+		);
 		app.route("/api/settings", createSettingsRoute(deps));
 		app.route("/api/commands", createCommandsRoute(deps));
 		app.route(

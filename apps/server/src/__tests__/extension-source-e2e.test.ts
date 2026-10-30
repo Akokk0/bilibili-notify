@@ -357,4 +357,15 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(await captures()).toEqual([]);
 	});
+	it("失败拓展卸载之后,来源表与健康格都不残留伪装成内置来源的失败视图", async () => {
+		await okRes(await api(`/api/ext/${BROKEN}`, { method: "DELETE" }));
+		const sources = (await (await api("/api/sources")).json()) as {
+			sources: Array<{ key: string }>;
+		};
+		const details = (await (await api("/api/health/details")).json()) as {
+			integrations: Array<{ key: string }>;
+		};
+		expect(sources.sources.some((source) => source.key === BROKEN)).toBe(false);
+		expect(details.integrations.some((integration) => integration.key === BROKEN)).toBe(false);
+	});
 });

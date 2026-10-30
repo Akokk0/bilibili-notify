@@ -367,11 +367,10 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason: "面板不在进程内对拍的范围,页面按描述画是第 4 期",
 	},
 	{
-		id: "N15",
-		title: "运行状态读口(running / failed / settings-invalid)",
-		checked: false,
-		waitsFor: "第 4 期健康卡(等第一个读者)",
-		reason: "没造,「在册就算在跑」",
+		id: "P53",
+		title:
+			"宿主运行态与健康详情:假来源运行中,问题叠橙灯,摘要读取失败不改启动结论;失败与拓展八档另由登记表和路由测试钉住",
+		checked: true,
 	},
 	// N08(默认文案)在 3b-12 落成了,转进对拍的 P46(「默认文案有更新」是面板算的、与来源无关,由面板测试钉,不在对拍里);
 	// N16(统计「在记」)在 3b-26 落成了,转进对拍的 P45;
@@ -981,12 +980,51 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const { membershipPrograms: _membershipPrograms, ...declared } = currentProbe().descriptor;
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)).toEqual({
 			key: IN_PROCESS_KEY,
+			status: "running",
 			descriptor: declared,
 			// 假来源实现了登录口、查直播状态与卡片页的真实预览。
 			has: { auth: true, liveStatus: true, preview: true },
 		});
 		expect(sources.find((one) => one.key === "bilibili")?.descriptor.label).toBe("B 站");
 		drove("P50");
+	});
+
+	it("P53 宿主运行态与健康详情:来源运行中,问题叠橙灯,摘要读取失败不改启动结论", async () => {
+		const probe = currentProbe();
+		const read = async () => {
+			const body = (await (await api("/api/health/details")).json()) as {
+				integrations: Array<{
+					key: string;
+					status: string;
+					light: string;
+					health?: unknown;
+					problemCount: number;
+				}>;
+			};
+			return body.integrations.find((entry) => entry.key === IN_PROCESS_KEY);
+		};
+		const sources = (await (await api("/api/sources")).json()) as SourcesResponse;
+		expect(sources.sources.find((entry) => entry.key === IN_PROCESS_KEY)?.status).toBe("running");
+		const before = (await read())?.problemCount ?? 0;
+		probe.ctx?.reportProblem({ code: "health_parity", message: "health parity issue" });
+		try {
+			expect(await read()).toMatchObject({
+				status: "running",
+				light: "orange",
+				problemCount: before + 1,
+			});
+			probe.healthThrows = true;
+			expect(await read()).toMatchObject({
+				status: "running",
+				light: "orange",
+				health: { ok: false, code: "unavailable" },
+			});
+		} finally {
+			probe.healthThrows = false;
+			probe.ctx?.resolveProblem({ code: "health_parity", notify: false });
+		}
+		expect((await read())?.problemCount).toBe(before);
+		drove("P53");
 	});
 
 	// 验红:`routes/cards.ts` 不问来源(或不把 nth 交过去),第一段红;来源回失败时不记原因,第三段红。
@@ -3819,13 +3857,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 51 行、不开 4 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 53 行、不开 2 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(55);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 52 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 53 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,
@@ -3834,7 +3872,7 @@ describe("进程内对拍:清单自己", () => {
 		// N01→P52(4-15)。
 		expect(closed.map((row) => row.id)).toEqual(
 			Array.from({ length: 16 }, (_, i) => i + 1)
-				.filter((n) => ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16].includes(n))
+				.filter((n) => ![1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16].includes(n))
 				.map((n) => `N${String(n).padStart(2, "0")}`),
 		);
 		for (const row of closed) {

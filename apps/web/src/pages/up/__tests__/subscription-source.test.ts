@@ -26,6 +26,7 @@ function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 
 function entry(over: Partial<SourceEntry["descriptor"]> = {}, key = "douyin"): SourceEntry {
 	return {
+		status: "running",
 		key,
 		descriptor: {
 			label: "抖音",
@@ -96,7 +97,13 @@ describe("一条拓展订阅的平台", () => {
 	it("描述符没给 shortLabel / color:照样画得出,徽章退回 label 与认不出那档灰", () => {
 		const p = subscriptionPlatformOf(
 			sub(),
-			[{ key: "douyin", descriptor: { label: "抖音", supportedFeatures: ["post"] } }],
+			[
+				{
+					key: "douyin",
+					status: "running",
+					descriptor: { label: "抖音", supportedFeatures: ["post"] },
+				},
+			],
 			[ext()],
 		);
 		expect(p.label).toBe("抖音");

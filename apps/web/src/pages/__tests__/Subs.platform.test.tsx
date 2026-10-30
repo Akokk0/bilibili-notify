@@ -41,12 +41,14 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 
 /** 来源表里 B 站那一条:不是拓展,按登记先后在最前。 */
 const BILI_SOURCE: SourceEntry = {
+	status: "running",
 	key: "bilibili",
 	descriptor: { label: "B 站", shortLabel: "B", color: "#fb7299", supportedFeatures: ["post"] },
 	has: { auth: true, liveStatus: true, preview: true },
 };
 
 const DOUYIN_SOURCE: SourceEntry = {
+	status: "running",
 	key: "douyin",
 	descriptor: {
 		label: "抖音",

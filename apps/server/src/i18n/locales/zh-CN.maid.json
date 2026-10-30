@@ -1,4 +1,5 @@
 {
+	"health.sourceReadFailed": "主人，暂时读不到这项状态摘要。",
 	"problem.recoveredGeneric": "主人，好消息，之前说的这件事已经恢复啦：{message}",
 	"problem.relay.recovered": "主人，好消息，{name}报告：{message}",
 	"problem.relay.recoveredGeneric": "主人，好消息，{name}之前报告的「{message}」已经恢复啦。",

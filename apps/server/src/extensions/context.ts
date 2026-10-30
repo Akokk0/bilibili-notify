@@ -962,6 +962,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const slot = adoptRegistration("source", () =>
 				registerSource({
 					sourceKey: id,
+					retainFailure: false,
 					source,
 					integration: integration.ctx,
 					logger,

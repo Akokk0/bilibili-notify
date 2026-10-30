@@ -1,3 +1,4 @@
+import type { SourceRunStatus } from "./health";
 /**
  * REST wire 契约 —— apps/server 各路由的响应 DTO,apps/web 按原样消费。
  * 域模型本体(Subscription / GlobalConfig / …)在 `@bilibili-notify/internal`,
@@ -1304,6 +1305,8 @@ export interface ConnectionAuthDraftResponse {
  * 拓展的来源照清单列,停用、没起来的也在。
  */
 export interface SourceEntry {
+	status: SourceRunStatus;
+	failure?: Failure;
 	/** 来源键:订阅的 `identity.sourceKey` 就是它(拓展的来源键是拓展 id)。 */
 	key: string;
 	/** 来源的描述符。会员体系先不下发:档位图标是图库引用,面板读会员档的时候再一起上。 */

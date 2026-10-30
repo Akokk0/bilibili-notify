@@ -12,6 +12,48 @@ const ctxOf = () => {
 };
 
 describe("createSourceRegistry", () => {
+	it("start尚未落定时展示未知,重复认领被拒不覆盖当前来源的宿主视图", async () => {
+		const registry = createSourceRegistry();
+		let complete!: () => void;
+		const pending = makeSource();
+		pending.start.mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					complete = resolve;
+				}),
+		);
+		const registration = registry.register("pending", pending, ctxOf().ctx);
+		expect(registry.getRunView("pending")?.status).toBe("unknown");
+		await expect(registry.register("pending", makeSource(), ctxOf().ctx)).rejects.toThrow(
+			"already registered",
+		);
+		expect(registry.getRunView("pending")?.status).toBe("unknown");
+		complete();
+		const handle = await registration;
+		expect(registry.getRunView("pending")?.status).toBe("running");
+		await handle.dispose();
+	});
+	it("启动失败放掉键,宿主仍保留失败状态与原因;成功重登清掉旧失败,正常撤下不留运行视图", async () => {
+		const registry = createSourceRegistry();
+		const broken = makeSource();
+		broken.start.mockImplementation(async () => {
+			throw new Error("start rejected");
+		});
+		await expect(registry.register("broken", broken, ctxOf().ctx)).rejects.toThrow(
+			"start rejected",
+		);
+		expect(registry.get("broken")).toBeUndefined();
+		expect(registry.getRunView("broken")).toMatchObject({
+			sourceKey: "broken",
+			status: "failed",
+			failure: { ok: false, code: "unavailable", message: "start rejected" },
+		});
+		const handle = await registry.register("broken", makeSource(), ctxOf().ctx);
+		expect(registry.getRunView("broken")).toMatchObject({ sourceKey: "broken", status: "running" });
+		expect(registry.getRunView("broken")).not.toHaveProperty("failure");
+		await handle.dispose();
+		expect(registry.getRunView("broken")).toBeUndefined();
+	});
 	it("登记即 start,get 查得到视图,没登的是 undefined", async () => {
 		const registry = createSourceRegistry();
 		const source = makeSource();

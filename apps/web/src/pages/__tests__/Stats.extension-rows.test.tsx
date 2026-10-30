@@ -102,6 +102,7 @@ const DOUYIN: ExtensionDTO = {
 
 /** 来源表里抖音那一行:平台名与徽章照它(取自清单)。 */
 const DOUYIN_SOURCE: SourceEntry = {
+	status: "running",
 	key: "douyin",
 	descriptor: {
 		label: "抖音",

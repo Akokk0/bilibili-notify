@@ -21,6 +21,7 @@ import { t } from "../i18n/index.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { SourceView } from "../subscriptions/registry.js";
+import { createSourceStatusReader } from "../subscriptions/source-status.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
@@ -76,8 +77,8 @@ function hasOf(view: SourceView): NonNullable<SourceEntry["has"]> {
  * `/api/sources` — 来源表与来源的登录口。
  *
  * - `GET    /:sourceKey/creators?q=` 新建订阅时在这个来源里搜人(4-15,所有来源同一口);
- * - `GET    /` 来源表(ADR-0027 决策 6):每个来源一条 `{ key, descriptor, has? }`。两张表合起来:登记表里
- *   不是拓展的(B 站)取登记时交的描述符;拓展一律取装载器那份清单 —— 停用、没起来的也列(不带 `has`),
+ * - `GET    /` 来源表(ADR-0027 决策 6):每个来源一条 `{ key, descriptor, status, has?, failure? }`。两张表合起来:登记表里
+ *   不是拓展的取登记时交的描述符,启动失败释放键后仍保留宿主视图;拓展一律取装载器那份清单 —— 停用、没起来的也列(不带 `has`),
  *   在跑的也不取登记时那份(那份冻在登记那一刻的语言上,装载器那份按此刻的语言盖好译文);
  * - `GET    /:sourceKey/auth` 读状态与账号(登录口是 `Source.auth`,ADR-0021 决策 45);
  * - `POST   /:sourceKey/auth` 发起扫码登录(已经在等扫码时回 `conflict`);
@@ -100,19 +101,29 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 		const extensions = opts.extensions();
 		const extensionIds = new Set(extensions.map((entry) => entry.id));
 		const sources: SourceEntry[] = [];
-		for (const view of registry.list()) {
-			if (extensionIds.has(view.sourceKey)) continue;
+		const status = createSourceStatusReader({ sources: registry, extensions: () => extensions });
+		for (const run of registry.listRunViews()) {
+			const view = registry.get(run.sourceKey);
+			if (extensionIds.has(run.sourceKey)) continue;
 			sources.push({
-				key: view.sourceKey,
-				descriptor: wireDescriptorOf(view.descriptor),
-				has: hasOf(view),
+				key: run.sourceKey,
+				descriptor: wireDescriptorOf(run.descriptor),
+				status: status.status(run.sourceKey),
+				...(run.failure ? { failure: run.failure } : {}),
+				...(view ? { has: hasOf(view) } : {}),
 			});
 		}
 		for (const entry of extensions) {
 			const descriptor = entry.manifest && manifestSourceDescriptor(entry.manifest);
 			if (!descriptor) continue;
 			const view = registry.get(entry.id);
-			sources.push({ key: entry.id, descriptor, ...(view ? { has: hasOf(view) } : {}) });
+			sources.push({
+				key: entry.id,
+				descriptor,
+				status: status.status(entry.id),
+				...(entry.detail ? { failure: fail("unavailable", entry.detail) } : {}),
+				...(view ? { has: hasOf(view) } : {}),
+			});
 		}
 		return c.json({ sources } satisfies SourcesResponse);
 	});

@@ -11,7 +11,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SourcesResponse } from "@bilibili-notify/contract";
+import type { RunningHealthDetailsResponse, SourcesResponse } from "@bilibili-notify/contract";
 import { FEATURE_KEYS, type Source } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -71,7 +71,11 @@ describe("GET /api/sources", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	async function boot(opts: { sources: Record<string, Source>; entries?: ExtensionEntry[] }) {
+	async function boot(opts: {
+		sources: Record<string, Source>;
+		entries?: ExtensionEntry[];
+		failed?: string[];
+	}) {
 		const runtime = createAppRuntime(
 			makeBootstrap(dataDir),
 			{ dataRoot: dataDir },
@@ -79,7 +83,9 @@ describe("GET /api/sources", () => {
 		);
 		await runtime.configStore.load();
 		for (const [key, source] of Object.entries(opts.sources)) {
-			await runtime.sourceRegistry.register(key, source, makeIntegration() as never);
+			const registration = runtime.sourceRegistry.register(key, source, makeIntegration() as never);
+			if (opts.failed?.includes(key)) await expect(registration).rejects.toThrow("cannot start");
+			else await registration;
 		}
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -88,9 +94,49 @@ describe("GET /api/sources", () => {
 		});
 		const res = await app.request("/api/sources");
 		const body = (await res.json()) as SourcesResponse;
+		const details = (await (
+			await app.request("/api/health/details")
+		).json()) as RunningHealthDetailsResponse;
 		await runtime.dispose();
-		return { status: res.status, body };
+		return { status: res.status, body, details };
 	}
+
+	it("真app把装载器现表接进健康详情,停用的来源仍占集成格", async () => {
+		const { details } = await boot({
+			sources: {},
+			entries: [
+				extensionEntry("disabled-source", "disabled", {
+					label: "Source",
+					supportedFeatures: ["post"],
+				}),
+			],
+		});
+		expect(details.integrations).toMatchObject([
+			{ key: "disabled-source", status: "disabled", light: "gray" },
+		]);
+	});
+
+	it("内置来源启动失败释放键之后,来源列表和健康详情都仍给出宿主失败视图", async () => {
+		const { body, details } = await boot({
+			sources: {
+				broken: sourceOf({
+					start: async () => {
+						throw new Error("cannot start");
+					},
+				}),
+			},
+			failed: ["broken"],
+		});
+		expect(body.sources).toEqual([
+			{
+				key: "broken",
+				descriptor: { label: "测试", supportedFeatures: ["post"] },
+				status: "failed",
+				failure: { ok: false, code: "unavailable", message: "cannot start" },
+			},
+		]);
+		expect(details.integrations).toMatchObject([{ key: "broken", status: "failed", light: "red" }]);
+	});
 
 	it("B 站那条带它自己的描述(短名、颜色、搜人收哪几种、特性全列),线上不带会员体系", async () => {
 		const { status, body } = await boot({
@@ -100,6 +146,7 @@ describe("GET /api/sources", () => {
 		expect(body.sources).toHaveLength(1);
 		const [bili] = body.sources;
 		expect(bili?.key).toBe("bilibili");
+		expect(bili?.status).toBe("running");
 		expect(bili?.descriptor).toMatchObject({
 			label: "B 站",
 			shortLabel: "B",
@@ -154,11 +201,20 @@ describe("GET /api/sources", () => {
 		expect(body.sources).toEqual([
 			{
 				key: "douyin",
+				status: "running",
 				descriptor: subscription,
 				has: { auth: false, liveStatus: false, preview: false },
 			},
-			{ key: "kuaishou", descriptor: { label: "快手", supportedFeatures: ["post"] } },
-			{ key: "weibo", descriptor: { label: "微博", supportedFeatures: ["post"] } },
+			{
+				key: "kuaishou",
+				status: "disabled",
+				descriptor: { label: "快手", supportedFeatures: ["post"] },
+			},
+			{
+				key: "weibo",
+				status: "failed",
+				descriptor: { label: "微博", supportedFeatures: ["post"] },
+			},
 		]);
 	});
 
@@ -179,7 +235,7 @@ describe("GET /api/sources", () => {
 			sources: {},
 			entries: [extensionEntry("douyin", "disabled", { ...declared, cardSkin: "card-skin" })],
 		});
-		expect(body.sources).toEqual([{ key: "douyin", descriptor: declared }]);
+		expect(body.sources).toEqual([{ key: "douyin", status: "disabled", descriptor: declared }]);
 	});
 
 	it("没开订阅那一口的拓展、清单读不出来的拓展不列", async () => {
