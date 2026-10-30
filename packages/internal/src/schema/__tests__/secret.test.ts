@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AIProviderProfileSchema } from "../common";
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import {
+	hasSecretCells,
 	mapMarked,
 	markBackupOnly,
 	markSecret,
@@ -11,6 +12,29 @@ import {
 	secretMarkOf,
 	stringLeavesOf,
 } from "../secret";
+
+describe("hasSecretCells — classify the entire cell before parsing a bad value", () => {
+	it("finds secrets in wrapped arrays, records and union branches", () => {
+		expect(
+			hasSecretCells(
+				z.object({ links: z.array(z.object({ token: markSecret(z.string()) })).optional() }),
+			),
+		).toBe(true);
+		expect(hasSecretCells(z.record(z.string(), markSecret(z.string())))).toBe(true);
+		expect(
+			hasSecretCells(z.union([z.string(), z.object({ password: markSecret(z.number()) })])),
+		).toBe(true);
+		expect(hasSecretCells(markSecret(z.object({})))).toBe(true);
+	});
+	it("distinguishes public and backup-only rules, and fails closed for unknown rules", () => {
+		expect(hasSecretCells(z.object({ n: z.number(), url: markBackupOnly(z.string()) }))).toBe(
+			false,
+		);
+		expect(hasSecretCells(z.unknown())).toBe(true);
+		expect(hasSecretCells(undefined)).toBe(true);
+	});
+});
+
 import {
 	OnebotConnectionSettingsSchema,
 	QQOfficialConnectionSettingsSchema,

@@ -100,6 +100,58 @@ export function secretMarkOf(schema: unknown): SecretMark | undefined {
 	return undefined;
 }
 
+/** Classify a whole invalid cell by its rules, without inspecting or parsing its value. */
+export function hasSecretCells(schema: unknown): boolean {
+	const visit = (node: unknown, ancestors: ReadonlySet<unknown>, depth: number): boolean => {
+		const mark = secretMarkOf(node);
+		if (mark && "secret" in mark) return true;
+		if (depth > 32 || ancestors.has(node)) return true;
+		const def = defOf(node);
+		if (!def) return true;
+		const seen = new Set(ancestors).add(node);
+		const next = (child: unknown) => visit(child, seen, depth + 1);
+		if (WRAPPERS.has(def.type) || def.type === "lazy") return next(innerOf(def));
+		switch (def.type) {
+			case "pipe":
+				return next(def.out);
+			case "object":
+				return (
+					Object.values(def.shape as Record<string, unknown>).some(next) ||
+					(def.catchall !== undefined &&
+						defOf(def.catchall)?.type !== "never" &&
+						next(def.catchall))
+				);
+			case "record":
+				return next(def.valueType);
+			case "array":
+				return next(def.element);
+			case "union":
+				return (def.options as unknown[]).some(next);
+			case "intersection":
+				return next(def.left) || next(def.right);
+			case "tuple":
+				return (
+					(def.items as unknown[]).some(next) ||
+					(def.rest !== null && def.rest !== undefined && next(def.rest))
+				);
+			case "string":
+			case "number":
+			case "boolean":
+			case "bigint":
+			case "literal":
+			case "enum":
+			case "date":
+			case "null":
+			case "undefined":
+			case "never":
+				return false;
+			default:
+				return true;
+		}
+	};
+	return visit(schema, new Set(), 0);
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
