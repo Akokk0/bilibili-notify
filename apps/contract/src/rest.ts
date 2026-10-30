@@ -1330,6 +1330,22 @@ export interface SourceAuthResponse {
 	account?: SourceAccount;
 }
 
+/** One registered source's login identity, independent of subscription profiles. */
+export interface AccountView extends SourceAuthResponse {
+	sourceKey: string;
+}
+
+/**
+ * GET /api/accounts: registered sources with auth, in core.accounts.order followed by
+ * registration order. Missing account means the source has not supplied it yet.
+ * Avatar is an ImageRef served by the authenticated /api/images/:ref route.
+ * Re-fetch on subscription-auth-changed (including avatar changes), globals config-changed,
+ * and extension table changes. No credentials are included. Login/logout use source auth routes.
+ */
+export interface AccountsResponse {
+	accounts: AccountView[];
+}
+
 /**
  * `GET /api/problems` 响应 —— 问题表此刻的全部,按 `since` 先后。全在内存,重启清空;
  * 变了服务端发 `problems-changed`(按报的人合并过),面板据此重取。每条的 `about` 可能是一条订阅

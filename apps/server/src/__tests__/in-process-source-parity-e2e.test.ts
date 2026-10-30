@@ -961,6 +961,15 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		const bili = await api("/api/sources/bilibili/auth");
 		expect(bili.status).toBe(200);
 		expect(await bili.json()).toEqual({ state: { status: "logged-out" } });
+		// Accounts must aggregate both registered sources through the same neutral read port.
+		const accounts = await api("/api/accounts");
+		expect(accounts.status).toBe(200);
+		expect(await accounts.json()).toEqual({
+			accounts: [
+				{ sourceKey: "bilibili", state: { status: "logged-out" } },
+				{ sourceKey: IN_PROCESS_KEY, state: { status: "logged-out" } },
+			],
+		});
 		drove("P01");
 	});
 

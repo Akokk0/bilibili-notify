@@ -27,6 +27,7 @@ import type { IntegrationStore } from "./integration-store/store.js";
 import { createMaidSkillReader } from "./maid-skills/reader.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
+import { createAccountsRoute } from "./routes/accounts.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
@@ -379,6 +380,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				settle: options.extensions?.settle,
 			}),
 		);
+		app.route("/api/accounts", createAccountsRoute(deps, options.extensions?.settle));
 		// 来源表与来源的登录口;无条件挂,来源在不在、有没有登录口由路由现问登记表。拓展的来源照装载器那张表列。
 		app.route(
 			"/api/sources",

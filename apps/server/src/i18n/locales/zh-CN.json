@@ -289,5 +289,6 @@
 	"webhook.text.atAll": "@全体成员",
 	"webhook.text.image": "[图片]",
 	"webhook.text.imageLinks": "图片:\n{urls}",
-	"webhook.text.notice": "[通知]"
+	"webhook.text.notice": "[通知]",
+	"accounts.readFailed": "读账号状态出错了，请查看日志"
 }

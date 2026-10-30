@@ -304,7 +304,14 @@ export const ExtensionStateSchema = z.object({
 });
 export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
 
+/** Missing order follows source registration order; defaults never persist themselves. */
+export const AccountsSettingsSchema = z.object({
+	order: z.array(z.string().min(1)).optional(),
+});
+export type AccountsSettings = z.infer<typeof AccountsSettingsSchema>;
+
 export const GlobalConfigSchema = z.object({
+	accounts: AccountsSettingsSchema.optional(),
 	logging: LoggingSettingsSchema,
 	/**
 	 * 资料刷新(粉丝数轮询)的 cron。从动态轮询的 cron 解耦,默认更慢降风控。
