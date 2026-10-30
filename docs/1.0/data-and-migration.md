@@ -281,3 +281,5 @@
 
 - 日志落盘前按当前全部密钥的实际值脱敏（`ctx.secrets` 值里的每一段字符串，很短的不遮；`secret: true` 字段；各集成用 `ctx.redact` 登记的临时凭据）；写死的 cookie 名正则删掉；集成名（`bilibili` 或拓展 id）在已有的 `name` 字段里。
 - `docs/agents/self-update.md` 在收尾期（第 5 期，见 [construction-plan.md](./construction-plan.md)）补写数据代、开机顺序、回退后再升级，以及 0.x → 1.0 这一次旧文件保持原样。
+
+🔗现状（4-21，2026-10-30）：备份导出前可经 `GET /api/system/backup/preview` 读取 `{ defaultedSettings }`：只含核心 / 集成按默认值导出的路径，整段读坏列集成根路径。预检不带原文或原因，不写入备份 envelope；既有完整 / 脱敏备份仍读内存有效值，读不懂的拓展文件仍省略。预检是独立快照，不承诺与下一次导出有事务一致性；迁移修订号 52 / 备份版本 22 不动。面板导出提示留 4-45。

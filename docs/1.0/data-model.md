@@ -881,3 +881,5 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 **明确不改**：见 [architecture.md](./architecture.md)「明确不改的」。
 
 🔗 现状（4-20，2026-10-30）：`core.accounts` 与其 `order` 实际均为可选、不带默认；缺键按登记顺序。显式排序 `PATCH /api/settings { core: { accounts: { order } } }` 才落盘；order / accounts 的 null 删除相应键。未知与重复键原样保存，聚合读口只认首次在册账号，遗漏者追加。`GET /api/accounts` 回 `{ accounts: [{ sourceKey, state, account?: { name, avatar? } }] }`，不装订阅资料或来源专有字段；完整与脱敏备份沿既有核心设置链路携带。
+
+🔗现状（4-21，2026-10-30）：`InvalidSettingView` 共用 `path` / `issues`，以 `secret` 判别：非密钥支带 `raw` / `missing`，密钥支没有原文、掩码或原值摘要。缺键用 `missing: true` 表示，JSON 中的 undefined 原值不伪造成 null。核心路径在 HTTP 回应中以 `core` 起，登记集成以自己的键起，拓展读口路径相对该拓展设置。整个集成文件读不懂报告该段根；拓展 JSON 文件读不懂只报安全根原因。

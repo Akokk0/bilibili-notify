@@ -52,3 +52,5 @@
 - 顶层从今天的 25 组并掉 9 组，加上 1.0 本来要新开的资源（来源、适配器、问题表、素材库、面板），共 20 组上下，每组都说得出是什么。
 - 新加一个口先问「它离开哪个资源就没有意义」，有就挂在那个资源底下，没有就是新的顶层资源；名字一个词，不带 `-`。
 - 面板缓存键里写死的老名字（如 `["globals"]`）随路径一起改；data-model 与 architecture 里写着 `/api/followers`、`/api/globals` 待议的地方随这一片改掉。
+
+🔗现状（4-21，2026-10-30）：坏格读口按资源归属落在 `GET /api/settings/invalid` 与 `GET /api/ext/:id/settings/invalid`；备份纯路径预检为 `GET /api/system/backup/preview`。三个口均沿用既有会话 / 桌面令牌闸，设置 `Cache-Control: no-store`。既有设置回应形状不加保留顶层键，避免与登记集成键冲突。
