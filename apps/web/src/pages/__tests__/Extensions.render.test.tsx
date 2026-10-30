@@ -15,10 +15,11 @@ import { type CardMotion, EXT_UPDATE_BUTTON, useCardMotionStore } from "../exten
 
 beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 
-const { apiGetMock, apiPatchMock, apiPostMock } = vi.hoisted(() => ({
+const { apiGetMock, apiPatchMock, apiPostMock, apiUploadMock } = vi.hoisted(() => ({
 	apiGetMock: vi.fn(),
 	apiPatchMock: vi.fn(),
 	apiPostMock: vi.fn(),
+	apiUploadMock: vi.fn(),
 }));
 
 vi.mock("../../services/api", () => ({
@@ -26,6 +27,7 @@ vi.mock("../../services/api", () => ({
 		get: apiGetMock as unknown as (url: string) => Promise<unknown>,
 		patch: apiPatchMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
 		post: apiPostMock as unknown as (url: string, body?: unknown) => Promise<unknown>,
+		upload: apiUploadMock,
 	},
 	ApiError: class ApiError extends Error {},
 }));
@@ -209,6 +211,61 @@ describe("拓展页", () => {
 		expect(apiGetMock).toHaveBeenCalledWith("/api/ext");
 	});
 
+	it("双口拓展只有一张卡、一个开关,卡上标明两个口", async () => {
+		renderPage({ extensions: [{ ...BRIDGE, provides: ["push", "subscription"] }] });
+		await screen.findAllByText(BRIDGE.name);
+		expect(screen.getAllByLabelText(BRIDGE.name)).toHaveLength(1);
+		expect(document.querySelectorAll('[data-ext-card="bridge"]')).toHaveLength(1);
+		const card = await cardOf(BRIDGE.name);
+		expect(within(card).getByText("推送", { exact: true })).toBeTruthy();
+		expect(within(card).getByText("订阅", { exact: true })).toBeTruthy();
+	});
+
+	it("按口单选筛选,双口每口计一次,停用与失败的声明也计入", async () => {
+		renderPage({
+			extensions: [
+				{ ...BRIDGE, provides: ["push", "subscription"] },
+				{ ...THIRD_PARTY, enabled: false, state: "disabled" },
+				{ ...BRIDGE, id: "broken", name: "失败推送", state: "failed" },
+			],
+		});
+		const all = await screen.findByRole("button", { name: "全部 3" });
+		expect(all.getAttribute("aria-pressed")).toBe("true");
+		fireEvent.click(screen.getByRole("button", { name: "订阅 2" }));
+		expect(screen.queryByLabelText("失败推送")).toBeNull();
+		expect(screen.getAllByLabelText(BRIDGE.name)).toHaveLength(1);
+		expect(screen.getByLabelText(THIRD_PARTY.name)).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "推送 2" }));
+		expect(screen.queryByLabelText(THIRD_PARTY.name)).toBeNull();
+		expect(screen.getByLabelText("失败推送")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "订阅 2" }).getAttribute("aria-pressed")).toBe(
+			"false",
+		);
+		fireEvent.click(all);
+		expect(screen.getByLabelText(THIRD_PARTY.name)).toBeTruthy();
+	});
+
+	it("能力未知与明确空表分开标记,不猜口或画连接行,零项筛选说明未知项", async () => {
+		renderPage({
+			extensions: [
+				{ ...BRIDGE, id: "unknown", name: "清单坏了", provides: undefined, state: "unreadable" },
+				{ ...BRIDGE, id: "empty", name: "只有开发能力", provides: [] },
+			],
+		});
+		const unknown = await cardOf("清单坏了");
+		expect(within(unknown).getByText("能力未知")).toBeTruthy();
+		expect(unknown.textContent).not.toContain("条连接");
+		const empty = await cardOf("只有开发能力");
+		expect(within(empty).getByText("未声明业务口")).toBeTruthy();
+		expect(empty.textContent).not.toContain("条连接");
+		fireEvent.click(screen.getByRole("button", { name: "推送 0" }));
+		expect(screen.getByText(/没有声明此能力的拓展/)).toBeTruthy();
+		expect(screen.getByText(/还有 1 个拓展的能力暂时认不出来/)).toBeTruthy();
+		expect(screen.queryByLabelText("清单坏了")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "全部 2" }));
+		expect(screen.getByLabelText("清单坏了")).toBeTruthy();
+	});
+
 	/**
 	 * 🔴 **开关开着却没跑,正是最该看见的那一格。** 只印开关的话,连败自动停用的那个
 	 * 拓展看起来跟正常跑着的一模一样,而主人只会觉得「推送怎么不来了」。
@@ -390,10 +447,10 @@ describe("拓展页", () => {
 	 * 🔴 **开箱就是这一屏** —— 本体一个拓展都不带,新装的 BN 打开这一页是空的。两口都空着,
 	 * 而「怎么装」那扇门就在页头:点开要把两条来路说完,而且传包那条**当场能走**。
 	 */
-	it("一个拓展都没装时,两口都说清楚它空着,页头那扇门里把两条来路说完", async () => {
+	it("一个拓展都没装时显示统一空态,页头安装入口仍把两条来路说完", async () => {
 		const { container } = renderPage({ extensions: [] });
-		expect(await screen.findByText(/还没有推送源拓展/)).toBeTruthy();
-		expect(screen.getByText(/还没有订阅源拓展/)).toBeTruthy();
+		expect(await screen.findByText(/还没有装拓展呢/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: "全部 0" })).toBeTruthy();
 
 		fireEvent.click(screen.getByRole("button", { name: /装拓展/ }));
 		const dialog = await screen.findByRole("dialog");
@@ -446,17 +503,16 @@ describe("拓展页", () => {
 	 * 排版口味 —— 主人来这一页多半是**为了某一口**,而卡片上的机器词 `provides` 说不清
 	 * 它会出现在哪。
 	 */
-	it("按开的那一口分组;归不了口的(清单读不出来)也不许消失", async () => {
+	it("统一列卡,清单读不出来的也不许消失", async () => {
 		renderPage({
 			extensions: [
 				...LISTED.extensions,
 				{ id: "broken", name: "坏掉的那个", enabled: false, state: "unreadable", dir: "/x" },
 			],
 		});
-		expect(await screen.findByText("推送源")).toBeTruthy();
-		expect(screen.getByText("订阅源")).toBeTruthy();
+		expect(await screen.findByText("机器人框架桥接")).toBeTruthy();
+		expect(screen.getByText("抖音订阅源")).toBeTruthy();
 		expect(screen.getByText("坏掉的那个")).toBeTruthy();
-		expect(screen.getByText("没归到口上的")).toBeTruthy();
 	});
 
 	/**
@@ -469,6 +525,147 @@ describe("拓展页", () => {
 		expect(container.querySelector('[data-testid="bridge-icon"]')).toBeTruthy();
 		// 抖音那条没有 icon —— 它得有个占位,而不是一个空方块。
 		expect(container.querySelectorAll('[data-bn-ext-icon="fallback"]')).toHaveLength(1);
+	});
+});
+
+describe("拓展安装后的唯一落点", () => {
+	const originalScroll = Element.prototype.scrollIntoView;
+	const scroll = vi.fn();
+	beforeEach(() => {
+		apiGetMock.mockReset();
+		apiPostMock.mockReset();
+		apiUploadMock.mockReset();
+		scroll.mockClear();
+		Element.prototype.scrollIntoView = scroll;
+		vi.stubGlobal("matchMedia", () => ({ matches: true }));
+	});
+	afterEach(() => {
+		cleanup();
+		Element.prototype.scrollIntoView = originalScroll;
+		vi.unstubAllGlobals();
+		useCardMotionStore.setState({ motion: null });
+	});
+
+	it.each([true, false])("市场装成双口拓展,切回全部并滚到唯一卡（减少动态=%s）", async (reduce) => {
+		vi.stubGlobal("matchMedia", () => ({ matches: reduce }));
+		const listed = { extensions: [BRIDGE] };
+		const fresh = { ...THIRD_PARTY, provides: ["push", "subscription"] as const };
+		apiPostMock.mockImplementation(async () => {
+			listed.extensions.push({ ...fresh, provides: [...fresh.provides] });
+			return {
+				id: fresh.id,
+				name: fresh.name,
+				version: "1.0.0",
+				enabled: true,
+				staged: false,
+				restart: { can: true, how: "container" },
+			};
+		});
+		renderPage(
+			listed,
+			[],
+			null,
+			marketWith({
+				...THIRD_PARTY_ENTRY,
+				official: true,
+				installed: undefined,
+				state: "installable",
+			}),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		const marketCard = await cardOf(fresh.name);
+		fireEvent.click(within(marketCard).getByRole("button", { name: "安装" }));
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "全部 2" }).getAttribute("aria-pressed")).toBe(
+				"true",
+			),
+		);
+		expect(document.querySelectorAll(`[data-ext-card="${fresh.id}"]`)).toHaveLength(1);
+		await waitFor(() =>
+			expect(
+				scroll.mock.contexts.some(
+					(target) => (target as HTMLElement).getAttribute("data-ext-card") === fresh.id,
+				),
+			).toBe(true),
+		);
+	});
+
+	it("市场安装失败保留当前筛选,不滚到其他卡", async () => {
+		apiPostMock.mockRejectedValue(new Error("测试下载失败"));
+		renderPage(
+			{ extensions: [BRIDGE] },
+			[],
+			null,
+			marketWith({
+				...THIRD_PARTY_ENTRY,
+				official: true,
+				installed: undefined,
+				state: "installable",
+			}),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		fireEvent.click(within(await cardOf(THIRD_PARTY.name)).getByRole("button", { name: "安装" }));
+		await screen.findByText(/测试下载失败/);
+		expect(screen.getByRole("button", { name: "订阅 0" }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("上传失败关闭弹窗后仍保留当前筛选,不留下定位动作", async () => {
+		apiUploadMock.mockRejectedValue(new Error("测试包坏了"));
+		renderPage({ extensions: [BRIDGE] }, [], null);
+		fireEvent.click(await screen.findByRole("button", { name: "订阅 0" }));
+		fireEvent.click(screen.getByRole("button", { name: "装拓展" }));
+		const dialog = await screen.findByRole("dialog");
+		const input = dialog.querySelector('input[type="file"]');
+		if (!input) throw new Error("没有文件输入框");
+		fireEvent.change(input, { target: { files: [new File(["bad"], "source.zip")] } });
+		await within(dialog).findByText(/测试包坏了/);
+		fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+		expect(screen.getByRole("button", { name: "订阅 0" }).getAttribute("aria-pressed")).toBe(
+			"true",
+		);
+		expect(scroll).not.toHaveBeenCalled();
+	});
+
+	it("上传装成后切回全部,保留结果弹窗,关闭才滚到唯一卡", async () => {
+		const listed = { extensions: [BRIDGE] };
+		apiUploadMock.mockImplementation(async () => {
+			listed.extensions.push(THIRD_PARTY);
+			return {
+				id: THIRD_PARTY.id,
+				name: THIRD_PARTY.name,
+				version: "1.0.0",
+				enabled: true,
+				staged: false,
+				restart: { can: true, how: "container" },
+			};
+		});
+		renderPage(listed, [], null);
+		fireEvent.click(await screen.findByRole("button", { name: "推送 1" }));
+		fireEvent.click(screen.getByRole("button", { name: "装拓展" }));
+		const dialog = await screen.findByRole("dialog");
+		const input = dialog.querySelector('input[type="file"]');
+		if (!input) throw new Error("没有文件输入框");
+		fireEvent.change(input, { target: { files: [new File(["zip"], "source.zip")] } });
+		await within(dialog).findByText(/装好了/);
+		expect(screen.getByRole("dialog")).toBe(dialog);
+		await waitFor(() =>
+			expect(
+				screen.getByRole("button", { name: "全部 2", hidden: true }).getAttribute("aria-pressed"),
+			).toBe("true"),
+		);
+		expect(scroll).not.toHaveBeenCalled();
+		fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+		await waitFor(() =>
+			expect(
+				scroll.mock.contexts.some(
+					(target) => (target as HTMLElement).getAttribute("data-ext-card") === THIRD_PARTY.id,
+				),
+			).toBe(true),
+		);
+		expect(document.querySelectorAll(`[data-ext-card="${THIRD_PARTY.id}"]`)).toHaveLength(1);
 	});
 });
 

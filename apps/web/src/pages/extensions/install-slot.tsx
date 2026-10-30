@@ -28,11 +28,13 @@ export interface ExtensionInstallSlotProps {
 	/** 等待参数,只有测试会给。 */
 	wait?: RestartWait;
 	className?: string;
+	onInstalled?: (id: string) => void;
 }
 
 export function ExtensionInstallSlot({
 	wait = DEFAULT_RESTART_WAIT,
 	className,
+	onInstalled,
 }: ExtensionInstallSlotProps) {
 	const t = useT();
 	const qc = useQueryClient();
@@ -51,6 +53,7 @@ export function ExtensionInstallSlot({
 		},
 		onSuccess: (res) => {
 			setDone(res);
+			onInstalled?.(res.id);
 			// 热装的那一份**已经在跑了** —— 列表要跟着换,不然主人以为没装上。
 			void invalidateExtensionTables(qc);
 		},

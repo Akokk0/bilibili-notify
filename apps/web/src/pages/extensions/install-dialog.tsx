@@ -18,7 +18,13 @@ import { ExtensionInstallSlot } from "./install-slot";
  * `<dataDir>/extensions/` 的包永远不会被装上。服务端没报(回退到了老版本)才照老说法写 ——
  * 那种服务端用的正是老位置。
  */
-export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
+export function ExtensionInstallDialog({
+	onClose,
+	onInstalled,
+}: {
+	onClose: () => void;
+	onInstalled?: (id: string) => void;
+}) {
 	const t = useT();
 	// 与拓展页同一个键,弹窗是从那一页开的,这一口通常已经在缓存里。
 	const root = useExtensions().data?.root;
@@ -41,7 +47,7 @@ export function ExtensionInstallDialog({ onClose }: { onClose: () => void }) {
 							{t("extensions.dialog.available")}
 						</Pill>
 					</div>
-					<ExtensionInstallSlot />
+					<ExtensionInstallSlot onInstalled={onInstalled} />
 				</section>
 
 				{/* 来路二:手放 —— 服务器上更顺手。 */}

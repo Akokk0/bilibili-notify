@@ -7,19 +7,22 @@ import {
 	GlassBox,
 	Icon,
 	LoadingBlock,
+	Picker,
 	Pill,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { useScrollToHash } from "../hooks/useScrollToHash";
+import { useT } from "../i18n";
 import { api } from "../services/api";
+import { useCardMotionStore } from "./extensions/card-motion";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import { ExtensionSummary } from "./extensions/declarative/extension-page";
 import { ExtensionInstallDialog } from "./extensions/install-dialog";
-import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
+import { cardSelector, EXT_CARD_ANCHOR, reducedMotion } from "./extensions/install-flight";
 import { ExtensionInstallOutcome } from "./extensions/install-outcome";
 import {
 	MARKETPLACE_SECTION_HASH,
@@ -36,7 +39,6 @@ import {
 	ExtensionToggleError,
 	PARAGRAPH_CLS,
 	reasonOf,
-	SectionCaption,
 	useExtensionToggle,
 } from "./extensions/shared";
 import { EXTENSION_STATE_META } from "./extensions/state-meta";
@@ -44,7 +46,7 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
 /**
  * `/extensions` —— 装了哪些拓展、各开在哪一口、开没开。
  *
- * 版式照设计稿 V1 的「Main」那块画板:页头一行 + 按口子分两节,每节一排卡;卡 = 头
+ * 版式照 ADR-0025 决策 13:页头按口单选筛选,每个拓展一张卡;卡 = 头
  * (图标 / 名字 / 状态徽章 / 开关)+ 一段描述 + 「N 条连接 · 视图交来的那一行」+ 右下「管理 ›」。
  *
  * 这一页**不认得任何具体拓展**(ADR-0012):「N 条连接」按 `provides` 数,后面那一行由拓展
@@ -61,28 +63,12 @@ interface ConnectionRow {
 
 type Provides = NonNullable<ExtensionDTO["provides"]>[number];
 
-/** 拓展只开两口(ADR-0012):推送源接进「推送目标」,订阅源接进「订阅 UP 主」。 */
-const SECTIONS: ReadonlyArray<{ code: Provides; label: string; empty: string }> = [
-	{
-		code: "push",
-		label: "推送源",
-		empty: "还没有推送源拓展。现在能推的只有直连的那些目标。",
-	},
-	{
-		code: "subscription",
-		label: "订阅源",
-		empty: "还没有订阅源拓展。BN 现在只看 B 站。",
-	},
-];
-
-/** 一节的标题行:小标题 + 一条发丝线。 */
-function SectionHead({ label }: { label: string }) {
-	return (
-		<div className="flex items-center gap-2">
-			<SectionCaption>{label}</SectionCaption>
-			<span className="h-px flex-1 bg-bn-border-subtle" />
-		</div>
-	);
+function useProvidesLabels() {
+	const t = useT();
+	return {
+		push: t("extensions.provides.push"),
+		subscription: t("extensions.provides.subscription"),
+	} satisfies Record<Provides, string>;
 }
 
 /**
@@ -91,10 +77,11 @@ function SectionHead({ label }: { label: string }) {
  * 0 也要报 —— 那正是「装好了但还没接上」。桥的接入(token 那条)不在这儿数,它在详情页。
  */
 function ConnectionCount({ count }: { count: number }) {
+	const t = useT();
 	return (
 		<div className="flex items-baseline gap-[5px]">
 			<span className="text-bn-xl font-bold leading-none text-bn-text-primary">{count}</span>
-			<span className="text-bn-xs text-bn-text-tertiary">条连接</span>
+			<span className="text-bn-xs text-bn-text-tertiary">{t("extensions.connectionCount")}</span>
 		</div>
 	);
 }
@@ -135,6 +122,8 @@ function ExtensionCard({
 	 */
 	elsewhere?: { entry: MarketplaceEntryDTO; sourceName: string };
 }) {
+	const t = useT();
+	const labels = useProvidesLabels();
 	const meta = EXTENSION_STATE_META[ext.state];
 	const pushes = (ext.provides ?? []).includes("push");
 	const declarative = ext.apiVersion !== undefined;
@@ -150,6 +139,23 @@ function ExtensionCard({
 		>
 			<div className="flex h-full flex-col gap-3">
 				{ext.description ? <p className={PARAGRAPH_CLS}>{ext.description}</p> : null}
+				<div className="flex flex-wrap gap-1">
+					{ext.provides === undefined ? (
+						<Pill subtle size="sm">
+							{t("extensions.provides.unknown")}
+						</Pill>
+					) : ext.provides.length === 0 ? (
+						<Pill subtle size="sm">
+							{t("extensions.provides.empty")}
+						</Pill>
+					) : (
+						ext.provides.map((code) => (
+							<Pill key={code} subtle size="sm">
+								{labels[code]}
+							</Pill>
+						))
+					)}
+				</div>
 				<ExtensionStateDetail ext={ext} />
 				{/*
 				 * 盘上有新版等着换上(ADR-0012 决策 47),而徽章说的是别的 —— 跑着旧的是「已启用」
@@ -161,17 +167,21 @@ function ExtensionCard({
 						<Pill subtle size="sm" color="var(--color-bn-warning)">
 							{/* 版本号没变只可能出在跑着的那一档(关着的 `version` 本来就是盘上那一版)。 */}
 							{ext.state === "running" && ext.staged.version === ext.version
-								? "盘上的代码换过了,等着换上"
-								: `v${ext.staged.version} 等着换上`}
+								? t("extensions.staged.same")
+								: t("extensions.staged.version", { version: ext.staged.version })}
 						</Pill>
-						<span className="text-bn-2xs text-bn-text-tertiary">到「管理」里选怎么换</span>
+						<span className="text-bn-2xs text-bn-text-tertiary">
+							{t("extensions.staged.manage")}
+						</span>
 					</div>
 				) : null}
 				{update ? <MarketplaceUpdateOffer entry={update} installer={installer} /> : null}
 				{elsewhere ? (
 					<p className="text-bn-2xs text-bn-text-tertiary">
-						{elsewhere.sourceName}里也有 v{elsewhere.entry.version},但你这份不是从那儿装的 ——
-						不提示更新
+						{t("extensions.elsewhere", {
+							source: elsewhere.sourceName,
+							version: elsewhere.entry.version,
+						})}
 					</p>
 				) : null}
 				{pushes ? (
@@ -189,7 +199,7 @@ function ExtensionCard({
 						to={`/extensions/${ext.id}`}
 						className="inline-flex items-center gap-1 text-bn-sm font-bold text-bn-pink transition-opacity hover:opacity-80"
 					>
-						管理
+						{t("extensions.manage")}
 						<Icon.chevronRight size={13} />
 					</Link>
 				</div>
@@ -199,7 +209,10 @@ function ExtensionCard({
 }
 
 export default function Extensions() {
+	const t = useT();
+	const labels = useProvidesLabels();
 	const listed = useExtensions();
+	const [filter, setFilter] = useState<"all" | Provides>("all");
 	// 连接表 —— 只为卡片上那句「N 条连接」。**与拓展表分开取**:拓展没跑起来时它照样在,
 	// 而「配了但那个拓展没起来」正是最该看见的一种。
 	const connections = useQuery({
@@ -211,6 +224,29 @@ export default function Extensions() {
 	// 市场(ADR-0013):已装卡片上的「有新版」从这儿来;装从市场装的那一套与下面那一节共用。
 	const market = useMarketplace();
 	const installer = useMarketplaceInstall();
+	const motion = useCardMotionStore((state) => state.motion);
+	const [landingId, setLandingId] = useState<string | null>(null);
+	useEffect(() => {
+		if (installer.action !== "install" || !installer.done) return;
+		setFilter("all");
+		setLandingId(installer.done.id);
+	}, [installer.action, installer.done]);
+	useEffect(() => {
+		if (motion?.kind !== "install") return;
+		setFilter("all");
+		setLandingId(motion.id);
+	}, [motion]);
+	useEffect(() => {
+		if (!landingId || installing || filter !== "all") return;
+		if (!listed.data?.extensions.some((ext) => ext.id === landingId)) return;
+		const card = document.querySelector<HTMLElement>(cardSelector(landingId));
+		if (!card) return;
+		// 普通市场传送自己先滚落点;减少动态和上传没有这一步,由页面定位。
+		if (motion?.kind !== "install" || reducedMotion()) {
+			card.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+		}
+		setLandingId(null);
+	}, [landingId, installing, filter, listed.data, motion]);
 	// 别处的「去拓展市场」带着 #marketplace 跳过来:市场那一节在最底下,上面的卡片各自异步撑开,
 	// 市场自己的索引也晚到 —— 到齐时再补滚一次。
 	// 🔴 「到齐」要连拓展表一起算:拓展表回来之前这一页只画「正在读取」,锚点还没挂上。只看市场
@@ -236,24 +272,21 @@ export default function Extensions() {
 			.map((entry) => [entry.id, { entry, sourceName: sourceNameOf(entry.source) }] as const),
 	);
 
-	if (listed.isPending) return <LoadingBlock label="正在读取拓展" />;
+	if (listed.isPending) return <LoadingBlock label={t("extensions.loading")} />;
 	/*
-	 * 🔴 **「读不到」不许画成「没有」**:表读不出来时下面两节会说「还没有推送源拓展 /
-	 * 还没有订阅源拓展」并顺带断言「现在能推的只有直连的那些目标」—— 两句都是假话,而且
-	 * 请主人去装一个他其实已经装了的东西。
+	 * 🔴 **「读不到」不许画成「没有」**:表读不出来时不能拿空态断言没有安装拓展。
 	 */
 	if (listed.isError) {
 		return (
 			<div className="bn-anim-page-in flex flex-col gap-3">
-				<ErrorNote>读不到装了哪些拓展:{reasonOf(listed.error)}</ErrorNote>
+				<ErrorNote>{t("extensions.readFailed", { reason: reasonOf(listed.error) })}</ErrorNote>
 			</div>
 		);
 	}
 
 	const extensions = listed.data?.extensions ?? [];
-	// 归不了口的那些(清单读不出来 / 版本不合 → 没有 provides)。它们**不许消失**:
-	// 消失的东西没法排查,而这一页正是主人来看「它怎么了」的地方。
-	const homeless = extensions.filter((ext) => (ext.provides ?? []).length === 0);
+	const visible = extensions.filter((ext) => filter === "all" || ext.provides?.includes(filter));
+	const unknownCount = extensions.filter((ext) => ext.provides === undefined).length;
 	const counts = countByExtension(connections.data ?? []);
 
 	const grid = (items: ExtensionDTO[]) => (
@@ -279,9 +312,11 @@ export default function Extensions() {
 		<div className="bn-anim-page-in flex flex-col gap-5">
 			<div className="flex items-start justify-between gap-4">
 				<div>
-					<div className="text-bn-xl font-bold tracking-tight text-bn-text-primary">拓展</div>
+					<div className="text-bn-xl font-bold tracking-tight text-bn-text-primary">
+						{t("extensions.title")}
+					</div>
 					<div className="mt-[3px] text-bn-xs text-bn-text-secondary">
-						给 BN 接上外面的东西。装进来才有,本体一个都不带 —— 开了才生效。
+						{t("extensions.subtitle")}
 					</div>
 				</div>
 				{/* 本体一个拓展都不带,「怎么装」得有个门;它不属于任何一口,所以在页头。 */}
@@ -291,7 +326,7 @@ export default function Extensions() {
 					icon={<Icon.plus size={13} />}
 					onClick={() => setInstalling(true)}
 				>
-					装拓展
+					{t("extensions.install")}
 				</Btn>
 			</div>
 
@@ -303,27 +338,39 @@ export default function Extensions() {
 			 */}
 			{installer.errors.length > 0 ? (
 				<ErrorNote size="sm">
-					{installer.action === "update" ? "更新不了:" : "装不了:"}
+					{installer.action === "update"
+						? t("extensions.updateFailed")
+						: t("extensions.installFailed")}
 					{installer.errors.join(";")}
 				</ErrorNote>
 			) : null}
 			<ExtensionInstallOutcome done={installer.done} />
 
-			{SECTIONS.map((section) => {
-				const mine = extensions.filter((ext) => (ext.provides ?? []).includes(section.code));
-				return (
-					<div key={section.code} className="flex flex-col gap-2.5">
-						<SectionHead label={section.label} />
-						{mine.length === 0 ? <EmptyNote>{section.empty}</EmptyNote> : grid(mine)}
-					</div>
-				);
-			})}
-
-			{homeless.length > 0 ? (
-				<div className="flex flex-col gap-2.5">
-					<SectionHead label="没归到口上的" />
-					{grid(homeless)}
-				</div>
+			<Picker
+				value={filter}
+				onChange={setFilter}
+				options={[
+					{ value: "all", label: t("extensions.filter.all", { count: extensions.length }) },
+					...Object.entries(labels).map(([code, label]) => ({
+						value: code as Provides,
+						label: t("extensions.filter.count", {
+							label,
+							count: extensions.filter((ext) => ext.provides?.includes(code as Provides)).length,
+						}),
+					})),
+				]}
+			/>
+			{visible.length > 0 ? (
+				grid(visible)
+			) : (
+				<EmptyNote>
+					{extensions.length === 0 ? t("extensions.empty") : t("extensions.filter.empty")}
+				</EmptyNote>
+			)}
+			{filter !== "all" && unknownCount > 0 ? (
+				<p className="text-bn-xs text-bn-text-secondary">
+					{t("extensions.filter.unknown", { count: unknownCount })}
+				</p>
 			) : null}
 
 			<div ref={marketAnchor} style={{ scrollMarginTop: BELOW_HEADER_TOP }}>
@@ -335,7 +382,15 @@ export default function Extensions() {
 
 			{/* 装成之后的传送、更新成了的换装 —— 演完自己收摊,失败 / 减少动态时当场收摊。 */}
 			<CardMotionStage />
-			{installing ? <ExtensionInstallDialog onClose={() => setInstalling(false)} /> : null}
+			{installing ? (
+				<ExtensionInstallDialog
+					onClose={() => setInstalling(false)}
+					onInstalled={(id) => {
+						setFilter("all");
+						setLandingId(id);
+					}}
+				/>
+			) : null}
 		</div>
 	);
 }
