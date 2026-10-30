@@ -116,12 +116,14 @@ describe("assemble-server-bundle", () => {
 			expect(body.status).toBe("ok");
 			// 刻画测试的 bundle 侧闭环:静态 JSON import 内联的版本在 bundle 里也要在,
 			// 不允许 createRequire 落空导致的 0.0.0 降级(health.ts 机制切换的动机)。
-			// 核心包版本住详情口(ADR-0025 决策 12);开机段它回 503,等到 200 才算数据段做完。
+			// 详情口在开机段也回 200(4-19);先用已有的业务口探测等完整 app 接管,再查运行详情。
+			await waitForBooted(port, child, output);
 			const details = await waitForHealth(
 				`http://127.0.0.1:${port}/api/health/details`,
 				child,
 				output,
 			);
+			expect(details.phase).toBe("running");
 			expect(details.moduleVersions.storage).not.toBe("0.0.0");
 			expect(details.moduleVersions.image).not.toBe("0.0.0");
 			const { version } = JSON.parse(await readFile(join(appDir, "package.json"), "utf8"));

@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type { CardSkinFallback, RestartAbility } from "@bilibili-notify/contract";
+import type {
+	CardSkinFallback,
+	RestartAbility,
+	StartupHealthDetailsResponse,
+} from "@bilibili-notify/contract";
 import { type CardKind, fail, type Logger, type Result } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -489,15 +493,16 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 
 /**
  * 开机那一段的 app:listen 之后、数据与推送链路起来之前由它应答(ADR-0022 决策 2)。健康检查(短版)
- * 照答,别的 `/api/*`(详情口也在内)与拓展挂载点一律 503 `unavailable`;面板照常加载、照常能登录。
+ * 照答,详情口交开机阶段与进度;别的 `/api/*` 与拓展挂载点一律 503 `unavailable`;面板照常加载、照常能登录。
  * 数据段做完,index.ts 把请求切到 {@link createApp} 建的完整 app。
  */
 export function createStartupApp(
 	runtime: AppRuntime,
-	options: AppShellOptions & { message: () => string },
+	options: AppShellOptions & { message: () => string; details: () => StartupHealthDetailsResponse },
 ): Hono {
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
 		app.get("/api/health", (c) => c.json(healthResponse()));
+		app.get("/api/health/details", (c) => c.json(options.details()));
 		app.all("/api/*", (c) => respondFailure(c, fail("unavailable", options.message())));
 		app.all(`${EXTENSION_MOUNT_PREFIX}/*`, (c) =>
 			respondFailure(c, fail("unavailable", options.message())),

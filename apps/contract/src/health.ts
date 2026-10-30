@@ -19,7 +19,23 @@ export interface HealthResponse {
  * `GET /api/health/details` —— 健康卡要的数据(ADR-0025 决策 12)。短版那四格不在这里重复带:
  * 版本、启动时刻只认短版。
  */
-export interface HealthDetailsResponse {
+export type HealthDetailsResponse = StartupHealthDetailsResponse | RunningHealthDetailsResponse;
+
+/** 数据还没就位时只交开机进度,不伪造运行中的模块与配置分区。 */
+export interface StartupHealthDetailsResponse {
+	phase: "migrating" | "starting";
+	/** 首次迁移回调之前与 starting 阶段为 null。 */
+	progress: {
+		/** 当前步骤位置,从 1 开始;跳过的布局项也占位置,不是文件完成比例。 */
+		step: number;
+		total: number;
+		label: string;
+	} | null;
+}
+
+/** 完整 app 接管后的健康详情。 */
+export interface RunningHealthDetailsResponse {
+	phase: "running";
 	/** 各核心包自己的 `package.json#version`,启动期一次读出。 */
 	moduleVersions: Record<"storage" | "subscription" | "push" | "image" | "ai", string>;
 	modules: ModuleState;

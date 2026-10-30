@@ -3,7 +3,7 @@
  *
  * 1.0 第一次开机要把 0.x 的数据整代迁过来,图多、盘慢时要几分钟。迁移要是挡在 listen 前面,
  * 冻住的桌面壳 30 秒等不到健康检查就杀进程,连续 3 次就把这一版判死、退回 0.12,主人什么提示
- * 都看不到。所以开机分两段:先 listen,健康检查马上答;数据与引擎起来之前,别的接口一律
+ * 都看不到。所以开机分两段:先 listen,健康检查马上答、详情交开机进度;数据与引擎起来之前,业务接口一律
  * 503 `unavailable`。启动入口仍等全部起来才返回:数据段抛错时,冻住的 boot.mjs 要能当场退回
  * 预装的那一版,那时端口必须已经放掉。
  *
@@ -11,7 +11,7 @@
  * 直接抛错。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +24,7 @@ const gate = vi.hoisted(() => ({
 	hold: undefined as Promise<void> | undefined,
 	/** 配置仓的 `load` 直接抛它;undefined = 不抛。 */
 	failure: undefined as Error | undefined,
+	loadStarted: undefined as (() => void) | undefined,
 }));
 
 vi.mock("../config/store.js", async (importOriginal) => {
@@ -35,6 +36,7 @@ vi.mock("../config/store.js", async (importOriginal) => {
 			const load = store.load.bind(store);
 			store.load = async () => {
 				if (gate.failure) throw gate.failure;
+				gate.loadStarted?.();
 				await gate.hold;
 				return load();
 			};
@@ -107,6 +109,7 @@ describe("开机先 listen 再读数据 e2e", () => {
 		port = await findFreePort();
 		gate.hold = undefined;
 		gate.failure = undefined;
+		gate.loadStarted = undefined;
 	});
 
 	afterEach(async () => {
@@ -115,7 +118,7 @@ describe("开机先 listen 再读数据 e2e", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("数据还没读完:健康检查已经 200,别的接口回 503 unavailable,启动入口还没返回", async () => {
+	it("数据还没读完:短版与开机详情已经 200,启动入口还没返回", async () => {
 		let release!: () => void;
 		gate.hold = new Promise<void>((resolve) => {
 			release = resolve;
@@ -135,17 +138,95 @@ describe("开机先 listen 再读数据 e2e", () => {
 		// 开机段答的是同一份短版:四格,不带各模块的状态(那住详情口,开机段还没有)。
 		expect(Object.keys(body).sort()).toEqual(["startedAt", "status", "uptime", "version"]);
 
-		for (const path of ["/api/subscriptions", "/api/health/details", "/ext/bridge/anything"]) {
-			const res = await fetch(url(path));
-			expect(res.status, path).toBe(503);
-			expect(((await res.json()) as { code: string }).code, path).toBe("unavailable");
+		try {
+			const details = await fetch(url("/api/health/details"));
+			expect(details.status).toBe(200);
+			expect(await details.json()).toEqual({ phase: "starting", progress: null });
+			expect(settled).toBe(false);
+		} finally {
+			release();
+			handle = await starting;
 		}
-		expect(settled).toBe(false);
+		const running = await fetch(url("/api/health/details"));
+		expect(await running.json()).toMatchObject({ phase: "running" });
+	});
 
-		release();
-		handle = await starting;
+	it("开机期间业务接口与拓展挂载点仍回 503 unavailable", async () => {
+		let release!: () => void;
+		gate.hold = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const starting = startServer({
+			argv: argv(),
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		await waitForResponse(url("/api/health"));
+		try {
+			for (const path of ["/api/subscriptions", "/ext/bridge/anything"]) {
+				const res = await fetch(url(path));
+				expect(res.status, path).toBe(503);
+				expect(((await res.json()) as { code: string }).code, path).toBe("unavailable");
+			}
+		} finally {
+			release();
+			handle = await starting;
+		}
 		const subs = await fetch(url("/api/subscriptions"));
 		expect(subs.status).toBe(200);
+	});
+
+	it("迁移已经完成、配置还在加载:阶段为 starting,迁移进度已清空", async () => {
+		await mkdir(join(dataDir, "state"));
+		await writeFile(join(dataDir, "state", "targets.json"), "[]");
+		let release!: () => void;
+		gate.hold = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const loading = new Promise<void>((resolve) => {
+			gate.loadStarted = resolve;
+		});
+		const starting = startServer({
+			argv: argv(),
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		try {
+			await loading;
+			const details = await fetch(url("/api/health/details"));
+			expect(details.status).toBe(200);
+			expect(await details.json()).toEqual({ phase: "starting", progress: null });
+		} finally {
+			release();
+			handle = await starting;
+		}
+	});
+
+	it("桌面 token 只豁免短版:开机详情与运行详情都必须带令牌", async () => {
+		let release!: () => void;
+		gate.hold = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const starting = startServer({
+			argv: argv(),
+			env: { BN_CONFIG_DISABLED: "1", BN_DESKTOP_TOKEN: "test-desktop-token" },
+		});
+		try {
+			expect((await waitForResponse(url("/api/health"))).status).toBe(200);
+			expect((await fetch(url("/api/health/details"))).status).toBe(401);
+			const details = await fetch(url("/api/health/details"), {
+				headers: { "x-bn-desktop-token": "test-desktop-token" },
+			});
+			expect(details.status).toBe(200);
+			expect(await details.json()).toEqual({ phase: "starting", progress: null });
+		} finally {
+			release();
+			handle = await starting;
+		}
+		expect((await fetch(url("/api/health/details"))).status).toBe(401);
+		const running = await fetch(url("/api/health/details"), {
+			headers: { "x-bn-desktop-token": "test-desktop-token" },
+		});
+		expect(running.status).toBe(200);
+		expect(await running.json()).toMatchObject({ phase: "running" });
 	});
 
 	it("配了看板账号:开机那一段的鉴权闸和完整的 app 是同一套", async () => {
@@ -159,16 +240,33 @@ describe("开机先 listen 再读数据 e2e", () => {
 			BN_DASHBOARD_PASS: "correct horse battery staple",
 		};
 		const starting = startServer({ argv: argv(), env });
-
-		// 没登录:健康检查与别的接口都挡在闸外(401),不是 200 或 503。登录入口照常开着。
-		const health = await waitForResponse(url("/api/health"));
-		expect(health.status).toBe(401);
-		expect((await fetch(url("/api/subscriptions"))).status).toBe(401);
-		expect((await fetch(url("/api/session"))).status).toBe(200);
-
-		release();
-		handle = await starting;
+		let cookie = "";
+		try {
+			// 没登录:健康检查与别的接口都挡在闸外(401),不是 200 或 503。登录入口照常开着。
+			const health = await waitForResponse(url("/api/health"));
+			expect(health.status).toBe(401);
+			expect((await fetch(url("/api/subscriptions"))).status).toBe(401);
+			expect((await fetch(url("/api/health/details"))).status).toBe(401);
+			expect((await fetch(url("/api/session"))).status).toBe(200);
+			const login = await fetch(url("/api/session/login"), {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ username: env.BN_DASHBOARD_USER, password: env.BN_DASHBOARD_PASS }),
+			});
+			expect(login.status).toBe(200);
+			cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+			const details = await fetch(url("/api/health/details"), { headers: { cookie } });
+			expect(details.status).toBe(200);
+			expect(await details.json()).toEqual({ phase: "starting", progress: null });
+		} finally {
+			release();
+			handle = await starting;
+		}
 		expect((await fetch(url("/api/health"))).status).toBe(401);
+		expect((await fetch(url("/api/health/details"))).status).toBe(401);
+		const running = await fetch(url("/api/health/details"), { headers: { cookie } });
+		expect(running.status).toBe(200);
+		expect(await running.json()).toMatchObject({ phase: "running" });
 	});
 
 	it("数据段抛错:启动入口抛出去,端口已经放掉", async () => {

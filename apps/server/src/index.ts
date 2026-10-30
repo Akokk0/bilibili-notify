@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { GenerationSourceKind } from "@bilibili-notify/contract";
+import type { GenerationSourceKind, StartupHealthDetailsResponse } from "@bilibili-notify/contract";
 import {
 	chatIdentityOf,
 	type Disposable,
@@ -459,9 +459,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 开机这一段 503 里的那句话:每个请求现取(出字那一刻按当前语言),所以存的是取字函数、不是字。
 		let startupMessage = (): string =>
 			generation.kind === "create" ? t("startup.migrating") : t("startup.starting");
+		let startupDetails: StartupHealthDetailsResponse = {
+			phase: generation.kind === "create" ? "migrating" : "starting",
+			progress: null,
+		};
 		let currentApp = createStartupApp(runtime, {
 			...appShell,
 			message: () => startupMessage(),
+			details: () => startupDetails,
 		});
 		await new Promise<void>((resolveServe) => {
 			server = serve(
@@ -508,6 +513,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 							passphrase: bootstrap.cookieEncryptionKey,
 							onProgress: ({ done, total, label }) => {
 								startupMessage = () => t("startup.migratingStep", { done, total, label });
+								startupDetails = {
+									phase: "migrating",
+									progress: { step: Math.min(done + 1, total), total, label },
+								};
 							},
 						});
 					},
@@ -527,6 +536,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				throw error;
 			}
 			startupMessage = () => t("startup.starting");
+			startupDetails = { phase: "starting", progress: null };
 			log.info(
 				`[data] 第 ${generation.seq} 代迁好了:搬了 ${report?.transfers.length ?? 0} 个文件,第 0 代原样留着当备份`,
 			);

@@ -43,6 +43,10 @@ const gate = vi.hoisted(() => ({
 	hold: undefined as Promise<void> | undefined,
 	failure: undefined as Error | undefined,
 	copyFailure: undefined as Error | undefined,
+	copyHold: undefined as Promise<void> | undefined,
+	copyStarted: undefined as (() => void) | undefined,
+	finishedHold: undefined as Promise<void> | undefined,
+	finished: undefined as (() => void) | undefined,
 }));
 
 // 复制也包一层真的(不换掉它):测试要它在全新开始拷主密钥时抛。
@@ -52,6 +56,8 @@ vi.mock("@bilibili-notify/storage", async (importOriginal) => {
 		...real,
 		copyFileAtomic: async (...args: Parameters<typeof real.copyFileAtomic>) => {
 			if (gate.copyFailure) throw gate.copyFailure;
+			gate.copyStarted?.();
+			await gate.copyHold;
 			return real.copyFileAtomic(...args);
 		},
 	};
@@ -64,7 +70,10 @@ vi.mock("../migration/zero-generation.js", async (importOriginal) => {
 		migrateZeroGeneration: async (...args: Parameters<typeof real.migrateZeroGeneration>) => {
 			if (gate.failure) throw gate.failure;
 			await gate.hold;
-			return real.migrateZeroGeneration(...args);
+			const result = await real.migrateZeroGeneration(...args);
+			gate.finished?.();
+			await gate.finishedHold;
+			return result;
 		},
 	};
 });
@@ -175,12 +184,76 @@ describe("数据代接在开机路径上 e2e", () => {
 		gate.hold = undefined;
 		gate.failure = undefined;
 		gate.copyFailure = undefined;
+		gate.copyHold = undefined;
+		gate.copyStarted = undefined;
+		gate.finishedHold = undefined;
+		gate.finished = undefined;
 	});
 
 	afterEach(async () => {
 		await handle?.close("test cleanup").catch(() => {});
 		handle = undefined;
 		await rm(dataDir, { recursive: true, force: true });
+	});
+
+	it("搬家详情从等待回调到真实第一步,迁完才交运行详情", async () => {
+		await placeZeroGeneration();
+		let releaseMigration!: () => void;
+		let releaseCopy!: () => void;
+		let releaseFinished!: () => void;
+		gate.hold = new Promise<void>((resolve) => {
+			releaseMigration = resolve;
+		});
+		gate.copyHold = new Promise<void>((resolve) => {
+			releaseCopy = resolve;
+		});
+		const copying = new Promise<void>((resolve) => {
+			gate.copyStarted = resolve;
+		});
+		gate.finishedHold = new Promise<void>((resolve) => {
+			releaseFinished = resolve;
+		});
+		const finished = new Promise<void>((resolve) => {
+			gate.finished = resolve;
+		});
+		const starting = start();
+		try {
+			await waitForResponse(url("/api/health"));
+			const waiting = await fetch(url("/api/health/details"));
+			expect(waiting.status).toBe(200);
+			expect(await waiting.json()).toEqual({ phase: "migrating", progress: null });
+			releaseMigration();
+			await copying;
+			const moving = await fetch(url("/api/health/details"));
+			expect(moving.status).toBe(200);
+			expect(await moving.json()).toEqual({
+				phase: "migrating",
+				progress: { step: 1, total: 27, label: "设置与订阅" },
+			});
+			const busy = await fetch(url("/api/subscriptions"));
+			expect(busy.status).toBe(503);
+			expect(await busy.json()).toMatchObject({
+				code: "unavailable",
+				message: expect.stringContaining("设置与订阅"),
+			});
+			releaseCopy();
+			await finished;
+			const completed = await fetch(url("/api/health/details"));
+			expect(await completed.json()).toEqual({
+				phase: "migrating",
+				progress: { step: 27, total: 27, label: "搬完了" },
+			});
+		} finally {
+			releaseMigration();
+			releaseCopy();
+			releaseFinished();
+			handle = await starting;
+		}
+		const running = await fetch(url("/api/health/details"));
+		expect(running.status).toBe(200);
+		const body = await running.json();
+		expect(body).toMatchObject({ phase: "running", configScopes: { subscriptions: { count: 0 } } });
+		expect(body).not.toHaveProperty("progress");
 	});
 
 	it("从第 0 代迁:迁的时候健康检查照答、别的接口 503 说在搬家,新的一代迁完才出现;跑完关掉,第 0 代一个字节没变", async () => {

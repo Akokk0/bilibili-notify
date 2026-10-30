@@ -69,7 +69,10 @@ async function mount(s: Scenario) {
 				uptime: 1,
 			};
 		if (path === "/api/health/details")
-			return { modules: { dynamic: true, live: false, image: false, ai: false, ...s.modules } };
+			return {
+				phase: "running",
+				modules: { dynamic: true, live: false, image: false, ai: false, ...s.modules },
+			};
 		if (path === "/api/settings") {
 			if (s.globalsError) throw new Error("globals 挂了");
 			return { core: { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } } };

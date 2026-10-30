@@ -39,7 +39,7 @@ async function mount(path: string) {
 				uptime: 1,
 			};
 		if (p === "/api/health/details")
-			return { modules: { dynamic: true, live: false, image: false, ai: false } };
+			return { phase: "running", modules: { dynamic: true, live: false, image: false, ai: false } };
 		return null;
 	});
 	const { default: About } = await import("../../About");

@@ -123,7 +123,13 @@ describe("GET /api/health/details — 回应的格子", () => {
 		const modules = { dynamic: true, live: false, image: true, ai: false };
 		const app = detailsApp({ getModuleState: () => modules });
 		const body = (await (await app.request("/details")).json()) as Record<string, unknown>;
-		expect(Object.keys(body).sort()).toEqual(["configScopes", "moduleVersions", "modules"]);
+		expect(Object.keys(body).sort()).toEqual([
+			"configScopes",
+			"moduleVersions",
+			"modules",
+			"phase",
+		]);
+		expect(body.phase).toBe("running");
 		expect(body.modules).toEqual(modules);
 		expect(body.moduleVersions).toEqual(MODULE_VERSIONS);
 		expect(body.configScopes).toEqual({

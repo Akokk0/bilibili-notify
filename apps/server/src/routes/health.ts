@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 // 把 version 内联进产物,单文件 bundle 旁没有 node_modules 也能显示真实版本;dev(tsx)/
 // 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
 import aiPkg from "@bilibili-notify/ai/package.json" with { type: "json" };
-import type { HealthDetailsResponse, HealthResponse, ModuleState } from "@bilibili-notify/contract";
+import type {
+	HealthResponse,
+	ModuleState,
+	RunningHealthDetailsResponse,
+} from "@bilibili-notify/contract";
 import imagePkg from "@bilibili-notify/image/package.json" with { type: "json" };
 import pushPkg from "@bilibili-notify/push/package.json" with { type: "json" };
 import storagePkg from "@bilibili-notify/storage/package.json" with { type: "json" };
@@ -14,7 +18,7 @@ import { Hono } from "hono";
 import { findNearestPackageJson } from "../runtime/nearest-package-json.js";
 import type { RouteDeps } from "./types.js";
 
-type ModuleVersions = HealthDetailsResponse["moduleVersions"];
+type ModuleVersions = RunningHealthDetailsResponse["moduleVersions"];
 
 // 顺序与 dashboard 卡片排序保持一致(storage → subscription → push → image → ai)。
 // B 站那三个包(api / dynamic / live)3a 搬进服务端、不再是独立的包,没有自己的版本可报。
@@ -81,7 +85,7 @@ const NO_MODULES: ModuleState = { dynamic: false, live: false, image: false, ai:
 /**
  * Mounts:
  *   GET /api/health           — 短版四格,存活探测
- *   GET /api/health/details   — 健康卡的数据:各模块开没开、核心包版本、配置分区
+ *   GET /api/health/details   — 运行阶段与健康卡的数据:各模块开没开、核心包版本、配置分区
  */
 export function createHealthRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -91,7 +95,8 @@ export function createHealthRoute(deps: RouteDeps): Hono {
 	app.get("/details", (c) => {
 		const subs = deps.store.getSubscriptions();
 		const targets = deps.store.getTargets();
-		const body: HealthDetailsResponse = {
+		const body: RunningHealthDetailsResponse = {
+			phase: "running",
 			moduleVersions: MODULE_VERSIONS,
 			modules: deps.runtime.pipeline?.getModuleState() ?? NO_MODULES,
 			configScopes: {

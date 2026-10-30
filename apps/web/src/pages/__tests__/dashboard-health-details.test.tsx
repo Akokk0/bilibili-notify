@@ -7,7 +7,7 @@
  * 「prop 从哪来」—— 把首页改回读短版,或者干脆不传,卡片测试照绿,这里红。
  */
 
-import type { HealthDetailsResponse, HealthResponse } from "@bilibili-notify/contract";
+import type { HealthResponse, ModuleState } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -36,7 +36,7 @@ const SHORT: HealthResponse = {
 	uptime: 1,
 };
 
-const ALL_ON: HealthDetailsResponse["modules"] = {
+const ALL_ON: ModuleState = {
 	dynamic: true,
 	live: true,
 	image: true,
@@ -97,10 +97,21 @@ afterEach(() => {
 describe("首页各模块的状态读详情口", () => {
 	it("短版没有 modules、详情说四个都开着 → 8 / 8(没登录也不影响动态那格)", async () => {
 		// 没登录:要是动态那格落到「详情没回来」的兜底(跟着登录态走),就只有 4 / 8。
-		mockApi({ loggedIn: false, details: async () => ({ modules: ALL_ON }) });
+		mockApi({ loggedIn: false, details: async () => ({ phase: "running", modules: ALL_ON }) });
 		renderDashboard();
 		expect(await screen.findByText("模块全部就绪")).toBeTruthy();
 		expect(screen.getByTitle("就绪的模块数").textContent).toBe("8 / 8");
+	});
+
+	it("开机详情保留在缓存,首页沿用兜底;运行详情回来后模块恢复", async () => {
+		const startup = { phase: "migrating", progress: { step: 1, total: 27, label: "设置与订阅" } };
+		mockApi({ loggedIn: true, details: async () => startup });
+		const qc = renderDashboard();
+		await waitFor(() => expect(qc.getQueryData(HEALTH_DETAILS_QUERY_KEY)).toEqual(startup));
+		expect(screen.getByTitle("就绪的模块数").textContent).toBe("5 / 8");
+		mockApi({ loggedIn: true, details: async () => ({ phase: "running", modules: ALL_ON }) });
+		await qc.invalidateQueries({ queryKey: HEALTH_DETAILS_QUERY_KEY });
+		expect(await screen.findByText("模块全部就绪")).toBeTruthy();
 	});
 
 	it("详情口失败 → 兜底:动态跟着登录态,其余三个按没开算", async () => {
