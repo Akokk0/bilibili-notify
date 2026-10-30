@@ -879,3 +879,5 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 **服务端命名约定**：`create*` 造对象，`bind*` 挂到总线并返回可释放对象，`start*` 起定时或循环；入参一律叫 `XxxOptions`，注入的协作者包叫 `XxxDeps`（只放协作者，不混配置值）；存储一律是接口加 `create`，`Store` 只指存盘的。现存 4 个 `attach*`、5 个 `make*` 全改。面板的类型门面别名删掉，用本名。
 
 **明确不改**：见 [architecture.md](./architecture.md)「明确不改的」。
+
+🔗 现状（4-20，2026-10-30）：`core.accounts` 与其 `order` 实际均为可选、不带默认；缺键按登记顺序。显式排序 `PATCH /api/settings { core: { accounts: { order } } }` 才落盘；order / accounts 的 null 删除相应键。未知与重复键原样保存，聚合读口只认首次在册账号，遗漏者追加。`GET /api/accounts` 回 `{ accounts: [{ sourceKey, state, account?: { name, avatar? } }] }`，不装订阅资料或来源专有字段；完整与脱敏备份沿既有核心设置链路携带。

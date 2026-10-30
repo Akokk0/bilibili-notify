@@ -427,3 +427,5 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - ⛔ 不做：extension 包版本对齐契约档位 + 守卫（兼容看清单 apiVersion 与 EXTENSION_API_RANGE，不看包版本）。
 - ⛔ 不做：BN 侧替来源或适配器限流、去重（维持 ADR-0019 决策 53）；投递重试只在核心按目标做。
 - alpha 不做、1.0.0 之前做（09-27 改，原定「1.0 之后」）：devtools 换 devframe、新手引导换 driver.js，各自先做小试验再定，见 [construction-plan.md](./construction-plan.md)。devframe 要先查清许可证和维护者，并重新验证 devtools 不会进生产产物；driver.js 要先验证引导锁（聚光灯外不能操作，⛔ 不许放开）、跨页面的步骤与晚挂上的锚点、能不能跟随界面皮肤。真正拦住拓展读写文件也不做（要等沙箱）。
+
+🔗 现状（4-20，2026-10-30）：`accounts/accounts.ts` 现读来源登记表与核心排序，`routes/accounts.ts` 经 `GET /api/accounts` 下发在册有登录口的来源账号；来源原状态照回、缺账号省略，来源卸下即消失、读口抛错整次 unavailable。账号头像沿用已有图库引用方与鉴权读口。来源接口不扩宽；失效沿用 subscription-auth-changed、globals config-changed 与拓展表变更，面板读者接线归 4-40。

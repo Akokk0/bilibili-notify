@@ -491,3 +491,5 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 ## 施工时要同步的文档
 
 - `CLAUDE.md` 与 `docs/agents/*.md`（push、architecture、commands、events、devtools、self-update、extension-marketplace）里的过时引用，随施工第 5 期同步。
+
+🔗 现状（4-20，2026-10-30）：账号聚合已落 `GET /api/accounts`，每条 `AccountView` 只装 `sourceKey`、来源原 `AuthState` 与可选的账号名 / 图库头像。按 `core.accounts.order` 排序，缺键走登记先后；未知与重复键保留原设置、读时忽略，遗漏账号追加。排序经既有 `PATCH /api/settings` 写，默认不落盘、null 删键，随核心设置进备份，不抬迁移 / 备份版本。仅在册有 auth 的来源参与，拓展 auth 仍未开放；面板多账号随 4-40。
