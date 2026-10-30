@@ -1,1 +1,6 @@
-{}
+{
+	"internal.settings.loggingPrototype": "主人，日志模块的键不能用 constructor / toString / valueOf 这类 JS 对象原型上的名字，会误查到内置函数哦。",
+	"internal.settings.mirrorPrefix": "主人，加速前缀请填 https:// 开头的地址哦。",
+	"internal.settings.sourceUrl": "主人，源地址请填 https:// 开头的地址哦。",
+	"internal.settings.timezone": "主人，请填认得的 IANA 时区名，比如 Asia/Shanghai 哦。"
+}

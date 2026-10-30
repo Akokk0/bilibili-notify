@@ -1,5 +1,9 @@
 {
 	"internal.commands.aliasBlank": "别名不能为空或带首尾空格",
 	"internal.commands.prefixBlank": "前缀不能是纯空白",
-	"internal.commands.prefixLeadingSpace": "前缀不能以空白开头"
+	"internal.commands.prefixLeadingSpace": "前缀不能以空白开头",
+	"internal.settings.loggingPrototype": "日志模块的键不能用 JS 对象原型上的名字(constructor / toString / valueOf 这类):它会被当成键去查表,查一个没有的名字也会摸到内置函数",
+	"internal.settings.mirrorPrefix": "加速前缀必须是 https:// 开头的地址",
+	"internal.settings.sourceUrl": "源地址必须是 https:// 开头",
+	"internal.settings.timezone": "不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai"
 }

@@ -3,6 +3,7 @@ import { DEFAULT_ROAST_SCHEDULE } from "../ai";
 import { DEFAULT_FEATURE_FLAGS } from "../features";
 import { DEFAULT_HISTORY_RETENTION_DAYS, HISTORY_RETENTION_DAY_OPTIONS } from "../history";
 import { LOCALES, VOICES } from "../i18n";
+import { packageText } from "../texts";
 import { DEFAULT_TIMEZONE, isTimezone } from "../timezone";
 import { MIRROR_PREFIX_RE } from "../update";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } from "./card-skin";
@@ -29,7 +30,7 @@ import {
 	SuperchatSettingsSchema,
 	TemplateBundleSchema,
 } from "./common";
-import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
+import { isPrototypeName } from "./extension-manifest";
 import { DEFAULT_LINK_PREVIEW, LinkPreviewSettingsSchema } from "./link-preview";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { RoastScheduleSchema } from "./roast-schedule";
@@ -68,7 +69,9 @@ export const ModuleLogLevelsSchema = z.record(
 		.string()
 		.min(1)
 		.max(64)
-		.refine((key) => !isPrototypeName(key), prototypeNameMessage("日志模块的键 ")),
+		.refine((key) => !isPrototypeName(key), {
+			error: () => packageText("internal.settings.loggingPrototype"),
+		}),
 	LogLevelSchema,
 );
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
@@ -242,7 +245,11 @@ export const UpdateSettingsSchema = z.object({
 	 * 是与面板、路由同一条正则(`MIRROR_PREFIX_RE`),三处不会各判各的。
 	 */
 	mirrors: z
-		.array(z.string().regex(MIRROR_PREFIX_RE, "加速前缀必须是 https:// 开头的地址"))
+		.array(
+			z
+				.string()
+				.regex(MIRROR_PREFIX_RE, { error: () => packageText("internal.settings.mirrorPrefix") }),
+		)
 		.max(10)
 		.default([]),
 });
@@ -266,9 +273,15 @@ export const MarketplaceSourceSchema = z.object({
 	 * 用户加源时**只填地址**,不用起名。
 	 */
 	name: z.string().min(1).max(40).optional(),
-	url: markBackupOnly(z.string().url().regex(MIRROR_PREFIX_RE, "源地址必须是 https:// 开头"), {
-		url: true,
-	}),
+	url: markBackupOnly(
+		z
+			.string()
+			.url()
+			.regex(MIRROR_PREFIX_RE, { error: () => packageText("internal.settings.sourceUrl") }),
+		{
+			url: true,
+		},
+	),
 });
 export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
 
@@ -307,7 +320,7 @@ export const GlobalConfigSchema = z.object({
 	 */
 	timezone: z
 		.string()
-		.refine(isTimezone, "不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai")
+		.refine(isTimezone, { error: () => packageText("internal.settings.timezone") })
 		.default(DEFAULT_TIMEZONE),
 	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
 	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
