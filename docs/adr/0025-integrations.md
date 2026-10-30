@@ -190,3 +190,5 @@
 - cookie 里不机密的值（比如登录账号的 uid）也会在日志里被遮掉。
 - `core` 某格退回默认时行为会变（过滤、静音、新手引导），靠问题框亮出来。
 - 契约 v3 再多一处不兼容：上报从 reject 改成 `void`。
+
+🔗 现状（4-18，2026-10-30）：运行状态采用宿主投影，`Source` 不加成员。来源表新增 `status` 与明确失败时的 `failure`；来源登记表保留内置 `start` 失败的 `SourceRunView`，释放键后仍能读到，成功重登清旧失败、正常撤下移除。`retainFailure` 为宿主登记选项，内置缺省保留，拓展交 false（失败生命周期只认装载器，卸载后不残留伪装成内置来源的失败项）。业务用 `SourceStatusReader.running` 保留在册闸，展示用 `status` 读启动结论／拓展八档；尚无可靠结论明确为 `unknown`。健康详情只扩 running 支：`core` 五格及组头问题数、`integrations` 归并格、`problemCount` 全表计数、`identityDuplicates` 遗留重复组；旧 `moduleVersions`／`modules`／`configScopes` 保留。核心问题不猜分给五格，集成按 reporter（包括订阅与连接问题）计一次，未匹配 reporter 仍在总数；不加 severity。拓展多口合一格，纯推送有配置连接才占格（坏连接也算），无清单时保留身份且 provides 缺省表示未知。摘要读取结果独立于运行态，读取失败不改启动灯；图片／AI false 只表达未就绪，配置文件未落盘不算存储失败。重复组只含 identity、subscriptionIds、可选缓存名字，不合并或删除。四色照已批稿 1；4-19 两个开机支、短版四格和 4-20 账号接口不变，界面接线仍归 4-38／39／40。
