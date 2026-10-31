@@ -278,3 +278,5 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 - **痕迹事件**(生成器的 `onToolEvent`):开始事件带 `label` 与 `argText`(完整文字,截短是界面的事);结束事件带 `ok`,失败时带 `message`(与喂回模型的是同一句);慢工具中途的进度事件不落盘。`label`、`argText`、`message` 都随消息落盘(`ai/conversation-store.ts` 的 `StoredToolTrace`,存下来的字不跟着以后改名),也都经聊天 SSE 的 `tool` 事件过线;主人打斜杠点名技能时服务端手工补的那枚 `load_skill` 痕迹同样带 `label` 与 `argText`。
 - **`GET /api/ai/skills`** 在 `tools` 之外多一格 `toolLabels`(工具名 → 标签,`routes/ai-skills.ts`)。技能编辑器的勾选框今天还显示工具名,没用上这一格。
 - **面板没有按工具名查的表**:聊天里那一行小条只读痕迹自带的 `label` / `argText`(`apps/web/src/components/ai-chat/tools.ts` 的 `describeTool` 只管拼成「标签「入参」」与截短),没带标签就显示工具原名。失败的 `message` 面板接住了、还没显示。
+
+🔗现状（4-55，2026-10-31）：集成共同时区能力由integrations/timezone-reader.ts的timezoneReaderOf接核心设置读源，createIntegrationContext统一隔离回调异常并管理时区通知；index造同一读源给内置装配与拓展loader。SourceContext白名单跟踪来源订阅，PlatformAdapterContext经适配器登记表按次跟踪，不能只依赖父集成收尾。进程内对拍新增P54，现54条走通/2条不开；拓展对拍新增IntegrationContext第七表14成员，共63行（driven39、elsewhere15、closed8、hostFilled1），activate另有运行时成员穷举。契约为全新1/0，历史设计文字所述v3不代表当前大档号。

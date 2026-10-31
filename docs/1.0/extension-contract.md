@@ -526,3 +526,5 @@ interface ExtensionI18n {
 
 - 拓展底下第三方随便用，我们自己的东西只准从 `@bilibili-notify/extension` 进；反方向核心不 import 拓展。两条都有扫目录的守卫。
 - `@bilibili-notify/extension` 只放类型不放实现（拓展会被打成自包含 bundle）；列出来的就是契约的全部，加一格是一次明确的加宽决定。
+
+🔗现状（4-55，2026-10-31）：当前全新1.0契约重新起号为apiVersion1，宿主min/current均1，apiRevision统一0；保留今天完整接口及严格新清单，历史v1不是此契约。历史provides、旧v2 display/connection嵌套及混合包均拒收且不import，不恢复legacy或转换层。旧1同号格式不合记unreadable，旧2/3大档不合记incompatible；同号开发包不能只靠数字区分。SDK包version不随大档重置。IntegrationContext的timezone()/onTimezoneChanged()同时开放给activate与来源/适配器，通知可手动幂等回收，停用/失败/卸载按所属层自动收回；异步拒绝同样隔离。AI登记口依旧未向拓展开放。

@@ -493,3 +493,5 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 - `CLAUDE.md` 与 `docs/agents/*.md`（push、architecture、commands、events、devtools、self-update、extension-marketplace）里的过时引用，随施工第 5 期同步。
 
 🔗 现状（4-20，2026-10-30）：账号聚合已落 `GET /api/accounts`，每条 `AccountView` 只装 `sourceKey`、来源原 `AuthState` 与可选的账号名 / 图库头像。按 `core.accounts.order` 排序，缺键走登记先后；未知与重复键保留原设置、读时忽略，遗漏账号追加。排序经既有 `PATCH /api/settings` 写，默认不落盘、null 删键，随核心设置进备份，不抬迁移 / 备份版本。仅在册有 auth 的来源参与，拓展 auth 仍未开放；面板多账号随 4-40。
+
+🔗现状（4-55，2026-10-31）：核心全局timezone现在作为IntegrationContext两成员开放给全部集成：timezone()现读、onTimezoneChanged()仅有效值真变才通知。index同一timezoneReaderOf读源同时供内置与拓展装配，B站来源撤去本片初版专用读口/通知，经start(ctx)使用共同能力；provider只收共同ctx的timezone窄面。新契约大档1/小号0，成员对拍覆盖共同能力，未给B站保留私有时区后门。纯间隔不因改时区重排，不补跑旧墙钟格。

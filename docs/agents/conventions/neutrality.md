@@ -93,3 +93,5 @@ if (adapter.capabilities.atAll) addAtAll(msg);
 - [ADR-0028](../../adr/0028-post-text-rendering-and-templates.md)：决策 2 与「明确不做」（不为保字节一致给中立形状加 B 站专属枚举）。
 - [architecture.md](../../1.0/architecture.md)：「守卫」三张表与「棘轮」。
 - [construction-plan.md](../../1.0/construction-plan.md)：「中立性守卫的归期」。
+
+🔗现状（4-55，2026-10-31）：当前新契约为全新1.0的1/0；B站与拓展均从IntegrationContext取得共同时区能力，不保留BiliSourceDeps私注。拓展对拍现七表63行（14个IntegrationContext成员），进程内对拍P54补现读/去重/撤订，现54走通+2不开；这只补实际成员覆盖，不改中立性判据或旧历史记录。

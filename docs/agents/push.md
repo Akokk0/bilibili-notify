@@ -195,3 +195,5 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 | 改历史行记谁 | `historyRecordFromSend` 按支分；行 → 订阅的回找两份实现（`currentSubscriptionOf` / `forRow`）一起改 |
 | 加一个推送平台 | adapter registry，推送层一个字不动 |
 | 加一个订阅平台 | 写一个订阅源拓展，这条链一个字不动（见 [subscriptions.md](./subscriptions.md)） |
+
+🔗现状（4-55，2026-10-31）：PushRouter必填timezone回调，免扰判断按当前核心timezone的当地时分，跨午夜等原规则不变。改时区立即影响下一次判断，不移动已有到期epoch；roast/profile/dynamic墙钟cron收旧timer后按新时区未来格排，不补跑；统计60秒、首轮3秒、退避等纯间隔不重排。

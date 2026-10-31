@@ -560,3 +560,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 几张表要不要合成一处记账（3a-41 开了四张，同一个文件常常被四到六张表记着，如 `runtime/engines.ts`、`routes/cards.ts`；主人 10-12 同意这一片不合，每道守卫自带一张表） | 3b 排片时，若发现调表成了负担再看（那时哪些片并行已经清楚） |
 | `adapterKey` 比字面量没有守卫（`adapterKey === "webhook"`，核心今天 1 处，在 `packages/internal/src/constants.ts` 的 `isWebhookPlatform` 里；`config/store.ts` 托管 webhook 目标那套逻辑同属这一类，今天没有任何一张表记着）：定案没点它，3a-41 没加，记在 `.platform` 守卫文件头的「抓不到」里 | 3b 的推送守卫③（假适配器对拍）排片时看 |
 | 宿主自己的抓图口：核心抓会员自定义图今天借 B 站集成的请求客户端（`BuiltinIntegrations.bilibili.fetchImage`），不合『BN 自己的请求不走集成的客户端』（`docs/agents/conventions/integration-side-effects.md`「边界与例外」）；3b-47 为了把登录装配进来源照旧接上，没改行为（主人 10-25 定）。触发：第 4 期之前，或 3b-50 收尾时。**已落（4-03）**：宿主自己的抓图口 `AppRuntime.imageFetcher`（BN 自己的请求客户端，空罐子、不带 cookie，图存进「集成在途」那一家），入口递给 `createPipelineRuntime`；`BuiltinIntegrations.bilibili.fetchImage` 删了。 | 第 4 期（4-03 已落） |
+
+🔗现状（4-55，2026-10-31）：其余服务端墙上时间已跟核心timezone：免扰、静音截止显示、AI日期和三个cron家族；统计登记表的60秒检查、资料首轮3秒及退避仍按经过时长。旧stats/extension-source.ts已由stats/registry-source.ts替代；followers-sample-gap.ts的CronTime只估间隔，本片不改。新1.0拓展契约从apiVersion1/revision0起号，仅接受当前strict清单，不恢复历史v1/v2。4-48时区选择UI仍未做，迁移53/备份23不变。
+
+🔗现状（4-55，2026-10-31）：桌面宿主不在东八区、或Docker改过TZ的用户，免扰将从宿主当地时刻切为核心timezone（默认Asia/Shanghai）的当地时刻，可能按原时差挪动一次；后续发版素材应说明这项行为变化，本片不直接改CHANGELOG。

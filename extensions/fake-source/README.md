@@ -81,3 +81,5 @@
 十二颗按钮的接线、问题分层与入站由 `extensions/fake-source/src/__tests__/buttons.test.ts` 和 `adapter.test.ts` 钉着;作品、开播 / 下播 / 资料与两颗报坏按钮在真 BN 上的路径由 `apps/server/src/__tests__/fake-source-buttons-e2e.test.ts` 装真的假源核过,作品与开播 / 下播推到目标、落历史的那一段另有 `extension-post-e2e.test.ts` 与 `extension-live-push-e2e.test.ts`。
 
 契约守卫 `apps/server/src/__tests__/extension-contract-parity-e2e.test.ts` 也装这个包逐成员走契约。`src/adapter.ts` 里 `adapter-reconcile`、`adapter-send`、`adapter-start` 三段用 `#region sample:` 包着,会被 `docs/1.0/extension-contract.md` 原样引用,`scripts/__tests__/contract-samples.test.mjs` 钉着;改了这几段就要同步文档。
+
+🔗现状（4-55，2026-10-31）：当前构建清单使用全新1.0契约1/0，并从共同IntegrationContext得到timezone()/onTimezoneChanged()。没有因重编号恢复旧provides/旧嵌套或开放AI工具登记；完整对拍另覆盖公共上下文14成员和P54。

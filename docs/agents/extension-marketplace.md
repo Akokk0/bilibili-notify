@@ -28,7 +28,7 @@
       "name": "抖音订阅",
       "description": "一句话",
       "version": "1.0.0",          // semver(不收 `+build` 元数据);每个 id 每档、每个契约版本只列最新那一版
-      "apiVersion": 3,             // 落在 BN 的 EXTENSION_API_RANGE 区间里才能装
+      "apiVersion": 1,             // 落在 BN 的 EXTENSION_API_RANGE 区间里才能装
       "apiRevision": 0,            // 可选,缺省 0:要的契约小号(抄清单里那格),比 BN 的高也装不了(ADR-0019 决策 59)
       "prerelease": false,         // 可选:true 的那条是预发布档,只有预发布渠道挑得到;必须与版本号对得上(带 - 的才标 true)
       "package": { "url": "https://…/douyin-1.0.0.zip", "sha256": "<64 位小写 hex>", "size": 123456 },
@@ -79,7 +79,7 @@
 - `<数据根>/extensions/.marketplace.json` 记着每个 id 从哪个源装的哪一版、官方索引见过的最大 `issuedAt`,以及**每个源上次报的命名空间**(`namespaces`)。「有新版」只认原来源;手放的 / devtools 链的没有记录,不提示更新。
 - 命名空间的占位是**记在盘上**的:拉索引之前就按配置顺序占好,先配的源这一趟超时也不会让后配的源抢走它的命名空间(那个源装着的拓展 id 全在那底下)。源删掉了占位才还回去。
 - 更新 = 从市场再装一次;盖掉一份正在跑的要重启一次(同上传装包)。「有新版」按**这个渠道挑出来的那一条**算:稳定渠道装着正式版,不会被索引里那条预发布顶成「有新版」。
-- 契约不合(`apiVersion` 对不上,或 `apiRevision` 比 BN 的契约小号高)的条目标灰「先升级 BN」;撤回的标红。**索引里那个新版自己装不了的(被撤回 / 要更高一格的契约)不画「有新版」** —— 画出来的钮就得按得动。
+- 契约不合(`apiVersion` 对不上,或 `apiRevision` 比 BN 的契约小号高)的条目标不兼容；跨大档的实际安装原因采用中性提示，同档小号不足仍提示升级;撤回的标红。**索引里那个新版自己装不了的(被撤回 / 要更高一格的契约)不画「有新版」** —— 画出来的钮就得按得动。
 - 装着那版被撤回、而索引里有能装的新版:状态照「有新版」给(`updatable`,`installed.revoked` 标着),列表页的已装卡上**红字与「更新」钮一起画**(详情页没有更新钮) —— 那正是最该更新的时候。换不过去才落到「撤回」那一档。
 - 下载上限按索引写的 `size` 收;`size` 本身超过本机上限(10 MB)时直接说是上限,不报「下不下来」。
 - **卸载**是 `DELETE /api/ext/:id`(`apps/server/src/routes/extensions.ts`):还有连接指着它就不删;然后抹盘(连同重扫)、清它的上报出入、删它的开关与设置文件、清它存的状态与密钥。**保留名字的文件夹是例外**(`RESERVED_EXTENSION_IDS`:`bilibili`、三个内置适配器的键、`core`、`image`、`ai`):这样的文件夹过不了 id 校验、装载不了,面板上是一张「读不了」的卡,卸载时**只抹拓展目录下那一个文件夹**,查连接、清上报出入、删开关与设置、清状态与密钥这几步一步不走 —— 那几步按 id 找到的是同名的内置集成与核心自己的东西(内置适配器的连接、同名内置集成的设置与存着的登录凭据),一个从没跑起来过的拓展本来也没有那些(主人 10-12 定,3a-40 留着的「删不掉的卡」)。
@@ -94,3 +94,5 @@
 | `apps/web/src/pages/extensions/marketplace-section.tsx` / `marketplace-sources-dialog.tsx` | 那一节与「源」弹窗 |
 | `scripts/pack-extension.mjs` / `scripts/marketplace-index.mjs` | 发版侧:打包、并索引、签 |
 | `.github/workflows/extension-release.yml` | tag 触发的整条流水线 |
+
+🔗现状（4-55，2026-10-31）：市场只凭请求apiVersion/apiRevision筛选版本，不能分开新旧同号1/0包：旧api1源可能先标版本可装，下载后仍经strict清单拒旧，loader不import。不要宣称旧api1绝不会出现可装卡；不要向真实旧索引写新1.0包。独立1.0官方索引沿既定，本片无真实索引修改或发布；SDK及拓展自身version不重置。

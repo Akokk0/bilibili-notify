@@ -155,3 +155,5 @@
 (当时浏览器没起)、新手指引步(导览关着)、Windows。
 
 3a-30(2026-10-11)新加的 `bilibili.dynamic.fail` 与「登录状态」「推送链路错误」几个场景对问题表的影响**没有真机验过**,清单见 `docs/1.0/phase-3a-plan.md` 的「3a-30 真机待看」:开发场景「登录状态」只盖 `state()` / `account()` 并往总线发 `subscription-auth-changed`、不叫真登录口的 `onChange`,而宿主报的登录问题靠真登录口的 `onChange` 再读 `state()`,所以读代码判断它开不了那条登录问题(没实跑)。
+
+🔗现状（4-55，2026-10-31）：定时场景保留原DevClock/API方法形状；注入只存请求HH:mm，每次active现读核心timezone和今天，用Luxon规范化。显示请求值与实际yyyy-MM-dd HH:mm、IANA、UTC偏移；summary是上次操作结果，不随设置改写。gap/overlap沿库、固定边界由单测/库探针钉住；mute同epoch换当地显示，全部收摊不能清掉后来手动覆盖的静音。本片未新增4-48时区控件或通用下次cron面板。

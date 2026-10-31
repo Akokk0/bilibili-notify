@@ -99,7 +99,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 ### 清单 `contributes.subscription`（决策 5 / 16 / 51）
 
-schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v3 开得了。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
+schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当前全新1.0契约1/0的严格清单。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
 
 - 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译；面板第 4 期才画）、`postNoun?`（「作品」；不给时面板的特性标签叫「动态」，核心拼 AI 提示词时叫「作品」—— 提示词那一处原先也叫「动态」，3a-42 改了）、`creatorNoun?`（平台管创作者叫什么）、`externalIdNoun?`（平台管外部 id 叫什么）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；面板拓展支先用通用提示，按它拼句随第 4 期）。
 - `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。这一版还不收 `featureHints?`，随规则页按描述符露节那一片一起收。
@@ -108,17 +108,17 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 
 ### 契约档位与契约小号（决策 18 / 59）
 
-- `EXTENSION_API_RANGE = { min: 3, current: 3, revision: 0 }`（第 1、2 版的退路已删，这两种清单都判「版本太旧、不兼容」）。清单的 `apiVersion` 是要的档位（落在 `[min, current]` 才收），`apiRevision` 是要的小号（缺省 0）；`apiVersionAccepted` 判「装得了吗」，装包（`extensions/install.ts`）、发现（`discover.ts`）、市场（`marketplace.ts`）用同一把尺子。宿主**先单读 `apiVersion`，再读小号，再按那一档的格式校验**，旧宿主说的是「版本不合」而不是「清单读不了」。
-- 🔴 **拓展能用的东西变多**（事件表加一格、ctx 多一个方法、多一种积木、清单多一格）且**对应的 BN 已经发过版** → `revision` 加一。为别的原因发版不动它；**只增不归零**（抬档位也不归零）。不兼容的改动 = 抬 `min` 并删掉对应的退路。v3 还没发版，里面现有的一切都算 0 号。
-- 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：清单 v3、译文、视图、第 3 版的三种上报、搜人候选、直播拉取结果与来源健康这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
+- `EXTENSION_API_RANGE = { min: 1, current: 1, revision: 0 }`。这是全新1.0契约，保留当前完整接口，不恢复历史v1。历史provides/旧嵌套/混合格式由strict清单拒收且不import；旧1同号格式不合记unreadable，旧2/3记incompatible。apiRevision缺省0；安装、发现、loader和市场共同判版本，包内清单仍独立严格校验。
+- 主人定1.0开发期新增能力apiRevision统一0；同为1/0的开发包无法按数字区分，不保留旧格式兼容。以后正式发布后的契约演进仍须回ADR-0019决策59审议，不能用本片起号规则替未来变更默认豁免。
+- 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：当前清单、译文、视图、当前的三种上报、搜人候选、直播拉取结果与来源健康这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
 - ⚠️ 守卫**看不见的**：`refine` / `superRefine` 里的规矩、`checkExtensionReport` 的逐格丢弃/截断、ctx 多一个方法（纯 TS）。放宽这些同样要抬小号，自己想。
 - 给拓展看的上报类型从核心域模型按白名单推导，与 zod 同在 `packages/internal`；`packages/internal/src/extension/manifest-shape-pin.ts` 会双向严格相等地钉住推导类型与 zod。第 2 版的上报 schema 与对应镜像已删。
 
 ### 注册、解析门、新建
 
-- **注册**：`ctx.registerSource(def: SourceDef)` → `SourceHandle { dispose() }`（契约本体在 `packages/internal/src/extension/index.ts`，门逐个转给拓展）。只认清单 v3、且清单开了订阅源这一口；一个拓展只注册一个平台（决策 9）；收摊时摘掉。登记是异步的，装载器在 `activate` 之后等它落定；`start` 抛了就是这次加载失败。拓展来源由 `createExtensionSource` 包成核心 `Source` 后登记进 `SourceRegistry`；「哪些拓展是订阅源」仍从清单读（`/api/ext` 每行的 `subscription`）。
+- **注册**：`ctx.registerSource(def: SourceDef)` → `SourceHandle { dispose() }`（契约本体在 `packages/internal/src/extension/index.ts`，门逐个转给拓展）。只认当前严格清单、且清单开了订阅源这一口；一个拓展只注册一个平台（决策 9）；收摊时摘掉。登记是异步的，装载器在 `activate` 之后等它落定；`start` 抛了就是这次加载失败。拓展来源由 `createExtensionSource` 包成核心 `Source` 后登记进 `SourceRegistry`；「哪些拓展是订阅源」仍从清单读（`/api/ext` 每行的 `subscription`）。
 - **搜人** `GET /api/sources/:sourceKey/creators?q=`（`apps/server/src/routes/sources.ts`，决策 11 / 52；4-15 起所有来源同一口，旧的 `/api/ext/:id/lookup` 与 `/api/subscriptions/search`、`/lookup` 删了）：只在 `/api/*` 下、吃面板鉴权（来源拿主人的登录态去平台查人）。路由经 `PipelineRuntime` 的 `searchCreators` 调登记表里的来源，与取资料、查直播状态共用同一来源的串行闸。来源交候选 `{ externalId, name, avatar?: ImageRef, bio?, followers? }`，最多 10 条（拓展的另过 `ExtensionCreatorCandidatesSchema`：`externalId` 不重复）；B 站把候选头像按头像那一档抓进图库。面板收到 `CreatorCandidateView`，头像由图库引用读回 data URL。失败各有码与原话，来源的码原样回：不在册 `not_found` 404；风控 `rate_limited` 429；没登录 `unauthorized` 403；15 秒超时 `timeout` 504（来源收到的 `signal` 同时中止）；来源抛了 `unavailable` 503；候选不合规矩 `invalid` 502 并点名原因；推送链路还没挂上 `unavailable` 503。
-- **新建**：面板只在至少一个订阅源**在跑**时出平台选择（`runningSources`），否则与只有 B 站时一模一样。`POST /api/subscriptions` 带 `kind: "extension"` 且 id 是新的 → `createExtensionSubscription`：`extensionId` 得是**装着的** v3 订阅源（不要求在跑，`subscriptionSourceRefusal`），同拓展同外部 id 已有就 409，建完拿候选种资料与头像。已有的拓展订阅整份 POST 回来改照常走通用那条路，身份几格改不动。
+- **新建**：面板只在至少一个订阅源**在跑**时出平台选择（`runningSources`），否则与只有 B 站时一模一样。`POST /api/subscriptions` 带 `kind: "extension"` 且 id 是新的 → `createExtensionSubscription`：`extensionId` 得是**装着的**当前契约订阅源（不要求在跑，`subscriptionSourceRefusal`），同拓展同外部 id 已有就 409，建完拿候选种资料与头像。已有的拓展订阅整份 POST 回来改照常走通用那条路，身份几格改不动。
 - **拓展读自己名下的订阅**：`start(ctx)` 拿到的 `ExtensionSourceContext.subscriptions()` 现读，条目是 `SourceSubscriptionView { externalId, features, monitorsLive }`：只列启用中的、不带订阅 id，同一人的重复订阅合成一条、`features` 取并集；`onSubscriptionsChanged` 挂在 `config-changed "subscriptions"` 上（`index.ts`）。别缓存 —— 变更通知是拿来做动作的（补新订阅的基线），不是拿来刷缓存的。
 
 ### 拓展停了之后（决策 10 / 61）
@@ -169,3 +169,5 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 | 改拓展作品怎么推 | 入口在共用的 `PostQueue`（`posts/post-queue.ts`）、步骤在共用的 `deliverPost`、设置在共用的 `postSettingsOf`（都见 [push.md](./push.md)）；拓展这头只有 `extensions/extension-source.ts` 的 `createExtensionSource` 收外来数据并翻成核心形状，`packages/internal/src/schema/extension-report.ts` 与 `packages/internal/src/extension/manifest-shape-pin.ts` 管形状与推导类型 |
 | 给来源接口加一个成员，或让核心多给来源一种待遇 | 进程内对拍（守卫 21b，`apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`）会拦：成员表是 `as const satisfies Record<keyof 接口, …>`，加成员类型检查就红，必须来补一行指向管着它的对拍行。**加一行对拍**：在夹具 `apps/server/src/__tests__/support/in-process-source.ts` 的假来源上补这条能力（它只实现中立的 `Source`、键 `acme.inprocess`，夹具不许 import `bilibili/`）→ 在测试文件的 `PARITY_ROWS` 里加 `{ id, title, checked: true }`（id 接着 P20 往后排）→ 写一条按内容断言的用例，结尾调 `drove("Pxx")` → 把成员表里相关成员指向它 → 「清单自己」一组里写死的条数与 id 序列（总 38、对拍 20、不开 18）跟着改 → **验红**：真把核心里这条能力对应的那一处改坏跑一次，用例必须红，用例前写一句改坏的是哪处。**这能力今天拍不了**：在 `PARITY_ROWS` 里加一行 `checked: false`，写清 `waitsFor`（等哪一期）与 `reason`，条数自检跟着改。**把名单里的一行转成对拍**（标 3b 的行 3b 出期时要做）：该行改成 `checked: true`、去掉 `waitsFor` 与 `reason`、补用例。 |
 | 让拓展订阅也走某个 B 站功能 | 先看决策 12 / 63 / 64 有没有定过；过滤（关键词 / 正则 / 白名单与四个类型开关）对所有平台一视同仁（ADR-0021 决策 43，取代了决策 70 里「类型开关只对 B 站」那半句） |
+
+🔗现状（4-55，2026-10-31）：IntegrationContext新增timezone():string与onTimezoneChanged(fn:()=>void):Disposable；内置、拓展activate、来源和适配器均经同一宿主读源获得。值真变才通知，订阅不补叫、相同值不叫；回调同步抛错或Promise拒绝都隔离。来源订阅随来源收回，适配器订阅随本次登记收回，父集成停下全部收回；重新启用现读最新值。B站动态cron与工具经共同ctx读取，BiliSourceDeps不再有私有时区参数。当前新契约1/0，旧provides/旧嵌套/混合格式严格拒收，拓展AI/链接/互动登记开放范围不变。

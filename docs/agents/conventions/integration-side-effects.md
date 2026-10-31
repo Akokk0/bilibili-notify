@@ -68,3 +68,5 @@
 - [ADR-0026](../../adr/0026-failure-results.md)（失败结果的码）。
 - [docs/1.0/extension-contract.md](../../1.0/extension-contract.md)「ctx 能用的全部」「state 与 secrets」「ctx.http」「图」「不许读写文件」。
 - [docs/1.0/architecture.md](../../1.0/architecture.md)「其余守卫」（守卫 3、17）。
+
+🔗现状（4-55，2026-10-31）：整台timezone读取与变化通知经共同ctx.timezone()/onTimezoneChanged()，不能读核心配置文件/偷拿ConfigStore代替。通知按集成、来源或适配器登记生命周期回收；async回调的Promise必须逐层返回给统一隔离层，不可在中间wrapper丢掉返回值。

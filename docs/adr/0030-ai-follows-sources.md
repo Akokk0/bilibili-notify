@@ -45,3 +45,5 @@
 ## 后果
 
 - 主人自己改过的提示词里若写着「UP 主」，不会被自动改写。
+
+🔗现状（4-55，2026-10-31）：B站工具provider只新增共同IntegrationContext的timezone窄依赖，由来源start(ctx)传入；fetchUserVideos成功await后、排版当刻读取timezone与now给publishedStamp。核心CreatorReader同样在使用时现读时区；经过时长仍按毫秒。provider登记/命名空间/撤销仍走既有公共SourceContext，不扩大拓展AI登记开放范围，不改模型文字协议或ai-tool-texts。

@@ -120,3 +120,5 @@
 - 关掉开关的那些日子，统计显示「没在记」，不再画成 0。
 - 只订 B 站的主人导出的 CSV 少一列空的「外部 ID」，后面的列左移一格。
 - 统计仓每条多几百字节。
+
+🔗现状（4-55，2026-10-31）：旧统计extension-source已为stats/registry-source.ts的登记表统计收集，按60,000ms setInterval检查；followers-sample-gap.ts里的CronTime只估最短采样间隔。本片不改统计切天、间隔估计或数据口径；只将实际墙钟cron与人/模型日期展示接核心timezone。

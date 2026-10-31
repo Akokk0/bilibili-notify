@@ -297,3 +297,5 @@ interface ConfirmationWindow {
 `createBiliLinkResolver`(`bilibili/link-resolver.ts`)、
 `Api.fetchVideoInfo` / `resolveShortLink`(`apps/server/src/bilibili/api`)、`createLinkPreviewer`(`apps/server/src/link-preview/__tests__/link-previewer.test.ts`,
 协作者全假,三处闸门做过变异验证会红)、官机网关的群消息出口(`qq-official-conn.test.ts`,两种事件都进、C2C 不进、抛错不断连)。
+
+🔗现状（4-55，2026-10-31）：mute的到期epoch与经过时长不变；describeUntil按当前核心timezone判断是否同一当地日期并显示当地时分/日期，帮助与回复在使用时取字。改时区不延长或缩短已设静音。
