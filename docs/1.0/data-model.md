@@ -885,3 +885,5 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 🔗现状（4-21，2026-10-30）：`InvalidSettingView` 共用 `path` / `issues`，以 `secret` 判别：非密钥支带 `raw` / `missing`，密钥支没有原文、掩码或原值摘要。缺键用 `missing: true` 表示，JSON 中的 undefined 原值不伪造成 null。核心路径在 HTTP 回应中以 `core` 起，登记集成以自己的键起，拓展读口路径相对该拓展设置。整个集成文件读不懂报告该段根；拓展 JSON 文件读不懂只报安全根原因。
 
 🔗现状（4-22，2026-10-31）：订阅文件的单行 schema 错误与重复合法 UUID 整组隔离，不进运行中的订阅列表。私有布局账本只用于原样写回坏行的 JSON 值；合法的最小身份与 UUID 仍占位，新建与恢复不能绕过。文件级坏 JSON、形状与标签表错误仍挡开机。`core / subscriptions_invalid` 聚合问题只含数量与固定修复提示，不带原文、身份、密钥或校验原话，不私聊。配置仓 `getSubscriptionIds()` 给启动与删除后的资料清扫保留好行和坏行的可识别 UUID；没有合法 UUID 的坏行不猜缓存归属。坏行面板显示留 4-45，无新增 HTTP/contract。
+
+🔗现状（4-24，2026-10-31）：核心设置的联网搜索开关现为 `ai.search.scenes.{post,live,roast}`（HTTP 挂在 `core` 下），后端与密钥仍为同层 `backend`、`keys`。零代完整迁移在 AI 上提后做原始值改名：新 `scenes` 整袋优先、新 `post` 优先，不用旧值补新；null 与错误值保留给既有坏格隔离，现代 schema 不双读旧键，缺键仍补三个 false、未知键仍按原 schema 剥除。修订号 53 沿既有开发代机制重开，原件不改；备份 23 仅同版恢复。Q7 的副标题、说明里的“引擎”和显示字段码仍保留，仅 `packIsland` 将新值投影到旧 UI 码 `ai.search.engines.dynamic/live/roast`，真实草稿与 PATCH 只用新键；4-36 一起撤显示投影。`AIScene` 类型名及 dynamic/liveSummary 取值、点评/总结参数层命名本片未改，按原批准记为后续待分配；它们不是搜索开关袋这一层，实例、writing 等其他 AI 键未顺改。
