@@ -72,5 +72,13 @@
 	"library.fonts.formats": "主人，可以传 woff2 / woff / ttf / otf，单款 {mb}MB 以内。优先用 woff2 呀，同一套字通常只占 ttf 的三分之一。",
 	"library.fonts.familyPlaceholder": "例如 PingFang SC",
 	"library.fonts.localHint": "主人，要{machine}上装过这个字体才作数呀：桌面版填系统自带的（苹方、微软雅黑）就行；Docker 容器里只装了思源黑体 / 思源宋体（Noto CJK），填别的不会生效，那种情况请把字体文件传上来。",
-	"library.fonts.sizeWarning": "主人，这款字体有 {mb} MB，出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换成 woff2 再传呀。"
+	"library.fonts.sizeWarning": "主人，这款字体有 {mb} MB，出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换成 woff2 再传呀。",
+	"dashboard.live.empty": "主人，女仆这里暂时没有在播记录哦。",
+	"dashboard.live.hint": "主人，开启直播相关推送后，女仆会把在播记录放在这里哦。",
+	"dashboard.live.unmonitored#other": "主人，有 {count} 项启用中的订阅没开直播监听，去订阅页看看吧 →",
+	"dashboard.live.loading": "主人，女仆正在读取直播状态，请稍等哦。",
+	"dashboard.live.readFailed": "主人，女仆没能读到直播状态，现在还不知道是否有人在播哦。",
+	"dashboard.live.countLoading": "主人，女仆正在核对订阅和直播开关，请稍等哦。",
+	"dashboard.live.countFailed": "主人，女仆没能读全订阅或直播开关，暂时还数不准未开启监听的订阅哦。",
+	"dashboard.live.noSubscriptions": "主人，还没有订阅哦，去订阅页添加吧 →"
 }

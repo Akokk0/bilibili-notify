@@ -269,7 +269,7 @@ export const RATCHET = {
 	"apps/web/src/pages/About.tsx": 30,
 	"apps/web/src/pages/Ai.tsx": 125,
 	"apps/web/src/pages/CardSkinEditor.tsx": 15,
-	"apps/web/src/pages/Dashboard.tsx": 83,
+	"apps/web/src/pages/Dashboard.tsx": 75,
 	"apps/web/src/pages/ExtensionDetail.tsx": 20,
 	"apps/web/src/pages/History.tsx": 50,
 	"apps/web/src/pages/Logs.tsx": 16,

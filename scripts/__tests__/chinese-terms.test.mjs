@@ -112,7 +112,7 @@ export const RATCHET = {
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/pages/About.tsx": 1,
 	"apps/web/src/pages/Ai.tsx": 2,
-	"apps/web/src/pages/Dashboard.tsx": 8,
+	"apps/web/src/pages/Dashboard.tsx": 7,
 	"apps/web/src/pages/History.tsx": 4,
 	"apps/web/src/pages/Rules.tsx": 2,
 	"apps/web/src/pages/Stats.tsx": 10,

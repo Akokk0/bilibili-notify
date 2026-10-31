@@ -195,5 +195,17 @@
 	"library.fonts.familyPlaceholder": "例如 PingFang SC",
 	"library.fonts.renderingMachine": "渲染那台机器",
 	"library.fonts.localHint": "要{machine}上装过这个字体才作数：桌面版填系统自带的（苹方、微软雅黑）就行；Docker 容器里只装了思源黑体 / 思源宋体（Noto CJK），填别的不会生效 —— 那种情况请把字体文件传上来",
-	"library.fonts.sizeWarning": "这款字体有 {mb} MB —— 出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换 woff2 再传。"
+	"library.fonts.sizeWarning": "这款字体有 {mb} MB —— 出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换 woff2 再传。",
+	"dashboard.live.title": "正在直播",
+	"dashboard.live.refresh": "实时刷新",
+	"dashboard.live.count#other": "● {count} 人在播",
+	"dashboard.live.empty": "当前没有在播记录",
+	"dashboard.live.hint": "开启直播相关推送后，可在这里查看在播记录。",
+	"dashboard.live.unmonitored#other": "有 {count} 项启用中的订阅未开启直播监听 →",
+	"dashboard.live.noTitle": "（未读取到房间标题）",
+	"dashboard.live.loading": "正在读取直播状态…",
+	"dashboard.live.readFailed": "直播状态读取失败，当前是否有人在播未知。",
+	"dashboard.live.countLoading": "正在读取订阅与直播开关…",
+	"dashboard.live.countFailed": "订阅或直播开关读取失败，暂时无法判断未开启监听的订阅数量。",
+	"dashboard.live.noSubscriptions": "还没有订阅，前往订阅页添加 →"
 }

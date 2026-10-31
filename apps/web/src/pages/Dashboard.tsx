@@ -16,6 +16,7 @@ import {
 	GlassPanel,
 	GlassStatCard,
 	Icon,
+	LoadingBlock,
 	Pill,
 	StatsBar,
 	StatusDot,
@@ -45,6 +46,7 @@ import { useHealthDetails } from "../hooks/useHealthDetails";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 import {
 	type DailyHistoryCountView,
@@ -68,7 +70,6 @@ import {
 	identityColor,
 	type PushTarget,
 	type Subscription,
-	subscriptionIdentityOf,
 } from "../types/domain";
 import type { ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
@@ -131,8 +132,8 @@ function liveRowFace(
 }
 
 // 与服务端同一个判定(internal 的 `needsLiveMonitor`,ADR-0027 决策 1):折好的直播类开关(订阅覆盖压过全局默认)
-// 任一开着,或某把特别开关开着且名单上有人带它,LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
-// 也不会出现在「正在直播」面板里。不看有没有推送目标。
+// 任一开着,或某把特别开关开着且名单上有人带它,该订阅就需要直播监听。这里只判断订阅的设置,
+// 不表示来源或账号已经就绪,也不看有没有推送目标。
 function isLiveMonitored(sub: Subscription, globalFeatures?: FeatureFlagValues): boolean {
 	const on = new Set(subscribedFeatures(sub, globalFeatures));
 	return needsLiveMonitor({
@@ -151,62 +152,91 @@ function isLiveMonitored(sub: Subscription, globalFeatures?: FeatureFlagValues):
 
 export function LiveNowPanel({
 	live,
+	liveStatus = "success",
+	countStatus = "success",
 	subs,
 	sources,
 	extensions,
 	globalFeatures,
 }: {
 	live: LiveListeningEntry[];
+	liveStatus?: "pending" | "error" | "success";
+	countStatus?: "pending" | "error" | "success";
 	subs: Subscription[];
 	/** 来源表 —— 拓展订阅那几行的平台徽章照描述符画(取自清单)。没回来时徽章退拓展名或拓展 id。 */
 	sources?: readonly SourceEntry[];
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
-	/** 全局特性开关(`globals.defaults.features`),订阅没覆盖的开关按它折。没回来 = 出厂值。 */
+	/** 全局特性开关(`core.defaults.features`),订阅覆盖压过它;未读取时countStatus不得成功。 */
 	globalFeatures?: FeatureFlagValues;
 }) {
+	const tx = useT();
 	// 在播快照带着订阅自己的 id(ADR-0019 决策 50),按它对订阅 —— 同一个 UP 配了几条订阅时,
 	// 按身份对不出这间直播间是替哪一条开的。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
-	// 启用着却一把直播类开关都没开的数量 —— 这些订阅的直播状态永远不会出现在面板里。
+	// 按启用中的订阅项数关闭的直播监听设置,不合并身份,也不代表来源的运行状态。
 	// empty state 里露出 hint 让用户知道该去哪开。「开着」只看开关,不看有没有推送目标。
 	const unmonitoredCount = useMemo(
 		() =>
-			subs.filter(
-				(s) =>
-					subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY &&
-					s.enabled &&
-					!isLiveMonitored(s, globalFeatures),
-			).length,
-		[subs, globalFeatures],
+			countStatus === "success"
+				? subs.filter((s) => s.enabled && !isLiveMonitored(s, globalFeatures)).length
+				: undefined,
+		[subs, globalFeatures, countStatus],
 	);
 	return (
 		<GlassPanel
 			accent="var(--color-bn-pink)"
 			icon={<Icon.live width={15} height={15} />}
-			title="正在直播"
-			subtitle="实时刷新"
+			title={tx("dashboard.live.title")}
+			subtitle={tx("dashboard.live.refresh")}
 			right={
 				<Pill color="var(--color-bn-pink)" size="sm">
-					● {live.length} 人在播
+					{liveStatus === "success" ? tx("dashboard.live.count", { count: live.length }) : "—"}
 				</Pill>
 			}
 		>
-			{live.length === 0 ? (
+			{liveStatus === "pending" ? (
+				<LoadingBlock
+					label={tx("dashboard.live.refresh")}
+					hint={tx("dashboard.live.loading")}
+					variant="inset"
+				/>
+			) : liveStatus === "error" ? (
+				<ErrorNote>{tx("dashboard.live.readFailed")}</ErrorNote>
+			) : live.length === 0 ? (
 				<EmptyNote>
-					当前没有订阅 UP 主在直播
-					<br />
-					<span className="text-bn-xs text-bn-text-secondary/80">
-						女仆会在直播开始时第一时间推送 (｡•̀ᴗ-)✧
-					</span>
-					{unmonitoredCount > 0 ? (
+					{tx("dashboard.live.empty")}
+					{countStatus === "success" && subs.length > 0 ? (
+						<>
+							<br />
+							<span className="text-bn-xs text-bn-text-secondary/80">
+								{tx("dashboard.live.hint")}
+							</span>
+						</>
+					) : null}
+					{countStatus === "pending" ? (
+						<LoadingBlock
+							label={tx("dashboard.live.refresh")}
+							hint={tx("dashboard.live.countLoading")}
+							variant="inset"
+						/>
+					) : countStatus === "error" ? (
+						<ErrorNote>{tx("dashboard.live.countFailed")}</ErrorNote>
+					) : subs.length === 0 ? (
+						<Link
+							to="/subs"
+							className="mt-1 block text-bn-xs text-bn-pink underline-offset-2 hover:underline"
+						>
+							{tx("dashboard.live.noSubscriptions")}
+						</Link>
+					) : unmonitoredCount !== undefined && unmonitoredCount > 0 ? (
 						<>
 							<br />
 							<Link
 								to="/subs"
 								className="mt-1 inline-block text-bn-xs text-bn-pink underline-offset-2 hover:underline"
 							>
-								有 {unmonitoredCount} 位订阅没开直播推送,他们不会被监听 →
+								{tx("dashboard.live.unmonitored", { count: unmonitoredCount })}
 							</Link>
 						</>
 					) : null}
@@ -252,7 +282,7 @@ export function LiveNowPanel({
 										) : null}
 									</div>
 									<div className="truncate text-bn-sm text-bn-text-tertiary">
-										{r.title ?? "（未拉取到房间标题）"}
+										{r.title ?? tx("dashboard.live.noTitle")}
 									</div>
 								</div>
 								<div className="flex flex-col items-end gap-1">
@@ -945,6 +975,15 @@ export default function Dashboard() {
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
 	const live = liveQuery.data ?? [];
+	const countStatus = !subsQuery.isSuccess
+		? subsQuery.status
+		: subs.length === 0
+			? "success"
+			: !globalsQuery.isSuccess
+				? globalsQuery.status
+				: globalsQuery.data?.defaults?.features
+					? "success"
+					: "error";
 	// 小贴士说谁:先挑 B 站的在播(下播总结那句话只对它成立),没有再说拓展订阅的。
 	const tipLive = live.find((r) => !isExtensionIdentity(r.identity)) ?? live[0];
 	const history = historyQuery.data?.entries ?? [];
@@ -1002,10 +1041,10 @@ export default function Dashboard() {
 			<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
 				<GlassStatCard
 					label="正在直播"
-					value={live.length}
-					suffix={`/ ${subs.length}`}
+					value={liveQuery.isSuccess ? live.length : "—"}
+					suffix={`/ ${subsQuery.isSuccess ? subs.length : "—"}`}
 					color="var(--color-bn-pink)"
-					pulse={live.length > 0}
+					pulse={liveQuery.isSuccess && live.length > 0}
 				/>
 				<GlassStatCard
 					label="已启用订阅"
@@ -1046,6 +1085,8 @@ export default function Dashboard() {
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
 				<LiveNowPanel
 					live={live}
+					liveStatus={liveQuery.status}
+					countStatus={countStatus}
 					subs={subs}
 					sources={sources}
 					extensions={extensionsQuery.data?.extensions}

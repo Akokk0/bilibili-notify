@@ -8,9 +8,10 @@
 
 import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { colorFromSeed } from "@bilibili-notify/internal";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import type { LiveListeningEntry } from "../../services/dashboard";
 import {
 	DEFAULT_FEATURE_FLAGS,
@@ -20,6 +21,9 @@ import {
 } from "../../types/domain";
 import { LiveNowPanel } from "../Dashboard";
 
+beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
+});
 afterEach(cleanup);
 
 /** 在播快照里一行 B 站订阅的(`uid` 是外部 id)。 */
@@ -164,7 +168,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getByText("douyin")).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
 		expect(screen.queryByText(/undefined/)).toBeNull();
-		expect(screen.getByText("（未拉取到房间标题）")).toBeTruthy();
+		expect(screen.getByText("（未读取到房间标题）")).toBeTruthy();
 	});
 
 	it("拓展没报累计观看:那一列是「—」", () => {
@@ -248,11 +252,14 @@ describe("正在直播 · 名字兜底与颜色", () => {
 });
 
 /**
- * 「没开直播推送,不会被监听」的提示只数 B 站订阅(拓展订阅的直播不走这条监听):订阅的身份来源是 B 站、
- * 启用着、折好的直播类开关一把都没开的才算。「开着」只看开关、不看有没有推送目标(ADR-0027 决策 1)。
+ * 提示按启用中的订阅逐项统计,所有来源共用同一个直播判定,同身份的不同订阅不合并。
+ * 折好的直播类开关一把都没开,且特别关注条件也不成立的才算。「开着」只看开关、不看有没有推送目标(ADR-0027 决策 1)。
  */
 describe("正在直播 · 没开直播推送的提示", () => {
-	function renderEmpty(subs: Subscription[], globalFeatures?: FeatureFlagValues) {
+	function renderEmpty(
+		subs: Subscription[],
+		globalFeatures: FeatureFlagValues = DEFAULT_FEATURE_FLAGS,
+	) {
 		render(
 			<MemoryRouter initialEntries={["/"]}>
 				<LiveNowPanel live={[]} subs={subs} globalFeatures={globalFeatures} />
@@ -275,28 +282,148 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		},
 	});
 
-	it("只数启用着、直播类开关全关的 B 站订阅;拓展订阅与停用的不数", () => {
+	it("启用着且直播开关全关的订阅计数;已开直播的拓展订阅与停用项不数", () => {
 		renderEmpty([
 			liveOff(biliSub("s-1", "u1", "甲")),
 			liveOff(biliSub("s-2", "u2", "乙")),
 			{ ...liveOff(biliSub("s-off", "u3", "丙")), enabled: false },
 			extSub("s-ext", "抖音丁"),
 		]);
-		expect(screen.getByText(/有 2 位订阅没开直播推送/)).toBeTruthy();
+		expect(screen.getByText(/有 2 项启用中的订阅没开直播监听/)).toBeTruthy();
+	});
+
+	// 4-35 刻画:仍按订阅项数,不能改成同身份的人数;停用的那项始终不算。
+	it("纯 B 站同身份的两项关闭订阅分别计数,另一项停用订阅不数", () => {
+		renderEmpty([
+			liveOff(biliSub("s-first", "shared", "同身份甲")),
+			liveOff(biliSub("s-second", "shared", "同身份乙")),
+			{ ...liveOff(biliSub("s-disabled", "shared", "停用项")), enabled: false },
+		]);
+		const link = screen.getByRole("link", { name: /直播/ });
+		expect(link.textContent?.match(/\d+/)?.[0]).toBe("2");
+		expect(link.getAttribute("href")).toBe("/subs");
+	});
+
+	it("已有在播记录时不展示关闭监听的订阅计数", () => {
+		render(
+			<MemoryRouter initialEntries={["/"]}>
+				<LiveNowPanel
+					live={[biliLive("s-live", "u-live", { title: "这一场正在播" })]}
+					subs={[
+						biliSub("s-live", "u-live", "在播项"),
+						liveOff(biliSub("s-off", "u-off", "关闭项")),
+					]}
+				/>
+			</MemoryRouter>,
+		);
+		expect(screen.getByText("这一场正在播")).toBeTruthy();
+		expect(screen.queryByRole("link", { name: /没开直播|未开启直播/ })).toBeNull();
+	});
+
+	it.each(["viewerChat", "viewerEnter"] as const)(
+		"主开关全关且 %s 开着,名单只有另一种特性时仍计数",
+		(kind) => {
+			const sub = liveOff(biliSub("s-mismatch", "u1", "特别关注不对应"));
+			sub.overrides = { ...sub.overrides, features: { ...sub.overrides.features, [kind]: true } };
+			sub.specialViewers = [
+				{ id: "2", features: [kind === "viewerChat" ? "viewerEnter" : "viewerChat"] },
+			];
+			renderEmpty([sub]);
+			const link = screen.getByRole("link", { name: /直播/ });
+			expect(link.textContent?.match(/\d+/)?.[0]).toBe("1");
+		},
+	);
+
+	it("混来源相同外部 id 与同身份不同订阅逐项计数,不漏拓展也不合并身份", () => {
+		const first = liveOff(extSub("s-ext-first", "拓展甲"));
+		first.identity = { sourceKey: "douyin", externalId: "shared" };
+		const second = { ...first, id: "s-ext-second" };
+		const other = liveOff(extSub("s-other", "另一来源"));
+		other.identity = { sourceKey: "acme.other", externalId: "shared" };
+		renderEmpty([
+			liveOff(biliSub("s-bili", "shared", "B 站项")),
+			first,
+			second,
+			other,
+			{ ...liveOff(extSub("s-disabled", "停用拓展项")), enabled: false },
+			biliSub("s-bili-on", "u-on", "开着的 B 站项"),
+			extSub("s-ext-on", "开着的拓展项"),
+		]);
+		const link = screen.getByRole("link", { name: /直播/ });
+		// 期望来自四项启用且全关的订阅;同 id/身份不折叠,其余三项不计。
+		expect(link.textContent?.match(/\d+/)?.[0]).toBe("4");
+		expect(screen.getAllByRole("link", { name: /直播/ })).toHaveLength(1);
+		expect(link.getAttribute("href")).toBe("/subs");
+	});
+
+	it.each(["unknown", "disabled", "failed"] as const)(
+		"来源状态为 %s 且拓展有多个口时仍逐订阅计数,不依赖来源就绪或口数量",
+		(status) => {
+			render(
+				<MemoryRouter initialEntries={["/"]}>
+					<LiveNowPanel
+						live={[]}
+						subs={[liveOff(extSub("s-a", "甲")), liveOff(extSub("s-b", "乙"))]}
+						globalFeatures={DEFAULT_FEATURE_FLAGS}
+						sources={[{ ...DOUYIN_SOURCE, status }]}
+						extensions={[{ ...DOUYIN, provides: ["push", "subscription"] }]}
+					/>
+				</MemoryRouter>,
+			);
+			expect(screen.getByRole("link", { name: /直播/ }).textContent?.match(/\d+/)?.[0]).toBe("2");
+		},
+	);
+
+	it.each(["bilibili", "douyin", "acme.other"])(
+		"%s 的全局关与订阅覆盖开同样折叠,即使没有推送目标也不误算",
+		(sourceKey) => {
+			const inherited = makeEmptySubscription({ sourceKey, externalId: "inherited" });
+			const own = makeEmptySubscription({ sourceKey, externalId: "own" });
+			own.overrides = { features: { liveStart: true } };
+			renderEmpty([inherited, own], { ...DEFAULT_FEATURE_FLAGS, liveStart: false, liveEnd: false });
+			expect(screen.getByRole("link", { name: /直播/ }).textContent?.match(/\d+/)?.[0]).toBe("1");
+		},
+	);
+
+	it.each(["liveStart", "liveStreaming", "liveEnd", "membership", "superchat"] as const)(
+		"拓展订阅只开主开关 %s 时也不算关闭监听",
+		(feature) => {
+			const sub = liveOff(extSub("s-on", "单开关"));
+			sub.overrides.features = { ...sub.overrides.features, [feature]: true };
+			renderEmpty([sub]);
+			expect(screen.queryByRole("link", { name: /没开直播|未开启直播/ })).toBeNull();
+		},
+	);
+
+	it("全部停用是已知零但并非没有订阅,不显示关闭计数或添加空态", () => {
+		renderEmpty([{ ...liveOff(extSub("s-off", "停用项")), enabled: false }]);
+		expect(screen.queryByRole("link", { name: /没开直播|未开启直播|还没有订阅/ })).toBeNull();
+	});
+
+	it("切换口吻会更新计数提示,标题和人数标签保持平实", () => {
+		renderEmpty([liveOff(extSub("s-off", "关闭项"))]);
+		expect(
+			screen.getByRole("link", { name: "主人，有 1 项启用中的订阅没开直播监听，去订阅页看看吧 →" }),
+		).toBeTruthy();
+		act(() => i18n.set({ voice: "plain" }));
+		expect(screen.getByRole("link", { name: "有 1 项启用中的订阅未开启直播监听 →" })).toBeTruthy();
+		expect(screen.getByText("当前没有在播记录")).toBeTruthy();
+		expect(screen.getByText("正在直播")).toBeTruthy();
+		expect(screen.getByText("● 0 人在播")).toBeTruthy();
 	});
 
 	it("继承全局出厂开关(开播 / 下播开着)的订阅不数,哪怕一个推送目标都没配", () => {
 		const sub = biliSub("s-1", "u1", "甲");
 		expect(sub.routing.liveStart).toEqual([]);
 		renderEmpty([sub, extSub("s-ext", "抖音丁")]);
-		expect(screen.queryByText(/没开直播推送/)).toBeNull();
+		expect(screen.queryByText(/没开直播监听/)).toBeNull();
 	});
 
 	it("开关关着的订阅照数,哪怕路由里还留着目标", () => {
 		const routed = liveOff(biliSub("s-1", "u1", "甲"));
 		routed.routing.liveStart = ["t-1"];
 		renderEmpty([routed]);
-		expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
+		expect(screen.getByText(/有 1 项启用中的订阅没开直播监听/)).toBeTruthy();
 	});
 
 	// ⑬d 起周期「正在直播」有自己的特性,只开了它的订阅也会被监听,不该被算进「不会被监听」。
@@ -307,7 +434,7 @@ describe("正在直播 · 没开直播推送的提示", () => {
 			features: { ...sub.overrides.features, liveStreaming: true },
 		};
 		renderEmpty([sub]);
-		expect(screen.queryByText(/没开直播推送/)).toBeNull();
+		expect(screen.queryByText(/没开直播监听/)).toBeNull();
 	});
 
 	// 与服务端 `needsLiveMonitor` 同一个判定:特别关注是「开关 ∧ 名单上有人带它」(3b-16)。
@@ -317,7 +444,7 @@ describe("正在直播 · 没开直播推送的提示", () => {
 			const sub = liveOff(biliSub("s-1", "u1", "甲"));
 			sub.specialViewers = [{ id: "2", features: [kind] }];
 			renderEmpty([sub]);
-			expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
+			expect(screen.getByText(/有 1 项启用中的订阅没开直播监听/)).toBeTruthy();
 		},
 	);
 
@@ -328,7 +455,7 @@ describe("正在直播 · 没开直播推送的提示", () => {
 			sub.overrides = { ...sub.overrides, features: { ...sub.overrides.features, [kind]: true } };
 			sub.specialViewers = [{ id: "2", features: [kind] }];
 			renderEmpty([sub]);
-			expect(screen.queryByText(/没开直播推送/)).toBeNull();
+			expect(screen.queryByText(/没开直播监听/)).toBeNull();
 		},
 	);
 
@@ -337,6 +464,6 @@ describe("正在直播 · 没开直播推送的提示", () => {
 		const own = liveOff(biliSub("s-own", "u2", "乙"));
 		own.overrides = { ...own.overrides, features: { liveStart: true } };
 		renderEmpty([biliSub("s-1", "u1", "甲"), own], off);
-		expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
+		expect(screen.getByText(/有 1 项启用中的订阅没开直播监听/)).toBeTruthy();
 	});
 });
