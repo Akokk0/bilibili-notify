@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-27 五路只读勘察合成草稿（57 片），当天主人定第一波就开、主会话单线做；10-28 主人定第 4 期一直单线、删掉 4-10，同日答完片表的 11 题（见「定案」）：4-53 拆成五片，新开 4-55（墙上时间跟全局时区）；主会话照 Q1b 另拆出 4-56（包字典），共 59 片；10-28 主人在 4-14 定另起 4-57（醒目留言示例做到中立），共 60 片 |
-| 已完成 | 23 / 60（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56、4-13、4-14、4-15、4-16、4-17；10-30 落 4-19、4-20、4-18、4-21、4-31；10-31 落 4-22） |
+| 已完成 | 24 / 60（10-27 落 4-01、4-02、4-03、4-04、4-05、4-07、4-08、4-09、4-12；10-28 落 4-06、4-11、4-56、4-13、4-14、4-15、4-16、4-17；10-30 落 4-19、4-20、4-18、4-21、4-31；10-31 落 4-22、4-23） |
 | 迁移修订号 / 备份版本 | 52 / 22（第 4 期开工前） |
 
 ## 出期条件
@@ -60,7 +60,7 @@
 | 4-20 ✅ | 账号模块服务端。落成（2026-10-30）：拟稿主人照准；`GET /api/accounts` 回 `AccountsResponse { accounts: AccountView[] }`（来源键、原登录态、可选账号名与图库头像），只列在册且有登录口的来源、等装载器 settle 后现读；来源读口抛错整次 503。`core.accounts.order` 经既有 settings 口读写，未知 / 重复键保存原样、读取只认首次在册账号，遗漏的按登记先后追加；来源回册恢复原位。accounts 与 order 都可缺、无默认落盘，null 删键，修订号 / 备份版本维持 52 / 22，完整与脱敏备份均往返验证。拓展 auth 继续关闭、Source 成员不变；失效沿用登录 / globals / 拓展事件，面板接线归 4-40。已有 HTTP / 配置仓 / 备份 seam 验证，P01 对拍补聚合账号列表；收 schema 四处字进包字典并补女仆层，中文棘轮 4989 → 4985，叫法 242、替身 75 不变 | `apps/server/src/accounts/`、settings schema、路由、contract | 4-12、4-08 | 不落默认、不抬号（主人照准） | 中 |
 | 4-21 ✅ | 坏格读口（Q4a）：核心 / 集成 / 拓展设置的「原值与原因」—— 非密钥格回原值 + 原因，密钥格只回原因（照规则上的 `secret` 判；整格里有一格是密钥就整格按密钥，如桥的接入名单带 token）；`getInvalidSettings` 那句禁令改成「密钥格的原文不出门」；连接的逐格原因；备份导出前读的「只给路径」坏格口。落成（2026-10-30）：主人照准拟稿 A；`GET /api/settings/invalid`、`GET /api/ext/:id/settings/invalid` 回 `InvalidSettingsResponse`，`secret: false` 带原值与缺键标记，`secret: true` 不带原文、掩码或摘要；规则递归查 `secret`，拓展同时认清单 `secret` / `generate`，桥名单含 token 时整格保密。原因按校验种类安全投影，不回自定义原话。`GET /api/system/backup/preview` 只回 `defaultedSettings` 路径，整段读坏列段根；导出仍用内存默认值，备份格式不变。既有拓展值视图移除坏密钥格，连接坏态 / 密钥声明未知态只用固定遮挡，正常密钥协议不动。内部原文账本与对外安全投影分层，原样落盘规则不变。收字 20，写死中文 4985→4965；主人批准 `store.ts` 58 与 `settings-problems.ts` 51 处留 4-53c（后者仅类型改动），叫法 242 / 替身 75 不变；生产 UI 留 4-45 | `config/store.ts`、`routes/{settings,extension-settings}.ts`、`secret-view.ts`、备份服务、contract | 无 | 否 | 中 |
 | 4-22 ✅ | 订阅坏行隔离（Q4b）。落成（2026-10-31）：主人逐题照准五题；仅文件级坏法挡开机，逐行错误与重复 UUID 整组隔离。坏行 JSON 值由私有原槽位布局原样带回日常与批量写口，来源 + 外部 id 与合法 UUID 占位；同 id 同身份好行普通改删照常。完整/脱敏备份仅好行，合并/覆盖保留本机坏行，预览先无副作用校验、正式写再验与既有回滚；无新增 HTTP。`onInvalidSubscriptionsChanged(count)` 接 `core / subscriptions_invalid` 聚合问题，只安全数量/固定提示、不私聊；`getSubscriptionIds()` 保护启动/删除后的资料缓存与头像引用。现有包去重足够，未改 packages。store 58 与 bootstrap 1 共59处收字/删除，中文4914→4855、叫法241/替身75不变；index.ts10处主人续准4-53c，settings-problems.ts51未碰；迁移/备份52/22不动，UI留4-45 | `config/store.ts`、备份服务、问题接线、启动/缓存清扫、测试与字典 | 无 | 否（盘上形状不变） | 中 |
-| 4-23 | 素材库的 8 个口从 `/api/cards` 搬 `/api/library`（ADR-0036 决策 1、5），删前查引用照旧；Cards 两个 picker 改调 | 新路由、`routes/cards.ts`、`app.ts`、contract、两个 picker | 4-14 | 否 | 中 |
+| 4-23 ✅ | 素材库的 8 个口从 `/api/cards` 搬 `/api/library`（ADR-0036 决策 1、5），删前查引用照旧；Cards 两个 picker 改调。落成（10-31）：图片 / 字体的 GET 列表与 POST 上传共用复数资源路径，GET / DELETE 各自 `:id`；旧 8 口退役，无别名。contract 补四个回应类型，两个 picker、缩略图与缓存键同步；收字 26 处，写死中文 4855 → 4829，叫法 241 / 替身 75 不变，迁移 52 / 备份 22 不抬。统筹真页面上传、引用拒删、解除保存后删除、直播封面共用图库、双图序号与口吻切换通过；字体 GET 为 CLI 回环补证，390 宽仍有横溢出及既有 field-labels warning，不宣称全部边界或卡片 PNG 渲染已验 | 新路由、`routes/cards.ts`、`app.ts`、contract、两个 picker | 4-14 | 否 | 中 |
 | 4-24 | 落盘键 `ai.search.engines` → `search.scenes`，`dynamic` 改叫 `post`（Q7；data-model 已写新键）。读者：服务端动态设置、直播运行时、直播总结、锐评生成，AI 包的点评生成，面板 AI 页与字段标签表 | schema、各读者、`Ai.tsx` 字段、迁移与回放测试 | 无 | **是**（修订号 52 → 53） | 中 |
 | 4-55 | 墙上时间跟全局时区（Q10；construction-plan 零碎施工项「其余服务端墙上时间跟不跟全局时区」那一行列的几处逐个过）：免打扰 `inQuietHours`（连同 `push-router.ts` 的调用与开发版免扰时钟 `devtools/clock.ts`）、私聊静音的 `describeUntil`、`packages/ai/src/tools.ts` 的 `stamp` / 开播于 / 最后活动三处日期改读核心 `timezone`；`roast-scheduler.ts`（锐评窗口按全局时区切、cron 却按服务器时区，Q11）、`profile-refresh.ts`、`dynamic-poller.ts` 三条 `CronJob` 与 `stats/extension-source.ts` 的 `CronTime` 按墙上时刻排的跟、只按间隔跑的不动；开发版 `devtools/scenarios/timers.ts` 的下次触发显示跟上。桌面版不在东八区、改过 `TZ` 的 Docker 用户免打扰会按时差挪一次，发版说明写一句 | `util/quiet-hours.ts`、`push-router.ts`、`runtime/{mute-command,roast-scheduler,profile-refresh}.ts`、`dynamic-poller.ts`、`stats/extension-source.ts`、`packages/ai/src/tools.ts`、两处 devtools | 无 | 否 | 中 |
 | **丙 组件库** | | | | | |
@@ -181,3 +181,5 @@
 不当硬门槛；第 4 期收口时主会话给一张十条以内的短清单。
 
 🔗现状（4-23，2026-10-31）：素材库 8 口及现有读者已迁至 `/api/library`，旧口退役；图 / 字体 picker 与字体大小提醒收字 26 处，写死中文实扫 4855 → 4829，中文叫法 241、B 站替身 75 不变。代码与片级门禁已就绪，当前施工工具没有可用浏览器，真页面验收待补，故本行暂不标 ✅、完成数仍为 23 / 60；通过最终验收后再记 24 / 60。4-50 的顶层页 / 选择器合一、4-57 的 SC 示例与已有 4-53c 延期均不扩范围。
+
+🔗现状（4-23，2026-10-31）：统筹使用主聊天可见的内置浏览器补验，素材路由与 picker 真页面主要流程通过；原施工会话浏览器不可见及当时待验记录保留为历史。保存引用后图 / 字体拒删、解除并保存后删除、直播封面共用图库、双图轮换序号与口吻切换均已实测；字体 GET 通过 CLI 回环读取补证，未称浏览器字体预览。390 宽有横溢出，既有 field-labels warning 已记录；JS error 为 0，服务端 level 50 / 60 为 0。未人为遍历大字体、非法文件等全部边界，也未做卡片 PNG 渲染。素材与注入清空，服务 SIGINT 退出 0、标签关闭、视口复位、端口清空。本片标 ✅、完成数记 24 / 60；4-24 / 4-35 未落成，不计入。
