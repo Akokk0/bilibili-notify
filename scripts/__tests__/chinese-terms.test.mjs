@@ -97,7 +97,6 @@ export const RATCHET = {
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
 	"apps/server/src/posts/deliver-post.ts": 6,
 	"apps/server/src/routes/targets.ts": 2,
-	"apps/server/src/runtime/roast-scheduler.ts": 3,
 	"apps/server/src/runtime/roots.ts": 1,
 	"apps/server/src/stats/roast-deliver.ts": 1,
 	"apps/web/src/components/header.tsx": 1,

@@ -21,6 +21,7 @@ import {
 	timezoneOffsetMinutes,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
+import { t } from "../i18n/index.js";
 import {
 	type BoardLike,
 	buildRoastPayload,
@@ -118,7 +119,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	const { deps, drafts, logger, fetchOverview } = opts;
 	/** 榜单那条。key 恒为 BOARD_KEY,与 per-UP 的订阅 id 同居一张表便于统一 reconcile。 */
 	const BOARD_KEY = "@board";
-	const jobs = new Map<string, { cron: string; job: CronJob }>();
+	const jobs = new Map<string, { cron: string; timezone: string; job: CronJob }>();
 	let stopped = false;
 
 	/** 通知主人,发不出去只记一句 —— 见 tellMaster 的说明。 */
@@ -155,18 +156,19 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		label: string,
 		subscriptionId?: string,
 	): Promise<RoastRunOutcome> {
-		if (stopped) return { kind: "gen-failed", code: "unavailable", message: "调度器已停止" };
+		if (stopped)
+			return { kind: "gen-failed", code: "unavailable", message: t("roastScheduler.stopped") };
 
 		// 一个目标都没配、或配的全都停用了 —— 先拦住,别白调一次模型再把结果扔掉。
 		// 两句话分开说:「没配」和「都停用了」对主人是两件事,后者他明明配过。
 		if (cfg.targets.length === 0) {
 			logger.warn(`[roast-sched] ${label}:没有配置推送目标,跳过`);
-			if (cfg.notifyOnError) await tell(`${label}没有发出去：还没有配置推送目标。`);
+			if (cfg.notifyOnError) await tell(t("roastScheduler.noTargets", { label }));
 			return { kind: "no-targets" };
 		}
 		if (allTargetsPaused(cfg.targets)) {
 			logger.warn(`[roast-sched] ${label}:配置的推送目标都已停用,跳过`);
-			if (cfg.notifyOnError) await tell(`${label}没有发出去：配置的推送目标都已停用。`);
+			if (cfg.notifyOnError) await tell(t("roastScheduler.allTargetsPaused", { label }));
 			return { kind: "no-targets" };
 		}
 
@@ -188,7 +190,8 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			// 失败自带给人看的话(码与话在 roast-generate.ts 产生的地方定好);这里只取话。
 			logger.warn(`[roast-sched] ${label} 生成失败:${gen.message}`);
 			// 「这周没发」后面必须跟得上原因,否则主人对着沉默猜。
-			if (cfg.notifyOnError) await tell(`${label}没有发出去：${gen.message}`);
+			if (cfg.notifyOnError)
+				await tell(t("roastScheduler.generationFailed", { label, message: gen.message }));
 			return { kind: "gen-failed", code: gen.code, message: gen.message };
 		}
 
@@ -212,7 +215,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				result: gen.result as BoardLike | SoloLike,
 				days: cfg.days,
 			});
-			const guide = `☝️ ${label}已经生成好了，等主人过目～\n回复「y ${draft.id}」发送，「n ${draft.id}」丢弃。\n48 小时没有回复就自动作废。`;
+			const guide = t("roastScheduler.approvalGuide", { label, draftId: draft.id });
 			await tellPayload(
 				preview.payload.kind === "image"
 					? { ...preview.payload, caption: `${preview.text}\n\n${guide}` }
@@ -239,19 +242,26 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		});
 
 		// 跳过的(停用)只进日志,不进通知:停用是主人自己按的,不是「没发出去」。
-		const skippedNote = out.skipped.length > 0 ? `,跳过 ${out.skipped.length} 个已停用` : "";
+		const skipped = out.skipped.length;
 		if (out.failed.length > 0) {
 			const detail = out.failed.map((f) => `${f.targetId}：${f.failure.message}`).join("\n");
-			logger.warn(`[roast-sched] ${label} 部分目标推送失败${skippedNote}:\n${detail}`);
+			logger.warn(
+				`[roast-sched] ${label} 部分目标推送失败${skipped > 0 ? `,跳过 ${skipped} 个已停用` : ""}:\n${detail}`,
+			);
 			// 管线自己已经退避重试过了,到这儿就是终局 —— 说清哪些没成即可。
 			if (cfg.notifyOnError) {
 				await tell(
-					`${label}发送完毕：${out.sent.length} 个目标成功，${out.failed.length} 个失败。\n${detail}`,
+					t("roastScheduler.delivered", {
+						label,
+						sent: out.sent.length,
+						failed: out.failed.length,
+						detail,
+					}),
 				);
 			}
 		} else {
 			logger.info(
-				`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})${skippedNote}`,
+				`[roast-sched] ${label} 已发送到 ${out.sent.length} 个目标(${out.mode})${skipped > 0 ? `,跳过 ${skipped} 个已停用` : ""}`,
 			);
 		}
 
@@ -270,7 +280,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * 老样子报失败,这里只管「主人把勾着的群都关了」这一种情况。
 	 */
 	function allTargetsPaused(ids: readonly string[]): boolean {
-		const byId = new Map(deps.store.getTargets().map((t) => [t.id, t]));
+		const byId = new Map(deps.store.getTargets().map((target) => [target.id, target]));
 		const connections = deps.store.getConnections();
 		return ids.every((id) => {
 			const target = byId.get(id);
@@ -298,7 +308,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 				notifyOnError: cfg?.notifyOnError ?? true,
 			},
 			// 批下来之前订阅被删了:名字对不上,只好写「这份锐评」。
-			draft.kind === "board" ? "UP 主周报" : sub ? soloLabel(sub) : "这份锐评",
+			draft.kind === "board"
+				? t("roastScheduler.boardLabel")
+				: sub
+					? soloLabel(sub)
+					: t("roastScheduler.approvedLabel"),
 		);
 	}
 
@@ -316,7 +330,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * 别名退役(ADR-0021 决策 16)后统一走资料名。
 	 */
 	function soloLabel(sub: Subscription): string {
-		return `${roastSubjectName(deps, sub)} 的锐评`;
+		return t("roastScheduler.soloLabel", { name: roastSubjectName(deps, sub) });
 	}
 
 	/**
@@ -328,9 +342,10 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 */
 	function arm(key: string, cron: string, onTick: () => void, label: string): void {
 		try {
-			const job = new CronJob(cron, onTick);
+			const timezone = deps.store.getGlobals().timezone;
+			const job = new CronJob(cron, onTick, null, false, timezone);
 			job.start();
-			jobs.set(key, { cron, job });
+			jobs.set(key, { cron, timezone, job });
 			logger.info(`[roast-sched] ${label} 已排程:cron='${cron}'`);
 		} catch (err) {
 			logger.error(
@@ -345,11 +360,21 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * `run` 的返回值这里**故意丢掉**(`Promise<unknown>`)—— 结论是给「试一次」按钮
 	 * 看的,cron 到点自动跑时没人在场,该说的话已经落进日志与私聊了。
 	 */
-	function desired(): Map<string, { cron: string; run: () => Promise<unknown>; label: string }> {
-		const out = new Map<string, { cron: string; run: () => Promise<unknown>; label: string }>();
+	function desired(): Map<
+		string,
+		{ cron: string; run: () => Promise<unknown>; label: () => string }
+	> {
+		const out = new Map<
+			string,
+			{ cron: string; run: () => Promise<unknown>; label: () => string }
+		>();
 		const board = deps.store.getGlobals().roastSchedule;
 		if (board?.enabled) {
-			out.set(BOARD_KEY, { cron: board.cron, run: runBoardOnce, label: "UP 主周报" });
+			out.set(BOARD_KEY, {
+				cron: board.cron,
+				run: runBoardOnce,
+				label: () => t("roastScheduler.boardLabel"),
+			});
 		}
 		for (const sub of deps.store.getSubscriptions()) {
 			const s = sub.roastSchedule;
@@ -357,7 +382,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			out.set(sub.id, {
 				cron: s.cron,
 				run: () => runSoloOnce(sub.id),
-				label: soloLabel(sub),
+				label: () => soloLabel(sub),
 			});
 		}
 		return out;
@@ -367,7 +392,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		const cfg = boardConfig();
 		// 只覆盖 days,目标与出错通知照旧走配置 —— 主人在私聊里说的是「统计多少天」,
 		// 不是「这次发给谁」。cron 那条调用不传,行为逐字不变。
-		return await runOnce("board", days === undefined ? cfg : { ...cfg, days }, "UP 主周报");
+		return await runOnce(
+			"board",
+			days === undefined ? cfg : { ...cfg, days },
+			t("roastScheduler.boardLabel"),
+		);
 	}
 
 	async function runSoloOnce(subscriptionId: string): Promise<RoastRunOutcome> {
@@ -375,7 +404,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		if (!sub) {
 			// 订阅在这一轮之间被删掉了。reconcile 会撤掉这条 job,这里只是兜底。
 			logger.debug(`[roast-sched] 订阅 ${subscriptionId} 已不在订阅列表,跳过`);
-			return { kind: "gen-failed", code: "not_found", message: "这位 UP 已经不在订阅列表里了" };
+			return {
+				kind: "gen-failed",
+				code: "not_found",
+				message: t("roastScheduler.subscriptionMissing"),
+			};
 		}
 		return await runOnce("solo", sub.roastSchedule, soloLabel(sub), sub.id);
 	}
@@ -386,7 +419,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		// 撤掉已经不该存在的,以及 cron 变了的(变了的下面会重建)。
 		for (const [key, cur] of jobs) {
 			const next = want.get(key);
-			if (!next || next.cron !== cur.cron) {
+			if (!next || next.cron !== cur.cron || deps.store.getGlobals().timezone !== cur.timezone) {
 				cur.job.stop();
 				jobs.delete(key);
 				if (!next) logger.info(`[roast-sched] 撤销排程 ${key}`);
@@ -409,13 +442,13 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 							() => undefined,
 							(err) => {
 								logger.error(
-									`[roast-sched] ${w.label} 本轮异常终止：${err instanceof Error ? err.message : String(err)}`,
+									`[roast-sched] ${w.label()} 本轮异常终止：${err instanceof Error ? err.message : String(err)}`,
 								);
 							},
 						),
 					);
 				},
-				w.label,
+				w.label(),
 			);
 		}
 	}

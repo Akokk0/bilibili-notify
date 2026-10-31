@@ -439,5 +439,15 @@
 	"migration.zero.labels.biliLogin": "B 站登录",
 	"migration.zero.biliLoginFailed": "B 站登录没带过来({reason}),需要重新扫码",
 	"migration.zero.groupedInputs": "{reason}(共 {count} 个)",
-	"migration.zero.notRegularFile": "不是普通文件"
+	"migration.zero.notRegularFile": "不是普通文件",
+	"roastScheduler.stopped": "调度器已停止",
+	"roastScheduler.noTargets": "{label}未发送：尚未配置推送目标。",
+	"roastScheduler.allTargetsPaused": "{label}未发送：配置的推送目标都已停用。",
+	"roastScheduler.generationFailed": "{label}未发送：{message}",
+	"roastScheduler.approvalGuide": "{label}已生成，等待审批。\n回复「y {draftId}」发送，「n {draftId}」丢弃。\n48 小时没有回复将自动作废。",
+	"roastScheduler.delivered": "{label}发送完毕：{sent} 个目标成功，{failed} 个失败。\n{detail}",
+	"roastScheduler.boardLabel": "榜单周报",
+	"roastScheduler.approvedLabel": "这份锐评",
+	"roastScheduler.soloLabel": "{name} 的锐评",
+	"roastScheduler.subscriptionMissing": "这条订阅已不在订阅列表中"
 }

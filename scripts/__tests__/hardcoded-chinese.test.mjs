@@ -197,7 +197,6 @@ export const RATCHET = {
 	"apps/server/src/runtime/report-command.ts": 7,
 	"apps/server/src/runtime/resource-monitor.ts": 1,
 	"apps/server/src/runtime/roast-command.ts": 6,
-	"apps/server/src/runtime/roast-scheduler.ts": 13,
 	"apps/server/src/runtime/roots.ts": 15,
 	"apps/server/src/runtime/status-command.ts": 13,
 	"apps/server/src/runtime/storage-usage.ts": 8,

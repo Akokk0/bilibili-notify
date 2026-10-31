@@ -121,7 +121,8 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * 动态轮询只管生产:轮询节奏与视频链接怎么写是它自己的两样;模板 / 图集 / 出图 / AI / 过滤那些都是核心装配的事
  * (`posts/deliver-post.ts` 的 `PostSettings`,每条作品现折),不再经动态轮询。
  */
-export interface DynamicPollerConfig {
+export interface DynamicPollerSettings {
+	timezone: string;
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
@@ -150,7 +151,7 @@ export interface DynamicPollerOptions {
 	 * 订阅由宿主按身份查。必给。
 	 */
 	reportPost: (externalId: string, report: PostReport) => void;
-	config: DynamicPollerConfig;
+	settings: DynamicPollerSettings;
 	/** 名单,现读(签名就是来源上下文的 `ctx.subscriptions`)。 */
 	subscriptions: () => readonly SourceSubscriptionView[];
 }
@@ -184,7 +185,7 @@ export class DynamicPoller {
 	private readonly logger: Logger;
 	private readonly subscriptions: () => readonly SourceSubscriptionView[];
 
-	private config: DynamicPollerConfig;
+	private settings: DynamicPollerSettings;
 	private dynamicJob?: CronJob;
 	/** 风控/瞬时错误后的一次性退避重启句柄;非 undefined 表示已排程,不叠加。 */
 	private detectorRestartTimer?: Disposable;
@@ -240,7 +241,7 @@ export class DynamicPoller {
 		this.problems = opts.problems;
 		this.fetchImage = opts.fetchImage;
 		this.reportPost = opts.reportPost;
-		this.config = opts.config;
+		this.settings = opts.settings;
 		this.subscriptions = opts.subscriptions;
 	}
 
@@ -306,14 +307,16 @@ export class DynamicPoller {
 	/**
 	 * 替换运行时配置(宿主在 dashboard 编辑后调用)。
 	 * `dynamicCron` 变化时会自动停掉旧 CronJob 并按新表达式重新 schedule —— 否则
-	 * 配置已经写进 this.config,但 node-cron 句柄还在跑旧节奏,纯粹的字段更新
+	 * 配置已经写进 this.settings,但 node-cron 句柄还在跑旧节奏,纯粹的字段更新
 	 * 是看不见的 bug。
 	 */
-	updateConfig(config: DynamicPollerConfig): void {
-		const cronChanged = this.config.dynamicCron !== config.dynamicCron;
-		this.config = config;
+	updateSettings(settings: DynamicPollerSettings): void {
+		const cronChanged =
+			this.settings.dynamicCron !== settings.dynamicCron ||
+			this.settings.timezone !== settings.timezone;
+		this.settings = settings;
 		if (cronChanged && this.dynamicJob) {
-			this.logger.info(`[detector] dynamicCron 已更新为 "${config.dynamicCron}",重启检测任务`);
+			this.logger.info(`[detector] dynamicCron 已更新为 "${settings.dynamicCron}",重启检测任务`);
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 			if (this.postAnchors.size > 0) this.startJob();
@@ -417,14 +420,20 @@ export class DynamicPoller {
 	 */
 	private startJob(): void {
 		// 起 cron 的唯一一道门:这一路已经停了,或者登录失效等着恢复,都不起。
-		// reconcileJob / 退避到点 / updateConfig 三条路都从这里过。
+		// reconcileJob / 退避到点 / updateSettings 三条路都从这里过。
 		if (!this.running || this.authLost) return;
 		let job: CronJob;
 		try {
-			job = new CronJob(this.config.dynamicCron, () => void this.runDetectLocked());
+			job = new CronJob(
+				this.settings.dynamicCron,
+				() => void this.runDetectLocked(),
+				null,
+				false,
+				this.settings.timezone,
+			);
 		} catch (err) {
 			this.logger.error(
-				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${errorMessageOf(err)}`,
+				`[detector] dynamicCron="${this.settings.dynamicCron}" 无法解析,动态检测未启动：${errorMessageOf(err)}`,
 			);
 			// 起不来也是「这一路不再跑了」:之前报的风控 / 拉取失败不会再有下一次结果去清它
 			this.dropProblems();
@@ -703,7 +712,7 @@ export class DynamicPoller {
 			}
 			this.reportPost(uid, {
 				postId: item.id_str,
-				url: dynamicLink(item, item.type === "DYNAMIC_TYPE_AV", this.config.dynamicVideoUrlToBV),
+				url: dynamicLink(item, item.type === "DYNAMIC_TYPE_AV", this.settings.dynamicVideoUrlToBV),
 				post: withImages,
 			});
 		} catch (e) {

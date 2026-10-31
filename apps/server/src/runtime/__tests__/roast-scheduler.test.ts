@@ -26,13 +26,21 @@ import {
 type Any = any;
 
 const cronMock = vi.hoisted(() => {
-	const instances: Array<{ cronTime: string; onTick: () => void; stopped: boolean }> = [];
+	const instances: Array<{
+		cronTime: string;
+		onTick: () => void;
+		stopped: boolean;
+		timezone?: string;
+	}> = [];
 	class FakeCronJob {
 		isActive = false;
 		stopped = false;
 		constructor(
 			public cronTime: string,
 			public onTick: () => void,
+			_onComplete?: unknown,
+			_start?: boolean,
+			public timezone?: string,
 		) {
 			// 与真实 CronJob 一致:表达式解析不了就同步抛。调度器不 catch 的话
 			// 整个独立端会在启动期崩掉(profile-refresh 注释里记着这个坑)。
@@ -637,4 +645,33 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 		await sched.runSoloOnce("b2");
 		expect(generateSoloRoast.mock.calls[0]?.[1]).toMatchObject({ subscriptionId: "b2", days: 30 });
 	});
+});
+
+it("replaces board and solo wall-clock jobs on timezone changes only", () => {
+	globals.timezone = "UTC";
+	globals.roastSchedule = { ...globals.roastSchedule, enabled: true, cron: "0 9 * * *" };
+	const { sched } = makeScheduler({
+		subs: [
+			{
+				id: "solo",
+				identity: { sourceKey: "acme", externalId: "alice" },
+				roastSchedule: { enabled: true, cron: "0 8 * * *", days: 7, targets: [] },
+			},
+		],
+	});
+	sched.start();
+	expect(cronMock.instances.map((job) => job.timezone)).toEqual(["UTC", "UTC"]);
+	sched.reconcile();
+	expect(cronMock.instances).toHaveLength(2);
+	globals.timezone = "Asia/Kathmandu";
+	sched.reconcile();
+	expect(cronMock.instances.map((job) => job.stopped)).toEqual([true, true, false, false]);
+	expect(cronMock.instances.slice(2).map((job) => job.timezone)).toEqual([
+		"Asia/Kathmandu",
+		"Asia/Kathmandu",
+	]);
+	expect(generateBoardRoast).not.toHaveBeenCalled();
+	expect(generateSoloRoast).not.toHaveBeenCalled();
+	sched.stop();
+	expect(cronMock.instances.every((job) => job.stopped)).toBe(true);
 });

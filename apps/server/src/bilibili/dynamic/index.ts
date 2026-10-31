@@ -1,7 +1,7 @@
 export {
 	DynamicPoller,
-	type DynamicPollerConfig,
 	type DynamicPollerOptions,
+	type DynamicPollerSettings,
 } from "./dynamic-poller";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {

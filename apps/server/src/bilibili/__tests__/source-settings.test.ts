@@ -43,13 +43,21 @@ vi.mock("../auth/index.js", () => ({
 }));
 
 const cronMock = vi.hoisted(() => {
-	const instances: Array<{ cronTime: string; isActive: boolean; stopCount: number }> = [];
+	const instances: Array<{
+		cronTime: string;
+		isActive: boolean;
+		stopCount: number;
+		timezone?: string;
+	}> = [];
 	class FakeCronJob {
 		isActive = false;
 		stopCount = 0;
 		constructor(
 			public cronTime: string,
 			public onTick: () => void,
+			_onComplete?: unknown,
+			_start?: boolean,
+			public timezone?: string,
 		) {
 			instances.push(this);
 		}
@@ -135,9 +143,27 @@ async function boot() {
 		},
 		setHealthCheckMs,
 	});
+	const timezoneHandlers = new Set<() => void>();
 	const source = createBiliSource({
 		...fakeLoginDeps(login, logger),
 		locale,
+		timezone: () => store.getGlobals().timezone,
+		onTimezoneChanged: (handler: () => void) => {
+			let last = store.getGlobals().timezone;
+			timezoneHandlers.add(handler);
+			const off = store.onChange((scope) => {
+				const next = store.getGlobals().timezone;
+				if (scope !== "globals" || next === last) return;
+				last = next;
+				handler();
+			});
+			return {
+				dispose() {
+					timezoneHandlers.delete(handler);
+					off.dispose();
+				},
+			};
+		},
 		setTimeout: () => ({ dispose() {} }),
 		liveContext: {
 			logger,
@@ -148,6 +174,7 @@ async function boot() {
 			track: () => {},
 		},
 	});
+	const sourceStart = vi.spyOn(source, "start");
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
 		linkResolvers: createLinkResolverRegistry(),
@@ -181,6 +208,8 @@ async function boot() {
 	return {
 		store,
 		source,
+		sourceStart,
+		timezoneHandlers,
 		table,
 		changes,
 		setHealthCheckMs,
@@ -481,4 +510,42 @@ describe("B 站设置读不懂的两条问题 · 文案", () => {
 		expect(file).not.toContain("config/settings/bilibili.json");
 		expect(file).toContain("Unexpected end of JSON input");
 	});
+});
+
+it("subscribes specifically to timezone, reuses the poller and unsubscribes on stop", async () => {
+	await place(JSON.stringify({ dynamicCron: "0 9 * * *", healthCheckMinutes: 45 }));
+	const b = await boot();
+	expect(b.timezoneHandlers.size).toBe(1);
+	const engine = b.source.dynamic();
+	const old = cronMock.instances.at(-1);
+	const heartbeat = b.setHealthCheckMs.mock.calls.length;
+	await b.store.patchGlobals({ timezone: "UTC" });
+	expect(b.source.dynamic()).toBe(engine);
+	expect(old?.isActive).toBe(false);
+	expect(cronMock.instances.at(-1)?.timezone).toBe("UTC");
+	expect(b.setHealthCheckMs).toHaveBeenCalledTimes(heartbeat);
+	const count = cronMock.instances.length;
+	await b.source.stop();
+	expect(b.timezoneHandlers.size).toBe(0);
+	await b.store.patchGlobals({ timezone: "Asia/Kathmandu" });
+	expect(cronMock.instances).toHaveLength(count);
+	const context = b.sourceStart.mock.calls[0]?.[0];
+	if (!context) throw new Error("missing public source start context");
+	await b.source.start(context);
+	expect(b.timezoneHandlers.size).toBe(1);
+	expect(cronMock.instances.at(-1)?.timezone).toBe("Asia/Kathmandu");
+});
+
+it("releases the timezone subscription when a later start step fails", async () => {
+	await place(JSON.stringify({ dynamicCron: "0 9 * * *", healthCheckMinutes: 45 }));
+	const b = await boot();
+	await b.source.stop();
+	const context = b.sourceStart.mock.calls[0]?.[0];
+	if (!context) throw new Error("missing public source start context");
+	b.setHealthCheckMs.mockImplementation((ms) => {
+		if (ms > 0) throw new Error("heartbeat start failed");
+	});
+	await expect(b.source.start(context)).rejects.toThrow("heartbeat start failed");
+	expect(b.timezoneHandlers.size).toBe(0);
+	expect(cronMock.instances.every((job) => !job.isActive)).toBe(true);
 });

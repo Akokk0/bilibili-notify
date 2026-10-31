@@ -44,6 +44,8 @@ export function fakeLoginSystem(parts: {
 /** `BiliSourceDeps` 里与登录那一套有关的三格:`context` 带着假系统(被测文件里的 mock 工厂从它取),其余是不被读的占位。 */
 export function fakeLoginDeps(login: FakeLoginSystem, logger: ServiceContext["logger"]) {
 	return {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: (_handler: () => void) => ({ dispose() {} }),
 		context: { login } as unknown as BiliContext,
 		serviceCtx: { logger } as unknown as ServiceContext,
 		accountImages: {} as unknown as ImageWriter,

@@ -11,14 +11,29 @@ import { startMigratedProfileRefresh } from "./profile-refresh-support.js";
 
 // cron 换成不排程的假货(同 profile-refresh-track 等的套路)。真的 CronJob 按墙钟每 10 分钟整点放一轮 tick,
 // 不归 serviceCtx 管:用例跨过整点时它会插进来多跑一轮。
+const cronMock = vi.hoisted(() => ({
+	instances: [] as Array<{ timezone?: string; stopped: boolean }>,
+}));
 vi.mock("cron", () => ({
 	CronJob: class {
+		stopped = false;
+		constructor(
+			_expression: string,
+			_onTick: () => void,
+			_onComplete?: unknown,
+			_start?: boolean,
+			public timezone?: string,
+		) {
+			cronMock.instances.push(this);
+		}
 		start(): void {}
-		stop(): void {}
+		stop(): void {
+			this.stopped = true;
+		}
 	},
 }));
 
-const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *", timezone: "UTC" };
 const SUB = {
 	id: "s1",
 	identity: { sourceKey: "bilibili", externalId: "1" },
@@ -29,13 +44,15 @@ let handle: ProfileRefreshHandle | undefined;
 afterEach(() => {
 	handle?.dispose();
 	handle = undefined;
+	GLOBALS.timezone = "UTC";
+	cronMock.instances.length = 0;
 });
 
-function start(fetchUserCard: ReturnType<typeof vi.fn>) {
+function start(fetchUserCard: ReturnType<typeof vi.fn>, bus = createNodeMessageBus()) {
 	handle = startMigratedProfileRefresh({
 		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
-		bus: createNodeMessageBus(),
+		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => [SUB] } as never,
@@ -96,4 +113,25 @@ describe("profile refresh pollNow", () => {
 		expect(await first).toBe(true);
 		expect(fetchUserCard).toHaveBeenCalledTimes(1);
 	});
+});
+
+it("re-arms only the cron job when timezone changes and disposes its listener", () => {
+	const bus = createNodeMessageBus();
+	const fetch = vi.fn();
+	const h = start(fetch, bus);
+	expect(cronMock.instances.map((job) => job.timezone)).toEqual(["UTC"]);
+	bus.emit("config-changed", { scope: "globals" });
+	expect(cronMock.instances).toHaveLength(1);
+	GLOBALS.timezone = "Asia/Kathmandu";
+	bus.emit("config-changed", { scope: "globals" });
+	expect(cronMock.instances.map((job) => [job.timezone, job.stopped])).toEqual([
+		["UTC", true],
+		["Asia/Kathmandu", false],
+	]);
+	expect(fetch).not.toHaveBeenCalled();
+	h.dispose();
+	GLOBALS.timezone = "UTC";
+	bus.emit("config-changed", { scope: "globals" });
+	expect(cronMock.instances).toHaveLength(2);
+	expect(cronMock.instances.every((job) => job.stopped)).toBe(true);
 });

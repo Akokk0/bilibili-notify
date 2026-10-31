@@ -68,6 +68,7 @@ export interface ProfileRefreshHandle extends Disposable {
 export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefreshHandle {
 	const { bus, logger, configStore, subscriptionStore, subscriptionStateStore, fansStore } = opts;
 	let currentCron = configStore.getGlobals().profileRefreshCron;
+	let currentTimezone = configStore.getGlobals().timezone;
 	let job: CronJob | undefined;
 	let running = false;
 	let disposed = false;
@@ -329,9 +330,15 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	// profileRefreshCron 是面板上的自由文本框:读不懂时只让这次轮询不启动,不能把整个进程带崩。
 	function startJob(): void {
 		try {
-			job = new CronJob(currentCron, () => {
-				opts.serviceCtx.track(tickOnce());
-			});
+			job = new CronJob(
+				currentCron,
+				() => {
+					opts.serviceCtx.track(tickOnce());
+				},
+				null,
+				false,
+				currentTimezone,
+			);
 		} catch (err) {
 			logger.error(
 				`[profile-refresh] cron='${currentCron}' 无法解析,资料刷新未启动: ${errorMessageOf(err)}`,
@@ -344,11 +351,13 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 	}
 
 	function reconcileCron(): void {
-		const next = configStore.getGlobals().profileRefreshCron;
-		if (next === currentCron) return;
+		const globals = configStore.getGlobals();
+		const next = globals.profileRefreshCron;
+		if (next === currentCron && globals.timezone === currentTimezone) return;
 		logger.info(`[profile-refresh] cron changed: '${currentCron}' -> '${next}'`);
 		job?.stop();
 		currentCron = next;
+		currentTimezone = globals.timezone;
 		startJob();
 	}
 

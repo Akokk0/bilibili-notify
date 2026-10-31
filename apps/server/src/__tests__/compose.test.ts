@@ -165,6 +165,8 @@ function compose(
 	const memoryStore = memoryIntegrationStore();
 	const deps = {
 		locale: opts.locale ?? fixedLocale(),
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: (_handler: () => void) => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		accountImages: inertAccountImages,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,

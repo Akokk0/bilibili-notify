@@ -48,6 +48,7 @@ const cronMock = vi.hoisted(() => {
 		isActive: boolean;
 		startCount: number;
 		stopCount: number;
+		timezone?: string;
 	}> = [];
 	class FakeCronJob {
 		isActive = false;
@@ -56,6 +57,9 @@ const cronMock = vi.hoisted(() => {
 		constructor(
 			public cronTime: string,
 			public onTick: () => void,
+			_onComplete?: unknown,
+			_start?: boolean,
+			public timezone?: string,
 		) {
 			// 镜像真实 `cron` 包对无法解析表达式的同步抛错(如
 			// "Field (minute) cannot be parsed"),供 startJob() 的 try/catch 回归测试用。
@@ -312,7 +316,7 @@ interface EngineBag {
 
 function makeEngine(
 	over: {
-		config?: Partial<import("../dynamic-poller").DynamicPollerConfig>;
+		settings?: Partial<import("../dynamic-poller").DynamicPollerSettings>;
 		subs?: Roster | null;
 		/** 动态轮询交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
 		reportPost?: (externalId: string, report: PostReport) => void;
@@ -341,10 +345,11 @@ function makeEngine(
 		problems,
 		fetchImage,
 		reportPost,
-		config: {
+		settings: {
+			timezone: "UTC",
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
-			...over.config,
+			...over.settings,
 		},
 		subscriptions: () => roster,
 	});
@@ -1000,11 +1005,11 @@ describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 
 	it("链接:动态给动态页;视频给视频页;视频换 BV 取得到就是 BV 号,取不到就是空串", async () => {
 		const urlOf = async (
-			config: { dynamicVideoUrlToBV: boolean },
+			settings: { dynamicVideoUrlToBV: boolean },
 			type: string,
 			videoJumpUrl?: string,
 		): Promise<string> => {
-			const b = makeEngine({ config });
+			const b = makeEngine({ settings });
 			b.fetchAllDynamic.mockResolvedValue(
 				resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", type, videoJumpUrl })]),
 			);
@@ -1012,8 +1017,8 @@ describe("DynamicPoller.detectDynamics — 把作品交给核心入口", () => {
 			await detect(b.engine);
 			return reported(b)[1].url;
 		};
-		const off = { dynamicVideoUrlToBV: false };
-		const on = { dynamicVideoUrlToBV: true };
+		const off = { timezone: "UTC", dynamicVideoUrlToBV: false };
+		const on = { timezone: "UTC", dynamicVideoUrlToBV: true };
 		expect(await urlOf(off, "DYNAMIC_TYPE_WORD")).toBe("https://t.bilibili.com/id-1");
 		expect(await urlOf(off, "DYNAMIC_TYPE_AV", "//www.bilibili.com/video/BV1demo")).toBe(
 			"https://www.bilibili.com/video/BV1demo",
@@ -1562,7 +1567,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 			problems: makeFakeProblems(),
 			fetchImage: vi.fn(),
 			reportPost: () => {},
-			config: { dynamicCron: "*/2 * * * *", dynamicVideoUrlToBV: false },
+			settings: { dynamicCron: "*/2 * * * *", timezone: "UTC", dynamicVideoUrlToBV: false },
 			subscriptions: () => rosterOf({ "1": { uid: "1", post: true } }),
 		});
 		engine.start();
@@ -1669,14 +1674,15 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
-	it("updateConfig 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
+	it("updateSettings 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
 		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
 
-		b.engine.updateConfig({
+		b.engine.updateSettings({
 			dynamicCron: "*/5 * * * *",
+			timezone: "UTC",
 			dynamicVideoUrlToBV: false,
 		});
 		expect(cronMock.instances[0]?.stopCount).toBe(1);
@@ -1685,12 +1691,13 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		expect(cronMock.instances[1]?.isActive).toBe(true);
 	});
 
-	it("updateConfig 同 cron → 不重建 job", () => {
+	it("updateSettings 同 cron → 不重建 job", () => {
 		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
-		b.engine.updateConfig({
+		b.engine.updateSettings({
 			dynamicCron: "*/2 * * * *",
+			timezone: "UTC",
 			dynamicVideoUrlToBV: true, // 改了别的字段,但 cron 不变
 		});
 		expect(cronMock.instances).toHaveLength(1);
@@ -1715,7 +1722,7 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 
 	it("回归:dynamicCron 无法解析(new CronJob 同步抛错)不炸穿 start(),记录 error 且不建 job(此前独立端会在启动期整进程崩溃,见 sidecar.stderr.log 的 CronError)", () => {
 		const subs = { "1": { uid: "1", post: true } };
-		const b = makeEngine({ subs, config: { dynamicCron: "BAD CRON" } });
+		const b = makeEngine({ subs, settings: { dynamicCron: "BAD CRON" } });
 		expect(() => b.engine.start()).not.toThrow();
 		expect(cronMock.instances).toHaveLength(0);
 		expect(b.engine.isActive).toBe(false);
@@ -1726,15 +1733,19 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		).toBe(true);
 	});
 
-	it("cron 写坏起不来 → 改成好的:updateConfig 自己把 job 拉起来(不等名单变动)", () => {
+	it("cron 写坏起不来 → 改成好的:updateSettings 自己把 job 拉起来(不等名单变动)", () => {
 		const b = makeEngine({
 			subs: { "1": { uid: "1", post: true } },
-			config: { dynamicCron: "BAD CRON" },
+			settings: { dynamicCron: "BAD CRON" },
 		});
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(0);
 
-		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+		b.engine.updateSettings({
+			dynamicCron: "*/5 * * * *",
+			timezone: "UTC",
+			dynamicVideoUrlToBV: false,
+		});
 
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.cronTime).toBe("*/5 * * * *");
@@ -1748,7 +1759,11 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		await detect(b.engine);
 		const before = cronMock.instances.length;
 
-		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+		b.engine.updateSettings({
+			dynamicCron: "*/5 * * * *",
+			timezone: "UTC",
+			dynamicVideoUrlToBV: false,
+		});
 
 		expect(cronMock.instances.length).toBe(before);
 		expect(b.engine.isActive).toBe(false);
@@ -1760,7 +1775,11 @@ describe("DynamicPoller — 生命周期 / cron 重启", () => {
 		b.loseLogin();
 		const before = cronMock.instances.length;
 
-		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+		b.engine.updateSettings({
+			dynamicCron: "*/5 * * * *",
+			timezone: "UTC",
+			dynamicVideoUrlToBV: false,
+		});
 
 		expect(cronMock.instances.length).toBe(before);
 		expect(b.engine.isActive).toBe(false);
@@ -2090,7 +2109,11 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 		await settle();
 		expect(w.table.list().map((p) => p.code)).toEqual(["risk_controlled"]);
 
-		w.b.engine.updateConfig({ dynamicCron: "BAD CRON", dynamicVideoUrlToBV: false });
+		w.b.engine.updateSettings({
+			dynamicCron: "BAD CRON",
+			timezone: "UTC",
+			dynamicVideoUrlToBV: false,
+		});
 		(w.b.engine as unknown as { restartDetector(): void }).restartDetector();
 		await settle();
 
@@ -2158,4 +2181,30 @@ describe("DynamicPoller — 这一路不再跑了,它报的要清", () => {
 			liveStoppedGetsThrough(w);
 		},
 	);
+});
+
+it("changes timezone on the same poller without bypassing lost-login or stop", () => {
+	const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+	b.engine.start();
+	expect(cronMock.instances.at(-1)?.timezone).toBe("UTC");
+	const next = {
+		dynamicCron: "*/2 * * * *",
+		dynamicVideoUrlToBV: false,
+		timezone: "Asia/Kathmandu",
+	};
+	const old = cronMock.instances.at(-1);
+	b.engine.updateSettings(next);
+	expect(old?.isActive).toBe(false);
+	expect(cronMock.instances.at(-1)?.timezone).toBe("Asia/Kathmandu");
+	const count = cronMock.instances.length;
+	b.engine.updateSettings(next);
+	expect(cronMock.instances).toHaveLength(count);
+	b.loseLogin();
+	b.engine.updateSettings({ ...next, timezone: "Asia/Shanghai" });
+	expect(cronMock.instances).toHaveLength(count);
+	b.restoreLogin();
+	expect(cronMock.instances.at(-1)?.timezone).toBe("Asia/Shanghai");
+	b.engine.stop();
+	b.engine.updateSettings({ ...next, timezone: "UTC" });
+	expect(cronMock.instances.every((job) => !job.isActive)).toBe(true);
 });

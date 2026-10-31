@@ -762,7 +762,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// B 站那一套(上下文、登录系统、来源)由 `compose.ts` 在 `registerSources` 里造,登录由来源自己起、停;
 		// B 站 `Api` 的两层开发壳也在那一头建(B 站 devtools 的入口),入口不碰 `bilibili/` 下的任何东西。
 		// B 站那组场景的认领在 `compose.ts`。
+		const onTimezoneChanged = (handler: () => void): Disposable => {
+			let timezone = runtime.configStore.getGlobals().timezone;
+			return runtime.configStore.onChange((scope) => {
+				if (scope !== "globals") return;
+				const next = runtime.configStore.getGlobals().timezone;
+				if (next === timezone) return;
+				timezone = next;
+				handler();
+			});
+		};
 		const builtins = composeBuiltinIntegrations({
+			timezone: () => runtime.configStore.getGlobals().timezone,
+			onTimezoneChanged,
 			locale: localeReader,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			accountImages: runtime.accountImages,
