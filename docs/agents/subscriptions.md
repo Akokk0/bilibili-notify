@@ -20,9 +20,9 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 ### 内存一份，盘上一个文件（ADR-0021 决策 15）
 
 - `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`listByIdentity` 按身份列出**全部**（正常一条，老数据遗留的重复是多条，没有就是空数组）、`findByIdentity` 按身份找第一条，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
-- `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅连同标签表写进 `<数据根>/config/subscriptions.json`（`{ tags, subscriptions }`，ADR-0034），一次原子写；删标签时订阅上的引用在同一次写里去掉，订阅只许挂表里有的标签。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
+- `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅连同标签表写进 `<数据根>/config/subscriptions.json`（`{ tags, subscriptions }`，ADR-0034），一次原子写；删标签时订阅上的引用在同一次写里去掉，订阅只许挂表里有的标签。文件级形状或标签表坏了才挡开机；单行读不懂与重复 UUID 整组隔离，原始 JSON 值由私有布局账本带回每个写口，有效行才进 `SubscriptionStore`。坏行可识别的身份与合法 UUID 仍占位，不能通过新增或恢复覆盖。`getSubscriptionIds()` 给缓存清扫保留全部可识别 id，隔离不等于删除。
 - **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存（连同它引用的图库头像）、历史都挂在订阅 `id` 上。要换人就删了重加。
-- **备份**（`apps/server/src/backup/`）：格式版本 4（1.0 起；10-01 设置分文件时从 2 抬到 3，10-02 特性键改名时抬到 4），比当前旧的一律拒收：0.x 导出的（版本 1）提示先装 0.12 恢复再升级（ADR-0022 决策 6），开发期的 2 / 3 只说版本旧、恢复不了。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存（连同它引用的图库头像）不进备份。
+- **备份**（`apps/server/src/backup/`）：格式版本 4（1.0 起；10-01 设置分文件时从 2 抬到 3，10-02 特性键改名时抬到 4），比当前旧的一律拒收：0.x 导出的（版本 1）提示先装 0.12 恢复再升级（ADR-0022 决策 6），开发期的 2 / 3 只说版本旧、恢复不了。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存（连同它引用的图库头像）不进备份。4-22 起完整与脱敏备份只导出有效订阅，合并与覆盖恢复均保留本机坏行；预览与正式落盘走同一校验，撞坏行身份或 id 整次拒收。坏行修复、删除请停服改文件后重启；坏行显示留 4-45，不新增 HTTP 读口。
 - 0.x 的两个文件（`subscriptions.json` 与 `extension-subscriptions.json`）由迁移器合成这一个（`migration/subscriptions.ts`）。
 
 ## 两种键（决策 50）
