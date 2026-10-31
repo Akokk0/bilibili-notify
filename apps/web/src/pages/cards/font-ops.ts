@@ -9,6 +9,7 @@
 
 /** 卡片样式里与字体有关的那两栏。只声明用得到的,不绑整个 CardStyle。 */
 import { FONT_ASSET_WARN_BYTES } from "@bilibili-notify/internal/card-skin";
+import { i18n } from "../../i18n";
 
 export interface FontChoice {
 	font: string;
@@ -88,5 +89,5 @@ export function pickUploadedFont(v: FontChoice, id: string): FontChoice {
 export function fontSizeWarning(bytes: number): string | null {
 	if (bytes <= FONT_ASSET_WARN_BYTES) return null;
 	const mb = (bytes / 1024 / 1024).toFixed(1);
-	return `这款字体有 ${mb} MB —— 出图时它会整份进内存，在 Docker（默认堆上限 512MB）里容易把服务撑爆。同一套字转成 woff2 通常只占三分之一，建议换 woff2 再传。`;
+	return i18n.t("library.fonts.sizeWarning", { mb });
 }

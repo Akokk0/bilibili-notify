@@ -9,9 +9,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { FontPicker } from "../FontPicker";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+afterEach(() => i18n.set({ voice: "maid" }));
+
 import type { FontChoice } from "../font-ops";
 
 vi.mock("../../../services/api", () => ({
@@ -199,7 +204,7 @@ describe("大字体提醒随当前选中走", () => {
 
 describe("素材库字体端点接线", () => {
 	it("上传后刷新字体库并选用，保持 multipart 的 file 字段", async () => {
-		mount({ font: "fallback" });
+		const onChange = mount({ font: "fallback" });
 		vi.mocked(api.get).mockResolvedValue({
 			ok: true,
 			fonts: [{ id: UPLOADED, name: "new.woff2", size: 1 }],
@@ -211,6 +216,7 @@ describe("素材库字体端点接线", () => {
 		if (!input) throw new Error("missing upload input");
 		fireEvent.change(input, { target: { files: [file] } });
 		await screen.findByText("new.woff2");
+		expect(onChange).toHaveBeenCalledWith({ font: "fallback", fontAsset: UPLOADED });
 		expect(vi.mocked(api.upload).mock.calls[0][0]).toBe("/api/library/fonts");
 		expect((vi.mocked(api.upload).mock.calls[0][1] as FormData).get("file")).toBe(file);
 	});
@@ -222,5 +228,20 @@ describe("素材库字体端点接线", () => {
 		fireEvent.click(screen.getByLabelText("删除 remove.woff2"));
 		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/library/fonts/${UPLOADED}`));
 		await waitFor(() => expect(screen.queryByText("remove.woff2")).toBeNull());
+	});
+});
+
+describe("字体选择器的平实与女仆口吻", () => {
+	it("切口吻现换大字体提醒并保留实际大小与本机字体强调", async () => {
+		mount({ font: "", fontAsset: UPLOADED }, [
+			{ id: UPLOADED, name: "large.ttf", size: 12.5 * 1024 * 1024 },
+		]);
+		const plain = await screen.findByText(/这款字体有 12.5 MB/);
+		expect(plain.textContent).not.toContain("主人");
+		expect(screen.getByText("渲染那台机器").tagName).toBe("STRONG");
+		act(() => i18n.set({ voice: "maid" }));
+		expect(plain.textContent).toContain("主人，这款字体有 12.5 MB");
+		expect(plain.textContent).toContain("woff2");
+		expect(screen.getByText("渲染那台机器").tagName).toBe("STRONG");
 	});
 });

@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import { GalleryPicker } from "../GalleryPicker";
+
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "plain" }));
+afterEach(() => i18n.set({ voice: "maid" }));
 
 const { getMock, blobMock, deleteMock, uploadMock } = vi.hoisted(() => ({
 	getMock: vi.fn(),
@@ -149,5 +153,33 @@ describe("素材库图片端点接线", () => {
 		fireEvent.click(await screen.findByLabelText("从图廊删除"));
 		await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`/api/library/images/${REAL}`));
 		await waitFor(() => expect(screen.queryByLabelText("从图廊删除")).toBeNull());
+	});
+});
+
+describe("图片选择器的平实与女仆口吻", () => {
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+	});
+	it("切口吻后已挂载缩略图提示现换字，数据名仍平实", async () => {
+		getMock.mockReset();
+		getMock.mockResolvedValue({ ok: true, ids: [REAL] });
+		blobMock.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+		vi.stubGlobal(
+			"URL",
+			class extends URL {
+				static createObjectURL() {
+					return "blob:library-test";
+				}
+				static revokeObjectURL() {}
+			},
+		);
+		renderWithQuery(<GalleryPicker value={[]} onChange={() => {}} />);
+		const toggle = await screen.findByTitle("点击选用或取消");
+		expect(toggle).toBeTruthy();
+		expect(await screen.findByAltText("背景图")).toBeTruthy();
+		act(() => i18n.set({ voice: "maid" }));
+		expect(toggle.title).toBe("主人，点一下选用，再点一下就取消啦。");
+		expect(await screen.findByAltText("背景图")).toBeTruthy();
 	});
 });

@@ -9,6 +9,7 @@ import type { LibraryImagesResponse, LibraryImageUploadResponse } from "@bilibil
 import { AddFileButton, Icon, IconButton } from "@bilibili-notify/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { removeFromGallery, toggleSelected } from "./gallery-ops";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";
@@ -45,6 +46,7 @@ function Thumb({
 	onToggle: () => void;
 	onDelete: () => void;
 }) {
+	const t = useT();
 	const url = useAssetObjectUrl(id);
 	const selected = order !== null;
 	return (
@@ -57,10 +59,10 @@ function Thumb({
 				type="button"
 				onClick={onToggle}
 				className="block h-full w-full"
-				title="点击选用/取消"
+				title={t("library.images.toggle")}
 			>
 				{url ? (
-					<img src={url} alt="背景图" className="h-full w-full object-cover" />
+					<img src={url} alt={t("library.images.image")} className="h-full w-full object-cover" />
 				) : (
 					<span className="grid h-full w-full place-items-center bg-bn-surface-muted text-bn-2xs text-bn-text-tertiary">
 						…
@@ -70,7 +72,7 @@ function Thumb({
 			{selected ? <OrderBadge tone="pink">{order + 1}</OrderBadge> : null}
 			<IconButton
 				icon={<Icon.close size={10} />}
-				label="从图廊删除"
+				label={t("library.images.delete")}
 				onClick={onDelete}
 				size="xs"
 				shape="pill"
@@ -101,6 +103,7 @@ export function GalleryPicker({
 	/** 单张选中时的底部文案(缺省「单张固定背景」)。 */
 	singleHint?: string;
 }) {
+	const t = useT();
 	const qc = useQueryClient();
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
@@ -168,16 +171,16 @@ export function GalleryPicker({
 					<div
 						key={id}
 						data-testid="gallery-ghost"
-						title="引用的图片文件已被删除,点 × 从选择中移除"
+						title={t("library.images.missingHint")}
 						// 边走 danger-border token —— 此前写的 border-bn-danger-text/50 是拿**字色**
 						// 当边色,全站独一份,皮肤改字色时这圈虚线会跟着漂。
 						className="relative grid aspect-[16/10] w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-bn-danger-border bg-bn-surface-muted"
 					>
 						<OrderBadge tone="danger">{value.indexOf(id) + 1}</OrderBadge>
-						<span className="text-bn-2xs text-bn-danger-text">已失效</span>
+						<span className="text-bn-2xs text-bn-danger-text">{t("library.images.missing")}</span>
 						<IconButton
 							icon={<Icon.close size={10} />}
-							label="移除失效引用"
+							label={t("library.images.removeMissing")}
 							onClick={() => onChange(removeFromGallery(value, id))}
 							size="xs"
 							shape="pill"
@@ -195,17 +198,17 @@ export function GalleryPicker({
 				>
 					<span className="flex flex-col items-center gap-0.5">
 						<Icon.plus size={16} />
-						<span>上传</span>
+						<span>{t("library.images.upload")}</span>
 					</span>
 				</AddFileButton>
 			</div>
 			<div className="flex items-center justify-between text-bn-xs">
 				<span className="text-bn-text-tertiary">
 					{value.length === 0
-						? (emptyHint ?? "未选择(用渐变背景)")
+						? (emptyHint ?? t("library.images.empty"))
 						: value.length === 1
-							? (singleHint ?? "单张固定背景")
-							: `${value.length} 张 · 每次推送顺序轮换`}
+							? (singleHint ?? t("library.images.single"))
+							: t("library.images.rotation", { count: value.length })}
 				</span>
 				{err ? <span className="text-right text-bn-danger-text">{err}</span> : null}
 			</div>

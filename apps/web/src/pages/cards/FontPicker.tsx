@@ -28,6 +28,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { TInput } from "../../components/forms";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import {
 	type FontChoice,
@@ -101,6 +102,7 @@ export function FontPicker({
 	 */
 	onAssetDeleted?: (id: string) => void;
 }) {
+	const t = useT();
 	const qc = useQueryClient();
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
@@ -109,6 +111,9 @@ export function FontPicker({
 		queryFn: () => api.get<LibraryFontsResponse>("/api/library/fonts"),
 	});
 	const fonts = list.data?.fonts ?? [];
+	const [beforeMachine, afterMachine] = t("library.fonts.localHint", { machine: "\u0000" }).split(
+		"\u0000",
+	);
 	const sel = fontSelection(value, list.data ? fonts.map((f) => f.id) : null);
 	/**
 	 * 大到会影响出图的提醒。**从当前选中那款派生**,不是上传时存下来的一句话:存成
@@ -159,8 +164,8 @@ export function FontPicker({
 		<div className="flex flex-col gap-1.5">
 			<Row
 				active={sel.kind === "default"}
-				label="默认（交给渲染那台机器）"
-				hint="Docker 里是思源黑体，Windows 是微软雅黑，macOS 交给系统挑"
+				label={t("library.fonts.default")}
+				hint={t("library.fonts.defaultHint")}
 				onPick={() => onChange(pickDefaultFont(value))}
 			/>
 
@@ -169,13 +174,13 @@ export function FontPicker({
 					key={f.id}
 					active={sel.kind === "uploaded" && sel.id === f.id}
 					label={f.name}
-					hint="主人自己传的"
+					hint={t("library.fonts.uploaded")}
 					onPick={() => onChange(pickUploadedFont(value, f.id))}
 					right={
 						<IconButton
 							icon={<Icon.close size={11} />}
-							label={`删除 ${f.name}`}
-							title="从字体库删除"
+							label={t("library.fonts.delete", { name: f.name })}
+							title={t("library.fonts.deleteHint")}
 							tone="danger"
 							shape="pill"
 							onClick={() => onDelete(f.id)}
@@ -189,9 +194,9 @@ export function FontPicker({
 			{sel.kind === "missing" ? (
 				// 虚线警示旁注 —— 「引用落了空」档,与 UpDialog 的失效引用盒同一句话。
 				<HintNote tone="danger" className="flex items-center gap-2">
-					<span className="flex-1">选中的字体文件已不在字体库里,当前实际用的是兜底字体</span>
+					<span className="flex-1">{t("library.fonts.missing")}</span>
 					<Btn variant="danger-outline" size="sm" onClick={() => onChange(pickDefaultFont(value))}>
-						清除
+						{t("library.fonts.clear")}
 					</Btn>
 				</HintNote>
 			) : null}
@@ -209,12 +214,12 @@ export function FontPicker({
 					className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-bn-xs font-bold"
 				>
 					<Icon.plus size={13} />
-					上传字体
+					{t("library.fonts.upload")}
 				</AddFileButton>
 				{/* 上限从共享常量算,别硬写:写死的话调了 MAX_FONT_ASSET_BYTES 这句话还在
 				    说旧数字,主人等完一次上传才被告知一个跟按钮旁边写的不一样的上限。 */}
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					{`woff2 / woff / ttf / otf，单款 ${Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024)}MB 以内 —— 优先用 woff2，同一套字通常只占 ttf 的三分之一`}
+					{t("library.fonts.formats", { mb: Math.round(MAX_FONT_ASSET_BYTES / 1024 / 1024) })}
 				</span>
 			</div>
 
@@ -225,23 +230,22 @@ export function FontPicker({
 				open={sel.kind === "custom"}
 			>
 				<summary className="cursor-pointer text-bn-xs font-bold text-bn-text-secondary">
-					手填字体名（高级）
+					{t("library.fonts.custom")}
 				</summary>
 				<div className="mt-1.5 flex flex-col gap-1">
 					<TInput
-						ariaLabel="手填字体名"
+						ariaLabel={t("library.fonts.family")}
 						value={sel.kind === "custom" ? sel.family : ""}
-						placeholder="例如 PingFang SC"
+						placeholder={t("library.fonts.familyPlaceholder")}
 						onChange={(v) => onChange(pickFamilyFont(value, v))}
 					/>
 					{/* 长句走字符串表达式:留成 JSX 文本的话,格式化器会按宽度折行,而 JSX 把
 					    行首尾的换行连同缩进一并吃掉 —— 「Docker 容器」正好断在那儿就会粘成
 					    「Docker容器」。 */}
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						要<strong>渲染那台机器</strong>
-						{
-							"上装过这个字体才作数：桌面版填系统自带的（苹方、微软雅黑）就行；Docker 容器里只装了思源黑体 / 思源宋体（Noto CJK），填别的不会生效 —— 那种情况请把字体文件传上来"
-						}
+						{beforeMachine}
+						<strong>{t("library.fonts.renderingMachine")}</strong>
+						{afterMachine}
 					</span>
 				</div>
 			</details>
