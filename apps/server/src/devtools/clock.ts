@@ -1,3 +1,5 @@
+import { DateTime } from "luxon";
+
 /**
  * 免扰时钟 —— 「当作现在是 hh:mm」的单点覆盖。
  *
@@ -12,13 +14,16 @@ export interface DevClock {
 	pretended(): string | null;
 }
 
-export function createDevClock(): DevClock {
+export function createDevClock(timezone: () => string): DevClock {
 	let fake: { hour: number; minute: number } | null = null;
 	return {
 		now() {
 			const d = new Date();
-			if (fake) d.setHours(fake.hour, fake.minute, 0, 0);
-			return d;
+			return fake
+				? DateTime.fromJSDate(d, { zone: timezone() })
+						.set({ hour: fake.hour, minute: fake.minute, second: 0, millisecond: 0 })
+						.toJSDate()
+				: d;
 		},
 		pretend(hour, minute) {
 			fake = { hour, minute };

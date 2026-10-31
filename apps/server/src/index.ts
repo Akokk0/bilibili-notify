@@ -787,6 +787,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			onConnectionsChanged,
 		});
 		const devtools = createDevtools({
+			timezone: () => runtime.configStore.getGlobals().timezone,
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
 			// 构建时 `createBiliDevtools` 另有恒空的桩。
 			provide: (devtoolsProviders) => builtins.provideDevtools(devtoolsProviders),
@@ -1089,7 +1090,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			}),
 		);
 		// 静音的闸装在 push 里(见 pipeline.ts),这里只是改状态的入口。
-		commands.push(createMuteCommand({ muteState: pipeline.muteState }));
+		commands.push(
+			createMuteCommand({
+				muteState: pipeline.muteState,
+				timezone: () => runtime.configStore.getGlobals().timezone,
+			}),
+		);
 		commands.push(
 			createStatusCommand({
 				probe: () => ({

@@ -1,4 +1,5 @@
 import { fail, ok } from "@bilibili-notify/internal";
+import { DateTime } from "luxon";
 import type { LiveSessionEngine } from "../../live/live-sessions.js";
 import type { MuteState } from "../../runtime/mute-state.js";
 import type { ProfileRefreshHandle } from "../../runtime/profile-refresh.js";
@@ -13,6 +14,7 @@ import { type DevScenarioDef, notReady } from "../registry.js";
  */
 export interface TimerScenarioDeps {
 	clock: DevClock;
+	timezone: () => string;
 	/** 下面几样都是推送链路 / 运行时建好之后才有的,现取。 */
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
@@ -21,12 +23,18 @@ export interface TimerScenarioDeps {
 	session?: () => Pick<LiveSessionEngine, "tickNow"> | undefined;
 }
 
-function hhmm(ms: number): string {
-	const d = new Date(ms);
-	return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+function wallTime(ms: number, timezone: string): string {
+	const actual = DateTime.fromMillis(ms, { zone: timezone });
+	return `${actual.toFormat("yyyy-MM-dd HH:mm")}（${timezone} UTC${actual.toFormat("ZZ")}）`;
 }
 
 export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
+	const clockDescription = (): string | null => {
+		const requested = deps.clock.pretended();
+		return requested === null
+			? null
+			: `请求 ${requested}；实际 ${wallTime(deps.clock.now().getTime(), deps.timezone())}`;
+	};
 	const quietClock: DevScenarioDef = {
 		id: "push.quiet-clock",
 		group: "timer",
@@ -40,13 +48,11 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 			const minute = m ? Number(m[2]) : Number.NaN;
 			if (!m || hour > 23 || minute > 59) return fail("invalid", "时间要写成 HH:mm,如 03:00");
 			deps.clock.pretend(hour, minute);
-			return ok({ summary: `免扰判定现在当作是 ${deps.clock.pretended()}。` });
+			return ok({ summary: clockDescription() ?? "" });
 		},
 		active() {
-			const t = deps.clock.pretended();
-			return t === null
-				? null
-				: { scenarioId: "push.quiet-clock", label: `免扰时钟 → 当作现在是 ${t}` };
+			const t = clockDescription();
+			return t === null ? null : { scenarioId: "push.quiet-clock", label: `免扰时钟 → ${t}` };
 		},
 		reset() {
 			deps.clock.clear();
@@ -74,14 +80,17 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 			const minutes = typeof params.minutes === "number" ? params.minutes : 10;
 			const until = await state.muteFor(minutes * 60_000);
 			mutedByDevtools = until;
-			return ok({ summary: `已静音到 ${hhmm(until)}。` });
+			return ok({ summary: `已静音到 ${wallTime(until, deps.timezone())}。` });
 		},
 		active() {
 			const state = deps.mute();
 			if (!state?.isMuted()) return null;
 			// 盘上的到期时刻换过了 = 这不再是我们按的那次(主人自己又 /mute 了,或者改了配置)。
 			if (mutedByDevtools === null || state.mutedUntil() !== mutedByDevtools) return null;
-			return { scenarioId: "push.mute", label: `静音中 → 到 ${hhmm(state.mutedUntil())}` };
+			return {
+				scenarioId: "push.mute",
+				label: `静音中 → 到 ${wallTime(state.mutedUntil(), deps.timezone())}`,
+			};
 		},
 		async reset() {
 			const state = deps.mute();

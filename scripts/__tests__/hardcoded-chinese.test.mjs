@@ -192,7 +192,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/font-assets.ts": 2,
 	"apps/server/src/runtime/generations.ts": 2,
 	"apps/server/src/runtime/login-command.ts": 5,
-	"apps/server/src/runtime/mute-command.ts": 8,
+	"apps/server/src/runtime/mute-command.ts": 3,
 	"apps/server/src/runtime/report-command.ts": 7,
 	"apps/server/src/runtime/resource-monitor.ts": 1,
 	"apps/server/src/runtime/roast-command.ts": 6,

@@ -10,11 +10,13 @@
  */
 
 import { ok } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
 import type { MuteState } from "./mute-state.js";
 
 export interface MuteCommandOptions {
 	muteState: MuteState;
+	timezone: () => string;
 	/** 可注入的时钟。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -25,15 +27,24 @@ export interface MuteCommandOptions {
  * 跨天时必须带上日期 —— 「04:00 恢复」会被读成今天凌晨 4 点,而那是**已经过去**的
  * 时刻,主人会以为静音压根没生效。
  */
-function describeUntil(until: number, now: number): string {
-	const end = new Date(until);
-	const hhmm = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
-	const today = new Date(now);
-	const sameDay =
-		end.getFullYear() === today.getFullYear() &&
-		end.getMonth() === today.getMonth() &&
-		end.getDate() === today.getDate();
-	return sameDay ? hhmm : `${end.getMonth() + 1} 月 ${end.getDate()} 日 ${hhmm}`;
+function describeUntil(until: number, now: number, timezone: string): string {
+	const formatter = new Intl.DateTimeFormat("en-US", {
+		timeZone: timezone,
+		hourCycle: "h23",
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+	const parts = (at: number) =>
+		Object.fromEntries(formatter.formatToParts(at).map(({ type, value }) => [type, value]));
+	const end = parts(until);
+	const today = parts(now);
+	const time = `${end.hour}:${end.minute}`;
+	return end.year === today.year && end.month === today.month && end.day === today.day
+		? time
+		: t("commands.mute.untilDate", { month: Number(end.month), day: Number(end.day), time });
 }
 
 export function createMuteCommand(opts: MuteCommandOptions): CommandDef {
@@ -42,20 +53,26 @@ export function createMuteCommand(opts: MuteCommandOptions): CommandDef {
 		name: "mute",
 		aliases: ["静音", "免打扰"],
 		signature: "<duration:duration|时长>",
-		description: "安静一会儿，到点自动恢复",
+		get description() {
+			return t("commands.mute.description");
+		},
 		example: "3h",
 		// 静音挡的是订阅推送。另外两条路不归它管,而这两条都会在静音期间真的响 ——
 		// 主人不知道的话,只会以为静音坏了。
-		details: "挡的是订阅推送。定时周报和锐评到点照发，出错也还是会叫你。",
+		get details() {
+			return t("commands.mute.details");
+		},
 		run: async (values, { reply }) => {
 			const until = await opts.muteState.muteFor(values.duration);
 			if (until === 0) {
-				await reply("好啦，已经恢复推送了～");
+				await reply(t("commands.mute.resumed"));
 				return ok();
 			}
 			// 顺带交代一句「出错还是会叫你」:告警走的是私聊,不归静音管。不说的话,
 			// 主人静音期间收到一条报错会以为静音坏了。
-			await reply(`好的，${describeUntil(until, now())} 之前不打扰你～（出错了还是会叫你的）`);
+			await reply(
+				t("commands.mute.confirmed", { until: describeUntil(until, now(), opts.timezone()) }),
+			);
 			return ok();
 		},
 	});

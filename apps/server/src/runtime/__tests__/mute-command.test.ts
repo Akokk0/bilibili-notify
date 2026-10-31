@@ -12,6 +12,7 @@ process.env.TZ = "UTC";
 
 import { describe, expect, it } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
+import { i18n } from "../../i18n/index.js";
 import { createMuteCommand } from "../mute-command.js";
 import { createMuteState } from "../mute-state.js";
 
@@ -22,6 +23,7 @@ const HOUR = 3600_000;
 function setup() {
 	let stored = 0;
 	let now = T0;
+	let timezone = "UTC";
 	const replies: string[] = [];
 	const ctx = recordingCtx(replies);
 	const state = createMuteState({
@@ -33,6 +35,7 @@ function setup() {
 	});
 	const spec = createMuteCommand({
 		muteState: state,
+		timezone: () => timezone,
 		now: () => now,
 	});
 	return {
@@ -40,6 +43,9 @@ function setup() {
 		state,
 		replies,
 		travelTo: (t: number) => (now = t),
+		setTimezone: (value: string) => {
+			timezone = value;
+		},
 		mute: (ms: number) => spec.run({ duration: ms } as never, ctx),
 	};
 }
@@ -106,4 +112,31 @@ describe("mute 指令", () => {
 		expect(replies[1]).toContain("21:00");
 		expect(replies[1]).not.toContain("月");
 	});
+});
+
+it("reads timezone when replying and compares local calendar days", async () => {
+	const s = setup();
+	s.travelTo(Date.parse("2026-08-11T15:00:00Z"));
+	await s.mute(3 * HOUR);
+	expect(s.replies[0]).toContain("18:00");
+	s.setTimezone("Asia/Shanghai");
+	await s.mute(3 * HOUR);
+	expect(s.replies[1]).toContain("8 月 12 日 02:00");
+});
+
+it("takes descriptions and replies from the current plain or maid layer", async () => {
+	const previous = i18n.state();
+	const s = setup();
+	try {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		expect(s.spec.description).toBe("暂时停止订阅推送，到期自动恢复");
+		await s.mute(3 * HOUR);
+		expect(s.replies[0]).toBe("21:00 前暂停订阅推送；错误通知仍会发送。");
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+		expect(s.spec.description).toBe("安静一会儿，到点自动恢复");
+		await s.mute(3 * HOUR);
+		expect(s.replies[1]).toBe("好的主人，21:00 之前不打扰你～（出错了还是会叫你的）");
+	} finally {
+		i18n.set(previous);
+	}
 });

@@ -251,6 +251,7 @@ describe("mute / status 没有失败分支", () => {
 		let stored = 0;
 		const { send } = harness([
 			createMuteCommand({
+				timezone: () => "UTC",
 				muteState: createMuteState({
 					read: () => stored,
 					write: async (v) => {

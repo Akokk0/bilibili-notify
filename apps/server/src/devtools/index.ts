@@ -52,6 +52,7 @@ import { injectableUpdateService } from "./update-injection.js";
  * 各包一层交回去,`index.ts` 把包好的那份往下传 —— 面板看到的、出网的都从装饰器过,本体照常跑。
  */
 export interface CreateDevtoolsInput {
+	timezone: () => string;
 	payloadVersion: string;
 	/**
 	 * 跑的是不是 TypeScript 源码(`import.meta.url` 以 `.ts` 收尾)。构建产物一律是 `.mjs`,
@@ -160,7 +161,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	);
 	const gate = createCaptureGate();
 	const caps = createCapabilityInjector();
-	const clock = createDevClock();
+	const clock = createDevClock(input.timezone);
 	// 堆读数注入:交回去给采样器包在真 `process.memoryUsage()` 外面。
 	const heap = heapInjector();
 	const captures: DevCapturesApi = {
@@ -209,6 +210,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		marketplaceUpdateScenario(market),
 		...timerScenarios({
 			clock,
+			timezone: input.timezone,
 			mute: input.mute,
 			puppeteer: input.puppeteer,
 			profileRefresh: input.profileRefresh,

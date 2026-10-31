@@ -64,6 +64,7 @@ const BARE = {
 	// 它们自己的规矩在 `devtools-extensions.test.ts` 里钉。
 	extensions: { repoDir: "/nope/extensions", installRoot: "/nope/data", loaded: () => undefined },
 	sourceRun: true,
+	timezone: () => "Asia/Shanghai",
 };
 
 describe("createDevtools", () => {
