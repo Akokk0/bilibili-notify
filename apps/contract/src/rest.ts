@@ -1410,3 +1410,26 @@ export interface LiveListeningEntry {
 	 */
 	totalViewers?: number;
 }
+
+// ---- /api/library ---------------------------------------------------------
+/** GET /api/library/images: uploaded reusable image ids. */
+export interface LibraryImagesResponse {
+	ok: true;
+	ids: string[];
+}
+/** POST /api/library/images: stored image id. */
+export interface LibraryImageUploadResponse {
+	ok: true;
+	id: string;
+}
+/** GET /api/library/fonts: uploaded fonts with original names and byte sizes. */
+export interface LibraryFontsResponse {
+	ok: true;
+	fonts: Array<{ id: string; name: string; size: number }>;
+}
+/** POST /api/library/fonts: stored font id and submitted name. */
+export interface LibraryFontUploadResponse {
+	ok: true;
+	id: string;
+	name: string;
+}

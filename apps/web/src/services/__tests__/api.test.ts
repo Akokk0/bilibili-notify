@@ -211,7 +211,7 @@ describe("ApiError 解析非 2xx(只认平铺的 { code, message })", () => {
 
 	it("上传走同一套解析", async () => {
 		respond(413, { code: "invalid", message: "图片过大（上限 5MB）" });
-		const err = await caught(() => api.upload("/api/cards/asset", new FormData()));
+		const err = await caught(() => api.upload("/api/library/images", new FormData()));
 		expect(err.status).toBe(413);
 		expect(err.code).toBe("invalid");
 		expect(err.message).toBe("图片过大（上限 5MB）");
@@ -328,8 +328,8 @@ describe("全局 401 钩子", () => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
 		respond(401, { code: "unauthorized", message: "需要先登录面板" });
-		await api.upload("/api/cards/asset", new FormData()).catch(() => undefined);
-		await api.blob("/api/cards/asset/x").catch(() => undefined);
+		await api.upload("/api/library/images", new FormData()).catch(() => undefined);
+		await api.blob("/api/library/images/x").catch(() => undefined);
 		expect(hook).toHaveBeenCalledTimes(2);
 	});
 });
@@ -368,10 +368,10 @@ describe("api 断线", () => {
 
 	it("上传与取二进制走同一套 —— 三条出口都会断线,不能只包一条", async () => {
 		offline();
-		await expect(api.upload("/api/cards/font-asset", new FormData())).rejects.toMatchObject({
+		await expect(api.upload("/api/library/fonts", new FormData())).rejects.toMatchObject({
 			status: 0,
 		});
-		await expect(api.blob("/api/cards/asset/x")).rejects.toMatchObject({ status: 0 });
+		await expect(api.blob("/api/library/images/x")).rejects.toMatchObject({ status: 0 });
 	});
 
 	it("不吞掉真正的程序错误 —— 非 TypeError 原样抛出", async () => {

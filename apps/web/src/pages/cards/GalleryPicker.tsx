@@ -1,3 +1,4 @@
+import type { LibraryImagesResponse, LibraryImageUploadResponse } from "@bilibili-notify/contract";
 /**
  * 图廊选择器 —— 多选已上传的图(选中顺序 = 每次推送的轮换顺序),支持上传与删盘。
  * 两家在用:皮肤的 `image` 旋钮(壁纸)与 `cards.liveCoverImageIds`(直播封面)。
@@ -11,11 +12,6 @@ import { type ReactNode, useState } from "react";
 import { api } from "../../services/api";
 import { removeFromGallery, toggleSelected } from "./gallery-ops";
 import { useAssetObjectUrl } from "./useAssetObjectUrl";
-
-interface GalleryListResponse {
-	ok: boolean;
-	ids: string[];
-}
 
 /** 单张缩略图:点击切换选中(角标显示轮换序号),hover 出现删盘按钮。 */
 /**
@@ -109,8 +105,8 @@ export function GalleryPicker({
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 	const gallery = useQuery({
-		queryKey: ["card-assets"],
-		queryFn: () => api.get<GalleryListResponse>("/api/cards/assets"),
+		queryKey: ["library", "images"],
+		queryFn: () => api.get<LibraryImagesResponse>("/api/library/images"),
 	});
 	const ids = gallery.data?.ids ?? [];
 
@@ -123,8 +119,8 @@ export function GalleryPicker({
 			form.append("file", file);
 			// 上传被拒(格式不认、超上限)是非 2xx,`api` 抛 `ApiError`,`message` 就是服务端的原话;
 			// 走到下一行就是收下了。
-			const res = await api.upload<{ ok: true; id: string }>("/api/cards/asset", form);
-			await qc.invalidateQueries({ queryKey: ["card-assets"] });
+			const res = await api.upload<LibraryImageUploadResponse>("/api/library/images", form);
+			await qc.invalidateQueries({ queryKey: ["library", "images"] });
 			if (!value.includes(res.id)) onChange([...value, res.id]); // 新传的默认选入
 		} catch (e) {
 			setErr((e as Error).message);
@@ -136,11 +132,11 @@ export function GalleryPicker({
 	const onDelete = async (id: string) => {
 		setErr(null);
 		try {
-			await api.delete(`/api/cards/asset/${id}`);
+			await api.delete(`/api/library/images/${id}`);
 			onChange(removeFromGallery(value, id));
 			// 通知页面清扫其他仍引用该 id 的样式状态(必须在删盘成功后、409 拦截不触发)。
 			onAssetDeleted?.(id);
-			await qc.invalidateQueries({ queryKey: ["card-assets"] });
+			await qc.invalidateQueries({ queryKey: ["library", "images"] });
 		} catch (e) {
 			// 还被引用着(`conflict`)时,服务端的 `message` 已经把用家点名了(「该背景图还有 2 处在用：…」),
 			// 与别的失败一样原样显示 —— 从前这里按 409 去读 `body.referencedBy` 自己拼一句。

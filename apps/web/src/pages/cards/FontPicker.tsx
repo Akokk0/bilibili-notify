@@ -1,3 +1,4 @@
+import type { LibraryFontsResponse, LibraryFontUploadResponse } from "@bilibili-notify/contract";
 /**
  * 字体选择器 —— 取代原来那个手填 `font-family` 的输入框。
  *
@@ -36,12 +37,6 @@ import {
 	pickFamilyFont,
 	pickUploadedFont,
 } from "./font-ops";
-
-interface FontListResponse {
-	ok: boolean;
-	/** `size` 是文件字节数 —— 大字体提醒按**当前选中的那款**算,就靠它。 */
-	fonts: Array<{ id: string; name: string; size?: number }>;
-}
 
 /** 一行可选项。选中态用 aria-pressed 表达 —— 读屏读得出,测试也查得到。 */
 function Row({
@@ -110,8 +105,8 @@ export function FontPicker({
 	const [uploading, setUploading] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 	const list = useQuery({
-		queryKey: ["card-font-assets"],
-		queryFn: () => api.get<FontListResponse>("/api/cards/font-assets"),
+		queryKey: ["library", "fonts"],
+		queryFn: () => api.get<LibraryFontsResponse>("/api/library/fonts"),
 	});
 	const fonts = list.data?.fonts ?? [];
 	const sel = fontSelection(value, list.data ? fonts.map((f) => f.id) : null);
@@ -133,11 +128,8 @@ export function FontPicker({
 			form.append("file", file);
 			// 上传被拒(后缀不认、超上限)是非 2xx,`api` 抛 `ApiError`,`message` 就是服务端的原话;
 			// 走到下一行就是收下了。
-			const res = await api.upload<{ ok: true; id: string; name: string }>(
-				"/api/cards/font-asset",
-				form,
-			);
-			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
+			const res = await api.upload<LibraryFontUploadResponse>("/api/library/fonts", form);
+			await qc.invalidateQueries({ queryKey: ["library", "fonts"] });
 			// 传上来的当场选用,否则像没反应。大字体那句提醒不在这儿说 —— 它由「当前选中
 			// 的是哪款、那款多大」派生,列表刷新后自然就出来了,切走 / 重载也都对得上。
 			onChange(pickUploadedFont(value, res.id));
@@ -151,11 +143,11 @@ export function FontPicker({
 	const onDelete = async (id: string) => {
 		setErr(null);
 		try {
-			await api.delete(`/api/cards/font-asset/${id}`);
+			await api.delete(`/api/library/fonts/${id}`);
 			if (value.fontAsset === id) onChange(pickDefaultFont(value));
 			// 通知页面清扫其他仍选着这款的样式草稿(必须在删盘成功后、409 拦截不触发)。
 			onAssetDeleted?.(id);
-			await qc.invalidateQueries({ queryKey: ["card-font-assets"] });
+			await qc.invalidateQueries({ queryKey: ["library", "fonts"] });
 		} catch (e) {
 			// 还被选着(`conflict`)时,服务端的 `message` 已经把用家点名了(「该字体还有 2 处在用：…」),
 			// 与别的失败一样原样显示 —— 从前这里按 409 去读 `body.referencedBy` 自己拼一句。

@@ -57,10 +57,14 @@ describe("API 响应带 nosniff", () => {
 		};
 	}
 
-	it("发用户上传字节的那条路带 nosniff", async () => {
+	it.each([
+		"/api/dashboard/skins/nope/assets/x.png",
+		"/api/library/images/nope",
+		"/api/library/fonts/nope",
+	])("发用户上传字节的路径 %s 带 nosniff", async (path) => {
 		const { app, runtime } = await makeApp();
 		// 资产不存在也无妨:头挂在中间件上,与路由回什么无关 —— 反倒正好证明这一点。
-		const res = await app.request("/api/dashboard/skins/nope/assets/x.png");
+		const res = await app.request(path);
 		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
 		await runtime.dispose();
 	});

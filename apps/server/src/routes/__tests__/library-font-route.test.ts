@@ -23,7 +23,7 @@ import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FONT_DIR, listFontAssets, saveFontAsset } from "../../runtime/font-assets.js";
 import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
-import { createCardsRoute } from "../cards.js";
+import { createLibraryRoute } from "../library.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
 
@@ -73,7 +73,7 @@ function makeDeps(opts: {
 }
 
 function route(deps: RouteDeps) {
-	return createCardsRoute({ deps, puppeteer: null });
+	return createLibraryRoute(deps);
 }
 
 /** 跑一段用完就删临时目录的用例。 */
@@ -89,10 +89,10 @@ async function withDir(fn: (dir: string) => Promise<void>): Promise<void> {
 function upload(app: Pick<Hono, "request">, filename: string, bytes = WOFF2) {
 	const form = new FormData();
 	form.append("file", new File([bytes], filename));
-	return app.request("/font-asset", { method: "POST", body: form });
+	return app.request("/fonts", { method: "POST", body: form });
 }
 
-describe("POST /font-asset —— 上传", () => {
+describe("POST /fonts —— 上传", () => {
 	it("传一款 woff2 → 落盘并回资产 id 与文件名", async () => {
 		await withDir(async (dir) => {
 			const res = await upload(route(makeDeps({ dataDir: dir })), "思源黑体.woff2");
@@ -144,7 +144,7 @@ describe("POST /font-asset —— 上传", () => {
 
 	it("没带文件 → invalid(400)", async () => {
 		await withDir(async (dir) => {
-			const res = await route(makeDeps({ dataDir: dir })).request("/font-asset", {
+			const res = await route(makeDeps({ dataDir: dir })).request("/fonts", {
 				method: "POST",
 				body: new FormData(),
 			});
@@ -175,18 +175,19 @@ describe("POST /font-asset —— 上传", () => {
 	});
 });
 
-describe("GET /font-assets —— 列表", () => {
+describe("GET /fonts —— 列表", () => {
 	it("列出每一款的 id 与原始文件名", async () => {
 		await withDir(async (dir) => {
 			const a = await saveFontAsset(dir, WOFF2, "甲.woff2");
 			const b = await saveFontAsset(dir, WOFF2, "乙.ttf");
-			const res = await route(makeDeps({ dataDir: dir })).request("/font-assets");
+			const res = await route(makeDeps({ dataDir: dir })).request("/fonts");
 			expect(res.status).toBe(200);
 			const json = (await res.json()) as {
 				ok: boolean;
-				fonts: Array<{ id: string; name: string }>;
+				fonts: Array<{ id: string; name: string; size: number }>;
 			};
 			expect(json.ok).toBe(true);
+			expect(json.fonts.map((font) => font.size)).toEqual([6, 6]);
 			expect(new Set(json.fonts.map((f) => `${f.id}|${f.name}`))).toEqual(
 				new Set([`${a}|甲.woff2`, `${b}|乙.ttf`]),
 			);
@@ -195,9 +196,7 @@ describe("GET /font-assets —— 列表", () => {
 
 	it("一款都没传过 → 空列表,不是 404", async () => {
 		await withDir(async (dir) => {
-			const json = (await (
-				await route(makeDeps({ dataDir: dir })).request("/font-assets")
-			).json()) as {
+			const json = (await (await route(makeDeps({ dataDir: dir })).request("/fonts")).json()) as {
 				fonts: unknown[];
 			};
 			expect(json.fonts).toEqual([]);
@@ -205,13 +204,14 @@ describe("GET /font-assets —— 列表", () => {
 	});
 });
 
-describe("GET /font-asset/:id —— 取文件", () => {
+describe("GET /fonts/:id —— 取文件", () => {
 	it("回字体字节,content-type 与后缀对得上", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "x.woff2");
-			const res = await route(makeDeps({ dataDir: dir })).request(`/font-asset/${id}`);
+			const res = await route(makeDeps({ dataDir: dir })).request(`/fonts/${id}`);
 			expect(res.status).toBe(200);
 			expect(res.headers.get("content-type")).toBe("font/woff2");
+			expect(res.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
 			expect(new Uint8Array(await res.arrayBuffer())).toEqual(WOFF2);
 		});
 	});
@@ -219,18 +219,18 @@ describe("GET /font-asset/:id —— 取文件", () => {
 	it("穿越 id → 404,绝不把 dataDir 里的东西端出去", async () => {
 		await withDir(async (dir) => {
 			const res = await route(makeDeps({ dataDir: dir })).request(
-				"/font-asset/..%2f..%2fbn.config.yaml",
+				"/fonts/..%2f..%2fbn.config.yaml",
 			);
 			expect(res.status).toBe(404);
 		});
 	});
 });
 
-describe("DELETE /font-asset/:id —— 删除", () => {
+describe("DELETE /fonts/:id —— 删除", () => {
 	it("没人用 → 200,盘上也没了", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "待删.woff2");
-			const res = await route(makeDeps({ dataDir: dir })).request(`/font-asset/${id}`, {
+			const res = await route(makeDeps({ dataDir: dir })).request(`/fonts/${id}`, {
 				method: "DELETE",
 			});
 			expect(res.status).toBe(200);
@@ -241,10 +241,9 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 	it("某套皮肤的字体旋钮选着它 → conflict(409) 拦下并在 message 里点名是哪套,文件仍在", async () => {
 		await withDir(async (dir) => {
 			const id = await saveFontAsset(dir, WOFF2, "在用.woff2");
-			const res = await route(makeDeps({ dataDir: dir, knobFont: id })).request(
-				`/font-asset/${id}`,
-				{ method: "DELETE" },
-			);
+			const res = await route(makeDeps({ dataDir: dir, knobFont: id })).request(`/fonts/${id}`, {
+				method: "DELETE",
+			});
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as Record<string, unknown>;
 			expect(json.code).toBe("conflict");
@@ -265,7 +264,7 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 			const id = await saveFontAsset(dir, WOFF2, "UP 在用.woff2");
 			const res = await route(
 				makeDeps({ dataDir: dir, subs: [{ uid: "12345", knobFont: id }] }),
-			).request(`/font-asset/${id}`, { method: "DELETE" });
+			).request(`/fonts/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(409);
 			const json = (await res.json()) as { code: string; message: string };
 			expect(json.code).toBe("conflict");
@@ -277,7 +276,7 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 	it("非法 id → invalid(400),而且压根不去碰盘", async () => {
 		await withDir(async (dir) => {
 			const res = await route(makeDeps({ dataDir: dir })).request(
-				"/font-asset/..%2f..%2fbn.config.yaml",
+				"/fonts/..%2f..%2fbn.config.yaml",
 				{ method: "DELETE" },
 			);
 			expect(res.status).toBe(400);
@@ -288,7 +287,7 @@ describe("DELETE /font-asset/:id —— 删除", () => {
 	it("删一款本来就不在的 → 200(幂等):面板拿到 200 照常刷新字体库", async () => {
 		await withDir(async (dir) => {
 			const gone = `${"a".repeat(32)}.woff2`;
-			const res = await route(makeDeps({ dataDir: dir })).request(`/font-asset/${gone}`, {
+			const res = await route(makeDeps({ dataDir: dir })).request(`/fonts/${gone}`, {
 				method: "DELETE",
 			});
 			expect(res.status).toBe(200);

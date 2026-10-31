@@ -52,6 +52,15 @@ const post = (path: string, body: unknown = {}): Probe => ({ method: "POST", pat
  * 把条件依赖都传上,让它们挂出来。
  */
 const NEW_PATHS: Probe[] = [
+	get("/api/library/images"),
+	post("/api/library/images"),
+	get("/api/library/images/nope"),
+	{ method: "DELETE", path: "/api/library/images/nope" },
+	get("/api/library/fonts"),
+	post("/api/library/fonts"),
+	get("/api/library/fonts/nope"),
+	{ method: "DELETE", path: "/api/library/fonts/nope" },
+
 	get("/api/settings"),
 	get("/api/subscriptions"),
 	get("/api/subscriptions/tags"),
@@ -105,6 +114,15 @@ const NEW_PATHS: Probe[] = [
 
 /** 对应的老路径:一条都不许再答。 */
 const OLD_PATHS: Probe[] = [
+	get("/api/cards/assets"),
+	post("/api/cards/asset"),
+	get("/api/cards/asset/nope"),
+	{ method: "DELETE", path: "/api/cards/asset/nope" },
+	get("/api/cards/font-assets"),
+	post("/api/cards/font-asset"),
+	get("/api/cards/font-asset/nope"),
+	{ method: "DELETE", path: "/api/cards/font-asset/nope" },
+
 	get("/api/globals"),
 	get("/api/subs"),
 	get("/api/subs/tags"),

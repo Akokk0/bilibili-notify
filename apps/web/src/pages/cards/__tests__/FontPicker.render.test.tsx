@@ -196,3 +196,31 @@ describe("大字体提醒随当前选中走", () => {
 		expect(screen.queryByText(/会整份进内存/)).toBeNull();
 	});
 });
+
+describe("素材库字体端点接线", () => {
+	it("上传后刷新字体库并选用，保持 multipart 的 file 字段", async () => {
+		mount({ font: "fallback" });
+		vi.mocked(api.get).mockResolvedValue({
+			ok: true,
+			fonts: [{ id: UPLOADED, name: "new.woff2", size: 1 }],
+		} as never);
+		vi.mocked(api.upload).mockResolvedValue({ ok: true, id: UPLOADED, name: "new.woff2" } as never);
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/library/fonts"));
+		const file = new File(["x"], "new.woff2");
+		const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+		if (!input) throw new Error("missing upload input");
+		fireEvent.change(input, { target: { files: [file] } });
+		await screen.findByText("new.woff2");
+		expect(vi.mocked(api.upload).mock.calls[0][0]).toBe("/api/library/fonts");
+		expect((vi.mocked(api.upload).mock.calls[0][1] as FormData).get("file")).toBe(file);
+	});
+	it("删盘经字体库新口，刷新后移除列表项", async () => {
+		mount({ font: "" }, [{ id: UPLOADED, name: "remove.woff2" }]);
+		await screen.findByText("remove.woff2");
+		vi.mocked(api.get).mockResolvedValue({ ok: true, fonts: [] } as never);
+		vi.mocked(api.delete).mockResolvedValue({ ok: true } as never);
+		fireEvent.click(screen.getByLabelText("删除 remove.woff2"));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/library/fonts/${UPLOADED}`));
+		await waitFor(() => expect(screen.queryByText("remove.woff2")).toBeNull());
+	});
+});

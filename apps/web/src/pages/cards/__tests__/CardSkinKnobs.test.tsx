@@ -96,10 +96,10 @@ afterEach(() => cleanup());
 describe("CardSkinKnobsSection", () => {
 	it("字体 / 图两档画的是现成的那两个选择器 —— 上传、图廊、失效提示都在里面", async () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			// 图廊 / 字体库那两口(`/api/cards/assets`、`/api/cards/font-assets`);别写成 `/api/cards/` 前缀 ——
+			// 图廊 / 字体库那两口(`/api/library/images`、`/api/library/fonts`);别写成 `/api/cards/` 前缀 ——
 			// 皮肤库列表如今也在这个前缀底下(`/api/cards/skins`)。
-			if (/\/api\/cards\/(assets|font-assets)/.test(url)) {
-				return Promise.resolve({ fonts: [], images: [] });
+			if (/\/api\/library\/(images|fonts)/.test(url)) {
+				return Promise.resolve({ fonts: [], ids: [] });
 			}
 			return Promise.resolve(listWith(ASSET_KNOBS));
 		});

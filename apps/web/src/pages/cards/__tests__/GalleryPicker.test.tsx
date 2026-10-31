@@ -107,3 +107,47 @@ describe("GalleryPicker", () => {
 		expect(await screen.findByText("未选择(用渐变背景)")).toBeTruthy();
 	});
 });
+
+describe("素材库图片端点接线", () => {
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+	});
+	it("上传到素材库，刷新图片列表并选入上传结果，缩略图也从素材库读", async () => {
+		getMock.mockReset();
+		blobMock.mockReset();
+		uploadMock.mockReset();
+		getMock
+			.mockResolvedValueOnce({ ok: true, ids: [] })
+			.mockResolvedValue({ ok: true, ids: [REAL] });
+		blobMock.mockRejectedValue(new Error("no blob in test"));
+		uploadMock.mockResolvedValue({ ok: true, id: REAL });
+		const onChange = vi.fn();
+		const view = renderWithQuery(<GalleryPicker value={[]} onChange={onChange} />);
+		await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/library/images"));
+		const file = new File(["image"], "image.png", { type: "image/png" });
+		const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+		if (!input) throw new Error("missing upload input");
+		fireEvent.change(input, {
+			target: { files: [file] },
+		});
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith([REAL]));
+		expect(uploadMock.mock.calls[0][0]).toBe("/api/library/images");
+		expect((uploadMock.mock.calls[0][1] as FormData).get("file")).toBe(file);
+		await waitFor(() => expect(blobMock).toHaveBeenCalledWith(`/api/library/images/${REAL}`));
+	});
+	it("删盘刷新列表后移除缩略图", async () => {
+		getMock.mockReset();
+		deleteMock.mockReset();
+		blobMock.mockReset();
+		getMock
+			.mockResolvedValueOnce({ ok: true, ids: [REAL] })
+			.mockResolvedValue({ ok: true, ids: [] });
+		blobMock.mockRejectedValue(new Error("no blob in test"));
+		deleteMock.mockResolvedValue({ ok: true });
+		renderWithQuery(<GalleryPicker value={[]} onChange={() => {}} />);
+		fireEvent.click(await screen.findByLabelText("从图廊删除"));
+		await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`/api/library/images/${REAL}`));
+		await waitFor(() => expect(screen.queryByLabelText("从图廊删除")).toBeNull());
+	});
+});

@@ -40,6 +40,7 @@ import { createExtensionsRoute } from "./routes/extensions.js";
 import { createHealthRoute, healthResponse } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
 import { createImagesRoute } from "./routes/images.js";
+import { createLibraryRoute } from "./routes/library.js";
 import { createLiveRoute } from "./routes/live.js";
 import { createProblemsRoute } from "./routes/problems.js";
 import {
@@ -323,6 +324,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		app.route("/api/history", createHistoryRoute(deps));
 		// 图库被历史、订阅、AI 共用,是顶层资源(ADR-0036 决策 5 下 10-03 的 🔗)。
 		app.route("/api/images", createImagesRoute(deps));
+		app.route("/api/library", createLibraryRoute(deps));
 		// `/api/system` 是这一个实例自己的事(ADR-0036):日志一直挂着;更新、备份、重启与开新代
 		// 宿主传了才挂(见下面各自的 `if`)—— 各个口原来挂不挂的条件照旧,只是并进了一个前缀。
 		app.route("/api/system/logs", createSystemLogsRoute(deps));

@@ -9,19 +9,18 @@
  * - **试了一次、没成**(预览 / 截图 / 测试推送里渲染抛错、投递没被接受)→ **照旧 200**,体是 `Result<…>`
  *   的失败那一支;耗时只在成功那一支,不带假的 `latencyMs: 0`。
  *
- * 别的用例(成功路径、引用拦截、热切换……)在 cards-route.test.ts / cards-font-route.test.ts,这里只放失败。
+ * 别的用例(成功路径、引用拦截、热切换……)在 cards-route.test.ts / library-route.test.ts,这里只放失败。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
-import { CARD_BG_DIR } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
 import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createCardsRoute } from "../cards.js";
@@ -288,62 +287,5 @@ describe("POST /renderer:意外的抛错不回原文", () => {
 		const text = await res.text();
 		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
 		expect(text).not.toContain("EACCES");
-	});
-});
-
-describe("背景图上传与读取", () => {
-	function bgApp() {
-		return createCardsRoute({ deps: makeDeps(), puppeteer: null });
-	}
-
-	function uploadPng(app: Pick<Hono, "request">, type = "image/png") {
-		const form = new FormData();
-		form.append("file", new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "a.png", { type }));
-		return app.request("/asset", { method: "POST", body: form });
-	}
-
-	it("没带文件 → invalid(400)", async () => {
-		const res = await bgApp().request("/asset", { method: "POST", body: new FormData() });
-		expect(res.status).toBe(400);
-		expect(await res.json()).toEqual({ code: "invalid", message: "缺少图片文件" });
-	});
-
-	it("不是图片 → invalid(400),说得出支持哪几种", async () => {
-		const res = await uploadPng(bgApp(), "application/pdf");
-		expect(res.status).toBe(400);
-		const json = (await res.json()) as any;
-		expect(json.code).toBe("invalid");
-		expect(json.message).toContain("PNG");
-	});
-
-	it("磁盘写失败 → 不当成 400 把原话甩出去:走全局出错处理,只回固定一句", async () => {
-		// `library` 是个文件而不是目录 —— 建图廊目录必然失败。
-		await writeFile(join(dataDir, CARD_BG_DIR[0]), "占位");
-		const app = new Hono()
-			.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
-			.route("/", bgApp());
-		const res = await uploadPng(app);
-		expect(res.status).toBe(503);
-		const text = await res.text();
-		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
-		expect(text).not.toContain(dataDir);
-	});
-
-	it("取一张不存在的图 → not_found(404),说的是中文不是「not found」", async () => {
-		const res = await bgApp().request(`/asset/${"a".repeat(32)}.png`);
-		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ code: "not_found", message: "背景图不存在" });
-	});
-
-	it("取一款不存在的字体 → not_found(404)", async () => {
-		const res = await bgApp().request(`/font-asset/${"a".repeat(32)}.woff2`);
-		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ code: "not_found", message: "字体不存在" });
-	});
-
-	it("删一张本来就不在的图 → 200(幂等):面板拿到 200 照常刷新图廊", async () => {
-		const res = await bgApp().request(`/asset/${"a".repeat(32)}.png`, { method: "DELETE" });
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ ok: true });
 	});
 });
