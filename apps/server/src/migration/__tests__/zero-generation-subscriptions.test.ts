@@ -14,7 +14,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { CONFIG_DIR, ConfigValidationError } from "../../config/store.js";
+import { CONFIG_DIR } from "../../config/store.js";
 import { migrateSubscriptionFiles } from "../subscriptions.js";
 import { migrateZeroGeneration } from "../zero-generation.js";
 import { SANDBOX_NOW, useZeroSandbox } from "./support.js";
@@ -343,7 +343,7 @@ describe("读不懂的那几种", () => {
 		await expect(sandbox.load()).rejects.toBeInstanceOf(Error);
 	});
 
-	it("认不出身份的行(没有 uid、也没有 extensionId + externalId)原样留着,由配置仓开机报出来", async () => {
+	it("认不出身份的行原样留着,由配置仓隔离并在后续写回保留", async () => {
 		const odd = { id: B2, enabled: true };
 		await sandbox.placeZero(ZERO_BILI, [bili(B1, "101"), odd]);
 
@@ -351,7 +351,10 @@ describe("读不懂的那几种", () => {
 
 		const rows = await readRows();
 		expect(rows[1]).toEqual(odd);
-		await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
+		const store = await sandbox.load();
+		expect(store.getSubscriptions().map((s) => s.id)).toEqual([B1]);
+		await store.patchSubscription(B1, { enabled: false });
+		expect((await readRows())[1]).toEqual(odd);
 	});
 });
 

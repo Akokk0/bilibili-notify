@@ -673,7 +673,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
 		// longer exists (deleted while the server was down). Profile refresh's
 		// subscription-changed listener handles deletions made while running.
-		await pruneOrphanSubscriptionState(runtime.subscriptionStateStore, subBinding.store);
+		await pruneOrphanSubscriptionState(runtime.subscriptionStateStore, runtime.configStore);
 		// 拓展订阅的头像在图库里、资料缓存里放引用(ADR-0019 决策 49):资料条目丢了,头像就不再有人引用,
 		// 由图库清扫收走,这里不用另外扫头像。头像不进备份(与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
 		// 入站的转发口。指令处理器要等 pipeline / 调度器建好才有,所以这里先留两个

@@ -911,7 +911,7 @@ describe("ConfigStore", () => {
 		await expect(store.upsertTarget(manual)).rejects.toMatchObject({
 			name: "ConfigValidationError",
 			code: "invalid",
-			message: "端点目标由它的连接自动创建，不能手动新建",
+			message: "主人，端点目标由它的连接自动创建，不能手动新建",
 		});
 		expect(store.getTargets()).toHaveLength(1);
 	});

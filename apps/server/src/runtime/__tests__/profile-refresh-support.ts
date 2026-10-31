@@ -104,7 +104,10 @@ export async function startProfileRefreshHarness(opts: ProfileRefreshHarnessOpti
 	const handle = startProfileRefresh({
 		bus,
 		logger: logger as never,
-		configStore: { getGlobals: () => ({ profileRefreshCron: "*/10 * * * *" }) } as never,
+		configStore: {
+			getGlobals: () => ({ profileRefreshCron: "*/10 * * * *" }),
+			getSubscriptionIds: () => subscriptions.map((s) => s.id),
+		} as never,
 		subscriptionStore: {
 			list: () => [...subscriptions],
 			findById: (id: string) => subscriptions.find((sub) => sub.id === id),
@@ -215,6 +218,10 @@ export function startMigratedProfileRefresh(opts: MigratedOptions): ProfileRefre
 	};
 	const handle = startProfileRefresh({
 		...opts,
+		configStore: {
+			...opts.configStore,
+			getSubscriptionIds: () => subscriptions().map((s) => s.id),
+		},
 		problems,
 		subscriptionStore: {
 			...opts.subscriptionStore,

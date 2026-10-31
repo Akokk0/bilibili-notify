@@ -17,6 +17,8 @@ import {
 	fail,
 	type GlobalConfig,
 	GlobalConfigSchema,
+	type Identity,
+	IdentitySchema,
 	type Issue,
 	isPrivateTarget,
 	type MessageBus,
@@ -35,6 +37,7 @@ import {
 	SubscriptionSchema,
 	type SubscriptionTag,
 	SubscriptionTagListSchema,
+	sameIdentity,
 	type TargetReachability,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
@@ -44,6 +47,7 @@ import {
 	type IdentityDuplicate,
 } from "@bilibili-notify/subscription";
 import type { ZodType, z } from "zod";
+import { t as tr } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
 import {
@@ -94,6 +98,11 @@ import { ConfigValidationError } from "./validation-error.js";
  */
 type DeepPartial<T> =
 	T extends Array<infer _U> ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+
+/** Validate the full replacement without writing files, state or events. */
+export interface ReplaceSectionsOptions {
+	dryRun?: boolean;
+}
 
 /**
  * 一次整体替换要写进去的分区。缺席的分区保持不动 —— 「不给」和「给一个空数组」
@@ -193,6 +202,8 @@ export interface ConfigStore {
 	 */
 	extensionSettingsIssue(id: string): Issue | undefined;
 	getSubscriptions(): Subscription[];
+	/** Cache retention includes UUIDs belonging to isolated entries. */
+	getSubscriptionIds(): string[];
 	/** 只拷命中的那一条 —— 资料缓存写口提交前现查订阅还在不在,别拿 getSubscriptions() 再 find。 */
 	getSubscription(id: string): Subscription | undefined;
 	/** 订阅标签表(ADR-0034),按表里的顺序(深拷贝)。 */
@@ -263,7 +274,7 @@ export interface ConfigStore {
 	 * 整体替换若干分区(恢复备份 / 一次性迁移)。先全量校验再落盘,失败不留半新半旧。
 	 * 详见实现处的注释。
 	 */
-	replaceSections(next: ConfigSections): Promise<ConfigScope[]>;
+	replaceSections(next: ConfigSections, options?: ReplaceSectionsOptions): Promise<ConfigScope[]>;
 
 	/**
 	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的写一律以 `SerialQueueClosedError` 拒绝、不碰盘。
@@ -300,6 +311,8 @@ export interface CreateConfigStoreOptions {
 	 * 空表 = 都好了)。仓不认得问题表,组装处把它接过去。回调抛了只记一行 warn,不让已经落盘的写失败。
 	 */
 	onInvalidSettingsChanged?: (entries: Pick<InvalidSettingEntry, "path" | "issues">[]) => void;
+	/** Called after a successful load with only the isolated row count; observer failures cannot fail loading. */
+	onInvalidSubscriptionsChanged?: (count: number) => void;
 }
 
 // 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
@@ -462,38 +475,98 @@ async function readJsonIfExists(absPath: string): Promise<unknown> {
 /** 盘上的订阅文件:订阅标签表与订阅住在一起(ADR-0034),删标签清引用才是一次原子写。 */
 interface SubscriptionFile {
 	tags: SubscriptionTag[];
-	subscriptions: Subscription[];
+	subscriptions: unknown[];
 }
 
+type SubscriptionEntry =
+	| { kind: "valid"; id: string }
+	| { kind: "invalid"; raw: unknown; id?: string; identity?: Identity };
+
 /**
- * 盘上的订阅文件 → 标签表 + 一份订阅。形状不是 `{ tags, subscriptions }`、标签表不合规矩、或任何一行订阅
- * 过不了 schema,都整个拒(开机报错)。0.x 那种裸数组由迁移改形,这里不认。
+ * File envelope and tag errors block loading. Invalid rows and duplicate UUID groups
+ * remain in the private ledger; only validated subscriptions reach runtime readers.
  */
-function parseSubscriptionFile(fileName: string, value: unknown): SubscriptionFile {
+function parseSubscriptionFile(
+	fileName: string,
+	value: unknown,
+): { tags: SubscriptionTag[]; subscriptions: Subscription[]; entries: SubscriptionEntry[] } {
 	if (!isPlainObject(value) || !Array.isArray(value.tags) || !Array.isArray(value.subscriptions)) {
 		throw ConfigValidationError.invalid(
 			"subscriptions",
-			`${fileName} 的形状不对:应当是 { tags, subscriptions }`,
+			tr("config.store.subscriptionFileShape", {
+				value0: fileName,
+				shape: "{ tags, subscriptions }",
+			}),
 		);
 	}
 	const tags = SubscriptionTagListSchema.safeParse(value.tags);
-	if (!tags.success) {
+	if (!tags.success)
 		throw ConfigValidationError.fromZod("subscriptions", tags.error, {
-			subject: `${fileName} 的标签表`,
+			subject: tr("config.store.subscriptionTagTable", { value0: fileName }),
 			prefix: ["tags"],
 		});
+	const subscriptions: Subscription[] = [];
+	const entries: SubscriptionEntry[] = [];
+	const ids = new Map<string, number>();
+	for (const raw of value.subscriptions) {
+		const id = SubscriptionSchema.shape.id.safeParse(isPlainObject(raw) ? raw.id : undefined);
+		if (id.success) ids.set(id.data, (ids.get(id.data) ?? 0) + 1);
 	}
-	const subscriptions = value.subscriptions.map((raw, idx) => {
-		const r = SubscriptionSchema.safeParse(raw);
-		if (!r.success) {
-			throw ConfigValidationError.fromZod("subscriptions", r.error, {
-				subject: `${fileName} 第 ${idx + 1} 行`,
-				prefix: ["subscriptions", idx],
+	for (const raw of value.subscriptions) {
+		const parsed = SubscriptionSchema.safeParse(raw);
+		if (parsed.success && ids.get(parsed.data.id) === 1) {
+			subscriptions.push(parsed.data);
+			entries.push({ kind: "valid", id: parsed.data.id });
+		} else {
+			const id = SubscriptionSchema.shape.id.safeParse(isPlainObject(raw) ? raw.id : undefined);
+			const identity =
+				isPlainObject(raw) && isPlainObject(raw.identity)
+					? IdentitySchema.safeParse({
+							sourceKey: raw.identity.sourceKey,
+							externalId: raw.identity.externalId,
+						})
+					: undefined;
+			entries.push({
+				kind: "invalid",
+				raw,
+				...(id.success ? { id: id.data } : {}),
+				...(identity?.success ? { identity: identity.data } : {}),
 			});
 		}
-		return r.data;
-	});
-	return { tags: tags.data, subscriptions };
+	}
+	return { tags: tags.data, subscriptions, entries };
+}
+
+/** Keep invalid JSON values in the existing layout; reorder only surviving valid slots. */
+function subscriptionFile(
+	next: readonly Subscription[],
+	tags: readonly SubscriptionTag[],
+	entries: readonly SubscriptionEntry[],
+): { file: SubscriptionFile; entries: SubscriptionEntry[] } {
+	const previousIds = new Set(entries.flatMap((e) => (e.kind === "valid" ? [e.id] : [])));
+	const survivors = next.filter((s) => previousIds.has(s.id));
+	const nextIds = new Set(next.map((s) => s.id));
+	const values: unknown[] = [];
+	const layout: SubscriptionEntry[] = [];
+	let cursor = 0;
+	for (const entry of entries) {
+		if (entry.kind === "invalid") {
+			values.push(entry.raw);
+			layout.push(entry);
+		} else if (nextIds.has(entry.id)) {
+			const sub = survivors[cursor++];
+			if (sub) {
+				values.push(sub);
+				layout.push({ kind: "valid", id: sub.id });
+			}
+		}
+	}
+	for (const sub of next)
+		if (!previousIds.has(sub.id)) {
+			values.push(sub);
+			layout.push({ kind: "valid", id: sub.id });
+		}
+	return { file: { tags: [...tags], subscriptions: values }, entries: layout };
 }
 
 /**
@@ -506,12 +579,15 @@ function assertKnownTags(subs: readonly Subscription[], tags: readonly Subscript
 	subs.forEach((sub, idx) => {
 		sub.tagIds.forEach((id, j) => {
 			if (!known.has(id)) {
-				issues.push({ path: [idx, "tagIds", j], message: `标签 ${id} 不在标签表里(可能刚被删掉)` });
+				issues.push({
+					path: [idx, "tagIds", j],
+					message: tr("config.store.unknownTag", { value0: id }),
+				});
 			}
 		});
 	});
 	if (issues.length > 0) {
-		throw ConfigValidationError.invalid("subscriptions", "订阅挂了不存在的标签", issues);
+		throw ConfigValidationError.invalid("subscriptions", tr("config.store.unknownTags"), issues);
 	}
 }
 
@@ -557,15 +633,21 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
 	if (current.adapterKey !== next.adapterKey) {
 		throw ConfigValidationError.invalid(
 			"connections",
-			`连接的适配器不能改（${current.adapterKey} → ${next.adapterKey}），要换就删了重建`,
-			[{ path: ["adapterKey"], message: "身份格不许改" }],
+			tr("config.store.connectionAdapterImmutable", {
+				value0: current.adapterKey,
+				value1: next.adapterKey,
+			}),
+			[{ path: ["adapterKey"], message: tr("config.store.identityImmutable") }],
 		);
 	}
 	if (current.platform !== next.platform) {
 		throw ConfigValidationError.invalid(
 			"connections",
-			`连接的平台不能改（${current.platform} → ${next.platform}），要换就删了重建`,
-			[{ path: ["platform"], message: "身份格不许改" }],
+			tr("config.store.connectionPlatformImmutable", {
+				value0: current.platform,
+				value1: next.platform,
+			}),
+			[{ path: ["platform"], message: tr("config.store.identityImmutable") }],
 		);
 	}
 }
@@ -584,23 +666,21 @@ function assertMasterTarget(
 	if (targetId === undefined) return;
 	const target = targets.find((t) => t.id === targetId);
 	if (!target) {
-		throw ConfigValidationError.invalid(
-			scope,
-			"主人目标指向的推送目标不存在，请重新选一个私聊目标",
-			[{ path: ["master", "targetId"], message: "没有这个推送目标" }],
-		);
+		throw ConfigValidationError.invalid(scope, tr("config.store.masterMissing"), [
+			{ path: ["master", "targetId"], message: tr("config.store.targetMissing") },
+		]);
 	}
 	if (!isPrivateTarget(target)) {
 		throw ConfigValidationError.invalid(
 			scope,
-			`主人目标必须是私聊目标，「${target.name}」不是私聊，女仆没法悄悄告诉主人`,
-			[{ path: ["master", "targetId"], message: "不是私聊目标" }],
+			tr("config.store.masterPrivate", { value0: target.name }),
+			[{ path: ["master", "targetId"], message: tr("config.store.privateTarget") }],
 		);
 	}
 }
 
 /** 把当前的主人目标改成不再是私聊,会让主人通知落到群里 —— 拒收,先去系统页换掉主人目标。 */
-const MASTER_TARGET_IN_USE = "它是主人目标，先在系统页把主人目标换掉或清空";
+const masterTargetInUse = () => tr("config.store.masterInUse");
 
 /**
  * 「这条连接不存在」在投递结果里的那一句。
@@ -623,8 +703,8 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 	if (!owner) {
 		throw ConfigValidationError.invalid(
 			"targets",
-			`推送目标挂着的连接不存在（connectionId=${target.connectionId}）`,
-			[{ path: ["connectionId"], message: "没有这条连接" }],
+			tr("config.store.targetOwnerMissing", { value0: target.connectionId }),
+			[{ path: ["connectionId"], message: tr("config.store.connectionMissing") }],
 		);
 	}
 }
@@ -632,11 +712,9 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 /** 目标建好之后焊死在它那条连接上:换机器人改连接自己的参数就行,底下的目标不用动。 */
 function assertTargetKeepsConnection(before: PushTarget | undefined, after: PushTarget): void {
 	if (!before || before.connectionId === after.connectionId) return;
-	throw ConfigValidationError.invalid(
-		"targets",
-		"推送目标建好之后不能换连接；要推到别的连接上请新建一个目标",
-		[{ path: ["connectionId"], message: "建好之后不能换连接" }],
-	);
+	throw ConfigValidationError.invalid("targets", tr("config.store.targetConnectionImmutable"), [
+		{ path: ["connectionId"], message: tr("config.store.targetConnectionImmutableIssue") },
+	]);
 }
 
 /**
@@ -663,15 +741,15 @@ function assertRetainedTargetsKeepOwner(
 		const platformChanged = before.platform !== after.platform;
 		if (!platformChanged && before.adapterKey === after.adapterKey) continue;
 		const change = platformChanged
-			? `平台变了（${before.platform} → ${after.platform}）`
-			: `适配器变了（${before.adapterKey} → ${after.adapterKey}）`;
+			? tr("config.store.platformChanged", { value0: before.platform, value1: after.platform })
+			: tr("config.store.adapterChanged", { value0: before.adapterKey, value1: after.adapterKey });
 		throw ConfigValidationError.invalid(
 			"connections",
-			`连接「${after.name}」的${change}，它底下还挂着推送目标；要换平台请新建一条连接`,
+			tr("config.store.targetOwnerChanged", { value0: after.name, value1: change }),
 			[
 				{
 					path: [platformChanged ? "platform" : "adapterKey"],
-					message: "底下还挂着推送目标，平台不能变",
+					message: tr("config.store.targetOwnerChangedIssue"),
 				},
 			],
 		);
@@ -835,14 +913,20 @@ const SUBSCRIPTION_IDENTITY_KEYS = ["sourceKey", "externalId"] as const;
 /** 拼进给人看的话里的一个值:字符串原样,别的转 JSON,没有就说「空」。 */
 function showValue(v: unknown): string {
 	if (typeof v === "string") return v;
-	return v === undefined ? "空" : (JSON.stringify(v) ?? "空");
+	return v === undefined
+		? tr("config.store.empty")
+		: (JSON.stringify(v) ?? tr("config.store.empty"));
 }
 
 function subscriptionIdentityError(key: string, from: unknown, to: unknown): ConfigValidationError {
 	return ConfigValidationError.invalid(
 		"subscriptions",
-		`订阅的 identity.${key} 不能改（${showValue(from)} → ${showValue(to)}），要换人就删了重加`,
-		[{ path: ["identity", key], message: "身份格不许改" }],
+		tr("config.store.subscriptionIdentityImmutable", {
+			value0: key,
+			value1: showValue(from),
+			value2: showValue(to),
+		}),
+		[{ path: ["identity", key], message: tr("config.store.identityImmutable") }],
 	);
 }
 
@@ -871,7 +955,7 @@ export function describeDuplicate(
 ): string {
 	const { sourceKey, externalId } = dup.identity;
 	const shown = detail ? `（${dup.subscriptions.map(detail).join("、")}）` : "";
-	return `${sourceKey} 的「${externalId}」${shown}`;
+	return tr("config.store.identityLabel", { value0: sourceKey, value1: externalId, value2: shown });
 }
 
 /**
@@ -888,7 +972,7 @@ function assertNoNewIdentityDuplicate(
 	if (!dup) return;
 	throw ConfigValidationError.conflict(
 		"subscriptions",
-		`同一个人只能有一条订阅：${describeDuplicate(dup)}已经订阅过了`,
+		tr("config.store.duplicateIdentity", { value0: describeDuplicate(dup) }),
 	);
 }
 
@@ -904,6 +988,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly onInvalidSettingsChanged?: (
 		entries: Pick<InvalidSettingEntry, "path" | "issues">[],
 	) => void;
+	private readonly onInvalidSubscriptionsChanged?: (count: number) => void;
 	private readonly stateDir: string;
 	private readonly secretStore?: SecretStore;
 	private secretBag: ConfigSecrets = {};
@@ -939,6 +1024,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly extensionSettingsIssues = new Map<string, Issue>();
 	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
 	private subscriptions: Subscription[];
+	private subscriptionEntries: SubscriptionEntry[] = [];
 	/** 订阅标签表(ADR-0034),与订阅同一个文件、同一条队。 */
 	private subscriptionTags: SubscriptionTag[] = [];
 	private connections: Connection[];
@@ -966,6 +1052,7 @@ class NodeConfigStore implements ConfigStore {
 		this.secretStore = opts.secretStore;
 		this.connectionSettingsSchemaOf = opts.connectionSettingsSchemaOf ?? (() => undefined);
 		this.onInvalidSettingsChanged = opts.onInvalidSettingsChanged;
+		this.onInvalidSubscriptionsChanged = opts.onInvalidSubscriptionsChanged;
 		this.segments = segmentsByKey(opts.integrationSettings ?? []);
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
@@ -1003,9 +1090,11 @@ class NodeConfigStore implements ConfigStore {
 	/** 一个拓展的设置文件。id 要拼进路径:不合拓展 id 的形状整次拒收(`../` 一类不许进来)。 */
 	private extensionSettingsPath(id: string): string {
 		if (!ExtensionIdSchema.safeParse(id).success) {
-			throw ConfigValidationError.invalid("integration-settings", `「${id}」不是合法的拓展 id`, [
-				{ path: [id], message: "拓展 id 的形状不对" },
-			]);
+			throw ConfigValidationError.invalid(
+				"integration-settings",
+				tr("config.store.invalidExtensionId", { value0: id }),
+				[{ path: [id], message: tr("config.store.extensionIdShape") }],
+			);
 		}
 		return join(this.stateDir, ...EXTENSION_SETTINGS_IN_CONFIG, `${id}.json`);
 	}
@@ -1023,9 +1112,11 @@ class NodeConfigStore implements ConfigStore {
 	private segmentOf(key: string): IntegrationSettingsSegment {
 		const segment = this.segments.get(key);
 		if (segment) return segment;
-		throw ConfigValidationError.invalid("integration-settings", `没有叫「${key}」的集成设置`, [
-			{ path: [key], message: "没有登记过这个集成" },
-		]);
+		throw ConfigValidationError.invalid(
+			"integration-settings",
+			tr("config.store.unknownIntegration", { value0: key }),
+			[{ path: [key], message: tr("config.store.integrationNotRegistered") }],
+		);
 	}
 
 	/**
@@ -1036,12 +1127,38 @@ class NodeConfigStore implements ConfigStore {
 		next: readonly Subscription[],
 		tags: readonly SubscriptionTag[] = this.subscriptionTags,
 	): Promise<void> {
-		assertNoNewIdentityDuplicate(this.subscriptions, next);
+		this.assertSubscriptionsWritable(next);
 		assertKnownTags(next, tags);
-		const file: SubscriptionFile = { tags: [...tags], subscriptions: [...next] };
-		await atomicWriteJson(this.path("subscriptions"), file);
-		this.subscriptions = file.subscriptions;
-		this.subscriptionTags = file.tags;
+		const merged = subscriptionFile(next, tags, this.subscriptionEntries);
+		await atomicWriteJson(this.path("subscriptions"), merged.file);
+		this.subscriptions = [...next];
+		this.subscriptionEntries = merged.entries;
+		this.subscriptionTags = [...tags];
+	}
+
+	private assertSubscriptionsWritable(next: readonly Subscription[]): void {
+		const seen = new Set<string>();
+		for (const sub of next) {
+			if (seen.has(sub.id))
+				throw ConfigValidationError.conflict("subscriptions", tr("config.subscriptions.idTaken"));
+			seen.add(sub.id);
+			const current = this.subscriptions.find((s) => s.id === sub.id);
+			for (const entry of this.subscriptionEntries) {
+				if (entry.kind !== "invalid") continue;
+				if (
+					entry.id === sub.id ||
+					(entry.identity &&
+						sameIdentity(entry.identity, sub.identity) &&
+						(!current || !sameIdentity(current.identity, sub.identity)))
+				) {
+					throw ConfigValidationError.conflict(
+						"subscriptions",
+						tr("config.subscriptions.reserved"),
+					);
+				}
+			}
+		}
+		assertNoNewIdentityDuplicate(this.subscriptions, next);
 	}
 
 	/**
@@ -1209,8 +1326,7 @@ class NodeConfigStore implements ConfigStore {
 		for (const [id, issue] of extensionFiles.unreadable)
 			this.extensionSettingsIssues.set(id, issue);
 
-		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
-		// 那几行就永久没了。
+		// Invalid subscription values remain private and are restored on every write.
 		{
 			const { value, existed } = await readJsonOrInit<unknown>(
 				this.path("subscriptions"),
@@ -1218,6 +1334,7 @@ class NodeConfigStore implements ConfigStore {
 			);
 			const file = parseSubscriptionFile("subscriptions.json", value);
 			this.subscriptionTags = file.tags;
+			this.subscriptionEntries = file.entries;
 			// 悬空的标签 id 只可能是手改了文件(删标签清引用是同一次原子写):剥掉、记一句,不挡开机;下次写盘就干净了。
 			const cleaned = withoutUnknownTags(file.subscriptions, file.tags);
 			this.subscriptions = cleaned.next;
@@ -1243,6 +1360,13 @@ class NodeConfigStore implements ConfigStore {
 		await this.loadConnectionsAndTargets();
 
 		this.loaded = true;
+		try {
+			this.onInvalidSubscriptionsChanged?.(
+				this.subscriptionEntries.filter((e) => e.kind === "invalid").length,
+			);
+		} catch {
+			this.serviceCtx.logger.warn("[config] invalid subscription notification failed");
+		}
 		if (this.invalidSettings.length > 0) this.notifyInvalidSettings();
 		this.serviceCtx.logger.info(
 			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} connections=${this.connections.length} targets=${this.targets.length})`,
@@ -1258,14 +1382,11 @@ class NodeConfigStore implements ConfigStore {
 		if (!(await fileExists(this.path("connections")))) {
 			const targetsRaw = await readJsonIfExists(this.path("targets"));
 			if (targetsRaw !== undefined && !Array.isArray(targetsRaw)) {
-				throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
+				throw ConfigValidationError.invalid("targets", tr("config.store.targetsNotArray"));
 			}
 			// 目标还在、连接没了:不凭空造连接,让主人看见。
 			if (Array.isArray(targetsRaw) && targetsRaw.length > 0) {
-				throw ConfigValidationError.invalid(
-					"connections",
-					"connections.json 不见了，但 targets.json 里还有目标，连接没法凭空重建",
-				);
+				throw ConfigValidationError.invalid("connections", tr("config.store.connectionsMissing"));
 			}
 			// 全新安装。
 			await atomicWriteJson(this.path("connections"), []);
@@ -1281,14 +1402,14 @@ class NodeConfigStore implements ConfigStore {
 
 		const connectionsRaw = JSON.parse(await readFile(this.path("connections"), "utf8"));
 		if (!Array.isArray(connectionsRaw)) {
-			throw ConfigValidationError.invalid("connections", "connections.json 里的内容不是数组");
+			throw ConfigValidationError.invalid("connections", tr("config.store.connectionsNotArray"));
 		}
 		const { value: targetsRaw, existed } = await readJsonOrInit<unknown[]>(
 			this.path("targets"),
 			() => [] as PushTarget[],
 		);
 		if (!Array.isArray(targetsRaw)) {
-			throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
+			throw ConfigValidationError.invalid("targets", tr("config.store.targetsNotArray"));
 		}
 
 		this.connections = connectionsRaw.map((raw, idx) =>
@@ -1300,7 +1421,7 @@ class NodeConfigStore implements ConfigStore {
 			const r = PushTargetSchema.safeParse(raw);
 			if (!r.success) {
 				throw ConfigValidationError.fromZod("targets", r.error, {
-					subject: `targets.json 第 ${idx + 1} 行`,
+					subject: tr("config.store.targetRow", { value0: idx + 1 }),
 					prefix: [idx],
 				});
 			}
@@ -1373,13 +1494,17 @@ class NodeConfigStore implements ConfigStore {
 
 	readIntegrationSettings(key: string): Result<{ settings: unknown }> {
 		if (!this.segments.has(key)) {
-			throw new Error(`集成「${key}」的设置没有登记进配置仓(组装处漏了)`);
+			throw new Error(tr("config.store.integrationNotRegisteredBug", { value0: key }));
 		}
 		const unreadable = this.integrationUnreadable.get(key);
 		if (unreadable) {
-			return fail("invalid", `设置文件读不懂：${unreadable.message}`, {
-				issues: [{ ...unreadable }],
-			});
+			return fail(
+				"invalid",
+				tr("config.store.unreadableSettings", { value0: unreadable.message }),
+				{
+					issues: [{ ...unreadable }],
+				},
+			);
 		}
 		// 盘上那一份:内存值(坏格是默认值)上把坏格的原文盖回去。读的人拿自己的 schema 判自己那一格。
 		const settings = deepClone(this.integrationSettings.get(key));
@@ -1405,6 +1530,15 @@ class NodeConfigStore implements ConfigStore {
 
 	getSubscriptionTags(): SubscriptionTag[] {
 		return deepClone(this.subscriptionTags);
+	}
+
+	getSubscriptionIds(): string[] {
+		return [
+			...new Set([
+				...this.subscriptions.map((s) => s.id),
+				...this.subscriptionEntries.flatMap((e) => (e.kind === "invalid" && e.id ? [e.id] : [])),
+			]),
+		];
 	}
 
 	getSubscriptions(): Subscription[] {
@@ -1708,7 +1842,10 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("subscriptions", async () => {
 			const idx = this.subscriptions.findIndex((s) => s.id === id);
 			if (idx < 0) {
-				throw ConfigValidationError.notFound("subscriptions", `没有 id 为 ${id} 的订阅`);
+				throw ConfigValidationError.notFound(
+					"subscriptions",
+					tr("config.store.subscriptionMissing", { value0: id }),
+				);
 			}
 			const current = this.subscriptions[idx] as Subscription;
 			assertSubscriptionIdentityUnchanged(current, patch);
@@ -1743,7 +1880,9 @@ class NodeConfigStore implements ConfigStore {
 		const saved = await this.runScoped("subscriptions", async () => {
 			const parsed = SubscriptionTagListSchema.safeParse(tags);
 			if (!parsed.success) {
-				throw ConfigValidationError.fromZod("subscriptions", parsed.error, { subject: "标签表" });
+				throw ConfigValidationError.fromZod("subscriptions", parsed.error, {
+					subject: tr("config.store.tagTable"),
+				});
 			}
 			const { next } = withoutUnknownTags(this.subscriptions, parsed.data);
 			await this.writeSubscriptions(next, parsed.data);
@@ -1814,10 +1953,7 @@ class NodeConfigStore implements ConfigStore {
 				const draft = NewConnectionSchema.safeParse(job.input);
 				if (!draft.success) throw ConfigValidationError.fromZod("connections", draft.error);
 				if (this.connections.some((a) => a.id === draft.data.id)) {
-					throw ConfigValidationError.conflict(
-						"connections",
-						"这条连接已经存在 —— 要改请用 PATCH /api/connections/:id,新建别复用 id",
-					);
+					throw ConfigValidationError.conflict("connections", tr("config.store.connectionExists"));
 				}
 				candidate = { ...draft.data, platformSnapshot: job.platformSnapshot };
 			} else {
@@ -1846,7 +1982,10 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("connections", async () => {
 			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) {
-				throw ConfigValidationError.notFound("connections", `没有 id 为 ${id} 的连接`);
+				throw ConfigValidationError.notFound(
+					"connections",
+					tr("config.store.connectionMissingById", { value0: id }),
+				);
 			}
 			const current = this.connections[idx] as Connection;
 			// 快照与探测状态只有宿主写:补丁里带来的一律忽略。
@@ -1880,7 +2019,10 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("connections", async () => {
 			const idx = this.connections.findIndex((a) => a.id === id);
 			if (idx < 0) {
-				throw ConfigValidationError.notFound("connections", `没有 id 为 ${id} 的连接`);
+				throw ConfigValidationError.notFound(
+					"connections",
+					tr("config.store.connectionMissingById", { value0: id }),
+				);
 			}
 			const next = [...this.connections];
 			next[idx] = { ...(this.connections[idx] as Connection), probeState: state };
@@ -1906,7 +2048,7 @@ class NodeConfigStore implements ConfigStore {
 			if (!hasManagedTarget(connection) && referencing.length > 0) {
 				throw ConfigValidationError.conflict(
 					"connections",
-					`这条连接还被 ${referencing.length} 个推送目标用着，先解除引用再删`,
+					tr("config.store.connectionInUse", { value0: referencing.length }),
 				);
 			}
 			const next = this.connections.filter((_, i) => i !== idx);
@@ -1958,14 +2100,14 @@ class NodeConfigStore implements ConfigStore {
 			);
 			assertTargetOwner(parsed.data, this.connections);
 			if (this.globals.master?.targetId === parsed.data.id && !isPrivateTarget(parsed.data)) {
-				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
+				throw ConfigValidationError.invalid("targets", masterTargetInUse());
 			}
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
 			// 光看形态会把它一起挡掉,任何含托管端点目标的备份都恢复不了(而恢复是逐条 await
 			// 的,炸在这一步时 globals / 订阅 / 连接已经落盘,配置只剩半新半旧)。
 			if (parsed.data.kind === "endpoint" && parsed.data.managedBy !== "connection") {
-				throw ConfigValidationError.invalid("targets", "端点目标由它的连接自动创建，不能手动新建");
+				throw ConfigValidationError.invalid("targets", tr("config.store.endpointManaged"));
 			}
 			let next = upsertById(this.targets, parsed.data);
 			// 交回托管同步:恢复回来的那条可能带着**老 id**(makeManagedEndpointTarget 取的是
@@ -1991,14 +2133,14 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) {
-				throw ConfigValidationError.notFound("targets", `没有 id 为 ${id} 的推送目标`);
+				throw ConfigValidationError.notFound(
+					"targets",
+					tr("config.store.targetMissingById", { value0: id }),
+				);
 			}
 			const current = this.targets[idx] as PushTarget;
 			if (current.kind === "endpoint" && current.managedBy === "connection") {
-				throw ConfigValidationError.conflict(
-					"targets",
-					"这个推送目标由它的连接托管，不能直接改，改它的连接就行",
-				);
+				throw ConfigValidationError.conflict("targets", tr("config.store.targetManaged"));
 			}
 			const merged = deepMerge(current, { ...patch, id });
 			const parsed = PushTargetSchema.safeParse(merged);
@@ -2008,7 +2150,7 @@ class NodeConfigStore implements ConfigStore {
 			assertTargetKeepsConnection(current, parsed.data);
 			assertTargetOwner(parsed.data, this.connections);
 			if (this.globals.master?.targetId === id && !isPrivateTarget(parsed.data)) {
-				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
+				throw ConfigValidationError.invalid("targets", masterTargetInUse());
 			}
 			const next = [...this.targets];
 			next[idx] = parsed.data;
@@ -2028,7 +2170,10 @@ class NodeConfigStore implements ConfigStore {
 		const result = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) {
-				throw ConfigValidationError.notFound("targets", `没有 id 为 ${id} 的推送目标`);
+				throw ConfigValidationError.notFound(
+					"targets",
+					tr("config.store.targetMissingById", { value0: id }),
+				);
 			}
 			const next = [...this.targets];
 			next[idx] = { ...(this.targets[idx] as PushTarget), reachability };
@@ -2047,13 +2192,13 @@ class NodeConfigStore implements ConfigStore {
 			if (idx < 0) return false;
 			const target = this.targets[idx] as PushTarget;
 			if (target.managedBy === "connection") {
-				throw ConfigValidationError.conflict(
-					"targets",
-					"这个推送目标由它的连接托管，不能直接删，删它的连接就行",
-				);
+				throw ConfigValidationError.conflict("targets", tr("config.store.targetDeleteManaged"));
 			}
 			if (this.globals.master?.targetId === id) {
-				throw ConfigValidationError.conflict("targets", `不能直接删，${MASTER_TARGET_IN_USE}`);
+				throw ConfigValidationError.conflict(
+					"targets",
+					tr("config.store.masterDeleteBlocked", { value0: masterTargetInUse() }),
+				);
 			}
 			const next = this.targets.filter((_, i) => i !== idx);
 			await atomicWriteJson(this.path("targets"), next);
@@ -2089,7 +2234,10 @@ class NodeConfigStore implements ConfigStore {
 	 *
 	 * 缺席的分区保持不动。返回真正改过的 scope。
 	 */
-	async replaceSections(next: ConfigSections): Promise<ConfigScope[]> {
+	async replaceSections(
+		next: ConfigSections,
+		options: ReplaceSectionsOptions = {},
+	): Promise<ConfigScope[]> {
 		const changed = await this.runAllScopes(async () => {
 			// ---- 1) 校验:任一分区不过就整个中止,不写任何东西 ----------------
 			let globals: GlobalConfig | undefined;
@@ -2117,7 +2265,9 @@ class NodeConfigStore implements ConfigStore {
 			if (next.subscriptionTags !== undefined) {
 				const r = SubscriptionTagListSchema.safeParse(next.subscriptionTags);
 				if (!r.success) {
-					throw ConfigValidationError.fromZod("subscriptions", r.error, { subject: "标签表" });
+					throw ConfigValidationError.fromZod("subscriptions", r.error, {
+						subject: tr("config.store.tagTable"),
+					});
 				}
 				subscriptionTags = r.data;
 			}
@@ -2136,8 +2286,10 @@ class NodeConfigStore implements ConfigStore {
 			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
 			const synced = syncManagedEndpointTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
-			assertNoNewIdentityDuplicate(this.subscriptions, replaced.next);
+			this.assertSubscriptionsWritable(replaced.next);
 			assertKnownTags(replaced.next, effTags);
+
+			if (options.dryRun) return [];
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[string, unknown]> = [];
@@ -2145,9 +2297,13 @@ class NodeConfigStore implements ConfigStore {
 				writes.push([this.integrationPath(key), value]);
 			for (const { path, value } of extensionSettings) writes.push([path, value]);
 			const subsTouched = Boolean(subscriptions) || Boolean(subscriptionTags) || replaced.changed;
+			const mergedSubscriptions = subscriptionFile(
+				replaced.next,
+				effTags,
+				this.subscriptionEntries,
+			);
 			if (subsTouched) {
-				const file: SubscriptionFile = { tags: effTags, subscriptions: replaced.next };
-				writes.push([this.path("subscriptions"), file]);
+				writes.push([this.path("subscriptions"), mergedSubscriptions.file]);
 			}
 			if (connections) writes.push([this.path("connections"), effConnections]);
 			if (targets || synced.changed) writes.push([this.path("targets"), synced.next]);
@@ -2197,6 +2353,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			if (subsTouched) {
 				this.subscriptions = replaced.next;
+				this.subscriptionEntries = mergedSubscriptions.entries;
 				this.subscriptionTags = effTags;
 				this.touch("subscriptions");
 				touched.push("subscriptions");
@@ -2217,6 +2374,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			return touched;
 		});
+		if (options.dryRun) return changed;
 		this.announceInvalidSettings();
 		for (const scope of changed) this.bus.emit("config-changed", { scope });
 		return changed;
@@ -2303,7 +2461,7 @@ function readConnection(raw: unknown, idx: number, warn: (msg: string) => void):
 	const shell = ConnectionShellSchema.safeParse(raw);
 	if (!shell.success) {
 		throw ConfigValidationError.fromZod("connections", shell.error, {
-			subject: `connections.json 第 ${idx + 1} 行`,
+			subject: tr("config.store.connectionRow", { value0: idx + 1 }),
 			prefix: [idx],
 		});
 	}
@@ -2409,7 +2567,9 @@ function readJsonObject(text: string): { value: Record<string, unknown> } | { is
 		if (!(err instanceof SyntaxError)) throw err;
 		return { issue: { message: jsonSyntaxMessage(err) } };
 	}
-	return isPlainObject(value) ? { value } : { issue: { message: "顶层不是一个对象" } };
+	return isPlainObject(value)
+		? { value }
+		: { issue: { message: tr("config.store.rootNotObject") } };
 }
 
 /**
@@ -2429,12 +2589,13 @@ function segmentsByKey(
 ): ReadonlyMap<string, IntegrationSettingsSegment> {
 	const byKey = new Map<string, IntegrationSettingsSegment>();
 	for (const segment of segments) {
-		if (byKey.has(segment.key)) throw new Error(`集成设置「${segment.key}」登记了两次`);
+		if (byKey.has(segment.key))
+			throw new Error(tr("config.store.duplicateIntegration", { value0: segment.key }));
 		if (!segment.schema.safeParse({}).success) {
-			throw new Error(`集成设置「${segment.key}」的格式过不了空对象(每一格都得有默认值或可选)`);
+			throw new Error(tr("config.store.integrationDefaults", { value0: segment.key }));
 		}
 		if (segment.key === "core") {
-			throw new Error("集成设置的键不能叫「core」:它是核心那份设置的键");
+			throw new Error(tr("config.store.coreReserved"));
 		}
 		byKey.set(segment.key, segment);
 	}
@@ -2447,7 +2608,7 @@ function parseIntegrationSettings(
 	value: unknown,
 	prev: unknown,
 ): unknown {
-	const subject = `${segment.key} 的设置`;
+	const subject = tr("config.store.integrationLabel", { value0: segment.key });
 	const prefix = [segment.key];
 	const parsed = segment.schema.safeParse(value);
 	if (!parsed.success) {

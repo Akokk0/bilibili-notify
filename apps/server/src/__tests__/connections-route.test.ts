@@ -116,7 +116,10 @@ describe("connections route — PATCH 一条不存在的", () => {
 		});
 
 		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ code: "not_found", message: "没有 id 为 nobody 的连接" });
+		expect(await res.json()).toEqual({
+			code: "not_found",
+			message: "主人，没有 id 为 nobody 的连接",
+		});
 		await runtime.dispose();
 	});
 });
@@ -342,7 +345,7 @@ describe("connections route — 写入的失败(真 store)", () => {
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "conflict",
-			message: "这条连接还被 1 个推送目标用着，先解除引用再删",
+			message: "主人，这条连接还被 1 个推送目标用着，先解除引用再删",
 		});
 	});
 });

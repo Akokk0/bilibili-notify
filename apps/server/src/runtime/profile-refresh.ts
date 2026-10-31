@@ -37,7 +37,7 @@ const FUTURE_ISO = "9999-12-31T00:00:00.000Z";
 export interface ProfileRefreshOptions {
 	bus: MessageBus;
 	logger: Logger;
-	configStore: Pick<ConfigStore, "getGlobals">;
+	configStore: Pick<ConfigStore, "getGlobals" | "getSubscriptionIds">;
 	subscriptionStore: SubscriptionStore;
 	subscriptionStateStore: SubscriptionStateStore;
 	fansStore: Pick<FollowersStore, "findEarliest" | "findNearestBefore">;
@@ -418,7 +418,7 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		}
 		if (removed) {
 			opts.serviceCtx.track(
-				pruneOrphanSubscriptionState(subscriptionStateStore, subscriptionStore).catch((err) => {
+				pruneOrphanSubscriptionState(subscriptionStateStore, configStore).catch((err) => {
 					logger.warn(`[profile-refresh] 清理已删订阅的资料缓存失败: ${String(err)}`);
 				}),
 			);

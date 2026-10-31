@@ -21,12 +21,13 @@ import {
 	createConfigStore,
 	type IntegrationSettingsSegment,
 } from "../config/store.js";
+import { syncSubscriptionsProblem } from "../config/subscriptions-problems.js";
 import { createFollowersStore, type FollowersStore } from "../followers/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
-import { i18n } from "../i18n/index.js";
+import { i18n, t } from "../i18n/index.js";
 import { createImageFetcher, type ImageFetcher } from "../images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
@@ -361,7 +362,8 @@ export function createAppRuntime(
 		integrationSettings: deps.integrationSettings,
 		connectionSettingsSchemaOf: (adapterKey) =>
 			adapterRegistry.list().find((a) => a.adapterKey === adapterKey)?.settingsSchema,
-		// 核心设置某一格读坏退了默认:合成一条问题报给问题表(不私聊,面板的问题框提示)。
+		// 隔离订阅只交数量,核心坏格只交安全原因:各合成一条问题,不私聊。
+		onInvalidSubscriptionsChanged: (count) => syncSubscriptionsProblem(problems, count),
 		onInvalidSettingsChanged: (entries) =>
 			syncSettingsProblem(problems, entries, serviceCtx.logger),
 	});
@@ -620,7 +622,7 @@ export function createAppRuntime(
 		history: historyStore,
 		repush: repushStore,
 		send: async (targetId, payload, routing) => {
-			if (!pipeline) return fail("unavailable", "推送链路还没起来，稍后再试");
+			if (!pipeline) return fail("unavailable", t("config.store.pipelineNotReady"));
 			return pipeline.push.sendToTarget(targetId, payload, { routing });
 		},
 		routedTargets: (subscriptionId, feature) => targetScope.routedTargets(subscriptionId, feature),

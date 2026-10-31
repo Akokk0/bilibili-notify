@@ -6,7 +6,7 @@ import {
 	type Logger,
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
-import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { ConfigStore } from "../config/store.js";
 import { dataPath } from "./roots.js";
 
 /**
@@ -73,20 +73,12 @@ export interface SubscriptionStateStore {
 	close(): Promise<void>;
 }
 
-/**
- * 孤儿清理:丢掉订阅已不存在的那些运行时条目。开机扫一次(停机期间删掉的),运行中每次
- * 删订阅再扫一次。
- *
- * 🔴 **留下的是全部订阅的 id —— 两支都算**(ADR-0019 决策 47)。拓展订阅的资料缓存也住在
- * 这里(来源报来的名字 / 头像 / 粉丝,决策 7);只拿 B 站订阅当保留名单的话,开机一次、
- * 每删一条 B 站订阅一次,拓展订阅的资料就被静默抹掉 —— 类型、测试、构建全绿。所以这里
- * 收的是整个订阅仓而不是一份现成的 id 列表:调用方没有机会先筛一遍。
- */
+/** Retain the complete config id set, including isolated subscriptions, across cache sweeps. */
 export function pruneOrphanSubscriptionState(
 	runtime: SubscriptionStateStore,
-	subscriptions: Pick<SubscriptionStore, "list">,
+	configStore: Pick<ConfigStore, "getSubscriptionIds">,
 ): Promise<void> {
-	return runtime.prune(subscriptions.list().map((s) => s.id));
+	return runtime.prune(configStore.getSubscriptionIds());
 }
 
 export interface CreateSubscriptionStateStoreOptions {

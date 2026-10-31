@@ -49,15 +49,18 @@ export interface BackupStore {
 	getSubscriptionTags(): SubscriptionTag[];
 	getConnections(): Connection[];
 	getTargets(): PushTarget[];
-	replaceSections(next: {
-		globals?: GlobalConfig;
-		integrations?: Record<string, unknown>;
-		extensionSettings?: Record<string, unknown>;
-		subscriptions?: Subscription[];
-		subscriptionTags?: SubscriptionTag[];
-		connections?: Connection[];
-		targets?: PushTarget[];
-	}): Promise<unknown>;
+	replaceSections(
+		next: {
+			globals?: GlobalConfig;
+			integrations?: Record<string, unknown>;
+			extensionSettings?: Record<string, unknown>;
+			subscriptions?: Subscription[];
+			subscriptionTags?: SubscriptionTag[];
+			connections?: Connection[];
+			targets?: PushTarget[];
+		},
+		options?: { dryRun?: boolean },
+	): Promise<unknown>;
 }
 
 /** 集成的密钥存储宿主里备份用得到的三样。 */
@@ -219,6 +222,8 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		};
 		const plan = planImport(current, sections, opts.mode);
 		const folded = foldPlan(current, plan);
+		// Reserved identities must be rejected before any diagnostic can describe them.
+		await deps.configStore.replaceSections(folded, { dryRun: true });
 		assertNoDuplicateInBackup(current.subscriptions, folded.subscriptions);
 
 		const globalsApplied = Boolean(

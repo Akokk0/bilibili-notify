@@ -197,12 +197,13 @@ describe("开机读一个文件", () => {
 				{ ...biliSub("1"), identity: { ...biliSub("1").identity, extra: "x" } },
 			]),
 		],
-	])("订阅文件里有%s → 开机报错,不跳过", async (_label, text) => {
+	])("订阅文件里有%s → 文件级拒收、行级隔离", async (_label, text) => {
 		await writeFile(subsFile, text, "utf8");
-		await expect(open()).rejects.toBeInstanceOf(ConfigValidationError);
+		if (JSON.parse(text).subscriptions) expect((await open()).getSubscriptions()).toEqual([]);
+		else await expect(open()).rejects.toBeInstanceOf(ConfigValidationError);
 	});
 
-	it("好行后面跟一行坏的 → 整份拒,报错点名第几行", async () => {
+	it("好行后面跟一行坏的 → 好行照读", async () => {
 		await writeFile(
 			subsFile,
 			subscriptionsFileText([
@@ -211,12 +212,8 @@ describe("开机读一个文件", () => {
 			]),
 			"utf8",
 		);
-		const err = await open().then(
-			() => undefined,
-			(e: unknown) => e,
-		);
-		expect(err).toBeInstanceOf(ConfigValidationError);
-		expect((err as ConfigValidationError).message).toContain("第 2 行");
+		const store = await open();
+		expect(store.getSubscriptions().map((s) => s.identity.externalId)).toEqual(["1"]);
 	});
 });
 

@@ -1072,7 +1072,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		);
 		expect(manual).toMatchObject({
 			status: 400,
-			body: { code: "invalid", message: "端点目标由它的连接自动创建，不能手动新建" },
+			body: { code: "invalid", message: "主人，端点目标由它的连接自动创建，不能手动新建" },
 		});
 		// 作品路由到它(两条订阅各一条),适配器收到的去向是端点、带着端点 id,不是会话。
 		expect(

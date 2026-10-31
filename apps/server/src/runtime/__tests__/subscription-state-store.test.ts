@@ -318,7 +318,9 @@ describe("pruneOrphanSubscriptionState — 保留名单是两支订阅的全部 
 		await runtime.patch("e1", { cachedProfile: PROFILE_A2 });
 		await runtime.patch("gone", { cachedProfile: PROFILE_A });
 
-		await pruneOrphanSubscriptionState(runtime, subs);
+		await pruneOrphanSubscriptionState(runtime, {
+			getSubscriptionIds: () => subs.list().map((s) => s.id),
+		});
 
 		expect(Object.keys(runtime.getAll()).sort()).toEqual(["b1", "e1"]);
 	});

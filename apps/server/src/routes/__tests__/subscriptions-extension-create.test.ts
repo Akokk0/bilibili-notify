@@ -663,7 +663,7 @@ describe("删订阅", () => {
 	/** 开机那一步的孤儿清理(运行中是 ProfileRefresh 听 subscription-changed 做同一件事)。 */
 	const dropOrphanProfiles = () =>
 		pruneOrphanSubscriptionState(runtime.subscriptionStateStore, {
-			list: () => runtime.configStore.getSubscriptions(),
+			getSubscriptionIds: () => runtime.configStore.getSubscriptionIds(),
 		});
 
 	it("经面板删掉 → 资料没了,头像不再有人引用,清扫收走;另一条订阅用着同一张图时不收", async () => {
