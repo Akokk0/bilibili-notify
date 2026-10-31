@@ -1,4 +1,5 @@
 import type { TimeRange } from "../schema/common";
+import { timezoneOffsetMinutes } from "../timezone";
 
 /**
  * 判断给定时间是否落在「免打扰」时段内。粒度按「小时」,匹配 `TimeRangeSchema`
@@ -12,9 +13,9 @@ import type { TimeRange } from "../schema/common";
  *
  * 多条范围用 OR 合并(任一命中即视为静默时段)。
  */
-export function inQuietHours(ranges: readonly TimeRange[], at: Date): boolean {
+export function inQuietHours(ranges: readonly TimeRange[], at: Date, timezone: string): boolean {
 	if (ranges.length === 0) return false;
-	const h = at.getHours();
+	const h = new Date(at.getTime() - timezoneOffsetMinutes(timezone, at) * 60_000).getUTCHours();
 	for (const r of ranges) {
 		if (r.start < r.end) {
 			if (h >= r.start && h < r.end) return true;

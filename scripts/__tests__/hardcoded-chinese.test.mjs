@@ -390,7 +390,6 @@ export const RATCHET = {
 	"packages/internal/src/schema/targets.ts": 1,
 	"packages/internal/src/util/regex-safety.ts": 3,
 	"packages/internal/src/util/serial-queue.ts": 1,
-	"packages/push/src/push-router.ts": 6,
 	"packages/storage/src/append-jsonl.ts": 2,
 	"packages/storage/src/replace-directory.ts": 3,
 	"packages/ui/src/atoms.tsx": 2,

@@ -3,5 +3,10 @@
 	"internal.settings.mirrorPrefix": "主人，加速前缀请填 https:// 开头的地址哦。",
 	"internal.settings.sourceUrl": "主人，源地址请填 https:// 开头的地址哦。",
 	"internal.settings.timezone": "主人，请填认得的 IANA 时区名，比如 Asia/Shanghai 哦。",
-	"internal.settings.quietHoursDistinct": "主人，开始与结束时间不能相同，全天请填0–24点喔。"
+	"internal.settings.quietHoursDistinct": "主人，开始与结束时间不能相同，全天请填0–24点喔。",
+	"push.router.routeRemoved": "target={targetId} 已从 {subscription} feature={feature} 的路由中移除，放弃重试中的推送啦，主人",
+	"push.router.unreachable": "target={targetId} 持续不可达，放弃推送啦，主人",
+	"push.router.masterMissing": "没有配置主人目标，主人先配置一下哦",
+	"push.router.masterNotPrivate": "主人目标 {targetId} 不是私聊目标，无法悄悄通知主人哦",
+	"push.router.masterUnreachable": "主人目标不可达，暂时没法通知主人啦"
 }

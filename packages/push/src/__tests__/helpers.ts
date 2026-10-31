@@ -53,13 +53,14 @@ function realTimerCtx(): ServiceContext {
  */
 export function pushBase(): Pick<
 	import("../push-router").PushRouterOptions,
-	"serviceCtx" | "defaults" | "muted" | "aiWriting"
+	"serviceCtx" | "defaults" | "muted" | "aiWriting" | "timezone"
 > {
 	const defaults = loopbackDefaults();
 	// 「AI 写正文」缺省全开、无例外:没有锚点带 AI 版时它不起作用,带了就全体目标挑 AI 版。
 	const aiWriting = AiWritingSettingsSchema.parse({});
 	return {
 		serviceCtx: realTimerCtx(),
+		timezone: () => "Asia/Shanghai",
 		defaults: () => defaults,
 		muted: () => false,
 		aiWriting: () => aiWriting,

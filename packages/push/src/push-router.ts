@@ -24,6 +24,7 @@ import {
 	resolve,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { packageText } from "@bilibili-notify/internal/texts";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
 /**
@@ -234,6 +235,8 @@ export interface PushRouterOptions {
 	 * 只影响这一处判定,不是假时钟,延迟 / 超时 / 历史时间戳都还是真的。
 	 */
 	quietHoursNow?: () => Date;
+	/** Current global timezone, read at the quiet-hours gate. */
+	timezone: () => string;
 	/**
 	 * 「AI 写正文」的设置(`ai.writing`,ADR-0032):锚点带了 AI 版时,逐目标按它挑用哪一份。
 	 * **每个锚点发出时现取**,不在构造时快照 —— 面板里改了例外,下一次推送就按新的挑。
@@ -263,6 +266,7 @@ export class PushRouter {
 	private readonly defaults: () => GlobalDefaults;
 	private readonly muted: () => boolean;
 	private readonly quietHoursNow: () => Date;
+	private readonly timezone: () => string;
 	private readonly aiWriting: () => AiWritingSettings;
 	private readonly onSend?: (info: PushSendResult) => void;
 	private readonly serviceCtx: ServiceContext;
@@ -286,6 +290,7 @@ export class PushRouter {
 		this.master = opts.master ?? null;
 		this.logger = opts.logger;
 		this.defaults = opts.defaults;
+		this.timezone = opts.timezone;
 		this.muted = opts.muted;
 		this.quietHoursNow = opts.quietHoursNow ?? (() => new Date());
 		this.aiWriting = opts.aiWriting;
@@ -393,7 +398,7 @@ export class PushRouter {
 					),
 		);
 		if (anchors.some((anchor, i) => anchor.role === "main" && i > 0)) {
-			throw new Error("[push] 一次推送的本体至多一个,而且必须排在第一个锚点");
+			throw new Error(packageText("push.router.anchorOrder"));
 		}
 		if (this.disposed) return [];
 		const judged = this.judgePush(subscriptionId, feature);
@@ -469,7 +474,7 @@ export class PushRouter {
 			this.logger.debug(`[push] ${who} feature=${feature} 处于全局静音，只记不发`);
 			return "silenced";
 		}
-		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
+		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow(), this.timezone())) {
 			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，只记不发`);
 			return "silenced";
 		}
@@ -756,13 +761,17 @@ export class PushRouter {
 		while (!this.disposed && this.generation === myGen) {
 			if (routing && !this.isStillRouted(routing.subscriptionId, routing.feature, targetId)) {
 				const who = this.labelOf(routing.subscriptionId);
-				const msg = `target=${targetId} 已从 ${who} feature=${routing.feature} 的路由中移除，放弃重试中的推送`;
+				const msg = packageText("push.router.routeRemoved", {
+					targetId,
+					subscription: who,
+					feature: routing.feature,
+				});
 				this.logger.info(`[push] ${msg}`);
 				return fail("conflict", msg);
 			}
 			if (!this.dispatcher.isAvailable(targetId)) {
 				if (delay > MAX_RETRY_DELAY_MS) {
-					const msg = `target=${targetId} 持续不可达，放弃推送`;
+					const msg = packageText("push.router.unreachable", { targetId });
 					this.logger.error(`[push] ${msg}`);
 					return fail("unavailable", msg);
 				}
@@ -808,13 +817,16 @@ export class PushRouter {
 	 */
 	async notifyMaster(payload: string | NotificationPayload): Promise<DeliveryResult> {
 		if (this.disposed) return fail("unavailable", "disposed");
-		if (!this.master) return fail("not_configured", "没有配置主人目标");
+		if (!this.master) return fail("not_configured", packageText("push.router.masterMissing"));
 		if (!isPrivateTarget(this.master)) {
-			return fail("invalid", `主人目标 ${this.master.id} 不是私聊目标，无法悄悄通知主人`);
+			return fail(
+				"invalid",
+				packageText("push.router.masterNotPrivate", { targetId: this.master.id }),
+			);
 		}
 		if (!this.refreshMasterReachability()) {
 			this.logger.debug("[push] master 目标不可达，跳过本次私信通知");
-			return fail("unavailable", "主人目标不可达");
+			return fail("unavailable", packageText("push.router.masterUnreachable"));
 		}
 		const message: NotificationPayload =
 			typeof payload === "string" ? { kind: "text", text: payload } : payload;

@@ -8,5 +8,11 @@
 	"internal.settings.timezone": "不是认得的时区名，要写 IANA 名，比如 Asia/Shanghai",
 	"internal.settings.quietHoursDistinct": "开始与结束时间不能相同；全天请使用0–24点。",
 	"internal.settings.aiActiveProfile": "AI 当前实例的指针 ",
-	"internal.settings.aiProviderId": "AI 实例的 id "
+	"internal.settings.aiProviderId": "AI 实例的 id ",
+	"push.router.anchorOrder": "[push] 一次推送的本体至多一个,而且必须排在第一个锚点",
+	"push.router.routeRemoved": "target={targetId} 已从 {subscription} feature={feature} 的路由中移除，已取消推送重试",
+	"push.router.unreachable": "target={targetId} 持续不可达，已取消推送",
+	"push.router.masterMissing": "未配置主人目标",
+	"push.router.masterNotPrivate": "主人目标 {targetId} 不是私聊目标，无法发送通知",
+	"push.router.masterUnreachable": "主人目标不可达"
 }

@@ -176,6 +176,7 @@ describe("@全体:真派发器 + 真推送路由", () => {
 			track: (task: Promise<unknown>) => void tracked.push(task),
 		} as unknown as ServiceContext;
 		const push = new PushRouter({
+			timezone: () => "Asia/Shanghai",
 			dispatcher,
 			store: makeStore([sub]),
 			logger: LOGGER,

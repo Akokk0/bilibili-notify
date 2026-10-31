@@ -410,7 +410,11 @@ function setupPush(sub: Subscription = subWith([T1, T2])) {
 	const { base, tracked, settled } = trackedPushBase();
 	const defaults = base.defaults();
 	defaults.schedule.quietHours = [{ start: 2, end: 4 }];
-	const clock = { now: AWAKE, muted: false };
+	const clock = {
+		now: AWAKE,
+		muted: false,
+		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+	};
 	const router = new PushRouter({
 		...base,
 		dispatcher,
@@ -419,6 +423,7 @@ function setupPush(sub: Subscription = subWith([T1, T2])) {
 		onSend: (info) => seen.push(info),
 		muted: () => clock.muted,
 		quietHoursNow: () => clock.now,
+		timezone: () => clock.timezone,
 	});
 	router.start();
 	const sent = () => calls.map((c) => [c.targetId, textOf(c.payload)]);
@@ -1249,4 +1254,17 @@ describe("被静音 / 免扰挡下的推送照记", () => {
 		});
 		expect(gone.seen).toHaveLength(0);
 	});
+});
+
+it("re-reads timezone on the next push without rebuilding the router", async () => {
+	const s = setupPush();
+	s.clock.now = new Date("2026-01-01T18:30:00Z");
+	s.clock.timezone = "UTC";
+	await pushMain(s.router, "s1", "post", M1);
+	expect(s.calls).toHaveLength(2);
+	s.clock.timezone = "Asia/Shanghai";
+	await pushMain(s.router, "s1", "post", M1);
+	expect(s.calls).toHaveLength(2);
+	expect(s.seen.at(-1)?.messages[0]).toMatchObject({ isSilenced: true });
+	s.router.stop();
 });

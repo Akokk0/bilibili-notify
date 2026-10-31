@@ -440,6 +440,7 @@ export function createPipelineRuntime(opts: PipelineRuntimeOptions): PipelineRun
 	};
 
 	const push = new PushRouter({
+		timezone: () => globals().timezone,
 		dispatcher,
 		store: opts.subscriptionStore,
 		master: masterTarget() ?? null,

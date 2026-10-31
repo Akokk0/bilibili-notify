@@ -228,7 +228,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		expect(result).toEqual({
 			ok: false,
 			code: "unavailable",
-			message: "target=target-x 持续不可达，放弃推送",
+			message: "target=target-x 持续不可达，放弃推送啦，主人",
 		});
 	});
 
