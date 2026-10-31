@@ -18,6 +18,7 @@
 
 import { AI_PROVIDER_IDS, type AIProviderId, providerMeta } from "@bilibili-notify/internal/ai";
 import { LINK_LIMITS } from "@bilibili-notify/internal/link-preview";
+import { i18n } from "../i18n/index";
 import { GUARD_PROGRAM_ID, membershipTiersOf } from "./membership-programs";
 
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */
@@ -235,20 +236,26 @@ export const FIELD_LABELS = {
 		section: "ai",
 		secret: true,
 	},
-	"ai.search.engines.dynamic": {
-		label: "动态点评联网搜索",
-		hint: "开了之后每条动态点评都可能多几次搜索调用(按次计费)和几秒延迟",
-		section: "ai",
+	get "ai.search.engines.dynamic"() {
+		return {
+			label: i18n.t("aiSettings.search.post.label"),
+			hint: i18n.t("aiSettings.search.post.hint"),
+			section: "ai" as const,
+		};
 	},
-	"ai.search.engines.live": {
-		label: "直播总结联网搜索",
-		hint: "开了之后每次下播总结都可能多几次搜索调用(按次计费)和几秒延迟",
-		section: "ai",
+	get "ai.search.engines.live"() {
+		return {
+			label: i18n.t("aiSettings.search.live.label"),
+			hint: i18n.t("aiSettings.search.live.hint"),
+			section: "ai" as const,
+		};
 	},
-	"ai.search.engines.roast": {
-		label: "锐评联网搜索",
-		hint: "开了之后每次锐评都可能多几次搜索调用(按次计费)",
-		section: "ai",
+	get "ai.search.engines.roast"() {
+		return {
+			label: i18n.t("aiSettings.search.roast.label"),
+			hint: i18n.t("aiSettings.search.roast.hint"),
+			section: "ai" as const,
+		};
 	},
 	// 合成字段,不是 schema 里的东西 —— 灵动岛只认得「摊平后的那几只桶」,
 	// 添加/删除实例在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把

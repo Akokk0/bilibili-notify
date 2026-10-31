@@ -59,7 +59,7 @@ const AI_SETTINGS = {
 	search: {
 		backend: "bocha" as const,
 		keys: { bocha: "", tavily: "" },
-		engines: { dynamic: false, live: false, roast: false },
+		scenes: { post: false, live: false, roast: false },
 	},
 };
 

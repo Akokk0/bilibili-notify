@@ -33,6 +33,7 @@ function setup(
 		comment?: (...args: unknown[]) => Promise<string>;
 		enabled?: boolean;
 		commentary?: boolean;
+		search?: () => boolean;
 	} = {},
 ) {
 	const comment = vi.fn(over.comment ?? (async () => "AI 总结"));
@@ -45,6 +46,7 @@ function setup(
 						typeof LiveSummaryRequester
 					>[0]["commentary"]),
 		isAiEnabled: () => over.enabled !== false,
+		isWebSearchEnabled: over.search,
 		logger,
 	});
 	return { requester, comment, logger };
@@ -108,4 +110,18 @@ describe("LiveSummaryRequester.generate", () => {
 		expect(made?.template).toBe("共6人，观众5发了6条，小晨");
 		expect(made?.ai).toBeInstanceOf(Promise);
 	});
+});
+
+it("queries search for each summary and preserves the per-subscription override", async () => {
+	let enabled = false;
+	const { requester, comment } = setup({ search: () => enabled });
+	const override = { dynamicPrompt: "per-subscription-prompt", model: "per-subscription-model" };
+	await requester.generate({ ...PARAMS, aiOverride: override })?.ai;
+	expect(comment.mock.calls[0]?.[3]).toEqual(override);
+	enabled = true;
+	await requester.generate({ ...PARAMS, aiOverride: override })?.ai;
+	expect(comment.mock.calls[1]?.[3]).toEqual({ ...override, webSearch: true });
+	enabled = false;
+	await requester.generate(PARAMS)?.ai;
+	expect(comment.mock.calls[2]?.[3]).toBeUndefined();
 });

@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js";
 /**
  * 服务端自主生成锐评 —— 取数 → 调 AI → 解析,一条不依赖前端的路。
  *
@@ -54,19 +55,19 @@ export type RoastGenResult<T> = Result<{ result: T }>;
  * - 订阅 id 对不上、该 UP 这个窗口没数据是 `not_found`。
  */
 const GEN_FAILURE = {
-	notReady: () => fail("unavailable", "服务尚未就绪,请稍后重试"),
-	aiDisabled: () => fail("not_configured", "智能女仆尚未启用"),
+	notReady: () => fail("unavailable", t("roast.generate.notReady")),
+	aiDisabled: () => fail("not_configured", t("roast.generate.aiDisabled")),
 	/** 数据统计总开关关着:锐评只读统计,数据停更还去评旧数据没有意义(ADR-0027 决策 9)。 */
-	statsDisabled: () => fail("not_configured", "数据统计已关闭,开启后才能锐评"),
-	overviewFailed: () => fail("unavailable", "统计数据读取失败,请稍后重试"),
-	tooFewUps: () => fail("not_configured", "至少要订阅 2 位 UP 主才评得出鸽王"),
-	notSubscribed: () => fail("not_found", "该 UP 主不在订阅列表里"),
-	noData: () => fail("not_found", "该 UP 主暂无统计数据"),
-	parseFailed: () => fail("unavailable", "女仆的回复解析失败,请重试"),
+	statsDisabled: () => fail("not_configured", t("roast.generate.statsDisabled")),
+	overviewFailed: () => fail("unavailable", t("roast.generate.overviewFailed")),
+	tooFewUps: () => fail("not_configured", t("roast.generate.tooFewCreators")),
+	notSubscribed: () => fail("not_found", t("roast.generate.notSubscribed")),
+	noData: () => fail("not_found", t("roast.generate.noData")),
+	parseFailed: () => fail("unavailable", t("roast.generate.parseFailed")),
 	/** 模型那头的错(密钥不对、余额不足、网络):对端给的原因就是主人要看的,原话进 `message`。 */
 	aiError: (err: unknown): Failure => {
 		const reason = err instanceof Error ? err.message : String(err);
-		return fail("unavailable", reason.trim() === "" ? "模型没有说明原因" : reason);
+		return fail("unavailable", reason.trim() === "" ? t("roast.generate.aiErrorNoReason") : reason);
 	},
 } as const;
 
@@ -126,7 +127,7 @@ function roastSearchOverride(
 	aiSettings: RoastAiSettings,
 	base?: Parameters<CommentaryGenerator["comment"]>[3],
 ): Parameters<CommentaryGenerator["comment"]>[3] {
-	return aiSettings.search.engines.roast ? { ...base, webSearch: true } : base;
+	return aiSettings.search.scenes.roast ? { ...base, webSearch: true } : base;
 }
 
 /** 榜单锐评:全体订阅(两支混着)一起评,需要至少 2 位做对照 —— 两支加起来数人头。 */

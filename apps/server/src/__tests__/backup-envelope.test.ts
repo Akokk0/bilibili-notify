@@ -98,8 +98,8 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("文字模板只存改过的以后导出的备份是版本 22", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(22);
+	it("搜索场景键改名以后导出的备份是版本 23", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(23);
 	});
 
 	it("版本 21 的备份(文字模板整份存着默认原文)→ unsupported:整份拒收", () => {
@@ -236,4 +236,17 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toContain("（4）");
 		expect(err.message).toContain(`（${BACKUP_SCHEMA_VERSION}）`);
 	});
+});
+
+describe("search scene backup compatibility", () => {
+	it.each(["full", "sanitized"] as const)(
+		"rejects the old scene keys in version 22 %s backups before import",
+		(kind) => {
+			const env = buildBackup({ kind, createdAt: "x", sections: {} });
+			const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 22 })));
+			expect(err).toBeInstanceOf(BackupRejectedError);
+			expect(err).toMatchObject({ code: "unsupported" });
+			expect((err as Error).message).not.toContain("0.12");
+		},
+	);
 });

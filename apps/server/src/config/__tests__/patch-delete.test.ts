@@ -185,3 +185,28 @@ describe("patchSubscription 的删除语义 —— per-UP 旋钮", () => {
 		expect(knobsOf()).toBeUndefined();
 	});
 });
+
+it("search null patches reset switches while omitted siblings and keys survive", async () => {
+	await store.patchGlobals({
+		ai: {
+			search: {
+				keys: { bocha: "keep-b", tavily: "keep-t" },
+				scenes: { post: true, live: true, roast: true },
+			},
+		},
+	});
+	// The runtime accepts RFC 7386 nulls; the public DeepPartial type does not spell that wire sentinel.
+	await store.patchGlobals({ ai: { search: { scenes: { post: null } } } } as unknown as Parameters<
+		typeof store.patchGlobals
+	>[0]);
+	expect(store.getGlobals().ai.search).toEqual({
+		backend: "bocha",
+		keys: { bocha: "keep-b", tavily: "keep-t" },
+		scenes: { post: false, live: true, roast: true },
+	});
+	await store.patchGlobals({ ai: { search: { scenes: null } } } as unknown as Parameters<
+		typeof store.patchGlobals
+	>[0]);
+	expect(store.getGlobals().ai.search.scenes).toEqual({ post: false, live: false, roast: false });
+	expect(store.getGlobals().ai.search.keys).toEqual({ bocha: "keep-b", tavily: "keep-t" });
+});

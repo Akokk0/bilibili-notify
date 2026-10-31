@@ -122,7 +122,17 @@ const ZERO_FILES: Record<string, string> = {
 			// 直播拆键:pushTime / restartPush 拆进 liveStreaming / liveStart 两段(`live-split.test.ts` 钉细节,这里让摘要认得到这一步)
 			schedule: { pushTime: 3, restartPush: true },
 			// 最老一代的扁平 AI 连接字段(迁成实例桶后整段上提到顶层 `ai`,3a-38 ④;`core-sections.test.ts` 钉细节,这里让摘要认得到这一步)、历代旧默认模板
-			ai: { apiKey: "sk-old", baseUrl: "https://api.example.com", model: "m" },
+			ai: {
+				apiKey: "sk-old",
+				baseUrl: "https://api.example.com",
+				model: "m",
+				// Keep this input in the old shape so the output digest covers the search rename.
+				search: {
+					backend: "tavily",
+					keys: { bocha: "", tavily: "" },
+					engines: { dynamic: true, live: false, roast: true },
+				},
+			},
 			templates: {
 				liveEnd: "{name} 下播了，直播时长 {duration}",
 				// 上舰文案搬成 `membership.guard`(㉓d):舰长改过文案(-key 老写法)又填了图片,提督没动,总督只改了文案
@@ -807,6 +817,38 @@ describe("migrateZeroGeneration", () => {
 		);
 	});
 
+	it("keeps migration progress labels and ordering during translation refactoring", () => {
+		expect(progress.map((entry) => entry.label)).toEqual([
+			"设置与订阅",
+			"密钥",
+			"推送历史",
+			"统计",
+			"粉丝时序",
+			"素材",
+			"界面皮肤",
+			"拓展",
+			"直播封面的轮换游标",
+			"连接与推送目标",
+			"设置",
+			"主人目标",
+			"订阅",
+			"推送历史",
+			"统计",
+			"统计的在记",
+			"运行记录",
+			"粉丝样本压缩",
+			"锐评草稿",
+			"订阅资料",
+			"界面皮肤",
+			"密钥",
+			"B 站登录",
+			"搬完了",
+		]);
+		expect(report.skipped.find((entry) => entry.path === "assets/chat")?.reason).toBe(
+			"聊天附件随女仆对话不迁(ADR-0022 决策 4),留在第 0 代",
+		);
+	});
+
 	it("产出变了就得抬 MIGRATION_REVISION", async () => {
 		const hash = createHash("sha256");
 		for (const t of [...report.transfers].sort((a, b) => a.from.localeCompare(b.from))) {
@@ -836,8 +878,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 52,
-			output: "0276a2894c195cdb459cd17d9265f40fc661b7fb48756e114d4dd98c90848e92",
+			revision: 53,
+			output: "e943241fbf8385a4aec97bd88e9a2dfc9c40221223a9bb314f52990f9d23b2e7",
 		});
 	});
 });

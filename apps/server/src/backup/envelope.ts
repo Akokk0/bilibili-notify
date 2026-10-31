@@ -5,6 +5,7 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import type { EncryptedSecrets } from "./crypto.js";
 import { BackupRejectedError } from "./rejected-error.js";
 
@@ -27,6 +28,7 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 23 = 联网搜索开关改为 `ai.search.scenes.{post,live,roast}` 以后导出的备份；旧 `engines.dynamic` 不再由现代schema读取。
  * 22 = 文字模板只存改过的以后导出的备份(设置 `defaults.templates` 里没改过的文字格不在,读时按当前语言取出厂;
  * 老备份里整份存着的默认原文会被当成「主人改过的」,不再跟语言,所以整份拒收)；内置人格也只记删了哪几份
  * (`ai.removedBuiltinPresets`,缺 = 一份没删;`ai.presets` 只装主人自己的,顶层 `persona` / 两段提示词不再有,
@@ -81,7 +83,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 22 as const;
+export const BACKUP_SCHEMA_VERSION = 23 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;
@@ -155,34 +157,34 @@ export function buildBackup(input: BuildBackupInput): BackupEnvelope {
 export function validateBackup(raw: unknown): BackupEnvelope {
 	const o = (raw ?? {}) as Partial<BackupEnvelope>;
 	if (o.format !== BACKUP_FORMAT) {
-		throw new BackupRejectedError("invalid", "这不是 bilibili-notify 导出的备份文件");
+		throw new BackupRejectedError("invalid", t("backup.envelope.invalidFormat"));
 	}
 	if (o.kind !== "full" && o.kind !== "sanitized") {
-		throw new BackupRejectedError(
-			"invalid",
-			"备份文件里的类型不认识（只有 full 与 sanitized 两种）",
-		);
+		throw new BackupRejectedError("invalid", t("backup.envelope.invalidKind"));
 	}
 	if (typeof o.schemaVersion !== "number") {
-		throw new BackupRejectedError("invalid", "备份文件缺少格式版本号（schemaVersion）");
+		throw new BackupRejectedError("invalid", t("backup.envelope.missingVersion"));
 	}
 	if (o.schemaVersion > BACKUP_SCHEMA_VERSION) {
 		throw new BackupRejectedError(
 			"unsupported",
-			`这份备份的格式版本（${o.schemaVersion}）比当前版本认得的（最高 ${BACKUP_SCHEMA_VERSION}）新，请先升级 bilibili-notify 再恢复`,
+			t("backup.envelope.newerVersion", {
+				version: o.schemaVersion,
+				current: BACKUP_SCHEMA_VERSION,
+			}),
 		);
 	}
 	if (o.schemaVersion <= ZERO_BACKUP_SCHEMA_VERSION) {
-		throw new BackupRejectedError(
-			"unsupported",
-			"这是 1.0 之前导出的备份，1.0 不能直接恢复：请先装 0.12 恢复这份备份，再升级到 1.0，旧数据会自动迁移过来",
-		);
+		throw new BackupRejectedError("unsupported", t("backup.envelope.zeroVersion"));
 	}
 	// 比当前旧、又不是 0.x 导出的(开发期的版本,或以后抬了版本以后的旧备份):装 0.12 救不了它,别指那条路。
 	if (o.schemaVersion < BACKUP_SCHEMA_VERSION) {
 		throw new BackupRejectedError(
 			"unsupported",
-			`这份备份的格式版本（${o.schemaVersion}）比当前版本认得的（${BACKUP_SCHEMA_VERSION}）旧，这一版恢复不了它`,
+			t("backup.envelope.olderVersion", {
+				version: o.schemaVersion,
+				current: BACKUP_SCHEMA_VERSION,
+			}),
 		);
 	}
 	return o as BackupEnvelope;

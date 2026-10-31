@@ -87,5 +87,21 @@
 	"config.store.integrationLabel": "{value0} 的设置",
 	"config.store.pipelineNotReady": "推送链路还没起来，稍后再试",
 	"config.subscriptions.idTaken": "主人，这个订阅 id 已经被使用，女仆没有保存。",
-	"config.subscriptions.reserved": "主人，已有被隔离的订阅占着这个身份或 id，女仆没有保存。请停下服务，修好 config/subscriptions.json 后再重启。"
+	"config.subscriptions.reserved": "主人，已有被隔离的订阅占着这个身份或 id，女仆没有保存。请停下服务，修好 config/subscriptions.json 后再重启。",
+	"roast.generate.notReady": "主人，服务尚未就绪，请稍后重试喔。",
+	"roast.generate.aiDisabled": "主人，智能女仆还没有启用呢。",
+	"roast.generate.statsDisabled": "主人，数据统计已关闭，开启后女仆才能锐评喔。",
+	"roast.generate.overviewFailed": "主人，统计数据读取失败，请稍后再试喔。",
+	"roast.generate.tooFewCreators": "主人，至少要订阅 2 位创作者，女仆才能排出这份锐评榜喔。",
+	"roast.generate.notSubscribed": "主人，这位创作者不在订阅列表里呢。",
+	"roast.generate.noData": "主人，女仆还没有这位创作者的统计数据呢。",
+	"roast.generate.parseFailed": "主人，女仆的回复解析失败，请再试一次喔。",
+	"roast.generate.aiErrorNoReason": "主人，模型没有说明原因呢。",
+	"backup.envelope.invalidFormat": "主人，这不是 bilibili-notify 导出的备份文件。",
+	"backup.envelope.invalidKind": "主人，备份文件里的类型不认识（只有 full 与 sanitized 两种）。",
+	"backup.envelope.missingVersion": "主人，备份文件缺少格式版本号（schemaVersion）。",
+	"backup.envelope.newerVersion": "主人，这份备份的格式版本（{version}）比当前版本认得的（最高 {current}）新，请先升级 bilibili-notify 再恢复。",
+	"backup.envelope.zeroVersion": "主人，这是 1.0 之前导出的备份，1.0 不能直接恢复：请先装 0.12 恢复这份备份，再升级到 1.0，旧数据会自动迁移过来。",
+	"backup.envelope.olderVersion": "主人，这份备份的格式版本（{version}）比当前版本认得的（{current}）旧，这一版恢复不了它。",
+	"migration.zero.biliLoginFailed": "主人，B 站登录没带过来（{reason}），需要重新扫码喔。"
 }

@@ -914,3 +914,62 @@ describe("历史保留天数 → history.retentionDays(七档)", () => {
 		expect(parsed.data?.history.retentionDays).toBe(60);
 	});
 });
+
+describe("search scene key migration", () => {
+	it("moves search switches after AI is lifted without changing the input", () => {
+		const raw = {
+			defaults: {
+				ai: {
+					search: {
+						backend: "tavily",
+						keys: { bocha: "b", tavily: "t" },
+						engines: { dynamic: true, live: false, roast: true },
+					},
+				},
+			},
+		};
+		const before = structuredClone(raw);
+		const out = migrateGlobalsToCurrent(raw) as { ai: { search: Record<string, unknown> } };
+		expect(out.ai.search).toEqual({
+			backend: "tavily",
+			keys: { bocha: "b", tavily: "t" },
+			scenes: { post: true, live: false, roast: true },
+		});
+		expect(raw).toEqual(before);
+		expect(migrateGlobalsToCurrent(out)).toEqual(out);
+	});
+});
+
+describe("search scene migration conflicts", () => {
+	it.each([
+		[
+			{ engines: { dynamic: true, live: true }, scenes: { post: false } },
+			{ scenes: { post: false } },
+		],
+		[{ engines: { dynamic: true }, scenes: {} }, { scenes: {} }],
+		[{ engines: { dynamic: true }, scenes: null }, { scenes: null }],
+		[{ engines: null }, { scenes: null }],
+		[{ engines: false }, { scenes: false }],
+		[{ engines: [true] }, { scenes: [true] }],
+		[
+			{ engines: { dynamic: null, live: false, extra: 7 } },
+			{ scenes: { post: null, live: false, extra: 7 } },
+		],
+		[
+			{ engines: { dynamic: true, post: false, roast: true } },
+			{ scenes: { post: false, roast: true } },
+		],
+		[{ scenes: { dynamic: true, post: null } }, { scenes: { post: null } }],
+		[{ keys: { bocha: "b", tavily: "t" } }, { keys: { bocha: "b", tavily: "t" } }],
+	])("preserves explicit values and new-key precedence: %j", (search, expected) => {
+		const raw = { ai: { search } };
+		const before = structuredClone(raw);
+		const out = migrateGlobalsToCurrent(raw) as { ai: { search: unknown } };
+		expect(out.ai.search).toEqual(expected);
+		expect(raw).toEqual(before);
+		expect(migrateGlobalsToCurrent(out)).toEqual(out);
+	});
+	it.each([null, [], false, "broken"])("preserves malformed search for isolation: %j", (search) => {
+		expect(migrateGlobalsToCurrent({ ai: { search } })).toMatchObject({ ai: { search } });
+	});
+});

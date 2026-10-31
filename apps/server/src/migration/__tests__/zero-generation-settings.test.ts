@@ -635,3 +635,30 @@ describe("全新安装的人格指针", () => {
 		expect(store.getGlobals().ai.activePreset).toBe(FACTORY_PRESETS[0]?.id);
 	});
 });
+
+describe("zero generation search scenes", () => {
+	const sandbox = useZeroSandbox("bn-search-scenes-");
+	it("persists renamed switches and loads the enabled choices without rewriting zero", async () => {
+		const raw = makeZeroGlobals();
+		raw.defaults.ai.search = {
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			engines: { dynamic: true, live: false, roast: true },
+		};
+		const original = JSON.stringify(raw);
+		await sandbox.placeZeroText("state/globals.json", original);
+		await sandbox.migrate();
+		const disk = await sandbox.readConfig<{ ai: { search: unknown } }>("settings/core.json");
+		expect(disk.ai.search).toEqual({
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			scenes: { post: true, live: false, roast: true },
+		});
+		expect((await sandbox.load()).getGlobals().ai.search.scenes).toEqual({
+			post: true,
+			live: false,
+			roast: true,
+		});
+		await expectZeroGlobalsUntouched(sandbox, original);
+	});
+});

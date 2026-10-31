@@ -23,7 +23,7 @@ export function makeAi(): GlobalConfig["ai"] {
 		search: {
 			backend: "bocha",
 			keys: { bocha: "", tavily: "" },
-			engines: { dynamic: false, live: false, roast: false },
+			scenes: { post: false, live: false, roast: false },
 		},
 		writing: {
 			post: { isOnByDefault: true, byTarget: {} },

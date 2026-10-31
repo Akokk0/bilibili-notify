@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AI_PROVIDER_IDS, API_FLAVOR_IDS, THINKING_LEVELS, WEB_SEARCH_BACKEND_IDS } from "../ai";
 import { extrasRecord, FEATURE_KEYS, featuresRecord } from "../features";
+import { packageText } from "../texts/index";
 import { checkUserRegex } from "../util/regex-safety";
 import { AiWritingSettingsSchema } from "./ai-writing";
 import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
@@ -57,7 +58,9 @@ export const TimeRangeSchema = z
 		start: z.number().int().min(0).max(23),
 		end: z.number().int().min(0).max(24),
 	})
-	.refine((r) => r.start !== r.end, "start must differ from end (use {start:0,end:24} 表示全天)");
+	.refine((r) => r.start !== r.end, {
+		error: () => packageText("internal.settings.quietHoursDistinct"),
+	});
 export type TimeRange = z.infer<typeof TimeRangeSchema>;
 
 export const ContentFiltersSchema = z.object({
@@ -335,7 +338,9 @@ const AISettingsObjectSchema = z.object({
 	activeProfile: z
 		.string()
 		// 指针指的是实例 id,过同一道原型名检查(见下面 `providers` 的键)。
-		.refine((id) => !isPrototypeName(id), prototypeNameMessage("AI 当前实例的指针 "))
+		.refine((id) => !isPrototypeName(id), {
+			error: () => prototypeNameMessage(packageText("internal.settings.aiActiveProfile")),
+		})
 		.default(""),
 	/**
 	 * 各实例各一套配置,键是**实例 id**(同一家服务商可以有多份)。**稀疏** ——
@@ -350,7 +355,9 @@ const AISettingsObjectSchema = z.object({
 	 */
 	providers: z
 		.record(
-			z.string().refine((id) => !isPrototypeName(id), prototypeNameMessage("AI 实例的 id ")),
+			z.string().refine((id) => !isPrototypeName(id), {
+				error: () => prototypeNameMessage(packageText("internal.settings.aiProviderId")),
+			}),
 			AIProviderProfileSchema,
 		)
 		.default({}),
@@ -393,18 +400,18 @@ const AISettingsObjectSchema = z.object({
 					tavily: markSecret(z.string()).default(""),
 				})
 				.default({ bocha: "", tavily: "" }),
-			engines: z
+			scenes: z
 				.object({
-					dynamic: z.boolean().default(false),
+					post: z.boolean().default(false),
 					live: z.boolean().default(false),
 					roast: z.boolean().default(false),
 				})
-				.default({ dynamic: false, live: false, roast: false }),
+				.default({ post: false, live: false, roast: false }),
 		})
 		.default(() => ({
 			backend: "bocha" as const,
 			keys: { bocha: "", tavily: "" },
-			engines: { dynamic: false, live: false, roast: false },
+			scenes: { post: false, live: false, roast: false },
 		})),
 	/**
 	 * 正文用 AI 写还是用模板写,按推送目标选(ADR-0032):动态与直播总结各一份「默认 + 按目标例外」。

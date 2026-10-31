@@ -15,8 +15,9 @@
 
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index";
 import { useDraftStore } from "../../store/draft";
 import Ai from "../Ai";
 
@@ -52,6 +53,7 @@ function inputAt(code: string): HTMLInputElement | null {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	vi.clearAllMocks();
 	useDraftStore.setState({ current: null });
 });
@@ -89,7 +91,7 @@ describe("Ai 页 · 联网搜索设置块", () => {
 	it("三个引擎开关在场且默认全关", async () => {
 		mount();
 		await screen.findByText("联网搜索");
-		for (const name of ["动态点评联网搜索", "直播总结联网搜索", "锐评联网搜索"]) {
+		for (const name of ["作品点评联网搜索", "直播总结联网搜索", "锐评联网搜索"]) {
 			const toggle = screen.getByRole("button", { name });
 			expect(toggle.getAttribute("aria-pressed")).toBe("false");
 		}
@@ -98,9 +100,52 @@ describe("Ai 页 · 联网搜索设置块", () => {
 	it("拨一个引擎开关 → 灵动岛变 dirty(改动喂进了 packIsland)", async () => {
 		mount();
 		await screen.findByText("联网搜索");
-		fireEvent.click(screen.getByRole("button", { name: "动态点评联网搜索" }));
+		fireEvent.click(screen.getByRole("button", { name: "作品点评联网搜索" }));
 		await waitFor(() => {
 			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
 		});
 	});
+});
+
+it.each([
+	["作品点评联网搜索", "dynamic", { post: true, live: false, roast: false }],
+	["直播总结联网搜索", "live", { post: false, live: true, roast: false }],
+	["锐评联网搜索", "roast", { post: false, live: false, roast: true }],
+] as const)(
+	"saves %s while keeping legacy display codes and diff anchors",
+	async (name, legacy, expected) => {
+		mount();
+		await screen.findByText("联网搜索");
+		fireEvent.click(screen.getByRole("button", { name }));
+		await waitFor(() => expect(useDraftStore.getState().current?.diff.length).toBeGreaterThan(0));
+		expect(document.querySelector(`[data-code="ai.search.engines.${legacy}"]`)).toBeTruthy();
+		expect(
+			useDraftStore
+				.getState()
+				.current?.diff.some((row) => row.code === `ai.search.engines.${legacy}`),
+		).toBe(true);
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		const body = vi.mocked(api.patch).mock.calls.at(-1)?.[1] as {
+			core: { ai: { search: Record<string, unknown> } };
+		};
+		expect(body.core.ai.search.scenes).toEqual(expected);
+		expect(body.core.ai.search).not.toHaveProperty("engines");
+	},
+);
+
+it("updates search field hints on voice changes while keeping labels and Q7 codes", async () => {
+	mount();
+	await screen.findByText("联网搜索");
+	expect(
+		screen.getByText("主人，开了之后每条作品点评都可能多几次搜索调用(按次计费)和几秒延迟喔。"),
+	).toBeTruthy();
+	act(() => i18n.set({ voice: "plain" }));
+	expect(
+		screen.getByText("开了之后每条作品点评都可能多几次搜索调用(按次计费)和几秒延迟"),
+	).toBeTruthy();
+	expect(screen.getByText("作品点评联网搜索")).toBeTruthy();
+	expect(document.querySelector('[data-code="ai.search.engines.dynamic"]')).toBeTruthy();
+	act(() => i18n.set({ voice: "maid" }));
 });

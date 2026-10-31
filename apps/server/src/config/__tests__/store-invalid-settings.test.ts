@@ -1288,3 +1288,96 @@ describe("实例 id 以 search: 开头", () => {
 		expect((await secret.load()).aiApiKeys).toEqual({ ...MINE_BAG, "search:stale": "sk-stale" });
 	});
 });
+
+describe("search scene rename preserves the raw ledger and search secrets", () => {
+	it("keeps invalid search through normal writes and preserves explicit restore replacement", async () => {
+		const secret = mkSecretStore();
+		await secret.save({ aiApiKeys: { "search:bocha": "bag-b", "search:tavily": "bag-t" } });
+		const disk = baseDisk();
+		disk.ai.search = {
+			backend: "tavily",
+			keys: { bocha: "raw-private-b", tavily: "raw-private-t" },
+			scenes: { post: null, live: true, roast: false },
+		};
+		await putDisk(disk);
+		const store = mkStore({ secret });
+		await store.load();
+		const bag = await secret.load();
+		expect(store.getGlobals().ai.search.scenes).toEqual({ post: false, live: false, roast: false });
+		expect(store.getInvalidSettings()).toEqual([
+			expect.objectContaining({ path: ["ai", "search"], secret: true }),
+		]);
+		const view = store.getInvalidSettings()[0];
+		expect(view).not.toHaveProperty("raw");
+		expect(view).not.toHaveProperty("missing");
+		expect(JSON.stringify(view)).not.toContain("raw-private");
+		await store.patchGlobals({ history: { retentionDays: 7 } });
+		expect((await readDisk()).ai.search).toEqual(disk.ai.search);
+		await store.setGlobals({ ...store.getGlobals(), timezone: "UTC" });
+		expect((await readDisk()).ai.search).toEqual(disk.ai.search);
+		await store.replaceSections({ subscriptions: store.getSubscriptions() });
+		expect((await readDisk()).ai.search).toEqual(disk.ai.search);
+		expect(await secret.load()).toEqual(bag);
+		// Explicit globals restoration is a replacement, unlike a normal settings save.
+		await store.replaceSections({
+			globals: { ...store.getGlobals(), profileRefreshCron: "*/6 * * * *" },
+		});
+		expect(store.getInvalidSettings()).toEqual([]);
+		expect((await readDisk()).ai.search).toEqual({
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			scenes: { post: false, live: false, roast: false },
+		});
+	});
+	it.each(["full", "sanitized"] as const)(
+		"restores %s scene switches with real ConfigStore and encrypted secrets",
+		async (kind) => {
+			const { createBackupService } = await import("../../backup/service.js");
+			const { fakeIntegrationSecrets } = await import(
+				"../../__tests__/support/backup-integration-secrets.js"
+			);
+			const secret = mkSecretStore();
+			const store = mkStore({ secret });
+			await store.load();
+			await store.patchGlobals({
+				ai: {
+					search: {
+						backend: "tavily",
+						keys: { bocha: "private-search-bocha", tavily: "private-search-tavily" },
+						scenes: { post: true, live: false, roast: true },
+					},
+				},
+			});
+			const service = createBackupService({
+				configStore: store,
+				integrationSecrets: fakeIntegrationSecrets(),
+			});
+			const env = await service.exportBackup({ kind, pin: "123456" });
+			expect(env.schemaVersion).toBe(23);
+			expect(env.sections.globals?.ai.search.scenes).toEqual({
+				post: true,
+				live: false,
+				roast: true,
+			});
+			expect(JSON.stringify(env.sections)).not.toContain("private-search");
+			await store.patchGlobals({
+				ai: {
+					search: {
+						keys: { bocha: "changed-b", tavily: "changed-t" },
+						scenes: { post: false, live: true, roast: false },
+					},
+				},
+			});
+			await service.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
+			expect(store.getGlobals().ai.search.scenes).toEqual({ post: true, live: false, roast: true });
+			expect(store.getGlobals().ai.search.keys).toEqual(
+				kind === "full"
+					? { bocha: "private-search-bocha", tavily: "private-search-tavily" }
+					: { bocha: "", tavily: "" },
+			);
+			const reopened = mkStore({ secret: mkSecretStore() });
+			await reopened.load();
+			expect(reopened.getGlobals().ai.search).toEqual(store.getGlobals().ai.search);
+		},
+	);
+});

@@ -41,7 +41,7 @@ export function postSettingsOf(
 		cardSkin: eff.cardSkin,
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		aiEnabled: globals.ai.enabled && aiWriting,
-		aiWebSearch: globals.ai.search.engines.dynamic,
+		aiWebSearch: globals.ai.search.scenes.post,
 		aiOverride: resolveAiOverride(sub, globals.ai, builtinPersonasOf(globals)),
 		template: templates.post,
 		videoTemplate: templates.postVideo,

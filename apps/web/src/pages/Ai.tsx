@@ -57,6 +57,7 @@ import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useT } from "../i18n/index";
 import type {
 	AIPersona,
 	AIProviderProfileDraft,
@@ -91,21 +92,6 @@ import { AiTestPanel } from "./ai/TestPanel";
 type TopTab = "global" | "model" | "persona" | "skills";
 
 /** 顶部四个 tab。观感与 Rules / Cards 的作用域条同源(共用 `TabBar` 原语)。 */
-const TOP_TABS = [
-	{ id: "global" as const, label: "全局配置", code: "global" },
-	{ id: "model" as const, label: "模型配置", code: "provider" },
-	{ id: "persona" as const, label: "女仆性格", code: "persona" },
-	// 技能不是配置(自己的一份 REST 资源),所以它的 `code` 与整页那条保存栏无关
-	// —— 这一栏底下自带保存。摆在这儿只是因为「她是谁」与「她会做什么」该挨着。
-	{ id: "skills" as const, label: "女仆技能", code: "skills" },
-];
-
-const TAB_HINTS: Record<TopTab, string> = {
-	global: "整个 AI 子系统的设置,不分服务商也不分性格",
-	model: "每家服务商各存一套,点左栏切换",
-	persona: "备着的性格清单;平时用哪一份在「全局配置」里选",
-	skills: "主人写给女仆的做事步骤;聊天里打 / 唤起,她也会自己挑",
-};
 
 /**
  * 逐实例摊平桶,code 走 `ai.providers.<实例>.<字段>`(字典里有一条前缀规则
@@ -147,7 +133,15 @@ function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
 			// 「设置」弹层,点档位立即 PATCH,不走本页的草稿 + 保存条。
 			// 联网搜索(后端 / key / 引擎开关)。两侧都经 schema 补齐,恒为完整对象,
 			// 不会踩「一侧 undefined 整块当叶子」那个明文 key 外泄的坑。
-			search,
+			search: {
+				backend: search.backend,
+				keys: search.keys,
+				engines: {
+					dynamic: search.scenes.post,
+					live: search.scenes.live,
+					roast: search.scenes.roast,
+				},
+			},
 			// 女仆真正在用的是哪一份实例 —— 它是个**指针**,与左栏在看哪一份无关。
 			activeProfile,
 			// 「已添加哪几份」的人话版。逐实例摊平之后删一份其实也能逐字段看出来,
@@ -181,6 +175,22 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 }
 
 export default function Ai() {
+	const tx = useT();
+	const TOP_TABS = [
+		{ id: "global" as const, label: tx("aiSettings.page.tabs.global"), code: "global" },
+		{ id: "model" as const, label: tx("aiSettings.page.tabs.model"), code: "provider" },
+		{ id: "persona" as const, label: tx("aiSettings.page.tabs.persona"), code: "persona" },
+		// 技能不是配置(自己的一份 REST 资源),所以它的 `code` 与整页那条保存栏无关
+		// —— 这一栏底下自带保存。摆在这儿只是因为「她是谁」与「她会做什么」该挨着。
+		{ id: "skills" as const, label: tx("aiSettings.page.tabs.skills"), code: "skills" },
+	];
+
+	const TAB_HINTS: Record<TopTab, string> = {
+		global: tx("aiSettings.page.tabs.globalHint"),
+		model: tx("aiSettings.page.tabs.modelHint"),
+		persona: tx("aiSettings.page.tabs.personaHint"),
+		skills: tx("aiSettings.page.tabs.skillsHint"),
+	};
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 
@@ -251,7 +261,7 @@ export default function Ai() {
 
 	useDirtyDraft({
 		pageKey: "ai",
-		pageLabel: "智能女仆",
+		pageLabel: tx("aiSettings.page.pageLabel"),
 		draft: islandDraft,
 		baseline: islandBaseline,
 		onSave: async () => {
@@ -263,7 +273,7 @@ export default function Ai() {
 	});
 
 	if (!draft) {
-		return <LoadingBlock label="正在读取 AI 配置" />;
+		return <LoadingBlock label={tx("aiSettings.page.loading")} />;
 	}
 
 	// 左栏在看的那一份,收敛到真实存在的一份(可能刚被删掉、也可能还没选过)。
@@ -324,7 +334,7 @@ export default function Ai() {
 	function setSearch(delta: {
 		backend?: AISettingsDraft["search"]["backend"];
 		keys?: Partial<AISettingsDraft["search"]["keys"]>;
-		engines?: Partial<AISettingsDraft["search"]["engines"]>;
+		scenes?: Partial<AISettingsDraft["search"]["scenes"]>;
 	}): void {
 		setDraft((d) =>
 			d
@@ -334,7 +344,7 @@ export default function Ai() {
 							...d.search,
 							...delta,
 							keys: { ...d.search.keys, ...delta.keys },
-							engines: { ...d.search.engines, ...delta.engines },
+							scenes: { ...d.search.scenes, ...delta.scenes },
 						},
 					}
 				: d,
@@ -388,22 +398,27 @@ export default function Ai() {
 				icon={<Icon.ai size={26} />}
 				title={
 					<>
-						智能女仆 · {globalPersona.name || "女仆"}
+						{tx("aiSettings.page.hero.titlePrefix")}
+						{globalPersona.name || tx("aiSettings.page.hero.personaFallback")}
 						<span data-hero-model>
 							<Pill color="var(--color-bn-purple)" subtle size="sm">
-								{globalProfile.model || "未配置"}
+								{globalProfile.model || tx("aiSettings.page.hero.unconfigured")}
 							</Pill>
 						</span>
 					</>
 				}
-				subtitle="会写动态点评、直播总结，支持 OpenAI 兼容的任意 base URL (｡•̀ᴗ-)✧"
+				subtitle={tx("aiSettings.page.hero.subtitle")}
 				right={
 					<Picker
 						value={draft.enabled}
 						onChange={(v) => setAi("enabled", v)}
 						options={[
-							{ value: true, label: "启用", color: AI_PURPLE },
-							{ value: false, label: "停用", color: "var(--color-bn-inactive)" },
+							{ value: true, label: tx("aiSettings.page.hero.enable"), color: AI_PURPLE },
+							{
+								value: false,
+								label: tx("aiSettings.page.hero.disable"),
+								color: "var(--color-bn-inactive)",
+							},
 						]}
 					/>
 				}
@@ -414,8 +429,9 @@ export default function Ai() {
 			    (那是改主人存过的值),也不做点不动的置灰开关,只把话说明白。 */}
 			{draft.enabled && rail.length === 0 ? (
 				<div className="rounded-bn-card border border-bn-warning-border bg-bn-warning-soft px-4 py-3 text-bn-sm leading-relaxed text-bn-warning-text">
-					AI 总开关是开着的，但<strong>一家服务商都还没添加</strong>
-					，所以女仆此刻并不会真的写点评。到下面添加一家、填好模型与密钥就好了
+					{tx("aiSettings.page.warning.noProviderPrefix")}
+					<strong>{tx("aiSettings.page.warning.noProviderEmphasis")}</strong>
+					{tx("aiSettings.page.warning.noProviderSuffix")}
 				</div>
 			) : null}
 
@@ -447,8 +463,8 @@ export default function Ai() {
 					    「模型配置」那个 Tab 的左栏只决定**在编辑**哪一份。两件事曾经共用
 					    一个字段,于是点左栏看看别份 = 当场把在用的那份换掉了。 */}
 					<GlassBox
-						title="全局服务商 · profile"
-						subtitle="女仆平时用哪一份 · ai.activeProfile"
+						title={tx("aiSettings.page.global.profileTitle")}
+						subtitle={tx("aiSettings.page.global.profileSubtitle")}
 						accent={AI_PURPLE}
 						icon={<Icon.link size={14} />}
 						badge="profile"
@@ -456,11 +472,7 @@ export default function Ai() {
 						<Field
 							code="ai.activeProfile"
 							full
-							hint={
-								rail.length === 0
-									? "还没添加任何服务商 —— 到「模型配置」那个 Tab 点「+ 添加」加一家"
-									: undefined
-							}
+							hint={rail.length === 0 ? tx("aiSettings.page.global.noProvider") : undefined}
 						>
 							<Picker<string>
 								value={draft.activeProfile}
@@ -473,8 +485,9 @@ export default function Ai() {
 							/>
 						</Field>
 						<FieldNote>
-							这里只决定<strong>用哪一份</strong>，不改它的配置 ——
-							密钥、模型、思考那几项在「模型配置」那个 Tab 里填。每份各存一套，换来换去都不会丢
+							{tx("aiSettings.page.global.profileNotePrefix")}
+							<strong>{tx("aiSettings.page.global.profileNoteEmphasis")}</strong>
+							{tx("aiSettings.page.global.profileNoteSuffix")}
 						</FieldNote>
 					</GlassBox>
 
@@ -487,8 +500,8 @@ export default function Ai() {
 					    在实例桶下,自己一块。聊天页那颗「联网搜索」胶囊是会话级的不落盘,
 					    这里落盘的只有后端 / key / 引擎开关。 */}
 					<GlassBox
-						title="联网搜索"
-						subtitle="web_search 工具的执行后端与引擎开关 · ai.search"
+						title={tx("aiSettings.page.search.title")}
+						subtitle={tx("aiSettings.page.search.subtitle")}
 						accent={SECTION_ACCENT.capability}
 						icon={<Icon.search size={14} />}
 						badge="search"
@@ -503,7 +516,9 @@ export default function Ai() {
 						<Field
 							code={`ai.search.keys.${draft.search.backend}`}
 							full
-							hint={`到 ${webSearchBackendMeta(draft.search.backend).keyUrl} 申请;两家的 key 各存一格,换来换去不会丢`}
+							hint={tx("aiSettings.page.search.keyHint", {
+								url: webSearchBackendMeta(draft.search.backend).keyUrl,
+							})}
 						>
 							<DraftSecretInput
 								value={draft.search.keys[draft.search.backend]}
@@ -515,34 +530,33 @@ export default function Ai() {
 						    抄错一处在评审里根本看不出来;加第四个引擎也只改这张表。 */}
 						{(
 							[
-								["dynamic", "动态点评联网搜索"],
-								["live", "直播总结联网搜索"],
-								["roast", "锐评联网搜索"],
+								["post", tx("aiSettings.page.search.postAria")],
+								["live", tx("aiSettings.page.search.liveAria")],
+								["roast", tx("aiSettings.page.search.roastAria")],
 							] as const
 						).map(([k, aria]) => (
-							<Field key={k} code={`ai.search.engines.${k}`}>
+							<Field key={k} code={`ai.search.engines.${k === "post" ? "dynamic" : k}`}>
 								<div className="flex h-7.5 items-center">
 									<Toggle
-										value={draft.search.engines[k]}
-										onChange={(v) => setSearch({ engines: { [k]: v } })}
+										value={draft.search.scenes[k]}
+										onChange={(v) => setSearch({ scenes: { [k]: v } })}
 										ariaLabel={aria}
 									/>
 								</div>
 							</Field>
 						))}
 						<FieldNote>
-							搜索<strong>按次计费</strong>，引擎开关出厂全关：开了之后每条点评 / 总结 / 锐评
-							都可能多几次搜索调用和几秒延迟。聊天页的「联网搜索」胶囊按会话手动点亮，不在这里。
-							另外别在实例的「额外请求参数」里同时开那家自带的联网（如 OpenRouter 的 plugins）——
-							两头都开等于每次问话搜两遍
+							{tx("aiSettings.page.search.feePrefix")}
+							<strong>{tx("aiSettings.page.search.feeEmphasis")}</strong>
+							{tx("aiSettings.page.search.feeSuffix")}
 						</FieldNote>
 					</GlassBox>
 
 					{/* 全局人格选择 —— 它是个**指针**(ai.activePreset),不改写任何一份的内容;
 					    想改内容去「女仆性格」那个 Tab。 */}
 					<GlassBox
-						title="全局人格 · persona"
-						subtitle="女仆平时用哪一份性格 · ai.activePreset"
+						title={tx("aiSettings.page.global.personaTitle")}
+						subtitle={tx("aiSettings.page.global.personaSubtitle")}
 						accent={SECTION_ACCENT.persona}
 						icon={<Icon.heart size={14} />}
 						badge="persona"
@@ -550,11 +564,7 @@ export default function Ai() {
 						<Field
 							code="ai.activePreset"
 							full
-							hint={
-								personaRail.length === 0
-									? "还没有别的性格 —— 到「女仆性格」那个 Tab 点「+ 添加」造一份"
-									: undefined
-							}
+							hint={personaRail.length === 0 ? tx("aiSettings.page.global.noPersona") : undefined}
 						>
 							<Picker<string>
 								value={globalPersonaRailId(draft, builtins)}
@@ -563,8 +573,9 @@ export default function Ai() {
 							/>
 						</Field>
 						<FieldNote>
-							这里只决定<strong>用哪一份</strong>，不改它的内容 —— 内容在「女仆性格」那个 Tab
-							里编辑。 换来换去都不会动到任何一份的内容
+							{tx("aiSettings.page.global.personaNotePrefix")}
+							<strong>{tx("aiSettings.page.global.personaNoteEmphasis")}</strong>
+							{tx("aiSettings.page.global.personaNoteSuffix")}
 						</FieldNote>
 					</GlassBox>
 
@@ -574,18 +585,21 @@ export default function Ai() {
 			) : tab === "model" ? (
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
-						heading="服务商"
+						heading={tx("aiSettings.page.models.railTitle")}
 						items={rail.map((item) => {
 							const bucket = draft.providers[item.id];
 							return {
 								id: item.id,
 								label: item.label,
-								desc: bucket?.model || "未填模型",
+								desc: bucket?.model || tx("aiSettings.page.models.noModel"),
 								// 左栏是**编辑器**,高亮的是「在看谁」。哪一份是女仆真在用的,
 								// 靠这颗指示器说 —— 否则两个概念在同一栏里没法区分。
 								badge:
 									item.id === draft.activeProfile ? (
-										<RailDot title="女仆平时用的就是这份" active={item.id === editing} />
+										<RailDot
+											title={tx("aiSettings.page.models.defaultHint")}
+											active={item.id === editing}
+										/>
 									) : undefined,
 								// 同 Targets 左栏:选中那格的品牌色会跟皮肤的实心块撞,喂
 								// currentColor 跟随。服务商名就在标签上,认得出是哪家。
@@ -605,12 +619,12 @@ export default function Ai() {
 							setAddingProvider(false);
 						}}
 						onAdd={() => setAddingProvider(true)}
-						addLabel="+ 添加"
+						addLabel={tx("aiSettings.page.actions.add")}
 						emptyState={
 							<EmptyNote size="sm" className="leading-relaxed">
-								还没添加任何服务商
+								{tx("aiSettings.page.models.emptyTitle")}
 								<br />
-								先添加一家吧
+								{tx("aiSettings.page.models.emptyHint")}
 							</EmptyNote>
 						}
 					/>
@@ -618,19 +632,18 @@ export default function Ai() {
 					<div className="flex min-w-0 flex-col gap-4">
 						{showAddPanel ? (
 							<GlassBox
-								title="添加服务商"
-								subtitle="每份实例各存一套自己的配置 · ai.providers"
+								title={tx("aiSettings.page.models.addTitle")}
+								subtitle={tx("aiSettings.page.models.addSubtitle")}
 								accent={AI_PURPLE}
 								icon={<Icon.link size={14} />}
 								badge="add"
 							>
 								<FieldNote>
-									选哪家决定了「开思考」翻译成哪家的方言（各家各的写法，没有通用解），也决定了这页摆出哪些选项。
-									<strong>不按地址猜</strong>
-									——
-									猜错就是替主人往别家发方言参数。不在这几家里的话选「自定义」，需要什么写到额外请求参数里。
-									同一家可以添加<strong>多份</strong>（比如两个 DeepSeek
-									号），每份各有各的密钥与模型
+									{tx("aiSettings.page.models.providerNotePrefix")}
+									<strong>{tx("aiSettings.page.models.providerNoteEmphasis")}</strong>
+									{tx("aiSettings.page.models.providerNoteSuffix")}
+									<strong>{tx("aiSettings.page.models.multipleEmphasis")}</strong>
+									{tx("aiSettings.page.models.multipleSuffix")}
 								</FieldNote>
 								<div className="pt-3">
 									<ProviderPicker
@@ -650,8 +663,10 @@ export default function Ai() {
 						) : (
 							<>
 								<GlassBox
-									title="模型连接"
-									subtitle="OpenAI 兼容 API · ai.providers.<实例>.{label,baseUrl,apiKey,model,apiFlavor}"
+									title={tx("aiSettings.page.models.connectionTitle")}
+									subtitle={tx("aiSettings.page.models.connectionSubtitle", {
+										fields: "{label,baseUrl,apiKey,model,apiFlavor}",
+									})}
 									accent={AI_PURPLE}
 									icon={<Icon.link size={14} />}
 									badge="connection"
@@ -665,7 +680,7 @@ export default function Ai() {
 													size="sm"
 													onClick={() => setDraft((d) => (d ? setActiveProfile(d, editing) : d))}
 												>
-													设为默认
+													{tx("aiSettings.page.actions.setDefault")}
 												</Btn>
 											)}
 											<Btn
@@ -675,19 +690,22 @@ export default function Ai() {
 													setDraft((d) => (d && editing !== null ? removeProfile(d, editing) : d))
 												}
 											>
-												删除 {editingLabel}
+												{tx("aiSettings.page.actions.deletePrefix")}
+												{editingLabel}
 											</Btn>
 										</div>
 									}
 								>
 									{isActiveProfile ? (
 										<FieldNote>
-											<strong>女仆平时用的就是这份</strong>。改哪一项都立刻算数
+											<strong>{tx("aiSettings.page.models.currentPrefix")}</strong>
+											{tx("aiSettings.page.models.currentSuffix")}
 										</FieldNote>
 									) : (
 										<FieldNote>
-											这一份<strong>现在没在用</strong>
-											，配置照样存着。想让女仆换用它，点右上角「设为默认」（或到「全局配置」里选）
+											{tx("aiSettings.page.models.inactivePrefix")}
+											<strong>{tx("aiSettings.page.models.inactiveEmphasis")}</strong>
+											{tx("aiSettings.page.models.inactiveSuffix")}
 										</FieldNote>
 									)}
 									{/* 实例名。同一家添加多份时全靠它区分;留空则显示家名。 */}
@@ -745,10 +763,13 @@ export default function Ai() {
 											</Field>
 											{profile.apiFlavor === "responses" ? (
 												<FieldNote>
-													responses 是 OpenAI 这套接口的<strong>新协议</strong>
-													:深度思考是标准字段（统一三档，不再按家翻译方言），思考 +
-													工具连用也更稳。DeepSeek 需要 v4 系模型；这里失败
-													<strong>不会</strong>悄悄换回旧协议，报错就是真没配对
+													{tx("aiSettings.page.models.responsesPrefix")}
+													<strong>{tx("aiSettings.page.models.responsesEmphasis")}</strong>
+													{tx("aiSettings.page.models.responsesSuffix")}
+													<strong>
+														{tx("aiSettings.page.models.responsesNoFallbackEmphasis")}
+													</strong>
+													{tx("aiSettings.page.models.responsesNoFallbackSuffix")}
 												</FieldNote>
 											) : null}
 										</>
@@ -758,8 +779,10 @@ export default function Ai() {
 								{/* 图片理解。它同样是在描述「接哪个模型」,只不过整块可以不填:
 								    两条路都不开时,发图会被明确拒绝而不是静默丢掉。 */}
 								<GlassBox
-									title="图片理解"
-									subtitle="两条路二选一 · ai.providers.<实例>.{enableVision,vision}"
+									title={tx("aiSettings.page.vision.title")}
+									subtitle={tx("aiSettings.page.vision.subtitle", {
+										fields: "{enableVision,vision}",
+									})}
 									accent={SECTION_ACCENT.capability}
 									icon={<Icon.image size={14} />}
 									badge="vision"
@@ -778,23 +801,23 @@ export default function Ai() {
 														value={profile.enableVision}
 														onChange={(v) => setProfile("enableVision", v)}
 														disabled={visionSubModelOn}
-														ariaLabel="主模型支持看图"
+														ariaLabel={tx("aiSettings.page.vision.directAria")}
 													/>
 												</div>
 											</Field>
 											{visionSubModelOn ? (
 												<FieldNote>
-													已配视觉模型，图一律先经它转成文字 —— 上面那个开关
-													<strong>暂不生效</strong>。 想让主模型自己看图的话，把下面的视觉模型 ID
-													清空
+													{tx("aiSettings.page.vision.submodelPrefix")}
+													<strong>{tx("aiSettings.page.vision.submodelEmphasis")}</strong>
+													{tx("aiSettings.page.vision.submodelSuffix")}
 												</FieldNote>
 											) : null}
 										</>
 									) : (
 										<FieldNote>
-											{meta.label} 的接口里<strong>没有能看图的模型</strong>
-											，所以「主模型自己看图」这条路走不通。
-											想让女仆看得见图，填下面的视觉模型（可以是别家的）
+											{meta.label} {tx("aiSettings.page.vision.unsupportedPrefix")}
+											<strong>{tx("aiSettings.page.vision.unsupportedEmphasis")}</strong>
+											{tx("aiSettings.page.vision.unsupportedSuffix")}
 										</FieldNote>
 									)}
 									{/* 密钥 → 地址 → 模型,与上面「模型连接」**同序**:两块摆的是同一件事
@@ -809,7 +832,7 @@ export default function Ai() {
 											value={profile.vision.apiKey}
 											saved={savedProfile?.vision.apiKey}
 											onChange={(v) => setVision("apiKey", v)}
-											placeholder="留空则跟随上面主模型的 apiKey"
+											placeholder={tx("aiSettings.page.vision.keyPlaceholder")}
 										/>
 									</Field>
 									<Field code={`ai.providers.${editing}.vision.baseUrl`} full>
@@ -817,7 +840,7 @@ export default function Ai() {
 											value={profile.vision.baseUrl}
 											onChange={(v) => setVision("baseUrl", v)}
 											mono
-											placeholder="留空则跟随上面主模型的 baseUrl"
+											placeholder={tx("aiSettings.page.vision.urlPlaceholder")}
 										/>
 									</Field>
 									<Field code={`ai.providers.${editing}.vision.model`} full>
@@ -825,7 +848,7 @@ export default function Ai() {
 											value={profile.vision.model}
 											onChange={(v) => setVision("model", v)}
 											mono
-											placeholder="留空则不启用，例如 Qwen/Qwen2.5-VL-32B-Instruct"
+											placeholder={tx("aiSettings.page.vision.modelPlaceholder")}
 										/>
 									</Field>
 								</GlassBox>
@@ -835,8 +858,10 @@ export default function Ai() {
 								    这里没有 temperature:请求里一律不发、走服务商默认(推理模型收到它
 								    直接 400),想调的主人写进额外请求参数。 */}
 								<GlassBox
-									title="生成参数"
-									subtitle="深度思考 / 额外参数 · ai.{enableThinking,thinkingLevel,extraParams}"
+									title={tx("aiSettings.page.generation.title")}
+									subtitle={tx("aiSettings.page.generation.subtitle", {
+										fields: "{enableThinking,thinkingLevel,extraParams}",
+									})}
 									accent="var(--color-bn-purple)"
 									icon={<Icon.sparkle size={14} />}
 									badge="generation"
@@ -850,7 +875,7 @@ export default function Ai() {
 													<Toggle
 														value={profile.enableThinking}
 														onChange={(v) => setProfile("enableThinking", v)}
-														ariaLabel="深度思考"
+														ariaLabel={tx("aiSettings.page.generation.thinkingAria")}
 													/>
 												</div>
 											</Field>
@@ -860,9 +885,9 @@ export default function Ai() {
 														value={profile.thinkingLevel}
 														onChange={(v) => setProfile("thinkingLevel", v)}
 														options={[
-															{ value: "low", label: "低" },
-															{ value: "medium", label: "中" },
-															{ value: "high", label: "高" },
+															{ value: "low", label: tx("aiSettings.page.generation.low") },
+															{ value: "medium", label: tx("aiSettings.page.generation.medium") },
+															{ value: "high", label: tx("aiSettings.page.generation.high") },
 														]}
 													/>
 												</Field>
@@ -874,16 +899,14 @@ export default function Ai() {
 											!profile.enableThinking &&
 											profile.apiFlavor !== "responses" ? (
 												<FieldNote>
-													{meta.label} 的思考模型<strong>默认就是开着</strong>的 ——
-													正因为如此，关掉这个开关女仆会显式告诉它别想那么久，而不是什么都不发
+													{meta.label} {tx("aiSettings.page.generation.defaultPrefix")}
+													<strong>{tx("aiSettings.page.generation.defaultEmphasis")}</strong>
+													{tx("aiSettings.page.generation.defaultSuffix")}
 												</FieldNote>
 											) : null}
 										</>
 									) : (
-										<FieldNote>
-											这一家是「自定义」，女仆不会自作主张发任何服务商专属参数（发错了几乎必然报错）。
-											需要开思考的话，把那家的写法填到下面的额外请求参数里
-										</FieldNote>
+										<FieldNote>{tx("aiSettings.page.generation.customHint")}</FieldNote>
 									)}
 									<Field code={`ai.providers.${editing}.extraParams`} full>
 										<TArea
@@ -896,9 +919,9 @@ export default function Ai() {
 									</Field>
 									{profile.apiFlavor === "responses" ? (
 										<FieldNote>
-											这份实例走 responses 协议，额外参数会摊进 responses 的请求体 ——
-											<strong>字段名与 chat completions 不同</strong>（如 max_tokens 在那边叫
-											max_output_tokens），别照抄旧写法
+											{tx("aiSettings.page.generation.responsesPrefix")}
+											<strong>{tx("aiSettings.page.generation.responsesEmphasis")}</strong>
+											{tx("aiSettings.page.generation.responsesSuffix")}
 										</FieldNote>
 									) : null}
 								</GlassBox>
@@ -909,7 +932,7 @@ export default function Ai() {
 			) : (
 				<div className="grid gap-4 xl:grid-bn-rail">
 					<SectionNav
-						heading="性格"
+						heading={tx("aiSettings.page.personas.railTitle")}
 						items={personaRail.map((item) => {
 							// 四份内置的各有各的样子(主人一眼要认出哪个是哪个);自己加的
 							// 用通用小人像。映射与漏画守卫见 ./ai/persona-icons。
@@ -921,7 +944,10 @@ export default function Ai() {
 								// 两栏各说各的;共用之后观感只有一处定义。
 								badge:
 									globalPersonaRailId(draft, builtins) === item.id ? (
-										<RailDot title="女仆平时用的就是这份" active={item.id === activePersonaId} />
+										<RailDot
+											title={tx("aiSettings.page.personas.defaultHint")}
+											active={item.id === activePersonaId}
+										/>
 									) : undefined,
 								icon: <Glyph size={14} />,
 							};
@@ -932,19 +958,19 @@ export default function Ai() {
 							setAddingPersona(false);
 						}}
 						onAdd={() => setAddingPersona(true)}
-						addLabel="+ 添加"
+						addLabel={tx("aiSettings.page.actions.add")}
 					/>
 
 					<div className="flex min-w-0 flex-col gap-4">
 						{addingPersona ? (
 							<GlassBox
-								title="添加性格"
-								subtitle="新建一份,或把删掉的内置那份找回来 · ai.presets[]"
+								title={tx("aiSettings.page.personas.addTitle")}
+								subtitle={tx("aiSettings.page.personas.addSubtitle")}
 								accent={SECTION_ACCENT.persona}
 								icon={<Icon.plus size={14} />}
 								badge="add"
 							>
-								<Field code="presets" label="新建" full>
+								<Field code="presets" label={tx("aiSettings.page.personas.newLabel")} full>
 									<Btn
 										variant="outline"
 										size="sm"
@@ -957,14 +983,14 @@ export default function Ai() {
 											setAddingPersona(false);
 										}}
 									>
-										+ 空白性格
+										{tx("aiSettings.page.personas.blankAction")}
 									</Btn>
 								</Field>
 								{restorable.length > 0 ? (
 									<Field
 										code="presets"
-										label="从内置恢复"
-										hint="内置那几份删掉之后还能找回来,内容与出厂时一致"
+										label={tx("aiSettings.page.personas.restoreLabel")}
+										hint={tx("aiSettings.page.personas.restoreHint")}
 										full
 									>
 										<div className="flex flex-wrap gap-1.5">
@@ -990,13 +1016,13 @@ export default function Ai() {
 										</div>
 									</Field>
 								) : (
-									<FieldNote>内置那四份都在清单里 —— 没有可恢复的</FieldNote>
+									<FieldNote>{tx("aiSettings.page.personas.noneToRestore")}</FieldNote>
 								)}
 							</GlassBox>
 						) : (
 							<GlassBox
-								title="人格塑造 · persona"
-								subtitle="这一份的口吻与称呼 · ai.presets[]"
+								title={tx("aiSettings.page.personas.editorTitle")}
+								subtitle={tx("aiSettings.page.personas.editorSubtitle")}
 								accent={SECTION_ACCENT.persona}
 								icon={<ActivePersonaGlyph size={14} />}
 								badge="persona"
@@ -1013,7 +1039,7 @@ export default function Ai() {
 													setPersonaRailId(next.railId);
 												}}
 											>
-												从内置修改
+												{tx("aiSettings.page.personas.duplicateAction")}
 											</Btn>
 										) : null}
 										{isGlobalPersona ? null : (
@@ -1024,7 +1050,7 @@ export default function Ai() {
 													setDraft((d) => (d ? setGlobalPersona(d, builtins, activePersonaId) : d))
 												}
 											>
-												设为默认
+												{tx("aiSettings.page.actions.setDefault")}
 											</Btn>
 										)}
 										{/* 最后一份删不掉 —— AI 总得有一份人格。按钮直接不摆,
@@ -1038,7 +1064,7 @@ export default function Ai() {
 													setPersonaRailId("");
 												}}
 											>
-												删除
+												{tx("aiSettings.page.actions.delete")}
 											</Btn>
 										) : null}
 									</div>
@@ -1046,29 +1072,33 @@ export default function Ai() {
 							>
 								{personaLocked ? (
 									<FieldNote>
-										这是<strong>内置性格</strong>，锁着不让改 —— 有它在，删掉之后才能原样恢复回来。
-										想在它的基础上调整，点右上角
-										<strong>「从内置修改」</strong>另存一份可改的
+										{tx("aiSettings.page.personas.builtinPrefix")}
+										<strong>{tx("aiSettings.page.personas.builtinEmphasis")}</strong>
+										{tx("aiSettings.page.personas.builtinSuffix")}
+										<strong>{tx("aiSettings.page.personas.duplicateEmphasis")}</strong>
+										{tx("aiSettings.page.personas.duplicateSuffix")}
 									</FieldNote>
 								) : null}
 								{isGlobalPersona ? (
 									<FieldNote>
-										女仆<strong>平时用的就是这一份</strong>。改哪个字段都立刻算数
+										{tx("aiSettings.page.personas.currentPrefix")}
+										<strong>{tx("aiSettings.page.personas.currentEmphasis")}</strong>
+										{tx("aiSettings.page.personas.currentSuffix")}
 									</FieldNote>
 								) : (
 									<FieldNote>
-										这一份<strong>现在没在用</strong>
-										。它备着给单个 UP 指定（订阅页的 AI
-										覆盖里选），想让女仆平时就用它，点右上角「设为默认」
+										{tx("aiSettings.page.personas.inactivePrefix")}
+										<strong>{tx("aiSettings.page.personas.inactiveEmphasis")}</strong>
+										{tx("aiSettings.page.personas.inactiveSuffix")}
 									</FieldNote>
 								)}
-								<Field code="presets" label="性格名称" full>
+								<Field code="presets" label={tx("aiSettings.page.personas.namePlaceholder")} full>
 									<TInput
 										value={personaRail.find((i) => i.id === activePersonaId)?.label ?? ""}
 										onChange={(v) =>
 											setDraft((d) => (d ? renamePersona(d, builtins, activePersonaId, v) : d))
 										}
-										placeholder="傲娇"
+										placeholder={tx("aiSettings.page.personas.traitsPlaceholder")}
 									/>
 								</Field>
 								<div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
@@ -1077,7 +1107,7 @@ export default function Ai() {
 											value={personaDraft.persona.name}
 											disabled={personaLocked}
 											onChange={(v) => setPersona("name", v)}
-											placeholder="女仆"
+											placeholder={tx("aiSettings.page.personas.nameFallback")}
 											full={false}
 										/>
 									</Field>
@@ -1086,7 +1116,7 @@ export default function Ai() {
 											value={personaDraft.persona.addressUser}
 											disabled={personaLocked}
 											onChange={(v) => setPersona("addressUser", v)}
-											placeholder="主人"
+											placeholder={tx("aiSettings.page.personas.userPlaceholder")}
 											full={false}
 										/>
 									</Field>
@@ -1095,7 +1125,7 @@ export default function Ai() {
 											value={personaDraft.persona.addressSelf}
 											disabled={personaLocked}
 											onChange={(v) => setPersona("addressSelf", v)}
-											placeholder="女仆"
+											placeholder={tx("aiSettings.page.personas.selfPlaceholder")}
 											full={false}
 										/>
 									</Field>
@@ -1134,7 +1164,11 @@ export default function Ai() {
 								</Field>
 								{/* 预设的两段 prompt 是可选的:留空 = 跟随「默认」那一份(存回 undefined)。
 							    这个提示必须写清楚,否则清空之后主人无从知道是「跟随」还是「强制发空」。 */}
-								<Field code="ai.dynamicPrompt" full hint="留空则用内置的通用提示词">
+								<Field
+									code="ai.dynamicPrompt"
+									full
+									hint={tx("aiSettings.page.personas.promptPlaceholder")}
+								>
 									<TArea
 										value={personaDraft.dynamicPrompt}
 										disabled={personaLocked}
@@ -1143,7 +1177,11 @@ export default function Ai() {
 										mono
 									/>
 								</Field>
-								<Field code="ai.liveSummaryPrompt" full hint="留空则用内置的通用提示词">
+								<Field
+									code="ai.liveSummaryPrompt"
+									full
+									hint={tx("aiSettings.page.personas.promptPlaceholder")}
+								>
 									<TArea
 										value={personaDraft.liveSummaryPrompt}
 										disabled={personaLocked}

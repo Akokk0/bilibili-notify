@@ -131,7 +131,7 @@ export function createLiveRuntime(options: LiveRuntimeOptions): LiveRuntime {
 			const g = options.globals();
 			return g.ai.enabled && aiWritingNeeded(g.ai.writing.liveSummary, options.targetIds());
 		},
-		isWebSearchEnabled: () => options.globals().ai.search.engines.live,
+		isWebSearchEnabled: () => options.globals().ai.search.scenes.live,
 		logger,
 	});
 	const bindPush = bindLivePush({

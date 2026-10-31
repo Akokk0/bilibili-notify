@@ -2,7 +2,7 @@
  * **关着数据统计时不生成锐评**(ADR-0027 决策 9;㉙a)。
  *
  * 锐评只读统计,数据停更还去评旧数据没有意义。手动的(榜单、单人)回一个明确的失败 ——
- * 形状与错误码照「女仆 AI 关着」那一支(`not_configured`),话是「数据统计已关闭,开启后才能锐评」;
+ * 形状与错误码照「女仆 AI 关着」那一支(`not_configured`),话是「主人，数据统计已关闭，开启后女仆才能锐评喔。」;
  * 定时的到点不生成,走它现有的「生成失败私聊主人原话」那条路告诉主人同一句。三条路都**不调模型**。
  *
  * 这里不 mock 生成函数(调度器那份测试 mock 了它):调度器 → 真的 `generateBoardRoast` / `generateSoloRoast`。
@@ -26,7 +26,7 @@ vi.mock("@bilibili-notify/ai", async (importOriginal) => ({
 	webSearchExecutorFromSettings: () => null,
 }));
 
-const STATS_OFF_MESSAGE = "数据统计已关闭,开启后才能锐评";
+const STATS_OFF_MESSAGE = "主人，数据统计已关闭，开启后女仆才能锐评喔。";
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 

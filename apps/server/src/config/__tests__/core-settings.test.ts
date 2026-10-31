@@ -440,3 +440,34 @@ describe("withRawSettings", () => {
 		expect(Object.hasOwn(roundTrip.ai.providers, "__proto__")).toBe(true);
 	});
 });
+
+describe("search scenes isolated as one secret-bearing cell", () => {
+	it("retains raw invalid switches at ai.search while running with safe default switches", () => {
+		const disk = goodDisk();
+		disk.ai.search = {
+			backend: "tavily",
+			keys: { bocha: "secret-b", tavily: "secret-t" },
+			scenes: { post: null, live: true, roast: false },
+			unknown: "keep",
+		};
+		const original = structuredClone(disk.ai.search);
+		const parsed = parseCoreSettings(disk);
+		expect(parsed.settings.ai.search.scenes).toEqual({ post: false, live: false, roast: false });
+		expect(parsed.invalid).toHaveLength(1);
+		expect(parsed.invalid[0]).toMatchObject({
+			path: ["ai", "search"],
+			raw: original,
+			missing: false,
+		});
+		expect((withRawSettings(parsed.settings, parsed.invalid) as Json).ai.search).toEqual(original);
+		expect(disk.ai.search).toEqual(original);
+	});
+	it("does not compatibility-read old switches in a modern config", () => {
+		const disk = goodDisk();
+		disk.ai.search = { engines: { dynamic: true, live: true, roast: true } };
+		const parsed = parseCoreSettings(disk);
+		expect(parsed.invalid).toEqual([]);
+		expect(parsed.settings.ai.search.scenes).toEqual({ post: false, live: false, roast: false });
+		expect(parsed.settings.ai.search).not.toHaveProperty("engines");
+	});
+});

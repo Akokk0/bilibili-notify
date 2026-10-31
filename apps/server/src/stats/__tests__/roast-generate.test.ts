@@ -158,7 +158,11 @@ describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () 
 			tz: 0,
 			fetchOverview: overviewOf(["1", "2"]),
 		});
-		expect(r).toMatchObject({ ok: false, code: "unavailable", message: "服务尚未就绪,请稍后重试" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: "主人，服务尚未就绪，请稍后重试喔。",
+		});
 	});
 
 	it("AI 没启用 → not_configured(要主人去开,等是等不好的;不白烧一次取数)", async () => {
@@ -168,7 +172,11 @@ describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () 
 			tz: 0,
 			fetchOverview,
 		});
-		expect(r).toMatchObject({ ok: false, code: "not_configured", message: "智能女仆尚未启用" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: "主人，智能女仆还没有启用呢。",
+		});
 		expect(fetchOverview).not.toHaveBeenCalled();
 	});
 
@@ -181,7 +189,7 @@ describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () 
 		expect(r).toMatchObject({
 			ok: false,
 			code: "unavailable",
-			message: "统计数据读取失败,请稍后重试",
+			message: "主人，统计数据读取失败，请稍后再试喔。",
 		});
 	});
 
@@ -227,7 +235,7 @@ describe("generateBoardRoast — 失败得说得清是哪一种(码 + 话)", () 
 		expect(r).toMatchObject({
 			ok: false,
 			code: "unavailable",
-			message: "女仆的回复解析失败,请重试",
+			message: "主人，女仆的回复解析失败，请再试一次喔。",
 		});
 	});
 });
@@ -242,7 +250,11 @@ describe("generateSoloRoast — 单人特有的两道闸", () => {
 			tz: 0,
 			fetchOverview,
 		});
-		expect(r).toMatchObject({ ok: false, code: "not_found", message: "该 UP 主不在订阅列表里" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: "主人，这位创作者不在订阅列表里呢。",
+		});
 		expect(fetchOverview).not.toHaveBeenCalled();
 	});
 
@@ -254,7 +266,11 @@ describe("generateSoloRoast — 单人特有的两道闸", () => {
 			fetchOverview: overviewOf([]),
 			tz: 0,
 		});
-		expect(r).toMatchObject({ ok: false, code: "not_found", message: "该 UP 主暂无统计数据" });
+		expect(r).toMatchObject({
+			ok: false,
+			code: "not_found",
+			message: "主人，女仆还没有这位创作者的统计数据呢。",
+		});
 	});
 
 	it("单人没有「至少 2 位」那道闸 —— 只订阅 1 位照样评得出来", async () => {
@@ -357,7 +373,7 @@ describe("联网搜索 override(engines.roast)", () => {
 
 	it("engines.roast 开着 → comment 的 override 带 webSearch:true,且生成器接了搜索源", async () => {
 		const deps = makeDeps(["1", "2"]);
-		deps.store.getGlobals().ai.search.engines.roast = true;
+		deps.store.getGlobals().ai.search.scenes.roast = true;
 		await generateBoardRoast(deps, {
 			days: 7,
 			tz: 0,
@@ -382,7 +398,7 @@ describe("联网搜索 override(engines.roast)", () => {
 
 	it("单人锐评同样吃 engines.roast,per-UP 覆盖不丢", async () => {
 		const deps = makeDeps(["1"]);
-		deps.store.getGlobals().ai.search.engines.roast = true;
+		deps.store.getGlobals().ai.search.scenes.roast = true;
 		await generateSoloRoast(deps, {
 			subscriptionId: biliId("1"),
 			days: 7,

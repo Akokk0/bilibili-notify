@@ -38,7 +38,7 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 		g.defaults.imageGroup = { enabled: true, mergeForward: true };
 		g.defaults.cards.enabled = false;
 		g.ai.enabled = false;
-		g.ai.search.engines.dynamic = true;
+		g.ai.search.scenes.post = true;
 		for (const sub of [biliSub(), makeExtensionSubscription()]) {
 			const s = postSettingsOf(sub, g, true);
 			expect(s.filter).toEqual({ ...DEFAULT_CONTENT_FILTERS, ...g.defaults.filters });

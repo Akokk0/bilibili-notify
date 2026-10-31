@@ -33,6 +33,7 @@ import {
 	type PushTarget,
 } from "@bilibili-notify/internal";
 import { migrateAiSettings, removeZeroBuiltinPresets, zeroAiPresetsWereEmpty } from "./ai.js";
+import { renameAiSearchScenes } from "./ai-search.js";
 import { moveGlobalCards } from "./card-moves.js";
 import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "./core-sections.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
@@ -75,7 +76,7 @@ export function migrateGlobals(raw: unknown): unknown {
  * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ 没改过的文字与会员默认删键、修剪账本,
  * 并写 `locale: "zh-CN"`(`unchanged-texts.ts`)→ AI 设置上提到顶层 `ai`(同文件;更早的
  * `migrateAiSettings` 改写的是老位置 `defaults.ai`)→ 拆出内置人格、顶层人格三格删掉、只记删过哪几份
- * (`ai.ts`)。设置那一步
+ * (`ai.ts`)→ 搜索开关 `ai.search.engines` 改为 `scenes`，袋内 `dynamic` 改 `post` (`ai-search.ts`)。设置那一步
  * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  *
  * ⚠️ 对 B 站那两格(`app.dynamicCron` / `healthCheckMinutes`)**有损**:最后一步把剩下的 `app` 整个吃掉,没先拆走的就没了。
@@ -83,17 +84,19 @@ export function migrateGlobals(raw: unknown): unknown {
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
 	const presetsWereEmpty = zeroAiPresetsWereEmpty(raw);
-	return removeZeroBuiltinPresets(
-		moveGlobalAi(
-			removeUnchangedGlobalTexts(
-				moveTemplateLedger(
-					splitAppSettings(
-						moveHistoryRetention(
-							rewriteGlobalLivePlaceholders(
-								splitGlobalLiveSettings(
-									moveGlobalCards(
-										moveGlobalMembership(
-											renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+	return renameAiSearchScenes(
+		removeZeroBuiltinPresets(
+			moveGlobalAi(
+				removeUnchangedGlobalTexts(
+					moveTemplateLedger(
+						splitAppSettings(
+							moveHistoryRetention(
+								rewriteGlobalLivePlaceholders(
+									splitGlobalLiveSettings(
+										moveGlobalCards(
+											moveGlobalMembership(
+												renameLinkParsing(renameGlobalSettingsKeys(migrateGlobals(raw))),
+											),
 										),
 									),
 								),
@@ -102,8 +105,8 @@ export function migrateGlobalsToCurrent(raw: unknown): unknown {
 					),
 				),
 			),
+			presetsWereEmpty,
 		),
-		presetsWereEmpty,
 	);
 }
 

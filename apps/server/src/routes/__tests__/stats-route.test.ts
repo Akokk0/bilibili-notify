@@ -266,13 +266,13 @@ describe("数据统计总开关关着时(㉙a)", () => {
 		expect(Object.keys(body).sort()).toEqual(["days", "rows"]);
 	});
 
-	it("手动榜单锐评:409 not_configured + 「数据统计已关闭,开启后才能锐评」", async () => {
+	it("手动榜单锐评:409 not_configured + 「主人，数据统计已关闭，开启后女仆才能锐评喔。」", async () => {
 		const { deps } = makeDeps({ statsEnabled: false });
 		const res = await createStatsRoute(deps).request("/roast?days=7", { method: "POST" });
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "not_configured",
-			message: "数据统计已关闭,开启后才能锐评",
+			message: "主人，数据统计已关闭，开启后女仆才能锐评喔。",
 		});
 	});
 
@@ -282,7 +282,7 @@ describe("数据统计总开关关着时(㉙a)", () => {
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "not_configured",
-			message: "数据统计已关闭,开启后才能锐评",
+			message: "主人，数据统计已关闭，开启后女仆才能锐评喔。",
 		});
 	});
 });

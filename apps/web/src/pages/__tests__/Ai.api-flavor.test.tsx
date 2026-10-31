@@ -17,6 +17,7 @@ import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n/index";
 import { useDraftStore } from "../../store/draft";
 import Ai from "../Ai";
 
@@ -74,6 +75,7 @@ function fieldAt(code: string): HTMLElement | null {
 }
 
 beforeEach(() => {
+	i18n.set({ locale: "zh-CN", voice: "maid" });
 	useDraftStore.setState({
 		current: null,
 		uiState: "idle",
@@ -132,6 +134,10 @@ describe("AI 页 · 接口风味", () => {
 		await gotoModel();
 		await screen.findByText("生成参数");
 		expect(fieldAt("ai.providers.p1.enableThinking")).toBeNull();
-		expect(screen.getByText(/把那家的写法填到/)).toBeTruthy();
+		expect(
+			screen.getByText(
+				"主人，这家是「自定义」，女仆不会自作主张发专属参数，以免发错。需要开启思考的话，请主人在下面的额外请求参数里填它的写法喔。",
+			),
+		).toBeTruthy();
 	});
 });

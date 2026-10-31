@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js";
 /**
  * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。第 0 代就是 0.x 留在宿主根上的那些文件,它只读、一个字节不动;
  * 新的一代由调用方(`runtime/generations.ts` 的 `createGeneration`)在 `.partial` 里交给这里填。
@@ -100,31 +101,56 @@ import { migrateUptime } from "./uptime.js";
  * 丢 `fansBaseline` / `followed` / `followError`,B 站房号拆进 B 站状态 `room:<uid>`,B 站远端头像地址不再保留。
  * 52 = 0.x 里仍是出厂默认的文字模板不再迁进新代,内置人格只记删了哪几份、顶层人格副本删掉,
  * 核心设置写 `locale: "zh-CN"`(摘要变)。
+ * 53 = AI搜索开关 `ai.search.engines.dynamic` → `ai.search.scenes.post`（live/roast同袋），新代核心设置摘要变。
  */
-export const MIGRATION_REVISION = 52;
+export const MIGRATION_REVISION = 53;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";
-const MASTER_TARGET_CLEARED_REASON =
-	"主人目标指向的不是私聊目标(群,或目标已经不在),已清空,请重新选一个私聊目标";
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
  */
 export const ZERO_GENERATION_LAYOUT = {
-	state: "设置、两份订阅、连接、目标,和程序自己记的小状态(订阅运行态、锐评草稿)",
-	secrets: "主密钥、口令派生盐、AI 的 apiKey、B 站 cookie",
-	history: "推送历史 <日>.jsonl、历史图 img/、重推原件 repush/<日>/",
-	stats: "作品 dyn/、直播 live/、seen/(按订阅一个 jsonl)与水位线 since",
-	fans: "粉丝时序,按订阅一个 jsonl",
-	assets: "卡片背景 card-bg/、聊天附件 chat/、字体 font/",
-	avatars: "拓展订阅的头像,按订阅 id",
-	skins: "界面皮肤 <id>/ 与 active.json",
-	"card-skins": "卡片皮肤 <id>/",
-	"maid-skills": "主人的女仆技能 <name>/SKILL.md",
-	ai: "女仆对话 chat/",
-	extensions: "已装的拓展包、失败记账 load-state.json、市场来源 .marketplace.json",
-	"card-bg-cursors.json": "直播封面的轮换游标",
+	get state() {
+		return t("migration.zero.layout.state");
+	},
+	get secrets() {
+		return t("migration.zero.layout.secrets");
+	},
+	get history() {
+		return t("migration.zero.layout.history");
+	},
+	get stats() {
+		return t("migration.zero.layout.stats");
+	},
+	get fans() {
+		return t("migration.zero.layout.fans");
+	},
+	get assets() {
+		return t("migration.zero.layout.assets");
+	},
+	get avatars() {
+		return t("migration.zero.layout.avatars");
+	},
+	get skins() {
+		return t("migration.zero.layout.skins");
+	},
+	get "card-skins"() {
+		return t("migration.zero.layout.cardSkins");
+	},
+	get "maid-skills"() {
+		return t("migration.zero.layout.maidSkills");
+	},
+	get ai() {
+		return t("migration.zero.layout.ai");
+	},
+	get extensions() {
+		return t("migration.zero.layout.extensions");
+	},
+	get "card-bg-cursors.json"() {
+		return t("migration.zero.layout.cardBgCursors");
+	},
 } as const;
 
 export type ZeroGenerationKey = keyof typeof ZERO_GENERATION_LAYOUT;
@@ -169,7 +195,9 @@ type ZeroMove =
 const ZERO_GENERATION_MOVES = {
 	state: {
 		kind: "split",
-		label: "设置与订阅",
+		get label() {
+			return t("migration.zero.labels.settingsAndSubscriptions");
+		},
 		children: {
 			"globals.json": CORE_SETTINGS_FILE,
 			"subscriptions.json": [...CONFIG_DIR, "subscriptions.json"],
@@ -179,51 +207,104 @@ const ZERO_GENERATION_MOVES = {
 			"roast-drafts.json": ROAST_DRAFTS_FILE,
 		},
 		inputs: {
-			"adapters.json": "connections.json 的旧名:没有 connections.json 时迁移读它一次,不进新代",
-			"extension-subscriptions.json":
-				"拓展订阅:迁移读它一次、和 subscriptions.json 合成一个文件(ADR-0021 决策 15),不进新代",
+			get "adapters.json"() {
+				return t("migration.zero.inputs.adapters");
+			},
+			get "extension-subscriptions.json"() {
+				return t("migration.zero.inputs.extensionSubscriptions");
+			},
 		},
 	},
 	secrets: {
 		kind: "move",
 		to: ["secrets"],
-		label: "密钥",
-		inputs: (path) =>
-			path === "cookies.json"
-				? "B 站登录:迁移读它一次、转成 secrets/bilibili/secrets.enc,不进新代"
-				: undefined,
+		get label() {
+			return t("migration.zero.labels.secrets");
+		},
+		inputs: (path) => (path === "cookies.json" ? t("migration.zero.inputs.cookies") : undefined),
 	},
-	history: { kind: "move", to: ["history"], label: "推送历史", inputs: historyInputReason },
-	stats: { kind: "move", to: ["stats"], label: "统计" },
-	fans: { kind: "move", to: FOLLOWERS_DIR, label: "粉丝时序" },
+	history: {
+		kind: "move",
+		to: ["history"],
+		get label() {
+			return t("migration.zero.labels.history");
+		},
+		inputs: historyInputReason,
+	},
+	stats: {
+		kind: "move",
+		to: ["stats"],
+		get label() {
+			return t("migration.zero.labels.stats");
+		},
+	},
+	fans: {
+		kind: "move",
+		to: FOLLOWERS_DIR,
+		get label() {
+			return t("migration.zero.labels.followers");
+		},
+	},
 	assets: {
 		kind: "split",
-		label: "素材",
+		get label() {
+			return t("migration.zero.labels.assets");
+		},
 		children: {
 			"card-bg": CARD_BG_DIR,
 			font: FONT_DIR,
 		},
 		inputs: {
-			chat: "聊天附件随女仆对话不迁(ADR-0022 决策 4),留在第 0 代",
+			get chat() {
+				return t("migration.zero.inputs.chat");
+			},
 		},
 	},
 	avatars: {
 		kind: "input",
-		reason:
-			"拓展订阅的头像:迁移读一次,被资料缓存引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代",
+		get reason() {
+			return t("migration.zero.inputs.avatars");
+		},
 	},
-	skins: { kind: "move", to: DASHBOARD_SKINS_DIR, label: "界面皮肤" },
-	"card-skins": { kind: "drop", reason: "卡片皮肤不迁(ADR-0022 决策 12)" },
+	skins: {
+		kind: "move",
+		to: DASHBOARD_SKINS_DIR,
+		get label() {
+			return t("migration.zero.labels.skins");
+		},
+	},
+	"card-skins": {
+		kind: "drop",
+		get reason() {
+			return t("migration.zero.inputs.cardSkins");
+		},
+	},
 	"maid-skills": {
 		kind: "drop",
-		reason: "女仆技能不迁(ADR-0022 决策 4),自己写的技能留在第 0 代;内置技能跟版本走,不受影响",
+		get reason() {
+			return t("migration.zero.inputs.maidSkills");
+		},
 	},
 	ai: {
 		kind: "drop",
-		reason: "女仆对话不迁(ADR-0022 决策 4),留在第 0 代;新的一代从空的对话开始",
+		get reason() {
+			return t("migration.zero.inputs.ai");
+		},
 	},
-	extensions: { kind: "move", to: ["extensions"], label: "拓展" },
-	"card-bg-cursors.json": { kind: "move", to: CARD_BG_CURSORS_FILE, label: "直播封面的轮换游标" },
+	extensions: {
+		kind: "move",
+		to: ["extensions"],
+		get label() {
+			return t("migration.zero.labels.extensions");
+		},
+	},
+	"card-bg-cursors.json": {
+		kind: "move",
+		to: CARD_BG_CURSORS_FILE,
+		get label() {
+			return t("migration.zero.labels.coverCursors");
+		},
+	},
 } as const satisfies Record<ZeroGenerationKey, ZeroMove>;
 
 /** 0.x 根上认得、但不属于任何一代的一级项:宿主件,和装各代的那一层。 */
@@ -321,7 +402,7 @@ export async function migrateZeroGeneration(
 			} else if (destination) {
 				await transfer(context, join(from, name), dataPath(opts.targetDir, ...destination));
 			} else {
-				skip(context, join(from, name), leftoverReason(name) ?? "认不得,没带过来");
+				skip(context, join(from, name), leftoverReason(name) ?? t("migration.zero.unknownItem"));
 			}
 		}
 	}
@@ -332,8 +413,8 @@ export async function migrateZeroGeneration(
 			context,
 			join(opts.zeroRoot, name),
 			ZERO_LEFTOVER_DIRS.has(name)
-				? "storage 旧的缺省目录"
-				: (leftoverReason(name) ?? "认不得,没带过来"),
+				? t("migration.zero.storageLeftover")
+				: (leftoverReason(name) ?? t("migration.zero.unknownItem")),
 		);
 	}
 
@@ -352,7 +433,7 @@ export async function migrateZeroGeneration(
 	const imagesDir = dataPath(opts.targetDir, "images");
 	if (await exists(imagesDir)) await syncDirectory(imagesDir);
 	await syncDirectory(opts.targetDir);
-	opts.onProgress?.({ done: total, total, label: "搬完了" });
+	opts.onProgress?.({ done: total, total, label: t("migration.zero.labels.finished") });
 	return report;
 }
 
@@ -366,7 +447,9 @@ const REWRITES: readonly {
 	run: (opts: MigrateZeroGenerationOptions, report: ZeroMigrationResult) => Promise<string[]>;
 }[] = [
 	{
-		label: "连接与推送目标",
+		get label() {
+			return t("migration.zero.labels.connections");
+		},
 		run: (opts) =>
 			migrateConnectionFiles({
 				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
@@ -374,7 +457,9 @@ const REWRITES: readonly {
 			}),
 	},
 	{
-		label: "设置",
+		get label() {
+			return t("migration.zero.labels.settings");
+		},
 		run: (opts) =>
 			migrateSettingsFiles({
 				core: dataPath(opts.targetDir, ...CORE_SETTINGS_FILE),
@@ -384,7 +469,9 @@ const REWRITES: readonly {
 	},
 	{
 		// 要看迁好的设置与迁好的目标表,所以排在两者之后。清掉的记进「没带过来的」,首访提示据此多说一句。
-		label: "主人目标",
+		get label() {
+			return t("migration.zero.labels.masterTarget");
+		},
 		run: async (opts, report) => {
 			const core = dataPath(opts.targetDir, ...CORE_SETTINGS_FILE);
 			const cleared = await clearMasterTargetUnlessPrivate({
@@ -394,13 +481,15 @@ const REWRITES: readonly {
 			if (!cleared) return [];
 			report.skipped.push({
 				path: MASTER_TARGET_SKIPPED_PATH,
-				reason: MASTER_TARGET_CLEARED_REASON,
+				reason: t("migration.zero.masterTargetCleared"),
 			});
 			return [core];
 		},
 	},
 	{
-		label: "订阅",
+		get label() {
+			return t("migration.zero.labels.subscriptions");
+		},
 		run: async (opts) =>
 			migrateSubscriptionFiles({
 				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
@@ -417,7 +506,9 @@ const REWRITES: readonly {
 			}),
 	},
 	{
-		label: "推送历史",
+		get label() {
+			return t("migration.zero.labels.history");
+		},
 		run: async (opts, report) => {
 			// 先替主人跑一次清扫:定好水位线,过了保留期的重推原件整天目录不带过来(ADR-0022 决策 9)。保留天数读新代里
 			// 迁好的设置(「设置」那一步在前面)。清扫不碰图,也不依赖行的形状,所以排在日文件的改写之前 —— 图格怎么迁
@@ -464,39 +555,43 @@ const REWRITES: readonly {
 			if (done.expired > 0) {
 				report.skipped.push({
 					path: "history/img",
-					reason: `${done.expired} 张历史图只被过了保留期的行引用,没带过来(那些行的文字照搬,图格拿掉)`,
+					reason: t("migration.zero.history.expired", { count: done.expired }),
 				});
 			}
 			if (done.orphans > 0) {
 				report.skipped.push({
 					path: "history/img",
-					reason: `${done.orphans} 张历史图没有任何一行历史或重推原件引用,没带过来`,
+					reason: t("migration.zero.history.orphans", { count: done.orphans }),
 				});
 			}
 			if (done.dropped > 0) {
 				report.skipped.push({
 					path: "history/img",
-					reason: `${done.dropped} 张历史图对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),已从引用它的行里拿掉`,
+					reason: t("migration.zero.history.dropped", { count: done.dropped }),
 				});
 			}
 			if (voided.size > 0) {
 				report.skipped.push({
 					path: "history/repush",
-					reason: `${voided.size} 份重推原件有图对不上(同上),整份没带过来,那几行补不了了`,
+					reason: t("migration.zero.history.voided", { count: voided.size }),
 				});
 			}
 			return [...dayFiles, ...snapshots.rewritten];
 		},
 	},
 	{
-		label: "统计",
+		get label() {
+			return t("migration.zero.labels.stats");
+		},
 		run: withBiliSubscriptions((opts, subscriptions) =>
 			migrateStatsFiles(opts.targetDir, subscriptions),
 		),
 	},
 	{
 		// 在「统计」之后:读它迁好的作品 / 直播 / 粉丝文件与订阅文件,推出老日子的「在记」小账。
-		label: "统计的在记",
+		get label() {
+			return t("migration.zero.labels.recording");
+		},
 		run: (opts, report) =>
 			migrateRecordingLedger(opts.targetDir, (reason) =>
 				report.skipped.push({ path: "stats/recording", reason }),
@@ -504,26 +599,34 @@ const REWRITES: readonly {
 	},
 	{
 		// 在「统计」之后:读它迁好的粉丝样本,推出老日子每个小时 BN 跑了多少分钟(运行记录,㉗b)。
-		label: "运行记录",
+		get label() {
+			return t("migration.zero.labels.uptime");
+		},
 		run: (opts) => migrateUptime(opts.targetDir),
 	},
 	{
 		// 在「统计的在记」与「运行记录」之后:那两步读的是旧形状里逐条的 `"ts"`,压缩之后就没有了。把粉丝样本改成新形状、
 		// 按「现在」压一遍(ADR-0027 决策 8、15;㉘c)。
-		label: "粉丝样本压缩",
+		get label() {
+			return t("migration.zero.labels.compaction");
+		},
 		run: (opts, report) =>
 			migrateFollowerCompression(opts.targetDir, opts.now ?? new Date(), (reason) =>
 				report.skipped.push({ path: FOLLOWERS_DIR.join("/"), reason }),
 			),
 	},
 	{
-		label: "锐评草稿",
+		get label() {
+			return t("migration.zero.labels.roastDrafts");
+		},
 		run: withBiliSubscriptions((opts, subscriptions) =>
 			migrateRoastDraftsFile(dataPath(opts.targetDir, ...ROAST_DRAFTS_FILE), subscriptions),
 		),
 	},
 	{
-		label: "订阅资料",
+		get label() {
+			return t("migration.zero.labels.profiles");
+		},
 		run: async (opts, report) => {
 			const done = await migrateProfileAvatars({
 				zeroDir: zeroPath(opts.zeroRoot, "avatars"),
@@ -541,13 +644,13 @@ const REWRITES: readonly {
 			if (done.dropped > 0) {
 				report.skipped.push({
 					path: "avatars",
-					reason: `${done.dropped} 个拓展订阅的头像对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),资料里不再带头像,等拓展下一次报资料再来`,
+					reason: t("migration.zero.avatars.dropped", { count: done.dropped }),
 				});
 			}
 			if (done.orphans > 0) {
 				report.skipped.push({
 					path: "avatars",
-					reason: `${done.orphans} 个头像文件没有任何资料引用,没带过来`,
+					reason: t("migration.zero.avatars.orphans", { count: done.orphans }),
 				});
 			}
 			const subscriptions = await readBiliSubscriptionKeys(dataPath(opts.targetDir, ...CONFIG_DIR));
@@ -559,9 +662,16 @@ const REWRITES: readonly {
 			return [...done.rewritten, ...migrated.rewritten];
 		},
 	},
-	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },
 	{
-		label: "密钥",
+		get label() {
+			return t("migration.zero.labels.skins");
+		},
+		run: (opts) => migrateDashboardSkins(opts.targetDir),
+	},
+	{
+		get label() {
+			return t("migration.zero.labels.secrets");
+		},
 		run: async (opts) =>
 			migrateSecretBag(
 				dataPath(opts.targetDir, "secrets", "config-secrets.enc"),
@@ -569,7 +679,9 @@ const REWRITES: readonly {
 			),
 	},
 	{
-		label: "B 站登录",
+		get label() {
+			return t("migration.zero.labels.biliLogin");
+		},
 		run: async (opts, report) => {
 			// `secrets` 那一项的 `inputs` 无条件记了一条「没带过来」(见上):转成功了摘掉、记一条转换;没转成只改原因。
 			const path = "secrets/cookies.json";
@@ -584,7 +696,7 @@ const REWRITES: readonly {
 			} else if (login.kind === "dropped") {
 				report.skipped = report.skipped.map((skipped) =>
 					skipped.path === path
-						? { path, reason: `B 站登录没带过来(${login.reason}),需要重新扫码` }
+						? { path, reason: t("migration.zero.biliLoginFailed", { reason: login.reason }) }
 						: skipped,
 				);
 			}
@@ -668,13 +780,18 @@ async function transfer(
 		for (const [reason, paths] of held) {
 			const [only] = paths;
 			if (paths.length === 1 && only !== undefined) skip(context, only, reason);
-			else skip(context, from, `${reason}(共 ${paths.length} 个)`);
+			else
+				skip(
+					context,
+					from,
+					t("migration.zero.groupedInputs", { reason: reason, count: paths.length }),
+				);
 		}
 		await syncDirectory(to);
 		return;
 	}
 	if (!info.isFile()) {
-		skip(context, from, "不是普通文件");
+		skip(context, from, t("migration.zero.notRegularFile"));
 		return;
 	}
 	await copyFileAtomic(from, to);

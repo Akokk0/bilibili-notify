@@ -277,3 +277,17 @@ describe("createGeneration", () => {
 		expect(await readdir(generations).catch(() => [])).toEqual([]);
 	});
 });
+
+it("development revision 52/53 changes recreate from zero while repeated 53 reuses the generation", async () => {
+	const old = await placeGeneration(1, { migrationRevision: 52 });
+	const before = await readFile(join(old, GENERATION_FILE), "utf8");
+	const pick = (migrationRevision: number) =>
+		selectGeneration({ hostRoot, formatVersion: 1, migrationRevision, zeroGenerationExists: true });
+	expect(await pick(53)).toMatchObject({ kind: "create", seq: 2, source: { kind: "zero" } });
+	await placeGeneration(2, { migrationRevision: 53 });
+	expect(await pick(53)).toMatchObject({ kind: "use", seq: 2 });
+	expect(await pick(52)).toMatchObject({ kind: "create", seq: 3, source: { kind: "zero" } });
+	await placeGeneration(3, { migrationRevision: 52 });
+	expect(await pick(53)).toMatchObject({ kind: "create", seq: 4, source: { kind: "zero" } });
+	expect(await readFile(join(old, GENERATION_FILE), "utf8")).toBe(before);
+});
