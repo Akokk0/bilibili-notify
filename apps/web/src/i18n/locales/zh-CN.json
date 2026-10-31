@@ -335,5 +335,7 @@
 	"aiSettings.search.live.label": "直播总结联网搜索",
 	"aiSettings.search.live.hint": "开了之后每次下播总结都可能多几次搜索调用(按次计费)和几秒延迟",
 	"aiSettings.search.roast.label": "锐评联网搜索",
-	"aiSettings.search.roast.hint": "开了之后每次锐评都可能多几次搜索调用(按次计费)"
+	"aiSettings.search.roast.hint": "开了之后每次锐评都可能多几次搜索调用(按次计费)",
+	"extensions.marketplace.contractMismatch": "要宿主契约 v{version}，与这版 BN 不匹配",
+	"extensions.marketplace.contractRevisionMismatch": "要宿主契约 v{version} 小号 {revision}，与这版 BN 不匹配"
 }

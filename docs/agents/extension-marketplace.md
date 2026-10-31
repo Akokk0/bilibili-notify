@@ -96,3 +96,5 @@
 | `.github/workflows/extension-release.yml` | tag 触发的整条流水线 |
 
 🔗现状（4-55，2026-10-31）：市场只凭请求apiVersion/apiRevision筛选版本，不能分开新旧同号1/0包：旧api1源可能先标版本可装，下载后仍经strict清单拒旧，loader不import。不要宣称旧api1绝不会出现可装卡；不要向真实旧索引写新1.0包。独立1.0官方索引沿既定，本片无真实索引修改或发布；SDK及拓展自身version不重置。
+
+🔗现状（4-55，2026-10-31）：市场卡的incompatible分支用web字典陈述要求apiVersion、可选非零apiRevision及“与这版BN不匹配”；DTO没有宿主支持范围，卡片不推断升级方向。后端安装仍按跨大档中性、同档小号不足提示升级的规则返回；没有新增DTO/SDK成员或版本轴。

@@ -2,8 +2,8 @@
  * 拓展页上的「拓展市场」一节(ADR-0013)。
  *
  * 索引由服务端拉、验、算状态(`/api/ext/marketplace`);这里只**照着 `state` 画**:能装的给
- * 「装」、有新版的给「更新」、装着的标已装、别处装的说清不是从这儿装的、契约不合的说先升级
- * BN、撤回的标红。官方条目一键装;第三方条目**装之前先确认** —— 它会在 BN 进程里跑代码,
+ * 「装」、有新版的给「更新」、装着的标已装、别处装的说清不是从这儿装的、契约不合的只给要求版本
+ * 与不匹配事实、撤回的标红。官方条目一键装;第三方条目**装之前先确认** —— 它会在 BN 进程里跑代码,
  * BN 不担保它,而添加源那一次的提示是给「不知道自己在干什么」的人看的,这一次是给「知道但
  * 手滑」的人看的,两句话不重复。
  */
@@ -29,6 +29,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { invalidateExtensionTables, MARKETPLACE_QUERY_KEY } from "../../hooks/useExtensions";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { EXT_UPDATE_BUTTON, useCardMotionStore } from "./card-motion";
 import { errorsOf } from "./install-errors";
@@ -261,6 +262,7 @@ function EntryAction({
 	installing: boolean;
 	onInstall: () => void;
 }) {
+	const t = useT();
 	switch (entry.state) {
 		case "installable":
 			return (
@@ -281,11 +283,15 @@ function EntryAction({
 		case "installed-elsewhere":
 			return null;
 		case "incompatible":
-			// 档位对、小号高的(ADR-0019 决策 59)只说「v2」的话,主人会以为这台 BN 明明认 v2。
+			// DTO只有要求版本与状态,没有宿主范围;保留小号事实,不猜升级方向。
 			return (
 				<span className="text-bn-2xs text-bn-text-tertiary">
-					要宿主契约 v{entry.apiVersion}
-					{entry.apiRevision ? ` 小号 ${entry.apiRevision}` : ""},先升级 BN
+					{entry.apiRevision
+						? t("extensions.marketplace.contractRevisionMismatch", {
+								version: entry.apiVersion,
+								revision: entry.apiRevision,
+							})
+						: t("extensions.marketplace.contractMismatch", { version: entry.apiVersion })}
 				</span>
 			);
 		case "revoked":

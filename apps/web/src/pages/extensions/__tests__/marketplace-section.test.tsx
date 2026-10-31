@@ -81,7 +81,7 @@ const MARKET: MarketplaceResponse = {
 			name: "Bar",
 			description: "",
 			version: "1.0.0",
-			apiVersion: 2,
+			apiVersion: 3,
 			prerelease: false,
 			size: 1000,
 			state: "incompatible",
@@ -214,13 +214,14 @@ afterEach(() => {
 });
 
 describe("拓展市场", () => {
-	it("没装的各画各的:装 / 要升级 BN / 已撤回;官方与来源标清", async () => {
+	it("没装的各画各的:装 / 契约不匹配 / 已撤回;官方与来源标清", async () => {
 		renderSection();
 		const bridge = await cardOf("机器人框架桥接");
 		expect(within(bridge).getByText("官方")).toBeTruthy();
 		expect(within(bridge).getByRole("button", { name: "安装" })).toBeTruthy();
 
-		expect(within(await cardOf("Bar")).getByText(/先升级 BN/)).toBeTruthy();
+		expect((await cardOf("Bar")).textContent).toContain("要宿主契约 v3，与这版 BN 不匹配");
+		expect((await cardOf("Bar")).textContent).not.toContain("先升级");
 		expect(within(await cardOf("Bar")).queryByRole("button")).toBeNull();
 		expect(within(await cardOf("Qux")).getByText(/已被撤回/)).toBeTruthy();
 
@@ -229,18 +230,27 @@ describe("拓展市场", () => {
 		expect(within(douyin).queryByText("官方")).toBeNull();
 	});
 
-	/** 档位对、要的契约小号高(ADR-0019 决策 59):只说「v2」的话,主人会以为这台 BN 明明认 v2。 */
+	/** 档位对、要的契约小号高(ADR-0019 决策 59):保留请求小号;DTO没有宿主范围,卡片不推断升级方向。 */
 	it("要更高契约小号的条目:标灰那句带上要几号", async () => {
 		renderSection({
 			...MARKET,
-			extensions: MARKET.extensions.map((e) => (e.id === "bar" ? { ...e, apiRevision: 1 } : e)),
+			extensions: MARKET.extensions.map((e) =>
+				e.id === "bar" ? { ...e, apiVersion: 1, apiRevision: 1 } : e,
+			),
 		});
-		expect(within(await cardOf("Bar")).getByText("要宿主契约 v2 小号 1,先升级 BN")).toBeTruthy();
+		expect((await cardOf("Bar")).textContent).toContain("要宿主契约 v1 小号 1，与这版 BN 不匹配");
+		expect((await cardOf("Bar")).textContent).not.toContain("先升级");
+		expect(within(await cardOf("Bar")).queryByRole("button")).toBeNull();
 	});
 
-	it("没写小号的条目照旧只说档位", async () => {
-		renderSection();
-		expect(within(await cardOf("Bar")).getByText("要宿主契约 v2,先升级 BN")).toBeTruthy();
+	it.each([undefined, 0])("缺省或零小号(%s)仍只给要求档位的中性事实", async (apiRevision) => {
+		renderSection({
+			...MARKET,
+			extensions: MARKET.extensions.map((e) => (e.id === "bar" ? { ...e, apiRevision } : e)),
+		});
+		expect((await cardOf("Bar")).textContent).toContain("要宿主契约 v3，与这版 BN 不匹配");
+		expect((await cardOf("Bar")).textContent).not.toContain("小号");
+		expect((await cardOf("Bar")).textContent).not.toContain("先升级");
 	});
 
 	/**

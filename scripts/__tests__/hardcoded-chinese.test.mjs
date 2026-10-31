@@ -301,7 +301,7 @@ export const RATCHET = {
 	"apps/web/src/pages/extensions/declarative/settings-form.tsx": 21,
 	"apps/web/src/pages/extensions/docs-panel.tsx": 5,
 	"apps/web/src/pages/extensions/install-outcome.tsx": 6,
-	"apps/web/src/pages/extensions/marketplace-section.tsx": 26,
+	"apps/web/src/pages/extensions/marketplace-section.tsx": 23,
 	"apps/web/src/pages/extensions/marketplace-sources-dialog.tsx": 12,
 	"apps/web/src/pages/extensions/report-discrepancies.tsx": 7,
 	"apps/web/src/pages/extensions/shared.tsx": 1,
