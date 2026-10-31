@@ -54,3 +54,5 @@
 - 面板缓存键里写死的老名字（如 `["globals"]`）随路径一起改；data-model 与 architecture 里写着 `/api/followers`、`/api/globals` 待议的地方随这一片改掉。
 
 🔗现状（4-21，2026-10-30）：坏格读口按资源归属落在 `GET /api/settings/invalid` 与 `GET /api/ext/:id/settings/invalid`；备份纯路径预检为 `GET /api/system/backup/preview`。三个口均沿用既有会话 / 桌面令牌闸，设置 `Cache-Control: no-store`。既有设置回应形状不加保留顶层键，避免与登记集成键冲突。
+
+🔗现状（4-23，2026-10-31）：素材库 8 口已从 `/api/cards` 搬至 `/api/library`：`GET` / `POST /images`、`GET` / `DELETE /images/:id`，字体对应 `/fonts` 与 `/fonts/:id`；旧口删除，无别名或重定向。两类文件仍沿用统一鉴权、私有永久缓存与删前引用检查，上传规矩、成功与失败形状、素材存储位置不变。现有两个 picker 与缩略图读取同步迁移；素材库顶层页与选择器合一仍归 4-50。真页面验收尚待可用浏览器，未记为切片完成。
