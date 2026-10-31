@@ -90,7 +90,7 @@ describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅�
 				name: "头像探针",
 				description: "只为了是个订阅源",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: {
 					subscription: {
 						label: "探针",

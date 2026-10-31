@@ -112,7 +112,6 @@ export const RATCHET = {
 	"apps/server/src/config/loader.ts": 7,
 	"apps/server/src/config/settings-problems.ts": 51,
 	"apps/server/src/config/validation-error.ts": 8,
-	"apps/server/src/extensions/discover.ts": 7,
 	"apps/server/src/extensions/install.ts": 15,
 	"apps/server/src/extensions/loader.ts": 13,
 	"apps/server/src/extensions/marketplace.ts": 20,

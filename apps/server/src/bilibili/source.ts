@@ -46,8 +46,6 @@ import { searchBiliCreators } from "./search-creators.js";
 import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
 
 export interface BiliSourceDeps {
-	timezone: () => string;
-	onTimezoneChanged: (handler: () => void) => Disposable;
 	/** B 站的上下文(存储已开、罐子与请求客户端已建好):登录系统建在它之上。它的收尾归造它的一方(`compose.ts`)。 */
 	context: BiliContext;
 	/** B 站那一格的宿主上下文(日志器与等级跟 B 站):登录系统与分层上报器的日志器、定时器都从它来。 */
@@ -410,7 +408,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 					const read = dynamicSettings.get();
 					if (read.ok) {
 						if (engine) {
-							engine.updateSettings(dynamicSettingsOf(read.settings, deps.timezone()));
+							engine.updateSettings(dynamicSettingsOf(read.settings, ctx.timezone()));
 							return;
 						}
 						const made = new DynamicPoller({
@@ -422,7 +420,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 							fetchImage: ctx.fetchImage,
 							reportPost: (externalId, report) => ctx.reportPost(externalId, report),
 							subscriptions: () => ctx.subscriptions(),
-							settings: dynamicSettingsOf(read.settings, deps.timezone()),
+							settings: dynamicSettingsOf(read.settings, ctx.timezone()),
 						});
 						try {
 							made.start();
@@ -537,12 +535,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						}),
 					),
 				);
-				mine.push(ctx.registerAiToolProvider(createBiliAiToolProvider({ api: biliApi })));
+				mine.push(
+					ctx.registerAiToolProvider(createBiliAiToolProvider({ api: biliApi, context: ctx })),
+				);
 				applyDynamic();
 				rooms.start(ctx, ctx.subscriptions());
 				const applyDynamicChanged = guarded(ctx, "动态", applyDynamic);
 				mine.push(dynamicSettings.onChange(applyDynamicChanged));
-				mine.push(deps.onTimezoneChanged(applyDynamicChanged));
+				mine.push(ctx.onTimezoneChanged(applyDynamicChanged));
 				applyLoginCheck();
 				mine.push(loginCheckSettings.onChange(guarded(ctx, "登录检查", applyLoginCheck)));
 				mine.push(deps.locale.onChange(reportInvalidAgain));

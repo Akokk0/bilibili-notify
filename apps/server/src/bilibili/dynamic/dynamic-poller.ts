@@ -316,7 +316,9 @@ export class DynamicPoller {
 			this.settings.timezone !== settings.timezone;
 		this.settings = settings;
 		if (cronChanged && this.dynamicJob) {
-			this.logger.info(`[detector] dynamicCron 已更新为 "${settings.dynamicCron}",重启检测任务`);
+			this.logger.info(
+				`[detector] schedule changed: cron="${settings.dynamicCron}" timezone="${settings.timezone}"`,
+			);
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
 			if (this.postAnchors.size > 0) this.startJob();

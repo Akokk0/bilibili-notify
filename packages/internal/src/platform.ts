@@ -73,6 +73,10 @@ export interface SettingsReader<T> {
  * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
  */
 export interface IntegrationContext {
+	/** 整台时区的有效IANA名,每次现读。 */
+	timezone(): string;
+	/** 时区真变时叫;不补叫,停下时自动摘掉。 */
+	onTimezoneChanged(fn: () => void): Disposable;
 	readonly logger: Logger;
 	/** 集成停下(停用、卸载、关停)时中止;在收尾钩子跑之前就已经中止。 */
 	readonly signal: AbortSignal;

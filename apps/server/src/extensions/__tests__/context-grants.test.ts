@@ -22,6 +22,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { neutralPlatformSnapshot, ok } from "@bilibili-notify/internal";
 import type {
+	ExtensionContext,
 	ExtensionSourceContext,
 	PlatformAdapterDef,
 } from "@bilibili-notify/internal/extension";
@@ -81,7 +82,7 @@ const PUSH_MANIFEST: ExtensionManifest = {
 	name: "机器人框架桥接",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: { push: { ...DISPLAY, settingsFields: V2_FIELDS } },
 };
 
@@ -231,7 +232,7 @@ describe("按清单注册平台适配器", () => {
 			name: "机器人框架桥接",
 			description: "测试用",
 			version: "2.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { ...DISPLAY, settingsFields: V2_FIELDS } },
 			...over,
 		} as ExtensionManifest;
@@ -1561,4 +1562,43 @@ describe("读自己的设置", () => {
 		h.setSettings({ links: [] });
 		expect(calls).toBe(1);
 	});
+});
+
+const EXTENSION_CONTEXT_MEMBERS = {
+	timezone: "function",
+	onTimezoneChanged: "function",
+	logger: "object",
+	signal: "object",
+	onDispose: "function",
+	state: "object",
+	secrets: "object",
+	redact: "function",
+	settings: "function",
+	http: "object",
+	fetchImage: "function",
+	storeImage: "function",
+	reportProblem: "function",
+	resolveProblem: "function",
+	id: "string",
+	hostApiVersion: "number",
+	hostVersion: "string",
+	i18n: "object",
+	setTimeout: "function",
+	setInterval: "function",
+	mount: "function",
+	registerPlatformAdapter: "function",
+	registerSource: "function",
+	onUpgrade: "function",
+	publishView: "function",
+	statusChanged: "function",
+	onAction: "function",
+} satisfies Record<keyof ExtensionContext, string>;
+
+it("ExtensionContext全部成员在运行时存在,新增共同能力不能只补类型", async () => {
+	const h = harness();
+	for (const [key, kind] of Object.entries(EXTENSION_CONTEXT_MEMBERS)) {
+		expect(typeof h.ctx[key as keyof ExtensionContext], key).toBe(kind);
+	}
+	expect(Object.keys(h.ctx).sort()).toEqual(Object.keys(EXTENSION_CONTEXT_MEMBERS).sort());
+	await h.runtime.dispose();
 });

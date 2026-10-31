@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 内置适配器的「登记即启动、注销即停止」装配。
  *
@@ -97,6 +98,7 @@ async function setup() {
 	/** 各适配器的集成上下文向 `settingsOf` 要过的键,按要的先后。 */
 	const settingsKeys: string[] = [];
 	const builtin = await registerBuiltinAdapters({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		setTimeout: realTimeout,
 		registry,
@@ -173,6 +175,7 @@ describe("registerBuiltinAdapters", () => {
 		const qq = fakeAdapter("qq-official");
 		const webhook = fakeAdapter("webhook");
 		const builtin = await registerBuiltinAdapters({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
@@ -231,6 +234,7 @@ describe("registerBuiltinAdapters", () => {
 		const onebot = fakeAdapter("onebot");
 		const qq = fakeAdapter("qq-official");
 		const builtin = await registerBuiltinAdapters({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
@@ -300,6 +304,7 @@ describe("registerBuiltinAdapters", () => {
 		// 每次 open 都给一份独立的内存存储:这一条要走到的是登记表的「键重复」,不是存储的「同键已开」。
 		await expect(
 			registerBuiltinAdapters({
+				timezoneReader: fixedTimezone("Asia/Shanghai"),
 				transitImages: inertTransitImages,
 				setTimeout: realTimeout,
 				registry,
@@ -328,6 +333,7 @@ describe("registerBuiltinAdapters", () => {
 		const second = fakeAdapter("qq-official");
 		await expect(
 			registerBuiltinAdapters({
+				timezoneReader: fixedTimezone("Asia/Shanghai"),
 				transitImages: inertTransitImages,
 				setTimeout: realTimeout,
 				registry,

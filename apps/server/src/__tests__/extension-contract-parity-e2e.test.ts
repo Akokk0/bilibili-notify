@@ -383,7 +383,81 @@ const ADAPTER_CONTEXT_ROWS = {
 	inbound: driven(TITLE.inbound),
 } satisfies Record<Exclude<keyof PlatformAdapterContext, keyof IntegrationContext>, Row>;
 
+const INTEGRATION_CONTEXT_ROWS = {
+	timezone: {
+		state: "elsewhere",
+		file: "apps/server/src/__tests__/integration-stores-wiring.test.ts",
+		it: "timezone parity: activate/source/adapter read, notify, stop and restart",
+	},
+	onTimezoneChanged: {
+		state: "elsewhere",
+		file: "apps/server/src/__tests__/integration-stores-wiring.test.ts",
+		it: "timezone parity: activate/source/adapter read, notify, stop and restart",
+	},
+	logger: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "被拒的记成什么等级跟选项走:拓展传 warn 就是 warn,不是 error",
+	},
+	signal: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "钩子跑的时候 signal 已经中止,原因是给的那句",
+	},
+	onDispose: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "收尾钩子后登记的先跑",
+	},
+	state: {
+		state: "elsewhere",
+		file: "apps/server/src/__tests__/integration-stores-wiring.test.ts",
+		it: "activate(ctx) 与适配器 start(ctx) 里写的,盘上真有,而且两处是同一对对象",
+	},
+	secrets: {
+		state: "elsewhere",
+		file: "apps/server/src/__tests__/integration-stores-wiring.test.ts",
+		it: "activate(ctx) 与适配器 start(ctx) 里写的,盘上真有,而且两处是同一对对象",
+	},
+	redact: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "登记之后,值被遮;没登记的不遮",
+	},
+	settings: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "ctx.settings(规则) 就是交进来的实现:读得到它的值,它说变了才叫",
+	},
+	http: {
+		state: "elsewhere",
+		file: "apps/server/src/subscriptions/__tests__/source-context.test.ts",
+		it: "ctx.http / fetchImage / storeImage 就是集成上下文上的那三个:来源抓图、请求走集成自己的客户端",
+	},
+	fetchImage: {
+		state: "elsewhere",
+		file: "apps/server/src/subscriptions/__tests__/source-context.test.ts",
+		it: "ctx.http / fetchImage / storeImage 就是集成上下文上的那三个:来源抓图、请求走集成自己的客户端",
+	},
+	storeImage: {
+		state: "elsewhere",
+		file: "apps/server/src/subscriptions/__tests__/source-context.test.ts",
+		it: "ctx.http / fetchImage / storeImage 就是集成上下文上的那三个:来源抓图、请求走集成自己的客户端",
+	},
+	reportProblem: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "报一条:问题表里报的人是集成键、不带 about,notify 不进表",
+	},
+	resolveProblem: {
+		state: "elsewhere",
+		file: "apps/server/src/integrations/__tests__/context.test.ts",
+		it: "resolveProblem 带 notify: false:清掉但不补已恢复",
+	},
+} satisfies Record<keyof IntegrationContext, Row>;
+
 const TABLES = {
+	IntegrationContext: INTEGRATION_CONTEXT_ROWS,
 	Source: SOURCE_ROWS,
 	SubscriptionCell: SUBSCRIPTION_CELL_ROWS,
 	SourceContext: SOURCE_CONTEXT_ROWS,
@@ -1502,7 +1576,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			})),
 		);
 
-		it("六张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
+		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(10);
 			expect(size("SubscriptionCell")).toBe(11);
@@ -1510,11 +1584,12 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
-			expect(entries).toHaveLength(49);
+			expect(size("IntegrationContext")).toBe(14);
+			expect(entries).toHaveLength(63);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
 			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 8 行;宿主填 1 行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(1);
+			expect(of("elsewhere")).toHaveLength(15);
 			expect(of("closed")).toHaveLength(8);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

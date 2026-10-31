@@ -123,7 +123,7 @@ describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () =>
 				name: "问题探针",
 				description: "按一下动作钮报一条坏的",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				actions: ["report.dropped", "report.undeclared"],
 				contributes: {
 					subscription: {

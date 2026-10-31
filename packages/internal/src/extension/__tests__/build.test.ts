@@ -13,7 +13,7 @@ const SOURCE = {
 	name: "示例",
 	description: "构建测试用的清单",
 	version: "0.0.1",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: { push: { label: "示例平台", shortLabel: "示", color: "#123456" } },
 };
 

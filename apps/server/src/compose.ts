@@ -57,8 +57,7 @@ export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[]
 ];
 
 export interface BuiltinIntegrationsDeps {
-	timezone: () => string;
-	onTimezoneChanged: (handler: () => void) => Disposable;
+	timezoneReader: RegisterBuiltinAdaptersOptions["timezoneReader"];
 	/** 当前语言的读口(入口造一份):内置集成的问题句在语言变了时按新语言重报,递给 B 站来源。 */
 	locale: LocaleReader;
 	setTimeout: ServiceContext["setTimeout"];
@@ -155,6 +154,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			let opened: BiliContextHandle | undefined;
 			try {
 				opened = await createBiliContext({
+					timezoneReader: deps.timezoneReader,
 					stores: deps.integrationStore,
 					serviceCtx: biliServiceCtx,
 					problems: deps.problems,
@@ -164,8 +164,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				biliContext = opened;
 				const made = createBiliSource({
 					context: opened.ctx,
-					timezone: deps.timezone,
-					onTimezoneChanged: deps.onTimezoneChanged,
 					serviceCtx: biliServiceCtx,
 					accountImages: deps.accountImages,
 					...(devShells ? { devShells } : {}),
@@ -196,6 +194,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 			// 但三个适配器实例在 `composeBuiltinIntegrations` 里只造一次,收回过的实例不保证能再启动。
 			registeringAdapters = true;
 			return await registerBuiltinAdapters({
+				timezoneReader: deps.timezoneReader,
 				registry: deps.adapterRegistry,
 				adapters,
 				loggerOf,

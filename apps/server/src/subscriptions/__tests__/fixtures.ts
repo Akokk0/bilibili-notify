@@ -51,6 +51,8 @@ export const makeIntegration = (
 ): IntegrationContext => {
 	const kv = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
 	return {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		logger,
 		signal: new AbortController().signal,
 		onDispose: vi.fn(),

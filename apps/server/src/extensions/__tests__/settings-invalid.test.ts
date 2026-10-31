@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 「设置读不了」(ADR-0019 决策 36)—— 存着的设置过不了拓展自己交的那份 zod 时,拓展**不起**,
  * 那一行说清哪一格、为什么;设置照样能改,改对了自己起来。
@@ -42,7 +43,7 @@ const MANIFEST = {
 	name: "抖音订阅",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	settings: {
 		fields: [
 			{ key: "interval", type: "number", label: "间隔", min: 30, max: 600, default: 60 },
@@ -179,6 +180,7 @@ async function boot(
 	const seen: Seen = { activations: 0, changes: [] };
 	const activate = opts.activate ?? standard;
 	const loaded: LoadedExtensions = await loadExtensions({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: opts.locale ?? fixedLocale(),
 		root,

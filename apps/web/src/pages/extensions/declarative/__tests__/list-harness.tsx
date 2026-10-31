@@ -90,7 +90,7 @@ export const BRIDGE: ExtensionDTO = {
 	name: "机器人框架桥接",
 	description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["push"],
 	settings: { fields: [LINKS_FIELD] },
 	enabled: true,

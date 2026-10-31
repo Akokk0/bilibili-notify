@@ -6,6 +6,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type Failure,
 	fail,
+	type IntegrationContext,
 	ok,
 	type Result,
 } from "@bilibili-notify/internal";
@@ -44,7 +45,13 @@ function externalIdOf(creator: string): string {
  * 工具本名由宿主加来源命名空间;两把都只收 B 站订阅的 creator,先从参数里核来源与
  * 外部 id,不合就在本地拒绝,避免拿别家恰好是数字的 id 去 B 站查到另一个人。
  */
-export function createBiliAiToolProvider({ api }: { api: BiliAiApi }): AiToolProvider {
+export function createBiliAiToolProvider({
+	api,
+	context,
+}: {
+	api: BiliAiApi;
+	context: Pick<IntegrationContext, "timezone">;
+}): AiToolProvider {
 	const totals: AiTool = {
 		definition: {
 			type: "function",
@@ -117,7 +124,7 @@ export function createBiliAiToolProvider({ api }: { api: BiliAiApi }): AiToolPro
 						const created = typeof video.created === "number" ? video.created : undefined;
 						return BILI_AI_TOOL_TEXTS.upVideo(
 							index,
-							publishedStamp(created),
+							publishedStamp(created, Date.now(), context.timezone()),
 							video.title ?? "",
 							video.play ?? "?",
 						);

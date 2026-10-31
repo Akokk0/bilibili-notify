@@ -2,7 +2,7 @@ import { fail, type ServiceContext } from "@bilibili-notify/internal";
 import { vi } from "vite-plus/test";
 import { ignoredProblems } from "../../../../__tests__/support/ignored-problems.js";
 import { inertSettingsOf } from "../../../../__tests__/support/inert-settings.js";
-import { inertTransitImages } from "../../../../__tests__/support/integration-io.js";
+import { fixedTimezone, inertTransitImages } from "../../../../__tests__/support/integration-io.js";
 import type { ImageWriter } from "../../../../images/image-store.js";
 import type { IntegrationStore } from "../../../../integration-store/store.js";
 import { type BiliContextHandle, createBiliContext } from "../../../context.js";
@@ -36,6 +36,7 @@ export interface OpenedAuthSystem extends AuthSystem {
  */
 export async function openAuthSystem(world: AuthSystemWorld): Promise<OpenedAuthSystem> {
 	const context = await createBiliContext({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: world.integrationStore,
 		serviceCtx: world.serviceCtx,
 		problems: ignoredProblems,

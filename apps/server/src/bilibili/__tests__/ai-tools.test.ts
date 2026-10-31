@@ -74,7 +74,10 @@ async function actualApi() {
 
 describe("B 站 AI 工具提供方", () => {
 	it("提供 B 站版周报，登记后使用来源前缀的技能名", () => {
-		const provider = createBiliAiToolProvider({ api: fakeApi() as unknown as Api });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: fakeApi() as unknown as Api,
+		});
 		const weekly = provider.skills?.[0];
 
 		expect(provider.skills).toHaveLength(1);
@@ -109,7 +112,10 @@ describe("B 站 AI 工具提供方", () => {
 				data: { list: { vlist: [{ title: "新曲", play: 10, created: createdAt }] } },
 			}),
 		});
-		const provider = createBiliAiToolProvider({ api: api as unknown as Api });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: api as unknown as Api,
+		});
 		vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-23T04:00:00Z") });
 
 		expect(provider.readOnly.map((tool) => tool.definition.function.name)).toEqual([
@@ -136,6 +142,7 @@ describe("B 站 AI 工具提供方", () => {
 	it("两个累计接口各自失败都原样带标准码、原码与原话;视频空列表仍是成功", async () => {
 		const navnum = fail("unknown", "啥也没有", { upstreamCode: -404 });
 		const failing = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
 			api: fakeApi({
 				upstat: ok({ data: { archive: { view: 100 }, likes: 9 } }),
 				navnum,
@@ -152,6 +159,7 @@ describe("B 站 AI 工具提供方", () => {
 
 		const upstat = fail("unauthorized", "登录过期", { upstreamCode: -101 });
 		const failingUpstat = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
 			api: fakeApi({
 				upstat,
 				navnum: ok({ data: { video: 1, upos: 2 } }),
@@ -167,6 +175,7 @@ describe("B 站 AI 工具提供方", () => {
 		});
 
 		const failingVideos = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
 			api: fakeApi({
 				videos: fail("unknown", "服务异常", { upstreamCode: -500 }),
 			}) as unknown as Api,
@@ -181,6 +190,7 @@ describe("B 站 AI 工具提供方", () => {
 		});
 
 		const empty = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
 			api: fakeApi({
 				videos: ok({ data: { list: { vlist: [] } } }),
 			}) as unknown as Api,
@@ -199,7 +209,10 @@ describe("B 站 AI 工具提供方", () => {
 		for (const [upstreamCode, code] of cases) {
 			const world = await actualApi();
 			world.answer({ code: upstreamCode, message: "B 站原话" });
-			const provider = createBiliAiToolProvider({ api: world.api });
+			const provider = createBiliAiToolProvider({
+				context: { timezone: () => "Asia/Shanghai" },
+				api: world.api,
+			});
 
 			await expect(
 				toolOf(provider.readOnly, "get_up_totals").execute({ creator: "bilibili:123" }),
@@ -215,7 +228,10 @@ describe("B 站 AI 工具提供方", () => {
 	it("视频接口持续 -352 回 rate_limited,不把风控当未知失败", async () => {
 		const world = await actualApi();
 		world.answer({ code: -352, message: "风控持续" });
-		const provider = createBiliAiToolProvider({ api: world.api });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: world.api,
+		});
 
 		const out = await toolOf(provider.readOnly, "get_up_videos").execute({
 			creator: "bilibili:123",
@@ -230,7 +246,10 @@ describe("B 站 AI 工具提供方", () => {
 
 	it("只收 B 站订阅的 creator;别家来源、坏外部 id、缺省都不去问 B 站", async () => {
 		const api = fakeApi();
-		const provider = createBiliAiToolProvider({ api: api as unknown as Api });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: api as unknown as Api,
+		});
 
 		for (const [toolName, creator] of [
 			["get_up_totals", "acme.inprocess:123"],
@@ -255,7 +274,10 @@ describe("B 站 AI 工具提供方", () => {
 	});
 
 	it("label 是 getter,现取字典那一格;labelArg 从 creator 里取外部 id", () => {
-		const provider = createBiliAiToolProvider({ api: fakeApi() as unknown as Api });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: fakeApi() as unknown as Api,
+		});
 		const totals = toolOf(provider.readOnly, "get_up_totals");
 		const videos = toolOf(provider.readOnly, "get_up_videos");
 
@@ -271,6 +293,7 @@ describe("B 站 AI 工具提供方", () => {
 	it("时间戳缺失写「未知时间」,不拼出 Invalid Date / NaN", async () => {
 		// 发布时间带「距今多久」:模型手上没有当前时间,只给裸日期只能靠猜。
 		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
 			api: fakeApi({
 				videos: ok({ data: { list: { vlist: [{ title: "旧作", play: 1 }] } } }),
 			}) as unknown as Api,
@@ -282,5 +305,53 @@ describe("B 站 AI 工具提供方", () => {
 			ok: true,
 			text: "1. [未知时间] 旧作（播放: 1）",
 		});
+	});
+});
+
+it("视频请求pending期间改共同ctx时区,返回后现取日期且经过时长不变", async () => {
+	vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-22T00:30:00Z") });
+	let timezone = "Asia/Shanghai";
+	let finish!: (result: ReturnType<typeof ok<{ data: unknown }>>) => void;
+	const api = fakeApi();
+	api.fetchUserVideos.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	);
+	const provider = createBiliAiToolProvider({
+		api: api as unknown as Api,
+		context: { timezone: () => timezone },
+	});
+	const videos = toolOf(provider.readOnly, "get_up_videos");
+	const pending = videos.execute({ creator: "bilibili:123" });
+	timezone = "UTC";
+	finish(
+		ok({
+			data: {
+				list: {
+					vlist: [{ created: Date.parse("2026-10-20T23:30:00Z") / 1000, title: "test", play: 10 }],
+				},
+			},
+		}),
+	);
+	await expect(pending).resolves.toEqual({
+		ok: true,
+		text: "1. [2026/10/20 · 1 天前] test（播放: 10）",
+	});
+	timezone = "Asia/Shanghai";
+	const again = videos.execute({ creator: "bilibili:123" });
+	finish(
+		ok({
+			data: {
+				list: {
+					vlist: [{ created: Date.parse("2026-10-20T23:30:00Z") / 1000, title: "test", play: 10 }],
+				},
+			},
+		}),
+	);
+	await expect(again).resolves.toEqual({
+		ok: true,
+		text: "1. [2026/10/21 · 1 天前] test（播放: 10）",
 	});
 });

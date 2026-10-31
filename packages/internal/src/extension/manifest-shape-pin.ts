@@ -1,8 +1,8 @@
 /**
- * 清单两口(订阅源、推送)与第 3 版上报的推导类型,与同在 internal 的 zod
+ * 清单两口(订阅源、推送)与当前契约上报的推导类型,与同在 internal 的 zod
  * **双向严格相等**地钉在这里(同 `view-shape-pin.ts`,ADR-0019 决策 39 的那条规矩)。
  *
- * 一份是同一包的 zod(清单的 `contributes.subscription` 与第 3 版上报),一份是
+ * 一份是同一包的 zod(清单的 `contributes.subscription` 与当前契约上报),一份是
  * `extension/index.ts` 从核心域模型窄化推导的类型。单向赋值漏得过「一边多一个可选键」—— 拓展照着
  * 类型写了那一格,宿主一核就是「多出来的键」,整条上报被拒,而类型、测试、构建全绿。
  *
@@ -17,7 +17,7 @@ import type {
 	ExtensionCreatorProfileReportSchema,
 	ExtensionLiveSignalReportSchema,
 	ExtensionLiveStatusResultSchema,
-	ExtensionManifestV3,
+	ExtensionManifest,
 	ExtensionPostReportSchema,
 	ExtensionSourceHealthSchema,
 	SettingsFieldSchema,
@@ -38,8 +38,8 @@ import type {
 import type { Equals, Pinned } from "./view-shape-pin.js";
 
 /** 清单里订阅源那一段。 */
-type ManifestSubscription = NonNullable<ExtensionManifestV3["contributes"]["subscription"]>;
-type ManifestPush = NonNullable<ExtensionManifestV3["contributes"]["push"]>;
+type ManifestSubscription = NonNullable<ExtensionManifest["contributes"]["subscription"]>;
+type ManifestPush = NonNullable<ExtensionManifest["contributes"]["push"]>;
 type ReadonlyArrays<T> = T extends readonly (infer U)[]
 	? ReadonlyArray<ReadonlyArrays<U>>
 	: T extends object
@@ -84,7 +84,7 @@ export type SettingsFieldsPinned = Pinned<
 export type ManifestSettingsFieldsPinned = Pinned<
 	Equals<ReadonlyArrays<NonNullable<ManifestPush["settingsFields"]>[number]>, SettingsScalarField>
 >;
-// ---- Version 3 reports and read results ---------------------------------------------------
+// ---- Current contract reports and read results ---------------------------------------------------
 
 export type ExtensionPostReportPinned = Pinned<
 	Equals<z.infer<typeof ExtensionPostReportSchema>, ExtensionPostReport>

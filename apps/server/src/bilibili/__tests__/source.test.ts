@@ -322,6 +322,8 @@ function makeCtx(
 	}));
 	const registerAiToolProvider = vi.fn((_provider: AiToolProvider) => ({ dispose() {} }));
 	const ctx = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		logger: logger as Logger,
 		signal: new AbortController().signal,
 		settings: (schema: ZodType) => {

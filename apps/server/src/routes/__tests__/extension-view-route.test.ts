@@ -32,7 +32,7 @@ const MANIFEST = {
 	name: "抖音",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	settings: {
 		fields: [
 			{

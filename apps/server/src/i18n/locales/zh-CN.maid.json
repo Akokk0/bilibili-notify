@@ -110,5 +110,11 @@
 	"roastScheduler.generationFailed": "{label}没有发出去：{message}",
 	"roastScheduler.approvalGuide": "☝️ {label}已经生成好了，等主人过目～\n回复「y {draftId}」发送，「n {draftId}」丢弃。\n48 小时没有回复就自动作废。",
 	"roastScheduler.delivered": "{label}发送完毕：{sent} 个目标成功，{failed} 个失败。\n{detail}\n主人可以看看没发成的原因哦。",
-	"roastScheduler.subscriptionMissing": "这条订阅已经不在列表里啦，主人"
+	"roastScheduler.subscriptionMissing": "这条订阅已经不在列表里啦，主人",
+	"extension.compatibility.versionMismatch": "主人，这个拓展使用契约 v{required}，这版 BN 只接受 {supported}，请换成适配这版 BN 的拓展呀",
+	"extension.compatibility.revisionMismatch": "主人，它要宿主契约 v{required} 的小号 {wanted}，这版 BN 只到小号 {actual}，先升级 BN 再来呀",
+	"extension.manifest.invalidJson": "主人，{file} 不是合法 JSON：{detail}",
+	"extension.manifest.invalid": "主人，{file} 不合法 —— {detail}",
+	"extension.manifest.idMismatch": "主人，清单里的 id 是 {claimed}，与目录名 {id} 对不上呀",
+	"extension.manifest.missingEntry": "主人，少了入口文件 {file} 呀"
 }

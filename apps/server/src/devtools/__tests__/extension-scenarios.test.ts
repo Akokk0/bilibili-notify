@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 开发版装拓展的那三条 devtools 场景。
  *
@@ -65,7 +66,7 @@ async function plantManifest(id: string): Promise<void> {
 			name: "桥",
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 		}),
 	);
@@ -413,6 +414,7 @@ describe("软链进去的那份,装载器认得", () => {
 		await plantRepo("bridge", true);
 		await plantManifest("bridge");
 		const loaded = await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root: installRoot,

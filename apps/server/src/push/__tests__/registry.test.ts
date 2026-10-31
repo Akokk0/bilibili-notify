@@ -154,13 +154,16 @@ describe("adapter 注册表 · 出口咽喉", () => {
 
 /** 登记即启动、注销即停止(ADR-0024 决策 3):启停只归登记表。 */
 describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
-	it("登记即调 start,拿到的就是传进去的那份 ctx", async () => {
+	it("登记即调 start,公共成员照传、时区订阅归本次登记", async () => {
 		const registry = createPlatformAdapterRegistry();
 		const adapter = fakeAdapter("bridge");
 		const { ctx } = fakeAdapterContext();
 		await registry.register(adapter, ctx);
 		expect(adapter.start).toHaveBeenCalledTimes(1);
-		expect(adapter.start).toHaveBeenCalledWith(ctx);
+		expect(vi.mocked(adapter.start).mock.calls[0]?.[0]).toMatchObject({
+			...ctx,
+			onTimezoneChanged: expect.any(Function),
+		});
 	});
 
 	it("start 抛了 → 原样拒,键放掉、表里没有它、同一个键能再登记", async () => {
@@ -335,4 +338,59 @@ describe("adapter 注册表 · onChange", () => {
 		await reg(registry, fakeAdapter("c"));
 		expect(seen).toHaveBeenCalledTimes(2);
 	});
+});
+
+it("适配器单独撤登记即摘timezone通知,父集成仍活着", async () => {
+	const listeners = new Set<() => void>();
+	let timezone = "UTC";
+	const ctx = {
+		...fakeAdapterContext().ctx,
+		timezone: () => timezone,
+		onTimezoneChanged(fn: () => void) {
+			listeners.add(fn);
+			return { dispose: () => void listeners.delete(fn) };
+		},
+	};
+	const outside = ctx.onTimezoneChanged(() => {});
+	const adapter = fakeAdapter("timezone-probe");
+	const seen: string[] = [];
+	let started: Parameters<PlatformAdapter["start"]>[0] | undefined;
+	adapter.start = (one) => {
+		started = one;
+		one.onTimezoneChanged(() => seen.push(one.timezone()));
+	};
+	const registration = await createPlatformAdapterRegistry().register(adapter, ctx);
+	expect(listeners.size).toBe(2);
+	timezone = "Asia/Kathmandu";
+	for (const fn of listeners) fn();
+	expect(seen).toEqual(["Asia/Kathmandu"]);
+	registration.dispose();
+	expect(listeners.size).toBe(1);
+	started?.onTimezoneChanged(() => seen.push("stale"));
+	expect(listeners.size).toBe(1);
+	registration.dispose();
+	outside.dispose();
+	expect(listeners.size).toBe(0);
+});
+
+it.each([false, true])("适配器start失败释放timezone通知（async=%s）", async (asyncStart) => {
+	const listeners = new Set<() => void>();
+	const ctx = {
+		...fakeAdapterContext().ctx,
+		timezone: () => "UTC",
+		onTimezoneChanged(fn: () => void) {
+			listeners.add(fn);
+			return { dispose: () => void listeners.delete(fn) };
+		},
+	};
+	const adapter = fakeAdapter("failed-timezone");
+	const fail = (one: Parameters<PlatformAdapter["start"]>[0]): never => {
+		one.onTimezoneChanged(() => {});
+		throw new Error("start timezone failure");
+	};
+	adapter.start = asyncStart ? async (one) => fail(one) : fail;
+	const registry = createPlatformAdapterRegistry();
+	await expect(registry.register(adapter, ctx)).rejects.toThrow("start timezone failure");
+	expect(listeners.size).toBe(0);
+	expect(registry.list()).toEqual([]);
 });

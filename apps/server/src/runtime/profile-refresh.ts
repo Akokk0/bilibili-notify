@@ -354,7 +354,9 @@ export function startProfileRefresh(opts: ProfileRefreshOptions): ProfileRefresh
 		const globals = configStore.getGlobals();
 		const next = globals.profileRefreshCron;
 		if (next === currentCron && globals.timezone === currentTimezone) return;
-		logger.info(`[profile-refresh] cron changed: '${currentCron}' -> '${next}'`);
+		logger.info(
+			`[profile-refresh] schedule changed: cron='${currentCron}' timezone='${currentTimezone}' -> cron='${next}' timezone='${globals.timezone}'`,
+		);
 		job?.stop();
 		currentCron = next;
 		currentTimezone = globals.timezone;

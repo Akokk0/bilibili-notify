@@ -186,7 +186,7 @@ describe("拓展订阅源 e2e:经来源登记表,上报进到推送、在播、�
 					name,
 					description: "测试用",
 					version: "0.1.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					...(actions ? { actions } : {}),
 					contributes: {
 						subscription: {

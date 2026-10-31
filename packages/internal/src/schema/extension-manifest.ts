@@ -25,8 +25,9 @@ import { checkUserRegex } from "../util/regex-safety";
  *   要过高小号的拓展就会被新 BN 错拒。
  * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
  *
- * 现在:只认 v3(第 3 版清单),里面的现有能力都算 0 号。第 1、2 版的退路已删,它们的清单
- * 走「版本太旧」那条不兼容的路。
+ * 现在:全新1.0契约从1/0起号;1.0开发期新增能力统一保持revision 0,发版后才沿上述递增规则。
+ * 只保留当前strict清单。历史v1/v2不兼容,不转换;
+ * 同号旧开发包不能单凭数字区分,历史provides及旧嵌套形状由严格清单拒收。
  */
 export interface ExtensionApiRange {
 	readonly min: number;
@@ -34,8 +35,8 @@ export interface ExtensionApiRange {
 	readonly revision: number;
 }
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
-	min: 3,
-	current: 3,
+	min: 1,
+	current: 1,
 	revision: 0,
 });
 
@@ -621,7 +622,7 @@ export const ActionNameSchema = z
 	.refine((name) => !isPrototypeName(name), prototypeNameMessage("动作名"));
 
 /**
- * v3:静态声明全住清单(ADR-0019 决策 16)。
+ * 当前新契约:静态声明全住清单(ADR-0019 决策16,4-55重新起号)。
  *
  * **严格**:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明 ——
  * 面板上少了一栏,没人报错。格式要长新东西,跟着抬 {@link EXTENSION_API_RANGE} 的 `revision`
@@ -630,11 +631,11 @@ export const ActionNameSchema = z
  * 导出只为给契约形状的守卫登记(`extension-contract-shape.test.ts`);读清单一律走
  * {@link parseExtensionManifest}。
  */
-export const ExtensionManifestV3Schema = z.strictObject({
+export const ExtensionManifestSchema = z.strictObject({
 	/** 编辑器补全用,宿主不读。 */
 	$schema: z.string().optional(),
 	...identityShape,
-	apiVersion: z.literal(3),
+	apiVersion: z.literal(1),
 	/** 要的契约小号(ADR-0019 决策 59)。不写 = 0。 */
 	apiRevision: ApiRevisionSchema.optional(),
 	/** 这个拓展自己的设置项(桥的接入名单、抖音的 cookie)。 */
@@ -660,14 +661,11 @@ export const ExtensionManifestV3Schema = z.strictObject({
 	/** 开哪几口、每口的声明 —— `provides` 由它的键推出来。 */
 	contributes: ContributesSchema,
 });
-export type ExtensionManifestV3 = z.infer<typeof ExtensionManifestV3Schema>;
-
-/** 宿主现在读得了的清单(区间里只剩 v3 一档)。 */
-export type ExtensionManifest = ExtensionManifestV3;
+export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
 
 /** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */
 const MANIFEST_SCHEMAS: Readonly<Record<number, z.ZodType<ExtensionManifest>>> = {
-	3: ExtensionManifestV3Schema,
+	1: ExtensionManifestSchema,
 };
 
 /** 只读这一格 —— 其余部分长什么样要看它。 */

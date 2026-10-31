@@ -70,6 +70,7 @@ function makeStores(
 	descriptors: Descriptors = DEFAULT_DESCRIPTORS,
 ) {
 	return {
+		timezone: () => "Asia/Shanghai",
 		subscriptionStore: { list: () => subscriptions },
 		subscriptionStateStore: {
 			get: (id: string) => (names[id] ? { cachedProfile: { name: names[id] } } : undefined),

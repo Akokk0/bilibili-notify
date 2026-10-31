@@ -168,6 +168,15 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	// 🔴 逐格列出公共那几个成员(不含问题上报,那一对下面按来源的规矩自己造),不许展开 `integration`:B 站交进来的对象运行时带着 `cookies`,
 	// 类型收窄挡不住展开把它原样抄进来(罐子的口对来源不开)。
 	const ctx: SourceContext = {
+		timezone: () => integration.timezone(),
+		onTimezoneChanged(fn) {
+			if (disposed) return { dispose() {} };
+			const watch = integration.onTimezoneChanged(() => {
+				if (!disposed) return fn();
+			});
+			watches.push(watch);
+			return watch;
+		},
 		logger,
 		signal: integration.signal,
 		onDispose: integration.onDispose,

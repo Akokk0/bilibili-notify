@@ -33,6 +33,8 @@ vi.mock("cron", () => ({
 	},
 }));
 
+const startupTimers: number[] = [];
+
 const GLOBALS = { profileRefreshCron: "*/10 * * * *", timezone: "UTC" };
 const SUB = {
 	id: "s1",
@@ -46,6 +48,7 @@ afterEach(() => {
 	handle = undefined;
 	GLOBALS.timezone = "UTC";
 	cronMock.instances.length = 0;
+	startupTimers.length = 0;
 });
 
 function start(fetchUserCard: ReturnType<typeof vi.fn>, bus = createNodeMessageBus()) {
@@ -76,7 +79,10 @@ function start(fetchUserCard: ReturnType<typeof vi.fn>, bus = createNodeMessageB
 		} as never,
 		// 不放行启动那次延时 tick:这里只看 pollNow 自己触发的那一轮。
 		serviceCtx: {
-			setTimeout: vi.fn(() => undefined),
+			setTimeout: vi.fn((_fn: () => void, ms: number) => {
+				startupTimers.push(ms);
+				return undefined;
+			}),
 			setInterval: vi.fn(() => undefined),
 			track: vi.fn(),
 			signal: new AbortController().signal,
@@ -115,10 +121,12 @@ describe("profile refresh pollNow", () => {
 	});
 });
 
-it("re-arms only the cron job when timezone changes and disposes its listener", () => {
+it("re-arms only the cron job when timezone changes and disposes its listener", async () => {
 	const bus = createNodeMessageBus();
 	const fetch = vi.fn();
 	const h = start(fetch, bus);
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	expect(startupTimers).toEqual([3000]);
 	expect(cronMock.instances.map((job) => job.timezone)).toEqual(["UTC"]);
 	bus.emit("config-changed", { scope: "globals" });
 	expect(cronMock.instances).toHaveLength(1);
@@ -129,6 +137,7 @@ it("re-arms only the cron job when timezone changes and disposes its listener", 
 		["Asia/Kathmandu", false],
 	]);
 	expect(fetch).not.toHaveBeenCalled();
+	expect(startupTimers).toEqual([3000]);
 	h.dispose();
 	GLOBALS.timezone = "UTC";
 	bus.emit("config-changed", { scope: "globals" });

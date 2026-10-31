@@ -449,5 +449,11 @@
 	"roastScheduler.boardLabel": "榜单周报",
 	"roastScheduler.approvedLabel": "这份锐评",
 	"roastScheduler.soloLabel": "{name} 的锐评",
-	"roastScheduler.subscriptionMissing": "这条订阅已不在订阅列表中"
+	"roastScheduler.subscriptionMissing": "这条订阅已不在订阅列表中",
+	"extension.compatibility.versionMismatch": "这个拓展使用契约 v{required}，本版 BN 只接受 {supported}；请使用适配本版 BN 的拓展",
+	"extension.compatibility.revisionMismatch": "它要宿主契约 v{required} 的小号 {wanted}，这一版 BN 只到小号 {actual} —— 先升级 BN",
+	"extension.manifest.invalidJson": "{file} 不是合法 JSON：{detail}",
+	"extension.manifest.invalid": "{file} 不合法 —— {detail}",
+	"extension.manifest.idMismatch": "清单里的 id 是 {claimed}，与目录名 {id} 对不上",
+	"extension.manifest.missingEntry": "少了入口文件 {file}"
 }

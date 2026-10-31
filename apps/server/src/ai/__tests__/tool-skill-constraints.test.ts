@@ -158,7 +158,10 @@ describe("AI 工具与技能约束", () => {
 				(tool.definition.function.parameters?.properties ?? {}) as Record<string, unknown>,
 			),
 		}));
-		const bili = createBiliAiToolProvider({ api: {} as never }).readOnly.map((tool) => ({
+		const bili = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: {} as never,
+		}).readOnly.map((tool) => ({
 			name: tool.definition.function.name,
 			label: tool.label,
 			...(tool.labelArg ? { labelArg: tool.labelArg } : {}),
@@ -194,7 +197,10 @@ describe("AI 工具与技能约束", () => {
 			}
 		}
 
-		const provider = createBiliAiToolProvider({ api: {} as never });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: {} as never,
+		});
 		providers.register("bilibili", provider);
 		const ownToolNames = providers.tools().map((tool) => tool.definition.function.name);
 		expect(ownToolNames).toEqual(["bilibili__get_up_totals", "bilibili__get_up_videos"]);

@@ -30,7 +30,7 @@ function clip(s: string, max: number): string {
  * 「已经 N 天」「最近一天」「从新到旧」让它拿一个裸日期自己推,只能靠猜。按经过的
  * 时长算、不按日历日,所以与服务器时区无关。
  */
-export function publishedStamp(tsSeconds: unknown, now = Date.now()): string {
+export function publishedStamp(tsSeconds: unknown, now: number, timezone: string): string {
 	if (typeof tsSeconds !== "number" || !Number.isFinite(tsSeconds) || tsSeconds <= 0) {
 		return "未知时间";
 	}
@@ -41,7 +41,7 @@ export function publishedStamp(tsSeconds: unknown, now = Date.now()): string {
 			: ms < 86_400_000
 				? `${Math.floor(ms / 3_600_000)} 小时前`
 				: `${Math.floor(ms / 86_400_000)} 天前`;
-	return `${new Date(tsSeconds * 1000).toLocaleDateString("zh-CN")} · ${age}`;
+	return `${new Date(tsSeconds * 1000).toLocaleDateString("zh-CN", { timeZone: timezone })} · ${age}`;
 }
 
 /**
@@ -81,6 +81,8 @@ export type LiveNowView =
  * 这是一个读口:`packages/ai` 不认订阅仓、来源登记表,也不认任何平台。
  */
 export interface CreatorReader {
+	/** Current global timezone, read when formatting tool output. */
+	timezone(): string;
 	/** 当前启用的订阅(停用的不列:关掉的人不该再出现在女仆的回答里)。 */
 	subscriptions(): AiSubscriptionView[];
 	/**
@@ -143,7 +145,7 @@ export interface AiCandidateView {
 }
 
 /** 订阅那一行:从 BN 手里的在播状态答(不问平台)。 */
-function liveLine(s: AiSubscriptionView): string {
+function liveLine(s: AiSubscriptionView, timezone: string): string {
 	const now = s.liveNow;
 	if (!now) return `${s.name}：查不到（BN 手里没有它的在播状态）`;
 	if (now.state === "unknown") {
@@ -153,7 +155,7 @@ function liveLine(s: AiSubscriptionView): string {
 	const details = [
 		now.startedAt === undefined
 			? undefined
-			: `开播于 ${new Date(now.startedAt).toLocaleString("zh-CN", { hour12: false })}`,
+			: `开播于 ${new Date(now.startedAt).toLocaleString("zh-CN", { hour12: false, timeZone: timezone })}`,
 		now.totalViewers === undefined ? undefined : `累计观看 ${now.totalViewers}`,
 	].filter((part): part is string => part !== undefined);
 	const title = now.title ? `「${clip(now.title, 80)}」` : "";
@@ -468,7 +470,7 @@ export async function executeTool(
 					const body = [p.title, p.summary ? clip(p.summary, 200) : undefined]
 						.filter(Boolean)
 						.join(" ");
-					return `${i + 1}. [${publishedStamp(Date.parse(p.publishedAt) / 1000)}] ${body || "（无文字内容）"}`;
+					return `${i + 1}. [${publishedStamp(Date.parse(p.publishedAt) / 1000, Date.now(), gate.reader.timezone())}] ${body || "（无文字内容）"}`;
 				})
 				.join("\n");
 			return ok({ text });
@@ -488,16 +490,16 @@ export async function executeTool(
 				`视频作品: ${s.videoPosts ?? none}`,
 				`直播场次: ${s.liveSessions ?? none}`,
 				`直播时长: ${s.liveHours === null ? none : `${s.liveHours} 小时`}`,
-				`最后活动: ${s.lastActivityAt === null ? none : new Date(s.lastActivityAt).toLocaleDateString("zh-CN")}`,
+				`最后活动: ${s.lastActivityAt === null ? none : new Date(s.lastActivityAt).toLocaleDateString("zh-CN", { timeZone: gate.reader.timezone() })}`,
 			];
 			return ok({ text: lines.join("\n") });
 		}
 		case "get_live_status": {
 			const subscriptions = reader?.subscriptions() ?? [];
-			if (subscriptions.length === 0) return ok({ text: "当前没有订阅" });
+			if (!reader || subscriptions.length === 0) return ok({ text: "当前没有订阅" });
 			const liveItems = subscriptions.filter((s) => s.live);
 			if (!liveItems.length) return ok({ text: "当前没有开着直播监控的订阅" });
-			return ok({ text: liveItems.map(liveLine).join("\n") });
+			return ok({ text: liveItems.map((item) => liveLine(item, reader.timezone())).join("\n") });
 		}
 		case "search_creators": {
 			const source = args.source?.trim();

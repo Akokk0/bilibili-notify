@@ -40,7 +40,7 @@ function extensionEntry(
 			name: `${id} 拓展`,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push },
 		} as never,
 	};
@@ -195,7 +195,7 @@ describe("GET /api/adapters", () => {
 				name: "抖音",
 				description: "测试用",
 				version: "1.0.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { subscription: { label: "抖音", supportedFeatures: ["post"] } },
 			} as never,
 		};

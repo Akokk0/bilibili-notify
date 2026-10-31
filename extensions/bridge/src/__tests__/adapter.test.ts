@@ -158,6 +158,8 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 	const noop = () => {};
 	const start = () =>
 		adapter.start({
+			timezone: () => "Asia/Shanghai",
+			onTimezoneChanged: () => ({ dispose() {} }),
 			logger: { info: noop, warn: noop, error: noop, debug: noop },
 			signal: new AbortController().signal,
 			onDispose: noop,

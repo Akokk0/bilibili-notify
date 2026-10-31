@@ -42,7 +42,7 @@ const DOUYIN: ExtensionDTO = {
 	dir: "/data/extensions/douyin",
 	enabled: true,
 	state: "running",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["subscription"],
 };
 

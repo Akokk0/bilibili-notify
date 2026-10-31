@@ -287,7 +287,7 @@ describe("list():官方源", () => {
 		expect((await harness({ prerelease: true }).marketplace.list()).extensions).toHaveLength(1);
 	});
 
-	it("契约版本对不上 → incompatible(要先升级 BN)", async () => {
+	it("契约版本对不上 → incompatible(中性提示)", async () => {
 		serve({
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
@@ -381,8 +381,8 @@ describe("list():官方源", () => {
 		]);
 	});
 
-	it("低于宿主最低档 → 同样 incompatible;真去装会说「这个拓展太旧」而不是叫主人升级 BN", async () => {
-		const tooOld = EXTENSION_API_RANGE.min - 1;
+	it("旧v3与新1大档不合 → incompatible,安装不给误导升级", async () => {
+		const tooOld = 3;
 		serve({
 			[OFFICIAL_URL]: envelope(
 				key.privateKey,
@@ -579,14 +579,15 @@ describe("list():同一个 id 两档(正式 + 预发布)", () => {
  * 「自己装得了」的里头取版本最高的那条,画一张卡。
  */
 describe("list():同一个 id 多个契约版本", () => {
-	const V3_ZIP_URL =
+	const OTHER_ZIP_URL =
 		"https://github.com/Akokk0/bilibili-notify/releases/download/ext/bridge-0.1.0.zip";
-	const current = EXTENSION_API_RANGE.current;
-	const previous = EXTENSION_API_RANGE.min - 1;
+	// 合法的合成索引大档,只用来测通用挑选;不声称当前宿主实现2号schema。
+	const current = 2;
+	const previous = 1;
 	const currentZip = pack("bridge", "0.1.0");
 	const previousEntry = () => entry("bridge", "0.0.1", oldBridgeZip, { apiVersion: previous });
 	const currentEntry = () =>
-		entry("bridge", "0.1.0", currentZip, { apiVersion: current }, V3_ZIP_URL);
+		entry("bridge", "0.1.0", currentZip, { apiVersion: current }, OTHER_ZIP_URL);
 	const body = () =>
 		envelope(key.privateKey, official({ extensions: [previousEntry(), currentEntry()] }));
 	const only = (range: ExtensionApiRange) => harness({ hostApiRange: range });
@@ -617,7 +618,7 @@ describe("list():同一个 id 多个契约版本", () => {
 	});
 
 	it("install() 装的是这台 BN 装得了的那条", async () => {
-		serve({ [OFFICIAL_URL]: body(), [ZIP_URL]: oldBridgeZip, [V3_ZIP_URL]: currentZip });
+		serve({ [OFFICIAL_URL]: body(), [ZIP_URL]: oldBridgeZip, [OTHER_ZIP_URL]: currentZip });
 		expect(
 			await only({
 				min: previous,
@@ -625,9 +626,12 @@ describe("list():同一个 id 多个契约版本", () => {
 				revision: 0,
 			}).marketplace.install("official", "bridge"),
 		).toMatchObject({ ok: true, version: "0.0.1" });
-		expect(
-			await only({ min: current, current, revision: 0 }).marketplace.install("official", "bridge"),
-		).toMatchObject({ ok: true, version: "0.1.0" });
+		serve({ [OFFICIAL_URL]: envelope(key.privateKey, official({ extensions: [currentEntry()] })) });
+		// 当前真实宿主仍只认1;2号索引条目在下载前拒收,不模拟加载不存在的schema。
+		expect(await harness().marketplace.install("official", "bridge")).toMatchObject({
+			ok: false,
+			code: "unsupported",
+		});
 	});
 
 	it("预发布渠道也只在装得了的里头挑:当前档 alpha 不顶掉旧档 BN 的正式版", async () => {
@@ -890,7 +894,7 @@ describe("install()", () => {
 		expect(await h.marketplace.install("official", "bridge")).toMatchObject({
 			ok: false,
 			code: "unsupported",
-			message: expect.stringContaining("升级"),
+			message: expect.stringContaining("契约"),
 		});
 	});
 
@@ -1004,4 +1008,34 @@ describe("install()", () => {
 			`https://mirror.example/${ZIP_URL}`,
 		);
 	});
+});
+
+it("同号旧api1索引可显示版本可装,安装仍严格拒旧包且不落盘重扫", async () => {
+	const legacy = zipSync({
+		"extension.json": strToU8(
+			JSON.stringify({
+				id: "bridge",
+				name: "old bridge",
+				version: "0.0.1",
+				apiVersion: 1,
+				provides: ["push"],
+			}),
+		),
+		"index.mjs": strToU8('throw new Error("must not import historical code")'),
+	});
+	serve({
+		[OFFICIAL_URL]: envelope(
+			key.privateKey,
+			official({ extensions: [entry("bridge", "0.0.1", legacy)] }),
+		),
+		[ZIP_URL]: legacy,
+	});
+	const h = harness();
+	expect((await h.marketplace.list()).extensions[0]).toMatchObject({
+		apiVersion: 1,
+		state: "installable",
+	});
+	const outcome = await h.marketplace.install("official", "bridge");
+	expect(outcome).toMatchObject({ ok: false, code: "invalid" });
+	expect(h.rescan).not.toHaveBeenCalled();
 });

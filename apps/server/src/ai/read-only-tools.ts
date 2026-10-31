@@ -66,6 +66,7 @@ export function attachReadOnlyTools(
 		setProvidedTools(get: () => readonly AiTool[]): void;
 	},
 	stores: {
+		timezone: () => string;
 		subscriptionStore: SubscriptionReader;
 		subscriptionStateStore: ProfileSource;
 		/** 订阅所属平台的叫法(问来源登记表,见 `subscriptions/platform-label.ts`)。 */
@@ -108,6 +109,7 @@ export function attachReadOnlyTools(
 	// 每次工具调用现取,不是接线那一刻的快照:接线发生在启动时,订阅却是
 	// 运行期随时增删的。
 	engine.setCreatorReader({
+		timezone: stores.timezone,
 		subscriptions: () =>
 			aiSubscriptionViews(
 				stores.subscriptionStore,

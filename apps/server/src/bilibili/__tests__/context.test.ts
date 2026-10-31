@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * B 站上下文(`bilibili/context.ts`):开存储、建集成上下文、建请求客户端,与它的收尾次序。
  *
@@ -72,6 +73,7 @@ describe("createBiliContext", () => {
 	it("重启后身份稳定:两次建上下文线上的 UA 相同,且就是 state.json 里 http.identity 写的那一份", async () => {
 		const { host, store } = makeStore();
 		const first = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -86,6 +88,7 @@ describe("createBiliContext", () => {
 		// 模拟重启:同一个数据根、新的宿主与上下文。
 		const again = makeStore();
 		const second = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: again.store,
 			serviceCtx: again.host.serviceCtx,
@@ -113,6 +116,7 @@ describe("createBiliContext", () => {
 	it("罐子的 cookie 值与 secrets 的值经存储把手登记进打码登记册(B 站上下文不另收登记册),收摊后撤掉", async () => {
 		const { host, store, redactor } = makeStore();
 		const { ctx, dispose } = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -139,6 +143,7 @@ describe("createBiliContext", () => {
 	it("ctx 带着公共那一面、请求客户端与罐子的把手;`http.` 开头的键 B 站自己写不进去", async () => {
 		const { host, store } = makeStore();
 		const { ctx, dispose } = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -165,6 +170,7 @@ describe("createBiliContext", () => {
 
 		await expect(
 			createBiliContext({
+				timezoneReader: fixedTimezone("Asia/Shanghai"),
 				transitImages: inertTransitImages,
 				stores: store,
 				serviceCtx: host.serviceCtx,
@@ -175,6 +181,7 @@ describe("createBiliContext", () => {
 
 		expect(store.isOpen("bilibili")).toBe(false);
 		const reopened = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -189,6 +196,7 @@ describe("createBiliContext", () => {
 	it("收尾:先跑 ctx.onDispose 的钩子(后登记的先跑),再关把手;幂等", async () => {
 		const { host, store } = makeStore();
 		const handle = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -214,6 +222,7 @@ describe("createBiliContext", () => {
 	it("连接池放在 drain 段收,不在上下文的收尾里:dispose() 不动客户端,跑 drain 钩子才收", async () => {
 		const { host, store } = makeStore();
 		const handle = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,
@@ -238,6 +247,7 @@ describe("createBiliContext", () => {
 		const { host, store } = makeStore();
 		const asked: string[] = [];
 		const handle = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: store,
 			serviceCtx: host.serviceCtx,

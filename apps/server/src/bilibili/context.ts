@@ -40,6 +40,7 @@ export interface BiliContextHandle {
 }
 
 export interface CreateBiliContextOptions {
+	timezoneReader: CreateIntegrationContextOptions["timezoneReader"];
 	stores: Pick<IntegrationStore, "open">;
 	/** 宿主的那一面:日志、可回收定时器、按段登记的关停钩子。 */
 	serviceCtx: ServiceContext;
@@ -65,6 +66,7 @@ export async function createBiliContext(
 	let opened: OpenedIntegration;
 	try {
 		opened = await openIntegration({
+			timezoneReader: opts.timezoneReader,
 			stores: store,
 			logger: serviceCtx.logger,
 			stopReason: "BN 关停",

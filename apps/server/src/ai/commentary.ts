@@ -96,6 +96,7 @@ export function createCommentary(deps: CommentaryDeps): CommentaryGenerator | nu
 		// 会一口咬定「当前没有订阅」;带上写能力则等于让她能真的加减订阅。
 		// 两种都不是我们要的,取舍写在 attachReadOnlyTools 的文档里。
 		attachReadOnlyTools(c, {
+			timezone: () => deps.globals().timezone,
 			subscriptionStore: deps.subscriptionStore,
 			subscriptionStateStore: deps.subscriptionStateStore,
 			// 平台名问来源登记表,登记表里没有的(拓展)才问装载器 —— 与锐评同一条链。

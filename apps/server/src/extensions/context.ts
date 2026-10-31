@@ -180,6 +180,7 @@ export interface ExtensionRuntime {
 }
 
 export interface CreateExtensionContextOptions {
+	timezoneReader: CreateIntegrationContextOptions["timezoneReader"];
 	id: string;
 	/**
 	 * 它的清单 —— 注册时按它核对「开没开这一口」,外观、连接配置项、设置项都从这儿读
@@ -299,6 +300,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		return name;
 	}
 	const integration = createIntegrationContext({
+		timezoneReader: opts.timezoneReader,
 		logger: opts.loggerOf(id),
 		// 建上下文那一刻就取了字:`stopReason` 收的是字符串,改成停下那一刻现取要动集成上下文,随 4-53c。
 		stopReason: t("extension.stopReason.disabled", { id }),
@@ -795,6 +797,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	};
 
 	const ctx: ExtensionContext = {
+		timezone: integration.ctx.timezone,
+		onTimezoneChanged: integration.ctx.onTimezoneChanged,
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",

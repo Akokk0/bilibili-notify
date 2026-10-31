@@ -85,7 +85,7 @@ function extension(id: string): ExtensionDTO {
 		dir: `/data/extensions/${id}`,
 		enabled: true,
 		state: "running",
-		apiVersion: 3,
+		apiVersion: 1,
 		provides: ["subscription"],
 	};
 }

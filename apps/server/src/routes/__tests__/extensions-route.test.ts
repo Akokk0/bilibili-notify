@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 拓展页要的两个只读口:装了什么,以及某个拓展自己交上来的那份面板数据。
  *
@@ -169,6 +170,7 @@ function quietHost(): ServiceContext {
 /** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关(给函数就现读,好中途拨)。 */
 function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedExtensions> {
 	return loadExtensions({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: fixedLocale(),
 		root: installRoot,
@@ -202,7 +204,7 @@ async function plant(id: string, word: string, version = "1.0.0"): Promise<void>
 			name: `${id} 拓展`,
 			description: "测试用",
 			version,
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { ...PUSH_DISPLAY } },
 		}),
 	);
@@ -221,7 +223,7 @@ function pack(over: Record<string, unknown> = {}): Blob {
 				name: "机器人框架桥接",
 				description: "测试用",
 				version: "1.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { push: { ...PUSH_DISPLAY } },
 				...over,
 			}),
@@ -262,7 +264,7 @@ function running(id: string): ExtensionEntry {
 			name: `${id} 拓展`,
 			description: "一句话说明",
 			version: "1.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { ...PUSH_DISPLAY } },
 		},
 	};
@@ -273,7 +275,7 @@ const REPORTING_SOURCE_MANIFEST = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: {
 		subscription: {
 			label: "抖音",
@@ -387,7 +389,7 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: {
 					subscription: {
 						label: "抖音",
@@ -421,7 +423,7 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				settings: { fields: fields as never },
 				contributes: {
 					subscription: {
@@ -511,7 +513,7 @@ describe("GET /api/ext", () => {
 				name: "机器人框架桥接",
 				description: "一句话说明",
 				version: "0.0.1",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { push: { ...display, settingsFields: fields as never } },
 			},
 		};
@@ -524,7 +526,7 @@ describe("GET /api/ext", () => {
 				name: "抖音订阅",
 				description: "一句话说明",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: {
 					subscription: {
 						label: "抖音",
@@ -556,7 +558,7 @@ describe("GET /api/ext", () => {
 				name: "机器人框架桥接",
 				description: "一句话说明",
 				version: "0.0.1",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: {
 					push: { label: "机器人框架桥接", shortLabel: "桥接", color: "#a855f7" },
 				},
@@ -1574,7 +1576,7 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),
@@ -1601,7 +1603,7 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),
@@ -1855,7 +1857,7 @@ describe("拓展的译文", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					contributes: { push: { ...PUSH_DISPLAY } },
 				}),
 			),

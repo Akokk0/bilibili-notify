@@ -330,7 +330,7 @@ describe("拆包", () => {
 	});
 
 	/** 装一个跑不起来的东西没有意义,而**这一刻**的错误信息是最清楚的一次。 */
-	it("给更新的宿主写的 → 当场拒绝,别等装进去再在页面上显示 incompatible", () => {
+	it("大档不匹配 → 当场unsupported,中性提示保留两边版本事实", () => {
 		const opened = openExtensionPackage(
 			pack({
 				...GOOD,
@@ -341,7 +341,9 @@ describe("拆包", () => {
 		if (!opened.ok) {
 			// 版本对不上是「这个宿主不认」,不是包的内容写错了。
 			expect(opened.code).toBe("unsupported");
-			expect(opened.message).toContain("先升级 BN");
+			expect(opened.message).not.toContain("升级 BN");
+			expect(opened.message).toContain(`v${EXTENSION_API_RANGE.current + 1}`);
+			expect(opened.message).toContain(`v${EXTENSION_API_RANGE.current}`);
 		}
 	});
 
@@ -349,7 +351,7 @@ describe("拆包", () => {
 	 * 将来的清单格式我们不认识 —— 主人拿着这个包,该听到的是「版本不合、先升级 BN」,而不是
 	 * 一串「contributes.chat: 不认识的键」(ADR-0019 决策 18)。
 	 */
-	it("将来的格式我们不认识 → 说版本不合,不去挑格式的毛病", () => {
+	it("不识别大档的格式 → unsupported,不挑未知格式也不执行入口", () => {
 		const opened = openExtensionPackage(
 			pack({
 				...GOOD,
@@ -364,7 +366,9 @@ describe("拆包", () => {
 		if (opened.ok) return;
 		expect(opened.code).toBe("unsupported");
 		expect(opened.issues).toBeUndefined();
-		expect(opened.message).toContain("先升级 BN");
+		expect(opened.message).not.toContain("升级 BN");
+		expect(opened.message).toContain(`v${EXTENSION_API_RANGE.current + 1}`);
+		expect(opened.message).toContain(`v${EXTENSION_API_RANGE.current}`);
 	});
 
 	it("当前档的清单包 → 收下", () => {

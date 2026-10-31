@@ -47,7 +47,7 @@ const DOUYIN: ExtensionDTO = {
 	name: "抖音订阅",
 	description: "盯着抖音作者的新作品与开播。",
 	version: "0.1.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["subscription"],
 	settings: {
 		fields: [
@@ -159,7 +159,7 @@ describe("v2 拓展的详情页", () => {
 
 	// 「声明式」= 有清单(apiVersion 有值),与清单是第几版脱钩:抬档不用再改这一处判据。
 	it("清单是第 3 版的拓展同样有「配置」页签", async () => {
-		renderDetail({ ext: { ...DOUYIN, apiVersion: 3 } });
+		renderDetail({ ext: { ...DOUYIN, apiVersion: 1 } });
 		expect(await screen.findByText("设置")).toBeTruthy();
 		expect(await screen.findByLabelText("检查间隔")).toBeTruthy();
 	});

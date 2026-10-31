@@ -8,13 +8,14 @@
  *
  * 所以这份 schema 校验的是**一段谁都没执行过的 JSON**,它必须自己把话说全。
  *
- * 清单的格式按档位分(ADR-0019 决策 16 / 18):v3 把静态声明全搬进清单(`settings` /
+ * 清单的格式按档位分(ADR-0019 决策 16 / 18):全新1.0契约1 把静态声明全搬进清单(`settings` /
  * `actions` / `contributes`)。宿主认一个区间,**先单读 `apiVersion`,再按那一档的格式
  * 校验其余**。第 1 版(声明写在代码里、清单只报 `provides`)的退路已删,它的清单现在是
- * 「版本太旧、不兼容」。
+ * 严格清单格式不合,不会import。
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import * as wire from "../../extension/wire";
 import {
 	ActionNameSchema,
@@ -31,7 +32,7 @@ import {
 	settingsValueSchema,
 } from "../extension-manifest";
 
-function v1(over: Record<string, unknown> = {}): Record<string, unknown> {
+function historicalV1(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "demo-ext",
 		name: "机器人框架桥接",
@@ -49,13 +50,13 @@ const DISPLAY = { label: "抖音", shortLabel: "抖", color: "#fe2c55" };
 const PNG =
 	"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-function v3(over: Record<string, unknown> = {}): Record<string, unknown> {
+function currentManifest(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "demo-ext",
 		name: "抖音订阅",
 		description: "盯着抖音作者的新作品与开播。",
 		version: "0.1.0",
-		apiVersion: 3,
+		apiVersion: 1,
 		contributes: { subscription: { ...DISPLAY, supportedFeatures: ["post"] } },
 		...over,
 	};
@@ -64,7 +65,7 @@ function v3(over: Record<string, unknown> = {}): Record<string, unknown> {
 /** 只改 `contributes.subscription` 里的几格。 */
 function sub(over: Record<string, unknown>): Record<string, unknown> {
 	const { display, ...fields } = over;
-	return v3({
+	return currentManifest({
 		contributes: {
 			subscription: {
 				...DISPLAY,
@@ -78,7 +79,7 @@ function sub(over: Record<string, unknown>): Record<string, unknown> {
 
 /** 只摆一格设置项。 */
 function withField(field: Record<string, unknown>): Record<string, unknown> {
-	return v3({ settings: { fields: [field] } });
+	return currentManifest({ settings: { fields: [field] } });
 }
 
 function ok(raw: unknown, range?: ExtensionApiRange): ExtensionManifest {
@@ -107,8 +108,8 @@ function incompatible(
 }
 
 describe("parseExtensionManifest —— 档位区间", () => {
-	it("宿主这一版只认 v3(第 2 版的退路已删),契约小号是 0", () => {
-		expect(EXTENSION_API_RANGE).toEqual({ min: 3, current: 3, revision: 0 });
+	it("宿主这一版只认 currentManifest(第 2 版的退路已删),契约小号是 0", () => {
+		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 0 });
 	});
 
 	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
@@ -133,15 +134,15 @@ describe("parseExtensionManifest —— 档位区间", () => {
 		expect(apiVersionAccepted({ apiVersion: 3, apiRevision: 0 }, range)).toBe(false);
 	});
 
-	it("v3 最小清单:开哪一口由 contributes 的键推出来,不再单写 provides", () => {
-		const m = ok(v3());
-		expect(m.apiVersion).toBe(3);
+	it("全新1.0契约1 最小清单:开哪一口由 contributes 的键推出来,不再单写 provides", () => {
+		const m = ok(currentManifest());
+		expect(m.apiVersion).toBe(1);
 		expect(manifestProvides(m)).toEqual(["subscription"]);
 	});
 
-	it("v3 两口都开时,推出来的次序是固定的(push 在前),不随清单里的键序走", () => {
+	it("全新1.0契约1 两口都开时,推出来的次序是固定的(push 在前),不随清单里的键序走", () => {
 		const m = ok(
-			v3({
+			currentManifest({
 				contributes: {
 					subscription: { ...DISPLAY, supportedFeatures: ["post"] },
 					push: DISPLAY,
@@ -152,7 +153,7 @@ describe("parseExtensionManifest —— 档位区间", () => {
 	});
 
 	/** ADR-0019 决策 16 那份示例 —— 文档与代码说的必须是同一种格式。 */
-	it("ADR 里那份抖音示例原样收下", () => {
+	it("ADR抖音示例按新契约重建后收下", () => {
 		const m = ok({
 			$schema: "https://example.invalid/extension.schema.json",
 			id: "douyin",
@@ -160,7 +161,7 @@ describe("parseExtensionManifest —— 档位区间", () => {
 			description: "盯着抖音作者的新作品与开播。",
 			version: "0.1.0",
 			icon: '<svg viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
-			apiVersion: 3,
+			apiVersion: 1,
 			settings: {
 				fields: [
 					{
@@ -185,14 +186,14 @@ describe("parseExtensionManifest —— 档位区间", () => {
 				},
 			},
 		});
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		if (m.apiVersion !== 1) throw new Error("应该是 全新1.0契约1");
 		expect(m.settings?.fields[0]).toMatchObject({ key: "cookie", type: "string", secret: true });
 		expect(m.contributes.subscription?.postNoun).toBe("作品");
 	});
 
 	it("推送源那一段:外观与连接配置项摊平;桥那种「连接是挑出来的」可以不写 settingsFields", () => {
 		const withConnection = ok(
-			v3({
+			currentManifest({
 				contributes: {
 					push: {
 						...DISPLAY,
@@ -202,20 +203,20 @@ describe("parseExtensionManifest —— 档位区间", () => {
 			}),
 		);
 		expect(withConnection.contributes.push?.settingsFields).toHaveLength(1);
-		expect(() => ok(v3({ contributes: { push: DISPLAY } }))).not.toThrow();
+		expect(() => ok(currentManifest({ contributes: { push: DISPLAY } }))).not.toThrow();
 	});
 });
 
-describe("parseExtensionManifest —— 第 3 版清单", () => {
+describe("parseExtensionManifest —— 当前新清单", () => {
 	it("第 2 版清单不兼容,回它要的档位与身份", () => {
-		const r = incompatible(v3({ apiVersion: 2 }));
+		const r = incompatible(currentManifest({ apiVersion: 2 }));
 		expect(r.requires).toEqual({ apiVersion: 2 });
 		expect(r.identity).toMatchObject({ id: "demo-ext", version: "0.1.0" });
 	});
 
 	it("订阅段摊平,清单可同时开订阅与推送两口", () => {
 		const m = ok(
-			v3({
+			currentManifest({
 				contributes: {
 					subscription: {
 						...DISPLAY,
@@ -225,7 +226,7 @@ describe("parseExtensionManifest —— 第 3 版清单", () => {
 				},
 			}),
 		);
-		expect(m.apiVersion).toBe(3);
+		expect(m.apiVersion).toBe(1);
 		expect(m.contributes.subscription?.label).toBe("抖音");
 		expect(m.contributes.subscription?.supportedFeatures).toEqual([
 			"post",
@@ -238,7 +239,7 @@ describe("parseExtensionManifest —— 第 3 版清单", () => {
 
 	it("旧的嵌套 display / events / connection 读不了,并点名旧格", () => {
 		const issues = unreadable(
-			v3({
+			currentManifest({
 				contributes: {
 					subscription: {
 						display: DISPLAY,
@@ -270,21 +271,25 @@ describe("parseExtensionManifest —— 第 3 版清单", () => {
 		["空特性表", [], "supportedFeatures"],
 	])("%s 读不了并点名 supportedFeatures", (_label, supportedFeatures, path) => {
 		const issues = unreadable(
-			v3({ contributes: { subscription: { ...DISPLAY, supportedFeatures } } }),
+			currentManifest({ contributes: { subscription: { ...DISPLAY, supportedFeatures } } }),
 		).join("\n");
 		expect(issues).toContain(path);
 	});
 
 	it("订阅段短名与颜色可缺;推送段的仍必填", () => {
 		expect(() =>
-			ok(v3({ contributes: { subscription: { label: "抖音", supportedFeatures: ["post"] } } })),
+			ok(
+				currentManifest({
+					contributes: { subscription: { label: "抖音", supportedFeatures: ["post"] } },
+				}),
+			),
 		).not.toThrow();
-		unreadable(v3({ contributes: { push: { label: "抖音推送", color: "#fe2c55" } } }));
+		unreadable(currentManifest({ contributes: { push: { label: "抖音推送", color: "#fe2c55" } } }));
 	});
 
 	it("清单密钥键从推送段摊平的 settingsFields 收", () => {
 		const m = ok(
-			v3({
+			currentManifest({
 				contributes: {
 					push: {
 						label: "抖音推送",
@@ -324,24 +329,23 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 	});
 
 	it("低于最低档:同样判不兼容(宿主抬过最低档之后,老拓展停在门外)", () => {
-		const r = incompatible(v1(), { min: 3, current: 3, revision: 0 });
+		const r = incompatible(historicalV1(), { min: 3, current: 3, revision: 0 });
 		expect(r.requires).toEqual({ apiVersion: 1 });
 		expect(r.identity.id).toBe("demo-ext");
 	});
 
-	it("第 1 版的清单:宿主自己那一档下判不兼容(退路已删),身份照样读得出", () => {
-		const r = incompatible(v1());
-		expect(r.requires).toEqual({ apiVersion: 1 });
-		expect(r.identity).toMatchObject({ id: "demo-ext", version: "1.0.0" });
+	it("历史v1同号但旧格式:严格新清单在执行前拒收", () => {
+		expect(unreadable(historicalV1()).join(";")).toContain("contributes");
 	});
 
-	it("区间放宽到包住第 1 版也收不下 —— 没有那一档的格式了,按不认识算(不是炸)", () => {
-		const r = incompatible(v1(), { min: 1, current: 5, revision: 0 });
-		expect(r.requires).toEqual({ apiVersion: 1 });
+	it("区间放宽也不恢复旧v1清单格式", () => {
+		expect(unreadable(historicalV1(), { min: 1, current: 5, revision: 0 }).join(";")).toContain(
+			"provides",
+		);
 	});
 
 	it("版本不合、身份那几格也坏了:读不了(那几格在哪一档都是坏的)", () => {
-		const issues = unreadable({ ...v3({ apiVersion: 9 }), id: "Bad Id" });
+		const issues = unreadable({ ...currentManifest({ apiVersion: 9 }), id: "Bad Id" });
 		expect(issues.join("\n")).toContain("id");
 	});
 
@@ -351,7 +355,7 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 		["不是数", "2"],
 		["零", 0],
 	])("apiVersion %s —— 读不了,而且点名是 apiVersion", (_label, apiVersion) => {
-		const issues = unreadable(v3({ apiVersion }));
+		const issues = unreadable(currentManifest({ apiVersion }));
 		expect(issues.join("\n")).toContain("apiVersion");
 	});
 
@@ -366,16 +370,16 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
  * BN 不够就与「档位不合」走同一条路 —— 装不上、不起、市场标灰。
  */
 describe("parseExtensionManifest —— 契约小号", () => {
-	const HOST = { min: 3, current: 3, revision: 0 };
+	const HOST = { min: 1, current: 1, revision: 0 };
 
-	it("v3 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
-		expect(ok(v3(), HOST).apiVersion).toBe(3);
-		expect(ok(v3({ apiRevision: 0 }), HOST).apiVersion).toBe(3);
+	it("全新1.0契约1 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
+		expect(ok(currentManifest(), HOST).apiVersion).toBe(1);
+		expect(ok(currentManifest({ apiRevision: 0 }), HOST).apiVersion).toBe(1);
 	});
 
 	it("要的小号比 BN 的高 → 不兼容(不是读不了),身份照样读得出", () => {
-		const r = incompatible(v3({ apiRevision: 1 }), HOST);
-		expect(r.requires).toEqual({ apiVersion: 3, apiRevision: 1 });
+		const r = incompatible(currentManifest({ apiRevision: 1 }), HOST);
+		expect(r.requires).toEqual({ apiVersion: 1, apiRevision: 1 });
 		expect(r.identity).toMatchObject({ id: "demo-ext", version: "0.1.0" });
 	});
 
@@ -384,12 +388,15 @@ describe("parseExtensionManifest —— 契约小号", () => {
 	 * 格式挑出一串「不认识的键」,而真正的原因只有一条。
 	 */
 	it("小号高、其余有我们不认识的格 → 仍是不兼容", () => {
-		const r = incompatible(v3({ apiRevision: 1, contributes: { chat: {} }, brandNew: true }), HOST);
-		expect(r.requires).toEqual({ apiVersion: 3, apiRevision: 1 });
+		const r = incompatible(
+			currentManifest({ apiRevision: 1, contributes: { chat: {} }, brandNew: true }),
+			HOST,
+		);
+		expect(r.requires).toEqual({ apiVersion: 1, apiRevision: 1 });
 	});
 
 	it("BN 的小号够就收", () => {
-		expect(ok(v3({ apiRevision: 3 }), { ...HOST, revision: 3 }).apiVersion).toBe(3);
+		expect(ok(currentManifest({ apiRevision: 3 }), { ...HOST, revision: 3 }).apiVersion).toBe(1);
 	});
 
 	it.each([
@@ -398,7 +405,7 @@ describe("parseExtensionManifest —— 契约小号", () => {
 		["不是数", "1"],
 		["null", null],
 	])("apiRevision %s —— 读不了,而且点名是 apiRevision", (_label, apiRevision) => {
-		const issues = unreadable(v3({ apiRevision }), HOST);
+		const issues = unreadable(currentManifest({ apiRevision }), HOST);
 		expect(issues.join("\n")).toContain("apiRevision");
 	});
 });
@@ -411,7 +418,7 @@ describe("parseExtensionManifest —— 契约小号", () => {
  * 而且必须**在清单校验这一步**拦住 —— 放过去之后每一处都得自己防一遍。
  */
 describe("身份那几格", () => {
-	const build = v3;
+	const build = currentManifest;
 
 	it.each(["demo-ext", "douyin-source", "x2"])("id %s —— 收下", (id) => {
 		expect(ok(build({ id })).id).toBe(id);
@@ -454,20 +461,22 @@ describe("身份那几格", () => {
 });
 
 /**
- * v3 是**严格**的:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明
+ * 全新1.0契约1 是**严格**的:多一个键就读不了。拼错的键(`setings`)放过去就是一格静默失效的声明
  * —— 面板上少了一栏,没人报错。格式要长新东西,跟着升 apiVersion(区间就是干这个的)。
  */
-describe("v3:严格", () => {
+describe("全新1.0契约1:严格", () => {
 	it("顶层多一个键 —— 读不了,而且点名那个键", () => {
-		expect(unreadable(v3({ setings: { fields: [] } })).join("\n")).toContain("setings");
+		expect(unreadable(currentManifest({ setings: { fields: [] } })).join("\n")).toContain(
+			"setings",
+		);
 	});
 
-	it("v3 里还写 provides —— 读不了:它由 contributes 推出来,两处写会打架", () => {
-		expect(unreadable(v3({ provides: ["push"] })).join("\n")).toContain("provides");
+	it("全新1.0契约1 里还写 provides —— 读不了:它由 contributes 推出来,两处写会打架", () => {
+		expect(unreadable(currentManifest({ provides: ["push"] })).join("\n")).toContain("provides");
 	});
 
 	it("`$schema` 是唯一额外允许的键(编辑器补全用)", () => {
-		expect(() => ok(v3({ $schema: "./extension.schema.json" }))).not.toThrow();
+		expect(() => ok(currentManifest({ $schema: "./extension.schema.json" }))).not.toThrow();
 	});
 
 	it("设置项里多一个键 —— 读不了", () => {
@@ -475,39 +484,41 @@ describe("v3:严格", () => {
 	});
 
 	it("contributes 一口都不开 —— 读不了", () => {
-		unreadable(v3({ contributes: {} }));
+		unreadable(currentManifest({ contributes: {} }));
 	});
 
 	it("contributes 里开一个不存在的口 —— 读不了", () => {
-		unreadable(v3({ contributes: { chat: DISPLAY } }));
+		unreadable(currentManifest({ contributes: { chat: DISPLAY } }));
 	});
 });
 
 describe("contributes.devtools", () => {
 	it("只在清单里开口、不带入口路径时收下", () => {
-		const m = ok(v3({ contributes: { push: DISPLAY, devtools: {} } }));
+		const m = ok(currentManifest({ contributes: { push: DISPLAY, devtools: {} } }));
 		expect(m.contributes.devtools).toEqual({});
 	});
 
 	it("入口路径不写进清单 —— 多一格 entry 就读不了", () => {
 		expect(
-			unreadable(v3({ contributes: { push: DISPLAY, devtools: { entry: "x.mjs" } } })).join("\n"),
+			unreadable(
+				currentManifest({ contributes: { push: DISPLAY, devtools: { entry: "x.mjs" } } }),
+			).join("\n"),
 		).toContain("devtools");
 	});
 
 	it("只开 devtools 不算开放 —— 仍因至少要开一口而读不了", () => {
-		expect(unreadable(v3({ contributes: { devtools: {} } })).join("\n")).toContain(
+		expect(unreadable(currentManifest({ contributes: { devtools: {} } })).join("\n")).toContain(
 			"contributes 至少要开一口",
 		);
 	});
 
 	it("devtools 不进 manifestProvides —— 开放列表仍只含推送", () => {
-		const m = ok(v3({ contributes: { push: DISPLAY, devtools: {} } }));
+		const m = ok(currentManifest({ contributes: { push: DISPLAY, devtools: {} } }));
 		expect(manifestProvides(m)).toEqual(["push"]);
 	});
 });
 
-describe("v3 的订阅与推送外观", () => {
+describe("全新1.0契约1 的订阅与推送外观", () => {
 	it.each(["#fe2c55", "#FE2C55", "#abc"])("color %s —— 收下", (color) => {
 		expect(() => ok(sub({ display: { ...DISPLAY, color } }))).not.toThrow();
 	});
@@ -526,7 +537,7 @@ describe("v3 的订阅与推送外观", () => {
 
 	it("postNoun 只有订阅源那段有 —— 推送源的外观写它读不了", () => {
 		expect(() => ok(sub({ display: { ...DISPLAY, postNoun: "作品" } }))).not.toThrow();
-		unreadable(v3({ contributes: { push: { ...DISPLAY, postNoun: "作品" } } }));
+		unreadable(currentManifest({ contributes: { push: { ...DISPLAY, postNoun: "作品" } } }));
 	});
 
 	it("creatorNoun 收在订阅源外观里,最多 8 字且不能只有空白", () => {
@@ -535,13 +546,13 @@ describe("v3 的订阅与推送外观", () => {
 		expect(() => ok(sub({ creatorNoun: "字".repeat(8) }))).not.toThrow();
 		unreadable(sub({ creatorNoun: "字".repeat(9) }));
 		unreadable(sub({ creatorNoun: " \n\t " }));
-		unreadable(v3({ contributes: { push: { ...DISPLAY, creatorNoun: "博主" } } }));
+		unreadable(currentManifest({ contributes: { push: { ...DISPLAY, creatorNoun: "博主" } } }));
 	});
 
 	it("订阅段与推送段各收一张图片 data URL 作为图标", () => {
 		const subscription = ok(sub({ icon: PNG }));
 		expect(subscription.contributes.subscription?.icon).toBe(PNG);
-		const push = ok(v3({ contributes: { push: { ...DISPLAY, icon: PNG } } }));
+		const push = ok(currentManifest({ contributes: { push: { ...DISPLAY, icon: PNG } } }));
 		expect(push.contributes.push?.icon).toBe(PNG);
 	});
 
@@ -553,7 +564,7 @@ describe("v3 的订阅与推送外观", () => {
 		];
 		for (const icon of icons) {
 			unreadable(sub({ icon }));
-			unreadable(v3({ contributes: { push: { ...DISPLAY, icon } } }));
+			unreadable(currentManifest({ contributes: { push: { ...DISPLAY, icon } } }));
 		}
 	});
 
@@ -566,7 +577,7 @@ describe("v3 的订阅与推送外观", () => {
 		).not.toThrow();
 		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: "字".repeat(9) } }));
 		unreadable(sub({ display: { ...DISPLAY, externalIdNoun: " \n\t " } }));
-		unreadable(v3({ contributes: { push: { ...DISPLAY, externalIdNoun: "账号" } } }));
+		unreadable(currentManifest({ contributes: { push: { ...DISPLAY, externalIdNoun: "账号" } } }));
 	});
 
 	/**
@@ -585,7 +596,9 @@ describe("v3 的订阅与推送外观", () => {
 
 	it("lookupPlaceholder 已从清单退场 —— 不论订阅段还是推送段都读不了", () => {
 		unreadable(sub({ lookupPlaceholder: "粘链接" }));
-		unreadable(v3({ contributes: { push: { ...DISPLAY, lookupPlaceholder: "粘链接" } } }));
+		unreadable(
+			currentManifest({ contributes: { push: { ...DISPLAY, lookupPlaceholder: "粘链接" } } }),
+		);
 	});
 
 	/**
@@ -594,7 +607,7 @@ describe("v3 的订阅与推送外观", () => {
 	 */
 	it("externalIdRegex:订阅源那段可选一条正则源码;合法的过", () => {
 		const m = ok(sub({ display: { ...DISPLAY, externalIdRegex: "^MS4w[\\w-]+$" } }));
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		if (m.apiVersion !== 1) throw new Error("应该是 全新1.0契约1");
 		expect(m.contributes.subscription?.externalIdRegex).toBe("^MS4w[\\w-]+$");
 		expect(() => ok(sub({ display: { ...DISPLAY, externalIdRegex: "\\d+" } }))).not.toThrow();
 	});
@@ -611,11 +624,13 @@ describe("v3 的订阅与推送外观", () => {
 	});
 
 	it("externalIdRegex 只有订阅源那段有 —— 推送源没有外部 id", () => {
-		unreadable(v3({ contributes: { push: { ...DISPLAY, externalIdRegex: "^\\d+$" } } }));
+		unreadable(
+			currentManifest({ contributes: { push: { ...DISPLAY, externalIdRegex: "^\\d+$" } } }),
+		);
 	});
 });
 
-describe("v3 的订阅源段", () => {
+describe("全新1.0契约1 的订阅源段", () => {
 	it("supportedFeatures 至少一种、只能是那四种、不能重复", () => {
 		unreadable(sub({ supportedFeatures: [] }));
 		unreadable(sub({ supportedFeatures: ["post", "gift"] }));
@@ -647,7 +662,7 @@ describe("v3 的订阅源段", () => {
 /**
  * 设置项按**数据类型**分,不按控件分(ADR-0019 决策 17),与 zod 一一对应。
  */
-describe("v3 的设置项", () => {
+describe("全新1.0契约1 的设置项", () => {
 	it.each([
 		{ key: "cookie", type: "string", label: "Cookie", secret: true, multiline: true },
 		{ key: "token", type: "string", label: "Token", secret: true, generate: true, monospace: true },
@@ -676,7 +691,7 @@ describe("v3 的设置项", () => {
 		},
 	])("$type —— 收下", (field) => {
 		const m = ok(withField(field));
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		if (m.apiVersion !== 1) throw new Error("应该是 全新1.0契约1");
 		expect(m.settings?.fields[0]).toMatchObject(field);
 	});
 
@@ -703,7 +718,7 @@ describe("v3 的设置项", () => {
 
 	it("同一张表里 key 重复 —— 读不了(哪一栏说了算没有答案)", () => {
 		const issues = unreadable(
-			v3({
+			currentManifest({
 				settings: {
 					fields: [
 						{ key: "a", type: "string", label: "A" },
@@ -789,7 +804,7 @@ describe("v3 的设置项", () => {
 
 	it("连接配置项与设置项是同一种形状", () => {
 		unreadable(
-			v3({
+			currentManifest({
 				contributes: {
 					push: {
 						...DISPLAY,
@@ -805,7 +820,7 @@ describe("v3 的设置项", () => {
  * 选项图标是**图片 data URL**,一律当 `<img>` 画(ADR-0019 决策 31):`<img>` 里的 SVG 不跑脚本、
  * 拉不进外部资源,所以不用过 SVG 白名单。规矩与桥协议里 bot 图标那条相同。
  */
-describe("v3 的选项图标", () => {
+describe("全新1.0契约1 的选项图标", () => {
 	const enumWith = (icon: unknown) =>
 		withField({ key: "a", type: "enum", label: "A", options: [{ value: "x", label: "X", icon }] });
 
@@ -866,7 +881,7 @@ describe("extension/wire 的拓展判据", () => {
  * 列表设置项自己声明怎么画成卡(ADR-0019 决策 29)。引用的格必须真在项里、类型也对得上 ——
  * 指歪了的话,面板上那张卡就少一块而没人报错。
  */
-describe("v3 的列表声明", () => {
+describe("全新1.0契约1 的列表声明", () => {
 	const ITEM = [
 		{ key: "name", type: "string", label: "名字", required: true },
 		{
@@ -903,7 +918,7 @@ describe("v3 的列表声明", () => {
 				removeWarning: "那一头的插件会连不上,从它借来的 bot 建的连接也会发不出去。",
 			}),
 		);
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		if (m.apiVersion !== 1) throw new Error("应该是 全新1.0契约1");
 		expect(m.settings?.fields[0]).toMatchObject({ title: "name", mark: "kind", toggle: "enabled" });
 	});
 
@@ -972,7 +987,7 @@ describe("v3 的列表声明", () => {
 describe("manifestSecretKeys", () => {
 	it("设置项、列表项、连接配置项里标了 secret 的键都算,去重", () => {
 		const m = ok(
-			v3({
+			currentManifest({
 				settings: {
 					fields: [
 						{ key: "cookie", type: "string", label: "Cookie", secret: true },
@@ -1009,7 +1024,7 @@ describe("manifestSecretKeys", () => {
 	 */
 	it("generate 的格没标 secret 也算密钥 —— 设置项、列表项里都算", () => {
 		const m = ok(
-			v3({
+			currentManifest({
 				settings: {
 					fields: [
 						{ key: "apiKey", type: "string", label: "Key", generate: true },
@@ -1030,8 +1045,8 @@ describe("manifestSecretKeys", () => {
 		expect(manifestSecretKeys(m)).toEqual(["apiKey", "token"]);
 	});
 
-	it("v3 一格密钥都没声明 —— 空表", () => {
-		expect(manifestSecretKeys(ok(v3()))).toEqual([]);
+	it("全新1.0契约1 一格密钥都没声明 —— 空表", () => {
+		expect(manifestSecretKeys(ok(currentManifest()))).toEqual([]);
 	});
 });
 
@@ -1042,7 +1057,7 @@ describe("manifestSecretKeys", () => {
 describe("settingsValueSchema", () => {
 	const FIELDS = (() => {
 		const m = ok(
-			v3({
+			currentManifest({
 				settings: {
 					fields: [
 						{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
@@ -1071,7 +1086,7 @@ describe("settingsValueSchema", () => {
 				},
 			}),
 		);
-		if (m.apiVersion !== 3 || !m.settings) throw new Error("应该是带设置的 v3");
+		if (m.apiVersion !== 1 || !m.settings) throw new Error("应该是带设置的 全新1.0契约1");
 		return m.settings.fields;
 	})();
 	const accepts = (value: unknown) => settingsValueSchema(FIELDS).safeParse(value).success;
@@ -1123,7 +1138,7 @@ describe("settingsValueSchema", () => {
 		const m = ok(
 			withField({ key: "interval", type: "number", label: "间隔", required: true, default: 60 }),
 		);
-		if (m.apiVersion !== 3 || !m.settings) throw new Error("应该是带设置的 v3");
+		if (m.apiVersion !== 1 || !m.settings) throw new Error("应该是带设置的 全新1.0契约1");
 		expect(settingsValueSchema(m.settings.fields).safeParse({}).success).toBe(true);
 		expect(settingsValueSchema(m.settings.fields).safeParse({ interval: "60" }).success).toBe(
 			false,
@@ -1139,21 +1154,21 @@ describe("settingsValueSchema", () => {
  * 清单的 `actions` 只是**动作名的一串**(ADR-0019 决策 42):按钮上的字只认视图里那一份,从前每项
  * 带的 `label` / `description` 从没被读过 —— 两份字,改了一份另一份静默作废。
  */
-describe("v3 的动作", () => {
+describe("全新1.0契约1 的动作", () => {
 	it("只有名字的一串 —— 收下,原样留着", () => {
-		const m = ok(v3({ actions: ["login.start", "refresh"] }));
-		if (m.apiVersion !== 3) throw new Error("应该是 v3");
+		const m = ok(currentManifest({ actions: ["login.start", "refresh"] }));
+		if (m.apiVersion !== 1) throw new Error("应该是 全新1.0契约1");
 		expect(m.actions).toEqual(["login.start", "refresh"]);
 	});
 
 	it.each(["login.start", "refresh", "login.qrCode"])("%s —— 收下", (name) => {
-		expect(() => ok(v3({ actions: [name] }))).not.toThrow();
+		expect(() => ok(currentManifest({ actions: [name] }))).not.toThrow();
 	});
 
 	it.each(["", "Login", "login..start", ".login", "login.", "login/start", "login-start"])(
 		"%s —— 拒(动作名要进 URL:/api/ext/:id/actions/:name)",
 		(name) => {
-			unreadable(v3({ actions: [name] }));
+			unreadable(currentManifest({ actions: [name] }));
 		},
 	);
 
@@ -1161,20 +1176,20 @@ describe("v3 的动作", () => {
 		"%s(Object.prototype 上的名字)—— 拒:动作按名字查表,没声明的也会被当成声明了",
 		(name) => {
 			expect(ActionNameSchema.safeParse(name).success).toBe(false);
-			expect(unreadable(v3({ actions: [name] })).join("\n")).toMatch(/原型/);
+			expect(unreadable(currentManifest({ actions: [name] })).join("\n")).toMatch(/原型/);
 		},
 	);
 
 	/** 重名:第二个是笔误还是本意,宿主猜不了 —— 点名是哪个名字、第几个。 */
 	it("重名 —— 拒,点名那一个", () => {
-		const issues = unreadable(v3({ actions: ["refresh", "login.start", "refresh"] }));
+		const issues = unreadable(currentManifest({ actions: ["refresh", "login.start", "refresh"] }));
 		expect(issues.join("\n")).toMatch(/actions\.2.*refresh/);
 	});
 
-	/** 旧形状(名字 → { label, description } 的表)v3 还没发出去,不留退路(决策 46)。 */
+	/** 旧形状(名字 → { label, description } 的表)全新1.0契约1 还没发出去,不留退路(决策 46)。 */
 	it("旧形状(带 label 的表)—— 拒", () => {
-		unreadable(v3({ actions: { refresh: { label: "刷新" } } }));
-		unreadable(v3({ actions: {} }));
+		unreadable(currentManifest({ actions: { refresh: { label: "刷新" } } }));
+		unreadable(currentManifest({ actions: {} }));
 	});
 });
 
@@ -1204,11 +1219,43 @@ describe("拓展 id 的命名空间", () => {
 		const parsed = ExtensionIdSchema.safeParse("constructor");
 		expect(parsed.success).toBe(false);
 		expect(parsed.error?.issues.map((issue) => issue.message).join("\n")).toMatch(/原型/);
-		unreadable(v3({ id: "constructor" }));
+		unreadable(currentManifest({ id: "constructor" }));
 	});
 
 	it("extensionNamespaceOf:有点的取点前那段,没点的是官方(undefined)", () => {
 		expect(extensionNamespaceOf("alice.douyin")).toBe("alice");
 		expect(extensionNamespaceOf("bridge")).toBeUndefined();
 	});
+});
+
+it("全新1.0契约用1/0,只接受当前严格清单,拒历史v1及伪装旧v2嵌套", () => {
+	const current = currentManifest({ apiVersion: 1 });
+	expect(parseExtensionManifest(current).ok).toBe(true);
+	expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 1, revision: 0 });
+	expect(parseExtensionManifest(historicalV1()).ok).toBe(false);
+	expect(parseExtensionManifest({ ...current, provides: ["push"] }).ok).toBe(false);
+	const oldV2 = {
+		...current,
+		contributes: { push: { display: DISPLAY, connection: { fields: [] } } },
+	};
+	expect(parseExtensionManifest(oldV2).ok).toBe(false);
+	expect(parseExtensionManifest({ ...oldV2, apiVersion: 2 }).ok).toBe(false);
+	expect(parseExtensionManifest({ ...current, apiVersion: 3 }).ok).toBe(false);
+});
+
+it("历史宽松v1解析器仍要求provides:新包不可混入该字段", () => {
+	// 冻结历史60f5f99f1^的关键形状;只处理JSON,不加载旧宿主或业务代码。
+	const historicalSchema = z.object({
+		id: z.string(),
+		name: z.string(),
+		version: z.string(),
+		apiVersion: z.literal(1),
+		provides: z.array(z.enum(["push", "subscription"])).min(1),
+	});
+	const current = currentManifest();
+	expect(historicalSchema.safeParse(historicalV1()).success).toBe(true);
+	expect(historicalSchema.safeParse(current).success).toBe(false);
+	const mixed = { ...current, provides: ["push"] };
+	expect(historicalSchema.safeParse(mixed).success).toBe(true);
+	expect(parseExtensionManifest(mixed).ok).toBe(false);
 });

@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * `/api/ext/:id/settings` —— 拓展设置自己的读写口(ADR-0019 决策 35)。
  *
@@ -52,7 +53,7 @@ const DOUYIN = {
 	name: "抖音订阅",
 	description: "测试用",
 	version: "0.1.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	settings: {
 		fields: [
 			{ key: "cookie", type: "string", label: "Cookie", secret: true },
@@ -127,7 +128,7 @@ const BARE_V2 = {
 	name: "没设置项",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: DOUYIN.contributes,
 };
 
@@ -209,6 +210,7 @@ async function boot(opts: {
 	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
 	let activations = 0;
 	const loader = await loadExtensions({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: fixedLocale(),
 		root: join(dataDir, "extensions"),

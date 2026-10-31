@@ -2196,6 +2196,7 @@ it("changes timezone on the same poller without bypassing lost-login or stop", (
 	b.engine.updateSettings(next);
 	expect(old?.isActive).toBe(false);
 	expect(cronMock.instances.at(-1)?.timezone).toBe("Asia/Kathmandu");
+	expect(b.logs.some(({ msg }) => msg.includes('timezone="Asia/Kathmandu"'))).toBe(true);
 	const count = cronMock.instances.length;
 	b.engine.updateSettings(next);
 	expect(cronMock.instances).toHaveLength(count);

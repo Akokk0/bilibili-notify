@@ -99,6 +99,8 @@ export function fakeAdapterContext(
 	const listeners = new Set<() => void>();
 	const inbound: HeardInbound[] = [];
 	const ctx = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		connections: () => connections,
 		onConnectionsChanged(fn: () => void) {
 			listeners.add(fn);
@@ -204,6 +206,8 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 	});
 
 	const sourceCtx = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		subscriptions: roster,
 		onSubscriptionsChanged(fn: () => void) {
 			listeners.push(fn);
@@ -229,6 +233,8 @@ export function bootFakeSource(initial: readonly HarnessSub[] = [], opts: BootOp
 	} as unknown as ExtensionSourceContext;
 
 	const ctx = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		id: "fake-source",
 		logger: { info() {}, warn() {}, error() {}, debug() {} },
 		setTimeout: () => noop,

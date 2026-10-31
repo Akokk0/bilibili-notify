@@ -618,6 +618,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 					await builtins.registerSources(pipeline);
 					const store = await deps.integrationStore.open(IN_PROCESS_KEY);
 					const integration = await openIntegration({
+						timezoneReader: deps.timezoneReader,
 						stores: store,
 						logger,
 						stopReason: "BN 关停",

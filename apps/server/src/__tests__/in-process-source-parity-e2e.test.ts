@@ -372,6 +372,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 			"宿主运行态与健康详情:假来源运行中,问题叠橙灯,摘要读取失败不改启动结论;失败与拓展八档另由登记表和路由测试钉住",
 		checked: true,
 	},
+	{ id: "P54", title: "共同timezone现读、独立去重与撤订", checked: true },
 	// N08(默认文案)在 3b-12 落成了,转进对拍的 P46(「默认文案有更新」是面板算的、与来源无关,由面板测试钉,不在对拍里);
 	// N16(统计「在记」)在 3b-26 落成了,转进对拍的 P45;
 	// N12(作品带图)在 3b-39 落成了,转进对拍的 P27;
@@ -400,6 +401,8 @@ const SOURCE_MEMBERS = {
 	fetchPreview: ["P51"],
 } as const satisfies Record<keyof Source, readonly RowId[]>;
 const SOURCE_CONTEXT_MEMBERS = {
+	timezone: ["P54"],
+	onTimezoneChanged: ["P54"],
 	logger: ["P20"],
 	signal: ["P18"],
 	onDispose: ["P18"],
@@ -1025,6 +1028,32 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		}
 		expect((await read())?.problemCount).toBe(before);
 		drove("P53");
+	});
+
+	it("P54 共同timezone现读、独立去重与撤订", async () => {
+		const ctx = currentProbe().ctx;
+		expect(ctx).toBeDefined();
+		if (!ctx) throw new Error("source context missing");
+		const before = ctx.timezone();
+		await patchCore({ timezone: "Asia/Shanghai" });
+		const seen: string[] = [];
+		const claim = ctx.onTimezoneChanged(() => seen.push(ctx.timezone()));
+		try {
+			expect(seen).toEqual([]);
+			await patchCore({ timezone: "UTC" });
+			expect(ctx.timezone()).toBe("UTC");
+			await patchCore({ timezone: "UTC" });
+			await patchCore({ timezone: "Asia/Kathmandu" });
+			expect(seen).toEqual(["UTC", "Asia/Kathmandu"]);
+			claim.dispose();
+			claim.dispose();
+			await patchCore({ timezone: "Asia/Shanghai" });
+			expect(seen).toEqual(["UTC", "Asia/Kathmandu"]);
+		} finally {
+			claim.dispose();
+			await patchCore({ timezone: before });
+		}
+		drove("P54");
 	});
 
 	// 验红:`routes/cards.ts` 不问来源(或不把 nth 交过去),第一段红;来源回失败时不记原因,第三段红。
@@ -3857,13 +3886,13 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 53 行、不开 2 行,id 不重;不开的每行都写了等哪一期与理由", () => {
-		expect(PARITY_ROWS).toHaveLength(55);
+	it("PARITY_ROWS:对拍 54 行、不开 2 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+		expect(PARITY_ROWS).toHaveLength(56);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 53 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 54 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
 		// N02→P39、N13→P40(N13 的直播一半先在 3b-23 转了 P36)、N17→P21、N07→P22、N18→P25、N12→P27、N10→P33、N04 / N11→P34 / P35、N03→P36;
 		// N08→P46(「默认文案有更新」归面板测试);N06 的「六把中立工具」那一半→P41,

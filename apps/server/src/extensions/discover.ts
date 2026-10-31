@@ -9,6 +9,7 @@ import {
 	type ExtensionManifest,
 	parseExtensionManifest,
 } from "@bilibili-notify/internal";
+import { t } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { type ExtensionLocales, readExtensionLocales } from "./locales.js";
 import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
@@ -139,9 +140,8 @@ export interface ReadExtensionDirOptions {
 /**
  * 「版本不合」说成人话 —— 装载列表、上传装包、市场三处说的是同一句,分头写会说成三种。
  *
- * 档位的两个方向要分开说:高了是 BN 旧了(先升级 BN),低了是拓展旧了(换它的新版)——
- * 一律叫主人升级 BN 的话,抬过最低档之后那句话就是错的。档位对、小号高(ADR-0019 决策 59)
- * 也是 BN 旧了,要几号、BN 是几号都写出来。
+ * 新契约重新起号后,数字大小不再代表年代;跨大档只说契约不匹配。
+ * 同档小号不够仍提示升级。文字在实际给出原因时现取。
  */
 export function apiVersionMismatch(
 	requires: ExtensionApiRequirement,
@@ -150,13 +150,17 @@ export function apiVersionMismatch(
 	const { apiVersion } = requires;
 	const accepts =
 		range.min === range.current ? `v${range.current}` : `v${range.min}–v${range.current}`;
-	if (apiVersion > range.current) {
-		return `它要宿主契约 v${apiVersion},这一版 BN 只认 ${accepts} —— 先升级 BN`;
+	if (apiVersion < range.min || apiVersion > range.current) {
+		return t("extension.compatibility.versionMismatch", {
+			required: apiVersion,
+			supported: accepts,
+		});
 	}
-	if (apiVersion < range.min) {
-		return `它是给宿主契约 v${apiVersion} 写的,这一版 BN 只认 ${accepts} —— 换它的新版`;
-	}
-	return `它要宿主契约 v${apiVersion} 的小号 ${requires.apiRevision ?? 0},这一版 BN 只到小号 ${range.revision} —— 先升级 BN`;
+	return t("extension.compatibility.revisionMismatch", {
+		required: apiVersion,
+		wanted: requires.apiRevision ?? 0,
+		actual: range.revision,
+	});
 }
 
 /**
@@ -187,7 +191,10 @@ export async function readExtensionDir(
 			state: "unreadable",
 			id,
 			dir,
-			detail: `${EXTENSION_MANIFEST_FILE} 不是合法 JSON:${(err as Error).message}`,
+			detail: t("extension.manifest.invalidJson", {
+				file: EXTENSION_MANIFEST_FILE,
+				detail: (err as Error).message,
+			}),
 		};
 	}
 
@@ -199,7 +206,10 @@ export async function readExtensionDir(
 			state: "unreadable",
 			id,
 			dir,
-			detail: `${EXTENSION_MANIFEST_FILE} 不合法 —— ${read.issues.join(";")}`,
+			detail: t("extension.manifest.invalid", {
+				file: EXTENSION_MANIFEST_FILE,
+				detail: read.issues.join(";"),
+			}),
 		};
 	}
 
@@ -211,7 +221,7 @@ export async function readExtensionDir(
 			state: "unreadable",
 			id,
 			dir,
-			detail: `清单里的 id 是 ${claimed},与目录名 ${id} 对不上`,
+			detail: t("extension.manifest.idMismatch", { claimed, id }),
 		};
 	}
 
@@ -231,7 +241,12 @@ export async function readExtensionDir(
 
 	const entry = join(dir, EXTENSION_ENTRY_FILE);
 	if (!(await exists(entry))) {
-		return { state: "unreadable", id, dir, detail: `少了入口文件 ${EXTENSION_ENTRY_FILE}` };
+		return {
+			state: "unreadable",
+			id,
+			dir,
+			detail: t("extension.manifest.missingEntry", { file: EXTENSION_ENTRY_FILE }),
+		};
 	}
 
 	// 软链就把落点也报出来:开发版装进来的是仓里那份 `dist`,而「跑的到底是哪一份」

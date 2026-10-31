@@ -3,7 +3,7 @@
 	"name": "假源(开发用)",
 	"description": "开发用的假订阅源,背后不连任何平台:新建订阅时按你输入的字现编几个候选,页上的按钮造作品 / 开播 / 下播 / 资料 / 直播状态的上报,好在真机上把「选平台 → 解析 → 建订阅 → 报事件」走一遍。",
 	"version": "0.0.1",
-	"apiVersion": 3,
+	"apiVersion": 1,
 	"actions": [
 		"report.post",
 		"report.richPost",

@@ -86,6 +86,8 @@ function makeFakeSourceCtx(
 ) {
 	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>();
 	const ctx = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		logger: quietLogger(),
 		// 设置读者:这个文件不管设置的内容,读出来恒是各格的默认值。
 		settings: (schema: { parse(input: unknown): unknown }) => ({
@@ -165,8 +167,10 @@ function compose(
 	const memoryStore = memoryIntegrationStore();
 	const deps = {
 		locale: opts.locale ?? fixedLocale(),
-		timezone: () => "Asia/Shanghai",
-		onTimezoneChanged: (_handler: () => void) => ({ dispose() {} }),
+		timezoneReader: {
+			timezone: () => "Asia/Shanghai",
+			onTimezoneChanged: () => ({ dispose() {} }),
+		},
 		setTimeout: () => ({ dispose() {} }),
 		accountImages: inertAccountImages,
 		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,

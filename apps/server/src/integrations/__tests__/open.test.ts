@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 开一个集成(`integrations/open.ts`):请求客户端、上下文、收尾挂在一起。每个集成(B 站、内置适配器、对拍的假来源)
  * 经它开出自己的 `ctx.http` / `ctx.fetchImage` / `ctx.storeImage`。
@@ -72,6 +73,7 @@ afterEach(async () => {
 async function open(key: string, io = integrationIo()) {
 	const store = memoryStoreHandle();
 	const one = await openIntegration({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: store.handle,
 		logger: silentLogger,
 		stopReason: "测试",

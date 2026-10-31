@@ -134,8 +134,10 @@ export function hostFor(
 	});
 
 	const ctx: ExtensionContext = {
+		timezone: () => "Asia/Shanghai",
+		onTimezoneChanged: () => ({ dispose() {} }),
 		id: EXTENSION_ID,
-		hostApiVersion: 3,
+		hostApiVersion: 1,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
 		// 桥不取字(留给后续),这里只为过类型:键回键本身,语言一直是简中。
@@ -173,6 +175,8 @@ export function hostFor(
 			// 登记即 `start`:适配器上下文里的 `inbound` 是桥交入站的唯一出口。替身不核归属、不补平台,
 			// 原样记下桥交来的东西(含 meta —— 桥只该报 `connectionId`)。
 			adapter.start({
+				timezone: ctx.timezone,
+				onTimezoneChanged: ctx.onTimezoneChanged,
 				logger: SILENT,
 				signal: ctx.signal,
 				onDispose: (fn) => ctx.onDispose(fn),

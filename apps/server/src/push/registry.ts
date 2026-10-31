@@ -111,9 +111,44 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 		},
 		async register(adapter, ctx) {
 			add(adapter);
+			let active = true;
+			const timezoneWatches = new Set<Disposable>();
+			const stopTimezone = (): void => {
+				active = false;
+				for (const watch of timezoneWatches) {
+					try {
+						watch.dispose();
+					} catch (err) {
+						ctx.logger.warn(`适配器时区通知回收失败:${errorMessageOf(err)}`);
+					}
+				}
+				timezoneWatches.clear();
+			};
+			// ctx已是适配器白名单面;不展开集成上下文。订阅归这次登记,不只归父集成。
+			const startCtx: PlatformAdapterContext = {
+				...ctx,
+				onTimezoneChanged(fn) {
+					if (!active) return { dispose() {} };
+					let subscribed = true;
+					const inner = ctx.onTimezoneChanged(() => {
+						if (active && subscribed) return fn();
+					});
+					const claim: Disposable = {
+						dispose() {
+							if (!subscribed) return;
+							subscribed = false;
+							timezoneWatches.delete(claim);
+							inner.dispose();
+						},
+					};
+					timezoneWatches.add(claim);
+					return claim;
+				},
+			};
 			try {
-				await adapter.start(ctx);
+				await adapter.start(startCtx);
 			} catch (err) {
+				stopTimezone();
 				// 登记失败不留半个适配器:键放掉、表里摘掉,错原样交回去。
 				remove(adapter);
 				throw err;
@@ -124,6 +159,7 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 				dispose() {
 					if (removed) return;
 					removed = true;
+					stopTimezone();
 					remove(adapter);
 					notify();
 					stopQuietly(

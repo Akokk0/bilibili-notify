@@ -44,7 +44,7 @@ vi.mock("../../services/api", () => ({
 						name: "机器人框架桥接",
 						description: "借 bot",
 						version: "0.0.1",
-						apiVersion: 3,
+						apiVersion: 1,
 						provides: ["push"],
 						settings: {
 							fields: [

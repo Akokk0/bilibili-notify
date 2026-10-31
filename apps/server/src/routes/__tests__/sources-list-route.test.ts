@@ -43,7 +43,7 @@ function extensionEntry(
 			name: `${id} 拓展`,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { subscription },
 		} as never,
 	};
@@ -246,7 +246,7 @@ describe("GET /api/sources", () => {
 				name: "桥",
 				description: "测试用",
 				version: "1.0.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { push: { label: "桥", shortLabel: "桥", color: "#000000" } },
 			} as never,
 		};

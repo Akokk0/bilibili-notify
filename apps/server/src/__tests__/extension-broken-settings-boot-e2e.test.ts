@@ -27,7 +27,7 @@ function manifestOf(id: string): string {
 		name: id,
 		description: "测试用",
 		version: "0.1.0",
-		apiVersion: 3,
+		apiVersion: 1,
 		contributes: {
 			subscription: {
 				label: "探针",

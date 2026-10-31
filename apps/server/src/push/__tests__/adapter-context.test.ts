@@ -59,6 +59,7 @@ function build(
 	settingsSchema: z.ZodType = z.unknown(),
 	logger = silentLogger,
 	extra: {
+		timezoneReader?: Parameters<typeof createIntegrationContext>[0]["timezoneReader"];
 		inbound?: InboundHandlers;
 		connection?: (connectionId: string) => Connection | undefined;
 		onRejectedProblem?: (rejection: { externalId?: string; reason: string }) => void;
@@ -67,6 +68,7 @@ function build(
 	const problems = createProblemTable({ logger: silentLogger });
 	const handle = createIntegrationContext({
 		...integrationIo(),
+		...(extra.timezoneReader ? { timezoneReader: extra.timezoneReader } : {}),
 		logger,
 		stopReason: "测试",
 		...memoryStores(),
@@ -94,6 +96,27 @@ function build(
 }
 
 describe("createPlatformAdapterContext", () => {
+	it("适配器从共同集成上下文现读timezone并订阅变更", async () => {
+		let timezone = "UTC";
+		const listeners = new Set<() => void>();
+		const { ctx, handle } = build("timezone-probe", () => [], undefined, undefined, undefined, {
+			timezoneReader: {
+				timezone: () => timezone,
+				onTimezoneChanged(fn) {
+					listeners.add(fn);
+					return { dispose: () => void listeners.delete(fn) };
+				},
+			},
+		});
+		expect((ctx as Partial<typeof ctx>).timezone?.()).toBe("UTC");
+		const seen: string[] = [];
+		ctx.onTimezoneChanged(() => seen.push(ctx.timezone()));
+		timezone = "Asia/Kathmandu";
+		for (const fn of listeners) fn();
+		expect(seen).toEqual(["Asia/Kathmandu"]);
+		await handle.dispose();
+		expect(listeners.size).toBe(0);
+	});
 	const all: Connection[] = [
 		direct("a", "onebot"),
 		direct("b", "qq-official"),

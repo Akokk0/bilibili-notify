@@ -524,3 +524,96 @@ describe("createIntegrationContext · settings", () => {
 		expect(host.disposed()).toBe(1);
 	});
 });
+
+describe("共同 timezone", () => {
+	it("回调同步抛错及异步拒绝不打断其他订阅", async () => {
+		const listeners = new Set<() => void>();
+		const { handle, lines } = make({
+			timezoneReader: {
+				timezone: () => "UTC",
+				onTimezoneChanged(fn) {
+					listeners.add(fn);
+					return { dispose: () => void listeners.delete(fn) };
+				},
+			},
+		});
+		handle.ctx.onTimezoneChanged(() => {
+			throw new Error("sync timezone");
+		});
+		const seen = vi.fn();
+		handle.ctx.onTimezoneChanged(seen);
+		expect(() => {
+			for (const fn of listeners) fn();
+		}).not.toThrow();
+		expect(seen).toHaveBeenCalledTimes(1);
+		handle.ctx.onTimezoneChanged(async () => {
+			throw new Error("async timezone");
+		});
+		for (const fn of listeners) fn();
+		await Promise.resolve();
+		expect(seen).toHaveBeenCalledTimes(2);
+		expect(lines.join("\n")).toContain("sync timezone");
+		expect(lines.join("\n")).toContain("async timezone");
+		await handle.dispose();
+	});
+	it("开始收摊立即摘通知,不等异步钩子,旧ctx不能重新订", async () => {
+		const listeners = new Set<() => void>();
+		const { handle } = make({
+			timezoneReader: {
+				timezone: () => "UTC",
+				onTimezoneChanged(fn) {
+					listeners.add(fn);
+					return { dispose: () => void listeners.delete(fn) };
+				},
+			},
+		});
+		const seen = vi.fn();
+		handle.ctx.onTimezoneChanged(seen);
+		let finish!: () => void;
+		handle.ctx.onDispose(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const closing = handle.dispose();
+		try {
+			expect(listeners.size).toBe(0);
+			handle.ctx.onTimezoneChanged(seen);
+			expect(listeners.size).toBe(0);
+			expect(seen).not.toHaveBeenCalled();
+		} finally {
+			finish();
+			await closing;
+		}
+	});
+	it("每次读当前值,订阅不补叫,手动回收后不再叫", async () => {
+		let timezone = "UTC";
+		const listeners = new Set<() => void>();
+		const { handle } = make({
+			timezoneReader: {
+				timezone: () => timezone,
+				onTimezoneChanged(fn) {
+					listeners.add(fn);
+					return { dispose: () => void listeners.delete(fn) };
+				},
+			},
+		});
+		// 先验行为,缺能力时给真实断言红,不靠缺方法抛TypeError。
+		const ctx = handle.ctx as typeof handle.ctx & { timezone?: () => string };
+		expect(ctx.timezone?.()).toBe("UTC");
+		const seen: string[] = [];
+		const claim = handle.ctx.onTimezoneChanged(() => seen.push(handle.ctx.timezone()));
+		expect(seen).toEqual([]);
+		timezone = "Asia/Kathmandu";
+		expect(handle.ctx.timezone()).toBe("Asia/Kathmandu");
+		for (const fn of listeners) fn();
+		expect(seen).toEqual(["Asia/Kathmandu"]);
+		claim.dispose();
+		claim.dispose();
+		timezone = "Asia/Shanghai";
+		for (const fn of listeners) fn();
+		expect(seen).toEqual(["Asia/Kathmandu"]);
+		await handle.dispose();
+	});
+});

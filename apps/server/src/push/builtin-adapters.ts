@@ -21,6 +21,7 @@ import { createPlatformAdapterContext } from "./adapter-context.js";
 import type { PlatformAdapterRegistry } from "./registry.js";
 
 export interface RegisterBuiltinAdaptersOptions {
+	timezoneReader: CreateIntegrationContextOptions["timezoneReader"];
 	registry: PlatformAdapterRegistry;
 	/** 建好的内置适配器(工厂在装配处调,这里不认识 `platforms/` 下的任何东西)。 */
 	adapters: readonly PlatformAdapter[];
@@ -69,6 +70,7 @@ export async function registerBuiltinAdapters(
 			handle = stores;
 			const logger = opts.loggerOf(adapter.adapterKey);
 			const made = await openIntegration({
+				timezoneReader: opts.timezoneReader,
 				stores,
 				logger,
 				settings: createIntegrationSettings({ ...opts.settingsOf(adapter.adapterKey), logger }),

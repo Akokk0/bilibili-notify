@@ -42,6 +42,7 @@ function readerOf(opts: {
 	attachReadOnlyTools(
 		{ setCreatorReader, setProvidedTools: vi.fn() },
 		{
+			timezone: () => "Asia/Shanghai",
 			subscriptionStore: { list: () => [ALICE, BOB_OFF] },
 			subscriptionStateStore: {
 				get: (id: string) =>

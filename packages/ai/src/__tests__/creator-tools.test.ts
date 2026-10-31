@@ -12,6 +12,7 @@ import { sayOf } from "./harness";
 function readerWith(over: Partial<CreatorReader>): CreatorReader {
 	return {
 		subscriptions: () => [],
+		timezone: () => "Asia/Shanghai",
 		searchCreators: async () => ok({ candidates: [] }),
 		profile: async () => fail("not_found", "没订阅"),
 		recentPosts: async () => fail("not_found", "没订阅"),
@@ -237,4 +238,43 @@ describe("get_creator_stats", () => {
 		await run("get_creator_stats", { creator: "acme:alice", days: raw }, readerWith({ stats }));
 		expect(stats).toHaveBeenCalledWith("acme:alice", expected);
 	});
+});
+
+it("formats a post after awaiting the reader using the latest timezone", async () => {
+	let timezone = "Asia/Shanghai";
+	let release!: () => void;
+	const ready = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const reader = readerWith({
+		timezone: () => timezone,
+		recentPosts: async () => {
+			await ready;
+			return ok({ posts: [{ publishedAt: "2026-01-01T20:30:00Z", title: "midnight" }] });
+		},
+	});
+	const pending = run("get_creator_posts", { creator: "acme:alice" }, reader);
+	timezone = "UTC";
+	release();
+	expect(sayOf(await pending)).toContain("[2026/1/1 ·");
+});
+
+it("formats last activity and live start in the reader timezone", async () => {
+	const reader = readerWith({
+		timezone: () => "UTC",
+		stats: async () => ok({ stats: { ...STATS, lastActivityAt: "2026-01-01T20:30:00Z" } }),
+		subscriptions: () => [
+			{
+				creator: "acme:alice",
+				name: "Alice",
+				platform: "acme",
+				live: true,
+				liveNow: { state: "live", startedAt: Date.parse("2026-01-01T20:30:00Z") },
+			},
+		],
+	});
+	expect(sayOf(await run("get_creator_stats", { creator: "acme:alice" }, reader))).toContain(
+		"最后活动: 2026/1/1",
+	);
+	expect(sayOf(await run("get_live_status", {}, reader))).toContain("开播于 2026/1/1 20:30:00");
 });

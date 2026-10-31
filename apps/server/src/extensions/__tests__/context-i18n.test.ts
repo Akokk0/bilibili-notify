@@ -29,7 +29,7 @@ const MANIFEST = {
 	name: "示例",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 } as const satisfies ExtensionManifest;
 

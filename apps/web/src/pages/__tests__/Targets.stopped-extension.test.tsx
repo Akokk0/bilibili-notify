@@ -31,7 +31,7 @@ const STOPPED_BRIDGE: ExtensionsResponse["extensions"][number] = {
 	name: "机器人框架桥接",
 	enabled: false,
 	state: "disabled",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
 	push: {

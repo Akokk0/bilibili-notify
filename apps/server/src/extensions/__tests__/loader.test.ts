@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 加载器 —— 把「扫出来的目录」「主人按的开关」「失败记账」「窄面 ctx」串成一条。
  *
@@ -92,7 +93,7 @@ async function plant(id: string, code: string, over: Record<string, unknown> = {
 			name: id,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 			...over,
 		}),
@@ -141,6 +142,7 @@ function run(opts: {
 	settingsIssue?: (id: string) => Issue | undefined;
 }) {
 	return loadExtensions({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: opts.locale ?? fixedLocale(),
 		onStatusChanged: opts.onStatusChanged,
@@ -287,6 +289,7 @@ describe("加载拓展", () => {
 
 		const runOnce = () =>
 			loadExtensions({
+				timezoneReader: fixedTimezone("Asia/Shanghai"),
 				transitImages: inertTransitImages,
 				locale: fixedLocale(),
 				root,
@@ -351,11 +354,12 @@ describe("加载拓展", () => {
 		// 版本不合的那一行说得出是谁、该怎么办。
 		const future = loaded.list()[0];
 		expect(future?.identity?.name).toBeTruthy();
-		expect(future?.detail).toContain("先升级 BN");
+		expect(future?.detail).toContain("契约");
+		expect(future?.detail).not.toContain("升级 BN");
 	});
 
 	/** 第 1 版的退路已删:盘上还留着的第 1 版拓展不 import,原样列出来,出路是换它的新版(不是升级 BN)。 */
-	it("第 1 版的拓展 → 不 import,列出来说「太旧、换它的新版」", async () => {
+	it("历史v1旧格式 → unreadable且不import", async () => {
 		await plant("bridge", HEALTHY, { apiVersion: 1, provides: ["push"], contributes: undefined });
 		const imported: string[] = [];
 		const loaded = await run({
@@ -367,12 +371,9 @@ describe("加载拓展", () => {
 			},
 		});
 		const [bridge] = loaded.list();
-		expect(bridge?.state).toBe("incompatible");
+		expect(bridge?.state).toBe("unreadable");
 		expect(imported).toEqual([]);
-		expect(bridge?.identity?.id).toBe("bridge");
-		expect(bridge?.detail).toBe(
-			`它是给宿主契约 v1 写的,这一版 BN 只认 v${EXTENSION_API_RANGE.current} —— 换它的新版`,
-		);
+		expect(bridge?.detail).toContain("contributes");
 		await loaded.dispose();
 	});
 
@@ -380,7 +381,7 @@ describe("加载拓展", () => {
 	it("要更高契约小号的拓展 → 不 import,原因写清要几号、BN 是几号、先升级 BN", async () => {
 		const wants = EXTENSION_API_RANGE.revision + 1;
 		await plant("douyin", HEALTHY, {
-			apiVersion: 3,
+			apiVersion: 1,
 			apiRevision: wants,
 			provides: undefined,
 			contributes: {
@@ -513,7 +514,7 @@ describe("拓展声明的密钥字段", () => {
 	 */
 	it("拓展没在跑也交得出密钥键 —— 照清单读,不等代码注册", async () => {
 		await plant("douyin", HEALTHY, {
-			apiVersion: 3,
+			apiVersion: 1,
 			provides: undefined,
 			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
 			contributes: {
@@ -540,7 +541,7 @@ describe("拓展声明的密钥字段", () => {
 	 */
 	it("跑着时照清单那份(连设置项里的也算),不被代码交的那份盖掉", async () => {
 		await plant("douyin", "export function activate() {}", {
-			apiVersion: 3,
+			apiVersion: 1,
 			provides: undefined,
 			settings: { fields: [{ key: "cookie", type: "string", label: "Cookie", secret: true }] },
 			contributes: {
@@ -555,6 +556,7 @@ describe("拓展声明的密钥字段", () => {
 			},
 		});
 		const loaded = await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root,
@@ -602,7 +604,7 @@ describe("拓展声明的密钥字段", () => {
 		});
 		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
 			["junk", "unreadable"],
-			["old", "incompatible"],
+			["old", "unreadable"],
 			["plain", "disabled"],
 		]);
 		expect(loaded.secretConfigCodes()).toEqual(new Map([["plain", []]]));
@@ -632,6 +634,7 @@ describe("拓展自己的请求客户端", () => {
 		const handles = new Map<string, IntegrationStoreHandle>();
 		const captured = new Map<string, ExtensionContext>();
 		const loaded = await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root,
@@ -728,6 +731,7 @@ describe("装载目录", () => {
 	it("失败记账落在装载目录,拓展自己那个目录一个文件都不多", async () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root,
@@ -1052,6 +1056,7 @@ describe("拨开关即热装卸", () => {
 		let opens = 0;
 		let on = true;
 		const loaded = await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root,
@@ -1346,7 +1351,7 @@ describe("重扫(装 / 卸不必重启)", () => {
 					name: "bridge",
 					description: "测试用",
 					version: "1.0.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 				}),
 			);
@@ -1994,7 +1999,7 @@ describe("拓展的译文(ADR-0037 决策 14)", () => {
 	});
 
 	it("版本不合的那一行:身份照清单原字,不读译文", async () => {
-		await plant("old", HEALTHY, { apiVersion: 1, provides: ["push"], contributes: undefined });
+		await plant("old", HEALTHY, { apiVersion: 3, provides: ["push"], contributes: undefined });
 		await plantLocale("old", "en", { $manifest: { name: "Should not show" } });
 		const loaded = await run({
 			host: fakeHost(),
@@ -2107,4 +2112,37 @@ describe("拓展的译文(ADR-0037 决策 14)", () => {
 		reader.set("en");
 		expect(await (await app.request("/ext/bridge/x")).text()).toBe("en:Hello");
 	});
+});
+
+it.each(["legacy", "mixed", "v2-nested"])("新宿主不import旧/混合格式:%s", async (kind) => {
+	const shape =
+		kind === "legacy"
+			? { apiVersion: 1, provides: ["push"], contributes: undefined }
+			: kind === "mixed"
+				? { apiVersion: 1, provides: ["push"] }
+				: {
+						apiVersion: 1,
+						contributes: {
+							push: {
+								display: { label: "old", shortLabel: "O", color: "#000000" },
+								connection: { fields: [] },
+							},
+						},
+					};
+	await plant("old-format", HEALTHY, shape);
+	const imported: string[] = [];
+	const loaded = await run({
+		host: fakeHost(),
+		mounts: createExtensionMounts({ logger: silentLogger }),
+		importModule: async (specifier) => {
+			imported.push(specifier);
+			return {};
+		},
+	});
+	try {
+		expect(loaded.list()[0]?.state).toBe("unreadable");
+		expect(imported).toEqual([]);
+	} finally {
+		await loaded.dispose();
+	}
 });

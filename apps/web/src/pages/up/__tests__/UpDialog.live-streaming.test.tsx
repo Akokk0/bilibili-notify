@@ -109,7 +109,7 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 		dir: "/data/extensions/douyin",
 		enabled: true,
 		state: "running",
-		apiVersion: 3,
+		apiVersion: 1,
 		provides: ["subscription"],
 	};
 

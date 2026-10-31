@@ -41,7 +41,7 @@ const SOURCE_MANIFEST: ExtensionManifest = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: {
 		subscription: {
 			label: "抖音",
@@ -57,7 +57,7 @@ const PUSH_ONLY_MANIFEST: ExtensionManifest = {
 	name: "抖音拓展",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	contributes: { push: { label: "抖", shortLabel: "抖", color: "#fe2c55" } },
 };
 
@@ -69,7 +69,7 @@ function sourceManifest(
 		name: "抖音拓展",
 		description: "测试用",
 		version: "1.0.0",
-		apiVersion: 3,
+		apiVersion: 1,
 		contributes: {
 			subscription: {
 				label: "抖音",

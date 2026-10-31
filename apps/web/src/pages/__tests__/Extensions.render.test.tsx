@@ -46,7 +46,7 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	name: "机器人框架桥接",
 	description: "把别的机器人框架里的 bot 借过来发推送",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["push"],
 	icon: '<svg viewBox="0 0 24 24" data-testid="bridge-icon"><path d="M4 4h16"/></svg>',
 	enabled: true,
@@ -408,7 +408,7 @@ describe("拓展页", () => {
 
 	// 「声明式」= 有清单(apiVersion 有值),与清单是第几版脱钩:抬档不用再改这一处判据。
 	it("清单是第 3 版的拓展也画得出视图交来的那一行(声明式不看档位)", async () => {
-		renderPage({ extensions: [{ ...BRIDGE, apiVersion: 3 }] });
+		renderPage({ extensions: [{ ...BRIDGE, apiVersion: 1 }] });
 		const card = await cardOf("机器人框架桥接");
 		await waitFor(() => expect(card.textContent).toMatch(/2\s*个 bot 在线/));
 	});

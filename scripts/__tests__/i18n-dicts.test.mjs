@@ -664,7 +664,7 @@ describe("读目录的两个函数(临时目录样例)", () => {
 			name: "示例",
 			description: "x",
 			version: "0.0.1",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: { push: { label: "桥", shortLabel: "桥", color: "#fb7299" } },
 		});
 		withTree(

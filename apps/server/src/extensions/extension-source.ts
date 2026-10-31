@@ -541,6 +541,8 @@ export function createExtensionSource(opts: CreateExtensionSourceOptions): Sourc
 			// 🔴 逐格列出开放的成员,不展开核心那一份:`registerLinkResolver` / `registerAiToolProvider` /
 			// `reportLiveInteraction` 运行时也拿不到(类型上排除不够,第三方 JS 不受类型约束)。
 			const extensionCtx: ExtensionSourceContext = {
+				timezone: ctx.timezone,
+				onTimezoneChanged: ctx.onTimezoneChanged,
 				logger: ctx.logger,
 				signal: ctx.signal,
 				onDispose: ctx.onDispose,

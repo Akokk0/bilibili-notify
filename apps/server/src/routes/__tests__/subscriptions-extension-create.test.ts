@@ -61,7 +61,7 @@ function sourceEntry(
 			name: `${id} 订阅源`,
 			description: "一句话说明",
 			version: "0.1.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: {
 				subscription: {
 					label: "抖音",
@@ -85,7 +85,7 @@ const PUSH_ONLY: ExtensionEntry = {
 		name: "只推送",
 		description: "一句话说明",
 		version: "0.1.0",
-		apiVersion: 3,
+		apiVersion: 1,
 		contributes: { push: { label: "推", shortLabel: "推", color: "#123456" } },
 	},
 };

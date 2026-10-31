@@ -26,7 +26,7 @@ const MANIFEST = manifestOf({
 	name: "示例拓展",
 	description: "盯着一件事的示例。",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	settings: {
 		fields: [
 			{ key: "token", type: "string", label: "令牌" },

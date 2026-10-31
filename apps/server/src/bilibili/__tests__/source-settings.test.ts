@@ -144,9 +144,7 @@ async function boot() {
 		setHealthCheckMs,
 	});
 	const timezoneHandlers = new Set<() => void>();
-	const source = createBiliSource({
-		...fakeLoginDeps(login, logger),
-		locale,
+	const timezoneReader = {
 		timezone: () => store.getGlobals().timezone,
 		onTimezoneChanged: (handler: () => void) => {
 			let last = store.getGlobals().timezone;
@@ -164,6 +162,10 @@ async function boot() {
 				},
 			};
 		},
+	};
+	const source = createBiliSource({
+		...fakeLoginDeps(login, logger),
+		locale,
 		setTimeout: () => ({ dispose() {} }),
 		liveContext: {
 			logger,
@@ -181,13 +183,16 @@ async function boot() {
 		aiToolProviders: createAiToolProviderRegistry(),
 		source,
 		// 读源从集成上下文那一侧给:来源经 `ctx.settings(规则)` 读,键(B 站)由造上下文的人挑好。
-		integration: makeIntegration(logger, {
-			read: () => store.readIntegrationSettings(SOURCE_KEY),
-			onChanged: (fn) =>
-				store.onChange((scope) => {
-					if (scope === "integration-settings") fn();
-				}),
-		}),
+		integration: {
+			...makeIntegration(logger, {
+				read: () => store.readIntegrationSettings(SOURCE_KEY),
+				onChanged: (fn) =>
+					store.onChange((scope) => {
+						if (scope === "integration-settings") fn();
+					}),
+			}),
+			...timezoneReader,
+		},
 		sourceKey: SOURCE_KEY,
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,

@@ -1,3 +1,4 @@
+import { fixedTimezone } from "./integration-io.js";
 /**
  * B 站直播端到端测试的世界:**真的** `createPipelineRuntime`(真直播引擎、真监听管理、真房间会话、真推送层、真派发器、
  * 真事件总线、真分层上报器、真服务上下文),假件只有四样 —— 假的 B 站接口对象、假的弹幕连接(帧由真的编解码器
@@ -447,6 +448,7 @@ export async function bootBiliLiveWorld(
 	}
 	const stores = memoryStoreHandle();
 	const integration = await openIntegration({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		stores: stores.handle,
 		logger: serviceCtx.forSubsystem("bilibili", "bilibili").logger,
 		stopReason: "测试关停",

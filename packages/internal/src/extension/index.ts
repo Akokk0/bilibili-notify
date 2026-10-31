@@ -192,6 +192,8 @@ export type ExtensionLiveStatusResult = Simplify<
 export type ExtensionSourceContext = Simplify<
 	Pick<
 		CoreSourceContext,
+		| "timezone"
+		| "onTimezoneChanged"
 		| "subscriptions"
 		| "onSubscriptionsChanged"
 		| "reportProfile"
@@ -337,7 +339,7 @@ export interface ExtensionContext extends IntegrationContext {
 	 */
 	registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle;
 	/**
-	 * 注册这个拓展的订阅源(第 3 版形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
+	 * 注册这个拓展的订阅源(当前契约形状)—— 一个拓展就是一个平台,**只许登一次**,再登会抛。
 	 *
 	 * 清单得开了 `contributes.subscription`,否则抛。`def.start(ctx)` 拿到与核心来源同一套的上下文
 	 * ({@link ExtensionSourceContext}),三种上报都在 `ctx` 上;交回的把手只管注销。
@@ -356,7 +358,7 @@ export interface ExtensionContext extends IntegrationContext {
 	 */
 	onUpgrade(handler: ExtensionUpgradeHandler): void;
 	/**
-	 * 交给面板看的「视图」(ADR-0019 决策 20 / 39)—— **v2 专用**。宿主在 `/api/ext/<id>/status`
+	 * 交给面板看的「视图」(ADR-0019 决策 20 / 39)—— **当前契约**。宿主在 `/api/ext/<id>/status`
 	 * 下发:走 `/api/*` 才吃得到 dashboard 会话鉴权,而 `/ext/<id>/*` 是**刻意**在鉴权外的。
 	 * **现取**,不缓存:面板每问一次,宿主叫一次这个回调。
 	 *
@@ -397,9 +399,9 @@ export interface ExtensionContext extends IntegrationContext {
 	 *   —— 宿主随后把拓展收掉(ADR-0019 决策 36)。这一拍里别把 `invalid` 当成空设置:桥的做法是记着
 	 *   上一份好的名单。
 	 *
-	 * v2 拓展的这份 zod 要与清单里的 `settings.fields` 对得上(键、类型、默认值),对不上
+	 * 当前拓展的这份 zod 要与清单里的 `settings.fields` 对得上(键、类型、默认值),对不上
 	 * 当场抛 —— 面板照清单画表单、宿主照 zod 解,两份漂开就是「填了存不进去」。清单声明了设置项的
-	 * v2 **必须在 `activate` 里交**(ADR-0019 决策 35):面板写进来的值要再过它这一道,不交按加载失败算。
+	 * 当前契约**必须在 `activate` 里交**(ADR-0019 决策 35):面板写进来的值要再过它这一道,不交按加载失败算。
 	 *
 	 * 🔴 **只有 `activate` 期间**存着的那份过不了这份 zod 会当场抛(ADR-0019 决策 36)—— 别接住了接着
 	 * 往下起:宿主认的是它自己记下的那一笔,接住了也照样不起,面板上是「设置读不了」,主人改对了宿主会

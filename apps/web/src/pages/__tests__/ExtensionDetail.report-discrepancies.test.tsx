@@ -34,7 +34,7 @@ vi.mock("../../services/api", () => ({
 					id: "douyin",
 					name: "抖音订阅",
 					version: "0.1.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					provides: ["subscription"],
 					dir: "/data/extensions/douyin",
 					enabled: true,

@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * **真装配里,日志出口按集成存下的值与 B 站罐子里的 cookie 打码**(接线守卫)。
  *
@@ -61,6 +62,7 @@ describe("createAppRuntime 里的按值打码", () => {
 
 	it("真的 B 站上下文:一条 cookie 进罐,经运行时的日志器打出来被遮(罐子与日志出口用的是同一份登记册)", async () => {
 		const biliContext = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,
@@ -90,6 +92,7 @@ describe("createAppRuntime 里的按值打码", () => {
 
 	it("续期 / 扫码拿到的新令牌:存进 secrets 之前的那一刻,经运行时的日志器打出来也被遮(不靠按名字的正则)", async () => {
 		const biliContext = await createBiliContext({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			stores: runtime.integrationStore,
 			serviceCtx: runtime.serviceCtx,

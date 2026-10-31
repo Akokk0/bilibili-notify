@@ -241,7 +241,7 @@ describe("面板上传装拓展的接线", () => {
 					name: "抖音订阅源",
 					description: "测试用",
 					version: "0.2.0",
-					apiVersion: 3,
+					apiVersion: 1,
 					contributes: {
 						subscription: {
 							label: "测试",

@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../__tests__/support/integration-io.js";
 /**
  * 「拓展不在跑了」只认一处(ADR-0019 决策 61):它那面 ctx 开始收摊的那一刻,装载器递过去的
  * `onStopped` 叫一次。停用、加载失败、换代码、关机走的都是收摊,所以每条路都得叫到 —— 漏了哪条,
@@ -35,7 +36,7 @@ beforeEach(async () => {
 			name: "抖音订阅",
 			description: "测试用",
 			version: "0.1.0",
-			apiVersion: 3,
+			apiVersion: 1,
 			contributes: {
 				subscription: {
 					label: "抖音",
@@ -77,6 +78,7 @@ async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 	const events: string[] = [];
 	let on = true;
 	const loaded = await loadExtensions({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: fixedLocale(),
 		root,

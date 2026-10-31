@@ -114,7 +114,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 				name: "在播探针",
 				description: "按一下动作钮报一条直播",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				actions: ["report.liveStart", "report.liveEnd", "report.liveStatus"],
 				contributes: {
 					subscription: {

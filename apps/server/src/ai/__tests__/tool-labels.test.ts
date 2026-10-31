@@ -80,7 +80,10 @@ describe("聊天里挂得出的全部工具都有标签", () => {
 	});
 
 	it("来源登记的 B 站两把:标签取自提供方自己的 getter", () => {
-		const provider = createBiliAiToolProvider({ api: {} as never });
+		const provider = createBiliAiToolProvider({
+			context: { timezone: () => "Asia/Shanghai" },
+			api: {} as never,
+		});
 		for (const tool of provider.readOnly) {
 			const name = tool.definition.function.name;
 			expect(tool.label, name).toBe(EXPECTED_LABELS[name]);

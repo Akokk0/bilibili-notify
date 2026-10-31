@@ -27,7 +27,7 @@ const DOUYIN: ExtensionDTO = {
 	id: "douyin",
 	name: "抖音订阅",
 	version: "0.1.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	provides: ["subscription"],
 	enabled: true,
 	state: "running",

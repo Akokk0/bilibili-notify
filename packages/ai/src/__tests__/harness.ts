@@ -25,8 +25,9 @@ export const testNouns = (): PromptNouns => TEST_PROMPT_NOUNS;
 /** 读口里本用例用不到的那几个方法的桩:搜不到人、谁都没订阅。凑 `CreatorReader` 字面量时 `...readerStubs`。 */
 export const readerStubs: Pick<
 	CreatorReader,
-	"searchCreators" | "profile" | "recentPosts" | "stats"
+	"searchCreators" | "profile" | "recentPosts" | "stats" | "timezone"
 > = {
+	timezone: () => "Asia/Shanghai",
 	searchCreators: async () => ok({ candidates: [] }),
 	profile: async () => fail("not_found", "没订阅"),
 	recentPosts: async () => fail("not_found", "没订阅"),

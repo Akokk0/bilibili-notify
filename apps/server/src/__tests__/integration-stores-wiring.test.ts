@@ -1,3 +1,19 @@
+import type { IntegrationContext } from "@bilibili-notify/internal";
+import type {
+	ExtensionSourceContext,
+	PlatformAdapterHandle,
+	SourceHandle,
+} from "@bilibili-notify/internal/extension";
+import { vi } from "vite-plus/test";
+import { createAiToolProviderRegistry } from "../ai/tool-provider-registry.js";
+import { createConfigStore } from "../config/store.js";
+import { timezoneReaderOf } from "../integrations/timezone-reader.js";
+import { createLinkResolverRegistry } from "../link-preview/registry.js";
+import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { makeWorld } from "../subscriptions/__tests__/fixtures.js";
+import { registerBuiltinSource } from "../subscriptions/builtin-sources.js";
+import { createSourceRegistry } from "../subscriptions/registry.js";
+import { fixedTimezone } from "./support/integration-io.js";
 /**
  * 「真能用,不是空壳」(ADR-0025 决策 9、10):内置适配器、拓展的适配器上下文、拓展的 `activate` 上下文,
  * 三处写进去的东西**盘上真有、重开读得到**,卸载拓展之后两个目录都没了。
@@ -125,6 +141,7 @@ describe("内置适配器", () => {
 	}
 	async function register(adapters: Probe[]) {
 		return registerBuiltinAdapters({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			setTimeout: realTimeout,
 			registry: createPlatformAdapterRegistry(),
@@ -224,7 +241,7 @@ describe("拓展", () => {
 				name: EXT_ID,
 				description: "测试用",
 				version: "1.0.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { push: { label: "测试", shortLabel: "测", color: "#000000" } },
 			}),
 		);
@@ -278,6 +295,7 @@ describe("拓展", () => {
 			});
 		}
 		const loaded = await loadExtensions({
+			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
 			root: extRoot(),
@@ -377,4 +395,230 @@ describe("拓展", () => {
 		expect(await stateOnDisk("onebot")).toEqual({ fromActivate: "not-the-extensions" });
 		await loaded.dispose();
 	});
+});
+
+it("timezone parity: activate/source/adapter read, notify, stop and restart", async () => {
+	const bus = createNodeMessageBus();
+	const config = createConfigStore({
+		bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir: dataRoot, logLevel: "info" },
+		dataRoot,
+		bus,
+		serviceCtx: quietHost(),
+		integrationSettings: [],
+	});
+	await config.load();
+	await config.patchGlobals({ timezone: "UTC" });
+	const timezoneReader = timezoneReaderOf(config);
+	const seen = {
+		builtin: [] as string[],
+		activate: [] as string[],
+		source: [] as string[],
+		adapter: [] as string[],
+	};
+	const initial = {
+		builtin: [] as string[],
+		activate: [] as string[],
+		source: [] as string[],
+		adapter: [] as string[],
+	};
+	const errors: string[] = [];
+	const extLogger: Logger = { ...logger(), error: (m) => errors.push(m) };
+	const listen = (kind: keyof typeof seen, ctx: IntegrationContext) => {
+		initial[kind].push(ctx.timezone());
+		ctx.onTimezoneChanged(() => seen[kind].push(ctx.timezone()));
+		if (kind !== "builtin")
+			ctx.onTimezoneChanged(async () => {
+				await Promise.resolve();
+				throw new Error(`timezone async ${kind}`);
+			});
+	};
+	const builtinAdapter: PlatformAdapter = {
+		adapterKey: "webhook",
+		listConnectionCandidates: async () => [],
+		descriptor: () => ({ label: "probe", shortLabel: "P", color: "#000000", settingsFields: [] }),
+		settingsSchema: z.object({}),
+		start: (ctx) => listen("builtin", ctx),
+		stop() {},
+		probe: async () => ({ ok: true, latencyMs: 0 }),
+		isAvailable: () => true,
+		send: async () => ({ ok: true, latencyMs: 0 }),
+	};
+	const builtins = await registerBuiltinAdapters({
+		timezoneReader,
+		transitImages: inertTransitImages,
+		setTimeout: realTimeout,
+		registry: createPlatformAdapterRegistry(),
+		adapters: [builtinAdapter],
+		loggerOf: () => extLogger,
+		stores: store,
+		problems: ignoredProblems,
+		settingsOf: inertSettingsOf,
+		connections: () => [],
+		inbound: {},
+		onConnectionsChanged: () => ({ dispose() {} }),
+	});
+	const extRoot = join(dataRoot, "extensions");
+	const dir = join(extRoot, EXT_ID);
+	await mkdir(dir, { recursive: true });
+	await writeFile(
+		join(dir, "extension.json"),
+		JSON.stringify({
+			id: EXT_ID,
+			name: EXT_ID,
+			description: "timezone parity",
+			version: "1.0.0",
+			apiVersion: 1,
+			contributes: {
+				push: { label: "probe", shortLabel: "P", color: "#000000" },
+				subscription: { label: "probe", supportedFeatures: ["post"] },
+			},
+		}),
+	);
+	await writeFile(join(dir, "index.mjs"), "export function activate() {}");
+	let enabled = true;
+	let sourceClaim: SourceHandle | undefined;
+	let adapterClaim: PlatformAdapterHandle | undefined;
+	let sourceCtx: ExtensionSourceContext | undefined;
+	let adapterCtx: PlatformAdapterContext | undefined;
+	let activateCtx: ExtensionContext | undefined;
+	let sourceDisposed = false;
+	const world = makeWorld([]);
+	const registry = createSourceRegistry();
+	const unhandled: unknown[] = [];
+	const hearUnhandled = (error: unknown) => {
+		unhandled.push(error);
+	};
+	process.on("unhandledRejection", hearUnhandled);
+	let loaded: Awaited<ReturnType<typeof loadExtensions>> | undefined;
+	try {
+		loaded = await loadExtensions({
+			timezoneReader,
+			transitImages: inertTransitImages,
+			locale: fixedLocale(),
+			root: extRoot,
+			host: quietHost(),
+			loggerOf: () => extLogger,
+			integrationStore: store,
+			problems: ignoredProblems,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			adapters: createPlatformAdapterRegistry(),
+			connections: () => [],
+			onConnectionsChanged: () => ({ dispose() {} }),
+			settings: () => undefined,
+			onSettingsChanged: (fn) => config.onChange(() => fn()),
+			inbound: {},
+			upgrades: createExtensionUpgrades(),
+			isEnabled: () => enabled,
+			maxFailures: 3,
+			registerSource: async (registration) => {
+				const handle = await registerBuiltinSource({
+					...registration,
+					registry,
+					subscriptions: world.store,
+					defaults: () => config.getGlobals().defaults,
+					bus,
+					logger: extLogger,
+					enqueue() {},
+					liveSignals() {},
+					liveInteractions() {},
+					profiles() {},
+					problems: ignoredProblems,
+					linkResolvers: createLinkResolverRegistry(),
+					aiToolProviders: createAiToolProviderRegistry(),
+				});
+				return {
+					async dispose() {
+						await handle.dispose();
+						sourceDisposed = true;
+					},
+				};
+			},
+			importModule: async () => ({
+				activate(ctx: ExtensionContext) {
+					activateCtx = ctx;
+					listen("activate", ctx);
+					sourceClaim = ctx.registerSource({
+						searchCreators: async () => ok({ candidates: [] }),
+						start(one) {
+							sourceCtx = one;
+							listen("source", one);
+						},
+						stop() {},
+					});
+					adapterClaim = ctx.registerPlatformAdapter({
+						listConnectionCandidates: async () => [],
+						settingsSchema: z.object({}),
+						start(one) {
+							adapterCtx = one;
+							listen("adapter", one);
+						},
+						stop() {},
+						probe: async () => ({ ok: true, latencyMs: 0 }),
+						isAvailable: () => true,
+						send: async () => ({ ok: true, latencyMs: 0 }),
+					});
+				},
+			}),
+		});
+		expect(
+			loaded.list().map((e) => e.state),
+			JSON.stringify(loaded.list()),
+		).toEqual(["running"]);
+		expect(initial).toEqual({
+			builtin: ["UTC"],
+			activate: ["UTC"],
+			source: ["UTC"],
+			adapter: ["UTC"],
+		});
+		expect("registerAiToolProvider" in (sourceCtx ?? {})).toBe(false);
+		expect("registerLinkResolver" in (sourceCtx ?? {})).toBe(false);
+		expect("reportLiveInteraction" in (sourceCtx ?? {})).toBe(false);
+		await config.patchGlobals({ timezone: "Asia/Kathmandu" });
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(seen).toEqual({
+			builtin: ["Asia/Kathmandu"],
+			activate: ["Asia/Kathmandu"],
+			source: ["Asia/Kathmandu"],
+			adapter: ["Asia/Kathmandu"],
+		});
+		expect(unhandled).toEqual([]);
+		for (const kind of ["activate", "source", "adapter"])
+			expect(errors.join("\n")).toContain(`timezone async ${kind}`);
+		await config.patchGlobals({ timezone: "Asia/Kathmandu" });
+		expect(seen.activate).toHaveLength(1);
+		sourceClaim?.dispose();
+		adapterClaim?.dispose();
+		await vi.waitFor(() => expect(sourceDisposed).toBe(true));
+		sourceCtx?.onTimezoneChanged(() => {
+			throw new Error("stale source subscribed");
+		});
+		adapterCtx?.onTimezoneChanged(() => {
+			throw new Error("stale adapter subscribed");
+		});
+		await config.patchGlobals({ timezone: "UTC" });
+		expect(seen.activate).toEqual(["Asia/Kathmandu", "UTC"]);
+		expect(seen.builtin).toEqual(["Asia/Kathmandu", "UTC"]);
+		expect(seen.source).toEqual(["Asia/Kathmandu"]);
+		expect(seen.adapter).toEqual(["Asia/Kathmandu"]);
+		enabled = false;
+		await loaded.sync();
+		expect(activateCtx?.signal.aborted).toBe(true);
+		await config.patchGlobals({ timezone: "Asia/Shanghai" });
+		expect(seen.activate).toHaveLength(2);
+		enabled = true;
+		await loaded.sync();
+		expect(initial.activate).toEqual(["UTC", "Asia/Shanghai"]);
+		expect(initial.source).toEqual(["UTC", "Asia/Shanghai"]);
+		expect(initial.adapter).toEqual(["UTC", "Asia/Shanghai"]);
+		await config.patchGlobals({ timezone: "Asia/Tokyo" });
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(seen.activate).toEqual(["Asia/Kathmandu", "UTC", "Asia/Tokyo"]);
+		expect(seen.source).toEqual(["Asia/Kathmandu", "Asia/Tokyo"]);
+		expect(seen.adapter).toEqual(["Asia/Kathmandu", "Asia/Tokyo"]);
+		expect(unhandled).toEqual([]);
+	} finally {
+		process.off("unhandledRejection", hearUnhandled);
+		await loaded?.dispose();
+		await builtins.dispose();
+	}
 });

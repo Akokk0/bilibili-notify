@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { i18n } from "../../i18n/index.js";
 import { apiVersionMismatch, discoverExtensions, readExtensionDir } from "../discover.js";
 
 let root: string;
@@ -182,34 +183,27 @@ describe("readExtensionDir", () => {
 		expect(r.identity.version).toBe("3.0.0");
 	});
 
-	it("低于宿主最低档的 → 同样 incompatible(抬过最低档之后,老拓展停在门外)", async () => {
-		const tooOld = EXTENSION_API_RANGE.min - 1;
-		const r = await readExtensionDir(await plant("bridge", manifest({ apiVersion: tooOld })));
+	it.each([2, 3])("旧契约大档%s → incompatible,不靠数字大小推断年代", async (oldContract) => {
+		const r = await readExtensionDir(await plant("bridge", manifest({ apiVersion: oldContract })));
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toEqual({ apiVersion: tooOld });
+		expect(r.requires).toEqual({ apiVersion: oldContract });
+		expect(apiVersionMismatch(r.requires, r.range)).not.toContain("升级 BN");
 	});
 
-	/** 低于最低档的退路已删:盘上还留着的老拓展落到「版本太旧」,而不是加载或读不了。 */
-	it("低于最低档的清单 → incompatible,原因说「换它的新版」", async () => {
-		const tooOld = EXTENSION_API_RANGE.min - 1;
+	it("历史v1同号旧provides格式 → unreadable,不恢复旧格式", async () => {
 		const r = await readExtensionDir(
 			await plant("bridge", {
 				id: "bridge",
-				name: "机器人框架桥接",
-				description: "老格式。",
+				name: "old bridge",
 				version: "0.0.1",
-				apiVersion: tooOld,
+				apiVersion: 1,
 				provides: ["push"],
 			}),
 		);
-		expect(r.state).toBe("incompatible");
-		if (r.state !== "incompatible") throw new Error("unreachable");
-		expect(r.requires).toEqual({ apiVersion: tooOld });
-		expect(r.identity).toMatchObject({ id: "bridge", version: "0.0.1" });
-		expect(apiVersionMismatch(r.requires, r.range)).toBe(
-			`它是给宿主契约 v${tooOld} 写的,这一版 BN 只认 v${EXTENSION_API_RANGE.current} —— 换它的新版`,
-		);
+		expect(r.state).toBe("unreadable");
+		if (r.state !== "unreadable") throw new Error("unreachable");
+		expect(r.detail).toContain("contributes");
 	});
 
 	it("版本不合、清单 id 又与目录名对不上 → unreadable(两个身份比版本更要紧)", async () => {
@@ -393,4 +387,24 @@ describe("读目录时读译文(ADR-0037 决策 14)", () => {
 		if (read.state !== "ready") throw new Error("unreachable");
 		expect(read.locales).toEqual({ files: {}, issues: [] });
 	});
+});
+
+it("新旧大档不匹配只说换适配包,同档小号不足才说升级,口吻现取", () => {
+	try {
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		const plain = apiVersionMismatch({ apiVersion: 3 }, { min: 1, current: 1, revision: 0 });
+		expect(plain).not.toContain("升级 BN");
+		expect(plain).toContain("v3");
+		expect(plain).toContain("v1");
+		expect(plain).not.toContain("主人");
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+		expect(apiVersionMismatch({ apiVersion: 3 }, { min: 1, current: 1, revision: 0 })).toContain(
+			"主人",
+		);
+		expect(
+			apiVersionMismatch({ apiVersion: 1, apiRevision: 1 }, { min: 1, current: 1, revision: 0 }),
+		).toContain("升级 BN");
+	} finally {
+		i18n.set({ locale: "zh-CN", voice: "maid" });
+	}
 });

@@ -27,7 +27,7 @@ const MANIFEST: ExtensionManifest = {
 	name: "原名",
 	description: "原说明",
 	version: "1.0.0",
-	apiVersion: 3,
+	apiVersion: 1,
 	settings: {
 		fields: [
 			{ key: "token", type: "string", label: "原令牌", description: "原令牌说明" },

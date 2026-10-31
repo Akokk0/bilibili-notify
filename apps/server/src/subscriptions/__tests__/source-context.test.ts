@@ -80,6 +80,29 @@ const setup = (
 };
 
 describe("createSourceContext", () => {
+	it("来源现读共同timezone,停止只摘自己的通知,旧ctx不再订", () => {
+		let timezone = "UTC";
+		const listeners = new Set<() => void>();
+		const { handle } = setup([], {
+			timezone: () => timezone,
+			onTimezoneChanged(fn) {
+				listeners.add(fn);
+				return { dispose: () => void listeners.delete(fn) };
+			},
+		});
+		const ctx = handle.ctx as typeof handle.ctx & { timezone?: () => string };
+		expect(ctx.timezone?.()).toBe("UTC");
+		const seen: string[] = [];
+		handle.ctx.onTimezoneChanged(() => seen.push(handle.ctx.timezone()));
+		timezone = "Asia/Kathmandu";
+		for (const fn of listeners) fn();
+		expect(seen).toEqual(["Asia/Kathmandu"]);
+		handle.dispose();
+		expect(listeners.size).toBe(0);
+		handle.ctx.onTimezoneChanged(() => seen.push("stale"));
+		expect(listeners.size).toBe(0);
+		expect(handle.ctx.timezone()).toBe("Asia/Kathmandu");
+	});
 	it("交出去的上下文只有公共那一面加来源的八个方法:没有 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
@@ -88,6 +111,7 @@ describe("createSourceContext", () => {
 			"logger",
 			"onDispose",
 			"onSubscriptionsChanged",
+			"onTimezoneChanged",
 			"redact",
 			"registerAiToolProvider",
 			"registerLinkResolver",
@@ -103,6 +127,7 @@ describe("createSourceContext", () => {
 			"state",
 			"storeImage",
 			"subscriptions",
+			"timezone",
 		]);
 		expect("cookies" in handle.ctx).toBe(false);
 	});

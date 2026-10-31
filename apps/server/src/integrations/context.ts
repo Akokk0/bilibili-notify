@@ -15,6 +15,8 @@ import {
 	problemRejectionReason,
 } from "../problems/problem-report.js";
 import type { ProblemTable } from "../problems/problem-table.js";
+import { errorMessageOf } from "../util/error-message.js";
+import { isThenable } from "../util/is-thenable.js";
 
 /**
  * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
@@ -40,6 +42,7 @@ export interface IntegrationContextHandle {
 }
 
 export interface CreateIntegrationContextOptions {
+	timezoneReader: Pick<IntegrationContext, "timezone" | "onTimezoneChanged">;
 	/** 集成自己的那个 logger:按它的集成键要来的,行的标签与等级都跟这个键(拓展传 `loggerOf(id)` 要来的)。 */
 	logger: Logger;
 	/** `signal` 中止时带的原因(`DOMException(这句话, "AbortError")`)。 */
@@ -110,6 +113,7 @@ export function createIntegrationContext(
 ): IntegrationContextHandle {
 	const { logger } = opts;
 	const registered = new Set<Disposable>();
+	const timezoneWatches = new Set<Disposable>();
 	const hooks: Array<() => void | Promise<void>> = [];
 	const controller = new AbortController();
 	let disposed = false;
@@ -186,6 +190,33 @@ export function createIntegrationContext(
 	};
 
 	const ctx: IntegrationContext = {
+		timezone: () => opts.timezoneReader.timezone(),
+		onTimezoneChanged(fn) {
+			if (disposed) return refuse("onTimezoneChanged");
+			let active = true;
+			const report = (err: unknown): void => {
+				logger.error(`时区变更回调抛了:${errorMessageOf(err)}`);
+			};
+			const inner = opts.timezoneReader.onTimezoneChanged(() => {
+				if (!active || disposed) return;
+				try {
+					const result: unknown = fn();
+					if (isThenable(result)) void Promise.resolve(result).catch(report);
+				} catch (err) {
+					report(err);
+				}
+			});
+			const claim: Disposable = {
+				dispose() {
+					if (!active) return;
+					active = false;
+					timezoneWatches.delete(claim);
+					inner.dispose();
+				},
+			};
+			timezoneWatches.add(claim);
+			return claim;
+		},
 		logger,
 		signal: controller.signal,
 		onDispose(fn) {
@@ -245,6 +276,8 @@ export function createIntegrationContext(
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			for (const watch of timezoneWatches) watch.dispose();
+			timezoneWatches.clear();
 			// 它名下的问题随停下清掉(宿主清,不补「已恢复」)。放在 `disposed = true` 之后紧接着做:
 			// 之后的上报一律被拒,清了就是清了 —— 调用方(装载器)要在收摊之后再记这个报的人名下的新问题,
 			// 必须排在 `dispose()` 回来之后,否则刚记的会被这一下清走。

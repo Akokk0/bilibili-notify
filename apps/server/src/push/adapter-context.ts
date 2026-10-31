@@ -159,6 +159,8 @@ export function createPlatformAdapterContext(
 	}
 
 	return {
+		timezone: () => integration.timezone(),
+		onTimezoneChanged: (fn) => integration.onTimezoneChanged(fn),
 		logger: integration.logger,
 		signal: integration.signal,
 		onDispose: integration.onDispose,

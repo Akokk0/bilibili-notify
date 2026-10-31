@@ -173,7 +173,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 				name: "资料探针",
 				description: "按一下动作钮报一次资料",
 				version: "0.1.0",
-				apiVersion: 3,
+				apiVersion: 1,
 				actions: ["profile.full", "profile.sameAvatar", "profile.nameOnly", "profile.nextAvatar"],
 				contributes: {
 					subscription: {

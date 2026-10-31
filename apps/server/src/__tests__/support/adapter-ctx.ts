@@ -56,6 +56,8 @@ export function fakeAdapterContext(
 	const io = integrationIo();
 	const images = createImageFetcher({ http: io.http, images: io.transitImages });
 	const ctx: PlatformAdapterContext = {
+		timezone: io.timezoneReader.timezone,
+		onTimezoneChanged: io.timezoneReader.onTimezoneChanged,
 		logger,
 		signal: controller.signal,
 		onDispose(fn) {

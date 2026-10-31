@@ -36,7 +36,7 @@ describe("packExtension", () => {
 				name: "机器人框架桥接",
 				description: "x",
 				version: "0.0.2",
-				apiVersion: 3,
+				apiVersion: 1,
 				contributes: { push: { label: "桥接", shortLabel: "桥", color: "#fb7299" } },
 			}),
 		),
@@ -145,10 +145,11 @@ describe("packExtension", () => {
 	 * 拿字面量而不是现算 —— 现算等于拿实现复述实现。四个时区(UTC / 东八 / 西五 / +14)
 	 * 实跑过同一个值,`reproducible-zip.mjs` 的 `asLocalFields` 正是为此存在的。
 	 * 夹具内容变了这条也会红:那时候把新值填回来就是,别改成现算。
+	 * 4-55:夹具清单 apiVersion 从 3 重编号为新契约 1;条目与固定时间戳不变,重核后更新摘要。
 	 */
 	it("同样的输入永远打出同样的字节", () => {
 		expect(packExtension(files).sha256).toBe(
-			"0bfff187d7aa62e61b56b63021a7fc346158a2ab50c651ce780e68d2fae18c02",
+			"3889e158d67081965762d2fbaa2937029520e582502701447046e6b3e1e9f07e",
 		);
 	});
 

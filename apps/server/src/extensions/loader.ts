@@ -203,6 +203,7 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
 export const ACTIVATE_TIMEOUT_MS = 30_000;
 
 export interface LoadExtensionsOptions {
+	timezoneReader: CreateExtensionContextOptions["timezoneReader"];
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
 	/** 当前语言。拓展页上的名字与说明按它现取。 */
@@ -705,6 +706,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			setTimeout: (fn, ms) => host.setTimeout(fn, ms),
 		});
 		const created = createExtensionContext({
+			timezoneReader: opts.timezoneReader,
 			id,
 			manifest,
 			host,

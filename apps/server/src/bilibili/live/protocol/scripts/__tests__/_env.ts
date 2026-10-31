@@ -1,3 +1,4 @@
+import { fixedTimezone } from "../../../../../__tests__/support/integration-io.js";
 /**
  * 三个真机脚本(probe-login / capture-frames / smoke-live)共用的启动样板:数据目录、
  * ServiceContext、只读打开服务端落盘的登录态。以前各抄一份,2026-08-27 那次写死路径的
@@ -138,6 +139,7 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		(kind, values) => scriptRedactor.replace(BILIBILI_SOURCE_KEY, kind, values),
 	);
 	const context = await createBiliContext({
+		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		stores: { open: async () => handle },
 		serviceCtx,

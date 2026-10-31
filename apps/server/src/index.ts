@@ -58,6 +58,7 @@ import { i18n, t } from "./i18n/index.js";
 import { localeReaderOf } from "./i18n/locale-reader.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { settingsReaderOptionsOf } from "./integrations/settings-reader.js";
+import { timezoneReaderOf } from "./integrations/timezone-reader.js";
 import { createLinkPreviewer } from "./link-preview/link-previewer.js";
 import { createLinkReplySender } from "./link-preview/link-reply.js";
 import { consoleErrorRedacted } from "./logs/console-fallback.js";
@@ -629,6 +630,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 各内置集成读自己设置的读法:造一次,递给造集成上下文的两处(B 站、内置适配器);键由各集成自己挑。
 		const settingsOf = settingsReaderOptionsOf(runtime.configStore);
+		const timezoneReader = timezoneReaderOf(runtime.configStore);
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
@@ -762,19 +764,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// B 站那一套(上下文、登录系统、来源)由 `compose.ts` 在 `registerSources` 里造,登录由来源自己起、停;
 		// B 站 `Api` 的两层开发壳也在那一头建(B 站 devtools 的入口),入口不碰 `bilibili/` 下的任何东西。
 		// B 站那组场景的认领在 `compose.ts`。
-		const onTimezoneChanged = (handler: () => void): Disposable => {
-			let timezone = runtime.configStore.getGlobals().timezone;
-			return runtime.configStore.onChange((scope) => {
-				if (scope !== "globals") return;
-				const next = runtime.configStore.getGlobals().timezone;
-				if (next === timezone) return;
-				timezone = next;
-				handler();
-			});
-		};
+
 		const builtins = composeBuiltinIntegrations({
-			timezone: () => runtime.configStore.getGlobals().timezone,
-			onTimezoneChanged,
+			timezoneReader,
 			locale: localeReader,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
 			accountImages: runtime.accountImages,
@@ -1243,6 +1235,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const extensionMounts = createExtensionMounts({ logger: log });
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
+			timezoneReader,
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
 			root: extensionsRoot,
