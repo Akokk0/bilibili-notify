@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FEATURE_KEYS, type FeatureKey } from "../features";
 import type { Dict } from "../i18n";
 import { isDictKey, malformedPlaceholders } from "../i18n";
 import type { SettingsField } from "../settings-field";
@@ -102,6 +103,12 @@ const ManifestTranslationSchema = z.strictObject({
 					postNoun: ShortLabelSchema.optional(),
 					creatorNoun: ShortLabelSchema.optional(),
 					externalIdNoun: ShortLabelSchema.optional(),
+					featureHints: z
+						.partialRecord(
+							z.enum(FEATURE_KEYS),
+							LocaleTextSchema.refine((text) => text.trim().length > 0),
+						)
+						.optional(),
 				})
 				.optional(),
 		})
@@ -150,6 +157,7 @@ interface DisplayTranslation {
 	postNoun?: string;
 	creatorNoun?: string;
 	externalIdNoun?: string;
+	featureHints?: Partial<Record<FeatureKey, string>>;
 }
 
 interface PushTranslation extends DisplayTranslation {
@@ -449,6 +457,27 @@ function pushOf(
 	return nonEmptyObject(out) ? out : undefined;
 }
 
+function featureHintsOf(
+	source: unknown,
+	path: Path,
+	issues: ExtensionLocaleIssue[],
+): Partial<Record<FeatureKey, string>> | undefined {
+	if (!isRecord(source)) {
+		issues.push({ path, code: "invalid-text" });
+		return undefined;
+	}
+	const out: Partial<Record<FeatureKey, string>> = {};
+	for (const key of Object.keys(source)) {
+		if (!FEATURE_KEYS.some((feature) => feature === key)) {
+			issues.push({ path: [...path, key], code: "unknown-entry" });
+			continue;
+		}
+		const text = textOf(source, key, path, issues, { nonBlank: true });
+		if (text !== undefined) put(out, key, text);
+	}
+	return nonEmptyObject(out) ? out : undefined;
+}
+
 function subscriptionOf(
 	source: unknown,
 	path: Path,
@@ -463,6 +492,9 @@ function subscriptionOf(
 		const here = [...path, key];
 		if (SUBSCRIPTION_TEXT_KEYS.has(key)) {
 			putDisplayText(out, source, key, path, issues);
+		} else if (key === "featureHints") {
+			const hints = featureHintsOf(source[key], here, issues);
+			if (hints !== undefined) out.featureHints = hints;
 		} else if (
 			key === "color" ||
 			key === "icon" ||

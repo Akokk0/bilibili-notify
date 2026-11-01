@@ -262,6 +262,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		searchAccepts: ["id", "name"],
 		supportedFeatures: ["post", "liveStart", "liveEnd", "membership"],
 		supportedExtras: ["atAllPost", "liveSummary"],
+		featureHints: { post: "Probe post hint", liveEnd: "Probe end hint" },
 		...(options.creatorNoun === undefined ? {} : { creatorNoun: options.creatorNoun }),
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [

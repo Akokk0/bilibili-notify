@@ -26,6 +26,7 @@ import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { memoryKeyValueStores } from "../../__tests__/support/memory-key-value-store.js";
 import { deferred } from "../../__tests__/support/track-context.js";
 import { createAiToolProviderRegistry } from "../../ai/tool-provider-registry.js";
+import { i18n } from "../../i18n/index.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable } from "../../problems/problem-table.js";
@@ -442,6 +443,32 @@ describe("createBiliSource", () => {
 			"get_up_videos",
 		]);
 		await source.stop();
+	});
+
+	it("来源实例的 featureHints 在访问时取当前语言，不被描述符拷贝冻结", () => {
+		const source = createBiliSource(makeDeps().deps);
+		const state = i18n.state();
+		const key = "bilibili.source.featureHints.post";
+		try {
+			i18n.set({ locale: "zh-CN", voice: "plain" });
+			expect(source.descriptor.featureHints).toEqual({
+				post: "投稿 / 转发 / 专栏",
+				superchat: "Super Chat 提醒",
+			});
+			i18n.set({ locale: "en" });
+			const translate = vi
+				.spyOn(i18n.state(), "t")
+				.mockImplementation((requested) =>
+					requested === key ? "Current post hint" : String(requested),
+				);
+			try {
+				expect(source.descriptor.featureHints?.post).toBe("Current post hint");
+			} finally {
+				translate.mockRestore();
+			}
+		} finally {
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
 	});
 
 	it("描述符的 postNoun 是「动态」", () => {

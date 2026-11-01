@@ -4,7 +4,7 @@ import {
 	EXTENSION_IMAGE_MAX_CHARS,
 	LIST_ITEM_ID_KEY,
 } from "../extension/wire";
-import { EXTENSION_SOURCE_FEATURES } from "../features";
+import { EXTENSION_SOURCE_FEATURES, FEATURE_KEYS } from "../features";
 import { RESERVED_EXTENSION_IDS } from "../identity";
 import type { SettingsField, SettingsListField } from "../settings-field";
 import { CREATOR_SEARCH_INPUTS } from "../source";
@@ -592,6 +592,12 @@ const ContributesSchema = z
 					.optional(),
 				/** 这个源能报的几种特性,见 {@link SupportedFeaturesSchema}。 */
 				supportedFeatures: SupportedFeaturesSchema,
+				featureHints: z
+					.partialRecord(
+						z.enum(FEATURE_KEYS),
+						z.string().refine((text) => text.trim().length > 0),
+					)
+					.optional(),
 				/** 自带的卡片皮肤目录(ADR-0019 决策 13)。 */
 				cardSkin: PackagePathSchema.optional(),
 			})

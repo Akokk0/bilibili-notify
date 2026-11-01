@@ -46,8 +46,8 @@ interface ContractRow {
  * 只登记拓展**交给 BN**、或 BN 照着它画 / 收的那几份:清单、译文文件、搜人候选、视图、上报与读取结果。
  */
 const CONTRACT: readonly ContractRow[] = [
-	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "9f73808d0ac5c830" },
-	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "6658c08ec03129ea" },
+	{ name: "当前清单", schema: ExtensionManifestSchema, digest: "a8af882b936e9c43" },
+	{ name: "译文文件", schema: ExtensionLocaleFileSchema, digest: "4a22d6bf6b1ab54e" },
 	{ name: "视图", schema: ExtensionViewSchema, digest: "c7459400b5bf8f92" },
 	{ name: "上报:作品", schema: ExtensionPostReportSchema, digest: "075ad603af0b2b4c" },
 	{

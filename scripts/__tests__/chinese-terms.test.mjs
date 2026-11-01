@@ -100,7 +100,8 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/capture.ts": 1,
 	"apps/server/src/devtools/scenarios/timers.ts": 1,
 	// 4-24: 主人2026-10-31批准迁移事实搬字典的精确5处增量，原文不改、判据与白名单不动。
-	"apps/server/src/i18n/locales/zh-CN.json": 15,
+	// 4-27：主人批准来源提示专栏精确1处增量，完整键与命中词由下方断言钉住。
+	"apps/server/src/i18n/locales/zh-CN.json": 16,
 	"apps/server/src/i18n/locales/zh-CN.maid.json": 1,
 	"apps/server/src/live/membership.ts": 3,
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
@@ -346,6 +347,18 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 		expect(
 			auditJsonPins(json.replace("还没有登录 B 站账号", "还没有登录 B 站 UID 账号"), file),
 		).not.toEqual([]);
+	});
+	it("4-27 服务端新增叫法只来自批准的完整来源提示键与专栏一词", () => {
+		const file = "apps/server/src/i18n/locales/zh-CN.json";
+		const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
+		expect(
+			Object.entries(dict)
+				.filter(([key]) => key.startsWith("bilibili.source.featureHints."))
+				.map(([key, text]) => [key, text, termsIn(text)]),
+		).toEqual([
+			["bilibili.source.featureHints.post", "投稿 / 转发 / 专栏", ["专栏"]],
+			["bilibili.source.featureHints.superchat", "Super Chat 提醒", []],
+		]);
 	});
 	it("两份 web 字典恰好保留批准的八个真实 B 站节点", () => {
 		for (const file of Object.keys(JSON_TERM_PINS))

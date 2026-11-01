@@ -4,6 +4,8 @@ import {
 	type ExtensionLocaleFile,
 	type ExtensionLocaleIssueCode,
 	type ExtensionManifest,
+	FEATURE_KEYS,
+	type FeatureKey,
 	parseExtensionLocaleFile,
 	type SettingsField,
 } from "@bilibili-notify/internal";
@@ -221,6 +223,7 @@ interface DisplayTranslation {
 	postNoun?: string;
 	creatorNoun?: string;
 	externalIdNoun?: string;
+	featureHints?: Partial<Record<FeatureKey, string>>;
 }
 
 const DISPLAY_TEXT_KEYS = [
@@ -270,6 +273,11 @@ export function localizeManifest(
 		: undefined;
 
 	const { push, subscription } = manifest.contributes;
+	const featureHints = { ...subscription?.featureHints };
+	for (const key of FEATURE_KEYS) {
+		const text = pick(layers, (layer) => layer.contributes?.subscription?.featureHints?.[key]);
+		if (text !== undefined) featureHints[key] = text;
+	}
 	const contributes = {
 		...manifest.contributes,
 		...(push
@@ -297,6 +305,7 @@ export function localizeManifest(
 							subscription,
 							layers.map((layer) => layer.contributes?.subscription),
 						),
+						...(Object.keys(featureHints).length ? { featureHints } : {}),
 					},
 				}
 			: {}),

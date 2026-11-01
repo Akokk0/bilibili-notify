@@ -291,6 +291,7 @@ describe("GET /api/sources", () => {
 			externalIdRegex: "[a-z0-9_]+",
 			searchAccepts: ["link", "name"],
 			supportedFeatures: ["post"],
+			featureHints: { post: "Current localized hint" },
 		};
 		const { body } = await boot({
 			sources: {},

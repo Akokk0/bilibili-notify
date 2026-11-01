@@ -594,6 +594,20 @@ describe("全新1.0契约1 的订阅与推送外观", () => {
 		unreadable(sub({ searchAccepts: ["id", "id"] }));
 	});
 
+	it("featureHints 接收全部特性键的自由提示，保持原文且不扩大能力声明", () => {
+		const featureHints = { post: "  Custom post reminder  ", membership: "Club reminder" };
+		const m = ok(sub({ featureHints }));
+		expect(m.contributes.subscription?.featureHints).toEqual(featureHints);
+		expect(m.contributes.subscription?.supportedFeatures).not.toContain("membership");
+	});
+
+	it.each([null, [], { unknown: "Hint" }, { post: 1 }, { post: "" }, { post: " \n\t " }])(
+		"featureHints 拒绝错误外壳、未知键与空白提示: %j",
+		(featureHints) => {
+			expect(parseExtensionManifest(sub({ featureHints })).ok).toBe(false);
+		},
+	);
+
 	it("lookupPlaceholder 已从清单退场 —— 不论订阅段还是推送段都读不了", () => {
 		unreadable(sub({ lookupPlaceholder: "粘链接" }));
 		unreadable(

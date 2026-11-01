@@ -357,7 +357,8 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		title: "规则节按描述符露出(featureHints、supportedExtras)",
 		checked: false,
 		waitsFor: "第 4 期",
-		reason: "描述符经来源表下发的那一半已转进 P50;规则页按描述符露节、这两格随面板改造",
+		reason:
+			"服务端描述符与提示经 P50 下发；面板能力由 Rules.extension-subs / section-scope、提示覆盖由 UpDialog.extension 组件测试管着（4-26/27），不记为进程内渲染对拍；4-27 真页待统筹验收",
 	},
 	{
 		id: "N14",
@@ -437,6 +438,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	searchAccepts: ["P50"],
 	supportedFeatures: ["P50"],
 	supportedExtras: ["P50"],
+	featureHints: ["P50"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
 	beginLogin: ["P16"],
@@ -982,6 +984,10 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		expect(res.status).toBe(200);
 		const { sources } = (await res.json()) as SourcesResponse;
 		const declared = currentProbe().descriptor;
+		expect(sources.find((one) => one.key === IN_PROCESS_KEY)?.descriptor.featureHints).toEqual({
+			post: "Probe post hint",
+			liveEnd: "Probe end hint",
+		});
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)).toEqual({
 			key: IN_PROCESS_KEY,
 			status: "running",

@@ -128,6 +128,12 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	// 纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。
 	searchAccepts: ["id", "link", "name"],
 	supportedFeatures: FEATURE_KEYS,
+	get featureHints() {
+		return {
+			post: t("bilibili.source.featureHints.post"),
+			superchat: t("bilibili.source.featureHints.superchat"),
+		};
+	},
 	supportedExtras: ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"],
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 };
@@ -137,8 +143,12 @@ const GUARD_ICON_RETRY_INTERVAL_MS = 5 * 60 * 1000;
 
 /** 每个来源实例一份:运行中补上的图库引用只属于这个实例,模块里的档位表保持不变。 */
 function copyBiliDescriptor(): SourceDescriptor {
+	const { featureHints: _featureHints, ...descriptor } = BILI_SOURCE_DESCRIPTOR;
 	return {
-		...BILI_SOURCE_DESCRIPTOR,
+		...descriptor,
+		get featureHints() {
+			return BILI_SOURCE_DESCRIPTOR.featureHints;
+		},
 		membershipPrograms: BILI_SOURCE_DESCRIPTOR.membershipPrograms?.map((program) => ({
 			...program,
 			tiers: Array.isArray(program.tiers)

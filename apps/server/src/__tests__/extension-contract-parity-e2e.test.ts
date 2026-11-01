@@ -161,7 +161,7 @@ interface Evidence {
 /**
  * 一行的状态:
  * - `driven`:这份文件里有一条 `it` 驱动了它;
- * - `elsewhere`:另一份 e2e 已经按内容管着它(只给 `creatorNoun`);
+ * - `elsewhere`:所引用的公共边界测试已经按内容管着它;
  * - `closed`:这一版不开,写明理由与证据;
  * - `hostFilled`:不由拓展给,宿主填(只给 `adapterKey`),写明理由与证据。
  */
@@ -281,6 +281,11 @@ const SUBSCRIPTION_CELL_ROWS = {
 	searchAccepts: driven(TITLE.subscriptionCells),
 	externalIdRegex: driven(TITLE.externalIdRegex),
 	supportedFeatures: driven(TITLE.subscriptionCells),
+	featureHints: {
+		state: "elsewhere",
+		file: "apps/server/src/routes/__tests__/sources-list-route.test.ts",
+		it: "拓展清单写了的格原样下发(图标、搜人收的输入都在),自带皮肤的包内路径不下发",
+	},
 	cardSkin: closed(
 		"宿主今天不读这一格:它是装包那头的事(自带卡片皮肤,ADR-0019 决策 13),面板视图里剥掉、服务端没有读者,等「自带皮肤」那一步。假源的清单也没写它。证据只有清单收下它的单测,没有单测钉「宿主不读」。",
 		{ file: MANIFEST_TEST, title: "cardSkin %s —— 收下" },
@@ -1579,17 +1584,17 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		it("七张行表的行数,与走通 / 不开 / 宿主填各有几行(提交 9 抄进 architecture)", () => {
 			const size = (table: keyof Tables) => Object.keys(TABLES[table]).length;
 			expect(size("Source")).toBe(10);
-			expect(size("SubscriptionCell")).toBe(11);
+			expect(size("SubscriptionCell")).toBe(12);
 			expect(size("SourceContext")).toBe(7);
 			expect(size("PlatformAdapter")).toBe(13);
 			expect(size("PushCell")).toBe(5);
 			expect(size("AdapterContext")).toBe(3);
 			expect(size("IntegrationContext")).toBe(14);
-			expect(entries).toHaveLength(63);
+			expect(entries).toHaveLength(64);
 			const of = (state: Row["state"]) => entries.filter((e) => e.row.state === state);
-			// 走通 = 本文件驱动的 39 行 + 另一份 e2e 已管着的 1 行(`creatorNoun`);不开 8 行;宿主填 1 行。
+			// 本文件驱动 39 行，另有 16 行由所引用测试管着（含 featureHints 的公共来源路由）；不开 8 行，宿主填 1 行。
 			expect(of("driven")).toHaveLength(39);
-			expect(of("elsewhere")).toHaveLength(15);
+			expect(of("elsewhere")).toHaveLength(16);
 			expect(of("closed")).toHaveLength(8);
 			expect(of("hostFilled")).toHaveLength(1);
 			expect(

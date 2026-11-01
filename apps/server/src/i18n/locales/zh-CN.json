@@ -4,6 +4,8 @@
 	"adapters.notRunning": "这种连接的适配器没在跑",
 	"bilibili.aiTools.upTotals": "查看数据概览",
 	"bilibili.aiTools.upVideos": "查看最近视频",
+	"bilibili.source.featureHints.post": "投稿 / 转发 / 专栏",
+	"bilibili.source.featureHints.superchat": "Super Chat 提醒",
 	"bilibili.post.label.collection": "更新了合集",
 	"bilibili.post.label.course": "发布了课程",
 	"bilibili.post.label.series": "发布了剧集",

@@ -315,6 +315,40 @@ describe("清单那层（$manifest）", () => {
 		});
 	});
 
+	it("featureHints 逐特性收译文，坏提示不丢同层好提示", () => {
+		const parsed = parse({
+			$manifest: {
+				contributes: {
+					subscription: {
+						featureHints: {
+							post: "  Custom reminder  ",
+							liveStart: " \n\t ",
+							liveEnd: 4,
+							unknown: "Other",
+						},
+					},
+				},
+			},
+		});
+		expect(parsed.manifest).toEqual({
+			contributes: { subscription: { featureHints: { post: "  Custom reminder  " } } },
+		});
+		expect(parsed.issues).toEqual([
+			{
+				path: ["$manifest", "contributes", "subscription", "featureHints", "liveStart"],
+				code: "invalid-text",
+			},
+			{
+				path: ["$manifest", "contributes", "subscription", "featureHints", "liveEnd"],
+				code: "invalid-text",
+			},
+			{
+				path: ["$manifest", "contributes", "subscription", "featureHints", "unknown"],
+				code: "unknown-entry",
+			},
+		]);
+	});
+
 	it("旧的第 2 版嵌套 display 不再收，记 unknown-entry", () => {
 		const parsed = parse({
 			$manifest: {

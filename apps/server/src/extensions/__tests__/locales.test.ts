@@ -257,6 +257,60 @@ describe("盖清单", () => {
 		);
 	});
 
+	it("featureHints 逐键沿当前语言、简中、英文、清单原字回落", async () => {
+		const manifest: ExtensionManifest = {
+			...MANIFEST,
+			contributes: {
+				subscription: {
+					label: "Source",
+					supportedFeatures: ["post"],
+					featureHints: {
+						post: "Original post",
+						liveStart: "Original start",
+						liveEnd: "Original end",
+						membership: "Original club",
+					},
+				},
+			},
+		};
+		await put("en.json", {
+			$manifest: {
+				contributes: {
+					subscription: {
+						featureHints: { post: "EN post", liveStart: "EN start", liveEnd: "EN end" },
+					},
+				},
+			},
+		});
+		await put("zh-CN.json", {
+			$manifest: {
+				contributes: { subscription: { featureHints: { post: "ZH post", liveStart: "ZH start" } } },
+			},
+		});
+		await put("ja.json", {
+			$manifest: {
+				contributes: { subscription: { featureHints: { post: "JA post", liveStart: " " } } },
+			},
+		});
+		const locales = await readExtensionLocales(dir, manifest);
+		expect(
+			localizeManifest(manifest, locales, "ja").contributes.subscription?.featureHints,
+		).toEqual({
+			post: "JA post",
+			liveStart: "ZH start",
+			liveEnd: "EN end",
+			membership: "Original club",
+		});
+		expect(manifest.contributes.subscription?.featureHints?.post).toBe("Original post");
+		expect(locales.issues).toEqual([
+			{
+				locale: "ja",
+				code: "invalid-text",
+				path: ["$manifest", "contributes", "subscription", "featureHints", "liveStart"],
+			},
+		]);
+	});
+
 	it("订阅源的搜人输入种类不可译,译文写了就丢掉并保留清单原值", async () => {
 		const manifest = {
 			...MANIFEST,
