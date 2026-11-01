@@ -261,6 +261,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		icon: `data:image/png;base64,${IN_PROCESS_TIER_ICON_BASE64}`,
 		searchAccepts: ["id", "name"],
 		supportedFeatures: ["post", "liveStart", "liveEnd", "membership"],
+		supportedExtras: ["atAllPost", "liveSummary"],
 		...(options.creatorNoun === undefined ? {} : { creatorNoun: options.creatorNoun }),
 		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
 		membershipPrograms: [

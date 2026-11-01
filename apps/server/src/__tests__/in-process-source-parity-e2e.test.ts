@@ -436,6 +436,7 @@ const SOURCE_DESCRIPTOR_MEMBERS = {
 	icon: ["P50"],
 	searchAccepts: ["P50"],
 	supportedFeatures: ["P50"],
+	supportedExtras: ["P50"],
 } as const satisfies Record<keyof SourceDescriptor, readonly RowId[]>;
 const SOURCE_AUTH_MEMBERS = {
 	beginLogin: ["P16"],
@@ -976,11 +977,11 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 	});
 
 	// 验红:`routes/sources.ts` 的 `hasOf` 把 `liveStatus` 写死成 false,这条红;列登记表那一段整个跳过,这条也红。
-	it("P50 来源表:假来源的描述符经 /api/sources 原样下发(会员体系除外),has 按它实现的可选成员推;B 站并排在表里", async () => {
+	it("P50 来源表:假来源的完整描述符经 /api/sources 下发,has 按它实现的可选成员推;B 站并排在表里", async () => {
 		const res = await api("/api/sources");
 		expect(res.status).toBe(200);
 		const { sources } = (await res.json()) as SourcesResponse;
-		const { membershipPrograms: _membershipPrograms, ...declared } = currentProbe().descriptor;
+		const declared = currentProbe().descriptor;
 		expect(sources.find((one) => one.key === IN_PROCESS_KEY)).toEqual({
 			key: IN_PROCESS_KEY,
 			status: "running",

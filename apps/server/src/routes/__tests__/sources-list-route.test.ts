@@ -5,7 +5,7 @@
  * - 登记表里不是拓展的(B 站)取登记时交的描述符;
  * - 拓展取装载器那份清单(已按当前语言盖好译文),跑没跑都列 —— 停用 / 起不来的不带 `has`(= 不知道);
  *   在跑的也取清单那份、不取登记时冻住的那份,换了语言才不会显示旧名字。
- * `has` 由宿主看来源实现了哪些可选成员推出来;会员体系这一期不上线(档位图标是图库引用,读者在 4-26)。
+ * `has` 由宿主看来源实现了哪些可选成员推出来;会员体系完整下发,档位图标经图库引用读取。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -138,7 +138,52 @@ describe("GET /api/sources", () => {
 		expect(details.integrations).toMatchObject([{ key: "broken", status: "failed", light: "red" }]);
 	});
 
-	it("B 站那条带它自己的描述(短名、颜色、搜人收哪几种、特性全列),线上不带会员体系", async () => {
+	it("公共来源描述符下发会员体系和图库引用,保留自定义档与空档声明", async () => {
+		const { body } = await boot({
+			sources: {
+				library: sourceOf({
+					descriptor: {
+						label: "Library",
+						supportedFeatures: ["membership"],
+						membershipPrograms: [
+							{
+								id: "readers",
+								name: "Readers",
+								tiers: [
+									{
+										key: "gold",
+										name: "Gold",
+										rank: 4,
+										icon: { ref: "badge-ref", url: "https://example.invalid/badge.png" },
+									},
+								],
+							},
+							{ id: "custom", name: "Custom", tiers: "custom" },
+							{ id: "empty", name: "Empty", tiers: [] },
+						],
+					},
+				}),
+			},
+		});
+		expect(body.sources[0]?.descriptor).toHaveProperty("membershipPrograms", [
+			{
+				id: "readers",
+				name: "Readers",
+				tiers: [
+					{
+						key: "gold",
+						name: "Gold",
+						rank: 4,
+						icon: { ref: "badge-ref", url: "https://example.invalid/badge.png" },
+					},
+				],
+			},
+			{ id: "custom", name: "Custom", tiers: "custom" },
+			{ id: "empty", name: "Empty", tiers: [] },
+		]);
+	});
+
+	it("B 站那条带它自己的描述(短名、颜色、搜人收哪几种、特性全列)与会员体系", async () => {
 		const { status, body } = await boot({
 			sources: { bilibili: sourceOf({ descriptor: BILI_SOURCE_DESCRIPTOR }) },
 		});
@@ -157,8 +202,24 @@ describe("GET /api/sources", () => {
 			searchAccepts: ["id", "link", "name"],
 			supportedFeatures: [...FEATURE_KEYS],
 		});
-		expect(bili?.descriptor).not.toHaveProperty("membershipPrograms");
+		expect(bili?.descriptor.membershipPrograms?.[0]).toMatchObject({ id: "guard", name: "大航海" });
 		expect(bili?.descriptor).not.toHaveProperty("icon");
+	});
+
+	it("公共来源下发附加项能力,未声明的来源不补默认值", async () => {
+		const { body } = await boot({
+			sources: {
+				capable: sourceOf({ descriptor: BILI_SOURCE_DESCRIPTOR }),
+				bare: sourceOf({}),
+			},
+		});
+		expect(body.sources[0]?.descriptor).toHaveProperty("supportedExtras", [
+			"atAllPost",
+			"atAllLiveStart",
+			"wordcloud",
+			"liveSummary",
+		]);
+		expect(body.sources[1]?.descriptor).not.toHaveProperty("supportedExtras");
 	});
 
 	it("has 由宿主看来源实现了哪些可选成员推出来", async () => {

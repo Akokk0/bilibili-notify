@@ -11,7 +11,6 @@ import {
 	fail,
 	type Result,
 	type SourceAuth,
-	type SourceDescriptor,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -58,12 +57,6 @@ export interface SourcesRouteOptions {
 	images?: Pick<ImageStore, "read">;
 }
 
-/** 线上的描述符:会员体系先不下发(档位图标是图库引用,面板读会员档的时候再一起上)。 */
-function wireDescriptorOf(descriptor: SourceDescriptor): SourceEntry["descriptor"] {
-	const { membershipPrograms: _membershipPrograms, ...rest } = descriptor;
-	return rest;
-}
-
 /** 来源实现了哪些可选成员,宿主自己看,不让来源自报。 */
 function hasOf(view: SourceView): NonNullable<SourceEntry["has"]> {
 	return {
@@ -107,7 +100,7 @@ export function createSourcesRoute(deps: RouteDeps, opts: SourcesRouteOptions): 
 			if (extensionIds.has(run.sourceKey)) continue;
 			sources.push({
 				key: run.sourceKey,
-				descriptor: wireDescriptorOf(run.descriptor),
+				descriptor: run.descriptor,
 				status: status.status(run.sourceKey),
 				...(run.failure ? { failure: run.failure } : {}),
 				...(view ? { has: hasOf(view) } : {}),

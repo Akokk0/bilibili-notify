@@ -49,13 +49,13 @@ type ReadonlyArrays<T> = T extends readonly (infer U)[]
 /** 清单订阅段去掉装包用的 `cardSkin`:拓展来源的描述符就是它(`manifestSourceDescriptor`)。 */
 type ManifestDescriptor = ReadonlyArrays<Omit<ManifestSubscription, "cardSkin">>;
 /**
- * 与 `SourceDescriptor` 逐格严格相等,只差两格:清单不收会员体系(1.0 拓展声明不了会员类特性),
- * 特性另一条钉。描述符加了格、清单没跟上(或反过来),这里就红。
+ * 与 `SourceDescriptor` 逐格严格相等:1.0 清单不收会员体系与附加项,特性另一条钉。
+ * 描述符加了格、清单没跟上(或反过来),这里就红。
  */
 export type SubscriptionPinned = Pinned<
 	Equals<
 		Omit<ManifestDescriptor, "supportedFeatures">,
-		Omit<SourceDescriptor, "membershipPrograms" | "supportedFeatures">
+		Omit<SourceDescriptor, "membershipPrograms" | "supportedExtras" | "supportedFeatures">
 	>
 >;
 /** 清单能声明的特性是 1.0 开放的那几种(描述符本身收全部特性键)。 */

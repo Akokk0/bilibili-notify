@@ -128,6 +128,7 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 	// 纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。
 	searchAccepts: ["id", "link", "name"],
 	supportedFeatures: FEATURE_KEYS,
+	supportedExtras: ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"],
 	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 };
 

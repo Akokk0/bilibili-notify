@@ -1,6 +1,6 @@
 import type { AiToolProvider } from "./ai-tool";
 import type { AuthState } from "./auth-state";
-import type { FeatureKey } from "./features";
+import type { ExtraKey, FeatureKey } from "./features";
 import type { Identity } from "./identity";
 import type { ImageRef } from "./image-ref";
 import type { LinkResolver } from "./link-preview";
@@ -44,6 +44,8 @@ export interface SourceDescriptor {
 	searchAccepts?: readonly CreatorSearchInput[];
 	/** 支持哪些特性:面板的特性开关只列这几种;订阅上「开没开」才叫 `features`。 */
 	supportedFeatures: readonly FeatureKey[];
+	/** 支持的附加项;不给就不露。拓展清单在 1.0 不开放这一格。 */
+	supportedExtras?: readonly ExtraKey[];
 	/** 会员体系:卡片预览按它找档、示例卡取最低一档。没有会员体系的来源不写。 */
 	membershipPrograms?: MembershipProgram[];
 }

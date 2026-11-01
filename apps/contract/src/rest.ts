@@ -1327,8 +1327,8 @@ export interface SourceEntry {
 	failure?: Failure;
 	/** 来源键:订阅的 `identity.sourceKey` 就是它(拓展的来源键是拓展 id)。 */
 	key: string;
-	/** 来源的描述符。会员体系先不下发:档位图标是图库引用,面板读会员档的时候再一起上。 */
-	descriptor: Omit<SourceDescriptor, "membershipPrograms">;
+	/** 来源的完整描述符。档位图标在面板仅通过图库引用读取。 */
+	descriptor: SourceDescriptor;
 	/**
 	 * 来源实现了哪些可选能力(登录口、查直播状态、卡片页的真实预览),由宿主推算、不让来源自报。拓展停用或没起来时
 	 * 没有这一格:不知道,不是「没有」。
