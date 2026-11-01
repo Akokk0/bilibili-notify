@@ -1,11 +1,7 @@
-import {
-	BILIBILI_GUARD_PROGRAM,
-	type MembershipProgram,
-	type MembershipTier,
-	type Source,
-} from "@bilibili-notify/internal";
+import type { MembershipProgram, MembershipTier, Source } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
+import { GUARD_PROGRAM } from "../../bilibili/guard-program.js";
 import { createMembershipTierReader } from "../membership-tiers.js";
 import { createSourceRegistry, type SourceView } from "../registry.js";
 import { makeIntegration, makeSource } from "./fixtures.js";
@@ -25,7 +21,7 @@ const readerOf = (...views: SourceView[]) => createMembershipTierReader({ list: 
 
 describe("createMembershipTierReader", () => {
 	it("byKey:B 站大航海三档的 key 各找得到,认不出的回 undefined", () => {
-		const reader = readerOf(viewOf(BILIBILI_GUARD_PROGRAM));
+		const reader = readerOf(viewOf(GUARD_PROGRAM));
 		for (const key of ["captain", "commander", "governor"]) {
 			expect(reader.byKey("guard", key)?.key).toBe(key);
 		}
@@ -36,8 +32,8 @@ describe("createMembershipTierReader", () => {
 	});
 
 	it("lowest:带了体系 id 就看那一套里 rank 最小的一档(B 站 = 舰长),与档在数组里的次序无关", () => {
-		expect(readerOf(viewOf(BILIBILI_GUARD_PROGRAM)).lowest()?.key).toBe("captain");
-		expect(readerOf(viewOf(BILIBILI_GUARD_PROGRAM)).lowest("guard")?.key).toBe("captain");
+		expect(readerOf(viewOf(GUARD_PROGRAM)).lowest()?.key).toBe("captain");
+		expect(readerOf(viewOf(GUARD_PROGRAM)).lowest("guard")?.key).toBe("captain");
 		const shuffled: MembershipProgram = {
 			id: "p",
 			name: "p",
@@ -128,7 +124,7 @@ describe("createMembershipTierReader", () => {
 			descriptor: {
 				label: "测试",
 				supportedFeatures: ["post"],
-				membershipPrograms: [BILIBILI_GUARD_PROGRAM],
+				membershipPrograms: [GUARD_PROGRAM],
 			},
 		};
 		// biome-ignore lint/suspicious/noExplicitAny: 登记表测试只需要 logger

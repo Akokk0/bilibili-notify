@@ -1,5 +1,4 @@
 import {
-	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
 	type Failure,
 	FEATURE_KEYS,
@@ -32,6 +31,7 @@ import type { BiliContext } from "./context.js";
 import { DynamicPoller } from "./dynamic/index.js";
 import { BILI_EXTERNAL_ID_REGEX } from "./external-id.js";
 import { watchFollows } from "./follow-sync.js";
+import { GUARD_PROGRAM } from "./guard-program.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import { fetchAvatar, IMAGE_REQUEST_HEADERS } from "./images.js";
 import { createBiliLinkResolver } from "./link-resolver.js";
@@ -135,7 +135,7 @@ export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
 		};
 	},
 	supportedExtras: ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"],
-	membershipPrograms: [BILIBILI_GUARD_PROGRAM],
+	membershipPrograms: [GUARD_PROGRAM],
 };
 
 /** 每两个缺图档抓取轮次之间至少隔这么久,免得每条上舰都敲一次静态站。 */
@@ -151,9 +151,18 @@ function copyBiliDescriptor(): SourceDescriptor {
 		},
 		membershipPrograms: BILI_SOURCE_DESCRIPTOR.membershipPrograms?.map((program) => ({
 			...program,
+			get name() {
+				return program.name;
+			},
 			tiers: Array.isArray(program.tiers)
 				? program.tiers.map((tier) => ({
 						...tier,
+						get name() {
+							return tier.name;
+						},
+						get announcement() {
+							return tier.announcement;
+						},
 						...(tier.icon ? { icon: { ...tier.icon } } : {}),
 					}))
 				: program.tiers,
@@ -192,7 +201,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 
 	const guardTiers = (): MembershipTier[] => {
 		const program = descriptor.membershipPrograms?.find(
-			(candidate) => candidate.id === BILIBILI_GUARD_PROGRAM.id,
+			(candidate) => candidate.id === GUARD_PROGRAM.id,
 		);
 		return program && Array.isArray(program.tiers) ? program.tiers : [];
 	};

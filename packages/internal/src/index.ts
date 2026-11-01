@@ -5,7 +5,6 @@
 export * from "./ai";
 export * from "./ai-tool";
 export * from "./auth-state";
-export * from "./bilibili-guard";
 export * from "./card-skin";
 export * from "./devtools";
 export * from "./features";

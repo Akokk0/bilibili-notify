@@ -3,7 +3,7 @@
  * 门槛是订阅折好的生效值(`SubItemView.minSuperchatAmount` / `minGuardRank`),这里不读配置。
  *
  * **运行时不再有任何地方拿原始 `guard_level` 比大小**:会员的门槛按事件的档位 `tier.rank` 比(从 1 起、1 最低),
- * `guard_level` 与 rank 的倒序换算全在 B 站的档位表里(`@bilibili-notify/internal` 的 `guardTierOf`)。
+ * `guard_level` 与 rank 的倒序换算全在 B 站的档位表里(`bilibili/guard-program.ts` 的 `guardTierOf`)。
  */
 
 import type { MembershipEvent, SuperchatEvent } from "@bilibili-notify/internal";

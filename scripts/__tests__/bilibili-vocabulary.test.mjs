@@ -221,9 +221,7 @@ export const GENERATED_KEY_EXCLUSIONS = {};
  * 棘轮表:文件 → 命中的上限(开张时的现数:13 个文件 62 处;认正则字面量、手补 `live_room` / `roomid` 之后:14 个文件 73 处)。只许往下调。
  * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
-export const RATCHET = {
-	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`。第 4 期:面板改从来源描述符取会员档(`descriptor.membershipPrograms`)、这份 B 站常量搬进 `apps/server/src/bilibili/` 后消;今天面板 `config/membership-programs.ts` 还直接 import 它。
-};
+export const RATCHET = {};
 
 /** 全小写、带下划线的键:`live_status`、`room_id`;驼峰、带大写、不带下划线的不算。 */
 const SNAKE_KEY = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;

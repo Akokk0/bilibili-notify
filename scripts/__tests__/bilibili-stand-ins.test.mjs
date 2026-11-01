@@ -69,7 +69,6 @@ export const RATCHET = {
 	"apps/web/src/pages/System.tsx": 5,
 	"apps/web/src/types/domain.ts": 2,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
-	"packages/internal/src/bilibili-guard.ts": 1,
 	"packages/internal/src/identity.ts": 4,
 	"packages/push/src/push-router.ts": 2,
 };

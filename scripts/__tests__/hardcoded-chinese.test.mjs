@@ -355,7 +355,6 @@ export const RATCHET = {
 	"packages/image/src/skin/knob-assets.ts": 2,
 	"packages/image/src/templates/post-content.tsx": 2,
 	"packages/internal/src/ai.ts": 6,
-	"packages/internal/src/bilibili-guard.ts": 7,
 	"packages/internal/src/card-skin.ts": 185,
 	"packages/internal/src/extension/build.ts": 5,
 	"packages/internal/src/features.ts": 4,

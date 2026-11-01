@@ -1,5 +1,4 @@
 import {
-	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
 	fail,
 	type ImageRef,
@@ -20,6 +19,7 @@ import {
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
 import { noCandidates, noProfile } from "../../__tests__/support/no-candidates.js";
+import { GUARD_PROGRAM } from "../../bilibili/guard-program.js";
 import { createIntegrationSettings } from "../../integrations/settings-reader.js";
 import type { ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -157,13 +157,13 @@ export const bilibiliLikeSources = (
 ): SourceRegistry => {
 	const registry = createSourceRegistry();
 	const program = {
-		...BILIBILI_GUARD_PROGRAM,
-		tiers: Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
-			? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => ({
+		...GUARD_PROGRAM,
+		tiers: Array.isArray(GUARD_PROGRAM.tiers)
+			? GUARD_PROGRAM.tiers.map((tier) => ({
 					...tier,
 					icon: { ...tier.icon, ...(options.iconRef ? { ref: options.iconRef } : {}) },
 				}))
-			: BILIBILI_GUARD_PROGRAM.tiers,
+			: GUARD_PROGRAM.tiers,
 	};
 	void registry.register(
 		SOURCE_KEY,

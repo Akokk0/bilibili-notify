@@ -19,7 +19,6 @@
 	"exports": {
 		".": "./lib/index.mjs",
 		"./ai": "./lib/ai.mjs",
-		"./bilibili-guard": "./lib/bilibili-guard.mjs",
 		"./card-skin": "./lib/card-skin.mjs",
 		"./extension": "./lib/extension/index.mjs",
 		"./extension/build": "./lib/extension/build.mjs",

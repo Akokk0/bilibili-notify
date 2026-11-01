@@ -41,11 +41,6 @@ const SUBPATHS = [
 		why: "面板与 contract 取 AI 服务商、人格和锐评配置",
 	},
 	{
-		subpath: "./bilibili-guard",
-		source: "src/bilibili-guard.ts",
-		why: "面板、引擎与出图器取 B 站大航海档位",
-	},
-	{
 		subpath: "./card-skin",
 		source: "src/card-skin.ts",
 		why: "面板与 contract 取卡片皮肤契约",

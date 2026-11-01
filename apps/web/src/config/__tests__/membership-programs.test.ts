@@ -104,8 +104,8 @@ describe("membershipTierOf", () => {
 	});
 });
 
-describe("面板里只有一处认得 B 站的档位表", () => {
-	it("BILIBILI_GUARD_PROGRAM 只出现在 config/membership-programs.ts", async () => {
+describe("面板不再直读 B 站的档位表", () => {
+	it("BILIBILI_GUARD_PROGRAM 不出现在面板生产代码", async () => {
 		const hits: string[] = [];
 		for (const file of await sourceFiles(SRC_DIR)) {
 			if (stripComments(await readFile(file, "utf8")).includes("BILIBILI_GUARD_PROGRAM")) {

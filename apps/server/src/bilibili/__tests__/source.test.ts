@@ -1,3 +1,4 @@
+import { GUARD_PROGRAM } from "../guard-program.js";
 /**
  * B 站来源:`start(ctx)` 里造并启动动态轮询,`stop()` 里停它。
  *
@@ -7,7 +8,6 @@
 
 import {
 	type AiToolProvider,
-	BILIBILI_GUARD_PROGRAM,
 	fail,
 	type Identity,
 	type ImageRef,
@@ -484,9 +484,90 @@ describe("createBiliSource", () => {
 	});
 
 	it("描述符交出大航海这一套会员体系", () => {
-		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toEqual([
-			BILIBILI_GUARD_PROGRAM,
+		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toMatchObject([
+			{
+				id: "guard",
+				name: "大航海",
+				tiers: [
+					{
+						key: "captain",
+						name: "舰长",
+						rank: 1,
+						color: "#4ebcec",
+						colorEnd: "#b494e5",
+						announcement: '"{viewer}号"加入\n"{name}"大航海舰队！',
+					},
+					{
+						key: "commander",
+						name: "提督",
+						rank: 2,
+						color: "#d8a0e6",
+						colorEnd: "#b494e5",
+						announcement: '"{viewer}"就任\n"{name}"大航海舰队提督！',
+					},
+					{
+						key: "governor",
+						name: "总督",
+						rank: 3,
+						color: "#f2a053",
+						colorEnd: "#ef5f5f",
+						announcement: '"{viewer}"上任\n"{name}"大航海舰队总督！',
+					},
+				],
+			},
 		]);
+	});
+
+	it("已有会员描述随当前语言更新,保留模板占位符与实例徽章引用", async () => {
+		const state = i18n.state();
+		i18n.set({ locale: "zh-CN", voice: "plain" });
+		const source = createBiliSource(makeDeps().deps);
+		const { ctx } = makeCtx([{ externalId: "1", monitorsLive: true }]);
+		await source.start(ctx);
+		try {
+			await source.liveInteractions?.fetchTierIcon(
+				{ sourceKey: "bilibili", externalId: "1" },
+				"guard",
+				"captain",
+				new AbortController().signal,
+			);
+			const program = source.descriptor.membershipPrograms?.[0];
+			const tiers = program && Array.isArray(program.tiers) ? program.tiers : [];
+			expect(program?.name).toBe("大航海");
+			expect(tiers.map((tier) => tier.icon?.ref)).toEqual([
+				CONTEXT_IMAGE_REF,
+				CONTEXT_IMAGE_REF,
+				CONTEXT_IMAGE_REF,
+			]);
+			i18n.set({ locale: "en" });
+			const translated = new Map([
+				["bilibili.guard.name", "Fleet"],
+				["bilibili.guard.captain.name", "Captain"],
+				["bilibili.guard.commander.name", "Commander"],
+				["bilibili.guard.governor.name", "Governor"],
+				["bilibili.guard.captain.announcement", "{viewer} joins {name}'s fleet"],
+				["bilibili.guard.commander.announcement", "{viewer} commands {name}'s fleet"],
+				["bilibili.guard.governor.announcement", "{viewer} governs {name}'s fleet"],
+			]);
+			const translate = vi
+				.spyOn(i18n.state(), "t")
+				.mockImplementation((key) => translated.get(key) ?? String(key));
+			try {
+				expect(program?.name).toBe("Fleet");
+				expect(
+					tiers.map((tier) => [tier.key, tier.name, tier.rank, tier.announcement, tier.icon?.ref]),
+				).toEqual([
+					["captain", "Captain", 1, "{viewer} joins {name}'s fleet", CONTEXT_IMAGE_REF],
+					["commander", "Commander", 2, "{viewer} commands {name}'s fleet", CONTEXT_IMAGE_REF],
+					["governor", "Governor", 3, "{viewer} governs {name}'s fleet", CONTEXT_IMAGE_REF],
+				]);
+			} finally {
+				translate.mockRestore();
+			}
+		} finally {
+			await source.stop();
+			i18n.set({ locale: state.locale, voice: state.voice });
+		}
 	});
 
 	it("直播取到粉丝牌名:只写进这位 UP 的资料状态", async () => {
@@ -647,9 +728,7 @@ describe("createBiliSource", () => {
 		await source.start(ctx);
 		expect(fetchImage).toHaveBeenCalledTimes(3);
 		expect(fetchImage.mock.calls.map(([url]) => url)).toEqual(
-			Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
-				? BILIBILI_GUARD_PROGRAM.tiers.map((tier) => tier.icon?.url)
-				: [],
+			Array.isArray(GUARD_PROGRAM.tiers) ? GUARD_PROGRAM.tiers.map((tier) => tier.icon?.url) : [],
 		);
 		for (const [, options] of fetchImage.mock.calls) {
 			expect(options?.headers).toEqual({ Referer: "https://www.bilibili.com/" });

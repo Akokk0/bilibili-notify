@@ -101,7 +101,8 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/timers.ts": 1,
 	// 4-24: 主人2026-10-31批准迁移事实搬字典的精确5处增量，原文不改、判据与白名单不动。
 	// 4-27：主人批准来源提示专栏精确1处增量，完整键与命中词由下方断言钉住。
-	"apps/server/src/i18n/locales/zh-CN.json": 16,
+	// 4-28: 主人批准旧档位表七处原文精确迁入,全仓叫法总数不变。
+	"apps/server/src/i18n/locales/zh-CN.json": 23,
 	"apps/server/src/i18n/locales/zh-CN.maid.json": 1,
 	"apps/server/src/live/membership.ts": 3,
 	"apps/server/src/live/recap/live-summary-requester.ts": 1,
@@ -140,7 +141,6 @@ export const RATCHET = {
 	"packages/image/src/blocks/roast.tsx": 1,
 	"packages/image/src/image-renderer.ts": 7,
 	"packages/image/src/preview/sample-cards.ts": 8,
-	"packages/internal/src/bilibili-guard.ts": 7,
 	"packages/internal/src/card-skin.ts": 7,
 	"packages/internal/src/schema/card-skin.ts": 2,
 	"packages/storage/src/key-manager.ts": 1,
@@ -360,6 +360,26 @@ describe("核心与面板里的 B 站叫法只降不涨", () => {
 			["bilibili.source.featureHints.superchat", "Super Chat 提醒", []],
 		]);
 	});
+	it("4-28 档位原文只迁到批准的七个完整键,不扩大叫法范围", () => {
+		const file = "apps/server/src/i18n/locales/zh-CN.json";
+		const dict = JSON.parse(readFileSync(join(REPO_ROOT, file), "utf8"));
+		expect(
+			Object.fromEntries(
+				Object.entries(dict)
+					.filter(([key]) => key.startsWith("bilibili.guard."))
+					.map(([key, text]) => [key, termsIn(text)]),
+			),
+		).toEqual({
+			"bilibili.guard.name": ["大航海"],
+			"bilibili.guard.captain.name": ["舰长"],
+			"bilibili.guard.commander.name": ["提督"],
+			"bilibili.guard.governor.name": ["总督"],
+			"bilibili.guard.captain.announcement": ["大航海"],
+			"bilibili.guard.commander.announcement": ["大航海", "提督"],
+			"bilibili.guard.governor.announcement": ["大航海", "总督"],
+		});
+	});
+
 	it("两份 web 字典恰好保留批准的八个真实 B 站节点", () => {
 		for (const file of Object.keys(JSON_TERM_PINS))
 			expect(auditJsonPins(readFileSync(join(REPO_ROOT, file), "utf8"), file)).toEqual([]);

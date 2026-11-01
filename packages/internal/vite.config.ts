@@ -5,7 +5,6 @@ export default defineConfig({
 		entry: [
 			"src/index.ts",
 			"src/ai.ts",
-			"src/bilibili-guard.ts",
 			"src/card-skin.ts",
 			"src/extension/index.ts",
 			"src/extension/build.ts",
