@@ -214,7 +214,10 @@ src/
 - **推送源的分发键由宿主按拓展 id 填**,拓展自报的那份会被覆盖 —— 否则一个拓展声明
   `"onebot"` 就能把内置连接的推送整个截走。描述(`PlatformAdapter.descriptor()`)也由宿主照清单
   `contributes.push` 填、每次读按当前语言盖好译文;全部适配器(内置三个 + 拓展,停着的也在)的描述列在
-  `GET /api/adapters`(4-13)。
+  `GET /api/adapters`。4-29 起交 `{ key, descriptor, has }`，扫码 / 列地址入口由 `has` 决定；
+  内置连接字段由设置规则导出（条件字段、记录表、分支草稿、候选提示），拓展仍只开放原标量字段。
+  `ExtensionDTO.push` 已删，面板连接徽章读描述与已保存快照。新建统一读候选，列候选时宿主按
+  `adapterKey + platform` 刷新既有快照，不改设置、不触发重连。平台闭集与三份规则仍留 4-30 搬出。
 - **打包 = 清单 + 一个自包含 `index.mjs`**:每个拓展自己 `vp pack` 出 `dist/`,第三方**全内联**
   —— 装它的地方旁边没有 node_modules,留一个裸依赖是「构建全绿、主人拨开关那一刻才
   `ERR_MODULE_NOT_FOUND`」。那个 `dist/` **就是拓展包本身**:拷进 `<数据根>/extensions/<id>/`

@@ -25,7 +25,7 @@ export interface AdaptersRouteOptions {
 /**
  * `/api/adapters` — 适配器表、新建连接的候选与适配器自带的扫码建连接(`connectionAuth`,ADR-0024 决策 3)。
  *
- * - `GET /` 适配器表(ADR-0024 决策 1、3):每个适配器一条 `{ key, descriptor }`。照 `/api/sources` 合两张表:
+ * - `GET /` 适配器表(ADR-0024 决策 1、3):每个适配器一条 `{ key, descriptor, has }`。照 `/api/sources` 合两张表:
  *   登记表里不是拓展的(三个内置)取适配器的 `descriptor()`,每次读都现调(名字按此刻的语言);拓展一律取装载器
  *   那份清单的推送那一口 —— 停用、没起来的也列,在跑的也不取登记表上那份(装载器那份按此刻的语言盖好译文)。
  * - `GET /:adapterKey/candidates` 新建连接时供挑的候选(内置的模板候选、桥在线的 bot),ADR-0024 决策 4。
