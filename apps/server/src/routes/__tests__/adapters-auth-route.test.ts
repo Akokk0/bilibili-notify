@@ -199,7 +199,7 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 		return { app, log, adapter };
 	}
 
-	it("发起 → 未完成 → 成功(回包没有 appSecret)→ 取草稿拿到两格 → 再取找不到", async () => {
+	it("发起 → 未完成 → 成功(回包没有 appSecret)→ 草稿含凭据与公开机器人默认值 → 再取找不到", async () => {
 		const { app, log } = await qqApp();
 		const begun = await app.request("/qq-official/auth", { method: "POST" });
 		expect(begun.status).toBe(200);
@@ -237,7 +237,9 @@ describe("端到端:真的 QQ 适配器,只换 fetch", () => {
 
 		const draft = await app.request(`/qq-official/auth/${taskId}/draft`, { method: "POST" });
 		expect(draft.status).toBe(200);
-		expect(await draft.json()).toEqual({ settings: { appId: APP_ID, appSecret: SECRET } });
+		expect(await draft.json()).toEqual({
+			settings: { appId: APP_ID, appSecret: SECRET, botType: "public", sandbox: false },
+		});
 
 		const second = await app.request(`/qq-official/auth/${taskId}/draft`, { method: "POST" });
 		expect(second.status).toBe(404);
