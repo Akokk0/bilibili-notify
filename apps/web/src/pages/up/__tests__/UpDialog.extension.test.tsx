@@ -87,11 +87,23 @@ describe("UpDialog × 拓展订阅", () => {
 			onDelete: noop,
 			saving: false,
 		};
-		const view = render(<UpDialog {...props} platform={platform()} />);
+		const view = render(
+			<UpDialog {...props} platform={platform({ featureHints: { post: "Original post hint" } })} />,
+		);
+		expect(screen.getByText("Original post hint")).toBeTruthy();
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "尚未保存" } });
 		view.rerender(
-			<UpDialog {...props} platform={platform({ label: "New label", features: ["post"] })} />,
+			<UpDialog
+				{...props}
+				platform={platform({
+					label: "New label",
+					features: ["post"],
+					featureHints: { post: "Current post hint" },
+				})}
+			/>,
 		);
+		expect(screen.queryByText("Original post hint")).toBeNull();
+		expect(screen.getByText("Current post hint")).toBeTruthy();
 		try {
 			act(() => i18n.set({ locale: "en", voice: "plain" }));
 			expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("尚未保存");
@@ -128,6 +140,33 @@ describe("UpDialog × 拓展订阅", () => {
 		expect(screen.queryByText("+ 弹幕词云")).toBeNull();
 		expect(screen.queryByText("+ AI 总结")).toBeNull();
 		expect(screen.getAllByText("+ @全体").length).toBeGreaterThan(0);
+	});
+
+	it("featureHints 同时覆盖订阅和自定义目标小字，不给未声明特性造开关", () => {
+		const sub = extSub();
+		sub.routing.post = [TARGET.id];
+		renderDialog(
+			sub,
+			platform({ featureHints: { post: "Custom post hint", membership: "Invisible club hint" } }),
+			[TARGET],
+		);
+		expect(screen.getAllByText("Custom post hint")).toHaveLength(2);
+		expect(screen.queryByText("Invisible club hint")).toBeNull();
+		expect(screen.getByText("1/2")).toBeTruthy();
+	});
+
+	it("缺省或空白提示用中性默认，下播只拼已声明附加项", () => {
+		renderDialog(
+			extSub(),
+			platform({
+				features: ["post", "superchat", "liveEnd"],
+				supportedExtras: ["wordcloud"],
+				featureHints: { post: " \n\t " },
+			}),
+		);
+		expect(screen.getByText("作品提醒")).toBeTruthy();
+		expect(screen.getByText("醒目留言提醒")).toBeTruthy();
+		expect(screen.getByText("下播卡片 / 弹幕词云")).toBeTruthy();
 	});
 
 	it("头部写平台,不写 UID", () => {

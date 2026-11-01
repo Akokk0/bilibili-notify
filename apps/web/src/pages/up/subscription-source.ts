@@ -16,6 +16,7 @@ export interface SubscriptionPlatform {
 	creatorNoun?: string;
 	externalIdNoun?: string;
 	features: readonly FeatureKey[];
+	featureHints?: Partial<Record<FeatureKey, string>>;
 	supportedExtras: readonly ExtraKey[];
 	membershipPrograms?: MembershipProgram[];
 	status: SourceRunStatus;
@@ -37,6 +38,7 @@ export function subscriptionPlatformOf(
 		creatorNoun: descriptor?.creatorNoun,
 		externalIdNoun: descriptor?.externalIdNoun,
 		features: FEATURE_KEYS.filter((key) => descriptor?.supportedFeatures.includes(key)),
+		featureHints: descriptor?.featureHints,
 		supportedExtras: descriptor?.supportedExtras ?? [],
 		membershipPrograms: descriptor?.membershipPrograms,
 		status: entry?.status ?? "unknown",

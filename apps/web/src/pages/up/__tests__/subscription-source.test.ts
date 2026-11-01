@@ -72,6 +72,14 @@ describe("一条拓展订阅的平台", () => {
 		expect(p.features).toEqual(["post", "liveStart"]);
 	});
 
+	it("featureHints 透传提示但不改变能力和运行态", () => {
+		const featureHints = { post: "  Custom hint  ", membership: "Club hint" };
+		const p = subscriptionPlatformOf(sub(), [{ ...entry({ featureHints }), status: "disabled" }]);
+		expect(p.featureHints).toEqual(featureHints);
+		expect(p.features).toEqual(["post", "liveStart"]);
+		expect(p.status).toBe("disabled");
+	});
+
 	it("描述符声明了 liveStreaming:这个平台多一把「正在直播」;没声明的不多", () => {
 		const both = subscriptionPlatformOf(sub(), [
 			entry({ supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"] }),

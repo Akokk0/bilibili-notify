@@ -109,8 +109,9 @@ function featureGroupsFor(
 				.filter(({ key }) => visible.includes(key))
 				.map(({ key }) => ({
 					key,
-					sub:
-						key === "membership"
+					sub: platform.featureHints?.[key]?.trim()
+						? platform.featureHints[key]
+						: key === "membership"
 							? (platform.membershipPrograms ?? [])
 									.flatMap((p) =>
 										Array.isArray(p.tiers)
@@ -120,7 +121,7 @@ function featureGroupsFor(
 									.join(" / ")
 							: key === "liveEnd"
 								? [
-										labelOf("liveEnd"),
+										i18n.t("sources.featureHints.liveEnd"),
 										...extrasUnder(key)
 											.filter((k) => platform.supportedExtras.includes(k))
 											.map((k) => extraLabelOf(k)),
@@ -131,6 +132,8 @@ function featureGroupsFor(
 		.filter((g) => g.keys.length > 0);
 }
 const extensionFeatureSubsOf = (): Partial<Record<FeatureKey, string>> => ({
+	post: i18n.t("sources.featureHints.post"),
+	superchat: i18n.t("sources.featureHints.superchat"),
 	liveStart: i18n.t("sourceUi.pages.up.UpDialog.sub.3"),
 	liveStreaming: liveStreamingSubOf(),
 });
