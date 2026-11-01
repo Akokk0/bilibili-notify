@@ -530,3 +530,5 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 🔗现状（4-26，2026-11-01）：公共 `SourceDescriptor` / `/api/sources` 现完整下发 `membershipPrograms` 与 `supportedExtras`；拓展 manifest 仍严格拒这两格，上述公共形状不表示拓展声明能力已开放。订阅、详情、共享显示、会员编辑与卡片、scope 页签、CSV 已接当前描述符；会员面板不再直读 B 站静态表，但表本体与服务端 / 出图读者搬家仍归 4-28。`featureHints` 与清单接入仍归 4-27。主人新定徽章适用于所有来源：来源表已知且仅一项、包含当前身份时隐藏；多项、表未知或缺条目时显示。缺表与缺 has 均是未知，只有成功取得表且确实缺项才报来源未安装；身份兜底保留 sourceKey 与原始 externalId，不数值化，复制保留前导零。
 
 🔗现状（4-26，2026-11-01）：会员按 program.id / tier.key 两层定位，固定档按真实 rank 升序，最低不必为1；custom / 空档只露体系默认文案图片，不造按档门槛或预览档。可运行且有可枚举档时才请求会员预览，不可用时全家福继续其他卡；图标读 `tier.icon.ref` / `url`。来源 / 语言刷新保留 dirty，隐藏未知体系、档位、附加项与路由原值保留，显式清除用 null。CSV 按实际导出行涉及的来源决定叫法：单来源取其 creatorNoun / externalIdNoun，多来源取创作者 / ID；身份列紧邻平台列，值始终是原始 externalId。现状详见 phase-4-plan 的 4-26；业务 HTTP fixture 真页验收不证明落盘或真实 PNG 渲染。
+
+🔗现状（4-27，2026-11-01，代码交接待验）：清单与公共描述符已接 `featureHints?: Partial<Record<FeatureKey, string>>`。它只覆盖小字，不参与特性 / 附加项显隐、has 或 status；全 8 键提示不扩大拓展四项能力。清单拒空白，译文坏条逐项丢弃，非空原文保留；`$manifest` 按特性键沿当前语言 → 简中 → 英文 → 原字回落。订阅详情总开关与目标矩阵共用提示，缺省按上表推导；B 站两句在访问时取当前翻译，原 7 个源码中文节点主人续准留 4-53c。P50 验 HTTP 内容，组件测试验两处覆盖、默认与刷新保 dirty；统筹独审及隔离真页尚待完成，4-27 未计入完成数。

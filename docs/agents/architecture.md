@@ -281,6 +281,7 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 🔗现状（4-55，2026-10-31）：集成共同时区能力由integrations/timezone-reader.ts的timezoneReaderOf接核心设置读源，createIntegrationContext统一隔离回调异常并管理时区通知；index造同一读源给内置装配与拓展loader。SourceContext白名单跟踪来源订阅，PlatformAdapterContext经适配器登记表按次跟踪，不能只依赖父集成收尾。进程内对拍新增P54，现54条走通/2条不开；拓展对拍新增IntegrationContext第七表14成员，共63行（driven39、elsewhere15、closed8、hostFilled1），activate另有运行时成员穷举。契约为全新1/0，历史设计文字所述v3不代表当前大档号。
 
+🔗现状（4-27，2026-11-01，代码交接待验）：订阅清单新增 featureHints，SubscriptionCell 为12成员；七表共64行（driven39、elsewhere16、closed8、hostFilled1）。新增行指向 sources-list-route 的完整描述符 HTTP 断言；进程内 P50 另核假源 hint 字面量。N09 面板部分由 UpDialog.extension、Rules.extension-subs 与 section-scope 组件测试覆盖，不记作进程内对拍，进程内仍54走通 / 2不开。契约仍全新1/0。
 
 ## 自家下拉与 UI 文案（4-25，2026-11-01）
 

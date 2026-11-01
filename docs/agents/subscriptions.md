@@ -105,7 +105,8 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当前全新1.0契约1/0的严格清单。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
 
 - 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译）、`postNoun?`（作品叫法，缺省使用当前界面语言的中性词）、`creatorNoun?`（创作者叫法）、`externalIdNoun?`（外部 id 叫法）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；搜人提示由 contract 的公共函数拼）。公共描述符可带会员与附加项，当前拓展清单仍不接受 `membershipPrograms` / `supportedExtras`。
-- `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。这一版还不收 `featureHints?`，随规则页按描述符露节那一片一起收。
+- `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。
+- `featureHints?`（4-27）：`Partial<Record<FeatureKey, string>>`，键可用全部 8 个领域特性，但不扩大上述四项能力。清单拒空串、纯空白、未知键与非字符串；非空原文保留首尾空格。`$manifest.contributes.subscription.featureHints` 按键取当前语言 → 简中 → 英文 → 清单原字，坏译文逐条丢弃。公共来源表透传提示，订阅详情总开关与目标自定义矩阵只用它覆盖小字，不生成特性、路由或运行态；未校验来源的空白提示按缺省。缺省时作品 / 醒目留言使用中性提醒，会员串实际 rank 排序的档名，下播串「下播卡片」与已声明附加项；开播与周期直播沿既有说明。B 站两项提示在访问描述符时取当前翻译。
 - `cardSkin?`：自带皮肤目录（决策 13 / 14，⑤ 施工）。
 - 拓展来源的描述符就是这一段（去掉 `cardSkin`）：`manifestSourceDescriptor`（`apps/server/src/extensions/extension-source.ts`），登记来源与 `GET /api/sources` 共用 —— **只从清单来、不问代码**，所以拓展停着也画得出订阅是哪个平台的（决策 41）。面板读来源表（`hooks/useSources.ts`），不读拓展表；拓展表 `ExtensionDTO` 上没有订阅那一格。清单与描述符逐格相等由 `packages/internal/src/extension/manifest-shape-pin.ts` 钉着。
 
