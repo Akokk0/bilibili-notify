@@ -11,11 +11,16 @@
  * - `TSelect.disabled` —— 四件 T 里只有它此前漏了这个态。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { DockPanel, DrawerShell, ModalShell } from "@bilibili-notify/ui";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { TArea, TInput, TSelect } from "../forms";
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	vi.restoreAllMocks();
+});
 
 const noop = () => {};
 
@@ -73,13 +78,194 @@ describe("TSelect.disabled —— 补齐四件 T 里唯一缺的那个态", () =
 
 	it("disabled 落到 <select> 本体,并带上与兄弟件同一套压暗语汇", () => {
 		const { container } = render(<TSelect disabled value="a" onChange={noop} options={OPTS} />);
-		const el = container.querySelector("select") as HTMLSelectElement;
+		const el = container.querySelector('[role="combobox"]') as HTMLButtonElement;
 		expect(el.disabled).toBe(true);
 		expect(el.className).toContain("disabled:opacity-60");
 	});
 
 	it("不给就是可用态", () => {
 		const { container } = render(<TSelect value="a" onChange={noop} options={OPTS} />);
-		expect(container.querySelector("select")?.disabled).toBe(false);
+		expect(container.querySelector<HTMLButtonElement>('[role="combobox"]')?.disabled).toBe(false);
 	});
 });
+
+const CHOICES = [
+	{ value: "a", label: "Alpha" },
+	{ value: "off", label: "Disabled", disabled: true },
+	{ value: "b", label: "Beta" },
+];
+it("a real click sequence selects once without transferring focus to an option", async () => {
+	vi.spyOn(document, "hasFocus").mockReturnValue(true);
+	const user = userEvent.setup(),
+		change = vi.fn(),
+		focus: Element[] = [];
+	const observe = (event: FocusEvent) => {
+		if (event.target instanceof Element) focus.push(event.target);
+	};
+	document.addEventListener("focusin", observe);
+	try {
+		render(<TSelect value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />);
+		const trigger = screen.getByRole("combobox");
+		await user.click(trigger);
+		await user.click(screen.getByRole("option", { name: "Beta" }));
+		expect(change).toHaveBeenCalledExactlyOnceWith("b");
+		expect(document.activeElement).toBe(trigger);
+		expect(focus.some((element) => element.getAttribute("role") === "option")).toBe(false);
+	} finally {
+		document.removeEventListener("focusin", observe);
+	}
+});
+it("Tab and outside clicks leave focus at their natural destination", async () => {
+	vi.spyOn(document, "hasFocus").mockReturnValue(true);
+	const user = userEvent.setup(),
+		change = vi.fn();
+	render(
+		<>
+			<input aria-label="Before" />
+			<TSelect value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />
+			<input aria-label="After" />
+		</>,
+	);
+	const trigger = screen.getByRole("combobox");
+	await user.click(trigger);
+	await user.tab();
+	expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "After" }));
+	expect(screen.queryByRole("listbox")).toBeNull();
+	await user.click(trigger);
+	await user.tab({ shift: true });
+	expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Before" }));
+	await user.click(trigger);
+	await user.click(screen.getByRole("textbox", { name: "After" }));
+	await act(async () => {});
+	expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "After" }));
+	expect(change).not.toHaveBeenCalled();
+});
+
+it("disabled controls and disabled saved options cannot commit", async () => {
+	vi.spyOn(document, "hasFocus").mockReturnValue(true);
+	const user = userEvent.setup(),
+		change = vi.fn();
+	const { rerender } = render(
+		<TSelect disabled value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />,
+	);
+	await user.click(screen.getByRole("combobox"));
+	expect(screen.queryByRole("listbox")).toBeNull();
+	rerender(<TSelect value="off" ariaLabel="Choice" options={CHOICES} onChange={change} />);
+	await user.click(screen.getByRole("combobox"));
+	const disabled = screen.getByRole("option", { name: "Disabled" });
+	expect(disabled.getAttribute("aria-selected")).toBe("true");
+	await user.click(disabled);
+	expect(change).not.toHaveBeenCalled();
+	expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe("true");
+	rerender(<TSelect disabled value="off" ariaLabel="Choice" options={CHOICES} onChange={change} />);
+	expect(screen.queryByRole("listbox")).toBeNull();
+});
+it("returns internal focus but never reclaims focus after the window loses it", async () => {
+	vi.spyOn(document, "hasFocus").mockReturnValue(true);
+	const user = userEvent.setup(),
+		change = vi.fn();
+	render(<TSelect value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />);
+	const trigger = screen.getByRole("combobox");
+	await user.click(trigger);
+	const row = screen.getByRole("option", { name: "Beta" });
+	act(() => row.focus());
+	expect(document.activeElement).toBe(trigger);
+	expect(screen.queryByRole("listbox")).not.toBeNull();
+	fireEvent.blur(window);
+	expect(screen.queryByRole("listbox")).toBeNull();
+	expect(change).not.toHaveBeenCalled();
+});
+function pointer(target: Element, type: string, details: Partial<PointerEvent> = {}) {
+	const event = new MouseEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		button: 0,
+		clientX: 20,
+		clientY: 20,
+		...details,
+	});
+	Object.defineProperties(event, {
+		pointerId: { value: 1 },
+		isPrimary: { value: true },
+		pointerType: { value: "touch" },
+	});
+	return fireEvent(target, event);
+}
+it.each(["move", "cancel", "different", "scroll"])(
+	"a %s touch gesture cannot select, and the next tap can",
+	async (kind) => {
+		vi.spyOn(document, "hasFocus").mockReturnValue(true);
+		const change = vi.fn();
+		render(<TSelect value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />);
+		const trigger = screen.getByRole("combobox");
+		trigger.focus();
+		fireEvent.click(trigger);
+		const row = screen.getByRole("option", { name: "Beta" });
+		expect(pointer(row, "pointerdown")).toBe(true);
+		if (kind === "move") pointer(row, "pointermove", { clientY: 60 });
+		if (kind === "cancel") pointer(row, "pointercancel");
+		if (kind === "scroll") fireEvent.scroll(row.parentElement as HTMLElement);
+		pointer(
+			kind === "different" ? screen.getByRole("option", { name: "Alpha" }) : row,
+			"pointerup",
+		);
+		fireEvent.click(row, { detail: 1 });
+		await act(async () => {});
+		expect(change).not.toHaveBeenCalled();
+		expect(screen.queryByRole("listbox")).not.toBeNull();
+		pointer(row, "pointerdown");
+		pointer(row, "pointerup");
+		fireEvent.click(row, { detail: 1 });
+		await act(async () => {});
+		expect(change).toHaveBeenCalledExactlyOnceWith("b");
+		expect(document.activeElement).toBe(trigger);
+	},
+);
+
+it.each(["modal", "drawer", "dock"])(
+	"portal selection and the first Escape never close the parent %s",
+	async (kind) => {
+		vi.spyOn(document, "hasFocus").mockReturnValue(true);
+		const user = userEvent.setup(),
+			close = vi.fn(),
+			change = vi.fn();
+		const child = <TSelect value="a" ariaLabel="Choice" options={CHOICES} onChange={change} />;
+		render(
+			kind === "modal" ? (
+				<ModalShell width={300} onCancel={close}>
+					{child}
+				</ModalShell>
+			) : kind === "drawer" ? (
+				<DrawerShell width={300} ariaLabel="Parent" onClose={close}>
+					{child}
+				</DrawerShell>
+			) : (
+				<DockPanel
+					title="Parent"
+					height={200}
+					onHeightChange={noop}
+					onClose={close}
+					rail={[]}
+					activeId=""
+					onPick={noop}
+				>
+					{child}
+				</DockPanel>
+			),
+		);
+		const trigger = screen.getByRole("combobox");
+		await user.click(trigger);
+		await user.click(screen.getByRole("option", { name: "Beta" }));
+		expect(change).toHaveBeenCalledExactlyOnceWith("b");
+		expect(close).not.toHaveBeenCalled();
+		await user.click(trigger);
+		const option = screen.getByRole("option", { name: "Beta" });
+		act(() => option.focus());
+		fireEvent.keyDown(option, { key: "Escape" });
+		expect(close).not.toHaveBeenCalled();
+		expect(screen.queryByRole("listbox")).toBeNull();
+		expect(document.activeElement).toBe(trigger);
+		await user.keyboard("{Escape}");
+		expect(close).toHaveBeenCalledTimes(1);
+	},
+);

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect } from "../../__tests__/select-controls";
 
 /**
  * 编辑器的**皮肤这一档**:名字 / 作者 / 说明的接线(ADR-0014 第二步续)。
@@ -195,7 +196,7 @@ describe("编辑器 · 旋钮声明的接线", () => {
 
 		fireEvent.change(screen.getByLabelText("旋钮 key"), { target: { value: "glass-opacity" } });
 		fireEvent.change(screen.getByLabelText("旋钮名字"), { target: { value: "玻璃白纱" } });
-		fireEvent.change(screen.getByLabelText("旋钮档位"), { target: { value: "number" } });
+		chooseSelect(screen.getByRole("combobox", { name: "旋钮档位" }), "数值");
 		save();
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
@@ -275,7 +276,7 @@ describe("编辑器 · 三档附加字段的接线", () => {
 
 		fireEvent.change(screen.getByLabelText("取值上限"), { target: { value: "24" } });
 		fireEvent.change(screen.getByLabelText("步长"), { target: { value: "2" } });
-		fireEvent.change(screen.getByLabelText("单位"), { target: { value: "px" } });
+		chooseSelect(screen.getByRole("combobox", { name: "单位" }), "px");
 		save();
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
@@ -288,7 +289,7 @@ describe("编辑器 · 三档附加字段的接线", () => {
 		await screen.findByText("封面图");
 		await openSkinTab();
 
-		fireEvent.change(screen.getByLabelText("单位"), { target: { value: "" } });
+		chooseSelect(screen.getByRole("combobox", { name: "单位" }), "无单位");
 		save();
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
@@ -428,9 +429,7 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: /添加字体/ }));
 		fireEvent.change(screen.getByLabelText("字体名"), { target: { value: "Song" } });
-		fireEvent.change(screen.getByLabelText("用哪份资产"), {
-			target: { value: "asset:assets/song.ttf" },
-		});
+		chooseSelect(screen.getByRole("combobox", { name: "用哪份资产" }), "assets/song.ttf");
 		save();
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());

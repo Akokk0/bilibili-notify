@@ -11,9 +11,19 @@
  * T 系列是设置表单的控件家族(挂点同为 `input`,底同为 `bg-bn-field`)。
  */
 
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
-import { ADD_LANGUAGE } from "./atoms";
+import {
+	type CSSProperties,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+} from "react";
+import { ADD_LANGUAGE, MenuItem } from "./atoms";
 import { Icon } from "./icons";
+import { PopoverShell, useDismiss } from "./popover";
+import { useUiText } from "./texts";
 
 /** 只读态的观感:压暗 + 禁用光标。与 Toggle 的 disabled 同一套语汇。 */
 const DISABLED_FIELD = "disabled:cursor-not-allowed disabled:opacity-60";
@@ -190,24 +200,259 @@ export function TSelect<T extends string = string>({
 	ariaLabel,
 	width,
 }: TSelectProps<T>) {
+	const t = useUiText();
+	const [open, setOpen] = useState(false);
+	const [active, setActive] = useState(-1);
+	const trigger = useRef<HTMLButtonElement>(null);
+	const panel = useRef<HTMLDivElement>(null);
+	const gesture = useRef<{
+		id: number;
+		x: number;
+		y: number;
+		option: HTMLElement | null;
+		down: boolean;
+		canceled: boolean;
+	} | null>(null);
+	const optionAt = useCallback(
+		(target: EventTarget | null) =>
+			target instanceof Element ? target.closest<HTMLElement>('[role="option"]') : null,
+		[],
+	);
+	const internal = (target: EventTarget | null) =>
+		target instanceof Node &&
+		(trigger.current?.contains(target) || panel.current?.contains(target));
+	const settleFocus = useCallback(() => {
+		if (!document.hasFocus()) {
+			setOpen(false);
+			return;
+		}
+		const current = document.activeElement;
+		if (current === trigger.current) return;
+		if (panel.current?.contains(current) || current === document.body)
+			trigger.current?.focus({ preventScroll: true });
+		else setOpen(false);
+	}, []);
+	useEffect(() => {
+		if (!open) return;
+		const finish = (e: PointerEvent) => {
+			const g = gesture.current;
+			if (!g || e.pointerId !== g.id) return;
+			g.canceled ||=
+				e.type === "pointercancel" ||
+				Math.abs(e.clientX - g.x) >= 8 ||
+				Math.abs(e.clientY - g.y) >= 8 ||
+				optionAt(e.target) !== g.option;
+			g.down = false;
+			queueMicrotask(settleFocus);
+		};
+		const lost = () => setOpen(false);
+		document.addEventListener("pointerup", finish, true);
+		document.addEventListener("pointercancel", finish, true);
+		window.addEventListener("blur", lost);
+		return () => {
+			document.removeEventListener("pointerup", finish, true);
+			document.removeEventListener("pointercancel", finish, true);
+			window.removeEventListener("blur", lost);
+		};
+	}, [open, optionAt, settleFocus]);
+	const blur = (e: React.FocusEvent<HTMLButtonElement>) => {
+		if (internal(e.relatedTarget)) return;
+		if (e.relatedTarget) {
+			setOpen(false);
+			return;
+		}
+		queueMicrotask(() => {
+			if (gesture.current?.down && document.activeElement === document.body && document.hasFocus())
+				return;
+			if (document.activeElement === document.body) setOpen(false);
+			else settleFocus();
+		});
+	};
+	useDismiss(trigger, () => setOpen(false), {
+		enabled: open,
+		event: "pointerdown",
+		insideRefs: [panel],
+	});
+	const typed = useRef({ text: "", at: 0 });
+	const id = useId();
+	const selected = options.find((o) => o.value === value);
+	const displayLabel =
+		selected?.label ??
+		(options.length === 0
+			? t("ui.select.empty")
+			: value === ""
+				? t("ui.select.placeholder")
+				: t("ui.select.unavailable", { value }));
+	const available = options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
+	const show = (last = false) => {
+		if (disabled || options.length === 0) return;
+		const index = options.findIndex((o) => o.value === value && !o.disabled);
+		setActive(index >= 0 ? index : ((last ? available.at(-1) : available[0]) ?? -1));
+		gesture.current = null;
+		typed.current = { text: "", at: 0 };
+		setOpen(true);
+	};
+	const keys = (e: React.KeyboardEvent<HTMLElement>) => {
+		if (disabled || e.nativeEvent.isComposing) return;
+		if (open && e.key === "Escape") {
+			e.preventDefault();
+			e.stopPropagation();
+			setOpen(false);
+			trigger.current?.focus({ preventScroll: true });
+			return;
+		}
+		if (e.key === "Tab") {
+			setOpen(false);
+			return;
+		}
+		if (["ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(e.key)) e.preventDefault();
+		if (e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			e.preventDefault();
+			const char = e.key.toLocaleLowerCase();
+			const previous = Date.now() - typed.current.at < 700 ? typed.current.text : "";
+			const query = previous + char;
+			const repeat = [...query].every((c) => c === char);
+			const prefix = repeat ? char : query;
+			const start = repeat || previous === "" ? active + 1 : active;
+			const next = options
+				.map((_, i) => (i + Math.max(0, start)) % options.length)
+				.find(
+					(i) => !options[i].disabled && options[i].label.toLocaleLowerCase().startsWith(prefix),
+				);
+			if (!open) show();
+			typed.current = { text: query, at: Date.now() };
+			if (next !== undefined) setActive(next);
+			return;
+		}
+		if (!open) {
+			if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) show(e.key === "ArrowUp");
+			return;
+		}
+		if (e.key === "Enter" || e.key === " ") {
+			if (options[active]) choose(options[active].value);
+		} else if (e.key === "Home") setActive(available[0] ?? -1);
+		else if (e.key === "End") setActive(available.at(-1) ?? -1);
+		else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			const at = available.indexOf(active);
+			setActive(
+				available[
+					Math.max(0, Math.min(available.length - 1, at + (e.key === "ArrowDown" ? 1 : -1)))
+				] ?? -1,
+			);
+		}
+	};
+	useEffect(() => {
+		if (open && active >= 0)
+			document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: "nearest" });
+	}, [open, active, id]);
+	useEffect(() => {
+		if (disabled || options.length === 0) setOpen(false);
+	}, [disabled, options.length]);
+	useEffect(() => {
+		if (open && (!options[active] || options[active].disabled))
+			setActive(options.findIndex((option) => !option.disabled));
+	}, [open, active, options]);
+	const choose = (next: T) => {
+		if (disabled || options.find((o) => o.value === next)?.disabled) return;
+		if (next !== value) onChange(next);
+		setOpen(false);
+		trigger.current?.focus({ preventScroll: true });
+	};
 	return (
-		<select
-			value={value}
-			onChange={(e) => onChange(e.target.value as T)}
-			disabled={disabled}
-			aria-label={ariaLabel}
-			data-bn={INPUT_HOOK}
-			// 给了 `width` 就不再垫那 160px 的最小宽 —— 单位选择器这种只装两三个字的,
-			// 垫满会把同一行的数字框挤到下一行去(同 `TNum` 的 `width` 一个道理)。
-			className={`${INPUT_BASE} ${width === undefined ? "min-w-40" : ""} ${full ? "w-full" : "w-auto"} ${DISABLED_FIELD}`}
+		<div
+			className={full ? "relative w-full min-w-0" : "relative inline-block"}
 			style={width === undefined ? undefined : { width }}
 		>
-			{options.map((o) => (
-				<option key={o.value} value={o.value} disabled={o.disabled}>
-					{o.label}
-				</option>
-			))}
-		</select>
+			<button
+				type="button"
+				role="combobox"
+				ref={trigger}
+				disabled={disabled}
+				aria-label={ariaLabel}
+				aria-expanded={open}
+				aria-haspopup="listbox"
+				aria-activedescendant={open && active >= 0 ? `${id}-${active}` : undefined}
+				aria-controls={open ? id : undefined}
+				data-bn={INPUT_HOOK}
+				className={`${INPUT_BASE} ${width === undefined ? "min-w-40" : ""} w-full inline-flex items-center gap-2 text-left ${DISABLED_FIELD}`}
+				style={width === undefined ? undefined : { width }}
+				onBlur={blur}
+				onKeyDown={keys}
+				onClick={() => (open ? setOpen(false) : show())}
+			>
+				<span className="min-w-0 flex-1 truncate">{displayLabel}</span>
+				<Icon.chevronRight size={12} className="shrink-0 rotate-90 text-bn-text-tertiary" />
+			</button>
+			{open && (
+				<PopoverShell
+					id={id}
+					anchorRef={trigger}
+					onAnchorHidden={() => setOpen(false)}
+					layer="modal"
+					ref={panel}
+					role="listbox"
+					ariaLabel={ariaLabel}
+				>
+					<div
+						className="min-h-0 overflow-y-auto"
+						onKeyDownCapture={keys}
+						onFocusCapture={() => trigger.current?.focus({ preventScroll: true })}
+						onMouseDownCapture={(e) => {
+							if (e.button === 0 && optionAt(e.target)) e.preventDefault();
+						}}
+						onPointerDownCapture={(e) => {
+							if (gesture.current?.down || e.isPrimary === false || e.button > 0) {
+								if (gesture.current) gesture.current.canceled = true;
+								return;
+							}
+							gesture.current = {
+								id: e.pointerId,
+								x: e.clientX,
+								y: e.clientY,
+								option: optionAt(e.target),
+								down: true,
+								canceled: false,
+							};
+						}}
+						onPointerMoveCapture={(e) => {
+							const g = gesture.current;
+							if (
+								g?.down &&
+								g.id === e.pointerId &&
+								(Math.abs(e.clientX - g.x) >= 8 || Math.abs(e.clientY - g.y) >= 8)
+							)
+								g.canceled = true;
+						}}
+						onScrollCapture={() => {
+							if (gesture.current?.down) gesture.current.canceled = true;
+						}}
+						onClickCapture={(e) => {
+							const g = gesture.current;
+							if (e.detail > 0 && g && (g.canceled || optionAt(e.target) !== g.option)) {
+								e.preventDefault();
+								e.stopPropagation();
+							}
+							gesture.current = null;
+						}}
+					>
+						{options.map((o, i) => (
+							<MenuItem
+								id={`${id}-${i}`}
+								active={i === active}
+								key={o.value}
+								role="option"
+								tabIndex={-1}
+								ariaSelected={o.value === value}
+								disabled={o.disabled}
+								onClick={() => choose(o.value)}
+							>
+								{o.label}
+							</MenuItem>
+						))}
+					</div>
+				</PopoverShell>
+			)}
+		</div>
 	);
 }
 
@@ -221,6 +466,7 @@ export interface TColorProps extends Labelled {
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export function TColor({ value, onChange, disabled, ariaLabel }: TColorProps) {
+	const t = useUiText();
 	const [hex, setHex] = useState(value);
 	// keep the text input in sync when the color picker (or external resets)
 	// pushes a new value down.
@@ -240,7 +486,9 @@ export function TColor({ value, onChange, disabled, ariaLabel }: TColorProps) {
 					onChange(e.target.value);
 				}}
 				disabled={disabled}
-				aria-label={ariaLabel === undefined ? undefined : `${ariaLabel}(取色器)`}
+				aria-label={
+					ariaLabel === undefined ? undefined : t("ui.form.colorPicker", { label: ariaLabel })
+				}
 				data-bn={INPUT_HOOK}
 				className={`h-7.5 w-9 cursor-pointer rounded-md border border-bn-border bg-bn-field p-0 ${DISABLED_FIELD}`}
 			/>
@@ -344,13 +592,14 @@ function RowIndex({ n }: { n: number }) {
 
 /** 行尾的移除钮。`aria-label` 是测试与读屏器认它的唯一凭据,别改成纯 × 文本。 */
 function RemoveRowButton({ onClick }: { onClick: () => void }) {
+	const t = useUiText();
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			data-bn="btn"
 			className="grid h-7.5 w-7.5 place-items-center rounded-md border border-bn-border bg-bn-field text-bn-text-secondary hover:text-bn-danger"
-			aria-label="移除"
+			aria-label={t("ui.form.remove")}
 		>
 			×
 		</button>
@@ -380,20 +629,23 @@ function AddRowButton({ onClick, children }: { onClick: () => void; children: Re
  */
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-function HourSelect({ value, onChange }: { value: number; onChange: (next: number) => void }) {
+function HourSelect({
+	value,
+	onChange,
+	ariaLabel,
+}: {
+	value: number;
+	onChange: (next: number) => void;
+	ariaLabel: string;
+}) {
 	return (
-		<select
-			value={value}
-			onChange={(e) => onChange(Number(e.target.value))}
-			data-bn={INPUT_HOOK}
-			className={`${INPUT_BASE} w-18 font-mono`}
-		>
-			{HOURS.map((h) => (
-				<option key={h} value={h}>
-					{String(h).padStart(2, "0")}:00
-				</option>
-			))}
-		</select>
+		<TSelect
+			width={72}
+			value={String(value)}
+			onChange={(next) => onChange(Number(next))}
+			ariaLabel={ariaLabel}
+			options={HOURS.map((h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` }))}
+		/>
 	);
 }
 
@@ -404,6 +656,7 @@ export interface ArrayEditorProps {
 }
 
 export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) {
+	const t = useUiText();
 	return (
 		<div className="flex w-full flex-col gap-1">
 			{value.map((v, i) => (
@@ -424,7 +677,7 @@ export function ArrayEditor({ value, onChange, placeholder }: ArrayEditorProps) 
 				</div>
 			))}
 			<AddRowButton onClick={() => onChange([...value, ""])}>
-				+ 添加一行{placeholder ? `（${placeholder}）` : ""}
+				{t("ui.form.addRow", { hint: placeholder ? `（${placeholder}）` : "" })}
 			</AddRowButton>
 		</div>
 	);
@@ -443,6 +696,7 @@ export interface QuietHoursEditorProps {
 }
 
 export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
+	const t = useUiText();
 	return (
 		<div className="flex w-full flex-col gap-1">
 			{value.map((r, i) => {
@@ -452,6 +706,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 					<div key={i} className="flex items-center gap-1.5">
 						<RowIndex n={i + 1} />
 						<HourSelect
+							ariaLabel={t("ui.form.quietStart", { row: i + 1 })}
 							value={r.start}
 							onChange={(h) => {
 								const n = [...value];
@@ -459,8 +714,9 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 								onChange(n);
 							}}
 						/>
-						<span className="text-bn-xs text-bn-text-tertiary">至</span>
+						<span className="text-bn-xs text-bn-text-tertiary">{t("ui.form.until")}</span>
 						<HourSelect
+							ariaLabel={t("ui.form.quietEnd", { row: i + 1 })}
 							value={r.end}
 							onChange={(h) => {
 								const n = [...value];
@@ -470,11 +726,11 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 						/>
 						<span className="flex items-center gap-1 text-bn-2xs text-bn-text-tertiary">
 							{crossMidnight ? (
-								"(跨次日)"
+								t("ui.form.crossMidnight")
 							) : r.start === r.end ? (
 								<>
 									<Icon.warning size={11} className="shrink-0" />
-									区间为空
+									{t("ui.form.emptyRange")}
 								</>
 							) : (
 								""
@@ -485,7 +741,7 @@ export function QuietHoursEditor({ value, onChange }: QuietHoursEditorProps) {
 				);
 			})}
 			<AddRowButton onClick={() => onChange([...value, { start: 23, end: 7 }])}>
-				+ 添加免扰时段
+				{t("ui.form.addQuiet")}
 			</AddRowButton>
 		</div>
 	);

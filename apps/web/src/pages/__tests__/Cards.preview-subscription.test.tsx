@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 
 /**
  * 卡片页预览挑订阅(4-14):全局作用域的房间号 / uid 输入框换成「从订阅里挑一条」(可不挑)。挑了,预览请求带上
@@ -61,10 +62,10 @@ async function openPostCard() {
 	fireEvent.click(screen.getAllByRole("button", { name: "动态发布" })[0] as HTMLElement);
 }
 
-function subscriptionSelect(container: HTMLElement): HTMLSelectElement {
-	const el = container.querySelector('[data-code="subscriptionId"] select');
+function subscriptionSelect(container: HTMLElement): HTMLButtonElement {
+	const el = container.querySelector('[data-code="subscriptionId"] [role="combobox"]');
 	if (!el) throw new Error("subscription picker not rendered");
-	return el as HTMLSelectElement;
+	return el as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -93,10 +94,9 @@ describe("卡片预览挑订阅", () => {
 		const { container } = renderCards();
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
-		const options = Array.from(select.options).map((option) => [option.value, option.textContent]);
-		expect(options.map(([value]) => value)).toEqual(["", BILI.id, DOUYIN.id]);
-		expect(options[2]?.[1]).toBe("sec-1");
-		expect(select.value).toBe("");
+		const options = selectOptionsOf(select).map((o) => o.textContent);
+		expect(options).toEqual(["不挑，用示例", "UID 123456", "sec-1"]);
+		expect(select.textContent).toBe("不挑，用示例");
 		// 没挑订阅:「第几条作品」不出现,请求里作品卡一格都不带(服务端画示例)。
 		expect(container.querySelector('[data-code="nth"]')).toBeNull();
 		await waitFor(() => expect(previewBodies("post").length).toBeGreaterThan(0), { timeout: 5000 });
@@ -108,7 +108,7 @@ describe("卡片预览挑订阅", () => {
 		const { container } = renderCards();
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
-		fireEvent.change(select, { target: { value: DOUYIN.id } });
+		chooseSelect(select, "sec-1");
 		await waitFor(() => expect(container.querySelector('[data-code="nth"] input')).not.toBeNull());
 		await waitFor(
 			() =>

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 
 /**
  * 网格画布 + 检查器那条回路(ADR-0014 决策 6 / 20 / 21)。
@@ -524,9 +525,7 @@ describe("检查器 · 显示条件", () => {
 		render(<Harness onDraft={onDraft} />);
 		fireEvent.click(blockBtn("封面图"));
 
-		fireEvent.change(screen.getByLabelText("显示条件"), {
-			target: { value: "live.isStreaming" },
-		});
+		chooseSelect(screen.getByRole("combobox", { name: "显示条件" }), /live.isStreaming/);
 
 		expect(cardOf(lastDraft(onDraft), "live")?.blocks[0]?.showIf).toBe("live.isStreaming");
 	});
@@ -536,7 +535,7 @@ describe("检查器 · 显示条件", () => {
 		render(<Harness onDraft={onDraft} />);
 		fireEvent.click(blockBtn("创作者名"));
 
-		fireEvent.change(screen.getByLabelText("显示条件"), { target: { value: "" } });
+		chooseSelect(screen.getByRole("combobox", { name: "显示条件" }), "总是显示");
 
 		const block = cardOf(lastDraft(onDraft), "live")?.blocks.find((b) => b.id === "name");
 		expect("showIf" in (block as object)).toBe(false);
@@ -546,10 +545,10 @@ describe("检查器 · 显示条件", () => {
 		render(<Harness />);
 		fireEvent.click(blockBtn("封面图"));
 
-		const select = screen.getByLabelText("显示条件") as HTMLSelectElement;
-		const values = Array.from(select.options).map((o) => o.value);
-		expect(values).toContain("live.isEnded");
-		expect(values.some((v) => v.startsWith("sc."))).toBe(false);
+		const select = screen.getByLabelText("显示条件") as HTMLButtonElement;
+		const values = selectOptionsOf(select).map((o) => o.textContent ?? "");
+		expect(values.some((v) => v.includes("live.isEnded"))).toBe(true);
+		expect(values.some((v) => v.includes("sc."))).toBe(false);
 	});
 });
 

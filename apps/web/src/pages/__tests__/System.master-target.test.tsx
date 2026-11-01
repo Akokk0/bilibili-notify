@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 
 /**
  * 系统页「主人账号」卡的下拉(ADR-0021 决策 57,3a-18):主人目标只许指向私聊目标。
@@ -9,7 +10,7 @@
  * - 选一个私聊目标 → 照常 patch。
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -63,7 +64,7 @@ function renderCard(targetId: string | undefined, onPatch = vi.fn()) {
 	return onPatch;
 }
 
-const optionLabels = () => screen.getAllByRole("option").map((o) => o.textContent);
+const optionLabels = () => selectOptionsOf(screen.getByRole("combobox")).map((o) => o.textContent);
 
 describe("MasterSection 的下拉", () => {
 	afterEach(cleanup);
@@ -75,7 +76,7 @@ describe("MasterSection 的下拉", () => {
 
 	it("存着的是私聊目标:选中它,状态行写它的名字,没有「已失效」行", () => {
 		renderCard("t-priv");
-		expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("t-priv");
+		expect(screen.getByRole("combobox").textContent).toBe("主人私聊");
 		expect(optionLabels()).not.toContain("已失效");
 		expect(screen.getByText("→ 主人私聊")).toBeTruthy();
 	});
@@ -83,9 +84,9 @@ describe("MasterSection 的下拉", () => {
 	it("存着的指向群:多一行不可选的「已失效」并停在它上面,状态行请主人换私聊目标", () => {
 		renderCard("t-group");
 		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊", "副号私聊"]);
-		const stale = screen.getByRole("option", { name: "已失效" }) as HTMLOptionElement;
+		const stale = screen.getByRole("option", { name: "已失效" }) as HTMLButtonElement;
 		expect(stale.disabled).toBe(true);
-		expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("t-group");
+		expect(screen.getByRole("combobox").textContent).toBe("已失效");
 		expect(
 			screen.getByText("这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标"),
 		).toBeTruthy();
@@ -94,7 +95,7 @@ describe("MasterSection 的下拉", () => {
 	it("存着的目标已经不在了:同样多一行「已失效」,状态行说原来的目标不在了", () => {
 		renderCard("t-gone");
 		expect(optionLabels()).toEqual(["未配置", "已失效", "主人私聊", "副号私聊"]);
-		expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("t-gone");
+		expect(screen.getByRole("combobox").textContent).toBe("已失效");
 		expect(screen.getByText("原来的目标已经不在了，请重新选一个私聊目标")).toBeTruthy();
 	});
 
@@ -106,7 +107,7 @@ describe("MasterSection 的下拉", () => {
 
 	it("选一个私聊目标 → patch 它的 id", () => {
 		const onPatch = renderCard("t-group");
-		fireEvent.change(screen.getByRole("combobox"), { target: { value: "t-priv2" } });
+		chooseSelect(screen.getByRole("combobox"), "副号私聊");
 		expect(onPatch).toHaveBeenCalledWith({ master: { targetId: "t-priv2" } });
 	});
 });

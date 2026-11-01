@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 
 /**
  * 皮肤旋钮区(ADR-0014 决策 16 的 🔗)。
@@ -152,9 +153,11 @@ describe("CardSkinKnobsSection", () => {
 		expect([range.min, range.max, range.step, range.value]).toEqual(["0", "1", "0.01", "0.82"]);
 
 		// select → 下拉,候选照声明
-		const select = rowOf(container, "corner").querySelector("select") as HTMLSelectElement;
-		expect([...select.options].map((o) => o.value)).toEqual(["12px", "0px"]);
-		expect(select.value).toBe("12px");
+		const select = rowOf(container, "corner").querySelector(
+			'[role="combobox"]',
+		) as HTMLButtonElement;
+		expect(selectOptionsOf(select).map((o) => o.textContent)).toEqual(["圆润", "硬直角"]);
+		expect(select.textContent).toBe("圆润");
 
 		// switch → 开关(Toggle 是个按钮,不是 input)
 		const toggle = rowOf(container, "show-badge").querySelector("button[aria-label]");
@@ -195,9 +198,10 @@ describe("CardSkinKnobsSection", () => {
 		const { container, onChange } = renderKnobs({ neon: { accent: "#ff0000" } });
 		await screen.findByText("皮肤旋钮");
 
-		fireEvent.change(rowOf(container, "corner").querySelector("select") as HTMLSelectElement, {
-			target: { value: "0px" },
-		});
+		chooseSelect(
+			rowOf(container, "corner").querySelector('[role="combobox"]') as HTMLElement,
+			"硬直角",
+		);
 		expect(onChange).toHaveBeenCalledWith({
 			neon: { accent: "#ff0000" },
 			default: { corner: "0px" },

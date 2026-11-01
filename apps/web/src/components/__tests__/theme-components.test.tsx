@@ -42,7 +42,7 @@ describe("theme-aware form components", () => {
 			screen.getByRole("combobox"),
 			screen.getByRole("button", { name: "A" }),
 			screen.getByText("L3 · 信息").parentElement,
-			screen.getByRole("button", { name: "移除" }),
+			screen.getByRole("button", { name: /移除/ }),
 			screen.getByRole("button", { name: /添加一行/ }),
 		]) {
 			expectNoLightOnlyClass(el);

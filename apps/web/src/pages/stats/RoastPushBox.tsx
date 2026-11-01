@@ -6,7 +6,9 @@ import type {
 import { Btn, PlatformIcon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { TSelect } from "../../components/forms";
 import { AI_PURPLE } from "../../config/colors";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { type Connection, type PushTarget, platformOfTarget } from "../../types/domain";
@@ -37,6 +39,7 @@ export function RoastPushBox({
 	text: string;
 	payload: PushPayload;
 }) {
+	const t = useT();
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -47,10 +50,10 @@ export function RoastPushBox({
 		queryFn: () => api.get<Connection[]>("/api/connections"),
 	});
 	// 停用的目标推不出去,列出来只会让人选中之后收一条「目标不可达」。
-	const targets = (targetsQuery.data ?? []).filter((t) => t.enabled);
+	const targets = (targetsQuery.data ?? []).filter((target) => target.enabled);
 	const [picked, setPicked] = useState("");
 	const targetId = picked || targets[0]?.id || "";
-	const chosen = targets.find((t) => t.id === targetId);
+	const chosen = targets.find((target) => target.id === targetId);
 	const chosenPlatform = chosen ? platformOfTarget(chosen, connectionsQuery.data ?? []) : undefined;
 
 	const push = useMutation<StatsRoastPushResponse>({
@@ -83,39 +86,37 @@ export function RoastPushBox({
 			<div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-bn-border-subtle pt-2.5">
 				{targets.length === 0 ? (
 					<span className="text-bn-xs text-bn-text-tertiary">
-						{targetsQuery.isPending ? "正在读取推送目标…" : "还没有启用的推送目标"}
+						{targetsQuery.isPending ? t("stats.push.loadingTargets") : t("stats.push.noTargets")}
 					</span>
 				) : (
 					<>
 						<PlatformIcon platform={chosenPlatform ?? ""} />
-						<select
+						<TSelect
+							ariaLabel={t("stats.push.target")}
 							value={targetId}
-							onChange={(e) => onPick(e.target.value)}
-							data-bn="input"
-							className="min-w-40 rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-bn-sm text-bn-text-secondary"
-						>
-							{targets.map((t) => (
-								<option key={t.id} value={t.id}>
-									{t.name}
-								</option>
-							))}
-						</select>
+							onChange={onPick}
+							options={targets.map((target) => ({ value: target.id, label: target.name }))}
+						/>
 						<Btn
 							size="sm"
 							variant="primary"
 							onClick={() => push.mutate()}
 							disabled={push.isPending}
 						>
-							{push.isPending ? "推送中…" : "推送"}
+							{push.isPending ? t("stats.push.sending") : t("stats.push.send")}
 						</Btn>
 					</>
 				)}
 
 				{err ? (
-					<span className="text-bn-xs text-bn-danger-text">推送失败:{err}</span>
+					<span className="text-bn-xs text-bn-danger-text">
+						{t("stats.push.failed", { error: err })}
+					</span>
 				) : push.data?.ok ? (
 					<span className="text-bn-xs text-bn-success-text">
-						✓ 已推送（{push.data.mode === "image" ? "卡片图" : "文字"}）
+						{t("stats.push.sent", {
+							mode: push.data.mode === "image" ? t("stats.push.image") : t("stats.push.text"),
+						})}
 					</span>
 				) : null}
 			</div>

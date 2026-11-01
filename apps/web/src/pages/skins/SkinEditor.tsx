@@ -20,7 +20,8 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
-import { Picker } from "../../components/forms";
+import { Picker, TSelect } from "../../components/forms";
+import { useT } from "../../i18n";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { useSkinStore } from "../../store/skin";
@@ -90,6 +91,7 @@ export function SkinEditor(props: {
 	onClose: () => void;
 }) {
 	const { id, manifest, assets, assetNames, onClose } = props;
+	const t = useT();
 	const qc = useQueryClient();
 	const [draft, setDraft] = useState<SkinManifest>(manifest);
 	/**
@@ -479,8 +481,8 @@ export function SkinEditor(props: {
 						/>
 					</FieldRow>
 					<WallpaperFields
-						imageLabel="壁纸图片"
-						prefix="壁纸"
+						imageLabel={t("skins.select.image")}
+						prefix={t("skins.select.wallpaper")}
 						wp={wp}
 						def={dm.wallpaper}
 						assets={imageAssets}
@@ -632,8 +634,8 @@ export function SkinEditor(props: {
 						/>
 					</FieldRow>
 					<WallpaperFields
-						imageLabel="聊天壁纸"
-						prefix="聊天壁纸"
+						imageLabel={t("skins.select.chatImage")}
+						prefix={t("skins.select.chatImage")}
 						wp={chatWp}
 						def={dm.chat?.wallpaper}
 						assets={imageAssets}
@@ -695,12 +697,12 @@ export function SkinEditor(props: {
 
 				<Fold title="字体">
 					<SelectField
-						label="自带字体"
+						label={t("skins.select.font")}
 						value={mode.fonts?.asset ?? ""}
 						isDefault={isDef(mode.fonts?.asset, dm.fonts?.asset)}
 						onChange={(v) => patchSection("fonts", { asset: v || undefined })}
 						options={[
-							{ value: "", label: "(不用自带字体)" },
+							{ value: "", label: t("skins.select.noFont") },
 							...fontAssets.map((a) => ({ value: a, label: assetLabel(a) })),
 						]}
 					/>
@@ -892,13 +894,6 @@ function withOptional(
 
 // ---- 局部小控件 -----------------------------------------------------------
 
-const WALLPAPER_FIT_OPTIONS = [
-	{ value: "", label: "默认(cover 铺满)" },
-	{ value: "cover", label: "cover 铺满" },
-	{ value: "contain", label: "contain 完整显示" },
-	{ value: "tile", label: "tile 平铺" },
-];
-
 /**
  * 传一份文件进来的那一行。图与字体两处只差三样:标签、`accept`、无障碍名。
  *
@@ -963,6 +958,7 @@ function WallpaperFields(props: {
 	afterImage?: ReactNode;
 }) {
 	const { imageLabel, prefix, wp, def, assets, assetLabel, isDef, onChange, afterImage } = props;
+	const t = useT();
 	return (
 		<>
 			<SelectField
@@ -971,7 +967,7 @@ function WallpaperFields(props: {
 				isDefault={isDef(wp.image, def?.image)}
 				onChange={(v) => onChange(v === "" ? undefined : { ...wp, image: v })}
 				options={[
-					{ value: "", label: "(不用壁纸)" },
+					{ value: "", label: t("skins.select.noWallpaper") },
 					...assets.map((a) => ({ value: a, label: assetLabel(a) })),
 				]}
 			/>
@@ -979,13 +975,18 @@ function WallpaperFields(props: {
 			{wp.image ? (
 				<>
 					<SelectField
-						label={`${prefix}铺法`}
+						label={t("skins.select.fit", { prefix })}
 						value={wp.fit ?? ""}
 						isDefault={isDef(wp.fit, def?.fit)}
 						onChange={(v) =>
 							onChange(cleanSection({ ...wp, fit: (v || undefined) as typeof wp.fit }))
 						}
-						options={WALLPAPER_FIT_OPTIONS}
+						options={[
+							{ value: "", label: t("skins.select.fitDefault") },
+							{ value: "cover", label: t("skins.select.fitCover") },
+							{ value: "contain", label: t("skins.select.fitContain") },
+							{ value: "tile", label: t("skins.select.fitTile") },
+						]}
 					/>
 					<TextField
 						label={`${prefix}位置`}
@@ -1085,7 +1086,10 @@ function Fold(props: { title: string; defaultOpen?: boolean; children: ReactNode
  * 尾标不带括号,直接写「默认」—— 孤立的括号形态看着乱。
  */
 function DefaultTag() {
-	return <span className="shrink-0 text-bn-2xs text-bn-text-tertiary">默认</span>;
+	const t = useT();
+	return (
+		<span className="shrink-0 text-bn-2xs text-bn-text-tertiary">{t("skins.select.default")}</span>
+	);
 }
 
 function FieldRow(props: { label: string; children: ReactNode }) {
@@ -1215,19 +1219,13 @@ function SelectField(props: {
 	return (
 		<FieldRow label={props.label}>
 			<div className="flex items-center gap-1.5">
-				<select
-					data-bn="input"
-					aria-label={props.label}
+				<TSelect
+					full
+					ariaLabel={props.label}
 					value={props.value}
-					onChange={(e) => props.onChange(e.target.value)}
-					className={inputCls}
-				>
-					{props.options.map((o) => (
-						<option key={o.value} value={o.value}>
-							{o.label}
-						</option>
-					))}
-				</select>
+					onChange={props.onChange}
+					options={props.options}
+				/>
 				{props.isDefault ? <DefaultTag /> : null}
 			</div>
 		</FieldRow>

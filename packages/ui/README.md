@@ -31,7 +31,7 @@
 | `IconButton` | 只装一枚图标的方钮/圆钮(关闭 / 移除 / 箭头)。五档 `size`(xs 16 → xl 36)、三档 `tone`(**只管 hover 语义**,静态字色一律 tertiary)、`shape=pill`、`surface` 两档:`filled` 描边面底(要从背景里浮出来),`scrim` 遮罩 + 磨砂 + on-solid 字色(**压在图片 / 渐变上**的那种,底下是任意内容,tertiary 灰不可读 —— 这一档连静态字色一起换,不能只叠一层)。`label` 必填(图标没文字),tooltip 要另写才给 `title`。`className` **只收定位这类不冲突的**工具类(`absolute`/`opacity-0 group-hover:*`),覆盖本体是覆盖不住的 —— 要改本体就加档 |
 | `AddButton` / `AddCard` / `AddFileButton` | 「这里还能再加一个」的虚线语汇(虚线=空位;hover 三件套=粉描边+粉字+粉纱底,整族统一)。`AddButton` 行内走药丸、`block` 占整行走卡片圆角;`AddCard` 是网格里的一格,＋/标题/副标题**由组件出**,调用方只给文字;`AddFileButton` 是 file-input 变体(`<label>` 裹隐藏 input,上传中换句提示并禁用),形状/字号走 `className`;**`onFile` 交出去之后它自己把 `value` 清空** —— 浏览器只在「挑的文件变了」时才发 change,不清的话同一份文件挑第二次点了没反应(传上去被拒、删了再传回来都是真实路径),所以别再为这条手搭一个。三者共用一份 `ADD_LANGUAGE`(**已导出**,库外家族成员如 scope-tabs「添加 UP」chip 也说这句话,别手抄),边色与空态框同档 `bn-inactive/50`(通用 `bn-border` 在默认亮色下几乎隐形)。自带 `data-bn="add-slot"`(专词,**btn 仍禁挂** —— 皮肤按钮实底会把空位画成真按钮;表单里的「+ 添加一行」与 Rules 的「添加 UP」chip 也挂它) |
 | `SELECTED_LANGUAGE` / `SELECTED_TINT_BG` | (导出的**语汇常量**,不是组件)「这一项当前被选中 / 激活」的全站统一说法:全浓粉描边 + 粉字 + **不透明**粉调底(`color-mix` 落在 surface 上出,混 transparent 的纱在壁纸皮肤下隐形 —— Subs 分组胶囊踩过的雷)。真·选中态(Subs 分组胶囊、FontPicker 候选行、`OptionCard`、scope-tabs「添加 UP」展开态)整句吃 `SELECTED_LANGUAGE`,别手抄;只要那块粉底、不是选中语义的(状态条 / 装饰徽章 / 粉药丸钮)单独吃 `SELECTED_TINT_BG`。圆角 / padding / 字号由摆放处给,不算漂移 |
-| `MenuItem` | 弹层(下拉 / 右键菜单 / 附件菜单)里的一整行:图标槽 + 内容,`active` 染粉加粗、`danger` 整行连图标转红。行内有副标题时**必须给 `ariaLabel`**,否则读屏器把标题和小字连起来念。**刻意不挂 `data-bn`** —— 皮肤给按钮写的实底落到每行菜单上很难看,而词表里没有 `menu-item` 这一档;浮层本体自己挂了 `glass-strong` |
+| `MenuItem` | 弹层(下拉 / 右键菜单 / 附件菜单)里的一整行:图标槽 + 内容,`active` 染粉加粗、`danger` 整行连图标转红。行内有副标题时**必须给 `ariaLabel`**,否则读屏器把标题和小字连起来念。挂 `option` / `option-active`,不挂 `btn`;浮层挂 `glass-strong`。`role="option"` 时可给 `id` / `tabIndex` / `ariaSelected`,供 TSelect 的 active-descendant 接线;默认菜单行为不变 |
 | `DisclosurePill` | 「点它展开 / 收起下面那块」的胶囊钮(历史行的「N 条 ▾」、逐群例外表的「展开」)。借 `Pill` 的形制,但它是**开合**不是选项 —— 有 `aria-expanded`,别拿 `ToneChip` 顶替。挂点沿用 `chip` / `chip-active`(展开时按选中那档画),`color` 同 `Pill`;`className` 只收定位类 |
 | `ToneChip` | 「一排里选一个/开一个」的**可点**胶囊:选中 = 12% `tone` 底(**混 surface 出的不透明底**,不是混 transparent 的纱 —— 纱在壁纸皮肤下隐形)+ **实色 `tone` 边** + 正文色字,未选中退中性描边 + 悬停变正文色。**`tone` 不承担可读性**(当字色时字底同色相,亮色下 warn 只有 1.90:1),色彩识别交给实色边框。自带 `data-bn="btn"`;`tone` 收 hex **或** `var()`(内部 `color-mix`),纯操作钮可不填。别拿 `Pill` 套 `onClick` 顶替它 |
 | `Toast` | 一句话瞬时提示(「已复制」「已保存失败」)。自己**不计时**,挂上撤下由调用方管 —— 但「停多久」走同包导出的 `TOAST_DURATION_MS`,别各拍各的(收编前三个调用方是 2000 / 2000 / 2400)。三条取值不许改:① 字色恒 `text-bn-text-primary`,**不写死白字** —— 底能被皮肤重绘、写死的字色不能,两者一起就是白底白字;② 语义走**描边**不走实心底(同 `ToneChip` 的道理);③ 钉**底部居中**,右下角是推送 toast 那一摞的地盘。底材质吃 `.bn-glass-strong`(与导览庆祝胶囊同一块玻璃,边由玻璃类出、不叠 `border-bn-border`),另挂 `data-bn="glass-strong"`。通知中心那种带图标/时间的富卡片不归它管 |
@@ -61,10 +61,15 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线;`TSelect` 给了 `width` 就不再垫 160px 的最小宽,单位选择器那种窄的用它;`TSelect` 的选项可带 `disabled`,拿来如实显示「当前值已失效」那种不可选的一行)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
+| `UiTextProvider` / `UiText` | `UiTextProvider({t, children})` 让基础件在渲染时读当前 `ui.*` 包字典;没有 Provider 时用 `packageText`。App 在 AuthedApp 内交真实 `useT()` 结果,不新建 store。内部 hook `useUiText` 不从包根导出;消费者是 TSelect、TColor、ArrayEditor、QuietHoursEditor(含移除行按钮)。只依赖 internal 的 texts 子路径(参数类型用 type import) |
 | `Picker` | 通用段选钮组。**选项个数固定(写死的一组)就用它,哪怕超过 5 个;选项来自数据、个数不定才用 `TSelect`**(2026-10-04 主人定,取代「≤ ~5」的旧说法;容器会折行,项多了窄屏自己换行):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
 | `ArrayEditor` / `QuietHoursEditor` | 「一列可增删的行」的两个特化:字符串行 / 免扰时段(0-23 整点对,跨午夜 start>end)。行号徽标 / 移除钮 / 虚线添加钮是**不导出**的实现细节 |
 
 缠业务字典的两件**刻意不在库里**:`Field`(FIELD_LABELS code 体系 + data-code 灵动岛锚点)与 `LogLevelPicker`(LOG_LEVEL_TONE 色表)住 `apps/web/src/components/forms.tsx`,那边同时转口本节全部导出。
+
+`TSelect` 保留受控字符串 props、合法空值与定宽能力,内部是 button combobox + body portal listbox/MenuItem,所有选择器保持平铺且不加搜索。当前值未知时原样显示不可用,不暗选也不回写;空列表显示暂无选项且不开。上下/Home/End 只移动、Enter/空格提交,Esc 取消并隔离父层,前缀及重复字符跳转会跳过 disabled,IME 组合不取字。菜单内部只取消鼠标 mousedown 默认聚焦,不阻止 pointerdown/touch/wheel;拖动、滚动、cancel、异项结束不提交。Tab、外点、窗口失焦自然移焦;有效提交或 Esc 才回焦。
+
+面板与 UI 库不再写原生 select: `scripts/__tests__/native-select.test.mjs` 扫 JSX 与真实 React createElement(具名别名、namespace/default 导入及字面量属性访问),不设白名单。动态标签/工厂经变量转交、跨文件包装不建调用图,仍需审查。
 
 ### 玻璃卡
 
@@ -80,7 +85,7 @@
 
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
-| `PopoverShell` | 贴着触发器弹出的**浮层面板** —— 装 `MenuItem` 的那个壳。圆角/阴影/挂点由壳子定死;开口每样都对应真实的调用方分歧:`align`(贴左/贴右/`stretch` 两边都贴,输入框上方那种同宽浮层)、`side`(`bottom` 默认 / `top` 朝上开 —— 聊天输入区那两个就是,收编第一轮正是因为这个被漏掉)、`variant`(`inset` 默认给 MenuItem 留呼吸位 / `flush` 内容贴边 / `panel` 自定义面板)、`layer`(走分层表,该不该统一没查清)、`surface`(`solid` 菜单实底 / `solid-strong` 压在消息流之上那档 / `glass` 强玻璃 —— 顶栏那个标签面板挑强档是有实测理由的,见组件注释)、`role` + `ariaLabel`(**不是外观档**:菜单是 `menu`、候选列表是 `listbox`,读屏器靠它判断里面装的是什么)。**定位的 `relative` 包裹由调用方给**(触发器与浮层的相对关系只有它知道);`ref` 收着,「点外面关掉」几乎人人要。收编前六处各写各的:四种圆角、三种底、三种边、两种阴影、两种挂点写法,连里面装的全是 `MenuItem` 的两处都一个有内边距一个没有 |
+| `PopoverShell` | 贴着触发器弹出的**浮层面板** —— 装 `MenuItem` 的那个壳。圆角/阴影/挂点由壳子定死;开口每样都对应真实的调用方分歧:`align`(贴左/贴右/`stretch` 两边都贴,输入框上方那种同宽浮层)、`side`(`bottom` 默认 / `top` 朝上开 —— 聊天输入区那两个就是,收编第一轮正是因为这个被漏掉)、`variant`(`inset` 默认给 MenuItem 留呼吸位 / `flush` 内容贴边 / `panel` 自定义面板)、`layer`(走分层表,该不该统一没查清)、`surface`(`solid` 菜单实底 / `solid-strong` 压在消息流之上那档 / `glass` 强玻璃 —— 顶栏那个标签面板挑强档是有实测理由的,见组件注释)、`role` + `ariaLabel`(**不是外观档**:菜单是 `menu`、候选列表是 `listbox`,读屏器靠它判断里面装的是什么)。默认 absolute 模式仍由调用方给 relative 包裹。给 `anchorRef` 时 body portal + fixed 测量定位、自动上下避让、限宽限高,监听滚动/resize/锚点可见性;`onAnchorHidden` 通知收起、`id` 接 aria-controls,可用既有 `modal` 层;`ref` 收着,「点外面关掉」几乎人人要。收编前六处各写各的:四种圆角、三种底、三种边、两种阴影、两种挂点写法,连里面装的全是 `MenuItem` 的两处都一个有内边距一个没有 |
 | `ModalShell` | 弹窗骨架:portal 到 body、遮罩 + 居中卡、ESC/点遮罩关闭;body padding 可覆盖。**标题走 `title`(+可选 `description`),别自己写标题行** —— 字号与间距由壳子出、不留口子,此前 11 个弹窗各写各的,漂成 14/15/16px 三种字号与四种下边距。自绘表头(封面渐变那种)才两个都不传 |
 | `ConfirmDialog` | ModalShell 之上的「确认/取消」轻对话框,`danger` 换红确认钮 |
 | `DrawerShell` | 右侧滑出的**非模态**玻璃抽屉:portal 到 body、全高内滚、ESC 关闭、无遮罩(页面保持可见可交互,实时调参工作台用) |
@@ -102,7 +107,7 @@
 | --- | --- |
 | `Icon` / `IconName` | 内联 SVG 图标注册表(currentColor 染色),几十枚;加新图标进这里,别散落内联 |
 | `FieldUpdatesProvider` / `useFieldUpdate` / `useFieldReset` | 「字段默认值有更新/可还原」的广播 context;无 Provider 时恒 null |
-| `useDismiss` | 「点外面关掉」的唯一写法(住 popover.tsx)。`enabled` 只在浮层开着时挂监听、`escape` 连 Esc 一起关、`event` 选 mousedown/pointerdown —— 收编前五份手写行为各漂各的,差异现在是调用点上显式的选项 |
+| `useDismiss` | 「点外面关掉」的唯一写法(住 popover.tsx)。`enabled` 只在浮层开着时挂监听、`escape` 连 Esc 一起关、`event` 选 mousedown/pointerdown,`insideRefs` 把 portal 菜单等 DOM 也算内部 —— 收编前五份手写行为各漂各的,差异现在是调用点上显式的选项 |
 
 ## 维护约定
 

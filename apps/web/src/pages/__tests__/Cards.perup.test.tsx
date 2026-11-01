@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 
 /**
  * Cards 页 per-UP 作用域接线测试。
@@ -368,14 +369,14 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 
 		const select = await waitFor(() => {
-			const el = container.querySelector('[data-code="cardSkin"] select');
+			const el = container.querySelector('[data-code="cardSkin"] [role="combobox"]');
 			if (!el) throw new Error("cardSkin select not rendered");
-			return el as HTMLSelectElement;
+			return el as HTMLButtonElement;
 		});
 		// 列表里的那套自制皮肤要真的是个选项 —— 下拉只有「跟随全局」的话下面这一步
 		// 会把 value 设成空串,断言反而看不出问题。
-		expect([...select.options].map((o) => o.value)).toContain("aurora");
-		fireEvent.change(select, { target: { value: "aurora" } });
+		expect(selectOptionsOf(select).map((o) => o.textContent)).toContain("极光");
+		chooseSelect(select, "极光");
 
 		useDraftStore.getState().current?.onSave();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
@@ -401,13 +402,13 @@ describe("Cards per-UP 作用域接线", () => {
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
 
 		const select = await waitFor(() => {
-			const el = container.querySelector('[data-code="cardSkin"] select');
+			const el = container.querySelector('[data-code="cardSkin"] [role="combobox"]');
 			if (!el) throw new Error("cardSkin select not rendered");
-			return el as HTMLSelectElement;
+			return el as HTMLButtonElement;
 		});
 		// 先确认存量覆盖 seed 进了下拉(否则「清掉」测的是一个本来就空的值)。
-		expect(select.value).toBe("aurora");
-		fireEvent.change(select, { target: { value: "" } });
+		expect(select.textContent).toBe("极光");
+		chooseSelect(select, /^跟随全局/);
 
 		useDraftStore.getState().current?.onSave();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());

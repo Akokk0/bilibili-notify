@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { chooseSelect } from "../../__tests__/select-controls";
 import Logs from "../Logs";
 
 const { apiGetMock } = vi.hoisted(() => ({
@@ -57,4 +58,20 @@ describe("Logs page", () => {
 		expect(screen.queryByText("apps/CHANGELOG.md")).toBeNull();
 		expect(screen.queryByText("更新日志")).toBeNull();
 	});
+});
+
+it("filters sources locally and restores all sources through the empty option", async () => {
+	apiGetMock.mockResolvedValueOnce({
+		entries: [
+			{ ts: "2026-11-01T00:00:00Z", level: "info", name: "alpha", msg: "Alpha entry" },
+			{ ts: "2026-11-01T00:00:00Z", level: "info", name: "beta", msg: "Beta entry" },
+		],
+	} as never);
+	renderLogs();
+	await screen.findByText("Beta entry");
+	chooseSelect(screen.getByRole("combobox"), "alpha");
+	await waitFor(() => expect(screen.queryByText("Beta entry")).toBeNull());
+	expect(screen.getByText("Alpha entry")).toBeTruthy();
+	chooseSelect(screen.getByRole("combobox"), "全部来源");
+	expect(screen.getByText("Beta entry")).toBeTruthy();
 });

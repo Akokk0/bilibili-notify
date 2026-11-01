@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect } from "../../../__tests__/select-controls";
 
 /**
  * 结构化 CSS 编辑器(ADR-0014 决策 21 的 2026-09-19 🔗)。
@@ -41,8 +42,8 @@ describe("结构视图 —— 读", () => {
 		mount('[data-bn="self"] {\n\tpadding: 12px;\n\tcolor: #fff;\n\ttext-align: center;\n}');
 		expect(input(/的选择器$/).value).toBe('[data-bn="self"]');
 		expect(input("内边距").value).toBe("12");
-		expect(input("内边距的单位").value).toBe("px");
-		expect(input("对齐").value).toBe("center");
+		expect(input("内边距的单位").textContent).toBe("px");
+		expect(input("对齐").textContent).toBe("居中");
 		expect(screen.getByLabelText("字色")).toBeTruthy();
 		// 源码框没在:结构与源码是切换,不同摆。
 		expect(screen.queryByLabelText("这个块的 CSS")).toBeNull();
@@ -58,7 +59,7 @@ describe("结构视图 —— 读", () => {
 	it("边框三段认得出就给三个控件,认不出退文本行", () => {
 		mount('[data-bn="self"]{border:1px solid #ff0000}');
 		expect(input("边框宽度").value).toBe("1");
-		expect(input("边框样式").value).toBe("solid");
+		expect(input("边框样式").textContent).toBe("实线");
 		cleanup();
 		mount('[data-bn="self"]{border:1px solid var(--x)}');
 		expect(input("边框").value).toBe("1px solid var(--x)");
@@ -99,7 +100,7 @@ describe("结构视图 —— 写(整段只动那一截)", () => {
 
 	it("改单位 → 只换值", () => {
 		const { onChange } = mount(CSS);
-		fireEvent.change(input("内边距的单位"), { target: { value: "em" } });
+		chooseSelect(input("内边距的单位"), "em");
 		expect(last(onChange)).toBe(CSS.replace("12px", "12em"));
 	});
 

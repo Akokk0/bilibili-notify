@@ -1,4 +1,14 @@
-import { type ReactNode, type Ref, type RefObject, useEffect, useRef } from "react";
+import {
+	type CSSProperties,
+	type ReactNode,
+	type Ref,
+	type RefObject,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
+import { createPortal } from "react-dom";
 
 /**
  * 「点外面关掉」—— 浮层人人要的那一段监听。收编前站内抄了五份,行为还不一致:
@@ -10,6 +20,7 @@ import { type ReactNode, type Ref, type RefObject, useEffect, useRef } from "rea
 export interface UseDismissOptions {
 	/** 只在浮层开着时挂监听(减少全局事件流量)。缺省 true —— 组件本身按需挂载时用不到它。 */
 	enabled?: boolean;
+	insideRefs?: readonly RefObject<HTMLElement | null>[];
 	/** Escape 也关。 */
 	escape?: boolean;
 	/** 按下事件的种类。`pointerdown` 连触屏 / 笔一起管;`mousedown` 是收编前多数处的旧默认。 */
@@ -19,9 +30,16 @@ export interface UseDismissOptions {
 export function useDismiss(
 	ref: RefObject<HTMLElement | null>,
 	onDismiss: () => void,
-	{ enabled = true, escape: escToClose = false, event = "mousedown" }: UseDismissOptions = {},
+	{
+		enabled = true,
+		escape: escToClose = false,
+		event = "mousedown",
+		insideRefs,
+	}: UseDismissOptions = {},
 ): void {
 	const cbRef = useRef(onDismiss);
+	const inside = useRef(insideRefs);
+	inside.current = insideRefs;
 	useEffect(() => {
 		cbRef.current = onDismiss;
 	});
@@ -29,7 +47,13 @@ export function useDismiss(
 		if (!enabled) return;
 		const onDown = (e: Event): void => {
 			const node = ref.current;
-			if (node && e.target instanceof Node && !node.contains(e.target)) cbRef.current();
+			if (
+				node &&
+				e.target instanceof Node &&
+				!node.contains(e.target) &&
+				!inside.current?.some((r) => r.current?.contains(e.target as Node))
+			)
+				cbRef.current();
 		};
 		const onKey = (e: KeyboardEvent): void => {
 			if (e.key === "Escape") cbRef.current();
@@ -50,8 +74,9 @@ export function useDismiss(
  * 两种挂点写法,**没有两个是一样的** —— 连「里面装的全是 `MenuItem`」的两处都一个
  * 有内边距一个没有。同 `ModalShell` 当初收编十一个弹窗。
  *
- * **定位靠调用方**:壳子只出 `absolute` 与贴边方向,`relative` 的那个包裹由调用方给
- * (触发器与浮层的相对关系只有它知道)。
+ * 默认定位靠调用方:`absolute` 与贴边方向沿原规则,relative 包裹由调用方给。
+ * anchorRef 模式改为 body portal + fixed 测量,跟随滚动/resize、上下避让、限高;
+ * 锚点不可见时经 onAnchorHidden 通知调用方收起。
  *
  * 开口每一样都对应真实的调用方分歧:
  * - `align` 贴左还是贴右
@@ -97,7 +122,7 @@ export type PopoverVariant = "inset" | "flush" | "panel";
  * 没查清 —— 一个弹层要压过什么,取决于它开在哪、下面铺着什么。原样搬过来,至少现在
  * 这个选择是显式的、在调用点看得见的。
  */
-export type PopoverLayer = "local" | "raised" | "nav" | "overlay";
+export type PopoverLayer = "local" | "raised" | "nav" | "overlay" | "modal";
 
 /**
  * 底是实的还是玻璃的。
@@ -145,9 +170,13 @@ const LAYER: Record<PopoverLayer, string> = {
 	raised: "z-bn-raised",
 	nav: "z-bn-nav",
 	overlay: "z-bn-overlay",
+	modal: "z-bn-modal",
 };
 
 export interface PopoverShellProps {
+	anchorRef?: RefObject<HTMLElement | null>;
+	onAnchorHidden?: () => void;
+	id?: string;
 	children: ReactNode;
 	align?: PopoverAlign;
 	side?: PopoverSide;
@@ -170,6 +199,9 @@ export interface PopoverShellProps {
 }
 
 export function PopoverShell({
+	anchorRef,
+	onAnchorHidden,
+	id,
 	children,
 	align = "left",
 	side = "bottom",
@@ -181,9 +213,102 @@ export function PopoverShell({
 	ariaLabel,
 	ref,
 }: PopoverShellProps) {
-	return (
+	const node = useRef<HTMLDivElement>(null);
+	const hidden = useRef(onAnchorHidden);
+	hidden.current = onAnchorHidden;
+	const [geometry, setGeometry] = useState<CSSProperties>({
+		position: "fixed",
+		left: 8,
+		top: 8,
+		width: 160,
+		maxHeight: 288,
+	});
+	useLayoutEffect(() => {
+		if (!anchorRef) return;
+		const anchor = anchorRef.current;
+		if (!anchor) {
+			hidden.current?.();
+			return;
+		}
+		const ancestors: HTMLElement[] = [];
+		for (let parent: HTMLElement | null = anchor; parent; parent = parent.parentElement)
+			ancestors.push(parent);
+		const update = () => {
+			const r = anchor.getBoundingClientRect();
+			let visible =
+				anchor.isConnected &&
+				!ancestors.some((p) => {
+					const c = getComputedStyle(p);
+					return c.display === "none" || c.visibility === "hidden";
+				});
+			if (r.width > 0 && r.height > 0) {
+				visible &&=
+					r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+				for (const p of ancestors.slice(1)) {
+					const c = getComputedStyle(p),
+						bounds = p.getBoundingClientRect();
+					if (/(auto|scroll|hidden|clip)/.test(c.overflowY) && bounds.height > 0)
+						visible &&= r.bottom > bounds.top && r.top < bounds.bottom;
+					if (/(auto|scroll|hidden|clip)/.test(c.overflowX) && bounds.width > 0)
+						visible &&= r.right > bounds.left && r.left < bounds.right;
+				}
+			}
+			if (!visible) {
+				hidden.current?.();
+				return;
+			}
+			const width = Math.min(Math.max(160, r.width), Math.max(0, window.innerWidth - 16));
+			const below = Math.max(0, window.innerHeight - r.bottom - 14),
+				above = Math.max(0, r.top - 14);
+			const up = below < 288 && above > below;
+			const maxHeight = Math.min(288, up ? above : below);
+			const height = Math.min(node.current?.scrollHeight || maxHeight, maxHeight);
+			const next = {
+				position: "fixed" as const,
+				width,
+				maxHeight,
+				left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+				top: up ? Math.max(8, r.top - height - 6) : r.bottom + 6,
+			};
+			setGeometry((old) =>
+				Object.entries(next).every(([key, value]) => old[key as keyof CSSProperties] === value)
+					? old
+					: next,
+			);
+		};
+		update();
+		window.addEventListener("resize", update);
+		document.addEventListener("scroll", update, true);
+		window.visualViewport?.addEventListener("resize", update);
+		window.visualViewport?.addEventListener("scroll", update);
+		const resize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(update);
+		resize?.observe(anchor);
+		if (node.current) resize?.observe(node.current);
+		const mutation = new MutationObserver(update);
+		for (const parent of ancestors)
+			mutation.observe(parent, {
+				attributes: true,
+				attributeFilter: ["class", "style", "hidden"],
+				childList: true,
+			});
+		return () => {
+			window.removeEventListener("resize", update);
+			document.removeEventListener("scroll", update, true);
+			window.visualViewport?.removeEventListener("resize", update);
+			window.visualViewport?.removeEventListener("scroll", update);
+			resize?.disconnect();
+			mutation.disconnect();
+		};
+	}, [anchorRef]);
+	const panel = (
 		<div
-			ref={ref}
+			id={id}
+			style={anchorRef ? geometry : undefined}
+			ref={(element) => {
+				node.current = element;
+				if (typeof ref === "function") ref(element);
+				else if (ref) ref.current = element;
+			}}
 			// 两个一起给或都不给:`aria-label` 挂在没有 role 的裸 div(generic 角色)上
 			// 是无效属性 —— 读屏器不会念,而写的人以为自己标注过了。
 			{...(role ? { role, "aria-label": ariaLabel } : {})}
@@ -191,9 +316,10 @@ export function PopoverShell({
 			// 「弹层、浮条、抽屉」。暗色皮肤按最佳实践把 background 调到 alpha 0.55、
 			// strongBackground 0.85,用轻档会透出底下的文字。
 			data-bn="glass-strong"
-			className={`absolute ${SIDE[side]} ${ALIGN[align]} ${LAYER[layer]} overflow-hidden rounded-bn-card shadow-bn-elev ${SURFACE[surface]} ${VARIANT[variant]} ${className ?? ""}`}
+			className={`${anchorRef ? "flex flex-col" : `absolute ${SIDE[side]} ${ALIGN[align]}`} ${LAYER[layer]} overflow-hidden rounded-bn-card shadow-bn-elev ${SURFACE[surface]} ${VARIANT[variant]} ${className ?? ""}`}
 		>
 			{children}
 		</div>
 	);
+	return anchorRef && typeof document !== "undefined" ? createPortal(panel, document.body) : panel;
 }

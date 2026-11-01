@@ -8,5 +8,13 @@
 	"push.router.unreachable": "target={targetId} 持续不可达，放弃推送啦，主人",
 	"push.router.masterMissing": "没有配置主人目标，主人先配置一下哦",
 	"push.router.masterNotPrivate": "主人目标 {targetId} 不是私聊目标，无法悄悄通知主人哦",
-	"push.router.masterUnreachable": "主人目标不可达，暂时没法通知主人啦"
+	"push.router.masterUnreachable": "主人目标不可达，暂时没法通知主人啦",
+	"ui.form.remove": "移除这行，主人",
+	"ui.form.addRow": "+ 添加一行{hint}吧，主人",
+	"ui.form.crossMidnight": "(到次日哦)",
+	"ui.form.emptyRange": "这段时间为空哦，主人",
+	"ui.form.addQuiet": "+ 添加免扰时段吧，主人",
+	"ui.select.placeholder": "请选择哦，主人",
+	"ui.select.empty": "暂时没有可选项哦，主人",
+	"ui.select.unavailable": "当前值不可用（{value}），请重选哦，主人"
 }

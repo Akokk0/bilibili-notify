@@ -14,5 +14,17 @@
 	"push.router.unreachable": "target={targetId} 持续不可达，已取消推送",
 	"push.router.masterMissing": "未配置主人目标",
 	"push.router.masterNotPrivate": "主人目标 {targetId} 不是私聊目标，无法发送通知",
-	"push.router.masterUnreachable": "主人目标不可达"
+	"push.router.masterUnreachable": "主人目标不可达",
+	"ui.form.colorPicker": "{label}(取色器)",
+	"ui.form.remove": "移除",
+	"ui.form.addRow": "+ 添加一行{hint}",
+	"ui.form.until": "至",
+	"ui.form.crossMidnight": "(跨次日)",
+	"ui.form.emptyRange": "区间为空",
+	"ui.form.addQuiet": "+ 添加免扰时段",
+	"ui.form.quietStart": "第{row}段开始",
+	"ui.form.quietEnd": "第{row}段结束",
+	"ui.select.placeholder": "请选择",
+	"ui.select.empty": "暂无选项",
+	"ui.select.unavailable": "当前值不可用（{value}）"
 }

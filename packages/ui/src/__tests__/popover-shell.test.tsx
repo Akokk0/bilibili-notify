@@ -20,7 +20,7 @@
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { PopoverShell } from "../popover";
 
 afterEach(cleanup);
@@ -132,4 +132,36 @@ describe("PopoverShell 的底", () => {
 			expect(shellOf(t).getAttribute("data-bn")).toBe("glass-strong");
 		}
 	});
+});
+
+it("anchors a body portal above a low trigger within viewport bounds", () => {
+	const anchor = document.createElement("button");
+	document.body.append(anchor);
+	const rect = vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue({
+		left: 980,
+		right: 1040,
+		top: 740,
+		bottom: 770,
+		width: 60,
+		height: 30,
+		x: 980,
+		y: 740,
+		toJSON: () => ({}),
+	});
+	try {
+		const { container } = render(
+			<PopoverShell anchorRef={{ current: anchor }} id="anchored" layer="modal" role="listbox">
+				Anchored
+			</PopoverShell>,
+		);
+		const shell = screen.getByRole("listbox");
+		expect(container.contains(shell)).toBe(false);
+		expect(shell.style.position).toBe("fixed");
+		expect(Number.parseFloat(shell.style.top)).toBeLessThan(740);
+		expect(Number.parseFloat(shell.style.left)).toBeGreaterThanOrEqual(8);
+		expect(shell.id).toBe("anchored");
+	} finally {
+		rect.mockRestore();
+		anchor.remove();
+	}
 });

@@ -64,7 +64,12 @@ describe("设置面板的输入框挂 input 挂点", () => {
 
 		// 四个控件各自的原生标签,逐个确认挂点落在**控件本身**而不是外层 div ——
 		// 挂在包装层上皮肤改的是包装层,输入框还是默认装。
-		for (const tag of ["input[type='text']", "textarea", "input[type='number']", "select"]) {
+		for (const tag of [
+			"input[type='text']",
+			"textarea",
+			"input[type='number']",
+			'[role="combobox"]',
+		]) {
 			const el = container.querySelector(tag);
 			expect(`${tag} 存在`).toBe(`${el ? tag : "缺失"} 存在`);
 			expect(`${tag}=${el?.getAttribute("data-bn")}`).toBe(`${tag}=input`);

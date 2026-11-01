@@ -33,6 +33,10 @@ import {
  * 包字典,所以包字典的句子也算);另有第三家「包」:各包与 contract 的 `src` 里 `packageText(…)` 的调用,
  * 对包字典(ADR-0037 决策 6 下 10-28 的 🔗)。包里引入包字典入口别的名字(交取字口的那几样)一律认不出 ——
  * 取字口只由两端交,两端各在建 store 的文件里交一次(`packageBindingsOf` 那条钉着)。
+ * Q6（4-25）精确例外:面板真实具名 UiTextProvider 的 t 属性接本地 useT 结果;UI texts 入口内
+ * React 具名 createContext 创建且被真实 Provider/useUiText 共同使用的 const context 默认函数;
+ * UI 内从该 texts 入口具名引入的 useUiText（含别名）接成的函数只认 ui.* 键。例外只认节点与绑定,
+ * 不豁免整份文件;其他传值、工厂、context 与任何遮蔽继续红。
  * 全程走语法树,不建类型检查器:注释里、字符串里的 `t("x")` 天生不是调用节点。
  *
  * 认得哪些写法(其余一律红,见下):
@@ -406,6 +410,154 @@ export function applyAllowlist(files, allowlist) {
 	return problems;
 }
 
+// Q6 的例外按节点证明绑定,不豁免文件。原有同名声明一律红的规则不放宽。
+const UI_TEXT_ENTRY = "packages/ui/src/texts";
+const functionOf = (node) => {
+	let current = node.parent;
+	while (current && !ts.isFunctionLike(current)) current = current.parent;
+	return current;
+};
+function namedImports(source, specifier, imported) {
+	const names = new Set();
+	for (const statement of source.ast.statements) {
+		if (!ts.isImportDeclaration(statement) || literalKey(statement.moduleSpecifier) !== specifier)
+			continue;
+		const clause = statement.importClause,
+			bindings = clause?.namedBindings;
+		if (!clause || clause.isTypeOnly || !bindings || !ts.isNamedImports(bindings)) continue;
+		for (const e of bindings.elements)
+			if (!e.isTypeOnly && (e.propertyName ?? e.name).text === imported) names.add(e.name.text);
+	}
+	return names;
+}
+function localDeclarations(ast, name) {
+	const found = [];
+	const visit = (node) => {
+		if (ts.isIdentifier(node) && node.text === name) {
+			const p = node.parent;
+			if (
+				(ts.isVariableDeclaration(p) ||
+					ts.isParameter(p) ||
+					ts.isBindingElement(p) ||
+					ts.isFunctionDeclaration(p) ||
+					ts.isFunctionExpression(p) ||
+					ts.isClassDeclaration(p) ||
+					ts.isClassExpression(p)) &&
+				p.name === node
+			)
+				found.push(node);
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(ast);
+	return found;
+}
+function defaultUiTextNodes(source, packageNames) {
+	const accepted = new Set();
+	if (stripExt(source.path) !== UI_TEXT_ENTRY) return accepted;
+	const { ast } = source;
+	const contexts = namedImports(source, "react", "createContext"),
+		readers = namedImports(source, "react", "useContext");
+	const exportedFunction = (name) =>
+		ast.statements.find(
+			(s) =>
+				ts.isFunctionDeclaration(s) &&
+				s.name?.text === name &&
+				ts.getCombinedModifierFlags(s) & ts.ModifierFlags.Export,
+		);
+	const provider = exportedFunction("UiTextProvider"),
+		hook = exportedFunction("useUiText");
+	if (
+		!provider ||
+		!hook ||
+		localDeclarations(ast, "UiTextProvider").length !== 1 ||
+		localDeclarations(ast, "useUiText").length !== 1
+	)
+		return accepted;
+	for (const statement of ast.statements) {
+		if (
+			!ts.isVariableStatement(statement) ||
+			!(statement.declarationList.flags & ts.NodeFlags.Const)
+		)
+			continue;
+		for (const declaration of statement.declarationList.declarations) {
+			if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+			const call = unwrap(declaration.initializer),
+				name = declaration.name.text;
+			if (
+				!ts.isCallExpression(call) ||
+				!ts.isIdentifier(call.expression) ||
+				!contexts.has(call.expression.text) ||
+				localDeclarations(ast, call.expression.text).length ||
+				call.arguments.length !== 1
+			)
+				continue;
+			const fallback = call.arguments[0];
+			if (
+				!ts.isIdentifier(fallback) ||
+				!packageNames.has(fallback.text) ||
+				localDeclarations(ast, fallback.text).length ||
+				localDeclarations(ast, name).length !== 1
+			)
+				continue;
+			const parameter = provider.parameters[0];
+			if (!parameter || !ts.isObjectBindingPattern(parameter.name)) continue;
+			const binding = (key) =>
+				parameter.name.elements.find(
+					(e) =>
+						!e.dotDotDotToken &&
+						(e.propertyName ?? e.name).getText(ast) === key &&
+						ts.isIdentifier(e.name),
+				)?.name;
+			const translator = binding("t"),
+				children = binding("children");
+			if (
+				!translator ||
+				!children ||
+				localDeclarations(ast, translator.text).length !== 1 ||
+				localDeclarations(ast, children.text).length !== 1
+			)
+				continue;
+			const ret = provider.body?.statements.find(ts.isReturnStatement)?.expression;
+			if (
+				!ret ||
+				!ts.isJsxElement(ret) ||
+				ret.openingElement.tagName.getText(ast) !== name ||
+				ret.closingElement.tagName.getText(ast) !== name
+			)
+				continue;
+			const value = ret.openingElement.attributes.properties.find(
+				(a) => ts.isJsxAttribute(a) && a.name.getText(ast) === "value",
+			)?.initializer;
+			if (
+				!value ||
+				!ts.isJsxExpression(value) ||
+				value.expression?.getText(ast) !== translator.text
+			)
+				continue;
+			if (
+				!ret.children.some(
+					(c) => ts.isJsxExpression(c) && c.expression?.getText(ast) === children.text,
+				)
+			)
+				continue;
+			const read = hook.body?.statements.find(ts.isReturnStatement)?.expression;
+			if (
+				!read ||
+				!ts.isCallExpression(read) ||
+				!ts.isIdentifier(read.expression) ||
+				!readers.has(read.expression.text) ||
+				localDeclarations(ast, read.expression.text).length ||
+				read.arguments.length !== 1 ||
+				read.arguments[0].getText(ast) !== name
+			)
+				continue;
+			accepted.add(fallback);
+		}
+	}
+	return accepted;
+}
+
 /**
  * 分析一份源码。回 `{ findings, calls }`:
  * findings 的 code:`unrecognised`(认不出的写法)、`unknown-key`(键不在译文里)、
@@ -420,6 +572,29 @@ export function analyzeFile(source, end, sentences) {
 	// 1. 入口的引入:只认具名的值引入,别的形式都认不出
 	// 入口导出的名字 → 本地名的集合(同一个名字可以引入多次:`import { t as tr, t }`)
 	const localsOf = { t: new Set(), i18n: new Set(), useT: new Set(), packageText: new Set() };
+	const uiHooks = new Set();
+	if (end === ENDS.packages && path.startsWith("packages/ui/src/")) {
+		for (const statement of ast.statements) {
+			if (!ts.isImportDeclaration(statement)) continue;
+			const specifier = literalKey(statement.moduleSpecifier),
+				clause = statement.importClause,
+				bindings = clause?.namedBindings;
+			if (
+				!specifier ||
+				stripExt(resolveSpecifier(path, specifier) ?? "") !== UI_TEXT_ENTRY ||
+				!clause ||
+				clause.isTypeOnly ||
+				!bindings ||
+				!ts.isNamedImports(bindings)
+			)
+				continue;
+			for (const element of bindings.elements)
+				if (!element.isTypeOnly && (element.propertyName ?? element.name).text === "useUiText")
+					uiHooks.add(element.name.text);
+		}
+	}
+	const providers =
+		end === ENDS.web ? namedImports(source, "@bilibili-notify/ui", "UiTextProvider") : new Set();
 	for (const statement of ast.statements) {
 		if (ts.isExportDeclaration(statement) && statement.moduleSpecifier !== undefined) {
 			const specifier = literalKey(statement.moduleSpecifier);
@@ -464,7 +639,10 @@ export function analyzeFile(source, end, sentences) {
 	}
 
 	const i18nNames = localsOf.i18n;
-	const useTNames = localsOf.useT;
+	const useTNames = new Set([...localsOf.useT, ...uiHooks]);
+	const uiTextNames = new Set();
+	const translatorDeclarations = new Map();
+	const defaultNodes = defaultUiTextNodes(source, localsOf.packageText);
 	// 包里的 packageText 与两端的 t 是同一种:只认直接调用
 	const tNames = new Set([...localsOf.t, ...localsOf.packageText]);
 
@@ -487,6 +665,8 @@ export function analyzeFile(source, end, sentences) {
 			isUseTCall(node.initializer)
 		) {
 			tNames.add(node.name.text);
+			translatorDeclarations.set(node.name.text, node);
+			if (uiHooks.has(unwrap(node.initializer).expression.text)) uiTextNames.add(node.name.text);
 			okDeclarations.add(node.name);
 		}
 		ts.forEachChild(node, collectDeclarations);
@@ -526,7 +706,10 @@ export function analyzeFile(source, end, sentences) {
 			report("unrecognised", call, "键不是字面量");
 			return;
 		}
-		const sentence = sentences.get(key);
+		const sentence =
+			uiTextNames.has(call.expression.getText(ast)) && !key.startsWith("ui.")
+				? undefined
+				: sentences.get(key);
 		if (sentence === undefined) {
 			report("unknown-key", call, `译文里没有「${key}」这一句`);
 			return;
@@ -556,8 +739,41 @@ export function analyzeFile(source, end, sentences) {
 		}
 	};
 
+	const isProviderValue = (id) => {
+		const jsx = id.parent,
+			attribute = jsx?.parent,
+			opening = attribute?.parent?.parent;
+		if (
+			!jsx ||
+			!ts.isJsxExpression(jsx) ||
+			jsx.expression !== id ||
+			!attribute ||
+			!ts.isJsxAttribute(attribute) ||
+			attribute.name.getText(ast) !== "t" ||
+			!opening ||
+			!(ts.isJsxOpeningElement(opening) || ts.isJsxSelfClosingElement(opening)) ||
+			!ts.isIdentifier(opening.tagName)
+		)
+			return false;
+		const providerName = opening.tagName.text,
+			declaration = translatorDeclarations.get(id.text);
+		return (
+			providers.has(providerName) &&
+			localDeclarations(ast, providerName).length === 0 &&
+			declaration &&
+			localsOf.useT.has(unwrap(declaration.initializer).expression.text) &&
+			localDeclarations(ast, id.text).length === 1 &&
+			functionOf(declaration) === functionOf(id)
+		);
+	};
 	// 3. 逐个标识符判角色
 	const visit = (node) => {
+		if (
+			ts.isIdentifier(node) &&
+			providers.has(node.text) &&
+			localDeclarations(ast, node.text).includes(node)
+		)
+			report("unrecognised", node, "UiTextProvider 的真实导入被遮蔽");
 		if (ts.isIdentifier(node) && tracked.has(node.text)) classify(node);
 		ts.forEachChild(node, visit);
 	};
@@ -593,6 +809,7 @@ export function analyzeFile(source, end, sentences) {
 			return;
 		}
 		if (ts.isImportSpecifier(p) || (ts.isBindingElement(p) && p.propertyName === id)) return;
+		if (ts.isJsxAttribute(p) && p.name === id) return;
 		if (ts.isTypeReferenceNode(p) || ts.isTypeQueryNode(p)) return;
 		if (isDeclarationName(id)) {
 			if (!okDeclarations.has(id)) {
@@ -606,6 +823,7 @@ export function analyzeFile(source, end, sentences) {
 		}
 		const name = id.text;
 		if (tNames.has(name)) {
+			if (defaultNodes.has(id) || isProviderValue(id)) return;
 			if (ts.isCallExpression(p) && p.expression === id) checkCall(p);
 			else report("unrecognised", id, `${name} 被当值用(传递、赋值或取成员),只认直接调用`);
 			return;
@@ -1272,5 +1490,107 @@ describe("服务端、面板与各包的取字调用", () => {
 	it("两端的译文都读得到、服务端的译文不是空的", () => {
 		expect(loadSentences(ENDS.server).size).toBeGreaterThan(0);
 		expect(() => loadSentences(ENDS.web)).not.toThrow();
+	});
+});
+
+describe("Q6:精确识别 UI 翻译注入", () => {
+	const providerImport = 'import { UiTextProvider as Texts } from "@bilibili-notify/ui";\n';
+	const uiSentences = sentencesOf({
+		"ui.plain": "普通",
+		"ui.greet": "你好 {name}",
+		"a.plain": "其他",
+	});
+	const uiOf = (body, imports = 'import { useUiText as useWords } from "./texts";\n') =>
+		analyzeFile(
+			parseSource("packages/ui/src/sample.tsx", imports + body),
+			ENDS.packages,
+			uiSentences,
+		);
+	const contextImports =
+		'import { packageText as fallback } from "@bilibili-notify/internal/texts"; import { createContext as context, useContext as read } from "react";\n';
+	const shared = `const Words = context(fallback);
+ export function UiTextProvider({ t, children }: any) { return <Words value={t}>{children}</Words>; }
+ export function useUiText() { return read(Words); }`;
+	const contextOf = (body = shared, imports = contextImports, file = "packages/ui/src/texts.tsx") =>
+		analyzeFile(parseSource(file, imports + body), ENDS.packages, uiSentences);
+	it("Q6 Provider:真实具名别名导入的 t 注入才放行", () => {
+		expect(
+			webOf(
+				"export function A() {const t = useT(); return <Texts t={t}>child</Texts>;}",
+				WEB_IMPORT + providerImport,
+			).findings,
+		).toEqual([]);
+		for (const body of [
+			"export function A() {const t = useT(); return <Other t={t}/>;}",
+			"export function A() {const t = useT(); return <Texts other={t}/>;}",
+			"export function A() {const t = useT(); return consume(t);}",
+			"export function A() {const t = useT(); const out=t; return <Texts t={out}/>;}",
+			"export function A(Texts:any) {const t = useT(); return <Texts t={t}/>;}",
+			"export function A() {const t = useT(); return (t:any)=><Texts t={t}/>;}",
+		])
+			expect(codes(webOf(body, WEB_IMPORT + providerImport)), body).toContain("unrecognised");
+		expect(
+			codes(
+				webOf(
+					"export function A() {const t=useT();return <Texts t={t}/>;}",
+					`${WEB_IMPORT}import { UiTextProvider as Texts } from "other";`,
+				),
+			),
+		).toContain("unrecognised");
+	});
+	it("Q6 context:只接受明确入口内 Provider/hook 共享的真实 React context", () => {
+		expect(contextOf().findings).toEqual([]);
+		expect(codes(contextOf(shared.replace("const Words", "let Words")))).toContain("unrecognised");
+		expect(codes(contextOf(shared.replace("read(Words)", "read(Other)")))).toContain(
+			"unrecognised",
+		);
+		expect(codes(contextOf(`${shared} const Other = context(fallback);`))).toContain(
+			"unrecognised",
+		);
+		expect(
+			codes(contextOf(shared, contextImports.replace('from "react"', 'from "other"'))),
+		).toContain("unrecognised");
+		expect(codes(contextOf(`${shared} function f(context:any) {return context;}`))).toContain(
+			"unrecognised",
+		);
+		expect(codes(contextOf(`${shared} function f(Words:any) {return Words;}`))).toContain(
+			"unrecognised",
+		);
+		expect(codes(contextOf(shared, contextImports, "packages/ui/src/other.tsx"))).toContain(
+			"unrecognised",
+		);
+		expect(
+			codes(contextOf(shared.replace("context(fallback)", 'context(fallback("ui.plain"))'))),
+		).toContain("top-level");
+		expect(codes(contextOf(`${shared} const text=fallback("ui.plain");`))).toContain("top-level");
+	});
+	it("Q6 hook:真实入口别名跟踪 ui 键、参数和时机", () => {
+		const fine = uiOf(
+			'export function A() {const say=useWords();return say("ui.greet",{name:"x"});}',
+		);
+		expect(fine.findings).toEqual([]);
+		expect(fine.calls).toBe(1);
+		expect(
+			codes(uiOf('export function A(){const say=useWords();return say("ui.nope");}')),
+		).toContain("unknown-key");
+		expect(
+			codes(uiOf('export function A(){const say=useWords();return say("a.plain");}')),
+		).toContain("unknown-key");
+		expect(
+			codes(uiOf('export function A(){const say=useWords();return say("ui.greet",{wrong:1});}')),
+		).toContain("values");
+		expect(codes(uiOf('const say=useWords();const text=say("ui.plain");'))).toContain("top-level");
+		expect(
+			codes(uiOf('export function A(useWords:any){const say=useWords();return say("ui.plain");}')),
+		).toContain("unrecognised");
+		expect(
+			codes(uiOf('export function A(){const say=useWords();return (say:any)=>say("ui.plain");}')),
+		).toContain("unrecognised");
+		expect(
+			uiOf(
+				'export function A(){const say=useWords();return say("ui.nope");}',
+				'import { useUiText as useWords } from "./unrelated";',
+			).calls,
+		).toBe(0);
 	});
 });

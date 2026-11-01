@@ -1,8 +1,10 @@
 import { Icon, Input, ToneChip } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TSelect } from "../components/forms";
 import { LOG_LEVEL_TONE, LOG_LEVEL_TONE_CONSOLE } from "../config/log-levels";
 import { useLogChannel } from "../hooks/useLogChannel";
+import { useT } from "../i18n";
 import { api, apiErrorOf } from "../services/api";
 import {
 	type LogLineLevel,
@@ -69,6 +71,7 @@ function todayStr(): string {
 }
 
 export default function Logs() {
+	const t = useT();
 	useLogChannel();
 
 	const [day, setDay] = useState<string>(""); // "" = 实时(live key);否则某天
@@ -155,19 +158,15 @@ export default function Logs() {
 					))}
 				</div>
 
-				<select
+				<TSelect
+					ariaLabel={t("logs.source.label")}
 					value={source}
-					onChange={(e) => setSource(e.target.value)}
-					data-bn="input"
-					className="rounded-lg border border-bn-border bg-bn-field px-2.5 py-1.5 text-bn-sm text-bn-text-secondary"
-				>
-					<option value="">全部来源</option>
-					{sources.map((s) => (
-						<option key={s} value={s}>
-							{s}
-						</option>
-					))}
-				</select>
+					onChange={setSource}
+					options={[
+						{ value: "", label: t("logs.source.all") },
+						...sources.map((s) => ({ value: s, label: s })),
+					]}
+				/>
 
 				<div className="flex-1" />
 

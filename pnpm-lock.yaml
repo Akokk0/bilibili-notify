@@ -640,6 +640,10 @@ importers:
         version: link:../internal
 
   packages/ui:
+    dependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:*
+        version: link:../internal
     devDependencies:
       '@testing-library/dom':
         specifier: 'catalog:'

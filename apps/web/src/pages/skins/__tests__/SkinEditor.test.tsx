@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 
 /**
  * 皮肤编辑抽屉:挂载即借 preview 通道做整页实时预览(editing 标记压住试穿浮条),
@@ -197,11 +198,11 @@ describe("SkinEditor", () => {
 
 	it("壁纸下拉列出包内资产;选「(不用壁纸)」→ wallpaper 从 draft 消失", async () => {
 		renderEditor();
-		const select = screen.getByLabelText("壁纸图片") as HTMLSelectElement;
-		const options = [...select.options].map((o) => o.textContent);
+		const select = screen.getByRole("combobox", { name: "壁纸图片" }) as HTMLButtonElement;
+		const options = selectOptionsOf(select).map((o) => o.textContent);
 		expect(options).toContain("assets/bg.png");
 		expect(options).toContain("assets/deco.webp");
-		fireEvent.change(select, { target: { value: "" } });
+		chooseSelect(select, "(不用壁纸)");
 		await waitFor(() =>
 			expect(useSkinStore.getState().preview?.manifest.modes.light?.wallpaper).toBeUndefined(),
 		);
@@ -382,8 +383,8 @@ describe("SkinEditor", () => {
 
 	it("壁纸下拉**不列字体** —— 资产清单是图与字体的全集,不分流就会选出个 woff2 当壁纸", async () => {
 		renderEditor();
-		const options = [...(screen.getByLabelText("壁纸图片") as HTMLSelectElement).options].map(
-			(o) => o.value,
+		const options = selectOptionsOf(screen.getByRole("combobox", { name: "壁纸图片" })).map(
+			(o) => o.textContent,
 		);
 		expect(options).not.toContain("assets/font-a1b2c3d4.woff2");
 	});
@@ -391,18 +392,18 @@ describe("SkinEditor", () => {
 	it("自带字体下拉列出包内字体;选中 → draft.fonts.asset,选「不用」→ 字段消失", async () => {
 		renderEditor();
 		openFontFold();
-		const select = screen.getByLabelText("自带字体") as HTMLSelectElement;
-		expect([...select.options].map((o) => o.value)).toContain("assets/font-a1b2c3d4.woff2");
+		const select = screen.getByRole("combobox", { name: "自带字体" }) as HTMLButtonElement;
+		expect(selectOptionsOf(select).map((o) => o.textContent)).toContain("霞鹜文楷 Light.woff2");
 		// 图不许混进来:选了图当字体,保存时才被服务端拒收,而主人已经调了半天。
-		expect([...select.options].map((o) => o.value)).not.toContain("assets/bg.png");
+		expect(selectOptionsOf(select).map((o) => o.textContent)).not.toContain("assets/bg.png");
 
-		fireEvent.change(select, { target: { value: "assets/font-a1b2c3d4.woff2" } });
+		chooseSelect(select, "霞鹜文楷 Light.woff2");
 		await waitFor(() =>
 			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBe(
 				"assets/font-a1b2c3d4.woff2",
 			),
 		);
-		fireEvent.change(screen.getByLabelText("自带字体"), { target: { value: "" } });
+		chooseSelect(screen.getByRole("combobox", { name: "自带字体" }), "(不用自带字体)");
 		await waitFor(() =>
 			expect(useSkinStore.getState().preview?.manifest.modes.light?.fonts?.asset).toBeUndefined(),
 		);
@@ -413,13 +414,13 @@ describe("SkinEditor", () => {
 		// 必须把原名端出来 —— 否则主人看到的只有一串认不出的 font-a1b2c3d4。
 		renderEditor();
 		openFontFold();
-		const font = [...(screen.getByLabelText("自带字体") as HTMLSelectElement).options];
-		expect(font.find((o) => o.value === "assets/font-a1b2c3d4.woff2")?.textContent).toBe(
+		const font = selectOptionsOf(screen.getByRole("combobox", { name: "自带字体" }));
+		expect(font.find((o) => o.textContent === "霞鹜文楷 Light.woff2")?.textContent).toBe(
 			"霞鹜文楷 Light.woff2",
 		);
 
-		const image = [...(screen.getByLabelText("壁纸图片") as HTMLSelectElement).options];
-		expect(image.find((o) => o.value === "assets/bg.png")?.textContent).toBe("assets/bg.png");
+		const image = selectOptionsOf(screen.getByRole("combobox", { name: "壁纸图片" }));
+		expect(image.find((o) => o.textContent === "assets/bg.png")?.textContent).toBe("assets/bg.png");
 	});
 
 	it("传完之后下拉上立刻是刚传那个文件的名字,不用等重开抽屉", async () => {
@@ -429,8 +430,8 @@ describe("SkinEditor", () => {
 			target: { files: [new File([new Uint8Array([1])], "思源宋体.woff2", { type: "" })] },
 		});
 		await waitFor(() => {
-			const opts = [...(screen.getByLabelText("自带字体") as HTMLSelectElement).options];
-			expect(opts.find((o) => o.value === "assets/font-99887766.woff2")?.textContent).toBe(
+			const opts = selectOptionsOf(screen.getByRole("combobox", { name: "自带字体" }));
+			expect(opts.find((o) => o.textContent === "思源宋体.woff2")?.textContent).toBe(
 				"思源宋体.woff2",
 			);
 		});
@@ -555,8 +556,8 @@ describe("SkinEditor", () => {
 				"assets/img-abcd1234.png",
 			),
 		);
-		const options = within(screen.getByLabelText("壁纸图片")).getAllByRole("option");
-		expect(options.map((o) => o.getAttribute("value"))).toContain("assets/img-abcd1234.png");
+		const options = selectOptionsOf(screen.getByRole("combobox", { name: "壁纸图片" }));
+		expect(options.map((o) => o.textContent)).toContain("rem.png");
 	});
 
 	it("上传那几秒里改的字段不许被回滚 —— 传完只是补个 image,不是把整段按回去", async () => {
@@ -602,7 +603,7 @@ describe("SkinEditor", () => {
 			),
 		);
 		// 聊天壁纸选包内资产 → chat.wallpaper.image 落 draft
-		fireEvent.change(screen.getByLabelText("聊天壁纸"), { target: { value: "assets/deco.webp" } });
+		chooseSelect(screen.getByRole("combobox", { name: "聊天壁纸" }), "assets/deco.webp");
 		await waitFor(() =>
 			expect(useSkinStore.getState().preview?.manifest.modes.light?.chat?.wallpaper?.image).toBe(
 				"assets/deco.webp",

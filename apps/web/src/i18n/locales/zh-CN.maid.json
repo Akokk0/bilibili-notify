@@ -130,5 +130,13 @@
 	"aiSettings.page.personas.currentEmphasis": "平时用的就是这一份",
 	"aiSettings.page.personas.currentSuffix": "。主人改哪个字段都立刻算数喔。",
 	"aiSettings.page.models.defaultHint": "女仆平时用的就是这份",
-	"aiSettings.page.personas.defaultHint": "女仆平时用的就是这份"
+	"aiSettings.page.personas.defaultHint": "女仆平时用的就是这份",
+	"skins.select.noFont": "不用自带字体啦",
+	"skins.select.noWallpaper": "不用壁纸啦",
+	"stats.push.loadingTargets": "正在读取推送目标哦，主人…",
+	"stats.push.noTargets": "还没有启用的推送目标哦，主人",
+	"stats.push.sending": "正在替主人推送…",
+	"stats.push.send": "推送吧",
+	"stats.push.failed": "推送没成功哦，主人：{error}",
+	"stats.push.sent": "✓ 已替主人推送（{mode}）"
 }

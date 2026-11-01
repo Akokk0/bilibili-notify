@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 
 /**
  * ArrayEditor / QuietHoursEditor 的刻画测试。
@@ -10,9 +11,11 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { ArrayEditor, QuietHoursEditor } from "../forms";
 
+beforeEach(() => i18n.set({ locale: "zh-CN", voice: "maid" }));
 afterEach(cleanup);
 
 describe("ArrayEditor", () => {
@@ -29,7 +32,7 @@ describe("ArrayEditor", () => {
 	it("移除只删掉那一行", () => {
 		const onChange = vi.fn();
 		render(<ArrayEditor value={["a", "b", "c"]} onChange={onChange} />);
-		const removes = screen.getAllByRole("button", { name: "移除" });
+		const removes = screen.getAllByRole("button", { name: /移除/ });
 		expect(removes).toHaveLength(3);
 		fireEvent.click(removes[1]);
 		expect(onChange).toHaveBeenCalledWith(["a", "c"]);
@@ -60,13 +63,13 @@ describe("两个行编辑器的行内装饰保持同一份", () => {
 	it("移除钮与添加钮的样式两处逐字一致", () => {
 		const { unmount } = render(<ArrayEditor value={["a"]} onChange={() => {}} />);
 		const arr = {
-			remove: screen.getByRole("button", { name: "移除" }).className,
+			remove: screen.getByRole("button", { name: /移除/ }).className,
 			add: screen.getByRole("button", { name: /添加一行/ }).className,
 			index: screen.getByText("1").className,
 		};
 		unmount();
 		render(<QuietHoursEditor value={[{ start: 23, end: 7 }]} onChange={() => {}} />);
-		expect(screen.getByRole("button", { name: "移除" }).className).toBe(arr.remove);
+		expect(screen.getByRole("button", { name: /移除/ }).className).toBe(arr.remove);
 		expect(screen.getByRole("button", { name: /添加免扰时段/ }).className).toBe(arr.add);
 		expect(screen.getByText("1").className).toBe(arr.index);
 	});
@@ -75,12 +78,12 @@ describe("两个行编辑器的行内装饰保持同一份", () => {
 describe("QuietHoursEditor", () => {
 	it("每行两个整点下拉,各 24 项", () => {
 		render(<QuietHoursEditor value={[{ start: 23, end: 7 }]} onChange={() => {}} />);
-		const selects = screen.getAllByRole("combobox") as HTMLSelectElement[];
+		const selects = screen.getAllByRole("combobox") as HTMLButtonElement[];
 		expect(selects).toHaveLength(2);
-		expect(selects[0].options).toHaveLength(24);
-		expect(selects[0].options[0].textContent).toBe("00:00");
-		expect(selects[0].value).toBe("23");
-		expect(selects[1].value).toBe("7");
+		expect(selectOptionsOf(selects[0])).toHaveLength(24);
+		expect(selectOptionsOf(selects[0])[0].textContent).toBe("00:00");
+		expect(selects[0].textContent).toBe("23:00");
+		expect(selects[1].textContent).toBe("07:00");
 	});
 
 	it("start > end 标为跨次日,start === end 标为区间为空", () => {
@@ -93,8 +96,8 @@ describe("QuietHoursEditor", () => {
 				onChange={() => {}}
 			/>,
 		);
-		expect(screen.getByText("(跨次日)")).toBeTruthy();
-		expect(screen.getByText("区间为空")).toBeTruthy();
+		expect(screen.getByText("(到次日哦)")).toBeTruthy();
+		expect(screen.getByText("这段时间为空哦，主人")).toBeTruthy();
 	});
 
 	it("改起点只动那一行的 start", () => {
@@ -109,7 +112,7 @@ describe("QuietHoursEditor", () => {
 			/>,
 		);
 		const selects = screen.getAllByRole("combobox");
-		fireEvent.change(selects[2], { target: { value: "9" } });
+		chooseSelect(selects[2], "09:00");
 		expect(onChange).toHaveBeenCalledWith([
 			{ start: 23, end: 7 },
 			{ start: 9, end: 2 },
@@ -127,7 +130,7 @@ describe("QuietHoursEditor", () => {
 				onChange={onChange}
 			/>,
 		);
-		fireEvent.click(screen.getAllByRole("button", { name: "移除" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: /移除/ })[0]);
 		expect(onChange).toHaveBeenLastCalledWith([{ start: 1, end: 2 }]);
 		fireEvent.click(screen.getByRole("button", { name: /添加免扰时段/ }));
 		expect(onChange).toHaveBeenLastCalledWith([

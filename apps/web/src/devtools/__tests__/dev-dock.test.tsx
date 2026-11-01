@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 /**
  * DevDock —— devtools 在面板里的那一整套:探 `/api/dev`(404 = 不是开发版,整个不出现)、
  * 左下角药丸、底边面板、按 schema 画参数、跑一个、看「当前生效」、收摊。
@@ -119,7 +120,7 @@ describe("DevDock", () => {
 		await user.click(screen.getByRole("button", { name: /^状态/ }));
 		expect(screen.getByText("更新状态")).toBeTruthy();
 
-		await user.selectOptions(screen.getByRole("combobox", { name: "相位" }), "ready");
+		chooseSelect(screen.getByRole("combobox", { name: "相位" }), "已就绪");
 		// 跑完会把所有查询作废,`/api/dev` 也会再拉一次 —— 服务端那时报的生效表就是注入后的;
 		// 跟着补做的那次更新检查拉的是 `/api/system/update`,给它一份注入后的状态。
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
@@ -354,9 +355,9 @@ describe("DevDock", () => {
 		await user.click(await screen.findByRole("button", { name: "devtools" }));
 		await user.click(screen.getByRole("button", { name: /^事件/ }));
 
-		const sub = (await screen.findByRole("combobox", { name: "订阅" })) as HTMLSelectElement;
-		await waitFor(() => expect(sub.options.length).toBe(5));
-		expect([...sub.options].map((o) => o.textContent)).toEqual([
+		const sub = (await screen.findByRole("combobox", { name: "订阅" })) as HTMLButtonElement;
+		await waitFor(() => expect(selectOptionsOf(sub).length).toBe(5));
+		expect(selectOptionsOf(sub).map((o) => o.textContent)).toEqual([
 			"（服务端默认）",
 			"甲 · 100",
 			"200 · 200（停用）",
@@ -364,14 +365,14 @@ describe("DevDock", () => {
 			"甲 · 100",
 		]);
 		expect(
-			[
-				...((await screen.findByRole("combobox", { name: "目标" })) as HTMLSelectElement).options,
-			].map((o) => o.textContent),
+			selectOptionsOf(await screen.findByRole("combobox", { name: "目标" })).map(
+				(o) => o.textContent,
+			),
 		).toEqual(["（服务端默认）", "测试群"]);
 		expect(
-			[
-				...((await screen.findByRole("combobox", { name: "连接" })) as HTMLSelectElement).options,
-			].map((o) => o.textContent),
+			selectOptionsOf(await screen.findByRole("combobox", { name: "连接" })).map(
+				(o) => o.textContent,
+			),
 		).toEqual(["（服务端默认）", "家里的 NapCat"]);
 
 		// 留空全部不带;选了才带。
@@ -379,7 +380,7 @@ describe("DevDock", () => {
 		await waitFor(() =>
 			expect(api.post).toHaveBeenCalledWith("/api/dev/run/core.live.repush-now", { params: {} }),
 		);
-		await user.selectOptions(sub, "s3");
+		chooseSelect(sub, "乙 · x1");
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/core.live.repush-now", {
@@ -411,18 +412,18 @@ describe("DevDock", () => {
 		await user.click(await screen.findByRole("button", { name: "devtools" }));
 		await user.click(screen.getByRole("button", { name: /^事件/ }));
 
-		const creator = (await screen.findByRole("combobox", { name: "UP主" })) as HTMLSelectElement;
-		await waitFor(() => expect(creator.options.length).toBe(2));
-		expect([...creator.options].map((o) => [o.value, o.textContent])).toEqual([
-			["", "（服务端默认）"],
-			["100", "甲 · 100"],
+		const creator = (await screen.findByRole("combobox", { name: "UP主" })) as HTMLButtonElement;
+		await waitFor(() => expect(selectOptionsOf(creator).length).toBe(2));
+		expect(selectOptionsOf(creator).map((o) => o.textContent)).toEqual([
+			"（服务端默认）",
+			"甲 · 100",
 		]);
 
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenCalledWith("/api/dev/run/bilibili.live.start", { params: {} }),
 		);
-		await user.selectOptions(creator, "100");
+		chooseSelect(creator, "甲 · 100");
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
 			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/bilibili.live.start", {

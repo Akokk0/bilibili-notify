@@ -511,14 +511,17 @@ export function AddFileButton({
  * 写了、danger 只有右键菜单写了 —— 收成一份之后这两种态对所有菜单都在。
  *
  * **刻意不挂 `data-bn="btn"`**:皮肤给按钮写的实底落到每一行菜单上会很难看,而
- * 挂点词表里没有 `menu-item` 这一档。浮层本体自己挂了 `glass-strong`,皮肤能改
- * 的是那层。给菜单行开新挂点是产品决定,不该顺手塞进重构里。
+ * 菜单行走现有 option / option-active,浮层本体挂 glass-strong。
+ * role=option 时 id/tabIndex/ariaSelected 供 TSelect 的 active-descendant 使用。
  */
 
-type MenuItemRole = "menuitem" | undefined;
+type MenuItemRole = "menuitem" | "option" | undefined;
 
 export interface MenuItemProps {
 	children: ReactNode;
+	id?: string;
+	tabIndex?: number;
+	ariaSelected?: boolean;
 	/** 行首图标。**不给就不留空槽** —— 留了的话没图标那几行的文字会莫名缩进。 */
 	icon?: ReactNode;
 	onClick?: MouseEventHandler<HTMLButtonElement>;
@@ -527,7 +530,7 @@ export interface MenuItemProps {
 	/** 销毁性动作,整行连图标一起转红。 */
 	danger?: boolean;
 	disabled?: boolean;
-	/** 容器真的是 `role="menu"` 时传 `"menuitem"`,否则留空走默认的 button。 */
+	/** menu 容器传 menuitem,listbox 候选传 option;否则留空走默认 button。 */
 	role?: MenuItemRole;
 	/**
 	 * 行内有副标题时**必须给** —— 读屏器默认把整行的文字连起来念,「浅色」加上
@@ -538,6 +541,9 @@ export interface MenuItemProps {
 
 export function MenuItem({
 	children,
+	id,
+	tabIndex,
+	ariaSelected,
 	icon,
 	onClick,
 	active = false,
@@ -555,6 +561,11 @@ export function MenuItem({
 		<button
 			type="button"
 			role={role}
+			id={id}
+			tabIndex={tabIndex}
+			{...(role === "option"
+				? { "aria-selected": ariaSelected, "aria-disabled": disabled || undefined }
+				: {})}
 			aria-label={ariaLabel}
 			onClick={onClick}
 			disabled={disabled}

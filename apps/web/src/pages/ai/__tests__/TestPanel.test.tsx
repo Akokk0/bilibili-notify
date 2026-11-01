@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 
 /**
  * 智能女仆「试一句」面板。
@@ -70,9 +71,11 @@ describe("AI 试一句面板", () => {
 		});
 
 		renderPanel();
-		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(TARGETS.length));
+		await waitFor(() =>
+			expect(selectOptionsOf(screen.getByRole("combobox"))).toHaveLength(TARGETS.length),
+		);
 
-		fireEvent.change(screen.getByRole("combobox"), { target: { value: TARGETS[1]?.id } });
+		chooseSelect(screen.getByRole("combobox"), "订阅群");
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "今天过得怎么样?" } });
 		fireEvent.click(screen.getByRole("button", { name: /试一句/ }));
 
@@ -100,8 +103,10 @@ describe("AI 试一句面板", () => {
 
 	async function sendOnce() {
 		renderPanel();
-		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(TARGETS.length));
-		fireEvent.change(screen.getByRole("combobox"), { target: { value: TARGETS[0]?.id } });
+		await waitFor(() =>
+			expect(selectOptionsOf(screen.getByRole("combobox"))).toHaveLength(TARGETS.length),
+		);
+		chooseSelect(screen.getByRole("combobox"), "我的私聊");
 		fireEvent.change(screen.getByRole("textbox"), { target: { value: "在吗?" } });
 		fireEvent.click(screen.getByRole("button", { name: /试一句/ }));
 	}
@@ -145,7 +150,9 @@ describe("AI 试一句面板", () => {
 		vi.mocked(api.get).mockResolvedValue(TARGETS);
 
 		renderPanel();
-		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(TARGETS.length));
+		await waitFor(() =>
+			expect(selectOptionsOf(screen.getByRole("combobox"))).toHaveLength(TARGETS.length),
+		);
 
 		// 目标默认选了第一个,但话是空的 → 仍然不能发。
 		const btn = screen.getByRole("button", { name: /试一句/ }) as HTMLButtonElement;

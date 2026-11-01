@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 /**
  * 锐评这几块面板读失败的方式(ADR-0026):
  *
@@ -107,7 +108,7 @@ describe("RoastPushBox —— 推送锐评", () => {
 	async function pushOnce() {
 		vi.mocked(api.get).mockResolvedValue([TARGET]);
 		withQuery(<RoastPushBox days={7} label="可推送短评" text="短评" payload={payload} />);
-		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+		await screen.findByRole("combobox");
 		fireEvent.click(screen.getByRole("button", { name: "推送" }));
 	}
 
@@ -133,6 +134,41 @@ describe("RoastPushBox —— 推送锐评", () => {
 		await pushOnce();
 		expect(await screen.findByText(/已推送（文字）/)).toBeTruthy();
 	});
+});
+
+it("changing roast target clears a previous delivery result and sends the selected id", async () => {
+	const second = { ...TARGET, id: "22222222-2222-4222-8222-222222222222", name: "Second" };
+	vi.mocked(api.get).mockImplementation(async (p) =>
+		p === "/api/targets"
+			? [TARGET, second, { ...TARGET, id: "off", name: "Off", enabled: false }]
+			: [],
+	);
+	vi.mocked(api.post).mockResolvedValue({ ok: true, mode: "text" });
+	withQuery(
+		<RoastPushBox
+			days={7}
+			label="Report"
+			text="Report text"
+			payload={{
+				kind: "solo",
+				result: { subscriptionId: "s1", verdict: "v", score: 1, highlights: [], pushText: "text" },
+			}}
+		/>,
+	);
+	await screen.findByRole("combobox");
+	selectOptionsOf(screen.getByRole("combobox"));
+	expect(screen.queryByRole("option", { name: "Off" })).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "推送" }));
+	await screen.findByText(/已推送/);
+	chooseSelect(screen.getByRole("combobox"), "Second");
+	expect(screen.queryByText(/已推送/)).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "推送" }));
+	await waitFor(() =>
+		expect(api.post).toHaveBeenLastCalledWith(
+			"/api/stats/roast/push",
+			expect.objectContaining({ targetId: second.id }),
+		),
+	);
 });
 
 describe("RoastRunNowBox —— 「试一次」", () => {

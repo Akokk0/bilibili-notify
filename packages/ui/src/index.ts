@@ -24,5 +24,6 @@ export * from "./qr-panel";
 export * from "./secret-cell";
 export * from "./section-nav";
 export * from "./tab-bar";
+export { type UiText, type UiTextKey, UiTextProvider } from "./texts";
 export * from "./toast";
 export * from "./tri-state";
