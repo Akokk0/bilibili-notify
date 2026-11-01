@@ -9,6 +9,11 @@
  * 「不给填」可以,「忘了给」不行,差别就在有没有人写下那句话。
  */
 
+import type {
+	NewConnection,
+	OnebotConnectionSettings,
+	OnebotTransport,
+} from "@bilibili-notify/internal";
 import {
 	OnebotHttpSettingsSchema,
 	OnebotWsReverseSettingsSchema,
@@ -17,14 +22,11 @@ import {
 	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { connectionFields } from "../connection-fields";
 import {
+	connectionFields,
 	makeEmptyConnection,
-	type NewConnection,
-	type OnebotConnectionSettings,
-	type OnebotTransport,
 	switchOnebotTransport,
-} from "../domain";
+} from "./connection-fixtures";
 
 /** 只要 `.shape` 这一格 —— web 不依赖 zod,别把它的类型拖进来。 */
 type ShapeCarrier = { shape: Record<string, unknown> };
@@ -38,7 +40,7 @@ const HIDDEN: Record<string, string> = {
 
 function codesOf(connection: NewConnection): string[] {
 	return connectionFields(connection)
-		.map((f) => (f.kind === "qq-bind" || f.kind === "ws-reverse-address" ? "" : f.code))
+		.map((f) => (f.kind === "listener-address" ? "" : f.code))
 		.filter(Boolean)
 		.map((code) => code.replace(/^settings\./, ""));
 }
@@ -93,15 +95,6 @@ describe("字段表覆盖 settings schema", () => {
 	it.each(CASES)("$name:没有多出来的栏 —— 表里的键 schema 得认得", ({ connection, schema }) => {
 		const keys = new Set(keysOf(schema));
 		expect(codesOf(connection).filter((code) => !keys.has(code))).toEqual([]);
-	});
-});
-
-describe("扫码行", () => {
-	it("qq-bind 一格带着这条连接的 adapterKey(扫码的路径靠它拼)", () => {
-		const connection = makeEmptyConnection("qq-official", "qq");
-		const bind = connectionFields(connection).find((f) => f.kind === "qq-bind");
-		expect(bind).toMatchObject({ kind: "qq-bind", adapterKey: connection.adapterKey });
-		expect(connection.adapterKey).toBeTruthy();
 	});
 });
 

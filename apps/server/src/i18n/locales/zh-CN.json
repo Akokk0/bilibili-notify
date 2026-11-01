@@ -469,5 +469,20 @@
 	"extension.manifest.invalidJson": "{file} 不是合法 JSON：{detail}",
 	"extension.manifest.invalid": "{file} 不合法 —— {detail}",
 	"extension.manifest.idMismatch": "清单里的 id 是 {claimed}，与目录名 {id} 对不上",
-	"extension.manifest.missingEntry": "少了入口文件 {file}"
+	"extension.manifest.missingEntry": "少了入口文件 {file}",
+	"qqOfficial.auth.description": "手机 QQ 扫码，在腾讯页面中选择已有机器人或创建机器人，每个 QQ 号最多 5 个。",
+	"qqOfficial.auth.warning": "此通道创建的机器人仅支持创建者私聊与创建者当群主的群，以腾讯当前政策为准。需要更宽的能力时，请手动填写正式注册的机器人凭据。",
+	"qqBind.message.text1": "绑定密钥长度异常(非 32 字节)",
+	"qqBind.message.text2": "凭证密文格式异常(容不下 nonce+tag)",
+	"qqBind.message.text3": "QQ 绑定接口 HTTP {value0}",
+	"qqBind.message.text4": "QQ 绑定接口 retcode {value0}",
+	"qqBind.message.text5": "QQ 绑定任务响应缺少 task_id",
+	"qqBind.message.text6": "扫码成功但腾讯未返回完整机器人凭据",
+	"qqBind.message.text7": "机器人凭据解密失败:{value0}",
+	"qqBind.message.text9": "发起绑定失败",
+	"qqBind.message.text10": "绑定任务不存在或已过期",
+	"qqBind.message.text12": "查询绑定结果失败",
+	"qqBind.message.text13": "二维码已过期，请重新生成",
+	"qqBind.message.text14": "还没扫码完成，没有可取的结果",
+	"qqBind.message.text15": "这次扫码没有成功，没有可取的结果"
 }

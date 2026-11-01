@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 /**
  * 从推送目标页的「新建连接」建一条拓展连接 —— **挑一个 bot**(ADR-0012 决策 45)。
  *
@@ -32,13 +36,17 @@ const BRIDGE: ExtensionsResponse["extensions"][number] = {
 	state: "running",
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
-	push: {
+};
+const BRIDGE_ADAPTER = {
+	key: "bridge",
+	descriptor: {
 		label: "机器人框架桥接",
 		shortLabel: "桥接",
 		color: "#a855f7",
 		// 桥的连接配置项是空的:连接是挑出来的,没有一栏是人填的。
 		settingsFields: [],
 	},
+	has: { connectionAuth: false, listAddressCandidates: false },
 };
 
 const ICON = "data:image/png;base64,QUJD";
@@ -77,6 +85,9 @@ const EXISTING = {
 function renderPage(opts: { bots?: unknown; connections?: unknown[] } = {}) {
 	const bots = "bots" in opts ? opts.bots : { candidates: BOTS };
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: [...builtinAdapters, BRIDGE_ADAPTER] };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/ext") return { extensions: [BRIDGE] };
 		if (url === "/api/connections") return opts.connections ?? [];
 		if (url === "/api/adapters/bridge/candidates") {
@@ -88,7 +99,7 @@ function renderPage(opts: { bots?: unknown; connections?: unknown[] } = {}) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const invalidate = vi.spyOn(qc, "invalidateQueries");
 	render(
-		<PlatformMetaProvider value={buildPlatformTable([BRIDGE])}>
+		<PlatformMetaProvider value={buildPlatformTable([BRIDGE_ADAPTER])}>
 			<QueryClientProvider client={qc}>
 				<Targets />
 			</QueryClientProvider>
@@ -139,6 +150,9 @@ describe("新建连接里的拓展那一档", () => {
 	 */
 	it("没跑起来、也没交 push 的不出现", async () => {
 		vi.mocked(api.get).mockImplementation(async (url: string) => {
+			if (url === "/api/adapters") return { adapters: [...builtinAdapters, BRIDGE_ADAPTER] };
+			const candidates = builtinCandidatesResponse(url);
+			if (candidates) return candidates;
 			if (url === "/api/ext") {
 				return {
 					extensions: [
@@ -178,7 +192,7 @@ describe("新建连接里的拓展那一档", () => {
 		expect(
 			(within(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled,
 		).toBe(true);
-		expect(dialog.textContent).toMatch(/先挑一个 bot/);
+		expect(dialog.textContent).toMatch(/先挑一个连接候选/);
 	});
 
 	/**
@@ -211,7 +225,7 @@ describe("新建连接里的拓展那一档", () => {
 	it("挑中一个:显示名补成它的名字,存下去的连接带它的平台、settings 原样", async () => {
 		const dialog = await openNewConnection();
 		fireEvent.click(await within(dialog).findByRole("button", { name: /小电视/ }));
-		expect((within(dialog).getByPlaceholderText(/NapCat/) as HTMLInputElement).value).toBe(
+		expect((within(dialog).getByPlaceholderText(/家里的机器人/) as HTMLInputElement).value).toBe(
 			"小电视",
 		);
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -229,11 +243,11 @@ describe("新建连接里的拓展那一档", () => {
 
 	it("主人自己填了名字就不盖掉", async () => {
 		const dialog = await openNewConnection();
-		fireEvent.change(within(dialog).getByPlaceholderText(/NapCat/), {
+		fireEvent.change(within(dialog).getByPlaceholderText(/家里的机器人/), {
 			target: { value: "电报那台" },
 		});
 		fireEvent.click(await within(dialog).findByRole("button", { name: /小电视/ }));
-		expect((within(dialog).getByPlaceholderText(/NapCat/) as HTMLInputElement).value).toBe(
+		expect((within(dialog).getByPlaceholderText(/家里的机器人/) as HTMLInputElement).value).toBe(
 			"电报那台",
 		);
 	});
@@ -254,12 +268,12 @@ describe("新建连接里的拓展那一档", () => {
 
 	it("桥没连上(一个 bot 都没有)要说出来,不是一片空白", async () => {
 		const dialog = await openNewConnection({ bots: { candidates: [] } });
-		expect(await within(dialog).findByText(/一个 bot 都没有/)).toBeTruthy();
+		expect(await within(dialog).findByText(/暂时没有连接候选/)).toBeTruthy();
 	});
 
 	it("拓展没跑起来(问不到 bot)也要说出来", async () => {
 		const dialog = await openNewConnection({ bots: null });
-		expect(await within(dialog).findByText(/没跑起来/)).toBeTruthy();
+		expect(await within(dialog).findByText(/暂时读不到连接候选/)).toBeTruthy();
 	});
 
 	/** 改一条已有的:它现在绑的那个高亮;桥没连着、名单里没它时也要画出来,别像没绑过。 */
@@ -279,8 +293,8 @@ describe("新建连接里的拓展那一档", () => {
 		renderPage({ bots: { candidates: [] }, connections: [EXISTING] });
 		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
 		const dialog2 = await screen.findByRole("dialog");
-		expect(await within(dialog2).findByText(/现在绑着的那个/)).toBeTruthy();
-		expect(dialog2.textContent).toMatch(/不在线/);
+		expect(await within(dialog2).findByText(/^当前连接$/)).toBeTruthy();
+		expect(dialog2.textContent).toMatch(/当前设置与候选不同/);
 	});
 
 	/**

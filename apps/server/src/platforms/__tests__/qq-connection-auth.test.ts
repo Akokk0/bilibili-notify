@@ -297,13 +297,16 @@ describe("createQQConnectionAuth.takeDraft", () => {
 		expect(await auth.takeDraft(b.taskId)).toMatchObject({ ok: false, code: "conflict" });
 	});
 
-	it("成功:settings 恰好是 appId + appSecret,并上默认值过得了 schema;再取一次 not_found;再问状态也 not_found", async () => {
+	it("成功:settings 带完整扫码草稿,覆盖私域与沙箱,并上默认值过得了 schema;再取一次 not_found;再问状态也 not_found", async () => {
 		const { auth } = make();
 		const b = await begun(auth);
 		up.state.pollQueue.push(up.createdResponse);
 		await auth.state(b.taskId, signal());
 		const d = await auth.takeDraft(b.taskId);
-		expect(d).toEqual({ ok: true, settings: { appId: APP_ID, appSecret: SECRET } });
+		expect(d).toEqual({
+			ok: true,
+			settings: { appId: APP_ID, appSecret: SECRET, botType: "public", sandbox: false },
+		});
 		if (d.ok) {
 			expect(
 				QQOfficialConnectionSettingsSchema.safeParse({

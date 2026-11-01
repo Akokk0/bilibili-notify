@@ -138,7 +138,17 @@ export function manifestPushView(manifest: ExtensionManifest):
 	  })
 	| undefined {
 	const push = manifest.contributes.push;
-	return push && { ...push, settingsFields: push.settingsFields ?? [] };
+	return (
+		push && {
+			...push,
+			...(push.icon
+				? {}
+				: manifest.icon
+					? { icon: `data:image/svg+xml;base64,${Buffer.from(manifest.icon).toString("base64")}` }
+					: {}),
+			settingsFields: push.settingsFields ?? [],
+		}
+	);
 }
 
 /** 宿主这边握着的把手 —— 拓展拿不到它,所以拓展没法把自己从卸载里摘出去。 */

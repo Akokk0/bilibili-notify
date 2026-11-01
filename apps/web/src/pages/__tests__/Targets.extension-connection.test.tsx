@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 /**
  * 拓展提供的连接(桥借来的一个 bot)上建推送目标。
  *
@@ -42,6 +46,9 @@ const CONNECTION = {
 
 function renderPage() {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return [CONNECTION];
 		if (url === "/api/targets") return [];
 		return [];
@@ -87,9 +94,12 @@ describe("拓展连接上建目标", () => {
 			target: { value: "电报群" },
 		});
 		// telegram 的会话地址(认不出的平台走通用称呼)
-		fireEvent.change(within(dialog).getByPlaceholderText(/的 id/), {
-			target: { value: "-1001234567890" },
-		});
+		fireEvent.change(
+			dialog.querySelector('[data-code="target.address"] input') as HTMLInputElement,
+			{
+				target: { value: "-1001234567890" },
+			},
+		);
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 		await waitFor(() => expect(api.post).toHaveBeenCalled());
 		const [url, body] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];

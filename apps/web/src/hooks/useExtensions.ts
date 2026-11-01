@@ -1,31 +1,25 @@
 /**
- * `/api/ext` —— 装了哪些拓展。
- *
- * 四处要这张表(拓展页、拓展详情页、推送目标页的「新建连接」那一排、平台注册表),
- * 而它们共用 `["extensions"]` 这个 key **是承重的**:装完一个拓展只 invalidate 一次,
- * 四处就都跟着换了脸。各起各的 `useQuery` 时那个 key 是靠手抄对齐的,抄错一处的症状
- * 是「装好了但那一页还是旧的」—— 类型、测试、构建全绿。
- *
- * 单个拓展的状态 / 设置 / bot 名单、拓展市场那几个键也住这儿,理由相同:读的那处与失效的那几处
- * (包括 WS 那条 `useStateChannel`)都从这儿取。放在 hooks 而不是拓展页底下 —— hooks 不反向
- * import pages;市场那个键放在市场那一节里的话,改源的弹窗与市场那一节还会互相 import。
+ * 拓展生命周期与相关查询键。拓展变化同时作废来源、适配器描述；
+ * 名称、字段和外观由各自读口提供，是否在场仍读拓展生命周期。
  */
 
 import type { ExtensionDTO, ExtensionsResponse } from "@bilibili-notify/contract";
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "../services/api";
+import { ADAPTERS_QUERY_KEY } from "./useAdapters";
 import { SOURCES_QUERY_KEY } from "./useSources";
 
 export const EXTENSIONS_QUERY_KEY = ["extensions"] as const;
 
 /**
- * 拓展表过期了,来源表(`/api/sources`)跟着一起过期:来源表里拓展的那几行与拓展表照的是同一份清单,装 / 卸 /
+ * 拓展表过期了,来源表(`/api/sources`)与适配器表(`/api/adapters`)跟着一起过期:来源表里拓展的那几行与拓展表照的是同一份清单,装 / 卸 /
  * 开关 / 换上新版都一起变。只失效拓展表的话,订阅页的平台名与颜色还停在旧的那一份。
  */
 export function invalidateExtensionTables(qc: QueryClient): Promise<void> {
 	return Promise.all([
 		qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY }),
 		qc.invalidateQueries({ queryKey: SOURCES_QUERY_KEY }),
+		qc.invalidateQueries({ queryKey: ADAPTERS_QUERY_KEY }),
 	]).then(() => undefined);
 }
 
@@ -33,7 +27,7 @@ export function invalidateExtensionTables(qc: QueryClient): Promise<void> {
  * 这个拓展此刻在不在场 —— 要它本人在的事只给在场的:新建它的连接、挑 bot(`/api/adapters/:adapterKey/candidates`
  * 停着回 503)、订阅页的平台选择与解析门(`/api/ext/:id/lookup` 同理)。
  *
- * ⚠️ 清单里的外观(推送那口的 `push`、来源表里订阅源的描述符)**不看这个**:它照清单给、停着也有(ADR-0019
+ * ⚠️ 清单里的外观(适配器与来源读口的描述符)**不看这个**:它照清单给、停着也有(ADR-0019
  * 决策 41)。两件事别混 —— 「有外观」当「在场」的话,点进去就是一个问不到的拓展。
  */
 export function isExtensionPresent(ext: ExtensionDTO): boolean {

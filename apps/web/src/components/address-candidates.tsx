@@ -2,6 +2,7 @@ import type { AddressCandidate, AddressCandidatesResponse } from "@bilibili-noti
 import { Btn } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { useT } from "../i18n";
 import { api } from "../services/api";
 
 /** 读这条连接上某一种可挑的地址(`GET /api/connections/:id/addresses`)。 */
@@ -36,43 +37,46 @@ function groupByGuild(candidates: readonly AddressCandidate[]): GuildGroup[] {
 	return [...groups.values()];
 }
 
-/**
- * 群/C2C 发现列表 —— 读 `GET /api/connections/:id/addresses?scope=group|private`(内存 ring buffer,
- * 网关从入站事件捞的 openid)。点一条把 openid 填进会话。QQ 无「列我的群/好友」接口,这是唯一来源。
- */
-export function QQSessionPicker({
+/** 读取适配器提供的群 / 私聊地址候选，选择后原样回填。 */
+export function SessionAddressPicker({
 	connectionId,
 	scope,
 	onPick,
 }: {
 	connectionId: string;
 	scope: "group" | "private";
-	onPick: (openid: string) => void;
+	onPick: (address: string) => void;
 }) {
+	const tx = useT();
 	const { data, isLoading, isError, refetch, isFetching } = useQuery({
-		queryKey: ["qq-sessions", connectionId, scope],
+		queryKey: ["address-candidates", connectionId, scope],
 		queryFn: () => fetchAddressCandidates(connectionId, scope),
 		enabled: Boolean(connectionId),
 	});
 	const list = data ?? [];
-	const label = scope === "group" ? "群" : "用户";
+	const label =
+		scope === "group"
+			? tx("addressCandidates.sessionAddressPicker.text1")
+			: tx("addressCandidates.sessionAddressPicker.text2");
 	return (
 		<CandidateBox
-			title={`发现的${label}会话`}
-			actionLabel="刷新"
-			pendingLabel="刷新中…"
+			title={tx("addressCandidates.sessionAddressPicker.text3", { value0: label })}
+			actionLabel={tx("addressCandidates.sessionAddressPicker.text4")}
+			pendingLabel={tx("addressCandidates.sessionAddressPicker.text5")}
 			pending={isFetching}
 			onAction={() => refetch()}
 		>
 			{isLoading ? (
-				<div className="text-bn-xs text-bn-text-tertiary">加载中…</div>
+				<div className="text-bn-xs text-bn-text-tertiary">
+					{tx("addressCandidates.sessionAddressPicker.text6")}
+				</div>
 			) : isError ? (
-				<div className="text-bn-xs text-bn-danger">拉取失败(这条连接是否已保存并连上网关?)</div>
+				<div className="text-bn-xs text-bn-danger">
+					{tx("addressCandidates.sessionAddressPicker.text7")}
+				</div>
 			) : list.length === 0 ? (
 				<div className="text-bn-xs leading-relaxed text-bn-text-tertiary">
-					暂无发现的{label}会话 —— 先让机器人在目标
-					{scope === "group" ? "群里被 @ 一次" : "处收到一条 C2C 消息"}
-					,再点刷新。
+					{tx("addressCandidates.sessionAddressPicker.text8")}
 				</div>
 			) : (
 				<div className="flex flex-col gap-1">
@@ -86,7 +90,7 @@ export function QQSessionPicker({
 							className="flex items-center gap-2 rounded-sm border border-bn-border bg-bn-surface px-2 py-1 text-left transition hover:border-bn-pink"
 						>
 							<span className="truncate text-bn-xs font-semibold text-bn-text-primary">
-								{e.name ?? "(无名称)"}
+								{e.name ?? tx("addressCandidates.sessionAddressPicker.text9")}
 							</span>
 							<span className="truncate font-mono text-bn-2xs text-bn-text-tertiary">
 								{e.address}
@@ -101,36 +105,43 @@ export function QQSessionPicker({
 
 /**
  * 频道子频道选择器 —— 手动触发 `GET /api/connections/:id/addresses?scope=channel`(每次实时拉,
- * 避免每次打开弹窗都打 QQ REST)。点子频道把 guildId+channelId 一起填进会话。
+ * 避免每次打开弹窗都请求上游)。选择后同时回填父地址与地址。
  */
-export function QQGuildPicker({
+export function ChannelAddressPicker({
 	connectionId,
 	onPick,
 }: {
 	connectionId: string;
 	onPick: (guildId: string, channelId: string) => void;
 }) {
+	const tx = useT();
 	const { data, isError, refetch, isFetching, fetchStatus } = useQuery({
-		queryKey: ["qq-guilds", connectionId],
+		queryKey: ["address-candidates", connectionId, "channel"],
 		queryFn: () => fetchAddressCandidates(connectionId, "channel"),
-		enabled: false, // 手动触发:枚举会打 QQ REST,不在打开弹窗时自动拉
+		enabled: false, // 手动触发，不在打开弹窗时请求上游
 	});
 	const guilds = groupByGuild(data ?? []);
 	const fetched = fetchStatus === "idle" && data !== undefined;
 	return (
 		<CandidateBox
-			title="频道子频道列表"
-			actionLabel="拉取频道"
-			pendingLabel="拉取中…"
+			title={tx("addressCandidates.channelAddressPicker.text1")}
+			actionLabel={tx("addressCandidates.channelAddressPicker.text2")}
+			pendingLabel={tx("addressCandidates.channelAddressPicker.text3")}
 			pending={isFetching}
 			onAction={() => refetch()}
 		>
 			{isError ? (
-				<div className="text-bn-xs text-bn-danger">拉取失败(这条连接是否已保存且凭据正确?)</div>
+				<div className="text-bn-xs text-bn-danger">
+					{tx("addressCandidates.channelAddressPicker.text4")}
+				</div>
 			) : !fetched ? (
-				<div className="text-bn-xs text-bn-text-tertiary">点「拉取频道」从 QQ 实时枚举。</div>
+				<div className="text-bn-xs text-bn-text-tertiary">
+					{tx("addressCandidates.channelAddressPicker.text5")}
+				</div>
 			) : guilds.length === 0 ? (
-				<div className="text-bn-xs text-bn-text-tertiary">未发现任何频道服务器。</div>
+				<div className="text-bn-xs text-bn-text-tertiary">
+					{tx("addressCandidates.channelAddressPicker.text6")}
+				</div>
 			) : (
 				<div className="flex flex-col gap-1.5">
 					{guilds.map((g) => (
@@ -161,7 +172,7 @@ export function QQGuildPicker({
 }
 
 /**
- * 候选拉取盒 —— 虚线盒 + 「标题 + ghost 触发钮」头行。QQ 会话与频道两个选择器
+ * 候选拉取盒 —— 虚线盒 + 「标题 + ghost 触发钮」头行。会话与频道两个选择器
  * 此前各抄一份,连 mb-1 的头行都逐字符相同;拉取状态与候选列表由调用方摆。
  */
 function CandidateBox({

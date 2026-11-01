@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 桥驮进来的平台在目标弹窗里配得出来。
@@ -37,7 +41,11 @@ const CONNECTION: Connection = {
 	adapterKey: "bridge",
 	platform: "telegram",
 	settings: {},
-	platformSnapshot: snapshotFor("telegram"),
+	platformSnapshot: {
+		...snapshotFor("telegram"),
+		scopes: ["group", "channel"],
+		addressNouns: { group: "讨论组", channel: "话题地址" },
+	},
 };
 
 const TELEGRAM_TARGET = {
@@ -50,9 +58,12 @@ const TELEGRAM_TARGET = {
 	address: "-1001234567890",
 } as unknown as PushTarget;
 
-function renderPage() {
+function renderPage(connection = CONNECTION) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/connections") return [CONNECTION];
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
+		if (url === "/api/connections") return [connection];
 		if (url === "/api/targets") return [TELEGRAM_TARGET];
 		return [];
 	});
@@ -81,7 +92,7 @@ afterEach(() => {
 describe("认不出的平台的会话目标", () => {
 	it("列表里的摘要用通用称呼报地址", async () => {
 		renderPage();
-		expect(await screen.findByText("→ 群 -1001234567890")).toBeTruthy();
+		expect(await screen.findByText("→ 讨论组 -1001234567890")).toBeTruthy();
 	});
 
 	it("弹窗里有「会话信息」这一节 —— 判据是形态,不是平台名", async () => {
@@ -91,14 +102,23 @@ describe("认不出的平台的会话目标", () => {
 
 	it("地址那一格填得进去,标签走通用称呼", async () => {
 		const dialog = await openTargetEditor();
-		expect(within(dialog).getByText("群地址")).toBeTruthy();
+		expect(within(dialog).getByText("讨论组地址")).toBeTruthy();
 		expect(within(dialog).getByDisplayValue("-1001234567890")).toBeTruthy();
 	});
 
-	it("会话种类给全三档 —— 不知道它有没有频道,就别替主人少给一档", async () => {
+	it("会话种类只列连接快照声明的作用域", async () => {
 		const dialog = await openTargetEditor();
-		for (const label of ["群组", "私聊", "频道"]) {
+		expect(within(dialog).queryByRole("button", { name: "私聊" })).toBeNull();
+		for (const label of ["群组", "频道"]) {
 			expect(within(dialog).getByRole("button", { name: label })).toBeTruthy();
 		}
 	});
+});
+
+it("快照没有可用作用域时不擅自创建群目标", async () => {
+	renderPage({ ...CONNECTION, platformSnapshot: { ...CONNECTION.platformSnapshot, scopes: [] } });
+	const add = await screen.findAllByRole("button", { name: /新建推送目标/ });
+	fireEvent.click(add[0]);
+	expect(screen.queryByRole("dialog")).toBeNull();
+	expect(await screen.findByText(/没有声明可用的会话类型/)).toBeTruthy();
 });

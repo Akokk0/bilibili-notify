@@ -121,6 +121,11 @@ describe("GET /api/adapters", () => {
 				key: "qq-official",
 				has: { connectionAuth: true, listAddressCandidates: true },
 				descriptor: {
+					auth: {
+						description: expect.any(String),
+						warning: expect.any(String),
+						experimental: true,
+					},
 					label: "QQ 官方机器人",
 					shortLabel: "QQ官方",
 					color: "#14b8a6",

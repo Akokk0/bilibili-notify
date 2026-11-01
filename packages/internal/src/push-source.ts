@@ -155,6 +155,8 @@ export interface PlatformAdapterDescriptor {
 	icon?: string;
 	/** 要主人填的连接配置项;不需要配置的适配器就是空表。 */
 	settingsFields: readonly ConnectionSettingsField[];
+	/** 内置扫码入口的说明;拓展清单本版不开放。 */
+	auth?: { description: string; warning?: string; experimental?: boolean };
 }
 
 /**

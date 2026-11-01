@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 推送目标弹窗里那列「选一个连接」的行。
@@ -64,6 +68,9 @@ function renderPage() {
 
 beforeEach(() => {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return ADAPTERS;
 		if (url === "/api/targets") return [];
 		return [];

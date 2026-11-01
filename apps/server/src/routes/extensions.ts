@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import type { ConfigStore } from "../config/store.js";
 import { ExtensionConflictError } from "../extensions/conflict-error.js";
-import { type ActionOutcome, manifestPushView } from "../extensions/context.js";
+import type { ActionOutcome } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
 import {
 	docsPresence,
@@ -198,7 +198,6 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				// 推送源那一口照清单给、没在跑的也有(ADR-0019 决策 41):拓展停了,它借来的连接在推送目标页
 				// 照样画得出短名与标识色。要拓展在场的(能挑的 bot、视图)不在这儿,照旧跟着「在跑」。
 				// 订阅源那一口的外观在来源表(`/api/sources`)里,同样照清单给。
-				push: entry.manifest && manifestPushView(entry.manifest),
 				// 清单里声明的设置项 —— 来自清单、不来自代码,所以没在跑的也有。
 				...(entry.manifest?.settings ? { settings: entry.manifest.settings } : {}),
 				icon: identity?.icon,

@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 推送目标建好之后焊死在它那条连接上:编辑弹窗里「选择连接」换成只读的「所属连接」,
@@ -46,6 +50,9 @@ const TARGET = {
 
 function renderPage() {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections")
 			return [onebot(HOME_ID, "家里那台"), onebot(OTHER_ID, "备用那台")];
 		if (url === "/api/targets") return [TARGET];

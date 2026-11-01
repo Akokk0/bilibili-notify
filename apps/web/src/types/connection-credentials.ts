@@ -14,7 +14,7 @@
  */
 
 import type { ConnectionView } from "@bilibili-notify/contract";
-import type { Connection, NewConnection } from "@bilibili-notify/internal";
+import type { Connection, ConnectionSettingsField, NewConnection } from "@bilibili-notify/internal";
 import { buildPatch, isMaskedCell } from "@bilibili-notify/internal/patch";
 import { maskedOf } from "@bilibili-notify/ui";
 
@@ -40,22 +40,19 @@ export function settingsAreMasked(connection: Pick<NewConnection, "settings">): 
 
 /** 这条连接有哪几个凭据格 —— 与 schema 上的 `secret` 标记对齐(OneBot token、webhook 地址与 secret、官机 appSecret)。 */
 export function credentialCellsOf(
-	connection: Pick<NewConnection, "adapterKey" | "settings">,
+	connection: Pick<NewConnection, "settings">,
+	fields: readonly ConnectionSettingsField[] = [],
 ): readonly CredentialCell[] {
 	if (settingsAreMasked(connection)) return [];
-	switch (connection.adapterKey) {
-		case "webhook":
-			return [
-				{ key: "url", code: "settings.url", optional: false },
-				{ key: "secret", code: "settings.secret", optional: true },
-			];
-		case "onebot":
-			return [{ key: "accessToken", code: "settings.accessToken", optional: true }];
-		case "qq-official":
-			return [{ key: "appSecret", code: "settings.appSecret", optional: false }];
-		default:
-			return [];
-	}
+	const bag = connection.settings as Record<string, unknown> | undefined;
+	return fields
+		.filter(
+			(field) =>
+				field.type === "string" &&
+				field.secret &&
+				(!field.when || bag?.[field.when.key] === field.when.value),
+		)
+		.map((field) => ({ key: field.key, code: `settings.${field.key}`, optional: !field.required }));
 }
 
 type Bag = Record<string, unknown>;
@@ -71,22 +68,29 @@ const withSettings = <T extends NewConnection>(connection: T, settings: Bag): T 
  * 整格遮挡的、没有凭据格的(拓展连接)原样。
  */
 export function displayConnection(view: ConnectionView): DisplayConnection {
-	const display = view as DisplayConnection;
-	const cells = credentialCellsOf(display);
-	if (cells.length === 0) return display;
-	const settings: Bag = { ...settingsOf(display) };
-	for (const cell of cells) {
-		if (!Object.hasOwn(settings, cell.key)) continue;
-		const mask = maskedOf(settings[cell.key]);
-		settings[cell.key] = mask === undefined ? settings[cell.key] : mask;
-	}
-	return withSettings(display, settings);
+	if (
+		settingsAreMasked(view) ||
+		typeof view.settings !== "object" ||
+		view.settings === null ||
+		Array.isArray(view.settings)
+	)
+		return view as DisplayConnection;
+	const settings = Object.fromEntries(
+		Object.entries(view.settings).map(([key, value]) => [
+			key,
+			isMaskedCell(value) ? maskedOf(value) : value,
+		]),
+	);
+	return { ...view, settings } as DisplayConnection;
 }
 
 /** 编辑一条已存着的连接:哪些凭据格已配了(有值),值是服务端算好的遮挡串。按字段 code 索引。 */
-export function savedMasksOf(display: NewConnection): Record<string, string> {
+export function savedMasksOf(
+	display: NewConnection,
+	fields: readonly ConnectionSettingsField[] = [],
+): Record<string, string> {
 	const out: Record<string, string> = {};
-	for (const cell of credentialCellsOf(display)) {
+	for (const cell of credentialCellsOf(display, fields)) {
 		const value = settingsOf(display)[cell.key];
 		if (typeof value === "string" && value !== "") out[cell.code] = value;
 	}
@@ -94,8 +98,11 @@ export function savedMasksOf(display: NewConnection): Record<string, string> {
 }
 
 /** 打开编辑时的草稿:凭据格先清空(已存着的由 `savedMasks` 记着,不进草稿)。 */
-export function clearedCredentials<T extends NewConnection>(display: T): T {
-	const cells = credentialCellsOf(display);
+export function clearedCredentials<T extends NewConnection>(
+	display: T,
+	fields: readonly ConnectionSettingsField[] = [],
+): T {
+	const cells = credentialCellsOf(display, fields);
 	if (cells.length === 0) return display;
 	const settings: Bag = { ...settingsOf(display) };
 	for (const cell of cells) {
@@ -129,8 +136,9 @@ export function connectionPatch(
 	base: NewConnection,
 	savedMasks: Record<string, string>,
 	replacing: Record<string, boolean>,
+	fields: readonly ConnectionSettingsField[] = [],
 ): Record<string, unknown> {
-	const cells = credentialCellsOf(draft);
+	const cells = credentialCellsOf(draft, fields);
 	const kept = cells.filter((c) => savedMasks[c.code] !== undefined && replacing[c.code] !== true);
 	const patch = buildPatch(
 		without(
@@ -139,7 +147,7 @@ export function connectionPatch(
 		),
 		without(
 			base,
-			credentialCellsOf(base).map((c) => c.key),
+			credentialCellsOf(base, fields).map((c) => c.key),
 		),
 	) as Record<string, unknown>;
 	// 宿主独写 / 只读的几格不进 PATCH(服务端本来也忽略它们)。

@@ -4,11 +4,13 @@ import {
 	OnebotWsReverseSettingsSchema,
 	OnebotWsSettingsSchema,
 	QQOfficialConnectionSettingsSchema,
+	settingsFieldsFromSchema,
 	stringLeavesOf,
 	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { credentialCellsOf } from "../connection-credentials";
+import { descriptorsOf } from "./connection-fixtures";
 
 /**
  * 面板那张「哪条连接哪几个键是凭据」的表(`connection-credentials.ts`)与 schema 上的 `secret` 标记对拍。
@@ -46,19 +48,28 @@ describe("面板凭据格表 ≡ schema 的 secret 标记", () => {
 		// 凭据都是 settings 下的单层叶子;嵌套的(headers 的值)是 backupOnly,不会落到这里。
 		expect(secretLeaves.every((leaf) => leaf.path.length === 1)).toBe(true);
 		const fromSchema = secretLeaves.map((leaf) => leaf.path[0]).sort();
-		const fromTable = credentialCellsOf(connection)
+		const fromTable = credentialCellsOf(
+			connection,
+			settingsFieldsFromSchema(settingsSchema, { connection: true }),
+		)
 			.map((cell) => cell.key)
 			.sort();
 		expect(fromTable).toEqual(fromSchema);
 	});
 
 	it("同名不同义的反例:ws 的 url 不在表里,webhook 的 url 在", () => {
-		expect(credentialCellsOf(connectionOf("onebot", "onebot")).map((c) => c.key)).not.toContain(
-			"url",
-		);
-		expect(credentialCellsOf(connectionOf("webhook", "dingtalk")).map((c) => c.key)).toContain(
-			"url",
-		);
+		expect(
+			credentialCellsOf(
+				connectionOf("onebot", "onebot"),
+				descriptorsOf({ adapterKey: "onebot" }),
+			).map((c) => c.key),
+		).not.toContain("url");
+		expect(
+			credentialCellsOf(
+				connectionOf("webhook", "dingtalk"),
+				descriptorsOf({ adapterKey: "webhook" }),
+			).map((c) => c.key),
+		).toContain("url");
 	});
 
 	it("拓展连接不在表里(密钥由拓展清单声明,本片不覆盖)", () => {

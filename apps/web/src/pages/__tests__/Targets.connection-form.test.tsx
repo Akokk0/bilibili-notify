@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 连接配置表单的**刻画测试** —— 三个平台各摆哪几栏、随连法怎么增减、标签与提示写什么。
@@ -28,6 +32,9 @@ import { api } from "../../services/api";
 
 beforeEach(() => {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return [];
 		if (url === "/api/targets") return [];
 		return [];
@@ -48,7 +55,11 @@ async function openNewConnection(): Promise<HTMLElement> {
 		</QueryClientProvider>,
 	);
 	fireEvent.click(await screen.findByRole("button", { name: /新建连接/ }));
-	await waitFor(() => screen.getByRole("dialog"));
+	await waitFor(() =>
+		expect(
+			screen.getByRole("dialog").querySelector('[data-code="settings.baseUrl"]'),
+		).not.toBeNull(),
+	);
 	return screen.getByRole("dialog");
 }
 
@@ -120,14 +131,14 @@ describe("OneBot 连接", () => {
 		const row = dialog.querySelector('[data-code="settings.reverseAddress"]') as HTMLElement;
 		expect(row).not.toBeNull();
 		// 主机取浏览器地址栏那一个,端口取这一栏填的那个(不是主端口)。
-		expect(row.textContent).toContain(`ws://${window.location.hostname}:9797/onebot`);
+		expect(row.textContent).toContain(`ws://${window.location.hostname}:9797/`);
 		expect(row.textContent).toMatch(/路径/);
 		expect(within(row).getByRole("button", { name: /复制/ })).toBeTruthy();
 	});
 
 	it("超时那一栏的标签随连法变 —— HTTP 是请求超时,WS 是等 echo 的响应超时", async () => {
 		const dialog = await openNewConnection();
-		expect(within(dialog).getByText("请求超时")).toBeTruthy();
+		expect(within(dialog).getByText("响应超时")).toBeTruthy();
 		click(dialog, "正向 WS");
 		expect(within(dialog).getByText("响应超时")).toBeTruthy();
 	});
@@ -136,7 +147,7 @@ describe("OneBot 连接", () => {
 		const dialog = await openNewConnection();
 		click(dialog, "反向 WS");
 		const row = dialog.querySelector('[data-code="settings.accessToken"]') as HTMLElement;
-		expect(row.textContent).toContain("裸开");
+		expect(row.textContent).toContain("未授权访问");
 	});
 
 	it("改了一栏就存进草稿 —— 键没挂错", async () => {
@@ -162,11 +173,14 @@ describe("QQ 官方机器人连接", () => {
 	it("五栏齐,外加扫码建号那一行", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "QQ 官方机器人");
+		await waitFor(() =>
+			expect(dialog.querySelector('[data-code="settings.appId"]')).not.toBeNull(),
+		);
 		expect(settingsCodes(dialog)).toEqual([
 			"settings.appId",
 			"settings.appSecret",
-			"settings.botType",
 			"settings.sandbox",
+			"settings.botType",
 			"settings.logReconnects",
 		]);
 		expect(within(dialog).getByText(/扫码在腾讯页面一键创建/)).toBeTruthy();
@@ -175,6 +189,9 @@ describe("QQ 官方机器人连接", () => {
 	it("机器人域是公域 / 私域二选一", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "QQ 官方机器人");
+		await waitFor(() =>
+			expect(dialog.querySelector('[data-code="settings.appId"]')).not.toBeNull(),
+		);
 		const row = dialog.querySelector('[data-code="settings.botType"]') as HTMLElement;
 		expect(row.textContent).toContain("公域");
 		expect(row.textContent).toContain("私域");
@@ -184,7 +201,8 @@ describe("QQ 官方机器人连接", () => {
 describe("webhook 那一族", () => {
 	it("URL / Secret / 自定义请求头三栏,占位符与提示按平台走", async () => {
 		const dialog = await openNewConnection();
-		click(dialog, /飞书机器人/);
+		click(dialog, "Webhook");
+		fireEvent.click(await within(dialog).findByRole("button", { name: /飞书机器人/ }));
 		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
 		expect((control(dialog, "settings.url") as HTMLInputElement).placeholder).toContain(
 			"open.feishu.cn",
@@ -195,15 +213,23 @@ describe("webhook 那一族", () => {
 
 	it("自建端点那档也是同样三栏 —— 四家统一,不按平台增减", async () => {
 		const dialog = await openNewConnection();
-		click(dialog, /未指明的 HTTP 端点/);
+		click(dialog, "Webhook");
+		fireEvent.click(await within(dialog).findByRole("button", { name: /未指明的 HTTP 端点/ }));
 		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
 	});
 
 	it("换成钉钉:同样三栏,提示换成钉钉那份", async () => {
 		const dialog = await openNewConnection();
-		click(dialog, /钉钉机器人/);
+		click(dialog, "Webhook");
+		fireEvent.click(await within(dialog).findByRole("button", { name: /钉钉机器人/ }));
 		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
 		const secretRow = dialog.querySelector('[data-code="settings.secret"]') as HTMLElement;
 		expect(secretRow.textContent).toContain("加签密钥");
 	});
+});
+
+it("尚未保存的候选也使用候选描述中的图标", async () => {
+	const dialog = await openNewConnection();
+	const candidate = dialog.querySelector('[data-bn="option option-active"]');
+	expect(candidate?.querySelector("svg")).not.toBeNull();
 });

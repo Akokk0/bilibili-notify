@@ -17,15 +17,7 @@ import type {
 	SubscriptionDTO,
 	SubscriptionTag,
 } from "@bilibili-notify/contract";
-import type {
-	Connection,
-	ConnectionPlatform,
-	NewConnection,
-	OnebotConnectionSettings,
-	OnebotTransport,
-	PushTarget,
-	WebhookPlatform,
-} from "@bilibili-notify/internal";
+import type { Connection, NewConnection, PushTarget } from "@bilibili-notify/internal";
 import { DEFAULT_ROAST_SCHEDULE } from "@bilibili-notify/internal/ai";
 import {
 	DEFAULT_FEATURE_FLAGS,
@@ -41,17 +33,11 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type Identity,
 	identityColor,
-	RESERVED_INTEGRATION_KEYS,
 	type SourceKey,
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal/identity";
-import {
-	CONNECTION_PLATFORMS,
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-	PLATFORM_REGISTRY,
-} from "@bilibili-notify/internal/platform-registry";
+
 import { isTargetPaused, platformOfTarget } from "@bilibili-notify/internal/push-target";
 
 export type { ExtraKey, FeatureFlagValues, FeatureKey, Identity, SourceKey, SubscriptionTag };
@@ -84,7 +70,6 @@ export type {
 	AIOverride,
 	// 推送平台类型直接用 internal 的定义:将来薄插件桥接进来的平台加进那条 union 就自动出现在这里。
 	Connection,
-	ConnectionPlatform,
 	ContentFiltersPartial as ContentFiltersOverride,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	LiveStartSettingsPartial as LiveStartOverride,
@@ -95,8 +80,6 @@ export type {
 	// per-UP 消息版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
 	MessageLayout as MessageLayoutOverride,
 	NewConnection,
-	OnebotConnectionSettings,
-	OnebotTransport,
 	PushTarget,
 	PushTargetScope,
 	QQOfficialBotType,
@@ -108,57 +91,7 @@ export type {
 	SuperchatSettingsPartial as SuperchatOverride,
 	TemplateBundlePartial as TemplateOverride,
 	WebhookConnectionSettings,
-	WebhookPlatform,
 } from "@bilibili-notify/internal";
-
-// ---- UI 文案 -----------------------------------------------------------
-
-export const FEATURE_LABELS: Record<FeatureKey, string> = {
-	post: "动态",
-	liveStart: "开播",
-	liveStreaming: "直播中",
-	liveEnd: "下播",
-	membership: "上舰",
-	superchat: "SC",
-	viewerChat: "特别弹幕",
-	viewerEnter: "特别用户进房",
-};
-
-export function webhookUrlPlaceholder(platform: WebhookPlatform): string {
-	switch (platform) {
-		case "dingtalk":
-			return "https://oapi.dingtalk.com/robot/send?access_token=...";
-		case "feishu":
-			return "https://open.feishu.cn/open-apis/bot/v2/hook/...";
-		case "wecom":
-			return "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...";
-		case "generic":
-			return "https://hooks.example.com/bn";
-	}
-}
-
-export function webhookSecretHint(platform: WebhookPlatform): string {
-	switch (platform) {
-		case "dingtalk":
-			return "钉钉加签密钥 SEC...；填写后自动追加 timestamp/sign";
-		case "feishu":
-			return "飞书签名密钥；填写后自动在消息体加入 timestamp/sign";
-		case "wecom":
-			return "企业微信群机器人通常不需要 Secret；鉴权 key 在 webhook URL 中";
-		case "generic":
-			return "Generic 模式下加在 x-bilibili-notify-secret 头";
-	}
-}
-
-/**
- * 平台选择器的候选 —— 顺序与显示名都从 {@link PLATFORM_REGISTRY} 取。
- *
- * webhook 那一族原先不在这里,它们是 webhook 连接 config 里那个 `provider` 下拉的选项。
- * webhook 降格成连接器之后,「飞书还是钉钉」跟「OneBot 还是官机」是同一个问题,
- * 摆成两级选择只是在复述旧数据模型的形状。
- */
-export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: string }> =
-	CONNECTION_PLATFORMS.map((value) => ({ value, label: PLATFORM_REGISTRY[value].label }));
 
 // ---- Factories --------------------------------------------------------
 
@@ -167,18 +100,20 @@ export const KNOWN_PLATFORMS: ReadonlyArray<{ value: ConnectionPlatform; label: 
  * 候选(`listConnectionCandidates`)里交出来的 settings 原样存进连接,平台从候选上抄;这里不认得
  * 任何具体拓展。显示名默认用候选的名字,主人没填的话。
  */
-export function makeEmptyExtensionConnection(
+export function connectionFromCandidate(
 	extensionId: string,
 	candidate: ConnectionCandidatesResponse["candidates"][number],
 	name: string,
-): NewConnection {
+): NewConnection & Pick<Connection, "platformSnapshot"> {
+	const { platform: _platform, ...platformSnapshot } = candidate.platform;
 	return {
+		platformSnapshot,
 		id: newId(),
 		name: name || candidate.name,
 		enabled: true,
 		adapterKey: extensionId,
 		platform: candidate.platform.platform,
-		settings: candidate.settings,
+		settings: structuredClone(candidate.settings),
 	};
 }
 
@@ -186,7 +121,7 @@ export function makeEmptyExtensionConnection(
  * 刚挑了拓展、还没挑 bot 的那条草稿:平台空着,**存不了**(弹窗按它灰掉保存钮)。别在这儿
  * 编一个平台名 —— 连接的平台是从挑中的 bot 上抄的。
  */
-export function makeExtensionConnectionDraft(extensionId: string, name: string): NewConnection {
+export function makeConnectionDraft(extensionId: string, name: string): NewConnection {
 	return {
 		id: newId(),
 		name,
@@ -195,14 +130,6 @@ export function makeExtensionConnectionDraft(extensionId: string, name: string):
 		platform: "",
 		settings: undefined,
 	};
-}
-
-/**
- * 这条连接是不是内置适配器管的(OneBot / QQ 官方 / webhook)—— 不是就是拓展借来的 bot。
- * 判据是保留 id 表:拓展 id 进不了它(`RESERVED_INTEGRATION_KEYS`)。
- */
-export function isBuiltinConnection(connection: Pick<NewConnection, "adapterKey">): boolean {
-	return RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey);
 }
 
 /**
@@ -294,90 +221,6 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 	};
 }
 
-/**
- * 新建一条连接的草稿 —— 面板这张表单只建内置三个适配器的连接,桥接入在拓展页建
- * (它要的是 BN 地址 + token,跟这里问的东西完全不同)。回的是 POST 收的那一份形状:
- * `platformSnapshot` 由服务端按适配器的候选填,草稿里没有。设置各格的默认值与 schema 一致。
- */
-export function makeEmptyConnection(platform: ConnectionPlatform, name: string): NewConnection {
-	const base = {
-		id: newId(),
-		name,
-		enabled: true,
-		adapterKey: PLATFORM_REGISTRY[platform].adapterKey,
-		platform,
-	} as const;
-	if (platform === "onebot") {
-		return {
-			...base,
-			settings: {
-				transport: "http",
-				baseUrl: "http://127.0.0.1:3000",
-				protocolVersion: "v11",
-				headers: {},
-				timeoutMs: 15_000,
-				imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-				mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-				maxRetries: 0,
-				retryIntervalMs: 1_000,
-			},
-		};
-	}
-	if (platform === "qq-official") {
-		return {
-			...base,
-			settings: {
-				appId: "",
-				appSecret: "",
-				sandbox: false,
-				botType: "public",
-				logReconnects: false,
-			},
-		};
-	}
-	// 剩下的都是 webhook 那一族 —— 平台不同、连法与设置形状一模一样。
-	return { ...base, settings: { url: "https://example.com/hook", headers: {} } };
-}
-
-/** OneBot 三种连接方式(transport)共用的连接字段。 */
-type OnebotConnectionSettingsCommon = Pick<
-	OnebotConnectionSettings,
-	| "accessToken"
-	| "protocolVersion"
-	| "timeoutMs"
-	| "imageMinTimeoutMs"
-	| "mergeForwardMinTimeoutMs"
-	| "maxRetries"
-	| "retryIntervalMs"
->;
-
-/**
- * 切换 OneBot 连接的连法 —— 整体替换 settings(branch schema 是 strict,不能
- * 留上一个 transport 的残字段),保留 accessToken / 超时 / 重试等共用字段。切到
- * ws / ws-reverse 时,若 maxRetries 还是 0 则提到 3(bot 偶发重连不丢首条推送)。
- */
-export function switchOnebotTransport(
-	cfg: OnebotConnectionSettings,
-	transport: OnebotTransport,
-): OnebotConnectionSettings {
-	const common: OnebotConnectionSettingsCommon = {
-		accessToken: cfg.accessToken,
-		protocolVersion: cfg.protocolVersion ?? "v11",
-		timeoutMs: cfg.timeoutMs,
-		imageMinTimeoutMs: cfg.imageMinTimeoutMs,
-		mergeForwardMinTimeoutMs: cfg.mergeForwardMinTimeoutMs,
-		maxRetries: cfg.maxRetries || (transport === "http" ? 0 : 3),
-		retryIntervalMs: cfg.retryIntervalMs,
-	};
-	if (transport === "http") {
-		return { ...common, transport: "http", baseUrl: "http://127.0.0.1:3000", headers: {} };
-	}
-	if (transport === "ws") {
-		return { ...common, transport: "ws", url: "ws://127.0.0.1:3001", headers: {} };
-	}
-	return { ...common, transport: "ws-reverse", port: 9797 };
-}
-
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
@@ -385,5 +228,10 @@ export function makeEmptyTarget(connection: Connection, name: string): PushTarge
 	if (isEndpointConnection(connection)) return { ...base, kind: "endpoint" };
 	// 其余(OneBot / QQ 官方 / 拓展借来的 bot,ADR-0012 决策 45)都是会话目标,只填地址。
 	// 曾经在拓展那一支 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
-	return { ...base, kind: "session", scope: "group", address: "" };
+	return {
+		...base,
+		kind: "session",
+		scope: connection.platformSnapshot.scopes[0] ?? "group",
+		address: "",
+	};
 }

@@ -929,7 +929,10 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 
 	step(TITLE.pushCells, async () => {
 		const manifest = await manifestOfFake();
-		const face = (await fakeRow()).push as Record<string, unknown> | undefined;
+		const { adapters } = await okJson<AdaptersResponse>(await api("/api/adapters"));
+		const face = adapters.find((entry) => entry.key === FAKE)?.descriptor as unknown as
+			| Record<string, unknown>
+			| undefined;
 		expect(face).toBeDefined();
 		for (const cell of ["label", "shortLabel", "color", "icon", "settingsFields"]) {
 			expect(manifest.contributes.push[cell], `清单里应写了 ${cell}`).toBeDefined();
@@ -937,9 +940,7 @@ describe("拓展契约逐成员对拍 e2e:假源经订阅源与平台适配器�
 		}
 		expect(face?.label).toBe("假平台");
 		drove("PushCell", "label", "shortLabel", "color", "icon", "settingsFields");
-		// 适配器表里那一条也是宿主照清单填的(拓展代码里不交描述):与拓展卡上那格逐格相等。
-		const { adapters } = await okJson<AdaptersResponse>(await api("/api/adapters"));
-		expect(adapters.find((entry) => entry.key === FAKE)?.descriptor).toEqual(face);
+		// 适配器描述由宿主照清单填，不再经拓展生命周期 DTO 中转。
 		drove("PlatformAdapter", "descriptor");
 	});
 

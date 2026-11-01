@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 「测试连通 / 测试推送」的结果怎么显示(ADR-0026)。
@@ -60,6 +64,9 @@ const MANAGED_TARGET = {
 
 function renderPage(connections: Connection[], targets: PushTarget[]) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return connections;
 		if (url === "/api/targets") return targets;
 		return [];

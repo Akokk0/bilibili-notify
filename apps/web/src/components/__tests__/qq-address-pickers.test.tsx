@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { QQGuildPicker, QQSessionPicker } from "../qq-address-pickers";
+import { ChannelAddressPicker, SessionAddressPicker } from "../address-candidates";
 
 const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }));
 
@@ -19,13 +19,13 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("QQSessionPicker", () => {
+describe("SessionAddressPicker", () => {
 	it("调带 scope 的新口,把 name / address 画出来,点一项回填 address", async () => {
 		getMock.mockResolvedValue({
 			candidates: [{ address: "G2" }, { address: "G1", name: "群甲" }],
 		});
 		const onPick = vi.fn();
-		wrap(<QQSessionPicker connectionId="c1" scope="group" onPick={onPick} />);
+		wrap(<SessionAddressPicker connectionId="c1" scope="group" onPick={onPick} />);
 
 		await waitFor(() => expect(screen.getByText("群甲")).toBeTruthy());
 		expect(getMock).toHaveBeenCalledWith("/api/connections/c1/addresses?scope=group");
@@ -39,22 +39,22 @@ describe("QQSessionPicker", () => {
 
 	it("私聊 scope 也带进查询;空列表给出原来的引导话", async () => {
 		getMock.mockResolvedValue({ candidates: [] });
-		wrap(<QQSessionPicker connectionId="c1" scope="private" onPick={() => {}} />);
-		await waitFor(() => expect(screen.getByText(/暂无发现的用户会话/)).toBeTruthy());
+		wrap(<SessionAddressPicker connectionId="c1" scope="private" onPick={() => {}} />);
+		await waitFor(() => expect(screen.getByText(/暂时没有地址候选/)).toBeTruthy());
 		expect(getMock).toHaveBeenCalledWith("/api/connections/c1/addresses?scope=private");
 	});
 
 	it("拉失败 → 原来的失败提示", async () => {
 		getMock.mockRejectedValue(new Error("boom"));
-		wrap(<QQSessionPicker connectionId="c1" scope="group" onPick={() => {}} />);
-		await waitFor(() => expect(screen.getByText(/拉取失败/)).toBeTruthy());
+		wrap(<SessionAddressPicker connectionId="c1" scope="group" onPick={() => {}} />);
+		await waitFor(() => expect(screen.getByText(/读取失败/)).toBeTruthy());
 	});
 });
 
-describe("QQGuildPicker", () => {
+describe("ChannelAddressPicker", () => {
 	it("不点就不发请求", async () => {
-		wrap(<QQGuildPicker connectionId="c1" onPick={() => {}} />);
-		expect(screen.getByText("点「拉取频道」从 QQ 实时枚举。")).toBeTruthy();
+		wrap(<ChannelAddressPicker connectionId="c1" onPick={() => {}} />);
+		expect(screen.getByText("点「拉取频道」读取此连接提供的频道地址。")).toBeTruthy();
 		// 给 react-query 一个机会(误自动拉取的话会在这几个 tick 里发出)。
 		await new Promise((r) => setTimeout(r, 30));
 		expect(getMock).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe("QQGuildPicker", () => {
 			],
 		});
 		const onPick = vi.fn();
-		wrap(<QQGuildPicker connectionId="c1" onPick={onPick} />);
+		wrap(<ChannelAddressPicker connectionId="c1" onPick={onPick} />);
 
 		fireEvent.click(screen.getByRole("button", { name: "拉取频道" }));
 		await waitFor(() => expect(screen.getByText("频道乙")).toBeTruthy());
@@ -88,12 +88,12 @@ describe("QQGuildPicker", () => {
 
 	it("没有任何子频道 → 原来的空话;拉失败 → 原来的失败提示", async () => {
 		getMock.mockResolvedValueOnce({ candidates: [] });
-		wrap(<QQGuildPicker connectionId="c1" onPick={() => {}} />);
+		wrap(<ChannelAddressPicker connectionId="c1" onPick={() => {}} />);
 		fireEvent.click(screen.getByRole("button", { name: "拉取频道" }));
-		await waitFor(() => expect(screen.getByText("未发现任何频道服务器。")).toBeTruthy());
+		await waitFor(() => expect(screen.getByText("暂时没有频道地址候选。")).toBeTruthy());
 
 		getMock.mockRejectedValueOnce(new Error("boom"));
 		fireEvent.click(screen.getByRole("button", { name: "拉取频道" }));
-		await waitFor(() => expect(screen.getByText(/拉取失败/)).toBeTruthy());
+		await waitFor(() => expect(screen.getByText(/读取失败/)).toBeTruthy());
 	});
 });

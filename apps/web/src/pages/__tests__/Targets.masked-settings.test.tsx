@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 服务端下发连接时 `settings` 有三种样子(见 `ConnectionView`),面板对「整格是遮挡」「带设置问题」
@@ -51,6 +55,9 @@ let connections: unknown[] = [];
 beforeEach(() => {
 	connections = [INVALID_ONEBOT];
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return connections;
 		return [];
 	});

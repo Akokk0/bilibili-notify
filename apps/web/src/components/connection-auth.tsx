@@ -5,20 +5,12 @@ import type {
 } from "@bilibili-notify/contract";
 import { Btn, ErrorNote, ModalShell, Pill, QrPanel } from "@bilibili-notify/ui";
 import { useEffect, useRef, useState } from "react";
+import { i18n, useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 
 /**
- * QQ 官方机器人「扫码连接 / 创建」—— 连接表单里 appId/appSecret 的旁路入口。
- * 不只能新建:腾讯 H5 里也能重选之前通道建的 bot 重发 secret,凭据直接回填。
- *
- * 走适配器的 `connectionAuth` 三个口(server 端 `routes/adapters.ts`、`platforms/qq-bind.ts`):
- * 发起 `POST /api/adapters/:adapterKey/auth`;问询 `GET …/auth/:taskId`(只有状态,不带凭据);
- * 状态到 `logged-in` 之后 `POST …/auth/:taskId/draft` 取走凭据(取走即清)。扫码进的是腾讯 H5,
- * 建 bot 全程在腾讯页面里发生;凭据回填**表单草稿**,保存仍走用户点保存的既有链路 —— 这里绝不直写配置。
- * 通道属实验性(预期消费者是 OpenClaw,可能哪天收紧),失效时手填 appid/secret 是永远在的降级路径。
- *
- * ⚠️ 取回来的 `appSecret` 只在 `claimDraft` 里的局部变量里停留,直接交给 `onCredentials`:
- * 不进组件状态、不进日志、不进任何会被持久化的地方。
+ * 适配器授权入口：发起、轮询状态，再取走一次性设置草稿。
+ * 说明与警告来自描述；草稿原样交给表单，不直写配置、不记日志。
  */
 
 type Phase = "closed" | "starting" | "waiting" | "expired" | "error";
@@ -33,7 +25,7 @@ const POLL_MAX_SEC = 60;
  *
  * **不夹会出事**:`0` 或字段缺失(`undefined * 1000 = NaN`,setTimeout 当 0 处理)
  * 都会让浏览器以网络极限速度重发 `GET /api/adapters/:adapterKey/auth/:taskId`,而每一发服务端都转成
- * 一次对腾讯的请求,一路持续到任务 10 分钟 TTL 到期。上限那头则是防呆:上游多写
+ * 一次对上游的请求,一路持续到任务 10 分钟 TTL 到期。上限那头则是防呆:上游多写
  * 一个零,弹窗看起来就跟死了一样。
  */
 export function pollDelayMs(interval: unknown): number {
@@ -48,14 +40,21 @@ interface Session {
 	pollIntervalSeconds: number;
 }
 
-export function QQQrBindButton({
+export function ConnectionAuthButton({
 	adapterKey,
+	description,
+	warning,
+	experimental,
 	onCredentials,
 }: {
 	/** 发起扫码的适配器键(取自当前连接的 `adapterKey`)。 */
 	adapterKey: string;
-	onCredentials: (creds: { appId: string; appSecret: string }) => void;
+	description?: string;
+	warning?: string;
+	experimental?: boolean;
+	onCredentials: (settings: Record<string, unknown>) => void;
 }) {
+	const tx = useT();
 	const [phase, setPhase] = useState<Phase>("closed");
 	const [session, setSession] = useState<Session | null>(null);
 	const [qr, setQr] = useState<string | null>(null);
@@ -81,7 +80,7 @@ export function QQQrBindButton({
 			setQr(s.state.status === "awaiting-scan" ? s.state.qr.dataUrl : null);
 			setPhase("waiting");
 		} catch (e) {
-			setErr(`创建绑定任务失败:${(e as Error).message}`);
+			setErr(tx("connectionAuth.connectionAuthButton.text1", { value0: (e as Error).message }));
 			setPhase("error");
 		}
 	}
@@ -103,26 +102,25 @@ export function QQQrBindButton({
 			try {
 				const r = await api.post<ConnectionAuthDraftResponse>(`${taskPath}/draft`, {});
 				if (!alive) return;
-				const { appId, appSecret } = r.settings;
 				if (
-					typeof appId === "string" &&
-					appId !== "" &&
-					typeof appSecret === "string" &&
-					appSecret !== ""
+					typeof r.settings === "object" &&
+					r.settings !== null &&
+					!Array.isArray(r.settings) &&
+					Object.keys(r.settings).length > 0
 				) {
 					setRetrieving(false);
-					onCredentialsRef.current({ appId, appSecret });
+					onCredentialsRef.current(r.settings);
 					setPhase("closed");
 					return;
 				}
 				setRetrieving(false);
-				setErr("扫码成功了，但回来的凭据不完整，请手动填写");
+				setErr(i18n.t("connectionAuth.connectionAuthButton.text2"));
 				setPhase("error");
 			} catch (e) {
 				if (!alive) return;
 				if (e instanceof ApiError && e.code === "not_found") {
 					setRetrieving(false);
-					setErr("绑定结果已经不在了（可能已被取走或超时），请重新扫码");
+					setErr(i18n.t("connectionAuth.connectionAuthButton.text3"));
 					setPhase("error");
 					return;
 				}
@@ -165,7 +163,11 @@ export function QQQrBindButton({
 						return;
 					default: {
 						const unhandled: never = s;
-						setErr(`未知的绑定状态:${JSON.stringify(unhandled)}`);
+						setErr(
+							i18n.t("connectionAuth.connectionAuthButton.text4", {
+								value0: JSON.stringify(unhandled),
+							}),
+						);
 						setPhase("error");
 						return;
 					}
@@ -191,46 +193,49 @@ export function QQQrBindButton({
 
 	const open = phase !== "closed";
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex flex-wrap items-center gap-2">
 			<Btn variant="outline" size="sm" onClick={() => void start()}>
-				扫码连接 / 创建
+				{tx("connectionAuth.connectionAuthButton.text5")}
 			</Btn>
-			<Pill subtle size="sm">
-				实验性
-			</Pill>
+			{experimental ? (
+				<Pill subtle size="sm">
+					{tx("connectionAuth.connectionAuthButton.text6")}
+				</Pill>
+			) : null}
+			{description ? (
+				<span className="basis-full text-bn-xs text-bn-text-tertiary">{description}</span>
+			) : null}
 			{open ? (
 				<ModalShell
 					width={400}
 					onCancel={() => setPhase("closed")}
-					title="扫码连接 / 创建机器人"
-					description="手机 QQ 扫码,在腾讯页面里重选已建的机器人回填凭据,或新建一个(每个 QQ 号最多 5 个)"
+					title={tx("connectionAuth.connectionAuthButton.text7")}
+					description={description}
 				>
 					<QrPanel
 						variant="bare"
 						src={phase === "waiting" && !retrieving ? qr : null}
-						alt="QQ 机器人绑定二维码"
+						alt={tx("connectionAuth.connectionAuthButton.text8")}
 						loading={
 							phase === "starting"
-								? "正在创建绑定任务"
+								? tx("connectionAuth.connectionAuthButton.text9")
 								: phase === "waiting" && retrieving
-									? "正在取回凭据"
+									? tx("connectionAuth.connectionAuthButton.text10")
 									: undefined
 						}
 					>
 						{phase === "expired" ? (
-							<div className="text-bn-sm text-bn-text-secondary">二维码已过期</div>
+							<div className="text-bn-sm text-bn-text-secondary">
+								{tx("connectionAuth.connectionAuthButton.text11")}
+							</div>
 						) : null}
 						{phase === "error" && err ? <ErrorNote>{err}</ErrorNote> : null}
 						{phase === "expired" || phase === "error" ? (
 							<Btn variant="outline" size="sm" onClick={() => void start()}>
-								重新生成
+								{tx("connectionAuth.connectionAuthButton.text12")}
 							</Btn>
 						) : null}
-						{/* 只留能力注意这一段(2026-08-30 主人拍板砍掉 OpenClaw/通道失效说明,嫌话多) */}
-						<div className="text-bn-xs text-bn-text-tertiary">
-							注意:此通道创建的机器人能力有限,目前<b>限创建者私聊与创建者当群主的群</b>
-							(以腾讯当前政策为准)。要更宽的能力请手动填写正式注册的机器人凭据。
-						</div>
+						{warning ? <div className="text-bn-xs text-bn-text-tertiary">{warning}</div> : null}
 					</QrPanel>
 				</ModalShell>
 			) : null}

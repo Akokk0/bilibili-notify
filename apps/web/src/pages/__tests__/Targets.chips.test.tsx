@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 推送目标页的三排「一排里选一个」胶囊(平台 / OneBot 传输方式 / 作用域)。
@@ -43,6 +47,9 @@ function isActive(el: HTMLElement): boolean {
 
 beforeEach(() => {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return [];
 		if (url === "/api/targets") return [];
 		return [];
@@ -57,52 +64,34 @@ async function openConnectionEditor() {
 	renderPage();
 	const add = await screen.findByRole("button", { name: /新建连接/ });
 	fireEvent.click(add);
-	await waitFor(() => screen.getByRole("dialog"));
+	await screen.findByRole("button", { name: "HTTP" });
 }
 
-describe("连接弹窗的平台胶囊", () => {
-	// webhook 那一族原先挤在一颗叫「Webhook」的胶囊后面,真平台藏在 config 里一个
-	// 叫「Webhook 协议」的下拉。降格之后它们就是平台,和 OneBot 摆在同一排。
-	it("每个平台各一颗,默认选中 OneBot", async () => {
+describe("连接弹窗的适配器胶囊", () => {
+	it("先列适配器，默认选中第一项", async () => {
 		await openConnectionEditor();
-		for (const label of [
-			"OneBot v11",
-			"QQ 官方机器人",
-			"飞书机器人",
-			"钉钉机器人",
-			"企业微信机器人",
-			"未指明的 HTTP 端点",
-		]) {
-			expect(screen.getByRole("button", { name: new RegExp(label) })).toBeTruthy();
-		}
-		expect(isActive(screen.getByRole("button", { name: /OneBot/ }))).toBe(true);
-		expect(isActive(screen.getByRole("button", { name: /飞书/ }))).toBe(false);
+		for (const label of ["OneBot v11", "QQ 官方机器人", "Webhook"])
+			expect(screen.getByRole("button", { name: label })).toBeTruthy();
+		expect(isActive(screen.getByRole("button", { name: "OneBot v11" }))).toBe(true);
+		expect(screen.queryByRole("button", { name: /飞书/ })).toBeNull();
 	});
-
-	it("没有一颗叫「Webhook」的胶囊了 —— 它是连法,不是平台", async () => {
+	it("选 Webhook 后列出它的四个平台候选", async () => {
 		await openConnectionEditor();
-		expect(screen.queryByRole("button", { name: /^Webhook$/ })).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "Webhook" }));
+		for (const name of [/飞书机器人/, /钉钉机器人/, /企业微信机器人/, /未指明的 HTTP 端点/])
+			expect(await screen.findByRole("button", { name })).toBeTruthy();
+		const feishu = screen.getByRole("button", { name: /飞书机器人/ });
+		fireEvent.click(feishu);
+		expect(feishu.getAttribute("data-bn")).toContain("option-active");
+		expect(isActive(screen.getByRole("button", { name: "OneBot v11" }))).toBe(false);
 	});
-
-	it("点另一个平台就换过去", async () => {
+	it("适配器的选中色来自各自描述", async () => {
 		await openConnectionEditor();
-		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
-		await waitFor(() => {
-			expect(isActive(screen.getByRole("button", { name: /飞书/ }))).toBe(true);
-		});
-		expect(isActive(screen.getByRole("button", { name: /OneBot/ }))).toBe(false);
-	});
-
-	/** 选中色是平台色,不再是写死的十六进制 —— 皮肤换 token 时跟着走。 */
-	it("每个平台的选中色各不相同", async () => {
-		await openConnectionEditor();
-		const onebot = screen.getByRole("button", { name: /OneBot/ }).style.borderColor;
-		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
-		await waitFor(() => {
-			const feishu = screen.getByRole("button", { name: /飞书/ }).style.borderColor;
-			expect(feishu).not.toBe("");
-			expect(feishu).not.toBe(onebot);
-		});
+		const onebot = screen.getByRole("button", { name: "OneBot v11" }).style.borderColor;
+		fireEvent.click(screen.getByRole("button", { name: "Webhook" }));
+		const webhook = screen.getByRole("button", { name: "Webhook" }).style.borderColor;
+		expect(webhook).not.toBe("");
+		expect(webhook).not.toBe(onebot);
 	});
 });
 
@@ -118,7 +107,7 @@ describe("OneBot 传输方式胶囊", () => {
 	it("切到走 webhook 的平台后这排就不在了 —— 它只属于 OneBot", async () => {
 		await openConnectionEditor();
 		expect(screen.queryByRole("button", { name: "HTTP" })).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: /飞书/ }));
+		fireEvent.click(screen.getByRole("button", { name: "Webhook" }));
 		await waitFor(() => {
 			expect(screen.queryByRole("button", { name: "HTTP" })).toBeNull();
 		});

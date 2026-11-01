@@ -47,8 +47,8 @@ export function generateBindKey(): string {
 export function decryptBindSecret(encryptedB64: string, keyB64: string): string {
 	const key = Buffer.from(keyB64, "base64");
 	const raw = Buffer.from(encryptedB64, "base64");
-	if (key.length !== 32) throw new Error("绑定密钥长度异常(非 32 字节)");
-	if (raw.length <= 28) throw new Error("凭证密文格式异常(容不下 nonce+tag)");
+	if (key.length !== 32) throw new Error(t("qqBind.message.text1"));
+	if (raw.length <= 28) throw new Error(t("qqBind.message.text2"));
 	const nonce = raw.subarray(0, 12);
 	const tag = raw.subarray(raw.length - 16);
 	const ciphertext = raw.subarray(12, raw.length - 16);
@@ -103,13 +103,15 @@ async function postLite(
 		if (resp.code === "timeout") err.name = "TimeoutError";
 		throw err;
 	}
-	if (!resp.isSuccess) throw new Error(`QQ 绑定接口 HTTP ${resp.status}`);
+	if (!resp.isSuccess) throw new Error(t("qqBind.message.text3", { value0: resp.status }));
 	const parsed = resp.json();
 	if (!parsed.ok) throw new Error(parsed.message);
 	const data = parsed.value as Record<string, unknown>;
 	const retcode = Number(data.retcode ?? 0);
 	if (retcode !== 0) {
-		throw new Error(String(data.msg ?? data.message ?? `QQ 绑定接口 retcode ${retcode}`));
+		throw new Error(
+			String(data.msg ?? data.message ?? t("qqBind.message.text4", { value0: retcode })),
+		);
 	}
 	return data;
 }
@@ -124,7 +126,7 @@ export async function createBindTask(
 	const data = await postLite(http, host, "/lite/create_bind_task", { key: bindKey }, signal);
 	const payload = (data.data ?? {}) as Record<string, unknown>;
 	const taskId = String(payload.task_id ?? "").trim();
-	if (!taskId) throw new Error("QQ 绑定任务响应缺少 task_id");
+	if (!taskId) throw new Error(t("qqBind.message.text5"));
 	const qrUrl = `https://${host}/qqbot/openclaw/connect.html?task_id=${encodeURIComponent(taskId)}&_wv=2`;
 	return { taskId, bindKey, qrUrl };
 }
@@ -144,12 +146,15 @@ export async function pollBindTask(
 	const appId = String(payload.bot_appid ?? "").trim();
 	const encryptedSecret = String(payload.bot_encrypt_secret ?? "").trim();
 	if (!appId || !encryptedSecret) {
-		return { status: "error", message: "扫码成功但腾讯未返回完整机器人凭据" };
+		return { status: "error", message: t("qqBind.message.text6") };
 	}
 	try {
 		return { status: "created", appId, appSecret: decryptBindSecret(encryptedSecret, bindKey) };
 	} catch (e) {
-		return { status: "error", message: `机器人凭据解密失败:${(e as Error).message}` };
+		return {
+			status: "error",
+			message: t("qqBind.message.text7", { value0: (e as Error).message }),
+		};
 	}
 }
 
@@ -234,7 +239,7 @@ export function createQQConnectionAuth(opts: {
 				return ok({ taskId, state, pollIntervalSeconds: BIND_POLL_INTERVAL_SECONDS });
 			} catch (err) {
 				logger.warn(`[qq] 发起绑定失败: ${upstreamMessage(err)}`);
-				return upstreamFailure(err, "发起绑定失败");
+				return upstreamFailure(err, t("qqBind.message.text9"));
 			}
 		},
 
@@ -243,7 +248,7 @@ export function createQQConnectionAuth(opts: {
 		async state(taskId, _signal) {
 			sweep();
 			const entry = tasks.get(taskId);
-			if (!entry) return fail("not_found", "绑定任务不存在或已过期");
+			if (!entry) return fail("not_found", t("qqBind.message.text10"));
 			if (entry.state.status !== "awaiting-scan") return ok({ state: entry.state });
 			const http = opts.http();
 			if (!http) return fail("unavailable", t("connection.adapterNotStarted"));
@@ -253,10 +258,10 @@ export function createQQConnectionAuth(opts: {
 			} catch (err) {
 				// 上游故障保留任务,下一轮接着问。
 				logger.warn(`[qq] 查询绑定结果失败: ${upstreamMessage(err)}`);
-				return upstreamFailure(err, "查询绑定结果失败");
+				return upstreamFailure(err, t("qqBind.message.text12"));
 			}
 			// await 期间这一项可能被取走 / 被清扫 / 被 clear:不复活它(复活 = 把明文草稿留在没人来取的表里)。
-			if (tasks.get(taskId) !== entry) return fail("not_found", "绑定任务不存在或已过期");
+			if (tasks.get(taskId) !== entry) return fail("not_found", t("qqBind.message.text10"));
 			// 并发的另一轮已经钉住终态:以先到的为准。
 			if (entry.state.status !== "awaiting-scan") return ok({ state: entry.state });
 			if (polled.status === "created") {
@@ -264,7 +269,7 @@ export function createQQConnectionAuth(opts: {
 				entry.state = { status: "logged-in", loggedInAt: new Date().toISOString() };
 			} else if (polled.status === "expired") {
 				// `expired` 只指「已经登着的登录失效了」;建连接没有这回事,码超时就是这一次没办成。
-				entry.state = { status: "error", message: "二维码已过期，请重新生成" };
+				entry.state = { status: "error", message: t("qqBind.message.text13") };
 			} else if (polled.status === "error") {
 				entry.state = { status: "error", message: polled.message };
 			}
@@ -274,15 +279,15 @@ export function createQQConnectionAuth(opts: {
 		async takeDraft(taskId) {
 			sweep();
 			const entry = tasks.get(taskId);
-			if (!entry) return fail("not_found", "绑定任务不存在或已过期");
+			if (!entry) return fail("not_found", t("qqBind.message.text10"));
 			if (entry.state.status === "awaiting-scan") {
-				return fail("conflict", "还没扫码完成，没有可取的结果");
+				return fail("conflict", t("qqBind.message.text14"));
 			}
-			if (!entry.draft) return fail("conflict", "这次扫码没有成功，没有可取的结果");
+			if (!entry.draft) return fail("conflict", t("qqBind.message.text15"));
 			const { appId, appSecret } = entry.draft;
 			// 取走即清:整项删,不是只删草稿那一格。
 			tasks.delete(taskId);
-			return ok({ settings: { appId, appSecret } });
+			return ok({ settings: { appId, appSecret, botType: "public", sandbox: false } });
 		},
 	};
 

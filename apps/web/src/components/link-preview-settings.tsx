@@ -33,7 +33,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SECTION_ACCENT } from "../config/section-accents";
-import { useT } from "../i18n";
+import { i18n, useT } from "../i18n";
 import {
 	type Connection,
 	isTargetPaused,
@@ -104,11 +104,12 @@ export function LinkPreviewSettings({
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 推送目标表(由页面取数),这里只挑群类的列出来。 */
 	targets: readonly PushTarget[];
-	/** 连接表(由页面取数),面板只列 OneBot 的。 */
+	/** 连接表(由页面取数)，每条按能力回应显示。 */
 	connections: readonly Connection[];
 	/** `GET /api/connections/capabilities`:各连接的能力(小程序卡、收不收得到回复)。 */
 	capabilities: ConnectionCapabilitiesMap;
 }) {
+	const tx = useT();
 	const cfg = draft.linkPreview;
 	const replyFormLabel = useReplyFormLabel();
 	const candidates = targets.filter((t) => isGroupCandidate(t, connections, capabilities));
@@ -121,19 +122,19 @@ export function LinkPreviewSettings({
 	const [groupsOpen, setGroupsOpen] = useState(false);
 
 	const badge = !cfg.enabled
-		? "已关闭"
+		? tx("linkPreview.linkPreviewSettings.text1")
 		: [
-				`冷却 ${cfg.cooldownSec} 秒`,
-				cfg.isOnByDefault ? null : "仅例外群",
-				overrides > 0 ? `${overrides} 个例外` : null,
+				tx("linkPreview.linkPreviewSettings.text2", { value0: cfg.cooldownSec }),
+				cfg.isOnByDefault ? null : tx("linkPreview.linkPreviewSettings.text3"),
+				overrides > 0 ? tx("linkPreview.linkPreviewSettings.text4", { value0: overrides }) : null,
 			]
 				.filter(Boolean)
 				.join(" · ");
 
 	return (
 		<GlassBox
-			title="Core · 链接解析"
-			subtitle="群里贴 B 站视频链接,自动回一张视频卡 · globals.linkPreview"
+			title={tx("linkPreview.linkPreviewSettings.text5")}
+			subtitle={tx("linkPreview.linkPreviewSettings.text6")}
 			accent={SECTION_ACCENT.system}
 			icon={<Icon.link size={14} />}
 			badge={badge}
@@ -142,7 +143,7 @@ export function LinkPreviewSettings({
 				<Toggle
 					value={cfg.enabled}
 					onChange={(v) => onPatch({ linkPreview: { enabled: v } })}
-					ariaLabel="链接解析总开关"
+					ariaLabel={tx("linkPreview.linkPreviewSettings.text7")}
 				/>
 			</Field>
 
@@ -152,26 +153,34 @@ export function LinkPreviewSettings({
 					onChange={(v) => onPatch({ linkPreview: { cooldownSec: v } })}
 					min={0}
 					max={3600}
-					suffix="秒"
+					suffix={tx("linkPreview.linkPreviewSettings.text8")}
 				/>
 			</Field>
 
 			<Field code="core.linkPreview.isOnByDefault" full>
 				<fieldset
-					aria-label="默认(所有群)"
+					aria-label={tx("linkPreview.linkPreviewSettings.text9")}
 					className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 p-0"
 				>
-					<Cell label="解析">
+					<Cell label={tx("linkPreview.linkPreviewSettings.text10")}>
 						<Picker
 							value={cfg.isOnByDefault}
 							onChange={(isOnByDefault) => onPatch({ linkPreview: { isOnByDefault } })}
 							options={[
-								{ value: true, label: "开", color: SECTION_ACCENT.system },
-								{ value: false, label: "关", color: SECTION_ACCENT.system },
+								{
+									value: true,
+									label: tx("linkPreview.linkPreviewSettings.text11"),
+									color: SECTION_ACCENT.system,
+								},
+								{
+									value: false,
+									label: tx("linkPreview.linkPreviewSettings.text12"),
+									color: SECTION_ACCENT.system,
+								},
 							]}
 						/>
 					</Cell>
-					<Cell label="形式">
+					<Cell label={tx("linkPreview.linkPreviewSettings.text13")}>
 						<Picker
 							value={cfg.replyForm}
 							onChange={(replyForm) => onPatch({ linkPreview: { replyForm } })}
@@ -188,24 +197,29 @@ export function LinkPreviewSettings({
 			<Field code="core.linkPreview.byTarget" full>
 				{candidates.length === 0 ? (
 					<EmptyNote size="sm" className="w-full">
-						还没有群类推送目标,先去
+						{tx("linkPreview.linkPreviewSettings.text14")}
 						<Link to="/targets" className="mx-0.5 font-semibold text-bn-pink">
-							推送目标
+							{tx("linkPreview.linkPreviewSettings.text15")}
 						</Link>
-						页添加一个群;不是推送目标的群一律跟默认行
+						{tx("linkPreview.linkPreviewSettings.text16")}
 					</EmptyNote>
 				) : (
 					<div className="flex flex-col">
 						<div className="flex items-center gap-2 text-bn-xs text-bn-text-secondary">
 							<span>
-								{candidates.length} 个群 · {overrides} 个例外
+								{tx("linkPreview.linkPreviewSettings.text17", {
+									count: candidates.length,
+									overrides,
+								})}
 							</span>
 							<DisclosurePill
 								open={groupsOpen}
 								onToggle={() => setGroupsOpen((v) => !v)}
 								color={SECTION_ACCENT.system}
 							>
-								{groupsOpen ? "收起" : "展开"}
+								{groupsOpen
+									? tx("linkPreview.linkPreviewSettings.text19")
+									: tx("linkPreview.linkPreviewSettings.text20")}
 							</DisclosurePill>
 						</div>
 						{groupsOpen
@@ -237,19 +251,15 @@ export function LinkPreviewSettings({
 function supportText(s: CapabilitySupport): { dot: "ok" | "off" | "pending"; text: string } {
 	switch (s.state) {
 		case "supported":
-			return { dot: "ok", text: "支持小程序卡" };
+			return { dot: "ok", text: i18n.t("linkPreview.message.text1") };
 		case "unsupported":
-			return { dot: "off", text: "不支持,回落图片卡" };
+			return { dot: "off", text: i18n.t("linkPreview.message.text2") };
 		default:
-			return { dot: "pending", text: "未探测" };
+			return { dot: "pending", text: i18n.t("linkPreview.message.text3") };
 	}
 }
 
-/**
- * 「连接支持情况」:每条 OneBot 连接一行,三态 支持 / 不支持(带原因)/ 未探测。只列
- * OneBot —— 官机与 webhook 没有能力概念,一句话说清。探测由宿主每分钟补一轮(连上后最多一分钟就有结果),主人在推送
- * 目标页点「测试」也会补探「未探测」的。
- */
+/** 每条连接按适配器回报显示支持情况，未回报的显示未知。 */
 function CapabilityPanel({
 	connections,
 	capabilities,
@@ -257,17 +267,17 @@ function CapabilityPanel({
 	connections: readonly Connection[];
 	capabilities: ConnectionCapabilitiesMap;
 }) {
-	// 只有直连认得出自己是不是 OneBot;桥接入的平台是它握手时报的,那一栏等接桥再说。
-	const onebots = connections.filter((a) => a.adapterKey === "onebot");
+	const tx = useT();
+
 	return (
-		<section aria-label="连接支持情况" className="mt-4">
-			<Section label="连接支持情况">
-				{onebots.length === 0 ? (
+		<section aria-label={tx("linkPreview.capabilityPanel.text1")} className="mt-4">
+			<Section label={tx("linkPreview.capabilityPanel.text1")}>
+				{connections.length === 0 ? (
 					<EmptyNote size="sm" className="m-2">
-						还没有 OneBot 连接;小程序卡只有 OneBot 实现能签
+						{tx("linkPreview.capabilityPanel.text2")}
 					</EmptyNote>
 				) : (
-					onebots.map((a) => {
+					connections.map((a) => {
 						const support = nativeShareSupport(capabilities, a.id) ?? NOT_PROBED;
 						const { dot, text } = supportText(support);
 						return (
@@ -286,10 +296,7 @@ function CapabilityPanel({
 					})
 				)}
 			</Section>
-			<HintNote className="mt-2">
-				QQ 官方机器人与 webhook 不支持小程序卡,那些目标一律回图片卡。OneBot 实现要有
-				get_mini_app_ark 接口(目前已知 NapCat 支持),连上后自动探测
-			</HintNote>
+			<HintNote className="mt-2">{tx("linkPreview.capabilityPanel.text3")}</HintNote>
 		</section>
 	);
 }
@@ -325,6 +332,7 @@ function GroupRow({
 	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
 	paused: boolean;
 }) {
+	const tx = useT();
 	const replyFormLabel = useReplyFormLabel();
 	const o = cfg.byTarget[target.id];
 	// 草稿里被 patch 成 null 的字段(刚点过「跟默认」)与没写一样,都是跟默认。
@@ -346,27 +354,45 @@ function GroupRow({
 				<span className="font-semibold">{target.name}</span>
 				{paused ? (
 					<Pill size="sm" subtle color="var(--color-bn-inactive)">
-						已停用
+						{tx("linkPreview.groupRow.text1")}
 					</Pill>
 				) : null}
 			</div>
-			<Cell label="解析">
+			<Cell label={tx("linkPreview.linkPreviewSettings.text10")}>
 				<Picker<boolean | typeof INHERIT>
 					value={isOn ?? INHERIT}
 					onChange={setIsOn}
 					options={[
-						{ value: INHERIT, label: `跟默认 · ${cfg.isOnByDefault ? "开" : "关"}` },
-						{ value: true, label: "开", color: SECTION_ACCENT.system },
-						{ value: false, label: "关", color: SECTION_ACCENT.system },
+						{
+							value: INHERIT,
+							label: tx("linkPreview.groupRow.text2", {
+								value0: cfg.isOnByDefault
+									? tx("linkPreview.linkPreviewSettings.text11")
+									: tx("linkPreview.linkPreviewSettings.text12"),
+							}),
+						},
+						{
+							value: true,
+							label: tx("linkPreview.linkPreviewSettings.text11"),
+							color: SECTION_ACCENT.system,
+						},
+						{
+							value: false,
+							label: tx("linkPreview.linkPreviewSettings.text12"),
+							color: SECTION_ACCENT.system,
+						},
 					]}
 				/>
 			</Cell>
-			<Cell label="形式">
+			<Cell label={tx("linkPreview.linkPreviewSettings.text13")}>
 				<Picker<LinkReplyForm | typeof INHERIT>
 					value={replyForm ?? INHERIT}
 					onChange={setReplyForm}
 					options={[
-						{ value: INHERIT, label: `跟默认 · ${replyFormLabel(cfg.replyForm)}` },
+						{
+							value: INHERIT,
+							label: tx("linkPreview.groupRow.text2", { value0: replyFormLabel(cfg.replyForm) }),
+						},
 						...LINK_REPLY_FORMS.map((f) => ({
 							value: f,
 							label: replyFormLabel(f),
@@ -375,10 +401,8 @@ function GroupRow({
 					]}
 				/>
 			</Cell>
-			{platform === "qq-official" ? (
-				<HintNote className="basis-full">QQ 官方机器人不支持小程序卡,选了也会回落图片卡</HintNote>
-			) : support?.state === "unsupported" ? (
-				<HintNote className="basis-full">该连接不支持小程序卡,选了也会回落图片卡</HintNote>
+			{support?.state === "unsupported" ? (
+				<HintNote className="basis-full">{tx("linkPreview.groupRow.text3")}</HintNote>
 			) : null}
 		</fieldset>
 	);

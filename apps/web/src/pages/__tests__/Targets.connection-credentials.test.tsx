@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * 连接表单的凭据格(ADR-0021 决策 44):`GET /api/connections` 下发的是 `{ masked }`。
@@ -9,7 +13,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { PlatformMetaRoot } from "../../components/platform-meta";
@@ -72,6 +76,9 @@ let connections: unknown[] = [];
 beforeEach(() => {
 	connections = [ONEBOT];
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return connections;
 		return [];
 	});
@@ -192,7 +199,7 @@ describe("webhook / 官机", () => {
 		expect(body.settings).not.toHaveProperty("secret");
 	});
 
-	it("webhook 列表行的副标题直接是服务端给的那串遮挡字", async () => {
+	it("连接列表只用适配器描述，不读取设置里的地址", async () => {
 		connections = [WEBHOOK];
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
@@ -202,7 +209,8 @@ describe("webhook / 官机", () => {
 				</PlatformMetaRoot>
 			</QueryClientProvider>,
 		);
-		expect((await screen.findAllByText(/http••••••••=tok/)).length).toBeGreaterThan(0);
+		expect(await screen.findByText(/经 Webhook/)).toBeTruthy();
+		expect(screen.queryByText(/http••••••••=tok/)).toBeNull();
 	});
 
 	it("官机 appSecret 点「换一份」后留空保存 → 空串(必填的格交空串,不是 null)", async () => {
@@ -231,9 +239,10 @@ describe("新建", () => {
 		);
 		fireEvent.click(await screen.findByRole("button", { name: /新建连接/ }));
 		const dialog = await waitFor(() => screen.getByRole("dialog"));
-		fireEvent.change(within(dialog).getByPlaceholderText("如：NapCat 主连接"), {
+		fireEvent.change(within(dialog).getByPlaceholderText("如：家里的机器人"), {
 			target: { value: "新的" },
 		});
+		await waitFor(() => expect(field(dialog, "settings.accessToken")).not.toBeNull());
 		const token = field(dialog, "settings.accessToken").querySelector("input") as HTMLElement;
 		fireEvent.change(token, { target: { value: "tok-new" } });
 		await save(dialog);
@@ -244,5 +253,68 @@ describe("新建", () => {
 		];
 		expect(url).toBe("/api/connections");
 		expect(body.settings.accessToken).toBe("tok-new");
+	});
+});
+
+it("描述还没读到时不展开凭据；读到后按字段描述保留已存凭据", async () => {
+	let resolveAdapters!: (value: unknown) => void;
+	const pending = new Promise((resolve) => {
+		resolveAdapters = resolve;
+	});
+	const get = vi.mocked(api.get).getMockImplementation();
+	if (!get) throw new Error("Missing API fixture");
+	vi.mocked(api.get).mockImplementation((url: string) =>
+		url === "/api/adapters" ? pending : get(url),
+	);
+	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	render(
+		<QueryClientProvider client={qc}>
+			<PlatformMetaRoot>
+				<Targets />
+			</PlatformMetaRoot>
+		</QueryClientProvider>,
+	);
+	fireEvent.click(await screen.findByRole("button", { name: "配置" }));
+	expect(screen.queryByRole("dialog")).toBeNull();
+	await act(async () => resolveAdapters({ adapters: builtinAdapters }));
+	await screen.findByText(/经 OneBot/);
+	fireEvent.click(screen.getByRole("button", { name: "配置" }));
+	const dialog = await screen.findByRole("dialog");
+	expect(field(dialog, "settings.accessToken").querySelector("input")).toBeNull();
+	expect(field(dialog, "settings.accessToken").textContent).toContain("abcd••••••••wxyz");
+	fireEvent.change(within(dialog).getByDisplayValue("家里那台"), { target: { value: "改名" } });
+	await save(dialog);
+	expect(vi.mocked(api.patch).mock.calls[0]?.[1]).not.toHaveProperty("settings.accessToken");
+});
+
+it("编辑已有连接时扫码返回的新凭据和其他设置一起进入 PATCH", async () => {
+	connections = [QQ];
+	const get = vi.mocked(api.get).getMockImplementation();
+	if (!get) throw new Error("Missing API fixture");
+	vi.mocked(api.get).mockImplementation((url: string) =>
+		url.endsWith("/auth/task") ? Promise.resolve({ state: { status: "logged-in" } }) : get(url),
+	);
+	vi.mocked(api.post).mockImplementation(async (url: string) =>
+		url.endsWith("/draft")
+			? {
+					settings: {
+						appId: "new-app",
+						appSecret: "new-secret",
+						botType: "public",
+						sandbox: false,
+					},
+				}
+			: {
+					taskId: "task",
+					pollIntervalSeconds: 1,
+					state: { status: "awaiting-scan", qr: { dataUrl: "data:image/png;base64,AA==" } },
+				},
+	);
+	const dialog = await openEdit();
+	fireEvent.click(within(dialog).getByRole("button", { name: /扫码/ }));
+	await within(dialog).findByDisplayValue("new-app", {}, { timeout: 3000 });
+	await save(dialog);
+	expect(vi.mocked(api.patch).mock.calls[0]?.[1]).toMatchObject({
+		settings: { appId: "new-app", appSecret: "new-secret" },
 	});
 });

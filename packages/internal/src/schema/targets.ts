@@ -11,22 +11,21 @@ import {
 	PUSH_TARGET_SCOPES,
 	platformOfTarget,
 } from "../push-target";
-import { type PackageTextKey, packageText as tr } from "../texts";
+import { packageText as tr } from "../texts";
 import { markBackupOnly, markSecret } from "./secret";
 
 /** 元数据在导出描述时取字,不会把启动时的语言冻结在规则里。 */
 function fieldText(
-	label: PackageTextKey,
-	description?: PackageTextKey,
+	read: () => { label: string; description?: string },
 	extra: Record<string, unknown> = {},
 ) {
 	return Object.defineProperties(
 		{
 			get label() {
-				return tr(label);
+				return read().label;
 			},
 			get description() {
-				return description ? tr(description) : undefined;
+				return read().description;
 			},
 		},
 		Object.getOwnPropertyDescriptors(extra),
@@ -76,9 +75,15 @@ export const PushTargetKindSchema = z.enum(PUSH_TARGET_KINDS);
 const onebotCommonSettingsShape = {
 	accessToken: markSecret(
 		z.string().meta(
-			fieldText("internal.connection.token.label", "internal.connection.token.description", {
-				secret: true,
-			}),
+			fieldText(
+				() => ({
+					label: tr("internal.connection.token.label"),
+					description: tr("internal.connection.token.description"),
+				}),
+				{
+					secret: true,
+				},
+			),
 		),
 	).optional(),
 	/** OneBot 协议版本；首期固定 v11，留位以便后续扩展 v12。 */
@@ -90,10 +95,16 @@ const onebotCommonSettingsShape = {
 		.min(1)
 		.default(15_000)
 		.meta(
-			fieldText("internal.connection.timeout.label", "internal.connection.timeout.description", {
-				step: 1000,
-				unit: "ms",
-			}),
+			fieldText(
+				() => ({
+					label: tr("internal.connection.timeout.label"),
+					description: tr("internal.connection.timeout.description"),
+				}),
+				{
+					step: 1000,
+					unit: "ms",
+				},
+			),
 		),
 	/**
 	 * 带图普通消息的超时**下限**（毫秒）。协议端要先把图传到 QQ 图床才回响应，实测
@@ -107,8 +118,10 @@ const onebotCommonSettingsShape = {
 		.default(ONEBOT_IMAGE_MIN_TIMEOUT_MS)
 		.meta(
 			fieldText(
-				"internal.connection.imageMinTimeoutMs.label",
-				"internal.connection.imageMinTimeoutMs.description",
+				() => ({
+					label: tr("internal.connection.imageMinTimeoutMs.label"),
+					description: tr("internal.connection.imageMinTimeoutMs.description"),
+				}),
 				{ step: 1000, unit: "ms" },
 			),
 		),
@@ -120,8 +133,10 @@ const onebotCommonSettingsShape = {
 		.default(ONEBOT_FORWARD_MIN_TIMEOUT_MS)
 		.meta(
 			fieldText(
-				"internal.connection.mergeForwardMinTimeoutMs.label",
-				"internal.connection.mergeForwardMinTimeoutMs.description",
+				() => ({
+					label: tr("internal.connection.mergeForwardMinTimeoutMs.label"),
+					description: tr("internal.connection.mergeForwardMinTimeoutMs.description"),
+				}),
 				{ step: 1000, unit: "ms" },
 			),
 		),
@@ -133,8 +148,10 @@ const onebotCommonSettingsShape = {
 		.default(0)
 		.meta(
 			fieldText(
-				"internal.connection.maxRetries.label",
-				"internal.connection.maxRetries.description",
+				() => ({
+					label: tr("internal.connection.maxRetries.label"),
+					description: tr("internal.connection.maxRetries.description"),
+				}),
 				{
 					preserveTruthy: true,
 					get unit() {
@@ -150,7 +167,10 @@ const onebotCommonSettingsShape = {
 		.min(0)
 		.default(1_000)
 		.meta(
-			fieldText("internal.connection.retryIntervalMs.label", undefined, { step: 500, unit: "ms" }),
+			fieldText(() => ({ label: tr("internal.connection.retryIntervalMs.label") }), {
+				step: 500,
+				unit: "ms",
+			}),
 		),
 } as const;
 
@@ -161,21 +181,24 @@ export const OnebotHttpSettingsSchema = z
 		/** bot 的 OneBot HTTP API 根地址。 */
 		baseUrl: markBackupOnly(
 			z.url().meta(
-				fieldText("internal.connection.baseUrl.label", undefined, {
+				fieldText(() => ({ label: tr("internal.connection.baseUrl.label") }), {
 					monospace: true,
 					placeholder: "http://napcat:3000",
 				}),
 			),
 			{ url: true },
 		),
+		...onebotCommonSettingsShape,
 		/** 附加到每次请求的 HTTP header（例如自定义鉴权头）。 */
 		headers: z
 			.record(z.string(), markBackupOnly(z.string()))
 			.default({})
 			.meta(
-				fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+				fieldText(() => ({
+					label: tr("internal.connection.headers.label"),
+					description: tr("internal.connection.headers.description"),
+				})),
 			),
-		...onebotCommonSettingsShape,
 	})
 	.strict()
 	.meta({ initial: { baseUrl: "http://127.0.0.1:3000" } });
@@ -190,23 +213,32 @@ export const OnebotWsSettingsSchema = z
 				.string()
 				.regex(/^wss?:\/\/\S+$/i, { error: () => tr("internal.connection.wsUrl.invalid") })
 				.meta(
-					fieldText("internal.connection.wsUrl.label", "internal.connection.wsUrl.description", {
-						monospace: true,
-						placeholder: "ws://napcat:3001",
-					}),
+					fieldText(
+						() => ({
+							label: tr("internal.connection.wsUrl.label"),
+							description: tr("internal.connection.wsUrl.description"),
+						}),
+						{
+							monospace: true,
+							placeholder: "ws://napcat:3001",
+						},
+					),
 				),
 			{
 				url: true,
 			},
 		),
+		...onebotCommonSettingsShape,
 		/** WS 握手请求头（例如自定义鉴权头）。 */
 		headers: z
 			.record(z.string(), markBackupOnly(z.string()))
 			.default({})
 			.meta(
-				fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+				fieldText(() => ({
+					label: tr("internal.connection.headers.label"),
+					description: tr("internal.connection.headers.description"),
+				})),
 			),
-		...onebotCommonSettingsShape,
 	})
 	.strict()
 	.meta({ initial: { url: "ws://127.0.0.1:3001", maxRetries: 3 } });
@@ -222,9 +254,15 @@ export const OnebotWsReverseSettingsSchema = z
 			.min(1)
 			.max(65_535)
 			.meta(
-				fieldText("internal.connection.port.label", "internal.connection.port.description", {
-					listener: { scheme: "ws" },
-				}),
+				fieldText(
+					() => ({
+						label: tr("internal.connection.port.label"),
+						description: tr("internal.connection.port.description"),
+					}),
+					{
+						listener: { scheme: "ws" },
+					},
+				),
 			),
 		...onebotCommonSettingsShape,
 	})
@@ -239,7 +277,7 @@ export const OnebotConnectionSettingsSchema = z
 		OnebotWsReverseSettingsSchema,
 	])
 	.meta(
-		fieldText("internal.connection.transport.label", undefined, {
+		fieldText(() => ({ label: tr("internal.connection.transport.label") }), {
 			get options() {
 				return {
 					http: { label: "HTTP" },
@@ -265,7 +303,7 @@ export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
 export const WebhookConnectionSettingsSchema = z.object({
 	url: markSecret(
 		z.url().meta(
-			fieldText("internal.connection.hookUrl.label", undefined, {
+			fieldText(() => ({ label: tr("internal.connection.hookUrl.label") }), {
 				monospace: true,
 				secret: true,
 				byPlatform: {
@@ -281,8 +319,10 @@ export const WebhookConnectionSettingsSchema = z.object({
 	secret: markSecret(
 		z.string().meta(
 			fieldText(
-				"internal.connection.hookSecret.label",
-				"internal.connection.hookSecret.description",
+				() => ({
+					label: tr("internal.connection.hookSecret.label"),
+					description: tr("internal.connection.hookSecret.description"),
+				}),
 				{
 					secret: true,
 					get byPlatform() {
@@ -302,7 +342,10 @@ export const WebhookConnectionSettingsSchema = z.object({
 		.record(z.string(), markBackupOnly(z.string()))
 		.default({})
 		.meta(
-			fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+			fieldText(() => ({
+				label: tr("internal.connection.headers.label"),
+				description: tr("internal.connection.headers.description"),
+			})),
 		),
 });
 export type WebhookConnectionSettings = z.infer<typeof WebhookConnectionSettingsSchema>;
@@ -324,10 +367,16 @@ export const QQOfficialConnectionSettingsSchema = z
 			.string()
 			.min(1)
 			.meta(
-				fieldText("internal.connection.appId.label", "internal.connection.appId.description", {
-					monospace: true,
-					placeholder: "102xxxxxx",
-				}),
+				fieldText(
+					() => ({
+						label: tr("internal.connection.appId.label"),
+						description: tr("internal.connection.appId.description"),
+					}),
+					{
+						monospace: true,
+						placeholder: "102xxxxxx",
+					},
+				),
 			),
 		/**
 		 * 空串 = 尚未配置密钥,**合法可存**(与 onebot 的 `accessToken`、webhook 的
@@ -339,31 +388,40 @@ export const QQOfficialConnectionSettingsSchema = z
 		 * adapter,不会拿空密钥去撞 QQ 网关。
 		 */
 		appSecret: markSecret(
-			z
-				.string()
-				.meta(
-					fieldText(
-						"internal.connection.appSecret.label",
-						"internal.connection.appSecret.description",
-						{ secret: true },
-					),
+			z.string().meta(
+				fieldText(
+					() => ({
+						label: tr("internal.connection.appSecret.label"),
+						description: tr("internal.connection.appSecret.description"),
+					}),
+					{ secret: true },
 				),
+			),
 		),
 		sandbox: z
 			.boolean()
 			.default(false)
 			.meta(
-				fieldText("internal.connection.sandbox.label", "internal.connection.sandbox.description"),
+				fieldText(() => ({
+					label: tr("internal.connection.sandbox.label"),
+					description: tr("internal.connection.sandbox.description"),
+				})),
 			),
 		botType: QQOfficialBotTypeSchema.default("public").meta(
-			fieldText("internal.connection.botType.label", "internal.connection.botType.description", {
-				get options() {
-					return {
-						public: { label: tr("internal.connection.botType.public") },
-						private: { label: tr("internal.connection.botType.private") },
-					};
+			fieldText(
+				() => ({
+					label: tr("internal.connection.botType.label"),
+					description: tr("internal.connection.botType.description"),
+				}),
+				{
+					get options() {
+						return {
+							public: { label: tr("internal.connection.botType.public") },
+							private: { label: tr("internal.connection.botType.private") },
+						};
+					},
 				},
-			}),
+			),
 		),
 		/** 是否记录网关 RECONNECT/RESUMED 事件日志。QQ 官方网关每约 30 分钟主动要求
 		 * 重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启。 */
@@ -371,10 +429,10 @@ export const QQOfficialConnectionSettingsSchema = z
 			.boolean()
 			.default(false)
 			.meta(
-				fieldText(
-					"internal.connection.logReconnects.label",
-					"internal.connection.logReconnects.description",
-				),
+				fieldText(() => ({
+					label: tr("internal.connection.logReconnects.label"),
+					description: tr("internal.connection.logReconnects.description"),
+				})),
 			),
 	})
 	.strict();

@@ -1,3 +1,9 @@
+import {
+	makeEmptyConnection,
+	switchOnebotTransport,
+	webhookSecretHint,
+	webhookUrlPlaceholder,
+} from "./connection-fixtures";
 /**
  * 运行时单测 — `types/domain.ts` 的工厂函数。
  *
@@ -10,17 +16,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
-import {
-	isBuiltinConnection,
-	isEndpointConnection,
-	KNOWN_PLATFORMS,
-	makeEmptyConnection,
-	makeEmptyTarget,
-	newId,
-	switchOnebotTransport,
-	webhookSecretHint,
-	webhookUrlPlaceholder,
-} from "../domain";
+import { isEndpointConnection, makeEmptyTarget, newId } from "../domain";
 
 /** RFC 4122 v4:版本位固定 `4`,variant 位固定 `[89ab]`。后端 z.uuid() 等价校验。 */
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -89,12 +85,7 @@ describe("webhook adapter factories", () => {
 		// provider 已经升格成 platform —— 别在 settings 里留一份影子。
 		expect(connection.settings).not.toHaveProperty("provider");
 		// 平台快照由服务端按适配器的候选填,草稿里没有。
-		expect(connection).not.toHaveProperty("platformSnapshot");
-	});
-
-	it("KNOWN_PLATFORMS 把 webhook 那四家平铺出来,不再有一个叫 webhook 的平台", () => {
-		const values = KNOWN_PLATFORMS.map((p) => p.value);
-		expect(values).toEqual(["onebot", "qq-official", "feishu", "dingtalk", "wecom", "generic"]);
+		expect(connection.platformSnapshot.targetKind).toBe("endpoint");
 	});
 
 	it("makeEmptyTarget(webhook 那族) 生成 endpoint 形态、平台跟着连接走", () => {
@@ -128,10 +119,6 @@ describe("webhook adapter factories", () => {
 });
 
 describe("qq-official adapter factories", () => {
-	it("KNOWN_PLATFORMS 含 qq-official", () => {
-		expect(KNOWN_PLATFORMS.map((p) => p.value)).toContain("qq-official");
-	});
-
 	it("makeEmptyConnection(qq-official) 默认 public 域 + 非沙箱 + 空凭据", () => {
 		const connection = makeEmptyConnection("qq-official", "QQ 官方机器人");
 		expect(connection.platform).toBe("qq-official");
@@ -216,12 +203,5 @@ describe("isEndpointConnection —— 读的是连接上存的快照,不是平�
 		for (const platform of ["onebot", "qq-official"]) {
 			expect(isEndpointConnection({ platformSnapshot: snapshotFor(platform) })).toBe(false);
 		}
-	});
-
-	it("isBuiltinConnection 认保留 id:内置三个是,拓展 id 不是", () => {
-		for (const adapterKey of ["onebot", "qq-official", "webhook"]) {
-			expect(isBuiltinConnection({ adapterKey })).toBe(true);
-		}
-		expect(isBuiltinConnection({ adapterKey: "bridge" })).toBe(false);
 	});
 });

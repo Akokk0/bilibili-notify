@@ -67,7 +67,10 @@ export type SubscriptionFeaturesPinned = Pinned<
 >;
 /** 推送段的纯外观逐格严格相等。 */
 export type PushDisplayPinned = Pinned<
-	Equals<Omit<ManifestPush, "settingsFields">, Omit<PlatformAdapterDescriptor, "settingsFields">>
+	Equals<
+		Omit<ManifestPush, "settingsFields">,
+		Omit<PlatformAdapterDescriptor, "settingsFields" | "auth">
+	>
 >;
 /** 拓展推送段只开放单值字段;内置连接描述的条件字段与键值表不进入清单。 */
 export type PushSettingsFieldsPinned = Pinned<

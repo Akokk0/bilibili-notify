@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 
 /**
  * Webhook 那一支的**刻画测试** —— 钉住「系统托管的投递目标」在界面上的样子。
@@ -9,9 +13,9 @@
  * `target.platform` 不再等于 `"webhook"`,页面里那几处 `=== "webhook"` 会**静默恒假**:
  *
  * - `managedEndpointTargetForConnection` 认不出自己那张托管目标 → 托管卡从界面消失,
- *   只剩一句「保存 Webhook 后系统会自动创建默认投递目标」的空态;
+ *   只剩一句「保存连接后，系统会自动创建默认投递目标」的空态;
  * - `targetSessionSummary` 末尾那个**兜底 return** 会把「不是 onebot、不是官机」的目标
- *   一律标成「→ webhook 终点」—— 将来接进来的 telegram 目标会被标错平台。
+ *   一律标成「→ 单向终点」—— 将来接进来的 telegram 目标会被标错平台。
  *
  * 两处都**没有编译错、没有类型红**(比较的两边都是 string),所以先在这儿把行为钉死:
  * 降格那步一旦漏改,红的是这个文件而不是主人的真机。
@@ -70,6 +74,9 @@ const MANAGED_TARGET = {
 
 function renderPage(connections: Connection[], targets: PushTarget[]) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters") return { adapters: builtinAdapters };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/connections") return connections;
 		if (url === "/api/targets") return targets;
 		return [];
@@ -82,11 +89,11 @@ function renderPage(connections: Connection[], targets: PushTarget[]) {
 	);
 }
 
-/** 右栏那张「Webhook 投递目标」卡。 */
+/** 右栏那张「单向投递目标」卡。 */
 async function endpointPanel(): Promise<HTMLElement> {
-	const heading = await screen.findByText("Webhook 投递目标");
+	const heading = await screen.findByText("单向投递目标");
 	const panel = heading.closest("div.bn-glass");
-	if (!panel) throw new Error("找不到 Webhook 投递目标那张卡");
+	if (!panel) throw new Error("找不到 单向投递目标那张卡");
 	return panel as HTMLElement;
 }
 
@@ -104,12 +111,12 @@ describe("系统托管的 webhook 投递目标", () => {
 		const panel = await endpointPanel();
 		expect(within(panel).getByText("飞书群机器人 · 投递")).toBeTruthy();
 		// 认不出托管目标时页面退成这句空态 —— 它出现即等于卡没了。
-		expect(within(panel).queryByText(/保存 Webhook 后系统会自动创建默认投递目标/)).toBeNull();
+		expect(within(panel).queryByText(/保存连接后，系统会自动创建默认投递目标/)).toBeNull();
 	});
 
 	it("托管目标的会话摘要写「系统托管 webhook 终点」", async () => {
 		const panel = await endpointPanel();
-		expect(within(panel).getByText("→ 系统托管 webhook 终点")).toBeTruthy();
+		expect(within(panel).getByText("→ 系统托管终点")).toBeTruthy();
 	});
 
 	it("左栏副标题写「单向投递」而不是目标个数", async () => {
@@ -156,7 +163,7 @@ describe("没有托管目标时的空态", () => {
 	it("找不到托管目标就退成那句提示 —— 这正是判据恒假时会看到的样子", async () => {
 		renderPage([WEBHOOK_CONNECTION], []);
 		const panel = await endpointPanel();
-		expect(within(panel).getByText(/保存 Webhook 后系统会自动创建默认投递目标/)).toBeTruthy();
+		expect(within(panel).getByText(/保存连接后，系统会自动创建默认投递目标/)).toBeTruthy();
 	});
 });
 
@@ -165,6 +172,6 @@ describe("未托管的 webhook 目标(历史数据)", () => {
 		const loose = { ...MANAGED_TARGET, managedBy: undefined } as unknown as PushTarget;
 		renderPage([WEBHOOK_CONNECTION], [loose]);
 		const panel = await endpointPanel();
-		expect(within(panel).getByText("→ webhook 终点")).toBeTruthy();
+		expect(within(panel).getByText("→ 单向终点")).toBeTruthy();
 	});
 });

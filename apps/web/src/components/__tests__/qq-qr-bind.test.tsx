@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ApiError } from "../../services/api";
-import { pollDelayMs, QQQrBindButton } from "../qq-qr-bind";
+import { ConnectionAuthButton, pollDelayMs } from "../connection-auth";
 
 const { postMock, getMock } = vi.hoisted(() => ({ postMock: vi.fn(), getMock: vi.fn() }));
 
@@ -56,7 +56,7 @@ const callsOf = (mock: typeof postMock, path: string) =>
 	mock.mock.calls.filter(([p]) => p === path).length;
 const openDialog = () => fireEvent.click(screen.getByRole("button", { name: /扫码连接/ }));
 
-describe("QQQrBindButton", () => {
+describe("ConnectionAuthButton", () => {
 	// 花括号不能省:箭头函数直接返回 mockReset() 的结果,vitest 会把返回的函数当清理钩子,
 	// 收摊时多调一发 postMock(undefined)。
 	beforeEach(() => {
@@ -66,7 +66,14 @@ describe("QQQrBindButton", () => {
 	afterEach(() => cleanup());
 
 	it("初始只有入口按钮 + 实验性徽章,不见弹窗", () => {
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		expect(screen.getByRole("button", { name: /扫码连接/ })).toBeTruthy();
 		expect(screen.getByText("实验性")).toBeTruthy();
 		expect(screen.queryByRole("dialog")).toBeNull();
@@ -75,10 +82,17 @@ describe("QQQrBindButton", () => {
 	it("点击 → POST 发起,弹层展示取自 state.qr.dataUrl 的二维码与能力注意(OpenClaw 说明已砍)", async () => {
 		postRoutes();
 		getMock.mockResolvedValue({ state: BEGIN_OK.state });
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => {
-			const img = screen.getByAltText("QQ 机器人绑定二维码") as HTMLImageElement;
+			const img = screen.getByAltText("连接授权二维码") as HTMLImageElement;
 			expect(img.src).toBe(BEGIN_OK.state.qr.dataUrl);
 		});
 		// OpenClaw/通道失效那段说明已砍(话太多),只留能力注意
@@ -91,7 +105,14 @@ describe("QQQrBindButton", () => {
 	it("适配器键进路径时做了转义", async () => {
 		postRoutes({ "/api/adapters/a%2Fb/auth": () => BEGIN_OK });
 		getMock.mockResolvedValue({ state: BEGIN_OK.state });
-		render(<QQQrBindButton adapterKey="a/b" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="a/b"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(postMock).toHaveBeenCalledWith("/api/adapters/a%2Fb/auth", {}));
 	});
@@ -100,7 +121,14 @@ describe("QQQrBindButton", () => {
 		const got = vi.fn();
 		postRoutes({ [DRAFT]: () => DRAFT_OK });
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(
 			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
@@ -131,7 +159,14 @@ describe("QQQrBindButton", () => {
 			},
 		});
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/正在取回凭据/)).toBeTruthy(), POLLED);
 		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), POLLED);
@@ -144,7 +179,14 @@ describe("QQQrBindButton", () => {
 		getMock
 			.mockResolvedValueOnce({ state: { status: "confirming" } })
 			.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), { timeout: 6000 });
 		expect(getMock.mock.calls.length).toBe(2);
@@ -153,7 +195,14 @@ describe("QQQrBindButton", () => {
 		postRoutes();
 		getMock.mockReset();
 		getMock.mockResolvedValue({ state: { status: "logged-out" } });
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
 	});
@@ -163,7 +212,14 @@ describe("QQQrBindButton", () => {
 		getMock.mockResolvedValue({
 			state: { status: "error", message: "二维码已过期，请重新生成" },
 		});
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		// 断言服务端那句话真的显示出来(把话改空它不能绿)。
 		await waitFor(() => expect(screen.getByText("二维码已过期，请重新生成")).toBeTruthy(), POLLED);
@@ -178,7 +234,14 @@ describe("QQQrBindButton", () => {
 		getMock.mockResolvedValue({
 			state: { status: "error", message: "扫码成功但腾讯未返回完整机器人凭据" },
 		});
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/未返回完整机器人凭据/)).toBeTruthy(), POLLED);
 		expect(screen.getAllByText(/手动填写/).length).toBeGreaterThan(0);
@@ -204,7 +267,14 @@ describe("QQQrBindButton", () => {
 				"绑定任务不存在或已过期",
 			),
 		);
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
@@ -219,7 +289,14 @@ describe("QQQrBindButton", () => {
 				new ApiError(404, { code: "unavailable", message: "查询绑定结果失败" }, "查询绑定结果失败"),
 			)
 			.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(
 			() => expect(got).toHaveBeenCalledWith({ appId: "102000001", appSecret: "S3cret" }),
@@ -241,7 +318,14 @@ describe("QQQrBindButton", () => {
 			},
 		});
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), { timeout: 6000 });
 		expect(drafts).toBe(2);
@@ -261,7 +345,14 @@ describe("QQQrBindButton", () => {
 			},
 		});
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/绑定结果已经不在了/)).toBeTruthy(), POLLED);
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
@@ -279,17 +370,31 @@ describe("QQQrBindButton", () => {
 			},
 		});
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/这次扫码没有成功/)).toBeTruthy(), POLLED);
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();
 	});
 
-	it("取回来的 settings 缺 appSecret → 不回调,提示凭据不完整", async () => {
+	it("取回来的 settings 不是草稿对象 → 不回调,提示凭据不完整", async () => {
 		const got = vi.fn();
-		postRoutes({ [DRAFT]: () => ({ settings: { appId: "102000001" } }) });
+		postRoutes({ [DRAFT]: () => ({ settings: null }) });
 		getMock.mockResolvedValue(loggedIn());
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={got}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/凭据不完整/)).toBeTruthy(), POLLED);
 		expect(got).not.toHaveBeenCalled();
@@ -298,7 +403,14 @@ describe("QQQrBindButton", () => {
 
 	it("发起失败 → 报错并可重试", async () => {
 		postMock.mockRejectedValueOnce(new Error("发起绑定失败：系统繁忙"));
-		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
+		render(
+			<ConnectionAuthButton
+				experimental
+				warning="仅支持创建者私聊与创建者当群主的群。手动填写正式注册凭据可获得更宽的能力。"
+				adapterKey="qq-official"
+				onCredentials={() => {}}
+			/>,
+		);
 		openDialog();
 		await waitFor(() => expect(screen.getByText(/创建绑定任务失败/)).toBeTruthy());
 		expect(screen.getByRole("button", { name: /重新生成/ })).toBeTruthy();

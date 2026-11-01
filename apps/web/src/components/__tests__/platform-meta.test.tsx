@@ -1,112 +1,90 @@
 // @vitest-environment jsdom
-/**
- * 把「画谁」这张表喂给组件库。
- *
- * 🔴 拓展那一档的短名与标识色**是拓展自己报的**(写在清单里,经 `/api/ext` 下来)。面板这边一度手抄了一份桥的粉紫色 —— 手抄的副本会跟拓展报的悄悄
- * 漂开(改了拓展、面板还是旧色),而那种漂移**门禁一片绿,只有眼睛看得出来**。
- * 所以这里钉两条:表里没有写死的拓展,以及交上来的那份真的进得了表。
- */
-
-import type { ExtensionsResponse } from "@bilibili-notify/contract";
-import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/platform-registry";
-import { Icon, type IconName, usePlatformLabel } from "@bilibili-notify/ui";
+import type { AdapterEntry, ConnectionView } from "@bilibili-notify/contract";
+import { PlatformIcon, usePlatformLabel } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-
-vi.mock("../../services/api", () => ({
-	api: { get: vi.fn() },
-	ApiError: class extends Error {},
-}));
-
-import { api } from "../../services/api";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { buildPlatformTable, PlatformMetaRoot } from "../platform-meta";
 
-const BRIDGE: ExtensionsResponse["extensions"][number] = {
-	id: "bridge",
-	name: "机器人框架桥接",
-	enabled: true,
-	state: "running",
-	dir: "/data/extensions/bridge",
-	push: {
-		label: "机器人框架桥接",
-		shortLabel: "桥接",
-		color: "#a855f7",
-		settingsFields: [],
-	},
+vi.mock("../../services/api", () => ({ api: { get: vi.fn() } }));
+
+import { api } from "../../services/api";
+
+const ADAPTER: AdapterEntry = {
+	key: "relay",
+	descriptor: { label: "中继", shortLabel: "桥", color: "#a855f7", settingsFields: [] },
+	has: { connectionAuth: false, listAddressCandidates: false },
 };
-
-describe("平台元信息表", () => {
-	it("内置平台照旧从注册表来", () => {
-		const table = buildPlatformTable([]);
-		expect(table("onebot")).toBeTruthy();
-	});
-
-	/** 🔴 手抄那一行删了:没人报的拓展就退灰方章,而不是面板自己记得一个颜色。 */
-	it("没有拓展报上来时,拓展 id 查不到东西 —— 退灰方章,不是手抄一份", () => {
-		expect(buildPlatformTable([])("bridge")).toBeUndefined();
-	});
-
-	it("拓展自己报的短名与标识色进得了表,清单里的图标也一起", () => {
-		const icon = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
-		const table = buildPlatformTable([{ ...BRIDGE, icon }]);
-		expect(table("bridge")).toEqual({ tint: "#a855f7", label: "桥接", svg: icon });
-	});
-
-	/**
-	 * 🔴 注册表里写的图标名要真在图标表里 —— 写错一个字母不会有任何编译错,
-	 * 只是那个平台在推送目标页悄悄退成首字方章。
-	 */
-	it("内置平台声明的图标名,组件库的图标表里都有", () => {
-		for (const [code, meta] of Object.entries(PLATFORM_REGISTRY)) {
-			if (meta.icon) expect(Icon[meta.icon as IconName], `${code} → ${meta.icon}`).toBeTruthy();
-		}
-	});
-
-	/**
-	 * 🔴 ADR-0019 决策 41:v2 的外观写在清单里,服务端**跑没跑都给**。表只认有没有外观,
-	 * 不认在不在跑 —— 在这儿补一道「在跑才进表」,拓展一停,它借来的连接就退回灰方章。
-	 */
-	it("停着、但交了外观的那条(v2 照清单给的)照样进表", () => {
-		const table = buildPlatformTable([{ ...BRIDGE, state: "disabled", enabled: false }]);
-		expect(table("bridge")).toEqual({ tint: "#a855f7", label: "桥接", svg: undefined });
-	});
-
-	/** 没交外观的(清单读不出来的版本不合拓展)—— 不能因此塞一份空壳进去。 */
-	it("没交外观的那条不进表", () => {
-		const table = buildPlatformTable([{ ...BRIDGE, push: undefined, state: "disabled" }]);
-		expect(table("bridge")).toBeUndefined();
-	});
+const IMAGE = "data:image/png;base64,QUJD";
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
 });
-
-/**
- * 🔴 **接线守卫。** 表算对了、`PlatformMetaProvider` 没接上,症状是桥的卡片退成灰方章 ——
- * 而这一层的单元测试照样全绿。这条从 Provider 那一头真取一次。
- */
-describe("表真的喂给了组件库", () => {
-	afterEach(() => {
-		cleanup();
-		vi.clearAllMocks();
+describe("描述与快照提供平台外观", () => {
+	it("没有描述时不自带内置或拓展平台表", () => {
+		expect(buildPlatformTable([])("onebot")).toBeUndefined();
+		expect(buildPlatformTable([])("relay")).toBeUndefined();
 	});
-
-	function Probe() {
-		const label = usePlatformLabel();
-		return <span>{label("bridge")}</span>;
-	}
-
-	it("拓展报的短名,组件库那一侧真取得到", async () => {
-		vi.mocked(api.get).mockResolvedValue({
-			extensions: [BRIDGE],
-			restart: { can: true, how: "container" },
-		} satisfies ExtensionsResponse);
-		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	it("适配器的短名、颜色与安全图片照描述读取,不要求适配器正在运行", () => {
+		const lookup = buildPlatformTable([
+			{ ...ADAPTER, descriptor: { ...ADAPTER.descriptor, icon: IMAGE } },
+		]);
+		expect(lookup("relay")).toEqual({ label: "桥", tint: "#a855f7", image: IMAGE });
+		const unsafe = buildPlatformTable([
+			{ ...ADAPTER, descriptor: { ...ADAPTER.descriptor, icon: "https://tracker.test/pixel" } },
+		]);
+		expect(unsafe("relay")).toEqual({ label: "桥", tint: "#a855f7", icon: undefined });
+	});
+	it("每条连接保留自己的快照外观,同名平台不会覆盖另一条连接", () => {
+		const connection = {
+			id: "one",
+			adapterKey: "relay",
+			platform: "chat",
+			name: "n",
+			enabled: true,
+			settings: {},
+			platformSnapshot: { ...snapshotFor("chat"), shortLabel: "甲", color: "#123456" },
+		} satisfies ConnectionView;
+		const lookup = buildPlatformTable(
+			[ADAPTER],
+			[
+				connection,
+				{
+					...connection,
+					id: "two",
+					platformSnapshot: { ...connection.platformSnapshot, shortLabel: "乙" },
+				},
+			],
+		);
+		expect(lookup("connection:one")?.label).toBe("甲");
+		expect(lookup("connection:two")?.label).toBe("乙");
+	});
+	it("真正从 /api/adapters 把描述与图片交给组件库", async () => {
+		vi.mocked(api.get).mockImplementation(async (url) =>
+			url === "/api/adapters"
+				? { adapters: [{ ...ADAPTER, descriptor: { ...ADAPTER.descriptor, icon: IMAGE } }] }
+				: [],
+		);
+		function Probe() {
+			const label = usePlatformLabel();
+			return (
+				<>
+					<span>{label("relay")}</span>
+					<PlatformIcon platform="relay" />
+				</>
+			);
+		}
 		render(
-			<QueryClientProvider client={qc}>
+			<QueryClientProvider
+				client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+			>
 				<PlatformMetaRoot>
 					<Probe />
 				</PlatformMetaRoot>
 			</QueryClientProvider>,
 		);
-		expect(await screen.findByText("桥接")).toBeTruthy();
+		expect(await screen.findByText("桥")).toBeTruthy();
+		expect(document.querySelector("img")?.getAttribute("src")).toBe(IMAGE);
 	});
 });

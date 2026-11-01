@@ -120,5 +120,6 @@
 	"extension.manifest.invalidJson": "主人，{file} 不是合法 JSON：{detail}",
 	"extension.manifest.invalid": "主人，{file} 不合法 —— {detail}",
 	"extension.manifest.idMismatch": "主人，清单里的 id 是 {claimed}，与目录名 {id} 对不上呀",
-	"extension.manifest.missingEntry": "主人，少了入口文件 {file} 呀"
+	"extension.manifest.missingEntry": "主人，少了入口文件 {file} 呀",
+	"qqOfficial.auth.warning": "主人，此通道创建的机器人仅支持创建者私聊与创建者当群主的群，以腾讯当前政策为准。需要更宽的能力时，请手动填写正式注册的机器人凭据哦。"
 }

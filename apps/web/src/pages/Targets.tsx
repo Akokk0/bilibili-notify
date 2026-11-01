@@ -1,12 +1,12 @@
 import type {
+	AdapterEntry,
 	ConnectionCandidatesResponse,
 	ConnectionTestResponse,
 	ConnectionView,
 	ExtensionDTO,
 	TestResponse,
 } from "@bilibili-notify/contract";
-// 走零依赖的 /platform-registry 子路径 —— 从包根 import 会把 zod 拖进浏览器 bundle。
-import { addressNounFor, platformDescriptor } from "@bilibili-notify/internal/platform-registry";
+import type { PlatformSnapshot } from "@bilibili-notify/internal";
 import {
 	AddCard,
 	Btn,
@@ -29,16 +29,18 @@ import {
 } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
+import { ChannelAddressPicker, SessionAddressPicker } from "../components/address-candidates";
+import { ConnectionAuthButton } from "../components/connection-auth";
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
-import { useConnectionFace } from "../components/platform-meta";
-import { QQGuildPicker, QQSessionPicker } from "../components/qq-address-pickers";
-import { QQQrBindButton } from "../components/qq-qr-bind";
+import { DescriptorIcon, useConnectionFace } from "../components/platform-meta";
+import { useAdapters } from "../hooks/useAdapters";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
 	extensionBotsKey,
 	isExtensionPresent,
 	useExtensions,
 } from "../hooks/useExtensions";
+import { i18n, useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 import { issueTextsOf } from "../services/error-text";
 import {
@@ -48,33 +50,22 @@ import {
 	savedMasksOf,
 	settingsAreMasked,
 } from "../types/connection-credentials";
-import {
-	type ConnectionField,
-	connectionFields,
-	connectionSettingsFields,
-} from "../types/connection-fields";
+import { type ConnectionField, connectionSettingsFields } from "../types/connection-fields";
 import {
 	type Connection,
+	connectionFromCandidate,
 	connectionProbeOf,
-	isBuiltinConnection,
 	isEndpointConnection,
-	KNOWN_PLATFORMS,
 	type LinkState,
-	makeEmptyConnection,
-	makeEmptyExtensionConnection,
+	makeConnectionDraft,
 	makeEmptyTarget,
-	makeExtensionConnectionDraft,
 	type NewConnection,
-	type OnebotConnectionSettings,
 	type PushTarget,
 	type PushTargetScope,
 	platformOfTarget,
-	type QQOfficialConnectionSettings,
 	targetReachabilityOf,
-	type WebhookConnectionSettings,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
-import { safeImage } from "./extensions/declarative/image";
 
 /**
  * Targets page — two-layer "connection → target" model.
@@ -91,39 +82,37 @@ import { safeImage } from "./extensions/declarative/image";
  */
 
 const SCOPES: ReadonlyArray<{ value: PushTargetScope; label: string }> = [
-	{ value: "group", label: "群组" },
-	{ value: "private", label: "私聊" },
-	{ value: "channel", label: "频道" },
+	{
+		value: "group",
+		get label() {
+			return i18n.t("targets.message.text1");
+		},
+	},
+	{
+		value: "private",
+		get label() {
+			return i18n.t("targets.message.text2");
+		},
+	},
+	{
+		value: "channel",
+		get label() {
+			return i18n.t("targets.message.text3");
+		},
+	},
 ];
 
-/**
- * 这个平台的目标能选哪几种会话 —— 词表在 {@link PLATFORM_REGISTRY}(OneBot 没有频道概念,
- * 只有群与私聊)。**认不出的平台给全三档**:桥驮进来的平台我们不知道它有没有频道,
- * 少给一档就是让主人配不出一个本来配得出的会话。
- */
-function scopesFor(platform: string): ReadonlyArray<{
-	value: PushTargetScope;
-	label: string;
-}> {
-	const allowed = platformDescriptor(platform)?.scopes;
-	return allowed ? SCOPES.filter((s) => allowed.includes(s.value)) : SCOPES;
+function scopesFor(snapshot: PlatformSnapshot | undefined) {
+	return SCOPES.filter((scope) => snapshot?.scopes.includes(scope.value));
 }
-
-/**
- * 「会话信息」那一节的小字 —— 说清这一格该填什么。
- *
- * OneBot 与官机各有一句专门的话(QQ 号 / 群号、频道 / 群 / C2C 三档寻址);别的平台
- * 拿注册表里的地址称呼拼一句 —— 认不出的平台也说得出话,而不是留一句空白。
- */
+function addressNounFor(snapshot: PlatformSnapshot | undefined, scope: PushTargetScope): string {
+	return snapshot?.addressNouns[scope] ?? scopeLabel(scope);
+}
 function sessionFieldsHint(
 	target: Extract<PushTarget, { kind: "session" }>,
-	platform: string | undefined,
+	snapshot: PlatformSnapshot | undefined,
 ): string {
-	if (platform === "onebot") {
-		return target.scope === "private" ? "私聊目标 QQ 号" : "群聊号(QQ 群号)";
-	}
-	if (platform === "qq-official") return "QQ 官方机器人会话寻址(频道/群/C2C)";
-	return `这个会话的${addressNounFor(platform ?? "", target.scope)}地址`;
+	return i18n.t("targets.message.text4", { value0: addressNounFor(snapshot, target.scope) });
 }
 
 type TestState = "pending" | "ok" | "fail";
@@ -136,28 +125,9 @@ function connectionEndpointSummary(
 	a: Pick<NewConnection, "adapterKey" | "settings">,
 	platformLabel: (p: string) => string,
 ): string {
-	if (!isBuiltinConnection(a)) {
-		// 拓展提供的连接是一个借来的 bot:说清经谁借的。settings 的形状归拓展自己定,这一层
-		// 看不懂,也不该看懂。
-		return `经 ${platformLabel(a.adapterKey)}`;
-	}
-	// 适配器没在跑 / 设置不合法:服务端整格遮住了 settings,这里没有地址可报。
-	if (settingsAreMasked(a)) return "设置看不了";
-	if (a.adapterKey === "onebot") {
-		const c = a.settings as OnebotConnectionSettings;
-		if (c.transport === "http") return c.baseUrl;
-		if (c.transport === "ws") return c.url;
-		return `反向 WS :${c.port}`;
-	}
-	if (a.adapterKey === "qq-official") {
-		const c = a.settings as QQOfficialConnectionSettings;
-		const domain = c.botType === "private" ? "私域" : "公域";
-		const id = c.appId || "未配置 appId";
-		return `QQ ${domain} · ${id}${c.sandbox ? " · 沙箱" : ""}`;
-	}
-	// webhook 那一族:平台名已经写在同一行的前半段(platformLabel),这里只报地址。
-	// 地址是凭据:下发的是服务端算好的遮挡串(列表里的连接已经把它换成了那串字),原样显示。
-	return (a.settings as WebhookConnectionSettings).url || "未配置地址";
+	return settingsAreMasked(a)
+		? i18n.t("targets.message.text5")
+		: i18n.t("targets.message.text6", { value0: platformLabel(a.adapterKey) });
 }
 
 /**
@@ -168,14 +138,18 @@ function connectionEndpointSummary(
  * 兜底 return,兜底那句写死「webhook 终点」:等桥把 telegram 驮进来,新平台会落进
  * 兜底、被标成一个它根本不是的终点,而且**没有编译错也没有测试红**。
  */
-function targetSessionSummary(target: PushTarget, platform: string | undefined): string {
+function targetSessionSummary(target: PushTarget, snapshot: PlatformSnapshot | undefined): string {
 	if (target.kind === "endpoint") {
-		return target.managedBy === "connection" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
+		return target.managedBy === "connection"
+			? i18n.t("targets.message.text7")
+			: i18n.t("targets.message.text8");
 	}
 	// 地址收成一格之后,这里只剩「叫它什么」这一件事 —— 取哪一格由 scope 说了算,
 	// 不再是每个平台一套 session 字段名。称呼在注册表里,认不出的平台走通用说法。
-	const noun = addressNounFor(platform ?? "", target.scope);
-	return target.address ? `→ ${noun} ${target.address}` : `→ 未指定${noun}`;
+	const noun = addressNounFor(snapshot, target.scope);
+	return target.address
+		? `→ ${noun} ${target.address}`
+		: i18n.t("targets.message.text9", { value0: noun });
 }
 
 function managedEndpointTargetForConnection(
@@ -259,10 +233,12 @@ function TargetCard({
 	testing,
 	readOnly,
 }: TargetCardProps) {
+	const tx = useT();
 	const platformTint = usePlatformTint();
 	// 平台取自目标挂着的连接;连接缺了就是认不出(灰徽标)。
 	const platform = platformOfTarget(target, connection ? [connection] : []);
-	const tint = platformTint(platform ?? "");
+	const face = useConnectionFace();
+	const tint = platformTint(connection ? face(connection) : "");
 	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
 	const reachability = targetReachabilityOf(target);
@@ -283,10 +259,10 @@ function TargetCard({
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-base font-bold text-bn-text-primary">
-						{target.name || "（未命名）"}
+						{target.name || tx("targets.targetCard.text1")}
 					</div>
 					<div className="truncate font-mono text-bn-xs text-bn-text-tertiary">
-						{targetSessionSummary(target, platform)}
+						{targetSessionSummary(target, connection?.platformSnapshot)}
 					</div>
 				</div>
 				<StatusDot kind={status} />
@@ -295,8 +271,12 @@ function TargetCard({
 			{reachability.status !== "pending" ? (
 				<EdgeBadge tone={reachability.status === "ok" ? "success" : "danger"} className="mb-2">
 					{reachability.status === "ok"
-						? `上次推送 OK${reachability.latencyMs != null ? ` · ${reachability.latencyMs}ms` : ""}`
-						: `上次推送失败${reachability.message ? ` — ${reachability.message}` : ""}`}
+						? tx("targets.targetCard.text2", {
+								value0: reachability.latencyMs != null ? ` · ${reachability.latencyMs}ms` : "",
+							})
+						: tx("targets.targetCard.text3", {
+								value0: reachability.message ? ` — ${reachability.message}` : "",
+							})}
 				</EdgeBadge>
 			) : null}
 
@@ -305,9 +285,13 @@ function TargetCard({
 					{scopeLabel(target.kind === "session" ? target.scope : "channel")}
 					{" · "}
 					<span style={{ color: connectionMissing ? "var(--color-bn-danger-text)" : undefined }}>
-						{connectionMissing ? "连接缺失" : `连接: ${connection.name}`}
+						{connectionMissing
+							? tx("targets.targetCard.text4")
+							: tx("targets.targetCard.text5", { value0: connection.name })}
 					</span>
-					{target.enabled ? null : <span className="ml-1.5 text-bn-text-tertiary">(已停用)</span>}
+					{target.enabled ? null : (
+						<span className="ml-1.5 text-bn-text-tertiary">{tx("targets.targetCard.text6")}</span>
+					)}
 				</span>
 				<div className="flex shrink-0 gap-1">
 					{/* 导览「发送测试推送」的控件级灯位 —— 只挂在**还没测通**的行上,
@@ -318,15 +302,15 @@ function TargetCard({
 						variant="ghost"
 						onClick={onTest}
 						disabled={testing === "pending" || !target.enabled || connectionMissing}
-						title="向该目标真实发送一条测试消息"
+						title={tx("targets.targetCard.text7")}
 					>
 						{testing === "pending"
-							? "发送中…"
+							? tx("targets.targetCard.text8")
 							: testing === "ok"
-								? "已送达"
+								? tx("targets.targetCard.text9")
 								: testing === "fail"
-									? "失败"
-									: "测试"}
+									? tx("targets.targetCard.text10")
+									: tx("targets.targetCard.text11")}
 					</Btn>
 					{readOnly ? null : (
 						<>
@@ -337,13 +321,13 @@ function TargetCard({
 								variant="ghost"
 								onClick={onEdit}
 							>
-								配置
+								{tx("targets.targetCard.text12")}
 							</Btn>
 							<Btn
 								size="sm"
 								variant="ghost"
 								onClick={onDelete}
-								title="删除"
+								title={tx("targets.targetCard.text13")}
 								icon={<Icon.trash size={11} />}
 							>
 								{null}
@@ -376,10 +360,10 @@ interface ConnectionEditorProps {
 	replacing: Record<string, boolean>;
 	onReplacingChange: (code: string, on: boolean) => void;
 	/**
-	 * 开推送源那一口的拓展(停着的 v2 也在,见 {@link PushExtension})—— 在场的是平台那一排的
-	 * 后几档;名字与连接配置项照它们交的画,停着也画。
+	 * 内置与拓展适配器共用描述，名称与字段均由读口提供。
 	 */
-	extensions: readonly PushExtension[];
+	adapters: readonly AdapterEntry[];
+	unavailable?: string;
 	onChange: (next: NewConnection) => void;
 	onSave: () => void;
 	onCancel: () => void;
@@ -393,20 +377,24 @@ function ConnectionEditorModal({
 	saved,
 	replacing,
 	onReplacingChange,
-	extensions,
+	adapters,
+	unavailable,
 	onChange,
 	onSave,
 	onCancel,
 	saving,
 	error,
 }: ConnectionEditorProps) {
+	const tx = useT();
 	const platformTint = usePlatformTint();
 	const face = useConnectionFace();
-	const builtin = isBuiltinConnection(value);
-	const extension = builtin ? undefined : extensions.find((ext) => ext.id === value.adapterKey);
+	const adapter = adapters.find((entry) => entry.key === value.adapterKey);
+	const [nameEdited, setNameEdited] = useState(mode === "edit" || value.name.trim() !== "");
 	// 整格是遮挡的(适配器没在跑 / 设置不合法)没有表单可画,名字与开关照常能改。
 	const masked = settingsAreMasked(value);
-	const fields = editorFields(value, extension);
+	const fields = value.platform
+		? connectionSettingsFields(value, adapter?.descriptor.settingsFields ?? [])
+		: [];
 	// 必填的空着也不许存 —— 拓展的字段表里标了 required 的尤其。
 	const requiredMissing = fields.find(
 		(f): f is Extract<ConnectionField, { kind: "text" }> =>
@@ -417,116 +405,109 @@ function ConnectionEditorModal({
 			// 是主人明确要的,服务端校验不过会原样说出来)。
 			saved[f.code] === undefined,
 	);
-	// 拓展连接就是一个 bot(ADR-0012 决策 45):没挑 bot 的连接没有平台,存不了。
-	const botMissing = !builtin && value.platform === "";
-	const valid = value.name.trim().length > 0 && !requiredMissing && !botMissing;
+	// 没挑候选的连接没有平台，不能保存。
+	const candidateMissing = value.platform === "";
+	const valid = value.name.trim().length > 0 && !requiredMissing && !candidateMissing;
 	// 保存钮灰着时说清楚为什么 —— 扫码回填流程尤其容易只剩名称没填。
-	const invalidHint = botMissing
-		? "先挑一个 bot"
+	const invalidHint = candidateMissing
+		? tx("targets.connectionEditorModal.text1")
 		: value.name.trim().length === 0
-			? "请先填写显示名称"
+			? tx("targets.connectionEditorModal.text2")
 			: requiredMissing
-				? `请先填写${requiredMissing.label}`
+				? tx("targets.connectionEditorModal.text3", { value0: requiredMissing.label })
 				: undefined;
 	const tint = platformTint(face(value));
 	return (
-		<ModalShell onCancel={onCancel} width={500} title={mode === "add" ? "新建连接" : "配置连接"}>
+		<ModalShell
+			onCancel={onCancel}
+			width={500}
+			title={
+				mode === "add"
+					? tx("targets.connectionEditorModal.text4")
+					: tx("targets.connectionEditorModal.text5")
+			}
+		>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
-			<div data-tour="connection-form" className="space-y-2.5">
-				<SectionBox title="基本" subtitle="一个连接实例可被多个推送目标共享" accent={tint}>
-					<Field label="平台" code="connection.platform" required>
+			<div
+				data-tour="connection-form"
+				className="space-y-2.5 max-sm:[&_[data-code]]:flex-col max-sm:[&_[data-code]]:gap-1.5 max-sm:[&_[data-code]>div:first-child]:basis-auto"
+			>
+				<SectionBox
+					title={tx("targets.connectionEditorModal.text6")}
+					subtitle={tx("targets.connectionEditorModal.text7")}
+					accent={tint}
+				>
+					<Field
+						label={tx("targets.connectionEditorModal.text8")}
+						code="connection.platform"
+						required
+					>
 						<div className="flex flex-wrap gap-1.5">
-							{KNOWN_PLATFORMS.map((p) => {
-								const active = builtin && value.platform === p.value;
-								const pTint = platformTint(p.value);
-								return (
-									<ToneChip
-										key={p.value}
-										tone={pTint}
-										active={active}
-										onClick={() => onChange(makeEmptyConnection(p.value, value.name))}
-									>
-										<PlatformIcon platform={p.value} size={13} />
-										{p.label}
-									</ToneChip>
-								);
-							})}
-							{/*
-							 * 跑着的推送源拓展是同一排的后几档 —— 挑了它,底下从它借得到的 bot 里挑一个,
-							 * 连接就是那个 bot。这一排**不认得任何具体拓展**:名字来自它报的外观。
-							 */}
-							{extensions.filter(isExtensionPresent).map((ext) => {
-								const active = !builtin && value.adapterKey === ext.id;
-								const eTint = platformTint(ext.id);
-								return (
-									<ToneChip
-										key={ext.id}
-										tone={eTint}
-										active={active}
-										onClick={() => {
-											if (active) return;
-											onChange(makeExtensionConnectionDraft(ext.id, value.name));
-										}}
-									>
-										<PlatformIcon platform={ext.id} size={13} />
-										{ext.push.label}
-									</ToneChip>
-								);
-							})}
+							{adapters.map((entry) => (
+								<ToneChip
+									key={entry.key}
+									tone={entry.descriptor.color}
+									active={value.adapterKey === entry.key}
+									disabled={mode === "edit" && value.adapterKey !== entry.key}
+									onClick={() => {
+										if (value.adapterKey !== entry.key)
+											onChange(makeConnectionDraft(entry.key, nameEdited ? value.name : ""));
+									}}
+								>
+									<span aria-hidden="true">
+										<PlatformIcon platform={entry.key} size={13} />
+									</span>
+									{entry.descriptor.label}
+								</ToneChip>
+							))}
 						</div>
 					</Field>
-					<Field label="显示名称" code="connection.name" required>
+					<Field label={tx("targets.connectionEditorModal.text9")} code="connection.name" required>
 						<TInput
 							value={value.name}
-							onChange={(v) => onChange({ ...value, name: v })}
-							placeholder="如：NapCat 主连接"
+							onChange={(v) => {
+								setNameEdited(true);
+								onChange({ ...value, name: v });
+							}}
+							placeholder={tx("targets.connectionEditorModal.text10")}
 						/>
 					</Field>
-					<Field label="启用" code="connection.enabled">
+					<Field label={tx("targets.connectionEditorModal.text11")} code="connection.enabled">
 						<Toggle value={value.enabled} onChange={(v) => onChange({ ...value, enabled: v })} />
 					</Field>
 				</SectionBox>
 
-				{!builtin ? (
+				{adapter ? (
 					<SectionBox
-						title="哪个 bot"
-						subtitle={`经 ${extension?.push.label ?? value.adapterKey} 借来的,连接就是它`}
+						title={tx("targets.connectionEditorModal.text12")}
+						subtitle={adapter.descriptor.label}
 						accent={tint}
 					>
-						{extension && isExtensionPresent(extension) ? (
-							<ExtensionBotPicker
-								extension={extension}
-								value={value}
-								onChange={onChange}
-								editing={mode === "edit"}
-							/>
-						) : (
-							<HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>
-						)}
+						<ConnectionCandidatePicker
+							unavailable={unavailable}
+							keepName={nameEdited}
+							adapter={adapter}
+							value={value}
+							onChange={onChange}
+							editing={mode === "edit"}
+						/>
 					</SectionBox>
-				) : null}
+				) : (
+					<HintNote>{tx("targets.connectionEditorModal.text13")}</HintNote>
+				)}
 
 				{/* 拓展的字段表可以是空的(桥):连接是挑出来的,没有一栏是人填的,那一节就不画。 */}
-				{!builtin && (extension?.push.settingsFields.length ?? 0) === 0 ? null : (
+				{!masked && fields.length === 0 && !adapter?.has.connectionAuth ? null : (
 					<SectionBox
-						title="连接参数"
-						subtitle={
-							!builtin
-								? `${extension?.push.label ?? value.adapterKey} 的接入参数`
-								: value.platform === "onebot"
-									? "OneBot v11 连接信息"
-									: value.platform === "qq-official"
-										? "QQ 官方机器人凭据(q.qq.com)"
-										: "Webhook 投递终点"
-						}
+						title={tx("targets.connectionEditorModal.text14")}
+						subtitle={adapter?.descriptor.label ?? value.adapterKey}
 						accent={tint}
 					>
 						{masked ? (
-							<HintNote>
-								这条连接的设置现在看不了(适配器没在跑 / 设置不合法),名字与开关照常能改。
-							</HintNote>
+							<HintNote>{tx("targets.connectionEditorModal.text15")}</HintNote>
 						) : (
 							<ConnectionConfigFields
+								auth={adapter?.has.connectionAuth ? (adapter.descriptor.auth ?? {}) : undefined}
 								fields={fields}
 								connection={value}
 								saved={saved}
@@ -546,10 +527,12 @@ function ConnectionEditorModal({
 					<span className="mr-auto text-bn-xs text-bn-text-tertiary">{invalidHint}</span>
 				) : null}
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
-					取消
+					{tx("targets.connectionEditorModal.text16")}
 				</Btn>
 				<Btn variant="primary" onClick={onSave} disabled={saving || !valid} title={invalidHint}>
-					{saving ? "保存中…" : "保存"}
+					{saving
+						? tx("targets.connectionEditorModal.text17")
+						: tx("targets.connectionEditorModal.text18")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -564,7 +547,7 @@ function ConnectionEditorModal({
  * 选中态曾经只买到一半:两样都写在 `style` 里,而 inline 压过一切 author 样式,挂着
  * `option-active` 也白挂,皮肤一个都盖不动。别把颜色搬回 `style`。
  *
- * `as="div"` 是那条「现在绑着的那个」—— 它不可点(名单里根本没有它),按钮语义会让读屏器
+ * `as="div"` 是那条「当前连接」—— 它不可点(名单里根本没有它),按钮语义会让读屏器
  * 报一颗按不动的钮。
  */
 function TintOptionRow({
@@ -637,39 +620,70 @@ function TintOptionRow({
  * 三种「没得挑」要分开说:问不到(拓展没跑起来)、名单空(桥没连上)、都被加过了。
  * 已经绑成别的连接的 bot 标出来、不给点 —— 同一个 bot 建两条连接只会让目标各推一遍。
  */
-function ExtensionBotPicker({
-	extension,
+function ConnectionCandidatePicker({
+	keepName,
+	unavailable,
+	adapter,
 	value,
 	onChange,
 	editing,
 }: {
-	extension: PushExtension;
+	keepName: boolean;
+	unavailable?: string;
+	adapter: AdapterEntry;
 	value: NewConnection;
 	onChange: (next: NewConnection) => void;
 	/** 改连接时名单里可能没有它现在绑的那个(桥没连着)—— 那一行要照画,别让它像没绑过。 */
 	editing: boolean;
 }) {
-	const platformTint = usePlatformTint();
+	const tx = useT();
 	const bots = useQuery({
-		queryKey: extensionBotsKey(extension.id),
+		queryKey: extensionBotsKey(adapter.key),
+		enabled: !unavailable,
 		queryFn: () =>
-			api.get<ConnectionCandidatesResponse>(`/api/adapters/${extension.id}/candidates`),
+			api.get<ConnectionCandidatesResponse>(
+				`/api/adapters/${encodeURIComponent(adapter.key)}/candidates`,
+			),
 		retry: false,
 	});
 	const list = bots.data?.candidates ?? [];
 	const chosen = JSON.stringify(value.settings ?? null);
 	const isChosen = (bot: ConnectionCandidatesResponse["candidates"][number]) =>
-		JSON.stringify(bot.settings) === chosen;
+		bot.platform.platform === value.platform && JSON.stringify(bot.settings) === chosen;
 	const currentListed = list.some(isChosen);
+	useEffect(() => {
+		if (!editing && value.platform === "" && list.length === 1 && !list[0]?.boundConnectionId) {
+			const candidate = list[0];
+			if (candidate)
+				onChange({
+					...connectionFromCandidate(adapter.key, candidate, keepName ? value.name : ""),
+					id: value.id,
+					enabled: value.enabled,
+				});
+		}
+	}, [editing, value, list, adapter.key, onChange, keepName]);
 
-	if (bots.isPending) return <LoadingBlock variant="inset" label="正在问它有哪些 bot" />;
+	if (unavailable)
+		return <HintNote>{tx("targets.candidates.unavailable", { name: unavailable })}</HintNote>;
+	if (bots.isPending)
+		return <LoadingBlock variant="inset" label={tx("targets.extensionBotPicker.text1")} />;
 	if (bots.isError) {
-		return <HintNote>这个拓展现在没跑起来,问不到它有哪些 bot —— 先去拓展页把它开起来。</HintNote>;
+		return (
+			<HintNote>
+				{tx("targets.extensionBotPicker.text2")}{" "}
+				<Btn variant="ghost" size="sm" onClick={() => bots.refetch()}>
+					{tx("targets.candidates.retry")}
+				</Btn>
+			</HintNote>
+		);
 	}
 	if (list.length === 0 && !(editing && value.platform)) {
 		return (
 			<EmptyNote size="sm">
-				现在一个 bot 都没有 —— 去拓展页把桥接上、让它报了名单,这里才有得挑。
+				{tx("targets.extensionBotPicker.text3")}{" "}
+				<Btn variant="ghost" size="sm" onClick={() => bots.refetch()}>
+					{tx("targets.candidates.retry")}
+				</Btn>
 			</EmptyNote>
 		);
 	}
@@ -679,10 +693,10 @@ function ExtensionBotPicker({
 				<TintOptionRow
 					as="div"
 					active
-					tint={platformTint(value.platform)}
+					tint={adapter.descriptor.color}
 					icon={<PlatformIcon platform={value.platform} size={16} />}
-					title="现在绑着的那个"
-					subtitle={`${value.platform} · 它这会儿不在线,名单里没有它`}
+					title={tx("targets.extensionBotPicker.text4")}
+					subtitle={tx("targets.extensionBotPicker.text5", { value0: value.platform })}
 				/>
 			) : null}
 			{list.map((bot) => {
@@ -696,72 +710,56 @@ function ExtensionBotPicker({
 				 */
 				const wrongPlatform =
 					editing && value.platform !== "" && bot.platform.platform !== value.platform;
-				const botTint = platformTint(bot.platform.platform);
+				const botTint = bot.platform.color;
 				/*
 				 * 图标是拓展交来的(桥那头是插件报的),画之前过面板出口那道闸 —— 与声明式积木同一份判据
 				 * (ADR-0019 决策 31):只收图片 data URL。一个 `https://` 地址当 `<img src>` 画,面板一开
 				 * 就去对家点名;不合格的当它没有,退回平台图标。
 				 */
-				const botIcon = safeImage(bot.platform.icon);
 				return (
 					<TintOptionRow
 						// settings 才是它的身份(拓展自己定的),名单里没有别的稳定键。
-						key={JSON.stringify(bot.settings)}
+						key={`${bot.platform.platform}:${JSON.stringify(bot.settings)}`}
 						tint={botTint}
 						active={active}
 						disabled={taken || wrongPlatform}
 						onClick={() => {
 							if (active) return;
 							onChange({
-								...makeEmptyExtensionConnection(extension.id, bot, value.name),
+								...connectionFromCandidate(adapter.key, bot, keepName ? value.name : ""),
 								id: value.id,
 								enabled: value.enabled,
 							});
 						}}
-						icon={
-							botIcon ? (
-								<img src={botIcon} alt="" draggable={false} className="size-4 shrink-0" />
-							) : (
-								<PlatformIcon platform={bot.platform.platform} size={16} />
-							)
-						}
+						icon={<DescriptorIcon descriptor={bot.platform} size={16} />}
 						title={bot.name}
-						subtitle={[bot.platform.platform, bot.selfId, bot.via ? `经 ${bot.via}` : undefined]
+						subtitle={[
+							bot.platform.platform,
+							bot.selfId,
+							bot.via ? tx("targets.message.text6", { value0: bot.via }) : undefined,
+						]
 							.filter(Boolean)
 							.join(" · ")}
 						trailing={
 							active ? (
 								<span className="text-bn-xs font-bold" style={{ color: botTint }}>
-									已选
+									{tx("targets.extensionBotPicker.text6")}
 								</span>
 							) : taken ? (
-								<span className="text-bn-xs text-bn-text-tertiary">已加过</span>
+								<span className="text-bn-xs text-bn-text-tertiary">
+									{tx("targets.extensionBotPicker.text7")}
+								</span>
 							) : wrongPlatform ? (
 								// 说清是「不能这么换」,不是「这个 bot 坏了」—— 出路在另一条连接上。
-								<span className="shrink-0 text-bn-xs text-bn-text-tertiary">换平台要重建连接</span>
+								<span className="shrink-0 text-bn-xs text-bn-text-tertiary">
+									{tx("targets.extensionBotPicker.text8")}
+								</span>
 							) : null
 						}
 					/>
 				);
 			})}
 		</div>
-	);
-}
-
-/**
- * 开推送源那一口、交了 `push` 的拓展。`push` 里外观与连接配置项一起交、一起有,缺一不可:
- * 少外观没名字,少连接配置项画不出表单。
- *
- * ⚠️ **有 `push` 不等于它在场**(ADR-0019 决策 41):v2 的这一格照清单给,停着也有 —— 名字、
- * 连接配置项照它画;要它在场的(新建它的连接、挑 bot)另看 {@link isExtensionPresent} —— 连接就是
- * 一个 bot(ADR-0012 决策 45),而 bot 名单只有跑着的拓展交得出来,停着也给新建那一档的话,点进去
- * 一个 bot 都挑不了、存不了。
- */
-type PushExtension = ExtensionDTO & { push: NonNullable<ExtensionDTO["push"]> };
-
-function pushExtensionsOf(extensions: readonly ExtensionDTO[]): PushExtension[] {
-	return extensions.filter(
-		(ext): ext is PushExtension => (ext.provides ?? []).includes("push") && ext.push !== undefined,
 	);
 }
 
@@ -779,26 +777,14 @@ function absentExtensionOf(
 	connection: Pick<NewConnection, "adapterKey">,
 	extensions: readonly ExtensionDTO[] | undefined,
 ): string | undefined {
-	if (isBuiltinConnection(connection) || extensions === undefined) return undefined;
+	if (extensions === undefined) return undefined;
 	const ext = extensions.find((one) => one.id === connection.adapterKey);
-	if (ext && isExtensionPresent(ext)) return undefined;
-	return ext?.push?.label ?? ext?.name ?? connection.adapterKey;
-}
-
-/** 这条连接在表单上的那几栏:内置平台走注册好的字段函数,拓展连接照它的连接配置项翻。 */
-function editorFields(
-	connection: NewConnection,
-	extension: PushExtension | undefined,
-): ConnectionField[] {
-	// 整格是遮挡的没有表单可画,也不许往里加键(见 connection-credentials.ts)。
-	if (settingsAreMasked(connection)) return [];
-	if (!isBuiltinConnection(connection)) {
-		return extension ? connectionSettingsFields(connection, extension.push.settingsFields) : [];
-	}
-	return connectionFields(connection);
+	if (!ext || isExtensionPresent(ext)) return undefined;
+	return ext.name;
 }
 
 function ConnectionConfigFields({
+	auth,
 	fields,
 	connection,
 	saved,
@@ -806,6 +792,7 @@ function ConnectionConfigFields({
 	onReplacingChange,
 	onChange,
 }: {
+	auth?: { description?: string; warning?: string; experimental?: boolean };
 	fields: ConnectionField[];
 	connection: NewConnection;
 	saved: Record<string, string>;
@@ -817,34 +804,31 @@ function ConnectionConfigFields({
 	const face = useConnectionFace();
 	return (
 		<>
+			{auth ? (
+				<ConnectionAuthButton
+					{...auth}
+					adapterKey={connection.adapterKey}
+					onCredentials={(settings) => {
+						onChange({
+							...connection,
+							name: connection.name.trim() || connection.adapterKey,
+							settings: { ...(connection.settings as Record<string, unknown>), ...settings },
+						});
+						for (const key of Object.keys(settings))
+							if (saved[`settings.${key}`] !== undefined)
+								onReplacingChange(`settings.${key}`, true);
+					}}
+				/>
+			) : null}
 			{fields.map((field) => {
-				if (field.kind === "ws-reverse-address") {
-					return <ReverseWsAddressRow key="ws-reverse-address" port={field.port} />;
+				if (field.kind === "listener-address") {
+					return <ListenerAddressRow key="listener-address" port={field.port} />;
 				}
-				if (field.kind === "qq-bind") {
-					return (
-						/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
-						   此前逐字符手抄,行距一漂两种行就对不齐。 */
-						<div key="qq-bind" className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
-							<QQQrBindButton
-								adapterKey={field.adapterKey}
-								onCredentials={(creds) => {
-									onChange(field.apply(creds));
-									// 扫出来的新凭据是「换了一份」:已存着的 appSecret 不能还画成胶囊盖住它。
-									if (saved["settings.appSecret"] !== undefined) {
-										onReplacingChange("settings.appSecret", true);
-									}
-								}}
-							/>
-							<span className="text-bn-xs text-bn-text-secondary">
-								没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏
-							</span>
-						</div>
-					);
-				}
+
 				return (
 					<Field
 						key={field.code}
+						fromDescriptor
 						label={field.label}
 						code={field.code}
 						hint={field.hint}
@@ -874,16 +858,19 @@ function ConnectionConfigFields({
  * 🔴 **路径随便填这句必须写出来**:监听那头 `WebSocketServer({ port })` 不带 `path`,
  * 什么路径都收。不写的话,从 koishi 过来的人会以为这里少了一栏。
  */
-function ReverseWsAddressRow({ port }: { port: number }) {
+function ListenerAddressRow({ port }: { port: number }) {
+	const tx = useT();
 	const [copied, setCopied] = useState(false);
-	const address = `ws://${window.location.hostname}:${port}/onebot`;
+	const address = `ws://${window.location.hostname}:${port}/`;
 	return (
 		<div
 			data-code="settings.reverseAddress"
 			className={`flex flex-col gap-1.5 ${FIELD_ROW_CHROME}`}
 		>
 			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-bn-sm font-bold text-bn-text-primary">bot 那头填这个</span>
+				<span className="text-bn-sm font-bold text-bn-text-primary">
+					{tx("targets.reverseWsAddressRow.text1")}
+				</span>
 				<code className="min-w-0 flex-1 truncate rounded-bn-sm bg-bn-surface-muted px-2 py-1 font-mono text-bn-xs text-bn-text-secondary">
 					{address}
 				</code>
@@ -894,12 +881,13 @@ function ReverseWsAddressRow({ port }: { port: number }) {
 						void copyToClipboard(address).then(setCopied);
 					}}
 				>
-					{copied ? "已复制" : "复制"}
+					{copied
+						? tx("targets.reverseWsAddressRow.text2")
+						: tx("targets.reverseWsAddressRow.text3")}
 				</Btn>
 			</div>
 			<span className="text-bn-xs text-bn-text-secondary">
-				末尾的<strong>路径随便填</strong>(`/onebot` 只是个例子,不填也行)。这是{" "}
-				<strong>bot 那台机器</strong>要访问得到的地址 —— BN 在 NAS / 容器里时别照抄 `127.0.0.1`。
+				{tx("targets.reverseWsAddressRow.hint")}
 			</span>
 		</div>
 	);
@@ -914,7 +902,7 @@ function ConnectionFieldControl({
 	onReplacingChange,
 	onChange,
 }: {
-	field: Exclude<ConnectionField, { kind: "qq-bind" | "ws-reverse-address" }>;
+	field: Exclude<ConnectionField, { kind: "listener-address" }>;
 	tint: string;
 	/** 这一栏是凭据且已存着时,服务端算好的遮挡串。 */
 	savedMask: string | undefined;
@@ -999,6 +987,7 @@ function HeadersEditor({
 	value: Record<string, string>;
 	onChange: (next: Record<string, string>) => void;
 }) {
+	const tx = useT();
 	const entries = Object.entries(value);
 	function update(idx: number, key: string, val: string) {
 		const next: Record<string, string> = {};
@@ -1038,13 +1027,13 @@ function HeadersEditor({
 					<TInput value={k} onChange={(nk) => update(idx, nk, v)} placeholder="Header-Name" mono />
 					<TInput value={v} onChange={(nv) => update(idx, k, nv)} placeholder="value" mono />
 					<Btn variant="ghost" size="sm" onClick={() => remove(idx)}>
-						删除
+						{tx("targets.targetCard.text13")}
 					</Btn>
 				</div>
 			))}
 			<div>
 				<Btn variant="outline" size="sm" onClick={add}>
-					+ 添加请求头
+					{tx("targets.headersEditor.text1")}
 				</Btn>
 			</div>
 		</div>
@@ -1074,30 +1063,46 @@ function TargetEditorModal({
 	saving,
 	error,
 }: TargetEditorProps) {
+	const tx = useT();
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
 	const face = useConnectionFace();
 	const connection = connections.find((a) => a.id === value.connectionId);
-	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
+	const valid =
+		value.name.trim().length > 0 &&
+		Boolean(connection) &&
+		(value.kind !== "session" || connection?.platformSnapshot.scopes.includes(value.scope));
 	// 平台取自目标挂着的连接,不读草稿自己那一格。
-	const platform = platformOfTarget(value, connections);
-	const tint = platformTint(platform || (connection ? face(connection) : ""));
+	const tint = platformTint(connection ? face(connection) : "");
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
-	const eligibleConnections = connections.filter((a) => !isEndpointConnection(a));
+	const eligibleConnections = connections.filter(
+		(a) => !isEndpointConnection(a) && a.platformSnapshot.scopes.length > 0,
+	);
 	return (
 		<ModalShell
 			onCancel={onCancel}
 			width={500}
-			title={mode === "add" ? "新建推送目标" : "配置推送目标"}
+			title={
+				mode === "add"
+					? tx("targets.targetEditorModal.text1")
+					: tx("targets.targetEditorModal.text2")
+			}
 		>
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
-			<div data-tour="target-form" className="space-y-2.5">
+			<div
+				data-tour="target-form"
+				className="space-y-2.5 max-sm:[&_[data-code]]:flex-col max-sm:[&_[data-code]]:gap-1.5 max-sm:[&_[data-code]>div:first-child]:basis-auto"
+			>
 				<SectionBox
-					title={mode === "edit" ? "所属连接" : "选择连接"}
+					title={
+						mode === "edit"
+							? tx("targets.targetEditorModal.text3")
+							: tx("targets.targetEditorModal.text4")
+					}
 					subtitle={
 						mode === "edit"
-							? "目标建好之后不能换连接；要推到别的连接上请新建一个目标"
-							: "目标的平台跟随连接;baseUrl / accessToken 这些参数在连接上维护"
+							? tx("targets.targetEditorModal.text5")
+							: tx("targets.targetEditorModal.text6")
 					}
 					accent={tint}
 				>
@@ -1117,12 +1122,10 @@ function TargetEditorModal({
 								}
 							/>
 						) : (
-							<EmptyNote size="sm">连接缺失</EmptyNote>
+							<EmptyNote size="sm">{tx("targets.targetCard.text4")}</EmptyNote>
 						)
 					) : eligibleConnections.length === 0 ? (
-						<EmptyNote size="sm">
-							尚未配置任何可手动绑定的连接 · Webhook 目标由系统自动托管
-						</EmptyNote>
+						<EmptyNote size="sm">{tx("targets.targetEditorModal.text7")}</EmptyNote>
 					) : (
 						<div className="space-y-1.5">
 							{eligibleConnections.map((a) => {
@@ -1148,7 +1151,7 @@ function TargetEditorModal({
 										trailing={
 											active ? (
 												<span className="text-bn-xs font-bold" style={{ color: aTint }}>
-													已选
+													{tx("targets.extensionBotPicker.text6")}
 												</span>
 											) : null
 										}
@@ -1159,17 +1162,21 @@ function TargetEditorModal({
 					)}
 				</SectionBox>
 
-				<SectionBox title="基本" subtitle="目标的会话级配置" accent={tint}>
-					<Field label="显示名称" code="target.name" required>
+				<SectionBox
+					title={tx("targets.connectionEditorModal.text6")}
+					subtitle={tx("targets.targetEditorModal.text8")}
+					accent={tint}
+				>
+					<Field label={tx("targets.connectionEditorModal.text9")} code="target.name" required>
 						<TInput
 							value={value.name}
 							onChange={(v) => onChange({ ...value, name: v })}
-							placeholder="如:游戏交流群"
+							placeholder={tx("targets.targetEditorModal.text9")}
 						/>
 					</Field>
-					<Field label="作用域" code="target.scope">
+					<Field label={tx("targets.targetEditorModal.text10")} code="target.scope">
 						<div className="flex gap-1.5">
-							{scopesFor(platform ?? "").map((s) => {
+							{scopesFor(connection?.platformSnapshot).map((s) => {
 								const active = (value.kind === "session" ? value.scope : "channel") === s.value;
 								return (
 									<ToneChip
@@ -1189,7 +1196,7 @@ function TargetEditorModal({
 							})}
 						</div>
 					</Field>
-					<Field label="启用" code="target.enabled">
+					<Field label={tx("targets.connectionEditorModal.text11")} code="target.enabled">
 						<Toggle value={value.enabled} onChange={(v) => onChange({ ...value, enabled: v })} />
 					</Field>
 				</SectionBox>
@@ -1200,8 +1207,12 @@ function TargetEditorModal({
 				 * 地址栏都没有 —— 保存得下、发不出去,而且没有编译错。
 				 */}
 				{value.kind === "session" ? (
-					<SectionBox title="会话信息" subtitle={sessionFieldsHint(value, platform)} accent={tint}>
-						<TargetSessionFields target={value} platform={platform} onChange={onChange} />
+					<SectionBox
+						title={tx("targets.targetEditorModal.text11")}
+						subtitle={sessionFieldsHint(value, connection?.platformSnapshot)}
+						accent={tint}
+					>
+						<TargetSessionFields target={value} connection={connection} onChange={onChange} />
 					</SectionBox>
 				) : null}
 			</div>
@@ -1210,10 +1221,12 @@ function TargetEditorModal({
 
 			<div className="mt-4 flex items-center justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={saving}>
-					取消
+					{tx("targets.connectionEditorModal.text16")}
 				</Btn>
 				<Btn variant="primary" onClick={onSave} disabled={saving || !valid}>
-					{saving ? "保存中…" : "保存"}
+					{saving
+						? tx("targets.connectionEditorModal.text17")
+						: tx("targets.connectionEditorModal.text18")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -1222,96 +1235,58 @@ function TargetEditorModal({
 
 function TargetSessionFields({
 	target,
-	platform,
+	connection,
 	onChange,
 }: {
 	target: PushTarget;
-	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`,走通用那一支。 */
-	platform: string | undefined;
+	connection: Connection | undefined;
 	onChange: (next: PushTarget) => void;
 }) {
+	const tx = useT();
+	const adapters = useAdapters();
 	if (target.kind !== "session") return null;
-	const setAddress = (address: string) => onChange({ ...target, address });
-
-	if (platform === "onebot") {
-		return target.scope === "private" ? (
-			<Field label="QQ 号" code="target.address" required>
-				<TInput value={target.address} onChange={setAddress} placeholder="如:10001" mono />
+	const canList = adapters.data?.adapters.find((entry) => entry.key === connection?.adapterKey)?.has
+		.listAddressCandidates;
+	const noun = addressNounFor(connection?.platformSnapshot, target.scope);
+	return (
+		<>
+			<Field
+				label={tx("targets.targetSessionFields.text1", { value0: noun })}
+				code="target.address"
+				required
+			>
+				<TInput
+					value={target.address}
+					onChange={(address) => onChange({ ...target, address })}
+					mono
+				/>
 			</Field>
-		) : (
-			<Field label="群号" code="target.address" required>
-				<TInput value={target.address} onChange={setAddress} placeholder="如:123456789" mono />
-			</Field>
-		);
-	}
-	if (platform === "qq-official") {
-		if (target.scope === "channel") {
-			return (
-				<>
-					<Field
-						label="频道服务器 ID"
-						code="target.parentAddress"
-						hint="用下方「拉取频道」自动填入,或手填"
-					>
-						<TInput
-							value={target.parentAddress ?? ""}
-							onChange={(v) => onChange({ ...target, parentAddress: v || undefined })}
-							placeholder="guild_id"
-							mono
-						/>
-					</Field>
-					<Field label="子频道 ID" code="target.address" required>
-						<TInput
-							value={target.address}
-							onChange={setAddress}
-							placeholder="文字子频道 channel_id"
-							mono
-						/>
-					</Field>
-					<QQGuildPicker
-						connectionId={target.connectionId}
-						onPick={(guildId, channelId) =>
-							onChange({ ...target, address: channelId, parentAddress: guildId })
-						}
-					/>
-				</>
-			);
-		}
-		const isPrivate = target.scope === "private";
-		return (
-			<>
-				<Field
-					label={isPrivate ? "用户 openid (C2C)" : "群 openid"}
-					code="target.address"
-					required
-					hint={
-						isPrivate
-							? "QQ 无「列我的好友」接口,openid 只能从机器人收到的 C2C 消息事件捞 —— 见下方发现列表"
-							: "QQ 无「列我的群」接口,openid 只能从机器人被 @ 的群消息事件捞 —— 见下方发现列表"
-					}
-				>
+			{target.scope === "channel" ? (
+				<Field label={tx("targets.targetSessionFields.text2")} code="target.parentAddress">
 					<TInput
-						value={target.address}
-						onChange={setAddress}
-						placeholder={isPrivate ? "用户 openid" : "群 openid"}
+						value={target.parentAddress ?? ""}
+						onChange={(parentAddress) =>
+							onChange({ ...target, parentAddress: parentAddress || undefined })
+						}
 						mono
 					/>
 				</Field>
-				<QQSessionPicker
-					connectionId={target.connectionId}
-					scope={isPrivate ? "private" : "group"}
-					onPick={setAddress}
-				/>
-			</>
-		);
-	}
-	// 认不出的平台(桥驮进来的)。地址收成一格之后通用的一格输入就够了 —— 叫什么由
-	// 注册表说,不认识就走通用称呼。这里以前是 `return null`:那种目标连地址栏都没有。
-	const noun = addressNounFor(platform ?? "", target.scope);
-	return (
-		<Field label={`${noun}地址`} code="target.address" required>
-			<TInput value={target.address} onChange={setAddress} placeholder={`${noun}的 id`} mono />
-		</Field>
+			) : null}
+			{canList ? (
+				target.scope === "channel" ? (
+					<ChannelAddressPicker
+						connectionId={target.connectionId}
+						onPick={(parentAddress, address) => onChange({ ...target, parentAddress, address })}
+					/>
+				) : (
+					<SessionAddressPicker
+						connectionId={target.connectionId}
+						scope={target.scope}
+						onPick={(address) => onChange({ ...target, address })}
+					/>
+				)
+			) : null}
+		</>
 	);
 }
 
@@ -1366,14 +1341,21 @@ function DeleteModal({
 	deleting: boolean;
 	error: string | null;
 }) {
+	const tx = useT();
 	return (
 		<ModalShell
 			onCancel={onCancel}
 			width={420}
-			title={subjectKind === "connection" ? "删除连接" : "删除推送目标"}
+			title={
+				subjectKind === "connection"
+					? tx("targets.deleteModal.text1")
+					: tx("targets.deleteModal.text2")
+			}
 			description={
 				<>
-					确定要移除 <b className="text-bn-text-primary">{subjectName}</b> 吗？
+					{tx("targets.deleteModal.text3")}
+					<b className="text-bn-text-primary">{subjectName}</b>
+					{tx("targets.deleteModal.text4")}
 					{hint ? (
 						<>
 							<br />
@@ -1386,10 +1368,10 @@ function DeleteModal({
 			{error ? <ErrorNote className="mb-3">{error}</ErrorNote> : null}
 			<div className="flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel} disabled={deleting}>
-					取消
+					{tx("targets.connectionEditorModal.text16")}
 				</Btn>
 				<Btn variant="danger-solid" onClick={onConfirm} disabled={deleting}>
-					{deleting ? "移除中…" : "确认移除"}
+					{deleting ? tx("targets.deleteModal.text5") : tx("targets.deleteModal.text6")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -1409,28 +1391,34 @@ function TestConfirmModal({
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
+	const tx = useT();
 	return (
 		<ModalShell
 			onCancel={onCancel}
 			width={420}
-			title="发送测试推送?"
+			title={tx("targets.testConfirmModal.text1")}
 			description={
 				<>
-					将通过 <b className="text-bn-text-primary">{connection?.name ?? "(未知连接)"}</b> 向{" "}
-					<b className="text-bn-text-primary">{target.name}</b> 真实发送一条测试消息。
+					{tx("targets.testConfirmModal.text2")}
+					<b className="text-bn-text-primary">
+						{connection?.name ?? tx("targets.testConfirmModal.text3")}
+					</b>
+					{tx("targets.testConfirmModal.text4")}{" "}
+					<b className="text-bn-text-primary">{target.name}</b>
+					{tx("targets.testConfirmModal.text5")}
 					<br />
 					<span className="font-mono text-bn-xs text-bn-text-tertiary">
-						[bilibili-notify] 测试推送已送达 ✓
+						{tx("targets.testConfirmModal.text6")}
 					</span>
 				</>
 			}
 		>
 			<div className="flex justify-end gap-2">
 				<Btn variant="outline" onClick={onCancel}>
-					取消
+					{tx("targets.connectionEditorModal.text16")}
 				</Btn>
 				<Btn variant="primary" onClick={onConfirm}>
-					发送
+					{tx("targets.testConfirmModal.text7")}
 				</Btn>
 			</div>
 		</ModalShell>
@@ -1455,26 +1443,27 @@ function ConnectionRail({
 	/** 借来这条连接的拓展不在场时回它的名字,见 {@link absentExtensionOf}。 */
 	absentOf: (connection: Connection) => string | undefined;
 }) {
+	const tx = useT();
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
 	const face = useConnectionFace();
 	return (
 		<SectionNav
-			heading="推送连接"
+			heading={tx("targets.connectionRail.text1")}
 			activeId={selectedId}
 			onPick={onPick}
 			onAdd={onAddClick}
-			addLabel="+ 新建"
+			addLabel={tx("targets.connectionRail.text2")}
 			// data-tour:导览「新建连接」的常驻灯位(控件级 —— 只框按钮本体)
 			addButtonProps={{ "data-tour": "connection-add" }}
 			// 不带底色 —— 虚线家族统一成 Subs「添加 UP 主」那样只有虚线框(2026-08-30 主人定案)
-			emptyState={<EmptyNote size="sm">尚未配置任何连接</EmptyNote>}
+			emptyState={<EmptyNote size="sm">{tx("targets.connectionRail.text3")}</EmptyNote>}
 			items={connections.map((a) => {
 				const count = targetCountByConnection.get(a.id) ?? 0;
 				return {
 					id: a.id,
-					label: a.name || "（未命名）",
-					desc: `${platformLabel(face(a))} · ${isEndpointConnection(a) ? "单向投递" : `${count} 个目标`}`,
+					label: a.name || tx("targets.targetCard.text1"),
+					desc: `${platformLabel(face(a))} · ${isEndpointConnection(a) ? tx("targets.connectionRail.text4") : tx("targets.connectionRail.text5", { value0: count })}`,
 					// 选中那格喂 currentColor —— 标识色是中等亮度,摆在皮肤画的实心块上会撞
 					// (QQ官方 #14b8a6 对主人那块粉只有 1.24:1)。平台名在副标题里写着,不丢。
 					icon: (
@@ -1492,9 +1481,13 @@ function ConnectionRail({
 					// 停用的先说停用(主人自己拨的,也本来就发不出去);开着而借它的拓展不在场,说那一句 ——
 					// 副标题只有一行、会截断,整句放不下,详情头里说全。
 					badge: !a.enabled ? (
-						<span className="shrink-0 text-bn-2xs font-normal">(停用)</span>
+						<span className="shrink-0 text-bn-2xs font-normal">
+							{tx("targets.connectionRail.text6")}
+						</span>
 					) : absentOf(a) !== undefined ? (
-						<span className="shrink-0 text-bn-2xs font-normal">(拓展没在跑)</span>
+						<span className="shrink-0 text-bn-2xs font-normal">
+							{tx("targets.connectionRail.text7")}
+						</span>
 					) : undefined,
 				};
 			})}
@@ -1505,6 +1498,7 @@ function ConnectionRail({
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function Targets() {
+	const tx = useT();
 	const qc = useQueryClient();
 	const platformTint = usePlatformTint();
 	const platformLabel = usePlatformLabel();
@@ -1521,7 +1515,10 @@ export default function Targets() {
 	// 开推送源那一口的拓展:在场的是「新建连接」那一排的后几档,停着的 v2 名字与连接配置项照清单
 	// 也在(决策 41)。与拓展页共用同一张表。
 	const extensionsQuery = useExtensions({ retry: false });
-	const pushExtensions = pushExtensionsOf(extensionsQuery.data?.extensions ?? []);
+	const adaptersQuery = useAdapters();
+	const adapters = adaptersQuery.data?.adapters ?? [];
+	const descriptorsOf = (connection: NewConnection) =>
+		adapters.find((entry) => entry.key === connection.adapterKey)?.descriptor.settingsFields ?? [];
 
 	const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
 	const [targetDraft, setTargetDraft] = useState<{
@@ -1598,10 +1595,13 @@ export default function Targets() {
 				if (d.mode === "edit" && d.base !== undefined && d.base.id === d.value.id) {
 					await api.patch(
 						`/api/connections/${d.value.id}`,
-						connectionPatch(d.value, d.base, d.saved, d.replacing),
+						connectionPatch(d.value, d.base, d.saved, d.replacing, descriptorsOf(d.value)),
 					);
 				} else {
-					await api.post("/api/connections", d.value);
+					const { platformSnapshot: _snapshot, ...body } = d.value as NewConnection & {
+						platformSnapshot?: unknown;
+					};
+					await api.post("/api/connections", body);
 				}
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
@@ -1616,7 +1616,11 @@ export default function Targets() {
 			// 5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
 			// bot 建出两条连接,每条推一遍。整个前缀一起失效:哪个拓展的名单变了这里说不准。
 			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
-			showToast(connectionDraft?.base === undefined ? "已新建连接" : "连接已保存");
+			showToast(
+				connectionDraft?.base === undefined
+					? tx("targets.targets.text1")
+					: tx("targets.targets.text2"),
+			);
 			setConnectionDraft(null);
 		},
 	});
@@ -1637,7 +1641,7 @@ export default function Targets() {
 			qc.invalidateQueries({ queryKey: ["targets"] });
 			// 删掉一条,它绑着的那个 bot 该重新挑得动 —— 同上,名单得当场作废。
 			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
-			showToast("已移除连接");
+			showToast(tx("targets.targets.text3"));
 			setConfirmDelete(null);
 		},
 	});
@@ -1655,7 +1659,9 @@ export default function Targets() {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast(targetDraft?.mode === "add" ? "已新建推送目标" : "目标已保存");
+			showToast(
+				targetDraft?.mode === "add" ? tx("targets.targets.text4") : tx("targets.targets.text5"),
+			);
 			setTargetDraft(null);
 		},
 	});
@@ -1673,7 +1679,7 @@ export default function Targets() {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["targets"] });
-			showToast("已移除推送目标");
+			showToast(tx("targets.targets.text6"));
 			setConfirmDelete(null);
 		},
 	});
@@ -1682,7 +1688,7 @@ export default function Targets() {
 		if (isEndpointConnection(a)) {
 			const target = managedEndpointTargetForConnection(a, targets);
 			if (!target) {
-				showToast("请先保存 Webhook，系统会自动创建默认投递目标", false);
+				showToast(tx("targets.targets.text7"), false);
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: "pending" }));
@@ -1693,13 +1699,18 @@ export default function Targets() {
 				});
 				setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
 				setTargetTesting((p) => ({ ...p, [target.id]: res.ok ? "ok" : "fail" }));
-				showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
+				showToast(
+					res.ok
+						? tx("targets.targets.text8", { value0: res.latencyMs })
+						: tx("targets.targets.text9", { value0: res.message }),
+					res.ok,
+				);
 				qc.invalidateQueries({ queryKey: ["targets"] });
 			} catch (err) {
 				setTesting((p) => ({ ...p, [a.id]: "fail" }));
 				setTargetTesting((p) => ({ ...p, [target.id]: "fail" }));
 				const msg = err instanceof ApiError ? err.message : String(err);
-				showToast(`测试失败:${msg}`, false);
+				showToast(tx("targets.targets.text10", { value0: msg }), false);
 			}
 			window.setTimeout(() => {
 				setTesting((p) => {
@@ -1731,12 +1742,17 @@ export default function Targets() {
 				return;
 			}
 			setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
-			showToast(res.ok ? `连通 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
+			showToast(
+				res.ok
+					? tx("targets.targets.text11", { value0: res.latencyMs })
+					: tx("targets.targets.text9", { value0: res.message }),
+				res.ok,
+			);
 			qc.invalidateQueries({ queryKey: ["connections"] });
 		} catch (err) {
 			setTesting((p) => ({ ...p, [a.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);
-			showToast(`测试失败:${msg}`, false);
+			showToast(tx("targets.targets.text10", { value0: msg }), false);
 		}
 		window.setTimeout(() => {
 			setTesting((p) => {
@@ -1754,12 +1770,17 @@ export default function Targets() {
 				kind: "text",
 			});
 			setTargetTesting((p) => ({ ...p, [t.id]: res.ok ? "ok" : "fail" }));
-			showToast(res.ok ? `已送达 · ${res.latencyMs}ms` : `失败:${res.message}`, res.ok);
+			showToast(
+				res.ok
+					? tx("targets.targets.text8", { value0: res.latencyMs })
+					: tx("targets.targets.text9", { value0: res.message }),
+				res.ok,
+			);
 			qc.invalidateQueries({ queryKey: ["targets"] });
 		} catch (err) {
 			setTargetTesting((p) => ({ ...p, [t.id]: "fail" }));
 			const msg = err instanceof ApiError ? err.message : String(err);
-			showToast(`测试失败:${msg}`, false);
+			showToast(tx("targets.targets.text10", { value0: msg }), false);
 		}
 		window.setTimeout(() => {
 			setTargetTesting((p) => {
@@ -1778,19 +1799,23 @@ export default function Targets() {
 		setError(null);
 		setConnectionDraft({
 			mode: "add",
-			value: makeEmptyConnection("onebot", ""),
+			value: makeConnectionDraft(adapters[0]?.key ?? "", ""),
 			saved: {},
 			replacing: {},
 		});
 	}
 
 	function startEditConnection(a: Connection): void {
+		if (!adapters.some((entry) => entry.key === a.adapterKey)) {
+			showToast(tx("targets.connectionEditorModal.text13"), false);
+			return;
+		}
 		setError(null);
 		setConnectionDraft({
 			mode: "edit",
-			value: clearedCredentials(a),
+			value: clearedCredentials(a, descriptorsOf(a)),
 			base: a,
-			saved: savedMasksOf(a),
+			saved: savedMasksOf(a, descriptorsOf(a)),
 			replacing: {},
 		});
 	}
@@ -1799,11 +1824,15 @@ export default function Targets() {
 		setError(null);
 		const a = connection ?? selectedConnection ?? connections[0];
 		if (!a) {
-			showToast("请先新建一个连接", false);
+			showToast(tx("targets.targets.text12"), false);
 			return;
 		}
 		if (isEndpointConnection(a)) {
-			showToast("Webhook 目标由系统自动托管，无需手动新建", false);
+			showToast(tx("targets.targets.text13"), false);
+			return;
+		}
+		if (a.platformSnapshot.scopes.length === 0) {
+			showToast(tx("targets.noSessionScopes"), false);
 			return;
 		}
 		setTargetDraft({ mode: "add", value: makeEmptyTarget(a, "") });
@@ -1812,7 +1841,7 @@ export default function Targets() {
 	function startEditTarget(t: PushTarget): void {
 		setError(null);
 		if (t.kind === "endpoint" && t.managedBy === "connection") {
-			showToast("Webhook 目标由系统自动托管，请在连接里修改 URL", false);
+			showToast(tx("targets.targets.text14"), false);
 			return;
 		}
 		setTargetDraft({ mode: "edit", value: t });
@@ -1862,9 +1891,11 @@ export default function Targets() {
 						</div>
 					) : !selectedConnection ? (
 						<div className="bn-glass rounded-bn-card p-8 text-center shadow-bn-card">
-							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">还没有连接</div>
+							<div className="mb-1 text-bn-md font-bold text-bn-text-primary">
+								{tx("targets.targets.text15")}
+							</div>
 							<div className="mb-4 text-bn-xs text-bn-text-tertiary">
-								先新建一个连接(QQ 官方机器人 / OneBot / Webhook),再为它配置推送目标。
+								{tx("targets.targets.text16")}
 							</div>
 							{/* 与左栏「+ 新建」同名挂点 —— 同名实例是等价入口,聚光灯一起亮 */}
 							<Btn
@@ -1873,7 +1904,7 @@ export default function Targets() {
 								size="sm"
 								onClick={startNewConnection}
 							>
-								+ 新建连接
+								{tx("targets.targets.text17")}
 							</Btn>
 						</div>
 					) : (
@@ -1892,11 +1923,13 @@ export default function Targets() {
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
 											<span className="truncate text-bn-md font-bold text-bn-text-primary">
-												{selectedConnection.name || "（未命名）"}
+												{selectedConnection.name || tx("targets.targetCard.text1")}
 											</span>
 											<StatusDot kind={selectedConnectionStatus} />
 											{!selectedConnection.enabled ? (
-												<span className="text-bn-2xs text-bn-text-tertiary">(已停用)</span>
+												<span className="text-bn-2xs text-bn-text-tertiary">
+													{tx("targets.targetCard.text6")}
+												</span>
 											) : null}
 										</div>
 										<div className="mt-0.5 truncate font-mono text-bn-xs text-bn-text-tertiary">
@@ -1905,7 +1938,8 @@ export default function Targets() {
 										</div>
 										{selectedAbsent !== undefined ? (
 											<div className="mt-0.5 text-bn-xs text-bn-text-tertiary">
-												{selectedAbsent}没在跑 —— 这条连接现在发不出去,先去拓展页把它开起来。
+												{selectedAbsent}
+												{tx("targets.targets.text18")}
 											</div>
 										) : null}
 										{selectedConnection.settingsIssues?.[0] ? (
@@ -1913,12 +1947,13 @@ export default function Targets() {
 												className="mt-0.5 text-bn-xs"
 												style={{ color: "var(--color-bn-danger-text)" }}
 											>
-												设置不合法：{issueTextsOf({ issues: selectedConnection.settingsIssues })[0]}
+												{tx("targets.targets.text19")}
+												{issueTextsOf({ issues: selectedConnection.settingsIssues })[0]}
 											</div>
 										) : null}
 										{selectedConnection.probeState?.status === "unsupported" ? (
 											<div className="mt-0.5 text-bn-xs text-bn-text-tertiary">
-												这种连接没有探测办法
+												{tx("targets.targets.text20")}
 											</div>
 										) : null}
 										{selectedConnectionLink.status !== "pending" ? (
@@ -1928,16 +1963,17 @@ export default function Targets() {
 												className="mt-2 inline-block"
 											>
 												{selectedConnectionLink.status === "ok"
-													? `上次测试 OK${
-															selectedConnectionLink.latencyMs != null
-																? ` · ${selectedConnectionLink.latencyMs}ms`
-																: ""
-														}`
-													: `上次测试失败${
-															selectedConnectionLink.message
+													? tx("targets.targets.text21", {
+															value0:
+																selectedConnectionLink.latencyMs != null
+																	? ` · ${selectedConnectionLink.latencyMs}ms`
+																	: "",
+														})
+													: tx("targets.targets.text22", {
+															value0: selectedConnectionLink.message
 																? ` — ${selectedConnectionLink.message}`
-																: ""
-														}`}
+																: "",
+														})}
 											</EdgeBadge>
 										) : null}
 									</div>
@@ -1952,17 +1988,17 @@ export default function Targets() {
 										>
 											{testing[selectedConnection.id] === "pending"
 												? isEndpointConnection(selectedConnection)
-													? "发送中…"
-													: "测试中…"
+													? tx("targets.targetCard.text8")
+													: tx("targets.targets.text23")
 												: testing[selectedConnection.id] === "ok"
 													? isEndpointConnection(selectedConnection)
-														? "已送达"
-														: "已连通"
+														? tx("targets.targetCard.text9")
+														: tx("targets.targets.text24")
 													: testing[selectedConnection.id] === "fail"
-														? "失败"
+														? tx("targets.targetCard.text10")
 														: isEndpointConnection(selectedConnection)
-															? "发送测试"
-															: "测试"}
+															? tx("targets.targets.text25")
+															: tx("targets.targetCard.text11")}
 										</Btn>
 										<Btn
 											// 导览失败链的灯位:测试失败时才亮(同 target-config)
@@ -1975,7 +2011,7 @@ export default function Targets() {
 											variant="ghost"
 											onClick={() => startEditConnection(selectedConnection)}
 										>
-											配置
+											{tx("targets.targetCard.text12")}
 										</Btn>
 										<Btn
 											size="sm"
@@ -1984,7 +2020,7 @@ export default function Targets() {
 												setDeleteError(null);
 												setConfirmDelete({ kind: "connection", value: selectedConnection });
 											}}
-											title="删除"
+											title={tx("targets.targetCard.text13")}
 											icon={<Icon.trash size={11} />}
 										>
 											{null}
@@ -1998,12 +2034,14 @@ export default function Targets() {
 								<div className="mb-3 flex items-baseline justify-between">
 									<div>
 										<div className="text-bn-md font-bold text-bn-text-primary">
-											{isEndpointConnection(selectedConnection) ? "Webhook 投递目标" : "推送目标"}
+											{isEndpointConnection(selectedConnection)
+												? tx("targets.targets.text26")
+												: tx("targets.targets.text27")}
 										</div>
 										<div className="text-bn-xs text-bn-text-tertiary">
 											{isEndpointConnection(selectedConnection)
-												? "Webhook 是单向投递终点，保存 URL 后系统会自动创建默认投递目标。"
-												: "本连接下的会话:群号 / 用户 ID 等。"}
+												? tx("targets.targets.text28")
+												: tx("targets.targets.text29")}
 										</div>
 									</div>
 									{isEndpointConnection(selectedConnection) ? null : (
@@ -2013,14 +2051,14 @@ export default function Targets() {
 											variant="outline"
 											onClick={() => startNewTarget(selectedConnection)}
 										>
-											+ 新建推送目标
+											{tx("targets.targets.text30")}
 										</Btn>
 									)}
 								</div>
 								{isEndpointConnection(selectedConnection) ? (
 									<div className="space-y-2.5">
 										<div className="rounded-bn-sm border border-bn-success-border bg-bn-success-soft/70 px-3 py-2 text-bn-xs leading-relaxed text-bn-success-text">
-											无需手动配置额外 PushTarget；订阅页会看到这个 Webhook，可直接选择并投递。
+											{tx("targets.targets.text31")}
 										</div>
 										{selectedManagedEndpointTarget ? (
 											<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -2035,7 +2073,7 @@ export default function Targets() {
 												/>
 											</div>
 										) : (
-											<EmptyNote size="sm">保存 Webhook 后系统会自动创建默认投递目标。</EmptyNote>
+											<EmptyNote size="sm">{tx("targets.targets.text32")}</EmptyNote>
 										)}
 									</div>
 								) : selectedTargets.length === 0 ? (
@@ -2043,8 +2081,8 @@ export default function Targets() {
 										{/* 与右上「+ 新建推送目标」同名挂点 —— 等价入口,聚光灯一起亮 */}
 										<AddCard
 											data-tour="target-add"
-											label="新建推送目标"
-											hint="绑定到当前连接"
+											label={tx("targets.targetEditorModal.text1")}
+											hint={tx("targets.targets.text33")}
 											className="min-h-22"
 											onClick={() => startNewTarget(selectedConnection)}
 										/>
@@ -2067,8 +2105,8 @@ export default function Targets() {
 											/>
 										))}
 										<AddCard
-											label="新建推送目标"
-											hint="绑定到当前连接"
+											label={tx("targets.targetEditorModal.text1")}
+											hint={tx("targets.targets.text33")}
 											className="min-h-22"
 											onClick={() => startNewTarget(selectedConnection)}
 										/>
@@ -2084,21 +2122,29 @@ export default function Targets() {
 				<ConnectionEditorModal
 					mode={connectionDraft.mode}
 					value={connectionDraft.value}
-					extensions={pushExtensions}
+					unavailable={absentExtensionOf(connectionDraft.value, extensionsQuery.data?.extensions)}
+					adapters={adapters.filter(
+						(entry) =>
+							connectionDraft.mode === "edit" ||
+							!(extensionsQuery.data?.extensions ?? []).some(
+								(extension) => extension.id === entry.key && !isExtensionPresent(extension),
+							),
+					)}
 					saved={connectionDraft.saved}
 					replacing={connectionDraft.replacing}
 					onReplacingChange={(code, on) =>
-						setConnectionDraft({
-							...connectionDraft,
-							replacing: { ...connectionDraft.replacing, [code]: on },
-						})
+						setConnectionDraft((current) =>
+							current ? { ...current, replacing: { ...current.replacing, [code]: on } } : current,
+						)
 					}
 					onChange={(v) =>
 						// 换了平台 = 新 id:上一条连接「已存着」的凭据与它的基线都不作数了。
-						setConnectionDraft(
-							v.id === connectionDraft.value.id
-								? { ...connectionDraft, value: v }
-								: { mode: connectionDraft.mode, value: v, saved: {}, replacing: {} },
+						setConnectionDraft((current) =>
+							current
+								? v.id === current.value.id
+									? { ...current, value: v }
+									: { mode: current.mode, value: v, saved: {}, replacing: {} }
+								: current,
 						)
 					}
 					onSave={() => saveConnection.mutate(connectionDraft)}
@@ -2134,9 +2180,9 @@ export default function Targets() {
 					hint={
 						confirmDelete.kind === "connection"
 							? isEndpointConnection(confirmDelete.value)
-								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
-								: "连接若仍被推送目标引用,删除会失败。请先删除这些目标。"
-							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"
+								? tx("targets.targets.text34")
+								: tx("targets.targets.text35")
+							: tx("targets.targets.text36")
 					}
 					onCancel={() => {
 						setDeleteError(null);

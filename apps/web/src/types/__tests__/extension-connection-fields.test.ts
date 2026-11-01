@@ -9,11 +9,7 @@
 import type { ConnectionCandidatesResponse, SettingsScalarField } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { connectionSettingsFields } from "../connection-fields";
-import {
-	makeEmptyExtensionConnection,
-	makeExtensionConnectionDraft,
-	type NewConnection,
-} from "../domain";
+import { connectionFromCandidate, makeConnectionDraft, type NewConnection } from "../domain";
 
 const BOT: ConnectionCandidatesResponse["candidates"][number] = {
 	name: "小电视",
@@ -47,9 +43,9 @@ const FIELDS: readonly SettingsScalarField[] = [
 	{ type: "boolean", key: "loud", label: "吵" },
 ];
 
-describe("makeEmptyExtensionConnection", () => {
+describe("connectionFromCandidate", () => {
 	it("挂在那个拓展名下:平台从 bot 上抄,settings 原样,名字没填就用 bot 的", () => {
-		const c = makeEmptyExtensionConnection("bridge", BOT, "");
+		const c = connectionFromCandidate("bridge", BOT, "");
 		expect(c).toMatchObject({
 			adapterKey: "bridge",
 			platform: "telegram",
@@ -61,28 +57,28 @@ describe("makeEmptyExtensionConnection", () => {
 	});
 
 	it("主人填了名字就用主人的", () => {
-		expect(makeEmptyExtensionConnection("bridge", BOT, "电报那台").name).toBe("电报那台");
+		expect(connectionFromCandidate("bridge", BOT, "电报那台").name).toBe("电报那台");
 	});
 
 	it("还没挑 bot 的草稿:平台空着 —— 空平台存不了,弹窗按它灰掉保存钮", () => {
-		const draft = makeExtensionConnectionDraft("bridge", "x");
+		const draft = makeConnectionDraft("bridge", "x");
 		expect(draft).toMatchObject({ adapterKey: "bridge", platform: "" });
 	});
 });
 
 describe("connectionSettingsFields", () => {
 	const connection: NewConnection = {
-		...makeEmptyExtensionConnection("demo", BOT, ""),
+		...connectionFromCandidate("demo", BOT, ""),
 		settings: { flavor: "a", note: "", retries: 0, loud: false },
 	};
 
 	it("字段表一栏翻一栏,身份带着拓展 id —— 与内置平台的字段不撞", () => {
 		const fields = connectionSettingsFields(connection, FIELDS);
 		expect(fields.map((f) => ("code" in f ? f.code : f.kind))).toEqual([
-			"ext.demo.flavor",
-			"ext.demo.note",
-			"ext.demo.retries",
-			"ext.demo.loud",
+			"settings.flavor",
+			"settings.note",
+			"settings.retries",
+			"settings.loud",
 		]);
 	});
 
@@ -145,5 +141,63 @@ describe("connectionSettingsFields", () => {
 
 	it("空字段表翻出来就是空的 —— 桥那种「挑出来的」连接没有一栏是人填的", () => {
 		expect(connectionSettingsFields(connection, [])).toEqual([]);
+	});
+});
+
+it("按描述显示分支、改写分支草稿、保留凭据,键值表与平台提示不依赖适配器名", () => {
+	const connection: NewConnection = {
+		id: "c",
+		name: "relay",
+		enabled: true,
+		adapterKey: "unfamiliar",
+		platform: "chat",
+		settings: { mode: "out", url: "https://old.test", token: "saved", retries: 0 },
+	};
+	const descriptors = [
+		{
+			key: "mode",
+			type: "enum" as const,
+			label: "方式",
+			options: [
+				{ value: "out", label: "连出" },
+				{ value: "in", label: "连入" },
+			],
+			variants: {
+				in: {
+					settings: { mode: "in", port: 9000, retries: 3 },
+					preserve: [{ key: "token" }, { key: "retries", truthy: true }],
+				},
+			},
+		},
+		{
+			key: "url",
+			type: "string" as const,
+			label: "地址",
+			when: { key: "mode", value: "out" },
+			byPlatform: { chat: { placeholder: "https://chat.test" } },
+		},
+		{ key: "port", type: "number" as const, label: "端口", when: { key: "mode", value: "in" } },
+		{ key: "headers", type: "record" as const, label: "请求头", default: {} },
+		{ key: "token", type: "string" as const, label: "令牌", secret: true },
+	];
+	const fields = connectionSettingsFields(connection, descriptors);
+	expect(fields.some((field) => "code" in field && field.code === "settings.port")).toBe(false);
+	expect(fields.find((field) => "code" in field && field.code === "settings.url")).toMatchObject({
+		placeholder: "https://chat.test",
+	});
+	expect(
+		fields.find((field) => "code" in field && field.code === "settings.headers"),
+	).toMatchObject({ kind: "headers", value: {} });
+	expect(fields.find((field) => "code" in field && field.code === "settings.token")).toMatchObject({
+		credential: true,
+	});
+	const selector = fields[0];
+	if (selector?.kind !== "select" && selector?.kind !== "chips")
+		throw new Error("missing selector");
+	expect(selector.set("in").settings).toEqual({
+		mode: "in",
+		port: 9000,
+		retries: 3,
+		token: "saved",
 	});
 });

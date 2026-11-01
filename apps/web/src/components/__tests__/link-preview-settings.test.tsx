@@ -423,7 +423,7 @@ describe("LinkPreviewSettings", () => {
 		});
 	});
 	describe("连接支持情况", () => {
-		it("只列 OneBot 连接,三态各有说法:支持 / 不支持带原因 / 未探测", () => {
+		it("所有连接按能力显示：支持 / 不支持带原因 / 未探测", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, {
 				capabilities: { ...CAPS, [A_OB2]: CAPS[A_OB2] as never },
 			});
@@ -431,22 +431,23 @@ describe("LinkPreviewSettings", () => {
 			expect(panel.getByText("NapCat 主号")).toBeTruthy();
 			expect(panel.getByText("支持小程序卡")).toBeTruthy();
 			expect(panel.getByText("Lagrange 备用")).toBeTruthy();
-			expect(panel.getByText("不支持,回落图片卡")).toBeTruthy();
+			expect(panel.getAllByText("不支持,回落图片卡")).toHaveLength(3);
 			expect(panel.getByText(/没有 get_mini_app_ark/)).toBeTruthy();
-			expect(panel.queryByText("官机")).toBeNull();
+			expect(panel.getByText("官机")).toBeTruthy();
+			expect(panel.getByText("飞书钩子")).toBeTruthy();
 		});
 
 		it("表里没有的 OneBot 连接(引擎还没探)显示「未探测」", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { capabilities: {} });
 			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
-			expect(panel.getAllByText("未探测")).toHaveLength(2);
+			expect(panel.getAllByText("未探测")).toHaveLength(4);
 		});
 
-		it("官机与 webhook 用一句话说明不支持;没有 OneBot 连接时只剩这句", () => {
+		it("只有官机也照能力显示，不依赖 OneBot 的存在", () => {
 			renderCard(draftWith(), vi.fn(), TARGETS, { connections: [ADAPTERS[2] as Connection] });
 			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
-			expect(panel.getByText(/QQ 官方机器人与 webhook 不支持小程序卡/)).toBeTruthy();
-			expect(panel.getByText(/还没有 OneBot 连接/)).toBeTruthy();
+			expect(panel.getByText("官机")).toBeTruthy();
+			expect(panel.getByText("不支持,回落图片卡")).toBeTruthy();
 		});
 
 		it("群所在的连接不支持 → 那一行形式格旁提示会回落图片卡;支持的不提示", () => {

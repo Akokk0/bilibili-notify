@@ -540,11 +540,8 @@ describe("GET /api/ext", () => {
 		const body = (await (
 			await boot({ entries: [bridge, douyin] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions.find((e) => e.id === "bridge")?.push).toEqual({
-			...display,
-			settingsFields: fields,
-		});
-		expect(body.extensions.find((e) => e.id === "douyin")?.push).toBeUndefined();
+		expect(body.extensions.find((e) => e.id === "bridge")).not.toHaveProperty("push");
+		expect(body.extensions.find((e) => e.id === "douyin")).not.toHaveProperty("push");
 	});
 
 	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */
@@ -567,14 +564,14 @@ describe("GET /api/ext", () => {
 		const body = (await (
 			await boot({ entries: [bridge] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push?.settingsFields).toEqual([]);
+		expect(body.extensions[0]).not.toHaveProperty("push");
 	});
 
 	it("清单读不出来的那条没有推送源那一口", async () => {
 		const body = (await (
 			await boot({ entries: [{ id: "x", dir: "/d/x", state: "unreadable" }] }).request("/")
 		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push).toBeUndefined();
+		expect(body.extensions[0]).not.toHaveProperty("push");
 	});
 
 	it("一个都没装 → 空表。**没有写死的清单了** —— 拓展是装进来的", async () => {

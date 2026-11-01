@@ -1,15 +1,29 @@
 import type { ConnectionView } from "@bilibili-notify/contract";
+import type { NewConnection } from "@bilibili-notify/internal";
 import { OnebotConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import {
-	clearedCredentials,
-	connectionPatch,
-	credentialCellsOf,
+	clearedCredentials as clearedCredentialsImpl,
+	connectionPatch as connectionPatchImpl,
+	credentialCellsOf as credentialCellsOfImpl,
 	displayConnection,
-	savedMasksOf,
+	savedMasksOf as savedMasksOfImpl,
 } from "../connection-credentials";
-import { switchOnebotTransport } from "../domain";
+import { descriptorsOf, switchOnebotTransport } from "./connection-fixtures";
+
+function clearedCredentials<T extends NewConnection>(connection: T) {
+	return clearedCredentialsImpl(connection, descriptorsOf(connection));
+}
+function savedMasksOf(connection: NewConnection) {
+	return savedMasksOfImpl(connection, descriptorsOf(connection));
+}
+function credentialCellsOf(connection: NewConnection) {
+	return credentialCellsOfImpl(connection, descriptorsOf(connection));
+}
+function connectionPatch(...args: Parameters<typeof connectionPatchImpl>) {
+	return connectionPatchImpl(args[0], args[1], args[2], args[3], descriptorsOf(args[0]));
+}
 
 /**
  * 连接编辑走 PATCH(ADR-0021 决策 44):没动过的凭据格不进 PATCH(带遮挡是 400,不带 = 保留);换新的发明文;

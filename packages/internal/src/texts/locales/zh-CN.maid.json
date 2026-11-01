@@ -16,5 +16,10 @@
 	"ui.form.addQuiet": "+ 添加免扰时段吧，主人",
 	"ui.select.placeholder": "请选择哦，主人",
 	"ui.select.empty": "暂时没有可选项哦，主人",
-	"ui.select.unavailable": "当前值不可用（{value}），请重选哦，主人"
+	"ui.select.unavailable": "当前值不可用（{value}），请重选哦，主人",
+	"internal.connection.token.description": "主人，用于连接鉴权；监听连入时建议设置，避免未授权访问哦。",
+	"internal.connection.imageMinTimeoutMs.description": "主人，带图消息按响应超时与此值的较大者等待。填 0 表示不放宽哦。",
+	"internal.connection.mergeForwardMinTimeoutMs.description": "主人，合并转发需逐张处理图片，通常耗时更长。填 0 表示不放宽哦。",
+	"internal.connection.headers.description": "主人，反向代理需要的鉴权头；签名密钥请填在密钥栏哦。",
+	"internal.connection.hookSecret.description": "主人，按端点协议填写签名密钥哦。"
 }

@@ -1248,6 +1248,8 @@ export interface PlatformMeta {
 	 * (BN 的服务端读清单那一刻就过了),这里只管画、吃 `currentColor`。有 `icon` 时优先 `icon`。
 	 */
 	svg?: string;
+	/** 调用方核过的图片地址。 */
+	image?: string;
 }
 
 const PlatformMetaContext = createContext<((platform: string) => PlatformMeta | undefined) | null>(
@@ -1304,6 +1306,17 @@ export function PlatformIcon({
 	const color = tone ?? meta?.tint ?? "var(--color-bn-inactive)";
 	const I = meta?.icon ? Icon[meta.icon as IconName] : null;
 	if (I) return <I size={size} style={{ color }} />;
+	if (meta?.image)
+		return (
+			<img
+				src={meta.image}
+				alt=""
+				width={size}
+				height={size}
+				className="shrink-0"
+				draggable={false}
+			/>
+		);
 	if (meta?.svg) {
 		return (
 			<span

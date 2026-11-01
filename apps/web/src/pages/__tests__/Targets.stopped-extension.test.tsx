@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+	builtinAdapters,
+	builtinCandidatesResponse,
+} from "../../types/__tests__/connection-fixtures";
 /**
  * 拓展停着时,推送目标页上它借来的连接(ADR-0019 决策 41)。
  *
@@ -34,12 +38,16 @@ const STOPPED_BRIDGE: ExtensionsResponse["extensions"][number] = {
 	apiVersion: 1,
 	provides: ["push"],
 	dir: "/data/extensions/bridge",
-	push: {
+};
+const BRIDGE_ADAPTER: import("@bilibili-notify/contract").AdapterEntry = {
+	key: "bridge",
+	descriptor: {
 		label: "机器人框架桥接",
 		shortLabel: "桥接",
 		color: "#a855f7",
 		settingsFields: [],
 	},
+	has: { connectionAuth: false, listAddressCandidates: false },
 };
 
 /** 桥借来的一个 telegram bot —— telegram 不在内置平台表里,脸落回拓展自己那张。 */
@@ -49,7 +57,7 @@ const CONNECTION = {
 	enabled: true,
 	adapterKey: "bridge",
 	platform: "telegram",
-	platformSnapshot: snapshotFor("telegram"),
+	platformSnapshot: { ...snapshotFor("telegram"), shortLabel: "桥接", color: "#a855f7" },
 	settings: { link: "link-home", botId: "telegram:7777" },
 };
 
@@ -57,9 +65,18 @@ const CONNECTION = {
 const BRIDGE_TINT = "rgb(168, 85, 247)";
 
 function renderPage(
-	opts: { extension?: unknown; connections?: unknown[]; extensionsPending?: boolean } = {},
+	opts: {
+		extension?: unknown;
+		connections?: unknown[];
+		extensionsPending?: boolean;
+		adapter?: typeof BRIDGE_ADAPTER;
+	} = {},
 ) {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
+		if (url === "/api/adapters")
+			return { adapters: [...builtinAdapters, opts.adapter ?? BRIDGE_ADAPTER] };
+		const candidates = builtinCandidatesResponse(url);
+		if (candidates) return candidates;
 		if (url === "/api/ext") {
 			// 拓展列表迟迟不回:这时候什么都不知道,不许替它下「没在跑」的结论。
 			if (opts.extensionsPending) return new Promise(() => {});
@@ -119,8 +136,8 @@ describe("停着的 v2 拓展借来的连接", () => {
 });
 
 describe("停着时改一条它的连接", () => {
-	async function openEditor(extension?: unknown): Promise<HTMLElement> {
-		renderPage(extension ? { extension } : {});
+	async function openEditor(adapter?: typeof BRIDGE_ADAPTER): Promise<HTMLElement> {
+		renderPage(adapter ? { adapter } : {});
 		fireEvent.click((await screen.findAllByRole("button", { name: "配置" }))[0] as HTMLElement);
 		return screen.findByRole("dialog");
 	}
@@ -128,7 +145,7 @@ describe("停着时改一条它的连接", () => {
 	/** 弹窗里说「经谁借来的」用的是清单里的全名,不是拓展 id —— 外观停着也在。 */
 	it("小标题照清单写它的名字", async () => {
 		const dialog = await openEditor();
-		expect(dialog.textContent).toContain("经 机器人框架桥接 借来的");
+		expect(dialog.textContent).toContain("机器人框架桥接");
 		expect(dialog.textContent).not.toContain("经 bridge");
 	});
 
@@ -142,15 +159,38 @@ describe("停着时改一条它的连接", () => {
 		expect(asked).toBe(false);
 	});
 
+	it("描述字段不查旧平台标签表，不补入同名字段的说明", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const dialog = await openEditor({
+				...BRIDGE_ADAPTER,
+				descriptor: {
+					...BRIDGE_ADAPTER.descriptor,
+					settingsFields: [
+						{ type: "string", key: "endpoint", label: "接入点" },
+						{ type: "number", key: "imageMinTimeoutMs", label: "自定义等待" },
+					],
+				},
+			});
+			expect(within(dialog).getByText("接入点")).toBeTruthy();
+			expect(dialog.querySelector('[data-code="settings.imageMinTimeoutMs"]')?.textContent).toBe(
+				"自定义等待settings.imageMinTimeoutMs",
+			);
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	/**
 	 * 连接配置项写在清单里、值存在 BN 这边,改它不要拓展在场 —— 同拓展关着时设置照样能改
 	 * (ADR-0019 决策 32)。停着就不画的话,那几格在拓展起来之前改不了。
 	 */
 	it("连接配置项照清单画,停着也改得了", async () => {
 		const dialog = await openEditor({
-			...STOPPED_BRIDGE,
-			push: {
-				...STOPPED_BRIDGE.push,
+			...BRIDGE_ADAPTER,
+			descriptor: {
+				...BRIDGE_ADAPTER.descriptor,
 				settingsFields: [{ type: "string", key: "room", label: "房间" }],
 			},
 		});

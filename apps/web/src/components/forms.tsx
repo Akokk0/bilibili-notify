@@ -19,6 +19,7 @@ import {
 import type { ReactNode } from "react";
 import { type FieldLabel, getFieldLabel } from "../config/field-labels.js";
 import { LOG_LEVEL_TONE } from "../config/log-levels";
+import { i18n, useT } from "../i18n";
 
 export {
 	ArrayEditor,
@@ -56,6 +57,8 @@ export interface FieldProps {
 	hint?: ReactNode;
 	required?: boolean;
 	full?: boolean;
+	/** 描述驱动字段不读取旧静态标签 / 提示表。 */
+	fromDescriptor?: boolean;
 	children: ReactNode;
 }
 
@@ -66,8 +69,9 @@ export interface FieldProps {
  */
 export const FIELD_ROW_CHROME = "border-b border-dashed border-bn-border-subtle py-2.5";
 
-export function Field({ code, label, hint, required, full, children }: FieldProps) {
-	const entry: FieldLabel | null = getFieldLabel(code);
+export function Field({ code, label, hint, required, full, fromDescriptor, children }: FieldProps) {
+	const tx = useT();
+	const entry: FieldLabel | null = fromDescriptor ? null : getFieldLabel(code);
 	const effectiveLabel: ReactNode = label ?? entry?.label ?? code;
 	const effectiveHint: ReactNode = hint ?? entry?.hint;
 	const update = useFieldUpdate(code);
@@ -88,8 +92,8 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
 					</code>
 					{reset ? (
 						<span data-field-reset>
-							<Btn variant="ghost" size="sm" onClick={reset} title="把这条文案还原成当前默认">
-								恢复默认
+							<Btn variant="ghost" size="sm" onClick={reset} title={tx("forms.resetHint")}>
+								{tx("forms.reset")}
 							</Btn>
 						</span>
 					) : null}
@@ -114,6 +118,7 @@ export function Field({ code, label, hint, required, full, children }: FieldProp
  * 打开这页都被问一遍同一件事)。
  */
 function DefaultUpdateNotice({ update }: { update: FieldUpdate }) {
+	const tx = useT();
 	return (
 		<div
 			data-template-update
@@ -121,17 +126,17 @@ function DefaultUpdateNotice({ update }: { update: FieldUpdate }) {
 		>
 			<div className="mb-1.5 flex items-center gap-1.5 text-bn-xs font-bold text-bn-warning-text">
 				<Icon.sparkle className="h-3 w-3" />
-				默认文案有更新
+				{tx("forms.update")}
 			</div>
 			<pre className="mb-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded-md bg-bn-code-bg px-2 py-1.5 font-mono text-bn-2xs leading-relaxed text-bn-text-secondary">
 				{update.preview}
 			</pre>
 			<div className="flex flex-wrap gap-2">
 				<Btn variant="primary" size="sm" onClick={update.accept}>
-					用新默认
+					{tx("forms.accept")}
 				</Btn>
 				<Btn variant="outline" size="sm" onClick={update.keep}>
-					保持我的
+					{tx("forms.keep")}
 				</Btn>
 			</div>
 		</div>
@@ -154,10 +159,34 @@ export interface LogLevelPickerProps {
 const INHERIT = "inherit" as const;
 
 const LOG_LEVELS: { v: LogLevelValue; label: string; color: string }[] = [
-	{ v: 1, label: "错误", color: LOG_LEVEL_TONE.error },
-	{ v: 2, label: "告警", color: LOG_LEVEL_TONE.warn },
-	{ v: 3, label: "信息", color: LOG_LEVEL_TONE.info },
-	{ v: 4, label: "调试", color: LOG_LEVEL_TONE.debug },
+	{
+		v: 1,
+		get label() {
+			return i18n.t("forms.log.error");
+		},
+		color: LOG_LEVEL_TONE.error,
+	},
+	{
+		v: 2,
+		get label() {
+			return i18n.t("forms.log.warn");
+		},
+		color: LOG_LEVEL_TONE.warn,
+	},
+	{
+		v: 3,
+		get label() {
+			return i18n.t("forms.log.info");
+		},
+		color: LOG_LEVEL_TONE.info,
+	},
+	{
+		v: 4,
+		get label() {
+			return i18n.t("forms.log.debug");
+		},
+		color: LOG_LEVEL_TONE.debug,
+	},
 ];
 
 /**
@@ -170,9 +199,10 @@ const LOG_LEVELS: { v: LogLevelValue; label: string; color: string }[] = [
  * token 同为 #fff,只有暗色看得出来 —— 它此前比同排的兄弟暗一档)。
  */
 export function LogLevelPicker({ value, onChange, allowInherit }: LogLevelPickerProps) {
+	const tx = useT();
 	const options = [
 		...(allowInherit
-			? [{ value: INHERIT, label: "跟随全局", color: "var(--color-bn-text-primary)" }]
+			? [{ value: INHERIT, label: tx("forms.log.inherit"), color: "var(--color-bn-text-primary)" }]
 			: []),
 		...LOG_LEVELS.map((o) => ({ value: o.v, label: `L${o.v} · ${o.label}`, color: o.color })),
 	];

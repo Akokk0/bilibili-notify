@@ -77,6 +77,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"extensions",
 				// 来源表跟着拓展表走:拓展的那几行照的是同一份清单。
 				"sources",
+				"adapters",
 				"extension-status",
 				"extension-bots",
 				"ext-settings",
@@ -152,7 +153,12 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["extensions"], ["sources"]]);
+		expect(keysOf(sc.invalidate)).toEqual([
+			["settings"],
+			["extensions"],
+			["sources"],
+			["adapters"],
+		]);
 		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);
 	});
 
