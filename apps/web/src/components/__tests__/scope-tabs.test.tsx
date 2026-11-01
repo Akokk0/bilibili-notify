@@ -35,6 +35,7 @@ const SUB = makeSub("111", "UP甲");
 function renderTabs(scope: string) {
 	return render(
 		<ScopeTabs
+			platformOf={(identity) => subscriptionPlatformOf(identity, undefined)}
 			scope={scope}
 			onChange={vi.fn()}
 			tabSubs={[SUB]}
@@ -112,6 +113,7 @@ describe("ScopeTabs 的「是谁」那一行", () => {
 		scope: string,
 		platformLabelOf?: (extensionId: string) => string | undefined,
 	) {
+		const label = platformLabelOf?.("douyin");
 		return render(
 			<ScopeTabs
 				scope={scope}
@@ -124,11 +126,11 @@ describe("ScopeTabs 的「是谁」那一行", () => {
 				platformOf={(identity) =>
 					subscriptionPlatformOf(identity, [
 						makeSource(),
-						...(platformLabelOf?.("douyin")
+						...(label
 							? [
 									makeSource({
 										key: "douyin",
-										descriptor: { label: platformLabelOf("douyin")!, supportedFeatures: ["post"] },
+										descriptor: { label, supportedFeatures: ["post"] },
 									}),
 								]
 							: []),

@@ -48,9 +48,9 @@ export interface ScopeTabsProps<S extends Subscription = Subscription> {
 	overridesCountFor: (sub: S) => number;
 	/**
 	 * 拓展订阅的平台名(清单里的叫法)。拓展订阅没有 uid,「是谁」那一小行写「平台名 · 外部 id」
-	 * (ADR-0019 决策 73 的口径);不给、或取不到时平台名写拓展 id(同决策 10)。
+	 * (ADR-0019 决策 73 的口径);调用方在取不到来源时回退到来源键(同决策 10)。
 	 */
-	platformOf?: (identity: Identity) => { label: string; externalIdNoun?: string };
+	platformOf: (identity: Identity) => { label: string; externalIdNoun?: string };
 	/** 自定义提示语(右侧)。默认走 Rules 文案;Cards 传卡片专属文案。 */
 	globalHint?: string;
 	perUpHint?: (sub: S | undefined) => React.ReactNode;
@@ -75,8 +75,7 @@ export function ScopeTabs<S extends Subscription>({
 	useDismiss(dropdownRef, () => setAdding(false), { enabled: adding });
 
 	const isGlobal = scope === "__global";
-	const platformFor = (identity: Identity) =>
-		platformOf?.(identity) ?? { label: identity.sourceKey };
+	const platformFor = (identity: Identity) => platformOf(identity);
 	const focused = tabSubs.find((s) => s.id === scope);
 	const focusedIdentity = focused === undefined ? undefined : subscriptionIdentityOf(focused);
 	const focusedIdLabel = focusedIdentity

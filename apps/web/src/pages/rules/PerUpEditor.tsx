@@ -57,7 +57,7 @@ import {
 } from "../../types/domain";
 import type { AISettings, GlobalDefaults, ImageGroupSettings } from "../../types/globals";
 import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
-import type { SubscriptionPlatform } from "../up/subscription-source";
+import { type SubscriptionPlatform, subscriptionPlatformOf } from "../up/subscription-source";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
@@ -151,6 +151,7 @@ export function PerUpEditor({
 		[defaults.templates, factory],
 	);
 	const identity = subscriptionIdentityOf(sub);
+	const displayPlatform = platform ?? subscriptionPlatformOf(identity, undefined);
 	const programs = platform?.membershipPrograms ?? [];
 	const specialViewers = sub.specialViewers;
 	// 仅按当前来源声明的事件给格；来源表未知时保留草稿，不推断额外能力。
@@ -207,7 +208,7 @@ export function PerUpEditor({
 	useDirtyDraft({
 		pageKey: "rules-perup",
 		pageLabel: tx("sourceUi.pages.rules.PerUpEditor.pageLabel.1", {
-			value1: displayName(sub, platform ?? { label: sub.identity.sourceKey }),
+			value1: displayName(sub, displayPlatform),
 		}),
 		draft: islandDraft,
 		baseline: islandBaseline,
@@ -260,7 +261,7 @@ export function PerUpEditor({
 				}}
 			>
 				<Avatar
-					name={displayName(sub, platform ?? { label: sub.identity.sourceKey })}
+					name={displayName(sub, displayPlatform)}
 					color={color}
 					size={48}
 					url={profileAvatarUrl(sub.cachedProfile)}
@@ -268,10 +269,10 @@ export function PerUpEditor({
 				/>
 				<div className="min-w-0 flex-1">
 					<div className="text-bn-md font-bold text-bn-text-primary">
-						{displayName(sub, platform ?? { label: sub.identity.sourceKey })}
+						{displayName(sub, displayPlatform)}
 					</div>
 					<div className="text-bn-sm text-bn-text-secondary tabular-nums">
-						{subscriptionIdentityLabel(identity, platform ?? { label: identity.sourceKey })}{" "}
+						{subscriptionIdentityLabel(identity, displayPlatform)}{" "}
 						{tx("sourceUi.pages.rules.PerUpEditor.PerUpEditor.2")}
 					</div>
 				</div>

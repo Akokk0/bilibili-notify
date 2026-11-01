@@ -151,37 +151,6 @@ export function descriptorFlow(sources, rootPath) {
 		ts.isFunctionDeclaration(fn) &&
 		fn.name?.text === "subscriptionPlatformOf" &&
 		resolve(fn.getSourceFile().fileName) === root;
-	const safeFallback = (node) => {
-		const target = unwrapped(node);
-		return (
-			isAbsent(target) ||
-			(ts.isObjectLiteralExpression(target) &&
-				target.properties.length === 1 &&
-				target.properties.every(
-					(property) =>
-						ts.isPropertyAssignment(property) &&
-						property.name.text === "label" &&
-						isIdentitySourceKey(property.initializer),
-				))
-		);
-	};
-	const isStaticIdentity = (node) => {
-		const target = unwrapped(node);
-		return (
-			(ts.isIdentifier(target) && target.text === "identity") ||
-			(ts.isPropertyAccessExpression(target) &&
-				target.name.text === "identity" &&
-				ts.isIdentifier(unwrapped(target.expression)))
-		);
-	};
-	const isIdentitySourceKey = (node) => {
-		const target = unwrapped(node);
-		return (
-			ts.isPropertyAccessExpression(target) &&
-			target.name.text === "sourceKey" &&
-			isStaticIdentity(target.expression)
-		);
-	};
 	function isDescriptor(node, seen = new Set()) {
 		const target = unwrapped(node);
 		if (!target || seen.has(target)) return false;
@@ -210,7 +179,7 @@ export function descriptorFlow(sources, rootPath) {
 		) {
 			return (
 				isDescriptor(target.left, seen) &&
-				(isDescriptor(target.right, seen) || safeFallback(target.right))
+				(isDescriptor(target.right, seen) || isAbsent(target.right))
 			);
 		}
 		if (!ts.isIdentifier(target)) return false;

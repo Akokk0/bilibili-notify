@@ -523,23 +523,33 @@ describe("verified source descriptor values", () => {
 			),
 		).toEqual([]);
 	});
-	it("only accepts a static sourceKey display fallback", () => {
-		for (const label of ["identity.sourceKey", "sub.identity.sourceKey"]) {
-			expect(
-				descriptorSample(
-					`${descriptorImport} const platform = project(id, sources) ?? { label: ${label} }; use(platform);`,
-				),
-				label,
-			).toEqual([]);
-		}
+	it("rejects a named identity with an unknown origin in a display fallback", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const identity = unknown(); const platform = (sourcesReady ? project(id, sources) : undefined) ?? { label: identity.sourceKey }; unapprovedConsumer(platform);`,
+			),
+		).toHaveLength(1);
 	});
 	it.each([
+		"function show(identity) { const platform = (sourcesReady ? project(id, sources) : undefined) ?? { label: identity.sourceKey }; use(platform); }",
+		"const original = unknown(); const identity = original; const platform = project(id, sources) ?? { label: identity.sourceKey }; use(platform);",
+		"const identity = knownIdentity; function show(identity: Identity) { const platform = project(id, sources) ?? { label: identity.sourceKey }; use(platform); }",
+		"const identity = knownIdentity; identity.sourceKey = conn.platform; const platform = project(id, sources) ?? { label: identity.sourceKey }; use(platform);",
+		"const sub = unknown(); const platform = project(id, sources) ?? { label: sub.identity.sourceKey }; use(platform);",
+		"const identity = knownIdentity; const platform = project(id, sources) ?? { label: identity.sourceKey }; use(platform);",
 		"const platform = project(id, sources) ?? { label: unknown() }; use(platform);",
 		"const otherPlatform = conn.platform; const platform = project(id, sources) ?? { label: otherPlatform }; use(platform);",
 		"const platform = project(id, sources) ?? { label: identity.label }; use(platform);",
 		"const platform = project(id, sources) ?? { label: unknown().sourceKey }; use(platform);",
 	])("rejects an unverified display fallback: %s", (text) => {
 		expect(descriptorSample(`${descriptorImport} ${text}`)).not.toEqual([]);
+	});
+	it("accepts a real projection fallback when the source list is unavailable", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const identity = unknown(); const platform = (sourcesReady ? project(identity, sources) : undefined) ?? project(identity, undefined); unapprovedConsumer(platform);`,
+			),
+		).toEqual([]);
 	});
 	it("allows runtime state but keeps platform-name decisions red", () => {
 		expect(
@@ -1017,4 +1027,11 @@ describe("核心与面板里不再按平台名做决定", () => {
  * 判断可认，label 等名字分叉仍红。仅静态身份 sourceKey 显示 fallback 可认；未知调用、混字符串、
  * 假导入、遮蔽仍沿旧规则。字段写入经真实别名链双向撤信任，含下标、++ 与 delete。
  * source-scan 通用语义不变，ALLOWLIST 空，核心3 / 面板29不抬；动态传值仍需审查。
+ */
+
+/*
+ * 🔗现状（4-26，2026-11-01）：后续 P2 修复撤去对象 literal 身份 fallback 的全部信任；上面的
+ * 静态 sourceKey fallback 认可范围保留为历史。identity 名字、类型、别名、遮蔽、字段写入或
+ * sub.identity 路径均不能证明对象来源；生产读者改真实 subscriptionPlatformOf projection。
+ * 现有 fallback 只接受真实投影或空值，不新增身份流分析或豁免，核心3 / 面板29保持。
  */
