@@ -523,6 +523,24 @@ describe("verified source descriptor values", () => {
 			),
 		).toEqual([]);
 	});
+	it("only accepts a static sourceKey display fallback", () => {
+		for (const label of ["identity.sourceKey", "sub.identity.sourceKey"]) {
+			expect(
+				descriptorSample(
+					`${descriptorImport} const platform = project(id, sources) ?? { label: ${label} }; use(platform);`,
+				),
+				label,
+			).toEqual([]);
+		}
+	});
+	it.each([
+		"const platform = project(id, sources) ?? { label: unknown() }; use(platform);",
+		"const otherPlatform = conn.platform; const platform = project(id, sources) ?? { label: otherPlatform }; use(platform);",
+		"const platform = project(id, sources) ?? { label: identity.label }; use(platform);",
+		"const platform = project(id, sources) ?? { label: unknown().sourceKey }; use(platform);",
+	])("rejects an unverified display fallback: %s", (text) => {
+		expect(descriptorSample(`${descriptorImport} ${text}`)).not.toEqual([]);
+	});
 	it("allows runtime state but keeps platform-name decisions red", () => {
 		expect(
 			descriptorSample(
@@ -549,6 +567,28 @@ describe("verified source descriptor values", () => {
 			`${descriptorImport} const platform = project(id, sources); platform.status = conn.platform; use(platform);`,
 		])
 			expect(descriptorSample(text), text).not.toEqual([]);
+	});
+	it.each([
+		"const alias = platform; alias.label = conn.platform; use(platform);",
+		"aliasPlatform.label = conn.platform; use(platform);",
+		"platform.label = conn.platform; use(aliasPlatform);",
+		"const nextPlatform = aliasPlatform; nextPlatform.label = conn.platform; use(platform);",
+		"aliasPlatform['label'] = conn.platform; use(platform);",
+		"aliasPlatform.label++; use(platform);",
+		"delete aliasPlatform.label; use(platform);",
+	])("revokes descriptor trust across aliases after a field write: %s", (mutation) => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); const aliasPlatform = platform; ${mutation}`,
+			),
+		).not.toEqual([]);
+	});
+	it("keeps unrelated aliases in another lexical scope trusted", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); const alias = platform; function unrelated() { const alias = {}; alias.label = 'other'; } use(platform);`,
+			),
+		).toEqual([]);
 	});
 	it("follows real export aliases and verified descriptor callbacks", () => {
 		const root = parseSource(

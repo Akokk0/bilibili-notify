@@ -81,8 +81,30 @@ export function descriptorFlow(sources, rootPath) {
 	const calls = new Map();
 	const props = new Map();
 	const writes = new Set();
+	const aliases = new Map();
 	const functions = [];
+	const recordWrite = (node) => {
+		let written = unwrapped(node);
+		while (ts.isPropertyAccessExpression(written) || ts.isElementAccessExpression(written))
+			written = unwrapped(written.expression);
+		const symbol = symbolOf(written);
+		if (symbol) writes.add(symbol);
+	};
 	const visit = (node) => {
+		if (
+			ts.isVariableDeclaration(node) &&
+			ts.isIdentifier(node.name) &&
+			node.parent.flags & ts.NodeFlags.Const &&
+			node.initializer &&
+			ts.isIdentifier(unwrapped(node.initializer))
+		) {
+			const symbol = symbolOf(node.name);
+			const original = symbolOf(unwrapped(node.initializer));
+			if (symbol && original) {
+				aliases.set(symbol, new Set([...(aliases.get(symbol) ?? []), original]));
+				aliases.set(original, new Set([...(aliases.get(original) ?? []), symbol]));
+			}
+		}
 		if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node))
 			functions.push(node);
 		if (ts.isCallExpression(node)) {
@@ -97,19 +119,25 @@ export function descriptorFlow(sources, rootPath) {
 			ts.isBinaryExpression(node) &&
 			node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
 			node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-		) {
-			let written = unwrapped(node.left);
-			while (ts.isPropertyAccessExpression(written) || ts.isElementAccessExpression(written))
-				written = unwrapped(written.expression);
-			writes.add(symbolOf(written));
-		}
+		)
+			recordWrite(node.left);
 		if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
 			if ([ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator))
-				writes.add(symbolOf(unwrapped(node.operand)));
+				recordWrite(node.operand);
 		}
+		if (ts.isDeleteExpression(node)) recordWrite(node.expression);
 		ts.forEachChild(node, visit);
 	};
 	for (const source of files.values()) visit(source);
+	// A write through any immutable alias invalidates the shared object in both directions.
+	const pendingWrites = [...writes];
+	for (const symbol of pendingWrites) {
+		for (const alias of aliases.get(symbol) ?? []) {
+			if (writes.has(alias)) continue;
+			writes.add(alias);
+			pendingWrites.push(alias);
+		}
+	}
 	const trustedParameters = new Set();
 	const trustedCallbacks = new Set();
 	const trustedFunctions = new Set();
@@ -133,23 +161,26 @@ export function descriptorFlow(sources, rootPath) {
 					(property) =>
 						ts.isPropertyAssignment(property) &&
 						property.name.text === "label" &&
-						!containsConnectionPlatform(property.initializer),
+						isIdentitySourceKey(property.initializer),
 				))
 		);
 	};
-	const containsConnectionPlatform = (node) => {
-		if (ts.isPropertyAccessExpression(node) && node.name.text === "platform") return true;
-		if (
-			ts.isElementAccessExpression(node) &&
-			ts.isStringLiteral(node.argumentExpression) &&
-			node.argumentExpression.text === "platform"
-		)
-			return true;
-		let found = false;
-		ts.forEachChild(node, (child) => {
-			if (containsConnectionPlatform(child)) found = true;
-		});
-		return found;
+	const isStaticIdentity = (node) => {
+		const target = unwrapped(node);
+		return (
+			(ts.isIdentifier(target) && target.text === "identity") ||
+			(ts.isPropertyAccessExpression(target) &&
+				target.name.text === "identity" &&
+				ts.isIdentifier(unwrapped(target.expression)))
+		);
+	};
+	const isIdentitySourceKey = (node) => {
+		const target = unwrapped(node);
+		return (
+			ts.isPropertyAccessExpression(target) &&
+			target.name.text === "sourceKey" &&
+			isStaticIdentity(target.expression)
+		);
 	};
 	function isDescriptor(node, seen = new Set()) {
 		const target = unwrapped(node);
