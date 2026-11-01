@@ -138,7 +138,7 @@ describe("per-UP AI 人格 — 只能挑已有的那几份", () => {
 		const { container } = mount();
 		fireEvent.click(headerToggle(container));
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
-		expect(screen.getByText(/这个 UP 用「温柔女仆」/)).toBeTruthy();
+		expect(screen.getByText(/此订阅使用「温柔女仆」/)).toBeTruthy();
 		expect(await saveAndReadAi()).toEqual({ preset: "gentle-maid" });
 	});
 

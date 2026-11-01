@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { getFieldLabel } from "../../config/field-labels";
 import { groupDiffsBySection, sectionOf } from "../groupDiffs";
 import type { FieldDiff } from "../walkTreeDiff";
@@ -7,6 +7,37 @@ const D = (code: string, oldV: unknown = 0, newV: unknown = 1): FieldDiff => ({
 	code,
 	oldValue: oldV,
 	newValue: newV,
+});
+
+describe("动态会员字段", () => {
+	it("合法的任意体系与档路径有中性元数据且不告警", () => {
+		for (const code of [
+			"membership.minRank.readers",
+			"templates.membership.readers.enabled",
+			"templates.membership.readers.default.template",
+			"templates.membership.readers.tiers.unknown.imageUrl",
+		]) {
+			expect(getFieldLabel(code)?.section).toBe(
+				code.startsWith("templates.") ? "templates" : "interaction",
+			);
+		}
+		expect(getFieldLabel("templatesSeen.membership.readers.default.template")?.label).toBe(
+			"readers · 体系默认文案 · 默认更新提示",
+		);
+	});
+
+	it("未知体系与档位保留原始键，合法动态路径不告警", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			expect(getFieldLabel("membership.minRank.retired")?.label).toBe("retired · 会员最低档位");
+			expect(getFieldLabel("templates.membership.retired.tiers.unknown.imageUrl")?.label).toBe(
+				"retired · unknown · 会员档位图片",
+			);
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
+	});
 });
 
 describe("sectionOf", () => {
@@ -116,7 +147,7 @@ describe("groupDiffsBySection", () => {
 
 		it("嵌套路径的账本条目也认得出来:上舰体系默认文案那条借的是它自己的名字(㉓d)", () => {
 			expect(getFieldLabel("templatesSeen.membership.guard.default.template")?.label).toBe(
-				"体系默认文案 · 默认更新提示",
+				"guard · 体系默认文案 · 默认更新提示",
 			);
 		});
 	});

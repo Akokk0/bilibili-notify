@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeSource } from "../../pages/rules/__tests__/fixtures";
 import { type PushEventView, useToastStore } from "../../store/notifications";
 import { ToastShell } from "../toast-shell";
 
@@ -80,7 +81,7 @@ function renderShell() {
 beforeEach(() => {
 	useToastStore.getState().clear();
 	installed.extensions = [DOUYIN];
-	installed.sources = [DOUYIN_SOURCE];
+	installed.sources = [makeSource(), DOUYIN_SOURCE];
 });
 afterEach(() => {
 	cleanup();
@@ -88,10 +89,10 @@ afterEach(() => {
 });
 
 describe("推送小卡 · 这是谁", () => {
-	it("B 站行:「UID xxx」(照旧)", () => {
+	it("B 站行:「UID xxx」(来源描述符的叫法)", async () => {
 		renderShell();
 		act(() => useToastStore.getState().push(pushView()));
-		expect(screen.getByText("UID u1")).toBeTruthy();
+		expect(await screen.findByText("UID u1")).toBeTruthy();
 	});
 
 	it("拓展行:「平台名 · 外部 id」,不印 UID", async () => {
@@ -106,7 +107,7 @@ describe("推送小卡 · 这是谁", () => {
 		installed.sources = [];
 		renderShell();
 		act(() => useToastStore.getState().push(extView()));
-		await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/ext"));
+		await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/sources"));
 		expect(await screen.findByText("douyin · sec-1")).toBeTruthy();
 	});
 });

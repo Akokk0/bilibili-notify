@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { HistoryEntryView } from "../../services/dashboard";
 import { makeEmptySubscription } from "../../types/domain";
 import History from "../History";
+import { makeSource } from "../rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../up/subscription-source";
 import { UpCard } from "../up/UpCard";
 
 vi.mock("../../services/api", () => ({
@@ -97,6 +99,7 @@ describe("挂在页面上的相对时间会走", () => {
 		};
 		render(
 			<UpCard
+				platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 				sub={sub}
 				selected={false}
 				onClick={vi.fn()}

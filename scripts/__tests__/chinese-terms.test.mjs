@@ -75,6 +75,15 @@ export const TERM_ALLOWLIST = {
 	},
 };
 
+/** 主人批准 4-26：统计原例外仅迁到这三个 plain 完整键，其他词仍计数。 */
+export const JSON_TERM_ALLOWLIST = {
+	"apps/web/src/i18n/locales/zh-CN.json": {
+		"sourceUi.pages.Stats.Stats.22": ["动态"],
+		"sourceUi.pages.Stats.subtitle.38": ["动态"],
+		"sourceUi.pages.Stats.plainPosts": ["动态"],
+	},
+};
+
 /** 白名单:整个文件放行,写明理由(`auditRatchet` 的口径;今天没有)。 */
 export const ALLOWLIST = {};
 
@@ -99,41 +108,31 @@ export const RATCHET = {
 	"apps/server/src/routes/targets.ts": 2,
 	"apps/server/src/runtime/roots.ts": 1,
 	"apps/server/src/stats/roast-deliver.ts": 1,
+	// 4-26：主人批准真实 B 语境 5 plain + 3 maid，精确键与命中词由下方实扫断言钉住。
+	"apps/web/src/i18n/locales/zh-CN.json": 5,
+	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
 	"apps/web/src/components/header.tsx": 1,
 	"apps/web/src/components/link-preview-settings.tsx": 1,
 	"apps/web/src/components/onboarding/tour-companion.tsx": 2,
 	"apps/web/src/components/onboarding/tour-script.ts": 4,
-	"apps/web/src/components/scope-tabs.tsx": 4,
 	"apps/web/src/components/shell-states.tsx": 1,
-	"apps/web/src/config/field-labels.ts": 25,
 	"apps/web/src/config/nav.ts": 1,
 	"apps/web/src/config/push-features.ts": 4,
 	"apps/web/src/devtools/ext-motion.ts": 2,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/pages/About.tsx": 1,
-	"apps/web/src/pages/Dashboard.tsx": 7,
-	"apps/web/src/pages/History.tsx": 4,
-	"apps/web/src/pages/Rules.tsx": 2,
-	"apps/web/src/pages/Stats.tsx": 10,
 	"apps/web/src/pages/System.tsx": 6,
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 1,
 	"apps/web/src/pages/backup/BackupSection.tsx": 2,
 	"apps/web/src/pages/cards/SkinInspector.tsx": 1,
 	"apps/web/src/pages/guide/guide-panel.tsx": 1,
 	"apps/web/src/pages/rules/MessageLayoutEditor.tsx": 1,
-	"apps/web/src/pages/rules/PerUpEditor.tsx": 20,
-	"apps/web/src/pages/rules/sections.tsx": 37,
 	"apps/web/src/pages/skins/SkinEditor.tsx": 1,
 	"apps/web/src/pages/stats/RoastCard.tsx": 1,
 	"apps/web/src/pages/stats/SoloRoastCard.tsx": 1,
 	"apps/web/src/pages/stats/charts.tsx": 1,
-	"apps/web/src/pages/stats/csv.ts": 2,
-	"apps/web/src/pages/up/UpCard.tsx": 1,
-	"apps/web/src/pages/up/UpCardMenu.tsx": 1,
-	"apps/web/src/pages/up/UpDialog.tsx": 6,
 	"apps/web/src/types/domain.ts": 2,
 	"apps/web/src/utils/groupDiffs.ts": 2,
-	"apps/web/src/utils/up-display.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 1,
 	"packages/ai/src/tool-label-texts.ts": 3,
 	"packages/ai/src/tools.ts": 1,
@@ -172,17 +171,46 @@ export function termHits(source, allowed = []) {
 }
 
 /** 一份字典 JSON 里带叫法的值:`{ line, text }[]`,一个值一处(`line` 记键)。 */
-export function jsonTermHits(json, allowed = []) {
+export function jsonTermHits(json, allowed = [], file = "") {
 	const hits = [];
 	const walk = (value, key) => {
 		if (typeof value === "string") {
-			if (termsIn(value, allowed).length > 0) hits.push({ line: key, text: value });
+			if (termsIn(value, [...allowed, ...(JSON_TERM_ALLOWLIST[file]?.[key] ?? [])]).length > 0)
+				hits.push({ line: key, text: value });
 		} else if (value && typeof value === "object") {
 			for (const [k, v] of Object.entries(value)) walk(v, key === "" ? k : `${key}.${k}`);
 		}
 	};
 	walk(JSON.parse(json), "");
 	return hits;
+}
+
+/** 4-26 批准的 B 站真实语境闭集，词以 termsIn 的规范形式记录。 */
+export const JSON_TERM_PINS = {
+	"apps/web/src/i18n/locales/zh-CN.json": {
+		"sourceUi.pages.Dashboard.SystemHealthCard.31": ["B站"],
+		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
+		"sourceUi.config.field.labels.label.1": ["B站"],
+		"sourceUi.config.field.labels.hint.8": ["B站"],
+		"sourceUi.config.field.labels.hint.12": ["B站"],
+	},
+	"apps/web/src/i18n/locales/zh-CN.maid.json": {
+		"sourceUi.pages.Dashboard.Dashboard.59": ["B站"],
+		"sourceUi.config.field.labels.hint.8": ["B站"],
+		"sourceUi.config.field.labels.hint.12": ["B站"],
+	},
+};
+
+export function auditJsonPins(json, file) {
+	const actual = Object.fromEntries(
+		jsonTermHits(json, [], file).map(({ line, text }) => [line, termsIn(text)]),
+	);
+	const expected = JSON_TERM_PINS[file];
+	return [...new Set([...Object.keys(actual), ...Object.keys(expected)])].flatMap((key) =>
+		JSON.stringify(actual[key]) === JSON.stringify(expected[key])
+			? []
+			: [`${file}:${key}:批准的叫法键或命中词发生变化`],
+	);
 }
 
 const sample = (text, file = "sample.ts", allowed) =>
@@ -238,6 +266,21 @@ describe("中文叫法的判据:不算", () => {
 		expect(sample('const a = "UP主的动态";', "sample.ts", ["动态"])).toBe(1);
 	});
 
+	it("统计字典只在批准的完整键里放行动态，其他叫法与相邻键照算", () => {
+		const key = "sourceUi.pages.Stats.plainPosts";
+		const file = "apps/web/src/i18n/locales/zh-CN.json";
+		expect(jsonTermHits(JSON.stringify({ [key]: "动态" }), [], file)).toEqual([]);
+		expect(jsonTermHits(JSON.stringify({ [key]: "B 站动态 UID" }), [], file)).toHaveLength(1);
+		expect(jsonTermHits(JSON.stringify({ [`${key}.other`]: "动态" }), [], file)).toHaveLength(1);
+		expect(
+			jsonTermHits(
+				JSON.stringify({ [key]: "动态" }),
+				[],
+				"apps/web/src/i18n/locales/zh-CN.maid.json",
+			),
+		).toHaveLength(1);
+	});
+
 	it("字典 JSON 按值数,键不算", () => {
 		const json = JSON.stringify({ "a.UID": "作者", b: "UP主", c: { d: "舰长", e: "会员" } });
 		expect(jsonTermHits(json).map((h) => h.line)).toEqual(["b", "c.d"]);
@@ -279,6 +322,7 @@ export function scanRepo() {
 		const hits = jsonTermHits(
 			readFileSync(join(REPO_ROOT, file), "utf8"),
 			TERM_ALLOWLIST[file]?.terms,
+			file,
 		);
 		if (hits.length > 0) found[file] = hits;
 	}
@@ -289,6 +333,25 @@ export function scanRepo() {
  * 🔴 **真去扫仓里的代码与字典。** 上面的样例证明判据没写错;这一条证明表外没有人又写进 B 站的叫法。
  */
 describe("核心与面板里的 B 站叫法只降不涨", () => {
+	it("B 站余量必须保留精确键和命中词，挪位或加词不能拿总额度抵消", () => {
+		const file = "apps/web/src/i18n/locales/zh-CN.maid.json";
+		const json = readFileSync(join(REPO_ROOT, file), "utf8");
+		expect(auditJsonPins(json, file)).toEqual([]);
+		expect(
+			auditJsonPins(
+				json.replace("sourceUi.pages.Dashboard.Dashboard.59", "sourceUi.pages.History.unapproved"),
+				file,
+			),
+		).not.toEqual([]);
+		expect(
+			auditJsonPins(json.replace("还没有登录 B 站账号", "还没有登录 B 站 UID 账号"), file),
+		).not.toEqual([]);
+	});
+	it("两份 web 字典恰好保留批准的八个真实 B 站节点", () => {
+		for (const file of Object.keys(JSON_TERM_PINS))
+			expect(auditJsonPins(readFileSync(join(REPO_ROOT, file), "utf8"), file)).toEqual([]);
+	});
+
 	it("范围认得对:服务端、面板、contract 与各包都在,桌面壳、拓展不在;两份字典都扫到", () => {
 		const roots = scopeRoots();
 		for (const expected of [

@@ -1,3 +1,4 @@
+import { i18n, useT } from "../../i18n";
 /**
  * Rules page sections — bound to live GlobalConfig.defaults shapes. Each
  * section accepts the relevant slice + an `onPatch` that builds a deep-partial
@@ -20,17 +21,12 @@ import {
 	TArea,
 	TInput,
 	TNum,
+	TSelect,
 } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
-import { GUARD_PROGRAM_ID, membershipTiersOf } from "../../config/membership-programs";
+import { type MembershipProgram, membershipTiersOf } from "../../config/membership-programs";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
-import {
-	BILIBILI_SOURCE_KEY,
-	type FeatureKey,
-	type MessageKindLayoutFull,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../../types/domain";
+import type { FeatureKey, MessageKindLayoutFull, Subscription } from "../../types/domain";
 import type {
 	ContentFilters,
 	GlobalConfigPatch,
@@ -84,48 +80,48 @@ export interface SectionMeta {
  * desc 全部用纯中文短语,避开 `defaults.templates.{a,b,c}` 这种不可换行的长串。
  * 220px 侧栏文字列只有 ~140px,英文 code path 无法断词会撑出容器。
  */
-export const GLOBAL_SECTIONS: SectionMeta[] = [
+export const globalSectionsOf = (): SectionMeta[] => [
 	{
 		id: "filter",
-		label: "动态过滤",
+		label: i18n.t("sourceUi.pages.rules.sections.label.1"),
 		icon: <Icon.filter size={14} />,
-		desc: "关键词 / 正则 / 白名单",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.2"),
 	},
 	{
 		id: "imageGroup",
-		label: "动态图集",
+		label: i18n.t("sourceUi.pages.rules.sections.label.3"),
 		icon: <Icon.dyn size={14} />,
-		desc: "是否推图 / 合并转发",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.4"),
 	},
 	{
 		id: "dynamicMsg",
-		label: "动态消息版式",
+		label: i18n.t("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.36"),
 		icon: <Icon.chat size={14} />,
-		desc: "部件排列 / 分条 / 文案",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.5"),
 	},
 	{
 		id: "live",
-		label: "直播阈值",
+		label: i18n.t("sourceUi.pages.rules.sections.label.6"),
 		icon: <Icon.mic size={14} />,
-		desc: "SC 金额 / 上舰等级 / 推送频率",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.7"),
 	},
 	{
 		id: "summary",
-		label: "直播总结",
+		label: i18n.t("sourceUi.pages.rules.sections.label.8"),
 		icon: <Icon.list size={14} />,
-		desc: "词云停用词 / 总结正文",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.9"),
 	},
 	{
 		id: "msg",
-		label: "直播消息版式",
+		label: i18n.t("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.37"),
 		icon: <Icon.chat size={14} />,
-		desc: "部件排列 / 分条 / 三段文案",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.10"),
 	},
 	{
 		id: "guard",
-		label: "上舰提示",
+		label: i18n.t("sourceUi.pages.rules.sections.label.11"),
 		icon: <Icon.anchor size={14} />,
-		desc: "舰长 / 提督 / 总督文案与图片",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.12"),
 	},
 ];
 
@@ -133,72 +129,72 @@ export const GLOBAL_SECTIONS: SectionMeta[] = [
  * per-UP 9 个分类:全局 5 个 + 特别关注弹幕 / 进房 / 卡片样式 / AI 人格。
  * 每项独立 toggle 到「覆盖中」才会写入 Subscription.overrides;关闭即继承全局。
  */
-export const PERUP_SECTIONS: SectionMeta[] = [
+export const perupSectionsOf = (): SectionMeta[] => [
 	{
 		id: "filter",
-		label: "动态过滤",
+		label: i18n.t("sourceUi.pages.rules.sections.label.1"),
 		icon: <Icon.filter size={14} />,
-		desc: "覆盖关键词 / 白名单",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.13"),
 	},
 	{
 		id: "imageGroup",
-		label: "动态图集",
+		label: i18n.t("sourceUi.pages.rules.sections.label.3"),
 		icon: <Icon.dyn size={14} />,
-		desc: "覆盖图集推送 / 合并转发",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.14"),
 	},
 	{
 		id: "dynamicMsg",
-		label: "动态消息",
+		label: i18n.t("sourceUi.pages.rules.sections.label.15"),
 		icon: <Icon.chat size={14} />,
-		desc: "覆盖动态 / 视频文案",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.16"),
 	},
 	{
 		id: "messageLayout",
-		label: "消息版式",
+		label: i18n.t("sourceUi.pages.rules.sections.label.17"),
 		icon: <Icon.list size={14} />,
-		desc: "覆盖部件排列 / 分条",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.18"),
 	},
 	{
 		id: "live",
-		label: "直播阈值",
+		label: i18n.t("sourceUi.pages.rules.sections.label.6"),
 		icon: <Icon.mic size={14} />,
-		desc: "覆盖 SC / 上舰 / 频率",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.19"),
 	},
 	{
 		id: "summary",
-		label: "直播总结",
+		label: i18n.t("sourceUi.pages.rules.sections.label.8"),
 		icon: <Icon.list size={14} />,
-		desc: "覆盖词云停用词 / 总结模板",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.20"),
 	},
 	{
 		id: "msg",
-		label: "直播消息",
+		label: i18n.t("sourceUi.pages.rules.sections.label.21"),
 		icon: <Icon.chat size={14} />,
-		desc: "覆盖开播 / 下播文案",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.22"),
 	},
 	{
 		id: "guard",
-		label: "上舰提示",
+		label: i18n.t("sourceUi.pages.rules.sections.label.11"),
 		icon: <Icon.anchor size={14} />,
-		desc: "覆盖上舰图片与文案",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.23"),
 	},
 	{
 		id: "specialDanmaku",
-		label: "特别关注弹幕",
+		label: i18n.t("sourceUi.pages.rules.PerUpEditor.title.3"),
 		icon: <Icon.star size={14} />,
-		desc: "UID 高亮 + 弹幕模板",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.24"),
 	},
 	{
 		id: "specialEnter",
-		label: "特别关注进房",
+		label: i18n.t("sourceUi.pages.rules.PerUpEditor.title.5"),
 		icon: <Icon.user size={14} />,
-		desc: "UID 进入提醒",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.25"),
 	},
 	{
 		id: "ai",
-		label: "AI 人格",
+		label: i18n.t("sourceUi.pages.rules.PerUpEditor.title.51"),
 		icon: <Icon.ai size={14} />,
-		desc: "挑一份人格给这个 UP",
+		desc: i18n.t("sourceUi.pages.rules.sections.desc.26"),
 	},
 ];
 
@@ -223,20 +219,42 @@ const EXTENSION_ANY_SECTIONS = new Set<SectionId>(["messageLayout", "ai"]);
  * 拓展订阅最多能有的那几种给,同配置弹层。
  */
 export function perUpSectionsFor(
-	sub: Subscription,
+	_sub: Subscription,
 	features: readonly FeatureKey[],
+	platform?: {
+		membershipPrograms?: readonly MembershipProgram[];
+		supportedExtras: readonly string[];
+	},
 ): SectionMeta[] {
-	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return PERUP_SECTIONS;
 	const post = features.includes("post");
 	const live = features.includes("liveStart") || features.includes("liveEnd");
 	const out: SectionMeta[] = [];
-	for (const s of PERUP_SECTIONS) {
-		if (s.id === "live") {
+	for (const s of perupSectionsOf()) {
+		if (s.id === "guard" && platform?.membershipPrograms?.length) {
+			out.push(s);
+		} else if (
+			s.id === "summary" &&
+			platform?.supportedExtras.some((key) => key === "liveSummary" || key === "wordcloud")
+		) {
+			out.push(s);
+		} else if (
+			(s.id === "specialDanmaku" && features.includes("viewerChat")) ||
+			(s.id === "specialEnter" && features.includes("viewerEnter")) ||
+			(s.id === "imageGroup" && post)
+		) {
+			out.push(s);
+		} else if (s.id === "live") {
+			if (features.includes("superchat") || features.includes("membership")) {
+				out.push(s);
+				continue;
+			}
 			out.push({
 				id: "schedule",
-				label: "推送时段",
+				label: i18n.t("sourceUi.pages.rules.sections.label.27"),
 				icon: <Icon.sliders size={14} />,
-				desc: live ? "覆盖免扰时段 / 直播推送频率" : "覆盖免扰时段",
+				desc: live
+					? i18n.t("sourceUi.pages.rules.sections.desc.28")
+					: i18n.t("sourceUi.pages.rules.sections.desc.29"),
 			});
 		} else if (
 			EXTENSION_ANY_SECTIONS.has(s.id) ||
@@ -258,6 +276,7 @@ export function FilterSection({
 	value: ContentFilters;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
 	const set = <K extends keyof ContentFilters>(key: K, v: ContentFilters[K]) => {
 		onPatch({ defaults: { filters: { [key]: v } as Partial<ContentFilters> } });
 	};
@@ -276,8 +295,8 @@ export function FilterSection({
 	}
 	return (
 		<GlassBox
-			title="动态过滤规则"
-			subtitle="filters · 屏蔽不想推送的动态"
+			title={tx("sourceUi.pages.Rules.pageLabel.2")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.30")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
 			badge="filters"
@@ -286,14 +305,14 @@ export function FilterSection({
 				<ArrayEditor
 					value={value.blockKeywords}
 					onChange={(n) => set("blockKeywords", n)}
-					placeholder="关键词"
+					placeholder={tx("sourceUi.pages.rules.sections.placeholder.31")}
 				/>
 			</Field>
 			<Field code="blockRegex" full>
 				<ArrayEditor
 					value={value.blockRegex}
 					onChange={(n) => set("blockRegex", n)}
-					placeholder="例如:^广告.*"
+					placeholder={tx("sourceUi.pages.rules.sections.placeholder.32")}
 				/>
 			</Field>
 			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -323,7 +342,7 @@ export function FilterSection({
 				</Field>
 			</div>
 			<CollapseBlock
-				label="启用白名单 · 仅推送命中条目"
+				label={tx("sourceUi.pages.rules.sections.label.33")}
 				enabled={whitelistEnabled}
 				onToggle={toggleWhitelist}
 				accent="var(--color-bn-pink)"
@@ -348,13 +367,14 @@ export function ImageGroupSection({
 	value: ImageGroupSettings;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
 	const set = <K extends keyof ImageGroupSettings>(key: K, v: ImageGroupSettings[K]) => {
 		onPatch({ defaults: { imageGroup: { [key]: v } as Partial<ImageGroupSettings> } });
 	};
 	return (
 		<GlassBox
-			title="动态图集"
-			subtitle="imageGroup · 图集类动态附图与推送形态"
+			title={tx("sourceUi.pages.rules.sections.label.3")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.34")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.dyn size={14} />}
 			badge="imageGroup"
@@ -382,6 +402,7 @@ export function LiveThresholdsSection({
 	liveStart,
 	liveStreaming,
 	liveStreamingOn,
+	programs = [],
 	onPatch,
 }: {
 	/** 醒目留言门槛(㉓d,原先是 `filters.minScPrice`)。 */
@@ -395,14 +416,16 @@ export function LiveThresholdsSection({
 	liveStreaming: LiveStreamingSettings;
 	/** 周期「正在直播」的全局开关(`features.liveStreaming`):出厂关,各订阅可在订阅弹框里单独覆盖。 */
 	liveStreamingOn: boolean;
+	programs?: readonly MembershipProgram[];
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
 	const setS = <K extends keyof ScheduleConfig>(k: K, v: ScheduleConfig[K]) =>
 		onPatch({ defaults: { schedule: { [k]: v } as Partial<ScheduleConfig> } });
 	return (
 		<GlassBox
-			title="直播推送阈值"
-			subtitle="superchat / membership / schedule · 控制 SC 金额 / 上舰等级 / 推送频率"
+			title={tx("sourceUi.pages.rules.sections.title.35")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.36")}
 			accent="var(--color-bn-blue)"
 			icon={<Icon.mic size={14} />}
 			badge="live"
@@ -414,23 +437,23 @@ export function LiveThresholdsSection({
 						onChange={(v) => onPatch({ defaults: { superchat: { minAmount: v } } })}
 						min={0}
 						max={9999}
-						suffix="元"
+						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.13")}
 					/>
 				</Field>
-				<Field code="membership.minRank.guard">
-					<Picker<number>
-						// 没配 = 全推 = 最低一档(舰长,rank 1)。
-						value={membership.minRank?.[GUARD_PROGRAM_ID] ?? 1}
-						onChange={(rank) =>
-							onPatch({ defaults: { membership: { minRank: { [GUARD_PROGRAM_ID]: rank } } } })
-						}
-						// 由低到高(档位表本身就是 rank 升序),与这一屏别处同序。
-						options={membershipTiersOf(GUARD_PROGRAM_ID).map((t) => ({
-							value: t.rank,
-							label: t.name,
-						}))}
-					/>
-				</Field>
+				{programs.map((program) => {
+					const tiers = membershipTiersOf(programs, program.id);
+					return tiers.length ? (
+						<Field key={program.id} code={`membership.minRank.${program.id}`} label={program.name}>
+							<TSelect
+								value={String(membership.minRank?.[program.id] ?? tiers[0]!.rank)}
+								onChange={(rank) =>
+									onPatch({ defaults: { membership: { minRank: { [program.id]: Number(rank) } } } })
+								}
+								options={tiers.map((tier) => ({ value: String(tier.rank), label: tier.name }))}
+							/>
+						</Field>
+					) : null;
+				})}
 				<Field code="features.liveStreaming">
 					<div className="flex h-7.5 items-center">
 						<Toggle
@@ -448,7 +471,7 @@ export function LiveThresholdsSection({
 						}
 						min={1}
 						max={24}
-						suffix="小时"
+						suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.14")}
 					/>
 				</Field>
 				<Field code="liveStart.catchUpOnBoot">
@@ -460,10 +483,7 @@ export function LiveThresholdsSection({
 						/>
 					</div>
 				</Field>
-				<Field
-					code="schedule.liveEndGrace"
-					hint="开启后下播先等待,期间重新开播即接续为同一场(防网络抖动 / 超管掐流误报)"
-				>
+				<Field code="schedule.liveEndGrace" hint={tx("sourceUi.pages.rules.sections.hint.37")}>
 					<div className="flex h-7.5 items-center">
 						<Toggle
 							value={schedule.liveEndGrace}
@@ -473,13 +493,16 @@ export function LiveThresholdsSection({
 					</div>
 				</Field>
 				{schedule.liveEndGrace ? (
-					<Field code="schedule.liveEndGraceMinutes" hint="下播到重开超过此时长才判定真下播">
+					<Field
+						code="schedule.liveEndGraceMinutes"
+						hint={tx("sourceUi.pages.rules.sections.hint.38")}
+					>
 						<TNum
 							value={schedule.liveEndGraceMinutes}
 							onChange={(v) => setS("liveEndGraceMinutes", v)}
 							min={1}
 							max={10}
-							suffix="分钟"
+							suffix={tx("sourceUi.pages.rules.PerUpEditor.suffix.16")}
 						/>
 					</Field>
 				) : null}
@@ -503,14 +526,15 @@ export function SummarySection({
 	factory: BuiltinTemplates;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
+	const tx = useT();
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
 	const setText = (k: "liveSummary", v: string) =>
 		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
 	return (
 		<GlassBox
-			title="直播总结"
-			subtitle="弹幕词云停用词 + 直播总结模板"
+			title={tx("sourceUi.pages.rules.sections.label.8")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.39")}
 			accent="var(--color-bn-purple)"
 			icon={<Icon.list size={14} />}
 			badge="liveSummary"
@@ -522,7 +546,7 @@ export function SummarySection({
 					onChange={(v) => setT("wordcloudStopWords", v)}
 					rows={2}
 					mono
-					placeholder="例如：哈哈,2333,前面的,主播"
+					placeholder={tx("sourceUi.pages.rules.sections.placeholder.40")}
 				/>
 			</Field>
 			<div className="my-3 border-t border-bn-border-subtle" />
@@ -544,10 +568,18 @@ export function SummarySection({
  * 词云,不影响弹幕计数」,与变量提示条同一视觉语言(青色调,区别于紫色变量提示)。
  */
 export function StopWordsHint() {
+	const tx = useT();
 	return (
-		<HintBar accent="var(--color-bn-blue)" title="弹幕词云停用词:" leading="leading-6">
-			用<b>英文逗号</b>分隔,这些词会在生成词云时被过滤掉。
-			<b>追加</b>到内置中文停用词表之上,不影响弹幕条数 / 发言人数等统计。
+		<HintBar
+			accent="var(--color-bn-blue)"
+			title={tx("sourceUi.pages.rules.sections.title.41")}
+			leading="leading-6"
+		>
+			{tx("sourceUi.pages.rules.sections.StopWordsHint.42")}
+			<b>{tx("sourceUi.pages.rules.sections.StopWordsHint.43")}</b>
+			{tx("sourceUi.pages.rules.sections.StopWordsHint.44")}
+			<b>{tx("sourceUi.pages.rules.sections.StopWordsHint.45")}</b>
+			{tx("sourceUi.pages.rules.sections.StopWordsHint.46")}
 		</HintBar>
 	);
 }
@@ -631,88 +663,98 @@ function foldedVars(names: readonly string[], desc: Record<string, string>): Var
 	return out;
 }
 
-const SUMMARY_UN_DESC = "弹幕排行用户名";
-const SUMMARY_DC_DESC = "对应弹幕数";
-const SUMMARY_DESC = {
-	dmc: "弹幕发言人数",
-	fanclub: "粉丝牌名",
-	dca: "弹幕总数",
-	un1: SUMMARY_UN_DESC,
-	un2: SUMMARY_UN_DESC,
-	un3: SUMMARY_UN_DESC,
-	un4: SUMMARY_UN_DESC,
-	un5: SUMMARY_UN_DESC,
-	dc1: SUMMARY_DC_DESC,
-	dc2: SUMMARY_DC_DESC,
-	dc3: SUMMARY_DC_DESC,
-	dc4: SUMMARY_DC_DESC,
-	dc5: SUMMARY_DC_DESC,
-} satisfies VariableDescriptions<"liveSummary">;
-const SUMMARY_VARS = foldedVars(variableNamesOf("liveSummary"), SUMMARY_DESC);
+const summaryUnDescOf = () => i18n.t("sourceUi.pages.rules.sections.text.47");
+const summaryDcDescOf = () => i18n.t("sourceUi.pages.rules.sections.text.48");
+const summaryDescOf = () =>
+	({
+		dmc: i18n.t("sourceUi.pages.rules.sections.dmc.49"),
+		fanclub: i18n.t("sourceUi.pages.rules.sections.fanclub.50"),
+		dca: i18n.t("sourceUi.pages.rules.sections.dca.51"),
+		un1: summaryUnDescOf(),
+		un2: summaryUnDescOf(),
+		un3: summaryUnDescOf(),
+		un4: summaryUnDescOf(),
+		un5: summaryUnDescOf(),
+		dc1: summaryDcDescOf(),
+		dc2: summaryDcDescOf(),
+		dc3: summaryDcDescOf(),
+		dc4: summaryDcDescOf(),
+		dc5: summaryDcDescOf(),
+	}) satisfies VariableDescriptions<"liveSummary">;
+const summaryVarsOf = () => foldedVars(variableNamesOf("liveSummary"), summaryDescOf());
 
 /** 开播 / 直播中 / 下播三格的时长说明同一句,抽出来免得三处漂开。 */
-const LIVE_TIME_DESC = "已直播时长";
+const liveTimeDescOf = () => i18n.t("sourceUi.pages.rules.sections.text.52");
 
 /**
  * 直播三段模板的变量表(链接不再是模板变量:开播链接由消息版式的「链接」部件
  * 提供;直播中 / 下播不带链接)。per-UP 覆盖框合用 LIVE_MSG_VARS(三段并列)。
  */
-const LIVE_START_DESC = {
-	name: "UP 主名字",
-	follower: "当前粉丝数",
-	time: LIVE_TIME_DESC,
-} satisfies VariableDescriptions<"liveStart">;
-const LIVE_START_VARS = varsOf("liveStart", LIVE_START_DESC);
+const liveStartDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		follower: i18n.t("sourceUi.pages.rules.sections.follower.54"),
+		time: liveTimeDescOf(),
+	}) satisfies VariableDescriptions<"liveStart">;
+const liveStartVarsOf = () => varsOf("liveStart", liveStartDescOf());
 
-const LIVE_STREAMING_DESC = {
-	name: "UP 主名字",
-	time: LIVE_TIME_DESC,
-	watched: "累计观看人数",
-} satisfies VariableDescriptions<"liveStreaming">;
-const LIVE_STREAMING_VARS = varsOf("liveStreaming", LIVE_STREAMING_DESC);
+const liveStreamingDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		time: liveTimeDescOf(),
+		watched: i18n.t("sourceUi.pages.rules.sections.watched.55"),
+	}) satisfies VariableDescriptions<"liveStreaming">;
+const liveStreamingVarsOf = () => varsOf("liveStreaming", liveStreamingDescOf());
 
-const LIVE_END_DESC = {
-	name: "UP 主名字",
-	time: LIVE_TIME_DESC,
-	follower_change: "粉丝变化",
-} satisfies VariableDescriptions<"liveEnd">;
-const LIVE_END_VARS = varsOf("liveEnd", LIVE_END_DESC);
+const liveEndDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		time: liveTimeDescOf(),
+		follower_change: i18n.t("sourceUi.pages.rules.sections.followerchange.56"),
+	}) satisfies VariableDescriptions<"liveEnd">;
+const liveEndVarsOf = () => varsOf("liveEnd", liveEndDescOf());
 
-const LIVE_MSG_DESC = {
-	name: "UP 主名字",
-	follower: "当前粉丝数(开播)",
-	follower_change: "粉丝变化(下播)",
-	time: "已直播时长(直播中、下播)",
-	watched: "累计观看人数(直播中)",
-} satisfies UnionDescriptions<readonly ["liveStart", "liveStreaming", "liveEnd"]>;
-const LIVE_MSG_VARS = mergedVars(["liveStart", "liveStreaming", "liveEnd"] as const, LIVE_MSG_DESC);
+const liveMsgDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		follower: i18n.t("sourceUi.pages.rules.sections.follower.57"),
+		follower_change: i18n.t("sourceUi.pages.rules.sections.followerchange.58"),
+		time: i18n.t("sourceUi.pages.rules.sections.time.59"),
+		watched: i18n.t("sourceUi.pages.rules.sections.watched.60"),
+	}) satisfies UnionDescriptions<readonly ["liveStart", "liveStreaming", "liveEnd"]>;
+const liveMsgVarsOf = () =>
+	mergedVars(["liveStart", "liveStreaming", "liveEnd"] as const, liveMsgDescOf());
 
 /** 动态模板已进消息版式:链接是独立部件,不是模板变量。 */
-const DYNAMIC_DESC = {
-	name: "UP 主名字",
-	postNoun: "作品叫法",
-} satisfies VariableDescriptions<"post">;
-const DYNAMIC_MSG_VARS = varsOf("post", DYNAMIC_DESC);
+const dynamicDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		postNoun: i18n.t("sourceUi.pages.rules.sections.postNoun.61"),
+	}) satisfies VariableDescriptions<"post">;
+const dynamicMsgVarsOf = () => varsOf("post", dynamicDescOf());
 
-const GUARD_DESC = {
-	viewer: "上舰用户名",
-	name: "UP 主名字",
-	tier: "档名(舰长 / 提督 / 总督)",
-} satisfies VariableDescriptions<"membership">;
-const GUARD_VARS = varsOf("membership", GUARD_DESC);
+const guardDescOf = () =>
+	({
+		viewer: i18n.t("sourceUi.pages.rules.sections.viewer.62"),
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		tier: i18n.t("sourceUi.pages.rules.sections.tier.63"),
+	}) satisfies VariableDescriptions<"membership">;
+const guardVarsOf = () => varsOf("membership", guardDescOf());
 
-const SPECIAL_DANMAKU_DESC = {
-	name: "UP 主名字",
-	viewer: "发送弹幕的用户名",
-	msg: "弹幕内容",
-} satisfies VariableDescriptions<"viewerChat">;
-const SPECIAL_DANMAKU_VARS = varsOf("viewerChat", SPECIAL_DANMAKU_DESC);
+const specialDanmakuDescOf = () =>
+	({
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+		viewer: i18n.t("sourceUi.pages.rules.sections.viewer.64"),
+		msg: i18n.t("sourceUi.pages.rules.sections.msg.65"),
+	}) satisfies VariableDescriptions<"viewerChat">;
+const specialDanmakuVarsOf = () => varsOf("viewerChat", specialDanmakuDescOf());
 
-const SPECIAL_ENTER_DESC = {
-	viewer: "进入直播间的用户名",
-	name: "UP 主名字",
-} satisfies VariableDescriptions<"viewerEnter">;
-const SPECIAL_ENTER_VARS = varsOf("viewerEnter", SPECIAL_ENTER_DESC);
+const specialEnterDescOf = () =>
+	({
+		viewer: i18n.t("sourceUi.pages.rules.sections.viewer.66"),
+		name: i18n.t("sourceUi.pages.rules.sections.name.53"),
+	}) satisfies VariableDescriptions<"viewerEnter">;
+const specialEnterVarsOf = () => varsOf("viewerEnter", specialEnterDescOf());
 
 /**
  * 模板编辑器上方那条「可用变量」提示。`accent` 决定描边、底色与标题字的色相;
@@ -766,8 +808,9 @@ function VariableHints({
 	vars: ReadonlyArray<VarSpec>;
 	accent?: string;
 }) {
+	const tx = useT();
 	return (
-		<HintBar accent={accent} title="可用变量:">
+		<HintBar accent={accent} title={tx("sourceUi.pages.rules.sections.title.67")}>
 			{vars.map((v, i) => (
 				<span key={v.code}>
 					<code className="mx-0.5 rounded-sm bg-bn-surface/70 px-1.5 py-px font-mono text-bn-xs">
@@ -782,42 +825,53 @@ function VariableHints({
 }
 
 export function SummaryVariableHints() {
-	return <VariableHints vars={SUMMARY_VARS} />;
+	return <VariableHints vars={summaryVarsOf()} />;
 }
 
 export function LiveMsgVariableHints() {
-	return <VariableHints vars={LIVE_MSG_VARS} accent="var(--color-bn-pink)" />;
+	return <VariableHints vars={liveMsgVarsOf()} accent="var(--color-bn-pink)" />;
 }
 
 export function DynamicMsgVariableHints() {
-	return <VariableHints vars={DYNAMIC_MSG_VARS} accent={SECTION_ACCENT.message} />;
+	return <VariableHints vars={dynamicMsgVarsOf()} accent={SECTION_ACCENT.message} />;
 }
 
 export function GuardVariableHints() {
-	return <VariableHints vars={GUARD_VARS} accent={SECTION_ACCENT.guard} />;
+	return <VariableHints vars={guardVarsOf()} accent={SECTION_ACCENT.guard} />;
 }
 
 export function SpecialDanmakuVariableHints() {
-	return <VariableHints vars={SPECIAL_DANMAKU_VARS} accent={SECTION_ACCENT.persona} />;
+	return <VariableHints vars={specialDanmakuVarsOf()} accent={SECTION_ACCENT.persona} />;
 }
 
 export function SpecialEnterVariableHints() {
-	return <VariableHints vars={SPECIAL_ENTER_VARS} accent="var(--color-bn-blue)" />;
+	return <VariableHints vars={specialEnterVarsOf()} accent="var(--color-bn-blue)" />;
 }
 
 // ── 4. Live message templates ────────────────────────────────────────────────
 
 /** 直播文本 Picker 的三段定义:模板字段 / Field code / 变量表(开播 / 直播中 / 下播共用同一套版式)。 */
-const LIVE_TEMPLATE_TABS = [
-	{ key: "liveStart", label: "开播", code: "templates.liveStart", vars: LIVE_START_VARS },
-	{
-		key: "liveStreaming",
-		label: "直播中",
-		code: "templates.liveStreaming",
-		vars: LIVE_STREAMING_VARS,
-	},
-	{ key: "liveEnd", label: "下播", code: "templates.liveEnd", vars: LIVE_END_VARS },
-] as const;
+const liveTemplateTabsOf = () =>
+	[
+		{
+			key: "liveStart",
+			label: i18n.t("sourceUi.pages.Stats.label.31"),
+			code: "templates.liveStart",
+			vars: liveStartVarsOf(),
+		},
+		{
+			key: "liveStreaming",
+			label: i18n.t("sourceUi.pages.rules.sections.label.68"),
+			code: "templates.liveStreaming",
+			vars: liveStreamingVarsOf(),
+		},
+		{
+			key: "liveEnd",
+			label: i18n.t("sourceUi.pages.rules.sections.label.69"),
+			code: "templates.liveEnd",
+			vars: liveEndVarsOf(),
+		},
+	] as const;
 
 export function LiveMsgSection({
 	templates,
@@ -830,14 +884,15 @@ export function LiveMsgSection({
 	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setText = (k: (typeof LIVE_TEMPLATE_TABS)[number]["key"], v: string) =>
+	const tx = useT();
+	const setText = (k: ReturnType<typeof liveTemplateTabsOf>[number]["key"], v: string) =>
 		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
-	const [tab, setTab] = useState<(typeof LIVE_TEMPLATE_TABS)[number]["key"]>("liveStart");
-	const active = LIVE_TEMPLATE_TABS.find((t) => t.key === tab) ?? LIVE_TEMPLATE_TABS[0];
+	const [tab, setTab] = useState<ReturnType<typeof liveTemplateTabsOf>[number]["key"]>("liveStart");
+	const active = liveTemplateTabsOf().find((t) => t.key === tab) ?? liveTemplateTabsOf()[0];
 	return (
 		<GlassBox
-			title="直播消息版式"
-			subtitle="开播 / 直播中 / 下播共用的部件排列 / 分条;文本内容按 开播 / 直播中 / 下播 切换编辑"
+			title={tx("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.37")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.70")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.chat size={14} />}
 		>
@@ -852,7 +907,7 @@ export function LiveMsgSection({
 							<Picker
 								value={tab}
 								onChange={(v) => setTab(v)}
-								options={LIVE_TEMPLATE_TABS.map((t) => ({ value: t.key, label: t.label }))}
+								options={liveTemplateTabsOf().map((t) => ({ value: t.key, label: t.label }))}
 							/>
 						</div>
 						<VariableHints vars={active.vars} accent="var(--color-bn-pink)" />
@@ -875,10 +930,15 @@ export function LiveMsgSection({
 // ── 4b. Dynamic message templates ────────────────────────────────────────────
 
 /** 动态文本 Picker 的两段定义:动态 / 视频投稿共用版式,仅模板文案不同。 */
-const DYNAMIC_TEMPLATE_TABS = [
-	{ key: "post", label: "动态", code: "templates.post" },
-	{ key: "postVideo", label: "视频投稿", code: "templates.postVideo" },
-] as const;
+const dynamicTemplateTabsOf = () =>
+	[
+		{ key: "post", label: i18n.t("sourceUi.pages.Dashboard.TrendPanel.3"), code: "templates.post" },
+		{
+			key: "postVideo",
+			label: i18n.t("sourceUi.pages.rules.sections.label.71"),
+			code: "templates.postVideo",
+		},
+	] as const;
 
 export function DynamicMsgSection({
 	templates,
@@ -891,14 +951,15 @@ export function DynamicMsgSection({
 	layout: MessageKindLayoutFull;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setText = (k: (typeof DYNAMIC_TEMPLATE_TABS)[number]["key"], v: string) =>
+	const tx = useT();
+	const setText = (k: ReturnType<typeof dynamicTemplateTabsOf>[number]["key"], v: string) =>
 		onPatch({ defaults: { templates: { [k]: templateValueToStore(v, factory[k]) } } });
-	const [tab, setTab] = useState<(typeof DYNAMIC_TEMPLATE_TABS)[number]["key"]>("post");
-	const active = DYNAMIC_TEMPLATE_TABS.find((t) => t.key === tab) ?? DYNAMIC_TEMPLATE_TABS[0];
+	const [tab, setTab] = useState<ReturnType<typeof dynamicTemplateTabsOf>[number]["key"]>("post");
+	const active = dynamicTemplateTabsOf().find((t) => t.key === tab) ?? dynamicTemplateTabsOf()[0];
 	return (
 		<GlassBox
-			title="动态消息版式"
-			subtitle="动态推送的部件排列 / 分条;文本内容按 动态 / 视频投稿 切换编辑"
+			title={tx("sourceUi.pages.rules.PerUpEditor.MessageLayoutOverrideBox.36")}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.72")}
 			accent={SECTION_ACCENT.message}
 			icon={<Icon.chat size={14} />}
 		>
@@ -913,7 +974,7 @@ export function DynamicMsgSection({
 							<Picker
 								value={tab}
 								onChange={(v) => setTab(v)}
-								options={DYNAMIC_TEMPLATE_TABS.map((t) => ({ value: t.key, label: t.label }))}
+								options={dynamicTemplateTabsOf().map((t) => ({ value: t.key, label: t.label }))}
 							/>
 						</div>
 						<DynamicMsgVariableHints />
@@ -936,7 +997,6 @@ export function DynamicMsgSection({
 // ── 5. Guard (上舰提示) ──────────────────────────────────────────────────────
 
 /** 这一屏的每一档,由低到高,每档一块。 */
-const GUARD_TIER_ROWS = membershipTiersOf(GUARD_PROGRAM_ID);
 
 /** 一个体系文案里一格的补丁:`null` = 清掉这一格(JSON Merge Patch 语义,下发时由 buildPatch 编成显式 null)。 */
 type TierFieldPatch = Partial<Record<"template" | "imageUrl", string | null>>;
@@ -956,8 +1016,9 @@ interface GuardBundlePatch {
 export function guardBundleOf(
 	templates: Pick<TemplateBundle, "membership">,
 	factory: BuiltinTemplates,
+	programId: string,
 ): EffectiveMembershipTemplate {
-	return withMembershipDefaults(templates.membership[GUARD_PROGRAM_ID], factory.membership);
+	return withMembershipDefaults(templates.membership[programId], factory.membership);
 }
 
 /**
@@ -967,17 +1028,20 @@ export function guardBundleOf(
  * 清空一格 = 这一档不再覆盖它(`onTier` 收到空串,由调用方决定怎么删)。
  */
 export function GuardTemplateFields({
+	program,
 	bundle,
 	onDefault,
 	onTier,
 	tiersClassName = "space-y-2.5",
 }: {
+	program: MembershipProgram;
 	bundle: EffectiveMembershipTemplate;
 	onDefault: (field: "template" | "imageUrl", value: string) => void;
 	onTier: (key: string, field: "template" | "imageUrl", value: string) => void;
 	/** 三档那一块外面的排版(逐订阅覆盖里排成三列)。 */
 	tiersClassName?: string;
 }) {
+	const tx = useT();
 	const accent = SECTION_ACCENT.guard;
 	return (
 		<>
@@ -989,17 +1053,29 @@ export function GuardTemplateFields({
 				}}
 			>
 				<div className="mb-2 flex items-center gap-2">
-					<span className="text-bn-sm font-bold text-bn-text-primary">体系默认</span>
+					<span className="text-bn-sm font-bold text-bn-text-primary">
+						{tx("sourceUi.pages.rules.sections.GuardTemplateFields.73")}
+					</span>
 					<span className="text-bn-2xs text-bn-text-tertiary">
-						没单独配的档都用它;图片留空 = 该档的官方徽章图
+						{program.tiers === "custom"
+							? tx("sources.membership.customHint")
+							: tx("sourceUi.pages.rules.sections.GuardTemplateFields.74")}
 					</span>
 				</div>
 				{/* 体系默认这两格用完整路径当 code:「默认文案有更新」的提示与「恢复默认」按路径认领(同别的文案),
 				    逐订阅覆盖里没有 Provider,不受影响。 */}
-				<Field code="templates.membership.guard.default.template" full>
+				<Field
+					code={`templates.membership.${program.id}.default.template`}
+					label={tx("sourceUi.config.field.labels.label.134")}
+					full
+				>
 					<TInput value={bundle.default.template} onChange={(v) => onDefault("template", v)} mono />
 				</Field>
-				<Field code="templates.membership.guard.default.imageUrl" full>
+				<Field
+					code={`templates.membership.${program.id}.default.imageUrl`}
+					label={tx("sourceUi.config.field.labels.label.135")}
+					full
+				>
 					<TInput
 						value={bundle.default.imageUrl}
 						onChange={(v) => onDefault("imageUrl", v)}
@@ -1009,7 +1085,7 @@ export function GuardTemplateFields({
 				</Field>
 			</div>
 			<div className={tiersClassName}>
-				{GUARD_TIER_ROWS.map(({ key, name, color = accent }) => {
+				{membershipTiersOf([program], program.id).map(({ key, name, color = accent }) => {
 					const tier = bundle.tiers[key] ?? {};
 					return (
 						<div
@@ -1027,20 +1103,32 @@ export function GuardTemplateFields({
 									{key}
 								</code>
 							</div>
-							<Field code="template" full>
+							<Field
+								code={`templates.membership.${program.id}.tiers.${key}.template`}
+								label={tx("sourceUi.config.field.labels.getFieldLabel.183")}
+								full
+							>
 								<TInput
 									value={tier.template ?? ""}
 									onChange={(v) => onTier(key, "template", v)}
 									mono
-									placeholder={bundle.default.template || "跟随体系默认"}
+									placeholder={
+										bundle.default.template || tx("sourceUi.pages.rules.sections.placeholder.75")
+									}
 								/>
 							</Field>
-							<Field code="imageUrl" full>
+							<Field
+								code={`templates.membership.${program.id}.tiers.${key}.imageUrl`}
+								label={tx("sourceUi.config.field.labels.getFieldLabel.184")}
+								full
+							>
 								<TInput
 									value={tier.imageUrl ?? ""}
 									onChange={(v) => onTier(key, "imageUrl", v)}
 									mono
-									placeholder={bundle.default.imageUrl || "留空 = 官方徽章图"}
+									placeholder={
+										bundle.default.imageUrl || tx("sourceUi.pages.rules.sections.placeholder.76")
+									}
 								/>
 							</Field>
 						</div>
@@ -1051,18 +1139,21 @@ export function GuardTemplateFields({
 	);
 }
 
-export function GuardSection({
+function MembershipProgramSection({
+	program,
 	templates,
 	factory,
 	onPatch,
 }: {
+	program: MembershipProgram;
 	templates: TemplateBundle;
 	factory: BuiltinTemplates;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const guard = guardBundleOf(templates, factory);
+	const tx = useT();
+	const guard = guardBundleOf(templates, factory, program.id);
 	const patchGuard = (delta: GuardBundlePatch) =>
-		onPatch({ defaults: { templates: { membership: { [GUARD_PROGRAM_ID]: delta } } } });
+		onPatch({ defaults: { templates: { membership: { [program.id]: delta } } } });
 	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(盘上不留空壳)。 */
 	const setTier = (key: string, field: "template" | "imageUrl", value: string): void => {
 		const left = { ...guard.tiers[key], [field]: value === "" ? undefined : value };
@@ -1074,17 +1165,20 @@ export function GuardSection({
 	const enabled = guard.enabled;
 	return (
 		<GlassBox
-			title="上舰提示"
-			subtitle="默认走 B 站官方上舰图;启用后改用自定义文案与图片"
+			title={program.name}
+			subtitle={tx("sourceUi.pages.rules.sections.subtitle.77")}
 			accent={SECTION_ACCENT.guard}
 			icon={<Icon.anchor size={14} />}
-			badge={enabled ? "已启用" : "未启用"}
+			badge={
+				enabled ? tx("subs.filter.enabled") : tx("sourceUi.pages.Dashboard.SystemHealthCard.33")
+			}
 			right={<Toggle value={enabled} onChange={(v) => patchGuard({ enabled: v })} />}
 		>
 			{enabled ? (
 				<>
 					<GuardVariableHints />
 					<GuardTemplateFields
+						program={program}
 						bundle={guard}
 						onDefault={(field, v) =>
 							patchGuard({
@@ -1097,8 +1191,26 @@ export function GuardSection({
 					/>
 				</>
 			) : (
-				<InheritNote>默认推送 B 站官方上舰图(舰长 / 提督 / 总督)</InheritNote>
+				<InheritNote>{tx("sourceUi.pages.rules.sections.MembershipProgramSection.78")}</InheritNote>
 			)}
 		</GlassBox>
+	);
+}
+
+export function GuardSection({
+	programs = [],
+	...props
+}: {
+	programs?: readonly MembershipProgram[];
+	templates: TemplateBundle;
+	factory: BuiltinTemplates;
+	onPatch: (delta: GlobalConfigPatch) => void;
+}) {
+	return (
+		<>
+			{programs.map((program) => (
+				<MembershipProgramSection key={program.id} program={program} {...props} />
+			))}
+		</>
 	);
 }

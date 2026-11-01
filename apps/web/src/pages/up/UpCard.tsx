@@ -1,10 +1,11 @@
+import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-features";
 import { useLongPress } from "../../hooks/useLongPress";
+import { useT } from "../../i18n";
 import {
-	BILIBILI_SOURCE_KEY,
 	type FeatureFlagValues,
 	type Subscription,
 	type SubscriptionTag,
@@ -44,11 +45,8 @@ export interface UpCardProps {
 	togglePending: boolean;
 	/** 右键 / 长按请求在给定坐标弹出快捷菜单。 */
 	onRequestMenu: (pos: { x: number; y: number }) => void;
-	/**
-	 * 拓展订阅是哪个平台的(ADR-0019 决策 10 / 41)—— 徽章、特性胶囊的叫法与多少、「××拓展没在跑」
-	 * 都照它。B 站订阅不看它。
-	 */
-	platform?: SubscriptionPlatform;
+	/** Current source descriptor projection, including status and declared capabilities. */
+	platform: SubscriptionPlatform;
 	/**
 	 * 标签表(ADR-0034):订阅上只记标签 id,角标上写的名字得按 id 到这里查。没读到(`undefined`)
 	 * 或表里没有那个 id,都当没挂标签 —— 什么都不写。
@@ -79,19 +77,20 @@ export function UpCard({
 	tags,
 	globalFeatures,
 }: UpCardProps) {
+	const tx = useT();
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
 	const color = subscriptionColor(sub);
 	const identity = subscriptionIdentityOf(sub);
-	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	const ext = isBili ? undefined : platform;
-	// 拓展订阅只列它那个源报得出的(决策 5):B 站独有的开着也不摆 —— 那是一个永远不会响的开关。
+	const ext = platform;
 	const visible = visibleFeaturesOf(sub, ext);
 	const features = subscribedFeatures(sub, globalFeatures).filter((k) => visible.includes(k));
-	// 拓展停了 / 没装:订阅留着、不轮询不推送(决策 10)。拓展列表没回来时是 undefined,不下结论。
-	const paused = ext?.absent === true;
+	const paused = ext.absent === true || (ext.status !== "running" && ext.status !== "unknown");
 	const fans = sub.cachedProfile?.followers;
-	const fansLabel = fans == null ? "粉丝数未刷新" : `${formatCount(fans)} 粉丝`;
+	const fansLabel =
+		fans == null
+			? tx("sourceUi.pages.up.UpCard.UpCard.1")
+			: tx("sourceUi.pages.up.UpCard.UpCard.2", { value1: formatCount(fans) });
 	// 角标只写第一个标签的名字;没挂(或查不到)就什么都不写 —— 不再写「默认」。
 	const firstTagName = resolveTagNames(sub.tagIds, tags ?? [])[0];
 	return (
@@ -138,7 +137,11 @@ export function UpCard({
 					<button
 						type="button"
 						aria-pressed={selected}
-						aria-label={selected ? "已选" : "选择"}
+						aria-label={
+							selected
+								? tx("sourceUi.pages.up.UpCard.arialabel.3")
+								: tx("sourceUi.pages.up.UpCard.arialabel.4")
+						}
 						onClick={(e) => {
 							e.stopPropagation();
 							onToggleSelect();
@@ -156,7 +159,7 @@ export function UpCard({
 			<div className="relative px-3.5 pb-3 pt-0">
 				<div className="-mt-5 mb-2">
 					<Avatar
-						name={displayName(sub)}
+						name={displayName(sub, ext)}
 						color={color}
 						size={48}
 						url={profileAvatarUrl(sub.cachedProfile)}
@@ -166,9 +169,9 @@ export function UpCard({
 				<div className="mb-1 flex items-center justify-between">
 					<span
 						className="max-w-40 truncate text-bn-base font-bold text-bn-text-primary"
-						title={displayName(sub)}
+						title={displayName(sub, ext)}
 					>
-						{displayName(sub)}
+						{displayName(sub, ext)}
 					</span>
 					<Toggle
 						value={sub.enabled}
@@ -178,22 +181,22 @@ export function UpCard({
 					/>
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-					{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格换成平台徽章。 */}
-					{isBili ? (
-						<>
-							<span>UID {identity.externalId}</span>
-							<span>·</span>
-						</>
-					) : ext ? (
+					{ext.showBadge ? (
 						<Pill size="sm" subtle color={ext.color ?? "var(--color-bn-inactive)"}>
 							{ext.shortLabel ?? ext.label}
 						</Pill>
 					) : null}
+					<span className="min-w-0 truncate tabular-nums">
+						{subscriptionIdentityLabel(identity, ext)}
+					</span>
+					<span>·</span>
 					<span>{fansLabel}</span>
 				</div>
 				{paused && ext ? (
 					<WarnNote size="sm" icon={<Icon.extension size={12} />} className="mb-2.5">
-						{ext.label}拓展没在跑
+						{ext.absent
+							? tx("sourceUi.pages.up.UpCard.sourceAbsent", { source: ext.label })
+							: tx("sourceUi.pages.up.UpCard.UpCard.5", { source: ext.label })}
 					</WarnNote>
 				) : null}
 				{/* 挂在这条订阅上的问题(服务端从问题表 join 来):每条一个,不看来源、不看 code。 */}
@@ -209,7 +212,9 @@ export function UpCard({
 				))}
 				<div className="mb-2.5 flex flex-wrap gap-1">
 					{features.length === 0 ? (
-						<span className="text-bn-2xs text-bn-text-secondary">未配置任何推送特性</span>
+						<span className="text-bn-2xs text-bn-text-secondary">
+							{tx("sourceUi.pages.up.UpCard.UpCard.6")}
+						</span>
 					) : (
 						features.map((f) => (
 							<Pill key={f} color={FEATURE_TONE[f] ?? "var(--color-bn-inactive)"} subtle size="sm">
@@ -226,12 +231,13 @@ export function UpCard({
 				<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 					{firstTagName !== undefined ? (
 						<span>
-							标签：
+							{tx("sourceUi.pages.up.UpCard.UpCard.7")}
 							<span className="text-bn-text-tertiary">{firstTagName}</span>
 						</span>
 					) : null}
 					<span className="ml-auto">
-						{firstTagName !== undefined ? "· " : null}更新于{" "}
+						{firstTagName !== undefined ? "· " : null}
+						{tx("sourceUi.pages.up.UpCard.UpCard.8")}{" "}
 						<RelativeTime at={sub.cachedProfile?.refreshedAt} />
 					</span>
 				</div>

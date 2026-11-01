@@ -63,7 +63,7 @@ describe("模块矩阵的日志等级", () => {
 		for (const badge of badges) expect(badge.textContent).toContain("WARN");
 		// 挂在动态与直播这两条上,不是随便哪两条。
 		expect(within(row("直播 · live")).getByTitle("按模块覆盖")).toBeTruthy();
-		expect(within(row("动态 · dynamic")).getByTitle("按模块覆盖")).toBeTruthy();
+		expect(within(row("B 站作品 · dynamic")).getByTitle("按模块覆盖")).toBeTruthy();
 		expect(within(row("卡片 · image")).queryByTitle("按模块覆盖")).toBeNull();
 		expect(within(row("AI · ai")).queryByTitle("按模块覆盖")).toBeNull();
 	});
@@ -84,7 +84,7 @@ describe("模块矩阵的日志等级", () => {
 			expect(badge.textContent, `${label} 那一条`).toContain("INFO");
 		}
 		// 四个引擎各读各的键,不跟着 core 走。
-		for (const label of ["动态 · dynamic", "直播 · live", "卡片 · image", "AI · ai"]) {
+		for (const label of ["B 站作品 · dynamic", "直播 · live", "卡片 · image", "AI · ai"]) {
 			expect(within(row(label)).queryByTitle("按模块覆盖"), `${label} 那一条`).toBeNull();
 		}
 	});
@@ -92,7 +92,9 @@ describe("模块矩阵的日志等级", () => {
 	it("引擎那四个各读各的键,不被 core 顶掉", () => {
 		renderCard({ logLevel: "debug", logLevels: { core: "info", bilibili: "warn" } });
 		expect(within(row("直播 · live")).getByTitle("按模块覆盖").textContent).toContain("WARN");
-		expect(within(row("动态 · dynamic")).getByTitle("按模块覆盖").textContent).toContain("WARN");
+		expect(within(row("B 站作品 · dynamic")).getByTitle("按模块覆盖").textContent).toContain(
+			"WARN",
+		);
 		expect(within(row("接口 · api")).getByTitle("按模块覆盖").textContent).toContain("INFO");
 	});
 

@@ -9,7 +9,7 @@
  * box 内部 toggle 与侧栏 isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import { GUARD_PROGRAM_ID } from "../../config/membership-programs";
+import { type MembershipProgram, membershipTiersOf } from "../../config/membership-programs";
 import type {
 	ContentFiltersOverride,
 	LiveStartOverride,
@@ -67,16 +67,26 @@ export interface LiveThresholdSlices {
 }
 
 /** 门槛那两段是否有任何覆盖:金额门槛,或 B 站的上舰档位门槛(别的体系的门槛没有界面,不看)。 */
-export function hasLiveGateOverride(slices: LiveThresholdSlices): boolean {
+export function hasLiveGateOverride(
+	slices: LiveThresholdSlices,
+	programs: readonly MembershipProgram[],
+): boolean {
 	return (
 		slices.superchat?.minAmount !== undefined ||
-		slices.membership?.minRank?.[GUARD_PROGRAM_ID] !== undefined
+		programs.some(
+			(program) =>
+				membershipTiersOf(programs, program.id).length > 0 &&
+				slices.membership?.minRank?.[program.id] !== undefined,
+		)
 	);
 }
 
-/** 「直播阈值」域是否有任何覆盖(两个门槛 或 推送时间那几段)。 */
-export function hasLiveThresholdOverride(slices: LiveThresholdSlices & LiveTimingSlices): boolean {
-	return hasLiveGateOverride(slices) || hasLiveTimingOverride(slices);
+/** 当前可编辑的门槛或推送时间是否有覆盖。 */
+export function hasLiveThresholdOverride(
+	slices: LiveThresholdSlices & LiveTimingSlices,
+	programs: readonly MembershipProgram[],
+): boolean {
+	return hasLiveGateOverride(slices, programs) || hasLiveTimingOverride(slices);
 }
 
 /**
@@ -104,19 +114,23 @@ export function hasAiPersonaOverride(
 export function isSectionCustomized(
 	sub: Subscription,
 	sectionId: SectionId,
-	presets: readonly { id: string }[] = [],
+	presets: readonly { id: string }[],
+	programs: readonly MembershipProgram[],
 ): boolean {
 	switch (sectionId) {
 		case "filter":
 			return hasFilterContentOverride(sub.overrides.filters);
 		case "live":
-			return hasLiveThresholdOverride({
-				superchat: sub.overrides.superchat,
-				membership: sub.overrides.membership,
-				schedule: sub.overrides.schedule,
-				liveStart: sub.overrides.liveStart,
-				liveStreaming: sub.overrides.liveStreaming,
-			});
+			return hasLiveThresholdOverride(
+				{
+					superchat: sub.overrides.superchat,
+					membership: sub.overrides.membership,
+					schedule: sub.overrides.schedule,
+					liveStart: sub.overrides.liveStart,
+					liveStreaming: sub.overrides.liveStreaming,
+				},
+				programs,
+			);
 		case "schedule":
 			return hasLiveTimingOverride({
 				schedule: sub.overrides.schedule,
@@ -142,7 +156,9 @@ export function isSectionCustomized(
 		case "messageLayout":
 			return sub.overrides.messageLayout !== undefined;
 		case "guard":
-			return sub.overrides.templates?.membership?.[GUARD_PROGRAM_ID]?.enabled === true;
+			return programs.some(
+				(program) => sub.overrides.templates?.membership?.[program.id]?.enabled === true,
+			);
 		// 特别关注是订阅的公共格;来源不支持的这一格恒空,自然判成没自定义。
 		case "specialDanmaku":
 			return (

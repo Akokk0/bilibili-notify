@@ -31,14 +31,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useExtensions } from "../hooks/useExtensions";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Connection,
 	makeEmptySubscription,
 	type PushTarget,
@@ -480,19 +478,13 @@ export default function Subs() {
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
 	// 拓展列表只是锦上添花(平台选择、拓展订阅的平台与「没开」),拿不到就不重试 —— 同推送目标页。
-	const extensionsQuery = useExtensions({ retry: false });
 	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没在跑」的结论。 */
-	const extensions = extensionsQuery.data?.extensions;
 	// 来源表:平台的名字、颜色、叫法、特性(「在不在跑」仍看拓展列表)。
 	const sourceTable = useSources().data?.sources;
 	// 新建弹窗的平台一排:在册的全部来源(B 站也是其中一个)。
 	const sources = useMemo(() => registeredSources(sourceTable), [sourceTable]);
-	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
-		const { sourceKey } = subscriptionIdentityOf(s);
-		return sourceKey === BILIBILI_SOURCE_KEY
-			? undefined
-			: subscriptionPlatformOf({ extensionId: sourceKey }, sourceTable, extensions);
-	};
+	const platformOf = (s: Subscription): SubscriptionPlatform =>
+		subscriptionPlatformOf(subscriptionIdentityOf(s), sourceTable);
 	const existing = useMemo(() => {
 		const out = new Map<SourceKey, Set<string>>();
 		for (const s of subs) {
@@ -588,11 +580,13 @@ export default function Subs() {
 			return (
 				// 按身份里的外部 id 搜:B 站就是 uid,拓展订阅没有 uid、是它的外部 id(ADR-0019 决策 9)。
 				subscriptionIdentityOf(s).externalId.toLowerCase().includes(ql) ||
-				displayName(s).toLowerCase().includes(ql) ||
+				displayName(s, subscriptionPlatformOf(subscriptionIdentityOf(s), sourceTable))
+					.toLowerCase()
+					.includes(ql) ||
 				(s.notes ?? "").toLowerCase().includes(ql)
 			);
 		});
-	}, [subs, filterDef, q, activeTagFilter]);
+	}, [subs, filterDef, q, activeTagFilter, sourceTable]);
 
 	const filterCounts: Record<FilterId, number> = {
 		all: subs.length,
@@ -602,10 +596,6 @@ export default function Subs() {
 
 	const drawerSub = drawerSubId ? (subs.find((s) => s.id === drawerSubId) ?? null) : null;
 	const menuSub = menuAt ? (subs.find((s) => s.id === menuAt.subId) ?? null) : null;
-	// 「复制 UID」只 B 站订阅有:身份的来源键是 B 站,外部 id 就是 uid。
-	const menuIdentity = menuSub ? subscriptionIdentityOf(menuSub) : undefined;
-	const menuBiliUid =
-		menuIdentity?.sourceKey === BILIBILI_SOURCE_KEY ? menuIdentity.externalId : undefined;
 	const tagSub = tagEditId ? (subs.find((s) => s.id === tagEditId) ?? null) : null;
 	const menuPos =
 		menuAt && menuSub
@@ -980,15 +970,14 @@ export default function Subs() {
 					onToggleEnabled={() =>
 						patchSub.mutate({ id: menuSub.id, patch: { enabled: !menuSub.enabled } })
 					}
-					onCopyUid={
-						menuBiliUid !== undefined
-							? () => {
-									void copyToClipboard(menuBiliUid).then((ok) =>
-										setCopyMsg(ok ? t("subs.copy.done") : t("subs.copy.failed")),
-									);
-								}
-							: undefined
-					}
+					copyLabel={t("sourceUi.pages.up.UpCardMenu.label.4", {
+						value1: platformOf(menuSub).externalIdNoun?.trim() || "ID",
+					})}
+					onCopyExternalId={() => {
+						void copyToClipboard(menuSub.identity.externalId).then((ok) =>
+							setCopyMsg(ok ? t("subs.copy.done") : t("subs.copy.failed")),
+						);
+					}}
 					onEditTags={() => setTagEditId(menuSub.id)}
 					onDelete={() => setPendingDelete({ ids: [menuSub.id] })}
 				/>

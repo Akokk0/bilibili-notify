@@ -9,7 +9,7 @@
  * - 拓展订阅:视图声明了 `liveStreaming` 的源才有这一行(开播 + 下播才声明的规则服务端算一次)。
  */
 
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import type { SourceEntry } from "@bilibili-notify/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,6 +18,7 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 } from "../../../types/domain";
+import { makeSource } from "../../rules/__tests__/fixtures";
 import { subscriptionPlatformOf } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
@@ -30,6 +31,7 @@ function renderDialog(sub: Subscription, extra: Partial<Parameters<typeof UpDial
 	const onSave = vi.fn();
 	render(
 		<UpDialog
+			platform={subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()])}
 			sub={sub}
 			targets={[]}
 			connections={[]}
@@ -103,16 +105,6 @@ describe("UpDialog · B 站订阅的「直播中」", () => {
 });
 
 describe("UpDialog · 拓展订阅的「直播中」", () => {
-	const DOUYIN: ExtensionDTO = {
-		id: "douyin",
-		name: "抖音订阅",
-		dir: "/data/extensions/douyin",
-		enabled: true,
-		state: "running",
-		apiVersion: 1,
-		provides: ["subscription"],
-	};
-
 	/** 来源表里抖音那一行(描述符取自清单)。 */
 	function source(descriptor: SourceEntry["descriptor"]): SourceEntry {
 		return { key: "douyin", status: "running", descriptor };
@@ -123,36 +115,28 @@ describe("UpDialog · 拓展订阅的「直播中」", () => {
 	}
 
 	it("视图声明了 liveStreaming → 露「直播中」(小字照样是那句)", () => {
-		const platform = subscriptionPlatformOf(
-			{ extensionId: "douyin" },
-			[
-				source({
-					label: "抖音",
-					shortLabel: "抖",
-					color: "#161823",
-					supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
-				}),
-			],
-			[DOUYIN],
-		);
+		const platform = subscriptionPlatformOf({ sourceKey: "douyin" }, [
+			source({
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#161823",
+				supportedFeatures: ["post", "liveStart", "liveStreaming", "liveEnd"],
+			}),
+		]);
 		renderDialog(extSub(), { platform });
 		expect(screen.getByText("直播中")).toBeTruthy();
 		expect(screen.getByText("开播后每隔几小时再提醒一次")).toBeTruthy();
 	});
 
 	it("只声明了开播、没有 liveStreaming → 不露:没有下播事件收这一场,周期推送一开就没有尽头", () => {
-		const platform = subscriptionPlatformOf(
-			{ extensionId: "douyin" },
-			[
-				source({
-					label: "抖音",
-					shortLabel: "抖",
-					color: "#161823",
-					supportedFeatures: ["post", "liveStart"],
-				}),
-			],
-			[DOUYIN],
-		);
+		const platform = subscriptionPlatformOf({ sourceKey: "douyin" }, [
+			source({
+				label: "抖音",
+				shortLabel: "抖",
+				color: "#161823",
+				supportedFeatures: ["post", "liveStart"],
+			}),
+		]);
 		renderDialog(extSub(), { platform });
 		expect(screen.queryByText("直播中")).toBeNull();
 	});

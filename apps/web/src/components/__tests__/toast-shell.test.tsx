@@ -4,10 +4,12 @@
  * 同一个壳、同一条队列,只是这种卡带一个按钮、而且不自己消失。
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeSource } from "../../pages/rules/__tests__/fixtures";
 import { AUTO_DISMISS_MS, type PushEventView, useToastStore } from "../../store/notifications";
 import { ToastShell } from "../toast-shell";
 
@@ -32,13 +34,19 @@ function LocationProbe() {
 }
 
 function renderShell() {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+	});
+	qc.setQueryData(["sources"], { sources: [makeSource()] });
 	return render(
-		<MemoryRouter initialEntries={["/"]}>
-			<ToastShell />
-			<Routes>
-				<Route path="*" element={<LocationProbe />} />
-			</Routes>
-		</MemoryRouter>,
+		<QueryClientProvider client={qc}>
+			<MemoryRouter initialEntries={["/"]}>
+				<ToastShell />
+				<Routes>
+					<Route path="*" element={<LocationProbe />} />
+				</Routes>
+			</MemoryRouter>
+		</QueryClientProvider>,
 	);
 }
 

@@ -11,14 +11,15 @@ import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Cards from "../Cards";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
@@ -64,13 +65,16 @@ function resetStore(): void {
 // 皮肤库那节的「编辑」钮要跳编辑器路由,所以这一页现在吃 router context。
 function renderCards() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<MemoryRouter>
-			<QueryClientProvider client={qc}>
-				<Cards />
-			</QueryClientProvider>
-		</MemoryRouter>,
-	);
+	return {
+		...render(
+			<MemoryRouter>
+				<QueryClientProvider client={qc}>
+					<Cards />
+				</QueryClientProvider>
+			</MemoryRouter>,
+		),
+		qc,
+	};
 }
 
 beforeEach(() => {
@@ -79,6 +83,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([CUSTOMIZED]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
+		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 		return Promise.resolve({ core: GLOBALS });
 	});
@@ -94,6 +99,40 @@ afterEach(() => {
 });
 
 describe("Cards per-UP 作用域接线", () => {
+	it("来源与语言刷新保留未保存皮肤覆盖，显式保存仍只改卡片", async () => {
+		const { qc } = renderCards();
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		const picker = await waitFor(() => {
+			const el = document.querySelector('[data-code="cardSkin"] [role="combobox"]');
+			expect(el).toBeTruthy();
+			return el as HTMLButtonElement;
+		});
+		chooseSelect(picker, "极光");
+		act(() =>
+			qc.setQueryData(["sources"], {
+				sources: [
+					{ ...makeSource(), descriptor: { ...makeSource().descriptor, label: "刷新来源" } },
+				],
+			}),
+		);
+		const prior = i18n.state();
+		try {
+			act(() => i18n.set({ locale: "en", voice: "plain" }));
+			expect(picker.textContent).toContain("极光");
+			expect(api.patch).not.toHaveBeenCalled();
+			await useDraftStore.getState().current?.onSave();
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${CUSTOMIZED.id}`, {
+				overrides: {
+					cards: { liveCoverImageIds: ["per-up-cover"] },
+					cardSkin: "aurora",
+					cardSkinKnobs: null,
+				},
+			});
+		} finally {
+			act(() => i18n.set(prior));
+		}
+	});
 	it("全局作用域 → 以 pageKey 'cards' 注册灵动岛", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
@@ -259,6 +298,7 @@ describe("Cards per-UP 作用域接线", () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
+			if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve({ core: GLOBALS });
 		});
@@ -392,6 +432,7 @@ describe("Cards per-UP 作用域接线", () => {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
+			if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve({ core: GLOBALS });
 		});

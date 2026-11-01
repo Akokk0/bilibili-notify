@@ -14,6 +14,8 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "../../../types/domain";
+import { makeSource } from "../../rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
 const UNSUPPORTED_NOTE = /QQ 官方.*@全体.*发送时会自动跳过/;
@@ -63,6 +65,7 @@ function renderDialog(platform: string) {
 	const target = targetFor(platform);
 	return render(
 		<UpDialog
+			platform={subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()])}
 			sub={customSubFor(target.id)}
 			targets={[target]}
 			connections={[
@@ -118,6 +121,7 @@ describe("UpDialog · B 站订阅的头部", () => {
 		};
 		render(
 			<UpDialog
+				platform={subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()])}
 				sub={sub}
 				targets={[]}
 				connections={[]}

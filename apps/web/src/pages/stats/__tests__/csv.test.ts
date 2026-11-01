@@ -67,10 +67,9 @@ describe("csvColumns", () => {
 		const cols = csvColumns(30);
 		const got = Object.fromEntries(cols.map((c) => [c.header, c.value(sentinel(), who)]));
 		expect(got).toEqual({
-			"UP 主": "名字-777",
+			创作者: "名字-777",
 			平台: "B 站",
-			UID: "777",
-			"外部 ID": "",
+			ID: "777",
 			粉丝数: "1",
 			近7日粉丝: "3",
 			近30日粉丝: "4",
@@ -87,10 +86,9 @@ describe("csvColumns", () => {
 		const cols = csvColumns(30);
 		const got = Object.fromEntries(cols.map((c) => [c.header, c.value(extSentinel(), who)]));
 		expect(got).toMatchObject({
-			"UP 主": "名字-sec-1",
+			创作者: "名字-sec-1",
 			平台: "抖音",
-			UID: "",
-			"外部 ID": "sec-1",
+			ID: "sec-1",
 			粉丝数: "1",
 			单场最高观看: "10",
 		});
@@ -100,10 +98,9 @@ describe("csvColumns", () => {
 		// 导出的就是屏幕上那张表,两边列序必须同步(见 columns.ts 的分组说明):
 		// 「投稿」与「动态」相邻,直播三列成组。只改一边的话这条会红。
 		expect(csvColumns(30).map((c) => c.header)).toEqual([
-			"UP 主",
+			"创作者",
 			"平台",
-			"UID",
-			"外部 ID",
+			"ID",
 			"粉丝数",
 			"近7日粉丝",
 			"近30日粉丝",
@@ -134,16 +131,16 @@ describe("buildCsv", () => {
 			who,
 		);
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
-		expect(cells[4]).toBe(""); // 粉丝数
-		expect(cells[7]).toBe(""); // 投稿
-		expect(cells[10]).toBe(""); // 直播时长
+		expect(cells[3]).toBe(""); // 粉丝数
+		expect(cells[6]).toBe(""); // 投稿
+		expect(cells[9]).toBe(""); // 直播时长
 	});
 
 	it("0 照常写 0,不与无记录混为一谈", () => {
 		const csv = buildCsv([sentinel({ videoPosts: 0, posts: 0, liveHours: 0 })], 30, who);
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
-		expect(cells[7]).toBe("0");
-		expect(cells[10]).toBe("0.0");
+		expect(cells[6]).toBe("0");
+		expect(cells[9]).toBe("0.0");
 	});
 
 	it("昵称里的逗号 / 引号按 RFC4180 转义,不撕裂列", () => {

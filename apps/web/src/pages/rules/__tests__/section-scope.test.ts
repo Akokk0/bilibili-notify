@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
-import { isSectionCustomized } from "../section-scope";
+import { isSectionCustomized as customized } from "../section-scope";
+
+const SAMPLE_PROGRAMS = [
+	{ id: "guard", name: "Sample", tiers: [{ key: "lowest", name: "Lowest", rank: 1 }] },
+];
+const isSectionCustomized = (
+	sub: Subscription,
+	section: Parameters<typeof customized>[1],
+	presets: readonly { id: string }[] = [],
+	programs: Parameters<typeof customized>[3] = SAMPLE_PROGRAMS,
+) => customized(sub, section, presets, programs);
 
 /**
  * 「动态过滤」(overrides.filters:block* / allow*)与「直播阈值」(overrides.superchat / membership 两个门槛切片,外加
@@ -12,6 +22,27 @@ import { isSectionCustomized } from "../section-scope";
 function subWith(overrides: Subscription["overrides"]): Subscription {
 	return { ...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }), overrides };
 }
+
+const PROGRAMS = [
+	{ id: "readers", name: "Readers", tiers: [{ key: "silver", name: "Silver", rank: 4 }] },
+];
+
+describe("描述符会员分域", () => {
+	it("当前声明的体系参与门槛与模板判定，卸载体系不参与", () => {
+		const sub = subWith({
+			membership: { minRank: { readers: 4 } },
+			templates: {
+				membership: {
+					readers: { enabled: true, default: { template: "hello", imageUrl: "" }, tiers: {} },
+				},
+			},
+		});
+		expect(isSectionCustomized(sub, "live", [], PROGRAMS)).toBe(true);
+		expect(isSectionCustomized(sub, "guard", [], PROGRAMS)).toBe(true);
+		expect(isSectionCustomized(sub, "live", [], [])).toBe(false);
+		expect(isSectionCustomized(sub, "guard", [], [])).toBe(false);
+	});
+});
 
 describe("isSectionCustomized filter / live 分域", () => {
 	it("只有过滤域覆盖(blockKeywords)→ filter 小点亮、live 小点不亮", () => {

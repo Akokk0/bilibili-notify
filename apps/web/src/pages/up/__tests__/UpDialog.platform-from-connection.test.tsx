@@ -16,6 +16,8 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "../../../types/domain";
+import { makeSource } from "../../rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
 const QQ_REASON = "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段";
@@ -70,6 +72,7 @@ function renderDialog(
 ) {
 	return render(
 		<UpDialog
+			platform={subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()])}
 			sub={customSub()}
 			targets={[t]}
 			connections={connections}

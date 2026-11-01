@@ -19,7 +19,6 @@
 import { AI_PROVIDER_IDS, type AIProviderId, providerMeta } from "@bilibili-notify/internal/ai";
 import { LINK_LIMITS } from "@bilibili-notify/internal/link-preview";
 import { i18n } from "../i18n/index";
-import { GUARD_PROGRAM_ID, membershipTiersOf } from "./membership-programs";
 
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */
 export type FieldSection =
@@ -73,119 +72,191 @@ export interface FieldLabel {
  * 上舰文案里「每一档」的字典条目:`templates.membership.guard.tiers.<档 key>`(整档)与它下面的 `.template` / `.imageUrl`。
  * 档的名字取会员体系里档的名字,体系加一档这里自动跟着有,不再逐档抄。
  */
-const GUARD_TIER_LABELS: Record<string, FieldLabel> = Object.fromEntries(
-	membershipTiersOf(GUARD_PROGRAM_ID).flatMap((tier) => {
-		const path = `templates.membership.${GUARD_PROGRAM_ID}.tiers.${tier.key}`;
-		return [
-			[path, { label: `${tier.name}文案与图片`, section: "templates" }],
-			[`${path}.template`, { label: `${tier.name}文案`, section: "templates" }],
-			[`${path}.imageUrl`, { label: `${tier.name}图片`, section: "templates" }],
-		];
-	}),
-);
-
 export const FIELD_LABELS = {
+	program: {
+		get label() {
+			return i18n.t("cards.content.program");
+		},
+		section: "cardPreview",
+	},
 	// ── 通用 / 全局(系统页:草稿是整份设置,核心那几格带 `core.`、B 站的带 `bilibili.`) ──────────
 	"bilibili.dynamicCron": {
-		label: "动态检查频率",
-		hint: "cron 表达式 · 默认 30 */2 * * * * (每 2 分钟的第 30 秒,错开整分高峰)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.1");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.2");
+		},
 		section: "general",
 	},
 	"core.logging.level": {
-		label: "日志等级（全局）",
-		hint: "未在下方按模块覆盖时的兜底",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.3");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.4");
+		},
 		section: "logging",
 	},
 	"core.logging.levels": {
-		label: "按模块覆盖",
-		hint: "留「跟随全局」即用 core.logging.level；保存后会立即推到对应模块的 pino 实例,无需重启",
+		get label() {
+			return i18n.t("sourceUi.pages.Dashboard.title.21");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.5");
+		},
 		section: "logging",
 	},
 	// 以下 4 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
 	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="core.logging.levels">)。
 	"core.logging.levels.core": {
-		label: "日志等级",
-		hint: "只影响 core 模块",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.6");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.7");
+		},
 		section: "logging",
 	},
 	"core.logging.levels.bilibili": {
-		label: "日志等级",
-		hint: "同时影响 dynamic 与 live 两个模块(B 站的动态与直播共用这一档)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.6");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.8");
+		},
 		section: "logging",
 	},
 	"core.logging.levels.image": {
-		label: "日志等级",
-		hint: "只影响 image 模块",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.6");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.9");
+		},
 		section: "logging",
 	},
 	"core.logging.levels.ai": {
-		label: "日志等级",
-		hint: "只影响 ai 模块",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.6");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.10");
+		},
 		section: "logging",
 	},
 	"bilibili.healthCheckMinutes": {
-		label: "登录心跳间隔",
-		hint: "每 N 分钟向 B 站探活一次;登录失效会记进问题表并私聊提醒主人",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.11");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.12");
+		},
 		section: "general",
 	},
 	"core.history.retentionDays": {
-		label: "图片与重推原件保留",
-		hint: "推送记录的文字一直留着;超过天数的那几天,图片和重推用的原件会清掉,那几行就不能再重推了",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.13");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.14");
+		},
 		section: "logging",
 	},
 	"core.logging.memoryLog.enabled": {
-		label: "内存自检打印",
-		hint: "每 10 分钟往日志写一行 [mem](堆用量 / 上限 / RSS / 弹幕规模),给排泄漏留曲线;概览页的系统资源卡不靠它。堆逼近上限的警告始终会响",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.15");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.16");
+		},
 		section: "logging",
 	},
 
 	// ── Master ────────────────────────────────────────────────────────────
 	"core.master.targetId": {
-		label: "Master 推送目标",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.17");
+		},
 		section: "master",
 	},
 
 	// ── 私聊指令 ──────────────────────────────────────────────────────────
 	"core.commands.enabled": {
-		label: "私聊指令",
-		hint: "关掉之后只剩审批的 y/n —— 否则手里那份等审批的周报就再也批不掉了",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.18");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.19");
+		},
 		section: "commands",
 	},
 	"core.commands.prefix": {
-		label: "指令前缀",
-		hint: "可以留空;留空后认不出的话一律当没看见(否则会对你每句聊天都回一句)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.20");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.21");
+		},
 		section: "commands",
 	},
 	// ── 链接解析 ──────────────────────────────────────────────────────────
 	"core.linkPreview.enabled": {
-		label: "链接解析",
-		hint: "群里有人贴 B 站视频链接就回一张卡,谁贴都算;在哪些群响应、回什么由下面的默认行与按群例外定。OneBot 直接可用;QQ 官方机器人要群主在群设置里把消息范围放到「获取群内全部消息」,留在「仅 @ 机器人」档的话得 @ 它再贴链接",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.22");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.23");
+		},
 		section: "linkPreview",
 	},
 	"core.linkPreview.cooldownSec": {
-		label: "冷却时间",
-		hint: `同一个群里同一个视频多久内只出一次图;0 = 不节流。另有不可调的底线:每个群每分钟最多 ${LINK_LIMITS.groupPerMinute} 张、全局同时最多处理 ${LINK_LIMITS.maxInflight} 张,防换着视频刷`,
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.24");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.25", {
+				value1: LINK_LIMITS.groupPerMinute,
+				value2: LINK_LIMITS.maxInflight,
+			});
+		},
 		section: "linkPreview",
 	},
 	"core.linkPreview.isOnByDefault": {
-		label: "默认(所有群)",
-		hint: "机器人在的所有群默认解不解析、回图片卡、小程序卡还是只回文字;下面没写例外的群都跟这一行。小程序卡要目标所在的 OneBot 实现支持 get_mini_app_ark(目前已知 NapCat),不支持的会回落图片卡",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.26");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.27");
+		},
 		section: "linkPreview",
 	},
 	// 默认行里「回什么」那一格:和「解析」同在一行控件里,字典里分开记,保存时才不落进「其他」。
 	"core.linkPreview.replyForm": {
-		label: "默认回复形式",
-		hint: "没写例外的群回图片卡、小程序卡还是只回文字",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.28");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.29");
+		},
 		section: "linkPreview",
 	},
 	"core.linkPreview.byTarget": {
-		label: "按群例外",
-		hint: "从推送目标里列出的群,每格「跟默认」就是不例外;想只在某几群解析,把默认解析关掉、给那几群显式开。已停用的目标不解析,恢复启用后自动生效;目标删掉了这里就不再显示",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.30");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.31");
+		},
 		section: "linkPreview",
 	},
 	"core.commands.aliases": {
-		label: "指令别名",
-		hint: "主名永远有效;别名撞了会在保存时拦下",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.32");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.33");
+		},
 		section: "commands",
 	},
 
@@ -194,25 +265,41 @@ export const FIELD_LABELS = {
 	"ai.baseUrl": { label: "Base URL", section: "ai" },
 	// 指向当前在用实例的**指针**(与人格的 activePreset 同一套语义)。
 	"ai.activeProfile": {
-		label: "使用的服务商",
-		hint: "女仆平时用哪一份实例。只拨指针不改配置，换来换去各份的密钥与模型都不会丢",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.34");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.35");
+		},
 		section: "ai",
 	},
 	// 实例桶里的方言归属字段(经 `ai.providers.<实例>.provider` 前缀规则继承到这条)。
 	"ai.provider": {
-		label: "所属服务商",
-		hint: "「开思考」这件事各家写法完全不一样，女仆得知道是哪家才翻译得对。「自定义」则不发任何服务商专属参数，需要什么请写到额外请求参数里",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.36");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.37");
+		},
 		section: "ai",
 	},
 	"ai.label": {
-		label: "实例名称",
-		hint: "同一家添加多份时全靠它区分。留空则显示那家的名字",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.38");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.39");
+		},
 		section: "ai",
 	},
 	// 实例桶的接口风味(经 `ai.providers.<实例>.apiFlavor` 前缀规则继承到这条)。
 	"ai.apiFlavor": {
-		label: "接口风味",
-		hint: "chat completions 是现状；responses 是 OpenAI 一系的新协议，思考是标准字段、思考 + 工具连用更稳。只有确认支持的家才摆这一格，失败不会悄悄换回旧协议",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.40");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.41");
+		},
 		section: "ai",
 	},
 	// 聊天页自己的思考等级(ai.chat.thinkingLevel)**不在**这张表里:它的编辑口
@@ -220,19 +307,29 @@ export const FIELD_LABELS = {
 	// `Field code` —— 表里挂一条永远显示不出来的死条目只会误导。
 	// 联网搜索(ai.search)—— web_search 工具的执行后端,与选哪家 AI 服务商正交。
 	"ai.search.backend": {
-		label: "搜索后端",
-		hint: "女仆的 web_search 工具由这家真正执行。博查中文质量好;Tavily 有免费额度",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.42");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.43");
+		},
 		section: "ai",
 	},
 	"ai.search.keys.bocha": {
-		label: "博查 API Key",
-		hint: "在 open.bochaai.com 申请。留空 = 未配置,女仆不会挂搜索工具",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.44");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.45");
+		},
 		section: "ai",
 		secret: true,
 	},
 	"ai.search.keys.tavily": {
 		label: "Tavily API Key",
-		hint: "在 app.tavily.com 申请。留空 = 未配置,女仆不会挂搜索工具",
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.46");
+		},
 		section: "ai",
 		secret: true,
 	},
@@ -261,198 +358,387 @@ export const FIELD_LABELS = {
 	// 添加/删除实例在它眼里毫无变化,于是保存条不亮、主人一走就丢。这一行把
 	// 「已添加哪几份」显式喂给它。见 Ai.tsx#packIsland。
 	"ai.providerList": {
-		label: "已添加的服务商",
-		hint: "左栏列着的那几份实例。删掉一份会连同它存着的密钥一起抹掉",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.47");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.48");
+		},
 		section: "ai",
 	},
 	"ai.enableThinking": {
-		label: "深度思考",
-		hint: "让模型先想一轮再回答。更慢、更贵，但复杂内容的点评质量会好一截。要是那家网关不认，女仆会自动摘掉参数重试一次，不会报错",
+		get label() {
+			return i18n.t("aiSettings.page.generation.thinkingAria");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.49");
+		},
 		section: "ai",
 	},
 	"ai.thinkingLevel": {
-		label: "思考深度",
-		hint: "统一三档，女仆按服务商换算：OpenRouter 是 low/medium/high，DeepSeek 只有 high/max，火山与硅基是 token 预算。换服务商时这个设置不作废",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.50");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.51");
+		},
 		section: "ai",
 	},
 	"ai.extraParams": {
-		label: "额外请求参数",
-		hint: '一段 JSON，原样摊进请求体。适配之外的服务商、或联网搜索这类各家写法不同的能力都写这里，比如 OpenRouter 的 {"plugins":[{"id":"web"}]}。跟女仆自己发的参数撞了以你为准；写错了那一次就当没填。model / messages / tools 是请求骨架，会被挡掉',
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.52");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.53");
+		},
 		section: "ai",
 	},
-	"ai.model": { label: "模型 ID", section: "ai" },
+	"ai.model": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.54");
+		},
+		section: "ai",
+	},
 
 	// ── 图片理解 ──────────────────────────────────────────────────────────
 	// 这个开关是在**声明主模型的能力**，不是在选「把图发给谁」。写成后者的话
 	// （旧文案「主模型直接看图」）会让人以为打开就等于图归主模型看 —— 而下面
 	// 配了视觉模型时它其实完全不生效。
 	"ai.enableVision": {
-		label: "主模型支持看图",
-		hint: "你的主模型自己看得见图吗（gpt-4o、qwen-vl 这类）？看得见就打开，图直接交给它，省一次往返也不掉细节；看不见就别开，改填下面的视觉模型。注意：一旦填了视觉模型，就一律以视觉模型为准，这个开关不再起作用",
+		get label() {
+			return i18n.t("aiSettings.page.vision.directAria");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.55");
+		},
 		section: "ai",
 	},
 	"ai.vision.model": {
-		label: "视觉模型 ID",
-		hint: "主模型看不见图时（比如 DeepSeek）填这里，图会先由它转成文字描述再交给主模型。填了它就优先于上面那个开关。留空则不启用",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.56");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.57");
+		},
 		section: "ai",
 	},
 	"ai.vision.baseUrl": {
-		label: "视觉 Base URL",
-		hint: "留空则跟随主模型。只有视觉模型在另一家服务商时才需要单独填",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.58");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.59");
+		},
 		section: "ai",
 	},
 	"ai.vision.apiKey": {
-		label: "视觉 API Key",
-		hint: "留空则跟随主模型",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.60");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.61");
+		},
 		section: "ai",
 		secret: true,
 	},
 	"ai.test.target": {
-		label: "推到哪里",
-		hint: "从已配置的推送目标里挑一个",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.62");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.63");
+		},
 		section: "ai",
 	},
 	"ai.test.message": {
-		label: "想问点什么",
-		hint: "一句话或一个问题 · 最多 500 字",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.64");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.65");
+		},
 		section: "ai",
 	},
 	"ai.preset": {
-		label: "人格",
-		hint: "从「智能女仆」页备着的那几份里挑一份给这个 UP。想改内容或另起一份都到那边去",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.66");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.67");
+		},
 		section: "ai",
 	},
 	"ai.activePreset": {
-		label: "全局人格",
-		hint: "女仆平时用哪一份性格。它只是个指向，换来换去都不会动到「默认」那份的内容",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.68");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.69");
+		},
 		section: "ai",
 	},
 	// AI / Cards hero strip 的「启用」总开关 Toggle 没包 <Field>(Picker 直挂在
 	// GlassBox right 槽),walkTreeDiff 输出 `enabled` 顶层路径。label 取通用
 	// 「启用」,灵动岛上下文已经标 pageLabel("智能女仆" / "卡片样式"),用户
 	// 看上下文就知道是哪页的启用。
-	enabled: { label: "启用", section: "general" },
-	"ai.dynamicPrompt": { label: "动态点评 prompt", section: "ai" },
-	"ai.liveSummaryPrompt": { label: "直播总结 prompt", section: "ai" },
-	"ai.removedBuiltinPresets": { label: "删掉的内置性格", section: "persona" },
+	enabled: {
+		get label() {
+			return i18n.t("aiSettings.page.hero.enable");
+		},
+		section: "general",
+	},
+	"ai.dynamicPrompt": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.70");
+		},
+		section: "ai",
+	},
+	"ai.liveSummaryPrompt": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.71");
+		},
+		section: "ai",
+	},
+	"ai.removedBuiltinPresets": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.72");
+		},
+		section: "persona",
+	},
 	presets: {
-		label: "基础预设",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.73");
+		},
 		// Ai.tsx 在 presets 非空时显式传 hint={undefined} 回落到此默认值;为空时传
 		// "未配置 ai.presets，可在「完全自定义」下手动填写人格" 覆盖。删除此 hint
 		// 会让 presets 非空时 hint 行消失。
-		hint: "选择预设可快速套用人格 / prompts",
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.74");
+		},
 		section: "ai",
 	},
 
 	// ── AI 人格(全局视角:persona.*) ──────────────────────────────────────
 	"persona.name": {
-		label: "名字",
-		hint: "留空跟随预设",
+		get label() {
+			return i18n.t("subs.new.accepts.name");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.75");
+		},
 		section: "persona",
 	},
-	"persona.addressUser": { label: "称呼用户", section: "persona" },
-	"persona.addressSelf": { label: "自称", section: "persona" },
-	"persona.catchphrase": { label: "口头禅", section: "persona" },
+	"persona.addressUser": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.76");
+		},
+		section: "persona",
+	},
+	"persona.addressSelf": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.77");
+		},
+		section: "persona",
+	},
+	"persona.catchphrase": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.78");
+		},
+		section: "persona",
+	},
 	"persona.traits": {
-		label: "性格特点",
-		hint: "逗号分隔",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.79");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.80");
+		},
 		section: "persona",
 	},
 	"persona.baseRole": {
-		label: "基础角色描述",
-		hint: "system prompt 起手段,定义 AI 身份",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.81");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.82");
+		},
 		section: "persona",
 	},
 	"persona.extraSystemPrompt": {
-		label: "追加 system prompt",
-		hint: "附加到 system prompt 末尾,用于安全约束、避讳词、语气微调",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.83");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.84");
+		},
 		section: "persona",
 	},
 
 	// ── 卡片样式 ──────────────────────────────────────────────────────────
-	liveCoverImageIds: { label: "直播封面替换", section: "cardStyle" },
+	liveCoverImageIds: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.85");
+		},
+		section: "cardStyle",
+	},
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档
 	// 由皮肤库当场启用(PUT /api/cards/skins/active),不走草稿;这个 code 只给 per-UP
 	// 的「这个 UP 用哪套」——「跟随全局」= 把 overrides.cardSkin 整个键清掉。
 	cardSkin: {
-		label: "卡片皮肤",
-		hint: "这个 UP 的推送卡用哪套皮肤;不选就跟随全局。想单独改排版,先在皮肤库「复制一份」再改。",
+		get label() {
+			return i18n.t("cards.skin.perSubTitle");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.86");
+		},
 		section: "cardStyle",
 	},
 
 	// ── 卡片预览(Cards 页样本数据,不真正写回 globals) ───────────────────
 	// 4-14:真数据改问订阅的来源要(`Source.fetchPreview`),房间号 / uid / 第几条三格退役。这张表的字随 4-53b 收。
 	subscriptionId: {
-		label: "预览用的订阅",
-		hint: "挑一条订阅，它的来源能出真实预览就画真数据；不挑就画示例",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.87");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.88");
+		},
 		section: "cardPreview",
 	},
 	nth: {
-		label: "第几条作品",
-		hint: "1 是最新那条",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.89");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.90");
+		},
 		section: "cardPreview",
 	},
 	text: {
-		label: "SC 文案",
-		hint: "留言内容",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.91");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.92");
+		},
 		section: "cardPreview",
 	},
 	amount: {
-		label: "SC 价格",
-		hint: "决定背景色与时长 (30/50/100/500/1000)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.93");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.94");
+		},
 		section: "cardPreview",
 	},
 	tierKey: {
-		label: "舰长等级",
-		hint: "决定徽章图与背景色",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.95");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.96");
+		},
 		section: "cardPreview",
 	},
 
 	// ── 过滤 ──────────────────────────────────────────────────────────────
 	blockKeywords: {
-		label: "屏蔽关键词",
-		hint: "任一命中即屏蔽",
+		get label() {
+			return i18n.t("sourceUi.pages.History.blockedkeyword.12");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.97");
+		},
 		section: "filter",
 	},
 	blockRegex: {
-		label: "屏蔽正则",
-		hint: "正则表达式 · 命中的动态被屏蔽",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.98");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.99");
+		},
 		section: "filter",
 	},
 	allowKeywords: {
-		label: "白名单关键词",
-		hint: "非空时仅命中条目会被推送",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.100");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.101");
+		},
 		section: "filter",
 	},
-	allowRegex: { label: "白名单正则", section: "filter" },
-	blockReposts: { label: "屏蔽转发动态", section: "filter" },
-	blockArticles: { label: "屏蔽专栏动态", section: "filter" },
-	blockImages: { label: "屏蔽图文动态", section: "filter" },
-	blockVideos: { label: "屏蔽视频动态", section: "filter" },
+	allowRegex: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.102");
+		},
+		section: "filter",
+	},
+	blockReposts: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.103");
+		},
+		section: "filter",
+	},
+	blockArticles: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.104");
+		},
+		section: "filter",
+	},
+	blockImages: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.105");
+		},
+		section: "filter",
+	},
+	blockVideos: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.106");
+		},
+		section: "filter",
+	},
 
 	// ── 互动门槛 ──────────────────────────────────────────────────────────
 	// 两个直播门槛(㉓d)从 filters 搬成 superchat / membership 两段,code 带段名(灵动岛 diff 保 nested)。
 	"superchat.minAmount": {
-		label: "SC 最低金额",
-		hint: "低于此金额不推送 · 0 = 全推",
-		section: "interaction",
-	},
-	"membership.minRank.guard": {
-		label: "上舰最低等级",
-		hint: "舰长 = 全部 · 总督 = 仅总督",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.107");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.108");
+		},
 		section: "interaction",
 	},
 	// 一段(或 minRank 这一层)整个从无到有 / 整个拿掉时,灵动岛的 diff 按整段报(code 是段本身,不是里面的格):也要有名字,
 	// 不掉进「其他」—— 第一次选档位时 `membership.minRank` 就是从无到有,开启逐订阅覆盖时 `superchat` / `membership` 也是。
-	superchat: { label: "SC 最低金额", hint: "低于此金额不推送 · 0 = 全推", section: "interaction" },
+	superchat: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.107");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.108");
+		},
+		section: "interaction",
+	},
 	membership: {
-		label: "上舰最低等级",
-		hint: "舰长 = 全部 · 总督 = 仅总督",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.109");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.110");
+		},
 		section: "interaction",
 	},
 	"membership.minRank": {
-		label: "上舰最低等级",
-		hint: "舰长 = 全部 · 总督 = 仅总督",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.109");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.110");
+		},
 		section: "interaction",
 	},
 
@@ -460,106 +746,231 @@ export const FIELD_LABELS = {
 	// 直播拆键(⑬d):周期「正在直播」有自己的开关(全局默认 + 每个订阅可覆盖)与间隔;旧的「间隔 0 = 关」里「关」
 	// 的意思归开关,所以间隔的说明里没有「填 0」那句。启动补报是 `liveStart.catchUpOnBoot`。
 	"features.liveStreaming": {
-		label: "状态推送",
-		hint: "开播后按下面的间隔重复推「正在直播」 · 全局默认,各订阅可单独覆盖",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.111");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.112");
+		},
 		section: "schedule",
 	},
 	"liveStreaming.streamingIntervalHours": {
-		label: "状态推送间隔",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.113");
+		},
 		section: "schedule",
 	},
 	"liveStart.catchUpOnBoot": {
-		label: "启动后立即推送",
-		hint: "重启时若 UP 在播则立即推送一次",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.114");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.115");
+		},
 		section: "schedule",
 	},
 	"schedule.liveEndGrace": {
-		label: "断流接续",
-		hint: "下播先延迟判定,期间重开即接续为同一场",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.116");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.117");
+		},
 		section: "schedule",
 	},
 	"schedule.liveEndGraceMinutes": {
-		label: "接续等待时长",
-		hint: "下播到重开超过此时长才判定真下播",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.118");
+		},
+		get hint() {
+			return i18n.t("sourceUi.pages.rules.sections.hint.38");
+		},
 		section: "schedule",
 	},
 	"schedule.quietHours": {
-		label: "免扰时段",
-		hint: "落在区间内的推送不发出去,记在推送历史里、可以补发;粒度按「时」,半开区间 [start, end)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.119");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.120");
+		},
 		section: "schedule",
 	},
 
 	// ── 消息模板 ──────────────────────────────────────────────────────────
-	"templates.liveSummary": { label: "总结正文", section: "templates" },
-	"templates.wordcloudStopWords": { label: "词云停用词", section: "templates" },
-	"templates.liveStart": { label: "开播", section: "templates" },
+	"templates.liveSummary": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.121");
+		},
+		section: "templates",
+	},
+	"templates.wordcloudStopWords": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.122");
+		},
+		section: "templates",
+	},
+	"templates.liveStart": {
+		get label() {
+			return i18n.t("sourceUi.pages.Stats.label.31");
+		},
+		section: "templates",
+	},
 	// 消息版式(发送侧结构):分隔符经 Field 编辑;blocks 数组由版式编辑器整体管理,
 	// 灵动岛 diff 时按叶子 code 命中下列条目。
 	"messageLayout.post.separator": {
-		label: "动态消息分隔符",
-		hint: "同条消息内相邻文本类部件的连接符;\\n 表示换行",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.123");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.124");
+		},
 		section: "templates",
 	},
 	"messageLayout.live.separator": {
-		label: "直播消息分隔符",
-		hint: "同条消息内相邻文本类部件的连接符;\\n 表示换行",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.125");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.124");
+		},
 		section: "templates",
 	},
-	"messageLayout.post.blocks": { label: "动态消息部件排列", section: "templates" },
-	"messageLayout.live.blocks": { label: "直播消息部件排列", section: "templates" },
-	"templates.liveStreaming": { label: "直播中", section: "templates" },
-	"templates.liveEnd": { label: "下播", section: "templates" },
-	"templates.post": { label: "动态文案", section: "templates" },
-	"templates.postVideo": { label: "视频文案", section: "templates" },
-	"templates.viewerChat": { label: "弹幕模板", section: "templates" },
-	"templates.viewerEnter": { label: "进房模板", section: "templates" },
-	// 以下几条仅 diff-path entry 用(GuardSection 的 Toggle 直接挂在 GlassBox.right
-	// 槽,Guard 模板嵌在小卡 JSX 里没单独 <Field> 包裹,diff 会输出整段嵌套 path)。
-	// ㉓d:上舰文案是 B 站的会员体系 `guard` 的那一份 —— 体系默认 + 按档存的覆盖。
-	"templates.membership.guard.enabled": {
-		label: "启用自定义上舰提示",
-		hint: "总开关 · 关 = 默认走 B 站官方上舰图",
+	"messageLayout.post.blocks": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.126");
+		},
 		section: "templates",
 	},
-	"templates.membership.guard.default.template": { label: "体系默认文案", section: "templates" },
-	"templates.membership.guard.default.imageUrl": { label: "体系默认图片", section: "templates" },
-	// 每一档的文案与图片(一档整个从无到有 / 整个拿掉时,灵动岛的 diff 按整档报,所以整档也有一条):按体系里的档生成。
-	...GUARD_TIER_LABELS,
+	"messageLayout.live.blocks": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.127");
+		},
+		section: "templates",
+	},
+	"templates.liveStreaming": {
+		get label() {
+			return i18n.t("sourceUi.pages.rules.sections.label.68");
+		},
+		section: "templates",
+	},
+	"templates.liveEnd": {
+		get label() {
+			return i18n.t("sourceUi.pages.rules.sections.label.69");
+		},
+		section: "templates",
+	},
+	"templates.post": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.128");
+		},
+		section: "templates",
+	},
+	"templates.postVideo": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.129");
+		},
+		section: "templates",
+	},
+	"templates.viewerChat": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.130");
+		},
+		section: "templates",
+	},
+	"templates.viewerEnter": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.131");
+		},
+		section: "templates",
+	},
+	// Membership fields are resolved dynamically from their program/tier path below.
 
 	// ── 特别关注 / Special UID ────────────────────────────────────────────
-	specialViewers: { label: "UID 列表", section: "specialViewers" },
+	specialViewers: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.136");
+		},
+		section: "specialViewers",
+	},
 
 	// ── 动态图集 ──────────────────────────────────────────────────────────
 	"imageGroup.enabled": {
-		label: "推送动态图集",
-		hint: "图集类动态在文本后再发一组图 · 关 = 只发卡片",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.137");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.138");
+		},
 		section: "imageGroup",
 	},
 	"imageGroup.mergeForward": {
-		label: "图集走合并转发",
-		hint: "开 = 聊天记录卡片 · 关 = 多图普通消息;单图不走合并转发",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.139");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.140");
+		},
 		section: "imageGroup",
 	},
 
 	// ── 卡片自定义模板 special user 子表(PerUpEditor SpecialUserBox) ─────
-	template: { label: "文案", section: "templates" },
-	imageUrl: { label: "图片 URL", section: "templates" },
+	template: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.141");
+		},
+		section: "templates",
+	},
+	imageUrl: {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.142");
+		},
+		section: "templates",
+	},
 	targetId: {
-		label: "推送目标",
-		hint: "仅列启用的外部投递目标",
+		get label() {
+			return i18n.t("stats.push.target");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.143");
+		},
 		section: "target",
 	},
 
 	// ── Targets(推送目标 / 连接 / 传输 / 会话) ────────────────────────
-	"connection.platform": { label: "平台", section: "connection" },
-	"connection.name": { label: "显示名称", section: "connection" },
-	"connection.enabled": { label: "启用", section: "connection" },
-	"settings.transport": { label: "连接方式", section: "transport" },
+	"connection.platform": {
+		get label() {
+			return i18n.t("sourceUi.pages.stats.csv.header.1");
+		},
+		section: "connection",
+	},
+	"connection.name": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.144");
+		},
+		section: "connection",
+	},
+	"connection.enabled": {
+		get label() {
+			return i18n.t("aiSettings.page.hero.enable");
+		},
+		section: "connection",
+	},
+	"settings.transport": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.145");
+		},
+		section: "transport",
+	},
 	"settings.baseUrl": { label: "HTTP baseUrl", section: "transport" },
 	"settings.url": { label: "URL", section: "transport" },
 	"settings.port": {
-		label: "反向 WS 监听端口",
-		hint: "bot 主动连入此端口;端口即身份,与主端口 8787 独立",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.146");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.147");
+		},
 		section: "transport",
 	},
 	"settings.accessToken": {
@@ -567,101 +978,194 @@ export const FIELD_LABELS = {
 		section: "transport",
 		secret: true,
 	},
-	"settings.timeoutMs": { label: "超时", section: "transport" },
+	"settings.timeoutMs": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.148");
+		},
+		section: "transport",
+	},
 	"settings.imageMinTimeoutMs": {
-		label: "带图超时下限",
-		hint: "带图消息实际等 max(超时, 此值);0 = 不放宽",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.149");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.150");
+		},
 		section: "transport",
 	},
 	"settings.mergeForwardMinTimeoutMs": {
-		label: "合并转发超时下限",
-		hint: "合并转发要逐张下载再上传,比单图更慢;0 = 不放宽",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.151");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.152");
+		},
 		section: "transport",
 	},
 	"settings.maxRetries": {
-		label: "重试次数",
-		hint: "不含首次,失败后再尝试",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.153");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.154");
+		},
 		section: "transport",
 	},
-	"settings.retryIntervalMs": { label: "重试间隔", section: "transport" },
+	"settings.retryIntervalMs": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.155");
+		},
+		section: "transport",
+	},
 	"settings.headers": {
-		label: "自定义请求头",
-		hint: "例如反向代理鉴权头",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.156");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.157");
+		},
 		section: "transport",
 	},
 	"settings.secret": {
 		label: "Secret",
-		hint: "加在 x-bilibili-notify-secret 头",
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.158");
+		},
 		section: "transport",
 		secret: true,
 	},
 	// QQ 官方机器人(q.qq.com)连接凭据
 	"settings.appId": {
 		label: "AppID",
-		hint: "QQ 开放平台机器人的 AppID(明文存储)",
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.159");
+		},
 		section: "transport",
 	},
 	"settings.appSecret": {
 		label: "AppSecret",
-		hint: "机器人密钥;用于换取 App Access Token",
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.160");
+		},
 		section: "transport",
 		secret: true,
 	},
 	"settings.botType": {
-		label: "机器人域",
-		hint: "私域可发原生 markdown(图集合并);公域不支持原生 markdown(需报备模板)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.161");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.162");
+		},
 		section: "transport",
 	},
 	"settings.sandbox": {
-		label: "沙箱模式",
-		hint: "开启后走 QQ 沙箱环境,仅对沙箱内成员可见",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.163");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.164");
+		},
 		section: "transport",
 	},
 	"settings.logReconnects": {
-		label: "记录重连日志",
-		hint: "QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.165");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.166");
+		},
 		section: "transport",
 	},
-	"target.name": { label: "显示名称", section: "target" },
-	"target.scope": { label: "作用域", section: "target" },
-	"target.enabled": { label: "启用", section: "target" },
+	"target.name": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.144");
+		},
+		section: "target",
+	},
+	"target.scope": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.167");
+		},
+		section: "target",
+	},
+	"target.enabled": {
+		get label() {
+			return i18n.t("aiSettings.page.hero.enable");
+		},
+		section: "target",
+	},
 	// 地址这一格原先是每平台一套 session 字段(session.groupId / session.groupOpenid / …),
 	// 六个词条对着六个字段名。收成一格之后只剩这两条 —— 界面上叫什么由 scope 决定,
 	// 但差异摘要里不该逐 scope 换名字(同一格改了就是改了)。
-	"target.address": { label: "会话地址", section: "target" },
-	"target.parentAddress": { label: "上级容器 ID", section: "target" },
+	"target.address": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.168");
+		},
+		section: "target",
+	},
+	"target.parentAddress": {
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.169");
+		},
+		section: "target",
+	},
 
 	// ── 定时周报(roastSchedule.*) ─────────────────────────────────────────
 	// 周期与统计范围是**解耦**的两个字段:cron 定何时发,days 定统计多少天。
 	// 不预设「周报 / 月报」这类组合 —— 用户自己搭。
 	"roastSchedule.enabled": {
-		label: "定时锐评",
-		hint: "到点自动生成并发送 · 关掉就只剩手动那颗按钮",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.170");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.171");
+		},
 		section: "schedule",
 	},
 	"roastSchedule.approval": {
-		label: "发送前先给主人过目",
-		hint: "私聊发预览 · 回复 y 才进群,48 小时没回复就作废",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.172");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.173");
+		},
 		section: "schedule",
 	},
 	"roastSchedule.notifyOnError": {
-		label: "没发出去时通知我",
-		hint: "生成失败 / 没配目标 / 群发失败都会私聊说明原因",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.174");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.175");
+		},
 		section: "schedule",
 	},
 	"roastSchedule.cron": {
-		label: "发送时间",
-		hint: "cron 表达式 · 如 0 9 * * 1(每周一早九点)",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.176");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.177");
+		},
 		section: "schedule",
 	},
 	"roastSchedule.days": {
-		label: "统计范围",
-		hint: "周报往前统计多少天(近 7 / 30 / 90 日)· 与发送周期无关,想每天发一份近 7 天的榜也可以",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.178");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.179");
+		},
 		section: "schedule",
 	},
 	"roastSchedule.targets": {
-		label: "发送到",
-		hint: "可多选 · 一个群发失败不影响其他群",
+		get label() {
+			return i18n.t("sourceUi.config.field.labels.label.180");
+		},
+		get hint() {
+			return i18n.t("sourceUi.config.field.labels.hint.181");
+		},
 		section: "schedule",
 	},
 } satisfies Record<string, FieldLabel>;
@@ -713,12 +1217,48 @@ function profileDisplayName(id: string): string | null {
 export function getFieldLabel(code: string): FieldLabel | null {
 	const hit = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[code];
 	if (hit) return hit;
+	const minimum = /^membership\.minRank\.([^.]+)$/.exec(code);
+	if (minimum)
+		return {
+			get label() {
+				return `${minimum[1]} · ${i18n.t("sourceUi.config.field.labels.label.182")}`;
+			},
+			section: "interaction",
+		};
+	const membership =
+		/^templates\.membership\.([^.]+)(?:\.(enabled|default(?:\.(template|imageUrl))?|tiers(?:\.[^.]+(?:\.(template|imageUrl))?)?))?$/.exec(
+			code,
+		);
+	if (membership) {
+		const field = membership[3] ?? membership[4];
+		const label =
+			field === "template"
+				? membership[2]?.startsWith("default")
+					? i18n.t("sourceUi.config.field.labels.label.134")
+					: i18n.t("sourceUi.config.field.labels.getFieldLabel.183")
+				: field === "imageUrl"
+					? membership[2]?.startsWith("default")
+						? i18n.t("sourceUi.config.field.labels.label.135")
+						: i18n.t("sourceUi.config.field.labels.getFieldLabel.184")
+					: membership[2] === "enabled"
+						? i18n.t("sourceUi.config.field.labels.getFieldLabel.185")
+						: i18n.t("sourceUi.config.field.labels.getFieldLabel.186");
+		const tier = /\.tiers\.([^.]+)/.exec(code)?.[1];
+		return {
+			label: [membership[1], tier, label].filter(Boolean).join(" · "),
+			section: "templates",
+		};
+	}
 	if (code.startsWith(SEEN_PREFIX)) {
 		const path = code.slice(SEEN_PREFIX.length);
-		const owner = (FIELD_LABELS as Record<string, FieldLabel | undefined>)[`templates.${path}`];
+		const owner = getFieldLabel(`templates.${path}`);
 		return {
-			label: `${owner?.label ?? path} · 默认更新提示`,
-			hint: "主人对「默认文案有更新」那条提示的处理结果;记下来是为了不再重复问。",
+			get label() {
+				return i18n.t("sourceUi.config.field.labels.label.187", { value1: owner?.label ?? path });
+			},
+			get hint() {
+				return i18n.t("sourceUi.config.field.labels.hint.188");
+			},
 			section: "templates",
 		};
 	}

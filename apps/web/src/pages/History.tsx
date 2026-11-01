@@ -1,4 +1,9 @@
-import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
+import {
+	displayNameOf,
+	type ExtensionDTO,
+	type SourceEntry,
+	subscriptionIdentityLabel,
+} from "@bilibili-notify/contract";
 import {
 	Avatar,
 	Btn,
@@ -23,6 +28,7 @@ import {
 import { useExtensions } from "../hooks/useExtensions";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
+import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
 import {
 	type HistoryEntryView,
@@ -34,7 +40,7 @@ import {
 import type { PushTarget, Subscription } from "../types/domain";
 import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowAvatarUrl, historyRowColor, isExtensionIdentity } from "../utils/up-display";
+import { historyRowAvatarUrl, historyRowColor } from "../utils/up-display";
 import { displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -58,15 +64,20 @@ import { subscriptionPlatformOf } from "./up/subscription-source";
 /** 筛选胶囊 = 四个家族(见 FEATURE_DESCRIPTORS 的 family)加一个「全部」。 */
 type FilterId = "all" | PushFamily;
 
-const FILTERS: ReadonlyArray<{ id: FilterId; label: string; tone: string }> = [
-	{ id: "all", label: "全部", tone: "var(--color-bn-inactive)" },
-	{ id: "live", label: "直播", tone: PUSH_TONE.live },
-	{ id: "post", label: "动态", tone: PUSH_TONE.post },
+const filtersOf = (): ReadonlyArray<{ id: FilterId; label: string; tone: string }> => [
+	{ id: "all", label: i18n.t("subs.tags.all"), tone: "var(--color-bn-inactive)" },
+	{ id: "live", label: i18n.t("extension.reportDiscrepancies.kindLive"), tone: PUSH_TONE.live },
+	{ id: "post", label: i18n.t("sourceUi.pages.Dashboard.TrendPanel.3"), tone: PUSH_TONE.post },
 	{ id: "superchat", label: "SC", tone: PUSH_TONE.superchat },
-	{ id: "membership", label: "舰长", tone: PUSH_TONE.membership },
+	{
+		id: "membership",
+		label: i18n.t("sourceUi.pages.Dashboard.TrendPanel.4"),
+		tone: PUSH_TONE.membership,
+	},
 ];
 
 export default function History() {
+	const tx = useT();
 	const [filterId, setFilterId] = useState<FilterId>("all");
 	const [q, setQ] = useState("");
 
@@ -114,7 +125,7 @@ export default function History() {
 				e.id,
 				[
 					e.identity.externalId,
-					sub ? displayName(sub) : "",
+					sub ? displayName(sub, subscriptionPlatformOf(sub.identity, sources)) : "",
 					e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "",
 					...e.messages.map((x) => x.text ?? ""),
 				]
@@ -123,7 +134,7 @@ export default function History() {
 			);
 		}
 		return m;
-	}, [entries, subs, targetById]);
+	}, [entries, subs, targetById, sources]);
 
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
@@ -139,7 +150,7 @@ export default function History() {
 				<Input
 					value={q}
 					onChange={setQ}
-					placeholder="按 UP 主、内容、目标搜索..."
+					placeholder={tx("sourceUi.pages.History.placeholder.1")}
 					icon={<Icon.search size={14} />}
 				/>
 				{/*
@@ -150,18 +161,29 @@ export default function History() {
 				<Picker<FilterId>
 					value={filterId}
 					onChange={setFilterId}
-					options={FILTERS.map((f) => ({ value: f.id, label: f.label, color: f.tone }))}
+					options={filtersOf().map((f) => ({ value: f.id, label: f.label, color: f.tone }))}
 				/>
 				<div className="flex-1" />
 				<span className="text-bn-xs text-bn-text-tertiary">
-					共 {filtered.length} 条{retentionDays != null ? ` · 图片留 ${retentionDays} 天` : ""}
+					{tx("sourceUi.pages.History.History.2")}
+					{filtered.length}
+					{tx("sourceUi.components.toast.shell.ToastCard.2")}
+					{retentionDays != null
+						? tx("sourceUi.pages.History.History.3", { value1: retentionDays })
+						: ""}
 				</span>
 			</div>
 
 			{historyQuery.isLoading ? (
-				<LoadingBlock label="正在读取推送历史" hint="女仆正在翻记录本,一条条对过去 (｡･ω･｡)ﾉ" />
+				<LoadingBlock
+					label={tx("sourceUi.pages.History.label.4")}
+					hint={tx("sourceUi.pages.History.hint.5")}
+				/>
 			) : historyQuery.error ? (
-				<ErrorNote>加载失败：{String((historyQuery.error as Error).message)}</ErrorNote>
+				<ErrorNote>
+					{tx("sourceUi.pages.History.History.6")}
+					{String((historyQuery.error as Error).message)}
+				</ErrorNote>
 			) : (
 				<HistoryTable
 					entries={filtered}
@@ -188,23 +210,24 @@ function HistoryTable({
 	sources: readonly SourceEntry[] | undefined;
 	extensions: readonly ExtensionDTO[] | undefined;
 }) {
+	const tx = useT();
 	return (
 		<div className="bn-glass overflow-hidden rounded-bn-sm shadow-bn-card">
 			<div
 				className="grid items-center gap-2.5 border-b border-bn-border-subtle bg-bn-surface-muted/70 px-4 py-2.5 text-bn-xs font-bold tracking-wide text-bn-text-tertiary"
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
-				<span>时间</span>
+				<span>{tx("sourceUi.pages.History.HistoryTable.7")}</span>
 				<span></span>
-				<span>类型</span>
-				<span>内容</span>
-				<span>推送目标</span>
-				<span>状态</span>
+				<span>{tx("sourceUi.pages.History.HistoryTable.8")}</span>
+				<span>{tx("sourceUi.pages.History.HistoryTable.9")}</span>
+				<span>{tx("stats.push.target")}</span>
+				<span>{tx("sourceUi.pages.History.HistoryTable.10")}</span>
 			</div>
 
 			{entries.length === 0 ? (
 				<div className="px-4 py-10 text-center text-bn-sm text-bn-text-tertiary">
-					没有符合条件的推送记录
+					{tx("sourceUi.pages.History.HistoryTable.11")}
 				</div>
 			) : (
 				entries.map((e, i) => (
@@ -229,19 +252,19 @@ const HISTORY_GRID = "100px 28px 64px 1fr 200px 100px";
  * 被过滤的作品是被哪一类规则挡下的(行上的 `filteredBy`),展开后写在那条消息的结果位置上。
  * 前五种是屏蔽规则命中,最后一种是设了白名单而没命中。
  */
-const FILTER_REASON_LABEL: Record<NonNullable<HistoryEntryView["filteredBy"]>, string> = {
-	"blocked-keyword": "屏蔽关键词",
-	"blocked-reposts": "屏蔽转发",
-	"blocked-articles": "屏蔽专栏",
-	"blocked-images": "屏蔽图集",
-	"blocked-videos": "屏蔽视频",
-	"allowlist-unmatched": "未命中白名单",
-};
+const filterReasonLabelOf = (): Record<NonNullable<HistoryEntryView["filteredBy"]>, string> => ({
+	"blocked-keyword": i18n.t("sourceUi.pages.History.blockedkeyword.12"),
+	"blocked-reposts": i18n.t("sourceUi.pages.History.blockedreposts.13"),
+	"blocked-articles": i18n.t("sourceUi.pages.History.blockedarticles.14"),
+	"blocked-images": i18n.t("sourceUi.pages.History.blockedimages.15"),
+	"blocked-videos": i18n.t("sourceUi.pages.History.blockedvideos.16"),
+	"allowlist-unmatched": i18n.t("sourceUi.pages.History.allowlistunmatched.17"),
+});
 
 /** 目标列:没有目标的行(无目标行、被过滤的行)写「—」;目标事后被删写「已删除目标」。 */
 function targetLabelOf(entry: HistoryEntryView, target: PushTarget | undefined): string {
 	if (entry.targetId === null) return "—";
-	return target?.name ?? "已删除目标";
+	return target?.name ?? i18n.t("sourceUi.pages.History.targetLabelOf.18");
 }
 
 function HistoryRow({
@@ -249,7 +272,7 @@ function HistoryRow({
 	sub,
 	target,
 	sources,
-	extensions,
+	extensions: _extensions,
 	isLast,
 }: {
 	entry: HistoryEntryView;
@@ -259,21 +282,23 @@ function HistoryRow({
 	extensions: readonly ExtensionDTO[] | undefined;
 	isLast: boolean;
 }) {
+	const tx = useT();
 	const [open, setOpen] = useState(false);
 	const [repushOpen, setRepushOpen] = useState(false);
 	const tone = familyTone(entry.feature);
 	const status = PUSH_STATUS_META[entry.status];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份的外部 id:B 站行就是
 	// uid(ADR-0019 决策 73)。
-	const upName = entry.nameSnapshot ?? (sub ? displayName(sub) : entry.identity.externalId);
+	const upName = displayNameOf(
+		{ eventName: entry.nameSnapshot, profileName: sub?.cachedProfile?.name },
+		subscriptionIdentityLabel(entry.identity, subscriptionPlatformOf(entry.identity, sources)),
+	);
 	// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
 	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const creatorColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
-	const platform = isExtensionIdentity(entry.identity)
-		? subscriptionPlatformOf({ extensionId: entry.identity.sourceKey }, sources, extensions)
-		: undefined;
+	const platform = subscriptionPlatformOf(entry.identity, sources);
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
@@ -300,7 +325,7 @@ function HistoryRow({
 					{FEATURE_DESCRIPTORS[entry.feature].label}
 				</Pill>
 				<div className="flex min-w-0 items-center gap-2">
-					{platform ? (
+					{platform.showBadge ? (
 						<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>
 							{platform.shortLabel ?? platform.label}
 						</Pill>
@@ -310,7 +335,9 @@ function HistoryRow({
 						{headline ? (
 							<span className="ml-1.5 text-bn-text-secondary">{headline}</span>
 						) : (
-							<span className="ml-1.5 text-bn-text-tertiary">（无内容）</span>
+							<span className="ml-1.5 text-bn-text-tertiary">
+								{tx("sourceUi.pages.History.HistoryRow.19")}
+							</span>
 						)}
 					</div>
 					{expandable ? (
@@ -319,10 +346,16 @@ function HistoryRow({
 							open={open}
 							onToggle={() => setOpen((v) => !v)}
 							color={tone}
-							title={open ? "收起" : "展开逐条查看"}
+							title={
+								open ? tx("sourceUi.pages.History.title.20") : tx("sourceUi.pages.History.title.21")
+							}
 							className="shrink-0 text-bn-2xs leading-4"
 						>
-							<span>{count > 1 ? `${count} 条` : "详情"}</span>
+							<span>
+								{count > 1
+									? tx("sourceUi.pages.History.HistoryRow.22", { value1: count })
+									: tx("sourceUi.pages.History.HistoryRow.23")}
+							</span>
 							<span aria-hidden="true">{open ? " ▴" : " ▾"}</span>
 						</DisclosurePill>
 					) : null}
@@ -338,8 +371,8 @@ function HistoryRow({
 						<IconButton
 							size="sm"
 							icon={<Icon.refresh size={12} />}
-							label="补一次"
-							title={repushBlocked ?? "没送到的，让女仆再补一次"}
+							label={tx("sourceUi.pages.History.label.24")}
+							title={repushBlocked ?? tx("sourceUi.pages.History.title.25")}
 							disabled={repushBlocked !== null}
 							ariaExpanded={repushOpen}
 							onClick={() => setRepushOpen((v) => !v)}
@@ -374,6 +407,7 @@ function RepushBar({
 	counts: { total: number; missing: number };
 	onClose: () => void;
 }) {
+	const tx = useT();
 	const repush = useMutation<{ count: number }, Error, "all" | "missing">({
 		mutationFn: async (mode) => {
 			const res = await api.post<HistoryRepushResponse>(`/api/history/${entry.id}/repush`, {
@@ -385,15 +419,19 @@ function RepushBar({
 			return { count: res.count };
 		},
 	});
-	const n = (v: number) => `（${v} 条）`;
+	const n = (v: number) => tx("sourceUi.pages.History.RepushBar.26", { value1: v });
 	// 服务端回的是「收下了」,消息一条都还没发出去 —— 所以说「去补」不说「补好了」。
 	// 真正的结果随后经 WS 一条条回来,这一行会自己变。
 	if (repush.isSuccess) {
 		return (
 			<div className="flex items-center gap-2 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38 text-bn-xs text-bn-text-secondary">
-				<span>女仆去补（{repush.data.count} 条）啦，好了这一行会自己更新～ (｡･ω･｡)ﾉ</span>
+				<span>
+					{tx("sourceUi.pages.History.RepushBar.27")}
+					{repush.data.count}
+					{tx("sourceUi.pages.History.RepushBar.28")}
+				</span>
 				<Btn size="sm" variant="ghost" onClick={onClose}>
-					知道啦
+					{tx("sourceUi.pages.History.RepushBar.29")}
 				</Btn>
 			</div>
 		);
@@ -403,7 +441,11 @@ function RepushBar({
 	return (
 		<div className="border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38">
 			<div className="flex flex-wrap items-center gap-2 text-bn-xs text-bn-text-secondary">
-				<span>{busy ? "女仆这就去～" : "要女仆补哪些呀？"}</span>
+				<span>
+					{busy
+						? tx("sourceUi.pages.History.RepushBar.30")
+						: tx("sourceUi.pages.History.RepushBar.31")}
+				</span>
 				{entry.status === "partial" ? (
 					<>
 						<Btn
@@ -412,10 +454,12 @@ function RepushBar({
 							disabled={busy}
 							onClick={() => repush.mutate("missing")}
 						>
-							只补没到的{n(counts.missing)}
+							{tx("sourceUi.pages.History.RepushBar.32")}
+							{n(counts.missing)}
 						</Btn>
 						<Btn size="sm" variant="outline" disabled={busy} onClick={() => repush.mutate("all")}>
-							整行重发{n(counts.total)}
+							{tx("sourceUi.pages.History.RepushBar.33")}
+							{n(counts.total)}
 						</Btn>
 					</>
 				) : (
@@ -424,12 +468,14 @@ function RepushBar({
 					// 「整行重发」会把已经到了的 @全体再发一遍,群里多 @ 一次全体,撤不回 —— 所以不给。
 					// 被挡下的行、状态已送达可还有附加项没发的行同理:只补还没发的那几条。
 					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
-						{entry.status === "failed" ? "重新推送" : "补发"}
+						{entry.status === "failed"
+							? tx("sourceUi.pages.History.RepushBar.34")
+							: tx("sourceUi.pages.History.RepushBar.35")}
 						{n(counts.missing)}
 					</Btn>
 				)}
 				<Btn size="sm" variant="ghost" disabled={busy} onClick={onClose}>
-					先不用了
+					{tx("sourceUi.pages.History.RepushBar.36")}
 				</Btn>
 			</div>
 			{repush.isError ? (
@@ -493,6 +539,7 @@ function MessageItem({
 	pastRetention: boolean;
 	filteredBy: HistoryEntryView["filteredBy"];
 }) {
+	const tx = useT();
 	// 本来有图:是图消息,或者带着图库引用。过了保留期的老行迁移时图格被拿掉了,只剩 `kind: "image"`(composite 拿掉后看不出,
 	// 只画文字)。
 	const hadImage = message.kind === "image" || message.image !== undefined;
@@ -503,40 +550,48 @@ function MessageItem({
 			? message.isSilenced
 				? PUSH_STATUS_META.silenced
 				: filteredBy !== undefined
-					? { label: FILTER_REASON_LABEL[filteredBy], tone: PUSH_STATUS_META.filtered.tone }
-					: { label: "未发送", tone: "var(--color-bn-inactive)" }
+					? { label: filterReasonLabelOf()[filteredBy], tone: PUSH_STATUS_META.filtered.tone }
+					: { label: tx("sourceUi.pages.History.label.37"), tone: "var(--color-bn-inactive)" }
 			: PUSH_STATUS_META[message.ok ? "delivered" : "failed"];
 	return (
 		<li className={`flex items-start gap-2.5 text-bn-xs${superseded ? " opacity-60" : ""}`}>
 			<span className="w-4 shrink-0 tabular-nums text-bn-text-tertiary">{no + 1}</span>
 			<span className="w-10 shrink-0 text-bn-text-tertiary">
-				{message.role === "main" ? "本体" : "附加"}
+				{message.role === "main"
+					? tx("sourceUi.pages.History.MessageItem.38")
+					: tx("sourceUi.pages.History.MessageItem.39")}
 			</span>
 			{hadImage && pastRetention ? (
 				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-bn-surface-muted text-center leading-tight text-bn-text-tertiary">
-					图已清理
+					{tx("sourceUi.pages.History.MessageItem.40")}
 				</span>
 			) : message.image ? (
 				<img
 					src={imageUrl(message.image)}
-					alt={message.text ?? "图片"}
+					alt={message.text ?? tx("sourceUi.pages.History.alt.41")}
 					className="h-12 w-12 shrink-0 rounded-md object-cover"
 					loading="lazy"
 				/>
 			) : null}
 			<span className="min-w-0 flex-1 break-words text-bn-text-secondary">
-				{message.text ?? <span className="text-bn-text-tertiary">（无内容）</span>}
+				{message.text ?? (
+					<span className="text-bn-text-tertiary">
+						{tx("sourceUi.pages.History.HistoryRow.19")}
+					</span>
+				)}
 				{message.ok === false && message.message ? (
 					<span className="ml-1.5 text-bn-danger">{message.message}</span>
 				) : null}
 				{superseded ? (
-					<span className="ml-1.5 text-bn-text-tertiary">女仆后来又补了一次～</span>
+					<span className="ml-1.5 text-bn-text-tertiary">
+						{tx("sourceUi.pages.History.MessageItem.42")}
+					</span>
 				) : null}
 			</span>
 			{message.repushOf !== undefined ? (
 				// 这一条是女仆补的那次,不是当时发出去的那次。
 				<Pill subtle size="sm">
-					女仆补的
+					{tx("sourceUi.pages.History.MessageItem.43")}
 				</Pill>
 			) : null}
 			<Pill color={result.tone} subtle size="sm">

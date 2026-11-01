@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useDraftStore } from "../../store/draft";
 import type { GlobalConfig } from "../../types/globals";
 import Cards from "../Cards";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => {
 	// 与真 `ApiError` 一样:`code` 从错误体里读出来。
@@ -92,6 +92,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
+		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		return Promise.resolve({ core: GLOBALS });
 	});
 });

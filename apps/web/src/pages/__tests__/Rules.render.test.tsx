@@ -13,7 +13,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -56,7 +56,13 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subscriptions") ? [CUSTOMIZED] : { core: GLOBALS }),
+		Promise.resolve(
+			url === "/api/sources"
+				? { sources: [makeSource()] }
+				: url.includes("/api/subscriptions")
+					? [CUSTOMIZED]
+					: { core: GLOBALS },
+		),
 	);
 	vi.mocked(api.patch).mockResolvedValue(CUSTOMIZED);
 });
@@ -73,7 +79,7 @@ describe("高级规则 tab 关闭确认", () => {
 		const closeBtn = await screen.findByTitle(/移除 .* 的个性化配置/);
 		fireEvent.click(closeBtn);
 
-		expect(await screen.findByText("移除该 UP 的个性化配置?")).toBeTruthy();
+		expect(await screen.findByText("移除该订阅的个性化配置?")).toBeTruthy();
 		expect(api.patch).not.toHaveBeenCalled();
 	});
 
@@ -83,7 +89,13 @@ describe("高级规则 tab 关闭确认", () => {
 			specialViewers: [{ id: "7", features: ["viewerEnter"] }],
 		};
 		vi.mocked(api.get).mockImplementation((url: string) =>
-			Promise.resolve(url.includes("/api/subscriptions") ? [onlySpecial] : { core: GLOBALS }),
+			Promise.resolve(
+				url === "/api/sources"
+					? { sources: [makeSource()] }
+					: url.includes("/api/subscriptions")
+						? [onlySpecial]
+						: { core: GLOBALS },
+			),
 		);
 		renderRules();
 		expect(await screen.findByTitle(/移除 .* 的个性化配置/)).toBeTruthy();
@@ -92,26 +104,26 @@ describe("高级规则 tab 关闭确认", () => {
 	it("B 站订阅的确认文案说「所有覆盖项与特别关注」", async () => {
 		renderRules();
 		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));
-		await screen.findByText("移除该 UP 的个性化配置?");
+		await screen.findByText("移除该订阅的个性化配置?");
 		expect(
-			screen.getByText(/的所有覆盖项与特别关注,该 UP 之后跟随全局规则。此操作不可撤销。/),
+			screen.getByText(/的所有覆盖项与特别关注,该订阅之后跟随全局规则。此操作不可撤销。/),
 		).toBeTruthy();
 	});
 
 	it("确认 dialog 点『取消』→ 关闭弹窗,不动 backend", async () => {
 		renderRules();
 		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));
-		fireEvent.click(await screen.findByText("移除该 UP 的个性化配置?"));
+		fireEvent.click(await screen.findByText("移除该订阅的个性化配置?"));
 		fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
-		await waitFor(() => expect(screen.queryByText("移除该 UP 的个性化配置?")).toBeNull());
+		await waitFor(() => expect(screen.queryByText("移除该订阅的个性化配置?")).toBeNull());
 		expect(api.patch).not.toHaveBeenCalled();
 	});
 
 	it("确认 dialog 点『移除』→ PATCH 清空 overrides + specialViewers", async () => {
 		renderRules();
 		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));
-		await screen.findByText("移除该 UP 的个性化配置?");
+		await screen.findByText("移除该订阅的个性化配置?");
 		fireEvent.click(screen.getByRole("button", { name: "移除" }));
 
 		// overrides 须以清除哨兵下发(现存 slice 显式 null),否则空对象 merge 不删任何键。

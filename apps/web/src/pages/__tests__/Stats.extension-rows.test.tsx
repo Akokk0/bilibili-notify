@@ -18,6 +18,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { subscriptionColor } from "../../utils/up-display";
+import { makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -120,7 +121,10 @@ function mockApi(rows: UpStatsRow[], subs: Subscription[], extensions: Extension
 		// 来源表照装着的拓展列。
 		if (path === "/api/sources") {
 			return Promise.resolve({
-				sources: extensions.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])),
+				sources: [
+					makeSource(),
+					...extensions.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])),
+				],
 			});
 		}
 		// 锐评那几张卡要的全局配置 / 推送目标 / 连接:这里不关心,一直等着。
@@ -196,7 +200,7 @@ describe("统计页 · 拓展订阅的行", () => {
 		expect(subscriptionColor(EXT_SUB)).not.toBe(subscriptionColor(BILI_SUB));
 
 		// 两位都在盯,总粉丝量两支一起加(1000 + 5000)。
-		expect(screen.getByText(/女仆帮主人盯着/).textContent).toContain("2");
+		expect(screen.getByText(/正在跟踪/).textContent).toContain("2");
 		expect(screen.getByText("6000")).toBeTruthy();
 	});
 
@@ -234,7 +238,7 @@ describe("统计页 · 拓展订阅的行", () => {
 	it("UP 选择器里两支都在,挑拓展那位聚焦到它", async () => {
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-		await userEvent.click(screen.getByRole("button", { name: /全部 UP 主/ }));
+		await userEvent.click(screen.getByRole("button", { name: /全部订阅/ }));
 		const items = screen.getAllByRole("button").filter((b) => b.textContent?.includes("抖音乙"));
 		expect(items.length).toBeGreaterThan(0);
 		expect(screen.getAllByRole("button").some((b) => b.textContent?.includes("B 站甲"))).toBe(true);
@@ -248,7 +252,7 @@ describe("统计页 · 拓展订阅的行", () => {
 		mockApi([BILI_ROW, EXT_ROW], [BILI_SUB, noName]);
 		const { unmount } = renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-		expect(tableRow("12345")).toBeTruthy();
+		expect(tableRow("抖音 · 12345")).toBeTruthy();
 		expect(screen.queryByText("抖音乙")).toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
 		unmount();
@@ -256,8 +260,59 @@ describe("统计页 · 拓展订阅的行", () => {
 		mockApi([EXT_ROW], []);
 		renderStats();
 		await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
-		expect(tableRow("12345")).toBeTruthy();
+		expect(tableRow("抖音 · 12345")).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
+	});
+});
+
+describe("统计 CSV 当前来源叫法与原始身份", () => {
+	it.each([false, true])("单来源/混合=%s：列名照来源集合，外部ID保留前导零", async (mixed) => {
+		const first = { ...EXT_ROW, identity: { sourceKey: "douyin", externalId: "0007" } };
+		const rows = mixed
+			? [first, { ...BILI_ROW, identity: { sourceKey: "bilibili", externalId: "0012" } }]
+			: [first];
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path.startsWith("/api/stats/overview")) return { days: DAYS, rows };
+			if (path === "/api/subscriptions") return [];
+			if (path === "/api/sources")
+				return {
+					sources: [
+						makeSource(),
+						{
+							...DOUYIN_SOURCE,
+							descriptor: {
+								...DOUYIN_SOURCE.descriptor,
+								creatorNoun: "播主",
+								externalIdNoun: "账号编号",
+							},
+						},
+					],
+				};
+			return new Promise(() => {});
+		});
+		const create = vi.fn(() => "blob:csv");
+		vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: vi.fn() });
+		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+		const blob = vi.fn();
+		vi.stubGlobal(
+			"Blob",
+			class {
+				constructor(parts: string[]) {
+					blob(parts.join(""));
+				}
+			},
+		);
+		try {
+			renderStats();
+			await userEvent.click(await screen.findByRole("button", { name: "导出 CSV" }));
+			const csv = blob.mock.calls[0]?.[0] as string;
+			expect(csv.split("\n")[0]).toContain(mixed ? "创作者,平台,ID," : "播主,平台,账号编号,");
+			expect(csv).toContain(",抖音,0007,");
+			if (mixed) expect(csv).toContain(",B 站,0012,");
+			expect(api.patch).not.toHaveBeenCalled();
+		} finally {
+			click.mockRestore();
+		}
 	});
 });
 

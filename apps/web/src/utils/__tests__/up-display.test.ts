@@ -14,10 +14,10 @@ import { colorFromSeed } from "@bilibili-notify/internal/identity";
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
 import {
+	displayName,
 	historyRowAvatarUrl,
 	historyRowColor,
 	historyRowIdentity,
-	isExtensionIdentity,
 	profileAvatarUrl,
 	subscriptionColor,
 } from "../up-display";
@@ -47,13 +47,6 @@ describe("profileAvatarUrl(订阅资料里头像的显示地址)", () => {
 		expect(profileAvatarUrl(undefined)).toBeUndefined();
 		expect(profileAvatarUrl({})).toBeUndefined();
 		expect(profileAvatarUrl({ avatar: "" })).toBeUndefined();
-	});
-});
-
-describe("isExtensionIdentity", () => {
-	it("来源键是 bilibili → 不是拓展;别的来源键(拓展 id)→ 是", () => {
-		expect(isExtensionIdentity(BILI_ROW.identity)).toBe(false);
-		expect(isExtensionIdentity(EXT_ROW.identity)).toBe(true);
 	});
 });
 
@@ -121,19 +114,26 @@ describe("颜色与搬家之前一字不差", () => {
 	});
 });
 
+describe("描述符身份叫法", () => {
+	it("非B来源的空名字回退到来源声明的身份词并保留前导零", () => {
+		const sub = makeEmptySubscription({ sourceKey: "library", externalId: "0012" });
+		expect(displayName(sub, { label: "Library", externalIdNoun: "Account" })).toBe("Account 0012");
+	});
+});
+
 describe("historyRowIdentity", () => {
-	const labelOf = (extensionId: string) => (extensionId === "douyin" ? "抖音" : extensionId);
+	const labelOf = { label: "Library", externalIdNoun: "Account" };
 
 	it("B 站行:「UID xxx」", () => {
-		expect(historyRowIdentity(BILI_ROW, labelOf)).toBe("UID 12345");
+		expect(historyRowIdentity(BILI_ROW, labelOf)).toBe("Account 12345");
 	});
 
 	it("拓展行:「平台名 · 外部 id」", () => {
-		expect(historyRowIdentity(EXT_ROW, labelOf)).toBe("抖音 · 12345");
+		expect(historyRowIdentity(EXT_ROW, { label: "抖音" })).toBe("抖音 · 12345");
 	});
 
 	it("拓展行、没给平台名 → 写拓展 id", () => {
-		expect(historyRowIdentity(EXT_ROW)).toBe("douyin · 12345");
+		expect(historyRowIdentity(EXT_ROW, { label: "douyin" })).toBe("douyin · 12345");
 	});
 });
 

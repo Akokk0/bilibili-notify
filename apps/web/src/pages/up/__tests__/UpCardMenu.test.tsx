@@ -19,7 +19,8 @@ function baseProps(overrides: Partial<UpCardMenuProps> = {}): UpCardMenuProps {
 		onClose: vi.fn(),
 		onEdit: vi.fn(),
 		onToggleEnabled: vi.fn(),
-		onCopyUid: vi.fn(),
+		onCopyExternalId: vi.fn(),
+		copyLabel: "复制 UID",
 		onEditTags: vi.fn(),
 		onDelete: vi.fn(),
 		...overrides,
@@ -58,13 +59,13 @@ describe("UpCardMenu", () => {
 	});
 
 	it("点某项 → 触发对应回调并请求关闭", () => {
-		const onCopyUid = vi.fn();
+		const onCopyExternalId = vi.fn();
 		const onClose = vi.fn();
-		render(<UpCardMenu {...baseProps({ onCopyUid, onClose })} />);
+		render(<UpCardMenu {...baseProps({ onCopyExternalId, onClose })} />);
 
 		fireEvent.click(screen.getByText("复制 UID"));
 
-		expect(onCopyUid).toHaveBeenCalledTimes(1);
+		expect(onCopyExternalId).toHaveBeenCalledTimes(1);
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 

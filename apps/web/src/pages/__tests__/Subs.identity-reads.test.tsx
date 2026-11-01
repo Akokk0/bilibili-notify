@@ -8,10 +8,11 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import { makeSource } from "../rules/__tests__/fixtures";
 import Subs from "../Subs";
 
 vi.mock("../../services/api", () => ({
@@ -38,6 +39,7 @@ const EXT = named(makeEmptySubscription({ sourceKey: "douyin", externalId: "Sec-
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
 		if (path === "/api/subscriptions") return Promise.resolve([BILI, EXT]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
@@ -63,6 +65,47 @@ async function renderSubs() {
 }
 
 describe("搜索框按身份里的外部 id 搜", () => {
+	it("来源刷新后当前搜索使用最新来源叫法", async () => {
+		const sub = makeEmptySubscription({ sourceKey: "library", externalId: "0007" });
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/subscriptions") return [sub];
+			if (path === "/api/sources")
+				return {
+					sources: [
+						makeSource({
+							key: "library",
+							descriptor: { label: "Old source", supportedFeatures: ["post"] },
+						}),
+					],
+				};
+			return [];
+		});
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={qc}>
+				<MemoryRouter>
+					<Subs />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		await screen.findAllByText("Old source · 0007");
+		fireEvent.change(screen.getByPlaceholderText("搜索订阅的名字或 id…"), {
+			target: { value: "New source" },
+		});
+		expect(screen.queryByText("Old source · 0007")).toBeNull();
+		act(() =>
+			qc.setQueryData(["sources"], {
+				sources: [
+					makeSource({
+						key: "library",
+						descriptor: { label: "New source", supportedFeatures: ["post"] },
+					}),
+				],
+			}),
+		);
+		expect((await screen.findAllByText("New source · 0007")).length).toBeGreaterThan(0);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
 	it("输入 B 站订阅的 uid → 只剩它;输入拓展订阅的外部 id(不分大小写)→ 只剩它", async () => {
 		await renderSubs();
 		const input = screen.getByPlaceholderText("搜索订阅的名字或 id…");
@@ -83,12 +126,53 @@ describe("右键菜单「复制 UID」", () => {
 		fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
 		fireEvent.click(await screen.findByText("复制 UID"));
 		await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith("111"));
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 
-	it("拓展订阅没有 uid → 菜单里没有这一项(其余项照常)", async () => {
+	it("未知来源也复制原始外部 id，保留前导零且不保存订阅", async () => {
+		const sub = named(
+			makeEmptySubscription({ sourceKey: "retired", externalId: "0012" }),
+			"遗留订阅",
+		);
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/subscriptions") return [BILI, sub];
+			if (path === "/api/sources") return { sources: [makeSource()] };
+			return [];
+		});
 		await renderSubs();
-		fireEvent.contextMenu(screen.getByText("抖音乙"), { clientX: 100, clientY: 100 });
-		expect(await screen.findByText("删除订阅")).toBeTruthy();
-		expect(screen.queryByText("复制 UID")).toBeNull();
+		fireEvent.contextMenu(screen.getByText("遗留订阅"), { clientX: 100, clientY: 100 });
+		fireEvent.click(await screen.findByText("复制 ID"));
+		await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith("0012"));
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
+	});
+
+	it("非 B 来源使用自己的 ID 叫法，复制失败显示提示而不保存", async () => {
+		const sub = named(makeEmptySubscription({ sourceKey: "library", externalId: "0007" }), "读者");
+		vi.mocked(copyToClipboard).mockResolvedValueOnce(false);
+		vi.mocked(api.get).mockImplementation(async (path) => {
+			if (path === "/api/subscriptions") return [BILI, sub];
+			if (path === "/api/sources")
+				return {
+					sources: [
+						makeSource({
+							key: "library",
+							descriptor: {
+								label: "Library",
+								externalIdNoun: "Account",
+								supportedFeatures: ["post"],
+							},
+						}),
+					],
+				};
+			return [];
+		});
+		await renderSubs();
+		fireEvent.contextMenu(screen.getByText("读者"), { clientX: 100, clientY: 100 });
+		fireEvent.click(await screen.findByText("复制 Account"));
+		await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith("0007"));
+		expect(await screen.findByText(/复制失败/)).toBeTruthy();
+		expect(api.patch).not.toHaveBeenCalled();
+		expect(api.post).not.toHaveBeenCalled();
 	});
 });

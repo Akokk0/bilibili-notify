@@ -11,8 +11,10 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { chooseSelect } from "../../__tests__/select-controls";
+import { i18n } from "../../i18n";
 import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
@@ -43,18 +45,50 @@ function globalsWith(
 	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalConfig;
 }
 
+const SOURCES = {
+	sources: [
+		{
+			key: "sample-source",
+			status: "running",
+			has: {},
+			descriptor: {
+				label: "Sample",
+				supportedFeatures: ["membership", "superchat"],
+				membershipPrograms: [
+					{
+						id: "guard",
+						name: "Sample membership",
+						tiers: [
+							{ key: "captain", name: "舰长", rank: 1 },
+							{ key: "commander", name: "提督", rank: 2 },
+							{ key: "governor", name: "总督", rank: 3 },
+						],
+					},
+				],
+			},
+		},
+	],
+};
+
 function mount(g: GlobalConfig, subs: Subscription[] = []) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
 		Promise.resolve(
-			url.includes("/api/subscriptions") ? subs : { core: JSON.parse(JSON.stringify(g)) },
+			url.includes("/api/subscriptions")
+				? subs
+				: url === "/api/sources"
+					? SOURCES
+					: { core: JSON.parse(JSON.stringify(g)) },
 		),
 	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<Rules />
-		</QueryClientProvider>,
-	);
+	return {
+		...render(
+			<QueryClientProvider client={qc}>
+				<Rules />
+			</QueryClientProvider>,
+		),
+		qc,
+	};
 }
 
 beforeEach(() => {
@@ -91,6 +125,32 @@ async function saveAndGetBody(): Promise<{ defaults: Record<string, unknown> }> 
 }
 
 describe("全局直播门槛:改了 → 保存条亮、PATCH 带着它", () => {
+	it("来源与语言刷新保留脏草稿，保存其他格不清未知体系", async () => {
+		const { qc } = mount(
+			globalsWith((d) => {
+				d.membership = { minRank: { retired: 8 } };
+			}),
+		);
+		await gotoSection("直播阈值");
+		const input = await waitFor(() => {
+			const node = field("superchat.minAmount")?.querySelector("input");
+			expect(node).toBeTruthy();
+			return node as HTMLInputElement;
+		});
+		fireEvent.change(input, { target: { value: "55" } });
+		act(() => qc.setQueryData(["sources"], { sources: [] }));
+		const prior = i18n.state();
+		try {
+			act(() => i18n.set({ locale: "en", voice: "plain" }));
+			expect(input.value).toBe("55");
+			expect(api.patch).not.toHaveBeenCalled();
+			const body = await saveAndGetBody();
+			expect(body.defaults.superchat).toEqual({ minAmount: 55 });
+			expect(body.defaults.membership).toEqual({ minRank: { retired: 8 } });
+		} finally {
+			act(() => i18n.set(prior));
+		}
+	});
 	it("改金额门槛 → 灵动岛检出 superchat.minAmount;保存的 body 里 defaults.superchat.minAmount 是新值", async () => {
 		mount(globalsWith());
 		await gotoSection("直播阈值");
@@ -110,12 +170,12 @@ describe("全局直播门槛:改了 → 保存条亮、PATCH 带着它", () => {
 	it("选上舰档位「总督」→ 灵动岛检出 membership.minRank;body 里是 rank 3", async () => {
 		mount(globalsWith());
 		await gotoSection("直播阈值");
-		const buttons = await waitFor(() => {
-			const els = field("membership.minRank.guard")?.querySelectorAll("button");
-			if (!els || els.length === 0) throw new Error("档位按钮还没出来");
-			return Array.from(els) as HTMLButtonElement[];
+		const picker = await waitFor(() => {
+			const el = field("membership.minRank.guard")?.querySelector('[role="combobox"]');
+			if (!el) throw new Error("档位选择器还没出来");
+			return el as HTMLButtonElement;
 		});
-		fireEvent.click(buttons[2] as HTMLButtonElement);
+		chooseSelect(picker, "总督");
 		// 基线里这一段是空的,所以 minRank 这一层是整个从无到有:灵动岛按 `membership.minRank` 报(字典里有名字)。
 		await waitFor(() => expect(diffCodes()).toContain("membership.minRank"));
 
@@ -134,10 +194,9 @@ describe("全局直播门槛:改了 → 保存条亮、PATCH 带着它", () => {
 		await waitFor(() => expect(field("superchat.minAmount")).not.toBeNull());
 		const amountInput = field("superchat.minAmount")?.querySelector("input");
 		expect(amountInput?.value).toBe("30");
-		const pressed = Array.from(field("membership.minRank.guard")?.querySelectorAll("button") ?? [])
-			.filter((b) => b.getAttribute("aria-pressed") === "true")
-			.map((b) => b.textContent);
-		expect(pressed).toEqual(["提督"]);
+		expect(field("membership.minRank.guard")?.querySelector('[role="combobox"]')?.textContent).toBe(
+			"提督",
+		);
 		expect(diffCodes()).toEqual([]);
 	});
 });
@@ -160,7 +219,7 @@ describe("全局上舰提示:清空某一档的文案 → 显式 null(清得掉)
 
 	it("清空舰长的文案(还留着图片)→ 保存的 body 里 captain.template 是 null、captain.imageUrl 原样", async () => {
 		mount(globalsWith((d) => (d.templates.membership = { guard: structuredClone(guard) })));
-		await gotoSection("上舰提示");
+		await gotoSection("会员提示");
 		await waitFor(() => expect(tierInputs("captain")).toHaveLength(2));
 		fireEvent.change(tierInputs("captain")[0] as HTMLInputElement, { target: { value: "" } });
 		// 草稿里这一格被拿掉了:输入框空着,占位显示跟随的默认。
@@ -178,7 +237,7 @@ describe("全局上舰提示:清空某一档的文案 → 显式 null(清得掉)
 
 	it("清空总督唯一的一格 → 整档 null", async () => {
 		mount(globalsWith((d) => (d.templates.membership = { guard: structuredClone(guard) })));
-		await gotoSection("上舰提示");
+		await gotoSection("会员提示");
 		await waitFor(() => expect(tierInputs("governor")).toHaveLength(2));
 		fireEvent.change(tierInputs("governor")[0] as HTMLInputElement, { target: { value: "" } });
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
@@ -193,7 +252,7 @@ describe("全局上舰提示:清空某一档的文案 → 显式 null(清得掉)
 
 	it("清空了又填回原样:草稿回到基线,保存条熄灭(不留「改了又没改」的假脏)", async () => {
 		mount(globalsWith((d) => (d.templates.membership = { guard: structuredClone(guard) })));
-		await gotoSection("上舰提示");
+		await gotoSection("会员提示");
 		await waitFor(() => expect(tierInputs("governor")).toHaveLength(2));
 		fireEvent.change(tierInputs("governor")[0] as HTMLInputElement, { target: { value: "" } });
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
@@ -213,7 +272,7 @@ describe("全局上舰提示:没配过的档敲了又删", () => {
 				};
 			}),
 		);
-		await gotoSection("上舰提示");
+		await gotoSection("会员提示");
 		const input = await waitFor(() => {
 			const chip = Array.from(document.querySelectorAll("code")).find(
 				(c) => c.textContent === "commander",

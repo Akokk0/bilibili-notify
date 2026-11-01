@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../../up/subscription-source";
+import { subscriptionPlatformOf } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
-import { makeAi, makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults, makeSource } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -58,10 +59,13 @@ const PROFILE = { name: "某位", followers: 1, refreshedAt: "t" };
 
 describe("PerUpEditor 头部的「是谁」", () => {
 	it("B 站订阅:UID xxx", () => {
-		renderEditor({
-			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
-			cachedProfile: PROFILE,
-		});
+		renderEditor(
+			{
+				...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
+				cachedProfile: PROFILE,
+			},
+			subscriptionPlatformOf({ sourceKey: "bilibili" }, [makeSource()]),
+		);
 		expect(screen.getByText(/^UID 123456 · 关闭一个分组/)).toBeTruthy();
 	});
 
@@ -74,6 +78,9 @@ describe("PerUpEditor 头部的「是谁」", () => {
 			label: "抖音",
 			features: ["post"],
 			absent: false,
+			supportedExtras: [],
+			status: "running",
+			showBadge: true,
 		};
 		const { unmount } = renderEditor(sub, platform);
 		expect(screen.getByText(/^抖音 · sec-2 · 关闭一个分组/)).toBeTruthy();

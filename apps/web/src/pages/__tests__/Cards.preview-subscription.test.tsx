@@ -15,7 +15,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Cards from "../Cards";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
@@ -79,6 +79,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([BILI, DOUYIN]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
+		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		return Promise.resolve({ core: GLOBALS });
 	});
 	vi.mocked(api.post).mockResolvedValue({ ok: true, dataUrl: "data:image/png;base64,xx" });
@@ -95,7 +96,7 @@ describe("卡片预览挑订阅", () => {
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
 		const options = selectOptionsOf(select).map((o) => o.textContent);
-		expect(options).toEqual(["不挑，用示例", "UID 123456", "sec-1"]);
+		expect(options).toEqual(["不挑，用示例", "UID 123456", "douyin · sec-1"]);
 		expect(select.textContent).toBe("不挑，用示例");
 		// 没挑订阅:「第几条作品」不出现,请求里作品卡一格都不带(服务端画示例)。
 		expect(container.querySelector('[data-code="nth"]')).toBeNull();
@@ -108,7 +109,7 @@ describe("卡片预览挑订阅", () => {
 		const { container } = renderCards();
 		await openPostCard();
 		const select = await waitFor(() => subscriptionSelect(container));
-		chooseSelect(select, "sec-1");
+		chooseSelect(select, "douyin · sec-1");
 		await waitFor(() => expect(container.querySelector('[data-code="nth"] input')).not.toBeNull());
 		await waitFor(
 			() =>

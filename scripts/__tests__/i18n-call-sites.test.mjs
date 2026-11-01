@@ -565,6 +565,7 @@ function defaultUiTextNodes(source, packageNames) {
  */
 export function analyzeFile(source, end, sentences) {
 	const findings = [];
+	const literalCalls = [];
 	const report = (code, node, detail) =>
 		findings.push({ code, line: lineOf(source, node), detail });
 	const { ast, path } = source;
@@ -674,7 +675,7 @@ export function analyzeFile(source, end, sentences) {
 	collectDeclarations(ast);
 
 	const tracked = new Set([...tNames, ...i18nNames, ...useTNames]);
-	if (tracked.size === 0) return { findings, calls: 0 };
+	if (tracked.size === 0) return { findings, calls: 0, literalCalls };
 
 	let calls = 0;
 	// 取字(以及读语言 / 口吻)的时机:加载时、构造时都会把语言冻住(决策 1)
@@ -706,6 +707,7 @@ export function analyzeFile(source, end, sentences) {
 			report("unrecognised", call, "键不是字面量");
 			return;
 		}
+		literalCalls.push(key);
 		const sentence =
 			uiTextNames.has(call.expression.getText(ast)) && !key.startsWith("ui.")
 				? undefined
@@ -883,7 +885,8 @@ export function analyzeFile(source, end, sentences) {
 		}
 	};
 	visit(ast);
-	return { findings, calls };
+	// 当前语法守卫遇到遮蔽或其他认不出的入口写法时，整份文件不提供例外读者证据。
+	return { findings, calls, literalCalls: findings.length === 0 ? literalCalls : [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -908,6 +911,70 @@ const serverOf = (body, imports = SERVER_IMPORT) =>
 const webOf = (body, imports = WEB_IMPORT) =>
 	analyzeFile(parseSource(WEB_FILE, imports + body), ENDS.web, SENTENCES);
 const codes = (result) => result.findings.map((finding) => finding.code);
+
+describe("统计例外的真实取字读者", () => {
+	const key = "sourceUi.pages.Stats.plainPosts";
+	const sentences = sentencesOf({ [key]: "动态" });
+	const file = "apps/web/src/pages/Stats.tsx";
+	it("统计例外缺读者、Rules复用和伪装取字都拒绝", () => {
+		const stats = parseSource(
+			file,
+			WEB_IMPORT +
+				`export function View() { const tx = useT(); return [tx("${key}"), tx("sourceUi.pages.Stats.Stats.22"), tx("sourceUi.pages.Stats.subtitle.38")]; }`,
+		);
+		const csv = parseSource(
+			"apps/web/src/pages/stats/csv.ts",
+			`import { i18n } from "../../i18n"; export function csv() { return i18n.t("${key}"); }`,
+		);
+		const words = sentencesOf({
+			[key]: "动态",
+			"sourceUi.pages.Stats.Stats.22": "动态",
+			"sourceUi.pages.Stats.subtitle.38": "动态",
+		});
+		expect(auditStatReaders([stats, csv], words)).toEqual([]);
+		expect(auditStatReaders([stats], words)).not.toEqual([]);
+		expect(
+			auditStatReaders(
+				[
+					stats,
+					csv,
+					parseSource(
+						"apps/web/src/pages/Rules.tsx",
+						WEB_IMPORT + `export function Rules() { const tx = useT(); return tx("${key}"); }`,
+					),
+				],
+				words,
+			),
+		).not.toEqual([]);
+		expect(
+			auditStatReaders(
+				[parseSource(file, stats.text.replace("../i18n/index", "./fake")), csv],
+				words,
+			),
+		).not.toEqual([]);
+	});
+
+	it("只记录真实入口的字面量调用，假导入和遮蔽不提供读者证据", () => {
+		const body = `export function View() { const tx = useT(); return tx("${key}"); }`;
+		expect(
+			analyzeFile(parseSource(file, WEB_IMPORT + body), ENDS.web, sentences).literalCalls,
+		).toEqual([key]);
+		expect(
+			analyzeFile(parseSource(file, 'import { useT } from "./fake";\n' + body), ENDS.web, sentences)
+				.literalCalls,
+		).toEqual([]);
+		expect(
+			analyzeFile(
+				parseSource(
+					file,
+					WEB_IMPORT + body.replace(`return tx`, `function inner(tx) { return tx`) + "}",
+				),
+				ENDS.web,
+				sentences,
+			).literalCalls,
+		).toEqual([]);
+	});
+});
 
 describe("调用处守卫的判据(样例):干净的写法", () => {
 	it("服务端:t 的字面量键加对得上的值,多种写法都认", () => {
@@ -984,7 +1051,7 @@ export function B() {
 export const s = 't("a.greet")';
 export const u = \`t("a.greet")\`;
 `);
-		expect(result).toEqual({ findings: [], calls: 0 });
+		expect(result).toEqual({ findings: [], calls: 0, literalCalls: [] });
 	});
 
 	it("不引入译文入口的文件不管:本地的 t 是别的东西", () => {
@@ -993,7 +1060,7 @@ export const u = \`t("a.greet")\`;
 			ENDS.server,
 			SENTENCES,
 		);
-		expect(result).toEqual({ findings: [], calls: 0 });
+		expect(result).toEqual({ findings: [], calls: 0, literalCalls: [] });
 	});
 
 	it("只引入类型的不算", () => {
@@ -1001,12 +1068,12 @@ export const u = \`t("a.greet")\`;
 			"export type K = ServerTextKey;",
 			'import type { ServerTextKey } from "../i18n/index.js";\n',
 		);
-		expect(result).toEqual({ findings: [], calls: 0 });
+		expect(result).toEqual({ findings: [], calls: 0, literalCalls: [] });
 		const inline = serverOf(
 			"export type K = ServerTextKey;",
 			'import { type ServerTextKey } from "../i18n/index.js";\n',
 		);
-		expect(inline).toEqual({ findings: [], calls: 0 });
+		expect(inline).toEqual({ findings: [], calls: 0, literalCalls: [] });
 	});
 });
 
@@ -1415,6 +1482,30 @@ export function plain() { return new Intl.NumberFormat(i18n.state().locale); }
 /** 各家的译文入口文件本身不扫(里面的 `export const t = i18n.t` 就是定义)。 */
 const STORE_FILES = Object.values(ENDS).map((end) => `${end.store}.ts`);
 
+/** 4-26 主人批准的统计叫法例外：文件集合必须恰好一致，不按前缀或函数名放行。 */
+export const STAT_READERS = {
+	"sourceUi.pages.Stats.Stats.22": ["apps/web/src/pages/Stats.tsx"],
+	"sourceUi.pages.Stats.subtitle.38": ["apps/web/src/pages/Stats.tsx"],
+	"sourceUi.pages.Stats.plainPosts": [
+		"apps/web/src/pages/Stats.tsx",
+		"apps/web/src/pages/stats/csv.ts",
+	],
+};
+
+export function auditStatReaders(sources, sentences) {
+	const readers = new Map(Object.keys(STAT_READERS).map((key) => [key, new Set()]));
+	for (const source of sources) {
+		const analysis = analyzeFile(source, ENDS.web, sentences);
+		for (const key of analysis.literalCalls) readers.get(key)?.add(source.path);
+	}
+	return Object.entries(STAT_READERS).flatMap(([key, expected]) => {
+		const actual = [...readers.get(key)].sort();
+		return JSON.stringify(actual) === JSON.stringify([...expected].sort())
+			? []
+			: [`${key}:统计例外读者应为 ${expected.join(",")}，实为 ${actual.join(",")}`];
+	});
+}
+
 /** 真去扫仓库:端 → { files: 文件 → findings, calls }。 */
 export function scanRepo() {
 	const result = {};
@@ -1443,6 +1534,15 @@ const allowlistOf = (name) =>
 
 describe("服务端、面板与各包的取字调用", () => {
 	const scanned = scanRepo();
+
+	it("三个统计例外的真实生产读者没有缺失或跨界复用", () => {
+		expect(
+			auditStatReaders(
+				listSources([ENDS.web.root]).map((file) => parseSource(file)),
+				loadSentences(ENDS.web),
+			),
+		).toEqual([]);
+	});
 
 	for (const [name, end] of Object.entries(ENDS)) {
 		it(`${name}:译文入口在,并且导出了守卫要认的名字 ${end.valueNames.join(" / ")}`, () => {

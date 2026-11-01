@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useDraftStore } from "../../store/draft";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -67,7 +67,11 @@ function resetStore(): void {
 function mount(g: GlobalConfig) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
 		Promise.resolve(
-			url.includes("/api/subscriptions") ? [] : { core: JSON.parse(JSON.stringify(g)) },
+			url === "/api/sources"
+				? { sources: [makeSource()] }
+				: url.includes("/api/subscriptions")
+					? []
+					: { core: JSON.parse(JSON.stringify(g)) },
 		),
 	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -315,7 +319,7 @@ describe("账本在第一次改某条时记", () => {
 describe("上舰文案的体系默认也接上「默认文案有更新」", () => {
 	const GUARD_DEFAULT = `templates.${GUARD_PATH}`;
 
-	/** 打开自定义上舰提示;`template` 不给 = 体系默认那一句没存。 */
+	/** 打开自定义会员提示;`template` 不给 = 体系默认那一句没存。 */
 	function withGuard(template?: string, seen?: Record<string, string>) {
 		return globalsWith((d, top) => {
 			d.templates.membership = {
@@ -330,8 +334,8 @@ describe("上舰文案的体系默认也接上「默认文案有更新」", () =
 	}
 
 	async function gotoGuard(): Promise<void> {
-		await waitFor(() => expect(screen.getAllByText("上舰提示").length).toBeGreaterThan(0));
-		fireEvent.click(screen.getAllByText("上舰提示")[0]);
+		await waitFor(() => expect(screen.getAllByText("会员提示").length).toBeGreaterThan(0));
+		fireEvent.click(screen.getAllByText("会员提示")[0]);
 		await waitFor(() =>
 			expect(document.querySelector(`[data-code="${GUARD_DEFAULT}"]`)).not.toBeNull(),
 		);

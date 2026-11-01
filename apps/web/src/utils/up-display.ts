@@ -4,31 +4,27 @@
  * helpers 原地转口,页面侧引用点不用改。
  */
 
-import type { HistoryEntryView } from "@bilibili-notify/contract";
-import type { HistoryRowIdentity } from "@bilibili-notify/internal";
 import {
-	BILIBILI_SOURCE_KEY,
-	type Identity,
-	identityColor,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../types/domain";
+	displayNameOf,
+	type HistoryEntryView,
+	subscriptionIdentityLabel,
+} from "@bilibili-notify/contract";
+import type { HistoryRowIdentity } from "@bilibili-notify/internal";
+import { identityColor, type Subscription, subscriptionIdentityOf } from "../types/domain";
 import { imageUrl } from "./image-url";
-
-/** 这个身份是拓展来的吗:来源键不是 B 站。订阅与历史行共用这一个判断。 */
-export function isExtensionIdentity(identity: Identity): boolean {
-	return identity.sourceKey !== BILIBILI_SOURCE_KEY;
-}
 
 /**
  * B 站订阅没拿到资料时回落到「UID xxx」;拓展订阅(ADR-0019 决策 9)没有 uid,回落到它的外部 id ——
  * 总得认得出是哪一个(别名已退役,ADR-0021 决策 16)。
  */
-export function displayName(sub: Subscription): string {
-	const cached = sub.cachedProfile?.name?.trim();
-	if (cached) return cached;
-	const identity = subscriptionIdentityOf(sub);
-	return isExtensionIdentity(identity) ? identity.externalId : `UID ${identity.externalId}`;
+export function displayName(
+	sub: Subscription,
+	platform: { label: string; externalIdNoun?: string },
+): string {
+	return displayNameOf(
+		{ profileName: sub.cachedProfile?.name },
+		subscriptionIdentityLabel(subscriptionIdentityOf(sub), platform),
+	);
 }
 
 /**
@@ -79,10 +75,7 @@ export function historyRowColor(row: HistoryRowIdentity): string {
  */
 export function historyRowIdentity(
 	row: HistoryRowIdentity,
-	platformLabelOf: (extensionId: string) => string = (extensionId) => extensionId,
+	platform: { label: string; externalIdNoun?: string },
 ): string {
-	const { sourceKey, externalId } = row.identity;
-	return isExtensionIdentity(row.identity)
-		? `${platformLabelOf(sourceKey)} · ${externalId}`
-		: `UID ${externalId}`;
+	return subscriptionIdentityLabel(row.identity, platform);
 }

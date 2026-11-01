@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import { makeSource } from "../rules/__tests__/fixtures";
 import Subs from "../Subs";
 
 vi.mock("../../services/api", () => ({
@@ -57,6 +58,7 @@ function renderSubs() {
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (path === "/api/subscriptions/tags") return Promise.resolve([...TAGS]);
 		if (path === "/api/subscriptions") return Promise.resolve([SUB_A, SUB_B]);
 		if (path.startsWith("/api/targets")) return Promise.resolve([]);

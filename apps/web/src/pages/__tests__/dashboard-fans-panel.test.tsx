@@ -13,6 +13,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FollowersRefreshEntry } from "../../services/dashboard";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import { makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -82,7 +83,10 @@ const EXT_ENTRY: FollowersRefreshEntry = {
 
 /** 来源表照装着的拓展列:装了抖音订阅源,表里就有它那一行。 */
 function sourcesOf(extensions: ExtensionDTO[] | undefined): SourceEntry[] | undefined {
-	return extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []));
+	return [
+		makeSource(),
+		...(extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])) ?? []),
+	];
 }
 
 function renderPanel(
@@ -151,7 +155,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 			[DOUYIN],
 		);
 		await waitFor(() => expect(screen.getByText("资料里的名")).toBeTruthy());
-		expect(screen.getByText("sec-2")).toBeTruthy();
+		expect(screen.getByText("抖音 · sec-2")).toBeTruthy();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 

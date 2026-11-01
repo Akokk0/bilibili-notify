@@ -1,3 +1,5 @@
+import { useT } from "../i18n";
+
 /**
  * 作用域切换条 —— 「全局 / 全部 UP」+ 已定制 UP 的 tab + 「添加 UP」下拉。
  *
@@ -7,6 +9,7 @@
  * 计数,从而在同一 Subscription.overrides 上各管各的切片。
  */
 
+import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
 import {
 	ADD_LANGUAGE,
 	Avatar,
@@ -24,12 +27,7 @@ import {
 	useDismiss,
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
-import {
-	BILIBILI_SOURCE_KEY,
-	type Identity,
-	type Subscription,
-	subscriptionIdentityOf,
-} from "../types/domain";
+import { type Identity, type Subscription, subscriptionIdentityOf } from "../types/domain";
 // 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套。
 import { displayName, profileAvatarUrl, subscriptionColor } from "../utils/up-display";
 
@@ -52,7 +50,7 @@ export interface ScopeTabsProps<S extends Subscription = Subscription> {
 	 * 拓展订阅的平台名(清单里的叫法)。拓展订阅没有 uid,「是谁」那一小行写「平台名 · 外部 id」
 	 * (ADR-0019 决策 73 的口径);不给、或取不到时平台名写拓展 id(同决策 10)。
 	 */
-	platformLabelOf?: (extensionId: string) => string | undefined;
+	platformOf?: (identity: Identity) => { label: string; externalIdNoun?: string };
 	/** 自定义提示语(右侧)。默认走 Rules 文案;Cards 传卡片专属文案。 */
 	globalHint?: string;
 	perUpHint?: (sub: S | undefined) => React.ReactNode;
@@ -66,28 +64,24 @@ export function ScopeTabs<S extends Subscription>({
 	onAddSub,
 	onRemoveSub,
 	overridesCountFor,
-	platformLabelOf,
+	platformOf,
 	globalHint,
 	perUpHint,
 }: ScopeTabsProps<S>) {
+	const tx = useT();
 	const [adding, setAdding] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement | null>(null);
 
 	useDismiss(dropdownRef, () => setAdding(false), { enabled: adding });
 
 	const isGlobal = scope === "__global";
-	// 拓展订阅「是谁」那一行:「平台名 · 外部 id」。平台名拿来源键去取(拓展 id)。
-	const extensionIdLabel = (identity: Identity): string =>
-		`${platformLabelOf?.(identity.sourceKey) ?? identity.sourceKey} · ${identity.externalId}`;
-	// 右侧提示里的「是谁」:B 站照旧只写那串 uid 数字;拓展订阅写「平台名 · 外部 id」。
+	const platformFor = (identity: Identity) =>
+		platformOf?.(identity) ?? { label: identity.sourceKey };
 	const focused = tabSubs.find((s) => s.id === scope);
 	const focusedIdentity = focused === undefined ? undefined : subscriptionIdentityOf(focused);
-	const focusedIdLabel =
-		focusedIdentity === undefined
-			? undefined
-			: focusedIdentity.sourceKey === BILIBILI_SOURCE_KEY
-				? focusedIdentity.externalId
-				: extensionIdLabel(focusedIdentity);
+	const focusedIdLabel = focusedIdentity
+		? subscriptionIdentityLabel(focusedIdentity, platformFor(focusedIdentity))
+		: undefined;
 
 	return (
 		<TabBarShell>
@@ -98,7 +92,7 @@ export function ScopeTabs<S extends Subscription>({
 				icon={<Icon.bell size={14} />}
 				code="default"
 			>
-				全局 / 全部 UP
+				{tx("sourceUi.components.scope.tabs.ScopeTabs.1")}
 			</TabButton>
 
 			{tabSubs.length > 0 ? <span className="mx-0.5 h-5.5 w-px bg-bn-border" /> : null}
@@ -127,13 +121,16 @@ export function ScopeTabs<S extends Subscription>({
 							className="flex items-center gap-1.5"
 						>
 							<Avatar
-								name={displayName(sub)}
+								name={displayName(sub, platformFor(sub.identity))}
 								color={color}
 								size={18}
 								url={profileAvatarUrl(sub.cachedProfile)}
 							/>
-							<span className="max-w-35 truncate" title={displayName(sub)}>
-								{displayName(sub)}
+							<span
+								className="max-w-35 truncate"
+								title={displayName(sub, platformFor(sub.identity))}
+							>
+								{displayName(sub, platformFor(sub.identity))}
 							</span>
 							{count > 0 ? (
 								// 选中态换 on-solid:实心粉底上的粉徽章读不出来;白纱 + 白字与
@@ -153,7 +150,9 @@ export function ScopeTabs<S extends Subscription>({
 						    neutral:平时安静、hover 才出反馈,IconButton 的既定哲学。 */}
 						<IconButton
 							icon={<Icon.close size={11} />}
-							label={`移除 ${displayName(sub)} 的个性化配置`}
+							label={tx("sourceUi.components.scope.tabs.label.2", {
+								value1: displayName(sub, platformFor(sub.identity)),
+							})}
 							size="xs"
 							tone="neutral"
 							surface={active ? "scrim" : undefined}
@@ -174,23 +173,23 @@ export function ScopeTabs<S extends Subscription>({
 				<button
 					type="button"
 					onClick={() => setAdding((v) => !v)}
-					title="从订阅列表添加 UP 主的个性化配置"
+					title={tx("sourceUi.components.scope.tabs.title.3")}
 					data-bn="add-slot"
 					className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-bn-sm font-semibold ${
 						adding ? `${SELECTED_LANGUAGE} transition` : ADD_LANGUAGE
 					}`}
 				>
 					<Icon.plus size={13} />
-					添加 UP
+					{tx("sourceUi.components.scope.tabs.ScopeTabs.4")}
 				</button>
 				{adding ? (
 					<PopoverShell layer="nav" variant="flush" className="min-w-60">
 						<div className="border-b border-bn-border-subtle px-3 pb-1.5 pt-2 text-bn-xs font-bold uppercase tracking-wider text-bn-text-tertiary">
-							选择要单独定制的 UP 主
+							{tx("sourceUi.components.scope.tabs.ScopeTabs.5")}
 						</div>
 						{availableSubs.length === 0 ? (
 							<EmptyNote size="sm" className="m-2">
-								所有已订阅的 UP 主都已添加
+								{tx("sourceUi.components.scope.tabs.ScopeTabs.6")}
 							</EmptyNote>
 						) : (
 							<div className="max-h-72 overflow-y-auto py-1">
@@ -206,21 +205,17 @@ export function ScopeTabs<S extends Subscription>({
 											}}
 										>
 											<Avatar
-												name={displayName(sub)}
+												name={displayName(sub, platformFor(sub.identity))}
 												color={color}
 												size={28}
 												url={profileAvatarUrl(sub.cachedProfile)}
 											/>
 											<div className="min-w-0 flex-1">
 												<div className="truncate text-bn-sm font-bold text-bn-text-primary">
-													{displayName(sub)}
+													{displayName(sub, platformFor(sub.identity))}
 												</div>
 												<div className="text-bn-2xs text-bn-text-tertiary tabular-nums">
-													{identity.sourceKey === BILIBILI_SOURCE_KEY ? (
-														<>UID {identity.externalId}</>
-													) : (
-														extensionIdLabel(identity)
-													)}
+													{subscriptionIdentityLabel(identity, platformFor(identity))}
 												</div>
 											</div>
 										</MenuItem>
@@ -233,7 +228,7 @@ export function ScopeTabs<S extends Subscription>({
 							onClick={() => setAdding(false)}
 							className="block w-full border-t border-bn-border-subtle py-2 text-center text-bn-xs text-bn-text-tertiary hover:text-bn-text-primary"
 						>
-							取消
+							{tx("subs.new.cancel")}
 						</button>
 					</PopoverShell>
 				) : null}
@@ -242,13 +237,14 @@ export function ScopeTabs<S extends Subscription>({
 			<div className="flex-1" />
 			<div className="px-2 text-bn-xs text-bn-text-tertiary">
 				{isGlobal ? (
-					(globalHint ?? "此处为全部 UP 默认设置")
+					(globalHint ?? tx("sourceUi.components.scope.tabs.ScopeTabs.7"))
 				) : perUpHint ? (
 					perUpHint(tabSubs.find((s) => s.id === scope))
 				) : (
 					<>
-						仅作用于 <b className="text-bn-pink">{focusedIdLabel}</b>
-						,未开启的项继承全局
+						{tx("sourceUi.components.scope.tabs.ScopeTabs.8")}
+						<b className="text-bn-pink tabular-nums">{focusedIdLabel}</b>
+						{tx("sourceUi.components.scope.tabs.ScopeTabs.9")}
 					</>
 				)}
 			</div>

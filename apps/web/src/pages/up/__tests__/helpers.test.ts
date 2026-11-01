@@ -118,7 +118,7 @@ describe("subscriptionColor / displayName × 两支订阅", () => {
 	});
 
 	it("B 站没资料 → 「UID xxx」;拓展没资料 → 外部 id(别名已退役,ADR-0021 决策 16)", () => {
-		expect(displayName(bili)).toBe("UID 12345");
-		expect(displayName(ext)).toBe("12345");
+		expect(displayName(bili, { label: "B 站", externalIdNoun: "UID" })).toBe("UID 12345");
+		expect(displayName(ext, { label: "douyin" })).toBe("douyin · 12345");
 	});
 });

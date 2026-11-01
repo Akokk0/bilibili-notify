@@ -9,7 +9,7 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { GuardSection } from "../sections";
-import { makeDefaults } from "./fixtures";
+import { makeDefaults, makeSource } from "./fixtures";
 
 afterEach(cleanup);
 
@@ -32,7 +32,12 @@ function renderSection(guard: Bundle | null = BUNDLE) {
 	};
 	const onPatch = vi.fn();
 	const view = render(
-		<GuardSection templates={templates} factory={templateDefaultsFor("zh-CN")} onPatch={onPatch} />,
+		<GuardSection
+			programs={makeSource().descriptor.membershipPrograms}
+			templates={templates}
+			factory={templateDefaultsFor("zh-CN")}
+			onPatch={onPatch}
+		/>,
 	);
 	/** 一档那一块(按档 key 那枚小标签找)。 */
 	const tierCard = (key: string): HTMLElement => {
@@ -60,6 +65,28 @@ const guardPatch = (delta: object) => ({
 });
 
 describe("GuardSection · 开关", () => {
+	it("custom 与空档只提供体系默认，自定义档说明由创作者决定", () => {
+		const defaults = makeDefaults();
+		const { container } = render(
+			<GuardSection
+				programs={[
+					{ id: "custom", name: "Custom", tiers: "custom" },
+					{ id: "empty", name: "Empty", tiers: [] },
+				]}
+				templates={{
+					...defaults.templates,
+					membership: { custom: { ...BUNDLE }, empty: { ...BUNDLE } },
+				}}
+				factory={templateDefaultsFor("zh-CN")}
+				onPatch={vi.fn()}
+			/>,
+		);
+		expect(container.querySelectorAll("input")).toHaveLength(4);
+		expect(container.textContent).toContain("档位由创作者自定");
+		expect(container.querySelectorAll('[data-code*=".tiers."]')).toHaveLength(0);
+		expect(container.textContent).toContain("体系默认文案");
+		expect(container.textContent).toContain("体系默认图片");
+	});
 	it("没开自定义:只有一句说明,没有输入框;点开关 → 补丁 enabled: true", () => {
 		const { onPatch, container } = renderSection({ ...BUNDLE, enabled: false });
 		expect(container.textContent).toContain("未启用");
@@ -124,7 +151,7 @@ describe("GuardSection · 体系默认与三档", () => {
 		expect(governorImage?.placeholder).toBe("https://img.test/default.png");
 	});
 
-	it("默认也是空的:占位退成「跟随体系默认」/「留空 = 官方徽章图」", () => {
+	it("默认也是空的:占位退成「跟随体系默认」/「留空 = 来源提供的徽章图」", () => {
 		const { tierCard, inputs } = renderSection({
 			enabled: true,
 			default: { template: "", imageUrl: "" },
@@ -132,7 +159,7 @@ describe("GuardSection · 体系默认与三档", () => {
 		});
 		const [text, image] = inputs(tierCard("captain"));
 		expect(text?.placeholder).toBe("跟随体系默认");
-		expect(image?.placeholder).toBe("留空 = 官方徽章图");
+		expect(image?.placeholder).toBe("留空 = 来源提供的徽章图");
 	});
 });
 

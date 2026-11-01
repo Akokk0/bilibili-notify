@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { HistoryEntryView } from "../../services/dashboard";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { TimelinePanel } from "../Dashboard";
+import { makeSource } from "../rules/__tests__/fixtures";
 
 afterEach(cleanup);
 
@@ -69,7 +70,10 @@ function renderPanel(
 				entries={entries}
 				subs={subs}
 				targets={[]}
-				sources={extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []))}
+				sources={[
+					makeSource(),
+					...(extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])) ?? []),
+				]}
 				extensions={extensions}
 			/>
 		</MemoryRouter>,
@@ -77,6 +81,14 @@ function renderPanel(
 }
 
 describe("最近推送活动 · 行是谁", () => {
+	it("空白名字快照回退当前资料，合法名字保留原文", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
+			cachedProfile: { name: "  当前名字  ", refreshedAt: "t" },
+		};
+		renderPanel([extRow({ nameSnapshot: " \t " })], [sub], [DOUYIN]);
+		expect(screen.getByText("当前名字").textContent).toBe("  当前名字  ");
+	});
 	it("B 站行:没有快照、订阅也对不上 → 「UID xxx」(照旧)", () => {
 		renderPanel([row()]);
 		expect(screen.getByText("UID u1")).toBeTruthy();
@@ -159,9 +171,9 @@ describe("最近推送活动 · 平台徽章", () => {
 		expect(badgeTexts(container)).toContain("douyin");
 	});
 
-	it("B 站行没有平台徽章:只有类型与状态那两枚", () => {
+	it("多来源时 B 站行也按描述符画徽章", () => {
 		const { container } = renderPanel([row({ nameSnapshot: "某UP" })], [], [DOUYIN]);
-		expect(badgeTexts(container)).toEqual(["动态", "已送达"]);
+		expect(badgeTexts(container)).toEqual(["动态", "B 站", "已送达"]);
 	});
 });
 

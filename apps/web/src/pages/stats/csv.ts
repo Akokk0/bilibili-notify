@@ -1,3 +1,4 @@
+import { i18n } from "../../i18n";
 /**
  * 对比表的 CSV 导出 —— 表头与取值的**唯一**来源。
  *
@@ -11,7 +12,6 @@
  */
 
 import { plainPostCount, type UpStatsRow } from "../../services/stats";
-import { isExtensionIdentity } from "../../utils/up-display";
 
 /**
  * 一行「是谁」的那两样,由调用方注入 —— 昵称在缓存的 profile 里、平台名在装着的拓展清单里,都不在统计行上。
@@ -19,6 +19,8 @@ import { isExtensionIdentity } from "../../utils/up-display";
 export interface CsvWho {
 	nameOf: (r: UpStatsRow) => string;
 	platformOf: (r: UpStatsRow) => string;
+	identityNoun?: string;
+	creatorNoun?: string;
 }
 
 /** 一列:表头文案与取值绑在一起,位置即对应关系,不再靠人肉对齐两个数组。 */
@@ -35,30 +37,35 @@ export interface CsvColumn {
  */
 const cell = (v: number | null, fmt: (n: number) => string = String) => (v === null ? "" : fmt(v));
 
-export function csvColumns(days: number): CsvColumn[] {
+export function csvColumns(
+	days: number,
+	nouns: Pick<CsvWho, "identityNoun" | "creatorNoun"> = {},
+): CsvColumn[] {
 	return [
-		{ header: "UP 主", value: (r, who) => who.nameOf(r) },
-		// 两支订阅都导(ADR-0020)。「UID」照旧只放 B 站的 uid —— 老的导出拿它对账的照样对得上;拓展行的外部 id
-		// 另起一列、不塞进 UID:外部 id 恰好是一串数字时,塞进去就是把另一个平台上的另一个人认成某位 B 站 UP
-		// (ADR-0019 决策 73)。「平台」让两支混在一张表里也分得清。
-		{ header: "平台", value: (r, who) => who.platformOf(r) },
-		// 两列都从 `identity` 取:B 站行填 UID、拓展行填外部 ID(合成一列留给第 4 期)。
-		{ header: "UID", value: (r) => (isExtensionIdentity(r.identity) ? "" : r.identity.externalId) },
 		{
-			header: "外部 ID",
-			value: (r) => (isExtensionIdentity(r.identity) ? r.identity.externalId : ""),
+			header: nouns.creatorNoun || i18n.t("subs.new.creatorNoun"),
+			value: (r, who) => who.nameOf(r),
 		},
-		{ header: "粉丝数", value: (r) => cell(r.followers) },
-		{ header: "近7日粉丝", value: (r) => cell(r.net7d) },
-		{ header: `近${days}日粉丝`, value: (r) => cell(r.netWindow) },
+		// 单来源使用描述符叫法，混合来源使用中性列名；身份值保持来源交付的原始字符串。
+		{ header: i18n.t("sourceUi.pages.stats.csv.header.1"), value: (r, who) => who.platformOf(r) },
+		{ header: nouns.identityNoun || "ID", value: (r) => r.identity.externalId },
+		{ header: i18n.t("sourceUi.pages.Stats.CompareTable.8"), value: (r) => cell(r.followers) },
+		{ header: i18n.t("sourceUi.pages.stats.csv.header.2"), value: (r) => cell(r.net7d) },
+		{
+			header: i18n.t("sourceUi.pages.stats.csv.header.3", { value1: days }),
+			value: (r) => cell(r.netWindow),
+		},
 		// 列序跟着屏幕上那张表走(见 columns.ts):导出的就是它,两边不一致的话
 		// 拿 CSV 对屏幕的人会以为自己看串行了。
-		{ header: "投稿", value: (r) => cell(r.videoPosts) },
-		{ header: "动态", value: (r) => cell(plainPostCount(r)) },
-		{ header: "直播场次", value: (r) => cell(r.liveSessions) },
-		{ header: "直播时长(h)", value: (r) => cell(r.liveHours, (n) => n.toFixed(1)) },
-		{ header: "单场最高观看", value: (r) => cell(r.maxViewers) },
-		{ header: "最后活动", value: (r) => r.lastActivityAt ?? "" },
+		{ header: i18n.t("sourceUi.pages.Stats.ContentMix.13"), value: (r) => cell(r.videoPosts) },
+		{ header: i18n.t("sourceUi.pages.Stats.plainPosts"), value: (r) => cell(plainPostCount(r)) },
+		{ header: i18n.t("sourceUi.pages.stats.csv.header.4"), value: (r) => cell(r.liveSessions) },
+		{
+			header: i18n.t("sourceUi.pages.stats.csv.header.5"),
+			value: (r) => cell(r.liveHours, (n) => n.toFixed(1)),
+		},
+		{ header: i18n.t("sourceUi.pages.Stats.Stats.59"), value: (r) => cell(r.maxViewers) },
+		{ header: i18n.t("sourceUi.pages.stats.csv.header.6"), value: (r) => r.lastActivityAt ?? "" },
 	];
 }
 
@@ -69,7 +76,7 @@ function escapeCell(s: string): string {
 
 /** 生成完整 CSV 文本(不含 BOM —— 那是下载环节的事)。 */
 export function buildCsv(rows: readonly UpStatsRow[], days: number, who: CsvWho): string {
-	const cols = csvColumns(days);
+	const cols = csvColumns(days, who);
 	const head = cols.map((c) => escapeCell(c.header)).join(",");
 	const body = rows.map((r) => cols.map((c) => escapeCell(c.value(r, who))).join(","));
 	return [head, ...body].join("\n");

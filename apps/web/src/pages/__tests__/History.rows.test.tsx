@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { HistoryEntryView } from "../../services/dashboard";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import History from "../History";
+import { makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -74,7 +75,10 @@ function mockApi(
 		// 来源表照装着的拓展列。
 		if (path === "/api/sources") {
 			return Promise.resolve({
-				sources: extensions.flatMap((one) => (one.id === "douyin" ? [DOUYIN_SOURCE] : [])),
+				sources: [
+					makeSource(),
+					...extensions.flatMap((one) => (one.id === "douyin" ? [DOUYIN_SOURCE] : [])),
+				],
 			});
 		}
 		return Promise.resolve({ core: { history: { retentionDays: 30 } } });
@@ -251,9 +255,9 @@ describe("推送历史 · 按家族筛选", () => {
 
 	it.each<[chip: string, expected: string[]]>([
 		["直播", ["liveStart", "liveStreaming", "liveEnd", "viewerEnter", "viewerChat"]],
-		["动态", ["post"]],
+		["作品", ["post"]],
 		["SC", ["superchat"]],
-		["舰长", ["membership"]],
+		["会员", ["membership"]],
 	])("点「%s」只剩这一族的行", async (chip, expected) => {
 		mockApi(oneRowEach());
 		renderHistory();
@@ -326,7 +330,7 @@ describe("推送历史 · 拓展行", () => {
 		mockApi([extRow()]);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
-		expect(screen.getByText("sec-1")).toBeTruthy();
+		expect(screen.getByText("douyin · sec-1")).toBeTruthy();
 		expect(screen.queryByText("未知")).toBeNull();
 	});
 
@@ -418,7 +422,7 @@ describe("推送历史 · 拓展行", () => {
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
 		expect(screen.queryByText("某B站UP")).toBeNull();
-		expect(screen.getByText("u1")).toBeTruthy();
+		expect(screen.getByText("douyin · u1")).toBeTruthy();
 	});
 
 	it("搜外部 id 搜得到这一行", async () => {
@@ -472,15 +476,19 @@ describe("推送历史 · 平台徽章", () => {
 	it("拓展行带平台徽章(短名照清单),名字取自快照也带", async () => {
 		mockApi([extRow()], [], [DOUYIN]);
 		renderHistory();
-		await waitFor(() => expect(screen.getByText("抖")).toBeTruthy());
+		await waitFor(() =>
+			expect(screen.getByText("抖", { selector: '[data-bn="badge"]' })).toBeTruthy(),
+		);
 		expect(screen.getByText("某抖音号")).toBeTruthy();
 	});
 
 	it("名字是外部 id 兜底的拓展行也带徽章", async () => {
 		mockApi([extRow({ nameSnapshot: undefined })], [], [DOUYIN]);
 		renderHistory();
-		await waitFor(() => expect(screen.getByText("抖")).toBeTruthy());
-		expect(screen.getByText("sec-1")).toBeTruthy();
+		await waitFor(() =>
+			expect(screen.getByText("抖", { selector: '[data-bn="badge"]' })).toBeTruthy(),
+		);
+		expect(screen.getByText("抖音 · sec-1")).toBeTruthy();
 	});
 
 	it("拓展卸载了(清单里没有它)→ 徽章写拓展 id", async () => {
@@ -490,7 +498,7 @@ describe("推送历史 · 平台徽章", () => {
 		expect(await screen.findByText("douyin")).toBeTruthy();
 	});
 
-	it("B 站行没有平台徽章:只有类型与状态那两枚", async () => {
+	it("多来源时 B 站行也按描述符画徽章", async () => {
 		// 单条、已送达:没有「N 条」那颗展开胶囊,徽章只剩类型与状态。
 		mockApi(
 			[
@@ -507,6 +515,6 @@ describe("推送历史 · 平台徽章", () => {
 		// 等拓展清单也回来,免得「还没回来所以没画」冒充「B 站行不画」。
 		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext"));
 		const badges = [...container.querySelectorAll('[data-bn="badge"]')].map((b) => b.textContent);
-		expect(badges).toEqual(["下播", "已送达"]);
+		expect(badges).toEqual(["下播", "B 站", "已送达"]);
 	});
 });

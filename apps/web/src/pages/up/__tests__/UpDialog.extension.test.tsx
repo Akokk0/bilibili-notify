@@ -6,8 +6,9 @@
  * 就是一个永远不会响的开关。「动态」按平台的叫法走(`postNoun`)。头部写平台,不写 UID。
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { i18n } from "../../../i18n";
 import {
 	type Connection,
 	makeEmptySubscription,
@@ -45,6 +46,9 @@ function platform(over: Partial<SubscriptionPlatform> = {}): SubscriptionPlatfor
 		postNoun: "作品",
 		features: ["post", "liveStart"],
 		absent: false,
+		supportedExtras: [],
+		status: "running",
+		showBadge: true,
 		...over,
 	};
 }
@@ -69,6 +73,40 @@ function renderDialog(sub: Subscription, p: SubscriptionPlatform, targets: PushT
 afterEach(cleanup);
 
 describe("UpDialog × 拓展订阅", () => {
+	it("来源描述和语言刷新保留 dirty 备注与隐藏路由，不自动保存", () => {
+		const sub = extSub();
+		sub.routing.membership = ["retired-target"];
+		const save = vi.fn();
+		const original = i18n.state();
+		const props = {
+			sub,
+			targets: [],
+			connections: [],
+			onClose: noop,
+			onSave: save,
+			onDelete: noop,
+			saving: false,
+		};
+		const view = render(<UpDialog {...props} platform={platform()} />);
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "尚未保存" } });
+		view.rerender(
+			<UpDialog {...props} platform={platform({ label: "New label", features: ["post"] })} />,
+		);
+		try {
+			act(() => i18n.set({ locale: "en", voice: "plain" }));
+			expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("尚未保存");
+			expect(save).not.toHaveBeenCalled();
+			fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+			expect(save).toHaveBeenCalledWith(
+				expect.objectContaining({
+					notes: "尚未保存",
+					routing: expect.objectContaining({ membership: ["retired-target"] }),
+				}),
+			);
+		} finally {
+			act(() => i18n.set({ locale: original.locale, voice: original.voice }));
+		}
+	});
 	it("只列这个源报得出的特性,「动态」叫「作品」,B 站独有的一个不露", () => {
 		renderDialog(extSub(), platform());
 		expect(screen.getAllByText("作品").length).toBeGreaterThan(0);
@@ -79,7 +117,13 @@ describe("UpDialog × 拓展订阅", () => {
 	});
 
 	it("报下播的源:有「下播」,但不挂词云 / AI 总结 —— 那两样只有 B 站报;@全体 照留", () => {
-		renderDialog(extSub(), platform({ features: ["post", "liveStart", "liveEnd"] }));
+		renderDialog(
+			extSub(),
+			platform({
+				features: ["post", "liveStart", "liveEnd"],
+				supportedExtras: ["atAllPost", "atAllLiveStart"],
+			}),
+		);
 		expect(screen.getAllByText("下播").length).toBeGreaterThan(0);
 		expect(screen.queryByText("+ 弹幕词云")).toBeNull();
 		expect(screen.queryByText("+ AI 总结")).toBeNull();

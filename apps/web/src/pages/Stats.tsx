@@ -1,4 +1,9 @@
-import type { ExtensionDTO, SourceEntry, SubscriptionDTO } from "@bilibili-notify/contract";
+import {
+	type ExtensionDTO,
+	type SourceEntry,
+	type SubscriptionDTO,
+	sourceNounsOf,
+} from "@bilibili-notify/contract";
 import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import {
 	Avatar,
@@ -18,6 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useExtensions } from "../hooks/useExtensions";
 import { useSources } from "../hooks/useSources";
+import { i18n, useT } from "../i18n";
 import { api } from "../services/api";
 import {
 	activityLevel,
@@ -35,7 +41,7 @@ import {
 	type UpStatsRow,
 } from "../services/stats";
 import { identityColor, type Subscription } from "../types/domain";
-import { isExtensionIdentity } from "../utils/up-display";
+import { historyRowIdentity } from "../utils/up-display";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, signTone } from "./stats/chart-utils";
 import {
@@ -122,26 +128,21 @@ function upMetaOf(
 	r: UpStatsRow,
 	sub: Subscription | undefined,
 	sources: readonly SourceEntry[] | undefined,
-	extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionDTO[] | undefined,
 ): UpMeta {
 	const base = {
 		color: identityColor(r.identity),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
-	const { sourceKey, externalId } = r.identity;
-	if (!isExtensionIdentity(r.identity)) {
-		return {
-			...base,
-			name: sub ? displayName(sub) : `UID ${externalId}`,
-			identity: { label: "UID", id: externalId },
-		};
-	}
-	const platform = subscriptionPlatformOf({ extensionId: sourceKey }, sources, extensions);
+	const { externalId } = r.identity;
+	const platform = subscriptionPlatformOf(r.identity, sources);
 	return {
 		...base,
-		name: sub ? displayName(sub) : externalId,
-		identity: { label: platform.label, id: externalId },
-		platform: { label: platform.label, shortLabel: platform.shortLabel, color: platform.color },
+		name: sub ? displayName(sub, platform) : historyRowIdentity(r, platform),
+		identity: { label: platform.externalIdNoun?.trim() || platform.label, id: externalId },
+		platform: platform.showBadge
+			? { label: platform.label, shortLabel: platform.shortLabel, color: platform.color }
+			: undefined,
 	};
 }
 
@@ -161,10 +162,25 @@ function PlatformPill({ meta }: { meta: UpMeta }) {
  * 列定义在 `stats/csv.ts` —— 表头与取值同源、有测试守着。这里只剩下载那几行:
  * 拼 BOM(否则 Excel 打开中文列名是乱码)、造 Blob、点一下虚拟链接。
  */
-function exportCsv(rows: UpStatsRow[], metaOf: (r: UpStatsRow) => UpMeta, days: number): void {
+function exportCsv(
+	rows: UpStatsRow[],
+	metaOf: (r: UpStatsRow) => UpMeta,
+	days: number,
+	sources: readonly SourceEntry[] | undefined,
+): void {
+	const platforms = [...new Set(rows.map((row) => row.identity.sourceKey))].map((sourceKey) =>
+		subscriptionPlatformOf({ sourceKey }, sources),
+	);
+	const nouns = sourceNounsOf(platforms, {
+		creatorNoun: i18n.t("subs.new.creatorNoun"),
+		postNoun: i18n.t("sourceUi.pages.Stats.postNoun.1"),
+		sources: i18n.t("sourceUi.pages.Stats.sources.2"),
+	});
 	const csv = buildCsv(rows, days, {
 		nameOf: (r) => metaOf(r).name,
-		platformOf: (r) => metaOf(r).platform?.label ?? "B 站",
+		platformOf: (r) => subscriptionPlatformOf(r.identity, sources).label,
+		creatorNoun: nouns.creatorNoun,
+		identityNoun: platforms.length === 1 ? platforms[0]?.externalIdNoun?.trim() || "ID" : "ID",
 	});
 	const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
@@ -187,6 +203,7 @@ function UpPicker({
 	value: string | null;
 	onChange: (subscriptionId: string | null) => void;
 }) {
+	const tx = useT();
 	const [open, setOpen] = useState(false);
 	const curRow = value ? rows.find((r) => r.subscriptionId === value) : undefined;
 	const cur = curRow ? metaOf(curRow) : undefined;
@@ -204,7 +221,7 @@ function UpPicker({
 				    原来那颗粉蓝渐变圆只是个占位,反而像某位 UP 的头像。 */}
 				{cur ? <Avatar name={cur.name} color={cur.color} size={22} url={cur.avatar} /> : null}
 				<span className="text-bn-sm font-bold text-bn-text-primary">
-					{cur?.name ?? "全部 UP 主"}
+					{cur?.name ?? tx("sourceUi.pages.Stats.UpPicker.3")}
 				</span>
 				<span className="ml-auto text-bn-sm text-bn-text-secondary">{open ? "▴" : "▾"}</span>
 			</button>
@@ -216,8 +233,12 @@ function UpPicker({
 							setOpen(false);
 						}}
 					>
-						<span className="text-bn-sm font-bold text-bn-text-primary">全部 UP 主</span>
-						<span className="ml-auto text-bn-sm text-bn-text-secondary">汇总</span>
+						<span className="text-bn-sm font-bold text-bn-text-primary">
+							{tx("sourceUi.pages.Stats.UpPicker.3")}
+						</span>
+						<span className="ml-auto text-bn-sm text-bn-text-secondary">
+							{tx("sourceUi.pages.Stats.UpPicker.4")}
+						</span>
 					</MenuItem>
 					{rows.map((r) => {
 						const m = metaOf(r);
@@ -246,7 +267,8 @@ function UpPicker({
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
 										{num(r.followers)} ·{" "}
-										{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ?? "无记录"}
+										{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ??
+											tx("sourceUi.pages.Stats.UpPicker.5")}
 									</span>
 								</span>
 								<DeltaTag v={r.net7d} size={10.5} />
@@ -271,6 +293,7 @@ function CompareTable({
 	days: number;
 	onPick: (subscriptionId: string) => void;
 }) {
+	const tx = useT();
 	const [sort, setSort] = useState<StatColumnId>("net7d");
 	// 表头与单元格都从这一个数组出 —— 曾经它们是两份手写的平行名单,插一列就
 	// 会整体错位(详见 columns.ts 的说明)。
@@ -288,7 +311,7 @@ function CompareTable({
 		});
 	}, [rows, sort, cols]);
 
-	if (!rows.length) return <ChartEmpty hint="还没有订阅任何 UP 主" />;
+	if (!rows.length) return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.6")} />;
 
 	return (
 		<div className="overflow-x-auto">
@@ -296,13 +319,13 @@ function CompareTable({
 				<thead>
 					<tr className="border-b border-bn-border">
 						<th className="px-2.5 py-2 text-left text-bn-xs font-bold text-bn-text-secondary">
-							UP 主
+							{tx("sourceUi.pages.Stats.CompareTable.7")}
 						</th>
 						<th className="px-2.5 py-2 text-right text-bn-xs font-bold text-bn-text-secondary">
-							粉丝数
+							{tx("sourceUi.pages.Stats.CompareTable.8")}
 						</th>
 						<th className="px-2.5 py-2 text-center text-bn-xs font-bold text-bn-text-secondary">
-							近期走势
+							{tx("sourceUi.pages.Stats.CompareTable.9")}
 						</th>
 						{cols.map((c) => (
 							<th
@@ -345,8 +368,9 @@ function CompareTable({
 												<PlatformPill meta={m} />
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
-												{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ?? "无记录"}
-												{r.live ? " · 直播中" : ""}
+												{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ??
+													tx("sourceUi.pages.Stats.UpPicker.5")}
+												{r.live ? tx("sourceUi.pages.Stats.CompareTable.10") : ""}
 											</div>
 										</div>
 									</div>
@@ -410,10 +434,11 @@ function ContentMix({
 	 */
 	coveredTotal: number;
 }) {
+	const tx = useT();
 	// 「没在记」与「在记但没动静」是两回事,空态文案也得分开 —— 否则老库升级后
 	// 点开近 90 日,会看到一句「还没有发过任何内容」扣在一位高产 UP 头上。
 	if (plainPosts === null && videoPosts === null && lives === null) {
-		return <ChartEmpty hint="这段时间我们还没有采集到数据" />;
+		return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.11")} />;
 	}
 	// 走到这里至少有一项有记录。剩下的 null 是「这一类没记到」,并进 0 参与占比 ——
 	// 分类占比图上没有「未知的那一块」可画,但整体「没在记」的情形已在上面拦掉了。
@@ -421,11 +446,11 @@ function ContentMix({
 	const arc = videoPosts ?? 0;
 	const liv = lives ?? 0;
 	const total = dyn + arc + liv;
-	if (total === 0) return <ChartEmpty hint="这段时间还没有采集到任何活动" />;
+	if (total === 0) return <ChartEmpty hint={tx("sourceUi.pages.Stats.hint.12")} />;
 	const parts: Array<[string, number, string]> = [
-		["动态", dyn, PURPLE],
-		["投稿", arc, BLUE],
-		["直播", liv, PINK],
+		[tx("sourceUi.pages.Stats.plainPosts"), dyn, PURPLE],
+		[tx("sourceUi.pages.Stats.ContentMix.13"), arc, BLUE],
+		[tx("extension.reportDiscrepancies.kindLive"), liv, PINK],
 	];
 	return (
 		<div className="flex h-full flex-col justify-center gap-4">
@@ -437,17 +462,24 @@ function ContentMix({
 					label={
 						<div className="text-center">
 							<div className="text-bn-xl font-bold text-bn-text-primary">{total}</div>
-							<div className="text-bn-micro text-bn-text-secondary">总活动</div>
+							<div className="text-bn-micro text-bn-text-secondary">
+								{tx("sourceUi.pages.Stats.label.14")}
+							</div>
 						</div>
 					}
 				/>
 				<div className="flex flex-col gap-1">
-					<div className="text-bn-xs text-bn-text-secondary">日均活动</div>
+					<div className="text-bn-xs text-bn-text-secondary">
+						{tx("sourceUi.pages.Stats.ContentMix.15")}
+					</div>
 					<div className="tabular-nums text-bn-xl font-bold leading-none" style={{ color: PURPLE }}>
 						{coveredDays > 0 ? (coveredTotal / coveredDays).toFixed(1) : "—"}
 					</div>
 					<div className="text-bn-2xs text-bn-text-secondary">
-						次 / 天 · {coveredDays < days ? `已记录${coveredDays}日` : `近${days}日`}
+						{tx("sourceUi.pages.Stats.ContentMix.16")}
+						{coveredDays < days
+							? tx("sourceUi.pages.Stats.ContentMix.17", { value1: coveredDays })
+							: tx("sourceUi.pages.Stats.ContentMix.18", { value1: days })}
 					</div>
 				</div>
 			</div>
@@ -474,6 +506,7 @@ function ContentMix({
 }
 
 export default function Stats() {
+	const tx = useT();
 	const [days, setDays] = useState<number>(30);
 	const [picked, setPicked] = useState<string | null>(null);
 
@@ -526,14 +559,17 @@ export default function Stats() {
 	if (statsQuery.isLoading) {
 		return (
 			<div className="bn-anim-page-in p-6">
-				<LoadingBlock label="正在读取统计数据" hint="女仆正在翻账本,清点这些天的推送 (｡･ω･｡)ﾉ" />
+				<LoadingBlock
+					label={tx("sourceUi.pages.Stats.label.19")}
+					hint={tx("sourceUi.pages.Stats.hint.20")}
+				/>
 			</div>
 		);
 	}
 	if (statsQuery.isError) {
 		return (
 			<div className="bn-anim-page-in p-6">
-				<ErrorNote>统计数据加载失败,请稍后重试。</ErrorNote>
+				<ErrorNote>{tx("sourceUi.pages.Stats.Stats.21")}</ErrorNote>
 			</div>
 		);
 	}
@@ -561,7 +597,7 @@ export default function Stats() {
 					) : null}
 					<div>
 						<div className="text-bn-lg font-bold tracking-tight text-bn-text-primary">
-							{focusedMeta ? focusedMeta.name : "数据统计 · 粉丝与动态分析"}
+							{focusedMeta ? focusedMeta.name : tx("sourceUi.pages.Stats.Stats.22")}
 						</div>
 						<div className="mt-1 text-bn-sm text-bn-text-secondary">
 							{focusedMeta ? (
@@ -569,13 +605,14 @@ export default function Stats() {
 								// 主人对着后台核对时要的是这个;拓展写平台名 + 外部 id(ADR-0020 决策 3)。
 								<>
 									{focusedMeta.identity.label}{" "}
-									<b style={{ color: focusColor }}>{focusedMeta.identity.id}</b> ·
-									粉丝增减、投稿与直播情况
+									<b style={{ color: focusColor }}>{focusedMeta.identity.id}</b>
+									{tx("sourceUi.pages.Stats.Stats.23")}
 								</>
 							) : (
 								<>
-									女仆帮主人盯着 <b style={{ color: PINK }}>{rows.length}</b> 位 UP
-									主的粉丝增减、投稿与直播频率 ~(*´∀`)~♡
+									{tx("sourceUi.pages.Stats.Stats.24")}
+									<b style={{ color: PINK }}>{rows.length}</b>
+									{tx("sourceUi.pages.Stats.Stats.25")}
 								</>
 							)}
 						</div>
@@ -608,13 +645,15 @@ export default function Stats() {
 				{focused ? (
 					<>
 						<GlassStatCard
-							label="当前粉丝"
+							label={tx("sourceUi.pages.Stats.label.26")}
 							value={num(focused.followers)}
 							color={focusColor}
 							footer={
 								<>
 									<DeltaTag v={focused.net7d} size={11.5} />
-									<span className="text-bn-2xs text-bn-text-secondary">近7日</span>
+									<span className="text-bn-2xs text-bn-text-secondary">
+										{tx("sourceUi.pages.Stats.footer.27")}
+									</span>
 									<span className="ml-auto">
 										<Sparkline
 											data={focused.series.slice(-14)}
@@ -627,27 +666,29 @@ export default function Stats() {
 							}
 						/>
 						<GlassStatCard
-							label="今日净增"
+							label={tx("sourceUi.pages.Stats.label.28")}
 							value={num(focused.net1d, { signed: true })}
 							color={TEAL}
 							pulse
 						/>
 						<GlassStatCard
-							label={`近${days}日净增`}
+							label={tx("sourceUi.pages.Stats.label.29", { value1: days })}
 							value={num(focused.netWindow, { signed: true })}
 							color={PURPLE}
 						/>
 						<GlassStatCard
-							label="投稿"
+							label={tx("sourceUi.pages.Stats.ContentMix.13")}
 							value={dash(focused.videoPosts)}
-							suffix="个"
+							suffix={tx("sourceUi.pages.Stats.suffix.30")}
 							color={AMBER}
 						/>
 						{/* KPI 行收尾在蓝:呼应「左粉右蓝」的品牌轴。 */}
 						<GlassStatCard
-							label="开播"
+							label={tx("sourceUi.pages.Stats.label.31")}
 							value={dash(focused.liveSessions)}
-							suffix={`场 · ${dash(focused.liveHours, hours)}h`}
+							suffix={tx("sourceUi.pages.Stats.suffix.32", {
+								value1: dash(focused.liveHours, hours),
+							})}
 							color={BLUE}
 						/>
 					</>
@@ -657,14 +698,18 @@ export default function Stats() {
 							// 部分 UP 还没采到样本时,这个数不是全站合计 —— 标签得说明白,
 							// 否则「总粉丝量」会被读成所有订阅的和,而它少算了几位。
 							label={
-								fansKnown < rows.length ? `总粉丝量 · ${fansKnown}/${rows.length} 位` : "总粉丝量"
+								fansKnown < rows.length
+									? tx("sourceUi.pages.Stats.label.33", { value1: fansKnown, value2: rows.length })
+									: tx("sourceUi.pages.Stats.label.34")
 							}
 							value={num(totals?.followers ?? null)}
 							color={PINK}
 							footer={
 								<>
 									<DeltaTag v={totals?.net7d ?? null} size={11.5} />
-									<span className="text-bn-2xs text-bn-text-secondary">近7日</span>
+									<span className="text-bn-2xs text-bn-text-secondary">
+										{tx("sourceUi.pages.Stats.footer.27")}
+									</span>
 									<span className="ml-auto">
 										<Sparkline
 											data={(totals?.series ?? []).slice(-14)}
@@ -677,26 +722,28 @@ export default function Stats() {
 							}
 						/>
 						<GlassStatCard
-							label="今日净增"
+							label={tx("sourceUi.pages.Stats.label.28")}
 							value={num(totals?.net1d ?? null, { signed: true })}
 							color={TEAL}
 							pulse
 						/>
 						<GlassStatCard
-							label={`近${days}日净增`}
+							label={tx("sourceUi.pages.Stats.label.29", { value1: days })}
 							value={num(totals?.netWindow ?? null, { signed: true })}
 							color={PURPLE}
 						/>
 						<GlassStatCard
-							label="投稿"
+							label={tx("sourceUi.pages.Stats.ContentMix.13")}
 							value={dash(totals?.videoPosts)}
-							suffix="个"
+							suffix={tx("sourceUi.pages.Stats.suffix.30")}
 							color={AMBER}
 						/>
 						<GlassStatCard
-							label="开播"
+							label={tx("sourceUi.pages.Stats.label.31")}
 							value={dash(totals?.liveSessions)}
-							suffix={`场 · ${dash(totals?.liveHours, hours)}h`}
+							suffix={tx("sourceUi.pages.Stats.suffix.32", {
+								value1: dash(totals?.liveHours, hours),
+							})}
 							color={BLUE}
 						/>
 					</>
@@ -707,8 +754,8 @@ export default function Stats() {
 			<div className="grid gap-3.5 xl:grid-cols-[1.9fr_1fr]">
 				{focused ? (
 					<GlassPanel
-						title={`${focusedMeta?.name} · 粉丝总量走势`}
-						subtitle={`累计粉丝数变化 · 近${days}日`}
+						title={tx("sourceUi.pages.Stats.title.35", { value1: focusedMeta?.name ?? "" })}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.36", { value1: days })}
 						accent={focusColor}
 						icon={<Icon.heart width={15} height={15} />}
 					>
@@ -735,13 +782,13 @@ export default function Stats() {
 					</GlassPanel>
 				) : (
 					<GlassPanel
-						title="UP 主数据对比"
-						subtitle="点击表头排序 · 投稿 / 直播 / 动态 全维度 · 点击某行查看单人分析"
+						title={tx("sourceUi.pages.Stats.title.37")}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.38")}
 						accent={PINK}
 						icon={<Icon.list width={15} height={15} />}
 						right={
-							<Btn size="sm" variant="ghost" onClick={() => exportCsv(rows, metaOf, days)}>
-								导出 CSV
+							<Btn size="sm" variant="ghost" onClick={() => exportCsv(rows, metaOf, days, sources)}>
+								{tx("sourceUi.pages.Stats.right.39")}
 							</Btn>
 						}
 					>
@@ -751,8 +798,8 @@ export default function Stats() {
 
 				{focused ? (
 					<GlassPanel
-						title="能力画像"
-						subtitle={`轴长 = 在已订阅 UP 中的相对位置 · 近${days}日`}
+						title={tx("sourceUi.pages.Stats.title.40")}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.41", { value1: days })}
 						accent={PURPLE}
 						icon={<Icon.star width={15} height={15} />}
 					>
@@ -760,14 +807,14 @@ export default function Stats() {
 							{radarAxes ? (
 								<RadarChart color={focusColor} size={252} axes={radarAxes} />
 							) : (
-								<ChartEmpty hint="至少订阅 2 位 UP 主才画得出相对画像 —— 只有一位时六根轴会全部满格,没有信息量" />
+								<ChartEmpty hint={tx("sourceUi.pages.Stats.hint.42")} />
 							)}
 						</div>
 					</GlassPanel>
 				) : (
 					<GlassPanel
-						title="活跃热力图"
-						subtitle={`每格一天 · 颜色越深越活跃 · 近${days}日`}
+						title={tx("sourceUi.pages.Stats.title.43")}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.44", { value1: days })}
 						accent={PINK}
 						icon={<Icon.fire width={15} height={15} />}
 					>
@@ -779,11 +826,15 @@ export default function Stats() {
 			{/* 净增 + 内容构成 + 直播 */}
 			<div className="grid gap-3.5 xl:grid-cols-[1.5fr_1fr_1fr]">
 				<GlassPanel
-					title={focused ? `${focusedMeta?.name} · 粉丝净增趋势` : "订阅 UP 粉丝净增趋势"}
+					title={
+						focused
+							? tx("sourceUi.pages.Stats.title.45", { value1: focusedMeta?.name ?? "" })
+							: tx("sourceUi.pages.Stats.title.46")
+					}
 					subtitle={
 						focused
-							? `每日粉丝净增(涨绿跌红)· 近${days}日`
-							: `所有订阅 UP 主每日净增合计 · 近${days}日`
+							? tx("sourceUi.pages.Stats.subtitle.47", { value1: days })
+							: tx("sourceUi.pages.Stats.subtitle.48", { value1: days })
 					}
 					accent={BLUE}
 					icon={<Icon.heart width={15} height={15} />}
@@ -799,7 +850,8 @@ export default function Stats() {
 							}}
 						>
 							{num(focused ? focused.netWindow : (totals?.netWindow ?? null), { signed: true })} /{" "}
-							{days}天
+							{days}
+							{tx("sourceUi.pages.Stats.right.49")}
 						</span>
 					}
 				>
@@ -835,8 +887,12 @@ export default function Stats() {
 				</GlassPanel>
 
 				<GlassPanel
-					title="内容构成"
-					subtitle={focused ? `${focusedMeta?.name} 的类型占比` : "全部订阅 UP 的类型占比"}
+					title={tx("sourceUi.pages.Stats.title.50")}
+					subtitle={
+						focused
+							? tx("sourceUi.pages.Stats.subtitle.51", { value1: focusedMeta?.name ?? "" })
+							: tx("sourceUi.pages.Stats.subtitle.52")
+					}
 					accent={PURPLE}
 					icon={<Icon.dyn width={15} height={15} />}
 				>
@@ -852,20 +908,24 @@ export default function Stats() {
 
 				{focused ? (
 					<GlassPanel
-						title="直播概览"
-						subtitle={`近${days}日开播与观看`}
+						title={tx("sourceUi.pages.Stats.title.53")}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.54", { value1: days })}
 						accent={PINK}
 						icon={<Icon.live width={15} height={15} />}
 					>
 						<div className="grid grid-cols-2 gap-2">
 							{(
 								[
-									["开播场次", dash(focused.liveSessions), "场"],
-									["直播总时长", dash(focused.liveHours, hours), "h"],
+									[
+										tx("sourceUi.pages.Stats.Stats.55"),
+										dash(focused.liveSessions),
+										tx("sourceUi.pages.Stats.Stats.56"),
+									],
+									[tx("sourceUi.pages.Stats.Stats.57"), dash(focused.liveHours, hours), "h"],
 									[
 										// 分母是**时长已知**的场次,不是全部场次 —— 硬杀进程留下的
 										// 场次时长未知,按 0 计进分母会把场均值平白拉低。
-										"场均时长",
+										tx("sourceUi.pages.Stats.Stats.58"),
 										focused.liveTimedSessions && focused.liveHours !== null
 											? hours(focused.liveHours / focused.liveTimedSessions)
 											: "—",
@@ -873,9 +933,13 @@ export default function Stats() {
 									],
 									// 每场的数是本场**累计**观看(ADR-0020 决策 7),不是同时在线的峰值 —— 曾叫「峰值观看 /
 									// 场均峰值」,名不副实(决策 11)。面板底下那句说明是按什么算的。
-									["单场最高观看", num(focused.maxViewers), ""],
-									["场均观看", num(focused.avgViewers), ""],
-									["投稿", dash(focused.videoPosts), "个"],
+									[tx("sourceUi.pages.Stats.Stats.59"), num(focused.maxViewers), ""],
+									[tx("sourceUi.pages.Stats.Stats.60"), num(focused.avgViewers), ""],
+									[
+										tx("sourceUi.pages.Stats.ContentMix.13"),
+										dash(focused.videoPosts),
+										tx("sourceUi.pages.Stats.suffix.30"),
+									],
 								] as Array<[string, string, string]>
 							).map(([label, v, unit]) => (
 								<div
@@ -896,12 +960,15 @@ export default function Stats() {
 								</div>
 							))}
 						</div>
-						<HintNote className="mt-2">单场最高观看 / 场均观看:{VIEWERS_HINT}</HintNote>
+						<HintNote className="mt-2">
+							{tx("sourceUi.pages.Stats.Stats.61")}
+							{VIEWERS_HINT}
+						</HintNote>
 					</GlassPanel>
 				) : (
 					<GlassPanel
-						title="直播时长 Top"
-						subtitle={`近${days}日开播时长排名`}
+						title={tx("sourceUi.pages.Stats.title.62")}
+						subtitle={tx("sourceUi.pages.Stats.subtitle.63", { value1: days })}
 						accent={PINK}
 						icon={<Icon.live width={15} height={15} />}
 					>
@@ -938,7 +1005,7 @@ export default function Stats() {
 									})}
 							</div>
 						) : (
-							<ChartEmpty hint="这段时间还没有采集到开播记录" />
+							<ChartEmpty hint={tx("sourceUi.pages.Stats.hint.64")} />
 						)}
 					</GlassPanel>
 				)}

@@ -5,6 +5,7 @@ import type {
 	SourceEntry,
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
+import { displayNameOf } from "@bilibili-notify/contract";
 import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import { needsLiveMonitor } from "@bilibili-notify/internal/live-monitor";
 import {
@@ -73,12 +74,7 @@ import {
 } from "../types/domain";
 import type { ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import {
-	historyRowAvatarUrl,
-	historyRowColor,
-	historyRowIdentity,
-	isExtensionIdentity,
-} from "../utils/up-display";
+import { historyRowAvatarUrl, historyRowColor, historyRowIdentity } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { displayName, profileAvatarUrl, subscribedFeatures } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -101,7 +97,7 @@ function liveRowFace(
 	r: LiveListeningEntry,
 	lookup: SubscriptionLookup,
 	sources: readonly SourceEntry[] | undefined,
-	extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionDTO[] | undefined,
 ): {
 	name: string;
 	color: string;
@@ -116,18 +112,13 @@ function liveRowFace(
 		avatar,
 		viewers: formatViewers(r.totalViewers),
 	};
-	if (!isExtensionIdentity(r.identity)) {
-		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(r) };
-	}
-	const platform = subscriptionPlatformOf(
-		{ extensionId: r.identity.sourceKey },
-		sources,
-		extensions,
-	);
+	const platform = subscriptionPlatformOf(r.identity, sources);
 	return {
 		...base,
-		name: sub ? displayName(sub) : historyRowIdentity(r, () => platform.label),
-		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
+		name: sub ? displayName(sub, platform) : historyRowIdentity(r, platform),
+		platform: platform.showBadge
+			? { label: platform.shortLabel ?? platform.label, color: platform.color }
+			: undefined,
 	};
 }
 
@@ -301,6 +292,7 @@ export function LiveNowPanel({
 }
 
 function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
+	const tx = useT();
 	// 服务端已按日全量聚合(/api/history/daily),这里只做 4 源族折叠 —— 不再受
 	// listing limit 截断影响,左侧柱子有多老的数据都数得到。
 	// 加载期给零柱占位,保住日期轴不跳。
@@ -315,8 +307,8 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 	const total = daily.reduce((sum, day) => sum + day.total, 0);
 	return (
 		<GlassPanel
-			title="本周推送趋势"
-			subtitle="按推送类型分布"
+			title={tx("sourceUi.pages.Dashboard.title.1")}
+			subtitle={tx("sourceUi.pages.Dashboard.subtitle.2")}
 			accent="var(--color-bn-blue)"
 			icon={<Icon.chart width={15} height={15} />}
 		>
@@ -335,10 +327,10 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 			/>
 			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-bn-xs text-bn-text-tertiary">
 				{[
-					["直播", PUSH_TONE.live],
-					["动态", PUSH_TONE.post],
+					[tx("extension.reportDiscrepancies.kindLive"), PUSH_TONE.live],
+					[tx("sourceUi.pages.Dashboard.TrendPanel.3"), PUSH_TONE.post],
 					["SC", PUSH_TONE.superchat],
-					["舰长", PUSH_TONE.membership],
+					[tx("sourceUi.pages.Dashboard.TrendPanel.4"), PUSH_TONE.membership],
 				].map(([label, c]) => (
 					<span key={label} className="inline-flex items-center gap-1.5">
 						<span className="block h-2 w-2 rounded-sm" style={{ background: c }} />
@@ -346,7 +338,9 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 					</span>
 				))}
 				<span className="ml-auto tabular-nums text-bn-xs text-bn-text-secondary">
-					近 7 天共 {total} 次
+					{tx("sourceUi.pages.Dashboard.TrendPanel.5")}
+					{total}
+					{tx("sourceUi.pages.Dashboard.TrendPanel.6")}
 				</span>
 			</div>
 		</GlassPanel>
@@ -354,18 +348,21 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 }
 
 function AiInsightStrip({ tip }: { tip: React.ReactNode }) {
+	const tx = useT();
 	return (
 		<HeroStrip
 			compact
 			icon={<Icon.ai size={20} />}
 			right={
 				<Btn size="sm" variant="ghost">
-					查看完整总结 →
+					{tx("sourceUi.pages.Dashboard.right.7")}
 				</Btn>
 			}
 		>
 			<div className="text-bn-sm leading-relaxed text-bn-text-tertiary">
-				<span className="font-bold text-(--bn-ai-purple)">AI 直播洞察 · </span>
+				<span className="font-bold text-(--bn-ai-purple)">
+					{tx("sourceUi.pages.Dashboard.AiInsightStrip.8")}
+				</span>
 				{tip}
 			</div>
 		</HeroStrip>
@@ -377,7 +374,7 @@ export function TimelinePanel({
 	subs,
 	targets,
 	sources,
-	extensions,
+	extensions: _extensions,
 }: {
 	entries: HistoryEntryView[];
 	subs: Subscription[];
@@ -387,6 +384,7 @@ export function TimelinePanel({
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
 }) {
+	const tx = useT();
 	// 历史行先按 `subscriptionId` 对订阅,不在了再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,
 	// ADR-0019 决策 50 / 73,与服务端重推同一条规矩)—— 删了又重加的 UP,旧行照样对得上现在那条。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
@@ -395,8 +393,8 @@ export function TimelinePanel({
 		for (const t of targets) m.set(t.id, t);
 		return m;
 	}, [targets]);
-	const platformLabelOf = (extensionId: string) =>
-		subscriptionPlatformOf({ extensionId }, sources, extensions).label;
+	const platformFor = (identity: { sourceKey: string }) =>
+		subscriptionPlatformOf(identity, sources);
 	// 这一栏说的是发出去的推送:被静音 / 免扰挡下的行、被过滤的作品留的行都不算推送,不列(历史页照列),
 	// 也不占这六个位子。
 	const recent = entries
@@ -404,25 +402,25 @@ export function TimelinePanel({
 		.slice(0, 6);
 	return (
 		<GlassPanel
-			title="最近推送活动"
-			subtitle="时间轴视图"
+			title={tx("sourceUi.pages.Dashboard.title.9")}
+			subtitle={tx("sourceUi.pages.Dashboard.subtitle.10")}
 			// 与 KPI 行的「今日推送」同一抹紫 —— 讲的是同一件事(发出去的推送)。
 			accent="var(--color-bn-purple)"
 			icon={<Icon.bell width={15} height={15} />}
 			right={
 				<Link to="/history">
 					<Btn size="sm" variant="ghost">
-						查看全部
+						{tx("sourceUi.pages.Dashboard.right.11")}
 					</Btn>
 				</Link>
 			}
 		>
 			{recent.length === 0 ? (
 				<EmptyNote>
-					还没有推送活动
+					{tx("sourceUi.pages.Dashboard.TimelinePanel.12")}
 					<br />
 					<span className="text-bn-xs text-bn-text-secondary/80">
-						先去「推送目标」配置好通道，订阅 UP 主以后就会出现在这里 ~
+						{tx("sourceUi.pages.Dashboard.TimelinePanel.13")}
 					</span>
 				</EmptyNote>
 			) : (
@@ -440,17 +438,19 @@ export function TimelinePanel({
 						const sub = lookup.forRow(h);
 						// 优先 entry 自带的写入期 snapshot —— 订阅后续被删除仍能正确显示。都对不上就写身份:
 						// B 站行「UID xxx」,拓展行「平台名 · 外部 id」(决策 73)。
-						const name =
-							h.nameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
+						const name = displayNameOf(
+							{ profileName: h.nameSnapshot },
+							sub
+								? displayName(sub, platformFor(sub.identity))
+								: historyRowIdentity(h, platformFor(h.identity)),
+						);
 						// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
 						const avatar = historyRowAvatarUrl(h, sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h);
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
 						// B 站行不画。
-						const platform = isExtensionIdentity(h.identity)
-							? subscriptionPlatformOf({ extensionId: h.identity.sourceKey }, sources, extensions)
-							: undefined;
+						const platform = platformFor(h.identity);
 						const tone = familyTone(h.feature);
 						const status = PUSH_STATUS_META[h.status];
 						const marked = h.status !== "delivered";
@@ -492,7 +492,8 @@ export function TimelinePanel({
 									</div>
 									{count > 1 ? (
 										<Pill color={tone} subtle size="sm">
-											{count} 条
+											{count}
+											{tx("sourceUi.components.toast.shell.ToastCard.2")}
 										</Pill>
 									) : null}
 									<span className="text-bn-xs text-bn-text-secondary">→ {targetName}</span>
@@ -522,25 +523,20 @@ function fansRowFace(
 	e: FollowersRefreshEntry,
 	lookup: SubscriptionLookup,
 	sources: readonly SourceEntry[] | undefined,
-	extensions: readonly ExtensionDTO[] | undefined,
+	_extensions: readonly ExtensionDTO[] | undefined,
 ): { name: string; color: string; avatar?: string; platform?: { label: string; color?: string } } {
 	const sub = lookup.byId(e.subscriptionId);
 	const base = {
 		color: identityColor(e.identity),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
-	if (!isExtensionIdentity(e.identity)) {
-		return { ...base, name: sub ? displayName(sub) : historyRowIdentity(e) };
-	}
-	const platform = subscriptionPlatformOf(
-		{ extensionId: e.identity.sourceKey },
-		sources,
-		extensions,
-	);
+	const platform = subscriptionPlatformOf(e.identity, sources);
 	return {
 		...base,
-		name: sub ? displayName(sub) : historyRowIdentity(e, () => platform.label),
-		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
+		name: sub ? displayName(sub, platform) : historyRowIdentity(e, platform),
+		platform: platform.showBadge
+			? { label: platform.shortLabel ?? platform.label, color: platform.color }
+			: undefined,
 	};
 }
 
@@ -575,6 +571,7 @@ export function FansPanel({
 	/** 装着的拓展 —— 来源表里没有时退它的名字。 */
 	extensions?: readonly ExtensionDTO[];
 }) {
+	const tx = useT();
 	// 不轮询 — 由 usePushEventsChannel 的 `followers-refreshed` 覆盖式刷新缓存。
 	const fansQuery = useQuery({
 		queryKey: FOLLOWERS_QUERY_KEY,
@@ -596,21 +593,24 @@ export function FansPanel({
 
 	return (
 		<GlassPanel
-			title="粉丝数变化"
-			subtitle="自订阅起点 / 近 24h / 近 7d"
+			title={tx("sourceUi.pages.Dashboard.title.14")}
+			subtitle={tx("sourceUi.pages.Dashboard.subtitle.15")}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.heart width={15} height={15} />}
 			right={
 				<Pill color="var(--color-bn-pink)" size="sm">
-					● {entries.length} 位订阅
+					● {entries.length}
+					{tx("sourceUi.pages.Dashboard.right.16")}
 				</Pill>
 			}
 		>
 			{entries.length === 0 ? (
 				<EmptyNote>
-					采样中…
+					{tx("sourceUi.pages.Dashboard.FansPanel.17")}
 					<br />
-					<span className="text-bn-xs text-bn-text-secondary/80">第一轮资料刷新完成后会填充</span>
+					<span className="text-bn-xs text-bn-text-secondary/80">
+						{tx("sourceUi.pages.Dashboard.FansPanel.18")}
+					</span>
 				</EmptyNote>
 			) : (
 				// 单列布局,max-h 上限 ≈ 3 行行卡(每行 ~62px + 8px gap);N 多时走
@@ -635,10 +635,14 @@ export function FansPanel({
 										) : null}
 									</div>
 									<div className="tabular-nums text-bn-xs text-bn-text-tertiary">
-										{formatCount(e.current)} 粉丝
+										{formatCount(e.current)}
+										{tx("sourceUi.pages.Dashboard.FansPanel.19")}
 									</div>
 								</div>
-								<FansDeltaCol label="起点" value={e.deltaSubscribed} />
+								<FansDeltaCol
+									label={tx("sourceUi.pages.Dashboard.label.20")}
+									value={e.deltaSubscribed}
+								/>
 								<FansDeltaCol label="24h" value={e.delta24h} />
 								<FansDeltaCol label="7d" value={e.delta7d} />
 							</div>
@@ -712,6 +716,7 @@ function VersionBadge({ children }: { children: ReactNode }) {
 
 /** 一组四个模块:小标题 + 四条单行(状态点 · 名字 …… 覆盖徽章 · 状态)。 */
 function ModuleGroup({ caption, cells }: { caption: string; cells: PluginCell[] }) {
+	const tx = useT();
 	return (
 		// 小标题定高 18px,四条平摊剩下的高度;与右边那组同在一个等高的 grid 里,行线才对得齐。
 		<div className="grid grid-rows-[18px_repeat(4,minmax(0,1fr))]">
@@ -741,7 +746,7 @@ function ModuleGroup({ caption, cells }: { caption: string; cells: PluginCell[] 
 							<span
 								className="shrink-0 rounded-sm px-1.5 text-bn-2xs font-bold leading-4"
 								style={{ background: tone.bg, color: tone.fg }}
-								title="按模块覆盖"
+								title={tx("sourceUi.pages.Dashboard.title.21")}
 							>
 								{levelLabel}
 							</span>
@@ -794,6 +799,7 @@ export function SystemHealthCard({
 	imageEnabled: boolean;
 	aiEnabled: boolean;
 }) {
+	const tx = useT();
 	const effectiveLevel = (
 		id: ModuleCellId,
 	): { level: string | undefined; source: "global" | "module" } => {
@@ -826,25 +832,75 @@ export function SystemHealthCard({
 	// reachable 同步;子文案改填业务计数(api 显示登录态,storage 已加载,subscription
 	// / push 分别显示订阅 / 目标数)以增加信息量。
 	const infra: PluginCell[] = [
-		buildCell("api", "接口 · api", true, loggedIn ? "已登录" : "未登录"),
-		buildCell("storage", "持久化 · storage", true, "已加载"),
-		buildCell("subscription", "订阅 · subscription", true, `${subCount} 个订阅`),
-		buildCell("push", "推送 · push", true, `${targetCount} 个目标`),
+		buildCell(
+			"api",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.22"),
+			true,
+			loggedIn
+				? tx("sourceUi.pages.Dashboard.SystemHealthCard.23")
+				: tx("sourceUi.pages.Dashboard.SystemHealthCard.24"),
+		),
+		buildCell(
+			"storage",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.25"),
+			true,
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.26"),
+		),
+		buildCell(
+			"subscription",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.27"),
+			true,
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.28", { value1: subCount }),
+		),
+		buildCell(
+			"push",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.29"),
+			true,
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.30", { value1: targetCount }),
+		),
 	];
 	const featureModules: PluginCell[] = [
-		buildCell("dynamic", "动态 · dynamic", dynamicEnabled, dynamicEnabled ? "运行中" : "未启用"),
-		buildCell("live", "直播 · live", liveEnabled, liveEnabled ? "运行中" : "无监听"),
-		buildCell("image", "卡片 · image", imageEnabled, imageEnabled ? "puppeteer 就绪" : "未接入"),
-		buildCell("ai", "AI · ai", aiEnabled, aiEnabled ? "运行中" : "未启用"),
+		buildCell(
+			"dynamic",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.31"),
+			dynamicEnabled,
+			dynamicEnabled
+				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
+				: tx("sourceUi.pages.Dashboard.SystemHealthCard.33"),
+		),
+		buildCell(
+			"live",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.34"),
+			liveEnabled,
+			liveEnabled
+				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
+				: tx("sourceUi.pages.Dashboard.SystemHealthCard.35"),
+		),
+		buildCell(
+			"image",
+			tx("sourceUi.pages.Dashboard.SystemHealthCard.36"),
+			imageEnabled,
+			imageEnabled
+				? tx("sourceUi.pages.Dashboard.SystemHealthCard.37")
+				: tx("sourceUi.pages.Dashboard.SystemHealthCard.38"),
+		),
+		buildCell(
+			"ai",
+			"AI · ai",
+			aiEnabled,
+			aiEnabled
+				? tx("sourceUi.pages.Dashboard.SystemHealthCard.32")
+				: tx("sourceUi.pages.Dashboard.SystemHealthCard.33"),
+		),
 	];
 	const total = infra.length + featureModules.length;
 	// 就绪数就是亮着的状态点的个数 —— 它不是第二个真相源,只是把八颗点数成一个数。
 	const ready = [...infra, ...featureModules].filter((c) => c.enabled).length;
 	const summary = !reachable
-		? "后端失联,状态未知"
+		? tx("sourceUi.pages.Dashboard.SystemHealthCard.39")
 		: ready === total
-			? "模块全部就绪"
-			: `${total - ready} 个模块未启用`;
+			? tx("sourceUi.pages.Dashboard.SystemHealthCard.40")
+			: tx("sourceUi.pages.Dashboard.SystemHealthCard.41", { value1: total - ready });
 
 	// 失联时那份更新状态只是快照,按了「去更新」也去不了哪 —— 不催。
 	// 直接算成要显示的那句话:`newer` 非 null 蕴含 `update` 在,但 TS narrow 不出来,
@@ -855,15 +911,21 @@ export function SystemHealthCard({
 
 	return (
 		<GlassBox
-			title="系统状态 · 各模块"
+			title={tx("sourceUi.pages.Dashboard.title.42")}
 			accent={reachable ? "var(--color-bn-success)" : "var(--color-bn-danger)"}
 			icon={<Icon.check size={14} />}
-			badge={!reachable ? "失联" : health?.status === "ok" ? "健康" : "—"}
+			badge={
+				!reachable
+					? tx("sourceUi.pages.Dashboard.badge.43")
+					: health?.status === "ok"
+						? tx("sourceUi.pages.Dashboard.badge.44")
+						: "—"
+			}
 			right={
 				updateLabel ? (
 					<Link to={UPDATE_SECTION_PATH}>
 						<Btn size="sm" variant="primary">
-							去更新
+							{tx("sourceUi.pages.Dashboard.right.45")}
 						</Btn>
 					</Link>
 				) : undefined
@@ -875,8 +937,7 @@ export function SystemHealthCard({
 			<div className="flex h-full flex-col">
 				{!reachable ? (
 					<ErrorNote className="mb-2.5">
-						后端 API 当前不可达 (apps/server 未运行 或
-						网络中断),以下数据可能为最后一次成功拉取的快照。
+						{tx("sourceUi.pages.Dashboard.SystemHealthCard.46")}
 					</ErrorNote>
 				) : null}
 				{/* 左:事实列(就绪数 + 核心 / 面板 / 全局日志);右:两组四行。
@@ -887,7 +948,7 @@ export function SystemHealthCard({
 						<div>
 							<div
 								className="flex items-baseline gap-1 leading-none tabular-nums"
-								title="就绪的模块数"
+								title={tx("sourceUi.pages.Dashboard.title.47")}
 							>
 								<span className="text-bn-hero font-bold tracking-tight text-bn-text-primary">
 									{reachable ? ready : "—"}
@@ -897,21 +958,21 @@ export function SystemHealthCard({
 							<div className="mt-1.5 text-bn-xs text-bn-text-secondary">{summary}</div>
 						</div>
 						<div className="flex flex-col gap-2">
-							<Fact label="核心">
+							<Fact label={tx("sourceUi.pages.Dashboard.label.48")}>
 								<VersionBadge>{health?.version ?? "—"}</VersionBadge>
 								{updateLabel ? (
 									<span className="font-semibold text-bn-pink">{updateLabel}</span>
 								) : null}
 							</Fact>
-							<Fact label="面板">
+							<Fact label={tx("sourceUi.pages.Dashboard.label.49")}>
 								<VersionBadge>{__WEB_VERSION__}</VersionBadge>
 							</Fact>
-							<Fact label="全局日志">
+							<Fact label={tx("sourceUi.pages.Dashboard.label.50")}>
 								<span
 									className="inline-block rounded-md px-1.5 py-px text-bn-2xs font-bold"
 									style={{ background: globalTone.bg, color: globalTone.fg }}
 									// 光一个「WARN」没有上下文,读屏器与鼠标悬停都得知道它说的是哪一档。
-									title="全局日志等级"
+									title={tx("sourceUi.pages.Dashboard.title.51")}
 								>
 									{logLevel ? logLevel.toUpperCase() : "—"}
 								</span>
@@ -919,8 +980,11 @@ export function SystemHealthCard({
 						</div>
 					</div>
 					<div className="grid grid-cols-1 gap-y-3 sm:grid-cols-2 sm:gap-x-7">
-						<ModuleGroup caption="基础设施" cells={infra} />
-						<ModuleGroup caption="功能模块" cells={featureModules} />
+						<ModuleGroup caption={tx("sourceUi.pages.Dashboard.caption.52")} cells={infra} />
+						<ModuleGroup
+							caption={tx("sourceUi.pages.Dashboard.caption.53")}
+							cells={featureModules}
+						/>
 					</div>
 				</div>
 			</div>
@@ -929,6 +993,7 @@ export function SystemHealthCard({
 }
 
 export default function Dashboard() {
+	const tx = useT();
 	const loggedIn = useSourceAuth(BILIBILI_SOURCE_KEY).state?.status === "logged-in";
 	const reachable = useBackendReachable();
 
@@ -985,7 +1050,10 @@ export default function Dashboard() {
 					? "success"
 					: "error";
 	// 小贴士说谁:先挑 B 站的在播(下播总结那句话只对它成立),没有再说拓展订阅的。
-	const tipLive = live.find((r) => !isExtensionIdentity(r.identity)) ?? live[0];
+	const tipLive =
+		live.find((r) =>
+			subscriptionPlatformOf(r.identity, sources).supportedExtras.includes("liveSummary"),
+		) ?? live[0];
 	const history = historyQuery.data?.entries ?? [];
 
 	const enabledSubs = subs.filter((s) => s.enabled).length;
@@ -1008,30 +1076,32 @@ export default function Dashboard() {
 					{(() => {
 						// 与「正在直播」那块同一口径:按快照里的订阅 id 对(ADR-0019 决策 50)。
 						const sub = subs.find((s) => s.id === tipLive?.subscriptionId);
-						if (sub) return displayName(sub);
+						if (sub) return displayName(sub, subscriptionPlatformOf(sub.identity, sources));
 						// 订阅还没回来时按身份写(同「正在直播」那块):B 站写 UID,拓展写平台名加外部 id。
 						if (!tipLive) return "";
-						return historyRowIdentity(
-							tipLive,
-							(extensionId) =>
-								subscriptionPlatformOf({ extensionId }, sources, extensionsQuery.data?.extensions)
-									.label,
-						);
+						return historyRowIdentity(tipLive, subscriptionPlatformOf(tipLive.identity, sources));
 					})()}
 				</b>{" "}
 				{/* 下播总结只有 B 站有(ADR-0019 决策 12),拓展订阅在播时不这么劝。 */}
-				{tipLive && isExtensionIdentity(tipLive.identity)
-					? "正在直播～"
-					: "正在直播，建议在结束后推送总结到游戏交流群～"}
+				{tipLive &&
+				!subscriptionPlatformOf(tipLive.identity, sources).supportedExtras.includes("liveSummary")
+					? tx("sourceUi.pages.Dashboard.Dashboard.54")
+					: tx("sourceUi.pages.Dashboard.Dashboard.55")}
 			</>
 		) : (
 			<>
-				当前没有 UP 主在直播。可以前往 <b>订阅</b> 调整推送策略，或先去 <b>推送目标</b> 配置通道。
+				{tx("sourceUi.pages.Dashboard.Dashboard.56")}
+				<b>{tx("extensions.provides.subscription")}</b>
+				{tx("sourceUi.pages.Dashboard.Dashboard.57")}
+				<b>{tx("stats.push.target")}</b>
+				{tx("sourceUi.pages.Dashboard.Dashboard.58")}
 			</>
 		)
 	) : (
 		<>
-			女仆暂未登录 B 站账号。前往 <b>账号</b> 完成扫码后即可开启动态/直播推送。
+			{tx("sourceUi.pages.Dashboard.Dashboard.59")}
+			<b>{tx("sourceUi.pages.Dashboard.Dashboard.60")}</b>
+			{tx("sourceUi.pages.Dashboard.Dashboard.61")}
 		</>
 	);
 
@@ -1040,27 +1110,29 @@ export default function Dashboard() {
 			{/* KPI grid(构图对齐统计页:gap-3、带 footer 的卡定行高,其余同行等高)*/}
 			<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
 				<GlassStatCard
-					label="正在直播"
+					label={tx("dashboard.live.title")}
 					value={liveQuery.isSuccess ? live.length : "—"}
 					suffix={`/ ${subsQuery.isSuccess ? subs.length : "—"}`}
 					color="var(--color-bn-pink)"
 					pulse={liveQuery.isSuccess && live.length > 0}
 				/>
 				<GlassStatCard
-					label="已启用订阅"
+					label={tx("sourceUi.pages.Dashboard.label.62")}
 					value={enabledSubs}
 					suffix={`/ ${subs.length}`}
 					color="var(--color-bn-blue)"
 				/>
 				<GlassStatCard
-					label="今日推送"
+					label={tx("sourceUi.pages.Dashboard.label.63")}
 					value={todayPushes}
-					suffix="次"
+					suffix={tx("sourceUi.pages.Dashboard.suffix.64")}
 					color="var(--color-bn-purple)"
 					footer={
 						<>
 							<DeltaTag v={pushDelta} size={11.5} />
-							<span className="text-bn-2xs text-bn-text-secondary">较昨日</span>
+							<span className="text-bn-2xs text-bn-text-secondary">
+								{tx("sourceUi.pages.Dashboard.footer.65")}
+							</span>
 							<span className="ml-auto">
 								<Sparkline
 									data={pushSeries}
@@ -1073,9 +1145,9 @@ export default function Dashboard() {
 					}
 				/>
 				<GlassStatCard
-					label="今日失败"
+					label={tx("sourceUi.pages.Dashboard.label.66")}
 					value={todayFailed}
-					suffix="次"
+					suffix={tx("sourceUi.pages.Dashboard.suffix.64")}
 					color={todayFailed > 0 ? "var(--color-bn-danger)" : "var(--color-bn-success)"}
 					pulse={todayFailed > 0}
 				/>

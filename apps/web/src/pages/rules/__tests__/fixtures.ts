@@ -9,7 +9,38 @@
  * 返回时用「这份 fixture 没写到的那些键」把类型补齐,不点那个键的名字。
  */
 
-import { DEFAULT_FEATURE_FLAGS } from "../../../types/domain";
+import type { SourceEntry } from "@bilibili-notify/contract";
+import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../../types/domain";
+
+/** Public source response used by page tests that exercise every built-in capability. */
+export function makeSource(over: Partial<SourceEntry> = {}): SourceEntry {
+	return {
+		key: "bilibili",
+		status: "running",
+		has: { auth: true, liveStatus: true, preview: true },
+		descriptor: {
+			label: "B 站",
+			externalIdNoun: "UID",
+			postNoun: "动态",
+			creatorNoun: "UP 主",
+			supportedFeatures: [...FEATURE_KEYS],
+			supportedExtras: ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"],
+			membershipPrograms: [
+				{
+					id: "guard",
+					name: "大航海",
+					tiers: [
+						{ key: "captain", name: "舰长", rank: 1 },
+						{ key: "commander", name: "提督", rank: 2 },
+						{ key: "governor", name: "总督", rank: 3 },
+					],
+				},
+			],
+		},
+		...over,
+	};
+}
+
 import type { GlobalConfig, GlobalDefaults } from "../../../types/globals";
 
 /** AI 设置的 fixture(3a-38 ④:AI 在核心设置的顶层,不在 `defaults` 里)。 */

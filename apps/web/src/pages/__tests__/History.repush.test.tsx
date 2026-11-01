@@ -290,7 +290,7 @@ describe("发出去之后", () => {
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		await userEvent.click(repushButton());
 		await userEvent.click(screen.getByRole("button", { name: /只补没到的/ }));
-		const note = await screen.findByText(/女仆.*去补/);
+		const note = await screen.findByText(/正在补发（/);
 		expect(note.textContent).not.toMatch(/补好了|已补上/);
 	});
 
@@ -444,9 +444,9 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 
 	it("🔴 重投那条标得出是女仆补的,原来那几条不标", async () => {
 		const items = await expand();
-		expect(within(items[3] as HTMLElement).getByText(/女仆/)).toBeTruthy();
-		expect(within(items[4] as HTMLElement).getByText(/女仆/)).toBeTruthy();
-		expect(within(items[0] as HTMLElement).queryByText(/女仆/)).toBeNull();
+		expect(within(items[3] as HTMLElement).getByText("补发记录")).toBeTruthy();
+		expect(within(items[4] as HTMLElement).getByText("补发记录")).toBeTruthy();
+		expect(within(items[0] as HTMLElement).queryByText("补发记录")).toBeNull();
 	});
 
 	/**
@@ -456,7 +456,7 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 	it("🔴 被顶掉的那条压暗并说明,没被顶掉的照旧", async () => {
 		const items = await expand();
 		expect(items.map(dimOf)).toEqual([false, true, true, false, false]);
-		expect(within(items[1] as HTMLElement).getByText(/女仆后来/)).toBeTruthy();
+		expect(within(items[1] as HTMLElement).getByText("后来已补发一次")).toBeTruthy();
 	});
 
 	it("没有 repushOf 的老行照旧按位置印 1..N", async () => {
@@ -576,7 +576,7 @@ describe("被过滤的行", () => {
 	it.each([
 		["blocked-keyword", "屏蔽关键词"],
 		["blocked-reposts", "屏蔽转发"],
-		["blocked-articles", "屏蔽专栏"],
+		["blocked-articles", "屏蔽文章"],
 		["blocked-images", "屏蔽图集"],
 		["blocked-videos", "屏蔽视频"],
 		["allowlist-unmatched", "未命中白名单"],

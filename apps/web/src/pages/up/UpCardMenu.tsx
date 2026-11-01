@@ -1,6 +1,7 @@
 import { Icon, MenuItem } from "@bilibili-notify/ui";
 import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "../../i18n";
 
 export interface UpCardMenuProps {
 	/** 订阅当前是否启用,决定开关项文案(禁用 / 启用)。 */
@@ -11,8 +12,9 @@ export interface UpCardMenuProps {
 	onClose: () => void;
 	onEdit: () => void;
 	onToggleEnabled: () => void;
-	/** 不给 = 不显示「复制 UID」:拓展订阅没有 uid(ADR-0019 决策 9)。 */
-	onCopyUid?: () => void;
+	/** Copies the source's original external id. */
+	onCopyExternalId: () => void;
+	copyLabel: string;
 	/** 编辑这条订阅挂的标签(ADR-0034)。 */
 	onEditTags: () => void;
 	onDelete: () => void;
@@ -33,10 +35,12 @@ export function UpCardMenu({
 	onClose,
 	onEdit,
 	onToggleEnabled,
-	onCopyUid,
+	onCopyExternalId,
+	copyLabel,
 	onEditTags,
 	onDelete,
 }: UpCardMenuProps) {
+	const tx = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
 
 	// Esc 关闭。
@@ -58,20 +62,30 @@ export function UpCardMenu({
 	}, [onClose]);
 
 	const items: MenuItemDef[] = [
-		{ key: "edit", label: "编辑详情", icon: <Icon.edit size={14} />, onSelect: onEdit },
+		{
+			key: "edit",
+			label: tx("sourceUi.pages.up.UpCardMenu.label.1"),
+			icon: <Icon.edit size={14} />,
+			onSelect: onEdit,
+		},
 		{
 			key: "toggle",
-			label: enabled ? "禁用订阅" : "启用订阅",
+			label: enabled
+				? tx("sourceUi.pages.up.UpCardMenu.label.2")
+				: tx("sourceUi.pages.up.UpCardMenu.label.3"),
 			icon: <Icon.bell size={14} />,
 			onSelect: onToggleEnabled,
 		},
-		...(onCopyUid
-			? [{ key: "copy", label: "复制 UID", icon: <Icon.link size={14} />, onSelect: onCopyUid }]
-			: []),
-		{ key: "tags", label: "编辑标签", icon: <Icon.list size={14} />, onSelect: onEditTags },
+		{ key: "copy", label: copyLabel, icon: <Icon.link size={14} />, onSelect: onCopyExternalId },
+		{
+			key: "tags",
+			label: tx("sourceUi.pages.up.UpCardMenu.label.5"),
+			icon: <Icon.list size={14} />,
+			onSelect: onEditTags,
+		},
 		{
 			key: "delete",
-			label: "删除订阅",
+			label: tx("sourceUi.pages.up.UpCardMenu.label.6"),
 			icon: <Icon.trash size={14} />,
 			onSelect: onDelete,
 			danger: true,

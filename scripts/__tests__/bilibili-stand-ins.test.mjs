@@ -56,31 +56,18 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
-	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。
-	"apps/web/src/config/membership-programs.ts": 2,
 	"apps/web/src/components/ai-chat/index.tsx": 2,
 	"apps/web/src/components/header.tsx": 2,
 	"apps/web/src/components/onboarding/derive.ts": 2,
 	"apps/web/src/components/onboarding/use-onboarding-view.ts": 5,
-	"apps/web/src/components/scope-tabs.tsx": 3,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	// 3a-38(主人 10-10 点头,4 → 6):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(动态、直播两行都读它)。
 	// 第 4 期系统页与概览页按集成的描述画之后消失。
 	"apps/web/src/pages/Dashboard.tsx": 4,
-	"apps/web/src/pages/Rules.tsx": 6,
-	// 4-12(主人 10-27 点头,18 → 27):新建订阅的 B 站那颗平台钮改读来源表里 B 站的描述符,按来源键挑出它的地方如实显形
-	// (prop `bilibili`、`biliDescriptor`、`BILIBILI_SOURCE_KEY`)。新建流程按来源走、去掉 `BILI_PLATFORM` 哨兵时一起消。
-	"apps/web/src/pages/Subs.tsx": 6,
 	// 3a-38(主人 10-10 点头,27 → 29):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(引入常量、模块表里用一次)。
 	// 第 4 期系统页按集成的描述画之后消失。
 	"apps/web/src/pages/System.tsx": 5,
-	"apps/web/src/pages/rules/PerUpEditor.tsx": 6,
-	"apps/web/src/pages/rules/sections.tsx": 2,
-	"apps/web/src/pages/up/UpCard.tsx": 5,
-	"apps/web/src/pages/up/UpDialog.tsx": 10,
-	"apps/web/src/pages/up/subscription-source.ts": 2,
 	"apps/web/src/types/domain.ts": 2,
-	"apps/web/src/utils/up-display.ts": 2,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
 	"packages/internal/src/bilibili-guard.ts": 1,
 	"packages/internal/src/identity.ts": 4,

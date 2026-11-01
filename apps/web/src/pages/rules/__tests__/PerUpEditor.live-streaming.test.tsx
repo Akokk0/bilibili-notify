@@ -17,9 +17,10 @@ import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../../up/subscription-source";
+import { subscriptionPlatformOf } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
 import type { SectionId } from "../sections";
-import { makeAi, makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults, makeSource } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -49,6 +50,9 @@ const platformOf = (features: SubscriptionPlatform["features"]): SubscriptionPla
 	label: "抖音",
 	features,
 	absent: false,
+	supportedExtras: [],
+	status: "running",
+	showBadge: true,
 });
 
 function renderEditor(sub: Subscription, section: SectionId, platform?: SubscriptionPlatform) {
@@ -57,7 +61,7 @@ function renderEditor(sub: Subscription, section: SectionId, platform?: Subscrip
 		<QueryClientProvider client={qc}>
 			<PerUpEditor
 				sub={sub}
-				platform={platform}
+				platform={platform ?? subscriptionPlatformOf(sub.identity, [makeSource()])}
 				defaults={makeDefaults()}
 				factory={templateDefaultsFor("zh-CN")}
 				presets={makeAi().presets}

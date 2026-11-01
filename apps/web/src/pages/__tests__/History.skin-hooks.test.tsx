@@ -52,7 +52,7 @@ describe("推送历史 · 类型筛选", () => {
 	it("挂 chip(不再挂 btn),圆角走轴不写死", async () => {
 		renderHistory();
 		await waitFor(() => expect(screen.getAllByText("直播").length).toBeGreaterThan(0));
-		for (const label of ["全部", "直播", "动态"]) {
+		for (const label of ["全部", "直播", "作品"]) {
 			const el = chip(label);
 			const hooks = (el.getAttribute("data-bn") ?? "").split(/\s+/);
 			expect(hooks, label).toContain("chip");
@@ -75,7 +75,7 @@ describe("推送历史 · 类型筛选", () => {
 		await waitFor(() => expect(screen.getAllByText("直播").length).toBeGreaterThan(0));
 		const track = chip("全部").parentElement as HTMLElement;
 		const labels = [...track.querySelectorAll("button")].map((b) => b.textContent ?? "");
-		expect(labels).toEqual(["全部", "直播", "动态", "SC", "舰长"]);
+		expect(labels).toEqual(["全部", "直播", "作品", "SC", "会员"]);
 		// **实底**是这次换控件的全部意义:散胶囊只有一圈细边,浮在皮肤那层花底上时
 		// 组和选中态都靠背景对比,而背景是皮肤说了算的。轨道自带底色就不吃这个亏。
 		expect(track.className).toMatch(/\bbg-bn-[\w-]+/);

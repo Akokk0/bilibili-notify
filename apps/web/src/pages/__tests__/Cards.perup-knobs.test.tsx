@@ -17,7 +17,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Cards from "../Cards";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeDefaults, makeSource } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
@@ -68,6 +68,7 @@ function mockApi(sub: Subscription): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
+		if (url === "/api/sources") return Promise.resolve({ sources: [makeSource()] });
 		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);
 		return Promise.resolve({ core: globals });
 	});

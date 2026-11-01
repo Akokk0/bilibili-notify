@@ -20,6 +20,7 @@ import {
 	type Subscription,
 } from "../../types/domain";
 import { LiveNowPanel } from "../Dashboard";
+import { makeSource } from "../rules/__tests__/fixtures";
 
 beforeEach(() => {
 	i18n.set({ locale: "zh-CN", voice: "maid" });
@@ -72,7 +73,7 @@ describe("正在直播 · 房间对到哪条订阅", () => {
 		];
 		render(
 			<MemoryRouter initialEntries={["/"]}>
-				<LiveNowPanel live={live} subs={subs} />
+				<LiveNowPanel live={live} subs={subs} sources={[makeSource()]} />
 			</MemoryRouter>,
 		);
 		expect(screen.getByText("快照里那条")).toBeTruthy();
@@ -130,7 +131,10 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 				<LiveNowPanel
 					live={live}
 					subs={subs}
-					sources={extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : []))}
+					sources={[
+						makeSource(),
+						...(extensions?.flatMap((one) => (one.id === DOUYIN.id ? [DOUYIN_SOURCE] : [])) ?? []),
+					]}
 					extensions={extensions}
 				/>
 			</MemoryRouter>,
@@ -224,7 +228,7 @@ describe("正在直播 · 名字兜底与颜色", () => {
 	function renderPanel(live: LiveListeningEntry[], subs: Subscription[]) {
 		return render(
 			<MemoryRouter initialEntries={["/"]}>
-				<LiveNowPanel live={live} subs={subs} />
+				<LiveNowPanel live={live} subs={subs} sources={[makeSource()]} />
 			</MemoryRouter>,
 		);
 	}

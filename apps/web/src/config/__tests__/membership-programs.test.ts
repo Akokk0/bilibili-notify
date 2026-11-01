@@ -10,7 +10,20 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { GUARD_PROGRAM_ID, membershipTierOf, membershipTiersOf } from "../membership-programs";
+import { membershipTierOf, membershipTiersOf } from "../membership-programs";
+
+const GUARD_PROGRAM_ID = "sample";
+const PROGRAMS = [
+	{
+		id: GUARD_PROGRAM_ID,
+		name: "Sample",
+		tiers: [
+			{ key: "captain", name: "舰长", rank: 1, color: "#4ebcec" },
+			{ key: "commander", name: "提督", rank: 2, color: "#d8a0e6" },
+			{ key: "governor", name: "总督", rank: 3, color: "#f2a053" },
+		],
+	},
+];
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -32,16 +45,35 @@ function stripComments(raw: string): string {
 	return raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 }
 
+describe("公共描述符档位", () => {
+	it("按实际rank排序且不同体系同key不串档", () => {
+		const programs = [
+			{
+				id: "readers",
+				name: "Readers",
+				tiers: [
+					{ key: "shared", name: "Gold", rank: 9 },
+					{ key: "low", name: "Silver", rank: 4 },
+				],
+			},
+			{ id: "other", name: "Other", tiers: [{ key: "shared", name: "Bronze", rank: 2 }] },
+		];
+		expect(membershipTiersOf(programs, "readers").map((t) => t.name)).toEqual(["Silver", "Gold"]);
+		expect(programs[0]?.tiers[0]?.name).toBe("Gold");
+		expect(membershipTierOf(programs, "other", "shared")?.name).toBe("Bronze");
+	});
+});
+
 describe("membershipTiersOf", () => {
 	it("大航海的档按 rank 由低到高:舰长 → 提督 → 总督", () => {
-		const tiers = membershipTiersOf(GUARD_PROGRAM_ID);
+		const tiers = membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID);
 		expect(tiers.map((t) => t.key)).toEqual(["captain", "commander", "governor"]);
 		expect(tiers.map((t) => t.name)).toEqual(["舰长", "提督", "总督"]);
 		expect(tiers.map((t) => t.rank)).toEqual([1, 2, 3]);
 	});
 
 	it("档色是卡片那一套:舰长 #4ebcec、提督 #d8a0e6、总督 #f2a053", () => {
-		expect(membershipTiersOf(GUARD_PROGRAM_ID).map((t) => t.color)).toEqual([
+		expect(membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID).map((t) => t.color)).toEqual([
 			"#4ebcec",
 			"#d8a0e6",
 			"#f2a053",
@@ -49,26 +81,26 @@ describe("membershipTiersOf", () => {
 	});
 
 	it("不认识的体系回空表,不抛", () => {
-		expect(membershipTiersOf("nobody-has-this")).toEqual([]);
+		expect(membershipTiersOf(PROGRAMS, "nobody-has-this")).toEqual([]);
 	});
 
 	it("回的是副本:调用方排序、改动都碰不到共享的那张表", () => {
-		const first = membershipTiersOf(GUARD_PROGRAM_ID);
-		expect(membershipTiersOf(GUARD_PROGRAM_ID)).not.toBe(first);
+		const first = membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID);
+		expect(membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID)).not.toBe(first);
 		first.reverse();
 		first.pop();
-		expect(membershipTiersOf(GUARD_PROGRAM_ID).map((t) => t.rank)).toEqual([1, 2, 3]);
+		expect(membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID).map((t) => t.rank)).toEqual([1, 2, 3]);
 	});
 });
 
 describe("membershipTierOf", () => {
 	it("按 key 找档", () => {
-		expect(membershipTierOf(GUARD_PROGRAM_ID, "commander")?.name).toBe("提督");
+		expect(membershipTierOf(PROGRAMS, GUARD_PROGRAM_ID, "commander")?.name).toBe("提督");
 	});
 
 	it("体系或 key 不存在回 undefined", () => {
-		expect(membershipTierOf(GUARD_PROGRAM_ID, "nope")).toBeUndefined();
-		expect(membershipTierOf("nobody-has-this", "captain")).toBeUndefined();
+		expect(membershipTierOf(PROGRAMS, GUARD_PROGRAM_ID, "nope")).toBeUndefined();
+		expect(membershipTierOf(PROGRAMS, "nobody-has-this", "captain")).toBeUndefined();
 	});
 });
 
@@ -80,7 +112,7 @@ describe("面板里只有一处认得 B 站的档位表", () => {
 				hits.push(relative(SRC_DIR, file));
 			}
 		}
-		expect(hits).toEqual(["config/membership-programs.ts"]);
+		expect(hits).toEqual([]);
 	});
 
 	it("旧的 guard-levels 没有人再引用", async () => {
@@ -99,7 +131,9 @@ describe("面板里只有一处认得 B 站的档位表", () => {
 			"pages/rules/sections.tsx",
 			"pages/rules/PerUpEditor.tsx",
 		];
-		const colors = membershipTiersOf(GUARD_PROGRAM_ID).flatMap((t) => (t.color ? [t.color] : []));
+		const colors = membershipTiersOf(PROGRAMS, GUARD_PROGRAM_ID).flatMap((t) =>
+			t.color ? [t.color] : [],
+		);
 		const findings: string[] = [];
 		for (const rel of consumers) {
 			const src = stripComments(await readFile(join(SRC_DIR, rel), "utf8")).toLowerCase();

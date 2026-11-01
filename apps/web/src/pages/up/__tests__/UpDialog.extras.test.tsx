@@ -15,6 +15,8 @@ import {
 	type PushTarget,
 	type Subscription,
 } from "../../../types/domain";
+import { makeSource } from "../../rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
 afterEach(cleanup);
@@ -24,6 +26,7 @@ function renderDialog(sub: Subscription) {
 	render(
 		<UpDialog
 			sub={sub}
+			platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 			targets={[]}
 			connections={[]}
 			onClose={() => {}}
@@ -104,6 +107,7 @@ function renderWithTarget(sub: Subscription, target: PushTarget) {
 	render(
 		<UpDialog
 			sub={sub}
+			platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 			targets={[target]}
 			connections={[
 				{

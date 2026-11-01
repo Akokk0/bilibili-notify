@@ -12,6 +12,8 @@
 import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeSource } from "../../pages/rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../../pages/up/subscription-source";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 
@@ -78,7 +80,7 @@ describe("ScopeTabs 的两种 tab 说同一句选中语汇", () => {
 
 	it("「全局」TabButton 选中时说的也是同一句 —— 语汇只有一处定义", () => {
 		renderTabs("__global");
-		const globalBtn = screen.getByText("全局 / 全部 UP").closest("button");
+		const globalBtn = screen.getByText("全局 / 全部订阅").closest("button");
 		if (!globalBtn) throw new Error("没找到全局 tab");
 		expectSpeaks(globalBtn, TAB_ACTIVE_LANGUAGE);
 	});
@@ -119,14 +121,26 @@ describe("ScopeTabs 的「是谁」那一行", () => {
 				onAddSub={vi.fn()}
 				onRemoveSub={vi.fn()}
 				overridesCountFor={() => 0}
-				platformLabelOf={platformLabelOf}
+				platformOf={(identity) =>
+					subscriptionPlatformOf(identity, [
+						makeSource(),
+						...(platformLabelOf?.("douyin")
+							? [
+									makeSource({
+										key: "douyin",
+										descriptor: { label: platformLabelOf("douyin")!, supportedFeatures: ["post"] },
+									}),
+								]
+							: []),
+					])
+				}
 			/>,
 		);
 	}
 
-	it("右侧提示:B 站只写 uid", () => {
+	it("右侧提示使用来源的身份叫法", () => {
 		renderWith(SUB.id);
-		expect(screen.getByText("111", { selector: "b" })).toBeTruthy();
+		expect(screen.getByText("UID 111", { selector: "b" })).toBeTruthy();
 	});
 
 	it("右侧提示:拓展写「平台名 · 外部 id」;平台名取不到 → 写拓展 id", () => {
@@ -141,7 +155,7 @@ describe("ScopeTabs 的「是谁」那一行", () => {
 
 	it("「添加 UP」下拉:B 站「UID xxx」,拓展「平台名 · 外部 id」", () => {
 		renderWith("__global", () => "抖音");
-		fireEvent.click(screen.getByTitle("从订阅列表添加 UP 主的个性化配置"));
+		fireEvent.click(screen.getByTitle("从订阅列表添加个性化配置"));
 		expect(screen.getByText("UID 111")).toBeTruthy();
 		expect(screen.getByText("抖音 · sec-2")).toBeTruthy();
 	});

@@ -111,28 +111,30 @@ function renderSubs() {
 }
 
 describe("列表里的拓展订阅", () => {
-	it("拓展停了 → 那张卡写「抖音拓展没在跑」", async () => {
+	it("拓展停了 → 那张卡写「抖音来源未运行」", async () => {
 		subs = [BILI, extSub()];
 		extensions = Promise.resolve({
 			extensions: [source({ state: "disabled", enabled: false })],
 		});
+		sources = [BILI_SOURCE, { ...DOUYIN_SOURCE, status: "disabled" }];
 		renderSubs();
-		expect(await screen.findByText("抖音拓展没在跑")).toBeTruthy();
+		expect(await screen.findByText("抖音来源未运行")).toBeTruthy();
 	});
 
-	it("拓展开着但没跑起来(加载失败)→ 同样写「抖音拓展没在跑」,不说「没开」", async () => {
+	it("拓展开着但没跑起来(加载失败)→ 同样写「抖音来源未运行」,不说「没开」", async () => {
 		subs = [BILI, extSub()];
 		extensions = Promise.resolve({
 			extensions: [source({ state: "failed", enabled: true })],
 		});
+		sources = [BILI_SOURCE, { ...DOUYIN_SOURCE, status: "failed" }];
 		renderSubs();
-		expect(await screen.findByText("抖音拓展没在跑")).toBeTruthy();
+		expect(await screen.findByText("抖音来源未运行")).toBeTruthy();
 	});
 
 	it("拓展没装 → 拿不到名字,写拓展 id", async () => {
 		subs = [BILI, extSub({ identity: { sourceKey: "kuaishou", externalId: "sec-2" } })];
 		renderSubs();
-		expect(await screen.findByText("kuaishou拓展没在跑")).toBeTruthy();
+		expect(await screen.findByText("kuaishou来源未安装")).toBeTruthy();
 	});
 
 	it("拓展在跑 → 不说「没在跑」,有平台徽章", async () => {
@@ -140,7 +142,7 @@ describe("列表里的拓展订阅", () => {
 		renderSubs();
 		await screen.findByText("抖音乙");
 		await waitFor(() => expect(screen.getByText("抖音")).toBeTruthy());
-		expect(screen.queryByText(/拓展没在跑/)).toBeNull();
+		expect(screen.queryByText(/来源未运行|来源未安装/)).toBeNull();
 	});
 
 	it("拓展列表还没回来 → 不下结论", async () => {
@@ -148,6 +150,6 @@ describe("列表里的拓展订阅", () => {
 		extensions = new Promise(() => {});
 		renderSubs();
 		await screen.findByText("抖音乙");
-		expect(screen.queryByText(/拓展没在跑/)).toBeNull();
+		expect(screen.queryByText(/来源未运行|来源未安装/)).toBeNull();
 	});
 });

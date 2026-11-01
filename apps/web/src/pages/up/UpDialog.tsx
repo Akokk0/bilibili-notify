@@ -3,6 +3,7 @@ import type {
 	ConnectionCapabilitiesMap,
 	SubscriptionCreateRequest,
 } from "@bilibili-notify/contract";
+import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddButton,
@@ -20,8 +21,8 @@ import {
 } from "@bilibili-notify/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
+import { i18n, useT } from "../../i18n";
 import {
-	BILIBILI_SOURCE_KEY,
 	type Connection,
 	DEFAULT_FEATURE_FLAGS,
 	EXTRA_KEYS,
@@ -45,6 +46,7 @@ import {
 	subscriptionColor,
 } from "./helpers";
 import {
+	extraLabelOf,
 	featureLabelOf,
 	type SubscriptionPlatform,
 	visibleFeaturesOf,
@@ -58,29 +60,26 @@ type FeatureGroup = {
 };
 
 /** 周期「正在直播」那一行的小字:平台中立,B 站与拓展订阅共用。 */
-const LIVE_STREAMING_SUB = "开播后每隔几小时再提醒一次";
+const liveStreamingSubOf = () => i18n.t("sourceUi.pages.up.UpDialog.text.1");
 
-const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
+const featureGroupsOf = (): ReadonlyArray<FeatureGroup> => [
 	{
-		label: "动态",
-		keys: [{ key: "post", sub: "投稿 / 转发 / 专栏" }],
+		label: featureLabelOf("post", undefined),
+		keys: [{ key: "post" }],
 	},
 	{
-		label: "直播",
+		label: i18n.t("extension.reportDiscrepancies.kindLive"),
 		keys: [
-			{ key: "liveStart", sub: "开播提醒" },
-			{ key: "liveStreaming", sub: LIVE_STREAMING_SUB },
-			{ key: "liveEnd", sub: "下播卡片;词云 / AI 总结跟着它走" },
-			{ key: "membership", sub: "舰长 / 提督 / 总督" },
-			{ key: "superchat", sub: "Super Chat 提醒" },
+			{ key: "liveStart", sub: i18n.t("sourceUi.pages.up.UpDialog.sub.3") },
+			{ key: "liveStreaming", sub: liveStreamingSubOf() },
+			{ key: "liveEnd" },
+			{ key: "membership" },
+			{ key: "superchat" },
 		],
 	},
 	{
-		label: "特别关注",
-		keys: [
-			{ key: "viewerChat", sub: "特别关注用户的弹幕" },
-			{ key: "viewerEnter", sub: "特别关注用户进直播间" },
-		],
+		label: i18n.t("sourceUi.pages.up.UpDialog.label.7"),
+		keys: [{ key: "viewerChat" }, { key: "viewerEnter" }],
 	},
 ];
 
@@ -98,61 +97,70 @@ function extrasUnder(feature: FeatureKey): ExtraKey[] {
 	return EXTRA_KEYS.filter((k) => PUSH_EXTRAS[k].feature === feature);
 }
 
-/**
- * 只有 B 站报得出的附加项(ADR-0019 决策 5):词云与直播总结吃的是 B 站直播间的弹幕,别的平台
- * 没有这份料。拓展订阅的弹层上不摆它们 —— 摆出来就是一个永远不会响的开关。
- */
-const BILI_ONLY_EXTRAS: ReadonlySet<ExtraKey> = new Set(["wordcloud", "liveSummary"]);
-
-/**
- * 拓展订阅那几把的小字。B 站那几句说的是 B 站的事(投稿 / 转发 / 专栏、词云 / AI 总结跟着下播走),
- * 搬到别的平台上就是假话;没有的就不写。
- */
-const EXTENSION_FEATURE_SUBS: Partial<Record<FeatureKey, string>> = {
-	liveStart: "开播提醒",
-	liveStreaming: LIVE_STREAMING_SUB,
-	liveEnd: "下播卡片",
-};
-
-/**
- * 弹层上怎么分组、每一格叫什么 —— B 站订阅原样是 {@link FEATURE_GROUPS};拓展订阅只留它那个源
- * 报得出的那几把(决策 5),空了的组整组不画,「动态」那组跟着平台的叫法走。
- */
 function featureGroupsFor(
-	sub: Subscription,
+	platform: SubscriptionPlatform,
 	visible: readonly FeatureKey[],
 	labelOf: FeatureLabelOf,
 ): ReadonlyArray<FeatureGroup> {
-	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return FEATURE_GROUPS;
-	return FEATURE_GROUPS.map((g) => ({
-		label: g.keys.some(({ key }) => key === "post") ? labelOf("post") : g.label,
-		keys: g.keys
-			.filter(({ key }) => visible.includes(key))
-			.map(({ key }) => ({ key, sub: EXTENSION_FEATURE_SUBS[key] })),
-	})).filter((g) => g.keys.length > 0);
+	return featureGroupsOf()
+		.map((g) => ({
+			label: g.keys.some(({ key }) => key === "post") ? labelOf("post") : g.label,
+			keys: g.keys
+				.filter(({ key }) => visible.includes(key))
+				.map(({ key }) => ({
+					key,
+					sub:
+						key === "membership"
+							? (platform.membershipPrograms ?? [])
+									.flatMap((p) =>
+										Array.isArray(p.tiers)
+											? [...p.tiers].sort((a, b) => a.rank - b.rank).map((t) => t.name)
+											: [],
+									)
+									.join(" / ")
+							: key === "liveEnd"
+								? [
+										labelOf("liveEnd"),
+										...extrasUnder(key)
+											.filter((k) => platform.supportedExtras.includes(k))
+											.map((k) => extraLabelOf(k)),
+									].join(" / ")
+								: extensionFeatureSubsOf()[key],
+				})),
+		}))
+		.filter((g) => g.keys.length > 0);
 }
+const extensionFeatureSubsOf = (): Partial<Record<FeatureKey, string>> => ({
+	liveStart: i18n.t("sourceUi.pages.up.UpDialog.sub.3"),
+	liveStreaming: liveStreamingSubOf(),
+});
 
 /**
  * 每把附加项在面板上的一句说明。注册表里只放领域事实(挂哪、叫什么、默认值),界面措辞
  * 留在界面这一层;缺了也不炸 —— 新加的键先走兜底那句,补文案是另一回事。
  */
-const EXTRA_HINTS: Partial<Record<ExtraKey, string>> = {
-	atAllPost: "动态推送时附加 @全体",
-	atAllLiveStart: "开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)",
-	wordcloud: "下播时作为附加消息一起推",
-	liveSummary: "下播时作为附加消息一起推",
-};
+const extraHintsOf = (): Partial<Record<ExtraKey, string>> => ({
+	atAllPost: i18n.t("sourceUi.pages.up.UpDialog.atAllPost.10"),
+	atAllLiveStart: i18n.t("sourceUi.pages.up.UpDialog.atAllLiveStart.11"),
+	wordcloud: i18n.t("sourceUi.pages.up.UpDialog.wordcloud.12"),
+	liveSummary: i18n.t("sourceUi.pages.up.UpDialog.wordcloud.12"),
+});
 
 /** 特性在弹层上叫什么 —— 拓展订阅的「动态」按平台的叫法走(`postNoun`)。 */
 type FeatureLabelOf = (k: FeatureKey) => string;
 
 function extraHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
-	return EXTRA_HINTS[k] ?? `推送「${labelOf(PUSH_EXTRAS[k].feature)}」时附加一条`;
+	return (
+		extraHintsOf()[k] ??
+		i18n.t("sourceUi.pages.up.UpDialog.extraHint.13", { value1: labelOf(PUSH_EXTRAS[k].feature) })
+	);
 }
 
 /** 主特性关着时的 tooltip —— 说清楚「先开哪个」,而不是干巴巴一句「不可用」。 */
 function extraOffHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
-	return `需先开启「${labelOf(PUSH_EXTRAS[k].feature)}」才能推这个附加项`;
+	return i18n.t("sourceUi.pages.up.UpDialog.extraOffHint.14", {
+		value1: labelOf(PUSH_EXTRAS[k].feature),
+	});
 }
 
 export interface UpDialogProps {
@@ -187,11 +195,8 @@ export interface UpDialogProps {
 	saving: boolean;
 	/** 新建草稿另拿的候选资料。它只用于预览与随 POST 提交,不冒充服务端回来的资料缓存。 */
 	createProfile?: NonNullable<SubscriptionCreateRequest["cachedProfile"]>;
-	/**
-	 * 拓展订阅是哪个平台的(ADR-0019 决策 5):只列它报得出的特性、「动态」按它的叫法、头部写它。
-	 * B 站订阅不看它。
-	 */
-	platform?: SubscriptionPlatform;
+	/** Current source descriptor projection, including declared features and extras. */
+	platform: SubscriptionPlatform;
 	/**
 	 * 标签表(ADR-0034):「基础 → 标签」那一行按 id 查名字,点开的挑标签弹框也吃它。`undefined` = 还没读到
 	 * (此时弹框不许新建);不给等同没读到。
@@ -298,6 +303,7 @@ export function UpDialog({
 	tags,
 	globalFeatures = DEFAULT_FEATURE_FLAGS,
 }: UpDialogProps) {
+	const tx = useT();
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
 	// Targets the user attached during this dialog session — kept separately
@@ -348,17 +354,15 @@ export function UpDialog({
 	if (!draft) return null;
 
 	const color = subscriptionColor(draft);
-	const previewName = createProfile?.name.trim() || displayName(draft);
 	const identity = subscriptionIdentityOf(draft);
-	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	// 拓展订阅只列它那个源报得出的那几把特性(决策 5);B 站订阅全列,一切照旧。
-	const ext = isBili ? undefined : platform;
+	const ext = platform;
+	const previewName = createProfile?.name.trim() ? createProfile.name : displayName(draft, ext);
 	const visibleFeatures = visibleFeaturesOf(draft, ext);
 	const labelOf: FeatureLabelOf = (k) => featureLabelOf(k, ext);
 	const tagNames = resolveTagNames(draft.tagIds, tags ?? []);
-	const featureGroups = featureGroupsFor(draft, visibleFeatures, labelOf);
+	const featureGroups = featureGroupsFor(ext, visibleFeatures, labelOf);
 	const extrasFor = (feature: FeatureKey): ExtraKey[] =>
-		isBili ? extrasUnder(feature) : extrasUnder(feature).filter((k) => !BILI_ONLY_EXTRAS.has(k));
+		extrasUnder(feature).filter((k) => ext.supportedExtras.includes(k));
 	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
 	// 始终可点 + 关闭时一律走丢弃确认。
 	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
@@ -601,7 +605,7 @@ export function UpDialog({
 			>
 				<IconButton
 					icon={<Icon.close size={14} />}
-					label="关闭"
+					label={tx("subs.new.close")}
 					onClick={requestClose}
 					size="lg"
 					shape="pill"
@@ -626,19 +630,18 @@ export function UpDialog({
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
 							{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格写它是哪个平台的。 */}
-							{isBili ? (
-								<span className="tabular-nums">UID {identity.externalId}</span>
-							) : ext ? (
+							{ext.showBadge ? (
 								<Pill size="sm" color={ext.color ?? "var(--color-bn-inactive)"}>
 									{ext.label}
 								</Pill>
 							) : null}
+							<span className="tabular-nums">{subscriptionIdentityLabel(identity, ext)}</span>
 							{(createProfile?.followers ?? draft.cachedProfile?.followers) != null ? (
 								<>
-									{isBili || ext ? <span className="mx-1 opacity-70">·</span> : null}
+									<span className="mx-1 opacity-70">·</span>
 									<span>
 										{formatCount(createProfile?.followers ?? draft.cachedProfile?.followers ?? 0)}{" "}
-										粉丝
+										{tx("sourceUi.pages.up.UpDialog.UpDialog.15")}
 									</span>
 								</>
 							) : null}
@@ -651,16 +654,21 @@ export function UpDialog({
 			<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-10">
 				{/* 基础 */}
 				<section>
-					<SectionHeader label="基础" />
+					<SectionHeader label={tx("sourceUi.pages.up.UpDialog.label.16")} />
 					<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
-						<BasicRow label="启用订阅" sub="关闭后整体停止接收推送">
+						<BasicRow
+							label={tx("sourceUi.pages.up.UpCardMenu.label.3")}
+							sub={tx("sourceUi.pages.up.UpDialog.sub.17")}
+						>
 							<Toggle value={draft.enabled} onChange={setEnabled} size="sm" />
 						</BasicRow>
-						<BasicRow label="标签">
+						<BasicRow label={tx("subs.tags.title")}>
 							<div className="flex min-w-0 items-center justify-end gap-2">
 								<div className="flex min-w-0 flex-wrap justify-end gap-1">
 									{tagNames.length === 0 ? (
-										<span className="text-bn-xs text-bn-text-secondary">无标签</span>
+										<span className="text-bn-xs text-bn-text-secondary">
+											{tx("subs.tags.untagged")}
+										</span>
 									) : (
 										tagNames.map((name) => (
 											<Pill key={name} size="sm" subtle color="var(--color-bn-inactive)">
@@ -672,24 +680,29 @@ export function UpDialog({
 								<Btn
 									variant="outline"
 									size="sm"
-									aria-label="编辑标签"
+									aria-label={tx("sourceUi.pages.up.UpCardMenu.label.5")}
 									onClick={() => setEditingTags(true)}
 								>
-									编辑
+									{tx("sourceUi.pages.up.UpDialog.UpDialog.18")}
 								</Btn>
 							</div>
 						</BasicRow>
-						<BasicRow label="备注">
-							<TInput ariaLabel="备注" width={160} value={draft.notes ?? ""} onChange={setNotes} />
+						<BasicRow label={tx("sourceUi.pages.up.UpDialog.label.19")}>
+							<TInput
+								ariaLabel={tx("sourceUi.pages.up.UpDialog.label.19")}
+								width={160}
+								value={draft.notes ?? ""}
+								onChange={setNotes}
+							/>
 						</BasicRow>
 					</div>
 				</section>
 
 				{/* 订阅项总开关 */}
 				<section>
-					<SectionHeader label="订阅项 · 默认推送内容" />
+					<SectionHeader label={tx("sourceUi.pages.up.UpDialog.label.20")} />
 					<p className="mb-2 text-bn-xs text-bn-text-secondary">
-						这是该 UP 的"默认推送内容"。下方的推送目标若未单独自定义,会跟随这里的设置。
+						{tx("sourceUi.pages.up.UpDialog.UpDialog.21")}
 					</p>
 					<div className="space-y-2">
 						{featureGroups.map((g) => (
@@ -730,15 +743,13 @@ export function UpDialog({
 
 				{/* 推送目标 */}
 				<section ref={targetsSectionRef}>
-					<SectionHeader label="推送目标" />
+					<SectionHeader label={tx("stats.push.target")} />
 					{targets.length === 0 ? (
-						<EmptyNote size="sm">尚未配置任何推送目标 · 请先到「推送目标」页面创建</EmptyNote>
+						<EmptyNote size="sm">{tx("sourceUi.pages.up.UpDialog.UpDialog.22")}</EmptyNote>
 					) : (
 						<div className="space-y-2">
 							{attachedTargets.length === 0 ? (
-								<EmptyNote size="sm">
-									该订阅尚未指定推送目标 · 点击下方「添加推送目标」选择
-								</EmptyNote>
+								<EmptyNote size="sm">{tx("sourceUi.pages.up.UpDialog.UpDialog.23")}</EmptyNote>
 							) : (
 								attachedTargets.map((t) => (
 									<TargetRoutingCard
@@ -768,14 +779,14 @@ export function UpDialog({
 									<div className="rounded-lg border border-bn-border bg-bn-surface p-3">
 										<div className="mb-1.5 flex items-center justify-between">
 											<span className="text-bn-xs font-semibold text-bn-text-primary">
-												选择要添加的推送目标
+												{tx("sourceUi.pages.up.UpDialog.UpDialog.24")}
 											</span>
 											<button
 												type="button"
 												onClick={() => setShowPicker(false)}
 												className="text-bn-xs text-bn-text-tertiary hover:text-bn-text-primary"
 											>
-												取消
+												{tx("subs.new.cancel")}
 											</button>
 										</div>
 										<div className="flex flex-wrap gap-1.5">
@@ -798,7 +809,9 @@ export function UpDialog({
 								) : (
 									<AddButton block onClick={() => setShowPicker(true)}>
 										<Icon.plus size={12} />
-										添加推送目标 · 还有 {unattachedTargets.length} 个未添加
+										{tx("sourceUi.pages.up.UpDialog.UpDialog.25")}
+										{unattachedTargets.length}
+										{tx("sourceUi.pages.up.UpDialog.UpDialog.26")}
 									</AddButton>
 								)
 							) : null}
@@ -809,10 +822,10 @@ export function UpDialog({
 				{/* Stale routing entries */}
 				{staleIds.length > 0 ? (
 					<section>
-						<SectionHeader label="已失效的引用" />
+						<SectionHeader label={tx("sourceUi.pages.up.UpDialog.label.27")} />
 						{/* 虚线警示旁注 —— 「引用落了空」,不是「操作失败」,所以不是 ErrorNote。 */}
 						<HintNote tone="danger">
-							<div className="mb-1.5">下列推送目标已被删除,但路由中仍有引用 · 点击移除</div>
+							<div className="mb-1.5">{tx("sourceUi.pages.up.UpDialog.UpDialog.28")}</div>
 							<div className="flex flex-wrap gap-1.5">
 								{staleIds.map((id) => (
 									<button
@@ -836,7 +849,7 @@ export function UpDialog({
 				{attachedTargets.length === 0 && targets.length > 0 ? (
 					<div className="flex items-start gap-1.5 rounded-md border border-bn-warning-border bg-bn-warning-soft px-2.5 py-1.5 text-bn-xs text-bn-warning-text">
 						<Icon.warning size={12} className="mt-0.5 shrink-0" />
-						<span>未选中任何推送目标,保存后该订阅不会向任何地方推送消息</span>
+						<span>{tx("sourceUi.pages.up.UpDialog.UpDialog.29")}</span>
 					</div>
 				) : null}
 				<div className="flex items-center gap-2">
@@ -848,12 +861,12 @@ export function UpDialog({
 							onClick={onDelete}
 							disabled={saving}
 						>
-							移除订阅
+							{tx("sourceUi.pages.up.UpDialog.UpDialog.30")}
 						</Btn>
 					) : null}
 					<div className="flex-1" />
 					<Btn variant="outline" size="sm" onClick={requestClose} disabled={saving}>
-						取消
+						{tx("subs.new.cancel")}
 					</Btn>
 					<Btn
 						variant="primary"
@@ -869,11 +882,11 @@ export function UpDialog({
 					>
 						{saving
 							? mode === "create"
-								? "创建中…"
-								: "保存中…"
+								? tx("sourceUi.pages.up.UpDialog.UpDialog.31")
+								: tx("sourceUi.pages.up.UpDialog.UpDialog.32")
 							: mode === "create"
-								? "创建订阅"
-								: "保存配置"}
+								? tx("sourceUi.pages.up.UpDialog.UpDialog.33")
+								: tx("sourceUi.pages.up.UpDialog.UpDialog.34")}
 					</Btn>
 				</div>
 			</div>
@@ -890,10 +903,10 @@ export function UpDialog({
 			) : null}
 			{confirmingDiscard ? (
 				<ConfirmDialog
-					title="丢弃未保存的修改?"
-					message="你对这个订阅做的改动尚未保存,关闭后将丢失。"
-					confirmLabel="丢弃"
-					cancelLabel="继续编辑"
+					title={tx("sourceUi.pages.up.UpDialog.title.35")}
+					message={tx("sourceUi.pages.up.UpDialog.message.36")}
+					confirmLabel={tx("sourceUi.pages.up.UpDialog.confirmLabel.37")}
+					cancelLabel={tx("sourceUi.pages.up.UpDialog.cancelLabel.38")}
 					danger
 					onConfirm={onClose}
 					onCancel={() => setConfirmingDiscard(false)}
@@ -1041,10 +1054,10 @@ function ExtraInlineToggles({
 					parentOn={parentOn}
 					value={value(k)}
 					onChange={(on) => onChange(k, on)}
-					label={PUSH_EXTRAS[k].label}
+					label={extraLabelOf(k)}
 					// 带上所属主特性:@全体 在动态与开播下各有一枚,光一句「@全体」读屏分不清
 					// 是哪一枚 —— 同一屏里两个同名控件,按名字找必然找错一个。
-					ariaLabel={`${PUSH_EXTRAS[k].label} · ${labelOf(feature)}`}
+					ariaLabel={`${extraLabelOf(k)} · ${labelOf(feature)}`}
 					hint={extraHint(k, labelOf)}
 					offHint={extraOffHint(k, labelOf)}
 				/>
@@ -1089,18 +1102,24 @@ function ExtraPerTargetToggle({
 	unsupportedNote: string | undefined;
 	onSet: (explicit: boolean | undefined) => void;
 }) {
-	const label = PUSH_EXTRAS[extraKey].label;
+	const tx = useT();
+	const label = extraLabelOf(extraKey);
 	const unsupported = unsupportedNote !== undefined;
 	const isExplicit = explicit !== undefined;
 	const blocked = unsupported || !parentOn;
 	const display = !unsupported && parentOn && (explicit ?? inheritedValue);
-	const follow = `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"}`;
+	const follow = tx("sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.39", {
+		value1: inheritedValue ? "ON" : "OFF",
+	});
 	const hint = unsupported
 		? unsupportedNote
 		: !parentOn
 			? extraOffHint(extraKey, labelOf)
 			: isExplicit
-				? `已显式设置为 ${explicit ? "ON" : "OFF"}(订阅默认为 ${inheritedValue ? "ON" : "OFF"})`
+				? tx("sourceUi.pages.up.UpDialog.ExtraPerTargetToggle.40", {
+						value1: explicit ? "ON" : "OFF",
+						value2: inheritedValue ? "ON" : "OFF",
+					})
 				: `${follow} · ${extraHint(extraKey, labelOf)}`;
 	return (
 		<div className="mt-0.5 ml-9">
@@ -1121,7 +1140,7 @@ function ExtraPerTargetToggle({
 				{isExplicit && parentOn && !unsupported ? (
 					<IconButton
 						icon={<Icon.refresh size={10} />}
-						label={`重置 ${label} 为跟随订阅默认`}
+						label={tx("sourceUi.pages.up.UpDialog.label.41", { value1: label })}
 						size="xs"
 						onClick={() => onSet(undefined)}
 					/>
@@ -1140,10 +1159,12 @@ function ExtraPerTargetToggle({
  */
 function atAllBlockedNote(support: CapabilitySupport | undefined): string | undefined {
 	if (shouldSendAtAll(support)) return undefined;
-	return support?.state === "unsupported" ? `${support.reason}，发送时会自动跳过` : undefined;
+	return support?.state === "unsupported"
+		? i18n.t("sourceUi.pages.up.UpDialog.atAllBlockedNote.42", { value1: support.reason })
+		: undefined;
 }
 /** 连接列表回来了却找不到这条连接 —— 平台未知,不能把它说成 QQ 官方。 */
-const MISSING_CONNECTION_AT_ALL_NOTE = "连接不在了,没法判断能不能 @全体";
+const missingConnectionAtAllNoteOf = () => i18n.t("sourceUi.pages.up.UpDialog.text.43");
 
 // ── Target routing card (master switch + collapsed details) ──────────────────
 
@@ -1185,6 +1206,7 @@ function TargetRoutingCard({
 	onSetExtra: (extraKey: ExtraKey, explicit: boolean | undefined) => void;
 	onDetach: () => void;
 }) {
+	const tx = useT();
 	const enabledCount = isCustom
 		? features.filter((k) => sub.routing[k].includes(target.id)).length
 		: features.filter((k) => effFeature(sub, k, globalFeatures)).length;
@@ -1196,10 +1218,12 @@ function TargetRoutingCard({
 				<PlatformIcon platform={platform ?? ""} size={16} />
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
-						{target.name || "（未命名）"}
+						{target.name || tx("sourceUi.pages.up.UpDialog.TargetRoutingCard.44")}
 					</div>
 					<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
-						{isCustom ? "自定义推送内容" : `跟随订阅项 · ${enabledCount} 项已开启`}
+						{isCustom
+							? tx("sourceUi.pages.up.UpDialog.TargetRoutingCard.45")
+							: tx("sourceUi.pages.up.UpDialog.TargetRoutingCard.46", { value1: enabledCount })}
 					</div>
 				</div>
 				{isCustom ? (
@@ -1210,7 +1234,7 @@ function TargetRoutingCard({
 				<Toggle value={isCustom} onChange={onToggleMode} size="sm" />
 				<IconButton
 					icon={<Icon.close size={11} />}
-					label="移除该推送目标"
+					label={tx("sourceUi.pages.up.UpDialog.label.47")}
 					size="md"
 					tone="danger"
 					shape="pill"
@@ -1259,7 +1283,7 @@ function TargetRoutingCard({
 															: platform !== undefined
 																? atAllBlockedNote(atAll)
 																: connectionsLoaded
-																	? MISSING_CONNECTION_AT_ALL_NOTE
+																	? missingConnectionAtAllNoteOf()
 																	: undefined
 													}
 													onSet={(val) => onSetExtra(ek, val)}

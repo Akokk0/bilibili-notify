@@ -2,8 +2,8 @@ import { Btn, Icon, NoticeCard, NoticeStack, Pill } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { FEATURE_DESCRIPTORS, PUSH_STATUS_META } from "../config/push-features";
-import { useExtensions } from "../hooks/useExtensions";
 import { useSources } from "../hooks/useSources";
+import { useT } from "../i18n";
 import { subscriptionPlatformOf } from "../pages/up/subscription-source";
 import {
 	AUTO_DISMISS_MS,
@@ -12,7 +12,7 @@ import {
 	useToastStore,
 } from "../store/notifications";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowIdentity, isExtensionIdentity } from "../utils/up-display";
+import { historyRowIdentity } from "../utils/up-display";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
@@ -37,6 +37,7 @@ export function ToastShell(): React.ReactElement | null {
 }
 
 function ToastCard({ item }: { item: ToastItem }) {
+	const tx = useT();
 	const dismiss = useToastStore((s) => s.dismiss);
 	const sticky = item.kind === "notice";
 	useEffect(() => {
@@ -97,7 +98,9 @@ function ToastCard({ item }: { item: ToastItem }) {
 					{meta.eventLabel}
 					{marked ? (
 						<span className="ml-1.5 text-bn-2xs font-semibold" style={{ color: status.tone }}>
-							{view.status === "failed" ? "推送失败" : status.label}
+							{view.status === "failed"
+								? tx("sourceUi.components.toast.shell.title.1")
+								: status.label}
 						</span>
 					) : null}
 				</>
@@ -107,14 +110,11 @@ function ToastCard({ item }: { item: ToastItem }) {
 			style={marked ? { borderColor: edge } : undefined}
 		>
 			<div className="mt-0.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-				{isExtensionIdentity(view.identity) ? (
-					<ExtensionRowWho view={view} />
-				) : (
-					<span className="tabular-nums">{historyRowIdentity(view)}</span>
-				)}
+				<ExtensionRowWho view={view} />
 				{count > 1 ? (
 					<Pill color={meta.tone} subtle size="sm">
-						{count} 条
+						{count}
+						{tx("sourceUi.components.toast.shell.ToastCard.2")}
 					</Pill>
 				) : null}
 			</div>
@@ -128,7 +128,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 					{/* 这类推送没有任何可用目标:直达该 UP 抽屉的「推送目标」一节。Link 包 Btn,同通知卡。 */}
 					<Link to={`/subs?open=${encodeURIComponent(view.subscriptionId)}`}>
 						<Btn size="sm" variant="primary" onClick={() => dismiss(item.id)}>
-							去配置
+							{tx("sourceUi.components.toast.shell.ToastCard.3")}
 						</Btn>
 					</Link>
 				</div>
@@ -142,15 +142,11 @@ function ToastCard({ item }: { item: ToastItem }) {
  * 两张表没回来、或拓展卸载了取不到,写拓展 id。单拆一个组件:只有拓展行要去读来源表,B 站行不白问一次。
  */
 function ExtensionRowWho({ view }: { view: PushEventView }) {
-	const extensions = useExtensions({ retry: false }).data?.extensions;
 	const sources = useSources().data?.sources;
 	return (
 		// 外部 id 可以很长(抖音的 sec_uid 七八十个字符),截断而不是把「N 条」胶囊挤出卡外。
 		<span className="min-w-0 truncate">
-			{historyRowIdentity(
-				view,
-				(extensionId) => subscriptionPlatformOf({ extensionId }, sources, extensions).label,
-			)}
+			{historyRowIdentity(view, subscriptionPlatformOf(view.identity, sources))}
 		</span>
 	);
 }

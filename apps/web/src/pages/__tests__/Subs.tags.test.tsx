@@ -225,7 +225,7 @@ describe("Subs 订阅详情 × 标签", () => {
 	it("新建订阅的配置弹窗也拿得到标签表:挑一个标签,创建的 body 带着它", async () => {
 		renderSubs();
 		await waitFor(() => expect(screen.getByText("无标签")).toBeTruthy());
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ext"));
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/sources"));
 
 		fireEvent.click(screen.getAllByText("添加")[0] as HTMLElement);
 		await screen.findByText(/配置表单/);

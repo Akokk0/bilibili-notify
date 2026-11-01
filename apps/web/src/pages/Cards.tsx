@@ -40,11 +40,12 @@ import { Field, Picker, TArea, TInput, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
-import { GUARD_PROGRAM_ID, membershipTiersOf } from "../config/membership-programs";
+import { type MembershipProgram, membershipTiersOf } from "../config/membership-programs";
 import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
+import { useSources } from "../hooks/useSources";
 import { useT } from "../i18n";
 import { ApiError, api } from "../services/api";
 import { type PushTarget, type Subscription, subscriptionIdentityOf } from "../types/domain";
@@ -58,6 +59,7 @@ import type { CardSkinKnobsBySkin } from "./cards/knob-ops";
 import { previewErrorHint, previewErrorTitle } from "./cards/preview-error";
 import { enqueuePreview, PREVIEW_TIMEOUT_MS } from "./cards/preview-queue";
 import { displayName } from "./up/helpers";
+import { subscriptionPlatformOf } from "./up/subscription-source";
 
 /** 本页能预览的四种卡(卡种键与全仓同一套,没有页面自己的缩写)。 */
 type PreviewKind = "live" | "post" | "superchat" | "membership";
@@ -82,15 +84,13 @@ interface PreviewContent {
 }
 
 /** 上舰预览能选的档,由低到高(会员体系的档位表本身的顺序);默认选最低一档。 */
-const GUARD_TIERS = membershipTiersOf(GUARD_PROGRAM_ID);
-
 const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	subscriptionId: "",
 	post: { nth: 1 },
 	// 留言默认空:服务端画示例留言(一句话只在服务端字典里存一份)。
 	superchat: { text: "", amount: 30 },
 	// membership.text 默认空:挑了订阅时服务端取那个来源登录着的账号名,没挑或没登录才是示例名。
-	membership: { program: GUARD_PROGRAM_ID, text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
+	membership: { program: "", text: "", tierKey: "" },
 };
 
 /**
@@ -277,6 +277,8 @@ function PreviewImage({
  * 所见即所推:用的是当前预览正在调的草稿,无需先保存。
  */
 function TestPushCard({
+	programs,
+	membershipAvailable,
 	kind,
 	style,
 	pushContent,
@@ -292,6 +294,8 @@ function TestPushCard({
 	style: PreviewStyle;
 	/** 已解析的预览/推送内容载荷(`previewContentOf`,与预览同一份)。 */
 	pushContent: Record<string, unknown>;
+	programs: readonly MembershipProgram[];
+	membershipAvailable: boolean;
 	/** 与预览同一份(`previewSkin` / `previewKnobs`):全局作用域不传,per-UP 传这位 UP 的皮肤与草稿旋钮。 */
 	cardSkin?: string;
 	cardSkinKnobs?: CardSkinKnobsBySkin;
@@ -345,6 +349,7 @@ function TestPushCard({
 			badge="test"
 		>
 			<PreviewContentFields
+				programs={programs}
 				kind={kind}
 				content={mockContent}
 				setContent={setMockContent}
@@ -372,7 +377,7 @@ function TestPushCard({
 					size="sm"
 					full
 					onClick={() => push.mutate()}
-					disabled={push.isPending || !targetId}
+					disabled={push.isPending || !targetId || (kind === "membership" && !membershipAvailable)}
 				>
 					{push.isPending ? t("cards.testPush.pushing") : t("cards.testPush.button")}
 				</Btn>
@@ -475,6 +480,7 @@ function KindHintNote({ children }: { children: React.ReactNode }) {
  * (预览的是哪类卡片、用什么内容,跟改谁的样式独立)。
  */
 function PreviewContentFields({
+	programs,
 	kind,
 	content,
 	setContent,
@@ -483,6 +489,7 @@ function PreviewContentFields({
 	subscriptions,
 }: {
 	kind: PreviewKind;
+	programs: readonly MembershipProgram[];
 	content: PreviewContent;
 	setContent: React.Dispatch<React.SetStateAction<PreviewContent>>;
 	/** per-UP 作用域:仅类型选择,不提供 mock 内容编辑(用该 UP 真实数据)。 */
@@ -492,6 +499,7 @@ function PreviewContentFields({
 	subscriptions: readonly Subscription[];
 }) {
 	const t = useT();
+	const sourceEntries = useSources().data?.sources;
 	const setPost = (next: Partial<PreviewContent["post"]>) =>
 		setContent((c) => ({ ...c, post: { ...c.post, ...next } }));
 	const setSuperchat = (next: Partial<PreviewContent["superchat"]>) =>
@@ -501,6 +509,32 @@ function PreviewContentFields({
 
 	return (
 		<>
+			{kind === "membership" ? (
+				<>
+					<Field code="program" label={t("cards.content.program")}>
+						<TSelect
+							value={content.membership.program}
+							onChange={(program) =>
+								setMembership({
+									program,
+									tierKey: membershipTiersOf(programs, program)[0]?.key ?? "",
+								})
+							}
+							options={programs.map((program) => ({ value: program.id, label: program.name }))}
+						/>
+					</Field>
+					<Field code="tierKey">
+						<TSelect
+							value={content.membership.tierKey}
+							onChange={(tierKey) => setMembership({ tierKey })}
+							options={membershipTiersOf(programs, content.membership.program).map((tier) => ({
+								value: tier.key,
+								label: tier.name,
+							}))}
+						/>
+					</Field>
+				</>
+			) : null}
 			{/* 卡片类型由左侧「卡片类型」导航选择;此处只显示当前类型的内容字段。 */}
 			{realData ? (
 				kind === "post" ? (
@@ -534,7 +568,10 @@ function PreviewContentFields({
 							onChange={(subscriptionId) => setContent((c) => ({ ...c, subscriptionId }))}
 							options={[
 								{ value: "", label: t("cards.preview.noSubscription") },
-								...subscriptions.map((sub) => ({ value: sub.id, label: displayName(sub) })),
+								...subscriptions.map((sub) => ({
+									value: sub.id,
+									label: displayName(sub, subscriptionPlatformOf(sub.identity, sourceEntries)),
+								})),
 							]}
 						/>
 					</Field>
@@ -575,18 +612,6 @@ function PreviewContentFields({
 				</>
 			) : (
 				<>
-					<Field code="tierKey">
-						{/* 由低到高摆,与规则页同序;选项是档位表里的档,色块用档色。 */}
-						<Picker<string>
-							value={content.membership.tierKey}
-							onChange={(tierKey) => setMembership({ tierKey })}
-							options={GUARD_TIERS.map((tier) => ({
-								value: tier.key,
-								label: tier.name,
-								color: tier.color,
-							}))}
-						/>
-					</Field>
 					<Field
 						label={t("cards.content.memberNameLabel")}
 						code="text"
@@ -675,6 +700,7 @@ export default function Cards() {
 
 	// 左侧导航:「全局」(基准通用样式)或某卡片类型。与作用域无关。
 	const t = useT();
+	const sourceEntries = useSources().data?.sources;
 	const [activeTab, setActiveTab] = useState<"__global" | PreviewKind>("__global");
 	const [content, setContent] = useState<PreviewContent>(DEFAULT_PREVIEW_CONTENT);
 
@@ -869,16 +895,61 @@ export default function Cards() {
 	const previewSubscriptionId = isGlobalScope
 		? content.subscriptionId || undefined
 		: focusedSub?.id;
+	const previewSub = allSubs.find((sub) => sub.id === previewSubscriptionId);
+	const membershipSources = previewSub
+		? sourceEntries?.filter((source) => source.key === previewSub.identity.sourceKey)
+		: sourceEntries;
+	const membershipPrograms =
+		membershipSources?.flatMap((source) => source.descriptor.membershipPrograms ?? []) ?? [];
+	const firstPreviewableProgram = membershipSources
+		?.filter((source) => source.status === "running")
+		.flatMap((source) => source.descriptor.membershipPrograms ?? [])
+		.find((program) => Array.isArray(program.tiers) && program.tiers.length > 0);
+	const selectedProgram =
+		membershipPrograms.find((program) => program.id === content.membership.program) ??
+		firstPreviewableProgram ??
+		membershipPrograms[0];
+	const membershipTiers = selectedProgram
+		? membershipTiersOf(membershipPrograms, selectedProgram.id)
+		: [];
+	const selectedTier =
+		membershipTiers.find((tier) => tier.key === content.membership.tierKey) ?? membershipTiers[0];
+	const membershipAvailable = Boolean(
+		selectedProgram &&
+			selectedTier &&
+			membershipSources?.some(
+				(source) =>
+					source.status === "running" &&
+					source.descriptor.membershipPrograms?.some(
+						(program) => program.id === selectedProgram.id,
+					),
+			),
+	);
+	const resolvedContent = useMemo(
+		() => ({
+			...content,
+			membership: {
+				...content.membership,
+				program: selectedProgram?.id ?? "",
+				tierKey: selectedTier?.key ?? "",
+			},
+		}),
+		[content, selectedProgram?.id, selectedTier?.key],
+	);
 	const previewContent = useMemo(
-		() => previewContentOf(kind, content, previewSubscriptionId),
-		[kind, content, previewSubscriptionId],
+		() => previewContentOf(kind, resolvedContent, previewSubscriptionId),
+		[kind, resolvedContent, previewSubscriptionId],
 	);
 
 	useDirtyDraft({
 		pageKey: isGlobalScope ? "cards" : "cards-perup",
 		pageLabel: isGlobalScope
 			? t("cards.page.label")
-			: t("cards.page.perSubLabel", { name: focusedSub ? displayName(focusedSub) : "" }),
+			: t("cards.page.perSubLabel", {
+					name: focusedSub
+						? displayName(focusedSub, subscriptionPlatformOf(focusedSub.identity, sourceEntries))
+						: "",
+				}),
 		draft: isGlobalScope ? globalIslandDraft : perUpIslandDraft,
 		baseline: isGlobalScope ? globalIslandBaseline : perUpIslandBaseline,
 		onSave: async () => {
@@ -915,11 +986,13 @@ export default function Cards() {
 			: (puCover ?? gCards.liveCoverImageIds),
 	};
 	// 全局 tab:右侧四张卡「全家福」,逐类型用同一份生效样式 + 各自内容渲染。
-	const familyPreviews = (["live", "post", "superchat", "membership"] as const).map((fk) => ({
-		fk,
-		style: effStyle,
-		content: previewContentOf(fk, content, previewSubscriptionId),
-	}));
+	const familyPreviews = (["live", "post", "superchat", "membership"] as const)
+		.filter((fk) => fk !== "membership" || membershipAvailable)
+		.map((fk) => ({
+			fk,
+			style: effStyle,
+			content: previewContentOf(fk, resolvedContent, previewSubscriptionId),
+		}));
 
 	/**
 	 * 预览要用哪套皮肤。全局作用域**一个字都不传** —— 「不指皮肤 = 全局在用的那套」
@@ -972,6 +1045,7 @@ export default function Cards() {
 
 			{/* 作用域切换 */}
 			<ScopeTabs
+				platformOf={(identity) => subscriptionPlatformOf(identity, sourceEntries)}
 				scope={scope}
 				onChange={setScope}
 				tabSubs={tabSubs}
@@ -1097,17 +1171,24 @@ export default function Cards() {
 					{/* 测试推送 + 预览内容编辑 —— 仅「类型」tab(全局只看四卡全家福,不带测试推送)。 */}
 					{!isGlobalTab && (
 						<TestPushCard
+							programs={membershipPrograms}
+							membershipAvailable={membershipAvailable}
 							kind={kind}
 							style={effStyle}
 							pushContent={previewContent}
 							cardSkin={previewSkin}
 							cardSkinKnobs={previewKnobs}
-							mockContent={content}
+							mockContent={resolvedContent}
 							setMockContent={setContent}
 							realData={!isGlobalScope}
 							realDataLabel={
 								focusedSub
-									? t("cards.preview.realDataNoteOf", { name: displayName(focusedSub) })
+									? t("cards.preview.realDataNoteOf", {
+											name: displayName(
+												focusedSub,
+												subscriptionPlatformOf(focusedSub.identity, sourceEntries),
+											),
+										})
 									: undefined
 							}
 							subscriptions={allSubs}
@@ -1127,6 +1208,9 @@ export default function Cards() {
 							    四格 grid-rows-2 等分该高度,卡片 object-contain 缩放填格。 */}
 							<div className="flex h-180 flex-col rounded-bn-card border border-bn-border p-4">
 								<div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3">
+									{!membershipAvailable ? (
+										<EmptyNote size="sm">{t("cards.preview.membershipUnavailable")}</EmptyNote>
+									) : null}
 									{familyPreviews.map(({ fk, style, content: fcontent }) => {
 										const FkIcon = Icon[KIND_LABELS[fk].icon];
 										return (
@@ -1154,7 +1238,12 @@ export default function Cards() {
 								{isGlobalScope
 									? t("cards.preview.familyGlobalHint")
 									: focusedSub
-										? t("cards.preview.familySubHint", { name: displayName(focusedSub) })
+										? t("cards.preview.familySubHint", {
+												name: displayName(
+													focusedSub,
+													subscriptionPlatformOf(focusedSub.identity, sourceEntries),
+												),
+											})
 										: ""}
 							</div>
 						</>
@@ -1166,13 +1255,17 @@ export default function Cards() {
 									width: kind === "superchat" ? 280 : kind === "membership" ? 430 : 600,
 								})}
 							/>
-							<PreviewImage
-								kind={kind}
-								style={effStyle}
-								content={previewContent}
-								cardSkin={previewSkin}
-								cardSkinKnobs={previewKnobs}
-							/>
+							{kind === "membership" && !membershipAvailable ? (
+								<EmptyNote>{t("cards.preview.membershipUnavailable")}</EmptyNote>
+							) : (
+								<PreviewImage
+									kind={kind}
+									style={effStyle}
+									content={previewContent}
+									cardSkin={previewSkin}
+									cardSkinKnobs={previewKnobs}
+								/>
+							)}
 
 							{/* 生效封面读数 */}
 							<div className="flex flex-wrap gap-3.5 rounded-md border border-bn-border-subtle bg-bn-surface/60 px-3 py-2 font-mono text-bn-2xs text-bn-text-tertiary">
@@ -1186,7 +1279,12 @@ export default function Cards() {
 									{isGlobalScope
 										? t("cards.preview.globalFooter")
 										: focusedSub
-											? t("cards.preview.subFooter", { name: displayName(focusedSub) })
+											? t("cards.preview.subFooter", {
+													name: displayName(
+														focusedSub,
+														subscriptionPlatformOf(focusedSub.identity, sourceEntries),
+													),
+												})
 											: ""}
 								</span>
 							</div>
@@ -1201,7 +1299,10 @@ export default function Cards() {
 					message={
 						<EmphasizedName
 							text={t("cards.remove.message", { name: NAME_MARK })}
-							name={displayName(pendingRemoval)}
+							name={displayName(
+								pendingRemoval,
+								subscriptionPlatformOf(pendingRemoval.identity, sourceEntries),
+							)}
 							className="text-bn-text-primary"
 						/>
 					}

@@ -11,8 +11,9 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { chooseSelect, selectOptionsOf } from "../../../__tests__/select-controls";
 import { LiveThresholdsSection } from "../sections";
-import { makeDefaults } from "./fixtures";
+import { makeDefaults, makeSource } from "./fixtures";
 
 afterEach(cleanup);
 
@@ -31,6 +32,7 @@ function renderSection(
 	const onPatch = vi.fn();
 	const view = render(
 		<LiveThresholdsSection
+			programs={makeSource().descriptor.membershipPrograms}
 			superchat={over.superchat ?? defaults.superchat}
 			membership={over.membership ?? defaults.membership}
 			schedule={defaults.schedule}
@@ -75,7 +77,7 @@ describe("LiveThresholdsSection · 直播拆键", () => {
 		const { onPatch, field } = renderSection();
 		const row = field("liveStart.catchUpOnBoot");
 		expect(row?.textContent).toContain("启动后立即推送");
-		expect(row?.textContent).toContain("重启时若 UP 在播则立即推送一次");
+		expect(row?.textContent).toContain("重启时若订阅正在直播则立即推送一次");
 		fireEvent.click(row?.querySelector("button") as HTMLButtonElement);
 		expect(onPatch).toHaveBeenCalledWith({ defaults: { liveStart: { catchUpOnBoot: true } } });
 	});
@@ -107,12 +109,8 @@ describe("LiveThresholdsSection · 直播拆键", () => {
  * (存的是 rank:舰长 1、提督 2、总督 3)。选项仍是三档、由低到高 —— 舰长 / 提督 / 总督,和今天用户看到的一样。
  */
 describe("LiveThresholdsSection · 两个门槛", () => {
-	const levelButtons = (field: Element | null): HTMLButtonElement[] =>
-		Array.from(field?.querySelectorAll("button") ?? []) as HTMLButtonElement[];
-	const pressed = (buttons: HTMLButtonElement[]): string[] =>
-		buttons
-			.filter((b) => b.getAttribute("aria-pressed") === "true")
-			.map((b) => b.textContent ?? "");
+	const levelPicker = (field: Element | null) =>
+		field?.querySelector('[role="combobox"]') as HTMLButtonElement;
 
 	it("金额门槛没配:输入框显示 0(= 全推),上限 9999、单位元", () => {
 		const { field } = renderSection();
@@ -133,16 +131,20 @@ describe("LiveThresholdsSection · 两个门槛", () => {
 
 	it("上舰档位:三档由低到高 —— 舰长、提督、总督;没配时「舰长」(全推)是选中的", () => {
 		const { field } = renderSection();
-		const buttons = levelButtons(field("membership.minRank.guard"));
-		expect(buttons.map((b) => b.textContent)).toEqual(["舰长", "提督", "总督"]);
-		expect(pressed(buttons)).toEqual(["舰长"]);
+		const picker = levelPicker(field("membership.minRank.guard"));
+		expect(picker.textContent).toBe("舰长");
+		expect(selectOptionsOf(picker).map((option) => option.textContent)).toEqual([
+			"舰长",
+			"提督",
+			"总督",
+		]);
 	});
 
 	it("上舰档位有值(rank 2):「提督」选中;点「总督」→ 补丁是 rank 3,落在 defaults.membership.minRank.guard", () => {
 		const { onPatch, field } = renderSection({ membership: { minRank: { guard: 2 } } });
-		const buttons = levelButtons(field("membership.minRank.guard"));
-		expect(pressed(buttons)).toEqual(["提督"]);
-		fireEvent.click(buttons[2] as HTMLButtonElement);
+		const picker = levelPicker(field("membership.minRank.guard"));
+		expect(picker.textContent).toBe("提督");
+		chooseSelect(picker, "总督");
 		expect(onPatch).toHaveBeenCalledWith({
 			defaults: { membership: { minRank: { guard: 3 } } },
 		});
@@ -150,7 +152,7 @@ describe("LiveThresholdsSection · 两个门槛", () => {
 
 	it("点回「舰长」(全推)→ rank 1 照样写下去(不是清掉)", () => {
 		const { onPatch, field } = renderSection({ membership: { minRank: { guard: 3 } } });
-		fireEvent.click(levelButtons(field("membership.minRank.guard"))[0] as HTMLButtonElement);
+		chooseSelect(levelPicker(field("membership.minRank.guard")), "舰长");
 		expect(onPatch).toHaveBeenCalledWith({
 			defaults: { membership: { minRank: { guard: 1 } } },
 		});

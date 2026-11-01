@@ -12,8 +12,10 @@ import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { chooseSelect } from "../../../__tests__/select-controls";
+import { i18n } from "../../../i18n";
 import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
@@ -41,12 +43,38 @@ const subOf = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	overrides,
 });
 
-function renderEditor(sub: Subscription, section: SectionId, defaults: GlobalDefaults) {
+const PROGRAMS = [
+	{
+		id: "guard",
+		name: "Sample membership",
+		tiers: [
+			{ key: "captain", name: "舰长", rank: 1 },
+			{ key: "commander", name: "提督", rank: 2 },
+			{ key: "governor", name: "总督", rank: 3 },
+		],
+	},
+];
+
+function renderEditor(
+	sub: Subscription,
+	section: SectionId,
+	defaults: GlobalDefaults,
+	programs = PROGRAMS,
+) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
 			<PerUpEditor
 				sub={sub}
+				platform={{
+					label: "Sample",
+					features: ["superchat", "membership", "liveStart", "liveEnd", "liveStreaming"],
+					supportedExtras: [],
+					status: "running",
+					absent: false,
+					showBadge: false,
+					membershipPrograms: programs,
+				}}
 				defaults={defaults}
 				factory={templateDefaultsFor("zh-CN")}
 				presets={makeAi().presets}
@@ -94,6 +122,76 @@ function globalsWithThresholds(): GlobalDefaults {
 	return defaults;
 }
 
+describe("公共会员门槛", () => {
+	it("来源和语言刷新不重置未保存门槛，隐藏体系仍保留且不自动保存", async () => {
+		const sub = subOf({ superchat: { minAmount: 10 }, membership: { minRank: { retired: 8 } } });
+		const defaults = makeDefaults();
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const props = {
+			sub,
+			defaults,
+			factory: templateDefaultsFor("zh-CN"),
+			presets: makeAi().presets,
+			section: "live" as const,
+		};
+		const platform = {
+			label: "Library",
+			features: ["membership", "superchat"] as const,
+			supportedExtras: [],
+			status: "running" as const,
+			absent: false,
+			showBadge: false,
+			membershipPrograms: [
+				{ id: "readers", name: "Readers", tiers: [{ key: "silver", name: "Silver", rank: 4 }] },
+			],
+		};
+		const view = render(
+			<QueryClientProvider client={qc}>
+				<PerUpEditor {...props} platform={platform} />
+			</QueryClientProvider>,
+		);
+		const amount = () =>
+			view.container.querySelector('[data-code="superchat.minAmount"] input') as HTMLInputElement;
+		fireEvent.change(amount(), { target: { value: "77" } });
+		view.rerender(
+			<QueryClientProvider client={qc}>
+				<PerUpEditor
+					{...props}
+					platform={{ ...platform, label: "Library refreshed", membershipPrograms: [] }}
+				/>
+			</QueryClientProvider>,
+		);
+		const prior = i18n.state();
+		try {
+			act(() => i18n.set({ locale: "en", voice: "plain" }));
+			expect(amount().value).toBe("77");
+			expect(api.patch).not.toHaveBeenCalled();
+			const overrides = await saveAndGetOverrides(sub);
+			expect(overrides.superchat).toEqual({ minAmount: 77 });
+			expect(overrides.membership).toEqual({ minRank: { retired: 8 } });
+		} finally {
+			act(() => i18n.set(prior));
+		}
+	});
+	it("无默认设置时按描述符实际最低rank建立覆盖，并保留未知体系", async () => {
+		const sub = subOf({ membership: { minRank: { retired: 8 } } });
+		const { headerToggle } = renderEditor(sub, "live", makeDefaults(), [
+			{
+				id: "readers",
+				name: "Readers",
+				tiers: [
+					{ key: "gold", name: "Gold", rank: 9 },
+					{ key: "silver", name: "Silver", rank: 4 },
+				],
+			},
+		]);
+		fireEvent.click(headerToggle());
+		await waitFor(() => expect(diffCodes()).toContain("membership.minRank.readers"));
+		const overrides = await saveAndGetOverrides(sub);
+		expect(overrides.membership).toEqual({ minRank: { retired: 8, readers: 4 } });
+	});
+});
+
 describe("「直播阈值覆盖」× 醒目留言与会员的门槛", () => {
 	it("打开覆盖 → 两段门槛钉成当前全局值(整段从无到有,diff 按段报)", async () => {
 		const { headerToggle } = renderEditor(subOf(), "live", globalsWithThresholds());
@@ -124,20 +222,18 @@ describe("「直播阈值覆盖」× 醒目留言与会员的门槛", () => {
 		expect(within(container).getByText("覆盖中")).toBeTruthy();
 		const input = field("superchat.minAmount")?.querySelector("input") as HTMLInputElement;
 		expect(input.value).toBe("0");
-		const pressed = Array.from(field("membership.minRank.guard")?.querySelectorAll("button") ?? [])
-			.filter((b) => b.getAttribute("aria-pressed") === "true")
-			.map((b) => b.textContent);
-		expect(pressed).toEqual(["总督"]);
+		expect(field("membership.minRank.guard")?.querySelector('[role="combobox"]')?.textContent).toBe(
+			"总督",
+		);
 	});
 
 	it("只覆盖了金额门槛(没碰档位)→ 这一节算「覆盖中」,档位那格显示全局的值", () => {
 		const sub = subOf({ superchat: { minAmount: 10 } });
 		const { field, container } = renderEditor(sub, "live", globalsWithThresholds());
 		expect(within(container).getByText("覆盖中")).toBeTruthy();
-		const pressed = Array.from(field("membership.minRank.guard")?.querySelectorAll("button") ?? [])
-			.filter((b) => b.getAttribute("aria-pressed") === "true")
-			.map((b) => b.textContent);
-		expect(pressed).toEqual(["提督"]);
+		expect(field("membership.minRank.guard")?.querySelector('[role="combobox"]')?.textContent).toBe(
+			"提督",
+		);
 	});
 
 	it("改金额与档位 → 保存的 PATCH 里 overrides.superchat / overrides.membership 是新值,不碰 filters", async () => {
@@ -146,10 +242,10 @@ describe("「直播阈值覆盖」× 醒目留言与会员的门槛", () => {
 		fireEvent.change(field("superchat.minAmount")?.querySelector("input") as HTMLInputElement, {
 			target: { value: "100" },
 		});
-		const buttons = Array.from(
-			field("membership.minRank.guard")?.querySelectorAll("button") ?? [],
-		) as HTMLButtonElement[];
-		fireEvent.click(buttons[0] as HTMLButtonElement); // 舰长 = rank 1(全推)
+		chooseSelect(
+			field("membership.minRank.guard")?.querySelector('[role="combobox"]') as HTMLButtonElement,
+			"舰长",
+		);
 		await waitFor(() => expect(diffCodes()).toContain("superchat.minAmount"));
 
 		const overrides = await saveAndGetOverrides(sub);

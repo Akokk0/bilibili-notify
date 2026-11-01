@@ -14,6 +14,8 @@ import {
 	type Subscription,
 	type SubscriptionTag,
 } from "../../../types/domain";
+import { makeSource } from "../../rules/__tests__/fixtures";
+import { subscriptionPlatformOf } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
 vi.mock("../../../services/api", () => ({
@@ -43,6 +45,7 @@ function renderDialog(
 	render(
 		<QueryClientProvider client={qc}>
 			<UpDialog
+				platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 				sub={sub}
 				targets={[]}
 				connections={[]}

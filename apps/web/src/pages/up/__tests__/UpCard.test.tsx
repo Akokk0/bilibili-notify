@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	DEFAULT_FEATURE_FLAGS,
+	FEATURE_KEYS,
 	makeEmptySubscription,
 	type Subscription,
 } from "../../../types/domain";
-import type { SubscriptionPlatform } from "../subscription-source";
+import { type SubscriptionPlatform, subscriptionPlatformOf } from "../subscription-source";
 import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "../UpCard";
 
 /**
@@ -25,9 +26,31 @@ function props(overrides: Partial<UpCardProps> = {}): UpCardProps {
 		onToggleEnabled: vi.fn(),
 		togglePending: false,
 		onRequestMenu: vi.fn(),
+		platform: subscriptionPlatformOf({ sourceKey: "bilibili" }, [
+			{
+				key: "bilibili",
+				status: "running",
+				descriptor: { label: "B 站", externalIdNoun: "UID", supportedFeatures: FEATURE_KEYS },
+			},
+		]),
 		...overrides,
 	};
 }
+
+describe("UpCard 描述符身份", () => {
+	it("非B来源显示声明身份标签并保留外部ID原文", () => {
+		const sub = makeEmptySubscription({ sourceKey: "library", externalId: "0012" });
+		const platform = subscriptionPlatformOf(sub.identity, [
+			{
+				key: "library",
+				status: "running",
+				descriptor: { label: "Library", externalIdNoun: "Account", supportedFeatures: [] },
+			},
+		]);
+		const { getAllByText } = render(<UpCard {...props({ sub, platform })} />);
+		expect(getAllByText("Account 0012").length).toBeGreaterThanOrEqual(1);
+	});
+});
 
 describe("UpCard 菜单触发", () => {
 	it("右键卡片 → onRequestMenu(带触发点坐标)", () => {
@@ -203,9 +226,16 @@ function makeExtSub(over: Partial<Subscription> = {}): Subscription {
 
 describe("UpCard × 拓展订阅", () => {
 	it("没有 uid 那一行,名字回落到外部 id", () => {
-		const { queryByText, getAllByText } = render(<UpCard {...props({ sub: makeExtSub() })} />);
+		const { queryByText, getAllByText } = render(
+			<UpCard
+				{...props({
+					sub: makeExtSub(),
+					platform: subscriptionPlatformOf({ sourceKey: "douyin" }, undefined),
+				})}
+			/>,
+		);
 		expect(queryByText(/UID/)).toBeNull();
-		expect(getAllByText("MS4wLjAB-sec").length).toBeGreaterThan(0);
+		expect(getAllByText("douyin · MS4wLjAB-sec").length).toBeGreaterThan(0);
 	});
 
 	it("有资料缓存用资料缓存里的名字", () => {
@@ -227,6 +257,9 @@ const DOUYIN: SubscriptionPlatform = {
 	color: "#161823",
 	postNoun: "作品",
 	features: ["post", "liveStart"],
+	supportedExtras: [],
+	status: "running",
+	showBadge: true,
 	absent: false,
 };
 
@@ -243,11 +276,11 @@ describe("UpCard × 订阅源的平台", () => {
 		expect(queryByText("SC")).toBeNull();
 	});
 
-	it("拓展不在场 → 置灰并写明「抖音拓展没在跑」", () => {
+	it("拓展不在场 → 置灰并写明「抖音来源未安装」", () => {
 		const { getByText, container } = render(
 			<UpCard {...props({ sub: makeExtSub(), platform: { ...DOUYIN, absent: true } })} />,
 		);
-		expect(getByText("抖音拓展没在跑")).toBeTruthy();
+		expect(getByText("抖音来源未安装")).toBeTruthy();
 		expect((container.firstElementChild as HTMLElement).className).toContain("grayscale");
 	});
 
@@ -261,8 +294,10 @@ describe("UpCard × 订阅源的平台", () => {
 
 	it("没给平台 → 也不列 B 站独有的特性", () => {
 		const sub = makeExtSub({ overrides: { features: { membership: true } } });
-		const { queryByText, getByText } = render(<UpCard {...props({ sub })} />);
-		expect(getByText("动态")).toBeTruthy();
+		const { queryByText } = render(
+			<UpCard {...props({ sub, platform: subscriptionPlatformOf(sub.identity, undefined) })} />,
+		);
+		expect(queryByText("动态")).toBeNull();
 		expect(queryByText("上舰")).toBeNull();
 	});
 });

@@ -1,11 +1,11 @@
-import type { ExtensionDTO, ReportDiscrepancyView } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ReportDiscrepancyView, SourceEntry } from "@bilibili-notify/contract";
 import { GlassBox, Icon, Pill } from "@bilibili-notify/ui";
 import { useSources } from "../../hooks/useSources";
-import { useT } from "../../i18n";
+import { i18n, useT } from "../../i18n";
 import type { Subscription } from "../../types/domain";
 import { displayName } from "../../utils/up-display";
 import { RelativeTime } from "../up/relative-time";
-import { featureLabelOf } from "../up/subscription-source";
+import { featureLabelOf, subscriptionPlatformOf } from "../up/subscription-source";
 import { PARAGRAPH_CLS } from "./shared";
 
 /**
@@ -33,11 +33,11 @@ export function ReportDiscrepanciesBox({
 	if (discrepancies.length === 0) return null;
 	const postNoun = sources?.find((one) => one.key === ext.id)?.descriptor.postNoun;
 	return (
-		<section aria-label="上报出入">
+		<section aria-label={t("sourceUi.pages.extensions.report.discrepancies.arialabel.1")}>
 			<GlassBox
-				title="上报出入"
-				badge={`${discrepancies.length} 条`}
-				subtitle="这个拓展报上来、BN 没照单全收的几条(最近 20 条,重启 BN 后清空)"
+				title={t("sourceUi.pages.extensions.report.discrepancies.arialabel.1")}
+				badge={t("sourceUi.pages.History.HistoryRow.22", { value1: discrepancies.length })}
+				subtitle={t("sourceUi.pages.extensions.report.discrepancies.subtitle.2")}
 				accent="var(--color-bn-warning)"
 				icon={<Icon.warning size={15} />}
 			>
@@ -48,7 +48,7 @@ export function ReportDiscrepanciesBox({
 							// biome-ignore lint/suspicious/noArrayIndexKey: 整份替换的只读列表,没有增删动画
 							key={index}
 							discrepancy={discrepancy}
-							who={whoOf(discrepancy, subs)}
+							who={whoOf(discrepancy, subs, sources)}
 							kind={kindLabel(discrepancy.kind, postNoun, liveLabel, problemLabel)}
 						/>
 					))}
@@ -104,9 +104,11 @@ function DiscrepancyRow({
 function outcomeLabel(discrepancy: ReportDiscrepancyView): string {
 	switch (discrepancy.outcome) {
 		case "rejected":
-			return "整条拒了";
+			return i18n.t("sourceUi.pages.extensions.report.discrepancies.outcomeLabel.3");
 		case "dropped":
-			return `动了 ${discrepancy.reasons.length} 格`;
+			return i18n.t("sourceUi.pages.extensions.report.discrepancies.outcomeLabel.4", {
+				value1: discrepancy.reasons.length,
+			});
 	}
 }
 
@@ -117,11 +119,12 @@ function outcomeLabel(discrepancy: ReportDiscrepancyView): string {
 function whoOf(
 	discrepancy: ReportDiscrepancyView,
 	subs: readonly Subscription[] | undefined,
+	sources: readonly SourceEntry[] | undefined,
 ): string | undefined {
 	const names = new Set<string>();
 	for (const id of discrepancy.subscriptionIds) {
 		const sub = subs?.find((one) => one.id === id);
-		if (sub) names.add(displayName(sub));
+		if (sub) names.add(displayName(sub, subscriptionPlatformOf(sub.identity, sources)));
 	}
 	return names.size > 0 ? [...names].join("、") : discrepancy.externalId;
 }
@@ -143,6 +146,6 @@ function kindLabel(
 		case "post":
 			return featureLabelOf("post", { postNoun });
 		case "profile":
-			return "资料";
+			return i18n.t("sourceUi.pages.extensions.report.discrepancies.kindLabel.5");
 	}
 }

@@ -1,13 +1,13 @@
 import { templateDefaultsFor } from "@bilibili-notify/internal/texts/builtin";
 // @vitest-environment jsdom
 /**
- * 复现 bug:per-UP「动态过滤覆盖」与「直播阈值覆盖」曾共享同一个 overrides.filters
+ * 复现 bug:per-UP「作品过滤覆盖」与「直播阈值覆盖」曾共享同一个 overrides.filters
  * 切片,开其中一个会把 minScPrice/minGuardLevel(阈值域)或 blockKeywords 等
  * (过滤域)一并带出来,导致另一个 section 的 toggle 被动跟着开。㉓d 起两个门槛是
  * overrides.superchat / overrides.membership 自己的切片,这一组钉住两边仍然互不牵连。
  *
  * 两组断言:
- * - diff code:开「动态过滤」不该让阈值域切片(superchat / membership)出现在
+ * - diff code:开「作品过滤」不该让阈值域切片(superchat / membership)出现在
  *   灵动岛 diff 里,反之亦然 —— 抓的是"seed 时字段范围有没有越界"。
  * - badge 文案:同一个 draft 状态下切换 section,另一个 section 的 badge 不该
  *   被动变成"覆盖中" —— 抓的是用户实际看到的症状。
@@ -19,8 +19,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { api } from "../../../services/api";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
+import { subscriptionPlatformOf } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
-import { makeAi, makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults, makeSource } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -54,13 +55,14 @@ afterEach(() => {
 	resetStore();
 });
 
-describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => {
-	it("开「动态过滤覆盖」不应带出 superchat / membership(阈值域)", async () => {
+describe("per-UP 作品过滤覆盖 与 直播阈值覆盖 相互独立", () => {
+	it("开「作品过滤覆盖」不应带出 superchat / membership(阈值域)", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub = makeSub();
 		const { container } = render(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -87,6 +89,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const { container } = render(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -108,12 +111,13 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		expect(diffCodes()).not.toContain("allowKeywords");
 	});
 
-	it("开「动态过滤覆盖」后切到「直播阈值」section,badge 不应被动显示为覆盖中", async () => {
+	it("开「作品过滤覆盖」后切到「直播阈值」section,badge 不应被动显示为覆盖中", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub = makeSub();
 		const { container, rerender } = render(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -130,6 +134,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		rerender(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -144,12 +149,13 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		expect(liveBox.getByText("继承")).toBeTruthy();
 	});
 
-	it("开「直播阈值覆盖」后切到「动态过滤」section,badge 不应被动显示为覆盖中", async () => {
+	it("开「直播阈值覆盖」后切到「作品过滤」section,badge 不应被动显示为覆盖中", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub = makeSub();
 		const { container, rerender } = render(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -166,6 +172,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		rerender(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}
@@ -175,12 +182,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 			</QueryClientProvider>,
 		);
 		const filterBox = within(container);
-		expect(filterBox.getByText("动态过滤覆盖")).toBeTruthy();
+		expect(filterBox.getByText("作品过滤覆盖")).toBeTruthy();
 		expect(filterBox.queryByText("覆盖中")).toBeNull();
 		expect(filterBox.getByText("继承")).toBeTruthy();
 	});
 
-	it("关闭「动态过滤覆盖」并保存 → PATCH body 里过滤域整段显式 null,阈值域切片不受影响(不会保存后又复活)", async () => {
+	it("关闭「作品过滤覆盖」并保存 → PATCH body 里过滤域整段显式 null,阈值域切片不受影响(不会保存后又复活)", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub: Subscription = {
 			...makeSub(),
@@ -189,6 +196,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const { container } = render(
 			<QueryClientProvider client={qc}>
 				<PerUpEditor
+					platform={subscriptionPlatformOf(sub.identity, [makeSource()])}
 					sub={sub}
 					defaults={makeDefaults()}
 					factory={templateDefaultsFor("zh-CN")}

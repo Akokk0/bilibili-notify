@@ -22,11 +22,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
-import { useExtensions } from "../hooks/useExtensions";
 import { patchCoreSettings, SETTINGS_KEY, useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
+import { useT } from "../i18n";
 import { api } from "../services/api";
-import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../types/domain";
+import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
@@ -34,8 +34,8 @@ import { isSectionCustomized } from "./rules/section-scope";
 import {
 	DynamicMsgSection,
 	FilterSection,
-	GLOBAL_SECTIONS,
 	GuardSection,
+	globalSectionsOf,
 	ImageGroupSection,
 	LiveMsgSection,
 	LiveThresholdsSection,
@@ -103,6 +103,7 @@ function SectionList({
 	/** 已设置覆盖的 sectionId 集合;有则在 section 标签上加红点。 */
 	customizedIds?: Set<SectionId>;
 }) {
+	const tx = useT();
 	return (
 		<SectionNav
 			heading={heading}
@@ -114,7 +115,7 @@ function SectionList({
 				desc: s.desc,
 				icon: s.icon,
 				badge: customizedIds?.has(s.id) ? (
-					<RailDot title="该 UP 主已设置该项覆盖" active={s.id === current} />
+					<RailDot title={tx("sourceUi.pages.Rules.title.1")} active={s.id === current} />
 				) : undefined,
 			}))}
 		/>
@@ -183,6 +184,7 @@ export function GlobalDraftBinder({
 	onSave: () => Promise<unknown> | unknown;
 	onDiscard: () => void;
 }): null {
+	const tx = useT();
 	const islandDraft = useMemo(
 		() => ({
 			...defaults.filters,
@@ -220,7 +222,7 @@ export function GlobalDraftBinder({
 	);
 	useDirtyDraft({
 		pageKey: "rules",
-		pageLabel: "动态过滤规则",
+		pageLabel: tx("sourceUi.pages.Rules.pageLabel.2"),
 		draft: islandDraft,
 		baseline: islandBaseline,
 		onSave,
@@ -232,6 +234,7 @@ export function GlobalDraftBinder({
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function Rules() {
+	const tx = useT();
 	const qc = useQueryClient();
 	const globalsQuery = useCoreSettings();
 	const subsQuery = useQuery({
@@ -312,10 +315,12 @@ export default function Rules() {
 			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
 			const overrides = buildOverridesPatch({}, sub.overrides);
 			// 特别关注只有 B 站订阅有,拓展订阅那一支没有这一格,不发。
-			const isBili = subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
+			const supportsViewers = platformOf(sub).features.some(
+				(feature) => feature === "viewerChat" || feature === "viewerEnter",
+			);
 			return api.patch<Subscription>(
 				`/api/subscriptions/${sub.id}`,
-				isBili ? { overrides, specialViewers: [] } : { overrides },
+				supportsViewers ? { overrides, specialViewers: [] } : { overrides },
 			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
@@ -408,17 +413,12 @@ export default function Rules() {
 
 	// 拓展订阅是哪个平台、那个源报得出什么:决定露哪几节、tab 上怎么称呼它。都照来源表里的描述符;来源表没回来
 	// (还在读 / 读失败)时按拓展订阅最多能有的那几种画,同配置弹层。
-	const extensionsQuery = useExtensions({ retry: false });
-	const extensions = extensionsQuery.data?.extensions;
 	const sources = useSources().data?.sources;
-	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
-		const { sourceKey } = subscriptionIdentityOf(s);
-		return sourceKey === BILIBILI_SOURCE_KEY
-			? undefined
-			: subscriptionPlatformOf({ extensionId: sourceKey }, sources, extensions);
-	};
+	const programs = sources?.flatMap((source) => source.descriptor.membershipPrograms ?? []) ?? [];
+	const platformOf = (s: Subscription): SubscriptionPlatform =>
+		subscriptionPlatformOf(subscriptionIdentityOf(s), sources);
 	const sectionsOf = (s: Subscription): SectionMeta[] =>
-		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)));
+		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)), platformOf(s));
 
 	// Tab 栏只显示:已经在 backend 有 overrides / specialViewers 的 sub + 客户端本轮添加的 sub。
 	const tabSubs = useMemo(() => {
@@ -473,7 +473,7 @@ export default function Rules() {
 	}
 
 	function sectionsFor(next: Scope): SectionMeta[] {
-		if (next === "__global") return GLOBAL_SECTIONS;
+		if (next === "__global") return globalSectionsOf();
 		const sub = allSubs.find((s) => s.id === next);
 		return sub ? sectionsOf(sub) : [];
 	}
@@ -508,12 +508,19 @@ export default function Rules() {
 			? new Set(
 					sections
 						.map((s) => s.id)
-						.filter((id) => isSectionCustomized(focusedSub, id, personaList)),
+						.filter((id) =>
+							isSectionCustomized(
+								focusedSub,
+								id,
+								personaList,
+								focusedPlatform?.membershipPrograms ?? [],
+							),
+						),
 				)
 			: undefined;
 
 	if (!draft) {
-		return <LoadingBlock label="正在读取全局配置" />;
+		return <LoadingBlock label={tx("sourceUi.pages.Rules.label.3")} />;
 	}
 
 	return (
@@ -538,9 +545,7 @@ export default function Rules() {
 				onAddSub={handleAddSub}
 				onRemoveSub={handleRemoveSub}
 				overridesCountFor={(s) => overrideKeysOf(s).size + (hasSpecialViewers(s) ? 1 : 0)}
-				platformLabelOf={(extensionId) =>
-					subscriptionPlatformOf({ extensionId }, sources, extensions).label
-				}
+				platformOf={(identity) => subscriptionPlatformOf(identity, sources)}
 			/>
 
 			<div className="grid gap-4 xl:grid-bn-rail">
@@ -549,7 +554,11 @@ export default function Rules() {
 					current={shownSection}
 					onPick={setSection}
 					heading={
-						isGlobal ? "规则分类(全局)" : `${focusedSub ? displayName(focusedSub) : ""} · 覆盖项`
+						isGlobal
+							? tx("sourceUi.pages.Rules.heading.4")
+							: tx("sourceUi.pages.Rules.heading.5", {
+									value1: focusedSub ? displayName(focusedSub, platformOf(focusedSub)) : "",
+								})
 					}
 					customizedIds={customizedIds}
 				/>
@@ -573,6 +582,7 @@ export default function Rules() {
 							<ImageGroupSection value={draft.defaults.imageGroup} onPatch={patchDraft} />
 						) : section === "live" ? (
 							<LiveThresholdsSection
+								programs={programs}
 								superchat={draft.defaults.superchat}
 								membership={draft.defaults.membership}
 								schedule={draft.defaults.schedule}
@@ -603,6 +613,7 @@ export default function Rules() {
 							/>
 						) : section === "guard" ? (
 							<GuardSection
+								programs={programs}
 								templates={draft.defaults.templates}
 								factory={factory}
 								onPatch={patchDraft}
@@ -614,19 +625,24 @@ export default function Rules() {
 
 			{pendingRemoval ? (
 				<ConfirmDialog
-					title="移除该 UP 的个性化配置?"
+					title={tx("sourceUi.pages.Rules.title.6")}
 					message={
 						<>
-							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
-							的所有覆盖项
-							{subscriptionIdentityOf(pendingRemoval).sourceKey === BILIBILI_SOURCE_KEY
-								? "与特别关注"
+							{tx("sourceUi.pages.Rules.message.7")}
+							<b className="text-bn-text-primary">
+								{displayName(pendingRemoval, platformOf(pendingRemoval))}
+							</b>{" "}
+							{tx("sourceUi.pages.Rules.message.8")}
+							{platformOf(pendingRemoval).features.some(
+								(feature) => feature === "viewerChat" || feature === "viewerEnter",
+							)
+								? tx("sourceUi.pages.Rules.message.9")
 								: ""}
-							,该 UP 之后跟随全局规则。此操作不可撤销。
+							{tx("sourceUi.pages.Rules.message.10")}
 						</>
 					}
-					confirmLabel="移除"
-					cancelLabel="取消"
+					confirmLabel={tx("cards.remove.confirm")}
+					cancelLabel={tx("subs.new.cancel")}
 					danger
 					onConfirm={confirmRemoveSub}
 					onCancel={() => setPendingRemoval(null)}

@@ -5,14 +5,20 @@
  * 外层的卡种键 `sc` / `guard` 不动(归 ㉔)。
  */
 
+import type { SourcesResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { chooseSelect, selectOptionsOf } from "../../__tests__/select-controls";
 import { useDraftStore } from "../../store/draft";
+import { makeEmptySubscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Cards from "../Cards";
 import { makeDefaults } from "../rules/__tests__/fixtures";
+
+const tierPicker = () =>
+	document.querySelector('[data-code="tierKey"] [role="combobox"]') as HTMLButtonElement;
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), upload: vi.fn() },
@@ -23,6 +29,28 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const GLOBALS = { logging: {}, master: {}, defaults: makeDefaults() } as unknown as GlobalConfig;
+const SOURCES: SourcesResponse = {
+	sources: [
+		{
+			key: "library",
+			status: "running",
+			descriptor: {
+				label: "Library",
+				supportedFeatures: ["membership"],
+				membershipPrograms: [
+					{
+						id: "readers",
+						name: "Readers",
+						tiers: [
+							{ key: "gold", name: "Gold", rank: 9 },
+							{ key: "silver", name: "Silver", rank: 4 },
+						],
+					},
+				],
+			},
+		},
+	],
+};
 
 interface PreviewBody {
 	kind: string;
@@ -39,13 +67,14 @@ function previewBodies(kind: string): PreviewBody[] {
 
 function renderCards() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	const view = render(
 		<MemoryRouter>
 			<QueryClientProvider client={qc}>
 				<Cards />
 			</QueryClientProvider>
 		</MemoryRouter>,
 	);
+	return { ...view, qc };
 }
 
 beforeEach(() => {
@@ -59,6 +88,7 @@ beforeEach(() => {
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
+		if (url === "/api/sources") return Promise.resolve(SOURCES);
 		return Promise.resolve({ core: GLOBALS });
 	});
 	vi.mocked(api.post).mockResolvedValue({ ok: true, dataUrl: "data:image/png;base64,xx" });
@@ -83,8 +113,8 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		const guard = previewBodies("membership")[0].content ?? {};
 		expect(sc.amount).toBe(30);
 		expect("price" in sc).toBe(false);
-		expect(guard.program).toBe("guard");
-		expect(guard.tierKey).toBe("captain");
+		expect(guard.program).toBe("readers");
+		expect(guard.tierKey).toBe("silver");
 		expect("level" in guard).toBe(false);
 	});
 
@@ -95,12 +125,11 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 			timeout: 5000,
 		});
 		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
-		await screen.findByRole("button", { name: "总督" });
-		const names = screen
-			.getAllByRole("button")
-			.map((b) => b.textContent ?? "")
-			.filter((t) => ["舰长", "提督", "总督"].includes(t));
-		expect(names).toEqual(["舰长", "提督", "总督"]);
+		await waitFor(() => expect(tierPicker()).not.toBeNull());
+		expect(selectOptionsOf(tierPicker()).map((option) => option.textContent)).toEqual([
+			"Silver",
+			"Gold",
+		]);
 	});
 
 	it("单卡上舰:点「总督」后请求带 tierKey governor", async () => {
@@ -109,15 +138,207 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 			timeout: 5000,
 		});
 		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
-		const governor = await screen.findByRole("button", { name: "总督" });
-		fireEvent.click(governor);
+		await waitFor(() => expect(tierPicker()).not.toBeNull());
+		chooseSelect(tierPicker(), "Gold");
 		await waitFor(
 			() =>
-				expect(previewBodies("membership").some((b) => b.content?.tierKey === "governor")).toBe(
-					true,
-				),
+				expect(
+					previewBodies("membership").some(
+						(b) => b.content?.program === "readers" && b.content?.tierKey === "gold",
+					),
+				).toBe(true),
 			{ timeout: 5000 },
 		);
+	});
+
+	it.each(["disabled", "empty", "custom"])(
+		"来源%s时全家福跳过会员，单卡明确不可预览且不请求",
+		async (mode) => {
+			vi.mocked(api.get).mockImplementation((url: string) => {
+				if (url === "/api/sources")
+					return Promise.resolve({
+						sources: [
+							{
+								...SOURCES.sources[0],
+								status: mode === "disabled" ? "disabled" : "running",
+								descriptor: {
+									...SOURCES.sources[0].descriptor,
+									membershipPrograms: [
+										{
+											id: "readers",
+											name: "Readers",
+											tiers:
+												mode === "custom"
+													? "custom"
+													: mode === "empty"
+														? []
+														: SOURCES.sources[0].descriptor.membershipPrograms![0].tiers,
+										},
+									],
+								},
+							},
+						],
+					});
+				if (url.includes("/api/subscriptions") || url.includes("/api/targets"))
+					return Promise.resolve([]);
+				return Promise.resolve({ core: GLOBALS });
+			});
+			renderCards();
+			await waitFor(() => expect(previewBodies("superchat").length).toBeGreaterThan(0));
+			expect(previewBodies("membership")).toEqual([]);
+			fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+			await screen.findByText("当前来源没有可枚举的会员档位，或尚未运行，暂时无法预览。");
+			expect(previewBodies("membership")).toEqual([]);
+		},
+	);
+
+	it("默认选择首个在运行且可枚举的体系，跳过前面的 custom 与停用来源", async () => {
+		vi.mocked(api.get).mockImplementation(async (url) => {
+			if (url === "/api/sources")
+				return {
+					sources: [
+						{
+							key: "custom",
+							status: "running",
+							descriptor: {
+								label: "Custom",
+								supportedFeatures: ["membership"],
+								membershipPrograms: [{ id: "custom", name: "Custom", tiers: "custom" }],
+							},
+						},
+						{
+							...SOURCES.sources[0],
+							key: "stopped",
+							status: "disabled",
+							descriptor: {
+								...SOURCES.sources[0].descriptor,
+								membershipPrograms: [
+									{
+										id: "stopped",
+										name: "Stopped",
+										tiers: [{ key: "silver", name: "Stopped silver", rank: 1 }],
+									},
+								],
+							},
+						},
+						...SOURCES.sources,
+					],
+				};
+			if (url.includes("/api/subscriptions") || url.includes("/api/targets")) return [];
+			return { core: GLOBALS };
+		});
+		renderCards();
+		await waitFor(() =>
+			expect(previewBodies("membership").at(-1)?.content).toMatchObject({
+				program: "readers",
+				tierKey: "silver",
+			}),
+		);
+	});
+
+	it("per-UP 仍能选择体系与档，同 key 的档不串体系", async () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "library", externalId: "0012" }),
+			overrides: { cardSkin: "default" },
+		};
+		vi.mocked(api.get).mockImplementation(async (url) => {
+			if (url === "/api/sources")
+				return {
+					sources: [
+						{
+							...SOURCES.sources[0],
+							descriptor: {
+								...SOURCES.sources[0].descriptor,
+								membershipPrograms: [
+									...SOURCES.sources[0].descriptor.membershipPrograms!,
+									{
+										id: "patrons",
+										name: "Patrons",
+										tiers: [{ key: "silver", name: "Patron silver", rank: 8 }],
+									},
+								],
+							},
+						},
+					],
+				};
+			if (url === "/api/subscriptions") return [sub];
+			if (url.includes("/api/subscriptions") || url.includes("/api/targets")) return [];
+			return { core: GLOBALS };
+		});
+		renderCards();
+		fireEvent.click(await screen.findByText("Library · 0012"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		const picker = await waitFor(() => {
+			const element = document.querySelector('[data-code="program"] [role="combobox"]');
+			expect(element).not.toBeNull();
+			return element as HTMLButtonElement;
+		});
+		chooseSelect(picker, "Patrons");
+		await waitFor(() => expect(tierPicker().textContent).toBe("Patron silver"));
+		await waitFor(() =>
+			expect(previewBodies("membership").at(-1)?.content).toMatchObject({
+				subscriptionId: sub.id,
+				program: "patrons",
+				tierKey: "silver",
+			}),
+		);
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
+	it("来源刷新保留仍有效的体系与档，失效只回退预览且不保存", async () => {
+		const { qc } = renderCards();
+		await screen.findAllByText("上舰提醒");
+		fireEvent.click(screen.getAllByText("上舰提醒")[0]);
+		await waitFor(() => expect(tierPicker()).not.toBeNull());
+		chooseSelect(tierPicker(), "Gold");
+		await waitFor(() => expect(previewBodies("membership").at(-1)?.content?.tierKey).toBe("gold"));
+		act(() =>
+			qc.setQueryData(["sources"], {
+				sources: [
+					{
+						...SOURCES.sources[0],
+						descriptor: {
+							...SOURCES.sources[0].descriptor,
+							membershipPrograms: [
+								{
+									id: "readers",
+									name: "Readers refreshed",
+									tiers: [
+										{ key: "silver", name: "Silver refreshed", rank: 4 },
+										{ key: "gold", name: "Gold refreshed", rank: 9 },
+									],
+								},
+							],
+						},
+					},
+				],
+			}),
+		);
+		await waitFor(() => expect(tierPicker().textContent).toBe("Gold refreshed"));
+		act(() =>
+			qc.setQueryData(["sources"], {
+				sources: [
+					{
+						...SOURCES.sources[0],
+						descriptor: {
+							...SOURCES.sources[0].descriptor,
+							membershipPrograms: [
+								{
+									id: "readers",
+									name: "Readers refreshed",
+									tiers: [{ key: "silver", name: "Silver refreshed", rank: 4 }],
+								},
+							],
+						},
+					},
+				],
+			}),
+		);
+		await waitFor(() =>
+			expect(previewBodies("membership").at(-1)?.content?.tierKey).toBe("silver"),
+		);
+		expect(api.patch).not.toHaveBeenCalled();
 	});
 
 	it("单卡 SC:改金额后请求带新的 amount", async () => {

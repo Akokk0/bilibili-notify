@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { auditRatchet } from "../ratchet-audit.mjs";
+import { descriptorFlow } from "../source-descriptor-flow.mjs";
 import {
 	findNodes,
 	identifierSegments,
@@ -375,6 +376,7 @@ function loneTemplateExpression(node) {
 /** 这个表达式是不是平台值(规则 1~4,宿主名字先于 2、3;`` `${平台值}` `` 还是平台值)。 */
 export function isPlatformValue(node, names) {
 	const target = unwrap(node);
+	if (names.descriptors?.isDescriptor(target)) return false;
 	if (ts.isIdentifier(target)) {
 		if (names.hosts.has(target.text)) return false;
 		return names.aliases.has(target.text) || endsWithPlatform(target.text);
@@ -416,6 +418,12 @@ function isDerivedRead(node, names) {
 	const target = unwrap(node);
 	if (isPlatformBase(target)) return false; // `cand.platform.platform`:读的还是一个 `platform` 属性,是平台值本身
 	if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+		if (names.descriptors?.isDescriptor(target.expression)) {
+			const key = ts.isPropertyAccessExpression(target)
+				? target.name.text
+				: literalText(target.argumentExpression);
+			return key !== "status" && key !== "absent";
+		}
 		return isPlatformValue(target.expression, names);
 	}
 	return false;
@@ -486,8 +494,8 @@ function isDecision(node, names) {
 }
 
 /** 一份源码里按平台名做的决定:`{ line, text }[]`,按出现顺序。 */
-export function platformDecisions(source) {
-	const names = namesOf(source);
+export function platformDecisions(source, descriptors) {
+	const names = { ...namesOf(source), descriptors };
 	return findNodes(source, (node) => isDecision(node, names)).map(({ line, text }) => ({
 		line,
 		text,
@@ -495,6 +503,100 @@ export function platformDecisions(source) {
 }
 
 const sample = (text) => platformDecisions(parseSource("sample.ts", text));
+
+const descriptorSample = (text) => {
+	const root = parseSource(
+		"/fixture/subscription-source.ts",
+		"export function subscriptionPlatformOf(identity, sources) { return { label: 'Source', status: 'running', absent: false }; }",
+	);
+	const source = parseSource("/fixture/sample.tsx", text);
+	return platformDecisions(source, descriptorFlow([root, source], root.path));
+};
+const descriptorImport =
+	'import { subscriptionPlatformOf as project } from "./subscription-source";';
+
+describe("verified source descriptor values", () => {
+	it("recognizes a real import and immutable aliases, including a verified parameter", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); const alias = platform; function show(platform) { renderLabel(platform); } show(alias);`,
+			),
+		).toEqual([]);
+	});
+	it("allows runtime state but keeps platform-name decisions red", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); platform.status !== "running"; platform.absent === true;`,
+			),
+		).toEqual([]);
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); platform.label === "QQ";`,
+			),
+		).toHaveLength(1);
+	});
+	it("never trusts a name, type assertion, fake import, shadow, mutable value, or mixed string input", () => {
+		for (const text of [
+			'import { subscriptionPlatformOf as project } from "./fake"; const platform = project(id, sources); use(platform);',
+			`${descriptorImport} function f(project) { const platform = project(id, sources); use(platform); }`,
+			"const platform = unknownValue as SubscriptionPlatform; use(platform);",
+			`${descriptorImport} let platform = project(id, sources); use(platform);`,
+			`${descriptorImport} const platform = project(id, sources) ?? conn.platform; use(platform);`,
+			`${descriptorImport} function show(platform) { use(platform); } show(project(id, sources)); show(conn.platform);`,
+			`${descriptorImport} const platform = project(id, sources); function show(platform) { use(platform); } show(conn.platform);`,
+			`${descriptorImport} let projected = () => project(id, sources); projected = () => conn.platform; const platform = projected(); use(platform);`,
+			`${descriptorImport} let platform = project(id, sources); platform = conn.platform; use(platform);`,
+			`${descriptorImport} const platform = project(id, sources); platform.status = conn.platform; use(platform);`,
+		])
+			expect(descriptorSample(text), text).not.toEqual([]);
+	});
+	it("follows real export aliases and verified descriptor callbacks", () => {
+		const root = parseSource(
+			"/fixture/subscription-source.ts",
+			"export function subscriptionPlatformOf() { return {}; }",
+		);
+		const bridge = parseSource(
+			"/fixture/bridge.ts",
+			'export { subscriptionPlatformOf as project } from "./subscription-source";',
+		);
+		const source = parseSource(
+			"/fixture/page.tsx",
+			'import { project } from "./bridge"; function Card({ platformOf }) { const platform = platformOf(id); renderLabel(platform); } <Card platformOf={() => project()} />;',
+		);
+		expect(platformDecisions(source, descriptorFlow([root, bridge, source], root.path))).toEqual(
+			[],
+		);
+	});
+	it("keeps lexical shadowing separate and rejects mixed component inputs", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} const platform = project(id, sources); renderLabel(platform); function f(platform) { renderLabel(platform); } f(conn.platform);`,
+			),
+		).toHaveLength(2);
+		expect(
+			descriptorSample(
+				`${descriptorImport} function Card({ platform }) { renderLabel(platform); } <Card platform={project(id, sources)} />; <Card platform={conn.platform} />;`,
+			),
+		).not.toEqual([]);
+		expect(
+			descriptorSample(
+				`${descriptorImport} function Card({ platformOf }) { const platform = platformOf(id); renderLabel(platform); } <Card platformOf={() => conn.platform} />;`,
+			),
+		).not.toEqual([]);
+	});
+	it("checks actual component props rather than their declared type", () => {
+		expect(
+			descriptorSample(
+				`${descriptorImport} function Card({ platform }) { renderLabel(platform); } const platform = project(id, sources); <Card platform={platform} />;`,
+			),
+		).toEqual([]);
+		expect(
+			descriptorSample(
+				`${descriptorImport} function Card({ platform }) { renderLabel(platform); } <Card platform={conn.platform} />;`,
+			),
+		).not.toEqual([]);
+	});
+});
 
 describe("`.platform` 决定的判据:算", () => {
 	it("相等比较:平台值比字面量或比别的值", () => {
@@ -801,9 +903,16 @@ const PANEL_ROOTS = ["apps/web/src"];
 /** 真去扫:文件 → 命中。核心里整目录不扫的与没有命中的文件不出现。 */
 function scan(roots, skippedDirs) {
 	const found = {};
-	for (const file of listSources(roots)) {
-		if (skippedDirs.some((dir) => file.startsWith(dir))) continue;
-		const hits = platformDecisions(parseSource(file));
+	const sources = listSources(roots)
+		.filter((file) => !skippedDirs.some((dir) => file.startsWith(dir)))
+		.map((file) => parseSource(file));
+	const descriptors =
+		roots === PANEL_ROOTS
+			? descriptorFlow(sources, join(REPO_ROOT, "apps/web/src/pages/up/subscription-source.ts"))
+			: undefined;
+	for (const source of sources) {
+		const file = source.path;
+		const hits = platformDecisions(source, descriptors);
 		if (hits.length > 0) found[file] = hits;
 	}
 	return found;
