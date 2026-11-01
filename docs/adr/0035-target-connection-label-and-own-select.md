@@ -21,3 +21,6 @@
 - 换的面：`TSelect` 本体、免扰时段的整点下拉 `HourSelect`，以及 `Logs`、`SkinEditor`、`RoastPushBox` 三处手写的原生 `<select>`；`TSelect` 的 14 个调用点（9 个文件）接口不变就不用动。9 个测试文件里约 26 处按原生 select 驱动的（10-02 粗数）要改成点开再选。
 - 手机上不再弹系统的选择器；键盘与读屏器的行为从此归我们自己维护，坏了没有浏览器兜底，所以要有测试钉住。
 - 选项很多时要不要带搜索框、目标下拉按连接分组还是平铺，施工时定。
+
+
+🔗现状（4-25，2026-11-01）：主人批准本片不加搜索或按数量换控件、保持平铺;原顺序/筛选/业务默认不变。TSelect 已用 button combobox + PopoverShell body portal listbox/MenuItem,HourSelect 和 Logs/SkinEditor/RoastPushBox 三处原生 select 已替换,业务调用沿原 props。键盘/前缀/重复字符/disabled/IME、未知/合法空值、原因分类回焦及父层 Esc 隔离由公开 seam 测试覆盖。只取消内部 option 的鼠标 mousedown 默认聚焦,不挡 pointerdown/触屏/wheel;有效 click 一次提交,拖动/滚动/cancel/异项不误选。裸 select AST 守卫无白名单,覆盖 JSX 与真实 React createElement/别名;动态构造/跨文件工厂仍属审查边界。目标图标+第二行连接名的查询/helper 与真实接线明确归 4-32,本片未提前实现。

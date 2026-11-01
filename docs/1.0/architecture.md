@@ -435,3 +435,6 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 🔗现状（4-21，2026-10-30）：坏格对外读口已落：`GET /api/settings/invalid`、`GET /api/ext/:id/settings/invalid`；契约在 `apps/contract/src/rest.ts`。配置仓内部原文账本与安全投影分层；递归密钥规则在 internal 的 `hasSecretCells`。备份服务 `previewExport()` 只读 `getInvalidSettingsPaths()`，`GET /api/system/backup/preview` 只交默认值导出路径。复用现有鉴权，不增加 Source 成员或运行时出网。
 
 🔗现状（4-55，2026-10-31）：集成共同时区能力由integrations/timezone-reader.ts的timezoneReaderOf接核心设置读源，createIntegrationContext统一隔离回调异常并管理时区通知；index造同一读源给内置装配与拓展loader。SourceContext白名单跟踪来源订阅，PlatformAdapterContext经适配器登记表按次跟踪，不能只依赖父集成收尾。进程内对拍新增P54，现54条走通/2条不开；拓展对拍新增IntegrationContext第七表14成员，共63行（driven39、elsewhere15、closed8、hostFilled1），activate另有运行时成员穷举。契约为全新1/0，历史设计文字所述v3不代表当前大档号。
+
+
+🔗现状（4-25，2026-11-01）：ADR-0035 后半自家下拉已落:统一 TSelect/HourSelect 与三处手写原生选择器,保原业务数据/排序/筛选与字符串接口。PopoverShell 以 anchorRef/onAnchorHidden/id 支持 body portal fixed 避让与不可见收起,useDismiss.insideRefs 包含 portal,MenuItem option/id/tabIndex/ariaSelected 接无障碍。首次 Esc 隔离父层,鼠标焦点留 trigger、触屏滚动/拖动/cancel 不误选。新增裸 select AST 守卫无白名单;识别 JSX 和真实 React createElement 的已知形式,动态构造须审查。UiTextProvider 注入真实 useT,内部 useUiText 消费 ui.* 包字典;调用处守卫仅按真实导入/默认 context 共享关系放行已批准注入,不按文件豁免。目标图标+连接名仍归4-32;不加搜索、保持平铺。

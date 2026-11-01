@@ -33,7 +33,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 | `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS SSR + 经 `PuppeteerLike` 接口包 puppeteer。作品卡的出卡入口是 `generatePostCard(post)`(吃中立的 `Post`,B 站动态由 `bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post`;拓展作品由服务端 `extensions/extension-source.ts` 的 `createExtensionSource` 翻成 `Post`、图先由拓展存进图库,出图器按引用取图(注入的 `resolveImageRef`));直播卡的出卡入口是 `generateLiveCard(input)`(吃中立的 `LiveCardInput`,图是图库引用、开播时刻是 ISO、人数只收精确数;B 站与拓展的 `LiveDetails` 都由 `live/live-card-input.ts` 的 `liveCardInputFromDetails` 翻,出图器不再认 B 站原始数据) |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
 | `packages/extension` | `@bilibili-notify/extension` | 拓展拿 BN 东西的**唯一一扇门**,只逐个转出。ctx / 挂载点 / upgrade 的本体住 `@bilibili-notify/internal/extension`,面板要画的 wire 形状住 `@bilibili-notify/internal/extension/wire`;其余域类型从 `internal` 根入口转出。只放类型不放实现(拓展会被打成自包含 bundle)。列出来的就是契约的全部 —— 加一格是一次明确的加宽决定 |
-| `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README |
+| `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README。TSelect/HourSelect 用 portal listbox;UiTextProvider 注入真实 useT,内部 useUiText 在渲染取 ui.* 包字典,仅依赖 internal/texts 运行时入口,不拥有 store |
 
 ### 宿主适配
 
@@ -280,3 +280,12 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 - **面板没有按工具名查的表**:聊天里那一行小条只读痕迹自带的 `label` / `argText`(`apps/web/src/components/ai-chat/tools.ts` 的 `describeTool` 只管拼成「标签「入参」」与截短),没带标签就显示工具原名。失败的 `message` 面板接住了、还没显示。
 
 🔗现状（4-55，2026-10-31）：集成共同时区能力由integrations/timezone-reader.ts的timezoneReaderOf接核心设置读源，createIntegrationContext统一隔离回调异常并管理时区通知；index造同一读源给内置装配与拓展loader。SourceContext白名单跟踪来源订阅，PlatformAdapterContext经适配器登记表按次跟踪，不能只依赖父集成收尾。进程内对拍新增P54，现54条走通/2条不开；拓展对拍新增IntegrationContext第七表14成员，共63行（driven39、elsewhere15、closed8、hostFilled1），activate另有运行时成员穷举。契约为全新1/0，历史设计文字所述v3不代表当前大档号。
+
+
+## 自家下拉与 UI 文案（4-25，2026-11-01）
+
+`packages/ui/src/form-controls.tsx` 的 TSelect 保留既有 props,组合 PopoverShell/MenuItem。PopoverShell 的 anchorRef 模式将菜单 portal 到 body、fixed 跟随锚点并限高避让;useDismiss.insideRefs 统一内部判定。菜单 option 不抢鼠标焦点,触屏滚动/拖动/cancel 不误选;Tab、外点、窗口失焦不抢回焦点,首次 Esc 停在本层。HourSelect 与 Logs/SkinEditor/RoastPushBox 三处原生 select 均走它,业务筛选、排序、默认、payload 保持原义。
+
+UiTextProvider/UiText 从 UI 包根导出,useUiText 仅内部使用,默认 packageText;AuthedApp 在渲染交 useT 结果,设置语言/口吻变更会带动真实 DOM 重画。新键属 internal 的 ui.* 和 web 既有字典,两份简中层在使用时读取,不新增 store 或 bind 协议。
+
+`scripts/__tests__/native-select.test.mjs` 不带白名单,扫 web/ui 的 JSX select 与可识别的真实 React createElement,导入别名/遮蔽有正反例;动态标签、变量转交工厂/跨文件包装需人工审查。`i18n-call-sites.test.mjs` 只认真实 UI 具名 Provider 的 t 注入、本地 useT 结果,以及明确 texts 入口里真实 Provider/hook 共用的 React const context 默认函数;不放行任意 context/工厂/传值。真实 useUiText 导入(含别名)消费者检查 ui.* 键、占位参数及取字时机,遮蔽仍红,ALLOWLIST 仍空。
