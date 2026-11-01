@@ -50,11 +50,25 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 		const adapters: AdapterEntry[] = [];
 		for (const view of deps.runtime.adapterRegistry.list()) {
 			if (extensionIds.has(view.adapterKey)) continue;
-			adapters.push({ key: view.adapterKey, descriptor: view.descriptor() });
+			adapters.push({
+				key: view.adapterKey,
+				descriptor: view.descriptor(),
+				has: {
+					connectionAuth: view.connectionAuth !== undefined,
+					listAddressCandidates: view.listAddressCandidates !== undefined,
+				},
+			});
 		}
 		for (const entry of extensions) {
 			const descriptor = entry.manifest && manifestPushView(entry.manifest);
-			if (descriptor) adapters.push({ key: entry.id, descriptor });
+			if (descriptor) {
+				// 本版拓展不开放扫码与列地址;只声明宿主实际放行的能力。
+				adapters.push({
+					key: entry.id,
+					descriptor,
+					has: { connectionAuth: false, listAddressCandidates: false },
+				});
+			}
 		}
 		return c.json({ adapters } satisfies AdaptersResponse);
 	});
@@ -89,6 +103,10 @@ export function createAdaptersRoute(deps: RouteDeps, opts: AdaptersRouteOptions)
 		if (!adapter) return respondFailure(c, fail("unavailable", t("adapters.notRunning")));
 		try {
 			const candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
+			await deps.runtime.configStore.refreshConnectionSnapshots(
+				adapterKey,
+				candidates.map((candidate) => candidate.platform),
+			);
 			const body: ConnectionCandidatesResponse = { candidates: [...candidates] };
 			return c.json(body);
 		} catch (err) {

@@ -110,6 +110,7 @@ export interface AdapterEntry {
 	/** 适配器键:连接的 `adapterKey` 就是它(拓展的适配器键是拓展 id)。 */
 	key: string;
 	descriptor: PlatformAdapterDescriptor;
+	has: { connectionAuth: boolean; listAddressCandidates: boolean };
 }
 
 /** `GET /api/adapters` 响应:内置的按登记先后在前,拓展的按装载器的次序在后。 */

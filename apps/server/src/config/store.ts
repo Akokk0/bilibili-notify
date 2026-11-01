@@ -27,6 +27,7 @@ import {
 	neutralPlatformSnapshot,
 	normalizeMessageLayout,
 	ok,
+	type PlatformDescriptor,
 	type PlatformSnapshot,
 	PlatformSnapshotSchema,
 	type PushTarget,
@@ -264,6 +265,11 @@ export interface ConfigStore {
 	patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection>;
 	/** 只换探测状态那一格:不验 `settings`、不做托管目标同步;发 `config-changed { scope: "connections" }`。 */
 	recordConnectionProbeState(id: string, state: ConnectionProbeState): Promise<Connection>;
+	/** 候选读口刷新宿主快照,不校验或重写连接设置。 */
+	refreshConnectionSnapshots(
+		adapterKey: string,
+		platforms: readonly PlatformDescriptor[],
+	): Promise<void>;
 	deleteConnection(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
@@ -2013,6 +2019,33 @@ class NodeConfigStore implements ConfigStore {
 		});
 		await this.syncEndpointSideEffects(result);
 		return deepClone(result);
+	}
+
+	async refreshConnectionSnapshots(
+		adapterKey: string,
+		platforms: readonly PlatformDescriptor[],
+	): Promise<void> {
+		const snapshots = new Map(
+			platforms.map((platform) => [platform.platform, PlatformSnapshotSchema.parse(platform)]),
+		);
+		const changed = await this.runScoped("connections", async () => {
+			let changed = false;
+			const next = this.connections.map((connection) => {
+				const snapshot =
+					connection.adapterKey === adapterKey ? snapshots.get(connection.platform) : undefined;
+				if (!snapshot || JSON.stringify(snapshot) === JSON.stringify(connection.platformSnapshot))
+					return connection;
+				changed = true;
+				return { ...connection, platformSnapshot: snapshot };
+			});
+			if (!changed) return false;
+			await atomicWriteJson(this.path("connections"), next);
+			this.connections = next;
+			this.touch("connections");
+			return true;
+		});
+		// 适配器按设置指纹对账,快照变化只刷新面板,不重建连接。
+		if (changed) this.bus.emit("config-changed", { scope: "connections" });
 	}
 
 	async recordConnectionProbeState(id: string, state: ConnectionProbeState): Promise<Connection> {

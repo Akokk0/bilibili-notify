@@ -100,6 +100,7 @@ describe("GET /api/adapters", () => {
 		expect(body.adapters).toEqual([
 			{
 				key: "onebot",
+				has: { connectionAuth: false, listAddressCandidates: false },
 				descriptor: {
 					label: "OneBot v11",
 					shortLabel: "OneBot",
@@ -109,6 +110,7 @@ describe("GET /api/adapters", () => {
 			},
 			{
 				key: "qq-official",
+				has: { connectionAuth: true, listAddressCandidates: true },
 				descriptor: {
 					label: "QQ 官方机器人",
 					shortLabel: "QQ官方",
@@ -118,6 +120,7 @@ describe("GET /api/adapters", () => {
 			},
 			{
 				key: "webhook",
+				has: { connectionAuth: false, listAddressCandidates: false },
 				descriptor: {
 					label: "Webhook",
 					shortLabel: "Webhook",
@@ -175,13 +178,19 @@ describe("GET /api/adapters", () => {
 		const { body } = await read();
 		await dispose();
 		expect(body.adapters).toEqual([
-			{ key: "bridge", descriptor: push },
+			{
+				key: "bridge",
+				descriptor: push,
+				has: { connectionAuth: false, listAddressCandidates: false },
+			},
 			{
 				key: "relay",
+				has: { connectionAuth: false, listAddressCandidates: false },
 				descriptor: { label: "中继", shortLabel: "中", color: "#111111", settingsFields: [] },
 			},
 			{
 				key: "broken-push",
+				has: { connectionAuth: false, listAddressCandidates: false },
 				descriptor: { label: "坏的", shortLabel: "坏", color: "#222222", settingsFields: [] },
 			},
 		]);
