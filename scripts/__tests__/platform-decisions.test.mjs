@@ -1010,3 +1010,11 @@ describe("核心与面板里不再按平台名做决定", () => {
 		).toEqual([]);
 	});
 });
+
+/*
+ * 🔗现状（4-26，2026-11-01）：文件头的描述对象误伤说明保留为历史。面板扫描另用局部 symbol / 值流
+ * 证明真实 subscriptionPlatformOf 导入、不可变别名与全部入参 / JSX props；描述对象及 status / absent
+ * 判断可认，label 等名字分叉仍红。仅静态身份 sourceKey 显示 fallback 可认；未知调用、混字符串、
+ * 假导入、遮蔽仍沿旧规则。字段写入经真实别名链双向撤信任，含下标、++ 与 delete。
+ * source-scan 通用语义不变，ALLOWLIST 空，核心3 / 面板29不抬；动态传值仍需审查。
+ */

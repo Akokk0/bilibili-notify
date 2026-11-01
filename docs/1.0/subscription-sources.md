@@ -526,3 +526,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 🔗 现状（4-18，2026-10-30）：`/api/sources` 每行增加宿主投影的必填 status 与明确失败时的可选 failure。内置来源启动失败释放登记键后仍以宿主保存的描述符列出，成功重登清旧失败，正常撤下不保留运行项；拓展仍取装载器当前语言清单，状态按八档原样给出。has 缺省仍是运行实现未知，不能当作所有能力为 false。`Source` 不加运行态成员。健康详情的 integrations 按集成归并，来源摘要读取结果与启动态分开，摘要读失败不变启动灯；遗留重复 identity 由服务端算成 identityDuplicates，只报告订阅 id 与可选缓存名字，不合并删除。拓展失败的生命周期只归装载器，卸载后来源表与健康格都不留失败残影。
 
 🔗现状（4-55，2026-10-31）：IntegrationContext新增timezone():string与onTimezoneChanged(fn:()=>void):Disposable；内置、拓展activate、来源和适配器均经同一宿主读源获得。值真变才通知，订阅不补叫、相同值不叫；回调同步抛错或Promise拒绝都隔离。来源订阅随来源收回，适配器订阅随本次登记收回，父集成停下全部收回；重新启用现读最新值。B站动态cron与工具经共同ctx读取，BiliSourceDeps不再有私有时区参数。当前新契约1/0，旧provides/旧嵌套/混合格式严格拒收，拓展AI/链接/互动登记开放范围不变。
+
+🔗现状（4-26，2026-11-01）：公共 `SourceDescriptor` / `/api/sources` 现完整下发 `membershipPrograms` 与 `supportedExtras`；拓展 manifest 仍严格拒这两格，上述公共形状不表示拓展声明能力已开放。订阅、详情、共享显示、会员编辑与卡片、scope 页签、CSV 已接当前描述符；会员面板不再直读 B 站静态表，但表本体与服务端 / 出图读者搬家仍归 4-28。`featureHints` 与清单接入仍归 4-27。主人新定徽章适用于所有来源：来源表已知且仅一项、包含当前身份时隐藏；多项、表未知或缺条目时显示。缺表与缺 has 均是未知，只有成功取得表且确实缺项才报来源未安装；身份兜底保留 sourceKey 与原始 externalId，不数值化，复制保留前导零。
+
+🔗现状（4-26，2026-11-01）：会员按 program.id / tier.key 两层定位，固定档按真实 rank 升序，最低不必为1；custom / 空档只露体系默认文案图片，不造按档门槛或预览档。可运行且有可枚举档时才请求会员预览，不可用时全家福继续其他卡；图标读 `tier.icon.ref` / `url`。来源 / 语言刷新保留 dirty，隐藏未知体系、档位、附加项与路由原值保留，显式清除用 null。CSV 按实际导出行涉及的来源决定叫法：单来源取其 creatorNoun / externalIdNoun，多来源取创作者 / ID；身份列紧邻平台列，值始终是原始 externalId。现状详见 phase-4-plan 的 4-26；业务 HTTP fixture 真页验收不证明落盘或真实 PNG 渲染。

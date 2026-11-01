@@ -438,3 +438,5 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 
 
 🔗现状（4-25，2026-11-01）：ADR-0035 后半自家下拉已落:统一 TSelect/HourSelect 与三处手写原生选择器,保原业务数据/排序/筛选与字符串接口。PopoverShell 以 anchorRef/onAnchorHidden/id 支持 body portal fixed 避让与不可见收起,useDismiss.insideRefs 包含 portal,MenuItem option/id/tabIndex/ariaSelected 接无障碍。首次 Esc 隔离父层,鼠标焦点留 trigger、触屏滚动/拖动/cancel 不误选。新增裸 select AST 守卫无白名单;识别 JSX 和真实 React createElement 的已知形式,动态构造须审查。UiTextProvider 注入真实 useT,内部 useUiText 消费 ui.* 包字典;调用处守卫仅按真实导入/默认 context 共享关系放行已批准注入,不按文件豁免。目标图标+连接名仍归4-32;不加搜索、保持平铺。
+
+🔗现状（4-26，2026-11-01）：公共来源描述符与面板身份、会员、scope、CSV读者已接线，拓展manifest仍拒membershipPrograms / supportedExtras，featureHints及档位表本体搬迁分别仍归4-27/28；单来源徽章新定与完整边界见subscription-sources的4-26现状。上表 `.platform` 决定棘轮及脚本旧误伤说明保留为历史：新增 `source-descriptor-flow.mjs` 在该守卫局部用真实导入symbol与值流证明描述对象、不可变别名、全调用参数 / JSX props，status / absent运行态判断可认，label等按名分叉仍红。只接静态身份sourceKey显示fallback；未知调用、混字符串、假导入、遮蔽均沿旧规则，任何已识别字段写入沿别名链双向撤回信任，不能借别名逃掉。通用source-scan不变、ALLOWLIST空、核心3 / 面板29不抬；已有seam正反例、真源码破坏与恢复绿已留证，不宣称覆盖任意动态程序。
