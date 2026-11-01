@@ -1,4 +1,5 @@
-import type { SettingsField, SettingsFieldMeta } from "../settings-field";
+import type { ConnectionSettingsField, SettingsField, SettingsFieldMeta } from "../settings-field";
+import { packageText as tr } from "../texts";
 import { enumValuesOf, numberBoundsOf, type Unwrapped, unwrap, type ZodDef } from "./zod-def";
 
 /**
@@ -14,10 +15,94 @@ import { enumValuesOf, numberBoundsOf, type Unwrapped, unwrap, type ZodDef } fro
  * 内置集成(适配器描述、B 站设置)在服务端现算,官方拓展由构建写进清单(`@bilibili-notify/extension/build`),
  * 调的都是这一个。
  */
-export function settingsFieldsFromSchema(schema: unknown): SettingsField[] {
-	const shape = unwrap(schema).def?.shape;
-	if (!shape) throw new Error("设置的规则第一层必须是一个对象(z.object)");
+export function settingsFieldsFromSchema(schema: unknown): SettingsField[];
+export function settingsFieldsFromSchema(
+	schema: unknown,
+	options: { connection: true },
+): ConnectionSettingsField[];
+export function settingsFieldsFromSchema(
+	schema: unknown,
+	options?: { connection: true },
+): SettingsField[] | ConnectionSettingsField[] {
+	const got = unwrap(schema);
+	if (options?.connection && got.def?.discriminator) return variantsOf(got);
+	const shape = got.def?.shape;
+	if (!shape) throw new Error(tr("internal.fields.object"));
+	if (options?.connection) return connectionFieldsOf(shape);
 	return fieldsOf("", shape, false);
+}
+
+function variantsOf(got: Unwrapped): ConnectionSettingsField[] {
+	const key = got.def?.discriminator as string;
+	const branches = (got.def?.options ?? []).map((option) => unwrap(option));
+	const shared = Object.keys(branches[0]?.def?.shape ?? {}).filter(
+		(name) =>
+			name !== key && branches.every((branch) => Object.hasOwn(branch.def?.shape ?? {}, name)),
+	);
+	const labels = got.meta?.options as SettingsFieldMeta["options"];
+	const variants: Record<
+		string,
+		{ settings: Record<string, unknown>; preserve: { key: string; truthy?: boolean }[] }
+	> = {};
+	const fields: ConnectionSettingsField[] = [];
+	const options: { value: string; label: string }[] = [];
+	for (const branch of branches) {
+		const shape = branch.def?.shape;
+		const value = shape && unwrap(shape[key]).def?.values?.[0];
+		if (!shape || typeof value !== "string" || !labels?.[value])
+			throw new Error(tr("internal.fields.variant", { key }));
+		options.push({ value, label: labels[value].label });
+		const settings: Record<string, unknown> = { [key]: value };
+		for (const [name, member] of Object.entries(shape)) {
+			const field = unwrap(member);
+			if (field.fill) settings[name] = fillOf(name, field);
+		}
+		Object.assign(settings, branch.meta?.initial);
+		variants[value] = {
+			settings,
+			preserve: shared.map((name) => ({
+				key: name,
+				...(unwrap(shape[name]).meta?.preserveTruthy ? { truthy: true } : {}),
+			})),
+		};
+		fields.push(
+			...connectionFieldsOf(shape)
+				.filter((field) => field.key !== key)
+				.map((field) => ({ ...field, when: { key, value } })),
+		);
+	}
+	return [
+		{ key, type: "enum", label: got.meta?.label as string, required: true, options, variants },
+		...fields,
+	];
+}
+
+function connectionFieldsOf(shape: Record<string, unknown>): ConnectionSettingsField[] {
+	return Object.entries(shape).flatMap<ConnectionSettingsField>(([key, member]) => {
+		const got = unwrap(member);
+		if (typeof got.meta?.label !== "string") return [];
+		if (got.def?.type === "record") {
+			if (
+				unwrap(got.def.keyType).def?.type !== "string" ||
+				unwrap(got.def.valueType).def?.type !== "string"
+			) {
+				throw new Error(tr("internal.fields.record", { key }));
+			}
+			return [
+				{
+					key,
+					type: "record" as const,
+					label: got.meta.label,
+					...pick(got.meta, ["description"]),
+					...(!got.optional && !got.fill ? { required: true } : {}),
+					...(got.fill ? { default: fillOf(key, got) as Record<string, string> } : {}),
+				},
+			];
+		}
+		const field = fieldOf(key, key, got, true);
+		if (field.type === "list") throw new Error(tr("internal.fields.list", { key }));
+		return [{ ...field, ...pick(got.meta, ["byPlatform", "listener"]) }];
+	});
 }
 
 /** 一个对象的成员出几栏 —— 顶层与列表的每一项是同一套;`inList` 时项里只许单值(列表只嵌一层)。 */
@@ -70,11 +155,12 @@ function fieldTypeOf(def: ZodDef | undefined): SettingsField["type"] | undefined
 function fieldOf(path: string, key: string, got: Unwrapped, inList: boolean): SettingsField {
 	const { def, meta = {} } = got;
 	const type = fieldTypeOf(def);
-	if (!def || !type) throw new Error(`"${path}" 是 ${def?.type ?? "认不出的类型"},设置项表达不了`);
+	if (!def || !type)
+		throw new Error(tr("internal.fields.unsupported", { path, type: def?.type ?? "unknown" }));
 	const own: readonly string[] = META_KEYS[type];
 	const stray = Object.keys(meta).filter((k) => ALL_META_KEYS.has(k) && !own.includes(k));
 	if (stray.length > 0) {
-		throw new Error(`"${path}" 是 ${type},meta 里的 ${stray.join(" / ")} 用不上`);
+		throw new Error(tr("internal.fields.stray", { path, type, keys: stray.join(" / ") }));
 	}
 	const fill = fillOf(path, got);
 	const field = {
@@ -96,10 +182,10 @@ function fieldOf(path: string, key: string, got: Unwrapped, inList: boolean): Se
 		case "enum":
 			return { ...field, options: enumOptionsOf(path, def, meta.options) } as SettingsField;
 		case "list": {
-			if (inList) throw new Error(`"${path}" 是列表项里的列表,设置项的列表只嵌一层`);
+			if (inList) throw new Error(tr("internal.fields.nestedList", { path }));
 			const item = unwrap(def.element).def;
 			if (item?.type !== "object" || !item.shape) {
-				throw new Error(`"${path}" 是列表,每一项得是个对象(z.object)`);
+				throw new Error(tr("internal.fields.itemObject", { path }));
 			}
 			return { ...field, fields: fieldsOf(`${path}.`, item.shape, true) } as SettingsField;
 		}
@@ -113,9 +199,7 @@ function boundsOf(path: string, def: ZodDef): { min?: number; max?: number } {
 	const { min, max } = numberBoundsOf(def);
 	for (const bound of [min, max]) {
 		if (bound && !bound.inclusive) {
-			throw new Error(
-				`"${path}" 的上下限不含端点(.gt() / .lt() / .positive() …),设置项的 min / max 含端点,改用 .min() / .max()`,
-			);
+			throw new Error(tr("internal.fields.bounds", { path }));
 		}
 	}
 	return { ...(min ? { min: min.value } : {}), ...(max ? { max: max.value } : {}) };
@@ -132,24 +216,21 @@ function enumOptionsOf(
 	labels: unknown,
 ): { value: string; label: string; icon?: string }[] {
 	const values = enumValuesOf(def);
-	if (!values)
-		throw new Error(`"${path}" 是 union,设置项的枚举只认每一支都是字面量(或 z.enum)的 union`);
+	if (!values) throw new Error(tr("internal.fields.union", { path }));
 	const odd = values.find((value) => typeof value !== "string");
 	if (odd !== undefined) {
-		throw new Error(
-			`"${path}" 的取值里有不是字符串的 ${JSON.stringify(odd)} —— 面板存的永远是字符串`,
-		);
+		throw new Error(tr("internal.fields.enumString", { path, value: JSON.stringify(odd) }));
 	}
 	const table = (labels ?? {}) as Record<string, { label: string; icon?: string } | undefined>;
 	const unique = [...new Set(values as string[])];
 	const extra = Object.keys(table).filter((value) => !unique.includes(value));
 	if (extra.length > 0) {
-		throw new Error(`"${path}" 的 meta.options 里有规则里没有的取值:${extra.join(", ")}`);
+		throw new Error(tr("internal.fields.extraOptions", { path, values: extra.join(", ") }));
 	}
 	return unique.map((value) => {
 		const option = table[value];
 		if (typeof option?.label !== "string") {
-			throw new Error(`"${path}" 的取值 ${value} 在 meta.options 里没写标签`);
+			throw new Error(tr("internal.fields.missingLabel", { path, value }));
 		}
 		return {
 			value,
@@ -166,7 +247,11 @@ function fillOf(path: string, got: Unwrapped): unknown {
 		return got.fill.read();
 	} catch (err) {
 		throw new Error(
-			`"${path}" 的 .${got.fill.from}() 算不出补什么(${err instanceof Error ? err.message : String(err)})`,
+			tr("internal.fields.default", {
+				path,
+				from: got.fill.from,
+				message: err instanceof Error ? err.message : String(err),
+			}),
 		);
 	}
 }

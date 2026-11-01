@@ -24,6 +24,31 @@ export type SettingsScalarField =
 	| SettingsBooleanField
 	| SettingsEnumField;
 
+/** 内置连接描述使用的扩展;拓展清单仍只收 SettingsScalarField。 */
+export type ConnectionSettingsField = (SettingsScalarField | SettingsRecordField) & {
+	/** 这一格只在指定的分支里显示。 */
+	when?: { key: string; value: string };
+	/** 切换分支时整体重建设置,保留声明的共用值。 */
+	variants?: Readonly<
+		Record<
+			string,
+			{
+				settings: Readonly<Record<string, unknown>>;
+				preserve: readonly { key: string; truthy?: boolean }[];
+			}
+		>
+	>;
+	/** 同一适配器的候选平台可有不同的提示文字。 */
+	byPlatform?: Readonly<Record<string, { description?: string; placeholder?: string }>>;
+	/** 端口字段旁显示由访问主机与端口组成的接入地址。 */
+	listener?: { scheme: "ws" };
+};
+
+interface SettingsRecordField extends SettingsFieldBase {
+	type: "record";
+	default?: Record<string, string>;
+}
+
 interface SettingsStringField extends SettingsFieldBase {
 	type: "string";
 	default?: string;

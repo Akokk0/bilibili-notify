@@ -25,7 +25,7 @@ import type {
 	DestinationRef,
 	PlatformDescriptor,
 } from "./schema/targets";
-import type { SettingsScalarField } from "./settings-field";
+import type { ConnectionSettingsField } from "./settings-field";
 
 /**
  * 一次连接探测的结果(ADR-0026):通了是 `{ ok: true, latencyMs }`,没通是 `Failure`。
@@ -154,7 +154,7 @@ export interface PlatformAdapterDescriptor {
 	/** 平台图标:图片 data URL(面板第 4 期按描述画时当 `<img>` 画,这一版还不读)。 */
 	icon?: string;
 	/** 要主人填的连接配置项;不需要配置的适配器就是空表。 */
-	settingsFields: readonly SettingsScalarField[];
+	settingsFields: readonly ConnectionSettingsField[];
 }
 
 /**

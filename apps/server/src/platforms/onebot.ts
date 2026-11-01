@@ -20,7 +20,12 @@ import type {
 	ServiceContext,
 	WebSocketLike,
 } from "@bilibili-notify/internal";
-import { fail, OnebotConnectionSettingsSchema, ok } from "@bilibili-notify/internal";
+import {
+	fail,
+	OnebotConnectionSettingsSchema,
+	ok,
+	settingsFieldsFromSchema,
+} from "@bilibili-notify/internal";
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
@@ -1398,7 +1403,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				label: t("onebot.adapter.label"),
 				shortLabel: t("onebot.adapter.shortLabel"),
 				color: "#3b82f6",
-				settingsFields: [],
+				settingsFields: settingsFieldsFromSchema(OnebotConnectionSettingsSchema, {
+					connection: true,
+				}),
 			};
 		},
 

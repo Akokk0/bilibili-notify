@@ -11,7 +11,27 @@ import {
 	PUSH_TARGET_SCOPES,
 	platformOfTarget,
 } from "../push-target";
+import { type PackageTextKey, packageText as tr } from "../texts";
 import { markBackupOnly, markSecret } from "./secret";
+
+/** 元数据在导出描述时取字,不会把启动时的语言冻结在规则里。 */
+function fieldText(
+	label: PackageTextKey,
+	description?: PackageTextKey,
+	extra: Record<string, unknown> = {},
+) {
+	return Object.defineProperties(
+		{
+			get label() {
+				return tr(label);
+			},
+			get description() {
+				return description ? tr(description) : undefined;
+			},
+		},
+		Object.getOwnPropertyDescriptors(extra),
+	);
+}
 
 // 会话种类、目标形态、连接器这三个词表的本体在零依赖的 `push-target.ts` / `platform-registry.ts`
 // —— 类型从那边导,别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
@@ -54,23 +74,84 @@ export const PushTargetKindSchema = z.enum(PUSH_TARGET_KINDS);
  * `transport` 是连接属性,只活在连接的 settings 里 —— PushTarget 不受影响。
  */
 const onebotCommonSettingsShape = {
-	accessToken: markSecret(z.string()).optional(),
+	accessToken: markSecret(
+		z.string().meta(
+			fieldText("internal.connection.token.label", "internal.connection.token.description", {
+				secret: true,
+			}),
+		),
+	).optional(),
 	/** OneBot 协议版本；首期固定 v11，留位以便后续扩展 v12。 */
 	protocolVersion: z.literal("v11").default("v11"),
 	/** 单次操作总超时（毫秒）。HTTP = 请求超时；WS = 等 echo 响应超时。 */
-	timeoutMs: z.number().int().positive().default(15_000),
+	timeoutMs: z
+		.number()
+		.int()
+		.min(1)
+		.default(15_000)
+		.meta(
+			fieldText("internal.connection.timeout.label", "internal.connection.timeout.description", {
+				step: 1000,
+				unit: "ms",
+			}),
+		),
 	/**
 	 * 带图普通消息的超时**下限**（毫秒）。协议端要先把图传到 QQ 图床才回响应，实测
 	 * 常超 15s，所以取 `max(timeoutMs, 此值)` 单独放宽。`0` = 关闭放宽，严格按
 	 * `timeoutMs` 走（想让挂掉的 bot 快速失败、别拖住串行发送的后续目标时用）。
 	 */
-	imageMinTimeoutMs: z.number().int().min(0).default(ONEBOT_IMAGE_MIN_TIMEOUT_MS),
+	imageMinTimeoutMs: z
+		.number()
+		.int()
+		.min(0)
+		.default(ONEBOT_IMAGE_MIN_TIMEOUT_MS)
+		.meta(
+			fieldText(
+				"internal.connection.imageMinTimeoutMs.label",
+				"internal.connection.imageMinTimeoutMs.description",
+				{ step: 1000, unit: "ms" },
+			),
+		),
 	/** 合并转发（`send_*_forward_msg`）的超时下限（毫秒）。语义同上，`0` = 关闭放宽。 */
-	mergeForwardMinTimeoutMs: z.number().int().min(0).default(ONEBOT_FORWARD_MIN_TIMEOUT_MS),
+	mergeForwardMinTimeoutMs: z
+		.number()
+		.int()
+		.min(0)
+		.default(ONEBOT_FORWARD_MIN_TIMEOUT_MS)
+		.meta(
+			fieldText(
+				"internal.connection.mergeForwardMinTimeoutMs.label",
+				"internal.connection.mergeForwardMinTimeoutMs.description",
+				{ step: 1000, unit: "ms" },
+			),
+		),
 	/** 失败时的重试次数（不含首次）。 */
-	maxRetries: z.number().int().min(0).default(0),
+	maxRetries: z
+		.number()
+		.int()
+		.min(0)
+		.default(0)
+		.meta(
+			fieldText(
+				"internal.connection.maxRetries.label",
+				"internal.connection.maxRetries.description",
+				{
+					preserveTruthy: true,
+					get unit() {
+						return tr("internal.connection.maxRetries.unit");
+					},
+				},
+			),
+		),
 	/** 两次重试之间的等待（毫秒）。 */
-	retryIntervalMs: z.number().int().min(0).default(1_000),
+	retryIntervalMs: z
+		.number()
+		.int()
+		.min(0)
+		.default(1_000)
+		.meta(
+			fieldText("internal.connection.retryIntervalMs.label", undefined, { step: 500, unit: "ms" }),
+		),
 } as const;
 
 /** HTTP:独立端用 fetch POST 到 bot 的 OneBot HTTP API。 */
@@ -78,43 +159,96 @@ export const OnebotHttpSettingsSchema = z
 	.object({
 		transport: z.literal("http"),
 		/** bot 的 OneBot HTTP API 根地址。 */
-		baseUrl: markBackupOnly(z.url(), { url: true }),
+		baseUrl: markBackupOnly(
+			z.url().meta(
+				fieldText("internal.connection.baseUrl.label", undefined, {
+					monospace: true,
+					placeholder: "http://napcat:3000",
+				}),
+			),
+			{ url: true },
+		),
 		/** 附加到每次请求的 HTTP header（例如自定义鉴权头）。 */
-		headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
+		headers: z
+			.record(z.string(), markBackupOnly(z.string()))
+			.default({})
+			.meta(
+				fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+			),
 		...onebotCommonSettingsShape,
 	})
-	.strict();
+	.strict()
+	.meta({ initial: { baseUrl: "http://127.0.0.1:3000" } });
 
 /** 正向 WS:独立端作为 WS 客户端,主动连到 bot 的 WS 服务。 */
 export const OnebotWsSettingsSchema = z
 	.object({
 		transport: z.literal("ws"),
 		/** bot 的 OneBot 正向 WS 地址,必须 `ws://` 或 `wss://`。 */
-		url: markBackupOnly(z.string().regex(/^wss?:\/\/\S+$/i, "必须是 ws:// 或 wss:// 地址"), {
-			url: true,
-		}),
+		url: markBackupOnly(
+			z
+				.string()
+				.regex(/^wss?:\/\/\S+$/i, { error: () => tr("internal.connection.wsUrl.invalid") })
+				.meta(
+					fieldText("internal.connection.wsUrl.label", "internal.connection.wsUrl.description", {
+						monospace: true,
+						placeholder: "ws://napcat:3001",
+					}),
+				),
+			{
+				url: true,
+			},
+		),
 		/** WS 握手请求头（例如自定义鉴权头）。 */
-		headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
+		headers: z
+			.record(z.string(), markBackupOnly(z.string()))
+			.default({})
+			.meta(
+				fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+			),
 		...onebotCommonSettingsShape,
 	})
-	.strict();
+	.strict()
+	.meta({ initial: { url: "ws://127.0.0.1:3001", maxRetries: 3 } });
 
 /** 反向 WS:独立端监听 `port`,bot 作为客户端主动连进来。端口即身份。 */
 export const OnebotWsReverseSettingsSchema = z
 	.object({
 		transport: z.literal("ws-reverse"),
 		/** 独立端为该连接开的 WS 监听端口；bot 连 `ws://<host>:<port>/`。 */
-		port: z.number().int().min(1).max(65_535),
+		port: z
+			.number()
+			.int()
+			.min(1)
+			.max(65_535)
+			.meta(
+				fieldText("internal.connection.port.label", "internal.connection.port.description", {
+					listener: { scheme: "ws" },
+				}),
+			),
 		...onebotCommonSettingsShape,
 	})
-	.strict();
+	.strict()
+	.meta({ initial: { port: 9797, maxRetries: 3 } });
 
 /** OneBot 连接设置 —— 按 `transport` 区分 HTTP / 正向 WS / 反向 WS。 */
-export const OnebotConnectionSettingsSchema = z.discriminatedUnion("transport", [
-	OnebotHttpSettingsSchema,
-	OnebotWsSettingsSchema,
-	OnebotWsReverseSettingsSchema,
-]);
+export const OnebotConnectionSettingsSchema = z
+	.discriminatedUnion("transport", [
+		OnebotHttpSettingsSchema,
+		OnebotWsSettingsSchema,
+		OnebotWsReverseSettingsSchema,
+	])
+	.meta(
+		fieldText("internal.connection.transport.label", undefined, {
+			get options() {
+				return {
+					http: { label: "HTTP" },
+					ws: { label: tr("internal.connection.transport.ws") },
+					"ws-reverse": { label: tr("internal.connection.transport.reverse") },
+				};
+			},
+		}),
+	);
 export type OnebotConnectionSettings = z.infer<typeof OnebotConnectionSettingsSchema>;
 export type OnebotTransport = OnebotConnectionSettings["transport"];
 
@@ -129,10 +263,47 @@ export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
  * 的 z.object,所以万一漏了一条,strip 掉也不会让主人开不了机。
  */
 export const WebhookConnectionSettingsSchema = z.object({
-	url: markSecret(z.url(), { url: true }),
-	secret: markSecret(z.string()).optional(),
+	url: markSecret(
+		z.url().meta(
+			fieldText("internal.connection.hookUrl.label", undefined, {
+				monospace: true,
+				secret: true,
+				byPlatform: {
+					dingtalk: { placeholder: "https://oapi.dingtalk.com/robot/send?access_token=..." },
+					feishu: { placeholder: "https://open.feishu.cn/open-apis/bot/v2/hook/..." },
+					wecom: { placeholder: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." },
+					generic: { placeholder: "https://hooks.example.com/bn" },
+				},
+			}),
+		),
+		{ url: true },
+	),
+	secret: markSecret(
+		z.string().meta(
+			fieldText(
+				"internal.connection.hookSecret.label",
+				"internal.connection.hookSecret.description",
+				{
+					secret: true,
+					get byPlatform() {
+						return {
+							dingtalk: { description: tr("internal.connection.hookSecret.dingtalk") },
+							feishu: { description: tr("internal.connection.hookSecret.feishu") },
+							wecom: { description: tr("internal.connection.hookSecret.wecom") },
+							generic: { description: tr("internal.connection.hookSecret.generic") },
+						};
+					},
+				},
+			),
+		),
+	).optional(),
 	/** 自定义 header 例如 Authorization */
-	headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
+	headers: z
+		.record(z.string(), markBackupOnly(z.string()))
+		.default({})
+		.meta(
+			fieldText("internal.connection.headers.label", "internal.connection.headers.description"),
+		),
 });
 export type WebhookConnectionSettings = z.infer<typeof WebhookConnectionSettingsSchema>;
 
@@ -149,7 +320,15 @@ export type QQOfficialBotType = z.infer<typeof QQOfficialBotTypeSchema>;
  */
 export const QQOfficialConnectionSettingsSchema = z
 	.object({
-		appId: z.string().min(1),
+		appId: z
+			.string()
+			.min(1)
+			.meta(
+				fieldText("internal.connection.appId.label", "internal.connection.appId.description", {
+					monospace: true,
+					placeholder: "102xxxxxx",
+				}),
+			),
 		/**
 		 * 空串 = 尚未配置密钥,**合法可存**(与 onebot 的 `accessToken`、webhook 的
 		 * `secret` 建模一致)。这里曾经是 `.min(1)`,结果脱敏备份把 appSecret 抹成空串
@@ -159,12 +338,44 @@ export const QQOfficialConnectionSettingsSchema = z
 		 * `platforms/qq-official.ts` 的 isAvailable / reconcile,两处都拒绝空密钥的
 		 * adapter,不会拿空密钥去撞 QQ 网关。
 		 */
-		appSecret: markSecret(z.string()),
-		sandbox: z.boolean().default(false),
-		botType: QQOfficialBotTypeSchema.default("public"),
+		appSecret: markSecret(
+			z
+				.string()
+				.meta(
+					fieldText(
+						"internal.connection.appSecret.label",
+						"internal.connection.appSecret.description",
+						{ secret: true },
+					),
+				),
+		),
+		sandbox: z
+			.boolean()
+			.default(false)
+			.meta(
+				fieldText("internal.connection.sandbox.label", "internal.connection.sandbox.description"),
+			),
+		botType: QQOfficialBotTypeSchema.default("public").meta(
+			fieldText("internal.connection.botType.label", "internal.connection.botType.description", {
+				get options() {
+					return {
+						public: { label: tr("internal.connection.botType.public") },
+						private: { label: tr("internal.connection.botType.private") },
+					};
+				},
+			}),
+		),
 		/** 是否记录网关 RECONNECT/RESUMED 事件日志。QQ 官方网关每约 30 分钟主动要求
 		 * 重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启。 */
-		logReconnects: z.boolean().default(false),
+		logReconnects: z
+			.boolean()
+			.default(false)
+			.meta(
+				fieldText(
+					"internal.connection.logReconnects.label",
+					"internal.connection.logReconnects.description",
+				),
+			),
 	})
 	.strict();
 export type QQOfficialConnectionSettings = z.infer<typeof QQOfficialConnectionSettingsSchema>;

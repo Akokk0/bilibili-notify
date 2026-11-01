@@ -23,6 +23,9 @@ export interface ZodDef {
 	values?: readonly unknown[];
 	/** `z.union` 的每一支。 */
 	options?: readonly unknown[];
+	discriminator?: string;
+	keyType?: unknown;
+	valueType?: unknown;
 	element?: unknown;
 	shape?: Record<string, unknown>;
 	/** 对象里没声明的键按什么收;strict 对象这一格是 `never`。 */

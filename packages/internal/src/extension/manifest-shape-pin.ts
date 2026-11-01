@@ -69,11 +69,11 @@ export type SubscriptionFeaturesPinned = Pinned<
 export type PushDisplayPinned = Pinned<
 	Equals<Omit<ManifestPush, "settingsFields">, Omit<PlatformAdapterDescriptor, "settingsFields">>
 >;
-/** 推送段的字段表与描述符的字段表严格相等。 */
+/** 拓展推送段只开放单值字段;内置连接描述的条件字段与键值表不进入清单。 */
 export type PushSettingsFieldsPinned = Pinned<
 	Equals<
 		ReadonlyArrays<NonNullable<ManifestPush["settingsFields"]>>,
-		PlatformAdapterDescriptor["settingsFields"]
+		readonly SettingsScalarField[]
 	>
 >;
 /** zod 字段规则推出的形状与手写设置字段严格相等。 */

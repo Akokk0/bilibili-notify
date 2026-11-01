@@ -1,4 +1,5 @@
 import type { ReportDiscrepancyKind } from "@bilibili-notify/contract";
+import type { SettingsScalarField } from "@bilibili-notify/internal";
 import {
 	assertConfigFieldsMatchSchema,
 	type CapabilitySupport,
@@ -131,9 +132,11 @@ const STATUS_KEY = "status";
  * 注册推送源时与拓展列表下发时**共用这一份翻译** —— 停着的拓展列表照清单给,跑着的照注册时收下的给,
  * 两处各写一遍的话,哪天清单多一格,两边就说成两种样子。
  */
-export function manifestPushView(
-	manifest: ExtensionManifest,
-): PlatformAdapterDescriptor | undefined {
+export function manifestPushView(manifest: ExtensionManifest):
+	| (Omit<PlatformAdapterDescriptor, "settingsFields"> & {
+			settingsFields: readonly SettingsScalarField[];
+	  })
+	| undefined {
 	const push = manifest.contributes.push;
 	return push && { ...push, settingsFields: push.settingsFields ?? [] };
 }

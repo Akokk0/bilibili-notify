@@ -23,7 +23,12 @@ import type {
 	ServiceContext,
 	WebSocketLike,
 } from "@bilibili-notify/internal";
-import { fail, ok, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
+import {
+	fail,
+	ok,
+	QQOfficialConnectionSettingsSchema,
+	settingsFieldsFromSchema,
+} from "@bilibili-notify/internal";
 import type { RawData } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
@@ -1450,7 +1455,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				label: t("qqOfficial.adapter.label"),
 				shortLabel: t("qqOfficial.adapter.shortLabel"),
 				color: "#14b8a6",
-				settingsFields: [],
+				settingsFields: settingsFieldsFromSchema(QQOfficialConnectionSettingsSchema, {
+					connection: true,
+				}),
 			};
 		},
 

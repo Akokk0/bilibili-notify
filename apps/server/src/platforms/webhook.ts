@@ -17,6 +17,7 @@ import {
 	type PlatformAdapter,
 	type PlatformAdapterContext,
 	type ProbeResult,
+	settingsFieldsFromSchema,
 	type WebhookConnectionSettings,
 	WebhookConnectionSettingsSchema,
 	type WebhookPlatform,
@@ -90,7 +91,9 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				label: t("webhook.adapter.label"),
 				shortLabel: t("webhook.adapter.shortLabel"),
 				color: "#94a3b8",
-				settingsFields: [],
+				settingsFields: settingsFieldsFromSchema(WebhookConnectionSettingsSchema, {
+					connection: true,
+				}),
 			};
 		},
 
