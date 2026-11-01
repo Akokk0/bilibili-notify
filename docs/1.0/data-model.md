@@ -419,7 +419,7 @@ type LiveInteractionReport =
 | --- | --- |
 | B 站体系 | `guard`，档 key 是 `captain` / `commander` / `governor`，rank 1 / 2 / 3。B 站接口的 `guard_level` 1 = 总督，这个反向换算只在 `bilibili/` |
 | 徽章 | 图库引用，来源声明档位时给（`tier.icon`） |
-| 档色 | `tier.color`，面板与出图共读（留卡片那一套：舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`）；可选的 `tier.colorEnd` 是卡背景渐变的止色，面板不读（B 站三档 `#b494e5` / `#b494e5` / `#ef5f5f`）。面板自己的档位色表（`guard-levels.ts`）已删（㉓e）。3a 之前档位表住 `packages/internal/src/bilibili-guard.ts`（零值级依赖，面板经 `@bilibili-notify/internal/bilibili-guard` 子路径取值），面板里只有 `apps/web/src/config/membership-programs.ts` 一个文件读它，对外给中立的 `MembershipProgram` / `MembershipTier`（规则页门槛的选项、上舰文案每档一块、卡片预览的档位钮都从它铺，不写死三档）；3a 把档位表搬进 `bilibili/` 的描述符、由 `/api/sources` 下发，面板只改这一个文件 |
+| 档色 | `tier.color`，面板与出图共读（留卡片那一套：舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`）；可选的 `tier.colorEnd` 是卡背景渐变的止色，面板不读（B 站三档 `#b494e5` / `#b494e5` / `#ef5f5f`）。面板自己的档位色表（`guard-levels.ts`）已删（㉓e）。运行时档位表现住 `apps/server/src/bilibili/guard-program.ts`（4-28，2026-11-01），B 站来源经 `descriptor.membershipPrograms` 与 `/api/sources` 下发；`internal/bilibili-guard` 子路径、根导出与构建入口已退役。面板与出图器只消费中立的 `MembershipProgram` / `MembershipTier`，不直读平台静态表；体系名、档名与宣告语访问时从服务端字典取，实例的图库引用独立保留 |
 | 宣告语 | `tier.announcement`，由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`，没声明就不画；皮肤字段 `membership.announcement`，面板上叫「宣告语」 |
 | 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片（`{ template, imageUrl }`），没单独配的档用 default，图片没填用该档的徽章；`guard` 的 default 出厂值是「{viewer} 成为了 {name} 的{tier}！」；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
 | 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`，没配就是全推；逐订阅覆盖按体系合并；没有 rank 的体系只能开或关 |
