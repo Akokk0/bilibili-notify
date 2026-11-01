@@ -198,6 +198,8 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 - 拓展实现了哪些可选能力（`auth`、`fetchLiveStatus`、`fetchPreview`）由宿主推算、随 `/api/sources` 下发，不在清单里自报。
 - 拓展卸载后遗留的订阅：平台名显示来源键、叫法用中性词、不露特性开关，卡上标「来源没装」。
 
+🔗现状（4-27，2026-11-01）：清单、公共描述符和面板读者均已接 `Partial<Record<FeatureKey, string>>`；全8键提示不扩大下文四项能力，也不参与has、status或节显隐。清单拒空白，非空原文保留；`$manifest`坏译文逐条丢弃，按键沿当前语言→简中→英文→原字回落。B站两句在访问时取字，详情两处小字共用覆盖与中性默认；长hint首轮窄屏失败后经 `c185aa777` 换行修复，统筹独审与隔离Chrome整轮11组通过。公共HTTP内容由P50和路由测试钉住，按来源规则节显隐仍由组件自动测试作证，本轮规则浏览器只作全局页冒烟，不计进程内渲染。契约仍全新1/0、拓展会员体系与附加项清单不开放；最终仅片级门禁，整期结束另跑全量。业务HTTP fixture真页不证明落盘或真实拓展装载，详细证据见 phase-4-plan 的4-27完成记录。
+
 没有「新建 / 启用订阅」钩子：拓展要在订阅变化时做事，一律用 `onSubscriptionsChanged`，自己对比新旧名单。
 
 **能声明的特性**：1.0 拓展的 `supportedFeatures` 只能是 `post`、`liveStart`、`liveStreaming`、`liveEnd`；声明了 `liveStreaming` 就必须实现 `fetchLiveStatus`。宿主装载时校验，不合规就拒收并说明原因。🔗 现状（3b-42，10-24）：清单 v2 先按 `events` 推出周期直播，声明了却没实现 `fetchLiveStatus` 就在登记时拒、这次加载失败；推送侧的周期计时与 `skipped` 出入已删（主人 10-24 R3）；3b-44 换读 `supportedFeatures`。🔗 现状（3b-44，10-25）：清单已换读 `supportedFeatures`，声明 `liveStreaming` 必须同时声明开播与下播；没声明 `liveStreaming` 的不再有周期直播。

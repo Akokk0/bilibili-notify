@@ -358,7 +358,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "第 4 期",
 		reason:
-			"服务端描述符与提示经 P50 下发；面板能力由 Rules.extension-subs / section-scope、提示覆盖由 UpDialog.extension 组件测试管着（4-26/27），不记为进程内渲染对拍；4-27 真页待统筹验收",
+			"服务端描述符与提示经 P50 下发；面板能力由 Rules.extension-subs / section-scope、提示覆盖由 UpDialog.extension 组件测试管着（4-26/27），不记为进程内渲染对拍；4-27 统筹真页11组通过，含提示与能力的详情操作，规则页仅全局冒烟，按来源节显隐仍由上述组件测试负责",
 	},
 	{
 		id: "N14",

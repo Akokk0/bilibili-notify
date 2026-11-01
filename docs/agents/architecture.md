@@ -283,6 +283,8 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 🔗现状（4-27，2026-11-01，代码交接待验）：订阅清单新增 featureHints，SubscriptionCell 为12成员；七表共64行（driven39、elsewhere16、closed8、hostFilled1）。新增行指向 sources-list-route 的完整描述符 HTTP 断言；进程内 P50 另核假源 hint 字面量。N09 面板部分由 UpDialog.extension、Rules.extension-subs 与 section-scope 组件测试覆盖，不记作进程内对拍，进程内仍54走通 / 2不开。契约仍全新1/0。
 
+🔗现状（4-27，2026-11-01）：待验记录保留为历史。统筹独审及Chrome整轮11组通过，长hint首轮390截断由 `c185aa777` 修复后重跑；来源提示两处覆盖、刷新、默认和能力 / 运行态为真页操作。规则浏览器仅全局页冒烟，按来源节显隐仍由组件自动测试负责；N09不转成进程内渲染，成员表仍64行、进程内54走通 / 2不开。最终仅片级门禁，整期结束另跑全量，HTTP fixture不证明落盘或真实拓展装载；证据与清理见 phase-4-plan 的4-27完成记录。
+
 ## 自家下拉与 UI 文案（4-25，2026-11-01）
 
 `packages/ui/src/form-controls.tsx` 的 TSelect 保留既有 props,组合 PopoverShell/MenuItem。PopoverShell 的 anchorRef 模式将菜单 portal 到 body、fixed 跟随锚点并限高避让;useDismiss.insideRefs 统一内部判定。菜单 option 不抢鼠标焦点,触屏滚动/拖动/cancel 不误选;Tab、外点、窗口失焦不抢回焦点,首次 Esc 停在本层。HourSelect 与 Logs/SkinEditor/RoastPushBox 三处原生 select 均走它,业务筛选、排序、默认、payload 保持原义。
