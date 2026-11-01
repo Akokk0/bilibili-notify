@@ -157,7 +157,7 @@ export const RATCHET = {
 	"apps/server/src/migration/templates.ts": 10,
 	"apps/server/src/migration/zero-platforms.ts": 14,
 	"apps/server/src/migration/zero-vocabulary.ts": 8,
-	"apps/server/src/platforms/qq-bind.ts": 15,
+
 	"apps/server/src/platforms/upstream-message.ts": 1,
 	"apps/server/src/posts/deliver-post.ts": 2,
 	"apps/server/src/posts/post-text.ts": 4,
@@ -233,17 +233,16 @@ export const RATCHET = {
 	"apps/web/src/components/draft-island.tsx": 12,
 	"apps/web/src/components/drag-handle.tsx": 3,
 	"apps/web/src/components/error-boundary.tsx": 6,
-	"apps/web/src/components/forms.tsx": 10,
+
 	"apps/web/src/components/header.tsx": 33,
 	"apps/web/src/components/inherit-note.tsx": 1,
-	"apps/web/src/components/link-preview-settings.tsx": 38,
+
 	"apps/web/src/components/onboarding/derive.ts": 1,
 	"apps/web/src/components/onboarding/reopen-section.tsx": 4,
 	"apps/web/src/components/onboarding/tour-companion.tsx": 29,
 	"apps/web/src/components/onboarding/tour-script.ts": 21,
 	"apps/web/src/components/override-box.tsx": 3,
-	"apps/web/src/components/qq-address-pickers.tsx": 19,
-	"apps/web/src/components/qq-qr-bind.tsx": 16,
+
 	"apps/web/src/components/shell-states.tsx": 7,
 	"apps/web/src/components/skin-preview-bar.tsx": 5,
 	"apps/web/src/components/system-resource-card.tsx": 23,
@@ -263,7 +262,7 @@ export const RATCHET = {
 	"apps/web/src/pages/ExtensionDetail.tsx": 20,
 	"apps/web/src/pages/Logs.tsx": 15,
 	"apps/web/src/pages/System.tsx": 52,
-	"apps/web/src/pages/Targets.tsx": 184,
+
 	"apps/web/src/pages/ai/MaidSkills.tsx": 28,
 	"apps/web/src/pages/ai/TestPanel.tsx": 7,
 	"apps/web/src/pages/ai/model-ops.ts": 4,
@@ -323,8 +322,7 @@ export const RATCHET = {
 	"apps/web/src/services/cardSkinAi.ts": 2,
 	"apps/web/src/services/session.ts": 3,
 	"apps/web/src/services/stats.ts": 2,
-	"apps/web/src/types/connection-fields.ts": 37,
-	"apps/web/src/types/domain.ts": 11,
+
 	"apps/web/src/utils/formatDiffValue.ts": 6,
 	"apps/web/src/utils/groupDiffs.ts": 18,
 	"packages/ai/src/commentary-generator.ts": 50, // 含给模型的提示词(决策 11 不翻)

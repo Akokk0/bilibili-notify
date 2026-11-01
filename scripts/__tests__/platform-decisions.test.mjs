@@ -158,30 +158,29 @@ export const RATCHET = {
 	"packages/internal/src/platform-registry.ts": 3,
 };
 
+/** 4-29：面板五文件原 29 处已移除，展示用途单独逐表达式登记。 */
+export const RATCHET_PANEL = {};
+
 /**
- * 棘轮表(面板):同上,面板另记一张(开张时的现数:5 个文件 23 处;看穿兜底后 29 处)。
- * 面板上方案点名的 5 处误伤:`=== ""` 两处(问有没有)与全大写常量 `BILI_PLATFORM` 两处(设状态)由判据放掉,
- * 不在表里;剩下的 `Targets.tsx` 里 `value.platform === p.value` 一处是误伤(`p.value` 是候选里的平台,
- * 语法上认不出是平台对平台),如实记在 `Targets.tsx` 那一格里。
+ * 4-29 主人批准：仅按文件 + 完整 AST 表达式登记展示用途，每处必须恰好出现一次。
+ * 不放行通用 parse / Map.get，也不放行整个文件。平台表的旧三处仍随 4-30 搬出。
  */
-export const RATCHET_PANEL = {
-	"apps/web/src/components/link-preview-settings.tsx": 1, // `platform === "qq-official"`。第 4 期:面板按适配器描述重画后消。
-	// `table[platform]` 查表、`lookup(connection.platform)` 喂函数:都是平台徽章的显示。第 4 期:面板按适配器描述重画后消。
-	"apps/web/src/components/platform-meta.tsx": 2,
-	// 原 12 处:`platform === "onebot"` / `"qq-official"` 比字面量 6 处(`platform` 与 `value.platform` 各 3)、`platformDescriptor(platform)`、
-	// `targetSessionSummary(target, platform)`、`sessionFieldsHint(value, platform)`、`platformTint(...)`×2 喂函数 5 处(其中 `platformTint` 两处是显示),
-	// 以及 `value.platform === p.value` 1 处:**误伤**(`p.value` 是候选里的平台,平台对平台,语法上认不出)。
-	// 另 6 处是带兜底的平台值(判据看穿 `?? x` / `|| x` 后进表,10-12 主人点头,共 18 处):`addressNounFor(platform ?? "", …)`×3、
-	// `platformTint(platform ?? "")`、`scopesFor(platform ?? "")`、`platformTint(platform || (…))`(这条是显示)。
-	// 第 4 期:面板按适配器描述重画后消。
-	"apps/web/src/pages/Targets.tsx": 18,
-	// `isWebhookPlatform(connection.platform)`、`webhookUrlPlaceholder(platform)`、`webhookSecretHint(platform)`。
-	// 第 4 期:面板按适配器描述重画后消。
-	"apps/web/src/types/connection-fields.ts": 3,
-	// 两个 `switch (platform)`、`PLATFORM_REGISTRY[platform]` 查表、`platform === "onebot"` / `"qq-official"` 比字面量各一处。
-	// 第 4 期:面板按适配器描述重画后消。
-	"apps/web/src/types/domain.ts": 5,
+export const DISPLAY_EXPRESSIONS = {
+	"apps/server/src/config/store.ts": [
+		"PlatformSnapshotSchema.parse(platform)", // 候选描述校验并剥除平台名。
+		"snapshots.get(connection.platform)", // 按平台刷新展示快照，不改设置。
+	],
+	"apps/web/src/components/platform-meta.tsx": [
+		"table.set(connection.platform, meta)", // 快照登记到展示表。
+		"table.get(platform)", // 徽章查询展示表。
+	],
+	"apps/web/src/types/connection-fields.ts": [
+		"original.byPlatform?.[connection.platform]", // 候选平台提供的字段说明和占位。
+	],
 };
+function isDisplayExpression(source, node) {
+	return DISPLAY_EXPRESSIONS[source.path]?.includes(node.getText(source.ast)) ?? false;
+}
 
 /** 看穿括号、`!`、`as`、`satisfies`、类型断言。 */
 function unwrap(node) {
@@ -496,7 +495,10 @@ function isDecision(node, names) {
 /** 一份源码里按平台名做的决定:`{ line, text }[]`,按出现顺序。 */
 export function platformDecisions(source, descriptors) {
 	const names = { ...namesOf(source), descriptors };
-	return findNodes(source, (node) => isDecision(node, names)).map(({ line, text }) => ({
+	return findNodes(
+		source,
+		(node) => isDecision(node, names) && !isDisplayExpression(source, node),
+	).map(({ line, text }) => ({
 		line,
 		text,
 	}));
@@ -975,6 +977,30 @@ export const scanPanel = () => scan(PANEL_ROOTS, []);
  * 🔴 **真去扫仓里的代码。** 上面的样例证明判据没写错;这几条证明表外没有人又写回来。
  */
 describe("核心与面板里不再按平台名做决定", () => {
+	it("展示登记按完整表达式且只认原文件，不放行通用方法或多行前缀", () => {
+		const file = "apps/server/src/config/store.ts";
+		expect(platformDecisions(parseSource(file, "snapshots.get(connection.platform);"))).toEqual([]);
+		expect(
+			platformDecisions(parseSource("other.ts", "snapshots.get(connection.platform);")),
+		).toHaveLength(1);
+		expect(platformDecisions(parseSource(file, "other.get(connection.platform);"))).toHaveLength(1);
+		expect(
+			platformDecisions(parseSource(file, "snapshots.get(connection.platform,\n fallback);")),
+		).toHaveLength(1);
+	});
+	it("五个展示表达式分别恰好出现一次，删除或重复都要更新登记", () => {
+		for (const [file, expressions] of Object.entries(DISPLAY_EXPRESSIONS)) {
+			const source = parseSource(file);
+			const names = namesOf(source);
+			const hits = findNodes(source, (node) => isDecision(node, names));
+			for (const expression of expressions)
+				expect(
+					hits.filter(({ node }) => node.getText(source.ast) === expression),
+					`${file}: ${expression}`,
+				).toHaveLength(1);
+		}
+	});
+
 	it("范围认得对:核心有服务端、contract、核心包,没有 ui、面板、桌面壳、拓展;面板只有面板", () => {
 		const roots = coreRoots();
 		for (const expected of [

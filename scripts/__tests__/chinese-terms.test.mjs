@@ -114,7 +114,7 @@ export const RATCHET = {
 	"apps/web/src/i18n/locales/zh-CN.json": 5,
 	"apps/web/src/i18n/locales/zh-CN.maid.json": 3,
 	"apps/web/src/components/header.tsx": 1,
-	"apps/web/src/components/link-preview-settings.tsx": 1,
+
 	"apps/web/src/components/onboarding/tour-companion.tsx": 2,
 	"apps/web/src/components/onboarding/tour-script.ts": 4,
 	"apps/web/src/components/shell-states.tsx": 1,
@@ -133,7 +133,7 @@ export const RATCHET = {
 	"apps/web/src/pages/stats/RoastCard.tsx": 1,
 	"apps/web/src/pages/stats/SoloRoastCard.tsx": 1,
 	"apps/web/src/pages/stats/charts.tsx": 1,
-	"apps/web/src/types/domain.ts": 2,
+
 	"apps/web/src/utils/groupDiffs.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 1,
 	"packages/ai/src/tool-label-texts.ts": 3,

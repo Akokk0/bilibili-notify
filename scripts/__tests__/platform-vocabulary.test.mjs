@@ -449,7 +449,7 @@ export function scanRepo() {
 export const RATCHET = {
 	"packages/internal/src/identity.ts": 2, // 保留 id `"onebot"` / `"qq-official"`。第 4 期:内置适配器自带键与描述后,保留键由装配根从内置来源与适配器收齐、交给存储与清单校验,核心不再写平台名;这几个值本身永远保留(存储目录、迁移、拓展 id 防撞都要认)。
 	"packages/internal/src/platform-registry.ts": 26, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2。第 4 期:同 `.platform` 核心那格(ADR-0024 决策 1),平台闭集隔离区整个删、平台事实交给各适配器的描述后消。
-	"packages/internal/src/schema/targets.ts": 32, // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)。第 4 期:内置适配器自带设置字段后,核心不再维护 OneBot / QQ 官方的连接设置规则。
+	"packages/internal/src/schema/targets.ts": 49, // 4-29 主人批准：字段元数据 +17，4-30 随三份规则搬出。 // OneBot 连接设置规则 25(`Onebot*Schema`、`ONEBOT_*_MIN_TIMEOUT_MS`、`transport`、`"ws-reverse"`)与 QQ 官方连接设置规则 7(`QQOfficial*`)。第 4 期:内置适配器自带设置字段后,核心不再维护 OneBot / QQ 官方的连接设置规则。
 };
 
 /**
