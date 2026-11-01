@@ -5,14 +5,14 @@
  * - 「按价格算档」搬去了来源那一侧(`superchatEventFromLiveEvent`,price → rank 的线由 `superchat-event.test.ts` 钉),所以
  *   这里钉的是 **rank → 色对与时长**:六档的色对一字没动、时长的写法改成核心统一的 `formatDuration`
  *   (「60秒 / 2分钟 / 5分钟 / 30分钟」→「1分 / 2分 / 5分 / 30分」,主人定的);
- * - 宣告语三句原文(舰长那句带「号」)不变,只是不再写死在块库里,取自档位表(`guardTierOf`)、由出图器用 `interpolate` 填;
+ * - 宣告语三句原文(舰长那句带「号」)不变,只是不再写死在块库里,由调用方交入、由出图器用 `interpolate` 填;
  * - 房管那一格、「上舰」档名日志都随旧入口一起没了(主人定的:会员卡没有房管这一格)。
  * 卡片字节快照(`card-baseline.test.ts`)钉的是整张卡,看不出「哪个档落哪个色」,所以这里单独钉。
  *
  * 做法:截图那一步换成替身、把灌进去的 HTML 留下来,再用 jsdom 读;不开浏览器、不联网。
  */
 
-import { guardTierOf, type ImageRef, type ServiceContext } from "@bilibili-notify/internal";
+import type { ImageRef, ServiceContext } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { ImageRenderer, type ImageRendererOptions } from "../image-renderer";
@@ -267,30 +267,30 @@ async function memberOf(
 const announcementOf = (doc: Document): string | undefined =>
 	doc.querySelector('[data-block="announcement"] [data-bn="text"]')?.textContent ?? undefined;
 
-describe("会员卡:宣告语取档位表、由 interpolate 填(三句原文,舰长那句带「号」)", () => {
-	// 逐字钉:引号是半角双引号、换行是真换行,舰长那句带「号」(总督与提督没有)。这三句是 ㉓a 钉在块库里的原文,
-	// 现在住在档位表里(`bilibili-guard.ts`),经出图器填上观众名与主播名。
-	// 验红:改档位表里任一句宣告语的任一个字,对应那一档红;把 `membership-view.ts` 里的 `interpolate` 键 `viewer` 改名,
-	// 三档都红。
+describe("会员卡:宣告语由调用方交入、由 interpolate 填", () => {
+	// 冻住三句历史输入:来源自己的档位表由集成测试钉,出图器只认中立档位输入。
 	it.each([
-		[1, '"示例观众"上任\n"示例主播"大航海舰队总督！'],
-		[2, '"示例观众"就任\n"示例主播"大航海舰队提督！'],
-		[3, '"示例观众号"加入\n"示例主播"大航海舰队！'],
-	] as const)("guard_level=%s 的那一档 → 宣告语", async (level, desc) => {
-		const tier = guardTierOf(level);
-		if (!tier) throw new Error(`档位表里没有 guard_level ${level}`);
-		const doc = await memberOf(
-			membership({
-				tier: {
-					name: tier.name,
-					rank: tier.rank,
-					color: tier.color,
-					announcement: tier.announcement,
-					icon: tier.icon,
-				},
-			}),
-		);
-		expect(announcementOf(doc)).toBe(desc);
+		[
+			"总督",
+			3,
+			'"{viewer}"上任\n"{name}"大航海舰队总督！',
+			'"示例观众"上任\n"示例主播"大航海舰队总督！',
+		],
+		[
+			"提督",
+			2,
+			'"{viewer}"就任\n"{name}"大航海舰队提督！',
+			'"示例观众"就任\n"示例主播"大航海舰队提督！',
+		],
+		[
+			"舰长",
+			1,
+			'"{viewer}号"加入\n"{name}"大航海舰队！',
+			'"示例观众号"加入\n"示例主播"大航海舰队！',
+		],
+	] as const)("%s 的宣告语填入观众名与主播名", async (name, rank, announcement, expected) => {
+		const doc = await memberOf(membership({ tier: { name, rank, announcement } }));
+		expect(announcementOf(doc)).toBe(expected);
 	});
 
 	// 验红:把 `membership-view.ts` 里传给 `interpolate` 的 `tier` 键去掉,这条红。

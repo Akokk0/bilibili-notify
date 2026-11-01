@@ -10,19 +10,14 @@
  * 接了过去:出厂默认皮肤画出的字节整份钉住,漏一块当场红。
  */
 
-import {
-	type CardKind,
-	type CardSkinManifest,
-	DEFAULT_CARD_SKIN,
-	guardTierOf,
-} from "@bilibili-notify/internal";
+import { type CardKind, type CardSkinManifest, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { sampleCard } from "../../preview/sample-cards";
 import { renderCardWithSkin } from "../render-skin";
 
 async function render(kind: CardKind, scene: string, skin: CardSkinManifest): Promise<string> {
-	const sample = await sampleCard(kind, scene, { membershipTier: guardTierOf(3) });
+	const sample = await sampleCard(kind, scene);
 	return renderCardWithSkin(kind, sample.props as never, skin);
 }
 

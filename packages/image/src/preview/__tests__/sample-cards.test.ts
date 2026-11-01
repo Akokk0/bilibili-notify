@@ -14,7 +14,6 @@ import {
 	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
 	DEFAULT_CARD_SKIN,
-	guardTierOf,
 	IMAGE_REF_PATTERN,
 	type MembershipTier,
 } from "@bilibili-notify/internal";
@@ -31,7 +30,9 @@ const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
 async function render(kind: (typeof CARD_KINDS)[number], scene?: string): Promise<string> {
 	// `as never`:出口刻意回 unknown(示例数据不是对外契约,别让调用方照它写类型),
 	// 这里替调用方把 props 递进去。
-	const sample = await sampleCard(kind, scene, { membershipTier: guardTierOf(3) });
+	const sample = await sampleCard(kind, scene, {
+		membershipTier: { key: "silver", name: "银牌", rank: 1 },
+	});
 	return renderCardWithSkin(kind, sample.props as never, DEFAULT_CARD_SKIN);
 }
 

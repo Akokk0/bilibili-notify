@@ -12,7 +12,7 @@
  * `__tests__/card-hooks.test.ts`。
  */
 
-import { type CardKind, DEFAULT_CARD_SKIN, guardTierOf } from "@bilibili-notify/internal";
+import { type CardKind, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { sampleCard } from "../../preview/sample-cards";
@@ -27,7 +27,9 @@ const VIDEO_TITLE = "【示例视频】这是一条用来预览卡片的示例�
  * 一套只摆这几个内置块的皮肤,每块占一整行。画出来的整卡 HTML 解析成文档返回。
  */
 async function renderWith(kind: CardKind, builtins: string[], scene?: string): Promise<Document> {
-	const sample = await sampleCard(kind, scene, { membershipTier: guardTierOf(3) });
+	const sample = await sampleCard(kind, scene, {
+		membershipTier: { key: "silver", name: "银牌", rank: 1 },
+	});
 	const html = await renderCardWithSkin(
 		kind,
 		sample.props as never,
