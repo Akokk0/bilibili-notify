@@ -90,10 +90,13 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 **显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
 
-- `displayName`：资料名 → B 站「UID xxx」/ 拓展「主人起的名字 → 外部 id」。
-- `subscriptionColor`：**颜色跟着人走** —— B 站按 uid，拓展按 `extensionId:externalId`（带冒号与拓展名，永远不等于纯数字 uid，不会和 B 站 UP 撞色）；删了再加颜色不变。历史行 `historyRowColor` 同一条规矩。
-- 历史行的身份兜底 `historyRowIdentity`：「UID xxx」/「平台名 · 外部 id」，平台名取不到（拓展卸载了）写拓展 id。
-- 平台名与徽章：`apps/web/src/pages/up/subscription-source.ts` 的 `subscriptionPlatformOf`，从清单订阅段的 `label` 来。
+- `displayName`：经 contract 的 `displayNameOf` 取非空资料名，否则经 `subscriptionIdentityLabel` 生成身份标签：描述符有 `externalIdNoun` 时用「叫法 + 原始 externalId」，否则用「来源 label · 原始 externalId」。未知来源回退来源键；不把数字字符串转成数值，复制与 CSV 同样保留前导零。
+- `subscriptionColor`：**颜色跟着人走**，经公共身份取色函数生成；删了再加颜色不变。历史行 `historyRowColor` 同一条规矩。
+- 历史与时间轴：非空事件快照 → 非空资料名 → 公共身份标签；合法名字保留原有空格。
+- 平台名与徽章：`apps/web/src/pages/up/subscription-source.ts` 的 `subscriptionPlatformOf` 统一投影 `GET /api/sources` 的当前描述符与状态。来源表只有一项且包含此来源时不画徽章；多项、表未知或条目缺失时画。缺条目明确显示来源未安装；表尚未知时不猜成未安装。能力只取 `supportedFeatures` / `supportedExtras` 的声明，缺省为空；`has` 缺省不猜可用。
+- `GET /api/sources` 的 `SourceEntry.descriptor` 下发完整 `SourceDescriptor`，包括会员体系 `membershipPrograms`（体系 id、档位 key 与实际 rank、图片引用或 URL）和可选附加项 `supportedExtras`。这是公共读口；拓展清单当前仍拒绝这两项，不因读口变宽而放宽清单契约。
+- 规则、卡片与订阅弹层按当前描述符露能力。会员以 `program.id` 与 `tier.key` 两层索引，固定档位按实际 rank 排序，最低档无需从 1 开始；`custom` 与空档位只编辑体系默认文案及图片，不造档位门槛。卡片会员预览要求来源运行中且有可枚举档位，全家福跳过不可用的会员卡后继续其他卡种。
+- 来源或语言刷新只更新显示与能力，不清未保存草稿；隐藏的未知体系、档位、附加项与路由原样保留。显式删除使用 JSON Merge Patch 的 `null`，省略表示不改。CSV 按实际导出行涉及的来源选叫法：单来源取描述符，混合来源用中性列名。
 
 ## 订阅源拓展
 
@@ -101,7 +104,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当前全新1.0契约1/0的严格清单。样板是 `extensions/fake-source/`（开发用假源：解析门现编候选，页上的动作按钮经 `reportPost` / `reportLive` / `reportProfile` 造五种上报，外加坏图、多一格两种反例；3b-46 起还有五种正文片段的作品、四层问题上报、`fetchProfile` / `health`，并兼一个假平台适配器，按钮与行为见它的 README）。
 
-- 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译；面板第 4 期才画）、`postNoun?`（「作品」；不给时面板的特性标签叫「动态」，核心拼 AI 提示词时叫「作品」—— 提示词那一处原先也叫「动态」，3a-42 改了）、`creatorNoun?`（平台管创作者叫什么）、`externalIdNoun?`（平台管外部 id 叫什么）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；面板拓展支先用通用提示，按它拼句随第 4 期）。
+- 订阅段直接摊平：`label`（全名，平台选择那一排）、`shortLabel?`（≤8 字，卡上的方章）、`color?`（只收 hex）、`icon?`（图片 data URL，判据与设置项选项图标相同，不可译）、`postNoun?`（作品叫法，缺省使用当前界面语言的中性词）、`creatorNoun?`（创作者叫法）、`externalIdNoun?`（外部 id 叫法）、`externalIdRegex?`（外部 id 的正则源码）、`searchAccepts?`（`id` / `link` / `name`，非空且不重复；搜人提示由 contract 的公共函数拼）。公共描述符可带会员与附加项，当前拓展清单仍不接受 `membershipPrograms` / `supportedExtras`。
 - `supportedFeatures`：`post` / `liveStart` / `liveStreaming` / `liveEnd` 的非空、不重复子集 —— **这就是能力声明**。声明 `liveStreaming` 必须同时声明 `liveStart` 与 `liveEnd`，且来源要实现 `fetchLiveStatus`；没声明 `liveStreaming` 的不自动获得周期直播。面板与服务端直接读这一格。这一版还不收 `featureHints?`，随规则页按描述符露节那一片一起收。
 - `cardSkin?`：自带皮肤目录（决策 13 / 14，⑤ 施工）。
 - 拓展来源的描述符就是这一段（去掉 `cardSkin`）：`manifestSourceDescriptor`（`apps/server/src/extensions/extension-source.ts`），登记来源与 `GET /api/sources` 共用 —— **只从清单来、不问代码**，所以拓展停着也画得出订阅是哪个平台的（决策 41）。面板读来源表（`hooks/useSources.ts`），不读拓展表；拓展表 `ExtensionDTO` 上没有订阅那一格。清单与描述符逐格相等由 `packages/internal/src/extension/manifest-shape-pin.ts` 钉着。
@@ -153,7 +156,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只接受当�
 
 ## 高级规则与女仆查订阅（决策 64）
 
-- **高级规则「按 UP 定制」**：`apps/web/src/pages/rules/sections.tsx` 的 `perUpSectionsFor(sub, features)`。B 站全露；拓展按源报得出的特性露 —— 过滤（关键词 / 正则 / 白名单与四个类型开关都露，`FILTER_CONTENT_KEYS`；过滤吃 `Post`、对所有来源生效，ADR-0021 决策 43）与动态消息（报作品才露）、直播消息（报开播或下播才露）、消息版式与 AI 人格（都露）；「直播阈值」换成「推送时段」（免扰总露；报开播加重启补报，露「正在直播」时加状态推送间隔，报直播时加断流接续）。不露：动态图集（决策 72）、直播总结、上舰提示、特别关注、SC / 上舰阈值。存储上拓展订阅本来就有 `overrides` 这几格，只是页面按这张表列。
+- **高级规则「按订阅定制」**：`apps/web/src/pages/rules/sections.tsx` 的 `perUpSectionsFor` 与 `rules/section-scope.ts` 从当前来源投影取能力，不按来源身份分叉。作品声明控制过滤与作品消息，直播事件控制直播消息与对应调度，SC / 会员控制直播阈值，附加项声明控制作品图集、词云与总结，特别关注看 `viewerChat` / `viewerEnter`。会员体系逐套编辑，非固定档位只提供体系默认内容；没有描述符时不臆造能力。隐藏值仍保留在草稿与保存内容中。
 - **女仆查订阅**：`apps/server/src/ai/read-only-tools.ts` 的 `buildAiSubsView` 按订阅 `id` 为键收两支，停用的不进。B 站条目带 `uid`；拓展条目带平台名（`extensionPlatformLabel`：清单 `label` → 拓展名 → 拓展 id）与外部 id，工具那头据此不拿它去问 B 站。「女仆查直播状态」经 `LiveNowReader`（接线处叫 `liveNow`）对所有订阅都从在播表回答；来源没在跑时答「不知道」。
 
 ## 要改的时候
