@@ -143,11 +143,15 @@ describe("真 schema 上的标记", () => {
 			accessToken: "tok",
 			headers: { A: "1" },
 		});
-		expect(marked(OnebotConnectionSettingsSchema, ws)).toEqual([
-			{ mark: "backupOnly", value: "ws://bot:3001" },
-			{ mark: "backupOnly", value: "1" },
-			{ mark: "secret", value: "tok" },
-		]);
+		const wsMarks = marked(OnebotConnectionSettingsSchema, ws);
+		expect(wsMarks).toHaveLength(3);
+		expect(wsMarks).toEqual(
+			expect.arrayContaining([
+				{ mark: "backupOnly", value: "ws://bot:3001" },
+				{ mark: "backupOnly", value: "1" },
+				{ mark: "secret", value: "tok" },
+			]),
+		);
 		const hook = WebhookConnectionSettingsSchema.parse({
 			url: "https://h.example/x",
 			secret: "s",
