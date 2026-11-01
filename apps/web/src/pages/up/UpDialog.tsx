@@ -974,7 +974,9 @@ function FeatureToggleRow({
 					{label}
 				</div>
 				{sub ? (
-					<div className="mt-0.5 truncate text-bn-2xs text-bn-text-secondary">{sub}</div>
+					<div className="mt-0.5 whitespace-normal wrap-anywhere text-bn-2xs text-bn-text-secondary">
+						{sub}
+					</div>
 				) : null}
 			</div>
 		</div>

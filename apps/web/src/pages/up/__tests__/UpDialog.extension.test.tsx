@@ -155,6 +155,44 @@ describe("UpDialog × 拓展订阅", () => {
 		expect(screen.getByText("1/2")).toBeTruthy();
 	});
 
+	it("长提示在两处保留全文，刷新成无空格长词后仍保留草稿与隐藏路由", () => {
+		const sub = extSub();
+		sub.routing.post = [TARGET.id];
+		sub.routing.membership = ["retired-target"];
+		const save = vi.fn();
+		const props = {
+			sub,
+			targets: [TARGET],
+			connections: [],
+			onClose: noop,
+			onSave: save,
+			onDelete: noop,
+			saving: false,
+		};
+		const hint =
+			"A source supplied reminder with enough detail to explain what this feature sends and when it sends it, including the full final sentence.";
+		const view = render(
+			<UpDialog {...props} platform={platform({ featureHints: { post: hint } })} />,
+		);
+		expect(screen.getAllByText(hint)).toHaveLength(2);
+		fireEvent.change(screen.getByRole("textbox"), { target: { value: "Keep this draft" } });
+		const longWord = "UnbrokenSourceSuppliedReminder".repeat(8);
+		view.rerender(
+			<UpDialog {...props} platform={platform({ featureHints: { post: longWord } })} />,
+		);
+		expect(screen.queryByText(hint)).toBeNull();
+		expect(screen.getAllByText(longWord)).toHaveLength(2);
+		expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("Keep this draft");
+		expect(save).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+		expect(save).toHaveBeenCalledWith(
+			expect.objectContaining({
+				notes: "Keep this draft",
+				routing: expect.objectContaining({ post: [TARGET.id], membership: ["retired-target"] }),
+			}),
+		);
+	});
+
 	it("缺省或空白提示用中性默认，下播只拼已声明附加项", () => {
 		renderDialog(
 			extSub(),
