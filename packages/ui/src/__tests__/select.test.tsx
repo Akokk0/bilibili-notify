@@ -185,3 +185,29 @@ it("keeps the active descendant valid when async options replace the open list",
 	expect(active?.textContent).toBe("Beta");
 	expect(active?.getAttribute("aria-selected")).toBe("false");
 });
+
+it("distinguishes equal titles by their description in both the trigger and options", () => {
+	const onChange = vi.fn();
+	render(
+		<TSelect
+			ariaLabel="Destination"
+			value="home"
+			onChange={onChange}
+			options={[
+				{
+					value: "home",
+					label: "Family",
+					description: "Main account",
+					icon: <span data-testid="main-icon" />,
+				},
+				{ value: "other", label: "Family", description: "Other account" },
+			]}
+		/>,
+	);
+	expect(screen.getByRole("combobox").textContent).toContain("Main account");
+	expect(screen.getAllByTestId("main-icon")).toHaveLength(1);
+	fireEvent.click(screen.getByRole("combobox"));
+	expect(screen.getByRole("option", { name: "Family · Main account" })).toBeTruthy();
+	fireEvent.click(screen.getByRole("option", { name: "Family · Other account" }));
+	expect(onChange).toHaveBeenCalledExactlyOnceWith("other");
+});

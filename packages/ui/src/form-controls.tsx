@@ -175,9 +175,11 @@ export function TNum({
 	);
 }
 
-interface TSelectOption<T extends string = string> {
+export interface TSelectOption<T extends string = string> {
 	value: T;
 	label: string;
+	icon?: ReactNode;
+	description?: string;
 	/** 不可选的一行:当前存着的值已经失效时,拿它如实显示出来(而不是让下拉悄悄跳到别的项)。 */
 	disabled?: boolean;
 }
@@ -380,7 +382,22 @@ export function TSelect<T extends string = string>({
 				onKeyDown={keys}
 				onClick={() => (open ? setOpen(false) : show())}
 			>
-				<span className="min-w-0 flex-1 truncate">{displayLabel}</span>
+				{selected?.icon && (
+					<span aria-hidden="true" className="shrink-0">
+						{selected.icon}
+					</span>
+				)}
+				<span className="min-w-0 flex-1">
+					<span className="block truncate">{displayLabel}</span>
+					{selected?.description && (
+						<span
+							className="block truncate text-bn-xs text-bn-text-tertiary"
+							title={selected.description}
+						>
+							{selected.description}
+						</span>
+					)}
+				</span>
 				<Icon.chevronRight size={12} className="shrink-0 rotate-90 text-bn-text-tertiary" />
 			</button>
 			{open && (
@@ -443,10 +460,22 @@ export function TSelect<T extends string = string>({
 								role="option"
 								tabIndex={-1}
 								ariaSelected={o.value === value}
+								ariaLabel={o.description ? `${o.label} · ${o.description}` : o.label}
+								icon={o.icon}
 								disabled={o.disabled}
 								onClick={() => choose(o.value)}
 							>
-								{o.label}
+								<span className="min-w-0 flex-1">
+									<span className="block truncate">{o.label}</span>
+									{o.description && (
+										<span
+											className="block truncate text-bn-xs text-bn-text-tertiary"
+											title={o.description}
+										>
+											{o.description}
+										</span>
+									)}
+								</span>
 							</MenuItem>
 						))}
 					</div>
