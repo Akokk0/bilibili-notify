@@ -257,7 +257,10 @@ export const RATCHET = {
 	"apps/web/src/pages/CardSkinEditor.tsx": 15,
 	"apps/web/src/pages/ExtensionDetail.tsx": 20,
 	"apps/web/src/pages/Logs.tsx": 15,
-	"apps/web/src/pages/System.tsx": 45,
+	// 4-43：沿4-29持续授权原文搬家，45=15+22+8，后续随4-40/34/44/53b收口。
+	"apps/web/src/pages/System.tsx": 15,
+	"apps/web/src/pages/system/account-section.tsx": 22,
+	"apps/web/src/pages/system/runtime-section.tsx": 8,
 
 	"apps/web/src/pages/backup/BackupExportDialog.tsx": 15,
 	"apps/web/src/pages/backup/BackupImportDialog.tsx": 16,

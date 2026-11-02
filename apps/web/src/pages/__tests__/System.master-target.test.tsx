@@ -14,7 +14,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
-import { MasterSection } from "../System";
+import { MasterSection } from "../system/master-section";
 
 vi.mock("../../hooks/useDirtyDraft", () => ({ useDirtyDraft: () => {} }));
 const { FakeApiError } = vi.hoisted(() => {

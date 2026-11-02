@@ -140,6 +140,17 @@ afterEach(() => {
 });
 
 describe("系统页里 B 站的两格", () => {
+	it("运行草稿跨分区保留，放弃后恢复服务器值", async () => {
+		await renderRuntimeSection();
+		fireEvent.change(inputOf("bilibili.dynamicCron"), { target: { value: "0 */10 * * * *" } });
+		fireEvent.click(screen.getAllByRole("button", { name: "账号" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
+		expect(inputOf("bilibili.dynamicCron").value).toBe("0 */10 * * * *");
+		act(() => useDraftStore.getState().current?.onDiscard());
+		expect(inputOf("bilibili.dynamicCron").value).toBe("30 */2 * * * *");
+		expect(api.patch).not.toHaveBeenCalled();
+	});
+
 	it("读:两格画的是 bilibili 块里的值", async () => {
 		await renderRuntimeSection();
 		expect(inputOf("bilibili.dynamicCron").value).toBe("30 */2 * * * *");

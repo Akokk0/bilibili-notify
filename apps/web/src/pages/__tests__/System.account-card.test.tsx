@@ -143,6 +143,22 @@ describe("系统页账号卡 · 六种登录状态", () => {
 		expect(H.posted).toEqual([]);
 	});
 
+	it("关闭扫码弹窗后切换分区再回来，仍由继续扫码重开原码", async () => {
+		H.auth = {
+			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
+		};
+		renderSystem();
+		await screen.findByAltText("登录二维码");
+		fireEvent.keyDown(document, { key: "Escape" });
+		await waitFor(() => expect(modal()).toBeNull());
+		fireEvent.click(screen.getAllByRole("button", { name: "运行" })[0]);
+		fireEvent.click(screen.getAllByRole("button", { name: "账号" })[0]);
+		expect(modal()).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "继续扫码" }));
+		expect((await screen.findByAltText("登录二维码")).getAttribute("src")).toBe(QR);
+		expect(H.posted).toEqual([]);
+	});
+
 	it("confirming · 弹窗开着（见过 awaiting-scan）：话在弹窗里，不画二维码，卡片正文不重复", async () => {
 		H.auth = {
 			state: { status: "awaiting-scan", qr: { dataUrl: QR, expiresAt: NOW } },
