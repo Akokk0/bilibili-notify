@@ -203,7 +203,7 @@ describe("GET /api/sources", () => {
 			supportedFeatures: [...FEATURE_KEYS],
 		});
 		expect(bili?.descriptor.membershipPrograms?.[0]).toMatchObject({ id: "guard", name: "大航海" });
-		expect(bili?.descriptor).not.toHaveProperty("icon");
+		expect(bili?.descriptor.icon).toMatch(/^data:image\/svg\+xml;base64,/);
 	});
 
 	it("公共来源下发附加项能力,未声明的来源不补默认值", async () => {

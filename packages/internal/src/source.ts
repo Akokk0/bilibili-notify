@@ -27,7 +27,7 @@ export interface SourceDescriptor {
 	shortLabel?: string;
 	/** 平台的标识色,hex。平台选择那一排与徽章取它;不给就退「认不出」那档灰。 */
 	color?: string;
-	/** 平台图标:图片 data URL。拓展从清单带来;面板第 4 期的新建订阅流程画它,内置的先不填。 */
+	/** 平台图标:图片 data URL。拓展从清单带来;面板第 4 期的新建订阅流程画它,内置来源同样提供图标。 */
 	icon?: string;
 	/** 这个平台管创作者叫什么,进提示词 `{creatorNoun}`。 */
 	creatorNoun?: string;

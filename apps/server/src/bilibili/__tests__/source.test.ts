@@ -1812,3 +1812,8 @@ describe("createBiliSource — 登录那一套归来源:造一次、start 第一
 		expect(source.login()).toBeUndefined();
 	});
 });
+
+it("内置来源的公共描述符提供可直接绘制的品牌图标", () => {
+	const source = createBiliSource(makeDeps().deps);
+	expect(source.descriptor.icon).toMatch(/^data:image\/svg\+xml;base64,/);
+});

@@ -44,6 +44,7 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
 import { createProfileFetcher } from "./profile.js";
 import { searchBiliCreators } from "./search-creators.js";
 import { BiliDynamicSettingsSchema, BiliLoginCheckSettingsSchema } from "./settings.js";
+import { BILI_SOURCE_ICON } from "./source-icon.js";
 
 export interface BiliSourceDeps {
 	/** B 站的上下文(存储已开、罐子与请求客户端已建好):登录系统建在它之上。它的收尾归造它的一方(`compose.ts`)。 */
@@ -118,6 +119,7 @@ function causeOf(failure: Failure, cell: { label: string; key: string }): string
  * 由来源描述符与 AI 工具共用;核心(新建订阅处)只照描述符核,不再自己写「B 站 uid 是数字」。
  */
 export const BILI_SOURCE_DESCRIPTOR: SourceDescriptor = {
+	icon: BILI_SOURCE_ICON,
 	label: "B 站",
 	shortLabel: "B",
 	color: "#fb7299",
