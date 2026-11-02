@@ -1273,3 +1273,14 @@ it("历史宽松v1解析器仍要求provides:新包不可混入该字段", () =>
 	expect(historicalSchema.safeParse(mixed).success).toBe(true);
 	expect(parseExtensionManifest(mixed).ok).toBe(false);
 });
+
+it("宿主追加 ID 规则仍拒绝顶层多余键，清单不降为宽松格式", () => {
+	const hostId = ExtensionIdSchema.refine((id) => id !== "reserved-source");
+	expect(
+		parseExtensionManifest(currentManifest({ provides: ["push"] }), undefined, hostId),
+	).toMatchObject({ ok: false, reason: "unreadable" });
+	expect(
+		parseExtensionManifest(currentManifest({ id: "reserved-source" }), undefined, hostId),
+	).toMatchObject({ ok: false, reason: "unreadable" });
+	expect(parseExtensionManifest(currentManifest(), undefined, hostId).ok).toBe(true);
+});

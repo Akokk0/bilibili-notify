@@ -750,7 +750,17 @@ export function parseExtensionManifest(
 		return { ok: false, reason: "incompatible", identity: identity.data, requires };
 	}
 
-	const parsed = (idSchema ? schema.and(z.object({ id: idSchema })) : schema).safeParse(raw);
+	// ID 只追加校验；交叉合并会改变 strictObject 对额外键的拒收语义。
+	const hostSchema = idSchema
+		? schema.superRefine((manifest, ctx) => {
+				const id = idSchema.safeParse(manifest.id);
+				if (!id.success) {
+					for (const issue of id.error.issues)
+						ctx.addIssue({ ...issue, path: ["id", ...issue.path] });
+				}
+			})
+		: schema;
+	const parsed = hostSchema.safeParse(raw);
 	if (!parsed.success) {
 		return { ok: false, reason: "unreadable", issues: formatZodIssues(parsed.error) };
 	}
