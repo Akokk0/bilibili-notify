@@ -1,4 +1,5 @@
 {
+	"extensionSettings.link": "{name}设置",
 	"cards.preview.membershipUnavailable": "主人，这个来源还没有可供选择的会员档位，或尚未运行，暂时画不了会员预览哦。",
 	"sourceUi.components.scope.tabs.ScopeTabs.6": "主人，所有订阅都已添加，没有遗漏啦。",
 	"sourceUi.components.scope.tabs.ScopeTabs.7": "主人，这里设置的是全部订阅的默认值哦。",

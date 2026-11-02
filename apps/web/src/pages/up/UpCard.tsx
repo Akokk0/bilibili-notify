@@ -1,7 +1,8 @@
 import { subscriptionIdentityLabel } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import { DescriptorIcon } from "../../components/platform-meta";
 import { PUSH_TONE } from "../../config/push-features";
 import { useLongPress } from "../../hooks/useLongPress";
 import { useT } from "../../i18n";
@@ -47,6 +48,7 @@ export interface UpCardProps {
 	onRequestMenu: (pos: { x: number; y: number }) => void;
 	/** Current source descriptor projection, including status and declared capabilities. */
 	platform: SubscriptionPlatform;
+	extensionSettings?: ReactNode;
 	/**
 	 * 标签表(ADR-0034):订阅上只记标签 id,角标上写的名字得按 id 到这里查。没读到(`undefined`)
 	 * 或表里没有那个 id,都当没挂标签 —— 什么都不写。
@@ -74,6 +76,7 @@ export function UpCard({
 	togglePending,
 	onRequestMenu,
 	platform,
+	extensionSettings,
 	tags,
 	globalFeatures,
 }: UpCardProps) {
@@ -129,11 +132,7 @@ export function UpCard({
 					background: `linear-gradient(135deg, color-mix(in srgb, ${color} 40%, transparent), color-mix(in srgb, ${color} 20%, transparent))`,
 				}}
 			>
-				<div
-					className={`absolute right-2 top-2 flex gap-1 transition ${
-						hover || selected ? "opacity-100" : "opacity-0"
-					}`}
-				>
+				<div className="absolute right-2 top-2 flex items-center gap-1">
 					<button
 						type="button"
 						aria-pressed={selected}
@@ -146,12 +145,13 @@ export function UpCard({
 							e.stopPropagation();
 							onToggleSelect();
 						}}
-						className={`flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded-sm border-0 ${
+						className={`${hover || selected ? "opacity-100" : "opacity-0 focus-visible:opacity-100"} flex h-5.5 w-5.5 cursor-pointer items-center justify-center rounded-sm border-0 ${
 							selected ? "bg-bn-pink text-bn-on-solid" : "bg-bn-surface/90 text-bn-text-secondary"
 						}`}
 					>
 						{selected ? <Icon.check size={12} /> : <Icon.square size={12} />}
 					</button>
+					{extensionSettings}
 				</div>
 			</div>
 
@@ -182,15 +182,31 @@ export function UpCard({
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
 					{ext.showBadge ? (
-						<Pill size="sm" subtle color={ext.color ?? "var(--color-bn-inactive)"}>
-							{ext.shortLabel ?? ext.label}
-						</Pill>
+						<span
+							role="img"
+							aria-label={ext.label}
+							title={ext.label}
+							className="inline-flex shrink-0 items-center"
+						>
+							{ext.icon ? (
+								<DescriptorIcon
+									descriptor={{
+										icon: ext.icon,
+										color: ext.color ?? "var(--color-bn-inactive)",
+										shortLabel: ext.shortLabel ?? ext.label,
+									}}
+									size={16}
+								/>
+							) : (
+								<Icon.globe size={16} />
+							)}
+						</span>
 					) : null}
-					<span className="min-w-0 truncate tabular-nums">
+					<span className="min-w-0 flex-1 truncate tabular-nums">
 						{subscriptionIdentityLabel(identity, ext)}
 					</span>
-					<span>·</span>
-					<span>{fansLabel}</span>
+					<span className="shrink-0">·</span>
+					<span className="shrink-0 whitespace-nowrap tabular-nums">{fansLabel}</span>
 				</div>
 				{paused && ext ? (
 					<WarnNote size="sm" icon={<Icon.extension size={12} />} className="mb-2.5">

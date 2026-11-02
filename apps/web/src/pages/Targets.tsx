@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChannelAddressPicker, SessionAddressPicker } from "../components/address-candidates";
 import { ConnectionAuthButton } from "../components/connection-auth";
+import { ExtensionSettingsButton } from "../components/extension-settings-button";
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { DescriptorIcon, useConnectionFace } from "../components/platform-meta";
 import { TargetLabel } from "../components/target-display";
@@ -1870,7 +1871,7 @@ export default function Targets() {
 					absentOf={absentOf}
 				/>
 
-				<div className="space-y-4">
+				<div className="min-w-0 space-y-4">
 					{isLoading ? (
 						<div className="bn-glass rounded-bn-card p-6 shadow-bn-card">
 							<div className="h-20 animate-pulse rounded-bn-sm bg-bn-surface-muted" />
@@ -1896,7 +1897,10 @@ export default function Targets() {
 					) : (
 						<>
 							{/* Adapter detail header */}
-							<div className="bn-glass rounded-bn-card p-4 shadow-bn-card">
+							<section
+								aria-label={selectedConnection.name || tx("targets.targetCard.text1")}
+								className="bn-glass rounded-bn-card p-4 shadow-bn-card"
+							>
 								<div className="flex items-start gap-3">
 									<div
 										className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
@@ -1963,7 +1967,8 @@ export default function Targets() {
 											</EdgeBadge>
 										) : null}
 									</div>
-									<div className="flex shrink-0 gap-1">
+									<div className="flex max-w-[45%] shrink-0 flex-wrap items-center justify-end gap-1">
+										<ExtensionSettingsButton id={selectedConnection.adapterKey} />
 										{/* 导览「测试连通性」一步的控件级灯位 */}
 										<Btn
 											data-tour="connection-test"
@@ -2013,7 +2018,7 @@ export default function Targets() {
 										</Btn>
 									</div>
 								</div>
-							</div>
+							</section>
 
 							{/* Targets bound to this adapter。data-tour:导览「发送测试推送」一步聚这整卡 */}
 							<div data-tour="target-list" className="bn-glass rounded-bn-card p-4 shadow-bn-card">

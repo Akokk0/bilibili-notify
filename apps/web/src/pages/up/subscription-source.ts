@@ -11,6 +11,7 @@ export function registeredSources(sources: readonly SourceEntry[] | undefined): 
 export interface SubscriptionPlatform {
 	label: string;
 	shortLabel?: string;
+	icon?: string;
 	color?: string;
 	postNoun?: string;
 	creatorNoun?: string;
@@ -33,6 +34,7 @@ export function subscriptionPlatformOf(
 	return {
 		label: descriptor?.label ?? identity.sourceKey,
 		shortLabel: descriptor?.shortLabel,
+		icon: descriptor?.icon,
 		color: descriptor?.color,
 		postNoun: descriptor?.postNoun,
 		creatorNoun: descriptor?.creatorNoun,

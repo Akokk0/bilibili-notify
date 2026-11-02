@@ -31,6 +31,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ExtensionSettingsButton } from "../components/extension-settings-button";
 import { useCoreSettings } from "../hooks/useSettings";
 import { useSources } from "../hooks/useSources";
 import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
@@ -868,6 +869,7 @@ export default function Subs() {
 						onToggleEnabled={(on) => toggleEnabled(s, on)}
 						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
 						platform={platformOf(s)}
+						extensionSettings={<ExtensionSettingsButton id={subscriptionIdentityOf(s).sourceKey} />}
 						tags={tags}
 						globalFeatures={globalFeatures}
 					/>

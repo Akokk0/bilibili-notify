@@ -16,6 +16,7 @@ import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { buildPlatformTable } from "../../components/platform-meta";
@@ -101,7 +102,9 @@ function renderPage(opts: { bots?: unknown; connections?: unknown[] } = {}) {
 	render(
 		<PlatformMetaProvider value={buildPlatformTable([BRIDGE_ADAPTER])}>
 			<QueryClientProvider client={qc}>
-				<Targets />
+				<MemoryRouter>
+					<Targets />
+				</MemoryRouter>
 			</QueryClientProvider>
 		</PlatformMetaProvider>,
 	);
@@ -171,7 +174,9 @@ describe("新建连接里的拓展那一档", () => {
 		render(
 			<PlatformMetaProvider value={buildPlatformTable([])}>
 				<QueryClientProvider client={qc}>
-					<Targets />
+					<MemoryRouter>
+						<Targets />
+					</MemoryRouter>
 				</QueryClientProvider>
 			</PlatformMetaProvider>,
 		);

@@ -8,8 +8,9 @@
 
 import type { ExtensionDTO, SourceEntry } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
@@ -43,7 +44,13 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 const BILI_SOURCE: SourceEntry = {
 	status: "running",
 	key: "bilibili",
-	descriptor: { label: "B 站", shortLabel: "B", color: "#fb7299", supportedFeatures: ["post"] },
+	descriptor: {
+		label: "B 站",
+		shortLabel: "B",
+		color: "#fb7299",
+		icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+		supportedFeatures: ["post"],
+	},
 	has: { auth: true, liveStatus: true, preview: true },
 };
 
@@ -104,7 +111,10 @@ function renderSubs() {
 	return render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={["/subs"]}>
-				<Subs />
+				<Routes>
+					<Route path="/subs" element={<Subs />} />
+					<Route path="/extensions/:id" element={<div>Source settings destination</div>} />
+				</Routes>
 			</MemoryRouter>
 		</QueryClientProvider>,
 	);
@@ -141,7 +151,7 @@ describe("列表里的拓展订阅", () => {
 		subs = [BILI, extSub()];
 		renderSubs();
 		await screen.findByText("抖音乙");
-		await waitFor(() => expect(screen.getByText("抖音")).toBeTruthy());
+		await waitFor(() => expect(screen.getByRole("img", { name: "抖音" })).toBeTruthy());
 		expect(screen.queryByText(/来源未运行|来源未安装/)).toBeNull();
 	});
 
@@ -152,4 +162,67 @@ describe("列表里的拓展订阅", () => {
 		await screen.findByText("抖音乙");
 		expect(screen.queryByText(/来源未运行|来源未安装/)).toBeNull();
 	});
+});
+
+it.each(["disabled", "failed", "running"] as const)(
+	"%s 的来源入口只在对应订阅卡内,点击不打开订阅编辑",
+	async (state) => {
+		subs = [BILI, extSub()];
+		extensions = Promise.resolve({
+			extensions: [source({ state, enabled: state !== "disabled" })],
+		});
+		sources = [BILI_SOURCE, { ...DOUYIN_SOURCE, status: state, has: undefined }];
+		renderSubs();
+		const card = await screen.findByRole("button", { name: /抖音乙/ });
+		const link = await within(card).findByRole("button", { name: "抖音订阅设置" });
+		expect(link.textContent).toBe("");
+		expect(link.getAttribute("title")).toBe("抖音订阅设置");
+		fireEvent.click(link);
+		expect(await screen.findByText("Source settings destination")).toBeTruthy();
+	},
+);
+
+it("只展示当前订阅对应的拓展,不列其他已安装来源或推送拓展", async () => {
+	subs = [BILI, extSub()];
+	extensions = Promise.resolve({
+		extensions: [
+			source(),
+			source({ id: "push-only", name: "推送专用", provides: ["push"] }),
+			source({ id: "another-source", name: "其他来源" }),
+		],
+	});
+	renderSubs();
+	await screen.findByRole("button", { name: "抖音订阅设置" });
+	expect(screen.getAllByRole("button", { name: /设置$/ })).toHaveLength(1);
+});
+it("拓展未安装时不从来源键拼设置链接", async () => {
+	extensions = Promise.resolve({ extensions: [] });
+	subs = [BILI, extSub()];
+	renderSubs();
+	await screen.findByText("抖音乙");
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+
+it("没有拓展订阅时不把已安装拓展列成页顶按钮", async () => {
+	renderSubs();
+	await screen.findByText("UP甲");
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+it.each(["{Enter}", " "])("来源设置按钮支持键盘 %s,不触发订阅卡的编辑操作", async (key) => {
+	subs = [extSub()];
+	renderSubs();
+	const link = await screen.findByRole("button", { name: "抖音订阅设置" });
+	link.focus();
+	await userEvent.setup().keyboard(key);
+	expect(await screen.findByText("Source settings destination")).toBeTruthy();
+	expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("平台用来源描述符图标显示,不把 B 短名画成文字徽章", async () => {
+	renderSubs();
+	const mark = await screen.findByRole("img", { name: "B 站" });
+	expect(mark.querySelector("img")?.getAttribute("src")).toBe(
+		"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+	);
+	expect(screen.queryByText("B", { exact: true })).toBeNull();
 });

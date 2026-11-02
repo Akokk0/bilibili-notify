@@ -1,4 +1,5 @@
 {
+	"extensionSettings.link": "{name}设置",
 	"cards.content.program": "会员体系",
 	"cards.preview.membershipUnavailable": "当前来源没有可枚举的会员档位，或尚未运行，暂时无法预览。",
 	"cards.content.memberNameHint": "留空时用挑中那条订阅的来源登录着的账号名（没挑或没登录就是示例名）",

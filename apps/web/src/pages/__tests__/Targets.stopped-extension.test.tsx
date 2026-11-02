@@ -17,6 +17,7 @@ import {
 import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { PlatformMetaRoot } from "../../components/platform-meta";
@@ -67,6 +68,7 @@ const BRIDGE_TINT = "rgb(168, 85, 247)";
 function renderPage(
 	opts: {
 		extension?: unknown;
+		extensions?: ExtensionsResponse["extensions"];
 		connections?: unknown[];
 		extensionsPending?: boolean;
 		adapter?: typeof BRIDGE_ADAPTER;
@@ -81,7 +83,7 @@ function renderPage(
 			// 拓展列表迟迟不回:这时候什么都不知道,不许替它下「没在跑」的结论。
 			if (opts.extensionsPending) return new Promise(() => {});
 			return {
-				extensions: [opts.extension ?? STOPPED_BRIDGE],
+				extensions: opts.extensions ?? [opts.extension ?? STOPPED_BRIDGE],
 				restart: { can: true, how: "container" },
 			};
 		}
@@ -94,7 +96,12 @@ function renderPage(
 	render(
 		<QueryClientProvider client={qc}>
 			<PlatformMetaRoot>
-				<Targets />
+				<MemoryRouter initialEntries={["/targets"]}>
+					<Routes>
+						<Route path="/targets" element={<Targets />} />
+						<Route path="/extensions/:id" element={<div>Extension settings destination</div>} />
+					</Routes>
+				</MemoryRouter>
 			</PlatformMetaRoot>
 		</QueryClientProvider>,
 	);
@@ -224,4 +231,52 @@ describe("拓展没在跑:这条连接发不出去", () => {
 		expect((await screen.findAllByText("小电视")).length).toBeGreaterThan(0);
 		expect(screen.queryByText(/没在跑/)).toBeNull();
 	});
+});
+
+it.each(["disabled", "failed", "running"] as const)(
+	"%s 的连接在自己的详情卡中提供所属拓展入口",
+	async (state) => {
+		renderPage({
+			extension: { ...STOPPED_BRIDGE, state, enabled: state !== "disabled" },
+		});
+		const card = await screen.findByRole("region", { name: "小电视" });
+		const link = await within(card).findByRole("button", { name: "机器人框架桥接设置" });
+		expect(link.textContent).toBe("");
+		expect(link.getAttribute("title")).toBe("机器人框架桥接设置");
+		fireEvent.click(link);
+		expect(await screen.findByText("Extension settings destination")).toBeTruthy();
+	},
+);
+
+it("只给当前连接所属拓展入口,不列其他已安装推送拓展", async () => {
+	renderPage({
+		extensions: [
+			STOPPED_BRIDGE,
+			{ ...STOPPED_BRIDGE, id: "another-push", name: "其他推送", provides: ["push"] },
+		],
+	});
+	await screen.findByRole("button", { name: "机器人框架桥接设置" });
+	expect(screen.getAllByRole("button", { name: /设置$/ })).toHaveLength(1);
+});
+it("拓展列表未返回时不生成设置入口", async () => {
+	renderPage({ extensionsPending: true });
+	await screen.findAllByText("小电视");
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+it("连接还在但拓展已卸载时不生成无效设置链接", async () => {
+	renderPage({ extensions: [] });
+	await screen.findAllByText("小电视");
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+
+it("没有连接时不把已安装拓展列成页顶按钮", async () => {
+	renderPage({ connections: [] });
+	await screen.findByText("还没有连接");
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
+});
+
+it("内置适配器连接不显示其他已安装拓展的入口", async () => {
+	renderPage({ connections: [{ ...CONNECTION, adapterKey: "onebot", platform: "onebot" }] });
+	await screen.findByRole("region", { name: "小电视" });
+	expect(screen.queryAllByRole("button", { name: /设置$/ })).toHaveLength(0);
 });

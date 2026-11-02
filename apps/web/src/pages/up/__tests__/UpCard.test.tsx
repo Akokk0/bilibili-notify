@@ -267,8 +267,10 @@ describe("UpCard × 订阅源的平台", () => {
 	it("平台徽章 + 只列这个源报得出的特性,「动态」叫「作品」", () => {
 		// 连 B 站独有的 SC 也显式开着 —— 照样不许露面,那是一个永远不会响的开关。
 		const sub = makeExtSub({ overrides: { features: { superchat: true } } });
-		const { getByText, queryByText } = render(<UpCard {...props({ sub, platform: DOUYIN })} />);
-		expect(getByText("抖音")).toBeTruthy();
+		const { getByText, getByRole, queryByText } = render(
+			<UpCard {...props({ sub, platform: DOUYIN })} />,
+		);
+		expect(getByRole("img", { name: "抖音" })).toBeTruthy();
 		expect(getByText("作品")).toBeTruthy();
 		expect(getByText("开播")).toBeTruthy();
 		expect(queryByText("动态")).toBeNull();
