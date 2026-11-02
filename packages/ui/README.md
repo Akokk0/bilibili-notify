@@ -60,7 +60,7 @@
 
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
-| `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线;`TSelect` 给了 `width` 就不再垫 160px 的最小宽,单位选择器那种窄的用它;`TSelect` 的选项可带 `icon` / `description`，触发钮与菜单都显示图标和第二行小字，菜单无障碍名包含标题与小字；也可带 `disabled`,拿来如实显示「当前值已失效」那种不可选的一行)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
+| `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线;`TSelect` 给了 `width` 就不再垫 160px 的最小宽,单位选择器那种窄的用它;`TSelect` 的选项可带 `icon` / `description`，触发钮与菜单都显示图标和第二行小字（触发钮随两行内容增高，纯文字仍为单行高度），菜单无障碍名包含标题与小字；也可带 `disabled`,拿来如实显示「当前值已失效」那种不可选的一行)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
 | `UiTextProvider` / `UiText` | `UiTextProvider({t, children})` 让基础件在渲染时读当前 `ui.*` 包字典;没有 Provider 时用 `packageText`。App 在 AuthedApp 内交真实 `useT()` 结果,不新建 store。内部 hook `useUiText` 不从包根导出;消费者是 TSelect、TColor、ArrayEditor、QuietHoursEditor(含移除行按钮)。只依赖 internal 的 texts 子路径(参数类型用 type import) |
 | `Picker` | 通用段选钮组。**选项个数固定(写死的一组)就用它,哪怕超过 5 个;选项来自数据、个数不定才用 `TSelect`**(2026-10-04 主人定,取代「≤ ~5」的旧说法;容器会折行,项多了窄屏自己换行):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
 | `ArrayEditor` / `QuietHoursEditor` | 「一列可增删的行」的两个特化:字符串行 / 免扰时段(0-23 整点对,跨午夜 start>end)。行号徽标 / 移除钮 / 虚线添加钮是**不导出**的实现细节 |

@@ -28,8 +28,9 @@ import { useUiText } from "./texts";
 /** 只读态的观感:压暗 + 禁用光标。与 Toggle 的 disabled 同一套语汇。 */
 const DISABLED_FIELD = "disabled:cursor-not-allowed disabled:opacity-60";
 
-const INPUT_BASE =
-	"h-[30px] rounded-md border border-bn-border bg-bn-field px-2.5 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
+const INPUT_CHROME =
+	"rounded-md border border-bn-border bg-bn-field px-2.5 text-bn-sm text-bn-text-primary outline-none focus:border-bn-pink focus:ring-1 focus:ring-bn-pink/30";
+const INPUT_BASE = `${INPUT_CHROME} h-[30px]`;
 
 /**
  * 皮肤的 `input` 挂点。设置面板的输入框(87 处)全走这套 —— 挂点脱落的话,皮肤写的
@@ -376,7 +377,7 @@ export function TSelect<T extends string = string>({
 				aria-activedescendant={open && active >= 0 ? `${id}-${active}` : undefined}
 				aria-controls={open ? id : undefined}
 				data-bn={INPUT_HOOK}
-				className={`${INPUT_BASE} ${width === undefined ? "min-w-40" : ""} w-full inline-flex items-center gap-2 text-left ${DISABLED_FIELD}`}
+				className={`${INPUT_CHROME} ${selected?.description ? "min-h-[30px] py-1.5" : "h-[30px]"} ${width === undefined ? "min-w-40" : ""} w-full inline-flex items-center gap-2 text-left ${DISABLED_FIELD}`}
 				style={width === undefined ? undefined : { width }}
 				onBlur={blur}
 				onKeyDown={keys}
