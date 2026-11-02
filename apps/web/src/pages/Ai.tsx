@@ -136,11 +136,7 @@ function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
 			search: {
 				backend: search.backend,
 				keys: search.keys,
-				engines: {
-					dynamic: search.scenes.post,
-					live: search.scenes.live,
-					roast: search.scenes.roast,
-				},
+				scenes: search.scenes,
 			},
 			// 女仆真正在用的是哪一份实例 —— 它是个**指针**,与左栏在看哪一份无关。
 			activeProfile,
@@ -535,7 +531,7 @@ export default function Ai() {
 								["roast", tx("aiSettings.page.search.roastAria")],
 							] as const
 						).map(([k, aria]) => (
-							<Field key={k} code={`ai.search.engines.${k === "post" ? "dynamic" : k}`}>
+							<Field key={k} code={`ai.search.scenes.${k}`}>
 								<div className="flex h-7.5 items-center">
 									<Toggle
 										value={draft.search.scenes[k]}

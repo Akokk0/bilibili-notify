@@ -333,21 +333,21 @@ export const FIELD_LABELS = {
 		section: "ai",
 		secret: true,
 	},
-	get "ai.search.engines.dynamic"() {
+	get "ai.search.scenes.post"() {
 		return {
 			label: i18n.t("aiSettings.search.post.label"),
 			hint: i18n.t("aiSettings.search.post.hint"),
 			section: "ai" as const,
 		};
 	},
-	get "ai.search.engines.live"() {
+	get "ai.search.scenes.live"() {
 		return {
 			label: i18n.t("aiSettings.search.live.label"),
 			hint: i18n.t("aiSettings.search.live.hint"),
 			section: "ai" as const,
 		};
 	},
-	get "ai.search.engines.roast"() {
+	get "ai.search.scenes.roast"() {
 		return {
 			label: i18n.t("aiSettings.search.roast.label"),
 			hint: i18n.t("aiSettings.search.roast.hint"),

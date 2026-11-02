@@ -108,21 +108,21 @@ describe("Ai 页 · 联网搜索设置块", () => {
 });
 
 it.each([
-	["作品点评联网搜索", "dynamic", { post: true, live: false, roast: false }],
+	["作品点评联网搜索", "post", { post: true, live: false, roast: false }],
 	["直播总结联网搜索", "live", { post: false, live: true, roast: false }],
 	["锐评联网搜索", "roast", { post: false, live: false, roast: true }],
 ] as const)(
-	"saves %s while keeping legacy display codes and diff anchors",
-	async (name, legacy, expected) => {
+	"saves %s while keeping scene field codes and diff anchors",
+	async (name, scene, expected) => {
 		mount();
 		await screen.findByText("联网搜索");
 		fireEvent.click(screen.getByRole("button", { name }));
 		await waitFor(() => expect(useDraftStore.getState().current?.diff.length).toBeGreaterThan(0));
-		expect(document.querySelector(`[data-code="ai.search.engines.${legacy}"]`)).toBeTruthy();
+		expect(document.querySelector(`[data-code="ai.search.scenes.${scene}"]`)).toBeTruthy();
 		expect(
 			useDraftStore
 				.getState()
-				.current?.diff.some((row) => row.code === `ai.search.engines.${legacy}`),
+				.current?.diff.some((row) => row.code === `ai.search.scenes.${scene}`),
 		).toBe(true);
 		await act(async () => {
 			await useDraftStore.getState().current?.onSave();
@@ -135,7 +135,7 @@ it.each([
 	},
 );
 
-it("updates search field hints on voice changes while keeping labels and Q7 codes", async () => {
+it("updates search field hints on voice changes while keeping labels and scene codes", async () => {
 	mount();
 	await screen.findByText("联网搜索");
 	expect(
@@ -146,6 +146,14 @@ it("updates search field hints on voice changes while keeping labels and Q7 code
 		screen.getByText("开了之后每条作品点评都可能多几次搜索调用(按次计费)和几秒延迟"),
 	).toBeTruthy();
 	expect(screen.getByText("作品点评联网搜索")).toBeTruthy();
-	expect(document.querySelector('[data-code="ai.search.engines.dynamic"]')).toBeTruthy();
+	expect(document.querySelector('[data-code="ai.search.scenes.post"]')).toBeTruthy();
 	act(() => i18n.set({ voice: "maid" }));
+});
+
+it("联网搜索设置不再显示旧引擎叫法", async () => {
+	mount();
+	await screen.findByText("联网搜索");
+	expect(screen.queryByText(/引擎开关/)).toBeNull();
+	act(() => i18n.set({ voice: "plain" }));
+	expect(screen.queryByText(/引擎开关/)).toBeNull();
 });
