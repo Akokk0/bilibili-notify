@@ -6,6 +6,7 @@ import type {
 } from "@bilibili-notify/internal/extension";
 import { vi } from "vite-plus/test";
 import { createAiToolProviderRegistry } from "../ai/tool-provider-registry.js";
+import { BUILTIN_INTEGRATION_KEYS, BUILTIN_INTEGRATION_SETTINGS } from "../compose.js";
 import { createConfigStore } from "../config/store.js";
 import { timezoneReaderOf } from "../integrations/timezone-reader.js";
 import { createLinkResolverRegistry } from "../link-preview/registry.js";
@@ -39,7 +40,6 @@ import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { settingsSegment } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import { loadExtensions } from "../extensions/loader.js";
 import { createExtensionMounts } from "../extensions/mount.js";
@@ -110,6 +110,7 @@ beforeEach(async () => {
 		logger: logger(),
 	});
 	store = createIntegrationStore({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		dataRoot,
 		keyProvider,
 		logger: logger(),
@@ -204,7 +205,7 @@ describe("关停:flush 段关门之后数据目录不再变", () => {
 		const runtime = createAppRuntime(
 			{ server: { host: "127.0.0.1", port: 8787 }, dataDir: dataRoot, logLevel: "silent" },
 			{ dataRoot },
-			{ integrationSettings: [settingsSegment] },
+			{ integrationSettings: BUILTIN_INTEGRATION_SETTINGS },
 		);
 		const handle = await runtime.integrationStore.open("onebot");
 		await handle.state.set("seed", 0);
@@ -295,6 +296,7 @@ describe("拓展", () => {
 			});
 		}
 		const loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
@@ -360,6 +362,7 @@ describe("拓展", () => {
 		expect(await exists(secretsDir)).toBe(true);
 
 		const configStore = {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			getGlobals: () => ({ extensions: {} }),
 			getConnections: () => [],
 			removeExtension: async () => {},
@@ -492,6 +495,7 @@ it("timezone parity: activate/source/adapter read, notify, stop and restart", as
 	let loaded: Awaited<ReturnType<typeof loadExtensions>> | undefined;
 	try {
 		loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader,
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),

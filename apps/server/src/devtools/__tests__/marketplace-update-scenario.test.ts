@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 「拓展有更新」—— 让一张已装卡片上出现「有新版 vX · 更新」,而且按得下去。
  *
@@ -224,6 +225,7 @@ describe("ext.updatable · 按「更新」", () => {
 				return write();
 			};
 			const realMarket = createMarketplace({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				root,
 				sources: () => [],
 				mirrors: () => [],

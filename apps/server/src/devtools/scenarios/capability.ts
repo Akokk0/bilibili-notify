@@ -1,10 +1,4 @@
-import {
-	type Connection,
-	type ConnectionCapabilities,
-	fail,
-	ok,
-	RESERVED_INTEGRATION_KEYS,
-} from "@bilibili-notify/internal";
+import { type Connection, type ConnectionCapabilities, fail, ok } from "@bilibili-notify/internal";
 import { routeConnection } from "../../push/dispatch.js";
 import type { PlatformAdapterView } from "../../push/registry.js";
 import type { CapabilityInjector } from "../capability-injection.js";
@@ -15,6 +9,7 @@ import type { DevScenarioDef } from "../registry.js";
  * 链接解析「形式」那一栏都从这儿读。
  */
 export interface CapabilityScenarioDeps {
+	reservedIntegrationKeys: readonly string[];
 	injector: CapabilityInjector;
 	connections: () => Connection[];
 	/**
@@ -113,7 +108,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			if (!capable.has(connection.adapterKey)) {
 				return fail(
 					"invalid",
-					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有能力这回事`,
+					`${connection.name} 是 ${deps.reservedIntegrationKeys.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有能力这回事`,
 				);
 			}
 			const state = String(params.state ?? "supported") as State;

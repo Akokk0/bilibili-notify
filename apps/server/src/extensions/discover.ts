@@ -7,10 +7,10 @@ import {
 	type ExtensionApiRequirement,
 	type ExtensionIdentity,
 	type ExtensionManifest,
-	parseExtensionManifest,
 } from "@bilibili-notify/internal";
 import { t } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
+import { parseHostExtensionManifest } from "./identity.js";
 import { type ExtensionLocales, readExtensionLocales } from "./locales.js";
 import { safeExtensionIcon, safeManifestIcons } from "./manifest-icon.js";
 
@@ -133,6 +133,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 export interface ReadExtensionDirOptions {
+	reservedIntegrationKeys: readonly string[];
 	/** 宿主认的档位区间。只有测试会换。 */
 	hostApiRange?: ExtensionApiRange;
 }
@@ -172,7 +173,7 @@ export function apiVersionMismatch(
  */
 export async function readExtensionDir(
 	dir: string,
-	options: ReadExtensionDirOptions = {},
+	options: ReadExtensionDirOptions,
 ): Promise<ExtensionDirRead> {
 	const range = options.hostApiRange ?? EXTENSION_API_RANGE;
 	const id = basename(dir);
@@ -200,7 +201,7 @@ export async function readExtensionDir(
 
 	// 先单读 apiVersion、再按那一档的格式读其余(ADR-0019 决策 18)—— 为将来的宿主写的
 	// 清单,格式本来就可能是我们不认识的,挑它的毛病只会把「版本不合」说成「读不了」。
-	const read = parseExtensionManifest(raw, range);
+	const read = parseHostExtensionManifest(raw, range, options.reservedIntegrationKeys);
 	if (!read.ok && read.reason === "unreadable") {
 		return {
 			state: "unreadable",
@@ -259,6 +260,7 @@ export async function readExtensionDir(
 }
 
 export interface DiscoverExtensionsOptions {
+	reservedIntegrationKeys: readonly string[];
 	hostApiRange?: ExtensionApiRange;
 }
 
@@ -274,7 +276,7 @@ export interface DiscoverExtensionsOptions {
  */
 export async function discoverExtensions(
 	root: string,
-	options: DiscoverExtensionsOptions = {},
+	options: DiscoverExtensionsOptions,
 ): Promise<Array<Exclude<ExtensionDirRead, { state: "absent" }>>> {
 	let entries: Dirent[];
 	try {

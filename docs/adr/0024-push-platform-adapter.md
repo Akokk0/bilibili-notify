@@ -16,6 +16,7 @@
     - 🔗 10-11（3a-28）：`compose.ts` 提前到 3a-28 建（见 ADR-0021 决策 2 下的 🔗），但这一片它只登记 B 站来源与 B 站的开发场景；三个内置适配器仍由入口造、经 `registerBuiltinAdapters` 登记，挪进 `compose.ts` 归 3a-40（推送守卫① 同片收口）。
     - 🔗 10-11（3a-40 第一块）：三个内置适配器已挪进 `compose.ts`（构造在 `composeBuiltinIntegrations` 被调时、登记与启动在 `registerAdapters`），推送守卫① 已开张（`scripts/__tests__/import-boundaries.test.mjs`：核心不许 import `platforms/`，例外只有 `compose.ts`）。
     - 🔗 2026-10-28（4-13）：「设置 schema 与平台信息表由适配器自带，面板经描述接口拿」里描述接口那一半已落：`PlatformAdapter.descriptor()`、`GET /api/adapters`（形状见决策 3 下同日的 🔗）。闭集与平台表、三份规则搬出 `internal` 仍归 4-30。
+    - 🔗 2026-11-02（4-30，主人批准分工）：闭集与 `./platform-registry` 子路径已删除；平台描述、三份规则与字段文案移到服务端内置适配器，候选现取当前语言。`compose.ts` 从内置设置段收齐保留键，存储和宿主清单 / ID 校验显式接收。通用打包器只校验格式与核心保留名，宿主在安装、发现、市场、设置入口拒绝占用内置键；卸载同名坏拓展只清拓展目录，不碰内置状态与凭据。目录、备份及迁移行为保持，冻结 `zero-platforms.ts` 不动。推送词守卫与核心平台分支棘轮清零。
     - 理由：留内置、拓展两套，就永远有一套没被对拍到。
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
     - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。

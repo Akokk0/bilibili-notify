@@ -11,6 +11,7 @@ import {
 } from "../backup/crypto.js";
 import { buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
 import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
@@ -55,7 +56,8 @@ const SCHEMAS = new Map<string, ZodType>([
 ]);
 const BUILTINS: SecretCellsReader = {
 	settingsSchemaOf: (key) => SCHEMAS.get(key),
-	declaredSecretKeysOf: () => undefined,
+	declaredSecretKeysOf: (key) =>
+		BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : (() => undefined)(),
 };
 
 function onebot(id: string, token: string): Connection {
@@ -310,7 +312,8 @@ describe("full backup assemble/open", () => {
 	it("朴素兜底:明文段序列化后不含任何密钥原值", () => {
 		const lookup: SecretCellsReader = {
 			settingsSchemaOf: (key) => SCHEMAS.get(key),
-			declaredSecretKeysOf: (key) => (key === "bridge" ? ["botKey"] : undefined),
+			declaredSecretKeysOf: (key) =>
+				BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : key === "bridge" ? ["botKey"] : undefined,
 		};
 		const extension: Connection = {
 			id: "c1",

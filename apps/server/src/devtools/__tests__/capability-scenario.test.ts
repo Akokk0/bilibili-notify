@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createCapabilityInjector } from "../capability-injection.js";
@@ -79,7 +80,12 @@ function setup() {
 	const injector = createCapabilityInjector();
 	const dialects = [onebot(), webhook()];
 	const reg = coreDevRegistry([
-		capabilityScenario({ injector, connections: () => [OB, WH], dialects: () => dialects }),
+		capabilityScenario({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			injector,
+			connections: () => [OB, WH],
+			dialects: () => dialects,
+		}),
 	]);
 	return { reg, injector };
 }
@@ -92,6 +98,7 @@ function dispatcherWith(
 ) {
 	return createTargetDispatcher({
 		store: {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			getConnection: (id: string) => (id === connection.id ? connection : undefined),
 			getTargets: () => [],
 		} as unknown as ConfigStore,
@@ -165,7 +172,12 @@ describe("core.connection.capability", () => {
 			platform: "qq-official",
 		} as Connection;
 		const reg = coreDevRegistry([
-			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),
+			capabilityScenario({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				injector,
+				connections: () => [conn],
+				dialects: () => [qq],
+			}),
 		]);
 		await reg.run("core.connection.capability", { state: "supported" });
 		expect(injector.get(conn.id)?.nativeShare.state).toBe("supported");
@@ -180,7 +192,12 @@ describe("core.connection.capability", () => {
 		};
 		const dispatcher = dispatcherWith(injector, dialect, OB);
 		const reg = coreDevRegistry([
-			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+			capabilityScenario({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				injector,
+				connections: () => [OB],
+				dialects: () => [dialect],
+			}),
 		]);
 
 		await reg.run("core.connection.capability", { connection: OB.id, state: "supported" });
@@ -196,7 +213,12 @@ describe("core.connection.capability", () => {
 		const dialect = onebot(); // 真答案:nativeShare unsupported
 		const dispatcher = dispatcherWith(injector, dialect, OB);
 		const reg = coreDevRegistry([
-			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+			capabilityScenario({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				injector,
+				connections: () => [OB],
+				dialects: () => [dialect],
+			}),
 		]);
 
 		expect(dispatcher.connectionCapabilities(OB.id)?.nativeShare.state).toBe("unsupported");
@@ -211,7 +233,12 @@ describe("core.connection.capability", () => {
 		const dialect: PlatformAdapter = { ...onebot(), probeCapabilities: probe };
 		const dispatcher = dispatcherWith(injector, dialect, OB);
 		const reg = coreDevRegistry([
-			capabilityScenario({ injector, connections: () => [OB], dialects: () => [dialect] }),
+			capabilityScenario({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				injector,
+				connections: () => [OB],
+				dialects: () => [dialect],
+			}),
 		]);
 
 		await reg.run("core.connection.capability", { connection: OB.id, state: "supported" });

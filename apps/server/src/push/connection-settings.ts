@@ -1,11 +1,4 @@
-import {
-	fail,
-	type Issue,
-	issuesFromZod,
-	ok,
-	RESERVED_INTEGRATION_KEYS,
-	type Result,
-} from "@bilibili-notify/internal";
+import { fail, type Issue, issuesFromZod, ok, type Result } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 
 /**
@@ -43,7 +36,7 @@ export function settingsIssueMessage(issues: readonly Issue[]): string {
 export interface SecretCellsReader {
 	/** 在场的适配器的 settingsSchema(内置的带 markSecret / markBackupOnly 标记);不在场回 undefined。 */
 	settingsSchemaOf(adapterKey: string): ZodType | undefined;
-	/** 拓展在字段表 / 清单里声明成密钥的 settings 键;问不出来回 undefined。内置适配器恒回 undefined。 */
+	/** 拓展在字段表 / 清单里声明成密钥的 settings 键;问不出来回 undefined；按 schema 标记读的集成由装配交 []。 */
 	declaredSecretKeysOf(adapterKey: string): readonly string[] | undefined;
 }
 
@@ -51,14 +44,10 @@ export interface SecretCellsReader {
  * 这条连接的密钥键「问不出来」吗 —— 下发打码与备份脱敏共用的一份判断。
  * 拓展(非内置)适配器的 schema 上没有 `secret` 标记,密钥只靠它声明的键认;声明问不出来(清单读不了 /
  * 版本不合)时按标记走等于一格都不遮,所以从严:下发整格遮挡、备份整片抹空。
- * 内置三个键的 `declaredSecretKeysOf` 恒回 `undefined`,它们靠 schema 标记,不算问不出来;
- * 回 `[]` 是问得出来、确实没声明。
+ * 回 `[]` 是问得出来、没有额外声明；按 schema 标记读的集成也由装配交 `[]`。
  */
 export function secretsUnaskable(lookup: SecretCellsReader, adapterKey: string): boolean {
-	return (
-		!RESERVED_INTEGRATION_KEYS.includes(adapterKey) &&
-		lookup.declaredSecretKeysOf(adapterKey) === undefined
-	);
+	return lookup.declaredSecretKeysOf(adapterKey) === undefined;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 从面板传一个 zip 上来装拓展。
  *
@@ -98,7 +99,7 @@ afterEach(async () => {
 
 describe("拆包", () => {
 	it("清单 + 入口 —— 读出来的身份以**清单**为准", () => {
-		const opened = openExtensionPackage(pack(GOOD));
+		const opened = openExtensionPackage(pack(GOOD), BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);
 		if (!opened.ok) return;
 		expect(opened.pkg.id).toBe("bridge");
@@ -107,12 +108,12 @@ describe("拆包", () => {
 
 	/** 人会把目录整个拖进压缩软件 —— 多出来的那一层是常态,不是错误。 */
 	it("多一层顶层目录也认,剥掉就是", () => {
-		const opened = openExtensionPackage(pack(GOOD, "bridge/"));
+		const opened = openExtensionPackage(pack(GOOD, "bridge/"), BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);
 	});
 
 	it("两层以上 → 不认:拓展包是清单 + 一个自包含入口,没有子目录", () => {
-		const opened = openExtensionPackage(pack(GOOD, "a/b/"));
+		const opened = openExtensionPackage(pack(GOOD, "a/b/"), BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(false);
 	});
 
@@ -121,7 +122,10 @@ describe("拆包", () => {
 	 * `index.mjs` 是**要被 import 的**。多一个 `.mjs` 就是多一条我们没看过的代码路径。
 	 */
 	it("夹带别的文件 → 整包拒绝,并说清是哪一个", () => {
-		const opened = openExtensionPackage(pack({ ...GOOD, "sneaky.mjs": "//" }));
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "sneaky.mjs": "//" }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
 		// 只有一句检查意见:话就是 message,不再另摆一份 issues。
@@ -133,6 +137,7 @@ describe("拆包", () => {
 	it("夹带开发入口 → 整包拒绝,提示是白名单那一句", () => {
 		const opened = openExtensionPackage(
 			pack({ ...GOOD, "devtools.mjs": "export function devtools() {}" }),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
@@ -145,7 +150,10 @@ describe("拆包", () => {
 
 	/** 意见不止一条:message 一句概括,逐条放 issues —— 面板把它们摆成清单,主人照着一处处改。 */
 	it("夹带了不止一个文件 → message 一句概括,每个文件一条 issues", () => {
-		const opened = openExtensionPackage(pack({ ...GOOD, "a.mjs": "//", "b.mjs": "//" }));
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "a.mjs": "//", "b.mjs": "//" }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
 		expect(opened.code).toBe("invalid");
@@ -169,6 +177,7 @@ describe("拆包", () => {
 				"README.md": "# 桥接\n\n借 koishi 的 bot。",
 				"CHANGELOG.md": "## [0.0.1]",
 			}),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(true);
 		if (!opened.ok) return;
@@ -187,6 +196,7 @@ describe("拆包", () => {
 	it("文档超上限 → 丢掉那一份,拓展照样装得上", () => {
 		const opened = openExtensionPackage(
 			pack({ ...GOOD, "README.md": "x".repeat(EXTENSION_DOC_MAX_BYTES + 1) }),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(true);
 		if (!opened.ok) return;
@@ -202,6 +212,7 @@ describe("拆包", () => {
 		it("带 locales/zh-CN.json 与 locales/en.json → 收下", () => {
 			const opened = openExtensionPackage(
 				pack({ ...GOOD, "locales/zh-CN.json": zh, "locales/en.json": en }),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
@@ -217,6 +228,7 @@ describe("拆包", () => {
 					"locales/ko.json": JSON.stringify({ hello: "안녕" }),
 					"locales/zh-cn.json": zh,
 				}),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
@@ -236,6 +248,7 @@ describe("拆包", () => {
 					"locales/zh-CN.json": zh,
 					"locales/zh-cn.json": JSON.stringify({ "status.connected": "错" }),
 				}),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
@@ -249,6 +262,7 @@ describe("拆包", () => {
 		it("locales/zh-CN.json 不是 JSON → 整包拒,并点名那一份", () => {
 			const opened = openExtensionPackage(
 				pack({ ...GOOD, "locales/zh-CN.json": '{"status.connected":' }),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(false);
 			if (opened.ok) return;
@@ -259,6 +273,7 @@ describe("拆包", () => {
 		it("一份译文超过 256 KB → 整包拒,并点名那一份", () => {
 			const opened = openExtensionPackage(
 				pack({ ...GOOD, "locales/zh-CN.json": `"${"x".repeat(256 * 1024)}"` }),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(false);
 			if (opened.ok) return;
@@ -271,7 +286,7 @@ describe("拆包", () => {
 			for (const code of ["ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi"]) {
 				files[`locales/${code}.json`] = JSON.stringify({ text: "x".repeat(250 * 1024) });
 			}
-			const opened = openExtensionPackage(pack(files));
+			const opened = openExtensionPackage(pack(files), BUILTIN_INTEGRATION_KEYS);
 			expect(opened.ok).toBe(false);
 			if (opened.ok) return;
 			expect(textOf(opened)).toContain("locales/");
@@ -281,6 +296,7 @@ describe("拆包", () => {
 		it("locales/sub/x.json → 整包拒:译文目录下不许再有子目录", () => {
 			const opened = openExtensionPackage(
 				pack({ ...GOOD, "locales/sub/x.json": JSON.stringify({ hello: "你好" }) }),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(false);
 			if (opened.ok) return;
@@ -288,7 +304,10 @@ describe("拆包", () => {
 		});
 
 		it("locales/notes.txt → 整包拒:译文目录只收 <语言码>.json", () => {
-			const opened = openExtensionPackage(pack({ ...GOOD, "locales/notes.txt": "not json" }));
+			const opened = openExtensionPackage(
+				pack({ ...GOOD, "locales/notes.txt": "not json" }),
+				BUILTIN_INTEGRATION_KEYS,
+			);
 			expect(opened.ok).toBe(false);
 			if (opened.ok) return;
 			expect(textOf(opened)).toContain("locales/notes.txt");
@@ -297,6 +316,7 @@ describe("拆包", () => {
 		it("外面多一层目录也认,译文照样落进 <id>/locales/", async () => {
 			const opened = openExtensionPackage(
 				pack({ ...GOOD, "locales/zh-CN.json": zh, "locales/en.json": en }, "bridge/"),
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
@@ -309,19 +329,25 @@ describe("拆包", () => {
 	});
 
 	it("缺入口 / 缺清单 → 各说各的", () => {
-		const noCode = openExtensionPackage(pack({ "extension.json": manifest() }));
+		const noCode = openExtensionPackage(
+			pack({ "extension.json": manifest() }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		expect(noCode.ok).toBe(false);
 		if (!noCode.ok) {
 			expect(noCode.code).toBe("invalid");
 			expect(textOf(noCode)).toContain("index.mjs");
 		}
-		const noManifest = openExtensionPackage(pack({ "index.mjs": "//" }));
+		const noManifest = openExtensionPackage(pack({ "index.mjs": "//" }), BUILTIN_INTEGRATION_KEYS);
 		expect(noManifest.ok).toBe(false);
 		if (!noManifest.ok) expect(textOf(noManifest)).toContain("extension.json");
 	});
 
 	it("清单不合法 → 把哪一格不合法说出来", () => {
-		const opened = openExtensionPackage(pack({ ...GOOD, "extension.json": manifest({ id: "" }) }));
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "extension.json": manifest({ id: "" }) }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) {
 			expect(opened.code).toBe("invalid");
@@ -336,6 +362,7 @@ describe("拆包", () => {
 				...GOOD,
 				"extension.json": manifest({ apiVersion: EXTENSION_API_RANGE.current + 1 }),
 			}),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) {
@@ -361,6 +388,7 @@ describe("拆包", () => {
 					contributes: { chat: {} },
 				}),
 			}),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
@@ -383,6 +411,7 @@ describe("拆包", () => {
 					},
 				}),
 			}),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(true);
 		if (opened.ok) expect(opened.pkg.manifest.apiVersion).toBe(EXTENSION_API_RANGE.current);
@@ -403,6 +432,7 @@ describe("拆包", () => {
 					},
 				}),
 			}),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		expect(opened.ok).toBe(false);
 		if (opened.ok) return;
@@ -415,13 +445,18 @@ describe("拆包", () => {
 
 	/** 🔴 zip 里的路径是攻击者写的,`..` 一律不认 —— 落盘那一步不该再自己防一遍。 */
 	it("路径里带 .. → 拒绝", () => {
-		expect(openExtensionPackage(pack({ ...GOOD, "../evil.mjs": "//" })).ok).toBe(false);
-		expect(openExtensionPackage(pack(GOOD, "../")).ok).toBe(false);
+		expect(
+			openExtensionPackage(pack({ ...GOOD, "../evil.mjs": "//" }), BUILTIN_INTEGRATION_KEYS).ok,
+		).toBe(false);
+		expect(openExtensionPackage(pack(GOOD, "../"), BUILTIN_INTEGRATION_KEYS).ok).toBe(false);
 	});
 
 	it("入口太大 → 拒绝(自包含 bundle 也就几百 KB)", () => {
 		const huge = "x".repeat(9 * 1024 * 1024);
-		const opened = openExtensionPackage(pack({ ...GOOD, "index.mjs": huge }));
+		const opened = openExtensionPackage(
+			pack({ ...GOOD, "index.mjs": huge }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) expect(textOf(opened)).toContain("过大");
 	});
@@ -432,7 +467,7 @@ describe("拆包", () => {
 	 */
 	it("zip 头声明的解压大小超上限 → 解压前就拒,说的是「过大」而不是「不是 zip」", () => {
 		const forged = forgeUncompressedSize(pack(GOOD), "index.mjs", 2 ** 31);
-		const opened = openExtensionPackage(forged);
+		const opened = openExtensionPackage(forged, BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) {
 			expect(opened.code).toBe("invalid");
@@ -453,13 +488,13 @@ describe("拆包", () => {
 		for (let i = 0; i < 8; i += 1) {
 			zip = forgeUncompressedSize(zip, `chunk${i}.mjs`, 7 * 1024 * 1024);
 		}
-		const opened = openExtensionPackage(zip);
+		const opened = openExtensionPackage(zip, BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) expect(textOf(opened)).toContain("总量");
 	});
 
 	it("压根不是 zip → 一句人话,别把 fflate 的异常摊出去", () => {
-		const opened = openExtensionPackage(strToU8("这不是 zip"));
+		const opened = openExtensionPackage(strToU8("这不是 zip"), BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(false);
 		if (!opened.ok) {
 			expect(opened.code).toBe("invalid");
@@ -470,7 +505,7 @@ describe("拆包", () => {
 
 describe("落盘", () => {
 	async function open(): Promise<Extract<ReturnType<typeof openExtensionPackage>, { ok: true }>> {
-		const opened = openExtensionPackage(pack(GOOD));
+		const opened = openExtensionPackage(pack(GOOD), BUILTIN_INTEGRATION_KEYS);
 		if (!opened.ok) throw new Error(textOf(opened));
 		return opened;
 	}
@@ -480,6 +515,7 @@ describe("落盘", () => {
 	> {
 		const opened = openExtensionPackage(
 			pack({ ...GOOD, "README.md": "# 桥接", "CHANGELOG.md": "## [1.0.0]" }),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		if (!opened.ok) throw new Error(textOf(opened));
 		return opened;
@@ -569,9 +605,13 @@ describe("落盘", () => {
 	it("同一个 id 并发装两次 → 排队,两次都成,盘上只剩最后落的那一份", async () => {
 		// 头一份多带一份 README:第二份落下之后它必须不见了 —— 证明第二次是等第一次落完、再把它
 		// 整份换掉的,而不是两边交错着各写一半。
-		const a = openExtensionPackage(pack({ ...GOOD, "README.md": "# 第一份" }));
+		const a = openExtensionPackage(
+			pack({ ...GOOD, "README.md": "# 第一份" }),
+			BUILTIN_INTEGRATION_KEYS,
+		);
 		const b = openExtensionPackage(
 			pack({ ...GOOD, "extension.json": manifest({ version: "1.0.1" }) }),
+			BUILTIN_INTEGRATION_KEYS,
 		);
 		if (!a.ok || !b.ok) throw new Error("fixture");
 		await expect(lstat(join(root, "bridge"))).rejects.toThrow();
@@ -641,4 +681,13 @@ describe("落盘", () => {
 		await installExtensionPackage({ root: fresh, pkg });
 		expect((await lstat(join(fresh, "bridge"))).isDirectory()).toBe(true);
 	});
+});
+
+// 内置键即使包内其余内容有效，也不能占用宿主集成身份。
+it.each(["bilibili", "onebot", "qq-official", "webhook"])("宿主拒收内置键 %s", (id) => {
+	const opened = openExtensionPackage(
+		pack({ ...GOOD, "extension.json": manifest({ id }) }),
+		BUILTIN_INTEGRATION_KEYS,
+	);
+	expect(opened).toMatchObject({ ok: false, code: "invalid" });
 });

@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../../compose.js";
 /**
  * 回归守护 — 「退出登录」不许把配置密钥一起清掉。
  *
@@ -82,6 +83,7 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-before" } });
 
 		const integrationStore = createIntegrationStore({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot: dataDir,
 			keyProvider,
 			logger: ctx.logger,

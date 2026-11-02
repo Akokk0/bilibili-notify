@@ -295,7 +295,10 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		runtime,
 		store: runtime.configStore,
 		connectionSecrets:
-			options.connectionSecrets ?? createSecretCellsReader(runtime.adapterRegistry),
+			options.connectionSecrets ??
+			createSecretCellsReader(runtime.adapterRegistry, (key) =>
+				runtime.configStore.reservedIntegrationKeys.includes(key) ? [] : undefined,
+			),
 		puppeteer: options.puppeteer ?? null,
 		wsTicketStore: options.wsTicketStore ?? null,
 		commands: options.commands,

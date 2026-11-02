@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 集成存储宿主给日志打码登记册喂值:`secrets` 里每一段字符串(递归走 JSON)、不管它是怎么进来的
  * (开把手时读进来的、写进去的、恢复备份整袋换进来的),都登记;换走的旧值不再遮;把手关了清掉。
@@ -25,7 +26,13 @@ function setup() {
 		logger,
 	});
 	const redactor = createValueRedactor();
-	const store = createIntegrationStore({ dataRoot, keyProvider, logger, redactor });
+	const store = createIntegrationStore({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		dataRoot,
+		keyProvider,
+		logger,
+		redactor,
+	});
 	return { store, redactor };
 }
 

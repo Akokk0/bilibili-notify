@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * B 站上下文(`bilibili/context.ts`):开存储、建集成上下文、建请求客户端,与它的收尾次序。
  *
@@ -61,6 +62,7 @@ function makeStore() {
 	const keyProvider = new FileKeyProvider(join(dataDir, "secrets", "master.key"), host.logger);
 	const redactor = createValueRedactor();
 	const store = createIntegrationStore({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		dataRoot: dataDir,
 		keyProvider,
 		logger: host.logger,
@@ -103,6 +105,7 @@ describe("createBiliContext", () => {
 		expect(firstUa).toBeTypeOf("string");
 		expect(secondUa).toBe(firstUa);
 		const stored = await readIntegrationStateFile({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot: dataDir,
 			key: "bilibili",
 			logger: host.logger,

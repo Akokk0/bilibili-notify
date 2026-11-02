@@ -6,6 +6,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { isReachabilityEvidence } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import { createCaptureGate } from "../capture.js";
 
 /**
@@ -56,7 +57,7 @@ afterEach(() => {
 
 describe("createCaptureGate", () => {
 	it("默认关着:放行(回 undefined),列表为空", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 
 		expect(call(gate, { kind: "text", text: "hi" })).toBeUndefined();
 
@@ -65,7 +66,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("开着:记一条摘要、回 ok", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 
 		const res = call(gate, {
@@ -97,7 +98,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("目标是私聊会话记 private:true,群目标记 false(由目标自己的 scope 算)", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		call(
 			gate,
@@ -112,7 +113,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("按会话坐标发的:目标名显示成「群 <地址>」/「私聊 <地址>」", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		const session = (scope: "group" | "private", address: string): DestinationRef => ({
 			kind: "session",
@@ -161,14 +162,14 @@ describe("createCaptureGate", () => {
 			{ kind: "native-share", text: "标题", images: 0 },
 		],
 	])("各种载荷都摘得出:%j", (payload, expected) => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		call(gate, payload);
 		expect(gate.entries()[0]).toMatchObject(expected);
 	});
 
 	it("长文本截到 200 字,免得面板被一整篇周报撑爆", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		call(gate, { kind: "text", text: "字".repeat(500) });
 		expect(gate.entries()[0]?.text).toHaveLength(201);
@@ -176,7 +177,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("列表封顶 200 条,满了丢最旧的", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		for (let i = 0; i < 205; i++) call(gate, { kind: "text", text: `#${i}` });
 		const entries = gate.entries();
@@ -186,7 +187,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("关掉之后又放行;列表留着直到清空", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		expect(call(gate, { kind: "text", text: "a" })).toBeDefined();
 		gate.disable();
@@ -198,7 +199,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("时间窗:开一次记一段,关了封口,清历史后从头记", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		vi.setSystemTime(new Date("2026-09-06T08:10:00.000Z"));
 		gate.disable();
@@ -217,7 +218,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("连开两次不叠窗", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		gate.enable();
 		expect(gate.windows()).toHaveLength(1);
@@ -230,7 +231,7 @@ describe("createCaptureGate", () => {
 		// 回 ok 是为了让调用链照常跑完(推送链路、历史那行都当它成了)。但 dispatcher 的
 		// onDelivery 会拿同一个结果去写 target.testStatus —— 那是落盘、还广播
 		// config-changed 的。截流期间把一个发不出去的目标标成绿的,还活得比截流久。
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		const res = call(gate, { kind: "text", text: "x" });
 		expect(res).toMatchObject({ ok: true, isSynthetic: true });
@@ -239,7 +240,7 @@ describe("createCaptureGate", () => {
 	});
 
 	it("count() 只回条数,不拷整张表 —— 生效条每几秒念一次拦下几条", () => {
-		const gate = createCaptureGate();
+		const gate = createCaptureGate(BUILTIN_INTEGRATION_KEYS);
 		gate.enable();
 		call(gate, { kind: "text", text: "1" });
 		call(gate, { kind: "text", text: "2" });

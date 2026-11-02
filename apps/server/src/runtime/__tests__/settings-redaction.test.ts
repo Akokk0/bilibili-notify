@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 设置里标了机密的格按值进日志打码的登记册(ADR-0025 决策 9 下 10-16)。
  *
@@ -75,9 +76,12 @@ function baseInput() {
 		views,
 		globals: makeDefaultGlobalConfig(),
 		connections: [] as Connection[],
-		connectionSecrets: createSecretCellsReader({
-			list: () => [{ adapterKey: "onebot", settingsSchema: ADAPTER_SCHEMA }],
-		}),
+		connectionSecrets: createSecretCellsReader(
+			{
+				list: () => [{ adapterKey: "onebot", settingsSchema: ADAPTER_SCHEMA }],
+			},
+			(key) => (BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : undefined),
+		),
 		integrationSettings: [] as Array<{ key: string; schema: z.ZodType; settings: unknown }>,
 		extensionSettings: {} as Record<string, unknown>,
 		settingsFieldsOf: (_id: string): readonly SettingsField[] | undefined => undefined,
@@ -206,7 +210,9 @@ describe("bindSettingsRedaction", () => {
 				},
 			},
 			integrationSettings: [],
-			connectionSecrets: createSecretCellsReader({ list: () => adapterList }),
+			connectionSecrets: createSecretCellsReader({ list: () => adapterList }, (key) =>
+				BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : undefined,
+			),
 			adapters: {
 				onChange: (fn) => {
 					adapterHandlers.push(fn);

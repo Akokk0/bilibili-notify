@@ -595,6 +595,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 	return {
 		...real,
 		BUILTIN_INTEGRATION_SETTINGS: [...real.BUILTIN_INTEGRATION_SETTINGS, inProcessSettingsSegment],
+		BUILTIN_INTEGRATION_KEYS: [...real.BUILTIN_INTEGRATION_KEYS, IN_PROCESS_KEY],
 		composeBuiltinIntegrations(deps) {
 			const builtins = real.composeBuiltinIntegrations(deps);
 			inProcessWorld.serviceCtx = deps.serviceCtx;

@@ -2,6 +2,7 @@ import type { Connection } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import type { SecretCellsReader } from "../../push/connection-settings.js";
 import { connectionView } from "../secret-view.js";
 
@@ -25,7 +26,12 @@ const lookupOf = (
 	declared: Record<string, readonly string[]> = {},
 ): SecretCellsReader => ({
 	settingsSchemaOf: (key) => (Object.hasOwn(schemas, key) ? schemas[key] : undefined),
-	declaredSecretKeysOf: (key) => (Object.hasOwn(declared, key) ? declared[key] : undefined),
+	declaredSecretKeysOf: (key) =>
+		BUILTIN_INTEGRATION_KEYS.includes(key)
+			? []
+			: Object.hasOwn(declared, key)
+				? declared[key]
+				: undefined,
 });
 
 describe("connectionView", () => {
@@ -79,7 +85,7 @@ describe("connectionView", () => {
 			expect(view.settings).toEqual({ token: "EXT-SECRET", note: "公开" });
 		});
 
-		it("内置适配器(声明恒 undefined)→ 照旧按标记,不整格遮挡", () => {
+		it("内置适配器(装配交空声明)→ 照旧按标记,不整格遮挡", () => {
 			const view = connectionView(
 				connection("webhook", { note: "公开" }),
 				lookupOf({ webhook: z.object({ note: z.string() }) }),

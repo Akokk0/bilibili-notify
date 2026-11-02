@@ -5,7 +5,6 @@ import type {
 	InvalidSettingsResponse,
 } from "@bilibili-notify/contract";
 import {
-	ExtensionIdSchema,
 	fail,
 	formatZodIssues,
 	issuesFromZod,
@@ -17,6 +16,7 @@ import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import { extensionInvalidSettings, safeSettingsIssues } from "../config/invalid-settings.js";
 import type { ConfigStore } from "../config/store.js";
+import { extensionIdSchema } from "../extensions/identity.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import {
 	applySettingsOps,
@@ -31,7 +31,10 @@ import { respondFailure } from "./respond-failure.js";
 export interface ExtensionSettingsRouteOptions {
 	store: Pick<
 		ConfigStore,
-		"getExtensionSettings" | "updateExtensionSettings" | "extensionSettingsIssue"
+		| "getExtensionSettings"
+		| "updateExtensionSettings"
+		| "extensionSettingsIssue"
+		| "reservedIntegrationKeys"
 	>;
 	/** 装着的那些 —— 清单(设置项声明)从这儿读,**没在跑的也有**(「装好 → 填 → 启用」)。 */
 	extensions: () => readonly ExtensionEntry[];
@@ -92,7 +95,7 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 
 	/** 这个 id 有没有一份能照着管的设置声明 —— 没有的每一种都说清为什么。 */
 	function resolve(raw: string): Resolved {
-		const parsed = ExtensionIdSchema.safeParse(raw);
+		const parsed = extensionIdSchema(opts.store.reservedIntegrationKeys).safeParse(raw);
 		if (!parsed.success) return fail("invalid", t("extension.settings.invalidId"));
 		const id = parsed.data;
 		const entry = opts.extensions().find((candidate) => candidate.id === id);

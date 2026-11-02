@@ -16,6 +16,7 @@ import { type BackupSections, buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
@@ -37,7 +38,8 @@ function secretsOf(
 ): SecretCellsReader {
 	return {
 		settingsSchemaOf: (key) => (key === "onebot" ? OnebotConnectionSettingsSchema : undefined),
-		declaredSecretKeysOf: (key) => declared.get(key),
+		declaredSecretKeysOf: (key) =>
+			BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : declared.get(key),
 	};
 }
 

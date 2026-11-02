@@ -177,7 +177,7 @@ interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已�
 }
 ```
 
-键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），`ExtensionIdSchema` 再把 `bilibili`、内置平台适配器的键（`onebot`、`qq-official`、`webhook`）与 `core`、`image`、`ai`（核心自己的名字：`core` 是日志等级的键与设置文件名，`image`、`ai` 是日志等级里出图与 AI 那两格的键）列为保留 id，手动放进目录的拓展也撞不上内置集成与核心。`core`、`image`、`ai` 只在「拓展不许用的 id」那张表 `RESERVED_EXTENSION_IDS` 里，不进内置集成的键表 `RESERVED_INTEGRATION_KEYS`。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决；连接上原先的 `kind`、`connector` 删掉，`extensionId` 并进 `adapterKey`（ADR-0024 决策 7）。
+键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），通用 `ExtensionIdSchema` 校验格式与核心保留名 `core`、`image`、`ai`（`RESERVED_EXTENSION_IDS`）。内置集成键由 `compose.ts` 从设置段收齐为 `BUILTIN_INTEGRATION_KEYS`，交给宿主的清单、ID 校验与存储；通用打包器可以打包这些名字，宿主在安装、发现、市场、设置入口拒收，卸载同名坏拓展只清拓展目录、不动内置状态与凭据。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决；连接上原先的 `kind`、`connector` 删掉，`extensionId` 并进 `adapterKey`（ADR-0024 决策 7）。
 
 ## 集成与 ctx
 
@@ -409,7 +409,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 
 - 守卫 13 的清单 3a-22-2 加了一条：连接改成 `adapterKey` / `settings` / `platformSnapshot`、`testStatus` 两处都不带过来（修订号 40）。
 - 推送侧另有两道数据守卫（ADR-0024 决策 9，3a）：改目标的 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
-- 守卫 17 在 3a（`bilibili/` 在 3a 才出现），守卫 18 的三个内置适配器的键已落（`RESERVED_INTEGRATION_KEYS`）；哪一期改了盘上形状，就在同一期往迁移模块加条目、钉进守卫 13 的清单。各道守卫哪期开、哪期清零，与 [construction-plan.md](./construction-plan.md)「中立性守卫的归期」对不上时以那边为准。
+- 守卫 17 在 3a（`bilibili/` 在 3a 才出现），守卫 18 的内置键已在装配根收齐（`BUILTIN_INTEGRATION_KEYS`，4-30）；哪一期改了盘上形状，就在同一期往迁移模块加条目、钉进守卫 13 的清单。各道守卫哪期开、哪期清零，与 [construction-plan.md](./construction-plan.md)「中立性守卫的归期」对不上时以那边为准。
 
 守卫 4 上线前要先清掉现有重名：`BootstrapConfigSchema` 两份（服务端 `config/schema.ts` 那份 `cookieEncryptionKey` 可选、至少 1 位；internal 那份必填且至少 16 位）合一并**按可选**（否则没设密钥的用户开不了机）；`SubscriptionsView` / `ConversationRole` 各两份处理掉（`CommentaryClient` 已在 3a-06 换成 ai 包的 `CommentaryProvider`；`SubscriptionsView` 两份形状不同，3a-25 改名）；`createDevtools` 的 stub 和零 import 文件里的 `isPlainObject` 进白名单并写明理由；`runtime/video-card.ts` 的 `formatDuration(seconds)` 改叫 `formatClock`。
 

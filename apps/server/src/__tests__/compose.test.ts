@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 /**
  * 🔴 **组装根 `compose.ts` 的接线要有自己的守卫。**
  *
@@ -19,7 +20,6 @@ import {
 	ok as okResult,
 	type PlatformAdapterContext,
 	type PostReport,
-	RESERVED_INTEGRATION_KEYS,
 	type ServiceContext,
 	type SourceAuth,
 	type SourceContext,
@@ -221,7 +221,7 @@ describe("BUILTIN_INTEGRATION_SETTINGS · 设置登记", () => {
 	it("设置段清单的键正好是保留的内置集成键(集合相等),B 站那一段在里面", () => {
 		const keys = BUILTIN_INTEGRATION_SETTINGS.map((segment) => segment.key);
 		expect(new Set(keys).size).toBe(keys.length);
-		expect([...keys].sort()).toEqual([...RESERVED_INTEGRATION_KEYS].sort());
+		expect([...keys].sort()).toEqual([...BUILTIN_INTEGRATION_KEYS].sort());
 		expect(BUILTIN_INTEGRATION_SETTINGS).toContain(settingsSegment);
 	});
 

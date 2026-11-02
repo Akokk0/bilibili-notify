@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 两种文件的路径与读写:`state.json`(明文)与 `secrets.enc`(GCM)各自的三态 ——
  * 文件不在 / 读得出但内容不认 / 在但读不了。落盘只经原子写,密钥文件 0o600。
@@ -51,16 +52,24 @@ afterEach(async () => {
 describe("路径", () => {
 	it("四个保留键落在 runtime/<键> 与 secrets/<键>,拓展 id 落在 extensions/ 底下", () => {
 		for (const key of ["bilibili", "onebot", "qq-official", "webhook"]) {
-			expect(integrationStateFile(key)).toEqual(["runtime", key, "state.json"]);
-			expect(integrationSecretsFile(key)).toEqual(["secrets", key, "secrets.enc"]);
+			expect(integrationStateFile(key, BUILTIN_INTEGRATION_KEYS)).toEqual([
+				"runtime",
+				key,
+				"state.json",
+			]);
+			expect(integrationSecretsFile(key, BUILTIN_INTEGRATION_KEYS)).toEqual([
+				"secrets",
+				key,
+				"secrets.enc",
+			]);
 		}
-		expect(integrationStateFile("douyin")).toEqual([
+		expect(integrationStateFile("douyin", BUILTIN_INTEGRATION_KEYS)).toEqual([
 			"runtime",
 			"extensions",
 			"douyin",
 			"state.json",
 		]);
-		expect(integrationSecretsFile("douyin")).toEqual([
+		expect(integrationSecretsFile("douyin", BUILTIN_INTEGRATION_KEYS)).toEqual([
 			"secrets",
 			"extensions",
 			"douyin",
@@ -70,8 +79,15 @@ describe("路径", () => {
 });
 
 describe("state.json", () => {
-	const read = (logger: Logger) => readIntegrationStateFile({ dataRoot, key: "onebot", logger });
-	const path = () => dataPath(dataRoot, ...integrationStateFile("onebot"));
+	const read = (logger: Logger) =>
+		readIntegrationStateFile({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			dataRoot,
+			key: "onebot",
+			logger,
+		});
+	const path = () =>
+		dataPath(dataRoot, ...integrationStateFile("onebot", BUILTIN_INTEGRATION_KEYS));
 
 	it("文件不在 → 空袋", async () => {
 		const { logger, lines } = recordingLogger();
@@ -81,7 +97,9 @@ describe("state.json", () => {
 
 	it("写了再读得回来,盘上是 { version: 1, entries }", async () => {
 		const entries = new Map<string, Json>([["cursor", { page: 3 }]]);
-		expect(await writeIntegrationStateFile(dataRoot, "onebot", entries)).toEqual({ ok: true });
+		expect(
+			await writeIntegrationStateFile(dataRoot, "onebot", entries, BUILTIN_INTEGRATION_KEYS),
+		).toEqual({ ok: true });
 		expect(JSON.parse(await readFile(path(), "utf8"))).toEqual({
 			version: 1,
 			entries: { cursor: { page: 3 } },
@@ -129,7 +147,8 @@ describe("state.json", () => {
 });
 
 describe("secrets.enc", () => {
-	const path = () => dataPath(dataRoot, ...integrationSecretsFile("bilibili"));
+	const path = () =>
+		dataPath(dataRoot, ...integrationSecretsFile("bilibili", BUILTIN_INTEGRATION_KEYS));
 	const entries = new Map<string, Json>([
 		["refreshToken", "tok-abc"],
 		["http.cookies", "[]"],
@@ -137,6 +156,7 @@ describe("secrets.enc", () => {
 
 	async function readWith(root: string, logger: Logger) {
 		return readIntegrationSecretsFile({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot,
 			key: "bilibili",
 			logger,
@@ -154,7 +174,15 @@ describe("secrets.enc", () => {
 	it("写了再读得回来;盘上没有明文;权限 0o600", async () => {
 		const keyProvider = providerAt(dataRoot);
 		expect(
-			await writeIntegrationSecretsFile({ dataRoot, key: "bilibili", keyProvider }, entries),
+			await writeIntegrationSecretsFile(
+				{
+					reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+					dataRoot,
+					key: "bilibili",
+					keyProvider,
+				},
+				entries,
+			),
 		).toEqual({ ok: true });
 		const raw = await readFile(path(), "utf8");
 		expect(raw).not.toContain("tok-abc");
@@ -170,7 +198,12 @@ describe("secrets.enc", () => {
 
 	it("换一把密钥解不开 → 空袋 + warn,文件原地留着一个字节不变", async () => {
 		await writeIntegrationSecretsFile(
-			{ dataRoot, key: "bilibili", keyProvider: providerAt(dataRoot) },
+			{
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				dataRoot,
+				key: "bilibili",
+				keyProvider: providerAt(dataRoot),
+			},
 			entries,
 		);
 		const before = await readFile(path());

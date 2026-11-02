@@ -329,6 +329,7 @@ export function createAppRuntime(
 	// (B 站、内置适配器、装载器)谁读。写道在 flush 段关门:各生产者已停,还在路上的写落完,之后的写被拒,
 	// 关停返回之后数据目录里它的文件不再变。
 	const integrationStore = createIntegrationStore({
+		reservedIntegrationKeys: deps.integrationSettings.map((segment) => segment.key),
 		dataRoot,
 		keyProvider,
 		logger: serviceCtx.logger,

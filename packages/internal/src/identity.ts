@@ -92,37 +92,17 @@ export function extensionColorSeed(extensionId: string, externalId: string): str
 // 「这条订阅订的是谁」只看两格:哪个来源、来源那头的 id。分派、查找、取色都从这里取,不再按订阅
 // 的两支分别读 `uid` 或 `extensionId` + `externalId`。
 
-/** 订阅来源的键:`bilibili` 或拓展 id,不加前缀(拓展 id 不许用保留 id,见 {@link RESERVED_INTEGRATION_KEYS})。 */
+/** 订阅来源的键:`bilibili` 或拓展 id,不加前缀(拓展 id 不许用保留 id,由宿主校验)。 */
 export type SourceKey = string;
 
 /**
- * B 站这个来源的键。长期只用在保留 id 表里;核心里拿它判「是不是 B 站」做分派是过渡写法(替掉原来的
+ * B 站这个来源的键。核心里拿它判「是不是 B 站」做分派是过渡写法(替掉原来的
  * `isBiliSubscription`),第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了(「B 站替身」棘轮盯着)。
  */
 export const BILIBILI_SOURCE_KEY = "bilibili";
 
-/**
- * 保留 id:内置集成的键 —— B 站这个来源与三个内置平台适配器。拓展 id 不许用它们:订阅身份与登记表的键
- * 不加前缀,拓展叫 `bilibili` 就会和 B 站的订阅撞成同一个人。
- */
-export const RESERVED_INTEGRATION_KEYS: readonly string[] = [
-	BILIBILI_SOURCE_KEY,
-	"onebot",
-	"qq-official",
-	"webhook",
-];
-
-/**
- * 拓展 id 不许用的名字:内置集成的键,加上 `core`、`image`、`ai`。这三个是核心自己的名字(日志等级里核心那三格
- * 的键;`core` 还是设置文件 `core.json`),**不是集成** —— 所以不进上面那张表(那张表被当「内置集成有哪些」读:
- * 开存储、导备份都照它数)。拓展叫了它们,会和核心的出图、AI、核心本体共用一格日志等级。
- */
-export const RESERVED_EXTENSION_IDS: readonly string[] = [
-	...RESERVED_INTEGRATION_KEYS,
-	"core",
-	"image",
-	"ai",
-];
+/** 核心自己的保留名；内置集成的键由宿主装配并在接收拓展时校验。 */
+export const RESERVED_EXTENSION_IDS: readonly string[] = ["core", "image", "ai"];
 
 /** 一条订阅订的是谁。判重看这两格是否都相等。 */
 export interface Identity {

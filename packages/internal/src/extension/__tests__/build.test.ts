@@ -92,3 +92,18 @@ describe("构建失败", () => {
 		).toThrow(/settings\.fields\.0\.options\.0\.icon/);
 	});
 });
+
+describe("通用打包器的 ID 边界", () => {
+	it.each(["bilibili", "onebot", "qq-official", "webhook"])(
+		"内置集成名 %s 交给宿主判，通用构建放行",
+		(id) => {
+			expect(manifestWithSettingsFields({ ...SOURCE, id }, {})).toMatchObject({ id });
+		},
+	);
+	it.each(["core", "image", "ai", "../escape", "Bad_ID"])(
+		"核心保留名或坏格式 %s 在构建时拒绝",
+		(id) => {
+			expect(() => manifestWithSettingsFields({ ...SOURCE, id }, {})).toThrow();
+		},
+	);
+});

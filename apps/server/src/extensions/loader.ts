@@ -203,6 +203,7 @@ export const EXTENSION_MAX_LOAD_FAILURES = 3;
 export const ACTIVATE_TIMEOUT_MS = 30_000;
 
 export interface LoadExtensionsOptions {
+	reservedIntegrationKeys: readonly string[];
 	timezoneReader: CreateExtensionContextOptions["timezoneReader"];
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
@@ -445,7 +446,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	const ledgerRoot = root;
 	const importModule = opts.importModule ?? realImport;
 	const activateTimeoutMs = opts.activateTimeoutMs ?? ACTIVATE_TIMEOUT_MS;
-	const found = await discoverExtensions(root);
+	const found = await discoverExtensions(root, {
+		reservedIntegrationKeys: opts.reservedIntegrationKeys,
+	});
 
 	/** 每个拓展一格。按 id 排(`discoverExtensions` 已排好,重扫之后 `resort()` 再归位)。 */
 	const slots = new Map<string, Slot>();
@@ -963,7 +966,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 */
 	async function replaceCode(slot: Slot): Promise<void> {
 		const id = slot.disk.id;
-		const dir = await readExtensionDir(join(root, id));
+		const dir = await readExtensionDir(join(root, id), {
+			reservedIntegrationKeys: opts.reservedIntegrationKeys,
+		});
 		if (dir.state !== "ready") {
 			throw new Error(`${id} 盘上那份现在装不起来,换不上 —— 先看拓展页上它那一行`);
 		}
@@ -988,7 +993,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 	 * 并发的开关 / 换代码交错,看见的是一半的格子。
 	 */
 	async function rescanNow(): Promise<void> {
-		const now = await discoverExtensions(root);
+		const now = await discoverExtensions(root, {
+			reservedIntegrationKeys: opts.reservedIntegrationKeys,
+		});
 		const onDisk = new Set(now.map((dir) => dir.id));
 
 		// 先送走消失的:收摊、整格删掉 —— 留着的话,下一次 `sync()` 会把一个已经不在盘上的

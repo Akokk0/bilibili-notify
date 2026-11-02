@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 开机扫拓展根 —— **在 import 任何一行拓展代码之前**把每个目录看一遍。
  *
@@ -88,7 +89,7 @@ afterEach(async () => {
 describe("readExtensionDir", () => {
 	it("清单齐、入口在 → ready,拿到清单本身与入口文件", async () => {
 		const dir = await plant("bridge", manifest());
-		const r = await readExtensionDir(dir);
+		const r = await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS });
 		expect(r.state).toBe("ready");
 		// 不是软链就没有落点这一格。
 		if (r.state === "ready") expect(r.linkedTo).toBeUndefined();
@@ -104,7 +105,9 @@ describe("readExtensionDir", () => {
 	 */
 	it("清单里的图标过白名单:干净的留着", async () => {
 		const icon = '<svg viewBox="0 0 24 24"><path d="M4 4h16"/></svg>';
-		const r = await readExtensionDir(await plant("bridge", manifest({ icon })));
+		const r = await readExtensionDir(await plant("bridge", manifest({ icon })), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		if (r.state !== "ready") throw new Error("unreachable");
 		expect(r.manifest.icon).toBe(icon);
 	});
@@ -115,6 +118,7 @@ describe("readExtensionDir", () => {
 				"bridge",
 				manifest({ icon: '<svg viewBox="0 0 24 24"><script>x()</script></svg>' }),
 			),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		// 图标坏了不是拒绝加载的理由 —— 它退回灰方章,拓展该跑还是跑。
 		expect(r.state).toBe("ready");
@@ -123,7 +127,9 @@ describe("readExtensionDir", () => {
 	});
 
 	it("清单与目录名对不上 → 拒,而且说得出两边分别是什么", async () => {
-		const r = await readExtensionDir(await plant("bridge", manifest({ id: "not-bridge" })));
+		const r = await readExtensionDir(await plant("bridge", manifest({ id: "not-bridge" })), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("unreadable");
 		if (r.state !== "unreadable") throw new Error("unreachable");
 		// 身份取目录名 —— 挂载点与装载目录都按它算,清单说了不算。
@@ -132,7 +138,9 @@ describe("readExtensionDir", () => {
 	});
 
 	it("当前档的清单 → ready", async () => {
-		const r = await readExtensionDir(await plant("douyin", manifestSubscription()));
+		const r = await readExtensionDir(await plant("douyin", manifestSubscription()), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("ready");
 		if (r.state !== "ready") throw new Error("unreachable");
 		expect(r.manifest.apiVersion).toBe(EXTENSION_API_RANGE.current);
@@ -142,6 +150,7 @@ describe("readExtensionDir", () => {
 		const requires = EXTENSION_API_RANGE.current + 1;
 		const r = await readExtensionDir(
 			await plant("future", manifest({ id: "future", apiVersion: requires })),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
@@ -154,7 +163,9 @@ describe("readExtensionDir", () => {
 	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59)—— 与档位不合同一条路。 */
 	it("要更高契约小号的清单 → incompatible,记下要几号", async () => {
 		const apiRevision = EXTENSION_API_RANGE.revision + 1;
-		const r = await readExtensionDir(await plant("douyin", manifestSubscription({ apiRevision })));
+		const r = await readExtensionDir(await plant("douyin", manifestSubscription({ apiRevision })), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
 		expect(r.requires).toEqual({ apiVersion: EXTENSION_API_RANGE.current, apiRevision });
@@ -177,6 +188,7 @@ describe("readExtensionDir", () => {
 				contributes: { chat: { anything: true } },
 				brandNewSection: {},
 			}),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
@@ -184,7 +196,9 @@ describe("readExtensionDir", () => {
 	});
 
 	it.each([2, 3])("旧契约大档%s → incompatible,不靠数字大小推断年代", async (oldContract) => {
-		const r = await readExtensionDir(await plant("bridge", manifest({ apiVersion: oldContract })));
+		const r = await readExtensionDir(await plant("bridge", manifest({ apiVersion: oldContract })), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
 		expect(r.requires).toEqual({ apiVersion: oldContract });
@@ -200,6 +214,7 @@ describe("readExtensionDir", () => {
 				apiVersion: 1,
 				provides: ["push"],
 			}),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(r.state).toBe("unreadable");
 		if (r.state !== "unreadable") throw new Error("unreachable");
@@ -209,6 +224,7 @@ describe("readExtensionDir", () => {
 	it("版本不合、清单 id 又与目录名对不上 → unreadable(两个身份比版本更要紧)", async () => {
 		const r = await readExtensionDir(
 			await plant("future", manifest({ id: "other", apiVersion: EXTENSION_API_RANGE.current + 1 })),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(r.state).toBe("unreadable");
 	});
@@ -223,6 +239,7 @@ describe("readExtensionDir", () => {
 					icon: '<svg viewBox="0 0 24 24"><script>x()</script></svg>',
 				}),
 			),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		if (r.state !== "incompatible") throw new Error("unreachable");
 		expect(r.identity.icon).toBeUndefined();
@@ -248,37 +265,47 @@ describe("readExtensionDir", () => {
 					],
 				},
 			});
-		const r = await readExtensionDir(await plant("douyin", withIcon(png)));
+		const r = await readExtensionDir(await plant("douyin", withIcon(png)), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		if (r.state !== "ready") throw new Error("unreachable");
 		expect(r.manifest.settings?.fields[0]).toMatchObject({ options: [{ icon: png }] });
 
 		const bad = await readExtensionDir(
 			await plant("douyin", withIcon('<svg viewBox="0 0 24 24"><script>x()</script></svg>')),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(bad.state).toBe("unreadable");
 	});
 
 	it("清单不是合法 JSON → unreadable,身份退回目录名", async () => {
-		const r = await readExtensionDir(await plant("broken", "{ not json"));
+		const r = await readExtensionDir(await plant("broken", "{ not json"), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("unreadable");
 		expect(r.id).toBe("broken");
 	});
 
 	it("清单缺字段 → unreadable,detail 指得出是哪一格", async () => {
-		const r = await readExtensionDir(await plant("half", manifest({ id: "half", version: "v1" })));
+		const r = await readExtensionDir(await plant("half", manifest({ id: "half", version: "v1" })), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("unreadable");
 		if (r.state !== "unreadable") throw new Error("unreachable");
 		expect(r.detail).toContain("version");
 	});
 
 	it("没有 extension.json → 根本不是拓展目录,回 absent(不记账、不报错)", async () => {
-		const r = await readExtensionDir(await plant("junk", null));
+		const r = await readExtensionDir(await plant("junk", null), {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(r.state).toBe("absent");
 	});
 
 	it("有清单但没有 index.mjs → unreadable —— 别等到启用那一刻才发现没东西可加载", async () => {
 		const r = await readExtensionDir(
 			await plant("hollow", manifest({ id: "hollow" }), { entry: false }),
+			{ reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS },
 		);
 		expect(r.state).toBe("unreadable");
 		if (r.state !== "unreadable") throw new Error("unreachable");
@@ -292,7 +319,7 @@ describe("readExtensionDir", () => {
 	 */
 	it("只有 src/index.ts 的源码目录不算拓展 —— 入口固定 index.mjs", async () => {
 		const dir = await plant("dev-ext", manifest({ id: "dev-ext" }), { entry: "source" });
-		const r = await readExtensionDir(dir);
+		const r = await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS });
 		expect(r.state).toBe("unreadable");
 		if (r.state !== "unreadable") throw new Error("unreachable");
 		expect(r.detail).toContain("index.mjs");
@@ -304,14 +331,18 @@ describe("discoverExtensions", () => {
 		await plant("zeta", manifest({ id: "zeta" }));
 		await plant("bridge", manifest());
 		await plant("broken", "{ not json");
-		const found = await discoverExtensions(root);
+		const found = await discoverExtensions(root, {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(found.map((e) => e.id)).toEqual(["bridge", "broken", "zeta"]);
 	});
 
 	it("没有清单的目录不进表 —— 它不是拓展,不该在面板上占一行", async () => {
 		await plant("bridge", manifest());
 		await plant("some-junk", null);
-		const found = await discoverExtensions(root);
+		const found = await discoverExtensions(root, {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(found.map((e) => e.id)).toEqual(["bridge"]);
 	});
 
@@ -327,7 +358,9 @@ describe("discoverExtensions", () => {
 		try {
 			await plant("bridge", manifest(), { in: elsewhere });
 			await symlink(join(elsewhere, "bridge"), join(root, "bridge"), "dir");
-			const found = await discoverExtensions(root);
+			const found = await discoverExtensions(root, {
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			});
 			expect(found.map((r) => [r.id, r.state])).toEqual([["bridge", "ready"]]);
 			// 🔴 **落点也要报出来**:装载目录里写着 `<数据根>/extensions/bridge`,而跑的
 			// 其实是主人正在改的那份工作树 —— 少了这一句,「我改的是不是它」没法回答。
@@ -347,17 +380,25 @@ describe("discoverExtensions", () => {
 	it("点开头的目录不进表 —— 那是装到一半留下的暂存,不是拓展", async () => {
 		await plant("bridge", manifest());
 		await plant(".staging-bridge-abc123", manifest());
-		const found = await discoverExtensions(root);
+		const found = await discoverExtensions(root, {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(found.map((e) => e.id)).toEqual(["bridge"]);
 	});
 
 	it("目录压根不存在 → 空表,不是错误(头一次开机就是这样)", async () => {
-		expect(await discoverExtensions(join(root, "nope"))).toEqual([]);
+		expect(
+			await discoverExtensions(join(root, "nope"), {
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			}),
+		).toEqual([]);
 	});
 
 	it("散在里面的文件跳过,不当成拓展目录", async () => {
 		await writeFile(join(root, "README.txt"), "hi");
-		expect(await discoverExtensions(root)).toEqual([]);
+		expect(
+			await discoverExtensions(root, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS }),
+		).toEqual([]);
 	});
 });
 
@@ -371,7 +412,7 @@ describe("读目录时读译文(ADR-0037 决策 14)", () => {
 		);
 		await writeFile(join(dir, "locales", "zh-CN.json"), "{ 坏的");
 
-		const read = await readExtensionDir(dir);
+		const read = await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS });
 		if (read.state !== "ready") throw new Error("unreachable");
 		expect(read.locales.files.en?.dict).toEqual({ "a.b": "ok" });
 		expect(read.locales.files["zh-CN"]).toBeUndefined();
@@ -383,7 +424,7 @@ describe("读目录时读译文(ADR-0037 决策 14)", () => {
 
 	it("没有 locales/ → 空译文", async () => {
 		const dir = await plant("bridge", manifest());
-		const read = await readExtensionDir(dir);
+		const read = await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS });
 		if (read.state !== "ready") throw new Error("unreachable");
 		expect(read.locales).toEqual({ files: {}, issues: [] });
 	});
@@ -408,3 +449,17 @@ it("新旧大档不匹配只说换适配包,同档小号不足才说升级,口�
 		i18n.set({ locale: "zh-CN", voice: "maid" });
 	}
 });
+
+it.each(["bilibili", "onebot", "qq-official", "webhook"])(
+	"内置键 %s 在兼容与不兼容清单中均不可加载",
+	async (id) => {
+		const dir = await plant(id, manifest({ id }));
+		expect(
+			await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS }),
+		).toMatchObject({ state: "unreadable", id });
+		await plant(id, manifest({ id, apiVersion: 999 }));
+		expect(
+			await readExtensionDir(dir, { reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS }),
+		).toMatchObject({ state: "unreadable", id });
+	},
+);

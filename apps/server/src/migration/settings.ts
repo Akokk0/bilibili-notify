@@ -216,6 +216,7 @@ export function splitExtensionSettings(core: unknown): {
 		if (
 			!isPlainObject(entry) ||
 			!("settings" in entry) ||
+			["bilibili", "onebot", "qq-official", "webhook"].includes(id) ||
 			!ExtensionIdSchema.safeParse(id).success
 		) {
 			table[id] = entry;

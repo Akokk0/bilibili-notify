@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { placeholderDescriptor } from "../../__tests__/support/adapter-descriptor.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -69,11 +70,23 @@ const BARE = {
 
 describe("createDevtools", () => {
 	it.each(["0.0.0-dev", "dev"])("源码上跑的开发版 %s → 给", (payloadVersion) => {
-		expect(createDevtools({ ...BARE, payloadVersion })).not.toBeNull();
+		expect(
+			createDevtools({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				...BARE,
+				payloadVersion,
+			}),
+		).not.toBeNull();
 	});
 
 	it.each(["0.10.0", "0.11.0-alpha.1", "1.0.0-rc.1"])("发出去的版本 %s → 不给", (v) => {
-		expect(createDevtools({ ...BARE, payloadVersion: v })).toBeNull();
+		expect(
+			createDevtools({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				...BARE,
+				payloadVersion: v,
+			}),
+		).toBeNull();
 	});
 
 	/**
@@ -83,11 +96,22 @@ describe("createDevtools", () => {
 	 * 构建前不同步版本。所以还要一道构建产物身上不可能成立的门:跑的是不是 TypeScript 源码。
 	 */
 	it.each(["0.0.0-dev", "dev"])("版本号是 %s 但跑的是构建产物 → 不给", (payloadVersion) => {
-		expect(createDevtools({ ...BARE, payloadVersion, sourceRun: false })).toBeNull();
+		expect(
+			createDevtools({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				...BARE,
+				payloadVersion,
+				sourceRun: false,
+			}),
+		).toBeNull();
 	});
 
 	it("给的那份:更新服务换成了可注入的装饰器,注册表里有 update.state", async () => {
-		const dev = createDevtools({ ...BARE, payloadVersion: "0.0.0-dev" });
+		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+		});
 		if (dev === null) throw new Error("unreachable");
 
 		expect(dev.registry.list().map((s) => s.id)).toContain("core.update.state");
@@ -106,10 +130,22 @@ describe("createDevtools", () => {
 		["构建产物", { payloadVersion: "0.0.0-dev", sourceRun: false }],
 	])("门没开(%s)→ provide 一次都不调;开着 → 恰好一次", (_name, gate) => {
 		const provide = vi.fn();
-		expect(createDevtools({ ...BARE, ...gate, provide })).toBeNull();
+		expect(
+			createDevtools({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+				...BARE,
+				...gate,
+				provide,
+			}),
+		).toBeNull();
 		expect(provide).not.toHaveBeenCalled();
 
-		createDevtools({ ...BARE, payloadVersion: "0.0.0-dev", provide });
+		createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+			provide,
+		});
 		expect(provide).toHaveBeenCalledOnce();
 	});
 
@@ -117,6 +153,7 @@ describe("createDevtools", () => {
 	it("登记表里各家交的场景汇进注册表,id 带来源前缀", async () => {
 		const run = vi.fn(() => ok({ summary: "跑了" }));
 		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			...BARE,
 			payloadVersion: "0.0.0-dev",
 			provide: (providers) =>
@@ -136,7 +173,11 @@ describe("createDevtools", () => {
 	});
 
 	it("核心自己的场景也带前缀:id 是 core.<短名>、provider 是 core,一个不带前缀的也没有", () => {
-		const dev = createDevtools({ ...BARE, payloadVersion: "0.0.0-dev" });
+		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+		});
 		if (dev === null) throw new Error("unreachable");
 
 		const listed = dev.registry.list();
@@ -152,6 +193,7 @@ describe("createDevtools", () => {
 		const run = vi.fn(() => ok());
 		const asked: string[] = [];
 		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			...BARE,
 			payloadVersion: "0.0.0-dev",
 			creators: (sourceKey) => {
@@ -221,6 +263,7 @@ describe("createDevtools · 截流接线", () => {
 	function setup(registry = registryOf([onebotAdapter()])) {
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			...BARE,
 			payloadVersion: "0.0.0-dev",
 			adapters: registry,
@@ -366,6 +409,7 @@ describe("createDevtools · 市场接线", () => {
 			identity: { id: "bridge", name: "机器人桥", description: "桥", version: "0.4.0" },
 		};
 		const dev = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			...BARE,
 			payloadVersion: "0.0.0-dev",
 			marketplace: { ...REAL_MARKET, install },

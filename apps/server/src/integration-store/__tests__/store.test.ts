@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 集成存储宿主:按集成键开 / 关 / 删,备份的导出与恢复,整个宿主一条写道、关停时关门。
  * 用真的 `FileKeyProvider` 与临时数据根,盘上的东西真读出来看。
@@ -27,7 +28,7 @@ import { createIntegrationStore, disposeThenClose } from "../store.js";
 let dataRoot: string;
 let lines: string[];
 
-function setup() {
+function setup(reservedIntegrationKeys: readonly string[] = BUILTIN_INTEGRATION_KEYS) {
 	lines = [];
 	const logger: Logger = {
 		info: () => {},
@@ -42,6 +43,7 @@ function setup() {
 	});
 	return {
 		store: createIntegrationStore({
+			reservedIntegrationKeys,
 			dataRoot,
 			keyProvider,
 			logger,
@@ -194,7 +196,10 @@ describe("开与关", () => {
 describe("读不了的文件(在但读不了)", () => {
 	it("state 读不了:get 一律空,写一律 unavailable,盘上原样,记 error;别的集成不受影响", async () => {
 		const { store } = setup();
-		const statePath = dataPath(dataRoot, ...integrationStateFile("douyin"));
+		const statePath = dataPath(
+			dataRoot,
+			...integrationStateFile("douyin", BUILTIN_INTEGRATION_KEYS),
+		);
 		await mkdir(statePath, { recursive: true });
 		const handle = await store.open("douyin");
 		expect(handle.state.get("anything")).toBeUndefined();
@@ -209,7 +214,10 @@ describe("读不了的文件(在但读不了)", () => {
 
 	it("secrets 读不了(拿一个目录冒充文件):写一律拒,目录原样、里面没多出文件", async () => {
 		const { store } = setup();
-		const secretsPath = dataPath(dataRoot, ...integrationSecretsFile("bilibili"));
+		const secretsPath = dataPath(
+			dataRoot,
+			...integrationSecretsFile("bilibili", BUILTIN_INTEGRATION_KEYS),
+		);
 		await mkdir(secretsPath, { recursive: true });
 		const handle = await store.open("bilibili");
 		expect(handle.secrets.get("refreshToken")).toBeUndefined();
@@ -234,7 +242,10 @@ describe("读不了的文件(在但读不了)", () => {
 			const handle = await first.store.open("bilibili");
 			await handle.secrets.set("refreshToken", "precious");
 			handle.close();
-			const secretsPath = dataPath(dataRoot, ...integrationSecretsFile("bilibili"));
+			const secretsPath = dataPath(
+				dataRoot,
+				...integrationSecretsFile("bilibili", BUILTIN_INTEGRATION_KEYS),
+			);
 			const before = await readFile(secretsPath);
 			await chmod(secretsPath, 0o000);
 			try {
@@ -336,7 +347,10 @@ describe("close(关停的 flush 段)", () => {
 
 describe("exportSecrets / restoreSecrets", () => {
 	async function plainOf(key: string, keyProvider: { getKey(): Promise<Buffer> }) {
-		const raw = await readFile(dataPath(dataRoot, ...integrationSecretsFile(key)), "utf8");
+		const raw = await readFile(
+			dataPath(dataRoot, ...integrationSecretsFile(key, BUILTIN_INTEGRATION_KEYS)),
+			"utf8",
+		);
 		return JSON.parse(gcmDecrypt(await keyProvider.getKey(), JSON.parse(raw))).entries;
 	}
 
@@ -365,7 +379,7 @@ describe("exportSecrets / restoreSecrets", () => {
 		const good = await first.store.open("webhook");
 		await good.secrets.set("k", 1);
 		// 把 douyin 的密文换成一个目录:读不了。
-		const path = dataPath(dataRoot, ...integrationSecretsFile("douyin"));
+		const path = dataPath(dataRoot, ...integrationSecretsFile("douyin", BUILTIN_INTEGRATION_KEYS));
 		await rm(path);
 		await mkdir(path);
 		expect(await first.store.exportSecrets()).toEqual({ webhook: { k: 1 } });
@@ -436,4 +450,17 @@ describe("exportSecrets / restoreSecrets", () => {
 		});
 		expect(handle.secrets.get("keep")).toBe(1);
 	});
+});
+
+it("装配新增的内置键沿用根目录存储、关后备份与不可卸载边界", async () => {
+	const { store } = setup(["sample-source"]);
+	const handle = await store.open("sample-source");
+	expect(await handle.state.set("cursor", 3)).toEqual({ ok: true });
+	expect(await handle.secrets.set("token", "sample-token")).toEqual({ ok: true });
+	handle.close();
+	expect(await exists(join(dataRoot, "runtime", "sample-source", "state.json"))).toBe(true);
+	expect(await exists(join(dataRoot, "secrets", "sample-source", "secrets.enc"))).toBe(true);
+	expect(await store.exportSecrets()).toEqual({ "sample-source": { token: "sample-token" } });
+	expect(await store.remove("sample-source")).toMatchObject({ ok: false, code: "invalid" });
+	await store.close();
 });

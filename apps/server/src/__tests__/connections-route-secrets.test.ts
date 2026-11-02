@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { settingsSegment } from "../bilibili/settings.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { createSecretCellsReader } from "../push/connection-settings.js";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -150,7 +151,9 @@ describe("connections route — 凭据下发打码(真 store)", () => {
 			},
 			store: runtime.configStore,
 			connectionSecrets: createSecretCellsReader(runtime.adapterRegistry, (key) =>
-				key === "fake-ext" ? ["botKey"] : undefined,
+				BUILTIN_INTEGRATION_KEYS.includes(key)
+					? []
+					: ((key) => (key === "fake-ext" ? ["botKey"] : undefined))(key),
 			),
 			puppeteer: null,
 			wsTicketStore: null,

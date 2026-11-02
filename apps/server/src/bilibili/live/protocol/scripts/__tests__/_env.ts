@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../../../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../../../../compose.js";
 /**
  * 三个真机脚本(probe-login / capture-frames / smoke-live)共用的启动样板:数据目录、
  * ServiceContext、只读打开服务端落盘的登录态。以前各抄一份,2026-08-27 那次写死路径的
@@ -83,7 +84,7 @@ async function activeGenerationDir(): Promise<string | undefined> {
 async function readStoredIdentity(dataRoot: string): Promise<Json | undefined> {
 	try {
 		const text = await readFile(
-			dataPath(dataRoot, ...integrationStateFile(BILIBILI_SOURCE_KEY)),
+			dataPath(dataRoot, ...integrationStateFile(BILIBILI_SOURCE_KEY, BUILTIN_INTEGRATION_KEYS)),
 			"utf8",
 		);
 		return parseStoredEntries(JSON.parse(text))?.get("http.identity");
@@ -117,7 +118,11 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		protected: Boolean(process.env.BN_COOKIE_KEY?.trim()),
 	};
 	const read = { dataRoot, key: BILIBILI_SOURCE_KEY, logger: serviceCtx.logger };
-	const secrets = await readIntegrationSecretsFile({ ...read, keyProvider });
+	const secrets = await readIntegrationSecretsFile({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		...read,
+		keyProvider,
+	});
 	const cookies = secrets.kind === "ok" ? secrets.entries.get("http.cookies") : undefined;
 	if (typeof cookies !== "string" || cookies === "[]") {
 		console.error(`没有登录态:${dataRoot} 的 B 站 secrets 里没有 cookie,先在 dashboard 扫码登录`);

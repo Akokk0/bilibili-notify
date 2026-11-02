@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../../../compose.js";
 /**
  * 登录系统测试共用的「真存储世界」:临时目录里的真集成存储宿主(真 FileKeyProvider),`seed` 往盘上预放登录、
  * `disk` 读解开后的 `secrets`;`stallRenewalAtConfirm` 把一轮续期停在确认 POST 上。
@@ -44,6 +45,7 @@ export function authWorld(dataDir: string, logger?: Logger) {
 	};
 	const keyFetchCount = () => keyFetches;
 	const store = createIntegrationStore({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		dataRoot: dataDir,
 		keyProvider,
 		logger: host.logger,
@@ -52,6 +54,7 @@ export function authWorld(dataDir: string, logger?: Logger) {
 	/** 上一次关停之后盘上这个集成的 `secrets` 整袋。 */
 	const disk = async (): Promise<Map<string, Json>> => {
 		const read = await readIntegrationSecretsFile({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot: dataDir,
 			key: "bilibili",
 			logger: host.logger,

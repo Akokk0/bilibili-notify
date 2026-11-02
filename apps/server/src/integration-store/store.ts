@@ -9,7 +9,6 @@ import {
 	type KeyValueStore,
 	type Logger,
 	ok,
-	RESERVED_INTEGRATION_KEYS,
 	type Result,
 } from "@bilibili-notify/internal";
 import { type KeyProvider, removeDirectory } from "@bilibili-notify/storage";
@@ -38,6 +37,7 @@ import {
  */
 
 export interface CreateIntegrationStoreOptions {
+	reservedIntegrationKeys: readonly string[];
 	dataRoot: string;
 	/** runtime 那一个,与 `config-secrets.enc` 同一把主密钥。 */
 	keyProvider: KeyProvider;
@@ -123,12 +123,11 @@ export async function disposeThenClose(
  */
 const SECRETS_KIND = "secrets";
 
-function isKnownKey(key: string): boolean {
-	return RESERVED_INTEGRATION_KEYS.includes(key) || ExtensionIdSchema.safeParse(key).success;
-}
-
 export function createIntegrationStore(opts: CreateIntegrationStoreOptions): IntegrationStore {
 	const { dataRoot, keyProvider, logger, redactor } = opts;
+	const reservedIntegrationKeys = [...opts.reservedIntegrationKeys];
+	const isKnownKey = (key: string) =>
+		reservedIntegrationKeys.includes(key) || ExtensionIdSchema.safeParse(key).success;
 	/** 整个宿主一条写道:键是 `<集成键>:state` / `<集成键>:secrets`。 */
 	const queue = createSerialQueue();
 	const opened = new Map<string, OpenEntry>();
@@ -165,8 +164,8 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				// 写道关了(关停之后才来开):读照读,写会被拒。
 			});
 			const [stateRead, secretsRead] = await Promise.all([
-				readIntegrationStateFile({ dataRoot, key, logger }),
-				readIntegrationSecretsFile({ dataRoot, key, logger, keyProvider }),
+				readIntegrationStateFile({ dataRoot, key, logger, reservedIntegrationKeys }),
+				readIntegrationSecretsFile({ dataRoot, key, logger, keyProvider, reservedIntegrationKeys }),
 			]);
 			const stateUnreadable = unreadableNote("state.json", key, stateRead);
 			const secretsUnreadable = unreadableNote("secrets.enc", key, secretsRead);
@@ -177,14 +176,19 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 			const state = createKeyValueStores({
 				initial: stateRead.kind === "ok" ? stateRead.entries : undefined,
 				limits: STATE_LIMITS,
-				persist: (entries) => writeIntegrationStateFile(dataRoot, key, entries),
+				persist: (entries) =>
+					writeIntegrationStateFile(dataRoot, key, entries, reservedIntegrationKeys),
 				lane: (task) => queue.run(stateLane(key), task),
 				blocked: () => closedNote() ?? stateUnreadable,
 			});
 			const secrets = createKeyValueStores({
 				initial: secretsRead.kind === "ok" ? secretsRead.entries : undefined,
 				limits: SECRETS_LIMITS,
-				persist: (entries) => writeIntegrationSecretsFile({ dataRoot, key, keyProvider }, entries),
+				persist: (entries) =>
+					writeIntegrationSecretsFile(
+						{ dataRoot, key, keyProvider, reservedIntegrationKeys },
+						entries,
+					),
 				lane: (task) => queue.run(secretsLane(key), task),
 				blocked: () => closedNote() ?? secretsUnreadable,
 				// 把手关了之后才落完的写(关之前已经排上的)不再登记:关的那一刻已经撤干净了。
@@ -229,7 +233,7 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 	}
 
 	async function remove(key: string): Promise<Result> {
-		if (RESERVED_INTEGRATION_KEYS.includes(key)) {
+		if (reservedIntegrationKeys.includes(key)) {
 			return fail("invalid", `${key} 是内置集成,没有卸载`);
 		}
 		if (!isKnownKey(key)) return fail("invalid", `集成键不合法:${key}`);
@@ -239,10 +243,10 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 		// 排在各自写道的末尾:在途的写先落完,再删目录。
 		const removals = [
 			queue.run(stateLane(key), () =>
-				removeDirectory(dataPath(dataRoot, ...integrationStateDir(key))),
+				removeDirectory(dataPath(dataRoot, ...integrationStateDir(key, reservedIntegrationKeys))),
 			),
 			queue.run(secretsLane(key), () =>
-				removeDirectory(dataPath(dataRoot, ...integrationSecretsDir(key))),
+				removeDirectory(dataPath(dataRoot, ...integrationSecretsDir(key, reservedIntegrationKeys))),
 			),
 		];
 		try {
@@ -257,7 +261,10 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 	async function extensionDirsOnDisk(): Promise<string[]> {
 		try {
 			const names = await readdir(dataPath(dataRoot, "secrets", "extensions"));
-			return names.filter((name) => ExtensionIdSchema.safeParse(name).success);
+			return names.filter(
+				(name) =>
+					!reservedIntegrationKeys.includes(name) && ExtensionIdSchema.safeParse(name).success,
+			);
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 			logger.warn(`[integration-store] 列不了 secrets/extensions/:${errorMessageOf(err)}`);
@@ -267,7 +274,7 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 
 	async function exportSecrets(): Promise<Record<string, Record<string, Json>>> {
 		const keys = new Set<string>([
-			...RESERVED_INTEGRATION_KEYS,
+			...reservedIntegrationKeys,
 			...(await extensionDirsOnDisk()),
 			...opened.keys(),
 		]);
@@ -278,7 +285,13 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 			if (live) {
 				entries = live.secrets.snapshot();
 			} else {
-				const read = await readIntegrationSecretsFile({ dataRoot, key, logger, keyProvider });
+				const read = await readIntegrationSecretsFile({
+					dataRoot,
+					key,
+					logger,
+					keyProvider,
+					reservedIntegrationKeys,
+				});
 				if (read.kind === "unreadable") {
 					logger.warn(`[integration-store] 备份跳过 ${key} 的密钥:${read.message}`);
 					continue;

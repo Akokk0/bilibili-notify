@@ -28,7 +28,7 @@ import {
  *     字母的不算。
  *   - 注释不算。
  * - 白名单:迁移模块整个目录(0.x 的形状只住那里);`compose.ts` 与 `bilibili/` 已加,设置 schema 的组合处建出来以后加。
- *   保留 id 表(`BILIBILI_SOURCE_KEY` 那几行)住在 `packages/internal/src/identity.ts`(和身份、强调色同住),先记在棘轮里,
+ *   内置保留键已由装配根收齐；`BILIBILI_SOURCE_KEY` 与身份强调色仍住在 `packages/internal/src/identity.ts`,先记在棘轮里,
  *   清零之前拆成单独一个文件再放进白名单。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。⑥d 开张,第 4 期末清零。
  *
@@ -69,7 +69,7 @@ export const RATCHET = {
 	"apps/web/src/pages/System.tsx": 5,
 	"apps/web/src/types/domain.ts": 2,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
-	"packages/internal/src/identity.ts": 4,
+	"packages/internal/src/identity.ts": 3,
 	"packages/push/src/push-router.ts": 2,
 };
 

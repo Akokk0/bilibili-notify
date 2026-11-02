@@ -64,6 +64,7 @@ export interface MarketplaceOfficialSource {
 }
 
 export interface MarketplaceDeps {
+	reservedIntegrationKeys: readonly string[];
 	/** 装载根 —— `<数据根>/extensions/`。 */
 	root: string;
 	/** 没有 = 这个构建没有官方源(fork 出去没有信任公钥的构建)。 */
@@ -229,6 +230,9 @@ const OFFICIAL_FAILURE_TEXT = {
 } as const;
 
 export function createMarketplace(deps: MarketplaceDeps): Marketplace {
+	const indexSchema = MarketplaceIndexSchema.refine((index) =>
+		index.extensions.every((entry) => !deps.reservedIntegrationKeys.includes(entry.id)),
+	);
 	const now = deps.now ?? (() => Date.now());
 	const hostApiRange = deps.hostApiRange ?? EXTENSION_API_RANGE;
 	/**
@@ -252,7 +256,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 			timeoutMs,
 			maxBytes: maxIndexBytes,
 			minIssuedAt: seenIssuedAt,
-			schema: MarketplaceIndexSchema,
+			schema: indexSchema,
 			issuedAtOf: (index) => index.issuedAt,
 		});
 		const base = { id: MARKETPLACE_OFFICIAL_SOURCE_ID, official: true };
@@ -320,7 +324,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				} catch {
 					return { ok: false, reason: "这个地址给的不是 JSON" };
 				}
-				const shaped = MarketplaceIndexSchema.safeParse(parsed);
+				const shaped = indexSchema.safeParse(parsed);
 				if (!shaped.success)
 					return { ok: false, reason: "这份索引的形状不对(不是一份 marketplace.json)" };
 				const checked = checkMarketplaceIndex(shaped.data, { official: false });
@@ -546,7 +550,7 @@ export function createMarketplace(deps: MarketplaceDeps): Marketplace {
 				: fail("unavailable", `下不下来 ${entry.name} 的包(${entry.package.url})`);
 		}
 
-		const opened = openExtensionPackage(downloaded.value);
+		const opened = openExtensionPackage(downloaded.value, deps.reservedIntegrationKeys);
 		if (!opened.ok) {
 			// 拆包那几句(哪一处不合规矩)原样带上:主人手里没有这个包,它们是源作者唯一的线索。
 			return fail(opened.code, `包拆不开:${opened.message}`, { issues: opened.issues });

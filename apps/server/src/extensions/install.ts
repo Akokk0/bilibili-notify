@@ -22,7 +22,6 @@ import {
 	type ExtensionManifest,
 	fail,
 	ok,
-	parseExtensionManifest,
 	type Result,
 } from "@bilibili-notify/internal";
 import { LOCALES, type Locale } from "@bilibili-notify/internal/i18n";
@@ -40,6 +39,7 @@ import {
 	EXTENSION_MANIFEST_FILE,
 	EXTENSION_README_FILE,
 } from "./discover.js";
+import { parseHostExtensionManifest } from "./identity.js";
 import {
 	EXTENSION_LOCALE_FILE_MAX_BYTES,
 	EXTENSION_LOCALES_DIR,
@@ -124,7 +124,10 @@ function commonPrefix(names: string[]): string {
 	return only === "" ? "" : `${only}/`;
 }
 
-export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResult {
+export function openExtensionPackage(
+	buf: Uint8Array,
+	reservedIntegrationKeys: readonly string[],
+): OpenExtensionPackageResult {
 	let entries: Record<string, Uint8Array>;
 	let precheck: string | null = null;
 	let count = 0;
@@ -251,7 +254,7 @@ export function openExtensionPackage(buf: Uint8Array): OpenExtensionPackageResul
 	// 版本不合就在这儿拦,而且**先判它**:为将来的宿主写的清单,格式本来就可能是我们不认识
 	// 的,挑它的毛病只会把「先升级 BN」说成一串「读不了」。装进去再在页面上显示 incompatible
 	// 也不是不行,但**此刻**这句话最清楚:主人正拿着那个包,还能去换一个对的。
-	const read = parseExtensionManifest(raw, EXTENSION_API_RANGE);
+	const read = parseHostExtensionManifest(raw, EXTENSION_API_RANGE, reservedIntegrationKeys);
 	if (!read.ok) {
 		if (read.reason === "incompatible") {
 			return fail("unsupported", apiVersionMismatch(read.requires, EXTENSION_API_RANGE));

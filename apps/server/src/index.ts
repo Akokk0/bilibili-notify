@@ -27,7 +27,11 @@ import { createBackupService } from "./backup/service.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
-import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "./compose.js";
+import {
+	BUILTIN_INTEGRATION_KEYS,
+	BUILTIN_INTEGRATION_SETTINGS,
+	composeBuiltinIntegrations,
+} from "./compose.js";
 import {
 	loadBootstrapConfig,
 	resolveConfigPath,
@@ -602,7 +606,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
 		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
 		const connectionSecrets = createSecretCellsReader(runtime.adapterRegistry, (adapterKey) =>
-			loadedExtensions?.secretConfigCodes().get(adapterKey),
+			BUILTIN_INTEGRATION_KEYS.includes(adapterKey)
+				? []
+				: loadedExtensions?.secretConfigCodes().get(adapterKey),
 		);
 		// 设置里标了机密的格登记进日志按值打码:紧跟配置读完;此刻适配器与拓展都还不在,连接与拓展设置整份从严,
 		// 适配器登记、拓展装好之后(`sync()`)才变窄。
@@ -690,6 +696,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 拓展市场(ADR-0013):官方源与自主升级共用同一对信任公钥与同一份加速前缀;没有公钥的
 		// 构建(fork 出去自己构建的)就没有官方源,第三方源照用。
 		const marketplace = createMarketplace({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			root: extensionsRoot,
 			official:
 				TRUSTED_UPDATE_KEYS.length > 0
@@ -787,6 +794,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			onConnectionsChanged,
 		});
 		const devtools = createDevtools({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezone: () => runtime.configStore.getGlobals().timezone,
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
 			// 构建时 `createBiliDevtools` 另有恒空的桩。
@@ -1241,6 +1249,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const extensionMounts = createExtensionMounts({ logger: log });
 		const extensionUpgrades = createExtensionUpgrades();
 		loadedExtensions = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader,
 			// **一个根**:拓展是装进来的(市场下载 / 主人手放 / 开发版由 devtools 链进来),
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。

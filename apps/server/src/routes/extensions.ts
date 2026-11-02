@@ -8,7 +8,6 @@ import type {
 } from "@bilibili-notify/contract";
 import {
 	ActionNameSchema,
-	ExtensionIdSchema,
 	fail,
 	isExtensionEnabled,
 	manifestProvides,
@@ -21,6 +20,7 @@ import type { ConfigStore } from "../config/store.js";
 import { ExtensionConflictError } from "../extensions/conflict-error.js";
 import type { ActionOutcome } from "../extensions/context.js";
 import { readExtensionDocs } from "../extensions/docs.js";
+import { extensionIdSchema } from "../extensions/identity.js";
 import {
 	docsPresence,
 	installExtensionPackage,
@@ -255,7 +255,10 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			if (!(file instanceof File)) {
 				return respondFailure(c, fail("invalid", t("extensions.route.missingPackageFile")));
 			}
-			const opened = openExtensionPackage(new Uint8Array(await file.arrayBuffer()));
+			const opened = openExtensionPackage(
+				new Uint8Array(await file.arrayBuffer()),
+				opts.store.reservedIntegrationKeys,
+			);
 			if (!opened.ok) return respondFailure(c, opened);
 
 			// 落盘与随后那一遍重扫在装载器的队里是一件事。新装的当场跑起来;盖掉一份跑着的,旧代码
@@ -311,7 +314,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		// 目录名正好是保留名字的那一种:它过不了 id 校验、装载不了,面板上是一张「读不了」的卡,也得删得掉。
 		// **只抹拓展目录下那一个文件夹**。保留名字同时是内置集成与核心自己的键:往下那几步按 id 找到的是本体的东西
 		// (内置适配器的连接、B 站存着的登录凭据),一步都不走 —— 一个从没跑起来过的拓展本来也没有那些。
-		const reserved = RESERVED_EXTENSION_IDS.find((name) => name === c.req.param("id"));
+		const reserved = [...RESERVED_EXTENSION_IDS, ...opts.store.reservedIntegrationKeys].find(
+			(name) => name === c.req.param("id"),
+		);
 		if (reserved !== undefined) {
 			const removed = await install.changeDisk(() =>
 				uninstallExtension({ root: install.root, id: reserved }),
@@ -320,7 +325,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 			return c.json(ok());
 		}
 
-		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		const parsed = extensionIdSchema(opts.store.reservedIntegrationKeys).safeParse(
+			c.req.param("id"),
+		);
 		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const id = parsed.data;
 
@@ -406,7 +413,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		if (!install) {
 			return respondFailure(c, fail("unsupported", t("extensions.route.noLoaderDocs")));
 		}
-		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		const parsed = extensionIdSchema(opts.store.reservedIntegrationKeys).safeParse(
+			c.req.param("id"),
+		);
 		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const docs = await readExtensionDocs({ root: install.root, id: parsed.data });
 		// 没装 → not_found;装了但两份都没写 → 200 加两个空格子,面板据此整块不画。
@@ -425,7 +434,7 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * `extensions/context.ts` 的 `runAction` 里造(那儿才知道动作名与实际等了多久),这里原样交出去。
 	 */
 	app.post("/:id/actions/:name", async (c) => {
-		const id = ExtensionIdSchema.safeParse(c.req.param("id"));
+		const id = extensionIdSchema(opts.store.reservedIntegrationKeys).safeParse(c.req.param("id"));
 		const name = ActionNameSchema.safeParse(c.req.param("name"));
 		if (!id.success || !name.success) {
 			return respondFailure(c, fail("invalid", t("extensions.route.badActionRef")));
@@ -451,7 +460,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	 * 不算这一口失败:那一行成了「加载失败」,原因在列表里。
 	 */
 	app.post("/:id/swap", async (c) => {
-		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
+		const parsed = extensionIdSchema(opts.store.reservedIntegrationKeys).safeParse(
+			c.req.param("id"),
+		);
 		if (!parsed.success) return respondFailure(c, fail("invalid", t("extensions.route.badId")));
 		const id = parsed.data;
 		if (!opts.swap || !opts.extensions().some((entry) => entry.id === id)) {

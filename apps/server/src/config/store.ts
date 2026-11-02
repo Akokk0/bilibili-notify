@@ -13,7 +13,6 @@ import {
 	type Disposable,
 	deterministicUuid,
 	EXTRA_KEYS,
-	ExtensionIdSchema,
 	fail,
 	type GlobalConfig,
 	GlobalConfigSchema,
@@ -48,6 +47,7 @@ import {
 	type IdentityDuplicate,
 } from "@bilibili-notify/subscription";
 import type { ZodType, z } from "zod";
+import { extensionIdSchema } from "../extensions/identity.js";
 import { t as tr } from "../i18n/index.js";
 import { dataPath } from "../runtime/roots.js";
 import { errorMessageOf } from "../util/error-message.js";
@@ -161,6 +161,7 @@ export interface SettingsSnapshot {
 }
 
 export interface ConfigStore {
+	readonly reservedIntegrationKeys: readonly string[];
 	readonly bootstrap: BootstrapConfig;
 
 	/** Subscribe to scope-level change notifications. Backed by MessageBus 'config-changed'. */
@@ -1011,6 +1012,11 @@ class NodeConfigStore implements ConfigStore {
 	private invalidSettingsChanged = false;
 	/** 登记进来的各集成的设置格式,按集成的键。 */
 	private readonly segments: ReadonlyMap<string, IntegrationSettingsSegment>;
+	/** 装配交入的集成键：宿主接收拓展时保留。 */
+	get reservedIntegrationKeys(): readonly string[] {
+		return [...this.segments.keys()];
+	}
+
 	/** 各集成的设置(已按各自的格式解析过),按集成的键。 */
 	private readonly integrationSettings = new Map<string, unknown>();
 	/**
@@ -1095,7 +1101,7 @@ class NodeConfigStore implements ConfigStore {
 
 	/** 一个拓展的设置文件。id 要拼进路径:不合拓展 id 的形状整次拒收(`../` 一类不许进来)。 */
 	private extensionSettingsPath(id: string): string {
-		if (!ExtensionIdSchema.safeParse(id).success) {
+		if (!extensionIdSchema(this.reservedIntegrationKeys).safeParse(id).success) {
 			throw ConfigValidationError.invalid(
 				"integration-settings",
 				tr("config.store.invalidExtensionId", { value0: id }),
@@ -1327,6 +1333,7 @@ class NodeConfigStore implements ConfigStore {
 		// 一个拓展的文件读不懂只停它自己,不挡开机(读盘本身出错照旧挡)。
 		const extensionFiles = await readExtensionSettingsDir(
 			join(this.stateDir, ...EXTENSION_SETTINGS_IN_CONFIG),
+			this.reservedIntegrationKeys,
 		);
 		for (const [id, value] of extensionFiles.settings) this.extensionSettings.set(id, value);
 		for (const [id, issue] of extensionFiles.unreadable)
@@ -2563,7 +2570,10 @@ export function extensionSettingsFile(
  * 事 —— 一个拓展的手改坏了不该让整台起不来。所以 `readFile` 与 `JSON.parse` 分开,只认后者抛的
  * `SyntaxError`;文件不动,留给主人重存或卸载。
  */
-async function readExtensionSettingsDir(dir: string): Promise<{
+async function readExtensionSettingsDir(
+	dir: string,
+	reservedIntegrationKeys: readonly string[],
+): Promise<{
 	settings: Array<[string, unknown]>;
 	unreadable: Array<[string, Issue]>;
 }> {
@@ -2579,7 +2589,7 @@ async function readExtensionSettingsDir(dir: string): Promise<{
 	for (const name of names.sort()) {
 		if (!name.endsWith(".json")) continue;
 		const id = name.slice(0, -".json".length);
-		if (!ExtensionIdSchema.safeParse(id).success) continue;
+		if (!extensionIdSchema(reservedIntegrationKeys).safeParse(id).success) continue;
 		const text = await readFile(join(dir, name), "utf8");
 		try {
 			settings.push([id, JSON.parse(text) as unknown]);

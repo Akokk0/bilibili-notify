@@ -3,6 +3,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { strFromU8, strToU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vite-plus/test";
+import { BUILTIN_INTEGRATION_KEYS } from "../../apps/server/src/compose.js";
 import {
 	EXTENSION_DEVTOOLS_ENTRY_FILE,
 	EXTENSION_DOC_MAX_BYTES as LOADER_DOC_MAX_BYTES,
@@ -48,7 +49,7 @@ describe("packExtension", () => {
 		const b = packExtension(files);
 		expect(a.sha256).toBe(b.sha256);
 		expect(a.size).toBe(a.zip.byteLength);
-		const opened = openExtensionPackage(a.zip);
+		const opened = openExtensionPackage(a.zip, BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);
 		if (opened.ok) expect(opened.pkg.manifest.version).toBe("0.0.2");
 	});
@@ -63,7 +64,7 @@ describe("packExtension", () => {
 			"README.md": strToU8("# 机器人框架桥接"),
 			"CHANGELOG.md": strToU8("## [0.0.2]"),
 		});
-		const opened = openExtensionPackage(withDocs.zip);
+		const opened = openExtensionPackage(withDocs.zip, BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);
 		if (!opened.ok) return;
 		expect(strFromU8(opened.pkg.docs.readme)).toContain("机器人框架桥接");
@@ -77,7 +78,10 @@ describe("packExtension", () => {
 		};
 
 		it("带上 locales/ 就打进包,装载那头拆得出来", () => {
-			const opened = openExtensionPackage(packExtension({ ...files, ...locales }).zip);
+			const opened = openExtensionPackage(
+				packExtension({ ...files, ...locales }).zip,
+				BUILTIN_INTEGRATION_KEYS,
+			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
 			expect(strFromU8(opened.pkg.locales["zh-CN"])).toContain("已连接");
@@ -111,6 +115,7 @@ describe("packExtension", () => {
 					...locales,
 					"locales/ko.json": strToU8('{"hello":"안녕"}'),
 				}).zip,
+				BUILTIN_INTEGRATION_KEYS,
 			);
 			expect(opened.ok).toBe(true);
 			if (!opened.ok) return;
@@ -154,7 +159,7 @@ describe("packExtension", () => {
 	});
 
 	it("不带文档也打得出来 —— 文档是可选的", () => {
-		const opened = openExtensionPackage(packExtension(files).zip);
+		const opened = openExtensionPackage(packExtension(files).zip, BUILTIN_INTEGRATION_KEYS);
 		expect(opened.ok).toBe(true);
 		if (opened.ok) expect(opened.pkg.docs.readme).toBeUndefined();
 	});

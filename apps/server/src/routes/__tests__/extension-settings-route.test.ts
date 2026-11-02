@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS, BUILTIN_INTEGRATION_SETTINGS } from "../../compose.js";
 /**
  * `/api/ext/:id/settings` —— 拓展设置自己的读写口(ADR-0019 决策 35)。
  *
@@ -33,7 +34,6 @@ import { inertTransitImages } from "../../__tests__/support/integration-io.js";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
-import { settingsSegment } from "../../bilibili/settings.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { extensionSettingsFile } from "../../config/store.js";
 import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
@@ -194,7 +194,7 @@ async function boot(opts: {
 	const rt = createAppRuntime(
 		makeBootstrap(dataDir),
 		{ dataRoot: dataDir },
-		{ integrationSettings: [settingsSegment] },
+		{ integrationSettings: BUILTIN_INTEGRATION_SETTINGS },
 	);
 	runtime = rt;
 	if (opts.rawFile !== undefined) {
@@ -210,6 +210,7 @@ async function boot(opts: {
 	/** activate 跑了几次 —— 「改对了才起、还坏着不重跑」看它。 */
 	let activations = 0;
 	const loader = await loadExtensions({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: fixedLocale(),
@@ -630,21 +631,24 @@ describe("GET /api/ext/:id/settings", () => {
 		expect(body.message).toMatch(reason);
 	});
 
-	it("id 不合规矩 —— 400 invalid,读与写都一样", async () => {
-		const h = await boot({ running: false });
-		const read = await h.get("Bad_ID");
-		expect(read.status).toBe(400);
-		expect(await failureOf(read)).toEqual({
-			code: "invalid",
-			message: "主人，这个拓展 id 不合规矩。",
-		});
-		const write = await h.patch(
-			{ revision: "x", ops: [{ op: "set", key: "interval", value: 90 }] },
-			"Bad_ID",
-		);
-		expect(write.status).toBe(400);
-		expect((await failureOf(write)).code).toBe("invalid");
-	});
+	it.each(["Bad_ID", "bilibili", "onebot", "qq-official", "webhook"])(
+		"id %s 不合规矩 —— 400 invalid,读与写都一样",
+		async (id) => {
+			const h = await boot({ running: false });
+			const read = await h.get(id);
+			expect(read.status).toBe(400);
+			expect(await failureOf(read)).toEqual({
+				code: "invalid",
+				message: "主人，这个拓展 id 不合规矩。",
+			});
+			const write = await h.patch(
+				{ revision: "x", ops: [{ op: "set", key: "interval", value: 90 }] },
+				id,
+			);
+			expect(write.status).toBe(400);
+			expect((await failureOf(write)).code).toBe("invalid");
+		},
+	);
 });
 
 describe("PATCH /api/ext/:id/settings —— 版本号", () => {

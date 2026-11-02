@@ -9,7 +9,6 @@ import {
 	ok,
 	type PushTarget,
 	platformOfTarget,
-	RESERVED_INTEGRATION_KEYS,
 } from "@bilibili-notify/internal";
 import type { DevScenarioDef } from "../registry.js";
 
@@ -20,6 +19,7 @@ import type { DevScenarioDef } from "../registry.js";
  */
 
 export interface InboundScenarioDeps {
+	reservedIntegrationKeys: readonly string[];
 	/** 入站口是推送链路建好之后才接上的,现取;还没接上就 undefined。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
@@ -87,7 +87,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 	 * 桥的入站在桥自己的开发入口 `extensions/bridge/src/devtools/` —— 那条真的连一条桥进来,平台名由它自己报。
 	 */
 	const isDirectChat = (a: Connection): boolean =>
-		RESERVED_INTEGRATION_KEYS.includes(a.adapterKey) &&
+		deps.reservedIntegrationKeys.includes(a.adapterKey) &&
 		canReceiveReply(deps.capabilities(a)?.inbound);
 
 	const link: DevScenarioDef = {
@@ -119,7 +119,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			if (!isDirectChat(connection)) {
 				return fail(
 					"invalid",
-					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有群这回事`,
+					`${connection.name} 是 ${deps.reservedIntegrationKeys.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有群这回事`,
 				);
 			}
 			const given = typeof params.address === "string" ? params.address : "";

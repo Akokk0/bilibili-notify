@@ -38,7 +38,9 @@ export interface MigrateBiliLoginOptions {
 }
 
 /** 新密钥文件在新代里的相对路径(`/` 分隔),给汇报用。 */
-export const BILI_LOGIN_TARGET = integrationSecretsFile(BILIBILI_SOURCE_KEY).join("/");
+export const BILI_LOGIN_TARGET = integrationSecretsFile(BILIBILI_SOURCE_KEY, [
+	BILIBILI_SOURCE_KEY,
+]).join("/");
 
 export async function migrateBiliLogin(
 	opts: MigrateBiliLoginOptions,
@@ -82,7 +84,12 @@ export async function migrateBiliLogin(
 	const entries = new Map<string, Json>([["http.cookies", cookiesJson]]);
 	if (refreshToken) entries.set("refreshToken", refreshToken);
 	const written = await writeIntegrationSecretsFile(
-		{ dataRoot: opts.targetDir, key: BILIBILI_SOURCE_KEY, keyProvider: provide(key) },
+		{
+			dataRoot: opts.targetDir,
+			key: BILIBILI_SOURCE_KEY,
+			keyProvider: provide(key),
+			reservedIntegrationKeys: [BILIBILI_SOURCE_KEY],
+		},
 		entries,
 	);
 	// 写不进自己刚建的新代是盘的问题,不是数据的问题:和别的步一样让迁移失败重来,不悄悄丢登录。

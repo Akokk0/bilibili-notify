@@ -12,6 +12,7 @@ import {
 	redactSecretKeys,
 	SECRET_KEYS,
 } from "../backup/sanitize.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
 import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
@@ -165,7 +166,8 @@ const SCHEMAS = new Map<string, import("zod").ZodType>([
 ]);
 const NO_CODES: SecretCellsReader = {
 	settingsSchemaOf: (key) => SCHEMAS.get(key),
-	declaredSecretKeysOf: (key) => (key === "bridge" ? [] : undefined),
+	declaredSecretKeysOf: (key) =>
+		BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : key === "bridge" ? [] : undefined,
 };
 
 describe("备份脱敏换判据:被抹的叶子逐叶子不变", () => {

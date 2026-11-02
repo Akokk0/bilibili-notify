@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 拓展页要的两个只读口:装了什么,以及某个拓展自己交上来的那份面板数据。
  *
@@ -107,6 +108,7 @@ function boot(
 	const store =
 		over.store ??
 		({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			getGlobals: () =>
 				({ extensions: { bridge: { enabled: over.enabled ?? false } } }) as unknown as GlobalConfig,
 			getConnections: () => over.connections ?? [],
@@ -170,6 +172,7 @@ function quietHost(): ServiceContext {
 /** 在 `installRoot` 上起一个真的装载器。开关只有一格:全开或全关(给函数就现读,好中途拨)。 */
 function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedExtensions> {
 	return loadExtensions({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: fixedLocale(),
@@ -756,6 +759,7 @@ describe("GET /api/ext/:id/status", () => {
 		let n = 0;
 		const app = createExtensionsRoute({
 			store: {
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
@@ -999,6 +1003,7 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 	it("没接装载器 → 保守地答「拉不起来」", async () => {
 		const app = createExtensionsRoute({
 			store: {
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
 				getConnections: () => [],
 			} as unknown as ConfigStore,
@@ -1379,7 +1384,7 @@ describe("DELETE /api/ext/:id", () => {
 	 * (查连接、清上报出入、删开关与设置、清状态与密钥)按 id 找到的都是本体的东西,一步都不许走。
 	 * 验红:把路由里保留名字那一支去掉(落回 id 校验),每个名字都回 400、目录还在。
 	 */
-	it.each(RESERVED_EXTENSION_IDS)(
+	it.each([...RESERVED_EXTENSION_IDS, ...BUILTIN_INTEGRATION_KEYS])(
 		"目录名是保留名字 %s → 只抹拓展目录下那一个文件夹,别的一步不走",
 		async (id) => {
 			await mkdir(join(installRoot, id), { recursive: true });
@@ -1708,6 +1713,7 @@ describe("拓展自己的文档", () => {
 	it("这个构建没接装载器 → 400 unsupported,并说清原因", async () => {
 		const app = createExtensionsRoute({
 			store: {
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				getGlobals: () => ({ extensions: {} }) as unknown as GlobalConfig,
 				getConnections: () => [],
 			} as unknown as ConfigStore,

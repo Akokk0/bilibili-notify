@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 开发版装拓展的那三条 devtools 场景。
  *
@@ -401,7 +402,9 @@ describe("软链进去的那份,装载器认得", () => {
 		await plantManifest("bridge");
 		await must("ext.install").run({ ext: "bridge" });
 		const { discoverExtensions } = await import("../../extensions/discover.js");
-		const found = await discoverExtensions(installRoot);
+		const found = await discoverExtensions(installRoot, {
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+		});
 		expect(found.map((r) => [r.id, r.state])).toEqual([["bridge", "ready"]]);
 	});
 
@@ -414,6 +417,7 @@ describe("软链进去的那份,装载器认得", () => {
 		await plantRepo("bridge", true);
 		await plantManifest("bridge");
 		const loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),

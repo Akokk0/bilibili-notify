@@ -217,3 +217,6 @@
 
 
 🔗补记（2026-11-02）：主人要求“390px 下既有全局顶栏仍有挤压，单独一片处理”，登记为 4-58，尚未开工。原 4-24 / 4-26 / 4-29 记录里留给 4-39 / 4-40 或后续界面片的同一窄屏问题，统一转归 4-58；历史验收记录保留。总数 60→61，完成数仍 32；4-39 / 4-40 完成顶栏内容改造后，再单独做适配和验收。
+
+
+🔗 4-30 已批分工与暂留账（2026-11-02）：主人批准「按此分工实施」：通用拓展打包器校验 ID 格式及核心保留名，宿主按装配根收齐的内置键，在安装、发现、市场与设置入口拒收占用；卸载同名坏拓展仍只清拓展目录，内置状态与凭据保持。沿用 4-29「以后类似这样后面片要收的都同意」授权，本片触及文件的原中文节点不新增：服务端 `extensions/install.ts` 15、`extensions/loader.ts` 13、`extensions/marketplace.ts` 20、`index.ts` 10、`integration-store/files.ts` 3、`integration-store/store.ts` 9、`migration/bili-login.ts` 6、`migration/connections.ts` 2、`push/connection-settings.ts` 2，共 80 处明确留 **4-53c**；internal 的 `schema/extension-manifest.ts` 33、`schema/subscriptions.ts` 5，共 38 处留 **4-53e**，其中保留名校验的名单按本次批准分工变化。平台描述的 17 个中文节点已收字，三份连接规则的 42 个平实 / 5 个女仆字典键精确迁到服务端 `platforms.connection.*`；未抬棘轮或增加整文件豁免。`domain.ts` 两处来源常量门面仍最迟归 4-44；390px 顶栏仍归 4-58。

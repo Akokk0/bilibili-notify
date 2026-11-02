@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 集成的请求那一套(`integrations/http.ts`):身份读升写、罐子自动存与闸、「集成的键 + 罐子」同一次写、恢复后的通知。
  *
@@ -519,7 +520,13 @@ describe("8. 恢复备份整袋换掉之后(真宿主)", () => {
 			logger: log.logger,
 		});
 		const redactor = createValueRedactor();
-		const store = createIntegrationStore({ dataRoot, keyProvider, logger: log.logger, redactor });
+		const store = createIntegrationStore({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
+			dataRoot,
+			keyProvider,
+			logger: log.logger,
+			redactor,
+		});
 		const handle = await store.open("bilibili");
 		const clock = makeClock();
 		const http = await createIntegrationHttp({
@@ -531,6 +538,7 @@ describe("8. 恢复备份整袋换掉之后(真宿主)", () => {
 			(await readFile(join(dataRoot, "secrets", "bilibili", "secrets.enc"))).toString("base64");
 		const secretsEntries = async () => {
 			const read = await readIntegrationSecretsFile({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				dataRoot,
 				key: "bilibili",
 				logger: log.logger,

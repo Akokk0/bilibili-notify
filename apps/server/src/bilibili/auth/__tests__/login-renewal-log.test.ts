@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../../compose.js";
 /**
  * 回归守护 — cookie 续期落盘之后登录系统只记一行 info(3a-29 提交 ⑤:`cookies-refreshed` 事件随
  * 「刷新 Cookie」按钮一起退役)。
@@ -87,6 +88,7 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 		const ctx = makeCtx();
 		const keyProvider = new FileKeyProvider(join(dataDir, "secrets", "master.key"), ctx.logger);
 		const integrationStore = createIntegrationStore({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot: dataDir,
 			keyProvider,
 			logger: ctx.logger,
@@ -119,6 +121,7 @@ describe("AuthSystem — 续期落盘之后的回调", () => {
 		await auth.dispose();
 		await integrationStore.close();
 		const read = await readIntegrationSecretsFile({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			dataRoot: dataDir,
 			key: "bilibili",
 			logger: ctx.logger,

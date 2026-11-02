@@ -1,5 +1,6 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 import { inboundScenarios } from "../scenarios/inbound.js";
 import { coreDevRegistry } from "./support/core-registry.js";
 
@@ -74,6 +75,7 @@ function setup(
 	const master = address ? { platform: "onebot", address } : undefined;
 	const reg = coreDevRegistry(
 		inboundScenarios({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
 			commands: over.commands ?? (() => ({ prefix: "/", master })),
 			connections: () => over.connections ?? ADAPTERS,
@@ -229,6 +231,7 @@ describe("core.inbound.link", () => {
 		});
 		const noGroups = coreDevRegistry(
 			inboundScenarios({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				inbound: () => ({ private: vi.fn(), group: vi.fn() }),
 				commands: () => ({ prefix: "/" }),
 				connections: () => ADAPTERS,

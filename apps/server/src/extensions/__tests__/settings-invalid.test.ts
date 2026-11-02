@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 「设置读不了」(ADR-0019 决策 36)—— 存着的设置过不了拓展自己交的那份 zod 时,拓展**不起**,
  * 那一行说清哪一格、为什么;设置照样能改,改对了自己起来。
@@ -180,6 +181,7 @@ async function boot(
 	const seen: Seen = { activations: 0, changes: [] };
 	const activate = opts.activate ?? standard;
 	const loaded: LoadedExtensions = await loadExtensions({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: opts.locale ?? fixedLocale(),

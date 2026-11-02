@@ -3793,11 +3793,11 @@ describe("进程内对拍:两趟开机", () => {
 
 	// 验红:包装层里把 `state` / `secrets` 换成内存存储,第二趟读不回上一趟写的,这条红。
 	it("P17 state / secrets:上一趟写的第二趟读得回;state 是数据代里假键那一格的明文,secrets 是加密文件", async () => {
-		// 第一趟开机就是这台数据目录的头一趟(不先空启动):什么都还没写过。
+		// 假来源由装配登记为内置集成，按注入的键落根目录；第一趟开机前什么都还没写过。
 		handle = await boot(await findFreePort());
 		const generation = await activeGeneration(dataDir);
-		const stateFile = join(generation, "runtime", "extensions", IN_PROCESS_KEY, "state.json");
-		const secretsFile = join(generation, "secrets", "extensions", IN_PROCESS_KEY, "secrets.enc");
+		const stateFile = join(generation, "runtime", IN_PROCESS_KEY, "state.json");
+		const secretsFile = join(generation, "secrets", IN_PROCESS_KEY, "secrets.enc");
 		const first = currentProbe();
 		expect(first.stateAtStart).toBeUndefined();
 		expect(first.secretAtStart).toBeUndefined();

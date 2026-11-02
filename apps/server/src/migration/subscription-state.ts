@@ -14,7 +14,7 @@ import type { BiliSubscriptionKey } from "./subscriptions.js";
 
 /** 报告里的相对路径也从运行态仓与集成状态模块的活路径派生。 */
 const SUBSCRIPTION_STATE_PATH = SUBSCRIPTION_STATE_FILE.join("/");
-const BILI_STATE_PATH = integrationStateFile(BILIBILI_SOURCE_KEY).join("/");
+const BILI_STATE_PATH = integrationStateFile(BILIBILI_SOURCE_KEY, [BILIBILI_SOURCE_KEY]).join("/");
 
 const POSITIVE_INTEGER_STRING = /^[1-9]\d*$/;
 
@@ -141,7 +141,10 @@ export async function migrateSubscriptionState(opts: {
 	}
 
 	if (rooms.size > 0) {
-		const biliStateFile = dataPath(opts.dataRoot, ...integrationStateFile(BILIBILI_SOURCE_KEY));
+		const biliStateFile = dataPath(
+			opts.dataRoot,
+			...integrationStateFile(BILIBILI_SOURCE_KEY, [BILIBILI_SOURCE_KEY]),
+		);
 		const readBiliState = await readJsonFile(biliStateFile);
 		const entries =
 			readBiliState.kind === "missing"
@@ -159,7 +162,9 @@ export async function migrateSubscriptionState(opts: {
 				initial: entries,
 				limits: STATE_LIMITS,
 				persist: (nextEntries) =>
-					writeIntegrationStateFile(opts.dataRoot, BILIBILI_SOURCE_KEY, nextEntries),
+					writeIntegrationStateFile(opts.dataRoot, BILIBILI_SOURCE_KEY, nextEntries, [
+						BILIBILI_SOURCE_KEY,
+					]),
 			});
 			const merged = new Map(entries);
 			for (const [key, value] of rooms) merged.set(key, value);

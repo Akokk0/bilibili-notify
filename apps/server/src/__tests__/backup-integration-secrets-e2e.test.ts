@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 /**
  * 备份与恢复的密钥这一条链,两头都是真的:真的 `createIntegrationStore`(临时数据根、真 `FileKeyProvider`)
  * + 真的备份服务。往一个数据根的 `bilibili` 与 `onebot` 各写几个键 → 导出完整档 → 换一个**空的、另一把主密钥**的
@@ -40,6 +41,7 @@ async function world() {
 		logger: silentLogger,
 	});
 	const store = createIntegrationStore({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		dataRoot,
 		keyProvider,
 		logger: silentLogger,
@@ -65,7 +67,10 @@ function emptyConfigStore(): BackupStore {
 }
 
 async function plainEntries(w: Awaited<ReturnType<typeof world>>, key: string) {
-	const raw = await readFile(dataPath(w.dataRoot, ...integrationSecretsFile(key)), "utf8");
+	const raw = await readFile(
+		dataPath(w.dataRoot, ...integrationSecretsFile(key, BUILTIN_INTEGRATION_KEYS)),
+		"utf8",
+	);
 	return JSON.parse(gcmDecrypt(await w.keyProvider.getKey(), JSON.parse(raw))).entries;
 }
 

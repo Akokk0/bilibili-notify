@@ -52,6 +52,7 @@ import { injectableUpdateService } from "./update-injection.js";
  * 各包一层交回去,`index.ts` 把包好的那份往下传 —— 面板看到的、出网的都从装饰器过,本体照常跑。
  */
 export interface CreateDevtoolsInput {
+	reservedIntegrationKeys: readonly string[];
 	timezone: () => string;
 	payloadVersion: string;
 	/**
@@ -159,7 +160,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 					return { id: entry.id, name: who?.name, version: who?.version };
 				}) ?? [],
 	);
-	const gate = createCaptureGate();
+	const gate = createCaptureGate(input.reservedIntegrationKeys);
 	const caps = createCapabilityInjector();
 	const clock = createDevClock(input.timezone);
 	// 堆读数注入:交回去给采样器包在真 `process.memoryUsage()` 外面。
@@ -182,6 +183,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		updateStateScenario(update),
 		pushCaptureScenario(gate),
 		...inboundScenarios({
+			reservedIntegrationKeys: input.reservedIntegrationKeys,
 			inbound: input.inbound,
 			commands: input.commands,
 			connections: input.connectionConfigs,
@@ -197,6 +199,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		heapPressureScenario({ heap }),
 		// 方言给的是登记表视图本身:「哪些平台有能力这回事」是方言自己的事实,不经过注入那一层。
 		capabilityScenario({
+			reservedIntegrationKeys: input.reservedIntegrationKeys,
 			injector: caps,
 			connections: input.connectionConfigs,
 			dialects: () => input.adapters.list(),

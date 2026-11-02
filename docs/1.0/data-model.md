@@ -115,7 +115,7 @@ interface CreatorProfile {
 }
 ```
 
-- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili`、三个内置适配器的键与 `core` 列为保留 id（后者是核心自己的名字，只在 `RESERVED_EXTENSION_IDS` 里，不进内置集成的键表 `RESERVED_INTEGRATION_KEYS`），手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
+- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，通用 `ExtensionIdSchema` 校验格式与核心保留名 `core`、`image`、`ai`；宿主按装配根的 `BUILTIN_INTEGRATION_KEYS` 再拒绝内置集成键，手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
 - 「identity」在仓里另有 ChatIdentity、inboundIdentity、ExtensionIdentity 等意思，订阅身份的函数一律带 `subscription` 限定词。
 - **订阅只有一个文件** `config/subscriptions.json`，B 站与拓展同一数组、行行带 `identity`。「缺 kind 就当 B 站」的默认值删掉。
 - **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions`（现在是 `ConfigStore.writeSubscriptions`）把关——`packages/subscription` 的 `SubscriptionCache`（原 `SubscriptionStore`）只是写盘之后才同步的内存镜像，在那里拒收已经晚了。判据是「这次写入有没有**新增**重复」（跟当前集合比），不是整份数组有没有重复：否则盘上留着一对遗留重复时，改任何一条不相干的订阅都会被拒。新建、保存、恢复备份，所有写入都要过。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。

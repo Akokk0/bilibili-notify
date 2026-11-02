@@ -1,4 +1,5 @@
 import { fixedTimezone } from "../../__tests__/support/integration-io.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 加载器 —— 把「扫出来的目录」「主人按的开关」「失败记账」「窄面 ctx」串成一条。
  *
@@ -142,6 +143,7 @@ function run(opts: {
 	settingsIssue?: (id: string) => Issue | undefined;
 }) {
 	return loadExtensions({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		timezoneReader: fixedTimezone("Asia/Shanghai"),
 		transitImages: inertTransitImages,
 		locale: opts.locale ?? fixedLocale(),
@@ -289,6 +291,7 @@ describe("加载拓展", () => {
 
 		const runOnce = () =>
 			loadExtensions({
+				reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 				timezoneReader: fixedTimezone("Asia/Shanghai"),
 				transitImages: inertTransitImages,
 				locale: fixedLocale(),
@@ -556,6 +559,7 @@ describe("拓展声明的密钥字段", () => {
 			},
 		});
 		const loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
@@ -634,6 +638,7 @@ describe("拓展自己的请求客户端", () => {
 		const handles = new Map<string, IntegrationStoreHandle>();
 		const captured = new Map<string, ExtensionContext>();
 		const loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
@@ -731,6 +736,7 @@ describe("装载目录", () => {
 	it("失败记账落在装载目录,拓展自己那个目录一个文件都不多", async () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),
@@ -1056,6 +1062,7 @@ describe("拨开关即热装卸", () => {
 		let opens = 0;
 		let on = true;
 		const loaded = await loadExtensions({
+			reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 			timezoneReader: fixedTimezone("Asia/Shanghai"),
 			transitImages: inertTransitImages,
 			locale: fixedLocale(),

@@ -1,12 +1,5 @@
 import { readFile } from "node:fs/promises";
-import {
-	fail,
-	type Json,
-	type Logger,
-	ok,
-	RESERVED_INTEGRATION_KEYS,
-	type Result,
-} from "@bilibili-notify/internal";
+import { fail, type Json, type Logger, ok, type Result } from "@bilibili-notify/internal";
 import {
 	atomicWriteFile,
 	atomicWriteJson,
@@ -30,24 +23,36 @@ import { parseStoredEntries, STORE_FILE_VERSION, serializeEntries } from "./key-
 type DataSegments = readonly [DataRootKey, ...string[]];
 
 /** 内置集成的键 → 目录在数据根下一级;拓展 id 归在 `extensions/` 底下(两边撞不上:拓展 id 进不了保留 id)。 */
-function homeSegments(key: string): string[] {
-	return RESERVED_INTEGRATION_KEYS.includes(key) ? [key] : ["extensions", key];
+function homeSegments(key: string, reservedIntegrationKeys: readonly string[]): string[] {
+	return reservedIntegrationKeys.includes(key) ? [key] : ["extensions", key];
 }
 
-export function integrationStateDir(key: string): DataSegments {
-	return ["runtime", ...homeSegments(key)];
+export function integrationStateDir(
+	key: string,
+	reservedIntegrationKeys: readonly string[],
+): DataSegments {
+	return ["runtime", ...homeSegments(key, reservedIntegrationKeys)];
 }
 
-export function integrationSecretsDir(key: string): DataSegments {
-	return ["secrets", ...homeSegments(key)];
+export function integrationSecretsDir(
+	key: string,
+	reservedIntegrationKeys: readonly string[],
+): DataSegments {
+	return ["secrets", ...homeSegments(key, reservedIntegrationKeys)];
 }
 
-export function integrationStateFile(key: string): DataSegments {
-	return ["runtime", ...homeSegments(key), "state.json"];
+export function integrationStateFile(
+	key: string,
+	reservedIntegrationKeys: readonly string[],
+): DataSegments {
+	return ["runtime", ...homeSegments(key, reservedIntegrationKeys), "state.json"];
 }
 
-export function integrationSecretsFile(key: string): DataSegments {
-	return ["secrets", ...homeSegments(key), "secrets.enc"];
+export function integrationSecretsFile(
+	key: string,
+	reservedIntegrationKeys: readonly string[],
+): DataSegments {
+	return ["secrets", ...homeSegments(key, reservedIntegrationKeys), "secrets.enc"];
 }
 
 /** 读盘的结果:读得出(没有这个文件、内容不认都算空袋)或在但读不了。 */
@@ -56,6 +61,7 @@ export type StoreFileReadResult =
 	| { kind: "unreadable"; message: string };
 
 interface ReadContext {
+	reservedIntegrationKeys: readonly string[];
 	dataRoot: string;
 	key: string;
 	logger: Logger;
@@ -63,7 +69,10 @@ interface ReadContext {
 
 /** 读 `state.json`。在但读不了回 `unreadable`(不抛),内容不认的隔离改名、当空袋、记 warn。 */
 export async function readIntegrationStateFile(opts: ReadContext): Promise<StoreFileReadResult> {
-	const path = dataPath(opts.dataRoot, ...integrationStateFile(opts.key));
+	const path = dataPath(
+		opts.dataRoot,
+		...integrationStateFile(opts.key, opts.reservedIntegrationKeys),
+	);
 	let read: Awaited<ReturnType<typeof readJsonFile>>;
 	try {
 		read = await readJsonFile(path);
@@ -94,12 +103,16 @@ export async function writeIntegrationStateFile(
 	dataRoot: string,
 	key: string,
 	entries: ReadonlyMap<string, Json>,
+	reservedIntegrationKeys: readonly string[],
 ): Promise<Result> {
 	try {
-		await atomicWriteJson(dataPath(dataRoot, ...integrationStateFile(key)), {
-			version: STORE_FILE_VERSION,
-			entries: Object.fromEntries(entries),
-		});
+		await atomicWriteJson(
+			dataPath(dataRoot, ...integrationStateFile(key, reservedIntegrationKeys)),
+			{
+				version: STORE_FILE_VERSION,
+				entries: Object.fromEntries(entries),
+			},
+		);
 		return ok();
 	} catch (err) {
 		return fail("unavailable", `写 state.json 失败:${errorMessageOf(err)}`);
@@ -114,7 +127,10 @@ export async function writeIntegrationStateFile(
 export async function readIntegrationSecretsFile(
 	opts: ReadContext & { keyProvider: KeyProvider },
 ): Promise<StoreFileReadResult> {
-	const path = dataPath(opts.dataRoot, ...integrationSecretsFile(opts.key));
+	const path = dataPath(
+		opts.dataRoot,
+		...integrationSecretsFile(opts.key, opts.reservedIntegrationKeys),
+	);
 	let raw: string;
 	try {
 		raw = await readFile(path, "utf8");
@@ -143,14 +159,19 @@ export async function readIntegrationSecretsFile(
 }
 
 export async function writeIntegrationSecretsFile(
-	opts: { dataRoot: string; key: string; keyProvider: KeyProvider },
+	opts: {
+		dataRoot: string;
+		key: string;
+		keyProvider: KeyProvider;
+		reservedIntegrationKeys: readonly string[];
+	},
 	entries: ReadonlyMap<string, Json>,
 ): Promise<Result> {
 	try {
 		const blob = gcmEncrypt(await opts.keyProvider.getKey(), serializeEntries(entries));
 		// 只许 owner 读(0o600)。临时名 / fsync / 失败清理都在原语里。
 		await atomicWriteFile(
-			dataPath(opts.dataRoot, ...integrationSecretsFile(opts.key)),
+			dataPath(opts.dataRoot, ...integrationSecretsFile(opts.key, opts.reservedIntegrationKeys)),
 			JSON.stringify(blob),
 			{ mode: 0o600 },
 		);

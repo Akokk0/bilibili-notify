@@ -2,6 +2,7 @@ import { type Connection, ConnectionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { redactBackupSections, redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
 import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
@@ -241,7 +242,7 @@ describe("拓展声明的密钥字段", () => {
 		schemas: ReadonlyMap<string, ZodType> = BUILTIN,
 	): SecretCellsReader => ({
 		settingsSchemaOf: (key) => schemas.get(key),
-		declaredSecretKeysOf: (key) => codes.get(key),
+		declaredSecretKeysOf: (key) => (BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : codes.get(key)),
 	});
 	const sections = () => ({
 		// 开关在核心设置里,各拓展的设置是备份里自己的一节(各在自己的文件,ADR-0021 决策 42)。

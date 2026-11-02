@@ -56,6 +56,11 @@ export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[]
 	webhookSettingsSegment,
 ];
 
+/** 内置键由装配清单导出，宿主校验与存储共用这一份。 */
+export const BUILTIN_INTEGRATION_KEYS: readonly string[] = BUILTIN_INTEGRATION_SETTINGS.map(
+	(segment) => segment.key,
+);
+
 export interface BuiltinIntegrationsDeps {
 	timezoneReader: RegisterBuiltinAdaptersOptions["timezoneReader"];
 	/** 当前语言的读口(入口造一份):内置集成的问题句在语言变了时按新语言重报,递给 B 站来源。 */

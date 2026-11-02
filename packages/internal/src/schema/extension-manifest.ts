@@ -177,7 +177,7 @@ export const ExtensionIdSchema = z
 	)
 	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
 	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "))
-	// 订阅身份与登记表的键不加前缀:拓展叫 `bilibili` 就和 B 站的订阅撞成同一个人(ADR-0021 决策 14);
+	// 内置集成键由宿主在接收时另验；通用打包器这里只保留核心自己的名字。
 	// `core`、`image`、`ai` 是核心自己的名字(日志等级里核心那三格的键;`core` 还是设置文件名),拓展叫它们就和核心撞。
 	.refine(
 		(id) => !RESERVED_EXTENSION_IDS.includes(id),
@@ -720,6 +720,8 @@ export function formatZodIssues(error: z.ZodError): string[] {
 export function parseExtensionManifest(
 	raw: unknown,
 	range: ExtensionApiRange = EXTENSION_API_RANGE,
+	/** 宿主追加本次装配的保留键；打包器不传，使用通用 ID 规则。 */
+	idSchema?: typeof ExtensionIdSchema,
 ): ExtensionManifestRead {
 	const head = ApiVersionOnlySchema.safeParse(raw);
 	if (!head.success) {
@@ -739,14 +741,16 @@ export function parseExtensionManifest(
 	}
 
 	if (!schema || !apiVersionAccepted(requires, range)) {
-		const identity = ExtensionIdentitySchema.safeParse(raw);
+		const identity = (
+			idSchema ? ExtensionIdentitySchema.extend({ id: idSchema }) : ExtensionIdentitySchema
+		).safeParse(raw);
 		if (!identity.success) {
 			return { ok: false, reason: "unreadable", issues: formatZodIssues(identity.error) };
 		}
 		return { ok: false, reason: "incompatible", identity: identity.data, requires };
 	}
 
-	const parsed = schema.safeParse(raw);
+	const parsed = (idSchema ? schema.and(z.object({ id: idSchema })) : schema).safeParse(raw);
 	if (!parsed.success) {
 		return { ok: false, reason: "unreadable", issues: formatZodIssues(parsed.error) };
 	}

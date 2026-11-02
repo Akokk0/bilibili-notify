@@ -12,7 +12,7 @@
 
 schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，B 站与拓展的订阅都是它（ADR-0021 决策 14、15）。
 
-- **身份** `identity: { sourceKey, externalId }`：`sourceKey` 是 `bilibili` 或拓展 id（不加前缀），`externalId` 是来源那头的 id（B 站就是 uid；BN 不解读，1–256 字）。订的是谁、分派、查找、取色都只看它，一律经 `subscriptionIdentityOf(sub)` 读。拓展 id 不许用保留 id（`RESERVED_INTEGRATION_KEYS`：`bilibili` 与三个内置平台适配器的键），否则会和 B 站的订阅撞成同一个人。
+- **身份** `identity: { sourceKey, externalId }`：`sourceKey` 是 `bilibili` 或拓展 id（不加前缀），`externalId` 是来源那头的 id（B 站就是 uid；BN 不解读，1–256 字）。订的是谁、分派、查找、取色都只看它，一律经 `subscriptionIdentityOf(sub)` 读。通用 ID 校验保留 `core`、`image`、`ai`；宿主再按装配根收齐的 `BUILTIN_INTEGRATION_KEYS` 拒绝占用内置集成的键，手放的拓展也必须通过这道校验，避免身份冲突。
 - **其余各格** `id` / `enabled` / `tagIds`（挂的标签，指向 `config/subscriptions.json` 里的标签表，ADR-0034） / `notes` / `routing` / `extraTargets`（附加项的逐目标三态表） / `overrides` / `roastSchedule` / `specialViewers`：两种来源一样。特别关注是公共形状（ADR-0021 决策 17），来源不支持的（今天是拓展）一直是空的；条目是 `{ id, note?, features }`，`features` 只许 `viewerChat` / `viewerEnter` 两把、至少一把，`id` 中立（非空、限长），格式由写名单的路由按这条订阅所属来源的 `externalIdRegex` 核（只核新加的条目，盘上已有的不回头核）。
 - 中立的 schema 不认得哪个来源的 id 长什么样：格式由来源在描述符里声明（`externalIdRegex`，整串匹配；B 站声明纯数字，拓展直接写在清单订阅源那段里），新建订阅时 `routes/subscriptions.ts` 在分岔之前调 `subscriptions/external-id.ts` 的 `externalIdRefusal` 照它核；没声明的来源不替它做主。身份建好以后改不动，已有的订阅不回头核。
 - 判「是不是 B 站的」写 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`：这是过渡写法，第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了，「B 站替身」棘轮盯着。

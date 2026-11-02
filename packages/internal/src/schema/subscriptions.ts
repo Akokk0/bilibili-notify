@@ -168,7 +168,7 @@ function refineExtraTargetsWithinRouting(
 
 /**
  * 订阅来源的键(`bilibili` 或拓展 id,不加前缀)在盘上的写法:和拓展 id 同一种 id 形状。不排除保留 id ——
- * `bilibili` 本身就是一个来源;拓展 id 不许用保留 id 由 `ExtensionIdSchema` 管。
+ * `bilibili` 本身就是一个来源;拓展 id 的格式与核心保留名由 `ExtensionIdSchema` 管，内置集成键由宿主装配并校验。
  */
 export const SourceKeySchema = z
 	.string()

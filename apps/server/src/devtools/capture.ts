@@ -1,6 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
 import type { DestinationRef, NotificationPayload } from "@bilibili-notify/internal";
-import { ok, RESERVED_INTEGRATION_KEYS } from "@bilibili-notify/internal";
+import { ok } from "@bilibili-notify/internal";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 
 /**
@@ -84,7 +84,7 @@ function summarize(payload: NotificationPayload): { text?: string; images: numbe
 	}
 }
 
-export function createCaptureGate(): CaptureGate {
+export function createCaptureGate(reservedIntegrationKeys: readonly string[]): CaptureGate {
 	let on = false;
 	let seq = 0;
 	let list: DevCapturedDelivery[] = [];
@@ -121,7 +121,7 @@ export function createCaptureGate(): CaptureGate {
 				connectionId: connection.id,
 				connectionName: connection.name,
 				// 平台名:内置的是它的平台,拓展连接保持拓展 id。
-				platform: RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey)
+				platform: reservedIntegrationKeys.includes(connection.adapterKey)
 					? connection.platform
 					: connection.adapterKey,
 				// 按会话坐标发的(没有目标表里的那条)拼一个会话标识,名字显示成「群 <地址>」/「私聊 <地址>」。

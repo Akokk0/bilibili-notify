@@ -1,3 +1,4 @@
+import { BUILTIN_INTEGRATION_KEYS } from "../../compose.js";
 /**
  * 拓展市场(ADR-0013):一个内置的官方源(签名索引、走加速镜像)+ 主人自己加的第三方源
  * (裸 JSON、不签、不走镜像),每个源列它能装的拓展;装 = 下载 → 对索引里的 sha256 → 走
@@ -163,6 +164,7 @@ function harness(opts: HarnessOptions = {}) {
 	};
 	let installed = opts.installed ?? [];
 	const marketplace = createMarketplace({
+		reservedIntegrationKeys: BUILTIN_INTEGRATION_KEYS,
 		root,
 		official: opts.noOfficial ? undefined : { url: OFFICIAL_URL, trustedKeys: [key.spkiBase64] },
 		sources: () => opts.sources ?? [],
@@ -1039,3 +1041,18 @@ it("同号旧api1索引可显示版本可装,安装仍严格拒旧包且不落�
 	expect(outcome).toMatchObject({ ok: false, code: "invalid" });
 	expect(h.rescan).not.toHaveBeenCalled();
 });
+
+it.each(["bilibili", "onebot", "qq-official", "webhook"])(
+	"宿主市场不列占用内置键 %s 的索引",
+	async (id) => {
+		serve({
+			[OFFICIAL_URL]: envelope(
+				key.privateKey,
+				official({ extensions: [entry(id, "0.0.2", bridgeZip)] }),
+			),
+		});
+		const view = await harness().marketplace.list();
+		expect(view.sources[0]).toMatchObject({ ok: false });
+		expect(view.extensions).toEqual([]);
+	},
+);

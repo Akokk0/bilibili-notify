@@ -5,6 +5,7 @@ import { fail, neutralPlatformDescriptor } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { settingsSegment } from "../bilibili/settings.js";
+import { BUILTIN_INTEGRATION_KEYS } from "../compose.js";
 import { createSecretCellsReader } from "../push/connection-settings.js";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -157,7 +158,9 @@ describe("connections route — 写入的失败(真 store)", () => {
 				adapterRegistry: runtime.adapterRegistry,
 			},
 			store: runtime.configStore,
-			connectionSecrets: createSecretCellsReader(runtime.adapterRegistry),
+			connectionSecrets: createSecretCellsReader(runtime.adapterRegistry, (key) =>
+				BUILTIN_INTEGRATION_KEYS.includes(key) ? [] : undefined,
+			),
 			puppeteer: null,
 			wsTicketStore: null,
 		} as unknown as RouteDeps);
