@@ -5,7 +5,6 @@
  * 预递给腾讯的那把钥匙,好在完成态里按腾讯的格式加密 AppSecret。
  */
 import type { ConnectionAuth } from "@bilibili-notify/internal";
-import { QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
@@ -13,6 +12,7 @@ import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createQQConnectionAuth } from "../qq-bind.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
+import { QQOfficialConnectionSettingsSchema } from "../qq-official-settings.js";
 import { encryptLikeTencent } from "./tencent-bind-crypto.js";
 
 const SECRET = "SuperSecretValue-9f3a";

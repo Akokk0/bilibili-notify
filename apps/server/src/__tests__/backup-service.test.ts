@@ -4,7 +4,6 @@ import {
 	type Json,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
-	OnebotConnectionSettingsSchema,
 	ok,
 	type PushTarget,
 	type Subscription,
@@ -17,6 +16,7 @@ import { type BackupSections, buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
+import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 import { snapshotFor } from "./support/connection-snapshot.js";

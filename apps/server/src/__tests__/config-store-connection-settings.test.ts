@@ -8,9 +8,7 @@ import {
 	type Disposable,
 	type MessageBus,
 	neutralPlatformSnapshot,
-	OnebotConnectionSettingsSchema,
 	type ServiceContext,
-	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZodType } from "zod";
@@ -20,6 +18,8 @@ import {
 	ConfigValidationError,
 	createConfigStore,
 } from "../config/store.js";
+import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
+import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
 import { routeConnection } from "../push/dispatch.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 

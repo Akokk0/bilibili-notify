@@ -1,10 +1,4 @@
-import {
-	type Connection,
-	makeDefaultGlobalConfig,
-	OnebotConnectionSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
-	WebhookConnectionSettingsSchema,
-} from "@bilibili-notify/internal";
+import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZodType } from "zod";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
@@ -17,6 +11,9 @@ import {
 } from "../backup/crypto.js";
 import { buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
+import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 

@@ -1,3 +1,14 @@
+import type {
+	OnebotConnectionSettings,
+	OnebotTransport,
+} from "../../../../server/src/platforms/onebot-settings.js";
+import {
+	OnebotHttpSettingsSchema,
+	OnebotWsReverseSettingsSchema,
+	OnebotWsSettingsSchema,
+} from "../../../../server/src/platforms/onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../../../../server/src/platforms/qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../../../../server/src/platforms/webhook-settings.js";
 /**
  * 字段表与 zod schema 对表。
  *
@@ -9,18 +20,8 @@
  * 「不给填」可以,「忘了给」不行,差别就在有没有人写下那句话。
  */
 
-import type {
-	NewConnection,
-	OnebotConnectionSettings,
-	OnebotTransport,
-} from "@bilibili-notify/internal";
-import {
-	OnebotHttpSettingsSchema,
-	OnebotWsReverseSettingsSchema,
-	OnebotWsSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
-	WebhookConnectionSettingsSchema,
-} from "@bilibili-notify/internal";
+import type { NewConnection } from "@bilibili-notify/internal";
+
 import { describe, expect, it } from "vite-plus/test";
 import {
 	connectionFields,

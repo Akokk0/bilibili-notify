@@ -1,14 +1,13 @@
 /** 面板回归测试使用真实适配器候选和规则描述,不再另抄默认值。 */
+import { type NewConnection, settingsFieldsFromSchema } from "@bilibili-notify/internal";
+import { builtinCandidatesFor } from "../../../../server/src/platforms/builtin-candidates";
 import {
-	type NewConnection,
 	type OnebotConnectionSettings,
 	OnebotConnectionSettingsSchema,
 	type OnebotTransport,
-	QQOfficialConnectionSettingsSchema,
-	settingsFieldsFromSchema,
-	WebhookConnectionSettingsSchema,
-} from "@bilibili-notify/internal";
-import { builtinCandidatesFor } from "../../../../server/src/platforms/builtin-candidates";
+} from "../../../../server/src/platforms/onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../../../../server/src/platforms/qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../../../../server/src/platforms/webhook-settings.js";
 import { connectionSettingsFields } from "../connection-fields";
 import { connectionFromCandidate } from "../domain";
 

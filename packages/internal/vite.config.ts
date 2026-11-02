@@ -18,7 +18,6 @@ export default defineConfig({
 			"src/live-monitor.ts",
 			"src/patch.ts",
 			"src/platform-descriptor.ts",
-			"src/platform-registry.ts",
 			"src/push-target.ts",
 			"src/result.ts",
 			"src/template-defaults.ts",

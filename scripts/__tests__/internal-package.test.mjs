@@ -101,11 +101,6 @@ const SUBPATHS = [
 		why: "拓展与宿主共用中性平台描述",
 	},
 	{
-		subpath: "./platform-registry",
-		source: "src/platform-registry.ts",
-		why: "面板、服务端与 contract 取内置连接平台注册表",
-	},
-	{
 		subpath: "./push-target",
 		source: "src/push-target.ts",
 		why: "面板、服务端与 contract 取推送目标和回复判定",

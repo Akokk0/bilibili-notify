@@ -15,7 +15,7 @@ import {
 	resolveAIProfile,
 } from "../ai";
 import { DEFAULT_LOCALE } from "../i18n";
-import { CONNECTION_PLATFORMS, platformDescriptor } from "../platform-registry";
+
 import { builtinPresetsFor } from "../texts/builtin";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
@@ -70,29 +70,6 @@ describe("注册表本体", () => {
 
 	it("兜底档不声称支持思考 —— 声称了就会给未适配的服务商乱发方言参数", () => {
 		expect(providerMeta("custom").supportsThinking).toBe(false);
-	});
-});
-
-describe("平台注册表的 adapterKey —— 这个平台归哪个适配器管", () => {
-	const cases: ReadonlyArray<readonly [string, string]> = [
-		["onebot", "onebot"],
-		["qq-official", "qq-official"],
-		["feishu", "webhook"],
-		["dingtalk", "webhook"],
-		["wecom", "webhook"],
-		["generic", "webhook"],
-	];
-
-	it.each(cases)("平台 %s → %s", (platform, key) => {
-		expect(platformDescriptor(platform)?.adapterKey).toBe(key);
-	});
-
-	it("六个平台一个不漏(闭集多一档这里要跟着加)", () => {
-		expect(cases.map(([platform]) => platform).sort()).toEqual([...CONNECTION_PLATFORMS].sort());
-	});
-
-	it("认不出的平台没有适配器键", () => {
-		expect(platformDescriptor("telegram")).toBeUndefined();
 	});
 });
 

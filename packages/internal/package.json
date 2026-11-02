@@ -32,7 +32,6 @@
 		"./live-monitor": "./lib/live-monitor.mjs",
 		"./patch": "./lib/patch.mjs",
 		"./platform-descriptor": "./lib/platform-descriptor.mjs",
-		"./platform-registry": "./lib/platform-registry.mjs",
 		"./push-target": "./lib/push-target.mjs",
 		"./result": "./lib/result.mjs",
 		"./template-defaults": "./lib/template-defaults.mjs",

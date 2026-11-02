@@ -152,18 +152,14 @@ const EQUALITY = new Set([
  * 棘轮表(核心):文件 → 命中的上限(开张时的现数)。只许往下调。
  * 行内注释写这一格是什么;等第 4 期的格子接着写等什么改动、为什么现在清不了。
  */
-export const RATCHET = {
-	// 平台表自己:`PLATFORM_REGISTRY[platform]` 当下标一处,`isWebhookPlatform` 与 `addressNounFor` 里各一次 `platformDescriptor(platform)`。
-	// 第 4 期:平台闭集隔离区整个删(ADR-0024 决策 1),平台事实交给各适配器的描述后消。
-	"packages/internal/src/platform-registry.ts": 3,
-};
+export const RATCHET = {};
 
 /** 4-29：面板五文件原 29 处已移除，展示用途单独逐表达式登记。 */
 export const RATCHET_PANEL = {};
 
 /**
  * 4-29 主人批准：仅按文件 + 完整 AST 表达式登记展示用途，每处必须恰好出现一次。
- * 不放行通用 parse / Map.get，也不放行整个文件。平台表的旧三处仍随 4-30 搬出。
+ * 不放行通用 parse / Map.get，也不放行整个文件。4-30 搬出平台表后核心旧三处已清零。
  */
 export const DISPLAY_EXPRESSIONS = {
 	"apps/server/src/config/store.ts": [

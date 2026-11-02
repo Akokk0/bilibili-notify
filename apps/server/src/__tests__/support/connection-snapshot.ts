@@ -1,3 +1,4 @@
+import { PLATFORM_REGISTRY } from "../../platforms/platform-descriptors.js";
 /**
  * 造连接夹具用的平台快照 —— 连接上那份 `platformSnapshot`。
  *
@@ -5,11 +6,7 @@
  * 认不出的平台(桥借来的)用中性快照。别在各测试文件里抄字面量。
  */
 
-import {
-	neutralPlatformSnapshot,
-	PLATFORM_REGISTRY,
-	type PlatformSnapshot,
-} from "@bilibili-notify/internal";
+import { neutralPlatformSnapshot, type PlatformSnapshot } from "@bilibili-notify/internal";
 
 export function snapshotFor(platform: string): PlatformSnapshot {
 	if (!Object.hasOwn(PLATFORM_REGISTRY, platform)) return neutralPlatformSnapshot(platform);

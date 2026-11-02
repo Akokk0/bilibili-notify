@@ -3,10 +3,7 @@ import {
 	ConnectionSchema,
 	GlobalConfigSchema,
 	makeDefaultGlobalConfig,
-	OnebotConnectionSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
 	stringLeavesOf,
-	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -15,6 +12,9 @@ import {
 	redactSecretKeys,
 	SECRET_KEYS,
 } from "../backup/sanitize.js";
+import { OnebotConnectionSettingsSchema } from "../platforms/onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../platforms/qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../platforms/webhook-settings.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 

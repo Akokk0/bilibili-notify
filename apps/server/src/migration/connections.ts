@@ -20,10 +20,7 @@ import {
 	type PushTarget,
 	PushTargetSchema,
 } from "@bilibili-notify/internal";
-import {
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/platform-registry";
+
 import { readJsonFile, rewriteJsonFile } from "./files.js";
 import {
 	isZeroWebhookPlatform,
@@ -68,6 +65,10 @@ export interface MigratedConfigSections {
 	/** 迁移前探到的形状版本。 */
 	from: number;
 }
+
+// 0.x 迁移固定默认值，不随运行期适配器配置改变。
+const ONEBOT_IMAGE_MIN_TIMEOUT_MS = 30_000;
+const ONEBOT_FORWARD_MIN_TIMEOUT_MS = 60_000;
 
 const CONNECTOR_SET = new Set<string>(ZERO_CONNECTORS);
 

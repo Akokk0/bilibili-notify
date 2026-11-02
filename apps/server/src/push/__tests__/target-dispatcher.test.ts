@@ -1,3 +1,4 @@
+import { platformDescriptor } from "../../platforms/platform-descriptors.js";
 /**
  * 单元测试 — `createTargetDispatcher`(独立端 TargetDispatcher 的 targetId → adapter 路由核心)。
  *
@@ -26,7 +27,7 @@ import type {
 	ProbeResult,
 	PushTarget,
 } from "@bilibili-notify/internal";
-import { fail, platformDescriptor } from "@bilibili-notify/internal";
+import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import { z } from "zod";
 import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";

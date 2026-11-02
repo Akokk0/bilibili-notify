@@ -1,3 +1,4 @@
+import { OnebotConnectionSettingsSchema } from "../../platforms/onebot-settings.js";
 /**
  * 0.x 各个版本留下的连接与目标 → 0.x 最新的形状:兼容逻辑住在迁移器里(`migration/connections.ts`),
  * 配置仓开机只认最新的形状。这批测试原先钉在配置仓开机上(`config-store.test.ts`),兼容逻辑搬走之后跟着搬过来。
@@ -30,7 +31,6 @@ import {
 	type Connection,
 	deterministicUuid,
 	neutralPlatformSnapshot,
-	OnebotConnectionSettingsSchema,
 	type PushTarget,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";

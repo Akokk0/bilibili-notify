@@ -1,7 +1,8 @@
-import type { HttpClient, QQOfficialConnectionSettings } from "@bilibili-notify/internal";
+import type { HttpClient } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { integrationIo } from "../../__tests__/support/integration-io.js";
 import { fetchQQGuildChannels } from "../qq-official";
+import type { QQOfficialConnectionSettings } from "../qq-official-settings.js";
 
 const CFG: QQOfficialConnectionSettings = {
 	appId: "APPID",

@@ -1,15 +1,11 @@
-import { type ConnectionCandidate, PLATFORM_REGISTRY } from "@bilibili-notify/internal";
-import {
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/platform-registry";
+import type { ConnectionCandidate } from "@bilibili-notify/internal";
+import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./onebot-constants.js";
+import { PLATFORM_REGISTRY } from "./platform-descriptors.js";
 
 /**
  * 模板候选的 `settings`:新建一条连接时的默认值,按适配器键分。
  *
- * ⚠️ 这是 `apps/web/src/types/domain.ts` 的 `makeEmptyConnection` 里那份默认值的**第二份**,
- * 眼下面板还不读候选所以两边各有一份、会漂。第 4 期面板改读候选之后,删掉 `domain.ts` 那份
- * (记在 `docs/1.0/construction-plan.md` 第 4 期面板那一行)。
+ * 面板统一读取候选，默认值只由适配器提供。
  *
  * 平台固定的适配器里只有 webhook 这一族每个平台的默认值一样;OneBot / QQ 官方各一个平台。
  */

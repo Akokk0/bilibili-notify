@@ -1,7 +1,8 @@
+import { PLATFORM_REGISTRY } from "../platform-descriptors.js";
 /**
  * 注册表里的每个平台都得有人接。
  *
- * `CONNECTION_PLATFORMS` 是闭集,每一档说好了要配齐「一份 settings schema + 一个 server
+ * `templatePlatforms` 是闭集,每一档说好了要配齐「一份 settings schema + 一个 server
  * adapter + 一排面板控件」。可 adapter 那一格没人核对过 —— 往注册表里加一档、忘了给它
  * 写 adapter,构建全绿、面板照样让主人建这条连接,只有真发的时候才在投递层报一句
  * `no platform adapter`。主人看到的是「配好了但发不出去」,而不是「这平台还没做」。
@@ -11,7 +12,7 @@
  */
 
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
-import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY } from "@bilibili-notify/internal";
+
 import { describe, expect, it, vi } from "vite-plus/test";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";
 import { adapterForConnection } from "../../push/dispatch.js";
@@ -57,7 +58,9 @@ function buildMatrix(): PlatformAdapter[] {
 }
 
 /** 造一条该平台的连接 —— 分发只看 `adapterKey`,归属取平台注册表里那一行。 */
-function connectionOn(platform: (typeof CONNECTION_PLATFORMS)[number]): Connection {
+const templatePlatforms = Object.keys(PLATFORM_REGISTRY) as Array<keyof typeof PLATFORM_REGISTRY>;
+
+function connectionOn(platform: (typeof templatePlatforms)[number]): Connection {
 	return {
 		adapterKey: PLATFORM_REGISTRY[platform].adapterKey,
 		platform,
@@ -72,7 +75,7 @@ function connectionOn(platform: (typeof CONNECTION_PLATFORMS)[number]): Connecti
 describe("adapter 矩阵覆盖平台词表", () => {
 	it("闭集里每个平台的连接,都恰好找得到一个 adapter", () => {
 		const matrix = buildMatrix();
-		for (const platform of CONNECTION_PLATFORMS) {
+		for (const platform of templatePlatforms) {
 			const claimers = matrix.filter(
 				(adapter) => adapterForConnection([adapter], connectionOn(platform)) !== undefined,
 			);
@@ -82,7 +85,7 @@ describe("adapter 矩阵覆盖平台词表", () => {
 
 	it("也没有多出来的 —— 每个 adapter 的键都是某个平台的 adapterKey,键不重复", () => {
 		const keys = buildMatrix().map((a) => a.adapterKey);
-		const registryKeys = CONNECTION_PLATFORMS.map((p) => PLATFORM_REGISTRY[p].adapterKey);
+		const registryKeys = templatePlatforms.map((p) => PLATFORM_REGISTRY[p].adapterKey);
 		expect([...keys].sort()).toEqual([...new Set(registryKeys)].sort());
 	});
 });
@@ -187,7 +190,7 @@ describe("内置适配器的连接候选", () => {
 			await Promise.all(["onebot", "qq-official", "webhook"].map((key) => candidatesOf(key)))
 		).flatMap((cs) => cs.map((c) => c.platform.platform));
 		expect(new Set(all).size).toBe(all.length);
-		expect([...all].sort()).toEqual([...CONNECTION_PLATFORMS].sort());
+		expect([...all].sort()).toEqual([...templatePlatforms].sort());
 	});
 
 	it("每个内置适配器都带 settingsSchema", () => {

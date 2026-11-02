@@ -1,14 +1,16 @@
 import {
 	type NewConnection,
+	settingsFieldsFromSchema,
+	stringLeavesOf,
+} from "@bilibili-notify/internal";
+import { describe, expect, it } from "vite-plus/test";
+import {
 	OnebotHttpSettingsSchema,
 	OnebotWsReverseSettingsSchema,
 	OnebotWsSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
-	settingsFieldsFromSchema,
-	stringLeavesOf,
-	WebhookConnectionSettingsSchema,
-} from "@bilibili-notify/internal";
-import { describe, expect, it } from "vite-plus/test";
+} from "../../../../server/src/platforms/onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../../../../server/src/platforms/qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../../../../server/src/platforms/webhook-settings.js";
 import { credentialCellsOf } from "../connection-credentials";
 import { descriptorsOf } from "./connection-fixtures";
 

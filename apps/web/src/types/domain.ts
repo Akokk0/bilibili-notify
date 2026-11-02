@@ -82,15 +82,12 @@ export type {
 	NewConnection,
 	PushTarget,
 	PushTargetScope,
-	QQOfficialBotType,
-	QQOfficialConnectionSettings,
 	ScheduleConfigPartial as ScheduleOverride,
 	SpecialViewer,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
 	SuperchatSettingsPartial as SuperchatOverride,
 	TemplateBundlePartial as TemplateOverride,
-	WebhookConnectionSettings,
 } from "@bilibili-notify/internal";
 
 // ---- Factories --------------------------------------------------------

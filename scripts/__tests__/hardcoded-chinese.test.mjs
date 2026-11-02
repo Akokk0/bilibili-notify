@@ -357,7 +357,6 @@ export const RATCHET = {
 	"packages/internal/src/extension/build.ts": 5,
 	"packages/internal/src/features.ts": 4,
 	"packages/internal/src/format.ts": 14,
-	"packages/internal/src/platform-registry.ts": 17,
 	"packages/internal/src/schema/card-skin.ts": 48,
 	"packages/internal/src/schema/config-fields.ts": 27,
 	"packages/internal/src/schema/extension-manifest.ts": 33,

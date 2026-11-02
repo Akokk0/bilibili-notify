@@ -1,3 +1,4 @@
+import { platformDescriptor } from "../platform-descriptors.js";
 /**
  * 三个内置适配器对「@全体 / 收不收得到回复 / 小程序卡」的回答。
  *
@@ -7,7 +8,7 @@
  */
 
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
-import { platformDescriptor } from "@bilibili-notify/internal";
+
 import { describe, expect, it, vi } from "vite-plus/test";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { fixedLocale } from "../../__tests__/support/fixed-locale.js";

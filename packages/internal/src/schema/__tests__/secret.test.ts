@@ -36,12 +36,6 @@ describe("hasSecretCells — classify the entire cell before parsing a bad value
 	});
 });
 
-import {
-	OnebotConnectionSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
-	WebhookConnectionSettingsSchema,
-} from "../targets";
-
 /** 标记是 zod 的 `.meta()`:包装函数只是入口。读标记的遍历器要穿得过 optional / default / 联合 / record / pipe。 */
 describe("secretMarkOf — 标记穿过各种包裹", () => {
 	it("markSecret / markBackupOnly 各自读得回,没标的读不到", () => {
@@ -123,79 +117,6 @@ describe("mapMarked — 按值走 schema", () => {
 	});
 });
 
-describe("真 schema 上的标记", () => {
-	const marked = (schema: z.ZodType, value: unknown) => {
-		const out: Array<{ mark: string; value: unknown }> = [];
-		mapMarked(schema, value, {
-			onMark: (value, mark) => {
-				out.push({ mark: "secret" in mark ? "secret" : "backupOnly", value });
-				return value;
-			},
-			onUntyped: (v) => v,
-		});
-		return out;
-	};
-
-	it("OneBot ws 的 url 只算「仅备份」,webhook 的 url 算 secret(同名不同义的反例)", () => {
-		const ws = OnebotConnectionSettingsSchema.parse({
-			transport: "ws",
-			url: "ws://bot:3001",
-			accessToken: "tok",
-			headers: { A: "1" },
-		});
-		const wsMarks = marked(OnebotConnectionSettingsSchema, ws);
-		expect(wsMarks).toHaveLength(3);
-		expect(wsMarks).toEqual(
-			expect.arrayContaining([
-				{ mark: "backupOnly", value: "ws://bot:3001" },
-				{ mark: "backupOnly", value: "1" },
-				{ mark: "secret", value: "tok" },
-			]),
-		);
-		const hook = WebhookConnectionSettingsSchema.parse({
-			url: "https://h.example/x",
-			secret: "s",
-			headers: {},
-		});
-		expect(marked(WebhookConnectionSettingsSchema, hook)).toEqual([
-			{ mark: "secret", value: "https://h.example/x" },
-			{ mark: "secret", value: "s" },
-		]);
-	});
-
-	it("QQ 官机的 appSecret 是 secret", () => {
-		const qq = QQOfficialConnectionSettingsSchema.parse({ appId: "1", appSecret: "sec" });
-		expect(marked(QQOfficialConnectionSettingsSchema, qq)).toEqual([
-			{ mark: "secret", value: "sec" },
-		]);
-	});
-
-	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {
-		const g = makeDefaultGlobalConfig();
-		g.ai.providers.ds = AIProviderProfileSchema.parse({
-			provider: "deepseek",
-			apiKey: "k-main",
-			baseUrl: "https://api.example/v1",
-			vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
-		});
-		g.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
-		g.marketplace = { sources: [{ id: "s1", url: "https://m.example/index.json" }] };
-		const got = marked(GlobalConfigSchema, g);
-		expect(got).toEqual(
-			expect.arrayContaining([
-				{ mark: "secret", value: "k-main" },
-				{ mark: "backupOnly", value: "https://api.example/v1" },
-				{ mark: "secret", value: "k-vision" },
-				{ mark: "backupOnly", value: "https://v.example/v1" },
-				{ mark: "secret", value: "k-bocha" },
-				{ mark: "secret", value: "k-tavily" },
-				{ mark: "backupOnly", value: "https://m.example/index.json" },
-			]),
-		);
-		expect(got).toHaveLength(7);
-	});
-});
-
 describe("maskSecret / maskCell", () => {
 	it("不到 24 位整段打点,固定 8 个点", () => {
 		expect(maskSecret("short")).toBe("••••••••");
@@ -230,5 +151,43 @@ describe("stringLeavesOf", () => {
 			["r.*", true],
 			["l.*.c", false],
 		]);
+	});
+});
+
+describe("通用设置规则上的标记", () => {
+	const marked = (schema: z.ZodType, value: unknown) => {
+		const out: Array<{ mark: string; value: unknown }> = [];
+		mapMarked(schema, value, {
+			onMark: (value, mark) => {
+				out.push({ mark: "secret" in mark ? "secret" : "backupOnly", value });
+				return value;
+			},
+			onUntyped: (v) => v,
+		});
+		return out;
+	};
+	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {
+		const g = makeDefaultGlobalConfig();
+		g.ai.providers.ds = AIProviderProfileSchema.parse({
+			provider: "deepseek",
+			apiKey: "k-main",
+			baseUrl: "https://api.example/v1",
+			vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
+		});
+		g.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
+		g.marketplace = { sources: [{ id: "s1", url: "https://m.example/index.json" }] };
+		const got = marked(GlobalConfigSchema, g);
+		expect(got).toEqual(
+			expect.arrayContaining([
+				{ mark: "secret", value: "k-main" },
+				{ mark: "backupOnly", value: "https://api.example/v1" },
+				{ mark: "secret", value: "k-vision" },
+				{ mark: "backupOnly", value: "https://v.example/v1" },
+				{ mark: "secret", value: "k-bocha" },
+				{ mark: "secret", value: "k-tavily" },
+				{ mark: "backupOnly", value: "https://m.example/index.json" },
+			]),
+		);
+		expect(got).toHaveLength(7);
 	});
 });

@@ -18,17 +18,11 @@ import type {
 	PlatformAdapterContext,
 	ProbeResult,
 	PushTargetScope,
-	QQOfficialConnectionSettings,
 	Result,
 	ServiceContext,
 	WebSocketLike,
 } from "@bilibili-notify/internal";
-import {
-	fail,
-	ok,
-	QQOfficialConnectionSettingsSchema,
-	settingsFieldsFromSchema,
-} from "@bilibili-notify/internal";
+import { fail, ok, settingsFieldsFromSchema } from "@bilibili-notify/internal";
 import type { RawData } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
@@ -38,6 +32,8 @@ import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
 import { createQQConnectionAuth } from "./qq-bind.js";
+import type { QQOfficialConnectionSettings } from "./qq-official-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "./qq-official-settings.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */

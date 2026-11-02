@@ -11,7 +11,6 @@ import type {
 	HttpClient,
 	Logger,
 	NotificationPayload,
-	OnebotConnectionSettings,
 	PayloadSegment,
 	PlatformAdapter,
 	PlatformAdapterContext,
@@ -20,16 +19,7 @@ import type {
 	ServiceContext,
 	WebSocketLike,
 } from "@bilibili-notify/internal";
-import {
-	fail,
-	OnebotConnectionSettingsSchema,
-	ok,
-	settingsFieldsFromSchema,
-} from "@bilibili-notify/internal";
-import {
-	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-} from "@bilibili-notify/internal/platform-registry";
+import { fail, ok, settingsFieldsFromSchema } from "@bilibili-notify/internal";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
@@ -37,7 +27,10 @@ import { t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
+import { ONEBOT_FORWARD_MIN_TIMEOUT_MS, ONEBOT_IMAGE_MIN_TIMEOUT_MS } from "./onebot-constants.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
+import type { OnebotConnectionSettings } from "./onebot-settings.js";
+import { OnebotConnectionSettingsSchema } from "./onebot-settings.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /**
@@ -87,7 +80,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_INTERVAL_MS = 1_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
-// 两个下限与前端共用一个数(见 `@bilibili-notify/internal/platform-registry` 的说明),否则
+// 两个下限由适配器自己的常量提供，并经字段描述交给面板，否则
 // 界面上写着 30s、这边实际按别的数放宽,主人对不上账。
 const DEFAULT_FORWARD_MIN_TIMEOUT_MS = ONEBOT_FORWARD_MIN_TIMEOUT_MS;
 const DEFAULT_IMAGE_MIN_TIMEOUT_MS = ONEBOT_IMAGE_MIN_TIMEOUT_MS;

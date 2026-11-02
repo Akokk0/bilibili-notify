@@ -20,7 +20,6 @@ export * from "./live-monitor";
 export * from "./membership";
 export * from "./platform";
 export * from "./platform-descriptor";
-export * from "./platform-registry";
 export * from "./post";
 export * from "./problem";
 /**

@@ -9,7 +9,6 @@ import {
 	type Failure,
 	fail,
 	type HttpClient,
-	isWebhookPlatform,
 	type Logger,
 	type NotificationPayload,
 	ok,
@@ -18,15 +17,17 @@ import {
 	type PlatformAdapterContext,
 	type ProbeResult,
 	settingsFieldsFromSchema,
-	type WebhookConnectionSettings,
-	WebhookConnectionSettingsSchema,
-	type WebhookPlatform,
 } from "@bilibili-notify/internal";
 import { z } from "zod";
 import type { IntegrationSettingsSegment } from "../config/store.js";
 import { t } from "../i18n/index.js";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
+import { isWebhookPlatform, type WebhookPlatform } from "./platform-descriptors.js";
+import {
+	type WebhookConnectionSettings,
+	WebhookConnectionSettingsSchema,
+} from "./webhook-settings.js";
 
 /**
  * Webhook adapter — POST payloads to either the legacy bilibili-notify JSON

@@ -1,5 +1,3 @@
-import { bindPackageText } from "../../texts";
-import { OnebotConnectionSettingsSchema, WebhookConnectionSettingsSchema } from "../targets";
 /**
  * 规则只写一份(construction-plan「读设置的写法简化」,第 4 期):清单里的设置项由规则导出 ——
  * 类型、默认值、必填、上下限、枚举的取值读规则本身,给人看的那几格读 `.meta()`。
@@ -229,23 +227,7 @@ describe("表达不了的写法", () => {
 	});
 });
 
-describe("内置连接表单", () => {
-	it("已建好的内置规则在读取描述时才翻译,字段、枚举与平台提示均随语言变化", () => {
-		const binding = bindPackageText((key) => `译:${key}`);
-		try {
-			const fields = settingsFieldsFromSchema(OnebotConnectionSettingsSchema, { connection: true });
-			expect(fields[0]?.label).toBe("译:internal.connection.transport.label");
-			expect(fields.find((field) => field.key === "accessToken")?.label).toBe(
-				"译:internal.connection.token.label",
-			);
-			const hook = settingsFieldsFromSchema(WebhookConnectionSettingsSchema, { connection: true });
-			expect(hook.find((field) => field.key === "secret")?.byPlatform?.feishu?.description).toBe(
-				"译:internal.connection.hookSecret.feishu",
-			);
-		} finally {
-			binding.dispose();
-		}
-	});
+describe("连接字段描述", () => {
 	it("区分分支的规则导出条件字段与切换草稿,共同键才保留,必填初值不放宽校验", () => {
 		const common = {
 			token: z.string().optional().meta({ label: "令牌", secret: true }),

@@ -1,3 +1,11 @@
+import {
+	OnebotHttpSettingsSchema,
+	OnebotWsReverseSettingsSchema,
+	OnebotWsSettingsSchema,
+} from "../onebot-settings.js";
+import { QQOfficialConnectionSettingsSchema } from "../qq-official-settings.js";
+import { WebhookConnectionSettingsSchema } from "../webhook-settings.js";
+
 /**
  * 三份连接设置规则里 `secret` 叶子的**字面清单**。
  *
@@ -8,15 +16,8 @@
  * 面板的 `connection-credentials-schema.test.ts` 拿同样的 schema 对拍面板的凭据格表,两头互相钉。
  */
 
+import { stringLeavesOf } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { stringLeavesOf } from "../secret";
-import {
-	OnebotHttpSettingsSchema,
-	OnebotWsReverseSettingsSchema,
-	OnebotWsSettingsSchema,
-	QQOfficialConnectionSettingsSchema,
-	WebhookConnectionSettingsSchema,
-} from "../targets";
 
 const secretLeavesOf = (schema: unknown): string[] =>
 	stringLeavesOf(schema)

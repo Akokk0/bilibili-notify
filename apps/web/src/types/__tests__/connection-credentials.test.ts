@@ -1,7 +1,7 @@
 import type { ConnectionView } from "@bilibili-notify/contract";
 import type { NewConnection } from "@bilibili-notify/internal";
-import { OnebotConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { OnebotConnectionSettingsSchema } from "../../../../server/src/platforms/onebot-settings.js";
 import { snapshotFor } from "../../__tests__/platform-snapshot";
 import {
 	clearedCredentials as clearedCredentialsImpl,
